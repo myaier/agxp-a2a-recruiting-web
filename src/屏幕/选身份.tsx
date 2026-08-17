@@ -69,42 +69,60 @@ export default function 选身份() {
 }
 
 /**
- * 三个身份的线性图标。
- * 图标.tsx 里没有「公文包开合 / 写字楼」这两个形状，
- * 按硬性要求就地内联 SVG，路径值照搬 RN 源与设计稿 R2，描边色走 CSS 变量。
+ * 两个身份的彩绘极简图标（Robinhood 风，直达标注意见 2026-08-17 21:20）。
+ *
+ * 这套风格的三条要点，也是它和原来线性图标的根本差别：
+ *   · 大色块填充，不靠描边勾轮廓 —— 远看是一个「形」，不是一堆线；
+ *   · 圆润几何：只用圆、圆角矩形、粗圆头线段拼，不画写实细节；
+ *   · 双色分层：主色（品牌荧光绿 / 深绿）+ 一层半透明同色做纵深。
+ * 因为是填充色块，尺寸取 34（52px 圆底里留 9px 边距）才压得住，比线性图标大得多。
  */
 function 身份图标({ 键 }: { 键: 身份键 }) {
   const 公共属性 = {
-    width: 20,
-    height: 20,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    strokeWidth: 1.9,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    className: 样式.身份图标,
+    width: 34,
+    height: 34,
+    viewBox: '0 0 32 32',
     'aria-hidden': true,
   };
 
-  // 求职者：公文包
+  // 求职者：一枚圆润公文包 —— 深绿箱体 + 荧光绿提手与锁扣
   if (键 === '求职者') {
     return (
       <svg {...公共属性}>
-        <rect x="2.6" y="7.2" width="18.8" height="13" rx="3" />
-        <path d="M8.6 7.2V5.4a2 2 0 0 1 2-2h2.8a2 2 0 0 1 2 2v1.8" />
-        <path d="M2.6 12.4h18.8" />
-        <path d="M10.6 12.4h2.8" />
+        {/* 提手 */}
+        <path
+          d="M12 9V7.5A2.5 2.5 0 0 1 14.5 5h3A2.5 2.5 0 0 1 20 7.5V9"
+          fill="none"
+          stroke="var(--深绿)"
+          strokeWidth={2.6}
+          strokeLinecap="round"
+        />
+        {/* 箱体 */}
+        <rect x="4" y="9" width="24" height="18" rx="5" fill="var(--深绿)" />
+        {/* 中缝亮带：荧光绿横条，Robinhood 那种「一条高亮」的处理 */}
+        <rect x="4" y="16" width="24" height="3.4" fill="var(--荧光绿)" />
+        {/* 锁扣 */}
+        <rect x="14.4" y="15" width="3.2" height="5.4" rx="1.6" fill="var(--荧光绿)" />
       </svg>
     );
   }
 
-  // 企业：写字楼
+  // 招聘方：两栋圆角楼 —— 深绿主楼 + 荧光绿副楼，窗户用圆点
   return (
     <svg {...公共属性}>
-      <rect x="4" y="3.6" width="12" height="17.8" rx="2" />
-      <path d="M16 9.4h2.6A1.4 1.4 0 0 1 20 10.8v10.6" />
-      <path d="M2.6 21.4h18.8" />
-      <path d="M7.6 7.4h1.6M11 7.4h1.6M7.6 11h1.6M11 11h1.6M7.6 14.6h1.6M11 14.6h1.6" />
+      {/* 副楼（矮，荧光绿） */}
+      <rect x="17" y="13" width="11" height="15" rx="3.4" fill="var(--荧光绿)" />
+      {/* 主楼（高，深绿） */}
+      <rect x="4" y="5" width="14" height="23" rx="4" fill="var(--深绿)" />
+      {/* 主楼窗户：两列三行圆点，用荧光绿点亮 */}
+      <g fill="var(--荧光绿)">
+        <circle cx="8.4" cy="12" r="1.9" />
+        <circle cx="13.6" cy="12" r="1.9" />
+        <circle cx="8.4" cy="19" r="1.9" />
+        <circle cx="13.6" cy="19" r="1.9" />
+      </g>
+      {/* 副楼一扇深绿窗，和主楼互为反色 */}
+      <circle cx="22.5" cy="20" r="1.9" fill="var(--深绿)" />
     </svg>
   );
 }

@@ -18,12 +18,13 @@
   width: 100%;
   background: var(--白);
   border: 1px solid var(--描边);
-  border-radius: var(--圆角-内托盘);
-  padding: 16px;
+  /* 直达标注意见 21:20：卡片加高（16 → 22 纵向内边距），圆角同步放大更圆润 */
+  border-radius: var(--圆角-中卡);
+  padding: 22px 18px;
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 13px;
+  gap: 14px;
   text-align: left;
 }
 
@@ -34,20 +35,16 @@
   box-shadow: 0 2px 10px rgba(63, 122, 31, 0.08);
 }
 
+/* 彩绘图标的托底：比原来大一圈（42 → 52），衬得住填充式色块图标 */
 .图标底 {
   flex: none;
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+  width: 52px;
+  height: 52px;
+  border-radius: 17px;
   background: var(--淡绿底);
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-/* 描边色走变量，不在 SVG 上写死十六进制 */
-.身份图标 {
-  stroke: var(--深绿);
 }
 
 /* 标题与说明两行：span 需显式转成纵向 flex，DOM 默认横排 */
