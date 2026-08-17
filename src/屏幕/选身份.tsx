@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import 样式 from './选身份.module.css';
-import { 次级页外壳, 页面大标题, 主按钮, 单选点 } from '../组件/通用';
+import { 次级页外壳, 返回栏, 页面大标题, 主按钮, 单选点 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 
@@ -26,13 +26,17 @@ const 身份列表: 身份项[] = [
 ];
 
 export default function 选身份() {
-  const { 跳转 } = use导航();
+  const { 跳转, 返回 } = use导航();
   const [选中, 设选中] = useState<身份键>('求职者');
 
   const 选中项 = 身份列表.find((项) => 项.键 === 选中) ?? 身份列表[0];
 
   return (
     <次级页外壳>
+      {/* 补返回栏（直达标注意见 21:23）：后续每一屏都有它，缺了会让本屏标题
+          比后面所有页面高一行（约 44px），视觉上「太靠上」。顺带也让用户能退回登录页。 */}
+      <返回栏 返回={返回} />
+
       <页面大标题 标题="你想用它做什么？" />
 
       <div className={样式.列表}>
