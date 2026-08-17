@@ -1,28 +1,23 @@
-/* A2 添加工作经历 —— 像素值取自设计稿 A2（storyboard 第 134 段）与 RN 版 工作经历.js */
+/* A2 工作经历 —— BOSS直聘 形态：列表 + 全屏编辑页 */
 
-/* 返回栏右侧的「保存」文字按钮 */
 .保存 {
-  flex: none;
   font-size: 14.5px;
   font-weight: 600;
   color: var(--深绿);
 }
 
-/* ── 一键上传简历：绿色虚线框 ──
-   虚线（dashed）在这里承担语义：告诉用户这块是「可导入的入口」而不是已填好的卡片。 */
+/* ── 上传解析条：绿色虚线框 ── */
 .上传条 {
-  /* 全局令牌里没有这条框线用的浅绿灰，就地起一个语义变量，避免 hex 散落在规则里 */
-  --上传框描边: #9fc5b6;
-
   flex: none;
   margin: 14px 18px 0;
-  padding: 11px 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
   background: var(--淡绿底);
   border: 1.5px dashed var(--上传框描边);
   border-radius: 15px;
+  padding: 11px 14px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
   text-align: left;
 }
 
@@ -32,19 +27,19 @@
   height: 32px;
   border-radius: 12px;
   background: var(--深绿);
-  color: var(--白);
+  color: #fff;
   font-size: 15px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* RN 里是没写 flexDirection 的 View（默认竖排），DOM 里必须显式 column */
 .上传文案 {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .上传标题 {
@@ -56,31 +51,129 @@
 .上传说明 {
   font-size: 10.5px;
   color: var(--正文);
-  margin-top: 2px;
 }
 
-/* 真正的文件选择框藏起来，只当上传条的执行器用 */
 .隐藏文件框 {
   display: none;
 }
 
-/* ── 分组标题「第 1 段 · 当前在职」──
-   letter-spacing 由 RN 的绝对值换算：1.3 / 11px ≈ 0.12em */
-.分组标 {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  color: var(--次要浅);
-  padding: 8px 0 2px;
+/* ── 列表视图：经历卡 ── */
+.经历卡 {
+  width: 100%;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 14px 15px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
 }
 
-/* ── 自定义表单行 ──
-   行高与分隔线跟地基 <表单条目> 完全一致（padding 14px 0 + 1px 分隔线），
-   否则自定义行和地基行交替出现时纵向节奏会差一档，肉眼能看出错位。 */
-.编辑条目,
-.时间条目,
-.屏蔽条目,
-.经历段行 {
+.经历卡主体 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.经历卡头行 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.经历公司 {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.经历时间 {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.经历职位 {
+  font-size: 13px;
+  color: var(--正文);
+}
+
+.经历底行 {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+}
+
+.经历行业 {
+  font-size: 10.5px;
+  color: var(--次要浅);
+  background: var(--浅灰底);
+  padding: 2px 8px;
+  border-radius: 5px;
+}
+
+.隐身徽标 {
+  font-size: 10.5px;
+  color: var(--深绿);
+  background: var(--淡绿底);
+  padding: 2px 8px;
+  border-radius: 5px;
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* ── 添加行 ── */
+.添加行 {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 0;
+  border: 1px dashed var(--淡绿描边);
+  background: var(--淡绿底2);
+  border-radius: var(--圆角-中卡);
+}
+
+.添加加号 {
+  color: var(--深绿);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.添加文字 {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+
+/* ── 编辑视图 ── */
+.完成键 {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.完成键灰 {
+  color: var(--最弱);
+}
+
+.编辑条目 {
   padding: 14px 0;
   border-bottom: 1px solid var(--分隔线);
 }
@@ -88,57 +181,133 @@
 .条目标签 {
   font-size: 12px;
   color: var(--次要浅);
+  margin-bottom: 8px;
 }
 
-/* 内联编辑输入框：字号字重与只读态的值完全相同，切换时文字不位移 */
 .条目输入 {
-  display: block;
   width: 100%;
-  margin-top: 6px;
-  padding: 0;
   border: none;
-  background: none;
   outline: none;
+  background: none;
   font-size: 15.5px;
   font-weight: 600;
   color: var(--墨);
-  /* 光标用品牌深绿，比浏览器默认蓝更贴 App 观感 */
-  caret-color: var(--深绿);
 }
 
-/* ── 在职时间行 ── */
+.条目输入::placeholder {
+  font-weight: 400;
+  color: var(--最弱);
+}
+
+/* 行业快捷片 */
+.行业片行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.行业片 {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--浅灰底);
+  border: 1px solid var(--描边);
+  font-size: 12px;
+  color: var(--正文);
+}
+
+.行业片选中 {
+  background: var(--淡绿底);
+  border-color: var(--淡绿描边);
+  color: var(--深绿文字);
+  font-weight: 600;
+}
+
+/* 在职时间：原生年月选择器 */
 .时间行 {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 18px;
-  margin-top: 6px;
+  gap: 10px;
 }
 
-.时间输入 {
-  /* 宽度按「2019.06」这种六位年月定死，避免输入框撑满整行、破坏起—止对称 */
-  width: 76px;
-  padding: 0;
-  border: none;
-  background: none;
-  outline: none;
-  font-size: 15.5px;
+.月份输入 {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--描边);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--墨);
-  caret-color: var(--深绿);
+  background: var(--白);
+  font-family: inherit;
 }
 
 .时间连字 {
   flex: none;
-  font-size: 14px;
   color: var(--次要浅);
 }
 
-/* ── 对这家公司隐藏我的信息 ── */
+.至今占位 {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--描边);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--次要浅);
+  background: var(--浅灰底);
+}
+
+.至今开关 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--正文);
+}
+
+.至今勾选框 {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--深绿);
+}
+
+/* 工作内容大文本 */
+.内容输入 {
+  width: 100%;
+  border: 1px solid var(--描边);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--墨);
+  background: var(--白);
+  resize: none;
+  outline: none;
+  font-family: inherit;
+}
+
+.内容输入::placeholder {
+  color: var(--最弱);
+}
+
+/* 对现雇主隐身 */
+.屏蔽条目 {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
 .屏蔽头 {
   display: flex;
-  align-items: center;
+  flex-direction: row;
   justify-content: space-between;
-  gap: 12px;
+  align-items: center;
 }
 
 .屏蔽标题 {
@@ -147,69 +316,23 @@
   color: var(--墨);
 }
 
-/* line-height 由 RN 换算：18 / 11px ≈ 1.65 */
 .屏蔽说明 {
   font-size: 11px;
-  line-height: 1.65;
   color: var(--次要浅);
+  line-height: 1.65;
   margin-top: 8px;
 }
 
-/* ── 其余经历段（折叠成一行）── */
-.经历段行 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* 删除（仅编辑已有段） */
+.删除键 {
   width: 100%;
-  text-align: left;
-}
-
-/* 同样是 RN 默认竖排的 View，DOM 里补 column */
-.段文案 {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.段摘要 {
+  margin-top: 22px;
+  padding: 13px 0;
+  border-radius: var(--圆角-按钮);
+  border: 1px solid var(--紧急描边);
+  background: var(--白);
+  color: var(--意向);
   font-size: 14px;
   font-weight: 600;
-  color: var(--次要);
-}
-
-.段说明 {
-  font-size: 11px;
-  color: var(--弱化);
-  margin-top: 3px;
-}
-
-.尖括号 {
-  flex: none;
-  font-size: 16px;
-  font-weight: 300;
-  color: var(--最弱);
-}
-
-/* ── 添加一段工作经历 ── */
-.添加行 {
-  width: 100%;
-  padding-top: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.添加加号 {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--深绿);
-}
-
-.添加文字 {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--深绿);
+  text-align: center;
 }
