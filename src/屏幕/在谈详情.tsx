@@ -19,6 +19,7 @@ import type { 分歧, 在谈单, 阶段小结 } from '../数据/类型';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
+import { 公司路由键 } from '../数据/公司档案';
 
 type 页内Tab = '谈判进度' | '职位详情';
 
@@ -480,6 +481,7 @@ function 意向确认节点({
 
 // ── A6a·J 职位详情 Tab：JD + 职位要求 → 对接人 → 公司（公司简介在 JD 下方）────
 function 职位详情Tab({ 单 }: { 单: 在谈单 }) {
+  const { 跳转 } = use导航();
   const 详 = 在谈职位详情;
 
   return (
@@ -515,7 +517,11 @@ function 职位详情Tab({ 单 }: { 单: 在谈单 }) {
         </div>
 
         <div className={样式.详情卡}>
-          <div className={样式.公司头行}>
+          {/* 整行可点，进公司主页（标注需求：职位详情里点公司要能看企业介绍）*/}
+          <button
+            className={`${样式.公司头行} 可点`}
+            onClick={() => 跳转(路径.企业详情(公司路由键(单.公司)))}
+          >
             <公司字标
               首字={单.公司首字}
               尺寸={44}
@@ -525,12 +531,12 @@ function 职位详情Tab({ 单 }: { 单: 在谈单 }) {
               描边={false}
               字号={19}
             />
-            <div className={样式.公司文本}>
-              <div className={`${样式.公司名} 单行`}>{单.公司}</div>
-              <div className={`${样式.公司简介} 单行`}>{单.公司简介}</div>
-            </div>
+            <span className={样式.公司文本}>
+              <span className={`${样式.公司名} 单行`}>{单.公司}</span>
+              <span className={`${样式.公司简介} 单行`}>{单.公司简介}</span>
+            </span>
             <span className={样式.尖括号}>›</span>
-          </div>
+          </button>
           <div className={样式.公司正文}>{详.公司.正文}</div>
           <div className={样式.公司标签行}>
             {详.公司.标签.map((标签) => (

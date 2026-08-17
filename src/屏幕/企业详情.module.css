@@ -1,0 +1,711 @@
+/* 企业详情（公司档案）。
+   视觉语言与本项目其余屏一致：米色页底 + 白卡细描边 + 淡绿渐变头，
+   荧光绿只留给底部主操作，状态色复用四阶段配色，不新造颜色。 */
+
+/* ── 淡绿渐变头（同 A15「我的」的顶部处理，不用深色 hero）── */
+.头区 {
+  background: linear-gradient(180deg, var(--淡绿底) 0%, var(--页面底) 100%);
+  padding: 14px 18px 18px;
+}
+
+.头行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 13px;
+}
+
+.头文字 {
+  flex: 1;
+  min-width: 0;
+}
+
+.公司名 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--墨);
+  line-height: 1.25;
+}
+
+.规模行 {
+  font-size: 12px;
+  color: var(--次要浅);
+  margin-top: 5px;
+}
+
+/* ── 正文区 ── */
+.正文区 {
+  padding: 0 18px 18px;
+}
+
+.卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+.卡头 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.卡标题 {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+/* 卡头右侧的可信度注记：「已核验」/「未经核实」*/
+.卡头注 {
+  font-size: 10.5px;
+  color: var(--次要浅);
+  background: var(--浅灰底);
+  padding: 2px 8px;
+  border-radius: 5px;
+}
+
+.卡正文 {
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--正文);
+}
+
+.文字键 {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* ── 代理核对卡：本页第一张，淡绿描边表示「这是你的代理说的」── */
+.核对卡 {
+  border-color: var(--淡绿描边);
+  background: var(--淡绿底2);
+}
+
+.核对头 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 11px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--淡绿描边2);
+}
+
+.盾底 {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
+  background: var(--荧光绿);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.核对头文 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.核对标题 {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--墨);
+}
+
+.核对摘要 {
+  font-size: 11.5px;
+  color: var(--深绿文字);
+}
+
+.核对行 {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  padding: 9px 0;
+}
+
+/* 状态记号：18 圆点，配色复用四阶段 */
+.记 {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  margin-top: 1px;
+}
+
+.记通过 {
+  background: var(--递简历底);
+  color: var(--递简历);
+}
+
+.记待核 {
+  background: var(--初筛底);
+  color: var(--初筛);
+}
+
+.记分歧 {
+  background: var(--协调底);
+  color: var(--协调);
+}
+
+.核对文字 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.核对项名 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.核对结论 {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--正文);
+}
+
+.核对脚 {
+  font-size: 10.5px;
+  line-height: 1.65;
+  color: var(--次要浅);
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--淡绿描边2);
+}
+
+/* ── 谁在替它谈 ── */
+.对手行 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 9px;
+  padding-bottom: 11px;
+  margin-bottom: 11px;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.对手标 {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--初筛);
+  background: var(--初筛底);
+  padding: 3px 8px;
+  border-radius: 5px;
+  margin-top: 1px;
+}
+
+.对手文 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--墨);
+}
+
+/* ── 公司自述 ── */
+.段Tab行 {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  margin-bottom: 11px;
+}
+
+.段Tab {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--浅灰底);
+  font-size: 12.5px;
+  color: var(--次要);
+}
+
+/* 选中态用墨底白字，而不是荧光绿 —— 荧光绿在本项目只留给主操作 */
+.段Tab选中 {
+  background: var(--墨);
+  font-weight: 600;
+  color: #fff;
+}
+
+.截断3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.业务行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--分隔线);
+}
+
+.业务片 {
+  padding: 5px 11px;
+  border-radius: 6px;
+  background: var(--浅灰底);
+  font-size: 11.5px;
+  color: var(--正文);
+}
+
+/* ── 作息与条款（整卡可点）── */
+.条款卡 {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+}
+
+.作息文 {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--墨);
+}
+
+.条款计 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+  margin-top: 8px;
+}
+
+.条款已核 {
+  color: var(--深绿文字);
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+/* ── 办公地 ── */
+.地址 {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--墨);
+}
+
+.地址补充 {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
+  margin-top: 6px;
+}
+
+/* ── 在职者反馈：横条比例图，不用胶囊堆 ── */
+.感受列 {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.感受行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.感受标 {
+  flex: none;
+  width: 96px;
+  font-size: 12.5px;
+  color: var(--正文);
+}
+
+.感受条轨 {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--浅灰底);
+  overflow: hidden;
+}
+
+.感受条 {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--橄榄);
+}
+
+.感受数 {
+  flex: none;
+  width: 26px;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+/* ── 工商信息 ── */
+.工商行 {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  padding: 7px 0;
+}
+
+.工商项 {
+  flex: none;
+  width: 74px;
+  font-size: 12.5px;
+  color: var(--次要浅);
+}
+
+.工商值 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--墨);
+}
+
+.页脚 {
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--最弱);
+  text-align: center;
+  margin-top: 14px;
+}
+
+/* ── 底部固定主操作 ── */
+.底栏 {
+  flex: none;
+  padding: 10px 18px calc(var(--安全区下) + 10px);
+  background: var(--页面底);
+  border-top: 1px solid var(--描边);
+}
+
+.底主键 {
+  width: 100%;
+  padding: 14px 0;
+  border-radius: var(--圆角-按钮);
+  background: var(--荧光绿);
+  box-shadow: var(--主按钮投影);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+  text-align: center;
+}
+
+/* ── 子层 ── */
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  display: flex;
+  align-items: flex-end;
+  z-index: 60;
+  animation: 遮罩淡入 0.18s ease both;
+}
+
+.层 {
+  width: 100%;
+  max-height: 86%;
+  background: var(--白);
+  border-radius: 18px 18px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: 抽屉升起 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.层顶 {
+  flex: none;
+  padding: 10px 18px 12px;
+  border-bottom: 1px solid var(--描边);
+}
+
+.层抓手 {
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  margin: 0 auto 12px;
+}
+
+.层顶行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.层标题 {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--墨);
+}
+
+.层关闭 {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--浅灰底);
+  color: var(--次要);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.层体 {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 18px calc(var(--安全区下) + 20px);
+}
+
+.层免责 {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--次要浅);
+  background: var(--浅灰底2);
+  border-radius: 10px;
+  padding: 9px 11px;
+  margin-bottom: 16px;
+}
+
+.层节标 {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--墨);
+  margin-bottom: 9px;
+}
+
+.层节标间距 {
+  margin-top: 22px;
+}
+
+.层正文 {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--正文);
+}
+
+.层脚 {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--次要浅);
+  background: var(--浅灰底2);
+  border-radius: 11px;
+  padding: 11px 12px;
+  margin-top: 16px;
+}
+
+/* 发展历程：年份 + 轴 + 事件 */
+.历程列 {
+  display: flex;
+  flex-direction: column;
+}
+
+.历程行 {
+  display: flex;
+  flex-direction: row;
+  gap: 11px;
+  padding-bottom: 15px;
+}
+
+.历程年 {
+  flex: none;
+  width: 36px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--深绿);
+  padding-top: 1px;
+}
+
+.历程轴 {
+  flex: none;
+  width: 1px;
+  background: var(--淡绿描边);
+  position: relative;
+}
+
+.历程轴::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--荧光绿);
+  border: 1px solid var(--橄榄);
+}
+
+.历程事 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--正文);
+}
+
+/* 条款条：已核给淡绿勾，自述给灰点 —— 不用 emoji */
+.条款条 {
+  display: flex;
+  flex-direction: row;
+  gap: 11px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.条款条:last-of-type {
+  border-bottom: none;
+}
+
+.条款记 {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--浅灰底);
+  color: var(--最弱);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  margin-top: 1px;
+}
+
+.条款记已核 {
+  background: var(--递简历底);
+  color: var(--递简历);
+}
+
+.条款文 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.条款名 {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.条款说明 {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
+}
+
+/* 在招岗位条 */
+.岗位条 {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+  text-align: left;
+}
+
+.岗位文 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.岗位名 {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.岗位注 {
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.岗位薪 {
+  flex: none;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--深绿);
+}
+
+/* ── 浮层提示 ── */
+.浮层提示 {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--安全区下) + 88px);
+  transform: translateX(-50%);
+  background: rgba(26, 26, 26, 0.88);
+  color: #fff;
+  font-size: 12.5px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  z-index: 70;
+  max-width: 88%;
+  text-align: center;
+  line-height: 1.5;
+  animation: 提示浮现 0.18s ease both;
+}
+
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes 抽屉升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes 提示浮现 {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}

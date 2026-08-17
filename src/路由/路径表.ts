@@ -27,6 +27,8 @@ export const 路径 = {
   规则库: '/rules',
   我的简历: '/resume',
   未通过说明: '/rejected',
+  企业详情: (键: string) => `/company/${键}`,
+  企业详情模板: '/company/:id',
 
   // ── 「我的」下属功能页 ──
   通知中心: '/notifications',

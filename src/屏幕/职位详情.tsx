@@ -16,6 +16,7 @@ import { 市场列表, 市场职位详情 } from '../数据/模拟数据';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
+import { 公司路由键 } from '../数据/公司档案';
 
 export default function 职位详情() {
   const { id: 编号 } = useParams<{ id: string }>();
@@ -103,8 +104,12 @@ export default function 职位详情() {
             ))}
           </div>
 
-          {/* 公司：黑底橄榄字的字标是品牌向的定稿样式，不走 公司字标 的白底默认值 */}
-          <div className={`${样式.卡} ${样式.公司卡}`}>
+          {/* 公司：黑底橄榄字的字标是品牌向的定稿样式，不走 公司字标 的白底默认值。
+              整卡可点，进公司主页（作息福利 / 地址 / 介绍 / 工商信息 / 在招岗位）*/}
+          <button
+            className={`${样式.卡} ${样式.公司卡} 可点`}
+            onClick={() => 跳转(路径.企业详情(公司路由键(详.公司.名称)))}
+          >
             <公司字标
               首字={详.公司.首字}
               尺寸={40}
@@ -114,12 +119,12 @@ export default function 职位详情() {
               描边={false}
               字号={17}
             />
-            <div className={样式.公司文字区}>
-              <div className={样式.公司名}>{详.公司.名称}</div>
-              <div className={样式.公司简介}>{详.公司.简介}</div>
-            </div>
+            <span className={样式.公司文字区}>
+              <span className={样式.公司名}>{详.公司.名称}</span>
+              <span className={样式.公司简介}>{详.公司.简介}</span>
+            </span>
             <span className={样式.尖括号}>›</span>
-          </div>
+          </button>
 
           {/* 代理预估：淡绿描边把它和上面几张中性卡区分开，表示这是「你的代理说的」而不是岗位自带信息 */}
           <div className={`${样式.卡} ${样式.预估卡}`}>

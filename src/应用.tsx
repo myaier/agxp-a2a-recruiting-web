@@ -22,6 +22,7 @@ import 添加意向 from './屏幕/添加意向';
 import 规则库 from './屏幕/规则库';
 import 我的简历 from './屏幕/我的简历';
 import 未通过说明 from './屏幕/未通过说明';
+import 企业详情 from './屏幕/企业详情';
 import 通知中心 from './屏幕/通知中心';
 import 设置 from './屏幕/设置';
 import 屏蔽名单 from './屏幕/屏蔽名单';
@@ -66,6 +67,7 @@ export default function 应用() {
       <Route path={路径.规则库} element={<规则库 />} />
       <Route path={路径.我的简历} element={<我的简历 />} />
       <Route path={路径.未通过说明} element={<未通过说明 />} />
+      <Route path={路径.企业详情模板} element={<企业详情 />} />
 
       {/* 「我的」下属功能页 */}
       <Route path={路径.通知中心} element={<通知中心 />} />

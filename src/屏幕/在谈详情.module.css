@@ -519,6 +519,9 @@
 
 /* 公司卡 */
 .公司头行 {
+  /* 整行是 button（进公司主页），要显式复位宽度与对齐 */
+  width: 100%;
+  text-align: left;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -528,6 +531,9 @@
 .公司文本 {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .公司名 {
@@ -539,7 +545,6 @@
 .公司简介 {
   font-size: 11px;
   color: var(--次要浅);
-  margin-top: 2px;
 }
 
 .尖括号 {
