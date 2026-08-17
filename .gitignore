@@ -28,3 +28,4 @@ dist-ssr
 *.sln
 *.sw?
 标注收件箱.jsonl
+.标注端点

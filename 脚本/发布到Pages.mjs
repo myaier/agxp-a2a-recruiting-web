@@ -11,7 +11,7 @@
 //   main 只放源码，构建产物不进版本历史；组织里 webc-zh 也是这个做法。
 
 import { execSync } from 'node:child_process';
-import { existsSync, copyFileSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, copyFileSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,6 +37,16 @@ if (!existsSync(join(产物目录, 'index.html'))) {
 console.log('\n[2/4] 补 .nojekyll 与 404.html…');
 writeFileSync(join(产物目录, '.nojekyll'), '');
 copyFileSync(join(产物目录, 'index.html'), join(产物目录, '404.html'));
+
+// 标注直达端点（脚本/标注直达上线.sh 维护）：随发布带上，避免整站强推把它冲掉
+const 端点文件 = join(工程根, '.标注端点');
+if (existsSync(端点文件)) {
+  const 端点 = readFileSync(端点文件, 'utf8').trim();
+  if (端点.startsWith('https://')) {
+    writeFileSync(join(产物目录, 'annotate-endpoint.json'), JSON.stringify({ url: 端点 }));
+    console.log(`已带上标注直达端点：${端点}`);
+  }
+}
 
 // ── 3. 确认有 remote ────────────────────────────────────
 let 远端;

@@ -30,17 +30,37 @@ interface 标注 {
 const 存储键 = '对席标注意见';
 
 /**
- * 把一条标注直接推给本机的收集服务（脚本/标注收集服务.mjs，端口 8090）——
- * 送达后 Claude 实时开改，用户不用再复制粘贴。
- * 只在 http 页面尝试（localhost / 局域网 dev server）：https 的 GitHub Pages
- * 向本机 http 服务发请求会被浏览器按混合内容拦截，直接跳过、走复制兜底。
+ * 端点发现：优先读部署目录里的 annotate-endpoint.json（内容是收集服务的
+ * Cloudflare 隧道 https 地址，由 脚本/标注直达上线.sh 维护）。有它，
+ * **线上 GitHub Pages（https）也能直达** —— 这是解决混合内容拦截的关键：
+ * https 页面不能调本机 http 服务，但可以调隧道给的 https 地址。
+ * 拿不到配置时退回旧逻辑：http 页面（localhost / 局域网）直连同 host:8090。
  */
-async function 尝试送达(条: 标注): Promise<boolean> {
-  if (location.protocol !== 'http:') return false;
+let 端点缓存: string | null | undefined;
+async function 取收集端点(): Promise<string | null> {
+  if (端点缓存 !== undefined) return 端点缓存;
+  try {
+    const 响应 = await fetch(`${import.meta.env.BASE_URL}annotate-endpoint.json?t=${Date.now()}`, {
+      cache: 'no-store',
+    });
+    if (响应.ok) {
+      const { url } = (await 响应.json()) as { url?: string };
+      端点缓存 = url && url.startsWith('https://') ? url : null;
+    } else {
+      端点缓存 = null;
+    }
+  } catch {
+    端点缓存 = null;
+  }
+  return 端点缓存;
+}
+
+/** 向指定地址 POST 一条标注，1.5 秒超时 */
+async function 推送(地址: string, 条: 标注): Promise<boolean> {
   const 控制器 = new AbortController();
   const 定时 = setTimeout(() => 控制器.abort(), 1500);
   try {
-    const 响应 = await fetch(`http://${location.hostname}:8090/标注`, {
+    const 响应 = await fetch(地址, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(条),
@@ -52,6 +72,16 @@ async function 尝试送达(条: 标注): Promise<boolean> {
   } finally {
     clearTimeout(定时);
   }
+}
+
+/** 把一条标注直接推给收集服务：先走隧道端点（https，线上也通），再走本机直连 */
+async function 尝试送达(条: 标注): Promise<boolean> {
+  const 隧道 = await 取收集端点();
+  if (隧道 && (await 推送(`${隧道}/标注`, 条))) return true;
+  if (location.protocol === 'http:') {
+    return 推送(`http://${location.hostname}:8090/标注`, 条);
+  }
+  return false;
 }
 
 /** 从被点元素向上走，收集 CSS Modules 类（含 __ 的），拼成「文件__类」链 */
