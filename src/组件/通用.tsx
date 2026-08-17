@@ -1,6 +1,7 @@
 // 跨屏复用的原子组件。所有屏幕都从这里取外壳、返回栏、按钮、阶段标签等，
 // 不允许各屏自己重写一套 —— 这是像素一致性的保证。
 
+import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import 样式 from './通用.module.css';
 import { 盾牌图标 } from './图标';
@@ -413,3 +414,40 @@ export function 滚动区({
 }
 
 export { 样式 as 通用样式 };
+
+// ── 加载体感（标注意见：进入首页要有一个加载过程）──────────────
+
+/** 模拟数据加载：挂载后 毫秒 内返回 false，期间渲染骨架屏。
+ *  原型数据其实是同步的，这个延迟专门做「App 在拉数据」的真实体感；
+ *  接真后端后删掉这个钩子、直接用请求状态即可。 */
+export function use模拟加载(毫秒 = 450): boolean {
+  const [就绪, 设就绪] = useState(false);
+  useEffect(() => {
+    const 定时 = setTimeout(() => 设就绪(true), 毫秒);
+    return () => clearTimeout(定时);
+  }, [毫秒]);
+  return 就绪;
+}
+
+/** 列表骨架：N 张流光闪烁的占位卡，形状对齐在谈卡（头行 + 两行 + 标签） */
+export function 骨架卡组({ 张数 = 3 }: { 张数?: number }) {
+  return (
+    <div aria-hidden>
+      {Array.from({ length: 张数 }, (_, 序) => (
+        <div key={序} className={样式.骨架卡}>
+          <div className={样式.骨架头行}>
+            <span className={样式.骨架块} style={{ width: 38, height: 38, borderRadius: 11 }} />
+            <span className={样式.骨架块} style={{ width: '38%', height: 14 }} />
+            <span className={样式.骨架块} style={{ width: 56, height: 16, marginLeft: 'auto' }} />
+          </div>
+          <div className={样式.骨架块} style={{ width: '62%', height: 17, marginTop: 12 }} />
+          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+            <span className={样式.骨架块} style={{ width: 64, height: 22 }} />
+            <span className={样式.骨架块} style={{ width: 48, height: 22 }} />
+            <span className={样式.骨架块} style={{ width: 72, height: 22 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

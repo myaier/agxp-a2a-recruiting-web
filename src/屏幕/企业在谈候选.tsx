@@ -12,7 +12,7 @@
 // 「候选确认意向」后 真名 才有值，头像换成真名首字 + 深绿底。
 
 import 样式 from './企业在谈候选.module.css';
-import { 主页外壳, 代理横幅, 阶段标签, 分歧轴, 滚动区, 白卡, 公司字标 } from '../组件/通用';
+import { 主页外壳, 代理横幅, 阶段标签, 分歧轴, 滚动区, 白卡, 公司字标, use模拟加载, 骨架卡组 } from '../组件/通用';
 import { 放大镜图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
 import { use应用状态 } from '../状态/应用状态';
@@ -21,6 +21,7 @@ import { 路径 } from '../路由/路径表';
 import type { 候选 } from '../数据/类型';
 
 export default function 企业在谈候选() {
+  const 数据就绪 = use模拟加载();
   const { 状态 } = use应用状态();
   const { 跳转 } = use导航();
 
@@ -42,7 +43,9 @@ export default function 企业在谈候选() {
 
       <滚动区>
         <div className={样式.列表}>
-          {排序后.length === 0 ? (
+          {!数据就绪 ? (
+            <骨架卡组 张数={3} />
+          ) : 排序后.length === 0 ? (
             <div className={样式.空态}>
               这个岗位暂无在谈候选，
               <br />

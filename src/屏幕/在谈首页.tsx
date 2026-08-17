@@ -9,7 +9,7 @@
 
 import 样式 from './在谈首页.module.css';
 import 顶部意向栏 from './顶部意向栏';
-import { 主页外壳, 代理横幅, 阶段标签, 分歧轴, 滚动区, 白卡, 公司字标 } from '../组件/通用';
+import { 主页外壳, 代理横幅, 阶段标签, 分歧轴, 滚动区, 白卡, 公司字标, use模拟加载, 骨架卡组 } from '../组件/通用';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -17,6 +17,8 @@ import type { 在谈单 } from '../数据/类型';
 
 export default function 在谈首页() {
   const { 状态 } = use应用状态();
+  // 进入首页先给一小段加载体感（标注意见：用户进来应该有加载过程）
+  const 数据就绪 = use模拟加载();
   const { 跳转 } = use导航();
 
   // 等你行动的卡置顶（红描边），其余保持原顺序
@@ -39,7 +41,9 @@ export default function 在谈首页() {
 
       <滚动区>
         <div className={样式.列表}>
-          {排序后.length === 0 ? (
+          {!数据就绪 ? (
+            <骨架卡组 张数={3} />
+          ) : 排序后.length === 0 ? (
             <div className={样式.空态}>
               这个意向下暂时没有在谈职位。
               <br />

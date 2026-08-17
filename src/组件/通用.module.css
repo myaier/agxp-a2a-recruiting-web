@@ -383,3 +383,41 @@
   flex: none;
   font-weight: 800;
 }
+
+/* ── 骨架屏（标注意见：进入首页要有加载过程）──
+   shimmer 流光从左往右扫，keyframes 必须在本文件内（CSS Modules 会改名） */
+.骨架卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-卡片);
+  padding: 14px 16px;
+  margin-bottom: 7px;
+}
+
+.骨架块 {
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    var(--浅灰底) 25%,
+    var(--描边) 37%,
+    var(--浅灰底) 63%
+  );
+  background-size: 400% 100%;
+  animation: 流光 1.3s ease infinite;
+}
+
+.骨架头行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+@keyframes 流光 {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}

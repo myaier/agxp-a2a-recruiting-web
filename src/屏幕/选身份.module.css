@@ -1,12 +1,16 @@
 /* R2 选择身份 —— 像素值取自 RN 源 应用/屏幕/选身份.js，与设计稿 R2 一比一。
    大标题走通用组件 页面大标题（23px/800/-0.01em，padding 14 22 0），本屏不再重复定义。 */
 
-/* ── 身份卡列表（RN paddingHorizontal 18 / paddingTop 20 / gap 12）── */
+/* ── 身份卡列表 ──
+   直达标注意见（2026-08-17 21:14）：两个选项垂直居中 ——
+   列表吃掉标题与底部按钮之间的全部弹性空间并居中，删掉原来的 占位 撑高块。 */
 .列表 {
-  flex: none;
+  flex: 1;
+  min-height: 0;
   padding: 20px 18px 0;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 12px;
 }
 
