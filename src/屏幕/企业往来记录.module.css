@@ -1,0 +1,143 @@
+/* D7 企业往来记录 · 纯对话流（像素值镜像自求职端 屏幕/往来记录.module.css，同构要求） */
+
+/* 返回栏右侧的「N 条」 */
+.条数 {
+  flex: none;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+/* 消息流内容容器：flex 竖排容器显式 column（DOM 默认横排） */
+.消息流 {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 16px 12px;
+}
+
+/* ── 居中类条目（折叠 / 日期 / 系统 / 叮嘱 / 意向）────────────── */
+.居中 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.折叠文字 {
+  font-size: 10.5px;
+  color: var(--灰白);
+}
+
+.日期文字 {
+  font-size: 10px;
+  color: var(--最弱);
+  letter-spacing: 0.08em;
+}
+
+/* 三种胶囊只有配色不同，尺寸完全一致 */
+.系统胶囊,
+.叮嘱胶囊,
+.意向胶囊 {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 11.5px;
+  line-height: 17px;
+  border-radius: 9px;
+  padding: 4px 11px;
+  text-align: center;
+}
+
+.系统胶囊 {
+  color: var(--灰白);
+  background: var(--浅灰底);
+}
+
+.叮嘱胶囊 {
+  color: var(--深绿);
+  background: var(--淡绿底);
+}
+
+.意向胶囊 {
+  color: var(--意向);
+  background: var(--意向底);
+}
+
+/* ── 气泡行 ───────────────────────────────────────────────── */
+.气泡行 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+/* 我方（企业代理）整行靠右，头像落在气泡右侧 */
+.气泡行.靠右 {
+  justify-content: flex-end;
+}
+
+/* 署名 + 气泡的竖列。min-width:0 保证长文本能在 flex 里正常换行 */
+.气泡列 {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.气泡列.列靠右 {
+  align-items: flex-end;
+}
+
+.代理头像 {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  /* 对齐气泡而不是署名：署名 11px + gap 3px 之后才是气泡顶 */
+  margin-top: 18px;
+}
+
+/* 对方 = 求方AI代理：深蓝底「候」字（--对方头像底 已收进全局设计令牌） */
+.对方头像 {
+  background: var(--对方头像底);
+  color: var(--白);
+}
+
+.我方头像 {
+  background: var(--荧光绿);
+  color: var(--墨);
+}
+
+.气泡署名 {
+  font-size: 11px;
+  color: var(--灰白);
+  padding: 0 4px;
+}
+
+.气泡 {
+  max-width: 88%;
+  padding: 10px 13px;
+  font-size: 14px;
+  line-height: 23px;
+  color: var(--墨);
+  /* 气泡内允许长串英文 / 数字断行，不撑破布局 */
+  overflow-wrap: anywhere;
+}
+
+/* 圆角故意不对称：对方左上收成 3px，指向左侧头像 */
+.对方气泡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: 3px 13px 13px 13px;
+}
+
+/* 我方右下收成 3px，指向右侧头像 */
+.我方气泡 {
+  background: var(--气泡绿);
+  border-radius: 13px 13px 3px 13px;
+}

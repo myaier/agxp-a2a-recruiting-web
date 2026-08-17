@@ -27,4 +27,19 @@ export const 路径 = {
   规则库: '/rules',
   我的简历: '/resume',
   未通过说明: '/rejected',
+
+  // ── 企业端（招人方）。前缀 /hr，参数名同样必须 ASCII ──
+  企业实名认证: '/hr/verify',
+  招聘名片: '/hr/card',
+  发布岗位: '/hr/post-job',
+  企业主壳: '/hr',
+  候选详情: (编号: string) => `/hr/candidate/${编号}`,
+  候选详情模板: '/hr/candidate/:id',
+  企业往来记录: (编号: string) => `/hr/thread/${编号}`,
+  企业往来记录模板: '/hr/thread/:id',
+  候选未通过: '/hr/rejected',
+  企业问AI代理: '/hr/agent',
+  企业真人会话: '/hr/chat',
+  岗位管理: '/hr/jobs',
+  企业代理设置: '/hr/agent-settings',
 } as const;

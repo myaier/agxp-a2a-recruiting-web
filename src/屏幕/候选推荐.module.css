@@ -1,0 +1,275 @@
+/* D11 人才Tab·推荐 + D11·D 搜人才（镜像求职端 A14 看市场版式，像素值一比一） */
+
+/* ── 顶栏：岗位切换（左右平铺）+ ＋发岗 + 放大镜；下方 在谈/推荐 子视图。
+      与「企业在谈候选」共用这一版式（镜像 顶部意向栏.module.css） ── */
+.顶栏 {
+  flex: none;
+  padding: 0 20px;
+}
+
+.岗位行 {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+/* 岗位名比求职端意向词长，选中/未选都允许收缩截断（配合 .单行 的 min-width:0） */
+.岗位选中 {
+  min-width: 0;
+  max-width: 52%;
+
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+  text-align: left;
+}
+
+.岗位未选 {
+  min-width: 0;
+  max-width: 34%;
+
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--标题次级);
+  text-align: left;
+}
+
+.岗位行右 {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  align-self: center;
+}
+
+.加号 {
+  color: var(--深绿);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.子视图行 {
+  display: flex;
+  gap: 18px;
+  margin-top: 14px;
+  align-items: baseline;
+}
+
+.子视图选中 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+  letter-spacing: -0.01em;
+}
+
+.子视图未选 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--标题次级);
+  letter-spacing: -0.01em;
+}
+
+.筛选 {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--次要);
+}
+
+/* ── 搜索条（D11·D 搜人才）：胶囊白条，版式同消息列表的搜索条；
+      位置占据看市场里代理横幅的槽位（margin-top 12 对齐横幅） ── */
+.搜索条 {
+  flex: none;
+  margin: 12px 18px 0;
+  height: 34px;
+  border-radius: 17px;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 13px;
+}
+
+.搜索输入 {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12.5px;
+  color: var(--墨);
+}
+
+.搜索输入::placeholder {
+  color: var(--灰白);
+}
+
+/* ── 列表：左右 11px，底部 130px 让开玻璃导航，卡间距 6px（同看市场） ── */
+.列表 {
+  padding: 0 11px 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.卡 {
+  padding: 12px 16px;
+}
+
+/* 卡主体是个 button，需要抹掉浏览器默认的居中对齐和宽度收缩 */
+.卡主体 {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+/* 头行：双盲头像 + 代号/画像，右侧匹配分列 */
+.头行 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.代号 {
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--墨);
+}
+
+.画像 {
+  font-size: 12px;
+  color: var(--次要);
+  margin-top: 5px;
+}
+
+/* 右侧列：RN 里默认 column，DOM 里必须显式写出来 */
+.右侧列 {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.匹配分 {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--深绿);
+}
+
+.匹配标 {
+  font-size: 11px;
+  color: var(--次要浅);
+  margin-top: 3px;
+}
+
+/* 亮点标签行（同市场卡标签） */
+.标签行 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.标签 {
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: var(--浅灰底);
+  font-size: 11px;
+  color: var(--次要);
+}
+
+/* 小结托盘里的评语正文（同在谈详情的小结正文） */
+.评语 {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--正文);
+}
+
+/* ── 底行：分隔线之下的 AI代理来源标 + 去聊按钮（镜像市场卡底行） ── */
+.底行 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid var(--描边);
+}
+
+/* AI代理来源小圆标：荧光绿底 + 盾牌，同消息列表的代理头像语汇 */
+.代理小圆 {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--荧光绿);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.来源 {
+  flex: 1;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.尖括号 {
+  flex: none;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--最弱);
+  /* 行 gap 8 + 4 = 设计稿里 › 与绿键的 12 间距（同市场卡） */
+  margin-right: 4px;
+}
+
+/* 「让AI代理去聊」荧光绿胶囊键（同市场卡去谈键） */
+.去聊键 {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 15px;
+  background: var(--荧光绿);
+  box-shadow: 0 1px 4px var(--主按钮投影);
+}
+
+.去聊文字 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+/* 已接触态：淡绿底 + 深绿字，同尺寸替换，避免点完后底行高度跳动 */
+.已接触 {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 15px;
+  background: var(--淡绿底);
+}
+
+.已接触文字 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--深绿);
+}
+
+/* 搜索无命中时的兜底 */
+.空态 {
+  padding: 48px 24px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--次要浅);
+}

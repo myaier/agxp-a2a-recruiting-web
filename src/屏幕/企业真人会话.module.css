@@ -1,0 +1,76 @@
+/* D12·A 会话详情 · 真人接管（企业端）—— 同构镜像求职端 A19 真人会话.module.css，
+   只放本屏独有的样式。气泡 / 系统条 / 功能键这些共用样式在 直聊会话.module.css 里，
+   本屏直接引用，保证与求职端消息流像素一致。 */
+
+/* ── 顶部已确认意向的职位摘要卡（谈判档案已归档）── */
+.职位卡 {
+  flex: none;
+  background: var(--白);
+  border: 1px solid var(--淡绿描边);
+  border-radius: var(--圆角-中卡);
+  padding: 12px 14px;
+}
+
+/* 标题与薪资按基线对齐：字号不同（13.5 / 13）时基线对齐比居中好看 */
+.职位卡头行 {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.职位卡标题 {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--墨);
+}
+
+/* 薪资 = 岗位自己的带（双盲不谈薪，绝不是报价） */
+.职位卡薪资 {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.职位卡条件 {
+  font-size: 11px;
+  color: var(--次要);
+  margin-top: 4px;
+}
+
+.职位卡底 {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--分隔线);
+}
+
+.职位卡归档 {
+  flex: 1;
+  font-size: 10.5px;
+  color: var(--次要浅);
+  text-align: left;
+}
+
+.职位卡链接 {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+/* ── 输入条里的代理符「◈」：真人页随时可把话头交回 AI 代理 ── */
+.代理符 {
+  flex: none;
+  color: var(--深绿);
+  font-size: 15px;
+  font-weight: 700;
+  padding: 0 4px;
+}

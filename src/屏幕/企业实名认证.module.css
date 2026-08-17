@@ -1,0 +1,110 @@
+/* R8 企业实名认证 —— 次级页版式镜像 选身份.module.css（大标题走通用组件、
+   弹性占位压底部主按钮）。识别圈与旋转虚线环为本屏专有。
+   keyframes 必须定义在本文件：CSS Modules 会重命名 animation-name，全局同名够不到。 */
+
+/* ── 人脸识别占位：140px 圆 + 旋转虚线外环 ── */
+.识别区 {
+  flex: none;
+  padding-top: 38px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.识别圈 {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.虚线环 {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+  animation: 环旋转 16s linear infinite;
+}
+
+/* 认证中：外环转速加快，传达「正在识别」 */
+.认证中 .虚线环 {
+  animation-duration: 1.8s;
+}
+
+.环线 {
+  stroke: var(--橄榄);
+  opacity: 0.55;
+}
+
+/* 内圈脸底：淡绿底圆，承载人脸线性图 */
+.脸底 {
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* 描边色走变量，不在 SVG 上写死十六进制 */
+.人脸线 {
+  stroke: var(--深绿);
+}
+
+/* ── 认证要点两行（真实姓名 / 任职公司）── */
+.要点区 {
+  flex: none;
+  padding: 30px 34px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.要点行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+}
+
+.要点圆 {
+  flex: none;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: var(--淡绿底);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.要点主 {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.要点副 {
+  font-size: 12px;
+  color: var(--次要浅);
+}
+
+/* 弹性空白：把主按钮压到屏幕底部（镜像 选身份.占位） */
+.占位 {
+  flex: 1;
+  min-height: 0;
+}
+
+@keyframes 环旋转 {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

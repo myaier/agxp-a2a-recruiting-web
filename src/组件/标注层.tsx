@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { 轻提示 } from './轻提示';
 
 interface 标注 {
   编号: number;
@@ -22,9 +23,36 @@ interface 标注 {
   文本: string; // 被点元素的可见文本（截断）
   意见: string;
   时间: string;
+  /** 已直接送达 Claude 的收集服务（无需再复制） */
+  已送达?: boolean;
 }
 
 const 存储键 = '对席标注意见';
+
+/**
+ * 把一条标注直接推给本机的收集服务（脚本/标注收集服务.mjs，端口 8090）——
+ * 送达后 Claude 实时开改，用户不用再复制粘贴。
+ * 只在 http 页面尝试（localhost / 局域网 dev server）：https 的 GitHub Pages
+ * 向本机 http 服务发请求会被浏览器按混合内容拦截，直接跳过、走复制兜底。
+ */
+async function 尝试送达(条: 标注): Promise<boolean> {
+  if (location.protocol !== 'http:') return false;
+  const 控制器 = new AbortController();
+  const 定时 = setTimeout(() => 控制器.abort(), 1500);
+  try {
+    const 响应 = await fetch(`http://${location.hostname}:8090/标注`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(条),
+      signal: 控制器.signal,
+    });
+    return 响应.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(定时);
+  }
+}
 
 /** 从被点元素向上走，收集 CSS Modules 类（含 __ 的），拼成「文件__类」链 */
 function 取元素位置(目标: Element): string {
@@ -95,22 +123,35 @@ export default function 标注层() {
       设草稿目标(null);
       return;
     }
-    存清单([
-      ...清单,
-      {
-        ...草稿目标,
-        编号: Date.now(),
-        意见: 草稿文字.trim(),
-        时间: new Date().toLocaleString('zh-CN', { hour12: false }),
-      },
-    ]);
+    const 新条: 标注 = {
+      ...草稿目标,
+      编号: Date.now(),
+      意见: 草稿文字.trim(),
+      时间: new Date().toLocaleString('zh-CN', { hour12: false }),
+    };
     设草稿目标(null);
+
+    // 保存即尝试直接送达：成功则这条不用再复制；失败（如在 Pages 上）留在
+    // 本地清单里走复制兜底。异步进行，不挡用户继续标注下一条。
+    void (async () => {
+      const 送达成功 = await 尝试送达(新条);
+      新条.已送达 = 送达成功;
+      // 用函数式更新拿最新清单，避免连续快速标注时互相覆盖
+      设清单((旧) => {
+        const 新清单 = [...旧, 新条];
+        localStorage.setItem(存储键, JSON.stringify(新清单));
+        return 新清单;
+      });
+      轻提示(送达成功 ? '已送达 Claude，开始处理 ✓' : '已记下（未连上 Claude，可稍后复制）');
+    })();
   };
 
+  // 只导出「未送达」的条目：已直接推给 Claude 的不需要再复制
+  const 待复制 = 清单.filter((条) => !条.已送达);
   const 导出文本 = () =>
     [
-      `【对席修改意见】共 ${清单.length} 条 · ${new Date().toLocaleString('zh-CN', { hour12: false })}`,
-      ...清单.map(
+      `【对席修改意见】共 ${待复制.length} 条 · ${new Date().toLocaleString('zh-CN', { hour12: false })}`,
+      ...待复制.map(
         (条, 序) =>
           `${序 + 1}) 页面 ${条.路由} ｜位置 ${条.位置}${条.文本 ? ` ｜文本「${条.文本}」` : ''}\n   意见：${条.意见}`
       ),
@@ -295,7 +336,9 @@ export default function 标注层() {
               gap: 10,
             }}
           >
-            <div style={{ fontSize: 15, fontWeight: 800 }}>修改意见（{清单.length} 条）</div>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>
+              修改意见（{清单.length} 条{清单.length - 待复制.length > 0 ? ` · ${清单.length - 待复制.length} 条已送达 Claude ✓` : ''}）
+            </div>
             <textarea
               readOnly
               value={导出文本()}

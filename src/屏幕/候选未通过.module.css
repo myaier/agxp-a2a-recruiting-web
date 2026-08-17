@@ -1,0 +1,221 @@
+/* D5·D 候选未通过说明（像素值镜像自求职端 屏幕/未通过说明.module.css，同构要求） */
+
+/* ── 返回栏右侧：匹配分（未通过所以是灰色，不用品牌绿） ── */
+.匹配组 {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.匹配标 {
+  font-size: 10.5px;
+  color: var(--灰白);
+}
+
+.匹配分 {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--弱化);
+}
+
+/* ── 灰色卡点条 ── */
+.卡点条 {
+  flex: none;
+  margin: 4px 18px 0;
+  background: var(--浅灰底2);
+  border-radius: var(--圆角-内托盘);
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.灰点 {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--弱化);
+}
+
+.卡点文字 {
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--标题次级);
+}
+
+.卡点时间 {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--弱化);
+}
+
+/* ── 两个 Tab ── */
+.Tab行 {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  padding: 12px 20px 2px;
+}
+
+.Tab选中 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em; /* 同构源 letterSpacing -0.15 / 字号 15 */
+  color: var(--墨);
+}
+
+.Tab未选 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--次要浅);
+}
+
+/* ── 滚动区内容 ── */
+.内容区 {
+  padding: 10px 18px 20px;
+  display: flex;
+  flex-direction: column; /* flex 竖排容器显式 column */
+}
+
+/* 分组标题：字间距 1.5 / 字号 11 ≈ 0.14em */
+.分组标 {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--次要浅);
+  margin-bottom: 8px;
+}
+
+/* ── 硬性核对卡 ── */
+.核对卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 0 15px;
+}
+
+.核对行 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+.核对行.末行 {
+  border-bottom: none;
+}
+
+.核对圈 {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--淡绿底);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 未通过项：红底红叉，是整屏唯一的红色，视线自然落上去 */
+.核对圈.未过圈 {
+  background: var(--意向底);
+}
+
+.核对符 {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--深绿);
+}
+.核对符.未过符 {
+  color: var(--意向);
+}
+
+.核对文字 {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--正文);
+}
+
+/* ── 代理小结正文（外框走通用 小结托盘）── */
+.小结正文 {
+  font-size: 12.5px;
+  line-height: 1.7; /* 同构源 lineHeight 21.3 / 字号 12.5 */
+  color: var(--正文);
+}
+
+/* ── 绿色「要不要放宽薪资带？」建议卡 ── */
+.松一档卡 {
+  background: var(--淡绿底);
+  border: 1px solid var(--淡绿描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+
+.松一档标题 {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--深绿文字);
+}
+
+.松一档正文 {
+  font-size: 11.5px;
+  line-height: 1.65; /* 同构源 lineHeight 19 / 字号 11.5 */
+  color: var(--正文);
+  margin-top: 5px;
+}
+
+.松一档强调 {
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.按钮行 {
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.次按钮 {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 15px;
+  background: var(--白);
+  border: 1px solid var(--描边中);
+  color: var(--次要);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.主按钮 {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 15px;
+  background: var(--荧光绿);
+  color: var(--墨);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* 选了「维持红线」后按钮行换成一行确认文案 */
+.已维持 {
+  margin-top: 11px;
+  font-size: 11.5px;
+  line-height: 1.65;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+
+/* 「候选详情」页签：这一单没走到互递材料，双盲下本来就没有内容 */
+.空态 {
+  padding: 40px 20px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--次要浅);
+}

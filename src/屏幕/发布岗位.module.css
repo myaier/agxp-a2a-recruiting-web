@@ -1,0 +1,181 @@
+/* D0/D0b/D0c 发布岗位 —— 三步合一。
+   进度条像素值取自 引导问答.module.css，表单条目取自 工作经历.module.css（编辑视图），
+   textarea 卡取自 引导问答 的个人优势卡，保持企业端与求职端同构。 */
+
+/* 发布壳：整屏 flex 列容器（返回栏 + 进度条 + 步骤体 + 主按钮） */
+.发布壳 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 顶部三段进度条（同 引导问答 的七段轨，段数改三）── */
+.进度轨 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  padding: 0 22px 4px;
+}
+.进度段 {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--描边深);
+  transition: background 0.18s ease;
+}
+.进度段已过 {
+  background: var(--荧光绿);
+}
+
+/* ── 第一步：表单条目（同 工作经历 编辑视图）── */
+.表单区 {
+  padding: 6px 22px 0;
+}
+.编辑条目 {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+.条目标签 {
+  font-size: 12px;
+  color: var(--次要浅);
+  margin-bottom: 8px;
+}
+.条目输入 {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+.条目输入::placeholder {
+  font-weight: 400;
+  color: var(--最弱);
+}
+
+/* 薪资带：两个数字框 + 连字符（框样式同 工作经历 的月份输入）*/
+.薪资行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.薪资框 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--描边);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: var(--白);
+}
+.薪资数字输入 {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--墨);
+}
+.薪资数字输入::placeholder {
+  font-weight: 400;
+  color: var(--最弱);
+}
+.薪资单位 {
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--次要浅);
+}
+.薪资连字 {
+  flex: none;
+  color: var(--次要浅);
+}
+
+/* 快捷片（年薪月数 / 办公方式 / 硬性条件，同 工作经历 的行业片）*/
+.快捷片行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+.快捷片 {
+  padding: 6px 12px;
+  border-radius: var(--圆角-胶囊);
+  background: var(--浅灰底);
+  border: 1px solid var(--描边);
+  font-size: 12px;
+  color: var(--正文);
+}
+.快捷片选中 {
+  background: var(--淡绿底);
+  border-color: var(--淡绿描边);
+  color: var(--深绿文字);
+  font-weight: 600;
+}
+
+/* ── 第二 / 三步：大 textarea 卡（同 引导问答 的个人优势卡）── */
+.描述卡 {
+  margin: 16px 18px 0;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 16px;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+.描述输入 {
+  flex: 1;
+  min-height: 200px;
+  width: 100%;
+  display: block;
+  border: none;
+  outline: none;
+  background: transparent;
+  resize: none;
+  padding: 0;
+  font-size: 13.5px;
+  line-height: 2;
+  color: var(--正文);
+  font-family: inherit;
+}
+.描述底 {
+  border-top: 1px solid var(--分隔线);
+  margin-top: 12px;
+  padding-top: 9px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.描述计数 {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+/* ── 第三步：硬性条件区 ── */
+.硬性区 {
+  padding: 16px 22px 0;
+}
+/* 双盲说明：淡绿卡（同 引导问答 的优势示例卡），强调 AI 代理执行语义 */
+.硬性说明 {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: var(--圆角-小托盘);
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边2);
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: var(--次要);
+}

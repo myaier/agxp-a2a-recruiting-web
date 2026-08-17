@@ -1,0 +1,277 @@
+/* D13 企业「我的」Tab —— 同构镜像求职端 我的.module.css（A15），像素值一比一保留。
+   注意：顶部四段（工具行 / 头像行 / 统计行 / 代理卡）都写 flex:none，
+   否则在 DOM 的 flex 列里会被下面的滚动区压缩。 */
+
+/* ── 右上工具行：双箭头 / 铃铛 / 齿轮 ── */
+.工具行 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 18px;
+  padding: 4px 20px 0;
+}
+
+.工具键 {
+  /* 红点用绝对定位挂在齿轮右上，所以这里要建立定位上下文 */
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.齿轮红点 {
+  position: absolute;
+  right: -3px;
+  top: -1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--意向);
+}
+
+/* ── 头像行：整行是一个按钮，所以要显式复位 text-align / width ── */
+.头像行 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 20px 0;
+  width: 100%;
+  text-align: left;
+}
+
+/* 公司头像 = 公司首字 + 深绿底（镜像求职端的姓名首字头像） */
+.头像 {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--深绿);
+  color: var(--白);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.头像信息 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.姓名 {
+  font-size: 20px;
+  font-weight: 800;
+  /* 同构源 letterSpacing -0.3 @ 20px ≈ -0.015em */
+  letter-spacing: -0.015em;
+  color: var(--墨);
+}
+
+.状态行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.招聘名片 {
+  flex: none;
+  font-size: 12px;
+  color: var(--次要);
+}
+
+/* 认证胶囊：认证人 + 认证身份 */
+.状态胶囊 {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--深绿);
+  background: var(--淡绿底);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* ── 四个统计数：在招岗位 / 在谈 / 待拍板 / 意向达成 ── */
+.统计行 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  padding: 18px 10px 2px;
+}
+
+.统计项 {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.统计数 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.统计名 {
+  font-size: 11.5px;
+  color: var(--次要);
+}
+
+/* ── 代理状态毛玻璃卡：半透明白 + blur(12)，压在顶部渐变头上才有玻璃感 ── */
+.代理卡 {
+  flex: none;
+  margin: 12px 18px 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: var(--圆角-中卡);
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  text-align: left;
+}
+
+/* 不支持 backdrop-filter 的浏览器：提高底色不透明度，别让渐变头透上来糊字 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .代理卡 {
+    background: rgba(255, 255, 255, 0.92);
+  }
+}
+
+.盾牌底 {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--荧光绿);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.代理文字 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.代理标题行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+}
+
+.代理标题 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.在线点 {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--橄榄);
+}
+
+.代理状态 {
+  font-size: 11px;
+  color: var(--次要浅);
+  margin-top: 2px;
+}
+
+.管理 {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--深绿);
+  /* 同构源 letterSpacing -0.12 @ 12px = -0.01em */
+  letter-spacing: -0.01em;
+}
+
+/* ── 功能宫格区（唯一滚动内容）── */
+.功能区 {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  /* 底部 130 = 悬浮玻璃导航高度 + 余量，保证最后一行不被导航挡住 */
+  padding: 12px 18px 130px;
+}
+
+.宫格卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 15px 16px 17px;
+}
+
+.宫格标题 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+  margin-bottom: 14px;
+}
+
+/* 四列等宽宫格：grid 等价于 RN 的 25% 宽换行且无取整误差 */
+.宫格 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px 6px;
+}
+
+.宫格项 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.宫格图标底 {
+  width: 42px;
+  height: 42px;
+  border-radius: 15px;
+  background: var(--淡绿底);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 「其他功能」用灰底 + 次要色描线，和常用功能的绿底拉开层级 */
+.次色底 {
+  background: var(--浅灰底);
+}
+
+.宫格名 {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--墨);
+  text-align: center;
+}
+
+/* ── 页脚合规小字：与求职端同款（lineHeight 20 @ 10.5px ≈ 1.9）── */
+.页脚 {
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--最弱);
+  line-height: 1.9;
+}

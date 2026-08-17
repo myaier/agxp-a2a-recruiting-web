@@ -1,0 +1,149 @@
+/* D17 岗位管理 · 次级页 —— 分组清单版式镜像 规则库.module.css（A10·B），像素值一比一。 */
+
+/* 返回栏右侧的在招数 */
+.在招数 {
+  flex: none;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+/* ── 滚动区内容 ── */
+.列表 {
+  padding: 12px 18px 30px;
+  display: flex;
+  flex-direction: column; /* RN 默认 column，DOM 必须显式写 */
+  gap: 12px;
+}
+
+/* 分组标题：字间距 1.5 / 字号 11 ≈ 0.14em（与规则库分组标同款） */
+.分组标 {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--次要浅);
+}
+
+/* ── 分组卡：一组岗位共用一张白卡，行间用分隔线 ── */
+.卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 0 16px;
+}
+
+/* 岗位行是整行按钮：显式复位宽度与对齐 */
+.岗位行 {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--分隔线);
+  text-align: left;
+}
+.岗位行.末条 {
+  border-bottom: none;
+}
+
+.岗位主体 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.名称行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.岗位名称 {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--墨);
+}
+/* 归档岗位：名称转灰但记录保留（同规则库「已停用」的处理） */
+.岗位名称.已归档名 {
+  color: var(--次要浅);
+}
+
+/* 「当前」小徽：标出人才页正在寻访的那个岗位，点别的在招岗即切换 */
+.当前徽 {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--深绿);
+  background: var(--淡绿底);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* 第二行：薪资带 · 在谈数 */
+.条件行 {
+  font-size: 10.5px;
+  color: var(--次要浅);
+  margin-top: 4px;
+}
+
+/* 状态徽标：在招 = 绿；已归档 = 灰 */
+.状态徽 {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--深绿);
+  background: var(--淡绿底);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.状态徽.归档徽 {
+  color: var(--次要浅);
+  background: var(--浅灰底);
+}
+
+/* ── 虚线「＋ 发布新岗位」：同规则库「＋ 手动添加规则」的版式 ── */
+.发布新岗位 {
+  width: 100%;
+  border: 1px dashed var(--淡绿描边);
+  background: var(--淡绿底2);
+  border-radius: var(--圆角-中卡);
+  padding: 13px 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+.添加圆 {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--荧光绿);
+  color: var(--墨);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.添加文字 {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+
+/* ── 尾注 ── */
+.尾注 {
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--最弱);
+  padding: 0 4px;
+}

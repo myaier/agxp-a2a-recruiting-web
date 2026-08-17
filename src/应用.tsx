@@ -22,6 +22,17 @@ import 添加意向 from './屏幕/添加意向';
 import 规则库 from './屏幕/规则库';
 import 我的简历 from './屏幕/我的简历';
 import 未通过说明 from './屏幕/未通过说明';
+import 企业实名认证 from './屏幕/企业实名认证';
+import 招聘名片 from './屏幕/招聘名片';
+import 发布岗位 from './屏幕/发布岗位';
+import 企业主壳 from './屏幕/企业主壳';
+import 候选详情 from './屏幕/候选详情';
+import 候选未通过 from './屏幕/候选未通过';
+import 企业往来记录 from './屏幕/企业往来记录';
+import 企业问AI代理 from './屏幕/企业问AI代理';
+import 企业真人会话 from './屏幕/企业真人会话';
+import 岗位管理 from './屏幕/岗位管理';
+import 企业代理设置 from './屏幕/企业代理设置';
 
 export default function 应用() {
   return (
@@ -49,6 +60,19 @@ export default function 应用() {
       <Route path={路径.规则库} element={<规则库 />} />
       <Route path={路径.我的简历} element={<我的简历 />} />
       <Route path={路径.未通过说明} element={<未通过说明 />} />
+
+      {/* ── 企业端（招人方）── */}
+      <Route path={路径.企业实名认证} element={<企业实名认证 />} />
+      <Route path={路径.招聘名片} element={<招聘名片 />} />
+      <Route path={路径.发布岗位} element={<发布岗位 />} />
+      <Route path={路径.企业主壳} element={<企业主壳 />} />
+      <Route path={路径.候选详情模板} element={<候选详情 />} />
+      <Route path={路径.候选未通过} element={<候选未通过 />} />
+      <Route path={路径.企业往来记录模板} element={<企业往来记录 />} />
+      <Route path={路径.企业问AI代理} element={<企业问AI代理 />} />
+      <Route path={路径.企业真人会话} element={<企业真人会话 />} />
+      <Route path={路径.岗位管理} element={<岗位管理 />} />
+      <Route path={路径.企业代理设置} element={<企业代理设置 />} />
 
       {/* 兜底 */}
       <Route path="*" element={<Navigate to={路径.登录} replace />} />
