@@ -16,6 +16,8 @@ export interface 分歧 {
 /** 在谈职位（求职端视角） */
 export interface 在谈单 {
   编号: string;
+  /** 归属的求职意向；顶栏切意向时列表按此过滤 */
+  意向: string;
   公司: string;
   公司首字: string;
   公司简介: string;
@@ -38,6 +40,7 @@ export interface 在谈单 {
 /** 看市场的职位卡 */
 export interface 市场职位 {
   编号: string;
+  意向: string;
   职位: string;
   公司行: string;
   薪资: string;

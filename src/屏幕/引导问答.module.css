@@ -660,3 +660,24 @@
   line-height: 1.8;
   color: var(--次要);
 }
+
+
+/* GitHub 未填占位与行内输入（标注意见 #3） */
+.GitHub占位 {
+  font-size: 12px;
+  color: var(--最弱);
+  margin-top: 2px;
+  text-align: left;
+}
+.GitHub输入 {
+  margin-top: 2px;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 12px;
+  color: var(--深绿);
+  border-bottom: 1px solid var(--淡绿描边);
+  padding: 0 0 2px;
+  min-width: 0;
+  width: 100%;
+}

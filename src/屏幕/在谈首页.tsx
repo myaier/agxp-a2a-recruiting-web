@@ -20,8 +20,10 @@ export default function 在谈首页() {
   const { 跳转 } = use导航();
 
   // 等你行动的卡置顶（红描边），其余保持原顺序
-  const 排序后 = [...状态.在谈列表].sort((甲, 乙) => Number(乙.需要你) - Number(甲.需要你));
-  const 待协调数 = 状态.在谈列表.filter((单) => 单.需要你).length;
+  // 标注意见 #9：切意向后列表跟着变 —— 只显示归属当前意向的在谈单
+  const 本意向列表 = 状态.在谈列表.filter((单) => 单.意向 === 状态.当前意向);
+  const 排序后 = [...本意向列表].sort((甲, 乙) => Number(乙.需要你) - Number(甲.需要你));
+  const 待协调数 = 本意向列表.filter((单) => 单.需要你).length;
 
   return (
     <主页外壳>

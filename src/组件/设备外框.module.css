@@ -76,6 +76,9 @@
   z-index: 40;
   display: flex;
   align-items: center;
+  /* gap 154 = 灵动岛占位：时间在左耳区居中、信号电池在右耳区居中，
+     照 ios-frame.jsx 原参数 —— 漏掉它俩会朝中间挤到岛底下 */
+  gap: 154px;
   padding: 21px 24px 19px;
   pointer-events: none;
 }

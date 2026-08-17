@@ -1,7 +1,7 @@
 // A3a–A3g 七题引导 —— 移植 RN 版 应用/屏幕/引导问答.js，像素值一比一。
 //
 // 一页一题，顶部七段进度条随题推进，七题顺序：
-// 状态分流 → 期望职位 → 工作城市 → 期望薪资 → 硬性排除 → 到岗节奏 → 个人优势。
+// 期望职位 → 工作城市 → 期望薪资 → 硬性排除 → 到岗节奏 → 个人优势（六题）。
 // 返回键：第一题退出本屏（回上一屏），其余题回上一题。
 // 最后一题「保存并继续」进 A4 披露说明。
 //
@@ -19,8 +19,8 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 个人优势文本 } from '../数据/模拟数据';
 
+// 「状态分流」题已删（2026-08-17 标注意见 #1）：与「到岗节奏」题功能重复
 const 题目顺序 = [
-  '状态分流',
   '期望职位',
   '工作城市',
   '期望薪资',
@@ -37,7 +37,6 @@ export default function 引导问答() {
   const 当前题: 题名 = 题目顺序[第几题];
 
   // ── 七题的答案 ──
-  const [状态, 设状态] = useState('在职 · 保密找机会');
   const [已选职位, 设已选职位] = useState(['后端开发', '交易 / 支付系统', '金融科技（行业）']);
   const [已选城市, 设已选城市] = useState(['上海']);
   const [薪资下限, 设薪资下限] = useState(50);
@@ -83,8 +82,6 @@ export default function 引导问答() {
             />
           ))}
         </div>
-
-        {当前题 === '状态分流' ? <状态分流题 当前={状态} 设置={设状态} /> : null}
         {当前题 === '期望职位' ? (
           <期望职位题 已选={已选职位} 切换={造切换(设已选职位)} 设已选={设已选职位} />
         ) : null}
@@ -110,43 +107,6 @@ export default function 引导问答() {
         />
       </div>
     </次级页外壳>
-  );
-}
-
-// ── A3a 状态分流：两张单选卡 ──────────────────────────────────
-interface 单选项 {
-  键: string;
-  说明: string;
-}
-
-const 状态选项: 单选项[] = [
-  { 键: '在职 · 保密找机会', 说明: '自动屏蔽现雇主及关联公司，披露默认更保守' },
-  { 键: '已离职 · 公开找', 说明: '无需屏蔽，AI代理节奏更快、披露更主动' },
-];
-
-function 状态分流题({ 当前, 设置 }: { 当前: string; 设置: (键: string) => void }) {
-  return (
-    <滚动区 样式覆盖={{ paddingBottom: 10 }}>
-      <页面大标题 标题="你现在的状态是？" />
-      <div className={样式.选项列}>
-        {状态选项.map((项) => {
-          const 选中 = 当前 === 项.键;
-          return (
-            <button
-              key={项.键}
-              className={`${样式.选项卡} ${选中 ? 样式.选项卡选中 : ''} 可点`}
-              onClick={() => 设置(项.键)}
-            >
-              <span className={样式.选项文字组}>
-                <span className={样式.选项标题}>{项.键}</span>
-                <span className={样式.选项说明}>{项.说明}</span>
-              </span>
-              <单选点 选中={选中} />
-            </button>
-          );
-        })}
-      </div>
-    </滚动区>
   );
 }
 
@@ -571,11 +531,11 @@ function 到岗题({ 当前, 设置 }: { 当前: string; 设置: (键: string) =
 }
 
 // ── A3g 个人优势（备忘录式编辑 + GitHub）──────────────────────
-const 优势示例文本 =
-  '写法参考：一句话讲清最硬的战绩（带数字），再补一句你看重什么。例如「主导支付网关重构，峰值 32 万 QPS；看重技术纵深」。';
 
 function 优势题({ 文本, 设文本 }: { 文本: string; 设文本: (值: string) => void }) {
-  const [看示例, 设看示例] = useState(false);
+  // GitHub 链接默认未填：模拟真实新用户状态（标注意见 #3）
+  const [GitHub链接, 设GitHub链接] = useState('');
+  const [GitHub编辑中, 设GitHub编辑中] = useState(false);
 
   return (
     <滚动区 样式覆盖={{ paddingBottom: 12 }}>
@@ -598,6 +558,7 @@ function 优势题({ 文本, 设文本 }: { 文本: string; 设文本: (值: str
         </div>
       </div>
 
+      {/* GitHub 链接：默认未填（标注意见 #3），点击行内输入，填了显示绿色 ✓ */}
       <div className={样式.GitHub卡}>
         <span className={样式.GitHub底}>
           <GitHub图标 />
@@ -606,7 +567,27 @@ function 优势题({ 文本, 设文本 }: { 文本: string; 设文本: (值: str
           <span className={样式.GitHub标题}>
             GitHub 链接<span className={样式.选填}>选填</span>
           </span>
-          <span className={样式.GitHub值}>github.com/shenyz-arch ✓</span>
+          {GitHub编辑中 ? (
+            <input
+              className={样式.GitHub输入}
+              value={GitHub链接}
+              placeholder="github.com/你的用户名"
+              autoFocus
+              onChange={(事件) => 设GitHub链接(事件.target.value.trim())}
+              onBlur={() => 设GitHub编辑中(false)}
+              onKeyDown={(事件) => {
+                if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 设GitHub编辑中(false);
+              }}
+            />
+          ) : GitHub链接 ? (
+            <button className={`${样式.GitHub值} 可点`} onClick={() => 设GitHub编辑中(true)}>
+              {GitHub链接} ✓
+            </button>
+          ) : (
+            <button className={`${样式.GitHub占位} 可点`} onClick={() => 设GitHub编辑中(true)}>
+              粘贴你的 GitHub 主页链接
+            </button>
+          )}
         </span>
         <span className={样式.尖括号}>›</span>
       </div>
@@ -616,12 +597,8 @@ function 优势题({ 文本, 设文本 }: { 文本: string; 设文本: (值: str
         <button className={`${样式.优势工具主} 可点`} onClick={() => 设文本(个人优势文本)}>
           ◈ 重新从简历提取
         </button>
-        <button className={`${样式.优势工具次} 可点`} onClick={() => 设看示例(!看示例)}>
-          看看别人怎么写 {看示例 ? '⌃' : '›'}
-        </button>
       </div>
 
-      {看示例 ? <div className={样式.优势示例}>{优势示例文本}</div> : null}
     </滚动区>
   );
 }

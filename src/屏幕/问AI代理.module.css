@@ -155,9 +155,16 @@
   flex: none;
   display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
+  /* 单行横滑、紧贴下方输入框（标注意见 #4）：不换行堆叠 */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
   gap: 7px;
-  padding: 10px 16px 0;
+  padding: 6px 16px 0;
+}
+
+.快捷行::-webkit-scrollbar {
+  display: none;
 }
 
 .快捷键 {
