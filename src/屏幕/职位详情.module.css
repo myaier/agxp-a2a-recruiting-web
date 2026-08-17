@@ -1,0 +1,382 @@
+/* A18 职位详情（storyboard A18 一比一）—— 做选择前的岗位全貌页 */
+
+/* ── 顶部工具组：☆ 收藏 / ⋯ 更多 ── */
+.工具组 {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.工具符 {
+  font-size: 15px;
+  line-height: 1;
+  color: var(--次要);
+}
+
+/* 收藏生效时换成品牌橄榄色，让状态一眼可辨（灰→绿比 ☆→★ 的形状差别更醒目） */
+.工具符.已收藏 {
+  color: var(--橄榄);
+}
+
+/* ── 滚动内容 ── */
+/* RN 里这三个值写在 滚动区 的内边距样式上；DOM 里 滚动区 只管滚动，
+   内边距下移到这层内容容器，避免内边距参与滚动高度计算时出偏差。 */
+.内容 {
+  padding: 2px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── 职位名 + 薪资 + 标签 ── */
+.标题行 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.职位名 {
+  flex: 1;
+  min-width: 0;
+  font-size: 21px;
+  font-weight: 800;
+  /* RN letterSpacing:-0.3 / 21px 字号 ≈ -0.014em */
+  letter-spacing: -0.014em;
+  color: var(--墨);
+}
+
+.薪资 {
+  flex: none;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.标签行 {
+  display: flex;
+  /* 设计稿只有两个标签不会换行；这里允许换行是防御性的，数据变长时不会把薪资挤走 */
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.标签 {
+  padding: 3px 9px;
+  border-radius: 5px;
+  background: var(--浅灰底);
+  font-size: 11.5px;
+  color: var(--正文);
+}
+
+/* ── 白卡基类：发布人 / JD / 公司 / 预估四张卡共用 ── */
+.卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 13px 15px;
+}
+
+/* ── 发布人卡 ── */
+.发布人卡 {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 15px;
+}
+
+.发布人头像 {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--深绿);
+  color: var(--白);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.发布人文字区 {
+  flex: 1;
+  min-width: 0;
+}
+
+.发布人名 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+/* 职务是同一行里的次要成分，靠字号和颜色降级，不另起一行 */
+.发布人职务 {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--次要浅);
+}
+
+.发布人备注 {
+  font-size: 10.5px;
+  color: var(--次要浅);
+  margin-top: 2px;
+}
+
+/* ── JD 卡 ── */
+.卡标题 {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--墨);
+  margin-bottom: 8px;
+}
+
+.卡小标题 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+  margin: 10px 0 6px;
+}
+
+.卡正文 {
+  font-size: 12.5px;
+  /* RN lineHeight:22.5 = 12.5 × 1.8，这里写绝对值保证和设计稿完全一致 */
+  line-height: 22.5px;
+  color: var(--正文);
+}
+
+/* ── 公司卡 ── */
+.公司卡 {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 15px;
+}
+
+.公司文字区 {
+  flex: 1;
+  min-width: 0;
+}
+
+.公司名 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.公司简介 {
+  font-size: 11px;
+  color: var(--次要浅);
+  margin-top: 2px;
+}
+
+.尖括号 {
+  flex: none;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--最弱);
+}
+
+/* ── 代理预估卡 ── */
+/* 四档条的两级灰阶（#d5dcd0 / #e4e0d5）在 设计令牌.css 里没有对应变量，
+   先就近声明成这张卡的局部变量；等地基补上令牌后把这两行换成 var(--…) 即可。 */
+.预估卡 {
+  border-color: var(--淡绿描边);
+  --档位中灰: #d5dcd0;
+  --档位浅灰: #e4e0d5;
+}
+
+.预估头 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.预估标题 {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--墨);
+}
+
+.预估分 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.预估说明 {
+  font-size: 11.5px;
+  /* RN lineHeight:19 ≈ 11.5 × 1.65 */
+  line-height: 19px;
+  color: var(--正文);
+  margin-top: 6px;
+}
+
+/* 四档条：整体裁圆角后由四块等宽色块拼成，块之间不留缝 */
+.档位条 {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.档位块 {
+  flex: 1;
+}
+
+.档位块当前 {
+  background: var(--深绿);
+}
+
+.档位块中灰 {
+  background: var(--档位中灰);
+}
+
+.档位块浅灰 {
+  background: var(--档位浅灰);
+}
+
+.档位名行 {
+  display: flex;
+  margin-top: 5px;
+}
+
+.档位名 {
+  flex: 1;
+  text-align: center;
+  font-size: 10px;
+  color: var(--次要浅);
+}
+
+.档位名当前 {
+  color: var(--深绿);
+  font-weight: 700;
+}
+
+/* ── 底部决策区 ── */
+/* RN 里是 paddingBottom: Math.max(安全区.bottom, 14) + 10；
+   全屏机型读 env() 得到实际安全区，非刘海屏兜底 14，两者都再加 10 的呼吸位。 */
+.按钮区 {
+  flex: none;
+  padding: 10px 18px calc(max(var(--安全区下), 14px) + 10px);
+}
+
+.按钮行 {
+  display: flex;
+  gap: 10px;
+}
+
+.次按钮 {
+  flex: 1;
+  height: 48px;
+  border-radius: var(--圆角-按钮);
+  background: var(--白);
+  border: 1.5px solid var(--描边中);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.次按钮文字 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--正文);
+}
+
+/* 主按钮 flex:1.3 —— 比「直接聊」宽一截，视觉上把「让AI代理去谈」定为默认路径 */
+.主按钮 {
+  flex: 1.3;
+  height: 48px;
+  border-radius: var(--圆角-按钮);
+  background: var(--荧光绿);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  /* 对应 RN 阴影.主按钮：橄榄色 30% 透明、模糊 4、下移 1 */
+  box-shadow: 0 1px 4px rgba(127, 163, 23, 0.3);
+}
+
+.主按钮文字 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+/* 已委托态：荧光绿实心降级成淡绿底 + 深绿字，表示「已经在办了，不用再点」 */
+.主按钮.已委托态 {
+  background: var(--淡绿底);
+  box-shadow: none;
+}
+
+.主按钮.已委托态 .主按钮文字 {
+  color: var(--深绿);
+}
+
+.底部说明 {
+  text-align: center;
+  font-size: 10.5px;
+  line-height: 17px;
+  color: var(--灰白);
+  margin-top: 9px;
+}
+
+/* ── 「⋯」更多操作抽屉 ── */
+/* 用绝对定位铺满 次级页外壳（它是 position:relative + overflow:hidden），
+   不用 position:fixed —— 桌面端整个 App 装在手机机身里，fixed 会跑出机身外。 */
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: var(--遮罩);
+  /* keyframes 定义在 全局.css 里（全局作用域），而 CSS Modules 默认会把
+     animation-name 也当局部标识符改名，改名后就指向一个不存在的动画、
+     动画静默失效。用 global(…) 显式声明「这个动画名不要改」。 */
+  animation: 遮罩淡入 0.18s ease;
+}
+
+.抽屉 {
+  background: var(--白);
+  border-radius: 18px 18px 0 0;
+  padding: 6px 12px calc(var(--安全区下) + 10px);
+  display: flex;
+  flex-direction: column;
+  /* 同上：动画名必须 global(…) 才能命中 全局.css 里的 keyframes */
+  animation: 抽屉升起 0.22s cubic-bezier(0.22, 0.8, 0.28, 1);
+}
+
+.抽屉项 {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--正文);
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.抽屉取消 {
+  border-bottom: none;
+  font-weight: 500;
+  color: var(--次要);
+}
+
+
+/* 本地 keyframes：CSS Modules 会重命名 animation-name，
+   全局.css 里的同名 keyframes 够不到，必须在本文件内定义 */
+@keyframes 遮罩淡入 {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes 抽屉升起 {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}

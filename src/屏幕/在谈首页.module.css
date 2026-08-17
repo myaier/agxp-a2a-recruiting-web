@@ -1,0 +1,124 @@
+/* A6·L 在谈·档案卡版（X5D 版式一比一）—— 求职端定稿首页 */
+
+.列表 {
+  padding: 0 11px 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.卡 {
+  padding: 14px 16px;
+}
+
+/* 公司头行：字标 + 公司名 / 简介 + 薪资 */
+.公司头行 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.公司名 {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+.公司简介 {
+  font-size: 11px;
+  color: var(--弱化);
+  margin-top: 2px;
+}
+
+.薪资 {
+  flex: none;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--深绿);
+}
+
+/* 职位名 17px/800 */
+.职位名 {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-top: 10px;
+  color: var(--墨);
+}
+
+/* 标签行 */
+.标签行 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.标签 {
+  padding: 5px 10px;
+  border-radius: 9px;
+  background: var(--浅灰底2);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--正文);
+}
+
+/* 阶段区 */
+.阶段区 {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--描边);
+}
+
+.阶段头 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.需要你胶囊 {
+  background: var(--意向底);
+  border-radius: var(--圆角-胶囊);
+  padding: 2px 7px;
+  font-size: 9.5px;
+  font-weight: 800;
+  color: var(--意向);
+}
+
+.轮次 {
+  font-size: 9.5px;
+  color: var(--最弱);
+  margin-left: auto;
+}
+
+.下一步行 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.下一步 {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+.辅助文案 {
+  font-size: 10.5px;
+  color: var(--次要);
+  margin-top: 5px;
+}
+
+/* 列表为空（全部谈完 / 全部退出）时的兜底 */
+.空态 {
+  padding: 48px 24px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--次要浅);
+}

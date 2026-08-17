@@ -1,0 +1,596 @@
+/* A6·C 顺利态 / A6a 卡点态 / A6a·J 职位详情 Tab —— 尺寸取自 storyboard 定稿值 */
+
+/* ── 返回栏右侧：意向确认态给薪资，其余给适配分 ── */
+.顶部薪资 {
+  flex: none;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--深绿);
+}
+
+.适配组 {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.适配标 {
+  font-size: 10.5px;
+  color: var(--灰白);
+}
+
+.适配分 {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--深绿);
+}
+
+/* 适配分低于 80 转协调橙，提醒这单本身就不算严丝合缝 */
+.适配分警示 {
+  color: var(--协调);
+}
+
+/* ── 紧急横幅：只有「等你行动」的单才出现 ── */
+.紧急横幅 {
+  flex: none;
+  margin: 4px 18px 0;
+  background: var(--意向底);
+  border: 1px solid var(--紧急描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.脉冲点 {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--意向);
+  flex: none;
+  animation: 红脉冲 2s infinite;
+}
+
+.紧急文字 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 18px;
+  color: var(--紧急文字);
+}
+
+.紧急时长 {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--紧急辅助);
+}
+
+/* ── 两个 Tab ── */
+.Tab行 {
+  flex: none;
+  display: flex;
+  gap: 20px;
+  align-items: baseline;
+  padding: 12px 20px 2px;
+}
+
+.Tab {
+  font-size: 15px;
+}
+
+.Tab选中 {
+  font-weight: 700;
+  color: var(--墨);
+  letter-spacing: -0.01em;
+}
+
+.Tab未选 {
+  font-weight: 600;
+  color: var(--次要浅);
+}
+
+/* ── 滚动区内边距（谈判进度 / 职位详情两个 Tab 共用同一组数值）── */
+.时间线 {
+  padding: 10px 18px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.详情列 {
+  padding: 10px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── 时间线节点：左轴（圆点 + 连线）+ 右主体 ── */
+.节点行 {
+  display: flex;
+  flex-direction: row;
+  gap: 13px;
+}
+
+/* 未到达的阶段整体灰掉 */
+.灰节点 {
+  opacity: 0.5;
+}
+
+.节点轴 {
+  width: 20px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 通过 = 橄榄实心 + 白对勾 */
+.实心点 {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--橄榄);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+/* 需要你 = 红粗环 + 脉冲 */
+.红环点 {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--白);
+  border: 5px solid var(--意向);
+  flex: none;
+  animation: 红脉冲 2s infinite;
+}
+
+/* 进行中 = 橄榄空心环 */
+.进行中点 {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--白);
+  border: 4px solid var(--橄榄);
+  flex: none;
+}
+
+/* 未到达 = 细灰环 */
+.空心点 {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--白);
+  border: 2px solid var(--描边中);
+  flex: none;
+}
+
+.连线 {
+  flex: 1;
+  width: 2px;
+  background: var(--描边);
+}
+
+.连线通过 {
+  background: var(--淡绿描边);
+}
+
+.节点主体 {
+  flex: 1;
+  min-width: 0;
+}
+
+.节点主体带底距 {
+  padding-bottom: 14px;
+}
+
+.节点头 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.节点标题 {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+.节点标题强调 {
+  color: var(--意向);
+}
+
+.状态胶囊 {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--深绿);
+  background: var(--淡绿底);
+  padding: 2px 7px;
+  border-radius: 9px;
+}
+
+.状态胶囊强调 {
+  color: var(--意向);
+  background: var(--意向底);
+}
+
+.节点时间 {
+  flex: none;
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--最弱);
+}
+
+.节点说明 {
+  font-size: 12.5px;
+  color: var(--正文);
+  margin-top: 5px;
+}
+
+.节点待办 {
+  font-size: 12px;
+  color: var(--次要);
+  margin-top: 4px;
+}
+
+/* ── 小结托盘内部 ── */
+.小结正文 {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--正文);
+}
+
+.小链接 {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--深绿);
+  text-align: left;
+}
+
+.链接间距 {
+  display: block;
+  margin-top: 7px;
+}
+
+/* 简历附件块（递交简历阶段）*/
+.附件 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 8px;
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  border-radius: 9px;
+  padding: 8px 10px;
+}
+
+.PDF块 {
+  width: 26px;
+  height: 32px;
+  border-radius: 5px;
+  background: var(--淡绿底);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.PDF字 {
+  font-size: 7.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.附件文本 {
+  flex: 1;
+  min-width: 0;
+}
+
+.附件名 {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.附件说明 {
+  font-size: 9.5px;
+  color: var(--灰白);
+  margin-top: 1px;
+}
+
+/* ── 卡点态数字对比：你的条件 / 差值 / 对方条件 ── */
+.数字对比 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 10px;
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  border-radius: var(--圆角-小托盘);
+  padding: 11px 13px;
+}
+
+.对比列 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.对比列右 {
+  align-items: flex-end;
+}
+
+.对比标 {
+  font-size: 10px;
+  color: var(--灰白);
+}
+
+.对比值 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.对比差 {
+  flex: none;
+  padding: 0 10px;
+}
+
+.对比差值 {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--协调);
+}
+
+/* ── 决策按钮区 ── */
+.决策行 {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.次按钮 {
+  flex: 1;
+  padding: 11px 0;
+  border-radius: 16px;
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--次要);
+}
+
+.主小按钮 {
+  /* 荧光绿按钮的投影：设计令牌里只有实色，没有带透明度的投影色，
+     所以在本屏声明一次（橄榄 #7fa317 的 30%），不在各处散落写死 */
+  --主按钮投影: rgba(127, 163, 23, 0.3);
+  padding: 11px 0;
+  border-radius: 16px;
+  background: var(--荧光绿);
+  box-shadow: 0 1px 4px var(--主按钮投影);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+/* 双按钮时主按钮占 1.4 份，比「不谈了」宽一截（视觉上主次分明）*/
+.决策行 .主小按钮 {
+  flex: 1.4;
+}
+
+/* 单按钮（意向确认）撑满整行 */
+.整宽 {
+  width: 100%;
+  margin-top: 11px;
+}
+
+.决策回执 {
+  font-size: 11.5px;
+  line-height: 18px;
+  color: var(--深绿);
+  margin-top: 10px;
+}
+
+/* ── 意向确认「确认后会发生什么」要点 ── */
+.要点行 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 7px;
+  margin-bottom: 5px;
+}
+
+.要点行:last-child {
+  margin-bottom: 0;
+}
+
+.要点符 {
+  flex: none;
+  color: var(--深绿);
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.要点文字 {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--正文);
+}
+
+/* ── A6a·J 职位详情 Tab ── */
+.详情卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 13px 15px;
+}
+
+.详情标题 {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--墨);
+  margin-bottom: 8px;
+}
+
+.详情小标题 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+  margin: 10px 0 6px;
+}
+
+.详情正文 {
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--正文);
+}
+
+/* 对接人卡 */
+.对接人卡 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 15px;
+}
+
+.对接人头像 {
+  /* 对接人头像紫：设计稿定稿色，全局令牌里没有（只有品牌绿系与四阶段色），
+     所以在本屏声明一次，不散落到各处 */
+  --对接人紫: #6b4fd8;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--对接人紫);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.对接人首字 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--白);
+}
+
+.对接人文本 {
+  flex: 1;
+  min-width: 0;
+}
+
+.对接人名 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.对接人职务 {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--次要浅);
+}
+
+.对接人备注 {
+  font-size: 10.5px;
+  color: var(--次要浅);
+  margin-top: 2px;
+}
+
+/* 公司卡 */
+.公司头行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.公司文本 {
+  flex: 1;
+  min-width: 0;
+}
+
+.公司名 {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--墨);
+}
+
+.公司简介 {
+  font-size: 11px;
+  color: var(--次要浅);
+  margin-top: 2px;
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+.公司正文 {
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--正文);
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid var(--分隔线);
+}
+
+.公司标签行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.公司标签 {
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: var(--浅灰底);
+  font-size: 10.5px;
+  color: var(--正文);
+}
+
+/* ── 兜底：这一单已归档（退出后刷新页面 / 直接进 URL）── */
+.已归档区 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 32px 60px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--次要浅);
+}
+
+
+/* 设计稿 px-pulse：需要你的节点红色脉冲。本地定义，CSS Modules 才够得到 */
+@keyframes 红脉冲 {
+  0% { box-shadow: 0 0 0 0 rgba(217, 45, 32, 0.35); }
+  70% { box-shadow: 0 0 0 6px rgba(217, 45, 32, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(217, 45, 32, 0); }
+}

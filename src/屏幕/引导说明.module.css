@@ -1,0 +1,84 @@
+/* A1 欢迎与AI代理说明 —— 「条件对上了，再开始聊。」
+   像素基准：RN 屏幕/引导说明.js + 设计稿 A1（storyboard.dc.html 第 113–131 行）。
+   letter-spacing 由 RN 的绝对值换算成 em：-0.27 / 27px = -0.01em。 */
+
+/* hero 区：距安全区下沿 46（设计稿是 20 + 26 两段留白叠出来的） */
+.头部 {
+  flex: none;
+  padding: 46px 22px 0;
+}
+
+.主标题 {
+  margin: 0;
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 39px;
+  color: var(--墨);
+}
+
+.副说明 {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 22.8px;
+  color: var(--次要);
+}
+
+/* 三步说明卡：白底细描边，垂直内边距只有 4，靠每行自己的 13 撑高 */
+.卡 {
+  flex: none;
+  margin: 20px 18px 0;
+  padding: 4px 16px;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+}
+
+/* 序号与文字顶部对齐（不是居中），这样说明换行后序号仍贴着标题 */
+.步骤行 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+/* 末行不画分隔线，避免和卡片下边缘叠成双线 */
+.步骤行:last-child {
+  border-bottom: none;
+}
+
+.步骤序 {
+  flex: none;
+  padding-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+/* RN 里是没写 flexDirection 的 flex:1 容器，DOM 必须显式声明 column */
+.步骤文字组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.步骤标题 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.步骤说明 {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--次要浅);
+}
+
+/* 空白撑开件：把主按钮压到屏幕底部（对应 RN 的 <View style={{flex:1}} />） */
+.占位撑开 {
+  flex: 1;
+  min-height: 0;
+}

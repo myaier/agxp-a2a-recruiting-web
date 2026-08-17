@@ -1,0 +1,164 @@
+/* A24 拿不准 → 记成规则 底部抽屉（像素值取自 RN 实现 应用/屏幕/拿不准弹层.js） */
+
+/* 遮罩：铺满屏内（父级 次级页外壳 是 position:relative + overflow:hidden） */
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: var(--遮罩);
+  animation: 遮罩淡入 0.18s ease-out both;
+  cursor: pointer;
+}
+
+.抽屉 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  background: var(--白);
+  border-radius: 22px 22px 0 0;
+  /* RN 里是 max(安全区下, 20) + 20；home 横条区域也要留出来 */
+  padding: 10px 20px calc(max(var(--安全区下), 20px) + 20px);
+  animation: 抽屉升起 0.26s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* 抓手条：只做「可下拉」的视觉暗示，不承担交互 */
+.抓手 {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  margin: 0 auto 16px;
+}
+
+.标题行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.盾牌底 {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--荧光绿);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.标题 {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--墨);
+}
+
+/* ── 你刚才的决定（灰托盘）───────────────────────────────── */
+.灰托盘 {
+  background: var(--浅灰底2);
+  border-radius: 12px;
+  padding: 11px 13px;
+  margin-top: 14px;
+}
+
+.托盘标签 {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--灰白);
+  margin-bottom: 5px;
+}
+
+.灰托盘正文 {
+  font-size: 12.5px;
+  line-height: 20.6px;
+  color: var(--正文);
+}
+
+/* ── 我想记成的规则（绿托盘）─────────────────────────────── */
+.绿托盘 {
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+
+.绿托盘标签 {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--橄榄);
+  margin-bottom: 6px;
+}
+
+.规则文案 {
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 21.6px;
+  color: var(--深绿文字);
+  overflow-wrap: anywhere;
+}
+
+.影响预计 {
+  font-size: 11px;
+  line-height: 17.6px;
+  color: var(--次要);
+  margin-top: 7px;
+}
+
+/* ── 双按钮：次按钮 1 份宽，主按钮 1.4 份宽 ───────────────── */
+.按钮行 {
+  display: flex;
+  flex-direction: row;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.次按钮,
+.主按钮 {
+  padding: 13px 0;
+  border-radius: 15px;
+  text-align: center;
+  font-size: 13.5px;
+}
+
+.次按钮 {
+  flex: 1;
+  background: var(--白);
+  border: 1px solid var(--描边中);
+  font-weight: 600;
+  color: var(--次要);
+}
+
+.主按钮 {
+  flex: 1.4;
+  background: var(--荧光绿);
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.尾注 {
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--灰白);
+  margin-top: 12px;
+}
+
+
+/* 本地 keyframes：CSS Modules 会重命名 animation-name，
+   全局.css 里的同名 keyframes 够不到，必须在本文件内定义 */
+@keyframes 遮罩淡入 {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes 抽屉升起 {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}

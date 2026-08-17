@@ -1,0 +1,169 @@
+// A26 直聊会话 · AI代理旁听 —— 求职者选择自己上场聊，AI代理退到旁听位。
+//
+// 结构：返回栏（居中标题 + ⋯）→ 旁听提示条 → 消息流 → 功能键行 → 真输入条（灰边）。
+//
+// 本文件同时是「两屏共用件」的所在地：消息条 / 功能键行 / 自动滚到底 三个共用件
+// 从这里 export，真人会话.tsx 直接 import，避免同一套气泡样式写两遍。
+
+import { useEffect, useRef, useState } from 'react';
+import 样式 from './直聊会话.module.css';
+import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../组件/通用';
+import { 盾牌图标, 细对勾图标 } from '../组件/图标';
+import { use导航 } from '../路由/导航钩子';
+import { 路径 } from '../路由/路径表';
+import { 直聊消息 } from '../数据/模拟数据';
+import type { 会话条 } from '../数据/类型';
+
+export default function 直聊会话() {
+  const { 返回, 跳转 } = use导航();
+  const [消息, 设消息] = useState<会话条[]>(直聊消息);
+  const [草稿, 设草稿] = useState('');
+  // 换微信 / 换电话 / 发简历 点过就落到「已完成」态（灰底 + 细对勾），不可再点
+  const [已完成, 设已完成] = useState<string[]>([]);
+  const 底部锚 = use自动滚到底(消息);
+
+  // 发送：草稿去空后追加到本地消息流，随即清空输入框
+  const 发送 = () => {
+    const 内容 = 草稿.trim();
+    if (!内容) return;
+    const 新条: 会话条 = { 编号: Date.now(), 角色: '我', 时间: '刚刚', 内容 };
+    设消息((旧) => [...旧, 新条]);
+    设草稿('');
+  };
+
+  return (
+    <次级页外壳 对话底>
+      <返回栏
+        返回={返回}
+        标题="陆知遥"
+        副标题="MiniMax · Agent 产品线负责人"
+        居中标题
+        右侧={<span className={样式.更多}>⋯</span>}
+      />
+
+      {/* 旁听提示条：交回按钮把话头还给 AI 代理，因此跳到「问AI代理」对话页 */}
+      <div className={样式.旁听条}>
+        <span className={样式.小盾牌}>
+          <盾牌图标 尺寸={12} />
+        </span>
+        <span className={样式.旁听文字}>你选择了自己聊，AI代理在旁听：只提醒、不插话</span>
+        <button className={`${样式.交回} 可点`} onClick={() => 跳转(路径.问AI代理)}>
+          交回AI代理
+        </button>
+      </div>
+
+      <滚动区>
+        <div className={样式.消息流}>
+          {消息.map((条) => (
+            <消息条 key={条.编号} 条={条} 对方首字="陆" />
+          ))}
+          <div ref={底部锚} />
+        </div>
+      </滚动区>
+
+      <功能键行
+        名单={['换微信', '换电话', '发简历']}
+        已完成={已完成}
+        标记完成={(名) => 设已完成((旧) => [...旧, 名])}
+      />
+
+      <真输入条 占位="发消息…" 值={草稿} 改变={设草稿} 发送={发送} 灰边 />
+    </次级页外壳>
+  );
+}
+
+// ── 共用件 1：新消息进来时把滚动区拉到底 ────────────────────────
+// RN 里靠 ScrollView 的 onContentSizeChange + scrollToEnd；DOM 里用末尾锚点
+// scrollIntoView，最近的可滚动祖先（滚动区）会被最小化滚动到底部。
+export function use自动滚到底(依赖: unknown) {
+  const 底部锚 = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    底部锚.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [依赖]);
+  return 底部锚;
+}
+
+// ── 共用件 2：一条消息 ─────────────────────────────────────────
+// 会话条是联合类型：带「类型」字段的是系统 / 日期 / 代理提醒三种居中条，
+// 其余按「角色」分我方（右、绿气泡）和对方（左、头像 + 白气泡）。
+export function 消息条({ 条, 对方首字 }: { 条: 会话条; 对方首字: string }) {
+  if ('类型' in 条) {
+    if (条.类型 === '系统') {
+      return (
+        <div className={样式.居中行}>
+          <span className={样式.系统胶囊}>{条.内容}</span>
+        </div>
+      );
+    }
+    if (条.类型 === '日期') {
+      return (
+        <div className={样式.居中行}>
+          <span className={样式.日期}>{条.内容}</span>
+        </div>
+      );
+    }
+    // 代理提醒：旁听中的 AI 代理插的一条灰色提示，不属于任何一方
+    return (
+      <div className={样式.居中行}>
+        <div className={样式.提醒条}>
+          <span className={样式.提醒文字}>
+            <b className={样式.提醒标}>◈ AI代理提醒</b> · {条.内容}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (条.角色 === '我') {
+    return (
+      <div className={样式.我方行}>
+        <div className={样式.我气泡}>
+          <div className={样式.气泡文字}>{条.内容}</div>
+        </div>
+        {条.时间 ? <span className={样式.时间戳}>{条.时间}</span> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className={样式.对方行}>
+      <span className={样式.对方头像}>{对方首字}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className={样式.对方气泡}>
+          <div className={样式.气泡文字}>{条.内容}</div>
+        </div>
+        {条.时间 ? <span className={样式.时间戳}>{条.时间}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+// ── 共用件 3：底部功能键行 ─────────────────────────────────────
+// 名单给顺序，已完成给状态：在已完成里的渲染成「已+名」的灰底对勾键（div，不可点），
+// 其余渲染成可点白键，点一下即标记完成。两屏只是初始已完成集合不同。
+export function 功能键行({
+  名单,
+  已完成,
+  标记完成,
+}: {
+  名单: string[];
+  已完成: string[];
+  标记完成: (名: string) => void;
+}) {
+  return (
+    <div className={样式.功能行}>
+      {名单.map((名) =>
+        已完成.includes(名) ? (
+          <div key={名} className={样式.功能键已完成}>
+            已{名}
+            <细对勾图标 />
+          </div>
+        ) : (
+          <button key={名} className={`${样式.功能键} 可点`} onClick={() => 标记完成(名)}>
+            {名}
+          </button>
+        ),
+      )}
+    </div>
+  );
+}

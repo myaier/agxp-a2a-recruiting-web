@@ -1,0 +1,662 @@
+/* A3a–A3g 七题引导 —— 对齐 storyboard 的 A3a / A3b / A3b2 / A3c / A3e / A3f / A3g，
+   像素值从 RN 源（应用/屏幕/引导问答.js）一比一搬过来。 */
+
+/* 引导壳：整屏的 flex 列容器（返回栏 + 进度条 + 题体 + 主按钮）。
+   同时收纳三个设计令牌里没有收录的补充色 —— RN 源里这三个色也是硬编码，
+   为了不去改地基的令牌文件，先在本屏作用域内声明成局部变量。 */
+.引导壳 {
+  --左栏底: #efede6; /* 期望职位左侧分类栏的米色 */
+  --轮未选色: #c9cec7; /* 薪资轮上下两档未选中的灰 */
+  --虚线描边: #d0d3c8; /* 「其他排除条件」虚线框 */
+
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 顶部七段进度条：走完七题进 A4 披露说明 ── */
+.进度轨 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  padding: 0 22px 4px;
+}
+.进度段 {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--描边深);
+  transition: background 0.18s ease;
+}
+.进度段已过 {
+  background: var(--荧光绿);
+}
+
+/* 题体：占满剩余高度的列容器（期望职位 / 工作城市 用，它们底部要固定「已选条」） */
+.题体 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 页面大标题 组件的上边距固定 14px，而 RN 源里期望职位是 10、工作城市是 12，
+   用负 margin 把差值补回来，既复用组件又保住像素值 */
+.标题上移4 {
+  flex: none;
+  margin-top: -4px;
+}
+.标题上移2 {
+  flex: none;
+  margin-top: -2px;
+}
+
+/* ── A3a 状态分流：两张单选卡 ── */
+.选项列 {
+  padding: 24px 18px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.选项卡 {
+  width: 100%;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 18px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 13px;
+  text-align: left;
+  font-size: inherit;
+}
+.选项卡选中 {
+  border: 1.5px solid var(--深绿);
+  box-shadow: 0 2px 10px rgba(63, 122, 31, 0.08);
+}
+.选项文字组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.选项标题 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+.选项说明 {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
+  margin-top: 4px;
+}
+
+/* ── 搜索条（期望职位 / 工作城市 共用）── */
+.搜索条 {
+  flex: none;
+  margin: 14px 18px 0;
+  height: 44px;
+  border-radius: 15px;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+}
+.搜索输入 {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--正文);
+}
+.搜索输入::placeholder {
+  color: var(--最弱);
+}
+
+/* ── A3b2 期望职位：左 104 固定宽分类栏 + 右行业卡 ── */
+.两栏 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  margin-top: 14px;
+  border-top: 1px solid var(--描边);
+}
+/* 左栏必须 flex:none + 固定 104，否则会被右侧内容撑开 */
+.左栏 {
+  flex: none;
+  width: 104px;
+  background: var(--左栏底);
+  display: flex;
+  flex-direction: column;
+}
+.左栏项 {
+  flex: none;
+  width: 100%;
+  padding: 15px 12px;
+  text-align: left;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--次要);
+}
+.左栏项选中 {
+  background: var(--白);
+  border-left: 3px solid var(--深绿);
+  font-weight: 700;
+  color: var(--深绿);
+}
+.右栏 {
+  flex: 1;
+  min-width: 0;
+  background: var(--白);
+  padding: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.行业卡 {
+  width: 100%;
+  border-radius: var(--圆角-中卡);
+  /* 未选中也留 1.5px 透明描边，避免选中时描边撑开卡片造成 3px 跳动 */
+  border: 1.5px solid transparent;
+  background: var(--浅灰底);
+  padding: 13px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 11px;
+  text-align: left;
+  font-size: inherit;
+}
+.行业卡选中 {
+  background: var(--白);
+  border-color: var(--深绿);
+}
+.行业文字组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.行业名 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--墨);
+}
+/* 说明最多两行，超出省略（对齐设计稿的 -webkit-line-clamp:2） */
+.行业说明 {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--次要浅);
+  margin-top: 4px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.尖括号 {
+  flex: none;
+  align-self: center;
+  font-size: 16px;
+  font-weight: 300;
+  color: var(--最弱);
+}
+
+/* ── A3b 工作城市：三列网格多选 ── */
+.分组标 {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  font-weight: 500;
+  color: var(--次要浅);
+}
+.分组标间距 {
+  margin-top: 14px;
+}
+.城市网格 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+  margin-top: 9px;
+}
+.城市键 {
+  padding: 12px 0;
+  border-radius: var(--圆角-内托盘);
+  background: var(--白);
+  border: 1px solid var(--描边);
+  text-align: center;
+  font-size: 13px;
+  color: var(--正文);
+}
+.城市键选中 {
+  background: var(--荧光绿);
+  border-color: var(--荧光绿);
+  font-weight: 600;
+  color: var(--墨);
+}
+.搜索无结果 {
+  margin-top: 16px;
+  font-size: 12.5px;
+  color: var(--次要浅);
+}
+
+/* ── 底部已选条（期望职位 / 工作城市 共用）── */
+.已选条 {
+  flex: none;
+  border-top: 1px solid var(--描边);
+  background: var(--白);
+  padding: 10px 18px 0;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+}
+.已选标 {
+  flex: none;
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+.已选标签组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.已选标签 {
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: var(--淡绿底);
+  color: var(--深绿);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ── A3c 期望薪资双滚轮 ── */
+.薪资卡 {
+  margin: 22px 18px 0;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 16px;
+}
+.薪资头 {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  padding-bottom: 6px;
+}
+.薪资头文字 {
+  font-size: 11px;
+  color: var(--次要浅);
+}
+/* 轮容器高 = 行高 46 × 3 档（上一档 / 当前档 / 下一档） */
+.轮容器 {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  height: 138px;
+}
+/* 中间档的高亮底：盖住第二行，上下各多出 3px */
+.轮高亮 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 46px;
+  margin-top: -3px;
+  height: 52px;
+  background: var(--浅灰底);
+  border-radius: 14px;
+  pointer-events: none;
+}
+.轮连字 {
+  position: absolute;
+  left: 50%;
+  top: 58px;
+  margin-left: -5px;
+  font-size: 15px;
+  color: var(--弱化);
+  z-index: 1;
+  pointer-events: none;
+}
+/* 滚轮：scroll-snap 吸附到每一档中心；上下各留一个行高的内边距，
+   这样第一档和最后一档也能滚到正中间 */
+.薪资轮 {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 138px;
+  padding: 46px 0;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+}
+.薪资档 {
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: center;
+}
+.档选中 {
+  font-size: 29px;
+  font-weight: 600;
+  color: var(--墨);
+}
+.档未选 {
+  font-size: 17px;
+  color: var(--轮未选色);
+}
+
+/* ── A3e 硬性排除 ── */
+.排除区 {
+  padding: 22px 18px 0;
+}
+.排除网格 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.排除键 {
+  padding: 13px 0;
+  border-radius: 15px;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--正文);
+}
+.排除键选中 {
+  background: var(--淡绿底);
+  border-color: var(--淡绿描边);
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+.自定义排除 {
+  width: 100%;
+  background: var(--白);
+  border: 1px dashed var(--虚线描边);
+  border-radius: 15px;
+  padding: 12px 16px;
+  margin-top: 9px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+.自定义加号 {
+  flex: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+.自定义文字 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--次要浅);
+}
+
+/* 行内录入行：写自定义排除条件 / 加屏蔽公司时就地展开 */
+.行内输入行 {
+  margin-top: 9px;
+  background: var(--白);
+  border: 1px solid var(--描边中);
+  border-radius: 15px;
+  padding: 0 8px 0 16px;
+  height: 46px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.行内输入 {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--正文);
+}
+.行内输入::placeholder {
+  color: var(--最弱);
+}
+.行内确认 {
+  flex: none;
+  padding: 7px 14px;
+  border-radius: 11px;
+  background: var(--荧光绿);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.屏蔽公司卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 13px 16px;
+  margin-top: 14px;
+}
+.屏蔽公司头 {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.屏蔽公司标题 {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--墨);
+}
+.屏蔽公司说明 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+  margin-top: 2px;
+}
+.屏蔽公司添加 {
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--深绿);
+}
+.屏蔽公司标签组 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* ── A3f 到岗节奏 ── */
+.到岗列 {
+  padding: 22px 18px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.到岗卡 {
+  width: 100%;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 16px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  font-size: inherit;
+}
+.到岗卡选中 {
+  border: 1.5px solid var(--深绿);
+  box-shadow: 0 2px 8px rgba(63, 122, 31, 0.08);
+}
+.到岗文字组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.到岗标题 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+.优先徽标 {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--深绿);
+  background: var(--淡绿底);
+  padding: 3px 8px;
+  border-radius: 7px;
+  white-space: nowrap;
+}
+.到岗尾注 {
+  font-size: 11px;
+  color: var(--次要浅);
+}
+.绿勾 {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--荧光绿);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--墨);
+}
+
+/* ── A3g 个人优势 ── */
+.优势卡 {
+  margin: 16px 18px 0;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 16px;
+  /* 设计稿 A3g 是 330（RN 源当时写成 240，比设计稿矮，这里按设计稿的基准来） */
+  min-height: 330px;
+  display: flex;
+  flex-direction: column;
+}
+.优势输入 {
+  flex: 1;
+  min-height: 180px;
+  width: 100%;
+  display: block;
+  border: none;
+  outline: none;
+  background: transparent;
+  resize: none;
+  padding: 0;
+  font-size: 13.5px;
+  line-height: 2;
+  color: var(--正文);
+}
+.优势底 {
+  border-top: 1px solid var(--分隔线);
+  margin-top: 12px;
+  padding-top: 9px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.优势提示 {
+  font-size: 11.5px;
+  color: var(--意向);
+}
+.优势计数 {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.GitHub卡 {
+  margin: 12px 18px 0;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 13px 15px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 11px;
+}
+.GitHub底 {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--墨);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.GitHub文字组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.GitHub标题 {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+.选填 {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--弱化);
+  margin-left: 6px;
+}
+.GitHub值 {
+  font-size: 12px;
+  color: var(--深绿);
+  margin-top: 2px;
+}
+
+.优势工具行 {
+  display: flex;
+  flex-direction: row;
+  gap: 18px;
+  padding: 12px 22px 0;
+}
+.优势工具主 {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--深绿);
+}
+.优势工具次 {
+  font-size: 12.5px;
+  color: var(--次要);
+}
+/* 「看看别人怎么写」就地展开的示例，收起时不占位 */
+.优势示例 {
+  margin: 10px 22px 0;
+  padding: 11px 13px;
+  border-radius: var(--圆角-小托盘);
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边2);
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: var(--次要);
+}

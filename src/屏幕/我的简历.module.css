@@ -1,0 +1,194 @@
+/* A17 我的简历 · 编辑页（像素值取自 RN 源 屏幕/我的简历.js） */
+
+/* ── 代理诊断绿条 ── */
+.诊断区 {
+  flex: none;
+  padding: 0 18px;
+}
+
+.诊断条 {
+  margin-top: 2px;
+  background: var(--淡绿底);
+  border: 1px solid var(--淡绿描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 9px 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.诊断标 {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.诊断说明 {
+  flex: 1;
+  font-size: 10.5px;
+  color: var(--正文);
+}
+
+.诊断键 {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 16px;
+  background: var(--荧光绿);
+  color: var(--墨);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* 展开后的两条待优化项，视觉上挂在绿条下面 */
+.诊断详情 {
+  margin-top: 6px;
+  padding: 9px 13px;
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边2);
+  border-radius: var(--圆角-小托盘);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.诊断项 {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--标题次级);
+}
+
+/* ── 滚动区内容 ── */
+.列表 {
+  padding: 10px 18px 40px;
+  display: flex;
+  flex-direction: column; /* RN 默认 column，DOM 必须显式写 */
+  gap: 10px;
+}
+
+/* ── 卡 ── */
+.卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 13px 15px 4px;
+}
+
+.卡标题 {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--墨);
+  margin-bottom: 4px;
+}
+
+/* 表单条目自带左右无内边距，这里补 2px 让分隔线略微内收 */
+.条目区 {
+  padding: 0 2px;
+}
+
+/* ── 工作经历行 ── */
+.经历行 {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--分隔线);
+  text-align: left;
+}
+.经历行.末行 {
+  border-bottom: none;
+}
+
+.经历主体 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.经历公司 {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.经历职位 {
+  font-size: 12.5px;
+  color: var(--正文);
+  margin-top: 3px;
+}
+
+.经历时间 {
+  font-size: 11px;
+  color: var(--次要浅);
+  margin-top: 3px;
+}
+
+/* ── 个人优势：数据里带 \n，靠 pre-line 还原换行 ── */
+.优势正文 {
+  font-size: 12.5px;
+  line-height: 24px; /* RN lineHeight 24 */
+  color: var(--正文);
+  padding-bottom: 12px;
+  white-space: pre-line;
+}
+
+/* ── 附件简历 ── */
+.附件行 {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  text-align: left;
+}
+
+.PDF块 {
+  flex: none;
+  width: 30px;
+  height: 36px;
+  border-radius: 5px;
+  background: var(--淡绿底);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.PDF字 {
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.附件主体 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.附件名 {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.附件说明 {
+  font-size: 10.5px;
+  color: var(--次要浅);
+  margin-top: 2px;
+}
+
+.附件提示 {
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--最弱);
+  padding-bottom: 10px;
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}

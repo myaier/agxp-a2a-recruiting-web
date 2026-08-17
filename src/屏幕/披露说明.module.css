@@ -1,0 +1,114 @@
+/* A4 披露偏好 · 完成即就绪 —— 「谈判怎么推进？」四阶段说明
+   像素基准：RN 屏幕/披露说明.js + 设计稿 A4（storyboard.dc.html 第 363–390 行）。
+   letter-spacing 换算：大标题 -0.23 / 23px = -0.01em；阶段徽标 0.6 / 10px = 0.06em。 */
+
+/* 标题区在滚动区外面（跟着屏幕固定），所以横向内边距 22，比卡片区的 18 多 4 */
+.头部 {
+  flex: none;
+  padding: 0 22px 6px;
+}
+
+.大标题 {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 32px;
+  color: var(--墨);
+}
+
+.说明 {
+  margin: 7px 0 0;
+  font-size: 12.5px;
+  line-height: 20.6px;
+  color: var(--次要);
+}
+
+/* 四阶段卡：垂直内边距只有 2，行高靠每行自己的 12 撑 */
+.卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 2px 16px;
+}
+
+/* 徽标与文字顶部对齐：阶段说明常换行，居中会让徽标掉到文案中间 */
+.阶段行 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+/* 末行不画分隔线，避免和卡片下边缘叠成双线 */
+.阶段行:last-child {
+  border-bottom: none;
+}
+
+/* 彩色阶段徽标。底色 / 字色由 阶段配色[段.编号] 内联注入，这里只管形状。
+   nowrap + flex:none：四个字的阶段名绝不允许被压窄或折行。 */
+.阶段徽标 {
+  flex: none;
+  margin-top: 1px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+/* RN 里是没写 flexDirection 的 flex:1 容器，DOM 必须显式声明 column */
+.阶段文字组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.阶段名 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.阶段说明 {
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 17.8px;
+  color: var(--次要浅);
+}
+
+/* 绿色就绪条：固定在滚动区下方、主按钮上方，说明「点完成即刻生效」 */
+.就绪条 {
+  flex: none;
+  margin: 0 18px 10px;
+  padding: 14px 16px;
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边2);
+  border-radius: var(--圆角-内托盘);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.盾牌底 {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--荧光绿);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.就绪文字 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}

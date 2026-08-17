@@ -1,0 +1,144 @@
+/* A20 求职意向管理（想找什么工作？）—— 照 RN 意向管理.js + 设计稿 A20 的像素值搬 */
+
+/* 滚动区内的内容层：RN 里这些内边距和 gap 挂在 ScrollView 的 contentContainer 上 */
+.内容 {
+  padding: 18px 18px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 白卡（圆角 14，比通用白卡的 20 小一档，所以这里自己写而不是复用 白卡 组件） */
+.卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 第二张卡：上下各留 2px，行高靠 设置行 自己的 min-height:52 撑开 */
+.设置卡 {
+  padding: 2px 16px;
+}
+
+/* ── 卡头：绿竖条 + 「求职意向」+ 右侧 N/5 配额 ── */
+.卡头 {
+  display: flex;
+  align-items: center;
+  padding: 12px 0 4px;
+}
+
+.绿竖条 {
+  flex: none;
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--深绿);
+  margin-right: 8px;
+}
+
+.卡标题 {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--墨);
+}
+
+.配额 {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--次要浅);
+}
+
+.配额已用 {
+  color: var(--深绿);
+  font-weight: 600;
+}
+
+/* ── 意向行 ── */
+.意向行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--分隔线);
+  text-align: left;
+}
+
+/* RN 里是 <View style={{flex:1}}>，DOM 默认横排，必须显式 column */
+.意向文字组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.意向标题 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.意向说明 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+  margin-top: 4px;
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* ── 虚线「＋ 添加求职意向」── */
+.添加意向 {
+  width: 100%;
+  margin: 14px 0;
+  padding: 14px 0;
+  border: 1px dashed var(--淡绿描边);
+  background: var(--淡绿底2);
+  border-radius: var(--圆角-中卡);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+.添加圆 {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--荧光绿);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.添加符 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.添加文字 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--深绿文字);
+  letter-spacing: -0.01em;
+}
+
+/* 配额用满时替换掉添加按钮的提示（RN 源没有这一态，是把入口收掉后的兜底文案） */
+.配额已满 {
+  margin: 14px 0;
+  padding: 14px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--次要浅);
+}

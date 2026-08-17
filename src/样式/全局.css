@@ -1,0 +1,135 @@
+/* 全局：重置 + 让网页里的操作手感尽量接近原生 App。
+   这些规则是「手机 App 放在浏览器里」和「普通网页」的关键区别，别删。 */
+
+@import './设计令牌.css';
+
+* {
+  box-sizing: border-box;
+  /* 去掉 iOS 点击时的灰色高亮块，原生 App 不会有 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  /* 阻止 iOS 横屏或放大时自动调整字号，否则字号会偏离设计稿 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--字体);
+  color: var(--墨);
+  background: var(--画布底);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* 页面本身不滚动，滚动交给屏幕内部的滚动容器 —— 这是 App 而不是长网页 */
+  overflow: hidden;
+  /* 关掉整页橡皮筋回弹，避免暴露「这是个网页」 */
+  overscroll-behavior: none;
+}
+
+#根节点 {
+  height: 100%;
+  /* 100dvh 跟随 iOS Safari 地址栏伸缩，避免 100vh 在移动端算高一截 */
+  height: 100dvh;
+}
+
+/* 文本默认不可选中，像 App；只有明确标记的内容允许选中 */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.可选中 {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 输入框需要能选中和编辑 */
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* 所有可滚动区域：隐藏滚动条 + iOS 惯性滚动 */
+.滚动区 {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.滚动区::-webkit-scrollbar {
+  display: none;
+}
+
+/* 可点元素统一按下反馈：原生 App 的按压手感 */
+.可点 {
+  cursor: pointer;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.可点:active {
+  opacity: 0.82;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* 等宽数字：薪资、天数、统计数一律用，避免数字跳动 */
+.等宽数字 {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* 单行截断 */
+.单行 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* 需要你介入的卡片：红色脉冲点动画 */
+@keyframes 脉冲 {
+  0% {
+    box-shadow: 0 0 0 0 rgba(217, 45, 32, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(217, 45, 32, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(217, 45, 32, 0);
+  }
+}
+.脉冲点 {
+  animation: 脉冲 2s infinite;
+}
+
+/* 底部抽屉升起 */
+@keyframes 抽屉升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

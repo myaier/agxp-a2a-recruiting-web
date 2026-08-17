@@ -1,0 +1,203 @@
+/* A16 消息Tab（storyboard A16 版式一比一）—— 会话与AI代理动态 */
+
+/* ── 标题行：大标题 + 右侧放大镜 ── */
+.标题行 {
+  display: flex;
+  align-items: center;
+  padding: 0 20px 4px;
+  flex: none;
+}
+
+.大标题 {
+  flex: 1;
+  min-width: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+.放大镜键 {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 筛选页签行：基线对齐，靠字重和颜色区分选中态，不画下划线 ── */
+.页签行 {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  padding: 6px 20px;
+  flex: none;
+}
+
+.页签选中 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+.页签未选 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--标题次级);
+}
+
+/* ── 搜索条：胶囊白条（高 34 = 圆角 17），左图标 + 真输入框 ── */
+.搜索条 {
+  margin: 0 18px 10px;
+  height: 34px;
+  border-radius: 17px;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 13px;
+  flex: none;
+}
+
+.搜索输入 {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12.5px;
+  color: var(--墨);
+}
+
+.搜索输入::placeholder {
+  color: var(--灰白);
+}
+
+/* ── 会话行：白底通栏 + 底部分隔线，整行可点 ── */
+.会话行 {
+  width: 100%;
+  background: var(--白);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--分隔线);
+  text-align: left;
+}
+
+/* 按下压出浅灰底（对齐 RN 的 pressed 态） */
+.会话行:active {
+  background: var(--浅灰底);
+}
+
+/* AI代理头像：荧光绿圆底 + 盾牌，品牌符号 */
+.代理头像 {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--荧光绿);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 真人 / 直聊头像：数据里带的底色 + 姓氏首字 */
+.头像 {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--白);
+}
+
+/* 中间正文区：两行（头行 + 摘要行）。
+   RN 里默认纵向排布，DOM 必须显式写 column，否则两行会挤成一行 */
+.正文区 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 头行：标题 + 副标题（占满剩余宽并截断）+ 时间 */
+.会话头行 {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.会话标题 {
+  flex: none;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+  white-space: nowrap;
+}
+
+.会话副标题 {
+  flex: 1;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.会话时间 {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--最弱);
+}
+
+/* 摘要行：末条消息 + 未读数红胶囊 / 红点 */
+.会话摘要行 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.会话摘要 {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--次要浅);
+}
+
+/* 未读数用 min-width 而非固定宽，两位数时自然撑开 */
+.未读徽标 {
+  flex: none;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 9px;
+  padding: 0 4px;
+  background: var(--意向);
+  color: var(--白);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.红点 {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--意向);
+}
+
+/* 搜索无命中时的兜底（页签过滤本身不会全空） */
+.空态 {
+  padding: 48px 24px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--次要浅);
+}

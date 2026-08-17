@@ -1,0 +1,215 @@
+/* A2 添加工作经历 —— 像素值取自设计稿 A2（storyboard 第 134 段）与 RN 版 工作经历.js */
+
+/* 返回栏右侧的「保存」文字按钮 */
+.保存 {
+  flex: none;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+/* ── 一键上传简历：绿色虚线框 ──
+   虚线（dashed）在这里承担语义：告诉用户这块是「可导入的入口」而不是已填好的卡片。 */
+.上传条 {
+  /* 全局令牌里没有这条框线用的浅绿灰，就地起一个语义变量，避免 hex 散落在规则里 */
+  --上传框描边: #9fc5b6;
+
+  flex: none;
+  margin: 14px 18px 0;
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--淡绿底);
+  border: 1.5px dashed var(--上传框描边);
+  border-radius: 15px;
+  text-align: left;
+}
+
+.上传图标 {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  background: var(--深绿);
+  color: var(--白);
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* RN 里是没写 flexDirection 的 View（默认竖排），DOM 里必须显式 column */
+.上传文案 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.上传标题 {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--深绿);
+}
+
+.上传说明 {
+  font-size: 10.5px;
+  color: var(--正文);
+  margin-top: 2px;
+}
+
+/* 真正的文件选择框藏起来，只当上传条的执行器用 */
+.隐藏文件框 {
+  display: none;
+}
+
+/* ── 分组标题「第 1 段 · 当前在职」──
+   letter-spacing 由 RN 的绝对值换算：1.3 / 11px ≈ 0.12em */
+.分组标 {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: var(--次要浅);
+  padding: 8px 0 2px;
+}
+
+/* ── 自定义表单行 ──
+   行高与分隔线跟地基 <表单条目> 完全一致（padding 14px 0 + 1px 分隔线），
+   否则自定义行和地基行交替出现时纵向节奏会差一档，肉眼能看出错位。 */
+.编辑条目,
+.时间条目,
+.屏蔽条目,
+.经历段行 {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.条目标签 {
+  font-size: 12px;
+  color: var(--次要浅);
+}
+
+/* 内联编辑输入框：字号字重与只读态的值完全相同，切换时文字不位移 */
+.条目输入 {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  outline: none;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--墨);
+  /* 光标用品牌深绿，比浏览器默认蓝更贴 App 观感 */
+  caret-color: var(--深绿);
+}
+
+/* ── 在职时间行 ── */
+.时间行 {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 6px;
+}
+
+.时间输入 {
+  /* 宽度按「2019.06」这种六位年月定死，避免输入框撑满整行、破坏起—止对称 */
+  width: 76px;
+  padding: 0;
+  border: none;
+  background: none;
+  outline: none;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--墨);
+  caret-color: var(--深绿);
+}
+
+.时间连字 {
+  flex: none;
+  font-size: 14px;
+  color: var(--次要浅);
+}
+
+/* ── 对这家公司隐藏我的信息 ── */
+.屏蔽头 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.屏蔽标题 {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--墨);
+}
+
+/* line-height 由 RN 换算：18 / 11px ≈ 1.65 */
+.屏蔽说明 {
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--次要浅);
+  margin-top: 8px;
+}
+
+/* ── 其余经历段（折叠成一行）── */
+.经历段行 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+/* 同样是 RN 默认竖排的 View，DOM 里补 column */
+.段文案 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.段摘要 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--次要);
+}
+
+.段说明 {
+  font-size: 11px;
+  color: var(--弱化);
+  margin-top: 3px;
+}
+
+.尖括号 {
+  flex: none;
+  font-size: 16px;
+  font-weight: 300;
+  color: var(--最弱);
+}
+
+/* ── 添加一段工作经历 ── */
+.添加行 {
+  width: 100%;
+  padding-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.添加加号 {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--深绿);
+}
+
+.添加文字 {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}

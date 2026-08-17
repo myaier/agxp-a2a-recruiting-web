@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+
+    <!-- viewport-fit=cover 是 env(safe-area-inset-*) 生效的前提；
+         user-scalable=no 关掉双指缩放与双击放大，让网页里的操作手感接近原生 App。 -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+
+    <!-- 内部原型：GitHub Pages 上的仓库必须公开，用 noindex 至少挡掉搜索引擎收录 -->
+    <meta name="robots" content="noindex, nofollow" />
+
+    <!-- 加到 iOS 主屏后以全屏 App 形态启动，而不是带 Safari 地址栏 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="对席" />
+    <meta name="theme-color" content="#f2f2e9" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <title>对席 · Agent 谈判招聘</title>
+  </head>
+  <body>
+    <div id="根节点"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

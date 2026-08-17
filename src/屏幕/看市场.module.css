@@ -1,0 +1,159 @@
+/* A14 职位Tab·看市场（storyboard A14 版式一比一） */
+
+/* 列表：左右 11px，底部 130px 让开玻璃导航，卡间距 6px */
+.列表 {
+  padding: 0 11px 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.卡 {
+  padding: 12px 16px;
+}
+
+/* 卡主体是个 button，需要抹掉浏览器默认的居中对齐和宽度收缩 */
+.卡主体 {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+/* 头行：左侧职位名/公司行，右侧薪资/适配分 */
+.头行 {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.职位名 {
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--墨);
+}
+
+.公司行 {
+  font-size: 12px;
+  color: var(--次要);
+  margin-top: 5px;
+}
+
+/* 右侧列：RN 里没写 flexDirection 默认是 column，DOM 里必须显式写出来 */
+.右侧列 {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.薪资 {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--深绿);
+}
+
+.适配 {
+  font-size: 11px;
+  color: var(--次要浅);
+  margin-top: 7px;
+}
+
+.适配分 {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--协调);
+}
+
+/* 标签行 */
+.标签行 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.标签 {
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: var(--浅灰底);
+  font-size: 11px;
+  color: var(--次要);
+}
+
+/* 底行：分隔线之下的发布人 + 委托按钮 */
+.底行 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid var(--描边);
+}
+
+/* 头像底色/字色来自数据（企业 vs 猎头各自的品牌色），所以走内联 style */
+.发布人头像 {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+.发布人 {
+  flex: 1;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.尖括号 {
+  flex: none;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--最弱);
+  /* RN 里靠 marginRight:4 把 › 和绿键拉开（行 gap 8 + 4 = 设计稿的 12） */
+  margin-right: 4px;
+}
+
+/* 「让AI代理去谈」荧光绿胶囊键 */
+.去谈键 {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 15px;
+  background: var(--荧光绿);
+  box-shadow: 0 1px 4px rgba(127, 163, 23, 0.3);
+}
+
+.去谈文字 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+/* 已委托态：淡绿底 + 深绿字，同尺寸替换，避免点完后底行高度跳动 */
+.已委托 {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 15px;
+  background: var(--淡绿底);
+}
+
+.已委托文字 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--深绿);
+}

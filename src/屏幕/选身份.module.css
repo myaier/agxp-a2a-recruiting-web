@@ -1,0 +1,83 @@
+/* R2 选择身份 —— 像素值取自 RN 源 应用/屏幕/选身份.js，与设计稿 R2 一比一。
+   大标题走通用组件 页面大标题（23px/800/-0.01em，padding 14 22 0），本屏不再重复定义。 */
+
+/* ── 身份卡列表（RN paddingHorizontal 18 / paddingTop 20 / gap 12）── */
+.列表 {
+  flex: none;
+  padding: 20px 18px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.身份卡 {
+  width: 100%;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 16px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 13px;
+  text-align: left;
+}
+
+/* 选中态：深绿描边加粗 + 一层极淡绿投影（RN 阴影.选中卡）。
+   border-box 下加粗 0.5px 不改变卡片外框尺寸，列表不会跳动。 */
+.身份卡.选中 {
+  border: 1.5px solid var(--深绿);
+  box-shadow: 0 2px 10px rgba(63, 122, 31, 0.08);
+}
+
+.图标底 {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: var(--淡绿底);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 描边色走变量，不在 SVG 上写死十六进制 */
+.身份图标 {
+  stroke: var(--深绿);
+}
+
+/* 标题与说明两行：span 需显式转成纵向 flex，DOM 默认横排 */
+.身份文字 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.身份标题 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.身份说明 {
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 17.8px;
+  color: var(--次要浅);
+}
+
+/* ── 尾注 ── */
+.尾注 {
+  flex: none;
+  padding: 14px 22px 0;
+  font-size: 11.5px;
+  line-height: 18.4px;
+  color: var(--次要浅);
+}
+
+/* 弹性空白：把主按钮压到屏幕底部 */
+.占位 {
+  flex: 1;
+  min-height: 0;
+}

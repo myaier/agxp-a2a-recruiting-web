@@ -1,0 +1,238 @@
+/* R1 手机号进入 —— 像素值取自 RN 源 应用/屏幕/登录.js，与设计稿 R1 一比一。
+   RN 的 letterSpacing 是绝对值（px），这里按「值 ÷ 字号」换算成 em。 */
+
+/* ── 标题区（RN paddingHorizontal 24 / paddingTop 42）── */
+.标题区 {
+  flex: none;
+  padding: 42px 24px 0;
+}
+
+.大标题 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.03em; /* RN -0.9 ÷ 30px */
+  line-height: 44px;
+  color: var(--墨);
+}
+
+.说明 {
+  margin: 12px 0 0;
+  font-size: 13.5px;
+  line-height: 23px;
+  color: var(--次要);
+}
+
+/* ── 表单卡：上半手机号行 + 下半验证码四格 ── */
+.表单卡 {
+  flex: none;
+  margin: 28px 20px 0;
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  border-radius: var(--圆角-中卡);
+  overflow: hidden;
+}
+
+.手机行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 13px;
+  height: 56px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.区号 {
+  flex: none;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--正文);
+}
+
+.区号箭头 {
+  font-size: 11px;
+  color: var(--最弱);
+}
+
+.竖线 {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  background: var(--分隔线);
+}
+
+/* 字号 17 同时也是 iOS 的免缩放阈值（<16px 聚焦时 Safari 会自动放大页面） */
+.手机输入 {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 0.05em; /* RN 0.85 ÷ 17px */
+  color: var(--墨);
+}
+
+/* ── 验证码行 ── */
+.验证码行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 18px 16px;
+}
+
+/* 定位上下文：透明 input 铺满这一组，点任意格都能唤起键盘 */
+.验证码组 {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  gap: 11px;
+}
+
+.验证码格 {
+  flex: none;
+  width: 48px;
+  height: 54px;
+  border-radius: 14px;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 下一个待输入的格：深绿描边 + 外发光，描边加粗 0.5px 靠 border-box 不影响外框尺寸 */
+.验证码格.聚焦 {
+  border: 1.5px solid var(--深绿);
+  box-shadow: 0 0 0 3px rgba(13, 107, 88, 0.1);
+}
+
+.验证码字 {
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.光标 {
+  width: 2px;
+  height: 18px;
+  background: var(--深绿);
+}
+
+/* 真正承接键盘的输入框：透明覆盖在四格之上，自身文字与光标都不可见 */
+.验证码输入 {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 17px; /* 同上：避免 iOS 聚焦时缩放 */
+  cursor: pointer;
+}
+
+.倒计时 {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--次要浅);
+}
+
+/* ── 协议勾选行 ── */
+.同意行 {
+  flex: none;
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px 24px 0;
+  text-align: left;
+}
+
+/* 选中态与未选态都带 1.5px 描边（选中时描边同底色），保证两态尺寸完全一致 */
+.勾选圈 {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  margin-top: 1px;
+  background: var(--墨);
+  border: 1.5px solid var(--墨);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.勾选圈.未选 {
+  background: transparent;
+  border-color: var(--描边中);
+}
+
+.同意文字 {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 18.4px;
+  color: var(--次要浅);
+}
+
+.链接 {
+  color: var(--深绿);
+}
+
+/* ── 中间弹性空白 + 分割行 ── */
+.分割区 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* 设计稿 R1：分割行贴在弹性空白的顶部（协议行下方 18px），
+     不是垂直居中悬在空白正中 —— 对照 storyboard 第 28 行的 flex 结构 */
+  justify-content: flex-start;
+}
+
+.分割行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  /* 设计稿 R1：margin:18px 44px 12px —— 距协议行 18px */
+  margin: 18px 44px 12px;
+}
+
+.分割线 {
+  flex: 1;
+  min-width: 0;
+  height: 1px;
+  background: var(--分割线米色);
+}
+
+.分割文字 {
+  flex: none;
+  font-size: 11px;
+  color: var(--最弱);
+}
+
+/* ── 微信登录 ── */
+.微信区 {
+  flex: none;
+  padding: 0 20px;
+}
+
+.微信键 {
+  width: 100%;
+  height: 46px;
+  border-radius: var(--圆角-按钮);
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--正文);
+}

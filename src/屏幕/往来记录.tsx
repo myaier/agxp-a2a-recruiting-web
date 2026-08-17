@@ -1,0 +1,176 @@
+// A8·B 往来记录 · 纯对话流：两个 AI 代理的逐条往来 + 系统事件 + 你的叮嘱。
+//
+// 左 = 对方代理（白气泡 + 公司首字圆头像），右 = 我方代理（绿气泡 + ◈ 头像），
+// 居中 = 折叠 / 日期 / 系统 / 叮嘱 / 意向 各种胶囊。
+//
+// 底部输入条是真的能发的：发出去就在流末尾追加一条「你介入叮嘱」+ 一条我方代理回执，
+// 随后延迟 500ms 升起 A24 拿不准弹层，问你要不要把这次叮嘱沉淀成长期规则。
+
+import { useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import 样式 from './往来记录.module.css';
+import { 次级页外壳, 返回栏, 真输入条 } from '../组件/通用';
+import 拿不准弹层 from './拿不准弹层';
+import { 往来记录 as 初始记录, 在谈列表 } from '../数据/模拟数据';
+import type { 往来条目 } from '../数据/类型';
+import { use应用状态 } from '../状态/应用状态';
+import { use导航 } from '../路由/导航钩子';
+import { 路径 } from '../路由/路径表';
+
+export default function 往来记录() {
+  const { id: 编号 } = useParams<{ id: string }>();
+  const { 返回, 跳转 } = use导航();
+  const { 派发 } = use应用状态();
+
+  // 这一屏只用到该单的公司 / 职位做标题，所以直接读静态模拟数据；
+  // 「退出谈判」会把单从全局状态的在谈列表里移除，静态数据才不会让本屏跟着空掉。
+  const 单 = 在谈列表.find((条) => 条.编号 === 编号) ?? 在谈列表[0];
+
+  const [记录, 设记录] = useState<往来条目[]>(初始记录);
+  const [草稿, 设草稿] = useState('');
+  const [弹层可见, 设弹层可见] = useState(false);
+  const [最近叮嘱, 设最近叮嘱] = useState('');
+
+  const 滚动引用 = useRef<HTMLDivElement>(null);
+  const 计时器引用 = useRef<number | null>(null);
+
+  // 新消息进来自动滚到底 —— 对齐 RN 里 ScrollView 的 onContentSizeChange + scrollToEnd。
+  // 首次挂载也会跑一次，所以进屏就停在最新一条上。
+  useEffect(() => {
+    const 容器 = 滚动引用.current;
+    if (容器) 容器.scrollTop = 容器.scrollHeight;
+  }, [记录]);
+
+  // 组件卸载时清掉未触发的弹层计时器，避免在已卸载的屏上改状态
+  useEffect(() => {
+    return () => {
+      if (计时器引用.current !== null) window.clearTimeout(计时器引用.current);
+    };
+  }, []);
+
+  /** 发一条叮嘱：追加「你介入叮嘱」+ 我方代理回执，再延迟升起拿不准弹层 */
+  const 发送叮嘱 = () => {
+    const 内容 = 草稿.trim();
+    if (!内容) return;
+
+    const 时间戳 = Date.now();
+    const 新增: 往来条目[] = [
+      { 编号: 时间戳, 类型: '叮嘱', 内容: `⚑ 你介入叮嘱：${内容}` },
+      {
+        编号: 时间戳 + 1,
+        类型: '我方',
+        时间: '刚刚',
+        内容: '收到，我按这个口径继续谈，触线就直接终止。',
+      },
+    ];
+    设记录((旧) => [...旧, ...新增]);
+    设草稿('');
+    设最近叮嘱(内容);
+
+    // 介入后沉淀为规则（A24）：留 500ms 让用户先看到自己那条叮嘱落进流里
+    if (计时器引用.current !== null) window.clearTimeout(计时器引用.current);
+    计时器引用.current = window.setTimeout(() => 设弹层可见(true), 500);
+  };
+
+  /** 把这次叮嘱写进规则库并跳过去，让用户当场看到规则真的生效了 */
+  const 记成规则 = (规则内容: string) => {
+    派发({ 型: '新增规则', 内容: 规则内容, 来源: `来自${单.公司}单的叮嘱 · 刚刚` });
+    跳转(路径.规则库);
+  };
+
+  return (
+    <次级页外壳 对话底>
+      <返回栏
+        返回={返回}
+        标题="完整往来记录"
+        副标题={`${单.公司} · ${单.职位} · 全程留痕`}
+        右侧={<span className={`${样式.条数} 等宽数字`}>{记录.length} 条</span>}
+      />
+
+      {/* 消息流：屏内唯一的滚动容器，需要拿 ref 手动滚到底，所以直接用 div.滚动区 */}
+      <div className="滚动区" style={{ flex: 1, minHeight: 0 }} ref={滚动引用}>
+        <div className={样式.消息流}>
+          {记录.map((条) => (
+            <记录条 key={条.编号} 条={条} 公司首字={单.公司首字} />
+          ))}
+        </div>
+      </div>
+
+      <真输入条
+        占位="对进展有疑问？告诉你的AI代理…"
+        值={草稿}
+        改变={设草稿}
+        发送={发送叮嘱}
+      />
+
+      <拿不准弹层
+        可见={弹层可见}
+        关闭={() => 设弹层可见(false)}
+        决策类型="退出"
+        记成规则={记成规则}
+        决定文案={`你在「${单.公司}」这一单里叮嘱了：${最近叮嘱}`}
+        规则草案={最近叮嘱}
+      />
+    </次级页外壳>
+  );
+}
+
+/** 单条往来：按 类型 分派成居中胶囊或左右气泡 */
+function 记录条({ 条, 公司首字 }: { 条: 往来条目; 公司首字: string }) {
+  // 折叠行：源实现里没有展开动作（早前几条不在数据里），所以只做静态提示，不做成按钮
+  if (条.类型 === '折叠') {
+    return (
+      <div className={样式.居中}>
+        <span className={样式.折叠文字}>{条.内容}</span>
+      </div>
+    );
+  }
+  if (条.类型 === '日期') {
+    return (
+      <div className={样式.居中}>
+        <span className={样式.日期文字}>{条.内容}</span>
+      </div>
+    );
+  }
+  if (条.类型 === '系统') {
+    return (
+      <div className={样式.居中}>
+        <span className={样式.系统胶囊}>{条.内容}</span>
+      </div>
+    );
+  }
+  if (条.类型 === '叮嘱') {
+    return (
+      <div className={样式.居中}>
+        <span className={样式.叮嘱胶囊}>{条.内容}</span>
+      </div>
+    );
+  }
+  if (条.类型 === '意向') {
+    return (
+      <div className={样式.居中}>
+        <span className={样式.意向胶囊}>{条.内容}</span>
+      </div>
+    );
+  }
+
+  // 剩下就是两个代理的气泡：我方靠右、对方靠左，头像分别在气泡外侧。
+  // 用正向判别（=== '我方' / '对方'）才能让 TS 把联合类型窄化到带 时间 字段的成员；
+  // 上面的排除式早返回收窄不掉五字面量判别式，直接读 条.时间 会 TS2339。
+  if (条.类型 !== '我方' && 条.类型 !== '对方') return null;
+  const 我方 = 条.类型 === '我方';
+  return (
+    <div className={`${样式.气泡行} ${我方 ? 样式.靠右 : ''}`}>
+      {我方 ? null : (
+        <span className={`${样式.代理头像} ${样式.对方头像}`}>{公司首字}</span>
+      )}
+      <div className={`${样式.气泡列} ${我方 ? 样式.列靠右 : ''}`}>
+        <span className={样式.气泡署名}>
+          {我方 ? '我方AI代理' : '对方AI代理'} · {条.时间}
+        </span>
+        <div className={`${样式.气泡} ${我方 ? 样式.我方气泡 : 样式.对方气泡}`}>{条.内容}</div>
+      </div>
+      {我方 ? <span className={`${样式.代理头像} ${样式.我方头像}`}>◈</span> : null}
+    </div>
+  );
+}
