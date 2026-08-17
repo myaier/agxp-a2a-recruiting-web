@@ -9,6 +9,7 @@ import { HashRouter } from 'react-router-dom';
 import './样式/全局.css';
 import 应用 from './应用';
 import 设备外框 from './组件/设备外框';
+import 标注层 from './组件/标注层';
 import { 应用状态提供者 } from './状态/应用状态';
 
 createRoot(document.getElementById('根节点')!).render(
@@ -17,6 +18,8 @@ createRoot(document.getElementById('根节点')!).render(
       <设备外框>
         <HashRouter>
           <应用 />
+          {/* 标注模式：点元素提修改意见，导出贴给 Claude（见 docs/前端修改指南.md） */}
+          <标注层 />
         </HashRouter>
       </设备外框>
     </应用状态提供者>
