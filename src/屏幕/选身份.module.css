@@ -67,13 +67,14 @@
   color: var(--次要浅);
 }
 
-/* ── 尾注 ── */
+/* ── 尾注：位于底部主按钮上方（按标注意见挪到靠下）── */
 .尾注 {
   flex: none;
-  padding: 14px 22px 0;
+  padding: 0 22px 4px;
   font-size: 11.5px;
   line-height: 18.4px;
   color: var(--次要浅);
+  text-align: center;
 }
 
 /* 弹性空白：把主按钮压到屏幕底部 */

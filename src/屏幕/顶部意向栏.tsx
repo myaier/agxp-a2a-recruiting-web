@@ -3,6 +3,7 @@
 
 import 样式 from './顶部意向栏.module.css';
 import { 放大镜图标 } from '../组件/图标';
+import { 轻提示 } from '../组件/轻提示';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -56,7 +57,9 @@ export default function 顶部意向栏() {
             {视图}
           </button>
         ))}
-        <span className={样式.筛选}>筛选 ▾</span>
+        <button className={`${样式.筛选} 可点`} onClick={() => 轻提示('筛选功能待接后端条件项')}>
+          筛选 ▾
+        </button>
       </div>
     </div>
   );
