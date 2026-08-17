@@ -68,8 +68,10 @@
 
 /* 两侧气泡共用的正文排版；overflow-wrap 防止用户输入超长无空格串撑破气泡 */
 .气泡文字 {
-  font-size: 14px;
-  line-height: 1.7;
+  /* 字号对齐 iMessage 正文（17px SF Text），此处 16.5 + 1.45 行高（标注意见 21:52）*/
+  font-size: 16.5px;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
   color: var(--墨);
   text-align: left;
   overflow-wrap: anywhere;
@@ -80,23 +82,29 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 7px;
-  margin-bottom: 9px;
+  gap: 8px;
+  padding-bottom: 9px;
+  margin-bottom: 11px;
+  border-bottom: 1px solid var(--分隔线);
 }
 
 .简报标题 {
-  font-size: 13px;
-  font-weight: 800;
+  flex: 1;
+  min-width: 0;
+  /* iMessage 会话标题量级 16 / 600，配 -0.02em 收紧 */
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--墨);
 }
 
+/* 时间戳对齐 iMessage 的 11px / 600，靠右不抢标题 */
 .简报时间 {
-  font-size: 10px;
+  flex: none;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--深绿);
-  background: var(--淡绿底);
-  padding: 2px 7px;
-  border-radius: 9px;
+  letter-spacing: 0;
+  color: var(--次要浅);
 }
 
 /* 四个统计数横条：等宽四列，flex:1 平分 */
@@ -105,7 +113,7 @@
   flex-direction: row;
   background: var(--浅灰底2);
   border-radius: var(--圆角-小托盘);
-  padding: 11px 4px;
+  padding: 13px 4px;
 }
 
 .统计项 {
@@ -115,7 +123,7 @@
 }
 
 .统计数 {
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--墨);
@@ -127,15 +135,17 @@
 }
 
 .统计名 {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--次要浅);
   margin-top: 2px;
 }
 
 .简报正文 {
-  font-size: 12px;
-  line-height: 1.7;
-  margin-top: 9px;
+  /* 简报正文与气泡正文同族，略小半档拉出层级 */
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  margin-top: 11px;
   color: var(--墨);
 }
 
@@ -145,9 +155,9 @@
 }
 
 .简报脚注 {
-  font-size: 10.5px;
+  font-size: 11.5px;
   color: var(--灰白);
-  margin-top: 7px;
+  margin-top: 9px;
 }
 
 /* ── 快捷问句胶囊行 ── */

@@ -12,12 +12,14 @@
 // 只需在滚动停下后算一次落点，比 RN 版更省代码且手感一致。
 
 import { useEffect, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import 样式 from './引导问答.module.css';
 import { 主按钮, 单选点, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
 import { GitHub图标, 放大镜图标 } from '../组件/图标';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 个人优势文本 } from '../数据/模拟数据';
+import { 城市字典, 热门城市, 行业字典 } from '../数据/城市与行业';
 
 // 「状态分流」题已删（2026-08-17 标注意见 #1）：与「到岗节奏」题功能重复
 const 题目顺序 = [
@@ -123,27 +125,6 @@ const 职位分类 = [
   '安全',
 ];
 
-interface 行业卡片项 {
-  名称: string;
-  说明: string;
-}
-
-const 行业卡片: 行业卡片项[] = [
-  {
-    名称: '金融科技',
-    说明: '支付、清结算、交易系统与风控，对高并发与合规要求高，现金薪酬普遍领先',
-  },
-  {
-    名称: '互联网平台',
-    说明: '电商、本地生活、内容社区等大流量业务，迭代节奏快、晋升通道清晰',
-  },
-  { 名称: '企业服务 / SaaS', 说明: '面向企业客户的软件与基础设施，重工程质量与长期交付' },
-  {
-    名称: '云计算 / 基础软件',
-    说明: '存储、数据库、中间件与开发者工具，技术纵深最好的方向之一',
-  },
-];
-
 function 期望职位题({
   已选,
   切换,
@@ -156,6 +137,8 @@ function 期望职位题({
   const [分类, 设分类] = useState('行业分类');
   const [行业, 设行业] = useState('金融科技');
   const [关键词, 设关键词] = useState('');
+  // 二级细选页：点行业卡后进来选具体方向（标注意见 2026-08-17 21:45）
+  const [细选行业, 设细选行业] = useState<string | null>(null);
 
   // 行业是单选语义：换行业时要把旧的「xx（行业）」标签替换掉，而不是 toggle 追加，
   // 否则圆点亮的和底部已选标签会脱节（亮的没标签、有标签的没亮）
@@ -164,10 +147,22 @@ function 期望职位题({
     设已选((旧) => [...旧.filter((条) => !条.endsWith('（行业）')), `${名称}（行业）`]);
   };
 
-  // 原型阶段右栏只有行业卡这一层数据，左栏切分类只改高亮；
-  // 搜索词按名称过滤，保证搜索框是真能用的，不是摆设
+  // 点整张卡 = 选中该行业 + 进入二级细选页挑具体方向
+  const 进细选 = (名称: string) => {
+    选行业(名称);
+    设细选行业(名称);
+  };
+
+  // 搜索词同时匹配一级行业名和二级方向名，保证搜索框是真能用的
   const 词 = 关键词.trim();
-  const 过滤后行业 = 词 === '' ? 行业卡片 : 行业卡片.filter((卡) => 卡.名称.includes(词));
+  const 过滤后行业 =
+    词 === ''
+      ? 行业字典
+      : 行业字典.filter(
+          (组) => 组.行业.includes(词) || 组.细分.some((项) => 项.includes(词))
+        );
+
+  const 当前组 = 行业字典.find((组) => 组.行业 === 细选行业) ?? null;
 
   return (
     <div className={样式.题体}>
@@ -175,7 +170,7 @@ function 期望职位题({
         <页面大标题 标题="期望职位是" />
       </div>
 
-      <搜索条 占位="搜索职位名称" 值={关键词} 改变={设关键词} />
+      <搜索条 占位="搜索行业 / 方向" 值={关键词} 改变={设关键词} />
 
       <div className={样式.两栏}>
         <div className={`${样式.左栏} 滚动区`}>
@@ -191,18 +186,25 @@ function 期望职位题({
         </div>
 
         <div className={`${样式.右栏} 滚动区`}>
-          {过滤后行业.map((卡) => {
-            const 选中 = 行业 === 卡.名称;
+          {过滤后行业.map((组) => {
+            const 选中 = 行业 === 组.行业;
+            // 该行业下已选了几个方向，回显在卡上，用户退出细选页后知道自己选过
+            const 已选方向数 = 组.细分.filter((项) => 已选.includes(`${项}（方向）`)).length;
             return (
               <button
-                key={卡.名称}
+                key={组.行业}
                 className={`${样式.行业卡} ${选中 ? 样式.行业卡选中 : ''} 可点`}
-                onClick={() => 选行业(卡.名称)}
+                onClick={() => 进细选(组.行业)}
               >
                 <单选点 选中={选中} 尺寸={19} />
                 <span className={样式.行业文字组}>
-                  <span className={样式.行业名}>{卡.名称}</span>
-                  <span className={样式.行业说明}>{卡.说明}</span>
+                  <span className={样式.行业名}>
+                    {组.行业}
+                    {已选方向数 > 0 ? (
+                      <span className={样式.方向计数}>{已选方向数} 个方向</span>
+                    ) : null}
+                  </span>
+                  <span className={样式.行业说明}>{组.说明}</span>
                 </span>
                 <span className={样式.尖括号}>›</span>
               </button>
@@ -215,34 +217,86 @@ function 期望职位题({
       </div>
 
       <已选条 已选={已选} 移除={切换} />
+
+      {当前组 ? (
+        <方向细选页
+          组={当前组}
+          已选={已选}
+          切换={切换}
+          返回={() => 设细选行业(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
-// ── A3b 工作城市：三列网格多选 ────────────────────────────────
-const 热门城市 = [
-  '北京',
-  '上海',
-  '广州',
-  '深圳',
-  '杭州',
-  '天津',
-  '西安',
-  '苏州',
-  '武汉',
-  '厦门',
-  '长沙',
-  '成都',
-  '郑州',
-  '重庆',
-  '南京',
-];
+/** 行业二级细选页：盖住整个引导壳（含进度条和主按钮），自带顶栏和已选条 */
+function 方向细选页({
+  组,
+  已选,
+  切换,
+  返回,
+}: {
+  组: (typeof 行业字典)[number];
+  已选: string[];
+  切换: (项: string) => void;
+  返回: () => void;
+}) {
+  const 本行业已选 = 组.细分.filter((项) => 已选.includes(`${项}（方向）`));
 
+  return (
+    <div className={样式.细选层}>
+      <div className={样式.细选顶栏}>
+        <button className={`${样式.细选返回} 可点`} onClick={返回} aria-label="返回行业列表">
+          ‹
+        </button>
+        <span className={样式.细选标题}>{组.行业}</span>
+        <button className={`${样式.细选完成} 可点`} onClick={返回}>
+          完成
+        </button>
+      </div>
+
+      <div className={样式.细选说明}>{组.说明}</div>
+      <div className={样式.细选提示}>
+        选具体方向，可多选{本行业已选.length > 0 ? ` · 已选 ${本行业已选.length} 个` : ''}
+      </div>
+
+      <div className={`${样式.细选列表} 滚动区`}>
+        <div className={样式.细选卡}>
+            {组.细分.map((项) => {
+            const 标签 = `${项}（方向）`;
+            const 选中 = 已选.includes(标签);
+            return (
+              <button
+                key={项}
+                className={`${样式.细选项} ${选中 ? 样式.细选项选中 : ''} 可点`}
+                onClick={() => 切换(标签)}
+              >
+                <span>{项}</span>
+                <span className={样式.细选勾}>{选中 ? '✓' : ''}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <已选条 已选={已选} 移除={切换} />
+    </div>
+  );
+}
+
+// ── A3b 工作城市：当前定位 + 热门 + 按省份铺开（标注意见 21:45）────
 function 城市题({ 已选, 切换 }: { 已选: string[]; 切换: (项: string) => void }) {
   const [关键词, 设关键词] = useState('');
   const 词 = 关键词.trim();
-  // 搜索时收起「当前定位」，只在热门城市里过滤
-  const 过滤后城市 = 词 === '' ? 热门城市 : 热门城市.filter((城) => 城.includes(词));
+
+  // 搜索跨全国匹配，省名也算命中（输「浙」出浙江全省），比只搜热门 15 城实用
+  const 搜索结果 =
+    词 === ''
+      ? []
+      : 城市字典.flatMap((组) =>
+          组.省.includes(词) ? 组.城市 : 组.城市.filter((城) => 城.includes(词))
+        );
 
   return (
     <div className={样式.题体}>
@@ -250,7 +304,7 @@ function 城市题({ 已选, 切换 }: { 已选: string[]; 切换: (项: string)
         <页面大标题 标题="你理想的工作城市是" />
       </div>
 
-      <搜索条 占位="搜索城市名 / 拼音" 值={关键词} 改变={设关键词} />
+      <搜索条 占位="搜索城市 / 省份" 值={关键词} 改变={设关键词} />
 
       <滚动区 样式覆盖={{ padding: '12px 18px 10px' }}>
         {词 === '' ? (
@@ -259,20 +313,44 @@ function 城市题({ 已选, 切换 }: { 已选: string[]; 切换: (项: string)
             <div className={样式.城市网格}>
               <城市键 城="上海" 选中={已选.includes('上海')} 按下={() => 切换('上海')} />
             </div>
-          </>
-        ) : null}
 
-        <div className={`${样式.分组标} ${词 === '' ? 样式.分组标间距 : ''}`}>
-          热 门 城 市
-        </div>
-        <div className={样式.城市网格}>
-          {过滤后城市.map((城) => (
-            <城市键 key={城} 城={城} 选中={已选.includes(城)} 按下={() => 切换(城)} />
-          ))}
-        </div>
-        {过滤后城市.length === 0 ? (
-          <div className={样式.搜索无结果}>没有匹配的城市，换个词试试。</div>
-        ) : null}
+            <div className={`${样式.分组标} ${样式.分组标间距}`}>热 门 城 市</div>
+            <div className={样式.城市网格}>
+              {热门城市.map((城) => (
+                <城市键 key={城} 城={城} 选中={已选.includes(城)} 按下={() => 切换(城)} />
+              ))}
+            </div>
+
+            {/* 按省份铺开：一省一组，省名当分组标 */}
+            {城市字典.map((组) => (
+              <div key={组.省}>
+                <div className={`${样式.分组标} ${样式.分组标间距}`}>{组.省}</div>
+                <div className={样式.城市网格}>
+                  {组.城市.map((城) => (
+                    <城市键
+                      key={`${组.省}-${城}`}
+                      城={城}
+                      选中={已选.includes(城)}
+                      按下={() => 切换(城)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <div className={样式.分组标}>搜 索 结 果</div>
+            <div className={样式.城市网格}>
+              {搜索结果.map((城) => (
+                <城市键 key={城} 城={城} 选中={已选.includes(城)} 按下={() => 切换(城)} />
+              ))}
+            </div>
+            {搜索结果.length === 0 ? (
+              <div className={样式.搜索无结果}>没有匹配的城市，换个词试试。</div>
+            ) : null}
+          </>
+        )}
       </滚动区>
 
       <已选条 已选={已选} 移除={切换} />
@@ -291,10 +369,12 @@ function 城市键({ 城, 选中, 按下 }: { 城: string; 选中: boolean; 按�
   );
 }
 
-// ── A3c 期望薪资双滚轮 ───────────────────────────────────────
+// ── A3c 期望薪资：双滚轮 + 手填（标注意见 21:47）─────────────
 const 行高 = 46;
-/** 15K–145K，每 5K 一档，共 27 档 */
+/** 15K–145K，每 5K 一档，共 27 档；超出这个区间的走手填，不用一直滚 */
 const 薪资档 = [...Array(27).keys()].map((序) => 15 + 序 * 5);
+const 薪资下界 = 3;
+const 薪资上界 = 999;
 
 function 薪资题({
   下限,
@@ -309,9 +389,7 @@ function 薪资题({
 }) {
   return (
     <滚动区 样式覆盖={{ paddingBottom: 12 }}>
-      <页面大标题
-        标题="期望现金月薪是？"
-      />
+      <页面大标题 标题="期望现金月薪是？" />
 
       <div className={样式.薪资卡}>
         <div className={样式.薪资头}>
@@ -325,8 +403,86 @@ function 薪资题({
           <薪资轮 值={下限} 设值={设下限} 名称="最低月薪" />
           <薪资轮 值={上限} 设值={设上限} 名称="最高月薪" />
         </div>
+
+        <手填行 下限={下限} 设下限={设下限} 上限={上限} 设上限={设上限} />
       </div>
     </滚动区>
+  );
+}
+
+/** 手填行：高于 145K 或要精确到非 5 的倍数时直接输入，省得滚很久 */
+function 手填行({
+  下限,
+  设下限,
+  上限,
+  设上限,
+}: {
+  下限: number;
+  设下限: (档: number) => void;
+  上限: number;
+  设上限: (档: number) => void;
+}) {
+  // 输入过程中允许临时非法（空串、比上限大），失焦/回车时才夹紧并提交
+  const [低草稿, 设低草稿] = useState(String(下限));
+  const [高草稿, 设高草稿] = useState(String(上限));
+
+  // 滚轮改了值要同步回输入框，否则两处显示会打架
+  useEffect(() => 设低草稿(String(下限)), [下限]);
+  useEffect(() => 设高草稿(String(上限)), [上限]);
+
+  const 夹紧 = (原始: string, 兜底: number) => {
+    const 数 = Number.parseInt(原始.replace(/[^0-9]/g, ''), 10);
+    if (Number.isNaN(数)) return 兜底;
+    return Math.min(Math.max(数, 薪资下界), 薪资上界);
+  };
+
+  const 提交低 = () => {
+    const 值 = 夹紧(低草稿, 下限);
+    设下限(值);
+    // 下限超过上限时把上限顶上去，保持「低 — 高」永远成立
+    if (值 > 上限) 设上限(值);
+  };
+
+  const 提交高 = () => {
+    const 值 = 夹紧(高草稿, 上限);
+    设上限(值);
+    if (值 < 下限) 设下限(值);
+  };
+
+  const 回车提交 = (事件: KeyboardEvent<HTMLInputElement>) => {
+    if (事件.key === 'Enter') 事件.currentTarget.blur();
+  };
+
+  return (
+    <div className={样式.手填区}>
+      <div className={样式.手填行}>
+        <span className={样式.手填标}>直接填</span>
+        <input
+          className={`${样式.手填框} 等宽数字`}
+          value={低草稿}
+          onChange={(事件) => 设低草稿(事件.target.value)}
+          onBlur={提交低}
+          onKeyDown={回车提交}
+          inputMode="numeric"
+          maxLength={3}
+          aria-label="最低月薪手填"
+        />
+        <span className={样式.手填单位}>K</span>
+        <span className={样式.手填连字}>—</span>
+        <input
+          className={`${样式.手填框} 等宽数字`}
+          value={高草稿}
+          onChange={(事件) => 设高草稿(事件.target.value)}
+          onBlur={提交高}
+          onKeyDown={回车提交}
+          inputMode="numeric"
+          maxLength={3}
+          aria-label="最高月薪手填"
+        />
+        <span className={样式.手填单位}>K</span>
+      </div>
+      <div className={样式.手填注}>高于 145K 直接填数字，不用滚到底</div>
+    </div>
   );
 }
 
@@ -341,23 +497,40 @@ function 薪资轮({
 }) {
   const 轮引用 = useRef<HTMLDivElement>(null);
   const 防抖计时 = useRef(0);
-  // 只取首次渲染时的初值序号：挂载定位一次，之后由用户滑动主导
-  const 初值序 = useRef(Math.max(0, 薪资档.indexOf(值)));
+  // 记住「本轮自己滚出来的值」，用来区分外部改值（手填）和自身滚动，避免回滚打架
+  const 自报值 = useRef(值);
+
+  // 手填了档位之外的数（如 180K）时，把它临时插进档位列表 ——
+  // 否则滚轮中间显示的还是最近的档（60K），和手填框里的 180 互相矛盾
+  const 档位 = 薪资档.includes(值)
+    ? 薪资档
+    : [...薪资档, 值].sort((甲, 乙) => 甲 - 乙);
+  const 当前序 = 档位.indexOf(值);
+  // 档位数组每次渲染都重建，effect 依赖要用「序号 + 长度」这种原始值
+  const 档位长度 = 档位.length;
 
   useEffect(() => {
-    const 元素 = 轮引用.current;
-    // scroll-snap 只管吸附、不管初始位置，必须手动把初值那一档滚到正中间
-    if (元素) 元素.scrollTop = 初值序.current * 行高;
+    // scroll-snap 只管吸附、不管初始位置，挂载时手动把初值那一档滚到正中间
+    if (轮引用.current) 轮引用.current.scrollTop = 当前序 * 行高;
     return () => window.clearTimeout(防抖计时.current);
+    // 只在挂载时定位一次，之后由用户滑动主导
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (值 === 自报值.current) return; // 自己滚出来的，不要再滚一次
+    自报值.current = 值;
+    if (当前序 >= 0 && 轮引用.current) 轮引用.current.scrollTop = 当前序 * 行高;
+  }, [值, 当前序]);
 
   /** 滚动过程中会连续触发，防抖到停下（90ms 无新事件）再算落点，避免每帧 setState */
   const 处理滚动 = () => {
     const 位置 = 轮引用.current?.scrollTop ?? 0;
     window.clearTimeout(防抖计时.current);
     防抖计时.current = window.setTimeout(() => {
-      const 落点 = Math.min(Math.max(Math.round(位置 / 行高), 0), 薪资档.length - 1);
-      设值(薪资档[落点]);
+      const 落点 = Math.min(Math.max(Math.round(位置 / 行高), 0), 档位长度 - 1);
+      自报值.current = 档位[落点];
+      设值(档位[落点]);
     }, 90);
   };
 
@@ -369,7 +542,7 @@ function 薪资轮({
       role="listbox"
       aria-label={名称}
     >
-      {薪资档.map((档) => (
+      {档位.map((档) => (
         <div key={档} className={样式.薪资档} role="option" aria-selected={档 === 值}>
           <span className={`${档 === 值 ? 样式.档选中 : 样式.档未选} 等宽数字`}>
             {档}K

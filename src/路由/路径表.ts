@@ -28,6 +28,14 @@ export const 路径 = {
   我的简历: '/resume',
   未通过说明: '/rejected',
 
+  // ── 「我的」下属功能页 ──
+  通知中心: '/notifications',
+  设置: '/settings',
+  屏蔽名单: '/blocklist',
+  披露偏好: '/disclosure-prefs',
+  归档谈判: '/archived',
+  帮助与客服: '/help',
+
   // ── 企业端（招人方）。前缀 /hr，参数名同样必须 ASCII ──
   企业实名认证: '/hr/verify',
   招聘名片: '/hr/card',

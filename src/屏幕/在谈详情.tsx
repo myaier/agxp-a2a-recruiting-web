@@ -10,6 +10,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './在谈详情.module.css';
 import 拿不准弹层 from './拿不准弹层';
+import 简历预览层 from '../组件/简历预览层';
 import { 次级页外壳, 返回栏, 滚动区, 代理输入条, 小结托盘, 公司字标 } from '../组件/通用';
 import { 对勾图标 } from '../组件/图标';
 import { 各单阶段小结, 卡点决策, 意向确认说明, 在谈职位详情 } from '../数据/模拟数据';
@@ -62,6 +63,8 @@ export default function 在谈详情() {
   const [当前Tab, 设当前Tab] = useState<页内Tab>('谈判进度');
   const [弹层可见, 设弹层可见] = useState(false);
   const [决策快照, 设决策快照] = useState<决策快照内容 | null>(null);
+  // 点开的简历附件（null = 没开）。存文件名和递交时间，预览层顶部要显示
+  const [看简历, 设看简历] = useState<{ 文件名: string; 时间: string } | null>(null);
 
   // 「退出谈判」会把这一单从在谈列表里移除（归档），页面必须留一份快照，
   // 否则用户点完「不谈了 · 退出」整屏会瞬间跳成已归档提示，看不到决策回执。
@@ -190,15 +193,27 @@ export default function 在谈详情() {
 
                   {段.附件 ? (
                     <div className={样式.附件}>
-                      <span className={样式.PDF块}>
-                        <span className={样式.PDF字}>PDF</span>
-                      </span>
-                      <div className={样式.附件文本}>
-                        <div className={`${样式.附件名} 单行`}>{段.附件.文件名}</div>
-                        <div className={`${样式.附件说明} 单行`}>{段.附件.说明}</div>
-                      </div>
+                      {/* 标注意见 22:04：点附件直接看到简历本体（对方收到的那一版）*/}
                       <button
-                        className={`${样式.小链接} 可点`}
+                        className={`${样式.附件主体} 可点`}
+                        onClick={() =>
+                          设看简历({
+                            文件名: 段.附件!.文件名,
+                            时间: 段.时间,
+                          })
+                        }
+                      >
+                        <span className={样式.PDF块}>
+                          <span className={样式.PDF字}>PDF</span>
+                        </span>
+                        <span className={样式.附件文本}>
+                          <span className={`${样式.附件名} 单行`}>{段.附件.文件名}</span>
+                          <span className={`${样式.附件说明} 单行`}>{段.附件.说明}</span>
+                        </span>
+                        <span className={样式.附件看}>查看 ›</span>
+                      </button>
+                      <button
+                        className={`${样式.小链接} ${样式.链接间距} 可点`}
                         onClick={() => 跳转(路径.往来记录(编号))}
                       >
                         发送记录 ›
@@ -282,6 +297,16 @@ export default function 在谈详情() {
           跳转(路径.规则库);
         }}
       />
+
+      {/* 简历预览：显示对方实际收到的那一版（姓名代号化、联系方式打码）*/}
+      {看简历 ? (
+        <简历预览层
+          文件名={看简历.文件名}
+          代号={`A-${单.编号.split('-')[1] ?? '01'}`}
+          时间={看简历.时间}
+          关闭={() => 设看简历(null)}
+        />
+      ) : null}
     </次级页外壳>
   );
 }

@@ -9,6 +9,7 @@
   --轮未选色: #c9cec7; /* 薪资轮上下两档未选中的灰 */
   --虚线描边: #d0d3c8; /* 「其他排除条件」虚线框 */
 
+  position: relative; /* 二级细选页 absolute 盖满整壳的定位基准 */
   flex: 1;
   min-height: 0;
   display: flex;
@@ -271,10 +272,19 @@
   min-width: 0;
   display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
+  /* 标注意见 21:45：横向单行可滑，选多了不再往下堆高、把内容区顶掉 */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
   gap: 6px;
+  padding-bottom: 2px;
+}
+.已选标签组::-webkit-scrollbar {
+  display: none;
 }
 .已选标签 {
+  flex: none;
+  white-space: nowrap;
   padding: 5px 10px;
   border-radius: 7px;
   background: var(--淡绿底);
@@ -295,7 +305,8 @@
   display: flex;
   flex-direction: row;
   justify-content: space-around;
-  padding-bottom: 6px;
+  /* 与轮容器同样内收 26px，标签才跟得上滚轮中心（标注意见 21:47）*/
+  padding: 0 26px 6px;
 }
 .薪资头文字 {
   font-size: 11px;
@@ -307,12 +318,14 @@
   display: flex;
   flex-direction: row;
   height: 138px;
+  /* 左右各内收 26px：两组数字往中间靠，不再贴卡边（标注意见 21:47）*/
+  padding: 0 26px;
 }
 /* 中间档的高亮底：盖住第二行，上下各多出 3px */
 .轮高亮 {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: -26px;
+  right: -26px;
   top: 46px;
   margin-top: -3px;
   height: 52px;
@@ -680,4 +693,192 @@
   padding: 0 0 2px;
   min-width: 0;
   width: 100%;
+}
+
+/* ── 行业卡上的方向计数徽标（二级细选回显）── */
+.方向计数 {
+  margin-left: 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--深绿);
+  background: var(--淡绿底);
+  padding: 1px 6px;
+  border-radius: 8px;
+  vertical-align: 2px;
+}
+
+/* ── A3b2 二级细选页：盖住整个引导壳（标注意见 21:45）── */
+.细选层 {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: var(--页面底);
+  /* 这一层盖掉了主按钮区，底部安全区要自己补，否则已选条压在 home indicator 上 */
+  padding-bottom: var(--安全区下);
+  display: flex;
+  flex-direction: column;
+  animation: 细选进入 0.22s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.细选顶栏 {
+  flex: none;
+  height: 44px;
+  padding: 0 12px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--分隔线);
+  background: var(--白);
+}
+
+.细选返回 {
+  flex: none;
+  width: 30px;
+  font-size: 26px;
+  font-weight: 300;
+  color: var(--墨);
+  line-height: 1;
+  text-align: left;
+}
+
+.细选标题 {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.细选完成 {
+  flex: none;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.细选说明 {
+  flex: none;
+  padding: 14px 18px 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--正文);
+}
+
+.细选提示 {
+  flex: none;
+  padding: 8px 18px 2px;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.细选列表 {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 18px calc(var(--安全区下) + 12px);
+}
+
+/* 行放进白卡：细选层底色是米色，分隔线在米色上看不见 */
+.细选卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 2px 14px;
+}
+
+.细选项 {
+  width: 100%;
+  padding: 15px 2px;
+  border-bottom: 1px solid var(--分隔线);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+  color: var(--墨);
+  text-align: left;
+}
+
+.细选项:last-child {
+  border-bottom: none;
+}
+
+.细选项选中 {
+  color: var(--深绿);
+  font-weight: 700;
+}
+
+.细选勾 {
+  flex: none;
+  color: var(--深绿);
+  font-weight: 800;
+}
+
+@keyframes 细选进入 {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ── 薪资手填（标注意见 21:47）── */
+.手填区 {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--分隔线);
+}
+
+.手填行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.手填标 {
+  font-size: 12px;
+  color: var(--次要浅);
+  margin-right: 2px;
+}
+
+.手填框 {
+  width: 54px;
+  border: 1px solid var(--描边);
+  border-radius: 9px;
+  padding: 7px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--墨);
+  background: var(--白);
+  text-align: center;
+  outline: none;
+  font-family: inherit;
+}
+
+.手填框:focus {
+  border-color: var(--淡绿描边);
+  background: var(--淡绿底2);
+}
+
+.手填单位 {
+  font-size: 12.5px;
+  color: var(--正文);
+}
+
+.手填连字 {
+  font-size: 13px;
+  color: var(--弱化);
+  margin: 0 2px;
+}
+
+.手填注 {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--最弱);
+  text-align: center;
 }

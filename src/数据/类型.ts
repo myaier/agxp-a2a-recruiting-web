@@ -173,3 +173,62 @@ export interface 在招岗位 {
   状态: '在招' | '已归档';
   在谈数: number;
 }
+
+// ── 「我的」下属功能页的数据类型（通知 / 屏蔽 / 披露 / 归档 / 帮助）──
+
+/** 通知中心一条。目标 = 点开后跳去的路由，null 表示纯告知型通知 */
+export interface 通知条 {
+  编号: string;
+  类型: '需要你' | '进展' | '新机会' | '系统';
+  标题: string;
+  正文: string;
+  时间: string;
+  分组: '今天' | '本周' | '更早';
+  已读: boolean;
+  目标: string | null;
+}
+
+/** 屏蔽名单一条。屏蔽是双向的：对方也看不到你（业务约束 6）*/
+export interface 屏蔽项 {
+  编号: string;
+  名称: string;
+  首字: string;
+  理由: string;
+  时间: string;
+}
+
+/** 披露档位：代理在什么时机可以把这项信息交出去 */
+export type 披露档 = '不披露' | '意向确认后' | '一直允许';
+
+/**
+ * 一条披露偏好。锁定 有值时该项被业务机制钉死、不可改，值就是给用户看的原因 ——
+ * 双盲机制下薪资数字这一项永远锁在「不披露」，不能靠开关放开。
+ */
+export interface 披露项 {
+  编号: string;
+  名称: string;
+  说明: string;
+  档: 披露档;
+  可选档: 披露档[];
+  锁定: string | null;
+}
+
+/** 归档谈判一条：谈崩 / 退出 / 未通过之后落到这里，可回看全程往来 */
+export interface 归档条 {
+  编号: string;
+  公司: string;
+  公司首字: string;
+  职位: string;
+  止步阶段: string;
+  结果: '我方退出' | '对方未通过' | '双方未达成';
+  原因: string;
+  时间: string;
+}
+
+/** 帮助中心一条问答 */
+export interface 问答条 {
+  编号: string;
+  分类: string;
+  问: string;
+  答: string;
+}

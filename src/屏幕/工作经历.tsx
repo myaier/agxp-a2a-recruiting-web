@@ -204,6 +204,7 @@ function 经历编辑页({
       隐藏: false,
     }
   );
+  const [行业层, 设行业层] = useState(false);
   const 至今 = 草稿.结束 === null;
   const 必填齐 = 草稿.公司.trim() !== '' && 草稿.职位.trim() !== '' && 草稿.开始 !== '';
 
@@ -243,27 +244,17 @@ function 经历编辑页({
           />
         </div>
 
-        <div className={样式.编辑条目}>
-          <div className={样式.条目标签}>所属行业</div>
-          <input
-            className={样式.条目输入}
-            value={草稿.行业}
-            placeholder="选择或输入"
-            onChange={(事件) => 改('行业', 事件.target.value)}
-          />
-          {/* 快捷片：点一下填入，手机上少打字 */}
-          <div className={样式.行业片行}>
-            {常见行业.map((行业) => (
-              <button
-                key={行业}
-                className={`${样式.行业片} ${草稿.行业 === 行业 ? 样式.行业片选中 : ''} 可点`}
-                onClick={() => 改('行业', 行业)}
-              >
-                {行业}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* 所属行业：标注意见 21:43 —— 不摊一排快捷片，改成和「公司名称」同款的
+            点击行，点开从底部选择层里挑（也可在层里手输），选完回填 */}
+        <button className={`${样式.选择条目} 可点`} onClick={() => 设行业层(true)}>
+          <span className={样式.条目标签}>所属行业</span>
+          <span className={样式.选择条目值行}>
+            <span className={`${草稿.行业 ? 样式.条目值 : 样式.条目占位} 单行`}>
+              {草稿.行业 || '选择行业'}
+            </span>
+            <span className={样式.尖括号}>›</span>
+          </span>
+        </button>
 
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>职位名称</div>
@@ -345,6 +336,40 @@ function 经历编辑页({
           </button>
         ) : null}
       </滚动区>
+
+      {/* 行业选择层：常见行业一行一条，底部留手输入口 */}
+      {行业层 ? (
+        <div className={样式.遮罩} onClick={() => 设行业层(false)}>
+          <div className={样式.选择层} onClick={(事件) => 事件.stopPropagation()}>
+            <div className={样式.选择层抓手} />
+            <div className={样式.选择层标题}>所属行业</div>
+            <div className={`${样式.选择层列表} 滚动区`}>
+              {常见行业.map((行业) => (
+                <button
+                  key={行业}
+                  className={`${样式.选择项} ${草稿.行业 === 行业 ? 样式.选择项选中 : ''} 可点`}
+                  onClick={() => {
+                    改('行业', 行业);
+                    设行业层(false);
+                  }}
+                >
+                  {行业}
+                  {草稿.行业 === 行业 ? <span className={样式.选择勾}>✓</span> : null}
+                </button>
+              ))}
+            </div>
+            <input
+              className={样式.选择层输入}
+              value={草稿.行业}
+              placeholder="没有合适的？直接输入"
+              onChange={(事件) => 改('行业', 事件.target.value)}
+              onKeyDown={(事件) => {
+                if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 设行业层(false);
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
     </次级页外壳>
   );
 }

@@ -1,0 +1,264 @@
+/* 简历预览层：底部升起的近全屏抽屉，里面是一张「纸」 */
+
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  display: flex;
+  align-items: flex-end;
+  z-index: 80;
+  animation: 遮罩淡入 0.18s ease both;
+}
+
+.层 {
+  width: 100%;
+  height: 92%;
+  background: var(--白);
+  border-radius: 18px 18px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: 抽屉升起 0.26s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.顶栏 {
+  flex: none;
+  padding: 10px 16px 11px;
+  border-bottom: 1px solid var(--描边);
+  background: var(--白);
+}
+
+.抓手 {
+  display: block;
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  margin: 0 auto 11px;
+}
+
+.顶栏行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.文件名 {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.关闭键 {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--浅灰底);
+  color: var(--次要);
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* 对照条：点明「这是对方看到的版本」 */
+.对照条 {
+  margin-top: 9px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: var(--淡绿底2, #f4f8e8);
+  border: 1px solid var(--描边);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--正文);
+}
+
+.对照强调 {
+  font-weight: 700;
+  color: var(--深绿文字);
+}
+
+/* ── 纸 ── */
+.纸 {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 18px calc(var(--安全区下) + 20px);
+}
+
+.抬头 {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.代号 {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--墨);
+}
+
+.抬头职位 {
+  font-size: 13px;
+  color: var(--正文);
+  margin-top: 4px;
+}
+
+.打码行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.打码项 {
+  font-size: 11px;
+  color: var(--次要浅);
+  background: var(--浅灰底);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+
+.隐去注 {
+  font-size: 10.5px;
+  color: var(--深绿);
+  margin-top: 8px;
+}
+
+.节标 {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--次要浅);
+  margin: 18px 0 10px;
+}
+
+.经历段 {
+  padding-bottom: 13px;
+  margin-bottom: 13px;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.经历段:last-of-type {
+  border-bottom: none;
+}
+
+.经历头 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.经历公司 {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--墨);
+  line-height: 1.4;
+}
+
+.经历时间 {
+  flex: none;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.经历职位 {
+  font-size: 13px;
+  color: var(--正文);
+  margin-top: 4px;
+}
+
+.经历行业 {
+  display: inline-block;
+  font-size: 10.5px;
+  color: var(--次要浅);
+  background: var(--浅灰底);
+  padding: 2px 8px;
+  border-radius: 5px;
+  margin-top: 6px;
+}
+
+.经历内容 {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--正文);
+  margin-top: 8px;
+}
+
+.优势列 {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.优势项 {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--正文);
+  margin-bottom: 3px;
+}
+
+/* ── 薪资框：双盲的核心表述 ── */
+.薪资框 {
+  border: 1px solid var(--描边);
+  border-radius: 13px;
+  padding: 12px 13px;
+  background: var(--浅灰底2);
+}
+
+.薪资行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+}
+
+.薪资标 {
+  font-size: 12.5px;
+  color: var(--次要);
+}
+
+.薪资值 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--深绿文字);
+}
+
+.薪资注 {
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--描边);
+}
+
+.纸脚 {
+  font-size: 10px;
+  color: var(--最弱);
+  text-align: center;
+  margin-top: 20px;
+}
+
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes 抽屉升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}

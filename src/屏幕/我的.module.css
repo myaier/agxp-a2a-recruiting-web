@@ -30,6 +30,25 @@
   background: var(--意向);
 }
 
+/* 铃铛上的未读数：>9 时显示 9+，不让胶囊被数字撑变形 */
+.未读数 {
+  position: absolute;
+  right: -5px;
+  top: -4px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--意向);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  border: 1.5px solid var(--白);
+  box-sizing: content-box;
+}
+
 /* ── 头像行：整行是一个按钮，所以要显式复位 text-align / width ── */
 .头像行 {
   flex: none;

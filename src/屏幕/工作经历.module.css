@@ -336,3 +336,126 @@
   font-weight: 600;
   text-align: center;
 }
+
+/* ── 点击式选择条目（所属行业）+ 底部选择层（标注意见 21:43）── */
+.选择条目 {
+  width: 100%;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.选择条目值行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.条目值 {
+  flex: 1;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.条目占位 {
+  flex: 1;
+  font-size: 15.5px;
+  color: var(--最弱);
+}
+
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  display: flex;
+  align-items: flex-end;
+  z-index: 40;
+  animation: 遮罩淡入 0.18s ease both;
+}
+
+.选择层 {
+  width: 100%;
+  background: var(--白);
+  border-radius: 18px 18px 0 0;
+  padding: 10px 18px calc(var(--安全区下) + 14px);
+  max-height: 72%;
+  display: flex;
+  flex-direction: column;
+  animation: 抽屉升起 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.选择层抓手 {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  align-self: center;
+  margin-bottom: 14px;
+}
+
+.选择层标题 {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--墨);
+  margin-bottom: 6px;
+}
+
+.选择层列表 {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.选择项 {
+  width: 100%;
+  padding: 14px 2px;
+  border-bottom: 1px solid var(--分隔线);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+  color: var(--墨);
+  text-align: left;
+}
+
+.选择项选中 {
+  color: var(--深绿);
+  font-weight: 700;
+}
+
+.选择勾 {
+  color: var(--深绿);
+  font-weight: 800;
+}
+
+.选择层输入 {
+  flex: none;
+  margin-top: 12px;
+  border: 1px solid var(--描边);
+  border-radius: 12px;
+  padding: 11px 13px;
+  font-size: 14px;
+  color: var(--墨);
+  outline: none;
+  background: var(--白);
+}
+
+.选择层输入::placeholder {
+  color: var(--最弱);
+}
+
+/* 本地 keyframes：CSS Modules 会重命名 animation-name */
+@keyframes 遮罩淡入 {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes 抽屉升起 {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
