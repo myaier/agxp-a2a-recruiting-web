@@ -13,6 +13,7 @@ import 样式 from './企业问AI代理.module.css';
 import { 次级页外壳, 返回栏, 真输入条 } from '../组件/通用';
 import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
+import { use应用状态 } from '../状态/应用状态';
 import { 轻提示 } from '../组件/轻提示';
 import { 人才漏斗, 企业日报, 企业代理对话初始, 企业快捷问句 } from '../数据/企业端模拟数据';
 import type { 代理对话条 } from '../数据/类型';
@@ -34,6 +35,7 @@ function 生成回复(问题: string): string {
 
 export default function 企业问AI代理() {
   const { 返回 } = use导航();
+  const { 状态 } = use应用状态();
   const [对话, 设对话] = useState<代理对话条[]>(企业代理对话初始);
   const [草稿, 设草稿] = useState('');
   // 对话流容器：需要拿原生 DOM 节点手动滚到底，所以用 div.滚动区 而不是 <滚动区> 组件
@@ -72,6 +74,8 @@ export default function 企业问AI代理() {
               return (
                 <div key={条.编号} className={样式.我行}>
                   <div className={`${样式.我气泡} ${样式.气泡文字}`}>{条.内容}</div>
+                  {/* 我方头像（标注 23:52）：与左侧代理头像对称 */}
+                  <span className={样式.我头像}>{状态.企业认证.姓名.charAt(0)}</span>
                 </div>
               );
             return <代理气泡 key={条.编号} 内容={条.内容 ?? ''} />;
@@ -98,12 +102,12 @@ export default function 企业问AI代理() {
   );
 }
 
-// ── 代理气泡：左侧小盾牌头像 + 左上角切平的白气泡 ─────────────────
+// ── 代理气泡：左侧代理标头像（与主页横幅同款，无圆底）+ 左上角切平的白气泡 ──
 function 代理气泡({ 内容 }: { 内容: string }) {
   return (
     <div className={样式.代理行}>
       <span className={样式.小盾牌}>
-        <代理标 尺寸={15} 脸色="#ffffff" 眼色="var(--荧光绿)" 带点={false} />
+        <代理标 尺寸={26} 脸色="#ffffff" 眼色="var(--墨)" 描边色="var(--墨)" 描边宽={2.6} />
       </span>
       <div className={`${样式.代理气泡} ${样式.气泡文字}`}>{内容}</div>
     </div>
@@ -117,7 +121,7 @@ function 简报气泡() {
   return (
     <div className={样式.代理行}>
       <span className={样式.小盾牌}>
-        <代理标 尺寸={15} 脸色="#ffffff" 眼色="var(--荧光绿)" 带点={false} />
+        <代理标 尺寸={26} 脸色="#ffffff" 眼色="var(--墨)" 描边色="var(--墨)" 描边宽={2.6} />
       </span>
       <div className={样式.代理气泡}>
         <div className={样式.简报头}>
