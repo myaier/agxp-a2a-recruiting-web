@@ -13,7 +13,7 @@ import 代理标 from '../组件/代理标';
 import 举报层 from '../组件/举报层';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
-import { 直聊消息 } from '../数据/模拟数据';
+import { 直聊消息, 我的信息 } from '../数据/模拟数据';
 import type { 会话条 } from '../数据/类型';
 
 export default function 直聊会话() {
@@ -146,10 +146,14 @@ export function 消息条({ 条, 对方首字 }: { 条: 会话条; 对方首字:
   if (条.角色 === '我') {
     return (
       <div className={样式.我方行}>
-        <div className={样式.我气泡}>
-          <div className={样式.气泡文字}>{条.内容}</div>
+        {/* 我方头像（标注 23:59）：与对方头像对称，挂在气泡右侧 */}
+        <div className={样式.我气泡组}>
+          <div className={样式.我气泡}>
+            <div className={样式.气泡文字}>{条.内容}</div>
+          </div>
+          <span className={样式.我头像}>{我的信息.首字}</span>
         </div>
-        {条.时间 ? <span className={样式.时间戳}>{条.时间}</span> : null}
+        {条.时间 ? <span className={`${样式.时间戳} ${样式.时间戳带头像}`}>{条.时间}</span> : null}
       </div>
     );
   }

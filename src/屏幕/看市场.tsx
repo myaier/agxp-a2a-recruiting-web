@@ -382,7 +382,7 @@ function 市场卡({
       <button className={`${样式.卡主体} 可点`} onClick={按下}>
         {/* 公司头行：字标 + 公司名/简介 + 右列[适配环 + 薪资]，与在谈卡一比一 */}
         <div className={样式.公司头行}>
-          <公司字标 首字={岗.公司首字} />
+          <公司字标 首字={岗.公司首字} 公司名={岗.公司} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className={`${样式.公司名} 单行`}>{岗.公司}</div>
             <div className={`${样式.公司简介} 单行`}>{岗.公司简介}</div>

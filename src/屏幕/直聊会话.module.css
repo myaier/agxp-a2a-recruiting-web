@@ -198,3 +198,32 @@
   font-weight: 600;
   color: var(--弱化);
 }
+
+/* 我方头像（标注 23:59）：与对方头像同尺寸，挂气泡右侧 */
+.我气泡组 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.我头像 {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
+  margin-top: 2px;
+  background: var(--墨);
+  color: var(--荧光绿);
+  font-size: 11.5px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 有头像后时间戳与气泡右缘对齐（让开头像宽度） */
+.时间戳带头像 {
+  margin-right: 34px;
+}

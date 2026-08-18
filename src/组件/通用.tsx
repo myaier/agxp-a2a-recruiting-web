@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import 样式 from './通用.module.css';
 import 代理标 from './代理标';
+import { 公司标映射 } from '../资源/公司标索引';
 import type { 阶段 } from '../数据/类型';
 
 /** 四阶段配色表：卡片阶段标签、详情页节点、披露说明徽标统一走这张表 */
@@ -366,9 +367,11 @@ export function 小结托盘({
   );
 }
 
-// ── 公司字标方块（无图片资源，用首字占位）───────────────────────
+// ── 公司字标方块 ───────────────────────────────────────────────
+// 传 公司名 且在 公司标映射 里有真 logo 时渲染图片（标注 23:55），否则首字占位
 export function 公司字标({
   首字,
+  公司名,
   尺寸 = 38,
   圆角 = 11,
   底色 = 'var(--白)',
@@ -377,6 +380,8 @@ export function 公司字标({
   字号 = 15,
 }: {
   首字: string;
+  /** 公司全名，用于查真实 logo */
+  公司名?: string;
   尺寸?: number;
   圆角?: number;
   底色?: string;
@@ -384,6 +389,7 @@ export function 公司字标({
   描边?: boolean;
   字号?: number;
 }) {
+  const 真标 = 公司名 ? 公司标映射[公司名] : undefined;
   return (
     <span
       className={样式.公司字标}
@@ -391,13 +397,22 @@ export function 公司字标({
         width: 尺寸,
         height: 尺寸,
         borderRadius: 圆角,
-        background: 底色,
+        background: 真标 ? 'var(--白)' : 底色,
         color: 字色,
         fontSize: 字号,
-        border: 描边 ? '1px solid var(--描边)' : 'none',
+        border: 描边 || 真标 ? '1px solid var(--描边)' : 'none',
+        overflow: 'hidden',
       }}
     >
-      {首字}
+      {真标 ? (
+        <img
+          src={真标}
+          alt=""
+          style={{ width: '72%', height: '72%', objectFit: 'contain', display: 'block' }}
+        />
+      ) : (
+        首字
+      )}
     </span>
   );
 }
