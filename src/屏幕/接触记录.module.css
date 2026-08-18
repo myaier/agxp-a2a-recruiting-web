@@ -1,0 +1,47 @@
+/* 谁接触过我 —— 卡 / 行 / 字标 / 空态复用 我的功能页.module.css，
+   这里只补动作小标与时间行。 */
+
+.头行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.公司 {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+/* 动作小标：三种动作分三档颜色，一眼看出「只是看了」还是「真的来敲门了」 */
+.动作标 {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.动作看画像 {
+  background: var(--浅灰底);
+  color: var(--次要);
+}
+
+.动作发起接触 {
+  background: var(--递简历底);
+  color: var(--递简历);
+}
+
+.动作看简历 {
+  background: var(--初筛底);
+  color: var(--初筛);
+}
+
+.时间 {
+  font-size: 11.5px;
+  color: var(--最弱);
+  margin-top: 5px;
+}

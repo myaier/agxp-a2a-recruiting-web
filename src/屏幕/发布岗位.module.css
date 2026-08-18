@@ -29,6 +29,33 @@
   background: var(--荧光绿);
 }
 
+/* ── 编辑态的分段切换（替代进度条）：三步可直接点，改哪步进哪步 ── */
+.分段行 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  margin: 0 18px 6px;
+  padding: 3px;
+  background: var(--浅灰底);
+  border-radius: 11px;
+}
+.分段 {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 0;
+  border-radius: 9px;
+  font-size: 12px;
+  color: var(--次要);
+  text-align: center;
+}
+.分段选中 {
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  font-weight: 700;
+  color: var(--深绿文字);
+}
+
 /* ── 第一步：表单条目（同 工作经历 编辑视图）── */
 .表单区 {
   padding: 6px 22px 0;
@@ -199,6 +226,87 @@
 /* ── 第三步：硬性条件区 ── */
 .硬性区 {
   padding: 16px 22px 0;
+}
+
+/* 已写进合同的条件：选中态片 + 右侧 ✕，点整片即删 */
+.已选片行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+.已选片 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 12px;
+  border-radius: var(--圆角-胶囊);
+  background: var(--淡绿底);
+  border: 1px solid var(--淡绿描边);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+.已选片删 {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--次要浅);
+}
+
+/* 一条都没有时的提示：说清后果，而不是留一片空白 */
+.条件空提示 {
+  margin-top: 10px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--次要浅);
+}
+
+/* 备选区小标 */
+.备选标 {
+  margin-top: 16px;
+  font-size: 11px;
+  color: var(--最弱);
+}
+
+/* 自定义添加行（输入框 + 添加键，版式同 屏蔽名单 的添加行）*/
+.自定义行 {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  margin-top: 14px;
+}
+.自定义输入 {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--描边深);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--墨);
+  background: var(--白);
+  outline: none;
+  font-family: inherit;
+}
+.自定义输入::placeholder {
+  color: var(--最弱);
+}
+.自定义输入:focus {
+  border-color: var(--淡绿描边);
+}
+.自定义键 {
+  flex: none;
+  padding: 0 16px;
+  border-radius: 12px;
+  background: var(--荧光绿);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+}
+.自定义键禁用 {
+  background: var(--浅灰底);
+  color: var(--最弱);
 }
 /* 双盲说明：淡绿卡（同 引导问答 的优势示例卡），强调 AI 代理执行语义 */
 .硬性说明 {

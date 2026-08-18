@@ -10,6 +10,7 @@ import 样式 from './直聊会话.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../组件/通用';
 import { 细对勾图标 } from '../组件/图标';
 import 代理标 from '../组件/代理标';
+import 举报层 from '../组件/举报层';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 直聊消息 } from '../数据/模拟数据';
@@ -21,6 +22,8 @@ export default function 直聊会话() {
   const [草稿, 设草稿] = useState('');
   // 换微信 / 换电话 / 发简历 点过就落到「已完成」态（灰底 + 细对勾），不可再点
   const [已完成, 设已完成] = useState<string[]>([]);
+  // 右上「⋯」拉起的举报层：直聊是双方已互相看到身份的场景，举报与屏蔽都指向具体那家公司
+  const [举报层开, 设举报层开] = useState(false);
   const 底部锚 = use自动滚到底(消息);
 
   // 发送：草稿去空后追加到本地消息流，随即清空输入框
@@ -39,7 +42,15 @@ export default function 直聊会话() {
         标题="陆知遥"
         副标题="MiniMax · Agent 产品线负责人"
         居中标题
-        右侧={<span className={样式.更多}>⋯</span>}
+        右侧={
+          <button
+            className={`${样式.更多} 可点`}
+            onClick={() => 设举报层开(true)}
+            aria-label="举报"
+          >
+            ⋯
+          </button>
+        }
       />
 
       {/* 旁听提示条：交回按钮把话头还给 AI 代理，因此跳到「问AI代理」对话页 */}
@@ -78,6 +89,14 @@ export default function 直聊会话() {
       />
 
       <真输入条 占位="发消息…" 值={草稿} 改变={设草稿} 发送={发送} 灰边 />
+
+      {举报层开 ? (
+        <举报层
+          对象名="陆知遥 · MiniMax"
+          屏蔽名称="MiniMax"
+          关闭={() => 设举报层开(false)}
+        />
+      ) : null}
     </次级页外壳>
   );
 }

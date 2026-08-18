@@ -9,6 +9,7 @@ export const 路径 = {
   切换身份自求职端: '/identity?switch=1&from=app',
   切换身份自企业端: '/identity?switch=1&from=hr',
   引导说明: '/intro',
+  基本信息: '/basic',
   工作经历: '/experience',
   引导问答: '/wizard',
   披露说明: '/disclosure',
@@ -41,11 +42,20 @@ export const 路径 = {
   披露偏好: '/disclosure-prefs',
   归档谈判: '/archived',
   帮助与客服: '/help',
+  // ── 两端共用的外围页（求职端与企业端设置里都能进）──
+  账号安全: '/account',
+  反馈: '/feedback',
+  用户协议: '/terms',
+  接触记录: '/visitors',
 
   // ── 企业端（招人方）。前缀 /hr，参数名同样必须 ASCII ──
   企业实名认证: '/hr/verify',
   招聘名片: '/hr/card',
   发布岗位: '/hr/post-job',
+  /** 编辑已发布的岗位：同一个「发布岗位」屏的编辑态，带岗位编号 */
+  编辑岗位: (编号: string) => `/hr/post-job/${编号}`,
+  编辑岗位模板: '/hr/post-job/:id',
+  公司档案编辑: '/hr/company-profile',
   企业主壳: '/hr',
   候选详情: (编号: string) => `/hr/candidate/${编号}`,
   候选详情模板: '/hr/candidate/:id',
@@ -60,4 +70,6 @@ export const 路径 = {
   匿名在线简历模板: '/hr/resume/:id',
   企业通知中心: '/hr/notifications',
   企业设置: '/hr/settings',
+  企业披露策略: '/hr/disclosure',
+  已筛候选: '/hr/screened-out',
 } as const;

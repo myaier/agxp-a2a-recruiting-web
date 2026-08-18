@@ -124,6 +124,102 @@
   margin-top: 3px;
 }
 
+/* ── 关键项目：挂在所属经历行下面，缩进一档表达从属关系 ── */
+.项目组 {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 7px;
+  padding-left: 9px;
+  border-left: 2px solid var(--淡绿描边);
+}
+
+.项目行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.项目名 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--标题次级);
+}
+
+.项目附 {
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.项目结果 {
+  flex: 1 1 100%;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--次要浅);
+}
+
+/* ── 专业技能标签墙 / 空态行 ── */
+.标签行 {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 14px;
+  text-align: left;
+}
+
+.标签组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.标签 {
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--淡绿底);
+  color: var(--深绿文字);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.空态 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--最弱);
+}
+
+/* 证书名沿用经历公司的字重，年份走 .经历时间 */
+.证书名 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+/* ── 多意向引导行：一行轻提示，不做成卡片，别跟简历分节抢分量 ── */
+.加意向行 {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 8px;
+  text-align: left;
+}
+
+.加意向文 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--深绿);
+}
+
 /* ── 个人优势：数据里带 \n，靠 pre-line 还原换行 ── */
 .优势正文 {
   font-size: 12.5px;

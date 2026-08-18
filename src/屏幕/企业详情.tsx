@@ -38,7 +38,13 @@ export default function 企业详情() {
   const { id: 键 = '' } = useParams<{ id: string }>();
   const { 返回, 跳转 } = use导航();
   const { 状态 } = use应用状态();
-  const 档 = 取公司档案(键);
+  const 静态档 = 取公司档案(键);
+  // 企业端在「公司资料」里改过自述，这里要立刻是新的（同一份数据源）。
+  // 只有本公司（yunqu，即当前登录企业）适用覆盖，别家公司仍读静态档。
+  const 档 =
+    状态.公司自述 && (键 === 'yunqu' || 键 === '云衢科技')
+      ? { ...静态档, ...状态.公司自述 }
+      : 静态档;
 
   const [介绍层, 设介绍层] = useState(false);
   const [条款层, 设条款层] = useState(false);

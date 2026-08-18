@@ -7,6 +7,7 @@ import { 路径 } from './路由/路径表';
 import 登录 from './屏幕/登录';
 import 选身份 from './屏幕/选身份';
 import 引导说明 from './屏幕/引导说明';
+import 基本信息 from './屏幕/基本信息';
 import 工作经历 from './屏幕/工作经历';
 import 引导问答 from './屏幕/引导问答';
 import 披露说明 from './屏幕/披露说明';
@@ -32,6 +33,7 @@ import 帮助与客服 from './屏幕/帮助与客服';
 import 企业实名认证 from './屏幕/企业实名认证';
 import 招聘名片 from './屏幕/招聘名片';
 import 发布岗位 from './屏幕/发布岗位';
+import 公司档案编辑 from './屏幕/公司档案编辑';
 import 企业主壳 from './屏幕/企业主壳';
 import 候选详情 from './屏幕/候选详情';
 import 候选未通过 from './屏幕/候选未通过';
@@ -43,6 +45,12 @@ import 企业代理设置 from './屏幕/企业代理设置';
 import 匿名在线简历 from './屏幕/匿名在线简历';
 import 企业通知中心 from './屏幕/企业通知中心';
 import 企业设置 from './屏幕/企业设置';
+import 企业披露策略 from './屏幕/企业披露策略';
+import 已筛候选 from './屏幕/已筛候选';
+import 账号安全 from './屏幕/账号安全';
+import 反馈 from './屏幕/反馈';
+import 用户协议 from './屏幕/用户协议';
+import 接触记录 from './屏幕/接触记录';
 
 export default function 应用() {
   return (
@@ -51,6 +59,7 @@ export default function 应用() {
       <Route path={路径.登录} element={<登录 />} />
       <Route path={路径.选身份} element={<选身份 />} />
       <Route path={路径.引导说明} element={<引导说明 />} />
+      <Route path={路径.基本信息} element={<基本信息 />} />
       <Route path={路径.工作经历} element={<工作经历 />} />
       <Route path={路径.引导问答} element={<引导问答 />} />
       <Route path={路径.披露说明} element={<披露说明 />} />
@@ -80,10 +89,19 @@ export default function 应用() {
       <Route path={路径.归档谈判} element={<归档谈判 />} />
       <Route path={路径.帮助与客服} element={<帮助与客服 />} />
 
+      {/* 两端共用的外围页：两侧设置里都挂了入口 */}
+      <Route path={路径.账号安全} element={<账号安全 />} />
+      <Route path={路径.反馈} element={<反馈 />} />
+      <Route path={路径.用户协议} element={<用户协议 />} />
+      <Route path={路径.接触记录} element={<接触记录 />} />
+
       {/* ── 企业端（招人方）── */}
       <Route path={路径.企业实名认证} element={<企业实名认证 />} />
       <Route path={路径.招聘名片} element={<招聘名片 />} />
       <Route path={路径.发布岗位} element={<发布岗位 />} />
+      {/* 编辑态复用同一个屏：带 :id 就预填那个岗位、主按钮变「保存修改」 */}
+      <Route path={路径.编辑岗位模板} element={<发布岗位 />} />
+      <Route path={路径.公司档案编辑} element={<公司档案编辑 />} />
       <Route path={路径.企业主壳} element={<企业主壳 />} />
       <Route path={路径.候选详情模板} element={<候选详情 />} />
       <Route path={路径.候选未通过} element={<候选未通过 />} />
@@ -95,6 +113,8 @@ export default function 应用() {
       <Route path={路径.匿名在线简历模板} element={<匿名在线简历 />} />
       <Route path={路径.企业通知中心} element={<企业通知中心 />} />
       <Route path={路径.企业设置} element={<企业设置 />} />
+      <Route path={路径.企业披露策略} element={<企业披露策略 />} />
+      <Route path={路径.已筛候选} element={<已筛候选 />} />
 
       {/* 兜底 */}
       <Route path="*" element={<Navigate to={路径.登录} replace />} />

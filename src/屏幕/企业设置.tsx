@@ -52,6 +52,13 @@ export default function 企业设置() {
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
+          <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.账号安全)}>
+            <span className={样式.行文字组}>
+              <span className={样式.行标题}>账号与安全</span>
+              <span className={样式.行说明}>换绑手机号、注销账号</span>
+            </span>
+            <span className={样式.尖括号}>›</span>
+          </button>
           <button
             className={`${样式.行} 可点`}
             onClick={() => {
@@ -78,6 +85,13 @@ export default function 企业设置() {
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
+          <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.企业披露策略)}>
+            <span className={样式.行文字组}>
+              <span className={样式.行标题}>披露策略</span>
+              <span className={样式.行说明}>逐项决定代理在什么时机交出岗位与团队细节</span>
+            </span>
+            <span className={样式.尖括号}>›</span>
+          </button>
         </div>
 
         <div className={`${样式.组标} ${样式.组标间距}`}>通知</div>
@@ -90,9 +104,27 @@ export default function 企业设置() {
         <div className={`${样式.组标} ${样式.组标间距}`}>通用</div>
         <div className={样式.卡}>
           {开关行('允许平台用岗位数据改进匹配', '仅用于匹配算法，不会披露给候选人之外的第三方')}
+        </div>
+
+        {/* 关于组与求职端设置一比一，两端同一批外围页 */}
+        <div className={`${样式.组标} ${样式.组标间距}`}>关于</div>
+        <div className={样式.卡}>
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.帮助与客服)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>帮助与客服</span>
+            </span>
+            <span className={样式.尖括号}>›</span>
+          </button>
+          <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.反馈)}>
+            <span className={样式.行文字组}>
+              <span className={样式.行标题}>反馈与举报</span>
+              <span className={样式.行说明}>功能异常、体验建议、举报违规</span>
+            </span>
+            <span className={样式.尖括号}>›</span>
+          </button>
+          <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.用户协议)}>
+            <span className={样式.行文字组}>
+              <span className={样式.行标题}>用户协议与隐私政策</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>

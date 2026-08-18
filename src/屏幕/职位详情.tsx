@@ -12,6 +12,8 @@ import { useParams } from 'react-router-dom';
 import 样式 from './职位详情.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 公司字标 } from '../组件/通用';
 import { 谈判图标, 小人像图标 } from '../组件/图标';
+import 举报层 from '../组件/举报层';
+import { 轻提示 } from '../组件/轻提示';
 import { 市场列表, 市场职位详情 } from '../数据/模拟数据';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
@@ -27,11 +29,16 @@ export default function 职位详情() {
   const [已收藏, 设已收藏] = useState(false);
   // 「⋯」拉起的更多操作抽屉是否展开
   const [抽屉展开, 设抽屉展开] = useState(false);
+  // 举报层（从更多操作抽屉里进）
+  const [举报层开, 设举报层开] = useState(false);
 
   // 按路由参数取岗位；直接输 URL 或参数丢失时退回第一条，
   // 保证这一屏永远有内容可渲染，不会白屏。
   const 岗 = 市场列表.find((条) => 条.编号 === 编号) ?? 市场列表[0];
   const 详 = 市场职位详情;
+  // 举报/屏蔽的对象是这个岗位所属的公司，取自岗位数据本身（公司行首段），
+  // 不用下面公司卡里的静态 mock —— 用户屏蔽的是他刚才在列表里看到的那一家
+  const 岗位公司名 = 岗.公司行.split(' · ')[0];
   // 已经委托过的岗位，主按钮换成「AI代理已接手」，和「看市场」卡片上的状态标口径一致
   const 已委托 = 状态.已委托.includes(岗.编号);
 
@@ -180,18 +187,31 @@ export default function 职位详情() {
         <div className={样式.底部说明}>{详.底部说明}</div>
       </div>
 
-      {/* 「⋯」更多操作抽屉：点遮罩或「取消」关闭；点「不感兴趣」直接退出这一屏 */}
+      {/* 「⋯」更多操作抽屉：点遮罩或「取消」关闭 */}
       {抽屉展开 ? (
         <div className={样式.遮罩} onClick={() => 设抽屉展开(false)}>
           <div className={样式.抽屉} onClick={(事件) => 事件.stopPropagation()}>
             <button
               className={`${样式.抽屉项} 可点`}
               onClick={() => {
+                // 真的落到全局：这个岗从看市场的职位流里消失，同时是代理的负反馈样本，
+                // 所以提示语说的是「代理会记住」而不是「已隐藏」
+                派发({ 型: '不感兴趣', 编号: 岗.编号 });
                 设抽屉展开(false);
+                轻提示('已不再推荐，代理会记住这类岗位');
                 返回();
               }}
             >
               不感兴趣，别再推给我
+            </button>
+            <button
+              className={`${样式.抽屉项} 可点`}
+              onClick={() => {
+                设抽屉展开(false);
+                设举报层开(true);
+              }}
+            >
+              举报这个职位
             </button>
             <button
               className={`${样式.抽屉项} ${样式.抽屉取消} 可点`}
@@ -201,6 +221,14 @@ export default function 职位详情() {
             </button>
           </div>
         </div>
+      ) : null}
+
+      {举报层开 ? (
+        <举报层
+          对象名={`${岗.职位} · ${岗位公司名}`}
+          屏蔽名称={岗位公司名}
+          关闭={() => 设举报层开(false)}
+        />
       ) : null}
     </次级页外壳>
   );

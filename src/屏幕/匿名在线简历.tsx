@@ -210,6 +210,7 @@ export default function 匿名在线简历() {
   const 档 = 匿名简历表[编号];
   const 推 = 推荐列表.find((条) => 条.编号 === 编号);
   const 已接触 = 状态.已接触推荐.includes(编号);
+  const 已收藏 = 状态.收藏候选.includes(编号);
 
   if (!档) {
     return (
@@ -227,13 +228,27 @@ export default function 匿名在线简历() {
         标题="匿名在线简历"
         居中标题
         右侧={
-          <button
-            className={`${样式.栏键} 可点`}
-            onClick={() => 设提示('更多操作待接后端')}
-            aria-label="更多"
-          >
-            …
-          </button>
+          <span className={样式.栏右组}>
+            {/* ★ 收藏：与推荐卡上的星同一份状态，两处点哪个都一样 */}
+            <button
+              className={`${样式.栏键} ${已收藏 ? 样式.栏键已收藏 : ''} 可点`}
+              onClick={() => {
+                派发({ 型: '切收藏候选', 编号 });
+                设提示(已收藏 ? '已取消收藏' : '已收藏 · 可在筛选里「只看收藏」');
+              }}
+              aria-label={已收藏 ? '取消收藏' : '收藏'}
+              aria-pressed={已收藏}
+            >
+              {已收藏 ? '★' : '☆'}
+            </button>
+            <button
+              className={`${样式.栏键} 可点`}
+              onClick={() => 设提示('更多操作待接后端')}
+              aria-label="更多"
+            >
+              …
+            </button>
+          </span>
         }
       />
 

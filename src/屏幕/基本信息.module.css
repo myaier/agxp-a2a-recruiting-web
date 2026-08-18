@@ -1,0 +1,127 @@
+/* A1b 基本信息 —— 沿用 A2 工作经历编辑页的条目语言（小标签 + 大值 + 分隔线），
+   两屏前后脚出现，版式必须是同一套，否则用户会觉得换了个 App。 */
+
+.条目 {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.条目标签 {
+  font-size: 12px;
+  color: var(--次要浅);
+  margin-bottom: 8px;
+}
+
+.条目输入 {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--墨);
+  font-family: inherit;
+}
+
+.条目输入::placeholder {
+  font-weight: 400;
+  color: var(--最弱);
+}
+
+/* 双盲说明：不是装饰性小字，是这一屏采集真名的前提 */
+.条目注 {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--次要浅);
+}
+
+/* ── 点开滚轮的选择条目（开始工作年份）── */
+.选择条目 {
+  width: 100%;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--分隔线);
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.选择值行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.条目值 {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* ── 身份快捷片 ── */
+.片行 {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.片 {
+  flex: 1;
+  padding: 11px 0;
+  border-radius: var(--圆角-内托盘);
+  background: var(--白);
+  border: 1px solid var(--描边);
+  font-size: 14.5px;
+  color: var(--正文);
+  text-align: center;
+}
+
+.片选中 {
+  background: var(--淡绿底);
+  border-color: var(--淡绿描边);
+  color: var(--深绿文字);
+  font-weight: 700;
+}
+
+/* ── 折算回显：这屏唯一的大字，表达「你填的数会被这样用」 ── */
+.折算区 {
+  margin-top: 26px;
+  padding: 18px 18px 16px;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  box-shadow: 0 2px 10px rgba(26, 26, 26, 0.03);
+}
+
+.折算数 {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+  font-variant-numeric: tabular-nums;
+}
+
+.折算单位 {
+  margin-left: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--次要);
+}
+
+.折算注 {
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--次要浅);
+}

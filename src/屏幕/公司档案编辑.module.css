@@ -1,0 +1,62 @@
+/* 公司主页资料编辑 —— 卡与组标复用 我的功能页.module.css，
+   这里只写本屏专有的输入字段（版式取自 发布岗位.module.css 的编辑条目：
+   小标签 + 大值输入 + 分隔线，像素值一比一）。 */
+
+.卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 2px 14px;
+}
+
+/* 一条字段：与 发布岗位 的 编辑条目 同款上下留白与分隔线 */
+.字段 {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.字段.末条 {
+  border-bottom: none;
+}
+
+.字段标签 {
+  font-size: 12px;
+  color: var(--次要浅);
+  margin-bottom: 8px;
+}
+
+/* 值：浅灰底托盘 + 会换行的多行输入 —— 地址与作息都可能很长，
+   单行 input 会把后半截截在框外，用户看不见自己填了什么 */
+.多行输入 {
+  width: 100%;
+  display: block;
+  border: none;
+  outline: none;
+  resize: none;
+  background: var(--浅灰底2);
+  border-radius: var(--圆角-小托盘);
+  padding: 11px 12px;
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--正文);
+  font-family: inherit;
+}
+
+.多行输入::placeholder {
+  color: var(--最弱);
+}
+
+.字数 {
+  text-align: right;
+  font-size: 10.5px;
+  color: var(--最弱);
+  margin-top: 6px;
+}
+
+/* 尾注：解释这几段会怎么被代理用到 */
+.尾注 {
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--最弱);
+  padding: 14px 4px 0;
+}

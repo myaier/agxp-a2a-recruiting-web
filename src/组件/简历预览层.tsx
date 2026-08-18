@@ -33,7 +33,7 @@ export default function 简历预览层({
   // 经历/教育读全局简历切片：用户在工作经历页改完，对方看到的这版立刻跟着变
   const { 状态: 全局 } = use应用状态();
   const 经历列表 = 全局.简历经历;
-  const 教育 = 全局.简历教育;
+  const 教育列表 = 全局.简历教育;
   const 显示年月 = (值: string | null) => (值 ? 值.replace('-', '.') : '至今');
 
   return (
@@ -90,17 +90,19 @@ export default function 简历预览层({
 
           {/* 教育经历：学校直接给（用户定：学校不脱敏）*/}
           <div className={样式.节标}>教育经历</div>
-          <div className={样式.经历段}>
-            <div className={样式.经历头}>
-              <span className={样式.经历公司}>{教育.学校}</span>
-              <span className={样式.经历时间}>
-                {显示年月(教育.开始)} — {显示年月(教育.结束)}
-              </span>
+          {教育列表.map((条) => (
+            <div key={条.编号} className={样式.经历段}>
+              <div className={样式.经历头}>
+                <span className={样式.经历公司}>{条.学校}</span>
+                <span className={样式.经历时间}>
+                  {显示年月(条.开始)} — {显示年月(条.结束)}
+                </span>
+              </div>
+              <div className={样式.经历职位}>
+                {条.学历} · {条.专业}
+              </div>
             </div>
-            <div className={样式.经历职位}>
-              {教育.学历} · {教育.专业}
-            </div>
-          </div>
+          ))}
 
           {/* 个人优势 */}
           <div className={样式.节标}>个人优势</div>

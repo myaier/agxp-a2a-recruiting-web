@@ -2,6 +2,35 @@
    编辑抽屉像素照搬 A21）。「一句话」是页面内直接编辑的多行输入，为本屏专有。
    keyframes 必须定义在本文件：CSS Modules 会重命名 animation-name。 */
 
+/* ── 名片预览行：头像 + 姓名 / 职务 · 公司（候选人看到的那一面）── */
+.预览行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 13px;
+  padding: 4px 0 16px;
+}
+
+.预览文字 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.预览姓名 {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+.预览副行 {
+  font-size: 12.5px;
+  color: var(--次要浅);
+}
+
 /* ── 对候选人的一句话（多行输入，标签字号对齐通用 表单条目标签）── */
 .一句话区 {
   padding: 14px 0 18px;

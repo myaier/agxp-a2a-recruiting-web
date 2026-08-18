@@ -467,10 +467,202 @@
   to { transform: translateY(0); }
 }
 
-/* ── 教育经历区块标（列表页，工作经历下方）── */
+/* ── 教育经历 / 专业技能 / 资格证书 区块标（列表页，工作经历下方）── */
 .区块标 {
   font-size: 13.5px;
   font-weight: 800;
   color: var(--墨);
   margin: 20px 0 10px;
+}
+
+/* ── 专业技能：标签墙 + 行内录入 ── */
+.技能卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 13px 14px;
+}
+
+.标签组 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.标签 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--淡绿底);
+  color: var(--深绿文字);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.标签删 {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--深绿);
+  opacity: 0.6;
+}
+
+.空态 {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--次要浅);
+}
+
+/* 行内录入行：技能 / 证书共用 */
+.录入行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.录入框 {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--描边中);
+  border-radius: 11px;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  color: var(--墨);
+  background: var(--白);
+  outline: none;
+  font-family: inherit;
+}
+
+.录入框窄 {
+  flex: none;
+  width: 72px;
+  border: 1px solid var(--描边中);
+  border-radius: 11px;
+  padding: 9px 10px;
+  font-size: 13.5px;
+  color: var(--墨);
+  background: var(--白);
+  outline: none;
+  font-family: inherit;
+  text-align: center;
+}
+
+.录入框::placeholder,
+.录入框窄::placeholder {
+  color: var(--最弱);
+}
+
+.录入键 {
+  flex: none;
+  padding: 9px 15px;
+  border-radius: 11px;
+  background: var(--荧光绿);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+/* ── 资格证书行 ── */
+.证书行 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 13px 14px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.证书主体 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.证书名 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.证书年 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+/* 删除叉：技能标签之外的行式条目共用 */
+.行删除 {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
+  background: var(--浅灰底);
+  color: var(--次要浅);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 经历编辑页内的「关键项目」子区块 ── */
+.选填注 {
+  margin-left: 6px;
+  font-size: 10.5px;
+  color: var(--弱化);
+}
+
+.项目卡 {
+  background: var(--浅灰底2);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 10px 12px 2px;
+  margin-bottom: 9px;
+}
+
+.项目卡头 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.项目序 {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--次要浅);
+}
+
+.项目输入 {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--描边深);
+  outline: none;
+  background: none;
+  padding: 9px 0;
+  font-size: 13.5px;
+  color: var(--墨);
+  font-family: inherit;
+}
+
+.项目输入::placeholder {
+  color: var(--最弱);
+}
+
+.项目末行 {
+  border-bottom: none;
+}
+
+/* 子区块里的添加行比列表页那条矮一档，不跟主分节抢视觉重量 */
+.添加行紧凑 {
+  padding: 10px 0;
+  margin-top: 2px;
 }

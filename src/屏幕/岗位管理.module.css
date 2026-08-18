@@ -212,6 +212,17 @@
   color: #fff;
 }
 
+/* 停止招聘是可逆动作，不该用删除那支红键吓人 —— 它就是这个弹层的主操作，走荧光绿 */
+.确认执行绿 {
+  flex: 1;
+  padding: 11px 0;
+  border-radius: 12px;
+  background: var(--荧光绿);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
 .浮层提示 {
   position: absolute;
   left: 50%;

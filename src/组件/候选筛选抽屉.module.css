@@ -1,0 +1,163 @@
+/* 候选筛选抽屉：底部抽屉，版式语言取自 拿不准弹层（同一套遮罩 + 圆角抽屉 + 抓手）。
+   两屏（候选推荐 / 企业在谈候选）共用这一份，避免两处各写一套后漂移。 */
+
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: var(--遮罩);
+  animation: 遮罩淡入 0.18s ease-out both;
+}
+
+.抽屉 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  background: var(--白);
+  border-radius: 22px 22px 0 0;
+  padding: 10px 20px calc(max(var(--安全区下), 20px) + 16px);
+  animation: 抽屉升起 0.26s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.抓手 {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  margin: 0 auto 14px;
+}
+
+.标题行 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.标题 {
+  flex: 1;
+  min-width: 0;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--墨);
+}
+
+.重置 {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.重置灰 {
+  color: var(--最弱);
+}
+
+/* ── 每一组：小字组标 + 一行可换行的选择片 ── */
+.组 {
+  margin-top: 18px;
+}
+
+.组标 {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--次要浅);
+}
+
+.片行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.片 {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  font-size: 13px;
+  color: var(--正文);
+}
+
+/* 选中态用荧光绿：抽屉里只有「选中」和「完成」两处配得上主色 */
+.片选中 {
+  background: var(--荧光绿);
+  border-color: var(--荧光绿);
+  font-weight: 700;
+  color: var(--墨);
+}
+
+/* ── 只看收藏：一行 + 开关，跟设置页同一种行版式 ── */
+.收藏行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 15px;
+  border-top: 1px solid var(--分隔线);
+}
+
+.收藏文字组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.收藏标题 {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--墨);
+}
+
+.收藏说明 {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
+}
+
+/* ── 底部：为什么没有薪资维度的说明 + 完成键 ── */
+.尾注 {
+  margin-top: 16px;
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--最弱);
+}
+
+.完成键 {
+  width: 100%;
+  margin-top: 12px;
+  height: 50px;
+  border-radius: var(--圆角-按钮);
+  background: var(--荧光绿);
+  box-shadow: var(--主按钮投影);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes 抽屉升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}

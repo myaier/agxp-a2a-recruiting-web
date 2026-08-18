@@ -17,7 +17,7 @@ import 年月滚轮层 from '../组件/年月滚轮层';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 开关 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
 import { use应用状态 } from '../状态/应用状态';
-import type { 简历经历段, 简历教育段 } from '../数据/类型';
+import type { 简历经历段, 简历教育段, 简历项目, 简历证书 } from '../数据/类型';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 
@@ -39,14 +39,57 @@ export default function 工作经历() {
   // 简历数据来自全局（并已持久化）：此前是本页 useState，一离开页面就回到 mock，
   // 用户「每次都要重走 onboarding 才能恢复」（2026-08-18 用户复现）
   const 经历列表 = 全局.简历经历;
-  const 教育 = 全局.简历教育;
-  const 存 = (经历: 简历经历段[], 新教育: 简历教育段 = 教育) =>
-    派发({ 型: '存简历', 经历, 教育: 新教育 });
+  const 教育列表 = 全局.简历教育;
+  const 技能列表 = 全局.简历技能;
+  const 证书列表 = 全局.简历证书;
+  /** 统一写入口：任何一块改动都连同其余块一起存（保持快照完整）*/
+  const 存 = (
+    改: Partial<{
+      经历: 简历经历段[];
+      教育: 简历教育段[];
+      技能: string[];
+      证书: 简历证书[];
+    }>
+  ) =>
+    派发({
+      型: '存简历',
+      经历: 改.经历 ?? 经历列表,
+      教育: 改.教育 ?? 教育列表,
+      技能: 改.技能 ?? 技能列表,
+      证书: 改.证书 ?? 证书列表,
+      基本信息: 全局.基本信息,
+    });
   // null = 列表视图；'新增' = 空白编辑；其它 = 正在编辑的段编号
   const [编辑目标, 设编辑目标] = useState<string | '新增' | null>(null);
   const [解析提示, 设解析提示] = useState('沈亦舟_简历_2026.pdf ✓ 已解析，可逐段修改');
-  const [编辑教育中, 设编辑教育中] = useState(false);
+  // null = 不在编辑教育；'新增' = 空白；其它 = 正在编辑的教育段编号
+  const [教育目标, 设教育目标] = useState<string | '新增' | null>(null);
+  // 技能 / 证书的行内录入草稿
+  const [技能草稿, 设技能草稿] = useState('');
+  const [证书名草稿, 设证书名草稿] = useState('');
+  const [证书年草稿, 设证书年草稿] = useState('');
   const 文件选择框 = useRef<HTMLInputElement>(null);
+
+  /** 加一条技能：去重 + 去空白，重复的直接吞掉不报错（用户多半只是手抖点了两次）*/
+  const 加技能 = () => {
+    const 词 = 技能草稿.trim();
+    if (词 === '') return;
+    if (!技能列表.includes(词)) 存({ 技能: [...技能列表, 词] });
+    设技能草稿('');
+  };
+
+  const 加证书 = () => {
+    const 名 = 证书名草稿.trim();
+    if (名 === '') {
+      轻提示('先填证书名称');
+      return;
+    }
+    存({
+      证书: [...证书列表, { 编号: `c${Date.now()}`, 名称: 名, 年份: 证书年草稿.trim() }],
+    });
+    设证书名草稿('');
+    设证书年草稿('');
+  };
 
   function 选中简历文件(事件: ChangeEvent<HTMLInputElement>) {
     const 文件 = 事件.target.files?.[0];
@@ -56,15 +99,29 @@ export default function 工作经历() {
   }
 
   // ── 教育编辑视图 ──────────────────────────────────────────
-  if (编辑教育中) {
+  if (教育目标 !== null) {
+    const 正在编辑的教育 =
+      教育目标 === '新增' ? null : 教育列表.find((条) => 条.编号 === 教育目标)!;
     return (
       <教育编辑页
-        初始={教育}
-        取消={() => 设编辑教育中(false)}
+        初始={正在编辑的教育}
+        取消={() => 设教育目标(null)}
         完成={(段) => {
-          存(经历列表, 段);
-          设编辑教育中(false);
+          存({
+            教育: 正在编辑的教育
+              ? 教育列表.map((条) => (条.编号 === 段.编号 ? 段 : 条))
+              : [...教育列表, 段],
+          });
+          设教育目标(null);
         }}
+        删除={
+          正在编辑的教育 && 教育列表.length > 1
+            ? () => {
+                存({ 教育: 教育列表.filter((条) => 条.编号 !== 正在编辑的教育.编号) });
+                设教育目标(null);
+              }
+            : undefined
+        }
       />
     );
   }
@@ -77,17 +134,17 @@ export default function 工作经历() {
         初始={正在编辑的段}
         取消={() => 设编辑目标(null)}
         完成={(段) => {
-          存(
-            正在编辑的段
+          存({
+            经历: 正在编辑的段
               ? 经历列表.map((条) => (条.编号 === 段.编号 ? 段 : 条))
-              : [...经历列表, 段]
-          );
+              : [...经历列表, 段],
+          });
           设编辑目标(null);
         }}
         删除={
           正在编辑的段
             ? () => {
-                存(经历列表.filter((条) => 条.编号 !== 正在编辑的段.编号));
+                存({ 经历: 经历列表.filter((条) => 条.编号 !== 正在编辑的段.编号) });
                 设编辑目标(null);
               }
             : undefined
@@ -166,22 +223,117 @@ export default function 工作经历() {
           <span className={样式.添加文字}>添加工作经历</span>
         </button>
 
-        {/* ── 教育经历（标注 2026-08-18）：企业端简历上的学校显示自这里 ── */}
+        {/* ── 教育经历：支持多段（本科+硕士），企业端简历的学校显示自这里 ── */}
         <div className={样式.区块标}>教育经历</div>
-        <button className={`${样式.经历卡} 可点`} onClick={() => 设编辑教育中(true)}>
-          <span className={样式.经历卡主体}>
-            <span className={样式.经历卡头行}>
-              <span className={`${样式.经历公司} 单行`}>{教育.学校}</span>
-              <span className={`${样式.经历时间} 等宽数字`}>
-                {显示年月(教育.开始)} — {显示年月(教育.结束)}
+        {教育列表.map((条) => (
+          <button
+            key={条.编号}
+            className={`${样式.经历卡} 可点`}
+            onClick={() => 设教育目标(条.编号)}
+          >
+            <span className={样式.经历卡主体}>
+              <span className={样式.经历卡头行}>
+                <span className={`${样式.经历公司} 单行`}>{条.学校}</span>
+                <span className={`${样式.经历时间} 等宽数字`}>
+                  {显示年月(条.开始)} — {显示年月(条.结束)}
+                </span>
+              </span>
+              <span className={`${样式.经历职位} 单行`}>
+                {条.学历} · {条.专业}
               </span>
             </span>
-            <span className={`${样式.经历职位} 单行`}>
-              {教育.学历} · {教育.专业}
-            </span>
-          </span>
-          <span className={样式.尖括号}>›</span>
+            <span className={样式.尖括号}>›</span>
+          </button>
+        ))}
+        <button className={`${样式.添加行} 可点`} onClick={() => 设教育目标('新增')}>
+          <span className={样式.添加加号}>＋</span>
+          <span className={样式.添加文字}>添加教育经历</span>
         </button>
+
+        {/* ── 专业技能：代理做匿名初筛时按标签逐条比对岗位的技术要求，
+            所以它是标签而不是一段自由文本 —— 自由文本没法逐条核对 ── */}
+        <div className={样式.区块标}>专业技能</div>
+        <div className={样式.技能卡}>
+          {技能列表.length > 0 ? (
+            <div className={样式.标签组}>
+              {技能列表.map((项) => (
+                <button
+                  key={项}
+                  className={`${样式.标签} 可点`}
+                  onClick={() => 存({ 技能: 技能列表.filter((条) => 条 !== 项) })}
+                  aria-label={`删除技能 ${项}`}
+                >
+                  {项}
+                  <span className={样式.标签删}>✕</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className={样式.空态}>还没填技能标签，代理核对技术要求时会缺一条依据。</div>
+          )}
+
+          <div className={样式.录入行}>
+            <input
+              className={样式.录入框}
+              value={技能草稿}
+              placeholder="如：Go、分布式事务"
+              onChange={(事件) => 设技能草稿(事件.target.value)}
+              onKeyDown={(事件) => {
+                // isComposing：挡住中文输入法「回车上屏候选词」那一下
+                if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 加技能();
+              }}
+              enterKeyHint="done"
+            />
+            <button className={`${样式.录入键} 可点`} onClick={加技能}>
+              添加
+            </button>
+          </div>
+        </div>
+
+        {/* ── 资格证书：软考 / CPA / 司考这类硬门槛，部分岗位是硬性条件 ── */}
+        <div className={样式.区块标}>资格证书</div>
+        {证书列表.map((条) => (
+          <div key={条.编号} className={样式.证书行}>
+            <span className={样式.证书主体}>
+              <span className={`${样式.证书名} 单行`}>{条.名称}</span>
+              {条.年份 ? (
+                <span className={`${样式.证书年} 等宽数字`}>{条.年份} 年取得</span>
+              ) : null}
+            </span>
+            <button
+              className={`${样式.行删除} 可点`}
+              onClick={() => 存({ 证书: 证书列表.filter((项) => 项.编号 !== 条.编号) })}
+              aria-label={`删除证书 ${条.名称}`}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <div className={样式.录入行}>
+          <input
+            className={样式.录入框}
+            value={证书名草稿}
+            placeholder="证书名称"
+            onChange={(事件) => 设证书名草稿(事件.target.value)}
+            onKeyDown={(事件) => {
+              if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 加证书();
+            }}
+          />
+          <input
+            className={`${样式.录入框窄} 等宽数字`}
+            value={证书年草稿}
+            placeholder="年份"
+            inputMode="numeric"
+            maxLength={4}
+            onChange={(事件) => 设证书年草稿(事件.target.value.replace(/\D/g, ''))}
+            onKeyDown={(事件) => {
+              if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 加证书();
+            }}
+          />
+          <button className={`${样式.录入键} 可点`} onClick={加证书}>
+            添加
+          </button>
+        </div>
       </滚动区>
     </次级页外壳>
   );
@@ -192,12 +344,23 @@ function 教育编辑页({
   初始,
   取消,
   完成,
+  删除,
 }: {
-  初始: 简历教育段;
+  初始: 简历教育段 | null;
   取消: () => void;
   完成: (段: 简历教育段) => void;
+  删除?: () => void;
 }) {
-  const [草稿, 设草稿] = useState<简历教育段>(初始);
+  const [草稿, 设草稿] = useState<简历教育段>(
+    初始 ?? {
+      编号: `edu${Date.now()}`,
+      学校: '',
+      学历: '本科',
+      专业: '',
+      开始: '2016-09',
+      结束: '2020-06',
+    }
+  );
   const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
   const 可完成 = 草稿.学校.trim() !== '' && 草稿.专业.trim() !== '';
 
@@ -277,6 +440,14 @@ function 教育编辑页({
         </div>
       </滚动区>
 
+      {删除 ? (
+        <div style={{ padding: '0 22px 24px' }}>
+          <button className={`${样式.删除键} 可点`} onClick={删除}>
+            删除这段教育经历
+          </button>
+        </div>
+      ) : null}
+
       {滚轮 ? (
         <年月滚轮层
           标题={滚轮 === '开始' ? '选择入学年月' : '选择毕业年月'}
@@ -326,6 +497,14 @@ function 经历编辑页({
 
   const 改 = <键 extends keyof 简历经历段>(键名: 键, 值: 简历经历段[键]) =>
     设草稿((旧) => ({ ...旧, [键名]: 值 }));
+
+  // ── 关键项目：挂在这一段经历里面，不做独立大分节 ──
+  // 项目脱离了公司和时间就没有可核对性（「这个项目是在哪家公司、什么时候做的」），
+  // 所以它必须长在经历段内部，而不是简历里另起一个平级分节。
+  const 项目列表 = 草稿.项目 ?? [];
+  const 写项目 = (新列表: 简历项目[]) => 改('项目', 新列表);
+  const 改项目 = <键 extends keyof 简历项目>(编号: string, 键名: 键, 值: 简历项目[键]) =>
+    写项目(项目列表.map((条) => (条.编号 === 编号 ? { ...条, [键名]: 值 } : 条)));
 
   return (
     <次级页外壳>
@@ -426,6 +605,61 @@ function 经历编辑页({
             rows={4}
             onChange={(事件) => 改('内容', 事件.target.value)}
           />
+        </div>
+
+        {/* 关键项目：项目名 / 角色 / 一句话结果三行，多条可增删。
+            只要三项里填了任意一项就跟着这段经历一起存，不设必填 —— 它是加分项，
+            不该拦住用户保存经历 */}
+        <div className={样式.编辑条目}>
+          <div className={样式.条目标签}>
+            关键项目<span className={样式.选填注}>选填</span>
+          </div>
+
+          {项目列表.map((条, 序) => (
+            <div key={条.编号} className={样式.项目卡}>
+              <div className={样式.项目卡头}>
+                <span className={样式.项目序}>项目 {序 + 1}</span>
+                <button
+                  className={`${样式.行删除} 可点`}
+                  onClick={() => 写项目(项目列表.filter((项) => 项.编号 !== 条.编号))}
+                  aria-label={`删除项目 ${序 + 1}`}
+                >
+                  ✕
+                </button>
+              </div>
+              <input
+                className={样式.项目输入}
+                value={条.名称}
+                placeholder="项目名称"
+                onChange={(事件) => 改项目(条.编号, '名称', 事件.target.value)}
+              />
+              <input
+                className={样式.项目输入}
+                value={条.角色}
+                placeholder="你的角色，如：技术负责人"
+                onChange={(事件) => 改项目(条.编号, '角色', 事件.target.value)}
+              />
+              <input
+                className={`${样式.项目输入} ${样式.项目末行}`}
+                value={条.结果}
+                placeholder="一句话结果，如：峰值 32 万 QPS 零故障"
+                onChange={(事件) => 改项目(条.编号, '结果', 事件.target.value)}
+              />
+            </div>
+          ))}
+
+          <button
+            className={`${样式.添加行} ${样式.添加行紧凑} 可点`}
+            onClick={() =>
+              写项目([
+                ...项目列表,
+                { 编号: `p${Date.now()}`, 名称: '', 角色: '', 结果: '' },
+              ])
+            }
+          >
+            <span className={样式.添加加号}>＋</span>
+            <span className={样式.添加文字}>添加关键项目</span>
+          </button>
         </div>
 
         {/* 只有「至今」在职段才有隐身开关：对外双盲的产品语义 */}

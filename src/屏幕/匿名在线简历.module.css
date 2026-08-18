@@ -29,6 +29,11 @@
   justify-content: center;
 }
 
+/* 收藏态的 ★ 用协调橙：荧光绿留给「让AI代理去谈」那个主操作 */
+.栏键已收藏 {
+  color: var(--协调);
+}
+
 /* ── 头区 ── */
 .头区 {
   display: flex;

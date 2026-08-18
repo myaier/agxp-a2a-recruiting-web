@@ -69,6 +69,13 @@ export default function 设置() {
             <span className={样式.行值}>已认证</span>
             <span className={样式.尖括号}>›</span>
           </button>
+          <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.账号安全)}>
+            <span className={样式.行文字组}>
+              <span className={样式.行标题}>账号与安全</span>
+              <span className={样式.行说明}>换绑手机号、注销账号</span>
+            </span>
+            <span className={样式.尖括号}>›</span>
+          </button>
           <button
             className={`${样式.行} 可点`}
             onClick={() => {
@@ -101,6 +108,13 @@ export default function 设置() {
             <span className={样式.行文字组}>
               <span className={样式.行标题}>屏蔽名单</span>
               <span className={样式.行说明}>{状态.屏蔽名单.length} 家公司双向不可见</span>
+            </span>
+            <span className={样式.尖括号}>›</span>
+          </button>
+          <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.接触记录)}>
+            <span className={样式.行文字组}>
+              <span className={样式.行标题}>谁接触过我</span>
+              <span className={样式.行说明}>只显示企业与动作，不显示任何真人身份</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
@@ -137,10 +151,14 @@ export default function 设置() {
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
-          <button
-            className={`${样式.行} 可点`}
-            onClick={() => 设提示('用户协议与隐私政策 · 原型暂未接入')}
-          >
+          <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.反馈)}>
+            <span className={样式.行文字组}>
+              <span className={样式.行标题}>反馈与举报</span>
+              <span className={样式.行说明}>功能异常、体验建议、举报违规</span>
+            </span>
+            <span className={样式.尖括号}>›</span>
+          </button>
+          <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.用户协议)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>用户协议与隐私政策</span>
             </span>

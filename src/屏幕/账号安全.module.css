@@ -1,0 +1,117 @@
+/* 账号与安全 —— 卡 / 行 / 危险键 / 确认弹层全部复用 我的功能页.module.css，
+   这里只补「换绑手机号」这个两步抽屉里独有的输入件。 */
+
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: var(--遮罩);
+  animation: 遮罩淡入 0.18s ease-out both;
+}
+
+.抽屉 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  background: var(--白);
+  border-radius: 22px 22px 0 0;
+  padding: 10px 20px calc(max(var(--安全区下), 20px) + 12px);
+  animation: 抽屉升起 0.26s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.抓手 {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  margin: 0 auto 14px;
+}
+
+.抽屉标题 {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--墨);
+}
+
+.抽屉说明 {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--次要浅);
+  margin-top: 7px;
+}
+
+/* 手机号：大字直接输入，不做花哨的分段框 */
+.输入框 {
+  width: 100%;
+  margin-top: 16px;
+  border: 1px solid var(--描边深);
+  border-radius: 12px;
+  padding: 13px 14px;
+  font-size: 17px;
+  letter-spacing: 0.06em;
+  color: var(--墨);
+  background: var(--白);
+  outline: none;
+  font-family: inherit;
+}
+
+.输入框::placeholder {
+  color: var(--最弱);
+  letter-spacing: 0;
+  font-size: 15px;
+}
+
+/* 验证码：字距拉开，六位一眼数得清 */
+.验证码框 {
+  letter-spacing: 0.5em;
+  text-align: center;
+  font-weight: 700;
+}
+
+.主键 {
+  width: 100%;
+  margin-top: 14px;
+  height: 50px;
+  border-radius: var(--圆角-按钮);
+  background: var(--荧光绿);
+  box-shadow: var(--主按钮投影);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.主键禁用 {
+  background: var(--浅灰底);
+  box-shadow: none;
+  color: var(--最弱);
+}
+
+.次键 {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 0;
+  font-size: 13px;
+  color: var(--次要);
+  text-align: center;
+}
+
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes 抽屉升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}

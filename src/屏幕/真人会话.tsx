@@ -11,6 +11,7 @@ import 样式 from './真人会话.module.css';
 import 共用样式 from './直聊会话.module.css';
 import { 功能键行, 消息条, use自动滚到底 } from './直聊会话';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../组件/通用';
+import 举报层 from '../组件/举报层';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 真人会话 as 真人会话数据 } from '../数据/模拟数据';
@@ -22,6 +23,8 @@ export default function 真人会话() {
   const [草稿, 设草稿] = useState('');
   // 这一屏进来时电话和简历都已交换过，所以初始就在「已完成」里，只剩换微信可点
   const [已完成, 设已完成] = useState<string[]>(['换电话', '发简历']);
+  // 右上「⋯」拉起的举报层：这一屏对面是真人顾问，屏蔽指向他所属的机构
+  const [举报层开, 设举报层开] = useState(false);
   const 底部锚 = use自动滚到底(消息);
 
   // 发送：草稿去空后追加到本地消息流（真人页的消息不带时间戳，与源一致）
@@ -40,7 +43,15 @@ export default function 真人会话() {
         标题="林筱"
         副标题="铨衡人才 · 招聘顾问"
         居中标题
-        右侧={<span className={共用样式.更多}>⋯</span>}
+        右侧={
+          <button
+            className={`${共用样式.更多} 可点`}
+            onClick={() => 设举报层开(true)}
+            aria-label="举报"
+          >
+            ⋯
+          </button>
+        }
       />
 
       <滚动区>
@@ -67,6 +78,14 @@ export default function 真人会话() {
         发送={发送}
         右侧图标={<span className={样式.代理符}>◈</span>}
       />
+
+      {举报层开 ? (
+        <举报层
+          对象名="林筱 · 铨衡人才"
+          屏蔽名称="铨衡人才"
+          关闭={() => 设举报层开(false)}
+        />
+      ) : null}
     </次级页外壳>
   );
 }

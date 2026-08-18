@@ -1,0 +1,58 @@
+/* 用户协议与隐私政策 —— 长正文页，版式只需要三样：节标题、正文段、条目列表。 */
+
+.生效日 {
+  font-size: 11.5px;
+  color: var(--最弱);
+  margin-bottom: 18px;
+}
+
+.节标 {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+  margin-top: 26px;
+}
+
+.节标:first-of-type {
+  margin-top: 0;
+}
+
+.正文 {
+  font-size: 13.5px;
+  line-height: 1.85;
+  color: var(--正文);
+  margin-top: 10px;
+}
+
+/* 条目：编号靠左挂出去，正文对齐成一列 */
+.条目 {
+  font-size: 13.5px;
+  line-height: 1.85;
+  color: var(--正文);
+  margin-top: 9px;
+  padding-left: 15px;
+  position: relative;
+}
+
+.条目::before {
+  content: '·';
+  position: absolute;
+  left: 3px;
+  color: var(--橄榄);
+  font-weight: 700;
+}
+
+.强调 {
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.尾注 {
+  margin-top: 30px;
+  padding-top: 16px;
+  border-top: 1px solid var(--分隔线);
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: var(--最弱);
+}

@@ -1,0 +1,35 @@
+/* 已筛掉的候选 —— 骨架（卡 / 行 / 空态 / 次要键）复用 我的功能页.module.css，
+   这里只补这一屏独有的两件东西：原因小标 与 代号头行。 */
+
+.头行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.代号 {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+/* 原因小标：负反馈的原因是这一屏的主信息，给它一个能一眼扫到的形状 */
+.原因标 {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--浅灰底);
+  color: var(--次要);
+}
+
+.画像 {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
+  margin-top: 5px;
+}
