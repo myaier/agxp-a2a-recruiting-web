@@ -10,20 +10,28 @@
 
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './企业实名认证.module.css';
-import { 次级页外壳, 返回栏, 页面大标题, 主按钮 } from '../组件/通用';
-import { 细对勾图标 } from '../组件/图标';
+import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 主按钮 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
+import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
 
-/** 认证要点两行：核验什么 + 一句为什么 */
-const 认证要点 = [
-  { 主: '真实姓名', 副: '与证件一致，向候选人实名示人' },
-  { 主: '任职公司', 副: '核验你确在该公司任职' },
+/** 公司全称输入上限（对照 BOSS 的 46 字；营业执照名称不会超过这个长度） */
+const 公司全称上限 = 46;
+
+/** 公司全称的注意事项（BOSS 截图三条，换成我们的口径） */
+const 公司注意事项 = [
+  '填写营业执照上的公司全称，注意区分总公司与分公司',
+  '全称用于核验你确实在该公司任职，请确保准确',
+  '认证通过后，姓名与公司会写进你的招聘名片，候选人从第一轮起可见',
 ];
 
 export default function 企业实名认证() {
   const { 跳转, 返回 } = use导航();
+  const { 状态, 派发 } = use应用状态();
+  // 预填上次认证的结果：老用户重走认证是「改」不是「重填」
+  const [姓名, 设姓名] = useState(状态.企业认证.姓名);
+  const [公司全称, 设公司全称] = useState(状态.企业认证.公司);
   const [认证中, 设认证中] = useState(false);
   // 计时器句柄：认证中途退出本屏时清掉，避免离屏后仍触发跳转
   const 计时器 = useRef<number | null>(null);
@@ -36,9 +44,19 @@ export default function 企业实名认证() {
 
   function 开始识别() {
     if (认证中) return;
+    // 人脸识别核对的就是这两项，缺一项识别无从谈起
+    if (姓名.trim() === '') {
+      轻提示('请填写与证件一致的真实姓名');
+      return;
+    }
+    if (公司全称.trim() === '') {
+      轻提示('请填写营业执照上的公司全称');
+      return;
+    }
     设认证中(true);
-    // 原型环境：1.2 秒模拟人脸识别，通过后进入招聘名片
+    // 原型环境：1.2 秒模拟人脸识别，通过后把结果落进全局再进招聘名片
     计时器.current = window.setTimeout(() => {
+      派发({ 型: '存企业认证', 姓名: 姓名.trim(), 公司: 公司全称.trim() });
       轻提示('认证通过');
       跳转(路径.招聘名片);
     }, 1200);
@@ -51,42 +69,66 @@ export default function 企业实名认证() {
       {/* 标注 21:59：说明小字删掉，标题自己说得清 */}
       <页面大标题 标题="实名认证" />
 
-      {/* ── 居中人脸识别占位：140px 圆，外圈虚线旋转 ── */}
-      <div className={样式.识别区}>
-        <div className={`${样式.识别圈} ${认证中 ? 样式.认证中 : ''}`}>
-          <svg className={样式.虚线环} viewBox="0 0 140 140" aria-hidden="true">
-            <circle
-              className={样式.环线}
-              cx="70"
-              cy="70"
-              r="68.5"
-              fill="none"
-              strokeWidth="1.6"
-              strokeDasharray="4.5 7.5"
-              strokeLinecap="round"
+      <滚动区 样式覆盖={{ padding: '0 0 8px' }}>
+        {/* ── 核验的两项就在这里填：真实姓名 + 营业执照公司全称（BOSS 截图 1/2 对照）── */}
+        <div className={样式.表单区}>
+          <div className={样式.编辑条目}>
+            <div className={样式.条目标签}>真实姓名</div>
+            <input
+              className={样式.条目输入}
+              value={姓名}
+              placeholder="与证件一致，向候选人实名示人"
+              onChange={(事件) => 设姓名(事件.target.value)}
             />
-          </svg>
-          <span className={样式.脸底}>
-            <人脸占位 />
-          </span>
-        </div>
-      </div>
-
-      {/* ── 认证要点两行 ── */}
-      <div className={样式.要点区}>
-        {认证要点.map((项) => (
-          <div key={项.主} className={样式.要点行}>
-            <span className={样式.要点圆}>
-              <细对勾图标 尺寸={11} 色="var(--橄榄)" />
-            </span>
-            <span className={样式.要点主}>{项.主}</span>
-            <span className={样式.要点副}>{项.副}</span>
           </div>
-        ))}
-      </div>
 
-      {/* 弹性空白：把主按钮压到屏幕底部 */}
-      <div className={样式.占位} />
+          <div className={样式.编辑条目}>
+            <div className={样式.条目标签}>任职公司（营业执照全称）</div>
+            <div className={样式.条目输入行}>
+              <input
+                className={样式.条目输入}
+                value={公司全称}
+                placeholder="如：上海云衢信息科技有限公司"
+                maxLength={公司全称上限}
+                onChange={(事件) => 设公司全称(事件.target.value)}
+              />
+              <span className={`${样式.计数} 等宽数字`}>
+                {公司全称.length}/{公司全称上限}
+              </span>
+            </div>
+          </div>
+
+          <div className={样式.注意事项}>
+            {公司注意事项.map((行, 序) => (
+              <div key={行} className={样式.注意行}>
+                {序 + 1}. {行}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── 居中人脸识别占位：外圈虚线旋转 ── */}
+        <div className={样式.识别区}>
+          <div className={`${样式.识别圈} ${认证中 ? 样式.认证中 : ''}`}>
+            <svg className={样式.虚线环} viewBox="0 0 140 140" aria-hidden="true">
+              <circle
+                className={样式.环线}
+                cx="70"
+                cy="70"
+                r="68.5"
+                fill="none"
+                strokeWidth="1.6"
+                strokeDasharray="4.5 7.5"
+                strokeLinecap="round"
+              />
+            </svg>
+            <span className={样式.脸底}>
+              <人脸占位 />
+            </span>
+          </div>
+          <div className={样式.识别注}>人脸识别将核对上面两项</div>
+        </div>
+      </滚动区>
 
       <主按钮
         文字={认证中 ? '认证中…' : '开始人脸识别'}

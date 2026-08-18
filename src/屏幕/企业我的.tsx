@@ -126,13 +126,13 @@ export default function 企业我的() {
       {/* ── 头像行：整行可点，进「招聘名片」（= 企业对外形象的编辑入口，
              镜像求职端头像行 → 我的简历）── */}
       <button className={`${样式.头像行} 可点`} onClick={() => 跳转(路径.招聘名片)}>
-        <span className={样式.头像}>{企业信息.公司首字}</span>
+        <span className={样式.头像}>{状态.企业认证.公司.charAt(0)}</span>
         <span className={样式.头像信息}>
-          <span className={`${样式.姓名} 单行`}>{企业信息.公司}</span>
+          <span className={`${样式.姓名} 单行`}>{状态.企业认证.公司}</span>
           <span className={样式.状态行}>
             <span className={样式.招聘名片}>招聘名片 ✎</span>
             <span className={`${样式.状态胶囊} 单行`}>
-              {企业信息.认证人} · {企业信息.认证身份}
+              {状态.企业认证.姓名} · {企业信息.认证身份}
             </span>
           </span>
         </span>

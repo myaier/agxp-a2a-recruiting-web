@@ -41,7 +41,7 @@ export default function 企业设置() {
           <div className={样式.行}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>企业实名认证</span>
-              <span className={样式.行说明}>云衢科技 · 已通过工商核验</span>
+              <span className={样式.行说明}>{状态.企业认证.公司} · 已通过工商核验</span>
             </span>
             <span className={样式.行值}>已认证</span>
           </div>
