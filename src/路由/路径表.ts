@@ -54,4 +54,6 @@ export const 路径 = {
   企业真人会话: '/hr/chat',
   岗位管理: '/hr/jobs',
   企业代理设置: '/hr/agent-settings',
+  企业通知中心: '/hr/notifications',
+  企业设置: '/hr/settings',
 } as const;

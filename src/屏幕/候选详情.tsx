@@ -21,7 +21,13 @@ import {
   阶段配色,
 } from '../组件/通用';
 import { 对勾图标 } from '../组件/图标';
-import { 候选阶段小结, 企业卡点决策, 候选评估, 企业往来记录 } from '../数据/企业端模拟数据';
+import {
+  候选阶段小结,
+  企业卡点决策,
+  候选评估,
+  企业往来记录,
+  候选简历表,
+} from '../数据/企业端模拟数据';
 import { 阶段顺序 } from '../数据/类型';
 import type { 分歧, 候选, 阶段 } from '../数据/类型';
 import { use应用状态 } from '../状态/应用状态';
@@ -479,12 +485,22 @@ function 意向确认节点({
   );
 }
 
-// ── D11·A 在线简历 Tab：匿名头卡 → 四维评估（分数条）→ AI 代理批注 → 双盲尾注 ──
+// ── D11·A 在线简历 Tab（2026-08-18 按 BOSS 牛人简历页结构重做）──
+//
+// 完整简历正文：头卡 → 状态行 → 个人优势 → 工作经历（bullets）→ 作品 →
+// 教育 → 技能 → 四维评估 → AI 批注。与 BOSS 的差别是两层机制叠加：
+//   · 逐段按候选人的披露偏好脱敏：公司写「同赛道头部公司」、教育默认隐去、
+//     联系方式任何阶段不出现；确认意向（候.真名 非空）后脱敏段自动还原实名
+//   · AI 批注贴在简历上 —— 代理替 HR 预读过的判断，这是我们与传统简历页的差异点
 function 在线简历Tab({ 候 }: { 候: 候选 }) {
+  const 档 = 候选简历表[候.编号];
+  // 确认意向后（真名已露出）脱敏段还原实名 —— 与 A-01=沈亦舟 的剧情闭环
+  const 已确认 = 候.真名 !== null;
+
   return (
     <滚动区>
       <div className={样式.简历列}>
-        {/* 匿名头卡：意向确认前只见代号与画像，头像用头像字 + 灰绿底，不用真人姓氏 */}
+        {/* 匿名头卡：意向确认前只见代号与画像 */}
         <div className={`${样式.简历卡} ${样式.头卡}`}>
           <span className={样式.候选头像}>
             <span className={样式.头像字}>{候.头像字}</span>
@@ -492,6 +508,7 @@ function 在线简历Tab({ 候 }: { 候: 候选 }) {
           <div className={样式.头卡文本}>
             <div className={`${样式.头卡代号} 单行`}>{候.真名 ?? 候.代号}</div>
             <div className={`${样式.头卡画像} 单行`}>{候.画像}</div>
+            {档 ? <div className={样式.状态行}>{档.状态行}</div> : null}
           </div>
           <span className={样式.匹配组}>
             <span className={样式.匹配标}>匹配</span>
@@ -503,9 +520,95 @@ function 在线简历Tab({ 候 }: { 候: 候选 }) {
           </span>
         </div>
 
+        {档 ? (
+          <>
+            {/* 个人优势：候选人自述，原样转达（代理不改写用户的话）*/}
+            <div className={样式.简历卡}>
+              <div className={样式.简历卡标题}>个人优势</div>
+              {档.优势.map((条) => (
+                <div key={条} className={样式.要点行}>
+                  <span className={样式.要点符}>·</span>
+                  <span className={样式.要点文字}>{条}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* 工作经历：公司名按披露偏好脱敏，确认意向后还原实名 */}
+            <div className={样式.简历卡}>
+              <div className={样式.简历卡标题}>工作经历</div>
+              {档.经历.map((段) => (
+                <div key={段.起止} className={样式.经历段}>
+                  <div className={样式.经历头行}>
+                    <span className={`${样式.经历公司} 单行`}>
+                      {已确认 && 段.公司实名 ? 段.公司实名 : 段.公司}
+                    </span>
+                    <span className={`${样式.经历起止} 等宽数字`}>{段.起止}</span>
+                  </div>
+                  <div className={样式.经历职位}>{段.职位}</div>
+                  {段.要点.map((点) => (
+                    <div key={点} className={样式.要点行}>
+                      <span className={样式.要点符}>·</span>
+                      <span className={样式.要点文字}>{点}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            {/* 作品：候选人的披露偏好里作品是「一直允许」，所以任何阶段可见 */}
+            {档.作品.length > 0 ? (
+              <div className={样式.简历卡}>
+                <div className={样式.简历卡标题}>作品</div>
+                {档.作品.map((件) => (
+                  <div key={件.名称} className={样式.作品行}>
+                    <div className={样式.作品名}>{件.名称}</div>
+                    <div className={样式.作品说明}>{件.说明}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {/* 教育：默认隐去，确认意向后可见 —— 披露偏好机制的可见示例 */}
+            <div className={样式.简历卡}>
+              <div className={样式.简历卡标题}>教育经历</div>
+              {已确认 && 档.教育实名 ? (
+                <div className={样式.经历段}>
+                  <div className={样式.经历头行}>
+                    <span className={`${样式.经历公司} 单行`}>{档.教育实名.学校}</span>
+                    <span className={`${样式.经历起止} 等宽数字`}>{档.教育实名.起止}</span>
+                  </div>
+                  <div className={样式.经历职位}>{档.教育实名.学历}</div>
+                </div>
+              ) : (
+                <div className={样式.隐去条}>
+                  按候选人的披露偏好隐去 · 双方确认意向后可见
+                </div>
+              )}
+            </div>
+
+            {/* 技能标签 */}
+            <div className={样式.简历卡}>
+              <div className={样式.简历卡标题}>专业技能</div>
+              <div className={样式.技能行}>
+                {档.技能.map((技) => (
+                  <span key={技} className={样式.技能片}>
+                    {技}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className={样式.简历卡}>
+            <div className={样式.隐去条}>
+              简历正文将在候选人递交后展示，当前仅有画像：{候.画像}
+            </div>
+          </div>
+        )}
+
         {/* 四维评估：维度名 + 分数条 + 代理批注小字（设计稿 dimsD）*/}
         <div className={样式.简历卡}>
-          <div className={样式.简历卡标题}>四维评估</div>
+          <div className={样式.简历卡标题}>四维评估 · 你的代理打的</div>
           {候选评估.map((维) => (
             <div key={维.维度} className={样式.评估项}>
               <div className={样式.评估头}>
@@ -529,7 +632,9 @@ function 在线简历Tab({ 候 }: { 候: 候选 }) {
           ))}
         </小结托盘>
 
-        <div className={样式.简历尾注}>意向确认前简历已隐去姓名与联系方式</div>
+        <div className={样式.简历尾注}>
+          姓名与联系方式已按双盲规则隐去，双方确认意向后互换
+        </div>
       </div>
     </滚动区>
   );

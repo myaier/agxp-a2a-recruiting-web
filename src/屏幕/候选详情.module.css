@@ -463,3 +463,99 @@
   70% { box-shadow: 0 0 0 6px rgba(217, 45, 32, 0); }
   100% { box-shadow: 0 0 0 0 rgba(217, 45, 32, 0); }
 }
+
+/* ── 在线简历 Tab 扩充（2026-08-18 BOSS 结构版）── */
+.状态行 {
+  font-size: 10.5px;
+  color: var(--深绿文字);
+  background: var(--淡绿底);
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  margin-top: 5px;
+}
+
+.经历段 {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.经历段:last-child {
+  border-bottom: none;
+  padding-bottom: 2px;
+}
+
+.经历头行 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.经历公司 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.经历起止 {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--次要浅);
+}
+
+.经历职位 {
+  font-size: 12px;
+  color: var(--正文);
+  margin: 3px 0 6px;
+}
+
+.作品行 {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.作品行:last-child {
+  border-bottom: none;
+  padding-bottom: 2px;
+}
+
+.作品名 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+
+.作品说明 {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
+  margin-top: 3px;
+}
+
+/* 按披露偏好隐去的段落：灰底占位条，说明何时可见 */
+.隐去条 {
+  background: var(--浅灰底2);
+  border-radius: 10px;
+  padding: 12px 13px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--次要浅);
+}
+
+.技能行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.技能片 {
+  padding: 5px 11px;
+  border-radius: 8px;
+  background: var(--浅灰底);
+  font-size: 12px;
+  color: var(--正文);
+}
