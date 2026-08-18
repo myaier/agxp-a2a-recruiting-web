@@ -15,6 +15,10 @@ interface 属性 {
   眼色?: string;
   /** 小尺寸（≤14）时右下点太碎，可关 */
   带点?: boolean;
+  /** 描边色。没有圆底衬着时（如代理横幅）用它把轮廓勾出来 */
+  描边色?: string;
+  /** 描边宽（viewBox 48 坐标系下的值）*/
+  描边宽?: number;
 }
 
 export default function 代理标({
@@ -22,16 +26,39 @@ export default function 代理标({
   脸色 = 'var(--橄榄)',
   眼色 = '#ffffff',
   带点 = true,
+  描边色,
+  描边宽 = 3,
 }: 属性) {
   return (
     <svg width={尺寸} height={尺寸} viewBox="0 0 48 48" fill="none" aria-hidden>
-      {/* 圆角菱形脸：圆角方形转 45° */}
-      <rect x="8.5" y="8.5" width="31" height="31" rx="10" fill={脸色} transform="rotate(45 24 24)" />
+      {/* 圆角菱形脸：圆角方形转 45°。有描边色时勾一圈轮廓（去掉圆底后的立面感） */}
+      <rect
+        x="8.5"
+        y="8.5"
+        width="31"
+        height="31"
+        rx="10"
+        fill={脸色}
+        stroke={描边色}
+        strokeWidth={描边色 ? 描边宽 : undefined}
+        transform="rotate(45 24 24)"
+      />
       {/* 两条竖圆角眼睛 */}
       <rect x="18.4" y="18.5" width="3.6" height="10.5" rx="1.8" fill={眼色} />
       <rect x="26" y="18.5" width="3.6" height="10.5" rx="1.8" fill={眼色} />
       {/* 右下小方点（参考图的记忆点） */}
-      {带点 ? <rect x="36.5" y="36.5" width="7" height="7" rx="2.4" fill={脸色} /> : null}
+      {带点 ? (
+        <rect
+          x="36.5"
+          y="36.5"
+          width="7"
+          height="7"
+          rx="2.4"
+          fill={脸色}
+          stroke={描边色}
+          strokeWidth={描边色 ? 描边宽 * 0.7 : undefined}
+        />
+      ) : null}
     </svg>
   );
 }
