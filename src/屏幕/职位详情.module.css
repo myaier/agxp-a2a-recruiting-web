@@ -383,3 +383,55 @@
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
+
+/* ── 匹配度分析（标注 00:38）── */
+.适配头 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.适配行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.适配行:last-child {
+  border-bottom: none;
+  padding-bottom: 2px;
+}
+
+.适配维名 {
+  flex: none;
+  width: 52px;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.适配值 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.适配过 {
+  flex: none;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--递简历);
+}
+
+.适配差 {
+  flex: none;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--意向);
+}
