@@ -151,9 +151,10 @@
   flex: none;
   margin: 12px 11px 0;
   padding: 12px 14px;
-  /* 视觉规范 v2：mint 渐变质感。页面底换近白后原渐变几乎隐形（标注 17:58），
-     起点加实一档、终点停在淡绿底，不再渐到纯白 */
-  background: linear-gradient(118deg, #e4f2be 0%, var(--淡绿底) 62%, var(--淡绿底2) 100%);
+  /* 标注 18:07：颜色再深一点、渐变做高级 —— 三段式斜向，起点带饱和度，
+     配一条极浅的顶部高光描边，近白底上立得住 */
+  background: linear-gradient(120deg, #d8ecA0 0%, #e6f3c0 46%, #f0f7d8 100%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
   border-radius: var(--圆角-内托盘);
   display: flex;
   align-items: center;

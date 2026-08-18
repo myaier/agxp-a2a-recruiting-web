@@ -74,7 +74,7 @@ function 在谈卡({ 单, 按下 }: { 单: 在谈单; 按下: () => void }) {
           <div className={`${样式.公司简介} 单行`}>{单.公司简介}</div>
         </div>
         <div className={样式.右列}>
-          <适配环 分={单.适配分} />
+          <适配环 分={单.适配分} 标={null} />
           <span className={`${样式.薪资} 薪资体`}>{单.薪资}</span>
         </div>
       </div>

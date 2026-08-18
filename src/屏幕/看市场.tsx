@@ -92,7 +92,7 @@ function 市场卡({
             <span className={`${样式.规模行} 单行`}>{规模行}</span>
           </span>
           <span className={样式.右列}>
-            <适配环 分={岗.适配分} />
+            <适配环 分={岗.适配分} 标={null} />
             <span className={`${样式.薪资} 薪资体`}>{岗.薪资}</span>
           </span>
         </div>
