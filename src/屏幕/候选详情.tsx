@@ -27,11 +27,9 @@ import {
   候选评估,
   企业往来记录,
   候选简历表,
-  推荐简历补充,
-  推荐列表,
 } from '../数据/企业端模拟数据';
 import { 阶段顺序 } from '../数据/类型';
-import type { 分歧, 候选, 推荐候选, 阶段 } from '../数据/类型';
+import type { 分歧, 候选, 阶段 } from '../数据/类型';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -113,13 +111,6 @@ export default function 候选详情() {
 
   // 协调阶段的决策来自全局状态，跨屏可见（人才页那张卡会跟着变）
   const 协调决策: '接受' | '终止' | null = 状态.候选决策[编号] ?? null;
-
-  // 推荐候选（R-xx，还没开始谈）：点开 = 推荐理由 + 匿名简历 + 「让AI代理去接触」
-  // （标注意见 2026-08-18：推荐卡点不开 —— 形态对齐 BOSS 牛人点开即简历）
-  const 推 = !列表内候选 ? 推荐列表.find((条) => 条.编号 === 编号) : undefined;
-  if (推) {
-    return <推荐候选详情 推={推} 已接触={状态.已接触推荐.includes(推.编号)} 接触={() => 派发({ 型: '接触推荐候选', 编号: 推.编号 })} 返回={返回} />;
-  }
 
   // 直接进 URL 但这位候选从来不存在（或刷新后状态已丢）时的兜底
   if (!候) {
@@ -646,145 +637,5 @@ function 在线简历Tab({ 候 }: { 候: 候选 }) {
         </div>
       </div>
     </滚动区>
-  );
-}
-
-
-// ── 推荐候选详情：推荐理由 + 匿名简历正文 + 底部接触按钮 ──────────
-// 还没开始谈，所以没有谈判进度 Tab；简历字段与在谈候选同一套披露规则。
-function 推荐候选详情({
-  推,
-  已接触,
-  接触,
-  返回,
-}: {
-  推: 推荐候选;
-  已接触: boolean;
-  接触: () => void;
-  返回: () => void;
-}) {
-  const 短码 = 推.代号.replace('候选 ', '');
-  const 档 = 推荐简历补充[短码];
-
-  return (
-    <次级页外壳>
-      <返回栏 返回={返回} 标题={推.代号} 副标题={推.画像} />
-
-      <滚动区>
-        <div className={样式.简历列}>
-          {/* 头卡：代号 + 画像 + 匹配分 */}
-          <div className={`${样式.简历卡} ${样式.头卡}`}>
-            <span className={样式.候选头像}>
-              <span className={样式.头像字}>{推.头像字}</span>
-            </span>
-            <div className={样式.头卡文本}>
-              <div className={`${样式.头卡代号} 单行`}>{推.代号}</div>
-              <div className={`${样式.头卡画像} 单行`}>{推.画像}</div>
-              {档 ? <div className={样式.状态行}>{档.状态行}</div> : null}
-            </div>
-            <span className={样式.匹配组}>
-              <span className={样式.匹配标}>匹配</span>
-              <span
-                className={`${样式.匹配分} ${推.匹配分 < 80 ? 样式.匹配分警示 : ''} 等宽数字`}
-              >
-                {推.匹配分}
-              </span>
-            </span>
-          </div>
-
-          {/* 推荐理由：代理为什么把这个人推到你面前 */}
-          <div className={样式.简历卡}>
-            <div className={样式.简历卡标题}>你的代理为什么推荐</div>
-            <div className={样式.要点行}>
-              <span className={样式.要点符}>·</span>
-              <span className={样式.要点文字}>{推.评语}</span>
-            </div>
-            <div className={样式.技能行} style={{ marginTop: 8 }}>
-              {推.亮点.map((点) => (
-                <span key={点} className={样式.技能片}>
-                  {点}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {档 ? (
-            <>
-              <div className={样式.简历卡}>
-                <div className={样式.简历卡标题}>个人优势</div>
-                {档.优势.map((条) => (
-                  <div key={条} className={样式.要点行}>
-                    <span className={样式.要点符}>·</span>
-                    <span className={样式.要点文字}>{条}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className={样式.简历卡}>
-                <div className={样式.简历卡标题}>工作经历</div>
-                {档.经历.map((段) => (
-                  <div key={段.起止} className={样式.经历段}>
-                    <div className={样式.经历头行}>
-                      <span className={`${样式.经历公司} 单行`}>{段.公司}</span>
-                      <span className={`${样式.经历起止} 等宽数字`}>{段.起止}</span>
-                    </div>
-                    <div className={样式.经历职位}>{段.职位}</div>
-                    {段.要点.map((点) => (
-                      <div key={点} className={样式.要点行}>
-                        <span className={样式.要点符}>·</span>
-                        <span className={样式.要点文字}>{点}</span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-
-              {档.作品.length > 0 ? (
-                <div className={样式.简历卡}>
-                  <div className={样式.简历卡标题}>作品</div>
-                  {档.作品.map((件) => (
-                    <div key={件.名称} className={样式.作品行}>
-                      <div className={样式.作品名}>{件.名称}</div>
-                      <div className={样式.作品说明}>{件.说明}</div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              <div className={样式.简历卡}>
-                <div className={样式.简历卡标题}>教育经历</div>
-                <div className={样式.隐去条}>按候选人的披露偏好隐去 · 双方确认意向后可见</div>
-              </div>
-
-              <div className={样式.简历卡}>
-                <div className={样式.简历卡标题}>专业技能</div>
-                <div className={样式.技能行}>
-                  {档.技能.map((技) => (
-                    <span key={技} className={样式.技能片}>
-                      {技}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </>
-          ) : null}
-
-          <div className={样式.简历尾注}>
-            姓名与联系方式已按双盲规则隐去，双方确认意向后互换
-          </div>
-        </div>
-      </滚动区>
-
-      {/* 底部：让代理去接触（幂等，接触后变状态条） */}
-      <div className={样式.接触底栏}>
-        {已接触 ? (
-          <span className={样式.已接触条}>AI代理已接手 · 匿名初筛进行中</span>
-        ) : (
-          <button className={`${样式.接触主键} 可点`} onClick={接触}>
-            让AI代理去接触
-          </button>
-        )}
-      </div>
-    </次级页外壳>
   );
 }

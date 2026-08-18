@@ -54,6 +54,8 @@ export const 路径 = {
   企业真人会话: '/hr/chat',
   岗位管理: '/hr/jobs',
   企业代理设置: '/hr/agent-settings',
+  匿名在线简历: (编号: string) => `/hr/resume/${编号}`,
+  匿名在线简历模板: '/hr/resume/:id',
   企业通知中心: '/hr/notifications',
   企业设置: '/hr/settings',
 } as const;

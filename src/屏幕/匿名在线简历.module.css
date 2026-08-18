@@ -1,0 +1,494 @@
+/* D11·A 匿名在线简历 —— 版式按 mockup 一比一。
+   白底、发丝线分节；淡绿判断卡是页面唯一的大色块；底部双按钮。 */
+
+.页体 {
+  padding: 2px 20px 16px;
+}
+
+.缺档 {
+  padding: 48px 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--次要浅);
+}
+
+.栏右组 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+.栏键 {
+  width: 30px;
+  height: 30px;
+  font-size: 17px;
+  color: var(--正文);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 头区 ── */
+.头区 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 8px 0 16px;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.头文 {
+  flex: 1;
+  min-width: 0;
+}
+
+.代号行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+}
+
+.大代号 {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--墨);
+}
+
+.匿名标 {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--次要);
+  border: 1px solid var(--描边深);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+.职位行 {
+  font-size: 14px;
+  color: var(--正文);
+  margin-top: 8px;
+}
+
+.人像占位 {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--浅灰底);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 状态行 + 活跃度 ── */
+.状态区 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 0 0;
+}
+
+.状态文 {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.活跃度 {
+  font-size: 11.5px;
+  color: var(--最弱);
+}
+
+/* ── 经验 / 学历 / 年龄 图标行 ── */
+.要素行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 22px;
+  padding: 12px 0 16px;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.要素 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--正文);
+}
+
+/* ── AI 判断卡（淡绿）── */
+.判断卡 {
+  margin-top: 16px;
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边2);
+  border-radius: 16px;
+  padding: 14px 15px;
+}
+
+.判断头 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.判断标题 {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--深绿);
+}
+
+.适配组 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.适配标 {
+  font-size: 11px;
+  color: var(--深绿文字);
+}
+
+.适配分 {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--深绿);
+}
+
+.判断正文 {
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--正文);
+  margin-top: 9px;
+}
+
+.判断粗 {
+  font-weight: 800;
+  color: var(--墨);
+}
+
+/* 内嵌白色风险条 */
+.风险条 {
+  margin-top: 11px;
+  background: var(--白);
+  border-radius: 11px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.风险符 {
+  flex: none;
+  font-size: 11px;
+  color: var(--协调);
+  margin-top: 2px;
+}
+
+.风险文 {
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--正文);
+}
+
+/* ── 自述 ── */
+.自述 {
+  margin: 16px 0 0;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--正文);
+}
+
+/* ── 圆点节标 ── */
+.节标行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.节点圆 {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--橄榄);
+}
+
+.节标 {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+/* ── 求职期望 ── */
+.期望标题 {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--墨);
+  margin-top: 12px;
+}
+
+.期望副行 {
+  font-size: 13px;
+  color: var(--次要浅);
+  margin-top: 6px;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.期望偏好 {
+  color: var(--次要浅);
+}
+
+.一致条 {
+  margin-top: 11px;
+  background: var(--淡绿底2);
+  border-radius: 11px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--深绿文字);
+}
+
+.一致符 {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--递简历底);
+  color: var(--递简历);
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 15px;
+  text-align: center;
+  margin-top: 1px;
+}
+
+/* ── 工作经历 ── */
+.经历段 {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.经历段:last-child {
+  border-bottom: none;
+}
+
+.经历头 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.经历公司 {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.经历起止 {
+  flex: none;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.经历职位 {
+  font-size: 12.5px;
+  color: var(--正文);
+  margin-top: 4px;
+}
+
+.要点 {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--次要);
+  margin-top: 5px;
+  padding-left: 12px;
+  position: relative;
+}
+
+.要点::before {
+  content: '·';
+  position: absolute;
+  left: 2px;
+  color: var(--最弱);
+}
+
+/* ── 底部双按钮 + 尾注 ── */
+.底栏 {
+  flex: none;
+  padding: 10px 18px calc(var(--安全区下) + 10px);
+  background: var(--白);
+  border-top: 1px solid var(--分隔线);
+}
+
+.键行 {
+  display: flex;
+  flex-direction: row;
+  gap: 11px;
+}
+
+.直聊键 {
+  flex: 1;
+  height: 50px;
+  border-radius: var(--圆角-按钮);
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--墨);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.直聊禁 {
+  color: var(--最弱);
+  border-color: var(--描边);
+}
+
+.直聊图,
+.去谈图 {
+  display: flex;
+  align-items: center;
+}
+
+.去谈键 {
+  flex: 1.6;
+  height: 50px;
+  border-radius: var(--圆角-按钮);
+  background: var(--荧光绿);
+  box-shadow: var(--主按钮投影);
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--墨);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.已谈条 {
+  flex: 1.6;
+  height: 50px;
+  border-radius: var(--圆角-按钮);
+  background: var(--淡绿底);
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--深绿文字);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.尾注 {
+  margin-top: 9px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--最弱);
+}
+
+/* ── 浮层提示 ── */
+.浮层提示 {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--安全区下) + 118px);
+  transform: translateX(-50%);
+  background: rgba(26, 26, 26, 0.88);
+  color: #fff;
+  font-size: 12.5px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  z-index: 70;
+  max-width: 88%;
+  text-align: center;
+  line-height: 1.5;
+  animation: 提示浮现 0.18s ease both;
+}
+
+@keyframes 提示浮现 {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* ── mockup 下半屏补充：经历说明 / 教育 / 技能 / 页尾注 ── */
+.经历说明 {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--次要);
+  margin-top: 6px;
+}
+
+.经历段 .一致条 {
+  margin-top: 10px;
+}
+
+.教育行 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.教育文 {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.技能行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.技能片 {
+  padding: 7px 13px;
+  border-radius: 9px;
+  background: var(--浅灰底);
+  font-size: 12.5px;
+  color: var(--正文);
+}
+
+.页尾注 {
+  margin-top: 22px;
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--最弱);
+  text-align: center;
+}
