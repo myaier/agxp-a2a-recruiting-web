@@ -223,10 +223,11 @@
   font-weight: 500;
 }
 
-/* ── 品牌区（图标 + 产品名 + 主张），替代原来的「登录/注册」标题 ── */
+/* ── 品牌区（产品名 + 主张），替代原来的「登录/注册」标题。
+   图标撤掉后少了 56px 高，上边距补到 40 让标题不至于顶在返回栏下面 ── */
 .品牌区 {
   flex: none;
-  padding: 26px 24px 0;
+  padding: 40px 24px 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
