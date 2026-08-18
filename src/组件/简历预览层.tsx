@@ -6,6 +6,9 @@
 //   · 手机 / 邮箱 → 打码，且标明「已隐去」
 //   · 当前公司按披露偏好，可能写成「同赛道头部公司」而不是实名
 // 顶部一条对照说明点出「这是对方看到的版本」，避免用户以为联系方式泄露了。
+//
+// 2026-08-18 22:44 标注：正文抽成可复用的 简历纸身 —— 弹层继续用它，
+// 在谈详情顶部的内联折叠卡也用它，两处渲染的永远是同一份内容。
 
 import 样式 from './简历预览层.module.css';
 import { 个人优势文本 } from '../数据/模拟数据';
@@ -22,13 +25,22 @@ interface 属性 {
   关闭: () => void;
 }
 
-export default function 简历预览层({
-  文件名,
+/**
+ * 简历纸身 —— 「对方实际收到的那一版」简历正文，可复用。
+ *
+ * 只含纸面内容（抬头 / 经历 / 教育 / 优势 / 薪资位置 / 纸脚），不带滚动容器：
+ * 弹层把它包进近全屏抽屉的滚动区，在谈详情把它内联铺进折叠卡。
+ * 文件名与递交时间属于外层容器（弹层顶栏 / 折叠卡头），不进纸身。
+ */
+export function 简历纸身({
   代号,
-  时间,
   公司脱敏 = true,
-  关闭,
-}: 属性) {
+}: {
+  /** 对外代号，如 A-01。用于替换真实姓名 */
+  代号: string;
+  /** 当前公司是否按披露偏好脱敏 */
+  公司脱敏?: boolean;
+}) {
   const 优势条目 = 个人优势文本.split('\n').filter((行) => 行.trim() !== '');
   // 经历/教育读全局简历切片：用户在工作经历页改完，对方看到的这版立刻跟着变
   const { 状态: 全局 } = use应用状态();
@@ -36,6 +48,98 @@ export default function 简历预览层({
   const 教育列表 = 全局.简历教育;
   const 显示年月 = (值: string | null) => (值 ? 值.replace('-', '.') : '至今');
 
+  return (
+    <>
+      {/* 抬头：代号替代真名 */}
+      <div className={样式.抬头}>
+        <div className={样式.代号}>候选人 {代号}</div>
+        <div className={样式.抬头职位}>
+          {(经历列表[0]?.职位 ?? '').split(' · ')[0]} · 9 年经验
+        </div>
+        <div className={样式.打码行}>
+          <span className={样式.打码项}>姓名：候选人 {代号}</span>
+          <span className={样式.打码项}>手机：138****6021</span>
+          <span className={样式.打码项}>邮箱：s***@***.com</span>
+        </div>
+        <div className={样式.隐去注}>
+          姓名与联系方式已隐去，双方确认意向后才互换
+        </div>
+      </div>
+
+      {/* 工作经历：来自全局简历切片；公司名按披露偏好脱敏 */}
+      <div className={样式.节标}>工作经历</div>
+      {经历列表.map((条) => (
+        <div key={条.编号} className={样式.经历段}>
+          <div className={样式.经历头}>
+            <span className={样式.经历公司}>
+              {公司脱敏 ? '同赛道公司（按你的披露偏好隐去实名）' : 条.公司}
+            </span>
+            <span className={样式.经历时间}>
+              {显示年月(条.开始)} — {显示年月(条.结束)}
+            </span>
+          </div>
+          <div className={样式.经历职位}>{条.职位}</div>
+          {条.行业 ? <div className={样式.经历行业}>{条.行业}</div> : null}
+          {条.内容 ? <div className={样式.经历内容}>{条.内容}</div> : null}
+        </div>
+      ))}
+
+      {/* 教育经历：学校直接给（用户定：学校不脱敏）*/}
+      <div className={样式.节标}>教育经历</div>
+      {教育列表.map((条) => (
+        <div key={条.编号} className={样式.经历段}>
+          <div className={样式.经历头}>
+            <span className={样式.经历公司}>{条.学校}</span>
+            <span className={样式.经历时间}>
+              {显示年月(条.开始)} — {显示年月(条.结束)}
+            </span>
+          </div>
+          <div className={样式.经历职位}>
+            {条.学历} · {条.专业}
+          </div>
+        </div>
+      ))}
+
+      {/* 个人优势 */}
+      <div className={样式.节标}>个人优势</div>
+      <ul className={样式.优势列}>
+        {优势条目.map((行) => (
+          <li key={行} className={样式.优势项}>
+            {行.replace(/；$/, '')}
+          </li>
+        ))}
+      </ul>
+
+      {/* 薪资位置：双盲的核心，这里只能是定性表述 */}
+      <div className={样式.节标}>薪资与到岗</div>
+      <div className={样式.薪资框}>
+        <div className={样式.薪资行}>
+          <span className={样式.薪资标}>现金期望</span>
+          <span className={样式.薪资值}>落在贵方区间内 ✓</span>
+        </div>
+        <div className={样式.薪资行}>
+          <span className={样式.薪资标}>到岗时间</span>
+          <span className={样式.薪资值}>45 天内</span>
+        </div>
+        <div className={样式.薪资注}>
+          双盲机制：候选人的薪资数字不会披露，代理只回答「是否落在你给出的区间内」。
+        </div>
+      </div>
+
+      <div className={样式.纸脚}>
+        由 AGXP 代理按候选人的披露偏好生成 · 内容不可二次转发
+      </div>
+    </>
+  );
+}
+
+export default function 简历预览层({
+  文件名,
+  代号,
+  时间,
+  公司脱敏 = true,
+  关闭,
+}: 属性) {
   return (
     <div className={样式.遮罩} onClick={关闭}>
       <div className={样式.层} onClick={(事件) => 事件.stopPropagation()}>
@@ -54,85 +158,7 @@ export default function 简历预览层({
         </div>
 
         <div className={`${样式.纸} 滚动区`}>
-          {/* 抬头：代号替代真名 */}
-          <div className={样式.抬头}>
-            <div className={样式.代号}>候选人 {代号}</div>
-            <div className={样式.抬头职位}>
-              {(经历列表[0]?.职位 ?? '').split(' · ')[0]} · 9 年经验
-            </div>
-            <div className={样式.打码行}>
-              <span className={样式.打码项}>姓名：候选人 {代号}</span>
-              <span className={样式.打码项}>手机：138****6021</span>
-              <span className={样式.打码项}>邮箱：s***@***.com</span>
-            </div>
-            <div className={样式.隐去注}>
-              姓名与联系方式已隐去，双方确认意向后才互换
-            </div>
-          </div>
-
-          {/* 工作经历：来自全局简历切片；公司名按披露偏好脱敏 */}
-          <div className={样式.节标}>工作经历</div>
-          {经历列表.map((条) => (
-            <div key={条.编号} className={样式.经历段}>
-              <div className={样式.经历头}>
-                <span className={样式.经历公司}>
-                  {公司脱敏 ? '同赛道公司（按你的披露偏好隐去实名）' : 条.公司}
-                </span>
-                <span className={样式.经历时间}>
-                  {显示年月(条.开始)} — {显示年月(条.结束)}
-                </span>
-              </div>
-              <div className={样式.经历职位}>{条.职位}</div>
-              {条.行业 ? <div className={样式.经历行业}>{条.行业}</div> : null}
-              {条.内容 ? <div className={样式.经历内容}>{条.内容}</div> : null}
-            </div>
-          ))}
-
-          {/* 教育经历：学校直接给（用户定：学校不脱敏）*/}
-          <div className={样式.节标}>教育经历</div>
-          {教育列表.map((条) => (
-            <div key={条.编号} className={样式.经历段}>
-              <div className={样式.经历头}>
-                <span className={样式.经历公司}>{条.学校}</span>
-                <span className={样式.经历时间}>
-                  {显示年月(条.开始)} — {显示年月(条.结束)}
-                </span>
-              </div>
-              <div className={样式.经历职位}>
-                {条.学历} · {条.专业}
-              </div>
-            </div>
-          ))}
-
-          {/* 个人优势 */}
-          <div className={样式.节标}>个人优势</div>
-          <ul className={样式.优势列}>
-            {优势条目.map((行) => (
-              <li key={行} className={样式.优势项}>
-                {行.replace(/；$/, '')}
-              </li>
-            ))}
-          </ul>
-
-          {/* 薪资位置：双盲的核心，这里只能是定性表述 */}
-          <div className={样式.节标}>薪资与到岗</div>
-          <div className={样式.薪资框}>
-            <div className={样式.薪资行}>
-              <span className={样式.薪资标}>现金期望</span>
-              <span className={样式.薪资值}>落在贵方区间内 ✓</span>
-            </div>
-            <div className={样式.薪资行}>
-              <span className={样式.薪资标}>到岗时间</span>
-              <span className={样式.薪资值}>45 天内</span>
-            </div>
-            <div className={样式.薪资注}>
-              双盲机制：候选人的薪资数字不会披露，代理只回答「是否落在你给出的区间内」。
-            </div>
-          </div>
-
-          <div className={样式.纸脚}>
-            由 AGXP 代理按候选人的披露偏好生成 · 内容不可二次转发
-          </div>
+          <简历纸身 代号={代号} 公司脱敏={公司脱敏} />
         </div>
       </div>
     </div>

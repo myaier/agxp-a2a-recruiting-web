@@ -608,3 +608,65 @@
   font-size: 10.5px;
   color: var(--次要浅);
 }
+
+/* ── 递出去的简历 · 顶部内联折叠卡（标注意见 2026-08-18 22:44）──
+   放时间线最上方：这是用户递出去的东西，回看这一单时它是全部往来的上下文起点。
+   白卡无边框 + 极淡投影，和详情卡区分开 —— 它不是某个阶段的小结，是整条线的封面 */
+.简历卡 {
+  background: var(--白);
+  border-radius: var(--圆角-中卡);
+  box-shadow: 0 2px 10px rgba(26, 26, 26, 0.03);
+  margin-bottom: 14px;
+  overflow: hidden;
+  /* 附件行触发的平滑滚动以它为目标，顶到滚动区上沿时留一口气 */
+  scroll-margin-top: 8px;
+}
+
+.简历卡头 {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.简历卡文本 {
+  flex: 1;
+  min-width: 0;
+}
+
+.简历卡标题 {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.简历卡文件名 {
+  display: block;
+  font-size: 11px;
+  color: var(--灰白);
+  margin-top: 2px;
+}
+
+/* 箭头：收起时朝右（›），展开后旋 90° 朝下；直接显隐正文，箭头给个方向感就够 */
+.简历卡箭头 {
+  flex: none;
+  font-size: 15px;
+  color: var(--次要浅);
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 0.18s ease;
+}
+
+.简历卡箭头开 {
+  transform: rotate(90deg);
+}
+
+/* 展开后的纸身：与折叠头之间一条分隔线，内边距对齐弹层里的「纸」 */
+.简历卡纸 {
+  border-top: 1px solid var(--分隔线);
+  padding: 12px 14px 16px;
+}
