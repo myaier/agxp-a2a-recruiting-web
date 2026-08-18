@@ -590,3 +590,53 @@
   color: var(--深绿文字);
   text-align: center;
 }
+
+/* ── 结构化核对清单（标注 18:05；此前一轮脚本中断漏写了这段，清单曾以 16px 裸样式渲染）── */
+.核对列 {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.核对行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.核对记 {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 15px;
+  text-align: center;
+}
+
+.核对记过 {
+  background: var(--递简历底);
+  color: var(--递简历);
+}
+
+.核对记中 {
+  background: var(--初筛底);
+  color: var(--初筛);
+}
+
+/* 与 小结正文 同字号（标注 18:12：不要比头行大） */
+.核对项 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--正文);
+}
+
+.核对中字 {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--次要浅);
+}
