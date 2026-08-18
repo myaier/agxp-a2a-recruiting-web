@@ -10,7 +10,7 @@
 // 交互：姓名 / 职务点开升起底部编辑抽屉（镜像 A21）；
 // 「对候选人的一句话」是页面内直接编辑的多行输入。
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import 样式 from './招聘名片.module.css';
 import {
   次级页外壳,
@@ -24,6 +24,7 @@ import {
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
+import { 相机图标 } from '../组件/图标';
 import { 路径 } from '../路由/路径表';
 
 /** 可在抽屉里编辑的两个字段（公司已认证锁死，不入此表） */
@@ -35,18 +36,53 @@ const 表单字段表: { 键: 表单键; 标签: string }[] = [
 ];
 
 
-/** 设计稿 R9 预填的一句话 */
-const 一句话初值 = '交易网关 0→1，团队 8 人，直接向我汇报。';
+/** 把用户选的照片压成 256×256 居中裁切的 JPEG dataURL —— 原图可能好几 MB，
+ *  localStorage 装不下也没必要装 */
+function 压成头像(文件: File): Promise<string> {
+  return new Promise((成, 败) => {
+    const 读 = new FileReader();
+    读.onerror = () => 败(new Error('读取失败'));
+    读.onload = () => {
+      const 图 = new Image();
+      图.onerror = () => 败(new Error('不是可用的图片'));
+      图.onload = () => {
+        const 边 = 256;
+        const 画布 = document.createElement('canvas');
+        画布.width = 边;
+        画布.height = 边;
+        const 笔 = 画布.getContext('2d')!;
+        // 居中裁成正方形再缩放（cover）
+        const 源边 = Math.min(图.width, 图.height);
+        笔.drawImage(图, (图.width - 源边) / 2, (图.height - 源边) / 2, 源边, 源边, 0, 0, 边, 边);
+        成(画布.toDataURL('image/jpeg', 0.85));
+      };
+      图.src = String(读.result);
+    };
+    读.readAsDataURL(文件);
+  });
+}
 
 export default function 招聘名片() {
   const { 跳转, 返回 } = use导航();
   // 姓名与公司来自上一步实名认证的结果（全局），职务为设计稿 R9 预填值
-  const { 状态 } = use应用状态();
+  const { 状态, 派发 } = use应用状态();
+  const 文件框 = useRef<HTMLInputElement>(null);
+
+  async function 选了照片(事件: React.ChangeEvent<HTMLInputElement>) {
+    const 文件 = 事件.target.files?.[0];
+    事件.target.value = ''; // 允许再次选同一张
+    if (!文件) return;
+    try {
+      派发({ 型: '存招聘头像', 图: await 压成头像(文件) });
+      轻提示('头像已更新');
+    } catch {
+      轻提示('这张图片读不出来，换一张试试');
+    }
+  }
   const [表单值, 设表单值] = useState<Record<表单键, string>>(() => ({
     姓名: 状态.企业认证.姓名,
     职务: '技术 VP',
   }));
-  const [一句话, 设一句话] = useState(一句话初值);
   // 正在编辑哪个字段（null = 抽屉关着）
   const [编辑中, 设编辑中] = useState<表单键 | null>(null);
   // 抽屉草稿：确认前不写回表单，取消就丢掉
@@ -82,14 +118,35 @@ export default function 招聘名片() {
                头像用姓氏首字圆底，不引入图片上传 —— 招聘方实名靠的是企业认证，
                不是一张自拍；这里给的是「有个具体的人在对面」的辨识度 ── */}
         <div className={样式.预览行}>
-          <公司字标
-            首字={表单值.姓名.charAt(0)}
-            尺寸={52}
-            圆角={999}
-            底色="var(--墨)"
-            字色="var(--荧光绿)"
-            描边={false}
-            字号={21}
+          {/* 头像可传真人照片（标注 22:27）：候选人第一轮就看到这张脸。没传用姓氏字标兜底 */}
+          <button
+            className={`${样式.头像键} 可点`}
+            onClick={() => 文件框.current?.click()}
+            aria-label="上传头像"
+          >
+            {状态.招聘头像 ? (
+              <img className={样式.头像图} src={状态.招聘头像} alt="" />
+            ) : (
+              <公司字标
+                首字={表单值.姓名.charAt(0)}
+                尺寸={52}
+                圆角={999}
+                底色="var(--墨)"
+                字色="var(--荧光绿)"
+                描边={false}
+                字号={21}
+              />
+            )}
+            <span className={样式.相机角标}>
+              <相机图标 尺寸={11} 色="var(--正文)" />
+            </span>
+          </button>
+          <input
+            ref={文件框}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={选了照片}
           />
           <span className={样式.预览文字}>
             <span className={`${样式.预览姓名} 单行`}>{表单值.姓名}</span>
@@ -124,17 +181,6 @@ export default function 招聘名片() {
           按下={() => 跳转(路径.公司档案编辑)}
         />
 
-        {/* ── 对候选人的一句话：页面内直接编辑的多行输入 ── */}
-        <div className={样式.一句话区}>
-          <span className={样式.一句话标签}>对候选人的一句话</span>
-          <textarea
-            className={样式.一句话输入}
-            value={一句话}
-            rows={3}
-            onChange={(事件) => 设一句话(事件.target.value)}
-            placeholder="一句话说清这个岗位为什么值得来"
-          />
-        </div>
       </滚动区>
 
       <主按钮 文字="保存 · 去发岗位" 按下={() => 跳转(路径.发布岗位)} />

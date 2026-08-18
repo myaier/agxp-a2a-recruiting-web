@@ -397,3 +397,22 @@ export function 细对勾图标({ 尺寸 = 12, 色 = '#7fa317' }: 图标属性) 
     </svg>
   );
 }
+
+export function 相机图标({ 尺寸 = 14, 色 = '#3f4536' }: 图标属性) {
+  return (
+    <svg
+      width={尺寸}
+      height={尺寸}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={色}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3.6 8.2A2.2 2.2 0 0 1 5.8 6h2l1.5-2.2h5.4L16.2 6h2A2.2 2.2 0 0 1 20.4 8.2v9.2a2.2 2.2 0 0 1-2.2 2.2H5.8a2.2 2.2 0 0 1-2.2-2.2Z" />
+      <circle cx="12" cy="13" r="3.6" />
+    </svg>
+  );
+}
