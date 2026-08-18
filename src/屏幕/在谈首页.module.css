@@ -14,7 +14,7 @@
 /* 公司头行：字标 + 公司名 / 简介 + 薪资 */
 .公司头行 {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
 }
 
@@ -31,10 +31,18 @@
   margin-top: 2px;
 }
 
-/* 薪资独立一行，紧贴职位名（v2：价格标不再挤在公司头行右侧） */
+/* 右列：适配环在上、薪资在下（标注 2026-08-18：金额挪到适配下面，卡变矮） */
+.右列 {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
 .薪资 {
   color: var(--深绿);
-  margin-top: 3px;
+  font-size: 17px; /* 右列空间窄，薪资体 20px 会撑宽，收一档 */
 }
 
 /* 职位名 17px/800 */

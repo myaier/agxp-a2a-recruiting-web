@@ -84,21 +84,21 @@ function 市场卡({
     <白卡 类名={样式.卡}>
       {/* 卡主体整块点进职位详情 */}
       <button className={`${样式.卡主体} 可点`} onClick={按下}>
-        {/* 公司身份行：字标 + 公司名/规模 + 右上适配环 */}
+        {/* 公司身份行：右列 = 适配环 + 薪资（标注 2026-08-18：与在谈卡同构，卡压矮）*/}
         <div className={样式.头行}>
           <span className={样式.公司字标}>{公司名.charAt(0)}</span>
           <span className={样式.公司组}>
             <span className={`${样式.公司名} 单行`}>{公司名}</span>
             <span className={`${样式.规模行} 单行`}>{规模行}</span>
           </span>
-          <适配环 分={岗.适配分} />
+          <span className={样式.右列}>
+            <适配环 分={岗.适配分} />
+            <span className={`${样式.薪资} 薪资体`}>{岗.薪资}</span>
+          </span>
         </div>
 
         {/* 大职位名：这张卡的主角 */}
         <div className={样式.职位名}>{岗.职位}</div>
-
-        {/* 薪资单独一行，价格标地位不进标签堆 */}
-        <div className={`${样式.薪资} 薪资体`}>{岗.薪资}</div>
 
         <div className={样式.标签行}>
           {岗.标签.map((标签) => (
