@@ -219,17 +219,15 @@ export function 真输入条({
 export function 白卡({
   children,
   按下,
-  红描边 = false,
   样式覆盖,
   类名,
 }: {
   children: ReactNode;
   按下?: () => void;
-  红描边?: boolean;
   样式覆盖?: CSSProperties;
   类名?: string;
 }) {
-  const 类 = `${样式.白卡} ${红描边 ? 样式.红描边 : ''} ${按下 ? '可点' : ''} ${类名 ?? ''}`;
+  const 类 = `${样式.白卡} ${按下 ? '可点' : ''} ${类名 ?? ''}`;
   if (按下) {
     return (
       <button className={类} style={样式覆盖} onClick={按下}>

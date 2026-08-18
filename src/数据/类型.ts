@@ -28,7 +28,7 @@ export interface 在谈单 {
   轮次: string;
   下一步: string;
   辅助文案: string | null;
-  /** true = 等你行动：卡片红描边并置顶，详情页出紧急横幅 */
+  /** true = 等你行动：卡片置顶，详情页出紧急横幅 */
   需要你: boolean;
   分歧: 分歧 | null;
   适配分: number;
