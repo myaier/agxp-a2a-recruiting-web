@@ -18,13 +18,16 @@ LOG_DIR="${TMPDIR:-/tmp}"
 TUNNEL_LOG="$LOG_DIR/标注隧道.log"
 
 探活() {
-  # 只认业务级探活：真 POST 一条自测标注。530/000 都算断
+  # GET 根路径探活，不 POST —— POST 会往收件箱写探活垃圾，每分钟触发一次
+  # Claude 侧的标注通知（2026-08-18 踩过）。隧道会话死时 Cloudflare 回 530/000，
+  # 活着时收集服务回什么都行（2xx/3xx/4xx 均证明链路通）。
   local url="$1"
   local code
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 -X POST "$url/标注" \
-    -H 'Content-Type: application/json' \
-    -d '{"意见":"__守护探活__","路由":"","位置":"keepalive","文本":"","时间":"keepalive"}' 2>/dev/null)
-  [ "$code" = "200" ]
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$url/" 2>/dev/null)
+  case "$code" in
+    2*|3*|4*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 重开隧道() {
