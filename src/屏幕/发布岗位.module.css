@@ -101,7 +101,39 @@
   color: var(--次要浅);
 }
 
-/* 快捷片（年薪月数 / 办公方式 / 硬性条件，同 工作经历 的行业片）*/
+/* ── 点击式选择条目（年薪月数）：点开弹滚轮层 ── */
+.选择条目 {
+  width: 100%;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.选择条目值行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.条目值 {
+  flex: 1;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* 快捷片（办公方式 / 硬性条件，同 工作经历 的行业片）*/
 .快捷片行 {
   display: flex;
   flex-direction: row;

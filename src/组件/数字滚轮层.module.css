@@ -1,0 +1,168 @@
+/* 单列数字滚轮 + 手填行。轮区高 = 行高 40 × 5 档（上二 / 当前 / 下二）= 200 */
+
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  display: flex;
+  align-items: flex-end;
+  z-index: 70;
+  animation: 遮罩淡入 0.18s ease both;
+}
+
+.层 {
+  width: 100%;
+  background: var(--白);
+  border-radius: 18px 18px 0 0;
+  padding-bottom: calc(var(--安全区下) + 10px);
+  animation: 抽屉升起 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.顶栏 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--描边);
+}
+
+.标题 {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.取消键 {
+  flex: none;
+  font-size: 14.5px;
+  color: var(--次要);
+}
+
+.确认键 {
+  flex: none;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--深绿);
+}
+
+.轮区 {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  height: 200px;
+  margin-top: 6px;
+}
+
+/* 中间档高亮：上下各多出 3px */
+.高亮带 {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 80px;
+  margin-top: -3px;
+  height: 46px;
+  background: var(--浅灰底);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.列 {
+  position: relative;
+  width: 140px;
+  height: 200px;
+  padding: 80px 0;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+}
+
+.档 {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: center;
+}
+
+.档选中 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.档未选 {
+  font-size: 17px;
+  color: var(--轮未选色, #c9cec7);
+}
+
+/* 单位字比数字小一号、灰一档，让数字当主角 */
+.单位 {
+  font-size: 0.62em;
+  font-weight: 400;
+  color: var(--次要浅);
+  margin-left: 2px;
+}
+
+/* ── 手填行：滚轮范围之外的极端值从这里进 ── */
+.手填行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 4px 18px 0;
+  padding-top: 13px;
+  border-top: 1px solid var(--分隔线);
+}
+
+.手填标 {
+  font-size: 12px;
+  color: var(--次要浅);
+}
+
+.手填框 {
+  width: 54px;
+  border: 1px solid var(--描边深);
+  border-radius: 9px;
+  padding: 7px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--墨);
+  background: var(--白);
+  text-align: center;
+  outline: none;
+  font-family: inherit;
+}
+
+.手填框:focus {
+  border-color: var(--淡绿描边);
+  background: var(--淡绿底2);
+}
+
+.手填单位 {
+  font-size: 12.5px;
+  color: var(--正文);
+}
+
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes 抽屉升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}

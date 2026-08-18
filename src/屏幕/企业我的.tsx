@@ -75,7 +75,7 @@ export default function 企业我的() {
       <div className={样式.工具行}>
         <button
           className={`${样式.工具键} 可点`}
-          onClick={() => 轻提示('切换到求职者身份 正在开发中')}
+          onClick={() => 跳转(路径.切换身份)}
           aria-label="切换身份"
         >
           <双箭头图标 />

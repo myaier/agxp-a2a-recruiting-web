@@ -4,6 +4,8 @@
 export const 路径 = {
   登录: '/',
   选身份: '/identity',
+  /** 老用户切换身份：带 switch=1，选完直接进对应主壳，不重走注册引导 */
+  切换身份: '/identity?switch=1',
   引导说明: '/intro',
   工作经历: '/experience',
   引导问答: '/wizard',

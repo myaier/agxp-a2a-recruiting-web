@@ -1,0 +1,45 @@
+/* 滑动行：行面盖在操作区之上，左移露出操作按钮 */
+
+.外壳 {
+  position: relative;
+  overflow: hidden;
+  /* 横向手势由 JS 接管，浏览器只保留纵向滚动 */
+  touch-action: pan-y;
+}
+
+.操作区 {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+.操作键 {
+  flex: 1;
+  min-width: 0;
+  background: var(--描边深);
+  color: var(--墨);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.危险 {
+  background: var(--意向);
+  color: #fff;
+}
+
+/* 行面：默认盖住操作区，translateX 由行内样式给（受控） */
+.行面 {
+  position: relative;
+  background: var(--白);
+  transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}

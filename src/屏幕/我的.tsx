@@ -46,7 +46,7 @@ function 取统计色(色名: string): string {
 }
 
 export default function 我的() {
-  const { 跳转, 替换跳转 } = use导航();
+  const { 跳转 } = use导航();
   const { 状态 } = use应用状态();
   // 齿轮红点跟着真实未读数走，不再是写死的装饰
   const 未读通知 = 状态.通知列表.filter((条) => !条.已读).length;
@@ -99,11 +99,11 @@ export default function 我的() {
     <主页外壳>
       {/* ── 右上工具行：切换身份 / 通知 / 设置（设置带未读红点）── */}
       <div className={样式.工具行}>
-        {/* 切身份用 替换跳转：招聘方是另一套主壳，不该在返回栈里留一层求职端 */}
+        {/* 切身份进选身份页让用户自己挑，而不是直接甩到另一端（标注意见 2026-08-18）*/}
         <button
           className={`${样式.工具键} 可点`}
-          onClick={() => 替换跳转(路径.企业主壳)}
-          aria-label="切换到招聘方身份"
+          onClick={() => 跳转(路径.切换身份)}
+          aria-label="切换身份"
         >
           <双箭头图标 />
         </button>
