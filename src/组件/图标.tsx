@@ -416,3 +416,23 @@ export function 相机图标({ 尺寸 = 14, 色 = '#3f4536' }: 图标属性) {
     </svg>
   );
 }
+
+export function 学帽图标({ 尺寸 = 14, 色 = '#a7aa9f' }: 图标属性) {
+  return (
+    <svg
+      width={尺寸}
+      height={尺寸}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={色}
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M2.5 9.2 12 4.6l9.5 4.6L12 13.8 2.5 9.2Z" />
+      <path d="M6.4 11.4v4.4c0 1.5 2.5 3 5.6 3s5.6-1.5 5.6-3v-4.4" />
+      <path d="M21.5 9.6v5" />
+    </svg>
+  );
+}

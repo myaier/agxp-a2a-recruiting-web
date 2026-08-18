@@ -442,3 +442,64 @@
     transform: translateY(0);
   }
 }
+
+/* ── 2026-08-18 定稿：直接抄 BOSS 牛人卡的信息行结构，皮肤是我们的 ── */
+.名行 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.活跃度 {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--次要浅);
+}
+
+/* 行2：年限 ｜ 学历 ｜ 薪资位 */
+.基本行 {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--正文);
+}
+
+.竖分 {
+  margin: 0 2px;
+  color: var(--最弱);
+  font-size: 10px;
+}
+
+/* 行3/4/5：图标 + 一行数据 */
+.信息行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.信息行:first-of-type {
+  margin-top: 10px;
+}
+
+.信息文 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--墨);
+}
+
+/* 两行自述位：放代理评语原文 */
+.评语段 {
+  margin-top: 9px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--次要);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-align: left;
+}
