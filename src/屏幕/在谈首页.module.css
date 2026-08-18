@@ -42,7 +42,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0;
+  gap: 4px; /* 标注 18:12：贴太近不协调，环与薪资拉开一点 */
 }
 
 .薪资 {
