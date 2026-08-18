@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './登录.module.css';
 import { 次级页外壳, 主按钮 } from '../组件/通用';
-import { 对勾图标, 盾牌图标 } from '../组件/图标';
+import { 对勾图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -44,18 +44,6 @@ export default function 登录() {
   const 手机号齐 = 手机号数字.length === 11;
   const 验证码齐 = 验证码.length === 验证码格数;
   const 可进入 = 手机号齐 && 验证码齐 && 已同意;
-
-  // 代理引导语：跟着填写进度走。每一句都顺带交付一条产品承诺，
-  // 而不是「请输入手机号」这种功能播报 —— 用户读完这几句就懂产品在干什么。
-  const 代理引导语 = !手机号齐
-    ? '我是你的谈判代理。留个手机号，我就开始替你看市场 —— 你的薪资底线只有我知道，永不外泄。'
-    : 剩余秒 === null
-      ? '手机号收到了。点「获取验证码」，我在这儿等你。'
-      : !验证码齐
-        ? '验证码填一下，四位就行。'
-        : !已同意
-          ? '最后一步：把授权签给我，我才好替你出面谈。'
-          : '都齐了 —— 进来吧，我已经在看今天新上的岗位了。';
 
   // 真倒计时：每秒 -1，归零停
   useEffect(() => {
@@ -92,7 +80,7 @@ export default function 登录() {
       {/* 品牌区：产品名 + 一句话主张。
           图标先撤（2026-08-18 用户：现有图标都不满意，等定了新的再放回来）*/}
       <div className={样式.品牌区}>
-        <h1 className={样式.产品名}>对席</h1>
+        <h1 className={样式.产品名}>AGXP</h1>
         <p className={样式.主张}>条件对上了，再开始聊</p>
       </div>
 
@@ -180,15 +168,8 @@ export default function 登录() {
         </span>
       </button>
 
-      {/* 代理引导：占据原来的空白，随填写进度换话术 —— 这一屏的主角是代理，不是表单 */}
-      <div className={样式.引导区}>
-        <div className={样式.代理气泡行}>
-          <span className={样式.代理头像}>
-            <盾牌图标 尺寸={16} />
-          </span>
-          <span className={样式.代理气泡}>{代理引导语}</span>
-        </div>
-      </div>
+      {/* 表单与登录方式之间留空：代理引导气泡按标注意见（2026-08-18）撤掉 */}
+      <div className={样式.留白区} />
 
       <div className={样式.分割行}>
         <span className={样式.分割线} />

@@ -27,7 +27,9 @@ interface 标注 {
   已送达?: boolean;
 }
 
-const 存储键 = '对席标注意见';
+const 存储键 = 'AGXP标注意见';
+/** 改名前的键。用户设备上可能还压着没发出去的意见，首次读取时搬过来，别弄丢 */
+const 旧存储键 = '对席标注意见';
 
 /**
  * 端点发现：优先读部署目录里的 annotate-endpoint.json（内容是收集服务的
@@ -109,7 +111,9 @@ export default function 标注层() {
   const [草稿文字, 设草稿文字] = useState('');
   const [清单, 设清单] = useState<标注[]>(() => {
     try {
-      return JSON.parse(localStorage.getItem(存储键) ?? '[]');
+      // 新键为空时把旧键的内容搬过来：改名那一刻用户设备上可能正压着没发出去的意见
+      const 原文 = localStorage.getItem(存储键) ?? localStorage.getItem(旧存储键) ?? '[]';
+      return JSON.parse(原文);
     } catch {
       return [];
     }
@@ -180,7 +184,7 @@ export default function 标注层() {
   const 待复制 = 清单.filter((条) => !条.已送达);
   const 导出文本 = () =>
     [
-      `【对席修改意见】共 ${待复制.length} 条 · ${new Date().toLocaleString('zh-CN', { hour12: false })}`,
+      `【AGXP 修改意见】共 ${待复制.length} 条 · ${new Date().toLocaleString('zh-CN', { hour12: false })}`,
       ...待复制.map(
         (条, 序) =>
           `${序 + 1}) 页面 ${条.路由} ｜位置 ${条.位置}${条.文本 ? ` ｜文本「${条.文本}」` : ''}\n   意见：${条.意见}`

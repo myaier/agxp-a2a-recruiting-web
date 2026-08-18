@@ -1,9 +1,6 @@
 /* R1 手机号进入 —— 像素值取自 RN 源 应用/屏幕/登录.js，与设计稿 R1 一比一。
    RN 的 letterSpacing 是绝对值（px），这里按「值 ÷ 字号」换算成 em。 */
 
-
-
-
 /* ── 表单卡：上半手机号行 + 下半验证码四格 ── */
 .表单卡 {
   flex: none;
@@ -165,7 +162,6 @@
   color: var(--深绿);
 }
 
-
 .分割行 {
   display: flex;
   flex-direction: row;
@@ -238,7 +234,7 @@
   margin: 0;
   font-size: 30px;
   font-weight: 800;
-  letter-spacing: 0.06em; /* 两个字的中文标题拉开一点更像标志 */
+  letter-spacing: 0.02em; /* 拉丁字母词标，中文那套 0.06em 会散 */
   line-height: 1.1;
   color: var(--墨);
 }
@@ -250,44 +246,10 @@
   color: var(--次要);
 }
 
-/* ── 代理引导区：吃掉表单与底部按钮之间原本空白的那一段 ── */
-.引导区 {
+/* ── 留白区：表单与登录方式之间的弹性空隙。
+   原来这里是代理引导气泡，按标注意见（2026-08-18）撤掉，只留撑开用的空位 ── */
+.留白区 {
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 16px 20px;
 }
 
-.代理气泡行 {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 9px;
-}
-
-.代理头像 {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  border-radius: 14px;
-  background: var(--荧光绿);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 2px;
-}
-
-/* 左上角尖角的气泡：与 A27 代理对话页同一形状语言，暗示「这就是那个代理」 */
-.代理气泡 {
-  flex: 1;
-  min-width: 0;
-  background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: 4px 14px 14px 14px;
-  padding: 11px 13px;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--正文);
-}

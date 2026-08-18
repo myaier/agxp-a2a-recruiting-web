@@ -13,6 +13,7 @@
 import { useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import 样式 from './工作经历.module.css';
+import 年月滚轮层 from '../组件/年月滚轮层';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 开关 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
@@ -205,6 +206,8 @@ function 经历编辑页({
     }
   );
   const [行业层, 设行业层] = useState(false);
+  // 年月滚轮打开在哪一侧：null = 没开
+  const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
   const 至今 = 草稿.结束 === null;
   const 必填齐 = 草稿.公司.trim() !== '' && 草稿.职位.trim() !== '' && 草稿.开始 !== '';
 
@@ -266,31 +269,28 @@ function 经历编辑页({
           />
         </div>
 
-        {/* 在职时间：原生年月选择器（iOS 弹滚轮），结束侧被「至今」接管 */}
+        {/* 在职时间：点开弹自绘年月滚轮（标注意见 2026-08-18），结束侧被「至今」接管 */}
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>在职时间</div>
           <div className={样式.时间行}>
-            <input
-              type="month"
-              className={`${样式.月份输入} 等宽数字`}
-              value={草稿.开始}
-              max={new Date().toISOString().slice(0, 7)}
+            <button
+              className={`${样式.月份键} ${草稿.开始 ? '' : 样式.月份键空} 等宽数字 可点`}
+              onClick={() => 设滚轮('开始')}
               aria-label="入职年月"
-              onChange={(事件) => 改('开始', 事件.target.value)}
-            />
+            >
+              {草稿.开始 ? 草稿.开始.replace('-', '.') : '入职年月'}
+            </button>
             <span className={样式.时间连字}>—</span>
             {至今 ? (
               <span className={样式.至今占位}>至今</span>
             ) : (
-              <input
-                type="month"
-                className={`${样式.月份输入} 等宽数字`}
-                value={草稿.结束 ?? ''}
-                min={草稿.开始 || undefined}
-                max={new Date().toISOString().slice(0, 7)}
+              <button
+                className={`${样式.月份键} ${草稿.结束 ? '' : 样式.月份键空} 等宽数字 可点`}
+                onClick={() => 设滚轮('结束')}
                 aria-label="离职年月"
-                onChange={(事件) => 改('结束', 事件.target.value)}
-              />
+              >
+                {草稿.结束 ? 草稿.结束.replace('-', '.') : '离职年月'}
+              </button>
             )}
             <label className={`${样式.至今开关} 可点`}>
               <input
@@ -338,6 +338,20 @@ function 经历编辑页({
       </滚动区>
 
       {/* 行业选择层：常见行业一行一条，底部留手输入口 */}
+      {滚轮 ? (
+        <年月滚轮层
+          标题={滚轮 === '开始' ? '选择入职年月' : '选择离职年月'}
+          初值={(滚轮 === '开始' ? 草稿.开始 : 草稿.结束) ?? ''}
+          最小={滚轮 === '结束' ? 草稿.开始 || undefined : undefined}
+          最大={new Date().toISOString().slice(0, 7)}
+          确认={(值) => {
+            改(滚轮, 值);
+            设滚轮(null);
+          }}
+          取消={() => 设滚轮(null)}
+        />
+      ) : null}
+
       {行业层 ? (
         <div className={样式.遮罩} onClick={() => 设行业层(false)}>
           <div className={样式.选择层} onClick={(事件) => 事件.stopPropagation()}>

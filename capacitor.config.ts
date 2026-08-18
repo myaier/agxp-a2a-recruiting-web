@@ -8,7 +8,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const 配置: CapacitorConfig = {
   appId: 'com.myaier.agxp.recruiting',
-  appName: '对席',
+  appName: 'AGXP',
   webDir: 'dist',
 
   ios: {

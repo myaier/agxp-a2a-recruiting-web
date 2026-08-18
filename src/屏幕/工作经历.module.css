@@ -232,7 +232,8 @@
   gap: 10px;
 }
 
-.月份输入 {
+/* 点开弹年月滚轮的触发键（原来是 input[type=month]，各平台长相不一）*/
+.月份键 {
   flex: 1;
   min-width: 0;
   border: 1px solid var(--描边);
@@ -243,6 +244,12 @@
   color: var(--墨);
   background: var(--白);
   font-family: inherit;
+  text-align: center;
+}
+
+.月份键空 {
+  font-weight: 400;
+  color: var(--最弱);
 }
 
 .时间连字 {
