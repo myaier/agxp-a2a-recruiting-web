@@ -14,7 +14,7 @@ import { 主页外壳, 滚动区 } from '../组件/通用';
 import {
   齿轮图标,
   铃铛图标,
-  双箭头图标,
+  身份切换图标,
   简历图标,
   靶心图标,
   旗帜图标,
@@ -99,7 +99,7 @@ export default function 企业我的() {
           onClick={() => 跳转(路径.切换身份自企业端)}
           aria-label="切换身份"
         >
-          <双箭头图标 />
+          <身份切换图标 />
         </button>
         <button
           className={`${样式.工具键} 可点`}
