@@ -30,10 +30,16 @@ const 身份列表: 身份项[] = [
 export default function 选身份() {
   const { 跳转, 返回, 替换跳转 } = use导航();
   const { 派发 } = use应用状态();
-  const [选中, 设选中] = useState<身份键>('求职者');
-  // 切换身份模式（#/identity?switch=1）：老用户从「我的」右上角进来的，
-  // 已经建过档，不该再走一遍注册引导，直接进对应主壳（标注意见 2026-08-18）
-  const 切换模式 = new URLSearchParams(useLocation().search).get('switch') === '1';
+  // 切换身份模式（#/identity?switch=1&from=app|hr）：老用户切端，
+  // 不重走注册引导，直接进对应主壳（标注意见 2026-08-18）
+  const 查询 = new URLSearchParams(useLocation().search);
+  const 切换模式 = 查询.get('switch') === '1';
+  const 来源 = 查询.get('from');
+  // 切换模式下默认选「对面」身份：从企业端来的多半想切求职者，反之亦然 ——
+  // 默认选错方向是「一切换就换不回去」的主要成因（2026-08-18 用户复现）
+  const [选中, 设选中] = useState<身份键>(
+    切换模式 && 来源 === 'app' ? '企业' : '求职者'
+  );
 
   const 选中项 = 身份列表.find((项) => 项.键 === 选中) ?? 身份列表[0];
 

@@ -75,7 +75,7 @@ export default function 企业我的() {
       <div className={样式.工具行}>
         <button
           className={`${样式.工具键} 可点`}
-          onClick={() => 跳转(路径.切换身份)}
+          onClick={() => 跳转(路径.切换身份自企业端)}
           aria-label="切换身份"
         >
           <双箭头图标 />

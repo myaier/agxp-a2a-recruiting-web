@@ -52,7 +52,14 @@ export default function 企业设置() {
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
-          <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.切换身份)}>
+          <button
+            className={`${样式.行} 可点`}
+            onClick={() => {
+              // 与求职端设置对称：派发重置落地 Tab（「职位」）再切端
+              派发({ 型: '切身份', 到: '求职者' });
+              替换跳转(路径.主壳);
+            }}
+          >
             <span className={样式.行文字组}>
               <span className={样式.行标题}>切换到求职者身份</span>
               <span className={样式.行说明}>两侧数据完全隔离，同一手机号不会互相暴露</span>

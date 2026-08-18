@@ -4,8 +4,10 @@
 export const 路径 = {
   登录: '/',
   选身份: '/identity',
-  /** 老用户切换身份：带 switch=1，选完直接进对应主壳，不重走注册引导 */
-  切换身份: '/identity?switch=1',
+  /** 老用户切换身份：带 switch=1 与来源端，选完直接进对应主壳，不重走注册引导。
+   *  来源用于默认选中「对面」身份 —— 从求职端进来默认挑招聘方，反之亦然 */
+  切换身份自求职端: '/identity?switch=1&from=app',
+  切换身份自企业端: '/identity?switch=1&from=hr',
   引导说明: '/intro',
   工作经历: '/experience',
   引导问答: '/wizard',
