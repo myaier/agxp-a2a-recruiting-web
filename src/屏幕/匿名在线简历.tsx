@@ -14,6 +14,7 @@ import { useParams } from 'react-router-dom';
 import 样式 from './匿名在线简历.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
+import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
 import { 匿名简历表, 推荐列表, type 匿名简历档 } from '../数据/企业端模拟数据';
 
@@ -196,7 +197,7 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
 
 export default function 匿名在线简历() {
   const { id: 编号 = '' } = useParams<{ id: string }>();
-  const { 返回 } = use导航();
+  const { 返回, 替换跳转 } = use导航();
   const { 状态, 派发 } = use应用状态();
   const [提示, 设提示] = useState<string | null>(null);
 
@@ -263,7 +264,8 @@ export default function 匿名在线简历() {
               className={`${样式.去谈键} 可点`}
               onClick={() => {
                 if (推) 派发({ 型: '接触推荐候选', 编号: 推.编号 });
-                设提示('AI代理已开始匿名接触');
+                // reducer 已把这位候选写进在谈列表并切子视图，回人才页直接看到
+                替换跳转(路径.企业主壳);
               }}
             >
               <span className={样式.去谈图} aria-hidden>
