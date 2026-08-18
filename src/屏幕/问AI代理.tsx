@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './问AI代理.module.css';
 import { 次级页外壳, 返回栏, 真输入条 } from '../组件/通用';
-import { 盾牌图标 } from '../组件/图标';
+import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { 轻提示 } from '../组件/轻提示';
 import { 今日简报, 代理对话初始, 快捷问句 } from '../数据/模拟数据';
@@ -100,7 +100,7 @@ function 代理气泡({ 内容 }: { 内容: string }) {
   return (
     <div className={样式.代理行}>
       <span className={样式.小盾牌}>
-        <盾牌图标 尺寸={14} />
+        <代理标 尺寸={15} 脸色="#ffffff" 眼色="var(--荧光绿)" 带点={false} />
       </span>
       <div className={`${样式.代理气泡} ${样式.气泡文字}`}>{内容}</div>
     </div>
@@ -113,7 +113,7 @@ function 简报气泡() {
   return (
     <div className={样式.代理行}>
       <span className={样式.小盾牌}>
-        <盾牌图标 尺寸={14} />
+        <代理标 尺寸={15} 脸色="#ffffff" 眼色="var(--荧光绿)" 带点={false} />
       </span>
       <div className={样式.代理气泡}>
         <div className={样式.简报头}>

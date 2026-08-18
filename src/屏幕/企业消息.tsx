@@ -13,7 +13,8 @@
 import { useMemo, useRef, useState } from 'react';
 import 样式 from './企业消息.module.css';
 import { 主页外壳, 滚动区 } from '../组件/通用';
-import { 放大镜图标, 盾牌图标 } from '../组件/图标';
+import { 放大镜图标 } from '../组件/图标';
+import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 企业消息列表 as 消息数据 } from '../数据/企业端模拟数据';
@@ -116,7 +117,7 @@ function 会话行({ 条, 按下 }: { 条: 消息条目; 按下: () => void }) {
       {条.类型 === 'AI代理' ? (
         // AI代理动态：荧光绿圆底 + 盾牌，品牌符号，跟真人头像明显区分
         <span className={样式.代理头像}>
-          <盾牌图标 尺寸={20} />
+          <代理标 尺寸={24} 脸色="#ffffff" 眼色="var(--荧光绿)" />
         </span>
       ) : (
         // 真人：底色圆头像 + 姓氏首字（无图片资源，用首字占位）

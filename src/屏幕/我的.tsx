@@ -11,7 +11,6 @@ import { useEffect, useState, type ComponentType } from 'react';
 import 样式 from './我的.module.css';
 import { 主页外壳, 滚动区 } from '../组件/通用';
 import {
-  盾牌图标,
   齿轮图标,
   铃铛图标,
   双箭头图标,
@@ -23,6 +22,7 @@ import {
   归档图标,
   问号图标,
 } from '../组件/图标';
+import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 我的信息 } from '../数据/模拟数据';
@@ -155,7 +155,7 @@ export default function 我的() {
       {/* ── 代理状态毛玻璃卡：压在顶部渐变头上，「管理 ›」进规则库 ── */}
       <button className={`${样式.代理卡} 可点`} onClick={() => 跳转(路径.规则库)}>
         <span className={样式.盾牌底}>
-          <盾牌图标 />
+          <代理标 尺寸={18} 脸色="#ffffff" 眼色="var(--荧光绿)" 带点={false} />
         </span>
         <span className={样式.代理文字}>
           <span className={样式.代理标题行}>

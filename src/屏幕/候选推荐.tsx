@@ -10,9 +10,10 @@
 import { useMemo, useRef, useState } from 'react';
 import 样式 from './候选推荐.module.css';
 import { 主页外壳, 公司字标, 小结托盘, 白卡, 滚动区 } from '../组件/通用';
-import { 放大镜图标, 盾牌图标, 谈判图标 } from '../组件/图标';
+import { 放大镜图标, 谈判图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
 import { use应用状态 } from '../状态/应用状态';
+import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 推荐列表 } from '../数据/企业端模拟数据';
@@ -196,7 +197,7 @@ function 推荐卡({
       {/* 底行：AI代理来源标 + 「让AI代理去聊」（镜像市场卡的发布人行 + 去谈键） */}
       <div className={样式.底行}>
         <span className={样式.代理小圆}>
-          <盾牌图标 尺寸={11} />
+          <代理标 尺寸={12} 带点={false} />
         </span>
         <span className={`${样式.来源} 单行`}>你的AI代理从人才库筛出</span>
 

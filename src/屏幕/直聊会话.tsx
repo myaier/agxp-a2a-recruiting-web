@@ -8,7 +8,8 @@
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './直聊会话.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../组件/通用';
-import { 盾牌图标, 细对勾图标 } from '../组件/图标';
+import { 细对勾图标 } from '../组件/图标';
+import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 直聊消息 } from '../数据/模拟数据';
@@ -44,7 +45,7 @@ export default function 直聊会话() {
       {/* 旁听提示条：交回按钮把话头还给 AI 代理，因此跳到「问AI代理」对话页 */}
       <div className={样式.旁听条}>
         <span className={样式.小盾牌}>
-          <盾牌图标 尺寸={12} />
+          <代理标 尺寸={13} 带点={false} />
         </span>
         <span className={样式.旁听文字}>你选择了自己聊，AI代理在旁听：只提醒、不插话</span>
         <button className={`${样式.交回} 可点`} onClick={() => 跳转(路径.问AI代理)}>

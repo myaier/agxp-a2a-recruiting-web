@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './企业详情.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 公司字标 } from '../组件/通用';
-import { 盾牌图标 } from '../组件/图标';
+import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 取公司档案, type 核对项 } from '../数据/公司档案';
@@ -93,7 +93,7 @@ export default function 企业详情() {
           <div className={`${样式.卡} ${样式.核对卡}`}>
             <div className={样式.核对头}>
               <span className={样式.盾底}>
-                <盾牌图标 />
+                <代理标 尺寸={18} 脸色="#ffffff" 眼色="var(--荧光绿)" 带点={false} />
               </span>
               <span className={样式.核对头文}>
                 <span className={样式.核对标题}>你的代理核过这些</span>

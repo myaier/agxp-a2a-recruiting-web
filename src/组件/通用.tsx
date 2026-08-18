@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import 样式 from './通用.module.css';
-import { 盾牌图标 } from './图标';
+import 代理标 from './代理标';
 import type { 阶段 } from '../数据/类型';
 
 /** 四阶段配色表：卡片阶段标签、详情页节点、披露说明徽标统一走这张表 */
@@ -152,7 +152,7 @@ export function 代理横幅({
   return (
     <button className={`${样式.代理横幅} 可点`} onClick={按下}>
       <span className={样式.盾牌底}>
-        <盾牌图标 />
+        <代理标 尺寸={19} 脸色="#ffffff" 眼色="var(--荧光绿)" />
       </span>
       <span className={样式.横幅文字}>
         {前文}
