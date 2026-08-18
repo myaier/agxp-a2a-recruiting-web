@@ -136,12 +136,6 @@
   color: var(--意向);
 }
 
-.轮次 {
-  font-size: 9.5px;
-  color: var(--最弱);
-  margin-left: auto;
-}
-
 .下一步行 {
   display: flex;
   align-items: center;
