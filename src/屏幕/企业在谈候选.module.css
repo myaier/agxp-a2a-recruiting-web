@@ -89,11 +89,13 @@
 }
 
 .卡 {
+  position: relative; /* 右列绝对定位的基准 */
   padding: 14px 16px 11px;
 }
 
-/* 代号头行：头像 + 代号或真名 / 画像 + 匹配分（镜像公司头行，匹配分替代薪资位） */
+/* 代号头行：头像 + 代号/现职副行，右列绝对定位（与求职端在谈卡同构） */
 .头行 {
+  padding-right: 76px; /* 给绝对定位的右列让位 */
   display: flex;
   align-items: center;
   gap: 10px;
@@ -110,6 +112,47 @@
   font-size: 11px;
   color: var(--弱化);
   margin-top: 2px;
+}
+
+.右列 {
+  position: absolute;
+  top: 13px;
+  right: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.交集标 {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--深绿);
+}
+
+.方向名 {
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--墨);
+  margin-top: 9px;
+  padding-right: 76px;
+}
+
+.标签行 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.标签 {
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--浅灰底2);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--正文);
 }
 
 .匹配分 {
