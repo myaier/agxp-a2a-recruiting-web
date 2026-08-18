@@ -8,22 +8,25 @@ import 样式 from './我的简历.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 表单条目 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
-import { 工作经历, 个人优势文本, 我的信息 } from '../数据/模拟数据';
+import { 个人优势文本, 我的信息 } from '../数据/模拟数据';
+import { use应用状态 } from '../状态/应用状态';
 
 // 模拟数据里第二段工作经历只有一行摘要串，而设计稿要求「公司 / 职位 / 时间·行业」三行，
 // 所以这里按设计稿的三行文本写死在本屏，等接后端时整段换成接口字段。
-const 第二段经历 = {
-  公司名称: '美团',
-  职位名称: '后端开发工程师',
-  时间行: '2017.07 — 2019.05 · 互联网 · 本地生活',
-};
-
 /** 基本信息四条的键：也直接用作屏幕上的标签 */
 type 基本字段 = '姓名' | '工作年限' | '最高学历' | '当前状态';
 
+/** 'yyyy-MM' → 'yyyy.MM'；null → '至今' */
+function 显示年月(值: string | null): string {
+  return 值 ? 值.replace('-', '.') : '至今';
+}
+
 export default function 我的简历() {
   const { 返回, 跳转 } = use导航();
-  const 段 = 工作经历.第一段;
+  // 工作经历/教育读全局简历切片：在工作经历页改完，这里立刻是新的
+  const { 状态: 全局 } = use应用状态();
+  const 经历列表 = 全局.简历经历;
+  const 教育 = 全局.简历教育;
 
   // 诊断条「去查看」展开代理挑出的待优化项；附件行点一下给一条说明，避免点了没反应
   const [展开诊断, 设展开诊断] = useState(false);
@@ -33,7 +36,7 @@ export default function 我的简历() {
   const [基本信息, 设基本信息] = useState<Record<基本字段, string>>({
     姓名: 我的信息.姓名,
     工作年限: '9 年',
-    最高学历: '硕士 · 计算机科学',
+    最高学历: `${全局.简历教育.学历} · ${全局.简历教育.专业}`,
     当前状态: 我的信息.状态,
   });
   const [编辑中字段, 设编辑中字段] = useState<基本字段 | null>(null);
@@ -84,27 +87,43 @@ export default function 我的简历() {
             </div>
           </div>
 
-          {/* 工作经历：两段，点任意一段进工作经历编辑屏 */}
+          {/* 工作经历：全部段落来自全局简历切片，点任意一段进编辑屏 */}
           <div className={样式.卡}>
             <div className={样式.卡标题}>工作经历</div>
-            <button className={`${样式.经历行} 可点`} onClick={() => 跳转(路径.工作经历)}>
-              <span className={样式.经历主体}>
-                <span className={样式.经历公司}>{段.公司名称}</span>
-                <span className={样式.经历职位}>{段.职位名称}</span>
-                <span className={样式.经历时间}>
-                  {段.在职时间.起} — {段.在职时间.止} · {段.所在行业}
+            {经历列表.map((条, 序) => (
+              <button
+                key={条.编号}
+                className={`${样式.经历行} ${序 === 经历列表.length - 1 ? 样式.末行 : ''} 可点`}
+                onClick={() => 跳转(路径.工作经历)}
+              >
+                <span className={样式.经历主体}>
+                  <span className={样式.经历公司}>{条.公司}</span>
+                  <span className={样式.经历职位}>{条.职位}</span>
+                  <span className={样式.经历时间}>
+                    {显示年月(条.开始)} — {显示年月(条.结束)}
+                    {条.行业 ? ` · ${条.行业}` : ''}
+                  </span>
                 </span>
-              </span>
-              <span className={样式.尖括号}>›</span>
-            </button>
+                <span className={样式.尖括号}>›</span>
+              </button>
+            ))}
+          </div>
+
+          {/* 教育经历：与工作经历同源，点进同一个编辑屏 */}
+          <div className={样式.卡}>
+            <div className={样式.卡标题}>教育经历</div>
             <button
               className={`${样式.经历行} ${样式.末行} 可点`}
               onClick={() => 跳转(路径.工作经历)}
             >
               <span className={样式.经历主体}>
-                <span className={样式.经历公司}>{第二段经历.公司名称}</span>
-                <span className={样式.经历职位}>{第二段经历.职位名称}</span>
-                <span className={样式.经历时间}>{第二段经历.时间行}</span>
+                <span className={样式.经历公司}>{教育.学校}</span>
+                <span className={样式.经历职位}>
+                  {教育.学历} · {教育.专业}
+                </span>
+                <span className={样式.经历时间}>
+                  {显示年月(教育.开始)} — {显示年月(教育.结束)}
+                </span>
               </span>
               <span className={样式.尖括号}>›</span>
             </button>

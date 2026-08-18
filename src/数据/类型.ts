@@ -234,3 +234,27 @@ export interface 问答条 {
   问: string;
   答: string;
 }
+
+
+// ── 简历编辑数据（2026-08-18：编辑必须全局持久，页面各持一份会「改完就丢」）──
+
+export interface 简历经历段 {
+  编号: string;
+  公司: string;
+  行业: string;
+  职位: string;
+  /** 'yyyy-MM' */
+  开始: string;
+  /** null = 至今 */
+  结束: string | null;
+  内容: string;
+  隐藏: boolean;
+}
+
+export interface 简历教育段 {
+  学校: string;
+  学历: string;
+  专业: string;
+  开始: string;
+  结束: string;
+}

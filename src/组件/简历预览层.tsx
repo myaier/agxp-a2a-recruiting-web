@@ -8,7 +8,8 @@
 // 顶部一条对照说明点出「这是对方看到的版本」，避免用户以为联系方式泄露了。
 
 import 样式 from './简历预览层.module.css';
-import { 工作经历, 个人优势文本 } from '../数据/模拟数据';
+import { 个人优势文本 } from '../数据/模拟数据';
+import { use应用状态 } from '../状态/应用状态';
 
 interface 属性 {
   文件名: string;
@@ -29,6 +30,11 @@ export default function 简历预览层({
   关闭,
 }: 属性) {
   const 优势条目 = 个人优势文本.split('\n').filter((行) => 行.trim() !== '');
+  // 经历/教育读全局简历切片：用户在工作经历页改完，对方看到的这版立刻跟着变
+  const { 状态: 全局 } = use应用状态();
+  const 经历列表 = 全局.简历经历;
+  const 教育 = 全局.简历教育;
+  const 显示年月 = (值: string | null) => (值 ? 值.replace('-', '.') : '至今');
 
   return (
     <div className={样式.遮罩} onClick={关闭}>
@@ -52,7 +58,7 @@ export default function 简历预览层({
           <div className={样式.抬头}>
             <div className={样式.代号}>候选人 {代号}</div>
             <div className={样式.抬头职位}>
-              {工作经历.第一段.职位名称.split(' · ')[0]} · 9 年经验
+              {(经历列表[0]?.职位 ?? '').split(' · ')[0]} · 9 年经验
             </div>
             <div className={样式.打码行}>
               <span className={样式.打码项}>姓名：候选人 {代号}</span>
@@ -64,29 +70,36 @@ export default function 简历预览层({
             </div>
           </div>
 
-          {/* 工作经历 */}
+          {/* 工作经历：来自全局简历切片；公司名按披露偏好脱敏 */}
           <div className={样式.节标}>工作经历</div>
+          {经历列表.map((条) => (
+            <div key={条.编号} className={样式.经历段}>
+              <div className={样式.经历头}>
+                <span className={样式.经历公司}>
+                  {公司脱敏 ? '同赛道公司（按你的披露偏好隐去实名）' : 条.公司}
+                </span>
+                <span className={样式.经历时间}>
+                  {显示年月(条.开始)} — {显示年月(条.结束)}
+                </span>
+              </div>
+              <div className={样式.经历职位}>{条.职位}</div>
+              {条.行业 ? <div className={样式.经历行业}>{条.行业}</div> : null}
+              {条.内容 ? <div className={样式.经历内容}>{条.内容}</div> : null}
+            </div>
+          ))}
+
+          {/* 教育经历：学校直接给（用户定：学校不脱敏）*/}
+          <div className={样式.节标}>教育经历</div>
           <div className={样式.经历段}>
             <div className={样式.经历头}>
-              <span className={样式.经历公司}>
-                {公司脱敏 ? '同赛道头部公司（按你的披露偏好隐去实名）' : 工作经历.第一段.公司名称}
-              </span>
+              <span className={样式.经历公司}>{教育.学校}</span>
               <span className={样式.经历时间}>
-                {工作经历.第一段.在职时间.起} — {工作经历.第一段.在职时间.止}
+                {显示年月(教育.开始)} — {显示年月(教育.结束)}
               </span>
             </div>
-            <div className={样式.经历职位}>{工作经历.第一段.职位名称}</div>
-            <div className={样式.经历行业}>{工作经历.第一段.所在行业}</div>
-            <div className={样式.经历内容}>{工作经历.第一段.工作内容}</div>
-          </div>
-          <div className={样式.经历段}>
-            <div className={样式.经历头}>
-              <span className={样式.经历公司}>
-                {公司脱敏 ? '同赛道上市公司' : '美团'}
-              </span>
-              <span className={样式.经历时间}>2017.07 — 2019.05</span>
+            <div className={样式.经历职位}>
+              {教育.学历} · {教育.专业}
             </div>
-            <div className={样式.经历职位}>后端开发工程师</div>
           </div>
 
           {/* 个人优势 */}
