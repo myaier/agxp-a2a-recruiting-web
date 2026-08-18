@@ -210,7 +210,6 @@ function 候选卡({ 单, 按下 }: { 单: 候选; 按下: () => void }) {
         </div>
         <div className={样式.右列}>
           <适配环 分={单.匹配分} 标={null} />
-          <span className={样式.交集标}>薪资带有交集</span>
         </div>
       </div>
 
