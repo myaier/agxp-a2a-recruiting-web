@@ -12,7 +12,6 @@
 // 只需在滚动停下后算一次落点，比 RN 版更省代码且手感一致。
 
 import { useEffect, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
 import 样式 from './引导问答.module.css';
 import { 主按钮, 单选点, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
 import { GitHub图标, 放大镜图标 } from '../组件/图标';
@@ -372,19 +371,19 @@ function 城市键({ 城, 选中, 按下 }: { 城: string; 选中: boolean; 按�
 // ── A3c 期望薪资：双滚轮 + 手填（标注意见 21:47）─────────────
 const 行高 = 46;
 /**
- * 薪资档位（标注意见 2026-08-18：从 1K 开始）。变步长，低段密、高段疏 ——
- * 应届与实习集中在 1–10K，每 1K 一档才够用；30K 以上再按 1K 排要滚上百下。
- *   1–10K → 1K 一档；10–30K → 2K；30–80K → 5K；80–150K → 10K。
- * 更高的走手填，不用一直滚。
+ * 薪资档位（标注意见 2026-08-18：从 1K 开始、最高 250K；手填行同日按标注删除）。
+ * 变步长，低段密、高段疏 —— 应届与实习集中在 1–10K，每 1K 一档才够用；
+ * 高段再密排要滚上百下。
+ *   1–10K → 1K 一档；10–30K → 2K；30–80K → 5K；80–250K → 10K。
+ * 右轮（上限）单独多一档 260K：上限必须能大于最高的下限，否则下限选 250K 时上限没得选。
  */
 const 薪资档 = [
   ...Array.from({ length: 10 }, (_, 序) => 序 + 1), // 1–10
   ...Array.from({ length: 10 }, (_, 序) => 12 + 序 * 2), // 12–30
   ...Array.from({ length: 10 }, (_, 序) => 35 + 序 * 5), // 35–80
-  ...Array.from({ length: 7 }, (_, 序) => 90 + 序 * 10), // 90–150
+  ...Array.from({ length: 17 }, (_, 序) => 90 + 序 * 10), // 90–250
 ];
-const 薪资下界 = 1;
-const 薪资上界 = 999;
+const 上限薪资档 = [...薪资档, 260];
 
 function 薪资题({
   下限,
@@ -411,88 +410,10 @@ function 薪资题({
           <div className={样式.轮高亮} />
           <span className={样式.轮连字}>—</span>
           <薪资轮 值={下限} 设值={设下限} 名称="最低月薪" />
-          <薪资轮 值={上限} 设值={设上限} 名称="最高月薪" />
+          <薪资轮 值={上限} 设值={设上限} 名称="最高月薪" 档表={上限薪资档} />
         </div>
-
-        <手填行 下限={下限} 设下限={设下限} 上限={上限} 设上限={设上限} />
       </div>
     </滚动区>
-  );
-}
-
-/** 手填行：高于 145K 或要精确到非 5 的倍数时直接输入，省得滚很久 */
-function 手填行({
-  下限,
-  设下限,
-  上限,
-  设上限,
-}: {
-  下限: number;
-  设下限: (档: number) => void;
-  上限: number;
-  设上限: (档: number) => void;
-}) {
-  // 输入过程中允许临时非法（空串、比上限大），失焦/回车时才夹紧并提交
-  const [低草稿, 设低草稿] = useState(String(下限));
-  const [高草稿, 设高草稿] = useState(String(上限));
-
-  // 滚轮改了值要同步回输入框，否则两处显示会打架
-  useEffect(() => 设低草稿(String(下限)), [下限]);
-  useEffect(() => 设高草稿(String(上限)), [上限]);
-
-  const 夹紧 = (原始: string, 兜底: number) => {
-    const 数 = Number.parseInt(原始.replace(/[^0-9]/g, ''), 10);
-    if (Number.isNaN(数)) return 兜底;
-    return Math.min(Math.max(数, 薪资下界), 薪资上界);
-  };
-
-  const 提交低 = () => {
-    const 值 = 夹紧(低草稿, 下限);
-    设下限(值);
-    // 下限超过上限时把上限顶上去，保持「低 — 高」永远成立
-    if (值 > 上限) 设上限(值);
-  };
-
-  const 提交高 = () => {
-    const 值 = 夹紧(高草稿, 上限);
-    设上限(值);
-    if (值 < 下限) 设下限(值);
-  };
-
-  const 回车提交 = (事件: KeyboardEvent<HTMLInputElement>) => {
-    if (事件.key === 'Enter') 事件.currentTarget.blur();
-  };
-
-  return (
-    <div className={样式.手填区}>
-      <div className={样式.手填行}>
-        <span className={样式.手填标}>直接填</span>
-        <input
-          className={`${样式.手填框} 等宽数字`}
-          value={低草稿}
-          onChange={(事件) => 设低草稿(事件.target.value)}
-          onBlur={提交低}
-          onKeyDown={回车提交}
-          inputMode="numeric"
-          maxLength={3}
-          aria-label="最低月薪手填"
-        />
-        <span className={样式.手填单位}>K</span>
-        <span className={样式.手填连字}>—</span>
-        <input
-          className={`${样式.手填框} 等宽数字`}
-          value={高草稿}
-          onChange={(事件) => 设高草稿(事件.target.value)}
-          onBlur={提交高}
-          onKeyDown={回车提交}
-          inputMode="numeric"
-          maxLength={3}
-          aria-label="最高月薪手填"
-        />
-        <span className={样式.手填单位}>K</span>
-      </div>
-      <div className={样式.手填注}>高于 150K 直接填数字，不用滚到底</div>
-    </div>
   );
 }
 
@@ -500,24 +421,20 @@ function 薪资轮({
   值,
   设值,
   名称,
+  档表 = 薪资档,
 }: {
   值: number;
   设值: (档: number) => void;
   名称: string;
+  /** 左轮用 薪资档，右轮用 上限薪资档（多一档 260K）*/
+  档表?: number[];
 }) {
   const 轮引用 = useRef<HTMLDivElement>(null);
   const 防抖计时 = useRef(0);
-  // 记住「本轮自己滚出来的值」，用来区分外部改值（手填）和自身滚动，避免回滚打架
+  // 记住「本轮自己滚出来的值」，用来区分外部改值和自身滚动，避免回滚打架
   const 自报值 = useRef(值);
 
-  // 手填了档位之外的数（如 180K）时，把它临时插进档位列表 ——
-  // 否则滚轮中间显示的还是最近的档（60K），和手填框里的 180 互相矛盾
-  const 档位 = 薪资档.includes(值)
-    ? 薪资档
-    : [...薪资档, 值].sort((甲, 乙) => 甲 - 乙);
-  const 当前序 = 档位.indexOf(值);
-  // 档位数组每次渲染都重建，effect 依赖要用「序号 + 长度」这种原始值
-  const 档位长度 = 档位.length;
+  const 当前序 = 档表.indexOf(值);
 
   useEffect(() => {
     // scroll-snap 只管吸附、不管初始位置，挂载时手动把初值那一档滚到正中间
@@ -538,9 +455,9 @@ function 薪资轮({
     const 位置 = 轮引用.current?.scrollTop ?? 0;
     window.clearTimeout(防抖计时.current);
     防抖计时.current = window.setTimeout(() => {
-      const 落点 = Math.min(Math.max(Math.round(位置 / 行高), 0), 档位长度 - 1);
-      自报值.current = 档位[落点];
-      设值(档位[落点]);
+      const 落点 = Math.min(Math.max(Math.round(位置 / 行高), 0), 档表.length - 1);
+      自报值.current = 档表[落点];
+      设值(档表[落点]);
     }, 90);
   };
 
@@ -552,7 +469,7 @@ function 薪资轮({
       role="listbox"
       aria-label={名称}
     >
-      {档位.map((档) => (
+      {档表.map((档) => (
         <div key={档} className={样式.薪资档} role="option" aria-selected={档 === 值}>
           <span className={`${档 === 值 ? 样式.档选中 : 样式.档未选} 等宽数字`}>
             {档}K
@@ -672,14 +589,13 @@ function 排除题({ 已选, 切换 }: { 已选: string[]; 切换: (项: string)
 interface 到岗项 {
   键: string;
   徽标?: string;
-  尾注?: string;
 }
 
 const 到岗选项: 到岗项[] = [
   { 键: '离职 · 随时到岗', 徽标: '优先推荐' },
   { 键: '在职 · 月内到岗', 徽标: '优先推荐' },
   { 键: '在职 · 考虑机会' },
-  { 键: '在职 · 暂不考虑', 尾注: '仅高分匹配才提醒' },
+  { 键: '在职 · 暂不考虑' },
 ];
 
 function 到岗题({ 当前, 设置 }: { 当前: string; 设置: (键: string) => void }) {
@@ -702,7 +618,6 @@ function 到岗题({ 当前, 设置 }: { 当前: string; 设置: (键: string) =
               <span className={样式.到岗文字组}>
                 <span className={样式.到岗标题}>{项.键}</span>
                 {项.徽标 ? <span className={样式.优先徽标}>{项.徽标}</span> : null}
-                {项.尾注 ? <span className={样式.到岗尾注}>{项.尾注}</span> : null}
               </span>
               {选中 ? <span className={样式.绿勾}>✓</span> : null}
             </button>
