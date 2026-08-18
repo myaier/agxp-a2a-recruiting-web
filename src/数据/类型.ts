@@ -40,7 +40,11 @@ export interface 市场职位 {
   编号: string;
   意向: string;
   职位: string;
-  公司行: string;
+  /** 与 在谈单 同名同义 —— 市场卡和在谈卡是同一张卡，只是底部那一段不同 */
+  公司: string;
+  公司首字: string;
+  /** 行业 · 轮次 · 规模，口径与 在谈单.公司简介 一致 */
+  公司简介: string;
   薪资: string;
   适配分: number;
   标签: string[];

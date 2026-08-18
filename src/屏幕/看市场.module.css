@@ -10,7 +10,7 @@
 
 .卡 {
   position: relative; /* 右列绝对定位的基准 */
-  padding: 14px 16px 12px;
+  padding: 15px 16px 11px; /* 与在谈卡一致 */
 }
 
 /* 卡主体是个 button，需要抹掉浏览器默认的居中对齐和宽度收缩 */
@@ -20,53 +20,33 @@
   text-align: left;
 }
 
-/* ── 公司身份行（2026-08-18 参考 Jobright 重排）：字标 + 名称/规模 + 适配环 ── */
-.头行 {
+/* ── 公司头行 ── 与 在谈首页.module.css 的同名块一比一：
+   字标（用 通用 里那颗共用的白底描边字标，不是本页自己那颗深色的）+ 公司名/简介 + 右列 */
+.公司头行 {
   display: flex;
   align-items: center;
   gap: 10px;
   padding-right: 76px; /* 给绝对定位的右列让位 */
 }
 
-.公司字标 {
-  flex: none;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background: var(--墨);
-  color: var(--荧光绿);
-  font-size: 16px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.公司组 {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .公司名 {
   font-size: 13.5px;
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--墨);
 }
 
-.规模行 {
+.公司简介 {
   font-size: 11px;
-  color: var(--次要浅);
+  color: var(--弱化);
+  margin-top: 2px;
 }
 
-/* 大职位名：卡的主角，比原来 15.5 提到 17 */
+/* 职位名 17px/800，与在谈卡一致 */
 .职位名 {
   font-size: 17px;
   font-weight: 800;
   letter-spacing: -0.02em;
-  line-height: 1.4;
   color: var(--墨);
   margin-top: 11px;
   padding-right: 76px; /* 右列纵向覆盖到这一行，同样让位 */
@@ -96,21 +76,24 @@
   margin-top: 9px;
 }
 
+/* 标签片与在谈卡同款（原来是更小更扁的一版，两屏摆在一起像两张卡） */
 .标签 {
-  padding: 3px 8px;
-  border-radius: 5px;
-  background: var(--浅灰底);
-  font-size: 11px;
-  color: var(--次要);
+  padding: 5px 10px;
+  border-radius: 9px;
+  background: var(--浅灰底2);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--正文);
 }
 
-/* 底行：分隔线之下的发布人 + 委托按钮 */
+/* 底行：分隔线之下的发布人 + 委托按钮。
+   在谈卡在同一位置放「阶段 + 下一步」，所以上边距/发丝线与它对齐 */
 .底行 {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 11px;
-  padding-top: 10px;
+  margin-top: 10px;
+  padding-top: 9px;
   border-top: 1px solid var(--描边);
 }
 
