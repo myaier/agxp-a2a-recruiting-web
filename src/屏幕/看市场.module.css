@@ -9,7 +9,7 @@
 }
 
 .卡 {
-  padding: 12px 16px;
+  padding: 14px 16px 12px;
 }
 
 /* 卡主体是个 button，需要抹掉浏览器默认的居中对齐和宽度收缩 */
@@ -19,49 +19,81 @@
   text-align: left;
 }
 
-/* 头行：左侧职位名/公司行，右侧薪资/适配分 */
+/* ── 公司身份行（2026-08-18 参考 Jobright 重排）：字标 + 名称/规模 + 适配环 ── */
 .头行 {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
 }
 
-.职位名 {
-  font-size: 15.5px;
+.公司字标 {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--墨);
+  color: var(--荧光绿);
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.公司组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.公司名 {
+  font-size: 13.5px;
   font-weight: 700;
-  letter-spacing: -0.02em;
   color: var(--墨);
 }
 
-.公司行 {
-  font-size: 12px;
-  color: var(--次要);
-  margin-top: 5px;
+.规模行 {
+  font-size: 11px;
+  color: var(--次要浅);
 }
 
-/* 右侧列：RN 里没写 flexDirection 默认是 column，DOM 里必须显式写出来 */
-.右侧列 {
+/* 适配环（SVG）+ 底下的小字标 */
+.环组 {
   flex: none;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
+  gap: 1px;
 }
 
+.环数 {
+  font-size: 12.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.环标 {
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  color: var(--次要浅);
+}
+
+/* 大职位名：卡的主角，比原来 15.5 提到 17 */
+.职位名 {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.4;
+  color: var(--墨);
+  margin-top: 11px;
+}
+
+/* 薪资独立一行，不进标签堆 */
 .薪资 {
   color: var(--深绿);
-}
-
-.适配 {
-  font-size: 11px;
-  color: var(--次要浅);
-  margin-top: 7px;
-}
-
-.适配分 {
-  font-size: 14.5px;
-  font-weight: 700;
-  color: var(--协调);
+  margin-top: 3px;
 }
 
 /* 标签行 */

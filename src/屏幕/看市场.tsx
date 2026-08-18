@@ -3,8 +3,13 @@
 // 与「在谈」共用顶栏（意向左右平铺切换 + 在谈/看市场子视图）和代理横幅，
 // 所以这两屏切换时顶部不动，只有列表在换 —— 这是设计稿里的硬要求。
 //
-// 卡片结构：职位名 + 公司行 + 右侧薪资/适配分 → 标签行 → 分隔线
-//          → 发布人头像行 + 「让AI代理去谈」按钮。
+// 卡片版式（2026-08-18 参考 Jobright 岗位卡重排，用户指定）：
+//   公司字标 + 公司名/规模行 + 右上适配环 → 大职位名 → 薪资行 → 标签行
+//   → 分隔线 → 发布人 + 「让AI代理去谈」。
+// 借它的骨架（公司身份先行、匹配分做环形进度、标题放大），但三处按我们的立场改：
+//   · 薪资不进标签堆 —— 单独一行 薪资体，价格标地位不动摇；
+//   · 适配环按分数换语义色（≥90 递简历绿 / 75-89 协调橙 / 更低灰），不是装饰绿；
+//   · 底行不放收藏/屏蔽小图标，只放我们的差异点：让AI代理去谈。
 
 import 样式 from './看市场.module.css';
 import 顶部意向栏 from './顶部意向栏';
@@ -56,6 +61,51 @@ export default function 看市场() {
   );
 }
 
+/** 适配分 → 环形进度的主题色。语义与四阶段色系一致：好=绿、要掂量=橙、弱=灰 */
+function 取环色(分: number): string {
+  if (分 >= 90) return 'var(--递简历)';
+  if (分 >= 75) return 'var(--协调)';
+  return 'var(--次要浅)';
+}
+
+/** 环形适配分（参考 Jobright 的 match ring，但颜色带语义）。
+ *  SVG 圆环：周长 ≈ 2π×16.5 ≈ 103.7，按分数截取 dash。 */
+function 适配环({ 分 }: { 分: number }) {
+  const 周长 = 2 * Math.PI * 16.5;
+  const 色 = 取环色(分);
+  return (
+    <span className={样式.环组}>
+      <svg width={40} height={40} viewBox="0 0 40 40" aria-label={`适配 ${分} 分`} role="img">
+        {/* 轨道 */}
+        <circle cx={20} cy={20} r={16.5} fill="none" stroke="var(--浅灰底)" strokeWidth={3.5} />
+        {/* 进度：从 12 点方向顺时针 */}
+        <circle
+          cx={20}
+          cy={20}
+          r={16.5}
+          fill="none"
+          stroke={色}
+          strokeWidth={3.5}
+          strokeLinecap="round"
+          strokeDasharray={`${(周长 * 分) / 100} ${周长}`}
+          transform="rotate(-90 20 20)"
+        />
+        <text
+          x={20}
+          y={20}
+          textAnchor="middle"
+          dominantBaseline="central"
+          className={样式.环数}
+          fill="var(--墨)"
+        >
+          {分}
+        </text>
+      </svg>
+      <span className={样式.环标}>适配</span>
+    </span>
+  );
+}
+
 /** 单张市场职位卡。
  *  这里刻意不用「白卡 按下=…」整卡可点：卡内还有两个自己的按钮（› 和 去谈键），
  *  HTML 里 button 不能嵌套 button，所以外层用不可点的白卡，卡主体单独做一个按钮。 */
@@ -70,22 +120,29 @@ function 市场卡({
   委托: () => void;
   按下: () => void;
 }) {
+  // 公司行 = 「公司名 · 其余信息」，第一段拆出来配字标，其余当规模行
+  const [公司名, ...规模段] = 岗.公司行.split(' · ');
+  const 规模行 = 规模段.join(' · ');
+
   return (
     <白卡 类名={样式.卡}>
-      {/* 卡主体（职位名 / 公司行 / 薪资 / 适配分 / 标签）整块点进职位详情 */}
+      {/* 卡主体整块点进职位详情 */}
       <button className={`${样式.卡主体} 可点`} onClick={按下}>
+        {/* 公司身份行：字标 + 公司名/规模 + 右上适配环 */}
         <div className={样式.头行}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className={`${样式.职位名} 单行`}>{岗.职位}</div>
-            <div className={`${样式.公司行} 单行`}>{岗.公司行}</div>
-          </div>
-          <div className={样式.右侧列}>
-            <div className={`${样式.薪资} 薪资体`}>{岗.薪资}</div>
-            <div className={样式.适配}>
-              适配 <b className={`${样式.适配分} 等宽数字`}>{岗.适配分}</b>
-            </div>
-          </div>
+          <span className={样式.公司字标}>{公司名.charAt(0)}</span>
+          <span className={样式.公司组}>
+            <span className={`${样式.公司名} 单行`}>{公司名}</span>
+            <span className={`${样式.规模行} 单行`}>{规模行}</span>
+          </span>
+          <适配环 分={岗.适配分} />
         </div>
+
+        {/* 大职位名：这张卡的主角 */}
+        <div className={样式.职位名}>{岗.职位}</div>
+
+        {/* 薪资单独一行，价格标地位不进标签堆 */}
+        <div className={`${样式.薪资} 薪资体`}>{岗.薪资}</div>
 
         <div className={样式.标签行}>
           {岗.标签.map((标签) => (
@@ -96,7 +153,8 @@ function 市场卡({
         </div>
       </button>
 
-      {/* 底行：发布人（企业直招 or 猎头）+ 委托按钮 */}
+      {/* 底行：发布人身份 + 委托按钮。公司名头行已交代过，
+          发布人若以公司名开头就只留身份段（如「企业直招」），不重复 */}
       <div className={样式.底行}>
         <span
           className={样式.发布人头像}
@@ -104,7 +162,11 @@ function 市场卡({
         >
           {岗.发布人首字}
         </span>
-        <span className={`${样式.发布人} 单行`}>{岗.发布人}</span>
+        <span className={`${样式.发布人} 单行`}>
+          {岗.发布人.startsWith(`${公司名} · `)
+            ? 岗.发布人.slice(公司名.length + 3)
+            : 岗.发布人}
+        </span>
 
         <button className={`${样式.尖括号} 可点`} onClick={按下} aria-label="查看职位详情">
           ›
