@@ -25,6 +25,7 @@ function 岗位名截短(名称: string): string {
 
 export default function 候选推荐() {
   const { 状态, 派发 } = use应用状态();
+  const { 跳转 } = use导航();
   const [搜索词, 设搜索词] = useState('');
   // 顶栏放大镜把焦点送进搜索条 —— D11·D「搜人才」的入口就是它
   const 搜索框引用 = useRef<HTMLInputElement>(null);
@@ -70,7 +71,7 @@ export default function 候选推荐() {
                 人={人}
                 已接触={状态.已接触推荐.includes(人.编号)}
                 接触={() => 派发({ 型: '接触推荐候选', 编号: 人.编号 })}
-                按下={() => 跳转(路径.候选详情(单.编号))}
+                按下={() => 跳转(路径.候选详情(人.编号))}
               />
             ))}
           </div>
