@@ -12,7 +12,7 @@ import { useMemo, useRef, useState } from 'react';
 import 样式 from './候选推荐.module.css';
 import { 主页外壳, 公司字标, 白卡, 滚动区 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
-import { 公文包图标, 学帽图标, 放大镜图标, 谈判图标 } from '../组件/图标';
+import { 公文包图标, 学帽图标, 放大镜图标, 谈判图标, 靶心图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
 import { use应用状态 } from '../状态/应用状态';
 import 代理标 from '../组件/代理标';
@@ -287,13 +287,16 @@ function 推荐卡({
               <span className={`${样式.代号} 单行`}>{人.代号}</span>
               <span className={样式.活跃度}>{人.活跃度}</span>
             </div>
-            {/* 行2：年限 ｜ 学历 ｜ 求职状态（标注 23:48：「薪资带有交集」没人看得懂，撤掉；
-                薪资交集的结论在详情页的初筛核对清单里带着上下文出现） */}
+            {/* 行2：年限 ｜ 学历 ｜ 到岗（BOSS 基本行的面议位放到岗档） */}
             <div className={`${样式.基本行} 单行`}>
               {人.经验年} 年<span className={样式.竖分}>｜</span>
               {人.学历}
-              <span className={样式.竖分}>｜</span>
-              {人.求职状态}
+              {人.到岗 ? (
+                <>
+                  <span className={样式.竖分}>｜</span>
+                  {人.到岗}
+                </>
+              ) : null}
             </div>
           </div>
           <div className={样式.右列}>
@@ -308,6 +311,15 @@ function 推荐卡({
             {现职类型} · {方向}
           </span>
         </div>
+        {/* 在找方向 + 求职状态（BOSS 的「最近关注」位） */}
+        {人.在找 ? (
+          <div className={样式.信息行}>
+            <靶心图标 尺寸={14} 色="var(--次要浅)" />
+            <span className={`${样式.信息文} 单行`}>
+              {人.在找} · {人.求职状态}
+            </span>
+          </div>
+        ) : null}
         <div className={样式.信息行}>
           <学帽图标 尺寸={14} 色="var(--次要浅)" />
           <span className={`${样式.信息文} 单行`}>
