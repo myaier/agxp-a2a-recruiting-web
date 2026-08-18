@@ -115,9 +115,19 @@
 
 /* ── 阶段标签（四色）── */
 .阶段标签 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 9.5px;
   font-weight: 800;
   letter-spacing: 0.1em;
+}
+
+/* 阶段状态灯：小圆点 + 同色系光晕（box-shadow 由组件按阶段色内联） */
+.阶段点 {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
 }
 
 /* ── 分歧对比轴 ── */

@@ -17,7 +17,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-right: 76px; /* 给绝对定位的右列让位 */
+  padding-right: 118px; /* 给绝对定位的横排右列让位 */
 }
 
 .公司名 {
@@ -36,13 +36,14 @@
 /* 右列：适配环在上、薪资在下，绝对定位挂卡右上 —— 不参与文档流，
    否则它比左侧公司行高一截，会把职位名往下顶出一条大缝（标注 16:52） */
 .右列 {
+  /* 标注 00:06：薪资放到匹配环左边，横排 */
   position: absolute;
-  top: 13px;
-  right: 16px;
+  top: 12px;
+  right: 15px;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px; /* 标注 18:12：贴太近不协调，环与薪资拉开一点 */
+  flex-direction: row-reverse; /* 标记里环在前，反向后环靠右、薪资在左 */
+  align-items: center;
+  gap: 8px;
 }
 
 .薪资 {
@@ -56,7 +57,6 @@
   font-weight: 800;
   letter-spacing: -0.02em;
   margin-top: 9px;
-  padding-right: 76px; /* 右列纵向覆盖到这一行，同样让位 */
   color: var(--墨);
 }
 
@@ -92,10 +92,11 @@
 
 .需要你胶囊 {
   background: var(--意向底);
-  border-radius: var(--圆角-胶囊);
-  padding: 2px 7px;
+  border-radius: 999px;
+  padding: 2.5px 9px;
   font-size: 9.5px;
   font-weight: 800;
+  letter-spacing: 0.04em;
   color: var(--意向);
 }
 

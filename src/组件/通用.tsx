@@ -102,8 +102,14 @@ export function 主按钮({
 
 // ── 阶段标签 ──────────────────────────────────────────────────
 export function 阶段标签({ 阶段: 值 }: { 阶段: 阶段 }) {
+  // 质感升级（标注 00:07）：裸文字 → 呼吸点 + 文字。点带同色光晕，
+  // 像设备上的状态灯 —— 表达「这一单活着、正处在这一档」
   return (
     <span className={样式.阶段标签} style={{ color: 阶段配色[值].文字 }}>
+      <span
+        className={样式.阶段点}
+        style={{ background: 阶段配色[值].文字, boxShadow: `0 0 0 3px ${阶段配色[值].底}` }}
+      />
       {值}
     </span>
   );
@@ -408,7 +414,7 @@ export function 公司字标({
         <img
           src={真标}
           alt=""
-          style={{ width: '72%', height: '72%', objectFit: 'contain', display: 'block' }}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />
       ) : (
         首字

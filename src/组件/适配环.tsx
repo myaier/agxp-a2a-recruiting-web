@@ -4,6 +4,7 @@
 //   ≥90 递简历绿（放心推进）/ 75–89 协调橙（要掂量）/ 更低 灰（弱匹配）。
 // 首页在谈卡、看市场卡、企业端候选卡共用这一个组件，分数语义全站一致。
 
+import { useId } from 'react';
 import 样式 from './适配环.module.css';
 
 /** 适配分 → 环形进度的主题色。语义与四阶段色系一致：好=绿、要掂量=橙、弱=灰 */
@@ -30,6 +31,8 @@ export default function 适配环({
   const 中心 = 尺寸 / 2;
   const 周长 = 2 * Math.PI * 半径;
   const 色 = 取环色(分);
+  // 渐变 id 必须每实例唯一：一屏多个环共用一个 id 会互相串色
+  const 渐变编号 = useId();
 
   return (
     <span className={样式.环组}>
@@ -40,15 +43,30 @@ export default function 适配环({
         aria-label={`${标 ?? '适配'} ${分} 分`}
         role="img"
       >
-        {/* 轨道 */}
-        <circle cx={中心} cy={中心} r={半径} fill="none" stroke="var(--浅灰底)" strokeWidth={线宽} />
-        {/* 进度：从 12 点方向顺时针 */}
+        {/* 质感升级（标注 00:06）：进度走同色渐变（满色 → 65% 透明度），
+            轨道更轻更细，数字加重 —— 圆形不变，只提精致度 */}
+        <defs>
+          <linearGradient id={渐变编号} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor={色} />
+            <stop offset="100%" stopColor={色} stopOpacity={0.55} />
+          </linearGradient>
+        </defs>
+        {/* 轨道：比进度细一档，退到背景里 */}
         <circle
           cx={中心}
           cy={中心}
           r={半径}
           fill="none"
-          stroke={色}
+          stroke="var(--浅灰底2)"
+          strokeWidth={线宽 * 0.72}
+        />
+        {/* 进度：从 12 点方向顺时针，圆头 + 渐变 */}
+        <circle
+          cx={中心}
+          cy={中心}
+          r={半径}
+          fill="none"
+          stroke={`url(#${渐变编号})`}
           strokeWidth={线宽}
           strokeLinecap="round"
           strokeDasharray={`${(周长 * 分) / 100} ${周长}`}
@@ -59,8 +77,8 @@ export default function 适配环({
           y={中心}
           textAnchor="middle"
           dominantBaseline="central"
-          className={样式.环数}
-          style={{ fontSize: (尺寸 / 40) * 12.5 }}
+          className={`${样式.环数} 等宽数字`}
+          style={{ fontSize: (尺寸 / 40) * 12, fontWeight: 800, letterSpacing: '-0.03em' }}
           fill="var(--墨)"
         >
           {分}

@@ -70,7 +70,7 @@ export default function 顶部意向栏({ 打开搜索, 打开筛选, 筛选生�
         <span className={样式.意向行右}>
           <button
             className={`${样式.加号} 可点`}
-            onClick={() => 跳转(路径.添加意向)}
+            onClick={() => 跳转(路径.求职意向管理)}
             aria-label="添加求职意向"
           >
             ＋
