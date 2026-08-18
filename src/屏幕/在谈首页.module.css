@@ -9,7 +9,7 @@
 
 .卡 {
   position: relative; /* 右列绝对定位的基准 */
-  padding: 15px 16px 13px;
+  padding: 15px 16px 11px;
 }
 
 /* 公司头行：字标 + 公司名 / 简介 + 薪资 */
@@ -79,8 +79,8 @@
 
 /* 阶段区 */
 .阶段区 {
-  margin-top: 12px;
-  padding-top: 11px;
+  margin-top: 10px;
+  padding-top: 9px;
   border-top: 1px solid var(--描边);
 }
 
@@ -118,12 +118,6 @@
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--墨);
-}
-
-.辅助文案 {
-  font-size: 10.5px;
-  color: var(--次要);
-  margin-top: 5px;
 }
 
 /* 列表为空（全部谈完 / 全部退出）时的兜底 */

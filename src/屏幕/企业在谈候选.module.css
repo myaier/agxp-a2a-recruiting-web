@@ -83,7 +83,7 @@
 }
 
 .卡 {
-  padding: 14px 16px;
+  padding: 14px 16px 11px;
 }
 
 /* 代号头行：头像 + 代号或真名 / 画像 + 匹配分（镜像公司头行，匹配分替代薪资位） */
@@ -116,8 +116,8 @@
 
 /* ── 阶段区（与求职端一比一）── */
 .阶段区 {
-  margin-top: 12px;
-  padding-top: 11px;
+  margin-top: 10px;
+  padding-top: 9px;
   border-top: 1px solid var(--描边);
 }
 
@@ -155,12 +155,6 @@
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--墨);
-}
-
-.辅助文案 {
-  font-size: 10.5px;
-  color: var(--次要);
-  margin-top: 5px;
 }
 
 /* 当前岗位下没有在谈候选时的兜底 */
