@@ -35,6 +35,25 @@ interface 经历段 {
 /** 行业快捷片：点一下填入，省得手机上打字 */
 const 常见行业 = ['互联网', '金融科技', 'AI / 大模型', '企业服务', '云计算', '电商', '游戏', '硬件'];
 
+/** 教育经历（标注 2026-08-18：企业端简历上的学校来自这里，onboarding 必须能配置） */
+interface 教育段 {
+  学校: string;
+  学历: string;
+  专业: string;
+  开始: string;
+  结束: string;
+}
+
+const 学历选项 = ['大专', '本科', '硕士', '博士'];
+
+const 初始教育: 教育段 = {
+  学校: '上海交通大学',
+  学历: '硕士',
+  专业: '计算机科学',
+  开始: '2014-09',
+  结束: '2017-06',
+};
+
 /** 简历解析出来的初始两段（演示数据） */
 const 初始经历: 经历段[] = [
   {
@@ -71,6 +90,8 @@ export default function 工作经历() {
   // null = 列表视图；'新增' = 空白编辑；其它 = 正在编辑的段编号
   const [编辑目标, 设编辑目标] = useState<string | '新增' | null>(null);
   const [解析提示, 设解析提示] = useState('沈亦舟_简历_2026.pdf ✓ 已解析，可逐段修改');
+  const [教育, 设教育] = useState<教育段>(初始教育);
+  const [编辑教育中, 设编辑教育中] = useState(false);
   const 文件选择框 = useRef<HTMLInputElement>(null);
 
   function 选中简历文件(事件: ChangeEvent<HTMLInputElement>) {
@@ -78,6 +99,20 @@ export default function 工作经历() {
     if (!文件) return;
     设解析提示(`${文件.name} ✓ 已解析，可逐段修改`);
     轻提示('解析完成（原型演示，不真解析文件）');
+  }
+
+  // ── 教育编辑视图 ──────────────────────────────────────────
+  if (编辑教育中) {
+    return (
+      <教育编辑页
+        初始={教育}
+        取消={() => 设编辑教育中(false)}
+        完成={(段) => {
+          设教育(段);
+          设编辑教育中(false);
+        }}
+      />
+    );
   }
 
   // ── 编辑视图 ──────────────────────────────────────────────
@@ -176,7 +211,131 @@ export default function 工作经历() {
           <span className={样式.添加加号}>＋</span>
           <span className={样式.添加文字}>添加工作经历</span>
         </button>
+
+        {/* ── 教育经历（标注 2026-08-18）：企业端简历上的学校显示自这里 ── */}
+        <div className={样式.区块标}>教育经历</div>
+        <button className={`${样式.经历卡} 可点`} onClick={() => 设编辑教育中(true)}>
+          <span className={样式.经历卡主体}>
+            <span className={样式.经历卡头行}>
+              <span className={`${样式.经历公司} 单行`}>{教育.学校}</span>
+              <span className={`${样式.经历时间} 等宽数字`}>
+                {显示年月(教育.开始)} — {显示年月(教育.结束)}
+              </span>
+            </span>
+            <span className={`${样式.经历职位} 单行`}>
+              {教育.学历} · {教育.专业}
+            </span>
+          </span>
+          <span className={样式.尖括号}>›</span>
+        </button>
       </滚动区>
+    </次级页外壳>
+  );
+}
+
+// ── 教育经历编辑页：学校 / 学历（快捷片）/ 专业 / 起止年月（滚轮）────
+function 教育编辑页({
+  初始,
+  取消,
+  完成,
+}: {
+  初始: 教育段;
+  取消: () => void;
+  完成: (段: 教育段) => void;
+}) {
+  const [草稿, 设草稿] = useState<教育段>(初始);
+  const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
+  const 可完成 = 草稿.学校.trim() !== '' && 草稿.专业.trim() !== '';
+
+  const 改 = <K extends keyof 教育段>(键: K, 值: 教育段[K]) =>
+    设草稿((旧) => ({ ...旧, [键]: 值 }));
+
+  return (
+    <次级页外壳>
+      <返回栏
+        返回={取消}
+        标题="教育经历"
+        右侧={
+          <button
+            className={`${样式.完成键} ${可完成 ? '' : 样式.完成键灰} 可点`}
+            onClick={() => 可完成 && 完成(草稿)}
+          >
+            完成
+          </button>
+        }
+      />
+
+      <滚动区 样式覆盖={{ padding: '4px 22px 40px' }}>
+        <div className={样式.编辑条目}>
+          <div className={样式.条目标签}>学校名称</div>
+          <input
+            className={样式.条目输入}
+            value={草稿.学校}
+            placeholder="必填，如：上海交通大学"
+            onChange={(事件) => 改('学校', 事件.target.value)}
+          />
+        </div>
+
+        <div className={样式.编辑条目}>
+          <div className={样式.条目标签}>学历</div>
+          <div className={样式.行业片行}>
+            {学历选项.map((项) => (
+              <button
+                key={项}
+                className={`${样式.行业片} ${草稿.学历 === 项 ? 样式.行业片选中 : ''} 可点`}
+                onClick={() => 改('学历', 项)}
+              >
+                {项}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className={样式.编辑条目}>
+          <div className={样式.条目标签}>专业</div>
+          <input
+            className={样式.条目输入}
+            value={草稿.专业}
+            placeholder="必填，如：计算机科学"
+            onChange={(事件) => 改('专业', 事件.target.value)}
+          />
+        </div>
+
+        <div className={样式.编辑条目}>
+          <div className={样式.条目标签}>在读时间</div>
+          <div className={样式.时间行}>
+            <button
+              className={`${样式.月份键} 等宽数字 可点`}
+              onClick={() => 设滚轮('开始')}
+              aria-label="入学年月"
+            >
+              {草稿.开始.replace('-', '.')}
+            </button>
+            <span className={样式.时间连字}>—</span>
+            <button
+              className={`${样式.月份键} 等宽数字 可点`}
+              onClick={() => 设滚轮('结束')}
+              aria-label="毕业年月"
+            >
+              {草稿.结束.replace('-', '.')}
+            </button>
+          </div>
+        </div>
+      </滚动区>
+
+      {滚轮 ? (
+        <年月滚轮层
+          标题={滚轮 === '开始' ? '选择入学年月' : '选择毕业年月'}
+          初值={滚轮 === '开始' ? 草稿.开始 : 草稿.结束}
+          最小={滚轮 === '结束' ? 草稿.开始 : undefined}
+          最大={new Date().toISOString().slice(0, 7)}
+          确认={(值) => {
+            改(滚轮, 值);
+            设滚轮(null);
+          }}
+          取消={() => 设滚轮(null)}
+        />
+      ) : null}
     </次级页外壳>
   );
 }

@@ -466,3 +466,11 @@
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
+
+/* ── 教育经历区块标（列表页，工作经历下方）── */
+.区块标 {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--墨);
+  margin: 20px 0 10px;
+}

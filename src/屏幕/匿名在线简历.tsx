@@ -162,15 +162,13 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
         </>
       ) : null}
 
-      {/* ── 教育经历：脱敏显示，确认意向后还原实名 ── */}
+      {/* ── 教育经历：直接显示具体学校（用户定：学校不脱敏，onboarding 配置）── */}
       <div className={样式.节标行}>
         <span className={样式.节点圆} />
         <span className={样式.节标}>教育经历</span>
       </div>
       <div className={样式.教育行}>
-        <span className={样式.教育文}>
-          {已确认 && 档.教育实名行 ? 档.教育实名行 : 档.教育行}
-        </span>
+        <span className={样式.教育文}>{档.教育行}</span>
         <span className={`${样式.经历起止} 等宽数字`}>{档.教育起止}</span>
       </div>
 
@@ -228,18 +226,13 @@ export default function 匿名在线简历() {
         标题="匿名在线简历"
         居中标题
         右侧={
-          <span className={样式.栏右组}>
-            <button className={`${样式.栏键} 可点`} onClick={() => 设提示('已收藏')} aria-label="收藏">
-              ☆
-            </button>
-            <button
-              className={`${样式.栏键} 可点`}
-              onClick={() => 设提示('更多操作待接后端')}
-              aria-label="更多"
-            >
-              …
-            </button>
-          </span>
+          <button
+            className={`${样式.栏键} 可点`}
+            onClick={() => 设提示('更多操作待接后端')}
+            aria-label="更多"
+          >
+            …
+          </button>
         }
       />
 
