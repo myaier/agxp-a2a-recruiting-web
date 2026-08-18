@@ -8,14 +8,16 @@
 }
 
 .卡 {
+  position: relative; /* 右列绝对定位的基准 */
   padding: 15px 16px 13px;
 }
 
 /* 公司头行：字标 + 公司名 / 简介 + 薪资 */
 .公司头行 {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
+  padding-right: 76px; /* 给绝对定位的右列让位 */
 }
 
 .公司名 {
@@ -31,13 +33,16 @@
   margin-top: 2px;
 }
 
-/* 右列：适配环在上、薪资在下（标注 2026-08-18：金额挪到适配下面，卡变矮） */
+/* 右列：适配环在上、薪资在下，绝对定位挂卡右上 —— 不参与文档流，
+   否则它比左侧公司行高一截，会把职位名往下顶出一条大缝（标注 16:52） */
 .右列 {
-  flex: none;
+  position: absolute;
+  top: 13px;
+  right: 16px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 3px;
+  gap: 2px;
 }
 
 .薪资 {
@@ -51,6 +56,7 @@
   font-weight: 800;
   letter-spacing: -0.02em;
   margin-top: 11px;
+  padding-right: 76px; /* 右列纵向覆盖到这一行，同样让位 */
   color: var(--墨);
 }
 
