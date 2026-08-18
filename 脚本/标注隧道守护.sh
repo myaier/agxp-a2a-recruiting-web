@@ -37,7 +37,11 @@ TUNNEL_LOG="$LOG_DIR/标注隧道.log"
   local url=""
   for _ in $(seq 1 25); do
     sleep 1
-    url=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$TUNNEL_LOG" | head -1 || true)
+    # 两个坑（2026-08-19 都踩过）：
+    #   · 日志里有 api.trycloudflare.com（cloudflared 自家 API 域名）→ 排除；
+    #   · 日志含控制字节时 grep 视作二进制，stdout 变成「Binary file … matches」
+    #     整句被当 URL 推上线 → -a 强制按文本读
+    url=$(grep -a -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$TUNNEL_LOG" | grep -v '://api\.trycloudflare' | head -1 || true)
     [ -n "$url" ] && break
   done
   echo "$url"
@@ -45,6 +49,11 @@ TUNNEL_LOG="$LOG_DIR/标注隧道.log"
 
 推端点() {
   local url="$1"
+  # 最后一道闸：不是合法隧道地址就拒推（宁可不更新也不能把垃圾推上线）
+  case "$url" in
+    https://*.trycloudflare.com) ;;
+    *) echo "拒推非法端点：$url"; return 1 ;;
+  esac
   echo "$url" > .标注端点
   local content sha
   content=$(printf '{"url":"%s"}' "$url" | base64)
