@@ -15,7 +15,7 @@ import 样式 from './匿名在线简历.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
-import { 匿名简历表, 推荐列表 } from '../数据/企业端模拟数据';
+import { 匿名简历表, 推荐列表, type 匿名简历档 } from '../数据/企业端模拟数据';
 
 /** 判断正文里 **加粗段** 的渲染：拆成普通/加粗交替段 */
 function 带粗体(文本: string) {
@@ -27,6 +27,172 @@ function 带粗体(文本: string) {
     ) : (
       <span key={段 + 序}>{段}</span>
     )
+  );
+}
+
+/**
+ * D11·A 简历正文（头区 → 技能 → 页尾注），独立屏与候选详情的「在线简历」Tab 共用。
+ * 已确认 = 双方意向已确认：脱敏段（公司实名 / 教育实名行）还原 —— A-01=沈亦舟 闭环。
+ */
+export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档; 已确认?: boolean }) {
+  return (
+    <div className={样式.页体}>
+      {/* ── 头区：大代号 + 匿名标签 + 灰人像占位 ── */}
+      <div className={样式.头区}>
+        <div className={样式.头文}>
+          <div className={样式.代号行}>
+            <span className={样式.大代号}>{档.代号}</span>
+            <span className={样式.匿名标}>{已确认 ? '已互换身份' : '匿名'}</span>
+          </div>
+          <div className={样式.职位行}>{档.职位行}</div>
+        </div>
+        <span className={样式.人像占位} aria-hidden>
+          <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+            <circle cx="15" cy="11" r="5.5" stroke="#b9bdb2" strokeWidth="1.8" />
+            <path d="M5 26c1.8-4.6 5.6-7 10-7s8.2 2.4 10 7" stroke="#b9bdb2" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </span>
+      </div>
+
+      {/* ── 状态行 + 活跃度 ── */}
+      <div className={样式.状态区}>
+        <span className={样式.状态文}>{档.状态行}</span>
+        <span className={样式.活跃度}>{档.活跃度}</span>
+      </div>
+
+      {/* ── 经验 / 学历 / 年龄 图标行 ── */}
+      <div className={样式.要素行}>
+        <span className={样式.要素}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="4" width="11" height="8" rx="1.5" stroke="#7d8276" strokeWidth="1.3"/><path d="M5 4V2.8A1.3 1.3 0 0 1 6.3 1.5h1.4A1.3 1.3 0 0 1 9 2.8V4" stroke="#7d8276" strokeWidth="1.3"/></svg>
+          {档.经验}
+        </span>
+        <span className={样式.要素}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2 1.5 5 7 8l5.5-3L7 2Z" stroke="#7d8276" strokeWidth="1.3" strokeLinejoin="round"/><path d="M3.5 6.5V9c0 .8 1.6 2 3.5 2s3.5-1.2 3.5-2V6.5" stroke="#7d8276" strokeWidth="1.3"/></svg>
+          {档.学历}
+        </span>
+        <span className={样式.要素}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="4.5" r="2.8" stroke="#7d8276" strokeWidth="1.3"/><path d="M2 12.5c1-2.6 2.9-4 5-4s4 1.4 5 4" stroke="#7d8276" strokeWidth="1.3" strokeLinecap="round"/></svg>
+          {档.年龄}
+        </span>
+      </div>
+
+      {/* ── AI 代理读完简历后的判断（淡绿卡）── */}
+      <div className={样式.判断卡}>
+        <div className={样式.判断头}>
+          <span className={样式.判断标题}>AI代理读完简历后的判断</span>
+          <span className={样式.适配组}>
+            <span className={样式.适配标}>适配</span>
+            <span className={`${样式.适配分} 等宽数字`}>{档.适配分}</span>
+          </span>
+        </div>
+        <div className={样式.判断正文}>{带粗体(档.判断)}</div>
+        {档.风险 ? (
+          <div className={样式.风险条}>
+            <span className={样式.风险符} aria-hidden>◆</span>
+            <span className={样式.风险文}>风险：{档.风险}</span>
+          </div>
+        ) : null}
+      </div>
+
+      {/* ── 自述段 ── */}
+      <p className={样式.自述}>{档.自述}</p>
+
+      {/* ── 求职期望 ── */}
+      <div className={样式.节标行}>
+        <span className={样式.节点圆} />
+        <span className={样式.节标}>求职期望</span>
+      </div>
+      <div className={样式.期望标题}>{档.期望.标题}</div>
+      <div className={样式.期望副行}>
+        {档.期望.带宽行}
+        {档.期望.偏好 ? <span className={样式.期望偏好}>{档.期望.偏好}</span> : null}
+      </div>
+      <div className={样式.一致条}>
+        <span className={样式.一致符} aria-hidden>✓</span>
+        <span>{档.期望.一致性}</span>
+      </div>
+
+      {/* ── 工作经历：每段可带 AI 逐段批注绿条；确认意向后脱敏公司还原实名 ── */}
+      <div className={样式.节标行}>
+        <span className={样式.节点圆} />
+        <span className={样式.节标}>工作经历</span>
+      </div>
+      {档.经历.map((段) => (
+        <div key={段.起止} className={样式.经历段}>
+          <div className={样式.经历头}>
+            <span className={`${样式.经历公司} 单行`}>
+              {已确认 && 段.公司实名 ? 段.公司实名 : 段.公司}
+            </span>
+            <span className={`${样式.经历起止} 等宽数字`}>{段.起止}</span>
+          </div>
+          <div className={样式.经历职位}>{段.职位}</div>
+          <div className={样式.经历说明}>{段.说明}</div>
+          {段.批注 ? (
+            <div className={样式.一致条}>
+              <span className={样式.一致符} aria-hidden>✓</span>
+              <span>{段.批注}</span>
+            </div>
+          ) : null}
+        </div>
+      ))}
+
+      {/* ── 项目经历 ── */}
+      {档.项目.length > 0 ? (
+        <>
+          <div className={样式.节标行}>
+            <span className={样式.节点圆} />
+            <span className={样式.节标}>项目经历</span>
+          </div>
+          {档.项目.map((项) => (
+            <div key={项.名称} className={样式.经历段}>
+              <div className={样式.经历头}>
+                <span className={`${样式.经历公司} 单行`}>{项.名称}</span>
+                <span className={`${样式.经历起止} 等宽数字`}>{项.起止}</span>
+              </div>
+              <div className={样式.经历职位}>{项.角色}</div>
+              <div className={样式.经历说明}>{项.说明}</div>
+              {项.批注 ? (
+                <div className={样式.一致条}>
+                  <span className={样式.一致符} aria-hidden>✓</span>
+                  <span>{项.批注}</span>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </>
+      ) : null}
+
+      {/* ── 教育经历：脱敏显示，确认意向后还原实名 ── */}
+      <div className={样式.节标行}>
+        <span className={样式.节点圆} />
+        <span className={样式.节标}>教育经历</span>
+      </div>
+      <div className={样式.教育行}>
+        <span className={样式.教育文}>
+          {已确认 && 档.教育实名行 ? 档.教育实名行 : 档.教育行}
+        </span>
+        <span className={`${样式.经历起止} 等宽数字`}>{档.教育起止}</span>
+      </div>
+
+      {/* ── 专业技能 ── */}
+      <div className={样式.节标行}>
+        <span className={样式.节点圆} />
+        <span className={样式.节标}>专业技能</span>
+      </div>
+      <div className={样式.技能行}>
+        {档.技能.map((技) => (
+          <span key={技} className={样式.技能片}>
+            {技}
+          </span>
+        ))}
+      </div>
+
+      <div className={样式.页尾注}>
+        {已确认
+          ? '双方已确认意向，身份与联系方式已互换 · 内容不可转发'
+          : '这份简历由候选人的AI代理按其披露偏好生成 · 内容真实性经双向核验 · 不可转发'}
+      </div>
+    </div>
   );
 }
 
@@ -78,157 +244,7 @@ export default function 匿名在线简历() {
       />
 
       <滚动区 样式覆盖={{ paddingBottom: 8 }}>
-        <div className={样式.页体}>
-          {/* ── 头区：大代号 + 匿名标签 + 灰人像占位 ── */}
-          <div className={样式.头区}>
-            <div className={样式.头文}>
-              <div className={样式.代号行}>
-                <span className={样式.大代号}>{档.代号}</span>
-                <span className={样式.匿名标}>匿名</span>
-              </div>
-              <div className={样式.职位行}>{档.职位行}</div>
-            </div>
-            <span className={样式.人像占位} aria-hidden>
-              <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-                <circle cx="15" cy="11" r="5.5" stroke="#b9bdb2" strokeWidth="1.8" />
-                <path d="M5 26c1.8-4.6 5.6-7 10-7s8.2 2.4 10 7" stroke="#b9bdb2" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-            </span>
-          </div>
-
-          {/* ── 状态行 + 活跃度 ── */}
-          <div className={样式.状态区}>
-            <span className={样式.状态文}>{档.状态行}</span>
-            <span className={样式.活跃度}>{档.活跃度}</span>
-          </div>
-
-          {/* ── 经验 / 学历 / 年龄 图标行 ── */}
-          <div className={样式.要素行}>
-            <span className={样式.要素}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="4" width="11" height="8" rx="1.5" stroke="#7d8276" strokeWidth="1.3"/><path d="M5 4V2.8A1.3 1.3 0 0 1 6.3 1.5h1.4A1.3 1.3 0 0 1 9 2.8V4" stroke="#7d8276" strokeWidth="1.3"/></svg>
-              {档.经验}
-            </span>
-            <span className={样式.要素}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2 1.5 5 7 8l5.5-3L7 2Z" stroke="#7d8276" strokeWidth="1.3" strokeLinejoin="round"/><path d="M3.5 6.5V9c0 .8 1.6 2 3.5 2s3.5-1.2 3.5-2V6.5" stroke="#7d8276" strokeWidth="1.3"/></svg>
-              {档.学历}
-            </span>
-            <span className={样式.要素}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="4.5" r="2.8" stroke="#7d8276" strokeWidth="1.3"/><path d="M2 12.5c1-2.6 2.9-4 5-4s4 1.4 5 4" stroke="#7d8276" strokeWidth="1.3" strokeLinecap="round"/></svg>
-              {档.年龄}
-            </span>
-          </div>
-
-          {/* ── AI 代理读完简历后的判断（淡绿卡）── */}
-          <div className={样式.判断卡}>
-            <div className={样式.判断头}>
-              <span className={样式.判断标题}>AI代理读完简历后的判断</span>
-              <span className={样式.适配组}>
-                <span className={样式.适配标}>适配</span>
-                <span className={`${样式.适配分} 等宽数字`}>{档.适配分}</span>
-              </span>
-            </div>
-            <div className={样式.判断正文}>{带粗体(档.判断)}</div>
-            {档.风险 ? (
-              <div className={样式.风险条}>
-                <span className={样式.风险符} aria-hidden>◆</span>
-                <span className={样式.风险文}>风险：{档.风险}</span>
-              </div>
-            ) : null}
-          </div>
-
-          {/* ── 自述段 ── */}
-          <p className={样式.自述}>{档.自述}</p>
-
-          {/* ── 求职期望 ── */}
-          <div className={样式.节标行}>
-            <span className={样式.节点圆} />
-            <span className={样式.节标}>求职期望</span>
-          </div>
-          <div className={样式.期望标题}>{档.期望.标题}</div>
-          <div className={样式.期望副行}>
-            {档.期望.带宽行}
-            <span className={样式.期望偏好}>{档.期望.偏好}</span>
-          </div>
-          <div className={样式.一致条}>
-            <span className={样式.一致符} aria-hidden>✓</span>
-            <span>{档.期望.一致性}</span>
-          </div>
-
-          {/* ── 工作经历：每段可带 AI 逐段批注绿条（mockup 下半屏）── */}
-          <div className={样式.节标行}>
-            <span className={样式.节点圆} />
-            <span className={样式.节标}>工作经历</span>
-          </div>
-          {档.经历.map((段) => (
-            <div key={段.起止} className={样式.经历段}>
-              <div className={样式.经历头}>
-                <span className={`${样式.经历公司} 单行`}>{段.公司}</span>
-                <span className={`${样式.经历起止} 等宽数字`}>{段.起止}</span>
-              </div>
-              <div className={样式.经历职位}>{段.职位}</div>
-              <div className={样式.经历说明}>{段.说明}</div>
-              {段.批注 ? (
-                <div className={样式.一致条}>
-                  <span className={样式.一致符} aria-hidden>✓</span>
-                  <span>{段.批注}</span>
-                </div>
-              ) : null}
-            </div>
-          ))}
-
-          {/* ── 项目经历 ── */}
-          {档.项目.length > 0 ? (
-            <>
-              <div className={样式.节标行}>
-                <span className={样式.节点圆} />
-                <span className={样式.节标}>项目经历</span>
-              </div>
-              {档.项目.map((项) => (
-                <div key={项.名称} className={样式.经历段}>
-                  <div className={样式.经历头}>
-                    <span className={`${样式.经历公司} 单行`}>{项.名称}</span>
-                    <span className={`${样式.经历起止} 等宽数字`}>{项.起止}</span>
-                  </div>
-                  <div className={样式.经历职位}>{项.角色}</div>
-                  <div className={样式.经历说明}>{项.说明}</div>
-                  {项.批注 ? (
-                    <div className={样式.一致条}>
-                      <span className={样式.一致符} aria-hidden>✓</span>
-                      <span>{项.批注}</span>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </>
-          ) : null}
-
-          {/* ── 教育经历：按披露偏好脱敏显示（某 985 高校 · 计算机硕士）── */}
-          <div className={样式.节标行}>
-            <span className={样式.节点圆} />
-            <span className={样式.节标}>教育经历</span>
-          </div>
-          <div className={样式.教育行}>
-            <span className={样式.教育文}>{档.教育行}</span>
-            <span className={`${样式.经历起止} 等宽数字`}>{档.教育起止}</span>
-          </div>
-
-          {/* ── 专业技能 ── */}
-          <div className={样式.节标行}>
-            <span className={样式.节点圆} />
-            <span className={样式.节标}>专业技能</span>
-          </div>
-          <div className={样式.技能行}>
-            {档.技能.map((技) => (
-              <span key={技} className={样式.技能片}>
-                {技}
-              </span>
-            ))}
-          </div>
-
-          <div className={样式.页尾注}>
-            这份简历由候选人的AI代理按其披露偏好生成 · 内容真实性经双向核验 · 不可转发
-          </div>
-        </div>
+        <简历正文 档={档} />
       </滚动区>
 
       {/* ── 底部双按钮 + 尾注 ── */}
