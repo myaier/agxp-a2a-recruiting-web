@@ -23,6 +23,7 @@ export const 路径 = {
   往来记录: (编号: string) => `/thread/${编号}`,
   往来记录模板: '/thread/:id',
   问AI代理: '/agent',
+  代理详情: '/agent/me',
   职位详情: (编号: string) => `/job/${编号}`,
   职位详情模板: '/job/:id',
   直聊会话: '/chat/direct',

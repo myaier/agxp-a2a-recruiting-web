@@ -15,6 +15,7 @@ import 主壳 from './屏幕/主壳';
 import 在谈详情 from './屏幕/在谈详情';
 import 往来记录 from './屏幕/往来记录';
 import 问AI代理 from './屏幕/问AI代理';
+import 代理详情 from './屏幕/代理详情';
 import 职位详情 from './屏幕/职位详情';
 import 直聊会话 from './屏幕/直聊会话';
 import 真人会话 from './屏幕/真人会话';
@@ -71,6 +72,7 @@ export default function 应用() {
       <Route path={路径.在谈详情模板} element={<在谈详情 />} />
       <Route path={路径.往来记录模板} element={<往来记录 />} />
       <Route path={路径.问AI代理} element={<问AI代理 />} />
+      <Route path={路径.代理详情} element={<代理详情 />} />
       <Route path={路径.职位详情模板} element={<职位详情 />} />
       <Route path={路径.直聊会话} element={<直聊会话 />} />
       <Route path={路径.真人会话} element={<真人会话 />} />
