@@ -310,3 +310,25 @@
   border-bottom: 1px solid var(--淡绿描边);
   padding-bottom: 2px;
 }
+
+/* 诊断项改成可点行（标注 21:22：这块就是告诉用户哪里要补，点了要能直接去补）*/
+.诊断项 {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.诊断项文 {
+  flex: 1;
+  min-width: 0;
+}
+
+.诊断项去 {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--深绿);
+}
