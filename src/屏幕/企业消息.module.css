@@ -93,13 +93,11 @@
   background: var(--浅灰底);
 }
 
-/* AI代理头像：荧光绿圆底 + 盾牌，品牌符号 */
+/* AI代理头像：与主页横幅同款裸代理标（标注 00:31） */
 .代理头像 {
   flex: none;
   width: 46px;
   height: 46px;
-  border-radius: 50%;
-  background: var(--荧光绿);
   display: flex;
   align-items: center;
   justify-content: center;
