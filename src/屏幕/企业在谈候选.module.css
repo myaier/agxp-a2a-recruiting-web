@@ -114,22 +114,6 @@
   color: var(--协调);
 }
 
-/* 一行状态评语：占求职端职位名的位置，代理对候选的当前判断 */
-.状态评语 {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin-top: 10px;
-}
-
-.评语正 {
-  color: var(--深绿);
-}
-
-.评语中 {
-  color: var(--次要);
-}
-
 /* ── 阶段区（与求职端一比一）── */
 .阶段区 {
   margin-top: 12px;

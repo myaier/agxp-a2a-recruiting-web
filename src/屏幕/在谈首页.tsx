@@ -70,7 +70,7 @@ function 在谈卡({ 单, 按下 }: { 单: 在谈单; 按下: () => void }) {
           <div className={`${样式.公司名} 单行`}>{单.公司}</div>
           <div className={`${样式.公司简介} 单行`}>{单.公司简介}</div>
         </div>
-        <span className={`${样式.薪资} 等宽数字`}>{单.薪资}</span>
+        <span className={`${样式.薪资} 薪资体`}>{单.薪资}</span>
       </div>
 
       {/* 职位名 */}

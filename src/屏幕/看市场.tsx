@@ -80,7 +80,7 @@ function 市场卡({
             <div className={`${样式.公司行} 单行`}>{岗.公司行}</div>
           </div>
           <div className={样式.右侧列}>
-            <div className={`${样式.薪资} 等宽数字`}>{岗.薪资}</div>
+            <div className={`${样式.薪资} 薪资体`}>{岗.薪资}</div>
             <div className={样式.适配}>
               适配 <b className={`${样式.适配分} 等宽数字`}>{岗.适配分}</b>
             </div>

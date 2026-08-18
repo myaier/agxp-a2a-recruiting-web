@@ -86,6 +86,18 @@ button {
   cursor: pointer;
 }
 
+/* 薪资体（标注意见 2026-08-18：字体改成苹果字体、大一点，两端一致）。
+   Apple 系统字体在 20px 以上会自动切到 SF Pro Display 那一档光学字重 ——
+   字形比 Text 档舒展，配 600 字重 + 收紧字距，比原来的 16px/800 更像价格标。
+   800 字重在 16px 上落到 Heavy，笔画糊在一起，这是「不够高级」的实际来源。 */
+.薪资体 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
 /* 等宽数字：薪资、天数、统计数一律用，避免数字跳动 */
 .等宽数字 {
   font-variant-numeric: tabular-nums;

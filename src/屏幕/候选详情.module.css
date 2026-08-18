@@ -124,31 +124,19 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--橄榄);
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
 }
 
-/* 需要你 = 红粗环 + 脉冲 */
-.红环点 {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--白);
-  border: 5px solid var(--意向);
-  flex: none;
-  animation: 红脉冲 2s infinite;
-}
-
 /* 进行中 = 橄榄空心环 */
-.进行中点 {
+.环点 {
   width: 18px;
   height: 18px;
   border-radius: 50%;
   background: var(--白);
-  border: 4px solid var(--橄榄);
+  border-style: solid;
   flex: none;
 }
 
@@ -166,10 +154,6 @@
   flex: 1;
   width: 2px;
   background: var(--描边);
-}
-
-.连线通过 {
-  background: var(--淡绿描边);
 }
 
 .节点主体 {
@@ -194,10 +178,6 @@
   color: var(--墨);
 }
 
-.节点标题强调 {
-  color: var(--意向);
-}
-
 .状态胶囊 {
   flex: none;
   font-size: 10px;
@@ -206,11 +186,6 @@
   background: var(--淡绿底);
   padding: 2px 7px;
   border-radius: 9px;
-}
-
-.状态胶囊强调 {
-  color: var(--意向);
-  background: var(--意向底);
 }
 
 .节点时间 {

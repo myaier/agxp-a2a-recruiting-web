@@ -15,6 +15,7 @@ import 样式 from './发布岗位.module.css';
 import { 主按钮, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
+import { use应用状态 } from '../状态/应用状态';
 
 const 步骤顺序 = ['基础信息', '职位描述', '要求与硬性条件'] as const;
 
@@ -43,6 +44,7 @@ const 职位要求预填 = [
 
 export default function 发布岗位() {
   const { 返回, 进企业主壳 } = use导航();
+  const { 派发 } = use应用状态();
   const [第几步, 设第几步] = useState(0);
 
   // ── 第一步：基础信息 ──
@@ -88,6 +90,12 @@ export default function 发布岗位() {
       设第几步(0);
       return;
     }
+    // 真的落进岗位列表：发布完回到人才页，顶栏第一个就是它（标注意见 2026-08-18）
+    派发({
+      型: '发布岗位',
+      名称: 岗位名称.trim(),
+      薪资带: `${薪资下限.trim()}-${薪资上限.trim()}K`,
+    });
     轻提示('岗位已发布');
     进企业主壳();
   };

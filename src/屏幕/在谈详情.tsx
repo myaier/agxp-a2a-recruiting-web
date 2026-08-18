@@ -11,11 +11,19 @@ import { useParams } from 'react-router-dom';
 import 样式 from './在谈详情.module.css';
 import 拿不准弹层 from './拿不准弹层';
 import 简历预览层 from '../组件/简历预览层';
-import { 次级页外壳, 返回栏, 滚动区, 代理输入条, 小结托盘, 公司字标 } from '../组件/通用';
+import {
+  次级页外壳,
+  返回栏,
+  滚动区,
+  代理输入条,
+  小结托盘,
+  公司字标,
+  阶段配色,
+} from '../组件/通用';
 import { 对勾图标 } from '../组件/图标';
 import { 各单阶段小结, 卡点决策, 意向确认说明, 在谈职位详情 } from '../数据/模拟数据';
 import { 阶段顺序 } from '../数据/类型';
-import type { 分歧, 在谈单, 阶段小结 } from '../数据/类型';
+import type { 分歧, 在谈单, 阶段, 阶段小结 } from '../数据/类型';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -139,7 +147,7 @@ export default function 在谈详情() {
         副标题={`${单.公司} · ${单.标签.slice(0, 2).join(' · ')}`}
         右侧={
           单.阶段 === '意向确认' ? (
-            <span className={`${样式.顶部薪资} 等宽数字`}>{单.薪资}</span>
+            <span className={`${样式.顶部薪资} 薪资体`}>{单.薪资}</span>
           ) : (
             <span className={样式.适配组}>
               <span className={样式.适配标}>适配</span>
@@ -322,38 +330,54 @@ function 阶段节点({
   无连线 = false,
   children,
 }: {
-  标题: string;
+  /** 同时是阶段名：轴点、标题、胶囊的颜色都由它决定 */
+  标题: 阶段;
   状态?: string;
   时间?: string;
   已通过: boolean;
-  /** 强调 = 这一步在等你（红环 + 红标题 + 红胶囊）*/
+  /** 强调 = 这一步在等你。只加脉冲，不再另换一套红色 */
   强调?: boolean;
   /** 时间线最后一个节点不画连线 */
   无连线?: boolean;
   children: ReactNode;
 }) {
+  // 标注意见 2026-08-18：时间线按 onboarding 最后一页（A4 披露说明）的阶段配色来。
+  // 全站四阶段共用 阶段配色 这一张表，这里不另起颜色。
+  const 配色 = 阶段配色[标题];
+
   return (
     <div className={样式.节点行}>
       <div className={样式.节点轴}>
         {已通过 ? (
-          <span className={样式.实心点}>
+          <span className={样式.实心点} style={{ background: 配色.文字 }}>
             <对勾图标 />
           </span>
-        ) : 强调 ? (
-          <span className={`${样式.红环点} 脉冲点`} />
         ) : (
-          <span className={样式.进行中点} />
+          <span
+            className={`${样式.环点} ${强调 ? '脉冲点' : ''}`}
+            style={{ borderColor: 配色.文字, borderWidth: 强调 ? 5 : 4 }}
+          />
         )}
         {无连线 ? null : (
-          <span className={`${样式.连线} ${已通过 ? 样式.连线通过 : ''}`} />
+          <span
+            className={样式.连线}
+            style={已通过 ? { background: 配色.底 } : undefined}
+          />
         )}
       </div>
 
       <div className={`${样式.节点主体} ${样式.节点主体带底距}`}>
         <div className={样式.节点头}>
-          <span className={`${样式.节点标题} ${强调 ? 样式.节点标题强调 : ''}`}>{标题}</span>
+          <span className={样式.节点标题} style={{ color: 配色.文字 }}>
+            {标题}
+          </span>
           {状态 ? (
-            <span className={`${样式.状态胶囊} ${强调 ? 样式.状态胶囊强调 : ''}`}>{状态}</span>
+            <span
+              className={样式.状态胶囊}
+              style={{ background: 配色.底, color: 配色.文字 }}
+            >
+              {状态}
+            </span>
           ) : null}
           {时间 ? <span className={`${样式.节点时间} 等宽数字`}>{时间}</span> : null}
         </div>

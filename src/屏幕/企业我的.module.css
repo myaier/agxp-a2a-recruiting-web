@@ -213,15 +213,16 @@
   display: flex;
   flex-direction: column;
   gap: 11px;
-  /* 底部 130 = 悬浮玻璃导航高度 + 余量，保证最后一行不被导航挡住 */
-  padding: 12px 18px 130px;
+  /* 左右内收 18 → 12：标注意见 2026-08-18「离手机边框太远，框做大一些」
+     底部 130 = 悬浮玻璃导航高度 + 余量，保证最后一行不被导航挡住 */
+  padding: 12px 12px 130px;
 }
 
 .宫格卡 {
   background: var(--白);
   border: 1px solid var(--描边);
-  border-radius: var(--圆角-内托盘);
-  padding: 15px 16px 17px;
+  border-radius: var(--圆角-中卡);
+  padding: 16px 14px 18px;
 }
 
 .宫格标题 {
@@ -235,7 +236,7 @@
 .宫格 {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px 6px;
+  gap: 14px 4px;
 }
 
 .宫格项 {
@@ -247,9 +248,9 @@
 }
 
 .宫格图标底 {
-  width: 42px;
-  height: 42px;
-  border-radius: 15px;
+  width: 50px;
+  height: 50px;
+  border-radius: 17px;
   background: var(--淡绿底);
   display: flex;
   align-items: center;
@@ -262,7 +263,7 @@
 }
 
 .宫格名 {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--墨);
   text-align: center;

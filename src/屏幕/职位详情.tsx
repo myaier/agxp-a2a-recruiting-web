@@ -65,7 +65,7 @@ export default function 职位详情() {
           <div>
             <div className={样式.标题行}>
               <div className={样式.职位名}>{岗.职位}</div>
-              <div className={`${样式.薪资} 等宽数字`}>{岗.薪资}</div>
+              <div className={`${样式.薪资} 薪资体`}>{岗.薪资}</div>
             </div>
             <div className={样式.标签行}>
               {详.标签.map((标签) => (

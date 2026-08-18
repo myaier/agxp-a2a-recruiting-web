@@ -3,9 +3,6 @@
 /* ── 返回栏右侧：意向确认态给薪资，其余给适配分 ── */
 .顶部薪资 {
   flex: none;
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
   color: var(--深绿);
 }
 
@@ -127,36 +124,25 @@
   align-items: center;
 }
 
-/* 通过 = 橄榄实心 + 白对勾 */
+/* 通过 = 该阶段主题色实心 + 白对勾（底色由行内样式按阶段给）*/
 .实心点 {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--橄榄);
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
 }
 
-/* 需要你 = 红粗环 + 脉冲 */
-.红环点 {
+/* 未通过 = 该阶段主题色空心环。等你拍板时加「脉冲点」类做呼吸，
+   但不再另换一套红 —— 颜色只表达阶段，紧急由动效和「需要你」胶囊表达 */
+.环点 {
   width: 18px;
   height: 18px;
   border-radius: 50%;
   background: var(--白);
-  border: 5px solid var(--意向);
-  flex: none;
-  animation: 红脉冲 2s infinite;
-}
-
-/* 进行中 = 橄榄空心环 */
-.进行中点 {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--白);
-  border: 4px solid var(--橄榄);
+  border-style: solid;
   flex: none;
 }
 
@@ -174,10 +160,6 @@
   flex: 1;
   width: 2px;
   background: var(--描边);
-}
-
-.连线通过 {
-  background: var(--淡绿描边);
 }
 
 .节点主体 {
@@ -200,10 +182,6 @@
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--墨);
-}
-
-.节点标题强调 {
-  color: var(--意向);
 }
 
 .状态胶囊 {
