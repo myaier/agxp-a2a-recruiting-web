@@ -151,10 +151,8 @@
   flex: none;
   margin: 12px 11px 0;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.72);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  /* 视觉规范 v2：mint 渐变质感（Jobright 的颜色借鉴），不再毛玻璃 + 描边 */
+  background: linear-gradient(118deg, var(--淡绿底) 0%, var(--淡绿底2) 55%, var(--白) 100%);
   border-radius: var(--圆角-内托盘);
   display: flex;
   align-items: center;
@@ -242,17 +240,21 @@
 }
 
 /* ── 白卡 ── */
+/* 视觉规范 v2（2026-08-18，Robinhood 极简）：卡不再描边，靠留白 + 极轻投影分层。
+   描边卡是「到处都是框」的主要来源；投影压到刚能感知的程度，米色底上卡才浮得起来。 */
 .白卡 {
   background: var(--白);
-  border: 1px solid var(--描边);
   border-radius: var(--圆角-卡片);
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04);
   text-align: left;
   width: 100%;
   display: block;
 }
+/* 「需要你」从整圈红描边改为 3px 红左条 —— 与通知未读的绿左条同一套语言，
+   扫读信号保留，视觉噪音减一圈 */
 .白卡.红描边 {
-  border-color: var(--紧急描边);
-  box-shadow: 0 2px 8px rgba(217, 45, 32, 0.05);
+  border-left: 3px solid var(--意向);
+  border-radius: 6px var(--圆角-卡片) var(--圆角-卡片) 6px;
 }
 
 /* ── 设置行 ── */
@@ -388,8 +390,8 @@
    shimmer 流光从左往右扫，keyframes 必须在本文件内（CSS Modules 会改名） */
 .骨架卡 {
   background: var(--白);
-  border: 1px solid var(--描边);
   border-radius: var(--圆角-卡片);
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04);
   padding: 14px 16px;
   margin-bottom: 7px;
 }

@@ -86,6 +86,16 @@ button {
   cursor: pointer;
 }
 
+/* 按压反馈（视觉规范 v2）：可点元素按下瞬时变暗，抬手缓释回来 ——
+   Robinhood 的触感语言。进入 0.05s（跟手），恢复 0.25s（不闪） */
+.可点 {
+  transition: opacity 0.25s ease;
+}
+.可点:active {
+  opacity: 0.55;
+  transition-duration: 0.05s;
+}
+
 /* 薪资体（标注意见 2026-08-18：字体改成苹果字体、大一点，两端一致）。
    Apple 系统字体在 20px 以上会自动切到 SF Pro Display 那一档光学字重 ——
    字形比 Text 档舒展，配 600 字重 + 收紧字距，比原来的 16px/800 更像价格标。

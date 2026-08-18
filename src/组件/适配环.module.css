@@ -1,0 +1,20 @@
+/* 适配分环形进度：SVG 环 + 底下的小字标 */
+
+.环组 {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.环数 {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.环标 {
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  color: var(--次要浅);
+}

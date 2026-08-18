@@ -5,7 +5,7 @@
   padding: 0 11px 130px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
 .卡 {
@@ -56,27 +56,6 @@
 
 .规模行 {
   font-size: 11px;
-  color: var(--次要浅);
-}
-
-/* 适配环（SVG）+ 底下的小字标 */
-.环组 {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-}
-
-.环数 {
-  font-size: 12.5px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.环标 {
-  font-size: 8.5px;
-  letter-spacing: 0.08em;
   color: var(--次要浅);
 }
 

@@ -4,11 +4,11 @@
   padding: 0 11px 130px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 10px;
 }
 
 .卡 {
-  padding: 14px 16px;
+  padding: 15px 16px 13px;
 }
 
 /* 公司头行：字标 + 公司名 / 简介 + 薪资 */
@@ -31,9 +31,10 @@
   margin-top: 2px;
 }
 
+/* 薪资独立一行，紧贴职位名（v2：价格标不再挤在公司头行右侧） */
 .薪资 {
-  flex: none;
   color: var(--深绿);
+  margin-top: 3px;
 }
 
 /* 职位名 17px/800 */
@@ -41,7 +42,7 @@
   font-size: 17px;
   font-weight: 800;
   letter-spacing: -0.02em;
-  margin-top: 10px;
+  margin-top: 11px;
   color: var(--墨);
 }
 

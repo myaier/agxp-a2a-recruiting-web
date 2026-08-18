@@ -14,6 +14,7 @@
 import 样式 from './看市场.module.css';
 import 顶部意向栏 from './顶部意向栏';
 import { 主页外壳, 代理横幅, 滚动区, 白卡 } from '../组件/通用';
+import 适配环 from '../组件/适配环';
 import { 谈判图标 } from '../组件/图标';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
@@ -58,51 +59,6 @@ export default function 看市场() {
         </div>
       </滚动区>
     </主页外壳>
-  );
-}
-
-/** 适配分 → 环形进度的主题色。语义与四阶段色系一致：好=绿、要掂量=橙、弱=灰 */
-function 取环色(分: number): string {
-  if (分 >= 90) return 'var(--递简历)';
-  if (分 >= 75) return 'var(--协调)';
-  return 'var(--次要浅)';
-}
-
-/** 环形适配分（参考 Jobright 的 match ring，但颜色带语义）。
- *  SVG 圆环：周长 ≈ 2π×16.5 ≈ 103.7，按分数截取 dash。 */
-function 适配环({ 分 }: { 分: number }) {
-  const 周长 = 2 * Math.PI * 16.5;
-  const 色 = 取环色(分);
-  return (
-    <span className={样式.环组}>
-      <svg width={40} height={40} viewBox="0 0 40 40" aria-label={`适配 ${分} 分`} role="img">
-        {/* 轨道 */}
-        <circle cx={20} cy={20} r={16.5} fill="none" stroke="var(--浅灰底)" strokeWidth={3.5} />
-        {/* 进度：从 12 点方向顺时针 */}
-        <circle
-          cx={20}
-          cy={20}
-          r={16.5}
-          fill="none"
-          stroke={色}
-          strokeWidth={3.5}
-          strokeLinecap="round"
-          strokeDasharray={`${(周长 * 分) / 100} ${周长}`}
-          transform="rotate(-90 20 20)"
-        />
-        <text
-          x={20}
-          y={20}
-          textAnchor="middle"
-          dominantBaseline="central"
-          className={样式.环数}
-          fill="var(--墨)"
-        >
-          {分}
-        </text>
-      </svg>
-      <span className={样式.环标}>适配</span>
-    </span>
   );
 }
 
