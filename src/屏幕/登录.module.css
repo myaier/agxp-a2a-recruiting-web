@@ -70,26 +70,24 @@
   gap: 11px;
 }
 
+/* 标注 22:47：无框极简 —— 不再是白底描边盒，数字压一条 2px 底线 */
 .验证码格 {
   flex: none;
-  width: 48px;
-  height: 54px;
-  border-radius: 14px;
-  background: var(--白);
-  border: 1px solid var(--描边);
+  width: 40px;
+  height: 46px;
+  border-bottom: 2px solid var(--描边深);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* 下一个待输入的格：深绿描边 + 外发光，描边加粗 0.5px 靠 border-box 不影响外框尺寸 */
+/* 下一个待输入的格：底线换深绿。无框风格里不再需要外发光 */
 .验证码格.聚焦 {
-  border: 1.5px solid var(--深绿);
-  box-shadow: 0 0 0 3px rgba(13, 107, 88, 0.1);
+  border-bottom-color: var(--深绿);
 }
 
 .验证码字 {
-  font-size: 19px;
+  font-size: 21px;
   font-weight: 600;
   color: var(--墨);
 }
