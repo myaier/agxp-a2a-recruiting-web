@@ -33,28 +33,35 @@ const 旧存储键 = '对席标注意见';
 
 /**
  * 端点发现：优先读部署目录里的 annotate-endpoint.json（内容是收集服务的
- * Cloudflare 隧道 https 地址，由 脚本/标注直达上线.sh 维护）。有它，
+ * Cloudflare 隧道 https 地址，由 脚本/标注隧道守护.sh 维护）。有它，
  * **线上 GitHub Pages（https）也能直达** —— 这是解决混合内容拦截的关键：
  * https 页面不能调本机 http 服务，但可以调隧道给的 https 地址。
  * 拿不到配置时退回旧逻辑：http 页面（localhost / 局域网）直连同 host:8090。
+ *
+ * 缓存策略（2026-08-18 修）：trycloudflare 临时隧道会轮换，守护会把新地址推到
+ * annotate-endpoint.json。旧实现把首次结果永久缓存在模块作用域里 —— 页面若在
+ * 轮换前打开，就一直握着死地址，除非用户手动刷新。现在改成：
+ *   · 只缓存「取到过的有效地址」，取失败不写缓存（下次还会再试）；
+ *   · 送达失败时强制重取一次（强制=true 绕过缓存），拿到新地址立刻重试。
  */
-let 端点缓存: string | null | undefined;
-async function 取收集端点(): Promise<string | null> {
-  if (端点缓存 !== undefined) return 端点缓存;
+let 端点缓存: string | undefined;
+async function 取收集端点(强制 = false): Promise<string | null> {
+  if (!强制 && 端点缓存 !== undefined) return 端点缓存;
   try {
     const 响应 = await fetch(`${import.meta.env.BASE_URL}annotate-endpoint.json?t=${Date.now()}`, {
       cache: 'no-store',
     });
     if (响应.ok) {
       const { url } = (await 响应.json()) as { url?: string };
-      端点缓存 = url && url.startsWith('https://') ? url : null;
-    } else {
-      端点缓存 = null;
+      if (url && url.startsWith('https://')) {
+        端点缓存 = url;
+        return url;
+      }
     }
   } catch {
-    端点缓存 = null;
+    // 取不到就当没有隧道，走下面的本机直连兜底；不写缓存，下次还会再试
   }
-  return 端点缓存;
+  return null;
 }
 
 /** 向指定地址 POST 一条标注，1.5 秒超时 */
@@ -76,10 +83,20 @@ async function 推送(地址: string, 条: 标注): Promise<boolean> {
   }
 }
 
-/** 把一条标注直接推给收集服务：先走隧道端点（https，线上也通），再走本机直连 */
+/**
+ * 把一条标注直接推给收集服务，三档兜底：
+ *   1. 缓存里的隧道地址；
+ *   2. 失败 → 强制重取端点（隧道多半刚轮换过），拿到新地址再推一次；
+ *   3. 仍失败且页面是 http（本机 / 局域网）→ 直连同 host:8090。
+ * 第 2 档是关键：隧道换地址后用户不必刷新页面，下一条标注就自己接上了。
+ */
 async function 尝试送达(条: 标注): Promise<boolean> {
   const 隧道 = await 取收集端点();
   if (隧道 && (await 推送(`${隧道}/标注`, 条))) return true;
+
+  const 新隧道 = await 取收集端点(true);
+  if (新隧道 && 新隧道 !== 隧道 && (await 推送(`${新隧道}/标注`, 条))) return true;
+
   if (location.protocol === 'http:') {
     return 推送(`http://${location.hostname}:8090/标注`, 条);
   }

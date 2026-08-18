@@ -29,43 +29,6 @@
   color: var(--协调);
 }
 
-/* ── 紧急横幅：只有「等你行动」的单才出现 ── */
-.紧急横幅 {
-  flex: none;
-  margin: 4px 18px 0;
-  background: var(--意向底);
-  border: 1px solid var(--紧急描边);
-  border-radius: var(--圆角-内托盘);
-  padding: 11px 14px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.脉冲点 {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--意向);
-  flex: none;
-  animation: 红脉冲 2s infinite;
-}
-
-.紧急文字 {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  font-weight: 700;
-  line-height: 18px;
-  color: var(--紧急文字);
-}
-
-.紧急时长 {
-  flex: none;
-  font-size: 10.5px;
-  color: var(--紧急辅助);
-}
-
 /* ── 两个 Tab ── */
 .Tab行 {
   flex: none;
@@ -571,7 +534,6 @@
   line-height: 1.8;
   color: var(--次要浅);
 }
-
 
 /* 设计稿 px-pulse：需要你的节点红色脉冲。本地定义，CSS Modules 才够得到 */
 @keyframes 红脉冲 {

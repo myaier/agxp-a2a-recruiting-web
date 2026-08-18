@@ -24,43 +24,6 @@
   color: var(--协调);
 }
 
-/* ── 紧急横幅：只有「等你拍板」的候选才出现 ── */
-.紧急横幅 {
-  flex: none;
-  margin: 4px 18px 0;
-  background: var(--意向底);
-  border: 1px solid var(--紧急描边);
-  border-radius: var(--圆角-内托盘);
-  padding: 11px 14px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.脉冲点 {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--意向);
-  flex: none;
-  animation: 红脉冲 2s infinite;
-}
-
-.紧急文字 {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  font-weight: 700;
-  line-height: 18px;
-  color: var(--紧急文字);
-}
-
-.紧急时长 {
-  flex: none;
-  font-size: 10.5px;
-  color: var(--紧急辅助);
-}
-
 /* ── 两个 Tab ── */
 .Tab行 {
   flex: none;

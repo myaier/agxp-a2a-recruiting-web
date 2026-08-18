@@ -28,12 +28,10 @@ export interface 在谈单 {
   轮次: string;
   下一步: string;
   辅助文案: string | null;
-  /** true = 等你行动：卡片置顶，详情页出紧急横幅 */
+  /** true = 等你行动：卡片置顶，阶段区出「需要你」胶囊 */
   需要你: boolean;
   分歧: 分歧 | null;
   适配分: number;
-  顶部横幅: string | null;
-  横幅时长: string | null;
   接受方案?: string;
 }
 
@@ -131,8 +129,6 @@ export interface 候选 {
   需要你: boolean;
   分歧: 分歧 | null;
   匹配分: number;
-  顶部横幅: string | null;
-  横幅时长: string | null;
   接受方案?: string;
 }
 
