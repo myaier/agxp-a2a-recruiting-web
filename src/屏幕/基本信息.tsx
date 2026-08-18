@@ -58,7 +58,7 @@ export default function 基本信息() {
       />
 
       <滚动区 样式覆盖={{ padding: '2px 22px 24px' }}>
-        {/* 真名：双盲机制里最敏感的一项，灰字注说明它什么时候才会出门 */}
+        {/* 真名：双盲机制里最敏感的一项。原有一行灰字说明按标注（2026-08-18 21:07）删除 */}
         <div className={样式.条目}>
           <div className={样式.条目标签}>真名</div>
           <input
@@ -67,9 +67,6 @@ export default function 基本信息() {
             placeholder="身份证上的名字"
             onChange={(事件) => 存基本信息({ 真名: 事件.target.value })}
           />
-          <div className={样式.条目注}>
-            意向确认前不会给任何企业，代理只用代号跟对方谈。
-          </div>
         </div>
 
         {/* 开始工作年份：走数字滚轮，避免手输出现「二〇一七」「17」这类脏数据。
