@@ -151,8 +151,9 @@
   flex: none;
   margin: 12px 11px 0;
   padding: 12px 14px;
-  /* 视觉规范 v2：mint 渐变质感（Jobright 的颜色借鉴），不再毛玻璃 + 描边 */
-  background: linear-gradient(118deg, var(--淡绿底) 0%, var(--淡绿底2) 55%, var(--白) 100%);
+  /* 视觉规范 v2：mint 渐变质感。页面底换近白后原渐变几乎隐形（标注 17:58），
+     起点加实一档、终点停在淡绿底，不再渐到纯白 */
+  background: linear-gradient(118deg, #e4f2be 0%, var(--淡绿底) 62%, var(--淡绿底2) 100%);
   border-radius: var(--圆角-内托盘);
   display: flex;
   align-items: center;
@@ -184,8 +185,13 @@
   flex: none;
   font-size: 12px;
   font-weight: 700;
-  color: var(--深绿);
+  color: var(--墨);
   letter-spacing: -0.01em;
+  /* 标注 17:58：横幅变白后动作不明显 —— 做成荧光绿小胶囊，视觉上是真按钮 */
+  background: var(--荧光绿);
+  padding: 6px 11px;
+  border-radius: var(--圆角-胶囊);
+  box-shadow: 0 1px 3px rgba(127, 163, 23, 0.28);
 }
 
 /* ── 底部代理输入条 ── */
