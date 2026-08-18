@@ -43,7 +43,8 @@ function 取在谈候选特征(单: 候选) {
 }
 
 export default function 企业在谈候选() {
-  const 数据就绪 = use模拟加载();
+  // 标注 2026-08-18 22:31：进入人才页要有约两秒的加载体感，然后直接看到候选
+  const 数据就绪 = use模拟加载(2000);
   const { 状态 } = use应用状态();
   const { 跳转 } = use导航();
   const [筛选条件, 设筛选条件] = useState<候选筛选条件>(空筛选条件);
