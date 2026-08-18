@@ -40,7 +40,7 @@
   flex-direction: row;
   align-items: flex-start;
   gap: 14px;
-  padding: 8px 0 16px;
+  padding: 8px 0 14px;
   border-bottom: 1px solid var(--分隔线);
 }
 
@@ -57,9 +57,9 @@
 }
 
 .大代号 {
-  font-size: 28px;
+  font-size: 19px;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   color: var(--墨);
 }
 
@@ -73,15 +73,15 @@
 }
 
 .职位行 {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--正文);
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .人像占位 {
   flex: none;
-  width: 64px;
-  height: 64px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   background: var(--浅灰底);
   display: flex;
@@ -100,7 +100,7 @@
 }
 
 .状态文 {
-  font-size: 15.5px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--墨);
 }
@@ -166,14 +166,14 @@
 }
 
 .适配分 {
-  font-size: 21px;
+  font-size: 19px;
   font-weight: 800;
   letter-spacing: -0.03em;
   color: var(--深绿);
 }
 
 .判断正文 {
-  font-size: 13.5px;
+  font-size: 13px;
   line-height: 1.75;
   color: var(--正文);
   margin-top: 9px;
@@ -210,9 +210,9 @@
 
 /* ── 自述 ── */
 .自述 {
-  margin: 16px 0 0;
-  font-size: 14px;
-  line-height: 1.8;
+  margin: 15px 0 0;
+  font-size: 13px;
+  line-height: 1.75;
   color: var(--正文);
 }
 
@@ -226,14 +226,14 @@
 }
 
 .节点圆 {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--橄榄);
 }
 
 .节标 {
-  font-size: 16px;
+  font-size: 14.5px;
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--墨);
@@ -241,10 +241,10 @@
 
 /* ── 求职期望 ── */
 .期望标题 {
-  font-size: 15.5px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--墨);
-  margin-top: 12px;
+  margin-top: 11px;
 }
 
 .期望副行 {

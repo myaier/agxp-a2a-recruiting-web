@@ -48,7 +48,7 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
           <div className={样式.职位行}>{档.职位行}</div>
         </div>
         <span className={样式.人像占位} aria-hidden>
-          <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+          <svg width="26" height="26" viewBox="0 0 30 30" fill="none">
             <circle cx="15" cy="11" r="5.5" stroke="#b9bdb2" strokeWidth="1.8" />
             <path d="M5 26c1.8-4.6 5.6-7 10-7s8.2 2.4 10 7" stroke="#b9bdb2" strokeWidth="1.8" strokeLinecap="round" />
           </svg>

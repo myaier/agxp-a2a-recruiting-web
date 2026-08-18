@@ -25,7 +25,7 @@ export function 简历纸身({
 }: {
   /** true = 简历原件：真名、真实联系方式、公司实名 */
   原件?: boolean;
-  /** 脱敏视图下的对外代号，如 A-01 */
+  /** 脱敏视图下的对外化名，如 陈屿 */
   代号?: string;
 }) {
   const 优势条目 = 个人优势文本.split('\n').filter((行) => 行.trim() !== '');
@@ -39,7 +39,7 @@ export function 简历纸身({
     <>
       {/* 抬头：原件给真名与真实联系方式；脱敏版代号替真名、联系方式只露首尾 */}
       <div className={样式.抬头}>
-        <div className={样式.姓名}>{原件 ? 全局.基本信息.真名 : `候选人 ${代号}`}</div>
+        <div className={样式.姓名}>{原件 ? 全局.基本信息.真名 : 代号}</div>
         <div className={样式.抬头职位}>
           {(经历列表[0]?.职位 ?? '').split(' · ')[0]} · 9 年经验
         </div>
@@ -51,7 +51,7 @@ export function 简历纸身({
             </>
           ) : (
             <>
-              <span className={样式.联系项}>姓名：候选人 {代号}</span>
+              <span className={样式.联系项}>姓名：{代号}</span>
               <span className={样式.联系项}>手机：138****6021</span>
               <span className={样式.联系项}>邮箱：s***@***.com</span>
             </>
