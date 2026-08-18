@@ -447,3 +447,115 @@
   color: var(--次要浅);
   padding: 16px 26px 8px;
 }
+
+/* ── 职业分类两级选择层（标注 00:21：像选省份那样 大类 → 小类）── */
+.分类遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  display: flex;
+  align-items: flex-end;
+  z-index: 70;
+}
+
+.分类层 {
+  width: 100%;
+  height: 62%;
+  background: var(--白);
+  border-radius: 18px 18px 0 0;
+  padding: 10px 0 calc(var(--安全区下) + 8px);
+  display: flex;
+  flex-direction: column;
+}
+
+.分类抓手 {
+  flex: none;
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  margin: 0 auto 12px;
+}
+
+.分类标题 {
+  flex: none;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+  text-align: center;
+  padding-bottom: 10px;
+}
+
+.分类体 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  border-top: 1px solid var(--分隔线);
+}
+
+/* 左栏大类：浅灰底，选中项白底 + 荧光绿左条 */
+.大类栏 {
+  flex: none;
+  width: 108px;
+  background: var(--浅灰底2);
+}
+
+.大类项 {
+  display: block;
+  width: 100%;
+  padding: 13px 14px;
+  font-size: 12.5px;
+  color: var(--正文);
+  text-align: left;
+  position: relative;
+}
+
+.大类项选中 {
+  background: var(--白);
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.大类项选中::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--荧光绿);
+}
+
+/* 右栏小类 */
+.小类栏 {
+  flex: 1;
+  min-width: 0;
+}
+
+.小类项 {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 18px;
+  font-size: 13px;
+  color: var(--墨);
+  text-align: left;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.小类项选中 {
+  font-weight: 700;
+  color: var(--深绿);
+}
+
+.小类勾 {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--深绿);
+}
