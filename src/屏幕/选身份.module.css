@@ -73,3 +73,161 @@
   flex: 1;
   min-height: 0;
 }
+
+/* ── 翻面切换（2026-08-18 用户：切换页要有创意）──
+   隐喻用产品自己的核心概念：不对称双盲 = 同一个人的两面。
+   求职面荧光绿（匿名，代号示人），招聘面墨色（实名，名片示人），
+   点按钮整卡 rotateY 翻 180°，翻完才真正切端。 */
+.翻面区 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 8px 18px 0;
+  perspective: 1100px;
+}
+
+/* 待机的轻浮动：卡片是「活的」，翻转变换放内层，两个 transform 不打架 */
+.翻面浮 {
+  animation: 翻卡浮动 4.2s ease-in-out infinite;
+}
+
+@keyframes 翻卡浮动 {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+.翻面卡 {
+  position: relative;
+  width: 268px;
+  height: 332px;
+  transform-style: preserve-3d;
+  transition: transform 0.9s cubic-bezier(0.3, 0.7, 0.25, 1);
+}
+
+.已翻面 {
+  transform: rotateY(180deg);
+}
+
+.面 {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: 24px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  overflow: hidden;
+}
+
+.面背 {
+  transform: rotateY(180deg);
+}
+
+.面求职 {
+  background: var(--荧光绿);
+  box-shadow: 0 14px 34px rgba(151, 190, 13, 0.35);
+}
+
+.面招聘 {
+  background: var(--墨);
+  box-shadow: 0 14px 34px rgba(26, 26, 26, 0.3);
+}
+
+.面水印 {
+  position: absolute;
+  right: -34px;
+  top: -30px;
+  transform: rotate(12deg);
+}
+
+.面章 {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+
+.面求职 .面章 {
+  background: rgba(26, 26, 26, 0.1);
+  color: var(--墨);
+}
+
+.面招聘 .面章 {
+  background: rgba(204, 242, 79, 0.16);
+  color: var(--荧光绿);
+}
+
+.面主 {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 9px;
+}
+
+.面身份 {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.面求职 .面身份 {
+  color: var(--墨);
+}
+
+.面招聘 .面身份 {
+  color: #ffffff;
+}
+
+.面名 {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.面求职 .面名 {
+  color: rgba(26, 26, 26, 0.72);
+}
+
+.面招聘 .面名 {
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.面脚 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  padding-top: 13px;
+  width: 100%;
+}
+
+.面求职 .面脚 {
+  color: var(--墨);
+  border-top: 1px solid rgba(26, 26, 26, 0.14);
+}
+
+.面招聘 .面脚 {
+  color: rgba(255, 255, 255, 0.85);
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.翻面注 {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--次要);
+  text-align: center;
+  max-width: 270px;
+}
+
+.翻面注 b {
+  color: var(--墨);
+}
