@@ -657,3 +657,29 @@
   border-top: 1px solid var(--分隔线);
   padding: 12px 14px 16px;
 }
+
+/* 方案条（标注 00:12）：条款放上面，按钮只留动作 */
+.方案条 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 9px 12px;
+  background: var(--淡绿底2);
+  border-radius: 10px;
+}
+
+.方案标 {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--次要浅);
+}
+
+.方案值 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+}

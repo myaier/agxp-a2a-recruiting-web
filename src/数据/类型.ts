@@ -33,6 +33,8 @@ export interface 在谈单 {
   分歧: 分歧 | null;
   适配分: number;
   接受方案?: string;
+  /** AI代理给出的折中方案（只写条款本身，如「隔周六上班」），按钮不再堆长句 */
+  方案?: string;
 }
 
 /** 看市场的职位卡 */
@@ -148,6 +150,8 @@ export interface 候选 {
   分歧: 分歧 | null;
   匹配分: number;
   接受方案?: string;
+  /** AI代理给出的折中方案（只写条款本身，如「每周 1 天远程」） */
+  方案?: string;
   // ── 卡面关键信息（BOSS 对照 2026-08-19）──
   学历?: string;
   学校?: string;

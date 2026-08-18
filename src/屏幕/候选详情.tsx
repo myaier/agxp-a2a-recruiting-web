@@ -433,12 +433,19 @@ function 协调决策节点({
         </div>
       ) : (
         <>
+          {/* 方案条（标注 00:12）：条款放上面说清，按钮只留动作 */}
+          {候.方案 ? (
+            <div className={样式.方案条}>
+              <span className={样式.方案标}>方案</span>
+              <span className={样式.方案值}>{候.方案}</span>
+            </div>
+          ) : null}
           <div className={样式.决策行}>
             <button className={`${样式.次按钮} 可点`} onClick={终止}>
               {企业卡点决策.退出按钮}
             </button>
             <button className={`${样式.主小按钮} 可点`} onClick={接受}>
-              {候.接受方案 ?? '接受'}
+              接受
             </button>
           </div>
           <div className={样式.决策尾注}>{企业卡点决策.尾部说明}</div>

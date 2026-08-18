@@ -488,7 +488,7 @@ function 协调决策节点({
             {卡点决策.退出按钮}
           </button>
           <button className={`${样式.主小按钮} 可点`} onClick={接受}>
-            {单.接受方案 ?? 卡点决策.接受按钮}
+            接受
           </button>
         </div>
       )}
