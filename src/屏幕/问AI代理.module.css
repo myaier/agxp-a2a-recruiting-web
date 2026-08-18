@@ -41,11 +41,13 @@
   margin-top: 2px;
 }
 
-/* 左上角圆角切到 4px，形成「指向头像」的气泡尖角 */
+/* 左上角圆角切到 4px，形成「指向头像」的气泡尖角。
+   flex 用 0 1 auto 而不是 1 —— iMessage 的气泡是抱住内容的，短句就是短气泡；
+   flex:1 会把每一条都撑满整行，是这屏看起来「块头大」的主因（标注意见 21:50）。 */
 .代理气泡 {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: 86%;
+  max-width: 76%;
   background: var(--白);
   border: 1px solid var(--描边);
   border-radius: 4px 14px 14px 14px;
@@ -60,7 +62,7 @@
 }
 
 .我气泡 {
-  max-width: 78%;
+  max-width: 76%;
   background: var(--气泡绿);
   border-radius: 14px 14px 3px 14px;
   padding: 10px 13px;
@@ -68,16 +70,25 @@
 
 /* 两侧气泡共用的正文排版；overflow-wrap 防止用户输入超长无空格串撑破气泡 */
 .气泡文字 {
-  /* 字号对齐 iMessage 正文（17px SF Text），此处 16.5 + 1.45 行高（标注意见 21:52）*/
-  font-size: 16.5px;
-  line-height: 1.45;
+  /* 全屏统一到 iMessage 的排版比例（标注意见 21:50「字体都太大了」）：
+     iMessage 正文 17/22 = 1.29 的紧行高，正文本身在 AGXP 里降一档到 15
+     —— 15 是全站正文的最大一档，再大就与其它屏脱节。 */
+  font-size: 15px;
+  line-height: 1.34;
   letter-spacing: -0.01em;
   color: var(--墨);
   text-align: left;
   overflow-wrap: anywhere;
 }
 
-/* ── 今日简报卡（嵌在代理气泡内）── */
+/* ── 今日简报卡（嵌在代理气泡内）──
+   简报是「卡片附件」不是「一句话」，普通气泡的 76% 宽度会把统计横条和脚注挤到换行，
+   所以这一条单独放宽到整行。 */
+.简报气泡 {
+  flex: 1;
+  max-width: 100%;
+}
+
 .简报头 {
   display: flex;
   flex-direction: row;
@@ -91,8 +102,8 @@
 .简报标题 {
   flex: 1;
   min-width: 0;
-  /* iMessage 会话标题量级 16 / 600，配 -0.02em 收紧 */
-  font-size: 16px;
+  /* 卡片标题比气泡正文小半档，不跟正文抢 */
+  font-size: 14.5px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--墨);
@@ -113,7 +124,7 @@
   flex-direction: row;
   background: var(--浅灰底2);
   border-radius: var(--圆角-小托盘);
-  padding: 13px 4px;
+  padding: 11px 4px;
 }
 
 .统计项 {
@@ -123,7 +134,7 @@
 }
 
 .统计数 {
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--墨);
@@ -135,14 +146,14 @@
 }
 
 .统计名 {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--次要浅);
   margin-top: 2px;
 }
 
 .简报正文 {
-  /* 简报正文与气泡正文同族，略小半档拉出层级 */
-  font-size: 15px;
+  /* 简报正文与气泡正文同族，略小一档拉出层级 */
+  font-size: 13.5px;
   line-height: 1.5;
   letter-spacing: -0.01em;
   margin-top: 11px;
@@ -152,10 +163,12 @@
 .简报强调 {
   color: var(--意向);
   font-weight: 700;
+  /* 「3 件事等你定：」是一个语义单元，断成「3 件 / 事等你定：」很难读 */
+  white-space: nowrap;
 }
 
 .简报脚注 {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--灰白);
   margin-top: 9px;
 }

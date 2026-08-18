@@ -115,7 +115,7 @@ function 简报气泡() {
       <span className={样式.小盾牌}>
         <代理标 尺寸={15} 脸色="#ffffff" 眼色="var(--荧光绿)" 带点={false} />
       </span>
-      <div className={样式.代理气泡}>
+      <div className={`${样式.代理气泡} ${样式.简报气泡}`}>
         <div className={样式.简报头}>
           <span className={样式.简报标题}>今日简报</span>
           <span className={样式.简报时间}>09:00 更新</span>
