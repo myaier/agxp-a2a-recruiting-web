@@ -90,6 +90,8 @@ export default function 候选详情() {
   const [弹层可见, 设弹层可见] = useState(false);
   // 递交简历段的 PDF 附件（标注 09:23）：看的是收到的匿名版原件
   const [看简历, 设看简历] = useState(false);
+  // 已完成阶段默认收起一行（标注 13:45：与求职端在谈详情同一套折叠）
+  const [展开阶段, 设展开阶段] = useState<Set<string>>(() => new Set());
   const [决策快照, 设决策快照] = useState<决策快照内容 | null>(null);
 
   // 「终止」会把这位候选从在谈列表里移除（归档），页面必须留一份快照，
@@ -186,8 +188,35 @@ export default function 候选详情() {
               .filter((名) => !(名 === '需要协调' && 显示协调节点))
               .map((名) => {
                 const 段 = 已完成阶段.find((条) => 条.阶段 === 名);
+                if (段 && !展开阶段.has(段.阶段)) {
+                  // 收起态：小结一行带走，点行展开（标注 13:45）
+                  return (
+                    <阶段节点 key={名} 标题={段.阶段} 状态={段.状态} 时间={段.时间} 已通过>
+                      <button
+                        className={`${样式.折行} 可点`}
+                        onClick={() => 设展开阶段((旧) => new Set(旧).add(段.阶段))}
+                      >
+                        <span className={`${样式.折行摘要} 单行`}>{段.小结}</span>
+                        <span className={样式.折行开}>⌄</span>
+                      </button>
+                    </阶段节点>
+                  );
+                }
                 return 段 ? (
-                  <阶段节点 key={名} 标题={段.阶段} 状态={段.状态} 时间={段.时间} 已通过>
+                  <阶段节点
+                    key={名}
+                    标题={段.阶段}
+                    状态={段.状态}
+                    时间={段.时间}
+                    已通过
+                    点头部={() =>
+                      设展开阶段((旧) => {
+                        const 新 = new Set(旧);
+                        新.delete(段.阶段);
+                        return 新;
+                      })
+                    }
+                  >
                     <小结托盘>
                       <div className={样式.小结正文}>{段.小结}</div>
 
@@ -344,6 +373,7 @@ function 阶段节点({
   已通过,
   强调 = false,
   无连线 = false,
+  点头部,
   children,
 }: {
   /** 同时是阶段名：轴点、标题、胶囊的颜色都由它决定 */
@@ -355,6 +385,8 @@ function 阶段节点({
   强调?: boolean;
   /** 时间线最后一个节点不画连线 */
   无连线?: boolean;
+  /** 传了 = 头部可点（展开态点头部收起，标注 13:45） */
+  点头部?: () => void;
   children: ReactNode;
 }) {
   // 与求职端时间线同一套阶段配色（标注意见 2026-08-18），两端不能各画各的
@@ -382,7 +414,11 @@ function 阶段节点({
       </div>
 
       <div className={`${样式.节点主体} ${样式.节点主体带底距}`}>
-        <div className={样式.节点头}>
+        <div
+          className={`${样式.节点头} ${点头部 ? '可点' : ''}`}
+          onClick={点头部}
+          role={点头部 ? 'button' : undefined}
+        >
           <span className={样式.节点标题} style={{ color: 配色.文字 }}>
             {标题}
           </span>
@@ -395,6 +431,7 @@ function 阶段节点({
             </span>
           ) : null}
           {时间 ? <span className={`${样式.节点时间} 等宽数字`}>{时间}</span> : null}
+          {点头部 ? <span className={样式.收起符}>⌃</span> : null}
         </div>
         {children}
       </div>

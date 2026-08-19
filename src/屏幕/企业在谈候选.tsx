@@ -212,9 +212,6 @@ function 候选卡({ 单, 按下 }: { 单: 候选; 按下: () => void }) {
         </div>
         <div className={样式.右列}>
           <适配环 分={单.匹配分} 标={null} />
-          {单.硬性通过 ? (
-            <span className={`${样式.硬性数} 等宽数字`}>硬性 {单.硬性通过}</span>
-          ) : null}
         </div>
       </div>
 

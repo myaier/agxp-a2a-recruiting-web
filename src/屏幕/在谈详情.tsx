@@ -9,6 +9,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './在谈详情.module.css';
+import 详析样式 from './职位详情.module.css';
+import 适配环 from '../组件/适配环';
 import 拿不准弹层 from './拿不准弹层';
 import 简历原件层, { 简历纸身 } from '../组件/简历预览层';
 import {
@@ -21,7 +23,7 @@ import {
   阶段配色,
 } from '../组件/通用';
 import { 对勾图标, 简历图标 } from '../组件/图标';
-import { 各单阶段小结, 卡点决策, 意向确认说明, 在谈职位详情 } from '../数据/模拟数据';
+import { 各单阶段小结, 卡点决策, 意向确认说明, 在谈职位详情, 市场列表 } from '../数据/模拟数据';
 import { 阶段顺序 } from '../数据/类型';
 import type { 分歧, 在谈单, 阶段, 阶段小结 } from '../数据/类型';
 import { use应用状态 } from '../状态/应用状态';
@@ -599,11 +601,60 @@ function 意向确认节点({
 // ── A6a·J 职位详情 Tab：JD + 职位要求 → 对接人 → 公司（公司简介在 JD 下方）────
 function 职位详情Tab({ 单 }: { 单: 在谈单 }) {
   const { 跳转 } = use导航();
+  const { 状态: 全局 } = use应用状态();
   const 详 = 在谈职位详情;
+  // 适配分的依据（标注 13:38）：委托进来的 M- 单直接借市场岗位上的证据，
+  // 剧本 J- 单用自己种子里的同名字段 —— 分数在哪，依据就在哪
+  const 证据源 = 市场列表.find((岗) => 岗.编号 === 单.编号) ?? 单;
 
   return (
     <滚动区>
       <div className={样式.详情列}>
+        {/* Agent 匹配分析：与看市场职位详情同一张卡（样式直接复用那边的 module）*/}
+        <div className={详析样式.卡}>
+          <div className={详析样式.适配头}>
+            <span className={详析样式.卡标题}>匹配度分析</span>
+            <适配环 分={单.适配分} 标={null} 尺寸={44} />
+          </div>
+          {证据源.对得上?.length ? (
+            <>
+              <div className={详析样式.证据组标}>对得上</div>
+              {证据源.对得上.map((条) => (
+                <div key={条} className={详析样式.证据行}>
+                  <span className={详析样式.适配过}>✓</span>
+                  <span className={详析样式.证据文}>{条}</span>
+                </div>
+              ))}
+            </>
+          ) : null}
+          {证据源.差距?.length ? (
+            <>
+              <div className={详析样式.证据组标}>差距</div>
+              {证据源.差距.map((条) => (
+                <div key={条} className={详析样式.证据行}>
+                  <span className={详析样式.适配差}>✗</span>
+                  <span className={详析样式.证据文}>{条}</span>
+                </div>
+              ))}
+            </>
+          ) : null}
+          {证据源.技能要求?.length ? (
+            <>
+              <div className={详析样式.证据组标}>技能</div>
+              <div className={详析样式.技能行}>
+                {证据源.技能要求.map((技) => {
+                  const 命中 = 全局.简历技能.some((有) => 有.includes(技) || 技.includes(有));
+                  return (
+                    <span key={技} className={命中 ? 详析样式.技能中 : 详析样式.技能缺}>
+                      {命中 ? `✓ ${技}` : 技}
+                    </span>
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+        </div>
+
         <div className={样式.详情卡}>
           <div className={样式.详情标题}>职位详情</div>
           {详.职位详情.map((行) => (

@@ -194,11 +194,13 @@
 }
 
 .下一步 {
+  /* 与求职端在谈卡同规格（11.5/400）：与阶段标签并排不抢戏 */
   flex: 1;
-  font-size: 13.5px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--墨);
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--正文);
 }
 
 /* 当前岗位下没有在谈候选时的兜底 */
