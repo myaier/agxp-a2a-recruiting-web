@@ -80,9 +80,9 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
         ) : null}
       </div>
 
-      {/* ── 自述段：补节标，与其它段同一节奏（原来是一段孤立正文）── */}
+      {/* ── 自我介绍段（标注 18:46 由「自述」改名）── */}
       <div className={样式.节标行}>
-        <span className={样式.节标}>自述</span>
+        <span className={样式.节标}>自我介绍</span>
       </div>
       <p className={样式.自述}>{档.自述}</p>
 
