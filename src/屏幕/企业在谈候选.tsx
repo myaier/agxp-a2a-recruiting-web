@@ -17,7 +17,7 @@ import { 主页外壳, 代理横幅, 阶段标签, 滚动区, 白卡, use模拟�
 import 适配环 from '../组件/适配环';
 import 下拉刷新 from '../组件/下拉刷新';
 import 人像头 from '../组件/人像头';
-import { 公文包图标, 学帽图标, 放大镜图标 } from '../组件/图标';
+import { 公文包图标, 学帽图标 } from '../组件/图标';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -117,7 +117,7 @@ export default function 企业在谈候选() {
 }
 
 // ── 顶部岗位切换栏：求职端 顶部意向栏 的镜像 ──
-// 意向切换 → 在招岗位切换；＋ = 发布新岗位；放大镜 = 自己去推荐里找人。
+// 意向切换 → 在招岗位切换；＋ = 发布新岗位。
 function 岗位切换栏({ 筛选数, 开筛选 }: { 筛选数: number; 开筛选: () => void }) {
   const { 状态, 派发 } = use应用状态();
   const { 跳转 } = use导航();
@@ -147,14 +147,6 @@ function 岗位切换栏({ 筛选数, 开筛选 }: { 筛选数: number; 开筛�
             aria-label="发布新岗位"
           >
             ＋
-          </button>
-          <button
-            className="可点"
-            onClick={() => 派发({ 型: '企业切子视图', 子视图: '推荐' })}
-            aria-label="搜索候选人"
-            style={{ display: 'flex', alignItems: 'center' }}
-          >
-            <放大镜图标 />
           </button>
         </span>
       </div>

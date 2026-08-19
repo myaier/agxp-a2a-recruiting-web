@@ -233,10 +233,11 @@
 }
 
 .节标 {
-  font-size: 11px;
+  /* 标注 2026-08-19 18:08：11px 太小认不出是分节标题 → 加大加深 */
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  color: var(--次要浅);
+  letter-spacing: 0.02em;
+  color: var(--墨);
 }
 
 /* ── 求职期望 ── */
