@@ -288,13 +288,13 @@ export default function 在谈详情() {
                           自己看自己的文件，真名与联系方式不打码 */}
                       <button
                         className={`${样式.附件主体} 可点`}
-                        onClick={() => 设看原件({ 文件名: 段.附件!.文件名 })}
+                        onClick={() => 设看原件({ 文件名: 状态.简历文件名 || 段.附件!.文件名 })}
                       >
                         <span className={样式.PDF块}>
                           <span className={样式.PDF字}>PDF</span>
                         </span>
                         <span className={样式.附件文本}>
-                          <span className={`${样式.附件名} 单行`}>{段.附件.文件名}</span>
+                          <span className={`${样式.附件名} 单行`}>{状态.简历文件名 || 段.附件.文件名}</span>
                           <span className={`${样式.附件说明} 单行`}>{段.附件.说明}</span>
                         </span>
                         <span className={样式.附件看}>查看 ›</span>

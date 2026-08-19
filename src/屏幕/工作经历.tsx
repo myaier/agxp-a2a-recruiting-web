@@ -97,6 +97,9 @@ export default function 工作经历() {
   function 选中简历文件(事件: ChangeEvent<HTMLInputElement>) {
     const 文件 = 事件.target.files?.[0];
     if (!文件) return;
+    // 文件名落全局（标注 13:10）：这就是之后递给对方的正式简历，
+    // 在谈详情的 PDF 附件与原件弹层都显示它
+    派发({ 型: '存简历文件名', 文件名: 文件.name });
     设解析提示(`${文件.name} ✓ 已解析，可逐段修改`);
     轻提示('解析完成（原型演示，不真解析文件）');
   }
