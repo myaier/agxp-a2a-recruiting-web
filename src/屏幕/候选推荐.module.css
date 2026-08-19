@@ -242,17 +242,17 @@
 .底行 {
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin-top: 8px;
-  padding-top: 7px;
+  gap: 8px;
+  margin-top: 9px;
+  padding-top: 9px;
   border-top: 1px solid var(--描边);
 }
 
 /* AI代理来源小圆标：荧光绿底 + 盾牌，同消息列表的代理头像语汇 */
 .代理小圆 {
   flex: none;
-  width: 17px;
-  height: 17px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: var(--荧光绿);
   display: flex;
@@ -296,7 +296,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 11px;
+  padding: 7px 12px;
   border-radius: 15px;
   background: var(--荧光绿);
   box-shadow: 0 1px 4px var(--主按钮投影);

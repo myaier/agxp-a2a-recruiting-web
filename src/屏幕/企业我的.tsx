@@ -26,7 +26,6 @@ import {
 import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
-import { 企业信息 } from '../数据/企业端模拟数据';
 import { use应用状态 } from '../状态/应用状态';
 import { 轻提示 } from '../组件/轻提示';
 
@@ -131,9 +130,6 @@ export default function 企业我的() {
           <span className={`${样式.姓名} 单行`}>{状态.企业认证.公司}</span>
           <span className={样式.状态行}>
             <span className={样式.招聘名片}>招聘名片 ✎</span>
-            <span className={`${样式.状态胶囊} 单行`}>
-              {状态.企业认证.姓名} · {企业信息.认证身份}
-            </span>
           </span>
         </span>
         <span className={样式.尖括号}>›</span>
