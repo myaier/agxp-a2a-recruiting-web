@@ -293,11 +293,9 @@ function 候选卡({ 单, 按下 }: { 单: 候选; 按下: () => void }) {
 
             {/* 阶段区：与求职端一比一 */}
       <div className={样式.阶段区}>
+        {/* 标注 11:07：下一步文字并到阶段标签同一行 */}
         <div className={样式.阶段头}>
           <阶段标签 阶段={单.阶段} 待你={单.需要你} />
-        </div>
-
-        <div className={样式.下一步行}>
           <div className={`${样式.下一步} 单行`}>{单.下一步}</div>
           <span style={{ color: 'var(--最弱)', fontSize: 16, fontWeight: 300 }}>›</span>
         </div>
