@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 import 样式 from './规则库.module.css';
-import { 次级页外壳, 返回栏, 滚动区, 开关 } from '../组件/通用';
+import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import type { 规则 } from '../数据/类型';
@@ -20,11 +20,18 @@ export default function 规则库() {
   // 手动添加：折叠态是一条虚线按钮，点开后原地变成输入行（不另开弹层，减少一次跳转）
   const [添加中, 设添加中] = useState(false);
   const [新规则文本, 设新规则文本] = useState('');
+  // 编辑制（标注 10:16）：点行进入编辑，改完保存或删除
+  const [编辑中编号, 设编辑中编号] = useState<string | null>(null);
+  const [编辑草稿, 设编辑草稿] = useState('');
 
-  // 返回栏右侧的「N 条生效」= 两组规则里 生效 为 true 的总数
-  const 生效数 =
-    状态.全局规则.filter((条) => 条.生效).length +
-    状态.意向级规则.filter((条) => 条.生效).length;
+  const 条数 = 状态.全局规则.length + 状态.意向级规则.length;
+
+  const 保存编辑 = () => {
+    if (编辑中编号 === null) return;
+    const 内容 = 编辑草稿.trim();
+    if (内容) 派发({ 型: '改规则', 编号: 编辑中编号, 内容 });
+    设编辑中编号(null);
+  };
 
   // 提交手动添加：写进全局规则并标注来源，随后收起输入行
   const 提交新规则 = () => {
@@ -40,7 +47,7 @@ export default function 规则库() {
       <返回栏
         返回={返回}
         标题="AI代理规则库"
-        右侧={<span className={`${样式.生效数} 等宽数字`}>{生效数} 条生效</span>}
+        右侧={<span className={`${样式.生效数} 等宽数字`}>{条数} 条</span>}
       />
 
       <div className={样式.提示条}>
@@ -57,7 +64,18 @@ export default function 规则库() {
               <规则行
                 key={条.编号}
                 条={条}
-                切换={() => 派发({ 型: '切规则开关', 编号: 条.编号 })}
+                编辑中={编辑中编号 === 条.编号}
+                草稿={编辑草稿}
+                改草稿={设编辑草稿}
+                开始编辑={() => {
+                  设编辑中编号(条.编号);
+                  设编辑草稿(条.内容);
+                }}
+                保存={保存编辑}
+                删除={() => {
+                  派发({ 型: '删规则', 编号: 条.编号 });
+                  设编辑中编号(null);
+                }}
                 末条={序 === 状态.全局规则.length - 1}
               />
             ))}
@@ -69,7 +87,18 @@ export default function 规则库() {
               <规则行
                 key={条.编号}
                 条={条}
-                切换={() => 派发({ 型: '切规则开关', 编号: 条.编号 })}
+                编辑中={编辑中编号 === 条.编号}
+                草稿={编辑草稿}
+                改草稿={设编辑草稿}
+                开始编辑={() => {
+                  设编辑中编号(条.编号);
+                  设编辑草稿(条.内容);
+                }}
+                保存={保存编辑}
+                删除={() => {
+                  派发({ 型: '删规则', 编号: 条.编号 });
+                  设编辑中编号(null);
+                }}
                 末条={序 === 状态.意向级规则.length - 1}
               />
             ))}
@@ -110,35 +139,73 @@ export default function 规则库() {
             </button>
           )}
 
-          <div className={样式.尾注}>
-            关闭的规则立即停用但保留记录；点任意规则可查看诞生它的那段对话。
-          </div>
+          <div className={样式.尾注}>点任意规则可编辑或删除。</div>
         </div>
       </滚动区>
     </次级页外壳>
   );
 }
 
-// ── 单条规则：左侧「编号 + 内容 + 来源」，右侧开关。停用后内容字色转灰但记录保留 ──
+// ── 单条规则：点行进入编辑（输入框 + 保存/删除），不再是开关制（标注 10:16）──
 function 规则行({
   条,
-  切换,
+  编辑中,
+  草稿,
+  改草稿,
+  开始编辑,
+  保存,
+  删除,
   末条,
 }: {
   条: 规则;
-  切换: () => void;
+  编辑中: boolean;
+  草稿: string;
+  改草稿: (值: string) => void;
+  开始编辑: () => void;
+  保存: () => void;
+  删除: () => void;
   末条: boolean;
 }) {
+  if (编辑中) {
+    return (
+      <div className={`${样式.规则行} ${末条 ? 样式.末条 : ''}`}>
+        <div className={样式.规则主体}>
+          <div className={样式.规则头}>
+            <span className={`${样式.规则编号} 等宽数字`}>{条.编号}</span>
+            <input
+              className={样式.规则编辑框}
+              value={草稿}
+              autoFocus
+              onChange={(事件) => 改草稿(事件.target.value)}
+              onKeyDown={(事件) => {
+                if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 保存();
+              }}
+              enterKeyHint="done"
+            />
+          </div>
+          <div className={样式.编辑键行}>
+            <button className={`${样式.删除键} 可点`} onClick={删除}>
+              删除
+            </button>
+            <button className={`${样式.保存键} 可点`} onClick={保存}>
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`${样式.规则行} ${末条 ? 样式.末条 : ''}`}>
+    <button className={`${样式.规则行} ${末条 ? 样式.末条 : ''} 可点`} onClick={开始编辑}>
       <div className={样式.规则主体}>
         <div className={样式.规则头}>
           <span className={`${样式.规则编号} 等宽数字`}>{条.编号}</span>
-          <span className={`${样式.规则内容} ${条.生效 ? '' : 样式.已停用}`}>{条.内容}</span>
+          <span className={样式.规则内容}>{条.内容}</span>
         </div>
         <div className={样式.规则来源}>{条.来源}</div>
       </div>
-      <开关 开={条.生效} 切换={切换} />
-    </div>
+      <span className={样式.规则改}>✎</span>
+    </button>
   );
 }
