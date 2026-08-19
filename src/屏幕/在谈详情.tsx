@@ -430,13 +430,20 @@ function 阶段节点({
     <div className={样式.节点行}>
       <div className={样式.节点轴}>
         {已通过 ? (
-          <span className={样式.实心点} style={{ background: 配色.文字 }}>
-            <对勾图标 />
+          <span
+            className={样式.实心点}
+            style={{ background: 配色.文字, boxShadow: `0 0 0 3px ${配色.底}` }}
+          >
+            <对勾图标 尺寸={8} 线宽={3.6} />
           </span>
         ) : (
           <span
             className={`${样式.环点} ${强调 ? '脉冲点' : ''}`}
-            style={{ borderColor: 配色.文字, borderWidth: 强调 ? 5 : 4 }}
+            style={{
+              borderColor: 配色.文字,
+              borderWidth: 强调 ? 4.5 : 3.5,
+              boxShadow: 强调 ? `0 0 0 4px ${配色.底}` : `0 0 0 3px ${配色.底}`,
+            }}
           />
         )}
         {无连线 ? null : (

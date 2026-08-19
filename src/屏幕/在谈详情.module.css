@@ -87,41 +87,44 @@
   align-items: center;
 }
 
-/* 通过 = 该阶段主题色实心 + 白对勾（底色由行内样式按阶段给）*/
+/* 通过 = 小实心 + 同色淡光晕（沉下去，像盖过的章）。光晕色由行内按阶段给 */
 .实心点 {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
+  margin: 2px 0;
 }
 
-/* 未通过 = 该阶段主题色空心环。等你拍板时加「脉冲点」类做呼吸，
-   但不再另换一套红 —— 颜色只表达阶段，紧急由动效和「需要你」胶囊表达 */
+/* 当前 = 白心厚环 + 呼吸光晕（浮起来，视线落点）*/
 .环点 {
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
   border-radius: 50%;
   background: var(--白);
   border-style: solid;
   flex: none;
+  margin: 1px 0;
 }
 
-/* 未到达 = 细灰环 */
+/* 未到达 = 更小的空心细点，明显退后 */
 .空心点 {
-  width: 18px;
-  height: 18px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--白);
-  border: 2px solid var(--描边中);
+  border: 1.5px solid var(--描边中);
   flex: none;
+  margin: 5px 0;
 }
 
 .连线 {
   flex: 1;
   width: 2px;
+  border-radius: 1px;
   background: var(--描边);
 }
 
