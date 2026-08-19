@@ -129,7 +129,6 @@ export default function 设置() {
 
         <div className={`${样式.组标} ${样式.组标间距}`}>通用</div>
         <div className={样式.卡}>
-          {开关行('允许平台用我的数据改进匹配', '仅用于匹配算法，不会用于任何对外披露')}
           <button
             className={`${样式.行} 可点`}
             onClick={() => 设提示('缓存已清理 · 释放 32.4 MB')}
