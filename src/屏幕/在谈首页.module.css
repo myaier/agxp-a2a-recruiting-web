@@ -109,12 +109,13 @@
 }
 
 .下一步 {
+  /* 标注 11:29：与阶段标签并排后不该抢戏 —— 收字号与字重 */
   flex: 1;
   min-width: 0;
-  font-size: 12.5px; /* 标注 22:46：阶段下这行也收一号 */
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--墨);
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--正文);
 }
 
 /* 列表为空（全部谈完 / 全部退出）时的兜底 */
