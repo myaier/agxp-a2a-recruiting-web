@@ -250,6 +250,13 @@ export default function 在谈详情() {
                 状态={段.状态}
                 时间={段.时间}
                 已通过={段.状态 === '通过' || 段.状态 === '达成'}
+                点头部={() =>
+                  设展开阶段((旧) => {
+                    const 新 = new Set(旧);
+                    新.delete(段.阶段);
+                    return 新;
+                  })
+                }
               >
                 <小结托盘>
                   <div className={样式.小结正文}>{段.小结}</div>
@@ -399,6 +406,7 @@ function 阶段节点({
   已通过,
   强调 = false,
   无连线 = false,
+  点头部,
   children,
 }: {
   /** 同时是阶段名：轴点、标题、胶囊的颜色都由它决定 */
@@ -410,6 +418,8 @@ function 阶段节点({
   强调?: boolean;
   /** 时间线最后一个节点不画连线 */
   无连线?: boolean;
+  /** 传了 = 头部可点（展开态点头部收起，标注 10:22）*/
+  点头部?: () => void;
   children: ReactNode;
 }) {
   // 标注意见 2026-08-18：时间线按 onboarding 最后一页（A4 披露说明）的阶段配色来。
@@ -438,7 +448,11 @@ function 阶段节点({
       </div>
 
       <div className={`${样式.节点主体} ${样式.节点主体带底距}`}>
-        <div className={样式.节点头}>
+        <div
+          className={`${样式.节点头} ${点头部 ? '可点' : ''}`}
+          onClick={点头部}
+          role={点头部 ? 'button' : undefined}
+        >
           <span className={样式.节点标题} style={{ color: 配色.文字 }}>
             {标题}
           </span>
@@ -451,6 +465,7 @@ function 阶段节点({
             </span>
           ) : null}
           {时间 ? <span className={`${样式.节点时间} 等宽数字`}>{时间}</span> : null}
+          {点头部 ? <span className={样式.收起符}>⌃</span> : null}
         </div>
         {children}
       </div>

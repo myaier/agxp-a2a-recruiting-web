@@ -707,3 +707,10 @@
   color: var(--最弱);
   font-size: 12px;
 }
+
+/* 展开态节点头部右侧的收起符（标注 10:22：再点一下收起） */
+.收起符 {
+  margin-left: auto;
+  color: var(--最弱);
+  font-size: 11px;
+}
