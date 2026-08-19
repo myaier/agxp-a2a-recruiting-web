@@ -147,3 +147,115 @@
   font-weight: 700;
   color: var(--墨);
 }
+
+/* ── 极简句式表单（2026-08-19 重构）──
+   整份意向是一句话，可填处是词元。放弃 label + value 的清单版式。 */
+.句块 {
+  padding: 10px 0 4px;
+  font-size: 21px;
+  line-height: 1.85;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+.连接词 {
+  color: var(--次要浅);
+  font-weight: 400;
+  margin: 0 2px;
+}
+
+.连接词小 {
+  color: var(--最弱);
+  font-size: 12px;
+  margin: 0 2px;
+}
+
+/* 词元：可点的填空。虚线底 = 「这里可以改」，不做成按钮框以免又变回清单感 */
+.词元 {
+  display: inline;
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--墨);
+  border-bottom: 2px solid var(--淡绿描边2);
+  padding: 0 1px 1px;
+  background: none;
+}
+
+.词元主 {
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  border-bottom-width: 3px;
+}
+
+.词元小 {
+  font-size: 12.5px;
+  font-weight: 600;
+  border-bottom-width: 1.5px;
+}
+
+/* 次级三项：内联成一段，不各占一行 */
+.次句块 {
+  padding: 12px 0 18px;
+  line-height: 2.1;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+/* 底线单独成卡：全表唯一「只有代理知道」的字段 */
+.底线卡 {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-top: 18px;
+  padding: 13px 15px;
+  border-radius: var(--圆角-中卡);
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边2);
+}
+
+.底线头 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.底线标 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.底线值 {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--深绿文字);
+}
+
+/* 求职类型：分段切换（收到页尾，它最少被改） */
+.类型段 {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  margin-top: 20px;
+  padding: 4px;
+  background: var(--浅灰底2);
+  border-radius: 999px;
+}
+
+.类型片 {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--次要);
+}
+
+.类型片选中 {
+  background: var(--白);
+  color: var(--墨);
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(26, 26, 26, 0.06);
+}
