@@ -143,7 +143,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin-top: 8px;
+  margin-top: 7px;
 }
 
 .标签 {
@@ -269,7 +269,7 @@
   flex-direction: row;
   align-items: center;
   gap: 7px;
-  margin-top: 7px;
+  margin-top: 5px; /* 标注 10:58：删掉一行后整卡再收矮 */
 }
 
 .信息文 {

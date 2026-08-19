@@ -477,11 +477,11 @@
   flex-direction: row;
   align-items: center;
   gap: 7px;
-  margin-top: 7px;
+  margin-top: 5px; /* 标注 10:58：删掉一行后整卡再收矮 */
 }
 
 .信息行:first-of-type {
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .信息文 {
@@ -493,7 +493,7 @@
 
 /* 两行自述位：放代理评语原文 */
 .评语段 {
-  margin-top: 9px;
+  margin-top: 8px;
   font-size: 12px;
   line-height: 1.65;
   color: var(--次要);
