@@ -109,9 +109,14 @@ export function 阶段标签({ 阶段: 值, 待你 = false }: { 阶段: 阶段; 
   // 卡片置顶 + 下一步文案本来就在问你，不必再挂第二枚标签。
   const 配 = 阶段配色[值];
   if (待你) {
+    // 标注 10:53：实底太深、突兀 —— 换成同色系的淡底 + 本色字，
+    // 「在等你」交给那颗呼吸点表达，不靠色块压人
     return (
-      <span className={`${样式.阶段标签} ${样式.阶段待你}`} style={{ background: 配.文字 }}>
-        <span className={`${样式.阶段点} ${样式.阶段点呼吸}`} style={{ background: '#fff' }} />
+      <span
+        className={`${样式.阶段标签} ${样式.阶段待你}`}
+        style={{ background: 配.底, color: 配.文字 }}
+      >
+        <span className={`${样式.阶段点} ${样式.阶段点呼吸}`} style={{ background: 配.文字 }} />
         {值}
       </span>
     );
