@@ -16,6 +16,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import 样式 from './看市场.module.css';
+import 下拉刷新 from '../组件/下拉刷新';
 import 顶部意向栏, { 取走市场工具请求 } from './顶部意向栏';
 import { 主页外壳, 代理横幅, 滚动区, 白卡, 公司字标, 开关 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
@@ -190,6 +191,7 @@ export default function 看市场() {
       {/* 横幅与列表之间的固定留白（RN 里是一个 height:10 的占位 View） */}
       <div style={{ height: 10, flex: 'none' }} />
 
+      <下拉刷新>
       <滚动区>
         <div className={样式.列表}>
           {显示列表.length === 0 ? (
@@ -212,6 +214,7 @@ export default function 看市场() {
           )}
         </div>
       </滚动区>
+      </下拉刷新>
 
       {筛选层开 ? (
         <筛选层

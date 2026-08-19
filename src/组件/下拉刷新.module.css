@@ -1,0 +1,32 @@
+.包 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.刷新槽 {
+  flex: none;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  transition: height 0.18s ease;
+}
+
+.刷新圈 {
+  width: 17px;
+  height: 17px;
+  margin-bottom: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--描边深);
+  border-top-color: var(--深绿);
+}
+
+.刷新转 {
+  animation: 刷新旋转 0.7s linear infinite;
+}
+
+@keyframes 刷新旋转 {
+  to { transform: rotate(360deg); }
+}

@@ -10,6 +10,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import 样式 from './候选推荐.module.css';
+import 下拉刷新 from '../组件/下拉刷新';
 import { 主页外壳, 白卡, 滚动区 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
 import 人像头 from '../组件/人像头';
@@ -102,6 +103,7 @@ export default function 候选推荐() {
       {/* 搜索条与列表之间的固定留白（镜像看市场横幅下方的占位） */}
       <div style={{ height: 10, flex: 'none' }} />
 
+      <下拉刷新>
       <滚动区>
         <div className={样式.列表}>
           {过滤后.length === 0 ? (
@@ -147,6 +149,7 @@ export default function 候选推荐() {
           </button>
         </div>
       </滚动区>
+      </下拉刷新>
 
       {抽屉开 ? (
         <候选筛选抽屉
@@ -276,7 +279,7 @@ function 推荐卡({
       <button className={`${样式.卡主体} 可点`} onClick={() => !滑开 && 按下()}>
         {/* 行1：头像 + 代号 + 活跃度（双盲：头像只用 头像字，不用真人照片） */}
         <div className={样式.头行}>
-          <人像头 键={人.编号} 尺寸={34} />
+          <人像头 键={人.编号} 首字={人.头像字} 尺寸={34} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className={样式.名行}>
               <span className={`${样式.代号} 单行`}>{人.代号}</span>

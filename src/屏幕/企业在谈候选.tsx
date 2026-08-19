@@ -11,10 +11,11 @@
 // 双盲语义（业务硬约束）：意向确认前只显示匿名昵称（陈屿）与画像；
 // 「候选确认意向」后 真名 才有值，头像换成真名首字 + 深绿底。
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import 样式 from './企业在谈候选.module.css';
 import { 主页外壳, 代理横幅, 阶段标签, 滚动区, 白卡, use模拟加载, 骨架卡组 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
+import 下拉刷新 from '../组件/下拉刷新';
 import 人像头 from '../组件/人像头';
 import { 公文包图标, 学帽图标, 放大镜图标 } from '../组件/图标';
 import { use应用状态 } from '../状态/应用状态';
@@ -47,37 +48,6 @@ function 取在谈候选特征(单: 候选) {
 export default function 企业在谈候选() {
   // 标注 2026-08-18 22:31：进入人才页要有约两秒的加载体感，然后直接看到候选
   const 数据就绪 = use模拟加载(2000);
-
-  // ── 下拉刷新（标注 00:25）：列表顶部往下拽 → 松手转圈 0.9s ──
-  const 拉区 = useRef<HTMLDivElement>(null);
-  const 起点Y = useRef<number | null>(null);
-  const [拉距, 设拉距] = useState(0);
-  const [刷新中, 设刷新中] = useState(false);
-
-  const 拉住 = (事件: React.PointerEvent) => {
-    const 滚 = 拉区.current?.querySelector('.滚动区');
-    // 只在列表已经贴顶时接管手势，否则让给正常滚动
-    if (滚 && 滚.scrollTop <= 0 && !刷新中) 起点Y.current = 事件.clientY;
-  };
-  const 拉动 = (事件: React.PointerEvent) => {
-    if (起点Y.current === null || 刷新中) return;
-    const 位移 = 事件.clientY - 起点Y.current;
-    设拉距(位移 > 0 ? Math.min(位移 / 2, 64) : 0);
-  };
-  const 松手 = () => {
-    if (起点Y.current === null) return;
-    起点Y.current = null;
-    if (拉距 >= 46) {
-      设刷新中(true);
-      设拉距(46);
-      window.setTimeout(() => {
-        设刷新中(false);
-        设拉距(0);
-      }, 900);
-    } else {
-      设拉距(0);
-    }
-  };
   const { 状态 } = use应用状态();
   const { 跳转 } = use导航();
   const [筛选条件, 设筛选条件] = useState<候选筛选条件>(空筛选条件);
@@ -104,18 +74,7 @@ export default function 企业在谈候选() {
 
       <div style={{ height: 10, flex: 'none' }} />
 
-      <div
-        ref={拉区}
-        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
-        onPointerDown={拉住}
-        onPointerMove={拉动}
-        onPointerUp={松手}
-        onPointerCancel={松手}
-      >
-        {/* 下拉出来的刷新槽：高度跟手，松手到位后转圈 */}
-        <div className={样式.刷新槽} style={{ height: 拉距 }}>
-          <span className={`${样式.刷新圈} ${刷新中 ? 样式.刷新转 : ''}`} />
-        </div>
+      <下拉刷新>
       <滚动区>
         <div className={样式.列表}>
           {!数据就绪 ? (
@@ -143,7 +102,7 @@ export default function 企业在谈候选() {
           )}
         </div>
       </滚动区>
-      </div>
+      </下拉刷新>
 
       {抽屉开 ? (
         <候选筛选抽屉
@@ -239,7 +198,7 @@ function 候选卡({ 单, 按下 }: { 单: 候选; 按下: () => void }) {
     <白卡 按下={按下} 类名={样式.卡}>
       {/* 行1：头像 + 化名/真名 + 活跃度；右列 匹配环 + 硬性核对数 */}
       <div className={样式.头行}>
-        <人像头 键={单.编号} 尺寸={34} />
+        <人像头 键={单.编号} 首字={显示真名 ? 显示真名.charAt(0) : 单.头像字} 尺寸={34} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className={样式.名行}>
             <span className={`${样式.代号名} 单行`}>{显示真名 ?? 单.代号}</span>

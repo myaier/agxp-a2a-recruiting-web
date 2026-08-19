@@ -9,6 +9,7 @@
 //   · 卡上不放决策按钮，决策一律进详情页做
 
 import 样式 from './在谈首页.module.css';
+import 下拉刷新 from '../组件/下拉刷新';
 import 顶部意向栏 from './顶部意向栏';
 import { 主页外壳, 代理横幅, 阶段标签, 滚动区, 白卡, 公司字标, use模拟加载, 骨架卡组 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
@@ -41,6 +42,7 @@ export default function 在谈首页() {
 
       <div style={{ height: 10, flex: 'none' }} />
 
+      <下拉刷新>
       <滚动区>
         <div className={样式.列表}>
           {!数据就绪 ? (
@@ -58,6 +60,7 @@ export default function 在谈首页() {
           )}
         </div>
       </滚动区>
+      </下拉刷新>
     </主页外壳>
   );
 }
