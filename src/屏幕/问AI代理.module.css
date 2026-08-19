@@ -46,7 +46,8 @@
 .代理气泡 {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 76%;
+  /* 镜像净空（标注 19:27）：右缘距行尾 ≥ 头像列宽，与我方气泡对称 */
+  max-width: calc(100% - 78px);
   background: var(--白);
   border: 1px solid var(--描边);
   border-radius: 4px 14px 14px 14px;
@@ -61,7 +62,8 @@
 }
 
 .我气泡 {
-  max-width: 76%;
+  /* 左缘与代理气泡起点线对齐（行宽 - 头像列 39 - 左净空 39）*/
+  max-width: calc(100% - 78px);
   background: var(--气泡绿);
   border-radius: 14px 14px 3px 14px;
   padding: 10px 13px;

@@ -128,7 +128,8 @@
 }
 
 .对方气泡 {
-  max-width: 86%;
+  /* 内列宽 = 行宽 - 41px（头像+间距）；再留 41px 右净空，与我方镜像 */
+  max-width: calc(100% - 41px);
   align-self: flex-start;
   background: var(--白);
   border: 1px solid var(--描边);
@@ -144,7 +145,8 @@
 }
 
 .我气泡 {
-  max-width: 78%;
+  /* 行宽 - 右侧头像列 41px - 左侧 41px 净空：左缘与对方气泡起点线对齐 */
+  max-width: calc(100% - 82px);
   background: var(--气泡绿);
   border-radius: 14px 14px 3px 14px;
   padding: 10px 13px;
@@ -205,9 +207,10 @@
 .我气泡组 {
   display: flex;
   flex-direction: row;
+  justify-content: flex-end;
   align-items: flex-start;
-  gap: 8px;
-  max-width: 100%;
+  gap: 9px;
+  width: 100%;
 }
 
 .我头像 {
@@ -227,7 +230,7 @@
 
 /* 有头像后时间戳与气泡右缘对齐（让开头像宽度） */
 .时间戳带头像 {
-  margin-right: 40px;
+  margin-right: 41px;
 }
 
 

@@ -60,7 +60,8 @@
 }
 
 .我气泡 {
-  max-width: 78%;
+  /* 左缘与代理气泡起点线对齐（行宽 - 头像列 39 - 左净空 39）*/
+  max-width: calc(100% - 78px);
   background: var(--气泡绿);
   border-radius: 14px 14px 3px 14px;
   padding: 10px 13px;
