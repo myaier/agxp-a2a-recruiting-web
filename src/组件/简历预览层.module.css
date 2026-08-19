@@ -388,3 +388,27 @@
   color: #111;
   font-weight: 700;
 }
+
+/* 多行经历内容的条目行；文档（PDF）视图下换实心圆点缩进，更像正式简历 */
+.内容行 {
+  position: relative;
+  padding-left: 13px;
+}
+
+.内容行::before {
+  content: '·';
+  position: absolute;
+  left: 2px;
+  font-weight: 700;
+}
+
+.文档 .内容行 {
+  padding-left: 15px;
+}
+
+.文档 .内容行::before {
+  content: '•';
+  left: 2px;
+  font-size: 0.8em;
+  top: 2px;
+}

@@ -70,7 +70,15 @@ export function 简历纸身({
           </div>
           <div className={样式.经历职位}>{条.职位}</div>
           {条.行业 ? <div className={样式.经历行业}>{条.行业}</div> : null}
-          {条.内容 ? <div className={样式.经历内容}>{条.内容}</div> : null}
+          {条.内容 ? (
+            <div className={样式.经历内容}>
+              {条.内容.split('\n').map((行) => (
+                <div key={行} className={样式.内容行}>
+                  {行}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       ))}
 

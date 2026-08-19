@@ -533,3 +533,16 @@
   margin: 0 7px;
   color: var(--最弱);
 }
+
+/* 多行经历说明的条目行：小圆点起头，一行一条 */
+.说明行 {
+  position: relative;
+  padding-left: 13px;
+}
+
+.说明行::before {
+  content: '·';
+  position: absolute;
+  left: 2px;
+  font-weight: 700;
+}

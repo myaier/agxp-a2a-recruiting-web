@@ -116,7 +116,13 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
             <span className={`${样式.经历起止} 等宽数字`}>{段.起止}</span>
           </div>
           <div className={样式.经历职位}>{段.职位}</div>
-          <div className={样式.经历说明}>{段.说明}</div>
+          <div className={样式.经历说明}>
+            {段.说明.split('\n').map((行) => (
+              <div key={行} className={样式.说明行}>
+                {行}
+              </div>
+            ))}
+          </div>
           {段.批注 ? (
             <div className={样式.一致条}>
               <span className={样式.一致符} aria-hidden>✓</span>
