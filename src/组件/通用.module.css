@@ -463,3 +463,20 @@
   border-radius: 50%;
   box-shadow: 0 0 0 2.5px var(--白);
 }
+
+/* 阶段标签「等你」态：实底胶囊 + 白字（标注 10:35：与「需要你」胶囊合并成一枚） */
+.阶段待你 {
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  color: #fff;
+}
+
+/* 呼吸点：只在等你时跳，平时静止 */
+.阶段点呼吸 {
+  animation: 阶段呼吸 1.8s ease-in-out infinite;
+}
+
+@keyframes 阶段呼吸 {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}

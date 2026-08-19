@@ -102,14 +102,25 @@ export function 主按钮({
 }
 
 // ── 阶段标签 ──────────────────────────────────────────────────
-export function 阶段标签({ 阶段: 值 }: { 阶段: 阶段 }) {
-  // 质感升级（标注 00:07）：裸文字 → 呼吸点 + 文字。点带同色光晕，
-  // 像设备上的状态灯 —— 表达「这一单活着、正处在这一档」
+export function 阶段标签({ 阶段: 值, 待你 = false }: { 阶段: 阶段; 待你?: boolean }) {
+  // 两态合一（标注 10:35：「需要你」胶囊冗余）——
+  //   待你：整枚变实底胶囊（阶段色底 + 白字 + 呼吸点），一眼就是「这一单在等你」；
+  //   平时：安静的状态灯 + 文字，不抢眼。
+  // 卡片置顶 + 下一步文案本来就在问你，不必再挂第二枚标签。
+  const 配 = 阶段配色[值];
+  if (待你) {
+    return (
+      <span className={`${样式.阶段标签} ${样式.阶段待你}`} style={{ background: 配.文字 }}>
+        <span className={`${样式.阶段点} ${样式.阶段点呼吸}`} style={{ background: '#fff' }} />
+        {值}
+      </span>
+    );
+  }
   return (
-    <span className={样式.阶段标签} style={{ color: 阶段配色[值].文字 }}>
+    <span className={样式.阶段标签} style={{ color: 配.文字 }}>
       <span
         className={样式.阶段点}
-        style={{ background: 阶段配色[值].文字, boxShadow: `0 0 0 3px ${阶段配色[值].底}` }}
+        style={{ background: 配.文字, boxShadow: `0 0 0 3px ${配.底}` }}
       />
       {值}
     </span>
