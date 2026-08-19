@@ -285,7 +285,6 @@ function 推荐卡({
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className={样式.名行}>
               <span className={`${样式.代号} 单行`}>{人.代号}</span>
-              <span className={样式.活跃度}>{人.活跃度}</span>
             </div>
             {/* 行2：年限 ｜ 学历 ｜ 到岗（BOSS 基本行的面议位放到岗档） */}
             <div className={`${样式.基本行} 单行`}>

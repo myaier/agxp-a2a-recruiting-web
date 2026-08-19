@@ -124,9 +124,12 @@ export function 简历纸身({
 /** 简历原件弹层：PDF 文档观感 —— 顶栏文件名 + PDF 徽标，正文一张白纸 */
 export default function 简历原件层({
   文件名,
+  匿名代号,
   关闭,
 }: {
   文件名: string;
+  /** 传了 = 对方视角（企业端收到的版本）：化名 + 打码，不是原件 */
+  匿名代号?: string;
   关闭: () => void;
 }) {
   return (
@@ -149,7 +152,7 @@ export default function 简历原件层({
         {/* 灰底上浮一张白纸，模拟 PDF 阅读器里的一页 */}
         <div className={`${样式.纸底} 滚动区`}>
           <div className={样式.白纸}>
-            <简历纸身 原件 />
+            {匿名代号 ? <简历纸身 代号={匿名代号} /> : <简历纸身 原件 />}
           </div>
         </div>
       </div>

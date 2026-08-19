@@ -666,3 +666,17 @@
   font-weight: 700;
   color: var(--墨);
 }
+
+/* 核对行做成按钮后的复位与右侧尖括号（标注 09:24：点行进两代理对聊） */
+.核对行 {
+  width: 100%;
+  text-align: left;
+}
+
+.核对尖 {
+  flex: none;
+  margin-left: auto;
+  color: var(--最弱);
+  font-size: 13px;
+  font-weight: 300;
+}

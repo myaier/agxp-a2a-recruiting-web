@@ -22,6 +22,7 @@ import {
 } from '../组件/通用';
 import { 对勾图标 } from '../组件/图标';
 import { 简历正文 } from './匿名在线简历';
+import 简历预览层 from '../组件/简历预览层';
 import { 候选阶段小结, 企业卡点决策, 企业往来记录, 匿名简历表 } from '../数据/企业端模拟数据';
 import { 阶段顺序 } from '../数据/类型';
 import type { 分歧, 候选, 阶段 } from '../数据/类型';
@@ -87,6 +88,8 @@ export default function 候选详情() {
 
   const [当前Tab, 设当前Tab] = useState<页内Tab>('谈判进度');
   const [弹层可见, 设弹层可见] = useState(false);
+  // 递交简历段的 PDF 附件（标注 09:23）：看的是收到的匿名版原件
+  const [看简历, 设看简历] = useState(false);
   const [决策快照, 设决策快照] = useState<决策快照内容 | null>(null);
 
   // 「终止」会把这位候选从在谈列表里移除（归档），页面必须留一份快照，
@@ -191,8 +194,14 @@ export default function 候选详情() {
                       {/* 结构化核对清单（标注 18:05）：逐项一行，不再挤成一句 */}
                       {段.核对清单 ? (
                         <div className={样式.核对列}>
+                          {/* 标注 09:24：每一项核对都来自两个代理的一段对话 ——
+                              整行可点，右侧 ›，点开进完整对聊 */}
                           {段.核对清单.map((条) => (
-                            <div key={条.项} className={样式.核对行}>
+                            <button
+                              key={条.项}
+                              className={`${样式.核对行} 可点`}
+                              onClick={() => 跳转(路径.企业往来记录(编号))}
+                            >
                               <span
                                 className={`${样式.核对记} ${
                                   条.结果 === '通过' ? 样式.核对记过 : 样式.核对记中
@@ -204,9 +213,22 @@ export default function 候选详情() {
                               {条.结果 === '核对中' ? (
                                 <span className={样式.核对中字}>核对中</span>
                               ) : null}
-                            </div>
+                              <span className={样式.核对尖}>›</span>
+                            </button>
                           ))}
                         </div>
+                      ) : null}
+                      {段.阶段 === '递交简历' ? (
+                        <button
+                          className={`${样式.附件} 可点`}
+                          onClick={() => 设看简历(true)}
+                        >
+                          <span className={样式.附件徽}>PDF</span>
+                          <span className={`${样式.附件名} 单行`}>
+                            {候.代号}_简历.pdf
+                          </span>
+                          <span className={样式.附件看}>查看 ›</span>
+                        </button>
                       ) : null}
                       {段.链接 ? (
                         <button
@@ -303,6 +325,13 @@ export default function 候选详情() {
           跳转(路径.企业代理设置);
         }}
       />
+      {看简历 ? (
+        <简历预览层
+          文件名={`${候.代号}_简历.pdf`}
+          匿名代号={候.代号}
+          关闭={() => 设看简历(false)}
+        />
+      ) : null}
     </次级页外壳>
   );
 }

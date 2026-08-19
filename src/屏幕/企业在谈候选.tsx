@@ -248,7 +248,6 @@ function 候选卡({ 单, 按下 }: { 单: 候选; 按下: () => void }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className={样式.名行}>
             <span className={`${样式.代号名} 单行`}>{显示真名 ?? 单.代号}</span>
-            {单.活跃度 ? <span className={样式.活跃度}>{单.活跃度}</span> : null}
           </div>
           {/* 行2：年限 ｜ 学历 ｜ 到岗（BOSS 的基本行，面议位放到岗） */}
           <div className={`${样式.基本行} 单行`}>
