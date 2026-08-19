@@ -1,7 +1,7 @@
 /* A6·L 在谈·档案卡版（X5D 版式一比一）—— 求职端定稿首页 */
 
 .列表 {
-  padding: 0 11px 130px;
+  padding: 0 8px 130px;
   display: flex;
   flex-direction: column;
   gap: 6px;

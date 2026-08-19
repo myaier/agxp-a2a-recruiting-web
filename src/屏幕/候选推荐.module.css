@@ -116,7 +116,7 @@
 
 /* ── 列表：左右 11px，底部 130px 让开玻璃导航，卡间距 6px（同看市场） ── */
 .列表 {
-  padding: 0 11px 130px;
+  padding: 0 8px 130px;
   display: flex;
   flex-direction: column;
   gap: 6px;

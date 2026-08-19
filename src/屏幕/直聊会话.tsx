@@ -174,6 +174,25 @@ export function 消息条({ 条, 对方首字 }: { 条: 会话条; 对方首字:
 // ── 共用件 3：底部功能键行 ─────────────────────────────────────
 // 名单给顺序，已完成给状态：在已完成里的渲染成「已+名」的灰底对勾键（div，不可点），
 // 其余渲染成可点白键，点一下即标记完成。两屏只是初始已完成集合不同。
+/** 互换出来的联系方式卡：交换动作要在会话里留下真东西，不能只把按钮变灰 */
+export function 联系卡({ 名, 我方, 对方 }: { 名: string; 我方: string; 对方: string }) {
+  return (
+    <div className={样式.联系卡}>
+      <div className={样式.联系头}>
+        <span className={样式.联系标}>已互换 · {名.replace('换', '')}</span>
+      </div>
+      <div className={样式.联系行}>
+        <span className={样式.联系谁}>对方</span>
+        <span className={`${样式.联系值} 等宽数字`}>{对方}</span>
+      </div>
+      <div className={样式.联系行}>
+        <span className={样式.联系谁}>你</span>
+        <span className={`${样式.联系值} 等宽数字`}>{我方}</span>
+      </div>
+    </div>
+  );
+}
+
 export function 功能键行({
   名单,
   已完成,
