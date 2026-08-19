@@ -75,8 +75,10 @@
   --圆角-玻璃导航: 26px;
 
   /* ── 字体：iOS 上直接用系统字体（苹方 + SF），与设计稿字体栈一致 ── */
+  /* '西文补偿' 排首位：它只覆盖拉丁与数字区段并放大 8%，中西混排时两种字
+     视觉大小才一致（定义见 样式/全局.css 末尾） */
   --字体:
-    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans SC',
+    '西文补偿', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans SC',
     'Helvetica Neue', Arial, sans-serif;
 
   /* ── 安全区 ──

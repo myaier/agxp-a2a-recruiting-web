@@ -155,3 +155,18 @@ button {
     opacity: 1;
   }
 }
+
+/* ── 中西文光学对齐（2026-08-19 用户：切意向后卡里字号看着不一样）──
+   CSS 字号两边其实一模一样，差在字体度量：同一 font-size 下汉字占满字身框，
+   拉丁字母 x 高度只有约 0.52em，于是「MiniMax」「AI 产品经理（Agent 方向）」
+   看着比「抖音」「资深后端工程师」小一号。
+   用 @font-face 的 size-adjust 把西文单独放大 8%，只作用于拉丁与数字区段，
+   汉字不受影响 —— 混排时两种字看起来才一样大。
+   size-adjust 不支持的旧内核会静默回落到原行为，不影响可用性。 */
+@font-face {
+  font-family: '西文补偿';
+  src: local('SF Pro Text'), local('SFProText-Regular'), local('Helvetica Neue'),
+    local('Arial');
+  size-adjust: 108%;
+  unicode-range: U+0000-024F, U+2000-206F, U+2070-209F, U+20A0-20BF;
+}

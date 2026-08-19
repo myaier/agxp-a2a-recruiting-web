@@ -68,6 +68,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  width: 100%;
 }
 
 .系统胶囊 {
@@ -86,10 +87,11 @@
 
 /* 代理提醒：居中灰条，「◈ AI代理提醒」深绿加粗 + 正文次要色 */
 .提醒条 {
+  /* 标注 11:48：原来 88% 居中，左边界与气泡列对不齐 —— 改整列满宽 */
+  width: 100%;
   background: var(--浅灰底);
   border-radius: 14px;
   padding: 8px 13px;
-  max-width: 88%;
 }
 
 .提醒文字 {
@@ -231,8 +233,8 @@
 
 /* ── 互换联系方式卡（标注 11:31：点了按钮要在会话里真的换出东西）── */
 .联系卡 {
-  align-self: center;
-  width: 84%;
+  /* 与代理提醒同轴：整列满宽，不再按百分比居中 */
+  width: 100%;
   margin: 4px 0;
   padding: 11px 14px;
   border-radius: 13px;
