@@ -118,7 +118,6 @@ export default function 企业设置() {
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.反馈)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>反馈与举报</span>
-              <span className={样式.行说明}>功能异常、体验建议、举报违规</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
