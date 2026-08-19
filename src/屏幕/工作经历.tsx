@@ -36,6 +36,9 @@ function 显示年月(值: string | null): string {
 export default function 工作经历() {
   const { 跳转, 返回 } = use导航();
   const { 状态: 全局, 派发 } = use应用状态();
+  // 学生分支（身份来自学生分流屏）：教育置顶，工作经历段改叫「实习经历」
+  const 在校中 = 全局.基本信息.身份 === '在校';
+  const 经历区块名 = 在校中 ? '实习经历' : '工作经历';
   // 简历数据来自全局（并已持久化）：此前是本页 useState，一离开页面就回到 mock，
   // 用户「每次都要重走 onboarding 才能恢复」（2026-08-18 用户复现）
   const 经历列表 = 全局.简历经历;
@@ -132,6 +135,7 @@ export default function 工作经历() {
     return (
       <经历编辑页
         初始={正在编辑的段}
+        区块名={经历区块名}
         取消={() => 设编辑目标(null)}
         完成={(段) => {
           存({
@@ -154,6 +158,72 @@ export default function 工作经历() {
   }
 
   // ── 列表视图 ──────────────────────────────────────────────
+  // 经历 / 教育两个区块抽成片段：学生分支教育置顶、经历区改叫「实习经历」，
+  // 非学生保持 工作经历 → 教育经历 的现状顺序
+  const 经历区 = (
+    <>
+      {经历列表.map((段) => (
+        <button
+          key={段.编号}
+          className={`${样式.经历卡} 可点`}
+          onClick={() => 设编辑目标(段.编号)}
+        >
+          <span className={样式.经历卡主体}>
+            <span className={样式.经历卡头行}>
+              <span className={`${样式.经历公司} 单行`}>{段.公司}</span>
+              <span className={`${样式.经历时间} 等宽数字`}>
+                {显示年月(段.开始)} — {显示年月(段.结束)}
+              </span>
+            </span>
+            <span className={`${样式.经历职位} 单行`}>{段.职位}</span>
+            <span className={样式.经历底行}>
+              {段.行业 ? <span className={样式.经历行业}>{段.行业}</span> : null}
+              {段.结束 === null && 段.隐藏 ? (
+                <span className={样式.隐身徽标}>已对该公司隐身</span>
+              ) : null}
+            </span>
+          </span>
+          <span className={样式.尖括号}>›</span>
+        </button>
+      ))}
+
+      <button className={`${样式.添加行} 可点`} onClick={() => 设编辑目标('新增')}>
+        <span className={样式.添加加号}>＋</span>
+        <span className={样式.添加文字}>添加{经历区块名}</span>
+      </button>
+    </>
+  );
+
+  // 教育经历：支持多段（本科+硕士），企业端简历的学校显示自这里
+  const 教育区 = (
+    <>
+      {教育列表.map((条) => (
+        <button
+          key={条.编号}
+          className={`${样式.经历卡} 可点`}
+          onClick={() => 设教育目标(条.编号)}
+        >
+          <span className={样式.经历卡主体}>
+            <span className={样式.经历卡头行}>
+              <span className={`${样式.经历公司} 单行`}>{条.学校}</span>
+              <span className={`${样式.经历时间} 等宽数字`}>
+                {显示年月(条.开始)} — {显示年月(条.结束)}
+              </span>
+            </span>
+            <span className={`${样式.经历职位} 单行`}>
+              {条.学历} · {条.专业}
+            </span>
+          </span>
+          <span className={样式.尖括号}>›</span>
+        </button>
+      ))}
+      <button className={`${样式.添加行} 可点`} onClick={() => 设教育目标('新增')}>
+        <span className={样式.添加加号}>＋</span>
+        <span className={样式.添加文字}>添加教育经历</span>
+      </button>
+    </>
+  );
+
   return (
     <次级页外壳>
       <返回栏
@@ -162,7 +232,8 @@ export default function 工作经历() {
           <button
             className={`${样式.保存} 可点`}
             onClick={() => {
-              if (经历列表.length === 0) {
+              // 学生的实习经历可以为空（没实习过是常态），不拦；社招至少一段
+              if (!在校中 && 经历列表.length === 0) {
                 轻提示('至少填一段工作经历');
                 return;
               }
@@ -174,7 +245,8 @@ export default function 工作经历() {
         }
       />
 
-      <页面大标题 标题="工作经历" />
+      {/* 学生分支教育置顶，大标题跟着首个区块走 */}
+      <页面大标题 标题={在校中 ? '教育经历' : '工作经历'} />
 
       {/* 一键上传简历：绿色虚线框，点了走真实文件选择 */}
       <button className={`${样式.上传条} 可点`} onClick={() => 文件选择框.current?.click()}>
@@ -193,62 +265,19 @@ export default function 工作经历() {
       />
 
       <滚动区 样式覆盖={{ padding: '14px 18px 40px' }}>
-        {经历列表.map((段) => (
-          <button
-            key={段.编号}
-            className={`${样式.经历卡} 可点`}
-            onClick={() => 设编辑目标(段.编号)}
-          >
-            <span className={样式.经历卡主体}>
-              <span className={样式.经历卡头行}>
-                <span className={`${样式.经历公司} 单行`}>{段.公司}</span>
-                <span className={`${样式.经历时间} 等宽数字`}>
-                  {显示年月(段.开始)} — {显示年月(段.结束)}
-                </span>
-              </span>
-              <span className={`${样式.经历职位} 单行`}>{段.职位}</span>
-              <span className={样式.经历底行}>
-                {段.行业 ? <span className={样式.经历行业}>{段.行业}</span> : null}
-                {段.结束 === null && 段.隐藏 ? (
-                  <span className={样式.隐身徽标}>已对该公司隐身</span>
-                ) : null}
-              </span>
-            </span>
-            <span className={样式.尖括号}>›</span>
-          </button>
-        ))}
-
-        <button className={`${样式.添加行} 可点`} onClick={() => 设编辑目标('新增')}>
-          <span className={样式.添加加号}>＋</span>
-          <span className={样式.添加文字}>添加工作经历</span>
-        </button>
-
-        {/* ── 教育经历：支持多段（本科+硕士），企业端简历的学校显示自这里 ── */}
-        <div className={样式.区块标}>教育经历</div>
-        {教育列表.map((条) => (
-          <button
-            key={条.编号}
-            className={`${样式.经历卡} 可点`}
-            onClick={() => 设教育目标(条.编号)}
-          >
-            <span className={样式.经历卡主体}>
-              <span className={样式.经历卡头行}>
-                <span className={`${样式.经历公司} 单行`}>{条.学校}</span>
-                <span className={`${样式.经历时间} 等宽数字`}>
-                  {显示年月(条.开始)} — {显示年月(条.结束)}
-                </span>
-              </span>
-              <span className={`${样式.经历职位} 单行`}>
-                {条.学历} · {条.专业}
-              </span>
-            </span>
-            <span className={样式.尖括号}>›</span>
-          </button>
-        ))}
-        <button className={`${样式.添加行} 可点`} onClick={() => 设教育目标('新增')}>
-          <span className={样式.添加加号}>＋</span>
-          <span className={样式.添加文字}>添加教育经历</span>
-        </button>
+        {在校中 ? (
+          <>
+            {教育区}
+            <div className={样式.区块标}>实习经历</div>
+            {经历区}
+          </>
+        ) : (
+          <>
+            {经历区}
+            <div className={样式.区块标}>教育经历</div>
+            {教育区}
+          </>
+        )}
 
         {/* ── 专业技能：代理做匿名初筛时按标签逐条比对岗位的技术要求，
             所以它是标签而不是一段自由文本 —— 自由文本没法逐条核对 ── */}
@@ -469,11 +498,14 @@ function 教育编辑页({
 // ── 全屏编辑页（BOSS直聘 形态：逐项表单 + 完成/删除）──────────────
 function 经历编辑页({
   初始,
+  区块名,
   取消,
   完成,
   删除,
 }: {
   初始: 简历经历段 | null;
+  /** 学生分支叫「实习经历」，非学生叫「工作经历」，只是标题措辞，字段一致 */
+  区块名: string;
   取消: () => void;
   完成: (段: 简历经历段) => void;
   删除?: () => void;
@@ -511,7 +543,7 @@ function 经历编辑页({
     <次级页外壳>
       <返回栏
         返回={取消}
-        标题={初始 ? '编辑工作经历' : '添加工作经历'}
+        标题={初始 ? `编辑${区块名}` : `添加${区块名}`}
         居中标题
         右侧={
           <button

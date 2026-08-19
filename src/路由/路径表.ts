@@ -8,6 +8,8 @@ export const 路径 = {
    *  来源用于默认选中「对面」身份 —— 从求职端进来默认挑招聘方，反之亦然 */
   切换身份自求职端: '/identity?switch=1&from=app',
   切换身份自企业端: '/identity?switch=1&from=hr',
+  /** 学生分流：选完「求职者」先问在不在读，答案落 基本信息.身份，后续屏按它分支 */
+  学生分流: '/student',
   引导说明: '/intro',
   基本信息: '/basic',
   工作经历: '/experience',

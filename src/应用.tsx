@@ -6,6 +6,7 @@ import { 路径 } from './路由/路径表';
 
 import 登录 from './屏幕/登录';
 import 选身份 from './屏幕/选身份';
+import 学生分流 from './屏幕/学生分流';
 import 引导说明 from './屏幕/引导说明';
 import 基本信息 from './屏幕/基本信息';
 import 工作经历 from './屏幕/工作经历';
@@ -56,9 +57,10 @@ import 接触记录 from './屏幕/接触记录';
 export default function 应用() {
   return (
     <Routes>
-      {/* 注册引导：R1 → R2 → A1 → A2 → A3a-g → A4 */}
+      {/* 注册引导：R1 → R2 → 学生分流 → A1 → A1b → A2 → A3a-g → A4 */}
       <Route path={路径.登录} element={<登录 />} />
       <Route path={路径.选身份} element={<选身份 />} />
+      <Route path={路径.学生分流} element={<学生分流 />} />
       <Route path={路径.引导说明} element={<引导说明 />} />
       <Route path={路径.基本信息} element={<基本信息 />} />
       <Route path={路径.工作经历} element={<工作经历 />} />
