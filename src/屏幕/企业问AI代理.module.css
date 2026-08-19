@@ -33,8 +33,8 @@
 .小盾牌 {
   /* 标注 23:53：与主页横幅同款裸代理标，不要圆底 */
   flex: none;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -223,16 +223,18 @@
 }
 
 .我头像 {
+  /* 标注 17:29：太小 —— 与代理头像同为 30 */
   flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 13px;
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
   margin-top: 2px;
   background: var(--墨);
   color: var(--荧光绿);
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }

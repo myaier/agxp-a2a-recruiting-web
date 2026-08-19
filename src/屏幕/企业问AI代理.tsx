@@ -75,7 +75,17 @@ export default function 企业问AI代理() {
                 <div key={条.编号} className={样式.我行}>
                   <div className={`${样式.我气泡} ${样式.气泡文字}`}>{条.内容}</div>
                   {/* 我方头像（标注 23:52）：与左侧代理头像对称 */}
-                  <span className={样式.我头像}>{状态.企业认证.姓名.charAt(0)}</span>
+                  <span className={样式.我头像}>
+                    {状态.招聘头像 ? (
+                      <img
+                        src={状态.招聘头像}
+                        alt=""
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      状态.企业认证.姓名.charAt(0)
+                    )}
+                  </span>
                 </div>
               );
             return <代理气泡 key={条.编号} 内容={条.内容 ?? ''} />;
@@ -107,7 +117,7 @@ function 代理气泡({ 内容 }: { 内容: string }) {
   return (
     <div className={样式.代理行}>
       <span className={样式.小盾牌}>
-        <代理标 尺寸={26} 脸色="var(--荧光绿)" 眼色="var(--墨)" 描边色="var(--墨)" 描边宽={2.6} />
+        <代理标 尺寸={30} 脸色="var(--荧光绿)" 眼色="var(--墨)" 描边色="var(--墨)" 描边宽={2.6} />
       </span>
       <div className={`${样式.代理气泡} ${样式.气泡文字}`}>{内容}</div>
     </div>
@@ -121,7 +131,7 @@ function 简报气泡() {
   return (
     <div className={样式.代理行}>
       <span className={样式.小盾牌}>
-        <代理标 尺寸={26} 脸色="var(--荧光绿)" 眼色="var(--墨)" 描边色="var(--墨)" 描边宽={2.6} />
+        <代理标 尺寸={30} 脸色="var(--荧光绿)" 眼色="var(--墨)" 描边色="var(--墨)" 描边宽={2.6} />
       </span>
       <div className={样式.代理气泡}>
         <div className={样式.简报头}>
