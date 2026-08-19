@@ -198,6 +198,15 @@ export default function 在谈详情() {
 
       {当前Tab === '谈判进度' ? (
         <滚动区>
+          {/* 全部对话的唯一入口（标注 16:15，与企业端同款） */}
+          <button
+            className={`${样式.对话入口} 可点`}
+            onClick={() => 跳转(路径.往来记录(编号))}
+          >
+            <span className={样式.对话入口标}>双方代理对话</span>
+            <span className={样式.核对尖}>›</span>
+          </button>
+
           <div className={样式.时间线}>
             {/* 在线简历 · 可折叠（标注意见 2026-08-18 23:51）：
                 时间线最上方常驻用户的在线简历（脱敏版）—— 从匿名初筛起对方核对的
@@ -266,8 +275,14 @@ export default function 在谈详情() {
                   {/* 结构化核对清单（标注 18:05）：逐项一行，不再挤成一句 */}
                   {段.核对清单 ? (
                     <div className={样式.核对列}>
+                      {/* 每一项核对都来自两个代理的一段对话 —— 整行可点进完整对聊
+                          （标注 16:14，与企业端候选详情同款） */}
                       {段.核对清单.map((条) => (
-                        <div key={条.项} className={样式.核对行}>
+                        <button
+                          key={条.项}
+                          className={`${样式.核对行} 可点`}
+                          onClick={() => 跳转(路径.往来记录(编号))}
+                        >
                           <span
                             className={`${样式.核对记} ${
                               条.结果 === '通过' ? 样式.核对记过 : 样式.核对记中
@@ -279,7 +294,8 @@ export default function 在谈详情() {
                           {条.结果 === '核对中' ? (
                             <span className={样式.核对中字}>核对中</span>
                           ) : null}
-                        </div>
+                          <span className={样式.核对尖}>›</span>
+                        </button>
                       ))}
                     </div>
                   ) : null}
@@ -301,16 +317,10 @@ export default function 在谈详情() {
                         </span>
                         <span className={样式.附件看}>查看 ›</span>
                       </button>
-                      <button
-                        className={`${样式.小链接} ${样式.链接间距} 可点`}
-                        onClick={() => 跳转(路径.往来记录(编号))}
-                      >
-                        发送记录 ›
-                      </button>
                     </div>
                   ) : null}
 
-                  {段.链接 ? (
+                  {段.链接 && !段.链接.includes('往来') ? (
                     <button
                       className={`${样式.小链接} ${样式.链接间距} 可点`}
                       onClick={() => 打开小结链接(段.链接 as string)}

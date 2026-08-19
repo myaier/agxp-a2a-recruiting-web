@@ -710,3 +710,30 @@
   color: var(--最弱);
   font-size: 11px;
 }
+
+/* 全部对话的唯一入口（标注 16:15） */
+.对话入口 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: var(--白);
+  border-radius: var(--圆角-中卡);
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.对话入口标 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.对话入口数 {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--次要浅);
+}
