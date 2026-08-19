@@ -3,22 +3,19 @@
 
 /* ── 表单卡：上半手机号行 + 下半验证码四格 ── */
 .表单卡 {
+  /* 标注 11:16：去掉卡片外框与白底 —— 输入区就是两条线 */
   flex: none;
-  margin: 28px 20px 0;
-  background: var(--白);
-  border: 1px solid var(--描边深);
-  border-radius: var(--圆角-中卡);
-  overflow: hidden;
+  margin: 26px 22px 0;
 }
 
 .手机行 {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 13px;
-  height: 56px;
-  padding: 0 18px;
-  border-bottom: 1px solid var(--分隔线);
+  gap: 12px;
+  height: 52px;
+  padding: 0;
+  border-bottom: 1.5px solid var(--描边深);
 }
 
 .区号 {
@@ -59,7 +56,7 @@
   flex-direction: row;
   align-items: center;
   gap: 11px;
-  padding: 14px 18px 16px;
+  padding: 16px 0 0;
 }
 
 /* 定位上下文：透明 input 铺满这一组，点任意格都能唤起键盘 */
