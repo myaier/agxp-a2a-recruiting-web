@@ -9,11 +9,9 @@
 import { useState } from 'react';
 import 样式 from './求职意向管理.module.css';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 设置行 } from '../组件/通用';
-import { 求职意向列表 } from '../数据/模拟数据';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
-import type { 求职意向 } from '../数据/类型';
 
 /** 求职意向配额上限：产品规则限定一个账号最多 5 个意向 */
 const 意向配额上限 = 5;
@@ -21,26 +19,12 @@ const 意向配额上限 = 5;
 /** 可循环切换的求职状态。点「求职状态」行就在这几档里轮转，不另开选择页。 */
 const 求职状态档位 = ['在职 · 看好机会', '在职 · 随便看看', '离职 · 尽快到岗'];
 
-// 「[上海] AI 产品经理」→「AI 产品经理」。
-// 意向卡里带城市前缀，顶部意向栏用的是短名，切意向时要对齐到短名。
-function 取意向短名(标题: string): string {
-  return 标题.replace(/^\[[^\]]*\]\s*/, '');
-}
-
 export default function 求职意向管理() {
-  const { 派发 } = use应用状态();
+  const { 状态 } = use应用状态();
   const { 跳转, 返回 } = use导航();
 
   // 求职状态只是本屏的展示态，没有跨屏联动需求，用本地 state 即可
   const [求职状态下标, 设求职状态下标] = useState(0);
-
-  // 点某个意向 → 把它设为当前意向并退回上一屏，
-  // 用户会在顶部意向栏看到已经切过去了（这就是这次点击的可见反馈）
-  function 选中意向(意向: 求职意向) {
-    派发({ 型: '切意向', 意向: 取意向短名(意向.标题) });
-    返回();
-  }
-
   return (
     <次级页外壳>
       <返回栏 返回={返回} />
@@ -55,26 +39,26 @@ export default function 求职意向管理() {
               <span className={样式.绿竖条} />
               <span className={样式.卡标题}>求职意向</span>
               <span className={`${样式.配额} 等宽数字`}>
-                <span className={样式.配额已用}>{求职意向列表.length}</span>/{意向配额上限}
+                <span className={样式.配额已用}>{状态.求职意向表.length}</span>/{意向配额上限}
               </span>
             </div>
 
-            {求职意向列表.map((意向) => (
+            {状态.求职意向表.map((意向) => (
               <button
                 key={意向.编号}
                 className={`${样式.意向行} 可点`}
-                onClick={() => 选中意向(意向)}
+                onClick={() => 跳转(路径.编辑意向(意向.编号))}
               >
                 <span className={样式.意向文字组}>
                   <span className={`${样式.意向标题} 单行`}>{意向.标题}</span>
                   <span className={`${样式.意向说明} 单行`}>{意向.说明}</span>
                 </span>
-                <span className={样式.尖括号}>›</span>
+                <span className={样式.意向改}>✎</span>
               </button>
             ))}
 
             {/* 配额用满就不再放添加入口，避免点进表单才被拒 */}
-            {求职意向列表.length < 意向配额上限 ? (
+            {状态.求职意向表.length < 意向配额上限 ? (
               <button
                 className={`${样式.添加意向} 可点`}
                 onClick={() => 跳转(路径.添加意向)}

@@ -117,3 +117,33 @@
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
+
+/* 编辑态底部双键（对照 BOSS 编辑求职期望：左删除、右保存） */
+.底键行 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  padding: 10px 20px calc(var(--安全区下) + 10px);
+}
+
+.删除键 {
+  flex: none;
+  padding: 14px 26px;
+  border-radius: var(--圆角-按钮);
+  background: var(--浅灰底2);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--正文);
+}
+
+.保存键 {
+  flex: 1;
+  padding: 14px 0;
+  border-radius: var(--圆角-按钮);
+  background: var(--荧光绿);
+  box-shadow: var(--主按钮投影);
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--墨);
+}

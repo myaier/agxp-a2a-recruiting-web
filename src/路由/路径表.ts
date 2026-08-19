@@ -30,6 +30,9 @@ export const 路径 = {
   真人会话: '/chat/human',
   求职意向管理: '/intentions',
   添加意向: '/intentions/new',
+  /** 编辑已有意向：同一个「添加意向」屏的编辑态 */
+  编辑意向: (编号: string) => `/intentions/${编号}`,
+  编辑意向模板: '/intentions/:id',
   规则库: '/rules',
   我的简历: '/resume',
   未通过说明: '/rejected',

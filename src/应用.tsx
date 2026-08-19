@@ -78,6 +78,7 @@ export default function 应用() {
       <Route path={路径.真人会话} element={<真人会话 />} />
       <Route path={路径.求职意向管理} element={<求职意向管理 />} />
       <Route path={路径.添加意向} element={<添加意向 />} />
+      <Route path={路径.编辑意向模板} element={<添加意向 />} />
       <Route path={路径.规则库} element={<规则库 />} />
       <Route path={路径.我的简历} element={<我的简历 />} />
       <Route path={路径.未通过说明} element={<未通过说明 />} />
