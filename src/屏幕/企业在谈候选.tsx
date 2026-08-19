@@ -13,7 +13,7 @@
 
 import { useRef, useState } from 'react';
 import 样式 from './企业在谈候选.module.css';
-import { 主页外壳, 代理横幅, 阶段标签, 滚动区, 白卡, 公司字标, use模拟加载, 骨架卡组 } from '../组件/通用';
+import { 主页外壳, 代理横幅, 阶段标签, 阶段进度轨, 滚动区, 白卡, 公司字标, use模拟加载, 骨架卡组 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
 import { 公文包图标, 学帽图标, 放大镜图标, 靶心图标 } from '../组件/图标';
 import { use应用状态 } from '../状态/应用状态';
@@ -299,6 +299,7 @@ function 候选卡({ 单, 按下 }: { 单: 候选; 按下: () => void }) {
 
             {/* 阶段区：与求职端一比一 */}
       <div className={样式.阶段区}>
+        <阶段进度轨 阶段={单.阶段} />
         <div className={样式.阶段头}>
           <阶段标签 阶段={单.阶段} />
           {单.需要你 ? <span className={样式.需要你胶囊}>需要你</span> : null}

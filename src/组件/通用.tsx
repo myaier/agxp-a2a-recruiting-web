@@ -6,6 +6,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import 样式 from './通用.module.css';
 import 代理标 from './代理标';
 import { 公司标映射 } from '../资源/公司标索引';
+import { 阶段顺序 } from '../数据/类型';
 import type { 阶段 } from '../数据/类型';
 
 /** 四阶段配色表：卡片阶段标签、详情页节点、披露说明徽标统一走这张表 */
@@ -112,6 +113,30 @@ export function 阶段标签({ 阶段: 值 }: { 阶段: 阶段 }) {
       />
       {值}
     </span>
+  );
+}
+
+/** 四阶段进度轨：走过的段填各自阶段色，当前段带游标点，未到的段浅灰。
+ *  两端在谈卡共用 —— 「走到第几步、还剩几步」是卡上原来缺的那条信息。 */
+export function 阶段进度轨({ 阶段: 当前 }: { 阶段: 阶段 }) {
+  const 序 = 阶段顺序.indexOf(当前);
+  return (
+    <div className={样式.进度轨组} aria-label={`第 ${序 + 1} / ${阶段顺序.length} 阶段`}>
+      {阶段顺序.map((名, i) => (
+        <span
+          key={名}
+          className={`${样式.进度段} ${i === 序 ? 样式.进度段当前 : ''}`}
+          style={{
+            background: i <= 序 ? 阶段配色[名].文字 : 'var(--浅灰底2)',
+            opacity: i < 序 ? 0.42 : 1,
+          }}
+        >
+          {i === 序 ? (
+            <span className={样式.进度游标} style={{ background: 阶段配色[名].文字 }} />
+          ) : null}
+        </span>
+      ))}
+    </div>
   );
 }
 
