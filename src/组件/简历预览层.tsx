@@ -51,7 +51,6 @@ export function 简历纸身({
             </>
           ) : (
             <>
-              <span className={样式.联系项}>姓名：{代号}</span>
               <span className={样式.联系项}>手机：138****6021</span>
               <span className={样式.联系项}>邮箱：s***@***.com</span>
             </>
@@ -151,7 +150,8 @@ export default function 简历原件层({
 
         {/* 灰底上浮一张白纸，模拟 PDF 阅读器里的一页 */}
         <div className={`${样式.纸底} 滚动区`}>
-          <div className={样式.白纸}>
+          {/* .文档 = 真实 PDF 文档排版（标注 2026-08-19 17:58）：宋体黑字、节标横线、两端对齐 */}
+          <div className={`${样式.白纸} ${样式.文档}`}>
             {匿名代号 ? <简历纸身 代号={匿名代号} /> : <简历纸身 原件 />}
           </div>
         </div>

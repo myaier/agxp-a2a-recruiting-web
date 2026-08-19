@@ -252,3 +252,139 @@
     transform: translateY(0);
   }
 }
+
+
+/* ═══ .文档 —— 真实 PDF 文档观感（只作用于弹层白纸，内联折叠卡不带这个类）═══ */
+.文档 {
+  font-family: 'Times New Roman', 'Songti SC', 'STSong', 'SimSun', serif;
+  color: #1c1c1c;
+  padding: 34px 30px 40px;
+}
+
+.文档 .抬头 {
+  text-align: center;
+  border-bottom: 2px solid #1c1c1c;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+}
+
+.文档 .姓名 {
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  color: #111;
+}
+
+.文档 .抬头职位 {
+  margin-top: 5px;
+  font-size: 12px;
+  color: #333;
+  letter-spacing: 1px;
+}
+
+.文档 .联系行 {
+  justify-content: center;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: #444;
+}
+
+.文档 .联系项 {
+  color: #444;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.文档 .联系项 + .联系项::before {
+  content: '｜';
+  color: #999;
+  margin-right: 2px;
+}
+
+.文档 .节标 {
+  margin-top: 20px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #1c1c1c;
+  background: none;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #111;
+}
+
+.文档 .经历段 {
+  margin-top: 11px;
+}
+
+.文档 .经历头 {
+  align-items: baseline;
+}
+
+.文档 .经历公司 {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #111;
+}
+
+.文档 .经历时间 {
+  font-size: 11px;
+  color: #333;
+  font-variant-numeric: tabular-nums;
+}
+
+.文档 .经历职位 {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: #333;
+}
+
+.文档 .经历行业 {
+  font-size: 10.5px;
+  color: #555;
+  background: none;
+  padding: 0;
+}
+
+.文档 .经历内容 {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: #222;
+  text-align: justify;
+}
+
+.文档 .优势列 {
+  margin-top: 8px;
+  padding-left: 16px;
+  list-style: disc;
+}
+
+.文档 .优势项 {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: #222;
+  text-align: justify;
+  padding-left: 0;
+}
+
+.文档 .优势项::before {
+  content: none;
+}
+
+.文档 .薪资框 {
+  margin-top: 8px;
+  border: 1px solid #bbb;
+  border-radius: 0;
+  background: none;
+  padding: 8px 12px;
+}
+
+.文档 .薪资标 {
+  color: #333;
+}
+
+.文档 .薪资值 {
+  color: #111;
+  font-weight: 700;
+}

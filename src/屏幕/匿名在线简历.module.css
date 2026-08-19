@@ -240,6 +240,20 @@
 }
 
 /* ── 求职期望 ── */
+.期望标题行 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.期望薪资 {
+  flex: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
 .期望标题 {
   font-size: 15px;
   font-weight: 700;
