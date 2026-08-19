@@ -166,10 +166,10 @@
 }
 
 .适配分 {
-  font-size: 19px;
+  font-size: 21px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: var(--深绿);
+  color: var(--深绿文字);
 }
 
 .判断正文 {
@@ -210,19 +210,19 @@
 
 /* ── 自述 ── */
 .自述 {
-  margin: 15px 0 0;
-  font-size: 13px;
-  line-height: 1.75;
+  font-size: 12.5px;
+  line-height: 1.85;
   color: var(--正文);
+  margin: 0;
 }
 
 /* ── 圆点节标 ── */
 .节标行 {
   display: flex;
-  flex-direction: row;
   align-items: center;
-  gap: 8px;
-  margin-top: 22px;
+  margin: 22px 0 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--分隔线);
 }
 
 .节点圆 {
@@ -233,28 +233,28 @@
 }
 
 .节标 {
-  font-size: 14.5px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: var(--墨);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--次要浅);
 }
 
 /* ── 求职期望 ── */
 .期望标题 {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--墨);
-  margin-top: 11px;
 }
 
 .期望副行 {
-  font-size: 13px;
-  color: var(--次要浅);
-  margin-top: 6px;
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: var(--次要浅);
 }
 
 .期望偏好 {
@@ -291,8 +291,7 @@
 
 /* ── 工作经历 ── */
 .经历段 {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--分隔线);
+  margin-bottom: 16px;
 }
 
 .经历段:last-child {
@@ -309,7 +308,7 @@
 .经历公司 {
   flex: 1;
   min-width: 0;
-  font-size: 14.5px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--墨);
 }
@@ -321,9 +320,9 @@
 }
 
 .经历职位 {
-  font-size: 12.5px;
-  color: var(--正文);
-  margin-top: 4px;
+  font-size: 12px;
+  color: var(--次要);
+  margin-top: 3px;
 }
 
 .要点 {
@@ -448,9 +447,9 @@
 
 /* ── mockup 下半屏补充：经历说明 / 教育 / 技能 / 页尾注 ── */
 .经历说明 {
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--次要);
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--正文);
   margin-top: 6px;
 }
 
@@ -496,4 +495,26 @@
   line-height: 1.7;
   color: var(--最弱);
   text-align: center;
+}
+
+
+/* ── 概览条（重构 2026-08-19）：状态 / 经验 / 学历 / 年龄 / 活跃度 合成一行 ── */
+.概览条 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--次要);
+}
+
+.概览项 {
+  display: inline-flex;
+  align-items: center;
+}
+
+.概览分 {
+  margin: 0 7px;
+  color: var(--最弱);
 }

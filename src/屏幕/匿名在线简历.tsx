@@ -55,36 +55,21 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
         </span>
       </div>
 
-      {/* ── 状态行 + 活跃度 ── */}
-      <div className={样式.状态区}>
-        <span className={样式.状态文}>{档.状态行}</span>
-        <span className={样式.活跃度}>{档.活跃度}</span>
-      </div>
-
-      {/* ── 经验 / 学历 / 年龄 图标行 ── */}
-      <div className={样式.要素行}>
-        <span className={样式.要素}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="4" width="11" height="8" rx="1.5" stroke="#7d8276" strokeWidth="1.3"/><path d="M5 4V2.8A1.3 1.3 0 0 1 6.3 1.5h1.4A1.3 1.3 0 0 1 9 2.8V4" stroke="#7d8276" strokeWidth="1.3"/></svg>
-          {档.经验}
-        </span>
-        <span className={样式.要素}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2 1.5 5 7 8l5.5-3L7 2Z" stroke="#7d8276" strokeWidth="1.3" strokeLinejoin="round"/><path d="M3.5 6.5V9c0 .8 1.6 2 3.5 2s3.5-1.2 3.5-2V6.5" stroke="#7d8276" strokeWidth="1.3"/></svg>
-          {档.学历}
-        </span>
-        <span className={样式.要素}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="4.5" r="2.8" stroke="#7d8276" strokeWidth="1.3"/><path d="M2 12.5c1-2.6 2.9-4 5-4s4 1.4 5 4" stroke="#7d8276" strokeWidth="1.3" strokeLinecap="round"/></svg>
-          {档.年龄}
-        </span>
+      {/* ── 概览条：状态 / 经验 / 学历 / 年龄 / 活跃度 合成一行（原来分两行三种字号）── */}
+      <div className={样式.概览条}>
+        {[档.状态行, 档.经验, 档.学历, 档.年龄, 档.活跃度].filter(Boolean).map((项, 序) => (
+          <span key={项} className={样式.概览项}>
+            {序 > 0 ? <span className={样式.概览分}>·</span> : null}
+            {项}
+          </span>
+        ))}
       </div>
 
       {/* ── AI 代理读完简历后的判断（淡绿卡）── */}
       <div className={样式.判断卡}>
         <div className={样式.判断头}>
           <span className={样式.判断标题}>AI代理读完简历后的判断</span>
-          <span className={样式.适配组}>
-            <span className={样式.适配标}>适配</span>
-            <span className={`${样式.适配分} 等宽数字`}>{档.适配分}</span>
-          </span>
+          <span className={`${样式.适配分} 等宽数字`}>{档.适配分}</span>
         </div>
         <div className={样式.判断正文}>{带粗体(档.判断)}</div>
         {档.风险 ? (
@@ -95,12 +80,14 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
         ) : null}
       </div>
 
-      {/* ── 自述段 ── */}
+      {/* ── 自述段：补节标，与其它段同一节奏（原来是一段孤立正文）── */}
+      <div className={样式.节标行}>
+        <span className={样式.节标}>自述</span>
+      </div>
       <p className={样式.自述}>{档.自述}</p>
 
       {/* ── 求职期望 ── */}
       <div className={样式.节标行}>
-        <span className={样式.节点圆} />
         <span className={样式.节标}>求职期望</span>
       </div>
       <div className={样式.期望标题}>{档.期望.标题}</div>
@@ -115,7 +102,6 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
 
       {/* ── 工作经历：每段可带 AI 逐段批注绿条；确认意向后脱敏公司还原实名 ── */}
       <div className={样式.节标行}>
-        <span className={样式.节点圆} />
         <span className={样式.节标}>工作经历</span>
       </div>
       {档.经历.map((段) => (
@@ -141,7 +127,6 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
       {档.项目.length > 0 ? (
         <>
           <div className={样式.节标行}>
-            <span className={样式.节点圆} />
             <span className={样式.节标}>项目经历</span>
           </div>
           {档.项目.map((项) => (
@@ -165,7 +150,6 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
 
       {/* ── 教育经历：直接显示具体学校（用户定：学校不脱敏，onboarding 配置）── */}
       <div className={样式.节标行}>
-        <span className={样式.节点圆} />
         <span className={样式.节标}>教育经历</span>
       </div>
       <div className={样式.教育行}>
