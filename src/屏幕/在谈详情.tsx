@@ -6,7 +6,7 @@
 // 一条交互硬规矩（来自设计稿）：决策一律在这一页做，列表卡上不放按钮。
 // 所以这一页是全局状态的唯一写入点：接受方案 / 退出谈判 / 确认意向都从这里派发。
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './在谈详情.module.css';
 import 拿不准弹层 from './拿不准弹层';
@@ -78,6 +78,17 @@ export default function 在谈详情() {
   const [简历卡展开, 设简历卡展开] = useState(false);
   // 点开的简历原件（null = 没开）：点阶段节点里的 PDF 附件行打开原件弹层
   const [看原件, 设看原件] = useState<{ 文件名: string } | null>(null);
+  // 已完成阶段默认收起（标注 09:36：列太长）；点行展开
+  const [展开阶段, 设展开阶段] = useState<Set<string>>(() => new Set());
+  // 进入页面自动定位到当前需要行动的节点，不用手动划过整条时间线
+  const 当前节点引用 = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // 布局稳定后再滚（折叠卡/骨架挂载完），block:'start' 让决策区顶到视口上部
+    const 定时 = window.setTimeout(() => {
+      当前节点引用.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 120);
+    return () => window.clearTimeout(定时);
+  }, []);
 
   // 从一单切到另一单时（同路由只换参数，组件不重挂载），折叠卡收起、弹层关闭，
   // 否则上一单里的展开/弹层状态会残留到下一单
@@ -214,7 +225,25 @@ export default function 在谈详情() {
             </div>
 
             {/* 已完成 / 进行中的阶段：小结由代理生成，附件与完整往来入口挂在小结里 */}
-            {已完成阶段.map((段) => (
+            {已完成阶段.map((段) =>
+              !展开阶段.has(段.阶段) ? (
+                // 收起态：一行带走（标注 09:36 列太长）。点行展开看小结与核对
+                <阶段节点
+                  key={段.阶段}
+                  标题={段.阶段}
+                  状态={段.状态}
+                  时间={段.时间}
+                  已通过={段.状态 === '通过' || 段.状态 === '达成'}
+                >
+                  <button
+                    className={`${样式.折行} 可点`}
+                    onClick={() => 设展开阶段((旧) => new Set(旧).add(段.阶段))}
+                  >
+                    <span className={`${样式.折行摘要} 单行`}>{段.小结}</span>
+                    <span className={样式.折行开}>⌄</span>
+                  </button>
+                </阶段节点>
+              ) : (
               <阶段节点
                 key={段.阶段}
                 标题={段.阶段}
@@ -282,12 +311,14 @@ export default function 在谈详情() {
                   ) : null}
                 </小结托盘>
               </阶段节点>
-            ))}
+              )
+            )}
 
             {/* 当前阶段 ①：需要协调卡住 → 数字对比 + 双按钮决策（A6a 卡点态）。
                 分歧优先取当前值，接受后 reducer 会清空它，就退回决策前的快照，
                 这样回执上方仍然摊着「52K / 差 2K / 50K」，不会突然少一块。 */}
             {显示协调节点 ? (
+              <div ref={当前节点引用}>
               <协调决策节点
                 单={单}
                 分歧={单.分歧 ?? 决策快照?.分歧 ?? 状态.决策快照[编号] ?? null}
@@ -296,15 +327,18 @@ export default function 在谈详情() {
                 退出={() => 做协调决策('退出')}
                 看往来={() => 跳转(路径.往来记录(编号))}
               />
+              </div>
             ) : null}
 
             {/* 当前阶段 ②：条件已一致 → 确认意向转真人（A6·C 顺利态）*/}
             {单.阶段 === '意向确认' ? (
+              <div ref={单.需要你 ? 当前节点引用 : undefined}>
               <意向确认节点
                 已确认={意向已确认}
                 确认={() => 派发({ 型: '确认意向', 编号 })}
                 去私聊={() => 跳转(路径.真人会话)}
               />
+              </div>
             ) : null}
 
             {/* 未到达的阶段：灰掉，只说下一步由谁推进 */}
