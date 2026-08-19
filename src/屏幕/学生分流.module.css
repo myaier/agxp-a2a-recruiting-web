@@ -1,84 +1,289 @@
-/* 学生分流 —— 叠卡手法复制自 选身份.module.css 的 选面区/选面壳/选面当前/选面退后
-   （两屏前后脚出现，选卡的物理感必须一致）；卡面内容是本屏自己的。 */
+/* 学生分流（完善资料）—— 2026-08-19 按 BOSS 截图重构：
+   节问大字 + 并排双选钮 + 选择行 + 猜你想找快捷片 + 两个底部弹层。 */
 
-.选面区 {
+/* ── 节问：截图里加粗的问题行 ── */
+.节问 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+  margin-top: 6px;
+}
+
+.节问间距 {
+  margin-top: 26px;
+}
+
+/* ── 你是学生吗：并排双选钮 ── */
+.双选行 {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.选钮 {
   flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 4px 18px 0;
-}
-
-.选面壳 {
-  width: 258px;
-  height: 158px;
-  border-radius: 24px;
-  transition:
-    transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1),
-    opacity 0.28s ease;
-}
-
-.选面当前 {
-  transform: scale(1);
-  opacity: 1;
-}
-
-/* 未选：压平并退淡，一眼看出当前挑的是哪张 */
-.选面退后 {
-  transform: scale(0.9);
-  opacity: 0.5;
-}
-
-/* ── 卡面：大标题 + 一行事实副行，配色沿用双面隐喻（荧光绿 / 墨）── */
-.分流面 {
-  width: 100%;
-  height: 100%;
-  border-radius: 24px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 9px;
-  text-align: left;
-}
-
-.面在校 {
-  background: var(--荧光绿);
-  box-shadow: 0 14px 34px rgba(151, 190, 13, 0.35);
-}
-
-.面有经验 {
-  background: var(--墨);
-  box-shadow: 0 14px 34px rgba(26, 26, 26, 0.3);
-}
-
-.面主标 {
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-
-.面在校 .面主标 {
+  height: 52px;
+  border-radius: 14px;
+  border: 1.5px solid #e4e6dd;
+  background: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
   color: var(--墨);
 }
 
-.面有经验 .面主标 {
-  color: #ffffff;
+.选钮当前 {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+  font-weight: 700;
 }
 
-.面副行 {
+.选钮副行 {
+  margin-top: 9px;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+/* ── 选择行：值 + 尖括号（截图的描边输入框观感）── */
+.选择行 {
+  width: 100%;
+  margin-top: 12px;
+  height: 52px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1.5px solid #e4e6dd;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+
+.选择值 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--墨);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.选择占位 {
+  font-size: 15px;
+  color: var(--灰白);
+}
+
+.选择尖 {
+  flex: none;
+  font-size: 17px;
+  color: var(--灰白);
+}
+
+/* ── 猜你想找 ── */
+.猜标 {
+  margin-top: 12px;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.猜片行 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.猜片 {
+  padding: 7px 14px;
+  border-radius: 10px;
+  background: var(--浅灰底);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--墨);
+}
+
+.猜片选中 {
+  background: var(--淡绿底2);
+  color: var(--深绿文字);
+  font-weight: 700;
+}
+
+/* ── 底部弹层（城市 / 职位共用壳）── */
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  background: rgba(26, 26, 26, 0.4);
+  display: flex;
+  align-items: flex-end;
+  z-index: 30;
+}
+
+.弹层 {
+  width: 100%;
+  height: 76%;
+  background: var(--页面底);
+  border-radius: 22px 22px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: 升起 0.26s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes 升起 {
+  from { transform: translateY(24px); opacity: 0.5; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.弹层顶 {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 10px;
+}
+
+.弹层题 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.弹层关 {
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--浅灰底);
+  color: var(--次要浅);
   font-size: 12px;
-  line-height: 1.6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.面在校 .面副行 {
-  color: rgba(26, 26, 26, 0.72);
+.弹层搜 {
+  flex: none;
+  padding: 0 18px 10px;
 }
 
-.面有经验 .面副行 {
-  color: rgba(255, 255, 255, 0.66);
+.弹层搜入 {
+  width: 100%;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--浅灰底);
+  padding: 0 13px;
+  font-size: 13.5px;
+  color: var(--墨);
+}
+
+.弹层搜入::placeholder {
+  color: var(--灰白);
+}
+
+.弹层体 {
+  flex: 1;
+  min-height: 0;
+  padding: 2px 18px 20px;
+}
+
+.组标 {
+  margin: 12px 0 8px;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.城网 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.城片 {
+  height: 38px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e4e6dd;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--墨);
+}
+
+.城片选中 {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+  color: var(--深绿文字);
+  font-weight: 700;
+}
+
+/* ── 职位弹层：左大类栏 + 右小类多选 ── */
+.职双栏 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.职左栏 {
+  flex: none;
+  width: 104px;
+  background: var(--浅灰底);
+  padding: 6px 0 16px;
+}
+
+.职大类 {
+  display: block;
+  width: 100%;
+  padding: 13px 14px;
+  font-size: 13.5px;
+  color: var(--次要浅);
+  text-align: left;
+}
+
+.职大类当前 {
+  background: var(--页面底);
+  color: var(--墨);
+  font-weight: 700;
+}
+
+.职右栏 {
+  flex: 1;
+  min-height: 0;
+  padding: 10px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.职小类 {
+  padding: 9px 15px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e4e6dd;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--墨);
+}
+
+.职小类选中 {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+  color: var(--深绿文字);
+  font-weight: 700;
+}
+
+.弹层脚 {
+  flex: none;
+  padding: 10px 18px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid #e4e6dd;
+  background: var(--页面底);
+}
+
+.弹层定 {
+  width: 100%;
+  height: 46px;
+  border-radius: 14px;
+  background: var(--荧光绿);
+  color: var(--墨);
+  font-size: 15px;
+  font-weight: 700;
 }
