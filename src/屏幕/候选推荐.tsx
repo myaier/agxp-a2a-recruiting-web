@@ -12,7 +12,7 @@ import { useMemo, useRef, useState } from 'react';
 import 样式 from './候选推荐.module.css';
 import { 主页外壳, 公司字标, 白卡, 滚动区 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
-import { 公文包图标, 学帽图标, 放大镜图标, 谈判图标, 靶心图标 } from '../组件/图标';
+import { 公文包图标, 学帽图标, 放大镜图标, 谈判图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
 import { use应用状态 } from '../状态/应用状态';
 import 代理标 from '../组件/代理标';
@@ -309,11 +309,6 @@ function 推荐卡({
           <span className={`${样式.信息文} 单行`}>
             {现职类型} · {方向}
           </span>
-        </div>
-        {/* 求职状态（在找方向就是当前岗位，不重复写 —— 标注 10:58）*/}
-        <div className={样式.信息行}>
-          <靶心图标 尺寸={14} 色="var(--次要浅)" />
-          <span className={`${样式.信息文} 单行`}>{人.求职状态}</span>
         </div>
         <div className={样式.信息行}>
           <学帽图标 尺寸={14} 色="var(--次要浅)" />

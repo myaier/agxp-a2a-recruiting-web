@@ -15,7 +15,7 @@ import { useRef, useState } from 'react';
 import 样式 from './企业在谈候选.module.css';
 import { 主页外壳, 代理横幅, 阶段标签, 滚动区, 白卡, 公司字标, use模拟加载, 骨架卡组 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
-import { 公文包图标, 学帽图标, 放大镜图标, 靶心图标 } from '../组件/图标';
+import { 公文包图标, 学帽图标, 放大镜图标 } from '../组件/图标';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -271,15 +271,6 @@ function 候选卡({ 单, 按下 }: { 单: 候选; 按下: () => void }) {
           {现职类型 ?? 单.画像} · {方向}
         </span>
       </div>
-      {/* 在找方向就是当前岗位，不重复写；只留求职状态（标注 10:58）*/}
-      {单.在找 ? (
-        <div className={样式.信息行}>
-          <靶心图标 尺寸={14} 色="var(--次要浅)" />
-          <span className={`${样式.信息文} 单行`}>
-            {单.在找.split(' · ').slice(1).join(' · ') || 单.在找}
-          </span>
-        </div>
-      ) : null}
       {单.学校 ? (
         <div className={样式.信息行}>
           <学帽图标 尺寸={14} 色="var(--次要浅)" />
