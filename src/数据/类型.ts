@@ -55,6 +55,10 @@ export interface 市场职位 {
   城市?: string;
   企业直招?: boolean;
   带有交集?: boolean;
+  /** 代理的简历×JD证据：对得上的点（简历项 → 岗位要求） */
+  对得上?: string[];
+  /** 差距点（岗位要的 → 简历未见） */
+  差距?: string[];
   发布人首字: string;
   发布人底色: string;
   发布人字色: string;

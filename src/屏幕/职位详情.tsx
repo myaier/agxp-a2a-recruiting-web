@@ -114,6 +114,31 @@ export default function 职位详情() {
                 </span>
               </div>
             ))}
+
+            {/* 简历证据（标注 13:25）：哪段经历对得上哪条要求、差距在哪 —— 
+                「简历项 → 岗位要求」成对写，不写解释句 */}
+            {岗.对得上?.length ? (
+              <>
+                <div className={样式.证据组标}>对得上</div>
+                {岗.对得上.map((条) => (
+                  <div key={条} className={样式.证据行}>
+                    <span className={样式.适配过}>✓</span>
+                    <span className={样式.证据文}>{条}</span>
+                  </div>
+                ))}
+              </>
+            ) : null}
+            {岗.差距?.length ? (
+              <>
+                <div className={样式.证据组标}>差距</div>
+                {岗.差距.map((条) => (
+                  <div key={条} className={样式.证据行}>
+                    <span className={样式.适配差}>✗</span>
+                    <span className={样式.证据文}>{条}</span>
+                  </div>
+                ))}
+              </>
+            ) : null}
           </div>
 
           {/* JD：职位详情 + 职位要求两段合在一张卡里，中间用小标题分隔 */}
@@ -154,30 +179,6 @@ export default function 职位详情() {
             <span className={样式.尖括号}>›</span>
           </button>
 
-          {/* 代理预估：淡绿描边把它和上面几张中性卡区分开，表示这是「你的代理说的」而不是岗位自带信息 */}
-          <div className={`${样式.卡} ${样式.预估卡}`}>
-            <div className={样式.预估头}>
-              <div className={样式.预估标题}>你的AI代理预估</div>
-              <div className={`${样式.预估分} 等宽数字`}>{详.代理预估.分数}</div>
-            </div>
-            <div className={样式.预估说明}>{详.代理预估.说明}</div>
-
-            <div className={样式.档位条}>
-              {详.代理预估.档位.map((档, 序) => (
-                <span key={档} className={取档位块类名(序, 详.代理预估.当前档)} />
-              ))}
-            </div>
-            <div className={样式.档位名行}>
-              {详.代理预估.档位.map((档, 序) => (
-                <span
-                  key={档}
-                  className={`${样式.档位名} ${序 === 详.代理预估.当前档 ? 样式.档位名当前 : ''}`}
-                >
-                  {档}
-                </span>
-              ))}
-            </div>
-          </div>
         </div>
       </滚动区>
 
@@ -278,8 +279,3 @@ function 取适配维度(岗: 市场职位): { 名: string; 值: string; 过: bo
   ];
 }
 
-function 取档位块类名(序: number, 当前档: number): string {
-  if (序 === 当前档) return `${样式.档位块} ${样式.档位块当前}`;
-  if (序 === 1) return `${样式.档位块} ${样式.档位块中灰}`;
-  return `${样式.档位块} ${样式.档位块浅灰}`;
-}
