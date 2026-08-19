@@ -231,3 +231,47 @@
 .翻面注 b {
   color: var(--墨);
 }
+
+/* ── 注册页：借用切换页那张身份面（标注 11:54）──
+   两张同款卡上下叠放，选中的浮起、未选的压平退到后面 */
+.选面区 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 4px 18px 0;
+}
+
+.选面壳 {
+  width: 258px;
+  height: 190px;
+  border-radius: 24px;
+  transition:
+    transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 0.28s ease;
+}
+
+.选面当前 {
+  transform: scale(1);
+  opacity: 1;
+}
+
+/* 未选：压平并退淡，一眼看出当前挑的是哪张 */
+.选面退后 {
+  transform: scale(0.9);
+  opacity: 0.5;
+}
+
+/* 静态态：注册页的选项卡走文档流，不参与 3D 翻转 */
+.面静态 {
+  position: relative;
+  inset: auto;
+  backface-visibility: visible;
+  -webkit-backface-visibility: visible;
+  width: 100%;
+  height: 100%;
+  padding: 17px;
+}

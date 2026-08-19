@@ -11,9 +11,9 @@
 // scroll-snap-type: y mandatory + scroll-snap-align: center —— 吸附交给浏览器，
 // 只需在滚动停下后算一次落点，比 RN 版更省代码且手感一致。
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import 样式 from './引导问答.module.css';
-import { 主按钮, 单选点, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
+import { 主按钮, 单选点, 开关, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
 import { GitHub图标, 放大镜图标 } from '../组件/图标';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -490,10 +490,18 @@ function 薪资轮({
 const 排除候选 = ['大小周', '纯外包 / 乙方', '全现场办公', '频繁出差'];
 
 function 排除题({ 已选, 切换 }: { 已选: string[]; 切换: (项: string) => void }) {
+  const { 状态: 全局 } = use应用状态();
   const [自定义中, 设自定义中] = useState(false);
   const [自定义草稿, 设自定义草稿] = useState('');
-  const [屏蔽公司, 设屏蔽公司] = useState<string[]>([]);
+  // 简历里出现过的公司（含现雇主）：一键屏蔽的来源
+  const 简历里的公司 = useMemo(
+    () => [...new Set(全局.简历经历.map((条) => 条.公司).filter(Boolean))],
+    [全局.简历经历]
+  );
+  const [屏蔽公司, 设屏蔽公司] = useState<string[]>(简历里的公司);
   const [公司录入中, 设公司录入中] = useState(false);
+  // 一键屏蔽简历里出现过的公司（标注 11:58）：默认开，现雇主本来就该挡
+  const [一键屏蔽简历公司, 设一键屏蔽简历公司] = useState(true);
   const [公司草稿, 设公司草稿] = useState('');
 
   // 用户自己写的排除条件也进同一个网格，写完即视为已选
@@ -544,7 +552,8 @@ function 排除题({ 已选, 切换 }: { 已选: string[]; 切换: (项: string)
           <button className={`${样式.自定义排除} 可点`} onClick={() => 设自定义中(true)}>
             <span className={样式.自定义加号}>＋</span>
             <span className={样式.自定义文字}>
-              其他排除条件，用你的话写，AI代理会照着执行
+              还有什么不想要的？用你自己的话写 —— 大小周、频繁出差、汇报线太长…
+              代理站在你这边替你挡掉和协商
             </span>
           </button>
         )}
@@ -553,15 +562,30 @@ function 排除题({ 已选, 切换 }: { 已选: string[]; 切换: (项: string)
           <div className={样式.屏蔽公司头}>
             <div>
               <div className={样式.屏蔽公司标题}>屏蔽公司</div>
-              <div className={样式.屏蔽公司说明}>现雇主及关联 · 已自动屏蔽 ✓</div>
+              <div className={样式.屏蔽公司说明}>简历里出现过的公司</div>
             </div>
-            <button
-              className={`${样式.屏蔽公司添加} 可点`}
-              onClick={() => 设公司录入中(true)}
-            >
-              ＋ 添加
-            </button>
+            {/* 标注 11:58：改成一键开关 —— 简历里的公司一次性全屏蔽，
+                不必逐个手输（打开时把简历公司并进列表，关掉时撤走） */}
+            <开关
+              开={一键屏蔽简历公司}
+              切换={() => {
+                const 新值 = !一键屏蔽简历公司;
+                设一键屏蔽简历公司(新值);
+                设屏蔽公司((旧) =>
+                  新值
+                    ? [...new Set([...旧, ...简历里的公司])]
+                    : 旧.filter((名) => !简历里的公司.includes(名))
+                );
+              }}
+            />
           </div>
+
+          <button
+            className={`${样式.屏蔽公司添加} 可点`}
+            onClick={() => 设公司录入中(true)}
+          >
+            ＋ 再加一家
+          </button>
 
           {公司录入中 ? (
             <行内输入

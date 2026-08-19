@@ -290,8 +290,9 @@ export default function 工作经历() {
           </div>
         </div>
 
-        {/* ── 资格证书：软考 / CPA / 司考这类硬门槛，部分岗位是硬性条件 ── */}
-        <div className={样式.区块标}>资格证书</div>
+        {/* ── 证书与语言：软考 / CPA / 司考这类硬门槛，加上雅思 / 托福 / 日语
+               这类语言证明 —— 都是岗位可能设成硬性条件的项（标注 11:56）── */}
+        <div className={样式.区块标}>证书与语言</div>
         {证书列表.map((条) => (
           <div key={条.编号} className={样式.证书行}>
             <span className={样式.证书主体}>
@@ -313,7 +314,7 @@ export default function 工作经历() {
           <input
             className={样式.录入框}
             value={证书名草稿}
-            placeholder="证书名称"
+            placeholder="证书或语言，如 CPA、雅思 7.0"
             onChange={(事件) => 设证书名草稿(事件.target.value)}
             onKeyDown={(事件) => {
               if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 加证书();
