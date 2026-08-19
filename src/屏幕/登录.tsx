@@ -109,7 +109,9 @@ export default function 登录() {
           {/*
             四个格子只是展示层，键盘输入落在覆盖其上的透明 input 上。
             点任意一格都会聚焦到透明 input（数字键盘），不必给四格各写光标 / 退格逻辑。
+            标注 2026-08-19 18:30：四格初始不显示，点过「获取验证码」（剩余秒非 null）才出现。
           */}
+          {剩余秒 !== null ? (
           <div className={样式.验证码组}>
             {Array.from({ length: 验证码格数 }, (_, 位) => {
               const 字 = 验证码[位];
@@ -138,6 +140,7 @@ export default function 登录() {
               aria-label="短信验证码"
             />
           </div>
+          ) : null}
 
           {/* 获取验证码 / 倒计时 / 重新获取 三态 */}
           {剩余秒 !== null && 剩余秒 > 0 ? (
