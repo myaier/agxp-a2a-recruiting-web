@@ -205,7 +205,7 @@ export default function 职位详情() {
             <span className={样式.主按钮文字}>{已委托 ? 'AI代理已接手' : '让AI代理去谈'}</span>
           </button>
         </div>
-        <div className={样式.底部说明}>{详.底部说明}</div>
+        {/* 标注 09:31：底部说明小字删除 */}
       </div>
 
       {/* 「⋯」更多操作抽屉：点遮罩或「取消」关闭 */}
