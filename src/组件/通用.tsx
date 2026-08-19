@@ -107,25 +107,14 @@ export function 阶段标签({ 阶段: 值, 待你 = false }: { 阶段: 阶段; 
   //   待你：整枚变实底胶囊（阶段色底 + 白字 + 呼吸点），一眼就是「这一单在等你」；
   //   平时：安静的状态灯 + 文字，不抢眼。
   // 卡片置顶 + 下一步文案本来就在问你，不必再挂第二枚标签。
+  // 标注 11:44：原来两态两种形（等你有框、平时没框），同一个组件长得不一样。
+  // 现在统一成永远是淡底胶囊，两态只差那颗点会不会呼吸。
   const 配 = 阶段配色[值];
-  if (待你) {
-    // 标注 10:53：实底太深、突兀 —— 换成同色系的淡底 + 本色字，
-    // 「在等你」交给那颗呼吸点表达，不靠色块压人
-    return (
-      <span
-        className={`${样式.阶段标签} ${样式.阶段待你}`}
-        style={{ background: 配.底, color: 配.文字 }}
-      >
-        <span className={`${样式.阶段点} ${样式.阶段点呼吸}`} style={{ background: 配.文字 }} />
-        {值}
-      </span>
-    );
-  }
   return (
-    <span className={样式.阶段标签} style={{ color: 配.文字 }}>
+    <span className={样式.阶段标签} style={{ background: 配.底, color: 配.文字 }}>
       <span
-        className={样式.阶段点}
-        style={{ background: 配.文字, boxShadow: `0 0 0 3px ${配.底}` }}
+        className={`${样式.阶段点} ${待你 ? 样式.阶段点呼吸 : ''}`}
+        style={{ background: 配.文字 }}
       />
       {值}
     </span>
