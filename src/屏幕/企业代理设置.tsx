@@ -133,7 +133,6 @@ function 规则行({
     <div className={`${样式.规则行} ${末条 ? 样式.末条 : ''}`}>
       <div className={样式.规则主体}>
         <div className={样式.规则头}>
-          <span className={`${样式.规则编号} 等宽数字`}>{条.编号}</span>
           <span className={`${样式.规则内容} ${条.生效 ? '' : 样式.已停用}`}>{条.内容}</span>
         </div>
         <div className={样式.规则来源}>{条.来源}</div>
