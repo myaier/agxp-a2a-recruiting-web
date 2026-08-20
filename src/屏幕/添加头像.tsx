@@ -64,7 +64,8 @@ export default function 添加头像() {
 
       <滚动区 样式覆盖={{ padding: '4px 22px 12px' }}>
         <div className={样式.头像区}>
-          {/* 大圆上传位：没选时是相机占位；选了照片显示照片；选了纪念章显示纪念章 */}
+          {/* 大圆只做上传位（标注 13:20）：空白点击上传；只有真照片才显示进来，
+              选卡通头像不占大圆，选中态在下方小圆的描边环上 */}
           <button
             className={`${样式.大圆} 可点`}
             onClick={() => 文件框.current?.click()}
@@ -72,8 +73,6 @@ export default function 添加头像() {
           >
             {头像?.startsWith('data:image/') ? (
               <img className={样式.头像图} src={头像} alt="" />
-            ) : 头像?.startsWith('卡通:') ? (
-              <卡通头像 款式={头像.slice(3) as '男' | '女'} 尺寸={128} />
             ) : (
               <相机图标 尺寸={30} 色="var(--弱化)" />
             )}

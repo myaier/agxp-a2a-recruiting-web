@@ -30,7 +30,7 @@ const 身份列表: 身份项[] = [
 
 export default function 选身份() {
   const { 跳转, 返回, 替换跳转 } = use导航();
-  const { 状态, 派发 } = use应用状态();
+  const { 派发 } = use应用状态();
   // 切换身份模式（#/identity?switch=1&from=app|hr）：老用户切端，
   // 不重走注册引导，直接进对应主壳（标注意见 2026-08-18）
   const 查询 = new URLSearchParams(useLocation().search);
@@ -95,8 +95,8 @@ export default function 选身份() {
         <div className={样式.翻面区}>
           <div className={样式.翻面浮}>
             <div className={`${样式.翻面卡} ${已翻面 ? 样式.已翻面 : ''}`}>
-              <身份面 键={当前身份} 认证名={状态.企业认证.姓名} 背面={false} />
-              <身份面 键={目标身份} 认证名={状态.企业认证.姓名} 背面 />
+              <身份面 键={当前身份} 背面={false} />
+              <身份面 键={目标身份} 背面 />
             </div>
           </div>
         </div>
@@ -150,12 +150,10 @@ export default function 选身份() {
  */
 function 身份面({
   键,
-  认证名,
   背面,
   静态 = false,
 }: {
   键: 身份键;
-  认证名: string;
   背面: boolean;
   /** true = 注册页的选项卡：不参与 3D 翻转，走文档流 */
   静态?: boolean;
@@ -182,9 +180,10 @@ function 身份面({
 
       <span className={样式.面主}>
         <span className={样式.面身份}>{求职 ? '求职者' : '招聘方'}</span>
-        <span className={样式.面名}>
-          {求职 ? '以代号谈判 · 确认意向才互换实名' : `${认证名} · 名片第一轮就给对方看`}
-        </span>
+        {/* 标注 2026-08-20 13:21：招聘方面只留三个字，认证名与说明句删 */}
+        {求职 ? (
+          <span className={样式.面名}>以代号谈判 · 确认意向才互换实名</span>
+        ) : null}
       </span>
 
     </div>
