@@ -25,7 +25,7 @@ export default function 企业设置() {
     <div className={样式.行} key={键}>
       <span className={样式.行文字组}>
         <span className={样式.行标题}>{键}</span>
-        <span className={样式.行说明}>{说明}</span>
+        {说明 ? <span className={样式.行说明}>{说明}</span> : null}
       </span>
       <开关 开={状态.企业设置开关[键]} 切换={() => 派发({ 型: '企业切设置开关', 键 })} />
     </div>
@@ -59,20 +59,6 @@ export default function 企业设置() {
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
-          <button
-            className={`${样式.行} 可点`}
-            onClick={() => {
-              // 与求职端设置对称：派发重置落地 Tab（「职位」）再切端
-              派发({ 型: '切身份', 到: '求职者' });
-              替换跳转(路径.主壳);
-            }}
-          >
-            <span className={样式.行文字组}>
-              <span className={样式.行标题}>切换到求职者身份</span>
-              <span className={样式.行说明}>两侧数据完全隔离，同一手机号不会互相暴露</span>
-            </span>
-            <span className={样式.尖括号}>›</span>
-          </button>
         </div>
 
         <div className={`${样式.组标} ${样式.组标间距}`}>代理与接触</div>
@@ -96,8 +82,7 @@ export default function 企业设置() {
 
         <div className={`${样式.组标} ${样式.组标间距}`}>通知</div>
         <div className={样式.卡}>
-          {开关行('需要拍板时推送提醒', '代理谈到需要你拍板的分歧时才打扰你')}
-          {开关行('有新候选时推送提醒', '匹配到高分候选时提醒')}
+          {开关行('需要拍板时推送提醒', '')}
         </div>
 
         {/* 关于组与求职端设置一比一，两端同一批外围页 */}

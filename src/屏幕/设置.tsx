@@ -28,7 +28,7 @@ export default function 设置() {
     <div className={样式.行} key={键}>
       <span className={样式.行文字组}>
         <span className={样式.行标题}>{键}</span>
-        <span className={样式.行说明}>{说明}</span>
+        {说明 ? <span className={样式.行说明}>{说明}</span> : null}
       </span>
       <开关
         开={状态.设置开关[键]}
@@ -76,27 +76,11 @@ export default function 设置() {
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
-          <button
-            className={`${样式.行} 可点`}
-            onClick={() => {
-              // 必须先派发切身份（重置落地 Tab 到「人才」）再跳 —— 直跳不派发会
-              // 落在企业端上次离开的 Tab，看起来像「没切对页面」（2026-08-18 用户复现）
-              派发({ 型: '切身份', 到: '招聘方' });
-              替换跳转(路径.企业主壳);
-            }}
-          >
-            <span className={样式.行文字组}>
-              <span className={样式.行标题}>切换到招聘方身份</span>
-              <span className={样式.行说明}>两侧数据完全隔离，同一手机号不会互相暴露</span>
-            </span>
-            <span className={样式.尖括号}>›</span>
-          </button>
         </div>
 
         <div className={`${样式.组标} ${样式.组标间距}`}>隐私与可见性</div>
         <div className={样式.卡}>
           {开关行('对现雇主隐身', '当前雇主及其关联公司完全看不到你，双向不可见')}
-          {开关行('只接受与意向匹配的接触', '不匹配你求职意向的企业无法发起接触')}
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.披露偏好)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>披露偏好</span>
@@ -122,9 +106,7 @@ export default function 设置() {
 
         <div className={`${样式.组标} ${样式.组标间距}`}>通知</div>
         <div className={样式.卡}>
-          {开关行('需要你时推送提醒', '代理谈到需要你拍板的分歧时才打扰你')}
-          {开关行('有新机会时推送提醒', '匹配到高适配岗位时提醒')}
-          {开关行('每日简报推送', '每天 09:00 汇总昨日全部谈判进展')}
+          {开关行('需要你时推送提醒', '')}
         </div>
 
         <div className={`${样式.组标} ${样式.组标间距}`}>通用</div>
