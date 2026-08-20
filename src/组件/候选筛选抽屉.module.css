@@ -1,5 +1,7 @@
 /* 候选筛选抽屉：底部抽屉，版式语言取自 拿不准弹层（同一套遮罩 + 圆角抽屉 + 抓手）。
-   两屏（候选推荐 / 企业在谈候选）共用这一份，避免两处各写一套后漂移。 */
+   两屏（候选推荐 / 企业在谈候选）共用这一份，避免两处各写一套后漂移。
+   内容比原来长（多了生效规则条 + 自定义要求输入），所以抽屉限高、中段自己滚，
+   标题行与底部保存键始终留在视野里。 */
 
 .遮罩 {
   position: absolute;
@@ -15,6 +17,9 @@
   right: 0;
   bottom: 0;
   z-index: 61;
+  max-height: 86%;
+  display: flex;
+  flex-direction: column;
   background: var(--白);
   border-radius: 22px 22px 0 0;
   padding: 10px 20px calc(max(var(--安全区下), 20px) + 16px);
@@ -22,6 +27,7 @@
 }
 
 .抓手 {
+  flex: none;
   width: 38px;
   height: 4px;
   border-radius: 2px;
@@ -30,33 +36,56 @@
 }
 
 .标题行 {
+  flex: none;
   display: flex;
   flex-direction: row;
   align-items: baseline;
   gap: 10px;
 }
 
+/* 字号跟求职端 看市场 的同一层对齐（17px）：标题变长了，19px 会折成两行 */
 .标题 {
   flex: 1;
   min-width: 0;
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   color: var(--墨);
 }
 
-.重置 {
+.管理规则 {
   flex: none;
   font-size: 13px;
   font-weight: 600;
   color: var(--深绿);
 }
 
-.重置灰 {
-  color: var(--最弱);
+/* ── 当前生效的代理规则：只读 chip 一行，让用户一打开就知道代理正在按什么筛 ── */
+.规则条 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
 }
 
-/* ── 每一组：小字组标 + 一行可换行的选择片 ── */
+.规则片 {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--淡绿底2);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--深绿文字);
+}
+
+/* ── 中段：档位型要求 + 自定义要求，长了自己滚 ── */
+.内容区 {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .组 {
   margin-top: 18px;
 }
@@ -79,68 +108,88 @@
 .片 {
   padding: 8px 14px;
   border-radius: 999px;
-  border: 1px solid var(--描边深);
-  background: var(--白);
+  border: 1px solid #e4e6dd;
+  background: var(--页面底);
   font-size: 13px;
   color: var(--正文);
 }
 
-/* 选中态用荧光绿：抽屉里只有「选中」和「完成」两处配得上主色 */
 .片选中 {
-  background: var(--荧光绿);
-  border-color: var(--荧光绿);
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
   font-weight: 700;
-  color: var(--墨);
+  color: var(--深绿文字);
 }
 
-/* ── 只看收藏：一行 + 开关，跟设置页同一种行版式 ── */
-.收藏行 {
+/* ── 自定义硬性要求：已添加的是可删 chip，下面常驻输入行 ── */
+.自定义片 {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--深绿);
+  background: var(--淡绿底2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+
+.删片 {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--深绿);
+}
+
+.输入行 {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 10px;
-  margin-top: 18px;
-  padding-top: 15px;
-  border-top: 1px solid var(--分隔线);
+  gap: 8px;
+  margin-top: 9px;
 }
 
-.收藏文字组 {
+.输入框 {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.收藏标题 {
-  font-size: 14.5px;
-  font-weight: 500;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #e4e6dd;
+  background: var(--页面底);
+  font-size: 13.5px;
   color: var(--墨);
 }
 
-.收藏说明 {
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: var(--次要浅);
-}
-
-/* ── 底部：为什么没有薪资维度的说明 + 完成键 ── */
-.尾注 {
-  margin-top: 16px;
-  font-size: 11px;
-  line-height: 1.65;
+.输入框::placeholder {
   color: var(--最弱);
 }
 
-.完成键 {
+.添加键 {
+  flex: none;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--深绿);
+  background: var(--白);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+/* ── 底部主键 ── */
+.保存键 {
+  flex: none;
   width: 100%;
-  margin-top: 12px;
+  margin-top: 16px;
   height: 50px;
   border-radius: var(--圆角-按钮);
   background: var(--荧光绿);
   box-shadow: var(--主按钮投影);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   color: var(--墨);
 }
 

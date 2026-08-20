@@ -285,12 +285,46 @@
   margin-bottom: 14px;
 }
 
-.筛选标题 {
+/* 标题行：左标题 + 右「管理规则 ›」，与企业端 候选筛选抽屉 同构 */
+.要求标题行 {
   flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.筛选标题 {
+  flex: 1;
+  min-width: 0;
   font-size: 17px;
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--墨);
+}
+
+.管理规则 {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+/* 当前生效的代理规则：只读 chip 一行，让用户一打开就知道代理正在按什么筛 */
+.规则条 {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.规则片 {
+  padding: 5px 10px;
+  border-radius: var(--圆角-胶囊);
+  background: var(--淡绿底2);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--深绿文字);
 }
 
 .筛选内容 {
@@ -316,15 +350,17 @@
 .片 {
   padding: 9px 15px;
   border-radius: var(--圆角-胶囊);
-  background: var(--浅灰底);
+  border: 1px solid #e4e6dd;
+  background: var(--页面底);
   font-size: 13.5px;
   color: var(--正文);
 }
 
-/* 选中用淡绿底 + 深绿字：荧光绿留给「查看结果」那一个主操作 */
+/* 选中用深绿描边 + 淡绿底：荧光绿留给「保存」那一个主操作 */
 .片选中 {
-  background: var(--淡绿底);
-  color: var(--深绿);
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+  color: var(--深绿文字);
   font-weight: 700;
 }
 
@@ -333,38 +369,59 @@
   color: var(--最弱);
 }
 
-.开关行 {
-  margin-top: 18px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--分隔线);
+/* 自定义硬性要求：已添加的是可删 chip，下面常驻输入行 */
+.自定义片 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 11px 9px 15px;
+  border-radius: var(--圆角-胶囊);
+  border: 1px solid var(--深绿);
+  background: var(--淡绿底2);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+
+.删片 {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--深绿);
+}
+
+.输入行 {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
-.开关行.无线 {
-  border-bottom: none;
-  padding-bottom: 4px;
-}
-
-.开关文字 {
+.要求输入 {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.开关标题 {
-  font-size: 14.5px;
-  font-weight: 600;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--圆角-胶囊);
+  border: 1px solid #e4e6dd;
+  background: var(--页面底);
+  font-size: 13.5px;
   color: var(--墨);
 }
 
-.开关说明 {
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--次要浅);
+.要求输入::placeholder {
+  color: var(--最弱);
+}
+
+.添加键 {
+  flex: none;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--圆角-胶囊);
+  border: 1px solid var(--深绿);
+  background: var(--白);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿);
 }
 
 .筛选底行 {
@@ -375,18 +432,7 @@
   margin-top: 16px;
 }
 
-.重置键 {
-  flex: none;
-  height: 50px;
-  padding: 0 20px;
-  border-radius: var(--圆角-按钮);
-  background: var(--浅灰底);
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--次要);
-}
-
-.查看键 {
+.保存键 {
   flex: 1;
   height: 50px;
   border-radius: var(--圆角-按钮);

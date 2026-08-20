@@ -1,4 +1,7 @@
-/* D5·C 谈判进度 + D11·A 在线简历批注版 —— 尺寸同构镜像 在谈详情.module.css 定稿值 */
+/* D5·C 谈判进度 + D11·A 在线简历批注版 —— 尺寸同构镜像 在谈详情.module.css 定稿值。
+   2026-08-20：谈判进度从四阶段时间线改成按阶段分段的对话流，
+   分节条 / 气泡 / 核对清单 / 附件行的样式统一搬进 组件/阶段对话流.module.css，
+   本文件只留「决策卡内部」与「在线简历 Tab」两块。 */
 
 /* ── 返回栏右侧：匹配分（企业侧不显示薪资，薪资只属于岗位的带）── */
 .匹配组 {
@@ -49,13 +52,6 @@
   color: var(--次要浅);
 }
 
-/* ── 滚动区内边距（谈判进度 / 在线简历两个 Tab 共用同一组数值）── */
-.时间线 {
-  padding: 10px 18px 20px;
-  display: flex;
-  flex-direction: column;
-}
-
 .简历列 {
   padding: 10px 18px 20px;
   display: flex;
@@ -63,112 +59,11 @@
   gap: 8px;
 }
 
-/* ── 时间线节点：左轴（圆点 + 连线）+ 右主体 ── */
-.节点行 {
-  display: flex;
-  flex-direction: row;
-  gap: 13px;
-}
-
-/* 未到达的阶段整体灰掉 */
-.灰节点 {
-  opacity: 0.5;
-}
-
-.节点轴 {
-  width: 20px;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-/* 通过 = 橄榄实心 + 白对勾 */
-.实心点 {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-}
-
-/* 进行中 = 橄榄空心环 */
-.环点 {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--白);
-  border-style: solid;
-  flex: none;
-}
-
-/* 未到达 = 细灰环 */
-.空心点 {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--白);
-  border: 2px solid var(--描边中);
-  flex: none;
-}
-
-.连线 {
-  flex: 1;
-  width: 2px;
-  background: var(--描边);
-}
-
-.节点主体 {
-  flex: 1;
-  min-width: 0;
-}
-
-.节点主体带底距 {
-  padding-bottom: 14px;
-}
-
-.节点头 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.节点标题 {
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: var(--墨);
-}
-
-.状态胶囊 {
-  flex: none;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--深绿);
-  background: var(--淡绿底);
-  padding: 2px 7px;
-  border-radius: 9px;
-}
-
-.节点时间 {
-  flex: none;
-  margin-left: auto;
-  font-size: 10px;
-  color: var(--最弱);
-}
-
+/* ── 决策卡内部 ── */
 .节点说明 {
   font-size: 12.5px;
   color: var(--正文);
-  margin-top: 5px;
-}
-
-.节点待办 {
-  font-size: 12px;
-  color: var(--次要);
-  margin-top: 4px;
+  margin-bottom: 8px;
 }
 
 /* ── 小结托盘内部 ── */
@@ -176,19 +71,6 @@
   font-size: 12px;
   line-height: 1.65;
   color: var(--正文);
-}
-
-.小链接 {
-  flex: none;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--深绿);
-  text-align: left;
-}
-
-.链接间距 {
-  display: block;
-  margin-top: 7px;
 }
 
 /* ── 卡点态数字对比：岗位条件 / 差值 / 候选条件 ── */
@@ -458,13 +340,6 @@
   color: var(--次要浅);
 }
 
-/* 设计稿 px-pulse：需要你的节点红色脉冲。本地定义，CSS Modules 才够得到 */
-@keyframes 红脉冲 {
-  0% { box-shadow: 0 0 0 0 rgba(217, 45, 32, 0.35); }
-  70% { box-shadow: 0 0 0 6px rgba(217, 45, 32, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(217, 45, 32, 0); }
-}
-
 /* ── 在线简历 Tab 扩充（2026-08-18 BOSS 结构版）── */
 .状态行 {
   font-size: 10.5px;
@@ -592,56 +467,6 @@
   text-align: center;
 }
 
-/* ── 结构化核对清单（标注 18:05；此前一轮脚本中断漏写了这段，清单曾以 16px 裸样式渲染）── */
-.核对列 {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-}
-
-.核对行 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-}
-
-.核对记 {
-  flex: none;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  font-size: 9px;
-  font-weight: 800;
-  line-height: 15px;
-  text-align: center;
-}
-
-.核对记过 {
-  background: var(--递简历底);
-  color: var(--递简历);
-}
-
-.核对记中 {
-  background: var(--初筛底);
-  color: var(--初筛);
-}
-
-/* 与 小结正文 同字号（标注 18:12：不要比头行大） */
-.核对项 {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--正文);
-}
-
-.核对中字 {
-  flex: none;
-  font-size: 10.5px;
-  color: var(--次要浅);
-}
-
 /* 方案条（标注 00:12）：条款放上面，按钮只留动作 */
 .方案条 {
   display: flex;
@@ -668,94 +493,3 @@
   color: var(--墨);
 }
 
-/* 核对行做成按钮后的复位与右侧尖括号（标注 09:24：点行进两代理对聊） */
-.核对行 {
-  width: 100%;
-  text-align: left;
-}
-
-.核对尖 {
-  flex: none;
-  margin-left: auto;
-  color: var(--最弱);
-  font-size: 13px;
-  font-weight: 300;
-}
-
-/* 已完成阶段的收起行与收起符（标注 13:45：与求职端同一套折叠） */
-.折行 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  padding: 2px 0 4px;
-}
-
-.折行摘要 {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--次要);
-}
-
-.折行开 {
-  flex: none;
-  color: var(--最弱);
-  font-size: 12px;
-}
-
-.收起符 {
-  margin-left: auto;
-  color: var(--最弱);
-  font-size: 11px;
-}
-
-/* 全部对话的唯一入口（标注 16:15） */
-.对话入口 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  background: var(--白);
-  border-radius: var(--圆角-中卡);
-  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04);
-  padding: 12px 14px;
-  margin-bottom: 10px;
-}
-
-.对话入口标 {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--墨);
-}
-
-.对话入口数 {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--次要浅);
-}
-
-/* ── 你的叮嘱（方案 A，与求职端 在谈详情 同构）── */
-.叮嘱块 {
-  margin-top: 12px;
-  padding-top: 11px;
-  border-top: 1px solid var(--分隔线);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.叮嘱标 { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--次要浅); }
-.叮嘱条 { display: flex; flex-direction: column; gap: 5px; }
-.叮嘱我 {
-  padding-left: 9px;
-  border-left: 2px solid var(--荧光绿);
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--墨);
-}
-.叮嘱回执 { display: flex; flex-direction: row; align-items: flex-start; gap: 6px; padding-left: 9px; }
-.叮嘱回执文 { flex: 1; min-width: 0; font-size: 12px; line-height: 1.55; color: var(--次要); }
