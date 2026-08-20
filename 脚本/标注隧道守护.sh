@@ -31,9 +31,11 @@ TUNNEL_LOG="$LOG_DIR/标注隧道.log"
 }
 
 重开隧道() {
-  pkill -f "cloudflared tunnel --url http://localhost:8090" 2>/dev/null || true
+  pkill -f "cloudflared tunnel" 2>/dev/null || true
   sleep 1
-  nohup cloudflared tunnel --url http://localhost:8090 > "$TUNNEL_LOG" 2>&1 &
+  # v6（2026-08-20）：--edge-ip-version 4 绕开坏的 IPv6 路径；
+  # --protocol http2 走 TCP 443（QUIC/UDP 在本网络会出现「注册成功但隧道 000」）
+  nohup cloudflared tunnel --edge-ip-version 4 --protocol http2 --url http://localhost:8090 > "$TUNNEL_LOG" 2>&1 &
   local url=""
   for _ in $(seq 1 25); do
     sleep 1
@@ -54,6 +56,17 @@ TUNNEL_LOG="$LOG_DIR/标注隧道.log"
     https://*.trycloudflare.com) ;;
     *) echo "拒推非法端点：$url"; return 1 ;;
   esac
+  # v7（2026-08-20）：先验活再推 —— 注册成功≠隧道能服务（Clash fake-ip 拦截边缘连接时
+  # 就是「拿到地址但 000」）。给 30 秒预热窗口，验不过就不推，留待下轮重试。
+  local ok=""
+  for _ in $(seq 1 10); do
+    sleep 3
+    if 探活 "$url"; then ok=1; break; fi
+  done
+  if [ -z "$ok" ]; then
+    echo "新隧道注册成功但服务不通，拒推：$url"
+    return 1
+  fi
   echo "$url" > .标注端点
   local content sha
   content=$(printf '{"url":"%s"}' "$url" | base64)
