@@ -153,3 +153,36 @@
   font-weight: 600;
   color: #ffffff;
 }
+
+/* ── 接入后能做什么：荧光绿小圆点 + 一行说明 ── */
+.能做列 {
+  flex: none;
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.能做行 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.能做点 {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--荧光绿);
+}
+
+.能做文 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--正文);
+}
