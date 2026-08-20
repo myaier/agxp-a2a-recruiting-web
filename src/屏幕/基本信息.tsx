@@ -121,14 +121,6 @@ export default function 基本信息() {
               </span>
             </button>
 
-            {/* 折算回显（学生路径不出这块）：让「我填的数字会被拿去干什么」当场可见 */}
-            <div className={样式.折算区}>
-              <div className={样式.折算数}>
-                {折算年限}
-                <span className={样式.折算单位}>年经验</span>
-              </div>
-              <div className={样式.折算注}>按此折算：匿名初筛用它核对岗位的年限要求</div>
-            </div>
           </>
         )}
       </滚动区>
