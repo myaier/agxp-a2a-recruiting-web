@@ -13,8 +13,8 @@ import 样式 from './企业问AI代理.module.css';
 import { 次级页外壳, 返回栏, 真输入条 } from '../组件/通用';
 import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
+import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
-import { 轻提示 } from '../组件/轻提示';
 import { 人才漏斗, 企业日报, 企业代理对话初始, 企业快捷问句 } from '../数据/企业端模拟数据';
 import type { 代理对话条 } from '../数据/类型';
 
@@ -34,7 +34,7 @@ function 生成回复(问题: string): string {
 }
 
 export default function 企业问AI代理() {
-  const { 返回 } = use导航();
+  const { 返回, 跳转 } = use导航();
   const { 状态 } = use应用状态();
   const [对话, 设对话] = useState<代理对话条[]>(企业代理对话初始);
   const [草稿, 设草稿] = useState('');
@@ -63,7 +63,7 @@ export default function 企业问AI代理() {
 
   return (
     <次级页外壳 对话底>
-      <返回栏 返回={返回} 标题="我的招聘AI代理" 右侧={<button className={`${样式.更多} 可点`} onClick={() => 轻提示('更多操作待定义')}>⋯</button>} />
+      <返回栏 返回={返回} 标题="我的招聘AI代理" 右侧={<button className={`${样式.更多} 可点`} onClick={() => 跳转(路径.企业代理设置)}>⋯</button>} />
 
       {/* 对话流：屏幕内唯一滚动区 */}
       <div ref={滚动引用} className={`${样式.对话流} 滚动区`}>
