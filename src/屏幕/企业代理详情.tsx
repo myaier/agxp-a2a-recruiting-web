@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react';
 import 样式 from './代理详情.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import 代理标 from '../组件/代理标';
+import 接入二维码 from '../组件/接入二维码';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
@@ -82,7 +83,6 @@ export default function 企业代理详情() {
               <span className={样式.在线点} />
               <span className={样式.在线字}>在线</span>
             </div>
-            <div className={样式.身份注}>建档于 8月1日 · 已替你谈过 24 位候选</div>
           </div>
         </div>
 
@@ -180,7 +180,7 @@ export default function 企业代理详情() {
             </div>
 
             <div className={样式.码框}>
-              <二维码 />
+              <接入二维码 />
             </div>
 
             <div className={样式.码注}>有效期 5 分钟 · 仅本人可用</div>
@@ -216,35 +216,3 @@ export default function 企业代理详情() {
   );
 }
 
-/** 装饰性二维码：纯 CSS/SVG 画的定位角 + 随机点阵，不接真实生成库 */
-function 二维码() {
-  // 固定种子的伪随机点阵：每次渲染一致，避免闪烁
-  const 点 = [];
-  for (let 行 = 0; 行 < 21; 行 += 1) {
-    for (let 列 = 0; 列 < 21; 列 += 1) {
-      const 是定位角 =
-        (行 < 7 && 列 < 7) || (行 < 7 && 列 > 13) || (行 > 13 && 列 < 7);
-      if (是定位角) continue;
-      // 用行列做确定性哈希，看起来像码又不需要真算法
-      if (((行 * 7 + 列 * 13 + ((行 * 列) % 5)) % 3) === 0) {
-        点.push(<rect key={`${行}-${列}`} x={列 * 5} y={行 * 5} width="5" height="5" fill="var(--墨)" />);
-      }
-    }
-  }
-  const 定位角 = (x: number, y: number) => (
-    <g key={`${x}-${y}`}>
-      <rect x={x} y={y} width="35" height="35" fill="var(--墨)" />
-      <rect x={x + 5} y={y + 5} width="25" height="25" fill="#fff" />
-      <rect x={x + 10} y={y + 10} width="15" height="15" fill="var(--墨)" />
-    </g>
-  );
-  return (
-    <svg width="150" height="150" viewBox="0 0 105 105" aria-label="接入二维码" role="img">
-      <rect width="105" height="105" fill="#fff" />
-      {点}
-      {定位角(0, 0)}
-      {定位角(70, 0)}
-      {定位角(0, 70)}
-    </svg>
-  );
-}

@@ -1,0 +1,81 @@
+/* 接入飞书 —— 注册尾屏：二维码在上、能做什么在中、主按钮与跳过在底。
+   描边 #e4e6dd / 底 var(--页面底)；不加装饰色块，保持注册流一贯的干净。 */
+
+.页 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 22px calc(var(--安全区下) + 10px);
+}
+
+/* ── 二维码卡 ── */
+.码卡 {
+  flex: none;
+  margin-top: 18px;
+  padding: 22px 0 16px;
+  border-radius: 20px;
+  background: var(--白);
+  border: 1px solid #e4e6dd;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.码框 {
+  padding: 10px;
+  border-radius: 14px;
+  background: #ffffff;
+  display: flex;
+}
+
+.码注 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+/* ── 接入后能做什么 ── */
+.能做卡 {
+  flex: none;
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.能做行 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.能做标 {
+  flex: none;
+  margin-top: 2px;
+  display: flex;
+}
+
+.能做文 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--正文);
+}
+
+/* 主按钮压到屏底 */
+.撑开 {
+  flex: 1;
+  min-height: 12px;
+}
+
+.跳过 {
+  flex: none;
+  margin-top: 10px;
+  padding: 10px 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--次要浅);
+}

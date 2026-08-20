@@ -20,6 +20,7 @@ import 毕业院校 from './屏幕/毕业院校';
 import 选专业 from './屏幕/选专业';
 import 就读时间段 from './屏幕/就读时间段';
 import 添加头像 from './屏幕/添加头像';
+import 接入飞书 from './屏幕/接入飞书';
 import 主壳 from './屏幕/主壳';
 import 在谈详情 from './屏幕/在谈详情';
 import 往来记录 from './屏幕/往来记录';
@@ -89,6 +90,8 @@ export default function 应用() {
       <Route path={路径.选专业} element={<选专业 />} />
       <Route path={路径.就读时间段} element={<就读时间段 />} />
       <Route path={路径.添加头像} element={<添加头像 />} />
+      <Route path={路径.接入飞书} element={<接入飞书 />} />
+      <Route path={路径.企业接入飞书} element={<接入飞书 企业端 />} />
 
       {/* 主壳：3 Tab + 职位页双子视图 */}
       <Route path={路径.主壳} element={<主壳 />} />

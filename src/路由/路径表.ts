@@ -32,6 +32,7 @@ export const 路径 = {
   就读时间段: '/onboard/eduyears',
   /** 添加头像：注册流最后一屏，选完进主壳 */
   添加头像: '/onboard/avatar',
+  接入飞书: '/onboard/feishu',
 
   主壳: '/app',
 
@@ -95,6 +96,7 @@ export const 路径 = {
   /** 岗位详情：从岗位管理点一行进来，看这个岗位的全貌（数据 / JD / 公司 / 地址）*/
   岗位详情: (编号: string) => `/hr/job/${编号}`,
   岗位详情模板: '/hr/job/:id',
+  企业接入飞书: '/hr/onboard/feishu',
   企业代理详情: '/hr/agent/me',
   企业代理设置: '/hr/agent-settings',
   匿名在线简历: (编号: string) => `/hr/resume/${编号}`,
