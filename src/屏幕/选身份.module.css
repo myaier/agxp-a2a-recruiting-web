@@ -15,16 +15,17 @@
 }
 
 .身份卡 {
+  /* 标注 2026-08-20 18:12：竖排大方块 —— 文字在上、图标在下，整块可点 */
   width: 100%;
   background: var(--白);
   border: 1px solid var(--描边);
-  /* 直达标注意见 21:20：卡片加高（16 → 22 纵向内边距），圆角同步放大更圆润 */
   border-radius: var(--圆角-中卡);
-  padding: 22px 18px;
+  padding: 30px 18px 26px;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
-  gap: 14px;
+  justify-content: center;
+  gap: 16px;
   text-align: left;
 }
 
@@ -38,9 +39,9 @@
 /* 彩绘图标的托底：比原来大一圈（42 → 52），衬得住填充式色块图标 */
 .图标底 {
   flex: none;
-  width: 52px;
-  height: 52px;
-  border-radius: 17px;
+  width: 76px;
+  height: 76px;
+  border-radius: 24px;
   background: var(--淡绿底);
   display: flex;
   align-items: center;
@@ -56,7 +57,7 @@
 }
 
 .身份标题 {
-  font-size: 15px;
+  font-size: 19px;
   font-weight: 700;
   color: var(--墨);
 }

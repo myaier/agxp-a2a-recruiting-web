@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import 样式 from './选身份.module.css';
-import { 次级页外壳, 返回栏, 页面大标题, 主按钮, 单选点 } from '../组件/通用';
+import { 次级页外壳, 返回栏, 页面大标题, 主按钮 } from '../组件/通用';
 import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
@@ -112,13 +112,10 @@ export default function 选身份() {
               onClick={() => 设选中(项.键)}
               role="button"
             >
+              <span className={样式.身份标题}>{项.标题}</span>
               <span className={样式.图标底}>
                 <身份图标 键={项.键} />
               </span>
-              <span className={样式.身份文字}>
-                <span className={样式.身份标题}>{项.标题}</span>
-              </span>
-              <单选点 选中={当前} />
             </div>
           );
         })}
@@ -199,8 +196,9 @@ function 身份面({
  */
 function 身份图标({ 键 }: { 键: 身份键 }) {
   const 公共属性 = {
-    width: 34,
-    height: 34,
+    // 标注 18:12：图标可以大一点
+    width: 46,
+    height: 46,
     viewBox: '0 0 32 32',
     'aria-hidden': true,
   };

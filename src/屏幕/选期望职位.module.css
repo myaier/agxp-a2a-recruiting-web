@@ -4,7 +4,7 @@
 /* ── 大标题 + 右上 N/10 ── */
 .标题行 {
   flex: none;
-  padding: 14px 22px 0;
+  padding: 18px 22px 0;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -12,7 +12,7 @@
 }
 
 .大标题 {
-  font-size: 23px;
+  font-size: 25px;
   font-weight: 800;
   letter-spacing: -0.01em;
   line-height: 1.4;
@@ -30,11 +30,12 @@
 /* ── 搜索条 ── */
 .搜索条 {
   flex: none;
-  margin: 14px 18px 0;
-  height: 44px;
-  border-radius: 15px;
-  background: var(--白);
-  border: 1px solid #e4e6dd;
+  margin: 16px 18px 0;
+  height: 46px;
+  border-radius: 16px;
+  /* 去描边：浅灰底的搜索条比描边框更干净 */
+  background: var(--浅灰底);
+  border: none;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -61,38 +62,50 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  margin-top: 14px;
-  border-top: 1px solid #e4e6dd;
+  margin-top: 16px;
 }
 
 .职左栏 {
   flex: none;
   /* 大类名变长（人力/行政/法务）后左栏收窄给右侧网格让位 */
-  width: 92px;
+  width: 96px;
   background: var(--浅灰底);
-  padding: 6px 0 16px;
+  padding: 8px 0 16px;
 }
 
 .职大类 {
+  position: relative;
   display: block;
   line-height: 1.35;
   width: 100%;
-  padding: 13px 14px;
+  padding: 14px 14px;
   font-size: 13.5px;
   color: var(--次要浅);
   text-align: left;
 }
 
+/* 当前大类：白底承接右栏 + 左缘一条荧光绿指示，去掉方块高亮的廉价感 */
 .职大类当前 {
   background: var(--页面底);
   color: var(--墨);
   font-weight: 700;
 }
 
+.职大类当前::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--荧光绿);
+}
+
 .职右栏 {
   flex: 1;
   min-height: 0;
-  padding: 12px 16px 16px;
+  padding: 14px 16px 16px;
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
@@ -101,28 +114,30 @@
 }
 
 .职小类 {
-  /* 网格两列 + 长岗位名（如「自然语言处理算法」）：收字号、给最小高、居中，
-     一行放不下就两行，卡片高度靠 min-height 对齐（2026-08-20 补全职位库） */
-  min-height: 44px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--页面底);
-  border: 1px solid #e4e6dd;
-  font-size: 12.5px;
+  /* 标注 2026-08-20 18:13：要简约高级 —— 去掉描边框，改浅灰底无边卡片，
+     只有选中态才上色，整屏噪音显著降低 */
+  min-height: 46px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--浅灰底);
+  border: 1px solid transparent;
+  font-size: 13px;
   line-height: 1.35;
   font-weight: 500;
-  color: var(--墨);
+  color: var(--正文);
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
+  transition: background 0.16s ease, color 0.16s ease;
 }
 
 .职小类选中 {
-  border-color: var(--深绿);
+  border-color: transparent;
   background: var(--淡绿底2);
   color: var(--深绿文字);
   font-weight: 700;
+  box-shadow: inset 0 0 0 1.5px var(--深绿);
 }
 
 /* ── 搜索结果：平铺小类卡 ── */
@@ -193,14 +208,15 @@
 
 /* ── 右栏分组块（2026-08-20 按截图补全职位库后）：小标题 + 两列岗位片 ── */
 .分组块 {
-  margin-bottom: 18px;
+  margin-bottom: 22px;
 }
 
 .分组标 {
-  margin-bottom: 9px;
-  font-size: 14px;
+  margin-bottom: 10px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--墨);
+  letter-spacing: 0.08em;
+  color: var(--次要浅);
 }
 
 .岗位网 {

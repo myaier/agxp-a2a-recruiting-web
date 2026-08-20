@@ -624,12 +624,24 @@ function 经历编辑页({
 
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>工作内容</div>
+          {/* 标注 2026-08-20 18:14：内容要整段展开，框内滚动很难用 ——
+              随文本行数自动长高（onInput 里同步 scrollHeight），不设内部滚动 */}
           <textarea
             className={样式.内容输入}
             value={草稿.内容}
             placeholder="请详细写职责、规模、结果"
-            rows={4}
-            onChange={(事件) => 改('内容', 事件.target.value)}
+            rows={1}
+            ref={(节点) => {
+              if (节点) {
+                节点.style.height = 'auto';
+                节点.style.height = `${节点.scrollHeight}px`;
+              }
+            }}
+            onChange={(事件) => {
+              事件.target.style.height = 'auto';
+              事件.target.style.height = `${事件.target.scrollHeight}px`;
+              改('内容', 事件.target.value);
+            }}
           />
         </div>
 

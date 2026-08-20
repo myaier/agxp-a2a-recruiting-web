@@ -297,6 +297,9 @@
   background: var(--白);
   resize: none;
   outline: none;
+  /* 随内容长高，框内不滚（标注 18:14）*/
+  overflow: hidden;
+  min-height: 96px;
   font-family: inherit;
 }
 
