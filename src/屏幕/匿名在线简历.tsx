@@ -168,7 +168,6 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
 
       {/* ── 专业技能 ── */}
       <div className={样式.节标行}>
-        <span className={样式.节点圆} />
         <span className={样式.节标}>专业技能</span>
       </div>
       <div className={样式.技能行}>

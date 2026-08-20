@@ -22,6 +22,34 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 公司路由键 } from '../数据/公司档案';
 
+/** 硬性要求核对行：JD 的 经验/学历/城市 逐条对我的简历事实（9 年 / 硕士 / 上海）。
+    只render JD 里写了的项；到岗、薪资是双盲协商项，不进这张表。 */
+export function 硬性行们(
+  源: { 经验要求?: string; 学历要求?: string; 标签?: string[] },
+  技能: string[]
+): { 文: string; 过: boolean }[] {
+  void 技能; // 技能对照已有独立 chips 区，这里不重复
+  const 行: { 文: string; 过: boolean }[] = [];
+  if (源.经验要求) {
+    const 需 = parseInt(源.经验要求, 10);
+    行.push({ 文: `经验 ${源.经验要求} · 我 9 年`, 过: !Number.isFinite(需) || 需 <= 9 });
+  }
+  if (源.学历要求) {
+    const 阶 = (值: string) => (值.includes('硕士') ? 2 : 值.includes('本科') ? 1 : 0);
+    行.push({ 文: `学历 ${源.学历要求} · 我 硕士`, 过: 阶(源.学历要求) <= 2 });
+  }
+  const 城 = 源.标签?.[0]?.split(' · ')[0];
+  if (城) {
+    // 全远程岗不卡城市：任一标签带「远程」即视为通过
+    const 远程 = 源.标签?.some((签) => 签.includes('远程')) ?? false;
+    行.push({
+      文: 远程 ? `城市 ${城} · 全远程` : `城市 ${城} · 我 上海`,
+      过: 城 === '上海' || 远程,
+    });
+  }
+  return 行;
+}
+
 export default function 职位详情() {
   const { id: 编号 } = useParams<{ id: string }>();
   const { 状态, 派发 } = use应用状态();
@@ -115,15 +143,17 @@ export default function 职位详情() {
               </div>
             ))}
 
-            {/* 简历证据（标注 13:25）：哪段经历对得上哪条要求、差距在哪 —— 
-                「简历项 → 岗位要求」成对写，不写解释句 */}
-            {岗.对得上?.length ? (
+            {/* 硬性要求核对（标注 2026-08-20 09:39）：匹配分的依据 ——
+                简历 vs JD 硬性要求逐条 ✓/✗，替代原「对得上」映射行 */}
+            {硬性行们(岗, 状态.简历技能).length ? (
               <>
-                <div className={样式.证据组标}>对得上</div>
-                {岗.对得上.map((条) => (
-                  <div key={条} className={样式.证据行}>
-                    <span className={样式.适配过}>✓</span>
-                    <span className={样式.证据文}>{条}</span>
+                <div className={样式.证据组标}>硬性要求</div>
+                {硬性行们(岗, 状态.简历技能).map((行) => (
+                  <div key={行.文} className={样式.证据行}>
+                    <span className={行.过 ? 样式.适配过 : 样式.适配差}>
+                      {行.过 ? '✓' : '✗'}
+                    </span>
+                    <span className={样式.证据文}>{行.文}</span>
                   </div>
                 ))}
               </>

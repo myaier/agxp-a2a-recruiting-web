@@ -10,9 +10,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './在谈详情.module.css';
 import 详析样式 from './职位详情.module.css';
+import { 硬性行们 } from './职位详情';
 import 适配环 from '../组件/适配环';
 import 拿不准弹层 from './拿不准弹层';
-import 简历原件层, { 简历纸身 } from '../组件/简历预览层';
+import 简历原件层 from '../组件/简历预览层';
 import {
   次级页外壳,
   返回栏,
@@ -22,7 +23,7 @@ import {
   公司字标,
   阶段配色,
 } from '../组件/通用';
-import { 对勾图标, 简历图标 } from '../组件/图标';
+import { 对勾图标 } from '../组件/图标';
 import { 各单阶段小结, 卡点决策, 意向确认说明, 在谈职位详情, 市场列表 } from '../数据/模拟数据';
 import { 阶段顺序 } from '../数据/类型';
 import type { 分歧, 在谈单, 阶段, 阶段小结 } from '../数据/类型';
@@ -75,9 +76,6 @@ export default function 在谈详情() {
   const [当前Tab, 设当前Tab] = useState<页内Tab>('谈判进度');
   const [弹层可见, 设弹层可见] = useState(false);
   const [决策快照, 设决策快照] = useState<决策快照内容 | null>(null);
-  // 顶部「在线简历」折叠卡：默认收起（标注意见 2026-08-18 23:51）。
-  // 内容是脱敏的在线简历 —— 从匿名初筛起对方核对的就是它，所以每一单都显示
-  const [简历卡展开, 设简历卡展开] = useState(false);
   // 点开的简历原件（null = 没开）：点阶段节点里的 PDF 附件行打开原件弹层
   const [看原件, 设看原件] = useState<{ 文件名: string } | null>(null);
   // 已完成阶段默认收起（标注 09:36：列太长）；点行展开
@@ -95,7 +93,6 @@ export default function 在谈详情() {
   // 从一单切到另一单时（同路由只换参数，组件不重挂载），折叠卡收起、弹层关闭，
   // 否则上一单里的展开/弹层状态会残留到下一单
   useEffect(() => {
-    设简历卡展开(false);
     设看原件(null);
   }, [编号]);
 
@@ -208,33 +205,6 @@ export default function 在谈详情() {
           </button>
 
           <div className={样式.时间线}>
-            {/* 在线简历 · 可折叠（标注意见 2026-08-18 23:51）：
-                时间线最上方常驻用户的在线简历（脱敏版）—— 从匿名初筛起对方核对的
-                就是它，所以每一单（含新委托的 M- 单）都显示，回看任何一单都从它开始。
-                标题只有「在线简历」四个字，不加任何解释文案（用户硬规则）*/}
-            <div className={样式.简历卡}>
-              <button
-                className={`${样式.简历卡头} 可点`}
-                onClick={() => 设简历卡展开(!简历卡展开)}
-                aria-expanded={简历卡展开}
-              >
-                <简历图标 尺寸={17} />
-                <span className={样式.简历卡标题}>在线简历</span>
-                <span
-                  className={`${样式.简历卡箭头} ${简历卡展开 ? 样式.简历卡箭头开 : ''}`}
-                  aria-hidden
-                >
-                  ›
-                </span>
-              </button>
-              {简历卡展开 ? (
-                <div className={样式.简历卡纸}>
-                  {/* 对外统一用用户自己的匿名昵称，每一单核对的都是同一份脱敏简历 */}
-                  <简历纸身 代号="陈屿" />
-                </div>
-              ) : null}
-            </div>
-
             {/* 已完成 / 进行中的阶段：小结由代理生成，附件与完整往来入口挂在小结里 */}
             {已完成阶段.map((段) =>
               !展开阶段.has(段.阶段) ? (
@@ -630,13 +600,15 @@ function 职位详情Tab({ 单 }: { 单: 在谈单 }) {
             <span className={详析样式.卡标题}>匹配度分析</span>
             <适配环 分={单.适配分} 标={null} 尺寸={44} />
           </div>
-          {证据源.对得上?.length ? (
+          {硬性行们(证据源, 全局.简历技能).length ? (
             <>
-              <div className={详析样式.证据组标}>对得上</div>
-              {证据源.对得上.map((条) => (
-                <div key={条} className={详析样式.证据行}>
-                  <span className={详析样式.适配过}>✓</span>
-                  <span className={详析样式.证据文}>{条}</span>
+              <div className={详析样式.证据组标}>硬性要求</div>
+              {硬性行们(证据源, 全局.简历技能).map((行) => (
+                <div key={行.文} className={详析样式.证据行}>
+                  <span className={行.过 ? 详析样式.适配过 : 详析样式.适配差}>
+                    {行.过 ? '✓' : '✗'}
+                  </span>
+                  <span className={详析样式.证据文}>{行.文}</span>
                 </div>
               ))}
             </>

@@ -236,13 +236,14 @@
 
 /* ── 互换联系方式卡（标注 11:31：点了按钮要在会话里真的换出东西）── */
 .联系卡 {
-  /* 与代理提醒同轴：整列满宽，不再按百分比居中 */
+  /* v2（标注 09:37）：白底信息卡，行内可点复制 */
   width: 100%;
   margin: 4px 0;
-  padding: 11px 14px;
-  border-radius: 13px;
-  background: var(--淡绿底2);
-  border: 1px solid var(--淡绿描边2);
+  padding: 12px 14px 6px;
+  border-radius: 14px;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  box-shadow: 0 2px 10px rgba(26, 26, 26, 0.04);
 }
 
 .联系头 {
@@ -261,11 +262,20 @@
 }
 
 .联系行 {
+  width: 100%;
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
-  padding: 4px 0;
+  gap: 9px;
+  padding: 9px 0;
+  border-top: 1px solid var(--分隔线);
+  text-align: left;
+}
+
+.复制符 {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--灰白);
 }
 
 .联系谁 {
@@ -274,7 +284,8 @@
 }
 
 .联系值 {
-  font-size: 13.5px;
+  font-size: 14.5px;
   font-weight: 700;
+  letter-spacing: 0.01em;
   color: var(--墨);
 }

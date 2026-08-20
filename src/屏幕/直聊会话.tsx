@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './直聊会话.module.css';
+import { 轻提示 } from '../组件/轻提示';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../组件/通用';
 import { 细对勾图标 } from '../组件/图标';
 import 代理标 from '../组件/代理标';
@@ -174,21 +175,46 @@ export function 消息条({ 条, 对方首字 }: { 条: 会话条; 对方首字:
 // ── 共用件 3：底部功能键行 ─────────────────────────────────────
 // 名单给顺序，已完成给状态：在已完成里的渲染成「已+名」的灰底对勾键（div，不可点），
 // 其余渲染成可点白键，点一下即标记完成。两屏只是初始已完成集合不同。
-/** 互换出来的联系方式卡：交换动作要在会话里留下真东西，不能只把按钮变灰 */
+/** 互换出来的联系方式卡（标注 2026-08-20 09:37 重做）：
+    白底信息卡，每行点一下整值复制进剪贴板 */
 export function 联系卡({ 名, 我方, 对方 }: { 名: string; 我方: string; 对方: string }) {
+  const 类 = 名.replace('换', '').replace('发', '');
+  const 复制 = async (值: string) => {
+    const 纯值 = 值.replace(/\s/g, '');
+    try {
+      await navigator.clipboard.writeText(纯值);
+      轻提示(`已复制${类}：${值}`);
+    } catch {
+      // 老 WebView / 无焦点场景兜底：隐藏输入框 + execCommand
+      try {
+        const 框 = document.createElement('textarea');
+        框.value = 纯值;
+        框.style.position = 'fixed';
+        框.style.opacity = '0';
+        document.body.appendChild(框);
+        框.select();
+        document.execCommand('copy');
+        框.remove();
+        轻提示(`已复制${类}：${值}`);
+      } catch {
+        轻提示('复制失败，长按手动复制');
+      }
+    }
+  };
+  const 行 = (谁: string, 值: string) => (
+    <button className={`${样式.联系行} 可点`} onClick={() => 复制(值)}>
+      <span className={样式.联系谁}>{谁}</span>
+      <span className={`${样式.联系值} 等宽数字`}>{值}</span>
+      <span className={样式.复制符} aria-hidden>⧉</span>
+    </button>
+  );
   return (
     <div className={样式.联系卡}>
       <div className={样式.联系头}>
-        <span className={样式.联系标}>已互换 · {名.replace('换', '')}</span>
+        <span className={样式.联系标}>{类}已互换 · 点击复制</span>
       </div>
-      <div className={样式.联系行}>
-        <span className={样式.联系谁}>对方</span>
-        <span className={`${样式.联系值} 等宽数字`}>{对方}</span>
-      </div>
-      <div className={样式.联系行}>
-        <span className={样式.联系谁}>你</span>
-        <span className={`${样式.联系值} 等宽数字`}>{我方}</span>
-      </div>
+      {行('对方', 对方)}
+      {行('你', 我方)}
     </div>
   );
 }
