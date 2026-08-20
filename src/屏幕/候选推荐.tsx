@@ -260,14 +260,14 @@ function 推荐卡({
             <div className={样式.名行}>
               <span className={`${样式.代号} 单行`}>{人.代号}</span>
             </div>
-            {/* 行2：年限 ｜ 学历 ｜ 到岗（BOSS 基本行的面议位放到岗档） */}
+            {/* 行2：年限 ｜ 学历 ｜ 公开期望薪资带（标注 15:51：到岗不显示，薪资占这一位） */}
             <div className={`${样式.基本行} 单行`}>
               {人.经验年} 年<span className={样式.竖分}>｜</span>
               {人.学历}
-              {人.到岗 ? (
+              {期望薪资 ? (
                 <>
                   <span className={样式.竖分}>｜</span>
-                  {人.到岗}
+                  <span className="等宽数字">{期望薪资.replace('-', '–')}</span>
                 </>
               ) : null}
             </div>
@@ -290,15 +290,6 @@ function 推荐卡({
             {人.学校} · {人.专业}
           </span>
         </div>
-        {/* 公开期望薪资带（标注 2026-08-20 15:41）：与在谈卡同款 */}
-        {期望薪资 ? (
-          <div className={样式.信息行}>
-            <span className={样式.期望标}>期望</span>
-            <span className={`${样式.期望值} 薪资体 等宽数字`}>
-              {期望薪资.replace('-', '–')}
-            </span>
-          </div>
-        ) : null}
 
         {/* 标签行：亮点（BOSS 的标签位） */}
         <div className={样式.标签行}>

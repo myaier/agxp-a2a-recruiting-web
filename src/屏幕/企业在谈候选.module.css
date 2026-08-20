@@ -287,16 +287,3 @@
   color: var(--深绿);
 }
 
-/* 公开期望薪资带（标注 2026-08-20 15:41）：与信息行同轴，值走薪资体 */
-.期望标 {
-  flex: none;
-  width: 14px;
-  font-size: 11px;
-  color: var(--次要浅);
-}
-
-.期望值 {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--深绿文字);
-}

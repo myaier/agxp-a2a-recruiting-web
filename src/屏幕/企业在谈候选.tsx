@@ -198,11 +198,16 @@ function 候选卡({ 单, 按下 }: { 单: 候选; 按下: () => void }) {
           <div className={样式.名行}>
             <span className={`${样式.代号名} 单行`}>{显示真名 ?? 单.代号}</span>
           </div>
-          {/* 行2：年限 ｜ 学历 ｜ 到岗（BOSS 的基本行，面议位放到岗） */}
+          {/* 行2：年限 ｜ 学历 ｜ 公开期望薪资带（标注 15:51：到岗不显示，薪资占这一位） */}
           <div className={`${样式.基本行} 单行`}>
             {年限}
             {单.学历 ? <><span className={样式.竖分}>｜</span>{单.学历}</> : null}
-            {单.到岗 ? <><span className={样式.竖分}>｜</span>{单.到岗}</> : null}
+            {期望薪资 ? (
+              <>
+                <span className={样式.竖分}>｜</span>
+                <span className="等宽数字">{期望薪资.replace('-', '–')}</span>
+              </>
+            ) : null}
           </div>
         </div>
         <div className={样式.右列}>
@@ -222,14 +227,6 @@ function 候选卡({ 单, 按下 }: { 单: 候选; 按下: () => void }) {
           <学帽图标 尺寸={14} 色="var(--次要浅)" />
           <span className={`${样式.信息文} 单行`}>
             {单.学校} · {单.专业}
-          </span>
-        </div>
-      ) : null}
-      {期望薪资 ? (
-        <div className={样式.信息行}>
-          <span className={样式.期望标}>期望</span>
-          <span className={`${样式.期望值} 薪资体 等宽数字`}>
-            {期望薪资.replace('-', '–')}
           </span>
         </div>
       ) : null}
