@@ -21,7 +21,7 @@ export default function 披露说明() {
       <返回栏 返回={返回} />
 
       <div className={样式.头部}>
-        <h1 className={样式.大标题}>信息一层层给</h1>
+        <h1 className={样式.大标题}>AI代理如何帮你找工作</h1>
         <p className={样式.说明}>
           条件先对，对上了才多给一层 —— 不用一开始就交底，也不用把时间花在聊不成的岗位上。
         </p>
