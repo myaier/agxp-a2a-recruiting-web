@@ -11,75 +11,31 @@
 }
 
 .标题 {
-  margin: 6px 0 0;
-  font-size: 25px;
-  font-weight: 800;
-  line-height: 1.35;
+  margin: 10px 0 0;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.4;
   letter-spacing: -0.02em;
   color: var(--墨);
 }
 
 .副题 {
-  margin: 9px 0 0;
-  font-size: 13px;
+  margin: 7px 0 0;
+  font-size: 12.5px;
   line-height: 1.6;
   color: var(--次要浅);
 }
 
-/* ── 渠道行 ── */
-.渠道行 {
-  flex: none;
-  margin-top: 22px;
-  display: flex;
-  flex-direction: row;
-  gap: 10px;
-}
 
-.渠道 {
-  flex: 1;
-  padding: 12px 4px 10px;
-  border-radius: 16px;
-  background: var(--浅灰底);
-  border: 1.5px solid transparent;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 7px;
-  transition: background 0.16s ease, border-color 0.16s ease;
-}
 
-.渠道选中 {
-  background: var(--淡绿底2);
-  border-color: var(--深绿);
-}
 
-.渠道未开 {
-  opacity: 0.42;
-}
 
-/* 渠道标：圆角方块 + 首字，不抄各家 logo，只做识别位 */
-.渠道标 {
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
-.渠道名 {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--正文);
-}
 
 /* ── 方式分段：药丸底 + 选中项白色滑块 ── */
 .分段 {
   flex: none;
-  margin-top: 20px;
+  margin-top: 22px;
   padding: 4px;
   border-radius: 14px;
   background: var(--浅灰底);
@@ -135,76 +91,13 @@
   padding: 0 6px;
 }
 
-/* ── 扫码取景框：四角 + 一条扫描线，纯几何不放假相机画面 ── */
-.取景框 {
-  position: relative;
-  width: 174px;
-  height: 174px;
-  border-radius: 20px;
-  background: var(--浅灰底);
-}
 
-.取景角 {
-  position: absolute;
-  width: 26px;
-  height: 26px;
-  border: 2.5px solid var(--深绿);
-}
 
-.角左上 {
-  top: 18px;
-  left: 18px;
-  border-right: none;
-  border-bottom: none;
-  border-radius: 8px 0 0 0;
-}
 
-.角右上 {
-  top: 18px;
-  right: 18px;
-  border-left: none;
-  border-bottom: none;
-  border-radius: 0 8px 0 0;
-}
 
-.角左下 {
-  bottom: 18px;
-  left: 18px;
-  border-right: none;
-  border-top: none;
-  border-radius: 0 0 0 8px;
-}
 
-.角右下 {
-  bottom: 18px;
-  right: 18px;
-  border-left: none;
-  border-top: none;
-  border-radius: 0 0 8px 0;
-}
 
-.取景线 {
-  position: absolute;
-  left: 26px;
-  right: 26px;
-  top: 50%;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--荧光绿);
-  animation: 扫描 2.4s ease-in-out infinite;
-}
 
-@keyframes 扫描 {
-  0%,
-  100% {
-    transform: translateY(-46px);
-    opacity: 0.35;
-  }
-  50% {
-    transform: translateY(46px);
-    opacity: 1;
-  }
-}
 
 /* 主按钮压到屏底 */
 .撑开 {
@@ -219,4 +112,44 @@
   font-size: 13.5px;
   font-weight: 600;
   color: var(--次要浅);
+}
+
+/* ── 我的 Agent：命令行接入（用户 2026-08-20）── */
+.命令块 {
+  width: 100%;
+  border-radius: 14px;
+  background: var(--墨);
+  padding: 13px 12px 13px 15px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.命令文 {
+  /* 一行不折：太长时横向可滚，断成两行很难看（用户 2026-08-20 要精致） */
+  flex: 1;
+  min-width: 0;
+  font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  letter-spacing: -0.01em;
+  line-height: 1.6;
+  color: var(--荧光绿);
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.命令文::-webkit-scrollbar {
+  display: none;
+}
+
+.复制键 {
+  flex: none;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
 }
