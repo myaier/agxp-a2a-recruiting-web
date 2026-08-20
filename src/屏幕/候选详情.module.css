@@ -739,18 +739,23 @@
   color: var(--次要浅);
 }
 
-/* ── 你的叮嘱（与求职端 在谈详情 同构）── */
-.叮嘱区 { display: flex; flex-direction: column; gap: 12px; margin: 2px 0 6px 34px; }
-.叮嘱组 { display: flex; flex-direction: column; gap: 7px; }
-.我叮嘱 {
-  align-self: flex-end;
-  max-width: 86%;
-  padding: 9px 12px;
-  border-radius: 13px 13px 3px 13px;
-  background: var(--气泡绿);
+/* ── 你的叮嘱（方案 A，与求职端 在谈详情 同构）── */
+.叮嘱块 {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--分隔线);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.叮嘱标 { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--次要浅); }
+.叮嘱条 { display: flex; flex-direction: column; gap: 5px; }
+.叮嘱我 {
+  padding-left: 9px;
+  border-left: 2px solid var(--荧光绿);
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: var(--墨);
 }
-.代理回执 { display: flex; flex-direction: row; align-items: flex-start; gap: 7px; max-width: 92%; }
-.回执文 { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.55; color: var(--次要); }
+.叮嘱回执 { display: flex; flex-direction: row; align-items: flex-start; gap: 6px; padding-left: 9px; }
+.叮嘱回执文 { flex: 1; min-width: 0; font-size: 12px; line-height: 1.55; color: var(--次要); }

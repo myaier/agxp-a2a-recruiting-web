@@ -760,44 +760,50 @@
   color: var(--次要浅);
 }
 
-/* ── 你的叮嘱（2026-08-20 谈判页介入设计）：绿气泡 = 我对我方代理说的话，
-   紧跟一条代理执行回执。对外的双方往来仍只在「双方代理对话」里，两条线不混 ── */
-.叮嘱区 {
+/* ── 你的叮嘱（方案 A：收进当前阶段卡内的最后一块，文档语言而非聊天气泡）── */
+.叮嘱块 {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--分隔线);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin: 2px 0 6px 34px;
+  gap: 10px;
 }
 
-.叮嘱组 {
+.叮嘱标 {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--次要浅);
+}
+
+.叮嘱条 {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 5px;
 }
 
-.我叮嘱 {
-  align-self: flex-end;
-  max-width: 86%;
-  padding: 9px 12px;
-  border-radius: 13px 13px 3px 13px;
-  background: var(--气泡绿);
+/* 你说的话：左侧一道细竖线引述，不用气泡 */
+.叮嘱我 {
+  padding-left: 9px;
+  border-left: 2px solid var(--荧光绿);
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: var(--墨);
 }
 
-.代理回执 {
+.叮嘱回执 {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
-  gap: 7px;
-  max-width: 92%;
+  gap: 6px;
+  padding-left: 9px;
 }
 
-.回执文 {
+.叮嘱回执文 {
   flex: 1;
   min-width: 0;
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1.55;
   color: var(--次要);
 }
