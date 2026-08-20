@@ -178,6 +178,8 @@ export interface 候选 {
   /** 意向确认后互换的真名；未确认为 null */
   真名: string | null;
   头像字: string;
+  /** 卡通头像款式（标注 2026-08-20 17:00：头像换成注册时那套）*/
+  性别?: '男' | '女';
   阶段: 阶段;
   轮次: string;
   下一步: string;
@@ -215,6 +217,8 @@ export interface 推荐候选 {
   代号: string;
   画像: string;
   头像字: string;
+  /** 卡通头像款式（标注 2026-08-20 17:00：头像换成注册时那套）*/
+  性别?: '男' | '女';
   匹配分: number;
   亮点: string[];
   评语: string;

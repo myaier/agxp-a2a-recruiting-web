@@ -16,7 +16,7 @@ import 样式 from './企业在谈候选.module.css';
 import { 主页外壳, 代理横幅, 阶段标签, 滚动区, 白卡, use模拟加载, 骨架卡组 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
 import 下拉刷新 from '../组件/下拉刷新';
-import 人像头 from '../组件/人像头';
+import 卡通头像 from '../组件/卡通头像';
 import { 公文包图标, 学帽图标 } from '../组件/图标';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
@@ -158,7 +158,9 @@ function 候选卡({ 单, 按下 }: { 单: 候选; 按下: () => void }) {
     <白卡 按下={按下} 类名={样式.卡}>
       {/* 行1：头像 + 化名/真名 + 活跃度；右列 匹配环 + 硬性核对数 */}
       <div className={样式.头行}>
-        <人像头 键={单.编号} 首字={显示真名 ? 显示真名.charAt(0) : 单.头像字} 尺寸={34} />
+        <span className={样式.卡通位}>
+          <卡通头像 款式={单.性别 ?? '男'} 尺寸={34} />
+        </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className={样式.名行}>
             <span className={`${样式.代号名} 单行`}>{显示真名 ?? 单.代号}</span>

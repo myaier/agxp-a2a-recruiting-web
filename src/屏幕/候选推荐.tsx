@@ -13,7 +13,7 @@ import 样式 from './候选推荐.module.css';
 import 下拉刷新 from '../组件/下拉刷新';
 import { 主页外壳, 白卡, 滚动区, 代理横幅 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
-import 人像头 from '../组件/人像头';
+import 卡通头像 from '../组件/卡通头像';
 import { 公文包图标, 学帽图标, 谈判图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
 import { use应用状态 } from '../状态/应用状态';
@@ -243,7 +243,9 @@ function 推荐卡({
       <button className={`${样式.卡主体} 可点`} onClick={() => !滑开 && 按下()}>
         {/* 行1：头像 + 代号 + 活跃度（双盲：头像只用 头像字，不用真人照片） */}
         <div className={样式.头行}>
-          <人像头 键={人.编号} 首字={人.头像字} 尺寸={34} />
+          <span className={样式.卡通位}>
+          <卡通头像 款式={人.性别 ?? '男'} 尺寸={34} />
+        </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className={样式.名行}>
               <span className={`${样式.代号} 单行`}>{人.代号}</span>
