@@ -154,9 +154,13 @@ export default function 我的() {
 
       {/* ── 代理状态毛玻璃卡：压在顶部渐变头上，「管理 ›」进规则库 ── */}
       <button className={`${样式.代理卡} 可点`} onClick={() => 跳转(路径.规则库)}>
-        <span className={样式.盾牌底}>
-          <代理标 尺寸={18} 脸色="#ffffff" 眼色="var(--荧光绿)" 带点={false} />
-        </span>
+        <代理标
+          尺寸={30}
+          脸色="#ffffff"
+          眼色="var(--墨)"
+          描边色="var(--墨)"
+          描边宽={2.6}
+        />
         <span className={样式.代理文字}>
           <span className={样式.代理标题行}>
             <span className={样式.代理标题}>我的谈判AI代理</span>

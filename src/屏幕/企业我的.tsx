@@ -150,9 +150,13 @@ export default function 企业我的() {
 
       {/* ── 代理状态毛玻璃卡：压在顶部渐变头上，「管理 ›」进企业代理设置 ── */}
       <button className={`${样式.代理卡} 可点`} onClick={() => 跳转(路径.企业代理设置)}>
-        <span className={样式.盾牌底}>
-          <代理标 尺寸={18} 脸色="#ffffff" 眼色="var(--荧光绿)" 带点={false} />
-        </span>
+        <代理标
+          尺寸={30}
+          脸色="#ffffff"
+          眼色="var(--墨)"
+          描边色="var(--墨)"
+          描边宽={2.6}
+        />
         <span className={样式.代理文字}>
           <span className={样式.代理标题行}>
             <span className={样式.代理标题}>我的招聘AI代理</span>
