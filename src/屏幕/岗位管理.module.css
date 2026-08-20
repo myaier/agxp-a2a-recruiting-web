@@ -17,10 +17,11 @@
 
 /* 分组标题：字间距 1.5 / 字号 11 ≈ 0.14em（与规则库分组标同款） */
 .分组标 {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  color: var(--次要浅);
+  /* 标注 2026-08-20 15:39：字体大一点、字距收掉（原来 0.14em 撑出大缝隙）*/
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--墨);
 }
 
 /* ── 分组卡：一组岗位共用一张白卡，行间用分隔线 ── */
