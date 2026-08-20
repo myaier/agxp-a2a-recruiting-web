@@ -1,7 +1,7 @@
 /* 候选筛选抽屉：底部抽屉，版式语言取自 拿不准弹层（同一套遮罩 + 圆角抽屉 + 抓手）。
    两屏（候选推荐 / 企业在谈候选）共用这一份，避免两处各写一套后漂移。
-   内容比原来长（多了生效规则条 + 自定义要求输入），所以抽屉限高、中段自己滚，
-   标题行与底部保存键始终留在视野里。 */
+   主体是一排一条的规则行，条数不定，所以抽屉限高、中段自己滚，
+   标题行与底部「完成」始终留在视野里。 */
 
 .遮罩 {
   position: absolute;
@@ -60,126 +60,69 @@
   color: var(--深绿);
 }
 
-/* ── 当前生效的代理规则：只读 chip 一行，让用户一打开就知道代理正在按什么筛 ── */
-.规则条 {
-  flex: none;
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.规则片 {
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: var(--淡绿底2);
-  font-size: 11.5px;
-  line-height: 1.4;
-  color: var(--深绿文字);
-}
-
-/* ── 中段：档位型要求 + 自定义要求，长了自己滚 ── */
+/* ── 中段：规则清单，一排一条，长了自己滚 ── */
 .内容区 {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  padding-top: 6px;
 }
 
-.组 {
-  margin-top: 18px;
-}
-
-.组标 {
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--次要浅);
-}
-
-.片行 {
+.规则行 {
   display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 9px;
-}
-
-.片 {
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid #e4e6dd;
-  background: var(--页面底);
-  font-size: 13px;
-  color: var(--正文);
-}
-
-.片选中 {
-  border-color: var(--深绿);
-  background: var(--淡绿底2);
-  font-weight: 700;
-  color: var(--深绿文字);
-}
-
-/* ── 自定义硬性要求：已添加的是可删 chip，下面常驻输入行 ── */
-.自定义片 {
-  display: inline-flex;
   flex-direction: row;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px 8px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--深绿);
-  background: var(--淡绿底2);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--深绿文字);
+  margin-top: 8px;
 }
 
-.删片 {
-  font-size: 11px;
-  line-height: 1;
-  color: var(--深绿);
-}
-
-.输入行 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  margin-top: 9px;
-}
-
-.输入框 {
+/* 输入框看起来就是一整行可写的东西 —— 用户点哪儿都能改，不用先找「编辑」按钮 */
+.规则输入 {
   flex: 1;
   min-width: 0;
-  height: 40px;
+  height: 44px;
   padding: 0 14px;
-  border-radius: 999px;
+  border-radius: 12px;
   border: 1px solid #e4e6dd;
   background: var(--页面底);
   font-size: 13.5px;
+  line-height: 1.4;
   color: var(--墨);
 }
 
-.输入框::placeholder {
+.规则输入:focus {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+}
+
+.规则输入::placeholder {
   color: var(--最弱);
 }
 
-.添加键 {
+.删行 {
   flex: none;
-  height: 40px;
-  padding: 0 16px;
-  border-radius: 999px;
-  border: 1px solid var(--深绿);
-  background: var(--白);
-  font-size: 13px;
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--次要浅);
+}
+
+/* 虚线框：与实线的规则行区分开，一眼看出这不是一条规则，是「再加一条」 */
+.添加行 {
+  width: 100%;
+  height: 44px;
+  margin-top: 10px;
+  border-radius: 12px;
+  border: 1px dashed #e4e6dd;
+  background: var(--页面底);
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--深绿);
 }
 
 /* ── 底部主键 ── */
-.保存键 {
+.完成键 {
   flex: none;
   width: 100%;
   margin-top: 16px;
