@@ -504,14 +504,3 @@
   text-align: left;
 }
 
-/* 卡通头像位（标注 2026-08-20 17:00：候选头像统一用注册时那套）：圆形裁切 */
-.卡通位 {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}

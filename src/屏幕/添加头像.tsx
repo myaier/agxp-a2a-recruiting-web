@@ -1,11 +1,10 @@
 // 添加头像（/onboard/avatar）—— 2026-08-20 按 BOSS 截图顺序重排：注册流最后一屏。
-// 大圆上传位（选图片压成 dataURL）+ 男女两枚卡通头像可选（标注 2026-08-20 13:07）。
+// 大圆上传位（选图片压成 dataURL）。标注 2026-08-20 18:07：我们设计的虚拟头像删掉，只留用户自己上传。
 // 头像落 全局.求职头像（dataURL 或 '卡通:男'/'卡通:女'，localStorage 键 AGXP求职头像v1，
 // 实现镜像 招聘头像 切片）。「开启求职之旅」→ 替换跳转进主壳，后退不能回注册流。
 
 import { useRef } from 'react';
 import 样式 from './入职引导.module.css';
-import 卡通头像 from '../组件/卡通头像';
 import { 次级页外壳, 返回栏, 页面大标题, 主按钮, 滚动区 } from '../组件/通用';
 import { 相机图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
@@ -64,8 +63,7 @@ export default function 添加头像() {
 
       <滚动区 样式覆盖={{ padding: '4px 22px 12px' }}>
         <div className={样式.头像区}>
-          {/* 大圆只做上传位（标注 13:20）：空白点击上传；只有真照片才显示进来，
-              选卡通头像不占大圆，选中态在下方小圆的描边环上 */}
+          {/* 大圆 = 唯一的头像入口（标注 18:07：虚拟头像删掉，让用户自己上传）*/}
           <button
             className={`${样式.大圆} 可点`}
             onClick={() => 文件框.current?.click()}
@@ -84,26 +82,6 @@ export default function 添加头像() {
             className={样式.隐藏文件框}
             onChange={选了照片}
           />
-
-          <div className={样式.虚拟头像提示}>也可以选择下方虚拟头像</div>
-
-          {/* 男女两枚卡通头像：点选即落全局，选中的带描边环 */}
-          <div className={样式.章行}>
-            {(['男', '女'] as const).map((款) => {
-              const 选中 = 头像 === `卡通:${款}`;
-              return (
-                <button
-                  key={款}
-                  className={`${样式.章钮} ${选中 ? 样式.章钮选中 : ''} 可点`}
-                  onClick={() => 派发({ 型: '存求职头像', 图: `卡通:${款}` })}
-                  aria-pressed={选中}
-                  aria-label={`虚拟头像 ${款}`}
-                >
-                  <卡通头像 款式={款} 尺寸={56} />
-                </button>
-              );
-            })}
-          </div>
         </div>
       </滚动区>
 
