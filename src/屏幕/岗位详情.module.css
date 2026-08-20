@@ -28,7 +28,7 @@
 
 /* ── 滚动内容 ── */
 .内容 {
-  /* 底部双键是固定条，垫够高度，滚到底最后一张卡不被压住 */
+  /* 底部悬浮胶囊条浮在内容上方，垫够高度，滚到底最后一张卡不被压住 */
   padding: 2px 20px calc(var(--安全区下) + 92px);
   display: flex;
   flex-direction: column;
@@ -331,56 +331,36 @@
   color: var(--正文);
 }
 
-.地图块 {
-  position: relative;
-  height: 104px;
-  margin-top: 11px;
-  border-radius: 12px;
-  border: 1px solid #e4e6dd;
-  background-color: var(--浅灰底2);
-  /* 极简网格底：两组细线交叉，纯装饰，不暗示真实路网 */
-  background-image:
-    linear-gradient(90deg, var(--描边) 1px, transparent 1px),
-    linear-gradient(180deg, var(--描边) 1px, transparent 1px);
-  background-size: 34px 34px, 34px 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
-.地图定位 {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: var(--白);
-  border: 1px solid var(--淡绿描边);
-  box-shadow: 0 2px 8px rgba(26, 26, 26, 0.08);
-}
 
 /* ── 底部固定双键 ── */
+/* 悬浮胶囊条（标注 2026-08-20 15:36）：与看市场职位详情的浮动条同款 ——
+   左右 0 + margin auto 居中，圆角 999，半透明白 + blur + 投影 */
 .底键区 {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
+  margin: 0 auto;
+  width: fit-content;
+  bottom: calc(var(--安全区下) + 12px);
   z-index: 10;
   display: flex;
   flex-direction: row;
-  gap: 10px;
-  padding: 10px 20px calc(var(--安全区下) + 12px);
-  background: rgba(247, 247, 244, 0.92);
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border-top: 1px solid #e4e6dd;
+  box-shadow: 0 8px 24px rgba(26, 26, 26, 0.12);
 }
 
 .次键 {
-  flex: 1;
-  height: 46px;
-  border-radius: var(--圆角-按钮);
+  flex: none;
+  height: 44px;
+  padding: 0 22px;
+  border-radius: 999px;
   background: var(--白);
   border: 1.5px solid var(--描边深);
   font-size: 15px;
@@ -391,14 +371,14 @@
 /* 主键 = 这个岗位的状态动作（关闭 / 重新开放）。关闭是可逆动作，
    走荧光绿而不是红键 —— 与 岗位管理 里「停止招聘」确认键同一口径 */
 .主键 {
-  flex: 1.4;
-  height: 46px;
-  border-radius: var(--圆角-按钮);
+  flex: none;
+  height: 44px;
+  padding: 0 24px;
+  border-radius: 999px;
   background: var(--荧光绿);
   font-size: 15px;
   font-weight: 700;
   color: var(--墨);
-  box-shadow: 0 1px 4px var(--主按钮投影);
 }
 
 /* ── 关闭职位二次确认（版式同 岗位管理 的确认层）── */
@@ -472,4 +452,11 @@
 @keyframes 弹层放大 {
   from { opacity: 0; transform: scale(0.94); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* 地址行：定位图标 + 文字（标注 15:36 起不放地图） */
+.地址行 {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }

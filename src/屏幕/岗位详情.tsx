@@ -272,16 +272,14 @@ export default function 岗位详情() {
             <span className={样式.尖括号}>›</span>
           </button>
 
-          {/* ── 工作地址：浅底方块 + 定位图标 + 地址文本（不接真地图，也不放假地图截图）── */}
+          {/* ── 工作地址：只放文字（标注 2026-08-20 15:36：地图部分删掉）── */}
           {地址文 ? (
             <>
               <div className={样式.节标}>工作地址</div>
               <div className={样式.卡}>
-                <div className={样式.地址文}>{地址文}</div>
-                <div className={样式.地图块} aria-hidden>
-                  <span className={样式.地图定位}>
-                    <定位图标 尺寸={20} 色="var(--深绿)" />
-                  </span>
+                <div className={样式.地址行}>
+                  <定位图标 尺寸={16} 色="var(--深绿)" />
+                  <span className={样式.地址文}>{地址文}</span>
                 </div>
               </div>
             </>
@@ -289,7 +287,7 @@ export default function 岗位详情() {
         </div>
       </滚动区>
 
-      {/* ── 底部固定双键：编辑（跳发布岗位的编辑态）+ 关闭职位 / 重新开放 ── */}
+      {/* ── 底部悬浮胶囊条（标注 15:36：与看市场职位详情同款）：编辑 + 关闭职位/重新开放 ── */}
       <div className={样式.底键区}>
         <button
           className={`${样式.次键} 可点`}
@@ -344,7 +342,7 @@ export default function 岗位详情() {
   );
 }
 
-/** 定位图标：地图占位块里的针。图标.tsx 里没有针形，这一处专用，就近定义 */
+/** 定位图标：地址行前的针。图标.tsx 里没有针形，这一处专用，就近定义 */
 function 定位图标({ 尺寸 = 20, 色 = 'var(--深绿)' }: { 尺寸?: number; 色?: string }) {
   return (
     <svg width={尺寸} height={尺寸} viewBox="0 0 24 24" fill="none" aria-hidden>

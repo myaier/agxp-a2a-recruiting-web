@@ -568,13 +568,28 @@
 
 /* ── 筛选要求（标注 13:40）：小标 + 常驻多行输入 ── */
 .筛选要求标 {
-  margin: 16px 0 7px;
+  /* 标注 2026-08-20 15:37：这里要一眼看出是「对 AI 代理提要求」的地方 —— 主行同节问级 */
+  margin: 18px 0 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.筛选要求题 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+.筛选要求注 {
   font-size: 11.5px;
   color: var(--次要浅);
 }
 
 .筛选要求输入 {
   width: 100%;
+  min-height: 92px;
   border-radius: 12px;
   background: var(--浅灰底);
   padding: 11px 13px;
