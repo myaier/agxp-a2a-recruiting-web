@@ -35,7 +35,8 @@
   display: flex;
   gap: 20px;
   align-items: baseline;
-  padding: 12px 20px 2px;
+  /* 标注 2026-08-20 13:12：文字贴框边太近，上挪并给足下留白 */
+  padding: 8px 20px 10px;
 }
 
 .Tab {
