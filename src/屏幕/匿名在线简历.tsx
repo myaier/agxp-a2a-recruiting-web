@@ -199,7 +199,8 @@ export default function 匿名在线简历() {
     return () => window.clearTimeout(定时);
   }, [提示]);
 
-  const 档 = 匿名简历表[编号];
+  // 起步推荐克隆（编号带 @岗位编号 后缀）回落到模板人的简历档
+  const 档 = 匿名简历表[编号] ?? 匿名简历表[编号.split('@')[0]];
   const 推 = 推荐列表.find((条) => 条.编号 === 编号);
   const 已接触 = 状态.已接触推荐.includes(编号);
   const 已收藏 = 状态.收藏候选.includes(编号);
