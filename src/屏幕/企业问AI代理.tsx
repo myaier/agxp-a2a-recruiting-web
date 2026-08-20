@@ -63,7 +63,7 @@ export default function 企业问AI代理() {
 
   return (
     <次级页外壳 对话底>
-      <返回栏 返回={返回} 标题="我的招聘AI代理" 右侧={<button className={`${样式.更多} 可点`} onClick={() => 跳转(路径.企业代理设置)}>⋯</button>} />
+      <返回栏 返回={返回} 标题="我的招聘AI代理" 右侧={<button className={`${样式.更多} 可点`} onClick={() => 跳转(路径.企业代理详情)}>⋯</button>} />
 
       {/* 对话流：屏幕内唯一滚动区 */}
       <div ref={滚动引用} className={`${样式.对话流} 滚动区`}>

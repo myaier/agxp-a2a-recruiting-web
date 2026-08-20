@@ -53,6 +53,7 @@ import 企业问AI代理 from './屏幕/企业问AI代理';
 import 企业真人会话 from './屏幕/企业真人会话';
 import 岗位管理 from './屏幕/岗位管理';
 import 岗位详情 from './屏幕/岗位详情';
+import 企业代理详情 from './屏幕/企业代理详情';
 import 企业代理设置 from './屏幕/企业代理设置';
 import 匿名在线简历 from './屏幕/匿名在线简历';
 import 企业通知中心 from './屏幕/企业通知中心';
@@ -139,6 +140,7 @@ export default function 应用() {
       <Route path={路径.企业真人会话} element={<企业真人会话 />} />
       <Route path={路径.岗位管理} element={<岗位管理 />} />
       <Route path={路径.岗位详情模板} element={<岗位详情 />} />
+      <Route path={路径.企业代理详情} element={<企业代理详情 />} />
       <Route path={路径.企业代理设置} element={<企业代理设置 />} />
       <Route path={路径.匿名在线简历模板} element={<匿名在线简历 />} />
       <Route path={路径.企业通知中心} element={<企业通知中心 />} />
