@@ -559,3 +559,25 @@
   font-weight: 800;
   color: var(--深绿);
 }
+
+/* ── 筛选要求（标注 13:40）：小标 + 常驻多行输入 ── */
+.筛选要求标 {
+  margin: 16px 0 7px;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.筛选要求输入 {
+  width: 100%;
+  border-radius: 12px;
+  background: var(--浅灰底);
+  padding: 11px 13px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--墨);
+  resize: none;
+}
+
+.筛选要求输入::placeholder {
+  color: var(--灰白);
+}
