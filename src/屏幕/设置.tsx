@@ -104,10 +104,6 @@ export default function 设置() {
           </button>
         </div>
 
-        <div className={`${样式.组标} ${样式.组标间距}`}>通知</div>
-        <div className={样式.卡}>
-          {开关行('需要你时推送提醒', '')}
-        </div>
 
         <div className={`${样式.组标} ${样式.组标间距}`}>通用</div>
         <div className={样式.卡}>
@@ -117,7 +113,6 @@ export default function 设置() {
           >
             <span className={样式.行文字组}>
               <span className={样式.行标题}>清理缓存</span>
-              <span className={样式.行说明}>不影响简历、规则和谈判记录</span>
             </span>
             <span className={样式.行值}>32.4 MB</span>
             <span className={样式.尖括号}>›</span>

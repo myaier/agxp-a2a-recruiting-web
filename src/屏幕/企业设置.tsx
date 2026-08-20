@@ -80,10 +80,6 @@ export default function 企业设置() {
           </button>
         </div>
 
-        <div className={`${样式.组标} ${样式.组标间距}`}>通知</div>
-        <div className={样式.卡}>
-          {开关行('需要拍板时推送提醒', '')}
-        </div>
 
         {/* 关于组与求职端设置一比一，两端同一批外围页 */}
         <div className={`${样式.组标} ${样式.组标间距}`}>关于</div>
