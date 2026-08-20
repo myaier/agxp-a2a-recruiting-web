@@ -42,7 +42,7 @@ export default function 接入飞书({ 企业端 = false }: { 企业端?: boolea
   // 求职端 = 求职AI代理，招聘端 = 招聘AI代理（用户 2026-08-20）
   const 代理名 = 企业端 ? '招聘AI代理' : '求职AI代理';
   // 副题按端说清代理替你干什么（标注 2026-08-20 18:48）
-  const 做的事 = 企业端 ? '招人' : '求职';
+  const 做的事 = 企业端 ? '招聘' : '求职';
   const 完成 = () => (企业端 ? 进企业主壳() : 进主壳());
 
   const 绑定 = () => {
@@ -59,7 +59,7 @@ export default function 接入飞书({ 企业端 = false }: { 企业端?: boolea
         <p className={样式.副题}>
           {方式 === '飞书'
             ? `不用打开 App，在飞书里盯${做的事}进展、下指令`
-            : `让你自己的 agent 接管${做的事}，与这边直接对谈`}
+            : `让你的 Agent 接管你的${做的事}工作`}
         </p>
 
 
@@ -106,7 +106,7 @@ export default function 接入飞书({ 企业端 = false }: { 企业端?: boolea
               </button>
             </div>
             <div className={样式.码说明}>
-              在你自己的 agent 里执行这行，它就能和你的{代理名}直接对谈
+              复制这行发给你的 Agent，它就能接管你的{做的事}工作
             </div>
           </div>
         )}
