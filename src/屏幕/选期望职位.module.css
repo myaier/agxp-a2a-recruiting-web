@@ -67,13 +67,15 @@
 
 .职左栏 {
   flex: none;
-  width: 104px;
+  /* 大类名变长（人力/行政/法务）后左栏收窄给右侧网格让位 */
+  width: 92px;
   background: var(--浅灰底);
   padding: 6px 0 16px;
 }
 
 .职大类 {
   display: block;
+  line-height: 1.35;
   width: 100%;
   padding: 13px 14px;
   font-size: 13.5px;
@@ -99,13 +101,21 @@
 }
 
 .职小类 {
-  padding: 9px 15px;
+  /* 网格两列 + 长岗位名（如「自然语言处理算法」）：收字号、给最小高、居中，
+     一行放不下就两行，卡片高度靠 min-height 对齐（2026-08-20 补全职位库） */
+  min-height: 44px;
+  padding: 8px 10px;
   border-radius: 10px;
   background: var(--页面底);
   border: 1px solid #e4e6dd;
-  font-size: 13px;
+  font-size: 12.5px;
+  line-height: 1.35;
   font-weight: 500;
   color: var(--墨);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .职小类选中 {
@@ -179,4 +189,22 @@
   color: var(--深绿);
   font-size: 12px;
   font-weight: 500;
+}
+
+/* ── 右栏分组块（2026-08-20 按截图补全职位库后）：小标题 + 两列岗位片 ── */
+.分组块 {
+  margin-bottom: 18px;
+}
+
+.分组标 {
+  margin-bottom: 9px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.岗位网 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
 }

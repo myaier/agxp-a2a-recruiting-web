@@ -12,7 +12,7 @@ import { 放大镜图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
-import { 职业分类表 } from '../数据/职业分类';
+import { 职业分类树 } from '../数据/职业分类';
 
 /** 期望职位上限：与 BOSS 同档（与 学生分流 的快捷片共用同一档）*/
 const 职位上限 = 10;
@@ -23,7 +23,7 @@ export default function 选期望职位() {
 
   // 进页时取全局已选，保存前只改本地 —— 中途退出不写脏数据
   const [已选, 设已选] = useState<string[]>(全局.引导预填?.职位 ?? []);
-  const [当前大类, 设当前大类] = useState(职业分类表[0].大类);
+  const [当前大类, 设当前大类] = useState(职业分类树[0].大类);
   const [关键词, 设关键词] = useState('');
 
   const 切换 = (名: string) => {
@@ -45,9 +45,14 @@ export default function 选期望职位() {
   const 词 = 关键词.trim();
   // 搜索直接跨全部大类匹配小类名，命中即平铺展示
   const 搜索结果 =
-    词 === '' ? [] : 职业分类表.flatMap((组) => 组.小类.filter((名) => 名.includes(词)));
+    词 === ''
+      ? []
+      : 职业分类树.flatMap((组) =>
+          组.分组.flatMap((分) => 分.岗位.filter((名) => 名.includes(词)))
+        );
 
-  const 小类列表 = 职业分类表.find((组) => 组.大类 === 当前大类)?.小类 ?? [];
+  // 右栏按分组分块（截图：分组小标题 + 岗位片两列）
+  const 当前分组 = 职业分类树.find((组) => 组.大类 === 当前大类)?.分组 ?? [];
 
   const 小类卡 = (名: string) => (
     <button
@@ -85,7 +90,7 @@ export default function 选期望职位() {
         /* 左大类栏 + 右小类多选卡（沿用 发布岗位 / 旧职位弹层的双栏形态）*/
         <div className={样式.职双栏}>
           <div className={`${样式.职左栏} 滚动区`}>
-            {职业分类表.map((组) => (
+            {职业分类树.map((组) => (
               <button
                 key={组.大类}
                 className={`${样式.职大类} ${组.大类 === 当前大类 ? 样式.职大类当前 : ''} 可点`}
@@ -95,7 +100,14 @@ export default function 选期望职位() {
               </button>
             ))}
           </div>
-          <div className={`${样式.职右栏} 滚动区`}>{小类列表.map(小类卡)}</div>
+          <div className={`${样式.职右栏} 滚动区`}>
+            {当前分组.map((分) => (
+              <div key={分.组名} className={样式.分组块}>
+                <div className={样式.分组标}>{分.组名}</div>
+                <div className={样式.岗位网}>{分.岗位.map(小类卡)}</div>
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className={`${样式.搜索结果区} 滚动区`}>
