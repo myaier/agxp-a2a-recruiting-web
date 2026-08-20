@@ -1,6 +1,6 @@
-/* R9 招聘名片 —— 表单版式镜像 添加意向.module.css（表单条目走通用组件，
-   编辑抽屉像素照搬 A21）。「一句话」是页面内直接编辑的多行输入，为本屏专有。
-   keyframes 必须定义在本文件：CSS Modules 会重命名 animation-name。 */
+/* R9 招聘名片 —— 名片预览行 + 三条就地编辑条目 + 头像上传。
+   标注 2026-08-20 14:34/14:35：底部升起的编辑抽屉整套（遮罩 / 抽屉 / 抽屉输入
+   与两条本地 keyframes）已删，字段改成点击就地变输入框。 */
 
 /* ── 名片预览行：头像 + 姓名 / 职务 · 公司（候选人看到的那一面）── */
 .预览行 {
@@ -31,110 +31,62 @@
   color: var(--次要浅);
 }
 
-/* ── 对候选人的一句话（多行输入，标签字号对齐通用 表单条目标签）── */
-.一句话区 {
-  padding: 14px 0 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* ── 就地编辑条目：展示态与编辑态共用外壳，所以点下去行高不跳 ──
+   像素值一比一取自 组件/通用.module.css 的 .表单条目 */
+.就地条目 {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+  width: 100%;
+  text-align: left;
+  display: block;
 }
 
-.一句话标签 {
+.就地标签 {
   font-size: 12px;
   color: var(--次要浅);
 }
 
-.一句话输入 {
-  min-height: 92px;
-  padding: 12px 14px;
-  border: 1px solid var(--描边中);
-  border-radius: var(--圆角-按钮);
-  background: var(--白);
-  font-size: 14.5px;
-  font-weight: 500;
-  line-height: 1.7;
-  color: var(--墨);
-  font-family: var(--字体);
-  resize: none;
-}
-
-.一句话输入:focus {
-  border-color: var(--淡绿描边);
-  outline: none;
-}
-
-/* ── 编辑抽屉（像素照搬 添加意向：Modal → 覆盖在次级页外壳上的绝对定位层）── */
-.遮罩 {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  background: var(--遮罩);
-  animation: 遮罩淡入 0.18s ease both;
-}
-
-.抽屉 {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 21;
+.就地值行 {
   display: flex;
-  flex-direction: column;
-  background: var(--白);
-  border-radius: var(--圆角-卡片) var(--圆角-卡片) 0 0;
-  /* 底部内边距由抽屉里的主按钮自带（含安全区），这里只管上半部分 */
-  padding: 16px 0 0;
-  animation: 抽屉升起 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-
-.抽屉头 {
-  display: flex;
-  flex-direction: row;
   align-items: center;
   gap: 8px;
-  padding: 0 18px;
+  margin-top: 6px;
 }
 
-.抽屉标题 {
-  font-size: 14.5px;
-  font-weight: 700;
-  color: var(--墨);
-}
-
-.抽屉输入 {
-  margin: 12px 18px 0;
-  height: 46px;
-  padding: 0 14px;
-  border: 1px solid var(--描边中);
-  border-radius: var(--圆角-按钮);
-  background: var(--白);
+.就地值 {
+  flex: 1;
   font-size: 15.5px;
   font-weight: 600;
   color: var(--墨);
 }
 
-.抽屉输入:focus {
-  border-color: var(--淡绿描边);
-  outline: none;
+.就地尖括号 {
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+  flex: none;
 }
 
-/* 本地 keyframes：CSS Modules 会重命名 animation-name，
-   全局.css 里的同名 keyframes 够不到，必须在本文件内定义 */
-@keyframes 遮罩淡入 {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+/* 编辑态输入框：与展示态的值同字号同字重同位置，只多一层浅托盘表明可写 */
+.就地输入 {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  padding: 6px 10px;
+  border: 1px solid #e4e6dd;
+  border-radius: var(--圆角-小托盘);
+  background: var(--页面底);
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--墨);
+  font-family: inherit;
 }
-@keyframes 抽屉升起 {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
+
+.就地输入:focus {
+  outline: none;
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
 }
 
 /* ── 头像上传（标注 22:27）── */

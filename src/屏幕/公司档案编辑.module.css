@@ -1,10 +1,81 @@
-/* 公司主页资料编辑 —— 卡与组标复用 我的功能页.module.css，
-   这里只写本屏专有的输入字段（版式取自 发布岗位.module.css 的编辑条目：
-   小标签 + 大值输入 + 分隔线，像素值一比一）。 */
+/* 公司主页资料编辑（2026-08-20 按 BOSS直聘 公司主页编辑重做，视觉走我们自己这套：
+   墨 + 荧光绿，白卡 + 浅托盘，选中态一律深绿描边 + 淡绿底）。
+   组标复用 我的功能页.module.css，本文件只写本屏专有的预览卡 / 字段 / 片 / 单选层。 */
 
+/* ── 名片式预览：LOGO + 公司全称 + 一句话简介 + 规模行 ── */
+.预览卡 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 13px;
+  background: var(--白);
+  border: 1px solid #e4e6dd;
+  border-radius: var(--圆角-中卡);
+  padding: 15px 14px;
+  margin-bottom: 18px;
+}
+
+.LOGO键 {
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+}
+
+.LOGO图 {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  object-fit: cover;
+  display: block;
+}
+
+.相机角标 {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.预览文字 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 2px;
+}
+
+.预览公司名 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+.预览简介 {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--正文);
+}
+
+.预览规模行 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+/* ── 卡与字段 ── */
 .卡 {
   background: var(--白);
-  border: 1px solid var(--描边);
+  border: 1px solid #e4e6dd;
   border-radius: var(--圆角-中卡);
   padding: 2px 14px;
 }
@@ -13,6 +84,9 @@
 .字段 {
   padding: 14px 0;
   border-bottom: 1px solid var(--分隔线);
+  width: 100%;
+  text-align: left;
+  display: block;
 }
 
 .字段.末条 {
@@ -22,18 +96,19 @@
 .字段标签 {
   font-size: 12px;
   color: var(--次要浅);
+  display: block;
   margin-bottom: 8px;
 }
 
-/* 值：浅灰底托盘 + 会换行的多行输入 —— 地址与作息都可能很长，
+/* 值：浅托盘 + 输入。地址与作息都可能很长，多行框会换行，
    单行 input 会把后半截截在框外，用户看不见自己填了什么 */
-.多行输入 {
+.多行输入,
+.单行输入 {
   width: 100%;
   display: block;
-  border: none;
+  border: 1px solid #e4e6dd;
   outline: none;
-  resize: none;
-  background: var(--浅灰底2);
+  background: var(--页面底);
   border-radius: var(--圆角-小托盘);
   padding: 11px 12px;
   font-size: 13px;
@@ -42,8 +117,22 @@
   font-family: inherit;
 }
 
-.多行输入::placeholder {
-  color: var(--最弱);
+.多行输入 {
+  resize: none;
+}
+
+.单行输入 {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--墨);
+  line-height: 1.4;
+}
+
+.多行输入:focus,
+.单行输入:focus,
+.时间输入:focus {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
 }
 
 .字数 {
@@ -53,10 +142,138 @@
   margin-top: 6px;
 }
 
-/* 尾注：解释这几段会怎么被代理用到 */
-.尾注 {
-  font-size: 10.5px;
-  line-height: 1.7;
+/* ── 上班时间段：两个 time 输入 + 连字 ── */
+.时间行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.时间输入 {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #e4e6dd;
+  outline: none;
+  background: var(--页面底);
+  border-radius: var(--圆角-小托盘);
+  padding: 9px 12px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--墨);
+  font-family: inherit;
+}
+
+.时间连字 {
+  flex: none;
+  font-size: 13px;
   color: var(--最弱);
-  padding: 14px 4px 0;
+}
+
+/* ── 选择行：点开底部单选层 ── */
+.选择行 .字段标签 {
+  margin-bottom: 6px;
+}
+
+.选择值行 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.选择值 {
+  flex: 1;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* ── 档位片 / 标签片：未选浅底细描边，选中深绿描边 + 淡绿底 ── */
+.片行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.片 {
+  border: 1px solid #e4e6dd;
+  background: var(--页面底);
+  border-radius: var(--圆角-胶囊);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--正文);
+  font-family: inherit;
+}
+
+.片选中 {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+  color: var(--深绿文字);
+  font-weight: 600;
+}
+
+/* ── 底部单选层（覆盖在次级页外壳上的绝对定位层）── */
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: var(--遮罩);
+  animation: 遮罩淡入 0.18s ease both;
+}
+
+.层 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  background: var(--白);
+  border-radius: var(--圆角-卡片) var(--圆角-卡片) 0 0;
+  padding: 18px 18px calc(22px + var(--安全区下));
+  animation: 层升起 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.层标题 {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--墨);
+  margin-bottom: 14px;
+}
+
+.层片行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+/* 本地 keyframes：CSS Modules 会重命名 animation-name，
+   全局.css 里的同名 keyframes 够不到，必须在本文件内定义 */
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes 层升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
 }

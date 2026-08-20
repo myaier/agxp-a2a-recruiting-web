@@ -304,30 +304,21 @@
   color: var(--最弱);
 }
 
-/* 对现雇主隐身 */
-.屏蔽条目 {
+/* 编辑页底部的开关行：实习标记 / 对这家公司隐身，共用一套排版 */
+.开关条目 {
   padding: 14px 0;
   border-bottom: 1px solid var(--分隔线);
-}
-
-.屏蔽头 {
   display: flex;
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
-.屏蔽标题 {
+.开关标题 {
   font-size: 14.5px;
   font-weight: 500;
   color: var(--墨);
-}
-
-.屏蔽说明 {
-  font-size: 11px;
-  color: var(--次要浅);
-  line-height: 1.65;
-  margin-top: 8px;
 }
 
 /* 删除（仅编辑已有段） */
@@ -538,22 +529,7 @@
   font-family: inherit;
 }
 
-.录入框窄 {
-  flex: none;
-  width: 72px;
-  border: 1px solid var(--描边中);
-  border-radius: 11px;
-  padding: 9px 10px;
-  font-size: 13.5px;
-  color: var(--墨);
-  background: var(--白);
-  outline: none;
-  font-family: inherit;
-  text-align: center;
-}
-
-.录入框::placeholder,
-.录入框窄::placeholder {
+.录入框::placeholder {
   color: var(--最弱);
 }
 

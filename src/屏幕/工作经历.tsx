@@ -70,7 +70,6 @@ export default function 工作经历() {
   // 技能 / 证书的行内录入草稿
   const [技能草稿, 设技能草稿] = useState('');
   const [证书名草稿, 设证书名草稿] = useState('');
-  const [证书年草稿, 设证书年草稿] = useState('');
   const 文件选择框 = useRef<HTMLInputElement>(null);
 
   /** 加一条技能：去重 + 去空白，重复的直接吞掉不报错（用户多半只是手抖点了两次）*/
@@ -87,11 +86,11 @@ export default function 工作经历() {
       轻提示('先填证书名称');
       return;
     }
+    // 年份录入框按标注 14:31 删掉，新加的证书年份留空（列表里年份为空即不渲染）
     存({
-      证书: [...证书列表, { 编号: `c${Date.now()}`, 名称: 名, 年份: 证书年草稿.trim() }],
+      证书: [...证书列表, { 编号: `c${Date.now()}`, 名称: 名, 年份: '' }],
     });
     设证书名草稿('');
-    设证书年草稿('');
   };
 
   function 选中简历文件(事件: ChangeEvent<HTMLInputElement>) {
@@ -352,17 +351,6 @@ export default function 工作经历() {
               if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 加证书();
             }}
           />
-          <input
-            className={`${样式.录入框窄} 等宽数字`}
-            value={证书年草稿}
-            placeholder="年份"
-            inputMode="numeric"
-            maxLength={4}
-            onChange={(事件) => 设证书年草稿(事件.target.value.replace(/\D/g, ''))}
-            onKeyDown={(事件) => {
-              if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 加证书();
-            }}
-          />
           <button className={`${样式.录入键} 可点`} onClick={加证书}>
             添加
           </button>
@@ -421,7 +409,7 @@ function 教育编辑页({
           <input
             className={样式.条目输入}
             value={草稿.学校}
-            placeholder="必填，如：上海交通大学"
+            placeholder="必填"
             onChange={(事件) => 改('学校', 事件.target.value)}
           />
         </div>
@@ -446,7 +434,7 @@ function 教育编辑页({
           <input
             className={样式.条目输入}
             value={草稿.专业}
-            placeholder="必填，如：计算机科学"
+            placeholder="必填"
             onChange={(事件) => 改('专业', 事件.target.value)}
           />
         </div>
@@ -522,7 +510,9 @@ function 经历编辑页({
       开始: '',
       结束: null,
       内容: '',
-      隐藏: false,
+      // 底部两个开关的默认值：隐身默认开、实习默认关（标注 14:29）
+      隐藏: true,
+      实习: false,
     }
   );
   const [行业层, 设行业层] = useState(false);
@@ -534,8 +524,8 @@ function 经历编辑页({
   const 改 = <键 extends keyof 简历经历段>(键名: 键, 值: 简历经历段[键]) =>
     设草稿((旧) => ({ ...旧, [键名]: 值 }));
 
-  // ── 关键项目：挂在这一段经历里面，不做独立大分节 ──
-  // 项目脱离了公司和时间就没有可核对性（「这个项目是在哪家公司、什么时候做的」），
+  // ── 工作业绩（原「关键项目」，标注 14:28 改名）：挂在这一段经历里面，不做独立大分节 ──
+  // 业绩脱离了公司和时间就没有可核对性（「这件事是在哪家公司、什么时候做的」），
   // 所以它必须长在经历段内部，而不是简历里另起一个平级分节。
   const 项目列表 = 草稿.项目 ?? [];
   const 写项目 = (新列表: 简历项目[]) => 改('项目', 新列表);
@@ -592,7 +582,7 @@ function 经历编辑页({
           <input
             className={样式.条目输入}
             value={草稿.职位}
-            placeholder="必填，如：资深后端工程师"
+            placeholder="必填"
             onChange={(事件) => 改('职位', 事件.target.value)}
           />
         </div>
@@ -637,28 +627,28 @@ function 经历编辑页({
           <textarea
             className={样式.内容输入}
             value={草稿.内容}
-            placeholder="做了什么、拿到什么结果，两三句即可"
+            placeholder="请详细写职责、规模、结果"
             rows={4}
             onChange={(事件) => 改('内容', 事件.target.value)}
           />
         </div>
 
-        {/* 关键项目：项目名 / 角色 / 一句话结果三行，多条可增删。
+        {/* 工作业绩：名称 / 角色 / 结果三行，多条可增删。
             只要三项里填了任意一项就跟着这段经历一起存，不设必填 —— 它是加分项，
             不该拦住用户保存经历 */}
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>
-            关键项目<span className={样式.选填注}>选填</span>
+            工作业绩<span className={样式.选填注}>选填</span>
           </div>
 
           {项目列表.map((条, 序) => (
             <div key={条.编号} className={样式.项目卡}>
               <div className={样式.项目卡头}>
-                <span className={样式.项目序}>项目 {序 + 1}</span>
+                <span className={样式.项目序}>业绩 {序 + 1}</span>
                 <button
                   className={`${样式.行删除} 可点`}
                   onClick={() => 写项目(项目列表.filter((项) => 项.编号 !== 条.编号))}
-                  aria-label={`删除项目 ${序 + 1}`}
+                  aria-label={`删除业绩 ${序 + 1}`}
                 >
                   ✕
                 </button>
@@ -666,19 +656,19 @@ function 经历编辑页({
               <input
                 className={样式.项目输入}
                 value={条.名称}
-                placeholder="项目名称"
+                placeholder="名称"
                 onChange={(事件) => 改项目(条.编号, '名称', 事件.target.value)}
               />
               <input
                 className={样式.项目输入}
                 value={条.角色}
-                placeholder="你的角色，如：技术负责人"
+                placeholder="角色"
                 onChange={(事件) => 改项目(条.编号, '角色', 事件.target.value)}
               />
               <input
                 className={`${样式.项目输入} ${样式.项目末行}`}
                 value={条.结果}
-                placeholder="一句话结果，如：峰值 32 万 QPS 零故障"
+                placeholder="结果"
                 onChange={(事件) => 改项目(条.编号, '结果', 事件.target.value)}
               />
             </div>
@@ -694,24 +684,20 @@ function 经历编辑页({
             }
           >
             <span className={样式.添加加号}>＋</span>
-            <span className={样式.添加文字}>添加关键项目</span>
+            <span className={样式.添加文字}>添加工作业绩</span>
           </button>
         </div>
 
-        {/* 只有「至今」在职段才有隐身开关：对外双盲的产品语义 */}
-        {至今 ? (
-          <div className={样式.屏蔽条目}>
-            <div className={样式.屏蔽头}>
-              <span className={样式.屏蔽标题}>对这家公司隐藏我的信息</span>
-              <开关 开={草稿.隐藏} 切换={() => 改('隐藏', !草稿.隐藏)} />
-            </div>
-            <div className={样式.屏蔽说明}>
-              {草稿.隐藏
-                ? `已屏蔽${草稿.公司 || '现雇主'}及关联公司 · 互不推荐`
-                : '关闭后现雇主可能看到你的匿名档案'}
-            </div>
-          </div>
-        ) : null}
+        {/* 编辑页最底部两个开关（标注 14:29）：实习标记 + 对这家公司隐身。
+            新增段默认「隐藏 = 开」，编辑老段沿用该段已存的值；实习字段可缺省 */}
+        <div className={样式.开关条目}>
+          <span className={样式.开关标题}>本段经历是实习经历</span>
+          <开关 开={草稿.实习 === true} 切换={() => 改('实习', !草稿.实习)} />
+        </div>
+        <div className={样式.开关条目}>
+          <span className={样式.开关标题}>对这家公司隐藏我的信息</span>
+          <开关 开={草稿.隐藏} 切换={() => 改('隐藏', !草稿.隐藏)} />
+        </div>
 
         {删除 ? (
           <button className={`${样式.删除键} 可点`} onClick={删除}>

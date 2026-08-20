@@ -129,6 +129,8 @@ interface 状态 {
   企业认证: { 姓名: string; 公司: string };
   /** 招聘名片头像（压缩后的 dataURL）；null = 还没传，用姓氏字标兜底 */
   招聘头像: string | null;
+  /** 公司主页的 LOGO（128px 压缩后的 dataURL）；null = 还没传，用公司首字字标兜底 */
+  公司LOGO: string | null;
   /** 求职端注册末屏（添加头像）的头像：压缩后的 dataURL，或虚拟纪念章 '章:N'；
       null = 还没选（2026-08-20 按 BOSS 截图顺序重排新增） */
   求职头像: string | null;
@@ -194,6 +196,7 @@ type 动作 =
   | { 型: '设飞书接入'; 接入: boolean }
   | { 型: '存企业认证'; 姓名: string; 公司: string }
   | { 型: '存招聘头像'; 图: string | null }
+  | { 型: '存公司LOGO'; 图: string | null }
   | { 型: '存简历文件名'; 文件名: string }
   | { 型: '存引导预填'; 城市们: string[]; 职位: string[] }
   | { 型: '启程引导'; 城市们: string[]; 职位: string[] }
@@ -247,6 +250,18 @@ const 招聘头像存储键 = 'AGXP招聘头像v1';
 function 读招聘头像缓存(): string | null {
   try {
     const 值 = localStorage.getItem(招聘头像存储键);
+    return 值 && 值.startsWith('data:image/') ? 值 : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 公司 LOGO 持久化：128px JPEG dataURL（约 6-12KB），实现镜像 招聘头像 */
+const 公司LOGO存储键 = 'AGXP公司LOGOv1';
+
+function 读公司LOGO缓存(): string | null {
+  try {
+    const 值 = localStorage.getItem(公司LOGO存储键);
     return 值 && 值.startsWith('data:image/') ? 值 : null;
   } catch {
     return null;
@@ -416,6 +431,7 @@ const 初始状态: 状态 = {
   飞书已接入: 读飞书接入缓存(),
   企业认证: 读企业认证缓存() ?? { 姓名: '邵铭', 公司: '云衢科技' },
   招聘头像: 读招聘头像缓存(),
+  公司LOGO: 读公司LOGO缓存(),
   求职头像: 读求职头像缓存(),
   企业通知列表: 企业通知列表初始,
   企业设置开关: {
@@ -993,6 +1009,17 @@ function 归约(旧: 状态, 动作: 动作): 状态 {
         // 隐私模式写不进去，本次会话内仍然一致
       }
       return { ...旧, 招聘头像: 动作.图 };
+    }
+
+    // 公司主页 LOGO：实现镜像 存招聘头像（128px dataURL 直接进 localStorage）
+    case '存公司LOGO': {
+      try {
+        if (动作.图 === null) localStorage.removeItem(公司LOGO存储键);
+        else localStorage.setItem(公司LOGO存储键, 动作.图);
+      } catch {
+        // 隐私模式写不进去，本次会话内仍然一致
+      }
+      return { ...旧, 公司LOGO: 动作.图 };
     }
 
     case '存企业认证': {
