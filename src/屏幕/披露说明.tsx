@@ -8,7 +8,7 @@
 
 import 样式 from './披露说明.module.css';
 import { 次级页外壳, 返回栏, 主按钮, 滚动区, 阶段配色 } from '../组件/通用';
-import { 盾牌图标 } from '../组件/图标';
+import 代理标 from '../组件/代理标';
 import { 披露四阶段 } from '../数据/模拟数据';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -55,7 +55,7 @@ export default function 披露说明() {
       {/* 就绪条：把「点下面这颗按钮就生效」这件事说在按钮上方，而不是塞进按钮文案 */}
       <div className={样式.就绪条}>
         <span className={样式.盾牌底}>
-          <盾牌图标 />
+          <代理标 尺寸={30} 脸色="#ffffff" 眼色="var(--墨)" 描边色="var(--墨)" 描边宽={2.6} />
         </span>
         <div className={样式.就绪文字}>完成后AI代理立即按此授权工作</div>
       </div>

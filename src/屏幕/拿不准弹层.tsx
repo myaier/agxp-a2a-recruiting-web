@@ -7,7 +7,7 @@
 // fixed 会跑到机身外面去；absolute 挂在 次级页外壳（position:relative）上才刚好铺满屏内。
 
 import 样式 from './拿不准弹层.module.css';
-import { 盾牌图标 } from '../组件/图标';
+import 代理标 from '../组件/代理标';
 import { 拿不准弹层 as 文案 } from '../数据/模拟数据';
 
 export default function 拿不准弹层({
@@ -51,7 +51,7 @@ export default function 拿不准弹层({
 
         <div className={样式.标题行}>
           <span className={样式.盾牌底}>
-            <盾牌图标 />
+            <代理标 尺寸={30} 脸色="#ffffff" 眼色="var(--墨)" 描边色="var(--墨)" 描边宽={2.6} />
           </span>
           <span className={样式.标题}>{文案.标题}</span>
         </div>
