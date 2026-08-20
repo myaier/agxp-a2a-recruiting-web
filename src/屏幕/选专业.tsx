@@ -1,5 +1,6 @@
 // 你的专业是（/onboard/major）—— 2026-08-20 按 BOSS 截图顺序重排：
-// 输入框一枚，副行回显上一屏选好的学校名。答案落 简历教育[0].专业。
+// 输入框 + 联想候选（标注 13:04：输「经济」出所有带经济字样的专业），
+// 副行回显上一屏选好的学校名。答案落 简历教育[0].专业。
 
 import { useState } from 'react';
 import 样式 from './入职引导.module.css';
@@ -8,6 +9,7 @@ import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
+import { 专业名录 } from '../数据/专业名录';
 
 export default function 选专业() {
   const { 跳转, 返回 } = use导航();
@@ -15,7 +17,10 @@ export default function 选专业() {
   const 首段 = 全局.简历教育[0];
 
   const [专业, 设专业] = useState(首段?.专业 ?? '');
+  // 点过候选后收起联想，避免选完还挂着列表
+  const [已点选, 设已点选] = useState(false);
   const 词 = 专业.trim();
+  const 候选 = 已点选 || 词 === '' ? [] : 专业名录.filter((名) => 名.includes(词) && 名 !== 词);
 
   const 下一步 = () => {
     if (词 === '') {
@@ -46,8 +51,27 @@ export default function 选专业() {
             className={样式.输入}
             placeholder="专业名称"
             value={专业}
-            onChange={(事件) => 设专业(事件.target.value)}
+            onChange={(事件) => {
+              设专业(事件.target.value);
+              设已点选(false);
+            }}
           />
+        </div>
+
+        {/* 联想候选：与毕业院校页同款行样式 */}
+        <div className={样式.候选列表}>
+          {候选.map((名) => (
+            <button
+              key={名}
+              className={`${样式.候选行} 可点`}
+              onClick={() => {
+                设专业(名);
+                设已点选(true);
+              }}
+            >
+              {名}
+            </button>
+          ))}
         </div>
       </滚动区>
 
