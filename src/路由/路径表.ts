@@ -79,6 +79,10 @@ export const 路径 = {
   编辑岗位: (编号: string) => `/hr/post-job/${编号}`,
   编辑岗位模板: '/hr/post-job/:id',
   公司档案编辑: '/hr/company-profile',
+  /** 公司主页资料的单个分区编辑页。段用 ASCII slug（basic / welfare / intro /
+   *  business / album / product / team），中文分区名在 数据/公司主页资料.ts 的分区表里 */
+  公司档案分区: (段: string) => `/hr/company-profile/${段}`,
+  公司档案分区模板: '/hr/company-profile/:area',
   企业主壳: '/hr',
   候选详情: (编号: string) => `/hr/candidate/${编号}`,
   候选详情模板: '/hr/candidate/:id',

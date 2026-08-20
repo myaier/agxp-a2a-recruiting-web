@@ -44,6 +44,7 @@ import 企业实名认证 from './屏幕/企业实名认证';
 import 招聘名片 from './屏幕/招聘名片';
 import 发布岗位 from './屏幕/发布岗位';
 import 公司档案编辑 from './屏幕/公司档案编辑';
+import 公司档案分区编辑 from './屏幕/公司档案分区编辑';
 import 企业主壳 from './屏幕/企业主壳';
 import 候选详情 from './屏幕/候选详情';
 import 候选未通过 from './屏幕/候选未通过';
@@ -128,6 +129,8 @@ export default function 应用() {
       {/* 编辑态复用同一个屏：带 :id 就预填那个岗位、主按钮变「保存修改」 */}
       <Route path={路径.编辑岗位模板} element={<发布岗位 />} />
       <Route path={路径.公司档案编辑} element={<公司档案编辑 />} />
+      {/* 分区编辑各自一整页：长文写得开，也能返回、能深链 */}
+      <Route path={路径.公司档案分区模板} element={<公司档案分区编辑 />} />
       <Route path={路径.企业主壳} element={<企业主壳 />} />
       <Route path={路径.候选详情模板} element={<候选详情 />} />
       <Route path={路径.候选未通过} element={<候选未通过 />} />

@@ -1,0 +1,292 @@
+/* 公司主页资料 · 分区编辑页（2026-08-20：底部升起层改成整页编辑）。
+   两种版式：长文分区是整屏输入框（字数压右下角），其余分区是一张白卡装字段。
+   选中态一律深绿描边 + 淡绿底，描边 #e4e6dd，输入托盘用 var(--页面底)。 */
+
+/* ── 顶栏右上「保存」 ── */
+.保存键 {
+  flex: none;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--深绿文字);
+  padding: 6px 2px 6px 10px;
+}
+
+/* ── 整屏文本：输入框吃满剩余高度 ── */
+.整屏区 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding: 14px 18px calc(18px + var(--安全区下));
+}
+
+.整屏框 {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  background: var(--白);
+  border: 1px solid #e4e6dd;
+  border-radius: var(--圆角-中卡);
+  padding: 14px 14px 30px;
+}
+
+.整屏框:focus-within {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+}
+
+.整屏输入 {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.85;
+  color: var(--正文);
+}
+
+.整屏字数 {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  font-size: 10.5px;
+  color: var(--最弱);
+}
+
+/* ── 字段型分区：一张白卡 ── */
+.卡 {
+  background: var(--白);
+  border: 1px solid #e4e6dd;
+  border-radius: var(--圆角-中卡);
+  padding: 2px 14px;
+}
+
+.字段 {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+  width: 100%;
+  text-align: left;
+  display: block;
+}
+
+.字段.末条 {
+  border-bottom: none;
+}
+
+.字段标签 {
+  font-size: 12px;
+  color: var(--次要浅);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.多行输入,
+.单行输入 {
+  width: 100%;
+  display: block;
+  border: 1px solid #e4e6dd;
+  outline: none;
+  background: var(--页面底);
+  border-radius: var(--圆角-小托盘);
+  padding: 11px 12px;
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--正文);
+  font-family: inherit;
+}
+
+.多行输入 {
+  resize: none;
+}
+
+.单行输入 {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--墨);
+  line-height: 1.4;
+}
+
+.多行输入:focus,
+.单行输入:focus {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+}
+
+/* ── 公司 LOGO：方块 + 相机角标 ── */
+.LOGO键 {
+  position: relative;
+  display: block;
+  width: 62px;
+  height: 62px;
+  border-radius: 16px;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+.LOGO图 {
+  width: 62px;
+  height: 62px;
+  border-radius: 16px;
+  object-fit: cover;
+  display: block;
+}
+
+.LOGO空 {
+  display: block;
+  width: 62px;
+  height: 62px;
+  border-radius: 16px;
+  background: var(--页面底);
+  border: 1px solid #e4e6dd;
+}
+
+.相机角标 {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 档位片 / 标签片：未选浅底细描边，选中深绿描边 + 淡绿底 ── */
+.片行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.片 {
+  border: 1px solid #e4e6dd;
+  background: var(--页面底);
+  border-radius: var(--圆角-胶囊);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--正文);
+  font-family: inherit;
+}
+
+.片选中 {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+  color: var(--深绿文字);
+  font-weight: 600;
+}
+
+/* ── 公司相册：缩略图格 + 「＋」格 + 视频占位 ── */
+.图格行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.图格 {
+  position: relative;
+  display: block;
+  width: 88px;
+  height: 66px;
+}
+
+.图格图 {
+  width: 88px;
+  height: 66px;
+  border-radius: var(--圆角-小托盘);
+  object-fit: cover;
+  display: block;
+  border: 1px solid #e4e6dd;
+}
+
+.图格删 {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--次要浅);
+  padding: 0;
+  line-height: 1;
+}
+
+.图格加 {
+  width: 88px;
+  height: 66px;
+  border-radius: var(--圆角-小托盘);
+  border: 1px dashed var(--虚线描边);
+  background: var(--页面底);
+  font-family: inherit;
+  font-size: 18px;
+  color: var(--弱化);
+}
+
+.视频占位 {
+  width: 88px;
+  height: 66px;
+  border-radius: var(--圆角-小托盘);
+  border: 1px dashed var(--虚线描边);
+  background: var(--页面底);
+  opacity: 0.55;
+}
+
+/* ── 团队介绍：一位一块，三格竖排 ── */
+.成员块 {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.成员头 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.成员头 .字段标签 {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.成员删 {
+  flex: none;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--次要浅);
+  padding: 2px 2px 2px 12px;
+}
+
+.加一条 {
+  width: 100%;
+  margin: 14px 0;
+  border: 1px dashed var(--虚线描边);
+  background: var(--页面底);
+  border-radius: var(--圆角-小托盘);
+  padding: 12px 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}

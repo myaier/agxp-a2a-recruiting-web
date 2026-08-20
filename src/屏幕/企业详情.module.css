@@ -710,33 +710,33 @@
   border: 1px solid var(--描边深);
 }
 
-/* ── 自述全文层里的高管介绍：姓名 · 职务 + 一句话 ── */
-.高管行 {
+/* ── 自述全文层里的团队介绍：姓名 · 职务 + 一句话 ── */
+.成员行 {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding-bottom: 13px;
 }
 
-.高管头衔 {
+.成员头衔 {
   display: flex;
   flex-direction: row;
   align-items: baseline;
   gap: 8px;
 }
 
-.高管名 {
+.成员名 {
   font-size: 13.5px;
   font-weight: 700;
   color: var(--墨);
 }
 
-.高管职 {
+.成员职 {
   font-size: 12px;
   color: var(--次要浅);
 }
 
-.高管简介 {
+.成员简介 {
   font-size: 12.5px;
   line-height: 1.75;
   color: var(--正文);
