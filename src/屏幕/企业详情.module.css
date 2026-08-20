@@ -690,6 +690,58 @@
   }
 }
 
+/* ── 公司相册（企业端上传后才出现）：一行横滑的实景图 ── */
+.相册行 {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  overflow-x: auto;
+  margin-top: 10px;
+  padding-bottom: 2px;
+}
+
+.相册图 {
+  flex: none;
+  width: 148px;
+  height: 100px;
+  border-radius: var(--圆角-小托盘);
+  object-fit: cover;
+  display: block;
+  border: 1px solid var(--描边深);
+}
+
+/* ── 自述全文层里的高管介绍：姓名 · 职务 + 一句话 ── */
+.高管行 {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 13px;
+}
+
+.高管头衔 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.高管名 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.高管职 {
+  font-size: 12px;
+  color: var(--次要浅);
+}
+
+.高管简介 {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--正文);
+}
+
 @keyframes 抽屉升起 {
   from {
     transform: translateY(100%);

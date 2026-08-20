@@ -20,7 +20,8 @@ import { 次级页外壳, 返回栏, 滚动区, 公司字标 } from '../组件/�
 import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
-import { 取公司档案, type 核对项 } from '../数据/公司档案';
+import { 取公司档案, type 公司档案, type 核对项 } from '../数据/公司档案';
+import type { 公司自述覆盖 } from '../数据/类型';
 import { 市场列表 } from '../数据/模拟数据';
 import { use应用状态 } from '../状态/应用状态';
 
@@ -39,12 +40,22 @@ export default function 企业详情() {
   const { 返回, 跳转 } = use导航();
   const { 状态 } = use应用状态();
   const 静态档 = 取公司档案(键);
-  // 企业端在「公司资料」里改过自述，这里要立刻是新的（同一份数据源）。
+  // 企业端在「公司主页资料」里改过自述，这里要立刻是新的（同一份数据源）。
   // 只有本公司（yunqu，即当前登录企业）适用覆盖，别家公司仍读静态档。
-  const 档 =
+  // 类型写成交集：覆盖里 2026-08-20 新增的分区（相册 / 人才发展 / 产品介绍 / 高管介绍）
+  // 静态档没有，写成三目的联合类型会让下面读这些键的地方全部编译不过。
+  const 档: 公司档案 & Partial<公司自述覆盖> =
     状态.公司自述 && (键 === 'yunqu' || 键 === '云衢科技')
       ? { ...静态档, ...状态.公司自述 }
       : 静态档;
+  // 企业端新填的几段自述：有内容才渲染，空的不占版面
+  const 相册图们 = [...(档.公司相册?.实景照片 ?? []), ...(档.公司相册?.公司照片 ?? [])];
+  const 补充自述: { 节: string; 文: string }[] = [
+    { 节: '产品介绍', 文: 档.产品介绍 ?? '' },
+    { 节: '人才发展', 文: 档.人才发展 ?? '' },
+    { 节: '在职感受', 文: 档.在职感受自述 ?? '' },
+  ].filter((条) => 条.文.trim() !== '');
+  const 高管们 = 档.高管介绍 ?? [];
 
   const [介绍层, 设介绍层] = useState(false);
   const [条款层, 设条款层] = useState(false);
@@ -186,6 +197,21 @@ export default function 企业详情() {
             ) : null}
           </div>
 
+          {/* ── 公司相册：企业端上传了才出现，一行横滑，不改动其余卡的版式 ── */}
+          {相册图们.length > 0 ? (
+            <div className={样式.卡}>
+              <div className={样式.卡头}>
+                <span className={样式.卡标题}>公司相册</span>
+                <span className={样式.卡头注}>未经核实</span>
+              </div>
+              <div className={`${样式.相册行} 滚动区`}>
+                {相册图们.map((图, 序) => (
+                  <img key={`${序}-${图.slice(-24)}`} className={样式.相册图} src={图} alt="" />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {/* ── 作息与条款：福利在我们这里是「待核条款」，不是宣传语 ── */}
           <button className={`${样式.卡} ${样式.条款卡} 可点`} onClick={() => 设条款层(true)}>
             <span className={样式.卡头}>
@@ -294,6 +320,29 @@ export default function 企业详情() {
           ) : (
             <p className={样式.层正文}>暂未提供。</p>
           )}
+
+          {/* 企业端在公司主页资料里新填的几段：产品介绍 / 人才发展 / 在职感受 */}
+          {补充自述.map((条) => (
+            <div key={条.节}>
+              <div className={`${样式.层节标} ${样式.层节标间距}`}>{条.节}</div>
+              <p className={样式.层正文}>{条.文}</p>
+            </div>
+          ))}
+
+          {高管们.length > 0 ? (
+            <>
+              <div className={`${样式.层节标} ${样式.层节标间距}`}>高管介绍</div>
+              {高管们.map((位, 序) => (
+                <div key={`${序}-${位.姓名}`} className={样式.高管行}>
+                  <span className={样式.高管头衔}>
+                    <span className={样式.高管名}>{位.姓名}</span>
+                    {位.职务 ? <span className={样式.高管职}>{位.职务}</span> : null}
+                  </span>
+                  {位.简介 ? <span className={样式.高管简介}>{位.简介}</span> : null}
+                </div>
+              ))}
+            </>
+          ) : null}
         </层壳>
       ) : null}
 

@@ -1,0 +1,475 @@
+/* 企业端「岗位详情」· 次级页。
+   卡与正文的像素值取自 职位详情.module.css（求职端的岗位全貌页），
+   分节标 / 确认弹层取自 岗位管理.module.css —— 同一件事全站只有一种长相。 */
+
+/* ── 顶栏右侧：设为当前岗位 / 当前岗位（灰态） ── */
+.设当前键 {
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--深绿文字);
+  background: var(--淡绿底);
+  border: 1px solid var(--淡绿描边);
+  border-radius: var(--圆角-胶囊);
+  padding: 5px 11px;
+}
+
+/* 已经是当前岗位：同形不同色，灰态且不可点 */
+.当前岗位灰 {
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--弱化);
+  background: var(--浅灰底);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-胶囊);
+  padding: 5px 11px;
+}
+
+/* ── 滚动内容 ── */
+.内容 {
+  /* 底部双键是固定条，垫够高度，滚到底最后一张卡不被压住 */
+  padding: 2px 20px calc(var(--安全区下) + 92px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── 标题区 ── */
+.标题行 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.岗位名 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.014em;
+  color: var(--墨);
+}
+
+.薪资带 {
+  flex: none;
+  color: var(--深绿);
+}
+
+/* 信息行：城市 · 办公地 ｜ 最低学历 ｜ 经验（或实习）要求，项间一道细竖线 */
+.信息行 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 9px;
+}
+
+.信息项组 {
+  display: inline-flex;
+  align-items: center;
+}
+
+.信息项 {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--次要);
+}
+
+.信息竖线 {
+  display: inline-block;
+  width: 1px;
+  height: 10px;
+  margin: 0 9px;
+  background: var(--描边中);
+}
+
+/* ── 白卡基类：状态 / 四格 / JD / 公司 / 地址共用 ── */
+.卡 {
+  background: var(--白);
+  border: 1px solid #e4e6dd;
+  border-radius: var(--圆角-中卡);
+  padding: 13px 15px;
+}
+
+/* ── 分节标：与全站节问同级（17px / 700 / 墨）── */
+.节标 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+  margin: 10px 0 2px;
+}
+
+/* ── 状态卡 ── */
+.状态行 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.状态徽 {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--深绿);
+  background: var(--淡绿底);
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+.状态徽.归档徽 {
+  color: var(--次要浅);
+  background: var(--浅灰底);
+}
+
+.发布组 {
+  flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.发布标 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.发布值 {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--正文);
+}
+
+/* AI 代理寻访状态：BOSS 那张卡是「今日剩余沟通次数」，我们没有额度，换成代理在做什么 */
+.寻访行 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--分隔线);
+}
+
+.寻访点 {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--深绿);
+}
+
+.寻访点呼吸 {
+  animation: 寻访呼吸 1.6s ease-in-out infinite;
+}
+
+/* 已归档：灯灭，不呼吸 */
+.寻访点停 {
+  background: var(--最弱);
+}
+
+.寻访文 {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--正文);
+}
+
+.寻访文 b {
+  font-weight: 800;
+  color: var(--深绿);
+}
+
+@keyframes 寻访呼吸 {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+
+/* ── 岗位数据四格 ── */
+.四格卡 {
+  display: flex;
+  flex-direction: row;
+  padding: 15px 8px;
+}
+
+.格 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 格间细竖线：靠伪元素画，不额外插 DOM */
+.格 + .格 {
+  border-left: 1px solid var(--分隔线);
+}
+
+.格数 {
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--墨);
+}
+
+.格名 {
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+/* ── 职位详情：关键词 chips ── */
+.关键词行 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.关键词 {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--浅灰底);
+  border: 1px solid var(--描边);
+  font-size: 11.5px;
+  color: var(--正文);
+}
+
+/* ── JD 正文（长文折叠）── */
+.正文区 {
+  position: relative;
+}
+
+/* 折叠态：卡到 8 行高度。测量真实高度也靠它，所以未展开时一律加 */
+.正文折叠 {
+  overflow: hidden;
+}
+
+/* 底部渐隐：只有真的被截断时才加，否则短 JD 的最后一行会被无谓地淡掉 */
+.正文渐隐 {
+  -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+}
+
+.正文 {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 22.5px;
+  color: var(--正文);
+}
+
+.小节标 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+  margin: 10px 0 4px;
+}
+
+.查看全部 {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 0;
+  border-radius: 10px;
+  background: var(--浅灰底2);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+
+/* ── 所属公司卡 ── */
+.公司卡 {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 15px;
+}
+
+.公司LOGO {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid var(--描边);
+}
+
+.公司文字区 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.公司名 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.公司规模行 {
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.尖括号 {
+  flex: none;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--最弱);
+}
+
+/* ── 工作地址：浅底方块占位，不接真地图也不放假地图截图 ── */
+.地址文 {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--正文);
+}
+
+.地图块 {
+  position: relative;
+  height: 104px;
+  margin-top: 11px;
+  border-radius: 12px;
+  border: 1px solid #e4e6dd;
+  background-color: var(--浅灰底2);
+  /* 极简网格底：两组细线交叉，纯装饰，不暗示真实路网 */
+  background-image:
+    linear-gradient(90deg, var(--描边) 1px, transparent 1px),
+    linear-gradient(180deg, var(--描边) 1px, transparent 1px);
+  background-size: 34px 34px, 34px 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.地图定位 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--白);
+  border: 1px solid var(--淡绿描边);
+  box-shadow: 0 2px 8px rgba(26, 26, 26, 0.08);
+}
+
+/* ── 底部固定双键 ── */
+.底键区 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  padding: 10px 20px calc(var(--安全区下) + 12px);
+  background: rgba(247, 247, 244, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-top: 1px solid #e4e6dd;
+}
+
+.次键 {
+  flex: 1;
+  height: 46px;
+  border-radius: var(--圆角-按钮);
+  background: var(--白);
+  border: 1.5px solid var(--描边深);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--正文);
+}
+
+/* 主键 = 这个岗位的状态动作（关闭 / 重新开放）。关闭是可逆动作，
+   走荧光绿而不是红键 —— 与 岗位管理 里「停止招聘」确认键同一口径 */
+.主键 {
+  flex: 1.4;
+  height: 46px;
+  border-radius: var(--圆角-按钮);
+  background: var(--荧光绿);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+  box-shadow: 0 1px 4px var(--主按钮投影);
+}
+
+/* ── 关闭职位二次确认（版式同 岗位管理 的确认层）── */
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28px;
+  z-index: 70;
+  animation: 遮罩淡入 0.18s ease both;
+}
+
+.确认框 {
+  width: 100%;
+  background: var(--白);
+  border-radius: 18px;
+  padding: 20px 18px 14px;
+  animation: 弹层放大 0.2s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.确认标题 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--墨);
+  text-align: center;
+}
+
+.确认正文 {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--次要);
+  text-align: center;
+  margin-top: 8px;
+}
+
+.确认键行 {
+  display: flex;
+  flex-direction: row;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.确认取消 {
+  flex: 1;
+  padding: 11px 0;
+  border-radius: 12px;
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--正文);
+}
+
+.确认执行 {
+  flex: 1;
+  padding: 11px 0;
+  border-radius: 12px;
+  background: var(--荧光绿);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+@keyframes 遮罩淡入 {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes 弹层放大 {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
