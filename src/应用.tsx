@@ -12,6 +12,14 @@ import 基本信息 from './屏幕/基本信息';
 import 工作经历 from './屏幕/工作经历';
 import 引导问答 from './屏幕/引导问答';
 import 披露说明 from './屏幕/披露说明';
+import 选工作城市 from './屏幕/选工作城市';
+import 选期望职位 from './屏幕/选期望职位';
+import 求职状态 from './屏幕/求职状态';
+import 最高学历 from './屏幕/最高学历';
+import 毕业院校 from './屏幕/毕业院校';
+import 选专业 from './屏幕/选专业';
+import 就读时间段 from './屏幕/就读时间段';
+import 添加头像 from './屏幕/添加头像';
 import 主壳 from './屏幕/主壳';
 import 在谈详情 from './屏幕/在谈详情';
 import 往来记录 from './屏幕/往来记录';
@@ -57,7 +65,11 @@ import 接触记录 from './屏幕/接触记录';
 export default function 应用() {
   return (
     <Routes>
-      {/* 注册引导：R1 → R2 → 学生分流 → A1 → A1b → A2 → A3a-g → A4 */}
+      {/* 注册引导（2026-08-20 按 BOSS 截图顺序重排）：
+          登录 → 选身份 → 引导说明 → 完善资料(/student，可进 /onboard/city、/onboard/job)
+          → 期望月薪(/wizard 首题) → 创建在线简历(/basic) → 求职状态 → 最高学历
+          → 你毕业于 → 你的专业是 → 就读时间段 →（非学生先 /experience）→ 向导续答
+          → 披露说明 → 添加头像 → 主壳 */}
       <Route path={路径.登录} element={<登录 />} />
       <Route path={路径.选身份} element={<选身份 />} />
       <Route path={路径.学生分流} element={<学生分流 />} />
@@ -66,6 +78,14 @@ export default function 应用() {
       <Route path={路径.工作经历} element={<工作经历 />} />
       <Route path={路径.引导问答} element={<引导问答 />} />
       <Route path={路径.披露说明} element={<披露说明 />} />
+      <Route path={路径.选工作城市} element={<选工作城市 />} />
+      <Route path={路径.选期望职位} element={<选期望职位 />} />
+      <Route path={路径.求职状态} element={<求职状态 />} />
+      <Route path={路径.最高学历} element={<最高学历 />} />
+      <Route path={路径.毕业院校} element={<毕业院校 />} />
+      <Route path={路径.选专业} element={<选专业 />} />
+      <Route path={路径.就读时间段} element={<就读时间段 />} />
+      <Route path={路径.添加头像} element={<添加头像 />} />
 
       {/* 主壳：3 Tab + 职位页双子视图 */}
       <Route path={路径.主壳} element={<主壳 />} />

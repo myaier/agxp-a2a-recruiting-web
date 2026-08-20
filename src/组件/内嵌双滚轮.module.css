@@ -1,0 +1,62 @@
+/* 内嵌双滚轮 —— 版式与 引导问答 薪资轮同源：行高 46 × 3 档，中间档高亮底。 */
+
+/* 轮容器高 = 行高 46 × 3 档（上一档 / 当前档 / 下一档） */
+.轮容器 {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  height: 138px;
+  /* 左右各内收 26px：两列数字往中间靠，不贴卡边 */
+  padding: 0 26px;
+}
+
+/* 中间档的高亮底：盖住第二行，上下各多出 3px */
+.轮高亮 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 46px;
+  margin-top: -3px;
+  height: 52px;
+  background: var(--浅灰底);
+  border-radius: 14px;
+  pointer-events: none;
+}
+
+/* 滚轮列：scroll-snap 吸附到每档中心；上下各留一个行高的内边距，
+   首档和末档也能滚到正中间 */
+.滚轮 {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 138px;
+  padding: 46px 0;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+}
+
+.档 {
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: center;
+}
+
+.档选中 {
+  font-size: 27px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.档未选 {
+  font-size: 17px;
+  color: var(--轮未选色);
+}
+
+.单位 {
+  margin-left: 3px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--次要);
+}

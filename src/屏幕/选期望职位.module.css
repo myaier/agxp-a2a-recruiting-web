@@ -1,0 +1,182 @@
+/* 选期望职位（/onboard/job）—— 全屏多选页：左大类栏 + 右小类多选卡。
+   描边 #e4e6dd / 底 var(--页面底)；选中态 var(--深绿) 描边 + var(--淡绿底2) 底。 */
+
+/* ── 大标题 + 右上 N/10 ── */
+.标题行 {
+  flex: none;
+  padding: 14px 22px 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.大标题 {
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+  color: var(--墨);
+  margin: 0;
+}
+
+.计数 {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--次要浅);
+}
+
+/* ── 搜索条 ── */
+.搜索条 {
+  flex: none;
+  margin: 14px 18px 0;
+  height: 44px;
+  border-radius: 15px;
+  background: var(--白);
+  border: 1px solid #e4e6dd;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+}
+
+.搜索输入 {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--正文);
+}
+
+.搜索输入::placeholder {
+  color: var(--最弱);
+}
+
+/* ── 左大类栏 + 右小类多选卡 ── */
+.职双栏 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  margin-top: 14px;
+  border-top: 1px solid #e4e6dd;
+}
+
+.职左栏 {
+  flex: none;
+  width: 104px;
+  background: var(--浅灰底);
+  padding: 6px 0 16px;
+}
+
+.职大类 {
+  display: block;
+  width: 100%;
+  padding: 13px 14px;
+  font-size: 13.5px;
+  color: var(--次要浅);
+  text-align: left;
+}
+
+.职大类当前 {
+  background: var(--页面底);
+  color: var(--墨);
+  font-weight: 700;
+}
+
+.职右栏 {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+}
+
+.职小类 {
+  padding: 9px 15px;
+  border-radius: 10px;
+  background: var(--页面底);
+  border: 1px solid #e4e6dd;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--墨);
+}
+
+.职小类选中 {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+  color: var(--深绿文字);
+  font-weight: 700;
+}
+
+/* ── 搜索结果：平铺小类卡 ── */
+.搜索结果区 {
+  flex: 1;
+  min-height: 0;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+}
+
+.无结果 {
+  width: 100%;
+  padding: 22px 0;
+  font-size: 12.5px;
+  color: var(--次要浅);
+  text-align: center;
+}
+
+/* ── 底部已选 chips ── */
+.已选条 {
+  flex: none;
+  border-top: 1px solid #e4e6dd;
+  background: var(--白);
+  padding: 10px 18px 0;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.已选标 {
+  flex: none;
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.已选标签组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: 6px;
+  padding-bottom: 2px;
+}
+
+.已选标签组::-webkit-scrollbar {
+  display: none;
+}
+
+.已选标签 {
+  flex: none;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: var(--淡绿底);
+  color: var(--深绿);
+  font-size: 12px;
+  font-weight: 500;
+}

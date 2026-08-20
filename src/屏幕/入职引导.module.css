@@ -1,0 +1,182 @@
+/* 注册引导补屏共用样式（2026-08-20 按 BOSS 截图顺序重排）：
+   求职状态 / 最高学历 / 毕业院校 / 选专业 / 就读时间段 / 添加头像 六屏共用。
+   描边 #e4e6dd / 底 var(--页面底)；选中态 var(--深绿) 描边 + var(--淡绿底2) 底。 */
+
+/* ── 方块单选（求职状态 2×2 / 最高学历）── */
+.方块网格 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.方块 {
+  min-height: 76px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1.5px solid #e4e6dd;
+  background: var(--页面底);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  text-align: left;
+}
+
+.方块选中 {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+}
+
+.方块题 {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--墨);
+  line-height: 1.45;
+}
+
+.方块选中 .方块题 {
+  font-weight: 700;
+  color: var(--深绿文字);
+}
+
+.徽标 {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--淡绿底);
+  color: var(--深绿);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* ── 输入行（毕业院校搜索 / 专业录入）── */
+.输入行 {
+  margin-top: 4px;
+  height: 52px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1.5px solid #e4e6dd;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.输入 {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.输入::placeholder {
+  font-weight: 400;
+  color: var(--最弱);
+}
+
+/* ── 高校候选列表 ── */
+.候选列表 {
+  margin-top: 6px;
+}
+
+.候选行 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 2px;
+  border-bottom: 1px solid var(--分隔线);
+  font-size: 14.5px;
+  color: var(--正文);
+  text-align: left;
+}
+
+.候选行选中 {
+  color: var(--深绿文字);
+  font-weight: 700;
+}
+
+.候选勾 {
+  flex: none;
+  color: var(--深绿);
+  font-size: 13px;
+}
+
+/* ── 双滚轮外卡（就读时间段）── */
+.滚轮卡 {
+  margin-top: 8px;
+  background: var(--白);
+  border: 1px solid #e4e6dd;
+  border-radius: var(--圆角-内托盘);
+  padding: 8px 0;
+}
+
+.滚轮头 {
+  display: flex;
+  justify-content: space-around;
+  padding: 8px 26px 2px;
+}
+
+.滚轮头文字 {
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+/* ── 添加头像 ── */
+.头像区 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 26px;
+}
+
+.大圆 {
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--上传框描边);
+  background: var(--页面底);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.头像图 {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.隐藏文件框 {
+  display: none;
+}
+
+.虚拟头像提示 {
+  margin-top: 26px;
+  font-size: 12.5px;
+  color: var(--次要浅);
+}
+
+.章行 {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+}
+
+.章钮 {
+  padding: 3px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  display: flex;
+}
+
+.章钮选中 {
+  border-color: var(--深绿);
+}

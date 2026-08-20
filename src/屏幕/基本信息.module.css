@@ -61,6 +61,37 @@
   font-weight: 300;
 }
 
+/* ── 性别：并排双选钮（同 学生分流 的选钮样式）── */
+.双选行 {
+  display: flex;
+  gap: 12px;
+}
+
+.选钮 {
+  flex: 1;
+  height: 52px;
+  border-radius: 14px;
+  border: 1.5px solid #e4e6dd;
+  background: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.选钮当前 {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+  font-weight: 700;
+}
+
+/* ── 出生年月：内嵌双滚轮的外卡 ── */
+.滚轮卡 {
+  background: var(--白);
+  border: 1px solid #e4e6dd;
+  border-radius: var(--圆角-内托盘);
+  padding: 8px 0;
+}
+
 /* ── 身份快捷片 ── */
 .片行 {
   display: flex;
