@@ -738,3 +738,19 @@
   font-size: 11px;
   color: var(--次要浅);
 }
+
+/* ── 你的叮嘱（与求职端 在谈详情 同构）── */
+.叮嘱区 { display: flex; flex-direction: column; gap: 12px; margin: 2px 0 6px 34px; }
+.叮嘱组 { display: flex; flex-direction: column; gap: 7px; }
+.我叮嘱 {
+  align-self: flex-end;
+  max-width: 86%;
+  padding: 9px 12px;
+  border-radius: 13px 13px 3px 13px;
+  background: var(--气泡绿);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--墨);
+}
+.代理回执 { display: flex; flex-direction: row; align-items: flex-start; gap: 7px; max-width: 92%; }
+.回执文 { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.55; color: var(--次要); }
