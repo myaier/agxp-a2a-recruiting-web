@@ -85,7 +85,7 @@ export default function 通知中心() {
           <div className={样式.空态}>
             <div className={样式.空态图}>🔔</div>
             <div className={样式.空态标题}>暂时没有通知</div>
-            <div className={样式.空态说明}>代理在后台谈判时不会打扰你，只有需要你拍板才提醒。</div>
+            <div className={样式.空态说明}>代理在后台匹配和初筛时不会打扰你，只有需要你确认才提醒。</div>
           </div>
         ) : null}
       </滚动区>

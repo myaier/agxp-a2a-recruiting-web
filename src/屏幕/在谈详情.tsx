@@ -41,7 +41,7 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 公司路由键 } from '../数据/公司档案';
 
-type 页内Tab = '谈判进度' | '职位详情';
+type 页内Tab = '接洽进度' | '职位详情';
 
 /** 点决策那一刻冻结下来的卡点上下文（见 做协调决策 的注释） */
 interface 决策快照内容 {
@@ -82,7 +82,7 @@ export default function 在谈详情() {
   const { 状态, 派发 } = use应用状态();
   const { 跳转, 返回 } = use导航();
 
-  const [当前Tab, 设当前Tab] = useState<页内Tab>('谈判进度');
+  const [当前Tab, 设当前Tab] = useState<页内Tab>('接洽进度');
   const [弹层可见, 设弹层可见] = useState(false);
   const [决策快照, 设决策快照] = useState<决策快照内容 | null>(null);
   // 点开的简历原件（null = 没开）：点阶段节点里的 PDF 附件行打开原件弹层
@@ -267,7 +267,7 @@ export default function 在谈详情() {
 
       {/* 两个 Tab：本地状态切换，不走路由（同一屏的两种视图，返回键不该退到上一个 Tab）*/}
       <div className={样式.Tab行}>
-        {(['谈判进度', '职位详情'] as 页内Tab[]).map((名) => (
+        {(['接洽进度', '职位详情'] as 页内Tab[]).map((名) => (
           <button
             key={名}
             className={`${样式.Tab} ${当前Tab === 名 ? 样式.Tab选中 : 样式.Tab未选} 可点`}
@@ -278,7 +278,7 @@ export default function 在谈详情() {
         ))}
       </div>
 
-      {当前Tab === '谈判进度' ? (
+      {当前Tab === '接洽进度' ? (
         <滚动区>
           {/* 一条流：阶段分节条 → 该阶段双方代理对话 → 你的话 → 决策卡 */}
           <阶段对话流

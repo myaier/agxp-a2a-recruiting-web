@@ -88,7 +88,7 @@ export default function 代理详情() {
         <div className={样式.数行}>
           <div className={样式.数项}>
             <span className={`${样式.数} 等宽数字`}>{在谈数}</span>
-            <span className={样式.数名}>正在并行谈</span>
+            <span className={样式.数名}>正在接洽</span>
           </div>
           <div className={样式.数项}>
             <span className={`${样式.数} 等宽数字`}>{生效规则数}</span>
@@ -121,7 +121,7 @@ export default function 代理详情() {
               </div>
               <div className={样式.接入说明}>
                 {已接入
-                  ? '在飞书里直接对它下指令，谈判进展也会推到飞书'
+                  ? '在飞书里直接对它下指令，匹配与接洽进展也会推到飞书'
                   : '扫码之后，你在飞书里就能指挥这个代理，不用打开 App'}
               </div>
             </div>

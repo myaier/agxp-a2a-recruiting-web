@@ -24,7 +24,7 @@ export default function 归档谈判() {
 
   return (
     <次级页外壳>
-      <返回栏 返回={返回} 标题="归档谈判" 副标题={`${状态.归档列表.length} 单已结束`} />
+      <返回栏 返回={返回} 标题="历史接洽" 副标题={`${状态.归档列表.length} 单已结束`} />
 
       <滚动区 样式覆盖={{ padding: '14px 18px 24px' }}>
         <div className={样式.说明条}>
@@ -59,7 +59,7 @@ export default function 归档谈判() {
         {状态.归档列表.length === 0 ? (
           <div className={样式.空态}>
             <div className={样式.空态图}>🗂</div>
-            <div className={样式.空态标题}>还没有归档的谈判</div>
+            <div className={样式.空态标题}>还没有历史接洽</div>
             <div className={样式.空态说明}>退出或未通过的单会出现在这里，附上止步原因。</div>
           </div>
         ) : null}

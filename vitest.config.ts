@@ -7,5 +7,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/测试/设置.ts',
     clearMocks: true,
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
   },
 });
