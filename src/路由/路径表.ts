@@ -50,7 +50,11 @@ export const 路径 = {
   代理详情: '/agent/me',
   职位详情: (编号: string) => `/job/${编号}`,
   职位详情模板: '/job/:id',
+  /** 无参直聊：消息 Tab 的直聊会话行走这条，落到看市场第一个岗的对接人 */
   直聊会话: '/chat/direct',
+  /** 带岗位编号的直聊：职位详情的「直接聊」走这条，对方 = 这个岗的发布人 */
+  直聊会话岗位: (编号: string) => `/chat/direct/${编号}`,
+  直聊会话岗位模板: '/chat/direct/:id',
   真人会话: '/chat/human',
   求职意向管理: '/intentions',
   添加意向: '/intentions/new',
@@ -111,6 +115,8 @@ export const 路径 = {
   企业通知中心: '/hr/notifications',
   企业设置: '/hr/settings',
   企业披露策略: '/hr/disclosure',
+  /** 企业历史接洽：被终止的候选归档在这里，镜像求职端的 /archived */
+  企业归档: '/hr/archived',
   已筛候选: '/hr/screened-out',
   /** 本周初筛记录：日报卡人才漏斗的「硬性匹配」那一行点进来，看代理这一周怎么筛的 */
   初筛记录: '/hr/screening-log',

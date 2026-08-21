@@ -63,6 +63,7 @@ const 匿名在线简历 = lazy(() => import('./屏幕/匿名在线简历'));
 const 企业通知中心 = lazy(() => import('./屏幕/企业通知中心'));
 const 企业设置 = lazy(() => import('./屏幕/企业设置'));
 const 企业披露策略 = lazy(() => import('./屏幕/企业披露策略'));
+const 企业归档 = lazy(() => import('./屏幕/企业归档'));
 const 已筛候选 = lazy(() => import('./屏幕/已筛候选'));
 const 初筛记录 = lazy(() => import('./屏幕/初筛记录'));
 const 初筛对话 = lazy(() => import('./屏幕/初筛对话'));
@@ -124,7 +125,9 @@ export default function 应用() {
       <Route path={路径.问AI代理} element={<问AI代理 />} />
       <Route path={路径.代理详情} element={<代理详情 />} />
       <Route path={路径.职位详情模板} element={<职位详情 />} />
+      {/* 直聊两条路由同一个屏：静态的无参兜底在前，带岗位编号的在后 */}
       <Route path={路径.直聊会话} element={<直聊会话 />} />
+      <Route path={路径.直聊会话岗位模板} element={<直聊会话 />} />
       <Route path={路径.真人会话} element={<真人会话 />} />
       <Route path={路径.求职意向管理} element={<求职意向管理 />} />
       <Route path={路径.添加意向} element={<添加意向 />} />
@@ -175,6 +178,7 @@ export default function 应用() {
       <Route path={路径.企业通知中心} element={<企业通知中心 />} />
       <Route path={路径.企业设置} element={<企业设置 />} />
       <Route path={路径.企业披露策略} element={<企业披露策略 />} />
+      <Route path={路径.企业归档} element={<企业归档 />} />
       <Route path={路径.已筛候选} element={<已筛候选 />} />
       {/* 列表在前、单条在后：静态段本来就胜过动态段，这里按书写顺序再摆一次，
           读代码的人不用去回忆 react-router 的匹配优先级 */}

@@ -6,6 +6,7 @@
 // 从这里 export，真人会话.tsx 直接 import，避免同一套气泡样式写两遍。
 
 import { useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import 样式 from './直聊会话.module.css';
 import { 轻提示 } from '../组件/轻提示';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../组件/通用';
@@ -14,18 +15,32 @@ import 代理标 from '../组件/代理标';
 import 举报层 from '../组件/举报层';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
-import { 直聊消息, 我的信息 } from '../数据/模拟数据';
+import { 取直聊对象, 我的信息 } from '../数据/模拟数据';
 import type { 会话条 } from '../数据/类型';
 
 export default function 直聊会话() {
   const { 返回, 跳转 } = use导航();
-  const [消息, 设消息] = useState<会话条[]>(直聊消息);
+  // 对方是谁由岗位编号决定 —— 从职位详情「直接聊」进来带 :id，
+  // 消息 Tab 那条直聊行没有 id，取数函数会回落到看市场第一个岗（就是那条会话的对象）
+  const { id: 岗位编号 } = useParams<{ id: string }>();
+  const 对方 = 取直聊对象(岗位编号);
+  const [消息, 设消息] = useState<会话条[]>(对方.消息);
   const [草稿, 设草稿] = useState('');
   // 换微信 / 换电话 / 发简历 点过就落到「已完成」态（灰底 + 细对勾），不可再点
   const [已完成, 设已完成] = useState<string[]>([]);
   // 右上「⋯」拉起的举报层：直聊是双方已互相看到身份的场景，举报与屏蔽都指向具体那家公司
   const [举报层开, 设举报层开] = useState(false);
   const 底部锚 = use自动滚到底(消息);
+
+  // 同一条路由上换参数（换个岗再点直接聊）不会重挂载组件，不重置就会看到上一个岗的
+  // 聊天记录。首帧不进这个分支，避免白白多渲染一次
+  const 上次岗位编号 = useRef(岗位编号);
+  useEffect(() => {
+    if (上次岗位编号.current === 岗位编号) return;
+    上次岗位编号.current = 岗位编号;
+    设消息(对方.消息);
+    设已完成([]);
+  }, [岗位编号, 对方.消息]);
 
   // 发送：草稿去空后追加到本地消息流，随即清空输入框
   const 发送 = () => {
@@ -40,8 +55,8 @@ export default function 直聊会话() {
     <次级页外壳 对话底>
       <返回栏
         返回={返回}
-        标题="陆知遥"
-        副标题="MiniMax · Agent 产品线负责人"
+        标题={对方.姓名}
+        副标题={[对方.机构, 对方.职务].filter(Boolean).join(' · ')}
         居中标题
         右侧={
           <button
@@ -68,7 +83,7 @@ export default function 直聊会话() {
       <滚动区>
         <div className={样式.消息流}>
           {消息.map((条) => (
-            <消息条 key={条.编号} 条={条} 对方首字="陆" />
+            <消息条 key={条.编号} 条={条} 对方首字={对方.首字} />
           ))}
           <div ref={底部锚} />
         </div>
@@ -93,8 +108,8 @@ export default function 直聊会话() {
 
       {举报层开 ? (
         <举报层
-          对象名="陆知遥 · MiniMax"
-          屏蔽名称="MiniMax"
+          对象名={`${对方.姓名} · ${对方.机构}`}
+          屏蔽名称={对方.岗位公司}
           关闭={() => 设举报层开(false)}
         />
       ) : null}
