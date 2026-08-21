@@ -12,7 +12,6 @@ import 样式 from './我的简历.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 表单条目 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
-import { 个人优势文本 } from '../数据/模拟数据';
 import { use应用状态 } from '../状态/应用状态';
 import type { 基本信息 as 基本信息类型 } from '../数据/类型';
 
@@ -283,7 +282,7 @@ export default function 我的简历() {
           {/* 个人优势：数据里是带 \n 的多行串，靠 white-space: pre-line 还原换行 */}
           <div className={样式.卡}>
             <div className={样式.卡标题}>个人优势</div>
-            <div className={样式.优势正文}>{个人优势文本}</div>
+            <div className={样式.优势正文}>{全局.个人优势}</div>
           </div>
 
           {/* 附件简历：递交简历阶段由代理隐去联系方式后发出 */}

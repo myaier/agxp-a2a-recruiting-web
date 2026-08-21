@@ -80,9 +80,9 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
         ) : null}
       </div>
 
-      {/* ── 自我介绍段（标注 18:46 由「自述」改名）── */}
+      {/* ── 个人优势段（2026-08-21：与注册采集页「分享一下自己的个人优势」统一命名）── */}
       <div className={样式.节标行}>
-        <span className={样式.节标}>自我介绍</span>
+        <span className={样式.节标}>个人优势</span>
       </div>
       <p className={样式.自述}>{档.自述}</p>
 
