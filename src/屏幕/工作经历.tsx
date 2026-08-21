@@ -255,7 +255,7 @@ export default function 工作经历() {
       <button className={`${样式.上传条} 可点`} onClick={() => 文件选择框.current?.click()}>
         <span className={样式.上传图标}>⬆</span>
         <span className={样式.上传文案}>
-          <span className={样式.上传标题}>一键上传简历 · 自动填好下面每一段</span>
+          <span className={样式.上传标题}>上传简历，自动预填可识别的经历</span>
           <span className={`${样式.上传说明} 单行`}>{解析提示}</span>
         </span>
       </button>
