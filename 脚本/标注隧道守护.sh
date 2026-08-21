@@ -67,21 +67,59 @@ TUNNEL_LOG="$LOG_DIR/标注隧道.log"
     echo "新隧道注册成功但服务不通，拒推：$url"
     return 1
   fi
-  echo "$url" > .标注端点
-  local content sha
+  # v8（2026-08-21）：PUT 必须验成功。旧版把 gh api 的输出丢进 /dev/null 且不看返回码，
+  # 于是 `npm run deploy` 强推 gh-pages 之后 sha 失效、PUT 报 409，脚本却照样宣布成功 ——
+  # 线上从此指着一个死地址，而主循环以为已经更新过，再也不会重推。
+  # 每次都重取 sha 后再 PUT，最多三轮；PUT 完回读 gh-pages 上的实际内容做确认。
+  local content ROUND
   content=$(printf '{"url":"%s"}' "$url" | base64)
-  sha=$(gh api "repos/$REPO/contents/annotate-endpoint.json?ref=gh-pages" --jq .sha 2>/dev/null || true)
-  if [ -n "$sha" ]; then
-    gh api -X PUT "repos/$REPO/contents/annotate-endpoint.json" \
-      -f message="守护：更新标注直达端点" -f content="$content" -f branch=gh-pages -f sha="$sha" > /dev/null
-  else
-    gh api -X PUT "repos/$REPO/contents/annotate-endpoint.json" \
-      -f message="守护：标注直达端点" -f content="$content" -f branch=gh-pages > /dev/null
-  fi
+  for ROUND in 1 2 3; do
+    # sha 现取现用：deploy 的整站强推随时会让上一轮取到的 sha 作废。
+    # 不用数组传参 —— macOS 自带 bash 3.2，分支写开最稳。
+    local sha PUT_OK=""
+    sha=$(gh api "repos/$REPO/contents/annotate-endpoint.json?ref=gh-pages" --jq .sha 2>/dev/null || true)
+    if [ -n "$sha" ]; then
+      gh api -X PUT "repos/$REPO/contents/annotate-endpoint.json" \
+        -f message="守护：更新标注直达端点" -f content="$content" -f branch=gh-pages -f sha="$sha" \
+        > /dev/null 2>&1 && PUT_OK=1
+    else
+      gh api -X PUT "repos/$REPO/contents/annotate-endpoint.json" \
+        -f message="守护：标注直达端点" -f content="$content" -f branch=gh-pages \
+        > /dev/null 2>&1 && PUT_OK=1
+    fi
+    if [ -n "$PUT_OK" ]; then
+      # gh api 返回 0 就是权威成功信号 —— GitHub 已经回了新 commit。
+      # 这里**不再**立刻回读比对：GitHub contents API 写后立刻读会拿到旧内容
+      # （读写一致性有延迟），第一版 v8 把这个当成失败，结果连锁触发
+      # CUR_URL="" → 下一轮杀掉健康隧道重开 → 每分钟换一条地址的抖动循环。
+      # 对账交给主循环下一轮做，那时延迟早已过去，且不会误伤隧道。
+      # .标注端点 只在推成功后才写：deploy 会拿它填 dist/annotate-endpoint.json，
+      # 写早了会让下一次 deploy 把没推成功的地址当成真相带上线。
+      echo "$url" > .标注端点
+      return 0
+    fi
+    sleep 2
+  done
+  echo "端点 PUT 三轮均未确认成功，拒绝宣布更新：$url"
+  return 1
 }
 
 # ── 主循环 ──
-CUR_URL=$(cat .标注端点 2>/dev/null || true)
+#
+# v8 的核心教训（2026-08-21 栽过一次）：**「隧道活不活」与「线上发布对不对」是两件事，
+# 必须分成两个状态变量。** 第一版 v8 把它们混在一个 CUR_URL 里，发布失败就把它清空，
+# 下一轮探活自然不过 → 杀掉一条**完全健康**的隧道重开 → 新地址又发布失败 →
+# 每分钟换一条地址的抖动循环。发布出问题，永远不该动隧道。
+#
+#   隧道URL   —— 当前这条隧道的地址，只在它真的探不活时才换
+#   已发布URL —— 已确认推上 gh-pages 的地址，只影响「要不要再推一次」
+TUNNEL_URL=""
+PUBLISHED_URL=$(cat .标注端点 2>/dev/null || true)
+# 进程刚起来时先认领已有的隧道：脚本重启不该无谓地把在跑的隧道也换掉
+if [ -n "$PUBLISHED_URL" ] && 探活 "$PUBLISHED_URL"; then
+  TUNNEL_URL="$PUBLISHED_URL"
+fi
+
 while true; do
   # 收集服务也顺带看护：没在跑就拉起来
   if ! curl -s -m 2 http://localhost:8090/ > /dev/null 2>&1; then
@@ -90,15 +128,33 @@ while true; do
     echo "收集服务重启"
   fi
 
-  if [ -z "$CUR_URL" ] || ! 探活 "$CUR_URL"; then
+  # ① 隧道健康：只有真的探不活才重开
+  if [ -z "$TUNNEL_URL" ] || ! 探活 "$TUNNEL_URL"; then
     NEW_URL=$(重开隧道)
     if [ -n "$NEW_URL" ]; then
-      推端点 "$NEW_URL"
-      CUR_URL="$NEW_URL"
-      echo "端点已更新 $NEW_URL"
+      TUNNEL_URL="$NEW_URL"
+      PUBLISHED_URL=""   # 换了隧道，之前发布的必然过期
     else
       echo "隧道重开失败，60 秒后再试"
+      sleep 60
+      continue
     fi
   fi
+
+  # ② 线上对账：拿 gh-pages 上的实际内容比，而不是比脚本自己的记账 ——
+  #    npm run deploy 的整站强推会把端点文件冲回旧值，只信记账就发现不了。
+  ONLINE_URL=$(gh api "repos/$REPO/contents/annotate-endpoint.json?ref=gh-pages" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null | sed 's/.*"url":"\([^"]*\)".*/\1/' || true)
+
+  if [ "$ONLINE_URL" != "$TUNNEL_URL" ]; then
+    [ -n "$ONLINE_URL" ] && echo "线上端点与当前隧道不一致（线上 $ONLINE_URL），重推"
+    if 推端点 "$TUNNEL_URL"; then
+      PUBLISHED_URL="$TUNNEL_URL"
+      echo "端点已更新 $TUNNEL_URL"
+    fi
+    # 推失败什么都不做：隧道照旧活着，下一轮再试。绝不因发布失败去动隧道。
+  else
+    PUBLISHED_URL="$TUNNEL_URL"
+  fi
+
   sleep 60
 done
