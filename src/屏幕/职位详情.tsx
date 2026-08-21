@@ -159,17 +159,6 @@ export default function 职位详情() {
                 ))}
               </>
             ) : null}
-            {岗.差距?.length ? (
-              <>
-                <div className={样式.证据组标}>差距</div>
-                {岗.差距.map((条) => (
-                  <div key={条} className={样式.证据行}>
-                    <span className={样式.适配差}>✗</span>
-                    <span className={样式.证据文}>{条}</span>
-                  </div>
-                ))}
-              </>
-            ) : null}
 
             {/* 技能对照：JD 技能词 × 简历技能，子串互含即命中（'Go' 命中 'Go / 高并发'）。
                 命中 → 绿 chip 带 ✓；未命中 → 灰 chip，一眼看出还缺哪几个词 */}

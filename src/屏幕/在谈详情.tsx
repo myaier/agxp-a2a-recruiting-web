@@ -473,17 +473,6 @@ function 职位详情Tab({ 单 }: { 单: 在谈单 }) {
               ))}
             </>
           ) : null}
-          {证据源.差距?.length ? (
-            <>
-              <div className={详析样式.证据组标}>差距</div>
-              {证据源.差距.map((条) => (
-                <div key={条} className={详析样式.证据行}>
-                  <span className={详析样式.适配差}>✗</span>
-                  <span className={详析样式.证据文}>{条}</span>
-                </div>
-              ))}
-            </>
-          ) : null}
           {证据源.技能要求?.length ? (
             <>
               <div className={详析样式.证据组标}>技能</div>
