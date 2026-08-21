@@ -21,6 +21,11 @@ import { 路径 } from '../路由/路径表';
 import {
   默认求职初筛偏好,
   求职初筛缺失项,
+  今天日期,
+  规范化作品集链接,
+  校验作品集链接,
+  校验未过期日期,
+  校验预计毕业时间,
   type 办公偏好,
   type 求职初筛偏好,
   type 求职类型,
@@ -46,6 +51,14 @@ export default function 学生分流() {
   // 这里采集一个主要方向，避免校招月薪与实习日薪共用一个期望区间。
   const 求职类型选项: 求职类型[] = ['社招全职', '校园招聘', '实习生', '兼职'];
   const 办公方式选项: 办公偏好[] = ['现场', '混合', '全远程'];
+  const 今天 = 今天日期();
+  const 毕业时间错误 = 筛选偏好.毕业时间
+    ? 校验预计毕业时间(筛选偏好.毕业时间, 今天)
+    : null;
+  const 实习日期错误 = 筛选偏好.实习开始日期
+    ? 校验未过期日期(筛选偏好.实习开始日期, '实习开始日期', 今天)
+    : null;
+  const 作品集错误 = 校验作品集链接(筛选偏好.作品集链接);
 
   const 存筛选偏好 = (改: Partial<求职初筛偏好>) =>
     派发({ 型: '存求职筛选偏好', 偏好: { ...筛选偏好, ...改 } });
@@ -168,10 +181,14 @@ export default function 学生分流() {
             <input
               className={样式.资料输入}
               type="month"
+              min={今天.slice(0, 7)}
+              required
               value={筛选偏好.毕业时间 ?? ''}
               aria-label="预计毕业时间"
+              aria-invalid={Boolean(毕业时间错误)}
               onChange={(事件) => 存筛选偏好({ 毕业时间: 事件.target.value })}
             />
+            {毕业时间错误 ? <div className={样式.字段错误}>{毕业时间错误}</div> : null}
           </>
         ) : null}
 
@@ -206,10 +223,14 @@ export default function 学生分流() {
             <input
               className={样式.资料输入}
               type="date"
+              min={今天}
+              required
               value={筛选偏好.实习开始日期 ?? ''}
               aria-label="最早可开始实习日期"
+              aria-invalid={Boolean(实习日期错误)}
               onChange={(事件) => 存筛选偏好({ 实习开始日期: 事件.target.value })}
             />
+            {实习日期错误 ? <div className={样式.字段错误}>{实习日期错误}</div> : null}
           </>
         ) : null}
 
@@ -221,8 +242,13 @@ export default function 学生分流() {
           value={筛选偏好.作品集链接 ?? ''}
           placeholder="https://"
           aria-label="作品集或项目链接"
+          aria-invalid={Boolean(作品集错误)}
           onChange={(事件) => 存筛选偏好({ 作品集链接: 事件.target.value })}
+          onBlur={() =>
+            存筛选偏好({ 作品集链接: 规范化作品集链接(筛选偏好.作品集链接 ?? '') })
+          }
         />
+        {作品集错误 ? <div className={样式.字段错误}>{作品集错误}</div> : null}
 
         <div className={`${样式.节问} ${样式.节问间距}`}>可接受的办公方式</div>
         <div className={样式.猜片行}>

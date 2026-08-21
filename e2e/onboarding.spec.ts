@@ -13,7 +13,7 @@ test.describe('multi-role onboarding', () => {
             办公方式: ['混合'],
             实习月数: 3,
             每周到岗天数: 4,
-            实习开始日期: '2026-09-01',
+            实习开始日期: '2099-09-01',
             作品集链接: 'https://example.com/portfolio',
           },
           薪资: { 下限: 300, 上限: 500, 单位: '元/天' },
@@ -25,7 +25,7 @@ test.describe('multi-role onboarding', () => {
 
     await expect(page.getByRole('button', { name: '实习生' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: '校园招聘' })).toHaveAttribute('aria-pressed', 'false');
-    await expect(page.getByLabel('最早可开始实习日期')).toHaveValue('2026-09-01');
+    await expect(page.getByLabel('最早可开始实习日期')).toHaveValue('2099-09-01');
     await expect(page.getByLabel('作品集或项目链接')).toHaveValue('https://example.com/portfolio');
     await expect(page.getByLabel('预计毕业时间')).toHaveCount(0);
 
@@ -50,8 +50,13 @@ test.describe('multi-role onboarding', () => {
     await page.goto('/#/student');
 
     await expect(page.getByLabel('预计毕业时间')).toBeVisible();
-    await page.getByLabel('预计毕业时间').fill('2027-06');
-    await page.getByLabel('作品集或项目链接').fill('https://github.com/example/campus-project');
+    await page.getByLabel('预计毕业时间').fill('2099-06');
+    await page.getByLabel('作品集或项目链接').fill('not-a-link');
+    await expect(page.getByText('请输入有效的作品集或项目链接')).toBeVisible();
+    await expect(page.getByRole('button', { name: '下一步' })).toBeDisabled();
+    await page.getByLabel('作品集或项目链接').fill('github.com/example/campus-project');
+    await page.getByLabel('作品集或项目链接').blur();
+    await expect(page.getByLabel('作品集或项目链接')).toHaveValue('https://github.com/example/campus-project');
     await expect(page.getByLabel('最早可开始实习日期')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
   });
@@ -65,6 +70,7 @@ test.describe('multi-role onboarding', () => {
 
     await page.getByRole('button', { name: '实习生 在校生实习，按天计薪' }).click();
     await page.getByRole('button', { name: '提供转正机会' }).click();
+    await page.getByLabel('最晚可接受实习开始日期').fill('2099-09-15');
     await expect(page.getByRole('button', { name: '提供转正机会' })).toHaveAttribute('aria-pressed', 'true');
     await page.getByPlaceholder(/资深后端工程师/).fill('AI 产品实习生');
     await page.getByText('请选择职位类别').click();
@@ -86,6 +92,7 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByText('元/天').first()).toBeVisible();
     await expect(page.getByText('预计面试轮次')).toBeVisible();
     await expect(page.getByText('招聘紧急程度')).toBeVisible();
+    await expect(page.getByText('开始日期：最晚 2099-09-15')).toBeVisible();
     await expect(page.getByText('AI 只按以下条件进行初筛。薪资仅判断双方区间是否匹配，不询问或协商具体金额。')).toBeVisible();
 
     await page.getByRole('button', { name: '— 元/天' }).first().click();
@@ -102,5 +109,30 @@ test.describe('multi-role onboarding', () => {
 
     await expect(page).toHaveURL(/#\/hr$/);
     await expect(page.getByText('AI 产品实习生')).toBeVisible();
+  });
+
+  test('reuses the persisted portfolio link on the personal-strength page', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'AGXP求职筛选v1',
+        JSON.stringify({
+          城市们: ['上海'],
+          职位: ['产品经理'],
+          筛选偏好: {
+            求职类型: ['社招全职'],
+            办公方式: ['混合'],
+            作品集链接: 'https://github.com/example/shared-project',
+          },
+          薪资: { 下限: 30, 上限: 40, 单位: '月薪K' },
+        }),
+      );
+    });
+
+    await page.goto('/#/wizard');
+    await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible();
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    await expect(page.getByText('作品集 / GitHub / 项目链接')).toBeVisible();
+    await expect(page.getByRole('button', { name: /https:\/\/github.com\/example\/shared-project/ })).toBeVisible();
   });
 });

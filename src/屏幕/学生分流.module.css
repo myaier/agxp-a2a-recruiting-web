@@ -132,6 +132,14 @@
   outline: none;
 }
 
+.字段错误 {
+  margin-top: 6px;
+  padding: 0 2px;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* ── 猜你想找 ── */
 .猜标 {
   margin-top: 12px;
