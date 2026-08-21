@@ -103,6 +103,43 @@ async function 尝试送达(条: 标注): Promise<boolean> {
   return false;
 }
 
+/**
+ * 补送积压的未送达标注（2026-08-21 加）。
+ *
+ * 为什么需要：隧道每翻一次车，GitHub Pages 会把 annotate-endpoint.json 的旧内容
+ * 缓存 600 秒（连查询串一起缓，所以「强制重取」在这个窗口里拿到的还是死地址）。
+ * 那段时间里标注只会被标成 未送达 留在本地 —— 而提意见的人多半没注意到那句
+ * 「未连上」的提示就往下走了，这条意见对收件方就等于凭空消失。
+ *
+ * 所以每次进页面先把积压的重发一遍：隧道恢复后，之前丢的会自己补上来，
+ * 不需要提意见的人做任何事，也不需要他记得去点「复制全部」。
+ *
+ * 串行发送而不是并发：积压条数可能不少，一次性打过去容易被隧道限流，
+ * 反而把本来能成的也拖失败。任一条失败就停 —— 说明链路还没恢复，
+ * 继续试下去只是白耗，剩下的留到下次进页面再补。
+ */
+/** 本次页面加载是否已经补送过。放模块级而不是 ref：
+ *  React StrictMode 在 dev 下会把 effect 跑两遍，组件内的守卫拦得住状态更新，
+ *  拦不住已经发出去的请求 —— 实测会让同一条标注在收件端出现两次。
+ *  补送这件事本来就该「每次加载最多一次」，模块级标志才是它的正确粒度。 */
+let 本次已补送 = false;
+
+async function 补送积压(清单: 标注[]): Promise<标注[] | null> {
+  if (本次已补送) return null;
+  const 待送 = 清单.filter((条) => !条.已送达);
+  if (待送.length === 0) return null;
+  本次已补送 = true;
+
+  const 已补送编号 = new Set<number>();
+  for (const 条 of 待送) {
+    if (!(await 尝试送达(条))) break;
+    已补送编号.add(条.编号);
+  }
+  if (已补送编号.size === 0) return null;
+
+  return 清单.map((条) => (已补送编号.has(条.编号) ? { ...条, 已送达: true } : 条));
+}
+
 /** 从被点元素向上走，收集 CSS Modules 类（含 __ 的），拼成「文件__类」链 */
 function 取元素位置(目标: Element): string {
   const 链: string[] = [];
@@ -142,6 +179,26 @@ export default function 标注层() {
   const 存清单 = useCallback((新清单: 标注[]) => {
     设清单(新清单);
     localStorage.setItem(存储键, JSON.stringify(新清单));
+  }, []);
+
+  // 进页面就把上次没送出去的标注补送一遍（隧道翻车窗口里攒下的那些）。
+  // 只跑一次；成功补送几条就提示几条，一条都没补上就完全静默 ——
+  // 链路没恢复是常态，不该每次进页面都弹一个失败提示打扰人。
+  useEffect(() => {
+    let 已卸载 = false;
+    void (async () => {
+      const 当前清单: 标注[] = JSON.parse(localStorage.getItem(存储键) ?? '[]');
+      const 补后清单 = await 补送积压(当前清单);
+      if (已卸载 || !补后清单) return;
+      const 补送数 = 补后清单.filter((条) => 条.已送达).length -
+        当前清单.filter((条) => 条.已送达).length;
+      设清单(补后清单);
+      localStorage.setItem(存储键, JSON.stringify(补后清单));
+      轻提示(`补送了 ${补送数} 条之前没发出去的标注 ✓`);
+    })();
+    return () => {
+      已卸载 = true;
+    };
   }, []);
 
   // 标注模式下用捕获阶段拦截所有点击：既阻止原交互，又抓到目标元素
