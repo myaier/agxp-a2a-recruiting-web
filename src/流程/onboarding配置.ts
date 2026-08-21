@@ -31,7 +31,6 @@ export const Onboarding流程: Record<Onboarding角色, string[]> = {
     路径.引导问答,
     路径.披露说明,
     路径.添加头像,
-    路径.接入飞书,
     路径.主壳,
   ],
   社招求职: [
@@ -48,14 +47,12 @@ export const Onboarding流程: Record<Onboarding角色, string[]> = {
     路径.引导问答,
     路径.披露说明,
     路径.添加头像,
-    路径.接入飞书,
     路径.主壳,
   ],
   招聘方: [
     路径.企业实名认证,
     路径.招聘名片,
     路径.发布岗位,
-    路径.企业接入飞书,
     路径.企业主壳,
   ],
 };
