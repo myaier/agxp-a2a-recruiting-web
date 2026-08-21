@@ -235,30 +235,17 @@
 
 
 /* ── 互换联系方式卡（标注 11:31：点了按钮要在会话里真的换出东西）── */
-.联系卡 {
-  /* v2（标注 09:37）：白底信息卡，行内可点复制 */
+
+
+
+/* 对方联系方式条（标注 2026-08-21 10:14）：钉在聊天流顶部的一张白卡，一行一项 */
+.联系条 {
   width: 100%;
-  margin: 4px 0;
-  padding: 12px 14px 6px;
+  margin-bottom: 6px;
   border-radius: 14px;
   background: var(--白);
   border: 1px solid var(--描边);
-  box-shadow: 0 2px 10px rgba(26, 26, 26, 0.04);
-}
-
-.联系头 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 7px;
-}
-
-.联系标 {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--次要浅);
+  overflow: hidden;
 }
 
 .联系行 {
@@ -266,10 +253,14 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 9px;
-  padding: 9px 0;
+  gap: 10px;
+  padding: 11px 14px;
   border-top: 1px solid var(--分隔线);
   text-align: left;
+}
+
+.联系条 .联系行:first-child {
+  border-top: none;
 }
 
 .复制符 {

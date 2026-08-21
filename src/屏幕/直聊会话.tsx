@@ -175,9 +175,9 @@ export function 消息条({ 条, 对方首字 }: { 条: 会话条; 对方首字:
 // ── 共用件 3：底部功能键行 ─────────────────────────────────────
 // 名单给顺序，已完成给状态：在已完成里的渲染成「已+名」的灰底对勾键（div，不可点），
 // 其余渲染成可点白键，点一下即标记完成。两屏只是初始已完成集合不同。
-/** 互换出来的联系方式卡（标注 2026-08-20 09:37 重做）：
-    白底信息卡，每行点一下整值复制进剪贴板 */
-export function 联系卡({ 名, 我方, 对方 }: { 名: string; 我方: string; 对方: string }) {
+/** 对方联系方式行（标注 2026-08-21 10:14 重做）：钉在聊天流顶部，只显示对方的，
+    自己的号码没必要占位置；点一下复制 */
+export function 联系卡({ 名, 对方 }: { 名: string; 对方: string }) {
   const 类 = 名.replace('换', '').replace('发', '');
   const 复制 = async (值: string) => {
     const 纯值 = 值.replace(/\s/g, '');
@@ -185,7 +185,6 @@ export function 联系卡({ 名, 我方, 对方 }: { 名: string; 我方: string
       await navigator.clipboard.writeText(纯值);
       轻提示(`已复制${类}：${值}`);
     } catch {
-      // 老 WebView / 无焦点场景兜底：隐藏输入框 + execCommand
       try {
         const 框 = document.createElement('textarea');
         框.value = 纯值;
@@ -201,21 +200,12 @@ export function 联系卡({ 名, 我方, 对方 }: { 名: string; 我方: string
       }
     }
   };
-  const 行 = (谁: string, 值: string) => (
-    <button className={`${样式.联系行} 可点`} onClick={() => 复制(值)}>
-      <span className={样式.联系谁}>{谁}</span>
-      <span className={`${样式.联系值} 等宽数字`}>{值}</span>
+  return (
+    <button className={`${样式.联系行} 可点`} onClick={() => 复制(对方)}>
+      <span className={样式.联系谁}>{类}</span>
+      <span className={`${样式.联系值} 等宽数字`}>{对方}</span>
       <span className={样式.复制符} aria-hidden>⧉</span>
     </button>
-  );
-  return (
-    <div className={样式.联系卡}>
-      <div className={样式.联系头}>
-        <span className={样式.联系标}>{类}已互换 · 点击复制</span>
-      </div>
-      {行('对方', 对方)}
-      {行('你', 我方)}
-    </div>
   );
 }
 
