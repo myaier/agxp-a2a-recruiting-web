@@ -105,19 +105,6 @@ export default function 设置() {
         </div>
 
 
-        <div className={`${样式.组标} ${样式.组标间距}`}>通用</div>
-        <div className={样式.卡}>
-          <button
-            className={`${样式.行} 可点`}
-            onClick={() => 设提示('缓存已清理 · 释放 32.4 MB')}
-          >
-            <span className={样式.行文字组}>
-              <span className={样式.行标题}>清理缓存</span>
-            </span>
-            <span className={样式.行值}>32.4 MB</span>
-            <span className={样式.尖括号}>›</span>
-          </button>
-        </div>
 
         <div className={`${样式.组标} ${样式.组标间距}`}>关于</div>
         <div className={样式.卡}>
