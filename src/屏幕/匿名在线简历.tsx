@@ -6,8 +6,7 @@
 // 自述段 → ● 求职期望（标题加粗 + 带宽行 + 一致性淡绿条）→ ● 工作经历 →
 // 底部双按钮：直接聊（白描边）+ 让AI代理去谈（荧光绿）+ 尾注小字。
 //
-// 薪资口径（对齐设计稿）：「公开期望带」是候选人自愿公开的区间，可以显示；
-// 保密的是他的底线。风险条里「你的授权带」是你自己一方的数字，给自己看不算泄漏。
+// 薪资只用于结构化初筛：企业侧只看「有无交集」，不展示候选期望数字，也不让 Agent 谈薪。
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -17,6 +16,7 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
 import { 匿名简历表, 推荐列表, type 匿名简历档 } from '../数据/企业端模拟数据';
+import { 薪资初筛, 薪资初筛文案 } from '../数据/薪资初筛';
 
 /** 判断正文里 **加粗段** 的渲染：拆成普通/加粗交替段 */
 function 带粗体(文本: string) {
@@ -35,7 +35,15 @@ function 带粗体(文本: string) {
  * D11·A 简历正文（头区 → 技能 → 页尾注），独立屏与候选详情的「在线简历」Tab 共用。
  * 已确认 = 双方意向已确认：脱敏段（公司实名 / 教育实名行）还原 —— A-01=沈亦舟 闭环。
  */
-export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档; 已确认?: boolean }) {
+export function 简历正文({
+  档,
+  已确认 = false,
+  薪资结论 = '薪资带已进入初筛',
+}: {
+  档: 匿名简历档;
+  已确认?: boolean;
+  薪资结论?: string;
+}) {
   return (
     <div className={样式.页体}>
       {/* ── 头区：大代号 + 匿名标签 + 灰人像占位 ── */}
@@ -75,7 +83,11 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
         {档.风险 ? (
           <div className={样式.风险条}>
             <span className={样式.风险符} aria-hidden>◆</span>
-            <span className={样式.风险文}>风险：{档.风险}</span>
+            <span className={样式.风险文}>
+              风险：{档.风险.includes('薪资') || 档.风险.includes('期望')
+                ? `${薪资结论}；如未通过，可调整岗位筛选范围后重新核对。`
+                : 档.风险}
+            </span>
           </div>
         ) : null}
       </div>
@@ -92,7 +104,7 @@ export function 简历正文({ 档, 已确认 = false }: { 档: 匿名简历档;
       </div>
       <div className={样式.期望标题行}>
         <span className={样式.期望标题}>{档.期望.标题}</span>
-        <span className={`${样式.期望薪资} 薪资体 等宽数字`}>{档.期望.薪资.replace('-', '–')}</span>
+        <span className={样式.期望薪资}>{薪资结论}</span>
       </div>
       <div className={样式.期望副行}>
         {档.期望.带宽行}
@@ -202,6 +214,10 @@ export default function 匿名在线简历() {
   // 起步推荐克隆（编号带 @岗位编号 后缀）回落到模板人的简历档
   const 档 = 匿名简历表[编号] ?? 匿名简历表[编号.split('@')[0]];
   const 推 = 推荐列表.find((条) => 条.编号 === 编号);
+  const 在谈候选 = 状态.企业候选列表.find((条) => 条.编号 === 编号);
+  const 岗位编号 = 推?.岗位编号 ?? 在谈候选?.岗位编号;
+  const 岗位薪资带 = 状态.岗位列表.find((岗) => 岗.编号 === 岗位编号)?.薪资带;
+  const 薪资结论 = 薪资初筛文案(薪资初筛(档?.期望.薪资, 岗位薪资带));
   const 已接触 = 状态.已接触推荐.includes(编号);
   const 已收藏 = 状态.收藏候选.includes(编号);
 
@@ -244,7 +260,7 @@ export default function 匿名在线简历() {
       />
 
       <滚动区 样式覆盖={{ paddingBottom: 8 }}>
-        <简历正文 档={档} />
+        <简历正文 档={档} 薪资结论={薪资结论} />
       </滚动区>
 
       {/* ── 底部双按钮 + 尾注 ── */}

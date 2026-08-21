@@ -16,6 +16,7 @@ import { useParams } from 'react-router-dom';
 import 样式 from './岗位详情.module.css';
 import { 次级页外壳, 公司字标, 滚动区, 返回栏 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
+import 弹层框架 from '../组件/弹层框架';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -312,8 +313,7 @@ export default function 岗位详情() {
 
       {/* 关闭职位二次确认：对我方可逆（随时重开），但对在谈的人是一次真实的终止通知 */}
       {待关闭 ? (
-        <div className={样式.遮罩} onClick={() => 设待关闭(false)}>
-          <div className={样式.确认框} onClick={(事件) => 事件.stopPropagation()}>
+        <弹层框架 标签={`关闭职位${岗.名称}`} 遮罩类名={样式.遮罩} 面板类名={样式.确认框} 关闭={() => 设待关闭(false)}>
             <div className={样式.确认标题}>关闭「{岗.名称}」？</div>
             <div className={样式.确认正文}>
               {在谈中数 > 0
@@ -335,8 +335,7 @@ export default function 岗位详情() {
                 关闭职位
               </button>
             </div>
-          </div>
-        </div>
+        </弹层框架>
       ) : null}
     </次级页外壳>
   );

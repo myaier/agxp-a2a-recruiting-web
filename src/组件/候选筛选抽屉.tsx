@@ -15,6 +15,7 @@ import 样式 from './候选筛选抽屉.module.css';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
+import 弹层框架 from './弹层框架';
 
 export default function 候选筛选抽屉({ 关闭 }: { 关闭: () => void }) {
   const { 状态, 派发 } = use应用状态();
@@ -49,9 +50,13 @@ export default function 候选筛选抽屉({ 关闭 }: { 关闭: () => void }) {
   };
 
   return (
-    <>
-      <div className={样式.遮罩} onClick={关闭} />
-      <div className={样式.抽屉} role="dialog" aria-label="告诉AI代理你的硬性要求">
+    <弹层框架
+      标签="告诉AI代理你的硬性要求"
+      遮罩类名={样式.遮罩}
+      面板类名={样式.抽屉}
+      关闭={关闭}
+      层级={61}
+    >
         <div className={样式.抓手} />
 
         <div className={样式.标题行}>
@@ -123,7 +128,6 @@ export default function 候选筛选抽屉({ 关闭 }: { 关闭: () => void }) {
         <button className={`${样式.完成键} 可点`} onClick={关闭}>
           完成
         </button>
-      </div>
-    </>
+    </弹层框架>
   );
 }

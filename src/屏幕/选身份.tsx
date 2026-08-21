@@ -11,6 +11,7 @@ import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
+import { 身份首次入口 } from '../流程/onboarding配置';
 
 /** 三端身份键：也直接用作主按钮文案里的身份名 */
 type 身份键 = '求职者' | '企业';
@@ -67,9 +68,8 @@ export default function 选身份() {
       }, 950);
       return;
     }
-    // 求职者先进学生分流（在校 / 有经验），后续三屏按分流结果分支
-    // 标注 2026-08-20 13:32：企业端先不做实名认证，注册直接进招聘名片
-    跳转(选中 === '企业' ? 路径.招聘名片 : 路径.引导说明);
+    // 首次注册入口由统一流程合同决定；老用户切端仍直接进入对应主壳。
+    跳转(身份首次入口(选中));
   };
 
   // 切换模式的两面：正面 = 当前身份，背面 = 目标身份
@@ -106,17 +106,18 @@ export default function 选身份() {
         {身份列表.map((项) => {
           const 当前 = 选中 === 项.键;
           return (
-            <div
+            <button
+              type="button"
               key={项.键}
               className={`${样式.身份卡} ${当前 ? 样式.选中 : ''} 可点`}
               onClick={() => 设选中(项.键)}
-              role="button"
+              aria-pressed={当前}
             >
               <span className={样式.身份标题}>{项.标题}</span>
               <span className={样式.图标底}>
                 <身份图标 键={项.键} />
               </span>
-            </div>
+            </button>
           );
         })}
       </div>

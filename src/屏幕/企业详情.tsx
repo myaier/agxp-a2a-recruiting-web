@@ -20,6 +20,7 @@ import { 次级页外壳, 返回栏, 滚动区, 公司字标 } from '../组件/�
 import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
+import 弹层框架 from '../组件/弹层框架';
 import { 取公司档案, type 公司档案, type 核对项 } from '../数据/公司档案';
 import type { 公司自述覆盖 } from '../数据/类型';
 import { 市场列表 } from '../数据/模拟数据';
@@ -409,8 +410,7 @@ function 层壳({
   children: React.ReactNode;
 }) {
   return (
-    <div className={样式.遮罩} onClick={关闭}>
-      <div className={样式.层} onClick={(事件) => 事件.stopPropagation()}>
+    <弹层框架 标签={标题} 遮罩类名={样式.遮罩} 面板类名={样式.层} 关闭={关闭}>
         <div className={样式.层顶}>
           <span className={样式.层抓手} />
           <div className={样式.层顶行}>
@@ -421,8 +421,7 @@ function 层壳({
           </div>
         </div>
         <div className={`${样式.层体} 滚动区`}>{children}</div>
-      </div>
-    </div>
+    </弹层框架>
   );
 }
 

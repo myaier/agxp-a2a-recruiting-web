@@ -8,6 +8,7 @@ import { 次级页外壳, 返回栏, 滚动区, 开关 } from '../组件/通用'
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
+import 弹层框架 from '../组件/弹层框架';
 
 export default function 企业设置() {
   const { 返回, 跳转, 替换跳转 } = use导航();
@@ -27,7 +28,7 @@ export default function 企业设置() {
         <span className={样式.行标题}>{键}</span>
         {说明 ? <span className={样式.行说明}>{说明}</span> : null}
       </span>
-      <开关 开={状态.企业设置开关[键]} 切换={() => 派发({ 型: '企业切设置开关', 键 })} />
+      <开关 标签={键} 开={状态.企业设置开关[键]} 切换={() => 派发({ 型: '企业切设置开关', 键 })} />
     </div>
   );
 
@@ -116,8 +117,7 @@ export default function 企业设置() {
       </滚动区>
 
       {待退出 ? (
-        <div className={样式.遮罩} onClick={() => 设待退出(false)}>
-          <div className={样式.确认框} onClick={(事件) => 事件.stopPropagation()}>
+        <弹层框架 标签="退出企业账号" 遮罩类名={样式.遮罩} 面板类名={样式.确认框} 关闭={() => 设待退出(false)}>
             <div className={样式.确认标题}>退出当前账号？</div>
             <div className={样式.确认正文}>
               退出后代理仍会按既有规则继续寻访，但你收不到需要拍板的提醒。
@@ -130,8 +130,7 @@ export default function 企业设置() {
                 退出登录
               </button>
             </div>
-          </div>
-        </div>
+        </弹层框架>
       ) : null}
 
       {提示 ? <div className={样式.浮层提示}>{提示}</div> : null}

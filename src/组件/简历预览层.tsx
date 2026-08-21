@@ -12,6 +12,7 @@
 // 弹层只有文件名和简历数据本身，折叠卡只有「在线简历」四个字。
 
 import 样式 from './简历预览层.module.css';
+import 弹层框架 from './弹层框架';
 import { 简历联系方式 } from '../数据/模拟数据';
 import { use应用状态 } from '../状态/应用状态';
 
@@ -141,8 +142,7 @@ export default function 简历原件层({
   关闭: () => void;
 }) {
   return (
-    <div className={样式.遮罩} onClick={关闭}>
-      <div className={样式.层} onClick={(事件) => 事件.stopPropagation()}>
+    <弹层框架 标签="简历原件" 遮罩类名={样式.遮罩} 面板类名={样式.层} 关闭={关闭}>
         {/* 顶栏：只有 PDF 徽标 + 文件名 + 关闭，没有任何说明文字（用户硬规则）*/}
         <div className={样式.顶栏}>
           <span className={样式.抓手} />
@@ -164,7 +164,6 @@ export default function 简历原件层({
             {匿名代号 ? <简历纸身 代号={匿名代号} /> : <简历纸身 原件 />}
           </div>
         </div>
-      </div>
-    </div>
+    </弹层框架>
   );
 }

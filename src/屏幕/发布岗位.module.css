@@ -231,6 +231,27 @@
   padding: 16px 22px 0;
 }
 
+.初筛合同 {
+  margin: 18px 22px 0;
+  padding: 14px;
+  border: 1px solid var(--淡绿描边);
+  border-radius: 14px;
+  background: var(--淡绿底2);
+}
+
+.初筛合同标题 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--深绿文字);
+}
+
+.初筛合同说明 {
+  margin-top: 5px;
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--次要浅);
+}
+
 /* 已写进合同的条件：选中态片 + 右侧 ✕，点整片即删 */
 .已选片行 {
   display: flex;

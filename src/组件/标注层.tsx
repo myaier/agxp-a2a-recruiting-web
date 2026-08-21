@@ -363,20 +363,29 @@ export default function 标注层() {
 
       {/* 导出面板 */}
       {导出面板 ? (
-        <div
+        <>
+        <button
+          type="button"
+          aria-label="关闭修改意见导出面板"
+          onClick={() => 设导出面板(false)}
           style={{
             position: 'absolute',
             inset: 0,
             background: 'var(--遮罩)',
             pointerEvents: 'auto',
-            display: 'flex',
-            alignItems: 'flex-end',
+            border: 0,
           }}
-          onClick={() => 设导出面板(false)}
-        >
-          <div
-            onClick={(事件) => 事件.stopPropagation()}
+        />
+          <dialog
+            open
+            aria-label="修改意见导出"
             style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              margin: 0,
+              border: 0,
               width: '100%',
               background: '#fff',
               borderRadius: '16px 16px 0 0',
@@ -441,8 +450,8 @@ export default function 标注层() {
                 {已复制 ? '已复制 ✓ 贴给 Claude 即可' : '复制全部'}
               </button>
             </div>
-          </div>
-        </div>
+          </dialog>
+        </>
       ) : null}
 
       {/* 消费 useLocation 仅为了路由变化时组件跟着刷新（hash 直接从 window 读） */}

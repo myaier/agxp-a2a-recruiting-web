@@ -20,6 +20,7 @@ import {
   通用样式,
 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
+import 弹层框架 from '../组件/弹层框架';
 import { use应用状态 } from '../状态/应用状态';
 
 /** 表单里可编辑的六个字段 */
@@ -198,9 +199,7 @@ export default function 添加意向() {
 
       {/* ── 编辑抽屉：点遮罩或确认都关掉 ── */}
       {编辑中字段 ? (
-        <>
-          <div className={样式.遮罩} onClick={() => 设编辑中(null)} />
-          <div className={样式.抽屉}>
+        <弹层框架 标签={`编辑${编辑中字段.标签}`} 遮罩类名={样式.遮罩} 面板类名={样式.抽屉} 关闭={() => 设编辑中(null)}>
             <div className={样式.抽屉头}>
               <span className={样式.抽屉标题}>{编辑中字段.标签}</span>
               {编辑中字段.徽标 ? (
@@ -218,8 +217,7 @@ export default function 添加意向() {
               enterKeyHint="done"
             />
             <主按钮 文字="确定" 按下={确认编辑} />
-          </div>
-        </>
+        </弹层框架>
       ) : null}
     </次级页外壳>
   );

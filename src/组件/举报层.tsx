@@ -11,6 +11,7 @@ import { useState } from 'react';
 import 样式 from './举报层.module.css';
 import { 轻提示 } from './轻提示';
 import { use应用状态 } from '../状态/应用状态';
+import 弹层框架 from './弹层框架';
 
 /** 举报原因固定四项：前三项是平台能核查的具体事由，「其他」兜底 */
 const 举报原因表 = ['虚假信息', '薪资不实', '骚扰', '其他'] as const;
@@ -41,8 +42,7 @@ export default function 举报层({ 对象名, 屏蔽名称, 关闭 }: 属性) {
   };
 
   return (
-    <div className={样式.遮罩} onClick={关闭}>
-      <div className={样式.层} onClick={(事件) => 事件.stopPropagation()}>
+    <弹层框架 标签="举报" 遮罩类名={样式.遮罩} 面板类名={样式.层} 关闭={关闭}>
         <div className={样式.抓手} />
         <div className={样式.标题}>举报</div>
         <div className={`${样式.对象} 单行`}>{对象名}</div>
@@ -63,8 +63,7 @@ export default function 举报层({ 对象名, 屏蔽名称, 关闭 }: 属性) {
         <button
           className={`${样式.屏蔽行} 可点`}
           onClick={() => 设同时屏蔽((旧) => !旧)}
-          role="checkbox"
-          aria-checked={同时屏蔽}
+          aria-pressed={同时屏蔽}
         >
           <span className={`${样式.勾选框} ${同时屏蔽 ? 样式.勾选框选中 : ''}`}>
             {同时屏蔽 ? '✓' : ''}
@@ -81,7 +80,6 @@ export default function 举报层({ 对象名, 屏蔽名称, 关闭 }: 属性) {
         <button className={`${样式.取消} 可点`} onClick={关闭}>
           取消
         </button>
-      </div>
-    </div>
+    </弹层框架>
   );
 }

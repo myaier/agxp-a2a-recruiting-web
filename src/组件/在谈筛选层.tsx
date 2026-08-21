@@ -5,6 +5,7 @@
 // 两端共用：求职端在谈、企业端在谈候选。
 
 import 样式 from './在谈筛选层.module.css';
+import 弹层框架 from './弹层框架';
 
 export type 看什么档 = '全部' | '待我拍板' | '进行中';
 
@@ -21,31 +22,29 @@ export default function 在谈筛选层({
   关闭: () => void;
 }) {
   return (
-    <div className={样式.遮罩} onClick={关闭}>
-      <div className={样式.层} onClick={(事件) => 事件.stopPropagation()}>
-        <span className={样式.抓手} />
-        <div className={样式.标题}>看哪几单</div>
+    <弹层框架 标签="筛选在谈项目" 遮罩类名={样式.遮罩} 面板类名={样式.层} 关闭={关闭}>
+      <span className={样式.抓手} aria-hidden="true" />
+      <div className={样式.标题}>看哪几单</div>
 
-        <div className={样式.选项组}>
-          {(['全部', '待我拍板', '进行中'] as 看什么档[]).map((档) => (
-            <button
-              key={档}
-              className={`${样式.选项} ${当前 === 档 ? 样式.选项选中 : ''} 可点`}
-              onClick={() => 设当前(档)}
-            >
-              <span className={样式.选项名}>{档}</span>
-              {档 === '待我拍板' && 待办数 > 0 ? (
-                <span className={`${样式.选项数} 等宽数字`}>{待办数}</span>
-              ) : null}
-              {当前 === 档 ? <span className={样式.选项勾}>✓</span> : null}
-            </button>
-          ))}
-        </div>
-
-        <button className={`${样式.完成} 可点`} onClick={关闭}>
-          完成
-        </button>
+      <div className={样式.选项组}>
+        {(['全部', '待我拍板', '进行中'] as 看什么档[]).map((档) => (
+          <button
+            key={档}
+            className={`${样式.选项} ${当前 === 档 ? 样式.选项选中 : ''} 可点`}
+            onClick={() => 设当前(档)}
+          >
+            <span className={样式.选项名}>{档}</span>
+            {档 === '待我拍板' && 待办数 > 0 ? (
+              <span className={`${样式.选项数} 等宽数字`}>{待办数}</span>
+            ) : null}
+            {当前 === 档 ? <span className={样式.选项勾}>✓</span> : null}
+          </button>
+        ))}
       </div>
-    </div>
+
+      <button className={`${样式.完成} 可点`} onClick={关闭}>
+        完成
+      </button>
+    </弹层框架>
   );
 }

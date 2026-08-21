@@ -15,6 +15,7 @@ import 接入二维码 from '../组件/接入二维码';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
+import 弹层框架 from '../组件/弹层框架';
 
 /** 代理的权限边界：能自己做的 / 必须问你的 / 永远不做的 */
 const 权限边界 = [
@@ -169,8 +170,7 @@ export default function 代理详情() {
 
       {/* ── 扫码接入层 ── */}
       {接入层 ? (
-        <div className={样式.遮罩} onClick={() => 设接入层(false)}>
-          <div className={样式.接入层} onClick={(事件) => 事件.stopPropagation()}>
+        <弹层框架 标签="飞书扫码接入" 遮罩类名={样式.遮罩} 面板类名={样式.接入层} 关闭={() => 设接入层(false)}>
             <span className={样式.抓手} />
             <div className={样式.层标题}>用飞书扫码</div>
             <div className={样式.层说明}>
@@ -205,12 +205,10 @@ export default function 代理详情() {
             >
               我已扫码（原型演示）
             </button>
-          </div>
-        </div>
+        </弹层框架>
       ) : null}
 
       {提示 ? <div className={样式.浮层提示}>{提示}</div> : null}
     </次级页外壳>
   );
 }
-

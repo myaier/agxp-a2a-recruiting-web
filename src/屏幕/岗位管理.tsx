@@ -15,6 +15,7 @@ import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import type { 在招岗位 } from '../数据/类型';
+import 弹层框架 from '../组件/弹层框架';
 
 export default function 岗位管理() {
   const { 状态, 派发 } = use应用状态();
@@ -144,8 +145,7 @@ export default function 岗位管理() {
       {/* 停止招聘二次确认：只在还有在谈候选时弹。停岗对我方可逆（随时重开），
           但对那几位候选是一次真实的终止通知，必须让用户知道自己在做什么 */}
       {待停 ? (
-        <div className={样式.遮罩} onClick={() => 设待停(null)}>
-          <div className={样式.确认框} onClick={(事件) => 事件.stopPropagation()}>
+        <弹层框架 标签={`停止招聘${待停.名称}`} 遮罩类名={样式.遮罩} 面板类名={样式.确认框} 关闭={() => 设待停(null)}>
             <div className={样式.确认标题}>停止招聘「{待停.名称}」？</div>
             <div className={样式.确认正文}>
               这个岗位还有 {数在谈(待停.编号)} 位在谈候选，他们会收到代理的礼貌终止通知，
@@ -165,14 +165,12 @@ export default function 岗位管理() {
                 停止招聘
               </button>
             </div>
-          </div>
-        </div>
+        </弹层框架>
       ) : null}
 
       {/* 删除二次确认：删除不可逆，必须显式点掉 */}
       {待删 ? (
-        <div className={样式.遮罩} onClick={() => 设待删(null)}>
-          <div className={样式.确认框} onClick={(事件) => 事件.stopPropagation()}>
+        <弹层框架 标签={`删除岗位${待删.名称}`} 遮罩类名={样式.遮罩} 面板类名={样式.确认框} 关闭={() => 设待删(null)}>
             <div className={样式.确认标题}>删除「{待删.名称}」？</div>
             <div className={样式.确认正文}>
               删除后这个岗位和它的全部记录都不再保留，且不可撤销。
@@ -193,8 +191,7 @@ export default function 岗位管理() {
                 删除
               </button>
             </div>
-          </div>
-        </div>
+        </弹层框架>
       ) : null}
 
       {提示 ? <div className={样式.浮层提示}>{提示}</div> : null}

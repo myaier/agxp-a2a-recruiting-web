@@ -9,6 +9,7 @@
 import 样式 from './拿不准弹层.module.css';
 import 代理标 from '../组件/代理标';
 import { 拿不准弹层 as 文案 } from '../数据/模拟数据';
+import 弹层框架 from '../组件/弹层框架';
 
 export default function 拿不准弹层({
   可见,
@@ -42,11 +43,13 @@ export default function 拿不准弹层({
       : '现金差 2K 以内、其余条件全过的岗位，可以直接替我放宽');
 
   return (
-    <>
-      {/* 半透明遮罩：点空白处等于「只这一次」，直接关掉不留规则 */}
-      <button className={样式.遮罩} onClick={关闭} aria-label="关闭" />
-
-      <div className={样式.抽屉} role="dialog" aria-modal="true">
+    <弹层框架
+      标签="记成规则"
+      遮罩类名={样式.遮罩}
+      面板类名={样式.抽屉}
+      关闭={关闭}
+      层级={41}
+    >
         <div className={样式.抓手} />
 
         <div className={样式.标题行}>
@@ -85,7 +88,6 @@ export default function 拿不准弹层({
         </div>
 
         <div className={样式.尾注}>{文案.尾注}</div>
-      </div>
-    </>
+    </弹层框架>
   );
 }

@@ -7,7 +7,7 @@
 //   · 打开状态下点行本身 = 先关闭，避免误触内容区。
 // 同一时刻只允许一行处于打开态由调用方通过 打开 / 请求打开 受控管理。
 
-import { useRef, type PointerEvent as React指针事件, type ReactNode } from 'react';
+import { useRef, type KeyboardEvent, type PointerEvent as React指针事件, type ReactNode } from 'react';
 import 样式 from './滑动行.module.css';
 
 export interface 滑动操作 {
@@ -89,6 +89,9 @@ export default function 滑动行({
 
       <div
         className={样式.行面}
+        role="button"
+        tabIndex={0}
+        aria-expanded={打开}
         style={{ transform: `translateX(${打开 ? -操作区宽 : 0}px)` }}
         onPointerDown={按下开始}
         onPointerMove={移动}
@@ -103,6 +106,12 @@ export default function 滑动行({
             return;
           }
           按下?.();
+        }}
+        onKeyDown={(事件: KeyboardEvent<HTMLDivElement>) => {
+          if (事件.key !== 'Enter' && 事件.key !== ' ') return;
+          事件.preventDefault();
+          if (打开) 请求打开(false);
+          else 按下?.();
         }}
       >
         {children}

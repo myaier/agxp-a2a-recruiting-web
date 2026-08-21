@@ -10,6 +10,7 @@ import { 次级页外壳, 返回栏, 滚动区, 开关 } from '../组件/通用'
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
+import 弹层框架 from '../组件/弹层框架';
 
 export default function 设置() {
   const { 返回, 跳转, 替换跳转 } = use导航();
@@ -32,6 +33,7 @@ export default function 设置() {
       </span>
       <开关
         开={状态.设置开关[键]}
+        标签={键}
         切换={() => {
           // 隐身是唯一一个「关掉会让当前公司看到你」的开关，关之前必须确认
           if (键 === '对现雇主隐身' && 状态.设置开关[键]) {
@@ -146,8 +148,7 @@ export default function 设置() {
       </滚动区>
 
       {待关隐身 ? (
-        <div className={样式.遮罩} onClick={() => 设待关隐身(false)}>
-          <div className={样式.确认框} onClick={(事件) => 事件.stopPropagation()}>
+        <弹层框架 标签="关闭对现雇主隐身" 遮罩类名={样式.遮罩} 面板类名={样式.确认框} 关闭={() => 设待关隐身(false)}>
             <div className={样式.确认标题}>关闭「对现雇主隐身」？</div>
             <div className={样式.确认正文}>
               关闭后，你当前公司及其关联公司可以在平台上看到你的匿名画像，也可能主动发起接触。
@@ -168,13 +169,11 @@ export default function 设置() {
                 仍要关闭
               </button>
             </div>
-          </div>
-        </div>
+        </弹层框架>
       ) : null}
 
       {待退出 ? (
-        <div className={样式.遮罩} onClick={() => 设待退出(false)}>
-          <div className={样式.确认框} onClick={(事件) => 事件.stopPropagation()}>
+        <弹层框架 标签="退出当前账号" 遮罩类名={样式.遮罩} 面板类名={样式.确认框} 关闭={() => 设待退出(false)}>
             <div className={样式.确认标题}>退出当前账号？</div>
             <div className={样式.确认正文}>
               退出后代理仍会按既有规则继续谈判，但你收不到需要拍板的提醒。
@@ -190,8 +189,7 @@ export default function 设置() {
                 退出登录
               </button>
             </div>
-          </div>
-        </div>
+        </弹层框架>
       ) : null}
 
       {提示 ? <div className={样式.浮层提示}>{提示}</div> : null}
