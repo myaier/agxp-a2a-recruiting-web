@@ -156,14 +156,25 @@
   color: var(--次要);
 }
 
-/* 横条轨道占满剩余宽度；实际横条宽度由数据里的 宽度% 决定 */
+/* 可点的那一档（硬性匹配）外层是 <button>，它自带 text-align:center 与自己的
+   字号，会把 52px 定宽的档名列排成居中、与其余四行错开半格；这里钉回继承值。
+   按压反馈走全局 .可点，不另写 hover —— 手机上没有 hover 这一态。 */
+.漏斗行可点 {
+  text-align: left;
+  font: inherit;
+}
+
+/* 横条轨道占满剩余宽度；实际横条宽度由数据里的 宽度% 决定。
+   display:block 是给 <span> 版本补的：可点那行嵌在 <button> 里只能用短语元素 */
 .漏斗槽 {
+  display: block;
   flex: 1;
   min-width: 0;
 }
 
 /* 橄榄色渐变到淡绿：越往漏斗深处条越短，颜色横向由深到浅 */
 .漏斗条 {
+  display: block;
   height: 8px;
   border-radius: 4px;
   background: linear-gradient(90deg, var(--橄榄), var(--淡绿描边));

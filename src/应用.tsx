@@ -65,6 +65,8 @@ const 企业通知中心 = lazy(() => import('./屏幕/企业通知中心'));
 const 企业设置 = lazy(() => import('./屏幕/企业设置'));
 const 企业披露策略 = lazy(() => import('./屏幕/企业披露策略'));
 const 已筛候选 = lazy(() => import('./屏幕/已筛候选'));
+const 初筛记录 = lazy(() => import('./屏幕/初筛记录'));
+const 初筛对话 = lazy(() => import('./屏幕/初筛对话'));
 const 账号安全 = lazy(() => import('./屏幕/账号安全'));
 const 反馈 = lazy(() => import('./屏幕/反馈'));
 const 用户协议 = lazy(() => import('./屏幕/用户协议'));
@@ -175,6 +177,10 @@ export default function 应用() {
       <Route path={路径.企业设置} element={<企业设置 />} />
       <Route path={路径.企业披露策略} element={<企业披露策略 />} />
       <Route path={路径.已筛候选} element={<已筛候选 />} />
+      {/* 列表在前、单条在后：静态段本来就胜过动态段，这里按书写顺序再摆一次，
+          读代码的人不用去回忆 react-router 的匹配优先级 */}
+      <Route path={路径.初筛记录} element={<初筛记录 />} />
+      <Route path={路径.初筛对话模板} element={<初筛对话 />} />
 
       {/* 兜底 */}
         <Route path="*" element={<Navigate to={路径.登录} replace />} />

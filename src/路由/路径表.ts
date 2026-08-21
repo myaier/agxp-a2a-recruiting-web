@@ -107,4 +107,11 @@ export const 路径 = {
   企业设置: '/hr/settings',
   企业披露策略: '/hr/disclosure',
   已筛候选: '/hr/screened-out',
+  /** 本周初筛记录：日报卡人才漏斗的「硬性匹配」那一行点进来，看代理这一周怎么筛的 */
+  初筛记录: '/hr/screening-log',
+  /** 单条初筛对话：结论卡 + 那一场初筛的完整对话。
+   *  参数 slug 用 id 而非「编号」，同本文件上方的既有约定 —— react-router 的参数正则
+   *  是 :[\w-]+，中文参数名会被当成字面量路径段，整条路由匹配不上 */
+  初筛对话: (编号: string) => `/hr/screening-log/${编号}`,
+  初筛对话模板: '/hr/screening-log/:id',
 } as const;

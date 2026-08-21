@@ -1,0 +1,134 @@
+/* 本周初筛记录 —— 分组清单版式镜像 岗位管理.module.css（小节头 + 一组一张白卡），
+   行内的双盲头像取 候选详情.module.css 的 .候选头像 口径（灰绿底 var(--初筛) + 白字）。
+   颜色一律走 样式/设计令牌.css 里已有的变量，不新造、不硬编码。 */
+
+/* ── 滚动区内容 ── */
+.列表 {
+  padding: 12px 18px 30px;
+  display: flex;
+  flex-direction: column; /* RN 默认 column，DOM 必须显式写 */
+  gap: 18px;
+}
+
+.分组 {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 小节头 = 岗位名（同 岗位管理 的分组标：15/700，不加字距） */
+.岗位名 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--墨);
+}
+
+/* 一组记录共用一张白卡，行间用分隔线 */
+.卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 0 14px;
+}
+
+/* 记录行是整行按钮：显式复位宽度与对齐 */
+.记录行 {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--分隔线);
+  text-align: left;
+}
+.记录行.末条 {
+  border-bottom: none;
+}
+
+/* 双盲头像：头像字 + 灰绿底 —— 双盲下不用真人照片，也不用真名首字 */
+.头像 {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--初筛);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.头像字 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--白);
+}
+
+.文本组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.名行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.代号 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+.画像 {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+/* 小字行：硬性 N/5 + 完成时间 */
+.小字行 {
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--最弱);
+}
+
+.小字分 {
+  margin: 0 5px;
+}
+
+/* ── 结果标：只有「通过」「挡掉」两个词，通过深绿、挡掉灰 ── */
+.结果标 {
+  flex: none;
+  padding: 2.5px 9px;
+  border-radius: var(--圆角-胶囊);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.结果通过 {
+  background: var(--淡绿底);
+  color: var(--深绿文字);
+}
+
+.结果挡掉 {
+  background: var(--浅灰底);
+  color: var(--次要浅);
+}
+
+/* 一条记录都没有时的兜底，不留白屏 */
+.空态 {
+  padding: 46px 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--次要浅);
+}
