@@ -3,7 +3,7 @@
 // 「记成规则」会真的出现在规则库里 —— 这是原型能被当真评审的前提。
 
 import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react';
-import type { 求职初筛偏好, 求职薪资单位 } from '../流程/onboarding配置';
+import { 迁移主要求职类型, type 求职初筛偏好, type 求职薪资单位 } from '../流程/onboarding配置';
 import {
   在谈列表 as 初始在谈,
   全局规则,
@@ -311,6 +311,13 @@ function 读求职筛选缓存(): 状态['引导预填'] {
     if (!原文) return null;
     const 值 = JSON.parse(原文);
     if (!Array.isArray(值?.城市们) || !Array.isArray(值?.职位)) return null;
+    if (值.筛选偏好 && Array.isArray(值.筛选偏好.求职类型)) {
+      值.筛选偏好 = 迁移主要求职类型(值.筛选偏好, 值.薪资?.单位);
+      const 应使用日薪 = 值.筛选偏好.求职类型[0] === '实习生';
+      if (值.薪资?.单位 && (应使用日薪 ? 值.薪资.单位 !== '元/天' : 值.薪资.单位 !== '月薪K')) {
+        delete 值.薪资;
+      }
+    }
     return 值;
   } catch {
     return null;

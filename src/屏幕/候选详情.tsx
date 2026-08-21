@@ -30,7 +30,7 @@ import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 
-type 页内Tab = '谈判进度' | '在线简历';
+type 页内Tab = '接洽进度' | '在线简历';
 
 /** 点决策那一刻冻结下来的卡点上下文（见 做协调决策 的注释） */
 interface 决策快照内容 {
@@ -48,7 +48,7 @@ const 卡点小结A01 =
 const 企业意向确认说明 = [
   '双方互相披露姓名与联系方式，不可撤回',
   '确认后直接进入私聊，面试安排跟候选人真人谈',
-  'AI代理转为顾问：谈判档案归档，只做评估整理与提醒',
+  'AI代理转为顾问：接洽记录归档，只做评估整理与提醒',
 ];
 
 
@@ -87,7 +87,7 @@ export default function 候选详情() {
   const { 状态, 派发 } = use应用状态();
   const { 跳转, 返回 } = use导航();
 
-  const [当前Tab, 设当前Tab] = useState<页内Tab>('谈判进度');
+  const [当前Tab, 设当前Tab] = useState<页内Tab>('接洽进度');
   const [弹层可见, 设弹层可见] = useState(false);
   // 递交简历段的 PDF 附件（标注 09:23）：看的是收到的匿名版原件
   const [看简历, 设看简历] = useState(false);
@@ -257,7 +257,7 @@ export default function 候选详情() {
 
       {/* 两个 Tab：本地状态切换，不走路由（同一屏的两种视图，返回键不该退到上一个 Tab）*/}
       <div className={样式.Tab行}>
-        {(['谈判进度', '在线简历'] as 页内Tab[]).map((名) => (
+        {(['接洽进度', '在线简历'] as 页内Tab[]).map((名) => (
           <button
             key={名}
             className={`${样式.Tab} ${当前Tab === 名 ? 样式.Tab选中 : 样式.Tab未选} 可点`}
@@ -268,7 +268,7 @@ export default function 候选详情() {
         ))}
       </div>
 
-      {当前Tab === '谈判进度' ? (
+      {当前Tab === '接洽进度' ? (
         <滚动区>
           {/* 一条流：阶段分节条 → 该阶段双方代理对话 → 你的话 → 决策卡 */}
           <阶段对话流

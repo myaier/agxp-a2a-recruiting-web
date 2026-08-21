@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+test-results
+playwright-report
 *.local
 
 # Capacitor 生成的原生工程（按方案第 4 步接壳后产生；是否入库看团队约定，

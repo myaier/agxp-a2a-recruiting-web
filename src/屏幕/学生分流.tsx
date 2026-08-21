@@ -162,7 +162,20 @@ export default function 学生分流() {
         </div>
         <div className={样式.选钮副行}>先选一个主要方向，进入后可继续添加其他求职意向</div>
 
-        {是学生 && 筛选偏好.求职类型.includes('实习生') ? (
+        {筛选偏好.求职类型.includes('校园招聘') ? (
+          <>
+            <div className={`${样式.节问} ${样式.节问间距}`}>预计毕业时间</div>
+            <input
+              className={样式.资料输入}
+              type="month"
+              value={筛选偏好.毕业时间 ?? ''}
+              aria-label="预计毕业时间"
+              onChange={(事件) => 存筛选偏好({ 毕业时间: 事件.target.value })}
+            />
+          </>
+        ) : null}
+
+        {筛选偏好.求职类型.includes('实习生') ? (
           <>
             <div className={`${样式.节问} ${样式.节问间距}`}>实习可用时间</div>
             <div className={样式.猜片行}>
@@ -189,8 +202,27 @@ export default function 学生分流() {
                 </button>
               ))}
             </div>
+            <div className={`${样式.节问} ${样式.节问间距}`}>最早可开始实习日期</div>
+            <input
+              className={样式.资料输入}
+              type="date"
+              value={筛选偏好.实习开始日期 ?? ''}
+              aria-label="最早可开始实习日期"
+              onChange={(事件) => 存筛选偏好({ 实习开始日期: 事件.target.value })}
+            />
           </>
         ) : null}
+
+        <div className={`${样式.节问} ${样式.节问间距}`}>作品集或项目链接（可选）</div>
+        <input
+          className={样式.资料输入}
+          type="url"
+          inputMode="url"
+          value={筛选偏好.作品集链接 ?? ''}
+          placeholder="https://"
+          aria-label="作品集或项目链接"
+          onChange={(事件) => 存筛选偏好({ 作品集链接: 事件.target.value })}
+        />
 
         <div className={`${样式.节问} ${样式.节问间距}`}>可接受的办公方式</div>
         <div className={样式.猜片行}>

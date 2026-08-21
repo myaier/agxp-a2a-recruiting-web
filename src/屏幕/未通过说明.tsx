@@ -14,13 +14,13 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 未通过说明 as 数据 } from '../数据/模拟数据';
 
-type 页签 = '谈判进度' | '职位详情';
+type 页签 = '接洽进度' | '职位详情';
 
 export default function 未通过说明() {
   const { 派发 } = use应用状态();
   const { 返回, 跳转 } = use导航();
 
-  const [当前页签, 设当前页签] = useState<页签>('谈判进度');
+  const [当前页签, 设当前页签] = useState<页签>('接洽进度');
   // 「维持红线」不改任何规则，只把这条建议标记为已处理，避免点了没反应
   const [已维持红线, 设已维持红线] = useState(false);
 
@@ -59,7 +59,7 @@ export default function 未通过说明() {
 
       {/* 两个 Tab：与在谈详情页同一套版式，这里默认停在「谈判进度」 */}
       <div className={样式.Tab行}>
-        {(['谈判进度', '职位详情'] as 页签[]).map((名) => (
+        {(['接洽进度', '职位详情'] as 页签[]).map((名) => (
           <button
             key={名}
             className={`${名 === 当前页签 ? 样式.Tab选中 : 样式.Tab未选} 可点`}
@@ -72,7 +72,7 @@ export default function 未通过说明() {
 
       <滚动区>
         <div className={样式.内容区}>
-          {当前页签 === '谈判进度' ? (
+          {当前页签 === '接洽进度' ? (
             <>
               <div className={样式.分组标}>
                 硬 性 核 对 · {通过数} / {数据.核对项.length} 通 过
