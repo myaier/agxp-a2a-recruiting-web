@@ -23,7 +23,6 @@ const 毕业院校 = lazy(() => import('./屏幕/毕业院校'));
 const 选专业 = lazy(() => import('./屏幕/选专业'));
 const 就读时间段 = lazy(() => import('./屏幕/就读时间段'));
 const 添加头像 = lazy(() => import('./屏幕/添加头像'));
-const 接入飞书 = lazy(() => import('./屏幕/接入飞书'));
 const 主壳 = lazy(() => import('./屏幕/主壳'));
 const 在谈详情 = lazy(() => import('./屏幕/在谈详情'));
 const 往来记录 = lazy(() => import('./屏幕/往来记录'));
@@ -112,8 +111,6 @@ export default function 应用() {
       <Route path={路径.选专业} element={<选专业 />} />
       <Route path={路径.就读时间段} element={<就读时间段 />} />
       <Route path={路径.添加头像} element={<添加头像 />} />
-      <Route path={路径.接入飞书} element={<接入飞书 />} />
-      <Route path={路径.企业接入飞书} element={<接入飞书 企业端 />} />
 
       {/* 主壳：3 Tab + 职位页双子视图 */}
       <Route path={路径.主壳} element={<主壳 />} />

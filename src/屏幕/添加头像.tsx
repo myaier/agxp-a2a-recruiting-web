@@ -9,7 +9,6 @@ import { 次级页外壳, 返回栏, 页面大标题, 主按钮, 滚动区 } fro
 import { 相机图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
-import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
 
 
@@ -40,10 +39,17 @@ function 压成头像(文件: File): Promise<string> {
 }
 
 export default function 添加头像() {
-  const { 返回, 跳转 } = use导航();
+  const { 返回, 进主壳 } = use导航();
   const { 状态: 全局, 派发 } = use应用状态();
   const 文件框 = useRef<HTMLInputElement>(null);
   const 头像 = 全局.求职头像;
+
+  /** 注册收尾：落地回主页而不是上次停留的 Tab（2026-08-20） */
+  const 开启 = () => {
+    派发({ 型: '切Tab', Tab: '职位' });
+    派发({ 型: '切子视图', 子视图: '在谈' });
+    进主壳();
+  };
 
   async function 选了照片(事件: React.ChangeEvent<HTMLInputElement>) {
     const 文件 = 事件.target.files?.[0];
@@ -86,7 +92,7 @@ export default function 添加头像() {
         </div>
       </滚动区>
 
-      <主按钮 文字="下一步" 按下={() => 跳转(路径.接入飞书)} />
+      <主按钮 文字="开启求职之旅" 按下={开启} />
     </次级页外壳>
   );
 }
