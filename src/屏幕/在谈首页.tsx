@@ -12,6 +12,7 @@ import { useState } from 'react';
 import 样式 from './在谈首页.module.css';
 import 下拉刷新 from '../组件/下拉刷新';
 import 顶部意向栏 from './顶部意向栏';
+import 在谈筛选层, { type 看什么档 } from '../组件/在谈筛选层';
 import { 主页外壳, 代理横幅, 阶段标签, 滚动区, 白卡, 公司字标, use模拟加载, 骨架卡组 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
 import { use应用状态 } from '../状态/应用状态';
@@ -31,7 +32,8 @@ export default function 在谈首页() {
   const 待协调数 = 本意向列表.filter((单) => 单.需要你).length;
 
   // 状态胶囊（用户 2026-08-21 定：在谈筛的是「现在先看哪几单」，纯视图态，不写成代理规则）
-  const [看什么, 设看什么] = useState<'全部' | '待我拍板' | '进行中'>('全部');
+  const [看什么, 设看什么] = useState<看什么档>('全部');
+  const [筛选层开, 设筛选层开] = useState(false);
   const 过滤后 = 本意向列表.filter((单) =>
     看什么 === '全部' ? true : 看什么 === '待我拍板' ? 单.需要你 : !单.需要你
   );
@@ -39,7 +41,10 @@ export default function 在谈首页() {
 
   return (
     <主页外壳>
-      <顶部意向栏 />
+      <顶部意向栏
+        打开在谈筛选={() => 设筛选层开(true)}
+        在谈生效={看什么 !== '全部'}
+      />
 
       <代理横幅
         前文="初筛与前几轮我已谈完，"
@@ -47,21 +52,7 @@ export default function 在谈首页() {
         按下={() => 跳转(路径.问AI代理)}
       />
 
-      {/* 状态胶囊：一步可达「待我拍板」，比藏进筛选面板快 */}
-      <div className={样式.状态行}>
-        {(['全部', '待我拍板', '进行中'] as const).map((项) => (
-          <button
-            key={项}
-            className={`${样式.状态片} ${看什么 === 项 ? 样式.状态片选中 : ''} 可点`}
-            onClick={() => 设看什么(项)}
-          >
-            {项}
-            {项 === '待我拍板' && 待协调数 > 0 ? (
-              <span className={`${样式.状态数} 等宽数字`}>{待协调数}</span>
-            ) : null}
-          </button>
-        ))}
-      </div>
+      <div style={{ height: 10, flex: 'none' }} />
 
       <下拉刷新>
       <滚动区>
@@ -88,6 +79,14 @@ export default function 在谈首页() {
         </div>
       </滚动区>
       </下拉刷新>
+      {筛选层开 ? (
+        <在谈筛选层
+          当前={看什么}
+          设当前={设看什么}
+          待办数={待协调数}
+          关闭={() => 设筛选层开(false)}
+        />
+      ) : null}
     </主页外壳>
   );
 }
