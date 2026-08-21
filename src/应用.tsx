@@ -10,7 +10,6 @@ import 登录 from './屏幕/登录';
 // 约 60 屏一次性打进 800KB 主包；路由切换时由 Suspense 提供短暂的统一兜底。
 const 选身份 = lazy(() => import('./屏幕/选身份'));
 const 学生分流 = lazy(() => import('./屏幕/学生分流'));
-const 引导说明 = lazy(() => import('./屏幕/引导说明'));
 const 基本信息 = lazy(() => import('./屏幕/基本信息'));
 const 工作经历 = lazy(() => import('./屏幕/工作经历'));
 const 引导问答 = lazy(() => import('./屏幕/引导问答'));
@@ -94,15 +93,15 @@ export default function 应用() {
   return (
     <Suspense fallback={<路由加载中 />}>
       <Routes>
-      {/* 注册引导（2026-08-20 按 BOSS 截图顺序重排）：
-          登录 → 选身份 → 引导说明 → 完善资料(/student，可进 /onboard/city、/onboard/job)
-          → 期望月薪(/wizard 首题) → 创建在线简历(/basic) → 求职状态 → 最高学历
-          → 你毕业于 → 你的专业是 → 就读时间段 →（非学生先 /experience）→ 向导续答
-          → 披露说明 → 添加头像 → 主壳 */}
+      {/* 注册引导（2026-08-20 按 BOSS 截图顺序重排；引导说明页 2026-08-21 按标注删除）：
+          登录 → 选身份 → 完善资料(/student，可进 /onboard/city、/onboard/job)
+          → 期望月薪(/wizard?stage=salary) → 创建在线简历(/basic) → 求职状态 → 最高学历
+          → 你毕业于 → 你的专业是 → 就读时间段 →（非学生先 /experience）→ 向导偏好段(/wizard)
+          → 披露说明 → 添加头像 → 主壳
+          向导两段共用一条路由：段写在 query 上，query 不参与路由匹配 */}
       <Route path={路径.登录} element={<登录 />} />
       <Route path={路径.选身份} element={<选身份 />} />
       <Route path={路径.学生分流} element={<学生分流 />} />
-      <Route path={路径.引导说明} element={<引导说明 />} />
       <Route path={路径.基本信息} element={<基本信息 />} />
       <Route path={路径.工作经历} element={<工作经历 />} />
       <Route path={路径.引导问答} element={<引导问答 />} />
