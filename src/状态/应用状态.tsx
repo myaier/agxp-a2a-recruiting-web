@@ -3,7 +3,7 @@
 // 「记成规则」会真的出现在规则库里 —— 这是原型能被当真评审的前提。
 
 import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react';
-import type { 求职初筛偏好 } from '../流程/onboarding配置';
+import type { 求职初筛偏好, 求职薪资单位 } from '../流程/onboarding配置';
 import {
   在谈列表 as 初始在谈,
   全局规则,
@@ -115,7 +115,7 @@ export interface 状态 {
     城市们: string[];
     职位: string[];
     筛选偏好?: 求职初筛偏好;
-    薪资?: { 下限: number; 上限: number };
+    薪资?: { 下限: number; 上限: number; 单位?: 求职薪资单位 };
     到岗?: string;
   } | null;
 
@@ -217,7 +217,7 @@ export type 动作 =
   | { 型: '存引导预填'; 城市们: string[]; 职位: string[] }
   | { 型: '启程引导'; 城市们: string[]; 职位: string[]; 筛选偏好: 求职初筛偏好 }
   | { 型: '存求职筛选偏好'; 偏好: 求职初筛偏好 }
-  | { 型: '存薪资预填'; 下限: number; 上限: number }
+  | { 型: '存薪资预填'; 下限: number; 上限: number; 单位: 求职薪资单位 }
   | { 型: '存到岗预填'; 到岗: string }
   | { 型: '存求职头像'; 图: string | null }
   | { 型: '加叮嘱'; 归属: string; 文本: string; 序号: number; 写于阶段: 阶段 };
@@ -1044,7 +1044,7 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
         ...旧,
         引导预填: {
           ...(旧.引导预填 ?? { 城市们: ['上海'], 职位: [] }),
-          薪资: { 下限: 动作.下限, 上限: 动作.上限 },
+          薪资: { 下限: 动作.下限, 上限: 动作.上限, 单位: 动作.单位 },
         },
       };
 

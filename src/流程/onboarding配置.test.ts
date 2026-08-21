@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { 路径 } from '../路由/路径表';
-import { Onboarding流程, 初筛字段矩阵, 求职初筛缺失项, 身份首次入口 } from './onboarding配置';
+import { Onboarding流程, 初筛字段矩阵, 判断求职薪资单位, 求职初筛缺失项, 身份首次入口 } from './onboarding配置';
 
 describe('多角色 onboarding 合同', () => {
   it('招聘方首次注册必须先认证，再填写名片和岗位', () => {
@@ -27,5 +27,10 @@ describe('多角色 onboarding 合同', () => {
 
   it('初筛合同同时覆盖通用、社招、学生与实习字段', () => {
     expect(Object.keys(初筛字段矩阵)).toEqual(['通用', '社招', '学生', '实习']);
+  });
+
+  it('实习求职统一按日薪采集，其他类型保持月薪', () => {
+    expect(判断求职薪资单位({ 求职类型: ['校园招聘', '实习生'], 办公方式: ['混合'] })).toBe('元/天');
+    expect(判断求职薪资单位({ 求职类型: ['社招全职'], 办公方式: ['现场'] })).toBe('月薪K');
   });
 });

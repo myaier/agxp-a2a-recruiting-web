@@ -3,6 +3,7 @@ import { 路径 } from '../路由/路径表';
 export type Onboarding角色 = '学生求职' | '社招求职' | '招聘方';
 export type 求职类型 = '社招全职' | '校园招聘' | '实习生' | '兼职';
 export type 办公偏好 = '现场' | '混合' | '全远程';
+export type 求职薪资单位 = '月薪K' | '元/天';
 
 export interface 求职初筛偏好 {
   求职类型: 求职类型[];
@@ -84,4 +85,9 @@ export function 求职初筛缺失项(偏好: 求职初筛偏好): string[] {
     if (!偏好.每周到岗天数) 缺失.push('每周可到岗天数');
   }
   return 缺失;
+}
+
+/** 只要用户把实习纳入求职范围，薪资就按日薪采集，避免把实习错误表达成月薪。 */
+export function 判断求职薪资单位(偏好?: 求职初筛偏好): 求职薪资单位 {
+  return 偏好?.求职类型.includes('实习生') ? '元/天' : '月薪K';
 }
