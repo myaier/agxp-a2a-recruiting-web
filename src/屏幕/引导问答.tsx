@@ -21,7 +21,13 @@ import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
 import { 个人优势文本 } from '../数据/模拟数据';
 import { 城市字典, 热门城市, 行业字典 } from '../数据/城市与行业';
-import { 判断求职薪资单位, type 求职薪资单位 } from '../流程/onboarding配置';
+import {
+  判断求职薪资单位,
+  规范化作品集链接,
+  校验作品集链接,
+  默认求职初筛偏好,
+  type 求职薪资单位,
+} from '../流程/onboarding配置';
 
 // 「状态分流」题已删（2026-08-17 标注意见 #1）；「到岗节奏」题已挪去
 // 求职状态屏 /onboard/status（2026-08-20 按 BOSS 截图顺序重排）
@@ -60,6 +66,11 @@ export default function 引导问答() {
   const [薪资上限, 设薪资上限] = useState(薪资已答 ? (全局.引导预填?.薪资?.上限 ?? 60) : 当前薪资单位 === '元/天' ? 500 : 60);
   const [排除项, 设排除项] = useState(['大小周', '纯外包 / 乙方']);
   const [自我介绍, 设自我介绍] = useState(全局.个人优势);
+  const 筛选偏好 = 全局.引导预填?.筛选偏好 ?? 默认求职初筛偏好(全局.基本信息.身份 === '在校');
+  const 作品集链接 = 筛选偏好.作品集链接 ?? '';
+  const 存作品集链接 = (值: string) =>
+    派发({ 型: '存求职筛选偏好', 偏好: { ...筛选偏好, 作品集链接: 值 } });
+  const 作品集错误 = 校验作品集链接(作品集链接);
 
   /** 多选题共用的「有则去掉、无则加上」 */
   const 造切换 = (设值: (更新: (旧: string[]) => string[]) => void) => (项: string) =>
@@ -75,7 +86,10 @@ export default function 引导问答() {
       return;
     }
     // 个人优势是最后一题：走之前把用户写的那段落盘（2026-08-21 修断链：原来只在本地 state）
-    if (当前题 === '个人优势') 派发({ 型: '存个人优势', 文本: 自我介绍 });
+    if (当前题 === '个人优势') {
+      派发({ 型: '存个人优势', 文本: 自我介绍 });
+      存作品集链接(规范化作品集链接(作品集链接));
+    }
     if (第几题 < 题序.length - 1) 设第几题(第几题 + 1);
     else 跳转(路径.披露说明);
   };
@@ -115,12 +129,22 @@ export default function 引导问答() {
           />
         ) : null}
         {当前题 === '硬性排除' ? <排除题 已选={排除项} 切换={造切换(设排除项)} /> : null}
-        {当前题 === '个人优势' ? <优势题 文本={自我介绍} 设文本={设自我介绍} /> : null}
+        {当前题 === '个人优势' ? (
+          <优势题
+            文本={自我介绍}
+            设文本={设自我介绍}
+            作品集链接={作品集链接}
+            设作品集链接={存作品集链接}
+          />
+        ) : null}
 
         <主按钮
           文字={按钮文字}
           按下={下一题}
-          禁用={当前题 === '工作城市' && 已选城市.length === 0}
+          禁用={
+            (当前题 === '工作城市' && 已选城市.length === 0) ||
+            (当前题 === '个人优势' && Boolean(作品集错误))
+          }
         />
       </div>
     </次级页外壳>
@@ -661,10 +685,19 @@ function 排除题({ 已选, 切换 }: { 已选: string[]; 切换: (项: string)
 
 // ── A3g 个人优势（备忘录式编辑 + GitHub）──────────────────────
 
-function 优势题({ 文本, 设文本 }: { 文本: string; 设文本: (值: string) => void }) {
-  // GitHub 链接默认未填：模拟真实新用户状态（标注意见 #3）
-  const [GitHub链接, 设GitHub链接] = useState('');
+function 优势题({
+  文本,
+  设文本,
+  作品集链接,
+  设作品集链接,
+}: {
+  文本: string;
+  设文本: (值: string) => void;
+  作品集链接: string;
+  设作品集链接: (值: string) => void;
+}) {
   const [GitHub编辑中, 设GitHub编辑中] = useState(false);
+  const 链接错误 = 校验作品集链接(作品集链接);
 
   return (
     <滚动区 样式覆盖={{ paddingBottom: 12 }}>
@@ -690,36 +723,47 @@ function 优势题({ 文本, 设文本 }: { 文本: string; 设文本: (值: str
       {/* 指向「工作经历」页的专业技能区块。这里只指路、不再复制一套标签编辑器：
           一是技能只该有一个写入口，二是本屏答案存在内存里，中途跳走会全丢。
           技能必须是标签而不是这段自由文本（标注 13:18 指路小字删）。 */}
-      {/* GitHub 链接：默认未填（标注意见 #3），点击行内输入，填了显示绿色 ✓ */}
+      {/* 与完善资料页共用同一个作品集字段，任一入口修改都立即持久化。 */}
       <div className={样式.GitHub卡}>
         <span className={样式.GitHub底}>
           <GitHub图标 />
         </span>
         <span className={样式.GitHub文字组}>
           <span className={样式.GitHub标题}>
-            GitHub 链接<span className={样式.选填}>选填</span>
+            作品集 / GitHub / 项目链接<span className={样式.选填}>选填</span>
           </span>
           {GitHub编辑中 ? (
             <input
               className={样式.GitHub输入}
-              value={GitHub链接}
-              placeholder="github.com/你的用户名"
+              type="url"
+              inputMode="url"
+              value={作品集链接}
+              placeholder="github.com/你的用户名或项目地址"
               autoFocus
-              onChange={(事件) => 设GitHub链接(事件.target.value.trim())}
-              onBlur={() => 设GitHub编辑中(false)}
+              aria-label="作品集或项目链接"
+              aria-invalid={Boolean(链接错误)}
+              onChange={(事件) => 设作品集链接(事件.target.value)}
+              onBlur={() => {
+                设作品集链接(规范化作品集链接(作品集链接));
+                设GitHub编辑中(false);
+              }}
               onKeyDown={(事件) => {
-                if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 设GitHub编辑中(false);
+                if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) {
+                  设作品集链接(规范化作品集链接(作品集链接));
+                  设GitHub编辑中(false);
+                }
               }}
             />
-          ) : GitHub链接 ? (
+          ) : 作品集链接 ? (
             <button className={`${样式.GitHub值} 可点`} onClick={() => 设GitHub编辑中(true)}>
-              {GitHub链接} ✓
+              {作品集链接} {链接错误 ? '· 请修改' : '✓'}
             </button>
           ) : (
             <button className={`${样式.GitHub占位} 可点`} onClick={() => 设GitHub编辑中(true)}>
-              粘贴你的 GitHub 主页链接
+              粘贴你的作品集、GitHub 或项目链接
             </button>
           )}
+          {链接错误 ? <span className={样式.链接错误}>{链接错误}</span> : null}
         </span>
         <span className={样式.尖括号}>›</span>
       </div>

@@ -86,6 +86,27 @@
   color: var(--最弱);
 }
 
+.实习日期标签 {
+  margin-top: 16px;
+}
+
+.日期输入 {
+  width: 100%;
+  border: 1px solid var(--描边);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--白);
+  color: var(--墨);
+  font-size: 15px;
+}
+
+.字段错误 {
+  margin-top: 6px;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* 薪资带：两个数字框 + 连字符（框样式同 工作经历 的月份输入）*/
 .薪资行 {
   display: flex;

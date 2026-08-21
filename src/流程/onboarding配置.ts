@@ -20,6 +20,75 @@ export interface 求职初筛偏好 {
   作品集链接?: string;
 }
 
+function 本地日期(基准: Date): string {
+  const 补零 = (数: number) => String(数).padStart(2, '0');
+  return `${基准.getFullYear()}-${补零(基准.getMonth() + 1)}-${补零(基准.getDate())}`;
+}
+
+function 基准日期文本(基准: Date | string): string {
+  return typeof 基准 === 'string' ? 基准 : 本地日期(基准);
+}
+
+function 是真实日期(值: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(值)) return false;
+  const 日期 = new Date(`${值}T00:00:00Z`);
+  return !Number.isNaN(日期.getTime()) && 日期.toISOString().slice(0, 10) === 值;
+}
+
+/** date 输入与业务校验共用，避免浏览器选择器和提交规则口径不一致。 */
+export function 今天日期(基准 = new Date()): string {
+  return 本地日期(基准);
+}
+
+export function 校验预计毕业时间(值: string | undefined, 基准: Date | string = new Date()): string | null {
+  if (!值) return '请填写预计毕业时间';
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(值)) return '预计毕业时间格式不正确';
+  if (值 < 基准日期文本(基准).slice(0, 7)) return '预计毕业时间不能早于本月';
+  return null;
+}
+
+export function 校验未过期日期(
+  值: string | undefined,
+  字段名: string,
+  基准: Date | string = new Date(),
+): string | null {
+  if (!值) return `请填写${字段名}`;
+  if (!是真实日期(值)) return `${字段名}格式不正确`;
+  if (值 < 基准日期文本(基准)) return `${字段名}不能早于今天`;
+  return null;
+}
+
+/** 用户常粘贴 github.com/name；存储时统一补齐 https，避免形成两种链接格式。 */
+export function 规范化作品集链接(值: string): string {
+  const 文本 = 值.trim();
+  if (!文本) return '';
+  return /^[a-z][a-z\d+.-]*:\/\//i.test(文本) ? 文本 : `https://${文本}`;
+}
+
+export function 校验作品集链接(值: string | undefined): string | null {
+  if (!值?.trim()) return null;
+  try {
+    const 地址 = new URL(规范化作品集链接(值));
+    if (!['http:', 'https:'].includes(地址.protocol) || !地址.hostname.includes('.')) {
+      return '请输入有效的作品集或项目链接';
+    }
+    return null;
+  } catch {
+    return '请输入有效的作品集或项目链接';
+  }
+}
+
+/** 候选最早可开始日不晚于岗位最晚接受日，即可通过日期初筛。 */
+export function 实习开始日期匹配(
+  候选最早日期?: string,
+  岗位最晚日期?: string,
+): '匹配' | '不匹配' | '信息不足' {
+  if (!候选最早日期 || !岗位最晚日期 || !是真实日期(候选最早日期) || !是真实日期(岗位最晚日期)) {
+    return '信息不足';
+  }
+  return 候选最早日期 <= 岗位最晚日期 ? '匹配' : '不匹配';
+}
+
 /**
  * 首次注册的唯一流程合同。页面跳转与自动化测试共用，新增页面时必须在这里显式登记，
  * 避免某个角色拥有采集页却被分支路由静默跳过。
@@ -82,17 +151,29 @@ export function 默认求职初筛偏好(是学生: boolean): 求职初筛偏好
     : { 求职类型: ['社招全职'], 办公方式: ['现场', '混合', '全远程'] };
 }
 
-export function 求职初筛缺失项(偏好: 求职初筛偏好): string[] {
+export function 求职初筛缺失项(偏好: 求职初筛偏好, 基准: Date | string = new Date()): string[] {
   const 缺失: string[] = [];
   if (偏好.求职类型.length === 0) 缺失.push('求职类型');
   if (偏好.求职类型.length > 1) 缺失.push('一个主要求职类型');
   if (偏好.办公方式.length === 0) 缺失.push('办公方式');
-  if (偏好.求职类型.includes('校园招聘') && !偏好.毕业时间) 缺失.push('预计毕业时间');
+  if (偏好.求职类型.includes('校园招聘')) {
+    if (!偏好.毕业时间) 缺失.push('预计毕业时间');
+    else {
+      const 错误 = 校验预计毕业时间(偏好.毕业时间, 基准);
+      if (错误) 缺失.push(错误);
+    }
+  }
   if (偏好.求职类型.includes('实习生')) {
     if (!偏好.实习月数) 缺失.push('可实习月数');
     if (!偏好.每周到岗天数) 缺失.push('每周可到岗天数');
     if (!偏好.实习开始日期) 缺失.push('实习开始日期');
+    else {
+      const 错误 = 校验未过期日期(偏好.实习开始日期, '实习开始日期', 基准);
+      if (错误) 缺失.push(错误);
+    }
   }
+  const 链接错误 = 校验作品集链接(偏好.作品集链接);
+  if (链接错误) 缺失.push(链接错误);
   return 缺失;
 }
 
