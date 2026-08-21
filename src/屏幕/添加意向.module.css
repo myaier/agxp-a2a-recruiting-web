@@ -1,12 +1,18 @@
-/* A21 添加求职意向 —— 照 RN 意向管理.js 的 添加意向 + 设计稿 A21 的像素值搬 */
+/* 添加 / 编辑求职期望 —— 2026-08-21 按截图 1 重写成 label + 值 的清单表单。
+   尺寸与 通用.module.css 的 .表单条目 同源（12px 灰标签 / 15.5px 墨值 / 14px 上下内边距 /
+   var(--分隔线) 细线），本页额外多的只有「未填时值行变灰」这一态。
+   配色一律取 设计令牌.css 里已有的变量，不新增、不硬编码。 */
 
-/* ── 求职类型行 ── */
+/* ── 第 1 行：求职类型（label 与两个单选圆点同一行，右对齐）──
+   这一行没有值行，label 就是行内主文，所以走 设置行 那档 14.5px 墨，
+   而不是其余六行值行上方那档 12px 灰小标签。 */
 .类型行 {
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
   align-items: center;
-  padding: 16px 0;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 0;
   border-bottom: 1px solid var(--分隔线);
 }
 
@@ -27,104 +33,84 @@
   flex-direction: row;
   align-items: center;
   gap: 6px;
+  background: none;
 }
 
+/* 选中态只加粗并转深色，不换字号 —— 换字号会让整行宽度在两个选项间来回跳 */
 .类型文字 {
   font-size: 14px;
   color: var(--次要浅);
 }
 
-/* 选中态只加粗并转深色，不换字号，避免选中时行宽跳动 */
 .类型文字选中 {
   font-size: 14px;
   font-weight: 600;
   color: var(--墨);
 }
 
-/* ── 尾注（在滚动区外，跟主按钮一起固定在底部）── */
-.尾注 {
-  flex: none;
-  margin: 0;
-  padding: 0 22px 8px;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--次要浅);
+/* ── 第 2–7 行：小字灰 label + 大字值行 + 右侧 › ── */
+.条目 {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+  background: none;
 }
 
-/* ── 编辑抽屉（RN 的 Modal → 覆盖在次级页外壳上的绝对定位层）── */
-.遮罩 {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  background: var(--遮罩);
-  animation: 遮罩淡入 0.18s ease both;
+/* 最后一行（本意向底线）下面就是底部按钮区，再画一条线是多余的框 */
+.条目:last-child {
+  border-bottom: none;
 }
 
-.抽屉 {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 21;
-  display: flex;
-  flex-direction: column;
-  background: var(--白);
-  border-radius: var(--圆角-卡片) var(--圆角-卡片) 0 0;
-  /* 底部内边距由抽屉里的主按钮自带（含安全区），这里只管上半部分 */
-  padding: 16px 0 0;
-  animation: 抽屉升起 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-
-.抽屉头 {
+.条目标签行 {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  padding: 0 18px;
 }
 
-.抽屉标题 {
-  font-size: 14.5px;
-  font-weight: 700;
-  color: var(--墨);
+.条目标签 {
+  font-size: 12px;
+  color: var(--次要浅);
 }
 
-.抽屉输入 {
-  margin: 12px 18px 0;
-  height: 46px;
-  padding: 0 14px;
-  border: 1px solid var(--描边中);
-  border-radius: var(--圆角-按钮);
-  background: var(--白);
+.条目值行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.条目值 {
+  flex: 1;
+  min-width: 0;
   font-size: 15.5px;
   font-weight: 600;
   color: var(--墨);
 }
 
-.抽屉输入:focus {
-  border-color: var(--淡绿描边);
-  outline: none;
+/* 未填占位：只改颜色和字重，字号与位置不动，填与不填两态基线才对得齐 */
+.值占位 {
+  font-weight: 500;
+  color: var(--最弱);
 }
 
-
-/* 本地 keyframes：CSS Modules 会重命名 animation-name，
-   全局.css 里的同名 keyframes 够不到，必须在本文件内定义 */
-@keyframes 遮罩淡入 {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-@keyframes 抽屉升起 {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+.尖括号 {
+  flex: none;
+  font-size: 16px;
+  font-weight: 300;
+  color: var(--最弱);
 }
 
-/* 编辑态底部双键（对照 BOSS 编辑求职期望：左删除、右保存） */
+/* ── 编辑态底部双键（左删除、右保存）；新建态用 通用 的 主按钮 ── */
 .底键行 {
   flex: none;
   display: flex;
   flex-direction: row;
   gap: 10px;
-  padding: 10px 20px calc(var(--安全区下) + 10px);
+  padding: 12px 18px calc(var(--安全区下) + 12px);
 }
 
 .删除键 {
@@ -148,114 +134,9 @@
   color: var(--墨);
 }
 
-/* ── 极简句式表单（2026-08-19 重构）──
-   整份意向是一句话，可填处是词元。放弃 label + value 的清单版式。 */
-.句块 {
-  padding: 10px 0 4px;
-  font-size: 21px;
-  line-height: 1.85;
-  letter-spacing: -0.01em;
-  color: var(--墨);
-}
-
-.连接词 {
-  color: var(--次要浅);
-  font-weight: 400;
-  margin: 0 2px;
-}
-
-.连接词小 {
-  color: var(--最弱);
-  font-size: 12px;
-  margin: 0 2px;
-}
-
-/* 词元：可点的填空。虚线底 = 「这里可以改」，不做成按钮框以免又变回清单感 */
-.词元 {
-  display: inline;
-  font-size: 21px;
-  font-weight: 700;
-  color: var(--墨);
-  border-bottom: 2px solid var(--淡绿描边2);
-  padding: 0 1px 1px;
-  background: none;
-}
-
-.词元主 {
-  font-size: 27px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  border-bottom-width: 3px;
-}
-
-.词元小 {
-  font-size: 12.5px;
-  font-weight: 600;
-  border-bottom-width: 1.5px;
-}
-
-/* 次级三项：内联成一段，不各占一行 */
-.次句块 {
-  padding: 12px 0 18px;
-  line-height: 2.1;
-  border-bottom: 1px solid var(--分隔线);
-}
-
-/* 底线单独成卡：全表唯一「只有代理知道」的字段 */
-.底线卡 {
-  display: block;
-  width: 100%;
-  text-align: left;
-  margin-top: 18px;
-  padding: 13px 15px;
-  border-radius: var(--圆角-中卡);
-  background: var(--淡绿底2);
-  border: 1px solid var(--淡绿描边2);
-}
-
-.底线头 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.底线标 {
-  font-size: 11.5px;
-  color: var(--次要浅);
-}
-
-.底线值 {
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--深绿文字);
-}
-
-/* 求职类型：分段切换（收到页尾，它最少被改） */
-.类型段 {
-  display: flex;
-  flex-direction: row;
-  gap: 6px;
-  margin-top: 20px;
-  padding: 4px;
-  background: var(--浅灰底2);
-  border-radius: 999px;
-}
-
-.类型片 {
-  flex: 1;
-  padding: 9px 0;
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--次要);
-}
-
-.类型片选中 {
-  background: var(--白);
-  color: var(--墨);
-  font-weight: 700;
-  box-shadow: 0 1px 3px rgba(26, 26, 26, 0.06);
+/* 与 通用 主按钮 的禁用态同一档透明度，两种底部形态看起来是同一个按钮 */
+.保存键:disabled {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
 }

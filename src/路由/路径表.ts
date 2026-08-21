@@ -49,6 +49,10 @@ export const 路径 = {
   真人会话: '/chat/human',
   求职意向管理: '/intentions',
   添加意向: '/intentions/new',
+  /** 「添加求职期望」次级页 A：其他感兴趣城市多选（0/9），写 意向草稿.感兴趣城市们 */
+  选择城市: '/intentions/cities',
+  /** 「添加求职期望」次级页 B：期望行业多选（0/3），写 意向草稿.期望行业们 */
+  选期望行业: '/intentions/industries',
   /** 编辑已有意向：同一个「添加意向」屏的编辑态 */
   编辑意向: (编号: string) => `/intentions/${编号}`,
   编辑意向模板: '/intentions/:id',

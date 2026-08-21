@@ -1,0 +1,134 @@
+/* 选期望行业（/intentions/industries）—— 添加求职期望页的次级页 B。
+   配色一比一沿用 选工作城市：描边 #e4e6dd / 底 var(--页面底)，
+   选中态 var(--深绿) 描边 + var(--淡绿底2) 底 + var(--深绿文字)。
+   不引入新配色变量，也不抄 BOSS 的青绿色。 */
+
+/* ── 返回栏右上「保存」（版式同 公司档案分区编辑 的保存键）── */
+.保存键 {
+  flex: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--深绿文字);
+  padding: 6px 2px 6px 10px;
+}
+
+/* ── 大标题 + 右上 N/3 ── */
+.标题行 {
+  flex: none;
+  padding: 14px 22px 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.大标题 {
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+  color: var(--墨);
+  margin: 0;
+}
+
+.计数 {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--次要浅);
+}
+
+.副标题 {
+  flex: none;
+  margin: 7px 0 0;
+  padding: 0 22px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--次要);
+}
+
+/* ── 滚动区内容（底部留安全区，最后一组不会被机身圆角吃掉）── */
+.内容区 {
+  padding: 16px 18px calc(var(--安全区下) + 16px);
+}
+
+.组标 {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+/* ── 推荐区 chips：一行排开，超宽自动折行 ── */
+.推荐片组 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── 行业 chip（推荐区与手风琴展开区共用）── */
+.行业片 {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--页面底);
+  border: 1px solid #e4e6dd;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--墨);
+}
+
+.行业片选中 {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+  color: var(--深绿文字);
+  font-weight: 700;
+}
+
+/* 选满 3 个后其余变灰：整枚退到底色层，明确表达「这会儿点不动」 */
+.行业片禁用 {
+  background: var(--浅灰底);
+  border-color: var(--描边);
+  color: var(--最弱);
+  cursor: default;
+}
+
+/* ── 手风琴清单 ── */
+.手风琴 {
+  margin-top: 22px;
+  border-top: 1px solid var(--分隔线);
+}
+
+.手风琴组 {
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.手风琴行 {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+}
+
+.手风琴行名 {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--墨);
+}
+
+.展开箭头 {
+  flex: none;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--最弱);
+}
+
+/* 展开后的细分 chips：贴着行走，收起时整块不渲染 */
+.细分片组 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px 0 14px;
+}

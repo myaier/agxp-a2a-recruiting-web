@@ -1,0 +1,77 @@
+/* 薪资要求双滚轮弹层 —— 底部升起的抽屉。
+   版式与 数字滚轮层 同源（同一套遮罩 / 圆角 / 顶栏三段），
+   区别只在轮区放的是 内嵌双滚轮（两列），高度取它自带的 138px。 */
+
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  display: flex;
+  align-items: flex-end;
+  z-index: 70;
+  animation: 遮罩淡入 0.18s ease both;
+}
+
+.层 {
+  width: 100%;
+  background: var(--白);
+  border-radius: 18px 18px 0 0;
+  padding-bottom: calc(var(--安全区下) + 10px);
+  animation: 抽屉升起 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* 顶栏三段：左「取消」/ 中标题 / 右「确定」 */
+.顶栏 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--描边);
+}
+
+.标题 {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.取消键 {
+  flex: none;
+  font-size: 14.5px;
+  color: var(--次要);
+}
+
+.确认键 {
+  flex: none;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--深绿);
+}
+
+/* 轮区只负责留白，两列版式与中间档高亮底由 内嵌双滚轮 自己带 */
+.轮区 {
+  padding: 14px 4px 10px;
+}
+
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes 抽屉升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}

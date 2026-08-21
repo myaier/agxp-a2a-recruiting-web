@@ -33,6 +33,8 @@ const 直聊会话 = lazy(() => import('./屏幕/直聊会话'));
 const 真人会话 = lazy(() => import('./屏幕/真人会话'));
 const 求职意向管理 = lazy(() => import('./屏幕/求职意向管理'));
 const 添加意向 = lazy(() => import('./屏幕/添加意向'));
+const 选择城市 = lazy(() => import('./屏幕/选择城市'));
+const 选期望行业 = lazy(() => import('./屏幕/选期望行业'));
 const 规则库 = lazy(() => import('./屏幕/规则库'));
 const 我的简历 = lazy(() => import('./屏幕/我的简历'));
 const 未通过说明 = lazy(() => import('./屏幕/未通过说明'));
@@ -125,6 +127,10 @@ export default function 应用() {
       <Route path={路径.真人会话} element={<真人会话 />} />
       <Route path={路径.求职意向管理} element={<求职意向管理 />} />
       <Route path={路径.添加意向} element={<添加意向 />} />
+      {/* 两条静态子路径写在 :id 模板之前：react-router 的排序本来就让静态段胜过动态段，
+          这里再按书写顺序摆一次，读代码的人不用去回忆匹配优先级 */}
+      <Route path={路径.选择城市} element={<选择城市 />} />
+      <Route path={路径.选期望行业} element={<选期望行业 />} />
       <Route path={路径.编辑意向模板} element={<添加意向 />} />
       <Route path={路径.规则库} element={<规则库 />} />
       <Route path={路径.我的简历} element={<我的简历 />} />

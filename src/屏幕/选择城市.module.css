@@ -1,0 +1,246 @@
+/* 选择城市（/intentions/cities）—— 添加求职期望的次级页 A，多选 0/9。
+   配色 / 尺寸与兄弟屏 选工作城市.module.css 同源：
+   描边 #e4e6dd、片底 var(--页面底)、选中态 var(--深绿) 描边 + var(--淡绿底2) 底。
+   两屏是同一族的城市选择器，长得必须一样。 */
+
+/* ── 顶栏：只有一枚 ✕（规格要求关闭而不是返回）── */
+/* 内边距刻意抄 通用.module.css 的 .返回栏，让 ✕ 和别的屏的 ‹ 落在同一个位置 */
+.顶栏 {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 6px 18px 8px;
+}
+
+.关闭键 {
+  margin-left: -2px;
+  width: 22px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  font-size: 19px;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--正文);
+}
+
+/* ── 大标题 + 右上 N/9 ── */
+.标题行 {
+  flex: none;
+  padding: 8px 22px 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.大标题 {
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+  color: var(--墨);
+  margin: 0;
+}
+
+.计数 {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--次要浅);
+}
+
+.副标题 {
+  flex: none;
+  margin: 6px 0 0;
+  padding: 0 22px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--次要);
+}
+
+/* ── 搜索条 ── */
+.搜索条 {
+  flex: none;
+  margin: 13px 18px 0;
+  height: 44px;
+  border-radius: 15px;
+  background: var(--白);
+  border: 1px solid #e4e6dd;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+}
+
+.搜索输入 {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--正文);
+}
+
+.搜索输入::placeholder {
+  color: var(--最弱);
+}
+
+/* ── 列表 + 右侧字母索引条 ──
+   包裹层负责定位：列表正常滚，字母条绝对定位贴右边缘、不跟着滚。 */
+.列表包裹 {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.列表区 {
+  flex: 1;
+  min-height: 0;
+  /* 右边留出 22px 给字母条，城片不会被压到条底下 */
+  padding: 12px 40px 10px 18px;
+}
+
+.组标 {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.组标间距 {
+  margin-top: 18px;
+}
+
+/* 当前/历史访问城市：一行 chips，按内容宽度排，不占满三列 */
+.城行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.城行 .城片 {
+  padding: 0 18px;
+}
+
+/* 热门城市与 A-Z 分节：三列等宽网格 */
+.城网 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.城片 {
+  height: 38px;
+  border-radius: 10px;
+  background: var(--页面底);
+  border: 1px solid #e4e6dd;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--墨);
+}
+
+.城片选中 {
+  border-color: var(--深绿);
+  background: var(--淡绿底2);
+  color: var(--深绿文字);
+  font-weight: 700;
+}
+
+/* 选满 9 个后其余城片变灰不可点：还能看见，但明确不是可选项 */
+.城片变灰 {
+  color: var(--最弱);
+  border-color: var(--描边);
+  background: var(--浅灰底);
+  cursor: default;
+}
+
+.无结果 {
+  padding: 22px 0;
+  font-size: 12.5px;
+  color: var(--次要浅);
+  text-align: center;
+}
+
+/* ── 右侧字母索引条 ── */
+.字母条 {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 6px 0;
+}
+
+.字母键 {
+  width: 17px;
+  height: 15px;
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--次要浅);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.字母键:active {
+  background: var(--淡绿底);
+  color: var(--深绿);
+}
+
+/* ── 底部已选 chips（版式同 选工作城市）── */
+.已选条 {
+  flex: none;
+  border-top: 1px solid #e4e6dd;
+  background: var(--白);
+  padding: 10px 18px 0;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.已选标 {
+  flex: none;
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.已选标签组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  /* 横向单行可滑：选到 9 个也不往下堆高、不把列表顶掉 */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: 6px;
+  padding-bottom: 2px;
+}
+
+.已选标签组::-webkit-scrollbar {
+  display: none;
+}
+
+.已选标签 {
+  flex: none;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: var(--淡绿底);
+  color: var(--深绿);
+  font-size: 12px;
+  font-weight: 500;
+}
