@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './数字滚轮层.module.css';
+import 弹层框架 from './弹层框架';
 
 const 行高 = 40;
 
@@ -25,8 +26,7 @@ export default function 数字滚轮层({ 标题, 初值, 最小, 最大, 单位
   const [值, 设值] = useState(Math.min(Math.max(初值, 最小), 最大));
 
   return (
-    <div className={样式.遮罩} onClick={取消}>
-      <div className={样式.层} onClick={(事件) => 事件.stopPropagation()}>
+    <弹层框架 标签={标题} 遮罩类名={样式.遮罩} 面板类名={样式.层} 关闭={取消} 层级={71}>
         <div className={样式.顶栏}>
           <button className={`${样式.取消键} 可点`} onClick={取消}>
             取消
@@ -41,8 +41,7 @@ export default function 数字滚轮层({ 标题, 初值, 最小, 最大, 单位
           <div className={样式.高亮带} />
           <滚轮列 选项={选项} 值={值} 设值={设值} 单位={单位} 名称={标题} />
         </div>
-      </div>
-    </div>
+    </弹层框架>
   );
 }
 

@@ -9,6 +9,7 @@ import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import type { 屏蔽项 } from '../数据/类型';
+import 弹层框架 from '../组件/弹层框架';
 
 export default function 屏蔽名单() {
   const { 返回 } = use导航();
@@ -111,8 +112,7 @@ export default function 屏蔽名单() {
       </滚动区>
 
       {待解除 ? (
-        <div className={样式.遮罩} onClick={() => 设待解除(null)}>
-          <div className={样式.确认框} onClick={(事件) => 事件.stopPropagation()}>
+        <弹层框架 标签={`解除屏蔽${待解除.名称}`} 遮罩类名={样式.遮罩} 面板类名={样式.确认框} 关闭={() => 设待解除(null)}>
             <div className={样式.确认标题}>解除对「{待解除.名称}」的屏蔽？</div>
             <div className={样式.确认正文}>
               解除后这家公司可以看到你的匿名画像，也可能主动发起接触。
@@ -128,8 +128,7 @@ export default function 屏蔽名单() {
                 确认解除
               </button>
             </div>
-          </div>
-        </div>
+        </弹层框架>
       ) : null}
 
       {提示 ? <div className={样式.浮层提示}>{提示}</div> : null}

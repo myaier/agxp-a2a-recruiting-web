@@ -67,6 +67,16 @@
   flex: none;
 }
 
+.认证标 {
+  flex: none;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--淡绿底2);
+  color: var(--深绿文字);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
 /* 编辑态输入框：与展示态的值同字号同字重同位置，只多一层浅托盘表明可写 */
 .就地输入 {
   display: block;

@@ -2,7 +2,8 @@
 // 原型里跨屏联动都走这里，所以「在详情页接受方案」会让首页那张卡跟着变，
 // 「记成规则」会真的出现在规则库里 —— 这是原型能被当真评审的前提。
 
-import { createContext, useContext, useMemo, useReducer, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react';
+import type { 求职初筛偏好 } from '../流程/onboarding配置';
 import {
   在谈列表 as 初始在谈,
   全局规则,
@@ -49,7 +50,7 @@ import type {
 type 子视图 = '在谈' | '看市场';
 type 底部Tab = '职位' | '消息' | '我的';
 
-interface 状态 {
+export interface 状态 {
   当前意向: string;
   /** 求职意向表：可增删改（标注 11:08）*/
   求职意向表: 求职意向[];
@@ -113,6 +114,7 @@ interface 状态 {
   引导预填: {
     城市们: string[];
     职位: string[];
+    筛选偏好?: 求职初筛偏好;
     薪资?: { 下限: number; 上限: number };
     到岗?: string;
   } | null;
@@ -146,7 +148,7 @@ interface 状态 {
   求职头像: string | null;
 }
 
-type 动作 =
+export type 动作 =
   | { 型: '切意向'; 意向: string }
   | { 型: '改意向'; 编号: string; 标题: string; 说明: string }
   | { 型: '删意向'; 编号: string }
@@ -174,7 +176,7 @@ type 动作 =
   | { 型: '企业删规则'; 编号: string }
   | { 型: '企业切规则开关'; 编号: string }
   | { 型: '接触推荐候选'; 编号: string }
-  | { 型: '发布岗位'; 名称: string; 薪资带: string }
+  | { 型: '发布岗位'; 岗: 在招岗位 }
   | { 型: '停止招聘'; 编号: string }
   | { 型: '重开岗位'; 编号: string }
   | { 型: '删除岗位'; 编号: string }
@@ -213,7 +215,8 @@ type 动作 =
   | { 型: '存简历文件名'; 文件名: string }
   | { 型: '存个人优势'; 文本: string }
   | { 型: '存引导预填'; 城市们: string[]; 职位: string[] }
-  | { 型: '启程引导'; 城市们: string[]; 职位: string[] }
+  | { 型: '启程引导'; 城市们: string[]; 职位: string[]; 筛选偏好: 求职初筛偏好 }
+  | { 型: '存求职筛选偏好'; 偏好: 求职初筛偏好 }
   | { 型: '存薪资预填'; 下限: number; 上限: number }
   | { 型: '存到岗预填'; 到岗: string }
   | { 型: '存求职头像'; 图: string | null }
@@ -300,6 +303,19 @@ function 读求职头像缓存(): string | null {
 
 /** 企业认证持久化：认证页填的姓名/公司，刷新后不能退回默认值 */
 const 企业认证存储键 = 'AGXP企业认证v1';
+const 求职筛选存储键 = 'AGXP求职筛选v1';
+
+function 读求职筛选缓存(): 状态['引导预填'] {
+  try {
+    const 原文 = localStorage.getItem(求职筛选存储键);
+    if (!原文) return null;
+    const 值 = JSON.parse(原文);
+    if (!Array.isArray(值?.城市们) || !Array.isArray(值?.职位)) return null;
+    return 值;
+  } catch {
+    return null;
+  }
+}
 
 function 读企业认证缓存(): { 姓名: string; 公司: string; 职务?: string } | null {
   try {
@@ -413,7 +429,7 @@ function 造规则编号(已有: 规则[]): string {
   return `R-${String(序).padStart(2, '0')}`;
 }
 
-const 初始状态: 状态 = {
+export const 初始状态: 状态 = {
   当前意向: 意向切换[0],
   求职意向表: 求职意向列表,
   子视图: '在谈',
@@ -459,7 +475,7 @@ const 初始状态: 状态 = {
   企业披露策略: 企业披露策略初始,
   公司自述: 读公司自述缓存(),
   简历文件名: 简历缓存?.文件名 ?? '沈亦舟_简历_2026.pdf',
-  引导预填: null,
+  引导预填: 读求职筛选缓存(),
   飞书已接入: 读飞书接入缓存(),
   企业飞书已接入: (() => {
     try {
@@ -488,7 +504,7 @@ function 选新当前岗(列表: 在招岗位[], 当前: string): string {
   return 列表.find((岗) => 岗.状态 === '在招')?.编号 ?? 当前;
 }
 
-function 归约(旧: 状态, 动作: 动作): 状态 {
+export function 归约(旧: 状态, 动作: 动作): 状态 {
   switch (动作.型) {
     case '改意向':
       return {
@@ -771,14 +787,8 @@ function 归约(旧: 状态, 动作: 动作): 状态 {
     // 新发布的岗位插到列表最前并自动选中（标注意见 2026-08-18）——
     // 用户刚填完就想看见它，排在第 3 个还要自己找
     case '发布岗位': {
-      const 新编号 = `P-${String(旧.岗位列表.length + 1).padStart(2, '0')}`;
-      const 新岗: 在招岗位 = {
-        编号: 新编号,
-        名称: 动作.名称,
-        薪资带: 动作.薪资带,
-        状态: '在招',
-        在谈数: 2,
-      };
+      const 新编号 = 动作.岗.编号;
+      const 新岗: 在招岗位 = { ...动作.岗, 状态: '在招', 在谈数: 2 };
       // 「发布 · AI代理开始寻访」不能发完是个空盘子（标注 2026-08-18 22:31）：
       // 代理立刻匿名接触两名匹配候选，人才页加载完直接看得到东西
       const 起步候选: 候选[] = [
@@ -923,7 +933,7 @@ function 归约(旧: 状态, 动作: 动作): 状态 {
         企业设置开关: { ...旧.企业设置开关, [动作.键]: !旧.企业设置开关[动作.键] },
       };
 
-    // 简历编辑落全局 + 持久化：写 localStorage 放在归约里（同步、无副作用竞态）
+    // reducer 只计算新状态；持久化统一由 Provider 的 effect 处理，保持归约纯函数。
     case '存简历': {
       const 快照: 简历快照 = {
         经历: 动作.经历,
@@ -933,11 +943,6 @@ function 归约(旧: 状态, 动作: 动作): 状态 {
         基本信息: 动作.基本信息,
         文件名: 旧.简历文件名,
       };
-      try {
-        localStorage.setItem(简历存储键, JSON.stringify(快照));
-      } catch {
-        // 隐私模式等场景写不进去就算了，本次会话内仍然全局一致
-      }
       return {
         ...旧,
         简历经历: 快照.经历,
@@ -987,16 +992,8 @@ function 归约(旧: 状态, 动作: 动作): 状态 {
     case '补给推荐':
       return 旧;
 
-    // 回归修：原实现只有本屏 local state + 轻提示「已保存」，实则什么都没存 ——
-    // 假成功比不做更糟。现在落全局 + localStorage，候选端公司主页读同一份。
-    case '存公司自述': {
-      try {
-        localStorage.setItem(公司自述存储键, JSON.stringify(动作.值));
-      } catch {
-        // 隐私模式写不进去，本次会话内仍然一致
-      }
+    case '存公司自述':
       return { ...旧, 公司自述: 动作.值 };
-    }
 
     // 城市 / 职位现在由全屏选择页（/onboard/city、/onboard/job）各自派发，
     // 合并写入而不是整体替换 —— 已答过的 薪资 / 到岗 不能被后来的城市改动静默抹掉
@@ -1010,7 +1007,19 @@ function 归约(旧: 状态, 动作: 动作): 状态 {
     // 上一轮答过的 薪资/到岗 残留在内存里，向导据此跳题，流程忽有忽无）。
     // 这里整体重建 引导预填，把后续所有答案清零，保证每次从头走都完整、可复现
     case '启程引导':
-      return { ...旧, 引导预填: { 城市们: 动作.城市们, 职位: 动作.职位 } };
+      return {
+        ...旧,
+        引导预填: { 城市们: 动作.城市们, 职位: 动作.职位, 筛选偏好: 动作.筛选偏好 },
+      };
+
+    case '存求职筛选偏好':
+      return {
+        ...旧,
+        引导预填: {
+          ...(旧.引导预填 ?? { 城市们: ['上海'], 职位: [] }),
+          筛选偏好: 动作.偏好,
+        },
+      };
 
     // 叮嘱即时生效：写下自己的话，代理紧跟一条执行回执（原型按内容给定式回执）
     case '加叮嘱': {
@@ -1049,87 +1058,34 @@ function 归约(旧: 状态, 动作: 动作): 状态 {
         },
       };
 
-    // 求职端注册末屏头像：dataURL 或 '章:N'，实现镜像 存招聘头像
-    case '存求职头像': {
-      try {
-        if (动作.图 === null) localStorage.removeItem(求职头像存储键);
-        else localStorage.setItem(求职头像存储键, 动作.图);
-      } catch {
-        // 隐私模式写不进去，本次会话内仍然一致
-      }
+    // 求职端注册末屏头像：dataURL 或 '章:N'
+    case '存求职头像':
       return { ...旧, 求职头像: 动作.图 };
-    }
 
-    case '存个人优势': {
-      // 与简历快照同一份持久化，刷新后简历里还是用户自己写的那段
-      try {
-        const 原 = JSON.parse(localStorage.getItem(简历存储键) ?? 'null');
-        if (原) localStorage.setItem(简历存储键, JSON.stringify({ ...原, 个人优势: 动作.文本 }));
-      } catch {
-        // 隐私模式写不进去，本次会话内仍一致
-      }
+    case '存个人优势':
       return { ...旧, 个人优势: 动作.文本 };
-    }
 
-    case '存简历文件名': {
-      try {
-        const 原 = JSON.parse(localStorage.getItem(简历存储键) ?? 'null');
-        if (原) localStorage.setItem(简历存储键, JSON.stringify({ ...原, 文件名: 动作.文件名 }));
-      } catch {
-        // 写不进去，本次会话内仍一致
-      }
+    case '存简历文件名':
       return { ...旧, 简历文件名: 动作.文件名 };
-    }
 
-    case '存招聘头像': {
-      try {
-        if (动作.图 === null) localStorage.removeItem(招聘头像存储键);
-        else localStorage.setItem(招聘头像存储键, 动作.图);
-      } catch {
-        // 隐私模式写不进去，本次会话内仍然一致
-      }
+    case '存招聘头像':
       return { ...旧, 招聘头像: 动作.图 };
-    }
 
-    // 公司主页 LOGO：实现镜像 存招聘头像（128px dataURL 直接进 localStorage）
-    case '存公司LOGO': {
-      try {
-        if (动作.图 === null) localStorage.removeItem(公司LOGO存储键);
-        else localStorage.setItem(公司LOGO存储键, 动作.图);
-      } catch {
-        // 隐私模式写不进去，本次会话内仍然一致
-      }
+    // 公司主页 LOGO：实现镜像 存招聘头像
+    case '存公司LOGO':
       return { ...旧, 公司LOGO: 动作.图 };
-    }
 
     case '存企业认证': {
       // 职务缺省时沿用旧值：名片改姓名/公司不该把职务抹掉
       const 值 = { 姓名: 动作.姓名, 公司: 动作.公司, 职务: 动作.职务 ?? 旧.企业认证.职务 };
-      try {
-        localStorage.setItem(企业认证存储键, JSON.stringify(值));
-      } catch {
-        // 隐私模式写不进去，本次会话内仍然一致
-      }
       return { ...旧, 企业认证: 值 };
     }
 
-    case '设飞书接入': {
-      try {
-        localStorage.setItem(飞书接入存储键, 动作.接入 ? '1' : '0');
-      } catch {
-        // 隐私模式写不进去，本次会话内仍然一致
-      }
+    case '设飞书接入':
       return { ...旧, 飞书已接入: 动作.接入 };
-    }
 
-    case '设企业飞书接入': {
-      try {
-        localStorage.setItem(企业飞书接入存储键, 动作.接入 ? '1' : '0');
-      } catch {
-        // 同上
-      }
+    case '设企业飞书接入':
       return { ...旧, 企业飞书已接入: 动作.接入 };
-    }
 
     case '设企业披露档':
       return {
@@ -1150,6 +1106,102 @@ const 上下文 = createContext<{ 状态: 状态; 派发: (动作: 动作) => vo
 
 export function 应用状态提供者({ children }: { children: ReactNode }) {
   const [状态, 派发] = useReducer(归约, 初始状态);
+
+  // 持久化是状态提交后的副作用，不属于 reducer。分字段监听可避免每次任意派发都重写全部缓存。
+  useEffect(() => {
+    const 快照: 简历快照 = {
+      经历: 状态.简历经历,
+      教育: 状态.简历教育,
+      技能: 状态.简历技能,
+      证书: 状态.简历证书,
+      基本信息: 状态.基本信息,
+      文件名: 状态.简历文件名,
+      个人优势: 状态.个人优势,
+    };
+    try {
+      localStorage.setItem(简历存储键, JSON.stringify(快照));
+    } catch {
+      // 隐私模式或空间不足时只保留本次会话状态
+    }
+  }, [
+    状态.简历经历,
+    状态.简历教育,
+    状态.简历技能,
+    状态.简历证书,
+    状态.基本信息,
+    状态.简历文件名,
+    状态.个人优势,
+  ]);
+
+  useEffect(() => {
+    try {
+      if (状态.引导预填) localStorage.setItem(求职筛选存储键, JSON.stringify(状态.引导预填));
+      else localStorage.removeItem(求职筛选存储键);
+    } catch {
+      // 同上
+    }
+  }, [状态.引导预填]);
+
+  useEffect(() => {
+    try {
+      if (状态.公司自述) localStorage.setItem(公司自述存储键, JSON.stringify(状态.公司自述));
+      else localStorage.removeItem(公司自述存储键);
+    } catch {
+      // 同上
+    }
+  }, [状态.公司自述]);
+
+  useEffect(() => {
+    try {
+      if (状态.求职头像 === null) localStorage.removeItem(求职头像存储键);
+      else localStorage.setItem(求职头像存储键, 状态.求职头像);
+    } catch {
+      // 同上
+    }
+  }, [状态.求职头像]);
+
+  useEffect(() => {
+    try {
+      if (状态.招聘头像 === null) localStorage.removeItem(招聘头像存储键);
+      else localStorage.setItem(招聘头像存储键, 状态.招聘头像);
+    } catch {
+      // 同上
+    }
+  }, [状态.招聘头像]);
+
+  useEffect(() => {
+    try {
+      if (状态.公司LOGO === null) localStorage.removeItem(公司LOGO存储键);
+      else localStorage.setItem(公司LOGO存储键, 状态.公司LOGO);
+    } catch {
+      // 同上
+    }
+  }, [状态.公司LOGO]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(企业认证存储键, JSON.stringify(状态.企业认证));
+    } catch {
+      // 同上
+    }
+  }, [状态.企业认证]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(飞书接入存储键, 状态.飞书已接入 ? '1' : '0');
+    } catch {
+      // 同上
+    }
+  }, [状态.飞书已接入]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(企业飞书接入存储键, 状态.企业飞书已接入 ? '1' : '0');
+    } catch {
+      // 同上
+    }
+  }, [状态.企业飞书已接入]);
+
   const 值 = useMemo(() => ({ 状态, 派发 }), [状态]);
   return <上下文.Provider value={值}>{children}</上下文.Provider>;
 }

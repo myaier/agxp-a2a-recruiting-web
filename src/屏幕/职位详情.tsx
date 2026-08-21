@@ -20,6 +20,7 @@ import type { 市场职位 } from '../数据/类型';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
+import 弹层框架 from '../组件/弹层框架';
 import { 公司路由键 } from '../数据/公司档案';
 
 /** 硬性要求核对行：JD 的 经验/学历/城市 逐条对我的简历事实（9 年 / 硕士 / 上海）。
@@ -263,8 +264,7 @@ export default function 职位详情() {
 
       {/* 「⋯」更多操作抽屉：点遮罩或「取消」关闭 */}
       {抽屉展开 ? (
-        <div className={样式.遮罩} onClick={() => 设抽屉展开(false)}>
-          <div className={样式.抽屉} onClick={(事件) => 事件.stopPropagation()}>
+        <弹层框架 标签="职位更多操作" 遮罩类名={样式.遮罩} 面板类名={样式.抽屉} 关闭={() => 设抽屉展开(false)}>
             <button
               className={`${样式.抽屉项} 可点`}
               onClick={() => {
@@ -293,8 +293,7 @@ export default function 职位详情() {
             >
               取消
             </button>
-          </div>
-        </div>
+        </弹层框架>
       ) : null}
 
       {举报层开 ? (
@@ -330,4 +329,3 @@ function 取适配维度(岗: 市场职位): { 名: string; 值: string; 过: bo
     },
   ];
 }
-

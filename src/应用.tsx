@@ -1,74 +1,96 @@
 // 路由表。每屏一个文件，文件名对应设计稿编号（见 说明.md 的对照表）。
 // 新增屏幕只需在 屏幕/ 下建文件并在这里挂一行，不改动其它任何地方。
 
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { 路径 } from './路由/路径表';
-
 import 登录 from './屏幕/登录';
-import 选身份 from './屏幕/选身份';
-import 学生分流 from './屏幕/学生分流';
-import 引导说明 from './屏幕/引导说明';
-import 基本信息 from './屏幕/基本信息';
-import 工作经历 from './屏幕/工作经历';
-import 引导问答 from './屏幕/引导问答';
-import 披露说明 from './屏幕/披露说明';
-import 选工作城市 from './屏幕/选工作城市';
-import 选期望职位 from './屏幕/选期望职位';
-import 求职状态 from './屏幕/求职状态';
-import 最高学历 from './屏幕/最高学历';
-import 毕业院校 from './屏幕/毕业院校';
-import 选专业 from './屏幕/选专业';
-import 就读时间段 from './屏幕/就读时间段';
-import 添加头像 from './屏幕/添加头像';
-import 接入飞书 from './屏幕/接入飞书';
-import 主壳 from './屏幕/主壳';
-import 在谈详情 from './屏幕/在谈详情';
-import 往来记录 from './屏幕/往来记录';
-import 问AI代理 from './屏幕/问AI代理';
-import 代理详情 from './屏幕/代理详情';
-import 职位详情 from './屏幕/职位详情';
-import 直聊会话 from './屏幕/直聊会话';
-import 真人会话 from './屏幕/真人会话';
-import 求职意向管理 from './屏幕/求职意向管理';
-import 添加意向 from './屏幕/添加意向';
-import 规则库 from './屏幕/规则库';
-import 我的简历 from './屏幕/我的简历';
-import 未通过说明 from './屏幕/未通过说明';
-import 企业详情 from './屏幕/企业详情';
-import 通知中心 from './屏幕/通知中心';
-import 设置 from './屏幕/设置';
-import 屏蔽名单 from './屏幕/屏蔽名单';
-import 披露偏好 from './屏幕/披露偏好';
-import 归档谈判 from './屏幕/归档谈判';
-import 帮助与客服 from './屏幕/帮助与客服';
-import 企业实名认证 from './屏幕/企业实名认证';
-import 招聘名片 from './屏幕/招聘名片';
-import 发布岗位 from './屏幕/发布岗位';
-import 公司档案编辑 from './屏幕/公司档案编辑';
-import 公司档案分区编辑 from './屏幕/公司档案分区编辑';
-import 企业主壳 from './屏幕/企业主壳';
-import 候选详情 from './屏幕/候选详情';
-import 候选未通过 from './屏幕/候选未通过';
-import 企业往来记录 from './屏幕/企业往来记录';
-import 企业问AI代理 from './屏幕/企业问AI代理';
-import 企业真人会话 from './屏幕/企业真人会话';
-import 岗位管理 from './屏幕/岗位管理';
-import 岗位详情 from './屏幕/岗位详情';
-import 企业代理详情 from './屏幕/企业代理详情';
-import 企业代理设置 from './屏幕/企业代理设置';
-import 匿名在线简历 from './屏幕/匿名在线简历';
-import 企业通知中心 from './屏幕/企业通知中心';
-import 企业设置 from './屏幕/企业设置';
-import 企业披露策略 from './屏幕/企业披露策略';
-import 已筛候选 from './屏幕/已筛候选';
-import 账号安全 from './屏幕/账号安全';
-import 反馈 from './屏幕/反馈';
-import 用户协议 from './屏幕/用户协议';
-import 接触记录 from './屏幕/接触记录';
+
+// 手机端首屏只加载当前路由。此前所有屏幕同步 import，登录页也会把求职端、企业端
+// 约 60 屏一次性打进 800KB 主包；路由切换时由 Suspense 提供短暂的统一兜底。
+const 选身份 = lazy(() => import('./屏幕/选身份'));
+const 学生分流 = lazy(() => import('./屏幕/学生分流'));
+const 引导说明 = lazy(() => import('./屏幕/引导说明'));
+const 基本信息 = lazy(() => import('./屏幕/基本信息'));
+const 工作经历 = lazy(() => import('./屏幕/工作经历'));
+const 引导问答 = lazy(() => import('./屏幕/引导问答'));
+const 披露说明 = lazy(() => import('./屏幕/披露说明'));
+const 选工作城市 = lazy(() => import('./屏幕/选工作城市'));
+const 选期望职位 = lazy(() => import('./屏幕/选期望职位'));
+const 求职状态 = lazy(() => import('./屏幕/求职状态'));
+const 最高学历 = lazy(() => import('./屏幕/最高学历'));
+const 毕业院校 = lazy(() => import('./屏幕/毕业院校'));
+const 选专业 = lazy(() => import('./屏幕/选专业'));
+const 就读时间段 = lazy(() => import('./屏幕/就读时间段'));
+const 添加头像 = lazy(() => import('./屏幕/添加头像'));
+const 接入飞书 = lazy(() => import('./屏幕/接入飞书'));
+const 主壳 = lazy(() => import('./屏幕/主壳'));
+const 在谈详情 = lazy(() => import('./屏幕/在谈详情'));
+const 往来记录 = lazy(() => import('./屏幕/往来记录'));
+const 问AI代理 = lazy(() => import('./屏幕/问AI代理'));
+const 代理详情 = lazy(() => import('./屏幕/代理详情'));
+const 职位详情 = lazy(() => import('./屏幕/职位详情'));
+const 直聊会话 = lazy(() => import('./屏幕/直聊会话'));
+const 真人会话 = lazy(() => import('./屏幕/真人会话'));
+const 求职意向管理 = lazy(() => import('./屏幕/求职意向管理'));
+const 添加意向 = lazy(() => import('./屏幕/添加意向'));
+const 规则库 = lazy(() => import('./屏幕/规则库'));
+const 我的简历 = lazy(() => import('./屏幕/我的简历'));
+const 未通过说明 = lazy(() => import('./屏幕/未通过说明'));
+const 企业详情 = lazy(() => import('./屏幕/企业详情'));
+const 通知中心 = lazy(() => import('./屏幕/通知中心'));
+const 设置 = lazy(() => import('./屏幕/设置'));
+const 屏蔽名单 = lazy(() => import('./屏幕/屏蔽名单'));
+const 披露偏好 = lazy(() => import('./屏幕/披露偏好'));
+const 归档谈判 = lazy(() => import('./屏幕/归档谈判'));
+const 帮助与客服 = lazy(() => import('./屏幕/帮助与客服'));
+const 企业实名认证 = lazy(() => import('./屏幕/企业实名认证'));
+const 招聘名片 = lazy(() => import('./屏幕/招聘名片'));
+const 发布岗位 = lazy(() => import('./屏幕/发布岗位'));
+const 公司档案编辑 = lazy(() => import('./屏幕/公司档案编辑'));
+const 公司档案分区编辑 = lazy(() => import('./屏幕/公司档案分区编辑'));
+const 企业主壳 = lazy(() => import('./屏幕/企业主壳'));
+const 候选详情 = lazy(() => import('./屏幕/候选详情'));
+const 候选未通过 = lazy(() => import('./屏幕/候选未通过'));
+const 企业往来记录 = lazy(() => import('./屏幕/企业往来记录'));
+const 企业问AI代理 = lazy(() => import('./屏幕/企业问AI代理'));
+const 企业真人会话 = lazy(() => import('./屏幕/企业真人会话'));
+const 岗位管理 = lazy(() => import('./屏幕/岗位管理'));
+const 岗位详情 = lazy(() => import('./屏幕/岗位详情'));
+const 企业代理详情 = lazy(() => import('./屏幕/企业代理详情'));
+const 企业代理设置 = lazy(() => import('./屏幕/企业代理设置'));
+const 匿名在线简历 = lazy(() => import('./屏幕/匿名在线简历'));
+const 企业通知中心 = lazy(() => import('./屏幕/企业通知中心'));
+const 企业设置 = lazy(() => import('./屏幕/企业设置'));
+const 企业披露策略 = lazy(() => import('./屏幕/企业披露策略'));
+const 已筛候选 = lazy(() => import('./屏幕/已筛候选'));
+const 账号安全 = lazy(() => import('./屏幕/账号安全'));
+const 反馈 = lazy(() => import('./屏幕/反馈'));
+const 用户协议 = lazy(() => import('./屏幕/用户协议'));
+const 接触记录 = lazy(() => import('./屏幕/接触记录'));
+
+function 路由加载中() {
+  return (
+    <div
+      aria-live="polite"
+      style={{
+        height: '100%',
+        display: 'grid',
+        placeItems: 'center',
+        background: 'var(--页面底)',
+        color: 'var(--次要)',
+        fontSize: 13,
+      }}
+    >
+      正在加载…
+    </div>
+  );
+}
 
 export default function 应用() {
   return (
-    <Routes>
+    <Suspense fallback={<路由加载中 />}>
+      <Routes>
       {/* 注册引导（2026-08-20 按 BOSS 截图顺序重排）：
           登录 → 选身份 → 引导说明 → 完善资料(/student，可进 /onboard/city、/onboard/job)
           → 期望月薪(/wizard 首题) → 创建在线简历(/basic) → 求职状态 → 最高学历
@@ -152,7 +174,8 @@ export default function 应用() {
       <Route path={路径.已筛候选} element={<已筛候选 />} />
 
       {/* 兜底 */}
-      <Route path="*" element={<Navigate to={路径.登录} replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to={路径.登录} replace />} />
+      </Routes>
+    </Suspense>
   );
 }

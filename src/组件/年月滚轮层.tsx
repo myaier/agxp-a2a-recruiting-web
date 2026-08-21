@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './年月滚轮层.module.css';
+import 弹层框架 from './弹层框架';
 
 const 行高 = 40;
 
@@ -60,8 +61,7 @@ export default function 年月滚轮层({ 标题, 初值, 最小, 最大, 确认
   }, [月, 月起, 月止]);
 
   return (
-    <div className={样式.遮罩} onClick={取消}>
-      <div className={样式.层} onClick={(事件) => 事件.stopPropagation()}>
+    <弹层框架 标签={标题} 遮罩类名={样式.遮罩} 面板类名={样式.层} 关闭={取消} 层级={71}>
         <div className={样式.顶栏}>
           <button className={`${样式.取消键} 可点`} onClick={取消}>
             取消
@@ -78,8 +78,7 @@ export default function 年月滚轮层({ 标题, 初值, 最小, 最大, 确认
           <滚轮列 选项={年列表} 值={年} 设值={设年} 单位="年" 名称="年份" />
           <滚轮列 选项={月列表} 值={月} 设值={设月} 单位="月" 名称="月份" />
         </div>
-      </div>
-    </div>
+    </弹层框架>
   );
 }
 

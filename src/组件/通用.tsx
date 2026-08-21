@@ -372,13 +372,15 @@ export function 单选点({ 选中, 尺寸 = 22 }: { 选中: boolean; 尺寸?: n
 }
 
 // ── 开关 ──────────────────────────────────────────────────────
-export function 开关({ 开, 切换 }: { 开: boolean; 切换: () => void }) {
+export function 开关({ 开, 切换, 标签 = '切换此设置' }: { 开: boolean; 切换: () => void; 标签?: string }) {
   return (
     <button
+      type="button"
       className={`${样式.开关} ${开 ? 样式.开 : ''}`}
       onClick={切换}
       role="switch"
       aria-checked={开}
+      aria-label={标签}
     >
       <span className={样式.开关点} />
     </button>

@@ -20,6 +20,7 @@
 // 列表里的岗位就是代理按规则筛过之后的结果。
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import 弹层框架 from '../组件/弹层框架';
 import 样式 from './看市场.module.css';
 import 下拉刷新 from '../组件/下拉刷新';
 import 顶部意向栏, { 取走市场工具请求 } from './顶部意向栏';
@@ -237,8 +238,7 @@ function 筛选层({ 关闭 }: { 关闭: () => void }) {
   };
 
   return (
-    <div className={样式.遮罩} onClick={关闭}>
-      <div className={样式.筛选层} onClick={(事件) => 事件.stopPropagation()}>
+    <弹层框架 标签="岗位筛选规则" 遮罩类名={样式.遮罩} 面板类名={样式.筛选层} 关闭={关闭}>
         <div className={样式.抓手} />
 
         <div className={样式.要求标题行}>
@@ -308,8 +308,7 @@ function 筛选层({ 关闭 }: { 关闭: () => void }) {
         <button className={`${样式.完成键} 可点`} onClick={关闭}>
           完成
         </button>
-      </div>
-    </div>
+    </弹层框架>
   );
 }
 

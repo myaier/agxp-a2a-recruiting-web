@@ -12,6 +12,7 @@ import 本屏样式 from './账号安全.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
+import 弹层框架 from '../组件/弹层框架';
 
 /** 11 位手机号 → 138 **** 6021 的展示形式。中间四位永远不回显 */
 function 打码手机号(号码: string): string {
@@ -101,9 +102,7 @@ export default function 账号安全() {
 
       {/* ── 换绑手机号：两步抽屉 ── */}
       {步骤 !== null ? (
-        <>
-          <div className={本屏样式.遮罩} onClick={关换绑} />
-          <div className={本屏样式.抽屉} role="dialog" aria-label="换绑手机号">
+        <弹层框架 标签="换绑手机号" 遮罩类名={本屏样式.遮罩} 面板类名={本屏样式.抽屉} 关闭={关换绑}>
             <div className={本屏样式.抓手} />
 
             {步骤 === '填手机号' ? (
@@ -164,15 +163,12 @@ export default function 账号安全() {
                 </button>
               </>
             )}
-          </div>
-        </>
+        </弹层框架>
       ) : null}
 
       {/* ── 注销第一步：把后果讲清楚 ── */}
       {注销说明开 ? (
-        <>
-          <div className={本屏样式.遮罩} onClick={() => 设注销说明开(false)} />
-          <div className={本屏样式.抽屉} role="dialog" aria-label="注销账号说明">
+        <弹层框架 标签="注销账号说明" 遮罩类名={本屏样式.遮罩} 面板类名={本屏样式.抽屉} 关闭={() => 设注销说明开(false)}>
             <div className={本屏样式.抓手} />
             <div className={本屏样式.抽屉标题}>注销账号会发生什么</div>
             <div className={样式.说明条} style={{ marginTop: 14 }}>
@@ -199,14 +195,12 @@ export default function 账号安全() {
             <button className={`${本屏样式.次键} 可点`} onClick={() => 设注销说明开(false)}>
               再想想
             </button>
-          </div>
-        </>
+        </弹层框架>
       ) : null}
 
       {/* ── 注销第二步：最终确认 ── */}
       {注销确认开 ? (
-        <div className={样式.遮罩} onClick={() => 设注销确认开(false)}>
-          <div className={样式.确认框} onClick={(事件) => 事件.stopPropagation()}>
+        <弹层框架 标签="确认注销账号" 遮罩类名={样式.遮罩} 面板类名={样式.确认框} 关闭={() => 设注销确认开(false)}>
             <div className={样式.确认标题}>确认注销账号？</div>
             <div className={样式.确认正文}>
               这一步不可撤销。确认后你会被登出，账号立即停用。
@@ -222,8 +216,7 @@ export default function 账号安全() {
                 确认注销
               </button>
             </div>
-          </div>
-        </div>
+        </弹层框架>
       ) : null}
 
       {提示 ? <div className={样式.浮层提示}>{提示}</div> : null}
