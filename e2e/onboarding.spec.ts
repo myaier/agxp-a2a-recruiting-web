@@ -1,6 +1,108 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function 从登录进入身份(page: Page, 身份: '我要找工作' | '我要招人') {
+  await page.goto('/');
+  await page.getByRole('button', { name: '微信登录' }).click();
+  await expect(page).toHaveURL(/#\/identity$/);
+  await page.getByRole('button', { name: 身份 }).click();
+}
+
+async function 选择期望职位(page: Page, 分类: string, 职位: string) {
+  await page.getByRole('button', { name: /选择期望职位/ }).click();
+  await page.getByRole('button', { name: 分类, exact: true }).click();
+  await page.getByRole('button', { name: 职位, exact: true }).click();
+  await page.getByRole('button', { name: '保存' }).click();
+  await expect(page).toHaveURL(/#\/student$/);
+}
+
+async function 走完学历资料(page: Page) {
+  for (const [路径, 标题] of [
+    ['degree', /最高学历|在读学历/],
+    ['school', '你毕业于'],
+    ['major', '你的专业是'],
+    ['eduyears', '就读时间段'],
+  ] as const) {
+    await expect(page).toHaveURL(new RegExp(`#\\/onboard\\/${路径}$`));
+    await expect(page.getByRole('heading', { name: 标题 })).toBeVisible();
+    await page.getByRole('button', { name: '下一步' }).click();
+  }
+  await expect(page).toHaveURL(/#\/experience$/);
+}
 
 test.describe('multi-role onboarding', () => {
+  test('walks the social-hire journey from role entry through both wizard stages', async ({ page }) => {
+    await 从登录进入身份(page, '我要找工作');
+    await expect(page).toHaveURL(/#\/student$/);
+    await expect(page.getByRole('button', { name: '已毕业' })).toHaveAttribute('aria-pressed', 'true');
+
+    // 重复确认当前身份不能清掉已经填写的偏好。
+    await page.getByLabel('作品集或项目链接').fill('github.com/example/kept-project');
+    await page.getByLabel('作品集或项目链接').blur();
+    await page.getByRole('button', { name: '全远程' }).click();
+    await page.getByRole('button', { name: '已毕业' }).click();
+    await expect(page.getByLabel('作品集或项目链接')).toHaveValue('https://github.com/example/kept-project');
+    await expect(page.getByRole('button', { name: '全远程' })).toHaveAttribute('aria-pressed', 'false');
+
+    await 选择期望职位(page, '产品', '产品经理');
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/wizard\?stage=salary$/);
+    await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toBeVisible();
+
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/basic$/);
+    await expect(page.getByRole('heading', { name: '创建在线简历' })).toBeVisible();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/status$/);
+    await page.getByRole('button', { name: '下一步' }).click();
+    await 走完学历资料(page);
+    await page.getByRole('button', { name: '保存' }).click();
+
+    await expect(page).toHaveURL(/#\/wizard$/);
+    await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page.getByRole('heading', { name: '分享一下自己的个人优势' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /https:\/\/github.com\/example\/kept-project/ })).toBeVisible();
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page).toHaveURL(/#\/disclosure$/);
+  });
+
+  test('walks the student journey from role entry to internship daily pay', async ({ page }) => {
+    await 从登录进入身份(page, '我要找工作');
+    await expect(page).toHaveURL(/#\/student$/);
+    await page.getByRole('button', { name: '在校' }).click();
+    await expect(page.getByRole('button', { name: '实习生' })).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByLabel('最早可开始实习日期').fill('2099-09-01');
+    await 选择期望职位(page, '产品', '产品经理');
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/basic$/);
+    await expect(page.getByRole('heading', { name: '创建在线简历' })).toBeVisible();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await 走完学历资料(page);
+    await page.getByRole('button', { name: '保存' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/status$/);
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    await expect(page).toHaveURL(/#\/wizard$/);
+    await expect(page.getByRole('heading', { name: '期望实习日薪是？' })).toBeVisible();
+    await expect(page.getByRole('listbox', { name: '最低日薪' })).toBeVisible();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible();
+  });
+
+  test('walks the recruiter journey from role entry to job posting', async ({ page }) => {
+    await 从登录进入身份(page, '我要招人');
+    await expect(page).toHaveURL(/#\/hr\/verify$/);
+    await expect(page.getByRole('heading', { name: '实名认证' })).toBeVisible();
+
+    await page.getByRole('button', { name: '开始人脸识别' }).click();
+    await expect(page).toHaveURL(/#\/hr\/card$/, { timeout: 3_000 });
+    await expect(page.getByRole('heading', { name: '招聘名片' })).toBeVisible();
+    await page.getByRole('button', { name: '保存 · 去发岗位' }).click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/);
+    await expect(page.getByRole('heading', { name: '岗位基础信息' })).toBeVisible();
+  });
+
   test('migrates a legacy mixed job preference and keeps internship data on daily pay', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem(
