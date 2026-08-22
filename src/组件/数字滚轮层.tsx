@@ -104,21 +104,23 @@ function 滚轮列({
   };
 
   return (
-    <div
-      ref={引用}
-      className={`${样式.列} 滚动区`}
-      onScroll={处理滚动}
-      role="listbox"
-      aria-label={名称}
-    >
-      {选项.map((项) => (
-        <div key={项} className={样式.档} role="option" aria-selected={项 === 值}>
-          <span className={`${项 === 值 ? 样式.档选中 : 样式.档未选} 等宽数字`}>
-            {项}
-            <span className={样式.单位}>{单位}</span>
-          </span>
-        </div>
-      ))}
+    <div className={样式.列包}>
+      <div
+        ref={引用}
+        className={`${样式.列} 滚动区`}
+        onScroll={处理滚动}
+        role="listbox"
+        aria-label={名称}
+      >
+        {选项.map((项) => (
+          <div key={项} className={样式.档} role="option" aria-selected={项 === 值}>
+            {/* 档里只留数字。标注 2026-08-22：「不用每个滚轮数字后面都带有年和月」*/}
+            <span className={`${项 === 值 ? 样式.档选中 : 样式.档未选} 等宽数字`}>{项}</span>
+          </div>
+        ))}
+      </div>
+      {/* 单位钉在滚动区外、垂直居中正对高亮带，滚动时不动 */}
+      <span className={样式.固定单位}>{单位}</span>
     </div>
   );
 }

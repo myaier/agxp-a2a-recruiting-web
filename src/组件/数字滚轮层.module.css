@@ -72,11 +72,25 @@
   pointer-events: none;
 }
 
+/* 一列 = 会滚的数字 + 不滚的单位。align-items: center 让单位正对中间高亮带
+   （标注 2026-08-22：单位固定，用户只转数字） */
+.列包 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 数字右对齐到同一条轴线 —— 单位到数字的距离恒定，不会因为 5 / 460 位数不同而左右抖。
+   宽度写死、不用 max-content：选中档 22px、未选中 17px，用 max-content 会让列宽
+   随「当前选中哪一档」变化，单位就跟着挪了。
+   96px = 最宽一档（4 位年份 @22px 实测 53px）+ 左内边距 40px + 3px 余量；
+   左内边距开到 40px 是因为这是个底部弹层，可拖动面积要够大（留白在滚动区内）。 */
 .列 {
   position: relative;
-  width: 140px;
+  width: 96px;
   height: 200px;
-  padding: 80px 0;
+  padding: 80px 0 80px 40px;
   scroll-snap-type: y mandatory;
   overscroll-behavior: contain;
 }
@@ -85,7 +99,7 @@
   height: 40px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   scroll-snap-align: center;
 }
 
@@ -100,12 +114,17 @@
   color: var(--轮未选色, #c9cec7);
 }
 
-/* 单位字比数字小一号、灰一档，让数字当主角 */
-.单位 {
-  font-size: 0.62em;
+/* 固定单位：滚动区外的兄弟节点，所以滚多少它都不动。
+   必须 position: relative —— 高亮带是 absolute（已定位元素），会盖在静态兄弟之上，
+   单位不定位就整个被那条灰底吃掉、一个字也看不见。
+   比数字小一号、灰一档，让数字当主角 */
+.固定单位 {
+  position: relative;
+  flex: none;
+  margin-left: 4px;
+  font-size: 14px;
   font-weight: 400;
   color: var(--次要浅);
-  margin-left: 2px;
 }
 
 @keyframes 遮罩淡入 {

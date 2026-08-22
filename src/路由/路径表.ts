@@ -122,7 +122,7 @@ export const 路径 = {
   匿名在线简历模板: '/hr/resume/:id',
   企业设置: '/hr/settings',
   企业披露策略: '/hr/disclosure',
-  /** 企业历史接洽：被终止的候选归档在这里，镜像求职端的 /archived */
+  /** 企业历史代谈：被终止的候选归档在这里，镜像求职端的 /archived */
   企业归档: '/hr/archived',
   已筛候选: '/hr/screened-out',
   /** 本周初筛记录：日报卡人才漏斗的「硬性匹配」那一行点进来，看代理这一周怎么筛的 */

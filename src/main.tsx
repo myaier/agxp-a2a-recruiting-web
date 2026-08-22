@@ -10,6 +10,7 @@ import './样式/全局.css';
 import 应用 from './应用';
 import 设备外框 from './组件/设备外框';
 import 标注层 from './组件/标注层';
+import { 换壳遮罩看守 } from './路由/换壳遮罩';
 import { 应用状态提供者 } from './状态/应用状态';
 
 createRoot(document.getElementById('根节点')!).render(
@@ -18,6 +19,9 @@ createRoot(document.getElementById('根节点')!).render(
       <设备外框>
         <HashRouter>
           <应用 />
+          {/* 换壳遮罩看守：放在 Routes 外面，换屏时不跟着卸载，
+              地址真正提交到目标屏时负责把遮罩撤掉（见 路由/换壳遮罩.ts） */}
+          <换壳遮罩看守 />
           {/* 标注模式：点元素提修改意见，导出贴给 Claude（见 docs/前端修改指南.md） */}
           <标注层 />
         </HashRouter>

@@ -343,14 +343,28 @@
   z-index: 1;
   pointer-events: none;
 }
-/* 滚轮：scroll-snap 吸附到每一档中心；上下各留一个行高的内边距，
-   这样第一档和最后一档也能滚到正中间 */
-.薪资轮 {
-  position: relative;
+/* 一列 = 会滚的数字 + 不滚的单位。align-items: center 让单位正对中间高亮档
+   （标注 2026-08-22：单位固定，用户只转数字） */
+.薪资列包 {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+/* 滚轮：scroll-snap 吸附到每一档中心；上下各留一个行高的内边距，
+   这样第一档和最后一档也能滚到正中间。
+   数字右对齐到同一条轴线，单位到数字的距离才不会随 5 / 250 的位数变化左右抖。
+   宽度写死、不用 max-content：选中档 29px、未选中 17px，用 max-content 会让列宽
+   随「当前选中哪一档」变化，单位就跟着挪了。
+   80px = 最宽一档（「面议」两字 @29px 实测 58px，比 3 位数还宽）+ 左内边距 20px + 2px 余量。 */
+.薪资轮 {
+  position: relative;
+  flex: none;
+  width: 80px;
   height: 138px;
-  padding: 46px 0;
+  padding: 46px 0 46px 20px;
   scroll-snap-type: y mandatory;
   overscroll-behavior: contain;
 }
@@ -358,8 +372,23 @@
   height: 46px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   scroll-snap-align: center;
+}
+/* 固定单位：滚动区外的兄弟节点，所以滚多少它都不动。
+   必须 position: relative —— 轮高亮是 absolute（已定位元素），会盖在静态兄弟之上，
+   单位不定位就整个被那条灰底吃掉、一个字也看不见（薪资轮本来就是 relative，所以数字没事）。 */
+.薪资固定单位 {
+  position: relative;
+  flex: none;
+  margin-left: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--次要);
+}
+/* 面议档不带单位：只隐形不撤节点，整组位置保持不变，滚回数字时不会跳 */
+.薪资固定单位隐藏 {
+  visibility: hidden;
 }
 .档选中 {
   font-size: 29px;

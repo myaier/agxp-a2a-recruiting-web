@@ -91,21 +91,25 @@ function 单列({
   };
 
   return (
-    <div
-      ref={轮引用}
-      className={`${样式.滚轮} 滚动区`}
-      onScroll={处理滚动}
-      role="listbox"
-      aria-label={名称}
-    >
-      {档表.map((档) => (
-        <div key={档} className={样式.档} role="option" aria-selected={档 === 值}>
-          <span className={`${档 === 值 ? 样式.档选中 : 样式.档未选} 等宽数字`}>
-            {档}
-            {单位 ? <span className={样式.单位}>{单位}</span> : null}
-          </span>
-        </div>
-      ))}
+    <div className={样式.列包}>
+      <div
+        ref={轮引用}
+        className={`${样式.滚轮} 滚动区`}
+        onScroll={处理滚动}
+        role="listbox"
+        aria-label={名称}
+      >
+        {档表.map((档) => (
+          <div key={档} className={样式.档} role="option" aria-selected={档 === 值}>
+            {/* 档里只留数字。标注 2026-08-22：「这个年应该是固定的，用户只用转动数字就行，
+                包括后面的这个月份，不用每个滚轮数字后面都带有年和月」*/}
+            <span className={`${档 === 值 ? 样式.档选中 : 样式.档未选} 等宽数字`}>{档}</span>
+          </div>
+        ))}
+      </div>
+      {/* 单位钉在滚动区**外面**：滚动时它不动，垂直居中正对高亮档。
+          每一列各挂一个，所以「年」「月」不会混成一列的标签。 */}
+      {单位 ? <span className={样式.固定单位}>{单位}</span> : null}
     </div>
   );
 }

@@ -13,7 +13,10 @@
   -webkit-backdrop-filter: blur(26px) saturate(1.9);
   backdrop-filter: blur(26px) saturate(1.9);
   display: flex;
-  padding: 10px 6px;
+  /* 上内边距 10 → 15：角标按微信尺寸放大到 18 后，原来的 10px 顶不住 ——
+     外壳是 overflow:hidden，角标连同白描边会被顶边切掉一道。多出的 5px 只加在上边，
+     下边与安全区的关系不动（产品负责人 2026-08-22：角标要和微信一样大、往外浮一点）*/
+  padding: 15px 6px 10px;
   z-index: 30;
 }
 
@@ -42,26 +45,34 @@
 }
 
 /* 未读角标：挂在消息图标右上角。绝对定位 —— 参与文档流会把图标挤偏，
-   三个 Tab 的图标就不在同一条水平线上了。两端共用（企业主壳的导航复用本模块）*/
+   三个 Tab 的图标就不在同一条水平线上了。两端共用（企业主壳的导航复用本模块），
+   所以这一份改完求职端和企业端一起变。
+
+   2026-08-22 按产品负责人「这个图标要求和微信的设计大小一样」重调：
+   直径 15 → 18、字号 10 → 12、白描边 1.5 → 2，与微信底部 Tab 的未读角标同量级。
+   位置同时往外挪：右移 3 → 6（横向让开图标本体），压住图标 8 → 7 ——
+   角标自己长高了 3px 却少压 1px，压住的比例从 8/15 掉到 7/18，
+   看上去就是「浮在图标角上」而不是原来那种压着图标、又贴着外壳顶边的挤。*/
 .角标 {
   position: absolute;
   left: 50%;
   bottom: 100%;
-  margin-left: 3px;
-  margin-bottom: -8px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
-  border-radius: 8px;
+  margin-left: 6px;
+  margin-bottom: -7px;
+  min-width: 18px;
+  height: 18px;
+  /* 左右 5：两位数（如 12）撑成胶囊时两边留白与微信接近；一位数仍被 min-width 收成正圆 */
+  padding: 0 5px;
+  border-radius: 9px;
   /* 与消息列表行内的 .未读徽标 同色（--意向 / --白），同一件事在两处不能是两个红 */
   background: var(--意向);
   color: var(--白);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
-  line-height: 15px;
+  line-height: 18px;
   text-align: center;
   /* 描一圈玻璃底色，角标压在图标上时边界不糊 */
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
 }
 
 .文字 {

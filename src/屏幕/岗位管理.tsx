@@ -154,7 +154,7 @@ export default function 岗位管理() {
             <div className={样式.确认标题}>停止招聘「{待停.名称}」？</div>
             <div className={样式.确认正文}>
               这个岗位还有 {数在谈(待停.编号)} 位在谈候选，他们会收到代理的礼貌终止通知，
-              不会被晾在半路。接洽记录全部保留，随时可以重新开放。
+              不会被晾在半路。代谈记录全部保留，随时可以重新开放。
             </div>
             <div className={样式.确认键行}>
               <button className={`${样式.确认取消} 可点`} onClick={() => 设待停(null)}>

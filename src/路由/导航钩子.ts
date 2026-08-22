@@ -3,6 +3,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import { 路径 } from './路径表';
+import { 遮住退栈换壳 } from './换壳遮罩';
 
 export function use导航() {
   const 前往 = useNavigate();
@@ -17,20 +18,23 @@ export function use导航() {
    *
    * 做法：先退回本次会话的第一格，等 popstate 落定再把那一格 replace 成主壳。
    * 格号取自 react-router 自己写在 history.state 上的 idx（v6 / v7 一致）。
+   *
+   * 退栈的落点是一屏真实存在的页面，React 会把它渲染出来 —— 产品负责人 2026-08-22 报的
+   * 「突然会有一个配置页面闪出来，然后才是主页」就是这一帧。退栈不能取消（取消就等于把
+   * 「后退键退回 #/disclosure」那个 bug 放回来），所以改成把这段时间遮住，
+   * 全部时序细节见 换壳遮罩.ts。
    */
   const 清栈进 = (目标: string) => {
     const 当前格 = (window.history.state as { idx?: number } | null)?.idx;
     // 已经在第一格（直接深链进来的用户）就没有可弹的历史，replace 即可；
     // 拿不到格号（history.state 被外部改写过）时也只能退化成 replace ——
-    // 这时后退键仍可能退回注册页，属于已知降级，不是被吞掉的错误
+    // 这时后退键仍可能退回注册页，属于已知降级，不是被吞掉的错误。
+    // 这条分支没有退栈动作，也就没有中间屏，不需要遮罩。
     if (typeof 当前格 !== 'number' || 当前格 <= 0) {
       前往(目标, { replace: true });
       return;
     }
-    // history.go 是异步的：必须等 popstate 落定后再 replace，
-    // 否则 replace 写完会被随后到达的 popstate 覆盖掉
-    window.addEventListener('popstate', () => 前往(目标, { replace: true }), { once: true });
-    window.history.go(-当前格);
+    遮住退栈换壳(目标, 当前格, 前往);
   };
 
   return {

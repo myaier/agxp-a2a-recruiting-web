@@ -28,13 +28,16 @@ export default function 设备外框({ children }: { children: ReactNode }) {
 
   if (!机身模式) {
     // 真手机：铺满视口，安全区由 :root 的 env() 提供
-    return <div className={样式.全屏}>{children}</div>;
+    // data-遮罩挂载点：换壳遮罩挂在这里，盖住的就是用户看到的整块屏（见 路由/换壳遮罩.ts）
+    return <div className={样式.全屏} data-遮罩挂载点>{children}</div>;
   }
 
   return (
     <div className={样式.画布}>
       <div className={样式.缩放层} style={{ transform: `scale(${缩放})` }}>
-        <div className={样式.机身}>
+        {/* data-遮罩挂载点 打在机身层而不是屏幕层：换壳遮罩要盖住机身内的一切
+            —— 屏幕内容、灵动岛、状态栏、home 横条，一条缝都不留 */}
+        <div className={样式.机身} data-遮罩挂载点>
           {/* 灵动岛 */}
           <div className={样式.灵动岛} />
           {/* 状态栏：只在机身模式画，真机上是系统自带的 */}

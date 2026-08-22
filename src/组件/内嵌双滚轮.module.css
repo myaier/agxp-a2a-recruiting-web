@@ -23,14 +23,31 @@
   pointer-events: none;
 }
 
-/* 滚轮列：scroll-snap 吸附到每档中心；上下各留一个行高的内边距，
-   首档和末档也能滚到正中间 */
-.滚轮 {
-  position: relative;
+/* 一列 = 会滚的数字 + 不滚的单位。两者并排，align-items: center 让单位正对中间高亮档
+   （标注 2026-08-22：单位固定，用户只转数字） */
+.列包 {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 滚轮列：scroll-snap 吸附到每档中心；上下各留一个行高的内边距，
+   首档和末档也能滚到正中间。
+   数字右对齐到列右边缘 —— 这样「2002」和「5」的右边缘对齐同一条轴线，
+   单位到数字的距离恒定，不会因为位数变化而左右抖（iOS 原生日期选择器就是这个版式）。
+   宽度必须写死、不能用 max-content：选中档字号 27px、未选中 17px，
+   用 max-content 的话「当前选中的是 1 还是 12」都会改变列宽，单位就跟着挪了。
+   88px = 最宽一档（4 位年份 @27px 实测 65px）+ 左内边距 20px + 3px 余量；
+   左内边距既把数字推回视觉中心，又留在滚动区**内**，照样能拖，不白丢触摸面积。 */
+.滚轮 {
+  position: relative;
+  flex: none;
+  width: 88px;
   height: 138px;
-  padding: 46px 0;
+  padding: 46px 0 46px 20px;
   scroll-snap-type: y mandatory;
   overscroll-behavior: contain;
 }
@@ -39,7 +56,7 @@
   height: 46px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   scroll-snap-align: center;
 }
 
@@ -54,8 +71,13 @@
   color: var(--轮未选色);
 }
 
-.单位 {
-  margin-left: 3px;
+/* 固定单位：滚动区外的兄弟节点，所以滚多少它都不动。
+   必须 position: relative —— 轮高亮是 absolute（已定位元素），会盖在静态兄弟之上，
+   单位不定位就整个被那条灰底band 吃掉、一个字也看不见（滚轮列同理，它本来就是 relative）。 */
+.固定单位 {
+  position: relative;
+  flex: none;
+  margin-left: 4px;
   font-size: 13px;
   font-weight: 500;
   color: var(--次要);
