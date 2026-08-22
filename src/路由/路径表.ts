@@ -44,6 +44,9 @@ export const 路径 = {
   // 当成字面量路径段，整条路由匹配不上。常量名保持中文，参数 slug 用 id。
   在谈详情: (编号: string) => `/deal/${编号}`,
   在谈详情模板: '/deal/:id',
+  /** 真人会话顶部「看职位」的落点：同一个在谈详情，直接开在「职位详情」Tab。
+   *  Tab 名走 ASCII slug（job），与本文件「URL 对外用 ASCII」的既有约定一致 */
+  在谈详情看职位: (编号: string) => `/deal/${编号}?tab=job`,
   往来记录: (编号: string) => `/thread/${编号}`,
   往来记录模板: '/thread/:id',
   问AI代理: '/agent',
@@ -98,6 +101,10 @@ export const 路径 = {
   企业主壳: '/hr',
   候选详情: (编号: string) => `/hr/candidate/${编号}`,
   候选详情模板: '/hr/candidate/:id',
+  /** 企业真人会话顶部「看简历」的落点：同一个候选详情，直接开在「在线简历」Tab。
+   *  这一屏的简历正文按 候.真名 是否已揭晓自动切实名/匿名版 —— 意向确认后必然是实名版，
+   *  所以不能改跳 /hr/resume/:id（那屏是意向确认前的匿名发现页，见 匿名在线简历.tsx）*/
+  候选详情看简历: (编号: string) => `/hr/candidate/${编号}?tab=resume`,
   企业往来记录: (编号: string) => `/hr/thread/${编号}`,
   企业往来记录模板: '/hr/thread/:id',
   候选未通过: '/hr/rejected',

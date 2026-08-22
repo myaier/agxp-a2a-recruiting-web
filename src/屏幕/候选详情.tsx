@@ -10,7 +10,7 @@
 // 所以这一页是企业侧全局状态的唯一写入点：接受方案 / 终止 / 确认意向都从这里派发。
 
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import 样式 from './候选详情.module.css';
 import 拿不准弹层 from './拿不准弹层';
 import 确认层 from '../组件/确认层';
@@ -93,7 +93,13 @@ export default function 候选详情() {
   const { 状态, 派发 } = use应用状态();
   const { 跳转, 返回 } = use导航();
 
-  const [当前Tab, 设当前Tab] = useState<页内Tab>('接洽进度');
+  // 企业真人会话顶部「看简历」带 ?tab=resume 进来，直接开在在线简历 Tab —— 产品负责人
+  // 点名的重点就是「看简历要方便」，多一次点 Tab 就是把方便又还回去了。
+  // 与求职端 在谈详情 同构：只在挂载时读一次，之后手点 Tab 不被地址栏拽回去。
+  const [查询参数] = useSearchParams();
+  const [当前Tab, 设当前Tab] = useState<页内Tab>(
+    查询参数.get('tab') === 'resume' ? '在线简历' : '接洽进度'
+  );
   const [弹层可见, 设弹层可见] = useState(false);
   // 递交简历段的 PDF 附件（标注 09:23）：看的是收到的匿名版原件
   const [看简历, 设看简历] = useState(false);

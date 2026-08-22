@@ -1,0 +1,67 @@
+/* 真人会话顶部操作排 —— 只服务两屏真人会话（求职端 A19 / 企业端 D12·A）。
+   排在返回栏正下方，三等分横铺；展开区紧贴排下沿，两块共用淡绿底连成一体。 */
+
+.操作栏 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  background: var(--白);
+  border-bottom: 1px solid var(--描边);
+}
+
+.项 {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 0 9px;
+  background: transparent;
+}
+
+/* 相邻两项之间一条细分隔，和 BOSS 那排一样是「一条工具带」而不是三个孤立按钮 */
+.项 + .项 {
+  border-left: 1px solid var(--分隔线);
+}
+
+.项图 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+}
+
+.项名 {
+  font-size: 10.5px;
+  line-height: 1.2;
+  color: var(--次要);
+}
+
+/* 主项 = 这一排的重点操作（求职端看职位 / 企业端看简历）：
+   图标本身给深绿，文字再加粗一档，不靠任何说明文案就能看出主次。 */
+.主项名 {
+  color: var(--深绿文字);
+  font-weight: 700;
+}
+
+/* 展开中的次项：底色跟展开区一致，视觉上「这一格拉出了下面那块」 */
+.项展开 {
+  background: var(--淡绿底2);
+}
+
+.项展开 .项名 {
+  color: var(--深绿文字);
+  font-weight: 600;
+}
+
+/* 展开区：装的就是原先躺在消息流里的那张联系卡（直聊会话.module.css 的 .联系条 / .联系行），
+   位置从流里挪到这儿，组件与复制逻辑一行没改。
+   下内边距只留 4px —— .联系条 自带 6px 下外边距，加起来才是想要的 10px。 */
+.展开区 {
+  flex: none;
+  padding: 8px 14px 4px;
+  background: var(--淡绿底2);
+  border-bottom: 1px solid var(--描边);
+}

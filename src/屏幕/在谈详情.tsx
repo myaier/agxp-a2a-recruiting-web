@@ -9,7 +9,7 @@
 // 所以这一页是全局状态的唯一写入点：接受方案 / 退出谈判 / 确认意向都从这里派发。
 
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import 样式 from './在谈详情.module.css';
 import 详析样式 from './职位详情.module.css';
 import { 硬性行们 } from './职位详情';
@@ -88,7 +88,12 @@ export default function 在谈详情() {
   const { 状态, 派发 } = use应用状态();
   const { 跳转, 返回 } = use导航();
 
-  const [当前Tab, 设当前Tab] = useState<页内Tab>('接洽进度');
+  // 真人会话顶部「看职位」带 ?tab=job 进来，直接开在职位详情 Tab，不让用户再点一次。
+  // 只在挂载时读一次（初始值形态）：读完就交给本地状态，用户随后手点 Tab 不会被地址栏拽回去。
+  const [查询参数] = useSearchParams();
+  const [当前Tab, 设当前Tab] = useState<页内Tab>(
+    查询参数.get('tab') === 'job' ? '职位详情' : '接洽进度'
+  );
   const [弹层可见, 设弹层可见] = useState(false);
   const [决策快照, 设决策快照] = useState<决策快照内容 | null>(null);
   // 退出是本屏唯一不可逆的动作，且与「接受」并排（小屏一滑就点错）——
