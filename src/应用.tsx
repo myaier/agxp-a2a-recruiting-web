@@ -38,7 +38,6 @@ const 规则库 = lazy(() => import('./屏幕/规则库'));
 const 我的简历 = lazy(() => import('./屏幕/我的简历'));
 const 未通过说明 = lazy(() => import('./屏幕/未通过说明'));
 const 企业详情 = lazy(() => import('./屏幕/企业详情'));
-const 通知中心 = lazy(() => import('./屏幕/通知中心'));
 const 设置 = lazy(() => import('./屏幕/设置'));
 const 屏蔽名单 = lazy(() => import('./屏幕/屏蔽名单'));
 const 披露偏好 = lazy(() => import('./屏幕/披露偏好'));
@@ -60,7 +59,6 @@ const 岗位详情 = lazy(() => import('./屏幕/岗位详情'));
 const 企业代理详情 = lazy(() => import('./屏幕/企业代理详情'));
 const 企业代理设置 = lazy(() => import('./屏幕/企业代理设置'));
 const 匿名在线简历 = lazy(() => import('./屏幕/匿名在线简历'));
-const 企业通知中心 = lazy(() => import('./屏幕/企业通知中心'));
 const 企业设置 = lazy(() => import('./屏幕/企业设置'));
 const 企业披露策略 = lazy(() => import('./屏幕/企业披露策略'));
 const 企业归档 = lazy(() => import('./屏幕/企业归档'));
@@ -142,7 +140,6 @@ export default function 应用() {
       <Route path={路径.企业详情模板} element={<企业详情 />} />
 
       {/* 「我的」下属功能页 */}
-      <Route path={路径.通知中心} element={<通知中心 />} />
       <Route path={路径.设置} element={<设置 />} />
       <Route path={路径.屏蔽名单} element={<屏蔽名单 />} />
       <Route path={路径.披露偏好} element={<披露偏好 />} />
@@ -175,7 +172,6 @@ export default function 应用() {
       <Route path={路径.企业代理详情} element={<企业代理详情 />} />
       <Route path={路径.企业代理设置} element={<企业代理设置 />} />
       <Route path={路径.匿名在线简历模板} element={<匿名在线简历 />} />
-      <Route path={路径.企业通知中心} element={<企业通知中心 />} />
       <Route path={路径.企业设置} element={<企业设置 />} />
       <Route path={路径.企业披露策略} element={<企业披露策略 />} />
       <Route path={路径.企业归档} element={<企业归档 />} />

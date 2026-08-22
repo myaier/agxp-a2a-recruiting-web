@@ -169,25 +169,6 @@ export function 齿轮图标({ 尺寸 = 23, 色 = '#3f4536' }: 图标属性) {
   );
 }
 
-export function 铃铛图标({ 尺寸 = 23, 色 = '#3f4536' }: 图标属性) {
-  return (
-    <svg
-      width={尺寸}
-      height={尺寸}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={色}
-      strokeWidth={1.9}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M18 8.4a6 6 0 1 0-12 0c0 7-2.5 8.6-2.5 8.6h17S18 15.4 18 8.4" />
-      <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-    </svg>
-  );
-}
-
 /** 身份切换：左边一个小人、右边一对反向箭头。
  *  原来只有两条箭头，看不出「换的是身份」（标注 21:58）—— 小人一放上去语义就落地了。 */
 export function 身份切换图标({ 尺寸 = 23, 色 = '#3f4536' }: 图标属性) {

@@ -1,4 +1,4 @@
-/* 「我的」下属六个功能页（通知中心 / 设置 / 屏蔽名单 / 披露偏好 / 归档谈判 / 帮助与客服）
+/* 「我的」下属五个功能页（设置 / 屏蔽名单 / 披露偏好 / 归档谈判 / 帮助与客服）
    共用一套样式：这几屏都是「白卡分组 + 行」的同一种版式，各写一份 CSS 只会漂移。 */
 
 .页体 {
@@ -93,111 +93,6 @@
   color: var(--最弱);
   font-size: 16px;
   font-weight: 300;
-}
-
-/* ── 通知中心 ── */
-.通知卡 {
-  width: 100%;
-  background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: var(--圆角-中卡);
-  padding: 13px 14px;
-  margin-bottom: 9px;
-  display: flex;
-  flex-direction: row;
-  gap: 11px;
-  text-align: left;
-}
-
-/* 未读：左侧一道荧光绿竖条，比整卡变色更克制 */
-.通知未读 {
-  border-left: 3px solid var(--荧光绿);
-}
-
-.通知图标 {
-  flex: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 11px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.图标需要你 {
-  background: var(--意向底);
-  color: var(--意向);
-}
-
-.图标进展 {
-  background: var(--递简历底);
-  color: var(--递简历);
-}
-
-.图标新机会 {
-  background: var(--初筛底);
-  color: var(--初筛);
-}
-
-.图标系统 {
-  background: var(--浅灰底);
-  color: var(--次要);
-}
-
-.通知主体 {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.通知头行 {
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.通知标题 {
-  flex: 1;
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--墨);
-  letter-spacing: -0.01em;
-}
-
-.通知时间 {
-  flex: none;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--最弱);
-}
-
-.通知正文 {
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--正文);
-}
-
-.通知去处 {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--深绿);
-  margin-top: 3px;
-}
-
-.全读键 {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--深绿);
-}
-
-.全读键灰 {
-  color: var(--最弱);
 }
 
 /* ── 空态 ── */

@@ -2,7 +2,7 @@
    注意：顶部四段（工具行 / 头像行 / 统计行 / 代理卡）都写 flex:none，
    否则在 DOM 的 flex 列里会被下面的滚动区压缩。 */
 
-/* ── 右上工具行：双箭头 / 铃铛 / 齿轮 ── */
+/* ── 右上工具行：双箭头 / 齿轮 ── */
 .工具行 {
   flex: none;
   display: flex;
@@ -14,39 +14,8 @@
 }
 
 .工具键 {
-  /* 红点用绝对定位挂在齿轮右上，所以这里要建立定位上下文 */
-  position: relative;
   display: flex;
   align-items: center;
-}
-
-.齿轮红点 {
-  position: absolute;
-  right: -3px;
-  top: -1px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--意向);
-}
-
-/* 铃铛上的未读数（与求职端 我的.module.css 同一份像素值）：>9 时显示 9+，不让胶囊变形 */
-.未读数 {
-  position: absolute;
-  right: -5px;
-  top: -4px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--意向);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 15px;
-  text-align: center;
-  border: 1.5px solid var(--白);
-  box-sizing: content-box;
 }
 
 /* ── 头像行：整行是一个按钮，所以要显式复位 text-align / width ── */

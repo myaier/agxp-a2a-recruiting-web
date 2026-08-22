@@ -72,7 +72,6 @@ export const 路径 = {
   企业详情模板: '/company/:id',
 
   // ── 「我的」下属功能页 ──
-  通知中心: '/notifications',
   设置: '/settings',
   屏蔽名单: '/blocklist',
   披露偏好: '/disclosure-prefs',
@@ -112,7 +111,6 @@ export const 路径 = {
   企业代理设置: '/hr/agent-settings',
   匿名在线简历: (编号: string) => `/hr/resume/${编号}`,
   匿名在线简历模板: '/hr/resume/:id',
-  企业通知中心: '/hr/notifications',
   企业设置: '/hr/settings',
   企业披露策略: '/hr/disclosure',
   /** 企业历史接洽：被终止的候选归档在这里，镜像求职端的 /archived */
