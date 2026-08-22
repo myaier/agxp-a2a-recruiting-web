@@ -2,7 +2,7 @@
 // 与求职端主壳同构（职位 Tab ↔ 人才 Tab）；玻璃导航独立于求职端的，
 // 因为两端 Tab 集不同、图标不同，混在一个组件里反而互相牵制。
 
-import { use应用状态 } from '../状态/应用状态';
+import { use应用状态, 数未读 } from '../状态/应用状态';
 import { 公文包图标, 气泡图标, 人像图标 } from '../组件/图标';
 import 导航样式 from '../组件/玻璃导航栏.module.css';
 import 企业在谈候选 from './企业在谈候选';
@@ -18,6 +18,8 @@ const 导航项 = [
 
 export default function 企业主壳() {
   const { 状态, 派发 } = use应用状态();
+  // 未读角标挂在「消息」上（镜像求职端 玻璃导航栏，共用同一套样式与同一个算法）
+  const 未读总数 = 数未读(状态.企业消息未读);
 
   return (
     <div style={{ position: 'relative', height: '100%', background: 'var(--页面底)' }}>
@@ -40,6 +42,9 @@ export default function 企业主壳() {
             >
               <span className={导航样式.图标位}>
                 <图标 色={选中 ? 'var(--橄榄)' : 'var(--最弱)'} 线宽={选中 ? 1.9 : 1.8} />
+                {项.键 === '消息' && 未读总数 > 0 ? (
+                  <span className={`${导航样式.角标} 等宽数字`}>{未读总数}</span>
+                ) : null}
               </span>
               <span className={`${导航样式.文字} ${选中 ? 导航样式.选中 : ''}`}>{项.名}</span>
             </button>

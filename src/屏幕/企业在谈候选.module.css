@@ -2,82 +2,66 @@
    版式一比一镜像求职端：顶栏镜像 顶部意向栏.module.css，卡片镜像 在谈首页.module.css，
    只把「意向 / 公司 / 薪资」的语义位换成「岗位 / 候选 / 匹配分」。 */
 
-/* ── 顶部岗位切换栏（镜像顶部意向栏）── */
+/* ── 顶部岗位切换栏 ──
+   整段不再自己写一份，而是 composes 求职端 顶部意向栏.module.css 的同名位置，
+   与「推荐」子视图（候选推荐.module.css）引的是同一处。
+
+   为什么必须共用：人才 Tab 的两个子视图（在谈 / 推荐）各渲染一份顶栏，用户眼里
+   却是同一条顶栏。上一版只把「推荐」那份换成了共用源，这一份还留着
+   「选中 max-width:52% + 未选各 34%」的平铺写法 —— 于是同一个顶栏在「在谈」下
+   岗位名被截成「资深后…」，切到「推荐」又完整，同一处 UI 两种行为。
+   现在改 顶部意向栏.module.css 一处，两个子视图 + 求职端一起动。
+
+   注：max-width 那两行是随「平铺」一起废掉的 —— 横着滚的前提就是每个胶囊按内容
+   占全宽，再限宽就又回到截断。 */
 .顶栏 {
-  flex: none;
-  padding: 0 20px;
+  composes: 顶栏 from './顶部意向栏.module.css';
 }
 
 .岗位行 {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
+  composes: 意向行 from './顶部意向栏.module.css';
+}
+
+/* 岗位胶囊的横向滚动容器（对应求职端的意向胶囊条） */
+.岗位滚动条 {
+  composes: 胶囊条 from './顶部意向栏.module.css';
 }
 
 .岗位选中 {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: var(--墨);
-  min-width: 0;
-  max-width: 52%;
+  composes: 意向选中 from './顶部意向栏.module.css';
 }
 
 .岗位未选 {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--标题次级);
-  min-width: 0;
-  max-width: 34%;
+  composes: 意向未选 from './顶部意向栏.module.css';
 }
 
 .岗位行右 {
-  flex: none;
-  margin-left: auto;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  align-self: center;
+  composes: 意向行右 from './顶部意向栏.module.css';
 }
 
 .加号 {
-  color: var(--深绿);
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 1;
+  composes: 加号 from './顶部意向栏.module.css';
 }
 
 .子视图行 {
-  display: flex;
-  gap: 18px;
-  margin-top: 14px;
-  align-items: baseline;
+  composes: 子视图行 from './顶部意向栏.module.css';
 }
 
 .子视图选中 {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--墨);
-  letter-spacing: -0.01em;
+  composes: 子视图选中 from './顶部意向栏.module.css';
 }
 
 .子视图未选 {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--标题次级);
-  letter-spacing: -0.01em;
+  composes: 子视图未选 from './顶部意向栏.module.css';
 }
 
 .筛选 {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--次要);
+  composes: 筛选 from './顶部意向栏.module.css';
 }
 
 /* 有条件生效时顶栏那一行要看得出来，否则用户会忘了自己筛过 */
 .筛选生效 {
-  color: var(--深绿);
-  font-weight: 700;
+  composes: 筛选生效 from './顶部意向栏.module.css';
 }
 
 /* ── 候选卡列表（镜像在谈首页）── */
@@ -86,6 +70,25 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* 「全部岗位」档下的岗位分组：镜像求职端 在谈首页.module.css 的 .分组 / .分组标，
+   组内卡间距沿用列表的 6px，组与组之间靠组名的上边距分开 */
+.分组 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.分组标 {
+  margin: 10px 8px 2px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.分组:first-child .分组标 {
+  margin-top: 2px;
 }
 
 .卡 {

@@ -37,6 +37,31 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 未读角标绝对定位的基准 */
+  position: relative;
+}
+
+/* 未读角标：挂在消息图标右上角。绝对定位 —— 参与文档流会把图标挤偏，
+   三个 Tab 的图标就不在同一条水平线上了。两端共用（企业主壳的导航复用本模块）*/
+.角标 {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  margin-left: 3px;
+  margin-bottom: -8px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  /* 与消息列表行内的 .未读徽标 同色（--意向 / --白），同一件事在两处不能是两个红 */
+  background: var(--意向);
+  color: var(--白);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  /* 描一圈玻璃底色，角标压在图标上时边界不糊 */
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.9);
 }
 
 .文字 {

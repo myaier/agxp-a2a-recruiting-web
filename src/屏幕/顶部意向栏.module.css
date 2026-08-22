@@ -1,18 +1,58 @@
-/* 顶栏：意向切换（左右平铺）+ ＋添加 + 放大镜；下方在谈 / 看市场子视图切换。
-   在谈首页和看市场共用这一份。 */
+/* 顶栏：意向切换（横向滚动）+ ＋添加 + 放大镜；下方在谈 / 看市场子视图切换。
+   在谈首页和看市场共用这一份。
+
+   这一份同时是「两端顶栏」的唯一样式源：企业端的岗位切换栏与它是同构对
+   （意向切换 ↔ 在招岗位切换），所以 候选推荐.module.css 用 composes 直接引这里的类，
+   不再各画一套。各画一套的代价上一版已经付过了 —— 求职端改成横向滚动之后，
+   企业端那份抄件还留着 max-width 平铺，3 个在招岗位就把顶栏撑到 120% 宽、
+   岗位名全被截成「资深后…」。改这里 = 两端一起动。 */
 
 .顶栏 {
   flex: none;
   padding: 0 20px;
 }
 
+/* 意向行 = 左边可横向滚动的胶囊条 + 右边固定不动的常驻入口（＋ / 放大镜） */
 .意向行 {
   display: flex;
   align-items: baseline;
   gap: 16px;
 }
 
+/* 胶囊条：装得下 N 条，多了就横着滚。
+   条数由用户定 —— 求职端意向配额上限 5 条，企业端中型公司同时在招 8–15 个岗是常态，
+   两端都不能再按「永远两三条」排版。不加 nowrap + overflow-x 的话，从第 3 条起
+   标题会被挤成竖排断字（「后端工程 / 师」）把顶栏撑高，或者被截成「资深后…」让人靠猜。
+   ＋ 和放大镜留在滚动区外面：它们是常驻入口，不该跟着意向一起被滑走。
+   隐藏滚动条这两段是从全局 .滚动区 抄下来的，而不是在 JSX 上再叠一个 .滚动区 类 ——
+   两者特异性相同，横向能不能滚要取决于样式表出场顺序，这种关键值不赌顺序。 */
+.胶囊条 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.胶囊条::-webkit-scrollbar {
+  display: none;
+}
+
+/* 胶囊公共项：整名显示、绝不截断（横着滚就是为了这个），也不许被 flex 压扁。
+   这里刻意不用全局 .单行 —— 那个类是「放不下就打省略号」，与本行的取舍正好相反。 */
+.胶囊 {
+  flex: none;
+  white-space: nowrap;
+  text-align: left;
+}
+
 .意向选中 {
+  composes: 胶囊;
+
   font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.01em;
@@ -20,12 +60,16 @@
 }
 
 .意向未选 {
+  composes: 胶囊;
+
   font-size: 15px;
   font-weight: 600;
   color: var(--标题次级);
 }
 
+/* 常驻入口那一簇：flex:none 保证它永远不被左边的胶囊条挤扁 */
 .意向行右 {
+  flex: none;
   margin-left: auto;
   display: flex;
   gap: 10px;

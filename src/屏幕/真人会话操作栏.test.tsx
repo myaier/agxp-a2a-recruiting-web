@@ -10,17 +10,18 @@ import 真人会话源码 from './真人会话.tsx?raw';
 import 企业真人会话源码 from './企业真人会话.tsx?raw';
 
 const 联系方式 = { 电话: '138 0013 2046', 微信: 'shenyz_88' };
+/** 层里铺什么由调用方决定，测试只需要一段能被找到的正文 */
+const 简历正文占位 = '交易网关重建 32 万 QPS';
 
-function 渲染企业端(主项打开 = vi.fn()) {
+function 渲染企业端() {
   render(
     <真人会话操作栏
       主项名="看简历"
       主项图标={<span />}
-      主项打开={主项打开}
+      主项内容={<p>{简历正文占位}</p>}
       联系方式={联系方式}
     />
   );
-  return 主项打开;
 }
 
 describe('真人会话操作栏', () => {
@@ -29,13 +30,6 @@ describe('真人会话操作栏', () => {
     expect(screen.getByRole('button', { name: '看简历' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '电话' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '微信' })).not.toBeNull();
-  });
-
-  it('主项是跳转不是展开：点一下就把落点回调交出去', async () => {
-    const 用户 = userEvent.setup();
-    const 打开 = 渲染企业端();
-    await 用户.click(screen.getByRole('button', { name: '看简历' }));
-    expect(打开).toHaveBeenCalledOnce();
   });
 
   it('电话点开直接看到号码，再点一次收起', async () => {
@@ -84,6 +78,49 @@ describe('真人会话操作栏', () => {
     for (const 禁词 of ['换', '申请', '求']) {
       expect(全文.includes(禁词)).toBe(false);
     }
+  });
+});
+
+// ── 主项：盖一层，不跳走 ──────────────────────────────────────────
+// 产品负责人 2026-08-22 的反馈就是这条：看职位/看简历点了不该整屏换掉。
+describe('主项的全屏详情层', () => {
+  it('点主项就地盖一层，正文是调用方传进来的那份档案', async () => {
+    const 用户 = userEvent.setup();
+    渲染企业端();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByText(简历正文占位)).toBeNull();
+
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    expect(screen.getByRole('dialog', { name: '看简历' })).not.toBeNull();
+    expect(screen.getByText(简历正文占位)).not.toBeNull();
+  });
+
+  it('底部「继续沟通」关掉层，回到聊天', async () => {
+    const 用户 = userEvent.setup();
+    渲染企业端();
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+
+    await 用户.click(screen.getByRole('button', { name: '继续沟通' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByText(简历正文占位)).toBeNull();
+    // 层关掉后操作排还在原处，会话没有被换走
+    expect(screen.getByRole('button', { name: '看简历' })).not.toBeNull();
+  });
+
+  it('层关掉后电话的展开状态原样保留：盖一层不动会话本身', async () => {
+    const 用户 = userEvent.setup();
+    渲染企业端();
+    await 用户.click(screen.getByRole('button', { name: '电话' }));
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    await 用户.click(screen.getByRole('button', { name: '继续沟通' }));
+    expect(screen.getByText('138 0013 2046')).not.toBeNull();
+  });
+
+  it('焦点落在「继续沟通」上，不被正文里的控件拽着往下滚', async () => {
+    const 用户 = userEvent.setup();
+    渲染企业端();
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '继续沟通' }));
   });
 });
 

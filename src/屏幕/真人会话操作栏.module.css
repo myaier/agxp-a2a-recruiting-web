@@ -1,56 +1,54 @@
 /* 真人会话顶部操作排 —— 只服务两屏真人会话（求职端 A19 / 企业端 D12·A）。
-   排在返回栏正下方，三等分横铺；展开区紧贴排下沿，两块共用淡绿底连成一体。 */
+   排在返回栏正下方，三等分横铺。 */
 
+/* ════ 2026-08-22 产品负责人反馈：「三个图标 UI 太丑、上面的框特别占地方」════
+   改前是「白底 + 下边框 + 每项之间一条竖分隔线」，三样加起来把一条工具带画成了
+   三个并排的格子，整条 53.6px。参考截图的形态里一个框都没有：图标 + 底下一行小字，
+   直接坐在页面底色（--对话页底）上。所以这里把 background / border-bottom /
+   .项+.项 的竖线全部去掉，只留三等分的排布本身。
+   主次不靠框来分 —— 仍然沿用「主项图标深绿 + 文字加粗」这一个手法（见 .主项名）。 */
 .操作栏 {
   flex: none;
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  background: var(--白);
-  border-bottom: 1px solid var(--描边);
 }
 
+/* 高度是这次要压的东西：4 + 图标 18 + 间隙 2 + 文字 12 + 8 = 44px（改前 53.6px）。
+   上留白比下留白小，因为返回栏自己带 8px 下内边距，视觉上已经隔开了。 */
 .项 {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 8px 0 9px;
+  gap: 2px;
+  padding: 4px 0 8px;
   background: transparent;
-}
-
-/* 相邻两项之间一条细分隔，和 BOSS 那排一样是「一条工具带」而不是三个孤立按钮 */
-.项 + .项 {
-  border-left: 1px solid var(--分隔线);
 }
 
 .项图 {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 20px;
+  height: 18px;
 }
 
 .项名 {
-  font-size: 10.5px;
+  font-size: 10px;
   line-height: 1.2;
   color: var(--次要);
 }
 
 /* 主项 = 这一排的重点操作（求职端看职位 / 企业端看简历）：
-   图标本身给深绿，文字再加粗一档，不靠任何说明文案就能看出主次。 */
+   图标本身给深绿，文字再加粗一档，不靠任何框、也不靠任何说明文案就能看出主次。 */
 .主项名 {
   color: var(--深绿文字);
   font-weight: 700;
 }
 
-/* 展开中的次项：底色跟展开区一致，视觉上「这一格拉出了下面那块」 */
-.项展开 {
-  background: var(--淡绿底2);
-}
-
+/* 展开中的次项：只让文字跟着图标上深绿。
+   改前这里还给整格铺一层淡绿底 —— 那也是一个「框」，一并去掉。 */
 .项展开 .项名 {
   color: var(--深绿文字);
   font-weight: 600;
@@ -58,10 +56,83 @@
 
 /* 展开区：装的就是原先躺在消息流里的那张联系卡（直聊会话.module.css 的 .联系条 / .联系行），
    位置从流里挪到这儿，组件与复制逻辑一行没改。
-   下内边距只留 4px —— .联系条 自带 6px 下外边距，加起来才是想要的 10px。 */
+   本轮同样卸掉了它的淡绿底与下边框 —— 卡片自己是白底带描边的，
+   底下再垫一层色就又变成「框中框」。下内边距只留 4px：.联系条 自带 6px 下外边距。 */
 .展开区 {
   flex: none;
-  padding: 8px 14px 4px;
-  background: var(--淡绿底2);
-  border-bottom: 1px solid var(--描边);
+  padding: 2px 14px 4px;
+}
+
+/* ════ 主项的展开形态：盖在聊天页上的全屏详情层 ════
+   产品负责人 2026-08-22：「点开后是一个和主页一样的页面，但是不要跳转，
+   下面有一个继续沟通，点击继续沟通就跳回到聊天页」。
+   所以这一层不换路由、不进返回栈，壳用全应用统一的 组件/弹层框架。
+   遮罩仍然铺满，是为了让 Escape / 点击遮罩这两条通用退出路径继续有效
+   （全屏时遮罩本身看不见，但键盘与辅助技术走的是它）。 */
+.详情遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  z-index: 80;
+  animation: 遮罩淡入 0.18s ease both;
+}
+
+.详情层 {
+  height: 100%;
+  padding-top: var(--安全区上);
+  background: var(--对话页底);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: 详情层升起 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* order 而不是 DOM 顺序：弹层框架挂载时会自动聚焦面板里第一个可聚焦控件，
+   若正文排在前面，焦点会落到正文中段的公司卡上、把页面直接顶下去。
+   把「继续沟通」放在 DOM 首位、再用 order 摆回底部，焦点就落在退出键上。 */
+.详情正文区 {
+  order: 1;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.详情底栏 {
+  order: 2;
+  flex: none;
+  padding: 10px 18px calc(var(--安全区下) + 12px);
+  background: var(--白);
+  border-top: 1px solid var(--描边);
+}
+
+/* 荧光绿只给主操作，与举报层的「提交」、注册流的主按钮同一套 */
+.继续沟通 {
+  width: 100%;
+  height: 50px;
+  border-radius: var(--圆角-按钮);
+  background: var(--荧光绿);
+  box-shadow: 0 2px 10px -2px var(--主按钮投影);
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+/* 本地 keyframes：CSS Modules 会重命名 animation-name，全局.css 里的同名 keyframes 够不到 */
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes 详情层升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
 }

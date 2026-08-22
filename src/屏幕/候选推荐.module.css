@@ -1,87 +1,63 @@
 /* D11 人才Tab·推荐 + D11·D 搜人才（镜像求职端 A14 看市场版式，像素值一比一） */
 
-/* ── 顶栏：岗位切换（左右平铺）+ ＋发岗 + 放大镜；下方 在谈/推荐 子视图。
-      与「企业在谈候选」共用这一版式（镜像 顶部意向栏.module.css） ── */
+/* ── 顶栏：岗位切换（横向滚动）+ ＋发岗；下方 在谈/推荐 子视图 ──
+      整段不再自己写一份，而是 composes 求职端 顶部意向栏.module.css 的同名位置。
+
+      为什么必须共用而不是「镜像」：这两个顶栏是同构对（意向切换 ↔ 在招岗位切换），
+      各画各的上一版已经出过事 —— 求职端把胶囊条改成横向滚动之后，这边的抄件还留着
+      「选中 max-width:52% + 未选各 34%」，3 个在招岗位就已经 120% 超宽，既不横滚也不换行，
+      岗位名全被截成「资深后…」「风控算…」，第三个顶到 ＋ 号；而中型公司同时在招 8–15 个是常态。
+      现在改 顶部意向栏.module.css 一处，两端一起动，抄件漂移这条路直接堵死。
+
+      注：max-width 那两行是随「平铺」一起废掉的 —— 横着滚的前提就是每个胶囊按内容占全宽，
+      再限宽就又回到截断。 */
 .顶栏 {
-  flex: none;
-  padding: 0 20px;
+  composes: 顶栏 from './顶部意向栏.module.css';
 }
 
 .岗位行 {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
+  composes: 意向行 from './顶部意向栏.module.css';
 }
 
-/* 岗位名比求职端意向词长，选中/未选都允许收缩截断（配合 .单行 的 min-width:0） */
-.岗位选中 {
-  min-width: 0;
-  max-width: 52%;
+/* 岗位胶囊的横向滚动容器（对应求职端的意向胶囊条） */
+.岗位滚动条 {
+  composes: 胶囊条 from './顶部意向栏.module.css';
+}
 
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: var(--墨);
-  text-align: left;
+.岗位选中 {
+  composes: 意向选中 from './顶部意向栏.module.css';
 }
 
 .岗位未选 {
-  min-width: 0;
-  max-width: 34%;
-
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--标题次级);
-  text-align: left;
+  composes: 意向未选 from './顶部意向栏.module.css';
 }
 
 .岗位行右 {
-  flex: none;
-  margin-left: auto;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  align-self: center;
+  composes: 意向行右 from './顶部意向栏.module.css';
 }
 
 .加号 {
-  color: var(--深绿);
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 1;
+  composes: 加号 from './顶部意向栏.module.css';
 }
 
 .子视图行 {
-  display: flex;
-  gap: 18px;
-  margin-top: 14px;
-  align-items: baseline;
+  composes: 子视图行 from './顶部意向栏.module.css';
 }
 
 .子视图选中 {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--墨);
-  letter-spacing: -0.01em;
+  composes: 子视图选中 from './顶部意向栏.module.css';
 }
 
 .子视图未选 {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--标题次级);
-  letter-spacing: -0.01em;
+  composes: 子视图未选 from './顶部意向栏.module.css';
 }
 
 .筛选 {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--次要);
+  composes: 筛选 from './顶部意向栏.module.css';
 }
 
-/* 有条件生效时顶栏那一行要看得出来，否则用户会忘了自己筛过 */
 .筛选生效 {
-  color: var(--深绿);
-  font-weight: 700;
+  composes: 筛选生效 from './顶部意向栏.module.css';
 }
 
 /* ── 搜索条（D11·D 搜人才）：胶囊白条，版式同消息列表的搜索条；

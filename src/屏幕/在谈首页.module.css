@@ -7,6 +7,25 @@
   gap: 6px;
 }
 
+/* 「全部意向」档下的意向分组：组内卡间距沿用列表的 6px，组与组之间靠组名的上边距分开。
+   组名字号与 岗位管理.module.css 的 .分组标 同款，两屏的分组读起来是同一套东西 */
+.分组 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.分组标 {
+  margin: 10px 8px 2px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.分组:first-child .分组标 {
+  margin-top: 2px;
+}
+
 .卡 {
   position: relative; /* 右列绝对定位的基准 */
   padding: 13px 15px 10px; /* 标注 22:46：整卡收小一号 */
