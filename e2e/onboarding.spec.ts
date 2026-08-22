@@ -35,12 +35,12 @@ test.describe('multi-role onboarding', () => {
     await expect(page).toHaveURL(/#\/student$/);
     await expect(page.getByRole('button', { name: '已毕业' })).toHaveAttribute('aria-pressed', 'true');
 
+    // 作品集链接已搬去 /experience（简历内容，不是求职偏好），本屏不该再有这个字段
+    await expect(page.getByLabel('作品集或项目链接')).toHaveCount(0);
+
     // 重复确认当前身份不能清掉已经填写的偏好。
-    await page.getByLabel('作品集或项目链接').fill('github.com/example/kept-project');
-    await page.getByLabel('作品集或项目链接').blur();
     await page.getByRole('button', { name: '全远程' }).click();
     await page.getByRole('button', { name: '已毕业' }).click();
-    await expect(page.getByLabel('作品集或项目链接')).toHaveValue('https://github.com/example/kept-project');
     await expect(page.getByRole('button', { name: '全远程' })).toHaveAttribute('aria-pressed', 'false');
 
     await 选择期望职位(page, '产品', '产品经理');
@@ -55,12 +55,21 @@ test.describe('multi-role onboarding', () => {
     await expect(page).toHaveURL(/#\/onboard\/status$/);
     await page.getByRole('button', { name: '下一步' }).click();
     await 走完学历资料(page);
+
+    // 作品集链接的新家：在线简历屏，与专业技能 / 证书与语言并列的独立区块
+    await expect(page.getByRole('heading', { name: '在线简历' })).toBeVisible();
+    await page.getByLabel('作品集或项目链接').fill('github.com/example/kept-project');
+    await page.getByLabel('作品集或项目链接').blur();
+    await expect(page.getByLabel('作品集或项目链接')).toHaveValue(
+      'https://github.com/example/kept-project',
+    );
     await page.getByRole('button', { name: '保存' }).click();
 
     await expect(page).toHaveURL(/#\/wizard$/);
     await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible();
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page.getByRole('heading', { name: '分享一下自己的个人优势' })).toBeVisible();
+    // 两个入口共写同一份简历字段，所以在线简历屏填的这条在这里立刻可见
     await expect(page.getByRole('button', { name: /https:\/\/github.com\/example\/kept-project/ })).toBeVisible();
     await page.getByRole('button', { name: '保存并继续' }).click();
     await expect(page).toHaveURL(/#\/disclosure$/);
@@ -128,7 +137,6 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByRole('button', { name: '实习生' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: '校园招聘' })).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByLabel('最早可开始实习日期')).toHaveValue('2099-09-01');
-    await expect(page.getByLabel('作品集或项目链接')).toHaveValue('https://example.com/portfolio');
     await expect(page.getByLabel('预计毕业时间')).toHaveCount(0);
 
     await expect.poll(async () => {
@@ -153,12 +161,6 @@ test.describe('multi-role onboarding', () => {
 
     await expect(page.getByLabel('预计毕业时间')).toBeVisible();
     await page.getByLabel('预计毕业时间').fill('2099-06');
-    await page.getByLabel('作品集或项目链接').fill('not-a-link');
-    await expect(page.getByText('请输入有效的作品集或项目链接')).toBeVisible();
-    await expect(page.getByRole('button', { name: '下一步' })).toBeDisabled();
-    await page.getByLabel('作品集或项目链接').fill('github.com/example/campus-project');
-    await page.getByLabel('作品集或项目链接').blur();
-    await expect(page.getByLabel('作品集或项目链接')).toHaveValue('https://github.com/example/campus-project');
     await expect(page.getByLabel('最早可开始实习日期')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
   });
@@ -213,6 +215,8 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByText('AI 产品实习生')).toBeVisible();
   });
 
+  // 老用户的作品集链接还留在旧的求职筛选缓存里（那时字段长在完善资料屏）。
+  // 搬进简历切片之后必须做兼容读取，已经填过的人不能因为这次搬家丢数据。
   test('reuses the persisted portfolio link on the personal-strength page', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem(

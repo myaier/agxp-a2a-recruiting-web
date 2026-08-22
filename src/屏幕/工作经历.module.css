@@ -252,6 +252,11 @@
   color: var(--最弱);
 }
 
+/* 起止倒置时两个键一起标红：错的是「这一段区间」，不是单独某一头 */
+.月份键错 {
+  border-color: #b42318;
+}
+
 .时间连字 {
   flex: none;
   color: var(--次要浅);
@@ -590,6 +595,32 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* ── 作品集或项目链接：整份简历一条，卡片形态与技能卡同源 ── */
+.整行输入 {
+  width: 100%;
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  background: var(--白);
+  padding: 13px 14px;
+  font-size: 14px;
+  color: var(--墨);
+  outline: none;
+  font-family: inherit;
+}
+
+.整行输入::placeholder {
+  color: var(--最弱);
+}
+
+/* 字段级错误提示（与 学生分流 屏同款，红字一行贴在出错的字段下面）*/
+.字段错误 {
+  margin-top: 6px;
+  padding: 0 2px;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* ── 经历编辑页内的「关键项目」子区块 ── */
