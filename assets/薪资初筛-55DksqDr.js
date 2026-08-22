@@ -1,0 +1,2 @@
+function e(e){let t=/(\d+(?:\.\d+)?)\s*[Kk]?\s*[-–—]\s*(\d+(?:\.\d+)?)/.exec(e);if(!t)return null;let n=Number(t[1]),r=Number(t[2]);return!Number.isFinite(n)||!Number.isFinite(r)||n>r?null:{下限:n,上限:r,单位:e.includes(`元/天`)?`元/天`:e.includes(`元/时`)?`元/时`:`月薪K`}}function t(t,n){if(!t||!n)return`待核对`;let r=e(t),i=e(n);return!r||!i||r.单位!==i.单位?`待核对`:Math.max(r.下限,i.下限)<=Math.min(r.上限,i.上限)?`有交集`:`无交集`}function n(e){return e===`有交集`?`薪资带有交集`:e===`无交集`?`薪资带无交集`:`薪资带待核对`}export{n,t};
+//# sourceMappingURL=薪资初筛-55DksqDr.js.map
