@@ -72,12 +72,23 @@
   color: var(--墨);
   margin-bottom: 10px;
 }
+/* 自由输入的字段（岗位名称 / 工作城市 / 办公地点）。
+   标注 2026-08-22「岗位名称和职位类别是不是重复了」：两者不重复 ——
+   岗位名称是自己起的名字（打字），职位类别是平台两级字典（点开选、初筛按它匹配）。
+   之前两条都是「粗标签 + 一行文字」，不点开分不出哪条要打字，所以这里给输入型
+   字段套一个看得见的框：空框 + 光标 = 手机上「这里要打字」的通用形态，
+   与下方 .选择条目 的「一整行 + 右侧 ›」形成两种可分辨的条目形态，不靠加文案解释。
+   框的像素沿用本页原来的日期输入框，不新造一套（那个日期字段 2026-08-22 已随
+   「最晚可接受实习开始日期」一起删除，样式块也跟着撤了）。 */
 .条目输入 {
   width: 100%;
-  border: none;
+  border: 1px solid var(--描边);
+  border-radius: 10px;
+  padding: 10px 12px;
   outline: none;
-  background: none;
-  font-size: 15.5px;
+  background: var(--白);
+  /* 标注 2026-08-22：本页正文字号按「招聘类型」宫格里的 .类型名 13.5px 统一 */
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--墨);
 }
@@ -85,26 +96,8 @@
   font-weight: 400;
   color: var(--最弱);
 }
-
-.实习日期标签 {
-  margin-top: 16px;
-}
-
-.日期输入 {
-  width: 100%;
-  border: 1px solid var(--描边);
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: var(--白);
-  color: var(--墨);
-  font-size: 15px;
-}
-
-.字段错误 {
-  margin-top: 6px;
-  color: #b42318;
-  font-size: 12px;
-  line-height: 1.5;
+.条目输入:focus {
+  border-color: var(--淡绿描边);
 }
 
 /* 薪资带：两个数字框 + 连字符（框样式同 工作经历 的月份输入）*/
@@ -152,29 +145,49 @@
   color: var(--次要浅);
 }
 
-/* ── 点击式选择条目（年薪月数）：点开弹滚轮层 ── */
+/* ── 点击式选择条目（职位类别 / 年薪月数）：点开弹层选 ──
+   标注 2026-08-22：原来它和 .编辑条目 一样是「标签在上、值在下」两行，
+   跟自由输入的岗位名称长得一模一样，所以看着像重复字段。
+   这里改成一整行（标签靠左、值 + › 靠右）—— 手机上这就是「点开挑一个」的固定形态，
+   和上面带框的 .条目输入 一眼分得开。 */
 .选择条目 {
   width: 100%;
   padding: 14px 0;
   border-bottom: 1px solid var(--分隔线);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
   text-align: left;
 }
 
+/* 行内的标签不再压下方值，去掉栈式布局留的下边距 */
+.选择条目 .条目标签 {
+  flex: none;
+  margin-bottom: 0;
+}
+
 .选择条目值行 {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .条目值 {
   flex: 1;
-  font-size: 15.5px;
+  min-width: 0;
+  /* 标注 2026-08-22：与 .类型名 13.5px 对齐；比 17px 的标签明显轻，不再像第二个标题 */
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--墨);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .尖括号 {
@@ -197,7 +210,9 @@
   border-radius: var(--圆角-胶囊);
   background: var(--浅灰底);
   border: 1px solid var(--描边);
-  font-size: 12px;
+  /* 标注 2026-08-22：办公方式的片原来 12px，比招聘类型宫格里的 13.5px 小一号，
+     同一屏两种正文字号看着不齐 —— 统一到 13.5px */
+  font-size: 13.5px;
   color: var(--正文);
 }
 .快捷片选中 {

@@ -70,7 +70,10 @@ export const 路径 = {
   编辑意向模板: '/intentions/:id',
   规则库: '/rules',
   我的简历: '/resume',
-  未通过说明: '/rejected',
+  // 2026-08-22：/rejected（未通过说明）与 /hr/rejected（候选未通过）两屏已删除。
+  // 它们全项目零入口、返回即退出 app；招聘端那屏还与 初筛记录 → 初筛对话 讲同一件事。
+  // 唯一有价值的「松一档 / 放宽薪资带」洞察已搬进两端代理简报（问AI代理 / 企业问AI代理）。
+  // 不要再给这两屏接入口 —— 那是当时明确否掉的方案 B，理由见 docs/design/代理拒绝理由归宿.md。
   企业详情: (键: string) => `/company/${键}`,
   企业详情模板: '/company/:id',
 
@@ -107,7 +110,6 @@ export const 路径 = {
   候选详情看简历: (编号: string) => `/hr/candidate/${编号}?tab=resume`,
   企业往来记录: (编号: string) => `/hr/thread/${编号}`,
   企业往来记录模板: '/hr/thread/:id',
-  候选未通过: '/hr/rejected',
   企业问AI代理: '/hr/agent',
   企业真人会话: '/hr/chat',
   岗位管理: '/hr/jobs',

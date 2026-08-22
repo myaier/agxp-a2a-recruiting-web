@@ -36,7 +36,6 @@ const 选择城市 = lazy(() => import('./屏幕/选择城市'));
 const 选期望行业 = lazy(() => import('./屏幕/选期望行业'));
 const 规则库 = lazy(() => import('./屏幕/规则库'));
 const 我的简历 = lazy(() => import('./屏幕/我的简历'));
-const 未通过说明 = lazy(() => import('./屏幕/未通过说明'));
 const 企业详情 = lazy(() => import('./屏幕/企业详情'));
 const 设置 = lazy(() => import('./屏幕/设置'));
 const 屏蔽名单 = lazy(() => import('./屏幕/屏蔽名单'));
@@ -50,7 +49,6 @@ const 公司档案编辑 = lazy(() => import('./屏幕/公司档案编辑'));
 const 公司档案分区编辑 = lazy(() => import('./屏幕/公司档案分区编辑'));
 const 企业主壳 = lazy(() => import('./屏幕/企业主壳'));
 const 候选详情 = lazy(() => import('./屏幕/候选详情'));
-const 候选未通过 = lazy(() => import('./屏幕/候选未通过'));
 const 企业往来记录 = lazy(() => import('./屏幕/企业往来记录'));
 const 企业问AI代理 = lazy(() => import('./屏幕/企业问AI代理'));
 const 企业真人会话 = lazy(() => import('./屏幕/企业真人会话'));
@@ -136,7 +134,6 @@ export default function 应用() {
       <Route path={路径.编辑意向模板} element={<添加意向 />} />
       <Route path={路径.规则库} element={<规则库 />} />
       <Route path={路径.我的简历} element={<我的简历 />} />
-      <Route path={路径.未通过说明} element={<未通过说明 />} />
       <Route path={路径.企业详情模板} element={<企业详情 />} />
 
       {/* 「我的」下属功能页 */}
@@ -163,7 +160,6 @@ export default function 应用() {
       <Route path={路径.公司档案分区模板} element={<公司档案分区编辑 />} />
       <Route path={路径.企业主壳} element={<企业主壳 />} />
       <Route path={路径.候选详情模板} element={<候选详情 />} />
-      <Route path={路径.候选未通过} element={<候选未通过 />} />
       <Route path={路径.企业往来记录模板} element={<企业往来记录 />} />
       <Route path={路径.企业问AI代理} element={<企业问AI代理 />} />
       <Route path={路径.企业真人会话} element={<企业真人会话 />} />

@@ -81,7 +81,9 @@ test.describe('multi-role onboarding', () => {
     await page.getByRole('button', { name: '在校' }).click();
     await expect(page.getByRole('button', { name: '实习生' })).toHaveAttribute('aria-pressed', 'true');
 
-    await page.getByLabel('最早可开始实习日期').fill('2099-09-01');
+    // 「最早可开始实习日期」2026-08-22 已删（招聘端「最晚可接受实习开始日期」被产品负责人
+    // 标注删掉后它就没有比对对象了），这里不再填它，顺带守住「删完不该再冒出来」
+    await expect(page.getByLabel('最早可开始实习日期')).toHaveCount(0);
     await 选择期望职位(page, '产品', '产品经理');
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
@@ -101,12 +103,31 @@ test.describe('multi-role onboarding', () => {
 
   test('walks the recruiter journey from role entry to job posting', async ({ page }) => {
     await 从登录进入身份(page, '我要招人');
-    await expect(page).toHaveURL(/#\/hr\/verify$/);
-    await expect(page.getByRole('heading', { name: '实名认证' })).toBeVisible();
-
-    await page.getByRole('button', { name: '开始人脸识别' }).click();
-    await expect(page).toHaveURL(/#\/hr\/card$/, { timeout: 3_000 });
+    // 标注 2026-08-20 13:32 定、2026-08-22 再次确认：企业端先不做实名认证，选完身份直接落
+    // 招聘名片。这两条断言守的就是「/hr/verify 不能被重新塞回注册第一屏」
+    await expect(page).toHaveURL(/#\/hr\/card$/);
     await expect(page.getByRole('heading', { name: '招聘名片' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '实名认证' })).toHaveCount(0);
+
+    // 认证撤了，姓名与公司回到可就地编辑（同一批标注的 13:35 那条），
+    // 灰色只读态的「已认证」徽标不该再出现
+    await expect(page.getByText('已认证')).toHaveCount(0);
+
+    // 逐行验证「点一下就变输入框、失焦即存」：姓名与公司是这次解锁的两行，
+    // 职务一并带上，三行走同一条就地编辑路径，漏测哪行都可能只解锁一半
+    for (const [行标签, 原值, 新值] of [
+      ['姓名', '邵铭', '沈知远'],
+      ['职务', '技术 VP', '招聘负责人'],
+      ['公司', '云衢科技', '云衢信息科技'],
+    ] as const) {
+      await page.getByRole('button').filter({ hasText: 原值 }).click();
+      const 输入框 = page.getByLabel(行标签, { exact: true });
+      await expect(输入框).toBeFocused();
+      await 输入框.fill(新值);
+      await 输入框.blur();
+      await expect(page.getByRole('button').filter({ hasText: 新值 })).toBeVisible();
+    }
+
     await page.getByRole('button', { name: '保存 · 去发岗位' }).click();
     await expect(page).toHaveURL(/#\/hr\/post-job$/);
     await expect(page.getByRole('heading', { name: '岗位基础信息' })).toBeVisible();
@@ -124,7 +145,6 @@ test.describe('multi-role onboarding', () => {
             办公方式: ['混合'],
             实习月数: 3,
             每周到岗天数: 4,
-            实习开始日期: '2099-09-01',
             作品集链接: 'https://example.com/portfolio',
           },
           薪资: { 下限: 300, 上限: 500, 单位: '元/天' },
@@ -136,7 +156,6 @@ test.describe('multi-role onboarding', () => {
 
     await expect(page.getByRole('button', { name: '实习生' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: '校园招聘' })).toHaveAttribute('aria-pressed', 'false');
-    await expect(page.getByLabel('最早可开始实习日期')).toHaveValue('2099-09-01');
     await expect(page.getByLabel('预计毕业时间')).toHaveCount(0);
 
     await expect.poll(async () => {
@@ -161,23 +180,29 @@ test.describe('multi-role onboarding', () => {
 
     await expect(page.getByLabel('预计毕业时间')).toBeVisible();
     await page.getByLabel('预计毕业时间').fill('2099-06');
-    await expect(page.getByLabel('最早可开始实习日期')).toHaveCount(0);
+    await expect(page.getByLabel('预计毕业时间')).toHaveValue('2099-06');
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
   });
 
-  test('publishes an internship with explicit recruiter screening and process fields', async ({ page }) => {
+  test('publishes an internship with explicit recruiter screening fields', async ({ page }) => {
     await page.goto('/#/hr/post-job');
 
+    // 职位类别改成一行版式（标签靠左、值靠右 + ›）后，未选时的占位从「请选择职位类别」
+    // 收成本页 年薪月数 已在用的「请选择」。这里改按整行定位再断言行内文本，
+    // 比直接匹配占位字串更稳：以后占位再改措辞，这条用例不会跟着碎。
+    const 职位类别行 = page.getByRole('button').filter({ hasText: '职位类别' });
     await expect(page.getByPlaceholder(/资深后端工程师/)).toHaveValue('');
-    await expect(page.getByText('请选择职位类别')).toBeVisible();
+    await expect(职位类别行).toContainText('请选择');
     await expect(page.getByRole('button', { name: '实习生 在校生实习，按天计薪' })).toHaveAttribute('aria-pressed', 'false');
 
     await page.getByRole('button', { name: '实习生 在校生实习，按天计薪' }).click();
     await page.getByRole('button', { name: '提供转正机会' }).click();
-    await page.getByLabel('最晚可接受实习开始日期').fill('2099-09-15');
     await expect(page.getByRole('button', { name: '提供转正机会' })).toHaveAttribute('aria-pressed', 'true');
+    // 「最晚可接受实习开始日期」2026-08-22 已删（产品负责人：「这个删了吧，没啥用」），
+    // 它原来还是第一步的必填闸门 —— 这条断言守住「既不再出现，也不再拦人」
+    await expect(page.getByLabel('最晚可接受实习开始日期')).toHaveCount(0);
     await page.getByPlaceholder(/资深后端工程师/).fill('AI 产品实习生');
-    await page.getByText('请选择职位类别').click();
+    await 职位类别行.click();
     await page.getByRole('button', { name: '产品', exact: true }).click();
     await page.getByRole('button', { name: '产品经理', exact: true }).click();
     await page.getByRole('button', { name: '混合', exact: true }).click();
@@ -194,9 +219,11 @@ test.describe('multi-role onboarding', () => {
 
     await expect(page.getByText('日薪（元/天）')).toBeVisible();
     await expect(page.getByText('元/天').first()).toBeVisible();
-    await expect(page.getByText('预计面试轮次')).toBeVisible();
-    await expect(page.getByText('招聘紧急程度')).toBeVisible();
-    await expect(page.getByText('开始日期：最晚 2099-09-15')).toBeVisible();
+    // 三条断言 2026-08-22 由「可见」翻成「不存在」：预计面试轮次（「应该删掉吧」）、
+    // 招聘紧急程度（「感觉没什么用」）、实习最晚开始日期（「这个删了吧，没啥用」）全部删除
+    await expect(page.getByText('预计面试轮次')).toHaveCount(0);
+    await expect(page.getByText('招聘紧急程度')).toHaveCount(0);
+    await expect(page.getByText(/开始日期：最晚/)).toHaveCount(0);
     await expect(page.getByText('AI 只按以下条件进行初筛。薪资仅判断双方区间是否匹配，不询问或协商具体金额。')).toBeVisible();
 
     await page.getByRole('button', { name: '— 元/天' }).first().click();
@@ -205,9 +232,6 @@ test.describe('multi-role onboarding', () => {
     await page.getByRole('button', { name: '完成' }).click();
     await page.getByPlaceholder('如：上海').fill('上海');
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');
-    await page.getByRole('button', { name: /预计面试轮次/ }).click();
-    await page.getByRole('button', { name: '完成' }).click();
-    await page.getByRole('button', { name: '尽快到岗' }).click();
     await page.getByLabel('职位要求').fill('在校生，能持续实习三个月，具备基础产品分析能力。');
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
 

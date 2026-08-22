@@ -222,3 +222,70 @@
   justify-content: center;
   overflow: hidden;
 }
+
+/* ── 简报卡内的绿色「要不要松一档？」建议卡 ──
+   2026-08-22 随洞察从已删除的 未通过说明 屏搬来（docs/design/代理拒绝理由归宿.md）。
+   像素值原样照搬那一屏，卡本身的观感不变，只换了容身之处。 */
+.松一档卡 {
+  background: var(--淡绿底);
+  border: 1px solid var(--淡绿描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+
+.松一档标题 {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--深绿文字);
+}
+
+.松一档正文 {
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--正文);
+  margin-top: 5px;
+}
+
+.松一档强调 {
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.按钮行 {
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.次按钮 {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 15px;
+  background: var(--白);
+  border: 1px solid var(--描边中);
+  color: var(--次要);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.主按钮 {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 15px;
+  background: var(--荧光绿);
+  color: var(--墨);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* 选了「维持红线」后按钮行换成一行确认文案 */
+.已维持 {
+  margin-top: 11px;
+  font-size: 11.5px;
+  line-height: 1.65;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
