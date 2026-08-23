@@ -132,7 +132,7 @@ export function 阶段进度轨({ 阶段: 当前 }: { 阶段: 阶段 }) {
           key={名}
           className={`${样式.进度段} ${i === 序 ? 样式.进度段当前 : ''}`}
           style={{
-            background: i <= 序 ? 阶段配色[名].文字 : 'var(--浅灰底2)',
+            background: i <= 序 ? 阶段配色[名].文字 : 'var(--未完成轨)',
             opacity: i < 序 ? 0.42 : 1,
           }}
         >

@@ -273,7 +273,13 @@
 .白卡 {
   background: var(--白);
   border-radius: var(--圆角-卡片);
-  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04);
+  /* 标注 2026-08-23「卡片的背景颜色不够亮白」——查证卡本来就是 #ffffff，
+     物理上到顶了；显得不亮是因为页面底 #f7f7f4 与它只差 8 级。
+     产品负责人两轮都不改底色，所以走「投影抬卡」：底色一个像素不动，
+     靠一层贴地投影给接触边、一层扩散投影给抬升，让白卡自己浮起来。 */
+  box-shadow:
+    0 1px 2px rgba(26, 26, 26, 0.06),
+    0 10px 28px rgba(26, 26, 26, 0.09);
   text-align: left;
   width: 100%;
   display: block;
