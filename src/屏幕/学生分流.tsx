@@ -123,7 +123,7 @@ export default function 学生分流() {
         <button className={`${样式.上传行} 可点`} onClick={() => 文件选择框.current?.click()}>
           <span className={样式.上传图标}>⬆</span>
           {已选简历名 === '' ? (
-            <span className={`${样式.选择占位} 单行`}>上传简历，自动预填可识别的信息</span>
+            <span className={`${样式.选择占位} 单行`}>上传简历，AI识别后自动填充</span>
           ) : (
             <span className={`${样式.选择值} 单行`}>{已选简历名}</span>
           )}
