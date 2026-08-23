@@ -126,7 +126,10 @@
 .统计条 {
   display: flex;
   flex-direction: row;
-  background: var(--浅灰底2);
+  /* 标注 2026-08-23：日报卡里两块带色区域一起洗白（方案 C）。
+     统计条原来压 --浅灰底2，四个数字陷在底色里；改白后数字浮起来。 */
+  background: #fff;
+  border: 1px solid var(--描边);
   border-radius: var(--圆角-小托盘);
   padding: 11px 4px;
 }
@@ -138,9 +141,15 @@
 }
 
 .统计数 {
+  /* 标注 2026-08-23：换成与主页薪资同一套数字（SF 系 / 500 / 收字距 / 等宽）。
+     原来是 19px/800，走全局 --字体 里的 西文补偿，数字被放大 8% 又压到 800，
+     粗而钝。字号留 19px（这里是统计位不是价格位），其余对齐 薪资体。 */
+  font-family: var(--字体-数字);
   font-size: 19px;
-  font-weight: 800;
+  font-weight: 500;
   letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
   color: var(--墨);
 }
 
@@ -231,8 +240,10 @@
    2026-08-22 随洞察从已删除的 未通过说明 屏搬来（docs/design/代理拒绝理由归宿.md）。
    像素值原样照搬那一屏，卡本身的观感不变，只换了容身之处。 */
 .松一档卡 {
-  background: var(--淡绿底);
-  border: 1px solid var(--淡绿描边);
+  /* 标注 2026-08-23 同上：淡绿底撤掉。标题的深绿字保留，
+     这块「代理在等你拍板」的身份还认得出来。 */
+  background: #fff;
+  border: 1px solid var(--描边);
   border-radius: var(--圆角-内托盘);
   padding: 12px 14px;
   margin-top: 12px;

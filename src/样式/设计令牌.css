@@ -84,6 +84,13 @@
     '西文补偿', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans SC',
     'Helvetica Neue', Arial, sans-serif;
 
+  /* 数字体：钉死 SF 系，**不含 西文补偿** —— 补偿会把拉丁与数字放大 8%，
+     那是为中西混排服务的；纯数字场景要的是 SF 原本的比例。
+     薪资（薪资体）与日报统计数共用这一个源，避免两处各写一份字体栈后漂移。 */
+  --字体-数字:
+    -apple-system, 'SF Pro Display', 'SF Pro Text', BlinkMacSystemFont,
+    system-ui, sans-serif;
+
   /* ── 字号：全站标题层级只有这四档，任何屏不许再自造第五档 ──
      2026-08-22 产品定稿（方案 A）。定这四档之前，同一层级的标题散在
      11.5 / 12 / 13 / 13.5 / 14.5 / 16 / 17px 七个值上，页面大标题散在

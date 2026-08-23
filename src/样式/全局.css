@@ -100,7 +100,7 @@ button {
    显式钉死 SF 系（非苹果环境退回系统无衬线），17/500 + 收字距：
    Apple 价格标的常用档，数字清瘦不抢版面。 */
 .薪资体 {
-  font-family: -apple-system, 'SF Pro Display', 'SF Pro Text', BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: var(--字体-数字);
   font-size: 17px;
   font-weight: 500;
   letter-spacing: -0.02em;
