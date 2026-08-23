@@ -10,17 +10,19 @@
 
 .大标题 {
   margin: 0;
-  font-size: 23px;
+  font-size: var(--字号-页面大标题);
   font-weight: 800;
   letter-spacing: -0.01em;
-  line-height: 32px;
+  /* 行高用比例而不是 32px：字号已经跟令牌走，写死 px 的行高不会跟着变 */
+  line-height: 1.4;
   color: var(--墨);
 }
 
 .说明 {
   margin: 7px 0 0;
-  font-size: 12.5px;
-  line-height: 20.6px;
+  /* 大标题下的说明，与 通用 .大标题说明 同档 */
+  font-size: var(--字号-正文);
+  line-height: 1.7;
   color: var(--次要);
 }
 

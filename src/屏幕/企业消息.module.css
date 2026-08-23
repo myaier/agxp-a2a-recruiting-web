@@ -9,10 +9,12 @@
   flex: none;
 }
 
+/* 「消息」这一屏没有 页面大标题 组件，标题行自己画（右侧要留放大镜）。
+   原来 22px 是四档外的散值；求职端 消息列表 的同名类同步收进同一档，两端等大。 */
 .大标题 {
   flex: 1;
   min-width: 0;
-  font-size: 22px;
+  font-size: var(--字号-页面大标题);
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--墨);

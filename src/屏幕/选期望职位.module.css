@@ -12,7 +12,8 @@
 }
 
 .大标题 {
-  font-size: 25px;
+  /* 25px 是全站唯一的第五档：同组多选屏（工作城市/选择城市/期望行业）都是 23，这里是漂移 */
+  font-size: var(--字号-页面大标题);
   font-weight: 800;
   letter-spacing: -0.01em;
   line-height: 1.4;
@@ -213,7 +214,7 @@
 
 .分组标 {
   margin-bottom: 10px;
-  font-size: 12px;
+  font-size: var(--字号-小节标题);
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--次要浅);

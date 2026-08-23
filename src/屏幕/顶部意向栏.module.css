@@ -53,7 +53,9 @@
 .意向选中 {
   composes: 胶囊;
 
-  font-size: 22px;
+  /* 选中的意向就是「在谈 / 看市场」两屏的顶部大标题（未选中项是 15px 的兄弟项，不是标题） */
+
+  font-size: var(--字号-页面大标题);
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--墨);

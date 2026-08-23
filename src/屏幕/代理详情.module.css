@@ -170,7 +170,7 @@
 
 /* ── 权限边界 ── */
 .组标 {
-  font-size: 11.5px;
+  font-size: var(--字号-小节标题);
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--次要浅);
@@ -219,8 +219,10 @@
   color: var(--意向);
 }
 
+/* 每张权限边界卡的卡内小标（「它可以自己做」/「必须先问你」/「它永远不做」），
+   下面直接挂 .边界项 列表 —— 卡内再分的小标 = 小节标题档，字重 700 已经和正文分开了 */
 .边界标题 {
-  font-size: 13.5px;
+  font-size: var(--字号-小节标题);
   font-weight: 700;
   color: var(--墨);
 }
@@ -284,7 +286,8 @@
 }
 
 .层标题 {
-  font-size: 18px;
+  /* 扫码弹层标题：18 是四档外的散值 */
+  font-size: var(--字号-区块标题);
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--墨);

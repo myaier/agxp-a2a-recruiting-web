@@ -82,7 +82,8 @@
 
 .分组标 {
   margin: 10px 8px 2px;
-  font-size: 15px;
+  /* 岗位分组名：与求职端 在谈首页 .分组标 是同一件事（一个分组领一组候选卡），两端同档 */
+  font-size: var(--字号-区块标题);
   font-weight: 700;
   color: var(--墨);
 }

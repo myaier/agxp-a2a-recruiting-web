@@ -75,16 +75,19 @@
   padding: 14px 22px 0;
   flex: none;
 }
+/* 全站页面大标题的唯一出处：21 个屏通过 页面大标题 组件走这里。
+   原本就是 23px，换成变量后像素不变，但从此改一处 = 全站生效。 */
 .大标题 {
-  font-size: 23px;
+  font-size: var(--字号-页面大标题);
   font-weight: 800;
   letter-spacing: -0.01em;
   line-height: 1.4;
   color: var(--墨);
   margin: 0;
 }
+/* 大标题下方的说明是正文，不是独立一档：原来 12.5px 属于四档之外的散值，收到 13px */
 .大标题说明 {
-  font-size: 12.5px;
+  font-size: var(--字号-正文);
   line-height: 1.7;
   color: var(--次要);
   margin: 7px 0 0;
@@ -228,9 +231,13 @@
 .输入条.灰边 {
   border-color: var(--描边中);
 }
+/* 输入条里的字是正文，不是独立一档。原来占位 13px、真输入框 13.5px ——
+   两者是同一条 bar 上同一个位置的字，却差半像素；一起收到正文档。
+   （占位所属的 代理输入条 组件目前全项目零使用，先按同一把尺子收口，
+     等它被复用时不会又带回第五档。）*/
 .输入条占位 {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--字号-正文);
   color: var(--最弱);
   text-align: left;
 }
@@ -239,7 +246,7 @@
   border: none;
   outline: none;
   background: none;
-  font-size: 13.5px;
+  font-size: var(--字号-正文);
   color: var(--墨);
   min-width: 0;
 }
@@ -291,8 +298,9 @@
   font-weight: 500;
   color: var(--墨);
 }
+/* 右侧当前值是正文，本来就是 13px，换变量后不再是散落的字面量 */
 .设置行值 {
-  font-size: 13px;
+  font-size: var(--字号-正文);
   color: var(--次要);
 }
 

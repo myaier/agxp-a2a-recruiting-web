@@ -53,7 +53,7 @@
 .标题 {
   flex: 1;
   min-width: 0;
-  font-size: 17px;
+  font-size: var(--字号-区块标题);
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--墨);

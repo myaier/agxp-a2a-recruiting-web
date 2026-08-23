@@ -30,7 +30,8 @@
 }
 
 .抽屉标题 {
-  font-size: 19px;
+  /* 换绑手机号 / 输入验证码 等抽屉标题：19 是四档外的散值 */
+  font-size: var(--字号-区块标题);
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--墨);

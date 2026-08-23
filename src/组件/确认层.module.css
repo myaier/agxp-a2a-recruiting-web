@@ -23,8 +23,11 @@
   animation: 弹层放大 0.2s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
+/* 全应用共享的确认框标题。各屏自带的同型标题（我的功能页 / 岗位详情 / 岗位管理
+   的 .确认标题、发布岗位 的 .删标题）本轮都从 16px 收到了区块标题档，
+   共享的这一份不跟就会出现「同一种确认框两个字号」*/
 .确认标题 {
-  font-size: 16px;
+  font-size: var(--字号-区块标题);
   font-weight: 700;
   color: var(--墨);
   text-align: center;

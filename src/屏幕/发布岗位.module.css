@@ -66,7 +66,7 @@
 }
 .条目标签 {
   /* 标注 2026-08-20 14:50：12px 太小 —— 与 完善资料/创建在线简历 的节问同级 */
-  font-size: 17px;
+  font-size: var(--字号-区块标题);
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--墨);
@@ -276,7 +276,7 @@
 }
 
 .初筛合同标题 {
-  font-size: 15px;
+  font-size: var(--字号-区块标题);
   font-weight: 700;
   color: var(--深绿文字);
 }
@@ -504,7 +504,7 @@
 /* 第三步下半场的小节标：结构化要求之后才是写给人看的文本 */
 .要求文标 {
   /* 标注 2026-08-20 14:50：与 条目标签 同级，别一大一小 */
-  font-size: 17px;
+  font-size: var(--字号-区块标题);
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--墨);
@@ -543,7 +543,8 @@
 
 .分类标题 {
   flex: none;
-  font-size: 15px;
+  /* 职位类别选择层的层标题 */
+  font-size: var(--字号-区块标题);
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--墨);
@@ -633,7 +634,7 @@
 }
 
 .筛选要求题 {
-  font-size: 17px;
+  font-size: var(--字号-区块标题);
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--墨);
@@ -736,7 +737,8 @@
 }
 
 .删标题 {
-  font-size: 16px;
+  /* 确认弹层标题 */
+  font-size: var(--字号-区块标题);
   font-weight: 700;
   color: var(--墨);
   text-align: center;

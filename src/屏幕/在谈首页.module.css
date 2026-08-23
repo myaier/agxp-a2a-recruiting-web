@@ -17,7 +17,8 @@
 
 .分组标 {
   margin: 10px 8px 2px;
-  font-size: 15px;
+  /* 意向分组名：墨色重字重、独占一行、下面挂一组卡，与 教育经历 那一层同型 */
+  font-size: var(--字号-区块标题);
   font-weight: 700;
   color: var(--墨);
 }

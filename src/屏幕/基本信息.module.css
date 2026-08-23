@@ -8,7 +8,7 @@
 
 .条目标签 {
   /* 标注 2026-08-20 13:01：这是标题分类，加大加深（对齐 学生分流 节问 17/700）*/
-  font-size: 17px;
+  font-size: var(--字号-区块标题);
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--墨);

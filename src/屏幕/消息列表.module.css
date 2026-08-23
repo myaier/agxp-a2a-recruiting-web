@@ -11,7 +11,8 @@
 .大标题 {
   flex: 1;
   min-width: 0;
-  font-size: 22px;
+  /* 主 Tab 顶部大标题，与 披露说明/选城市 等同一档；.标题行 是 flex，右侧放大镜不受影响 */
+  font-size: var(--字号-页面大标题);
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--墨);

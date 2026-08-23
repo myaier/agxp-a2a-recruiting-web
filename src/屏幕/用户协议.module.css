@@ -7,7 +7,7 @@
 }
 
 .节标 {
-  font-size: 16px;
+  font-size: var(--字号-区块标题);
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--墨);
