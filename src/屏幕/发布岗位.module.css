@@ -1,32 +1,13 @@
 /* D0/D0b/D0c 发布岗位 —— 三步合一。
-   进度条像素值取自 引导问答.module.css，表单条目取自 工作经历.module.css（编辑视图），
+   表单条目取自 工作经历.module.css（编辑视图），
    textarea 卡取自 引导问答 的个人优势卡，保持企业端与求职端同构。 */
 
-/* 发布壳：整屏 flex 列容器（返回栏 + 进度条 + 步骤体 + 主按钮） */
+/* 发布壳：整屏 flex 列容器（返回栏 + 步骤体 + 主按钮） */
 .发布壳 {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-/* ── 顶部三段进度条（同 引导问答 的七段轨，段数改三）── */
-.进度轨 {
-  flex: none;
-  display: flex;
-  flex-direction: row;
-  gap: 4px;
-  padding: 0 22px 4px;
-}
-.进度段 {
-  flex: 1;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--描边深);
-  transition: background 0.18s ease;
-}
-.进度段已过 {
-  background: var(--荧光绿);
 }
 
 /* ── 编辑态的分段切换（替代进度条）：三步可直接点，改哪步进哪步 ── */
