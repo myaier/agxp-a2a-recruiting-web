@@ -17,11 +17,10 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './企业详情.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 公司字标 } from '../组件/通用';
-import 代理标 from '../组件/代理标';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
-import { 取公司档案, type 公司档案, type 核对项 } from '../数据/公司档案';
+import { 取公司档案, type 公司档案 } from '../数据/公司档案';
 import type { 公司自述覆盖 } from '../数据/类型';
 import { 市场列表 } from '../数据/模拟数据';
 import { use应用状态 } from '../状态/应用状态';
@@ -30,11 +29,6 @@ type 介绍Tab = '公司简介' | '企业文化' | '发展历程';
 const 介绍Tab列表: 介绍Tab[] = ['公司简介', '企业文化', '发展历程'];
 
 /** 核对状态 → 标记符与配色类名（复用四阶段色系，不新造颜色） */
-const 状态样式: Record<核对项['状态'], { 记: string; 类: string }> = {
-  通过: { 记: '✓', 类: 样式.记通过 },
-  待核: { 记: '·', 类: 样式.记待核 },
-  有分歧: { 记: '!', 类: 样式.记分歧 },
-};
 
 export default function 企业详情() {
   const { id: 键 = '' } = useParams<{ id: string }>();
@@ -73,9 +67,6 @@ export default function 企业详情() {
     ...在谈的.map((条) => ({ 编号: 条.编号, 职位: 条.职位, 薪资: 条.薪资, 在谈: true })),
     ...市场的.map((条) => ({ 编号: 条.编号, 职位: 条.职位, 薪资: 条.薪资, 在谈: false })),
   ];
-
-  const 分歧数 = 档.核对.filter((条) => 条.状态 === '有分歧').length;
-  const 通过数 = 档.核对.filter((条) => 条.状态 === '通过').length;
   const 已核福利 = 档.福利.filter((项) => 项.核对 === '已核').length;
 
   return (
@@ -103,54 +94,13 @@ export default function 企业详情() {
         </div>
 
         <div className={样式.正文区}>
-          {/* ── 代理核对结果：本页第一位。这是我们和普通招聘 App 的根本差别 ── */}
-          <div className={`${样式.卡} ${样式.核对卡}`}>
-            <div className={样式.核对头}>
-              <span className={样式.盾底}>
-                <代理标 尺寸={18} 脸色="#ffffff" 眼色="var(--荧光绿)" 带点={false} />
-              </span>
-              <span className={样式.核对头文}>
-                <span className={样式.核对标题}>你的代理核过这些</span>
-                <span className={样式.核对摘要}>
-                  {通过数} 项对上
-                  {分歧数 > 0 ? ` · ${分歧数} 项有分歧` : ' · 暂无分歧'}
-                </span>
-              </span>
-            </div>
-
-            {档.核对.map((条) => {
-              const 图 = 状态样式[条.状态];
-              return (
-                <div key={条.项} className={样式.核对行}>
-                  <span className={`${样式.记} ${图.类}`}>{图.记}</span>
-                  <span className={样式.核对文字}>
-                    <span className={样式.核对项名}>{条.项}</span>
-                    <span className={样式.核对结论}>{条.结论}</span>
-                  </span>
-                </div>
-              );
-            })}
-
-            <div className={样式.核对脚}>
-              薪资只核「是否覆盖你的期望」，双方的数字都不会出现在这里。
-            </div>
-          </div>
-
-          {/* ── 谁在替它谈（替代真人 HR 头像墙）── */}
-          <div className={样式.卡}>
-            <div className={样式.卡头}>
-              <span className={样式.卡标题}>谁在替这家谈</span>
-            </div>
-            <div className={样式.对手行}>
-              <span className={样式.对手标}>对方代理</span>
-              <span className={样式.对手文}>{档.代理风格}</span>
-            </div>
-            <div className={样式.卡正文}>
-              匿名初筛由双方代理完成，后续沟通由你和招聘方决定。匿名是单向的：这家公司和它的对接人对你实名可见，
-              而你在意向确认前只是一个代号 —— 对方看得到你的画像，看不到你是谁。
-            </div>
-          </div>
-
+          {/* 「你的代理核过这些」与「谁在替这家谈」两块已按标注删除（2026-08-23）：
+              「代看这个页面点开应该是公司的介绍吧，为啥上面还有你的代理核过这些。
+               这个应该没必要吧，删了吧」+ 追加「这个谁在替这家谈也删掉吧」。
+              产品负责人看过 A（永远删）/ D（有内容才显示）实拍对比后选 A。
+              代价已当面说明并被确认：双盲口径在本页不再有任何文字承载 ——
+              「匿名是单向的：这家公司对你实名可见，你在意向确认前只是一个代号」
+              这段原本就在「谁在替这家谈」里。要让这条机制重新可见，得另找落点。 */}
           {/* ── 公司自述：三 Tab + 三行截断 + 全文层 ── */}
           <div className={样式.卡}>
             <div className={样式.卡头}>
