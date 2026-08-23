@@ -206,32 +206,9 @@
 }
 
 /* ── 意向确认「确认后会发生什么」要点 ── */
-.要点行 {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 7px;
-  margin-bottom: 5px;
-}
 
-.要点行:last-child {
-  margin-bottom: 0;
-}
 
-.要点符 {
-  flex: none;
-  color: var(--深绿);
-  font-size: 11px;
-  margin-top: 3px;
-}
 
-.要点文字 {
-  flex: 1;
-  min-width: 0;
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: var(--正文);
-}
 
 /* ── A6a·J 职位详情 Tab ── */
 .详情卡 {
@@ -408,4 +385,14 @@
   line-height: 1.6;
   color: var(--正文);
   padding: 0 2px 2px;
+}
+
+/* 意向确认按钮下方那一行小字。刻意做轻 —— 它是告知不是警告，
+   做成红色 banner 会让每一次正常确认都像在出错。 */
+.确认警示 {
+  margin-top: 9px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--次要浅);
 }
