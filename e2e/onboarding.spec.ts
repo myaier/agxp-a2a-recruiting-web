@@ -180,9 +180,10 @@ test.describe('multi-role onboarding', () => {
 
     await page.goto('/#/student');
 
-    // 2026-08-24 起毕业时间是内嵌双滚轮（无空态），默认「明年 6 月」自动落盘
+    // 2026-08-24 二改：毕业时间平时是字段行（值 ›），点开才弹滚轮层；
+    // 默认「明年 6 月」仍自动落盘
     await expect(page.getByText('预计毕业时间')).toBeVisible();
-    await expect(page.getByLabel('毕业年', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /\d{4} 年 \d{2} 月/ })).toBeVisible();
     const 存值 = await page.evaluate(
       () => JSON.parse(localStorage.getItem('AGXP求职筛选v1') ?? '{}')?.筛选偏好?.毕业时间 ?? '',
     );

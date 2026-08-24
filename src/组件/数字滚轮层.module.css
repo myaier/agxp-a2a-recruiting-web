@@ -144,3 +144,10 @@
     transform: translateY(0);
   }
 }
+
+/* 弹层开启时自动聚焦首个控件，触摸/点击场景不该带浏览器默认蓝圈；
+   键盘导航（:focus-visible）的焦点圈保留 */
+.取消键:focus:not(:focus-visible),
+.确认键:focus:not(:focus-visible) {
+  outline: none;
+}
