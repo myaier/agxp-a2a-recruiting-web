@@ -308,7 +308,7 @@ export default function 工作经历() {
               ))}
             </div>
           ) : (
-            <div className={样式.空态}>还没填技能标签，代理核对技术要求时会缺一条依据。</div>
+            null /* 空态提示按标注 2026-08-24 删除（「把这个小文案删掉」）*/
           )}
 
           <div className={样式.录入行}>
