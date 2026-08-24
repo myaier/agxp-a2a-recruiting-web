@@ -132,13 +132,11 @@
   color: var(--正文);
 }
 
-/* ── AI 判断卡（淡绿）── */
+/* ── AI 判断（亮绿竖条引用，方案丁）：竖条把代理的观点和简历事实分开 ── */
 .判断卡 {
   margin-top: 16px;
-  background: var(--淡绿底2);
-  border: 1px solid var(--淡绿描边2);
-  border-radius: 16px;
-  padding: 14px 15px;
+  border-left: 3px solid var(--亮绿);
+  padding: 2px 0 2px 13px;
 }
 
 .判断头 {
@@ -149,39 +147,22 @@
   gap: 10px;
 }
 
-/* 「AI代理读完简历后的判断」= 淡绿判断卡的卡头（左标题 + 右适配分），
-   与求职端 职位详情 .卡标题 同型，两屏得同档 */
+/* 判断标题：降为灰标签（标注「这个绿色的字体太大了」）——
+   它是引文的署名，不是一个区块标题 */
 .判断标题 {
-  font-size: var(--字号-区块标题);
-  font-weight: 800;
-  color: var(--深绿);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--次要浅);
 }
 
-.适配组 {
-  flex: none;
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  gap: 4px;
-}
 
-.适配标 {
-  font-size: 11px;
-  color: var(--深绿文字);
-}
 
-.适配分 {
-  font-size: 21px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  color: var(--深绿文字);
-}
 
 .判断正文 {
   font-size: 13px;
   line-height: 1.75;
   color: var(--正文);
-  margin-top: 9px;
+  margin-top: 5px;
 }
 
 .判断粗 {
@@ -260,7 +241,7 @@
   flex: none;
   font-size: 15px;
   font-weight: 600;
-  color: var(--深绿);
+  color: var(--亮绿);
 }
 
 .期望标题 {
@@ -286,9 +267,9 @@
 
 .一致条 {
   margin-top: 11px;
-  background: var(--淡绿底2);
-  border-radius: 11px;
-  padding: 10px 12px;
+  
+  
+  padding: 2px 0;
   display: flex;
   flex-direction: row;
   align-items: flex-start;
@@ -304,7 +285,7 @@
   height: 15px;
   border-radius: 50%;
   background: var(--递简历底);
-  color: var(--递简历);
+  color: var(--亮绿);
   font-size: 9.5px;
   font-weight: 800;
   line-height: 15px;
@@ -553,4 +534,22 @@
   position: absolute;
   left: 2px;
   font-weight: 700;
+}
+
+/* ── 返回栏右侧匹配分：与 候选详情.module.css 的 匹配组 同款（方案丁把判断头
+   里的分删掉后，这一屏的分数落位到这里，不再同屏出现两次）── */
+.栏匹配组 {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-right: 2px;
+}
+.栏匹配标 {
+  font-size: 11px;
+  color: var(--次要浅);
+}
+.栏匹配分 {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--深绿);
 }
