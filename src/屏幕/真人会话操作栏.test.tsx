@@ -124,18 +124,56 @@ describe('主项的全屏详情层', () => {
   });
 });
 
+// ── 交换模式（直聊）────────────────────────────────────────────
+describe('交换模式', () => {
+  function 渲染直聊端(已换: ('电话' | '微信')[], 换 = vi.fn()) {
+    render(
+      <真人会话操作栏
+        主项名="看职位"
+        主项图标={<span />}
+        主项内容={<p>岗位正文占位</p>}
+        联系方式={联系方式}
+        交换={{ 已换, 换 }}
+      />
+    );
+    return 换;
+  }
+
+  it('没换过时按钮带「换」字，首次点先回调 换 并当场展开号码', async () => {
+    const 用户 = userEvent.setup();
+    const 换 = 渲染直聊端([]);
+    expect(screen.getByRole('button', { name: '换电话' })).not.toBeNull();
+
+    await 用户.click(screen.getByRole('button', { name: '换电话' }));
+    expect(换).toHaveBeenCalledWith('电话');
+    expect(screen.getByText('138 0013 2046')).not.toBeNull();
+  });
+
+  it('换过之后名字落回「电话」，行为与看模式一致（点开点收）', async () => {
+    const 用户 = userEvent.setup();
+    const 换 = 渲染直聊端(['电话']);
+    const 钮 = screen.getByRole('button', { name: '电话' });
+    await 用户.click(钮);
+    expect(screen.getByText('138 0013 2046')).not.toBeNull();
+    await 用户.click(钮);
+    expect(screen.queryByText('138 0013 2046')).toBeNull();
+    expect(换).not.toHaveBeenCalled();
+  });
+});
+
 // ── 双盲铁律的静态守卫 ────────────────────────────────────────────
 // 意向确认前的直聊挂上「看」模式的这一排 = 当场破盲（实值直陈、没有交换动作）。
 // 2026-08-24 边界收窄：直聊有了自己的顶部交换排（「换」语义，点了才换才展开），
 // 它复用本组件的 CSS 与联系卡是允许的 —— 禁的只是把组件本身挂过去。
 describe('双盲边界', () => {
-  it('直聊会话不得引入「看」模式的操作排组件（复用其 CSS 不算）', () => {
-    expect(直聊会话源码.includes('import 真人会话操作栏 from')).toBe(false);
+  it('直聊会话挂操作排必须带 交换 模式 —— 「看」模式（实值直陈）会当场破盲', () => {
+    expect(直聊会话源码.includes('import 真人会话操作栏 from')).toBe(true);
+    expect(直聊会话源码.includes('交换={{')).toBe(true);
   });
 
-  it('直聊的顶部排必须是「换」语义：换过之前按钮带「换」字', () => {
-    expect(直聊会话源码.includes("'换电话'")).toBe(true);
-    expect(直聊会话源码.includes("'换微信'")).toBe(true);
+  it('确认后的两屏真人会话不许带 交换 —— 双盲已解除，再让用户「换」是造假环节', () => {
+    expect(真人会话源码.includes('交换={{')).toBe(false);
+    expect(企业真人会话源码.includes('交换={{')).toBe(false);
   });
 
   it('两屏真人会话都挂了顶部操作排', () => {
