@@ -258,7 +258,7 @@ export default function 标注层() {
   const 待复制 = 清单.filter((条) => !条.已送达);
   const 导出文本 = () =>
     [
-      `【AGXP 修改意见】共 ${待复制.length} 条 · ${new Date().toLocaleString('zh-CN', { hour12: false })}`,
+      `【工作蜂 修改意见】共 ${待复制.length} 条 · ${new Date().toLocaleString('zh-CN', { hour12: false })}`,
       ...待复制.map(
         (条, 序) =>
           `${序 + 1}) 页面 ${条.路由} ｜位置 ${条.位置}${条.文本 ? ` ｜文本「${条.文本}」` : ''}\n   意见：${条.意见}`

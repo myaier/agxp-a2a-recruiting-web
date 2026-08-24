@@ -230,9 +230,18 @@
   margin: 0;
   font-size: 30px;
   font-weight: 800;
-  letter-spacing: 0.02em; /* 拉丁字母词标，中文那套 0.06em 会散 */
+  /* 定名「工作蜂」后回中文字标字距 */
+  letter-spacing: 0.04em;
   line-height: 1.1;
   color: var(--墨);
+}
+
+/* slogan（2026-08-24 产品负责人定稿「找工作，蜂替你谈」）*/
+.主张 {
+  margin: -4px 0 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--次要);
 }
 
 /* ── 留白区：表单与登录方式之间的弹性空隙。

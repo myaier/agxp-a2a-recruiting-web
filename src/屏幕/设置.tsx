@@ -134,7 +134,7 @@ export default function 设置() {
         </button>
 
         <div className={样式.版本}>
-          AGXP A2A 招聘原型 · 前端 0.9.0
+          工作蜂 A2A 招聘原型 · 前端 0.9.0
           <br />
           人力资源服务许可证 · 算法举报 · 资质证照
         </div>
