@@ -1,18 +1,15 @@
 // 企业设置 —— 企业「我的」右上齿轮进来。与求职端设置同款版式
 // （样式复用 我的功能页.module.css），分组：账号 / 代理与接触 / 关于。
-// 「允许代理自动发起接触」关掉时给一次明确说明 —— 这是影响寻访节奏的关键开关。
 
 import { useEffect, useState } from 'react';
 import 样式 from './我的功能页.module.css';
-import { 次级页外壳, 返回栏, 滚动区, 开关 } from '../组件/通用';
+import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
-import { use应用状态 } from '../状态/应用状态';
 import 弹层框架 from '../组件/弹层框架';
 
 export default function 企业设置() {
   const { 返回, 跳转, 替换跳转 } = use导航();
-  const { 状态, 派发 } = use应用状态();
   const [提示, 设提示] = useState<string | null>(null);
   const [待退出, 设待退出] = useState(false);
 
@@ -22,14 +19,6 @@ export default function 企业设置() {
     return () => window.clearTimeout(定时);
   }, [提示]);
 
-  const 开关行 = (键: string) => (
-    <div className={样式.行} key={键}>
-      <span className={样式.行文字组}>
-        <span className={样式.行标题}>{键}</span>
-      </span>
-      <开关 标签={键} 开={状态.企业设置开关[键]} 切换={() => 派发({ 型: '企业切设置开关', 键 })} />
-    </div>
-  );
 
   return (
     <次级页外壳 白底>
@@ -60,7 +49,7 @@ export default function 企业设置() {
 
         <div className={`${样式.组标} ${样式.组标间距}`}>代理与接触</div>
         <div className={样式.平铺组}>
-          {开关行('允许代理自动发起接触')}
+          {/* 「允许代理自动发起接触」按标注 2026-08-24 删除 */}
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.企业代理设置)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>AI代理设置</span>
