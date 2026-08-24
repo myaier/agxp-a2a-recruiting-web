@@ -1,11 +1,21 @@
-// API 层：屏幕只通过这一层拿数据，永远不直接 import 模拟数据。
-// 方案第 3 节的技术边界要求「Web 层负责接口调用」，第 4 节要求「补齐 API 层」——
-// 接真后端时只需把 模拟数据源 换成 HTTP数据源，屏幕代码零改动。
+// API 层：屏幕通过这一层拿数据。
+//
+// 两套数据源共存：
+//   · 演示域（模拟数据源 / 数据）——只属于未接后端的演示域，供尚未接 BFF 的屏幕继续跑；
+//     接后端的屏幕改用 创建招聘数据源 返回的 后端 HTTP招聘数据源。
+//   · 后端域（招聘数据）——按运行配置在 mock / backend 间切换；backend 模式构造 HTTP 数据源，
+//     接口失败绝不回退 Mock。
+//
+// 方案第 3 节的技术边界要求「Web 层负责接口调用」，第 4 节要求「补齐 API 层」。
 
 import * as 演示 from './模拟数据';
 import type { 在谈单, 市场职位, 消息条目, 往来条目, 规则, 求职意向 } from './类型';
+import { 解析运行配置, type 运行配置, type 后端环境 } from '../配置/运行配置';
+import { 创建BFF客户端 } from './HTTP客户端';
+import { 创建HTTP招聘数据源, type HTTP招聘数据源 } from './HTTP招聘数据源';
+import { 创建岗位附属存储 } from './前端附属数据';
 
-/** 数据源契约。后端就位后照这份签名实现一个 HTTP 版即可。 */
+/** 演示域数据源契约：只用于未接后端的演示读取。后端就位后用 HTTP招聘数据源。 */
 export interface 数据源 {
   取在谈列表(意向: string): Promise<在谈单[]>;
   取在谈单(编号: string): Promise<在谈单 | undefined>;
@@ -16,7 +26,7 @@ export interface 数据源 {
   取求职意向(): Promise<求职意向[]>;
 }
 
-/** 原型阶段的本地实现：直接返回演示数据，加一点延迟让加载态看得见 */
+/** 演示域：直接返回演示数据，加一点延迟让加载态看得见。只属于未接后端的演示域。 */
 const 模拟延迟 = (毫秒 = 0) => new Promise((完成) => setTimeout(完成, 毫秒));
 
 export const 模拟数据源: 数据源 = {
@@ -51,5 +61,50 @@ export const 模拟数据源: 数据源 = {
   },
 };
 
-/** 当前生效的数据源。接后端时改这一行（或按环境变量切换）。 */
+/** 演示域当前生效数据源：只供未接后端的屏幕使用。 */
 export const 数据 = 模拟数据源;
+
+// ── 后端域：数据源判别联合 ──
+
+export type 招聘数据源选择 =
+  | { 模式: 'mock' }
+  | { 模式: 'backend'; 后端环境: 后端环境; 后端: HTTP招聘数据源 };
+
+export interface 招聘数据源依赖 {
+  创建HTTP: (后端环境: 后端环境) => HTTP招聘数据源;
+}
+
+const 默认依赖: 招聘数据源依赖 = {
+  创建HTTP: (后端环境) => {
+    // globalThis.localStorage 在某些环境（隐私模式/SSR/受限沙箱）可能抛错，
+    // 这里安全获取：拿不到时用 no-op 存储兜底，附属数据非权威，不影响核心流程（#7）。
+    let 安全存储: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
+    try {
+      安全存储 = globalThis.localStorage;
+    } catch {
+      安全存储 = null;
+    }
+    const 存储 = 安全存储 ?? {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    };
+    return 创建HTTP招聘数据源({
+      client: 创建BFF客户端(),
+      后端环境,
+      附属存储: 创建岗位附属存储(存储),
+    });
+  },
+};
+
+/**
+ * 按运行配置选择数据源。mock 直接返回；backend 构造 HTTP 数据源。
+ * 接口失败绝不回退 Mock——不在 catch 里返回模拟数据源。
+ */
+export function 创建招聘数据源(config: 运行配置, deps: 招聘数据源依赖 = 默认依赖): 招聘数据源选择 {
+  if (config.数据源 === 'mock') return { 模式: 'mock' };
+  return { 模式: 'backend', 后端环境: config.后端环境, 后端: deps.创建HTTP(config.后端环境) };
+}
+
+/** 后端域当前生效数据源：按运行配置在 mock / backend 间切换。 */
+export const 招聘数据: 招聘数据源选择 = 创建招聘数据源(解析运行配置(import.meta.env));

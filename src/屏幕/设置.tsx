@@ -14,7 +14,7 @@ import 弹层框架 from '../组件/弹层框架';
 
 export default function 设置() {
   const { 返回, 跳转, 替换跳转 } = use导航();
-  const { 状态, 派发 } = use应用状态();
+  const { 状态, 派发, 操作 } = use应用状态();
   const [提示, 设提示] = useState<string | null>(null);
   const [待关隐身, 设待关隐身] = useState(false);
   const [待退出, 设待退出] = useState(false);
@@ -177,7 +177,15 @@ export default function 设置() {
               </button>
               <button
                 className={`${样式.确认执行} 可点`}
-                onClick={() => 替换跳转(路径.登录)}
+                onClick={async () => {
+                  try {
+                    await 操作.退出登录();
+                    替换跳转(路径.登录);
+                  } catch {
+                    // 退出失败：保留弹层，用户可重试或取消（不改弹层 DOM/CSS）
+                    设待退出(false);
+                  }
+                }}
               >
                 退出登录
               </button>

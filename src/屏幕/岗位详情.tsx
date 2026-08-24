@@ -22,6 +22,7 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 取公司档案 } from '../数据/公司档案';
 import { 岗位已寻访兜底, 岗位已寻访数 } from '../数据/企业端模拟数据';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 import type { 在招岗位 } from '../数据/类型';
 
 /** 本企业在公司档案表里的键。企业端全站都是这一家（云衢科技），同 企业我的 的公司主页入口 */
@@ -32,7 +33,7 @@ const 折叠高度 = 180;
 
 export default function 岗位详情() {
   const { id: 路由岗位编号 } = useParams<{ id: string }>();
-  const { 状态, 派发 } = use应用状态();
+  const { 状态, 派发, 操作 } = use应用状态();
   const { 返回, 跳转 } = use导航();
 
   // JD 正文的折叠态：先按折叠渲染，挂载后量一次真实高度决定要不要出「查看全部」
@@ -41,6 +42,8 @@ export default function 岗位详情() {
   const 正文引用 = useRef<HTMLDivElement>(null);
   // 关闭职位的二次确认
   const [待关闭, 设待关闭] = useState(false);
+  // 关闭/重开 并发锁：await 操作.* 期间拒绝重复点击，不改变按钮样式
+  const 操作锁 = useRef(false);
 
   // 找不到（如刚被删掉、或直接手输 URL）就退回第一个岗位，保证这屏永远点得开、不白屏
   const 岗: 在招岗位 | undefined =
@@ -313,13 +316,21 @@ export default function 岗位详情() {
         </button>
         <button
           className={`${样式.主键} 可点`}
-          onClick={() => {
+          onClick={async () => {
             if (在招中) {
               设待关闭(true);
               return;
             }
-            派发({ 型: '重开岗位', 编号: 岗.编号 });
-            轻提示(`「${岗.名称}」已重新开放`);
+            if (操作锁.current) return;
+            操作锁.current = true;
+            try {
+              await 操作.重开岗位(岗.编号);
+              轻提示(`「${岗.名称}」已重新开放`);
+            } catch (错误) {
+              轻提示(取后端错误文案(错误));
+            } finally {
+              操作锁.current = false;
+            }
           }}
         >
           {在招中 ? '关闭职位' : '重新开放'}
@@ -341,10 +352,18 @@ export default function 岗位详情() {
               </button>
               <button
                 className={`${样式.确认执行} 可点`}
-                onClick={() => {
-                  派发({ 型: '停止招聘', 编号: 岗.编号 });
-                  设待关闭(false);
-                  轻提示(`「${岗.名称}」已关闭`);
+                onClick={async () => {
+                  if (操作锁.current) return;
+                  操作锁.current = true;
+                  try {
+                    await 操作.归档岗位(岗.编号);
+                    设待关闭(false);
+                    轻提示(`「${岗.名称}」已关闭`);
+                  } catch (错误) {
+                    轻提示(取后端错误文案(错误));
+                  } finally {
+                    操作锁.current = false;
+                  }
                 }}
               >
                 关闭职位
