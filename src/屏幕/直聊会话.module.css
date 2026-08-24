@@ -145,8 +145,9 @@
 }
 
 .我气泡 {
-  /* 行宽 - 右侧头像列 41px - 左侧 41px 净空：左缘与对方气泡起点线对齐 */
-  max-width: calc(100% - 82px);
+  /* 右侧头像列 34（头像26+gap8）+ 左侧 41 净空（=对方头像32+gap9）：
+     长气泡左缘与对方气泡起点线（x57）精确同线，右缘与对方内容右缘镜像 */
+  max-width: calc(100% - 75px);
   background: var(--气泡绿);
   border-radius: 14px 14px 3px 14px;
   padding: 10px 13px;
@@ -160,8 +161,12 @@
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  /* 2026-08-24 修「没照齐」：组是通栏块，内容却靠左堆 ——
+     长气泡顶到页边、头像悬在行中。组内右对齐，整组贴行右缘 */
+  justify-content: flex-end;
   gap: 8px;
   max-width: 100%;
+  width: 100%;
 }
 
 .我头像 {
