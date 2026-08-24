@@ -59,15 +59,16 @@
   bottom: 100%;
   /* 标注 2026-08-24：「通知的图标要距离消息图标近一点，稍微盖住右上角」——
      左移 + 下压，让角标左下角叠在气泡右上角上（原来飘在图标右上方空处） */
-  margin-left: 1px;
-  margin-bottom: -12px;
+  /* 二调（2026-08-24）：「稍微远一点点」—— 压角保留但退 3px */
+  margin-left: 3px;
+  margin-bottom: -9px;
   min-width: 18px;
   height: 18px;
   /* 左右 5：两位数（如 12）撑成胶囊时两边留白与微信接近；一位数仍被 min-width 收成正圆 */
   padding: 0 5px;
   border-radius: 9px;
   /* 与消息列表行内的 .未读徽标 同色（--意向 / --白），同一件事在两处不能是两个红 */
-  background: var(--意向);
+  background: var(--未读红);
   color: var(--白);
   font-size: 12px;
   font-weight: 700;
