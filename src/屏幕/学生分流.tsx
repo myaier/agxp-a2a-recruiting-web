@@ -214,7 +214,8 @@ export default function 学生分流() {
                 设毕业轮开(true);
               }}
             >
-              <span>{毕业年} 年 {String(毕业月).padStart(2, '0')} 月</span>
+              {/* 值字挂 选择值：与城市行同款 15/600（上一版没挂类掉回按钮默认字） */}
+              <span className={样式.选择值}>{毕业年} 年 {String(毕业月).padStart(2, '0')} 月</span>
               <span className={样式.选择尖括号}>›</span>
             </button>
             {毕业时间错误 ? <div className={样式.字段错误}>{毕业时间错误}</div> : null}
