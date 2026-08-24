@@ -107,13 +107,16 @@ describe('主项的全屏详情层', () => {
     expect(screen.getByRole('button', { name: '看简历' })).not.toBeNull();
   });
 
-  it('层关掉后电话的展开状态原样保留：盖一层不动会话本身', async () => {
+  it('三项互斥：点主项开层会把展开的联系卡收掉（标注 2026-08-24）', async () => {
     const 用户 = userEvent.setup();
     渲染企业端();
     await 用户.click(screen.getByRole('button', { name: '电话' }));
+    expect(screen.getByText('138 0013 2046')).not.toBeNull();
+
     await 用户.click(screen.getByRole('button', { name: '看简历' }));
     await 用户.click(screen.getByRole('button', { name: '继续沟通' }));
-    expect(screen.getByText('138 0013 2046')).not.toBeNull();
+    // 层关掉后联系卡不复原 —— 同时最多亮一项
+    expect(screen.queryByText('138 0013 2046')).toBeNull();
   });
 
   it('焦点落在「继续沟通」上，不被正文里的控件拽着往下滚', async () => {
