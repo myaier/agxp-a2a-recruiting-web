@@ -30,12 +30,15 @@ export function 主页外壳({ children }: { children: ReactNode }) {
 export function 次级页外壳({
   children,
   对话底 = false,
+  白底 = false,
 }: {
   children: ReactNode;
   对话底?: boolean;
+  /** 私聊三屏用：纯白页底（标注 2026-08-24「私聊页面的背景都改成白色」）*/
+  白底?: boolean;
 }) {
   return (
-    <div className={`${样式.次级页外壳} ${对话底 ? 样式.对话底 : ''}`}>{children}</div>
+    <div className={`${样式.次级页外壳} ${对话底 ? 样式.对话底 : ''} ${白底 ? 样式.白底 : ''}`}>{children}</div>
   );
 }
 
