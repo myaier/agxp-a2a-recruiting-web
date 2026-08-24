@@ -270,15 +270,14 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
     const 旧页面 = 从BFF简历(previous);
     const 目录 = 从快照建目录(previous);
 
-    // 新条目引用了 previous 没见过的目录显示名时，先精确解析补进目录，避免 精确目录ID 抛错。
-    const 旧经历Id = new Set(previous.experiences.map((e) => e.id));
-    const 旧教育Id = new Set(previous.educations.map((e) => e.id));
+    // 目录精确解析：对所有经历/教育条目的显示名（行业 / 院校 / 专业）都跑一遍，
+    // 不只新条目。否则改了一条已有经历的 行业 显示名（previous 快照里只有旧引用），
+    // 转经历写入 里的 精确目录ID 会找不到新名而抛错，阻塞整次保存。
+    // 确保目录 已按 kind:displayName 缓存（目录里已有同名项则 no-op），重复解析是幂等的。
     for (const 段 of next.经历) {
-      if (旧经历Id.has(段.编号)) continue;
       await 确保目录(目录, '行业', 段.行业);
     }
     for (const 段 of next.教育) {
-      if (旧教育Id.has(段.编号)) continue;
       await 确保目录(目录, '院校', 段.学校);
       await 确保目录(目录, '专业', 段.专业);
     }
@@ -301,11 +300,29 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
 
     // experiences + nested projects：用 旧页面.经历（已是页面形态）做 diff
     const 旧经历PageMap = new Map(旧页面.经历.map((e) => [e.编号, e]));
+    // onboarding 中间屏会先建一条空白经历/教育段（公司/行业 或 学校/专业 任一为空），
+    // 此时 BFF 写入需要的目录精确 ID 解析不出来会抛错，阻塞流程。这些不完整条目
+    // 跳过服务端写入，保留在本地页面态里由后续屏补齐再发；其它分区照常 diff。
+    const 跳过经历 = new Set<string>();
     for (const 段 of next.经历) {
       const 旧Page = 旧经历PageMap.get(段.编号);
+      if (段.公司 === '' || 段.行业 === '') {
+        跳过经历.add(段.编号);
+        continue;
+      }
       if (!旧Page) {
         const body = 转经历写入(段, 目录);
-        步骤.push(() => 请求<BFF简历条目变更>({ path: '/api/v1/me/resume/experiences', method: 'POST', body, 幂等: true }).then((r) => r.result));
+        // 新建经历的 POST 响应带回服务端分配的 id；用这个 id 再 POST 它的项目。
+        // 旧实现只 POST 经历主体，项目 diff 仅对已有经历跑 → 新建带项目时项目丢失。
+        步骤.push(async () => {
+          const { result } = await 请求<BFF简历条目变更>({ path: '/api/v1/me/resume/experiences', method: 'POST', body, 幂等: true });
+          const 新经历Id = result.entry.experience?.id;
+          if (!新经历Id) return;
+          for (const 项目 of 段.项目 ?? []) {
+            const 项目body = { name: 项目.名称, role: 项目.角色, result: 项目.结果 };
+            await 请求<BFF简历条目变更>({ path: `/api/v1/me/resume/experiences/${新经历Id}/projects`, method: 'POST', body: 项目body, 幂等: true });
+          }
+        });
       } else if (JSON.stringify(旧Page) !== JSON.stringify(段)) {
         // 经历段变化：PATCH 经历主体，再 diff 嵌套项目
         const body = 转经历写入(段, 目录);
@@ -323,8 +340,13 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
 
     // educations
     const 旧教育PageMap = new Map(旧页面.教育.map((e) => [e.编号, e]));
+    const 跳过教育 = new Set<string>();
     for (const 段 of next.教育) {
       const 旧Page = 旧教育PageMap.get(段.编号);
+      if (段.学校 === '' || 段.专业 === '') {
+        跳过教育.add(段.编号);
+        continue;
+      }
       if (!旧Page) {
         const body = 转教育写入(段, 目录);
         步骤.push(() => 请求<BFF简历条目变更>({ path: '/api/v1/me/resume/educations', method: 'POST', body, 幂等: true }).then((r) => r.result));
@@ -369,7 +391,15 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
       throw error;
     }
     const { result: 最终 } = await 请求<BFF简历>({ path: '/api/v1/me/resume' });
-    return 从BFF简历(最终);
+    const 最终页面 = 从BFF简历(最终);
+    // 跳过的本地不完整条目（onboarding 中间屏建的教育/经历段，BFF 还没有）不进 服务端快照，
+    // 但要留在返回的页面态里，否则 水合后端简历 会用服务端权威把它们从本地清掉，
+    // 后续屏读 简历教育[0] 就是空、之前选的学历/学校/专业全丢。
+    // 服务端快照 仍是 BFF 权威，下次保存的 previous 还是服务端版，补齐的条目会作为新条目 POST。
+    if (跳过经历.size === 0 && 跳过教育.size === 0) return 最终页面;
+    const 跳过经历段 = next.经历.filter((段) => 跳过经历.has(段.编号));
+    const 跳过教育段 = next.教育.filter((段) => 跳过教育.has(段.编号));
+    return { ...最终页面, 经历: [...最终页面.经历, ...跳过经历段], 教育: [...最终页面.教育, ...跳过教育段] };
   }
 
   /** 嵌套项目 diff：新 POST、变化 PATCH、消失 DELETE。 */
