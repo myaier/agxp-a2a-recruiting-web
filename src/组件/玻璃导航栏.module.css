@@ -86,3 +86,9 @@
   color: var(--橄榄);
   font-weight: 700;
 }
+
+/* 消息图标视觉下移：气泡主体下缘偏高，往文字方向收 2px（角标基准不受影响，
+   位移只作用在 svg 上） */
+.图标位收距 svg {
+  transform: translateY(2px);
+}
