@@ -1,5 +1,5 @@
 /* 选期望职位（/onboard/job）—— 全屏多选页：左大类栏 + 右小类多选卡。
-   描边 #e4e6dd / 底 var(--页面底)；选中态 var(--深绿) 描边 + var(--淡绿底2) 底。 */
+   2026-08-24 全站选择风格统一（C1 定稿）：未选 = 白底 + 描边深，选中 = 1.5px 亮绿描边 + ✓。 */
 
 /* ── 大标题 + 右上 N/10 ── */
 .标题行 {
@@ -34,9 +34,9 @@
   margin: 16px 18px 0;
   height: 46px;
   border-radius: 16px;
-  /* 去描边：浅灰底的搜索条比描边框更干净 */
-  background: var(--浅灰底);
-  border: none;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：填写控件 = 白底 + 实线描边深（同 选择城市 搜索条） */
+  background: var(--白);
+  border: 1px solid var(--描边深);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -87,7 +87,8 @@
 
 /* 当前大类：白底承接右栏 + 左缘一条荧光绿指示，去掉方块高亮的廉价感 */
 .职大类当前 {
-  background: var(--页面底);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：页底改白后当前项同步换白，保持「白底承接右栏」 */
+  background: var(--白);
   color: var(--墨);
   font-weight: 700;
 }
@@ -115,17 +116,16 @@
 }
 
 .职小类 {
-  /* 标注 2026-08-20 18:13：要简约高级 —— 去掉描边框，改浅灰底无边卡片，
-     只有选中态才上色，整屏噪音显著降低 */
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选 = 白底 + 深描边 + 次要色中字重 */
   min-height: 46px;
   padding: 9px 12px;
   border-radius: 12px;
-  background: var(--浅灰底);
-  border: 1px solid transparent;
+  background: var(--白);
+  border: 1px solid var(--描边深);
   font-size: 13px;
   line-height: 1.35;
   font-weight: 500;
-  color: var(--正文);
+  color: var(--次要);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -133,12 +133,16 @@
   transition: background 0.16s ease, color 0.16s ease;
 }
 
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中 = 1.5px 亮绿描边 + 墨字 + ✓，删淡绿实底/深绿描边 */
 .职小类选中 {
-  border-color: transparent;
-  background: var(--淡绿底2);
-  color: var(--深绿文字);
+  border: 1.5px solid var(--亮绿);
+  color: var(--墨);
   font-weight: 700;
-  box-shadow: inset 0 0 0 1.5px var(--深绿);
+}
+.职小类选中::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
 }
 
 /* ── 搜索结果：平铺小类卡 ── */
@@ -164,7 +168,8 @@
 /* ── 底部已选 chips ── */
 .已选条 {
   flex: none;
-  border-top: 1px solid #e4e6dd;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：写死描边换令牌 */
+  border-top: 1px solid var(--描边深);
   background: var(--白);
   padding: 10px 18px 0;
   display: flex;
@@ -216,7 +221,8 @@
   margin-bottom: 10px;
   font-size: var(--字号-小节标题);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：字距对齐题名小灰标（0.08em → 0.03em） */
+  letter-spacing: 0.03em;
   color: var(--次要浅);
 }
 

@@ -1,6 +1,7 @@
 /* 公司主页资料 · 分区编辑页（2026-08-20：底部升起层改成整页编辑）。
    两种版式：长文分区是整屏输入框（字数压右下角），其余分区是一张白卡装字段。
-   选中态一律深绿描边 + 淡绿底，描边 #e4e6dd，输入托盘用 var(--页面底)。 */
+   2026-08-24 全站选择风格统一（C1 定稿）：选中态改亮绿 1.5px 描边 + ✓ 对勾，
+   删淡绿实底；输入托盘 / 片底一律白底 + var(--描边深) 细实线。 */
 
 /* ── 顶栏右上「保存」 ── */
 .保存键 {
@@ -28,14 +29,15 @@
   position: relative;
   display: flex;
   background: var(--白);
-  border: 1px solid #e4e6dd;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：写死描边换令牌 */
+  border: 1px solid var(--描边深);
   border-radius: var(--圆角-中卡);
   padding: 14px 14px 30px;
 }
 
 .整屏框:focus-within {
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：聚焦只变描边，删淡绿实底（对齐 学生分流 输入框） */
   border-color: var(--深绿);
-  background: var(--淡绿底2);
 }
 
 .整屏输入 {
@@ -63,7 +65,8 @@
 /* ── 字段型分区：一张白卡 ── */
 .卡 {
   background: var(--白);
-  border: 1px solid #e4e6dd;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：写死描边换令牌 */
+  border: 1px solid var(--描边深);
   border-radius: var(--圆角-中卡);
   padding: 2px 14px;
 }
@@ -81,7 +84,10 @@
 }
 
 .字段标签 {
-  font-size: 12px;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：题名统一小灰标（同 学生分流.节问） */
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
   color: var(--次要浅);
   display: block;
   margin-bottom: 8px;
@@ -91,9 +97,10 @@
 .单行输入 {
   width: 100%;
   display: block;
-  border: 1px solid #e4e6dd;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框白底 + 令牌细描边 */
+  border: 1px solid var(--描边深);
   outline: none;
-  background: var(--页面底);
+  background: var(--白);
   border-radius: var(--圆角-小托盘);
   padding: 11px 12px;
   font-size: 13px;
@@ -115,8 +122,8 @@
 
 .多行输入:focus,
 .单行输入:focus {
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：聚焦只变描边，删淡绿实底（对齐 学生分流 输入框） */
   border-color: var(--深绿);
-  background: var(--淡绿底2);
 }
 
 /* ── 公司 LOGO：方块 + 相机角标 ── */
@@ -145,7 +152,8 @@
   height: 62px;
   border-radius: 16px;
   background: var(--页面底);
-  border: 1px solid #e4e6dd;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：写死描边换令牌 */
+  border: 1px solid var(--描边深);
 }
 
 .相机角标 {
@@ -162,7 +170,7 @@
   justify-content: center;
 }
 
-/* ── 档位片 / 标签片：未选浅底细描边，选中深绿描边 + 淡绿底 ── */
+/* ── 档位片 / 标签片：未选白底细描边，选中亮绿 1.5px 描边 + ✓ 对勾 ── */
 .片行 {
   display: flex;
   flex-direction: row;
@@ -171,21 +179,27 @@
 }
 
 .片 {
-  border: 1px solid #e4e6dd;
-  background: var(--页面底);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选白底 + 令牌细描边 + 次要色 */
+  border: 1px solid var(--描边深);
+  background: var(--白);
   border-radius: var(--圆角-胶囊);
   padding: 8px 14px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--正文);
+  color: var(--次要);
   font-family: inherit;
 }
 
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中改亮绿 1.5px 描边 + ✓ 对勾，删淡绿实底与深绿描边 */
 .片选中 {
-  border-color: var(--深绿);
-  background: var(--淡绿底2);
-  color: var(--深绿文字);
-  font-weight: 600;
+  border: 1.5px solid var(--亮绿);
+  color: var(--墨);
+  font-weight: 700;
+}
+.片选中::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
 }
 
 /* ── 公司相册：缩略图格 + 「＋」格 + 视频占位 ── */
@@ -209,7 +223,8 @@
   border-radius: var(--圆角-小托盘);
   object-fit: cover;
   display: block;
-  border: 1px solid #e4e6dd;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：写死描边换令牌 */
+  border: 1px solid var(--描边深);
 }
 
 .图格删 {
@@ -232,8 +247,9 @@
   width: 88px;
   height: 66px;
   border-radius: var(--圆角-小托盘);
-  border: 1px dashed var(--虚线描边);
-  background: var(--页面底);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：填写控件虚线改实线、白底 */
+  border: 1px solid var(--描边深);
+  background: var(--白);
   font-family: inherit;
   font-size: 18px;
   color: var(--弱化);
@@ -281,8 +297,9 @@
 .加一条 {
   width: 100%;
   margin: 14px 0;
-  border: 1px dashed var(--虚线描边);
-  background: var(--页面底);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：填写控件虚线改实线、白底 */
+  border: 1px solid var(--描边深);
+  background: var(--白);
   border-radius: var(--圆角-小托盘);
   padding: 12px 0;
   font-family: inherit;

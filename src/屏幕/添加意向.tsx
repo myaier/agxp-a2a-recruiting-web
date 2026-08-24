@@ -18,7 +18,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigationType, useParams } from 'react-router-dom';
 import 样式 from './添加意向.module.css';
-import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 主按钮, 单选点 } from '../组件/通用';
+// 2026-08-24 全站选择风格统一（C1 定稿）：求职类型改选钮片后不再用 单选点
+import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 主按钮 } from '../组件/通用';
 import 薪资区间层 from '../组件/薪资区间层';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -48,7 +49,7 @@ function 期望行({
   const 有值 = 值 !== '';
   return (
     <button type="button" className={`${样式.条目} 可点`} onClick={按下}>
-      {/* 标签外面这层 flex 行是版式的一部分：它把 12px 小字的行高锁在自己的行盒里，
+      {/* 标签外面这层 flex 行是版式的一部分：它把小字标签的行高锁在自己的行盒里，
           去掉之后标签会退回按钮那档更大的行高，六行的基线整体往下掉 */}
       <span className={样式.条目标签行}>
         <span className={样式.条目标签}>{标签}</span>
@@ -140,7 +141,8 @@ export default function 添加意向() {
   };
 
   return (
-    <次级页外壳>
+    /* 2026-08-24 全站选择风格统一（C1 定稿）：页底加白底 */
+    <次级页外壳 白底>
       <返回栏 返回={退出} />
 
       <页面大标题
@@ -149,7 +151,8 @@ export default function 添加意向() {
       />
 
       <滚动区 样式覆盖={{ padding: '6px 22px 10px' }}>
-        {/* 第 1 行：求职类型 —— 两个单选圆点行内右对齐，没有值行也没有 › */}
+        {/* 第 1 行：求职类型 —— 两个选钮片行内右对齐，没有值行也没有 › */}
+        {/* 2026-08-24 全站选择风格统一（C1 定稿）：单选圆点改定稿选钮片，选中对勾由 CSS ::before 画 */}
         <div className={样式.类型行}>
           <span className={样式.类型标}>求职类型</span>
           <div className={样式.类型组}>
@@ -159,12 +162,11 @@ export default function 添加意向() {
                 <button
                   key={类型}
                   type="button"
-                  className={`${样式.类型选项} 可点`}
+                  className={`${样式.类型选项} ${选中 ? 样式.类型选项选中 : ''} 可点`}
                   onClick={() => 改草稿({ 求职类型: 类型 })}
                   aria-pressed={选中}
                 >
-                  <单选点 选中={选中} 尺寸={18} />
-                  <span className={选中 ? 样式.类型文字选中 : 样式.类型文字}>{类型}</span>
+                  {类型}
                 </button>
               );
             })}

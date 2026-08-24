@@ -7,7 +7,7 @@
 .引导壳 {
   --左栏底: #efede6; /* 期望职位左侧分类栏的米色 */
   --轮未选色: #c9cec7; /* 薪资轮上下两档未选中的灰 */
-  --虚线描边: #d0d3c8; /* 「其他排除条件」虚线框 */
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：写死的虚线描边色删除，统一走 var(--描边深) */
 
   position: relative; /* 二级细选页 absolute 盖满整壳的定位基准 */
   flex: 1;
@@ -84,7 +84,8 @@
   height: 44px;
   border-radius: 15px;
   background: var(--白);
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入行描边统一 描边深 */
+  border: 1px solid var(--描边深);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -148,9 +149,9 @@
 .行业卡 {
   width: 100%;
   border-radius: var(--圆角-中卡);
-  /* 未选中也留 1.5px 透明描边，避免选中时描边撑开卡片造成 3px 跳动 */
-  border: 1.5px solid transparent;
-  background: var(--浅灰底);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：选择行改白底 + 1px 描边深（原浅灰底 + 透明描边） */
+  border: 1px solid var(--描边深);
+  background: var(--白);
   padding: 13px;
   display: flex;
   flex-direction: row;
@@ -159,9 +160,9 @@
   text-align: left;
   font-size: inherit;
 }
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中 = 1.5px 亮绿描边，删深绿描边（自带单选点，不加 ::before 对勾） */
 .行业卡选中 {
-  background: var(--白);
-  border-color: var(--深绿);
+  border: 1.5px solid var(--亮绿);
 }
 .行业文字组 {
   flex: 1;
@@ -196,9 +197,10 @@
 
 /* ── A3b 工作城市：三列网格多选 ── */
 .分组标 {
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：组标对齐题名小灰标（加粗 + 0.03em 字距） */
   font-size: var(--字号-小节标题);
-  letter-spacing: 0.14em;
-  font-weight: 500;
+  letter-spacing: 0.03em;
+  font-weight: 700;
   color: var(--次要浅);
 }
 .分组标间距 {
@@ -213,17 +215,24 @@
 .城市键 {
   padding: 12px 0;
   border-radius: var(--圆角-内托盘);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选 = 白底 + 深描边 + 次要色中字重 */
   background: var(--白);
-  border: 1px solid var(--描边);
+  border: 1px solid var(--描边深);
   text-align: center;
   font-size: 13px;
-  color: var(--正文);
+  font-weight: 500;
+  color: var(--次要);
 }
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中 = 1.5px 亮绿描边 + 墨字 + ✓，删荧光绿实底 */
 .城市键选中 {
-  background: var(--荧光绿);
-  border-color: var(--荧光绿);
-  font-weight: 600;
+  border: 1.5px solid var(--亮绿);
+  font-weight: 700;
   color: var(--墨);
+}
+.城市键选中::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
 }
 .搜索无结果 {
   margin-top: 16px;
@@ -393,22 +402,30 @@
 .排除键 {
   padding: 13px 0;
   border-radius: 15px;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选 = 白底 + 深描边 + 次要色中字重 */
   background: var(--白);
-  border: 1px solid var(--描边);
+  border: 1px solid var(--描边深);
   text-align: center;
   font-size: 13.5px;
-  color: var(--正文);
+  font-weight: 500;
+  color: var(--次要);
 }
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中 = 1.5px 亮绿描边 + 墨字 + ✓，删淡绿实底 */
 .排除键选中 {
-  background: var(--淡绿底);
-  border-color: var(--淡绿描边);
-  font-weight: 600;
-  color: var(--深绿文字);
+  border: 1.5px solid var(--亮绿);
+  font-weight: 700;
+  color: var(--墨);
+}
+.排除键选中::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
 }
 .自定义排除 {
   width: 100%;
   background: var(--白);
-  border: 1px dashed var(--虚线描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：虚线改实线、写死描边换令牌（本屏当前未渲染，防复用走样） */
+  border: 1px solid var(--描边深);
   border-radius: 15px;
   padding: 12px 16px;
   margin-top: 9px;
@@ -435,7 +452,8 @@
 .行内输入行 {
   margin-top: 9px;
   background: var(--白);
-  border: 1px solid var(--描边中);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：文本输入行描边统一 描边深 */
+  border: 1px solid var(--描边深);
   border-radius: 15px;
   padding: 0 8px 0 16px;
   height: 46px;
@@ -481,9 +499,11 @@
   gap: 10px;
 }
 .屏蔽公司标题 {
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--墨);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：字段名对齐题名小灰标（13/700 + 字距 + 次要浅） */
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
 }
 .屏蔽公司说明 {
   font-size: 11.5px;
@@ -569,7 +589,8 @@
 .优势卡 {
   margin: 16px 18px 0;
   background: var(--白);
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：文本输入卡描边统一 描边深 */
+  border: 1px solid var(--描边深);
   border-radius: var(--圆角-中卡);
   padding: 16px;
   /* 设计稿 A3g 是 330（RN 源当时写成 240，比设计稿矮，这里按设计稿的基准来） */
@@ -620,7 +641,8 @@
 .GitHub卡 {
   margin: 12px 18px 0;
   background: var(--白);
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：「值 ›」选择行描边统一 描边深 */
+  border: 1px solid var(--描边深);
   border-radius: var(--圆角-中卡);
   padding: 13px 15px;
   display: flex;
@@ -702,7 +724,8 @@
   background: none;
   font-size: 12px;
   color: var(--深绿);
-  border-bottom: 1px solid var(--淡绿描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入下划线描边统一 描边深 */
+  border-bottom: 1px solid var(--描边深);
   padding: 0 0 2px;
   min-width: 0;
   width: 100%;
@@ -823,15 +846,17 @@
   border-bottom: none;
 }
 
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中 = 墨字 + 亮绿对勾（列表行无描边可加，只换配色） */
 .细选项选中 {
-  color: var(--深绿);
+  color: var(--墨);
   font-weight: 700;
 }
 
 .细选勾 {
   flex: none;
-  color: var(--深绿);
-  font-weight: 800;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：对勾统一亮绿 700 */
+  color: var(--亮绿);
+  font-weight: 700;
 }
 
 @keyframes 细选进入 {

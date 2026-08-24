@@ -46,11 +46,11 @@
   border-bottom: 1px solid var(--分隔线);
 }
 .条目标签 {
-  /* 标注 2026-08-20 14:50：12px 太小 —— 与 完善资料/创建在线简历 的节问同级 */
-  font-size: var(--字号-区块标题);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：题名降为小灰标，让内容而不是问题占版面 */
+  font-size: var(--字号-小节标题);
   font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--墨);
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
   margin-bottom: 10px;
 }
 /* 自由输入的字段（岗位名称 / 工作城市 / 办公地点）。
@@ -63,7 +63,8 @@
    「最晚可接受实习开始日期」一起删除，样式块也跟着撤了）。 */
 .条目输入 {
   width: 100%;
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边加深一档 */
+  border: 1px solid var(--描边深);
   border-radius: 10px;
   padding: 10px 12px;
   outline: none;
@@ -95,7 +96,8 @@
   flex-direction: row;
   align-items: center;
   gap: 4px;
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边加深一档 */
+  border: 1px solid var(--描边深);
   border-radius: 10px;
   padding: 9px 12px;
   background: var(--白);
@@ -133,8 +135,13 @@
    和上面带框的 .条目输入 一眼分得开。 */
 .选择条目 {
   width: 100%;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--分隔线);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：「值 ›」选择行 = 白底 + 实线描边深盒
+     （同 完善资料 的选择行），分隔线改为整圈描边 */
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--描边深);
+  border-radius: 12px;
+  background: var(--白);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -189,25 +196,33 @@
 .快捷片 {
   padding: 6px 12px;
   border-radius: var(--圆角-胶囊);
-  background: var(--浅灰底);
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选 = 白底 + 深描边 + 次要色中字重 */
+  background: var(--白);
+  border: 1px solid var(--描边深);
   /* 标注 2026-08-22：办公方式的片原来 12px，比招聘类型宫格里的 13.5px 小一号，
      同一屏两种正文字号看着不齐 —— 统一到 13.5px */
   font-size: 13.5px;
-  color: var(--正文);
+  font-weight: 500;
+  color: var(--次要);
 }
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中 = 1.5px 亮绿描边 + 墨字 + ✓，删淡绿实底 */
 .快捷片选中 {
-  background: var(--淡绿底);
-  border-color: var(--淡绿描边);
-  color: var(--深绿文字);
-  font-weight: 600;
+  border: 1.5px solid var(--亮绿);
+  color: var(--墨);
+  font-weight: 700;
+}
+.快捷片选中::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
 }
 
 /* ── 第二 / 三步：大 textarea 卡（同 引导问答 的个人优势卡）── */
 .描述卡 {
   margin: 16px 18px 0;
   background: var(--白);
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：文本输入卡描边加深一档 */
+  border: 1px solid var(--描边深);
   border-radius: var(--圆角-中卡);
   padding: 16px;
   min-height: 260px;
@@ -437,15 +452,27 @@
   text-align: left;
 }
 
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中 = 1.5px 亮绿描边，删淡绿实底/橄榄描边 */
 .类型块选中 {
-  border-color: var(--橄榄);
-  background: var(--淡绿底2);
+  border: 1.5px solid var(--亮绿);
 }
 
 .类型名 {
   font-size: 13.5px;
-  font-weight: 700;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选降为次要色中字重 */
+  font-weight: 500;
+  color: var(--次要);
+}
+
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中名墨色加粗 + 亮绿 ✓ 前缀 */
+.类型块选中 .类型名 {
   color: var(--墨);
+  font-weight: 700;
+}
+.类型块选中 .类型名::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
 }
 
 .类型副 {
@@ -484,11 +511,11 @@
 
 /* 第三步下半场的小节标：结构化要求之后才是写给人看的文本 */
 .要求文标 {
-  /* 标注 2026-08-20 14:50：与 条目标签 同级，别一大一小 */
-  font-size: var(--字号-区块标题);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：题名降为小灰标（仍与 条目标签 同级） */
+  font-size: var(--字号-小节标题);
   font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--墨);
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
   padding: 16px 26px 10px;
 }
 
@@ -615,10 +642,11 @@
 }
 
 .筛选要求题 {
-  font-size: var(--字号-区块标题);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：题名降为小灰标 */
+  font-size: var(--字号-小节标题);
   font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--墨);
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
 }
 
 .筛选要求注 {
@@ -630,7 +658,9 @@
   width: 100%;
   min-height: 92px;
   border-radius: 12px;
-  background: var(--浅灰底);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：文本输入行 = 实线描边深 + 白底 */
+  border: 1px solid var(--描边深);
+  background: var(--白);
   padding: 11px 13px;
   font-size: 13px;
   line-height: 1.6;
@@ -647,7 +677,9 @@
   flex: 1;
   height: 46px;
   border-radius: 12px;
-  background: var(--浅灰底);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：点开去滚轮选的值行 = 白底 + 实线描边深 */
+  border: 1px solid var(--描边深);
+  background: var(--白);
   display: flex;
   align-items: center;
   justify-content: center;

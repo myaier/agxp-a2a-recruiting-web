@@ -1,6 +1,7 @@
 /* 注册引导补屏共用样式（2026-08-20 按 BOSS 截图顺序重排）：
    求职状态 / 最高学历 / 毕业院校 / 选专业 / 就读时间段 / 添加头像 六屏共用。
-   描边 #e4e6dd / 底 var(--页面底)；选中态 var(--深绿) 描边 + var(--淡绿底2) 底。 */
+   2026-08-24 全站选择风格统一（C1 定稿）：描边统一 var(--描边深) 1px、
+   选中态改 1.5px var(--亮绿) 描边 + 亮绿对勾，删掉淡绿实底与深绿描边。 */
 
 /* ── 方块单选（求职状态 2×2 / 最高学历）── */
 .方块网格 {
@@ -13,8 +14,9 @@
   min-height: 76px;
   padding: 14px;
   border-radius: 14px;
-  border: 1.5px solid #e4e6dd;
-  background: var(--页面底);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：写死 #e4e6dd 换 var(--描边深)，1.5px 退细到 1px，底改白 */
+  border: 1px solid var(--描边深);
+  background: var(--白);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -24,20 +26,30 @@
 }
 
 .方块选中 {
-  border-color: var(--深绿);
-  background: var(--淡绿底2);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：深绿描边 + 淡绿底2 实底 → 1.5px 亮绿描边、底保持白 */
+  border: 1.5px solid var(--亮绿);
 }
 
 .方块题 {
   font-size: 14.5px;
-  font-weight: 600;
-  color: var(--墨);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选文字 墨/600 → 次要/500 */
+  font-weight: 500;
+  color: var(--次要);
   line-height: 1.45;
 }
 
 .方块选中 .方块题 {
   font-weight: 700;
-  color: var(--深绿文字);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：选中文字 深绿文字 → 墨 */
+  color: var(--墨);
+}
+
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中态加亮绿对勾。
+   方块是纵向 flex，对勾挂在内层 方块题 上才和文字同行（挂外层会独占一行） */
+.方块选中 .方块题::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
 }
 
 .徽标 {
@@ -55,8 +67,9 @@
   height: 52px;
   padding: 0 14px;
   border-radius: 14px;
-  border: 1.5px solid #e4e6dd;
-  background: #ffffff;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：写死 #e4e6dd 换 var(--描边深)，1.5px 退细到 1px */
+  border: 1px solid var(--描边深);
+  background: var(--白);
   display: flex;
   align-items: center;
   gap: 9px;
@@ -97,13 +110,15 @@
 }
 
 .候选行选中 {
-  color: var(--深绿文字);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：选中文字 深绿文字 → 墨 */
+  color: var(--墨);
   font-weight: 700;
 }
 
 .候选勾 {
   flex: none;
-  color: var(--深绿);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：对勾 深绿 → 亮绿（对勾是 tsx 里的真实元素，不再加 ::before 防双勾） */
+  color: var(--亮绿);
   font-size: 13px;
 }
 
@@ -111,7 +126,8 @@
 .滚轮卡 {
   margin-top: 8px;
   background: var(--白);
-  border: 1px solid #e4e6dd;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：写死 #e4e6dd 换 var(--描边深) */
+  border: 1px solid var(--描边深);
   border-radius: var(--圆角-内托盘);
   padding: 8px 0;
 }
@@ -139,8 +155,9 @@
   width: 128px;
   height: 128px;
   border-radius: 50%;
-  border: 1.5px dashed var(--上传框描边);
-  background: var(--页面底);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：虚线改实线、描边统一 var(--描边深)，底改白 */
+  border: 1px solid var(--描边深);
+  background: var(--白);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -178,5 +195,6 @@
 }
 
 .章钮选中 {
-  border-color: var(--深绿);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：选中描边 深绿 → 亮绿（该组类当前无 tsx 引用，仅同步保留样式） */
+  border-color: var(--亮绿);
 }

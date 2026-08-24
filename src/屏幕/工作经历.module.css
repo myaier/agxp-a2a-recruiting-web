@@ -179,7 +179,10 @@
 }
 
 .条目标签 {
-  font-size: 12px;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：字段名统一为小节标题灰标 */
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
   color: var(--次要浅);
   margin-bottom: 8px;
 }
@@ -211,17 +214,24 @@
 .行业片 {
   padding: 6px 12px;
   border-radius: 999px;
-  background: var(--浅灰底);
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选片=白底细描边灰字 */
+  background: var(--白);
+  border: 1px solid var(--描边深);
   font-size: 12px;
-  color: var(--正文);
+  font-weight: 500;
+  color: var(--次要);
 }
 
 .行业片选中 {
-  background: var(--淡绿底);
-  border-color: var(--淡绿描边);
-  color: var(--深绿文字);
-  font-weight: 600;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：选中=1.5px 亮绿描边+墨字+对勾，删淡绿实底 */
+  border: 1.5px solid var(--亮绿);
+  color: var(--墨);
+  font-weight: 700;
+}
+.行业片选中::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
 }
 
 /* 在职时间：原生年月选择器 */
@@ -236,7 +246,8 @@
 .月份键 {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：选择行描边统一 描边深 */
+  border: 1px solid var(--描边深);
   border-radius: 10px;
   padding: 9px 12px;
   font-size: 15px;
@@ -265,7 +276,8 @@
 .至今占位 {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：描边统一 描边深（灰底保留，表示已被「至今」接管）*/
+  border: 1px solid var(--描边深);
   border-radius: 10px;
   padding: 9px 12px;
   font-size: 15px;
@@ -293,7 +305,8 @@
 /* 工作内容大文本 */
 .内容输入 {
   width: 100%;
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边统一 描边深 */
+  border: 1px solid var(--描边深);
   border-radius: 12px;
   padding: 10px 12px;
   font-size: 14px;
@@ -444,7 +457,8 @@
 .选择层输入 {
   flex: none;
   margin-top: 12px;
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边统一 描边深 */
+  border: 1px solid var(--描边深);
   border-radius: 12px;
   padding: 11px 13px;
   font-size: 14px;
@@ -529,7 +543,8 @@
 .录入框 {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--描边中);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：录入框描边统一 描边深 */
+  border: 1px solid var(--描边深);
   border-radius: 11px;
   padding: 9px 12px;
   font-size: 13.5px;
@@ -602,7 +617,8 @@
 /* ── 作品集或项目链接：整份简历一条，卡片形态与技能卡同源 ── */
 .整行输入 {
   width: 100%;
-  border: 1px solid var(--描边);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边统一 描边深 */
+  border: 1px solid var(--描边深);
   border-radius: var(--圆角-中卡);
   background: var(--白);
   padding: 13px 14px;

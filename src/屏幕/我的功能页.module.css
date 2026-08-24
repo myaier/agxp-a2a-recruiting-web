@@ -222,11 +222,13 @@
 }
 
 .披露名 {
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：题名降为小灰标（14.5px 墨色 → 小节标题灰标） */
   flex: 1;
   min-width: 0;
-  font-size: 14.5px;
+  font-size: var(--字号-小节标题);
   font-weight: 700;
-  color: var(--墨);
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
 }
 
 .披露说明 {
@@ -237,30 +239,39 @@
 }
 
 .分段 {
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：灰底药丸容器退场，档位改为独立白底描边选钮 */
   display: flex;
   flex-direction: row;
   gap: 4px;
   margin-top: 11px;
-  background: var(--浅灰底);
   border-radius: 11px;
-  padding: 3px;
 }
 
 .分段项 {
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选 = 白底 + 1px 描边深 + 次要色 500 */
   flex: 1;
   min-width: 0;
   padding: 7px 0;
   border-radius: 9px;
   font-size: 12px;
+  background: var(--白);
+  border: 1px solid var(--描边深);
   color: var(--次要);
+  font-weight: 500;
   text-align: center;
 }
 
 .分段项选中 {
-  background: var(--白);
-  border: 1px solid var(--描边深);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：选中 = 1.5px 亮绿描边 + 墨色 700 + 亮绿对勾（原深绿文字退场） */
+  border: 1.5px solid var(--亮绿);
   font-weight: 700;
-  color: var(--深绿文字);
+  color: var(--墨);
+}
+
+.分段项选中::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
 }
 
 .分段项禁用 {

@@ -73,7 +73,7 @@ export default function 求职状态() {
   };
 
   return (
-    <次级页外壳>
+    <次级页外壳 白底>
       <返回栏 返回={返回} />
 
       <页面大标题

@@ -1,7 +1,6 @@
 /* 选期望行业（/intentions/industries）—— 添加求职期望页的次级页 B。
-   配色一比一沿用 选工作城市：描边 #e4e6dd / 底 var(--页面底)，
-   选中态 var(--深绿) 描边 + var(--淡绿底2) 底 + var(--深绿文字)。
-   不引入新配色变量，也不抄 BOSS 的青绿色。 */
+   2026-08-24 全站选择风格统一（C1 定稿）：未选 = 白底 + 描边深，
+   选中 = 1.5px 亮绿描边 + 墨字 + ✓；不引入新配色变量，也不抄 BOSS 的青绿色。 */
 
 /* ── 返回栏右上「保存」（版式同 公司档案分区编辑 的保存键）── */
 .保存键 {
@@ -55,7 +54,10 @@
 
 .组标 {
   margin: 0 0 10px;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：组标对齐题名小灰标（加粗 + 字距） */
   font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
   color: var(--次要浅);
 }
 
@@ -71,17 +73,23 @@
   height: 36px;
   padding: 0 14px;
   border-radius: 10px;
-  background: var(--页面底);
-  border: 1px solid #e4e6dd;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选 = 白底 + 深描边 + 次要色中字重 */
+  background: var(--白);
+  border: 1px solid var(--描边深);
   font-size: 13px;
   font-weight: 500;
-  color: var(--墨);
+  color: var(--次要);
 }
 
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中 = 1.5px 亮绿描边 + 墨字 + ✓，删淡绿实底/深绿描边 */
 .行业片选中 {
-  border-color: var(--深绿);
-  background: var(--淡绿底2);
-  color: var(--深绿文字);
+  border: 1.5px solid var(--亮绿);
+  color: var(--墨);
+  font-weight: 700;
+}
+.行业片选中::before {
+  content: '✓ ';
+  color: var(--亮绿);
   font-weight: 700;
 }
 

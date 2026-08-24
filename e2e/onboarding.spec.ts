@@ -216,8 +216,10 @@ test.describe('multi-role onboarding', () => {
     await page.getByLabel('职位描述').fill('参与 AI 招聘产品的需求分析、原型设计与用户研究。');
     await page.getByRole('button', { name: 'Python', exact: true }).click();
     await page.getByRole('button', { name: '有相关课程项目', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Python', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByRole('button', { name: '有相关课程项目', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    // 选中态经 CSS ::before 带上「✓ 」前缀（C1 定稿），会进按钮的可达名，
+    // 所以选中后的断言不能再用 exact 原名
+    await expect(page.getByRole('button', { name: /Python/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: /有相关课程项目/ })).toHaveAttribute('aria-pressed', 'true');
     await page.getByRole('button', { name: '下一步' }).click();
 
     await expect(page.getByText('日薪（元/天）')).toBeVisible();

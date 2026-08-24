@@ -132,8 +132,9 @@
 .次按钮 {
   flex: 1;
   background: var(--白);
-  border: 1px solid var(--描边中);
-  font-weight: 600;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：选项按钮未选态 = 描边退浅一档（描边中→描边深）+ 字重 500 */
+  border: 1px solid var(--描边深);
+  font-weight: 500;
   color: var(--次要);
 }
 
