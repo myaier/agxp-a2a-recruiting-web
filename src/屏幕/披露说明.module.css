@@ -62,11 +62,6 @@
   flex-direction: column;
 }
 
-.阶段名 {
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--墨);
-}
 
 .阶段说明 {
   margin-top: 2px;

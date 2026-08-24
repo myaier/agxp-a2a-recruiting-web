@@ -53,6 +53,11 @@
   gap: 12px;
   padding: 13px 0;
   border-bottom: 1px solid var(--分隔线);
+  /* 2026-08-24 修 bug：展示态是 <button>，浏览器默认 inline-block 收缩宽度 +
+     文字居中 —— 整行缩到 165px、分隔线断头、来源行居中、✎ 贴字飘。
+     按钮必须显式铺满并左对齐；编辑态是 div 不受影响，两态从此同宽。 */
+  width: 100%;
+  text-align: left;
 }
 .规则行.末条 {
   border-bottom: none;

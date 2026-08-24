@@ -42,7 +42,7 @@ export default function 披露说明() {
                   {段.编号}
                 </span>
                 <div className={样式.阶段文字组}>
-                  <div className={样式.阶段名}>{段.名称}</div>
+                  {/* 行标题随 2026-08-24 文案定稿删除：徽标就是阶段名，不重复一遍 */}
                   <div className={样式.阶段说明}>{段.说明}</div>
                 </div>
               </div>
