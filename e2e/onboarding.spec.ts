@@ -113,20 +113,23 @@ test.describe('multi-role onboarding', () => {
     // 灰色只读态的「已认证」徽标不该再出现
     await expect(page.getByText('已认证')).toHaveCount(0);
 
-    // 逐行验证「点一下就变输入框、失焦即存」：姓名与公司是这次解锁的两行，
-    // 职务一并带上，三行走同一条就地编辑路径，漏测哪行都可能只解锁一半
+    // 逐行验证常驻就地输入（标注 2026-08-24：不再有「点一下变输入框」的两态，
+    // 每行本身就是输入框）：直接改值、失焦即存。三行走同一条路径，
+    // 漏测哪行都可能只改了一半
     for (const [行标签, 原值, 新值] of [
       ['姓名', '邵铭', '沈知远'],
       ['职务', '技术 VP', '招聘负责人'],
       ['公司', '云衢科技', '云衢信息科技'],
     ] as const) {
-      await page.getByRole('button').filter({ hasText: 原值 }).click();
       const 输入框 = page.getByLabel(行标签, { exact: true });
-      await expect(输入框).toBeFocused();
+      await expect(输入框).toHaveValue(原值);
       await 输入框.fill(新值);
       await 输入框.blur();
-      await expect(page.getByRole('button').filter({ hasText: 新值 })).toBeVisible();
+      await expect(输入框).toHaveValue(新值);
     }
+    // 收笔要落到预览区（顶部姓名 + 职务·公司副行），不能只停在输入框里
+    await expect(page.getByText('沈知远')).toBeVisible();
+    await expect(page.getByText('招聘负责人 · 云衢信息科技')).toBeVisible();
 
     await page.getByRole('button', { name: '保存 · 去发岗位' }).click();
     await expect(page).toHaveURL(/#\/hr\/post-job$/);
