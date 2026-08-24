@@ -126,24 +126,10 @@
   align-items: center;
   gap: 11px;
   padding: 13px 15px;
-  /* 方案 A + 标注：白页上全白的卡隐形，底色换成与 顶部渐变头 同一组
-     荧光绿斜向线性 + 右上天蓝径向 的渐变（值从 设计令牌.css 抄，同源同观感） */
-  background:
-    linear-gradient(
-      168deg,
-      rgba(204, 242, 79, 0.95) 0%,
-      rgba(217, 244, 122, 0.72) 34%,
-      rgba(228, 240, 200, 0.36) 68%,
-      rgba(247, 247, 244, 0.12) 100%
-    ),
-    radial-gradient(
-      125% 130% at 100% 0%,
-      rgba(126, 190, 245, 0.85) 0%,
-      rgba(150, 205, 248, 0.5) 34%,
-      rgba(190, 225, 250, 0.16) 62%,
-      rgba(200, 232, 255, 0) 80%
-    );
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  /* 标注 2026-08-24 二改：不是顶部渐变头那组，是主页「问AI代理」横幅的
+     同一条三段式斜向渐变（值抄自 通用.module.css .代理横幅），两处代理框同色 */
+  background: linear-gradient(120deg, #d8eca0 0%, #e6f3c0 46%, #f0f7d8 100%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
   border-radius: var(--圆角-中卡);
   
       text-align: left;
