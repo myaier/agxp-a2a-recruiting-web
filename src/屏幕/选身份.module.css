@@ -295,3 +295,44 @@
   height: 100%;
   padding: 17px;
 }
+
+/* ── 方案 C 全出血分屏（2026-08-24）── */
+.分屏列 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.半屏钮 {
+  flex: 1;
+  min-height: 0;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.半屏求职 {
+  background: linear-gradient(180deg, #f7fae9, var(--白));
+}
+
+.半屏招聘 {
+  background: linear-gradient(180deg, #f2f8fe, var(--白));
+}
+
+.半屏名 {
+  font-size: 21px;
+  font-weight: 800;
+  color: var(--墨);
+  letter-spacing: -0.01em;
+}
+
+.半屏线 {
+  flex: none;
+  height: 1px;
+  margin: 0 26px;
+  background: var(--分隔线);
+}
