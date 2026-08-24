@@ -9,6 +9,14 @@
   background: var(--页面底);
   overflow: hidden;
 }
+
+/* 「我」页方案 A（2026-08-24）：白底 + 渐变头减淡。渐变头是全局类，用 :global 够到 */
+.主页外壳.主页白底 {
+  background: var(--白);
+}
+.主页外壳.主页白底 > :global(.顶部渐变头) {
+  opacity: 0.45;
+}
 /* 主 Tab 页：设计稿 padding-top 64，等于安全区 59 + 6 左右 */
 .主页内容 {
   position: relative;

@@ -110,7 +110,7 @@ export default function 企业我的() {
   };
 
   return (
-    <主页外壳>
+    <主页外壳 白底>
       {/* ── 右上工具行：切换身份 / 设置 ── */}
       <div className={样式.工具行}>
         <button

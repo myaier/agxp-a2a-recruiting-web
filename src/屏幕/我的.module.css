@@ -78,9 +78,10 @@
   font-size: 10.5px;
   font-weight: 600;
   color: var(--深绿);
-  background: var(--淡绿底);
+  background: var(--白);
+  border: 1px solid var(--亮绿);
   padding: 2px 7px;
-  border-radius: 4px;
+  border-radius: 999px;
 }
 
 .尖括号 {
@@ -125,20 +126,29 @@
   align-items: center;
   gap: 11px;
   padding: 13px 15px;
+  /* 方案 A + 标注：白页上全白的卡隐形，底色换成与 顶部渐变头 同一组
+     荧光绿斜向线性 + 右上天蓝径向 的渐变（值从 设计令牌.css 抄，同源同观感） */
+  background:
+    linear-gradient(
+      168deg,
+      rgba(204, 242, 79, 0.95) 0%,
+      rgba(217, 244, 122, 0.72) 34%,
+      rgba(228, 240, 200, 0.36) 68%,
+      rgba(247, 247, 244, 0.12) 100%
+    ),
+    radial-gradient(
+      125% 130% at 100% 0%,
+      rgba(126, 190, 245, 0.85) 0%,
+      rgba(150, 205, 248, 0.5) 34%,
+      rgba(190, 225, 250, 0.16) 62%,
+      rgba(200, 232, 255, 0) 80%
+    );
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: var(--圆角-中卡);
-  background: rgba(255, 255, 255, 0.72);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  text-align: left;
+  
+      text-align: left;
 }
 
-/* 不支持 backdrop-filter 的浏览器：提高底色不透明度，别让渐变头透上来糊字 */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .代理卡 {
-    background: rgba(255, 255, 255, 0.92);
-  }
-}
 
 .盾牌底 {
   flex: none;
@@ -238,7 +248,9 @@
   width: 50px;
   height: 50px;
   border-radius: 17px;
-  background: var(--淡绿底);
+  /* 方案 A：淡绿实底 → 白底描边，与全 app 描边语言统一 */
+  background: var(--白);
+  border: 1px solid var(--描边深);
   display: flex;
   align-items: center;
   justify-content: center;

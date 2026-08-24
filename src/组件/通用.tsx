@@ -17,9 +17,10 @@ export const 阶段配色: Record<阶段, { 文字: string; 底: string }> = {
 };
 
 // ── 主 Tab 页外壳：米色底 + 顶部渐变头 ──────────────────────────
-export function 主页外壳({ children }: { children: ReactNode }) {
+export function 主页外壳({ children, 白底 = false }: { children: ReactNode; 白底?: boolean }) {
+  // 白底（「我」页方案 A，2026-08-24）：页底纯白、顶部渐变头减淡到 45%
   return (
-    <div className={样式.主页外壳}>
+    <div className={`${样式.主页外壳} ${白底 ? 样式.主页白底 : ''}`}>
       <div className="顶部渐变头" />
       <div className={样式.主页内容}>{children}</div>
     </div>
