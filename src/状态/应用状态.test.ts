@@ -430,22 +430,74 @@ describe('应用状态提供者 切身份与退出登录', () => {
     await expect(当前.操作.退出登录()).rejects.toMatchObject({ code: 'internal_error' });
   });
 
-  it('StrictMode 双跑（mount→unmount→mount）后初始化仍能落到 完成（F1）', async () => {
-    // 模拟 StrictMode 的 setup→cleanup→setup：第一次 mount 后立刻 unmount，再 mount 第二个。
-    // 修复前：第一次 已初始化.current 置 true 但被取消，cleanup 不复位 ref → 第二次 setup 早退 → 永远 进行中。
+  // #5：切身份时水合失败应 reject，让 选身份.tsx catch 显示 轻提示并留在原地，
+  // 不导航进空壳。确保角色/记录当前角色仍已执行，后端状态.主体仍已更新。
+  it('切身份 水合失败时 reject，角色/主体仍已更新（#5）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
     const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取岗位).mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
     const 后端源 = 后端 as unknown as HTTP招聘数据源;
-    const 数据源 = { 模式: 'backend' as const, 后端环境: 'stg' as const, 后端: 后端源 };
-    const { unmount } = render(createElement(应用状态提供者, { 数据源 }, null));
-    // 不等第一次完成就卸载（模拟 StrictMode cleanup）
-    unmount();
-    // 第二次 mount：应当重新跑初始化并最终落到 完成
-    let 当前2!: ReturnType<typeof use应用状态>;
-    function 上下文探针2() { 当前2 = use应用状态(); return null; }
-    render(createElement(应用状态提供者, { 数据源 }, createElement(上下文探针2)));
-    await waitFor(() => expect(当前2.后端状态.初始化).toBe('完成'));
-    expect(当前2.后端状态.已登录).toBe(true);
-    // 第一次取消的请求不应造成重复 set；恢复会话至少被调用过
-    expect(后端.恢复会话).toHaveBeenCalled();
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await expect(当前.操作.切身份('招聘方')).rejects.toMatchObject({ code: 'downstream_unavailable' });
+    expect(后端.确保角色).toHaveBeenCalledWith('recruiter');
+    expect(后端.记录当前角色).toHaveBeenCalledWith('recruiter');
+    await waitFor(() => expect(当前.后端状态.主体?.last_used_role).toBe('recruiter'));
+  });
+
+  it('mount-init 水合失败仍完成初始化（不阻塞启动）（#5）', async () => {
+    const 后端 = 创建后端桩('recruiter');
+    vi.mocked(后端.读取岗位).mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    function 探针() {
+      const { 后端状态 } = use应用状态();
+      return createElement('output', null, JSON.stringify({ 初始化: 后端状态.初始化, 已登录: 后端状态.已登录 }));
+    }
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(探针)));
+    await waitFor(() => screen.getByText(/"初始化":"完成"/));
+    expect(screen.getByText(/"已登录":true/)).toBeDefined();
+  });
+
+  // #6：开始手机登录 失败时清除尝试引用，完成手机登录 不用过期 attempt 提交。
+  it('开始手机登录 失败时清除尝试引用，完成手机登录 用空 attempt（#6）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.开始手机登录).mockRejectedValue(new BFF错误(503, 'sms_unavailable', 'down'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await expect(当前.操作.开始手机登录('13800000000')).rejects.toMatchObject({ code: 'sms_unavailable' });
+    // 尝试引用已清除 → 完成手机登录 用空串调 BFF
+    await 当前.操作.完成手机登录('1234');
+    expect(后端.完成手机登录).toHaveBeenCalledWith('', '1234');
+  });
+
+  it('effect 依赖变更后（同实例 cleanup→setup）初始化仍能落到 完成（F1）', async () => {
+    // 同实例的 effect 依赖变更触发 cleanup→setup（模拟 StrictMode 的双跑行为）。
+    // 修复前：第一次 已初始化.current 置 true 但被取消，cleanup 不复位 ref → 第二次 setup 早退 → 永远 进行中。
+    // 修复后：cleanup 复位 ref → 第二次 setup 重新跑初始化。
+    const 恢复完成 = deferred<{ identity_id: string; session_id: string; expires_at: string }>();
+    const 后端1 = 创建后端桩('candidate');
+    vi.mocked(后端1.恢复会话).mockReturnValue(恢复完成.promise);
+    const 后端2 = 创建后端桩('candidate');
+    const 后端源1 = 后端1 as unknown as HTTP招聘数据源;
+    const 后端源2 = 后端2 as unknown as HTTP招聘数据源;
+    const 数据源1 = { 模式: 'backend' as const, 后端环境: 'stg' as const, 后端: 后端源1 };
+    const 数据源2 = { 模式: 'backend' as const, 后端环境: 'stg' as const, 后端: 后端源2 };
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const { rerender } = render(createElement(应用状态提供者, { 数据源: 数据源1 }, createElement(上下文探针)));
+    // 第一次 init 已开始但未完成（恢复会话 返回 deferred）
+    expect(后端1.恢复会话).toHaveBeenCalled();
+    // 改变 后端 引用 → effect deps 变化 → cleanup（取消第一次 + 复位 ref）→ setup（重新跑 init）
+    rerender(createElement(应用状态提供者, { 数据源: 数据源2 }, createElement(上下文探针)));
+    // 第二次 setup 的 init（用 后端2）应完成
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(true);
+    expect(后端2.恢复会话).toHaveBeenCalled();
+    // 清理：resolve 第一次的 deferred（第一次 init 已被取消，resolve 不会影响状态）
+    恢复完成.resolve({ identity_id: 'id_1', session_id: 'sess_1', expires_at: '2026-08-25T00:00:00Z' });
   });
 });

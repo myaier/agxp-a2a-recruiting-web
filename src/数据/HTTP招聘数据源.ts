@@ -300,13 +300,16 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
 
     // experiences + nested projects：用 旧页面.经历（已是页面形态）做 diff
     const 旧经历PageMap = new Map(旧页面.经历.map((e) => [e.编号, e]));
-    // onboarding 中间屏会先建一条空白经历/教育段（公司/行业 或 学校/专业 任一为空），
-    // 此时 BFF 写入需要的目录精确 ID 解析不出来会抛错，阻塞流程。这些不完整条目
-    // 跳过服务端写入，保留在本地页面态里由后续屏补齐再发；其它分区照常 diff。
+    // onboarding 中间屏会先建一条空白经历/教育段（公司/行业/开始 或 学校/专业/开始 任一为空），
+    // 此时 BFF 写入需要的目录精确 ID 解析不出来会抛错，或 start_month 为空被 BFF 拒，
+    // 阻塞流程。这些不完整条目跳过服务端写入，保留在本地页面态里由后续屏补齐再发；其它分区照常 diff。
+    // 已知局限（#2）：若中途发生 rehydration（刷新/切身份），跳过段只靠本地页面态保留，
+    // 服务端快照里没有它们 → 水合后端简历 会用服务端权威把它们从本地清掉。
+    // 彻底修需要独立的本地 onboarding-draft 状态（rehydration 不擦），超出本轮范围，暂不实现。
     const 跳过经历 = new Set<string>();
     for (const 段 of next.经历) {
       const 旧Page = 旧经历PageMap.get(段.编号);
-      if (段.公司 === '' || 段.行业 === '') {
+      if (段.公司 === '' || 段.行业 === '' || 段.开始 === '') {
         跳过经历.add(段.编号);
         continue;
       }
@@ -318,6 +321,10 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
           const { result } = await 请求<BFF简历条目变更>({ path: '/api/v1/me/resume/experiences', method: 'POST', body, 幂等: true });
           const 新经历Id = result.entry.experience?.id;
           if (!新经历Id) return;
+          // 将本地条目编号更新为服务端 id：若后续项目 POST 失败，catch 路径 GET 的权威快照
+          // 已包含这条经历（服务端 id），重试时 previous 也有它 → diff 判定为已有条目，
+          // 不会重复 POST 经历。项目也会 POST 到正确的服务端 id 下。
+          段.编号 = 新经历Id;
           for (const 项目 of 段.项目 ?? []) {
             const 项目body = { name: 项目.名称, role: 项目.角色, result: 项目.结果 };
             await 请求<BFF简历条目变更>({ path: `/api/v1/me/resume/experiences/${新经历Id}/projects`, method: 'POST', body: 项目body, 幂等: true });
@@ -343,7 +350,7 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
     const 跳过教育 = new Set<string>();
     for (const 段 of next.教育) {
       const 旧Page = 旧教育PageMap.get(段.编号);
-      if (段.学校 === '' || 段.专业 === '') {
+      if (段.学校 === '' || 段.专业 === '' || 段.开始 === '') {
         跳过教育.add(段.编号);
         continue;
       }

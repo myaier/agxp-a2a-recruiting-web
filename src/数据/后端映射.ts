@@ -241,10 +241,14 @@ export function 转意向写入(草稿: 意向草稿型, 上下文: 意向映射
   const graduation_month = 是校园或实习 && 原始 !== null ? 原始.graduation_month : null;
   const internship_months = 是校园或实习 && 原始 !== null ? 原始.internship_months : null;
   const onsite_days_per_week = 是校园或实习 && 原始 !== null ? 原始.onsite_days_per_week : null;
+  // annual_salary_months 在意向草稿里没有字段，编辑已有意向时从服务端快照保留（#4）。
+  // salary_period 是 BFF 根据 recruitment_type 派生的只读字段（不在 IntentionWrite body 里），
+  // 保留原 recruitment_type 即保留了 period —— 草稿不能表达 period，但保存不会丢它。
+  const annual_salary_months = 原始 !== null ? (原始.compensation.annual_salary_months ?? null) : null;
   const compensation: BFF意向补偿 =
     草稿.薪资下限 === null || 草稿.薪资上限 === null
-      ? { mode: 'negotiable' }
-      : { mode: 'range', lower: 草稿.薪资下限, upper: 草稿.薪资上限 };
+      ? { mode: 'negotiable', annual_salary_months }
+      : { mode: 'range', lower: 草稿.薪资下限, upper: 草稿.薪资上限, annual_salary_months };
   // exclusions：更新沿用服务端快照，新建四个均为 unspecified（草稿不带排除项）
   const exclusions: BFF意向排除 = 原始 !== null
     ? 原始.exclusions

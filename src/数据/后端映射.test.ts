@@ -175,4 +175,38 @@ describe('候选人后端映射', () => {
     expect(草稿.薪资下限).toBeNull();
     expect(草稿.薪资上限).toBeNull();
   });
+
+  // #4：编辑已有意向时 annual_salary_months 从服务端快照保留（草稿不能表达此字段）。
+  // salary_period 是 BFF 从 recruitment_type 派生的只读字段，不在 IntentionWrite body 里，
+  // 保留 recruitment_type 即保留了 period —— 草稿不能表达 period，但保存不会丢它。
+  it('转意向写入 更新时保留服务端 annual_salary_months', () => {
+    const 草稿 = {
+      编辑编号: BFF意向样本.intention_id, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '产品经理',
+      感兴趣城市们: [], 薪资下限: 10, 薪资上限: 20, 期望行业们: [],
+      求职类型已改: false, 后端招聘类型: 'internship' as const,
+    };
+    const 原始 = { ...BFF意向样本, compensation: { mode: 'range' as const, lower: 300, upper: 500, annual_salary_months: 14 } };
+    const context = {
+      原始,
+      办公方式: ['hybrid'],
+      目录: { 职位类别: [{ id: 'tax_product', display_name: '产品经理' }], 地点: [{ id: 'loc_shanghai', display_name: '上海' }], 行业: [], 院校: [], 专业: [] },
+    };
+    const body = 转意向写入(草稿, context);
+    expect(body.compensation.annual_salary_months).toBe(14);
+  });
+
+  it('转意向写入 新建时 annual_salary_months 落 null', () => {
+    const 草稿 = {
+      编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '产品经理',
+      感兴趣城市们: [], 薪资下限: 10, 薪资上限: 20, 期望行业们: [],
+      求职类型已改: false, 后端招聘类型: null,
+    };
+    const context = {
+      原始: null,
+      办公方式: ['onsite'],
+      目录: { 职位类别: [{ id: 'tax_product', display_name: '产品经理' }], 地点: [{ id: 'loc_shanghai', display_name: '上海' }], 行业: [], 院校: [], 专业: [] },
+    };
+    const body = 转意向写入(草稿, context);
+    expect(body.compensation.annual_salary_months).toBeNull();
+  });
 });

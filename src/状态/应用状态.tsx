@@ -1615,7 +1615,9 @@ async function 取目录(后端: HTTP招聘数据源, 目录引用: { current: �
 /**
  * 按主体.last_used_role 水合支持域：
  *   candidate → 简历 + 意向；recruiter → 岗位；null → 保持身份选择页不水合。
- * 任一支失败只 轻提示，不抛出 —— 初始化仍要落成「完成」。
+ * mount-init（交互=false）：任一支失败只 轻提示，不抛出 —— 初始化仍要落成「完成」。
+ * 切身份（交互=true）：任一支失败直接抛出 —— 让 选身份.tsx catch 显示 轻提示并留在原地，
+ *   不导航进一个空壳（支持域没水合成功，进去也是空盘）。
  */
 async function 水合角色数据(
   后端: HTTP招聘数据源,
@@ -1623,6 +1625,7 @@ async function 水合角色数据(
   派发: (动作: 动作) => void,
   设后端状态: (更新: (旧: 后端状态) => 后端状态) => void,
   目录引用: { current: 目录索引 | null },
+  交互: boolean,
 ): Promise<void> {
   const 角色 = 主体.last_used_role;
   if (角色 === 'candidate') {
@@ -1631,6 +1634,7 @@ async function 水合角色数据(
       派发({ 型: '水合后端简历', 快照: 简历快照 });
       设后端状态((旧) => ({ ...旧, 简历快照: 简历快照.服务端快照 }));
     } catch (错误) {
+      if (交互) throw 错误;
       轻提示(取后端错误文案(错误));
     }
     try {
@@ -1638,6 +1642,7 @@ async function 水合角色数据(
       派发({ 型: '水合后端意向', 快照: 意向快照 });
       设后端状态((旧) => ({ ...旧, 意向快照: 意向快照.服务端 }));
     } catch (错误) {
+      if (交互) throw 错误;
       轻提示(取后端错误文案(错误));
     }
   } else if (角色 === 'recruiter') {
@@ -1646,10 +1651,11 @@ async function 水合角色数据(
       派发({ 型: '水合后端岗位', 快照: 岗位快照 });
       设后端状态((旧) => ({ ...旧, 岗位快照: 岗位快照.服务端 }));
     } catch (错误) {
+      if (交互) throw 错误;
       轻提示(取后端错误文案(错误));
     }
   }
-  // 预取目录缓存到 ref，供意向/岗位写入映射复用；失败不阻塞初始化
+  // 预取目录缓存到 ref，供意向/岗位写入映射复用；失败不阻塞（两种模式都吞掉）
   try {
     目录引用.current = await 后端.读取目录();
   } catch {
@@ -1815,7 +1821,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         return;
       }
       if (已取消) return;
-      await 水合角色数据(后端, 主体, 派发, 设后端状态, 目录引用);
+      await 水合角色数据(后端, 主体, 派发, 设后端状态, 目录引用, false);
       if (已取消) return;
       设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: true, 主体 }));
     })();
@@ -1848,7 +1854,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
             意向快照: {},
             岗位快照: {},
           }));
-        } else if (错误.status === 409 && 错误.权威简历) {
+        } else if (错误.权威简历) {
+          // 409 版本冲突或任一分区写入中途失败后，catch 路径已 GET 权威快照附在错误上。
+          // 统一用它水合本地状态，使重试 diff 基于服务端最新值（避免重复 POST 新条目）。
           // 权威简历 是 BFF简历（生产 HTTP 层 GET 拿到的 DTO）；
           // 测试桩可能直接放已映射的 页面简历快照。两者按 'profile' 字段区分。
           const 权威 = 错误.权威简历;
@@ -1913,8 +1921,14 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     return {
       async 开始手机登录(phone) {
         if (!是后端 || !后端) return;
-        const 尝试 = await 后端.开始手机登录(phone);
-        尝试引用.current = 尝试.attempt_id;
+        try {
+          const 尝试 = await 后端.开始手机登录(phone);
+          尝试引用.current = 尝试.attempt_id;
+        } catch (错误) {
+          // 发送失败时清除旧 attempt_id，防止 完成手机登录 用过期 attempt 提交
+          尝试引用.current = null;
+          throw 错误;
+        }
       },
       async 完成手机登录(code) {
         if (!是后端 || !后端) return;
@@ -1971,8 +1985,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         设后端状态((旧) => ({ ...旧, 主体: 最新主体 }));
         // 切身份后水合目标角色的支持域：mount-init 只按上次角色水合，
         // 不补这一步，候选切到招聘方会顶着一个空岗位盘，招聘方切到候选看到的是空简历/意向。
-        // 复用 mount-init 的 水合角色数据 逻辑（失败只 轻提示，不抛出）。
-        await 水合角色数据(后端, 最新主体, 派发, 设后端状态, 目录引用);
+        // 交互模式：水合失败直接抛出，让 选身份.tsx catch 显示 轻提示并留在原地，
+        // 不导航进一个空壳（支持域没水合成功，进去也是空盘）。
+        await 水合角色数据(后端, 最新主体, 派发, 设后端状态, 目录引用, true);
       },
       async 保存简历(next) {
         if (!是后端 || !后端) {

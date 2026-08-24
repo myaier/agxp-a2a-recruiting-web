@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BFF简历样本 } from '../测试/BFF样本';
-import type { BFF请求选项, BFF响应 } from './HTTP客户端';
+import { BFF错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
 import { 从BFF简历 } from './后端映射';
 import { 创建岗位附属存储 } from './前端附属数据';
 import { 创建HTTP招聘数据源 } from './HTTP招聘数据源';
@@ -158,5 +158,100 @@ describe('HTTP 招聘数据源', () => {
     expect(出.教育.some((段) => 段.编号 === 'edu_local_blank')).toBe(true);
     // 最终 GET 仍跑
     expect(调用[调用.length - 1]).toEqual(['GET', '/api/v1/me/resume']);
+  });
+
+  // #1：onboarding 选专业后学校+专业已填但 开始 仍空，BFF 要求 start_month 非空会拒。
+  // 跳过 start_month 为空的教育段，完整段照常 POST。
+  it('开始月份为空的教育段跳过 POST，完整教育段照常 POST', async () => {
+    const 新教育服务端 = { id: 'edu_server', institution: { id: 'ins_1', display_name: '复旦大学' }, degree: '本科', major: { id: 'tax_m', display_name: '计算机科学' }, start_month: '2017-09', end_month: '2021-06', revision: 2 };
+    const 最终简历: typeof BFF简历样本 = { ...BFF简历样本, educations: [BFF简历样本.educations[0], 新教育服务端] };
+    const 请求Mock = vi.fn(async (options: BFF请求选项) => {
+      if (options.method === 'POST' && options.path === '/api/v1/me/resume/educations') {
+        return { result: { entry: { kind: 'education', education: 新教育服务端 }, aggregate_revision: 10 }, etag: null, requestId: 'r2' };
+      }
+      return { result: 最终简历, etag: null, requestId: 'r1' };
+    });
+    const 请求 = 请求Mock as unknown as 请求函数;
+    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const 旧页面 = 从BFF简历(BFF简历样本);
+    // 学校+专业已填但开始月份为空（onboarding 选专业后、选时间前的中间态）
+    const 空开始教育 = { 编号: 'edu_local_no_start', 学校: '复旦大学', 学历: '本科', 专业: '计算机科学', 开始: '', 结束: '' };
+    const 完整教育 = { 编号: 'edu_local_full', 学校: '复旦大学', 学历: '本科', 专业: '计算机科学', 开始: '2017-09', 结束: '2021-06' };
+    const 新页面 = { ...旧页面, 教育: [...旧页面.教育, 空开始教育, 完整教育] };
+    const 出 = await source.保存简历(新页面, BFF简历样本);
+    // 教育只 POST 一次（空开始段被跳过，完整段才 POST）
+    const 教育POST们 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .filter((o) => o.method === 'POST' && o.path === '/api/v1/me/resume/educations');
+    expect(教育POST们).toHaveLength(1);
+    // 空开始段保留在返回的页面态里
+    expect(出.教育.some((段) => 段.编号 === 'edu_local_no_start')).toBe(true);
+  });
+
+  // #3：新建经历 POST 成功但项目 POST 失败时，本地编号已更新为服务端 id；
+  // 重试（previous 含新经历）不再重复 POST 经历，项目 POST 到服务端 id。
+  it('新建经历 POST 成功但项目 POST 失败时，经历只 POST 一次，重试不重复', async () => {
+    const 新经历服务端 = { ...BFF简历样本.experiences[0], id: 'exp_server', projects: [] };
+    const 最终简历: typeof BFF简历样本 = { ...BFF简历样本, experiences: [BFF简历样本.experiences[0], 新经历服务端] };
+    const 请求Mock = vi.fn(async (options: BFF请求选项) => {
+      if (options.method === 'POST' && options.path === '/api/v1/me/resume/experiences') {
+        return { result: { entry: { kind: 'experience', experience: 新经历服务端 }, aggregate_revision: 10 }, etag: null, requestId: 'r2' };
+      }
+      if (options.method === 'POST' && options.path === '/api/v1/me/resume/experiences/exp_server/projects') {
+        throw new BFF错误(422, 'validation_failed', 'bad project');
+      }
+      return { result: 最终简历, etag: null, requestId: 'r1' };
+    });
+    const 请求 = 请求Mock as unknown as 请求函数;
+    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const 旧页面 = 从BFF简历(BFF简历样本);
+    const 新页面 = {
+      ...旧页面,
+      经历: [...旧页面.经历, {
+        编号: 'local-new', 公司: '新公司', 行业: '互联网', 职位: '工程师', 开始: '2022-01', 结束: null, 内容: '', 隐藏: false,
+        项目: [{ 编号: 'p-local', 名称: '网关重建', 角色: '负责人', 结果: '降 82%' }],
+      }],
+    };
+    // 第一次保存：经历 POST 成功，项目 POST 失败 → 抛错
+    await expect(source.保存简历(新页面, BFF简历样本)).rejects.toMatchObject({ code: 'validation_failed' });
+    // 经历只 POST 一次
+    const 经历POST们 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .filter((o) => o.method === 'POST' && o.path === '/api/v1/me/resume/experiences');
+    expect(经历POST们).toHaveLength(1);
+    // 项目 POST 针对服务端 id
+    const 项目POST们 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .filter((o) => o.method === 'POST' && o.path === '/api/v1/me/resume/experiences/exp_server/projects');
+    expect(项目POST们).toHaveLength(1);
+    // 本地条目编号已被更新为服务端 id
+    expect(新页面.经历[新页面.经历.length - 1].编号).toBe('exp_server');
+
+    // 第二次保存：previous 含新经历（服务端 id），next 条目编号已是服务端 id → 不重复 POST
+    const 请求Mock2 = vi.fn(async (options: BFF请求选项) => {
+      if (options.method === 'POST' && options.path === '/api/v1/me/resume/experiences') {
+        return { result: { entry: { kind: 'experience', experience: 新经历服务端 }, aggregate_revision: 11 }, etag: null, requestId: 'r-dup' };
+      }
+      if (options.method === 'PATCH' && options.path === '/api/v1/me/resume/experiences/exp_server') {
+        return { result: 最终简历, etag: null, requestId: 'r-patch' };
+      }
+      if (options.method === 'POST' && options.path === '/api/v1/me/resume/experiences/exp_server/projects') {
+        return { result: { entry: { kind: 'project', project: { id: 'proj_1', name: '网关重建', role: '负责人', result: '降 82%', revision: 1 } }, aggregate_revision: 12 }, etag: null, requestId: 'r3' };
+      }
+      return { result: 最终简历, etag: null, requestId: 'r1' };
+    });
+    const 请求2 = 请求Mock2 as unknown as 请求函数;
+    const source2 = 创建HTTP招聘数据源({ client: { 请求: 请求2 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    await source2.保存简历(新页面, 最终简历);
+    // 经历没有被重复 POST
+    const 经历POST2 = 请求Mock2.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .filter((o) => o.method === 'POST' && o.path === '/api/v1/me/resume/experiences');
+    expect(经历POST2).toHaveLength(0);
+    // 项目 POST 到服务端 id
+    const 项目POST2 = 请求Mock2.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .filter((o) => o.method === 'POST' && o.path === '/api/v1/me/resume/experiences/exp_server/projects');
+    expect(项目POST2).toHaveLength(1);
   });
 });

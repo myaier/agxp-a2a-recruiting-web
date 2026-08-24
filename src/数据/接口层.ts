@@ -75,12 +75,26 @@ export interface 招聘数据源依赖 {
 }
 
 const 默认依赖: 招聘数据源依赖 = {
-  创建HTTP: (后端环境) =>
-    创建HTTP招聘数据源({
+  创建HTTP: (后端环境) => {
+    // globalThis.localStorage 在某些环境（隐私模式/SSR/受限沙箱）可能抛错，
+    // 这里安全获取：拿不到时用 no-op 存储兜底，附属数据非权威，不影响核心流程（#7）。
+    let 安全存储: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
+    try {
+      安全存储 = globalThis.localStorage;
+    } catch {
+      安全存储 = null;
+    }
+    const 存储 = 安全存储 ?? {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    };
+    return 创建HTTP招聘数据源({
       client: 创建BFF客户端(),
       后端环境,
-      附属存储: 创建岗位附属存储(globalThis.localStorage),
-    }),
+      附属存储: 创建岗位附属存储(存储),
+    });
+  },
 };
 
 /**
