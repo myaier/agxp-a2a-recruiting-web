@@ -121,6 +121,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* 描边色由组件按阶段内联（阶段色 40% 调白）；这里只定宽度与线型 */
+  border: 1px solid transparent;
   padding: 3px 9px 3px 7px;
   border-radius: 999px;
   font-size: 9.5px;

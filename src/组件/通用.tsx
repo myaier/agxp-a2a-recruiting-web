@@ -110,8 +110,18 @@ export function 阶段标签({ 阶段: 值, 待你 = false }: { 阶段: 阶段; 
   // 标注 11:44：原来两态两种形（等你有框、平时没框），同一个组件长得不一样。
   // 现在统一成永远是淡底胶囊，两态只差那颗点会不会呼吸。
   const 配 = 阶段配色[值];
+  // 标注 2026-08-24（方案 A 描边胶囊）：浅色底撤成白，只留一圈调淡的阶段色描边。
+  // 卡片洗白、标签片提亮、投影抬卡之后，这块实底色是卡上最后一块"上一版"的颜色。
+  // 配.底 不删 —— 详情页阶段节点、披露说明徽标还在用。
   return (
-    <span className={样式.阶段标签} style={{ background: 配.底, color: 配.文字 }}>
+    <span
+      className={样式.阶段标签}
+      style={{
+        background: '#fff',
+        color: 配.文字,
+        borderColor: `color-mix(in srgb, ${配.文字} 40%, #fff)`,
+      }}
+    >
       <span
         className={`${样式.阶段点} ${待你 ? 样式.阶段点呼吸 : ''}`}
         style={{ background: 配.文字 }}
