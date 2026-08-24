@@ -7,7 +7,18 @@ import { BFF主体样本, BFF简历样本 } from '../测试/BFF样本';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
+import type { 页面简历快照, 页面简历写入, 页面意向快照 } from '../数据/招聘数据源类型';
 import { 从BFF简历 } from '../数据/后端映射';
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((ok, fail) => {
+    resolve = ok;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
 
 describe('应用状态 reducer', () => {
   const 写入 = vi.fn();
@@ -111,10 +122,10 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     记录当前角色: vi.fn(async (role: BFF角色) => ({ ...主体, last_used_role: role })),
     读取简历: vi.fn(async () => 从BFF简历(BFF简历样本)),
     保存简历: vi.fn(async () => 从BFF简历(BFF简历样本)),
-    读取意向: vi.fn(async () => ({ 列表: [], 服务端: {} })),
-    创建意向: vi.fn(async () => ({ 列表: [], 服务端: {} })),
-    更新意向: vi.fn(async () => ({ 列表: [], 服务端: {} })),
-    删除意向: vi.fn(async () => ({ 列表: [], 服务端: {} })),
+    读取意向: vi.fn(async (): Promise<页面意向快照> => ({ 列表: [], 服务端: {} })),
+    创建意向: vi.fn(async (): Promise<页面意向快照> => ({ 列表: [], 服务端: {} })),
+    更新意向: vi.fn(async (): Promise<页面意向快照> => ({ 列表: [], 服务端: {} })),
+    删除意向: vi.fn(async (): Promise<页面意向快照> => ({ 列表: [], 服务端: {} })),
     读取岗位: vi.fn(async () => ({ 列表: [], 服务端: {} })),
     创建岗位: vi.fn(async () => ({ 列表: [], 服务端: {} })),
     更新岗位: vi.fn(async () => ({ 列表: [], 服务端: {} })),
@@ -168,5 +179,71 @@ describe('应用状态提供者 后端会话', () => {
     expect(screen.getByText(/"已登录":false/)).toBeDefined();
     expect(screen.getByText(/"岗位数":0/)).toBeDefined();
     expect(screen.getByText(/"意向数":0/)).toBeDefined();
+  });
+});
+
+// ── 候选侧写操作：并发锁 + 409 冲突恢复 + 成功才水合 ───────────────
+// Task 7：保存简历/意向 的 Backend 分支。
+
+describe('应用状态提供者 候选写操作', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  it('Backend 简历保存成功后才派发服务端映射结果', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 保存完成 = deferred<页面简历快照>();
+    vi.mocked(后端.保存简历).mockReturnValue(保存完成.promise);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    const 页面 = 从BFF简历(BFF简历样本);
+    const 页面写入: 页面简历写入 = { 基本信息: 页面.基本信息, 个人优势: 页面.个人优势, 技能: 页面.技能, 经历: 页面.经历, 教育: 页面.教育, 证书: 页面.证书 };
+    const 请求 = 当前.操作.保存简历({ ...页面写入, 基本信息: { ...页面.基本信息, 真名: '新名' } });
+    // 进行中：不乐观派发，状态仍是旧值
+    expect(当前.状态.基本信息.真名).toBe('沈亦舟');
+    保存完成.resolve({ ...页面, 基本信息: { ...页面.基本信息, 真名: '新名' } });
+    await 请求;
+    await waitFor(() => expect(当前.状态.基本信息.真名).toBe('新名'));
+  });
+
+  it('部分保存失败时采用错误携带的重新读取快照且不使用 Mock', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 权威 = 从BFF简历({ ...BFF简历样本, skills: ['服务端权威技能'], skills_revision: 4 });
+    vi.mocked(后端.保存简历).mockRejectedValue(Object.assign(new BFF错误(409, 'version_conflict', 'stale'), { 权威简历: 权威 }));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    const 页面 = 从BFF简历(BFF简历样本);
+    const 页面写入: 页面简历写入 = { 基本信息: 页面.基本信息, 个人优势: 页面.个人优势, 技能: 页面.技能, 经历: 页面.经历, 教育: 页面.教育, 证书: 页面.证书 };
+    await expect(当前.操作.保存简历({ ...页面写入, 技能: ['本地未确认技能'] })).rejects.toMatchObject({ code: 'version_conflict' });
+    await waitFor(() => expect(当前.状态.简历技能).toEqual(['服务端权威技能']));
+    expect(当前.状态.简历技能).not.toContain('本地未确认技能');
+  });
+
+  it('同一个 Backend 写操作进行中时拒绝重复提交', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 完成 = deferred<页面意向快照>();
+    vi.mocked(后端.创建意向).mockReturnValue(完成.promise);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    const 草稿 = { 编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '产品经理', 感兴趣城市们: [] as string[], 薪资下限: 10, 薪资上限: 20, 期望行业们: [] as string[], 后端招聘类型: null, 求职类型已改: false };
+    const 第一次 = 当前.操作.保存意向(草稿);
+    const 第二次 = 当前.操作.保存意向(草稿);
+    expect(后端.创建意向).toHaveBeenCalledTimes(1);
+    完成.resolve({ 列表: [], 服务端: {} });
+    await Promise.all([第一次, 第二次]);
   });
 });

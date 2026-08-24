@@ -10,9 +10,11 @@
 import { useState } from 'react';
 import 样式 from './我的简历.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 表单条目 } from '../组件/通用';
+import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 import type { 基本信息 as 基本信息类型 } from '../数据/类型';
 
 /** 'yyyy-MM' → 'yyyy.MM'；null → '至今' */
@@ -30,7 +32,7 @@ const 状态文案: Record<基本信息类型['身份'], string> = {
 export default function 我的简历() {
   const { 返回, 跳转 } = use导航();
   // 全部简历数据读全局切片：在工作经历页 / 基本信息页改完，这里立刻是新的
-  const { 状态: 全局, 派发 } = use应用状态();
+  const { 状态: 全局, 操作 } = use应用状态();
   const 经历列表 = 全局.简历经历;
 
   /**
@@ -77,7 +79,26 @@ export default function 我的简历() {
   const [展开诊断, 设展开诊断] = useState(false);
   const [显示附件说明, 设显示附件说明] = useState(false);
   // 姓名支持行内改（标注意见 #6）；其余三项是派生值或别处的写入口，点了跳过去改
+  // 姓名草稿：逐字输入只改本地态，blur/Enter 才调一次 操作.保存简历，避免每个按键产生 HTTP PATCH
   const [改名中, 设改名中] = useState(false);
+  const [姓名草稿, 设姓名草稿] = useState(基本.真名);
+
+  const 保存姓名 = async () => {
+    设改名中(false);
+    if (姓名草稿.trim() === 基本.真名.trim()) return;
+    try {
+      await 操作.保存简历({
+        基本信息: { ...基本, 真名: 姓名草稿 },
+        个人优势: 全局.个人优势,
+        技能: 技能列表,
+        经历: 经历列表,
+        教育: 教育列表,
+        证书: 证书列表,
+      });
+    } catch (错误) {
+      轻提示(取后端错误文案(错误));
+    }
+  };
 
   const 当前年 = new Date().getFullYear();
   const 折算年限 = Math.max(0, 当前年 - (Number(基本.开始工作年) || 当前年));
@@ -133,20 +154,11 @@ export default function 我的简历() {
             <div className={样式.条目区}>
               <可改条目
                 标签="姓名（仅意向确认后披露）"
-                值={基本.真名}
+                值={改名中 ? 姓名草稿 : 基本.真名}
                 编辑中={改名中}
-                开始编辑={() => 设改名中(true)}
-                结束编辑={() => 设改名中(false)}
-                改变={(新值) =>
-                  派发({
-                    型: '存简历',
-                    经历: 经历列表,
-                    教育: 教育列表,
-                    技能: 技能列表,
-                    证书: 证书列表,
-                    基本信息: { ...基本, 真名: 新值 },
-                  })
-                }
+                开始编辑={() => { 设姓名草稿(基本.真名); 设改名中(true); }}
+                结束编辑={保存姓名}
+                改变={设姓名草稿}
               />
               <表单条目
                 标签="工作年限"

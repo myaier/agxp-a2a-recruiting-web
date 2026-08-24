@@ -1582,11 +1582,16 @@ const 空简历快照: 页面简历快照 = {
 const 空意向快照: 页面意向快照 = { 列表: [], 服务端: {} };
 const 空岗位快照: 页面岗位快照 = { 列表: [], 服务端: {} };
 
-/** 意向草稿 → 求职意向.说明 文案（Mock 分支用，与 拆意向为草稿 的反向口径保持一致）。 */
+/** 意向草稿 → 求职意向.说明 文案（Mock 分支用，与 添加意向.tsx 提交 的说明格式保持一致）。 */
 function 意向说明(draft: 意向草稿型): string {
-  if (draft.薪资下限 !== null && draft.薪资上限 !== null)
-    return `${draft.薪资下限}-${draft.薪资上限}K`;
-  return '面议';
+  const 薪资文本 =
+    draft.薪资下限 === null || draft.薪资上限 === null
+      ? ''
+      : draft.薪资下限 === draft.薪资上限
+        ? `${draft.薪资下限}K`
+        : `${draft.薪资下限}-${draft.薪资上限}K`;
+  const 期望行业文本 = draft.期望行业们.join('、');
+  return 期望行业文本 === '' ? 薪资文本 : `${薪资文本}｜${期望行业文本}`;
 }
 
 /** 按需取目录并缓存到 ref，供意向/岗位写入映射复用。 */
@@ -1607,6 +1612,7 @@ async function 水合角色数据(
   主体: BFF主体,
   派发: (动作: 动作) => void,
   设后端状态: (更新: (旧: 后端状态) => 后端状态) => void,
+  目录引用: { current: 目录索引 | null },
 ): Promise<void> {
   const 角色 = 主体.last_used_role;
   if (角色 === 'candidate') {
@@ -1632,6 +1638,12 @@ async function 水合角色数据(
     } catch (错误) {
       轻提示(取后端错误文案(错误));
     }
+  }
+  // 预取目录缓存到 ref，供意向/岗位写入映射复用；失败不阻塞初始化
+  try {
+    目录引用.current = await 后端.读取目录();
+  } catch {
+    // 后续写入操作会按需重新读取目录
   }
   // last_used_role === null → 保持身份选择页，不水合
 }
@@ -1662,6 +1674,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const 已初始化 = useRef(false);
   // 目录缓存：意向/岗位写入映射需要，按需取一次
   const 目录引用 = useRef<目录索引 | null>(null);
+  // 并发写锁：简历保存 / 意向:${id|new} 同一操作进行中时拒绝重复提交
+  const 锁 = useRef<Set<string>>(new Set());
 
   // 持久化是状态提交后的副作用，不属于 reducer。分字段监听可避免每次任意派发都重写全部缓存。
   useEffect(() => {
@@ -1791,7 +1805,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         return;
       }
       if (已取消) return;
-      await 水合角色数据(后端, 主体, 派发, 设后端状态);
+      await 水合角色数据(后端, 主体, 派发, 设后端状态, 目录引用);
       if (已取消) return;
       设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: true, 主体 }));
     })();
@@ -1802,8 +1816,36 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [是后端, 后端]);
 
-  const 操作 = useMemo<应用操作>(
-    () => ({
+  const 操作 = useMemo<应用操作>(() => {
+    /** 统一处理写操作错误：401 清会话；409 用错误携带的权威简历水合；其余原样抛出。 */
+    function 处理写入错误(错误: unknown): never {
+      if (错误 instanceof BFF错误) {
+        if (错误.status === 401) {
+          派发({ 型: '水合后端简历', 快照: 空简历快照 });
+          派发({ 型: '水合后端意向', 快照: 空意向快照 });
+          派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
+          设后端状态((旧) => ({
+            ...旧,
+            初始化: '完成',
+            已登录: false,
+            主体: null,
+            简历快照: null,
+            意向快照: {},
+            岗位快照: {},
+          }));
+        } else if (错误.status === 409 && 错误.权威简历) {
+          // 权威简历 是 BFF简历（生产 HTTP 层 GET 拿到的 DTO）；
+          // 测试桩可能直接放已映射的 页面简历快照。两者按 'profile' 字段区分。
+          const 权威 = 错误.权威简历;
+          const 是原始DTO = 'profile' in 权威;
+          const 页面 = 是原始DTO ? 从BFF简历(权威) : 权威 as unknown as 页面简历快照;
+          派发({ 型: '水合后端简历', 快照: 页面 });
+          设后端状态((旧) => ({ ...旧, 简历快照: 是原始DTO ? 权威 : 旧.简历快照 }));
+        }
+      }
+      throw 错误;
+    }
+    return {
       async 开始手机登录(phone) {
         if (!是后端 || !后端) return;
         const 尝试 = await 后端.开始手机登录(phone);
@@ -1862,29 +1904,45 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
           派发({ 型: '存个人优势', 文本: next.个人优势 });
           return;
         }
-        let previous = 后端状态引用.current.简历快照;
-        if (!previous) {
-          const 读出 = await 后端.读取简历();
-          previous = 读出.服务端快照;
+        if (锁.current.has('简历保存')) return;
+        锁.current.add('简历保存');
+        try {
+          let previous = 后端状态引用.current.简历快照;
+          if (!previous) {
+            const 读出 = await 后端.读取简历();
+            previous = 读出.服务端快照;
+          }
+          const 快照 = await 后端.保存简历(next, previous);
+          派发({ 型: '水合后端简历', 快照 });
+          设后端状态((旧) => ({ ...旧, 简历快照: 快照.服务端快照 }));
+        } catch (错误) {
+          处理写入错误(错误);
+        } finally {
+          锁.current.delete('简历保存');
         }
-        const 快照 = await 后端.保存简历(next, previous);
-        派发({ 型: '水合后端简历', 快照 });
-        设后端状态((旧) => ({ ...旧, 简历快照: 快照.服务端快照 }));
       },
       async 保存个人优势(text) {
         if (!是后端 || !后端) {
           派发({ 型: '存个人优势', 文本: text });
           return;
         }
-        let previous = 后端状态引用.current.简历快照;
-        if (!previous) {
-          const 读出 = await 后端.读取简历();
-          previous = 读出.服务端快照;
+        if (锁.current.has('简历保存')) return;
+        锁.current.add('简历保存');
+        try {
+          let previous = 后端状态引用.current.简历快照;
+          if (!previous) {
+            const 读出 = await 后端.读取简历();
+            previous = 读出.服务端快照;
+          }
+          const 当前页面 = 从BFF简历(previous);
+          const 快照 = await 后端.保存简历({ ...当前页面, 个人优势: text }, previous);
+          派发({ 型: '水合后端简历', 快照 });
+          设后端状态((旧) => ({ ...旧, 简历快照: 快照.服务端快照 }));
+        } catch (错误) {
+          处理写入错误(错误);
+        } finally {
+          锁.current.delete('简历保存');
         }
-        const 当前页面 = 从BFF简历(previous);
-        const 快照 = await 后端.保存简历({ ...当前页面, 个人优势: text }, previous);
-        派发({ 型: '水合后端简历', 快照 });
-        设后端状态((旧) => ({ ...旧, 简历快照: 快照.服务端快照 }));
       },
       async 保存意向(draft) {
         if (!是后端 || !后端) {
@@ -1894,35 +1952,64 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
           else 派发({ 型: '新增意向', 标题, 说明 });
           return;
         }
-        const 目录 = await 取目录(后端, 目录引用);
-        const 原始 = draft.编辑编号 ? 后端状态引用.current.意向快照[draft.编辑编号] ?? null : null;
-        const 上下文 = { 原始, 办公方式: 原始?.workplace_modes ?? ['onsite'], 目录 };
-        const 快照 = draft.编辑编号
-          ? await 后端.更新意向(draft.编辑编号, draft, 上下文)
-          : await 后端.创建意向(draft, 上下文);
-        派发({ 型: '水合后端意向', 快照 });
-        设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
+        const 键 = draft.编辑编号 ? `意向:${draft.编辑编号}` : '意向:new';
+        if (锁.current.has(键)) return;
+        锁.current.add(键);
+        try {
+          const 目录 = 目录引用.current ?? await 取目录(后端, 目录引用);
+          const 原始 = draft.编辑编号 ? 后端状态引用.current.意向快照[draft.编辑编号] ?? null : null;
+          const 上下文 = { 原始, 办公方式: 原始?.workplace_modes ?? ['onsite'], 目录 };
+          const 快照 = draft.编辑编号
+            ? await 后端.更新意向(draft.编辑编号, draft, 上下文)
+            : await 后端.创建意向(draft, 上下文);
+          派发({ 型: '水合后端意向', 快照 });
+          设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
+        } catch (错误) {
+          处理写入错误(错误);
+        } finally {
+          锁.current.delete(键);
+        }
       },
       async 保存首次意向(input) {
         if (!是后端 || !后端) {
-          派发({ 型: '新增意向', 标题: `[${input.城市们[0] ?? ''}] ${input.职位们[0] ?? ''}`, 说明: '' });
+          // Mock 模式 no-op：保持当前预置意向不增加，防止重复走向导制造重复数据
           return;
         }
-        const 目录 = await 取目录(后端, 目录引用);
-        const 快照 = await 后端.创建首次意向(input, { 办公方式: ['onsite'], 目录 });
-        派发({ 型: '水合后端意向', 快照 });
-        设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
+        // Backend 仅在当前真实意向列表为空时创建一条，已有意向时 no-op
+        if (状态引用.current.求职意向表.length > 0) return;
+        const 键 = '意向:new';
+        if (锁.current.has(键)) return;
+        锁.current.add(键);
+        try {
+          const 目录 = 目录引用.current ?? await 取目录(后端, 目录引用);
+          const 快照 = await 后端.创建首次意向(input, { 办公方式: ['onsite'], 目录 });
+          派发({ 型: '水合后端意向', 快照 });
+          设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
+        } catch (错误) {
+          处理写入错误(错误);
+        } finally {
+          锁.current.delete(键);
+        }
       },
       async 删除意向(id) {
         if (!是后端 || !后端) {
           派发({ 型: '删意向', 编号: id });
           return;
         }
-        const 原始 = 后端状态引用.current.意向快照[id];
-        if (!原始) return;
-        const 快照 = await 后端.删除意向(id, 原始.revision);
-        派发({ 型: '水合后端意向', 快照 });
-        设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
+        const 键 = `意向:${id}`;
+        if (锁.current.has(键)) return;
+        锁.current.add(键);
+        try {
+          const 原始 = 后端状态引用.current.意向快照[id];
+          if (!原始) return;
+          const 快照 = await 后端.删除意向(id, 原始.revision);
+          派发({ 型: '水合后端意向', 快照 });
+          设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
+        } catch (错误) {
+          处理写入错误(错误);
+        } finally {
+          锁.current.delete(键);
+        }
       },
       async 发布岗位(job) {
         if (!是后端 || !后端) {
@@ -1979,7 +2066,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         派发({ 型: '水合后端岗位', 快照 });
         设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
       },
-    }),
+    };
+  },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [是后端, 后端],
