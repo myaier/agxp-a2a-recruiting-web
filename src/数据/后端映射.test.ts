@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { 从BFF简历, 精确目录ID, 转资料写入, 从BFF岗位, 转岗位创建, 转意向写入 } from './后端映射';
+import { 从BFF简历, 精确目录ID, 转资料写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入 } from './后端映射';
 import { BFF意向样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 
 describe('候选人后端映射', () => {
@@ -82,5 +82,57 @@ describe('候选人后端映射', () => {
     };
     expect(转意向写入(草稿, context).recruitment_type)
       .toBe('internship');
+  });
+
+  // F9：campus_cohort '不限'/空/非数字 → null，不再被 Number('') 误判成 0 届
+  it('校园招聘 campus_cohort：不限/空/非数字 落 null，数字年份保留', () => {
+    const 目录 = {
+      职位类别: [{ id: 'tax_product', display_name: '产品经理' }],
+      地点: [{ id: 'loc_shanghai', display_name: '上海' }],
+      行业: [], 院校: [], 专业: [],
+    };
+    expect(转岗位创建({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: '不限' }, 目录, { 公司: '云衢科技' }).campus_cohort).toBe(null);
+    expect(转岗位创建({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: undefined }, 目录, { 公司: '云衢科技' }).campus_cohort).toBe(null);
+    expect(转岗位创建({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: '本周' }, 目录, { 公司: '云衢科技' }).campus_cohort).toBe(null);
+    expect(转岗位创建({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: '2027 届' }, 目录, { 公司: '云衢科技' }).campus_cohort).toBe(2027);
+    // 补丁同样
+    expect(转岗位补丁({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: '不限' }, { 原始: BFF岗位样本, 公司: '云衢科技' }).campus_cohort).toBe(null);
+    expect(转岗位补丁({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: '2027 届' }, { 原始: BFF岗位样本, 公司: '云衢科技' }).campus_cohort).toBe(2027);
+  });
+
+  // F4：办公方式 既接受中文标签（引导预填来源），也接受 wire code（已有意向快照来源）
+  it('映射办公方式：中文标签与 wire code 都能映射，不再产出 [null]', () => {
+    const 目录 = {
+      职位类别: [{ id: 'tax_product', display_name: '产品经理' }],
+      地点: [{ id: 'loc_shanghai', display_name: '上海' }],
+      行业: [], 院校: [], 专业: [],
+    };
+    const 草稿 = {
+      编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '产品经理',
+      感兴趣城市们: [], 薪资下限: 10, 薪资上限: 20, 期望行业们: [],
+      求职类型已改: false, 后端招聘类型: null,
+    };
+    // 中文标签（引导预填来源）
+    expect(转意向写入(草稿, { 原始: null, 办公方式: ['混合'], 目录 }).workplace_modes).toEqual(['hybrid']);
+    expect(转意向写入(草稿, { 原始: null, 办公方式: ['现场', '全远程'], 目录 }).workplace_modes).toEqual(['onsite', 'remote']);
+    // wire code（已有意向快照 workplace_modes 来源）—— 原来这里产出 [undefined] 被 BFF 拒
+    expect(转意向写入(草稿, { 原始: BFF意向样本, 办公方式: ['hybrid'], 目录 }).workplace_modes).toEqual(['hybrid']);
+    expect(转意向写入(草稿, { 原始: BFF意向样本, 办公方式: ['onsite'], 目录 }).workplace_modes).toEqual(['onsite']);
+  });
+
+  it('首次意向写入用向导答案的办公方式（中文标签），不再硬编码 onsite', () => {
+    const 目录 = {
+      职位类别: [{ id: 'tax_product', display_name: '产品经理' }],
+      地点: [{ id: 'loc_shanghai', display_name: '上海' }],
+      行业: [], 院校: [], 专业: [],
+    };
+    const 输入 = {
+      职位们: ['产品经理'],
+      城市们: ['上海'],
+      薪资: { 下限: 10, 上限: 20, 单位: '月薪K' as const },
+      筛选偏好: { 求职类型: ['社招全职'] as ['社招全职'], 办公方式: ['混合', '全远程'] as ['混合', '全远程'] },
+      排除项: [],
+    };
+    expect(转首次意向写入(输入, { 原始: null, 办公方式: 输入.筛选偏好.办公方式, 目录 }).workplace_modes).toEqual(['hybrid', 'remote']);
   });
 });

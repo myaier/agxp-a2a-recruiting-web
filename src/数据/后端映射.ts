@@ -198,7 +198,12 @@ export function 从BFF意向(dto: BFFOwnerIntention): 求职意向 {
 
 function 映射办公方式(页值们: string[]): BFFOwnerIntention['workplace_modes'] {
   if (页值们.length === 0) throw new Error('请先完善办公方式');
-  return 页值们.map((值) => 办公方式到后端[值 as keyof typeof 办公方式到后端]);
+  // 兼容两种来源：引导预填.筛选偏好.办公方式 存的是中文标签（现场/混合/远程/全远程），
+  // 而 已有意向的服务端快照 workplace_modes 存的是 BFF wire code（onsite/hybrid/remote）。
+  // 原来只查中文表，wire code 进来 → undefined → workplace_modes:[null] 被 BFF 拒。
+  // 这里先查中文表，查不到再当作 wire code 原样透传（仍是非法时返回 undefined 由上层校验）。
+  const 合法wire = new Set(['onsite', 'hybrid', 'remote']);
+  return 页值们.map((值) => 办公方式到后端[值 as keyof typeof 办公方式到后端] ?? (合法wire.has(值) ? 值 : undefined)) as BFFOwnerIntention['workplace_modes'];
 }
 
 /** 草稿 → BFF意向写入 body。打开已有意向且用户没切招聘类型时保留原 recruitment_type。 */
@@ -315,6 +320,17 @@ function 薪资带到文本(下: number, 上: number, 周期: 'month' | 'day' | 
   return `${下}-${上}${后缀}`;
 }
 
+/**
+ * 页面 届别（校园招聘）→ BFF campus_cohort 年份数字。
+ * '不限'（UI 默认不限届别）/ 空 / 非数字 一律落 null：原来 '不限'.replace(/\D/g,'')=''
+ * → Number('')=0 被当成 0 届发出，0 不是合法届别年份。
+ */
+function 解析届别(届别: string | undefined): number | null {
+  if (!届别 || 届别 === '不限') return null;
+  const 数 = Number(届别.replace(/\D/g, ''));
+  return Number.isFinite(数) && 数 > 0 ? 数 : null;
+}
+
 /** BFF岗位 → 页面 在招岗位。附属字段（加分关键词/实习转正）从 附属 参数注入，不在 BFF body。真实岗位 在谈数 固定 0。 */
 export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: string[]; 实习转正?: boolean }): 在招岗位 {
   const 岗位: 在招岗位 = {
@@ -359,7 +375,9 @@ export function 转岗位创建(页面岗位: 在招岗位, 目录: 目录索引
     workplace_mode: 办公方式到岗位后端[页面岗位.办公方式 as keyof typeof 办公方式到岗位后端] ?? 'onsite',
     salary: { lower, upper },
     annual_salary_months: 页面岗位.年薪月数 ?? null,
-    campus_cohort: 页面岗位.届别 ? Number(页面岗位.届别.replace(/\D/g, '')) : null,
+    // '不限'(UI 默认不限届别) / 空 / 非数字 一律落 null：原来 '不限'.replace(/\D/g,'')=''
+    // → Number('')=0，会被当成 0 届发出去。0 不是合法届别年份。
+    campus_cohort: 解析届别(页面岗位.届别),
     internship_months: 页面岗位.实习月数 ?? null,
     onsite_days_per_week: 页面岗位.每周天数 ?? null,
     experience_requirement: 映射经验要求(页面岗位.经验要求),
@@ -388,7 +406,7 @@ export function 转岗位补丁(
     workplace_mode: 办公方式到岗位后端[页面岗位.办公方式 as keyof typeof 办公方式到岗位后端] ?? 'onsite',
     salary: { lower, upper },
     annual_salary_months: 页面岗位.年薪月数 ?? null,
-    campus_cohort: 页面岗位.届别 ? Number(页面岗位.届别.replace(/\D/g, '')) : null,
+    campus_cohort: 解析届别(页面岗位.届别),
     internship_months: 页面岗位.实习月数 ?? null,
     onsite_days_per_week: 页面岗位.每周天数 ?? null,
     experience_requirement: 映射经验要求(页面岗位.经验要求),

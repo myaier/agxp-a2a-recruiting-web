@@ -327,3 +327,83 @@ describe('应用状态提供者 招聘方岗位写操作', () => {
     await waitFor(() => expect(当前.状态.岗位列表).toEqual(最新列表));
   });
 });
+
+// ── 切身份后水合目标角色支持域（F3）+ 退出登录 401 清本地会话（F12）+ StrictMode 双跑（F1）──
+
+describe('应用状态提供者 切身份与退出登录', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  it('候选切到招聘方后水合目标角色的岗位列表（F3）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    // mount-init 时 candidate → 读取简历/意向；切身份后 recruiter → 读取岗位
+    const 岗位快照 = { 列表: [{ ...页面岗位样本, 编号: 'job_real_1', 名称: '后端工程师' }], 服务端: { job_real_1: BFF岗位样本 } };
+    vi.mocked(后端.读取岗位).mockResolvedValue(岗位快照);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // 切之前：候选盘空
+    expect(当前.状态.岗位列表).toEqual([]);
+    await 当前.操作.切身份('招聘方');
+    expect(后端.确保角色).toHaveBeenCalledWith('recruiter');
+    expect(后端.记录当前角色).toHaveBeenCalledWith('recruiter');
+    // 切身份触发了一次 读取岗位（mount-init 候选侧不读岗位）
+    expect(后端.读取岗位).toHaveBeenCalled();
+    await waitFor(() => expect(当前.状态.岗位列表.map((岗) => 岗.名称)).toContain('后端工程师'));
+  });
+
+  it('退出登录 401 视同成功：清空本地会话且不抛错（F12）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.退出登录).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await expect(当前.操作.退出登录()).resolves.toBeUndefined();
+    // 设后端状态 触发的重渲染是异步的，waitFor 等到已登录 落 false
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.主体).toBe(null);
+    expect(当前.后端状态.简历快照).toBe(null);
+    expect(当前.后端状态.意向快照).toEqual({});
+    expect(当前.后端状态.岗位快照).toEqual({});
+  });
+
+  it('退出登录非 401 错误原样抛出，不清本地会话（F12）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.退出登录).mockRejectedValue(new BFF错误(500, 'internal_error', 'boom'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await expect(当前.操作.退出登录()).rejects.toMatchObject({ code: 'internal_error' });
+  });
+
+  it('StrictMode 双跑（mount→unmount→mount）后初始化仍能落到 完成（F1）', async () => {
+    // 模拟 StrictMode 的 setup→cleanup→setup：第一次 mount 后立刻 unmount，再 mount 第二个。
+    // 修复前：第一次 已初始化.current 置 true 但被取消，cleanup 不复位 ref → 第二次 setup 早退 → 永远 进行中。
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    const 数据源 = { 模式: 'backend' as const, 后端环境: 'stg' as const, 后端: 后端源 };
+    const { unmount } = render(createElement(应用状态提供者, { 数据源 }, null));
+    // 不等第一次完成就卸载（模拟 StrictMode cleanup）
+    unmount();
+    // 第二次 mount：应当重新跑初始化并最终落到 完成
+    let 当前2!: ReturnType<typeof use应用状态>;
+    function 上下文探针2() { 当前2 = use应用状态(); return null; }
+    render(createElement(应用状态提供者, { 数据源 }, createElement(上下文探针2)));
+    await waitFor(() => expect(当前2.后端状态.初始化).toBe('完成'));
+    expect(当前2.后端状态.已登录).toBe(true);
+    // 第一次取消的请求不应造成重复 set；恢复会话至少被调用过
+    expect(后端.恢复会话).toHaveBeenCalled();
+  });
+});

@@ -46,6 +46,8 @@ export default function 选身份() {
   // 点按钮卡片翻 180°，翻完才真正切端 —— 动画本身就在讲这个产品的规则。
   const [已翻面, 设已翻面] = useState(false);
   const 翻面计时 = useRef<number | null>(null);
+  // 普通身份卡：await 操作.切身份 期间防双击（切换模式有自己的 已翻面 守卫）
+  const 正在选身份 = useRef(false);
   useEffect(() => {
     return () => {
       if (翻面计时.current !== null) window.clearTimeout(翻面计时.current);
@@ -105,7 +107,20 @@ export default function 选身份() {
               type="button"
               key={项.键}
               className={`${样式.身份卡} 可点`}
-              onClick={() => 跳转(身份首次入口(项.键))}
+              onClick={async () => {
+                if (正在选身份.current) return;
+                正在选身份.current = true;
+                try {
+                  // 普通模式（新登录用户）选身份也要落角色：原来直接 跳转，
+                  // 不调 操作.切身份 → 后续 Backend 请求缺角色鉴权失败。切换模式已有此逻辑。
+                  await 操作.切身份(项.键 === '企业' ? '招聘方' : '求职者');
+                  跳转(身份首次入口(项.键));
+                } catch (错误) {
+                  轻提示(取后端错误文案(错误));
+                } finally {
+                  正在选身份.current = false;
+                }
+              }}
             >
               <span className={样式.身份标题}>{项.标题}</span>
               <span className={样式.图标底}>

@@ -21,11 +21,19 @@ function 键(env: 后端环境, jobId: string): string {
   return `${键前缀}:${env}:${jobId}`;
 }
 
-/** 附属存储按 env 隔离；读取不到时返回 {}（页面按缺省处理，不抛错）。 */
+/** 附属存储按 env 隔离；读取不到时返回 {}（页面按缺省处理，不抛错）。
+ *  附属数据是非权威的：localStorage 被禁用/超限时绝不能让读抛错打断岗位水合，
+ *  也不能让写/删的抛错把一次成功的服务端变更报成失败（重试还会造重复岗位）。
+ *  所以三个接口都 best-effort，getItem/setItem/removeItem 本身的异常也吞掉。 */
 export function 创建岗位附属存储(storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>): 岗位附属存储 {
   return {
     读取(env, jobId) {
-      const 原文 = storage.getItem(键(env, jobId));
+      let 原文: string | null;
+      try {
+        原文 = storage.getItem(键(env, jobId));
+      } catch {
+        return {};
+      }
       if (!原文) return {};
       try {
         const 值 = JSON.parse(原文) as 岗位附属;
@@ -35,10 +43,18 @@ export function 创建岗位附属存储(storage: Pick<Storage, 'getItem' | 'set
       }
     },
     写入(env, jobId, value) {
-      storage.setItem(键(env, jobId), JSON.stringify(value));
+      try {
+        storage.setItem(键(env, jobId), JSON.stringify(value));
+      } catch {
+        // 隐私模式或空间不足：附属数据非权威，吞掉以免把成功的服务端变更报成失败
+      }
     },
     删除(env, jobId) {
-      storage.removeItem(键(env, jobId));
+      try {
+        storage.removeItem(键(env, jobId));
+      } catch {
+        // 同上
+      }
     },
   };
 }

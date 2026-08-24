@@ -1811,6 +1811,11 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     })();
     return () => {
       已取消 = true;
+      // StrictMode 下 dev 会 setup→cleanup→setup：第一次的异步已被 已取消=true 取消，
+      // 但 已初始化.current 仍为 true，第二次 setup 会早退 → 初始化永远停在 '进行中'。
+      // 这里一并复位 ref，让第二次 setup 重新跑初始化；第一次的异步已被 已取消 守住不会再 set state。
+      // 生产环境（无 StrictMode）cleanup 只在 unmount 时跑，复位不影响。
+      已初始化.current = false;
     };
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1918,28 +1923,46 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       },
       async 退出登录() {
         if (!是后端 || !后端) return;
-        await 后端.退出登录();
-        尝试引用.current = null;
-        派发({ 型: '水合后端简历', 快照: 空简历快照 });
-        派发({ 型: '水合后端意向', 快照: 空意向快照 });
-        派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
-        设后端状态((旧) => ({
-          ...旧,
-          已登录: false,
-          主体: null,
-          简历快照: null,
-          意向快照: {},
-          岗位快照: {},
-        }));
+        // 服务端会话可能已过期：退出登录请求返回 401 时，本地其实已经是登出态，
+        // 必须照常清本地会话，否则两端的设置屏会捕获 reject 卡在已登录壳里出不来。
+        // 401（或 invalid_session）视同成功；其他错误原样抛给屏去 轻提示。
+        const 清空本地会话 = () => {
+          尝试引用.current = null;
+          派发({ 型: '水合后端简历', 快照: 空简历快照 });
+          派发({ 型: '水合后端意向', 快照: 空意向快照 });
+          派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
+          设后端状态((旧) => ({
+            ...旧,
+            已登录: false,
+            主体: null,
+            简历快照: null,
+            意向快照: {},
+            岗位快照: {},
+          }));
+        };
+        try {
+          await 后端.退出登录();
+        } catch (错误) {
+          if (错误 instanceof BFF错误 && (错误.status === 401 || 错误.code === 'invalid_session')) {
+            清空本地会话();
+            return;
+          }
+          throw 错误;
+        }
+        清空本地会话();
       },
       async 切身份(to) {
         // 派发 演示域 UI 落点（当前Tab/子视图）；Backend 另外落角色
         派发({ 型: '切身份', 到: to });
         if (!是后端 || !后端) return;
         const 角色: BFF角色 = to === '求职者' ? 'candidate' : 'recruiter';
-        const 主体 = await 后端.确保角色(角色);
-        await 后端.记录当前角色(角色);
-        设后端状态((旧) => ({ ...旧, 主体 }));
+        await 后端.确保角色(角色);
+        const 最新主体 = await 后端.记录当前角色(角色);
+        设后端状态((旧) => ({ ...旧, 主体: 最新主体 }));
+        // 切身份后水合目标角色的支持域：mount-init 只按上次角色水合，
+        // 不补这一步，候选切到招聘方会顶着一个空岗位盘，招聘方切到候选看到的是空简历/意向。
+        // 复用 mount-init 的 水合角色数据 逻辑（失败只 轻提示，不抛出）。
+        await 水合角色数据(后端, 最新主体, 派发, 设后端状态, 目录引用);
       },
       async 保存简历(next) {
         if (!是后端 || !后端) {
@@ -2032,7 +2055,10 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         锁.current.add(键);
         try {
           const 目录 = 目录引用.current ?? await 取目录(后端, 目录引用);
-          const 快照 = await 后端.创建首次意向(input, { 办公方式: ['onsite'], 目录 });
+          // 办公方式 取 向导答案里的中文标签（引导预填.筛选偏好.办公方式），
+          // 不再硬编码 ['onsite']：硬编码会让用户选的「混合/全远程」丢失，
+          // 且 wire code 'onsite' 经 映射办公方式 只查中文表会变 undefined。
+          const 快照 = await 后端.创建首次意向(input, { 办公方式: input.筛选偏好.办公方式, 目录 });
           派发({ 型: '水合后端意向', 快照 });
           设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
         } catch (错误) {

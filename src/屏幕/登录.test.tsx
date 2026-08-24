@@ -58,4 +58,21 @@ describe('登录页 Backend', () => {
     完成.resolve();
     await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.选身份));
   });
+
+  // F11：开始手机登录失败时倒计时不启动，用户可重试（按钮不被倒计时锁住）
+  it('开始手机登录失败时不进入倒计时，按钮仍是「获取验证码」可重试', async () => {
+    mock操作.开始手机登录.mockRejectedValue(new Error('短信通道异常'));
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <登录 />
+      </MemoryRouter>,
+    );
+    await 用户.type(screen.getByLabelText('手机号'), '13800000000');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    // 失败后：倒计时文案（Ns）不应出现，按钮仍是「获取验证码」（不是「重新获取」也不是倒计时）
+    await waitFor(() => expect(screen.getByRole('button', { name: '获取验证码' })).toBeDefined());
+    // 四格验证码区不应出现（剩余秒仍是 null，剩余秒 !== null 才渲染四格）
+    expect(document.querySelectorAll('[class*="验证码格"]')).toHaveLength(0);
+  });
 });
