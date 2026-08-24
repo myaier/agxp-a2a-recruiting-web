@@ -53,6 +53,22 @@ describe('候选人后端映射', () => {
     expect(body).not.toHaveProperty('实习转正');
   });
 
+  it('经验要求按 BFF enum 映射，不静默降级为 none', () => {
+    const 目录 = {
+      职位类别: [{ id: 'tax_product', display_name: '产品经理' }],
+      地点: [{ id: 'loc_shanghai', display_name: '上海' }],
+      行业: [], 院校: [], 专业: [],
+    };
+    // 页面岗位样本.经验要求 = '不限'；覆盖成 '3-5 年' 验证不被吞成 'none'
+    const body = 转岗位创建({ ...页面岗位样本, 经验要求: '3-5 年' }, 目录, { 公司: '云衢科技' });
+    expect(body.experience_requirement).toBe('three_to_five_years');
+    // 不限 仍映射为 none
+    expect(转岗位创建(页面岗位样本, 目录, { 公司: '云衢科技' }).experience_requirement).toBe('none');
+    // 未映射的页值（演示域「3 年以上」）必须抛错，不静默落成 'none'
+    expect(() => 转岗位创建({ ...页面岗位样本, 经验要求: '3 年以上' }, 目录, { 公司: '云衢科技' }))
+      .toThrow('未映射的经验要求：3 年以上');
+  });
+
   it('已加载的校园/实习意向在用户没切招聘类型时保留原类型', () => {
     const 草稿 = {
       编辑编号: BFF意向样本.intention_id, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '产品经理',

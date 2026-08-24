@@ -282,7 +282,23 @@ const 后端到学历 = { none: '不限', associate: '大专', bachelor: '本科
 const 岗位类型到后端 = { 社招全职: 'social_full_time', 校园招聘: 'campus', 实习生: 'internship', 兼职: 'part_time' } as const;
 const 办公方式到岗位后端 = { 现场: 'onsite', 混合: 'hybrid', 远程: 'remote', 全远程: 'remote' } as const;
 const 学历到后端 = { 不限: 'none', 大专: 'associate', 本科: 'bachelor', 硕士: 'master', 博士: 'doctorate' } as const;
-const 经验到后端: Record<string, string> = { 不限: 'none' };
+// 经验要求：页面五档（发布岗位.tsx 的 经验要求选项）与 BFF enum 一一对应。
+// 未在映射里的页值（如演示域的「3 年以上」）直接抛错——契约漂移要当面暴露，不能静默落成 'none' 丢数据。
+const 经验要求到后端 = {
+  不限: 'none', '1-3 年': 'one_to_three_years', '3-5 年': 'three_to_five_years',
+  '5 年以上': 'five_plus_years', '10 年以上': 'ten_plus_years',
+} as const;
+const 后端到经验要求 = {
+  none: '不限', one_to_three_years: '1-3 年', three_to_five_years: '3-5 年',
+  five_plus_years: '5 年以上', ten_plus_years: '10 年以上',
+} as const;
+
+/** 页面 经验要求 → BFF enum；未映射的页值抛错，绝不静默降级为 'none'。 */
+function 映射经验要求(页值: string | undefined): string {
+  const 键 = (页值 ?? '') as keyof typeof 经验要求到后端;
+  if (!(键 in 经验要求到后端)) throw new Error(`未映射的经验要求：${页值 ?? '(空)'}`);
+  return 经验要求到后端[键];
+}
 
 /** 薪资带文本 → { lower, upper, period }；解析失败直接抛错（不静默写 NaN）。 */
 function 解析薪资带(带: string): { lower: number; upper: number; period: 'month' | 'day' | 'hour' } {
@@ -313,7 +329,7 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
     招聘类型: 后端到岗位类型[dto.recruitment_type],
     职位类别: dto.category.display_name,
     筛选要求: dto.private_screening_preferences,
-    经验要求: dto.experience_requirement,
+    经验要求: 后端到经验要求[dto.experience_requirement as keyof typeof 后端到经验要求] ?? dto.experience_requirement,
     最低学历: 后端到学历[dto.education_requirement as keyof typeof 后端到学历] ?? dto.education_requirement,
     职位描述: dto.description,
     职位要求: dto.requirements,
@@ -346,7 +362,7 @@ export function 转岗位创建(页面岗位: 在招岗位, 目录: 目录索引
     campus_cohort: 页面岗位.届别 ? Number(页面岗位.届别.replace(/\D/g, '')) : null,
     internship_months: 页面岗位.实习月数 ?? null,
     onsite_days_per_week: 页面岗位.每周天数 ?? null,
-    experience_requirement: 经验到后端[页面岗位.经验要求 ?? '不限'] ?? 'none',
+    experience_requirement: 映射经验要求(页面岗位.经验要求),
     education_requirement: 学历到后端[页面岗位.最低学历 as keyof typeof 学历到后端] ?? 'none',
     description: 页面岗位.职位描述 ?? '',
     requirements: 页面岗位.职位要求 ?? '',
@@ -375,7 +391,7 @@ export function 转岗位补丁(
     campus_cohort: 页面岗位.届别 ? Number(页面岗位.届别.replace(/\D/g, '')) : null,
     internship_months: 页面岗位.实习月数 ?? null,
     onsite_days_per_week: 页面岗位.每周天数 ?? null,
-    experience_requirement: 经验到后端[页面岗位.经验要求 ?? '不限'] ?? 'none',
+    experience_requirement: 映射经验要求(页面岗位.经验要求),
     education_requirement: 学历到后端[页面岗位.最低学历 as keyof typeof 学历到后端] ?? 'none',
     description: 页面岗位.职位描述 ?? '',
     requirements: 页面岗位.职位要求 ?? '',
