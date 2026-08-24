@@ -49,6 +49,11 @@ export interface 意向草稿型 {
   薪资上限: number | null;
   /** 期望行业，规格上限 3（同 感兴趣城市们，上限在页面把关）*/
   期望行业们: string[];
+  /** 后端真实招聘类型；编辑已有意向时从服务端快照带入，新建为 null。
+   *  不渲染：页面只有 全职/兼职 两个单选，校园/实习 的区分只能从后端保留。*/
+  后端招聘类型: 'social_full_time' | 'campus' | 'internship' | 'part_time' | null;
+  /** 用户是否实际点过 全职/兼职 单选；false 时保留 后端招聘类型，true 时按页面值覆盖。*/
+  求职类型已改: boolean;
 }
 
 export interface 意向映射上下文 {
