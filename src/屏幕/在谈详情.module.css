@@ -62,7 +62,23 @@
   padding: 10px 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
+}
+
+/* 职位详情 Tab 去框（标注 2026-08-24「这个框特别的多余」，产品负责人选定
+   方案乙·白纸化）：页底改白、卡壳全拆、段间一道发丝线。
+   用 > * 通配直接子块 —— 这一列里既有本文件的 .详情卡 也有 职位详情.module.css
+   的 .卡，跨模块拿不到彼此的类名，通配是唯一不复制样式的写法。
+   类名写两遍是故意的：0,2,0 权重压过任何单类卡壳，不受模块加载顺序摆布 */
+.详情列.详情列 > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding-left: 2px;
+  padding-right: 2px;
+}
+.详情列.详情列 > * + * {
+  border-top: 1px solid var(--分隔线);
 }
 
 /* ── 决策卡内部 ── */
@@ -395,4 +411,35 @@
   font-size: 12px;
   line-height: 1.5;
   color: var(--次要浅);
+}
+
+/* ── 意向小结（标注 2026-08-24：确认节点一目了然的小结）── */
+.确认小结卡 {
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: 14px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+}
+.确认小结行 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3.5px 0;
+}
+.确认小结勾 {
+  color: var(--递简历);
+  font-weight: 700;
+  font-size: 12px;
+}
+.确认小结名 {
+  font-size: 12px;
+  color: var(--次要浅);
+  width: 44px;
+  flex: none;
+}
+.确认小结值 {
+  font-size: 12.5px;
+  color: var(--墨);
+  font-weight: 600;
 }
