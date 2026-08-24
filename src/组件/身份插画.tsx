@@ -1,7 +1,7 @@
 // 选身份分屏（方案 C，2026-08-24）的两幅场景插画。
 // 参考 BOSS 直聘选身份页的「插画讲故事」结构，但不用人物 —— 用本产品
 // 彩绘图标的几何语言拼场景：求职 = 手提箱 + 悬浮 offer 卡 + 放大镜；
-// 招人 = 楼宇 + 悬浮简历卡 + 亮绿勾。色相各归各半屏（绿 / 天蓝）。
+// 招人 = 楼宇 + 悬浮简历卡。色相各归各半屏（绿 / 天蓝）。
 
 export function 求职插画({ 边长 = 190 }: { 边长?: number }) {
   return (
@@ -67,11 +67,7 @@ export function 招人插画({ 边长 = 190 }: { 边长?: number }) {
         <rect x="7" y="26" width="26" height="4" rx="2" fill="#e6e7df" />
         <rect x="7" y="34" width="18" height="4" rx="2" fill="#e6e7df" />
       </g>
-      {/* 亮绿勾 */}
-      <g transform="translate(30,96)">
-        <circle cx="12" cy="12" r="12" fill="#3fd34e" />
-        <path d="M6.5 12.5l4 4 7-8" stroke="#fff" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      </g>
+      {/* 亮绿勾按标注 2026-08-24 删除（「把这个招聘图标里的对号删掉」）*/}
     </svg>
   );
 }
