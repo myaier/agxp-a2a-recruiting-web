@@ -10,8 +10,7 @@
 // 在职时间用 <input type="month">：iOS 弹原生年月滚轮，桌面有日历下拉，
 // 不再是能输任意字符的自由文本 —— 这是上一版最大的 bug。
 
-import { useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import { useState } from 'react';
 import 样式 from './工作经历.module.css';
 import 年月滚轮层 from '../组件/年月滚轮层';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 开关 } from '../组件/通用';
@@ -86,16 +85,11 @@ export default function 工作经历() {
     });
   // null = 列表视图；'新增' = 空白编辑；其它 = 正在编辑的段编号
   const [编辑目标, 设编辑目标] = useState<string | '新增' | null>(null);
-  // 解析提示直接由全局的简历文件名算出来，不留本地副本：写死 mock 文件名时，
-  // 用户在 完善资料 传的是「我的简历.pdf」，走到这页看到的却是别人的名字；
-  // 本页再传一次也只改本地 state，离开再回来又变回那串写死的
-  const 解析提示 = 全局.简历文件名 ? `${全局.简历文件名} ✓ 已解析，可逐段修改` : '';
   // null = 不在编辑教育；'新增' = 空白；其它 = 正在编辑的教育段编号
   const [教育目标, 设教育目标] = useState<string | '新增' | null>(null);
   // 技能 / 证书的行内录入草稿
   const [技能草稿, 设技能草稿] = useState('');
   const [证书名草稿, 设证书名草稿] = useState('');
-  const 文件选择框 = useRef<HTMLInputElement>(null);
 
   /** 加一条技能：去重 + 去空白，重复的直接吞掉不报错（用户多半只是手抖点了两次）*/
   const 加技能 = () => {
@@ -118,14 +112,7 @@ export default function 工作经历() {
     设证书名草稿('');
   };
 
-  function 选中简历文件(事件: ChangeEvent<HTMLInputElement>) {
-    const 文件 = 事件.target.files?.[0];
-    if (!文件) return;
-    // 文件名落全局（标注 13:10）：这就是之后递给对方的正式简历，
-    // 在谈详情的 PDF 附件与原件弹层都显示它
-    派发({ 型: '存简历文件名', 文件名: 文件.name });
-    轻提示('解析完成（原型演示，不真解析文件）');
-  }
+
 
   // ── 教育编辑视图 ──────────────────────────────────────────
   if (教育目标 !== null) {
@@ -284,22 +271,8 @@ export default function 工作经历() {
           刻意不叫「我的简历」—— 那是 /resume 那一屏的名字，两屏重名会分不清。 */}
       <页面大标题 标题="在线简历" />
 
-      {/* 一键上传简历：绿色虚线框，点了走真实文件选择 */}
-      <button className={`${样式.上传条} 可点`} onClick={() => 文件选择框.current?.click()}>
-        <span className={样式.上传图标}>⬆</span>
-        <span className={样式.上传文案}>
-          <span className={样式.上传标题}>上传简历，AI识别后自动填充</span>
-          <span className={`${样式.上传说明} 单行`}>{解析提示}</span>
-        </span>
-      </button>
-      <input
-        ref={文件选择框}
-        type="file"
-        accept=".pdf,.doc,.docx"
-        className={样式.隐藏文件框}
-        onChange={选中简历文件}
-      />
-
+      {/* 上传条按标注 2026-08-24 删除（「前面有一个上传简历了」）——
+          完善资料屏已有唯一上传入口，这里只展示与逐段编辑 */}
       <滚动区 样式覆盖={{ padding: '14px 18px 40px' }}>
         {在校中 ? (
           <>
