@@ -64,7 +64,7 @@
 
 .阶段说明 {
   margin-top: 2px;
-  font-size: 11.5px;
+  font-size: 14px; /* 定稿甲随批：说明字稍大一点（13→14） */
   line-height: 17.8px;
   color: var(--次要浅);
 }
