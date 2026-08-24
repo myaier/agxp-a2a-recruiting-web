@@ -456,34 +456,6 @@
   }
 }
 
-/* ── 四阶段进度轨（标注 10:30：卡下半身补「走到第几步」这条信息）── */
-.进度轨组 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 3px;
-  margin-bottom: 9px;
-}
-
-.进度段 {
-  position: relative;
-  flex: 1;
-  height: 3px;
-  border-radius: 2px;
-}
-
-/* 当前段末端的游标：带同色光晕，像进度正停在这里 */
-.进度游标 {
-  position: absolute;
-  right: -1px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  box-shadow: 0 0 0 2.5px var(--白);
-}
-
 /* 呼吸点：只在等你时跳，平时静止 */
 .阶段点呼吸 {
   animation: 阶段呼吸 1.8s ease-in-out infinite;

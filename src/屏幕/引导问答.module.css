@@ -1,7 +1,7 @@
 /* A3a–A3g 七题引导 —— 对齐 storyboard 的 A3a / A3b / A3b2 / A3c / A3e / A3f / A3g，
    像素值从 RN 源（应用/屏幕/引导问答.js）一比一搬过来。 */
 
-/* 引导壳：整屏的 flex 列容器（返回栏 + 进度条 + 题体 + 主按钮）。
+/* 引导壳：整屏的 flex 列容器（返回栏 + 题体 + 主按钮）。
    同时收纳三个设计令牌里没有收录的补充色 —— RN 源里这三个色也是硬编码，
    为了不去改地基的令牌文件，先在本屏作用域内声明成局部变量。 */
 .引导壳 {
@@ -14,25 +14,6 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-/* ── 顶部七段进度条：走完七题进 A4 披露说明 ── */
-.进度轨 {
-  flex: none;
-  display: flex;
-  flex-direction: row;
-  gap: 4px;
-  padding: 0 22px 4px;
-}
-.进度段 {
-  flex: 1;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--描边深);
-  transition: background 0.18s ease;
-}
-.进度段已过 {
-  background: var(--荧光绿);
 }
 
 /* 题体：占满剩余高度的列容器（期望职位 / 工作城市 用，它们底部要固定「已选条」） */
