@@ -3,10 +3,12 @@
 
 /* ── 节问：截图里加粗的问题行 ── */
 .节问 {
-  font-size: var(--字号-区块标题);
+  /* 2026-08-24 重设计（C1 + 2px 描边定稿）：题名降为小灰标，
+     让内容而不是问题占版面 —— 「不够简洁不够高级」的来源之一是 17px 加粗题名 */
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--墨);
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
   margin-top: 6px;
 }
 
@@ -21,7 +23,8 @@
   height: 52px;
   padding: 0 14px;
   border-radius: 14px;
-  border: 1.5px dashed var(--上传框描边);
+  /* 虚线改细实线（同一轮定稿）：虚线的工程感是「不高级」的另一半来源 */
+  border: 1px solid var(--描边中);
   background: #ffffff;
   display: flex;
   align-items: center;
@@ -57,16 +60,22 @@
   flex: 1;
   height: 52px;
   border-radius: 14px;
-  border: 1.5px solid #e4e6dd;
+  border: 1px solid var(--描边中);
   background: #ffffff;
   font-size: 16px;
   font-weight: 600;
   color: var(--墨);
 }
 
+/* 选中 = 2px 亮绿描边 + 亮绿对勾（描边色与对勾同色，产品负责人定稿）。
+   不再铺淡绿底 —— 选中信号只由描边和勾承担 */
 .选钮当前 {
-  border-color: var(--深绿);
-  background: var(--淡绿底2);
+  border: 2px solid var(--亮绿);
+  font-weight: 700;
+}
+.选钮当前::before {
+  content: '✓ ';
+  color: var(--亮绿);
   font-weight: 700;
 }
 
@@ -156,15 +165,23 @@
 
 .猜片 {
   padding: 7px 14px;
-  border-radius: 10px;
-  background: var(--浅灰底);
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid var(--描边中);
   font-size: 12.5px;
   font-weight: 500;
-  color: var(--墨);
+  color: var(--次要);
 }
 
 .猜片选中 {
-  background: var(--淡绿底2);
-  color: var(--深绿文字);
+  border: 2px solid var(--亮绿);
+  color: var(--墨);
+  font-weight: 700;
+  /* 2px 比未选的 1px 厚一像素，收一像素内边距抵掉，行高不跳 */
+  padding: 6px 13px;
+}
+.猜片选中::before {
+  content: '✓ ';
+  color: var(--亮绿);
   font-weight: 700;
 }
