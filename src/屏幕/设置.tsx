@@ -25,11 +25,10 @@ export default function 设置() {
     return () => window.clearTimeout(定时);
   }, [提示]);
 
-  const 开关行 = (键: string, 说明: string) => (
+  const 开关行 = (键: string) => (
     <div className={样式.行} key={键}>
       <span className={样式.行文字组}>
         <span className={样式.行标题}>{键}</span>
-        {说明 ? <span className={样式.行说明}>{说明}</span> : null}
       </span>
       <开关
         开={状态.设置开关[键]}
@@ -47,16 +46,15 @@ export default function 设置() {
   );
 
   return (
-    <次级页外壳>
+    <次级页外壳 白底>
       <返回栏 返回={返回} 标题="设置" />
 
       <滚动区 样式覆盖={{ padding: '14px 18px 24px' }}>
         <div className={样式.组标}>账号</div>
-        <div className={样式.卡}>
+        <div className={样式.平铺组}>
           <div className={样式.行}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>手机号</span>
-              <span className={样式.行说明}>登录与接收验证码用，对企业永不可见</span>
             </span>
             <span className={样式.行值}>138 **** 6021</span>
           </div>
@@ -66,7 +64,6 @@ export default function 设置() {
           >
             <span className={样式.行文字组}>
               <span className={样式.行标题}>实名认证</span>
-              <span className={样式.行说明}>认证结果只用于平台内可信标记</span>
             </span>
             <span className={样式.行值}>已认证</span>
             <span className={样式.尖括号}>›</span>
@@ -74,33 +71,29 @@ export default function 设置() {
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.账号安全)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>账号与安全</span>
-              <span className={样式.行说明}>换绑手机号、注销账号</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
         </div>
 
         <div className={`${样式.组标} ${样式.组标间距}`}>隐私与可见性</div>
-        <div className={样式.卡}>
-          {开关行('对现雇主隐身', '当前雇主及其关联公司完全看不到你，双向不可见')}
+        <div className={样式.平铺组}>
+          {开关行('对现雇主隐身')}
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.披露偏好)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>披露偏好</span>
-              <span className={样式.行说明}>逐项决定代理在什么时机交出哪些信息</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.屏蔽名单)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>屏蔽名单</span>
-              <span className={样式.行说明}>{状态.屏蔽名单.length} 家公司双向不可见</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.接触记录)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>谁接触过我</span>
-              <span className={样式.行说明}>只显示企业与动作，不显示任何真人身份</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
@@ -109,7 +102,7 @@ export default function 设置() {
 
 
         <div className={`${样式.组标} ${样式.组标间距}`}>关于</div>
-        <div className={样式.卡}>
+        <div className={样式.平铺组}>
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.帮助与客服)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>帮助与客服</span>

@@ -22,60 +22,54 @@ export default function 企业设置() {
     return () => window.clearTimeout(定时);
   }, [提示]);
 
-  const 开关行 = (键: string, 说明: string) => (
+  const 开关行 = (键: string) => (
     <div className={样式.行} key={键}>
       <span className={样式.行文字组}>
         <span className={样式.行标题}>{键}</span>
-        {说明 ? <span className={样式.行说明}>{说明}</span> : null}
       </span>
       <开关 标签={键} 开={状态.企业设置开关[键]} 切换={() => 派发({ 型: '企业切设置开关', 键 })} />
     </div>
   );
 
   return (
-    <次级页外壳>
+    <次级页外壳 白底>
       <返回栏 返回={返回} 标题="设置" />
 
       <滚动区 样式覆盖={{ padding: '14px 18px 24px' }}>
         <div className={样式.组标}>账号</div>
-        <div className={样式.卡}>
+        <div className={样式.平铺组}>
           <div className={样式.行}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>企业实名认证</span>
-              <span className={样式.行说明}>{状态.企业认证.公司} · 已通过工商核验</span>
             </span>
             <span className={样式.行值}>已认证</span>
           </div>
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.招聘名片)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>招聘名片</span>
-              <span className={样式.行说明}>候选人从第一轮起就看得到这张名片</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.账号安全)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>账号与安全</span>
-              <span className={样式.行说明}>换绑手机号、注销账号</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
         </div>
 
         <div className={`${样式.组标} ${样式.组标间距}`}>代理与接触</div>
-        <div className={样式.卡}>
-          {开关行('允许代理自动发起接触', '关闭后代理只筛不聊，每次接触前先来问你')}
+        <div className={样式.平铺组}>
+          {开关行('允许代理自动发起接触')}
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.企业代理设置)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>AI代理设置</span>
-              <span className={样式.行说明}>寻访规则、放宽边界、接触额度</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.企业披露策略)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>披露策略</span>
-              <span className={样式.行说明}>逐项决定代理在什么时机交出岗位与团队细节</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
@@ -84,7 +78,7 @@ export default function 企业设置() {
 
         {/* 关于组与求职端设置一比一，两端同一批外围页 */}
         <div className={`${样式.组标} ${样式.组标间距}`}>关于</div>
-        <div className={样式.卡}>
+        <div className={样式.平铺组}>
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.帮助与客服)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>帮助与客服</span>
