@@ -19,7 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import 样式 from './引导问答.module.css';
 import { 主按钮, 单选点, 开关, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
-import { GitHub图标, 放大镜图标 } from '../组件/图标';
+import { 放大镜图标 } from '../组件/图标';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 个人优势文本 } from '../数据/模拟数据';
@@ -99,6 +99,7 @@ export default function 引导问答() {
     }
     if (当前题 === '个人优势') {
       派发({ 型: '存个人优势', 文本: 自我介绍 });
+      // GitHub 行挪去在线简历后，这里只在离题时把全局值规范化一次
       存作品集链接(规范化作品集链接(作品集链接));
     }
   };
@@ -153,12 +154,7 @@ export default function 引导问答() {
         ) : null}
         {当前题 === '硬性排除' ? <排除题 已选={排除项} 切换={造切换(设排除项)} /> : null}
         {当前题 === '个人优势' ? (
-          <优势题
-            文本={自我介绍}
-            设文本={设自我介绍}
-            作品集链接={作品集链接}
-            设作品集链接={存作品集链接}
-          />
+          <优势题 文本={自我介绍} 设文本={设自我介绍} />
         ) : null}
 
         <主按钮
@@ -796,19 +792,7 @@ function 排除题({ 已选, 切换 }: { 已选: string[]; 切换: (项: string)
 
 // ── A3g 个人优势（备忘录式编辑 + GitHub）──────────────────────
 
-function 优势题({
-  文本,
-  设文本,
-  作品集链接,
-  设作品集链接,
-}: {
-  文本: string;
-  设文本: (值: string) => void;
-  作品集链接: string;
-  设作品集链接: (值: string) => void;
-}) {
-  const [GitHub编辑中, 设GitHub编辑中] = useState(false);
-  const 链接错误 = 校验作品集链接(作品集链接);
+function 优势题({ 文本, 设文本 }: { 文本: string; 设文本: (值: string) => void }) {
 
   return (
     <滚动区 样式覆盖={{ paddingBottom: 12 }}>
@@ -835,49 +819,9 @@ function 优势题({
           一是技能只该有一个写入口，二是本屏答案存在内存里，中途跳走会全丢。
           技能必须是标签而不是这段自由文本（标注 13:18 指路小字删）。 */}
       {/* 与 工作经历 屏的「作品集或项目链接」区块共用同一个简历字段，任一入口修改都立即持久化。 */}
-      <div className={样式.GitHub卡}>
-        <span className={样式.GitHub底}>
-          <GitHub图标 />
-        </span>
-        <span className={样式.GitHub文字组}>
-          <span className={样式.GitHub标题}>
-            作品集 / GitHub / 项目链接<span className={样式.选填}>选填</span>
-          </span>
-          {GitHub编辑中 ? (
-            <input
-              className={样式.GitHub输入}
-              type="url"
-              inputMode="url"
-              value={作品集链接}
-              placeholder="github.com/你的用户名或项目地址"
-              autoFocus
-              aria-label="作品集或项目链接"
-              aria-invalid={Boolean(链接错误)}
-              onChange={(事件) => 设作品集链接(事件.target.value)}
-              onBlur={() => {
-                设作品集链接(规范化作品集链接(作品集链接));
-                设GitHub编辑中(false);
-              }}
-              onKeyDown={(事件) => {
-                if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) {
-                  设作品集链接(规范化作品集链接(作品集链接));
-                  设GitHub编辑中(false);
-                }
-              }}
-            />
-          ) : 作品集链接 ? (
-            <button className={`${样式.GitHub值} 可点`} onClick={() => 设GitHub编辑中(true)}>
-              {作品集链接} {链接错误 ? '· 请修改' : '✓'}
-            </button>
-          ) : (
-            <button className={`${样式.GitHub占位} 可点`} onClick={() => 设GitHub编辑中(true)}>
-              粘贴你的作品集、GitHub 或项目链接
-            </button>
-          )}
-          {链接错误 ? <span className={样式.链接错误}>{链接错误}</span> : null}
-        </span>
-        <span className={样式.尖括号}>›</span>
-      </div>
+        {/* GitHub/作品集链接行按标注 2026-08-24 挪走 ——
+            同一字段在「在线简历」屏的 作品集或项目链接 小节（作品集下方），
+            这里不再重复出现 */}
 
       <div className={样式.优势工具行}>
         {/* 重新提取 = 把编辑框恢复成简历里抽出来的原文 */}

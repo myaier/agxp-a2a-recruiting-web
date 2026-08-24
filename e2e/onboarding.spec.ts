@@ -69,8 +69,7 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible();
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page.getByRole('heading', { name: '分享一下自己的个人优势' })).toBeVisible();
-    // 两个入口共写同一份简历字段，所以在线简历屏填的这条在这里立刻可见
-    await expect(page.getByRole('button', { name: /https:\/\/github.com\/example\/kept-project/ })).toBeVisible();
+    // GitHub/作品集行 2026-08-24 挪去在线简历屏（作品集小节），优势页不再出现
     await page.getByRole('button', { name: '保存并继续' }).click();
     await expect(page).toHaveURL(/#\/disclosure$/);
   });
@@ -181,9 +180,13 @@ test.describe('multi-role onboarding', () => {
 
     await page.goto('/#/student');
 
-    await expect(page.getByLabel('预计毕业时间')).toBeVisible();
-    await page.getByLabel('预计毕业时间').fill('2099-06');
-    await expect(page.getByLabel('预计毕业时间')).toHaveValue('2099-06');
+    // 2026-08-24 起毕业时间是内嵌双滚轮（无空态），默认「明年 6 月」自动落盘
+    await expect(page.getByText('预计毕业时间')).toBeVisible();
+    await expect(page.getByLabel('毕业年', { exact: true })).toBeVisible();
+    const 存值 = await page.evaluate(
+      () => JSON.parse(localStorage.getItem('AGXP求职筛选v1') ?? '{}')?.筛选偏好?.毕业时间 ?? '',
+    );
+    expect(存值).toMatch(/^\d{4}-06$/);
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
   });
 
@@ -263,11 +266,10 @@ test.describe('multi-role onboarding', () => {
       );
     });
 
-    await page.goto('/#/wizard');
-    await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible();
-    await page.getByRole('button', { name: '下一步' }).click();
-
-    await expect(page.getByText('作品集 / GitHub / 项目链接')).toBeVisible();
-    await expect(page.getByRole('button', { name: /https:\/\/github.com\/example\/shared-project/ })).toBeVisible();
+    // 2026-08-24：GitHub/作品集行挪去在线简历屏，持久值在那里的 作品集 输入框验证
+    await page.goto('/#/experience');
+    await expect(page.getByLabel('作品集或项目链接')).toHaveValue(
+      'https://github.com/example/shared-project',
+    );
   });
 });

@@ -10,10 +10,11 @@
 //
 // 学生答案仍落 全局.基本信息.身份（在校 / 在职），后续各屏都读它分支 —— 链路不变。
 
-import { useRef } from 'react';
+import { useRef , useEffect} from 'react';
 import type { ChangeEvent } from 'react';
 import type { 基本信息 as 基本信息类型 } from '../数据/类型';
 import 样式 from './学生分流.module.css';
+import 内嵌双滚轮 from '../组件/内嵌双滚轮';
 import { 次级页外壳, 返回栏, 页面大标题, 主按钮, 滚动区 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
@@ -55,6 +56,23 @@ export default function 学生分流() {
   const 毕业时间错误 = 筛选偏好.毕业时间
     ? 校验预计毕业时间(筛选偏好.毕业时间, 今天)
     : null;
+
+  // 毕业时间滚轮档位：今年起往后 8 年；当前值缺省取今天的下一年 6 月（毕业季）
+  const 今年 = Number(今天.slice(0, 4));
+  const 毕业年档 = Array.from({ length: 8 }, (_, i) => 今年 + i);
+  const 毕业月档 = Array.from({ length: 12 }, (_, i) => i + 1);
+  const [毕业年, 毕业月] = 筛选偏好.毕业时间
+    ? [Number(筛选偏好.毕业时间.slice(0, 4)), Number(筛选偏好.毕业时间.slice(5, 7))]
+    : [今年 + 1, 6];
+
+  // 滚轮不像输入框有「空态」—— 它总显示一个值。若用户选了校园招聘但从没动过
+  // 滚轮，显示的默认值必须同步落进状态，否则「看到 2027/6，存的却是空」
+  useEffect(() => {
+    if (筛选偏好.求职类型.includes('校园招聘') && !筛选偏好.毕业时间) {
+      存筛选偏好({ 毕业时间: `${今年 + 1}-06` });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [筛选偏好.求职类型, 筛选偏好.毕业时间]);
   const 存筛选偏好 = (改: Partial<求职初筛偏好>) =>
     派发({ 型: '存求职筛选偏好', 偏好: { ...筛选偏好, ...改 } });
 
@@ -177,16 +195,22 @@ export default function 学生分流() {
         {筛选偏好.求职类型.includes('校园招聘') ? (
           <>
             <div className={`${样式.节问} ${样式.节问间距}`}>预计毕业时间</div>
-            <input
-              className={样式.资料输入}
-              type="month"
-              min={今天.slice(0, 7)}
-              required
-              value={筛选偏好.毕业时间 ?? ''}
-              aria-label="预计毕业时间"
-              aria-invalid={Boolean(毕业时间错误)}
-              onChange={(事件) => 存筛选偏好({ 毕业时间: 事件.target.value })}
-            />
+            {/* 标注 2026-08-24：「改成苹果原生点开是滚轮的那种」——
+                原生 <input type=month> 各端观感不一，换成 出生年月 同款内嵌双滚轮 */}
+            <div className={样式.滚轮卡}>
+              <内嵌双滚轮
+                左档={毕业年档}
+                右档={毕业月档}
+                左值={毕业年}
+                右值={毕业月}
+                设左值={(年) => 存筛选偏好({ 毕业时间: `${年}-${String(毕业月).padStart(2, '0')}` })}
+                设右值={(月) => 存筛选偏好({ 毕业时间: `${毕业年}-${String(月).padStart(2, '0')}` })}
+                左名="毕业年"
+                右名="毕业月"
+                左单位="年"
+                右单位="月"
+              />
+            </div>
             {毕业时间错误 ? <div className={样式.字段错误}>{毕业时间错误}</div> : null}
           </>
         ) : null}
