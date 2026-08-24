@@ -46,26 +46,8 @@
   color: var(--次要浅);
 }
 
-.就地值行 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-}
 
-.就地值 {
-  flex: 1;
-  font-size: 15.5px;
-  font-weight: 600;
-  color: var(--墨);
-}
 
-.就地尖括号 {
-  color: var(--最弱);
-  font-size: 16px;
-  font-weight: 300;
-  flex: none;
-}
 
 .认证标 {
   flex: none;
@@ -79,24 +61,22 @@
 
 /* 编辑态输入框：与展示态的值同字号同字重同位置，只多一层浅托盘表明可写 */
 .就地输入 {
+  /* 常驻输入（标注 2026-08-24）：无框无底，和原展示态的值行长得一样，
+     「直接打在这条线上」—— 行的分隔线就是它的下划线 */
   display: block;
   width: 100%;
-  margin-top: 2px;
-  padding: 6px 10px;
-  border: 1px solid #e4e6dd;
-  border-radius: var(--圆角-小托盘);
-  background: var(--页面底);
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
   font-size: 15.5px;
   font-weight: 600;
   line-height: 1.4;
   color: var(--墨);
-  font-family: inherit;
 }
 
 .就地输入:focus {
   outline: none;
-  border-color: var(--深绿);
-  background: var(--淡绿底2);
 }
 
 /* ── 头像上传（标注 22:27）── */

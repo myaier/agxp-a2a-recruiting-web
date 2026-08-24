@@ -8,7 +8,7 @@
 // 原来那套底部升起的编辑抽屉（遮罩 + 抽屉 + 草稿 + 确定按钮）整套删掉：
 // 三个字段都是一行短文本，为改一个词升起半屏抽屉是多余的一层。
 
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import 样式 from './招聘名片.module.css';
 import {
   次级页外壳,
@@ -87,7 +87,6 @@ export default function 招聘名片() {
     公司: 状态.企业认证.公司,
   };
   // 正在就地编辑哪一行（null = 三行都在展示态）
-  const [编辑中, 设编辑中] = useState<表单键 | null>(null);
 
   /** 收笔：失焦或回车都走这里，当场落全局（不再等底部主按钮）。空白视作没改 ——
    *  不允许把字段清空成空串，否则这一行会塌成没有值的空条目 */
@@ -97,7 +96,6 @@ export default function 招聘名片() {
       const 新表单 = { ...表单值, [键]: 新值 };
       派发({ 型: '存企业认证', 姓名: 新表单.姓名, 公司: 新表单.公司, 职务: 新表单.职务 });
     }
-    设编辑中(null);
   }
 
   return (
@@ -154,8 +152,6 @@ export default function 招聘名片() {
             key={字段.键}
             标签={字段.标签}
             值={表单值[字段.键]}
-            编辑态={编辑中 === 字段.键}
-            开始编辑={() => 设编辑中(字段.键)}
             收笔={(输入值) => 收笔(字段.键, 输入值)}
           />
         ))}
@@ -184,52 +180,37 @@ export default function 招聘名片() {
   );
 }
 
-/** 一条就地编辑行：版式与通用 表单条目 一比一（12px 标签 + 15.5/600 值 + 分隔线），
- *  差别只在展示态右侧是尖括号、编辑态整行换成同位置同字号的输入框，
- *  所以点下去时值不跳位，视觉上就是「这一行可以写字了」。 */
+/** 一条就地编辑行（2026-08-24 标注：「把点击后的框直接去掉吧，可以直接打在
+ *  这个线上。不需要专门点击弄个输入框，所有的都这样」）：
+ *  不再有「展示态 ↔ 输入框」两态，这一行常驻就是一个输入框 —— 样式与原展示态
+ *  的值行一比一（15.5/600、无框无底色），光标点哪儿就从哪儿写，收笔落全局。
+ *  尖括号随两态一起撤：没有可展开的东西，摆着就是误导。 */
 function 就地编辑条目({
   标签,
   值,
-  编辑态,
-  开始编辑,
   收笔,
 }: {
   标签: string;
   值: string;
-  编辑态: boolean;
-  开始编辑: () => void;
   收笔: (输入值: string) => void;
 }) {
-  if (编辑态) {
-    return (
-      <div className={样式.就地条目}>
-        <div className={样式.就地标签}>{标签}</div>
-        <input
-          className={样式.就地输入}
-          defaultValue={值}
-          autoFocus
-          aria-label={标签}
-          enterKeyHint="done"
-          onFocus={(事件) => 事件.currentTarget.select()}
-          onBlur={(事件) => 收笔(事件.currentTarget.value)}
-          onKeyDown={(事件) => {
-            // isComposing 挡住中文输入法「回车上屏候选词」那一下被误当收笔；
-            // blur() 让收笔只走 onBlur 一条路径，避免回车与失焦各提交一次
-            if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) {
-              事件.currentTarget.blur();
-            }
-          }}
-        />
-      </div>
-    );
-  }
   return (
-    <button className={`${样式.就地条目} 可点`} onClick={开始编辑}>
-      <span className={样式.就地标签}>{标签}</span>
-      <span className={样式.就地值行}>
-        <span className={`${样式.就地值} 单行`}>{值}</span>
-        <span className={样式.就地尖括号}>›</span>
-      </span>
-    </button>
+    <div className={样式.就地条目}>
+      <div className={样式.就地标签}>{标签}</div>
+      <input
+        className={样式.就地输入}
+        defaultValue={值}
+        aria-label={标签}
+        enterKeyHint="done"
+        onBlur={(事件) => 收笔(事件.currentTarget.value)}
+        onKeyDown={(事件) => {
+          // isComposing 挡住中文输入法「回车上屏候选词」那一下被误当收笔；
+          // blur() 让收笔只走 onBlur 一条路径，避免回车与失焦各提交一次
+          if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) {
+            事件.currentTarget.blur();
+          }
+        }}
+      />
+    </div>
   );
 }
