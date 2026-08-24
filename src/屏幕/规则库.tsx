@@ -43,7 +43,7 @@ export default function 规则库() {
   };
 
   return (
-    <次级页外壳>
+    <次级页外壳 白底>
       <返回栏
         返回={返回}
         标题="AI代理规则库"
@@ -59,7 +59,7 @@ export default function 规则库() {
 
       <滚动区>
         <div className={样式.列表}>
-          <div className={样式.分组标}>全 局 规 则 · 所 有 谈 判 生 效</div>
+          <div className={样式.分组标}>全局规则 · 所有谈判生效</div>
           <div className={样式.卡}>
             {状态.全局规则.map((条, 序) => (
               <规则行
@@ -82,7 +82,7 @@ export default function 规则库() {
             ))}
           </div>
 
-          <div className={样式.分组标}>意 向 级 · 仅「AI 产 品 经 理」</div>
+          <div className={样式.分组标}>意向级 · 仅「AI 产品经理」</div>
           <div className={样式.卡}>
             {状态.意向级规则.map((条, 序) => (
               <规则行

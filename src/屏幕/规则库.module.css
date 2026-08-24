@@ -9,18 +9,14 @@
 
 /* ── 顶部提示条：说明规则是怎么来的 ── */
 .提示条 {
-  flex: none;
-  margin: 2px 18px 0;
-  background: var(--淡绿底2);
-  border: 1px solid var(--淡绿描边2);
-  border-radius: var(--圆角-内托盘);
-  padding: 9px 13px;
+  /* 定稿甲：绿提示条降成一行灰字说明 */
+  padding: 2px 20px 0;
 }
 
 .提示文字 {
-  font-size: 11px;
-  line-height: 1.6; /* RN lineHeight 17.6 / 字号 11 */
-  color: var(--标题次级);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
 }
 
 /* ── 滚动区内容：RN 里是 滚动区 的内边距样式，DOM 里放在内层容器上 ── */
@@ -31,20 +27,19 @@
   gap: 12px;
 }
 
-/* 分组标题：字间距 1.5 / 字号 11 ≈ 0.14em */
+/* 分组标题（定稿甲 2026-08-24）：撑字距的做法废弃 —— 那种「字 距 硬 撑」
+   连同文案里写死的空格一起清掉，回到全 app 灰组标同款 */
 .分组标 {
-  font-size: var(--字号-小节标题);
-  font-weight: 500;
-  letter-spacing: 0.14em;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
   color: var(--次要浅);
 }
 
 /* ── 分组卡 ── */
 .卡 {
-  background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: var(--圆角-中卡);
-  padding: 0 16px;
+  /* 定稿甲：白底页上卡壳拆掉，分组靠组标 + 行间发丝线 */
+  padding: 0 2px;
 }
 
 .规则行 {
@@ -106,8 +101,8 @@
 /* ── 虚线「＋ 手动添加规则」── */
 .手动添加 {
   width: 100%;
-  border: 1px dashed var(--淡绿描边);
-  background: var(--淡绿底2);
+  border: 1px solid var(--描边中);
+  background: transparent;
   border-radius: var(--圆角-中卡);
   padding: 13px 0;
   display: flex;
