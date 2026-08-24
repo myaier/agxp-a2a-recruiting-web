@@ -145,7 +145,7 @@ test.describe('注册流换壳不闪中间屏', () => {
     await page.getByRole('button', { name: '完成设置，开始匹配' }).click();
     await expect(page).toHaveURL(/#\/onboard\/avatar$/);
 
-    const 序列 = await 采换壳画面(page, '开启求职之旅', /#\/app$/);
+    const 序列 = await 采换壳画面(page, '完成注册', /#\/app$/);
 
     // 先断言用户视角的那句话：中间没有任何一帧裸着画注册流的屏
     expect(裸露的注册流帧(序列, '添加头像')).toEqual([]);
