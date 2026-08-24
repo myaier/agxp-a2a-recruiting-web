@@ -7,7 +7,7 @@
 //
 // 薪资只显示岗位自己的带（如 50-65K）：不做谈薪，无报价 UI —— 双盲语义硬约束。
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 样式 from './岗位管理.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import 滑动行, { type 滑动操作 } from '../组件/滑动行';
@@ -16,9 +16,10 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import type { 在招岗位 } from '../数据/类型';
 import 弹层框架 from '../组件/弹层框架';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 
 export default function 岗位管理() {
-  const { 状态, 派发 } = use应用状态();
+  const { 状态, 操作 } = use应用状态();
   const { 返回, 跳转 } = use导航();
   // 同一时刻只允许一行滑开，存的是那一行的岗位编号
   const [滑开的, 设滑开的] = useState<string | null>(null);
@@ -28,6 +29,8 @@ export default function 岗位管理() {
   // 那几位候选会收到代理的终止通知，这一步对他们是不可逆的
   const [待停, 设待停] = useState<在招岗位 | null>(null);
   const [提示, 设提示] = useState<string | null>(null);
+  // 停止/重开/删除 并发锁：await 操作.* 期间拒绝重复点击，不改变按钮样式
+  const 操作锁 = useRef(false);
 
   useEffect(() => {
     if (!提示) return;
@@ -42,9 +45,17 @@ export default function 岗位管理() {
   const 数在谈 = (编号: string) =>
     状态.企业候选列表.filter((候) => 候.岗位编号 === 编号).length;
 
-  const 执行停止 = (岗: 在招岗位) => {
-    派发({ 型: '停止招聘', 编号: 岗.编号 });
-    设提示(`「${岗.名称}」已停止招聘并归档`);
+  const 执行停止 = async (岗: 在招岗位) => {
+    if (操作锁.current) return;
+    操作锁.current = true;
+    try {
+      await 操作.归档岗位(岗.编号);
+      设提示(`「${岗.名称}」已停止招聘并归档`);
+    } catch (错误) {
+      设提示(取后端错误文案(错误));
+    } finally {
+      操作锁.current = false;
+    }
   };
 
   /** 一个岗位左滑后能做什么。删除只对「无在谈候选」的岗位开放 ——
@@ -70,7 +81,18 @@ export default function 岗位管理() {
     }
     return [
       编辑操作,
-      { 文字: '重新开放', 按下: () => { 派发({ 型: '重开岗位', 编号: 岗.编号 }); 设提示(`「${岗.名称}」已重新开放`); } },
+      { 文字: '重新开放', 按下: async () => {
+        if (操作锁.current) return;
+        操作锁.current = true;
+        try {
+          await 操作.重开岗位(岗.编号);
+          设提示(`「${岗.名称}」已重新开放`);
+        } catch (错误) {
+          设提示(取后端错误文案(错误));
+        } finally {
+          操作锁.current = false;
+        }
+      } },
       ...(在谈人数 === 0
         ? [{ 文字: '删除', 危险: true, 按下: () => 设待删(岗) } as 滑动操作]
         : []),
@@ -162,8 +184,8 @@ export default function 岗位管理() {
               </button>
               <button
                 className={`${样式.确认执行绿} 可点`}
-                onClick={() => {
-                  执行停止(待停);
+                onClick={async () => {
+                  await 执行停止(待停);
                   设待停(null);
                 }}
               >
@@ -187,10 +209,18 @@ export default function 岗位管理() {
               </button>
               <button
                 className={`${样式.确认执行} 可点`}
-                onClick={() => {
-                  派发({ 型: '删除岗位', 编号: 待删.编号 });
-                  设提示(`「${待删.名称}」已删除`);
-                  设待删(null);
+                onClick={async () => {
+                  if (操作锁.current) return;
+                  操作锁.current = true;
+                  try {
+                    await 操作.删除岗位(待删.编号);
+                    设提示(`「${待删.名称}」已删除`);
+                    设待删(null);
+                  } catch (错误) {
+                    设提示(取后端错误文案(错误));
+                  } finally {
+                    操作锁.current = false;
+                  }
                 }}
               >
                 删除

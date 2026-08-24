@@ -1845,6 +1845,30 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       }
       throw 错误;
     }
+
+    /**
+     * 岗位写操作错误处理：
+     *   401 清会话（与 处理写入错误 同口径，但不派发 Mock 岗位 action）；
+     *   409 version_conflict / 503 operation_outcome_unknown 最终仍不确定时，调 读取岗位() 重新水合，
+     *     让岗位列表落回服务端最新值，避免本地乐观值覆盖冲突后的真实状态；
+     *   其余原样抛出。
+     * 不派发 Mock 岗位 action（发布岗位/停止招聘/重开岗位/删除岗位），不播种起步候选。
+     */
+    async function 处理岗位写入错误(错误: unknown): Promise<never> {
+      if (错误 instanceof BFF错误) {
+        if (错误.status === 401) {
+          派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
+          设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: false, 主体: null, 岗位快照: {} }));
+          throw 错误;
+        }
+        if (错误.status === 409 || 错误.status === 503) {
+          const 快照 = await 后端!.读取岗位();
+          派发({ 型: '水合后端岗位', 快照 });
+          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        }
+      }
+      throw 错误;
+    }
     return {
       async 开始手机登录(phone) {
         if (!是后端 || !后端) return;
@@ -2016,55 +2040,104 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
           派发({ 型: '发布岗位', 岗: job });
           return;
         }
-        const 目录 = await 取目录(后端, 目录引用);
-        const 快照 = await 后端.创建岗位(job, { 公司: 状态引用.current.企业认证.公司, 目录 });
-        派发({ 型: '水合后端岗位', 快照 });
-        设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        const 键 = '岗位:new';
+        if (锁.current.has(键)) return;
+        锁.current.add(键);
+        try {
+          const 目录 = 目录引用.current ?? await 取目录(后端, 目录引用);
+          // create 成功后由数据层写入附属数据（加分关键词/实习转正），键用响应里的真实 job_id，
+          // 不是页面临时 P-xx；水合只派发服务端岗位列表，不派发 Mock 发布岗位（不播种起步候选）。
+          const 快照 = await 后端.创建岗位(job, { 公司: 状态引用.current.企业认证.公司, 目录 });
+          派发({ 型: '水合后端岗位', 快照 });
+          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        } catch (错误) {
+          await 处理岗位写入错误(错误);
+        } finally {
+          锁.current.delete(键);
+        }
       },
       async 更新岗位(job) {
         if (!是后端 || !后端) {
           派发({ 型: '更新岗位', 岗: job });
           return;
         }
-        const 原始 = 后端状态引用.current.岗位快照[job.编号];
-        if (!原始) return;
-        const 目录 = await 取目录(后端, 目录引用);
-        const 快照 = await 后端.更新岗位(job, 原始, { 公司: 状态引用.current.企业认证.公司, 目录 });
-        派发({ 型: '水合后端岗位', 快照 });
-        设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        const 键 = `岗位:${job.编号}`;
+        if (锁.current.has(键)) return;
+        锁.current.add(键);
+        try {
+          const 原始 = 后端状态引用.current.岗位快照[job.编号];
+          if (!原始) return;
+          const 目录 = 目录引用.current ?? await 取目录(后端, 目录引用);
+          // update 的 If-Match 由数据层用 previous.revision 生成；附属按同 ID 更新。
+          const 快照 = await 后端.更新岗位(job, 原始, { 公司: 状态引用.current.企业认证.公司, 目录 });
+          派发({ 型: '水合后端岗位', 快照 });
+          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        } catch (错误) {
+          await 处理岗位写入错误(错误);
+        } finally {
+          锁.current.delete(键);
+        }
       },
       async 归档岗位(id) {
         if (!是后端 || !后端) {
           派发({ 型: '停止招聘', 编号: id });
           return;
         }
-        const 原始 = 后端状态引用.current.岗位快照[id];
-        if (!原始) return;
-        const 快照 = await 后端.归档岗位(id, 原始.revision);
-        派发({ 型: '水合后端岗位', 快照 });
-        设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        const 键 = `岗位:${id}`;
+        if (锁.current.has(键)) return;
+        锁.current.add(键);
+        try {
+          const 原始 = 后端状态引用.current.岗位快照[id];
+          if (!原始) return;
+          const 快照 = await 后端.归档岗位(id, 原始.revision);
+          派发({ 型: '水合后端岗位', 快照 });
+          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        } catch (错误) {
+          await 处理岗位写入错误(错误);
+        } finally {
+          锁.current.delete(键);
+        }
       },
       async 重开岗位(id) {
         if (!是后端 || !后端) {
           派发({ 型: '重开岗位', 编号: id });
           return;
         }
-        const 原始 = 后端状态引用.current.岗位快照[id];
-        if (!原始) return;
-        const 快照 = await 后端.重开岗位(id, 原始.revision);
-        派发({ 型: '水合后端岗位', 快照 });
-        设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        const 键 = `岗位:${id}`;
+        if (锁.current.has(键)) return;
+        锁.current.add(键);
+        try {
+          const 原始 = 后端状态引用.current.岗位快照[id];
+          if (!原始) return;
+          const 快照 = await 后端.重开岗位(id, 原始.revision);
+          派发({ 型: '水合后端岗位', 快照 });
+          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        } catch (错误) {
+          await 处理岗位写入错误(错误);
+        } finally {
+          锁.current.delete(键);
+        }
       },
       async 删除岗位(id) {
         if (!是后端 || !后端) {
           派发({ 型: '删除岗位', 编号: id });
           return;
         }
-        const 原始 = 后端状态引用.current.岗位快照[id];
-        if (!原始) return;
-        const 快照 = await 后端.删除岗位(id, 原始.revision);
-        派发({ 型: '水合后端岗位', 快照 });
-        设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        const 键 = `岗位:${id}`;
+        if (锁.current.has(键)) return;
+        锁.current.add(键);
+        try {
+          const 原始 = 后端状态引用.current.岗位快照[id];
+          if (!原始) return;
+          // delete 成功后由数据层删除附属数据；水合只派发服务端岗位列表。
+          const 快照 = await 后端.删除岗位(id, 原始.revision);
+          派发({ 型: '水合后端岗位', 快照 });
+          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        } catch (错误) {
+          await 处理岗位写入错误(错误);
+        } finally {
+          锁.current.delete(键);
+        }
       },
     };
   },

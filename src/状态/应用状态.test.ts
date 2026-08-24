@@ -3,11 +3,11 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 初始状态, 归约, use应用状态, 应用状态提供者 } from './应用状态';
-import { BFF主体样本, BFF简历样本 } from '../测试/BFF样本';
+import { BFF主体样本, BFF简历样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
-import type { 页面简历快照, 页面简历写入, 页面意向快照 } from '../数据/招聘数据源类型';
+import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
 import { 从BFF简历 } from '../数据/后端映射';
 
 function deferred<T>() {
@@ -126,12 +126,12 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     创建意向: vi.fn(async (): Promise<页面意向快照> => ({ 列表: [], 服务端: {} })),
     更新意向: vi.fn(async (): Promise<页面意向快照> => ({ 列表: [], 服务端: {} })),
     删除意向: vi.fn(async (): Promise<页面意向快照> => ({ 列表: [], 服务端: {} })),
-    读取岗位: vi.fn(async () => ({ 列表: [], 服务端: {} })),
-    创建岗位: vi.fn(async () => ({ 列表: [], 服务端: {} })),
-    更新岗位: vi.fn(async () => ({ 列表: [], 服务端: {} })),
-    归档岗位: vi.fn(async () => ({ 列表: [], 服务端: {} })),
-    重开岗位: vi.fn(async () => ({ 列表: [], 服务端: {} })),
-    删除岗位: vi.fn(async () => ({ 列表: [], 服务端: {} })),
+    读取岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
+    创建岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
+    更新岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
+    归档岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
+    重开岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
+    删除岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     读取目录: vi.fn(async () => ({ 职位类别: [], 地点: [], 行业: [], 院校: [], 专业: [] })),
     开始手机登录: vi.fn(),
     完成手机登录: vi.fn(),
@@ -245,5 +245,49 @@ describe('应用状态提供者 候选写操作', () => {
     expect(后端.创建意向).toHaveBeenCalledTimes(1);
     完成.resolve({ 列表: [], 服务端: {} });
     await Promise.all([第一次, 第二次]);
+  });
+});
+
+// ── 招聘方岗位写操作：服务端真实 ID + revision ETag + 409 重读不覆盖 ───────────────
+// Task 8：发布/更新/归档/重开/删除 岗位的 Backend 分支。
+
+describe('应用状态提供者 招聘方岗位写操作', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  it('Backend 发布岗位使用服务端 ID，且不播种 Mock 起步候选', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('recruiter');
+    const 服务端岗位 = { ...BFF岗位样本, job_id: 'job_real_1' };
+    vi.mocked(后端.创建岗位).mockResolvedValue({ 列表: [{ ...页面岗位样本, 编号: 'job_real_1' }], 服务端: { job_real_1: 服务端岗位 } });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.发布岗位({ ...页面岗位样本, 编号: 'P-临时' });
+    await waitFor(() => expect(当前.状态.岗位列表[0].编号).toBe('job_real_1'));
+    expect(当前.状态.企业候选列表.some((item) => item.岗位编号 === 'job_real_1')).toBe(false);
+  });
+
+  it('Backend 更新使用当前 revision，409 后重新读取而不覆盖', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('recruiter');
+    const 初始 = { 列表: [页面岗位样本], 服务端: { [BFF岗位样本.job_id]: BFF岗位样本 } };
+    const 最新列表 = [{ ...页面岗位样本, 名称: '服务端最新岗位名' }];
+    vi.mocked(后端.读取岗位).mockResolvedValueOnce(初始).mockResolvedValueOnce({ 列表: 最新列表, 服务端: 初始.服务端 });
+    vi.mocked(后端.更新岗位).mockRejectedValue(new BFF错误(409, 'version_conflict', 'stale'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await expect(当前.操作.更新岗位({ ...页面岗位样本, 名称: '本地冲突名称' })).rejects.toMatchObject({ code: 'version_conflict' });
+    expect(后端.读取岗位).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(当前.状态.岗位列表).toEqual(最新列表));
   });
 });
