@@ -26,6 +26,8 @@ export default function 企业代理详情() {
   const { 状态, 派发 } = use应用状态();
   const 已接入 = 状态.企业飞书已接入;
   const 设已接入 = (接入: boolean) => 派发({ 型: '设企业飞书接入', 接入 });
+  // 接入通道：默认命令行；点「飞书扫码」码才生成/刷新（切换即重挂）
+  const [接入道, 设接入道] = useState<'命令行' | '飞书'>('命令行');
   const [提示, 设提示] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,35 +74,46 @@ export default function 企业代理详情() {
         </div>
 
         {/* ── 接到飞书：这一屏的主操作 ── */}
-        <div className={样式.接入卡}>
-          <div className={样式.接入头}>
-            <span className={样式.飞书标} aria-hidden>
-              {/* 扫码框图形：四角 + 一条扫描线。不画飞书自家 logo —— 我们只表达「扫码接入」这个动作 */}
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M3 8.5V5.6A2.6 2.6 0 0 1 5.6 3H8.5M15.5 3h2.9A2.6 2.6 0 0 1 21 5.6v2.9M21 15.5v2.9a2.6 2.6 0 0 1-2.6 2.6h-2.9M8.5 21H5.6A2.6 2.6 0 0 1 3 18.4v-2.9"
-                  stroke="var(--深绿)"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <path d="M6 12h12" stroke="var(--橄榄)" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </span>
-            <div className={样式.接入文}>
-              <div className={样式.接入标题}>
-                {已接入 ? '已接入飞书' : '把代理接到飞书'}
-              </div>
-              <div className={样式.接入说明}>
-                {已接入
-                  ? '在飞书里直接对它下指令，匹配与代谈进展也会推到飞书'
-                  : '扫码之后，你在飞书里就能指挥这个代理，不用打开 App'}
-              </div>
-            </div>
-          </div>
+        {/* ── 接入方式（2026-08-24 定稿：甲白纸化 + 双入口）──
+            默认选中 Agent 命令行（终端块）；点「飞书扫码」二维码才生成/刷新
+            （原型层面 = 切换即重挂）。展开区下方的「接入后你可以」三行沿用
+            原扫码弹层的现成文案，去掉「在飞书里」限定 —— 两个通道都适用。 */}
+        <div className={样式.接入方式标}>接入方式</div>
+        <div className={样式.接入选行}>
+          <button
+            className={`${样式.接入选钮} ${接入道 === '命令行' ? 样式.接入选中 : ''} 可点`}
+            onClick={() => 设接入道('命令行')}
+            aria-pressed={接入道 === '命令行'}
+          >
+            {接入道 === '命令行' ? '✓ ' : ''}Agent 命令行
+          </button>
+          <button
+            className={`${样式.接入选钮} ${接入道 === '飞书' ? 样式.接入选中 : ''} 可点`}
+            onClick={() => 设接入道('飞书')}
+            aria-pressed={接入道 === '飞书'}
+          >
+            {接入道 === '飞书' ? '✓ ' : ''}飞书扫码
+          </button>
+        </div>
 
-          {已接入 ? (
+        {接入道 === '命令行' ? (
+          <div className={样式.终端块}>
+            <div className={样式.终端行}>$ agxp agent connect --me</div>
+            <div className={样式.终端注}># 在你的终端运行，代理即接入本机</div>
+            <button
+              className={`${样式.复制命令键} 可点`}
+              onClick={() => {
+                navigator.clipboard?.writeText('agxp agent connect --me');
+                设提示('命令已复制');
+              }}
+            >
+              复制命令
+            </button>
+          </div>
+        ) : 已接入 ? (
+          <div className={样式.已接入区}>
             <div className={样式.已接入行}>
-              <span className={样式.已接入标}>✓ {状态.企业认证.姓名} · 飞书</span>
+              <span className={样式.已接入标}>✓ 沈亦舟 · 飞书</span>
               <button
                 className={`${样式.解绑键} 可点`}
                 onClick={() => {
@@ -111,25 +124,31 @@ export default function 企业代理详情() {
                 解除
               </button>
             </div>
-          ) : (
-            <div className={样式.内联码区}>
-              {/* 标注 2026-08-24：「把这个二维码直接放到页面」—— 不再点按钮开层，
-                  码直接铺在卡里；原扫码弹层随之删除 */}
-              <div className={样式.码框}>
-                <接入二维码 />
-              </div>
-              <div className={样式.码注}>有效期 5 分钟 · 仅本人可用</div>
-              <button
-                className={`${样式.模拟完成键} 可点`}
-                onClick={() => {
-                  设已接入(true);
-                  设提示('已接入飞书 · 去飞书里试试对它说话');
-                }}
-              >
-                我已扫码（原型演示）
-              </button>
+          </div>
+        ) : (
+          <div className={样式.内联码区}>
+            <div className={样式.码框}>
+              <接入二维码 />
             </div>
-          )}
+            <div className={样式.码注}>有效期 5 分钟 · 仅本人可用</div>
+            <button
+              className={`${样式.模拟完成键} 可点`}
+              onClick={() => {
+                设已接入(true);
+                设提示('已接入飞书 · 去飞书里试试对它说话');
+              }}
+            >
+              我已扫码（原型演示）
+            </button>
+          </div>
+        )}
+
+        {/* 接入后能干什么（标注 2026-08-24「把文案加上」）：原弹层现成三行 */}
+        <div className={样式.接入后区}>
+          <div className={样式.接入后标}>接入后你可以</div>
+          <div className={样式.接入后项}>· 直接问「今天有什么需要我拍板的」</div>
+          <div className={样式.接入后项}>· 用一句话给代理下新规则</div>
+          <div className={样式.接入后项}>· 收到卡点提醒，直接回复决定</div>
         </div>
 
         {/* 权限边界三卡按标注 2026-08-24 整段删除（「把下面它的边界直接删了」）*/}
