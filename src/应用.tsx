@@ -1,10 +1,11 @@
 // 路由表。每屏一个文件，文件名对应设计稿编号（见 说明.md 的对照表）。
 // 新增屏幕只需在 屏幕/ 下建文件并在这里挂一行，不改动其它任何地方。
 
-import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { 路径 } from './路由/路径表';
 import 登录 from './屏幕/登录';
+import { use应用状态 } from './状态/应用状态';
 
 // 手机端首屏只加载当前路由。此前所有屏幕同步 import，登录页也会把求职端、企业端
 // 约 60 屏一次性打进 800KB 主包；路由切换时由 Suspense 提供短暂的统一兜底。
@@ -68,7 +69,7 @@ const 反馈 = lazy(() => import('./屏幕/反馈'));
 const 用户协议 = lazy(() => import('./屏幕/用户协议'));
 const 接触记录 = lazy(() => import('./屏幕/接触记录'));
 
-function 路由加载中() {
+export function 路由加载中() {
   return (
     <div
       aria-live="polite"
@@ -87,6 +88,37 @@ function 路由加载中() {
 }
 
 export default function 应用() {
+  const { 数据源模式, 后端状态 } = use应用状态();
+  const 位置 = useLocation();
+  const 前往 = useNavigate();
+
+  // Backend 初始化完成且已恢复会话、当前仍在登录页时：按上次角色替换到对应主壳，
+  // null 角色落到身份选择页。不新增中间页面。
+  useEffect(() => {
+    if (数据源模式 !== 'backend') return;
+    if (后端状态.初始化 !== '完成') return;
+    if (位置.pathname !== 路径.登录) return;
+    if (!后端状态.已登录) return;
+    const 角色 = 后端状态.主体?.last_used_role;
+    if (角色 === 'candidate') 前往(路径.主壳, { replace: true });
+    else if (角色 === 'recruiter') 前往(路径.企业主壳, { replace: true });
+    else 前往(路径.选身份, { replace: true });
+  }, [数据源模式, 后端状态, 位置, 前往]);
+
+  // Backend 初始化进行中：复用现有 路由加载中（不改其 JSX/样式）
+  if (数据源模式 === 'backend' && 后端状态.初始化 === '进行中') {
+    return <路由加载中 />;
+  }
+  // 初始化完成、无会话、且不在登录页：回到登录页
+  if (
+    数据源模式 === 'backend' &&
+    后端状态.初始化 === '完成' &&
+    !后端状态.已登录 &&
+    位置.pathname !== 路径.登录
+  ) {
+    return <Navigate to={路径.登录} replace />;
+  }
+
   return (
     <Suspense fallback={<路由加载中 />}>
       <Routes>

@@ -12,7 +12,7 @@ import 弹层框架 from '../组件/弹层框架';
 
 export default function 企业设置() {
   const { 返回, 跳转, 替换跳转 } = use导航();
-  const { 状态, 派发 } = use应用状态();
+  const { 状态, 派发, 操作 } = use应用状态();
   const [提示, 设提示] = useState<string | null>(null);
   const [待退出, 设待退出] = useState(false);
 
@@ -126,7 +126,17 @@ export default function 企业设置() {
               <button className={`${样式.确认取消} 可点`} onClick={() => 设待退出(false)}>
                 取消
               </button>
-              <button className={`${样式.确认执行} 可点`} onClick={() => 替换跳转(路径.登录)}>
+              <button
+                className={`${样式.确认执行} 可点`}
+                onClick={async () => {
+                  try {
+                    await 操作.退出登录();
+                    替换跳转(路径.登录);
+                  } catch {
+                    设待退出(false);
+                  }
+                }}
+              >
                 退出登录
               </button>
             </div>

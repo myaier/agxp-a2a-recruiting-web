@@ -17,7 +17,9 @@ import 样式 from './登录.module.css';
 import { 次级页外壳, 主按钮 } from '../组件/通用';
 import { 对勾图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 import { use导航 } from '../路由/导航钩子';
+import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
 
 /** 验证码格数：四格，与设计稿 R1 一致 */
@@ -34,12 +36,17 @@ function 格式化手机号(数字串: string): string {
 
 export default function 登录() {
   const { 跳转 } = use导航();
+  const { 数据源模式, 操作 } = use应用状态();
   const [手机号数字, 设手机号数字] = useState('');
   const [验证码, 设验证码] = useState('');
   const [已同意, 设已同意] = useState(false);
   // 倒计时剩余秒数：null = 还没发过验证码；0 = 跑完可重发
   const [剩余秒, 设剩余秒] = useState<number | null>(null);
   const 验证码输入引用 = useRef<HTMLInputElement>(null);
+  // Backend 三个按钮的重复点击守卫：不增加 disabled class 或 Loading 文案
+  const 取码中 = useRef(false);
+  const 进入中 = useRef(false);
+  const 微信中 = useRef(false);
 
   const 手机号齐 = 手机号数字.length === 11;
   const 验证码齐 = 验证码.length === 验证码格数;
@@ -58,6 +65,21 @@ export default function 登录() {
       return;
     }
     if (剩余秒 !== null && 剩余秒 > 0) return; // 倒计时中不可重发
+    if (数据源模式 === 'backend') {
+      if (取码中.current) return;
+      取码中.current = true;
+      // 验证码格先亮起来，让用户立刻看到四格；attempt_id 由 Provider 落在 ref
+      设剩余秒(倒计时秒数);
+      设验证码('');
+      轻提示('验证码已发送（原型不校验，任意 4 位数字即可）');
+      setTimeout(() => 验证码输入引用.current?.focus(), 80);
+      操作.开始手机登录(手机号数字)
+        .catch((错误) => 轻提示(取后端错误文案(错误)))
+        .finally(() => {
+          取码中.current = false;
+        });
+      return;
+    }
     设剩余秒(倒计时秒数);
     设验证码('');
     轻提示('验证码已发送（原型不校验，任意 4 位数字即可）');
@@ -65,11 +87,43 @@ export default function 登录() {
     setTimeout(() => 验证码输入引用.current?.focus(), 80);
   };
 
-  const 进入下一步 = () => {
+  const 进入下一步 = async () => {
     if (!可进入) {
       if (!手机号齐) 轻提示('先输入 11 位手机号');
       else if (!验证码齐) 轻提示('输入 4 位验证码');
       else 轻提示('先勾选用户协议');
+      return;
+    }
+    if (数据源模式 === 'backend') {
+      if (进入中.current) return;
+      进入中.current = true;
+      try {
+        // 完成登录原样发送 4 位 code；attempt_id 由 Provider 保存
+        await 操作.完成手机登录(验证码);
+        跳转(路径.选身份);
+      } catch (错误) {
+        轻提示(取后端错误文案(错误));
+      } finally {
+        进入中.current = false;
+      }
+      return;
+    }
+    跳转(路径.选身份);
+  };
+
+  const 微信登录按下 = async () => {
+    if (数据源模式 === 'backend') {
+      if (微信中.current) return;
+      微信中.current = true;
+      try {
+        const url = await 操作.微信登录();
+        if (url) window.location.assign(url);
+        else 跳转(路径.选身份);
+      } catch (错误) {
+        轻提示(取后端错误文案(错误));
+      } finally {
+        微信中.current = false;
+      }
       return;
     }
     跳转(路径.选身份);
@@ -189,7 +243,7 @@ export default function 登录() {
       </div>
 
       <div className={样式.微信区}>
-        <button className={`${样式.微信键} 可点`} onClick={() => 跳转(路径.选身份)}>
+        <button className={`${样式.微信键} 可点`} onClick={微信登录按下}>
           微信登录
         </button>
       </div>

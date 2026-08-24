@@ -8,6 +8,8 @@ import { useLocation } from 'react-router-dom';
 import 样式 from './选身份.module.css';
 import { 次级页外壳, 返回栏, 页面大标题, 主按钮 } from '../组件/通用';
 import 代理标 from '../组件/代理标';
+import { 轻提示 } from '../组件/轻提示';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
@@ -29,7 +31,7 @@ const 身份列表: 身份项[] = [
 
 export default function 选身份() {
   const { 跳转, 返回, 替换跳转 } = use导航();
-  const { 派发 } = use应用状态();
+  const { 操作 } = use应用状态();
   // 切换身份模式（#/identity?switch=1&from=app|hr）：老用户切端，
   // 不重走注册引导，直接进对应主壳（标注意见 2026-08-18）
   const 查询 = new URLSearchParams(useLocation().search);
@@ -53,11 +55,16 @@ export default function 选身份() {
   const 切换身份 = () => {
     if (已翻面) return; // 动画进行中，别重复触发
     设已翻面(true);
-    翻面计时.current = window.setTimeout(() => {
-      // 落地视图也要切过去：求职者看「职位」，招聘方看「人才」（标注意见 2026-08-18）
-      派发({ 型: '切身份', 到: 目标身份 === '企业' ? '招聘方' : '求职者' });
-      // 用替换跳转：切身份不该在返回栈里留一层「另一端」
-      替换跳转(目标身份 === '企业' ? 路径.企业主壳 : 路径.主壳);
+    翻面计时.current = window.setTimeout(async () => {
+      // 950ms 翻面动画结束后先 await 操作.切身份；成功才替换跳转，失败复用 轻提示 并允许再点
+      try {
+        await 操作.切身份(目标身份 === '企业' ? '招聘方' : '求职者');
+        // 用替换跳转：切身份不该在返回栈里留一层「另一端」
+        替换跳转(目标身份 === '企业' ? 路径.企业主壳 : 路径.主壳);
+      } catch (错误) {
+        轻提示(取后端错误文案(错误));
+        设已翻面(false);
+      }
     }, 950);
   };
 
