@@ -587,12 +587,10 @@
 
 /* ── A3g 个人优势 ── */
 .优势卡 {
+  /* 2026-08-24 去框二改（标注「这个框是不是也可以删了」）：输入卡拆壳平铺，
+     底部删除提示/字数那一行自带的发丝线继续当分界 */
   margin: 16px 18px 0;
-  background: var(--白);
-  /* 2026-08-24 全站选择风格统一（C1 定稿）：文本输入卡描边统一 描边深 */
-  border: 1px solid var(--描边深);
-  border-radius: var(--圆角-中卡);
-  padding: 16px;
+  padding: 2px 2px 0;
   /* 设计稿 A3g 是 330（RN 源当时写成 240，比设计稿矮，这里按设计稿的基准来） */
   min-height: 330px;
   display: flex;
@@ -639,12 +637,11 @@
 }
 
 .GitHub卡 {
+  /* 2026-08-24 去框二改：链接行拆壳，改上下发丝线行 */
   margin: 12px 18px 0;
-  background: var(--白);
-  /* 2026-08-24 全站选择风格统一（C1 定稿）：「值 ›」选择行描边统一 描边深 */
-  border: 1px solid var(--描边深);
-  border-radius: var(--圆角-中卡);
-  padding: 13px 15px;
+  border-top: 1px solid var(--分隔线);
+  border-bottom: 1px solid var(--分隔线);
+  padding: 13px 2px;
   display: flex;
   flex-direction: row;
   align-items: center;
