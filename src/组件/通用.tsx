@@ -1,7 +1,7 @@
 // 跨屏复用的原子组件。所有屏幕都从这里取外壳、返回栏、按钮、阶段标签等，
 // 不允许各屏自己重写一套 —— 这是像素一致性的保证。
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import 样式 from './通用.module.css';
 import 代理标 from './代理标';
@@ -223,18 +223,34 @@ export function 真输入条({
   灰边?: boolean;
   右侧图标?: ReactNode;
 }) {
+  // 标注 2026-08-24：「输入多了要自动换行」—— 单行 input 换自动长高的 textarea，
+  // 随内容长到约 5 行（120px）封顶，之后框内滚动
+  const 框 = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const 元 = 框.current;
+    if (!元) return;
+    元.style.height = 'auto';
+    元.style.height = `${Math.min(元.scrollHeight, 120)}px`;
+  }, [值]);
+
   return (
     <div className={样式.输入条区}>
       <div className={`${样式.输入条} ${灰边 ? 样式.灰边 : ''}`}>
-        <input
+        <textarea
+          ref={框}
           className={样式.输入框}
           placeholder={占位}
           value={值}
+          rows={1}
           onChange={(事件) => 改变(事件.target.value)}
           onKeyDown={(事件) => {
             // isComposing 挡住中文输入法「回车上屏候选词」那一下，
-            // 否则拼音还没上屏就被当成发送，这是中文 App 的必修项
-            if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 发送();
+            // 否则拼音还没上屏就被当成发送，这是中文 App 的必修项；
+            // Shift+Enter 留给换行（桌面习惯），手机上发送走右侧按钮
+            if (事件.key === 'Enter' && !事件.shiftKey && !事件.nativeEvent.isComposing) {
+              事件.preventDefault();
+              发送();
+            }
           }}
           enterKeyHint="send"
         />
