@@ -435,11 +435,16 @@
 .确认小结名 {
   font-size: 12px;
   color: var(--次要浅);
-  width: 44px;
+  width: 58px;
   flex: none;
 }
 .确认小结值 {
   font-size: 12.5px;
   color: var(--墨);
   font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
