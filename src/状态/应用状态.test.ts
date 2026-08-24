@@ -55,6 +55,48 @@ describe('应用状态 reducer', () => {
     expect(下一状态.企业飞书已接入).toBe(true);
   });
 
+  // F6：后端模式下编辑已有意向，草稿要从 完整 BFFOwnerIntention 重建，
+  // 而不是从稀疏列表条目拆回 —— 否则打开+原样保存清掉 alternate_locations/industries 等。
+  it('后端模式 开意向草稿 从服务端完整 DTO 重建草稿', () => {
+    const dto = {
+      ...BFF意向样本,
+      intention_id: 'int_1',
+      primary_location: { id: 'loc_sh', display_name: '上海' },
+      job_category: { id: 'tax_p', display_name: '产品经理' },
+      alternate_locations: [{ id: 'loc_bj', display_name: '北京' }],
+      industries: [{ id: 'ind_fin', display_name: '金融' }],
+      compensation: { mode: 'range' as const, lower: 300, upper: 500, annual_salary_months: null },
+      salary_period: 'day' as const,
+      recruitment_type: 'internship' as const,
+    };
+    // 水合后端意向：列表是稀疏条目，服务端 map 是完整 DTO
+    const 水合后 = 归约(初始状态, {
+      型: '水合后端意向',
+      快照: { 列表: [{ 编号: 'int_1', 标题: '[上海] 产品经理', 说明: '300-500 元/天' }], 服务端: { int_1: dto } },
+    });
+    const 开草稿后 = 归约(水合后, { 型: '开意向草稿', 编号: 'int_1' });
+    expect(开草稿后.意向草稿).toEqual({
+      编辑编号: 'int_1',
+      求职类型: '全职',
+      工作城市: '上海',
+      期望职位: '产品经理',
+      感兴趣城市们: ['北京'],
+      薪资下限: 300,
+      薪资上限: 500,
+      期望行业们: ['金融'],
+      后端招聘类型: 'internship',
+      求职类型已改: false,
+    });
+  });
+
+  it('后端意向服务端 水合时同步更新，再次水合空快照清空', () => {
+    const dto = { ...BFF意向样本, intention_id: 'int_2' };
+    const 水合 = 归约(初始状态, { 型: '水合后端意向', 快照: { 列表: [], 服务端: { int_2: dto } } });
+    expect(水合.后端意向服务端).toEqual({ int_2: dto });
+    const 清空 = 归约(水合, { 型: '水合后端意向', 快照: { 列表: [], 服务端: {} } });
+    expect(清空.后端意向服务端).toEqual({});
+  });
+
   it('由 Provider 在状态提交后统一持久化', async () => {
     function 测试按钮() {
       const { 派发 } = use应用状态();

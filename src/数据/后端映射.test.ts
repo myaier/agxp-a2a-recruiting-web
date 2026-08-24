@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { 从BFF简历, 精确目录ID, 转资料写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入 } from './后端映射';
+import { 从BFF简历, 精确目录ID, 转资料写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿 } from './后端映射';
 import { BFF意向样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 
 describe('候选人后端映射', () => {
@@ -134,5 +134,45 @@ describe('候选人后端映射', () => {
       排除项: [],
     };
     expect(转首次意向写入(输入, { 原始: null, 办公方式: 输入.筛选偏好.办公方式, 目录 }).workplace_modes).toEqual(['hybrid', 'remote']);
+  });
+
+  // F6：编辑已有意向的草稿必须从完整 BFFOwnerIntention 重建，不能从稀疏列表条目拆回，
+  // 否则打开+原样保存会清掉 alternate_locations / industries / 薪资结构 / 后端招聘类型。
+  it('从BFF意向草稿 从完整 DTO 重建草稿，保留 alternate_locations/industries/薪资/招聘类型', () => {
+    const dto = {
+      ...BFF意向样本,
+      recruitment_type: 'internship' as const,
+      primary_location: { id: 'loc_shanghai', display_name: '上海' },
+      job_category: { id: 'tax_product', display_name: '产品经理' },
+      alternate_locations: [
+        { id: 'loc_bj', display_name: '北京' },
+        { id: 'loc_hz', display_name: '杭州' },
+      ],
+      industries: [
+        { id: 'ind_fin', display_name: '金融' },
+        { id: 'ind_ai', display_name: '人工智能' },
+      ],
+      compensation: { mode: 'range' as const, lower: 300, upper: 500, annual_salary_months: null },
+      salary_period: 'day' as const,
+    };
+    const 草稿 = 从BFF意向草稿(dto);
+    expect(草稿).toEqual({
+      编辑编号: dto.intention_id,
+      求职类型: '全职',
+      工作城市: '上海',
+      期望职位: '产品经理',
+      感兴趣城市们: ['北京', '杭州'],
+      薪资下限: 300,
+      薪资上限: 500,
+      期望行业们: ['金融', '人工智能'],
+      后端招聘类型: 'internship',
+      求职类型已改: false,
+    });
+  });
+
+  it('从BFF意向草稿 对面议薪资落成 null/null', () => {
+    const 草稿 = 从BFF意向草稿({ ...BFF意向样本, compensation: { mode: 'negotiable' } });
+    expect(草稿.薪资下限).toBeNull();
+    expect(草稿.薪资上限).toBeNull();
   });
 });

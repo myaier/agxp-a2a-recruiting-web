@@ -196,6 +196,29 @@ export function 从BFF意向(dto: BFFOwnerIntention): 求职意向 {
   };
 }
 
+/**
+ * BFF意向（完整 BFFOwnerIntention DTO）→ 意向草稿，供编辑已有意向时预填。
+ * 列表条目（从BFF意向）只带 编号/标题/说明 三个稀疏字段，从它拆草稿会丢
+ * alternate_locations / industries / 薪资结构 / 后端招聘类型 ——
+ * 打开+原样保存一条已有意向就会清掉这些字段（真实数据丢失）。
+ * 这里从 读取意向() 保留的服务端 DTO 重建完整草稿，字段与 意向草稿型 一一对应。
+ */
+export function 从BFF意向草稿(dto: BFFOwnerIntention): 意向草稿型 {
+  const 是区间 = dto.compensation.mode === 'range';
+  return {
+    编辑编号: dto.intention_id,
+    求职类型: 招聘类型到页面[dto.recruitment_type],
+    工作城市: dto.primary_location.display_name,
+    期望职位: dto.job_category.display_name,
+    感兴趣城市们: dto.alternate_locations.map((a) => a.display_name),
+    薪资下限: 是区间 ? (dto.compensation.lower ?? null) : null,
+    薪资上限: 是区间 ? (dto.compensation.upper ?? null) : null,
+    期望行业们: dto.industries.map((i) => i.display_name),
+    后端招聘类型: dto.recruitment_type,
+    求职类型已改: false,
+  };
+}
+
 function 映射办公方式(页值们: string[]): BFFOwnerIntention['workplace_modes'] {
   if (页值们.length === 0) throw new Error('请先完善办公方式');
   // 兼容两种来源：引导预填.筛选偏好.办公方式 存的是中文标签（现场/混合/远程/全远程），
