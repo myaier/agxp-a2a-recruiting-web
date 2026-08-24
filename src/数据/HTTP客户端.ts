@@ -2,13 +2,15 @@
 // 浏览器只请求同源 /api/v1；所有调用设置 credentials: 'include'；不读取 Cookie。
 // 接口失败绝不回退 Mock —— 本模块不 import 模拟数据/企业端模拟数据/接口层。
 
-import type { BFF信封 } from './BFF契约';
+import type { BFF信封, BFF简历 } from './BFF契约';
 
 export class BFF错误 extends Error {
   status: number;
   code: string;
   fieldErrors: Record<string, string>;
   retryAfterSeconds: number | null;
+  /** 简历分区写入中途失败时，重新 GET 拿到的权威快照；Context 用它恢复服务端真实状态。 */
+  权威简历?: BFF简历;
   constructor(
     status: number,
     code: string,
