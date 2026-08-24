@@ -55,6 +55,29 @@ npm run deploy
 
 `deploy` = 构建 + 补 `.nojekyll`/`404.html` + 强推到 `gh-pages` 分支。
 
+### 数据源
+
+缺省不设置环境变量即使用 Mock。真实后端只用于本地 Vite dev：
+
+```bash
+VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=stg npm run dev
+VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=local npm run dev
+```
+
+Local BFF 必须监听 `127.0.0.1:8097`，并配置：
+
+```dotenv
+RECRUITMENT_BFF_ENV=test
+RECRUITMENT_BFF_PUBLIC_ORIGIN=http://localhost:5173
+```
+
+浏览器使用 `http://localhost:5173`。前端保持 4 位验证码；目标 BFF 必须先支持 4 位 OTP。
+
+- Backend 真实域：登录/会话/角色、目录、简历、求职意向、招聘方岗位。
+- 演示域：市场发现、匹配/评价、消息、规则、AI 简报、会话和历史。
+- 接口失败不回退 Mock。
+- `加分关键词/实习转正` 是按后端环境+岗位 ID 保存的本浏览器附属数据；作品集/附件文件名也仅留本地，不跨设备同步。
+
 ## 目录结构
 
 ```
