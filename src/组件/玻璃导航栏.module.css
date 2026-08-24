@@ -57,8 +57,10 @@
   position: absolute;
   left: 50%;
   bottom: 100%;
-  margin-left: 6px;
-  margin-bottom: -7px;
+  /* 标注 2026-08-24：「通知的图标要距离消息图标近一点，稍微盖住右上角」——
+     左移 + 下压，让角标左下角叠在气泡右上角上（原来飘在图标右上方空处） */
+  margin-left: 1px;
+  margin-bottom: -12px;
   min-width: 18px;
   height: 18px;
   /* 左右 5：两位数（如 12）撑成胶囊时两边留白与微信接近；一位数仍被 min-width 收成正圆 */
@@ -85,10 +87,4 @@
 .文字.选中 {
   color: var(--橄榄);
   font-weight: 700;
-}
-
-/* 消息图标视觉下移：气泡主体下缘偏高，往文字方向收 2px（角标基准不受影响，
-   位移只作用在 svg 上） */
-.图标位收距 svg {
-  transform: translateY(2px);
 }
