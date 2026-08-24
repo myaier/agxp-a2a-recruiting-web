@@ -106,9 +106,11 @@
 .统计条 {
   display: flex;
   flex-direction: row;
-  background: var(--浅灰底2);
-  border-radius: var(--圆角-小托盘);
-  padding: 11px 4px;
+  /* 2026-08-24 全站去框（产品负责人批）：统计条卡壳拆掉（灰底/圆角撤），
+     与下方漏斗块之间改用发丝线分隔；左右 padding 收到 2px。与求职端同改。 */
+  background: transparent;
+  border-bottom: 1px solid var(--分隔线);
+  padding: 11px 2px;
 }
 
 .统计项 {
@@ -257,10 +259,11 @@
    2026-08-22 随洞察从已删除的 候选未通过 屏搬来（docs/design/代理拒绝理由归宿.md）。
    像素值与求职端 问AI代理.module.css 的同名类一致（同构要求），卡本身的观感不变。 */
 .松一档卡 {
-  background: var(--淡绿底);
-  border: 1px solid var(--淡绿描边);
-  border-radius: var(--圆角-内托盘);
-  padding: 12px 14px;
+  /* 2026-08-24 全站去框（产品负责人批）：决策子卡卡壳拆掉（淡绿底/描边/圆角撤），
+     与上方简报正文之间改用发丝线分隔；标题深绿字保留身份。与求职端同改。 */
+  background: transparent;
+  border-top: 1px solid var(--分隔线);
+  padding: 12px 2px;
   margin-top: 12px;
 }
 

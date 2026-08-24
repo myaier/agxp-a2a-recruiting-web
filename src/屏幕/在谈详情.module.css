@@ -100,10 +100,12 @@
   flex-direction: row;
   align-items: center;
   margin-top: 10px;
-  background: var(--白);
-  border: 1px solid var(--描边深);
-  border-radius: var(--圆角-小托盘);
-  padding: 11px 13px;
+  /* 2026-08-24 全站去框（产品负责人批）：数字对比托盘拆卡壳 ——
+     白底描边框换成上下两道发丝线框出数据带，左右 padding 收到 2px */
+  background: transparent;
+  border-top: 1px solid var(--分隔线);
+  border-bottom: 1px solid var(--分隔线);
+  padding: 11px 2px;
 }
 
 .对比列 {
@@ -228,28 +230,33 @@
 
 /* ── A6a·J 职位详情 Tab ── */
 .详情卡 {
-  background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: var(--圆角-中卡);
-  padding: 13px 15px;
+  /* 2026-08-24 全站去框（产品负责人批）：卡壳拆掉。上面 .详情列 的通配
+     已把直接子块压成白纸平铺，这里把类自身的白底/描边/圆角也删掉 ——
+     不再靠通配压制才成立（真人会话「看职位」层同用本类，两处一起变）。 */
+  background: transparent;
+  padding: 13px 2px;
 }
 
 .详情标题 {
-  /* 与 职位详情 .卡标题 是同一个「职位详情」卡，必须同档 */
-  font-size: var(--字号-区块标题);
-  font-weight: 800;
-  color: var(--墨);
+  /* 2026-08-24 全站去框（产品负责人批）：区块标题降灰标 ——
+     17px 加粗墨色降为小节标题档，与 规则库.分组标 / 工作经历.区块标 同款。
+     职位详情.module.css 的 .卡标题 由那屏的去框改动自行降档，此处不动共享类。 */
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
   margin-bottom: 8px;
 }
 
-/* 标注 2026-08-23：「职位详情和职位要求这两个字的字体大小不一样」。
-   原来归成小节标题（13px）是照 DOM 结构判的 —— 它嵌在「职位详情」卡里面；
-   但按内容它和「职位详情」是并列的：一段讲职责、一段讲要求，都是 JD 的组成部分，
-   不是父子关系。判档要看信息层级，不看嵌套深度。改回区块标题档。 */
+/* 标注 2026-08-23：「职位详情和职位要求这两个字的字体大小不一样」——
+   它和「职位详情」按内容是并列的（都是 JD 的组成部分），必须同档。
+   2026-08-24 全站去框（产品负责人批）：随 .详情标题 一起降为灰组标，
+   同档的约定保持不变 —— 两个标题一起降，层级关系没动。 */
 .详情小标题 {
-  font-size: var(--字号-区块标题);
+  font-size: var(--字号-小节标题);
   font-weight: 700;
-  color: var(--墨);
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
   margin: 10px 0 6px;
 }
 
@@ -274,7 +281,8 @@
   flex-direction: row;
   align-items: center;
   gap: 11px;
-  padding: 11px 15px;
+  /* 2026-08-24 全站去框（产品负责人批）：随 .详情卡 平铺，左右 padding 收到 2px */
+  padding: 11px 2px;
 }
 
 .对接人头像 {
@@ -415,17 +423,21 @@
 
 /* ── 意向小结（标注 2026-08-24：确认节点一目了然的小结）── */
 .确认小结卡 {
-  background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: 14px;
-  padding: 8px 14px;
+  /* 2026-08-24 全站去框（产品负责人批）：意向小结托盘拆卡壳 ——
+     白底描边框拆掉，改成行间发丝线的平铺清单，左右 padding 收到 2px */
+  padding: 2px 2px;
   margin-bottom: 12px;
 }
 .确认小结行 {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 3.5px 0;
+  /* 2026-08-24 全站去框（产品负责人批）：行距随发丝线放宽，免得线贴字 */
+  padding: 6px 0;
+}
+/* 2026-08-24 全站去框（产品负责人批）：行之间一道发丝线，首行前不画 */
+.确认小结行 + .确认小结行 {
+  border-top: 1px solid var(--分隔线);
 }
 .确认小结勾 {
   color: var(--递简历);

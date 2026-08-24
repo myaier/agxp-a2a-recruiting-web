@@ -79,10 +79,11 @@
   flex-direction: row;
   align-items: center;
   margin-top: 10px;
-  background: var(--白);
-  border: 1px solid var(--描边深);
-  border-radius: var(--圆角-小托盘);
-  padding: 11px 13px;
+  /* 2026-08-24 全站去框（产品负责人批）：数字对比托盘卡壳拆掉（白底/描边深/圆角撤），
+     与上方决策卡内容之间改用发丝线分隔；左右 padding 收到 2px。 */
+  background: transparent;
+  border-top: 1px solid var(--分隔线);
+  padding: 11px 2px;
 }
 
 .对比列 {
@@ -492,10 +493,11 @@
 
 /* ── 意向小结（标注 2026-08-24：确认节点一目了然的小结）── */
 .确认小结卡 {
-  background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: 14px;
-  padding: 8px 14px;
+  /* 2026-08-24 全站去框（产品负责人批）：意向小结卡卡壳拆掉（白底/描边/圆角撤），
+     与上方节点说明之间改用发丝线分隔；左右 padding 收到 2px。 */
+  background: transparent;
+  border-top: 1px solid var(--分隔线);
+  padding: 8px 2px;
   margin-bottom: 12px;
 }
 .确认小结行 {

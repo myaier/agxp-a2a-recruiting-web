@@ -80,8 +80,8 @@
 .详情层 {
   height: 100%;
   padding-top: var(--安全区上);
-  /* 层铺的是详情页内容，底色跟真详情页（--页面底）走，卡片才浮得出来 */
-  background: var(--页面底);
+  /* 2026-08-24 全站去框后详情页本身已白底平铺，层底色跟着回白 */
+  background: var(--白);
   display: flex;
   flex-direction: column;
   overflow: hidden;

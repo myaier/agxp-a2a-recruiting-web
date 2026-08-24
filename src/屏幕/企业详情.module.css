@@ -4,7 +4,8 @@
 
 /* ── 淡绿渐变头（同 A15「我的」的顶部处理，不用深色 hero）── */
 .头区 {
-  background: linear-gradient(180deg, var(--淡绿底) 0%, var(--页面底) 100%);
+  /* 2026-08-24 全站去框（产品负责人批）：页底改纯白，渐变尾随之收到白，避免米色接缝 */
+  background: linear-gradient(180deg, var(--淡绿底) 0%, var(--白) 100%);
   padding: 14px 18px 18px;
 }
 
@@ -42,11 +43,11 @@
 }
 
 .卡 {
-  background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: var(--圆角-中卡);
-  padding: 14px;
-  margin-bottom: 10px;
+  /* 2026-08-24 全站去框（产品负责人批）：分区卡拆壳，白底平铺，分区之间靠发丝线 */
+  background: transparent;
+  padding: 14px 2px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--分隔线);
 }
 
 .卡头 {
@@ -61,10 +62,11 @@
 /* 谁在替这家谈 / 公司自述 / 作息与条款 / 办公地 / 在职者反馈 / 工商信息：
    一张白卡领一段内容，就是「教育经历」那一层 */
 .卡标题 {
-  font-size: var(--字号-区块标题);
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: var(--墨);
+  /* 2026-08-24 全站去框（产品负责人批）：区块标题降为小节灰标，随平铺版式 */
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
 }
 
 /* 卡头右侧的可信度注记：「已核验」/「未经核实」*/
@@ -404,8 +406,9 @@
 .底栏 {
   flex: none;
   padding: 10px 18px calc(var(--安全区下) + 10px);
-  background: var(--页面底);
-  border-top: 1px solid var(--描边);
+  /* 2026-08-24 全站去框（产品负责人批）：随页底改白，分隔靠发丝线（同 匿名在线简历 底栏） */
+  background: var(--白);
+  border-top: 1px solid var(--分隔线);
 }
 
 .底主键 {
