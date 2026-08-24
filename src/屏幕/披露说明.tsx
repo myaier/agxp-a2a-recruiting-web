@@ -28,7 +28,9 @@ export default function 披露说明() {
 
       {/* 只有这一段允许滚动：标题、就绪条、主按钮都固定，
           阶段数以后变多也只是这一块变长，底部结论区不会被顶出屏幕。 */}
-      <滚动区 样式覆盖={{ padding: '12px 18px 0' }}>
+      {/* 定稿乙：列表垂直居中 —— 这页内容只有一屏，居中后下方留白对称，
+          不再「头重脚空」 */}
+      <滚动区 样式覆盖={{ padding: '12px 18px 0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div className={样式.卡}>
           {披露四阶段.map((段) => {
             // 徽标底色/字色统一取自 阶段配色，不在本屏另起一套颜色

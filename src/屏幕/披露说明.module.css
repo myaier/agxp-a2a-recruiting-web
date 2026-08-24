@@ -21,10 +21,8 @@
 
 /* 四阶段卡：垂直内边距只有 2，行高靠每行自己的 12 撑 */
 .卡 {
-  background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: var(--圆角-中卡);
-  padding: 2px 16px;
+  /* 2026-08-24 定稿乙（去框 + 垂直居中）：卡壳拆掉，行间发丝线分隔 */
+  padding: 2px 2px;
 }
 
 /* 徽标与文字顶部对齐：阶段说明常换行，居中会让徽标掉到文案中间 */
@@ -33,7 +31,8 @@
   flex-direction: row;
   align-items: flex-start;
   gap: 12px;
-  padding: 12px 0;
+  /* 行距随乙方案放宽一档，列表在屏幕中段站得住 */
+  padding: 15px 0;
   border-bottom: 1px solid var(--分隔线);
 }
 /* 末行不画分隔线，避免和卡片下边缘叠成双线 */
