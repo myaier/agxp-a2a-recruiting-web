@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 初始状态, 归约, use应用状态, 应用状态提供者 } from './应用状态';
-import { BFF主体样本, BFF简历样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
+import { BFF主体样本, BFF简历样本, BFF岗位样本, BFF意向样本, 页面岗位样本 } from '../测试/BFF样本';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
@@ -245,6 +245,42 @@ describe('应用状态提供者 候选写操作', () => {
     expect(后端.创建意向).toHaveBeenCalledTimes(1);
     完成.resolve({ 列表: [], 服务端: {} });
     await Promise.all([第一次, 第二次]);
+  });
+
+  it('Backend 意向更新 409 后重新读取权威资源而不覆盖本地冲突值', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 初始意向 = { 编号: 'int_1', 标题: '[上海] 产品经理', 说明: '300-500 元/天' };
+    const 初始快照 = { 列表: [初始意向], 服务端: { int_1: BFF意向样本 } };
+    const 最新意向 = { 编号: 'int_1', 标题: '[上海] 服务端最新职位', 说明: '400-600 元/天' };
+    const 最新快照 = {
+      列表: [最新意向],
+      服务端: { int_1: { ...BFF意向样本, revision: 2 } },
+    };
+    vi.mocked(后端.读取意向).mockResolvedValueOnce(初始快照).mockResolvedValueOnce(最新快照);
+    vi.mocked(后端.更新意向).mockRejectedValue(new BFF错误(409, 'version_conflict', 'stale'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    const 草稿 = {
+      编辑编号: 'int_1',
+      求职类型: '全职' as const,
+      工作城市: '上海',
+      期望职位: '本地冲突职位',
+      感兴趣城市们: [] as string[],
+      薪资下限: 10,
+      薪资上限: 20,
+      期望行业们: [] as string[],
+      后端招聘类型: 'internship' as const,
+      求职类型已改: false,
+    };
+    await expect(当前.操作.保存意向(草稿)).rejects.toMatchObject({ code: 'version_conflict' });
+    // 初始化水合一次 + 409 后重新读取一次 = 两次
+    expect(后端.读取意向).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(当前.状态.求职意向表).toEqual([最新意向]));
+    // 本地冲突值不应落入选中状态
+    expect(当前.状态.求职意向表.some((条) => 条.标题.includes('本地冲突职位'))).toBe(false);
   });
 });
 

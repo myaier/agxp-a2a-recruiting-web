@@ -1869,6 +1869,32 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       }
       throw 错误;
     }
+
+    /**
+     * 意向写操作错误处理（镜像 处理岗位写入错误）：
+     *   401 清会话（派发 空意向快照，清意向快照）；
+     *   409 version_conflict / 503 operation_outcome_unknown 最终仍不确定时，调 读取意向() 重新水合，
+     *     让求职意向表落回服务端最新值，避免本地乐观值覆盖冲突后的真实状态
+     *     （spec §12：409 版本冲突 → 重新读取对应权威资源，不覆盖服务端新版本）；
+     *   其余原样抛出。
+     * 简历写操作仍走 处理写入错误（用 错误.权威简历 水合），此处不接管简历路径。
+     * 不派发 Mock 意向 action（新增意向/改意向），不播种预置意向。
+     */
+    async function 处理意向写入错误(错误: unknown): Promise<never> {
+      if (错误 instanceof BFF错误) {
+        if (错误.status === 401) {
+          派发({ 型: '水合后端意向', 快照: 空意向快照 });
+          设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: false, 主体: null, 意向快照: {} }));
+          throw 错误;
+        }
+        if (错误.status === 409 || 错误.status === 503) {
+          const 快照 = await 后端!.读取意向();
+          派发({ 型: '水合后端意向', 快照 });
+          设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
+        }
+      }
+      throw 错误;
+    }
     return {
       async 开始手机登录(phone) {
         if (!是后端 || !后端) return;
@@ -1989,7 +2015,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
           派发({ 型: '水合后端意向', 快照 });
           设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
         } catch (错误) {
-          处理写入错误(错误);
+          await 处理意向写入错误(错误);
         } finally {
           锁.current.delete(键);
         }
@@ -2010,7 +2036,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
           派发({ 型: '水合后端意向', 快照 });
           设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
         } catch (错误) {
-          处理写入错误(错误);
+          await 处理意向写入错误(错误);
         } finally {
           锁.current.delete(键);
         }
@@ -2030,7 +2056,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
           派发({ 型: '水合后端意向', 快照 });
           设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
         } catch (错误) {
-          处理写入错误(错误);
+          await 处理意向写入错误(错误);
         } finally {
           锁.current.delete(键);
         }
