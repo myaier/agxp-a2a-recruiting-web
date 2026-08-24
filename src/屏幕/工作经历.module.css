@@ -496,10 +496,8 @@
 
 /* ── 专业技能：标签墙 + 行内录入 ── */
 .技能卡 {
-  background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: var(--圆角-中卡);
-  padding: 13px 14px;
+  /* 2026-08-24 全站去框（产品负责人点名）：技能区拆壳平铺 */
+  padding: 2px 2px 0;
 }
 
 .标签组 {
@@ -547,15 +545,15 @@
 .录入框 {
   flex: 1;
   min-width: 0;
-  /* 2026-08-24 全站选择风格统一（C1 定稿）：录入框描边统一 描边深 */
-  border: 1px solid var(--描边深);
-  border-radius: 11px;
-  padding: 9px 12px;
+  /* 2026-08-24 去框二改（产品负责人点名技能/证书/作品集）：
+     输入从描边盒改成名片同款裸行 —— 无框无底，底部一道发丝线当下划线 */
+  border: none;
+  border-bottom: 1px solid var(--描边深);
+  border-radius: 0;
+  padding: 9px 2px;
+  background: transparent;
   font-size: 13.5px;
   color: var(--墨);
-  background: var(--白);
-  outline: none;
-  font-family: inherit;
 }
 
 .录入框::placeholder {
@@ -574,10 +572,8 @@
 
 /* ── 资格证书行 ── */
 .证书行 {
-  background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: var(--圆角-中卡);
-  padding: 13px 14px;
+        padding: 12px 2px;
+  border-bottom: 1px solid var(--分隔线); /* 2026-08-24 全站去框 */
   margin-bottom: 8px;
   display: flex;
   flex-direction: row;
@@ -622,10 +618,9 @@
 .整行输入 {
   width: 100%;
   /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边统一 描边深 */
-  border: 1px solid var(--描边深);
-  border-radius: var(--圆角-中卡);
-  background: var(--白);
-  padding: 13px 14px;
+  border: none;
+  border-bottom: 1px solid var(--描边深); /* 2026-08-24 去框二改：裸行输入 */
+      padding: 9px 2px;
   font-size: 14px;
   color: var(--墨);
   outline: none;
