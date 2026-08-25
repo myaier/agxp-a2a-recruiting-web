@@ -153,13 +153,13 @@ async function 查询一页<T>(path: `/api/v1/catalog/${string}`, query: string)
 }
 ```
 
-三个公开方法只映射 query 参数；taxonomy endpoint 只允许 `job-categories|industries|majors`。删除 `读取目录`、`解析目录项`、`确保目录` 及其全量 cursor 循环。
+三个公开方法只映射 query 参数；taxonomy endpoint 只允许 `job-categories|industries|majors`。本任务暂时保留旧 `读取目录/解析目录项/确保目录`，只供尚未迁移的 Resume/Intention/Job 写入调用；Task 2 移除初始化预取，Tasks 5–7 逐域迁移后由 Task 7 删除这些兼容方法。兼容期不得新增调用点。`查询Location` 固定映射 `/api/v1/catalog/locations`，`查询Institution` 固定映射 `/api/v1/catalog/education-institutions`。
 
 - [ ] **Step 5: 运行测试并提交**
 
-Run: `npm test -- src/数据/HTTP招聘数据源.test.ts && npm run typecheck`
+Run: `npm test && npm run typecheck`
 
-Expected: PASS；typecheck 会列出后续任务需要迁移的旧 `读取目录` 调用，但本任务提交前必须用临时兼容签名消除编译错误：兼容方法只抛出 `读取目录已移除，请使用按需查询`，不得发网络请求，并在 Task 2 完全删除。
+Expected: PASS；既有全量目录测试继续覆盖临时兼容方法，新增测试覆盖分页方法。本任务还必须运行完整 `npm test`，保证中间提交没有已知红测试。
 
 Commit: `refactor: 按页查询招聘目录`
 
@@ -197,7 +197,7 @@ it('candidate 初始化不读取目录并独立提交简历和 active 意向', a
   renderProvider({ backend, role: 'candidate' });
   await waitFor(() => expect(backend.读取简历).toHaveBeenCalled());
   expect(backend.读取意向).toHaveBeenCalled();
-  expect(backend.读取目录).toBeUndefined();
+  expect(backend.读取目录).not.toHaveBeenCalled();
   expect(backend.读取意向).toHaveBeenCalledWith();
 });
 ```
@@ -224,9 +224,9 @@ const fields = Array.isArray(payload.error.fields)
   : [];
 ```
 
-- [ ] **Step 4: 删除目录水合与目录 ref**
+- [ ] **Step 4: 删除目录水合，但暂时保留 legacy 写入 ref**
 
-删除 `取目录`、`目录引用`、`水合角色资源` 中的目录分支和 `读取目录` 临时兼容签名。candidate 资源使用 `Promise.allSettled` 独立派发，单项失败只提示该资源；recruiter 保持岗位读取。`读取意向` path 改为：
+删除 `水合角色资源` 末尾的目录预取分支；暂时保留 `取目录/目录引用/读取目录`，只为 Tasks 5–7 尚未迁移的写入路径服务，并在注释中写明 Task 7 删除。candidate 资源使用 `Promise.allSettled` 独立派发，单项失败只提示该资源；recruiter 保持岗位读取。`读取意向` path 改为：
 
 ```ts
 const { result } = await 请求<BFF意向列表>({ path: '/api/v1/me/intentions?status=active' });
@@ -251,8 +251,9 @@ Commit: `fix: 解耦招聘资源水合与目录`
 - Modify: `src/数据/招聘数据源类型.ts`
 - Modify: `src/状态/应用状态.tsx`
 - Modify: `src/屏幕/选工作城市.tsx`
-- Modify: `src/屏幕/选工作城市.test.tsx`
+- Create: `src/屏幕/选工作城市.test.tsx`
 - Modify: `src/屏幕/选择城市.tsx`
+- Modify: `src/屏幕/引导问答.tsx`
 
 **Interfaces:**
 - 展示配置：`城市分组配置 { 省:string; filters:{countryCode:string; admin1Code?:string}[] }`。
@@ -309,7 +310,7 @@ export const 城市分组: 城市分组配置[] = [
 
 - [ ] **Step 4: 接入按需查询和引用 state**
 
-组件保留现有 DOM/CSS。Backend 分支的 `城市键` 参数改为 `目录选择值`，点击以 ID 去重；搜索 250ms debounce；每组初次展开请求第一页，下一页只在现有滚动容器接近底部时请求 cursor。`状态.引导预填` 与 `意向草稿` 分别新增 `城市引用们`、`工作城市引用/感兴趣城市引用们`，reducer 每次同时写字符串与引用。
+组件保留现有 DOM/CSS。Backend 分支的 `城市键` 参数改为 `目录选择值`，点击以 ID 去重；搜索 250ms debounce；每组初次展开请求第一页，下一页只在现有滚动容器接近底部时请求 cursor。`状态.引导预填` 与 `意向草稿` 分别新增 `城市引用们`、`工作城市引用/感兴趣城市引用们`，reducer 每次同时写字符串与引用。`存引导预填` action 必须同时携带两者：没有 refs 时显式写空数组，禁止保留旧 refs。Backend 退出、401 与后端环境切换时同时清空 localStorage 中 `引导预填` 的 refs，避免跨 session/环境提交陈旧 ID；同一 session 的 onboarding 刷新仍可恢复 refs。
 
 - [ ] **Step 5: 迁移另一个意向城市多选页并验证 UI**
 
@@ -328,11 +329,15 @@ Commit: `feat: 用后端地点驱动城市选择`
 ### Task 4: 让职位、行业、专业和学校选择器按需查询
 
 **Files:**
-- Modify: `src/屏幕/选职位.tsx`
-- Modify: `src/屏幕/选行业.tsx`
+- Modify: `src/屏幕/选期望职位.tsx`
+- Modify: `src/屏幕/选期望行业.tsx`
 - Modify: `src/屏幕/选专业.tsx`
 - Modify: `src/屏幕/毕业院校.tsx`
-- Modify: corresponding `*.test.tsx`
+- Modify: `src/屏幕/引导问答.tsx`
+- Create: `src/屏幕/选期望职位.test.tsx`
+- Create: `src/屏幕/选期望行业.test.tsx`
+- Create: `src/屏幕/选专业.test.tsx`
+- Create: `src/屏幕/毕业院校.test.tsx`
 - Create: `src/数据/目录选择.ts`
 - Create: `src/数据/目录选择.test.ts`
 
@@ -471,7 +476,7 @@ onboarding 未完成条目继续留本地草稿；成功写入用 BFF 返回 ID/
 
 Run: `npm test -- src/数据/后端映射.test.ts src/数据/HTTP招聘数据源.test.ts src/状态/应用状态.test.ts && npm run typecheck`
 
-Expected: PASS，且 source/test 中 `rg '解析目录项|精确目录ID|确保目录' src/数据` 无生产调用。
+Expected: PASS；简历 mapping 与保存路径不再调用 `精确目录ID/确保目录`。意向和岗位的 legacy 调用将在 Tasks 6–7 清除，最终静态门禁统一放在 Task 8。
 
 Commit: `refactor: 用目录引用保存简历`
 
@@ -487,8 +492,11 @@ Commit: `refactor: 用目录引用保存简历`
 - Modify: `src/状态/应用状态.tsx`
 - Modify: `src/屏幕/添加意向.tsx`
 - Modify: `src/屏幕/选择城市.tsx`
-- Modify: `src/屏幕/选择行业.tsx`
-- Modify: corresponding tests
+- Modify: `src/屏幕/选期望行业.tsx`
+- Modify: `src/屏幕/引导问答.tsx`
+- Modify: `src/屏幕/添加意向.test.tsx`
+- Modify: `src/状态/应用状态.test.ts`
+- Modify: `src/数据/HTTP招聘数据源.test.ts`
 
 **Interfaces:**
 - 草稿新增 `职位引用`、`工作城市引用`、`感兴趣城市引用们`、`行业引用们`、`办公方式`。
@@ -510,7 +518,7 @@ it('新建意向不默认 onsite、不补 12、按 ID 去重地点', () => {
     job_category_id: 'tax_pm', primary_location_id: 'loc_sh',
     alternate_location_ids: ['loc_hz'], industry_ids: ['tax_it'], workplace_modes: ['hybrid'],
   });
-  expect(body.compensation).toEqual({ mode: 'range', lower: 20000, upper: 30000, period: 'month' });
+  expect(body.compensation).toEqual({ mode: 'range', lower: 20, upper: 30 });
 });
 
 it('编辑只改可见字段并保留 owner 未表达字段', () => {
@@ -536,15 +544,38 @@ const alternate_location_ids = 去重引用(draft.感兴趣城市引用们)
   .filter((item) => item.id !== draft.工作城市引用?.id)
   .map((item) => item.id);
 const compensation = draft.薪资下限 === null || draft.薪资上限 === null
-  ? { mode: 'negotiable' as const, period: 'month' as const }
+  ? { mode: 'negotiable' as const }
   : {
-      mode: 'range' as const, lower: draft.薪资下限 * 1000,
-      upper: draft.薪资上限 * 1000, period: 'month' as const,
+      mode: 'range' as const, lower: draft.薪资下限,
+      upper: draft.薪资上限,
       ...(原始?.compensation.annual_salary_months == null ? {} : { annual_salary_months: 原始.compensation.annual_salary_months }),
     };
 ```
 
 新建时不存在 annual months 就省略；不得填 12。编辑时对 UI 未修改字段从最新 `原始` merge，用户实际切换求职类型时才清理/改写类型专属字段。
+
+`首次意向输入` 同时新增 `职位引用: 目录选择值` 与 `城市引用们: 目录选择值[]`；`引导问答.tsx` 的 Backend 分支复用 Tasks 3–4 的查询结果并在选中时原子保存字符串和 refs。`转首次意向写入` 保留当前 recruitment type、毕业/实习条件、排除项和 private preferences 的计算，只把三个目录字段替换为直接读取 refs：
+
+```ts
+const [primary, ...alternate] = 去重引用(输入.城市引用们);
+if (!primary) throw new Error('请从候选城市中选择');
+return {
+  recruitment_type,
+  job_category_id: 输入.职位引用.id,
+  primary_location_id: primary.id,
+  alternate_location_ids: alternate.map((item) => item.id),
+  industry_ids: [],
+  workplace_modes: 映射办公方式(输入.筛选偏好.办公方式),
+  compensation: { mode: 'range', lower: 输入.薪资.下限, upper: 输入.薪资.上限 },
+  graduation_month,
+  internship_months,
+  onsite_days_per_week,
+  exclusions,
+  private_preferences,
+};
+```
+
+新增失败测试：给两个同名职位 fixture（不同 ID），只选择 `职位引用.id='tax_selected'`，断言首次意向 body 使用 `tax_selected`，且请求记录没有 `/catalog/`；这覆盖 `引导问答 → 保存首次意向 → 创建首次意向 → 转首次意向写入` 整条生产链。
 
 - [ ] **Step 4: 用现有选择行增加办公方式必填**
 
@@ -572,7 +603,9 @@ Commit: `fix: 对齐求职意向后端语义`
 - Modify: `src/数据/后端映射.ts`
 - Modify: `src/数据/后端映射.test.ts`
 - Modify: `src/数据/HTTP招聘数据源.ts`
-- Modify: job creation/edit screens and tests
+- Modify: `src/屏幕/发布岗位.tsx`
+- Modify: `src/屏幕/发布岗位.test.tsx`
+- Modify: `src/状态/应用状态.test.ts`
 
 **Interfaces:**
 - `在招岗位` 的 Backend 草稿元数据携带 `类别引用/地点引用`；列表字符串继续渲染。
@@ -612,6 +645,8 @@ Backend 的岗位类别使用 Task 4 taxonomy selector；工作城市自由输�
 - [ ] **Step 4: 修改 mapping 和数据源**
 
 `转岗位创建` 从 refs 取 ID；`从BFF岗位` 填 refs。`转岗位补丁` 的 immutable 字段只取 latest owner DTO，不取可能过期的页面字符串。归档/重开/删除保持 If-Match，成功后重读岗位列表；附属字段仍只写现有前端存储。
+
+本步骤完成后删除 `应用状态.tsx` 的 `取目录/目录引用`、`招聘数据源类型.ts` 的 `目录索引`、`HTTP招聘数据源.ts` 的 `读取目录/解析目录项/确保目录` 以及所有 mapping context 的 `目录` 字段。此时 Resume/Intention/首次 Intention/Job 均已迁移，删除不会造成中间提交不可编译。
 
 - [ ] **Step 5: 运行测试并提交**
 
