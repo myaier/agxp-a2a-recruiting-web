@@ -51,6 +51,8 @@ describe('登录页 Backend', () => {
     );
     await 用户.type(screen.getByLabelText('手机号'), '13800000000');
     await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    await waitFor(() => expect(screen.getByText('验证码已发送')).toBeDefined());
+    expect(screen.queryByText(/原型不校验/)).toBeNull();
     expect(document.querySelectorAll('[class*="验证码格"]')).toHaveLength(4);
     await 用户.type(screen.getByLabelText('短信验证码'), '1234');
     await 用户.click(screen.getByText(/已阅读并同意/));
