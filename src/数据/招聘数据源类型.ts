@@ -50,9 +50,15 @@ export interface 意向草稿型 {
   编辑编号: string | null;
   求职类型: '全职' | '兼职';
   工作城市: string;
+  /** Backend 城市选择器选中的 Location 引用（id + display_name）；Mock 模式为 undefined。
+   *  保存意向时映射层用它取 primary_location_id；Task 6 的 从BFF意向草稿 会填充它。*/
+  工作城市引用?: 目录选择值;
   期望职位: string;
   /** 其他感兴趣城市，规格上限 9（计数与置灰由页面把关，归约层只做浅合并，不悄悄截断用户的选择）*/
   感兴趣城市们: string[];
+  /** Backend 感兴趣城市引用们（id + display_name）；Mock 模式为空数组。
+   *  保存意向时映射层用它们取 alternate_location_ids。*/
+  感兴趣城市引用们?: 目录选择值[];
   /** 薪资下限，单位千元；null = 还没选 */
   薪资下限: number | null;
   /** 薪资上限，单位千元；null = 还没选 */

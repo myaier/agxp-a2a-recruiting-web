@@ -89,6 +89,7 @@ import type {
   页面简历写入,
   首次意向输入,
   目录索引,
+  目录选择值,
 } from '../数据/招聘数据源类型';
 import type { BFF主体, BFF简历, BFFOwnerIntention, BFFOwnerJob, BFF角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
@@ -216,6 +217,8 @@ export interface 状态 {
   引导预填: {
     城市们: string[];
     职位: string[];
+    /** Backend 城市选择器选中的 Location 引用们；Mock 模式始终为空数组（Task 3）*/
+    城市引用们?: 目录选择值[];
     筛选偏好?: 求职初筛偏好;
     薪资?: { 下限: number; 上限: number; 单位?: 求职薪资单位 };
     到岗?: string;
@@ -333,7 +336,7 @@ export type 动作 =
   | { 型: '存简历文件名'; 文件名: string }
   | { 型: '存个人优势'; 文本: string }
   | { 型: '存作品集链接'; 链接: string }
-  | { 型: '存引导预填'; 城市们: string[]; 职位: string[] }
+  | { 型: '存引导预填'; 城市们: string[]; 职位: string[]; 城市引用们: 目录选择值[] }
   | { 型: '启程引导'; 城市们: string[]; 职位: string[]; 筛选偏好: 求职初筛偏好 }
   | { 型: '存求职筛选偏好'; 偏好: 求职初筛偏好 }
   | { 型: '存薪资预填'; 下限: number; 上限: number; 单位: 求职薪资单位 }
@@ -603,8 +606,10 @@ const 空意向草稿: 意向草稿型 = {
   编辑编号: null,
   求职类型: '全职',
   工作城市: '',
+  工作城市引用: undefined,
   期望职位: '',
   感兴趣城市们: [],
+  感兴趣城市引用们: [],
   薪资下限: null,
   薪资上限: null,
   期望行业们: [],
@@ -1389,7 +1394,14 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     case '存引导预填':
       return {
         ...旧,
-        引导预填: { ...(旧.引导预填 ?? {}), 城市们: 动作.城市们, 职位: 动作.职位 },
+        引导预填: {
+          ...(旧.引导预填 ?? {}),
+          城市们: 动作.城市们,
+          职位: 动作.职位,
+          // Task 3：没有 refs 时显式写空数组，禁止保留旧 refs。
+          // Task 8: Backend ref 清理 —— 退出/401/环境切换时清空 Backend 专用草稿 refs
+          城市引用们: 动作.城市引用们,
+        },
       };
 
     // 完善资料点「下一步」= 注册流程起点（用户 2026-08-20 报告的间歇 BUG 根因：
@@ -1552,6 +1564,8 @@ interface 应用状态值 {
   数据源模式: 'mock' | 'backend';
   后端状态: 后端状态;
   操作: 应用操作;
+  /** 目录查询方法（Task 3 R8）：Backend 模式暴露 查询Location/Taxonomy/Institution，Mock 为 null */
+  目录查询: Pick<HTTP招聘数据源, '查询Location' | '查询Taxonomy' | '查询Institution'> | null;
 }
 
 const 上下文 = createContext<应用状态值 | null>(null);
@@ -2237,9 +2251,15 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     [是后端, 后端],
   );
 
+  // Task 3 R8：目录查询 seam —— Backend 模式暴露 后端.查询Location 等三个方法，Mock 为 null。
+  // 对象字面量方法闭包内部状态，可独立调用，无需 .bind。
+  const 目录查询 = 是后端 && 后端
+    ? { 查询Location: 后端.查询Location, 查询Taxonomy: 后端.查询Taxonomy, 查询Institution: 后端.查询Institution }
+    : null;
+
   const 值 = useMemo<应用状态值>(
-    () => ({ 状态, 派发, 数据源模式: 源.模式, 后端状态, 操作 }),
-    [状态, 派发, 源.模式, 后端状态, 操作],
+    () => ({ 状态, 派发, 数据源模式: 源.模式, 后端状态, 操作, 目录查询 }),
+    [状态, 派发, 源.模式, 后端状态, 操作, 目录查询],
   );
   return <上下文.Provider value={值}>{children}</上下文.Provider>;
 }
