@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { BFF简历样本 } from '../测试/BFF样本';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BFF简历样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 import { BFF错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
 import { 从BFF简历 } from './后端映射';
 import { 创建岗位附属存储 } from './前端附属数据';
@@ -17,6 +17,15 @@ function 内存附属存储() {
 }
 
 describe('HTTP 招聘数据源', () => {
+  // 分页目录查询测试共用的 mock 与依赖：每个用例前重置，新测试用 依赖() 取依赖。
+  const 请求Mock = vi.fn();
+  const 请求 = 请求Mock as unknown as 请求函数;
+  function 依赖() {
+    return { client: { 请求 }, 后端环境: 'stg' as const, 附属存储: 内存附属存储() };
+  }
+  beforeEach(() => {
+    请求Mock.mockReset();
+  });
   it('手机登录使用 +86 E.164 和两次独立幂等操作', async () => {
     const 请求Mock = vi.fn(async (options: BFF请求选项) => {
       if (options.path === '/api/v1/auth/login-attempts') {
@@ -84,7 +93,7 @@ describe('HTTP 招聘数据源', () => {
     const 新页面 = {
       ...旧页面,
       经历: [...旧页面.经历, {
-        编号: 'local-new', 公司: '新公司', 行业: '互联网', 职位: '工程师', 开始: '2022-01', 结束: null, 内容: '', 隐藏: false,
+        编号: 'local-new', 公司: '新公司', 行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' }, 职位: '工程师', 开始: '2022-01', 结束: null, 内容: '', 隐藏: false,
         项目: [{ 编号: 'p-local', 名称: '网关重建', 角色: '负责人', 结果: '降 82%' }],
       }],
     };
@@ -100,15 +109,11 @@ describe('HTTP 招聘数据源', () => {
     expect(调用[调用.length - 1]).toEqual(['GET', '/api/v1/me/resume']);
   });
 
-  // F8：已有经历的 行业 显示名改成 previous 快照里没有的新名时，
-  // 目录解析仍要跑（?q= 搜索补进目录），否则 转经历写入 的 精确目录ID 找不到新名而抛错。
-  it('已有经历改行业显示名为新名时仍解析目录并 PATCH 新 industry_id', async () => {
+  // Task 5：已有经历改行业时，用户在候选选择器里选了新候选（设置 行业引用）；
+  // 写入直接用 引用.id PATCH，不再按新显示名反查目录。手输显示名不会改 ID。
+  it('已有经历改行业用保存的引用 ID 直接 PATCH，不查目录', async () => {
     const 请求Mock = vi.fn(async (options: BFF请求选项) => {
-      const path = options.path;
-      if (path.startsWith('/api/v1/catalog/industries') && path.includes('q=')) {
-        return { result: { items: [{ id: 'fin_1', display_name: '金融', selectable: true }], next_cursor: null, catalog_version: 'v1' }, etag: null, requestId: 'r-q' };
-      }
-      if (options.method === 'PATCH' && path === '/api/v1/me/resume/experiences/exp_1') {
+      if (options.method === 'PATCH' && options.path === '/api/v1/me/resume/experiences/exp_1') {
         return { result: BFF简历样本, etag: null, requestId: 'r-patch' };
       }
       return { result: BFF简历样本, etag: null, requestId: 'r1' };
@@ -116,16 +121,30 @@ describe('HTTP 招聘数据源', () => {
     const 请求 = 请求Mock as unknown as 请求函数;
     const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
-    const 新页面 = { ...旧页面, 经历: 旧页面.经历.map((段) => 段.编号 === 'exp_1' ? { ...段, 行业: '金融' } : 段) };
+    const 新页面 = { ...旧页面, 经历: 旧页面.经历.map((段) => 段.编号 === 'exp_1' ? { ...段, 行业: '金融', 行业引用: { id: 'fin_1', display_name: '金融' } } : 段) };
     await expect(source.保存简历(新页面, BFF简历样本)).resolves.toBeDefined();
-    const 目录搜索 = 请求Mock.mock.calls
+    // 没有任何 /catalog/ 请求
+    const 目录请求 = 请求Mock.mock.calls
       .map(([o]) => o as BFF请求选项)
-      .find((o) => o.path.startsWith('/api/v1/catalog/industries') && o.path.includes('q='));
-    expect(目录搜索).toBeDefined();
+      .find((o) => o.path.includes('/catalog/'));
+    expect(目录请求).toBeUndefined();
     const patch = 请求Mock.mock.calls
       .map(([o]) => o as BFF请求选项)
       .find((o) => o.method === 'PATCH' && o.path === '/api/v1/me/resume/experiences/exp_1');
     expect(patch?.body).toMatchObject({ industry_id: 'fin_1' });
+  });
+
+  // Task 5：完整但缺候选引用的教育段（手输学校）在构建写入 body 时就抛错，
+  // 不会触发任何 /catalog/ 反查请求。
+  it('没有候选引用时不按显示名反查', async () => {
+    const resume = 从BFF简历(BFF简历样本);
+    const previous = BFF简历样本;
+    const 请求Mock = vi.fn(async () => ({ result: BFF简历样本, etag: null, requestId: 'r1' }));
+    const 请求 = 请求Mock as unknown as 请求函数;
+    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    await expect(source.保存简历({ ...resume, 教育: [{ ...resume.教育[0], 学校: '手输学校', 学校引用: undefined }] }, previous))
+      .rejects.toThrow('请从候选学校中选择');
+    expect(请求).not.toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining('/catalog/') }));
   });
 
   // F5：onboarding 中间屏会建一条 学校/专业 空白的教育段，BFF 写入需要目录精确 ID
@@ -144,7 +163,7 @@ describe('HTTP 招聘数据源', () => {
     const 旧页面 = 从BFF简历(BFF简历样本);
     // previous 服务端只有 edu_1；next 额外两条：一条空白学校（onboarding 刚建）、一条完整新教育
     const 空白教育 = { 编号: 'edu_local_blank', 学校: '', 学历: '本科', 专业: '', 开始: '', 结束: '' };
-    const 完整教育 = { 编号: 'edu_local_full', 学校: '复旦大学', 学历: '本科', 专业: '计算机科学', 开始: '2017-09', 结束: '2021-06' };
+    const 完整教育 = { 编号: 'edu_local_full', 学校: '复旦大学', 学校引用: { id: 'ins_1', display_name: '复旦大学' }, 学历: '本科', 专业: '计算机科学', 专业引用: { id: 'tax_m', display_name: '计算机科学' }, 开始: '2017-09', 结束: '2021-06' };
     const 新页面 = { ...旧页面, 教育: [...旧页面.教育, 空白教育, 完整教育] };
     const 出 = await source.保存简历(新页面, BFF简历样本);
     const 调用 = 请求Mock.mock.calls.map(([o]) => [o.method ?? 'GET', o.path]);
@@ -176,7 +195,7 @@ describe('HTTP 招聘数据源', () => {
     const 旧页面 = 从BFF简历(BFF简历样本);
     // 学校+专业已填但开始月份为空（onboarding 选专业后、选时间前的中间态）
     const 空开始教育 = { 编号: 'edu_local_no_start', 学校: '复旦大学', 学历: '本科', 专业: '计算机科学', 开始: '', 结束: '' };
-    const 完整教育 = { 编号: 'edu_local_full', 学校: '复旦大学', 学历: '本科', 专业: '计算机科学', 开始: '2017-09', 结束: '2021-06' };
+    const 完整教育 = { 编号: 'edu_local_full', 学校: '复旦大学', 学校引用: { id: 'ins_1', display_name: '复旦大学' }, 学历: '本科', 专业: '计算机科学', 专业引用: { id: 'tax_m', display_name: '计算机科学' }, 开始: '2017-09', 结束: '2021-06' };
     const 新页面 = { ...旧页面, 教育: [...旧页面.教育, 空开始教育, 完整教育] };
     const 出 = await source.保存简历(新页面, BFF简历样本);
     // 教育只 POST 一次（空开始段被跳过，完整段才 POST）
@@ -208,7 +227,7 @@ describe('HTTP 招聘数据源', () => {
     const 新页面 = {
       ...旧页面,
       经历: [...旧页面.经历, {
-        编号: 'local-new', 公司: '新公司', 行业: '互联网', 职位: '工程师', 开始: '2022-01', 结束: null, 内容: '', 隐藏: false,
+        编号: 'local-new', 公司: '新公司', 行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' }, 职位: '工程师', 开始: '2022-01', 结束: null, 内容: '', 隐藏: false,
         项目: [{ 编号: 'p-local', 名称: '网关重建', 角色: '负责人', 结果: '降 82%' }],
       }],
     };
@@ -253,5 +272,149 @@ describe('HTTP 招聘数据源', () => {
       .map(([o]) => o as BFF请求选项)
       .filter((o) => o.method === 'POST' && o.path === '/api/v1/me/resume/experiences/exp_server/projects');
     expect(项目POST2).toHaveLength(1);
+  });
+
+  // Task 1：分页目录查询只请求一页，保留不可选 taxonomy 导航节点（不照旧 读取目录 过滤掉）。
+  it('目录查询只请求一页且保留不可选 taxonomy 导航节点', async () => {
+    请求Mock.mockResolvedValueOnce({
+      result: {
+        items: [{ id: 'tax_root', display_name: '技术', parent_id: null, selectable: false }],
+        next_cursor: 'next-1', catalog_version: 'v2',
+      },
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.查询Taxonomy('job-categories', { limit: 20 })).resolves.toEqual({
+      items: [{ id: 'tax_root', display_name: '技术', parent_id: null, selectable: false }],
+      nextCursor: 'next-1', catalogVersion: 'v2',
+    });
+    expect(请求Mock).toHaveBeenCalledTimes(1);
+  });
+
+  // Task 1：同 key in-flight 去重，只发一次请求；清空目录缓存后再查会重新请求。
+  it('相同 in-flight 查询去重，清缓存后重新请求', async () => {
+    let resolve!: (value: unknown) => void;
+    请求Mock.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const source = 创建HTTP招聘数据源(依赖());
+    const a = source.查询Location({ countryCode: 'CN', admin1Code: '31', limit: 20 });
+    const b = source.查询Location({ countryCode: 'CN', admin1Code: '31', limit: 20 });
+    expect(请求Mock).toHaveBeenCalledTimes(1);
+    resolve({ result: { items: [], next_cursor: null, catalog_version: 'v2' } });
+    await Promise.all([a, b]);
+    source.清空目录缓存();
+    await source.查询Location({ countryCode: 'CN', admin1Code: '31', limit: 20 });
+    expect(请求Mock).toHaveBeenCalledTimes(2);
+  });
+
+  // Task 1：院校结果的嵌套 location 原样保留，映射层不抹平嵌套字段。
+  it('院校结果保留嵌套地点', async () => {
+    请求Mock.mockResolvedValueOnce({ result: { items: [{
+      id: 'ins_1', display_name: '复旦大学',
+      location: { id: 'loc_1', display_name: '上海市', country_code: 'CN', country_name: '中国', admin1_code: '31', admin1_name: '上海市', timezone: 'Asia/Shanghai', population: 0 },
+    }], next_cursor: null, catalog_version: 'v2' } });
+    const page = await 创建HTTP招聘数据源(依赖()).查询Institution({ q: '复旦', limit: 20 });
+    expect(page.items[0].location).toMatchObject({ display_name: '上海市', country_name: '中国' });
+  });
+
+  // Task 2：读取意向 带 status=active 过滤，只拉活跃意向；创建/更新/删除 后 re-GET 也走同一 path。
+  it('读取意向 请求路径带 status=active', async () => {
+    请求Mock.mockResolvedValue({ result: { intentions: [] }, etag: null, requestId: 'r1' });
+    const source = 创建HTTP招聘数据源(依赖());
+    await source.读取意向();
+    const 意向请求 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.path.startsWith('/api/v1/me/intentions'));
+    expect(意向请求?.path).toBe('/api/v1/me/intentions?status=active');
+  });
+
+  // Task 6：创建意向 body 用草稿里的引用 ID，不再按显示名反查目录（无 /catalog/ 请求）。
+  it('创建意向 body 用引用 ID，不请求 /catalog/', async () => {
+    请求Mock.mockResolvedValue({ result: { intentions: [] }, etag: null, requestId: 'r1' });
+    const source = 创建HTTP招聘数据源(依赖());
+    const 草稿 = {
+      编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海市', 期望职位: '产品经理',
+      工作城市引用: { id: 'loc_sh', display_name: '上海市' },
+      职位引用: { id: 'tax_pm', display_name: '产品经理' },
+      感兴趣城市们: [] as string[],
+      感兴趣城市引用们: [{ id: 'loc_hz', display_name: '杭州市' }],
+      薪资下限: 20, 薪资上限: 30,
+      期望行业们: [] as string[],
+      行业引用们: [{ id: 'tax_it', display_name: '互联网' }],
+      办公方式: ['hybrid'],
+      后端招聘类型: null, 求职类型已改: false,
+    };
+    await source.创建意向(草稿, { 原始: null });
+    const post = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.method === 'POST' && o.path === '/api/v1/me/intentions');
+    expect(post?.body).toMatchObject({
+      job_category_id: 'tax_pm', primary_location_id: 'loc_sh',
+      alternate_location_ids: ['loc_hz'], industry_ids: ['tax_it'], workplace_modes: ['hybrid'],
+    });
+    // 上面 toMatchObject 已断言 post 存在；这里再取 body 前 guard 一次，避免
+    // no-unsafe-optional-chaining：post?.body 短路成 undefined 时 `.compensation` 会抛。
+    const body = post?.body as { compensation: unknown } | undefined;
+    expect(body?.compensation).toEqual({ mode: 'range', lower: 20, upper: 30 });
+    // 没有任何 /catalog/ 请求
+    const 目录请求 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.path.includes('/catalog/'));
+    expect(目录请求).toBeUndefined();
+  });
+
+  // Task 6：创建首次意向 body 用引用 ID，不请求 /catalog/。
+  it('创建首次意向 body 用引用 ID，不请求 /catalog/', async () => {
+    请求Mock.mockResolvedValue({ result: { intentions: [] }, etag: null, requestId: 'r1' });
+    const source = 创建HTTP招聘数据源(依赖());
+    const 输入 = {
+      职位们: ['产品经理'],
+      城市们: ['上海市', '杭州市'],
+      薪资: { 下限: 10, 上限: 20, 单位: '月薪K' as const },
+      筛选偏好: { 求职类型: ['社招全职'] as ['社招全职'], 办公方式: ['混合'] as ['混合'] },
+      排除项: [],
+      职位引用: { id: 'tax_pm', display_name: '产品经理' },
+      城市引用们: [
+        { id: 'loc_sh', display_name: '上海市' },
+        { id: 'loc_hz', display_name: '杭州市' },
+      ],
+    };
+    await source.创建首次意向(输入);
+    const post = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.method === 'POST' && o.path === '/api/v1/me/intentions');
+    expect(post?.body).toMatchObject({
+      job_category_id: 'tax_pm', primary_location_id: 'loc_sh',
+      alternate_location_ids: ['loc_hz'], workplace_modes: ['hybrid'],
+    });
+    const 目录请求 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.path.includes('/catalog/'));
+    expect(目录请求).toBeUndefined();
+  });
+
+  // Task 7：创建岗位 body 用 类别引用/地点引用 的 ID，不再按显示名反查目录（无 /catalog/ 请求）。
+  it('创建岗位 body 用引用 ID，不请求 /catalog/', async () => {
+    // POST /recruiter/jobs 返回单个 job；后续 读取岗位 GET 返回 jobs 页
+    请求Mock.mockImplementation(async (options: BFF请求选项) => {
+      if (options.method === 'POST' && options.path === '/api/v1/recruiter/jobs') {
+        return { result: BFF岗位样本, etag: null, requestId: 'r-post' };
+      }
+      return { result: { jobs: [BFF岗位样本], next_cursor: null }, etag: null, requestId: 'r-list' };
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    const job = {
+      ...页面岗位样本,
+      类别引用: { id: 'tax_pm', display_name: '产品经理' },
+      地点引用: { id: 'loc_sh', display_name: '上海市' },
+    };
+    await source.创建岗位(job, { 公司: '甲公司' });
+    const post = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.method === 'POST' && o.path === '/api/v1/recruiter/jobs');
+    expect(post?.body).toMatchObject({ category_id: 'tax_pm', location_id: 'loc_sh' });
+    // 没有任何 /catalog/ 请求
+    const 目录请求 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.path.includes('/catalog/'));
+    expect(目录请求).toBeUndefined();
   });
 });

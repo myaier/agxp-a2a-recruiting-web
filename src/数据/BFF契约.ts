@@ -9,6 +9,25 @@ export interface BFF目录引用 {
   display_name: string;
 }
 
+// ── 分页目录查询 DTO（Task 1：闭合 catalog 端点返回项）──
+// taxonomy 项带 parent_id / selectable；locations 带行政区划；institutions 嵌套 location。
+
+export interface BFFTaxonomyItem extends BFF目录引用 {
+  parent_id: string | null;
+  selectable: boolean;
+}
+export interface BFFLocationItem extends BFF目录引用 {
+  country_code: string;
+  country_name: string;
+  admin1_code: string | null;
+  admin1_name: string | null;
+  timezone: string;
+  population: number;
+}
+export interface BFFInstitutionItem extends BFF目录引用 {
+  location: BFFLocationItem;
+}
+
 export interface BFF主体 {
   subject_id: string;
   roles: { role: BFF角色; status: 'active' | 'suspended' }[];

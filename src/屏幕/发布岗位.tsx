@@ -12,7 +12,7 @@
 // 双盲语义：薪资只有岗位自己的带（区间），没有任何报价 / 出价 UI；
 // 硬性条件交给 AI 代理在匿名初筛执行，数值互不披露。
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './发布岗位.module.css';
 import 数字滚轮层 from '../组件/数字滚轮层';
@@ -25,7 +25,11 @@ import 弹层框架 from '../组件/弹层框架';
 import { use应用状态 } from '../状态/应用状态';
 import { 职业分类表, 查大类 } from '../数据/职业分类';
 import { 必备技能池, 职位加分项池 } from '../数据/企业端模拟数据';
+import { use城市搜索 } from './城市查询钩子';
+import { 合并目录页 } from '../数据/目录选择';
 import type { 在招岗位 } from '../数据/类型';
+import type { 目录选择值 } from '../数据/招聘数据源类型';
+import type { BFFTaxonomyItem } from '../数据/BFF契约';
 
 const 步骤顺序 = ['基础信息', '职位描述', '职位要求'] as const;
 
@@ -113,7 +117,8 @@ function 拆薪资带(薪资带: string): [string, string] {
 export default function 发布岗位() {
   const { id: 路由岗位编号 } = useParams<{ id: string }>();
   const { 返回, 进企业主壳, 替换跳转 } = use导航();
-  const { 状态, 派发, 操作 } = use应用状态();
+  const { 状态, 派发, 操作, 数据源模式, 目录查询 } = use应用状态();
+  const 是后端 = 数据源模式 === 'backend';
   // 提交/删除并发锁：await 操作.* 期间拒绝重复点击，不改变按钮样式
   const 提交锁 = useRef(false);
 
@@ -140,7 +145,17 @@ export default function 发布岗位() {
   const [招聘类型, 设招聘类型] = useState<招聘类型>(编辑目标?.招聘类型 ?? '社招全职');
   const [届别, 设届别] = useState(编辑目标?.届别 ?? '不限');
   const [职位类别, 设职位类别] = useState(编辑目标?.职位类别 ?? '');
+  // Task 7：Backend 类别选择器选中的目录引用（id + display_name）；Mock 始终 undefined。
+  // 选中 selectable 叶子时原子写入 职位类别（字符串）+ 类别引用；编辑态从 从BFF岗位 带入。
+  const [类别引用, 设类别引用] = useState<目录选择值 | undefined>(编辑目标?.类别引用);
   const [类别层开, 设类别层开] = useState(false);
+  // Task 7：Backend 工作城市选择器选中的 Location 引用；手输 clears it（undefined）。
+  // 编辑态从 从BFF岗位 带入；Mock 始终 undefined（自由文本，无候选）。
+  const [地点引用, 设地点引用] = useState<目录选择值 | undefined>(编辑目标?.地点引用);
+  // Backend 工作城市搜索（250ms debounce）；Mock 不调用钩子（自由文本，无候选行）
+  const { 设词: 设城市搜索词, 结果: 城市候选, 搜索中: 城市搜索中, 下一页游标: 城市下一页, 加载中: 城市加载中, 加载更多: 城市加载更多 } = use城市搜索(
+    是后端 ? 目录查询?.查询Location : undefined,
+  );
   // 实习要求（BOSS 对照补齐 2026-08-20）：只有招聘类型 = 实习生 时录入与落库。
   // 实习生看的是「实习几个月 · 每周到岗几天」，不是工龄档
   const [实习月数, 设实习月数] = useState(编辑目标?.实习月数 ?? 3);
@@ -215,13 +230,16 @@ export default function 发布岗位() {
     if (工作城市.trim() === '') return { 文案: '请填写工作城市', 步骤: 2 };
     if (办公地.trim() === '') return { 文案: '请填写办公地点', 步骤: 2 };
     if (职位要求.trim() === '') return { 文案: '请填写职位要求', 步骤: 2 };
+    // Task 7：Backend 工作城市必须从候选选（落 地点引用）；手输未选时阻止发布
+    if (是后端 && !地点引用) return { 文案: '请从候选城市中选择', 步骤: 2 };
     // 面试轮次 / 招聘紧急度 两道闸门随字段一起撤（产品负责人 2026-08-22：
     // 「这个面试轮次写上面是干什么的，应该删掉吧」「这个招聘紧急程度也删了吧，感觉没什么用」）。
     // 剩下的岗位名称 / 职位类别 / 办公方式 / 薪资带 是发岗真必需项，闸门不动
     return null;
   };
 
-  /** 把当前表单拼成完整岗位对象。编辑态沿用原编号 / 状态 / 在谈数，不被表单覆盖 */
+  /** 把当前表单拼成完整岗位对象。编辑态沿用原编号 / 状态 / 在谈数，不被表单覆盖。
+   *  Task 7：Backend 带 类别引用/地点引用（选择器保存）；Mock 两者 undefined（ omitted）。 */
   const 组装岗位 = (编号: string, 底: 在招岗位 | null): 在招岗位 => {
     const 单位 = 薪资单位(招聘类型);
     return {
@@ -231,6 +249,9 @@ export default function 发布岗位() {
       状态: 底?.状态 ?? '在招',
       在谈数: 底?.在谈数 ?? 0,
       城市: 工作城市.trim(),
+      // Task 7：Backend 选择器保存的目录引用；Mock 始终 undefined（可选字段 omitted）
+      类别引用,
+      地点引用,
       办公地: 办公地.trim(),
       办公方式,
       招聘类型,
@@ -308,6 +329,27 @@ export default function 发布岗位() {
   const 在谈人数 = 编辑目标
     ? 状态.企业候选列表.filter((候) => 候.岗位编号 === 编辑目标.编号).length
     : 0;
+
+  /**
+   * 工作城市输入变更（Task 7）：
+   *   Backend —— 手输更新字符串、触发 250ms debounce 候选查询、并清掉旧 地点引用（未选候选时阻止发布）；
+   *   Mock —— 只更新字符串（自由文本，无候选）。
+   * 点候选时由 选城市候选 单独设 工作城市 + 地点引用 + 清候选。
+   */
+  const 改工作城市 = (值: string) => {
+    设工作城市(值);
+    if (是后端) {
+      设城市搜索词(值);
+      设地点引用(undefined);
+    }
+  };
+
+  /** Backend 点城市候选：原子写入 工作城市 + 地点引用，清掉候选行 */
+  const 选城市候选 = (项: { id: string; display_name: string }) => {
+    设工作城市(项.display_name);
+    设地点引用({ id: 项.id, display_name: 项.display_name });
+    设城市搜索词('');
+  };
 
   /** 编辑态底部「删除」：有人在谈先拦住，否则弹二次确认 */
   const 请求删除 = () => {
@@ -438,13 +480,21 @@ export default function 发布岗位() {
             月数轮={月数轮}
             设月数轮={设月数轮}
             工作城市={工作城市}
-            设工作城市={设工作城市}
+            设工作城市={改工作城市}
             办公地={办公地}
             设办公地={设办公地}
             筛选要求={筛选要求}
             设筛选要求={设筛选要求}
             职位关键词={职位关键词}
             加分关键词={加分关键词}
+            是后端={是后端}
+            地点引用={地点引用}
+            城市候选={城市候选}
+            城市搜索中={城市搜索中}
+            选城市候选={选城市候选}
+            城市下一页={城市下一页}
+            城市加载中={城市加载中}
+            城市加载更多={城市加载更多}
           />
         ) : null}
 
@@ -504,14 +554,29 @@ export default function 发布岗位() {
         ) : null}
 
         {类别层开 ? (
-          <职业分类层
-            当前={职位类别}
-            选定={(项) => {
-              设职位类别(项);
-              设类别层开(false);
-            }}
-            关闭={() => 设类别层开(false)}
-          />
+          是后端 ? (
+            /* Task 7：Backend 按 查询Taxonomy('job-categories') 展开两级，selectable 叶子原子保存 */
+            <职业分类层后端
+              查询Taxonomy={目录查询?.查询Taxonomy}
+              当前引用={类别引用}
+              选定={(项) => {
+                设职位类别(项.display_name);
+                设类别引用({ id: 项.id, display_name: 项.display_name });
+                设类别层开(false);
+              }}
+              关闭={() => 设类别层开(false)}
+            />
+          ) : (
+            <职业分类层
+              当前={职位类别}
+              选定={(项) => {
+                设职位类别(项);
+                设类别引用(undefined);
+                设类别层开(false);
+              }}
+              关闭={() => 设类别层开(false)}
+            />
+          )
         ) : null}
       </div>
     </次级页外壳>
@@ -562,6 +627,213 @@ function 职业分类层({
             ))}
           </div>
         </div>
+    </弹层框架>
+  );
+}
+
+// ── Task 7：Backend 职业分类两级选择层 ——
+// 左栏 roots，右栏当前 root 的子项；非 selectable 子项按 parentId 展开下一级（替换右栏），
+// selectable 叶子原子回调 选定（同时写 职位类别 字符串 + 类别引用）。
+// 复用 选期望职位.tsx 的 查询Taxonomy('job-categories') 形，但单选 + 弹层外壳。
+// review-r3 R3-I-5：root/child 分页（nextCursor + dedup load-more）；
+// review-r3 R3-I-6：导航代际守 stale——快速切大类时慢的旧子项不覆盖新的。
+function 职业分类层后端({
+  查询Taxonomy,
+  当前引用,
+  选定,
+  关闭,
+}: {
+  查询Taxonomy?: (kind: 'job-categories', query: { parentId?: string; q?: string; cursor?: string; limit?: number }) => Promise<{ items: BFFTaxonomyItem[]; nextCursor: string | null; catalogVersion: string }>;
+  当前引用: 目录选择值 | undefined;
+  选定: (项: BFFTaxonomyItem) => void;
+  关闭: () => void;
+}) {
+  const 方法引用 = useRef(查询Taxonomy);
+  方法引用.current = 查询Taxonomy;
+  const [根项, 设根项] = useState<BFFTaxonomyItem[]>([]);
+  const [当前根, 设当前根] = useState<BFFTaxonomyItem | null>(null);
+  const [子项, 设子项] = useState<BFFTaxonomyItem[]>([]);
+  // review-r3 R3-I-5：分页游标 + 加载中状态
+  const [根游标, 设根游标] = useState<string | null>(null);
+  const [根加载中, 设根加载中] = useState(false);
+  const [子项游标, 设子项游标] = useState<string | null>(null);
+  const [子项加载中, 设子项加载中] = useState(false);
+  // review-r3 R3-I-6：导航代际守 stale；R3-I-8：当前根 ref
+  const 导航代际 = useRef(0);
+  const 当前根引用 = useRef(当前根);
+  当前根引用.current = 当前根;
+
+  // mount：读 roots，默认选第一枚并预载其子项
+  useEffect(() => {
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    void (async () => {
+      try {
+        const 页 = await 方法('job-categories', { limit: 50 });
+        设根项(页.items);
+        设根游标(页.nextCursor);
+        if (页.items.length > 0 && !当前根) {
+          设当前根(页.items[0]);
+          const 本次 = ++导航代际.current;
+          try {
+            const 子页 = await 方法('job-categories', { parentId: 页.items[0].id, limit: 50 });
+            if (本次 !== 导航代际.current) return;
+            设子项(子页.items);
+            设子项游标(子页.nextCursor);
+          } catch {
+            if (本次 !== 导航代际.current) return;
+            设子项([]);
+            设子项游标(null);
+          }
+        }
+      } catch {
+        设根项([]);
+        设根游标(null);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // review-r3 R3-I-5：根加载更多
+  const 根加载更多 = async () => {
+    if (根游标 === null || 根加载中) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    设根加载中(true);
+    try {
+      const 页 = await 方法('job-categories', { cursor: 根游标, limit: 50 });
+      设根项((旧) => 合并目录页(旧, 页.items));
+      设根游标(页.nextCursor);
+    } catch {
+      // 失败不动
+    } finally {
+      设根加载中(false);
+    }
+  };
+
+  // review-r3 R3-I-5/I-8：子项加载更多——导航代际 + 当前根双重守 stale
+  const 子项加载更多 = async () => {
+    if (子项游标 === null || 子项加载中 || !当前根) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    const 本次导航 = 导航代际.current;
+    const 目标根id = 当前根.id;
+    设子项加载中(true);
+    try {
+      const 页 = await 方法('job-categories', { parentId: 目标根id, cursor: 子项游标, limit: 50 });
+      if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+      设子项((旧) => 合并目录页(旧, 页.items));
+      设子项游标(页.nextCursor);
+    } catch {
+      if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+    } finally {
+      if (本次导航 === 导航代际.current && 当前根引用.current?.id === 目标根id) 设子项加载中(false);
+    }
+  };
+
+  // 左栏点 root：加载它的子项到右栏
+  // review-r3 R3-I-6：导航代际守 stale——快速切大类时慢的旧子项不覆盖新的
+  const 选根 = async (项: BFFTaxonomyItem) => {
+    设当前根(项);
+    设子项([]);
+    设子项游标(null);
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    const 本次 = ++导航代际.current;
+    try {
+      const 子页 = await 方法('job-categories', { parentId: 项.id, limit: 50 });
+      if (本次 !== 导航代际.current) return;
+      设子项(子页.items);
+      设子项游标(子页.nextCursor);
+    } catch {
+      if (本次 !== 导航代际.current) return;
+      设子项([]);
+      设子项游标(null);
+    }
+  };
+
+  // 右栏点子项：非 selectable → 按 parentId 展开下一级（替换右栏）；
+  // selectable 叶子 → 原子回调 选定，由父组件写 职位类别 + 类别引用
+  const 切子项 = (项: BFFTaxonomyItem) => {
+    if (!项.selectable) {
+      设当前根(项);
+      设子项([]);
+      设子项游标(null);
+      const 方法 = 方法引用.current;
+      if (方法) {
+        const 本次 = ++导航代际.current;
+        void (async () => {
+          try {
+            const 子页 = await 方法('job-categories', { parentId: 项.id, limit: 50 });
+            if (本次 !== 导航代际.current) return;
+            设子项(子页.items);
+            设子项游标(子页.nextCursor);
+          } catch {
+            if (本次 !== 导航代际.current) return;
+            设子项([]);
+            设子项游标(null);
+          }
+        })();
+      }
+      return;
+    }
+    选定(项);
+  };
+
+  return (
+    <弹层框架 标签="选择职位类别" 遮罩类名={样式.分类遮罩} 面板类名={样式.分类层} 关闭={关闭}>
+      <span className={样式.分类抓手} />
+      <div className={样式.分类标题}>职位类别</div>
+      <div className={样式.分类体}>
+        {/* 左栏：大类（roots） */}
+        <div className={`${样式.大类栏} 滚动区`}>
+          {根项.map((项) => (
+            <button
+              key={项.id}
+              className={`${样式.大类项} ${(当前根?.id ?? '') === 项.id ? 样式.大类项选中 : ''} 可点`}
+              onClick={() => 选根(项)}
+            >
+              {项.display_name}
+            </button>
+          ))}
+          {/* review-r3 R3-I-5：根分页加载更多 */}
+          {根游标 !== null ? (
+            <button
+              className="可点"
+              onClick={根加载更多}
+              disabled={根加载中}
+              style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
+            >
+              {根加载中 ? '加载中…' : '加载更多'}
+            </button>
+          ) : null}
+        </div>
+        {/* 右栏：当前 root 的子项；非 selectable 继续展开，selectable 叶子原子选定 */}
+        <div className={`${样式.小类栏} 滚动区`}>
+          {子项.map((项) => (
+            <button
+              key={项.id}
+              className={`${样式.小类项} ${(当前引用?.id ?? '') === 项.id ? 样式.小类项选中 : ''} 可点`}
+              onClick={() => 切子项(项)}
+              aria-disabled={!项.selectable ? true : undefined}
+            >
+              {项.display_name}
+              {(当前引用?.id ?? '') === 项.id ? <span className={样式.小类勾}>✓</span> : null}
+            </button>
+          ))}
+          {/* review-r3 R3-I-5：子项分页加载更多 */}
+          {子项游标 !== null ? (
+            <button
+              className="可点"
+              onClick={子项加载更多}
+              disabled={子项加载中}
+              style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
+            >
+              {子项加载中 ? '加载中…' : '加载更多'}
+            </button>
+          ) : null}
+        </div>
+      </div>
     </弹层框架>
   );
 }
@@ -896,6 +1168,14 @@ function 职位要求步({
   设筛选要求,
   职位关键词,
   加分关键词,
+  是后端,
+  地点引用,
+  城市候选,
+  城市搜索中,
+  选城市候选,
+  城市下一页,
+  城市加载中,
+  城市加载更多,
 }: {
   编辑态: boolean;
   招聘类型: 招聘类型;
@@ -925,6 +1205,16 @@ function 职位要求步({
   设筛选要求: (值: string) => void;
   职位关键词: string[];
   加分关键词: string[];
+  // Task 7：Backend 工作城市候选行
+  是后端: boolean;
+  地点引用: 目录选择值 | undefined;
+  城市候选: { id: string; display_name: string }[];
+  城市搜索中: boolean;
+  选城市候选: (项: { id: string; display_name: string }) => void;
+  // review-r2 R2-M-1：城市搜索分页
+  城市下一页: string | null;
+  城市加载中: boolean;
+  城市加载更多: () => void;
 }) {
   const { 跳转 } = use导航();
   const 提示不可改 = () => 轻提示('发布后不可修改，如需变更请新发一个岗位');
@@ -1031,15 +1321,42 @@ function 职位要求步({
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>
             工作城市{编辑态 ? <span className={样式.锁标}>发布后不可改</span> : null}
+            {/* Task 7：Backend 城市必须从候选选；已选时在标签右侧标一个轻提示 */}
+            {是后端 && !编辑态 && 地点引用 ? <span className={样式.锁标}>已选</span> : null}
           </div>
           <input
             className={样式.条目输入}
             value={工作城市}
-            placeholder="如：上海"
+            placeholder={是后端 ? '搜索城市名，从下方候选选择' : '如：上海'}
             readOnly={编辑态}
             onClick={编辑态 ? 提示不可改 : undefined}
             onChange={(事件) => 设工作城市(事件.target.value)}
           />
+          {/* Task 7：Backend 工作城市候选行 —— 复用 快捷片 样式，点候选原子写入 工作城市 + 地点引用。
+              Mock 分支无候选行（自由文本）。继续输入清掉 地点引用，未选候选时发布会被 拦截。 */}
+          {是后端 && !编辑态 && 工作城市.trim() !== '' && !地点引用 ? (
+            <div className={样式.快捷片行}>
+              {城市搜索中 ? <span className={样式.条件空提示}>搜索中…</span> : null}
+              {城市候选.map((项) => (
+                <button
+                  key={项.id}
+                  className={`${样式.快捷片} 可点`}
+                  onClick={() => 选城市候选(项)}
+                >
+                  {项.display_name}
+                </button>
+              ))}
+              {!城市搜索中 && 城市候选.length === 0 ? (
+                <span className={样式.条件空提示}>没有匹配的城市，换个词试试。</span>
+              ) : null}
+              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
+              {城市下一页 !== null ? (
+                <button className={`${样式.快捷片} 可点`} onClick={城市加载更多} disabled={城市加载中}>
+                  {城市加载中 ? '加载中…' : '加载更多'}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         {/* 办公地点到楼宇级：候选人要据此判断通勤，只给城市不够用。 */}

@@ -1,6 +1,8 @@
 // 领域类型：先把原型里的数据结构定死，后端接上来时按这份契约对齐字段。
 // 方案里「整理原型 → 补齐路由、状态管理与 API 层」的类型部分就在这里。
 
+import type { 目录选择值 } from './招聘数据源类型';
+
 /** 谈判四阶段。顺序即推进顺序，配色见 设计令牌.css 的 --初筛/--递简历/--协调/--意向 */
 export type 阶段 = '匿名初筛' | '递交简历' | '需要协调' | '意向确认';
 
@@ -251,6 +253,9 @@ export interface 在招岗位 {
   在谈数: number;
   // ── 发布时录入、发布后可编辑（2026-08-18 补）──
   城市?: string;
+  /** Backend 工作城市选择器选中的 Location 引用（id + display_name）；Mock 模式为 undefined。
+   *  Task 7 的 BFF 写入映射用它取 location_id。列表字符串 城市 继续渲染。*/
+  地点引用?: 目录选择值;
   /** 办公地点，楼宇级文本 */
   办公地?: string;
   办公方式?: string;
@@ -258,6 +263,9 @@ export interface 在招岗位 {
   招聘类型?: '社招全职' | '校园招聘' | '实习生' | '兼职';
   /** 职位类别，如「后端开发」。发布后不可修改 */
   职位类别?: string;
+  /** Backend 职位类别选择器选中的目录引用（id + display_name）；Mock 模式为 undefined。
+   *  Task 7 的 BFF 写入映射用它取 category_id，代替按 display_name 反查目录 */
+  类别引用?: 目录选择值;
   /** 给 AI 代理的筛选要求（标注 2026-08-20 13:40）：自由文本偏好，代理按它筛选和谈 */
   筛选要求?: string;
   /** 结构化要求：与 硬性条件 合同联动（不限 = 不写进合同） */
@@ -344,6 +352,9 @@ export interface 简历经历段 {
   编号: string;
   公司: string;
   行业: string;
+  /** Backend 行业选择器选中的目录引用（id + display_name）；Mock 模式为 undefined。
+   *  Tasks 5–6 的 BFF 写入映射会用它取 industry_id，代替按 display_name 反查 */
+  行业引用?: 目录选择值;
   职位: string;
   /** 'yyyy-MM' */
   开始: string;
@@ -362,8 +373,14 @@ export interface 简历教育段 {
   /** 多段教育需要稳定 key */
   编号: string;
   学校: string;
+  /** Backend 学校选择器选中的目录引用；Mock 模式为 undefined。
+   *  Tasks 5–6 的 BFF 写入映射会用它取 institution_id */
+  学校引用?: 目录选择值;
   学历: string;
   专业: string;
+  /** Backend 专业选择器选中的目录引用；Mock 模式为 undefined。
+   *  Tasks 5–6 的 BFF 写入映射会用它取 major_id */
+  专业引用?: 目录选择值;
   开始: string;
   结束: string;
 }

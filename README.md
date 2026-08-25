@@ -78,6 +78,62 @@ RECRUITMENT_BFF_PUBLIC_ORIGIN=http://localhost:5173
 - 接口失败不回退 Mock。
 - `加分关键词/实习转正` 是按后端环境+岗位 ID 保存的本浏览器附属数据；作品集/附件文件名也仅留本地，不跨设备同步。
 
+### 环境变量与重启
+
+`VITE_DATA_SOURCE` / `VITE_BACKEND_ENV` 在 Vite dev server 启动时读取一次。**改环境变量必须重启
+Vite**（停掉 dev server 重新 `npm run dev`），`.env.local` 改了同理——Vite 不会热重载这两个变量。
+缺省（不设任何变量）= `mock/stg`；只设 `VITE_BACKEND_ENV=local` 而不设 `VITE_DATA_SOURCE=backend`
+仍是 Mock（不构造代理、不发 HTTP 请求）。
+
+### 按需 Catalog
+
+Backend 模式不预取全量目录。选择器（城市 / 学校 / 职位 / 行业 / 专业）在用户展开或搜索时
+按需分页查询 `/api/v1/catalog/*`，查询返回 `{ items, nextCursor }`，按 id 去重累积；
+选中的目录引用（`{ id, display_name }`）保存在草稿 / 引导预填里，写入时直接用 id，
+不再保存前反查目录或全量预取。学校候选副行显示「城市 · 国家」（来自 institution 嵌套的 location）。
+
+### 学校城市消歧
+
+同名学校在不同城市时，候选列表用「城市 · 国家」副行区分；选中后只存 institution ID，
+学校所在城市不写入 Education、不进筛选步骤、不改简历展示。
+
+### 后端配套部署前提
+
+- `stg`：`https://recruitment-stg.agxp.ai`，需可达 + 有效证书 + 支持 4 位 OTP。
+- `local`：本地 BFF 监听 `127.0.0.1:8097`，配置 `RECRUITMENT_BFF_ENV=test` +
+  `RECRUITMENT_BFF_PUBLIC_ORIGIN=http://localhost:5173`。
+- 后端必须先实现已接线端点（session / auth / me / catalog / resume / intentions / jobs）。
+- 演示域（市场/匹配/消息/规则/AI简报/会话/历史）未接线，Backend 模式仍用演示种子。
+
+### Mock / Backend 本地缓存隔离
+
+- Mock 模式写 `AGXP简历v2` / `AGXP求职筛选v1` 等原型 localStorage 键。
+- Backend 模式不读写这些 Mock 原型键：支持域只认服务端权威，写回 Mock 缓存会污染
+  Backend 会话，退出后也留在本地覆盖下次 Mock 装载。
+- `stg` 与 `local` 的 Backend 草稿 key 各自带环境前缀，互不恢复引用。
+- 退出登录 / 401 清空后端目录缓存，避免下个会话复用上个会话的目录页。
+
+### 数据源边界 E2E
+
+```bash
+npm run test:e2e:data-source
+```
+
+由 `playwright.数据源模式.config.ts` 同时启动两个不可复用的 Vite dev server
+（`mock/stg` 端口 4181、`backend/stg` 端口 4182），各跑一组用例。Backend 用例用
+Playwright `page.route` 拦截 `/api/v1/*` 返回 fixture（不冒充真实联调）。
+
+确定性 fixture 通过后，还需按上面命令对可达的真实 `stg`（以及本地 BFF 可用时的 `local`）
+完成一次真实登录 / 资源读取 smoke。若目标环境或 OTP 前置未就绪，记录外部 blocker，
+不能用 route fixture 冒充真实联调通过。
+
+### 未接线演示域与前端附属字段
+
+- 演示域（市场发现、匹配/评价、消息、规则、AI 简报、会话、历史）仍用 Mock 种子，
+  Backend 模式不替换它们，也不被 Backend 失败路径污染。
+- 前端附属字段（`加分关键词` / `实习转正` / 作品集链接 / 附件文件名）按后端环境 + 实体 ID
+  保存在本浏览器，不跨设备同步，不进 BFF 写入 body。
+
 ## 目录结构
 
 ```

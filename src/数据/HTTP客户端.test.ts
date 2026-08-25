@@ -31,13 +31,23 @@ describe('BFF HTTP 客户端', () => {
 
   it('发送 If-Match 并保留结构化校验错误', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => new Response(
-      JSON.stringify({ error: { type: 'validation_failed', message: 'bad', fields: { title: 'required' } } }),
+      JSON.stringify({ error: { type: 'validation_failed', message: 'bad', fields: [{ path: 'title', reason: 'required' }] } }),
       { status: 422, headers: { 'Content-Type': 'application/json' } },
     ));
     const client = 创建BFF客户端({ fetcher, 生成幂等键: () => 'idem-fixed' });
     await expect(client.请求({ path: '/api/v1/recruiter/jobs/job_1', method: 'PATCH', body: {}, ifMatch: '"2"' }))
-      .rejects.toMatchObject({ status: 422, code: 'validation_failed', fieldErrors: { title: 'required' } });
+      .rejects.toMatchObject({ status: 422, code: 'validation_failed', fieldErrors: [{ path: 'title', reason: 'required' }] });
     expect(new Headers(fetcher.mock.calls[0][1]?.headers).get('If-Match')).toBe('"2"');
+  });
+
+  // Task 2：BFF 字段错误为有序数组（{path,reason}），保留服务端给定顺序，不再按对象 key 解析。
+  it('解析有序字段错误数组', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ error: {
+      type: 'validation_failed', message: 'bad',
+      fields: [{ path: 'compensation.lower', reason: 'required' }],
+    } }), { status: 422, headers: { 'Content-Type': 'application/json' } }));
+    await expect(创建BFF客户端({ fetcher, 生成幂等键: () => 'k' }).请求({ path: '/api/v1/me/intentions', method: 'POST', body: {} }))
+      .rejects.toMatchObject({ fieldErrors: [{ path: 'compensation.lower', reason: 'required' }] });
   });
 
   it('普通网络错误不调用任何 Mock 数据源', async () => {

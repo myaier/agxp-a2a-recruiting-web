@@ -65,6 +65,7 @@ describe('应用状态 reducer', () => {
       job_category: { id: 'tax_p', display_name: '产品经理' },
       alternate_locations: [{ id: 'loc_bj', display_name: '北京' }],
       industries: [{ id: 'ind_fin', display_name: '金融' }],
+      workplace_modes: ['hybrid'] as ('onsite' | 'hybrid' | 'remote')[],
       compensation: { mode: 'range' as const, lower: 300, upper: 500, annual_salary_months: null },
       salary_period: 'day' as const,
       recruitment_type: 'internship' as const,
@@ -79,11 +80,16 @@ describe('应用状态 reducer', () => {
       编辑编号: 'int_1',
       求职类型: '全职',
       工作城市: '上海',
+      工作城市引用: { id: 'loc_sh', display_name: '上海' },
       期望职位: '产品经理',
+      职位引用: { id: 'tax_p', display_name: '产品经理' },
       感兴趣城市们: ['北京'],
+      感兴趣城市引用们: [{ id: 'loc_bj', display_name: '北京' }],
       薪资下限: 300,
       薪资上限: 500,
       期望行业们: ['金融'],
+      行业引用们: [{ id: 'ind_fin', display_name: '金融' }],
+      办公方式: ['混合'],
       后端招聘类型: 'internship',
       求职类型已改: false,
     });
@@ -95,6 +101,35 @@ describe('应用状态 reducer', () => {
     expect(水合.后端意向服务端).toEqual({ int_2: dto });
     const 清空 = 归约(水合, { 型: '水合后端意向', 快照: { 列表: [], 服务端: {} } });
     expect(清空.后端意向服务端).toEqual({});
+  });
+
+  // review-r2 R2-I-2：启程引导 必须保留选择器写入的 目录引用们，否则首轮意向提交丢 refs。
+  it('启程引导 保留 城市引用们/职位引用们（R2-I-2）', () => {
+    const 城市引用们 = [{ id: 'loc_sh', display_name: '上海' }];
+    const 职位引用们 = [{ id: 'tax_pm', display_name: '产品经理' }];
+    const 下一 = 归约(初始状态, {
+      型: '启程引导',
+      城市们: ['上海'],
+      职位: ['产品经理'],
+      筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] },
+      城市引用们,
+      职位引用们,
+    });
+    expect(下一.引导预填).not.toBe(null);
+    expect(下一.引导预填!.城市引用们).toEqual(城市引用们);
+    expect(下一.引导预填!.职位引用们).toEqual(职位引用们);
+  });
+
+  it('启程引导 未传 refs 时默认空数组（Mock 路径，R2-I-2）', () => {
+    const 下一 = 归约(初始状态, {
+      型: '启程引导',
+      城市们: ['上海'],
+      职位: ['产品经理'],
+      筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] },
+    });
+    expect(下一.引导预填).not.toBe(null);
+    expect(下一.引导预填!.城市引用们).toEqual([]);
+    expect(下一.引导预填!.职位引用们).toEqual([]);
   });
 
   it('由 Provider 在状态提交后统一持久化', async () => {
@@ -174,7 +209,10 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     归档岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     重开岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     删除岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
-    读取目录: vi.fn(async () => ({ 职位类别: [], 地点: [], 行业: [], 院校: [], 专业: [] })),
+    清空目录缓存: vi.fn(),
+    查询Location: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+    查询Taxonomy: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+    查询Institution: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
     开始手机登录: vi.fn(),
     完成手机登录: vi.fn(),
     开始微信登录: vi.fn(),
@@ -281,9 +319,16 @@ describe('应用状态提供者 候选写操作', () => {
     const 后端源 = 后端 as unknown as HTTP招聘数据源;
     render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
     await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
-    const 草稿 = { 编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '产品经理', 感兴趣城市们: [] as string[], 薪资下限: 10, 薪资上限: 20, 期望行业们: [] as string[], 后端招聘类型: null, 求职类型已改: false };
+    const 草稿 = {
+      编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '产品经理',
+      工作城市引用: { id: 'loc_sh', display_name: '上海' }, 职位引用: { id: 'tax_p', display_name: '产品经理' },
+      感兴趣城市们: [] as string[], 感兴趣城市引用们: [] as never[],
+      薪资下限: 10, 薪资上限: 20, 期望行业们: [] as string[], 行业引用们: [] as never[],
+      办公方式: ['hybrid'], 后端招聘类型: null, 求职类型已改: false,
+    };
     const 第一次 = 当前.操作.保存意向(草稿);
     const 第二次 = 当前.操作.保存意向(草稿);
+    // Task 6：保存意向 不再按需取目录，创建意向 同步调用（不再 waitFor）
     expect(后端.创建意向).toHaveBeenCalledTimes(1);
     完成.resolve({ 列表: [], 服务端: {} });
     await Promise.all([第一次, 第二次]);
@@ -309,11 +354,16 @@ describe('应用状态提供者 候选写操作', () => {
       编辑编号: 'int_1',
       求职类型: '全职' as const,
       工作城市: '上海',
+      工作城市引用: { id: 'loc_sh', display_name: '上海' },
       期望职位: '本地冲突职位',
+      职位引用: { id: 'tax_p', display_name: '产品经理' },
       感兴趣城市们: [] as string[],
+      感兴趣城市引用们: [] as never[],
       薪资下限: 10,
       薪资上限: 20,
       期望行业们: [] as string[],
+      行业引用们: [] as never[],
+      办公方式: ['hybrid'],
       后端招聘类型: 'internship' as const,
       求职类型已改: false,
     };
@@ -499,5 +549,450 @@ describe('应用状态提供者 切身份与退出登录', () => {
     expect(后端2.恢复会话).toHaveBeenCalled();
     // 清理：resolve 第一次的 deferred（第一次 init 已被取消，resolve 不会影响状态）
     恢复完成.resolve({ identity_id: 'id_1', session_id: 'sess_1', expires_at: '2026-08-25T00:00:00Z' });
+  });
+});
+
+// ── Task 2：目录不再随初始化预取；candidate 水合并行；Mock 原型缓存隔离 ───────────────
+
+/** Map 存储的 localStorage 桩：setItem/getItem 可往返，用于断言 Mock 原型键字节不变。 */
+function 创建Map存储() {
+  const 存 = new Map<string, string>();
+  return {
+    getItem: vi.fn((key: string) => 存.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => { 存.set(key, value); }),
+    removeItem: vi.fn((key: string) => { 存.delete(key); }),
+    clear: vi.fn(() => 存.clear()),
+  };
+}
+
+describe('应用状态提供者 目录水合与原型缓存隔离', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', 创建Map存储());
+  });
+
+  // Task 2：candidate 初始化并行读取简历与 active 意向，不再预取目录。
+  // Task 7：读取目录 已删除，这里只断言简历/意向独立提交。
+  it('candidate 初始化独立提交简历和 active 意向', async () => {
+    const 后端 = 创建后端桩('candidate');
+    const 简历快照 = 从BFF简历(BFF简历样本);
+    const 意向快照 = { 列表: [], 服务端: {} } as 页面意向快照;
+    vi.mocked(后端.读取简历).mockResolvedValue(简历快照);
+    vi.mocked(后端.读取意向).mockResolvedValue(意向快照);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }));
+    await waitFor(() => expect(后端.读取简历).toHaveBeenCalled());
+    expect(后端.读取意向).toHaveBeenCalled();
+    expect(后端.读取意向).toHaveBeenCalledWith();
+  });
+
+  // Task 2：交互式切身份也不预取目录。
+  // Task 7：读取目录 已删除，这里只断言切身份后水合目标角色岗位。
+  it('交互式切换角色水合目标角色岗位', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.切身份('招聘方');
+    await waitFor(() => expect(后端.读取岗位).toHaveBeenCalled());
+  });
+
+  // Task 2：Backend 水合与退出不覆盖 Mock 原型缓存（AGXP简历v2 / AGXP求职筛选v1）。
+  it('Backend 水合和退出不覆盖 Mock 原型缓存', async () => {
+    localStorage.setItem('AGXP简历v2', '{"PM":"mock-resume"}');
+    localStorage.setItem('AGXP求职筛选v1', '{"PM":"mock-onboarding"}');
+    const before = [localStorage.getItem('AGXP简历v2'), localStorage.getItem('AGXP求职筛选v1')];
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.退出登录();
+    expect([localStorage.getItem('AGXP简历v2'), localStorage.getItem('AGXP求职筛选v1')]).toEqual(before);
+  });
+});
+
+// ── review-r1 P1-4 / P1-5 / P1-6：Backend 种子不读 Mock 缓存；401/退出清草稿；
+//    目录查询 401 走统一会话清理 ──────────────────────────────────────────────
+
+describe('应用状态提供者 review-r1 Backend 边界', () => {
+  function 创建Map存储() {
+    const 存 = new Map<string, string>();
+    return {
+      getItem: vi.fn((key: string) => 存.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => { 存.set(key, value); }),
+      removeItem: vi.fn((key: string) => { 存.delete(key); }),
+      clear: vi.fn(() => 存.clear()),
+    };
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', 创建Map存储());
+  });
+
+  // P1-4：Backend 种子状态不读 Mock 的 AGXP求职筛选v1 缓存——
+  // 浏览器先前跑过 Mock 时该键存了 Mock 城市/职位字符串，Backend onboarding 不该把它们当答案。
+  it('Backend 种子引导预填为 null，不读 Mock 求职筛选缓存（P1-4）', async () => {
+    localStorage.setItem('AGXP求职筛选v1', JSON.stringify({ 城市们: ['上海'], 职位: ['产品经理'] }));
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.状态.引导预填).toBe(null);
+  });
+
+  // P1-5：Backend 退出登录后，引导预填 / 意向草稿 都归零，不带到下一个账号。
+  it('退出登录清空 引导预填 与 意向草稿（P1-5）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // 先写入草稿与引导预填，模拟用户填到一半
+    当前.派发({ 型: '改意向草稿', 补丁: { 期望职位: '后端工程师', 职位引用: { id: 'tax_be', display_name: '后端工程师' } } });
+    当前.派发({
+      型: '存引导预填',
+      城市们: ['上海'],
+      职位: ['产品经理'],
+      城市引用们: [{ id: 'loc_sh', display_name: '上海' }],
+      职位引用们: [{ id: 'tax_pm', display_name: '产品经理' }],
+    });
+    await waitFor(() => expect(当前.状态.意向草稿.期望职位).toBe('后端工程师'));
+    expect(当前.状态.引导预填).not.toBe(null);
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.状态.引导预填).toBe(null);
+    expect(当前.状态.意向草稿.期望职位).toBe('');
+    expect(当前.状态.意向草稿.职位引用).toBeUndefined();
+  });
+
+  // P1-5：意向写操作 401 也清草稿与引导预填（不只清服务端快照）。
+  it('意向写入 401 清空 引导预填 与 意向草稿（P1-5）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.创建意向).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    当前.派发({ 型: '改意向草稿', 补丁: { 期望职位: '后端工程师' } });
+    当前.派发({ 型: '存引导预填', 城市们: ['上海'], 职位: ['产品经理'], 城市引用们: [], 职位引用们: [] });
+    const 草稿 = {
+      编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '后端工程师',
+      工作城市引用: { id: 'loc_sh', display_name: '上海' }, 职位引用: { id: 'tax_be', display_name: '后端工程师' },
+      感兴趣城市们: [] as string[], 感兴趣城市引用们: [] as never[],
+      薪资下限: 10, 薪资上限: 20, 期望行业们: [] as string[], 行业引用们: [] as never[],
+      办公方式: ['hybrid'], 后端招聘类型: null, 求职类型已改: false,
+    };
+    await expect(当前.操作.保存意向(草稿)).rejects.toMatchObject({ code: 'invalid_session' });
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.状态.引导预填).toBe(null);
+    expect(当前.状态.意向草稿.期望职位).toBe('');
+  });
+
+  // P1-6：目录查询 401 也走统一会话清理（派发空快照 + 后端状态已登录=false + 清空目录缓存），
+  // 不只是资源写操作的 401 才清。选择器开着时会话过期 → 目录请求 401 → 会话被清。
+  it('目录查询 401 触发会话清理：派发空快照、后端状态登出、清空目录缓存（P1-6）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    // 目录查询方法 401
+    后端.查询Institution = vi.fn(async () => { throw new BFF错误(401, 'invalid_session', 'expired'); }) as never;
+    后端.查询Taxonomy = vi.fn(async () => { throw new BFF错误(401, 'invalid_session', 'expired'); }) as never;
+    后端.查询Location = vi.fn(async () => { throw new BFF错误(401, 'invalid_session', 'expired'); }) as never;
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(true);
+    // 选择器开着时会话过期 → 调目录查询 → 401
+    const 目录查询 = 当前.目录查询!;
+    await expect(目录查询.查询Institution({ q: '清华' })).rejects.toMatchObject({ code: 'invalid_session' });
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.主体).toBe(null);
+    expect(后端.清空目录缓存).toHaveBeenCalled();
+    // 服务端支持域也清空了
+    expect(当前.状态.求职意向表).toEqual([]);
+    expect(当前.状态.岗位列表).toEqual([]);
+  });
+
+  // P1-6 补：目录查询 401 后还清草稿与引导预填（与资源写 401 同口径）。
+  it('目录查询 401 也清空 引导预填 与 意向草稿（P1-6）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    后端.查询Institution = vi.fn(async () => { throw new BFF错误(401, 'invalid_session', 'expired'); }) as never;
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    当前.派发({ 型: '改意向草稿', 补丁: { 期望职位: '后端工程师' } });
+    当前.派发({ 型: '存引导预填', 城市们: ['上海'], 职位: ['产品经理'], 城市引用们: [], 职位引用们: [] });
+    await expect(当前.目录查询!.查询Institution({ q: '清华' })).rejects.toMatchObject({ code: 'invalid_session' });
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.状态.引导预填).toBe(null);
+    expect(当前.状态.意向草稿.期望职位).toBe('');
+  });
+});
+
+// ── review-r2 R2-I-3 / R2-I-4 / R2-M-4：会话边界——水合 401、主体切换、目录 stale 401 ──
+
+describe('应用状态提供者 review-r2 会话边界', () => {
+  function 创建Map存储() {
+    const 存 = new Map<string, string>();
+    return {
+      getItem: vi.fn((key: string) => 存.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => { 存.set(key, value); }),
+      removeItem: vi.fn((key: string) => { 存.delete(key); }),
+      clear: vi.fn(() => 存.clear()),
+    };
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', 创建Map存储());
+  });
+
+  // R2-I-3：mount-init 恢复会话 200 但水合时 读取简历 401（会话在水合途中过期），
+  // 旧实现只 轻提示 然后落 已登录=true，本地还挂着上个会话的草稿/快照。
+  it('水合 401 清会话不落 已登录=true（R2-I-3）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取简历).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(false);
+    expect(当前.后端状态.主体).toBe(null);
+    expect(当前.后端状态.简历快照).toBe(null);
+    expect(后端.清空目录缓存).toHaveBeenCalled();
+    // 草稿也被清（与资源写 401 同口径）
+    expect(当前.状态.引导预填).toBe(null);
+  });
+
+  // R2-I-4：同一 Provider 实例下主体 subject_id 变化时，上个账号的草稿/快照要先清掉。
+  it('主体 subject_id 变化时清空上个账号的草稿与快照（R2-I-4）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    // 主体 A（sub_A）先登录
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.主体?.subject_id).toBe('sub_A');
+    // A 填了一些草稿
+    当前.派发({ 型: '改意向草稿', 补丁: { 期望职位: 'A 的职位' } });
+    current派发引导预填(当前, '上海');
+    await waitFor(() => expect(当前.状态.意向草稿.期望职位).toBe('A 的职位'));
+    // B 在同一 Provider 登录（完成手机登录 → 读取主体 返回 sub_B）
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
+    await 当前.操作.完成手机登录('1234');
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
+    // A 的草稿/引导预填被清，不串到 B
+    expect(当前.状态.意向草稿.期望职位).toBe('');
+    expect(当前.状态.引导预填).toBe(null);
+  });
+
+  // R2-I-4 补：同一 subject_id 再次登录（如刷新后再登录）不清空草稿。
+  it('同 subject_id 再次登录不清空草稿（R2-I-4）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    current派发引导预填(当前, '上海');
+    await waitFor(() => expect(当前.状态.引导预填).not.toBe(null));
+    // 同 subject_id 再次完成手机登录
+    await 当前.操作.完成手机登录('1234');
+    // 草稿保留
+    expect(当前.状态.引导预填).not.toBe(null);
+  });
+
+  // R2-M-4：目录请求开始 → 退出+重登（新会话）→ 旧请求的 401 到达 → 新会话不被踢。
+  it('stale 目录 401 不清 newer 会话（R2-M-4）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    // 主体先登录（sub_A）
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // 目录请求开始（deferred，稍后才 reject 401）
+    const 目录拒绝 = deferred<never>();
+    后端.查询Institution = vi.fn(async () => 目录拒绝.promise) as never;
+    const 目录请求 = 当前.目录查询!.查询Institution({ q: '清华' });
+    // 退出登录 + 重新登录（新会话代际）
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    // 重新登录：读取主体 返回新主体
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' });
+    await 当前.操作.完成手机登录('5678');
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(true));
+    // 旧请求的 401 到达
+    目录拒绝.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(目录请求).rejects.toMatchObject({ code: 'invalid_session' });
+    // 新会话仍然登录（stale 401 被忽略）
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(true));
+    expect(当前.后端状态.主体).not.toBe(null);
+  });
+});
+
+/** 测试辅助：派发一个带引用的 存引导预填（避免每个测试重复写一长串参数） */
+function current派发引导预填(当前: ReturnType<typeof use应用状态>, 城市: string) {
+  当前.派发({
+    型: '存引导预填',
+    城市们: [城市],
+    职位: ['产品经理'],
+    城市引用们: [{ id: 'loc_sh', display_name: 城市 }],
+    职位引用们: [{ id: 'tax_pm', display_name: '产品经理' }],
+  });
+}
+
+// ── review-r3 R3-I-2 / R3-I-3 / R3-I-4：会话边界收口——全 401 统一清理、登录读主体失败、切身份 401 ──
+
+describe('应用状态提供者 review-r3 会话边界收口', () => {
+  function 创建Map存储() {
+    const 存 = new Map<string, string>();
+    return {
+      getItem: vi.fn((key: string) => 存.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => { 存.set(key, value); }),
+      removeItem: vi.fn((key: string) => { 存.delete(key); }),
+      clear: vi.fn(() => 存.clear()),
+    };
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', 创建Map存储());
+  });
+
+  // R3-I-2：意向 401 必须清掉全部支持域快照（简历/意向/岗位），不只清意向。
+  it('意向写入 401 清空全部支持域快照与草稿（R3-I-2）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.创建意向).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // 模拟已水合的支持域有内容
+    当前.派发({ 型: '改意向草稿', 补丁: { 期望职位: '后端工程师' } });
+    当前.派发({ 型: '存引导预填', 城市们: ['上海'], 职位: ['产品经理'], 城市引用们: [], 职位引用们: [] });
+    const 草稿 = {
+      编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '后端工程师',
+      工作城市引用: { id: 'loc_sh', display_name: '上海' }, 职位引用: { id: 'tax_be', display_name: '后端工程师' },
+      感兴趣城市们: [] as string[], 感兴趣城市引用们: [] as never[],
+      薪资下限: 10, 薪资上限: 20, 期望行业们: [] as string[], 行业引用们: [] as never[],
+      办公方式: ['hybrid'], 后端招聘类型: null, 求职类型已改: false,
+    };
+    await expect(当前.操作.保存意向(草稿)).rejects.toMatchObject({ code: 'invalid_session' });
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    // 三个支持域的后端快照都清空（不只意向）
+    expect(当前.后端状态.简历快照).toBe(null);
+    expect(当前.后端状态.意向快照).toEqual({});
+    expect(当前.后端状态.岗位快照).toEqual({});
+    // 状态层支持域也清空
+    expect(当前.状态.求职意向表).toEqual([]);
+    expect(当前.状态.岗位列表).toEqual([]);
+    // 草稿也清
+    expect(当前.状态.引导预填).toBe(null);
+    expect(当前.状态.意向草稿.期望职位).toBe('');
+    expect(后端.清空目录缓存).toHaveBeenCalled();
+  });
+
+  // R3-I-2 补：岗位 401 也清掉简历/意向快照（不只岗位）
+  it('岗位写入 401 清空全部支持域快照与草稿（R3-I-2）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('recruiter');
+    vi.mocked(后端.创建岗位).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    当前.派发({ 型: '改意向草稿', 补丁: { 期望职位: '后端工程师' } });
+    当前.派发({ 型: '存引导预填', 城市们: ['上海'], 职位: ['产品经理'], 城市引用们: [], 职位引用们: [] });
+    await expect(当前.操作.发布岗位({ ...页面岗位样本, 编号: 'P-临时' })).rejects.toMatchObject({ code: 'invalid_session' });
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.简历快照).toBe(null);
+    expect(当前.后端状态.意向快照).toEqual({});
+    expect(当前.后端状态.岗位快照).toEqual({});
+    expect(当前.状态.引导预填).toBe(null);
+    expect(当前.状态.意向草稿.期望职位).toBe('');
+    expect(后端.清空目录缓存).toHaveBeenCalled();
+  });
+
+  // R3-I-3：完成手机登录 → 读取主体 401 → 已登录 保持 false，且已清理
+  it('完成手机登录 读取主体 401 不落 已登录 且清理会话（R3-I-3）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取主体).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // 先有些上个账号的草稿
+    当前.派发({ 型: '改意向草稿', 补丁: { 期望职位: '旧职位' } });
+    当前.派发({ 型: '存引导预填', 城市们: ['上海'], 职位: ['产品经理'], 城市引用们: [], 职位引用们: [] });
+    await 当前.操作.完成手机登录('1234');
+    // 读取主体 401 → 不落 已登录，清理会话
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.主体).toBe(null);
+    expect(当前.状态.引导预填).toBe(null);
+    expect(当前.状态.意向草稿.期望职位).toBe('');
+    expect(后端.清空目录缓存).toHaveBeenCalled();
+  });
+
+  // R3-I-3 补：读取主体 非 401 失败也不落 已登录=true，留未登录 + 轻提示
+  it('完成手机登录 读取主体 非401 失败留未登录（R3-I-3）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取主体).mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.完成手机登录('1234');
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.主体).toBe(null);
+  });
+
+  // R3-I-4：切身份 → 确保角色 401 → 全清理，已登录 false；本地角色不切
+  it('切身份 确保角色 401 全清理且本地角色不切（R3-I-4）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.确保角色).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // 切之前是 candidate（已登录）
+    expect(当前.后端状态.已登录).toBe(true);
+    await expect(当前.操作.切身份('招聘方')).rejects.toMatchObject({ code: 'invalid_session' });
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.主体).toBe(null);
+    expect(当前.状态.引导预填).toBe(null);
+    expect(后端.清空目录缓存).toHaveBeenCalled();
+    // 本地 Tab 仍是求职者的「职位」（切身份 派发未执行）
+    expect(当前.状态.当前Tab).toBe('职位');
+  });
+
+  // R3-I-4 补：切身份 记录当前角色 401 也全清理
+  it('切身份 记录当前角色 401 全清理（R3-I-4）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.记录当前角色).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await expect(当前.操作.切身份('招聘方')).rejects.toMatchObject({ code: 'invalid_session' });
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.状态.当前Tab).toBe('职位');
   });
 });

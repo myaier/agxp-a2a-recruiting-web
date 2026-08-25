@@ -141,3 +141,13 @@
   gap: 8px;
   padding: 2px 0 14px;
 }
+
+/* review-r2 R2-M-1：分页「加载更多」按钮（根行业 + 子项共用）*/
+.加载更多键 {
+  width: 100%;
+  padding: 10px;
+  font-size: 13px;
+  color: var(--最弱);
+  background: transparent;
+  border: none;
+}

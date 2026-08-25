@@ -20,6 +20,9 @@ import type {
   BFF目录引用,
   BFFOwnerIntention,
   BFFOwnerJob,
+  BFFTaxonomyItem,
+  BFFLocationItem,
+  BFFInstitutionItem,
 } from './BFF契约';
 import type { 后端环境 } from '../配置/运行配置';
 import type { 岗位附属存储 } from './前端附属数据';
@@ -28,7 +31,10 @@ import type {
   页面简历写入,
   页面意向快照,
   页面岗位快照,
-  目录索引,
+  目录页,
+  Taxonomy查询,
+  Location查询,
+  Institution查询,
   意向草稿型,
   意向映射上下文,
   首次意向输入,
@@ -90,45 +96,13 @@ interface BFF登出回执 {
   logged_out: boolean;
 }
 
-const 目录端点: Record<keyof 目录索引, `/api/v1/catalog/${string}`> = {
-  职位类别: '/api/v1/catalog/job-categories',
-  地点: '/api/v1/catalog/locations',
-  行业: '/api/v1/catalog/industries',
-  院校: '/api/v1/catalog/education-institutions',
-  专业: '/api/v1/catalog/majors',
-};
+// 分页目录查询只覆盖这三个 taxonomy 端点；locations / education-institutions 固定路径单独映射。
+type Taxonomy类别 = 'job-categories' | 'industries' | 'majors';
 
-type 目录项 = { id: string; display_name: string; selectable?: boolean };
 type 写入步骤 = () => Promise<unknown>;
-
-function 去重目录(项们: BFF目录引用[]): BFF目录引用[] {
-  const seen = new Set<string>();
-  const out: BFF目录引用[] = [];
-  for (const 项 of 项们) {
-    if (seen.has(项.id)) continue;
-    seen.add(项.id);
-    out.push(项);
-  }
-  return out;
-}
-
-/** 从已存简历快照里抽出已引用过的目录项，作为保存简历时映射写入 body 的最小目录。 */
-function 从快照建目录(previous: BFF简历): 目录索引 {
-  return {
-    职位类别: [],
-    地点: [],
-    行业: 去重目录(previous.experiences.map((e) => e.industry)),
-    院校: 去重目录(previous.educations.map((e) => e.institution)),
-    专业: 去重目录(previous.educations.map((e) => e.major)),
-  };
-}
 
 function 修订etag(revision: number): string {
   return `"${revision}"`;
-}
-
-function 拼路径(base: `/api/v1/catalog/${string}`, query: string): `/api/v1/${string}` {
-  return `${base}?${query}` as `/api/v1/${string}`;
 }
 
 export interface HTTP招聘数据源依赖 {
@@ -146,12 +120,15 @@ export interface HTTP招聘数据源 {
   读取主体(): Promise<BFF主体>;
   确保角色(role: BFF角色): Promise<BFF主体>;
   记录当前角色(role: BFF角色): Promise<BFF主体>;
-  读取目录(): Promise<目录索引>;
+  查询Taxonomy(kind: Taxonomy类别, query: Taxonomy查询): Promise<目录页<BFFTaxonomyItem>>;
+  查询Location(query: Location查询): Promise<目录页<BFFLocationItem>>;
+  查询Institution(query: Institution查询): Promise<目录页<BFFInstitutionItem>>;
+  清空目录缓存(): void;
   读取简历(): Promise<页面简历快照>;
   保存简历(next: 页面简历写入, previous: BFF简历): Promise<页面简历快照>;
   读取意向(): Promise<页面意向快照>;
   创建意向(draft: 意向草稿型, context: 意向映射上下文): Promise<页面意向快照>;
-  创建首次意向(input: 首次意向输入, context: Omit<意向映射上下文, '原始'>): Promise<页面意向快照>;
+  创建首次意向(input: 首次意向输入): Promise<页面意向快照>;
   更新意向(id: string, draft: 意向草稿型, context: 意向映射上下文): Promise<页面意向快照>;
   删除意向(id: string, revision: number): Promise<页面意向快照>;
   读取岗位(): Promise<页面岗位快照>;
@@ -165,70 +142,31 @@ export interface HTTP招聘数据源 {
 export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP招聘数据源 {
   const { client, 后端环境, 附属存储 } = deps;
   const 请求 = client.请求;
-  const 目录缓存 = new Map<string, string>();
+  // 目录页面缓存：分页查询的 in-flight 去重 + 已请求页面缓存。key = endpoint?normalizedQuery。
+  // 只缓存当前 session 已请求页面；清空目录缓存 清空它。
+  const 目录页面缓存 = new Map<string, Promise<unknown>>();
 
-  async function 读取目录(): Promise<目录索引> {
-    const 目录: 目录索引 = { 职位类别: [], 地点: [], 行业: [], 院校: [], 专业: [] };
-    for (const kind of Object.keys(目录端点) as (keyof 目录索引)[]) {
-      const endpoint = 目录端点[kind];
-      let cursor: string | undefined;
-      while (true) {
-        const path = cursor ? 拼路径(endpoint, `cursor=${encodeURIComponent(cursor)}`) : endpoint;
-        const { result } = await 请求<BFF目录页<目录项>>({ path });
-        for (const 项 of result.items) {
-          // taxonomy 项带 selectable；locations/institutions 不带，视作可选
-          if (项.selectable === false) continue;
-          目录[kind].push({ id: 项.id, display_name: 项.display_name });
-        }
-        cursor = result.next_cursor ?? undefined;
-        if (!cursor) break;
-      }
-    }
-    return 目录;
+  /** 把查询参数编码成稳定 query string：丢掉 undefined 与空串，limit:20 与缺省都稳定。 */
+  function 编码查询(entries: [string, string | number | undefined][]): string {
+    const params = new URLSearchParams();
+    for (const [key, value] of entries) if (value !== undefined && value !== '') params.set(key, String(value));
+    return params.toString();
   }
 
-  /**
-   * 目录精确解析：?q= 前缀搜索 + 游标翻页，只接受 display_name 完全相等且 selectable 的唯一项。
-   * 缓存键 kind:q。taxonomy 项要求 selectable=true；locations/institutions 不带 selectable，视作可选。
-   */
-  async function 解析目录项(kind: keyof 目录索引, 显示名: string): Promise<string> {
-    const 缓存键 = `${kind}:${显示名}`;
-    const 已存 = 目录缓存.get(缓存键);
-    if (已存 !== undefined) return 已存;
-    const endpoint = 目录端点[kind];
-    const q = encodeURIComponent(显示名);
-    const 命中集 = new Set<string>();
-    let cursor: string | undefined;
-    while (true) {
-      const path = cursor
-        ? 拼路径(endpoint, `q=${q}&cursor=${encodeURIComponent(cursor)}`)
-        : 拼路径(endpoint, `q=${q}`);
-      const { result } = await 请求<BFF目录页<目录项>>({ path });
-      for (const 项 of result.items) {
-        if (项.display_name !== 显示名) continue;
-        if (项.selectable === false) continue;
-        命中集.add(项.id);
-      }
-      cursor = result.next_cursor ?? undefined;
-      if (!cursor) break;
-    }
-    if (命中集.size === 0) throw new Error(`无法匹配${kind}：${显示名}`);
-    if (命中集.size > 1) throw new Error(`${kind} 出现多个「${显示名}」`);
-    const id = [...命中集][0];
-    目录缓存.set(缓存键, id);
-    return id;
-  }
-
-  /** 目录里没有这个显示名时，解析并补进目录，供后续 精确目录ID 命中。 */
-  async function 确保目录(目录: 目录索引, kind: keyof 目录索引, 显示名: string): Promise<void> {
-    if (显示名 === '') return;
-    if (目录[kind].some((项) => 项.display_name === 显示名)) return;
-    const id = await 解析目录项(kind, 显示名);
-    目录[kind].push({ id, display_name: 显示名 });
+  /** 一页查询：同 key in-flight 去重；失败时从缓存里删掉这个 key 再抛。 */
+  async function 查询一页<T extends BFF目录引用>(path: `/api/v1/catalog/${string}`, query: string): Promise<目录页<T>> {
+    const key = `${path}?${query}`;
+    const existing = 目录页面缓存.get(key) as Promise<目录页<T>> | undefined;
+    if (existing) return existing;
+    const pending = 请求<BFF目录页<T>>({ path: `${path}${query ? `?${query}` : ''}` as `/api/v1/${string}` })
+      .then(({ result }) => ({ items: result.items, nextCursor: result.next_cursor, catalogVersion: result.catalog_version }))
+      .catch((error) => { 目录页面缓存.delete(key); throw error; });
+    目录页面缓存.set(key, pending);
+    return pending;
   }
 
   async function 读取意向(): Promise<页面意向快照> {
-    const { result } = await 请求<BFF意向列表>({ path: '/api/v1/me/intentions' });
+    const { result } = await 请求<BFF意向列表>({ path: '/api/v1/me/intentions?status=active' });
     const 列表: 求职意向[] = result.intentions.map(从BFF意向);
     const 服务端: Record<string, BFFOwnerIntention> = {};
     for (const 项 of result.intentions) 服务端[项.intention_id] = 项;
@@ -268,19 +206,9 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
    */
   async function 保存简历(next: 页面简历写入, previous: BFF简历): Promise<页面简历快照> {
     const 旧页面 = 从BFF简历(previous);
-    const 目录 = 从快照建目录(previous);
 
-    // 目录精确解析：对所有经历/教育条目的显示名（行业 / 院校 / 专业）都跑一遍，
-    // 不只新条目。否则改了一条已有经历的 行业 显示名（previous 快照里只有旧引用），
-    // 转经历写入 里的 精确目录ID 会找不到新名而抛错，阻塞整次保存。
-    // 确保目录 已按 kind:displayName 缓存（目录里已有同名项则 no-op），重复解析是幂等的。
-    for (const 段 of next.经历) {
-      await 确保目录(目录, '行业', 段.行业);
-    }
-    for (const 段 of next.教育) {
-      await 确保目录(目录, '院校', 段.学校);
-      await 确保目录(目录, '专业', 段.专业);
-    }
+    // 简历写入直接用表单里选择器保存的目录引用（行业引用/学校引用/专业引用）取 id，
+    // 不再保存前从 previous 快照建目录 + 确保目录 反查。缺引用的完整条目由 必需引用 抛客户端校验错。
 
     const 步骤: 写入步骤[] = [];
 
@@ -314,7 +242,7 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
         continue;
       }
       if (!旧Page) {
-        const body = 转经历写入(段, 目录);
+        const body = 转经历写入(段);
         // 新建经历的 POST 响应带回服务端分配的 id；用这个 id 再 POST 它的项目。
         // 旧实现只 POST 经历主体，项目 diff 仅对已有经历跑 → 新建带项目时项目丢失。
         步骤.push(async () => {
@@ -332,7 +260,7 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
         });
       } else if (JSON.stringify(旧Page) !== JSON.stringify(段)) {
         // 经历段变化：PATCH 经历主体，再 diff 嵌套项目
-        const body = 转经历写入(段, 目录);
+        const body = 转经历写入(段);
         步骤.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/experiences/${段.编号}`, method: 'PATCH', body, ifMatch: 修订etag(previous.experiences.find((e) => e.id === 段.编号)!.revision) }).then((r) => r.result));
         步骤.push(...项目步骤(段, previous.experiences.find((e) => e.id === 段.编号)!));
       }
@@ -355,10 +283,10 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
         continue;
       }
       if (!旧Page) {
-        const body = 转教育写入(段, 目录);
+        const body = 转教育写入(段);
         步骤.push(() => 请求<BFF简历条目变更>({ path: '/api/v1/me/resume/educations', method: 'POST', body, 幂等: true }).then((r) => r.result));
       } else if (JSON.stringify(旧Page) !== JSON.stringify(段)) {
-        const body = 转教育写入(段, 目录);
+        const body = 转教育写入(段);
         步骤.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/educations/${段.编号}`, method: 'PATCH', body, ifMatch: 修订etag(previous.educations.find((e) => e.id === 段.编号)!.revision) }).then((r) => r.result));
       }
     }
@@ -474,7 +402,41 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
     记录当前角色(role) {
       return 请求<BFF主体>({ path: '/api/v1/me/preferences/last-used-role', method: 'PUT', body: { role } }).then((r) => r.result);
     },
-    读取目录,
+    查询Taxonomy(kind, query) {
+      const path = `/api/v1/catalog/${kind}` as `/api/v1/catalog/${string}`;
+      const query_string = 编码查询([
+        ['parent_id', query.parentId],
+        ['q', query.q],
+        ['cursor', query.cursor],
+        ['limit', query.limit],
+      ]);
+      return 查询一页<BFFTaxonomyItem>(path, query_string);
+    },
+    查询Location(query) {
+      const path = '/api/v1/catalog/locations';
+      const query_string = 编码查询([
+        ['q', query.q],
+        ['country_code', query.countryCode],
+        ['admin1_code', query.admin1Code],
+        ['cursor', query.cursor],
+        ['limit', query.limit],
+      ]);
+      return 查询一页<BFFLocationItem>(path, query_string);
+    },
+    查询Institution(query) {
+      const path = '/api/v1/catalog/education-institutions';
+      const query_string = 编码查询([
+        ['q', query.q],
+        ['country_code', query.countryCode],
+        ['location_id', query.locationId],
+        ['cursor', query.cursor],
+        ['limit', query.limit],
+      ]);
+      return 查询一页<BFFInstitutionItem>(path, query_string);
+    },
+    清空目录缓存() {
+      目录页面缓存.clear();
+    },
     读取简历() {
       return 请求<BFF简历>({ path: '/api/v1/me/resume' }).then((r) => 从BFF简历(r.result));
     },
@@ -484,11 +446,11 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
       await 请求<BFFOwnerIntention>({ path: '/api/v1/me/intentions', method: 'POST', body: 转意向写入(draft, context), 幂等: true });
       return 读取意向();
     },
-    async 创建首次意向(input, context) {
+    async 创建首次意向(input) {
       await 请求<BFFOwnerIntention>({
         path: '/api/v1/me/intentions',
         method: 'POST',
-        body: 转首次意向写入(input, { ...context, 原始: null }),
+        body: 转首次意向写入(input),
         幂等: true,
       });
       return 读取意向();
@@ -512,7 +474,7 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
       const { result } = await 请求<BFFOwnerJob>({
         path: '/api/v1/recruiter/jobs',
         method: 'POST',
-        body: 转岗位创建(job, context.目录, { 公司: context.公司 }),
+        body: 转岗位创建(job, { 公司: context.公司 }),
         幂等: true,
       });
       写入岗位附属(result.job_id, job);

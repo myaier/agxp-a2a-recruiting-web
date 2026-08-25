@@ -10,8 +10,10 @@
 // 在职时间用 <input type="month">：iOS 弹原生年月滚轮，桌面有日历下拉，
 // 不再是能输任意字符的自由文本 —— 这是上一版最大的 bug。
 
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import 样式 from './工作经历.module.css';
+// review-r1 P1-3：教育编辑页 Backend 候选列表复用 入职引导 的候选行样式
+import 引导样式 from './入职引导.module.css';
 import 年月滚轮层 from '../组件/年月滚轮层';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 开关 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
@@ -22,6 +24,9 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { 规范化作品集链接, 校验作品集链接, 校验起止年月 } from '../流程/onboarding配置';
+import type { BFFTaxonomyItem, BFFInstitutionItem } from '../数据/BFF契约';
+import type { 目录选择值 } from '../数据/招聘数据源类型';
+import { 学校副标题, 合并目录页 } from '../数据/目录选择';
 
 /** 一段工作经历。开始/结束用 input[type=month] 的 yyyy-MM 格式；结束 null = 至今 */
 /** 行业快捷片：点一下填入，省得手机上打字 */
@@ -402,6 +407,10 @@ export default function 工作经历() {
 }
 
 // ── 教育经历编辑页：学校 / 学历（快捷片）/ 专业 / 起止年月（滚轮）────
+// review-r1 P1-3：Backend 分支 学校/专业 输入走目录查询（与 毕业院校/选专业 同口径），
+// 点候选才落引用，继续输入清引用，没点候选阻止保存。Mock 分支保持自由文本不变。
+const 教育搜索防抖毫秒 = 250;
+
 function 教育编辑页({
   初始,
   取消,
@@ -413,6 +422,8 @@ function 教育编辑页({
   完成: (段: 简历教育段) => void;
   删除?: () => void;
 }) {
+  const { 数据源模式, 目录查询 } = use应用状态();
+  const 是后端 = 数据源模式 === 'backend';
   const [草稿, 设草稿] = useState<简历教育段>(
     初始 ?? {
       编号: `edu${Date.now()}`,
@@ -424,12 +435,142 @@ function 教育编辑页({
     }
   );
   const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
+  // Backend 学校候选 + 专业候选
+  const [学校候选, 设学校候选] = useState<BFFInstitutionItem[]>([]);
+  const [专业候选, 设专业候选] = useState<BFFTaxonomyItem[]>([]);
+  // review-r2 R2-M-1：学校/专业搜索分页游标
+  const [学校下一页, 设学校下一页] = useState<string | null>(null);
+  const [专业下一页, 设专业下一页] = useState<string | null>(null);
+  const [学校加载中, 设学校加载中] = useState(false);
+  const [专业加载中, 设专业加载中] = useState(false);
+  const 学校计时 = useRef(0);
+  const 专业计时 = useRef(0);
+  // review-r1 P2-2 / review-r2 R2-M-2：代际 ref 守 stale response——清空也递增，load-more 也检查
+  const 学校代际 = useRef(0);
+  const 专业代际 = useRef(0);
+  const 学校方法引用 = useRef(目录查询?.查询Institution);
+  学校方法引用.current = 目录查询?.查询Institution;
+  const 专业方法引用 = useRef(目录查询?.查询Taxonomy);
+  专业方法引用.current = 目录查询?.查询Taxonomy;
   // 毕业早于入学一定是滚错档：不拦住，这段教育会带着「2020.09 — 2018.06」一直存下去
   const 时间错误 = 校验起止年月(草稿.开始, 草稿.结束, '入学时间', '毕业时间');
   const 可完成 = 草稿.学校.trim() !== '' && 草稿.专业.trim() !== '' && !时间错误;
 
   const 改 = <K extends keyof 简历教育段>(键: K, 值: 简历教育段[K]) =>
     设草稿((旧) => ({ ...旧, [键]: 值 }));
+
+  // Backend 学校搜索：250ms debounce 后 查询Institution({ q })
+  useEffect(() => {
+    if (!是后端) return;
+    const 方法 = 学校方法引用.current;
+    const trimmed = 草稿.学校.trim();
+    if (!方法 || trimmed === '') {
+      // review-r2 R2-M-2：清空输入时也递增代际，让在飞的慢响应成为 stale
+      学校代际.current += 1;
+      设学校候选([]);
+      设学校下一页(null);
+      return;
+    }
+    window.clearTimeout(学校计时.current);
+    const 本次 = ++学校代际.current;
+    学校计时.current = window.setTimeout(async () => {
+      try {
+        const 页 = await 方法({ q: trimmed, limit: 20 });
+        if (本次 !== 学校代际.current) return;
+        设学校候选(页.items);
+        设学校下一页(页.nextCursor);
+      } catch {
+        if (本次 !== 学校代际.current) return;
+        设学校候选([]);
+        设学校下一页(null);
+      }
+    }, 教育搜索防抖毫秒);
+    return () => window.clearTimeout(学校计时.current);
+  }, [草稿.学校, 是后端]);
+
+  // Backend 专业搜索：250ms debounce 后 查询Taxonomy('majors', { q })
+  useEffect(() => {
+    if (!是后端) return;
+    const 方法 = 专业方法引用.current;
+    const trimmed = 草稿.专业.trim();
+    if (!方法 || trimmed === '') {
+      专业代际.current += 1;
+      设专业候选([]);
+      设专业下一页(null);
+      return;
+    }
+    window.clearTimeout(专业计时.current);
+    const 本次 = ++专业代际.current;
+    专业计时.current = window.setTimeout(async () => {
+      try {
+        const 页 = await 方法('majors', { q: trimmed, limit: 20 });
+        if (本次 !== 专业代际.current) return;
+        设专业候选(页.items);
+        设专业下一页(页.nextCursor);
+      } catch {
+        if (本次 !== 专业代际.current) return;
+        设专业候选([]);
+        设专业下一页(null);
+      }
+    }, 教育搜索防抖毫秒);
+    return () => window.clearTimeout(专业计时.current);
+  }, [草稿.专业, 是后端]);
+
+  // review-r2 R2-M-1：学校/专业搜索加载更多——用当前游标请求下一页，合并去重；代际检查防 stale
+  const 学校加载更多 = async () => {
+    if (学校下一页 === null || 学校加载中) return;
+    const 方法 = 学校方法引用.current;
+    if (!方法) return;
+    const 本次 = 学校代际.current;
+    设学校加载中(true);
+    try {
+      const 页 = await 方法({ q: 草稿.学校.trim(), cursor: 学校下一页, limit: 20 });
+      if (本次 !== 学校代际.current) return;
+      设学校候选((旧) => 合并目录页(旧, 页.items));
+      设学校下一页(页.nextCursor);
+    } catch {
+      if (本次 !== 学校代际.current) return;
+    } finally {
+      if (本次 === 学校代际.current) 设学校加载中(false);
+    }
+  };
+  const 专业加载更多 = async () => {
+    if (专业下一页 === null || 专业加载中) return;
+    const 方法 = 专业方法引用.current;
+    if (!方法) return;
+    const 本次 = 专业代际.current;
+    设专业加载中(true);
+    try {
+      const 页 = await 方法('majors', { q: 草稿.专业.trim(), cursor: 专业下一页, limit: 20 });
+      if (本次 !== 专业代际.current) return;
+      设专业候选((旧) => 合并目录页(旧, 页.items));
+      设专业下一页(页.nextCursor);
+    } catch {
+      if (本次 !== 专业代际.current) return;
+    } finally {
+      if (本次 === 专业代际.current) 设专业加载中(false);
+    }
+  };
+
+  const 改学校 = (值: string) => {
+    改('学校', 值);
+    // 继续输入立即清除旧引用（只有点候选才落引用）
+    if (草稿.学校引用 !== undefined) 改('学校引用', undefined);
+  };
+  const 改专业 = (值: string) => {
+    改('专业', 值);
+    if (草稿.专业引用 !== undefined) 改('专业引用', undefined);
+  };
+  const 选学校候选 = (项: BFFInstitutionItem) => {
+    改('学校', 项.display_name);
+    改('学校引用', { id: 项.id, display_name: 项.display_name } as 目录选择值);
+    设学校候选([]);
+  };
+  const 选专业候选 = (项: BFFTaxonomyItem) => {
+    改('专业', 项.display_name);
+    改('专业引用', { id: 项.id, display_name: 项.display_name } as 目录选择值);
+    设专业候选([]);
+  };
 
   return (
     // 2026-08-24 全站选择风格统一（C1 定稿）：页底白底
@@ -445,6 +586,15 @@ function 教育编辑页({
               // 报错顺序也跟经历编辑页对齐：先必填、后时间，两页体感一致
               if (草稿.学校.trim() === '' || 草稿.专业.trim() === '') {
                 轻提示('学校、专业是必填的');
+                return;
+              }
+              // review-r1 P1-3：Backend 没点过候选 → 阻止保存
+              if (是后端 && 草稿.学校引用 === undefined) {
+                轻提示('请从候选学校中选择');
+                return;
+              }
+              if (是后端 && 草稿.专业引用 === undefined) {
+                轻提示('请从候选专业中选择');
                 return;
               }
               if (时间错误) {
@@ -466,8 +616,34 @@ function 教育编辑页({
             className={样式.条目输入}
             value={草稿.学校}
             placeholder="必填"
-            onChange={(事件) => 改('学校', 事件.target.value)}
+            onChange={(事件) => 改学校(事件.target.value)}
           />
+          {/* Backend 学校候选：学校名 + 「城市 · 国家」副行 */}
+          {是后端 && (学校候选.length > 0 || 学校下一页 !== null) ? (
+            <div className={引导样式.候选列表}>
+              {学校候选.map((项) => (
+                <button
+                  key={项.id}
+                  className={`${引导样式.候选行} 可点`}
+                  aria-label={项.display_name}
+                  onClick={() => 选学校候选(项)}
+                >
+                  <span>
+                    <span>{项.display_name}</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--最弱)', fontWeight: 400 }}>
+                      {学校副标题(项)}
+                    </span>
+                  </span>
+                </button>
+              ))}
+              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
+              {学校下一页 !== null ? (
+                <button className={`${引导样式.候选行} 可点`} onClick={学校加载更多} disabled={学校加载中} aria-label="加载更多">
+                  {学校加载中 ? '加载中…' : '加载更多'}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className={样式.编辑条目}>
@@ -491,8 +667,29 @@ function 教育编辑页({
             className={样式.条目输入}
             value={草稿.专业}
             placeholder="必填"
-            onChange={(事件) => 改('专业', 事件.target.value)}
+            onChange={(事件) => 改专业(事件.target.value)}
           />
+          {/* Backend 专业候选 */}
+          {是后端 && (专业候选.length > 0 || 专业下一页 !== null) ? (
+            <div className={引导样式.候选列表}>
+              {专业候选.map((项) => (
+                <button
+                  key={项.id}
+                  className={`${引导样式.候选行} 可点`}
+                  aria-label={项.display_name}
+                  onClick={() => 选专业候选(项)}
+                >
+                  {项.display_name}
+                </button>
+              ))}
+              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
+              {专业下一页 !== null ? (
+                <button className={`${引导样式.候选行} 可点`} onClick={专业加载更多} disabled={专业加载中} aria-label="加载更多">
+                  {专业加载中 ? '加载中…' : '加载更多'}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className={样式.编辑条目}>
@@ -564,6 +761,8 @@ function 经历编辑页({
   完成: (段: 简历经历段) => void;
   删除?: () => void;
 }) {
+  const { 数据源模式, 目录查询 } = use应用状态();
+  const 是后端 = 数据源模式 === 'backend';
   const [草稿, 设草稿] = useState<简历经历段>(
     初始 ?? {
       编号: `e${Date.now()}`,
@@ -579,6 +778,20 @@ function 经历编辑页({
     }
   );
   const [行业层, 设行业层] = useState(false);
+  // Backend 行业列表：弹层打开时按需 查询Taxonomy('industries')，支持一级展开取子项
+  const [行业根项, 设行业根项] = useState<BFFTaxonomyItem[]>([]);
+  const [行业子项表, 设行业子项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
+  // 非 selectable 子项展开后的孙项（>2 级 taxonomy）
+  const [行业孙项表, 设行业孙项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
+  // review-r3 R3-I-5：分页游标 + 加载中状态（root / child / grandchild 三层各自记游标）
+  const [行业根游标, 设行业根游标] = useState<string | null>(null);
+  const [行业根加载中, 设行业根加载中] = useState(false);
+  const [行业子项游标表, 设行业子项游标表] = useState<Record<string, string | null>>({});
+  const [行业子项加载中表, 设行业子项加载中表] = useState<Record<string, boolean>>({});
+  const [行业孙项游标表, 设行业孙项游标表] = useState<Record<string, string | null>>({});
+  const [行业孙项加载中表, 设行业孙项加载中表] = useState<Record<string, boolean>>({});
+  const 行业方法引用 = useRef(目录查询?.查询Taxonomy);
+  行业方法引用.current = 目录查询?.查询Taxonomy;
   // 年月滚轮打开在哪一侧：null = 没开
   const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
   const 至今 = 草稿.结束 === null;
@@ -589,6 +802,106 @@ function 经历编辑页({
 
   const 改 = <键 extends keyof 简历经历段>(键名: 键, 值: 简历经历段[键]) =>
     设草稿((旧) => ({ ...旧, [键名]: 值 }));
+
+  // Backend：弹层打开时加载行业 roots；点根项再按 parentId 取子项
+  // review-r3 R3-I-5：保留 nextCursor 以支持分页加载更多
+  useEffect(() => {
+    if (!是后端 || !行业层) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    void (async () => {
+      try {
+        const 页 = await 方法('industries', { limit: 50 });
+        设行业根项(页.items);
+        设行业根游标(页.nextCursor);
+      } catch {
+        设行业根项([]);
+        设行业根游标(null);
+      }
+    })();
+  }, [是后端, 行业层]);
+
+  // review-r3 R3-I-5：root 加载更多
+  const 行业根加载更多 = async () => {
+    if (行业根游标 === null || 行业根加载中) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    设行业根加载中(true);
+    try {
+      const 页 = await 方法('industries', { cursor: 行业根游标, limit: 50 });
+      设行业根项((旧) => 合并目录页(旧, 页.items));
+      设行业根游标(页.nextCursor);
+    } catch {
+      // 失败不动，用户可再点
+    } finally {
+      设行业根加载中(false);
+    }
+  };
+
+  const 展开行业根 = async (项: BFFTaxonomyItem) => {
+    if (行业子项表[项.id]) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    try {
+      const 子页 = await 方法('industries', { parentId: 项.id, limit: 50 });
+      设行业子项表((旧) => ({ ...旧, [项.id]: 子页.items }));
+      设行业子项游标表((旧) => ({ ...旧, [项.id]: 子页.nextCursor }));
+    } catch {
+      设行业子项表((旧) => ({ ...旧, [项.id]: [] }));
+      设行业子项游标表((旧) => ({ ...旧, [项.id]: null }));
+    }
+  };
+
+  // review-r3 R3-I-5：child 加载更多（按 parentId 记游标）
+  const 行业子项加载更多 = async (根id: string) => {
+    const 游标 = 行业子项游标表[根id];
+    if (游标 === null || 行业子项加载中表[根id]) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    设行业子项加载中表((旧) => ({ ...旧, [根id]: true }));
+    try {
+      const 页 = await 方法('industries', { parentId: 根id, cursor: 游标, limit: 50 });
+      设行业子项表((旧) => ({ ...旧, [根id]: 合并目录页(旧[根id] ?? [], 页.items) }));
+      设行业子项游标表((旧) => ({ ...旧, [根id]: 页.nextCursor }));
+    } catch {
+      // 失败不动
+    } finally {
+      设行业子项加载中表((旧) => ({ ...旧, [根id]: false }));
+    }
+  };
+
+  // 非 selectable 子项：按 parentId 取孙项（>2 级 taxonomy），展开为嵌套列表
+  const 展开行业子 = async (项: BFFTaxonomyItem) => {
+    if (行业孙项表[项.id]) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    try {
+      const 孙页 = await 方法('industries', { parentId: 项.id, limit: 50 });
+      设行业孙项表((旧) => ({ ...旧, [项.id]: 孙页.items }));
+      设行业孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
+    } catch {
+      设行业孙项表((旧) => ({ ...旧, [项.id]: [] }));
+      设行业孙项游标表((旧) => ({ ...旧, [项.id]: null }));
+    }
+  };
+
+  // review-r3 R3-I-5：grandchild 加载更多（按 parentId 记游标）
+  const 行业孙项加载更多 = async (子id: string) => {
+    const 游标 = 行业孙项游标表[子id];
+    if (游标 === null || 行业孙项加载中表[子id]) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    设行业孙项加载中表((旧) => ({ ...旧, [子id]: true }));
+    try {
+      const 页 = await 方法('industries', { parentId: 子id, cursor: 游标, limit: 50 });
+      设行业孙项表((旧) => ({ ...旧, [子id]: 合并目录页(旧[子id] ?? [], 页.items) }));
+      设行业孙项游标表((旧) => ({ ...旧, [子id]: 页.nextCursor }));
+    } catch {
+      // 失败不动
+    } finally {
+      设行业孙项加载中表((旧) => ({ ...旧, [子id]: false }));
+    }
+  };
 
   // ── 工作业绩（原「关键项目」，标注 14:28 改名）：挂在这一段经历里面，不做独立大分节 ──
   // 业绩脱离了公司和时间就没有可核对性（「这件事是在哪家公司、什么时候做的」），
@@ -615,6 +928,13 @@ function 经历编辑页({
               }
               if (时间错误) {
                 轻提示(时间错误);
+                return;
+              }
+              // review-r2 R2-I-5：Backend 行业必须有一个可持久化的引用才能完成——
+              // 旧守卫只在 行业非空但无引用 时拦截，空 行业 直接放行，保存简历 跳过该行，
+              // 服务端水合后这段经历就消失了。改为要求 行业引用（隐含 行业 非空）。
+              if (是后端 && 草稿.行业引用 === undefined) {
+                轻提示('请从候选行业中选择');
                 return;
               }
               完成(草稿);
@@ -814,29 +1134,144 @@ function 经历编辑页({
             <div className={样式.选择层抓手} />
             <div className={样式.选择层标题}>所属行业</div>
             <div className={`${样式.选择层列表} 滚动区`}>
-              {常见行业.map((行业) => (
-                <button
-                  key={行业}
-                  className={`${样式.选择项} ${草稿.行业 === 行业 ? 样式.选择项选中 : ''} 可点`}
-                  onClick={() => {
-                    改('行业', 行业);
-                    设行业层(false);
-                  }}
-                >
-                  {行业}
-                  {草稿.行业 === 行业 ? <span className={样式.选择勾}>✓</span> : null}
-                </button>
-              ))}
+              {是后端
+                ? [
+                    ...行业根项.flatMap((根) => {
+                    const 子项 = 行业子项表[根.id];
+                    const 节点们: ReactNode[] = [
+                      <button
+                        key={根.id}
+                        className={`${样式.选择项} ${草稿.行业 === 根.display_name ? 样式.选择项选中 : ''} 可点`}
+                        onClick={() => 根.selectable ? (改('行业', 根.display_name), 改('行业引用', { id: 根.id, display_name: 根.display_name } as 目录选择值), 设行业层(false)) : 展开行业根(根)}
+                      >
+                        {根.display_name}
+                        {草稿.行业 === 根.display_name ? <span className={样式.选择勾}>✓</span> : null}
+                      </button>,
+                    ];
+                    if (子项) {
+                      for (const 子 of 子项) {
+                        节点们.push(
+                          <button
+                            key={子.id}
+                            className={`${样式.选择项} ${草稿.行业 === 子.display_name ? 样式.选择项选中 : ''} 可点`}
+                            style={{ paddingLeft: 28 }}
+                            onClick={() => {
+                              // 非 selectable 子项：按 parentId 展开孙项，不提交
+                              if (!子.selectable) {
+                                void 展开行业子(子);
+                                return;
+                              }
+                              改('行业', 子.display_name);
+                              改('行业引用', { id: 子.id, display_name: 子.display_name } as 目录选择值);
+                              设行业层(false);
+                            }}
+                          >
+                            {子.display_name}
+                            {草稿.行业 === 子.display_name ? <span className={样式.选择勾}>✓</span> : null}
+                          </button>,
+                        );
+                        // 非 selectable 子项展开后的孙项（>2 级 taxonomy）
+                        const 孙项 = 行业孙项表[子.id];
+                        if (孙项?.length) {
+                          for (const 孙 of 孙项) {
+                            节点们.push(
+                              <button
+                                key={孙.id}
+                                className={`${样式.选择项} ${草稿.行业 === 孙.display_name ? 样式.选择项选中 : ''} 可点`}
+                                style={{ paddingLeft: 52 }}
+                                onClick={() => {
+                                  if (!孙.selectable) {
+                                    void 展开行业子(孙);
+                                    return;
+                                  }
+                                  改('行业', 孙.display_name);
+                                  改('行业引用', { id: 孙.id, display_name: 孙.display_name } as 目录选择值);
+                                  设行业层(false);
+                                }}
+                              >
+                                {孙.display_name}
+                                {草稿.行业 === 孙.display_name ? <span className={样式.选择勾}>✓</span> : null}
+                              </button>,
+                            );
+                          }
+                          // review-r3 R3-I-5：孙项分页加载更多
+                          if (行业孙项游标表[子.id] !== undefined && 行业孙项游标表[子.id] !== null) {
+                            节点们.push(
+                              <button
+                                key={`${子.id}-更多孙`}
+                                className="可点"
+                                onClick={() => 行业孙项加载更多(子.id)}
+                                disabled={行业孙项加载中表[子.id]}
+                                style={{ paddingLeft: 52, color: 'var(--最弱)' }}
+                              >
+                                {行业孙项加载中表[子.id] ? '加载中…' : '加载更多'}
+                              </button>,
+                            );
+                          }
+                        }
+                      }
+                      // review-r3 R3-I-5：子项分页加载更多
+                      if (行业子项游标表[根.id] !== undefined && 行业子项游标表[根.id] !== null) {
+                        节点们.push(
+                          <button
+                            key={`${根.id}-更多子`}
+                            className="可点"
+                            onClick={() => 行业子项加载更多(根.id)}
+                            disabled={行业子项加载中表[根.id]}
+                            style={{ paddingLeft: 28, color: 'var(--最弱)' }}
+                          >
+                            {行业子项加载中表[根.id] ? '加载中…' : '加载更多'}
+                          </button>,
+                        );
+                      }
+                    }
+                    return 节点们;
+                  }),
+                    // review-r3 R3-I-5：root 分页加载更多
+                    行业根游标 !== null ? (
+                      <button
+                        key="行业根-更多"
+                        className="可点"
+                        onClick={行业根加载更多}
+                        disabled={行业根加载中}
+                        style={{ color: 'var(--最弱)' }}
+                      >
+                        {行业根加载中 ? '加载中…' : '加载更多'}
+                      </button>
+                    ) : null,
+                  ]
+                : 常见行业.map((行业) => (
+                    <button
+                      key={行业}
+                      className={`${样式.选择项} ${草稿.行业 === 行业 ? 样式.选择项选中 : ''} 可点`}
+                      onClick={() => {
+                        改('行业', 行业);
+                        设行业层(false);
+                      }}
+                    >
+                      {行业}
+                      {草稿.行业 === 行业 ? <span className={样式.选择勾}>✓</span> : null}
+                    </button>
+                  ))}
             </div>
-            <input
-              className={样式.选择层输入}
-              value={草稿.行业}
-              placeholder="没有合适的？直接输入"
-              onChange={(事件) => 改('行业', 事件.target.value)}
-              onKeyDown={(事件) => {
-                if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 设行业层(false);
-              }}
-            />
+            {/* review-r3 R3-Minor-2：Backend 模式去掉自由文本行业输入——它看起来可保存但完成守卫
+                要求 行业引用，自由输入会清掉引用导致无法完成。Backend 必须从目录叶子里选。
+                Mock 模式保留自由文本（本地 常见行业 列表 + 手输兜底）。 */}
+            {是后端 ? null : (
+              <input
+                className={样式.选择层输入}
+                value={草稿.行业}
+                placeholder="没有合适的？直接输入"
+                onChange={(事件) => {
+                  改('行业', 事件.target.value);
+                  // Task 4：自由输入立即清除旧引用（只有点候选才落引用）
+                  if (是后端) 改('行业引用', undefined);
+                }}
+                onKeyDown={(事件) => {
+                  if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 设行业层(false);
+                }}
+              />
+            )}
         </弹层框架>
       ) : null}
     </次级页外壳>

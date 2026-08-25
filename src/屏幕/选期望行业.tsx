@@ -7,13 +7,20 @@
 // 选择结果直接写进 意向草稿.期望行业们 —— 主屏与本页共用同一份草稿，
 // 所以右上「保存」和返回键做的是同一件事（都只是 返回()）：
 // 不存在「不点保存就丢」的第二条路径，也就不会出现两个入口结果不一致。
+//
+// Task 4：Backend 分支按需 查询Taxonomy('industries')：roots → 展开 parentId →
+// selectable=true 叶子原子保存 期望行业们+行业引用们（ID 去重，上限 3）。
+// 推荐 chips 只渲染 BFF-returned 项。Mock 分支保持本地 行业字典 不变。
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 样式 from './选期望行业.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 行业字典 } from '../数据/城市与行业';
+import type { BFFTaxonomyItem } from '../数据/BFF契约';
+import type { 目录选择值 } from '../数据/招聘数据源类型';
+import { 合并目录页 } from '../数据/目录选择';
 
 /** 期望行业上限（规格：最多 3 个）*/
 const 行业上限 = 3;
@@ -23,42 +30,165 @@ const 推荐行业们 = 行业字典.slice(0, 3).map((组) => 组.行业);
 
 export default function 选期望行业() {
   const { 返回 } = use导航();
-  const { 状态: 全局, 派发 } = use应用状态();
+  const { 状态: 全局, 派发, 数据源模式, 目录查询 } = use应用状态();
+  const 是后端 = 数据源模式 === 'backend';
 
   // 草稿是唯一数据源：本页不留本地副本，每次点选立刻回写，
   // 这样返回键、保存键、手势返回三条出口拿到的结果必然一致。
   const 已选行业们 = 全局.意向草稿.期望行业们;
+  const 已选引用 = 全局.意向草稿.行业引用们 ?? [];
   const 已选满 = 已选行业们.length >= 行业上限;
 
-  // 手风琴默认全部收起（截图形态：进来先看到完整的一级行业清单）；
-  // 唯一的例外是「组里已经有选中的细分」——重进本页时若那一组还收着，
-  // 用户看得见 N/3 计数却找不到条目去取消，所以这几组开着进来。
+  // ── Backend：roots + 展开子项（支持 >2 级：非 selectable 子项再展开取孙项）──
+  const [根项, 设根项] = useState<BFFTaxonomyItem[]>([]);
+  // review-r2 R2-M-1：根行业分页游标 + 子项分页游标
+  const [根游标, 设根游标] = useState<string | null>(null);
+  const [根加载中, 设根加载中] = useState(false);
+  const [展开状态, 设展开状态] = useState<Record<string, { 子项: BFFTaxonomyItem[]; 加载中: boolean; 游标: string | null }>>({});
+  const [孙项表, 设孙项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
+  const [孙项游标表, 设孙项游标表] = useState<Record<string, string | null>>({});
+  const 方法引用 = useRef(目录查询?.查询Taxonomy);
+  方法引用.current = 目录查询?.查询Taxonomy;
+
+  // Backend mount：读 roots
+  useEffect(() => {
+    if (!是后端) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    void (async () => {
+      try {
+        const 页 = await 方法('industries', { limit: 50 });
+        设根项(页.items);
+        设根游标(页.nextCursor);
+      } catch {
+        设根项([]);
+        设根游标(null);
+      }
+    })();
+  }, [是后端]);
+
+  // review-r2 R2-M-1：根行业加载更多
+  const 根加载更多 = async () => {
+    if (根游标 === null || 根加载中) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    设根加载中(true);
+    try {
+      const 页 = await 方法('industries', { cursor: 根游标, limit: 50 });
+      设根项((旧) => 合并目录页(旧, 页.items));
+      设根游标(页.nextCursor);
+    } catch {
+      // 失败不动，用户可再点
+    } finally {
+      设根加载中(false);
+    }
+  };
+
+  const 展开根 = async (项: BFFTaxonomyItem) => {
+    if (展开状态[项.id]) return;
+    设展开状态((旧) => ({ ...旧, [项.id]: { 子项: [], 加载中: true, 游标: null } }));
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    try {
+      const 子页 = await 方法('industries', { parentId: 项.id, limit: 50 });
+      设展开状态((旧) => ({ ...旧, [项.id]: { 子项: 子页.items, 加载中: false, 游标: 子页.nextCursor } }));
+    } catch {
+      设展开状态((旧) => ({ ...旧, [项.id]: { 子项: [], 加载中: false, 游标: null } }));
+    }
+  };
+
+  // review-r2 R2-M-1：子项加载更多
+  const 子项加载更多 = async (项: BFFTaxonomyItem) => {
+    const 状态 = 展开状态[项.id];
+    if (!状态 || 状态.游标 === null || 状态.加载中) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    设展开状态((旧) => ({ ...旧, [项.id]: { ...旧[项.id], 加载中: true } }));
+    try {
+      const 子页 = await 方法('industries', { parentId: 项.id, cursor: 状态.游标, limit: 50 });
+      设展开状态((旧) => ({
+        ...旧,
+        [项.id]: { 子项: 合并目录页(旧[项.id].子项, 子页.items), 加载中: false, 游标: 子页.nextCursor },
+      }));
+    } catch {
+      设展开状态((旧) => ({ ...旧, [项.id]: { ...旧[项.id], 加载中: false } }));
+    }
+  };
+
+  // 非 selectable 子项：按 parentId 取孙项，展开为嵌套列表
+  const 展开子 = async (项: BFFTaxonomyItem) => {
+    if (孙项表[项.id]) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    try {
+      const 孙页 = await 方法('industries', { parentId: 项.id, limit: 50 });
+      设孙项表((旧) => ({ ...旧, [项.id]: 孙页.items }));
+      设孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
+    } catch {
+      设孙项表((旧) => ({ ...旧, [项.id]: [] }));
+      设孙项游标表((旧) => ({ ...旧, [项.id]: null }));
+    }
+  };
+
+  // review-r2 R2-M-1：孙项加载更多（>2 级 taxonomy 分页）
+  const 孙项加载更多 = async (项: BFFTaxonomyItem) => {
+    const 游标 = 孙项游标表[项.id];
+    if (游标 === null || 游标 === undefined) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    try {
+      const 孙页 = await 方法('industries', { parentId: 项.id, cursor: 游标, limit: 50 });
+      设孙项表((旧) => ({ ...旧, [项.id]: 合并目录页(旧[项.id] ?? [], 孙页.items) }));
+      设孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
+    } catch {
+      // 失败不动
+    }
+  };
+
+  // ── Mock 手风琴默认全部收起；组里已经有选中的细分时那几组开着进来 ──
   const [展开的行业们, 设展开的行业们] = useState<string[]>(() =>
     行业字典
       .filter((组) => 组.细分.some((细分名) => 已选行业们.includes(细分名)))
-      .map((组) => 组.行业)
+      .map((组) => 组.行业),
   );
 
-  /** 已选 → 再点取消；未选且没到上限 → 追加 */
-  const 切换行业 = (名: string) => {
+  /** 已选 → 再点取消；未选且没到上限 → 追加。Backend 同步写 行业引用们 */
+  const 切换行业 = (名: string, 引用?: 目录选择值) => {
     if (已选行业们.includes(名)) {
-      派发({ 型: '改意向草稿', 补丁: { 期望行业们: 已选行业们.filter((条) => 条 !== 名) } });
+      派发({
+        型: '改意向草稿',
+        补丁: {
+          期望行业们: 已选行业们.filter((条) => 条 !== 名),
+          行业引用们: 是后端 ? 已选引用.filter((条) => 条.id !== 引用?.id) : undefined,
+        },
+      });
       return;
     }
-    // 选满后未选中的 chip 已经渲染成 disabled，正常点不到这里；
-    // 这道判断是第二重闸，防止将来有别的入口（键盘、自动化）绕过 UI 越过上限。
     if (已选满) return;
-    派发({ 型: '改意向草稿', 补丁: { 期望行业们: [...已选行业们, 名] } });
+    if (是后端 && 引用) {
+      // ID 去重
+      if (已选引用.some((条) => 条.id === 引用.id)) return;
+      派发({
+        型: '改意向草稿',
+        补丁: {
+          期望行业们: [...已选行业们, 名],
+          行业引用们: [...已选引用, 引用],
+        },
+      });
+    } else {
+      派发({ 型: '改意向草稿', 补丁: { 期望行业们: [...已选行业们, 名] } });
+    }
   };
 
   const 切换展开 = (行业名: string) => {
     设展开的行业们((旧) =>
-      旧.includes(行业名) ? 旧.filter((条) => 条 !== 行业名) : [...旧, 行业名]
+      旧.includes(行业名) ? 旧.filter((条) => 条 !== 行业名) : [...旧, 行业名],
     );
   };
 
-  /** 行业 chip：推荐区（一级行业名）与手风琴展开区（细分名）共用同一枚 */
-  const 行业片 = (名: string) => {
+  /** 行业 chip：推荐区（一级行业名）与手风琴展开区（细分名）共用同一枚。
+   *  Backend 子项若非 selectable，点击展开取孙项，不进已选 */
+  const 行业片 = (名: string, 引用?: 目录选择值, 项?: BFFTaxonomyItem) => {
     const 选中 = 已选行业们.includes(名);
     const 不可点 = !选中 && 已选满;
     return (
@@ -69,7 +199,14 @@ export default function 选期望行业() {
           选中 ? 样式.行业片选中 : '',
           不可点 ? 样式.行业片禁用 : '可点',
         ].join(' ')}
-        onClick={() => 切换行业(名)}
+        onClick={() => {
+          // Backend 非 selectable 子项：展开取孙项，不提交
+          if (是后端 && 项 && !项.selectable) {
+            void 展开子(项);
+            return;
+          }
+          切换行业(名, 引用);
+        }}
         disabled={不可点}
         aria-pressed={选中}
       >
@@ -102,27 +239,107 @@ export default function 选期望行业() {
       <滚动区>
         <div className={样式.内容区}>
           <div className={样式.组标}>推荐</div>
-          <div className={样式.推荐片组}>{推荐行业们.map((名) => 行业片(名))}</div>
+          <div className={样式.推荐片组}>
+            {是后端
+              ? 根项.slice(0, 3).map((项) => (
+                  <button
+                    key={项.id}
+                    className={`${样式.行业片} 可点`}
+                    onClick={() => 展开根(项)}
+                  >
+                    {项.display_name}
+                  </button>
+                ))
+              : 推荐行业们.map((名) => 行业片(名))}
+          </div>
 
           <div className={样式.手风琴}>
-            {行业字典.map((组) => {
-              const 展开 = 展开的行业们.includes(组.行业);
-              return (
-                <div key={组.行业} className={样式.手风琴组}>
+            {是后端 ? (
+              <>
+                {根项.map((项) => {
+                  const 状态 = 展开状态[项.id];
+                  const 展开 = Boolean(状态);
+                  return (
+                    <div key={项.id} className={样式.手风琴组}>
+                      <button
+                        className={`${样式.手风琴行} 可点`}
+                        onClick={() => 展开根(项)}
+                        aria-expanded={展开}
+                      >
+                        <span className={样式.手风琴行名}>{项.display_name}</span>
+                        <span className={样式.展开箭头}>{展开 ? '⌃' : '⌄'}</span>
+                      </button>
+                      {展开 ? (
+                        <div className={样式.细分片组}>
+                          {状态?.加载中 && 状态.子项.length === 0 ? (
+                            <div className={样式.无结果}>加载中…</div>
+                          ) : null}
+                          {状态?.子项.map((子) => (
+                            <div key={子.id}>
+                              {行业片(子.display_name, { id: 子.id, display_name: 子.display_name }, 子)}
+                              {/* 非 selectable 子项展开后的孙项（>2 级 taxonomy）*/}
+                              {孙项表[子.id]?.length ? (
+                                <div className={样式.细分片组} style={{ paddingLeft: 12 }}>
+                                  {孙项表[子.id].map((孙) =>
+                                    行业片(孙.display_name, { id: 孙.id, display_name: 孙.display_name }, 孙),
+                                  )}
+                                  {/* review-r2 R2-M-1：孙项分页加载更多（>2 级 taxonomy）*/}
+                                  {孙项游标表[子.id] !== null && 孙项游标表[子.id] !== undefined ? (
+                                    <button
+                                      className={`${样式.加载更多键} 可点`}
+                                      onClick={() => 孙项加载更多(子)}
+                                    >
+                                      加载更多
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                          {/* review-r2 R2-M-1：子项分页加载更多 */}
+                          {状态?.游标 !== null && 状态?.游标 !== undefined ? (
+                            <button
+                              className={`${样式.加载更多键} 可点`}
+                              onClick={() => 子项加载更多(项)}
+                              disabled={状态?.加载中}
+                            >
+                              {状态?.加载中 ? '加载中…' : '加载更多'}
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {/* review-r2 R2-M-1：根行业分页加载更多 */}
+                {根游标 !== null ? (
                   <button
-                    className={`${样式.手风琴行} 可点`}
-                    onClick={() => 切换展开(组.行业)}
-                    aria-expanded={展开}
+                    className={`${样式.加载更多键} 可点`}
+                    onClick={根加载更多}
+                    disabled={根加载中}
                   >
-                    <span className={样式.手风琴行名}>{组.行业}</span>
-                    <span className={样式.展开箭头}>{展开 ? '⌃' : '⌄'}</span>
+                    {根加载中 ? '加载中…' : '加载更多'}
                   </button>
-                  {展开 ? (
-                    <div className={样式.细分片组}>{组.细分.map((名) => 行业片(名))}</div>
-                  ) : null}
-                </div>
-              );
-            })}
+                ) : null}
+              </>
+            ) : 行业字典.map((组) => {
+                  const 展开 = 展开的行业们.includes(组.行业);
+                  return (
+                    <div key={组.行业} className={样式.手风琴组}>
+                      <button
+                        className={`${样式.手风琴行} 可点`}
+                        onClick={() => 切换展开(组.行业)}
+                        aria-expanded={展开}
+                      >
+                        <span className={样式.手风琴行名}>{组.行业}</span>
+                        <span className={样式.展开箭头}>{展开 ? '⌃' : '⌄'}</span>
+                      </button>
+                      {展开 ? (
+                        <div className={样式.细分片组}>{组.细分.map((名) => 行业片(名))}</div>
+                      ) : null}
+                    </div>
+                  );
+                })}
           </div>
         </div>
       </滚动区>

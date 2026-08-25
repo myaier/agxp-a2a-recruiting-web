@@ -10,6 +10,54 @@ export interface 省份分组 {
   城市: string[];
 }
 
+// ── Backend 城市分组配置（Task 3）：省名只做分组标题，查询用 countryCode/admin1Code ──
+// 直辖市四个 CN admin1 filter 聚合为一组；省名不进入 payload。
+export interface 城市分组配置 {
+  省: string;
+  filters: { countryCode: string; admin1Code?: string }[];
+}
+
+/**
+ * Backend 城市分组：与 Mock 的 城市字典 分立，只在 Backend 分支使用。
+ * 顺序与 城市字典 对齐，让 Backend 与 Mock 浏览体感一致。
+ * 省名只做分组标题，查询用 countryCode/admin1Code（GB/T 2260 两位行政区码）；
+ * 港澳台用国家码 HK/MO/TW（不是 CN admin1）；海外为展示组，不发可提交值。
+ */
+export const 城市分组: 城市分组配置[] = [
+  { 省: '直辖市', filters: ['11', '12', '31', '50'].map((admin1Code) => ({ countryCode: 'CN', admin1Code })) },
+  { 省: '广东', filters: [{ countryCode: 'CN', admin1Code: '44' }] },
+  { 省: '浙江', filters: [{ countryCode: 'CN', admin1Code: '33' }] },
+  { 省: '江苏', filters: [{ countryCode: 'CN', admin1Code: '32' }] },
+  { 省: '山东', filters: [{ countryCode: 'CN', admin1Code: '37' }] },
+  { 省: '四川', filters: [{ countryCode: 'CN', admin1Code: '51' }] },
+  { 省: '湖北', filters: [{ countryCode: 'CN', admin1Code: '42' }] },
+  { 省: '湖南', filters: [{ countryCode: 'CN', admin1Code: '43' }] },
+  { 省: '陕西', filters: [{ countryCode: 'CN', admin1Code: '61' }] },
+  { 省: '福建', filters: [{ countryCode: 'CN', admin1Code: '35' }] },
+  { 省: '河南', filters: [{ countryCode: 'CN', admin1Code: '41' }] },
+  { 省: '安徽', filters: [{ countryCode: 'CN', admin1Code: '34' }] },
+  { 省: '河北', filters: [{ countryCode: 'CN', admin1Code: '13' }] },
+  { 省: '辽宁', filters: [{ countryCode: 'CN', admin1Code: '21' }] },
+  { 省: '江西', filters: [{ countryCode: 'CN', admin1Code: '36' }] },
+  { 省: '广西', filters: [{ countryCode: 'CN', admin1Code: '45' }] },
+  { 省: '云南', filters: [{ countryCode: 'CN', admin1Code: '53' }] },
+  { 省: '贵州', filters: [{ countryCode: 'CN', admin1Code: '52' }] },
+  { 省: '山西', filters: [{ countryCode: 'CN', admin1Code: '14' }] },
+  { 省: '黑龙江', filters: [{ countryCode: 'CN', admin1Code: '23' }] },
+  { 省: '吉林', filters: [{ countryCode: 'CN', admin1Code: '22' }] },
+  { 省: '内蒙古', filters: [{ countryCode: 'CN', admin1Code: '15' }] },
+  { 省: '甘肃', filters: [{ countryCode: 'CN', admin1Code: '62' }] },
+  { 省: '新疆', filters: [{ countryCode: 'CN', admin1Code: '65' }] },
+  { 省: '宁夏', filters: [{ countryCode: 'CN', admin1Code: '64' }] },
+  { 省: '青海', filters: [{ countryCode: 'CN', admin1Code: '63' }] },
+  { 省: '西藏', filters: [{ countryCode: 'CN', admin1Code: '54' }] },
+  { 省: '海南', filters: [{ countryCode: 'CN', admin1Code: '46' }] },
+  // 港澳台：国家码（不是 CN admin1），三码合一组，hook 聚合后去重
+  { 省: '港澳台', filters: [{ countryCode: 'HK' }, { countryCode: 'MO' }, { countryCode: 'TW' }] },
+  // 海外：展示组，不制造可提交值（空 filters → hook 不发请求）
+  { 省: '海外', filters: [] },
+];
+
 /** 直辖市与热门城市，置顶展示 */
 export const 热门城市 = [
   '北京',
