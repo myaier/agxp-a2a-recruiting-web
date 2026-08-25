@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { 各单阶段小结, 各单阶段对话, 披露四阶段 } from './模拟数据';
+import { 各单阶段小结, 各单阶段对话, 披露四阶段, 披露偏好初始, 常见问答 } from './模拟数据';
 import { 在谈候选列表, 各候选阶段对话 } from './企业端模拟数据';
 import { 协议正文 } from '../屏幕/用户协议';
 
@@ -35,5 +35,20 @@ describe('招聘渐进披露契约', () => {
     expect(说明们.length).toBeGreaterThan(0);
     expect(说明们.every((说明) => /原件/.test(说明))).toBe(true);
     expect([...说明们, ...正文们].some((文本) => /匿名版|隐去/.test(文本))).toBe(false);
+  });
+
+  it('披露偏好与帮助文案不再声称真名/联系方式在意向确认后才给出', () => {
+    const 真名 = 披露偏好初始.find((项) => 项.编号 === 'D-01')?.说明 ?? '';
+    const 联系 = 披露偏好初始.find((项) => 项.编号 === 'D-02')?.说明 ?? '';
+    // S1 原件递交即向招聘方显示
+    expect(真名).toMatch(/递交简历|原件/);
+    expect(联系).toMatch(/递交简历|原件/);
+    // 不再把意向确认当成首次给出真名/联系方式的时点
+    expect(真名 + 联系).not.toMatch(/双方确认意向后才露出|确认意向之后才给出|互换是不可逆的/);
+
+    const 问答 = JSON.stringify(常见问答);
+    expect(问答).toContain('递交简历');
+    expect(问答).not.toContain('双方都确认意向之后才给出');
+    expect(问答).not.toContain('换联系方式');
   });
 });
