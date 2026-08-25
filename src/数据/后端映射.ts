@@ -219,6 +219,8 @@ export function 从BFF意向(dto: BFFOwnerIntention): 求职意向 {
  * alternate_locations / industries / 薪资结构 / 后端招聘类型 ——
  * 打开+原样保存一条已有意向就会清掉这些字段（真实数据丢失）。
  * 这里从 读取意向() 保留的服务端 DTO 重建完整草稿，字段与 意向草稿型 一一对应。
+ * Task 6：同时填充 目录选择值 引用（职位/工作城市/感兴趣城市/行业）与 办公方式（中文标签），
+ * 保存时映射层直接用引用.id，不再按显示名反查目录。
  */
 export function 从BFF意向草稿(dto: BFFOwnerIntention): 意向草稿型 {
   const 是区间 = dto.compensation.mode === 'range';
@@ -226,11 +228,16 @@ export function 从BFF意向草稿(dto: BFFOwnerIntention): 意向草稿型 {
     编辑编号: dto.intention_id,
     求职类型: 招聘类型到页面[dto.recruitment_type],
     工作城市: dto.primary_location.display_name,
+    工作城市引用: dto.primary_location,
     期望职位: dto.job_category.display_name,
+    职位引用: dto.job_category,
     感兴趣城市们: dto.alternate_locations.map((a) => a.display_name),
+    感兴趣城市引用们: dto.alternate_locations,
     薪资下限: 是区间 ? (dto.compensation.lower ?? null) : null,
     薪资上限: 是区间 ? (dto.compensation.upper ?? null) : null,
     期望行业们: dto.industries.map((i) => i.display_name),
+    行业引用们: dto.industries,
+    办公方式: dto.workplace_modes.map((w) => 后端到办公方式[w]),
     后端招聘类型: dto.recruitment_type,
     求职类型已改: false,
   };
@@ -246,7 +253,25 @@ function 映射办公方式(页值们: string[]): BFFOwnerIntention['workplace_m
   return 页值们.map((值) => 办公方式到后端[值 as keyof typeof 办公方式到后端] ?? (合法wire.has(值) ? 值 : undefined)) as BFFOwnerIntention['workplace_modes'];
 }
 
-/** 草稿 → BFF意向写入 body。打开已有意向且用户没切招聘类型时保留原 recruitment_type。 */
+/**
+ * 去重目录引用：按 id 去重，保留首次出现的顺序。
+ * 意向草稿的 感兴趣城市引用们 / 城市引用们 可能含重复 id（不同来源合并），
+ * 写入前按 id 去重，primary_location 从 alternates 中剔除（Task 6）。
+ */
+export function 去重引用(refs: 目录选择值[]): 目录选择值[] {
+  const seen = new Set<string>();
+  const out: 目录选择值[] = [];
+  for (const 项 of refs) {
+    if (seen.has(项.id)) continue;
+    seen.add(项.id);
+    out.push(项);
+  }
+  return out;
+}
+
+/** 草稿 → BFF意向写入 body。打开已有意向且用户没切招聘类型时保留原 recruitment_type。
+ *  Task 6：目录字段直接读草稿里的引用（Tasks 3-4 已原子保存），不再按显示名反查目录；
+ *  办公方式 从草稿.办公方式 读（必填草稿字段），不再从上下文取。 */
 export function 转意向写入(草稿: 意向草稿型, 上下文: 意向映射上下文): BFF意向写入 {
   const 原始 = 上下文.原始;
   const 保留原类型 = 原始 !== null && !草稿.求职类型已改;
@@ -258,25 +283,32 @@ export function 转意向写入(草稿: 意向草稿型, 上下文: 意向映射
   const graduation_month = 是校园或实习 && 原始 !== null ? 原始.graduation_month : null;
   const internship_months = 是校园或实习 && 原始 !== null ? 原始.internship_months : null;
   const onsite_days_per_week = 是校园或实习 && 原始 !== null ? 原始.onsite_days_per_week : null;
-  // annual_salary_months 在意向草稿里没有字段，编辑已有意向时从服务端快照保留（#4）。
+  // annual_salary_months：新建时不存在就省略（不填 12）；编辑时从服务端快照保留（#4）。
   // salary_period 是 BFF 根据 recruitment_type 派生的只读字段（不在 IntentionWrite body 里），
   // 保留原 recruitment_type 即保留了 period —— 草稿不能表达 period，但保存不会丢它。
-  const annual_salary_months = 原始 !== null ? (原始.compensation.annual_salary_months ?? null) : null;
+  const alternate_location_ids = 去重引用(草稿.感兴趣城市引用们 ?? [])
+    .filter((item) => item.id !== 草稿.工作城市引用?.id)
+    .map((item) => item.id);
   const compensation: BFF意向补偿 =
     草稿.薪资下限 === null || 草稿.薪资上限 === null
-      ? { mode: 'negotiable', annual_salary_months }
-      : { mode: 'range', lower: 草稿.薪资下限, upper: 草稿.薪资上限, annual_salary_months };
+      ? { mode: 'negotiable' }
+      : {
+          mode: 'range',
+          lower: 草稿.薪资下限,
+          upper: 草稿.薪资上限,
+          ...(原始?.compensation.annual_salary_months == null ? {} : { annual_salary_months: 原始.compensation.annual_salary_months }),
+        };
   // exclusions：更新沿用服务端快照，新建四个均为 unspecified（草稿不带排除项）
   const exclusions: BFF意向排除 = 原始 !== null
     ? 原始.exclusions
     : { alternate_weekend_work: 'unspecified', outsourcing_only: 'unspecified', onsite_only: 'unspecified', frequent_travel: 'unspecified' };
   return {
     recruitment_type,
-    job_category_id: 精确目录ID(上下文.目录.职位类别, 草稿.期望职位, '职位类别'),
-    primary_location_id: 精确目录ID(上下文.目录.地点, 草稿.工作城市, '地点'),
-    alternate_location_ids: 草稿.感兴趣城市们.map((城) => 精确目录ID(上下文.目录.地点, 城, '地点')),
-    industry_ids: 草稿.期望行业们.map((行) => 精确目录ID(上下文.目录.行业, 行, '行业')),
-    workplace_modes: 映射办公方式(上下文.办公方式),
+    job_category_id: 必需引用(草稿.职位引用, '职位'),
+    primary_location_id: 必需引用(草稿.工作城市引用, '工作城市'),
+    alternate_location_ids,
+    industry_ids: (草稿.行业引用们 ?? []).map((item) => item.id),
+    workplace_modes: 映射办公方式(草稿.办公方式 ?? []),
     compensation,
     graduation_month,
     internship_months,
@@ -286,8 +318,10 @@ export function 转意向写入(草稿: 意向草稿型, 上下文: 意向映射
   };
 }
 
-/** 首次注册向导答案 → BFF意向写入 body。用 迁移主要求职类型 取唯一主类型。 */
-export function 转首次意向写入(输入: 首次意向输入, 上下文: 意向映射上下文): BFF意向写入 {
+/** 首次注册向导答案 → BFF意向写入 body。用 迁移主要求职类型 取唯一主类型。
+ *  Task 6：目录字段直接读输入里的引用（职位引用/城市引用们），不再按显示名反查目录；
+ *  办公方式 从输入.筛选偏好.办公方式 读（向导答案里的中文标签）。 */
+export function 转首次意向写入(输入: 首次意向输入): BFF意向写入 {
   const 主类型偏好 = 迁移主要求职类型(输入.筛选偏好, 输入.薪资.单位);
   const 主要 = 主类型偏好.求职类型[0];
   const recruitment_type = 岗位类型到后端[主要];
@@ -304,13 +338,15 @@ export function 转首次意向写入(输入: 首次意向输入, 上下文: 意
   };
   const 自定义 = 输入.排除项.filter((项) => !内置.includes(项));
   const private_preferences = 自定义.length > 0 ? `其他排除：${自定义.join('、')}` : '';
+  const [primary, ...alternate] = 去重引用(输入.城市引用们 ?? []);
+  if (!primary) throw new Error('请从候选城市中选择');
   return {
     recruitment_type,
-    job_category_id: 精确目录ID(上下文.目录.职位类别, 输入.职位们[0] ?? '', '职位类别'),
-    primary_location_id: 精确目录ID(上下文.目录.地点, 输入.城市们[0] ?? '', '地点'),
-    alternate_location_ids: 输入.城市们.slice(1).map((城) => 精确目录ID(上下文.目录.地点, 城, '地点')),
+    job_category_id: 必需引用(输入.职位引用, '职位'),
+    primary_location_id: primary.id,
+    alternate_location_ids: alternate.map((item) => item.id),
     industry_ids: [],
-    workplace_modes: 映射办公方式(上下文.办公方式),
+    workplace_modes: 映射办公方式(输入.筛选偏好.办公方式),
     compensation: { mode: 'range', lower: 输入.薪资.下限, upper: 输入.薪资.上限 },
     graduation_month: 是校园 ? (主类型偏好.毕业时间 ?? null) : null,
     internship_months: 是实习 ? (主类型偏好.实习月数 ?? null) : null,

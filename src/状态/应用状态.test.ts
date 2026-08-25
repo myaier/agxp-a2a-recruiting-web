@@ -65,6 +65,7 @@ describe('应用状态 reducer', () => {
       job_category: { id: 'tax_p', display_name: '产品经理' },
       alternate_locations: [{ id: 'loc_bj', display_name: '北京' }],
       industries: [{ id: 'ind_fin', display_name: '金融' }],
+      workplace_modes: ['hybrid'] as ('onsite' | 'hybrid' | 'remote')[],
       compensation: { mode: 'range' as const, lower: 300, upper: 500, annual_salary_months: null },
       salary_period: 'day' as const,
       recruitment_type: 'internship' as const,
@@ -79,11 +80,16 @@ describe('应用状态 reducer', () => {
       编辑编号: 'int_1',
       求职类型: '全职',
       工作城市: '上海',
+      工作城市引用: { id: 'loc_sh', display_name: '上海' },
       期望职位: '产品经理',
+      职位引用: { id: 'tax_p', display_name: '产品经理' },
       感兴趣城市们: ['北京'],
+      感兴趣城市引用们: [{ id: 'loc_bj', display_name: '北京' }],
       薪资下限: 300,
       薪资上限: 500,
       期望行业们: ['金融'],
+      行业引用们: [{ id: 'ind_fin', display_name: '金融' }],
+      办公方式: ['混合'],
       后端招聘类型: 'internship',
       求职类型已改: false,
     });
@@ -282,12 +288,17 @@ describe('应用状态提供者 候选写操作', () => {
     const 后端源 = 后端 as unknown as HTTP招聘数据源;
     render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
     await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
-    const 草稿 = { 编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '产品经理', 感兴趣城市们: [] as string[], 薪资下限: 10, 薪资上限: 20, 期望行业们: [] as string[], 后端招聘类型: null, 求职类型已改: false };
+    const 草稿 = {
+      编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '产品经理',
+      工作城市引用: { id: 'loc_sh', display_name: '上海' }, 职位引用: { id: 'tax_p', display_name: '产品经理' },
+      感兴趣城市们: [] as string[], 感兴趣城市引用们: [] as never[],
+      薪资下限: 10, 薪资上限: 20, 期望行业们: [] as string[], 行业引用们: [] as never[],
+      办公方式: ['hybrid'], 后端招聘类型: null, 求职类型已改: false,
+    };
     const 第一次 = 当前.操作.保存意向(草稿);
     const 第二次 = 当前.操作.保存意向(草稿);
-    // Task 2：目录不再随初始化预取，保存意向 首次需按需 await 取目录 再调 创建意向，
-    // 故用 waitFor 等到 创建意向 被调用；锁仍阻止第二次进入。
-    await waitFor(() => expect(后端.创建意向).toHaveBeenCalledTimes(1));
+    // Task 6：保存意向 不再按需取目录，创建意向 同步调用（不再 waitFor）
+    expect(后端.创建意向).toHaveBeenCalledTimes(1);
     完成.resolve({ 列表: [], 服务端: {} });
     await Promise.all([第一次, 第二次]);
   });
@@ -312,11 +323,16 @@ describe('应用状态提供者 候选写操作', () => {
       编辑编号: 'int_1',
       求职类型: '全职' as const,
       工作城市: '上海',
+      工作城市引用: { id: 'loc_sh', display_name: '上海' },
       期望职位: '本地冲突职位',
+      职位引用: { id: 'tax_p', display_name: '产品经理' },
       感兴趣城市们: [] as string[],
+      感兴趣城市引用们: [] as never[],
       薪资下限: 10,
       薪资上限: 20,
       期望行业们: [] as string[],
+      行业引用们: [] as never[],
+      办公方式: ['hybrid'],
       后端招聘类型: 'internship' as const,
       求职类型已改: false,
     };

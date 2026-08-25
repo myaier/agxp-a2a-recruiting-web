@@ -76,12 +76,18 @@ export interface 意向草稿型 {
   后端招聘类型: 'social_full_time' | 'campus' | 'internship' | 'part_time' | null;
   /** 用户是否实际点过 全职/兼职 单选；false 时保留 后端招聘类型，true 时按页面值覆盖。*/
   求职类型已改: boolean;
+  /** 办公方式（中文标签：现场/混合/远程/全远程）；必填草稿字段，保存时映射为 BFF wire code。
+   *  新建意向默认空数组，由 添加意向 页的办公方式行选择写入。*/
+  办公方式: string[];
 }
 
+/**
+ * 意向映射上下文：写入时只需要服务端原始 DTO（编辑已有意向时保留 owner 未表达字段）。
+ * Task 6 简化：目录/办公方式 不再从上下文取 —— 目录引用直接落在草稿里（Tasks 3-4），
+ * 办公方式 从草稿.办公方式 取（Task 6 新增必填草稿字段）。
+ */
 export interface 意向映射上下文 {
   原始: BFFOwnerIntention | null;
-  办公方式: string[];
-  目录: 目录索引;
 }
 
 export interface 首次意向输入 {

@@ -143,7 +143,7 @@ export interface HTTP招聘数据源 {
   保存简历(next: 页面简历写入, previous: BFF简历): Promise<页面简历快照>;
   读取意向(): Promise<页面意向快照>;
   创建意向(draft: 意向草稿型, context: 意向映射上下文): Promise<页面意向快照>;
-  创建首次意向(input: 首次意向输入, context: Omit<意向映射上下文, '原始'>): Promise<页面意向快照>;
+  创建首次意向(input: 首次意向输入): Promise<页面意向快照>;
   更新意向(id: string, draft: 意向草稿型, context: 意向映射上下文): Promise<页面意向快照>;
   删除意向(id: string, revision: number): Promise<页面意向快照>;
   读取岗位(): Promise<页面岗位快照>;
@@ -529,11 +529,11 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
       await 请求<BFFOwnerIntention>({ path: '/api/v1/me/intentions', method: 'POST', body: 转意向写入(draft, context), 幂等: true });
       return 读取意向();
     },
-    async 创建首次意向(input, context) {
+    async 创建首次意向(input) {
       await 请求<BFFOwnerIntention>({
         path: '/api/v1/me/intentions',
         method: 'POST',
-        body: 转首次意向写入(input, { ...context, 原始: null }),
+        body: 转首次意向写入(input),
         幂等: true,
       });
       return 读取意向();

@@ -325,4 +325,66 @@ describe('HTTP 招聘数据源', () => {
       .find((o) => o.path.startsWith('/api/v1/me/intentions'));
     expect(意向请求?.path).toBe('/api/v1/me/intentions?status=active');
   });
+
+  // Task 6：创建意向 body 用草稿里的引用 ID，不再按显示名反查目录（无 /catalog/ 请求）。
+  it('创建意向 body 用引用 ID，不请求 /catalog/', async () => {
+    请求Mock.mockResolvedValue({ result: { intentions: [] }, etag: null, requestId: 'r1' });
+    const source = 创建HTTP招聘数据源(依赖());
+    const 草稿 = {
+      编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海市', 期望职位: '产品经理',
+      工作城市引用: { id: 'loc_sh', display_name: '上海市' },
+      职位引用: { id: 'tax_pm', display_name: '产品经理' },
+      感兴趣城市们: [] as string[],
+      感兴趣城市引用们: [{ id: 'loc_hz', display_name: '杭州市' }],
+      薪资下限: 20, 薪资上限: 30,
+      期望行业们: [] as string[],
+      行业引用们: [{ id: 'tax_it', display_name: '互联网' }],
+      办公方式: ['hybrid'],
+      后端招聘类型: null, 求职类型已改: false,
+    };
+    await source.创建意向(草稿, { 原始: null });
+    const post = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.method === 'POST' && o.path === '/api/v1/me/intentions');
+    expect(post?.body).toMatchObject({
+      job_category_id: 'tax_pm', primary_location_id: 'loc_sh',
+      alternate_location_ids: ['loc_hz'], industry_ids: ['tax_it'], workplace_modes: ['hybrid'],
+    });
+    expect((post?.body as { compensation: unknown }).compensation).toEqual({ mode: 'range', lower: 20, upper: 30 });
+    // 没有任何 /catalog/ 请求
+    const 目录请求 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.path.includes('/catalog/'));
+    expect(目录请求).toBeUndefined();
+  });
+
+  // Task 6：创建首次意向 body 用引用 ID，不请求 /catalog/。
+  it('创建首次意向 body 用引用 ID，不请求 /catalog/', async () => {
+    请求Mock.mockResolvedValue({ result: { intentions: [] }, etag: null, requestId: 'r1' });
+    const source = 创建HTTP招聘数据源(依赖());
+    const 输入 = {
+      职位们: ['产品经理'],
+      城市们: ['上海市', '杭州市'],
+      薪资: { 下限: 10, 上限: 20, 单位: '月薪K' as const },
+      筛选偏好: { 求职类型: ['社招全职'] as ['社招全职'], 办公方式: ['混合'] as ['混合'] },
+      排除项: [],
+      职位引用: { id: 'tax_pm', display_name: '产品经理' },
+      城市引用们: [
+        { id: 'loc_sh', display_name: '上海市' },
+        { id: 'loc_hz', display_name: '杭州市' },
+      ],
+    };
+    await source.创建首次意向(输入);
+    const post = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.method === 'POST' && o.path === '/api/v1/me/intentions');
+    expect(post?.body).toMatchObject({
+      job_category_id: 'tax_pm', primary_location_id: 'loc_sh',
+      alternate_location_ids: ['loc_hz'], workplace_modes: ['hybrid'],
+    });
+    const 目录请求 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.path.includes('/catalog/'));
+    expect(目录请求).toBeUndefined();
+  });
 });

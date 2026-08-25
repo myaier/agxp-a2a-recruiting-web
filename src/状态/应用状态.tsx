@@ -617,6 +617,7 @@ const 空意向草稿: 意向草稿型 = {
   期望行业们: [],
   行业引用们: [],
   职位引用: undefined,
+  办公方式: [],
   后端招聘类型: null,
   求职类型已改: false,
 };
@@ -2088,9 +2089,10 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         if (锁.current.has(键)) return;
         锁.current.add(键);
         try {
-          const 目录 = 目录引用.current ?? await 取目录(后端, 目录引用);
+          // Task 6：目录引用直接落在草稿里（Tasks 3-4），不再按需取目录；
+          // 办公方式 从草稿.办公方式 读（必填草稿字段），不再硬编码 ['onsite']。
           const 原始 = draft.编辑编号 ? 后端状态引用.current.意向快照[draft.编辑编号] ?? null : null;
-          const 上下文 = { 原始, 办公方式: 原始?.workplace_modes ?? ['onsite'], 目录 };
+          const 上下文 = { 原始 };
           const 快照 = draft.编辑编号
             ? await 后端.更新意向(draft.编辑编号, draft, 上下文)
             : await 后端.创建意向(draft, 上下文);
@@ -2113,11 +2115,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         if (锁.current.has(键)) return;
         锁.current.add(键);
         try {
-          const 目录 = 目录引用.current ?? await 取目录(后端, 目录引用);
-          // 办公方式 取 向导答案里的中文标签（引导预填.筛选偏好.办公方式），
-          // 不再硬编码 ['onsite']：硬编码会让用户选的「混合/全远程」丢失，
-          // 且 wire code 'onsite' 经 映射办公方式 只查中文表会变 undefined。
-          const 快照 = await 后端.创建首次意向(input, { 办公方式: input.筛选偏好.办公方式, 目录 });
+          // Task 6：目录引用直接落在 input 里（引导问答 Backend 分支选中时原子保存），
+          // 不再按需取目录；办公方式 从 input.筛选偏好.办公方式 读（向导答案）。
+          const 快照 = await 后端.创建首次意向(input);
           派发({ 型: '水合后端意向', 快照 });
           设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
         } catch (错误) {
