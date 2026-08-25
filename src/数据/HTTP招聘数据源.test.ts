@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BFF简历样本 } from '../测试/BFF样本';
 import { BFF错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
 import { 从BFF简历 } from './后端映射';
@@ -17,6 +17,15 @@ function 内存附属存储() {
 }
 
 describe('HTTP 招聘数据源', () => {
+  // 分页目录查询测试共用的 mock 与依赖：每个用例前重置，新测试用 依赖() 取依赖。
+  const 请求Mock = vi.fn();
+  const 请求 = 请求Mock as unknown as 请求函数;
+  function 依赖() {
+    return { client: { 请求 }, 后端环境: 'stg' as const, 附属存储: 内存附属存储() };
+  }
+  beforeEach(() => {
+    请求Mock.mockReset();
+  });
   it('手机登录使用 +86 E.164 和两次独立幂等操作', async () => {
     const 请求Mock = vi.fn(async (options: BFF请求选项) => {
       if (options.path === '/api/v1/auth/login-attempts') {
@@ -253,5 +262,46 @@ describe('HTTP 招聘数据源', () => {
       .map(([o]) => o as BFF请求选项)
       .filter((o) => o.method === 'POST' && o.path === '/api/v1/me/resume/experiences/exp_server/projects');
     expect(项目POST2).toHaveLength(1);
+  });
+
+  // Task 1：分页目录查询只请求一页，保留不可选 taxonomy 导航节点（不照旧 读取目录 过滤掉）。
+  it('目录查询只请求一页且保留不可选 taxonomy 导航节点', async () => {
+    请求Mock.mockResolvedValueOnce({
+      result: {
+        items: [{ id: 'tax_root', display_name: '技术', parent_id: null, selectable: false }],
+        next_cursor: 'next-1', catalog_version: 'v2',
+      },
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.查询Taxonomy('job-categories', { limit: 20 })).resolves.toEqual({
+      items: [{ id: 'tax_root', display_name: '技术', parent_id: null, selectable: false }],
+      nextCursor: 'next-1', catalogVersion: 'v2',
+    });
+    expect(请求Mock).toHaveBeenCalledTimes(1);
+  });
+
+  // Task 1：同 key in-flight 去重，只发一次请求；清空目录缓存后再查会重新请求。
+  it('相同 in-flight 查询去重，清缓存后重新请求', async () => {
+    let resolve!: (value: unknown) => void;
+    请求Mock.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const source = 创建HTTP招聘数据源(依赖());
+    const a = source.查询Location({ countryCode: 'CN', admin1Code: '31', limit: 20 });
+    const b = source.查询Location({ countryCode: 'CN', admin1Code: '31', limit: 20 });
+    expect(请求Mock).toHaveBeenCalledTimes(1);
+    resolve({ result: { items: [], next_cursor: null, catalog_version: 'v2' } });
+    await Promise.all([a, b]);
+    source.清空目录缓存();
+    await source.查询Location({ countryCode: 'CN', admin1Code: '31', limit: 20 });
+    expect(请求Mock).toHaveBeenCalledTimes(2);
+  });
+
+  // Task 1：院校结果的嵌套 location 原样保留，映射层不抹平嵌套字段。
+  it('院校结果保留嵌套地点', async () => {
+    请求Mock.mockResolvedValueOnce({ result: { items: [{
+      id: 'ins_1', display_name: '复旦大学',
+      location: { id: 'loc_1', display_name: '上海市', country_code: 'CN', country_name: '中国', admin1_code: '31', admin1_name: '上海市', timezone: 'Asia/Shanghai', population: 0 },
+    }], next_cursor: null, catalog_version: 'v2' } });
+    const page = await 创建HTTP招聘数据源(依赖()).查询Institution({ q: '复旦', limit: 20 });
+    expect(page.items[0].location).toMatchObject({ display_name: '上海市', country_name: '中国' });
   });
 });

@@ -9,6 +9,16 @@ import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 在�
 import type { 求职初筛偏好, 求职薪资单位 } from '../流程/onboarding配置';
 import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob } from './BFF契约';
 
+// ── 分页目录查询（Task 1）：页面层只拿已选目录项的引用，不再全量预取 ──
+// 目录选择值 仍是 BFF目录引用，写入 body 里只带 id；页面层不感知后端返回的额外字段。
+// 具体后端项类型（BFFTaxonomyItem 等）由 HTTP招聘数据源 在方法签名里约束，页面层用 目录页<T> 消费。
+
+export type 目录选择值 = BFF目录引用;
+export interface 目录页<T> { items: T[]; nextCursor: string | null; catalogVersion: string }
+export interface Taxonomy查询 { parentId?: string; q?: string; cursor?: string; limit?: number }
+export interface Location查询 { q?: string; countryCode?: string; admin1Code?: string; cursor?: string; limit?: number }
+export interface Institution查询 { q?: string; countryCode?: string; locationId?: string; cursor?: string; limit?: number }
+
 export interface 页面简历快照 {
   基本信息: 基本信息;
   个人优势: string;

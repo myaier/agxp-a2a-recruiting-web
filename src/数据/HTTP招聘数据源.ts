@@ -20,6 +20,9 @@ import type {
   BFF目录引用,
   BFFOwnerIntention,
   BFFOwnerJob,
+  BFFTaxonomyItem,
+  BFFLocationItem,
+  BFFInstitutionItem,
 } from './BFF契约';
 import type { 后端环境 } from '../配置/运行配置';
 import type { 岗位附属存储 } from './前端附属数据';
@@ -29,6 +32,10 @@ import type {
   页面意向快照,
   页面岗位快照,
   目录索引,
+  目录页,
+  Taxonomy查询,
+  Location查询,
+  Institution查询,
   意向草稿型,
   意向映射上下文,
   首次意向输入,
@@ -98,6 +105,9 @@ const 目录端点: Record<keyof 目录索引, `/api/v1/catalog/${string}`> = {
   专业: '/api/v1/catalog/majors',
 };
 
+// 分页目录查询只覆盖这三个 taxonomy 端点；locations / education-institutions 固定路径单独映射。
+type Taxonomy类别 = 'job-categories' | 'industries' | 'majors';
+
 type 目录项 = { id: string; display_name: string; selectable?: boolean };
 type 写入步骤 = () => Promise<unknown>;
 
@@ -147,6 +157,10 @@ export interface HTTP招聘数据源 {
   确保角色(role: BFF角色): Promise<BFF主体>;
   记录当前角色(role: BFF角色): Promise<BFF主体>;
   读取目录(): Promise<目录索引>;
+  查询Taxonomy(kind: Taxonomy类别, query: Taxonomy查询): Promise<目录页<BFFTaxonomyItem>>;
+  查询Location(query: Location查询): Promise<目录页<BFFLocationItem>>;
+  查询Institution(query: Institution查询): Promise<目录页<BFFInstitutionItem>>;
+  清空目录缓存(): void;
   读取简历(): Promise<页面简历快照>;
   保存简历(next: 页面简历写入, previous: BFF简历): Promise<页面简历快照>;
   读取意向(): Promise<页面意向快照>;
@@ -165,8 +179,32 @@ export interface HTTP招聘数据源 {
 export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP招聘数据源 {
   const { client, 后端环境, 附属存储 } = deps;
   const 请求 = client.请求;
+  // 目录缓存：legacy 解析目录项 的 kind:displayName → id 缓存（Task 7 删除）。
   const 目录缓存 = new Map<string, string>();
+  // 目录页面缓存：分页查询的 in-flight 去重 + 已请求页面缓存。key = endpoint?normalizedQuery。
+  // 只缓存当前 session 已请求页面；清空目录缓存 清空它，不碰 目录缓存（legacy 写路径仍用）。
+  const 目录页面缓存 = new Map<string, Promise<unknown>>();
 
+  /** 把查询参数编码成稳定 query string：丢掉 undefined 与空串，limit:20 与缺省都稳定。 */
+  function 编码查询(entries: [string, string | number | undefined][]): string {
+    const params = new URLSearchParams();
+    for (const [key, value] of entries) if (value !== undefined && value !== '') params.set(key, String(value));
+    return params.toString();
+  }
+
+  /** 一页查询：同 key in-flight 去重；失败时从缓存里删掉这个 key 再抛。 */
+  async function 查询一页<T extends BFF目录引用>(path: `/api/v1/catalog/${string}`, query: string): Promise<目录页<T>> {
+    const key = `${path}?${query}`;
+    const existing = 目录页面缓存.get(key) as Promise<目录页<T>> | undefined;
+    if (existing) return existing;
+    const pending = 请求<BFF目录页<T>>({ path: `${path}${query ? `?${query}` : ''}` as `/api/v1/${string}` })
+      .then(({ result }) => ({ items: result.items, nextCursor: result.next_cursor, catalogVersion: result.catalog_version }))
+      .catch((error) => { 目录页面缓存.delete(key); throw error; });
+    目录页面缓存.set(key, pending);
+    return pending;
+  }
+
+  // ── 兼容期 legacy 目录方法：Task 2 移除初始化预取，Tasks 5–7 逐域迁移后由 Task 7 删除 ──
   async function 读取目录(): Promise<目录索引> {
     const 目录: 目录索引 = { 职位类别: [], 地点: [], 行业: [], 院校: [], 专业: [] };
     for (const kind of Object.keys(目录端点) as (keyof 目录索引)[]) {
@@ -190,6 +228,7 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
   /**
    * 目录精确解析：?q= 前缀搜索 + 游标翻页，只接受 display_name 完全相等且 selectable 的唯一项。
    * 缓存键 kind:q。taxonomy 项要求 selectable=true；locations/institutions 不带 selectable，视作可选。
+   * 兼容期 legacy：Task 7 删除，迁移完成前不得新增调用点。
    */
   async function 解析目录项(kind: keyof 目录索引, 显示名: string): Promise<string> {
     const 缓存键 = `${kind}:${显示名}`;
@@ -219,7 +258,7 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
     return id;
   }
 
-  /** 目录里没有这个显示名时，解析并补进目录，供后续 精确目录ID 命中。 */
+  /** 目录里没有这个显示名时，解析并补进目录，供后续 精确目录ID 命中。兼容期 legacy：Task 7 删除。 */
   async function 确保目录(目录: 目录索引, kind: keyof 目录索引, 显示名: string): Promise<void> {
     if (显示名 === '') return;
     if (目录[kind].some((项) => 项.display_name === 显示名)) return;
@@ -475,6 +514,41 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
       return 请求<BFF主体>({ path: '/api/v1/me/preferences/last-used-role', method: 'PUT', body: { role } }).then((r) => r.result);
     },
     读取目录,
+    查询Taxonomy(kind, query) {
+      const path = `/api/v1/catalog/${kind}` as `/api/v1/catalog/${string}`;
+      const query_string = 编码查询([
+        ['parent_id', query.parentId],
+        ['q', query.q],
+        ['cursor', query.cursor],
+        ['limit', query.limit],
+      ]);
+      return 查询一页<BFFTaxonomyItem>(path, query_string);
+    },
+    查询Location(query) {
+      const path = '/api/v1/catalog/locations';
+      const query_string = 编码查询([
+        ['q', query.q],
+        ['country_code', query.countryCode],
+        ['admin1_code', query.admin1Code],
+        ['cursor', query.cursor],
+        ['limit', query.limit],
+      ]);
+      return 查询一页<BFFLocationItem>(path, query_string);
+    },
+    查询Institution(query) {
+      const path = '/api/v1/catalog/education-institutions';
+      const query_string = 编码查询([
+        ['q', query.q],
+        ['country_code', query.countryCode],
+        ['location_id', query.locationId],
+        ['cursor', query.cursor],
+        ['limit', query.limit],
+      ]);
+      return 查询一页<BFFInstitutionItem>(path, query_string);
+    },
+    清空目录缓存() {
+      目录页面缓存.clear();
+    },
     读取简历() {
       return 请求<BFF简历>({ path: '/api/v1/me/resume' }).then((r) => 从BFF简历(r.result));
     },
