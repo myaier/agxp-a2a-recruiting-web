@@ -176,6 +176,49 @@ describe('工作经历 行业弹层 Backend', () => {
   });
 });
 
+// review-r3 R3-Minor-2：Backend 行业弹层去掉自由文本输入——它看起来可保存但完成守卫要求引用，
+// 自由输入会清掉引用导致无法完成。Backend 必须从目录叶子里选。
+describe('工作经历 经历编辑页 Backend 行业无自由文本（R3-Minor-2）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+  });
+
+  it('Backend 行业弹层无自由文本输入框（必须选目录叶子）', async () => {
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'ind_fin') {
+        return {
+          items: [{ id: 'ind_pay', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    // Backend 模式不渲染自由文本输入框
+    expect(screen.queryByPlaceholderText('没有合适的？直接输入')).toBeNull();
+  });
+
+  it('Mock 行业弹层保留自由文本输入框', async () => {
+    render工作经历({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    expect(screen.getByPlaceholderText('没有合适的？直接输入')).toBeTruthy();
+  });
+});
+
 // review-r2 R2-I-5：Backend 经历编辑页 行业为空也能完成 → 保存简历 跳过该行 → 不持久化 →
 // 服务端水合后消失。修复后 Backend 要求 行业引用（隐含 行业 非空）才能完成。
 describe('工作经历 经历编辑页 Backend 行业必填引用（R2-I-5）', () => {

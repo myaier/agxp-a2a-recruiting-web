@@ -1145,19 +1145,24 @@ function 经历编辑页({
                     </button>
                   ))}
             </div>
-            <input
-              className={样式.选择层输入}
-              value={草稿.行业}
-              placeholder="没有合适的？直接输入"
-              onChange={(事件) => {
-                改('行业', 事件.target.value);
-                // Task 4：自由输入立即清除旧引用（只有点候选才落引用）
-                if (是后端) 改('行业引用', undefined);
-              }}
-              onKeyDown={(事件) => {
-                if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 设行业层(false);
-              }}
-            />
+            {/* review-r3 R3-Minor-2：Backend 模式去掉自由文本行业输入——它看起来可保存但完成守卫
+                要求 行业引用，自由输入会清掉引用导致无法完成。Backend 必须从目录叶子里选。
+                Mock 模式保留自由文本（本地 常见行业 列表 + 手输兜底）。 */}
+            {是后端 ? null : (
+              <input
+                className={样式.选择层输入}
+                value={草稿.行业}
+                placeholder="没有合适的？直接输入"
+                onChange={(事件) => {
+                  改('行业', 事件.target.value);
+                  // Task 4：自由输入立即清除旧引用（只有点候选才落引用）
+                  if (是后端) 改('行业引用', undefined);
+                }}
+                onKeyDown={(事件) => {
+                  if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 设行业层(false);
+                }}
+              />
+            )}
         </弹层框架>
       ) : null}
     </次级页外壳>
