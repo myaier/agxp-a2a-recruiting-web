@@ -4,10 +4,16 @@
 
 import type { BFF信封, BFF简历 } from './BFF契约';
 
+/** BFF 校验错误里的单条字段问题：path 是字段路径，reason 是可展示的拒绝理由。 */
+export interface BFF字段错误 {
+  path: string;
+  reason: string;
+}
+
 export class BFF错误 extends Error {
   status: number;
   code: string;
-  fieldErrors: Record<string, string>;
+  fieldErrors: BFF字段错误[];
   retryAfterSeconds: number | null;
   /** 简历分区写入中途失败时，重新 GET 拿到的权威快照；Context 用它恢复服务端真实状态。 */
   权威简历?: BFF简历;
@@ -15,7 +21,7 @@ export class BFF错误 extends Error {
     status: number,
     code: string,
     message: string,
-    fieldErrors: Record<string, string> = {},
+    fieldErrors: BFF字段错误[] = [],
     retryAfterSeconds: number | null = null,
   ) {
     super(message);
@@ -103,15 +109,20 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
     // 非 2xx：解析 { error: { type, message, fields? } } 为 BFF错误。
     let code = 'invalid_response';
     let message = '请求失败';
-    let fieldErrors: Record<string, string> = {};
+    let fieldErrors: BFF字段错误[] = [];
     try {
       const body = await resp.json();
       if (body && typeof body === 'object' && 'error' in body) {
-        const err = (body as { error: { type?: string; message?: string; fields?: Record<string, string> } }).error;
+        const err = (body as { error: { type?: string; message?: string; fields?: unknown } }).error;
         if (err && typeof err === 'object') {
           if (typeof err.type === 'string') code = err.type;
           if (typeof err.message === 'string') message = err.message;
-          if (err.fields) fieldErrors = err.fields;
+          // Task 2：fields 是有序数组，每项 {path,reason}；只保留两项都是字符串的条目，
+          // 其余形状（含旧的 Record<string,string>）一律忽略，避免 [object Object] 进文案。
+          fieldErrors = Array.isArray(err.fields)
+            ? err.fields.filter((item): item is BFF字段错误 =>
+                typeof item?.path === 'string' && typeof item?.reason === 'string')
+            : [];
         }
       }
     } catch {
@@ -176,6 +187,6 @@ export function 取后端错误文案(error: unknown): string {
   if (error.code === 'invalid_session') return '登录已失效，请重新登录';
   if (error.code === 'invalid_origin') return '当前后端环境配置不正确';
   if (error.code === 'version_conflict') return '数据已在其他地方更新，请重试';
-  if (error.code === 'validation_failed') return Object.values(error.fieldErrors)[0] ?? '填写内容未通过校验';
+  if (error.code === 'validation_failed') return error.fieldErrors[0]?.reason ?? '填写内容未通过校验';
   return error.message || '请求失败，请稍后再试';
 }

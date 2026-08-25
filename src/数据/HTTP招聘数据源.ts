@@ -267,7 +267,7 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
   }
 
   async function 读取意向(): Promise<页面意向快照> {
-    const { result } = await 请求<BFF意向列表>({ path: '/api/v1/me/intentions' });
+    const { result } = await 请求<BFF意向列表>({ path: '/api/v1/me/intentions?status=active' });
     const 列表: 求职意向[] = result.intentions.map(从BFF意向);
     const 服务端: Record<string, BFFOwnerIntention> = {};
     for (const 项 of result.intentions) 服务端[项.intention_id] = 项;

@@ -304,4 +304,15 @@ describe('HTTP 招聘数据源', () => {
     const page = await 创建HTTP招聘数据源(依赖()).查询Institution({ q: '复旦', limit: 20 });
     expect(page.items[0].location).toMatchObject({ display_name: '上海市', country_name: '中国' });
   });
+
+  // Task 2：读取意向 带 status=active 过滤，只拉活跃意向；创建/更新/删除 后 re-GET 也走同一 path。
+  it('读取意向 请求路径带 status=active', async () => {
+    请求Mock.mockResolvedValue({ result: { intentions: [] }, etag: null, requestId: 'r1' });
+    const source = 创建HTTP招聘数据源(依赖());
+    await source.读取意向();
+    const 意向请求 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.path.startsWith('/api/v1/me/intentions'));
+    expect(意向请求?.path).toBe('/api/v1/me/intentions?status=active');
+  });
 });

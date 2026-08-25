@@ -1604,7 +1604,7 @@ function 意向说明(draft: 意向草稿型): string {
   return 期望行业文本 === '' ? 薪资文本 : `${薪资文本}｜${期望行业文本}`;
 }
 
-/** 按需取目录并缓存到 ref，供意向/岗位写入映射复用。 */
+/** 按需取目录并缓存到 ref，供意向/岗位写入映射复用。Task 7 删除：写入路径迁到分页目录后移除。 */
 async function 取目录(后端: HTTP招聘数据源, 目录引用: { current: 目录索引 | null }): Promise<目录索引> {
   if (目录引用.current) return 目录引用.current;
   const 目录 = await 后端.读取目录();
@@ -1614,37 +1614,40 @@ async function 取目录(后端: HTTP招聘数据源, 目录引用: { current: �
 
 /**
  * 按主体.last_used_role 水合支持域：
- *   candidate → 简历 + 意向；recruiter → 岗位；null → 保持身份选择页不水合。
- * mount-init（交互=false）：任一支失败只 轻提示，不抛出 —— 初始化仍要落成「完成」。
- * 切身份（交互=true）：任一支失败直接抛出 —— 让 选身份.tsx catch 显示 轻提示并留在原地，
+ *   candidate → 简历 + 意向（并行读取，各自独立派发）；recruiter → 岗位；null → 保持身份选择页不水合。
+ * mount-init（交互=false）：candidate 两条并行 allSettled，任一 rejected 只 轻提示 该资源，不抛出 —— 初始化仍要落成「完成」。
+ * 切身份（交互=true）：任一 rejected 直接抛出第一个错误 —— 让 选身份.tsx catch 显示 轻提示并留在原地，
  *   不导航进一个空壳（支持域没水合成功，进去也是空盘）。
+ * Task 2：不再在初始化/切身份时预取目录。目录由写入路径按需读取（取目录/目录引用），Task 7 删除。
  */
 async function 水合角色数据(
   后端: HTTP招聘数据源,
   主体: BFF主体,
   派发: (动作: 动作) => void,
   设后端状态: (更新: (旧: 后端状态) => 后端状态) => void,
-  目录引用: { current: 目录索引 | null },
   交互: boolean,
 ): Promise<void> {
   const 角色 = 主体.last_used_role;
   if (角色 === 'candidate') {
-    try {
-      const 简历快照 = await 后端.读取简历();
-      派发({ 型: '水合后端简历', 快照: 简历快照 });
-      设后端状态((旧) => ({ ...旧, 简历快照: 简历快照.服务端快照 }));
-    } catch (错误) {
-      if (交互) throw 错误;
-      轻提示(取后端错误文案(错误));
+    const 结果 = await Promise.allSettled([后端.读取简历(), 后端.读取意向()]);
+    const 错误们: unknown[] = [];
+    const 简历结果 = 结果[0];
+    if (简历结果.status === 'fulfilled') {
+      派发({ 型: '水合后端简历', 快照: 简历结果.value });
+      设后端状态((旧) => ({ ...旧, 简历快照: 简历结果.value.服务端快照 }));
+    } else {
+      错误们.push(简历结果.reason);
+      轻提示(取后端错误文案(简历结果.reason));
     }
-    try {
-      const 意向快照 = await 后端.读取意向();
-      派发({ 型: '水合后端意向', 快照: 意向快照 });
-      设后端状态((旧) => ({ ...旧, 意向快照: 意向快照.服务端 }));
-    } catch (错误) {
-      if (交互) throw 错误;
-      轻提示(取后端错误文案(错误));
+    const 意向结果 = 结果[1];
+    if (意向结果.status === 'fulfilled') {
+      派发({ 型: '水合后端意向', 快照: 意向结果.value });
+      设后端状态((旧) => ({ ...旧, 意向快照: 意向结果.value.服务端 }));
+    } else {
+      错误们.push(意向结果.reason);
+      轻提示(取后端错误文案(意向结果.reason));
     }
+    if (交互 && 错误们.length > 0) throw 错误们[0];
   } else if (角色 === 'recruiter') {
     try {
       const 岗位快照 = await 后端.读取岗位();
@@ -1654,12 +1657,6 @@ async function 水合角色数据(
       if (交互) throw 错误;
       轻提示(取后端错误文案(错误));
     }
-  }
-  // 预取目录缓存到 ref，供意向/岗位写入映射复用；失败不阻塞（两种模式都吞掉）
-  try {
-    目录引用.current = await 后端.读取目录();
-  } catch {
-    // 后续写入操作会按需重新读取目录
   }
   // last_used_role === null → 保持身份选择页，不水合
 }
@@ -1688,13 +1685,16 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const 尝试引用 = useRef<string | null>(null);
   // StrictMode 下 effect 会跑两次，用 ref 阻止恢复会话重复请求
   const 已初始化 = useRef(false);
-  // 目录缓存：意向/岗位写入映射需要，按需取一次
+  // 目录缓存：意向/岗位写入映射需要，按需取一次。Task 7 删除：写入路径迁到分页目录后移除。
   const 目录引用 = useRef<目录索引 | null>(null);
   // 并发写锁：简历保存 / 意向:${id|new} 同一操作进行中时拒绝重复提交
   const 锁 = useRef<Set<string>>(new Set());
 
   // 持久化是状态提交后的副作用，不属于 reducer。分字段监听可避免每次任意派发都重写全部缓存。
+  // Task 2：Backend 模式不写 Mock 原型键（AGXP简历v2）—— 支持域只认服务端权威，
+  // 写回 Mock 缓存会让 Mock 种子污染 Backend 会话，退出后也留在本地覆盖下次 Mock 装载。
   useEffect(() => {
+    if (是后端) return;
     const 快照: 简历快照 = {
       经历: 状态.简历经历,
       教育: 状态.简历教育,
@@ -1711,6 +1711,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       // 隐私模式或空间不足时只保留本次会话状态
     }
   }, [
+    是后端,
     状态.简历经历,
     状态.简历教育,
     状态.简历技能,
@@ -1721,14 +1722,17 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     状态.简历作品集链接,
   ]);
 
+  // Task 2：Backend 模式不写 Mock 原型键（AGXP求职筛选v1）—— 引导预填在 Backend 由
+  // onboarding 走服务端意向，不回写 Mock 字符串缓存。退出/401 后此键必须保持 Mock 原样。
   useEffect(() => {
+    if (是后端) return;
     try {
       if (状态.引导预填) localStorage.setItem(求职筛选存储键, JSON.stringify(状态.引导预填));
       else localStorage.removeItem(求职筛选存储键);
     } catch {
       // 同上
     }
-  }, [状态.引导预填]);
+  }, [是后端, 状态.引导预填]);
 
   useEffect(() => {
     try {
@@ -1804,6 +1808,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         if (错误 instanceof BFF错误 && 错误.status === 401) {
           // 401 只清后端状态，不载入 Mock 支持域
           设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: false }));
+          // Task 2：401 清空目录缓存，避免下个会话复用上个会话的目录页缓存。
+          后端?.清空目录缓存();
         } else {
           轻提示(取后端错误文案(错误));
           设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: false }));
@@ -1821,7 +1827,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         return;
       }
       if (已取消) return;
-      await 水合角色数据(后端, 主体, 派发, 设后端状态, 目录引用, false);
+      await 水合角色数据(后端, 主体, 派发, 设后端状态, false);
       if (已取消) return;
       设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: true, 主体 }));
     })();
@@ -1854,6 +1860,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
             意向快照: {},
             岗位快照: {},
           }));
+          // Task 2：401 清空目录缓存，避免下个会话复用上个会话的目录页缓存。
+          后端?.清空目录缓存();
         } else if (错误.权威简历) {
           // 409 版本冲突或任一分区写入中途失败后，catch 路径已 GET 权威快照附在错误上。
           // 统一用它水合本地状态，使重试 diff 基于服务端最新值（避免重复 POST 新条目）。
@@ -1882,6 +1890,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         if (错误.status === 401) {
           派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
           设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: false, 主体: null, 岗位快照: {} }));
+          // Task 2：401 清空目录缓存，避免下个会话复用上个会话的目录页缓存。
+          后端?.清空目录缓存();
           throw 错误;
         }
         if (错误.status === 409 || 错误.status === 503) {
@@ -1908,6 +1918,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         if (错误.status === 401) {
           派发({ 型: '水合后端意向', 快照: 空意向快照 });
           设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: false, 主体: null, 意向快照: {} }));
+          // Task 2：401 清空目录缓存，避免下个会话复用上个会话的目录页缓存。
+          后端?.清空目录缓存();
           throw 错误;
         }
         if (错误.status === 409 || 错误.status === 503) {
@@ -1963,6 +1975,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
             意向快照: {},
             岗位快照: {},
           }));
+          // Task 2：退出/401 清空目录缓存，避免下个会话复用上个会话的目录页缓存。
+          后端?.清空目录缓存();
         };
         try {
           await 后端.退出登录();
@@ -1987,7 +2001,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         // 不补这一步，候选切到招聘方会顶着一个空岗位盘，招聘方切到候选看到的是空简历/意向。
         // 交互模式：水合失败直接抛出，让 选身份.tsx catch 显示 轻提示并留在原地，
         // 不导航进一个空壳（支持域没水合成功，进去也是空盘）。
-        await 水合角色数据(后端, 最新主体, 派发, 设后端状态, 目录引用, true);
+        await 水合角色数据(后端, 最新主体, 派发, 设后端状态, true);
       },
       async 保存简历(next) {
         if (!是后端 || !后端) {

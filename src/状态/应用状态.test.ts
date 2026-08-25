@@ -175,6 +175,7 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     重开岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     删除岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     读取目录: vi.fn(async () => ({ 职位类别: [], 地点: [], 行业: [], 院校: [], 专业: [] })),
+    清空目录缓存: vi.fn(),
     开始手机登录: vi.fn(),
     完成手机登录: vi.fn(),
     开始微信登录: vi.fn(),
@@ -284,7 +285,9 @@ describe('应用状态提供者 候选写操作', () => {
     const 草稿 = { 编辑编号: null, 求职类型: '全职' as const, 工作城市: '上海', 期望职位: '产品经理', 感兴趣城市们: [] as string[], 薪资下限: 10, 薪资上限: 20, 期望行业们: [] as string[], 后端招聘类型: null, 求职类型已改: false };
     const 第一次 = 当前.操作.保存意向(草稿);
     const 第二次 = 当前.操作.保存意向(草稿);
-    expect(后端.创建意向).toHaveBeenCalledTimes(1);
+    // Task 2：目录不再随初始化预取，保存意向 首次需按需 await 取目录 再调 创建意向，
+    // 故用 waitFor 等到 创建意向 被调用；锁仍阻止第二次进入。
+    await waitFor(() => expect(后端.创建意向).toHaveBeenCalledTimes(1));
     完成.resolve({ 列表: [], 服务端: {} });
     await Promise.all([第一次, 第二次]);
   });
@@ -499,5 +502,67 @@ describe('应用状态提供者 切身份与退出登录', () => {
     expect(后端2.恢复会话).toHaveBeenCalled();
     // 清理：resolve 第一次的 deferred（第一次 init 已被取消，resolve 不会影响状态）
     恢复完成.resolve({ identity_id: 'id_1', session_id: 'sess_1', expires_at: '2026-08-25T00:00:00Z' });
+  });
+});
+
+// ── Task 2：目录不再随初始化预取；candidate 水合并行；Mock 原型缓存隔离 ───────────────
+
+/** Map 存储的 localStorage 桩：setItem/getItem 可往返，用于断言 Mock 原型键字节不变。 */
+function 创建Map存储() {
+  const 存 = new Map<string, string>();
+  return {
+    getItem: vi.fn((key: string) => 存.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => { 存.set(key, value); }),
+    removeItem: vi.fn((key: string) => { 存.delete(key); }),
+    clear: vi.fn(() => 存.clear()),
+  };
+}
+
+describe('应用状态提供者 目录水合与原型缓存隔离', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', 创建Map存储());
+  });
+
+  // Task 2：candidate 初始化并行读取简历与 active 意向，不再预取目录。
+  it('candidate 初始化不读取目录并独立提交简历和 active 意向', async () => {
+    const 后端 = 创建后端桩('candidate');
+    const 简历快照 = 从BFF简历(BFF简历样本);
+    const 意向快照 = { 列表: [], 服务端: {} } as 页面意向快照;
+    vi.mocked(后端.读取简历).mockResolvedValue(简历快照);
+    vi.mocked(后端.读取意向).mockResolvedValue(意向快照);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }));
+    await waitFor(() => expect(后端.读取简历).toHaveBeenCalled());
+    expect(后端.读取意向).toHaveBeenCalled();
+    expect(后端.读取目录).not.toHaveBeenCalled();
+    expect(后端.读取意向).toHaveBeenCalledWith();
+  });
+
+  // Task 2：交互式切身份也不预取目录。
+  it('交互式切换角色也不预取目录', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.切身份('招聘方');
+    await waitFor(() => expect(后端.读取岗位).toHaveBeenCalled());
+    expect(后端.读取目录).not.toHaveBeenCalled();
+  });
+
+  // Task 2：Backend 水合与退出不覆盖 Mock 原型缓存（AGXP简历v2 / AGXP求职筛选v1）。
+  it('Backend 水合和退出不覆盖 Mock 原型缓存', async () => {
+    localStorage.setItem('AGXP简历v2', '{"PM":"mock-resume"}');
+    localStorage.setItem('AGXP求职筛选v1', '{"PM":"mock-onboarding"}');
+    const before = [localStorage.getItem('AGXP简历v2'), localStorage.getItem('AGXP求职筛选v1')];
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.退出登录();
+    expect([localStorage.getItem('AGXP简历v2'), localStorage.getItem('AGXP求职筛选v1')]).toEqual(before);
   });
 });
