@@ -1,6 +1,6 @@
 // 消息域 reducer：双端未读和读消息。
-// 从根 归约 按业务 owner 拆出，case body 逐字搬移。播种未读表 / 数未读 仍由根模块保留
-// （初始状态播种 + 屏幕导入数未读），本文件只接管读消息 case。对根 状态 只使用 type-only import。
+// 从根 归约 按业务 owner 拆出，case body 逐字搬移。播种未读表已随种子数据进入
+// 初始状态.ts；根模块只保留对外的 数未读 selector。本文件接管读消息 case。
 
 import type { 状态 } from '../应用状态';
 

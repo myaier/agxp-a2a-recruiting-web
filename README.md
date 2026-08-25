@@ -149,7 +149,11 @@ src/组件/图标.tsx              内联 SVG 图标，零图片依赖
 src/数据/类型.ts               领域类型，后端接入按这份契约对齐
 src/数据/模拟数据.ts           演示数据（集中一处，便于清理）
 src/数据/接口层.ts             API 层，屏幕只通过它拿数据
-src/状态/应用状态.tsx          全局业务状态（跨屏联动）
+src/状态/应用状态.tsx          Context、根 reducer 与跨域编排
+src/状态/初始状态.ts           Mock/Backend 种子与启动快照恢复
+src/状态/资料持久化.ts         按环境/账号同步浏览器缓存
+src/状态/领域/*.ts              候选、岗位、隐私、消息等域 reducer
+src/状态/后端/*.ts              会话、候选/岗位写入与目录查询编排
 src/路由/路径表.ts             路由表，URL 用 ASCII slug
 src/原生桥/能力接口.ts         Bridge 白名单
 src/屏幕/*.tsx                 各屏，文件名对应设计稿编号
