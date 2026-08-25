@@ -203,8 +203,8 @@ it('candidate 初始化不读取目录并独立提交简历和 active 意向', a
 
 it('交互式切换角色也不预取目录', async () => {
   const backend = 后端桩();
-  const view = renderProvider({ backend, role: 'candidate' });
-  await view.操作.选择角色('recruiter');
+  renderProvider({ backend, role: 'candidate' });
+  await 当前.操作.切身份('招聘方');
   await waitFor(() => expect(backend.读取岗位).toHaveBeenCalled());
   expect(backend.读取目录).not.toHaveBeenCalled();
 });
@@ -417,7 +417,7 @@ export function 学校副标题(item: BFFInstitutionItem): string {
 
 - [ ] **Step 6: 运行测试并提交**
 
-Run: `npm test -- src/数据/目录选择.test.ts src/屏幕/毕业院校.test.tsx src/屏幕/选期望职位.test.tsx src/屏幕/选期望行业.test.tsx src/屏幕/选专业.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/引导问答.test.tsx && npm run typecheck`
+Run: `npm test && npm run typecheck`
 
 Expected: PASS；截图/DOM 快照只新增学校候选副行内容，不改页面结构与 CSS token。
 
@@ -435,7 +435,6 @@ Commit: `feat: 按需加载招聘分类和学校`
 - Modify: `src/数据/HTTP招聘数据源.ts`
 - Modify: `src/数据/HTTP招聘数据源.test.ts`
 - Modify: `src/状态/应用状态.tsx`
-- Modify: resume editor screens that create/update experience or education drafts
 
 **Interfaces:**
 - `简历经历段.行业引用?: 目录选择值`；`简历教育段.学校引用?: 目录选择值`、`专业引用?: 目录选择值`。
@@ -510,6 +509,7 @@ Commit: `refactor: 用目录引用保存简历`
 - Modify: `src/屏幕/选择城市.tsx`
 - Modify: `src/屏幕/选期望行业.tsx`
 - Modify: `src/屏幕/引导问答.tsx`
+- Modify: `src/屏幕/引导问答.test.tsx`
 - Modify: `src/屏幕/添加意向.test.tsx`
 - Modify: `src/状态/应用状态.test.ts`
 - Modify: `src/数据/HTTP招聘数据源.test.ts`
@@ -605,7 +605,7 @@ create/update/delete 成功后继续重新读取 `status=active` 列表；delete
 
 - [ ] **Step 6: 运行测试并提交**
 
-Run: `npm test -- src/数据/后端映射.test.ts src/数据/HTTP招聘数据源.test.ts src/状态/应用状态.test.ts src/屏幕/添加意向.test.tsx && npm run typecheck`
+Run: `npm test -- src/数据/后端映射.test.ts src/数据/HTTP招聘数据源.test.ts src/状态/应用状态.test.ts src/屏幕/添加意向.test.tsx src/屏幕/引导问答.test.tsx && npm run typecheck`
 
 Expected: PASS。
 
