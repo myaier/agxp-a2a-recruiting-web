@@ -24,7 +24,7 @@ import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { use应用状态 } from '../状态/应用状态';
 import { 职业分类表, 查大类 } from '../数据/职业分类';
-import { 必备技能池, 职位加分项池 } from '../数据/企业端模拟数据';
+import { 必备技能池 } from '../数据/企业端模拟数据';
 import { use城市搜索 } from './城市查询钩子';
 import { 合并目录页 } from '../数据/目录选择';
 import type { 在招岗位 } from '../数据/类型';
@@ -164,13 +164,13 @@ export default function 发布岗位() {
   const [实习转正, 设实习转正] = useState<boolean | null>(编辑目标?.实习转正 ?? null);
   // 职位关键词（BOSS 对照补齐 2026-08-20）：词池多选，候选端与岗位详情按 chips 展示
   const [职位关键词, 设职位关键词] = useState<string[]>(编辑目标?.职位关键词 ?? []);
-  const [加分关键词, 设加分关键词] = useState<string[]>(编辑目标?.加分关键词 ?? []);
   // 编辑态底部「删除」的二次确认
   const [待删, 设待删] = useState(false);
 
   // ── 第二步 / 第三步：描述与要求 ──
   const [职位描述, 设职位描述] = useState(编辑目标?.职位描述 ?? 职位描述预填);
-  const [职位要求, 设职位要求] = useState(编辑目标?.职位要求 ?? 职位要求预填);
+  // 输入区已删（2026-08-24），职位要求走预填/编辑值直提，不再有人改
+  const [职位要求] = useState(编辑目标?.职位要求 ?? 职位要求预填);
   // 经验 / 学历是结构化档位：编辑存量岗位时优先读字段，老数据从硬性条件里拆
   const [经验要求, 设经验要求] = useState(
     编辑目标 ? 编辑目标.经验要求 ?? 拆出经验(编辑目标.硬性条件) ?? '不限' : '不限'
@@ -229,7 +229,7 @@ export default function 发布岗位() {
     if (职位描述.trim() === '') return { 文案: '请填写职位描述', 步骤: 1 };
     if (工作城市.trim() === '') return { 文案: '请填写工作城市', 步骤: 2 };
     if (办公地.trim() === '') return { 文案: '请填写办公地点', 步骤: 2 };
-    if (职位要求.trim() === '') return { 文案: '请填写职位要求', 步骤: 2 };
+    // 职位要求必填闸随输入区一起删（2026-08-24）：字段只剩预填/编辑值
     // Task 7：Backend 工作城市必须从候选选（落 地点引用）；手输未选时阻止发布
     if (是后端 && !地点引用) return { 文案: '请从候选城市中选择', 步骤: 2 };
     // 面试轮次 / 招聘紧急度 两道闸门随字段一起撤（产品负责人 2026-08-22：
@@ -266,7 +266,7 @@ export default function 发布岗位() {
       每周天数: 招聘类型 === '实习生' ? 每周天数 : undefined,
       实习转正: 招聘类型 === '实习生' ? 实习转正 ?? undefined : undefined,
       职位关键词: 职位关键词.length ? [...职位关键词] : undefined,
-      加分关键词: 加分关键词.length ? [...加分关键词] : undefined,
+      // 加分项 UI 已删（2026-08-24），DTO 字段可选、不再提交
       // 编辑不改发布时间；新岗位落今天
       发布于: 底?.发布于 ?? 今天日期(),
       职位描述: 职位描述.trim(),
@@ -453,8 +453,6 @@ export default function 发布岗位() {
             设文本={设职位描述}
             职位关键词={职位关键词}
             切关键词={(词) => 切片(词, 设职位关键词)}
-            加分关键词={加分关键词}
-            切加分关键词={(词) => 切片(词, 设加分关键词)}
           />
         ) : null}
         {第几步 === 2 ? (
@@ -465,8 +463,6 @@ export default function 发布岗位() {
             届别={届别}
             实习月数={实习月数}
             每周天数={每周天数}
-            文本={职位要求}
-            设文本={设职位要求}
             经验要求={经验要求}
             设经验要求={设经验要求}
             最低学历={最低学历}
@@ -486,7 +482,6 @@ export default function 发布岗位() {
             筛选要求={筛选要求}
             设筛选要求={设筛选要求}
             职位关键词={职位关键词}
-            加分关键词={加分关键词}
             是后端={是后端}
             地点引用={地点引用}
             城市候选={城市候选}
@@ -560,6 +555,11 @@ export default function 发布岗位() {
               查询Taxonomy={目录查询?.查询Taxonomy}
               当前引用={类别引用}
               选定={(项) => {
+                // 预填（2026-08-24）：名称为空或还等于上一次预填值（用户没改过）
+                // 时，跟着新选的类别叶子走；用户手改过的名称绝不覆盖
+                if (岗位名称.trim() === '' || 岗位名称 === 职位类别) {
+                  设岗位名称(项.display_name);
+                }
                 设职位类别(项.display_name);
                 设类别引用({ id: 项.id, display_name: 项.display_name });
                 设类别层开(false);
@@ -570,6 +570,10 @@ export default function 发布岗位() {
             <职业分类层
               当前={职位类别}
               选定={(项) => {
+                // 预填同 Backend 路径：名称没被用户改过时跟着类别叶子走
+                if (岗位名称.trim() === '' || 岗位名称 === 职位类别) {
+                  设岗位名称(项);
+                }
                 设职位类别(项);
                 设类别引用(undefined);
                 设类别层开(false);
@@ -965,20 +969,8 @@ function 基础信息步({
           </div>
         ) : null}
 
-        <div className={样式.编辑条目}>
-          <div className={样式.条目标签}>
-            岗位名称{编辑态 ? <span className={样式.锁标}>发布后不可改</span> : null}
-          </div>
-          <input
-            className={样式.条目输入}
-            value={岗位名称}
-            placeholder="必填，如：资深后端工程师 · 交易网关"
-            readOnly={编辑态}
-            onClick={编辑态 ? 提示不可改 : undefined}
-            onChange={(事件) => 设岗位名称(事件.target.value)}
-          />
-        </div>
-
+        {/* 顺序 2026-08-24 对调（产品负责人）：先选职位类别，岗位名称按所选
+            叶子预填，用户在预填基础上改 —— 预填逻辑见容器组件 选定类别 */}
         {/* 职位类别：两级级联选择（标注 00:21，像选省份那样 大类 → 小类）。
             标注 2026-08-22：未选时原来写「请选择职位类别」，改成一行版式后
             这句就贴在「职位类别」标签右边，同样四个字读着更像重复 ——
@@ -997,6 +989,20 @@ function 基础信息步({
             <span className={样式.尖括号}>›</span>
           </span>
         </button>
+
+        <div className={样式.编辑条目}>
+          <div className={样式.条目标签}>
+            岗位名称{编辑态 ? <span className={样式.锁标}>发布后不可改</span> : null}
+          </div>
+          <input
+            className={样式.条目输入}
+            value={岗位名称}
+            placeholder="必填，如：资深后端工程师 · 交易网关"
+            readOnly={编辑态}
+            onClick={编辑态 ? 提示不可改 : undefined}
+            onChange={(事件) => 设岗位名称(事件.target.value)}
+          />
+        </div>
 
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>办公方式</div>
@@ -1067,15 +1073,11 @@ function 职位描述步({
   设文本,
   职位关键词,
   切关键词,
-  加分关键词,
-  切加分关键词,
 }: {
   文本: string;
   设文本: (值: string) => void;
   职位关键词: string[];
   切关键词: (词: string) => void;
-  加分关键词: string[];
-  切加分关键词: (词: string) => void;
 }) {
   return (
     <滚动区 样式覆盖={{ paddingBottom: 12 }}>
@@ -1116,21 +1118,7 @@ function 职位描述步({
             ))}
           </div>
         </div>
-        <div className={样式.编辑条目}>
-          <div className={样式.条目标签}>加分项（只影响排序）</div>
-          <div className={样式.快捷片行}>
-            {职位加分项池.map((词) => (
-              <button
-                key={词}
-                className={`${样式.快捷片} ${加分关键词.includes(词) ? 样式.快捷片选中 : ''} 可点`}
-                onClick={() => 切加分关键词(词)}
-                aria-pressed={加分关键词.includes(词)}
-              >
-                {词}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* 加分项按标注 2026-08-24 删除（「下面的删掉吧，没有用」）*/}
       </div>
     </滚动区>
   );
@@ -1146,8 +1134,6 @@ function 职位要求步({
   届别,
   实习月数,
   每周天数,
-  文本,
-  设文本,
   经验要求: 当前经验,
   设经验要求,
   最低学历: 当前学历,
@@ -1167,7 +1153,6 @@ function 职位要求步({
   筛选要求,
   设筛选要求,
   职位关键词,
-  加分关键词,
   是后端,
   地点引用,
   城市候选,
@@ -1183,8 +1168,6 @@ function 职位要求步({
   届别: string;
   实习月数: number;
   每周天数: number;
-  文本: string;
-  设文本: (值: string) => void;
   经验要求: string;
   设经验要求: (值: string) => void;
   最低学历: string;
@@ -1204,7 +1187,6 @@ function 职位要求步({
   筛选要求: string;
   设筛选要求: (值: string) => void;
   职位关键词: string[];
-  加分关键词: string[];
   // Task 7：Backend 工作城市候选行
   是后端: boolean;
   地点引用: 目录选择值 | undefined;
@@ -1372,21 +1354,7 @@ function 职位要求步({
 
       </div>
 
-      {/* 标注 00:23：这是你自己的招聘需求，给你的 AI 代理，代理照此初筛 */}
-      <div className={样式.要求文标}>给候选人看的职位要求</div>
-      <div className={样式.描述卡}>
-        <textarea
-          className={样式.描述输入}
-          value={文本}
-          onChange={(事件) => 设文本(事件.target.value)}
-          placeholder="例如：必须具备的技能、项目经验以及工作地点要求"
-          maxLength={5000}
-          aria-label="职位要求"
-        />
-        <div className={样式.描述底}>
-          <span className={`${样式.描述计数} 等宽数字`}>{文本.length} / 5000</span>
-        </div>
-      </div>
+      {/* 「给候选人看的职位要求」输入按标注 2026-08-24 删除（与职位描述重复）*/}
 
       <div className={样式.初筛合同}>
         <div className={样式.初筛合同标题}>AI 初筛条件确认</div>
@@ -1414,11 +1382,7 @@ function 职位要求步({
           maxLength={200}
           onChange={(事件) => 设筛选要求(事件.target.value)}
         />
-        {加分关键词.length ? (
-          <div className={样式.已选片行}>
-            {加分关键词.map((项) => <span key={项} className={样式.已选片}>加分：{项}</span>)}
-          </div>
-        ) : null}
+        {/* 已选加分片随加分项选择器一起删（2026-08-24） */}
       </div>
 
       {/* 发布即同意（BOSS 合规行）：编辑态不重复展示 */}

@@ -216,14 +216,12 @@ test.describe('multi-role onboarding', () => {
     await page.getByRole('button', { name: '下一步' }).click();
 
     await expect(page.getByText('必须具备的技能（用于自动初筛）')).toBeVisible();
-    await expect(page.getByText('加分项（只影响排序）')).toBeVisible();
+    // 加分项块 2026-08-24 已删
     await page.getByLabel('职位描述').fill('参与 AI 招聘产品的需求分析、原型设计与用户研究。');
     await page.getByRole('button', { name: 'Python', exact: true }).click();
-    await page.getByRole('button', { name: '有相关课程项目', exact: true }).click();
     // 选中态经 CSS ::before 带上「✓ 」前缀（C1 定稿），会进按钮的可达名，
     // 所以选中后的断言不能再用 exact 原名
     await expect(page.getByRole('button', { name: /Python/ })).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByRole('button', { name: /有相关课程项目/ })).toHaveAttribute('aria-pressed', 'true');
     await page.getByRole('button', { name: '下一步' }).click();
 
     await expect(page.getByText('日薪（元/天）')).toBeVisible();
@@ -241,7 +239,7 @@ test.describe('multi-role onboarding', () => {
     await page.getByRole('button', { name: '完成' }).click();
     await page.getByPlaceholder('如：上海').fill('上海');
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');
-    await page.getByLabel('职位要求').fill('在校生，能持续实习三个月，具备基础产品分析能力。');
+    // 职位要求输入区 2026-08-24 已删（与职位描述重复）
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
 
     await expect(page).toHaveURL(/#\/hr$/);

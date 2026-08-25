@@ -189,11 +189,11 @@ test.describe('注册流换壳不闪中间屏', () => {
     await page.getByRole('button', { name: '完成' }).click();
     await page.getByPlaceholder('如：上海').fill('上海');
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');
-    await page.getByLabel('职位要求').fill('在校生，能持续实习三个月。');
+    // 职位要求输入区 2026-08-24 已删
 
     const 序列 = await 采换壳画面(page, '发布岗位并开始寻访', /#\/hr$/);
 
-    expect(裸露的注册流帧(序列, '职位要求')).toEqual([]);
+    expect(裸露的注册流帧(序列, '初筛条件')).toEqual([]);  // 特征词随职位要求输入删除改用 AI 初筛卡标题
     expect(序列.some((帧) => 帧.有遮罩)).toBe(true);
     expect(序列.at(-1)?.正文头).toContain('AI 产品实习生');
 

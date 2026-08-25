@@ -194,8 +194,7 @@ describe('发布岗位页 Backend 选择器', () => {
       screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'),
       '张江路 1 号',
     );
-    // 职位要求
-    await 用户.type(screen.getByLabelText('职位要求'), '五年以上后端经验');
+    // 职位要求输入区 2026-08-24 已删（与职位描述重复），不再填写
     // 工作城市：输入触发 250ms debounce 候选查询
     await 用户.type(
       screen.getByPlaceholderText('搜索城市名，从下方候选选择'),
