@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-25-recruitment-wired-api-integration-design.md`
 
-**Implementation baseline:** `79bfede74054115ea05ceddd68fddd4b8140c046`
+**Implementation baseline:** `a6c4432d291337e13f63eca27f200921a91d21fb`
 
 ## Global Constraints
 
@@ -19,6 +19,8 @@
 - 4 位验证码由另一分支处理，本计划不得修改验证码格数、请求字段或相关断言。
 - 优先保持 PM 已确认的页面、路由、CSS、布局、控件和文案。只允许为受控选择、学校消歧、办公方式必填、真实错误状态做最小行为改动。
 - Mock 模式继续使用本地字典和现有演示数据；Backend 已支持域只使用 BFF，失败不得回退 Mock。
+- 不设置 `VITE_DATA_SOURCE` 时必须保持 Mock；仅设置 `VITE_BACKEND_ENV` 不得构造 HTTP 数据源或发出 `/api/v1` 请求。只有显式 `VITE_DATA_SOURCE=backend` 才启用真实分支，切换变量后必须重启 Vite。
+- Backend Provider 不得读写 PM 的 `AGXP简历v2`、`AGXP求职筛选v1` 等 Mock 持久化键。确需跨刷新保留的 Backend 草稿至少按 `VITE_BACKEND_ENV` 隔离，并在退出、401、主体切换时清理。
 - Backend 启动/角色切换不得预取 Catalog；owner DTO 自带引用的回显不得依赖目录网络请求。
 - Catalog 每次只读一页；调用方显式使用 cursor；禁止自动追完 cursor 或建立全量前端索引。
 - taxonomy 非 selectable 节点必须保留用于导航，只有 selectable 项可提交。
@@ -36,6 +38,7 @@
 | `src/数据/HTTP招聘数据源.ts` | 一页查询、同请求去重、会话缓存清理、active intentions 与资源写入 |
 | `src/数据/后端映射.ts` | 直接用选择时保存的 ID，保留 owner DTO 未表达字段 |
 | `src/状态/应用状态.tsx` | 资源独立水合、表单引用生命周期、401/409 行为 |
+| `src/配置/运行配置.ts` | 保持缺省 Mock、显式 Backend 与 stg/local 代理边界 |
 | `src/数据/城市与行业.ts` | 只保留省/热门展示配置，不再充当 Backend 可提交城市事实源 |
 | 现有选择器屏幕 | 保持 UI 外壳，Backend 模式改为按需查询与引用选择 |
 | 现有简历/意向/岗位屏幕 | 保存字符串与引用的原子更新，最小真实校验提示 |
@@ -172,11 +175,13 @@ Commit: `refactor: 按页查询招聘目录`
 - Modify: `src/数据/HTTP客户端.test.ts`
 - Modify: `src/状态/应用状态.tsx`
 - Modify: `src/状态/应用状态.test.ts`
+- Modify: `src/配置/运行配置.test.ts`
 
 **Interfaces:**
 - `BFF错误.fieldErrors: Array<{path:string; reason:string}>`。
 - Candidate 水合并行读取 Resume 与 `status=active` Intention；Recruiter 只读取 Job pages。
 - 退出和 401 调用 `清空目录缓存()`；409 重读对应资源。
+- Mock 原型持久化 key 不在 Backend 分支读写；Backend 草稿 key 至少按 `stg/local` 分区。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -207,6 +212,15 @@ it('交互式切换角色也不预取目录', async () => {
   await 当前.操作.切身份('招聘方');
   await waitFor(() => expect(backend.读取岗位).toHaveBeenCalled());
   expect(backend.读取目录).not.toHaveBeenCalled();
+});
+
+it('Backend 水合和退出不覆盖 Mock 原型缓存', async () => {
+  localStorage.setItem('AGXP简历v2', '{"PM":"mock-resume"}');
+  localStorage.setItem('AGXP求职筛选v1', '{"PM":"mock-onboarding"}');
+  const before = [localStorage.getItem('AGXP简历v2'), localStorage.getItem('AGXP求职筛选v1')];
+  const { 当前 } = renderBackendProvider({ env: 'stg' });
+  await 当前.操作.退出登录();
+  expect([localStorage.getItem('AGXP简历v2'), localStorage.getItem('AGXP求职筛选v1')]).toEqual(before);
 });
 ```
 
@@ -241,6 +255,8 @@ const { result } = await 请求<BFF意向列表>({ path: '/api/v1/me/intentions?
 ```
 
 退出与 401 cleanup 调 `后端.清空目录缓存()`；409 的现有 catch 分支按资源调用 `读取简历/读取意向/读取岗位` 后派发权威快照。
+
+同时给原型持久化 effect 加明确模式边界：Backend 不得写 `AGXP简历v2`、`AGXP求职筛选v1`。Backend onboarding 若仍需刷新恢复，新增独立且包含 `后端环境` 的草稿键；读取只发生在 Backend 分支，退出、401 和 principal identity 变化时删除。不得把已水合的 Resume/Intention/Job 复制进该草稿，也不得把 Backend refs 降级写回 Mock 字符串缓存。
 
 - [ ] **Step 5: 运行测试并提交**
 
@@ -318,7 +334,7 @@ export const 城市分组: 城市分组配置[] = [
 
 - [ ] **Step 4: 接入按需查询和引用 state**
 
-组件保留现有 DOM/CSS。Backend 分支的 `城市键` 参数改为 `目录选择值`，点击以 ID 去重；搜索 250ms debounce；每组初次展开请求第一页，下一页只在现有滚动容器接近底部时请求 cursor。`状态.引导预填` 与 `意向草稿` 分别新增 `城市引用们`、`工作城市引用/感兴趣城市引用们`，reducer 每次同时写字符串与引用。`存引导预填` action 必须同时携带两者：没有 refs 时显式写空数组，禁止保留旧 refs。Backend 退出、401 与后端环境切换时同时清空 localStorage 中 `引导预填` 的 refs，避免跨 session/环境提交陈旧 ID；同一 session 的 onboarding 刷新仍可恢复 refs。
+组件保留现有 DOM/CSS。Backend 分支的 `城市键` 参数改为 `目录选择值`，点击以 ID 去重；搜索 250ms debounce；每组初次展开请求第一页，下一页只在现有滚动容器接近底部时请求 cursor。`状态.引导预填` 与 `意向草稿` 分别新增 `城市引用们`、`工作城市引用/感兴趣城市引用们`，reducer 每次同时写字符串与引用。`存引导预填` action 必须同时携带两者：没有 refs 时显式写空数组，禁止保留旧 refs。Backend 退出、401 与后端环境切换时只清空 Task 2 定义的 Backend 专用草稿 refs，避免跨 session/环境提交陈旧 ID；不得清空或重写 Mock 的 `AGXP求职筛选v1`。同一 session、同一后端环境的 onboarding 刷新仍可恢复 refs。
 
 - [ ] **Step 5: 迁移另一个意向城市多选页并验证 UI**
 
@@ -681,20 +697,25 @@ Commit: `fix: 用目录引用发布招聘岗位`
 
 **Files:**
 - Modify: `e2e/数据源模式.spec.ts`
+- Create: `playwright.数据源模式.config.ts`（或等价的双 server 隔离配置）
+- Modify: `package.json`
 - Modify: `README.md`
 - Modify only failing tests directly covering Tasks 1–7.
 
 **Interfaces:**
 - Backend test BFF fixture only implements already-wired endpoints。
 - Mock E2E retains current screenshots/DOM and 4 OTP cells。
+- 数据源 E2E 同时启动两个不可复用的 Vite server：显式 `mock/stg` 与显式 `backend/stg`；两者使用不同端口/baseURL。缺省值及“只设置 `VITE_BACKEND_ENV`”由配置单测独立覆盖。
 
 - [ ] **Step 1: 增加 Backend 集成 fixture 场景**
 
-Playwright route fixture 记录所有 `/api/v1/catalog/*` 请求，覆盖：candidate login/session 后无 Catalog 请求；打开城市后只请求目标省第一页；中文/英文学校搜索选择同一 institution ID 且候选显示城市·国家；Resume/Intention/Job POST/PATCH body 使用选择 ID；422 array fields、401 cleanup、409 reread、503 same idempotency key。
+以 `VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=stg` 启动专用 dev server。Playwright route fixture 记录所有 `/api/v1/catalog/*` 请求，覆盖：candidate login/session 后无 Catalog 请求；打开城市后只请求目标省第一页；中文/英文学校搜索选择同一 institution ID 且候选显示城市·国家；Resume/Intention/Job POST/PATCH body 使用选择 ID；422 array fields、401 cleanup、409 reread、503 same idempotency key。响应放入只存在于 fixture 的标记值，并断言页面展示该值，证明渲染来自 HTTP 而非 Mock。
 
 - [ ] **Step 2: 增加 Mock 不变回归**
 
-默认不设环境变量启动；走现有 candidate/recruiter 演示流程；断言本地城市/学校/职位仍可选、没有 `/api/v1` 请求、登录仍为 4 个验证码格、没有新增页面/弹层/全局 loading。
+以显式 `VITE_DATA_SOURCE=mock VITE_BACKEND_ENV=stg` 的专用 dev server 启动，禁止 `reuseExistingServer`，避免 `.env.local` 或开发者已运行的 Backend 进程污染验收。走现有 candidate/recruiter 演示流程；断言本地城市/学校/职位仍可选、没有 `/api/v1` 请求、登录仍为 4 个验证码格、没有新增页面/弹层/全局 loading。配置单测继续断言 `解析运行配置({})` 缺省为 Mock，且只给 `VITE_BACKEND_ENV=local` 时不构造代理/HTTP 数据源。
+
+两个 dev server 使用不同端口，因此浏览器存储也属于不同 origin，不能用它们伪造“同源切换模式”的持久化证明。该边界由 Task 2 的同 origin jsdom/component test 覆盖：先写入 Mock 的 `AGXP简历v2/AGXP求职筛选v1` 哨兵，再挂载 Backend Provider 完成水合、401 与退出，断言两枚哨兵未变化；另以单测证明 `stg/local` Backend 草稿 key 不同且互不恢复引用。如需浏览器级复核，必须在同一端口顺序重启 Mock/Backend server 后再比较，不能跨端口比较 localStorage。
 
 - [ ] **Step 3: 运行全量前端验证**
 
@@ -703,10 +724,12 @@ npm test
 npm run typecheck
 npm run lint
 npm run build
-npm run test:e2e -- e2e/数据源模式.spec.ts
+npm run test:e2e:data-source
 ```
 
-Expected: 全部 exit 0；若 Playwright 环境缺浏览器，记录真实环境 blocker，不能把未运行写成通过。
+`test:e2e:data-source` 必须由专用配置启动两个 server，等价命令语义为：Mock 进程显式设置 `mock/stg`，Backend 进程显式设置 `backend/stg`，端口不同且都不复用已有 server。再单独断言 `VITE_DATA_SOURCE=backend npm run build` 以预期的“Backend 数据源只支持 Vite dev”失败，防止误发布半可用 Backend bundle。
+
+Expected: 全部正向命令 exit 0，Backend build 按预期拒绝；若 Playwright 环境缺浏览器，记录真实环境 blocker，不能把未运行写成通过。
 
 - [ ] **Step 4: 静态边界检查**
 
@@ -720,7 +743,7 @@ Expected: 第一条只允许历史注释/测试明确断言“不再调用”；
 
 - [ ] **Step 5: 更新 README 并提交**
 
-README 只记录现有 Backend/Mock 启动方式、按需 Catalog、学校城市消歧、后端配套部署前提、未接线演示域和前端附属字段，不宣称新增 API。
+README 只记录现有 Backend/Mock 启动方式、环境变量变更后需重启 Vite、按需 Catalog、学校城市消歧、后端配套部署前提、Mock/Backend 本地缓存隔离、未接线演示域和前端附属字段，不宣称新增 API。确定性 fixture 通过后，还需按 README 命令对可用的真实 `stg`（以及本地 BFF 可用时的 `local`）完成一次登录/资源读取 smoke；若目标环境或 OTP 前置未就绪，明确记录外部 blocker，不能用 route fixture 冒充真实联调通过。
 
 Commit: `test: 验证招聘已接线 API 场景`
 
@@ -731,5 +754,7 @@ Commit: `test: 验证招聘已接线 API 场景`
 - 学校城市只在候选副行出现，不增加筛选步骤、不写入 Education、不改变简历展示。
 - UI 改动只限受控候选、学校副行、办公方式必填与真实错误；无 CSS 系统/页面重做。
 - Mock 与未接线演示域没有被 Backend 失败路径污染。
+- Mock 原型 localStorage 永远不由 Backend 分支读写，`stg/local` Backend 草稿互相隔离。
+- Mock 与 Backend E2E 使用两个独立 Vite 进程，既证明缺省 PM 流程零 API 请求，也证明显式覆盖后页面消费 HTTP fixture；真实 BFF smoke 另行记录，fixture 不冒充线上联通性。
 - 没有 manifest、handoff、admission、ledger、执行 prompt 或 `/development-workflow` 产物。
 - 没有新增依赖、状态库、通用 SDK、持久目录缓存或假想架构。

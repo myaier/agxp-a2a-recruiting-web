@@ -55,6 +55,10 @@ Backend 模式把上述域的服务端数据作为唯一业务事实；接口失
 
 BFF 的 `error.fields` 是 `{path, reason}[]`，当前前端按键值对象处理，导致 422 无法稳定落到现有轻提示或表单语义。
 
+### 2.6 Mock 与 Backend 共用浏览器持久化键
+
+当前 `应用状态提供者` 在 Backend 模式也会执行面向原型的简历/引导 `localStorage` effect。Backend 种子先把已支持域置空，随后可能把空值或服务端水合值写回 PM 使用的 `AGXP简历v2`、`AGXP求职筛选v1`。同一浏览器先做 Mock 设计、再临时切 Backend 联调时，可能覆盖 PM 的原型缓存；本轮新增目录引用后，跨 `stg/local` 复用同一引导草稿还会提交另一环境的陈旧 ID。
+
 ## 3. 目标
 
 1. Backend 模式启动和角色切换不再下载全量 Catalog，也不因 Catalog 失败阻塞已登录资源水合。
@@ -63,6 +67,7 @@ BFF 的 `error.fields` 是 `{path, reason}[]`，当前前端按键值对象处�
 4. CandidateIntention 与 Job/Resume 的创建、读取、编辑、归档/重开/删除在现有 API 范围内保持服务端权威、可重试且不丢未知字段。
 5. Mock 模式的 PM 演示流程保持不变；Backend 已支持域失败时不混入 Mock。
 6. 让 API 真实校验错误、会话失效和版本冲突通过现有轻提示与重新读取路径被正确处理。
+7. Mock 原型持久化键只允许 Mock 模式读写；Backend 临时草稿按 `VITE_BACKEND_ENV` 隔离，并在退出、401 或主体切换时清理，切换数据源不能覆盖 PM 已保存的原型状态。
 
 ## 4. 非目标
 
@@ -152,6 +157,14 @@ Backend 表单中受控字段同时保存该引用；UI 只读取 `display_name`
 - taxonomy 的不可选节点保留为导航节点，只有 `selectable=true` 的项可写入。
 - owner DTO 自带显示引用时，页面回显不依赖 Catalog 查询成功。
 - 角色水合只请求简历/意向或岗位，不预取 Catalog。
+
+### 6.4 运行配置与浏览器存储边界
+
+- 不设置 `VITE_DATA_SOURCE` 时必须保持 `mock`；仅设置 `VITE_BACKEND_ENV` 不得构造 HTTP 数据源或产生 `/api/v1` 请求。
+- 只有 `VITE_DATA_SOURCE=backend` 才启用 BFF；`VITE_BACKEND_ENV=stg|local` 只选择代理目标与 Backend 草稿命名空间。环境变量在 Vite 启动时读取，切换后必须重启 dev server。
+- 现有 `AGXP简历v2`、`AGXP求职筛选v1` 等 PM 原型键属于 Mock。Backend Provider 不得把空种子、服务端 DTO 或 Backend refs 写入这些键。
+- Backend 若需要保留 onboarding 的未提交草稿，使用至少包含后端环境的独立键；退出、401、主体变化时清理。服务端已支持资源仍以 owner DTO 为权威，不从该草稿恢复服务端事实。
+- Backend 继续只支持 Vite dev；默认 production build 必须是 Mock，显式 Backend build 仍应失败。若未来要部署 Backend 静态站点，需另行设计反向代理、Cookie origin 与发布环境，不在本轮暗中放开。
 
 ## 7. 保持视觉的选择器适配
 
@@ -270,6 +283,7 @@ Array<{ path: string; reason: string }>
 - 院校/专业/行业/岗位地点只有选中远程候选后才可保存。
 - 新增的办公方式只复用当前片组/选择行样式；除这一必要字段及异步结果/错误状态外不新增视觉设计。
 - 未接线演示域不因已接线域请求失败而清空或切换来源。
+- Mock 与 Backend 在同一浏览器顺序运行后，Mock 的简历/引导缓存字节级不变；`stg` 与 `local` 的 Backend 草稿引用互不串用。
 
 ### 12.3 联调场景
 
@@ -278,6 +292,7 @@ Array<{ path: string; reason: string }>
 - Catalog：中文城市搜索、按省分组懒加载、taxonomy root→leaf、全球院校搜索与中国学校中文回显、专业搜索。
 - 失败：401、422 字段数组、409、503 outcome unknown、断网，均无 Mock 回退和重复 mutation。
 - 微信、未接线业务域和 4 位验证码不作为本计划通过条件；验证码由外部分支合入后再执行完整手机登录验收。
+- 数据源边界验收必须使用两个独立 Vite 进程：一个显式设置 `mock/stg`、配合配置单测验证“完全缺省”和“只设置 `VITE_BACKEND_ENV`”仍为 Mock；另一个显式设置 `backend/stg`（再以配置单测覆盖 `backend/local`）验证真实分支。不能让两类用例复用同一个已启动 dev server。
 
 ## 13. 最小性、延期项与重新评估证据
 
@@ -302,3 +317,4 @@ Array<{ path: string; reason: string }>
 6. Resume 与 Job 当前已接线 CRUD 场景使用真实引用、revision、幂等和状态。
 7. BFF 字段错误数组、401/409/503 被正确处理，Backend 已支持域从不回退 Mock。
 8. Mock 模式和未接线演示域保持当前 PM 体验；除受控选择、真实错误状态和办公方式必填外，没有额外 UI 改版。
+9. Backend 联调不会读写 PM 的 Mock 持久化键，且 Mock/Backend 两套启动方式由隔离的浏览器验收覆盖；默认 Mock build 继续可发布，Backend 只在显式 dev 覆盖后启用。
