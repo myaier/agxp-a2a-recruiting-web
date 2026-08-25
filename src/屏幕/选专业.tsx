@@ -15,6 +15,7 @@ import { use应用状态 } from '../状态/应用状态';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
 import { 路径 } from '../路由/路径表';
 import { 专业名录 } from '../数据/专业名录';
+import { 合并目录页 } from '../数据/目录选择';
 import type { BFFTaxonomyItem } from '../数据/BFF契约';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
 
@@ -32,8 +33,12 @@ export default function 选专业() {
   // Backend：点候选后才落的引用；继续输入立即清空
   const [专业引用, 设专业引用] = useState<目录选择值 | undefined>(首段?.专业引用);
   const [候选项, 设候选项] = useState<BFFTaxonomyItem[]>([]);
+  // review-r2 R2-M-1：保留搜索的 nextCursor，滚到底加载第二页
+  const [下一页游标, 设下一页游标] = useState<string | null>(null);
+  const [加载中, 设加载中] = useState(false);
   const 计时 = useRef(0);
-  // review-r1 P2-2：代际 ref 守 stale response——慢的旧搜索结果不覆盖新的
+  // review-r1 P2-2 / review-r2 R2-M-2：代际 ref 守 stale response——每次输入变化（含清空）都递增，
+  // 慢的旧搜索结果不覆盖新的；load-more 也捕获代际，query 变了不追加。
   const 代际 = useRef(0);
   const 方法引用 = useRef(目录查询?.查询Taxonomy);
   方法引用.current = 目录查询?.查询Taxonomy;
@@ -46,7 +51,10 @@ export default function 选专业() {
     const 方法 = 方法引用.current;
     const trimmed = 词;
     if (!方法 || trimmed === '') {
+      // review-r2 R2-M-2：清空输入时也递增代际，让在飞的慢响应成为 stale（不覆盖空结果）
+      代际.current += 1;
       设候选项([]);
+      设下一页游标(null);
       return;
     }
     window.clearTimeout(计时.current);
@@ -56,13 +64,34 @@ export default function 选专业() {
         const 页 = await 方法('majors', { q: trimmed, limit: 20 });
         if (本次 !== 代际.current) return;
         设候选项(页.items);
+        设下一页游标(页.nextCursor);
       } catch {
         if (本次 !== 代际.current) return;
         设候选项([]);
+        设下一页游标(null);
       }
     }, 搜索防抖毫秒);
     return () => window.clearTimeout(计时.current);
   }, [专业, 是后端, 词]);
+
+  // review-r2 R2-M-1：加载更多——用当前游标请求下一页，合并去重；代际检查防 stale 追加
+  const 加载更多 = async () => {
+    if (下一页游标 === null || 加载中) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    const 本次 = 代际.current;
+    设加载中(true);
+    try {
+      const 页 = await 方法('majors', { q: 词, cursor: 下一页游标, limit: 20 });
+      if (本次 !== 代际.current) return;
+      设候选项((旧) => 合并目录页(旧, 页.items));
+      设下一页游标(页.nextCursor);
+    } catch {
+      if (本次 !== 代际.current) return;
+    } finally {
+      if (本次 === 代际.current) 设加载中(false);
+    }
+  };
 
   // Mock 候选：本地名录过滤
   const mock候选 = 已点选 || 词 === '' ? [] : 专业名录.filter((名) => 名.includes(词) && 名 !== 词);
@@ -148,6 +177,12 @@ export default function 选专业() {
                   {名}
                 </button>
               ))}
+          {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」，点击追加下一页 */}
+          {是后端 && 下一页游标 !== null ? (
+            <button className={`${样式.候选行} 可点`} onClick={加载更多} disabled={加载中} aria-label="加载更多">
+              {加载中 ? '加载中…' : '加载更多'}
+            </button>
+          ) : null}
         </div>
       </滚动区>
 

@@ -19,6 +19,7 @@ import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 职业分类树 } from '../数据/职业分类';
 import type { BFFTaxonomyItem } from '../数据/BFF契约';
+import { 合并目录页 } from '../数据/目录选择';
 
 /** 期望职位上限：与 BOSS 同档（与 学生分流 的快捷片共用同一档）*/
 const 职位上限 = 10;
@@ -63,8 +64,18 @@ export default function 选期望职位() {
   const 计时 = useRef(0);
   // review-r1 P2-2：代际 ref 守 stale response——慢的旧搜索结果不覆盖新的
   const 搜索代际 = useRef(0);
+  // review-r2 R2-M-3：导航代际 ref 守 stale child loading——快速切大类时慢的旧子项不覆盖新的
+  const 导航代际 = useRef(0);
   const 方法引用 = useRef(目录查询?.查询Taxonomy);
   方法引用.current = 目录查询?.查询Taxonomy;
+
+  // review-r2 R2-M-1：分页游标 + 加载中状态（root / child / search）
+  const [根游标, 设根游标] = useState<string | null>(null);
+  const [根加载中, 设根加载中] = useState(false);
+  const [子项游标, 设子项游标] = useState<string | null>(null);
+  const [子项加载中, 设子项加载中] = useState(false);
+  const [搜索游标, 设搜索游标] = useState<string | null>(null);
+  const [搜索加载中, 设搜索加载中] = useState(false);
 
   // Backend mount：读 roots
   useEffect(() => {
@@ -75,18 +86,25 @@ export default function 选期望职位() {
       try {
         const 页 = await 方法('job-categories', { limit: 50 });
         设根项(页.items);
+        设根游标(页.nextCursor);
         if (页.items.length > 0 && !当前根) {
           设当前根(页.items[0]);
-          // 预载第一枚的子项
+          // 预载第一枚的子项（R2-M-3：导航代际守 stale）
+          const 本次 = ++导航代际.current;
           try {
             const 子页 = await 方法('job-categories', { parentId: 页.items[0].id, limit: 50 });
+            if (本次 !== 导航代际.current) return;
             设子项(子页.items);
+            设子项游标(子页.nextCursor);
           } catch {
+            if (本次 !== 导航代际.current) return;
             设子项([]);
+            设子项游标(null);
           }
         }
       } catch {
         设根项([]);
+        设根游标(null);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,6 +118,9 @@ export default function 选期望职位() {
     if (!方法) return;
     if (搜词 === '') {
       设搜索结果项([]);
+      设搜索游标(null);
+      // review-r2 R2-M-2：清空时递增代际，使在飞请求成为 stale
+      搜索代际.current += 1;
       return;
     }
     window.clearTimeout(计时.current);
@@ -109,13 +130,69 @@ export default function 选期望职位() {
         const 页 = await 方法('job-categories', { q: 搜词, limit: 50 });
         if (本次 !== 搜索代际.current) return;
         设搜索结果项(页.items);
+        设搜索游标(页.nextCursor);
       } catch {
         if (本次 !== 搜索代际.current) return;
         设搜索结果项([]);
+        设搜索游标(null);
       }
     }, 搜索防抖毫秒);
     return () => window.clearTimeout(计时.current);
   }, [搜词, 是后端]);
+
+  // review-r2 R2-M-1：根加载更多
+  const 根加载更多 = async () => {
+    if (根游标 === null || 根加载中) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    设根加载中(true);
+    try {
+      const 页 = await 方法('job-categories', { cursor: 根游标, limit: 50 });
+      设根项((旧) => 合并目录页(旧, 页.items));
+      设根游标(页.nextCursor);
+    } catch {
+      // 失败不动，用户可再点
+    } finally {
+      设根加载中(false);
+    }
+  };
+
+  // review-r2 R2-M-1：子项加载更多
+  const 子项加载更多 = async () => {
+    if (子项游标 === null || 子项加载中 || !当前根) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    设子项加载中(true);
+    try {
+      const 页 = await 方法('job-categories', { parentId: 当前根.id, cursor: 子项游标, limit: 50 });
+      设子项((旧) => 合并目录页(旧, 页.items));
+      设子项游标(页.nextCursor);
+    } catch {
+      // 失败不动
+    } finally {
+      设子项加载中(false);
+    }
+  };
+
+  // review-r2 R2-M-1：搜索结果加载更多
+  const 搜索加载更多 = async () => {
+    if (搜索游标 === null || 搜索加载中) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    const 本次 = 搜索代际.current;
+    设搜索加载中(true);
+    try {
+      const 页 = await 方法('job-categories', { q: 搜词, cursor: 搜索游标, limit: 50 });
+      if (本次 !== 搜索代际.current) return;
+      设搜索结果项((旧) => 合并目录页(旧, 页.items));
+      设搜索游标(页.nextCursor);
+    } catch {
+      if (本次 !== 搜索代际.current) return;
+      // 失败不动
+    } finally {
+      设搜索加载中(false);
+    }
+  };
 
   // ── Mock 切换（保持原逻辑不变）──
   const 切换 = (名: string) => {
@@ -136,17 +213,24 @@ export default function 选期望职位() {
       // review-r1 P2-3：搜索模式下点非 selectable 命中时，清空搜索词退出搜索模式，
       // 否则搜索结果区只渲染 搜索结果项，加载到的 子项 看不见（点像没反应）。
       // 清词后回到双栏视图，左栏高亮该项，右栏显示其子项。
+      // review-r2 R2-M-3：导航代际守 stale——快速切大类时慢的旧子项不覆盖新的
       设当前根(项);
       设子项([]);
+      设子项游标(null);
       设关键词('');
       const 方法 = 方法引用.current;
       if (方法) {
+        const 本次 = ++导航代际.current;
         void (async () => {
           try {
             const 子页 = await 方法('job-categories', { parentId: 项.id, limit: 50 });
+            if (本次 !== 导航代际.current) return;
             设子项(子页.items);
+            设子项游标(子页.nextCursor);
           } catch {
+            if (本次 !== 导航代际.current) return;
             设子项([]);
+            设子项游标(null);
           }
         })();
       }
@@ -164,16 +248,23 @@ export default function 选期望职位() {
   };
 
   // Backend 左栏点大类：加载该根的子项
+  // review-r2 R2-M-3：导航代际守 stale——快速切大类时慢的旧子项不覆盖新的
   const 选根 = async (项: BFFTaxonomyItem) => {
     设当前根(项);
     设子项([]);
+    设子项游标(null);
     const 方法 = 方法引用.current;
     if (!方法) return;
+    const 本次 = ++导航代际.current;
     try {
       const 子页 = await 方法('job-categories', { parentId: 项.id, limit: 50 });
+      if (本次 !== 导航代际.current) return;
       设子项(子页.items);
+      设子项游标(子页.nextCursor);
     } catch {
+      if (本次 !== 导航代际.current) return;
       设子项([]);
+      设子项游标(null);
     }
   };
 
@@ -293,11 +384,33 @@ export default function 选期望职位() {
                   {项.display_name}
                 </button>
               ))}
+              {/* review-r2 R2-M-1：根分页加载更多 */}
+              {根游标 !== null ? (
+                <button
+                  className="可点"
+                  onClick={根加载更多}
+                  disabled={根加载中}
+                  style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
+                >
+                  {根加载中 ? '加载中…' : '加载更多'}
+                </button>
+              ) : null}
             </div>
             <div className={`${样式.职右栏} 滚动区`}>
               {子项.length > 0 ? (
                 <div className={样式.分组块}>
                   <div className={样式.岗位网}>{子项.map(小类卡后端)}</div>
+                  {/* review-r2 R2-M-1：子项分页加载更多 */}
+                  {子项游标 !== null ? (
+                    <button
+                      className="可点"
+                      onClick={子项加载更多}
+                      disabled={子项加载中}
+                      style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
+                    >
+                      {子项加载中 ? '加载中…' : '加载更多'}
+                    </button>
+                  ) : null}
                 </div>
               ) : (
                 <div className={样式.无结果}>加载中…</div>
@@ -309,6 +422,17 @@ export default function 选期望职位() {
             {搜索结果项.map(小类卡后端)}
             {搜索结果项.length === 0 ? (
               <div className={样式.无结果}>没有匹配的职位，换个词试试。</div>
+            ) : null}
+            {/* review-r2 R2-M-1：搜索结果分页加载更多 */}
+            {搜索游标 !== null ? (
+              <button
+                className="可点"
+                onClick={搜索加载更多}
+                disabled={搜索加载中}
+                style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
+              >
+                {搜索加载中 ? '加载中…' : '加载更多'}
+              </button>
             ) : null}
           </div>
         )

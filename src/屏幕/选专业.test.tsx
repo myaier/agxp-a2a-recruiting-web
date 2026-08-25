@@ -8,6 +8,13 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 选专业 from './选专业';
 
+/** deferred promise：测试可控制异步 resolve 的时机（用于模拟慢响应到达） */
+function deferredPromise<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((ok) => { resolve = ok; });
+  return { promise, resolve };
+}
+
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -102,6 +109,55 @@ describe('选专业 Backend', () => {
     await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     expect(保存简历).not.toHaveBeenCalled();
+  });
+
+  // review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」，点击追加下一页
+  it('搜索返回 nextCursor 时可加载更多（R2-M-1）', async () => {
+    let 调用次数 = 0;
+    const 查询Taxonomy = vi.fn(async (_kind: string, _query: { q?: string; cursor?: string }) => {
+      调用次数 += 1;
+      if (调用次数 === 1) {
+        return {
+          items: [{ id: 'maj_1', display_name: '经济学', parent_id: null, selectable: true }],
+          nextCursor: 'cur_1',
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{ id: 'maj_2', display_name: '经济统计学', parent_id: null, selectable: true }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    render选专业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByRole('textbox'), '经济');
+    await screen.findByText('经济学');
+    // 第一页有 nextCursor → 显示「加载更多」
+    const 加载更多 = await screen.findByRole('button', { name: '加载更多' });
+    await 用户.click(加载更多);
+    await screen.findByText('经济统计学');
+    // 两页都在（去重合并）
+    expect(screen.getByText('经济学')).toBeTruthy();
+    expect(screen.getByText('经济统计学')).toBeTruthy();
+    expect(查询Taxonomy).toHaveBeenLastCalledWith('majors', expect.objectContaining({ cursor: 'cur_1' }));
+  });
+
+  // review-r2 R2-M-2：清空输入后旧响应不覆盖空结果（代际递增守 stale）
+  it('清空输入后旧响应不覆盖空结果（R2-M-2）', async () => {
+    const { promise, resolve } = deferredPromise<{ items: unknown[]; nextCursor: null; catalogVersion: string }>();
+    const 查询Taxonomy = vi.fn(async () => promise);
+    render选专业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByRole('textbox'), '经济');
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    // 清空输入（应递增代际，使在飞请求成为 stale）
+    await 用户.clear(screen.getByRole('textbox'));
+    // 旧响应到达——不应写入结果
+    resolve({ items: [{ id: 'maj_stale', display_name: '过期结果', parent_id: null, selectable: true }], nextCursor: null, catalogVersion: 'v2' });
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    // 过期结果不应出现
+    expect(screen.queryByText('过期结果')).toBeNull();
   });
 });
 

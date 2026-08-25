@@ -9,6 +9,13 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 选期望职位 from './选期望职位';
 
+/** deferred promise：测试可控制异步 resolve 的时机（用于模拟慢响应到达） */
+function deferredPromise<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((ok) => { resolve = ok; });
+  return { promise, resolve };
+}
+
 const mock返回 = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -187,6 +194,85 @@ describe('选期望职位 Backend', () => {
         职位引用们: [{ id: 'job_be', display_name: '后端开发' }],
       }),
     );
+  });
+  // review-r2 R2-M-3：快速切大类时慢的旧子项不覆盖新的（导航代际守 stale）
+  it('快速切大类时旧响应不覆盖新子项（R2-M-3）', async () => {
+    const { promise: 慢Promise, resolve: 慢Resolve } = deferredPromise<{ items: unknown[]; nextCursor: null; catalogVersion: string }>();
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string }) => {
+      if (!query.parentId && !query.cursor) {
+        return {
+          items: [
+            { id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false },
+            { id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_a') {
+        // 慢响应——测试控制 resolve 时机
+        return 慢Promise;
+      }
+      if (query.parentId === 'cat_b') {
+        return {
+          items: [{ id: 'job_b1', display_name: 'B岗位1', parent_id: 'cat_b', selectable: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render选期望职位({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    // 等 roots 加载（mount 会预选大类A并触发其子项请求，但 A 的响应是慢的）
+    await screen.findByText('大类A');
+    // 快速切到大类B
+    await 用户.click(screen.getByText('大类B'));
+    // B 的子项立刻出现
+    await screen.findByText('B岗位1');
+    // 现在 A 的慢响应到达——不应覆盖 B 的子项
+    慢Resolve({
+      items: [{ id: 'job_a1', display_name: 'A岗位1（过期）', parent_id: 'cat_a', selectable: true }],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    });
+    // 等一下让可能的 state 更新发生
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    // B 的子项仍在；A 的过期结果不出现
+    expect(screen.getByText('B岗位1')).toBeTruthy();
+    expect(screen.queryByText('A岗位1（过期）')).toBeNull();
+  });
+
+  // review-r2 R2-M-1：根分页——roots 返回 nextCursor 时可加载更多
+  it('根分页返回 nextCursor 时可加载更多（R2-M-1）', async () => {
+    let 根调用 = 0;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string }) => {
+      if (!query.parentId) {
+        根调用 += 1;
+        if (根调用 === 1) {
+          return {
+            items: [{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false }],
+            nextCursor: 'root_cur_1',
+            catalogVersion: 'v2',
+          };
+        }
+        return {
+          items: [{ id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render选期望职位({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await screen.findByText('大类A');
+    // 左栏底部有「加载更多」
+    const 加载更多 = await screen.findByRole('button', { name: '加载更多' });
+    await 用户.click(加载更多);
+    await screen.findByText('大类B');
+    expect(screen.getByText('大类A')).toBeTruthy();
+    expect(查询Taxonomy).toHaveBeenLastCalledWith('job-categories', expect.objectContaining({ cursor: 'root_cur_1' }));
   });
 });
 

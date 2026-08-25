@@ -102,6 +102,39 @@ describe('选期望行业 Backend', () => {
       }),
     );
   });
+
+  // review-r2 R2-M-1：根行业返回 nextCursor 时可加载更多
+  it('根行业返回 nextCursor 时可加载更多（R2-M-1）', async () => {
+    let 调用次数 = 0;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string }) => {
+      if (!query.parentId) {
+        调用次数 += 1;
+        if (调用次数 === 1) {
+          return {
+            items: [{ id: 'ind_a', display_name: '行业A', parent_id: null, selectable: false }],
+            nextCursor: 'root_cur_1',
+            catalogVersion: 'v2',
+          };
+        }
+        return {
+          items: [{ id: 'ind_b', display_name: '行业B', parent_id: null, selectable: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render选期望行业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await screen.findAllByText('行业A');
+    // 第一页有 nextCursor → 显示「加载更多」
+    const 加载更多 = await screen.findByRole('button', { name: '加载更多' });
+    await 用户.click(加载更多);
+    await screen.findAllByText('行业B');
+    expect(screen.getAllByText('行业A').length).toBeGreaterThan(0);
+    expect(查询Taxonomy).toHaveBeenLastCalledWith('industries', expect.objectContaining({ cursor: 'root_cur_1' }));
+  });
 });
 
 describe('选期望行业 Mock', () => {

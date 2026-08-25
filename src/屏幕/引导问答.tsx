@@ -560,7 +560,7 @@ function 城市题({
   const 词 = 关键词.trim();
 
   // Backend：搜索 250ms debounce；分组初次展开请求第一页
-  const { 词: 后端词, 设词: 设后端词, 结果: 搜索结果项, 搜索中 } = use城市搜索(是后端 ? 查询Location : undefined);
+  const { 词: 后端词, 设词: 设后端词, 结果: 搜索结果项, 搜索中, 下一页游标: 搜索下一页, 加载中: 搜索加载中, 加载更多: 搜索加载更多 } = use城市搜索(是后端 ? 查询Location : undefined);
 
   // Backend 切换：点击城市项原子写入 string + ref（两者同步，保存按钮才能亮）
   const 切换后端 = (项: BFFLocationItem) => {
@@ -602,6 +602,12 @@ function 城市题({
                   />
                 ))}
               </div>
+              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
+              {搜索下一页 !== null ? (
+                <button className="可点" onClick={搜索加载更多} disabled={搜索加载中} style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}>
+                  {搜索加载中 ? '加载中…' : '加载更多'}
+                </button>
+              ) : null}
               {搜索结果项.length === 0 && !搜索中 ? (
                 <div className={样式.搜索无结果}>没有匹配的城市，换个词试试。</div>
               ) : null}

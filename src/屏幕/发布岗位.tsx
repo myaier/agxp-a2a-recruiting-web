@@ -152,7 +152,7 @@ export default function 发布岗位() {
   // 编辑态从 从BFF岗位 带入；Mock 始终 undefined（自由文本，无候选）。
   const [地点引用, 设地点引用] = useState<目录选择值 | undefined>(编辑目标?.地点引用);
   // Backend 工作城市搜索（250ms debounce）；Mock 不调用钩子（自由文本，无候选行）
-  const { 设词: 设城市搜索词, 结果: 城市候选, 搜索中: 城市搜索中 } = use城市搜索(
+  const { 设词: 设城市搜索词, 结果: 城市候选, 搜索中: 城市搜索中, 下一页游标: 城市下一页, 加载中: 城市加载中, 加载更多: 城市加载更多 } = use城市搜索(
     是后端 ? 目录查询?.查询Location : undefined,
   );
   // 实习要求（BOSS 对照补齐 2026-08-20）：只有招聘类型 = 实习生 时录入与落库。
@@ -491,6 +491,9 @@ export default function 发布岗位() {
             城市候选={城市候选}
             城市搜索中={城市搜索中}
             选城市候选={选城市候选}
+            城市下一页={城市下一页}
+            城市加载中={城市加载中}
+            城市加载更多={城市加载更多}
           />
         ) : null}
 
@@ -1079,6 +1082,9 @@ function 职位要求步({
   城市候选,
   城市搜索中,
   选城市候选,
+  城市下一页,
+  城市加载中,
+  城市加载更多,
 }: {
   编辑态: boolean;
   招聘类型: 招聘类型;
@@ -1114,6 +1120,10 @@ function 职位要求步({
   城市候选: { id: string; display_name: string }[];
   城市搜索中: boolean;
   选城市候选: (项: { id: string; display_name: string }) => void;
+  // review-r2 R2-M-1：城市搜索分页
+  城市下一页: string | null;
+  城市加载中: boolean;
+  城市加载更多: () => void;
 }) {
   const { 跳转 } = use导航();
   const 提示不可改 = () => 轻提示('发布后不可修改，如需变更请新发一个岗位');
@@ -1247,6 +1257,12 @@ function 职位要求步({
               ))}
               {!城市搜索中 && 城市候选.length === 0 ? (
                 <span className={样式.条件空提示}>没有匹配的城市，换个词试试。</span>
+              ) : null}
+              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
+              {城市下一页 !== null ? (
+                <button className={`${样式.快捷片} 可点`} onClick={城市加载更多} disabled={城市加载中}>
+                  {城市加载中 ? '加载中…' : '加载更多'}
+                </button>
               ) : null}
             </div>
           ) : null}

@@ -20,6 +20,7 @@ import { use应用状态 } from '../状态/应用状态';
 import { 行业字典 } from '../数据/城市与行业';
 import type { BFFTaxonomyItem } from '../数据/BFF契约';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
+import { 合并目录页 } from '../数据/目录选择';
 
 /** 期望行业上限（规格：最多 3 个）*/
 const 行业上限 = 3;
@@ -40,8 +41,12 @@ export default function 选期望行业() {
 
   // ── Backend：roots + 展开子项（支持 >2 级：非 selectable 子项再展开取孙项）──
   const [根项, 设根项] = useState<BFFTaxonomyItem[]>([]);
-  const [展开状态, 设展开状态] = useState<Record<string, { 子项: BFFTaxonomyItem[]; 加载中: boolean }>>({});
+  // review-r2 R2-M-1：根行业分页游标 + 子项分页游标
+  const [根游标, 设根游标] = useState<string | null>(null);
+  const [根加载中, 设根加载中] = useState(false);
+  const [展开状态, 设展开状态] = useState<Record<string, { 子项: BFFTaxonomyItem[]; 加载中: boolean; 游标: string | null }>>({});
   const [孙项表, 设孙项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
+  const [孙项游标表, 设孙项游标表] = useState<Record<string, string | null>>({});
   const 方法引用 = useRef(目录查询?.查询Taxonomy);
   方法引用.current = 目录查询?.查询Taxonomy;
 
@@ -54,22 +59,59 @@ export default function 选期望行业() {
       try {
         const 页 = await 方法('industries', { limit: 50 });
         设根项(页.items);
+        设根游标(页.nextCursor);
       } catch {
         设根项([]);
+        设根游标(null);
       }
     })();
   }, [是后端]);
 
+  // review-r2 R2-M-1：根行业加载更多
+  const 根加载更多 = async () => {
+    if (根游标 === null || 根加载中) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    设根加载中(true);
+    try {
+      const 页 = await 方法('industries', { cursor: 根游标, limit: 50 });
+      设根项((旧) => 合并目录页(旧, 页.items));
+      设根游标(页.nextCursor);
+    } catch {
+      // 失败不动，用户可再点
+    } finally {
+      设根加载中(false);
+    }
+  };
+
   const 展开根 = async (项: BFFTaxonomyItem) => {
     if (展开状态[项.id]) return;
-    设展开状态((旧) => ({ ...旧, [项.id]: { 子项: [], 加载中: true } }));
+    设展开状态((旧) => ({ ...旧, [项.id]: { 子项: [], 加载中: true, 游标: null } }));
     const 方法 = 方法引用.current;
     if (!方法) return;
     try {
       const 子页 = await 方法('industries', { parentId: 项.id, limit: 50 });
-      设展开状态((旧) => ({ ...旧, [项.id]: { 子项: 子页.items, 加载中: false } }));
+      设展开状态((旧) => ({ ...旧, [项.id]: { 子项: 子页.items, 加载中: false, 游标: 子页.nextCursor } }));
     } catch {
-      设展开状态((旧) => ({ ...旧, [项.id]: { 子项: [], 加载中: false } }));
+      设展开状态((旧) => ({ ...旧, [项.id]: { 子项: [], 加载中: false, 游标: null } }));
+    }
+  };
+
+  // review-r2 R2-M-1：子项加载更多
+  const 子项加载更多 = async (项: BFFTaxonomyItem) => {
+    const 状态 = 展开状态[项.id];
+    if (!状态 || 状态.游标 === null || 状态.加载中) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    设展开状态((旧) => ({ ...旧, [项.id]: { ...旧[项.id], 加载中: true } }));
+    try {
+      const 子页 = await 方法('industries', { parentId: 项.id, cursor: 状态.游标, limit: 50 });
+      设展开状态((旧) => ({
+        ...旧,
+        [项.id]: { 子项: 合并目录页(旧[项.id].子项, 子页.items), 加载中: false, 游标: 子页.nextCursor },
+      }));
+    } catch {
+      设展开状态((旧) => ({ ...旧, [项.id]: { ...旧[项.id], 加载中: false } }));
     }
   };
 
@@ -81,8 +123,25 @@ export default function 选期望行业() {
     try {
       const 孙页 = await 方法('industries', { parentId: 项.id, limit: 50 });
       设孙项表((旧) => ({ ...旧, [项.id]: 孙页.items }));
+      设孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
     } catch {
       设孙项表((旧) => ({ ...旧, [项.id]: [] }));
+      设孙项游标表((旧) => ({ ...旧, [项.id]: null }));
+    }
+  };
+
+  // review-r2 R2-M-1：孙项加载更多（>2 级 taxonomy 分页）
+  const 孙项加载更多 = async (项: BFFTaxonomyItem) => {
+    const 游标 = 孙项游标表[项.id];
+    if (游标 === null || 游标 === undefined) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    try {
+      const 孙页 = await 方法('industries', { parentId: 项.id, cursor: 游标, limit: 50 });
+      设孙项表((旧) => ({ ...旧, [项.id]: 合并目录页(旧[项.id] ?? [], 孙页.items) }));
+      设孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
+    } catch {
+      // 失败不动
     }
   };
 
@@ -195,8 +254,9 @@ export default function 选期望行业() {
           </div>
 
           <div className={样式.手风琴}>
-            {是后端
-              ? 根项.map((项) => {
+            {是后端 ? (
+              <>
+                {根项.map((项) => {
                   const 状态 = 展开状态[项.id];
                   const 展开 = Boolean(状态);
                   return (
@@ -223,16 +283,46 @@ export default function 选期望行业() {
                                   {孙项表[子.id].map((孙) =>
                                     行业片(孙.display_name, { id: 孙.id, display_name: 孙.display_name }, 孙),
                                   )}
+                                  {/* review-r2 R2-M-1：孙项分页加载更多（>2 级 taxonomy）*/}
+                                  {孙项游标表[子.id] !== null && 孙项游标表[子.id] !== undefined ? (
+                                    <button
+                                      className={`${样式.加载更多键} 可点`}
+                                      onClick={() => 孙项加载更多(子)}
+                                    >
+                                      加载更多
+                                    </button>
+                                  ) : null}
                                 </div>
                               ) : null}
                             </div>
                           ))}
+                          {/* review-r2 R2-M-1：子项分页加载更多 */}
+                          {状态?.游标 !== null && 状态?.游标 !== undefined ? (
+                            <button
+                              className={`${样式.加载更多键} 可点`}
+                              onClick={() => 子项加载更多(项)}
+                              disabled={状态?.加载中}
+                            >
+                              {状态?.加载中 ? '加载中…' : '加载更多'}
+                            </button>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
                   );
-                })
-              : 行业字典.map((组) => {
+                })}
+                {/* review-r2 R2-M-1：根行业分页加载更多 */}
+                {根游标 !== null ? (
+                  <button
+                    className={`${样式.加载更多键} 可点`}
+                    onClick={根加载更多}
+                    disabled={根加载中}
+                  >
+                    {根加载中 ? '加载中…' : '加载更多'}
+                  </button>
+                ) : null}
+              </>
+            ) : 行业字典.map((组) => {
                   const 展开 = 展开的行业们.includes(组.行业);
                   return (
                     <div key={组.行业} className={样式.手风琴组}>

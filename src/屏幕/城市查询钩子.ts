@@ -124,12 +124,16 @@ export function use城市分组(查询Location: 查询Location方法 | undefined
 }
 
 /** 搜索查询：250ms debounce 后调 查询Location({ q })。
- *  review-r1 P2-2：用 代际 ref 守 stale response——每次新搜索递增代际；
- *  响应 resolve 时只有代际与最新一致才 commit，慢的旧响应不覆盖新的。 */
+ *  review-r1 P2-2 / review-r2 R2-M-1/R2-M-2：代际 ref 守 stale response——每次输入变化（含清空）
+ *  都递增代际；响应 resolve 时只有代际与最新一致才 commit。搜索保留 nextCursor，
+ *  暴露 加载更多 供滚到底追加下一页（合并去重）。 */
 export function use城市搜索(查询Location: 查询Location方法 | undefined) {
   const [词, 设词] = useState('');
   const [结果, 设结果] = useState<BFFLocationItem[]>([]);
   const [搜索中, 设搜索中] = useState(false);
+  // review-r2 R2-M-1：搜索结果的下一页游标，null 表示无更多
+  const [下一页游标, 设下一页游标] = useState<string | null>(null);
+  const [加载中, 设加载中] = useState(false);
   const 计时 = useRef(0);
   const 代际 = useRef(0);
   const 方法引用 = useRef(查询Location);
@@ -139,7 +143,10 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
     const 方法 = 方法引用.current;
     const trimmed = 词.trim();
     if (!方法 || trimmed === '') {
+      // review-r2 R2-M-2：清空输入时也递增代际，让在飞的慢响应成为 stale
+      代际.current += 1;
       设结果([]);
+      设下一页游标(null);
       设搜索中(false);
       return;
     }
@@ -152,9 +159,11 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
         const 页 = await 方法({ q: trimmed });
         if (本次 !== 代际.current) return; // stale：已有更新的搜索在跑/已完成
         设结果(页.items);
+        设下一页游标(页.nextCursor);
       } catch {
         if (本次 !== 代际.current) return;
         设结果([]);
+        设下一页游标(null);
       } finally {
         if (本次 === 代际.current) 设搜索中(false);
       }
@@ -162,5 +171,24 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
     return () => window.clearTimeout(计时.current);
   }, [词]);
 
-  return { 词, 设词, 结果, 搜索中 };
+  // review-r2 R2-M-1：加载更多——用当前游标请求下一页，合并去重；代际检查防 stale 追加
+  const 加载更多 = async () => {
+    if (下一页游标 === null || 加载中) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    const 本次 = 代际.current;
+    设加载中(true);
+    try {
+      const 页 = await 方法({ q: 词.trim(), cursor: 下一页游标 });
+      if (本次 !== 代际.current) return;
+      设结果((旧) => 去重([...旧, ...页.items]));
+      设下一页游标(页.nextCursor);
+    } catch {
+      if (本次 !== 代际.current) return;
+    } finally {
+      if (本次 === 代际.current) 设加载中(false);
+    }
+  };
+
+  return { 词, 设词, 结果, 搜索中, 下一页游标, 加载中, 加载更多 };
 }

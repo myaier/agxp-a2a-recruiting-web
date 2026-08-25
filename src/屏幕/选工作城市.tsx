@@ -54,7 +54,7 @@ export default function 选工作城市() {
   });
 
   // ── 搜索 / 分组查询（Backend 分支）──
-  const { 词, 设词, 结果: 搜索结果项, 搜索中 } = use城市搜索(
+  const { 词, 设词, 结果: 搜索结果项, 搜索中, 下一页游标: 搜索下一页, 加载中: 搜索加载中, 加载更多: 搜索加载更多 } = use城市搜索(
     是后端 ? 目录查询?.查询Location : undefined,
   );
   const { 状态表, 展开集合, 切换展开 } = use城市分组(
@@ -217,6 +217,12 @@ export default function 选工作城市() {
               <div className={样式.城网}>
                 {搜索结果项.map((项) => 城市键后端(项))}
               </div>
+              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
+              {搜索下一页 !== null ? (
+                <button className="可点" onClick={搜索加载更多} disabled={搜索加载中} style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}>
+                  {搜索加载中 ? '加载中…' : '加载更多'}
+                </button>
+              ) : null}
               {搜索结果项.length === 0 && !搜索中 ? (
                 <div className={样式.无结果}>没有匹配的城市，换个词试试。</div>
               ) : null}

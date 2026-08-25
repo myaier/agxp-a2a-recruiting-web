@@ -50,6 +50,8 @@ export default function 毕业院校() {
     const 方法 = 方法引用.current;
     const trimmed = 词;
     if (!方法 || trimmed === '') {
+      // review-r2 R2-M-2：清空输入时也递增代际，让在飞的慢响应成为 stale
+      代际.current += 1;
       设候选项([]);
       设下一页游标(null);
       return;
@@ -71,20 +73,24 @@ export default function 毕业院校() {
     return () => window.clearTimeout(计时.current);
   }, [学校, 是后端, 词]);
 
-  // review-r1 P2-1：加载更多——用当前游标请求下一页，合并去重
+  // review-r1 P2-1 / review-r2 R2-M-2：加载更多——用当前游标请求下一页，合并去重；
+  // 代际检查防 stale 追加（query 已变时不把旧 query 的下一页 append 进来）
   const 加载更多 = async () => {
     if (下一页游标 === null || 加载中) return;
     const 方法 = 方法引用.current;
     if (!方法) return;
+    const 本次 = 代际.current;
     设加载中(true);
     try {
       const 页 = await 方法({ q: 词, cursor: 下一页游标, limit: 20 });
+      if (本次 !== 代际.current) return;
       设候选项((旧) => 合并目录页(旧, 页.items));
       设下一页游标(页.nextCursor);
     } catch {
+      if (本次 !== 代际.current) return;
       // 失败不动，用户可再点一次
     } finally {
-      设加载中(false);
+      if (本次 === 代际.current) 设加载中(false);
     }
   };
 

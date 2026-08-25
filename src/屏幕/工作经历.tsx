@@ -26,7 +26,7 @@ import 弹层框架 from '../组件/弹层框架';
 import { 规范化作品集链接, 校验作品集链接, 校验起止年月 } from '../流程/onboarding配置';
 import type { BFFTaxonomyItem, BFFInstitutionItem } from '../数据/BFF契约';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
-import { 学校副标题 } from '../数据/目录选择';
+import { 学校副标题, 合并目录页 } from '../数据/目录选择';
 
 /** 一段工作经历。开始/结束用 input[type=month] 的 yyyy-MM 格式；结束 null = 至今 */
 /** 行业快捷片：点一下填入，省得手机上打字 */
@@ -438,9 +438,14 @@ function 教育编辑页({
   // Backend 学校候选 + 专业候选
   const [学校候选, 设学校候选] = useState<BFFInstitutionItem[]>([]);
   const [专业候选, 设专业候选] = useState<BFFTaxonomyItem[]>([]);
+  // review-r2 R2-M-1：学校/专业搜索分页游标
+  const [学校下一页, 设学校下一页] = useState<string | null>(null);
+  const [专业下一页, 设专业下一页] = useState<string | null>(null);
+  const [学校加载中, 设学校加载中] = useState(false);
+  const [专业加载中, 设专业加载中] = useState(false);
   const 学校计时 = useRef(0);
   const 专业计时 = useRef(0);
-  // review-r1 P2-2：代际 ref 守 stale response——慢的旧搜索结果不覆盖新的
+  // review-r1 P2-2 / review-r2 R2-M-2：代际 ref 守 stale response——清空也递增，load-more 也检查
   const 学校代际 = useRef(0);
   const 专业代际 = useRef(0);
   const 学校方法引用 = useRef(目录查询?.查询Institution);
@@ -460,7 +465,10 @@ function 教育编辑页({
     const 方法 = 学校方法引用.current;
     const trimmed = 草稿.学校.trim();
     if (!方法 || trimmed === '') {
+      // review-r2 R2-M-2：清空输入时也递增代际，让在飞的慢响应成为 stale
+      学校代际.current += 1;
       设学校候选([]);
+      设学校下一页(null);
       return;
     }
     window.clearTimeout(学校计时.current);
@@ -470,9 +478,11 @@ function 教育编辑页({
         const 页 = await 方法({ q: trimmed, limit: 20 });
         if (本次 !== 学校代际.current) return;
         设学校候选(页.items);
+        设学校下一页(页.nextCursor);
       } catch {
         if (本次 !== 学校代际.current) return;
         设学校候选([]);
+        设学校下一页(null);
       }
     }, 教育搜索防抖毫秒);
     return () => window.clearTimeout(学校计时.current);
@@ -484,7 +494,9 @@ function 教育编辑页({
     const 方法 = 专业方法引用.current;
     const trimmed = 草稿.专业.trim();
     if (!方法 || trimmed === '') {
+      专业代际.current += 1;
       设专业候选([]);
+      设专业下一页(null);
       return;
     }
     window.clearTimeout(专业计时.current);
@@ -494,13 +506,51 @@ function 教育编辑页({
         const 页 = await 方法('majors', { q: trimmed, limit: 20 });
         if (本次 !== 专业代际.current) return;
         设专业候选(页.items);
+        设专业下一页(页.nextCursor);
       } catch {
         if (本次 !== 专业代际.current) return;
         设专业候选([]);
+        设专业下一页(null);
       }
     }, 教育搜索防抖毫秒);
     return () => window.clearTimeout(专业计时.current);
   }, [草稿.专业, 是后端]);
+
+  // review-r2 R2-M-1：学校/专业搜索加载更多——用当前游标请求下一页，合并去重；代际检查防 stale
+  const 学校加载更多 = async () => {
+    if (学校下一页 === null || 学校加载中) return;
+    const 方法 = 学校方法引用.current;
+    if (!方法) return;
+    const 本次 = 学校代际.current;
+    设学校加载中(true);
+    try {
+      const 页 = await 方法({ q: 草稿.学校.trim(), cursor: 学校下一页, limit: 20 });
+      if (本次 !== 学校代际.current) return;
+      设学校候选((旧) => 合并目录页(旧, 页.items));
+      设学校下一页(页.nextCursor);
+    } catch {
+      if (本次 !== 学校代际.current) return;
+    } finally {
+      if (本次 === 学校代际.current) 设学校加载中(false);
+    }
+  };
+  const 专业加载更多 = async () => {
+    if (专业下一页 === null || 专业加载中) return;
+    const 方法 = 专业方法引用.current;
+    if (!方法) return;
+    const 本次 = 专业代际.current;
+    设专业加载中(true);
+    try {
+      const 页 = await 方法('majors', { q: 草稿.专业.trim(), cursor: 专业下一页, limit: 20 });
+      if (本次 !== 专业代际.current) return;
+      设专业候选((旧) => 合并目录页(旧, 页.items));
+      设专业下一页(页.nextCursor);
+    } catch {
+      if (本次 !== 专业代际.current) return;
+    } finally {
+      if (本次 === 专业代际.current) 设专业加载中(false);
+    }
+  };
 
   const 改学校 = (值: string) => {
     改('学校', 值);
@@ -569,7 +619,7 @@ function 教育编辑页({
             onChange={(事件) => 改学校(事件.target.value)}
           />
           {/* Backend 学校候选：学校名 + 「城市 · 国家」副行 */}
-          {是后端 && 学校候选.length > 0 ? (
+          {是后端 && (学校候选.length > 0 || 学校下一页 !== null) ? (
             <div className={引导样式.候选列表}>
               {学校候选.map((项) => (
                 <button
@@ -586,6 +636,12 @@ function 教育编辑页({
                   </span>
                 </button>
               ))}
+              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
+              {学校下一页 !== null ? (
+                <button className={`${引导样式.候选行} 可点`} onClick={学校加载更多} disabled={学校加载中} aria-label="加载更多">
+                  {学校加载中 ? '加载中…' : '加载更多'}
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -614,7 +670,7 @@ function 教育编辑页({
             onChange={(事件) => 改专业(事件.target.value)}
           />
           {/* Backend 专业候选 */}
-          {是后端 && 专业候选.length > 0 ? (
+          {是后端 && (专业候选.length > 0 || 专业下一页 !== null) ? (
             <div className={引导样式.候选列表}>
               {专业候选.map((项) => (
                 <button
@@ -626,6 +682,12 @@ function 教育编辑页({
                   {项.display_name}
                 </button>
               ))}
+              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
+              {专业下一页 !== null ? (
+                <button className={`${引导样式.候选行} 可点`} onClick={专业加载更多} disabled={专业加载中} aria-label="加载更多">
+                  {专业加载中 ? '加载中…' : '加载更多'}
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>
