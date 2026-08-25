@@ -160,7 +160,7 @@ Backend 表单中受控字段同时保存该引用；UI 只读取 `display_name`
 - Backend 模式热门区读取 Location 默认/featured 页；搜索框 debounce 后发送 `q`，不在浏览器扫全表。
 - 各省分组接近可视区域时，以其 filter 调用 `country_code=CN&admin1_code=...` 懒加载；继续滚动该组时才请求下一页。搜索命中省名时用同一 filter 查询该省，而不是从本地城市数组展开。
 - 只有 BFF 返回的 Location 能被选择；选择态保存 `{id, display_name}`。
-- 后端配套 spec 保证所有 `country_code=CN` 的 active Location 使用中文 `display_name/admin1_name`，同时保留英文与来源原名搜索。后端尚未部署该变更时，不得以本地中文城市替换英文结果并提交猜测 ID。
+- 后端配套 spec 保证中国 Location 列表只返回地级行政区及以上招聘地点，使用中文 `display_name/admin1_name`，同时保留英文与来源原名搜索。县、镇、街道和普通聚居点不会进入选择器。后端尚未部署该变更时，不得以前端本地列表自行过滤或替换并提交猜测 ID。
 
 ### 7.2 职位分类与行业
 
@@ -253,7 +253,7 @@ Array<{ path: string; reason: string }>
 - 每个查询只取请求页，cursor 由调用方继续；相同 in-flight 可去重，退出清缓存。
 - taxonomy root 不因 `selectable=false` 被丢弃，leaf 才可提交。
 - Location 正确携带 `admin1_code/name`，省级展示 filter 只查询不入 payload，城市按真实 ID 选择；主地点不会重复进入 alternates。
-- 中国城市和中国学校使用后端中文 `display_name`；学校候选携带城市和国家，英文/原名搜索仍选择同一 ID。
+- 中国城市列表只包含后端判定可选的地级行政区及以上地点，并使用后端中文 `display_name`；中国学校及其地点也为中文。学校候选携带城市和国家，英文/原名搜索仍选择同一 ID。
 - Resume/Intention/Job 写入使用选择时保存的 ID，不调用显示名精确反查。
 - active intention 查询带 `status=active`，服务端隐藏字段在无相关 UI 修改时保持。
 - 普通意向无办公方式时拒绝提交，不再默认 onsite；社招/校招不伪造 annual months。
@@ -291,7 +291,7 @@ Array<{ path: string; reason: string }>
 
 1. Backend 登录/角色水合不再全量下载五类 Catalog。
 2. 所有 Backend 受控目录写入都来自用户选择时保存的真实 ID，没有显示名反查或本地值提交。
-3. 城市保留 PM 的按省铺开体验；省级配置只生成查询 filter，具体选项由扁平 Location API 按行政区/搜索提供，所有中国城市以中文显示。
+3. 城市保留 PM 的按省铺开体验；省级配置只生成查询 filter，具体选项由扁平 Location API 按行政区/搜索提供，中国列表只含地级行政区及以上招聘地点并以中文显示。
 4. 学校搜索能区分国家和城市，所有中国学校以中文显示；专业目录继续使用现有中文 taxonomy。
 5. CandidateIntention 不混入 archived、不重复主城市、不默认 onsite、不伪造年薪月数，并保留 UI 未表达的服务端字段。
 6. Resume 与 Job 当前已接线 CRUD 场景使用真实引用、revision、幂等和状态。
