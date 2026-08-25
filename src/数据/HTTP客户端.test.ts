@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { 创建BFF客户端 } from './HTTP客户端';
+import { BFF错误, 创建BFF客户端, 取后端错误文案 } from './HTTP客户端';
 
 describe('BFF HTTP 客户端', () => {
   it('始终带 Cookie，并返回 result、ETag', async () => {
@@ -55,5 +55,16 @@ describe('BFF HTTP 客户端', () => {
     const client = 创建BFF客户端({ fetcher, 生成幂等键: () => 'idem-fixed' });
     await expect(client.请求({ path: '/api/v1/session' })).rejects.toMatchObject({ code: 'network_error' });
     expect(fetcher).toHaveBeenCalledTimes(2); // 初次读取 + 唯一一次读取重试
+  });
+
+  it('区分网络、后端不可用与异常响应的用户提示', () => {
+    expect(取后端错误文案(new BFF错误(0, 'network_error', 'fetch failed')))
+      .toBe('无法连接后端服务，请检查网络或稍后重试');
+    for (const status of [502, 503, 504]) {
+      expect(取后端错误文案(new BFF错误(status, 'downstream_unavailable', 'down')))
+        .toBe('后端服务暂时不可用，请稍后重试');
+    }
+    expect(取后端错误文案(new BFF错误(200, 'invalid_response', 'bad payload')))
+      .toBe('服务返回异常，请稍后重试');
   });
 });
