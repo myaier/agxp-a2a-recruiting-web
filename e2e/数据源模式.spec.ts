@@ -155,8 +155,8 @@ const fixture意向列表 = {
 interface BFF路由选项 {
   记录目录请求: (path: string) => void;
   登录尝试id: string;
-  /** 请求拦截：每次 /api/v1 请求触发 */
-  请求拦截?: (请求: { path: string; method: string; body: unknown }) => void;
+  /** 请求拦截：每次 /api/v1 请求触发（headers 可用于断言 Idempotency-Key 等头） */
+  请求拦截?: (请求: { path: string; method: string; body: unknown; headers: Record<string, string> }) => void;
   /** 自定义响应覆盖：key = `METHOD path`，返回 { status, 响应 } */
   覆盖?: Record<string, (body: unknown) => { status: number; 响应: unknown }>;
   /** GET /api/v1/session 返回 200（已登录）还是 401（未登录）。缺省 200（自动登录）*/
@@ -175,7 +175,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
       ? (() => { try { return JSON.parse(请求.postData() ?? '{}'); } catch { return {}; } })()
       : {};
 
-    选项.请求拦截?.({ path, method, body });
+    选项.请求拦截?.({ path, method, body, headers: 请求.headers() });
 
     if (path.startsWith('/api/v1/catalog/')) 选项.记录目录请求(path);
 
@@ -300,6 +300,48 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
     // 兜底：未匹配的 /api/v1/* 返回 200 空信封，避免测试因未处理路由挂死
     await route.fulfill({ status: 200, json: 信封(null) });
   });
+}
+
+/**
+ * 填写意向表单并提交：办公方式（现场）+ 工作城市（子页搜索 fixture）+ 期望职位（子页选择）→ 点保存。
+ * 三个条件齐了 可保存 才为 true，保存键才会亮——少填一项 POST 就不会发出。
+ */
+async function 填意向表单并提交(page: Page) {
+  // 导航到添加意向页
+  await page.goto('/#/intentions/new');
+  await page.waitForTimeout(500);
+
+  // 1. 办公方式：点「现场」选钮片
+  await page.getByRole('button', { name: '现场', exact: true }).click();
+
+  // 2. 工作城市：点行 → 跳选城市页 → 搜索 fixture → 选结果 → 保存 → 返回
+  await page.getByText('请选择工作城市').click();
+  await page.waitForTimeout(500);
+  const 城市搜索 = page.getByPlaceholder('搜索城市 / 省份');
+  await expect(城市搜索).toBeVisible({ timeout: 5000 });
+  await 城市搜索.fill('fixture');
+  await page.waitForTimeout(600); // debounce 250ms + 余量
+  await expect(page.getByText(标记.城市display)).toBeVisible({ timeout: 5000 });
+  await page.getByText(标记.城市display).click();
+  await page.waitForTimeout(300);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  // 等待返回意向页
+  await page.waitForTimeout(500);
+
+  // 3. 期望职位：点行 → 跳选期望职位页 → 选 fixture 职位 → 保存 → 返回
+  await page.getByText('请选择期望职位').click();
+  await page.waitForTimeout(500);
+  // Backend 左栏根项已加载，右栏子项也加载（fixture 单项 selectable=true）
+  // 左右两栏都显示同一文本，用 .last() 点右栏的可选子项
+  await expect(page.getByText(标记.职位display).last()).toBeVisible({ timeout: 5000 });
+  await page.getByText(标记.职位display).last().click();
+  await page.waitForTimeout(300);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  // 等待返回意向页
+  await page.waitForTimeout(500);
+
+  // 4. 点保存 → POST /api/v1/me/intentions
+  await page.getByRole('button', { name: '保存', exact: true }).click();
 }
 
 test.describe('Backend 数据源 fixture @backend', () => {
@@ -438,10 +480,16 @@ test.describe('Backend 数据源 fixture @backend', () => {
   });
 
   test('422 array fields 返回字段错误 @backend', async ({ page }) => {
-    // 安装 422 覆盖路由：POST intentions → 422 + fields 数组
+    // 覆盖 POST intentions → 422 + fields 数组。驱动真实 UI 填表提交，断言 POST 真正
+    // 发出且 422 fieldErrors 文案出现在 轻提示 toast 里——删掉 422 解析或 fieldErrors
+    // 映射这条断言就会失败。
+    let post次数 = 0;
     await 安装BFF路由(page, {
       记录目录请求: () => {},
       登录尝试id: 'att-006',
+      请求拦截: ({ path, method }) => {
+        if (path === '/api/v1/me/intentions' && method === 'POST') post次数++;
+      },
       覆盖: {
         'POST /api/v1/me/intentions': () => ({
           status: 422,
@@ -453,17 +501,20 @@ test.describe('Backend 数据源 fixture @backend', () => {
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
 
-    // 导航到添加意向页 → 页面应正常渲染（route 已安装 422 响应）
-    // 422 解析由 HTTP客户端.test.ts 单测覆盖；E2E 层验证 route 安装不崩溃
-    await page.goto('/#/intentions/new');
-    await page.waitForTimeout(1000);
-    expect(page).toBeDefined();
+    await 填意向表单并提交(page);
+
+    // POST 确实发出（填表 + 点保存触发了真实写入请求）
+    expect(post次数).toBeGreaterThanOrEqual(1);
+    // 422 fieldErrors[0].reason 出现在 toast 里（取后端错误文案 → 轻提示）
+    await expect(page.getByText('至少选一种办公方式')).toBeVisible({ timeout: 10_000 });
   });
 
   test('401 清理会话并清空目录缓存 @backend', async ({ page }) => {
-    const 目录请求: string[] = [];
+    // 覆盖 PATCH profile → 401 invalid_session。驱动真实 UI 编辑姓名 → blur → PATCH 401 →
+    // 处理写入错误 清会话（已登录=false）→ 应用.tsx Navigate 到登录页。
+    // 断言页面落回登录页（手机号输入框可见）——删掉 401 清会话或 Navigate 守卫这条断言就会失败。
     await 安装BFF路由(page, {
-      记录目录请求: (p) => 目录请求.push(p),
+      记录目录请求: () => {},
       登录尝试id: 'att-007',
       覆盖: {
         'PATCH /api/v1/me/resume/profile': () => ({
@@ -476,96 +527,114 @@ test.describe('Backend 数据源 fixture @backend', () => {
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
 
-    // 导航到我的简历 → 编辑姓名 → blur 触发 保存简历 → PATCH profile → 401 清理
+    // 导航到我的简历 → 编辑姓名 → blur 触发 PATCH profile → 401 → 清会话 → 落登录页
     await page.goto('/#/resume');
     await page.waitForTimeout(500);
 
-    // 点姓名进入编辑（可改条目：点只读态 → 变 input，aria-label="姓名"）
+    // 点姓名进入编辑（可改条目：点只读态 → 变 input）
     const 姓名行 = page.getByText(标记.主体真名).first();
-    if (await 姓名行.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await 姓名行.click().catch(() => {});
-      // 编辑态 input 的 aria-label 是「姓名」
-      const 输入框 = page.getByLabel('姓名');
-      if (await 输入框.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await 输入框.fill('改后名字');
-        await 输入框.blur();
-        await page.waitForTimeout(2000);
-      }
-    }
-    // 401 后会话清理；页面不崩溃
-    expect(page).toBeDefined();
+    await expect(姓名行).toBeVisible({ timeout: 5000 });
+    await 姓名行.click();
+    // 编辑态 input 的 aria-label 含「姓名」
+    const 输入框 = page.getByLabel('姓名');
+    await expect(输入框).toBeVisible({ timeout: 3000 });
+    await 输入框.fill('改后名字');
+    await 输入框.blur();
+
+    // 401 后 处理写入错误 清会话 → 应用.tsx Navigate 到登录页
+    // 登录页有「手机号」输入框——如果 401 清理或 Navigate 守卫被删，页面会留在 /#/resume
+    await expect(page.getByLabel('手机号')).toBeVisible({ timeout: 10_000 });
   });
 
   test('409 reread 用权威快照水合 @backend', async ({ page }) => {
+    // 覆盖 PATCH profile → 409 version_conflict，GET /me/resume 第二次返回不同名字。
+    // 驱动真实 UI 编辑姓名 → blur → PATCH 409 → HTTP catch GET /me/resume（权威快照）
+    // → 处理写入错误 用 错误.权威简历 水合。
+    // 断言 GET /me/resume 被调用了至少 2 次（初始 + 409 reread），且页面显示权威快照里的名字
+    // ——删掉 409 reread 或权威水合这条断言就会失败（页面会停留在初始名字）。
+    const 权威名字 = '后端 fixture 权威名';
+    let getResume次数 = 0;
     await 安装BFF路由(page, {
       记录目录请求: () => {},
       登录尝试id: 'att-008',
+      请求拦截: ({ path, method }) => {
+        if (path === '/api/v1/me/resume' && method === 'GET') getResume次数++;
+      },
       覆盖: {
         'PATCH /api/v1/me/resume/profile': () => ({
           status: 409,
           响应: { error: { type: 'version_conflict', message: '版本冲突' } },
         }),
+        // GET /me/resume：首次（init 水合）返回 fixture 简历；第二次（409 reread）返回权威名字
+        'GET /api/v1/me/resume': () => {
+          if (getResume次数 <= 1) {
+            return { status: 200, 响应: 信封(fixture简历) };
+          }
+          return {
+            status: 200,
+            响应: 信封({ ...fixture简历, profile: { ...fixture简历.profile, real_name: 权威名字 } }),
+          };
+        },
       },
     });
 
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
 
-    // 导航到我的简历 → 编辑姓名 → blur → 保存简历遇 409
-    // 409 路径会 GET 权威快照重新水合（处理写入错误 用 错误.权威简历）
+    // 导航到我的简历 → 编辑姓名 → blur → PATCH 409 → GET reread → 权威水合
     await page.goto('/#/resume');
     await page.waitForTimeout(500);
 
     const 姓名行 = page.getByText(标记.主体真名).first();
-    if (await 姓名行.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await 姓名行.click().catch(() => {});
-      const 输入框 = page.getByLabel('姓名');
-      if (await 输入框.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await 输入框.fill('改后名字');
-        await 输入框.blur();
-        await page.waitForTimeout(2000);
-      }
-    }
-    // 409 后页面仍正常渲染（权威快照水合），不崩溃
-    expect(page).toBeDefined();
+    await expect(姓名行).toBeVisible({ timeout: 5000 });
+    await 姓名行.click();
+    const 输入框 = page.getByLabel('姓名');
+    await expect(输入框).toBeVisible({ timeout: 3000 });
+    await 输入框.fill('改后名字');
+    await 输入框.blur();
+
+    // 409 reread：GET /me/resume 至少被调用 2 次（初始水合 + catch 权威快照）
+    await page.waitForTimeout(2000);
+    expect(getResume次数).toBeGreaterThanOrEqual(2);
+    // 权威快照水合后页面显示 reread 返回的名字（不是用户输入也不是初始 fixture 名字）
+    await expect(page.getByText(权威名字)).toBeVisible({ timeout: 10_000 });
   });
 
   test('503 同幂等键受控重试 @backend', async ({ page }) => {
-    let post次数 = 0;
-    let 幂等键首次: string | null = null;
+    // 覆盖 POST intentions：首次 503 operation_outcome_unknown，第二次 200。
+    // 驱动真实 UI 填表提交 → POST 503 → HTTP客户端 可受控重试 复用同一把 Idempotency-Key → 200。
+    // 断言至少 2 次 POST 且两次 Idempotency-Key 相同——删掉 503 重试或幂等键复用这条断言就会失败。
+    let post覆盖次数 = 0;
+    const 幂等键们: string[] = [];
     await 安装BFF路由(page, {
       记录目录请求: () => {},
       登录尝试id: 'att-009',
-      请求拦截: ({ path, method }) => {
-        if (path === '/api/v1/me/intentions' && method === 'POST') post次数++;
+      请求拦截: ({ path, method, headers }) => {
+        if (path === '/api/v1/me/intentions' && method === 'POST') {
+          幂等键们.push(headers['idempotency-key'] ?? '');
+        }
       },
-    });
-
-    // 覆盖 POST intentions：首次 503，第二次 200（断言复用同一把 Idempotency-Key）
-    await page.route('**/api/v1/me/intentions', async (route: Route) => {
-      const 请求 = route.request();
-      if (请求.method() === 'POST') {
-        const 键 = 请求.headers()['idempotency-key'] ?? null;
-        if (post次数 === 0) {
-          幂等键首次 = 键;
-          post次数++;
-          await route.fulfill({ status: 503, json: { error: { type: 'operation_outcome_unknown', message: '结果未知' } } });
-          return;
-        }
-        if (幂等键首次 && 键 === 幂等键首次) {
-          // 受控重试复用同一把 Idempotency-Key（HTTP客户端.test.ts 单测覆盖断言）
-        }
-        await route.fulfill({ status: 200, json: 信封(fixture意向列表.intentions[0]) });
-        return;
-      }
-      await route.fulfill({ status: 200, json: 信封(fixture意向列表) });
+      覆盖: {
+        'POST /api/v1/me/intentions': () => {
+          post覆盖次数++;
+          if (post覆盖次数 === 1) {
+            return { status: 503, 响应: { error: { type: 'operation_outcome_unknown', message: '结果未知' } } };
+          }
+          return { status: 200, 响应: 信封(fixture意向列表.intentions[0]) };
+        },
+      },
     });
 
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
 
-    // 503 受控重试逻辑在 HTTP客户端 层（可受控重试一次，复用同一把 Idempotency-Key）；
-    // E2E 层验证 route 安装 + 503 响应可达。真实 503 重试断言由 HTTP客户端.test.ts 单测覆盖。
-    expect(true).toBe(true);
+    await 填意向表单并提交(page);
+
+    // 503 受控重试：至少 2 次 POST（首次 503 + 重试 200）
+    await page.waitForTimeout(2000);
+    expect(幂等键们.length).toBeGreaterThanOrEqual(2);
+    // 复用同一把 Idempotency-Key（HTTP客户端 可受控重试 用同一个 init）
+    expect(幂等键们[0]).toBe(幂等键们[1]);
+    expect(幂等键们[0]).not.toBe('');
   });
 });
