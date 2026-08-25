@@ -12,15 +12,19 @@
 
 真实接口以 `~/agxp-monorepo` 中 `apps/recruitment-bff` 的公开 Mobile API 为准。前端只访问 Recruitment BFF，不直接访问内部 Recruitment Service。
 
-本次设计参考的后端契约基线为：
+本次设计当前可验证的后端契约基线为：
 
-- STG 集成分支：`integration/stg-recruitment-91a4e19@91a4e19`
-- 补充接口参考分支：`integration/recruitment-resume-files-s1@42e4b506`
-- OpenAPI：`apps/recruitment-bff/openapi/mobile-v1.yaml`
+- 后端仓库：`myaier/agxp-monorepo`
+- 验证分支：`verify/recruitment-stack-local`
+- 固定提交：`20792a73a080f187b60ae9458eda842b4eb0361d`
+- Mobile OpenAPI：`apps/recruitment-bff/openapi/mobile-v1.yaml`
+- 已接线 API 对齐设计：`docs/superpowers/specs/2026-08-25-recruitment-wired-api-alignment-design.md`
 - STG Origin：`https://recruitment-stg.agxp.ai`
 - 本地 BFF Origin：`http://127.0.0.1:8097`
 
-上述分支仍可能演进。实施时应再次对照目标 BFF 分支的 OpenAPI；如果契约不同，应先更新本设计或实施计划，不在映射层中猜测字段。
+原集成分支与补充接口分支均已退役，不再作为可复现基线。
+上述验证分支仍可能演进。实施时应以固定提交中的 OpenAPI 为准再次核对；如果契约不同，
+应先更新本设计或实施计划，不在映射层中猜测字段。
 
 ## 2. 目标
 

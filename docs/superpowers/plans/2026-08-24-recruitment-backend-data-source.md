@@ -71,7 +71,7 @@
 Run:
 
 ```bash
-git -C /Users/visionclaw/agxp-monorepo show integration/stg-recruitment-91a4e19:apps/recruitment-bff/openapi/mobile-v1.yaml \
+git -C /Users/visionclaw/agxp-monorepo show 20792a73a080f187b60ae9458eda842b4eb0361d:apps/recruitment-bff/openapi/mobile-v1.yaml \
   | rg '^  /api/v1/(auth/login-attempts|auth/logout|session|me:|me/roles/\{role\}|me/preferences/last-used-role|me/resume|me/intentions|recruiter/jobs|catalog/job-categories|catalog/locations|catalog/majors|catalog/industries|catalog/education-institutions)'
 ```
 

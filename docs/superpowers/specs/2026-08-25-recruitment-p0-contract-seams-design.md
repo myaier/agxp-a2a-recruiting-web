@@ -8,8 +8,10 @@
 
 **前端基线：** `origin/main@c982dda3770b0b85a99432fe04662106a59aea44`
 
-**跨域契约基线：** 后端仓库 commit `1d553a4e3` 的
-`docs/superpowers/specs/2026-08-25-recruitment-product-contract-foundation-design.md`
+**跨域契约基线：** 后端仓库 `myaier/agxp-monorepo` 的
+`verify/recruitment-stack-local@20792a73a080f187b60ae9458eda842b4eb0361d`；公开接口以该提交的
+`apps/recruitment-bff/openapi/mobile-v1.yaml` 为准，已接线语义参考
+`docs/superpowers/specs/2026-08-25-recruitment-wired-api-alignment-design.md`。
 
 ## 1. 背景与结论
 
@@ -253,7 +255,7 @@ git diff --check
   由根操作顺序派发已有域 action。
 - **过度拆分**：只为现有逻辑创建文件；单个一次性 helper 留在 owner 文件内，不建设通用 utilities 层。
 - **视觉漂移**：代码审阅检查无 CSS 文件，页面 DOM 只允许现有文字节点内容变化，不新增结构。
-- **前后端漂移**：本 Spec 绑定后端契约 commit `1d553a4e3`；后续计划若改变披露时点或阶段职责，必须先
+- **前后端漂移**：本 Spec 绑定后端契约 commit `20792a73a080f187b60ae9458eda842b4eb0361d`；后续计划若改变披露时点或阶段职责，必须先
   重新批准跨域 Spec。
 
 ## 10. 验收标准
