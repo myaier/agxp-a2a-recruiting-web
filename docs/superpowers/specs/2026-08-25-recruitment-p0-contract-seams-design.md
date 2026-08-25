@@ -155,13 +155,14 @@ P0 不改变加载、错误、stale response guard、revision 或水合时序。
 
 - Session/principal；
 - Catalog；
-- Resume 与 resume files；
+- 在线结构化 Resume；
 - Candidate intention；
-- Recruiter jobs；
-- 已存在的 evaluation/promotion/MatchCase/S1 方法。
+- Recruiter jobs。
 
 根 `HTTP招聘数据源` 是这些接口的交集，`创建HTTP招聘数据源` 只组合现有实现。P0 不给 P1–P7 新增空方法，
-也不改变 URL、body、DTO 校验、错误映射或幂等行为。
+也不改变 URL、body、DTO 校验、错误映射或幂等行为。当前前端基线还没有 resume files、
+evaluation/promotion、MatchCase 或 S1 数据源方法；这些能力即使后端已有，也必须留给对应后续计划接线，
+不能在 P0 创建空 facade 或占位实现。
 
 现有 `招聘数据源选择` 判别联合保持不变。Mock 演示读取和真实 HTTP 域继续明确分开；Backend 请求失败绝不
 回退演示数据。
