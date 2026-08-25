@@ -162,7 +162,7 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByLabel('预计毕业时间')).toHaveCount(0);
 
     await expect.poll(async () => {
-      const cache = await page.evaluate(() => JSON.parse(localStorage.getItem('AGXP求职筛选v1') ?? '{}'));
+      const cache = await page.evaluate(() => JSON.parse(localStorage.getItem('AGXP求职筛选v2:mock:stg:demo') ?? '{}'));
       return cache.筛选偏好?.求职类型;
     }).toEqual(['实习生']);
   });
@@ -186,7 +186,7 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByText('预计毕业时间')).toBeVisible();
     await expect(page.getByRole('button', { name: /\d{4} 年 \d{2} 月/ })).toBeVisible();
     const 存值 = await page.evaluate(
-      () => JSON.parse(localStorage.getItem('AGXP求职筛选v1') ?? '{}')?.筛选偏好?.毕业时间 ?? '',
+      () => JSON.parse(localStorage.getItem('AGXP求职筛选v2:mock:stg:demo') ?? '{}')?.筛选偏好?.毕业时间 ?? '',
     );
     expect(存值).toMatch(/^\d{4}-06$/);
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();

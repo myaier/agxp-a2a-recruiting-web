@@ -5,7 +5,7 @@
 // 大标题（分区名）+ 全屏编辑区。公司介绍这类长文用整屏 textarea，字数计在右下角。
 //
 // 与清单页的分工：清单页只读、只显示计数与摘要；本页读同一份 读资料() 起草稿，
-// 保存时 合成覆盖() 写回全局 + localStorage，然后返回清单页。
+// 保存时 合成覆盖() 写回全局，Provider 再写入当前账号的隔离缓存。
 // 直接返回（不点保存）就是丢弃改动 —— 草稿只活在本页的 useState 里。
 
 import { useRef, useState } from 'react';
@@ -34,7 +34,7 @@ import {
 import { use应用状态 } from '../状态/应用状态';
 
 /** 把用户选的图片压成 128×128 居中裁切的 JPEG dataURL —— 实现镜像 招聘名片 的
- *  压成头像，只是边长换成 LOGO 用的 128（约 6-12KB，localStorage 装得下） */
+ *  压成头像，只是边长换成 LOGO 用的 128（约 6-12KB） */
 function 压成LOGO(文件: File): Promise<string> {
   return 压图(文件, (图, 画布) => {
     const 边 = 128;
@@ -46,7 +46,7 @@ function 压成LOGO(文件: File): Promise<string> {
   });
 }
 
-/** 相册图压到长边 480（约 30-60KB/张）—— 两组各最多 3 张，写得进 localStorage */
+/** 相册图压到长边 480（约 30-60KB/张）—— 两组各最多 3 张，避免撑爆浏览器缓存 */
 function 压成相册图(文件: File): Promise<string> {
   return 压图(文件, (图, 画布) => {
     const 长边 = 480;

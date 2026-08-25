@@ -10,6 +10,14 @@ import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
 import { 从BFF简历 } from '../数据/后端映射';
 
+beforeEach(() => {
+  try {
+    globalThis.sessionStorage.clear();
+  } catch {
+    // 个别存储降级测试会故意提供不可用实现。
+  }
+});
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -142,7 +150,10 @@ describe('应用状态 reducer', () => {
     写入.mockClear();
     await userEvent.click(document.querySelector('button')!);
 
-    await waitFor(() => expect(写入).toHaveBeenCalledWith('AGXP企业飞书接入v1', '1'));
+    await waitFor(() => expect(写入).toHaveBeenCalledWith(
+      'AGXP账号资料v2:mock:stg:demo',
+      expect.stringContaining('"企业飞书已接入":true'),
+    ));
   });
 
   it('完整发布岗位时保留角色专属计薪单位和全部筛选字段', () => {
@@ -665,6 +676,44 @@ describe('应用状态提供者 目录水合与原型缓存隔离', () => {
     await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
     await 当前.操作.退出登录();
     expect([localStorage.getItem('AGXP简历v2'), localStorage.getItem('AGXP求职筛选v1')]).toEqual(before);
+  });
+
+  it('Backend 资料只读写当前 subject_id 的 sessionStorage 仓', async () => {
+    const 本地 = 创建Map存储();
+    const 会话 = 创建Map存储();
+    vi.stubGlobal('localStorage', 本地);
+    vi.stubGlobal('sessionStorage', 会话);
+    会话.setItem('AGXP账号资料v2:backend:stg:sub_A', JSON.stringify({
+      企业认证: { 姓名: 'A 用户', 公司: 'A 公司' },
+      求职头像: '章:1',
+    }));
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_A' });
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端 as unknown as HTTP招聘数据源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.状态.企业认证.姓名).toBe('A 用户'));
+    expect(当前.状态.求职头像).toBe('章:1');
+    expect(本地.setItem.mock.calls.some(([key]) => String(key).startsWith('AGXP账号资料v2:backend:'))).toBe(false);
+  });
+
+  it('同一 Provider 切换主体时只水合新账号资料', async () => {
+    const 会话 = 创建Map存储();
+    vi.stubGlobal('sessionStorage', 会话);
+    const 快照 = (姓名: string) => JSON.stringify({ 企业认证: { 姓名, 公司: `${姓名}公司` } });
+    会话.setItem('AGXP账号资料v2:backend:stg:sub_A', 快照('A'));
+    会话.setItem('AGXP账号资料v2:backend:stg:sub_B', 快照('B'));
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' })
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端 as unknown as HTTP招聘数据源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.状态.企业认证.姓名).toBe('A'));
+    await 当前.操作.完成手机登录('1234');
+    await waitFor(() => expect(当前.状态.企业认证.姓名).toBe('B'));
+    expect(当前.状态.资料缓存范围键).toBe('AGXP账号资料v2:backend:stg:sub_B');
   });
 });
 

@@ -107,10 +107,11 @@ Backend 模式不预取全量目录。选择器（城市 / 学校 / 职位 / 行
 
 ### Mock / Backend 本地缓存隔离
 
-- Mock 模式写 `AGXP简历v2` / `AGXP求职筛选v1` 等原型 localStorage 键。
-- Backend 模式不读写这些 Mock 原型键：支持域只认服务端权威，写回 Mock 缓存会污染
-  Backend 会话，退出后也留在本地覆盖下次 Mock 装载。
-- `stg` 与 `local` 的 Backend 草稿 key 各自带环境前缀，互不恢复引用。
+- Mock 只有一个 `demo` 账号；简历、引导答案和资料快照在 `localStorage` 中按
+  `mock + 后端环境 + demo` 分仓。旧全局键会在成功迁移后删除。
+- Backend 已接线的简历/意向/岗位只认服务端权威，不写浏览器持久副本。
+- 头像、公司资料等尚未接服务端的字段，Backend 只保留在当前标签页的 `sessionStorage`，
+  按 `backend + stg/local + subject_id` 分仓；切账号或退出后页面立即清空上一个主体的资料。
 - 退出登录 / 401 清空后端目录缓存，避免下个会话复用上个会话的目录页。
 
 ### 数据源边界 E2E

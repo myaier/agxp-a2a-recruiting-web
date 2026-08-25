@@ -25,7 +25,6 @@ import {
   企业消息列表 as 企业消息种子,
 } from '../数据/企业端模拟数据';
 import type {
-  公司自述覆盖,
   简历经历段,
   简历教育段,
   简历证书,
@@ -79,6 +78,17 @@ import type { BFF主体 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
+import type { 后端环境 } from '../配置/运行配置';
+import {
+  账号存储键,
+  写资料缓存,
+  读资料缓存,
+  资料缓存键,
+  迁移旧资料缓存,
+  type 资料缓存快照,
+  type 资料缓存存储,
+  type 资料缓存范围,
+} from '../数据/资料缓存';
 import { 轻提示 } from '../组件/轻提示';
 import type { 应用操作, 后端状态, 后端操作依赖 } from './后端/类型';
 import { 创建会话操作, 水合角色数据 } from './后端/会话操作';
@@ -129,6 +139,8 @@ export interface 状态 extends 候选资料状态, 组织岗位状态, 隐私�
   当前Tab: 底部Tab;
   企业子视图: '在谈' | '推荐';
   企业Tab: '人才' | '消息' | '我的';
+  /** 当前页面资料已从哪个账号仓水合；写入前必须与当前主体一致。 */
+  资料缓存范围键: string;
 }
 
 export type 动作 =
@@ -156,10 +168,12 @@ export type 动作 =
   | { 型: '企业看全部在谈'; 档: 看什么档 }
   | { 型: '接触推荐候选'; 编号: string }
   | { 型: '发布岗位'; 岗: 在招岗位 }
+  | { 型: '水合账号资料'; 范围键: string; 快照: 资料缓存快照 }
+  | { 型: '清账号资料' }
   | { 型: '切身份'; 到: '求职者' | '招聘方' };
 
 /** 简历切片的持久化键。结构变更时 bump 版本号，旧缓存直接弃用 */
-const 简历存储键 = 'AGXP简历v2';
+const 旧简历存储键 = 'AGXP简历v2';
 
 interface 简历快照 {
   经历: 简历经历段[];
@@ -175,9 +189,10 @@ interface 简历快照 {
   作品集链接?: string;
 }
 
-function 读简历缓存(): 简历快照 | null {
+function 读简历缓存(存储: 资料缓存存储 | null, 存储键: string): 简历快照 | null {
+  if (!存储) return null;
   try {
-    const 原文 = localStorage.getItem(简历存储键);
+    const 原文 = 存储.getItem(存储键);
     if (!原文) return null;
     const 值 = JSON.parse(原文);
     if (!Array.isArray(值?.经历) || !Array.isArray(值?.教育)) return null;
@@ -197,51 +212,7 @@ function 读简历缓存(): 简历快照 | null {
   }
 }
 
-const 简历缓存 = 读简历缓存();
-
-/** 公司自述持久化：企业端改完，候选端的公司主页要立刻是新的 */
-const 公司自述存储键 = 'AGXP公司自述v1';
-
-/** 招聘头像持久化：256px JPEG dataURL（约 20-40KB），刷新后不丢 */
-const 招聘头像存储键 = 'AGXP招聘头像v1';
-
-function 读招聘头像缓存(): string | null {
-  try {
-    const 值 = localStorage.getItem(招聘头像存储键);
-    return 值 && 值.startsWith('data:image/') ? 值 : null;
-  } catch {
-    return null;
-  }
-}
-
-/** 公司 LOGO 持久化：128px JPEG dataURL（约 6-12KB），实现镜像 招聘头像 */
-const 公司LOGO存储键 = 'AGXP公司LOGOv1';
-
-function 读公司LOGO缓存(): string | null {
-  try {
-    const 值 = localStorage.getItem(公司LOGO存储键);
-    return 值 && 值.startsWith('data:image/') ? 值 : null;
-  } catch {
-    return null;
-  }
-}
-
-/** 求职头像持久化：dataURL（同招聘头像 256px JPEG）或虚拟纪念章 '章:N' */
-const 求职头像存储键 = 'AGXP求职头像v1';
-
-function 读求职头像缓存(): string | null {
-  try {
-    const 值 = localStorage.getItem(求职头像存储键);
-    // 两种合法形态：真实照片的 dataURL / 虚拟纪念章编号（章:1 … 章:4）
-    return 值 && (值.startsWith('data:image/') || 值.startsWith('章:')) ? 值 : null;
-  } catch {
-    return null;
-  }
-}
-
-/** 企业认证持久化：认证页填的姓名/公司，刷新后不能退回默认值 */
-const 企业认证存储键 = 'AGXP企业认证v1';
-const 求职筛选存储键 = 'AGXP求职筛选v1';
+const 旧求职筛选存储键 = 'AGXP求职筛选v1';
 
 /**
  * 兼容读取：作品集链接原来存在求职筛选缓存的 筛选偏好.作品集链接 里
@@ -249,9 +220,10 @@ const 求职筛选存储键 = 'AGXP求职筛选v1';
  * 已经填过的用户不能因为这次搬家丢数据，所以旧键还要读一次。
  * 必须在 读求职筛选缓存 把这个键删掉之前取值，故单独一个函数、模块加载时先跑。
  */
-function 读旧作品集链接(): string {
+function 读旧作品集链接(存储: 资料缓存存储 | null, 存储键: string): string {
+  if (!存储) return '';
   try {
-    const 原文 = localStorage.getItem(求职筛选存储键);
+    const 原文 = 存储.getItem(存储键);
     if (!原文) return '';
     const 值 = JSON.parse(原文);
     const 链接 = 值?.筛选偏好?.作品集链接;
@@ -261,11 +233,10 @@ function 读旧作品集链接(): string {
   }
 }
 
-const 旧缓存作品集链接 = 读旧作品集链接();
-
-function 读求职筛选缓存(): 状态['引导预填'] {
+function 读求职筛选缓存(存储: 资料缓存存储 | null, 存储键: string): 状态['引导预填'] {
+  if (!存储) return null;
   try {
-    const 原文 = localStorage.getItem(求职筛选存储键);
+    const 原文 = 存储.getItem(存储键);
     if (!原文) return null;
     const 值 = JSON.parse(原文);
     if (!Array.isArray(值?.城市们) || !Array.isArray(值?.职位)) return null;
@@ -278,42 +249,6 @@ function 读求职筛选缓存(): 状态['引导预填'] {
         delete 值.薪资;
       }
     }
-    return 值;
-  } catch {
-    return null;
-  }
-}
-
-function 读企业认证缓存(): { 姓名: string; 公司: string; 职务?: string } | null {
-  try {
-    const 原文 = localStorage.getItem(企业认证存储键);
-    if (!原文) return null;
-    const 值 = JSON.parse(原文);
-    if (typeof 值?.姓名 !== 'string' || typeof 值?.公司 !== 'string') return null;
-    return 值;
-  } catch {
-    return null;
-  }
-}
-
-/** 飞书接入态持久化：扫完码离开这屏再回来，不能又变回「未接入」*/
-const 飞书接入存储键 = 'AGXP飞书接入v1';
-const 企业飞书接入存储键 = 'AGXP企业飞书接入v1';
-
-function 读飞书接入缓存(): boolean {
-  try {
-    return localStorage.getItem(飞书接入存储键) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function 读公司自述缓存(): 公司自述覆盖 | null {
-  try {
-    const 原文 = localStorage.getItem(公司自述存储键);
-    if (!原文) return null;
-    const 值 = JSON.parse(原文);
-    if (!Array.isArray(值?.简介)) return null;
     return 值;
   } catch {
     return null;
@@ -367,6 +302,26 @@ const 基本信息初始: 基本信息 = {
   真名: '沈亦舟',
   开始工作年: '2017',
   身份: '在职',
+};
+
+const 演示账号资料: 资料缓存快照 = {
+  公司自述: null,
+  企业认证: { 姓名: '邵铭', 公司: '云衢科技', 职务: '技术 VP' },
+  招聘头像: null,
+  公司LOGO: null,
+  求职头像: null,
+  飞书已接入: false,
+  企业飞书已接入: false,
+};
+
+const 空账号资料: 资料缓存快照 = {
+  公司自述: null,
+  企业认证: { 姓名: '', 公司: '', 职务: '' },
+  招聘头像: null,
+  公司LOGO: null,
+  求职头像: null,
+  飞书已接入: false,
+  企业飞书已接入: false,
 };
 
 /** 初始推荐池：静态种子 + 给每个在招岗位补足到至少 2 个（用起步推荐模板克隆，
@@ -449,39 +404,27 @@ export const 初始状态: 状态 = {
     只接受与意向匹配的接触: true,
     允许平台用我的数据改进匹配: true,
   },
-  简历经历: 简历缓存?.经历 ?? 简历经历初始,
-  简历教育: 简历缓存?.教育 ?? 简历教育初始,
-  简历技能: 简历缓存?.技能 ?? 简历技能初始,
-  个人优势: 简历缓存?.个人优势 ?? 个人优势文本,
-  // 简历快照优先；没有才回落到旧的求职筛选缓存（老用户填过的那条）
-  简历作品集链接: 简历缓存?.作品集链接 ?? 旧缓存作品集链接,
-  简历证书: 简历缓存?.证书 ?? 简历证书初始,
+  简历经历: 简历经历初始,
+  简历教育: 简历教育初始,
+  简历技能: 简历技能初始,
+  个人优势: 个人优势文本,
+  简历作品集链接: '',
+  简历证书: 简历证书初始,
   // 用展开合并而不是 `?? 基本信息初始`：`??` 只兜住「整个 基本信息 缺失」，
   // 兜不住「对象在但少了某个字段」。存档形状会随版本漂移（键名 AGXP简历v2 的 v2
   // 就是漂过一次的证据），而下游是直接取值不设防的 ——
   // 问AI代理.tsx:37 的 真名.charAt(0)、我的简历.tsx:43 的 真名.trim()，
   // 少一个 真名 就整屏白掉。2026-08-21 全流程爬测用缺字段的存档实测复现过。
   // 修在读存档这道口子上，下游那些取值点就不用各自打补丁。
-  基本信息: { ...基本信息初始, ...(简历缓存?.基本信息 ?? {}) },
+  基本信息: 基本信息初始,
   不感兴趣岗位: [],
   收藏候选: [],
   不合适候选: {},
   企业披露策略: 企业披露策略初始,
-  公司自述: 读公司自述缓存(),
-  简历文件名: 简历缓存?.文件名 ?? '沈亦舟_简历_2026.pdf',
-  引导预填: 读求职筛选缓存(),
-  飞书已接入: 读飞书接入缓存(),
-  企业飞书已接入: (() => {
-    try {
-      return localStorage.getItem(企业飞书接入存储键) === '1';
-    } catch {
-      return false;
-    }
-  })(),
-  企业认证: 读企业认证缓存() ?? { 姓名: '邵铭', 公司: '云衢科技', 职务: '技术 VP' },
-  招聘头像: 读招聘头像缓存(),
-  公司LOGO: 读公司LOGO缓存(),
-  求职头像: 读求职头像缓存(),
+  ...演示账号资料,
+  资料缓存范围键: '',
+  简历文件名: '沈亦舟_简历_2026.pdf',
+  引导预填: null,
   企业设置开关: {
     允许代理自动发起接触: true,
     允许平台用岗位数据改进匹配: true,
@@ -498,6 +441,8 @@ export const 初始状态: 状态 = {
  */
 const 后端种子状态: 状态 = {
   ...初始状态,
+  ...空账号资料,
+  资料缓存范围键: '',
   求职意向表: [],
   当前意向: '',
   岗位列表: [],
@@ -663,6 +608,11 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
         企业在谈看什么: 动作.档,
       };
 
+    case '水合账号资料':
+      return { ...旧, ...动作.快照, 资料缓存范围键: 动作.范围键 };
+    case '清账号资料':
+      return { ...旧, ...空账号资料, 资料缓存范围键: '' };
+
     // 让AI代理去聊（标注 2026-08-18 17:42）：这位候选真的进「在谈」列表，
     // 并把子视图切到在谈让用户看到 —— 镜像求职端「委托入谈」的闭环。
     // 同时写 发现推荐.已接触推荐 与 MatchCase.企业候选列表，保留在根跨域编排。
@@ -784,12 +734,70 @@ interface 应用状态值 {
 
 const 上下文 = createContext<应用状态值 | null>(null);
 
+function 安全取存储(类型: 'local' | 'session'): 资料缓存存储 | null {
+  try {
+    return 类型 === 'local' ? globalThis.localStorage : globalThis.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function 演示范围(环境: 后端环境): 资料缓存范围 {
+  // Mock 没有真实登录主体，产品上只有这一个演示账号。
+  return { 模式: 'mock', 环境, 账号: 'demo' };
+}
+
+function 写入后删旧键(存储: 资料缓存存储 | null, 新键: string, 旧键: string, 值: unknown): void {
+  if (!存储) return;
+  try {
+    存储.setItem(新键, JSON.stringify(值));
+    存储.removeItem(旧键);
+  } catch {
+    // 写新仓失败时保留旧键，不做丢数据迁移。
+  }
+}
+
+function 创建初始状态(源: 招聘数据源选择): 状态 {
+  if (源.模式 === 'backend') return { ...后端种子状态 };
+  const 存储 = 安全取存储('local');
+  const 范围 = 演示范围(源.后端环境 ?? 'stg');
+  const 简历键 = 账号存储键('简历v3', 范围);
+  const 筛选键 = 账号存储键('求职筛选v2', 范围);
+  let 简历缓存 = 读简历缓存(存储, 简历键);
+  if (!简历缓存) {
+    简历缓存 = 读简历缓存(存储, 旧简历存储键);
+    if (简历缓存) 写入后删旧键(存储, 简历键, 旧简历存储键, 简历缓存);
+  }
+  let 旧作品集链接 = '';
+  let 引导预填 = 读求职筛选缓存(存储, 筛选键);
+  if (!引导预填) {
+    旧作品集链接 = 读旧作品集链接(存储, 旧求职筛选存储键);
+    引导预填 = 读求职筛选缓存(存储, 旧求职筛选存储键);
+    if (引导预填) 写入后删旧键(存储, 筛选键, 旧求职筛选存储键, 引导预填);
+  }
+  const 资料缓存 = { ...演示账号资料, ...迁移旧资料缓存(存储, 范围), ...读资料缓存(存储, 范围) };
+  return {
+    ...初始状态,
+    ...资料缓存,
+    资料缓存范围键: 资料缓存键(范围),
+    简历经历: 简历缓存?.经历 ?? 简历经历初始,
+    简历教育: 简历缓存?.教育 ?? 简历教育初始,
+    简历技能: 简历缓存?.技能 ?? 简历技能初始,
+    个人优势: 简历缓存?.个人优势 ?? 个人优势文本,
+    简历作品集链接: 简历缓存?.作品集链接 ?? 旧作品集链接,
+    简历证书: 简历缓存?.证书 ?? 简历证书初始,
+    基本信息: { ...基本信息初始, ...(简历缓存?.基本信息 ?? {}) },
+    简历文件名: 简历缓存?.文件名 ?? '沈亦舟_简历_2026.pdf',
+    引导预填,
+  };
+}
+
 export function 应用状态提供者({ children, 数据源 }: { children?: ReactNode; 数据源?: 招聘数据源选择 }) {
   const 源 = 数据源 ?? 招聘数据;
   const 是后端 = 源.模式 === 'backend';
   const 后端 = 是后端 ? 源.后端 : null;
-  const 初始 = 是后端 ? 后端种子状态 : 初始状态;
-  const [状态, 派发] = useReducer(归约, 初始);
+  const 环境 = 源.后端环境 ?? 'stg';
+  const [状态, 派发] = useReducer(归约, 源, 创建初始状态);
   const [后端状态, 设后端状态] = useState<后端状态>(() => ({
     初始化: 是后端 ? '进行中' : '跳过',
     已登录: false,
@@ -816,10 +824,14 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   // review-r2 R2-M-4：会话代际。登录/退出/401 清理时递增；目录请求捕获起始代际，
   // 401 到达时若代际已变（新会话），stale 401 被忽略，不清新会话。
   const 会话代际 = useRef(0);
+  const 本地存储 = 安全取存储('local');
+  const 会话存储 = 安全取存储('session');
+  const Mock范围 = useMemo(() => 演示范围(环境), [环境]);
+  const Mock简历键 = 账号存储键('简历v3', Mock范围);
+  const Mock筛选键 = 账号存储键('求职筛选v2', Mock范围);
 
-  // 持久化是状态提交后的副作用，不属于 reducer。分字段监听可避免每次任意派发都重写全部缓存。
-  // Task 2：Backend 模式不写 Mock 原型键（AGXP简历v2）—— 支持域只认服务端权威，
-  // 写回 Mock 缓存会让 Mock 种子污染 Backend 会话，退出后也留在本地覆盖下次 Mock 装载。
+  // 简历/引导只在 Mock 持久化，且按 Mock 环境 + demo 账号分仓。
+  // Backend 的已接域只认服务端权威，不制造第二份本地简历。
   useEffect(() => {
     if (是后端) return;
     const 快照: 简历快照 = {
@@ -833,7 +845,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       作品集链接: 状态.简历作品集链接,
     };
     try {
-      localStorage.setItem(简历存储键, JSON.stringify(快照));
+      本地存储?.setItem(Mock简历键, JSON.stringify(快照));
     } catch {
       // 隐私模式或空间不足时只保留本次会话状态
     }
@@ -847,79 +859,54 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     状态.简历文件名,
     状态.个人优势,
     状态.简历作品集链接,
+    Mock简历键,
+    本地存储,
   ]);
 
-  // Task 2：Backend 模式不写 Mock 原型键（AGXP求职筛选v1）—— 引导预填在 Backend 由
-  // onboarding 走服务端意向，不回写 Mock 字符串缓存。退出/401 后此键必须保持 Mock 原样。
   useEffect(() => {
     if (是后端) return;
     try {
-      if (状态.引导预填) localStorage.setItem(求职筛选存储键, JSON.stringify(状态.引导预填));
-      else localStorage.removeItem(求职筛选存储键);
+      if (状态.引导预填) 本地存储?.setItem(Mock筛选键, JSON.stringify(状态.引导预填));
+      else 本地存储?.removeItem(Mock筛选键);
     } catch {
       // 同上
     }
-  }, [是后端, 状态.引导预填]);
+  }, [是后端, 状态.引导预填, Mock筛选键, 本地存储]);
+
+  // Backend 主体建立后才能读它自己的会话仓。范围键随快照一起进 reducer，
+  // 使账号切换的中间 render 不会把 A 的状态写到 B 的键下。
+  const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
+  useEffect(() => {
+    if (!是后端) return;
+    if (!当前主体标识) {
+      派发({ 型: '清账号资料' });
+      return;
+    }
+    const 范围: 资料缓存范围 = { 模式: 'backend', 环境, 账号: 当前主体标识 };
+    const 快照 = { ...空账号资料, ...读资料缓存(会话存储, 范围) };
+    派发({ 型: '水合账号资料', 范围键: 资料缓存键(范围), 快照 });
+  }, [是后端, 环境, 当前主体标识, 会话存储]);
 
   useEffect(() => {
-    try {
-      if (状态.公司自述) localStorage.setItem(公司自述存储键, JSON.stringify(状态.公司自述));
-      else localStorage.removeItem(公司自述存储键);
-    } catch {
-      // 同上
-    }
-  }, [状态.公司自述]);
-
-  useEffect(() => {
-    try {
-      if (状态.求职头像 === null) localStorage.removeItem(求职头像存储键);
-      else localStorage.setItem(求职头像存储键, 状态.求职头像);
-    } catch {
-      // 同上
-    }
-  }, [状态.求职头像]);
-
-  useEffect(() => {
-    try {
-      if (状态.招聘头像 === null) localStorage.removeItem(招聘头像存储键);
-      else localStorage.setItem(招聘头像存储键, 状态.招聘头像);
-    } catch {
-      // 同上
-    }
-  }, [状态.招聘头像]);
-
-  useEffect(() => {
-    try {
-      if (状态.公司LOGO === null) localStorage.removeItem(公司LOGO存储键);
-      else localStorage.setItem(公司LOGO存储键, 状态.公司LOGO);
-    } catch {
-      // 同上
-    }
-  }, [状态.公司LOGO]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(企业认证存储键, JSON.stringify(状态.企业认证));
-    } catch {
-      // 同上
-    }
-  }, [状态.企业认证]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(飞书接入存储键, 状态.飞书已接入 ? '1' : '0');
-    } catch {
-      // 同上
-    }
-  }, [状态.飞书已接入]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(企业飞书接入存储键, 状态.企业飞书已接入 ? '1' : '0');
-    } catch {
-      // 同上
-    }
-  }, [状态.企业飞书已接入]);
+    const 范围: 资料缓存范围 | null = 是后端
+      ? (当前主体标识 ? { 模式: 'backend', 环境, 账号: 当前主体标识 } : null)
+      : Mock范围;
+    if (!范围 || 状态.资料缓存范围键 !== 资料缓存键(范围)) return;
+    const 快照: 资料缓存快照 = {
+      公司自述: 状态.公司自述,
+      企业认证: 状态.企业认证,
+      招聘头像: 状态.招聘头像,
+      公司LOGO: 状态.公司LOGO,
+      求职头像: 状态.求职头像,
+      飞书已接入: 状态.飞书已接入,
+      企业飞书已接入: 状态.企业飞书已接入,
+    };
+    写资料缓存(是后端 ? 会话存储 : 本地存储, 范围, 快照);
+  }, [
+    是后端, 环境, 当前主体标识, 会话存储, 本地存储, Mock范围,
+    状态.资料缓存范围键, 状态.公司自述, 状态.企业认证, 状态.招聘头像,
+    状态.公司LOGO, 状态.求职头像, 状态.飞书已接入, 状态.企业飞书已接入,
+  ]);
 
   // ── Backend 初始化：mount 时恢复会话一次；401 视为未登录，其他错误轻提示；均不回退 Mock ──
   // 已知边缘：水合/写入的 in-flight 代际守卫未实现（R3-I-1 延后）——
