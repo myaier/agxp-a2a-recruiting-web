@@ -32,6 +32,7 @@ const 简历经历初始 = [
 function render工作经历(选项: {
   数据源: 'backend' | 'mock';
   查询Taxonomy?: ReturnType<typeof vi.fn>;
+  查询Institution?: ReturnType<typeof vi.fn>;
 }) {
   mock应用状态 = {
     数据源模式: 选项.数据源,
@@ -40,7 +41,7 @@ function render工作经历(选项: {
         ? {
             查询Location: vi.fn(),
             查询Taxonomy: 选项.查询Taxonomy ?? vi.fn(),
-            查询Institution: vi.fn(),
+            查询Institution: 选项.查询Institution ?? vi.fn(),
           }
         : null,
     状态: {
@@ -172,5 +173,67 @@ describe('工作经历 行业弹层 Backend', () => {
     expect(存简历调用).toBeDefined();
     expect(存简历调用!.经历[0].行业).toBe('公募基金');
     expect(存简历调用!.经历[0].行业引用).toEqual({ id: 'ind_leaf', display_name: '公募基金' });
+  });
+});
+
+// review-r1 P1-3：教育编辑页 Backend 分支——学校/专业输入走目录查询，点候选才落引用，
+// 继续输入清引用，没点候选阻止保存。Mock 分支保持自由文本不变。
+describe('工作经历 教育编辑页 Backend', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+  });
+
+  it('Backend 教育编辑页：学校输入出候选→点候选落引用→继续输入清引用→无候选阻止保存（P1-3）', async () => {
+    const 查询Institution = vi.fn(async (_q: { q?: string }) => ({
+      items: [
+        {
+          id: 'inst_thu',
+          display_name: '清华大学',
+          location: { id: 'loc_bj', display_name: '北京', country_name: '中国' },
+          selectable: true,
+        },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { q?: string }) => {
+      if (query.q && query.q.includes('计算机')) {
+        return {
+          items: [{ id: 'tax_cs', display_name: '计算机科学与技术', parent_id: null, selectable: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy, 查询Institution });
+    const 用户 = userEvent.setup();
+    // 进入教育编辑页（新增）
+    await 用户.click(screen.getByText('添加教育经历'));
+    // 学校输入 → 候选出现（带副标题「北京 · 中国」）
+    await 用户.type(screen.getAllByPlaceholderText('必填')[0], '清华');
+    await waitFor(() => expect(查询Institution).toHaveBeenCalled());
+    await screen.findByText('北京 · 中国');
+    // 点候选 → 学校引用 已落
+    await 用户.click(screen.getByText('清华大学'));
+    // 专业输入 → 候选出现
+    const 专业输入 = screen.getAllByPlaceholderText('必填')[1];
+    await 用户.type(专业输入, '计算机');
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('majors', expect.objectContaining({ q: '计算机' })));
+    await screen.findByText('计算机科学与技术');
+    // 点候选 → 专业引用 已落
+    await 用户.click(screen.getByText('计算机科学与技术'));
+    // 完成回写：派发存简历里教育段带 学校引用 / 专业引用
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    const 派发 = mock应用状态.派发;
+    const 存简历调用 = 派发.mock.calls.find((c: unknown[]) => (c[0] as { 型?: string })?.型 === '存简历')?.[0] as {
+      教育: { 学校: string; 学校引用?: unknown; 专业: string; 专业引用?: unknown }[];
+    } | undefined;
+    expect(存简历调用).toBeDefined();
+    expect(存简历调用!.教育[0].学校).toBe('清华大学');
+    expect(存简历调用!.教育[0].学校引用).toEqual({ id: 'inst_thu', display_name: '清华大学' });
+    expect(存简历调用!.教育[0].专业).toBe('计算机科学与技术');
+    expect(存简历调用!.教育[0].专业引用).toEqual({ id: 'tax_cs', display_name: '计算机科学与技术' });
   });
 });

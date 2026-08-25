@@ -12,6 +12,8 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import 样式 from './工作经历.module.css';
+// review-r1 P1-3：教育编辑页 Backend 候选列表复用 入职引导 的候选行样式
+import 引导样式 from './入职引导.module.css';
 import 年月滚轮层 from '../组件/年月滚轮层';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 开关 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
@@ -22,8 +24,9 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { 规范化作品集链接, 校验作品集链接, 校验起止年月 } from '../流程/onboarding配置';
-import type { BFFTaxonomyItem } from '../数据/BFF契约';
+import type { BFFTaxonomyItem, BFFInstitutionItem } from '../数据/BFF契约';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
+import { 学校副标题 } from '../数据/目录选择';
 
 /** 一段工作经历。开始/结束用 input[type=month] 的 yyyy-MM 格式；结束 null = 至今 */
 /** 行业快捷片：点一下填入，省得手机上打字 */
@@ -404,6 +407,10 @@ export default function 工作经历() {
 }
 
 // ── 教育经历编辑页：学校 / 学历（快捷片）/ 专业 / 起止年月（滚轮）────
+// review-r1 P1-3：Backend 分支 学校/专业 输入走目录查询（与 毕业院校/选专业 同口径），
+// 点候选才落引用，继续输入清引用，没点候选阻止保存。Mock 分支保持自由文本不变。
+const 教育搜索防抖毫秒 = 250;
+
 function 教育编辑页({
   初始,
   取消,
@@ -415,6 +422,8 @@ function 教育编辑页({
   完成: (段: 简历教育段) => void;
   删除?: () => void;
 }) {
+  const { 数据源模式, 目录查询 } = use应用状态();
+  const 是后端 = 数据源模式 === 'backend';
   const [草稿, 设草稿] = useState<简历教育段>(
     初始 ?? {
       编号: `edu${Date.now()}`,
@@ -426,12 +435,83 @@ function 教育编辑页({
     }
   );
   const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
+  // Backend 学校候选 + 专业候选
+  const [学校候选, 设学校候选] = useState<BFFInstitutionItem[]>([]);
+  const [专业候选, 设专业候选] = useState<BFFTaxonomyItem[]>([]);
+  const 学校计时 = useRef(0);
+  const 专业计时 = useRef(0);
+  const 学校方法引用 = useRef(目录查询?.查询Institution);
+  学校方法引用.current = 目录查询?.查询Institution;
+  const 专业方法引用 = useRef(目录查询?.查询Taxonomy);
+  专业方法引用.current = 目录查询?.查询Taxonomy;
   // 毕业早于入学一定是滚错档：不拦住，这段教育会带着「2020.09 — 2018.06」一直存下去
   const 时间错误 = 校验起止年月(草稿.开始, 草稿.结束, '入学时间', '毕业时间');
   const 可完成 = 草稿.学校.trim() !== '' && 草稿.专业.trim() !== '' && !时间错误;
 
   const 改 = <K extends keyof 简历教育段>(键: K, 值: 简历教育段[K]) =>
     设草稿((旧) => ({ ...旧, [键]: 值 }));
+
+  // Backend 学校搜索：250ms debounce 后 查询Institution({ q })
+  useEffect(() => {
+    if (!是后端) return;
+    const 方法 = 学校方法引用.current;
+    const trimmed = 草稿.学校.trim();
+    if (!方法 || trimmed === '') {
+      设学校候选([]);
+      return;
+    }
+    window.clearTimeout(学校计时.current);
+    学校计时.current = window.setTimeout(async () => {
+      try {
+        const 页 = await 方法({ q: trimmed, limit: 20 });
+        设学校候选(页.items);
+      } catch {
+        设学校候选([]);
+      }
+    }, 教育搜索防抖毫秒);
+    return () => window.clearTimeout(学校计时.current);
+  }, [草稿.学校, 是后端]);
+
+  // Backend 专业搜索：250ms debounce 后 查询Taxonomy('majors', { q })
+  useEffect(() => {
+    if (!是后端) return;
+    const 方法 = 专业方法引用.current;
+    const trimmed = 草稿.专业.trim();
+    if (!方法 || trimmed === '') {
+      设专业候选([]);
+      return;
+    }
+    window.clearTimeout(专业计时.current);
+    专业计时.current = window.setTimeout(async () => {
+      try {
+        const 页 = await 方法('majors', { q: trimmed, limit: 20 });
+        设专业候选(页.items);
+      } catch {
+        设专业候选([]);
+      }
+    }, 教育搜索防抖毫秒);
+    return () => window.clearTimeout(专业计时.current);
+  }, [草稿.专业, 是后端]);
+
+  const 改学校 = (值: string) => {
+    改('学校', 值);
+    // 继续输入立即清除旧引用（只有点候选才落引用）
+    if (草稿.学校引用 !== undefined) 改('学校引用', undefined);
+  };
+  const 改专业 = (值: string) => {
+    改('专业', 值);
+    if (草稿.专业引用 !== undefined) 改('专业引用', undefined);
+  };
+  const 选学校候选 = (项: BFFInstitutionItem) => {
+    改('学校', 项.display_name);
+    改('学校引用', { id: 项.id, display_name: 项.display_name } as 目录选择值);
+    设学校候选([]);
+  };
+  const 选专业候选 = (项: BFFTaxonomyItem) => {
+    改('专业', 项.display_name);
+    改('专业引用', { id: 项.id, display_name: 项.display_name } as 目录选择值);
+    设专业候选([]);
+  };
 
   return (
     // 2026-08-24 全站选择风格统一（C1 定稿）：页底白底
@@ -447,6 +527,15 @@ function 教育编辑页({
               // 报错顺序也跟经历编辑页对齐：先必填、后时间，两页体感一致
               if (草稿.学校.trim() === '' || 草稿.专业.trim() === '') {
                 轻提示('学校、专业是必填的');
+                return;
+              }
+              // review-r1 P1-3：Backend 没点过候选 → 阻止保存
+              if (是后端 && 草稿.学校引用 === undefined) {
+                轻提示('请从候选学校中选择');
+                return;
+              }
+              if (是后端 && 草稿.专业引用 === undefined) {
+                轻提示('请从候选专业中选择');
                 return;
               }
               if (时间错误) {
@@ -468,8 +557,28 @@ function 教育编辑页({
             className={样式.条目输入}
             value={草稿.学校}
             placeholder="必填"
-            onChange={(事件) => 改('学校', 事件.target.value)}
+            onChange={(事件) => 改学校(事件.target.value)}
           />
+          {/* Backend 学校候选：学校名 + 「城市 · 国家」副行 */}
+          {是后端 && 学校候选.length > 0 ? (
+            <div className={引导样式.候选列表}>
+              {学校候选.map((项) => (
+                <button
+                  key={项.id}
+                  className={`${引导样式.候选行} 可点`}
+                  aria-label={项.display_name}
+                  onClick={() => 选学校候选(项)}
+                >
+                  <span>
+                    <span>{项.display_name}</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--最弱)', fontWeight: 400 }}>
+                      {学校副标题(项)}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className={样式.编辑条目}>
@@ -493,8 +602,23 @@ function 教育编辑页({
             className={样式.条目输入}
             value={草稿.专业}
             placeholder="必填"
-            onChange={(事件) => 改('专业', 事件.target.value)}
+            onChange={(事件) => 改专业(事件.target.value)}
           />
+          {/* Backend 专业候选 */}
+          {是后端 && 专业候选.length > 0 ? (
+            <div className={引导样式.候选列表}>
+              {专业候选.map((项) => (
+                <button
+                  key={项.id}
+                  className={`${引导样式.候选行} 可点`}
+                  aria-label={项.display_name}
+                  onClick={() => 选专业候选(项)}
+                >
+                  {项.display_name}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className={样式.编辑条目}>
