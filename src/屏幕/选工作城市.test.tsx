@@ -114,6 +114,37 @@ describe('选工作城市 Backend', () => {
       ),
     );
   });
+
+  // review-r3 R3-I-5：分组展开后分页加载更多——dedup 合并下一页
+  it('分组展开后加载更多追加第二页（R3-I-5）', async () => {
+    const 查询Location = vi.fn(async (query: { countryCode?: string; admin1Code?: string; cursor?: string }) => {
+      if (query.countryCode === 'CN' && query.admin1Code === '44' && !query.cursor) {
+        return {
+          items: [{ id: 'loc_gz', display_name: '广州市', country_code: 'CN', country_name: '中国', admin1_code: '44', admin1_name: '广东', timezone: 'Asia/Shanghai', population: 0 }],
+          nextCursor: 'gd_cur_1',
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.countryCode === 'CN' && query.admin1Code === '44' && query.cursor === 'gd_cur_1') {
+        return {
+          items: [{ id: 'loc_sz', display_name: '深圳市', country_code: 'CN', country_name: '中国', admin1_code: '44', admin1_name: '广东', timezone: 'Asia/Shanghai', population: 0 }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render城市页({ 数据源: 'backend', 查询Location });
+    const 用户 = userEvent.setup();
+    // 展开广东分组
+    await 用户.click(screen.getByText('广东'));
+    await screen.findByText('广州市');
+    // 点「加载更多」→ 追加第二页
+    const 加载更多 = await screen.findByRole('button', { name: '加载更多' });
+    await 用户.click(加载更多);
+    await screen.findByText('深圳市');
+    expect(screen.getByText('广州市')).toBeTruthy();
+  });
 });
 
 describe('选工作城市 Mock', () => {

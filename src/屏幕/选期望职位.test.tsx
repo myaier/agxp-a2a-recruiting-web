@@ -27,7 +27,7 @@ function render选期望职位(选项: {
   数据源: 'backend' | 'mock';
   来源?: '意向' | null;
   查询Taxonomy?: ReturnType<typeof vi.fn>;
-  引导预填?: { 城市们: string[]; 职位: string[]; 城市引用们?: unknown[] };
+  引导预填?: { 城市们: string[]; 职位: string[]; 城市引用们?: unknown[] } | null;
   意向草稿?: { 期望职位: string };
 }) {
   const 派发 = vi.fn();
@@ -42,7 +42,7 @@ function render选期望职位(选项: {
           }
         : null,
     状态: {
-      引导预填: 选项.引导预填 ?? { 城市们: ['上海'], 职位: [] },
+      引导预填: 选项.引导预填 === undefined ? { 城市们: ['上海'], 职位: [] } : 选项.引导预填,
       意向草稿: 选项.意向草稿 ?? { 期望职位: '' },
     },
     派发,
@@ -273,6 +273,100 @@ describe('选期望职位 Backend', () => {
     await screen.findByText('大类B');
     expect(screen.getByText('大类A')).toBeTruthy();
     expect(查询Taxonomy).toHaveBeenLastCalledWith('job-categories', expect.objectContaining({ cursor: 'root_cur_1' }));
+  });
+
+  // review-r3 R3-Minor-1：Backend 无引导预填时城市回落为空（不写 ['上海']），
+  // 否则会落一个无引用的「上海」字符串，看起来像选中但下一步按钮因缺 refs 仍禁用。
+  it('无引导预填时保存城市回落为空不是上海（R3-Minor-1）', async () => {
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [{ id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_tech') {
+        return {
+          items: [{ id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    const { 派发 } = render选期望职位({ 数据源: 'backend', 查询Taxonomy, 引导预填: null });
+    const 用户 = userEvent.setup();
+    await 用户.click(await screen.findByText('互联网/AI'));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ parentId: 'cat_tech' })));
+    await 用户.click(await screen.findByText('后端开发'));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({
+        型: '存引导预填',
+        城市们: [],
+        城市引用们: [],
+      }),
+    );
+  });
+
+  // review-r3 R3-I-8：子项加载更多在飞行中切大类 → 旧大类的第二页不覆盖新大类的子项
+  it('子项加载更多在飞行中切大类时旧页不覆盖新子项（R3-I-8）', async () => {
+    const { promise: 慢Promise, resolve: 慢Resolve } = deferredPromise<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>();
+    let 子项调用 = 0;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string }) => {
+      if (!query.parentId && !query.cursor) {
+        return {
+          items: [
+            { id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false },
+            { id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_a' && !query.cursor) {
+        子项调用 += 1;
+        return {
+          items: [{ id: 'job_a1', display_name: 'A岗位1', parent_id: 'cat_a', selectable: true }],
+          nextCursor: 'cat_a_cur_1',
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_a' && query.cursor === 'cat_a_cur_1') {
+        // 慢响应——测试控制 resolve 时机
+        return 慢Promise;
+      }
+      if (query.parentId === 'cat_b') {
+        return {
+          items: [{ id: 'job_b1', display_name: 'B岗位1', parent_id: 'cat_b', selectable: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render选期望职位({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    // 等 roots 加载（mount 预选大类A并预载 A岗位1）
+    await screen.findByText('A岗位1');
+    // 点 A 的「加载更多」——慢响应在飞行中
+    const 加载更多按钮 = screen.getAllByRole('button', { name: '加载更多' }).find((b) => b.closest(`.${(b.closest('div')?.className) ?? ''}`) !== null) ?? screen.getAllByRole('button', { name: '加载更多' })[0];
+    await 用户.click(加载更多按钮);
+    // 快速切到大类B
+    await 用户.click(screen.getByText('大类B'));
+    // B 的子项立刻出现
+    await screen.findByText('B岗位1');
+    // A 的慢响应到达——不应追加到 B 的子项
+    慢Resolve({
+      items: [{ id: 'job_a2', display_name: 'A岗位2（过期）', parent_id: 'cat_a', selectable: true }],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    });
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    // B 的子项仍在；A 的过期结果不出现
+    expect(screen.getByText('B岗位1')).toBeTruthy();
+    expect(screen.queryByText('A岗位2（过期）')).toBeNull();
   });
 });
 

@@ -57,7 +57,8 @@ export default function 选工作城市() {
   const { 词, 设词, 结果: 搜索结果项, 搜索中, 下一页游标: 搜索下一页, 加载中: 搜索加载中, 加载更多: 搜索加载更多 } = use城市搜索(
     是后端 ? 目录查询?.查询Location : undefined,
   );
-  const { 状态表, 展开集合, 切换展开 } = use城市分组(
+  // review-r3 R3-I-5：解构 加载更多——分组展开后每省可翻下一页（dedup 合并）
+  const { 状态表, 展开集合, 切换展开, 加载更多: 分组加载更多 } = use城市分组(
     是后端 ? 目录查询?.查询Location : undefined,
   );
 
@@ -206,6 +207,17 @@ export default function 选工作城市() {
                         <div className={样式.无结果}>加载中…</div>
                       ) : null}
                       {状态表[组.省]?.items.map((项) => 城市键后端(项, `${组.省}-${项.id}`))}
+                      {/* review-r3 R3-I-5：分组分页加载更多 */}
+                      {状态表[组.省]?.还有 ? (
+                        <button
+                          className="可点"
+                          onClick={() => 分组加载更多(组)}
+                          disabled={状态表[组.省]?.加载中}
+                          style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
+                        >
+                          {状态表[组.省]?.加载中 ? '加载中…' : '加载更多'}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>

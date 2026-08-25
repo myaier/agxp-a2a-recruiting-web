@@ -26,6 +26,7 @@ import { use应用状态 } from '../状态/应用状态';
 import { 职业分类表, 查大类 } from '../数据/职业分类';
 import { 必备技能池, 职位加分项池 } from '../数据/企业端模拟数据';
 import { use城市搜索 } from './城市查询钩子';
+import { 合并目录页 } from '../数据/目录选择';
 import type { 在招岗位 } from '../数据/类型';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
 import type { BFFTaxonomyItem } from '../数据/BFF契约';
@@ -634,13 +635,15 @@ function 职业分类层({
 // 左栏 roots，右栏当前 root 的子项；非 selectable 子项按 parentId 展开下一级（替换右栏），
 // selectable 叶子原子回调 选定（同时写 职位类别 字符串 + 类别引用）。
 // 复用 选期望职位.tsx 的 查询Taxonomy('job-categories') 形，但单选 + 弹层外壳。
+// review-r3 R3-I-5：root/child 分页（nextCursor + dedup load-more）；
+// review-r3 R3-I-6：导航代际守 stale——快速切大类时慢的旧子项不覆盖新的。
 function 职业分类层后端({
   查询Taxonomy,
   当前引用,
   选定,
   关闭,
 }: {
-  查询Taxonomy?: (kind: 'job-categories', query: { parentId?: string; q?: string; limit?: number }) => Promise<{ items: BFFTaxonomyItem[] }>;
+  查询Taxonomy?: (kind: 'job-categories', query: { parentId?: string; q?: string; cursor?: string; limit?: number }) => Promise<{ items: BFFTaxonomyItem[]; nextCursor: string | null; catalogVersion: string }>;
   当前引用: 目录选择值 | undefined;
   选定: (项: BFFTaxonomyItem) => void;
   关闭: () => void;
@@ -650,6 +653,15 @@ function 职业分类层后端({
   const [根项, 设根项] = useState<BFFTaxonomyItem[]>([]);
   const [当前根, 设当前根] = useState<BFFTaxonomyItem | null>(null);
   const [子项, 设子项] = useState<BFFTaxonomyItem[]>([]);
+  // review-r3 R3-I-5：分页游标 + 加载中状态
+  const [根游标, 设根游标] = useState<string | null>(null);
+  const [根加载中, 设根加载中] = useState(false);
+  const [子项游标, 设子项游标] = useState<string | null>(null);
+  const [子项加载中, 设子项加载中] = useState(false);
+  // review-r3 R3-I-6：导航代际守 stale；R3-I-8：当前根 ref
+  const 导航代际 = useRef(0);
+  const 当前根引用 = useRef(当前根);
+  当前根引用.current = 当前根;
 
   // mount：读 roots，默认选第一枚并预载其子项
   useEffect(() => {
@@ -659,33 +671,84 @@ function 职业分类层后端({
       try {
         const 页 = await 方法('job-categories', { limit: 50 });
         设根项(页.items);
-        if (页.items.length > 0) {
+        设根游标(页.nextCursor);
+        if (页.items.length > 0 && !当前根) {
           设当前根(页.items[0]);
+          const 本次 = ++导航代际.current;
           try {
             const 子页 = await 方法('job-categories', { parentId: 页.items[0].id, limit: 50 });
+            if (本次 !== 导航代际.current) return;
             设子项(子页.items);
+            设子项游标(子页.nextCursor);
           } catch {
+            if (本次 !== 导航代际.current) return;
             设子项([]);
+            设子项游标(null);
           }
         }
       } catch {
         设根项([]);
+        设根游标(null);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // review-r3 R3-I-5：根加载更多
+  const 根加载更多 = async () => {
+    if (根游标 === null || 根加载中) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    设根加载中(true);
+    try {
+      const 页 = await 方法('job-categories', { cursor: 根游标, limit: 50 });
+      设根项((旧) => 合并目录页(旧, 页.items));
+      设根游标(页.nextCursor);
+    } catch {
+      // 失败不动
+    } finally {
+      设根加载中(false);
+    }
+  };
+
+  // review-r3 R3-I-5/I-8：子项加载更多——导航代际 + 当前根双重守 stale
+  const 子项加载更多 = async () => {
+    if (子项游标 === null || 子项加载中 || !当前根) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    const 本次导航 = 导航代际.current;
+    const 目标根id = 当前根.id;
+    设子项加载中(true);
+    try {
+      const 页 = await 方法('job-categories', { parentId: 目标根id, cursor: 子项游标, limit: 50 });
+      if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+      设子项((旧) => 合并目录页(旧, 页.items));
+      设子项游标(页.nextCursor);
+    } catch {
+      if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+    } finally {
+      if (本次导航 === 导航代际.current && 当前根引用.current?.id === 目标根id) 设子项加载中(false);
+    }
+  };
+
   // 左栏点 root：加载它的子项到右栏
+  // review-r3 R3-I-6：导航代际守 stale——快速切大类时慢的旧子项不覆盖新的
   const 选根 = async (项: BFFTaxonomyItem) => {
     设当前根(项);
     设子项([]);
+    设子项游标(null);
     const 方法 = 方法引用.current;
     if (!方法) return;
+    const 本次 = ++导航代际.current;
     try {
       const 子页 = await 方法('job-categories', { parentId: 项.id, limit: 50 });
+      if (本次 !== 导航代际.current) return;
       设子项(子页.items);
+      设子项游标(子页.nextCursor);
     } catch {
+      if (本次 !== 导航代际.current) return;
       设子项([]);
+      设子项游标(null);
     }
   };
 
@@ -695,14 +758,20 @@ function 职业分类层后端({
     if (!项.selectable) {
       设当前根(项);
       设子项([]);
+      设子项游标(null);
       const 方法 = 方法引用.current;
       if (方法) {
+        const 本次 = ++导航代际.current;
         void (async () => {
           try {
             const 子页 = await 方法('job-categories', { parentId: 项.id, limit: 50 });
+            if (本次 !== 导航代际.current) return;
             设子项(子页.items);
+            设子项游标(子页.nextCursor);
           } catch {
+            if (本次 !== 导航代际.current) return;
             设子项([]);
+            设子项游标(null);
           }
         })();
       }
@@ -727,6 +796,17 @@ function 职业分类层后端({
               {项.display_name}
             </button>
           ))}
+          {/* review-r3 R3-I-5：根分页加载更多 */}
+          {根游标 !== null ? (
+            <button
+              className="可点"
+              onClick={根加载更多}
+              disabled={根加载中}
+              style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
+            >
+              {根加载中 ? '加载中…' : '加载更多'}
+            </button>
+          ) : null}
         </div>
         {/* 右栏：当前 root 的子项；非 selectable 继续展开，selectable 叶子原子选定 */}
         <div className={`${样式.小类栏} 滚动区`}>
@@ -741,6 +821,17 @@ function 职业分类层后端({
               {(当前引用?.id ?? '') === 项.id ? <span className={样式.小类勾}>✓</span> : null}
             </button>
           ))}
+          {/* review-r3 R3-I-5：子项分页加载更多 */}
+          {子项游标 !== null ? (
+            <button
+              className="可点"
+              onClick={子项加载更多}
+              disabled={子项加载中}
+              style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
+            >
+              {子项加载中 ? '加载中…' : '加载更多'}
+            </button>
+          ) : null}
         </div>
       </div>
     </弹层框架>

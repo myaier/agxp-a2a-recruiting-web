@@ -174,6 +174,46 @@ describe('工作经历 行业弹层 Backend', () => {
     expect(存简历调用!.经历[0].行业).toBe('公募基金');
     expect(存简历调用!.经历[0].行业引用).toEqual({ id: 'ind_leaf', display_name: '公募基金' });
   });
+
+  // review-r3 R3-I-5：行业弹层 root 分页——roots 返回 nextCursor 时可加载更多，dedup 合并
+  it('行业弹层根分页加载更多追加第二页（R3-I-5）', async () => {
+    let 根调用 = 0;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        根调用 += 1;
+        if (根调用 === 1) {
+          return {
+            items: [{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false }],
+            nextCursor: 'ind_cur_1',
+            catalogVersion: 'v2',
+          };
+        }
+        return {
+          items: [{ id: 'ind_tech', display_name: '互联网', parent_id: null, selectable: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'ind_fin') {
+        return {
+          items: [{ id: 'ind_pay', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await screen.findByText('金融科技');
+    // 点「加载更多」→ 追加第二页
+    const 加载更多 = await screen.findByRole('button', { name: '加载更多' });
+    await 用户.click(加载更多);
+    await screen.findByText('互联网');
+    expect(screen.getByText('金融科技')).toBeTruthy();
+  });
 });
 
 // review-r3 R3-Minor-2：Backend 行业弹层去掉自由文本输入——它看起来可保存但完成守卫要求引用，

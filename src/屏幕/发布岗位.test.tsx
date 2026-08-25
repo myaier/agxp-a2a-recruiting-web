@@ -226,3 +226,119 @@ describe('发布岗位页 Backend 选择器', () => {
     expect(await screen.findByText('请从候选城市中选择')).toBeTruthy();
   });
 });
+
+// ── review-r3 R3-I-5：职业分类层后端 分页 + R3-I-6 导航代际守 stale ──
+describe('发布岗位页 Backend 职业分类层分页与代际（review-r3）', () => {
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock进企业主壳.mockClear();
+    mock替换跳转.mockClear();
+    mock跳转.mockClear();
+    mock更新岗位.mockClear();
+    mock发布岗位.mockClear();
+    mock删除岗位.mockClear();
+    mock发布岗位.mockResolvedValue(undefined);
+  });
+
+  it('根分页加载更多追加第二页（R3-I-5）', async () => {
+    let 根调用 = 0;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        根调用 += 1;
+        if (根调用 === 1) {
+          return {
+            items: [{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false }],
+            nextCursor: 'root_cur_1',
+            catalogVersion: 'v2',
+          };
+        }
+        return {
+          items: [{ id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_a') {
+        return {
+          items: [{ id: 'job_a1', display_name: 'A岗位1', parent_id: 'cat_a', selectable: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    置Backend应用状态(查询Taxonomy, vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })));
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job']}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    // 打开职位类别弹层
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    // 等 roots 加载
+    await screen.findByText('大类A');
+    // 点「加载更多」→ 追加第二页
+    const 加载更多 = await screen.findByRole('button', { name: '加载更多' });
+    await 用户.click(加载更多);
+    await screen.findByText('大类B');
+    expect(screen.getByText('大类A')).toBeTruthy();
+  });
+
+  it('快速切大类时旧响应不覆盖新子项（R3-I-6）', async () => {
+    const { promise: 慢Promise, resolve: 慢Resolve } = deferred<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>();
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [
+            { id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false },
+            { id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_a') {
+        return 慢Promise;
+      }
+      if (query.parentId === 'cat_b') {
+        return {
+          items: [{ id: 'job_b1', display_name: 'B岗位1', parent_id: 'cat_b', selectable: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    置Backend应用状态(查询Taxonomy, vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })));
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job']}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    // 打开职位类别弹层
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    // 等 roots 加载（mount 预选大类A并触发其子项请求，但 A 的响应是慢的）
+    await screen.findByText('大类A');
+    // 快速切到大类B
+    await 用户.click(screen.getByText('大类B'));
+    // B 的子项立刻出现
+    await screen.findByText('B岗位1');
+    // A 的慢响应到达——不应覆盖 B 的子项
+    慢Resolve({
+      items: [{ id: 'job_a1', display_name: 'A岗位1（过期）', parent_id: 'cat_a', selectable: true }],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    });
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    expect(screen.getByText('B岗位1')).toBeTruthy();
+    expect(screen.queryByText('A岗位1（过期）')).toBeNull();
+  });
+});

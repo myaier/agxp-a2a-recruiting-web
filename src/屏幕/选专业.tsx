@@ -50,15 +50,16 @@ export default function 选专业() {
     if (!是后端) return;
     const 方法 = 方法引用.current;
     const trimmed = 词;
+    // review-r3 R3-I-7：每次查询词变化都重置分页状态（候选/游标/加载），避免新词带着旧游标请求
+    代际.current += 1;
+    设候选项([]);
+    设下一页游标(null);
+    设加载中(false);
     if (!方法 || trimmed === '') {
-      // review-r2 R2-M-2：清空输入时也递增代际，让在飞的慢响应成为 stale（不覆盖空结果）
-      代际.current += 1;
-      设候选项([]);
-      设下一页游标(null);
       return;
     }
     window.clearTimeout(计时.current);
-    const 本次 = ++代际.current;
+    const 本次 = 代际.current;
     计时.current = window.setTimeout(async () => {
       try {
         const 页 = await 方法('majors', { q: trimmed, limit: 20 });

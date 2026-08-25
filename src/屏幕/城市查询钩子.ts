@@ -142,18 +142,20 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
   useEffect(() => {
     const 方法 = 方法引用.current;
     const trimmed = 词.trim();
+    // review-r3 R3-I-7：每次查询词变化都重置分页状态（结果/游标/加载），避免新词带着旧游标
+    // 请求（旧 cursor 配新 q）或旧 loading 残留。代际递增让在飞的旧响应成为 stale。
+    代际.current += 1;
+    设结果([]);
+    设下一页游标(null);
+    设加载中(false);
     if (!方法 || trimmed === '') {
-      // review-r2 R2-M-2：清空输入时也递增代际，让在飞的慢响应成为 stale
-      代际.current += 1;
-      设结果([]);
-      设下一页游标(null);
       设搜索中(false);
       return;
     }
     设搜索中(true);
     window.clearTimeout(计时.current);
-    // 新搜索递增代际；closure 捕获本次的 代际，resolve 时比对 代际.current
-    const 本次 = ++代际.current;
+    // closure 捕获本次的 代际，resolve 时比对 代际.current
+    const 本次 = 代际.current;
     计时.current = window.setTimeout(async () => {
       try {
         const 页 = await 方法({ q: trimmed });

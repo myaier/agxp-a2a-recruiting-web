@@ -68,6 +68,9 @@ export default function 选期望职位() {
   const 导航代际 = useRef(0);
   const 方法引用 = useRef(目录查询?.查询Taxonomy);
   方法引用.current = 目录查询?.查询Taxonomy;
+  // review-r3 R3-I-8：当前根 ref——子项加载更多提交前确认当前根仍是发起请求的那个根
+  const 当前根引用 = useRef(当前根);
+  当前根引用.current = 当前根;
 
   // review-r2 R2-M-1：分页游标 + 加载中状态（root / child / search）
   const [根游标, 设根游标] = useState<string | null>(null);
@@ -116,15 +119,14 @@ export default function 选期望职位() {
     if (!是后端) return;
     const 方法 = 方法引用.current;
     if (!方法) return;
-    if (搜词 === '') {
-      设搜索结果项([]);
-      设搜索游标(null);
-      // review-r2 R2-M-2：清空时递增代际，使在飞请求成为 stale
-      搜索代际.current += 1;
-      return;
-    }
+    // review-r3 R3-I-7：每次查询词变化都重置分页状态（结果/游标/加载），避免新词带着旧游标请求
+    搜索代际.current += 1;
+    设搜索结果项([]);
+    设搜索游标(null);
+    设搜索加载中(false);
+    if (搜词 === '') return;
     window.clearTimeout(计时.current);
-    const 本次 = ++搜索代际.current;
+    const 本次 = 搜索代际.current;
     计时.current = window.setTimeout(async () => {
       try {
         const 页 = await 方法('job-categories', { q: 搜词, limit: 50 });
@@ -158,19 +160,25 @@ export default function 选期望职位() {
   };
 
   // review-r2 R2-M-1：子项加载更多
+  // review-r3 R3-I-8：提交前确认导航代际未变且当前根仍是发起请求的那个根——
+  // 否则 A 的第二页会 append 到 B 的子项里并替换 B 的游标。
   const 子项加载更多 = async () => {
     if (子项游标 === null || 子项加载中 || !当前根) return;
     const 方法 = 方法引用.current;
     if (!方法) return;
+    const 本次导航 = 导航代际.current;
+    const 目标根id = 当前根.id;
     设子项加载中(true);
     try {
-      const 页 = await 方法('job-categories', { parentId: 当前根.id, cursor: 子项游标, limit: 50 });
+      const 页 = await 方法('job-categories', { parentId: 目标根id, cursor: 子项游标, limit: 50 });
+      if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
       设子项((旧) => 合并目录页(旧, 页.items));
       设子项游标(页.nextCursor);
     } catch {
-      // 失败不动
+      if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+      // 失败不动，用户可再点
     } finally {
-      设子项加载中(false);
+      if (本次导航 === 导航代际.current && 当前根引用.current?.id === 目标根id) 设子项加载中(false);
     }
   };
 
@@ -282,7 +290,9 @@ export default function 选期望职位() {
       } else {
         派发({
           型: '存引导预填',
-          城市们: 全局.引导预填?.城市们 ?? ['上海'],
+          // review-r3 R3-Minor-1：Backend 无引导预填时城市回落为空（不写 ['上海']），
+          // 否则会落一个无引用的「上海」字符串，看起来像选中但下一步按钮因缺 refs 仍禁用。
+          城市们: 全局.引导预填?.城市们 ?? [],
           职位: 已选引用.map((条) => 条.display_name),
           城市引用们: 全局.引导预填?.城市引用们 ?? [],
           职位引用们: 已选引用.map((条) => ({ id: 条.id, display_name: 条.display_name })),

@@ -783,6 +783,13 @@ function 经历编辑页({
   const [行业子项表, 设行业子项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
   // 非 selectable 子项展开后的孙项（>2 级 taxonomy）
   const [行业孙项表, 设行业孙项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
+  // review-r3 R3-I-5：分页游标 + 加载中状态（root / child / grandchild 三层各自记游标）
+  const [行业根游标, 设行业根游标] = useState<string | null>(null);
+  const [行业根加载中, 设行业根加载中] = useState(false);
+  const [行业子项游标表, 设行业子项游标表] = useState<Record<string, string | null>>({});
+  const [行业子项加载中表, 设行业子项加载中表] = useState<Record<string, boolean>>({});
+  const [行业孙项游标表, 设行业孙项游标表] = useState<Record<string, string | null>>({});
+  const [行业孙项加载中表, 设行业孙项加载中表] = useState<Record<string, boolean>>({});
   const 行业方法引用 = useRef(目录查询?.查询Taxonomy);
   行业方法引用.current = 目录查询?.查询Taxonomy;
   // 年月滚轮打开在哪一侧：null = 没开
@@ -797,6 +804,7 @@ function 经历编辑页({
     设草稿((旧) => ({ ...旧, [键名]: 值 }));
 
   // Backend：弹层打开时加载行业 roots；点根项再按 parentId 取子项
+  // review-r3 R3-I-5：保留 nextCursor 以支持分页加载更多
   useEffect(() => {
     if (!是后端 || !行业层) return;
     const 方法 = 行业方法引用.current;
@@ -805,11 +813,30 @@ function 经历编辑页({
       try {
         const 页 = await 方法('industries', { limit: 50 });
         设行业根项(页.items);
+        设行业根游标(页.nextCursor);
       } catch {
         设行业根项([]);
+        设行业根游标(null);
       }
     })();
   }, [是后端, 行业层]);
+
+  // review-r3 R3-I-5：root 加载更多
+  const 行业根加载更多 = async () => {
+    if (行业根游标 === null || 行业根加载中) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    设行业根加载中(true);
+    try {
+      const 页 = await 方法('industries', { cursor: 行业根游标, limit: 50 });
+      设行业根项((旧) => 合并目录页(旧, 页.items));
+      设行业根游标(页.nextCursor);
+    } catch {
+      // 失败不动，用户可再点
+    } finally {
+      设行业根加载中(false);
+    }
+  };
 
   const 展开行业根 = async (项: BFFTaxonomyItem) => {
     if (行业子项表[项.id]) return;
@@ -818,8 +845,28 @@ function 经历编辑页({
     try {
       const 子页 = await 方法('industries', { parentId: 项.id, limit: 50 });
       设行业子项表((旧) => ({ ...旧, [项.id]: 子页.items }));
+      设行业子项游标表((旧) => ({ ...旧, [项.id]: 子页.nextCursor }));
     } catch {
       设行业子项表((旧) => ({ ...旧, [项.id]: [] }));
+      设行业子项游标表((旧) => ({ ...旧, [项.id]: null }));
+    }
+  };
+
+  // review-r3 R3-I-5：child 加载更多（按 parentId 记游标）
+  const 行业子项加载更多 = async (根id: string) => {
+    const 游标 = 行业子项游标表[根id];
+    if (游标 === null || 行业子项加载中表[根id]) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    设行业子项加载中表((旧) => ({ ...旧, [根id]: true }));
+    try {
+      const 页 = await 方法('industries', { parentId: 根id, cursor: 游标, limit: 50 });
+      设行业子项表((旧) => ({ ...旧, [根id]: 合并目录页(旧[根id] ?? [], 页.items) }));
+      设行业子项游标表((旧) => ({ ...旧, [根id]: 页.nextCursor }));
+    } catch {
+      // 失败不动
+    } finally {
+      设行业子项加载中表((旧) => ({ ...旧, [根id]: false }));
     }
   };
 
@@ -831,8 +878,28 @@ function 经历编辑页({
     try {
       const 孙页 = await 方法('industries', { parentId: 项.id, limit: 50 });
       设行业孙项表((旧) => ({ ...旧, [项.id]: 孙页.items }));
+      设行业孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
     } catch {
       设行业孙项表((旧) => ({ ...旧, [项.id]: [] }));
+      设行业孙项游标表((旧) => ({ ...旧, [项.id]: null }));
+    }
+  };
+
+  // review-r3 R3-I-5：grandchild 加载更多（按 parentId 记游标）
+  const 行业孙项加载更多 = async (子id: string) => {
+    const 游标 = 行业孙项游标表[子id];
+    if (游标 === null || 行业孙项加载中表[子id]) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    设行业孙项加载中表((旧) => ({ ...旧, [子id]: true }));
+    try {
+      const 页 = await 方法('industries', { parentId: 子id, cursor: 游标, limit: 50 });
+      设行业孙项表((旧) => ({ ...旧, [子id]: 合并目录页(旧[子id] ?? [], 页.items) }));
+      设行业孙项游标表((旧) => ({ ...旧, [子id]: 页.nextCursor }));
+    } catch {
+      // 失败不动
+    } finally {
+      设行业孙项加载中表((旧) => ({ ...旧, [子id]: false }));
     }
   };
 
@@ -1068,7 +1135,8 @@ function 经历编辑页({
             <div className={样式.选择层标题}>所属行业</div>
             <div className={`${样式.选择层列表} 滚动区`}>
               {是后端
-                ? 行业根项.flatMap((根) => {
+                ? [
+                    ...行业根项.flatMap((根) => {
                     const 子项 = 行业子项表[根.id];
                     const 节点们: ReactNode[] = [
                       <button
@@ -1126,11 +1194,52 @@ function 经历编辑页({
                               </button>,
                             );
                           }
+                          // review-r3 R3-I-5：孙项分页加载更多
+                          if (行业孙项游标表[子.id] !== undefined && 行业孙项游标表[子.id] !== null) {
+                            节点们.push(
+                              <button
+                                key={`${子.id}-更多孙`}
+                                className="可点"
+                                onClick={() => 行业孙项加载更多(子.id)}
+                                disabled={行业孙项加载中表[子.id]}
+                                style={{ paddingLeft: 52, color: 'var(--最弱)' }}
+                              >
+                                {行业孙项加载中表[子.id] ? '加载中…' : '加载更多'}
+                              </button>,
+                            );
+                          }
                         }
+                      }
+                      // review-r3 R3-I-5：子项分页加载更多
+                      if (行业子项游标表[根.id] !== undefined && 行业子项游标表[根.id] !== null) {
+                        节点们.push(
+                          <button
+                            key={`${根.id}-更多子`}
+                            className="可点"
+                            onClick={() => 行业子项加载更多(根.id)}
+                            disabled={行业子项加载中表[根.id]}
+                            style={{ paddingLeft: 28, color: 'var(--最弱)' }}
+                          >
+                            {行业子项加载中表[根.id] ? '加载中…' : '加载更多'}
+                          </button>,
+                        );
                       }
                     }
                     return 节点们;
-                  })
+                  }),
+                    // review-r3 R3-I-5：root 分页加载更多
+                    行业根游标 !== null ? (
+                      <button
+                        key="行业根-更多"
+                        className="可点"
+                        onClick={行业根加载更多}
+                        disabled={行业根加载中}
+                        style={{ color: 'var(--最弱)' }}
+                      >
+                        {行业根加载中 ? '加载中…' : '加载更多'}
+                      </button>
+                    ) : null,
+                  ]
                 : 常见行业.map((行业) => (
                     <button
                       key={行业}
