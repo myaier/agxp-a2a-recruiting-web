@@ -111,28 +111,6 @@ type Taxonomy类别 = 'job-categories' | 'industries' | 'majors';
 type 目录项 = { id: string; display_name: string; selectable?: boolean };
 type 写入步骤 = () => Promise<unknown>;
 
-function 去重目录(项们: BFF目录引用[]): BFF目录引用[] {
-  const seen = new Set<string>();
-  const out: BFF目录引用[] = [];
-  for (const 项 of 项们) {
-    if (seen.has(项.id)) continue;
-    seen.add(项.id);
-    out.push(项);
-  }
-  return out;
-}
-
-/** 从已存简历快照里抽出已引用过的目录项，作为保存简历时映射写入 body 的最小目录。 */
-function 从快照建目录(previous: BFF简历): 目录索引 {
-  return {
-    职位类别: [],
-    地点: [],
-    行业: 去重目录(previous.experiences.map((e) => e.industry)),
-    院校: 去重目录(previous.educations.map((e) => e.institution)),
-    专业: 去重目录(previous.educations.map((e) => e.major)),
-  };
-}
-
 function 修订etag(revision: number): string {
   return `"${revision}"`;
 }
@@ -259,6 +237,9 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
   }
 
   /** 目录里没有这个显示名时，解析并补进目录，供后续 精确目录ID 命中。兼容期 legacy：Task 7 删除。 */
+  // 保存简历改用表单目录引用后 确保目录 不再有调用点；tsc noUnusedLocals 仍要求它被读取，
+  // 这里标记为预期错误，Task 7 删除 确保目录/解析目录项 时一并移除。
+  // @ts-expect-error Task 7 删除：保存简历改用表单引用后 确保目录 不再有调用点
   async function 确保目录(目录: 目录索引, kind: keyof 目录索引, 显示名: string): Promise<void> {
     if (显示名 === '') return;
     if (目录[kind].some((项) => 项.display_name === 显示名)) return;
@@ -307,19 +288,9 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
    */
   async function 保存简历(next: 页面简历写入, previous: BFF简历): Promise<页面简历快照> {
     const 旧页面 = 从BFF简历(previous);
-    const 目录 = 从快照建目录(previous);
 
-    // 目录精确解析：对所有经历/教育条目的显示名（行业 / 院校 / 专业）都跑一遍，
-    // 不只新条目。否则改了一条已有经历的 行业 显示名（previous 快照里只有旧引用），
-    // 转经历写入 里的 精确目录ID 会找不到新名而抛错，阻塞整次保存。
-    // 确保目录 已按 kind:displayName 缓存（目录里已有同名项则 no-op），重复解析是幂等的。
-    for (const 段 of next.经历) {
-      await 确保目录(目录, '行业', 段.行业);
-    }
-    for (const 段 of next.教育) {
-      await 确保目录(目录, '院校', 段.学校);
-      await 确保目录(目录, '专业', 段.专业);
-    }
+    // 简历写入直接用表单里选择器保存的目录引用（行业引用/学校引用/专业引用）取 id，
+    // 不再保存前从 previous 快照建目录 + 确保目录 反查。缺引用的完整条目由 必需引用 抛客户端校验错。
 
     const 步骤: 写入步骤[] = [];
 
@@ -353,7 +324,7 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
         continue;
       }
       if (!旧Page) {
-        const body = 转经历写入(段, 目录);
+        const body = 转经历写入(段);
         // 新建经历的 POST 响应带回服务端分配的 id；用这个 id 再 POST 它的项目。
         // 旧实现只 POST 经历主体，项目 diff 仅对已有经历跑 → 新建带项目时项目丢失。
         步骤.push(async () => {
@@ -371,7 +342,7 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
         });
       } else if (JSON.stringify(旧Page) !== JSON.stringify(段)) {
         // 经历段变化：PATCH 经历主体，再 diff 嵌套项目
-        const body = 转经历写入(段, 目录);
+        const body = 转经历写入(段);
         步骤.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/experiences/${段.编号}`, method: 'PATCH', body, ifMatch: 修订etag(previous.experiences.find((e) => e.id === 段.编号)!.revision) }).then((r) => r.result));
         步骤.push(...项目步骤(段, previous.experiences.find((e) => e.id === 段.编号)!));
       }
@@ -394,10 +365,10 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
         continue;
       }
       if (!旧Page) {
-        const body = 转教育写入(段, 目录);
+        const body = 转教育写入(段);
         步骤.push(() => 请求<BFF简历条目变更>({ path: '/api/v1/me/resume/educations', method: 'POST', body, 幂等: true }).then((r) => r.result));
       } else if (JSON.stringify(旧Page) !== JSON.stringify(段)) {
-        const body = 转教育写入(段, 目录);
+        const body = 转教育写入(段);
         步骤.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/educations/${段.编号}`, method: 'PATCH', body, ifMatch: 修订etag(previous.educations.find((e) => e.id === 段.编号)!.revision) }).then((r) => r.result));
       }
     }

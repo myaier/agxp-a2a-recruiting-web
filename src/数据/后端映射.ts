@@ -26,6 +26,7 @@ import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 简�
 import type {
   页面简历快照,
   目录索引,
+  目录选择值,
   意向草稿型,
   意向映射上下文,
   首次意向输入,
@@ -41,11 +42,21 @@ const 后端到性别 = { male: '男', female: '女' } as const;
 /**
  * 精确目录匹配：要求 display_name 完全相等且唯一。
  * 不是唯一一条就抛错——前缀 / 模糊匹配会让「产品」误命中「产品经理」，写错行业/职位类别。
+ * 仅用于意向/岗位写入（Tasks 6–7 迁移）；简历写入已改用 必需引用 直接取选择器保存的引用。
  */
 export function 精确目录ID(items: BFF目录引用[], 显示名: string, 类别: string): string {
   const 命中 = items.filter((项) => 项.display_name === 显示名);
   if (命中.length !== 1) throw new Error(`无法唯一匹配${类别}：${显示名}`);
   return 命中[0].id;
+}
+
+/**
+ * 简历写入用：取选择器保存的目录引用 id。没有引用说明用户手输了显示名而没从候选选，
+ * 直接抛客户端校验错——不回退按显示名反查目录（那是意向/岗位的 legacy 路径）。
+ */
+function 必需引用(value: 目录选择值 | undefined, label: string): string {
+  if (!value) throw new Error(`请从候选${label}中选择`);
+  return value.id;
 }
 
 /** 后端 null → 页面可选空字符串；数值年份/月份 → 字符串。 */
@@ -68,12 +79,14 @@ function 转项目(项: BFF项目): 简历项目 {
   return { 编号: 项.id, 名称: 项.name, 角色: 项.role, 结果: 项.result };
 }
 
-/** Experience 的 id 直接作页面 编号；industry.display_name → 行业；projects 保留真实 ID。 */
+/** Experience 的 id 直接作页面 编号；industry.display_name → 行业，industry 本体作 行业引用；projects 保留真实 ID。 */
 function 转经历(段: BFF经历): 简历经历段 {
   const 经历: 简历经历段 = {
     编号: 段.id,
     公司: 段.company,
     行业: 段.industry.display_name,
+    // owner DTO 的 industry 即 BFF目录引用，写入时直接用 引用.id，不再反查目录
+    行业引用: 段.industry,
     职位: 段.title,
     开始: 段.start_month,
     结束: 段.end_month,
@@ -86,13 +99,16 @@ function 转经历(段: BFF经历): 简历经历段 {
   return 经历;
 }
 
-/** Education 的 institution/major.display_name 映射学校/专业并保留真实 ID。 */
+/** Education 的 institution/major.display_name 映射学校/专业并保留真实 ID；owner DTO 本体作引用。 */
 function 转教育(段: BFF教育): 简历教育段 {
   return {
     编号: 段.id,
     学校: 段.institution.display_name,
+    // owner DTO 的 institution/major 即 BFF目录引用，写入时直接用 引用.id，不再反查目录
+    学校引用: 段.institution,
     学历: 段.degree,
     专业: 段.major.display_name,
+    专业引用: 段.major,
     开始: 段.start_month,
     // 简历教育段.结束 是必填字符串；后端 null（至今在读）落成空串
     结束: 段.end_month ?? '',
@@ -137,11 +153,11 @@ export function 转资料写入(基本: 基本信息): BFF资料写入 {
   };
 }
 
-/** 页面经历段 → 后端经历写入 body；行业显示名经 目录.行业 精确匹配回 industry_id。 */
-export function 转经历写入(段: 简历经历段, 目录: 目录索引): BFF经历写入 {
+/** 页面经历段 → 后端经历写入 body；行业引用.id 直接作 industry_id，不再按显示名反查目录。 */
+export function 转经历写入(段: 简历经历段): BFF经历写入 {
   const 写入: BFF经历写入 = {
     company: 段.公司,
-    industry_id: 精确目录ID(目录.行业, 段.行业, '行业'),
+    industry_id: 必需引用(段.行业引用, '行业'),
     title: 段.职位,
     start_month: 段.开始,
     end_month: 段.结束,
@@ -152,14 +168,15 @@ export function 转经历写入(段: 简历经历段, 目录: 目录索引): BFF
   return 写入;
 }
 
-/** 页面教育段 → 后端教育写入 body；院校/专业显示名经目录精确匹配回 id。 */
-export function 转教育写入(段: 简历教育段, 目录: 目录索引): BFF教育写入 {
+/** 页面教育段 → 后端教育写入 body；学校/专业引用.id 直接作 id，不再按显示名反查目录。 */
+export function 转教育写入(段: 简历教育段): BFF教育写入 {
   return {
-    institution_id: 精确目录ID(目录.院校, 段.学校, '院校'),
+    institution_id: 必需引用(段.学校引用, '学校'),
+    major_id: 必需引用(段.专业引用, '专业'),
     degree: 段.学历,
-    major_id: 精确目录ID(目录.专业, 段.专业, '专业'),
     start_month: 段.开始,
-    end_month: 段.结束 === '' ? null : 段.结束,
+    // 简历教育段.结束 是必填字符串；'' 表示至今，写入时落 null
+    end_month: 段.结束 || null,
   };
 }
 

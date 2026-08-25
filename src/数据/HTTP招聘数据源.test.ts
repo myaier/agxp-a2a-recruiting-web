@@ -93,7 +93,7 @@ describe('HTTP 招聘数据源', () => {
     const 新页面 = {
       ...旧页面,
       经历: [...旧页面.经历, {
-        编号: 'local-new', 公司: '新公司', 行业: '互联网', 职位: '工程师', 开始: '2022-01', 结束: null, 内容: '', 隐藏: false,
+        编号: 'local-new', 公司: '新公司', 行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' }, 职位: '工程师', 开始: '2022-01', 结束: null, 内容: '', 隐藏: false,
         项目: [{ 编号: 'p-local', 名称: '网关重建', 角色: '负责人', 结果: '降 82%' }],
       }],
     };
@@ -109,15 +109,11 @@ describe('HTTP 招聘数据源', () => {
     expect(调用[调用.length - 1]).toEqual(['GET', '/api/v1/me/resume']);
   });
 
-  // F8：已有经历的 行业 显示名改成 previous 快照里没有的新名时，
-  // 目录解析仍要跑（?q= 搜索补进目录），否则 转经历写入 的 精确目录ID 找不到新名而抛错。
-  it('已有经历改行业显示名为新名时仍解析目录并 PATCH 新 industry_id', async () => {
+  // Task 5：已有经历改行业时，用户在候选选择器里选了新候选（设置 行业引用）；
+  // 写入直接用 引用.id PATCH，不再按新显示名反查目录。手输显示名不会改 ID。
+  it('已有经历改行业用保存的引用 ID 直接 PATCH，不查目录', async () => {
     const 请求Mock = vi.fn(async (options: BFF请求选项) => {
-      const path = options.path;
-      if (path.startsWith('/api/v1/catalog/industries') && path.includes('q=')) {
-        return { result: { items: [{ id: 'fin_1', display_name: '金融', selectable: true }], next_cursor: null, catalog_version: 'v1' }, etag: null, requestId: 'r-q' };
-      }
-      if (options.method === 'PATCH' && path === '/api/v1/me/resume/experiences/exp_1') {
+      if (options.method === 'PATCH' && options.path === '/api/v1/me/resume/experiences/exp_1') {
         return { result: BFF简历样本, etag: null, requestId: 'r-patch' };
       }
       return { result: BFF简历样本, etag: null, requestId: 'r1' };
@@ -125,16 +121,30 @@ describe('HTTP 招聘数据源', () => {
     const 请求 = 请求Mock as unknown as 请求函数;
     const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
-    const 新页面 = { ...旧页面, 经历: 旧页面.经历.map((段) => 段.编号 === 'exp_1' ? { ...段, 行业: '金融' } : 段) };
+    const 新页面 = { ...旧页面, 经历: 旧页面.经历.map((段) => 段.编号 === 'exp_1' ? { ...段, 行业: '金融', 行业引用: { id: 'fin_1', display_name: '金融' } } : 段) };
     await expect(source.保存简历(新页面, BFF简历样本)).resolves.toBeDefined();
-    const 目录搜索 = 请求Mock.mock.calls
+    // 没有任何 /catalog/ 请求
+    const 目录请求 = 请求Mock.mock.calls
       .map(([o]) => o as BFF请求选项)
-      .find((o) => o.path.startsWith('/api/v1/catalog/industries') && o.path.includes('q='));
-    expect(目录搜索).toBeDefined();
+      .find((o) => o.path.includes('/catalog/'));
+    expect(目录请求).toBeUndefined();
     const patch = 请求Mock.mock.calls
       .map(([o]) => o as BFF请求选项)
       .find((o) => o.method === 'PATCH' && o.path === '/api/v1/me/resume/experiences/exp_1');
     expect(patch?.body).toMatchObject({ industry_id: 'fin_1' });
+  });
+
+  // Task 5：完整但缺候选引用的教育段（手输学校）在构建写入 body 时就抛错，
+  // 不会触发任何 /catalog/ 反查请求。
+  it('没有候选引用时不按显示名反查', async () => {
+    const resume = 从BFF简历(BFF简历样本);
+    const previous = BFF简历样本;
+    const 请求Mock = vi.fn(async () => ({ result: BFF简历样本, etag: null, requestId: 'r1' }));
+    const 请求 = 请求Mock as unknown as 请求函数;
+    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    await expect(source.保存简历({ ...resume, 教育: [{ ...resume.教育[0], 学校: '手输学校', 学校引用: undefined }] }, previous))
+      .rejects.toThrow('请从候选学校中选择');
+    expect(请求).not.toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining('/catalog/') }));
   });
 
   // F5：onboarding 中间屏会建一条 学校/专业 空白的教育段，BFF 写入需要目录精确 ID
@@ -153,7 +163,7 @@ describe('HTTP 招聘数据源', () => {
     const 旧页面 = 从BFF简历(BFF简历样本);
     // previous 服务端只有 edu_1；next 额外两条：一条空白学校（onboarding 刚建）、一条完整新教育
     const 空白教育 = { 编号: 'edu_local_blank', 学校: '', 学历: '本科', 专业: '', 开始: '', 结束: '' };
-    const 完整教育 = { 编号: 'edu_local_full', 学校: '复旦大学', 学历: '本科', 专业: '计算机科学', 开始: '2017-09', 结束: '2021-06' };
+    const 完整教育 = { 编号: 'edu_local_full', 学校: '复旦大学', 学校引用: { id: 'ins_1', display_name: '复旦大学' }, 学历: '本科', 专业: '计算机科学', 专业引用: { id: 'tax_m', display_name: '计算机科学' }, 开始: '2017-09', 结束: '2021-06' };
     const 新页面 = { ...旧页面, 教育: [...旧页面.教育, 空白教育, 完整教育] };
     const 出 = await source.保存简历(新页面, BFF简历样本);
     const 调用 = 请求Mock.mock.calls.map(([o]) => [o.method ?? 'GET', o.path]);
@@ -185,7 +195,7 @@ describe('HTTP 招聘数据源', () => {
     const 旧页面 = 从BFF简历(BFF简历样本);
     // 学校+专业已填但开始月份为空（onboarding 选专业后、选时间前的中间态）
     const 空开始教育 = { 编号: 'edu_local_no_start', 学校: '复旦大学', 学历: '本科', 专业: '计算机科学', 开始: '', 结束: '' };
-    const 完整教育 = { 编号: 'edu_local_full', 学校: '复旦大学', 学历: '本科', 专业: '计算机科学', 开始: '2017-09', 结束: '2021-06' };
+    const 完整教育 = { 编号: 'edu_local_full', 学校: '复旦大学', 学校引用: { id: 'ins_1', display_name: '复旦大学' }, 学历: '本科', 专业: '计算机科学', 专业引用: { id: 'tax_m', display_name: '计算机科学' }, 开始: '2017-09', 结束: '2021-06' };
     const 新页面 = { ...旧页面, 教育: [...旧页面.教育, 空开始教育, 完整教育] };
     const 出 = await source.保存简历(新页面, BFF简历样本);
     // 教育只 POST 一次（空开始段被跳过，完整段才 POST）
@@ -217,7 +227,7 @@ describe('HTTP 招聘数据源', () => {
     const 新页面 = {
       ...旧页面,
       经历: [...旧页面.经历, {
-        编号: 'local-new', 公司: '新公司', 行业: '互联网', 职位: '工程师', 开始: '2022-01', 结束: null, 内容: '', 隐藏: false,
+        编号: 'local-new', 公司: '新公司', 行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' }, 职位: '工程师', 开始: '2022-01', 结束: null, 内容: '', 隐藏: false,
         项目: [{ 编号: 'p-local', 名称: '网关重建', 角色: '负责人', 结果: '降 82%' }],
       }],
     };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { 从BFF简历, 精确目录ID, 转资料写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿 } from './后端映射';
+import { 从BFF简历, 精确目录ID, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿 } from './后端映射';
 import { BFF意向样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 
 describe('候选人后端映射', () => {
@@ -16,6 +16,35 @@ describe('候选人后端映射', () => {
     expect(页面.教育[0].编号).toBe('edu_1');
     expect(页面.证书[0].编号).toBe('cert_1');
     expect(页面.服务端快照.aggregate_revision).toBe(9);
+    // BFF-hydrated 已有条目必须带上 owner DTO 的目录引用，写入时直接用引用.id，不再反查目录
+    expect(页面.经历[0].行业引用).toEqual({ id: 'tax_i', display_name: '互联网' });
+    expect(页面.教育[0].学校引用).toEqual({ id: 'ins_1', display_name: '复旦大学' });
+    expect(页面.教育[0].专业引用).toEqual({ id: 'tax_m', display_name: '计算机科学' });
+  });
+
+  // Task 5：简历写入直接使用表单目录引用，不再按显示名反查目录。
+  it('Education 直接使用选择时保存的 ID', () => {
+    expect(转教育写入({
+      编号: 'edu_local', 学校: '同名大学', 学校引用: { id: 'ins_cn', display_name: '同名大学' },
+      专业: '计算机科学', 专业引用: { id: 'maj_cs', display_name: '计算机科学' },
+      学历: '本科', 开始: '2020-09', 结束: '2024-06',
+    })).toMatchObject({ institution_id: 'ins_cn', major_id: 'maj_cs' });
+  });
+
+  it('Experience 直接使用选择时保存的行业引用 ID', () => {
+    expect(转经历写入({
+      编号: 'exp_local', 公司: '云衢', 行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' },
+      职位: '工程师', 开始: '2021-01', 结束: null, 内容: '平台', 隐藏: true,
+    })).toMatchObject({ industry_id: 'tax_i' });
+  });
+
+  it('没有候选引用时抛出请从候选选择，不反查目录', () => {
+    expect(() => 转教育写入({
+      编号: 'edu_local', 学校: '手输学校', 学历: '本科', 专业: '计算机科学', 开始: '2020-09', 结束: '2024-06',
+    })).toThrow('请从候选学校中选择');
+    expect(() => 转经历写入({
+      编号: 'exp_local', 公司: '云衢', 行业: '互联网', 职位: '工程师', 开始: '2021-01', 结束: null, 内容: '', 隐藏: false,
+    })).toThrow('请从候选行业中选择');
   });
 
   it('把页面 profile 转成闭合后端 body', () => {
