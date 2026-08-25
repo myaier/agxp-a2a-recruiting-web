@@ -230,6 +230,19 @@ describe('应用状态提供者 后端会话', () => {
     });
   });
 
+  it('应用操作公开 shape 在拆分后保持不变', () => {
+    function 探针() {
+      const { 操作 } = use应用状态();
+      return createElement('output', null, Object.keys(操作).sort().join('|'));
+    }
+    render(createElement(应用状态提供者, null, createElement(探针)));
+    expect(screen.getByText([
+      '保存个人优势', '保存首次意向', '保存意向', '保存简历', '删除岗位', '删除意向',
+      '切身份', '发布岗位', '完成手机登录', '开始手机登录', '归档岗位', '微信登录',
+      '更新岗位', '退出登录', '重开岗位',
+    ].sort().join('|'))).toBeTruthy();
+  });
+
   it('Backend 恢复会话与主体，角色完成后才派发切身份', async () => {
     const 后端 = 创建后端桩('candidate');
     const 后端源 = 后端 as unknown as HTTP招聘数据源;

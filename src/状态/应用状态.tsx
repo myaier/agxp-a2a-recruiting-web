@@ -86,16 +86,19 @@ import type {
   页面简历快照,
   页面意向快照,
   页面岗位快照,
-  页面简历写入,
-  首次意向输入,
   目录选择值,
 } from '../数据/招聘数据源类型';
-import type { BFF主体, BFF简历, BFFOwnerIntention, BFFOwnerJob, BFF角色 } from '../数据/BFF契约';
+import type { BFF主体, BFFOwnerIntention } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
-import { 从BFF简历, 从BFF意向草稿 } from '../数据/后端映射';
+import { 从BFF意向草稿 } from '../数据/后端映射';
 import { 轻提示 } from '../组件/轻提示';
+import type { 应用操作, 后端状态, 后端操作依赖 } from './后端/类型';
+import { 创建会话操作, 水合角色数据 } from './后端/会话操作';
+import { 创建候选操作 } from './后端/候选操作';
+import { 创建岗位操作 } from './后端/岗位操作';
+import { 创建目录查询 } from './后端/目录查询';
 
 /**
  * 企业侧归档一条 —— 求职端 归档条（数据/类型.ts）的镜像，字段一一对应：
@@ -1565,32 +1568,8 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
 
 // ── Backend 水合 / 会话 / 操作 ───────────────────────────────────
 
-export interface 后端状态 {
-  初始化: '跳过' | '进行中' | '完成';
-  已登录: boolean;
-  主体: BFF主体 | null;
-  简历快照: BFF简历 | null;
-  意向快照: Record<string, BFFOwnerIntention>;
-  岗位快照: Record<string, BFFOwnerJob>;
-}
-
-export interface 应用操作 {
-  开始手机登录(phone: string): Promise<void>;
-  完成手机登录(code: string): Promise<void>;
-  微信登录(): Promise<string | null>;
-  退出登录(): Promise<void>;
-  切身份(to: '求职者' | '招聘方'): Promise<void>;
-  保存简历(next: 页面简历写入): Promise<void>;
-  保存个人优势(text: string): Promise<void>;
-  保存意向(draft: 意向草稿型): Promise<void>;
-  保存首次意向(input: 首次意向输入): Promise<void>;
-  删除意向(id: string): Promise<void>;
-  发布岗位(job: 在招岗位): Promise<void>;
-  更新岗位(job: 在招岗位): Promise<void>;
-  归档岗位(id: string): Promise<void>;
-  重开岗位(id: string): Promise<void>;
-  删除岗位(id: string): Promise<void>;
-}
+// 后端状态与操作组合类型已按 owner 拆到 ./后端/类型；此处保留公开导入路径。
+export type { 应用操作, 后端状态 } from './后端/类型';
 
 interface 应用状态值 {
   状态: 状态;
@@ -1603,161 +1582,6 @@ interface 应用状态值 {
 }
 
 const 上下文 = createContext<应用状态值 | null>(null);
-
-/** 退出登录时把支持域重置为空：与 后端种子状态 的支持域一致，但不触达未支持演示域。 */
-const 空BFF简历: BFF简历 = {
-  profile: {
-    real_name: '',
-    work_start_year: null,
-    status: '',
-    current_education: null,
-    graduation_year: null,
-    gender: null,
-    birth_year: null,
-    birth_month: null,
-  },
-  profile_revision: 0,
-  summary: '',
-  summary_revision: 0,
-  skills: [],
-  skills_revision: 0,
-  experiences: [],
-  educations: [],
-  certificates: [],
-  aggregate_revision: 0,
-};
-
-const 空简历快照: 页面简历快照 = {
-  基本信息: { 真名: '', 开始工作年: '', 身份: '在职' },
-  个人优势: '',
-  技能: [],
-  经历: [],
-  教育: [],
-  证书: [],
-  服务端快照: 空BFF简历,
-};
-
-const 空意向快照: 页面意向快照 = { 列表: [], 服务端: {} };
-const 空岗位快照: 页面岗位快照 = { 列表: [], 服务端: {} };
-
-/** 意向草稿 → 求职意向.说明 文案（Mock 分支用，与 添加意向.tsx 提交 的说明格式保持一致）。 */
-function 意向说明(draft: 意向草稿型): string {
-  const 薪资文本 =
-    draft.薪资下限 === null || draft.薪资上限 === null
-      ? ''
-      : draft.薪资下限 === draft.薪资上限
-        ? `${draft.薪资下限}K`
-        : `${draft.薪资下限}-${draft.薪资上限}K`;
-  const 期望行业文本 = draft.期望行业们.join('、');
-  return 期望行业文本 === '' ? 薪资文本 : `${薪资文本}｜${期望行业文本}`;
-}
-
-/** review-r2 R2-I-3：检测 401 —— 水合途中会话过期时需要走统一登出清理，不能只 轻提示。 */
-function 是会话失效错误(错误: unknown): boolean {
-  return 错误 instanceof BFF错误 && 错误.status === 401;
-}
-
-/**
- * review-r3 R3-I-2：统一的账号状态清理——把所有 401 路径（资源写 / 目录 facade / 水合 / 登录读主体）
- * 收口到这里，避免某个 401 只清自己的域而把别的域的快照/草稿留给下一个登录。
- *
- * 清空内容：简历/意向/岗位三个支持域快照 + 后端状态登出 + 目录缓存 + Backend 专属草稿
- * （引导预填 + 意向草稿）+ 主体标识 + 会话代际递增（让在飞的目录 401 成为 stale）。
- * 409 的「重读权威资源」语义不经过这里——409 不清会话，只让该域落回服务端最新值。
- */
-function 清账号状态(
-  派发: (动作: 动作) => void,
-  设后端状态: (更新: (旧: 后端状态) => 后端状态) => void,
-  后端: HTTP招聘数据源 | null,
-  主体标识引用: { current: string | null },
-  会话代际: { current: number },
-): void {
-  派发({ 型: '水合后端简历', 快照: 空简历快照 });
-  派发({ 型: '水合后端意向', 快照: 空意向快照 });
-  派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
-  派发({ 型: '清后端草稿' });
-  设后端状态((旧) => ({
-    ...旧,
-    初始化: '完成',
-    已登录: false,
-    主体: null,
-    简历快照: null,
-    意向快照: {},
-    岗位快照: {},
-  }));
-  后端?.清空目录缓存();
-  主体标识引用.current = null;
-  会话代际.current += 1;
-}
-
-/**
- * 按主体.last_used_role 水合支持域：
- *   candidate → 简历 + 意向（并行读取，各自独立派发）；recruiter → 岗位；null → 保持身份选择页不水合。
- * mount-init（交互=false）：candidate 两条并行 allSettled，任一 rejected 只 轻提示 该资源，不抛出 —— 初始化仍要落成「完成」。
- *   review-r2 R2-I-3：若任一 rejected 是 401（会话在水合途中过期），走统一登出清理并返回 会话失效=true，
- *   mount-init 据此不落 已登录=true。
- * 切身份（交互=true）：任一 rejected 直接抛出第一个错误 —— 让 选身份.tsx catch 显示 轻提示并留在原地，
- *   不导航进一个空壳（支持域没水合成功，进去也是空盘）。
- * Task 2：不再在初始化/切身份时预取目录。Task 7 起岗位写入用选择器保存的引用，目录预取彻底删除。
- * @returns 会话失效 —— true 表示水合途中遇到 401 并已执行登出清理，调用方不应再落 已登录=true
- */
-async function 水合角色数据(
-  后端: HTTP招聘数据源,
-  主体: BFF主体,
-  派发: (动作: 动作) => void,
-  设后端状态: (更新: (旧: 后端状态) => 后端状态) => void,
-  交互: boolean,
-  主体标识引用: { current: string | null },
-  会话代际: { current: number },
-): Promise<boolean> {
-  const 角色 = 主体.last_used_role;
-  if (角色 === 'candidate') {
-    const 结果 = await Promise.allSettled([后端.读取简历(), 后端.读取意向()]);
-    const 错误们: unknown[] = [];
-    let 会话失效 = false;
-    const 简历结果 = 结果[0];
-    if (简历结果.status === 'fulfilled') {
-      派发({ 型: '水合后端简历', 快照: 简历结果.value });
-      设后端状态((旧) => ({ ...旧, 简历快照: 简历结果.value.服务端快照 }));
-    } else {
-      错误们.push(简历结果.reason);
-      if (是会话失效错误(简历结果.reason)) 会话失效 = true;
-      轻提示(取后端错误文案(简历结果.reason));
-    }
-    const 意向结果 = 结果[1];
-    if (意向结果.status === 'fulfilled') {
-      派发({ 型: '水合后端意向', 快照: 意向结果.value });
-      设后端状态((旧) => ({ ...旧, 意向快照: 意向结果.value.服务端 }));
-    } else {
-      错误们.push(意向结果.reason);
-      if (是会话失效错误(意向结果.reason)) 会话失效 = true;
-      轻提示(取后端错误文案(意向结果.reason));
-    }
-    // review-r2 R2-I-3：水合途中 401 → 统一登出清理，不把上个会话的快照/草稿留给已失效的登录态
-    // review-r3 R3-I-2：收口到 清账号状态，三个支持域一起清，避免只清自己域留下别的域的快照
-    if (会话失效) {
-      清账号状态(派发, 设后端状态, 后端, 主体标识引用, 会话代际);
-      return true;
-    }
-    if (交互 && 错误们.length > 0) throw 错误们[0];
-  } else if (角色 === 'recruiter') {
-    try {
-      const 岗位快照 = await 后端.读取岗位();
-      派发({ 型: '水合后端岗位', 快照: 岗位快照 });
-      设后端状态((旧) => ({ ...旧, 岗位快照: 岗位快照.服务端 }));
-    } catch (错误) {
-      if (是会话失效错误(错误)) {
-        // review-r2 R2-I-3：recruiter 水合 401 同口径登出清理（R3-I-2 收口到 清账号状态）
-        清账号状态(派发, 设后端状态, 后端, 主体标识引用, 会话代际);
-        return true;
-      }
-      if (交互) throw 错误;
-      轻提示(取后端错误文案(错误));
-    }
-  }
-  // last_used_role === null → 保持身份选择页，不水合
-  return false;
-}
 
 export function 应用状态提供者({ children, 数据源 }: { children?: ReactNode; 数据源?: 招聘数据源选择 }) {
   const 源 = 数据源 ?? 招聘数据;
@@ -1935,7 +1759,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       if (已取消) return;
       // review-r2 R2-I-3：水合 401 时 水合角色数据 内部已走登出清理并返回 会话失效=true，
       // 不再落 已登录=true（旧实现会把上个会话的快照/草稿留给已失效的登录态）。
-      const 会话失效 = await 水合角色数据(后端, 主体, 派发, 设后端状态, false, 主体标识引用, 会话代际);
+      const 会话失效 = await 水合角色数据({ 后端, 派发, 设后端状态, 主体标识引用, 会话代际 }, 主体, false);
       if (已取消) return;
       if (会话失效) {
         // review-r3 R3-I-2：清账号状态 已在 水合角色数据 内部清完（含主体标识 + 会话代际），
@@ -1960,482 +1784,40 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [是后端, 后端]);
 
-  const 操作 = useMemo<应用操作>(() => {
-    /** 统一处理写操作错误：401 清会话；409 用错误携带的权威简历水合；其余原样抛出。 */
-    function 处理写入错误(错误: unknown): never {
-      if (错误 instanceof BFF错误) {
-        if (错误.status === 401) {
-          // review-r3 R3-I-2：401 收口到 清账号状态，三个支持域 + 草稿 + 目录缓存一起清
-          清账号状态(派发, 设后端状态, 后端, 主体标识引用, 会话代际);
-        } else if (错误.权威简历) {
-          // 409 版本冲突或任一分区写入中途失败后，catch 路径已 GET 权威快照附在错误上。
-          // 统一用它水合本地状态，使重试 diff 基于服务端最新值（避免重复 POST 新条目）。
-          // 权威简历 是 BFF简历（生产 HTTP 层 GET 拿到的 DTO）；
-          // 测试桩可能直接放已映射的 页面简历快照。两者按 'profile' 字段区分。
-          const 权威 = 错误.权威简历;
-          const 是原始DTO = 'profile' in 权威;
-          const 页面 = 是原始DTO ? 从BFF简历(权威) : 权威 as unknown as 页面简历快照;
-          派发({ 型: '水合后端简历', 快照: 页面 });
-          设后端状态((旧) => ({ ...旧, 简历快照: 是原始DTO ? 权威 : 旧.简历快照 }));
-        }
-      }
-      throw 错误;
-    }
-
-    /**
-     * 岗位写操作错误处理：
-     *   401 清会话（与 处理写入错误 同口径，但不派发 Mock 岗位 action）；
-     *   409 version_conflict / 503 operation_outcome_unknown 最终仍不确定时，调 读取岗位() 重新水合，
-     *     让岗位列表落回服务端最新值，避免本地乐观值覆盖冲突后的真实状态；
-     *   其余原样抛出。
-     * 不派发 Mock 岗位 action（发布岗位/停止招聘/重开岗位/删除岗位），不播种起步候选。
-     */
-    async function 处理岗位写入错误(错误: unknown): Promise<never> {
-      if (错误 instanceof BFF错误) {
-        if (错误.status === 401) {
-          // review-r3 R3-I-2：岗位 401 收口到 清账号状态，三个支持域 + 草稿一起清
-          // （旧实现只清岗位，把简历/意向快照与意向草稿留给下一个登录）
-          清账号状态(派发, 设后端状态, 后端, 主体标识引用, 会话代际);
-          throw 错误;
-        }
-        if (错误.status === 409 || 错误.status === 503) {
-          const 快照 = await 后端!.读取岗位();
-          派发({ 型: '水合后端岗位', 快照 });
-          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
-        }
-      }
-      throw 错误;
-    }
-
-    /**
-     * 意向写操作错误处理（镜像 处理岗位写入错误）：
-     *   401 清会话（派发 空意向快照，清意向快照）；
-     *   409 version_conflict / 503 operation_outcome_unknown 最终仍不确定时，调 读取意向() 重新水合，
-     *     让求职意向表落回服务端最新值，避免本地乐观值覆盖冲突后的真实状态
-     *     （spec §12：409 版本冲突 → 重新读取对应权威资源，不覆盖服务端新版本）；
-     *   其余原样抛出。
-     * 简历写操作仍走 处理写入错误（用 错误.权威简历 水合），此处不接管简历路径。
-     * 不派发 Mock 意向 action（新增意向/改意向），不播种预置意向。
-     */
-    async function 处理意向写入错误(错误: unknown): Promise<never> {
-      if (错误 instanceof BFF错误) {
-        if (错误.status === 401) {
-          // review-r3 R3-I-2：意向 401 收口到 清账号状态，三个支持域 + 草稿一起清
-          // （旧实现只清意向，把简历/岗位快照与引导预填留给下一个登录）
-          清账号状态(派发, 设后端状态, 后端, 主体标识引用, 会话代际);
-          throw 错误;
-        }
-        if (错误.status === 409 || 错误.status === 503) {
-          const 快照 = await 后端!.读取意向();
-          派发({ 型: '水合后端意向', 快照 });
-          设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
-        }
-      }
-      throw 错误;
-    }
-    return {
-      async 开始手机登录(phone) {
-        if (!是后端 || !后端) return;
-        try {
-          const 尝试 = await 后端.开始手机登录(phone);
-          尝试引用.current = 尝试.attempt_id;
-        } catch (错误) {
-          // 发送失败时清除旧 attempt_id，防止 完成手机登录 用过期 attempt 提交
-          尝试引用.current = null;
-          throw 错误;
-        }
-      },
-      async 完成手机登录(code) {
-        if (!是后端 || !后端) return;
-        await 后端.完成手机登录(尝试引用.current ?? '', code);
-        let 主体: BFF主体;
-        try {
-          主体 = await 后端.读取主体();
-        } catch (错误) {
-          // review-r3 R3-I-3：读取主体 失败时不能落 已登录=true。
-          // 401（会话刚建立就已过期）→ 统一账号清理，不设已登录；
-          // 其他失败（网络等）→ 留未登录 + 轻提示，不顶着一个 null 主体当登录态。
-          if (是会话失效错误(错误)) {
-            清账号状态(派发, 设后端状态, 后端, 主体标识引用, 会话代际);
-          } else {
-            轻提示(取后端错误文案(错误));
-            设后端状态((旧) => ({ ...旧, 已登录: false }));
-          }
-          return;
-        }
-        // review-r2 R2-I-4：主体 subject_id 变化时先清上个账号的草稿/快照/缓存，
-        // 不让 A 的引导预填/意向草稿串到 B（同 Provider 实例的跨账号泄漏）。
-        // 同 subject_id（如刷新后重新登录）保留草稿。
-        if (主体标识引用.current !== null && 主体标识引用.current !== 主体.subject_id) {
-          派发({ 型: '水合后端简历', 快照: 空简历快照 });
-          派发({ 型: '水合后端意向', 快照: 空意向快照 });
-          派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
-          派发({ 型: '清后端草稿' });
-          设后端状态((旧) => ({
-            ...旧,
-            简历快照: null,
-            意向快照: {},
-            岗位快照: {},
-          }));
-          后端.清空目录缓存();
-        }
-        主体标识引用.current = 主体.subject_id;
-        // review-r2 R2-M-4：新会话建立，递增代际（让在飞的旧会话目录请求 401 成为 stale）
-        会话代际.current += 1;
-        设后端状态((旧) => ({ ...旧, 已登录: true, 主体 }));
-      },
-      async 微信登录() {
-        if (!是后端 || !后端) return null;
-        const 尝试 = await 后端.开始微信登录();
-        return 尝试.next_action.redirect_url ?? null;
-      },
-      async 退出登录() {
-        if (!是后端 || !后端) return;
-        // 服务端会话可能已过期：退出登录请求返回 401 时，本地其实已经是登出态，
-        // 必须照常清本地会话，否则两端的设置屏会捕获 reject 卡在已登录壳里出不来。
-        // 401（或 invalid_session）视同成功；其他错误原样抛给屏去 轻提示。
-        const 清空本地会话 = () => {
-          尝试引用.current = null;
-          派发({ 型: '水合后端简历', 快照: 空简历快照 });
-          派发({ 型: '水合后端意向', 快照: 空意向快照 });
-          派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
-          // review-r1 P1-5：退出时连 Backend 专属草稿一起清（引导预填 + 意向草稿），
-          // 否则上个账号选的目录引用会串到下一个账号（同 Provider 实例的跨账号泄漏）。
-          派发({ 型: '清后端草稿' });
-          设后端状态((旧) => ({
-            ...旧,
-            已登录: false,
-            主体: null,
-            简历快照: null,
-            意向快照: {},
-            岗位快照: {},
-          }));
-          // Task 2：退出/401 清空目录缓存，避免下个会话复用上个会话的目录页缓存。
-          后端?.清空目录缓存();
-          // review-r2 R2-I-4/R2-M-4：退出清主体标识 + 递增会话代际（在飞的目录 401 成为 stale）
-          主体标识引用.current = null;
-          会话代际.current += 1;
-        };
-        try {
-          await 后端.退出登录();
-        } catch (错误) {
-          if (错误 instanceof BFF错误 && (错误.status === 401 || 错误.code === 'invalid_session')) {
-            清空本地会话();
-            return;
-          }
-          throw 错误;
-        }
-        清空本地会话();
-      },
-      async 切身份(to) {
-        // review-r3 R3-I-4：先在后端落角色 + 记录当前角色，全部成功后再派发本地 切身份；
-        // 旧实现先派发本地切身份，若 确保角色/记录当前角色 401 就会留下本地已切但会话未清的撕裂态。
-        if (!是后端 || !后端) {
-          派发({ 型: '切身份', 到: to });
-          return;
-        }
-        const 角色: BFF角色 = to === '求职者' ? 'candidate' : 'recruiter';
-        let 最新主体: BFF主体;
-        try {
-          await 后端.确保角色(角色);
-          最新主体 = await 后端.记录当前角色(角色);
-        } catch (错误) {
-          // review-r3 R3-I-4：确保角色/记录当前角色 401 → 走统一账号清理（会话已失效），
-          // 本地角色不切（派发 演示域 切身份 在 await 之后，401 时未执行），避免撕裂。
-          if (是会话失效错误(错误)) {
-            清账号状态(派发, 设后端状态, 后端, 主体标识引用, 会话代际);
-          }
-          throw 错误;
-        }
-        // 后端落角色成功后再派发本地 UI 落点
-        派发({ 型: '切身份', 到: to });
-        设后端状态((旧) => ({ ...旧, 主体: 最新主体 }));
-        // review-r1 P1-5：切身份前清掉上一个角色的 Backend 草稿（引导预填 + 意向草稿），
-        // 否则候选选的目录引用会串到招聘方账号（同 Provider 实例的跨账号泄漏）。
-        派发({ 型: '清后端草稿' });
-        // 切身份后水合目标角色的支持域：mount-init 只按上次角色水合，
-        // 不补这一步，候选切到招聘方会顶着一个空岗位盘，招聘方切到候选看到的是空简历/意向。
-        // 交互模式：水合失败直接抛出，让 选身份.tsx catch 显示 轻提示并留在原地，
-        // 不导航进一个空壳（支持域没水合成功，进去也是空盘）。
-        // review-r2 R2-I-3：水合 401 时 水合角色数据 内部已走登出清理并返回 会话失效=true，
-        // 不再抛出（会话已失效，用户需要重新登录，抛出反而让 选身份 屏显示错误却留在原地）。
-        const 会话失效 = await 水合角色数据(后端, 最新主体, 派发, 设后端状态, true, 主体标识引用, 会话代际);
-        if (会话失效) {
-          // review-r3 R3-I-2：清账号状态 已在 水合角色数据 内部清完（含主体标识 + 会话代际）
-          return;
-        }
-      },
-      async 保存简历(next) {
-        if (!是后端 || !后端) {
-          派发({
-            型: '存简历',
-            经历: next.经历,
-            教育: next.教育,
-            技能: next.技能,
-            证书: next.证书,
-            基本信息: next.基本信息,
-          });
-          派发({ 型: '存个人优势', 文本: next.个人优势 });
-          return;
-        }
-        if (锁.current.has('简历保存')) return;
-        锁.current.add('简历保存');
-        try {
-          let previous = 后端状态引用.current.简历快照;
-          if (!previous) {
-            const 读出 = await 后端.读取简历();
-            previous = 读出.服务端快照;
-          }
-          const 快照 = await 后端.保存简历(next, previous);
-          派发({ 型: '水合后端简历', 快照 });
-          设后端状态((旧) => ({ ...旧, 简历快照: 快照.服务端快照 }));
-        } catch (错误) {
-          处理写入错误(错误);
-        } finally {
-          锁.current.delete('简历保存');
-        }
-      },
-      async 保存个人优势(text) {
-        if (!是后端 || !后端) {
-          派发({ 型: '存个人优势', 文本: text });
-          return;
-        }
-        if (锁.current.has('简历保存')) return;
-        锁.current.add('简历保存');
-        try {
-          let previous = 后端状态引用.current.简历快照;
-          if (!previous) {
-            const 读出 = await 后端.读取简历();
-            previous = 读出.服务端快照;
-          }
-          const 当前页面 = 从BFF简历(previous);
-          const 快照 = await 后端.保存简历({ ...当前页面, 个人优势: text }, previous);
-          派发({ 型: '水合后端简历', 快照 });
-          设后端状态((旧) => ({ ...旧, 简历快照: 快照.服务端快照 }));
-        } catch (错误) {
-          处理写入错误(错误);
-        } finally {
-          锁.current.delete('简历保存');
-        }
-      },
-      async 保存意向(draft) {
-        if (!是后端 || !后端) {
-          const 标题 = `[${draft.工作城市}] ${draft.期望职位}`;
-          const 说明 = 意向说明(draft);
-          if (draft.编辑编号) 派发({ 型: '改意向', 编号: draft.编辑编号, 标题, 说明 });
-          else 派发({ 型: '新增意向', 标题, 说明 });
-          return;
-        }
-        const 键 = draft.编辑编号 ? `意向:${draft.编辑编号}` : '意向:new';
-        if (锁.current.has(键)) return;
-        锁.current.add(键);
-        try {
-          // Task 6：目录引用直接落在草稿里（Tasks 3-4），不再按需取目录；
-          // 办公方式 从草稿.办公方式 读（必填草稿字段），不再硬编码 ['onsite']。
-          const 原始 = draft.编辑编号 ? 后端状态引用.current.意向快照[draft.编辑编号] ?? null : null;
-          const 上下文 = { 原始 };
-          const 快照 = draft.编辑编号
-            ? await 后端.更新意向(draft.编辑编号, draft, 上下文)
-            : await 后端.创建意向(draft, 上下文);
-          派发({ 型: '水合后端意向', 快照 });
-          设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
-        } catch (错误) {
-          await 处理意向写入错误(错误);
-        } finally {
-          锁.current.delete(键);
-        }
-      },
-      async 保存首次意向(input) {
-        if (!是后端 || !后端) {
-          // Mock 模式 no-op：保持当前预置意向不增加，防止重复走向导制造重复数据
-          return;
-        }
-        // Backend 仅在当前真实意向列表为空时创建一条，已有意向时 no-op
-        if (状态引用.current.求职意向表.length > 0) return;
-        const 键 = '意向:new';
-        if (锁.current.has(键)) return;
-        锁.current.add(键);
-        try {
-          // Task 6：目录引用直接落在 input 里（引导问答 Backend 分支选中时原子保存），
-          // 不再按需取目录；办公方式 从 input.筛选偏好.办公方式 读（向导答案）。
-          const 快照 = await 后端.创建首次意向(input);
-          派发({ 型: '水合后端意向', 快照 });
-          设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
-        } catch (错误) {
-          await 处理意向写入错误(错误);
-        } finally {
-          锁.current.delete(键);
-        }
-      },
-      async 删除意向(id) {
-        if (!是后端 || !后端) {
-          派发({ 型: '删意向', 编号: id });
-          return;
-        }
-        const 键 = `意向:${id}`;
-        if (锁.current.has(键)) return;
-        锁.current.add(键);
-        try {
-          const 原始 = 后端状态引用.current.意向快照[id];
-          if (!原始) return;
-          const 快照 = await 后端.删除意向(id, 原始.revision);
-          派发({ 型: '水合后端意向', 快照 });
-          设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
-        } catch (错误) {
-          await 处理意向写入错误(错误);
-        } finally {
-          锁.current.delete(键);
-        }
-      },
-      async 发布岗位(job) {
-        if (!是后端 || !后端) {
-          派发({ 型: '发布岗位', 岗: job });
-          return;
-        }
-        const 键 = '岗位:new';
-        if (锁.current.has(键)) return;
-        锁.current.add(键);
-        try {
-          // Task 7：create 直接用 类别引用/地点引用 取 ID，不再按需取目录。
-          // 附属数据（加分关键词/实习转正）由数据层用响应里的真实 job_id 写入；
-          // 水合只派发服务端岗位列表，不派发 Mock 发布岗位（不播种起步候选）。
-          const 快照 = await 后端.创建岗位(job, { 公司: 状态引用.current.企业认证.公司 });
-          派发({ 型: '水合后端岗位', 快照 });
-          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
-        } catch (错误) {
-          await 处理岗位写入错误(错误);
-        } finally {
-          锁.current.delete(键);
-        }
-      },
-      async 更新岗位(job) {
-        if (!是后端 || !后端) {
-          派发({ 型: '更新岗位', 岗: job });
-          return;
-        }
-        const 键 = `岗位:${job.编号}`;
-        if (锁.current.has(键)) return;
-        锁.current.add(键);
-        try {
-          const 原始 = 后端状态引用.current.岗位快照[job.编号];
-          if (!原始) return;
-          // Task 7：update 的 immutable category/location 取 owner DTO（previous）的 id，
-          // 不再按需取目录；If-Match 由数据层用 previous.revision 生成；附属按同 ID 更新。
-          const 快照 = await 后端.更新岗位(job, 原始, { 公司: 状态引用.current.企业认证.公司 });
-          派发({ 型: '水合后端岗位', 快照 });
-          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
-        } catch (错误) {
-          await 处理岗位写入错误(错误);
-        } finally {
-          锁.current.delete(键);
-        }
-      },
-      async 归档岗位(id) {
-        if (!是后端 || !后端) {
-          派发({ 型: '停止招聘', 编号: id });
-          return;
-        }
-        const 键 = `岗位:${id}`;
-        if (锁.current.has(键)) return;
-        锁.current.add(键);
-        try {
-          const 原始 = 后端状态引用.current.岗位快照[id];
-          if (!原始) return;
-          const 快照 = await 后端.归档岗位(id, 原始.revision);
-          派发({ 型: '水合后端岗位', 快照 });
-          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
-        } catch (错误) {
-          await 处理岗位写入错误(错误);
-        } finally {
-          锁.current.delete(键);
-        }
-      },
-      async 重开岗位(id) {
-        if (!是后端 || !后端) {
-          派发({ 型: '重开岗位', 编号: id });
-          return;
-        }
-        const 键 = `岗位:${id}`;
-        if (锁.current.has(键)) return;
-        锁.current.add(键);
-        try {
-          const 原始 = 后端状态引用.current.岗位快照[id];
-          if (!原始) return;
-          const 快照 = await 后端.重开岗位(id, 原始.revision);
-          派发({ 型: '水合后端岗位', 快照 });
-          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
-        } catch (错误) {
-          await 处理岗位写入错误(错误);
-        } finally {
-          锁.current.delete(键);
-        }
-      },
-      async 删除岗位(id) {
-        if (!是后端 || !后端) {
-          派发({ 型: '删除岗位', 编号: id });
-          return;
-        }
-        const 键 = `岗位:${id}`;
-        if (锁.current.has(键)) return;
-        锁.current.add(键);
-        try {
-          const 原始 = 后端状态引用.current.岗位快照[id];
-          if (!原始) return;
-          // delete 成功后由数据层删除附属数据；水合只派发服务端岗位列表。
-          const 快照 = await 后端.删除岗位(id, 原始.revision);
-          派发({ 型: '水合后端岗位', 快照 });
-          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
-        } catch (错误) {
-          await 处理岗位写入错误(错误);
-        } finally {
-          锁.current.delete(键);
-        }
-      },
-    };
-  },
+  const 操作 = useMemo<应用操作>(
+    () => {
+      const deps: 后端操作依赖 = {
+        是后端,
+        后端,
+        派发,
+        设后端状态,
+        后端状态引用,
+        状态引用,
+        锁,
+        尝试引用,
+        主体标识引用,
+        会话代际,
+      };
+      return {
+        ...创建会话操作(deps),
+        ...创建候选操作(deps),
+        ...创建岗位操作(deps),
+      };
+    },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [是后端, 后端],
   );
 
-  // Task 3 R8 / review-r1 P1-6 / review-r2 R2-M-4：目录查询 seam —— Backend 模式暴露
-  // 后端.查询Location 等三个方法，Mock 为 null。facade 包一层 401 处理：选择器开着时会话过期 →
-  // 目录请求 401 → 触发与资源写操作 401 同口径的会话清理（派发空快照 + 后端状态登出 +
-  // 清空目录缓存 + 清草稿），然后 rethrow 让选择器的 .catch 照常显示空结果。
-  // review-r2 R2-M-4：捕获请求起始时的会话代际；401 到达时若代际已变（退出/重登开了新会话），
-  // 该 401 属于旧会话（stale），只 rethrow 不清新会话——否则旧请求的 401 会把新登录踢掉。
-  // useMemo 键 是后端/后端（同 Provider 实例下不变），使 目录查询 引用稳定，不再每渲染重建
-  // （修 react-hooks/exhaustive-deps）。
-  const 目录查询 = useMemo<
-    Pick<HTTP招聘数据源, '查询Location' | '查询Taxonomy' | '查询Institution'> | null
-  >(() => {
-    if (!是后端 || !后端) return null;
-    const 处理目录401 = (错误: unknown, 起始代际: number): never => {
-      if (错误 instanceof BFF错误 && 错误.status === 401) {
-        // review-r2 R2-M-4：stale 401 —— 请求发出后会话已更替（退出/重登），不清新会话
-        if (起始代际 !== 会话代际.current) throw 错误;
-        // review-r3 R3-I-2：收口到 清账号状态，三个支持域 + 草稿 + 目录缓存一起清
-        清账号状态(派发, 设后端状态, 后端, 主体标识引用, 会话代际);
-      }
-      throw 错误;
-    };
-    return {
-      查询Location: ((...args: Parameters<HTTP招聘数据源['查询Location']>) => {
-        const 起始代际 = 会话代际.current;
-        return 后端.查询Location(...args).catch((e) => 处理目录401(e, 起始代际));
-      }) as HTTP招聘数据源['查询Location'],
-      查询Taxonomy: ((...args: Parameters<HTTP招聘数据源['查询Taxonomy']>) => {
-        const 起始代际 = 会话代际.current;
-        return 后端.查询Taxonomy(...args).catch((e) => 处理目录401(e, 起始代际));
-      }) as HTTP招聘数据源['查询Taxonomy'],
-      查询Institution: ((...args: Parameters<HTTP招聘数据源['查询Institution']>) => {
-        const 起始代际 = 会话代际.current;
-        return 后端.查询Institution(...args).catch((e) => 处理目录401(e, 起始代际));
-      }) as HTTP招聘数据源['查询Institution'],
-    };
+  // 目录查询 seam 已按 owner 拆到 ./后端/目录查询：Backend 模式暴露 查询Location/Taxonomy/Institution，
+  // Mock 为 null；401 会话代际守卫与统一清理都在 创建目录查询 内部。
+  // useMemo 键 是后端/后端（同 Provider 实例下不变），使 目录查询 引用稳定。
+  const 目录查询 = useMemo(
+    () => 创建目录查询({ 是后端, 后端, 派发, 设后端状态, 主体标识引用, 会话代际 }),
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [是后端, 后端]);
+    [是后端, 后端],
+  );
 
   const 值 = useMemo<应用状态值>(
     () => ({ 状态, 派发, 数据源模式: 源.模式, 后端状态, 操作, 目录查询 }),
