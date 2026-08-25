@@ -200,6 +200,14 @@ it('candidate 初始化不读取目录并独立提交简历和 active 意向', a
   expect(backend.读取目录).not.toHaveBeenCalled();
   expect(backend.读取意向).toHaveBeenCalledWith();
 });
+
+it('交互式切换角色也不预取目录', async () => {
+  const backend = 后端桩();
+  const view = renderProvider({ backend, role: 'candidate' });
+  await view.操作.选择角色('recruiter');
+  await waitFor(() => expect(backend.读取岗位).toHaveBeenCalled());
+  expect(backend.读取目录).not.toHaveBeenCalled();
+});
 ```
 
 在数据源测试另断言请求 path 精确为 `/api/v1/me/intentions?status=active`。
@@ -236,7 +244,7 @@ const { result } = await 请求<BFF意向列表>({ path: '/api/v1/me/intentions?
 
 - [ ] **Step 5: 运行测试并提交**
 
-Run: `npm test -- src/数据/HTTP客户端.test.ts src/数据/HTTP招聘数据源.test.ts src/状态/应用状态.test.ts && npm run typecheck`
+Run: `npm test && npm run typecheck`
 
 Expected: PASS。
 
@@ -334,10 +342,16 @@ Commit: `feat: 用后端地点驱动城市选择`
 - Modify: `src/屏幕/选专业.tsx`
 - Modify: `src/屏幕/毕业院校.tsx`
 - Modify: `src/屏幕/引导问答.tsx`
+- Modify: `src/屏幕/工作经历.tsx`
+- Modify: `src/数据/类型.ts`
+- Modify: `src/数据/招聘数据源类型.ts`
+- Modify: `src/状态/应用状态.tsx`
 - Create: `src/屏幕/选期望职位.test.tsx`
 - Create: `src/屏幕/选期望行业.test.tsx`
 - Create: `src/屏幕/选专业.test.tsx`
 - Create: `src/屏幕/毕业院校.test.tsx`
+- Create: `src/屏幕/工作经历.test.tsx`
+- Create: `src/屏幕/引导问答.test.tsx`
 - Create: `src/数据/目录选择.ts`
 - Create: `src/数据/目录选择.test.ts`
 
@@ -374,7 +388,7 @@ it('学校候选显示城市和国家，选择后只保存学校引用', async (
 
 - [ ] **Step 2: 运行测试并确认失败**
 
-Run: `npm test -- src/数据/目录选择.test.ts src/屏幕/毕业院校.test.tsx src/屏幕/选职位.test.tsx src/屏幕/选行业.test.tsx src/屏幕/选专业.test.tsx`
+Run: `npm test -- src/数据/目录选择.test.ts src/屏幕/毕业院校.test.tsx src/屏幕/选期望职位.test.tsx src/屏幕/选期望行业.test.tsx src/屏幕/选专业.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/引导问答.test.tsx`
 
 Expected: FAIL，旧组件读取本地字符串，学校结果无 location。
 
@@ -393,7 +407,9 @@ export function 学校副标题(item: BFFInstitutionItem): string {
 
 - [ ] **Step 4: 迁移 taxonomy selectors**
 
-Mock 分支保持本地树。Backend 分支首次读 roots，展开按 `parentId`，搜索按 `q`；推荐区域只渲染本次 BFF 已返回项。点击非 selectable 只展开，点击 selectable 原子保存 `{id,display_name}` 和原字符串。专业无层级，直接按 q/next cursor。
+本任务先在 `类型.ts/招聘数据源类型.ts/应用状态.tsx` 定义 Resume/Intention/首次意向所需引用字段及原子 reducer action，保证选择器提交可以编译；Tasks 5–6 再把这些字段接到 BFF 写入。Mock 分支保持本地树。Backend 分支首次读 roots，展开按 `parentId`，搜索按 `q`；推荐区域只渲染本次 BFF 已返回项。点击非 selectable 只展开，点击 selectable 原子保存 `{id,display_name}` 和原字符串。专业无层级，直接按 q/next cursor。
+
+`工作经历.tsx` 的所属行业弹层也属于本任务：Mock 保留 `常见行业`，Backend 改为 `查询Taxonomy('industries')`，点选 leaf 才写 `行业引用`；继续自由输入立即清除旧引用，未选候选时复用现有轻提示阻止 Backend 保存。
 
 - [ ] **Step 5: 迁移学校 selector**
 
@@ -401,7 +417,7 @@ Mock 分支保持本地树。Backend 分支首次读 roots，展开按 `parentId
 
 - [ ] **Step 6: 运行测试并提交**
 
-Run: `npm test -- src/数据/目录选择.test.ts src/屏幕/毕业院校.test.tsx src/屏幕/选职位.test.tsx src/屏幕/选行业.test.tsx src/屏幕/选专业.test.tsx && npm run typecheck`
+Run: `npm test -- src/数据/目录选择.test.ts src/屏幕/毕业院校.test.tsx src/屏幕/选期望职位.test.tsx src/屏幕/选期望行业.test.tsx src/屏幕/选专业.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/引导问答.test.tsx && npm run typecheck`
 
 Expected: PASS；截图/DOM 快照只新增学校候选副行内容，不改页面结构与 CSS token。
 
@@ -561,7 +577,7 @@ const [primary, ...alternate] = 去重引用(输入.城市引用们);
 if (!primary) throw new Error('请从候选城市中选择');
 return {
   recruitment_type,
-  job_category_id: 输入.职位引用.id,
+  job_category_id: 必需引用(输入.职位引用, '职位'),
   primary_location_id: primary.id,
   alternate_location_ids: alternate.map((item) => item.id),
   industry_ids: [],
@@ -576,6 +592,8 @@ return {
 ```
 
 新增失败测试：给两个同名职位 fixture（不同 ID），只选择 `职位引用.id='tax_selected'`，断言首次意向 body 使用 `tax_selected`，且请求记录没有 `/catalog/`；这覆盖 `引导问答 → 保存首次意向 → 创建首次意向 → 转首次意向写入` 整条生产链。
+
+Backend 模式进入 `引导问答` 时不得把硬编码 `['后端开发', '交易 / 支付系统', '金融科技（行业）']/['上海']` 当成已选择答案：未从 owner DTO 或当前会话目录候选得到 refs 时，受控职位/城市初始值为空。`引导问答.test.tsx` 必须覆盖“默认字符串不会提交”和“点远程候选后字符串+refs 原子写入”；Mock 仍保留当前默认答案。
 
 - [ ] **Step 4: 用现有选择行增加办公方式必填**
 
@@ -603,6 +621,7 @@ Commit: `fix: 对齐求职意向后端语义`
 - Modify: `src/数据/后端映射.ts`
 - Modify: `src/数据/后端映射.test.ts`
 - Modify: `src/数据/HTTP招聘数据源.ts`
+- Modify: `src/状态/应用状态.tsx`
 - Modify: `src/屏幕/发布岗位.tsx`
 - Modify: `src/屏幕/发布岗位.test.tsx`
 - Modify: `src/状态/应用状态.test.ts`
