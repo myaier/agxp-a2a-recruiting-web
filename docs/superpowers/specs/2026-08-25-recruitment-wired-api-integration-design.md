@@ -106,7 +106,9 @@ BFF 的 `error.fields` 是 `{path, reason}[]`，当前前端按键值对象处�
 | 五类选择器 | 本地目录 | 按需 BFF Catalog |
 | UI 排序、推荐位、行政区导航顺序 | 当前前端展示配置 | 可保留为展示配置，但不能产生可提交目录值 |
 
-省级导航的中文标签、顺序和 `admin1_code` 可以留在前端作为 PM 视图配置；具体城市名称、可选性和 ID 必须来自 `GET /catalog/locations`。因此前端不再维护一份可直接提交的 Backend 城市列表。
+省级分组的中文标签、顺序和查询过滤器可以留在前端作为 PM 视图配置；具体城市名称、可选性和 ID 必须来自 `GET /catalog/locations`。因此前端不再维护一份可直接提交的 Backend 城市列表。
+
+普通省份配置为一个 `{countryCode: 'CN', admin1Code}` filter；“直辖市”是四个 filter 的展示聚合；港澳台按各自 country code 表达。省/分组不是用户最终选择，也不进入业务 payload，只决定该组向 Location API 发什么查询。
 
 ### 6.2 目录选择值
 
@@ -153,12 +155,12 @@ Backend 表单中受控字段同时保存该引用；UI 只读取 `display_name`
 
 ### 7.1 城市
 
-- 保留现有标题、搜索框、热门区、省级导航、选择计数和底部 chips。
+- 保留现有标题、搜索框、热门区、按省铺开的分组、选择计数和底部 chips。当前页面里的省名仍是分组标题，不改成需要保存的选择项。
 - Mock 模式继续读本地 `城市字典/热门城市`。
 - Backend 模式热门区读取 Location 默认/featured 页；搜索框 debounce 后发送 `q`，不在浏览器扫全表。
-- 打开某省级导航时，以其 `admin1_code` 调用 `country_code=CN&admin1_code=...`，按用户请求加载下一页。
+- 各省分组接近可视区域时，以其 filter 调用 `country_code=CN&admin1_code=...` 懒加载；继续滚动该组时才请求下一页。搜索命中省名时用同一 filter 查询该省，而不是从本地城市数组展开。
 - 只有 BFF 返回的 Location 能被选择；选择态保存 `{id, display_name}`。
-- 后端配套 spec 保证当前 PM 覆盖集的中文 display/search。后端尚未部署该变更时，英文结果仍可显示，但不得退回本地城市并提交猜测 ID。
+- 后端配套 spec 保证所有 `country_code=CN` 的 active Location 使用中文 `display_name/admin1_name`，同时保留英文与来源原名搜索。后端尚未部署该变更时，不得以本地中文城市替换英文结果并提交猜测 ID。
 
 ### 7.2 职位分类与行业
 
@@ -172,6 +174,8 @@ Backend 表单中受控字段同时保存该引用；UI 只读取 `display_name`
 
 - 保留现有输入框、候选行和行业弹层样式。
 - Backend 模式输入 debounce 后远程查询；点候选才形成合法目录引用。
+- 学校默认进行全球搜索；每条候选复用现有副行显示“城市 · 国家”以区分同名机构。需要收窄时数据层可传 `country_code`，首版不新增国家选择页。
+- 后端配套 spec 保证位于 CN Location 的 active 学校以中文 `display_name` 返回；其他国家沿用 ROR 来源展示名。
 - 用户继续输入后，清除旧引用；未选择候选时阻止服务端保存并复用现有轻提示。
 - 编辑既有资源时，owner DTO 自带引用可直接作为当前合法选择，不必重新搜索。
 
@@ -248,7 +252,8 @@ Array<{ path: string; reason: string }>
 - 初始化和角色切换不调用全量 `读取目录`。
 - 每个查询只取请求页，cursor 由调用方继续；相同 in-flight 可去重，退出清缓存。
 - taxonomy root 不因 `selectable=false` 被丢弃，leaf 才可提交。
-- Location 正确携带 `admin1_code/name`，城市按真实 ID 选择；主地点不会重复进入 alternates。
+- Location 正确携带 `admin1_code/name`，省级展示 filter 只查询不入 payload，城市按真实 ID 选择；主地点不会重复进入 alternates。
+- 中国城市和中国学校使用后端中文 `display_name`；学校候选携带城市和国家，英文/原名搜索仍选择同一 ID。
 - Resume/Intention/Job 写入使用选择时保存的 ID，不调用显示名精确反查。
 - active intention 查询带 `status=active`，服务端隐藏字段在无相关 UI 修改时保持。
 - 普通意向无办公方式时拒绝提交，不再默认 onsite；社招/校招不伪造 annual months。
@@ -266,7 +271,7 @@ Array<{ path: string; reason: string }>
 
 - candidate：手机登录 → 角色恢复/ensure → 简历读取与至少一次目录引用写入 → active 意向创建/读取/编辑/删除。
 - recruiter：切换角色 → 岗位创建/读取/编辑 → 归档 → 重开 → 删除（若无 in-use 围栏）。
-- Catalog：中文城市搜索、省级导航过滤、taxonomy root→leaf、院校/专业搜索。
+- Catalog：中文城市搜索、按省分组懒加载、taxonomy root→leaf、全球院校搜索与中国学校中文回显、专业搜索。
 - 失败：401、422 字段数组、409、503 outcome unknown、断网，均无 Mock 回退和重复 mutation。
 - 微信、未接线业务域和 4 位验证码不作为本计划通过条件；验证码由外部分支合入后再执行完整手机登录验收。
 
@@ -278,7 +283,7 @@ Array<{ path: string; reason: string }>
 
 - 新 API 域：只有前端产品流程决定接线且后端链路完整时再单独规划。
 - 归档意向管理：当前 UI 出现明确入口需求后再接已有 archive/reopen API。
-- 完整全球城市本地化或服务端行政区 facets：由真实搜索失败率、多客户端复用需求决定。
+- 中国以外的城市/学校本地化或服务端行政区 facets：由真实搜索失败率、多客户端复用需求决定。
 - 目录离线缓存、预取和虚拟列表：只有实测请求延迟或长列表渲染达到问题阈值后再引入。
 - 将本地附属字段迁入后端：等待正式后端字段，而不是本轮新建旁路协议。
 
@@ -286,8 +291,9 @@ Array<{ path: string; reason: string }>
 
 1. Backend 登录/角色水合不再全量下载五类 Catalog。
 2. 所有 Backend 受控目录写入都来自用户选择时保存的真实 ID，没有显示名反查或本地值提交。
-3. 城市保留 PM 的二级导航体验，具体选项由扁平 Location API 按行政区/搜索提供。
-4. CandidateIntention 不混入 archived、不重复主城市、不默认 onsite、不伪造年薪月数，并保留 UI 未表达的服务端字段。
-5. Resume 与 Job 当前已接线 CRUD 场景使用真实引用、revision、幂等和状态。
-6. BFF 字段错误数组、401/409/503 被正确处理，Backend 已支持域从不回退 Mock。
-7. Mock 模式和未接线演示域保持当前 PM 体验；除受控选择、真实错误状态和办公方式必填外，没有额外 UI 改版。
+3. 城市保留 PM 的按省铺开体验；省级配置只生成查询 filter，具体选项由扁平 Location API 按行政区/搜索提供，所有中国城市以中文显示。
+4. 学校搜索能区分国家和城市，所有中国学校以中文显示；专业目录继续使用现有中文 taxonomy。
+5. CandidateIntention 不混入 archived、不重复主城市、不默认 onsite、不伪造年薪月数，并保留 UI 未表达的服务端字段。
+6. Resume 与 Job 当前已接线 CRUD 场景使用真实引用、revision、幂等和状态。
+7. BFF 字段错误数组、401/409/503 被正确处理，Backend 已支持域从不回退 Mock。
+8. Mock 模式和未接线演示域保持当前 PM 体验；除受控选择、真实错误状态和办公方式必填外，没有额外 UI 改版。
