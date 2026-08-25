@@ -176,6 +176,27 @@ describe('工作经历 行业弹层 Backend', () => {
   });
 });
 
+// review-r2 R2-I-5：Backend 经历编辑页 行业为空也能完成 → 保存简历 跳过该行 → 不持久化 →
+// 服务端水合后消失。修复后 Backend 要求 行业引用（隐含 行业 非空）才能完成。
+describe('工作经历 经历编辑页 Backend 行业必填引用（R2-I-5）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+  });
+
+  it('Backend 行业为空时完成被阻断，不派发存简历', async () => {
+    render工作经历({ 数据源: 'backend' });
+    const 用户 = userEvent.setup();
+    // 进入第一段经历编辑页（初始数据 行业='' 行业引用=undefined）
+    await 用户.click(screen.getByText('字节跳动'));
+    // 公司/职位/入职时间 都已填（初始数据），必填齐通过；点完成应被 行业引用 缺失阻断
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    const 派发 = mock应用状态.派发;
+    const 存简历调用 = 派发.mock.calls.find((c: unknown[]) => (c[0] as { 型?: string })?.型 === '存简历');
+    expect(存简历调用).toBeUndefined();
+  });
+});
+
 // review-r1 P1-3：教育编辑页 Backend 分支——学校/专业输入走目录查询，点候选才落引用，
 // 继续输入清引用，没点候选阻止保存。Mock 分支保持自由文本不变。
 describe('工作经历 教育编辑页 Backend', () => {
