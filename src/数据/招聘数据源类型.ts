@@ -65,6 +65,12 @@ export interface 意向草稿型 {
   薪资上限: number | null;
   /** 期望行业，规格上限 3（同 感兴趣城市们，上限在页面把关）*/
   期望行业们: string[];
+  /** Backend 期望行业选择器选中的目录引用们；Mock 模式为空数组。
+   *  保存意向时映射层用它们取 industry_ids；Tasks 5–6 接入 BFF 写入。*/
+  行业引用们?: 目录选择值[];
+  /** Backend 期望职位选择器选中的目录引用（单选，意向来源）；Mock 模式为 undefined。
+   *  保存意向时映射层用它取 job_category_id；Tasks 5–6 接入 BFF 写入。*/
+  职位引用?: 目录选择值;
   /** 后端真实招聘类型；编辑已有意向时从服务端快照带入，新建为 null。
    *  不渲染：页面只有 全职/兼职 两个单选，校园/实习 的区分只能从后端保留。*/
   后端招聘类型: 'social_full_time' | 'campus' | 'internship' | 'part_time' | null;
@@ -84,6 +90,10 @@ export interface 首次意向输入 {
   薪资: { 下限: number; 上限: number; 单位: 求职薪资单位 };
   筛选偏好: 求职初筛偏好;
   排除项: string[];
+  /** Backend 期望职位选择器选中的目录引用们（Task 4 占位字段，Task 6 接入实际填充）*/
+  职位引用?: 目录选择值;
+  /** Backend 工作城市选择器选中的目录引用们（Task 4 占位字段，Task 6 接入实际填充）*/
+  城市引用们?: 目录选择值[];
 }
 
 export interface 岗位映射上下文 {

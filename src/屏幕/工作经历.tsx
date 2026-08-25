@@ -10,7 +10,7 @@
 // 在职时间用 <input type="month">：iOS 弹原生年月滚轮，桌面有日历下拉，
 // 不再是能输任意字符的自由文本 —— 这是上一版最大的 bug。
 
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import 样式 from './工作经历.module.css';
 import 年月滚轮层 from '../组件/年月滚轮层';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 开关 } from '../组件/通用';
@@ -22,6 +22,8 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { 规范化作品集链接, 校验作品集链接, 校验起止年月 } from '../流程/onboarding配置';
+import type { BFFTaxonomyItem } from '../数据/BFF契约';
+import type { 目录选择值 } from '../数据/招聘数据源类型';
 
 /** 一段工作经历。开始/结束用 input[type=month] 的 yyyy-MM 格式；结束 null = 至今 */
 /** 行业快捷片：点一下填入，省得手机上打字 */
@@ -564,6 +566,8 @@ function 经历编辑页({
   完成: (段: 简历经历段) => void;
   删除?: () => void;
 }) {
+  const { 数据源模式, 目录查询 } = use应用状态();
+  const 是后端 = 数据源模式 === 'backend';
   const [草稿, 设草稿] = useState<简历经历段>(
     初始 ?? {
       编号: `e${Date.now()}`,
@@ -579,6 +583,13 @@ function 经历编辑页({
     }
   );
   const [行业层, 设行业层] = useState(false);
+  // Backend 行业列表：弹层打开时按需 查询Taxonomy('industries')，支持一级展开取子项
+  const [行业根项, 设行业根项] = useState<BFFTaxonomyItem[]>([]);
+  const [行业子项表, 设行业子项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
+  // 非 selectable 子项展开后的孙项（>2 级 taxonomy）
+  const [行业孙项表, 设行业孙项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
+  const 行业方法引用 = useRef(目录查询?.查询Taxonomy);
+  行业方法引用.current = 目录查询?.查询Taxonomy;
   // 年月滚轮打开在哪一侧：null = 没开
   const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
   const 至今 = 草稿.结束 === null;
@@ -589,6 +600,46 @@ function 经历编辑页({
 
   const 改 = <键 extends keyof 简历经历段>(键名: 键, 值: 简历经历段[键]) =>
     设草稿((旧) => ({ ...旧, [键名]: 值 }));
+
+  // Backend：弹层打开时加载行业 roots；点根项再按 parentId 取子项
+  useEffect(() => {
+    if (!是后端 || !行业层) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    void (async () => {
+      try {
+        const 页 = await 方法('industries', { limit: 50 });
+        设行业根项(页.items);
+      } catch {
+        设行业根项([]);
+      }
+    })();
+  }, [是后端, 行业层]);
+
+  const 展开行业根 = async (项: BFFTaxonomyItem) => {
+    if (行业子项表[项.id]) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    try {
+      const 子页 = await 方法('industries', { parentId: 项.id, limit: 50 });
+      设行业子项表((旧) => ({ ...旧, [项.id]: 子页.items }));
+    } catch {
+      设行业子项表((旧) => ({ ...旧, [项.id]: [] }));
+    }
+  };
+
+  // 非 selectable 子项：按 parentId 取孙项（>2 级 taxonomy），展开为嵌套列表
+  const 展开行业子 = async (项: BFFTaxonomyItem) => {
+    if (行业孙项表[项.id]) return;
+    const 方法 = 行业方法引用.current;
+    if (!方法) return;
+    try {
+      const 孙页 = await 方法('industries', { parentId: 项.id, limit: 50 });
+      设行业孙项表((旧) => ({ ...旧, [项.id]: 孙页.items }));
+    } catch {
+      设行业孙项表((旧) => ({ ...旧, [项.id]: [] }));
+    }
+  };
 
   // ── 工作业绩（原「关键项目」，标注 14:28 改名）：挂在这一段经历里面，不做独立大分节 ──
   // 业绩脱离了公司和时间就没有可核对性（「这件事是在哪家公司、什么时候做的」），
@@ -615,6 +666,11 @@ function 经历编辑页({
               }
               if (时间错误) {
                 轻提示(时间错误);
+                return;
+              }
+              // Task 4：Backend 行业已填但未从候选选过（行业引用 为空）→ 阻止保存
+              if (是后端 && 草稿.行业.trim() !== '' && 草稿.行业引用 === undefined) {
+                轻提示('请从候选行业中选择');
                 return;
               }
               完成(草稿);
@@ -814,25 +870,93 @@ function 经历编辑页({
             <div className={样式.选择层抓手} />
             <div className={样式.选择层标题}>所属行业</div>
             <div className={`${样式.选择层列表} 滚动区`}>
-              {常见行业.map((行业) => (
-                <button
-                  key={行业}
-                  className={`${样式.选择项} ${草稿.行业 === 行业 ? 样式.选择项选中 : ''} 可点`}
-                  onClick={() => {
-                    改('行业', 行业);
-                    设行业层(false);
-                  }}
-                >
-                  {行业}
-                  {草稿.行业 === 行业 ? <span className={样式.选择勾}>✓</span> : null}
-                </button>
-              ))}
+              {是后端
+                ? 行业根项.flatMap((根) => {
+                    const 子项 = 行业子项表[根.id];
+                    const 节点们: ReactNode[] = [
+                      <button
+                        key={根.id}
+                        className={`${样式.选择项} ${草稿.行业 === 根.display_name ? 样式.选择项选中 : ''} 可点`}
+                        onClick={() => 根.selectable ? (改('行业', 根.display_name), 改('行业引用', { id: 根.id, display_name: 根.display_name } as 目录选择值), 设行业层(false)) : 展开行业根(根)}
+                      >
+                        {根.display_name}
+                        {草稿.行业 === 根.display_name ? <span className={样式.选择勾}>✓</span> : null}
+                      </button>,
+                    ];
+                    if (子项) {
+                      for (const 子 of 子项) {
+                        节点们.push(
+                          <button
+                            key={子.id}
+                            className={`${样式.选择项} ${草稿.行业 === 子.display_name ? 样式.选择项选中 : ''} 可点`}
+                            style={{ paddingLeft: 28 }}
+                            onClick={() => {
+                              // 非 selectable 子项：按 parentId 展开孙项，不提交
+                              if (!子.selectable) {
+                                void 展开行业子(子);
+                                return;
+                              }
+                              改('行业', 子.display_name);
+                              改('行业引用', { id: 子.id, display_name: 子.display_name } as 目录选择值);
+                              设行业层(false);
+                            }}
+                          >
+                            {子.display_name}
+                            {草稿.行业 === 子.display_name ? <span className={样式.选择勾}>✓</span> : null}
+                          </button>,
+                        );
+                        // 非 selectable 子项展开后的孙项（>2 级 taxonomy）
+                        const 孙项 = 行业孙项表[子.id];
+                        if (孙项?.length) {
+                          for (const 孙 of 孙项) {
+                            节点们.push(
+                              <button
+                                key={孙.id}
+                                className={`${样式.选择项} ${草稿.行业 === 孙.display_name ? 样式.选择项选中 : ''} 可点`}
+                                style={{ paddingLeft: 52 }}
+                                onClick={() => {
+                                  if (!孙.selectable) {
+                                    void 展开行业子(孙);
+                                    return;
+                                  }
+                                  改('行业', 孙.display_name);
+                                  改('行业引用', { id: 孙.id, display_name: 孙.display_name } as 目录选择值);
+                                  设行业层(false);
+                                }}
+                              >
+                                {孙.display_name}
+                                {草稿.行业 === 孙.display_name ? <span className={样式.选择勾}>✓</span> : null}
+                              </button>,
+                            );
+                          }
+                        }
+                      }
+                    }
+                    return 节点们;
+                  })
+                : 常见行业.map((行业) => (
+                    <button
+                      key={行业}
+                      className={`${样式.选择项} ${草稿.行业 === 行业 ? 样式.选择项选中 : ''} 可点`}
+                      onClick={() => {
+                        改('行业', 行业);
+                        设行业层(false);
+                      }}
+                    >
+                      {行业}
+                      {草稿.行业 === 行业 ? <span className={样式.选择勾}>✓</span> : null}
+                    </button>
+                  ))}
             </div>
             <input
               className={样式.选择层输入}
               value={草稿.行业}
               placeholder="没有合适的？直接输入"
-              onChange={(事件) => 改('行业', 事件.target.value)}
+              onChange={(事件) => {
+                改('行业', 事件.target.value);
+                // Task 4：自由输入立即清除旧引用（只有点候选才落引用）
+                if (是后端) 改('行业引用', undefined);
+              }}
               onKeyDown={(事件) => {
                 if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 设行业层(false);
               }}
