@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { 从BFF简历, 精确目录ID, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿 } from './后端映射';
+import { 从BFF简历, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿 } from './后端映射';
 import { BFF意向样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 import type { 意向草稿型 } from './招聘数据源类型';
 
@@ -77,27 +77,24 @@ describe('候选人后端映射', () => {
       .toEqual({ real_name: '沈亦舟', work_start_year: 2021, status: 'unemployed', current_education: null, graduation_year: null, gender: 'male', birth_year: 1998, birth_month: 6 });
   });
 
-  it('目录显示名必须唯一精确匹配', () => {
-    const items = [{ id: 'tax_1', display_name: '产品经理' }];
-    expect(精确目录ID(items, '产品经理', '职位类别')).toBe('tax_1');
-    expect(() => 精确目录ID(items, '产品', '职位类别')).toThrow('无法唯一匹配职位类别：产品');
-  });
-
   it('把后端岗位映射为现有页面模型', () => {
     expect(从BFF岗位(BFF岗位样本, { 加分关键词: ['课程项目'], 实习转正: true })).toMatchObject({
       编号: 'job_1', 名称: 'AI 产品实习生', 城市: '上海', 办公方式: '混合',
       招聘类型: '实习生', 职位类别: '产品经理', 职位关键词: ['Python'],
+      // Task 7：owner DTO 的 category/location 同时落到 类别引用/地点引用，写入时直接用引用.id
+      类别引用: { id: 'tax_product', display_name: '产品经理' },
+      地点引用: { id: 'loc_shanghai', display_name: '上海' },
       加分关键词: ['课程项目'], 实习转正: true, 状态: '在招', 在谈数: 0,
     });
   });
 
+  // Task 7：岗位创建直接用选择器保存的 类别引用/地点引用 取 ID，不再按显示名反查目录。
   it('职位创建只发送 BFF 支持字段', () => {
-    const 目录 = {
-      职位类别: [{ id: 'tax_product', display_name: '产品经理' }],
-      地点: [{ id: 'loc_shanghai', display_name: '上海' }],
-      行业: [], 院校: [], 专业: [],
-    };
-    const body = 转岗位创建(页面岗位样本, 目录, { 公司: '云衢科技' });
+    const body = 转岗位创建({
+      ...页面岗位样本,
+      类别引用: { id: 'tax_product', display_name: '产品经理' },
+      地点引用: { id: 'loc_shanghai', display_name: '上海' },
+    }, { 公司: '云衢科技' });
     expect(body).toMatchObject({
       publisher_mode: 'direct', hiring_organization_claim: { display_name: '云衢科技', legal_name: null },
       title: 页面岗位样本.名称, category_id: 'tax_product', location_id: 'loc_shanghai',
@@ -108,19 +105,36 @@ describe('候选人后端映射', () => {
   });
 
   it('经验要求按 BFF enum 映射，不静默降级为 none', () => {
-    const 目录 = {
-      职位类别: [{ id: 'tax_product', display_name: '产品经理' }],
-      地点: [{ id: 'loc_shanghai', display_name: '上海' }],
-      行业: [], 院校: [], 专业: [],
+    const 带引用 = {
+      ...页面岗位样本,
+      类别引用: { id: 'tax_product', display_name: '产品经理' },
+      地点引用: { id: 'loc_shanghai', display_name: '上海' },
     };
     // 页面岗位样本.经验要求 = '不限'；覆盖成 '3-5 年' 验证不被吞成 'none'
-    const body = 转岗位创建({ ...页面岗位样本, 经验要求: '3-5 年' }, 目录, { 公司: '云衢科技' });
+    const body = 转岗位创建({ ...带引用, 经验要求: '3-5 年' }, { 公司: '云衢科技' });
     expect(body.experience_requirement).toBe('three_to_five_years');
     // 不限 仍映射为 none
-    expect(转岗位创建(页面岗位样本, 目录, { 公司: '云衢科技' }).experience_requirement).toBe('none');
+    expect(转岗位创建(带引用, { 公司: '云衢科技' }).experience_requirement).toBe('none');
     // 未映射的页值（演示域「3 年以上」）必须抛错，不静默落成 'none'
-    expect(() => 转岗位创建({ ...页面岗位样本, 经验要求: '3 年以上' }, 目录, { 公司: '云衢科技' }))
+    expect(() => 转岗位创建({ ...带引用, 经验要求: '3 年以上' }, { 公司: '云衢科技' }))
       .toThrow('未映射的经验要求：3 年以上');
+  });
+
+  it('岗位创建使用选择时保存的类别和地点 ID', () => {
+    const body = 转岗位创建({
+      ...页面岗位样本,
+      类别引用: { id: 'tax_backend', display_name: '后端开发' },
+      地点引用: { id: 'loc_sh', display_name: '上海市' },
+    }, { 公司: '甲公司' });
+    expect(body).toMatchObject({ category_id: 'tax_backend', location_id: 'loc_sh' });
+  });
+
+  it('岗位更新保留 immutable category/location/type/title', () => {
+    const body = 转岗位补丁({ ...页面岗位样本 }, { 原始: BFF岗位样本, 公司: '甲公司' });
+    expect(body).toMatchObject({
+      title: BFF岗位样本.title, recruitment_type: BFF岗位样本.recruitment_type,
+      category_id: BFF岗位样本.category.id, location_id: BFF岗位样本.location.id,
+    });
   });
 
   it('已加载的校园/实习意向在用户没切招聘类型时保留原类型', () => {
@@ -138,18 +152,18 @@ describe('候选人后端映射', () => {
 
   // F9：campus_cohort '不限'/空/非数字 → null，不再被 Number('') 误判成 0 届
   it('校园招聘 campus_cohort：不限/空/非数字 落 null，数字年份保留', () => {
-    const 目录 = {
-      职位类别: [{ id: 'tax_product', display_name: '产品经理' }],
-      地点: [{ id: 'loc_shanghai', display_name: '上海' }],
-      行业: [], 院校: [], 专业: [],
+    const 带引用 = {
+      ...页面岗位样本,
+      类别引用: { id: 'tax_product', display_name: '产品经理' },
+      地点引用: { id: 'loc_shanghai', display_name: '上海' },
     };
-    expect(转岗位创建({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: '不限' }, 目录, { 公司: '云衢科技' }).campus_cohort).toBe(null);
-    expect(转岗位创建({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: undefined }, 目录, { 公司: '云衢科技' }).campus_cohort).toBe(null);
-    expect(转岗位创建({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: '本周' }, 目录, { 公司: '云衢科技' }).campus_cohort).toBe(null);
-    expect(转岗位创建({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: '2027 届' }, 目录, { 公司: '云衢科技' }).campus_cohort).toBe(2027);
+    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '不限' }, { 公司: '云衢科技' }).campus_cohort).toBe(null);
+    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: undefined }, { 公司: '云衢科技' }).campus_cohort).toBe(null);
+    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '本周' }, { 公司: '云衢科技' }).campus_cohort).toBe(null);
+    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '2027 届' }, { 公司: '云衢科技' }).campus_cohort).toBe(2027);
     // 补丁同样
-    expect(转岗位补丁({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: '不限' }, { 原始: BFF岗位样本, 公司: '云衢科技' }).campus_cohort).toBe(null);
-    expect(转岗位补丁({ ...页面岗位样本, 招聘类型: '校园招聘', 届别: '2027 届' }, { 原始: BFF岗位样本, 公司: '云衢科技' }).campus_cohort).toBe(2027);
+    expect(转岗位补丁({ ...带引用, 招聘类型: '校园招聘', 届别: '不限' }, { 原始: BFF岗位样本, 公司: '云衢科技' }).campus_cohort).toBe(null);
+    expect(转岗位补丁({ ...带引用, 招聘类型: '校园招聘', 届别: '2027 届' }, { 原始: BFF岗位样本, 公司: '云衢科技' }).campus_cohort).toBe(2027);
   });
 
   // F4：办公方式 既接受中文标签（引导预填来源），也接受 wire code（已有意向快照来源）

@@ -88,7 +88,6 @@ import type {
   页面岗位快照,
   页面简历写入,
   首次意向输入,
-  目录索引,
   目录选择值,
 } from '../数据/招聘数据源类型';
 import type { BFF主体, BFF简历, BFFOwnerIntention, BFFOwnerJob, BFF角色 } from '../数据/BFF契约';
@@ -1625,21 +1624,13 @@ function 意向说明(draft: 意向草稿型): string {
   return 期望行业文本 === '' ? 薪资文本 : `${薪资文本}｜${期望行业文本}`;
 }
 
-/** 按需取目录并缓存到 ref，供意向/岗位写入映射复用。Task 7 删除：写入路径迁到分页目录后移除。 */
-async function 取目录(后端: HTTP招聘数据源, 目录引用: { current: 目录索引 | null }): Promise<目录索引> {
-  if (目录引用.current) return 目录引用.current;
-  const 目录 = await 后端.读取目录();
-  目录引用.current = 目录;
-  return 目录;
-}
-
 /**
  * 按主体.last_used_role 水合支持域：
  *   candidate → 简历 + 意向（并行读取，各自独立派发）；recruiter → 岗位；null → 保持身份选择页不水合。
  * mount-init（交互=false）：candidate 两条并行 allSettled，任一 rejected 只 轻提示 该资源，不抛出 —— 初始化仍要落成「完成」。
  * 切身份（交互=true）：任一 rejected 直接抛出第一个错误 —— 让 选身份.tsx catch 显示 轻提示并留在原地，
  *   不导航进一个空壳（支持域没水合成功，进去也是空盘）。
- * Task 2：不再在初始化/切身份时预取目录。目录由写入路径按需读取（取目录/目录引用），Task 7 删除。
+ * Task 2：不再在初始化/切身份时预取目录。Task 7 起岗位写入用选择器保存的引用，目录预取彻底删除。
  */
 async function 水合角色数据(
   后端: HTTP招聘数据源,
@@ -1706,8 +1697,6 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const 尝试引用 = useRef<string | null>(null);
   // StrictMode 下 effect 会跑两次，用 ref 阻止恢复会话重复请求
   const 已初始化 = useRef(false);
-  // 目录缓存：意向/岗位写入映射需要，按需取一次。Task 7 删除：写入路径迁到分页目录后移除。
-  const 目录引用 = useRef<目录索引 | null>(null);
   // 并发写锁：简历保存 / 意向:${id|new} 同一操作进行中时拒绝重复提交
   const 锁 = useRef<Set<string>>(new Set());
 
@@ -2155,10 +2144,10 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         if (锁.current.has(键)) return;
         锁.current.add(键);
         try {
-          const 目录 = 目录引用.current ?? await 取目录(后端, 目录引用);
-          // create 成功后由数据层写入附属数据（加分关键词/实习转正），键用响应里的真实 job_id，
-          // 不是页面临时 P-xx；水合只派发服务端岗位列表，不派发 Mock 发布岗位（不播种起步候选）。
-          const 快照 = await 后端.创建岗位(job, { 公司: 状态引用.current.企业认证.公司, 目录 });
+          // Task 7：create 直接用 类别引用/地点引用 取 ID，不再按需取目录。
+          // 附属数据（加分关键词/实习转正）由数据层用响应里的真实 job_id 写入；
+          // 水合只派发服务端岗位列表，不派发 Mock 发布岗位（不播种起步候选）。
+          const 快照 = await 后端.创建岗位(job, { 公司: 状态引用.current.企业认证.公司 });
           派发({ 型: '水合后端岗位', 快照 });
           设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
         } catch (错误) {
@@ -2178,9 +2167,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         try {
           const 原始 = 后端状态引用.current.岗位快照[job.编号];
           if (!原始) return;
-          const 目录 = 目录引用.current ?? await 取目录(后端, 目录引用);
-          // update 的 If-Match 由数据层用 previous.revision 生成；附属按同 ID 更新。
-          const 快照 = await 后端.更新岗位(job, 原始, { 公司: 状态引用.current.企业认证.公司, 目录 });
+          // Task 7：update 的 immutable category/location 取 owner DTO（previous）的 id，
+          // 不再按需取目录；If-Match 由数据层用 previous.revision 生成；附属按同 ID 更新。
+          const 快照 = await 后端.更新岗位(job, 原始, { 公司: 状态引用.current.企业认证.公司 });
           派发({ 型: '水合后端岗位', 快照 });
           设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
         } catch (错误) {

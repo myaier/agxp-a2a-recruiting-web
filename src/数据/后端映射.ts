@@ -9,7 +9,6 @@ import type {
   BFF项目,
   BFF教育,
   BFF证书,
-  BFF目录引用,
   BFF资料写入,
   BFF经历写入,
   BFF教育写入,
@@ -25,7 +24,6 @@ import type {
 import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 简历项目, 在招岗位, 求职意向 } from './类型';
 import type {
   页面简历快照,
-  目录索引,
   目录选择值,
   意向草稿型,
   意向映射上下文,
@@ -38,17 +36,6 @@ const 身份到后端 = { 在校: 'student', 在职: 'employed', 离职: 'unempl
 const 后端到身份 = { student: '在校', employed: '在职', unemployed: '离职' } as const;
 const 性别到后端 = { 男: 'male', 女: 'female' } as const;
 const 后端到性别 = { male: '男', female: '女' } as const;
-
-/**
- * 精确目录匹配：要求 display_name 完全相等且唯一。
- * 不是唯一一条就抛错——前缀 / 模糊匹配会让「产品」误命中「产品经理」，写错行业/职位类别。
- * 仅用于意向/岗位写入（Tasks 6–7 迁移）；简历写入已改用 必需引用 直接取选择器保存的引用。
- */
-export function 精确目录ID(items: BFF目录引用[], 显示名: string, 类别: string): string {
-  const 命中 = items.filter((项) => 项.display_name === 显示名);
-  if (命中.length !== 1) throw new Error(`无法唯一匹配${类别}：${显示名}`);
-  return 命中[0].id;
-}
 
 /**
  * 简历写入用：取选择器保存的目录引用 id。没有引用说明用户手输了显示名而没从候选选，
@@ -420,6 +407,9 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
     状态: dto.status === 'active' ? '在招' : '已归档',
     在谈数: 0,
     城市: dto.location.display_name,
+    // owner DTO 的 category/location 同时落到 类别引用/地点引用，写入时直接用 引用.id（Task 7）
+    类别引用: dto.category,
+    地点引用: dto.location,
     办公地: dto.office_location,
     办公方式: 后端到办公方式[dto.workplace_mode],
     招聘类型: 后端到岗位类型[dto.recruitment_type],
@@ -441,16 +431,17 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
   return 岗位;
 }
 
-/** 页面岗位 → BFF岗位创建 body。加分关键词/实习转正 不进 body（只进前端附属存储）。 */
-export function 转岗位创建(页面岗位: 在招岗位, 目录: 目录索引, 上下文: { 公司: string }): BFF岗位创建 {
+/** 页面岗位 → BFF岗位创建 body。加分关键词/实习转正 不进 body（只进前端附属存储）。
+ *  Task 7：category_id/location_id 直接读 类别引用/地点引用（选择器保存的引用），不再按显示名反查目录。 */
+export function 转岗位创建(页面岗位: 在招岗位, 上下文: { 公司: string }): BFF岗位创建 {
   const { lower, upper } = 解析薪资带(页面岗位.薪资带);
   return {
     publisher_mode: 'direct',
     hiring_organization_claim: { display_name: 上下文.公司, legal_name: null },
     title: 页面岗位.名称,
     recruitment_type: 岗位类型到后端[页面岗位.招聘类型 as keyof typeof 岗位类型到后端],
-    category_id: 精确目录ID(目录.职位类别, 页面岗位.职位类别 ?? '', '职位类别'),
-    location_id: 精确目录ID(目录.地点, 页面岗位.城市 ?? '', '地点'),
+    category_id: 必需引用(页面岗位.类别引用, '类别'),
+    location_id: 必需引用(页面岗位.地点引用, '地点'),
     office_location: 页面岗位.办公地 ?? '',
     workplace_mode: 办公方式到岗位后端[页面岗位.办公方式 as keyof typeof 办公方式到岗位后端] ?? 'onsite',
     salary: { lower, upper },

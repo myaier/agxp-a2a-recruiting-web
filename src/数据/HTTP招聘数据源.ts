@@ -31,7 +31,6 @@ import type {
   页面简历写入,
   页面意向快照,
   页面岗位快照,
-  目录索引,
   目录页,
   Taxonomy查询,
   Location查询,
@@ -97,26 +96,13 @@ interface BFF登出回执 {
   logged_out: boolean;
 }
 
-const 目录端点: Record<keyof 目录索引, `/api/v1/catalog/${string}`> = {
-  职位类别: '/api/v1/catalog/job-categories',
-  地点: '/api/v1/catalog/locations',
-  行业: '/api/v1/catalog/industries',
-  院校: '/api/v1/catalog/education-institutions',
-  专业: '/api/v1/catalog/majors',
-};
-
 // 分页目录查询只覆盖这三个 taxonomy 端点；locations / education-institutions 固定路径单独映射。
 type Taxonomy类别 = 'job-categories' | 'industries' | 'majors';
 
-type 目录项 = { id: string; display_name: string; selectable?: boolean };
 type 写入步骤 = () => Promise<unknown>;
 
 function 修订etag(revision: number): string {
   return `"${revision}"`;
-}
-
-function 拼路径(base: `/api/v1/catalog/${string}`, query: string): `/api/v1/${string}` {
-  return `${base}?${query}` as `/api/v1/${string}`;
 }
 
 export interface HTTP招聘数据源依赖 {
@@ -134,7 +120,6 @@ export interface HTTP招聘数据源 {
   读取主体(): Promise<BFF主体>;
   确保角色(role: BFF角色): Promise<BFF主体>;
   记录当前角色(role: BFF角色): Promise<BFF主体>;
-  读取目录(): Promise<目录索引>;
   查询Taxonomy(kind: Taxonomy类别, query: Taxonomy查询): Promise<目录页<BFFTaxonomyItem>>;
   查询Location(query: Location查询): Promise<目录页<BFFLocationItem>>;
   查询Institution(query: Institution查询): Promise<目录页<BFFInstitutionItem>>;
@@ -157,10 +142,8 @@ export interface HTTP招聘数据源 {
 export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP招聘数据源 {
   const { client, 后端环境, 附属存储 } = deps;
   const 请求 = client.请求;
-  // 目录缓存：legacy 解析目录项 的 kind:displayName → id 缓存（Task 7 删除）。
-  const 目录缓存 = new Map<string, string>();
   // 目录页面缓存：分页查询的 in-flight 去重 + 已请求页面缓存。key = endpoint?normalizedQuery。
-  // 只缓存当前 session 已请求页面；清空目录缓存 清空它，不碰 目录缓存（legacy 写路径仍用）。
+  // 只缓存当前 session 已请求页面；清空目录缓存 清空它。
   const 目录页面缓存 = new Map<string, Promise<unknown>>();
 
   /** 把查询参数编码成稳定 query string：丢掉 undefined 与空串，limit:20 与缺省都稳定。 */
@@ -180,71 +163,6 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
       .catch((error) => { 目录页面缓存.delete(key); throw error; });
     目录页面缓存.set(key, pending);
     return pending;
-  }
-
-  // ── 兼容期 legacy 目录方法：Task 2 移除初始化预取，Tasks 5–7 逐域迁移后由 Task 7 删除 ──
-  async function 读取目录(): Promise<目录索引> {
-    const 目录: 目录索引 = { 职位类别: [], 地点: [], 行业: [], 院校: [], 专业: [] };
-    for (const kind of Object.keys(目录端点) as (keyof 目录索引)[]) {
-      const endpoint = 目录端点[kind];
-      let cursor: string | undefined;
-      while (true) {
-        const path = cursor ? 拼路径(endpoint, `cursor=${encodeURIComponent(cursor)}`) : endpoint;
-        const { result } = await 请求<BFF目录页<目录项>>({ path });
-        for (const 项 of result.items) {
-          // taxonomy 项带 selectable；locations/institutions 不带，视作可选
-          if (项.selectable === false) continue;
-          目录[kind].push({ id: 项.id, display_name: 项.display_name });
-        }
-        cursor = result.next_cursor ?? undefined;
-        if (!cursor) break;
-      }
-    }
-    return 目录;
-  }
-
-  /**
-   * 目录精确解析：?q= 前缀搜索 + 游标翻页，只接受 display_name 完全相等且 selectable 的唯一项。
-   * 缓存键 kind:q。taxonomy 项要求 selectable=true；locations/institutions 不带 selectable，视作可选。
-   * 兼容期 legacy：Task 7 删除，迁移完成前不得新增调用点。
-   */
-  async function 解析目录项(kind: keyof 目录索引, 显示名: string): Promise<string> {
-    const 缓存键 = `${kind}:${显示名}`;
-    const 已存 = 目录缓存.get(缓存键);
-    if (已存 !== undefined) return 已存;
-    const endpoint = 目录端点[kind];
-    const q = encodeURIComponent(显示名);
-    const 命中集 = new Set<string>();
-    let cursor: string | undefined;
-    while (true) {
-      const path = cursor
-        ? 拼路径(endpoint, `q=${q}&cursor=${encodeURIComponent(cursor)}`)
-        : 拼路径(endpoint, `q=${q}`);
-      const { result } = await 请求<BFF目录页<目录项>>({ path });
-      for (const 项 of result.items) {
-        if (项.display_name !== 显示名) continue;
-        if (项.selectable === false) continue;
-        命中集.add(项.id);
-      }
-      cursor = result.next_cursor ?? undefined;
-      if (!cursor) break;
-    }
-    if (命中集.size === 0) throw new Error(`无法匹配${kind}：${显示名}`);
-    if (命中集.size > 1) throw new Error(`${kind} 出现多个「${显示名}」`);
-    const id = [...命中集][0];
-    目录缓存.set(缓存键, id);
-    return id;
-  }
-
-  /** 目录里没有这个显示名时，解析并补进目录，供后续 精确目录ID 命中。兼容期 legacy：Task 7 删除。 */
-  // 保存简历改用表单目录引用后 确保目录 不再有调用点；tsc noUnusedLocals 仍要求它被读取，
-  // 这里标记为预期错误，Task 7 删除 确保目录/解析目录项 时一并移除。
-  // @ts-expect-error Task 7 删除：保存简历改用表单引用后 确保目录 不再有调用点
-  async function 确保目录(目录: 目录索引, kind: keyof 目录索引, 显示名: string): Promise<void> {
-    if (显示名 === '') return;
-    if (目录[kind].some((项) => 项.display_name === 显示名)) return;
-    const id = await 解析目录项(kind, 显示名);
-    目录[kind].push({ id, display_name: 显示名 });
   }
 
   async function 读取意向(): Promise<页面意向快照> {
@@ -484,7 +402,6 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
     记录当前角色(role) {
       return 请求<BFF主体>({ path: '/api/v1/me/preferences/last-used-role', method: 'PUT', body: { role } }).then((r) => r.result);
     },
-    读取目录,
     查询Taxonomy(kind, query) {
       const path = `/api/v1/catalog/${kind}` as `/api/v1/catalog/${string}`;
       const query_string = 编码查询([
@@ -557,7 +474,7 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
       const { result } = await 请求<BFFOwnerJob>({
         path: '/api/v1/recruiter/jobs',
         method: 'POST',
-        body: 转岗位创建(job, context.目录, { 公司: context.公司 }),
+        body: 转岗位创建(job, { 公司: context.公司 }),
         幂等: true,
       });
       写入岗位附属(result.job_id, job);

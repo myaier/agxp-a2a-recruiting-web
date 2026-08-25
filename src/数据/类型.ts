@@ -253,6 +253,9 @@ export interface 在招岗位 {
   在谈数: number;
   // ── 发布时录入、发布后可编辑（2026-08-18 补）──
   城市?: string;
+  /** Backend 工作城市选择器选中的 Location 引用（id + display_name）；Mock 模式为 undefined。
+   *  Task 7 的 BFF 写入映射用它取 location_id。列表字符串 城市 继续渲染。*/
+  地点引用?: 目录选择值;
   /** 办公地点，楼宇级文本 */
   办公地?: string;
   办公方式?: string;
@@ -260,6 +263,9 @@ export interface 在招岗位 {
   招聘类型?: '社招全职' | '校园招聘' | '实习生' | '兼职';
   /** 职位类别，如「后端开发」。发布后不可修改 */
   职位类别?: string;
+  /** Backend 职位类别选择器选中的目录引用（id + display_name）；Mock 模式为 undefined。
+   *  Task 7 的 BFF 写入映射用它取 category_id，代替按 display_name 反查目录 */
+  类别引用?: 目录选择值;
   /** 给 AI 代理的筛选要求（标注 2026-08-20 13:40）：自由文本偏好，代理按它筛选和谈 */
   筛选要求?: string;
   /** 结构化要求：与 硬性条件 合同联动（不限 = 不写进合同） */

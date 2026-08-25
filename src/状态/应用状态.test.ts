@@ -180,7 +180,6 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     归档岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     重开岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     删除岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
-    读取目录: vi.fn(async () => ({ 职位类别: [], 地点: [], 行业: [], 院校: [], 专业: [] })),
     清空目录缓存: vi.fn(),
     开始手机登录: vi.fn(),
     完成手机登录: vi.fn(),
@@ -540,7 +539,8 @@ describe('应用状态提供者 目录水合与原型缓存隔离', () => {
   });
 
   // Task 2：candidate 初始化并行读取简历与 active 意向，不再预取目录。
-  it('candidate 初始化不读取目录并独立提交简历和 active 意向', async () => {
+  // Task 7：读取目录 已删除，这里只断言简历/意向独立提交。
+  it('candidate 初始化独立提交简历和 active 意向', async () => {
     const 后端 = 创建后端桩('candidate');
     const 简历快照 = 从BFF简历(BFF简历样本);
     const 意向快照 = { 列表: [], 服务端: {} } as 页面意向快照;
@@ -550,12 +550,12 @@ describe('应用状态提供者 目录水合与原型缓存隔离', () => {
     render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }));
     await waitFor(() => expect(后端.读取简历).toHaveBeenCalled());
     expect(后端.读取意向).toHaveBeenCalled();
-    expect(后端.读取目录).not.toHaveBeenCalled();
     expect(后端.读取意向).toHaveBeenCalledWith();
   });
 
   // Task 2：交互式切身份也不预取目录。
-  it('交互式切换角色也不预取目录', async () => {
+  // Task 7：读取目录 已删除，这里只断言切身份后水合目标角色岗位。
+  it('交互式切换角色水合目标角色岗位', async () => {
     let 当前!: ReturnType<typeof use应用状态>;
     function 上下文探针() { 当前 = use应用状态(); return null; }
     const 后端 = 创建后端桩('candidate');
@@ -564,7 +564,6 @@ describe('应用状态提供者 目录水合与原型缓存隔离', () => {
     await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
     await 当前.操作.切身份('招聘方');
     await waitFor(() => expect(后端.读取岗位).toHaveBeenCalled());
-    expect(后端.读取目录).not.toHaveBeenCalled();
   });
 
   // Task 2：Backend 水合与退出不覆盖 Mock 原型缓存（AGXP简历v2 / AGXP求职筛选v1）。

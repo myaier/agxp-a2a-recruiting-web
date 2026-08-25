@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BFF简历样本 } from '../测试/BFF样本';
+import { BFF简历样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 import { BFF错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
 import { 从BFF简历 } from './后端映射';
 import { 创建岗位附属存储 } from './前端附属数据';
@@ -382,6 +382,33 @@ describe('HTTP 招聘数据源', () => {
       job_category_id: 'tax_pm', primary_location_id: 'loc_sh',
       alternate_location_ids: ['loc_hz'], workplace_modes: ['hybrid'],
     });
+    const 目录请求 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.path.includes('/catalog/'));
+    expect(目录请求).toBeUndefined();
+  });
+
+  // Task 7：创建岗位 body 用 类别引用/地点引用 的 ID，不再按显示名反查目录（无 /catalog/ 请求）。
+  it('创建岗位 body 用引用 ID，不请求 /catalog/', async () => {
+    // POST /recruiter/jobs 返回单个 job；后续 读取岗位 GET 返回 jobs 页
+    请求Mock.mockImplementation(async (options: BFF请求选项) => {
+      if (options.method === 'POST' && options.path === '/api/v1/recruiter/jobs') {
+        return { result: BFF岗位样本, etag: null, requestId: 'r-post' };
+      }
+      return { result: { jobs: [BFF岗位样本], next_cursor: null }, etag: null, requestId: 'r-list' };
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    const job = {
+      ...页面岗位样本,
+      类别引用: { id: 'tax_pm', display_name: '产品经理' },
+      地点引用: { id: 'loc_sh', display_name: '上海市' },
+    };
+    await source.创建岗位(job, { 公司: '甲公司' });
+    const post = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.method === 'POST' && o.path === '/api/v1/recruiter/jobs');
+    expect(post?.body).toMatchObject({ category_id: 'tax_pm', location_id: 'loc_sh' });
+    // 没有任何 /catalog/ 请求
     const 目录请求 = 请求Mock.mock.calls
       .map(([o]) => o as BFF请求选项)
       .find((o) => o.path.includes('/catalog/'));

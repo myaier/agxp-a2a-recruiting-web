@@ -32,14 +32,6 @@ export interface 页面简历快照 {
 
 export type 页面简历写入 = Omit<页面简历快照, '服务端快照'>;
 
-export interface 目录索引 {
-  职位类别: BFF目录引用[];
-  地点: BFF目录引用[];
-  行业: BFF目录引用[];
-  院校: BFF目录引用[];
-  专业: BFF目录引用[];
-}
-
 /**
  * 意向草稿：添加/编辑求职期望页与次级页共用的临时表单态。
  * 从 应用状态.tsx 迁入数据层；应用状态.tsx 以 `export type { 意向草稿型 }` 再导出，
@@ -104,7 +96,6 @@ export interface 首次意向输入 {
 
 export interface 岗位映射上下文 {
   公司: string;
-  目录: 目录索引;
 }
 
 export interface 页面意向快照 {
