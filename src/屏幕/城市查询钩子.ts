@@ -16,6 +16,8 @@ export interface 分组查询状态 {
   items: BFFLocationItem[];
   加载中: boolean;
   cursor: string | null;
+  /** review-r1 P2-1：多 filter 分组（如直辖市四码）的每 filter 游标，加载更多时各取各的下一页 */
+  游标们: (string | null)[];
   还有: boolean;
   已请求: boolean;
 }
@@ -46,14 +48,14 @@ export function use城市分组(查询Location: 查询Location方法 | undefined
     if (组.filters.length === 0) {
       设状态表((旧) => ({
         ...旧,
-        [键]: { items: [], 加载中: false, cursor: null, 还有: false, 已请求: true },
+        [键]: { items: [], 加载中: false, cursor: null, 游标们: [], 还有: false, 已请求: true },
       }));
       return;
     }
     if (!方法) return;
     设状态表((旧) => ({
       ...旧,
-      [键]: { items: [], 加载中: true, cursor: null, 还有: false, 已请求: true },
+      [键]: { items: [], 加载中: true, cursor: null, 游标们: [], 还有: false, 已请求: true },
     }));
     try {
       const 页们 = await Promise.all(
@@ -62,16 +64,17 @@ export function use城市分组(查询Location: 查询Location方法 | undefined
         ),
       );
       const 合并 = 去重(页们.flatMap((页) => 页.items));
-      const 还有 = 页们.some((页) => 页.nextCursor !== null);
-      const cursor = 页们.map((页) => 页.nextCursor).find((c) => c !== null) ?? null;
+      const 游标们 = 页们.map((页) => 页.nextCursor);
+      const 还有 = 游标们.some((c) => c !== null);
+      const cursor = 游标们.find((c) => c !== null) ?? null;
       设状态表((旧) => ({
         ...旧,
-        [键]: { items: 合并, 加载中: false, cursor, 还有, 已请求: true },
+        [键]: { items: 合并, 加载中: false, cursor, 游标们, 还有, 已请求: true },
       }));
     } catch {
       设状态表((旧) => ({
         ...旧,
-        [键]: { items: [], 加载中: false, cursor: null, 还有: false, 已请求: true },
+        [键]: { items: [], 加载中: false, cursor: null, 游标们: [], 还有: false, 已请求: true },
       }));
     }
   };
@@ -86,25 +89,30 @@ export function use城市分组(查询Location: 查询Location方法 | undefined
   const 加载更多 = async (组: 城市分组配置) => {
     const 键 = 组.省;
     const 状态 = 状态表[键];
-    if (!状态 || !状态.还有 || 状态.加载中 || !状态.cursor) return;
+    if (!状态 || !状态.还有 || 状态.加载中) return;
     const 方法 = 方法引用.current;
     if (!方法) return;
     设状态表((旧) => ({ ...旧, [键]: { ...旧[键], 加载中: true } }));
     try {
-      const 页 = await 方法({
-        countryCode: 组.filters[0]?.countryCode,
-        admin1Code: 组.filters[0]?.admin1Code,
-        cursor: 状态.cursor,
-        limit: 默认页大小,
-      });
+      // review-r1 P2-1：多 filter 分组各取各的下一页（用各自的 游标们[i]），
+      // 不再只用 filters[0] 的游标——否则多 filter 组只翻第一个 filter 的第二页。
+      const 页们 = await Promise.all(
+        组.filters.map((f, i) => {
+          const c = 状态.游标们[i];
+          if (c === null) return Promise.resolve({ items: [] as BFFLocationItem[], nextCursor: null, catalogVersion: '' });
+          return 方法({ countryCode: f.countryCode, admin1Code: f.admin1Code, cursor: c, limit: 默认页大小 });
+        }),
+      );
+      const 新游标们 = 页们.map((页) => 页.nextCursor);
       设状态表((旧) => ({
         ...旧,
         [键]: {
           ...旧[键],
-          items: 去重([...旧[键].items, ...页.items]),
+          items: 去重([...旧[键].items, ...页们.flatMap((页) => 页.items)]),
           加载中: false,
-          cursor: 页.nextCursor,
-          还有: 页.nextCursor !== null,
+          游标们: 新游标们,
+          cursor: 新游标们.find((c) => c !== null) ?? null,
+          还有: 新游标们.some((c) => c !== null),
         },
       }));
     } catch {
@@ -115,12 +123,15 @@ export function use城市分组(查询Location: 查询Location方法 | undefined
   return { 状态表, 展开集合, 切换展开, 加载更多 };
 }
 
-/** 搜索查询：250ms debounce 后调 查询Location({ q })。 */
+/** 搜索查询：250ms debounce 后调 查询Location({ q })。
+ *  review-r1 P2-2：用 代际 ref 守 stale response——每次新搜索递增代际；
+ *  响应 resolve 时只有代际与最新一致才 commit，慢的旧响应不覆盖新的。 */
 export function use城市搜索(查询Location: 查询Location方法 | undefined) {
   const [词, 设词] = useState('');
   const [结果, 设结果] = useState<BFFLocationItem[]>([]);
   const [搜索中, 设搜索中] = useState(false);
   const 计时 = useRef(0);
+  const 代际 = useRef(0);
   const 方法引用 = useRef(查询Location);
   方法引用.current = 查询Location;
 
@@ -134,14 +145,18 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
     }
     设搜索中(true);
     window.clearTimeout(计时.current);
+    // 新搜索递增代际；closure 捕获本次的 代际，resolve 时比对 代际.current
+    const 本次 = ++代际.current;
     计时.current = window.setTimeout(async () => {
       try {
         const 页 = await 方法({ q: trimmed });
+        if (本次 !== 代际.current) return; // stale：已有更新的搜索在跑/已完成
         设结果(页.items);
       } catch {
+        if (本次 !== 代际.current) return;
         设结果([]);
       } finally {
-        设搜索中(false);
+        if (本次 === 代际.current) 设搜索中(false);
       }
     }, 搜索防抖毫秒);
     return () => window.clearTimeout(计时.current);

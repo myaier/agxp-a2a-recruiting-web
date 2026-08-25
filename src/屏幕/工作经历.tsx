@@ -440,6 +440,9 @@ function 教育编辑页({
   const [专业候选, 设专业候选] = useState<BFFTaxonomyItem[]>([]);
   const 学校计时 = useRef(0);
   const 专业计时 = useRef(0);
+  // review-r1 P2-2：代际 ref 守 stale response——慢的旧搜索结果不覆盖新的
+  const 学校代际 = useRef(0);
+  const 专业代际 = useRef(0);
   const 学校方法引用 = useRef(目录查询?.查询Institution);
   学校方法引用.current = 目录查询?.查询Institution;
   const 专业方法引用 = useRef(目录查询?.查询Taxonomy);
@@ -461,11 +464,14 @@ function 教育编辑页({
       return;
     }
     window.clearTimeout(学校计时.current);
+    const 本次 = ++学校代际.current;
     学校计时.current = window.setTimeout(async () => {
       try {
         const 页 = await 方法({ q: trimmed, limit: 20 });
+        if (本次 !== 学校代际.current) return;
         设学校候选(页.items);
       } catch {
+        if (本次 !== 学校代际.current) return;
         设学校候选([]);
       }
     }, 教育搜索防抖毫秒);
@@ -482,11 +488,14 @@ function 教育编辑页({
       return;
     }
     window.clearTimeout(专业计时.current);
+    const 本次 = ++专业代际.current;
     专业计时.current = window.setTimeout(async () => {
       try {
         const 页 = await 方法('majors', { q: trimmed, limit: 20 });
+        if (本次 !== 专业代际.current) return;
         设专业候选(页.items);
       } catch {
+        if (本次 !== 专业代际.current) return;
         设专业候选([]);
       }
     }, 教育搜索防抖毫秒);

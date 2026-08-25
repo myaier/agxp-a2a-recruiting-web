@@ -129,6 +129,48 @@ describe('毕业院校 Backend', () => {
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     expect(保存简历).not.toHaveBeenCalled();
   });
+
+  // review-r1 P2-1：搜索返回 nextCursor → 滚到底加载第二页，按 id 去重追加。
+  it('搜索返回 nextCursor 时滚到底加载第二页并去重（P2-1）', async () => {
+    let 调用次 = 0;
+    const 查询Institution = vi.fn(async (q: { q?: string; cursor?: string }) => {
+      调用次 += 1;
+      if (调用次 === 1) {
+        return {
+          items: [
+            { id: 'ins_a', display_name: '大学A', location: { id: 'loc_a', display_name: '城市A', country_name: '国A' } },
+          ],
+          nextCursor: 'cursor_2',
+          catalogVersion: 'v2',
+        };
+      }
+      // 第二页（带 cursor）
+      expect(q.cursor).toBe('cursor_2');
+      return {
+        items: [
+          { id: 'ins_b', display_name: '大学B', location: { id: 'loc_b', display_name: '城市B', country_name: '国B' } },
+          // 第二页重复第一页的 id → 去重
+          { id: 'ins_a', display_name: '大学A', location: { id: 'loc_a', display_name: '城市A', country_name: '国A' } },
+        ],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    render毕业院校({ 数据源: 'backend', 查询Institution });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByRole('textbox'), '大学');
+    await waitFor(() => expect(查询Institution).toHaveBeenCalledTimes(1));
+    await screen.findByText('大学A');
+    // 滚到底 → 触发加载更多（候选列表区底部的「加载更多」按钮）
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(查询Institution).toHaveBeenCalledTimes(2));
+    // 第二页追加，去重后只有 A + B（不是 A + B + A）
+    await screen.findByText('大学B');
+    const 候选行 = screen.getAllByText(/大学[AB]/);
+    // 大学A 只出现一次（去重），大学B 出现一次
+    expect(候选行.filter((n) => n.textContent === '大学A')).toHaveLength(1);
+    expect(候选行.filter((n) => n.textContent === '大学B')).toHaveLength(1);
+  });
 });
 
 describe('毕业院校 Mock', () => {

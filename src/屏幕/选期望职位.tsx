@@ -61,6 +61,8 @@ export default function 选期望职位() {
   const [子项, 设子项] = useState<BFFTaxonomyItem[]>([]);
   const [搜索结果项, 设搜索结果项] = useState<BFFTaxonomyItem[]>([]);
   const 计时 = useRef(0);
+  // review-r1 P2-2：代际 ref 守 stale response——慢的旧搜索结果不覆盖新的
+  const 搜索代际 = useRef(0);
   const 方法引用 = useRef(目录查询?.查询Taxonomy);
   方法引用.current = 目录查询?.查询Taxonomy;
 
@@ -101,11 +103,14 @@ export default function 选期望职位() {
       return;
     }
     window.clearTimeout(计时.current);
+    const 本次 = ++搜索代际.current;
     计时.current = window.setTimeout(async () => {
       try {
         const 页 = await 方法('job-categories', { q: 搜词, limit: 50 });
+        if (本次 !== 搜索代际.current) return;
         设搜索结果项(页.items);
       } catch {
+        if (本次 !== 搜索代际.current) return;
         设搜索结果项([]);
       }
     }, 搜索防抖毫秒);
@@ -128,9 +133,12 @@ export default function 选期望职位() {
   // ── Backend 切换：非 selectable 只展开（按 parentId 取子项），selectable=true 才进已选 ──
   const 切换后端 = (项: BFFTaxonomyItem) => {
     if (!项.selectable) {
-      // 非可选子项：按 parentId 展开下一级，替换右栏子项
+      // review-r1 P2-3：搜索模式下点非 selectable 命中时，清空搜索词退出搜索模式，
+      // 否则搜索结果区只渲染 搜索结果项，加载到的 子项 看不见（点像没反应）。
+      // 清词后回到双栏视图，左栏高亮该项，右栏显示其子项。
       设当前根(项);
       设子项([]);
+      设关键词('');
       const 方法 = 方法引用.current;
       if (方法) {
         void (async () => {

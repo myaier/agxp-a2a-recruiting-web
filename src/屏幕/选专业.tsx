@@ -33,6 +33,8 @@ export default function 选专业() {
   const [专业引用, 设专业引用] = useState<目录选择值 | undefined>(首段?.专业引用);
   const [候选项, 设候选项] = useState<BFFTaxonomyItem[]>([]);
   const 计时 = useRef(0);
+  // review-r1 P2-2：代际 ref 守 stale response——慢的旧搜索结果不覆盖新的
+  const 代际 = useRef(0);
   const 方法引用 = useRef(目录查询?.查询Taxonomy);
   方法引用.current = 目录查询?.查询Taxonomy;
 
@@ -48,11 +50,14 @@ export default function 选专业() {
       return;
     }
     window.clearTimeout(计时.current);
+    const 本次 = ++代际.current;
     计时.current = window.setTimeout(async () => {
       try {
         const 页 = await 方法('majors', { q: trimmed, limit: 20 });
+        if (本次 !== 代际.current) return;
         设候选项(页.items);
       } catch {
+        if (本次 !== 代际.current) return;
         设候选项([]);
       }
     }, 搜索防抖毫秒);

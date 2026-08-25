@@ -131,6 +131,63 @@ describe('选期望职位 Backend', () => {
       }),
     );
   });
+
+  // review-r1 P2-3：搜索模式下点非 selectable 命中 → 清空搜索词退出搜索模式 →
+  // 双栏视图显示其子项，子项可选。
+  it('搜索点非 selectable 命中后退出搜索模式显示子项（P2-3）', async () => {
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [
+            { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.q && query.q.includes('互联') && !query.parentId) {
+        return {
+          items: [
+            { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_tech') {
+        return {
+          items: [
+            { id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    const { 派发 } = render选期望职位({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    // 等待 roots 加载
+    await screen.findByText('互联网/AI');
+    // 搜索「互联」→ 搜索结果里出现「互联网/AI」（非 selectable）
+    await 用户.type(screen.getByPlaceholderText('搜索职位'), '互联');
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ q: '互联' })));
+    await screen.findByText('互联网/AI');
+    // 点非 selectable 命中 → 退出搜索模式 → 子项「后端开发」出现且可选
+    await 用户.click(screen.getByText('互联网/AI'));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ parentId: 'cat_tech' })));
+    await screen.findByText('后端开发');
+    // 点 selectable 子项 → 保存
+    await 用户.click(screen.getByText('后端开发'));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({
+        型: '存引导预填',
+        职位: ['后端开发'],
+        职位引用们: [{ id: 'job_be', display_name: '后端开发' }],
+      }),
+    );
+  });
 });
 
 describe('选期望职位 Mock', () => {
