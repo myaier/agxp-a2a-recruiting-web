@@ -37,4 +37,11 @@ describe('企业消息 · 真人会话行门控', () => {
     render(<企业消息 />);
     expect(screen.getByText('沈亦舟')).toBeTruthy();
   });
+
+  it('S2 阶段终止（A-01 已移出列表）不保留真人会话行', () => {
+    // A-01 不在企业候选列表（已被终止），且 S3 从未完成 → 真人行不应出现
+    mock应用状态 = { 状态: { 企业候选列表: [], 企业消息未读: {} }, 派发: vi.fn() };
+    render(<企业消息 />);
+    expect(screen.queryByText('沈亦舟')).toBeNull();
+  });
 });
