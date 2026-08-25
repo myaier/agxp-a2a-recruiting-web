@@ -153,7 +153,7 @@ export default function 我的简历() {
             <div className={样式.卡标题}>基本信息</div>
             <div className={样式.条目区}>
               <可改条目
-                标签="姓名（仅意向确认后披露）"
+                标签="姓名（递交简历后披露）"
                 值={改名中 ? 姓名草稿 : 基本.真名}
                 编辑中={改名中}
                 开始编辑={() => { 设姓名草稿(基本.真名); 设改名中(true); }}
@@ -297,7 +297,7 @@ export default function 我的简历() {
             <div className={样式.优势正文}>{全局.个人优势}</div>
           </div>
 
-          {/* 附件简历：递交简历阶段由代理隐去联系方式后发出 */}
+          {/* 附件简历：初筛通过后递交 PDF 原件，原件含姓名与联系方式 */}
           <div className={样式.卡}>
             <div className={样式.卡标题}>附件简历</div>
             <button
@@ -309,7 +309,7 @@ export default function 我的简历() {
               </span>
               <span className={样式.附件主体}>
                 <span className={样式.附件名}>沈亦舟_简历_2026.pdf</span>
-                <span className={样式.附件说明}>递交简历阶段自动隐去联系方式后发送</span>
+                <span className={样式.附件说明}>初筛通过后发送 PDF 原件</span>
               </span>
               <span className={样式.尖括号}>›</span>
             </button>
