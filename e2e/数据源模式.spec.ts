@@ -47,7 +47,8 @@ test.describe('Mock 数据源回归 @mock', () => {
     });
 
     await page.goto('/');
-    // 微信登录一键直进（Mock 模式）
+    // 微信登录在 Mock 模式仍一键直进，但必须先同意协议
+    await page.getByText(/已阅读并同意/).click();
     await page.getByRole('button', { name: '微信登录' }).click();
     await expect(page).toHaveURL(/#\/identity$/);
     await page.getByRole('button', { name: '我要找工作' }).click();

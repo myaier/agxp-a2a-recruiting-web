@@ -60,6 +60,25 @@ describe('登录页 Backend', () => {
     await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.选身份));
   });
 
+  it('微信登录必须先勾选协议', async () => {
+    mock操作.微信登录.mockResolvedValue(null);
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <登录 />
+      </MemoryRouter>,
+    );
+
+    await 用户.click(screen.getByRole('button', { name: '微信登录' }));
+    expect(mock操作.微信登录).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+
+    await 用户.click(screen.getByText(/已阅读并同意/));
+    await 用户.click(screen.getByRole('button', { name: '微信登录' }));
+    await waitFor(() => expect(mock操作.微信登录).toHaveBeenCalledTimes(1));
+    expect(mock跳转).toHaveBeenCalledWith(路径.选身份);
+  });
+
   // F11：开始手机登录失败时倒计时不启动，用户可重试（按钮不被倒计时锁住）
   it('开始手机登录失败时不进入倒计时，按钮仍是「获取验证码」可重试', async () => {
     mock操作.开始手机登录.mockRejectedValue(new Error('短信通道异常'));

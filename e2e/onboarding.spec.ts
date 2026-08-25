@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 async function 从登录进入身份(page: Page, 身份: '我要找工作' | '我要招人') {
   await page.goto('/');
+  await page.getByText(/已阅读并同意/).click();
   await page.getByRole('button', { name: '微信登录' }).click();
   await expect(page).toHaveURL(/#\/identity$/);
   await page.getByRole('button', { name: 身份 }).click();
