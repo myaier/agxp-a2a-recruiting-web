@@ -350,7 +350,10 @@ describe('HTTP 招聘数据源', () => {
       job_category_id: 'tax_pm', primary_location_id: 'loc_sh',
       alternate_location_ids: ['loc_hz'], industry_ids: ['tax_it'], workplace_modes: ['hybrid'],
     });
-    expect((post?.body as { compensation: unknown }).compensation).toEqual({ mode: 'range', lower: 20, upper: 30 });
+    // 上面 toMatchObject 已断言 post 存在；这里再取 body 前 guard 一次，避免
+    // no-unsafe-optional-chaining：post?.body 短路成 undefined 时 `.compensation` 会抛。
+    const body = post?.body as { compensation: unknown } | undefined;
+    expect(body?.compensation).toEqual({ mode: 'range', lower: 20, upper: 30 });
     // 没有任何 /catalog/ 请求
     const 目录请求 = 请求Mock.mock.calls
       .map(([o]) => o as BFF请求选项)

@@ -2,6 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  // 数据源模式.spec.ts 自带 test.use({ baseURL: 4181/4182 })，只在
+  // playwright.数据源模式.config.ts（test:e2e:data-source）下跑——
+  // 默认 config 只起 4173，跑它会连不上端口。这里排除，避免 `npm run test:e2e` 报连接拒绝。
+  testIgnore: ['**/数据源模式.spec.ts'],
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,

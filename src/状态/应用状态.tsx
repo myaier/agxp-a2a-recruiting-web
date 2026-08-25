@@ -347,7 +347,10 @@ export type 动作 =
   // ── Provider 内部水合动作：只替换各自支持域，不覆盖未支持演示域 ──
   | { 型: '水合后端简历'; 快照: 页面简历快照 }
   | { 型: '水合后端意向'; 快照: 页面意向快照 }
-  | { 型: '水合后端岗位'; 快照: 页面岗位快照 };
+  | { 型: '水合后端岗位'; 快照: 页面岗位快照 }
+  // review-r1 P1-5：退出/401/切身份 时清空 Backend 专属草稿（引导预填 + 意向草稿），
+  // 避免上个账号选的目录引用串到下一个账号。
+  | { 型: '清后端草稿' };
 
 /** 简历切片的持久化键。结构变更时 bump 版本号，旧缓存直接弃用 */
 const 简历存储键 = 'AGXP简历v2';
@@ -781,6 +784,11 @@ const 后端种子状态: 状态 = {
   简历证书: [],
   简历作品集链接: '',
   简历文件名: '',
+  // review-r1 P1-4：Backend onboarding 不读 Mock 的 AGXP求职筛选v1 缓存。
+  // 初始状态 里 引导预填 = 读求职筛选缓存()，浏览器先前跑过 Mock 时该键存了
+  // Mock 城市/职位字符串（无引用），Backend 起步时带着它们会让 ref-required 的
+  // 首次意向映射发不出。Backend 由 引导问答 的 Backend 分支从 [] 起步选目录。
+  引导预填: null,
 };
 
 /**
@@ -1530,6 +1538,12 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
       return { ...旧, 岗位列表: 新列表, 当前岗位编号: 选新当前岗(新列表, 旧.当前岗位编号) };
     }
 
+    // review-r1 P1-5：退出/401/切身份 清空 Backend 专属草稿——
+    // 引导预填 归 null（Backend 不读 Mock 缓存，也不要上个账号选的目录引用），
+    // 意向草稿 归 空意向草稿（选了一半的引用不串到下一个账号）。
+    case '清后端草稿':
+      return { ...旧, 引导预填: null, 意向草稿: 空意向草稿 };
+
     default:
       return 旧;
   }
@@ -1861,6 +1875,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
           派发({ 型: '水合后端简历', 快照: 空简历快照 });
           派发({ 型: '水合后端意向', 快照: 空意向快照 });
           派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
+          // review-r1 P1-5：401 连 Backend 草稿一起清（与 退出登录 同口径）。
+          派发({ 型: '清后端草稿' });
           设后端状态((旧) => ({
             ...旧,
             初始化: '完成',
@@ -1899,6 +1915,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       if (错误 instanceof BFF错误) {
         if (错误.status === 401) {
           派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
+          // review-r1 P1-5：401 连 Backend 草稿一起清（与 退出登录 同口径）。
+          派发({ 型: '清后端草稿' });
           设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: false, 主体: null, 岗位快照: {} }));
           // Task 2：401 清空目录缓存，避免下个会话复用上个会话的目录页缓存。
           后端?.清空目录缓存();
@@ -1927,6 +1945,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       if (错误 instanceof BFF错误) {
         if (错误.status === 401) {
           派发({ 型: '水合后端意向', 快照: 空意向快照 });
+          // review-r1 P1-5：401 连 Backend 草稿一起清（与 退出登录 同口径）。
+          派发({ 型: '清后端草稿' });
           设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: false, 主体: null, 意向快照: {} }));
           // Task 2：401 清空目录缓存，避免下个会话复用上个会话的目录页缓存。
           后端?.清空目录缓存();
@@ -1977,6 +1997,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
           派发({ 型: '水合后端简历', 快照: 空简历快照 });
           派发({ 型: '水合后端意向', 快照: 空意向快照 });
           派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
+          // review-r1 P1-5：退出时连 Backend 专属草稿一起清（引导预填 + 意向草稿），
+          // 否则上个账号选的目录引用会串到下一个账号（同 Provider 实例的跨账号泄漏）。
+          派发({ 型: '清后端草稿' });
           设后端状态((旧) => ({
             ...旧,
             已登录: false,
@@ -2007,6 +2030,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         await 后端.确保角色(角色);
         const 最新主体 = await 后端.记录当前角色(角色);
         设后端状态((旧) => ({ ...旧, 主体: 最新主体 }));
+        // review-r1 P1-5：切身份前清掉上一个角色的 Backend 草稿（引导预填 + 意向草稿），
+        // 否则候选选的目录引用会串到招聘方账号（同 Provider 实例的跨账号泄漏）。
+        派发({ 型: '清后端草稿' });
         // 切身份后水合目标角色的支持域：mount-init 只按上次角色水合，
         // 不补这一步，候选切到招聘方会顶着一个空岗位盘，招聘方切到候选看到的是空简历/意向。
         // 交互模式：水合失败直接抛出，让 选身份.tsx catch 显示 轻提示并留在原地，
@@ -2246,11 +2272,46 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     [是后端, 后端],
   );
 
-  // Task 3 R8：目录查询 seam —— Backend 模式暴露 后端.查询Location 等三个方法，Mock 为 null。
-  // 对象字面量方法闭包内部状态，可独立调用，无需 .bind。
-  const 目录查询 = 是后端 && 后端
-    ? { 查询Location: 后端.查询Location, 查询Taxonomy: 后端.查询Taxonomy, 查询Institution: 后端.查询Institution }
-    : null;
+  // Task 3 R8 / review-r1 P1-6：目录查询 seam —— Backend 模式暴露 后端.查询Location 等三个方法，
+  // Mock 为 null。facade 包一层 401 处理：选择器开着时会话过期 → 目录请求 401 →
+  // 触发与资源写操作 401 同口径的会话清理（派发空快照 + 后端状态登出 + 清空目录缓存 + 清草稿），
+  // 然后 rethrow 让选择器的 .catch 照常显示空结果，但会话已被清，不会再「已登录却无主体」挂着。
+  // useMemo 键 是后端/后端（同 Provider 实例下不变），使 目录查询 引用稳定，不再每渲染重建
+  // （修 react-hooks/exhaustive-deps）。
+  const 目录查询 = useMemo<
+    Pick<HTTP招聘数据源, '查询Location' | '查询Taxonomy' | '查询Institution'> | null
+  >(() => {
+    if (!是后端 || !后端) return null;
+    const 处理目录401 = (错误: unknown): never => {
+      if (错误 instanceof BFF错误 && 错误.status === 401) {
+        派发({ 型: '水合后端简历', 快照: 空简历快照 });
+        派发({ 型: '水合后端意向', 快照: 空意向快照 });
+        派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
+        派发({ 型: '清后端草稿' });
+        设后端状态((旧) => ({
+          ...旧,
+          初始化: '完成',
+          已登录: false,
+          主体: null,
+          简历快照: null,
+          意向快照: {},
+          岗位快照: {},
+        }));
+        后端.清空目录缓存();
+      }
+      throw 错误;
+    };
+    return {
+      查询Location: ((...args: Parameters<HTTP招聘数据源['查询Location']>) =>
+        后端.查询Location(...args).catch(处理目录401)) as HTTP招聘数据源['查询Location'],
+      查询Taxonomy: ((...args: Parameters<HTTP招聘数据源['查询Taxonomy']>) =>
+        后端.查询Taxonomy(...args).catch(处理目录401)) as HTTP招聘数据源['查询Taxonomy'],
+      查询Institution: ((...args: Parameters<HTTP招聘数据源['查询Institution']>) =>
+        后端.查询Institution(...args).catch(处理目录401)) as HTTP招聘数据源['查询Institution'],
+    };
+    // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [是后端, 后端]);
 
   const 值 = useMemo<应用状态值>(
     () => ({ 状态, 派发, 数据源模式: 源.模式, 后端状态, 操作, 目录查询 }),
