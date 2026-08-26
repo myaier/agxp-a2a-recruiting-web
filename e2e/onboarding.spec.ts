@@ -8,6 +8,14 @@ async function 从登录进入身份(page: Page, 身份: '我要找工作' | '�
   await page.getByRole('button', { name: 身份 }).click();
 }
 
+/** Mock 招聘剧情入口：从身份选择点「我要招人」进招聘名片（P1C 数据源改造后仍不强插
+ *  Backend identity flow，Mock 招聘方没有 opaque Organization ID 也能走完整剧情）。 */
+async function 进入Mock招聘名片(page: Page) {
+  await 从登录进入身份(page, '我要招人');
+  await expect(page).toHaveURL(/#\/hr\/card$/);
+  await expect(page.getByRole('heading', { name: '招聘名片' })).toBeVisible();
+}
+
 async function 选择期望职位(page: Page, 分类: string, 职位: string) {
   await page.getByRole('button', { name: /选择期望职位/ }).click();
   await page.getByRole('button', { name: 分类, exact: true }).click();
@@ -271,5 +279,27 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByLabel('作品集或项目链接')).toHaveValue(
       'https://github.com/example/shared-project',
     );
+  });
+
+  // P1C Task 6 数据源边界守卫：Mock 招聘剧情从身份选择进名片、再走公司档案分区，
+  // 全程零 /api/v1 请求 —— Mock 图片本地预览、无 opaque Organization ID、
+  // 不因为接了 Backend 代码就把请求漏进 Mock 模式。
+  test('Mock 招聘剧情不请求 BFF @mock', async ({ page }) => {
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+    await page.goto('/');
+    await 进入Mock招聘名片(page);
+    await expect(page.getByRole('heading', { name: '招聘名片' })).toBeVisible();
+
+    // 公司档案分区导航保持：名片 → 公司主页资料 → 分区清单 → 公司介绍分区
+    await page.getByRole('button', { name: /公司主页资料/ }).click();
+    await expect(page).toHaveURL(/#\/hr\/company-profile$/);
+    await page.getByRole('button', { name: /公司介绍/ }).click();
+    await expect(page).toHaveURL(/#\/hr\/company-profile\/intro$/);
+    await expect(page.getByLabel('公司介绍')).toBeVisible();
+
+    expect(apiRequests).toEqual([]);
   });
 });
