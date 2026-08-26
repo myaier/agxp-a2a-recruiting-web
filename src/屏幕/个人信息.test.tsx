@@ -60,7 +60,7 @@ describe('个人信息与「我」页头像行', () => {
     const { container } = render(<MemoryRouter><我的 /></MemoryRouter>);
 
     const 头像行 = screen.getByRole('button', { name: /沈亦舟/ });
-    expect(头像行.textContent).toContain('沈');
+    expect(头像行.firstElementChild?.textContent).toBe('沈');
     expect(container.querySelector('img')).toBeNull();
   });
 });
