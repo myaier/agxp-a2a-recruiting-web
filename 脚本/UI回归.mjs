@@ -1,23 +1,12 @@
 // UI 回归总入口：解析参数 → 解析 base → 创建 detached base worktree →
 // 参考/候选采集 → 比较 → 返回比较器退出码。带一次性基础设施重试与安全清理。
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdtempSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { 解析UI回归参数, 决定采集模式, 运行命令 } from './UI回归核心.mjs';
+import { 解析UI回归参数, 决定采集模式, 运行命令, 解析门禁环境 } from './UI回归核心.mjs';
 
 function log(消息) {
   console.log(`[ui:check] ${消息}`);
-}
-
-function 规范化门禁(env) {
-  let visualGate = 'report';
-  if (env.UI_VISUAL_GATE === 'enforce' || env.UI_VISUAL_GATE === 'report') {
-    visualGate = env.UI_VISUAL_GATE;
-  } else if (env.UI_VISUAL_GATE !== undefined) {
-    visualGate = 'report';
-  }
-  const uiChangeApproved = env.UI_CHANGE_APPROVED === 'true';
-  return { visualGate, uiChangeApproved };
 }
 
 function 写基础设施错误(outputDir, 信息) {
@@ -42,6 +31,26 @@ function scenes有JSON(采集目录) {
     return 文件们.length > 0;
   } catch {
     return false;
+  }
+}
+
+// 采集器把 scene JSON 的 screenshot 字段写成绝对路径，而比较器契约为 join(captureDir, screenshot)——
+// 即 screenshot 应相对 capture 目录。这里在采集后把绝对路径规范化为相对路径，
+// 规避比较器 path.join 拼接绝对路径导致的“截图文件缺失”。若将来采集器改为写相对路径，此函数为 no-op。
+function 规范化采集截图路径(采集目录) {
+  const scenesDir = join(采集目录, 'scenes');
+  if (!existsSync(scenesDir)) return;
+  for (const 名 of readdirSync(scenesDir).filter((f) => f.endsWith('.json'))) {
+    const 路径 = join(scenesDir, 名);
+    try {
+      const 结果 = JSON.parse(readFileSync(路径, 'utf8'));
+      if (结果 && typeof 结果.screenshot === 'string' && isAbsolute(结果.screenshot)) {
+        结果.screenshot = relative(采集目录, 结果.screenshot);
+        writeFileSync(路径, JSON.stringify(结果, null, 2), 'utf8');
+      }
+    } catch {
+      // 解析失败的条目交给比较器按 infrastructure 处理。
+    }
   }
 }
 
@@ -130,6 +139,7 @@ async function main() {
             写基础设施错误(outputDir, '参考采集重试仍失败且无场景 JSON');
           }
         }
+        规范化采集截图路径(referenceDir);
       }
     } else {
       log('bootstrap 模式：跳过参考采集。');
@@ -153,9 +163,10 @@ async function main() {
         写基础设施错误(outputDir, '候选采集重试仍失败且无场景 JSON');
       }
     }
+    规范化采集截图路径(candidateDir);
 
     // Step 8: 执行比较器。
-    const { visualGate, uiChangeApproved } = 规范化门禁(process.env);
+    const { visualGate, uiChangeApproved } = 解析门禁环境(process.env);
     const compareArgs = ['run', 'ui:compare', '--', '--candidate', candidateDir, '--output', outputDir];
     if (模式 === 'compare') {
       compareArgs.push('--reference', referenceDir);

@@ -49,6 +49,14 @@ export function 决定采集模式({ baseHasCapture }) {
   return baseHasCapture ? 'compare' : 'bootstrap';
 }
 
+// 门禁环境解析：规范化 CI/本地传入的 UI_VISUAL_GATE 与 UI_CHANGE_APPROVED。
+// 未知/空值一律回落到 `report`；只有字面量 'true' 才视为审批通过。
+export function 解析门禁环境(env) {
+  const visualGate = env.UI_VISUAL_GATE === 'enforce' ? 'enforce' : 'report';
+  const uiChangeApproved = env.UI_CHANGE_APPROVED === 'true';
+  return { visualGate, uiChangeApproved };
+}
+
 export function 运行命令(command, args, options = {}) {
   const 结果 = spawnSync(command, args, {
     shell: false,

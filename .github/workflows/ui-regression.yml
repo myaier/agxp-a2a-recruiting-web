@@ -1,0 +1,51 @@
+name: UI Regression
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  ui-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Compare candidate UI with PR base
+        run: npm run ui:check -- --base "origin/${{ github.base_ref }}"
+        env:
+          CI: 'true'
+          UI_VISUAL_GATE: ${{ vars.UI_VISUAL_GATE || 'report' }}
+          UI_CHANGE_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'ui-change-approved') }}
+      - name: Upload UI regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-regression-report
+          path: |
+            ui-regression-output/latest/report.json
+            ui-regression-output/latest/report.md
+            ui-regression-output/latest/infrastructure-error.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload UI regression evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-regression-evidence
+          path: |
+            ui-regression-output/latest/reference
+            ui-regression-output/latest/candidate
+            ui-regression-output/latest/diff
+          if-no-files-found: warn
+          retention-days: 14
