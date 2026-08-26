@@ -121,4 +121,286 @@ const 简历场景 = 构造场景({
   },
 });
 
-export const 视觉场景们: 视觉场景[] = [登录场景, 身份场景, 偏好场景, 薪资场景, 简历场景];
+// candidate-market：看市场子视图，求职端已注册。
+// 注：计划字面 ready 含 text「告诉AI代理你的硬性要求」，该文案只出现在看市场筛选层弹层内，
+// 默认看市场态不可见。按 carry-forward 规则改用默认可见的代理横幅文案作关键元素，不改产品代码。
+const 市场场景: 视觉场景 = {
+  id: 'candidate-market',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/app', '求职端已注册');
+    await 注入候选突变(page);
+    await page.getByRole('button', { name: '市场' }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(
+      page.getByText(/个职位需要你协调|暂时没有需要你介入/),
+    ).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '代理横幅 待协调文案', 定位: page.getByText(/个职位需要你协调|暂时没有需要你介入/) },
+      { 名称: '第一张市场卡 查看职位详情', 定位: page.getByRole('button', { name: '查看职位详情' }).first() },
+      { 名称: '第一张市场卡 让AI代理去谈', 定位: page.getByRole('button', { name: '让AI代理去谈' }).first() },
+    ];
+  },
+};
+
+// candidate-negotiations：在谈子视图首页，求职端已注册。
+const 在谈首页场景: 视觉场景 = {
+  id: 'candidate-negotiations',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/app', '求职端已注册');
+    await 注入候选突变(page);
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(
+      page.getByRole('button').filter({ hasText: /匿名初筛|递交简历|需要协调|意向确认/ }).first(),
+    ).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '子视图按钮 在谈', 定位: page.getByRole('button', { name: '在谈' }) },
+      { 名称: '代理横幅 待协调文案', 定位: page.getByText(/个职位需要你协调|暂时没有需要你介入/) },
+      {
+        名称: '第一张在谈卡',
+        定位: page.getByRole('button').filter({ hasText: /匿名初筛|递交简历|需要协调|意向确认/ }).first(),
+      },
+    ];
+  },
+};
+
+// candidate-negotiation-detail：在谈详情的职位详情 Tab，求职端已注册。
+// 注：计划步骤只写「打开 /#/deal/J-01」，但该页默认 Tab 是「代谈进度」，ready 中的
+// 「匹配度分析」「职位详情」文案在「职位详情」Tab 内。按 carry-forward 规则在到达步骤里
+// 点一次「职位详情」Tab 切到该视图，不改产品代码。另：「职位详情」文案同时是 Tab 按钮名与
+// 内容标题，getByText 解析到 2 个节点触发 strict mode，故关键元素改用 Tab 按钮定位。
+const 在谈详情场景: 视觉场景 = {
+  id: 'candidate-negotiation-detail',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/deal/J-01', '求职端已注册');
+    await 注入候选突变(page);
+    await page.getByRole('button', { name: '职位详情' }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByText('匹配度分析', { exact: true })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '文本 匹配度分析', 定位: page.getByText('匹配度分析', { exact: true }) },
+      { 名称: '职位详情 Tab 按钮', 定位: page.getByRole('button', { name: '职位详情', exact: true }) },
+      { 名称: '返回按钮', 定位: page.getByRole('button', { name: '返回' }) },
+    ];
+  },
+};
+
+// candidate-messages：消息 Tab，求职端已注册。
+const 消息场景: 视觉场景 = {
+  id: 'candidate-messages',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/app', '求职端已注册');
+    await 注入候选突变(page);
+    // 底部「消息」导航的角标（未读数）排在文字前，可达名形如「4消息」，用子串匹配。
+    await page.getByRole('button', { name: /消息/ }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('button', { name: '搜索' })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      // 大标题「消息」与底部导航「消息」文字同形，getByText 解析到 2 个节点；取 DOM 首位（大标题）。
+      { 名称: '大标题 消息', 定位: page.getByText('消息', { exact: true }).first() },
+      { 名称: '按钮 搜索', 定位: page.getByRole('button', { name: '搜索' }) },
+      { 名称: '第一条会话', 定位: page.getByRole('button', { name: /AI代理动态/ }).first() },
+    ];
+  },
+};
+
+// candidate-me-overlay：我入口 → 待你拍 → 在谈筛选层，求职端已注册。
+// 证明「我」入口与在谈筛选层连通：最终截图是筛选层打开态，关键元素同时含底部「我」导航与筛选层标题。
+const 我筛选层场景: 视觉场景 = {
+  id: 'candidate-me-overlay',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/app', '求职端已注册');
+    await 注入候选突变(page);
+    // 底部「我」导航可达名正好是「我」，但默认子串匹配会同时命中代理横幅里的「我已谈完」，
+    // 故用 exact 精确到导航按钮本身。
+    await page.getByRole('button', { name: '我', exact: true }).click();
+    await expect(page.getByText('我的求职AI代理', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: /待你拍/ }).click();
+    await page.getByRole('button', { name: /筛选/ }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByText('看哪几单', { exact: true })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '筛选层标题 看哪几单', 定位: page.getByText('看哪几单', { exact: true }) },
+      { 名称: '范围档 全部意向', 定位: page.getByText('全部意向', { exact: true }) },
+      { 名称: '按钮 完成', 定位: page.getByRole('button', { name: '完成' }) },
+      { 名称: '底部导航 我', 定位: page.getByRole('button', { name: '我', exact: true }) },
+    ];
+  },
+};
+
+// candidate-profile：个人信息页，求职端已注册。
+const 个人信息场景: 视觉场景 = {
+  id: 'candidate-profile',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/profile', '求职端已注册');
+    await 注入候选突变(page);
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('heading', { name: '个人信息' })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '标题 个人信息', 定位: page.getByRole('heading', { name: '个人信息' }) },
+      { 名称: '按钮 头像', 定位: page.getByRole('button', { name: /头像/ }) },
+      { 名称: '标签 姓名', 定位: page.getByText('姓名', { exact: true }) },
+      { 名称: '标签 手机号', 定位: page.getByText('手机号', { exact: true }) },
+      { 名称: '按钮 披露偏好', 定位: page.getByRole('button', { name: /披露偏好/ }) },
+    ];
+  },
+};
+
+// recruiter-card：招聘名片，招聘端已注册（清空存储，用应用内 Mock 招聘数据）。
+const 招聘名片场景 = 构造场景({
+  id: 'recruiter-card',
+  状态: '招聘端已注册',
+  路径: '/#/hr/card',
+  关键元素(page: Page) {
+    return [
+      { 名称: '标题 招聘名片', 定位: page.getByRole('heading', { name: '招聘名片' }) },
+      { 名称: '输入框 姓名', 定位: page.getByLabel('姓名', { exact: true }) },
+      { 名称: '按钮 保存 · 去发岗位', 定位: page.getByRole('button', { name: '保存 · 去发岗位' }) },
+    ];
+  },
+});
+
+// recruiter-post-job-1：发布岗位第一步基础信息，招聘端已注册。
+const 发岗一场景 = 构造场景({
+  id: 'recruiter-post-job-1',
+  状态: '招聘端已注册',
+  路径: '/#/hr/post-job',
+  关键元素(page: Page) {
+    return [
+      { 名称: '标题 岗位基础信息', 定位: page.getByRole('heading', { name: '岗位基础信息' }) },
+      { 名称: '类型按钮 实习生', 定位: page.getByRole('button', { name: '实习生 在校生实习，按天计薪' }) },
+      { 名称: '按钮 下一步', 定位: page.getByRole('button', { name: '下一步' }) },
+    ];
+  },
+});
+
+// 发布岗位第一步统一必填动作（已由 e2e/onboarding.spec.ts 验证）。
+async function 发岗第一步(page: Page): Promise<void> {
+  await page.getByRole('button', { name: '实习生 在校生实习，按天计薪' }).click();
+  await page.getByRole('button', { name: '提供转正机会' }).click();
+  await page.getByPlaceholder(/资深后端工程师/).fill('AI 产品实习生');
+  await page.getByRole('button').filter({ hasText: '职位类别' }).click();
+  await page.getByRole('button', { name: '产品', exact: true }).click();
+  await page.getByRole('button', { name: '产品经理', exact: true }).click();
+  await page.getByRole('button', { name: '混合', exact: true }).click();
+  await page.getByRole('button', { name: '下一步' }).click();
+}
+
+// 发布岗位第二步动作：填职位描述并点下一步。
+async function 发岗第二步(page: Page): Promise<void> {
+  await page.getByLabel('职位描述').fill('参与 AI 招聘产品的需求分析与原型设计。');
+  await page.getByRole('button', { name: '下一步' }).click();
+}
+
+// recruiter-post-job-2：发布岗位第二步职位描述，招聘端已注册。
+const 发岗二场景: 视觉场景 = {
+  id: 'recruiter-post-job-2',
+  状态: '招聘端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/hr/post-job', '招聘端已注册');
+    await 注入候选突变(page);
+    await 发岗第一步(page);
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('heading', { name: '职位描述' })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '标题 职位描述', 定位: page.getByRole('heading', { name: '职位描述' }) },
+      { 名称: '输入框 职位描述', 定位: page.getByLabel('职位描述') },
+      { 名称: '按钮 下一步', 定位: page.getByRole('button', { name: '下一步' }) },
+    ];
+  },
+};
+
+// recruiter-post-job-3：发布岗位第三步职位要求，招聘端已注册。
+// 注：计划 ready 写「label 薪资下限 或 button — 元/天」。本场景走实习生路径，计薪单位是
+// 元/天，薪资录入是「— 元/天」按钮（非 K 路径的 aria-label 薪资下限输入框）。按 carry-forward
+// 规则用实际渲染的「元/天」按钮作关键元素，不改产品代码。「AI 初筛条件确认」文案确实存在。
+const 发岗三场景: 视觉场景 = {
+  id: 'recruiter-post-job-3',
+  状态: '招聘端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/hr/post-job', '招聘端已注册');
+    await 注入候选突变(page);
+    await 发岗第一步(page);
+    await 发岗第二步(page);
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('heading', { name: '职位要求' })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '标题 职位要求', 定位: page.getByRole('heading', { name: '职位要求' }) },
+      { 名称: '薪资下限按钮 元/天', 定位: page.getByRole('button', { name: /元\/天/ }).first() },
+      { 名称: '文本 AI 初筛条件确认', 定位: page.getByText('AI 初筛条件确认', { exact: true }) },
+    ];
+  },
+};
+
+// recruiter-home-candidate：企业主壳 → 推荐 → 第一张候选画像，招聘端已注册。
+// 注：点「查看候选画像」落到匿名在线简历页（/hr/resume/:id）。计划 ready 写「候选画像标题」，
+// 该页无字面「候选画像」标题，最接近的稳定标题是简历正文段标「个人优势」。按 carry-forward
+// 规则用「个人优势」作关键元素，不改产品代码。
+const 候选画像场景: 视觉场景 = {
+  id: 'recruiter-home-candidate',
+  状态: '招聘端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/hr', '招聘端已注册');
+    await 注入候选突变(page);
+    await page.getByRole('button', { name: '推荐' }).click();
+    await page.getByRole('button', { name: '查看候选画像' }).first().click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('button', { name: '返回' })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '返回按钮', 定位: page.getByRole('button', { name: '返回' }) },
+      { 名称: '文本 匹配或在线简历', 定位: page.getByText(/匹配|在线简历/) },
+      { 名称: '简历段标 个人优势', 定位: page.getByText('个人优势', { exact: true }) },
+    ];
+  },
+};
+
+export const 视觉场景们: 视觉场景[] = [
+  登录场景,
+  身份场景,
+  偏好场景,
+  薪资场景,
+  简历场景,
+  市场场景,
+  在谈首页场景,
+  在谈详情场景,
+  消息场景,
+  我筛选层场景,
+  个人信息场景,
+  招聘名片场景,
+  发岗一场景,
+  发岗二场景,
+  发岗三场景,
+  候选画像场景,
+];

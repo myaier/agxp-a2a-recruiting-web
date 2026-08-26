@@ -8,11 +8,22 @@ const 预期ID = [
   'candidate-preferences',
   'candidate-salary',
   'candidate-resume',
+  'candidate-market',
+  'candidate-negotiations',
+  'candidate-negotiation-detail',
+  'candidate-messages',
+  'candidate-me-overlay',
+  'candidate-profile',
+  'recruiter-card',
+  'recruiter-post-job-1',
+  'recruiter-post-job-2',
+  'recruiter-post-job-3',
+  'recruiter-home-candidate',
 ];
 
 describe('视觉场景清单', () => {
-  it('先包含 5 个稳定且唯一的入口场景 ID', () => {
+  it('包含 16 个稳定且唯一的场景 ID', () => {
     expect(视觉场景们.map((场景) => 场景.id)).toEqual(预期ID);
-    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(5);
+    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(16);
   });
 });
