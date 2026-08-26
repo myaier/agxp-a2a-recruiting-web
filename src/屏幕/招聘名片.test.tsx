@@ -191,6 +191,34 @@ describe('招聘名片 · Backend 诚实身份', () => {
     expect(screen.getByRole('button', { name: /云衢科技/ })).toBeTruthy();
     expect(mock选择企业关系).not.toHaveBeenCalled();
   });
+
+  it('全部关系不可用时仍能维护未认证公司声明', () => {
+    置Backend应用状态({
+      企业关系列表: [{ ...BFF企业关系样本, status: 'revoked' }],
+      当前企业关系编号: null,
+    });
+    render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    // revoked 行如实展示为不可选
+    expect(screen.getByText(/（不可选）/)).toBeTruthy();
+    // 无任何可选关系且无 current：未认证声明输入仍可维护
+    // （取发岗声明在此态回退 未认证公司声明，输入面不能缺席）
+    const 公司输入 = screen.getByLabelText('公司');
+    fireEvent.change(公司输入, { target: { value: '未认证客户公司' } });
+    fireEvent.blur(公司输入);
+    expect(mock保存未认证公司声明).toHaveBeenCalledWith('未认证客户公司');
+  });
+
+  it('选择企业关系失败时给出轻提示，不让 rejection 无人接', async () => {
+    mock选择企业关系.mockRejectedValueOnce(
+      new BFF错误(503, 'operation_outcome_unknown', '不可用'),
+    );
+    const 用户 = userEvent.setup();
+    置Backend应用状态({ 企业关系列表: [BFF企业关系样本], 当前企业关系编号: null });
+    render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    await 用户.click(screen.getByRole('button', { name: /云衢科技/ }));
+    expect(mock选择企业关系).toHaveBeenCalledWith(BFF企业关系样本.affiliation_id);
+    expect(await screen.findByText('后端服务暂时不可用，请稍后重试')).toBeTruthy();
+  });
 });
 
 describe('招聘名片 · Backend 头像原子保存', () => {

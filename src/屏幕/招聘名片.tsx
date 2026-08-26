@@ -245,7 +245,9 @@ function 后端名片() {
                   key={项.id}
                   className={`${样式.就地输入} 可点`}
                   style={{ textAlign: 'left', cursor: 'pointer' }}
-                  onClick={() => 操作.选择企业关系(项.id)}
+                  onClick={() =>
+                    void 操作.选择企业关系(项.id).catch((错误) => 轻提示(取后端错误文案(错误)))
+                  }
                 >
                   {项.organizationName} · {项.roleLabel} · {项.statusLabel}
                   {身份.currentAffiliation?.id === 项.id ? '（当前）' : ''}
@@ -257,7 +259,9 @@ function 后端名片() {
               ),
             )}
           </div>
-        ) : (
+        ) : null}
+        {/* 没有任何可选关系且无 current：未认证声明是发岗的 company claim 唯一来源，输入面不能缺席 */}
+        {可选关系.length === 0 && !身份.currentAffiliation ? (
           <div className={样式.就地条目}>
             <div className={样式.就地标签}>公司（未认证声明）</div>
             <input
@@ -268,7 +272,7 @@ function 后端名片() {
               enterKeyHint="done"
             />
           </div>
-        )}
+        ) : null}
 
         {/* ── 公司主页资料：名片是「这个人」，公司主页是「这家公司」── */}
         <表单条目
