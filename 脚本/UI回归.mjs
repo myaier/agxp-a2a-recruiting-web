@@ -53,6 +53,9 @@ function 运行命令并重试(command, args, options) {
   return 运行命令(command, args, options);
 }
 
+// 在 outputDir 建立后置为该目录，供顶层 .catch 决定是否写 infrastructure-error.json。
+let 已知输出目录 = null;
+
 async function main() {
   const { baseRef, outputDir: rawOutput } = 解析UI回归参数(process.argv.slice(2), process.env);
 
@@ -64,6 +67,7 @@ async function main() {
   const 仓库根 = toplevel.stdout.trim();
   const outputDir = rawOutput ?? join(仓库根, 'ui-regression-output', 'latest');
   mkdirSync(outputDir, { recursive: true });
+  已知输出目录 = outputDir;
 
   // Step 2: 校验 base 引用。
   const verify = 运行命令('git', ['rev-parse', '--verify', `${baseRef}^{commit}`], { encoding: 'utf8' });
@@ -107,7 +111,8 @@ async function main() {
       const install = 运行命令并重试('npm', ['ci'], { cwd: baseWorktree, encoding: 'utf8' });
       if (install.status !== 0) {
         写基础设施错误(outputDir, `base 依赖安装失败：${install.stderr.trim().slice(-400)}`);
-        // 继续走到候选采集与比较；参考目录可能为空。
+        // 依赖安装第二次失败：基础设施错误，立即退出 2，不继续到候选采集/比较。
+        return 2;
       } else {
         log('采集参考场景（reference，端口 4174）...');
         const refEnv = {
@@ -199,9 +204,10 @@ main()
   })
   .catch((error) => {
     const 信息 = error instanceof Error ? error.message : String(error);
-    try {
-      写基础设施错误('.', 信息);
-    } catch {
+    if (已知输出目录) {
+      写基础设施错误(已知输出目录, 信息);
+    } else {
+      // outputDir 尚未建立（例如参数解析或仓库根解析失败）：不向 cwd 写文件，仅打印原因。
       console.error(`[ui:check] 基础设施错误：${信息}`);
     }
     process.exitCode = 2;
