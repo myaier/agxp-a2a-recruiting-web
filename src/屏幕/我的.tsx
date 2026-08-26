@@ -141,7 +141,7 @@ export default function 我的() {
              简历入口在下方常用功能宫格,与这里不再重复;招聘端镜像是 招聘名片 ── */}
       <button className={`${样式.头像行} 可点`} onClick={() => 跳转(路径.个人信息)}>
         <span className={样式.头像}>
-          {头像 ? <img className={样式.头像图} src={头像} alt="" /> : 姓名.charAt(0) || 我的信息.首字}
+          {头像 ? <img className={样式.头像图} src={头像} alt="" /> : 姓名.charAt(0)}
         </span>
         <span className={样式.头像信息}>
           <span className={`${样式.姓名} 单行`}>{姓名}</span>

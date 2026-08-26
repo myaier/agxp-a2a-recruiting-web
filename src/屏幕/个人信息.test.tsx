@@ -54,4 +54,13 @@ describe('个人信息与「我」页头像行', () => {
     fireEvent.click(screen.getByRole('button', { name: /章明/ }));
     expect(跳转).toHaveBeenCalledWith(路径.个人信息);
   });
+
+  it('「我」页在真名为空时回退到演示身份与首字', () => {
+    应用状态.基本信息.真名 = '';
+    const { container } = render(<MemoryRouter><我的 /></MemoryRouter>);
+
+    const 头像行 = screen.getByRole('button', { name: /沈亦舟/ });
+    expect(头像行.textContent).toContain('沈');
+    expect(container.querySelector('img')).toBeNull();
+  });
 });

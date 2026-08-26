@@ -21,7 +21,7 @@
 
 本设计实现以下目标：
 
-1. 在不启动后端的情况下检查约 12–15 个高价值移动端状态。
+1. 在不启动后端的情况下检查约 12–16 个高价值移动端状态。
 2. 将准备合入的目标分支作为实时 reference，将当前分支作为 candidate，在同一环境中比较。
 3. 由 Playwright 提供可重复的结构断言、截图采集和自动合并门禁。
 4. 由 `agent-browser` 补充场景清单之外的智能巡检、console 检查和可视化证据。
@@ -52,7 +52,7 @@
 ### 4.2 设备与覆盖
 
 - 第一版只覆盖 iPhone 13。
-- 固定约 12–15 个关键状态，不追求全路由截图。
+- 固定约 12–16 个关键状态，不追求全路由截图。
 - 现有完整流程 E2E 继续验证行为；视觉回归测试通过少量状态种子快速到达目标画面。
 
 ### 4.3 触发方式
@@ -205,14 +205,15 @@ scene ID
 8. `candidate-negotiation-detail`：在谈详情。
 9. `candidate-messages`：消息列表。
 10. `candidate-me-overlay`：“我的”首页及关键弹层。
+11. `candidate-profile`：个人信息页，覆盖头像、姓名、打码手机号和披露偏好入口。
 
 ### 9.3 招聘端
 
-11. `recruiter-card`：招聘名片。
-12. `recruiter-post-job-1`：发布岗位第一步。
-13. `recruiter-post-job-2`：发布岗位第二步。
-14. `recruiter-post-job-3`：发布岗位第三步。
-15. `recruiter-home-candidate`：企业主壳及候选详情弹层。
+12. `recruiter-card`：招聘名片。
+13. `recruiter-post-job-1`：发布岗位第一步。
+14. `recruiter-post-job-2`：发布岗位第二步。
+15. `recruiter-post-job-3`：发布岗位第三步。
+16. `recruiter-home-candidate`：企业主壳及候选详情弹层。
 
 场景 ID 是跨版本和报告之间的稳定接口；页面文案允许演进，但 ID 不应随意改名。
 
@@ -332,7 +333,7 @@ PR workflow 必须：
 
 ## 16. 推进顺序
 
-1. 实现单版本采集器和 15 个场景。
+1. 实现单版本采集器和 16 个场景。
 2. 实现双版本编排与比较器。
 3. 实现 Markdown/JSON 报告和失败产物。
 4. 接入公开 npm 命令。

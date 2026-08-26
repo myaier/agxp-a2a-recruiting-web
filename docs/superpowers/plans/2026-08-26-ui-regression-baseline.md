@@ -15,7 +15,7 @@
 - 只覆盖 Playwright `devices['iPhone 13']`；第一版不增加桌面、平板或第二个手机项目。
 - 两个版本都显式使用 `VITE_DATA_SOURCE=mock VITE_BACKEND_ENV=stg`，测试期间任何 `/api/v1` 请求都属于结构性失败。
 - reference 默认取 `origin/main`，本地可用 `--base <ref>` 或 `UI_BASE_REF` 覆盖，PR CI 必须使用实际 `github.base_ref`。
-- 第一版固定 15 个场景 ID；新增 ID 只报告，删除已有 ID 阻止合并。
+- 第一版固定 16 个场景 ID；新增 ID 只报告，删除已有 ID 阻止合并。
 - 初始阈值固定为：警告像素比例 `0.005`、大漂移比例 `0.05`、关键元素最大位移 `16px`、宽高最大相对变化 `0.15`、像素感知阈值 `0.2`。
 - `ui-change-approved` 只能放行视觉大漂移和明确批准的场景删除，不能放行白屏、关键元素缺失、运行时异常、横向溢出、`/api/v1` 请求或基础设施错误。
 - 视觉门禁先由 `UI_VISUAL_GATE=report` 运行两周，再通过 GitHub Actions repository variable 切换为 `enforce`；代码中不写自动日期切换。
@@ -32,7 +32,7 @@
 - `playwright.视觉回归.config.ts`：固定 iPhone 13、单 worker、Mock server、采集目录和 trace。
 - `e2e/视觉回归/类型.ts`：跨采集器、比较器和 CLI 共用的稳定数据结构。
 - `e2e/视觉回归/稳定页面.ts`：清理/灌入浏览器状态、稳定页面、收集运行时错误和几何信息。
-- `e2e/视觉回归/场景.ts`：15 个场景的到达步骤、ready 条件、关键元素和 mask。
+- `e2e/视觉回归/场景.ts`：16 个场景的到达步骤、ready 条件、关键元素和 mask。
 - `e2e/视觉回归/场景.test.ts`：场景 ID、数量和状态种子约束的 Vitest 测试。
 - `e2e/视觉回归/采集.spec.ts`：逐场景采集 PNG 与 JSON。
 - `e2e/视觉回归/比较器.ts`：图片、几何、结构和覆盖比较，生成 Markdown/JSON 报告。
@@ -637,7 +637,7 @@ git commit -m "test: capture stable mobile UI scenes"
 
 ---
 
-### Task 4: 补齐求职端与招聘端 15 个场景
+### Task 4: 补齐求职端与招聘端 16 个场景
 
 **Files:**
 - Modify: `e2e/视觉回归/场景.ts`
@@ -645,11 +645,11 @@ git commit -m "test: capture stable mobile UI scenes"
 
 **Interfaces:**
 - Consumes: Task 3 的 `视觉场景`、`打开稳定页面()` 与固定状态种子。
-- Produces: 顺序与 Task 3 `预期ID` 完全相同的 15 项 `视觉场景们`。
+- Produces: 顺序与 Task 3 `预期ID` 完全相同的 16 项 `视觉场景们`。
 
 - [ ] **Step 1: 先运行数量测试确认失败**
 
-先把 `场景.test.ts` 中的 `预期ID` 扩为规格确定的完整 15 项：
+先把 `场景.test.ts` 中的 `预期ID` 扩为规格确定的完整 16 项：
 
 ```ts
 const 预期ID = [
@@ -663,6 +663,7 @@ const 预期ID = [
   'candidate-negotiation-detail',
   'candidate-messages',
   'candidate-me-overlay',
+  'candidate-profile',
   'recruiter-card',
   'recruiter-post-job-1',
   'recruiter-post-job-2',
@@ -671,7 +672,7 @@ const 预期ID = [
 ];
 ```
 
-同时把测试名称改为 `包含 15 个稳定且唯一的场景 ID`，并把唯一 ID 数断言从 `5` 改为 `15`。
+同时把测试名称改为 `包含 16 个稳定且唯一的场景 ID`，并把唯一 ID 数断言从 `5` 改为 `16`。
 
 Run:
 
@@ -679,9 +680,9 @@ Run:
 npm test -- --run e2e/视觉回归/场景.test.ts
 ```
 
-Expected: FAIL，实际只有 5 个场景，预期 15 个。
+Expected: FAIL，实际只有 5 个场景，预期 16 个。
 
-- [ ] **Step 2: 添加五个求职端场景**
+- [ ] **Step 2: 添加六个求职端场景**
 
 实现以下到达步骤：
 
@@ -692,6 +693,7 @@ Expected: FAIL，实际只有 5 个场景，预期 15 个。
 | `candidate-negotiation-detail` | 打开 `/#/deal/J-01` | text `匹配度分析`、text `职位详情`、返回按钮 |
 | `candidate-messages` | 打开 `/#/app`，点底部 nav button `消息` | text `消息`、button `搜索`、第一条会话 |
 | `candidate-me-overlay` | 打开 `/#/app`，点底部 nav button `我`，先断言 text `我的求职AI代理`，再点 button `待你拍`，点 button `/筛选/` 打开在谈筛选层 | text `看哪几单`、text `全部意向`、button `完成` |
+| `candidate-profile` | 打开 `/#/profile` | heading `个人信息`、button `/头像/`、text `姓名`、text `手机号`、button `/披露偏好/` |
 
 `candidate-me-overlay` 保留已批准的场景 ID，但要同时证明“我的”入口和关键在谈筛选层能连通。它的最终截图是筛选层打开态；关键元素同时包含底部“我”导航和筛选层标题，避免只测到最终路由而漏掉入口。
 
@@ -738,7 +740,7 @@ npm test -- --run e2e/视觉回归/场景.test.ts
 UI_CAPTURE_DIR=/tmp/ui-capture-all UI_CAPTURE_ROLE=candidate UI_PORT=4174 UI_BASE_URL=http://127.0.0.1:4174 npm run ui:capture
 ```
 
-Expected: 场景清单测试 PASS；Playwright 显示 15 tests PASS；15 个 JSON 和 15 个 PNG 存在；没有 `/api/v1` 请求。
+Expected: 场景清单测试 PASS；Playwright 显示 16 tests PASS；16 个 JSON 和 16 个 PNG 存在；没有 `/api/v1` 请求。
 
 - [ ] **Step 5: 逐图检查场景没有拍歪**
 
@@ -748,7 +750,7 @@ Run:
 find /tmp/ui-capture-all/screenshots -type f -name '*.png' | sort
 ```
 
-Expected: 文件名与 15 个场景 ID 一一对应。用本地图片查看工具抽查全部截图，确认没有骨架屏、`正在加载…`、关闭中的弹层或错误路由。
+Expected: 文件名与 16 个场景 ID 一一对应。用本地图片查看工具抽查全部截图，确认没有骨架屏、`正在加载…`、关闭中的弹层或错误路由。
 
 - [ ] **Step 6: 提交完整场景集**
 
@@ -874,7 +876,7 @@ Expected: PASS。
 UI_VISUAL_GATE=report npm run ui:check -- --base 5a1c644^ --output ui-regression-output/bootstrap-check
 ```
 
-Expected: exit `0`，报告 `mode: bootstrap`，15 个 candidate 场景存在。
+Expected: exit `0`，报告 `mode: bootstrap`，16 个 candidate 场景存在。
 
 - [ ] **Step 7: 提交动态编排器**
 
@@ -1021,7 +1023,7 @@ git commit -m "ci: add staged UI regression gate"
 - Create: `docs/UI回归报告模板.md`
 
 **Interfaces:**
-- Consumes: 15 个稳定场景 ID、candidate Mock URL、`agent-browser` 的 snapshot/error/console/network/screenshot/record 命令。
+- Consumes: 16 个稳定场景 ID、candidate Mock URL、`agent-browser` 的 snapshot/error/console/network/screenshot/record 命令。
 - Produces: 大型分支合并前可重复执行的人工巡检协议和 `agent-scan-report.md` 格式。
 
 - [ ] **Step 1: 写巡检报告模板**
@@ -1082,7 +1084,7 @@ agent-browser --session ui-regression screenshot --annotate ui-regression-output
 
 手册要求：
 
-- 按 `docs/superpowers/specs/2026-08-26-ui-regression-baseline-design.md` 第 9 节顺序走 15 个场景。
+- 按 `docs/superpowers/specs/2026-08-26-ui-regression-baseline-design.md` 第 9 节顺序走 16 个场景。
 - 页面变化后重新 snapshot，不复用 stale ref。
 - 静态问题只保存 annotated screenshot。
 - 交互/时序问题先复验一次，再在动作前 `record start`，结束后 `record stop`。
@@ -1099,7 +1101,7 @@ agent-browser skills get core --full
 agent-browser skills get dogfood
 ```
 
-然后按手册完成 15 个场景，生成：
+然后按手册完成 16 个场景，生成：
 
 ```text
 ui-regression-output/agent-scan/agent-scan-report.md
@@ -1107,7 +1109,7 @@ ui-regression-output/agent-scan/screenshots/
 ui-regression-output/agent-scan/videos/
 ```
 
-Expected: 每个场景在报告中恰有一行；正常静态场景不录视频；发现的问题具有可复现证据。产物位于 ignored 目录，不提交截图和视频。
+Expected: 16 个场景在报告中各有一行；正常静态场景不录视频；发现的问题具有可复现证据。产物位于 ignored 目录，不提交截图和视频。
 
 - [ ] **Step 4: 提交巡检手册**
 
@@ -1148,7 +1150,7 @@ Run:
 UI_VISUAL_GATE=enforce npm run ui:check -- --base HEAD --output ui-regression-output/final-same
 ```
 
-Expected: exit `0`；15 个场景都有结果；无 API 请求；所有相同场景低于 warning 阈值；没有残留临时 worktree。
+Expected: exit `0`；16 个场景都有结果；无 API 请求；所有相同场景低于 warning 阈值；没有残留临时 worktree。
 
 - [ ] **Step 3: 验证 20px 位移被结构门禁拦截**
 
@@ -1196,7 +1198,7 @@ Expected:
 - worktree 列表只有实施前已存在的工作树。
 - 失败目录包含 report JSON/Markdown、reference、candidate 和 diff/trace 证据。
 - `git status --short` 不列出 `ui-regression-output/`。
-- 一次 15 场景双版本检查在 CI 目标环境中少于 5 分钟；若超过，先记录每阶段耗时，只优化依赖安装缓存和服务启动，不减少场景。
+- 一次 16 场景双版本检查在 CI 目标环境中少于 5 分钟；若超过，先记录每阶段耗时，只优化依赖安装缓存和服务启动，不减少场景。
 
 - [ ] **Step 7: 最终提交（仅在验证修复产生改动时）**
 
