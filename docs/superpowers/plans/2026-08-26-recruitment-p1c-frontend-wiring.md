@@ -10,55 +10,27 @@
 
 **Spec：** `docs/superpowers/specs/2026-08-26-recruitment-p1c-frontend-wiring-design.md`
 
-**计划本身复杂度：高。** 单 Plan 跨 wire、状态、六类页面与两层 E2E。
-
-**零上下文漂移风险：高。** 依赖外部 P1B runtime/schema 修正、真实登录 fixture 与执行时主线；执行模型只按
-该风险选择 `frontier`。
-
-**批次拓扑：** 本批次只有这一份 Plan，无前序 Plan、无下游 Plan；Task 1→6 在当前隔离 worktree 串行执行，
-最后由同一 execution owner 进入 `Terminal Integration Task`。
-
-**完成标准：** Task 1–6 的实现与定向测试完成并提交；异构 code review 无未处理 required finding；唯一
-authoritative plan-scope gate PASS；Terminal Integration Task 在用户 final-gate 批准后同步目标分支，使用
-`~/agxp-monorepo` 的 Recruitment local harness 完成真实 Backend smoke 与最终候选验证，并在普通 fast-forward push
-成功后才记 `integration_status: PASS`。任一 browser schema 闸门、产品缺陷或未知失败未解除时 fail closed。
+**完成标准：** Task 1–6 均按 TDD 完成并提交，code review 发现已处理，完整前端验证通过，且没有修改或运行后端
+仓库。intercepted Backend 测试只证明前端边界，不宣称真实 BFF 联调。
 
 ---
 
-## 0. 冻结输入、隔离与执行闸门
+## Global Constraints
 
-当前前端仓库已经位于隔离 worktree。执行时从该 worktree 根目录开始，不切换或修改 `~/agxp-monorepo` 的现有
-checkout；需要后端运行栈时，另建基于精确后端 commit 的 monorepo worktree。
-
-```text
-frontend repository: current git worktree
-branch: recruitment-p1c-frontend-wiring-refactor
-frontend base: origin/main@c836f301f07d6e6693e125ea66b8855cd975ec31
-backend repository: ~/agxp-monorepo
-P1A: 0423e001921bc53338b0a14a73e4cfc894f18e4c
-P1B READY+PASS: d82f4f8ee204777dec0c83fd3425bd3b475abcec
-```
-
-执行第一条产品代码变更前运行：
+- 实施前使用 `superpowers:using-git-worktrees` 准备独立的前端 worktree；只在当前前端仓库中创建和提交变更。
+- 前端校准基线为 `origin/main@c836f301f07d6e6693e125ea66b8855cd975ec31`。开始前先安装依赖并验证基线：
 
 ```bash
-test "$(git branch --show-current)" = "recruitment-p1c-frontend-wiring-refactor"
-git merge-base --is-ancestor c836f301f07d6e6693e125ea66b8855cd975ec31 HEAD
 git status --short
 npm ci
 npm test
 npm run typecheck
 npm run lint
-git -C ~/agxp-monorepo cat-file -e 0423e001921bc53338b0a14a73e4cfc894f18e4c^{commit}
-git -C ~/agxp-monorepo cat-file -e d82f4f8ee204777dec0c83fd3425bd3b475abcec^{commit}
 ```
 
-必须保持工作区干净且基线 40 个测试文件、260 个测试通过，typecheck/lint 退出码均为 0。`npm ci` 是新 worktree
-的依赖准备；依赖未安装导致的 `command not found` 不是产品基线失败。若安装完成后基线仍失败，停止并记录漂移。
-
-### 四处 P1B browser schema 闸门
-
-`d82f4f8ee` 的 runtime/L3 已验证浏览器 multipart 为：
+- `~/agxp-monorepo` 只作为 P1A/P1B 历史契约的只读参考。本计划不切换它的分支，不创建它的 worktree，不编辑其文件，
+  不启动其服务，也不运行后端测试或本地运行栈。
+- 前端以已经核验的 P1B runtime shape 为冻结输入：
 
 ```text
 metadata: Blob(application/json), {"purpose":"organization_logo|office_photo|company_photo"}
@@ -66,28 +38,8 @@ media: PNG/JPEG File
 recruiter avatar: 单个名为 media 的 PNG/JPEG File
 OrganizationProfileReplacement 未设置行业: industry_id: ""
 RecruiterProfile 未验证/未上传头像: verified_name/avatar_url 可缺键，decoder 归一为 null
+media DELETE: 204 No Content
 ```
-
-但同 commit 的 `apps/recruitment-bff/openapi/mobile-v1.yaml` 把组织媒体和招聘方头像都错误声明为 `file` part。
-它还把 `industry_id` 声明为 `minLength: 1`，而 runtime/repository 仅在非空时验证目录并用
-`NULLIF($industry_id, '')` 保存，空字符串是读投影 `industry: null` 的写入表示。`RecruiterProfile` runtime 还以
-`omitempty` 省略空 `verified_name/avatar_url`；OpenAPI 却把 `verified_name` 列为 required，并把两字段描述为
-nullable。开始 Task 1 前，执行者必须满足其一：
-
-1. 给出一个精确后端修正 commit，且 OpenAPI 对 `/api/v1/organizations/{organization_id}/media` 明确
-   `required: [metadata, media]`，对 `/api/v1/recruiter/avatar` 明确 `required: [media]`，并允许
-   `OrganizationProfileReplacement.industry_id` 为空字符串，并让 RecruiterProfile schema 与 runtime 的可缺键语义一致；或
-2. 用户对这四条已知上游 contract defect 明确给出 `USER_GO`，允许前端按上述已核验 runtime 形状实现。
-
-没有这两项之一就停止，不发送 `file` part，不实现兼容双 body，也不发明第三种 shape。闸门解除后，只把精确修正
-commit/`USER_GO` 证据补到本文件“执行记录”，不改产品范围。冻结 OpenAPI 与上游 Spec 必须从 monorepo commit 读取：
-
-```bash
-git -C ~/agxp-monorepo show d82f4f8ee204777dec0c83fd3425bd3b475abcec:apps/recruitment-bff/openapi/mobile-v1.yaml
-git -C ~/agxp-monorepo show d82f4f8ee204777dec0c83fd3425bd3b475abcec:docs/superpowers/specs/2026-08-25-recruitment-organization-recruiter-identity-design.md
-```
-
-### 全局不变量
 
 - browser 不能提交 subject、affiliation ref、Organization ID 或 verification status 来获取可信 Job verdict；`JobCreate` 只提交 `publisher_mode + hiring_organization_claim`，服务端唯一推导 refs。
 - Backend 已接域失败不回退 Mock/静态公司档案。
@@ -99,7 +51,9 @@ git -C ~/agxp-monorepo show d82f4f8ee204777dec0c83fd3425bd3b475abcec:docs/superp
   不能触发静态 `取公司档案()`；只有 canonical Organization ref 存在时才给该区块导航能力。
 - `src/组件/匹配对齐卡.tsx` 已在当前基线被职位详情、在谈详情和真人会话共用；本 Plan 只改这些页面的公司/发布方
   数据接线，不移动、复制、删除或重写匹配对齐卡。
-- 每个 task 结束前运行该 task 的定向测试；最终再跑全门禁。
+- 每个 Task 使用 `superpowers:test-driven-development`：先运行新增失败测试，再写最小实现，最后运行定向测试并提交。
+- Task 1–6 完成后使用 `superpowers:requesting-code-review`；处理发现并重跑完整前端验证，然后使用
+  `superpowers:finishing-a-development-branch` 收口实现分支。
 
 ---
 
@@ -122,7 +76,8 @@ git -C ~/agxp-monorepo show d82f4f8ee204777dec0c83fd3425bd3b475abcec:docs/superp
 
 - Consumes: `创建BFF客户端(options).请求<T>(request: BFF请求选项): Promise<BFF响应<T>>`，其中
   `BFF响应<T> = { result: T; etag: string | null; requestId: string | null }`；
-  既有 `BFFOwnerJob`、`BFF目录引用`、`资料形` 与 `页面岗位快照`；运行假设是第 0 节的四项 schema 闸门已解除。
+  既有 `BFFOwnerJob`、`BFF目录引用`、`资料形` 与 `页面岗位快照`；浏览器请求和 decoder 消费 Global Constraints
+  中冻结的 runtime shape。
 - Produces: Step 3 的全部 Organization DTO/write types；Step 5 的 `组织数据源` 精确方法表；Step 6 的
   `可用企业关系/选择当前企业关系/从BFF企业档案/转BFF企业档案替换/从BFF招聘身份/从BFF公开企业/
   从BFF岗位发布方`；以及包含这些方法的 `HTTP招聘数据源`。Task 2–6 只能消费这些签名，不得重定义 wire shape。
@@ -1840,21 +1795,20 @@ git commit -m "feat(recruitment): project verified job organizations"
 
 ---
 
-## Task 6：Mock/Intercepted Backend E2E 与候选提交收口
+## Task 6：Mock/Intercepted Backend E2E 与前端验证收口
 
 **文件：**
 
 - 修改：`e2e/数据源模式.spec.ts`
 - 修改：`e2e/onboarding.spec.ts`
 - 修改：`README.md`
-- 修改：本计划的“执行记录”小节
 
 **Interfaces:**
 
 - Consumes: Task 1–5 已提交的页面、operation 和 fixture；现有 `安装BFF路由(page, handlers)`、
   `playwright.config.ts`、`playwright.数据源模式.config.ts` 与固定 16 个视觉 scene ID。
-- Produces: Mock 与 intercepted Backend 两套可重复 Playwright evidence、更新后的 README/spec/执行记录草稿，以及
-  进入 Terminal Integration Task 所需的干净 candidate commit。不得把 intercepted E2E 记为真实 Backend smoke。
+- Produces: Mock 与 intercepted Backend 两套可重复 Playwright evidence、更新后的 README，以及完成 code review 和
+  分支收口所需的干净前端提交。intercepted E2E 只证明前端边界，不得记为真实 Backend 联调。
 
 - [ ] **Step 1：先加 `@mock` 与 `@backend` RED**
 
@@ -1948,164 +1902,30 @@ npm run test:e2e:data-source
 预期 GREEN：普通 Playwright 与 data-source Playwright 全部退出码 0；`@backend` 证据只标 intercepted boundary，
 `@mock` 保持零 API。
 
-- [ ] **Step 3：更新文档草稿并提交 candidate**
+- [ ] **Step 3：更新 README 并提交前端测试**
 
-README 记录 Backend/Mock 运行方式和 `@backend` 的 intercepted 性质。本计划“执行记录”只填写 Task 1–6 commit 与
-已实际运行的定向结果；design spec 此时仍是“实施候选，待 Terminal Integration”，不得提前写真实 smoke 或最终
-集成 PASS。
+README 记录 Backend/Mock 运行方式和 `@backend` 的 intercepted 性质，明确 data-source Playwright 不启动、不修改也不
+验证真实后端服务。
 
 ```bash
-git add e2e README.md docs/superpowers/plans/2026-08-26-recruitment-p1c-frontend-wiring.md
+git add e2e README.md
 git commit -m "test(recruitment): verify P1C frontend candidate"
 ```
 
-- [ ] **Step 4：运行唯一 authoritative plan-scope gate**
+- [ ] **Step 4：运行完整前端验证并完成 review**
 
-只以如下单次复合 invocation 作为 Plan 范围权威证据；各 Task 的目标测试不是它的替代品：
+运行完整前端验证：
 
 ```bash
 npm run typecheck && npm run lint && npm test && npm run build && npm run test:e2e && npm run test:e2e:data-source && UI_VISUAL_GATE=enforce npm run ui:check -- --base c836f301f07d6e6693e125ea66b8855cd975ec31
 ```
 
-预期 GREEN：复合命令退出码 0，随后 `git status --short` 为空。失败则用 `superpowers:systematic-debugging` 找根因、
-新增修复提交并从头重跑整条复合命令；不得拼接不同提交的局部 PASS。记录 candidate HEAD 与完整命令/退出码到
-本计划“执行记录”，随后才进入 Terminal Integration Task。
+预期 GREEN：复合命令退出码 0，随后 `git status --short` 为空。失败则使用
+`superpowers:systematic-debugging` 找根因，新增修复提交并从头重跑整条复合命令。
 
----
-
-## Static Integration Test Handoff
-
-```yaml
-integration_requirement: required
-selection_ssot: ~/agxp-monorepo@d82f4f8ee204777dec0c83fd3425bd3b475abcec:tests/l3/recruitment-mobile-local-cases.json
-selection_gap:
-  owner: ~/agxp-monorepo Recruitment local harness
-  reason: monorepo 的 canonical Case 已证明 BFF/Recruitment 合同，但当前 dev-local bootstrap 只准备五个账号，不准备可供浏览器 smoke 使用的 admin Organization；出现一个安全、幂等、无 secret 输出的 admin Organization fixture helper 后 gap 才关闭
-l3_selection:
-  - suite: recruitment-mobile-local
-    impact_class: case-semantic
-    mode: explicit
-    cases: [foundation:auth-role-session]
-    case_set: none
-    seeds: [foundation:auth-role-session]
-    closure_reasons:
-      foundation:auth-role-session: direct upstream contract evidence for organization identity/profile/media/job projection
-    cadence_scope: required
-    fallback: false
-    fallback_reason: none
-    reason: 复用 P1B 已有 canonical Case 证明真实 BFF/Recruitment 组织合同；前端另跑无 page.route 的浏览器 smoke
-    prerequisites: 精确 backend revision 包含 d82f4f8ee；schema gate 已用修正 commit 或 USER_GO 解除；local harness health PASS
-    evidence: P1B READY+PASS evidence 加本 Plan 的真实浏览器步骤、关键响应状态与刷新后权威投影
-    granularity_gap: canonical Case 不启动前端浏览器；当前 monorepo 也没有可选的 frontend P1C browser Case，故浏览器 smoke 由本 Terminal Task 显式执行
-release_handoff:
-  required: false
-  owner: none
-  required_mode: none
-  nightly_only_mode: none
-  status: none
-  reason: P1C 只集成 main，不部署或发布环境
-```
-
-## Terminal Integration Task：同步目标、真实 smoke、最终候选与普通 push
-
-**类型：** 非实现 terminal task；不得新增功能、重构或扩大 Spec。
-
-**文件：**
-
-- 修改：`docs/superpowers/specs/2026-08-26-recruitment-p1c-frontend-wiring-design.md`
-- 修改：`docs/superpowers/plans/2026-08-26-recruitment-p1c-frontend-wiring.md` 的“执行记录”
-- 只读：`~/agxp-monorepo` 的冻结 commit、Recruitment local harness 与 bootstrap receipt
-
-**Interfaces:**
-
-- Consumes: Task 1–6 干净 candidate HEAD、异构 code review 结论、authoritative plan-scope gate evidence、上面的静态
-  Handoff、`~/agxp-monorepo` 中可解析的 backend revision，以及 schema/fixture 两个前置门的实际证据。
-- Produces: 用户批准后的 target merge commit、最终候选全门禁、真实 Backend browser smoke 证据、更新后的
-  spec/执行记录、`integration_status: PASS | ENV_BLOCKED | PRODUCT_BLOCKED` 和普通 `git push origin HEAD:main`
-  结果。
-
-### Entry gate
-
-必须同时满足：Task 1–6 都已提交；工作区干净；异构 review 无未处理 required finding；authoritative plan-scope
-gate 在当前 candidate HEAD 完整 PASS；执行记录写明 `P1C_BACKEND_REVISION` 及 schema gate 证据。任一项不满足则
-`integration_status: PRODUCT_BLOCKED`，不进入目标分支操作。
-
-### Final gate：必须停下取得用户批准
-
-向用户展示 candidate HEAD、当前 `origin/main`、`P1C_BACKEND_REVISION`、monorepo local harness/fixture 状态、将执行的
-`fetch + merge origin/main`、最终测试命令、真实 browser smoke 和普通 push 目标。只有用户在这个 gate 明确批准后，
-才能继续；批准本 Plan 不等于批准未来的 final gate。
-
-### 批准后的唯一集成顺序
-
-1. `git fetch origin main`，用 `git rev-parse origin/main` 记录精确 target SHA；把最新 `origin/main` **merge** 到 P1C
-   分支，不 rebase 已执行提交。
-2. 只解决机械冲突；若 target 改变 DTO/状态/页面语义，记 `PRODUCT_BLOCKED: dependency drift requires_replan` 并停止。
-3. 精确重算并记录：
-
-   ```bash
-   git rev-parse HEAD
-   shasum -a 256 docs/superpowers/plans/2026-08-26-recruitment-p1c-frontend-wiring.md
-   git diff --name-only "$(git rev-parse origin/main)"...HEAD
-   ```
-
-   将 candidate SHA、plan SHA256 与 changed-file selection 写回本 Plan“执行记录”；范围越过批准 Spec 时停止并
-   `requires_replan`。
-4. 在最终 merge candidate 上从头运行 Task 6 Step 4 的同一复合门禁，但 UI base 改为步骤 1 记录的 target SHA。
-5. 为后端创建或复用精确 revision 的独立 monorepo worktree。不得切换 `~/agxp-monorepo` 当前分支，也不得删除已有
-   不匹配目录：
-
-   ```bash
-   test -n "${P1C_BACKEND_REVISION:-}"
-   git -C ~/agxp-monorepo cat-file -e "${P1C_BACKEND_REVISION}^{commit}"
-   git -C ~/agxp-monorepo merge-base --is-ancestor d82f4f8ee204777dec0c83fd3425bd3b475abcec "$P1C_BACKEND_REVISION"
-   backend_worktree=~/agxp-monorepo/.worktrees/recruitment-p1c-frontend-smoke
-   mkdir -p ~/agxp-monorepo/.worktrees
-   if test -e "$backend_worktree/.git"; then
-     test "$(git -C "$backend_worktree" rev-parse HEAD)" = "$P1C_BACKEND_REVISION"
-   else
-     git -C ~/agxp-monorepo worktree add --detach "$backend_worktree" "$P1C_BACKEND_REVISION"
-   fi
-   ```
-
-6. 使用 monorepo 的完整 local harness 单一入口，不手写 Docker Compose 命令，也不分别启动四个组件。`--stub`
-   保证启动/health 不需要真实 IM/LLM；credential、Docker 或 foreign provenance 前置缺失时按 harness 输出记
-   `ENV_BLOCKED`：
-
-   ```bash
-   backend_worktree=~/agxp-monorepo/.worktrees/recruitment-p1c-frontend-smoke
-   (cd "$backend_worktree" && tools/cred-sync.sh worktree && tools/dev-env.sh ensure base)
-   (cd "$backend_worktree/apps/server" && ./scripts/local-env.sh up --stub)
-   (cd "$backend_worktree/apps/server" && ./scripts/local-env.sh status)
-   ```
-
-   成功证据必须包含 `DEV STACK READY`、`not a release verdict`、BFF `http://127.0.0.1:8097`、五账号安全回执
-   `apps/recruitment/.local-dev/bootstrap-receipt.json` 的 schema 校验；不得输出 bearer、session token 或 secret。
-7. 检查 local harness 是否已经提供安全、幂等的 admin Organization fixture helper。当前冻结 `d82f4f8ee` 的
-   `dev-local.sh bootstrap` 只准备五个账号，不创建 Organization；因此在 helper 出现前可以验证登录、RecruiterProfile、
-   无 Affiliation 的 unverified claim 发岗和 admin request pending，但不能把 admin Profile/media 路径记为真实 smoke
-   PASS。禁止复制 internal bearer 到宿主命令行、直接改数据库或把 intercepted Playwright 冒充该证据；缺 helper 时
-   写 `integration_status: ENV_BLOCKED` 并停止 push。
-8. helper 可用后，用 `agent-browser` 启动真实浏览器 smoke。前端必须以
-   `VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=local npm run dev -- --host localhost --port 5173` 启动，且不安装
-   `page.route`。固定流程：手机号 `+8613800000001`、验证码 `3141` 登录 → recruiter profile/affiliations 水合 →
-   修改 public_name/title → 上传 avatar → admin 保存 OrganizationProfile → 上传并发布 organization media → 刷新恢复 →
-   owner Job 显示 publisher/hiring projection → 直开 `/#/company/{organization_id}`。记录可公开的请求状态、页面断言
-   和截图路径，不记录 cookie、token、evidence 正文或 object coordinate。
-9. 更新 design spec 状态和执行记录并提交：
-
-   ```bash
-   git add docs/superpowers/specs/2026-08-26-recruitment-p1c-frontend-wiring-design.md docs/superpowers/plans/2026-08-26-recruitment-p1c-frontend-wiring.md
-   git commit -m "docs(recruitment): record P1C terminal evidence"
-   git fetch origin main
-   git rev-parse origin/main
-   ```
-
-   最后一条输出必须仍等于步骤 1 的 target SHA；同时在本 Plan 执行记录写入 final candidate、门禁与 smoke 证据。
-   若移动，停止并重新请求用户 final-gate 批准，不自行 merge 第二个 target。
-10. 仅在全部 PASS 且 target 未移动时运行 `git push origin HEAD:main`，禁止 force push。push 成功后才在执行记录写
-    `integration_status: PASS` 与 push SHA。push 拒绝、测试失败或 smoke 未完整通过时保持真实非 PASS 状态并保留
-    worktree/证据供恢复。
+验证通过后使用 `superpowers:requesting-code-review`。修复所有有效发现，运行受影响的定向测试，并再次运行上述完整
+前端验证。最后使用 `superpowers:finishing-a-development-branch` 选择合并、PR、保留或丢弃实现分支。本计划到前端
+实现分支验证与收口为止。
 
 ---
 
@@ -2122,7 +1942,7 @@ gate 在当前 candidate HEAD 完整 PASS；执行记录写明 `P1C_BACKEND_REVI
 | 401/409/503/revoked/suspended/media 诚实恢复 | 2、4、5 | operation tests + Backend E2E |
 | Mock 视觉/路径保持 | 3–6 | Mock Vitest/Playwright + enforce UI regression |
 | private evidence/token/subject/object key 不泄漏 | 1、3、4 | strict decoder + storage/action tests |
-| deterministic tests + real smoke | 6、Terminal | authoritative gate + real Backend smoke record |
+| deterministic frontend verification | 6 | unit/component + Playwright + data-source + UI regression |
 
 ## 刻意不做
 
@@ -2133,21 +1953,8 @@ gate 在当前 candidate HEAD 完整 PASS；执行记录写明 `P1C_BACKEND_REVI
 - 图片 crop/resize/thumbnail/WebP/CDN、通用 DAM、后台 GC；
 - P2–P8 领域、市场/推荐/消息真实 API；
 - 新状态库、Query 框架、schema generator、第二个 Context、设计系统/CSS 重构；
-- 为没有 canonical ref 的 claim 创建静态 Organization 页面。
+- 为没有 canonical ref 的 claim 创建静态 Organization 页面；
+- 修改、启动、部署或测试 `~/agxp-monorepo` 的后端代码和本地运行栈；
+- 真实跨仓库联调、后端 fixture 或后端 contract 修复；这些由独立集成工作承担。
 
 这些能力只有出现冻结后端 route、明确产品需求或可测量故障后才重新规划。
-
-## 执行记录
-
-本节在实施阶段按 Task 6 Step 3 与 Terminal Integration Task 填写。计划评审阶段保持空表，不把未执行事项写成 PASS。
-
-| 项目 | 结果 |
-|---|---|
-| frontend baseline 校准 | `origin/main@c836f301f07d6e6693e125ea66b8855cd975ec31`；`npm ci` 后 40 files / 260 tests、typecheck、lint PASS；已吸收头像 helper、共享公司区块、共享匹配对齐卡与 UI regression 门禁 |
-| backend repo 校准 | `~/agxp-monorepo`；P1A `0423e0019`、P1B `d82f4f8ee` 及上游 Spec 均可由 Git object 读取；当前 checkout 分支不作为冻结真相源 |
-| 两处图片上传 + industry 空值 + RecruiterProfile 缺键 schema 闸门 | 在 `d82f4f8ee` 及已检查的后续 OpenAPI 中仍未解除；执行前必须提供覆盖四处的修正 commit 或 USER_GO |
-| local browser smoke fixture | `d82f4f8ee` 的完整 local harness/五账号 bootstrap 可用，但没有安全的 admin Organization fixture helper；Terminal 全链 smoke 在 helper 出现前为 `ENV_BLOCKED` |
-| Task commits | 尚未执行 |
-| typecheck / lint / unit / build / e2e / data-source e2e / UI regression | 尚未执行 |
-| real local Backend smoke | 尚未执行 |
-| dependency drift | frontend baseline 已校准；实施开始时重新核验 backend schema gate |

@@ -14,27 +14,20 @@
 导航避免读取静态公司档案。P0 的 `HTTP招聘数据源` facade、`状态/后端` 操作边界和
 `状态/领域/组织岗位.ts` 在当前基线上仍无语义漂移。
 
-**后端依赖：**
+**后端契约（只读参考）：** P1A
+`recruitment-organization-identity-core@0423e001921bc53338b0a14a73e4cfc894f18e4c` 与 P1B
+`origin/release/0.2.5@d82f4f8ee204777dec0c83fd3425bd3b475abcec` 只用于校准前端浏览器契约。参考资料位于
+`~/agxp-monorepo` 的 P1A/P1B 历史版本，包括
+`docs/superpowers/specs/2026-08-25-recruitment-organization-recruiter-identity-design.md` 和
+`apps/recruitment-bff/openapi/mobile-v1.yaml`。本 P1C 不切换该仓库的分支，不创建其 worktree，不修改、启动或测试
+后端代码与本地运行栈。
 
-- P1A `recruitment-organization-identity-core@0423e001921bc53338b0a14a73e4cfc894f18e4c`；
-- P1B 最终 `READY + PASS` commit：`origin/release/0.2.5@d82f4f8ee204777dec0c83fd3425bd3b475abcec`；
-- P1B 最终 L3 runtime 冻结了组织媒体 `metadata` JSON part + `media` file part、招聘方头像单个 `media` file
-  part、媒体 DELETE `204 No Content` 和 suspended Organization 写入 `409 organization_suspended`；
-- 已知上游 contract defect：同一 `d82f4f8ee` 的 BFF OpenAPI 把组织媒体上传错误声明为单个 `file` part，也把
-  招聘方头像上传错误声明为 `file` part；runtime/L3 实际分别为 `metadata + media` 和单个 `media`。此外
-  `OrganizationProfileReplacement.industry_id` 的 OpenAPI `minLength: 1` 与 domain/runtime 的空字符串“未设置”
-  语义不一致（读投影为 `industry: null`，repository 以 `NULLIF('', '')` 清空）。另有
-  `RecruiterProfile.verified_name/avatar_url` 的 runtime `omitempty` 与 OpenAPI nullable/required 表达不一致：浏览器
-  decoder 必须接受缺键并归一为 `null`。Implementation 在修改产品代码前必须绑定修正这四处 schema 的精确后端
-  commit；若尚无修正，只能在用户对这四条已知 defect 明确授权后按已核验 runtime shape 继续。不得按错误 OpenAPI
-  发送 `file`，也不得发明兼容双 body 或第三种 shape。
-
-**上游产品契约：** `~/agxp-monorepo` 在 P1A/P1B commit 中的
-`docs/superpowers/specs/2026-08-25-recruitment-organization-recruiter-identity-design.md`。当前 monorepo checkout
-可能位于别的分支，校准时必须用
-`git -C ~/agxp-monorepo show d82f4f8ee204777dec0c83fd3425bd3b475abcec:docs/superpowers/specs/2026-08-25-recruitment-organization-recruiter-identity-design.md`
-读取冻结版本，不能要求切换该 repo
-的工作分支，也不能把前端仓库中的同名相对路径当成后端真相源。
+前端按已核验的 P1B runtime 行为冻结以下浏览器边界：组织媒体上传使用 `metadata` JSON part + `media` file part；
+招聘方头像上传使用单个 `media` file part；媒体 DELETE 返回 `204 No Content`；suspended Organization 写入返回
+`409 organization_suspended`；未设置行业写为 `industry_id: ""`；缺失的
+`RecruiterProfile.verified_name/avatar_url` 归一为 `null`。冻结 OpenAPI 对这几处的描述与 runtime 不完全一致，因此
+实现和测试以本段边界为准：不得发送 `file` part，不得实现兼容双 body，也不得发明第三种 shape。后端若改变实际
+runtime contract，应另行重新校准前端 Spec；它不构成本前端计划中的实现任务。
 
 ## 1. 背景与结论
 
@@ -73,7 +66,7 @@ P1C 完成后：
 7. 401、409、503、revoked、suspended 和媒体失败保留诚实状态与明确重试，不回退 Mock；
 8. Mock 模式现有注册、发岗、公司档案和 PM 视觉保持；
 9. private evidence、raw invitation token、subject、object key 和 internal review 数据不进入公开页面或持久化；
-10. 前端确定性测试与一次真实 local Backend smoke 都有可核验证据，外部前置缺失时明确记录 blocker。
+10. unit、component、intercepted data-source Playwright 与 UI regression 形成可重复的纯前端验证证据。
 
 ## 3. 采用方案与被拒方案
 
@@ -353,27 +346,19 @@ P1C 复用现有 JSX 槽位表达只读/不可点击，不新增 badge、说明�
 - canonical organization 可导航，无 ref 的 claim 不可导航；
 - public page 不读取静态公司档案或 private fields。
 
-### 12.4 Playwright 与真实 smoke
+### 12.4 Playwright 与前端验证
 
 现有 `playwright.数据源模式.config.ts` 继续运行两条不可复用的 Vite server：
 
 - `@mock` 冻结 PM 招聘注册、发岗和公司展示；
 - `@backend` 用 `page.route` 覆盖招聘身份、组织水合、admin/member、媒体、conflict 和 public page；fixture
-  只证明前端边界，不冒充真实 BFF 联调。
+  只证明前端请求、响应、恢复和渲染边界，不宣称真实 BFF 联调。
 
-真实 local Backend 由 `~/agxp-monorepo` 对应 backend revision 的
-`apps/server/scripts/local-env.sh up --stub` 启动；不得切换用户当前 monorepo 分支，也不得在前端 Plan 中复制 Compose
-命令。随后在 `http://localhost:5173` 完成一次真实登录、RecruiterProfile/Affiliation 水合、头像、公司档案保存、
-刷新恢复与公开读取 smoke。冻结 `d82f4f8ee` 的完整 local harness 会准备五个账号，但不会准备 admin Organization；
-因此完整 smoke 还要求 monorepo 提供安全、幂等且不输出 secret 的 admin Organization fixture helper。在 helper 出现前，
-可完成的真实路径与 intercepted admin/media 测试分别记录，整体集成状态保持 `ENV_BLOCKED`。不得直接改数据库、把
-internal bearer 放到宿主命令行，或把拦截 fixture 写成真实联调 PASS。
+本计划的验证范围止于当前前端仓库。真实后端联调、跨仓库 smoke、后端 fixture 与服务启动属于独立集成工作，不是
+P1C 前端实现的完成前置。新前端 worktree 若尚未安装依赖，先运行 `npm ci`，不能把依赖缺失造成的命令失败归为产品
+基线失败。
 
-当前仓库没有 `affected` runner、Case catalog 或 L3 selector。实现阶段的唯一 plan-scope gate 因而是 Plan 中冻结的
-npm scripts 复合命令；真实 local Backend smoke 是独立集成证据，不能被 unit、intercepted Playwright 或 UI 回归
-替代。新 worktree 若尚未安装依赖，先运行 `npm ci`，不能把 `vitest: command not found` 归因为基线产品失败。
-
-最终计划门禁至少包括：
+最终前端验证至少包括：
 
 ```bash
 npm run typecheck
@@ -408,8 +393,7 @@ P1C 是一份完整计划，但任务按可独立审阅的责任拆分：
 3. 招聘身份、RecruiterProfile、admin request 与 invitation acceptance；
 4. avatar、OrganizationProfile 和 public media；
 5. Job publisher/hiring organization 与 public company page；
-6. Mock/intercepted Backend Playwright 与候选提交收口；随后由唯一 Terminal Integration Task 执行目标同步、真实
-   local smoke、最终候选验证和普通 push。
+6. Mock/intercepted Backend Playwright、完整前端验证与实现分支收口。
 
 每个任务必须先写失败测试，再写最小实现，再运行定向验证并提交。不能把 setup、scaffold 或“以后补测试”拆成
 独立任务；不能在 Plan 中增加已批准 Spec 之外的抽象或重构。
@@ -418,8 +402,8 @@ P1C 是一份完整计划，但任务按可独立审阅的责任拆分：
 
 P1C 只有同时满足以下条件才算完成：
 
-1. Implementation Plan 绑定前端 `c836f30`、P1A 完成 commit、P1B 最终 `d82f4f8ee`，并把上述两处图片 upload、
-   industry 空值与 RecruiterProfile 缺键 schema mismatch 写成执行前置；修正 commit 出现后只校准该依赖，不扩大产品范围；
+1. Implementation Plan 绑定前端 `c836f30`，并把 P1A/P1B 历史版本仅作为只读契约参考；所有实现与验证变更只发生在
+   当前前端仓库；
 2. 本 Spec 第 2 节十项成功标准都有明确实现任务和测试；
 3. 招聘身份、Affiliation、公司档案、媒体、Job projection 与公开公司页没有 Backend→Mock 回退；
 4. admin/member、personal/publisher/hiring verification 和 canonical/claim 边界可由测试证明；
@@ -428,17 +412,16 @@ P1C 只有同时满足以下条件才算完成：
    CSS/导航/分区结构变化；
 7. typecheck、lint、Vitest、build、普通 Playwright、数据源模式 Playwright，以及相对实际 frontend base 的
    `UI_VISUAL_GATE=enforce npm run ui:check` 全部 PASS；
-8. 使用 `~/agxp-monorepo` 正式 local harness 的真实 Backend smoke PASS；若 admin Organization fixture helper、OTP、
-   Docker 或其它确切外部前置缺失，诚实记录 `ENV_BLOCKED`，此时只能称“实现候选完成”，不能称 P1C 已集成；
+8. intercepted Backend Playwright 明确标注为前端边界测试，不把 fixture 证据表述成真实后端联调；
 9. private evidence、token、subject 和 object coordinate 没有进入前端持久化或公开投影；
-10. 工作区干净，依赖漂移为 none；发现漂移则先 `requires_replan`，不带漂移执行。
+10. 工作区干净，提交只包含本 Spec 与 Plan 约定的前端变更。
 
 ## 16. 下一步
 
 1. 使用当前仓库内的 `docs/superpowers/plans/2026-08-26-recruitment-p1c-frontend-wiring.md` 作为唯一实现 Plan；
 2. Plan 自审覆盖本 Spec、无依赖聊天上下文的占位符，且路径、类型、方法名和 npm 命令与当前仓库一致；
-3. 对本 Spec 与 Plan 完成异构文档 review，并逐条处理 required finding；
-4. 只有两处图片 upload、industry 空值与 RecruiterProfile 缺键 OpenAPI defect 获得精确后端修正 commit，或用户
-   对这四条已知 defect 明确 `USER_GO` 后，才开始修改 P1C 产品代码；
-5. 文档确认后在独立实现 session 按 Plan 的 Task 1→6 串行执行；运行期证据直接写回 Plan 的“执行记录”，不依赖
-   当前仓库并不存在的 `affected`/Case catalog 或仓库外 handoff sidecar。
+3. 文档确认后，在独立实现 session 使用 `superpowers:subagent-driven-development`（推荐）或
+   `superpowers:executing-plans` 按 Task 1→6 执行；
+4. 每个任务使用 `superpowers:test-driven-development`，先写失败测试、实现最小改动、运行定向验证并提交；
+5. Task 1→6 完成后使用 `superpowers:requesting-code-review`，处理发现并重跑完整前端验证；
+6. 验证通过后使用 `superpowers:finishing-a-development-branch` 选择合并、PR、保留或丢弃实现分支。
