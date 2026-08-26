@@ -1,0 +1,74 @@
+/* 匹配对齐卡:定稿「甲-圆点行式」。圆点与代谈进度/初始化页同一套视觉基因。 */
+
+.头 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.标题 {
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.行 {
+  display: flex;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.行:last-child {
+  border-bottom: none;
+}
+
+/* 命中:亮绿实心圆白勾 */
+.命中点 {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--亮绿);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+/* 未命中:空心灰圈 + 灰叉(用户 2026-08-26:「不匹配的点也画出来」) */
+.未中点 {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--描边中);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.行文 {
+  min-width: 0;
+  flex: 1;
+}
+
+/* 要求 = 对方的原文,墨色重(用户定的层级) */
+.要求 {
+  display: block;
+  font-size: var(--字号-正文);
+  line-height: 1.5;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+/* 证据 = 我方的原文,浅色 */
+.证据 {
+  display: block;
+  font-size: var(--字号-正文);
+  line-height: 1.5;
+  color: var(--次要浅);
+  margin-top: 3px;
+}

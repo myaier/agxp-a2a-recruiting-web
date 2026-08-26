@@ -12,9 +12,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import 样式 from './在谈详情.module.css';
 import 详析样式 from './职位详情.module.css';
-import { 硬性行们 } from './职位详情';
-import 适配环 from '../组件/适配环';
 import { 公司区块 } from '../组件/公司区块';
+import { 匹配对齐卡 } from '../组件/匹配对齐卡';
+import { 求职侧对齐行 } from '../数据/匹配对齐';
 import 拿不准弹层 from './拿不准弹层';
 import 确认层 from '../组件/确认层';
 import 简历原件层 from '../组件/简历预览层';
@@ -519,40 +519,16 @@ function 职位详情Tab({ 单 }: { 单: 在谈单 }) {
   return (
     <滚动区>
       <div className={样式.详情列}>
-        {/* Agent 匹配分析：与看市场职位详情同一张卡（样式直接复用那边的 module）*/}
+        {/* 匹配度分析(2026-08-26 定稿对齐表):与职位详情同一个共用卡,三处一致 */}
         <div className={详析样式.卡}>
-          <div className={详析样式.适配头}>
-            <span className={详析样式.卡标题}>匹配度分析</span>
-            <适配环 分={单.适配分} 标={null} 尺寸={44} />
-          </div>
-          {硬性行们(证据源, 全局.简历技能).length ? (
-            <>
-              <div className={详析样式.证据组标}>硬性要求</div>
-              {硬性行们(证据源, 全局.简历技能).map((行) => (
-                <div key={行.文} className={详析样式.证据行}>
-                  <span className={行.过 ? 详析样式.适配过 : 详析样式.适配差}>
-                    {行.过 ? '✓' : '✗'}
-                  </span>
-                  <span className={详析样式.证据文}>{行.文}</span>
-                </div>
-              ))}
-            </>
-          ) : null}
-          {证据源.技能要求?.length ? (
-            <>
-              <div className={详析样式.证据组标}>技能</div>
-              <div className={详析样式.技能行}>
-                {证据源.技能要求.map((技) => {
-                  const 命中 = 全局.简历技能.some((有) => 有.includes(技) || 技.includes(有));
-                  return (
-                    <span key={技} className={命中 ? 详析样式.技能中 : 详析样式.技能缺}>
-                      {命中 ? `✓ ${技}` : 技}
-                    </span>
-                  );
-                })}
-              </div>
-            </>
-          ) : null}
+          <匹配对齐卡
+            分={单.适配分}
+            行们={求职侧对齐行(证据源, {
+              经历: 全局.简历经历,
+              教育: 全局.简历教育,
+              技能: 全局.简历技能,
+            })}
+          />
         </div>
 
         <div className={样式.详情卡}>

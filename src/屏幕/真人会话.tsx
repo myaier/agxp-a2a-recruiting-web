@@ -17,11 +17,11 @@ import 共用样式 from './直聊会话.module.css';
 import 谈详情样式 from './在谈详情.module.css';
 import 详析样式 from './职位详情.module.css';
 import { 消息条, use自动滚到底 } from './直聊会话';
-import { 硬性行们 } from './职位详情';
 import 真人会话操作栏 from './真人会话操作栏';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../组件/通用';
 import { 公司区块 } from '../组件/公司区块';
-import 适配环 from '../组件/适配环';
+import { 匹配对齐卡 } from '../组件/匹配对齐卡';
+import { 求职侧对齐行 } from '../数据/匹配对齐';
 import { 公文包图标 } from '../组件/图标';
 import 举报层 from '../组件/举报层';
 import { use导航 } from '../路由/导航钩子';
@@ -146,44 +146,19 @@ function 职位内容({ 单 }: { 单: 在谈单 }) {
   const 详 = 取在谈岗位详情(单);
   // 适配分的依据：委托进来的 M- 单直接借市场岗位上的证据，剧本 J- 单用自己的同名字段
   const 证据源 = 市场列表.find((岗) => 岗.编号 === 单.编号) ?? 单;
-  const 硬性 = 硬性行们(证据源, 全局.简历技能);
 
   return (
     <div className={谈详情样式.详情列}>
-      {/* 匹配度分析：与看市场职位详情同一张卡（样式直接复用那边的 module）*/}
+      {/* 匹配度分析(2026-08-26 定稿对齐表):与在谈详情同一个共用卡,两入口必然一致 */}
       <div className={详析样式.卡}>
-        <div className={详析样式.适配头}>
-          <span className={详析样式.卡标题}>匹配度分析</span>
-          <适配环 分={单.适配分} 标={null} 尺寸={44} />
-        </div>
-        {硬性.length ? (
-          <>
-            <div className={详析样式.证据组标}>硬性要求</div>
-            {硬性.map((行) => (
-              <div key={行.文} className={详析样式.证据行}>
-                <span className={行.过 ? 详析样式.适配过 : 详析样式.适配差}>
-                  {行.过 ? '✓' : '✗'}
-                </span>
-                <span className={详析样式.证据文}>{行.文}</span>
-              </div>
-            ))}
-          </>
-        ) : null}
-        {证据源.技能要求?.length ? (
-          <>
-            <div className={详析样式.证据组标}>技能</div>
-            <div className={详析样式.技能行}>
-              {证据源.技能要求.map((技) => {
-                const 命中 = 全局.简历技能.some((有) => 有.includes(技) || 技.includes(有));
-                return (
-                  <span key={技} className={命中 ? 详析样式.技能中 : 详析样式.技能缺}>
-                    {命中 ? `✓ ${技}` : 技}
-                  </span>
-                );
-              })}
-            </div>
-          </>
-        ) : null}
+        <匹配对齐卡
+          分={单.适配分}
+          行们={求职侧对齐行(证据源, {
+            经历: 全局.简历经历,
+            教育: 全局.简历教育,
+            技能: 全局.简历技能,
+          })}
+        />
       </div>
 
       <div className={谈详情样式.详情卡}>
