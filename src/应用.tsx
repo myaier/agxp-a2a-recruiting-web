@@ -47,6 +47,8 @@ const 归档谈判 = lazy(() => import('./屏幕/归档谈判'));
 const 帮助与客服 = lazy(() => import('./屏幕/帮助与客服'));
 const 企业实名认证 = lazy(() => import('./屏幕/企业实名认证'));
 const 招聘名片 = lazy(() => import('./屏幕/招聘名片'));
+const 企业组织申请 = lazy(() => import('./屏幕/企业组织申请'));
+const 企业邀请加入 = lazy(() => import('./屏幕/企业邀请加入'));
 const 发布岗位 = lazy(() => import('./屏幕/发布岗位'));
 const 公司档案编辑 = lazy(() => import('./屏幕/公司档案编辑'));
 const 公司档案分区编辑 = lazy(() => import('./屏幕/公司档案分区编辑'));
@@ -189,6 +191,9 @@ export default function 应用() {
       {/* ── 企业端（招人方）── */}
       <Route path={路径.企业实名认证} element={<企业实名认证 />} />
       <Route path={路径.招聘名片} element={<招聘名片 />} />
+      {/* 实名认证摘要页的两个账号管理入口：不是注册步骤，不进 onboarding 合同 */}
+      <Route path={路径.企业组织申请} element={<企业组织申请 />} />
+      <Route path={路径.企业邀请加入} element={<企业邀请加入 />} />
       <Route path={路径.发布岗位} element={<发布岗位 />} />
       {/* 编辑态复用同一个屏：带 :id 就预填那个岗位、主按钮变「保存修改」 */}
       <Route path={路径.编辑岗位模板} element={<发布岗位 />} />

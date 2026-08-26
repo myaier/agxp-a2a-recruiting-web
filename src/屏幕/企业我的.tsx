@@ -27,6 +27,7 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
 import { 轻提示 } from '../组件/轻提示';
+import { 从BFF招聘身份 } from '../数据/组织映射';
 
 /** 图标.tsx 里所有图标共用的属性签名 —— 宫格数据里要存「图标组件本身」，所以需要这个类型 */
 type 图标组件 = ComponentType<{ 尺寸?: number; 色?: string; 线宽?: number }>;
@@ -57,8 +58,23 @@ function 取统计色(色名: string): string {
 
 export default function 企业我的() {
   const { 跳转 } = use导航();
-  const { 状态, 派发 } = use应用状态();
+  const { 状态, 派发, 数据源模式 } = use应用状态();
   const 在招数 = 状态.岗位列表.filter((岗) => 岗.状态 === '在招').length;
+
+  // P1C：Backend 只读 从BFF招聘身份() 的 view model（不直接解释 DTO），
+  // 公司 = current affiliation / 未认证声明；个人与任职状态分开、显式判定，
+  // 不从公司名非空推导 verified。Mock 仍读 企业认证 fixture。
+  const 是后端 = 数据源模式 === 'backend';
+  // Mock 模式的 状态 不携带组织字段（页面也不读）：用 ?? 兜底，映射结果在 Mock 分支不被消费
+  const 身份 = 从BFF招聘身份(
+    状态.招聘方档案 ?? null,
+    状态.企业关系列表 ?? [],
+    状态.当前企业关系编号 ?? null,
+    状态.企业管理员申请列表 ?? [],
+  );
+  const 显示公司 = 是后端
+    ? (身份.currentAffiliation?.organizationName ?? 状态.未认证公司声明)
+    : 状态.企业认证.公司;
   // 「在谈」不可点（2026-08-25 用户裁定，与求职端同改）：它此前派发「企业看全部在谈」，
   // 会改写人才页的持久状态（子视图切「在谈」、范围切「全部」），主页不该被「我」页影响。
   // 「待拍板」保留可点：招聘方每天登录第一个要看的东西，跨岗位算的数落到「全部岗位」档（拦路 5）。
@@ -129,13 +145,22 @@ export default function 企业我的() {
       </div>
 
       {/* ── 头像行：整行可点，进「招聘名片」（= 企业对外形象的编辑入口，
-             镜像求职端头像行 → 我的简历）── */}
+             镜像求职端头像行 → 我的简历）。Backend 状态胶囊只按服务端事实各说各的 ── */}
       <button className={`${样式.头像行} 可点`} onClick={() => 跳转(路径.招聘名片)}>
-        <span className={样式.头像}>{状态.企业认证.公司.charAt(0)}</span>
+        <span className={样式.头像}>{显示公司.charAt(0)}</span>
         <span className={样式.头像信息}>
-          <span className={`${样式.姓名} 单行`}>{状态.企业认证.公司}</span>
+          <span className={`${样式.姓名} 单行`}>{显示公司 || '完善招聘名片'}</span>
           <span className={样式.状态行}>
-            <span className={样式.招聘名片}>招聘名片 ✎</span>
+            {是后端 ? (
+              <>
+                <span className={样式.状态胶囊}>个人：{身份.personalVerification.label}</span>
+                <span className={样式.状态胶囊}>
+                  任职：{身份.currentAffiliation?.statusLabel ?? '无'}
+                </span>
+              </>
+            ) : (
+              <span className={样式.招聘名片}>招聘名片 ✎</span>
+            )}
           </span>
         </span>
         <span className={样式.尖括号}>›</span>

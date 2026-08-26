@@ -96,6 +96,11 @@ export const 路径 = {
   // ── 企业端（招人方）。前缀 /hr，参数名同样必须 ASCII ──
   企业实名认证: '/hr/verify',
   招聘名片: '/hr/card',
+  /** 企业组织管理员申请：填写组织事实 + 证明材料提交审核（实名认证摘要页的入口，
+   *  不是注册步骤 —— 注册流仍直接进招聘名片，见 onboarding配置 的合同测试） */
+  企业组织申请: '/hr/organization-application',
+  /** 邀请加入：输入管理员分享的邀请口令加入企业；raw token 只进 POST body，不进 URL/状态 */
+  企业邀请加入: '/hr/organization-invitation',
   发布岗位: '/hr/post-job',
   /** 编辑已发布的岗位：同一个「发布岗位」屏的编辑态，带岗位编号 */
   编辑岗位: (编号: string) => `/hr/post-job/${编号}`,
