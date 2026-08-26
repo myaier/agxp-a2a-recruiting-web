@@ -39,16 +39,17 @@ function 压成头像(文件: File): Promise<string> {
 }
 
 export default function 添加头像() {
-  const { 返回, 进主壳 } = use导航();
+  const { 返回, 进初始化 } = use导航();
   const { 状态: 全局, 派发 } = use应用状态();
   const 文件框 = useRef<HTMLInputElement>(null);
   const 头像 = 全局.求职头像;
 
-  /** 注册收尾：落地回主页而不是上次停留的 Tab（2026-08-20） */
+  /** 注册收尾：先进初始化页（2026-08-25 用户定稿的乙方案），
+      播完由初始化页替换进主壳；落地回主页而不是上次停留的 Tab（2026-08-20） */
   const 开启 = () => {
     派发({ 型: '切Tab', Tab: '职位' });
     派发({ 型: '切子视图', 子视图: '在谈' });
-    进主壳();
+    进初始化();
   };
 
   async function 选了照片(事件: React.ChangeEvent<HTMLInputElement>) {

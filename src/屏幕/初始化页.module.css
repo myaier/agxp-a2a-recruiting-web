@@ -1,0 +1,202 @@
+/* 初始化页（乙方案定稿）—— 白底居中版式：品牌区 + 上下文胶囊 + 四步清单 + 进度条。
+   步骤列的竖连线与三态圆点致敬「代谈进度」时间轴，与产品内视觉同源。 */
+
+.页 {
+  height: 100%;
+  background: var(--白);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+  padding-top: var(--安全区上);
+}
+
+/* ── 品牌区 ── */
+.品牌区 {
+  margin-top: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.品牌名 {
+  margin-top: 18px;
+  font-size: var(--字号-页面大标题);
+  font-weight: 700;
+  color: var(--墨);
+  letter-spacing: 2px;
+}
+
+/* 上下文胶囊：正在为哪个意向 / 岗位初始化（真实数据，非文案） */
+.上下文芯 {
+  margin-top: 22px;
+  max-width: 320px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--描边深);
+  border-radius: 999px;
+  background: var(--白);
+  padding: 7px 15px;
+  font-size: var(--字号-正文);
+}
+.芯标 {
+  color: var(--次要浅);
+  flex: none;
+}
+.芯值 {
+  color: var(--墨);
+  font-weight: 600;
+  min-width: 0;
+}
+.芯分 {
+  width: 1px;
+  height: 11px;
+  background: var(--描边深);
+  flex: none;
+}
+
+/* ── 步骤清单：竖连线 + 三态圆点 ── */
+.清单 {
+  margin-top: 72px;
+  width: 262px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.清单::before {
+  content: '';
+  position: absolute;
+  left: 9.5px;
+  top: 22px;
+  bottom: 26px;
+  width: 1px;
+  background: var(--未完成轨);
+}
+.步 {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 11px 0;
+  position: relative;
+}
+/* 圆点自带白底，盖住穿过的竖连线 */
+.点位 {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  position: relative;
+  background: var(--白);
+  padding: 1px 0;
+}
+.完点 {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--亮绿);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.转点 {
+  width: 16px;
+  height: 16px;
+  margin: 2px;
+  border-radius: 50%;
+  border: 2px solid var(--未完成轨);
+  border-top-color: var(--亮绿);
+  animation: 初始化旋转 0.9s linear infinite;
+}
+@keyframes 初始化旋转 {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.待点 {
+  width: 16px;
+  height: 16px;
+  margin: 2px;
+  border-radius: 50%;
+  border: 1.5px solid var(--描边中);
+  background: var(--白);
+}
+
+.步文 {
+  padding-top: 1px;
+  min-width: 0;
+}
+.步题 {
+  font-size: var(--字号-小节标题);
+  line-height: 20px;
+  font-weight: 700;
+  color: var(--墨);
+}
+.步待 .步题 {
+  font-weight: 400;
+  color: var(--弱化);
+}
+.步注 {
+  margin-top: 3px;
+  font-size: var(--字号-正文);
+  line-height: 1.6;
+  color: var(--次要浅);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.数字 {
+  font-family: var(--字体-数字);
+  font-weight: 600;
+}
+.跳点组 {
+  display: inline-flex;
+  gap: 3px;
+}
+.跳点组 i {
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 50%;
+  background: var(--亮绿);
+  animation: 初始化跳动 1s ease-in-out infinite;
+}
+.跳点组 i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.跳点组 i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes 初始化跳动 {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-3px);
+  }
+}
+
+/* ── 进度条 ── */
+.进度区 {
+  margin-top: 40px;
+  width: 262px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.进度轨 {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--未完成轨);
+  overflow: hidden;
+}
+.进度芯 {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--荧光绿), var(--亮绿));
+  transition: width 0.45s ease;
+}
+.进度计 {
+  font-size: var(--字号-正文);
+  color: var(--次要浅);
+}

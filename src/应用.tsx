@@ -23,6 +23,7 @@ const 毕业院校 = lazy(() => import('./屏幕/毕业院校'));
 const 选专业 = lazy(() => import('./屏幕/选专业'));
 const 就读时间段 = lazy(() => import('./屏幕/就读时间段'));
 const 添加头像 = lazy(() => import('./屏幕/添加头像'));
+const 初始化页 = lazy(() => import('./屏幕/初始化页'));
 const 主壳 = lazy(() => import('./屏幕/主壳'));
 const 在谈详情 = lazy(() => import('./屏幕/在谈详情'));
 const 往来记录 = lazy(() => import('./屏幕/往来记录'));
@@ -143,6 +144,8 @@ export default function 应用() {
       <Route path={路径.选专业} element={<选专业 />} />
       <Route path={路径.就读时间段} element={<就读时间段 />} />
       <Route path={路径.添加头像} element={<添加头像 />} />
+      {/* 注册流收尾的一次性初始化页：播完自己替换进主壳 */}
+      <Route path={路径.初始化} element={<初始化页 端="求职" />} />
 
       {/* 主壳：3 Tab + 职位页双子视图 */}
       <Route path={路径.主壳} element={<主壳 />} />
@@ -190,6 +193,8 @@ export default function 应用() {
       <Route path={路径.公司档案编辑} element={<公司档案编辑 />} />
       {/* 分区编辑各自一整页：长文写得开，也能返回、能深链 */}
       <Route path={路径.公司档案分区模板} element={<公司档案分区编辑 />} />
+      {/* 注册流首次发岗后的一次性初始化页：播完自己替换进企业主壳 */}
+      <Route path={路径.企业初始化} element={<初始化页 端="招聘" />} />
       <Route path={路径.企业主壳} element={<企业主壳 />} />
       <Route path={路径.候选详情模板} element={<候选详情 />} />
       <Route path={路径.企业往来记录模板} element={<企业往来记录 />} />

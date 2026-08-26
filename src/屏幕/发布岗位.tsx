@@ -13,7 +13,7 @@
 // 硬性条件交给 AI 代理在匿名初筛执行，数值互不披露。
 
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import 样式 from './发布岗位.module.css';
 import 数字滚轮层 from '../组件/数字滚轮层';
 import { 主按钮, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
@@ -116,7 +116,10 @@ function 拆薪资带(薪资带: string): [string, string] {
 
 export default function 发布岗位() {
   const { id: 路由岗位编号 } = useParams<{ id: string }>();
-  const { 返回, 进企业主壳, 替换跳转 } = use导航();
+  const { 返回, 进企业主壳, 进企业初始化, 替换跳转 } = use导航();
+  // 注册流的招聘名片跳过来时在 history.state 上做了标记(刷新不丢);
+  // 应用内入口(岗位管理/在谈/推荐的 ＋)没有标记 → 发布后不再播初始化页
+  const 从注册流 = Boolean((useLocation().state as { 从注册流?: boolean } | null)?.从注册流);
   const { 状态, 派发, 操作, 数据源模式, 目录查询 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
   // 提交/删除并发锁：await 操作.* 期间拒绝重复点击，不改变按钮样式
@@ -317,7 +320,9 @@ export default function 发布岗位() {
       await 操作.发布岗位(组装岗位(预期编号, null));
       轻提示('岗位已发布');
       派发({ 型: '企业切Tab', Tab: '人才' });
-      进企业主壳();
+      // 注册流首发岗 → 先播一次性的企业初始化页(2026-08-25 乙方案);应用内发岗直进主壳
+      if (从注册流) 进企业初始化();
+      else 进企业主壳();
     } catch (错误) {
       轻提示(取后端错误文案(错误));
     } finally {
