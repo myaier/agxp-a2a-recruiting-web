@@ -53,11 +53,13 @@ import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
 import type { 资料缓存快照 } from '../数据/资料缓存';
+import { 读资料缓存 } from '../数据/资料缓存';
 import { 轻提示 } from '../组件/轻提示';
 import type { 应用操作, 后端状态, 后端操作依赖 } from './后端/类型';
 import { 创建会话操作, 水合角色数据 } from './后端/会话操作';
 import { 创建候选操作 } from './后端/候选操作';
 import { 创建岗位操作 } from './后端/岗位操作';
+import { 创建组织操作 } from './后端/组织操作';
 import { 创建目录查询 } from './后端/目录查询';
 import { 归约候选资料 } from './领域/候选资料';
 import type { 候选资料状态, 候选资料动作 } from './领域/候选资料';
@@ -73,7 +75,7 @@ import { 归约Agent规则 } from './领域/Agent规则';
 import type { Agent规则状态, Agent规则动作 } from './领域/Agent规则';
 import { 归约消息 } from './领域/消息';
 import type { 消息状态, 消息动作 } from './领域/消息';
-import { 创建初始状态, 空账号资料 } from './初始状态';
+import { 创建初始状态, 安全取存储, 空账号资料 } from './初始状态';
 import { use资料持久化 } from './资料持久化';
 
 // 顶部意向栏.tsx / 在谈首页.tsx 既有的导入路径不变：取意向名 仍从根模块导出
@@ -177,6 +179,15 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     case '存企业认证':
     case '存招聘头像':
     case '存公司LOGO':
+    case '水合招聘方档案':
+    case '水合企业关系':
+    case '选择当前企业关系':
+    case '水合企业管理员申请':
+    case '水合当前企业':
+    case '缓存公开企业':
+    case '标记公开企业不可用':
+    case '存未认证公司声明':
+    case '清后端组织状态':
       return 归约组织岗位(旧, 动作);
 
     case '拉黑':
@@ -290,8 +301,12 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
         企业在谈看什么: 动作.档,
       };
 
-    case '水合账号资料':
-      return { ...旧, ...动作.快照, 资料缓存范围键: 动作.范围键 };
+    // P1C：快照里的 当前企业关系编号 未经最新 affiliations 校验，必须丢弃；
+    // 该编号只能经 水合企业关系 或 可用企业关系() 校验后的 选择当前企业关系 写入。
+    case '水合账号资料': {
+      const { 当前企业关系编号: _未校验编号, ...已校验账号资料 } = 动作.快照;
+      return { ...旧, ...已校验账号资料, 资料缓存范围键: 动作.范围键 };
+    }
     case '清账号资料':
       return { ...旧, ...空账号资料, 资料缓存范围键: '' };
 
@@ -451,11 +466,18 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
   use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识 });
 
+  // P1C：从 subject-scoped sessionStorage 读取恢复的 current relation 候选值。
+  // 只作为 选择当前企业关系(affiliations, restoredId) 的输入；读取本身不派发选择 action，
+  // revoked ID 只会在最新 Affiliations 校验后被丢弃。
+  const 读取恢复企业关系编号 = (subjectId: string): string | null => {
+    const 快照 = 读资料缓存(安全取存储('session'), { 模式: 'backend', 环境, 账号: subjectId });
+    const 值 = 快照.当前企业关系编号;
+    return typeof 值 === 'string' ? 值 : null;
+  };
+
   // ── Backend 初始化：mount 时恢复会话一次；401 视为未登录，其他错误轻提示；均不回退 Mock ──
-  // 已知边缘：水合/写入的 in-flight 代际守卫未实现（R3-I-1 延后）——
-  // 水合途中登出后再登新账号，旧水合响应理论上可能提交到新账号。现实跨账号路径已由
-  // 目录 401 会话代际（R2-M-4）、主体 subject_id 变化清理（R2-I-4）、退出清后端草稿（P1-5）、
-  // 以及 R3-I-2 的统一 401 清理覆盖；对每条水合/写入都加代际守卫属于过度工程，延后。
+  // 已知边缘：资源写入的 in-flight 代际守卫未实现（R3-I-1 延后）——但登录水合链（P1C 起）带
+  // subject fence + 会话代际：mount/切角色 先写 ref 再水合，组织水合内部逐响应丢弃过时结果。
   useEffect(() => {
     if (!是后端 || !后端) return;
     if (已初始化.current) return;
@@ -488,19 +510,23 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         return;
       }
       if (已取消) return;
+      // P1C：读取主体后先建立 subject fence 再开始任何角色水合 —— mount 恢复出一个新会话，
+      // 先递增 generation 再把捕获值传入水合；不能在水合完成后才写 ref（否则同一次恢复会话
+      // 会被无意义地再次换代，且水合途中无 fence 可拦 stale 响应）。
+      主体标识引用.current = 主体.subject_id;
+      会话代际.current += 1;
+      const 本次代际 = 会话代际.current;
       // review-r2 R2-I-3：水合 401 时 水合角色数据 内部已走登出清理并返回 会话失效=true，
       // 不再落 已登录=true（旧实现会把上个会话的快照/草稿留给已失效的登录态）。
-      const 会话失效 = await 水合角色数据({ 后端, 派发, 设后端状态, 主体标识引用, 会话代际 }, 主体, false);
+      const 会话失效 = await 水合角色数据({
+        后端, 派发, 设后端状态, 主体标识引用, 会话代际, 读取恢复企业关系编号,
+      }, 主体, false, 本次代际);
       if (已取消) return;
       if (会话失效) {
         // review-r3 R3-I-2：清账号状态 已在 水合角色数据 内部清完（含主体标识 + 会话代际），
         // 这里只早退，不再重复清理。
         return;
       }
-      // review-r2 R2-I-4：记录主体标识，后续新主体到达时可比对 subject_id 决定是否清账号域。
-      主体标识引用.current = 主体.subject_id;
-      // review-r2 R2-M-4：会话建立，递增代际（让此前在飞的目录请求 401 成为 stale）
-      会话代际.current += 1;
       设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: true, 主体 }));
     })();
     return () => {
@@ -528,11 +554,13 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         尝试引用,
         主体标识引用,
         会话代际,
+        读取恢复企业关系编号,
       };
       return {
         ...创建会话操作(deps),
         ...创建候选操作(deps),
         ...创建岗位操作(deps),
+        ...创建组织操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定

@@ -9,6 +9,7 @@ import type { 页面简历快照, 页面意向快照, 页面岗位快照 } from 
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { 轻提示 } from '../../组件/轻提示';
 import type { 后端操作依赖, 会话操作 } from './类型';
+import { 水合招聘方组织数据 } from './组织操作';
 
 /** 退出登录 / 401 清理时把支持域重置为空：与 后端种子状态 的支持域一致，但不触达未支持演示域。 */
 const 空BFF简历 = {
@@ -67,6 +68,9 @@ export function 清账号状态(
   派发({ 型: '水合后端意向', 快照: 空意向快照 });
   派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
   派发({ 型: '清后端草稿' });
+  // P1C：组织权威事实一起清（profile/affiliations/current/申请/公开缓存/未认证 claim），
+  // 但不清 Mock fixture（企业认证/招聘头像/公司LOGO/公司自述 维持 Mock consumer）。
+  派发({ 型: '清后端组织状态' });
   设后端状态((旧) => ({
     ...旧,
     初始化: '完成',
@@ -83,19 +87,25 @@ export function 清账号状态(
 
 /**
  * 按主体.last_used_role 水合支持域：
- *   candidate → 简历 + 意向（并行读取，各自独立派发）；recruiter → 岗位；null → 保持身份选择页不水合。
+ *   candidate → 简历 + 意向（并行读取，各自独立派发）；
+ *   recruiter → 固定组织水合（profile → affiliations → current → 公开企业）→ owner Jobs；
+ *   null → 保持身份选择页不水合。
+ * P1C Task 2：签名改为 (deps, 主体, 交互, generation) —— 调用方（mount / 切身份）先写 subject fence
+ * 并捕获当前会话代际再进入水合；两个水合函数共享同一 fence，过时响应在核心实现内丢弃。
  * mount-init（交互=false）：candidate 两条并行 allSettled，任一 rejected 只 轻提示 该资源，不抛出 —— 初始化仍要落成「完成」。
  *   review-r2 R2-I-3：若任一 rejected 是 401（会话在水合途中过期），走统一登出清理并返回 会话失效=true，
  *   mount-init 据此不落 已登录=true。
  * 切身份（交互=true）：任一 rejected 直接抛出第一个错误 —— 让 选身份.tsx catch 显示 轻提示并留在原地，
  *   不导航进一个空壳（支持域没水合成功，进去也是空盘）。
- * Task 2：不再在初始化/切身份时预取目录。Task 7 起岗位写入用选择器保存的引用，目录预取彻底删除。
  * @returns 会话失效 —— true 表示水合途中遇到 401 并已执行登出清理，调用方不应再落 已登录=true
  */
 export async function 水合角色数据(
-  deps: Pick<后端操作依赖, '后端' | '派发' | '设后端状态' | '主体标识引用' | '会话代际'> & { 后端: HTTP招聘数据源 },
+  deps: Pick<后端操作依赖,
+    '后端' | '派发' | '设后端状态' | '主体标识引用' | '会话代际' |
+    '读取恢复企业关系编号'> & { 后端: HTTP招聘数据源 },
   主体: BFF主体,
   交互: boolean,
+  generation: number,
 ): Promise<boolean> {
   const { 后端, 派发, 设后端状态, 主体标识引用, 会话代际 } = deps;
   const 角色 = 主体.last_used_role;
@@ -129,14 +139,21 @@ export async function 水合角色数据(
     }
     if (交互 && 错误们.length > 0) throw 错误们[0];
   } else if (角色 === 'recruiter') {
+    // P1C：current relation 恢复值只在最新 Affiliations 返回后经 选择当前企业关系() 校验进 state
+    const restoredId = deps.读取恢复企业关系编号(主体.subject_id);
+    const organizationResult = await 水合招聘方组织数据(
+      deps, 主体.subject_id, generation, restoredId, 交互,
+    );
+    if (organizationResult.sessionExpired) return true;
     try {
       const 岗位快照 = await 后端.读取岗位();
+      if (主体标识引用.current !== 主体.subject_id) return false;
       派发({ 型: '水合后端岗位', 快照: 岗位快照 });
       设后端状态((旧) => ({ ...旧, 岗位快照: 岗位快照.服务端 }));
     } catch (错误) {
       if (是会话失效错误(错误)) {
         // review-r2 R2-I-3：recruiter 水合 401 同口径登出清理（R3-I-2 收口到 清账号状态）
-        清账号状态({ 派发, 设后端状态, 后端, 主体标识引用, 会话代际 });
+        清账号状态(deps);
         return true;
       }
       if (交互) throw 错误;
@@ -148,7 +165,7 @@ export async function 水合角色数据(
 }
 
 export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
-  const { 是后端, 后端, 派发, 设后端状态, 尝试引用, 主体标识引用, 会话代际 } = deps;
+  const { 是后端, 后端, 派发, 设后端状态, 尝试引用, 主体标识引用, 会话代际, 读取恢复企业关系编号 } = deps;
   /** 清账号状态 需要的子集（与 退出登录 共用，保持口径一致） */
   const 账号清理依赖 = { 派发, 设后端状态, 后端, 主体标识引用, 会话代际 };
 
@@ -190,6 +207,8 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
         派发({ 型: '水合后端意向', 快照: 空意向快照 });
         派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
         派发({ 型: '清后端草稿' });
+        // P1C：A 的组织权威事实（claim/公开缓存/current 选择）同样不能串进 B
+        派发({ 型: '清后端组织状态' });
         设后端状态((旧) => ({
           ...旧,
           简历快照: null,
@@ -261,7 +280,13 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
       // 不导航进一个空壳（支持域没水合成功，进去也是空盘）。
       // review-r2 R2-I-3：水合 401 时 水合角色数据 内部已走登出清理并返回 会话失效=true，
       // 不再抛出（会话已失效，用户需要重新登录，抛出反而让 选身份 屏显示错误却留在原地）。
-      const 会话失效 = await 水合角色数据({ 后端, 派发, 设后端状态, 主体标识引用, 会话代际 }, 最新主体, true);
+      // P1C：切角色仍是同一个登录会话，不递增 generation；只校准最新主体 ref 并捕获当前值，
+      // 否则会把切换前真实返回的目录 401 误判成旧会话响应。
+      主体标识引用.current = 最新主体.subject_id;
+      const 本次代际 = 会话代际.current;
+      const 会话失效 = await 水合角色数据({
+        后端, 派发, 设后端状态, 主体标识引用, 会话代际, 读取恢复企业关系编号,
+      }, 最新主体, true, 本次代际);
       if (会话失效) {
         // review-r3 R3-I-2：清账号状态 已在 水合角色数据 内部清完（含主体标识 + 会话代际）
         return;

@@ -2,6 +2,13 @@
 // 从根 归约 按业务 owner 拆出，case body 逐字搬移。发布岗位 与 切当前岗位 跨越多个域，
 // 保留在根 reducer，不进入本域动作。对根 状态 只使用 type-only import。
 
+import type {
+  BFF企业关系,
+  BFF企业档案,
+  BFF企业管理员申请,
+  BFF公开企业,
+  BFF招聘方档案,
+} from '../../数据/BFF契约';
 import type { 在招岗位, 公司自述覆盖 } from '../../数据/类型';
 import type { 页面岗位快照 } from '../../数据/招聘数据源类型';
 import type { 状态 } from '../应用状态';
@@ -13,6 +20,16 @@ export interface 组织岗位状态 {
   企业认证: { 姓名: string; 公司: string; 职务?: string };
   招聘头像: string | null;
   公司LOGO: string | null;
+  // ── P1C：Organization 权威事实（Backend 水合；Mock 页面继续读上面的旧字段）──
+  招聘方档案: BFF招聘方档案 | null;
+  企业关系列表: BFF企业关系[];
+  当前企业关系编号: string | null;
+  企业管理员申请列表: BFF企业管理员申请[];
+  当前企业身份: Omit<BFF公开企业, 'profile'> | null;
+  企业档案快照: BFF企业档案 | null;
+  公开企业表: Record<string, BFF公开企业>;
+  不可用公开企业编号: string[];
+  未认证公司声明: string;
 }
 
 export type 组织岗位动作 =
@@ -24,7 +41,17 @@ export type 组织岗位动作 =
   | { 型: '存公司自述'; 值: 公司自述覆盖 }
   | { 型: '存企业认证'; 姓名: string; 公司: string; 职务?: string }
   | { 型: '存招聘头像'; 图: string | null }
-  | { 型: '存公司LOGO'; 图: string | null };
+  | { 型: '存公司LOGO'; 图: string | null }
+  // ── P1C：Organization 权威事实的显式 action（不建字符串 registry）──
+  | { 型: '水合招聘方档案'; 档案: BFF招聘方档案 | null }
+  | { 型: '水合企业关系'; 关系: BFF企业关系[]; 当前编号: string | null }
+  | { 型: '选择当前企业关系'; 编号: string | null }
+  | { 型: '水合企业管理员申请'; 申请: BFF企业管理员申请[] }
+  | { 型: '水合当前企业'; 身份: Omit<BFF公开企业, 'profile'> | null; 档案: BFF企业档案 | null }
+  | { 型: '缓存公开企业'; 企业: BFF公开企业 }
+  | { 型: '标记公开企业不可用'; 编号: string }
+  | { 型: '存未认证公司声明'; 公司: string }
+  | { 型: '清后端组织状态' };
 
 export type 组织岗位归约 = (旧: 状态, 动作: 组织岗位动作) => 状态;
 
@@ -74,6 +101,47 @@ export const 归约组织岗位: 组织岗位归约 = (旧, 动作) => {
       return { ...旧, 招聘头像: 动作.图 };
     case '存公司LOGO':
       return { ...旧, 公司LOGO: 动作.图 };
+    case '水合招聘方档案':
+      return { ...旧, 招聘方档案: 动作.档案 };
+    case '水合企业管理员申请':
+      return { ...旧, 企业管理员申请列表: 动作.申请 };
+    case '存未认证公司声明':
+      return { ...旧, 未认证公司声明: 动作.公司 };
+    case '水合企业关系': {
+      const currentChanged = 动作.当前编号 !== 旧.当前企业关系编号;
+      return {
+        ...旧, 企业关系列表: 动作.关系, 当前企业关系编号: 动作.当前编号,
+        当前企业身份: 动作.当前编号 && !currentChanged ? 旧.当前企业身份 : null,
+        企业档案快照: 动作.当前编号 && !currentChanged ? 旧.企业档案快照 : null,
+      };
+    }
+    case '选择当前企业关系':
+      return 动作.编号 === 旧.当前企业关系编号
+        ? 旧
+        : { ...旧, 当前企业关系编号: 动作.编号, 当前企业身份: null, 企业档案快照: null };
+    case '水合当前企业':
+      return { ...旧, 当前企业身份: 动作.身份, 企业档案快照: 动作.档案 };
+    case '缓存公开企业':
+      return {
+        ...旧,
+        公开企业表: { ...旧.公开企业表, [动作.企业.organization_id]: 动作.企业 },
+        不可用公开企业编号: 旧.不可用公开企业编号.filter((id) => id !== 动作.企业.organization_id),
+      };
+    case '标记公开企业不可用': {
+      const { [动作.编号]: _旧缓存, ...其余公开企业 } = 旧.公开企业表;
+      return {
+        ...旧,
+        公开企业表: 其余公开企业,
+        不可用公开企业编号: 旧.不可用公开企业编号.includes(动作.编号)
+          ? 旧.不可用公开企业编号 : [...旧.不可用公开企业编号, 动作.编号],
+      };
+    }
+    case '清后端组织状态':
+      return {
+        ...旧, 招聘方档案: null, 企业关系列表: [], 当前企业关系编号: null,
+        企业管理员申请列表: [], 当前企业身份: null, 企业档案快照: null,
+        公开企业表: {}, 不可用公开企业编号: [], 未认证公司声明: '',
+      };
     default: {
       const 不可能: never = 动作;
       return 不可能;

@@ -3,9 +3,22 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 初始状态, 归约, use应用状态, 应用状态提供者 } from './应用状态';
-import { BFF主体样本, BFF简历样本, BFF岗位样本, BFF意向样本, 页面岗位样本 } from '../测试/BFF样本';
+import { 创建初始状态, 空账号资料 } from './初始状态';
+import {
+  BFF主体样本,
+  BFF简历样本,
+  BFF岗位样本,
+  BFF意向样本,
+  页面岗位样本,
+  BFF企业关系样本,
+  BFF企业媒体样本,
+  BFF企业档案样本,
+  BFF企业管理员申请样本,
+  BFF公开企业样本,
+  BFF招聘方档案样本,
+} from '../测试/BFF样本';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFF角色 } from '../数据/BFF契约';
+import type { BFF招聘方档案, BFF公开企业, BFF角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
 import { 从BFF简历 } from '../数据/后端映射';
@@ -31,6 +44,16 @@ function deferred<T>() {
 describe('应用状态 reducer', () => {
   const 写入 = vi.fn();
   const 删除 = vi.fn();
+
+  // P1C Task 2：组织域 reducer 用例的本地 fixture（只在本 describe 内使用）
+  const 企业A身份: Omit<BFF公开企业, 'profile'> = {
+    organization_id: 'org_a',
+    legal_name: '甲公司法务主体',
+    display_name: '甲公司',
+    verified_at: '2026-08-24T00:00:00Z',
+    active_verified_job_count: 1,
+  };
+  const 企业A档案 = BFF企业档案样本;
 
   beforeEach(() => {
     写入.mockClear();
@@ -194,6 +217,125 @@ describe('应用状态 reducer', () => {
     // 真实的在谈人数由起步候选实时算出来 —— 岗位管理行内与删除守卫读的都是这个
     expect(下一状态.企业候选列表.filter((候) => 候.岗位编号 === 'P-99')).toHaveLength(2);
   });
+
+  // ── P1C Task 2：Organization 权威状态的 reducer 用例 ──
+
+  it('清后端组织状态只清 Backend 权威事实', () => {
+    const 水合后 = 归约(归约(初始状态, {
+      型: '水合企业关系', 关系: [BFF企业关系样本], 当前编号: BFF企业关系样本.affiliation_id,
+    }), { 型: '水合招聘方档案', 档案: BFF招聘方档案样本 });
+    const 清后 = 归约(水合后, { 型: '清后端组织状态' });
+    expect(清后.招聘方档案).toBeNull();
+    expect(清后.企业关系列表).toEqual([]);
+    expect(清后.当前企业关系编号).toBeNull();
+    expect(清后.公开企业表).toEqual({});
+    expect(清后.不可用公开企业编号).toEqual([]);
+    expect(清后.企业认证).toEqual(初始状态.企业认证);
+  });
+
+  it('revoke 当前关系时清选择而不猜另一个关系', () => {
+    const 水合后 = 归约(初始状态, {
+      型: '水合企业关系',
+      关系: [BFF企业关系样本, { ...BFF企业关系样本, affiliation_id: 'aff_2' }],
+      当前编号: BFF企业关系样本.affiliation_id,
+    });
+    const revoke后 = 归约(水合后, {
+      型: '水合企业关系',
+      关系: [{ ...BFF企业关系样本, status: 'revoked' }, { ...BFF企业关系样本, affiliation_id: 'aff_2' }],
+      当前编号: null,
+    });
+    expect(revoke后.当前企业关系编号).toBeNull();
+    expect(revoke后.当前企业身份).toBeNull();
+  });
+
+  it('选择不同关系时立即清掉旧企业身份与完整档案', () => {
+    const A = { ...初始状态, 当前企业关系编号: 'aff_a', 当前企业身份: 企业A身份, 企业档案快照: 企业A档案 };
+    const 切B = 归约(A, { 型: '选择当前企业关系', 编号: 'aff_b' });
+    expect(切B.当前企业关系编号).toBe('aff_b');
+    expect(切B.当前企业身份).toBeNull();
+    expect(切B.企业档案快照).toBeNull();
+  });
+
+  it('Backend 种子组织权威事实为空，Mock 仍保留现有 fixture', () => {
+    const 后端种子 = 创建初始状态({ 模式: 'backend', 后端环境: 'stg', 后端: {} as HTTP招聘数据源 });
+    expect(后端种子.招聘方档案).toBeNull();
+    expect(后端种子.企业关系列表).toEqual([]);
+    expect(后端种子.当前企业关系编号).toBeNull();
+    expect(后端种子.企业管理员申请列表).toEqual([]);
+    expect(后端种子.当前企业身份).toBeNull();
+    expect(后端种子.企业档案快照).toBeNull();
+    expect(后端种子.公开企业表).toEqual({});
+    expect(后端种子.不可用公开企业编号).toEqual([]);
+    expect(后端种子.未认证公司声明).toBe('');
+    // Backend seed 不把 Mock 的云衢 fixture 当权威事实
+    expect(后端种子.企业认证).toEqual(空账号资料.企业认证);
+    // Mock 初始状态仍播种现有 fixture
+    expect(初始状态.企业认证.公司).toBe('云衢科技');
+    expect(初始状态.企业关系列表).toEqual([]);
+  });
+
+  it('水合组织权威事实，admin request 只经显式按需 action', () => {
+    const 档案后 = 归约(初始状态, { 型: '水合招聘方档案', 档案: BFF招聘方档案样本 });
+    expect(档案后.招聘方档案).toEqual(BFF招聘方档案样本);
+    const 关系后 = 归约(档案后, {
+      型: '水合企业关系', 关系: [BFF企业关系样本], 当前编号: BFF企业关系样本.affiliation_id,
+    });
+    expect(关系后.企业关系列表).toEqual([BFF企业关系样本]);
+    expect(关系后.当前企业关系编号).toBe(BFF企业关系样本.affiliation_id);
+    const 当前后 = 归约(关系后, { 型: '水合当前企业', 身份: 企业A身份, 档案: 企业A档案 });
+    expect(当前后.当前企业身份).toEqual(企业A身份);
+    expect(当前后.企业档案快照).toEqual(企业A档案);
+    const 申请后 = 归约(当前后, { 型: '水合企业管理员申请', 申请: [BFF企业管理员申请样本] });
+    expect(申请后.企业管理员申请列表).toEqual([BFF企业管理员申请样本]);
+  });
+
+  it('水合账号资料 丢弃快照中未经 affiliations 校验的当前企业关系编号', () => {
+    // 最新 affiliations 已确认 revoked → current 已被校验为 null
+    const 已校验 = 归约(初始状态, {
+      型: '水合企业关系',
+      关系: [{ ...BFF企业关系样本, status: 'revoked' }],
+      当前编号: null,
+    });
+    expect(已校验.当前企业关系编号).toBeNull();
+    // 之后到达的 水合账号资料 带着缓存里的旧编号，不能把它写回 state
+    const 快照后 = 归约(已校验, {
+      型: '水合账号资料',
+      范围键: 'AGXP账号资料v2:backend:stg:sub_1',
+      快照: {
+        ...空账号资料,
+        当前企业关系编号: BFF企业关系样本.affiliation_id,
+        未认证公司声明: '缓存里的声明',
+      },
+    });
+    expect(快照后.当前企业关系编号).toBeNull();
+    // 其它白名单字段照常恢复
+    expect(快照后.未认证公司声明).toBe('缓存里的声明');
+    expect(快照后.资料缓存范围键).toBe('AGXP账号资料v2:backend:stg:sub_1');
+  });
+
+  it('当前企业关系编号不进入 localStorage（Mock 原型路径）', async () => {
+    function 测试按钮() {
+      const { 派发 } = use应用状态();
+      return createElement('button', {
+        onClick: () => {
+          派发({ 型: '水合企业关系', 关系: [BFF企业关系样本], 当前编号: 'aff_local' });
+          派发({ 型: '设企业飞书接入', 接入: true });
+        },
+      }, '写入组织选择');
+    }
+
+    render(createElement(应用状态提供者, null, createElement(测试按钮)));
+    写入.mockClear();
+    await userEvent.click(document.querySelector('button')!);
+    // 设企业飞书接入 触发一次账号资料写回；该写回不得携带组织选择
+    await waitFor(() => expect(写入).toHaveBeenCalledWith(
+      'AGXP账号资料v2:mock:stg:demo',
+      expect.stringContaining('"企业飞书已接入":true'),
+    ));
+    const 全部写入 = 写入.mock.calls.map(([, 值]) => String(值)).join('');
+    expect(全部写入).not.toContain('当前企业关系编号');
+    expect(全部写入).not.toContain('aff_local');
+  });
 });
 
 // ── Provider 会话 / 角色水合 / 401 ───────────────────────────────
@@ -221,6 +363,20 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     重开岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     删除岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     清空目录缓存: vi.fn(),
+    // P1C Task 2：组织域方法（recruiter mount 水合会调用）
+    读取招聘方档案: vi.fn(async () => BFF招聘方档案样本),
+    保存招聘方档案: vi.fn(async () => BFF招聘方档案样本),
+    读取我的企业关系: vi.fn(async () => [BFF企业关系样本]),
+    读取企业管理员申请: vi.fn(async () => [BFF企业管理员申请样本]),
+    创建企业管理员申请: vi.fn(async () => BFF企业管理员申请样本),
+    取消企业管理员申请: vi.fn(async () => BFF企业管理员申请样本),
+    接受企业邀请: vi.fn(async () => BFF企业关系样本),
+    替换招聘方头像: vi.fn(async () => BFF招聘方档案样本),
+    读取企业档案: vi.fn(async () => BFF企业档案样本),
+    替换企业档案: vi.fn(async () => BFF企业档案样本),
+    上传企业媒体: vi.fn(async () => BFF企业媒体样本),
+    删除企业媒体: vi.fn(async () => undefined),
+    读取公开企业: vi.fn(async () => BFF公开企业样本),
     查询Location: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
     查询Taxonomy: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
     查询Institution: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
@@ -292,6 +448,10 @@ describe('应用状态提供者 后端会话', () => {
       '保存个人优势', '保存首次意向', '保存意向', '保存简历', '删除岗位', '删除意向',
       '切身份', '发布岗位', '完成手机登录', '开始手机登录', '归档岗位', '微信登录',
       '更新岗位', '退出登录', '重开岗位',
+      // P1C 组织域方法（组织操作）
+      '选择企业关系', '保存未认证公司声明', '保存招聘方档案', '读取企业管理员申请',
+      '创建企业管理员申请', '取消企业管理员申请', '接受企业邀请', '替换招聘方头像',
+      '保存企业档案', '上传并发布企业媒体', '移除企业媒体', '读取公开企业',
     ].sort().join('|'))).toBeTruthy();
   });
 
@@ -324,6 +484,75 @@ describe('应用状态提供者 后端会话', () => {
     expect(screen.getByText(/"已登录":false/)).toBeDefined();
     expect(screen.getByText(/"岗位数":0/)).toBeDefined();
     expect(screen.getByText(/"意向数":0/)).toBeDefined();
+  });
+
+  // P1C Task 2：mount 恢复 recruiter 会话时，subject fence 与新 generation 必须在
+  // 第一个异步组织请求（读取招聘方档案）之前就绪 —— 否则首个 profile 响应会被
+  // 当成 stale 丢掉。owner Jobs 只能在组织水合之后读取。
+  it('Backend mount recruiter 先立 fence 再水合组织，owner Jobs 在组织之后', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('recruiter');
+    const 档案门 = deferred<BFF招聘方档案>();
+    vi.mocked(后端.读取招聘方档案).mockReturnValue(档案门.promise);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    // 首个组织请求已发出（fence 必须在此之前已写入），响应稍后才到达
+    await waitFor(() => expect(后端.读取招聘方档案).toHaveBeenCalled());
+    档案门.resolve(BFF招聘方档案样本);
+    await waitFor(() => expect(当前.状态.招聘方档案).toEqual(BFF招聘方档案样本));
+    // affiliations → current → public organization 全链水合
+    await waitFor(() => expect(当前.状态.当前企业关系编号).toBe(BFF企业关系样本.affiliation_id));
+    expect(当前.状态.企业关系列表).toEqual([BFF企业关系样本]);
+    expect(当前.状态.当前企业身份?.organization_id).toBe(BFF公开企业样本.organization_id);
+    expect(当前.状态.企业档案快照).toEqual(BFF公开企业样本.profile);
+    // owner Jobs 在组织水合之后
+    expect(后端.读取岗位).toHaveBeenCalled();
+    expect(后端.读取招聘方档案.mock.invocationCallOrder[0])
+      .toBeLessThan(后端.读取岗位.mock.invocationCallOrder[0]);
+    expect(当前.后端状态.初始化).toBe('完成');
+    expect(当前.后端状态.已登录).toBe(true);
+  });
+
+  it('Backend 账号资料写回只含白名单字段，不含 P1C 已接管的旧字段', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('recruiter');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    const 会话 = 创建Map存储();
+    vi.stubGlobal('sessionStorage', 会话);
+    function 测试按钮() {
+      const { 派发 } = use应用状态();
+      return createElement('button', {
+        onClick: () => {
+          派发({ 型: '选择当前企业关系', 编号: BFF企业关系样本.affiliation_id });
+          派发({ 型: '存未认证公司声明', 公司: '云衢科技' });
+          派发({ 型: '设企业飞书接入', 接入: true });
+        },
+      }, '写入组织选择');
+    }
+    render(createElement(
+      应用状态提供者,
+      { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } },
+      [createElement(上下文探针), createElement(测试按钮)],
+    ));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await userEvent.click(document.querySelector('button')!);
+    await waitFor(() => expect(会话.setItem).toHaveBeenCalledWith(
+      'AGXP账号资料v2:backend:stg:sub_1',
+      expect.stringContaining('"当前企业关系编号":"aff_1"'),
+    ));
+    const 范围内写入 = 会话.setItem.mock.calls
+      .filter(([键]) => 键 === 'AGXP账号资料v2:backend:stg:sub_1')
+      .map(([, 值]) => String(值));
+    const 最后快照 = JSON.parse(范围内写入.at(-1)!);
+    expect(最后快照).toEqual({
+      当前企业关系编号: 'aff_1',
+      未认证公司声明: '云衢科技',
+      求职头像: null,
+      飞书已接入: false,
+      企业飞书已接入: true,
+    });
   });
 });
 
