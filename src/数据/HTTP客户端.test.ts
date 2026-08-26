@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BFF错误, 创建BFF客户端, 取后端错误文案 } from './HTTP客户端';
+import { BFF错误, type BFF请求选项, 创建BFF客户端, 取后端错误文案 } from './HTTP客户端';
 
 describe('BFF HTTP 客户端', () => {
   it('始终带 Cookie，并返回 result、ETag', async () => {
@@ -66,5 +66,32 @@ describe('BFF HTTP 客户端', () => {
     }
     expect(取后端错误文案(new BFF错误(200, 'invalid_response', 'bad payload')))
       .toBe('服务返回异常，请稍后重试');
+  });
+
+  it('FormData 原样发送且不手写 Content-Type', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({ result: { ok: true }, meta: { request_id: 'r1', api_version: 'v1' } }),
+      { status: 201, headers: { 'Content-Type': 'application/json' } },
+    ));
+    const formData = new FormData();
+    formData.append('media', new File(['avatar'], 'avatar.jpg', { type: 'image/jpeg' }));
+    await 创建BFF客户端({ fetcher, 生成幂等键: () => 'idem-fixed-0001' })
+      .请求({ path: '/api/v1/recruiter/avatar', method: 'POST', formData, 幂等: true });
+    const init = fetcher.mock.calls[0][1]!;
+    expect(init.body).toBe(formData);
+    expect(new Headers(init.headers).has('Content-Type')).toBe(false);
+  });
+
+  it('204 成功返回 undefined 而不解析 JSON', async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 204 }));
+    await expect(创建BFF客户端({ fetcher }).请求<void>({
+      path: '/api/v1/organizations/org_1/media/media_1', method: 'DELETE',
+    })).resolves.toMatchObject({ result: undefined });
+  });
+
+  it('运行时拒绝绕过类型系统同时提供 JSON body 与 FormData', async () => {
+    await expect(创建BFF客户端().请求({
+      path: '/api/v1/recruiter/avatar', method: 'POST', body: {}, formData: new FormData(),
+    } as unknown as BFF请求选项)).rejects.toThrow('body 与 formData 不能同时提供');
   });
 });

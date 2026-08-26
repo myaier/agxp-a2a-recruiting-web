@@ -154,6 +154,10 @@ export interface BFFOwnerJob {
   publisher_affiliation_ref?: string;
   publisher_verification_status: 'unverified' | 'verified';
   hiring_organization_claim: { display_name: string; legal_name?: string | null };
+  // P1C：服务端推导的发布方/用人企业投影（只读）；创建岗位不提交这些字段。
+  publisher_organization_ref?: string;
+  hiring_organization_verification_status: BFF验证状态;
+  hiring_organization_ref?: string;
   title: string;
   recruitment_type: 'social_full_time' | 'campus' | 'internship' | 'part_time';
   category: BFF目录引用;
@@ -178,6 +182,124 @@ export interface BFFOwnerJob {
   published_at: string;
   created_at: string;
   updated_at: string;
+}
+
+// ── 组织域 DTO（P1C：RecruiterProfile / Affiliation / 企业管理员申请 / 企业档案与媒体）──
+// 字段名严格对齐 P1B BFF OpenAPI；闭合 enum 与 exact key set 由 组织.ts 的 decoder 校验。
+
+export type BFF验证状态 = 'unverified' | 'verified';
+
+export interface BFF招聘方档案 {
+  public_name: string;
+  title: string;
+  personal_verification_status: BFF验证状态;
+  verified_name?: string | null;
+  avatar_url?: string | null;
+  revision: number;
+}
+
+export interface BFF企业关系 {
+  affiliation_id: string;
+  organization_id: string;
+  organization_display_name: string;
+  organization_status: 'active' | 'suspended';
+  status: 'pending' | 'verified' | 'revoked';
+  role: 'member' | 'admin';
+  verification_method: 'admin_invitation' | 'corporate_email' | 'manual_admin_review';
+  revision: number;
+}
+
+export interface BFF企业关系列表 { affiliations: BFF企业关系[] }
+
+export interface BFF企业管理员申请 {
+  request_id: string;
+  legal_name: string;
+  display_name: string;
+  domains: string[];
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  revision: number;
+}
+
+export interface BFF企业管理员申请列表 { requests: BFF企业管理员申请[] }
+
+export interface BFF企业媒体 {
+  media_id: string;
+  media_type: 'image/png' | 'image/jpeg';
+  size_bytes: number;
+  width: number;
+  height: number;
+  url: string;
+}
+
+export interface BFF团队成员 { name: string; title: string; summary: string }
+
+export type BFF企业规模 = '' | 'under_20' | '20_99' | '100_499' | '500_1000' | '1000_9999' | '10000_plus';
+export type BFF融资阶段 = '' | 'unfunded' | 'angel' | 'series_a' | 'series_b' | 'series_c' | 'series_d_plus' | 'public' | 'self_funded';
+export type BFF作息 = '' | 'two_day_weekend' | 'alternate_saturday' | 'flexible';
+export type BFF福利码 =
+  | 'social_insurance_housing_fund' | 'supplementary_medical' | 'stock_options' | 'flexible_work'
+  | 'annual_physical_exam' | 'regular_physical_exam' | 'paid_annual_leave' | 'meal_allowance'
+  | 'transport_allowance' | 'housing_allowance' | 'holiday_benefits' | 'team_building_meals'
+  | 'snacks_afternoon_tea' | 'overtime_allowance' | 'year_end_bonus' | 'shuttle_bus' | 'regular_training';
+
+export interface BFF企业档案 {
+  brand_name: string;
+  industry: BFF目录引用 | null;
+  company_size: BFF企业规模;
+  funding_stage: BFF融资阶段;
+  office_address: string;
+  benefit_codes: BFF福利码[];
+  work_schedule: BFF作息;
+  company_intro: string;
+  business_items: string[];
+  product_intro: string;
+  team_members: BFF团队成员[];
+  logo: BFF企业媒体 | null;
+  office_media: BFF企业媒体[];
+  company_media: BFF企业媒体[];
+  revision: number;
+  updated_at: string | null;
+}
+
+export interface BFF公开企业 {
+  organization_id: string;
+  legal_name: string;
+  display_name: string;
+  verified_at: string;
+  profile: BFF企业档案;
+  active_verified_job_count: number;
+}
+
+export interface BFF招聘方档案补丁 {
+  public_name?: string;
+  title?: string;
+}
+
+export interface BFF企业管理员申请元数据 {
+  legal_name: string;
+  display_name: string;
+  registry_key: string;
+  explanation: string;
+  domains: string[];
+}
+
+export type BFF企业媒体用途 = 'organization_logo' | 'office_photo' | 'company_photo';
+
+export interface BFF企业档案替换 {
+  brand_name: string;
+  industry_id: string;
+  company_size: BFF企业规模;
+  funding_stage: BFF融资阶段;
+  office_address: string;
+  benefit_codes: BFF福利码[];
+  work_schedule: BFF作息;
+  company_intro: string;
+  business_items: string[];
+  office_media_ids: string[];
+  company_media_ids: string[];
+  product_intro: string;
+  team_members: BFF团队成员[];
+  logo_media_id: string;
 }
 
 export interface BFF信封<T> {

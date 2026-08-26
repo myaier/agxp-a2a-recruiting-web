@@ -1,7 +1,18 @@
 // 集中测试样本：后续测试只通过对象展开修改单一字段，避免每个测试复制一套漂移样本。
 // 时间统一使用 2026-08-24T00:00:00Z。
 
-import type { BFF主体, BFF简历, BFFOwnerJob, BFFOwnerIntention } from '../数据/BFF契约';
+import type {
+  BFF主体,
+  BFF企业媒体,
+  BFF企业档案,
+  BFF企业关系,
+  BFF企业管理员申请,
+  BFF公开企业,
+  BFF招聘方档案,
+  BFF简历,
+  BFFOwnerJob,
+  BFFOwnerIntention,
+} from '../数据/BFF契约';
 import type { 在招岗位 } from '../数据/类型';
 
 export const BFF主体样本: BFF主体 = {
@@ -61,6 +72,7 @@ export const BFF岗位样本: BFFOwnerJob = {
   publisher_mode: 'direct',
   publisher_verification_status: 'unverified',
   hiring_organization_claim: { display_name: '云衢科技', legal_name: null },
+  hiring_organization_verification_status: 'unverified',
   title: 'AI 产品实习生',
   recruitment_type: 'internship',
   category: { id: 'tax_product', display_name: '产品经理' },
@@ -136,4 +148,74 @@ export const BFF意向样本: BFFOwnerIntention = {
   revision: 1,
   created_at: '2026-08-24T00:00:00Z',
   updated_at: '2026-08-24T00:00:00Z',
+};
+
+// ── 组织域样本（P1C Task 1）──
+// 满足 BFF契约 的 closed DTO；列表 route fixture 只能包成
+// {affiliations:[BFF企业关系样本]} / {requests:[BFF企业管理员申请样本]}。
+
+export const BFF招聘方档案样本: BFF招聘方档案 = {
+  public_name: '林澈',
+  title: '招聘负责人',
+  personal_verification_status: 'unverified',
+  verified_name: null,
+  avatar_url: null,
+  revision: 1,
+};
+
+export const BFF企业关系样本: BFF企业关系 = {
+  affiliation_id: 'aff_1',
+  organization_id: 'org_1',
+  organization_display_name: '云衢科技',
+  organization_status: 'active',
+  status: 'verified',
+  role: 'admin',
+  verification_method: 'manual_admin_review',
+  revision: 1,
+};
+
+export const BFF企业管理员申请样本: BFF企业管理员申请 = {
+  request_id: 'req_1',
+  legal_name: '上海云衢科技有限公司',
+  display_name: '云衢科技',
+  domains: ['yunqu.example'],
+  status: 'pending',
+  revision: 1,
+};
+
+export const BFF企业媒体样本: BFF企业媒体 = {
+  media_id: 'media_1',
+  media_type: 'image/png',
+  size_bytes: 2048,
+  width: 240,
+  height: 240,
+  url: 'https://cdn.example.com/org_1/media_1.png',
+};
+
+export const BFF企业档案样本: BFF企业档案 = {
+  brand_name: '云衢科技',
+  industry: { id: 'tax_fintech', display_name: '金融科技' },
+  company_size: '500_1000',
+  funding_stage: 'series_c',
+  office_address: '上海市张江路 1 号',
+  benefit_codes: ['social_insurance_housing_fund', 'stock_options'],
+  work_schedule: 'two_day_weekend',
+  company_intro: '做可靠的技术产品',
+  business_items: ['智能招聘平台'],
+  product_intro: 'AI 简历助手',
+  team_members: [{ name: '林澈', title: '招聘负责人', summary: '负责招聘' }],
+  logo: BFF企业媒体样本,
+  office_media: [BFF企业媒体样本],
+  company_media: [],
+  revision: 3,
+  updated_at: '2026-08-24T00:00:00Z',
+};
+
+export const BFF公开企业样本: BFF公开企业 = {
+  organization_id: 'org_1',
+  legal_name: '上海云衢科技有限公司',
+  display_name: '云衢科技',
+  verified_at: '2026-08-24T00:00:00Z',
+  profile: BFF企业档案样本,
+  active_verified_job_count: 2,
 };

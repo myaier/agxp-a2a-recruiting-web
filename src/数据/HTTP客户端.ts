@@ -33,13 +33,18 @@ export class BFF错误 extends Error {
   }
 }
 
-export interface BFF请求选项 {
+interface BFF请求共同选项 {
   path: `/api/v1/${string}`;
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  body?: unknown;
   ifMatch?: string;
   幂等?: boolean;
 }
+
+/** body 与 formData 互斥：JSON 请求走 body，multipart 上传走 formData（浏览器生成 boundary）。 */
+export type BFF请求选项 = BFF请求共同选项 & (
+  | { body?: unknown; formData?: never }
+  | { formData: FormData; body?: never }
+);
 
 export interface BFF响应<T> {
   result: T;
@@ -92,6 +97,13 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
 
     if (resp.ok) {
       const etag = resp.headers.get('ETag');
+      // 204 No Content：无 JSON envelope，result 为 undefined；request ID 从 X-Request-Id header 读取。
+      if (resp.status === 204) {
+        return {
+          kind: '成功',
+          响应: { result: undefined as T, etag, requestId: resp.headers.get('X-Request-Id') },
+        };
+      }
       let body: unknown;
       try {
         body = await resp.json();
@@ -132,11 +144,15 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
   }
 
   async function 请求<T>(options: BFF请求选项): Promise<BFF响应<T>> {
+    // 类型系统已让 body 与 formData 互斥；这里再挡住绕过类型系统的调用方。
+    if (options.body !== undefined && options.formData !== undefined) {
+      throw new BFF错误(0, 'invalid_request', 'body 与 formData 不能同时提供');
+    }
     const method = options.method ?? 'GET';
     const isGet = method === 'GET';
     const headers = new Headers();
     const hasBody = options.body !== undefined;
-    // Content-Type 只在有 body 时发送。
+    // Content-Type 只在 JSON body 时发送；FormData 原样交给浏览器生成 multipart boundary。
     if (hasBody) headers.set('Content-Type', 'application/json');
     if (options.ifMatch !== undefined) headers.set('If-Match', options.ifMatch);
     // 幂等请求生成一次 Idempotency-Key，受控重试时复用同一把。
@@ -151,6 +167,7 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
       credentials: 'include',
     };
     if (hasBody) init.body = JSON.stringify(options.body);
+    else if (options.formData !== undefined) init.body = options.formData;
 
     let 结果 = await 单次<T>(options.path, init);
 
