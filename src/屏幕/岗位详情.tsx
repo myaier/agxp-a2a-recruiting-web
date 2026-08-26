@@ -22,6 +22,8 @@ import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 取公司档案 } from '../数据/公司档案';
+import { 从BFF岗位发布方, 从BFF招聘身份 } from '../数据/组织映射';
+import type { 岗位发布方视图, 招聘身份视图 } from '../数据/组织映射';
 import { 岗位已寻访兜底, 岗位已寻访数 } from '../数据/企业端模拟数据';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
 import type { 在招岗位 } from '../数据/类型';
@@ -34,8 +36,9 @@ const 折叠高度 = 180;
 
 export default function 岗位详情() {
   const { id: 路由岗位编号 } = useParams<{ id: string }>();
-  const { 状态, 派发, 操作 } = use应用状态();
+  const { 状态, 派发, 操作, 数据源模式, 后端状态 } = use应用状态();
   const { 返回, 跳转 } = use导航();
+  const 是后端 = 数据源模式 === 'backend';
 
   // JD 正文的折叠态：先按折叠渲染，挂载后量一次真实高度决定要不要出「查看全部」
   const [正文展开, 设正文展开] = useState(false);
@@ -116,12 +119,27 @@ export default function 岗位详情() {
     ? 岗.职位关键词
     : [岗.职位类别, ...(岗.硬性条件 ?? [])].filter((条): 条 is string => Boolean(条));
 
-  // ── 所属公司：企业端改过「公司资料」就以覆盖为准，与候选端公司主页读同一份 ──
-  const 静态档 = 取公司档案(本公司键);
-  const 公司档 = 状态.公司自述 ? { ...静态档, ...状态.公司自述 } : 静态档;
+  // ── 所属公司 ──
+  // Mock：企业端改过「公司资料」就以覆盖为准，与候选端公司主页读同一份静态档。
+  // Backend（P1C Task 5）：不读 本公司键 静态档。公司卡与发布人身份都来自 owner
+  // server snapshot 的投影（从BFF岗位发布方）与当前招聘身份视图（从BFF招聘身份）；
+  // canonical ref 与 不可用公开企业编号 共同决定公司卡能否点到 /company/{opaque-id}。
+  const 静态档 = 是后端 ? null : 取公司档案(本公司键);
+  const 公司档 = 静态档 ? (状态.公司自述 ? { ...静态档, ...状态.公司自述 } : 静态档) : null;
+  const 快照 = 是后端 ? 后端状态.岗位快照[岗.编号] : undefined;
+  const 发布方 = 快照 ? 从BFF岗位发布方(快照) : null;
+  const 身份 = 从BFF招聘身份(
+    状态.招聘方档案 ?? null,
+    状态.企业关系列表 ?? [],
+    状态.当前企业关系编号 ?? null,
+    状态.企业管理员申请列表 ?? [],
+  );
+  const 用人编号 = 发布方?.用人企业编号 ?? null;
+  const 用人可用 =
+    用人编号 !== null && !(状态.不可用公开企业编号 ?? []).includes(用人编号);
 
-  // 工作地址：岗位自己的办公地优先，没有就用公司地址；两者都没有整节不出
-  const 地址文 = 岗.办公地 ?? 公司档.地址 ?? '';
+  // 工作地址：岗位自己的办公地优先（Backend 只有这一来源），Mock 再退公司地址
+  const 地址文 = 岗.办公地 ?? 公司档?.地址 ?? '';
 
   const 设为当前 = () => {
     派发({ 型: '切当前岗位', 编号: 岗.编号 });
@@ -267,21 +285,55 @@ export default function 岗位详情() {
           ) : null}
 
           {/* ── 所属公司(2026-08-26「所有页面都要改」):共用 公司区块 组件,
-                点进候选人看到的那张公司主页;已上传 LOGO 时用 LOGO 替字标 ── */}
-          <div className={样式.节标}>所属公司</div>
-          <div className={样式.卡}>
-            <公司区块
-              名称={公司档.名称}
-              首字={公司档.首字}
-              一行简介={公司档.规模行}
-              按下={() => 跳转(路径.企业详情(本公司键))}
-              标志={
-                状态.公司LOGO ? (
-                  <img className={样式.公司LOGO} src={状态.公司LOGO} alt="" />
-                ) : undefined
-              }
-            />
-          </div>
+                点进候选人看到的那张公司主页;已上传 LOGO 时用 LOGO 替字标。
+                Backend(P1C Task 5):claim/ref 全来自 owner snapshot 投影,快照缺失时
+                整节不渲染——不拿静态档顶替服务端事实 ── */}
+          {是后端 ? (
+            发布方 ? (
+              <>
+                <div className={样式.节标}>所属公司</div>
+                <div className={样式.卡}>
+                  <公司区块
+                    名称={发布方.用人企业声明.display_name}
+                    首字={发布方.用人企业声明.display_name.slice(0, 1) || '?'}
+                    一行简介=""
+                    资料={{
+                      介绍段: null,
+                      元行组: [
+                        {
+                          标签: '企业核验',
+                          值: 发布方.用人企业验证 === 'verified' ? '已认证' : '未认证声明',
+                        },
+                      ],
+                    }}
+                    按下={
+                      用人可用 && 用人编号 !== null
+                        ? () => 跳转(路径.企业详情(用人编号))
+                        : undefined
+                    }
+                  />
+                  <岗位发布方区 view={发布方} 身份={身份} />
+                </div>
+              </>
+            ) : null
+          ) : (
+            <>
+              <div className={样式.节标}>所属公司</div>
+              <div className={样式.卡}>
+                <公司区块
+                  名称={公司档!.名称}
+                  首字={公司档!.首字}
+                  一行简介={公司档!.规模行}
+                  按下={() => 跳转(路径.企业详情(本公司键))}
+                  标志={
+                    状态.公司LOGO ? (
+                      <img className={样式.公司LOGO} src={状态.公司LOGO} alt="" />
+                    ) : undefined
+                  }
+                />
+              </div>
+            </>
+          )}
 
           {/* ── 工作地址：只放文字（标注 2026-08-20 15:36：地图部分删掉）── */}
           {地址文 ? (
@@ -364,6 +416,48 @@ export default function 岗位详情() {
         </弹层框架>
       ) : null}
     </次级页外壳>
+  );
+}
+
+/**
+ * P1C Task 5：发布方/用人企业投影区。只渲染两个冻结 view（岗位发布方视图 + 招聘身份视图），
+ * 不读 DTO、不读 Context——owner runtime 的 BFFOwnerJob 没有 publisher_profile，
+ * 发布人姓名/职务/头像/个人核验全部来自当前 从BFF招聘身份() view。
+ * publisher 与 hiring 两行不折叠：直招两个 ref 可以相同，但仍各自来自两个明确字段。
+ * 状态文案带 wire code（verified/unverified），页面展示与 DTO 事实可对账。
+ */
+export function 岗位发布方区({ view, 身份 }: { view: 岗位发布方视图; 身份: 招聘身份视图 }) {
+  const 模式文 = view.发布方模式 === 'agency' ? '代理' : '直招';
+  const 发布方文 = view.发布方验证 === 'verified' ? '已认证' : '未认证';
+  const 用人文 = view.用人企业验证 === 'verified' ? '已认证' : '未认证';
+  return (
+    <div className={样式.寻访行}>
+      {身份.avatarUrl ? (
+        <img className={样式.公司LOGO} src={身份.avatarUrl} alt={身份.publicName || '发布人'} />
+      ) : null}
+      <div className={样式.公司文字区}>
+        <div className={样式.公司名}>
+          {身份.publicName || '未署名'}
+          {身份.title ? <span className={样式.公司规模行}>{身份.title}</span> : null}
+        </div>
+        <div className={样式.发布组}>
+          <span className={样式.发布标}>个人核验</span>
+          <span className={样式.发布值}>{身份.personalVerification.label}</span>
+        </div>
+        <div className={样式.发布组} data-testid="publisher-status">
+          <span className={样式.发布标}>发布方企业</span>
+          <span className={样式.发布值}>
+            {模式文} · {发布方文}（{view.发布方验证}）
+          </span>
+        </div>
+        <div className={样式.发布组} data-testid="hiring-status">
+          <span className={样式.发布标}>用人企业</span>
+          <span className={样式.发布值}>
+            {view.用人企业声明.display_name} · {用人文}（{view.用人企业验证}）
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
 

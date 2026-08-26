@@ -94,8 +94,15 @@ export interface 首次意向输入 {
   城市引用们?: 目录选择值[];
 }
 
-export interface 岗位映射上下文 {
-  公司: string;
+/**
+ * P1C Task 5：Job 创建的显式 claim 输入。页面/操作层只声明 direct 直发与
+ * 用人企业声明（display_name + legal_name），服务端专有的 refs 与 verification status
+ * 一律由后端推导，不进创建 body。更新（补丁）不再接上下文：沿用 previous 的
+ * publisher_mode 与 hiring_organization_claim，普通 JD 编辑不改 claim。
+ */
+export interface 岗位创建上下文 {
+  publisherMode: 'direct';
+  hiringOrganizationClaim: { display_name: string; legal_name: string | null };
 }
 
 export interface 页面意向快照 {

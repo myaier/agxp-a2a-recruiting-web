@@ -6,7 +6,7 @@ import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
 import type { BFFOwnerJob } from '../BFF契约';
 import type { 后端环境 } from '../../配置/运行配置';
 import type { 岗位附属存储 } from '../前端附属数据';
-import type { 页面岗位快照, 岗位映射上下文 } from '../招聘数据源类型';
+import type { 页面岗位快照, 岗位创建上下文 } from '../招聘数据源类型';
 import type { 在招岗位 } from '../类型';
 import { 从BFF岗位, 转岗位创建, 转岗位补丁 } from '../后端映射';
 
@@ -26,8 +26,10 @@ function 修订etag(revision: number): string {
 
 export interface 岗位数据源 {
   读取岗位(): Promise<页面岗位快照>;
-  创建岗位(job: 在招岗位, context: 岗位映射上下文): Promise<页面岗位快照>;
-  更新岗位(job: 在招岗位, previous: BFFOwnerJob, context: 岗位映射上下文): Promise<页面岗位快照>;
+  /** P1C Task 5：创建只吃显式 claim（direct + 声明）；refs/verification status 服务端推导。 */
+  创建岗位(job: 在招岗位, context: 岗位创建上下文): Promise<页面岗位快照>;
+  /** P1C Task 5：更新不接公司 context —— 补丁沿用 previous 的 mode 与 claim。 */
+  更新岗位(job: 在招岗位, previous: BFFOwnerJob): Promise<页面岗位快照>;
   归档岗位(id: string, revision: number): Promise<页面岗位快照>;
   重开岗位(id: string, revision: number): Promise<页面岗位快照>;
   删除岗位(id: string, revision: number): Promise<页面岗位快照>;
@@ -69,17 +71,17 @@ export function 创建岗位数据源(
       const { result } = await 请求<BFFOwnerJob>({
         path: '/api/v1/recruiter/jobs',
         method: 'POST',
-        body: 转岗位创建(job, { 公司: context.公司 }),
+        body: 转岗位创建(job, context),
         幂等: true,
       });
       写入岗位附属(result.job_id, job);
       return 读取岗位();
     },
-    async 更新岗位(job, previous, context) {
+    async 更新岗位(job, previous) {
       await 请求<BFFOwnerJob>({
         path: `/api/v1/recruiter/jobs/${job.编号}`,
         method: 'PATCH',
-        body: 转岗位补丁(job, { 原始: previous, 公司: context.公司 }),
+        body: 转岗位补丁(job, previous),
         ifMatch: 修订etag(previous.revision),
       });
       写入岗位附属(job.编号, job);

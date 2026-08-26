@@ -27,6 +27,7 @@ import type {
   目录选择值,
   意向草稿型,
   意向映射上下文,
+  岗位创建上下文,
   首次意向输入,
 } from './招聘数据源类型';
 import { 迁移主要求职类型 } from '../流程/onboarding配置';
@@ -432,12 +433,13 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
 }
 
 /** 页面岗位 → BFF岗位创建 body。加分关键词/实习转正 不进 body（只进前端附属存储）。
- *  Task 7：category_id/location_id 直接读 类别引用/地点引用（选择器保存的引用），不再按显示名反查目录。 */
-export function 转岗位创建(页面岗位: 在招岗位, 上下文: { 公司: string }): BFF岗位创建 {
+ *  Task 7：category_id/location_id 直接读 类别引用/地点引用（选择器保存的引用），不再按显示名反查目录。
+ *  P1C Task 5：claim 只吃显式 岗位创建上下文（direct + 声明）；refs/verification status 由服务端推导，不进 body。 */
+export function 转岗位创建(页面岗位: 在招岗位, 上下文: 岗位创建上下文): BFF岗位创建 {
   const { lower, upper } = 解析薪资带(页面岗位.薪资带);
   return {
-    publisher_mode: 'direct',
-    hiring_organization_claim: { display_name: 上下文.公司, legal_name: null },
+    publisher_mode: 上下文.publisherMode,
+    hiring_organization_claim: 上下文.hiringOrganizationClaim,
     title: 页面岗位.名称,
     recruitment_type: 岗位类型到后端[页面岗位.招聘类型 as keyof typeof 岗位类型到后端],
     category_id: 必需引用(页面岗位.类别引用, '类别'),
@@ -460,19 +462,24 @@ export function 转岗位创建(页面岗位: 在招岗位, 上下文: { 公司:
   };
 }
 
-/** 页面岗位 → BFF岗位补丁 body。title/type/category/location 带回服务端原值（immutable-field 契约），其余按编辑表单。 */
+/** 页面岗位 → BFF岗位补丁 body。title/type/category/location 带回服务端原值（immutable-field 契约），其余按编辑表单。
+ *  P1C Task 5：不接公司 context —— publisher_mode 与 hiring_organization_claim 直接沿用 previous
+ *  owner DTO，普通 JD 编辑不拿当前自由文本改 claim。 */
 export function 转岗位补丁(
   页面岗位: 在招岗位,
-  上下文: { 原始: BFFOwnerJob; 公司: string },
+  previous: BFFOwnerJob,
 ): BFF岗位补丁 {
   const { lower, upper } = 解析薪资带(页面岗位.薪资带);
   return {
-    publisher_mode: 上下文.原始.publisher_mode,
-    hiring_organization_claim: { display_name: 上下文.公司, legal_name: 上下文.原始.hiring_organization_claim.legal_name ?? null },
-    title: 上下文.原始.title,
-    recruitment_type: 上下文.原始.recruitment_type,
-    category_id: 上下文.原始.category.id,
-    location_id: 上下文.原始.location.id,
+    publisher_mode: previous.publisher_mode,
+    hiring_organization_claim: {
+      display_name: previous.hiring_organization_claim.display_name,
+      legal_name: previous.hiring_organization_claim.legal_name ?? null,
+    },
+    title: previous.title,
+    recruitment_type: previous.recruitment_type,
+    category_id: previous.category.id,
+    location_id: previous.location.id,
     office_location: 页面岗位.办公地 ?? '',
     workplace_mode: 办公方式到岗位后端[页面岗位.办公方式 as keyof typeof 办公方式到岗位后端] ?? 'onsite',
     salary: { lower, upper },

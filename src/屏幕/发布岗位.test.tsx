@@ -94,6 +94,22 @@ describe('发布岗位页 Backend 提交', () => {
     完成.resolve();
     await waitFor(() => expect(mock返回).toHaveBeenCalled());
   });
+
+  // P1C Task 5：Backend 页面保存必须走这条 operation（claim 在 operation 内决定），
+  // 不能绕过 操作.更新岗位 直接写数据源/派发 Mock action。
+  it('Backend 编辑保存走 操作.更新岗位', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job/job_1']}>
+        <Routes>
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({ 编号: 'job_1' });
+  });
 });
 
 describe('发布岗位页 Backend 选择器', () => {

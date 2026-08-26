@@ -3,8 +3,30 @@
 // 写锁 / 409 + 503 重读岗位 / 401 统一清理 / revision 全部原样。接口失败绝不回退 Mock。
 
 import { BFF错误 } from '../../数据/HTTP客户端';
+import { 可用企业关系 } from '../../数据/组织映射';
+import type { BFF企业关系 } from '../../数据/BFF契约';
 import type { 后端操作依赖, 岗位操作 } from './类型';
+import type { 岗位创建上下文 } from '../../数据/招聘数据源类型';
 import { 清账号状态 } from './会话操作';
+
+/**
+ * P1C Task 5：发岗 claim 的唯一可信来源。
+ * current active verified relation（Organization active 且关系 verified）只把批准的
+ * organization_display_name 作为 direct claim 默认值；没有可用 current relation 时用
+ * 未认证公司声明，仍允许发岗。refs / verification status 一律由服务端推导。
+ */
+function 取发岗声明(状态: { 企业关系列表: BFF企业关系[]; 当前企业关系编号: string | null; 未认证公司声明: string }): 岗位创建上下文 {
+  const 当前 = 状态.企业关系列表.find((项) => 项.affiliation_id === 状态.当前企业关系编号);
+  return {
+    publisherMode: 'direct',
+    hiringOrganizationClaim: {
+      display_name: 当前 !== undefined && 可用企业关系(当前)
+        ? 当前.organization_display_name
+        : 状态.未认证公司声明,
+      legal_name: null,
+    },
+  };
+}
 
 export function 创建岗位操作(deps: 后端操作依赖): 岗位操作 {
   const { 是后端, 后端, 派发, 设后端状态, 后端状态引用, 状态引用, 锁, 主体标识引用, 会话代际 } = deps;
@@ -46,9 +68,10 @@ export function 创建岗位操作(deps: 后端操作依赖): 岗位操作 {
       锁.current.add(键);
       try {
         // Task 7：create 直接用 类别引用/地点引用 取 ID，不再按需取目录。
-        // 附属数据（加分关键词/实习转正）由数据层用响应里的真实 job_id 写入；
-        // 水合只派发服务端岗位列表，不派发 Mock 发布岗位（不播种起步候选）。
-        const 快照 = await 后端.创建岗位(job, { 公司: 状态引用.current.企业认证.公司 });
+        // P1C Task 5：claim 只由 取发岗声明 从 Organization 权威事实推导，
+        // 不再读 企业认证.公司 自由文本；附属数据（加分关键词/实习转正）由数据层
+        // 用响应里的真实 job_id 写入；水合只派发服务端岗位列表，不派发 Mock 发布岗位。
+        const 快照 = await 后端.创建岗位(job, 取发岗声明(状态引用.current));
         派发({ 型: '水合后端岗位', 快照 });
         设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
       } catch (错误) {
@@ -70,7 +93,9 @@ export function 创建岗位操作(deps: 后端操作依赖): 岗位操作 {
         if (!原始) return;
         // Task 7：update 的 immutable category/location 取 owner DTO（previous）的 id，
         // 不再按需取目录；If-Match 由数据层用 previous.revision 生成；附属按同 ID 更新。
-        const 快照 = await 后端.更新岗位(job, 原始, { 公司: 状态引用.current.企业认证.公司 });
+        // P1C Task 5：更新不接公司 context —— 补丁沿用 previous 的 mode 与 claim，
+        // 不读 企业认证.公司 自由文本。
+        const 快照 = await 后端.更新岗位(job, 原始);
         派发({ 型: '水合后端岗位', 快照 });
         设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
       } catch (错误) {

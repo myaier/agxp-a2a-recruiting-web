@@ -21,6 +21,8 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { 取公司档案, type 公司档案 } from '../数据/公司档案';
+import { 从BFF公开企业 } from '../数据/组织映射';
+import type { 公开企业视图 } from '../数据/组织映射';
 import type { 公司自述覆盖 } from '../数据/类型';
 import { 市场列表 } from '../数据/模拟数据';
 import { use应用状态 } from '../状态/应用状态';
@@ -33,7 +35,38 @@ const 介绍Tab列表: 介绍Tab[] = ['公司简介', '企业文化', '发展历
 export default function 企业详情() {
   const { id: 键 = '' } = useParams<{ id: string }>();
   const { 返回, 跳转 } = use导航();
-  const { 状态 } = use应用状态();
+  const { 状态, 操作, 数据源模式 } = use应用状态();
+
+  const [介绍层, 设介绍层] = useState(false);
+  const [条款层, 设条款层] = useState(false);
+  const [岗位层, 设岗位层] = useState(false);
+  const [当前介绍Tab, 设当前介绍Tab] = useState<介绍Tab>('公司简介');
+  const [提示, 设提示] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!提示) return;
+    const 定时 = window.setTimeout(() => 设提示(null), 1700);
+    return () => window.clearTimeout(定时);
+  }, [提示]);
+
+  // ── Backend（P1C Task 5）：route param 仅当 opaque organization_id ──
+  // 进入即读 operation；错误已由 operation 派发进 state（标记公开企业不可用 / 401 清理），
+  // 页面的 catch 只消费已派发的结果，不在这里改写成功/失败状态，也不让 rejection 无人接。
+  useEffect(() => {
+    if (数据源模式 === 'backend' && 键) {
+      void 操作.读取公开企业(键).catch(() => undefined);
+    }
+  }, [数据源模式, 键, 操作]);
+
+  if (数据源模式 === 'backend') {
+    // 渲染只吃冻结的 公开企业视图；缓存未到（加载中/404/suspended）一律诚实空态，
+    // 不从静态公司档案回退，也不补线上没有的字段。
+    const 公开企业 = 状态.公开企业表[键];
+    const view = 公开企业 ? 从BFF公开企业(公开企业) : null;
+    return view ? <Backend企业公开页 view={view} /> : <企业公开页空态 />;
+  }
+
+  // ── Mock 分支：按原 slug 读静态档，渲染保持原样 ──
   const 静态档 = 取公司档案(键);
   // 企业端在「公司主页资料」里改过自述，这里要立刻是新的（同一份数据源）。
   // 只有本公司（yunqu，即当前登录企业）适用覆盖，别家公司仍读静态档。
@@ -47,18 +80,6 @@ export default function 企业详情() {
   const 相册图们 = [...(档.公司相册?.实景照片 ?? []), ...(档.公司相册?.公司照片 ?? [])];
   const 产品介绍 = 档.产品介绍?.trim() ?? '';
   const 团队们 = 档.团队介绍 ?? [];
-
-  const [介绍层, 设介绍层] = useState(false);
-  const [条款层, 设条款层] = useState(false);
-  const [岗位层, 设岗位层] = useState(false);
-  const [当前介绍Tab, 设当前介绍Tab] = useState<介绍Tab>('公司简介');
-  const [提示, 设提示] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!提示) return;
-    const 定时 = window.setTimeout(() => 设提示(null), 1700);
-    return () => window.clearTimeout(定时);
-  }, [提示]);
 
   // 该公司在本地数据里能点开的岗位：在谈单在前，市场岗在后
   const 在谈的 = 状态.在谈列表.filter((条) => 条.公司 === 档.名称);
@@ -385,5 +406,200 @@ function 条款条({ 名, 说明, 已核 = false }: { 名: string; 说明: strin
         <span className={样式.条款说明}>{说明}</span>
       </span>
     </div>
+  );
+}
+
+// ── Backend 公共企业页（P1C Task 5）：只渲染冻结的 公开企业视图 ──
+//
+// 与 Mock 分支的根本差别：这页是线上 canonical 公开档案，不是「你的代理对这家公司的
+// 档案」。所以只显示 BFF 公开企业端点已批准的字段——legal/display identity、
+// verified_at、Profile 七个分区（公司简介/主营业务/产品介绍/团队介绍/办公地址/福利/作息）、
+// 公开媒体与已核验在招岗位数；线上没有的企业文化/发展历程/在职感受/代理核对一律不渲染，
+// 也不显示 registry key、domains、affiliations、evidence 等非公开字段。样式复用本文件
+// module.css，不新增文件。
+function Backend企业公开页({ view }: { view: 公开企业视图 }) {
+  const { 返回 } = use导航();
+  const 元行 = [view.fundingStageLabel, view.companySizeLabel, view.industryName]
+    .filter(Boolean)
+    .join(' · ');
+  const 公开媒体 = [...view.officeMediaUrls, ...view.companyMediaUrls];
+  return (
+    <次级页外壳>
+      <返回栏 返回={返回} 标题={view.displayName} />
+
+      <滚动区 样式覆盖={{ paddingBottom: 12 }}>
+        {/* ── 淡绿渐变头：LOGO（无则品牌字标）+ 展示名 + 规模行 ── */}
+        <div className={样式.头区}>
+          <div className={样式.头行}>
+            {view.logoUrl ? (
+              <img className={样式.相册图} src={view.logoUrl} alt="" />
+            ) : (
+              <公司字标
+                首字={view.displayName.slice(0, 1) || '?'}
+                尺寸={50}
+                圆角={16}
+                底色="var(--墨)"
+                字色="var(--荧光绿)"
+                描边={false}
+                字号={21}
+              />
+            )}
+            <div className={样式.头文字}>
+              <h1 className={样式.公司名}>{view.displayName}</h1>
+              {元行 ? <div className={样式.规模行}>{元行}</div> : null}
+            </div>
+          </div>
+        </div>
+
+        <div className={样式.正文区}>
+          {/* ── 身份：legal/display identity、verified_at、已核验在招岗位数 ── */}
+          <div className={样式.卡}>
+            <div className={样式.卡头}>
+              <span className={样式.卡标题}>企业身份</span>
+              <span className={样式.卡头注}>已核验</span>
+            </div>
+            <div className={样式.工商行}>
+              <span className={样式.工商项}>法定名称</span>
+              <span className={样式.工商值}>{view.legalName}</span>
+            </div>
+            <div className={样式.工商行}>
+              <span className={样式.工商项}>展示名称</span>
+              <span className={样式.工商值}>{view.displayName}</span>
+            </div>
+            <div className={样式.工商行}>
+              <span className={样式.工商项}>核验时间</span>
+              <span className={样式.工商值}>{view.verifiedAt.slice(0, 10)}</span>
+            </div>
+            <div className={样式.工商行}>
+              <span className={样式.工商项}>在招岗位</span>
+              <span className={样式.工商值}>{view.activeVerifiedJobCount} 个已核验在招岗位</span>
+            </div>
+          </div>
+
+          {/* ── Profile 分区 1：公司简介 ── */}
+          {view.companyIntro ? (
+            <div className={样式.卡}>
+              <div className={样式.卡头}>
+                <span className={样式.卡标题}>公司简介</span>
+                <span className={样式.卡头注}>企业自述</span>
+              </div>
+              <div className={样式.卡正文}>{view.companyIntro}</div>
+            </div>
+          ) : null}
+
+          {/* ── Profile 分区 2：主营业务 ── */}
+          {view.businessItems.length > 0 ? (
+            <div className={样式.卡}>
+              <div className={样式.卡头}>
+                <span className={样式.卡标题}>主营业务</span>
+              </div>
+              <div className={样式.业务行}>
+                {view.businessItems.map((项) => (
+                  <span key={项} className={样式.业务片}>
+                    {项}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {/* ── Profile 分区 3：产品介绍 ── */}
+          {view.productIntro ? (
+            <div className={样式.卡}>
+              <div className={样式.卡头}>
+                <span className={样式.卡标题}>产品介绍</span>
+                <span className={样式.卡头注}>企业自述</span>
+              </div>
+              <div className={样式.卡正文}>{view.productIntro}</div>
+            </div>
+          ) : null}
+
+          {/* ── Profile 分区 4：团队介绍 ── */}
+          {view.teamMembers.length > 0 ? (
+            <div className={样式.卡}>
+              <div className={样式.卡头}>
+                <span className={样式.卡标题}>团队介绍</span>
+                <span className={样式.卡头注}>企业自述</span>
+              </div>
+              {view.teamMembers.map((位, 序) => (
+                <div key={`${序}-${位.name}`} className={样式.成员行}>
+                  <span className={样式.成员头衔}>
+                    <span className={样式.成员名}>{位.name}</span>
+                    {位.title ? <span className={样式.成员职}>{位.title}</span> : null}
+                  </span>
+                  {位.summary ? <span className={样式.成员简介}>{位.summary}</span> : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {/* ── Profile 分区 5：办公地址 ── */}
+          {view.officeAddress ? (
+            <div className={样式.卡}>
+              <div className={样式.卡头}>
+                <span className={样式.卡标题}>办公地址</span>
+              </div>
+              <div className={样式.地址}>{view.officeAddress}</div>
+            </div>
+          ) : null}
+
+          {/* ── Profile 分区 6/7：福利 与 作息 ── */}
+          <div className={样式.卡}>
+            <div className={样式.卡头}>
+              <span className={样式.卡标题}>福利与作息</span>
+              <span className={样式.卡头注}>企业自述</span>
+            </div>
+            {view.benefitLabels.length > 0 ? (
+              <div className={样式.业务行}>
+                {view.benefitLabels.map((标签) => (
+                  <span key={标签} className={样式.业务片}>
+                    {标签}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {view.workScheduleLabel ? <div className={样式.作息文}>{view.workScheduleLabel}</div> : null}
+          </div>
+
+          {/* ── 公开媒体：办公实景 + 公司照片 ── */}
+          {公开媒体.length > 0 ? (
+            <div className={样式.卡}>
+              <div className={样式.卡头}>
+                <span className={样式.卡标题}>企业相册</span>
+              </div>
+              <div className={`${样式.相册行} 滚动区`}>
+                {公开媒体.map((图, 序) => (
+                  <img key={`${序}-${图.slice(-24)}`} className={样式.相册图} src={图} alt="" />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className={样式.页脚}>公开信息由企业主页提供 · 企业身份经平台核验</div>
+        </div>
+      </滚动区>
+    </次级页外壳>
+  );
+}
+
+/** Backend 空态：缓存未到（加载中）、不存在或已停用。不给静态回退，不编造内容。 */
+function 企业公开页空态() {
+  const { 返回 } = use导航();
+  return (
+    <次级页外壳>
+      <返回栏 返回={返回} 标题="企业主页" />
+      <滚动区 样式覆盖={{ paddingBottom: 12 }}>
+        <div className={样式.正文区}>
+          <div className={样式.卡}>
+            <div className={样式.卡头}>
+              <span className={样式.卡标题}>这家企业暂时打不开</span>
+            </div>
+            <div className={样式.卡正文}>
+              企业不存在或已被停用，没有可展示的公开信息。
+            </div>
+          </div>
+        </div>
+      </滚动区>
+    </次级页外壳>
   );
 }

@@ -360,6 +360,9 @@ export interface BFF意向写入 {
 
 export interface BFF岗位创建 {
   publisher_mode: 'direct' | 'agency';
+  // P1C Task 5：创建/补丁 body 只声明 claim；publisher_affiliation_ref /
+  // publisher_organization_ref / hiring_organization_ref 与 verification status
+  // 是服务端推导的只读投影（见 BFFOwnerJob），客户端不得提交。
   hiring_organization_claim: { display_name: string; legal_name: string | null };
   title: string;
   recruitment_type: BFFOwnerJob['recruitment_type'];
