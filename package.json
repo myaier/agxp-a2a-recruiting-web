@@ -13,6 +13,7 @@
     "test:e2e:data-source": "playwright test --config=playwright.数据源模式.config.ts",
     "test:watch": "vitest",
     "preview": "vite preview",
+    "ui:compare": "tsx e2e/视觉回归/比较命令.ts",
     "typecheck": "tsc -b --noEmit",
     "deploy": "node 脚本/发布到Pages.mjs"
   },

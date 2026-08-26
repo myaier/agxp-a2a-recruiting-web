@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
-import { 比较图片, 比较几何, 判定门禁, 默认比较阈值 } from './比较器';
+import { 比较图片, 比较几何, 判定门禁, 比较采集目录, 默认比较阈值 } from './比较器';
+import type { 场景采集结果 } from './类型';
 
 const 临时目录们: string[] = [];
 
@@ -61,5 +62,51 @@ describe('UI 图片与几何比较', () => {
     expect(判定门禁([{ status: 'infrastructure', categories: ['infrastructure'] }], 'enforce', true)).toBe(2);
     expect(判定门禁([{ status: 'new', categories: ['coverage'] }], 'enforce', false)).toBe(0);
     expect(判定门禁([{ status: 'removed', categories: ['coverage'] }], 'enforce', false)).toBe(1);
+  });
+});
+
+function 捕获结果(sceneId: string): 场景采集结果 {
+  return {
+    schemaVersion: 1,
+    sceneId,
+    status: 'captured',
+    url: `http://localhost/${sceneId}`,
+    screenshot: null,
+    viewport: { width: 1280, height: 720 },
+    elements: [],
+    consoleErrors: [],
+    pageErrors: [],
+    failedRequests: [],
+    apiRequests: [],
+    horizontalOverflow: 0,
+    failure: null,
+  };
+}
+
+function 写场景(dir: string, result: 场景采集结果): void {
+  writeFileSync(join(dir, 'scenes', `${result.sceneId}.json`), JSON.stringify(result));
+}
+
+describe('UI 目录比较与报告', () => {
+  it('bootstrap、新增、删除和结构失败进入正确状态', () => {
+    const 根 = 新目录();
+    const reference = join(根, 'reference');
+    const candidate = join(根, 'candidate');
+    const output = join(根, 'report');
+    mkdirSync(join(reference, 'scenes'), { recursive: true });
+    mkdirSync(join(candidate, 'scenes'), { recursive: true });
+
+    写场景(reference, 捕获结果('removed'));
+    写场景(candidate, 捕获结果('new'));
+
+    const 报告 = 比较采集目录({ referenceDir: reference, candidateDir: candidate, outputDir: output, visualGate: 'report', uiChangeApproved: false });
+    expect(报告.mode).toBe('compare');
+    expect(报告.scenes.find((项) => 项.sceneId === 'new')?.status).toBe('new');
+    expect(报告.scenes.find((项) => 项.sceneId === 'removed')?.status).toBe('removed');
+    expect(报告.exitCode).toBe(0);
+
+    const bootstrap = 比较采集目录({ referenceDir: null, candidateDir: candidate, outputDir: output, visualGate: 'enforce', uiChangeApproved: false });
+    expect(bootstrap.mode).toBe('bootstrap');
+    expect(bootstrap.exitCode).toBe(0);
   });
 });
