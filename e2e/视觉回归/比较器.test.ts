@@ -118,4 +118,24 @@ describe('UI 目录比较与报告', () => {
     expect(bootstrap.mode).toBe('bootstrap');
     expect(bootstrap.exitCode).toBe(0);
   });
+
+  it('候选采集无任何场景结果时报基础设施错误（采集整体失败不放过门禁）', () => {
+    const 根 = 新目录();
+    const reference = join(根, 'reference');
+    const candidate = join(根, 'candidate');
+    const output = join(根, 'report');
+    mkdirSync(join(reference, 'scenes'), { recursive: true });
+    // 候选 scenes 目录存在但为空：采集 spec 模块加载时已 mkdir，但 webServer 超时/
+    // 浏览器崩溃导致没有 test 跑、没有 JSON 落盘。绝不能产出空通过报告。
+    mkdirSync(join(candidate, 'scenes'), { recursive: true });
+    写场景(reference, 捕获结果('removed'));
+
+    expect(() =>
+      比较采集目录({ referenceDir: reference, candidateDir: candidate, outputDir: output, visualGate: 'enforce', uiChangeApproved: false }),
+    ).toThrow();
+
+    expect(() =>
+      比较采集目录({ referenceDir: null, candidateDir: candidate, outputDir: output, visualGate: 'enforce', uiChangeApproved: false }),
+    ).toThrow();
+  });
 });

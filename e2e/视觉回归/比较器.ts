@@ -176,6 +176,12 @@ export function 比较采集目录(options: 比较采集目录选项): UI回归�
   }
 
   const 候选表 = 读场景们(options.candidateDir);
+  // 候选采集整体失败（webServer 超时、浏览器未启动、spec 加载失败）时 scenes 目录存在但为空。
+  // 绝不能让空候选集产出 exitCode 0 的通过报告——采集 spec 模块加载时已 mkdir scenes/，
+  // 读场景们不会因目录缺失而抛错，这里显式拦住，归为基础设施错误（CLI 退出 2）。
+  if (候选表.size === 0) {
+    throw new Error('候选采集无任何场景结果：采集可能整体失败（webServer 超时、浏览器未启动或 spec 加载失败）');
+  }
   const 基准表 = options.referenceDir !== null ? 读场景们(options.referenceDir) : new Map<string, 场景采集结果 | null>();
 
   const 全部id = new Set<string>([...候选表.keys(), ...基准表.keys()]);

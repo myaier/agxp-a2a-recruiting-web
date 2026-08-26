@@ -117,6 +117,9 @@ async function main() {
           const refRetry = 运行命令('npm', ['run', 'ui:capture'], { cwd: baseWorktree, encoding: 'utf8', env: refEnv });
           if (refRetry.status !== 0 && !scenes有JSON(referenceDir)) {
             写基础设施错误(outputDir, '参考采集重试仍失败且无场景 JSON');
+            // 参考采集整体失败：基础设施错误，立即退出 2，不继续到候选采集/比较，
+            // 否则空参考集会让比较器产出通过报告，门禁被静默放过。
+            return 2;
           }
         }
       }
@@ -140,6 +143,9 @@ async function main() {
       const candRetry = 运行命令('npm', ['run', 'ui:capture'], { cwd: 仓库根, encoding: 'utf8', env: candEnv });
       if (candRetry.status !== 0 && !scenes有JSON(candidateDir)) {
         写基础设施错误(outputDir, '候选采集重试仍失败且无场景 JSON');
+        // 候选采集整体失败：基础设施错误，立即退出 2，不继续到比较器，
+        // 否则空候选集会让比较器产出通过报告，门禁被静默放过。
+        return 2;
       }
     }
 
