@@ -183,86 +183,8 @@
   color: var(--正文);
 }
 
-/* ── 公司卡(2026-08-26 加厚:头行 + 介绍段 + 元信息表) ── */
-.公司卡 {
-  /* 整卡是 button（进公司主页），要显式复位宽度与对齐；右侧 › 仍是跳转暗示 */
-  width: 100%;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
-  /* 2026-08-24 全站去框（产品负责人批）：左右内边距随卡壳一起收到 2px */
-  padding: 12px 2px;
-}
-
-.公司头行 {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-}
-
-.公司介绍段 {
-  font-size: var(--字号-正文);
-  line-height: 1.7;
-  color: var(--正文);
-}
-
-.公司元表 {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  border-top: 1px solid var(--分隔线);
-  padding-top: 10px;
-}
-
-.公司元行 {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  font-size: var(--字号-正文);
-}
-
-.公司元标 {
-  flex: none;
-  width: 52px;
-  color: var(--次要浅);
-}
-
-.公司元值 {
-  min-width: 0;
-  color: var(--墨);
-  font-weight: 600;
-}
-
-.公司文字区 {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.公司名 {
-  flex: 1;
-  min-width: 0;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--墨);
-}
-
-.公司简介 {
-  font-size: 11px;
-  color: var(--次要浅);
-}
-
-.尖括号 {
-  flex: none;
-  font-size: 16px;
-  font-weight: 300;
-  line-height: 1;
-  color: var(--最弱);
-}
+/* ── 公司区块已抽成共用组件(组件/公司区块,2026-08-26「所有页面都要改」),
+      本屏原 公司卡/公司文字区/公司名/公司简介/尖括号 一并随之退役 ── */
 
 /* ── 代理预估卡 ── */
 /* 四档条的两级灰阶（#d5dcd0 / #e4e0d5）在 设计令牌.css 里没有对应变量，

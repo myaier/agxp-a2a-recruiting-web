@@ -14,7 +14,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './岗位详情.module.css';
-import { 次级页外壳, 公司字标, 滚动区, 返回栏 } from '../组件/通用';
+import { 次级页外壳, 滚动区, 返回栏 } from '../组件/通用';
+import { 公司区块 } from '../组件/公司区块';
 import { 轻提示 } from '../组件/轻提示';
 import 弹层框架 from '../组件/弹层框架';
 import { use应用状态 } from '../状态/应用状态';
@@ -265,31 +266,22 @@ export default function 岗位详情() {
             </>
           ) : null}
 
-          {/* ── 所属公司：点进候选人看到的那张公司主页 ── */}
+          {/* ── 所属公司(2026-08-26「所有页面都要改」):共用 公司区块 组件,
+                点进候选人看到的那张公司主页;已上传 LOGO 时用 LOGO 替字标 ── */}
           <div className={样式.节标}>所属公司</div>
-          <button
-            className={`${样式.卡} ${样式.公司卡} 可点`}
-            onClick={() => 跳转(路径.企业详情(本公司键))}
-          >
-            {状态.公司LOGO ? (
-              <img className={样式.公司LOGO} src={状态.公司LOGO} alt="" />
-            ) : (
-              <公司字标
-                首字={公司档.首字}
-                尺寸={42}
-                圆角={14}
-                底色="var(--墨)"
-                字色="var(--荧光绿)"
-                描边={false}
-                字号={18}
-              />
-            )}
-            <span className={样式.公司文字区}>
-              <span className={`${样式.公司名} 单行`}>{公司档.名称}</span>
-              <span className={`${样式.公司规模行} 单行`}>{公司档.规模行}</span>
-            </span>
-            <span className={样式.尖括号}>›</span>
-          </button>
+          <div className={样式.卡}>
+            <公司区块
+              名称={公司档.名称}
+              首字={公司档.首字}
+              一行简介={公司档.规模行}
+              按下={() => 跳转(路径.企业详情(本公司键))}
+              标志={
+                状态.公司LOGO ? (
+                  <img className={样式.公司LOGO} src={状态.公司LOGO} alt="" />
+                ) : undefined
+              }
+            />
+          </div>
 
           {/* ── 工作地址：只放文字（标注 2026-08-20 15:36：地图部分删掉）── */}
           {地址文 ? (
