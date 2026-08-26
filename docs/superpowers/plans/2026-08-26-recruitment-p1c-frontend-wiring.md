@@ -69,7 +69,6 @@ media DELETE: 204 No Content
 - 新建：`src/数据/组织映射.ts`
 - 新建：`src/数据/组织映射.test.ts`
 - 修改：`src/数据/公司主页资料.ts`
-- 新建：`src/数据/公司主页资料.test.ts`
 - 修改：`src/数据/HTTP招聘数据源.ts`
 - 修改：`src/数据/HTTP招聘数据源.test.ts`
 - 修改：`src/测试/BFF样本.ts`
@@ -541,7 +540,7 @@ export type HTTP招聘数据源 = 会话数据源 & 目录数据源 & 简历数�
 运行：
 
 ```bash
-npx vitest run src/数据/HTTP客户端.test.ts src/数据/招聘数据源/组织.test.ts src/数据/组织映射.test.ts src/数据/公司主页资料.test.ts src/数据/HTTP招聘数据源.test.ts
+npx vitest run src/数据/HTTP客户端.test.ts src/数据/招聘数据源/组织.test.ts src/数据/组织映射.test.ts src/数据/HTTP招聘数据源.test.ts
 npm run typecheck
 ```
 
@@ -579,7 +578,7 @@ git commit -m "feat(recruitment): add organization BFF data source"
 - Consumes: Task 1 的 `HTTP招聘数据源`、`BFF招聘方档案`、`BFF企业关系`、`BFF企业管理员申请`、
   `BFF公开企业`、`BFF企业档案`、四个 write types，以及
   `选择当前企业关系(affiliations: BFF企业关系[], restoredId: string|null): string|null`。
-- Produces: Step 1 的八个 `组织岗位状态` 字段；Step 2 的八个 reducer action；
+- Produces: Step 1 的九个 `组织岗位状态` 字段；Step 2 的九个 reducer action；
   `水合招聘方组织数据(deps, subjectId, generation, restoredAffiliationId, interactive): Promise<{sessionExpired:boolean}>`、
   `创建组织操作(deps: 后端操作依赖): 组织操作`、`读取恢复企业关系编号(subjectId): string|null` 和 Step 4 的
   `组织操作` 方法表；Backend sessionStorage 持久化经白名单允许的账号资料，current relation 恢复值必须先经过最新
@@ -597,6 +596,7 @@ git commit -m "feat(recruitment): add organization BFF data source"
 当前企业身份: Omit<BFF公开企业, 'profile'> | null;
 企业档案快照: BFF企业档案 | null;
 公开企业表: Record<string, BFF公开企业>;
+不可用公开企业编号: string[];
 未认证公司声明: string;
 ```
 
@@ -622,6 +622,7 @@ it('清后端组织状态只清 Backend 权威事实', () => {
   expect(清后.企业关系列表).toEqual([]);
   expect(清后.当前企业关系编号).toBeNull();
   expect(清后.公开企业表).toEqual({});
+  expect(清后.不可用公开企业编号).toEqual([]);
   expect(清后.企业认证).toEqual(初始状态.企业认证);
 });
 
@@ -668,6 +669,7 @@ npx vitest run src/状态/应用状态.test.ts
 | { 型: '水合企业管理员申请'; 申请: BFF企业管理员申请[] }
 | { 型: '水合当前企业'; 身份: Omit<BFF公开企业, 'profile'> | null; 档案: BFF企业档案 | null }
 | { 型: '缓存公开企业'; 企业: BFF公开企业 }
+| { 型: '标记公开企业不可用'; 编号: string }
 | { 型: '存未认证公司声明'; 公司: string }
 | { 型: '清后端组织状态' };
 ```
@@ -694,12 +696,25 @@ case '选择当前企业关系':
 case '水合当前企业':
   return { ...旧, 当前企业身份: 动作.身份, 企业档案快照: 动作.档案 };
 case '缓存公开企业':
-  return { ...旧, 公开企业表: { ...旧.公开企业表, [动作.企业.organization_id]: 动作.企业 } };
+  return {
+    ...旧,
+    公开企业表: { ...旧.公开企业表, [动作.企业.organization_id]: 动作.企业 },
+    不可用公开企业编号: 旧.不可用公开企业编号.filter((id) => id !== 动作.企业.organization_id),
+  };
+case '标记公开企业不可用': {
+  const { [动作.编号]: _旧缓存, ...其余公开企业 } = 旧.公开企业表;
+  return {
+    ...旧,
+    公开企业表: 其余公开企业,
+    不可用公开企业编号: 旧.不可用公开企业编号.includes(动作.编号)
+      ? 旧.不可用公开企业编号 : [...旧.不可用公开企业编号, 动作.编号],
+  };
+}
 case '清后端组织状态':
   return {
     ...旧, 招聘方档案: null, 企业关系列表: [], 当前企业关系编号: null,
     企业管理员申请列表: [], 当前企业身份: null, 企业档案快照: null,
-    公开企业表: {}, 未认证公司声明: '',
+    公开企业表: {}, 不可用公开企业编号: [], 未认证公司声明: '',
   };
 ```
 
@@ -806,8 +821,7 @@ stale-response。
 ```ts
 export async function 水合招聘方组织数据(
   deps: Pick<后端操作依赖,
-    '后端' | '派发' | '设后端状态' | '主体标识引用' | '会话代际' | '状态引用' |
-    '读取恢复企业关系编号'> &
+    '后端' | '派发' | '设后端状态' | '主体标识引用' | '会话代际'> &
     { 后端: HTTP招聘数据源 },
   subjectId: string,
   generation: number,
@@ -851,10 +865,39 @@ async function 选择企业关系(id: string | null): Promise<void> {
   const relation = deps.状态引用.current.企业关系列表.find((item) => item.affiliation_id === id);
   if (!relation || !可用企业关系(relation)) throw new Error('企业关系已不可用');
   deps.派发({ 型: '选择当前企业关系', 编号: id });
-  const organization = await deps.后端.读取公开企业(relation.organization_id);
+  let organization: BFF公开企业;
+  try {
+    organization = await deps.后端.读取公开企业(relation.organization_id);
+  } catch (error) {
+    if (error instanceof BFF错误 && error.status === 401) 清账号状态(deps);
+    else if (error instanceof BFF错误 &&
+      (error.code === 'organization_suspended' || error.code === 'organization_not_found')) {
+      deps.派发({ 型: '标记公开企业不可用', 编号: relation.organization_id });
+      deps.派发({ 型: '选择当前企业关系', 编号: null });
+    }
+    throw error;
+  }
   if (deps.状态引用.current.当前企业关系编号 !== id) return;
   const { profile, ...identity } = organization;
   deps.派发({ 型: '水合当前企业', 身份: identity, 档案: profile });
+}
+
+async function 读取公开企业(id: string): Promise<void> {
+  try {
+    const organization = await deps.后端.读取公开企业(id);
+    deps.派发({ 型: '缓存公开企业', 企业: organization });
+  } catch (error) {
+    if (error instanceof BFF错误 && error.status === 401) {
+      清账号状态(deps);
+    } else if (error instanceof BFF错误 &&
+      (error.code === 'organization_suspended' || error.code === 'organization_not_found')) {
+      deps.派发({ 型: '标记公开企业不可用', 编号: id });
+      const state = deps.状态引用.current;
+      const current = state.企业关系列表.find((item) => item.affiliation_id === state.当前企业关系编号);
+      if (current?.organization_id === id) deps.派发({ 型: '选择当前企业关系', 编号: null });
+    }
+    throw error;
+  }
 }
 
 async function 保存企业档案(draft: 资料形): Promise<void> {
@@ -881,7 +924,7 @@ async function 保存企业档案(draft: 资料形): Promise<void> {
       } catch {
         throw error; // 重读失败不能替换原始 409/503
       }
-      if (error.status === 503 && current && current.revision !== before.revision) return;
+      if (error.status === 503 && current && 企业档案匹配替换(current, body)) return;
     }
     throw error;
   }
@@ -898,11 +941,25 @@ async function 重读企业档案(
   deps.派发({ 型: '缓存公开企业', 企业: { ...state.当前企业身份, profile } });
   return profile;
 }
+
+function 企业档案匹配替换(profile: BFF企业档案, expected: BFF企业档案替换): boolean {
+  try {
+    const actual = 转BFF企业档案替换(从BFF企业档案(profile), profile);
+    return JSON.stringify(actual) === JSON.stringify(expected);
+  } catch {
+    return false; // 确认比较本身失败也不能吞掉原始 503
+  }
+}
 ```
 
 在 `组织操作.test.ts` 增加 RED：从 A 切到 B 后、B 的 public Organization 未返回前调用 `保存企业档案` 必须拒绝且
 `替换企业档案` 未调用；B 返回后保存必须使用 `org_b + B.revision + B 的完整媒体 ID`。预期 GREEN：任何时刻都不能
 把 A snapshot 发往 B。
+
+同文件补 `选择企业关系/读取公开企业` 的读错误测试：401 必须走统一 `清账号状态`；
+`organization_suspended|organization_not_found` 派发 `标记公开企业不可用` 并删除旧 public cache；若错误 ID 属于
+current relation 再派发选择 null。Task 5 的公司区块和公共页组件测试证明该编号不再提供 canonical 导航；后续成功
+读取同一编号时，`缓存公开企业` 自动移除不可用标记。
 
 `会话操作.ts` 的 recruiter 分支调用新的固定水合函数；owner Jobs 必须在 current relation 校验和一次
 PublicOrganization 读取之后。operation 收到 PublicOrganization 后拆成不含 profile 的 `当前企业身份` 与唯一
@@ -930,22 +987,47 @@ if (主体标识引用.current !== null && 主体标识引用.current !== 主体
 切角色都在调用 `水合角色数据` 时读取相同的 subject-scoped 候选值。读取缓存不派发选择 action；只有最新
 Affiliations 返回后，`选择当前企业关系(affiliations, restoredId)` 的结果才能进入 state。
 
-mount 读取主体后必须先建立 fence，再开始任何角色水合；切角色路径在调用 `水合角色数据` 前也按最新主体重建 fence。
-两个调用点都先递增 generation，再把捕获值传入水合，不能在水合完成后才写 ref：
+mount 读取主体后必须先建立 fence，再开始任何角色水合；它代表恢复出一个新会话，因此先递增 generation，再把捕获值
+传入水合，不能在水合完成后才写 ref。mount 作用域没有通用 `deps` 变量，必须传完整对象字面量：
 
 ```ts
 主体标识引用.current = 主体.subject_id;
 会话代际.current += 1;
 const 本次代际 = 会话代际.current;
-const 会话失效 = await 水合角色数据(deps, 主体, false, 本次代际);
+const 会话失效 = await 水合角色数据({
+  后端, 派发, 设后端状态, 主体标识引用, 会话代际, 读取恢复企业关系编号,
+}, 主体, false, 本次代际);
 ```
 
 对应把 `水合角色数据` 签名改为 `(deps, 主体, 交互, generation)`，并删除 mount 当前位于水合完成之后的
-`主体标识引用.current = 主体.subject_id` 与 `会话代际.current += 1`；否则同一次恢复会话会被无意义地再次换代。切角色
-调用点使用 `最新主体` 执行同样的 pre-arm，再传入捕获的 generation。
+`主体标识引用.current = 主体.subject_id` 与 `会话代际.current += 1`；否则同一次恢复会话会被无意义地再次换代。
 
-在 `水合角色数据` 的 recruiter 分支实际替换旧的“直接读岗位”代码；依赖类型补入 `状态引用/后端状态引用`，使
-两个水合函数共享同一 subject/generation fence：
+切角色仍是同一个登录会话，不递增 generation；只校准最新主体 ref 并捕获当前值，否则会把切换前真实返回的目录 401
+误判成旧会话响应。`创建会话操作` 从完整 `后端操作依赖` 取得读取函数，并在现有字面量中补齐它：
+
+```ts
+主体标识引用.current = 最新主体.subject_id;
+const 本次代际 = 会话代际.current;
+const 会话失效 = await 水合角色数据({
+  后端, 派发, 设后端状态, 主体标识引用, 会话代际, 读取恢复企业关系编号,
+}, 最新主体, true, 本次代际);
+```
+
+`水合角色数据` 的精确依赖契约加入缓存读取函数；`水合招聘方组织数据` 只接收已经读取出的
+`restoredAffiliationId`，不重复依赖该函数：
+
+```ts
+export async function 水合角色数据(
+  deps: Pick<后端操作依赖,
+    '后端' | '派发' | '设后端状态' | '主体标识引用' | '会话代际' |
+    '读取恢复企业关系编号'> & { 后端: HTTP招聘数据源 },
+  主体: BFF主体,
+  交互: boolean,
+  generation: number,
+): Promise<boolean>;
+```
+
+在 recruiter 分支实际替换旧的“直接读岗位”代码，使两个水合函数共享同一 subject/generation fence：
 
 ```ts
 } else if (角色 === 'recruiter') {
@@ -1010,8 +1092,7 @@ export async function 水合招聘方组织数据(
 
 ```ts
 type 组织水合依赖 = Pick<后端操作依赖,
-  '后端' | '派发' | '设后端状态' | '主体标识引用' | '会话代际' | '状态引用' |
-  '读取恢复企业关系编号'> &
+  '后端' | '派发' | '设后端状态' | '主体标识引用' | '会话代际'> &
   { 后端: HTTP招聘数据源 };
 ```
 
@@ -1334,7 +1415,7 @@ git commit -m "feat(recruitment): wire recruiter organization identity screens"
 - 修改：`src/屏幕/公司档案分区编辑.tsx`
 - 新建：`src/屏幕/公司档案分区编辑.test.tsx`
 - 修改：`src/数据/公司主页资料.ts`
-- 修改：`src/数据/公司主页资料.test.ts`
+- 新建：`src/数据/公司主页资料.test.ts`
 - 修改：`src/状态/后端/组织操作.ts`
 - 修改：`src/状态/后端/组织操作.test.ts`
 
@@ -1342,7 +1423,7 @@ git commit -m "feat(recruitment): wire recruiter organization identity screens"
 
 - Consumes: Task 3 的 `招聘名片`、Task 2 的 `组织操作/企业档案快照/当前企业身份`、Task 1 的
   `BFF企业档案替换/BFF企业媒体用途` 与 `转BFF企业档案替换(draft, server)`；Mock 继续消费
-  `压成头像(file)`、`取公司主页资料()` 和旧 reducer action。
+  `压成头像(file)`、`读资料(取公司档案(本公司键), 状态.公司自述)` 和旧 reducer action。
 - Produces: Backend avatar 原子保存；admin-only 完整 OrganizationProfile replacement；
   `上传并发布企业媒体(purpose,file)` 与 `移除企业媒体(purpose,mediaId)` 两步 CAS；公司档案页面消费 Task 1 已加入
   `资料形` 的四个可选元数据字段。Task 5 只读取成功后的权威 snapshot。
@@ -1458,8 +1539,9 @@ it('企业档案 409 重读新 revision、覆盖 public cache 并把错误抛回
 });
 ```
 
-同组补 401 统一清账号；503 重读后 revision 已推进视为 confirmed success，否则保留草稿并抛原 error；重读本身失败
-也必须抛原始 409/503，不能用网络错误替换它，且不能自动重试完整写入。
+同组补 401 统一清账号；503 重读后只有完整 replacement 的所有标量、数组和媒体 ID 与本次 `body` 一致才视为
+confirmed success。另加“另一 admin 只推进 revision、但内容与本次 body 不同”的用例，必须保留草稿并抛原 503；
+重读本身失败也必须抛原始 409/503，不能用网络错误替换它，且不能自动重试完整写入。
 
 把 P1B runtime 限制冻结进页面/映射测试，避免“前端可提交、后端稳定拒绝”：`brand_name <= 40`、
 `office_address <= 80`、`company_intro <= 500`、`business_items <= 20` 且每项 `<= 200`、
@@ -1613,7 +1695,7 @@ git commit -m "feat(recruitment): wire organization profile media"
 **Interfaces:**
 
 - Consumes: Task 1 的 owner `BFFOwnerJob` 扩展字段与 `从BFF岗位发布方(dto: BFFOwnerJob)`；Task 2 的
-  `岗位快照/当前企业身份/公开企业表` 与 `组织操作.读取公开企业(id)`；Task 4 的最新企业档案 snapshot；现有
+  `岗位快照/当前企业身份/公开企业表/不可用公开企业编号` 与 `组织操作.读取公开企业(id)`；Task 4 的最新企业档案 snapshot；现有
   `公司区块`、`企业详情` route 和静态 Mock `公司档案`。
 - Produces: owner Job 创建/更新的可信 claim 输入与 publisher/hiring 投影视图；支持显式 `公司区块资料` 和可选
   `按下` 的单一公司卡；Backend `/company/{opaque-id}` 公共页。P4 之前不产生 candidate Job consumer/cache。
@@ -1726,8 +1808,10 @@ owner Job runtime 不含 `publisher_profile`；Backend owner 页面中的发布�
 - publisher Organization 与 hiring Organization 两行/两个状态不折叠；
 - direct verified 两个 ref 可相同但仍来自两个明确字段；
 - agency publisher verified 不把客户 hiring claim 标 verified；
-- 有 `hiring_organization_ref` 时公司卡可点并导航 `/company/{opaque-id}`；
+- 有 `hiring_organization_ref` 且该 ID 不在 `不可用公开企业编号` 时公司卡可点并导航 `/company/{opaque-id}`；
 - 无 ref 时仍显示 claim+unverified，但元素不是 button/link，不创建 slug；
+- public read 返回 `organization_suspended|organization_not_found` 后标记该 ID 不可用；返回岗位详情时同一公司卡保留
+  claim 文案但不再有 button/link，后续成功读取同一 ID 才恢复导航；
 - owner `岗位详情` 使用 owner snapshot refs；Backend 不读取 `本公司键='yunqu'`；
 - Mock `职位详情/岗位详情` 保持现有公司卡与静态路由；Backend owner `岗位详情` 才消费 owner snapshot refs。
 - `职位详情/在谈详情/真人会话` 的公司名都来自未接线演示域，Backend 下没有 CandidateJob/canonical ref，因此
@@ -1774,7 +1858,7 @@ function 从静态档案构造元行组(
 - `资料` 存在时只渲染调用方传入的介绍/元行，不调用 `公司路由键()` 或 `取公司档案()`；Backend 一律走此路径；
 - `资料` 缺省时保持当前按名称读取静态档案的 Mock 行为和视觉；
 - `按下` 存在时根元素保持 button；缺省时用同样 class 的非交互 div，不渲染尖括号、不带 `可点`，不得伪造链接；
-- canonical ref 只决定 `按下` 是否存在，不根据公司名或 verification 文案猜 ref。
+- canonical ref 与 `不可用公开企业编号` 共同决定 `按下` 是否存在，不根据公司名或 verification 文案猜 ref。
 
 最小实现把共享内容只构造一次，同时把静态 lookup 与显式 Backend 投影分开：
 
