@@ -117,6 +117,7 @@ test.describe('注册流换壳不闪中间屏', () => {
 
   test('求职端：头像页 → 主壳，中间不闪注册流任何一屏，且后退退不回去', async ({ page }) => {
     await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
     await page.getByRole('button', { name: '微信登录' }).click();
     await page.getByRole('button', { name: '我要找工作' }).click();
     await expect(page).toHaveURL(/#\/student$/);
@@ -167,6 +168,7 @@ test.describe('注册流换壳不闪中间屏', () => {
 
   test('招聘端：发岗页 → 企业主壳，同一条时序在企业端同样不闪', async ({ page }) => {
     await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
     await page.getByRole('button', { name: '微信登录' }).click();
     await page.getByRole('button', { name: '我要招人' }).click();
     await expect(page).toHaveURL(/#\/hr\/card$/);

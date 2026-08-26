@@ -184,6 +184,9 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
 
 export function 取后端错误文案(error: unknown): string {
   if (!(error instanceof BFF错误)) return '网络连接失败，请稍后再试';
+  if (error.status === 0 || error.code === 'network_error') return '无法连接后端服务，请检查网络或稍后重试';
+  if (error.status === 502 || error.status === 503 || error.status === 504) return '后端服务暂时不可用，请稍后重试';
+  if (error.code === 'invalid_response') return '服务返回异常，请稍后重试';
   if (error.code === 'invalid_session') return '登录已失效，请重新登录';
   if (error.code === 'invalid_origin') return '当前后端环境配置不正确';
   if (error.code === 'version_conflict') return '数据已在其他地方更新，请重试';

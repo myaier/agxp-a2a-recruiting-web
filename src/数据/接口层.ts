@@ -67,7 +67,7 @@ export const 数据 = 模拟数据源;
 // ── 后端域：数据源判别联合 ──
 
 export type 招聘数据源选择 =
-  | { 模式: 'mock' }
+  | { 模式: 'mock'; 后端环境?: 后端环境 }
   | { 模式: 'backend'; 后端环境: 后端环境; 后端: HTTP招聘数据源 };
 
 export interface 招聘数据源依赖 {
@@ -102,7 +102,7 @@ const 默认依赖: 招聘数据源依赖 = {
  * 接口失败绝不回退 Mock——不在 catch 里返回模拟数据源。
  */
 export function 创建招聘数据源(config: 运行配置, deps: 招聘数据源依赖 = 默认依赖): 招聘数据源选择 {
-  if (config.数据源 === 'mock') return { 模式: 'mock' };
+  if (config.数据源 === 'mock') return { 模式: 'mock', 后端环境: config.后端环境 };
   return { 模式: 'backend', 后端环境: config.后端环境, 后端: deps.创建HTTP(config.后端环境) };
 }
 

@@ -417,4 +417,15 @@ describe('HTTP 招聘数据源', () => {
       .find((o) => o.path.includes('/catalog/'));
     expect(目录请求).toBeUndefined();
   });
+
+  it('根 facade 组合五个现有域且不丢公开方法', () => {
+    const source = 创建HTTP招聘数据源(依赖());
+    expect(Object.keys(source).sort()).toEqual([
+      '保存简历', '创建岗位', '创建意向', '创建首次意向', '删除岗位', '删除意向',
+      '开始微信登录', '开始手机登录', '归档岗位', '恢复会话', '更新岗位', '更新意向',
+      '查询Institution', '查询Location', '查询Taxonomy', '清空目录缓存', '确保角色',
+      '读取主体', '读取岗位', '读取意向', '读取简历', '记录当前角色', '退出登录',
+      '完成手机登录', '重开岗位',
+    ].sort());
+  });
 });

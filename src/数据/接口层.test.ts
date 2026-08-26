@@ -6,7 +6,7 @@ import type { HTTP招聘数据源 } from './HTTP招聘数据源';
 describe('招聘数据源选择', () => {
   it('缺省只选择 Mock，且不构造 HTTP 数据源', () => {
     const 创建HTTP = vi.fn();
-    expect(创建招聘数据源({ 数据源: 'mock', 后端环境: 'stg' }, { 创建HTTP })).toEqual({ 模式: 'mock' });
+    expect(创建招聘数据源({ 数据源: 'mock', 后端环境: 'stg' }, { 创建HTTP })).toEqual({ 模式: 'mock', 后端环境: 'stg' });
     expect(创建HTTP).not.toHaveBeenCalled();
   });
 

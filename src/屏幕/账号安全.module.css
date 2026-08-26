@@ -65,7 +65,7 @@
   font-size: 15px;
 }
 
-/* 验证码：字距拉开，六位一眼数得清 */
+/* 验证码：字距拉开，位数一眼数得清 */
 .验证码框 {
   letter-spacing: 0.5em;
   text-align: center;

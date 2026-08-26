@@ -51,6 +51,8 @@ describe('登录页 Backend', () => {
     );
     await 用户.type(screen.getByLabelText('手机号'), '13800000000');
     await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    await waitFor(() => expect(screen.getByText('验证码已发送')).toBeDefined());
+    expect(screen.queryByText(/原型不校验/)).toBeNull();
     expect(document.querySelectorAll('[class*="验证码格"]')).toHaveLength(4);
     await 用户.type(screen.getByLabelText('短信验证码'), '1234');
     await 用户.click(screen.getByText(/已阅读并同意/));
@@ -58,6 +60,25 @@ describe('登录页 Backend', () => {
     expect(mock跳转).not.toHaveBeenCalled();
     完成.resolve();
     await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.选身份));
+  });
+
+  it('微信登录必须先勾选协议', async () => {
+    mock操作.微信登录.mockResolvedValue(null);
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <登录 />
+      </MemoryRouter>,
+    );
+
+    await 用户.click(screen.getByRole('button', { name: '微信登录' }));
+    expect(mock操作.微信登录).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+
+    await 用户.click(screen.getByText(/已阅读并同意/));
+    await 用户.click(screen.getByRole('button', { name: '微信登录' }));
+    await waitFor(() => expect(mock操作.微信登录).toHaveBeenCalledTimes(1));
+    expect(mock跳转).toHaveBeenCalledWith(路径.选身份);
   });
 
   // F11：开始手机登录失败时倒计时不启动，用户可重试（按钮不被倒计时锁住）

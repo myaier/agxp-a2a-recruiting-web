@@ -36,7 +36,7 @@ const 表单字段表: { 键: 表单键; 标签: string }[] = [
 
 
 /** 把用户选的照片压成 256×256 居中裁切的 JPEG dataURL —— 原图可能好几 MB，
- *  localStorage 装不下也没必要装 */
+ *  浏览器会话缓存没必要保留原图 */
 function 压成头像(文件: File): Promise<string> {
   return new Promise((成, 败) => {
     const 读 = new FileReader();
