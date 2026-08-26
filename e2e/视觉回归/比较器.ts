@@ -244,7 +244,7 @@ export function 比较采集目录(options: 比较采集目录选项): UI回归�
     if (基准结果.screenshot && 候选结果.screenshot) {
       const referencePath = join(options.referenceDir as string, 基准结果.screenshot);
       const candidatePath = join(options.candidateDir, 候选结果.screenshot);
-      const diffRel = `diffs/${sceneId}.png`;
+      const diffRel = `diff/${sceneId}.png`;
       const diffPath = join(options.outputDir, diffRel);
       if (!existsSync(referencePath) || !existsSync(candidatePath)) {
         场景结果.push({
