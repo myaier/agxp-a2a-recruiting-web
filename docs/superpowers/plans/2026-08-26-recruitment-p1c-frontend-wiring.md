@@ -1414,8 +1414,6 @@ git commit -m "feat(recruitment): wire recruiter organization identity screens"
 - 新建：`src/屏幕/公司档案编辑.test.tsx`
 - 修改：`src/屏幕/公司档案分区编辑.tsx`
 - 新建：`src/屏幕/公司档案分区编辑.test.tsx`
-- 修改：`src/数据/公司主页资料.ts`
-- 新建：`src/数据/公司主页资料.test.ts`
 - 修改：`src/状态/后端/组织操作.ts`
 - 修改：`src/状态/后端/组织操作.test.ts`
 
@@ -1654,10 +1652,10 @@ admin/suspended 恢复全部 PASS。
 - [ ] **Step 7：验证并提交**
 
 ```bash
-npx vitest run src/屏幕/招聘名片.test.tsx src/屏幕/公司档案编辑.test.tsx src/屏幕/公司档案分区编辑.test.tsx src/数据/公司主页资料.test.ts src/状态/后端/组织操作.test.ts
+npx vitest run src/屏幕/招聘名片.test.tsx src/屏幕/公司档案编辑.test.tsx src/屏幕/公司档案分区编辑.test.tsx src/状态/后端/组织操作.test.ts
 npm run typecheck
 npm run lint
-git add src/屏幕/招聘名片.tsx src/屏幕/招聘名片.test.tsx src/屏幕/公司档案编辑.tsx src/屏幕/公司档案编辑.test.tsx src/屏幕/公司档案分区编辑.tsx src/屏幕/公司档案分区编辑.test.tsx src/数据/公司主页资料.ts src/数据/公司主页资料.test.ts src/状态/后端/组织操作.ts src/状态/后端/组织操作.test.ts
+git add src/屏幕/招聘名片.tsx src/屏幕/招聘名片.test.tsx src/屏幕/公司档案编辑.tsx src/屏幕/公司档案编辑.test.tsx src/屏幕/公司档案分区编辑.tsx src/屏幕/公司档案分区编辑.test.tsx src/状态/后端/组织操作.ts src/状态/后端/组织操作.test.ts
 git commit -m "feat(recruitment): wire organization profile media"
 ```
 
@@ -1951,7 +1949,9 @@ Backend effect 只以 opaque route param 读 operation，并以缓存 DTO 的映
 
 ```tsx
 useEffect(() => {
-  if (数据源模式 === 'backend' && 键) void 操作.读取公开企业(键);
+  if (数据源模式 === 'backend' && 键) {
+    void 操作.读取公开企业(键).catch(() => undefined);
+  }
 }, [数据源模式, 键, 操作]);
 const 公开企业 = 状态.公开企业表[键];
 const view = 公开企业 ? 从BFF公开企业(公开企业) : null;
@@ -1963,6 +1963,9 @@ if (数据源模式 === 'backend') return view
 `Backend企业公开页` 与 `企业公开页空态` 都是 `src/屏幕/企业详情.tsx` 内的局部函数，不增加文件：前者签名为
 `function Backend企业公开页({view}: {view: 公开企业视图}): JSX.Element`，后者为
 `function 企业公开页空态(): JSX.Element`；两者复用 `企业详情.module.css`，测试通过默认页面入口覆盖。
+
+effect 的 catch 只消费已由 operation 派发进 state 的错误结果，不能改写成功/失败状态。组件测试让
+`读取公开企业` reject 404、suspended 与普通网络错误，断言没有 unhandled rejection、页面进入诚实空态且无 Mock 回退。
 
 预期 GREEN：Backend public page 测试证明 route param 原样请求、线上七分区渲染、404/suspended 无 Mock 回退。
 
