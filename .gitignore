@@ -31,3 +31,6 @@ playwright-report
 *.sw?
 标注收件箱.jsonl
 .标注端点
+
+# UI 回归编排输出（参考/候选采集与报告）
+ui-regression-output/

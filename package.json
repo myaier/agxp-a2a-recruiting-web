@@ -15,6 +15,7 @@
     "preview": "vite preview",
     "ui:compare": "tsx e2e/视觉回归/比较命令.ts",
     "ui:capture": "playwright test --config=playwright.视觉回归.config.ts",
+    "ui:check": "node 脚本/UI回归.mjs",
     "typecheck": "tsc -b --noEmit",
     "deploy": "node 脚本/发布到Pages.mjs"
   },
