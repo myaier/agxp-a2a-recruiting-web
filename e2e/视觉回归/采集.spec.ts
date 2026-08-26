@@ -94,7 +94,9 @@ for (const 场景 of 视觉场景们) {
         sceneId: 场景.id,
         status: 'captured',
         url: page.url(),
-        screenshot: 截图文件,
+        // 截图实际写入绝对 截图文件；JSON 字段存相对 UI_CAPTURE_DIR 的路径（screenshots/<id>.png），
+        // 与比较器契约 join(captureDir, screenshot) 一致，并保证报告里为相对路径。
+        screenshot: `screenshots/${场景.id}.png`,
         viewport: 视窗,
         elements: 元素们,
         consoleErrors: [...诊断.consoleErrors],
