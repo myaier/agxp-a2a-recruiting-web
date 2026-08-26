@@ -1353,7 +1353,7 @@ export const 工作经历 = {
 };
 
 /** 简历原件上的联系方式（原型固定值）。脱敏视图只露首尾：138****6021 / s***@***.com */
-export const 简历联系方式 = { 手机: '138 0217 6021', 邮箱: 'shenyizhou@qq.com' };
+export const 简历联系方式 = { 手机: '138 0217 6021', 邮箱: 'shenyizhou@qq.com', 微信: 'shenyizhou_88' };
 
 /** A3g 个人优势 */
 export const 个人优势文本 =

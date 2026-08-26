@@ -38,6 +38,7 @@ const 选择城市 = lazy(() => import('./屏幕/选择城市'));
 const 选期望行业 = lazy(() => import('./屏幕/选期望行业'));
 const 规则库 = lazy(() => import('./屏幕/规则库'));
 const 我的简历 = lazy(() => import('./屏幕/我的简历'));
+const 个人信息 = lazy(() => import('./屏幕/个人信息'));
 const 企业详情 = lazy(() => import('./屏幕/企业详情'));
 const 设置 = lazy(() => import('./屏幕/设置'));
 const 屏蔽名单 = lazy(() => import('./屏幕/屏蔽名单'));
@@ -169,6 +170,7 @@ export default function 应用() {
       <Route path={路径.编辑意向模板} element={<添加意向 />} />
       <Route path={路径.规则库} element={<规则库 />} />
       <Route path={路径.我的简历} element={<我的简历 />} />
+      <Route path={路径.个人信息} element={<个人信息 />} />
       <Route path={路径.企业详情模板} element={<企业详情 />} />
 
       {/* 「我的」下属功能页 */}
