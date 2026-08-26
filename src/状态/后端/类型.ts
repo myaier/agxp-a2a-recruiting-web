@@ -10,6 +10,7 @@ import type {
   BFF简历,
   BFFOwnerIntention,
   BFFOwnerJob,
+  BFF招聘方档案,
   BFF招聘方档案补丁,
   BFF企业管理员申请元数据,
   BFF企业媒体用途,
@@ -78,12 +79,15 @@ export interface 岗位操作 {
 export interface 组织操作 {
   选择企业关系(id: string | null): Promise<void>;
   保存未认证公司声明(company: string): void;
-  保存招聘方档案(patch: BFF招聘方档案补丁): Promise<void>;
+  /** 返回保存后的权威档案：同一次保存里紧跟的 CAS 写入（头像）必须用响应里的新 revision。 */
+  保存招聘方档案(patch: BFF招聘方档案补丁): Promise<BFF招聘方档案>;
   读取企业管理员申请(): Promise<void>;
   创建企业管理员申请(metadata: BFF企业管理员申请元数据, evidence: File[]): Promise<void>;
   取消企业管理员申请(id: string): Promise<void>;
   接受企业邀请(token: string): Promise<void>;
-  替换招聘方头像(file: File): Promise<void>;
+  /** revision 缺省读 state ref；紧跟 保存招聘方档案 的调用必须显式传响应 revision
+   *  （dispatch 后 ref 要到下一个 React 提交才更新，读 ref 会拿旧值被 BFF 409）。 */
+  替换招聘方头像(file: File, revision?: number): Promise<void>;
   保存企业档案(draft: 资料形): Promise<void>;
   上传并发布企业媒体(purpose: BFF企业媒体用途, file: File): Promise<void>;
   移除企业媒体(purpose: BFF企业媒体用途, mediaId: string): Promise<void>;

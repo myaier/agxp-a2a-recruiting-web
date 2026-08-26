@@ -16,10 +16,10 @@ import { 路径 } from '../路由/路径表';
 const mock派发 = vi.fn();
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
-const mock保存招聘方档案 = vi.fn(async () => {});
+const mock保存招聘方档案 = vi.fn(async () => BFF招聘方档案样本);
 const mock选择企业关系 = vi.fn(async () => {});
 const mock保存未认证公司声明 = vi.fn();
-const mock替换头像 = vi.fn(async (_文件: File) => {});
+const mock替换头像 = vi.fn(async (_文件: File, _修订?: number) => {});
 // Mock 分支的既有压缩路径：Backend 分支绝不能走它（只允许 object URL 预览）
 const mock压成头像 = vi.fn(async (_文件: File) => 'data:image/jpeg;base64,压缩头像');
 
@@ -83,7 +83,7 @@ describe('招聘名片 · Backend 诚实身份', () => {
     mock跳转.mockClear();
     mock返回.mockClear();
     mock保存招聘方档案.mockClear();
-    mock保存招聘方档案.mockResolvedValue(undefined);
+    mock保存招聘方档案.mockResolvedValue(BFF招聘方档案样本);
     mock选择企业关系.mockClear();
     mock保存未认证公司声明.mockClear();
     mock替换头像.mockClear();
@@ -200,7 +200,7 @@ describe('招聘名片 · Backend 头像原子保存', () => {
     mock跳转.mockClear();
     mock返回.mockClear();
     mock保存招聘方档案.mockClear();
-    mock保存招聘方档案.mockResolvedValue(undefined);
+    mock保存招聘方档案.mockResolvedValue(BFF招聘方档案样本);
     mock选择企业关系.mockClear();
     mock保存未认证公司声明.mockClear();
     mock替换头像.mockClear();
@@ -221,7 +221,8 @@ describe('招聘名片 · Backend 头像原子保存', () => {
     expect(mock压成头像).not.toHaveBeenCalled();
     expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '存招聘头像' }));
     await 用户.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mock替换头像).toHaveBeenCalledWith(pngFile));
+    // 头像 If-Match 的 revision 来自 PATCH 响应（不是渲染时闭包里的旧值）
+    await waitFor(() => expect(mock替换头像).toHaveBeenCalledWith(pngFile, BFF招聘方档案样本.revision));
     // 服务端成功后预览收口：object URL 被回收，权威头像由 operation 的响应替换
     expect(revoke).toHaveBeenCalledWith('blob:avatar-preview');
     expect(screen.queryByRole('img', { name: '头像预览' })).toBeNull();

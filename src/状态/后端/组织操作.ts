@@ -227,12 +227,15 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
     },
 
     async 保存招聘方档案(patch) {
-      if (!是后端 || !后端) return;
+      // 调用方（Backend 名片）拿返回值做同一次保存里的后续 CAS —— Mock 模式没有这条链，
+      // 走到这里说明调用方搞错了模式，直接抛而不是悄悄返回半成品档案
+      if (!是后端 || !后端) throw new Error('招聘方档案保存仅 Backend 模式可用');
       const before = 状态引用.current.招聘方档案;
       if (!before) throw new Error('招聘方档案尚未水合');
       try {
         const next = await 后端.保存招聘方档案(patch, before.revision);
         派发({ 型: '水合招聘方档案', 档案: next });
+        return next;
       } catch (error) {
         处理组织401(error);
         throw error;
@@ -296,13 +299,15 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
       }
     },
 
-    async 替换招聘方头像(file) {
+    async 替换招聘方头像(file, revision) {
       if (!是后端 || !后端) return;
       const before = 状态引用.current.招聘方档案;
       if (!before) throw new Error('招聘方档案尚未水合');
       try {
-        // 一次原子替换：multipart + If-Match 当前 revision，响应即权威档案
-        const after = await 后端.替换招聘方头像(file, before.revision);
+        // 一次原子替换：multipart + If-Match 当前 revision，响应即权威档案。
+        // revision 显式传入时优先（同一次保存里前一步 PATCH 的响应值）——dispatch 后
+        // state ref 要到下一个 React 提交才更新，读 ref 会拿旧 revision 被 BFF 409。
+        const after = await 后端.替换招聘方头像(file, revision ?? before.revision);
         派发({ 型: '水合招聘方档案', 档案: after });
       } catch (error) {
         if (error instanceof BFF错误 && error.status === 401) {

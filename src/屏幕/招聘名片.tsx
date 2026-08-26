@@ -104,10 +104,11 @@ function 后端名片() {
 
   async function 按下保存() {
     try {
-      await 保存();
+      const 档案 = await 保存();
       if (头像文件) {
-        // 头像用当前 revision 的一次原子替换；权威档案由 operation 用响应替换
-        await 操作.替换招聘方头像(头像文件);
+        // 头像 If-Match 必须用 PATCH 响应里的新 revision：dispatch 后 state ref 要到
+        // 下一个 React 提交才更新，此刻读 ref 拿到的是旧 revision（真实 BFF 会 409）
+        await 操作.替换招聘方头像(头像文件, 档案.revision);
         收口预览();
       }
       轻提示('保存成功'); // 成功响应之后才提示
