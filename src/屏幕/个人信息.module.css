@@ -75,3 +75,27 @@
   color: var(--墨);
   display: block;
 }
+
+/* 打码行整行可点(button 复位) */
+.整行可点 {
+  width: 100%;
+  text-align: left;
+  display: block;
+}
+
+/* 常驻裸行输入(对齐 招聘名片.就地输入):无框无底,行分隔线就是下划线 */
+.裸输入 {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--墨);
+}
+.裸输入:focus {
+  outline: none;
+}

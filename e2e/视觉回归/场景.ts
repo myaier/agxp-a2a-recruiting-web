@@ -264,7 +264,9 @@ const 个人信息场景: 视觉场景 = {
       { 名称: '按钮 头像', 定位: page.getByRole('button', { name: /头像/ }) },
       { 名称: '标签 姓名', 定位: page.getByText('姓名', { exact: true }) },
       { 名称: '标签 手机号', 定位: page.getByText('手机号', { exact: true }) },
-      { 名称: '按钮 披露偏好', 定位: page.getByRole('button', { name: /披露偏好/ }) },
+      // 2026-08-26：main 的个人信息页改成可编辑后，原来的「披露偏好」入口行已移除；
+      // 改用「邮箱」编辑行作联系方式区底部锚点（carry-forward：跟随产品 UI，不改产品）。
+      { 名称: '标签 邮箱', 定位: page.getByText('邮箱', { exact: true }) },
     ];
   },
 };

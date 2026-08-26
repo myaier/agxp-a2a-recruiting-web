@@ -1,0 +1,73 @@
+/* 公司区块(共用):头行 + 介绍段 + 元信息表。四个落点同一份样式,改这里全站生效。 */
+
+.区块 {
+  /* 整块是 button(进公司主页),显式复位宽度与对齐;右侧 › 是跳转暗示 */
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  /* 留白由外层卡壳(职位详情 .卡 / 在谈详情 .详情卡 等)统一提供,本体不带内边距,
+     否则嵌进卡壳后上下内边距会叠加 */
+  padding: 0;
+}
+
+.头行 {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.名称 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.尖括号 {
+  flex: none;
+  font-size: 16px;
+  color: var(--最弱);
+}
+
+.介绍段 {
+  font-size: var(--字号-正文);
+  line-height: 1.7;
+  color: var(--正文);
+}
+
+.元表 {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-top: 1px solid var(--分隔线);
+  padding-top: 10px;
+}
+
+.元行 {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: var(--字号-正文);
+}
+
+.元标 {
+  flex: none;
+  width: 52px;
+  color: var(--次要浅);
+}
+
+.元值 {
+  min-width: 0;
+  color: var(--墨);
+  font-weight: 600;
+}
+
+/* 档案缺失时的兜底一行(原一行式简介) */
+.兜底简介 {
+  font-size: 11px;
+  color: var(--次要浅);
+}
