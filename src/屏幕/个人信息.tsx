@@ -2,23 +2,25 @@
 //
 // 此前头像行直接跳「我的简历」,与常用功能宫格里的「我的简历」入口重复;
 // 用户裁定:点名字/头像应该看到的是**账号身份**(头像/姓名/联系方式),不是简历。
-// 招聘端的镜像是「招聘名片」——两端从此对称:头像行都进"我是谁",简历/岗位走各自宫格。
+// 招聘端的镜像是「招聘名片」——两端对称:头像行都进"我是谁",简历/岗位走各自宫格。
 //
-// 字段口径:
-//   · 姓名读 全局.基本信息.真名,编辑入口保持唯一(基本信息页),本屏只展示、点击跳编辑;
-//   · 手机/微信/邮箱读 简历联系方式(样例假值,接后端换接口字段);
-//     手机与微信参照 BOSS 打码展示——即使是自己的页面,肩后一瞥不该看光;
-//   · 披露时机的口径在披露偏好页(设置里进),本屏不放入口(2026-08-26 标注删除)。
+// 编辑口径(2026-08-26 用户追加:「改成可以自己编辑和修改的,直接可以点击编辑」):
+//   · 姓名/邮箱:常驻裸行输入(名片同款,直接打在线上),收笔即存;
+//     姓名写的是 全局.基本信息.真名,走 操作.保存简历(Backend 模式下 PATCH 服务端);
+//   · 手机号/微信号:平时打码展示(肩后一瞥不该看光),点一下当场变明文输入,
+//     收笔存回并恢复打码——打码与常驻输入互斥,这两行只能做两态;
+//   · 联系方式存全局 联系方式 切片(Mock 模式随简历快照持久化),
+//     简历原件抬头(简历预览层)读同一切片,改完立刻生效。
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import 样式 from './个人信息.module.css';
-import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 表单条目 } from '../组件/通用';
+import { 次级页外壳, 返回栏, 页面大标题, 滚动区 } from '../组件/通用';
 import { 相机图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
-import { 路径 } from '../路由/路径表';
-import { 简历联系方式 } from '../数据/模拟数据';
+import type { 联系方式型 } from '../数据/类型';
 
 /** 手机号打码:前三后二,中间六星(138 0217 6021 → 138******21) */
 function 打码手机(号: string): string {
@@ -58,8 +60,8 @@ function 压成头像(文件: File): Promise<string> {
 }
 
 export default function 个人信息() {
-  const { 返回, 跳转 } = use导航();
-  const { 状态, 派发 } = use应用状态();
+  const { 返回 } = use导航();
+  const { 状态, 派发, 操作 } = use应用状态();
   const 文件框 = useRef<HTMLInputElement>(null);
   const 真名 = 状态.基本信息.真名;
 
@@ -73,6 +75,30 @@ export default function 个人信息() {
     } catch {
       轻提示('这张图片读不出来，换一张试试');
     }
+  }
+
+  /** 姓名收笔:空白或没改视作没动;改了走 保存简历(真名的写路径只有这一条 API) */
+  async function 存姓名(输入值: string) {
+    const 新名 = 输入值.trim();
+    if (!新名 || 新名 === 真名.trim()) return;
+    try {
+      await 操作.保存简历({
+        基本信息: { ...状态.基本信息, 真名: 新名 },
+        个人优势: 状态.个人优势,
+        技能: 状态.简历技能,
+        经历: 状态.简历经历,
+        教育: 状态.简历教育,
+        证书: 状态.简历证书,
+      });
+    } catch (错误) {
+      轻提示(取后端错误文案(错误));
+    }
+  }
+
+  /** 联系方式收笔:空白视作没改(不许清空成空行) */
+  function 存联系字段(键: keyof 联系方式型, 输入值: string) {
+    const 新值 = 输入值.trim();
+    if (新值 && 新值 !== 状态.联系方式[键]) 派发({ 型: '存联系方式', 补丁: { [键]: 新值 } });
   }
 
   return (
@@ -103,23 +129,96 @@ export default function 个人信息() {
           onChange={选了照片}
         />
 
-        {/* 姓名:展示真名,编辑入口保持唯一 —— 点击去基本信息页改 */}
-        <表单条目 标签="姓名" 值={真名 || '未填写'} 按下={() => 跳转(路径.基本信息)} />
+        <裸行编辑 标签="姓名" 值={真名} 收笔={存姓名} />
 
-        {/* ── 联系方式三行:纯展示,打码,不带尖括号(没有编辑流,不摆假入口)── */}
-        <div className={样式.展示条目}>
-          <span className={样式.条目标签}>手机号</span>
-          <span className={`${样式.条目值} 等宽数字`}>{打码手机(简历联系方式.手机)}</span>
-        </div>
-        <div className={样式.展示条目}>
-          <span className={样式.条目标签}>微信号</span>
-          <span className={样式.条目值}>{打码微信(简历联系方式.微信)}</span>
-        </div>
-        <div className={样式.展示条目}>
-          <span className={样式.条目标签}>邮箱</span>
-          <span className={`${样式.条目值} 单行`}>{简历联系方式.邮箱}</span>
-        </div>
+        <打码编辑 标签="手机号" 值={状态.联系方式.手机} 打码={打码手机} 数字体
+          收笔={(值) => 存联系字段('手机', 值)} />
+        <打码编辑 标签="微信号" 值={状态.联系方式.微信} 打码={打码微信}
+          收笔={(值) => 存联系字段('微信', 值)} />
+
+        <裸行编辑 标签="邮箱" 值={状态.联系方式.邮箱} 收笔={(值) => 存联系字段('邮箱', 值)} />
       </滚动区>
     </次级页外壳>
+  );
+}
+
+/** 常驻裸行输入(招聘名片同款):无框无底,行分隔线就是下划线,失焦/回车收笔 */
+function 裸行编辑({
+  标签,
+  值,
+  收笔,
+}: {
+  标签: string;
+  值: string;
+  收笔: (输入值: string) => void;
+}) {
+  return (
+    <div className={样式.展示条目}>
+      <span className={样式.条目标签}>{标签}</span>
+      <input
+        className={样式.裸输入}
+        defaultValue={值}
+        aria-label={标签}
+        enterKeyHint="done"
+        onBlur={(事件) => 收笔(事件.currentTarget.value)}
+        onKeyDown={(事件) => {
+          // isComposing 挡住中文输入法回车上屏那一下;blur() 让收笔只走 onBlur 一条路径
+          if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) {
+            事件.currentTarget.blur();
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+/** 打码字段的两态编辑:展示态打码,点一下变明文裸输入(自动聚焦),收笔恢复打码。
+ *  打码与常驻输入天然互斥——输入框里的值必须是明文,所以这两行只能做两态 */
+function 打码编辑({
+  标签,
+  值,
+  打码,
+  收笔,
+  数字体,
+}: {
+  标签: string;
+  值: string;
+  打码: (原: string) => string;
+  收笔: (输入值: string) => void;
+  数字体?: boolean;
+}) {
+  const [编辑中, 设编辑中] = useState(false);
+  if (!编辑中) {
+    return (
+      <button
+        className={`${样式.展示条目} ${样式.整行可点} 可点`}
+        onClick={() => 设编辑中(true)}
+        aria-label={`编辑${标签}`}
+      >
+        <span className={样式.条目标签}>{标签}</span>
+        <span className={`${样式.条目值} ${数字体 ? '等宽数字' : ''}`}>{打码(值)}</span>
+      </button>
+    );
+  }
+  return (
+    <div className={样式.展示条目}>
+      <span className={样式.条目标签}>{标签}</span>
+      <input
+        className={`${样式.裸输入} ${数字体 ? '等宽数字' : ''}`}
+        defaultValue={值}
+        aria-label={标签}
+        enterKeyHint="done"
+        autoFocus
+        onBlur={(事件) => {
+          收笔(事件.currentTarget.value);
+          设编辑中(false);
+        }}
+        onKeyDown={(事件) => {
+          if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) {
+            事件.currentTarget.blur();
+          }
+        }}
+      />
+    </div>
   );
 }

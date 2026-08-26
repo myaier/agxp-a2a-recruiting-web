@@ -157,6 +157,7 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     case '存作品集链接':
     case '存简历文件名':
     case '存求职头像':
+    case '存联系方式':
     case '存引导预填':
     case '启程引导':
     case '存求职筛选偏好':
