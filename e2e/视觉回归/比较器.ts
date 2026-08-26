@@ -99,11 +99,12 @@ export function 判定门禁(
     if (结果.status === 'infrastructure') return 2;
   }
 
+  // 结构阻断不受报告模式或 UI 审批放行：report 只放宽视觉/覆盖，不放宽结构。
+  for (const 结果 of results) {
+    if (结果.status === 'blocked' && 结果.categories.includes('structure')) return 1;
+  }
+
   if (visualGate === 'enforce') {
-    // 结构阻断不受 UI 审批放行。
-    for (const 结果 of results) {
-      if (结果.status === 'blocked' && 结果.categories.includes('structure')) return 1;
-    }
     // 视觉阻断与覆盖删除仅在未审批时返回 1。
     if (!uiChangeApproved) {
       for (const 结果 of results) {
@@ -258,10 +259,15 @@ export function 比较采集目录(options: 比较采集目录选项): UI回归�
       const reasons = [...几何原因];
       let 状态: 比较状态;
       let 类别: 问题类别[];
-      if (图.status === 'blocked') {
+      // 几何位移/尺寸变化属于结构问题：超过阈值即 structure blocked，
+      // 不受视觉审批（UI_CHANGE_APPROVED）放行，也不被 report 模式放宽。
+      if (几何原因.length > 0) {
+        状态 = 'blocked';
+        类别 = ['structure'];
+      } else if (图.status === 'blocked') {
         状态 = 'blocked';
         类别 = ['visual'];
-      } else if (图.status === 'warning' || 几何原因.length > 0) {
+      } else if (图.status === 'warning') {
         状态 = 'warning';
         类别 = ['visual'];
       } else {

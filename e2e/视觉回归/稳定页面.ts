@@ -135,7 +135,13 @@ export async function 注入候选突变(page: Page): Promise<void> {
 
   if (突变 === 'shift') {
     await page.addStyleTag({
-      content: '#根节点 { transform: translateX(20px) !important; }',
+      content: [
+        '#根节点 { transform: translateX(20px) !important; }',
+        // translateX(20px) 会把根节点右沿推出视口 20px，采集期的横向溢出门禁会先拦下，
+        // 比较器的位移路径就测不到。给 html 加 overflow-x:hidden 把横向溢出归零，
+        // 让位移突变真正走到比较几何的位移检查（位移 20px > 16 → structure blocked）。
+        'html { overflow-x: hidden !important; }',
+      ].join('\n'),
     });
   } else if (突变 === 'overflow') {
     await page.evaluate(() => {

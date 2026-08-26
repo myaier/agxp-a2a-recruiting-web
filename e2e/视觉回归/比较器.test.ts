@@ -63,6 +63,15 @@ describe('UI 图片与几何比较', () => {
     expect(判定门禁([{ status: 'new', categories: ['coverage'] }], 'enforce', false)).toBe(0);
     expect(判定门禁([{ status: 'removed', categories: ['coverage'] }], 'enforce', false)).toBe(1);
   });
+
+  it('report 模式放宽视觉与覆盖，但仍阻断结构', () => {
+    expect(判定门禁([{ status: 'blocked', categories: ['visual'] }], 'report', false)).toBe(0);
+    expect(判定门禁([{ status: 'blocked', categories: ['visual'] }], 'report', true)).toBe(0);
+    expect(判定门禁([{ status: 'removed', categories: ['coverage'] }], 'report', false)).toBe(0);
+    expect(判定门禁([{ status: 'blocked', categories: ['structure'] }], 'report', false)).toBe(1);
+    expect(判定门禁([{ status: 'blocked', categories: ['structure'] }], 'report', true)).toBe(1);
+    expect(判定门禁([{ status: 'infrastructure', categories: ['infrastructure'] }], 'report', false)).toBe(2);
+  });
 });
 
 function 捕获结果(sceneId: string): 场景采集结果 {

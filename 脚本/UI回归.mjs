@@ -1,7 +1,7 @@
 // UI 回归总入口：解析参数 → 解析 base → 创建 detached base worktree →
 // 参考/候选采集 → 比较 → 返回比较器退出码。带一次性基础设施重试与安全清理。
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdtempSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { 解析UI回归参数, 决定采集模式, 运行命令, 解析门禁环境 } from './UI回归核心.mjs';
 
