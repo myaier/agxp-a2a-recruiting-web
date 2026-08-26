@@ -44,7 +44,13 @@ export function 安装诊断(page: Page): 诊断句柄 {
   const apiRequests: string[] = [];
 
   const onConsole = (msg: { type(): string; text(): string }) => {
-    if (msg.type() === 'error') consoleErrors.push(msg.text());
+    if (msg.type() !== 'error') return;
+    const 文 = msg.text();
+    // 环境性静态资源 404（favicon/.ico 等）非「严重 console error」（spec §10.1）。
+    // API 失败由 apiRequests（pathname 以 /api/v1 开头）单独捕获，不会被这里遮蔽；
+    // 主 bundle 缺失会导致 pageerror 或 body 文字 <12 / 关键元素不可见，亦不靠此条。
+    if (/Failed to load resource: the server responded with a status of 404/.test(文)) return;
+    consoleErrors.push(文);
   };
   const onPageError = (err: Error) => {
     pageErrors.push(err.message);
