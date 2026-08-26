@@ -12,8 +12,9 @@
 //   Mock    —— 上述就地编辑原型原样保留（读 企业认证 fixture，落 存企业认证，去发岗）。
 //   Backend —— 姓名槽显示 verified_name ?? public_name（verified 即只读），职务落 title，
 //              一次保存调 保存招聘方档案；公司槽读 current affiliation / 未认证声明，
-//              多个可用关系列出待选、不自动猜。头像上传 Task 4 接真实 multipart，
-//              当前沿用 压成头像 → 存招聘头像 的既有路径（不复制压缩逻辑）。
+//              多个可用关系列出待选、不自动猜。头像走原子保存：选图只生成 object URL
+//              内存预览（不压 data URL、不落 存招聘头像），保存时调 替换招聘方头像，
+//              成功后由 operation 用响应里的 avatar_url/revision 替换权威档案、回收预览。
 
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './招聘名片.module.css';
@@ -42,9 +43,12 @@ export default function 招聘名片() {
 
 // ── Backend：诚实名片（服务端事实 + 一次保存）──────────────────────
 
+/** 头像上传的冻结边界（P1B runtime）：只收 PNG/JPEG，单文件 ≤ 10 MiB */
+const 头像字节上限 = 10 * 1024 * 1024;
+
 function 后端名片() {
   const { 跳转, 返回 } = use导航();
-  const { 状态, 派发, 操作 } = use应用状态();
+  const { 状态, 操作, 后端状态 } = use应用状态();
   const 文件框 = useRef<HTMLInputElement>(null);
   const 身份 = 从BFF招聘身份(
     状态.招聘方档案, 状态.企业关系列表, 状态.当前企业关系编号, 状态.企业管理员申请列表,
@@ -64,29 +68,70 @@ function 后端名片() {
     设职务(身份.title);
   }, [身份.title]);
 
+  // ── 头像原子保存：只留 object URL 内存预览，保存成功才让服务端响应成为权威 ──
+  const [头像文件, 设头像文件] = useState<File | null>(null);
+  const [头像预览, 设头像预览] = useState<string | null>(null);
+  const 预览引用 = useRef<string | null>(null);
+  /** 换新预览前先回收旧的；地址为 null 即清空 */
+  function 换预览(地址: string | null) {
+    if (预览引用.current !== null) URL.revokeObjectURL(预览引用.current);
+    预览引用.current = 地址;
+    设头像预览(地址);
+  }
+  /** 预览收口：回收 object URL 并丢弃待上传文件（成功或作废两条路都走这里） */
+  function 收口预览() {
+    换预览(null);
+    设头像文件(null);
+  }
+  // unmount 回收 object URL（内存预览不落任何全局状态）
+  useEffect(() => () => {
+    if (预览引用.current !== null) URL.revokeObjectURL(预览引用.current);
+  }, []);
+  // 账号变化：上一账号的预览与待上传文件一并作废，不把旧文件传给新账号
+  const 主体标识 = 后端状态.主体?.subject_id ?? null;
+  const 首次渲染 = useRef(true);
+  useEffect(() => {
+    if (首次渲染.current) {
+      首次渲染.current = false;
+      return;
+    }
+    if (预览引用.current !== null) 收口预览();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [主体标识]);
+
   /** 保存一次带 public_name 与 title；失败原样抛回给按钮层（输入不清空） */
   const 保存 = () => 操作.保存招聘方档案({ public_name: 公开名, title: 职务 });
 
   async function 按下保存() {
     try {
       await 保存();
+      if (头像文件) {
+        // 头像用当前 revision 的一次原子替换；权威档案由 operation 用响应替换
+        await 操作.替换招聘方头像(头像文件);
+        收口预览();
+      }
       轻提示('保存成功'); // 成功响应之后才提示
     } catch (错误) {
+      // 409/503 等失败保留 file 与预览，用户检查后按同一个保存键重试
       轻提示(取后端错误文案(错误));
     }
   }
 
   async function 选了照片(事件: React.ChangeEvent<HTMLInputElement>) {
-    // Task 4 接真实 multipart；当前沿用既有压缩→落全局路径，Backend 条件不重复实现压缩
     const 文件 = 事件.target.files?.[0];
     事件.target.value = ''; // 允许再次选同一张
     if (!文件) return;
-    try {
-      派发({ 型: '存招聘头像', 图: await 压成头像(文件) });
-      轻提示('头像已更新');
-    } catch {
-      轻提示('这张图片读不出来，换一张试试');
+    if (文件.type !== 'image/png' && 文件.type !== 'image/jpeg') {
+      轻提示('仅支持 PNG / JPEG 图片');
+      return;
     }
+    if (文件.size > 头像字节上限) {
+      轻提示('图片不超过 10 MiB');
+      return;
+    }
+    // 只生成内存预览：不压 data URL、不派发 存招聘头像，服务端成功前一切只是暂存
+    换预览(URL.createObjectURL(文件));
+    设头像文件(文件);
   }
 
   /** 无可用任职关系时的公司输入：落未认证声明，不创建 Organization */
@@ -96,7 +141,8 @@ function 后端名片() {
   }
 
   const 公司显示 = 身份.currentAffiliation?.organizationName ?? 状态.未认证公司声明;
-  const 头像地址 = 状态.招聘头像 ?? 身份.avatarUrl;
+  // Backend 不落 存招聘头像：预览优先，权威头像始终来自 招聘方档案.avatar_url
+  const 头像地址 = 头像预览 ?? 身份.avatarUrl;
 
   return (
     <次级页外壳>
@@ -113,7 +159,11 @@ function 后端名片() {
             aria-label="上传头像"
           >
             {头像地址 ? (
-              <img className={样式.头像图} src={头像地址} alt="" />
+              <img
+                className={样式.头像图}
+                src={头像地址}
+                alt={头像预览 !== null ? '头像预览' : ''}
+              />
             ) : (
               <公司字标
                 首字={显示姓名.charAt(0)}
@@ -134,6 +184,7 @@ function 后端名片() {
             type="file"
             accept="image/*"
             style={{ display: 'none' }}
+            aria-label="更换头像"
             onChange={选了照片}
           />
           <span className={样式.预览文字}>

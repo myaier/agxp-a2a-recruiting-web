@@ -19,6 +19,9 @@ const mock返回 = vi.fn();
 const mock保存招聘方档案 = vi.fn(async () => {});
 const mock选择企业关系 = vi.fn(async () => {});
 const mock保存未认证公司声明 = vi.fn();
+const mock替换头像 = vi.fn(async (_文件: File) => {});
+// Mock 分支的既有压缩路径：Backend 分支绝不能走它（只允许 object URL 预览）
+const mock压成头像 = vi.fn(async (_文件: File) => 'data:image/jpeg;base64,压缩头像');
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -27,8 +30,19 @@ vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状�
 vi.mock('../路由/导航钩子', () => ({
   use导航: () => ({ 跳转: mock跳转, 返回: mock返回 }),
 }));
+vi.mock('../组件/头像处理', () => ({
+  // 工厂体内不直接引用外层 vi.fn（hoisting 会踩 TDZ），调用时再转交
+  压成头像: (...参数: Parameters<typeof mock压成头像>) => mock压成头像(...参数),
+}));
 
-function 置Backend应用状态(组织: Record<string, unknown> = {}) {
+/** Backend 头像槽的合法文件（PNG、小于 10 MiB） */
+const pngFile = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], '头像.png', { type: 'image/png' });
+
+function 置Backend应用状态(
+  组织: Record<string, unknown> & { 后端状态?: Record<string, unknown> } = {},
+) {
+  // 后端状态 顶层单独覆盖（账号变化用例换 subject_id），其余键都进 状态
+  const { 后端状态: 覆盖后端状态, ...状态覆盖 } = 组织;
   mock应用状态 = {
     状态: {
       招聘方档案: BFF招聘方档案样本,
@@ -39,14 +53,16 @@ function 置Backend应用状态(组织: Record<string, unknown> = {}) {
       招聘头像: null,
       // 现组件无条件读 企业认证：Backend 桩补空值，让 RED 落在行为差异而不是读 undefined
       企业认证: { 姓名: '', 公司: '', 职务: '' },
-      ...组织,
+      ...状态覆盖,
     },
     派发: mock派发,
     操作: {
       保存招聘方档案: mock保存招聘方档案,
       选择企业关系: mock选择企业关系,
       保存未认证公司声明: mock保存未认证公司声明,
+      替换招聘方头像: mock替换头像,
     },
+    后端状态: { 主体: { subject_id: 'sub_1' }, ...覆盖后端状态 },
     数据源模式: 'backend',
   };
 }
@@ -70,6 +86,9 @@ describe('招聘名片 · Backend 诚实身份', () => {
     mock保存招聘方档案.mockResolvedValue(undefined);
     mock选择企业关系.mockClear();
     mock保存未认证公司声明.mockClear();
+    mock替换头像.mockClear();
+    mock替换头像.mockResolvedValue(undefined);
+    mock压成头像.mockClear();
     置Backend应用状态();
   });
 
@@ -174,11 +193,123 @@ describe('招聘名片 · Backend 诚实身份', () => {
   });
 });
 
+describe('招聘名片 · Backend 头像原子保存', () => {
+  // 仓库未装 @testing-library/jest-dom：属性断言直接读 DOM attribute
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock保存招聘方档案.mockClear();
+    mock保存招聘方档案.mockResolvedValue(undefined);
+    mock选择企业关系.mockClear();
+    mock保存未认证公司声明.mockClear();
+    mock替换头像.mockClear();
+    mock替换头像.mockResolvedValue(undefined);
+    mock压成头像.mockClear();
+    mock压成头像.mockResolvedValue('data:image/jpeg;base64,压缩头像');
+    置Backend应用状态();
+  });
+
+  it('Backend 保存成功前只使用 object URL 预览', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:avatar-preview');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    await 用户.upload(screen.getByLabelText('更换头像'), pngFile);
+    // 只有内存预览：不压 data URL、不落全局头像
+    expect(screen.getByRole('img', { name: '头像预览' }).getAttribute('src')).toBe('blob:avatar-preview');
+    expect(mock压成头像).not.toHaveBeenCalled();
+    expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '存招聘头像' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock替换头像).toHaveBeenCalledWith(pngFile));
+    // 服务端成功后预览收口：object URL 被回收，权威头像由 operation 的响应替换
+    expect(revoke).toHaveBeenCalledWith('blob:avatar-preview');
+    expect(screen.queryByRole('img', { name: '头像预览' })).toBeNull();
+  });
+
+  it('409 保留 file 与预览，提示后由用户再按一次保存重试', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:avatar-preview');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    mock替换头像.mockRejectedValueOnce(new BFF错误(409, 'version_conflict', 'conflict'));
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    await 用户.upload(screen.getByLabelText('更换头像'), pngFile);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(await screen.findByText('数据已在其他地方更新，请重试')).toBeTruthy();
+    // 409 重读后的权威档案不顶掉用户手里的文件与预览
+    expect(screen.getByRole('img', { name: '头像预览' }).getAttribute('src')).toBe('blob:avatar-preview');
+    expect(revoke).not.toHaveBeenCalledWith('blob:avatar-preview');
+    mock替换头像.mockResolvedValueOnce(undefined);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock替换头像).toHaveBeenCalledTimes(2));
+    expect(revoke).toHaveBeenCalledWith('blob:avatar-preview');
+  });
+
+  it('失败不显示「头像已更新」，预览与文件保留', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:avatar-preview');
+    mock替换头像.mockRejectedValue(new BFF错误(400, 'validation_failed', '校验未通过'));
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    await 用户.upload(screen.getByLabelText('更换头像'), pngFile);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock替换头像).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('头像已更新')).toBeNull();
+    expect(screen.getByRole('img', { name: '头像预览' })).toBeTruthy();
+  });
+
+  it('非 PNG/JPEG 或超过 10 MiB 的文件拒绝且不生成预览', async () => {
+    const 建预览 = vi.spyOn(URL, 'createObjectURL');
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    await 用户.upload(
+      screen.getByLabelText('更换头像'),
+      new File([new Uint8Array(8)], '头像.webp', { type: 'image/webp' }),
+    );
+    expect(await screen.findByText('仅支持 PNG / JPEG 图片')).toBeTruthy();
+    建预览.mockClear();
+    await 用户.upload(
+      screen.getByLabelText('更换头像'),
+      new File([new Uint8Array(10 * 1024 * 1024 + 1)], '大图.png', { type: 'image/png' }),
+    );
+    expect(await screen.findByText('图片不超过 10 MiB')).toBeTruthy();
+    expect(建预览).not.toHaveBeenCalled();
+    expect(mock替换头像).not.toHaveBeenCalled();
+  });
+
+  it('unmount 回收 object URL', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:avatar-unmount');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    const 用户 = userEvent.setup();
+    const { unmount } = render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    await 用户.upload(screen.getByLabelText('更换头像'), pngFile);
+    unmount();
+    expect(revoke).toHaveBeenCalledWith('blob:avatar-unmount');
+  });
+
+  it('账号变化回收上一账号的 object URL 并丢弃未保存文件', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:avatar-switch');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    const 用户 = userEvent.setup();
+    const 视图 = render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    await 用户.upload(screen.getByLabelText('更换头像'), pngFile);
+    // 换账号（新主体水合）：上一账号的预览与待上传文件一并作废
+    置Backend应用状态({ 后端状态: { 主体: { subject_id: 'sub_2' } } });
+    视图.rerender(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:avatar-switch'));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock保存招聘方档案).toHaveBeenCalledTimes(1));
+    expect(mock替换头像).not.toHaveBeenCalled();
+  });
+});
+
 describe('招聘名片 · Mock 原型保持不变', () => {
   beforeEach(() => {
     mock派发.mockClear();
     mock跳转.mockClear();
     mock返回.mockClear();
+    mock替换头像.mockClear();
+    mock压成头像.mockClear();
+    mock压成头像.mockResolvedValue('data:image/jpeg;base64,压缩头像');
     置Mock应用状态();
   });
 
@@ -198,5 +329,21 @@ describe('招聘名片 · Mock 原型保持不变', () => {
       }),
     );
     expect(mock跳转).toHaveBeenCalledWith(路径.发布岗位, { 从注册流: true });
+  });
+
+  it('Mock 选图仍走 压成头像 压缩 data URL 路径并落全局头像', async () => {
+    const 建对象 = vi.spyOn(URL, 'createObjectURL');
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    // Mock 原型的隐藏文件框没有 aria-label（标签在按钮上），直接取 input 本体
+    const 文件框 = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await 用户.upload(文件框, pngFile);
+    await waitFor(() => expect(mock压成头像).toHaveBeenCalledWith(pngFile));
+    expect(mock派发).toHaveBeenCalledWith({
+      型: '存招聘头像',
+      图: 'data:image/jpeg;base64,压缩头像',
+    });
+    expect(await screen.findByText('头像已更新')).toBeTruthy();
+    expect(建对象).not.toHaveBeenCalled();
   });
 });

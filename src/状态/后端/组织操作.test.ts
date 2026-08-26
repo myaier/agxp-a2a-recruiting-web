@@ -2,7 +2,7 @@
 // 受控 deferred promise 证明 stale 响应被丢弃，不用同步 mock 掩盖时序。
 
 import { describe, expect, it, vi } from 'vitest';
-import type { BFF企业档案替换, BFF招聘方档案 } from '../../数据/BFF契约';
+import type { BFF企业档案, BFF企业档案替换, BFF招聘方档案 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 页面岗位快照 } from '../../数据/招聘数据源类型';
 import { BFF错误 } from '../../数据/HTTP客户端';
@@ -20,7 +20,7 @@ import { 初始状态 } from '../初始状态';
 import { 归约, type 动作, type 状态 } from '../应用状态';
 import type { 后端操作依赖 } from './类型';
 import { 水合角色数据 } from './会话操作';
-import { 水合招聘方组织数据, 创建组织操作 } from './组织操作';
+import { 水合招聘方组织数据, 创建组织操作, type 企业媒体脱离错误 } from './组织操作';
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -468,5 +468,427 @@ describe('组织操作：选择企业关系 / 保存企业档案 / 公开企业�
       型: '水合企业关系', 当前编号: BFF企业关系样本.affiliation_id,
     }));
     expect(deps.状态引用.current.当前企业身份?.organization_id).toBe(BFF企业关系样本.organization_id);
+  });
+});
+
+// ── 替换招聘方头像：一次原子替换 + 409/503 恢复语义（Task 4 Step 2）──
+
+const 头像文件 = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], '头像.png', { type: 'image/png' });
+
+/** 头像操作的环境：在组织操作环境之上再水合一份 招聘方档案。 */
+function 创建头像测试环境(后端: HTTP招聘数据源) {
+  const 环境 = 创建操作测试环境({ 后端 });
+  环境.deps.状态引用.current = 归约(环境.deps.状态引用.current, {
+    型: '水合招聘方档案', 档案: BFF招聘方档案样本,
+  });
+  return 环境;
+}
+
+describe('组织操作：替换招聘方头像', () => {
+  it('用当前 revision 一次替换，响应用 水合招聘方档案 收口为权威档案', async () => {
+    const 新档案 = { ...BFF招聘方档案样本, avatar_url: 'https://cdn.example.com/a.png', revision: 2 };
+    const 替换头像 = vi.fn(async (_文件: File, _修订: number) => 新档案);
+    const 后端 = 创建完整测试数据源({ 替换招聘方头像: 替换头像 });
+    const { deps, 操作 } = 创建头像测试环境(后端);
+    await 操作.替换招聘方头像(头像文件);
+    expect(替换头像).toHaveBeenCalledWith(头像文件, BFF招聘方档案样本.revision);
+    expect(deps.状态引用.current.招聘方档案).toEqual(新档案);
+  });
+
+  it('尚未水合时拒绝，不发请求', async () => {
+    const 替换头像 = vi.fn(async () => BFF招聘方档案样本);
+    const 后端 = 创建完整测试数据源({ 替换招聘方头像: 替换头像 });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.替换招聘方头像(头像文件)).rejects.toThrow('招聘方档案尚未水合');
+    expect(替换头像).not.toHaveBeenCalled();
+  });
+
+  it('409 重读权威档案但不确认成功，原始错误抛回页面', async () => {
+    const 后端 = 创建完整测试数据源({
+      替换招聘方头像: vi.fn(async () => { throw new BFF错误(409, 'version_conflict', 'conflict'); }),
+      读取招聘方档案: vi.fn(async () => ({ ...BFF招聘方档案样本, revision: 5 })),
+    });
+    const { deps, 派发, 操作 } = 创建头像测试环境(后端);
+    await expect(操作.替换招聘方头像(头像文件)).rejects.toMatchObject({ code: 'version_conflict' });
+    expect(后端.读取招聘方档案).toHaveBeenCalledTimes(1);
+    expect(deps.状态引用.current.招聘方档案?.revision).toBe(5);
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '水合招聘方档案', 档案: expect.objectContaining({ revision: 5 }),
+    }));
+  });
+
+  it('503 重读后 avatar_url 与 revision 都前进才视作 confirmed success', async () => {
+    const 后端 = 创建完整测试数据源({
+      替换招聘方头像: vi.fn(async () => { throw new BFF错误(503, 'operation_outcome_unknown', 'unknown'); }),
+      读取招聘方档案: vi.fn(async () => ({
+        ...BFF招聘方档案样本, avatar_url: 'https://cdn.example.com/a.png', revision: 2,
+      })),
+    });
+    const { deps, 操作 } = 创建头像测试环境(后端);
+    await expect(操作.替换招聘方头像(头像文件)).resolves.toBeUndefined();
+    expect(deps.状态引用.current.招聘方档案?.avatar_url).toBe('https://cdn.example.com/a.png');
+  });
+
+  it('503 只推进 revision 或内容未变都不能确认，原始 503 抛回', async () => {
+    const 只换修订 = 创建完整测试数据源({
+      替换招聘方头像: vi.fn(async () => { throw new BFF错误(503, 'operation_outcome_unknown', 'unknown'); }),
+      读取招聘方档案: vi.fn(async () => ({ ...BFF招聘方档案样本, revision: 2 })),
+    });
+    const 环境1 = 创建头像测试环境(只换修订);
+    await expect(环境1.操作.替换招聘方头像(头像文件)).rejects.toMatchObject({
+      code: 'operation_outcome_unknown',
+    });
+
+    const 全未变 = 创建完整测试数据源({
+      替换招聘方头像: vi.fn(async () => { throw new BFF错误(503, 'operation_outcome_unknown', 'unknown'); }),
+      读取招聘方档案: vi.fn(async () => BFF招聘方档案样本),
+    });
+    const 环境2 = 创建头像测试环境(全未变);
+    await expect(环境2.操作.替换招聘方头像(头像文件)).rejects.toMatchObject({
+      code: 'operation_outcome_unknown',
+    });
+  });
+
+  it('重读失败抛原始 409/503，不用网络错误顶替、不自动重试', async () => {
+    const 后端 = 创建完整测试数据源({
+      替换招聘方头像: vi.fn(async () => { throw new BFF错误(503, 'operation_outcome_unknown', 'unknown'); }),
+      读取招聘方档案: vi.fn(async () => { throw new BFF错误(503, 'downstream_unavailable', 'down'); }),
+    });
+    const { 操作 } = 创建头像测试环境(后端);
+    await expect(操作.替换招聘方头像(头像文件)).rejects.toMatchObject({ code: 'operation_outcome_unknown' });
+    expect(后端.替换招聘方头像).toHaveBeenCalledTimes(1);
+  });
+
+  it('401 走统一清账号状态', async () => {
+    const 后端 = 创建完整测试数据源({
+      替换招聘方头像: vi.fn(async () => { throw new BFF错误(401, 'invalid_session', 'expired'); }),
+    });
+    const { deps, 派发, 操作 } = 创建头像测试环境(后端);
+    await expect(操作.替换招聘方头像(头像文件)).rejects.toMatchObject({ status: 401 });
+    expect(派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(deps.会话代际.current).toBe(2);
+  });
+});
+
+// ── 企业档案 replacement 的恢复语义与 wire body 冻结（Task 4 Step 3）──
+
+/** BFF企业档案替换 的 14 个键：完整 replacement 不多不少正好这些 */
+const 企业档案替换键 = [
+  'brand_name', 'industry_id', 'company_size', 'funding_stage', 'office_address',
+  'benefit_codes', 'work_schedule', 'company_intro', 'business_items',
+  'office_media_ids', 'company_media_ids', 'product_intro', 'team_members', 'logo_media_id',
+] as const;
+
+describe('组织操作：企业档案 replacement 与恢复', () => {
+  it('完整 replacement 保留未编辑字段并只信 taxonomy id', () => {
+    const body = 转BFF企业档案替换(
+      {
+        ...从BFF企业档案(BFF企业档案样本),
+        行业: '人工智能',
+        行业引用: { id: 'ind_ai', display_name: '人工智能' },
+      },
+      BFF企业档案样本,
+    );
+    expect(Object.keys(body).sort()).toEqual([...企业档案替换键].sort());
+    expect(body.industry_id).toBe('ind_ai');
+    expect(body.office_media_ids).toEqual(BFF企业档案样本.office_media.map((item) => item.media_id));
+  });
+
+  it('行业两空发空字符串，只有显示名拒绝保存', () => {
+    const 无行业档案 = { ...BFF企业档案样本, industry: null };
+    const body = 转BFF企业档案替换(从BFF企业档案(无行业档案), 无行业档案);
+    expect(body.industry_id).toBe('');
+    const 只有显示名 = { ...从BFF企业档案(BFF企业档案样本), 行业引用: undefined };
+    expect(() => 转BFF企业档案替换(只有显示名, BFF企业档案样本)).toThrow('请从候选行业中选择');
+  });
+
+  it('企业档案 409 重读新 revision、覆盖 public cache 并把错误抛回页面', async () => {
+    const 后端 = 创建完整测试数据源({
+      替换企业档案: vi.fn(async () => { throw new BFF错误(409, 'version_conflict', 'conflict'); }),
+      读取企业档案: vi.fn(async () => ({ ...BFF企业档案样本, revision: 9 })),
+    });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.保存企业档案(从BFF企业档案(BFF企业档案样本)))
+      .rejects.toMatchObject({ code: 'version_conflict' });
+    expect(后端.读取企业档案).toHaveBeenCalledWith(BFF公开企业样本.organization_id);
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '水合当前企业', 档案: expect.objectContaining({ revision: 9 }),
+    }));
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '缓存公开企业' }));
+    // 草稿在页面手里，operation 不碰；409 后不自动重发完整写入
+    expect(后端.替换企业档案).toHaveBeenCalledTimes(1);
+    expect(deps.状态引用.current.企业档案快照?.revision).toBe(9);
+  });
+
+  it('企业档案 401 统一清账号状态并原样抛回', async () => {
+    const 后端 = 创建完整测试数据源({
+      替换企业档案: vi.fn(async () => { throw new BFF错误(401, 'invalid_session', 'expired'); }),
+    });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.保存企业档案(从BFF企业档案(BFF企业档案样本)))
+      .rejects.toMatchObject({ status: 401 });
+    expect(派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
+    expect(deps.主体标识引用.current).toBeNull();
+  });
+
+  it('503 重读后完整 replacement 与 body 一致才视作 confirmed success', async () => {
+    const 草稿 = { ...从BFF企业档案(BFF企业档案样本), 公司介绍: '新介绍' };
+    const 服务端已落 = { ...BFF企业档案样本, company_intro: '新介绍', revision: 4 };
+    const 后端 = 创建完整测试数据源({
+      替换企业档案: vi.fn(async () => { throw new BFF错误(503, 'operation_outcome_unknown', 'unknown'); }),
+      读取企业档案: vi.fn(async () => 服务端已落),
+    });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.保存企业档案(草稿)).resolves.toBeUndefined();
+    expect(deps.状态引用.current.企业档案快照).toEqual(服务端已落);
+    expect(deps.状态引用.current.公开企业表[BFF公开企业样本.organization_id]?.profile).toEqual(服务端已落);
+  });
+
+  it('503 另一 admin 只推进 revision、内容与 body 不同：保留草稿（不确认）并抛原 503', async () => {
+    const 草稿 = { ...从BFF企业档案(BFF企业档案样本), 公司介绍: '我的新介绍' };
+    const 别人写的 = { ...BFF企业档案样本, company_intro: '别人写的新介绍', revision: 4 };
+    const 后端 = 创建完整测试数据源({
+      替换企业档案: vi.fn(async () => { throw new BFF错误(503, 'operation_outcome_unknown', 'unknown'); }),
+      读取企业档案: vi.fn(async () => 别人写的),
+    });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.保存企业档案(草稿)).rejects.toMatchObject({ code: 'operation_outcome_unknown' });
+    // 不自动重试完整写入
+    expect(后端.替换企业档案).toHaveBeenCalledTimes(1);
+  });
+
+  it('重读失败抛原始 409/503，不用网络错误顶替', async () => {
+    const 后端 = 创建完整测试数据源({
+      替换企业档案: vi.fn(async () => { throw new BFF错误(409, 'version_conflict', 'conflict'); }),
+      读取企业档案: vi.fn(async () => { throw new BFF错误(503, 'downstream_unavailable', 'down'); }),
+    });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.保存企业档案(从BFF企业档案(BFF企业档案样本)))
+      .rejects.toMatchObject({ code: 'version_conflict' });
+  });
+
+  it('写成功后 current 已被清/切换：不再用 pre-await 身份拼 public cache', async () => {
+    const 门 = deferred<BFF企业档案>();
+    const 新档案 = { ...BFF企业档案样本, company_intro: '已落库', revision: 4 };
+    const 后端 = 创建完整测试数据源({ 替换企业档案: vi.fn(() => 门.promise) });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    const 保存 = 操作.保存企业档案({ ...从BFF企业档案(BFF企业档案样本), 公司介绍: '已落库' });
+    // 写在飞时 401 清账号（或用户切走）：current 身份已被清空
+    派发({ 型: '清后端组织状态' });
+    门.resolve(新档案);
+    await expect(保存).resolves.toBeUndefined();
+    // 清空之后不能再出现任何基于旧 state 的 水合当前企业 / "undefined" key 的 缓存公开企业
+    const 清后序号 = 派发.mock.calls.findIndex(([动作]) => 动作.型 === '清后端组织状态');
+    const 清后动作 = 派发.mock.calls.slice(清后序号 + 1).map(([动作]) => 动作.型);
+    expect(清后动作).toEqual([]);
+    expect(deps.状态引用.current.公开企业表).toEqual({});
+  });
+});
+
+// ── 两步媒体协议：upload receipt → PATCH full profile → 响应替换快照（Task 4 Step 5）──
+
+describe('组织操作：企业媒体两步发布', () => {
+  it('先上传 receipt，再以最新 revision 发布引用', async () => {
+    const calls: string[] = [];
+    const 后端 = 创建完整测试数据源({
+      上传企业媒体: vi.fn(async () => { calls.push('upload'); return 媒体B; }),
+      替换企业档案: vi.fn(async (_id, body, revision) => {
+        calls.push(`patch:${revision}`);
+        expect(body.office_media_ids).toContain(媒体B.media_id);
+        return { ...BFF企业档案样本, office_media: [BFF企业媒体样本, 媒体B], revision: revision + 1 };
+      }),
+    });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    await 操作.上传并发布企业媒体('office_photo', 头像文件);
+    expect(calls).toEqual(['upload', `patch:${BFF企业档案样本.revision}`]);
+    // PATCH 响应（不是 upload receipt）替换权威 snapshot
+    expect(deps.状态引用.current.企业档案快照).toEqual({
+      ...BFF企业档案样本, office_media: [BFF企业媒体样本, 媒体B], revision: 4,
+    });
+  });
+
+  it.each([
+    ['organization_logo 替换 logo_media_id，不碰相册', 'organization_logo' as const,
+      (body: BFF企业档案替换) => body.logo_media_id],
+    ['office_photo 追加进 office_media_ids，保留既有媒体', 'office_photo' as const,
+      (body: BFF企业档案替换) => body.office_media_ids],
+    ['company_photo 追加进 company_media_ids', 'company_photo' as const,
+      (body: BFF企业档案替换) => body.company_media_ids],
+  ])('%s', async (_名, purpose, 取值) => {
+    let 捕获Body: BFF企业档案替换 | null = null;
+    const 后端 = 创建完整测试数据源({
+      上传企业媒体: vi.fn(async () => 媒体B),
+      替换企业档案: vi.fn(async (_id, body) => { 捕获Body = body; return BFF企业档案样本; }),
+    });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    await 操作.上传并发布企业媒体(purpose, 头像文件);
+    const body = 捕获Body!;
+    if (purpose === 'organization_logo') expect(取值(body)).toBe(媒体B.media_id);
+    else if (purpose === 'office_photo') {
+      // 样本 office_media 已有 media_1：追加而不替换
+      expect(取值(body)).toEqual([BFF企业媒体样本.media_id, 媒体B.media_id]);
+    } else {
+      // 样本 company_media 为空
+      expect(取值(body)).toEqual([媒体B.media_id]);
+    }
+  });
+
+  it('upload 失败不 PATCH、不 DELETE，错误原样抛回', async () => {
+    const 后端 = 创建完整测试数据源({
+      上传企业媒体: vi.fn(async () => { throw new BFF错误(503, 'media_rejected', '拒绝'); }),
+      替换企业档案: vi.fn(),
+      删除企业媒体: vi.fn(),
+    });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.上传并发布企业媒体('office_photo', 头像文件))
+      .rejects.toMatchObject({ code: 'media_rejected' });
+    expect(后端.替换企业档案).not.toHaveBeenCalled();
+    expect(后端.删除企业媒体).not.toHaveBeenCalled();
+  });
+
+  it('upload 401 统一清账号状态', async () => {
+    const 后端 = 创建完整测试数据源({
+      上传企业媒体: vi.fn(async () => { throw new BFF错误(401, 'invalid_session', 'expired'); }),
+    });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.上传并发布企业媒体('office_photo', 头像文件))
+      .rejects.toMatchObject({ status: 401 });
+    expect(派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
+    expect(deps.主体标识引用.current).toBeNull();
+  });
+
+  it('PATCH 失败保留 detached receipt：错误携带 脱离媒体，不擅自 DELETE', async () => {
+    const 后端 = 创建完整测试数据源({
+      上传企业媒体: vi.fn(async () => 媒体B),
+      替换企业档案: vi.fn(async () => { throw new BFF错误(500, 'internal', '炸了'); }),
+      删除企业媒体: vi.fn(),
+    });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    const 捕获 = await 操作.上传并发布企业媒体('company_photo', 头像文件)
+      .then(() => null, (错误: unknown) => 错误) as 企业媒体脱离错误;
+    expect(捕获).toBeInstanceOf(BFF错误);
+    expect(捕获.脱离媒体).toEqual({ purpose: 'company_photo', media_id: 媒体B.media_id });
+    // 收据留给用户决定放弃（页面 best-effort DELETE）或重试；operation 不代删
+    expect(后端.删除企业媒体).not.toHaveBeenCalled();
+  });
+
+  it('PATCH 409 重读权威档案后仍抛原错误，receipt 照挂', async () => {
+    const 后端 = 创建完整测试数据源({
+      上传企业媒体: vi.fn(async () => 媒体B),
+      替换企业档案: vi.fn(async () => { throw new BFF错误(409, 'version_conflict', 'conflict'); }),
+      读取企业档案: vi.fn(async () => ({ ...BFF企业档案样本, revision: 9 })),
+    });
+    const { 派发, 操作 } = 创建操作测试环境({ 后端 });
+    const 捕获 = await 操作.上传并发布企业媒体('office_photo', 头像文件)
+      .then(() => null, (错误: unknown) => 错误) as 企业媒体脱离错误;
+    expect(捕获).toMatchObject({ code: 'version_conflict' });
+    expect(捕获.脱离媒体).toEqual({ purpose: 'office_photo', media_id: 媒体B.media_id });
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '水合当前企业', 档案: expect.objectContaining({ revision: 9 }),
+    }));
+    expect(后端.读取企业档案).toHaveBeenCalledWith(BFF公开企业样本.organization_id);
+  });
+
+  it('PATCH 503 重读后完整 replacement 已含新媒体才视作 confirmed success', async () => {
+    const 已发布 = { ...BFF企业档案样本, office_media: [BFF企业媒体样本, 媒体B], revision: 4 };
+    const 后端 = 创建完整测试数据源({
+      上传企业媒体: vi.fn(async () => 媒体B),
+      替换企业档案: vi.fn(async () => { throw new BFF错误(503, 'operation_outcome_unknown', 'unknown'); }),
+      读取企业档案: vi.fn(async () => 已发布),
+      删除企业媒体: vi.fn(async () => undefined),
+    });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.上传并发布企业媒体('office_photo', 头像文件)).resolves.toBeUndefined();
+    expect(deps.状态引用.current.企业档案快照).toEqual(已发布);
+    expect(后端.删除企业媒体).not.toHaveBeenCalled();
+  });
+
+  it('organization_admin_required：重读 affiliations 切只读并抛原错误', async () => {
+    const 降级关系 = { ...BFF企业关系样本, role: 'member' as const };
+    const 后端 = 创建完整测试数据源({
+      上传企业媒体: vi.fn(async () => 媒体B),
+      替换企业档案: vi.fn(async () => { throw new BFF错误(403, 'organization_admin_required', '需要管理员'); }),
+      读取我的企业关系: vi.fn(async () => [降级关系]),
+    });
+    const { 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.上传并发布企业媒体('office_photo', 头像文件))
+      .rejects.toMatchObject({ code: 'organization_admin_required' });
+    expect(后端.读取我的企业关系).toHaveBeenCalledTimes(1);
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '水合企业关系', 关系: [降级关系], 当前编号: BFF企业关系样本.affiliation_id,
+    }));
+  });
+
+  it('organization_suspended：标记不可用并清 current selection', async () => {
+    const 后端 = 创建完整测试数据源({
+      上传企业媒体: vi.fn(async () => 媒体B),
+      替换企业档案: vi.fn(async () => { throw new BFF错误(403, 'organization_suspended', '停用'); }),
+    });
+    const { 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.上传并发布企业媒体('office_photo', 头像文件))
+      .rejects.toMatchObject({ code: 'organization_suspended' });
+    expect(派发).toHaveBeenCalledWith({ 型: '标记公开企业不可用', 编号: BFF公开企业样本.organization_id });
+    expect(派发).toHaveBeenCalledWith({ 型: '选择当前企业关系', 编号: null });
+  });
+});
+
+describe('组织操作：企业媒体移除', () => {
+  it('明确移除先 PATCH 去引用再 DELETE，body 不再含该 media id', async () => {
+    const calls: string[] = [];
+    const 后端 = 创建完整测试数据源({
+      替换企业档案: vi.fn(async (_id, body, revision) => {
+        calls.push(`patch:${revision}`);
+        expect(body.office_media_ids).not.toContain(BFF企业媒体样本.media_id);
+        return { ...BFF企业档案样本, office_media: [], revision: revision + 1 };
+      }),
+      删除企业媒体: vi.fn(async () => { calls.push('delete'); }),
+    });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    await 操作.移除企业媒体('office_photo', BFF企业媒体样本.media_id);
+    expect(calls).toEqual(['patch:3', 'delete']);
+    expect(后端.删除企业媒体)
+      .toHaveBeenCalledWith(BFF公开企业样本.organization_id, BFF企业媒体样本.media_id);
+    expect(deps.状态引用.current.企业档案快照).toEqual({
+      ...BFF企业档案样本, office_media: [], revision: 4,
+    });
+  });
+
+  it('快照里已不被引用的媒体（放弃收据）直接 DELETE，不发多余 PATCH', async () => {
+    const 后端 = 创建完整测试数据源({
+      替换企业档案: vi.fn(),
+      删除企业媒体: vi.fn(async () => undefined),
+    });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    await 操作.移除企业媒体('office_photo', 媒体B.media_id);
+    expect(后端.替换企业档案).not.toHaveBeenCalled();
+    expect(后端.删除企业媒体).toHaveBeenCalledWith(BFF公开企业样本.organization_id, 媒体B.media_id);
+  });
+
+  it('media_in_use：重读权威档案、不伪造删除，原错误抛回', async () => {
+    const 后端 = 创建完整测试数据源({
+      替换企业档案: vi.fn(async () => ({ ...BFF企业档案样本, office_media: [], revision: 4 })),
+      删除企业媒体: vi.fn(async () => { throw new BFF错误(409, 'media_in_use', '还在用'); }),
+      读取企业档案: vi.fn(async () => ({ ...BFF企业档案样本, revision: 9 })),
+    });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.移除企业媒体('office_photo', BFF企业媒体样本.media_id))
+      .rejects.toMatchObject({ code: 'media_in_use' });
+    expect(后端.读取企业档案).toHaveBeenCalledWith(BFF公开企业样本.organization_id);
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '水合当前企业', 档案: expect.objectContaining({ revision: 9 }),
+    }));
+    expect(deps.状态引用.current.企业档案快照?.revision).toBe(9);
+  });
+
+  it('移除 401 统一清账号状态', async () => {
+    const 后端 = 创建完整测试数据源({
+      删除企业媒体: vi.fn(async () => { throw new BFF错误(401, 'invalid_session', 'expired'); }),
+    });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.移除企业媒体('office_photo', 媒体B.media_id))
+      .rejects.toMatchObject({ status: 401 });
+    expect(派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
+    expect(deps.主体标识引用.current).toBeNull();
   });
 });
