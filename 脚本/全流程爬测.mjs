@@ -42,7 +42,7 @@ const 静态路由 = [
   '/onboard/major', '/onboard/eduyears', '/onboard/avatar',
   '/app', '/agent', '/agent/me', '/chat/direct', '/chat/human',
   '/intentions', '/intentions/new', '/intentions/cities', '/intentions/industries',
-  '/rules', '/resume', '/rejected', '/notifications', '/settings', '/blocklist',
+  '/rules', '/resume', '/profile', '/rejected', '/notifications', '/settings', '/blocklist',
   '/disclosure-prefs', '/archived', '/help', '/account', '/feedback', '/terms', '/visitors',
   '/hr/verify', '/hr/card', '/hr/post-job', '/hr/company-profile', '/hr', '/hr/rejected',
   '/hr/agent', '/hr/chat', '/hr/jobs', '/hr/agent/me', '/hr/agent-settings',

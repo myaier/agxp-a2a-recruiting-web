@@ -24,6 +24,7 @@ import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 相机图标 } from '../组件/图标';
 import { 路径 } from '../路由/路径表';
+import { 压成头像 } from '../组件/头像处理';
 
 /** 可就地编辑的字段（标注 2026-08-20 13:35：认证已撤，公司也直接改） */
 type 表单键 = '姓名' | '职务' | '公司';
@@ -33,33 +34,6 @@ const 表单字段表: { 键: 表单键; 标签: string }[] = [
   { 键: '职务', 标签: '职务' },
   { 键: '公司', 标签: '公司' },
 ];
-
-
-/** 把用户选的照片压成 256×256 居中裁切的 JPEG dataURL —— 原图可能好几 MB，
- *  浏览器会话缓存没必要保留原图 */
-function 压成头像(文件: File): Promise<string> {
-  return new Promise((成, 败) => {
-    const 读 = new FileReader();
-    读.onerror = () => 败(new Error('读取失败'));
-    读.onload = () => {
-      const 图 = new Image();
-      图.onerror = () => 败(new Error('不是可用的图片'));
-      图.onload = () => {
-        const 边 = 256;
-        const 画布 = document.createElement('canvas');
-        画布.width = 边;
-        画布.height = 边;
-        const 笔 = 画布.getContext('2d')!;
-        // 居中裁成正方形再缩放（cover）
-        const 源边 = Math.min(图.width, 图.height);
-        笔.drawImage(图, (图.width - 源边) / 2, (图.height - 源边) / 2, 源边, 源边, 0, 0, 边, 边);
-        成(画布.toDataURL('image/jpeg', 0.85));
-      };
-      图.src = String(读.result);
-    };
-    读.readAsDataURL(文件);
-  });
-}
 
 export default function 招聘名片() {
   const { 跳转, 返回 } = use导航();

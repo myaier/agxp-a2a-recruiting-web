@@ -55,6 +55,8 @@ function 取统计色(色名: string): string {
 export default function 我的() {
   const { 跳转 } = use导航();
   const { 状态, 派发 } = use应用状态();
+  const 姓名 = 状态.基本信息.真名.trim() || 我的信息.姓名;
+  const 头像 = 状态.求职头像?.startsWith('data:image/') ? 状态.求职头像 : null;
 
   // 四个统计数改成从真实状态算：在详情页接受/退出之后，这里要立刻跟着变，
   // 否则用户做完决策回到「我的」看到的还是建档时写死的数字。
@@ -138,9 +140,11 @@ export default function 我的() {
              2026-08-26 用户裁定:点名字/头像看到的应该是"我是谁",不是简历——
              简历入口在下方常用功能宫格,与这里不再重复;招聘端镜像是 招聘名片 ── */}
       <button className={`${样式.头像行} 可点`} onClick={() => 跳转(路径.个人信息)}>
-        <span className={样式.头像}>{我的信息.首字}</span>
+        <span className={样式.头像}>
+          {头像 ? <img className={样式.头像图} src={头像} alt="" /> : 姓名.charAt(0) || 我的信息.首字}
+        </span>
         <span className={样式.头像信息}>
-          <span className={`${样式.姓名} 单行`}>{我的信息.姓名}</span>
+          <span className={`${样式.姓名} 单行`}>{姓名}</span>
           <span className={样式.状态行}>
             <span className={`${样式.状态胶囊} 单行`}>{我的信息.状态}</span>
           </span>

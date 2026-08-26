@@ -14,12 +14,7 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { 短信验证码位数 } from '../数据/验证码规则';
-
-/** 11 位手机号 → 138 **** 6021 的展示形式。中间四位永远不回显 */
-function 打码手机号(号码: string): string {
-  if (号码.length !== 11) return 号码;
-  return `${号码.slice(0, 3)} **** ${号码.slice(7)}`;
-}
+import { 打码手机号 } from '../数据/隐私展示';
 
 type 换绑步骤 = null | '填手机号' | '填验证码';
 
