@@ -47,6 +47,17 @@ describe('Agent规则提案卡', () => {
     }
   });
 
+  // advisory 是唯一没在别处逐字钉过的冻结摘要：不借 Agent规则后果文案 映射，直接钉字面量
+  it('advisory 的安全摘要逐字冻结', () => {
+    render(
+      <Agent规则提案卡
+        提案={{ ...BFFAgent规则就绪提案样本, consequence: 'advisory' }}
+        忙={false} 接受={vi.fn()} 放弃={vi.fn()} 关闭失败={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('这是一条参考偏好，不会单独触发自动决定')).toBeTruthy();
+  });
+
   it('interpreting 只显示进度文案，不给任何动作键', () => {
     render(<Agent规则提案卡 提案={BFFAgent规则解释中提案样本} {...无动作} />);
     expect(screen.getByText('AI代理正在理解这条规则…')).toBeTruthy();

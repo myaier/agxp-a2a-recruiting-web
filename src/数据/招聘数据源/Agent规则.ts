@@ -1,5 +1,5 @@
 // Agent 规则域数据源：BFF /api/v1 的 agent-rules / agent-rule-proposals（P6）。
-// 第七个域 facade：协议代码（path / method / body / If-Match / 幂等 / 空对象 body / 分页循环）
+// 第八个域 facade：协议代码（path / method / body / If-Match / 幂等 / 空对象 body / 分页循环）
 // 按 P6 冻结契约实现。每个响应先 strict decode（exact key set、闭合 enum、ID 正则、
 // 日期可解析），不 `as` 直转；接口失败绝不回退 Mock。本模块不 import React 或 Mock。
 

@@ -123,7 +123,8 @@ export function 清账号状态(
  *   candidate → 简历 + 意向 + 隐私（P3 起三路并行读取，各自独立派发；隐私响应带
  *               主体/代际栅栏，过时成败都丢弃）+ P6 规则三路读取（Task 4）；
  *   recruiter → 先清候选侧隐私，再固定组织水合（profile → affiliations → current → 公开企业）→ owner Jobs
- *   + P6 规则三路读取（Task 4，与组织/岗位并行起跑）； *   null → 保持身份选择页不水合。
+ *   + P6 规则三路读取（Task 4，与组织/岗位并行起跑）；
+ *   null → 保持身份选择页不水合。
  * P6（Task 4）：水合Agent规则角色数据 与支持域并行，返回的三路 settled 结果并入共享
  * 401 扫描；非 401 的规则失败不回滚任何已提交域（错误呈现走各分支的既有策略）。
  * P1C Task 2：签名改为 (deps, 主体, 交互, generation) —— 调用方（mount / 切身份）先写 subject fence
@@ -162,7 +163,8 @@ export async function 水合角色数据(
     );
     const 结果 = await Promise.allSettled([后端.读取简历(), 后端.读取意向(), 后端.读取隐私()]);
     const 隐私响应仍有效 = () => 主体标识引用.current === 起始主体标识 && 会话代际.current === 起始代际;
-    const p6结果 = await p6Promise;    const 错误们: unknown[] = [];
+    const p6结果 = await p6Promise;
+    const 错误们: unknown[] = [];
     let 会话失效 = false;
     const 简历结果 = 结果[0];
     if (简历结果.status === 'fulfilled') {
@@ -199,7 +201,8 @@ export async function 水合角色数据(
       if (落点.status === 'rejected') {
         错误们.push(落点.reason);
         if (是会话失效错误(落点.reason)) 会话失效 = true;
-        轻提示(取后端错误文案(落点.reason));      }
+        轻提示(取后端错误文案(落点.reason));
+      }
     }
     // review-r2 R2-I-3：水合途中 401 → 统一登出清理，不把上个会话的快照/草稿留给已失效的登录态
     // review-r3 R3-I-2：收口到 清账号状态，支持域与 P6 规则域一起清，避免只清自己域留下别的域的快照

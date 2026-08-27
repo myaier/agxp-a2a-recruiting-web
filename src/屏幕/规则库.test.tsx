@@ -632,6 +632,14 @@ describe('规则库 · Backend 候选页', () => {
     expect(screen.getByText('意向级 · 仅「AI 产品经理」')).toBeTruthy();
     expect(screen.getByText('你确认过的规则才会沉淀到这里，长期约束你的AI代理。')).toBeTruthy();
     expect(screen.queryByText('在任何一单的代谈进度里发给代理的话，都会自动沉淀到这里，长期约束你的AI代理。')).toBeNull();
+    // Mock 头部计数与 Backend 同口径：只数 生效 行（种子 5 行里 R-03 暂停 → 4 条，E2E 同款）
+    expect(screen.getByText('4 条')).toBeTruthy();
+    // 暂停一条生效行：计数 -1，行本身保留在清单上（生效-only，不是行数）
+    act(() => {
+      视图.派发({ 型: '切规则开关', 编号: 'R-01' });
+    });
+    expect(screen.getByText('3 条')).toBeTruthy();
+    expect(screen.getByText('不主动披露并行接触数量')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
     expect(screen.queryByLabelText('规则范围')).toBeNull();
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');

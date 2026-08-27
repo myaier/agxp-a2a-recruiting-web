@@ -816,9 +816,111 @@ describe('水合Agent规则角色数据 与 刷新Agent规则', () => {
     const 操作 = 创建Agent规则操作(环境.deps);
     const 第一次 = 操作.刷新Agent规则();
     const 第二次 = 操作.刷新Agent规则();
-    expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(1);
+    // 串行队列在微任务里起跑首轮；公共刷新的 single-flight 锁照样压制第二次
+    await vi.waitFor(() => expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(1));
     规则门.resolve([] as never);
     await Promise.all([第一次, 第二次]);
+    // 全部结算后仍然只有首轮这一遍读
+    expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(1);
+  });
+
+  // finding-final 回归：两个 accept 各自触发完整刷新，旧轮挂住的过期读不可能在
+  // 新轮提交之后落地 —— 串行队列保证后一轮的读在前一轮整轮提交完才起跑。
+  it('并发完整刷新串行提交：旧轮的过期读不会复活已 accept 收口的卡片', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    const 另一提案 = { ...BFFAgent规则就绪提案样本, proposal_id: 'arp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' };
+    // 两张 ready 卡同时在场：两个 accept 各自成功，各触发一轮完整刷新
+    环境.deps.后端状态引用.current = {
+      ...环境.deps.后端状态引用.current,
+      候选规则提案: {
+        [BFFAgent规则就绪提案样本.proposal_id]: BFFAgent规则就绪提案样本,
+        [另一提案.proposal_id]: 另一提案,
+      },
+    };
+    vi.mocked(环境.数据源.接受Agent规则提案).mockResolvedValue(BFFAgent规则样本);
+    // 旧轮的 Rules 读挂住，清单返回过期视图（卡片原样可见、规则还没 materialize）
+    const 旧轮规则门 = deferred<typeof BFFAgent规则样本[]>();
+    vi.mocked(环境.数据源.读取Agent规则)
+      .mockReturnValueOnce(旧轮规则门.promise as never)
+      .mockResolvedValueOnce([BFFAgent规则样本]);
+    vi.mocked(环境.数据源.读取Agent规则提案列表)
+      .mockResolvedValueOnce([]) // 旧轮 interpreting
+      .mockResolvedValueOnce([BFFAgent规则就绪提案样本, 另一提案]) // 旧轮 ready：过期副本
+      .mockResolvedValueOnce([]) // 新轮 interpreting：已收口
+      .mockResolvedValueOnce([]); // 新轮 ready：已收口
+    const 操作 = 创建Agent规则操作(环境.deps);
+    const 接受一 = 操作.接受Agent规则提案(BFFAgent规则就绪提案样本.proposal_id);
+    await vi.waitFor(() => expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(1));
+    const 接受二 = 操作.接受Agent规则提案(另一提案.proposal_id);
+    await vi.waitFor(() => expect(环境.数据源.接受Agent规则提案).toHaveBeenCalledTimes(2));
+    // 新一轮已排队但未起跑：旧轮挂住期间权威读不涨
+    expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(1);
+    // 旧轮用过期读提交 —— 两张卡被短暂「复活」（没有串行时这就是终态）
+    旧轮规则门.resolve([]);
+    await 接受一;
+    expect(Object.keys(环境.最新后端状态().候选规则提案)).toEqual([
+      BFFAgent规则就绪提案样本.proposal_id,
+      另一提案.proposal_id,
+    ]);
+    // 新一轮的读在旧轮整轮提交完才起跑，并用权威视图最后提交
+    expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(2);
+    await 接受二;
+    const 最新 = 环境.最新后端状态();
+    expect(最新.候选规则快照[BFFAgent规则样本.rule_id]).toEqual(BFFAgent规则样本);
+    expect(最新.候选规则提案).toEqual({});
+  });
+
+  it('公共水合锁被占时 accept follow-up 仍完成对账（排队等待而非静默跳过）', async () => {
+    const 环境 = 创建测试依赖({
+      数据源: 创建数据源桩(),
+      预置锁: ['Agent规则水合:candidate'],
+    });
+    环境.deps.后端状态引用.current = {
+      ...环境.deps.后端状态引用.current,
+      候选规则提案: { [BFFAgent规则就绪提案样本.proposal_id]: BFFAgent规则就绪提案样本 },
+    };
+    vi.mocked(环境.数据源.接受Agent规则提案).mockResolvedValue(BFFAgent规则样本);
+    vi.mocked(环境.数据源.读取Agent规则).mockResolvedValue([BFFAgent规则样本]);
+    const 操作 = 创建Agent规则操作(环境.deps);
+    await 操作.接受Agent规则提案(BFFAgent规则就绪提案样本.proposal_id);
+    // 公共刷新的 single-flight 锁不拦 follow-up：对账照常落地（卡收口 + 规则进快照）
+    expect(环境.最新后端状态().候选规则提案).toEqual({});
+    expect(环境.最新后端状态().候选规则快照[BFFAgent规则样本.rule_id]).toEqual(BFFAgent规则样本);
+    // 串行队列不释放、也不持有公共锁
+    expect(环境.deps.锁.current.has('Agent规则水合:candidate')).toBe(true);
+  });
+
+  it('排队期间会话过期：轮次整轮丢弃（不发读、不写状态）', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    const 另一提案 = { ...BFFAgent规则就绪提案样本, proposal_id: 'arp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' };
+    环境.deps.后端状态引用.current = {
+      ...环境.deps.后端状态引用.current,
+      候选规则提案: {
+        [BFFAgent规则就绪提案样本.proposal_id]: BFFAgent规则就绪提案样本,
+        [另一提案.proposal_id]: 另一提案,
+      },
+    };
+    const 旧轮规则门 = deferred<typeof BFFAgent规则样本[]>();
+    vi.mocked(环境.数据源.接受Agent规则提案).mockResolvedValue(BFFAgent规则样本);
+    vi.mocked(环境.数据源.读取Agent规则).mockReturnValue(旧轮规则门.promise as never);
+    const 操作 = 创建Agent规则操作(环境.deps);
+    const 接受一 = 操作.接受Agent规则提案(BFFAgent规则就绪提案样本.proposal_id);
+    await vi.waitFor(() => expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(1));
+    const 接受二 = 操作.接受Agent规则提案(另一提案.proposal_id);
+    await vi.waitFor(() => expect(环境.数据源.接受Agent规则提案).toHaveBeenCalledTimes(2));
+    // 新一轮排队期间会话换代：轮次丢弃 —— 不发第二遍读，也不写任何状态
+    环境.deps.主体标识引用.current = 'sub_2';
+    环境.deps.会话代际.current = 8;
+    旧轮规则门.resolve([]);
+    await Promise.all([接受一, 接受二]);
+    expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(1);
+    const 最新 = 环境.最新后端状态();
+    expect(最新.候选规则快照).toEqual({});
+    expect(Object.keys(最新.候选规则提案)).toEqual([
+      BFFAgent规则就绪提案样本.proposal_id,
+      另一提案.proposal_id,
+    ]);
+    expect(最新.已登录).toBe(true);
   });
 });
 

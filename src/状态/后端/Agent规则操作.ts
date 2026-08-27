@@ -7,6 +7,9 @@
 //   · 会话 fence（subject + generation）与 P3 共用：过时响应整包丢弃（含快照与阶段）。
 //   · 每个 Proposal 另有 per-ID 提案代际：轮询/读捕获当前值，接受/放弃发送前自增，
 //     让迟到的旧 GET 不能用过期的 interpreting 回执盖掉终端结果。
+//   · 完整刷新（手动 + accept/回执 follow-up）统一过 per-role 串行队列：整表提交是
+//     last-writer-wins、没有先后栅栏，排队保证后一轮的读在前一轮整轮提交完才起跑 ——
+//     「读先起跑、更晚提交」的旧轮次再也不可能复活刚 accepted 收口的卡片。
 //   · 键位（冻结）：Agent规则:new:<role> / Agent规则:<rule_id> / Agent提案:<proposal_id> /
 //     Agent规则水合:<role>。刷新Agent规则提案 是权威 GET，绝不获取 Agent提案 写锁 ——
 //     否则 accept/dismiss 的恢复路径会被自己的锁静默短路。
@@ -197,6 +200,9 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
   /** per-Proposal 代际：轮询捕获当前值，接受/放弃与其恢复 GET 发送前各自增一次。 */
   const 提案代际 = new Map<string, number>();
 
+  /** per-role 完整水合串行队列：整轮提交顺序恒等于排队顺序（见 串行完整水合并发布）。 */
+  const 完整水合队列 = new Map<BFF角色, Promise<unknown>>();
+
   function 当前提案代际(id: string): number {
     return 提案代际.get(id) ?? 0;
   }
@@ -245,6 +251,36 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     // 不能留下 已登录=true 而两个 P6 阶段停在 失败 的撕裂态。
     if (结果.some(是401落败)) 清账号状态(账号清理依赖);
     return 结果;
+  }
+
+  /**
+   * 完整刷新的统一入口（手动刷新与全部 follow-up 都从这里过）：per-role 排队串行。
+   * 两个并发完整刷新的整表提交是 last-writer-wins、没有先后栅栏 —— 读先起跑的那轮
+   * 可能更晚提交，短暂复活刚 accepted 收口的卡片或藏起刚 materialize 的规则。
+   * 排队给出严格先后：后一轮的读在前一轮整轮提交完才起跑，提交顺序 = 排队顺序。
+   * 锁序（无死锁）：本队列不等任何锁 —— 水合核从不获取 Agent提案:* 写锁，持有
+   * Agent提案:* 的 accept/dismiss follow-up 与持有 Agent规则水合:<role> 的手动刷新
+   * 都只是在这里排队等前一轮提交，不构成环。follow-up 一律排队等待而非静默跳过
+   * （对账必须完成）；只有排队期间会话已过期的轮次整轮丢弃：不发读、不触发
+   * 401 清理，交给新会话自己的水合。
+   */
+  function 串行完整水合并发布(
+    role: BFF角色,
+    subjectId: string,
+    generation: number,
+  ): Promise<PromiseSettledResult<unknown>[]> {
+    const 前一轮 = 完整水合队列.get(role) ?? Promise.resolve();
+    const 本轮 = 前一轮.then(async () => {
+      if (!仍是当前会话(deps, subjectId, generation)) return [];
+      return await 运行完整水合并发布(role, subjectId, generation);
+    });
+    // 队尾吞掉 rejection：一轮的失败只抛给它自己的调用方，绝不拖垮排在其后的轮次
+    const 队尾 = 本轮.catch(() => undefined);
+    完整水合队列.set(role, 队尾);
+    void 队尾.then(() => {
+      if (完整水合队列.get(role) === 队尾) 完整水合队列.delete(role);
+    });
+    return 本轮;
   }
 
   /** 读整张规则表并原样替换 raw 快照（不带阶段变化；mutation 恢复用）。 */
@@ -300,7 +336,7 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
       const 回执 = 落点.value;
       if (!仍是当前会话(deps, subjectId, generation) || !提案响应仍新鲜(proposalId, captured)) return;
       if (回执.state === 'accepted') {
-        await 运行完整水合并发布(role, subjectId, generation);
+        await 串行完整水合并发布(role, subjectId, generation);
         return;
       }
       if (回执.state === 'dismissed') {
@@ -462,7 +498,7 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     try {
       const generation = 会话代际.current;
       // 401 扫描收在 运行完整水合并发布 内部：手动刷新与各 follow-up 刷新同一口径。
-      await 运行完整水合并发布(role, subjectId, generation);
+      await 串行完整水合并发布(role, subjectId, generation);
     } finally {
       锁.current.delete(键);
     }
@@ -585,7 +621,7 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     }
     if (回执.state === 'accepted') {
       // accepted = 权威 Rule 已经生成：触发一轮完整刷新收口卡片
-      await 运行完整水合并发布(role, subjectId, generation);
+      await 串行完整水合并发布(role, subjectId, generation);
       return;
     }
     // interpreting / ready / failed 原位写回（failed 文案留给页面本地确认后再清）
@@ -606,7 +642,7 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
       await 后端.接受Agent规则提案(role, proposalId);
       if (subjectId && 仍是当前会话(deps, subjectId, generation)) {
         // 接受后必须看权威 Rules：跑完整链路（顺便清掉 actionable 里的这张卡）
-        await 运行完整水合并发布(role, subjectId, generation);
+        await 串行完整水合并发布(role, subjectId, generation);
       }
     } catch (错误) {
       await 收口写入错误(

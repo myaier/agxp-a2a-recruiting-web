@@ -878,7 +878,8 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
           { role: 'candidate' as const, status: 'active' as const },
           { role: 'recruiter' as const, status: 'active' as const },
         ],
-        last_used_role: (选项.主体初始角色 ?? null) as 'candidate' | 'recruiter' | null,      }
+        last_used_role: (选项.主体初始角色 ?? null) as 'candidate' | 'recruiter' | null,
+      }
     : fixture主体;
 
   // ── P1C 组织域可变 fixture 状态：每次安装独立一份，页面写入只影响本测试 ──
