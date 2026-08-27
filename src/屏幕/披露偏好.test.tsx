@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import 披露偏好 from './披露偏好';
 import { 从BFF隐私 } from '../数据/隐私映射';
 import { BFF隐私快照样本 } from '../测试/BFF样本';
+import { BFF错误 } from '../数据/HTTP客户端';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -57,5 +58,22 @@ describe('披露偏好 · Backend 写线', () => {
     expect(screen.getByText(/AI 不会自动披露你的薪资数字/)).toBeTruthy();
     expect(screen.queryByText('真实姓名')).toBeNull();
     expect(设置披露偏好).not.toHaveBeenCalled();
+  });
+
+  it('Backend 写档位失败：弹现有轻提示错误文案，不派发本地 设披露档 假成功', async () => {
+    const 设置披露偏好 = vi.fn().mockRejectedValue(new BFF错误(409, 'version_conflict', '版本冲突'));
+    const 派发 = vi.fn();
+    const 快照 = 从BFF隐私(BFF隐私快照样本);
+    mock应用状态 = {
+      状态: { 披露偏好: 快照.披露偏好 }, 派发,
+      操作: { 设置披露偏好 }, 数据源模式: 'backend',
+      后端状态: { 隐私快照: 快照.服务端 },
+    };
+    render(<MemoryRouter><披露偏好 /></MemoryRouter>);
+    const D4卡 = screen.getByText('毕业院校与学历').parentElement!.parentElement!;
+    await userEvent.click(within(D4卡).getByRole('button', { name: '不披露' }));
+    // 409 version_conflict → 现有错误文案映射（同 发布岗位 failed-save 断言）
+    expect(await screen.findByText('数据已在其他地方更新，请重试')).toBeTruthy();
+    expect(派发).not.toHaveBeenCalled();
   });
 });

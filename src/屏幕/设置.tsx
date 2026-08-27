@@ -11,6 +11,8 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
 import 弹层框架 from '../组件/弹层框架';
+import { 轻提示 } from '../组件/轻提示';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 
 export default function 设置() {
   const { 返回, 跳转, 替换跳转 } = use导航();
@@ -53,7 +55,14 @@ export default function 设置() {
             return;
           }
           if (键 === '对现雇主隐身') {
-            void 切雇主隐私(true);
+            // Backend 开启写入失败：复用现有轻提示与错误文案映射，不派发本地假成功
+            void (async () => {
+              try {
+                await 切雇主隐私(true);
+              } catch (错误) {
+                轻提示(取后端错误文案(错误));
+              }
+            })();
             return;
           }
           派发({ 型: '切设置开关', 键 });
@@ -176,8 +185,10 @@ export default function 设置() {
                     await 切雇主隐私(false);
                     设待关隐身(false);
                     设提示('隐身已关闭');
-                  } catch {
-                    // 写入失败：保留弹层可重试或取消（与退出登录同口径，不改弹层 DOM/CSS）
+                  } catch (错误) {
+                    // 写入失败：保留弹层可重试或取消（与退出登录同口径，不改弹层 DOM/CSS）；
+                    // 复用现有轻提示与错误文案映射，失败不再静默
+                    轻提示(取后端错误文案(错误));
                   }
                 }}
               >

@@ -13,7 +13,8 @@ import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import type { 屏蔽项, 屏蔽来源 } from '../数据/类型';
-import { BFF错误 } from '../数据/HTTP客户端';
+import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
+import { 轻提示 } from '../组件/轻提示';
 import 弹层框架 from '../组件/弹层框架';
 import { use组织查询 } from './组织查询钩子';
 
@@ -68,8 +69,9 @@ export default function 屏蔽名单() {
       await 操作.添加组织屏蔽(选中项.organization_id, 查询.来源);
     } catch (错误) {
       // 所选组织已不存在：弃掉本次选中并按同词重查，输入框里的可见文字保持不动，
-      // 让用户另选命中项；其余失败不派发任何本地假成功
+      // 让用户另选命中项；其余失败不派发任何本地假成功，只复用现有轻提示报错
       if (错误 instanceof BFF错误 && 错误.code === 'organization_unavailable') 查询.重新查询();
+      else 轻提示(取后端错误文案(错误));
       return;
     }
     查询.设词('');
@@ -82,9 +84,11 @@ export default function 屏蔽名单() {
       try {
         // 传完整条目：操作层按 条目.来源 推导是否需要风险确认
         await 操作.解除组织屏蔽(待解除);
-      } catch {
+      } catch (错误) {
         设待解除(null);
-        return; // 服务端失败：权威视图不变，不派发本地假成功
+        // 服务端失败：权威视图不变，不派发本地假成功；复用现有轻提示，失败不再静默
+        轻提示(取后端错误文案(错误));
+        return;
       }
     } else {
       派发({ 型: '解除屏蔽', 编号: 待解除.编号 });
@@ -157,10 +161,11 @@ export default function 屏蔽名单() {
               </div>
             ) : null}
             {查询.下一页游标 !== null ? (
+              /* 游标只属于产生它的那次查询：选中命中项后词已回显为组织名，旧游标不得继续翻页 */
               <button
                 className="可点"
                 onClick={() => void 查询.加载更多()}
-                disabled={查询.加载中}
+                disabled={查询.加载中 || 查询.选择 !== null}
                 style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
               >
                 {查询.加载中 ? '加载中…' : '加载更多'}

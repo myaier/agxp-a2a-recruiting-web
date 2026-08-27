@@ -179,6 +179,72 @@ describe('屏蔽名单 · Backend 组织搜索写线', () => {
       .toBe('云衢科技');
   });
 
+  it('添加组织屏蔽失败（非 organization_unavailable）：弹现有轻提示错误文案，绝不落本地假成功', async () => {
+    const 用户 = userEvent.setup();
+    const 搜索可屏蔽组织 = vi.fn().mockResolvedValue(BFF组织搜索页样本);
+    const 添加组织屏蔽 = vi.fn().mockRejectedValue(new BFF错误(503, 'backend_unavailable', '后端不可用'));
+    mock应用状态 = {
+      状态: { 屏蔽名单: [] },
+      派发: vi.fn(),
+      操作: { 搜索可屏蔽组织, 添加组织屏蔽 },
+      数据源模式: 'backend',
+      后端状态: { 隐私快照: BFF隐私快照样本 },
+    };
+    渲染屏蔽名单();
+    await 用户.click(screen.getByRole('button', { name: '手动添加' }));
+    await 输入并等搜索('云衢');
+    fireEvent.click(screen.getByText('上海云衢科技有限公司').closest('button')!);
+    await 用户.click(screen.getByRole('button', { name: '屏蔽' }));
+    // 503 → 现有错误文案映射；organization_unavailable 之外的失败不再静默
+    expect(await screen.findByText('后端服务暂时不可用，请稍后重试')).toBeTruthy();
+    expect(mock应用状态.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '拉黑' }));
+  });
+
+  it('解除组织屏蔽失败：弹现有轻提示错误文案且弹层按既有口径关闭，不派发本地假成功', async () => {
+    const 用户 = userEvent.setup();
+    const 解除组织屏蔽 = vi.fn().mockRejectedValue(new BFF错误(409, 'version_conflict', '版本冲突'));
+    mock应用状态 = {
+      状态: { 屏蔽名单: 屏蔽名单初始 },
+      派发: vi.fn(),
+      操作: { 解除组织屏蔽 },
+      数据源模式: 'backend',
+      后端状态: { 隐私快照: BFF隐私快照样本 },
+    };
+    渲染屏蔽名单();
+    await 用户.click(within(
+      screen.getByText('恒达外包').parentElement!.parentElement!,
+    ).getByRole('button', { name: '解除' }));
+    await 用户.click(screen.getByRole('button', { name: '确认解除' }));
+    // 409 version_conflict → 现有错误文案映射；弹层仍按既有行为关闭
+    expect(await screen.findByText('数据已在其他地方更新，请重试')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '确认解除' })).toBeNull();
+    expect(mock应用状态.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '解除屏蔽' }));
+  });
+
+  it('选中命中项后「加载更多」禁用：旧游标只属于产生它的那次查询', async () => {
+    const 用户 = userEvent.setup();
+    const 搜索可屏蔽组织 = vi.fn().mockResolvedValue({
+      items: BFF组织搜索页样本.items,
+      next_cursor: 'org_cur_1',
+    });
+    mock应用状态 = {
+      状态: { 屏蔽名单: [] },
+      派发: vi.fn(),
+      操作: { 搜索可屏蔽组织, 添加组织屏蔽: vi.fn().mockResolvedValue(undefined) },
+      数据源模式: 'backend',
+      后端状态: { 隐私快照: BFF隐私快照样本 },
+    };
+    渲染屏蔽名单();
+    await 用户.click(screen.getByRole('button', { name: '手动添加' }));
+    await 输入并等搜索('云衢');
+    // 选中前：有游标即可点
+    const 加载更多 = screen.getByRole('button', { name: '加载更多' }) as HTMLButtonElement;
+    expect(加载更多.disabled).toBe(false);
+    fireEvent.click(screen.getByText('上海云衢科技有限公司').closest('button')!);
+    // 选中后：词回显为命中名而游标未变 → 继续翻页会发 {q: 显示名, 旧游标}，禁用守住游标绑定契约
+    expect((screen.getByRole('button', { name: '加载更多' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('Mock 模式保持本地 free-text 屏蔽路径且不做任何搜索', async () => {
     const 用户 = userEvent.setup();
     const 派发 = vi.fn();

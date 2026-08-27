@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 import 设置 from './设置';
 import { 初始状态 } from '../状态/初始状态';
 import { BFF隐私快照样本 } from '../测试/BFF样本';
+import { BFF错误 } from '../数据/HTTP客户端';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -53,5 +54,21 @@ describe('设置 · Backend 隐私写线', () => {
     expect(设置雇主隐私).not.toHaveBeenCalled();
     expect(派发).not.toHaveBeenCalled();
     expect(screen.queryByText('关闭「对现雇主隐身」？')).toBeNull();
+  });
+
+  it('Backend 开启隐身写入失败：弹现有轻提示错误文案，不派发本地假成功', async () => {
+    const 用户 = userEvent.setup();
+    const 设置雇主隐私 = vi.fn().mockRejectedValue(new BFF错误(409, 'version_conflict', '版本冲突'));
+    const 派发 = vi.fn();
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关, 对现雇主隐身: false } },
+      派发, 操作: { 设置雇主隐私, 退出登录: vi.fn() },
+      数据源模式: 'backend', 后端状态: { 隐私快照: BFF隐私快照样本 },
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    await 用户.click(screen.getByRole('switch', { name: '对现雇主隐身' }));
+    // 409 version_conflict → 现有错误文案映射（同 发布岗位 failed-save 断言）
+    expect(await screen.findByText('数据已在其他地方更新，请重试')).toBeTruthy();
+    expect(派发).not.toHaveBeenCalled();
   });
 });

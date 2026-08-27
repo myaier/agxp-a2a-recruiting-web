@@ -10,6 +10,8 @@ import 样式 from './我的功能页.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
+import { 轻提示 } from '../组件/轻提示';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 import type { 披露档 } from '../数据/类型';
 
 const 全部档: 披露档[] = ['不披露', '意向确认后', '一直允许'];
@@ -60,8 +62,14 @@ export default function 披露偏好() {
                       }`}
                       onClick={async () => {
                         if (!可改) return;
-                        if (数据源模式 === 'backend') await 操作.设置披露偏好(项.编号 as 'D-03' | 'D-04' | 'D-05', 档);
-                        else 派发({ 型: '设披露档', 编号: 项.编号, 档 });
+                        if (数据源模式 === 'backend') {
+                          // Backend 写档失败：复用现有轻提示与错误文案映射（Mock 本地归约不会拒绝，原样保留）
+                          try {
+                            await 操作.设置披露偏好(项.编号 as 'D-03' | 'D-04' | 'D-05', 档);
+                          } catch (错误) {
+                            轻提示(取后端错误文案(错误));
+                          }
+                        } else 派发({ 型: '设披露档', 编号: 项.编号, 档 });
                       }}
                       disabled={!可改}
                     >
