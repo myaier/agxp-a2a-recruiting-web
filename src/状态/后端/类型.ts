@@ -14,9 +14,11 @@ import type {
   BFF招聘方档案补丁,
   BFF企业管理员申请元数据,
   BFF企业媒体用途,
+  BFF隐私快照,
+  BFF组织搜索页,
 } from '../../数据/BFF契约';
-import type { 页面简历写入, 意向草稿型, 首次意向输入 } from '../../数据/招聘数据源类型';
-import type { 在招岗位 } from '../../数据/类型';
+import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
+import type { 在招岗位, 披露档, 屏蔽来源, 屏蔽项 } from '../../数据/类型';
 import type { 资料形 } from '../../数据/公司主页资料';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 动作, 状态 } from '../应用状态';
@@ -28,6 +30,8 @@ export interface 后端状态 {
   简历快照: BFF简历 | null;
   意向快照: Record<string, BFFOwnerIntention>;
   岗位快照: Record<string, BFFOwnerJob>;
+  /** P3：隐私视图投影（PrivacySnapshot 四字段，无 updated_at）；未登录 / 已清理时为 null。 */
+  隐私快照: BFF隐私快照 | null;
 }
 
 export type 更新后端状态 = (更新: (旧: 后端状态) => 后端状态) => void;
@@ -94,4 +98,18 @@ export interface 组织操作 {
   读取公开企业(id: string): Promise<void>;
 }
 
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作;
+/**
+ * P3 Task 2：页面会调用的隐私操作方法表（页面不得直接调用数据源）。
+ * 五个方法都没有乐观写：服务端成功（或一次 GET 确认达成）先于任何本地提交；
+ * 冲突/风控按 BFF code 分派「重读权威视图 + 原样抛出」，绝不重放变更。
+ */
+export interface 隐私操作 {
+  设置雇主隐私(enabled: boolean): Promise<void>;
+  设置披露偏好(id: 'D-03' | 'D-04' | 'D-05', 档: 披露档): Promise<void>;
+  搜索可屏蔽组织(query: 组织搜索查询): Promise<BFF组织搜索页>;
+  添加组织屏蔽(organizationId: string, source: 屏蔽来源): Promise<void>;
+  /** 解除带完整 屏蔽项：组织编号来自 item.组织编号，risk_acknowledged 由 来源 推导。 */
+  解除组织屏蔽(item: 屏蔽项): Promise<void>;
+}
+
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作;

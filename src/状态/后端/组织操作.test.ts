@@ -74,6 +74,7 @@ function 创建组织测试依赖(input: {
     状态引用: { current: 初始状态 },
     后端状态引用: { current: {
       初始化: '完成', 已登录: true, 主体: null, 简历快照: null, 意向快照: {}, 岗位快照: {},
+      隐私快照: null,
     } },
     锁: { current: new Set<string>() }, 尝试引用: { current: null }, 是后端: true,
   } satisfies 后端操作依赖;

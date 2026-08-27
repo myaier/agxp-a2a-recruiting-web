@@ -16,7 +16,11 @@ import {
   BFF企业管理员申请样本,
   BFF公开企业样本,
   BFF招聘方档案样本,
+  BFF隐私快照样本,
+  BFF屏蔽回执样本,
+  BFF组织搜索页样本,
 } from '../测试/BFF样本';
+import { 从BFF隐私 } from '../数据/隐私映射';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF招聘方档案, BFF公开企业, BFF角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
@@ -313,6 +317,31 @@ describe('应用状态 reducer', () => {
     expect(快照后.资料缓存范围键).toBe('AGXP账号资料v2:backend:stg:sub_1');
   });
 
+  it('水合后端隐私 覆盖屏蔽名单/披露偏好/隐身开关，清后端隐私 三者归零', () => {
+    const 页面 = 从BFF隐私(BFF隐私快照样本);
+    const 水合后 = 归约(初始状态, { 型: '水合后端隐私', 快照: 页面 });
+    expect(水合后.屏蔽名单).toEqual(页面.屏蔽名单);
+    expect(水合后.披露偏好).toEqual(页面.披露偏好);
+    expect(水合后.设置开关.对现雇主隐身).toBe(true);
+    // 隐私之外的设置开关不被触碰
+    expect(水合后.设置开关['只接受与意向匹配的接触'])
+      .toBe(初始状态.设置开关['只接受与意向匹配的接触']);
+    const 清后 = 归约(水合后, { 型: '清后端隐私' });
+    expect(清后.屏蔽名单).toEqual([]);
+    expect(清后.披露偏好).toEqual([]);
+    expect(清后.设置开关.对现雇主隐身).toBe(false);
+  });
+
+  it('Backend 种子隐私域为空，Mock 保留三条种子屏蔽与七行披露', () => {
+    const 后端种子 = 创建初始状态({ 模式: 'backend', 后端环境: 'stg', 后端: {} as HTTP招聘数据源 });
+    expect(后端种子.屏蔽名单).toEqual([]);
+    expect(后端种子.披露偏好).toEqual([]);
+    expect(后端种子.设置开关.对现雇主隐身).toBe(false);
+    // Mock 初始状态仍保留现有 fixture（三条种子屏蔽 + 七行披露模板）
+    expect(初始状态.屏蔽名单).toHaveLength(3);
+    expect(初始状态.披露偏好).toHaveLength(7);
+  });
+
   it('当前企业关系编号不进入 localStorage（Mock 原型路径）', async () => {
     function 测试按钮() {
       const { 派发 } = use应用状态();
@@ -380,6 +409,12 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     查询Location: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
     查询Taxonomy: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
     查询Institution: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+    // P3 Task 2：隐私域（candidate mount 水合会调用 读取隐私）
+    读取隐私: vi.fn(async () => 从BFF隐私(BFF隐私快照样本)),
+    修改隐私: vi.fn(async () => 从BFF隐私(BFF隐私快照样本)),
+    添加组织屏蔽: vi.fn(async () => BFF屏蔽回执样本),
+    解除组织屏蔽: vi.fn(async () => 从BFF隐私(BFF隐私快照样本)),
+    搜索组织: vi.fn(async () => BFF组织搜索页样本),
     开始手机登录: vi.fn(),
     完成手机登录: vi.fn(),
     开始微信登录: vi.fn(),
@@ -454,6 +489,8 @@ describe('应用状态提供者 后端会话', () => {
       '选择企业关系', '保存未认证公司声明', '保存招聘方档案', '读取企业管理员申请',
       '创建企业管理员申请', '取消企业管理员申请', '接受企业邀请', '替换招聘方头像',
       '保存企业档案', '上传并发布企业媒体', '移除企业媒体', '读取公开企业',
+      // P3 隐私域方法（隐私操作）
+      '设置雇主隐私', '设置披露偏好', '搜索可屏蔽组织', '添加组织屏蔽', '解除组织屏蔽',
     ].sort().join('|'))).toBeTruthy();
   });
 

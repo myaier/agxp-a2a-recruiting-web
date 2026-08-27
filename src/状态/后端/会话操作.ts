@@ -67,6 +67,8 @@ export function 清账号状态(
   派发({ 型: '水合后端简历', 快照: 空简历快照 });
   派发({ 型: '水合后端意向', 快照: 空意向快照 });
   派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
+  // P3 Task 2：隐私域一并清理 —— 隐私快照不跨主体 / 不跨会话存活
+  派发({ 型: '清后端隐私' });
   派发({ 型: '清后端草稿' });
   // P1C：组织权威事实一起清（profile/affiliations/current/申请/公开缓存/未认证 claim），
   // 但不清 Mock fixture（企业认证/招聘头像/公司LOGO/公司自述 维持 Mock consumer）。
@@ -79,6 +81,7 @@ export function 清账号状态(
     简历快照: null,
     意向快照: {},
     岗位快照: {},
+    隐私快照: null,
   }));
   后端?.清空目录缓存();
   主体标识引用.current = null;
@@ -87,8 +90,9 @@ export function 清账号状态(
 
 /**
  * 按主体.last_used_role 水合支持域：
- *   candidate → 简历 + 意向（并行读取，各自独立派发）；
- *   recruiter → 固定组织水合（profile → affiliations → current → 公开企业）→ owner Jobs；
+ *   candidate → 简历 + 意向 + 隐私（P3 起三路并行读取，各自独立派发；隐私响应带
+ *               主体/代际栅栏，过时成败都丢弃）；
+ *   recruiter → 先清候选侧隐私，再固定组织水合（profile → affiliations → current → 公开企业）→ owner Jobs；
  *   null → 保持身份选择页不水合。
  * P1C Task 2：签名改为 (deps, 主体, 交互, generation) —— 调用方（mount / 切身份）先写 subject fence
  * 并捕获当前会话代际再进入水合；两个水合函数共享同一 fence，过时响应在核心实现内丢弃。
@@ -110,7 +114,13 @@ export async function 水合角色数据(
   const { 后端, 派发, 设后端状态, 主体标识引用, 会话代际 } = deps;
   const 角色 = 主体.last_used_role;
   if (角色 === 'candidate') {
-    const 结果 = await Promise.allSettled([后端.读取简历(), 后端.读取意向()]);
+    // P3 Task 2：隐私是第三个并行水合域，与简历/意向各自独立提交。
+    // 先捕获在飞前的主体/代际栅栏：隐私响应到达时两者任一已变（登出 / 换号 / 新会话），
+    // 成败都直接丢弃 —— 不派发、不提示、不触发清理，上个会话的隐私绝不落进下个会话。
+    const 起始主体标识 = 主体标识引用.current;
+    const 起始代际 = 会话代际.current;
+    const 结果 = await Promise.allSettled([后端.读取简历(), 后端.读取意向(), 后端.读取隐私()]);
+    const 隐私响应仍有效 = () => 主体标识引用.current === 起始主体标识 && 会话代际.current === 起始代际;
     const 错误们: unknown[] = [];
     let 会话失效 = false;
     const 简历结果 = 结果[0];
@@ -131,6 +141,18 @@ export async function 水合角色数据(
       if (是会话失效错误(意向结果.reason)) 会话失效 = true;
       轻提示(取后端错误文案(意向结果.reason));
     }
+    const 隐私结果 = 结果[2];
+    if (隐私响应仍有效()) {
+      if (隐私结果.status === 'fulfilled') {
+        派发({ 型: '水合后端隐私', 快照: 隐私结果.value });
+        设后端状态((旧) => ({ ...旧, 隐私快照: 隐私结果.value.服务端 }));
+      } else {
+        // 失败与简历/意向同口径：记入错误们（交互模式抛第一个）、401 标记会话失效、轻提示
+        错误们.push(隐私结果.reason);
+        if (是会话失效错误(隐私结果.reason)) 会话失效 = true;
+        轻提示(取后端错误文案(隐私结果.reason));
+      }
+    }
     // review-r2 R2-I-3：水合途中 401 → 统一登出清理，不把上个会话的快照/草稿留给已失效的登录态
     // review-r3 R3-I-2：收口到 清账号状态，三个支持域一起清，避免只清自己域留下别的域的快照
     if (会话失效) {
@@ -139,6 +161,10 @@ export async function 水合角色数据(
     }
     if (交互 && 错误们.length > 0) throw 错误们[0];
   } else if (角色 === 'recruiter') {
+    // P3 Task 2：切到招聘方先清候选侧隐私 —— 隐私快照不跨角色存活，
+    // 必须在招聘方自有水合（组织 → owner Jobs）开始前落地。
+    派发({ 型: '清后端隐私' });
+    设后端状态((旧) => ({ ...旧, 隐私快照: null }));
     // P1C：current relation 恢复值只在最新 Affiliations 返回后经 选择当前企业关系() 校验进 state
     const restoredId = deps.读取恢复企业关系编号(主体.subject_id);
     const organizationResult = await 水合招聘方组织数据(
@@ -206,6 +232,8 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
         派发({ 型: '水合后端简历', 快照: 空简历快照 });
         派发({ 型: '水合后端意向', 快照: 空意向快照 });
         派发({ 型: '水合后端岗位', 快照: 空岗位快照 });
+        // P3 Task 2：A 的隐私偏好同样不能串进 B
+        派发({ 型: '清后端隐私' });
         派发({ 型: '清后端草稿' });
         // P1C：A 的组织权威事实（claim/公开缓存/current 选择）同样不能串进 B
         派发({ 型: '清后端组织状态' });
@@ -214,6 +242,7 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
           简历快照: null,
           意向快照: {},
           岗位快照: {},
+          隐私快照: null,
         }));
         后端.清空目录缓存();
       }

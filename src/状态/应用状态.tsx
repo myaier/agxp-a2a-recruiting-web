@@ -60,6 +60,7 @@ import { 创建会话操作, 水合角色数据 } from './后端/会话操作';
 import { 创建候选操作 } from './后端/候选操作';
 import { 创建岗位操作 } from './后端/岗位操作';
 import { 创建组织操作 } from './后端/组织操作';
+import { 创建隐私操作 } from './后端/隐私操作';
 import { 创建目录查询 } from './后端/目录查询';
 import { 归约候选资料 } from './领域/候选资料';
 import type { 候选资料状态, 候选资料动作 } from './领域/候选资料';
@@ -191,6 +192,8 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
       return 归约组织岗位(旧, 动作);
 
     case '拉黑':
+    case '水合后端隐私':
+    case '清后端隐私':
     case '解除屏蔽':
     case '设披露档':
     case '设企业披露档':
@@ -444,6 +447,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     简历快照: null,
     意向快照: {},
     岗位快照: {},
+    隐私快照: null,
   }));
 
   // 让异步操作读到最新的 后端状态 / 状态（useMemo 闭包只捕获首次值）
@@ -561,6 +565,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         ...创建候选操作(deps),
         ...创建岗位操作(deps),
         ...创建组织操作(deps),
+        ...创建隐私操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
