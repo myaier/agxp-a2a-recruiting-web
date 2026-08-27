@@ -22,6 +22,7 @@ import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { 映射候选Agent规则, 映射招聘Agent规则 } from '../../数据/Agent规则映射';
 import type { 后端状态, 后端操作依赖, 可变引用, Agent规则操作, Agent规则水合阶段, Agent规则角色水合状态 } from './类型';
 import { 清账号状态 } from './会话操作';
+import { 轻提示 } from '../../组件/轻提示';
 
 /** 与 组织水合依赖 同构的子集：session 层与刷新都共用这一把 deps 形状。 */
 export type Agent规则水合依赖 = Pick<后端操作依赖,
@@ -113,10 +114,13 @@ async function 落定<T>(承诺: Promise<T>): Promise<PromiseSettledResult<T>> {
   }
 }
 
+/** 401 统一判据：恢复读 / 结算扫描共用这一把（会话失效一律 清账号状态，不只 轻提示）。 */
+function 是401原因(原因: unknown): boolean {
+  return 原因 instanceof BFF错误 && 原因.status === 401;
+}
+
 function 是401落败(结果: PromiseSettledResult<unknown>): boolean {
-  return 结果.status === 'rejected' &&
-    结果.reason instanceof BFF错误 &&
-    结果.reason.status === 401;
+  return 结果.status === 'rejected' && 是401原因(结果.reason);
 }
 
 /**
@@ -143,7 +147,12 @@ async function 运行角色水合核(
   const 读解读中 = 后端.读取Agent规则提案列表(role, 'interpreting');
   const 读就绪 = 后端.读取Agent规则提案列表(role, 'ready');
 
-  const 规则落点 = await 落定(读规则);
+  // 落定 即刻挂上拒绝处理器：快 Proposal 读在 Rule 还在飞时拒绝，也不产生 unhandledrejection。
+  const 规则落定 = 落定(读规则);
+  const 解读中落定 = 落定(读解读中);
+  const 就绪落定 = 落定(读就绪);
+
+  const 规则落点 = await 规则落定;
   if (仍是当前会话(deps, subjectId, generation)) {
     if (规则落点.status === 'fulfilled') {
       const 规则们 = 规则落点.value;
@@ -159,8 +168,8 @@ async function 运行角色水合核(
     }
   }
 
-  const 解读落点 = await 落定(读解读中);
-  const 就绪落点 = await 落定(读就绪);
+  const 解读落点 = await 解读中落定;
+  const 就绪落点 = await 就绪落定;
   if (仍是当前会话(deps, subjectId, generation)) {
     if (解读落点.status === 'fulfilled' && 就绪落点.status === 'fulfilled') {
       // ready 后到：同 ID 冲突时以就绪视图为准（interpreting 是无正文的早期形状）
@@ -250,6 +259,16 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     // mutation 本体已成功、会话却在读回执途中过期时，必须统一清账号，
     // 不能留下 已登录=true 而两个 P6 阶段停在 失败 的撕裂态。
     if (结果.some(是401落败)) 清账号状态(账号清理依赖);
+    // 非 401 的 follow-up 刷新失败不能无声吞掉：已 成功 的域按 §6 不降级，页面看着正常，
+    // 但用户没有任何信号也就没有重试入口 —— 提示第一份非 401 拒绝（401 已在上面统一
+    // 清账号，不再重复提示）。首次挂载走 水合Agent规则角色数据，由 会话操作 呈现其拒绝，
+    // 不经过这里，不存在双弹。
+    for (const 落点 of 结果) {
+      if (落点.status === 'rejected' && !是401原因(落点.reason)) {
+        轻提示(取Agent规则错误文案(落点.reason));
+        break;
+      }
+    }
     return 结果;
   }
 
@@ -439,8 +458,10 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     if (需要对账(错误)) {
       try {
         await 对账();
-      } catch {
-        // 恢复动作自身的失败不能顶替原始错误
+      } catch (恢复错误) {
+        // 恢复动作自身的失败不能顶替原始错误；但恢复读撞上 401 = 会话已失效，
+        // 必须走统一登出清理（与 401 扫描同口径），不能顶着已登录壳吞掉。
+        if (是401原因(恢复错误)) 清账号状态(账号清理依赖);
       }
     }
     throw 错误;
@@ -448,14 +469,20 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
 
   /** 把响应中的单条 Rule 并进 raw 快照并同步投影页面数组。 */
   function 并入单条规则(规则: BFFAgent规则, role: BFF角色): void {
-    const 表 = role === 'candidate'
-      ? { ...后端状态引用.current.候选规则快照, [规则.rule_id]: 规则 }
-      : { ...后端状态引用.current.招聘规则快照, [规则.rule_id]: 规则 };
+    // 快照表在函数式更新器内从 旧 构建（同 并入单个提案）：ref 只在渲染提交后刷新，
+    // 同帧两条不同规则的并入若都从 ref 取整表，先落地的新版本会被后落地的覆盖回去。
     设后端状态((旧) => ({
       ...旧,
-      ...(role === 'candidate' ? { 候选规则快照: 表 } : { 招聘规则快照: 表 }),
+      ...(role === 'candidate'
+        ? { 候选规则快照: { ...旧.候选规则快照, [规则.rule_id]: 规则 } }
+        : { 招聘规则快照: { ...旧.招聘规则快照, [规则.rule_id]: 规则 } }),
     }));
-    发布规则投影(Object.values(表), role);
+    // 投影另用「此刻 ref + 本条规则」拼整表（同步可得，唯一来源仍是更新器里的 旧）：
+    // 投影是派生 UI，Provider 的派生 effect 会从已提交 state 重算纠回，这里只管让行尽快可见。
+    const 投影表 = role === 'candidate'
+      ? { ...后端状态引用.current.候选规则快照, [规则.rule_id]: 规则 }
+      : { ...后端状态引用.current.招聘规则快照, [规则.rule_id]: 规则 };
+    发布规则投影(Object.values(投影表), role);
   }
 
   /**
@@ -639,6 +666,9 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     const subjectId = 主体标识引用.current ?? '';
     const generation = 会话代际.current;
     try {
+      // 终端操作发送前自增提案代际：轮询/恢复捕获的旧单卡 GET 晚于收口落地时，
+      // 过不了 提案响应仍新鲜 的检查，不能把 ready/interpreting 回执盖回已收口的卡。
+      推进提案代际(proposalId);
       await 后端.接受Agent规则提案(role, proposalId);
       if (subjectId && 仍是当前会话(deps, subjectId, generation)) {
         // 接受后必须看权威 Rules：跑完整链路（顺便清掉 actionable 里的这张卡）
@@ -666,6 +696,8 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     const subjectId = 主体标识引用.current ?? '';
     const generation = 会话代际.current;
     try {
+      // 同 接受Agent规则提案：发送前自增提案代际，压掉在飞的旧单卡 GET
+      推进提案代际(proposalId);
       const 回执 = await 后端.放弃Agent规则提案(role, proposalId);
       if (!subjectId || !仍是当前会话(deps, subjectId, generation)) return;
       if (回执.state === 'dismissed') 移除提案(proposalId, role);

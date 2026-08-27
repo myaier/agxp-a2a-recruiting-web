@@ -75,6 +75,9 @@ export default function 企业代理设置() {
   const [卡忙编号, 设卡忙编号] = useState<string | null>(null);
   // failed 卡的本地关闭：提案表里仍是 failed，页面先收起，原草稿保留给用户再次明确提交
   const [已关失败卡, 设已关失败卡] = useState<string[]>([]);
+  // §7.3：公开的 Proposal DTO 不带正文 —— 创建成功后先把原草稿寄存在页面本地，
+  // 提案翻 failed 且用户关闭失败卡时原样还原；提案收口（接受/放弃）时清掉寄存。
+  const [失败草稿们, 设失败草稿们] = useState<Record<string, string>>({});
 
   // 返回栏右侧的「N 条生效」= 企业规则里 生效 为 true 的条数（开关联动；
   // Backend 只在 rules 水合成功后显示，首次成功前不出 Mock 计数）
@@ -111,7 +114,11 @@ export default function 企业代理设置() {
     if (!内容 || 提交中) return;
     设提交中(true);
     try {
-      await 操作.创建Agent规则提案({ 文本: 内容 });
+      const 回执编号 = await 操作.创建Agent规则提案({ 文本: 内容 });
+      // 成功才寄存草稿并收起输入行；失败一律保留现场，不伪造成功
+      if (回执编号) {
+        设失败草稿们((旧) => ({ ...旧, [回执编号]: 内容 }));
+      }
       设新规则文本('');
       设添加中(false);
     } catch (错误) {
@@ -121,11 +128,30 @@ export default function 企业代理设置() {
     }
   };
 
+  // 提案收口/关闭失败时清寄存：不留跨提案的残留草稿
+  const 清失败草稿 = (编号: string) => {
+    设失败草稿们((旧) => (编号 in 旧
+      ? Object.fromEntries(Object.entries(旧).filter(([键]) => 键 !== 编号))
+      : 旧));
+  };
+
+  // failed 卡的关闭：提案 DTO 没有正文，按寄存把原草稿还原进输入行供再次明确提交
+  const 关闭失败卡 = (编号: string) => {
+    const 寄存 = 失败草稿们[编号];
+    if (寄存) {
+      设新规则文本(寄存);
+      设添加中(true);
+      清失败草稿(编号);
+    }
+    设已关失败卡((旧) => [...旧, 编号]);
+  };
+
   // 接受/放弃：await 操作层，失败由 P6 文案收口；操作层负责恢复与权威刷新
   const 处理接受 = async (编号: string) => {
     设卡忙编号(编号);
     try {
       await 操作.接受Agent规则提案(编号);
+      清失败草稿(编号);
     } catch (错误) {
       轻提示(取Agent规则错误文案(错误));
     } finally {
@@ -136,6 +162,7 @@ export default function 企业代理设置() {
     设卡忙编号(编号);
     try {
       await 操作.放弃Agent规则提案(编号);
+      清失败草稿(编号);
     } catch (错误) {
       轻提示(取Agent规则错误文案(错误));
     } finally {
@@ -196,7 +223,7 @@ export default function 企业代理设置() {
                   忙={卡忙编号 === 提案.proposal_id}
                   接受={() => { void 处理接受(提案.proposal_id); }}
                   放弃={() => { void 处理放弃(提案.proposal_id); }}
-                  关闭失败={() => 设已关失败卡((旧) => [...旧, 提案.proposal_id])}
+                  关闭失败={() => 关闭失败卡(提案.proposal_id)}
                 />
               ))}
             </div>

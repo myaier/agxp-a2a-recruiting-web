@@ -81,6 +81,9 @@ export default function 规则库() {
   const [卡忙编号, 设卡忙编号] = useState<string | null>(null);
   // failed 卡的本地关闭：提案表里仍是 failed，页面先收起，原草稿保留给用户再次明确提交
   const [已关失败卡, 设已关失败卡] = useState<string[]>([]);
+  // §7.3：公开的 Proposal DTO 不带正文/范围 —— 创建成功后先把原草稿寄存在页面本地，
+  // 提案翻 failed 且用户关闭失败卡时原样还原；提案收口（接受/放弃）时清掉寄存。
+  const [失败草稿们, 设失败草稿们] = useState<Record<string, { 文本: string; 作用域: BFFAgent规则作用域 }>>({});
 
   // 权威意向候选 = 求职意向表 ∩ 后端意向快照（archived 排除）；孤儿意向规则由映射层整条省略，
   // 绝不并入全局，也不出现在范围选择里
@@ -127,8 +130,11 @@ export default function 规则库() {
       : { type: 'intention', intention_id: 选范围 };
     设提交中(true);
     try {
-      await 操作.创建Agent规则提案({ 文本: 内容, 作用域 });
-      // 成功才收起输入行；idempotency_conflict 等失败一律保留现场，不伪造成功
+      const 回执编号 = await 操作.创建Agent规则提案({ 文本: 内容, 作用域 });
+      // 成功才寄存草稿并收起输入行；idempotency_conflict 等失败一律保留现场，不伪造成功
+      if (回执编号) {
+        设失败草稿们((旧) => ({ ...旧, [回执编号]: { 文本: 内容, 作用域 } }));
+      }
       设新规则文本('');
       设选范围('');
       设添加中(false);
@@ -137,6 +143,25 @@ export default function 规则库() {
     } finally {
       设提交中(false);
     }
+  };
+
+  // 提案收口/关闭失败时清寄存：不留跨提案的残留草稿
+  const 清失败草稿 = (编号: string) => {
+    设失败草稿们((旧) => (编号 in 旧
+      ? Object.fromEntries(Object.entries(旧).filter(([键]) => 键 !== 编号))
+      : 旧));
+  };
+
+  // failed 卡的关闭：提案 DTO 没有正文，按寄存把原草稿（含范围）还原进输入行供再次明确提交
+  const 关闭失败卡 = (编号: string) => {
+    const 寄存 = 失败草稿们[编号];
+    if (寄存) {
+      设新规则文本(寄存.文本);
+      设选范围(寄存.作用域.type === 'intention' ? 寄存.作用域.intention_id : '');
+      设添加中(true);
+      清失败草稿(编号);
+    }
+    设已关失败卡((旧) => [...旧, 编号]);
   };
 
   // 编辑保存 = 替换提案：旧 Rule 在用户「确认规则」前继续显示
@@ -175,6 +200,7 @@ export default function 规则库() {
     设卡忙编号(编号);
     try {
       await 操作.接受Agent规则提案(编号);
+      清失败草稿(编号);
     } catch (错误) {
       轻提示(取Agent规则错误文案(错误));
     } finally {
@@ -185,6 +211,7 @@ export default function 规则库() {
     设卡忙编号(编号);
     try {
       await 操作.放弃Agent规则提案(编号);
+      清失败草稿(编号);
     } catch (错误) {
       轻提示(取Agent规则错误文案(错误));
     } finally {
@@ -234,7 +261,7 @@ export default function 规则库() {
                   忙={卡忙编号 === 提案.proposal_id}
                   接受={() => { void 处理接受(提案.proposal_id); }}
                   放弃={() => { void 处理放弃(提案.proposal_id); }}
-                  关闭失败={() => 设已关失败卡((旧) => [...旧, 提案.proposal_id])}
+                  关闭失败={() => 关闭失败卡(提案.proposal_id)}
                 />
               ))}
             </div>

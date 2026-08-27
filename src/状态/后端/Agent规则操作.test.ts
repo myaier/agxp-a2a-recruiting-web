@@ -6,6 +6,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BFF角色 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
+import { 轻提示 } from '../../组件/轻提示';
 import {
   BFF主体样本,
   BFFAgent规则就绪提案样本,
@@ -20,6 +21,9 @@ import { 归约, type 动作 } from '../应用状态';
 import type { 页面意向快照 } from '../../数据/招聘数据源类型';
 import type { 后端操作依赖, 后端状态 } from './类型';
 import { 创建Agent规则操作, 取Agent规则错误文案, 水合Agent规则角色数据 } from './Agent规则操作';
+
+// 轻提示 是纯 DOM 单例：操作层测试只断言「是否提示、提示什么」，桩掉 DOM 副作用
+vi.mock('../../组件/轻提示', () => ({ 轻提示: vi.fn() }));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -161,6 +165,23 @@ describe('创建Agent规则操作 · 权威提交与不做乐观追加', () => {
     await expect(操作.切换Agent规则(BFFAgent规则样本.rule_id, 'pause')).rejects.toMatchObject({ code: 'version_conflict' });
     expect(环境.数据源.修改Agent规则).toHaveBeenCalledTimes(1);
     expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(1);
+  });
+
+  it('对账读取遇 401 也统一清账号，原始错误照抛不顶替', async () => {
+    // mutation 409 → 对账重读权威 Rules → 恢复读自己撞上会话过期：
+    // 恢复失败不顶替原始错误，但 401 必须走统一登出清理，不能顶着已登录壳吞掉。
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    vi.mocked(环境.数据源.修改Agent规则).mockRejectedValue(new BFF错误(409, 'version_conflict', 'conflict'));
+    vi.mocked(环境.数据源.读取Agent规则).mockRejectedValue(new BFF错误(401, 'invalid_session', '过期'));
+    const 操作 = 创建Agent规则操作(环境.deps);
+    await expect(操作.切换Agent规则(BFFAgent规则样本.rule_id, 'pause'))
+      .rejects.toMatchObject({ status: 409 });
+    expect(环境.数据源.修改Agent规则).toHaveBeenCalledTimes(1);
+    const 最新 = 环境.最新后端状态();
+    expect(最新.已登录).toBe(false);
+    expect(最新.主体).toBeNull();
+    expect(环境.deps.主体标识引用.current).toBeNull();
+    expect(环境.deps.会话代际.current).toBe(8);
   });
 
   it('切换成功用响应 Rule 并入原始快照并投影页面数组，不改其它行', async () => {
@@ -710,6 +731,36 @@ describe('水合Agent规则角色数据 与 刷新Agent规则', () => {
     expect(最新.Agent规则水合.candidate.rules).not.toBe('成功');
   });
 
+  it('同帧两条规则并入都从函数式更新器的 旧 构建整表（ref 渲染滞后不丢先落的版本）', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩(), 角色: 'recruiter' });
+    const 甲 = { ...BFFAgent规则样本, rule_id: 'rul_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', version: 1 };
+    const 乙 = { ...BFFAgent规则样本, rule_id: 'rul_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', version: 1 };
+    // 渲染滞后镜像：设后端状态 只更新草稿，ref 读已提交值；赋值 已提交=草稿 模拟一次渲染落定
+    let 已提交: 后端状态 = {
+      ...环境.deps.后端状态引用.current,
+      招聘规则快照: { [甲.rule_id]: 甲, [乙.rule_id]: 乙 },
+    };
+    let 草稿 = 已提交;
+    const 滞后依赖 = {
+      ...环境.deps,
+      设后端状态: (更新: (旧: 后端状态) => 后端状态) => { 草稿 = 更新(草稿); },
+      后端状态引用: {
+        get current() { return 已提交; },
+        set current(值: 后端状态) { 已提交 = 值; 草稿 = 值; },
+      },
+    };
+    vi.mocked(环境.数据源.修改Agent规则).mockImplementation(async (_role: BFF角色, ruleId: string) =>
+      ruleId === 甲.rule_id ? { ...甲, version: 2 } : { ...乙, version: 2 });
+    const 操作 = 创建Agent规则操作(滞后依赖 as unknown as 后端操作依赖);
+    // 两次 toggle 在同一帧内先后结算：中间没有渲染提交，ref 一直停在旧表
+    await 操作.切换Agent规则(甲.rule_id, 'pause');
+    await 操作.切换Agent规则(乙.rule_id, 'pause');
+    已提交 = 草稿; // 渲染落定
+    const 快照 = 已提交.招聘规则快照;
+    expect(快照[甲.rule_id]?.version).toBe(2);
+    expect(快照[乙.rule_id]?.version).toBe(2);
+  });
+
   it('迟到 GET 不能覆盖终端结果：提案代际新读胜过旧读', async () => {
     const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
     const 迟到GET = deferred<typeof BFFAgent规则解释中提案样本>();
@@ -737,6 +788,51 @@ describe('水合Agent规则角色数据 与 刷新Agent规则', () => {
     // 这时最老的迟到 GET 才落地：interpreting 回执不得复活被移除的卡
     迟到GET.resolve(BFFAgent规则解释中提案样本);
     await 迟到读;
+    expect(环境.最新后端状态().候选规则提案).toEqual({});
+  });
+
+  // finding-r1：终端操作（accept/dismiss）发送前必须自增提案代际 —— 轮询/恢复捕获的
+  // 旧单卡 GET 晚于收口落地时过不了代际检查，不能把 ready/interpreting 回执盖回已移除的卡。
+  it('accept 发送前推进提案代际：旧轮单卡 GET 的 ready 回执不能复活已收口的卡', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    const 旧GET = deferred<typeof BFFAgent规则就绪提案样本>();
+    vi.mocked(环境.数据源.读取Agent规则提案).mockReturnValueOnce(旧GET.promise as never);
+    vi.mocked(环境.数据源.接受Agent规则提案).mockResolvedValue(BFFAgent规则样本);
+    vi.mocked(环境.数据源.读取Agent规则).mockResolvedValue([BFFAgent规则样本]);
+    环境.deps.后端状态引用.current = {
+      ...环境.deps.后端状态引用.current,
+      候选规则提案: { [BFFAgent规则就绪提案样本.proposal_id]: BFFAgent规则就绪提案样本 },
+    };
+    const 操作 = 创建Agent规则操作(环境.deps);
+    // 轮询式的单卡 GET 先起跑（捕获旧代际）
+    const 轮询 = 操作.刷新Agent规则提案(BFFAgent规则就绪提案样本.proposal_id).catch((错误: unknown) => 错误);
+    await vi.waitFor(() => expect(环境.数据源.读取Agent规则提案).toHaveBeenCalledTimes(1));
+    // accept 成功并经完整刷新收口：actionable 表清空
+    await 操作.接受Agent规则提案(BFFAgent规则就绪提案样本.proposal_id);
+    expect(环境.最新后端状态().候选规则提案).toEqual({});
+    // 旧 GET 这时才落地：ready 回执不得把卡重新插回
+    旧GET.resolve(BFFAgent规则就绪提案样本);
+    await 轮询;
+    expect(环境.最新后端状态().候选规则提案).toEqual({});
+  });
+
+  it('dismiss 发送前推进提案代际：旧轮单卡 GET 的 ready 回执不能复活已移除的卡', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    const 旧GET = deferred<typeof BFFAgent规则就绪提案样本>();
+    vi.mocked(环境.数据源.读取Agent规则提案).mockReturnValueOnce(旧GET.promise as never);
+    vi.mocked(环境.数据源.放弃Agent规则提案)
+      .mockResolvedValue({ ...BFFAgent规则就绪提案样本, state: 'dismissed' as const });
+    环境.deps.后端状态引用.current = {
+      ...环境.deps.后端状态引用.current,
+      候选规则提案: { [BFFAgent规则就绪提案样本.proposal_id]: BFFAgent规则就绪提案样本 },
+    };
+    const 操作 = 创建Agent规则操作(环境.deps);
+    const 轮询 = 操作.刷新Agent规则提案(BFFAgent规则就绪提案样本.proposal_id).catch((错误: unknown) => 错误);
+    await vi.waitFor(() => expect(环境.数据源.读取Agent规则提案).toHaveBeenCalledTimes(1));
+    await 操作.放弃Agent规则提案(BFFAgent规则就绪提案样本.proposal_id);
+    expect(环境.最新后端状态().候选规则提案).toEqual({});
+    旧GET.resolve(BFFAgent规则就绪提案样本);
+    await 轮询;
     expect(环境.最新后端状态().候选规则提案).toEqual({});
   });
 
@@ -795,6 +891,33 @@ describe('水合Agent规则角色数据 与 刷新Agent规则', () => {
     expect(环境.最新后端状态().已登录).toBe(false);
     expect(环境.deps.主体标识引用.current).toBeNull();
     expect(环境.deps.会话代际.current).toBe(8);
+  });
+
+  it('accept 成功后的 follow-up 刷新非 401 失败也轻提示，已成功的域保持成功与旧快照', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    // 已 成功 的底座：刷新读被拒不得降级，但也不能无声吞掉 —— 用户得有重试的由头
+    环境.deps.后端状态引用.current = {
+      ...环境.deps.后端状态引用.current,
+      候选规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+      候选规则提案: { [BFFAgent规则就绪提案样本.proposal_id]: BFFAgent规则就绪提案样本 },
+      Agent规则水合: {
+        candidate: { rules: '成功', proposals: '成功' },
+        recruiter: { rules: '未开始', proposals: '未开始' },
+      },
+    };
+    vi.mocked(环境.数据源.接受Agent规则提案).mockResolvedValue(BFFAgent规则样本);
+    vi.mocked(环境.数据源.读取Agent规则).mockResolvedValue([BFFAgent规则样本]);
+    vi.mocked(环境.数据源.读取Agent规则提案列表)
+      .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', '抖'));
+    const 操作 = 创建Agent规则操作(环境.deps);
+    await 操作.接受Agent规则提案(BFFAgent规则就绪提案样本.proposal_id);
+    // 503 走通用映射的冻结文案：用户由此知道刷新没成，可以点「规则加载失败，重试」
+    expect(轻提示).toHaveBeenCalledWith('后端服务暂时不可用，请稍后重试');
+    // 不降级：两个阶段保持 成功，已提交的快照行与卡片原样可见
+    const 最新 = 环境.最新后端状态();
+    expect(最新.Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' });
+    expect(最新.候选规则快照[BFFAgent规则样本.rule_id]).toEqual(BFFAgent规则样本);
+    expect(最新.已登录).toBe(true);
   });
 
   it('刷新Agent规则提案 读到 accepted 后的收口刷新遇 401 也统一清账号', async () => {

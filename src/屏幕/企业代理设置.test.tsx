@@ -407,6 +407,33 @@ describe('企业代理设置 · Backend 招聘方页', () => {
     expect(screen.getByText('1 条生效')).toBeTruthy();
   });
 
+  it('closing a failed card restores the submitted draft text', async () => {
+    const user = userEvent.setup();
+    renderRecruiterRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
+    await 挂载到稳定();
+    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.type(screen.getByPlaceholderText(/到岗超过/), '竞对在职候选人不接触');
+    await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
+    // 创建成功即收起输入行：草稿先寄存在页面，等提案终态裁决
+    await waitFor(() => expect(screen.queryByPlaceholderText(/到岗超过/)).toBeNull());
+    // 提案翻转为 failed：失败卡上屏
+    act(() => {
+      镜头.覆盖 = {
+        ...镜头.覆盖,
+        招聘规则提案: {
+          [BFFAgent规则解释中提案样本.proposal_id]: { ...BFFAgent规则解释中提案样本, state: 'failed' as const },
+        },
+      };
+      镜头.版本 += 1;
+      for (const 通知 of 镜头.订阅们) 通知();
+    });
+    expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '关闭' }));
+    // §7.3：关闭后原草稿回到输入行，供再次明确提交
+    expect((screen.getByPlaceholderText(/到岗超过/) as HTMLInputElement).value).toBe('竞对在职候选人不接触');
+    expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+  });
+
   it('surfaces all seven frozen P6 error copies verbatim', async () => {
     const user = userEvent.setup();
     const 视图 = renderRecruiterRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });

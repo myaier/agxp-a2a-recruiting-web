@@ -470,6 +470,90 @@ describe('规则库 · Backend 候选页', () => {
     expect(screen.getByRole('button', { name: /手动添加规则/ })).toBeTruthy();
   });
 
+  it('closing a failed card restores the submitted draft and scope for resubmission', async () => {
+    const user = userEvent.setup();
+    renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
+    await 挂载到稳定();
+    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.selectOptions(screen.getByLabelText('规则范围'), 意向编号);
+    await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
+    await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
+    // 创建成功即收起输入行：草稿先寄存在页面，等提案终态裁决
+    await waitFor(() => expect(screen.queryByPlaceholderText('例：不接受大小周的岗位直接过滤')).toBeNull());
+    // 提案翻转为 failed：失败卡上屏
+    act(() => {
+      镜头.覆盖 = {
+        ...镜头.覆盖,
+        候选规则提案: {
+          [BFFAgent规则解释中提案样本.proposal_id]: { ...BFFAgent规则解释中提案样本, state: 'failed' as const },
+        },
+      };
+      镜头.版本 += 1;
+      for (const 通知 of 镜头.订阅们) 通知();
+    });
+    expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '关闭' }));
+    // §7.3：关闭后原草稿（含范围）回到输入行，供再次明确提交
+    expect((screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤') as HTMLInputElement).value).toBe('只接受双休');
+    expect((screen.getByLabelText('规则范围') as HTMLSelectElement).value).toBe(意向编号);
+    expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+  });
+
+  it('accept clears the stored draft: a later failed card for the same ID does not resurrect it', async () => {
+    const user = userEvent.setup();
+    renderCandidateRules({
+      rulesStage: '成功', proposalsStage: '成功', initialized: true,
+      调桩: (桩) => {
+        // accept 之后的完整水合读到一份新权威规则：投影上屏即「完整刷新已收口」的实证
+        桩.接受Agent规则提案.mockImplementation(async () => {
+          桩.读取Agent规则.mockResolvedValue([{ ...BFFAgent规则样本, display_text: '权威刷新后的规则' }]);
+          return BFFAgent规则样本;
+        });
+      },
+    });
+    await 挂载到稳定();
+    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
+    await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
+    await waitFor(() => expect(screen.queryByPlaceholderText('例：不接受大小周的岗位直接过滤')).toBeNull());
+    // 提案变成 ready：确认规则 走真实操作层成功收口
+    act(() => {
+      镜头.覆盖 = {
+        ...镜头.覆盖,
+        候选规则提案: {
+          [BFFAgent规则解释中提案样本.proposal_id]: {
+            ...BFFAgent规则解释中提案样本,
+            state: 'ready' as const,
+            normalized_text: '归一化后的草稿',
+            consequence: 'mixed' as const,
+          },
+        },
+      };
+      镜头.版本 += 1;
+      for (const 通知 of 镜头.订阅们) 通知();
+    });
+    await user.click(screen.getByRole('button', { name: '确认规则' }));
+    // 完整水合收口完成的实证：新权威规则经投影上屏
+    await waitFor(() => expect(screen.getByText('权威刷新后的规则')).toBeTruthy());
+    await 挂载到稳定();
+    // 同一提案再翻 failed：寄存已随 accept 清掉，关闭失败卡不得再还原草稿
+    act(() => {
+      镜头.覆盖 = {
+        ...镜头.覆盖,
+        候选规则提案: {
+          [BFFAgent规则解释中提案样本.proposal_id]: { ...BFFAgent规则解释中提案样本, state: 'failed' as const },
+        },
+      };
+      镜头.版本 += 1;
+      for (const 通知 of 镜头.订阅们) 通知();
+    });
+    expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '关闭' }));
+    // 寄存已清：输入行不弹开，草稿不复活
+    expect(screen.queryByPlaceholderText('例：不接受大小周的岗位直接过滤')).toBeNull();
+    expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+  });
+
   it('count only reflects active Rules and paused rows stay on the list', () => {
     renderCandidateRules({
       rulesStage: '成功', proposalsStage: '成功', initialized: true,
