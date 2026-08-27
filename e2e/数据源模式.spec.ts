@@ -270,6 +270,9 @@ interface P1C岗位形 {
   requirements: string;
   keywords: string[];
   private_screening_preferences: string;
+  // P3：四员硬性条件是 Owner Job 的必备成员 —— 前端按 exact key set + 闭合档位 fail-closed 校验，
+  // 所有 Owner Job fixture（GET 列表 / POST / PATCH 应答）都必须带完整四员，缺员即水合拒绝。
+  hard_requirements: P3硬性条件形;
   status: 'active' | 'archived';
   revision: number;
   published_at: string;
@@ -348,6 +351,7 @@ function P1C岗位(覆盖: Partial<P1C岗位形> = {}): P1C岗位形 {
     requirements: 'Fixture 岗位要求',
     keywords: [],
     private_screening_preferences: '',
+    hard_requirements: P3全未知硬性条件(),
     status: 'active',
     revision: 1,
     published_at: '2026-08-25T00:00:00Z',
@@ -414,19 +418,175 @@ const 一像素PNG = Buffer.from(
   'base64',
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// P3 隐私域 fixture（Task 6）：/api/v1/me/privacy 整读与稀疏补丁、组织屏蔽与解除、
+// 可屏蔽组织搜索。所有标记值只存在于 fixture（明显的合成编号），断言页面展示它们
+// 即证明渲染来自 HTTP 而非 Mock。每个请求的 path/method/body/If-Match/Idempotency-Key
+// 都经 请求拦截 记录，密钥只在测试进程内比对，不进日志。
+// ─────────────────────────────────────────────────────────────────────────────
+
+const P3标记 = {
+  /** 组织搜索命中（自动来源屏蔽用）——同一族三个，第一页两枚便于验证游标 */
+  可屏蔽组织甲: 'Fixture 云衢关联甲',
+  可屏蔽组织甲法定: '上海 Fixture 云衢关联甲有限公司',
+  可屏蔽组织乙: 'Fixture 云衢关联乙',
+  可屏蔽组织乙法定: '上海 Fixture 云衢关联乙有限公司',
+  可屏蔽组织丙: 'Fixture 云衢关联丙',
+  可屏蔽组织丙法定: '上海 Fixture 云衢关联丙有限公司',
+  /** 手动添加搜索族 */
+  手动组织甲: 'Fixture 磐石信息',
+  手动组织甲法定: '上海 Fixture 磐石信息有限公司',
+  /** 停用组织：strict 口径绝不进搜索结果，但允许出现在既有屏蔽里 */
+  停用组织: 'Fixture 停用旧东家',
+  停用组织法定: '上海 Fixture 停用旧东家有限公司',
+  冲突披露值显示: '一直允许',
+} as const;
+
+/** BFF硬性条件的 fixture 形（四员闭合，缺一即服务端契约漂移） */
+type P3硬性档 = 'required' | 'not_required' | 'unknown';
+
+interface P3硬性条件形 {
+  alternate_weekend_work: P3硬性档;
+  outsourcing_only: P3硬性档;
+  onsite_only: P3硬性档;
+  frequent_travel: P3硬性档;
+}
+
+/** 服务端存储口径的四员兜底：全部 未说明（unknown），只许 fixture 合成，客户端解码不做兜底 */
+const P3全未知硬性条件 = (): P3硬性条件形 => ({
+  alternate_weekend_work: 'unknown',
+  outsourcing_only: 'unknown',
+  onsite_only: 'unknown',
+  frequent_travel: 'unknown',
+});
+
+interface P3屏蔽形 {
+  organization_id: string;
+  organization_display_name: string;
+  organization_status: 'active' | 'suspended';
+  source: 'current_employer' | 'related_organization' | 'manual';
+  created_at: string;
+}
+
+interface P3隐私形 {
+  employer_privacy_enabled: boolean;
+  disclosure_preferences: {
+    current_employer: 'never' | 'resume_submission' | 'anonymous';
+    education: 'never' | 'resume_submission' | 'anonymous';
+    portfolio_links: 'never' | 'resume_submission' | 'anonymous';
+  };
+  organization_blocks: P3屏蔽形[];
+  revision: number;
+  updated_at: string;
+}
+
+/** 组织库里的一项：搜索池与屏蔽元数据共用（搜索只回 active） */
+interface P3组织库项形 {
+  display_name: string;
+  legal_name: string;
+  status: 'active' | 'suspended';
+}
+
+/**
+ * GET /me/privacy 的脚本队列项：
+ *  - 无项 → 按当前权威视图即刻应答；
+ *  - { 保持 } → 本次请求挂起，测试调 兑现() 放行后再按当时视图应答（口径对齐安全重读语义）；
+ *  - { 响应 } → 强制以这份（可能过时的）快照应答，制造跨会话陈旧响应。
+ */
+interface P3隐私读取脚本形 {
+  /** 本次请求先挂起，直到这个 promise 兑现后再按当时视图应答 */
+  保持?: Promise<void>;
+  响应?: P3隐私形;
+}
+
+/** 单个搜索词的行为脚本（竞态用例）：延迟应答 + 固定项目/游标；未命中脚本的词走组织池 */
+interface P3搜索脚本形 {
+  词: string;
+  延迟毫秒?: number;
+  items: { organization_id: string; display_name: string; legal_name: string }[];
+  next_cursor: string | null;
+}
+
+/** P3 隐私域可变 fixture：测试自持一份，安装路由后 handler 与测试共享同一对象 */
+interface P3隐私fixture形 {
+  /** 权威视图（live）：handler 直读直写；测试也可在两步之间直接改它模拟他端变更 */
+  视图: P3隐私形;
+  /** 组织搜索池（key = organization_id）；strict active 搜索只回 active 项 */
+  组织库: Record<string, P3组织库项形>;
+  /** GET privacy 脚本队列（FIFO，逐次消费） */
+  get脚本: P3隐私读取脚本形[];
+  /** 搜索行为脚本（按词匹配一次性消费） */
+  搜索脚本: P3搜索脚本形[];
+  /** 已受理的组织搜索（请求到达即记；竞态用例轮询「已发出」） */
+  搜索完成: { q: string; cursor: string | null }[];
+  /** 已应答的组织搜索（应答回写后记；竞态用例轮询「旧响应已终结」） */
+  搜索已答: { q: string; cursor: string | null }[];
+  /** 写入计数（不含 hydration 读），零基线由各用例自行快照增量 */
+  统计: { 补丁: number; 屏蔽写入: number; 解除写入: number };
+  /** 幂等键 → 回执 登记表：同键重放回原 receipt（200） */
+  幂等登记: Map<string, { receipt: unknown; 块: P3屏蔽形 }>;
+}
+
+function P3隐私fixture(覆盖: Partial<P3隐私形> = {}): P3隐私fixture形 {
+  const 初始视图: P3隐私形 = {
+    employer_privacy_enabled: true,
+    disclosure_preferences: {
+      current_employer: 'never',
+      education: 'resume_submission',
+      portfolio_links: 'anonymous',
+    },
+    organization_blocks: [],
+    revision: 1,
+    updated_at: '2026-08-26T00:00:00Z',
+    ...覆盖,
+  };
+  return {
+    视图: 初始视图,
+    组织库: {},
+    get脚本: [],
+    搜索脚本: [],
+    搜索完成: [],
+    搜索已答: [],
+    统计: { 补丁: 0, 屏蔽写入: 0, 解除写入: 0 },
+    幂等登记: new Map(),
+  };
+}
+
+/** 可屏蔽组织的默认搜索池：同族三枚 active（首页两枚留游标）+ 一枚手动族 + 一枚停用 */
+function P3默认组织库(): Record<string, P3组织库项形> {
+  return {
+    'org-fixture-p3-block-a': { display_name: P3标记.可屏蔽组织甲, legal_name: P3标记.可屏蔽组织甲法定, status: 'active' },
+    'org-fixture-p3-block-b': { display_name: P3标记.可屏蔽组织乙, legal_name: P3标记.可屏蔽组织乙法定, status: 'active' },
+    'org-fixture-p3-block-c': { display_name: P3标记.可屏蔽组织丙, legal_name: P3标记.可屏蔽组织丙法定, status: 'active' },
+    'org-fixture-p3-manual-a': { display_name: P3标记.手动组织甲, legal_name: P3标记.手动组织甲法定, status: 'active' },
+    'org-fixture-p3-suspended': { display_name: P3标记.停用组织, legal_name: P3标记.停用组织法定, status: 'suspended' },
+  };
+}
+
+/** 发送前克隆视图：测试随后改权威对象不应影响已在途响应体 */
+function P3克隆视图(视图: P3隐私形): P3隐私形 {
+  return {
+    ...视图,
+    disclosure_preferences: { ...视图.disclosure_preferences },
+    organization_blocks: 视图.organization_blocks.map((块) => ({ ...块 })),
+  };
+}
+
 interface BFF路由选项 {
   记录目录请求: (path: string) => void;
   登录尝试id: string;
   /** 请求拦截：每次 /api/v1 请求触发（headers 可用于断言 If-Match / Idempotency-Key 等头） */
   请求拦截?: (请求: 拦截请求形) => void;
   /** 自定义响应覆盖：key = `METHOD path`；返回 undefined 表示放行给内置 fixture 应答 */
-  覆盖?: Record<string, (body: unknown) => { status: number; 响应: unknown } | undefined>;
+  覆盖?: Record<string, (body: unknown) => { status: number; 响应: unknown; 头?: Record<string, string> } | undefined>;
   /** GET /api/v1/session 返回 200（已登录）还是 401（未登录）。缺省 200（自动登录）*/
   会话已登录?: boolean;
   /** P1C：组织域 fixture（profile / affiliations / 公开企业 / 档案与媒体 / 管理员申请 / owner Jobs） */
   招聘组织Fixture?: P1C招聘组织Fixture形;
-  /** 招聘方主体初始 last_used_role：null（缺省）→ 落身份选择页走「我要招人」；'recruiter' → 直接水合进企业主壳 */
-  主体初始角色?: 'recruiter' | null;
+  /** P3：隐私域可变 fixture（me/privacy 整读补丁 / 组织搜索 / 屏蔽与解除）。缺席时这些路由走兜底空信封 */
+  隐私fixture?: P3隐私fixture形;
+  /** 主体初始 last_used_role：null（缺省）→ 落身份选择页；'candidate' → 直入求职主壳；'recruiter' → 直入企业主壳 */
+  主体初始角色?: 'recruiter' | 'candidate' | null;
 }
 
 /** 请求拦截收到的请求投影；multipart 的 metadata 只在测试进程内比对 */
@@ -435,6 +595,8 @@ interface 拦截请求形 {
   method: string;
   body: unknown;
   headers: Record<string, string>;
+  /** URL query 原文（含 ?；组织搜索断言 q/limit/cursor 用） */
+  query?: string;
   /** multipart 请求：part 名按出现顺序 + metadata part 内容（无则 undefined） */
   multipart?: { parts: string[]; metadata?: unknown };
 }
@@ -492,7 +654,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
           { role: 'candidate' as const, status: 'active' as const },
           { role: 'recruiter' as const, status: 'active' as const },
         ],
-        last_used_role: (选项.主体初始角色 ?? null) as 'recruiter' | null,
+        last_used_role: (选项.主体初始角色 ?? null) as 'recruiter' | 'candidate' | null,
       }
     : fixture主体;
 
@@ -549,6 +711,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
       method,
       body,
       headers: 请求.headers(),
+      query: url.search,
       multipart: 部件们
         ? { parts: 部件们.map((件) => 件.name), metadata: 元数据部件 ? 解metadata部件(元数据部件.bytes) : undefined }
         : undefined,
@@ -560,7 +723,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
     const 覆盖key = `${method} ${path}`;
     const 覆盖项 = 选项.覆盖?.[覆盖key]?.(body);
     if (覆盖项) {
-      await route.fulfill({ status: 覆盖项.status, json: 覆盖项.响应 });
+      await route.fulfill({ status: 覆盖项.status, json: 覆盖项.响应, headers: 覆盖项.头 });
       return;
     }
 
@@ -600,6 +763,156 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
       if (主体 !== fixture主体) 主体.last_used_role = (body as { role?: 'recruiter' | null })?.role ?? null;
       await route.fulfill({ status: 200, json: 信封(主体) });
       return;
+    }
+
+    // ── P3 隐私域（隐私 fixture 存在时才应答；缺席走兜底空信封 → strict decode 拒绝，
+    //    正是「Mock 内容不顶替 HTTP」的既有边界）──
+    const P3域 = 选项.隐私fixture ?? null;
+    if (P3域) {
+      // GET 权威整读：脚本队列 FIFO 消费 —— 无项即刻回当前视图；
+      // { 保持 } 先挂起（安全重读在飞的窗口），放行后再按当时视图应答；{ 响应 } 强制回陈旧快照。
+      if (path === '/api/v1/me/privacy' && method === 'GET') {
+        const 脚本项 = P3域.get脚本.shift();
+        if (脚本项?.保持) await 脚本项.保持;
+        await route.fulfill({ status: 200, json: 信封(脚本项?.响应 ? P3克隆视图(脚本项.响应) : P3克隆视图(P3域.视图)) });
+        return;
+      }
+
+      // PATCH 稀疏补丁：quoted If-Match 必须等于当前 revision 的 etag，不符 409 version_conflict；
+      // 成功按成员合并、revision+1，回完整视图。body 只允许服务端拥有的两个成员。
+      if (path === '/api/v1/me/privacy' && method === 'PATCH') {
+        P3域.统计.补丁 += 1;
+        const etag = 请求.headers()['if-match'] ?? '';
+        if (etag !== `"${P3域.视图.revision}"`) {
+          await route.fulfill({ status: 409, json: { error: { type: 'version_conflict', message: '版本冲突' } } });
+          return;
+        }
+        const 补丁 = body as { employer_privacy_enabled?: boolean; disclosure_preferences?: Partial<P3隐私形['disclosure_preferences']> };
+        if (补丁.employer_privacy_enabled !== undefined) {
+          P3域.视图.employer_privacy_enabled = 补丁.employer_privacy_enabled;
+        }
+        if (补丁.disclosure_preferences !== undefined) {
+          P3域.视图.disclosure_preferences = { ...P3域.视图.disclosure_preferences, ...补丁.disclosure_preferences };
+        }
+        P3域.视图.revision += 1;
+        P3域.视图.updated_at = '2026-08-27T00:00:00Z';
+        await route.fulfill({ status: 200, json: 信封(P3克隆视图(P3域.视图)) });
+        return;
+      }
+
+      // GET 可屏蔽组织搜索：strict active（停用组织永不出现）；游标与 query 绑定
+      // （格式 `${q}|${页码}`，跨词/未知游标一律空页）。固定每页 2 条制造翻页游标。
+      if (path === '/api/v1/organizations' && method === 'GET') {
+        const q = (url.searchParams.get('q') ?? '').trim();
+        const 脚本 = P3域.搜索脚本.find((项) => 项.词 === q);
+        if (脚本) {
+          P3域.搜索脚本 = P3域.搜索脚本.filter((项) => 项 !== 脚本);
+          P3域.搜索完成.push({ q, cursor: 脚本.next_cursor });
+          if (脚本.延迟毫秒) await new Promise((resolve) => setTimeout(resolve, 脚本.延迟毫秒));
+          P3域.搜索已答.push({ q, cursor: 脚本.next_cursor });
+          await route.fulfill({ status: 200, json: 信封({ items: 脚本.items.map((项) => ({ ...项 })), next_cursor: 脚本.next_cursor }) });
+          return;
+        }
+        const 游标原文 = url.searchParams.get('cursor') ?? '';
+        let 页码 = 1;
+        let 归属词 = q;
+        if (游标原文 !== '') {
+          const 解码 = Buffer.from(游标原文, 'base64url').toString('utf8');
+          const 分隔 = 解码.lastIndexOf('|');
+          归属词 = 分隔 >= 0 ? 解码.slice(0, 分隔) : ' 不匹配';
+          页码 = Number(分隔 >= 0 ? 解码.slice(分隔 + 1) : NaN);
+        }
+        const 池 = Object.entries(P3域.组织库)
+          .filter(([, 项]) => 项.status === 'active')
+          .filter(([, 项]) => 项.display_name.includes(q))
+          .map(([编号, 项]) => ({ organization_id: 编号, display_name: 项.display_name, legal_name: 项.legal_name }));
+        const 每页 = 2;
+        const 起点 = Number.isInteger(页码) && 页码 > 0 && 归属词 === q ? (页码 - 1) * 每页 : -1;
+        const items = 起点 < 0 ? [] : 池.slice(起点, 起点 + 每页);
+        const next_cursor = 起点 < 0 || 起点 + 每页 >= 池.length ? null : Buffer.from(`${q}|${页码 + 1}`).toString('base64url');
+        P3域.搜索完成.push({ q, cursor: next_cursor });
+        P3域.搜索已答.push({ q, cursor: next_cursor });
+        await route.fulfill({ status: 200, json: 信封({ items, next_cursor }) });
+        return;
+      }
+
+      // POST 屏蔽：If-Match + 非空 Idempotency-Key 必带；组织必须是搜索池里的稳定 ID。
+      // 同键重放或同组织重复都以 200 回原 receipt；新建 201 receipt。
+      if (path === '/api/v1/me/privacy/organization-blocks' && method === 'POST') {
+        P3域.统计.屏蔽写入 += 1;
+        const etag = 请求.headers()['if-match'] ?? '';
+        const 幂等键 = 请求.headers()['idempotency-key'] ?? '';
+        const 重放 = 幂等键 !== '' && P3域.幂等登记.get(幂等键);
+        const 新块 = body as { organization_id?: string; source?: P3屏蔽形['source'] };
+        const 库项 = 新块.organization_id !== undefined ? P3域.组织库[新块.organization_id] : undefined;
+        if (
+          etag !== `"${P3域.视图.revision}"` ||
+          幂等键 === '' ||
+          !库项 ||
+          (新块.source !== 'current_employer' && 新块.source !== 'related_organization' && 新块.source !== 'manual')
+        ) {
+          await route.fulfill({
+            status: 库项 === undefined && 新块.organization_id !== undefined ? 409 : 422,
+            json: {
+              error: {
+                type: 库项 === undefined && 新块.organization_id !== undefined ? 'organization_unavailable' : 'validation_failed',
+                message: '屏蔽请求未通过校验',
+              },
+            },
+          });
+          return;
+        }
+        if (重放) {
+          await route.fulfill({ status: 200, json: 信封(JSON.parse(JSON.stringify(重放.receipt)) as unknown) });
+          return;
+        }
+        const 重复 = P3域.视图.organization_blocks.find((块) => 块.organization_id === 新块.organization_id);
+        if (重复) {
+          const 回执 = {
+            organization_block: { ...重复 },
+            privacy_revision: P3域.视图.revision,
+            created_at: 重复.created_at,
+          };
+          P3域.幂等登记.set(幂等键, { receipt: 回执, 块: { ...重复 } });
+          await route.fulfill({ status: 200, json: 信封(回执) });
+          return;
+        }
+        const 块: P3屏蔽形 = {
+          organization_id: 新块.organization_id!,
+          organization_display_name: 库项.display_name,
+          organization_status: 库项.status,
+          source: 新块.source!,
+          created_at: '2026-08-27T01:00:00Z',
+        };
+        P3域.视图.organization_blocks = [...P3域.视图.organization_blocks.map((项) => ({ ...项 })), { ...块 }];
+        P3域.视图.revision += 1;
+        const 回执 = { organization_block: { ...块 }, privacy_revision: P3域.视图.revision, created_at: 块.created_at };
+        P3域.幂等登记.set(幂等键, { receipt: 回执, 块 });
+        await route.fulfill({ status: 201, json: 信封(回执) });
+        return;
+      }
+
+      // POST 解除：目标必须仍在名单里（404）；建档来源的解除必须显式风险确认（422）；
+      // 成功移除并 revision+1，回完整视图。
+      const 解除匹配 = /^\/api\/v1\/me\/privacy\/organization-blocks\/([^/]+)\/unblock$/.exec(path);
+      if (解除匹配 && method === 'POST') {
+        P3域.统计.解除写入 += 1;
+        const etag = 请求.headers()['if-match'] ?? '';
+        const 目标 = P3域.视图.organization_blocks.find((块) => 块.organization_id === 解除匹配[1]);
+        if (etag !== `"${P3域.视图.revision}"` || !目标) {
+          await route.fulfill({ status: 目标 ? 409 : 404, json: { error: { type: 目标 ? 'version_conflict' : 'organization_block_not_found', message: '解除失败' } } });
+          return;
+        }
+        const 要求确认 = (body as { risk_acknowledged?: boolean }).risk_acknowledged !== true;
+        if ((目标.source === 'current_employer' || 目标.source === 'related_organization') && 要求确认) {
+          await route.fulfill({ status: 422, json: { error: { type: 'risk_acknowledgement_required', message: '需要风险确认' } } });
+          return;
+        }
+        P3域.视图.organization_blocks = P3域.视图.organization_blocks.filter((块) => 块.organization_id !== 解除匹配[1]).map((块) => ({ ...块 }));
+        P3域.视图.revision += 1;
+        await route.fulfill({ status: 200, json: 信封(P3克隆视图(P3域.视图)) });
+        return;
+      }
     }
 
     // ── P1C 组织域（组织 fixture 存在时才应答；组织 fixture 缺席的用例走兜底空信封，
@@ -793,6 +1106,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
     if (组织fixture && path === '/api/v1/recruiter/jobs' && method === 'POST') {
       // 服务端推导（客户端 body 只有 claim，无 refs / verification status）：
       // 首个 verified+active 关系给出两个 ref 与两侧验证状态；没有关系则 unverified 无 ref。
+      // P3：hard_requirements 四员块必收完整（客户端永远带整块），fixture 原样落库回读。
       const 换 = body as {
         publisher_mode: 'direct' | 'agency';
         hiring_organization_claim: { display_name: string; legal_name?: string | null };
@@ -813,6 +1127,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
         requirements: string;
         keywords: string[];
         private_screening_preferences: string;
+        hard_requirements?: P3硬性条件形;
       };
       const 发布关系 = 关系可变.find((项) => 项.status === 'verified' && 项.organization_status === 'active');
       const 现在 = '2026-08-26T00:00:00Z';
@@ -847,6 +1162,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
         requirements: 换.requirements,
         keywords: 换.keywords,
         private_screening_preferences: 换.private_screening_preferences,
+        hard_requirements: { ...P3全未知硬性条件(), ...换.hard_requirements },
         status: 'active',
         revision: 1,
         published_at: 现在,
@@ -855,6 +1171,55 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
       };
       岗位可变.push(新岗);
       await route.fulfill({ status: 200, json: 信封(新岗) });
+      return;
+    }
+
+    // P3：编辑岗位 —— PATCH 回完整 owner DTO（immutable title/type/category/location 带
+    // 服务端原值），hard_requirements 整块替换，revision+1。客户端 PATCH 前必带 quoted If-Match。
+    const 编辑匹配 = 组织fixture ? /^\/api\/v1\/recruiter\/jobs\/([^/]+)$/.exec(path) : null;
+    if (编辑匹配 && method === 'PATCH') {
+      const 存量 = 岗位可变.find((项) => 项.job_id === 编辑匹配[1]);
+      if (!存量) {
+        await route.fulfill({ status: 404, json: { error: { type: 'job_not_found', message: '岗位不存在' } } });
+        return;
+      }
+      const 补丁 = body as {
+        publisher_mode: 'direct' | 'agency';
+        hiring_organization_claim: { display_name: string; legal_name?: string | null };
+        office_location: string;
+        workplace_mode: P1C岗位形['workplace_mode'];
+        salary: { lower: number; upper: number };
+        annual_salary_months: number | null;
+        campus_cohort: number | null;
+        internship_months: number | null;
+        onsite_days_per_week: number | null;
+        experience_requirement: string;
+        education_requirement: string;
+        hard_requirements?: P3硬性条件形;
+        description: string;
+        requirements: string;
+        keywords: string[];
+        private_screening_preferences: string;
+      };
+      存量.office_location = 补丁.office_location;
+      存量.workplace_mode = 补丁.workplace_mode;
+      存量.salary_lower = 补丁.salary.lower;
+      存量.salary_upper = 补丁.salary.upper;
+      存量.salary_period = 存量.recruitment_type === 'internship' || 存量.recruitment_type === 'part_time' ? 'day' : 'month';
+      存量.annual_salary_months = 补丁.annual_salary_months;
+      存量.campus_cohort = 补丁.campus_cohort;
+      存量.internship_months = 补丁.internship_months;
+      存量.onsite_days_per_week = 补丁.onsite_days_per_week;
+      存量.experience_requirement = 补丁.experience_requirement;
+      存量.education_requirement = 补丁.education_requirement;
+      存量.hard_requirements = { ...P3全未知硬性条件(), ...补丁.hard_requirements };
+      存量.description = 补丁.description;
+      存量.requirements = 补丁.requirements;
+      存量.keywords = Array.isArray(补丁.keywords) ? [...补丁.keywords] : [];
+      存量.private_screening_preferences = 补丁.private_screening_preferences;
+      存量.revision += 1;
+      存量.updated_at = '2026-08-27T02:00:00Z';
+      await route.fulfill({ status: 200, json: 信封({ ...存量 }) });
       return;
     }
 
@@ -1650,5 +2015,723 @@ test.describe('P1C 招聘组织 fixture @backend', () => {
     // Mock 分支的静态公司页内容不出现（不回退静态档）
     await expect(page.getByText('公司自述')).toHaveCount(0);
     await expect(page.getByText('作息与条款')).toHaveCount(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P3 隐私域主链路 @backend（Task 6）：candidate 会话恢复水合隐私 → 设置关隐身 PATCH If-Match
+// → 披露偏好稀疏补丁 → 屏蔽名单搜索/屏蔽（稳定组织 ID + 幂等键）→ 建档来源解除风险确认
+// → 手动来源加入与解除 → 切招聘方 → 发布并编辑岗位（hard_requirements 四员完整收发）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('P3 Backend 隐私主链路 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+  test.use({ timeout: 150_000 });
+
+  test('P3 隐私读写、组织屏蔽与岗位硬性条件走 HTTP fixture 主链路 @backend', async ({ page }) => {
+    const 隐私 = P3隐私fixture();
+    隐私.组织库 = P3默认组织库();
+    const 请求们: 拦截请求形[] = [];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p3-main',
+      记录目录请求: () => undefined,
+      请求拦截: (项) => 请求们.push(项),
+      招聘组织Fixture: 带企业关系(
+        P1C招聘组织Fixture,
+        [P1C管理员关系],
+        { [P1C标记.组织甲编号]: P1C组织甲() },
+      ),
+      主体初始角色: 'candidate',
+      隐私fixture: 隐私,
+    });
+
+    // ── candidate 会话恢复：隐私是第三条并行水合域 ──
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    const 链 = 请求们.map((项) => `${项.method} ${项.path}`);
+    const 会话位 = 链.indexOf('GET /api/v1/session');
+    expect(会话位).toBeGreaterThanOrEqual(0);
+    expect(链.slice(会话位, 会话位 + 12)).toEqual(expect.arrayContaining([
+      'GET /api/v1/me/resume',
+      'GET /api/v1/me/intentions',
+      'GET /api/v1/me/privacy',
+    ]));
+
+    // ── 设置：关闭「对现雇主隐身」→ 确认弹层 → PATCH quoted If-Match ──
+    await page.goto('/#/settings');
+    const 隐身开关 = page.getByRole('switch', { name: '对现雇主隐身' });
+    await expect(隐身开关).toHaveAttribute('aria-checked', 'true', { timeout: 10_000 });
+    await 隐身开关.click();
+    await page.getByRole('button', { name: '仍要关闭' }).click();
+    await expect(page.getByText('隐身已关闭')).toBeVisible({ timeout: 10_000 });
+    await expect(隐身开关).toHaveAttribute('aria-checked', 'false');
+    let 补丁们 = 请求们.filter((项) => 项.path === '/api/v1/me/privacy' && 项.method === 'PATCH');
+    expect(补丁们.length).toBe(1);
+    expect(补丁们[0].body).toEqual({ employer_privacy_enabled: false });
+    expect(补丁们[0].headers['if-match']).toBe('"1"');
+    expect(补丁们[0].headers['idempotency-key']).toBeUndefined();
+
+    // ── 披露偏好：D4 只发 education 单成员的稀疏补丁，If-Match 用服务端新 revision ──
+    await page.goto('/#/disclosure-prefs');
+    const 学历卡 = page.locator('[class*="披露卡"]').filter({ hasText: '毕业院校与学历' });
+    await expect(学历卡.getByRole('button', { name: '意向确认后' })).toBeVisible({ timeout: 10_000 });
+    await 学历卡.getByRole('button', { name: '不披露' }).click();
+    await expect
+      .poll(() => 请求们.filter((项) => 项.path === '/api/v1/me/privacy' && 项.method === 'PATCH').length, { timeout: 10_000 })
+      .toBe(2);
+    补丁们 = 请求们.filter((项) => 项.path === '/api/v1/me/privacy' && 项.method === 'PATCH');
+    expect(补丁们[1].body).toEqual({ disclosure_preferences: { education: 'never' } });
+    expect(补丁们[1].headers['if-match']).toBe('"2"');
+    await expect(学历卡.getByRole('button', { name: '不披露' })).toHaveClass(/分段项选中/, { timeout: 10_000 });
+
+    // ── 屏蔽名单：选来源 → 搜组织（strict active 分页 + query 绑定游标）→ 点命中 → 屏蔽 ──
+    await page.goto('/#/blocklist');
+    await page.getByRole('button', { name: '关联公司' }).click();
+    const 组织框 = page.getByPlaceholder('输入公司全称，如「某某科技」');
+    await 组织框.fill('云衢');
+    await expect(page.getByText(P3标记.可屏蔽组织甲, { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(P3标记.可屏蔽组织乙, { exact: true })).toBeVisible();
+    // 停用组织永不进结果（strict active），第一页两枚后跟翻页键
+    await expect(page.getByText(P3标记.停用组织)).toHaveCount(0);
+    const 搜索请求 = 请求们.filter((项) => 项.path === '/api/v1/organizations').at(-1);
+    expect(decodeURIComponent(搜索请求?.query ?? '')).toContain('q=云衢');
+    expect(decodeURIComponent(搜索请求?.query ?? '')).toContain('limit=20');
+
+    await page.getByRole('button', { name: '加载更多' }).click();
+    await expect(page.getByText(P3标记.可屏蔽组织丙, { exact: true })).toBeVisible({ timeout: 10_000 });
+    const 翻页请求 = 请求们.filter((项) => 项.path === '/api/v1/organizations').at(-1)!;
+    expect(翻页请求.query).toContain('cursor=');
+
+    await page.getByRole('button', { name: P3标记.可屏蔽组织甲 }).click();
+    await page.getByRole('button', { name: '屏蔽', exact: true }).click();
+    await expect(page.getByText(`已屏蔽 ${P3标记.可屏蔽组织甲}，双向不可见`)).toBeVisible({ timeout: 10_000 });
+
+    const 屏蔽写们 = 请求们.filter((项) => 项.path === '/api/v1/me/privacy/organization-blocks' && 项.method === 'POST');
+    expect(屏蔽写们.length).toBe(1);
+    expect(屏蔽写们[0].body).toEqual({ organization_id: 'org-fixture-p3-block-a', source: 'related_organization' });
+    expect(屏蔽写们[0].headers['if-match']).toBe('"3"');
+    const 首把幂等键 = 屏蔽写们[0].headers['idempotency-key'];
+    expect(首把幂等键).toBeTruthy();
+    // 关联公司归入「建档时自动屏蔽」组（分组按 来源，不按理由文案）
+    await expect(page.getByText('建档时自动屏蔽')).toBeVisible();
+    await expect(page.getByText('你手动添加')).toHaveCount(0);
+
+    // ── 解除建档来源：必须带 risk_acknowledged=true ──
+    await page.getByRole('button', { name: '解除' }).click();
+    await expect(page.getByText(`解除对「${P3标记.可屏蔽组织甲}」的屏蔽？`)).toBeVisible();
+    await expect(page.getByText('这是你的当前雇主或其关联公司，解除意味着放弃这层保密。')).toBeVisible();
+    await page.getByRole('button', { name: '确认解除' }).click();
+    await expect(page.getByText(`已解除对 ${P3标记.可屏蔽组织甲} 的屏蔽`)).toBeVisible({ timeout: 10_000 });
+    const 解除们 = 请求们.filter((项) => 项.path.startsWith('/api/v1/me/privacy/organization-blocks/') && 项.path.endsWith('/unblock'));
+    expect(解除们.length).toBe(1);
+    expect(解除们[0].path).toContain('/org-fixture-p3-block-a/');
+    expect(解除们[0].body).toEqual({ risk_acknowledged: true });
+    expect(解除们[0].headers['if-match']).toBe('"4"');
+    await expect(page.getByRole('button', { name: '解除' })).toHaveCount(0, { timeout: 10_000 });
+
+    // ── 手动来源：加入与解除都不需要风险确认（risk_acknowledged=false）──
+    await page.getByRole('button', { name: '手动添加' }).click();
+    await 组织框.fill('磐石');
+    await expect(page.getByText(P3标记.手动组织甲, { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: P3标记.手动组织甲 }).click();
+    await page.getByRole('button', { name: '屏蔽', exact: true }).click();
+    await expect(page.getByText(`已屏蔽 ${P3标记.手动组织甲}，双向不可见`)).toBeVisible({ timeout: 10_000 });
+    expect(请求们.filter((项) => 项.path === '/api/v1/me/privacy/organization-blocks' && 项.method === 'POST').length).toBe(2);
+    const 手动写 = 请求们.filter((项) => 项.path === '/api/v1/me/privacy/organization-blocks' && 项.method === 'POST')[1];
+    expect((手动写.body as { source?: string }).source).toBe('manual');
+    expect(手动写.headers['idempotency-key']).toBeTruthy();
+    expect(手动写.headers['idempotency-key']).not.toBe(首把幂等键);
+    await expect(page.getByText('你手动添加')).toBeVisible();
+
+    await page.getByRole('button', { name: '解除' }).click();
+    await page.getByRole('button', { name: '确认解除' }).click();
+    await expect(page.getByText(`已解除对 ${P3标记.手动组织甲} 的屏蔽`)).toBeVisible({ timeout: 10_000 });
+    const 手动解除 = 请求们.filter((项) => 项.path.startsWith('/api/v1/me/privacy/organization-blocks/') && 项.path.endsWith('/unblock'))[1];
+    expect((手动解除.body as { risk_acknowledged?: boolean }).risk_acknowledged).toBe(false);
+    expect(手动解除.headers['if-match']).toBe('"6"');
+
+    // ── 切招聘方：固定组织水合链，候选侧隐私先行清空 ──
+    await page.goto('/#/identity?switch=1&from=app');
+    await expect(page.getByRole('button', { name: '翻到「招聘方」那一面' })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    const 切换后链 = 请求们.map((项) => `${项.method} ${项.path}`);
+    const 偏好位 = 切换后链.indexOf('PUT /api/v1/me/preferences/last-used-role');
+    expect(偏好位).toBeGreaterThanOrEqual(0);
+    // 唯一 verified 关系自动选中 ⇒ 固定链含一次公开企业直读；owner Jobs 收尾
+    expect(切换后链.slice(偏好位 + 1, 偏好位 + 5)).toEqual([
+      'GET /api/v1/recruiter/profile',
+      'GET /api/v1/recruiter/affiliations',
+      `GET /api/v1/organizations/${P1C标记.组织甲编号}`,
+      'GET /api/v1/recruiter/jobs',
+    ]);
+
+    // ── 发布岗位：POST body 带完整四员 hard_requirements；claim 由已验证关系推导 ──
+    await 走完后端发岗向导(page);
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    const 创建 = 请求们.find((项) => 项.path === '/api/v1/recruiter/jobs' && 项.method === 'POST');
+    expect(创建).toBeDefined();
+    expect(创建!.headers['idempotency-key']).toBeTruthy();
+    expect(创建!.body).toMatchObject({
+      publisher_mode: 'direct',
+      hiring_organization_claim: { display_name: P1C标记.组织甲名, legal_name: null },
+    });
+    const 发布硬性 = (创建!.body as { hard_requirements?: Record<string, string> }).hard_requirements ?? {};
+    expect(Object.keys(发布硬性).sort()).toEqual(['alternate_weekend_work', 'frequent_travel', 'onsite_only', 'outsourcing_only']);
+    for (const 档 of Object.values(发布硬性)) {
+      expect(['required', 'not_required', 'unknown']).toContain(档);
+    }
+
+    // ── 编辑岗位：三态钮 未说明→必须→不要求；PATCH 回传完整四员块 + immutable 字段原值 ──
+    await page.goto('/#/hr/post-job/job-fixture-created-1');
+    await expect(page.getByPlaceholder(/资深后端工程师/)).toHaveValue('Fixture 实习岗位', { timeout: 10_000 });
+    await page.getByRole('button', { name: '职位要求' }).click();
+    const 大小周片 = page.getByRole('button', { name: '大小周 未说明' });
+    await expect(大小周片).toBeVisible({ timeout: 10_000 });
+    await 大小周片.click();
+    await expect(page.getByRole('button', { name: '大小周 必须' })).toBeVisible();
+    await page.getByRole('button', { name: '大小周 必须' }).click();
+    await expect(page.getByRole('button', { name: '大小周 不要求' })).toBeVisible();
+
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByText('岗位已保存')).toBeVisible({ timeout: 15_000 });
+    const 岗位补丁 = 请求们.find(
+      (项) => /^\/api\/v1\/recruiter\/jobs\/job-fixture-created-1$/.test(项.path) && 项.method === 'PATCH',
+    );
+    expect(岗位补丁).toBeDefined();
+    expect(岗位补丁!.headers['if-match']).toBe('"1"');
+    const 补丁体 = 岗位补丁!.body as {
+      title: string;
+      recruitment_type: string;
+      category_id: string;
+      location_id: string;
+      hard_requirements: Record<string, string>;
+    };
+    // immutable 契约字段沿用 previous owner DTO 原值
+    expect(补丁体.title).toBe('Fixture 实习岗位');
+    expect(补丁体.recruitment_type).toBe('internship');
+    expect(补丁体.category_id).toBe('job-fixture-001');
+    expect(补丁体.location_id).toBe('loc-fixture-001');
+    expect(补丁体.hard_requirements).toEqual({
+      alternate_weekend_work: 'not_required',
+      outsourcing_only: 'unknown',
+      onsite_only: 'unknown',
+      frequent_travel: 'unknown',
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P3 Backend 恢复分派 @backend：错误码驱动的重读不重放。
+// 用例内通过 覆盖 seam 注入单次故障（沿用既有 att-* 计数器惯例）；需要「先见效再失败」的
+// 场景直接改共享的 隐私.视图（handler 与测试同一进程同份状态）。所有等待用 expect.poll，
+// 不用超过 UI debounce 的长 sleep。
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('P3 Backend 恢复分派 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+  test.use({ timeout: 90_000 });
+
+  /** 隐私 GET 总数（hydration 之后作增量基线用） */
+  function 统计get(请求们: { path: string; method: string }[]): number {
+    return 请求们.filter((项) => 项.path === '/api/v1/me/privacy' && 项.method === 'GET').length;
+  }
+
+  test('PATCH 409 后只一次 PATCH、一次权威重读并刷新视图，绝不自动重放 @backend', async ({ page }) => {
+    const 隐私 = P3隐私fixture();
+    const 请求们: 拦截请求形[] = [];
+    let 冲突次数 = 0;
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p3-r409',
+      记录目录请求: () => undefined,
+      请求拦截: (项) => 请求们.push(项),
+      主体初始角色: 'candidate',
+      隐私fixture: 隐私,
+      覆盖: {
+        'PATCH /api/v1/me/privacy': () => {
+          if (冲突次数 > 0) return undefined;
+          冲突次数 += 1;
+          // 他端并发推进了版本，还把「当前公司」改成一直允许 —— 权威视图将随重读刷新进来
+          隐私.视图.revision += 1;
+          隐私.视图.disclosure_preferences.current_employer = 'anonymous';
+          return { status: 409, 响应: { error: { type: 'version_conflict', message: '版本冲突' } } };
+        },
+      },
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    const get基线 = 统计get(请求们);
+
+    // 用户想关隐身 → PATCH 409 → 弹层保留可取消；权威快照经一次重读落进页面
+    await page.goto('/#/settings');
+    const 隐身开关 = page.getByRole('switch', { name: '对现雇主隐身' });
+    await expect(隐身开关).toHaveAttribute('aria-checked', 'true', { timeout: 10_000 });
+    await 隐身开关.click();
+    await page.getByRole('button', { name: '仍要关闭' }).click();
+    await expect
+      .poll(() => 统计get(请求们), { timeout: 10_000 })
+      .toBe(get基线 + 1); // 安全重读权威恰好一次
+
+    // 不自动重放：此时仍然只有那一次 PATCH
+    expect(统计get(请求们)).toBe(get基线 + 1);
+    expect(请求们.filter((项) => 项.path === '/api/v1/me/privacy' && 项.method === 'PATCH').length).toBe(1);
+
+    await page.getByRole('button', { name: '保持开启' }).click();
+    await expect(page.getByRole('button', { name: '仍要关闭' })).toHaveCount(0);
+    // 刷新后的权威视图：employer_privacy_enabled 保持 true（页面仍开）
+    await expect(隐身开关).toHaveAttribute('aria-checked', 'true');
+    // 且他端写入的 D3=一直允许 已经在页面上（来自重读，不是本地假成功）
+    await page.goto('/#/disclosure-prefs');
+    const 当前公司卡 = page.locator('[class*="披露卡"]').filter({ hasText: '当前公司' });
+    await expect(当前公司卡.getByRole('button', { name: '一直允许' })).toHaveClass(/分段项选中/, { timeout: 10_000 });
+  });
+
+  test('AddBlock 遇 idempotency_in_progress 同键受控重试，后续新意图换新键 @backend', async ({ page }) => {
+    const 隐私 = P3隐私fixture();
+    隐私.组织库 = P3默认组织库();
+    const 幂等键们: string[] = [];
+    let 故障次数 = 0;
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p3-rInProgress',
+      记录目录请求: () => undefined,
+      主体初始角色: 'candidate',
+      隐私fixture: 隐私,
+      请求拦截: ({ path, method, headers }) => {
+        if (path === '/api/v1/me/privacy/organization-blocks' && method === 'POST') {
+          幂等键们.push(headers['idempotency-key'] ?? '');
+        }
+      },
+      覆盖: {
+        'POST /api/v1/me/privacy/organization-blocks': () => {
+          if (故障次数 > 0) return undefined; // 重试放行给内置 fixture 应答
+          故障次数 += 1;
+          return {
+            status: 409,
+            头: { 'Retry-After': '0' },
+            响应: { error: { type: 'idempotency_in_progress', message: '前次相同请求仍在处理' } },
+          };
+        },
+      },
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+
+    await page.goto('/#/blocklist');
+    await page.getByRole('button', { name: '手动添加' }).click();
+    const 组织框 = page.getByPlaceholder('输入公司全称，如「某某科技」');
+    await 组织框.fill('云衢');
+    await expect(page.getByText(P3标记.可屏蔽组织甲, { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: P3标记.可屏蔽组织甲 }).click();
+    await page.getByRole('button', { name: '屏蔽', exact: true }).click();
+    // 首个意图：in-progress 后同键受控重试成功；备选列表保持可见供换选
+    await expect(page.getByText(`已屏蔽 ${P3标记.可屏蔽组织甲}，双向不可见`)).toBeVisible({ timeout: 10_000 });
+    expect(幂等键们.length).toBe(2);
+    expect(幂等键们[0]).toBe(幂等键们[1]);
+    expect(幂等键们[0]).not.toBe('');
+
+    // 新意图：成功路径清了搜索词，重新搜索后再选另一枚命中 → 新请求必须换一把 Idempotency-Key
+    await 组织框.fill('云衢');
+    await expect(page.getByText(P3标记.可屏蔽组织乙, { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: P3标记.可屏蔽组织乙 }).click();
+    await page.getByRole('button', { name: '屏蔽', exact: true }).click();
+    await expect(page.getByText(`已屏蔽 ${P3标记.可屏蔽组织乙}，双向不可见`)).toBeVisible({ timeout: 10_000 });
+    expect(幂等键们.length).toBe(3);
+    expect(幂等键们[2]).not.toBe('');
+    expect(幂等键们[2]).not.toBe(幂等键们[0]);
+  });
+
+  test('AddBlock 503 先生效后失败：权威重读确认效果，UI 不再发起第二次屏蔽 @backend', async ({ page }) => {
+    const 隐私 = P3隐私fixture();
+    隐私.组织库 = P3默认组织库();
+    const 请求们: 拦截请求形[] = [];
+    let 已见效 = false;
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p3-r503block',
+      记录目录请求: () => undefined,
+      请求拦截: (项) => 请求们.push(项),
+      主体初始角色: 'candidate',
+      隐私fixture: 隐私,
+      覆盖: {
+        'POST /api/v1/me/privacy/organization-blocks': () => {
+          if (!已见效) {
+            已见效 = true;
+            // 服务端已落库但响应丢失（operation_outcome_unknown）：先见效，之后每次都以 503 应答，
+            // 让受控重试同样撞上结果未知 ⇒ 客户端只能走「重读权威核对效果」的歧义恢复路径。
+            const 占位 = { organization_id: 'org-fixture-p3-manual-a' };
+            隐私.视图.organization_blocks = [
+              ...隐私.视图.organization_blocks,
+              {
+                organization_id: 占位.organization_id,
+                organization_display_name: 隐私.组织库[占位.organization_id].display_name,
+                organization_status: 隐私.组织库[占位.organization_id].status,
+                source: 'manual',
+                created_at: '2026-08-27T03:00:00Z',
+              },
+            ];
+            隐私.视图.revision += 1;
+          }
+          return { status: 503, 响应: { error: { type: 'operation_outcome_unknown', message: '结果未知' } } };
+        },
+      },
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    const get基线 = 统计get(请求们);
+
+    await page.goto('/#/blocklist');
+    await page.getByRole('button', { name: '手动添加' }).click();
+    const 组织框 = page.getByPlaceholder('输入公司全称，如「某某科技」');
+    await 组织框.fill('磐石');
+    await expect(page.getByText(P3标记.手动组织甲, { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: P3标记.手动组织甲 }).click();
+    await page.getByRole('button', { name: '屏蔽', exact: true }).click();
+
+    // 效果达成路径：按 GET 核实后按成功兑现（清词 + 成功提示）
+    await expect(page.getByText(`已屏蔽 ${P3标记.手动组织甲}，双向不可见`)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('你手动添加')).toBeVisible();
+    await expect(page.getByText(P3标记.手动组织甲, { exact: true })).toBeVisible();
+    // 歧义后的核实：恰好一次 GET 权威；同一次意图的两笔传输共用同一把幂等键（受控重试），
+    // 绝无第二个新意图发出 —— 内置 handler 从未参与：唯一副作用就是覆盖里的那次手动落库
+    await expect.poll(() => 统计get(请求们), { timeout: 10_000 }).toBe(get基线 + 1);
+    const 覆盖期写们 = 请求们.filter((项) => 项.path === '/api/v1/me/privacy/organization-blocks' && 项.method === 'POST');
+    await expect.poll(() => 覆盖期写们.length, { timeout: 10_000 }).toBe(2);
+    expect(覆盖期写们[0].headers['idempotency-key']).toBe(覆盖期写们[1].headers['idempotency-key']);
+    expect(隐私.统计.屏蔽写入).toBe(0);
+  });
+
+  test('Unblock 404 目标他端已解除：以权威视图为准视为成功，不重放解除 @backend', async ({ page }) => {
+    const 隐私 = P3隐私fixture({
+      organization_blocks: [
+        {
+          organization_id: 'org-fixture-p3-gone',
+          organization_display_name: 'Fixture 他端先解企业',
+          organization_status: 'active',
+          source: 'manual',
+          created_at: '2026-08-20T00:00:00Z',
+        },
+      ],
+      revision: 5,
+    });
+    const 请求们: 拦截请求形[] = [];
+    let 已报失 = false;
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p3-r404unblock',
+      记录目录请求: () => undefined,
+      请求拦截: (项) => 请求们.push(项),
+      主体初始角色: 'candidate',
+      隐私fixture: 隐私,
+      覆盖: {
+        'POST /api/v1/me/privacy/organization-blocks/org-fixture-p3-gone/unblock': () => {
+          if (已报失) return undefined;
+          已报失 = true;
+          // 服务端该行已被他端移除（同样推进版本），本次解除以 404 作答
+          隐私.视图.organization_blocks = [];
+          隐私.视图.revision += 1;
+          return { status: 404, 响应: { error: { type: 'organization_block_not_found', message: '目标不存在' } } };
+        },
+      },
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    const get基线 = 统计get(请求们);
+    await page.goto('/#/blocklist');
+    await expect(page.getByText('Fixture 他端先解企业')).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole('button', { name: '解除' }).click();
+    await page.getByRole('button', { name: '确认解除' }).click();
+    // 404 + 权威视图已无该组织 ⇒ 兑现为成功（提示照常出现），且恰好一次核对 GET、零重放
+    await expect(page.getByText('已解除对 Fixture 他端先解企业 的屏蔽')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Fixture 他端先解企业')).toHaveCount(0, { timeout: 10_000 });
+    await expect.poll(() => 统计get(请求们), { timeout: 10_000 }).toBe(get基线 + 1);
+    await expect
+      .poll(() => 请求们.filter((项) => 项.path.endsWith('/unblock')).length, { timeout: 10_000 })
+      .toBe(1);
+  });
+
+  test('Unblock 422 风险确认：一次重读更新来源分组后原样抛出，绝不自动重放 @backend', async ({ page }) => {
+    const 隐私 = P3隐私fixture({
+      organization_blocks: [
+        {
+          organization_id: 'org-fixture-p3-flip',
+          organization_display_name: P3标记.可屏蔽组织甲,
+          organization_status: 'active',
+          source: 'current_employer',
+          created_at: '2026-08-20T00:00:00Z',
+        },
+      ],
+      revision: 4,
+    });
+    const 请求们: 拦截请求形[] = [];
+    let 已纠正 = false;
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p3-r422unblock',
+      记录目录请求: () => undefined,
+      请求拦截: (项) => 请求们.push(项),
+      主体初始角色: 'candidate',
+      隐私fixture: 隐私,
+      覆盖: {
+        'POST /api/v1/me/privacy/organization-blocks/org-fixture-p3-flip/unblock': () => {
+          if (已纠正) return undefined;
+          已纠正 = true;
+          // 存储里这条其实已经被改判为手动来源：422 要求重新确认 —— 与此同时把它落库改掉
+          const 行 = 隐私.视图.organization_blocks.find((块) => 块.organization_id === 'org-fixture-p3-flip');
+          if (行) 行.source = 'manual';
+          隐私.视图.revision += 1;
+          return { status: 422, 响应: { error: { type: 'risk_acknowledgement_required', message: '需要风险确认' } } };
+        },
+      },
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    const get基线 = 统计get(请求们);
+    await page.goto('/#/blocklist');
+    await expect(page.getByText(P3标记.可屏蔽组织甲, { exact: true })).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole('button', { name: '解除' }).click();
+    await page.getByRole('button', { name: '确认解除' }).click();
+    // 重读把真实来源（manual）带回：行挪去「你手动添加」组、副行理由随之更新；
+    // 操作本身抛回 UI ⇒ 弹层静默关闭，绝不二次 POST
+    await expect(page.getByText(P3标记.可屏蔽组织甲, { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('你手动加入 · 双向不可见 · 2026-08-20')).toBeVisible();
+    await expect(page.getByRole('button', { name: '确认解除' })).toHaveCount(0);
+    await expect.poll(() => 统计get(请求们), { timeout: 10_000 }).toBe(get基线 + 1);
+    await expect
+      .poll(() => 请求们.filter((项) => 项.path.endsWith('/unblock')).length, { timeout: 10_000 })
+      .toBe(1);
+  });
+
+  test('组织搜索竞态：旧词晚到被代际守卫丢弃，只有新词渲染；无结果回既有空态 @backend', async ({ page }) => {
+    const 隐私 = P3隐私fixture(); // 屏蔽名单为空：便于断言既有空态
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p3-race',
+      记录目录请求: () => undefined,
+      主体初始角色: 'candidate',
+      隐私fixture: 隐私,
+    });
+    // 搜索脚本：A 词延迟 1500ms 单枚命中并带专用游标；B 词即时命中无游标
+    隐私.搜索脚本.push(
+      {
+        词: '云端矩阵',
+        延迟毫秒: 1500,
+        items: [{ organization_id: 'org-fixture-race-a', display_name: '竞速先发公司A序列', legal_name: '上海竞速先发A有限公司' }],
+        next_cursor: 'cur-stale-a',
+      },
+      {
+        词: '后发制胜',
+        items: [{ organization_id: 'org-fixture-race-b', display_name: '竞速后发公司B序列', legal_name: '上海竞速后发B有限公司' }],
+        next_cursor: null,
+      },
+    );
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    await page.goto('/#/blocklist');
+    await expect(page.getByText('名单是空的')).toBeVisible({ timeout: 10_000 }); // 空态基线
+
+    await page.getByRole('button', { name: '当前雇主' }).click();
+    const 组织框 = page.getByPlaceholder('输入公司全称，如「某某科技」');
+    await 组织框.fill('云端矩阵');
+    await expect.poll(() => 隐私.搜索完成.some((项) => 项.q === '云端矩阵'), { timeout: 10_000 }).toBe(true); // 已受理（响应仍被脚本压住 1500ms）
+
+    // 换词即作废在飞代际：B 即刻命中渲染
+    await 组织框.fill('后发制胜');
+    await expect(page.getByText('竞速后发公司B序列')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('竞速先发公司A序列')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '加载更多' })).toHaveCount(0); // B 无游标
+
+    // A 此刻才应答完成 —— 也必须被代际守卫丢弃
+    await expect.poll(() => 隐私.搜索已答.some((项) => 项.q === '云端矩阵'), { timeout: 10_000 }).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    await expect(page.getByText('竞速先发公司A序列')).toHaveCount(0);
+    await expect(page.getByText('竞速后发公司B序列')).toBeVisible();
+    await expect(page.getByRole('button', { name: '加载更多' })).toHaveCount(0);
+
+    // 无结果页：不改变列表、空态保持既有文案
+    await 组织框.fill('旧东家'); // 命中的是停用组织：strict active 口径不下发
+    await expect(page.getByText('竞速后发公司B序列')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByText('名单是空的')).toBeVisible();
+    await expect(page.getByText(P3标记.停用组织)).toHaveCount(0);
+    // 三次搜索全部终结（A/B/停用词查询都没有挂在途）
+    await expect.poll(() => 隐私.搜索已答.length, { timeout: 10_000 }).toBe(3);
+  });
+
+  test('登出时挂起的隐私 GET 过期不作数：新主体只见自己的快照 @backend', async ({ page }) => {
+    const 隐私 = P3隐私fixture({
+      disclosure_preferences: { current_employer: 'anonymous', education: 'never', portfolio_links: 'never' },
+      revision: 7,
+    });
+    隐私.组织库['org-fixture-p3-old'] = { display_name: 'Fixture 旧世界公司', legal_name: '上海旧世界有限公司', status: 'active' };
+    隐私.视图.organization_blocks = [
+      {
+        organization_id: 'org-fixture-p3-old',
+        organization_display_name: 'Fixture 旧世界公司',
+        organization_status: 'active',
+        source: 'manual',
+        created_at: '2026-08-19T00:00:00Z',
+      },
+    ];
+    const 请求们: 拦截请求形[] = [];
+    let 挂起兑现: (() => void) | null = null;
+
+    // 冲突注入放在 弹层确认后第一次 PATCH：借它的安全重读制造「挂起中的旧会话 GET」
+    let 冲突次数 = 0;
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p3-stale',
+      记录目录请求: () => undefined,
+      请求拦截: (项) => 请求们.push(项),
+      主体初始角色: 'candidate',
+      隐私fixture: 隐私,
+      覆盖: {
+        'PATCH /api/v1/me/privacy': () => {
+          if (冲突次数 > 0) return undefined;
+          冲突次数 += 1;
+          隐私.视图.revision += 1;
+          return { status: 409, 响应: { error: { type: 'version_conflict', message: '版本冲突' } } };
+        },
+      },
+    });
+
+    // A 主体会话：旧世界公司可见
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    await page.goto('/#/blocklist');
+    await expect(page.getByText('Fixture 旧世界公司')).toBeVisible({ timeout: 10_000 });
+
+    // 触发一次带挂起重读的冲突（重读将在旧会话登出后才被放行）
+    await page.goto('/#/disclosure-prefs');
+    const 作品卡 = page.locator('[class*="披露卡"]').filter({ hasText: '作品与代码仓库' });
+    const get挂起前 = 统计get(请求们);
+    隐私.get脚本.push({
+      保持: new Promise<void>((resolve) => {
+        挂起兑现 = resolve;
+      }),
+    });
+    await 作品卡.getByRole('button', { name: '意向确认后' }).click();
+    await expect.poll(() => 统计get(请求们), { timeout: 10_000 }).toBe(get挂起前 + 1); // 重读已发出并被挂起
+
+    // 旧会话登出（清理同步派发），然后才放行那个迟到的旧 GET。
+    // hash 直跳设置根 —— 不能整页 reload，那会让新挂载抢走队列里的挂起项
+    await page.evaluate(() => {
+      window.location.hash = '#/settings';
+    });
+    await expect(page.getByText('隐私与可见性')).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '退出登录' }).first().click();
+    await page.getByRole('button', { name: '退出登录' }).last().click();
+    await expect(page.getByLabel('手机号')).toBeVisible({ timeout: 10_000 });
+    挂起兑现?.();
+
+    // 服务端换成 B 主体的权威事实后再登录
+    隐私.视图 = {
+      employer_privacy_enabled: false,
+      disclosure_preferences: { current_employer: 'resume_submission', education: 'resume_submission', portfolio_links: 'resume_submission' },
+      organization_blocks: [
+        {
+          organization_id: 'org-fixture-p3-new',
+          organization_display_name: 'Fixture 新世界公司',
+          organization_status: 'active',
+          source: 'current_employer',
+          created_at: '2026-08-27T04:00:00Z',
+        },
+      ],
+      revision: 42,
+      updated_at: '2026-08-27T04:00:00Z',
+    };
+    await page.getByLabel('手机号').fill('13900000002');
+    await page.getByRole('button', { name: '获取验证码' }).click();
+    await page.getByLabel('短信验证码').fill('1234');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '进入' }).click();
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+
+    // 登录建立会话后整页恢复一次：mount 会话恢复链才会按 last_used_role 水合三域（含隐私）
+    await page.reload();
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+
+    // B 主体自己的水合读取了自己的快照；旧世界的任何痕迹都不再出现
+    const 完成位 = 请求们.findIndex((项) => 项.method === 'POST' && 项.path.endsWith('/complete') && 项.path.includes('/login-attempts/'));
+    expect(完成位).toBeGreaterThanOrEqual(0);
+    const 登录后隐私位 = 请求们.findIndex((项, 序) => 序 > 完成位 && 项.path === '/api/v1/me/privacy' && 项.method === 'GET');
+    expect(登录后隐私位).toBeGreaterThanOrEqual(0); // 新会话水合再次带上隐私 GET
+    await page.goto('/#/blocklist');
+    await expect(page.getByText('Fixture 新世界公司')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Fixture 旧世界公司')).toHaveCount(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P3 Mock 数据源隔离 @mock：隐私相关四屏访问且本地流照常工作，同时
+// 全程 /api/v1 请求列表保持为空 —— Mock 模式对 P3 域零网络调用。
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('P3 Mock 数据源隔离 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('Mock 四屏本地流程零 API 请求 @mock', async ({ page }) => {
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    // 登录（Mock 一键直进）
+    await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '微信登录' }).click();
+    await expect(page).toHaveURL(/#\/identity$/);
+    await page.getByRole('button', { name: '我要找工作' }).click();
+    await expect(page).toHaveURL(/#\/student$/);
+
+    // 设置：本地开关切换立即生效，无网络
+    await page.goto('/#/settings');
+    await expect(page.getByText('隐私与可见性')).toBeVisible({ timeout: 10_000 });
+    const 别的开关 = page.getByRole('switch', { name: '求职状态' }).first();
+    if (await 别的开关.isVisible().catch(() => false)) {
+      const 开前 = await 别的开关.getAttribute('aria-checked');
+      await 别的开关.click();
+      await expect(别的开关).toHaveAttribute('aria-checked', 开前 === 'true' ? 'false' : 'true');
+    }
+    // 对现雇主隐身在 Mock 同样可切（本地归约）：初始为开时需过确认弹层
+    const 隐身开关 = page.getByRole('switch', { name: '对现雇主隐身' });
+    if ((await 隐身开关.getAttribute('aria-checked')) === 'true') {
+      await 隐身开关.click();
+      await page.getByRole('button', { name: '仍要关闭' }).click();
+      await expect(隐身开关).toHaveAttribute('aria-checked', 'false', { timeout: 10_000 });
+    } else {
+      await 隐身开关.click();
+      await expect(隐身开关).toHaveAttribute('aria-checked', 'true', { timeout: 10_000 });
+      await 隐身开关.click(); // 再关回去同样要确认弹层
+      await page.getByRole('button', { name: '仍要关闭' }).click();
+      await expect(隐身开关).toHaveAttribute('aria-checked', 'false', { timeout: 10_000 });
+    }
+    expect(apiRequests).toEqual([]);
+
+    // 披露偏好：D4 本地切档（Mock 七行模板照旧展示并可点）
+    await page.goto('/#/disclosure-prefs');
+    const 学历卡 = page.locator('[class*="披露卡"]').filter({ hasText: '毕业院校与学历' });
+    await expect(学历卡.getByRole('button', { name: '一直允许' })).toBeVisible({ timeout: 10_000 });
+    await 学历卡.getByRole('button', { name: '不披露' }).click();
+    await expect(学历卡.getByRole('button', { name: '不披露' })).toHaveClass(/分段项选中/, { timeout: 10_000 });
+    expect(apiRequests).toEqual([]);
+
+    // 屏蔽名单：自由文本本地加入（Mock 无组织搜索段）
+    await page.goto('/#/blocklist');
+    const 添加框 = page.getByPlaceholder('输入公司全称，如「某某科技」');
+    await expect(添加框).toBeVisible({ timeout: 10_000 });
+    await 添加框.fill('本地测试屏蔽公司');
+    await page.getByRole('button', { name: '屏蔽', exact: true }).click();
+    await expect(page.getByText('已屏蔽 本地测试屏蔽公司，双向不可见')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('本地测试屏蔽公司').first()).toBeVisible();
+    expect(apiRequests).toEqual([]);
+
+    // 发岗屏（Mock 本地向导）：到达 + 第一步本地校验照常运转
+    await page.goto('/#/hr/post-job');
+    const 岗位名框 = page.getByPlaceholder(/资深后端工程师/);
+    await expect(岗位名框).toBeVisible({ timeout: 10_000 });
+    await 岗位名框.fill('本地草稿岗位');
+    await expect(岗位名框).toHaveValue('本地草稿岗位');
+    // Mock 目录选择的类别（非硬性条件区也保持本地可选）
+    await page.getByRole('button', { name: '实习生 在校生实习，按天计薪' }).click();
+
+    // 全程累计：Mock 模式下没有任何 /api/v1 请求 —— P3 域也是纯本地
+    expect(apiRequests).toEqual([]);
   });
 });
