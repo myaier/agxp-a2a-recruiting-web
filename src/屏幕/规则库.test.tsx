@@ -291,7 +291,6 @@ function renderCandidateRules(场景: 页面场景 = {}) {
     };
     镜头.种子派发 = () => {
       const 派发 = 镜头.真值?.派发 as ((动作: 动作) => void) | undefined;
-      console.log('DEBUG 种子派发执行, 真值?', 镜头.真值 !== null);
       if (!派发) return;
       派发({ 型: '水合后端意向', 快照: 意向 });
       派发({ 型: '水合后端候选规则', 全局: 投影.全局, 意向级: 投影.意向级 });
@@ -400,17 +399,29 @@ describe('规则库 · Backend 候选页', () => {
     expect(screen.getByText('2 条')).toBeTruthy();
   });
 
-  it('archive deletes by the current Rule ID and the row leaves with the authoritative refresh', async () => {
+  it('archive deletes by the current Rule ID, guards double-clicks, and refreshes authoritatively', async () => {
     const user = userEvent.setup();
+    const 删除完成 = deferred<void>();
     const 视图 = renderCandidateRules({
       rulesStage: '成功', proposalsStage: '成功', initialized: true,
       规则: [BFFAgent规则样本],
+      调桩: (桩) => {
+        // 删除在飞期间按钮禁用：双击不再打出第二条 DELETE（权威会回 not_found）
+        桩.删除Agent规则.mockImplementation(async () => {
+          await 删除完成.promise;
+          return undefined;
+        });
+      },
     });
     await 挂载到稳定();
     await user.click(screen.getByText('大小周不谈'));
     await user.click(screen.getByRole('button', { name: '删除' }));
-    expect(视图.操作.删除Agent规则).toHaveBeenCalledWith(BFFAgent规则样本.rule_id);
+    expect(screen.getByRole('button', { name: '删除' }).hasAttribute('disabled')).toBe(true);
+    // 同一张编辑卡上只有删除在飞：提交修改不受牵连
+    expect(screen.getByRole('button', { name: '提交修改' }).hasAttribute('disabled')).toBe(false);
+    删除完成.resolve();
     await waitFor(() => expect(screen.queryByText('大小周不谈')).toBeNull());
+    expect(视图.操作.删除Agent规则).toHaveBeenCalledTimes(1);
     expect(screen.getByText('0 条')).toBeTruthy();
   });
 
@@ -426,6 +437,20 @@ describe('规则库 · Backend 候选页', () => {
     expect(screen.getByRole('button', { name: '放弃' })).toBeTruthy();
     expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
     expect(screen.getByRole('button', { name: '关闭' })).toBeTruthy();
+  });
+
+  it('orders Proposal cards by created_at and puts absent timestamps last', () => {
+    renderCandidateRules({
+      rulesStage: '成功', proposalsStage: '成功', initialized: true,
+      提案: [
+        { ...BFFAgent规则就绪提案样本, proposal_id: 'arp_bbbb', normalized_text: '没有时间戳的提案', created_at: undefined },
+        { ...BFFAgent规则就绪提案样本, proposal_id: 'arp_aaaa', normalized_text: '更早落地的提案', created_at: '2026-08-27T01:00:00Z' },
+      ],
+    });
+    const 更早的 = screen.getByText('更早落地的提案');
+    const 无时的 = screen.getByText('没有时间戳的提案');
+    // created_at 正序在前，缺席的一律排最后
+    expect(更早的.compareDocumentPosition(无时的) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('closing a failed card only removes that card', async () => {

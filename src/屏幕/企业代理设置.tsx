@@ -31,12 +31,18 @@ import type { 规则 } from '../数据/类型';
 
 const 未水合: Agent规则角色水合状态 = { rules: '未开始', proposals: '未开始' };
 
-/** actionable 提案展示序：created_at 早的在前（缺席排最后），同刻按 proposal_id 稳定排序。 */
+/** actionable 提案展示序：created_at 早的在前，缺席的排最后，同刻按 proposal_id 稳定排序。 */
 function 提案展示序(提案们: BFFAgent规则提案[]): BFFAgent规则提案[] {
   return [...提案们].sort((甲, 乙) => {
-    const 甲时 = 甲.created_at ?? '';
-    const 乙时 = 乙.created_at ?? '';
-    if (甲时 !== 乙时) return 甲时 < 乙时 ? -1 : 1;
+    const 甲时 = 甲.created_at ?? null;
+    const 乙时 = 乙.created_at ?? null;
+    if (甲时 === null || 乙时 === null) {
+      // interpreting 创建回执可能没有 created_at：缺席的一律排最后
+      if (甲时 !== null) return -1;
+      if (乙时 !== null) return 1;
+    } else if (甲时 !== 乙时) {
+      return 甲时 < 乙时 ? -1 : 1;
+    }
     if (甲.proposal_id !== 乙.proposal_id) return 甲.proposal_id < 乙.proposal_id ? -1 : 1;
     return 0;
   });

@@ -206,6 +206,8 @@ interface 页面场景 {
   proposalsStage?: Agent规则角色水合状态['proposals'];
   /** false = 未登录首帧（主体为空），页面必须落安全壳 */
   initialized?: boolean;
+  /** 桩主体与镜头主体一起切角色：验证招聘方页在 candidate 会话下渲染安全壳 */
+  主体角色?: 'candidate' | 'recruiter';
   规则?: BFFAgent规则[];
   提案?: BFFAgent规则提案[];
   /** 提案字典不进首帧镜头：改由真实挂载水合落卡（accept/dismiss 全链路用例用） */
@@ -215,12 +217,13 @@ interface 页面场景 {
 
 function renderRecruiterRules(场景: 页面场景 = {}) {
   const 模式 = 场景.mode ?? 'backend';
+  const 角色 = 场景.主体角色 ?? 'recruiter';
   const 规则们 = 场景.规则 ?? [BFFAgent规则样本];
   const 提案们 = 场景.提案 ?? [];
   const 后端 = 创建后端桩();
 
   if (模式 === 'backend') {
-    后端.读取主体.mockResolvedValue({ ...BFF主体样本, last_used_role: 'recruiter' });
+    后端.读取主体.mockResolvedValue({ ...BFF主体样本, last_used_role: 角色 });
     后端.读取Agent规则.mockResolvedValue(规则们);
     后端.读取Agent规则提案列表.mockImplementation(async (_角色: BFF角色, 阶段: 'interpreting' | 'ready') =>
       提案们.filter((提案) => 提案.state === 阶段));
@@ -237,7 +240,7 @@ function renderRecruiterRules(场景: 页面场景 = {}) {
     const 投影 = 映射招聘Agent规则(规则们);
     const 提案表 = Object.fromEntries(提案们.map((提案) => [提案.proposal_id, 提案]));
     镜头.覆盖 = {
-      主体: 场景.initialized === false ? null : { ...BFF主体样本, last_used_role: 'recruiter' },
+      主体: 场景.initialized === false ? null : { ...BFF主体样本, last_used_role: 角色 },
       Agent规则水合: {
         candidate: 未水合,
         recruiter: { rules: 场景.rulesStage ?? '成功', proposals: 场景.proposalsStage ?? '成功' },
@@ -443,6 +446,16 @@ describe('企业代理设置 · Backend 招聘方页', () => {
     expect(screen.queryByRole('button', { name: /手动添加规则/ })).toBeNull();
     expect(screen.queryByRole('status', { name: '规则加载中' })).toBeNull();
     expect(screen.queryByRole('button', { name: '规则加载失败，重试' })).toBeNull();
+  });
+
+  it('renders a safe shell when the active role is not the recruiter', () => {
+    // candidate 会话直访 /hr/agent-settings：不出任何规则行/开关/控件，也不索引别角色的水合
+    renderRecruiterRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true, 主体角色: 'candidate' });
+    expect(screen.queryByRole('switch', { name: `规则：${BFFAgent规则样本.display_text}` })).toBeNull();
+    expect(screen.queryByRole('button', { name: /手动添加规则/ })).toBeNull();
+    expect(screen.queryByRole('status', { name: '规则加载中' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '规则加载失败，重试' })).toBeNull();
+    expect(screen.queryByText('1 条生效')).toBeNull();
   });
 });
 

@@ -30,12 +30,18 @@ import type { 规则 } from '../数据/类型';
 
 const 未水合: Agent规则角色水合状态 = { rules: '未开始', proposals: '未开始' };
 
-/** actionable 提案展示序：created_at 早的在前（缺席排最后），同刻按 proposal_id 稳定排序。 */
+/** actionable 提案展示序：created_at 早的在前，缺席的排最后，同刻按 proposal_id 稳定排序。 */
 function 提案展示序(提案们: BFFAgent规则提案[]): BFFAgent规则提案[] {
   return [...提案们].sort((甲, 乙) => {
-    const 甲时 = 甲.created_at ?? '';
-    const 乙时 = 乙.created_at ?? '';
-    if (甲时 !== 乙时) return 甲时 < 乙时 ? -1 : 1;
+    const 甲时 = 甲.created_at ?? null;
+    const 乙时 = 乙.created_at ?? null;
+    if (甲时 === null || 乙时 === null) {
+      // interpreting 创建回执可能没有 created_at：缺席的一律排最后
+      if (甲时 !== null) return -1;
+      if (乙时 !== null) return 1;
+    } else if (甲时 !== 乙时) {
+      return 甲时 < 乙时 ? -1 : 1;
+    }
     if (甲.proposal_id !== 乙.proposal_id) return 甲.proposal_id < 乙.proposal_id ? -1 : 1;
     return 0;
   });
@@ -70,6 +76,7 @@ export default function 规则库() {
   const [编辑中编号, 设编辑中编号] = useState<string | null>(null);
   const [编辑草稿, 设编辑草稿] = useState('');
   const [提交编辑中, 设提交编辑中] = useState(false);
+  const [删除中, 设删除中] = useState(false);
   // 提案卡的忙：只圈住正在接受/放弃的那一张卡（failed 卡的关闭永远可用）
   const [卡忙编号, 设卡忙编号] = useState<string | null>(null);
   // failed 卡的本地关闭：提案表里仍是 failed，页面先收起，原草稿保留给用户再次明确提交
@@ -149,14 +156,17 @@ export default function 规则库() {
     }
   };
 
-  // 删除 = 当前版本 If-Match；失败保留编辑态
+  // 删除 = 当前版本 If-Match；失败保留编辑态；删除在飞时按钮禁用，杜绝双击打出 not_found
   const 删除规则 = async () => {
-    if (编辑中编号 === null) return;
+    if (编辑中编号 === null || 删除中) return;
+    设删除中(true);
     try {
       await 操作.删除Agent规则(编辑中编号);
       设编辑中编号(null);
     } catch (错误) {
       轻提示(取Agent规则错误文案(错误));
+    } finally {
+      设删除中(false);
     }
   };
 
@@ -248,6 +258,8 @@ export default function 规则库() {
                     }}
                     保存={保存编辑}
                     删除={删除规则}
+                    编辑提交中={提交编辑中}
+                    编辑删除中={删除中}
                     末条={序 === 状态.全局规则.length - 1}
                   />
                 ))}
@@ -273,6 +285,8 @@ export default function 规则库() {
                           }}
                           保存={保存编辑}
                           删除={删除规则}
+                          编辑提交中={提交编辑中}
+                          编辑删除中={删除中}
                           末条={序 === 组.规则.length - 1}
                         />
                       ))}
@@ -297,6 +311,8 @@ export default function 规则库() {
                         }}
                         保存={保存编辑}
                         删除={删除规则}
+                        编辑提交中={提交编辑中}
+                        编辑删除中={删除中}
                         末条={序 === 状态.意向级规则.length - 1}
                       />
                     ))}
@@ -353,11 +369,13 @@ export default function 规则库() {
                 </button>
               ) : null}
 
-              <div className={样式.尾注}>
-                {是Backend
-                  ? '点任意规则可提交修改或删除；修改要经你确认后才会替换原规则。'
-                  : '点任意规则可编辑或删除。'}
-              </div>
+              {显示控件 ? (
+                <div className={样式.尾注}>
+                  {是Backend
+                    ? '点任意规则可提交修改或删除；修改要经你确认后才会替换原规则。'
+                    : '点任意规则可编辑或删除。'}
+                </div>
+              ) : null}
             </>
           ) : null}
         </div>
@@ -376,6 +394,8 @@ function 规则行({
   开始编辑,
   保存,
   删除,
+  编辑提交中,
+  编辑删除中,
   末条,
 }: {
   条: 规则;
@@ -387,6 +407,10 @@ function 规则行({
   开始编辑: () => void;
   保存: () => void;
   删除: () => void;
+  /** 替换提案在飞：提交修改 禁用 */
+  编辑提交中: boolean;
+  /** 删除在飞：删除 禁用（双击会打出 agent_rule_not_found） */
+  编辑删除中: boolean;
   末条: boolean;
 }) {
   if (编辑中) {
@@ -406,10 +430,10 @@ function 规则行({
             />
           </div>
           <div className={样式.编辑键行}>
-            <button className={`${样式.删除键} 可点`} onClick={删除}>
+            <button className={`${样式.删除键} 可点`} disabled={编辑删除中} onClick={删除}>
               删除
             </button>
-            <button className={`${样式.保存键} 可点`} onClick={保存}>
+            <button className={`${样式.保存键} 可点`} disabled={编辑提交中} onClick={保存}>
               提交修改
             </button>
           </div>
