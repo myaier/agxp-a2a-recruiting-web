@@ -787,7 +787,7 @@ function use组织查询(search?: (query: 组织搜索查询) => Promise<BFF组�
   词: string; 设词(value: string): void; 选择: BFF组织搜索项 | null;
   选中(item: BFF组织搜索项): void; 结果: BFF组织搜索项[]; 搜索中: boolean;
   下一页游标: string | null; 加载中: boolean; 加载更多(): Promise<void>;
-  重新查询(): void; 清空(): void;
+  重新查询(): void;
 }
 ```
 
@@ -833,7 +833,7 @@ Create screen tests proving:
 - current/related unblock invokes risk acknowledgement through the operation, manual does not;
 - Mock mode keeps the current local free-text behavior and makes no search call;
 - while Backend Privacy is not hydrated, the shell and explanation remain but neither a `0 家` count nor the existing empty-list claim is rendered, and all mutation controls are disabled;
-- all current titles, placeholder, group labels, buttons, empty state, and confirmation copy remain.
+- all current titles, placeholder, group labels, buttons, hydrated-Backend/Mock empty state, and confirmation copy remain.
 
 Add one hook pagination test that calls `加载更多()` twice before the first call resolves, in two separate `act()` blocks so the first call's `加载中` state commits before the second call, and asserts the search method receives that cursor only once.
 
@@ -864,7 +864,7 @@ const 设词 = (value: string) => {
 };
 ```
 
-Initialize `来源=null` and `选择=null`. Every generation change must also release stale pagination: ordinary `设词()` increments the generation and clears selection/results/cursor/loading; `选中(item)` increments it, stores the complete item, sets `词=item.display_name`, and clears results/cursor/loading; `重新查询()` increments it without changing `词`, clears selection/results/cursor/loading, increments a separate refresh counter, and triggers the same debounced first-page effect. The effect trims `词`, returns without requesting when no source is selected, when the query is empty, or when `选择?.display_name === 词`; otherwise it waits 250ms, captures the generation, calls `search({q, limit:20})`, and commits only if the generation still matches. A failed first-page search preserves the input and any already displayed page. `加载更多()` returns when `下一页游标 === null || 加载中`, otherwise calls the current query/cursor, de-duplicates by `organization_id`, and commits only to the matching generation. Component unmount discards the generation and clears query/source/selection/cursor with the hook instance.
+Initialize `来源=null` and `选择=null`. Every generation change must also release stale pagination loading: ordinary `设词()` increments the generation and clears selection/results/cursor/loading; `选中(item)` increments it, stores the complete item, sets `词=item.display_name`, and clears only loading so the selected row and its alternatives remain visible; `重新查询()` increments it without changing `词`, clears selection/results/cursor/loading, increments a separate refresh counter, and triggers the same debounced first-page effect. The effect trims `词`, returns without requesting when no source is selected, when the query is empty, or when `选择?.display_name === 词`; otherwise it waits 250ms, captures the generation, calls `search({q, limit:20})`, and commits only if the generation still matches. A failed first-page search preserves the input and any already displayed page. `加载更多()` returns when `下一页游标 === null || 加载中`, otherwise calls the current query/cursor, de-duplicates by `organization_id`, and commits only to the matching generation. Component unmount discards the generation and clears query/source/selection/cursor with the hook instance.
 
 - [ ] **Step 4: Wire Backend picker while preserving Mock behavior**
 
@@ -876,7 +876,7 @@ In Backend mode:
 - disable the search input until a source has been explicitly selected; use it only as search text;
 - disable `屏蔽` until both a source and a SearchItem are selected;
 - render search results using existing card/row styles; selecting a row calls `选中(item)`;
-- call `操作.添加组织屏蔽(选择.organization_id, 来源)` and clear query only after success;
+- call `操作.添加组织屏蔽(选择.organization_id, 来源)` and invoke the existing `设词('')` only after success, retaining the selected source for the next block;
 - on `organization_unavailable`, clear selection and call `重新查询()` so the visible query text is preserved;
 - pass the complete `屏蔽项` to `操作.解除组织屏蔽`.
 
