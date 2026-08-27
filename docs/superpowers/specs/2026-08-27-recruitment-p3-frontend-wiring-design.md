@@ -206,7 +206,7 @@ P3 没有企业可配置 disclosure profile。该页继续呈现现有 PM 内容
 - 编辑：从 OwnerJob 完整回显，任何保存都保留四项；若发生修改，PATCH 发送完整 replacement；
 - Mock：为每个当前本地岗位 fixture 显式提供同一完整 typed object；当前没有岗位持久化/水合 seam，不新增虚构的历史归一化路径；
 - Backend：缺失/非法 hard requirement 直接触发契约错误，不补默认；
-- CandidateJob：DTO 类型和共享 hard-requirement 映射保留该对象，供未来真实 consumer 使用；本 P3 不提前新增 `GET /api/v1/jobs/{id}` facade、运行时 decoder、P4 岗位发现、推荐或 Recruiter candidate projection。
+- CandidateJob：闭合 DTO 类型保留完整 hard-requirement 边界，供未来真实 consumer 使用；本 P3 不提前新增 fixture、`GET /api/v1/jobs/{id}` facade、运行时 decoder、P4 岗位发现、推荐或 Recruiter candidate projection。
 
 岗位详情等现有消费 legacy `硬性条件` 的页面保持原展示；是否在未来展示四项 typed facts 需要另一个 PM 设计，不在本次接线中顺便新增文案或版式。
 
@@ -278,7 +278,7 @@ query generation 决定响应归属。旧 generation 的成功、失败和 curso
 - AddBlock 200/201 都严格解码 receipt；
 - Organization search 的 q 编码、limit/cursor、空页、nullable cursor 与 exact three-field item；
 - Privacy/Search 的缺字段、unknown field、unknown enum、null items、trailing JSON 与畸形信封拒绝；
-- HardRequirements 在 create/patch/OwnerJob 的完整四字段写入/strict read；CandidateJob 用闭合 DTO 类型和同一纯映射 fixture 冻结四项，不在无消费者时增加网络 decoder；
+- HardRequirements 在 create/patch/OwnerJob 的完整四字段写入/strict read；CandidateJob 用闭合 DTO 类型冻结四项，不在无消费者时增加 fixture 或网络 decoder；
 - 根 `HTTP招聘数据源` 加入 Privacy 后不丢现有六个 facade 方法。
 
 ### 10.2 映射、reducer 与后端操作测试

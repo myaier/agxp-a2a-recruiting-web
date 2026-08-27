@@ -191,15 +191,9 @@ it('hard_requirements complete object round-trips through owner mapping and writ
   expect(转岗位创建(页面, 直接发岗上下文('Acme')).hard_requirements).toEqual(dto.hard_requirements);
   expect(转岗位补丁(页面, dto).hard_requirements).toEqual(dto.hard_requirements);
 });
-
-it('candidate DTO reuses the same hard-requirement mapping without adding a network consumer', () => {
-  expect(从BFF硬性条件(BFF候选岗位样本.hard_requirements)).toEqual({
-    大小周: '必须', 纯外包乙方: '不要求', 全现场办公: '未说明', 频繁出差: '必须',
-  });
-});
 ```
 
-In the same RED step, add table cases proving Organization Search rejects an extra item field, `items:null`, missing `next_cursor`, a trimmed-empty/201-code-point `q`, `limit=0/51/non-integer`, and a 4097-byte cursor. Add OwnerJob read cases whose `hard_requirements` is missing each member in turn, has one unknown enum, or has one extra member; all must reject with `invalid_response` before state or mapping sees the DTO. Define `BFF候选岗位样本` with `satisfies BFFCandidateJob` and use it only in the pure shared-mapping test above; do not add a CandidateJob request method before P4 has a consumer.
+In the same RED step, add table cases proving Organization Search rejects an extra item field, `items:null`, missing `next_cursor`, a trimmed-empty/201-code-point `q`, `limit=0/51/non-integer`, and a 4097-byte cursor. Add OwnerJob read cases whose `hard_requirements` is missing each member in turn, has one unknown enum, or has one extra member; all must reject with `invalid_response` before state or mapping sees the DTO. Keep `BFFCandidateJob` as a closed compile-time boundary only; do not add a CandidateJob fixture, request method, or runtime decoder before P4 has a consumer.
 In `隐私映射.test.ts`, assert all three configurable fields in both directions (`D-03↔current_employer`, `D-04↔education`, `D-05↔portfolio_links`), both derived block sources and manual grouping metadata, and a literal snapshot of all seven existing disclosure names/descriptions/options so moving the template cannot rewrite PM copy.
 
 - [ ] **Step 2: Run the focused tests and verify RED**
@@ -335,7 +329,7 @@ export function 从BFF隐私(服务端: BFF隐私快照): 页面隐私快照 {
 }
 ```
 
-`隐私.ts` must define local exact-key guards, strictly require wire `updated_at`, project the four page-owned fields into `BFF隐私快照`, and return `从BFF隐私()`; the page snapshot deliberately drops `updated_at`. AddBlock returns the strict receipt; Unblock returns `页面隐私快照`. `组织.ts` rejects a query when `Array.from(q.trim()).length` is outside 1–200, a non-integer `limit` is outside 1–50, or `new TextEncoder().encode(cursor).byteLength` exceeds 4096; it adds a strict three-field item decoder and builds query parameters in `q`, `limit`, `cursor` order. `岗位.ts` validates `hard_requirements` only on the authoritative OwnerJob pages returned by `读取岗位()`; create/PATCH already discard their response body and immediately call `读取岗位()`, so do not add duplicate hard-requirement validation there. Export `从BFF硬性条件()` from `后端映射.ts`, use it for OwnerJob mapping, and test the same pure helper with a `BFFCandidateJob` fixture so a future P4 consumer does not invent a second enum mapping. Do not add `GET /api/v1/jobs/{id}` or a CandidateJob decoder in P3.
+`隐私.ts` must define local exact-key guards, strictly require wire `updated_at`, project the four page-owned fields into `BFF隐私快照`, and return `从BFF隐私()`; the page snapshot deliberately drops `updated_at`. AddBlock returns the strict receipt; Unblock returns `页面隐私快照`. `组织.ts` rejects a query when `Array.from(q.trim()).length` is outside 1–200, a non-integer `limit` is outside 1–50, or `new TextEncoder().encode(cursor).byteLength` exceeds 4096; it adds a strict three-field item decoder and builds query parameters in `q`, `limit`, `cursor` order. `岗位.ts` validates `hard_requirements` only on the authoritative OwnerJob pages returned by `读取岗位()`; create/PATCH already discard their response body and immediately call `读取岗位()`, so do not add duplicate hard-requirement validation there. Export `从BFF硬性条件()` from `后端映射.ts` and use it for OwnerJob mapping. Keep CandidateJob compile-time-only in P3: do not add its fixture, `GET /api/v1/jobs/{id}`, or runtime decoder.
 
 In `后端映射.ts`, add explicit two-way tables:
 
@@ -360,7 +354,7 @@ export interface 页面隐私快照 {
 export interface 组织搜索查询 { q: string; limit?: number; cursor?: string }
 ```
 
-Make `HTTP招聘数据源` the intersection of the existing six facades plus `隐私数据源`, and spread `创建隐私数据源(请求)` in `创建HTTP招聘数据源`. Update all BFF OwnerJob fixtures to include complete `hard_requirements`; add a type-checked CandidateJob fixture plus distinct wire `BFF隐私视图样本` (contains `updated_at`) and page `BFF隐私快照样本` (the four-field projection), and add Search fixtures with no real personal data. Set Mock B-01 source to `当前雇主`, B-02 to `关联公司`, B-03 and the `拉黑` reducer-created block to `手动添加`; give each an explicit synthetic `组织编号` and `组织状态='有效'`. Give D1/D2/D6/D7 `可修改=false` and D3–D5 `可修改=true` in the shared disclosure template. Preserve every existing displayed string.
+Make `HTTP招聘数据源` the intersection of the existing six facades plus `隐私数据源`, and spread `创建隐私数据源(请求)` in `创建HTTP招聘数据源`. Update all BFF OwnerJob fixtures to include complete `hard_requirements`; add distinct wire `BFF隐私视图样本` (contains `updated_at`) and page `BFF隐私快照样本` (the four-field projection), and add Search fixtures with no real personal data. Set Mock B-01 source to `当前雇主`, B-02 to `关联公司`, B-03 and the `拉黑` reducer-created block to `手动添加`; give each an explicit synthetic `组织编号` and `组织状态='有效'`. Give D1/D2/D6/D7 `可修改=false` and D3–D5 `可修改=true` in the shared disclosure template. Preserve every existing displayed string.
 
 - [ ] **Step 6: Run Task 1 tests and commit**
 
@@ -838,9 +832,10 @@ Create screen tests proving:
 - current/related rows render under existing `建档时自动屏蔽`, manual under existing `你手动添加`;
 - current/related unblock invokes risk acknowledgement through the operation, manual does not;
 - Mock mode keeps the current local free-text behavior and makes no search call;
+- while Backend Privacy is not hydrated, the shell and explanation remain but neither a `0 家` count nor the existing empty-list claim is rendered, and all mutation controls are disabled;
 - all current titles, placeholder, group labels, buttons, empty state, and confirmation copy remain.
 
-Add one hook pagination test that calls `加载更多()` twice before the first call resolves and asserts the search method receives that cursor only once.
+Add one hook pagination test that calls `加载更多()` twice before the first call resolves, in two separate `act()` blocks so the first call's `加载中` state commits before the second call, and asserts the search method receives that cursor only once.
 
 - [ ] **Step 2: Run focused tests and verify RED**
 
@@ -869,13 +864,13 @@ const 设词 = (value: string) => {
 };
 ```
 
-Initialize `来源=null` and `选择=null`. `选中(item)` increments the generation, stores the complete item, and sets `词=item.display_name`; ordinary `设词()` always clears selection. The effect trims `词`, returns without requesting when no source is selected, when the query is empty, or when `选择?.display_name === 词`; otherwise it waits 250ms, captures the generation, calls `search({q, limit:20})`, and commits only if the generation still matches. A failed first-page search preserves the input and any already displayed page. `加载更多()` returns when `下一页游标 === null || 加载中`, otherwise calls the current query/cursor, de-duplicates by `organization_id`, and commits only to the matching generation. `重新查询()` increments the generation and a separate refresh counter without changing `词`, clears the selection/page/cursor, and triggers the same debounced first-page effect. Component unmount discards the generation and clears query/source/selection/cursor with the hook instance.
+Initialize `来源=null` and `选择=null`. Every generation change must also release stale pagination: ordinary `设词()` increments the generation and clears selection/results/cursor/loading; `选中(item)` increments it, stores the complete item, sets `词=item.display_name`, and clears results/cursor/loading; `重新查询()` increments it without changing `词`, clears selection/results/cursor/loading, increments a separate refresh counter, and triggers the same debounced first-page effect. The effect trims `词`, returns without requesting when no source is selected, when the query is empty, or when `选择?.display_name === 词`; otherwise it waits 250ms, captures the generation, calls `search({q, limit:20})`, and commits only if the generation still matches. A failed first-page search preserves the input and any already displayed page. `加载更多()` returns when `下一页游标 === null || 加载中`, otherwise calls the current query/cursor, de-duplicates by `organization_id`, and commits only to the matching generation. Component unmount discards the generation and clears query/source/selection/cursor with the hook instance.
 
 - [ ] **Step 4: Wire Backend picker while preserving Mock behavior**
 
 In Backend mode:
 
-- while `后端状态.隐私快照 === null`, render the existing shell/list labels but disable source, search, block, and unblock controls; never expose Mock rows or a local-success path;
+- while `后端状态.隐私快照 === null`, render the existing shell and explanation, use only the existing `双向不可见` subtitle fragment without a numeric count, skip the empty-list claim, and disable source, search, block, and unblock controls; never expose Mock rows or a local-success path;
 - render the hook's source choices `当前雇主`, `关联公司`, `手动添加` using the existing segmented control class;
 - keep the existing input placeholder exactly `输入公司全称，如「某某科技」`;
 - disable the search input until a source has been explicitly selected; use it only as search text;
@@ -883,10 +878,9 @@ In Backend mode:
 - render search results using existing card/row styles; selecting a row calls `选中(item)`;
 - call `操作.添加组织屏蔽(选择.organization_id, 来源)` and clear query only after success;
 - on `organization_unavailable`, clear selection and call `重新查询()` so the visible query text is preserved;
-- group by `条.来源 === '手动添加'` rather than parsing `理由`;
 - pass the complete `屏蔽项` to `操作.解除组织屏蔽`.
 
-In Mock mode retain the current `拉黑/解除屏蔽` reducer path and do not mount the query hook with a search function.
+In Mock mode retain the current `拉黑/解除屏蔽` reducer path and do not mount the query hook with a search function. In both modes, group by `条.来源 === '手动添加'` and derive unblock risk from `来源`; delete all parsing of the display-only `理由` text.
 
 - [ ] **Step 5: Run Task 4 tests and commit**
 
@@ -916,6 +910,7 @@ git commit -m "feat: search organizations for privacy blocks"
 - Modify: `src/屏幕/发布岗位.module.css`
 - Modify: `src/数据/企业端模拟数据.ts`
 - Modify: `src/数据/类型.ts`
+- Modify: `src/测试/BFF样本.ts`
 - Modify: `src/状态/后端/岗位操作.test.ts`
 
 **Interfaces:**
@@ -1005,7 +1000,7 @@ Inside the existing hard-condition area, render one button per fact. Visible but
 
 - [ ] **Step 5: Complete Mock fixtures and verify both modes**
 
-After `组装岗位` always emits the object, make `在招岗位.硬性事实` required (remove the temporary `?` introduced in Task 1) and add explicit `硬性事实` to every current `在招岗位列表` fixture. Mock does not persist or hydrate `岗位列表`, so do not invent a historical normalization boundary or an unused fallback. Do not add any fallback to `从BFF岗位`.
+After `组装岗位` always emits the object, make `在招岗位.硬性事实` required (remove the temporary `?` introduced in Task 1), add explicit `硬性事实` to every current `在招岗位列表` fixture, and give `src/测试/BFF样本.ts`'s `页面岗位样本` the same complete field. Mock does not persist or hydrate `岗位列表`, so do not invent a historical normalization boundary or an unused fallback. Do not add any fallback to `从BFF岗位`.
 
 Run:
 
@@ -1019,7 +1014,7 @@ Expected: PASS; create/edit always preserve four values and legacy hard-conditio
 - [ ] **Step 6: Commit Task 5**
 
 ```bash
-git add src/屏幕/发布岗位.tsx src/屏幕/发布岗位.test.tsx src/屏幕/发布岗位.module.css src/数据/类型.ts src/数据/企业端模拟数据.ts src/状态/后端/岗位操作.test.ts
+git add src/屏幕/发布岗位.tsx src/屏幕/发布岗位.test.tsx src/屏幕/发布岗位.module.css src/数据/类型.ts src/数据/企业端模拟数据.ts src/测试/BFF样本.ts src/状态/后端/岗位操作.test.ts
 git commit -m "feat: wire job hard requirements"
 ```
 
@@ -1146,9 +1141,9 @@ git commit -m "test: prove p3 frontend integration"
 - [ ] Privacy decoders require wire `updated_at`, while page state and AddBlock receipt merging do not invent or persist an aggregate timestamp.
 - [ ] Block creation always uses a SearchItem `organization_id`, current revision, source, and an Idempotency-Key.
 - [ ] Block grouping and unblock risk derive from `source`, never `理由` text.
-- [ ] Privacy 409 does not auto-replay; ambiguous outcomes reconcile by GET.
+- [ ] Privacy recovery dispatches by error code: `version_conflict`/`organization_already_blocked` (409) and `risk_acknowledgement_required` (422) each reread and rethrow without replay; ambiguous outcomes reconcile by GET.
 - [ ] Every Backend OwnerJob contains valid complete hard requirements; no Backend `unknown` fallback hides drift.
-- [ ] `BFFCandidateJob` and the shared hard-requirement mapper retain all four values, while P3 adds no unused CandidateJob request/decoder or P4 page.
+- [ ] `BFFCandidateJob` retains all four hard-requirement values as a closed type boundary, while P3 adds no unused CandidateJob fixture/request/decoder or P4 page.
 - [ ] Legacy `硬性条件: string[]` is unchanged and independent of `硬性事实`.
 - [ ] Enterprise disclosure renders from the fixed existing projection and no longer dispatches a mutable policy action.
 - [ ] Mock makes zero P3 HTTP calls; Backend never reads Mock facts.
