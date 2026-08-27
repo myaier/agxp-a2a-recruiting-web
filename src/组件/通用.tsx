@@ -377,7 +377,10 @@ export function 单选点({ 选中, 尺寸 = 22 }: { 选中: boolean; 尺寸?: n
 }
 
 // ── 开关 ──────────────────────────────────────────────────────
-export function 开关({ 开, 切换, 标签 = '切换此设置' }: { 开: boolean; 切换: () => void; 标签?: string }) {
+// 禁用（P3）：只挡交互、不加任何视觉态 —— 未水合服务端隐私时「对现雇主隐身」不可写
+export function 开关({ 开, 切换, 标签 = '切换此设置', 禁用 = false }: {
+  开: boolean; 切换: () => void; 标签?: string; 禁用?: boolean;
+}) {
   return (
     <button
       type="button"
@@ -386,6 +389,7 @@ export function 开关({ 开, 切换, 标签 = '切换此设置' }: { 开: boole
       role="switch"
       aria-checked={开}
       aria-label={标签}
+      disabled={禁用}
     >
       <span className={样式.开关点} />
     </button>

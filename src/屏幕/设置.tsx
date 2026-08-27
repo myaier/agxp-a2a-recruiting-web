@@ -14,7 +14,7 @@ import 弹层框架 from '../组件/弹层框架';
 
 export default function 设置() {
   const { 返回, 跳转, 替换跳转 } = use导航();
-  const { 状态, 派发, 操作 } = use应用状态();
+  const { 状态, 派发, 操作, 数据源模式, 后端状态 } = use应用状态();
   const [提示, 设提示] = useState<string | null>(null);
   const [待关隐身, 设待关隐身] = useState(false);
   const [待退出, 设待退出] = useState(false);
@@ -25,6 +25,18 @@ export default function 设置() {
     return () => window.clearTimeout(定时);
   }, [提示]);
 
+  // P3：Mock 下隐私开关照旧走本地归约；Backend 必须等 服务端成功
+  // （操作.设置雇主隐私 内部无乐观写），绝不派发本地 切设置开关 假成功。
+  // 服务端隐私尚未水合时该开关不可写 —— 其余本地设置不受影响。
+  const 隐私已水合 = 数据源模式 === 'mock' || 后端状态.隐私快照 !== null;
+  const 切雇主隐私 = async (enabled: boolean) => {
+    if (数据源模式 === 'mock') {
+      派发({ 型: '切设置开关', 键: '对现雇主隐身' });
+      return;
+    }
+    await 操作.设置雇主隐私(enabled);
+  };
+
   const 开关行 = (键: string) => (
     <div className={样式.行} key={键}>
       <span className={样式.行文字组}>
@@ -33,10 +45,15 @@ export default function 设置() {
       <开关
         开={状态.设置开关[键]}
         标签={键}
+        禁用={键 === '对现雇主隐身' ? !隐私已水合 : false}
         切换={() => {
           // 隐身是唯一一个「关掉会让当前公司看到你」的开关，关之前必须确认
           if (键 === '对现雇主隐身' && 状态.设置开关[键]) {
             设待关隐身(true);
+            return;
+          }
+          if (键 === '对现雇主隐身') {
+            void 切雇主隐私(true);
             return;
           }
           派发({ 型: '切设置开关', 键 });
@@ -153,10 +170,15 @@ export default function 设置() {
               </button>
               <button
                 className={`${样式.确认执行} 可点`}
-                onClick={() => {
-                  派发({ 型: '切设置开关', 键: '对现雇主隐身' });
-                  设待关隐身(false);
-                  设提示('隐身已关闭');
+                onClick={async () => {
+                  try {
+                    // 服务端生效才收口：Mock 是同步归约，Backend 等 操作.设置雇主隐私 兑现
+                    await 切雇主隐私(false);
+                    设待关隐身(false);
+                    设提示('隐身已关闭');
+                  } catch {
+                    // 写入失败：保留弹层可重试或取消（与退出登录同口径，不改弹层 DOM/CSS）
+                  }
                 }}
               >
                 仍要关闭
