@@ -621,6 +621,33 @@ describe('水合Agent规则角色数据 与 刷新Agent规则', () => {
     expect(环境.最新后端状态().候选规则提案).toEqual({});
   });
 
+  // 失败腿：从已 成功 的底座起跑的刷新即使有读取被拒，两个阶段也保持 成功，
+  // 已提交的快照行与提案卡原样可见（权威替换只发生在对应读取 fulfilled 时）。
+  it('已 成功 的域在刷新读取被拒时保持 成功，快照行与提案卡不闪退', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    环境.deps.后端状态引用.current = {
+      ...环境.deps.后端状态引用.current,
+      候选规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+      候选规则提案: { [BFFAgent规则就绪提案样本.proposal_id]: BFFAgent规则就绪提案样本 },
+      Agent规则水合: {
+        candidate: { rules: '成功', proposals: '成功' },
+        recruiter: { rules: '未开始', proposals: '未开始' },
+      },
+    };
+    // 权威视图里该规则行不变；唯一被拒的是 ready 清单（非 401）
+    vi.mocked(环境.数据源.读取Agent规则).mockResolvedValue([BFFAgent规则样本]);
+    vi.mocked(环境.数据源.读取Agent规则提案列表)
+      .mockResolvedValueOnce([BFFAgent规则解释中提案样本])
+      .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const 结果 = await 直接运行水合(环境)();
+    expect(结果.map((项) => 项.status)).toEqual(['fulfilled', 'fulfilled', 'rejected']);
+    // 刷新失败不降级任何已 成功 的域
+    expect(环境.最新后端状态().Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' });
+    // 已提交的快照行与提案卡原样可见（清单被拒 → 不做整体替换）
+    expect(环境.最新后端状态().候选规则快照[BFFAgent规则样本.rule_id]).toEqual(BFFAgent规则样本);
+    expect(环境.最新后端状态().候选规则提案[BFFAgent规则就绪提案样本.proposal_id]).toEqual(BFFAgent规则就绪提案样本);
+  });
+
   it('导出的 刷新Agent规则 用完整链路刷新当前角色并把规则投到页面数组', async () => {
     const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
     vi.mocked(环境.数据源.读取Agent规则)
