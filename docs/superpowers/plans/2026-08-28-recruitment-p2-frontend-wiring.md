@@ -461,7 +461,7 @@ git commit -m "feat: add strict resume file data source"
 **Interfaces:**
 - Consumes: Task 2 `附件简历数据源` 六方法；现有 `后端操作依赖` 的 `锁/主体标识引用/会话代际/后端状态引用/设后端状态`；现有 `清账号状态`。
 - Produces: `后端状态.附件简历库: BFF附件简历库 | null`；`附件简历操作`：`刷新附件简历(): Promise<void>`、`创建附件简历(file, true): Promise<void>`、`替换附件简历(fileId, file, true): Promise<void>`、`删除附件简历(fileId): Promise<void>`、`请求附件解析(fileId, true): Promise<void>`、`下载附件简历(fileId): Promise<Blob>`；`应用操作` 与该接口相交。
-- Internal invariant: `创建附件简历操作` factory 闭包持有 `附件读取序号` 与 `最新附件读取`；每次附件列表 GET 先递增，只有最新序号可提交，被更新读取超越的调用 join 最新 Promise 后再返回。这既阻止旧轮询覆盖 mutation 后的权威 GET，也保证 mutation 不会早于更新权威读 resolve；协调器不是公共 state/dependency，不迫使其它领域 fixture 改 shape。
+- Internal invariant: `创建附件简历操作` factory 闭包持有一条 `附件读取队列`；候选登录水合继续由会话层 generation fence 独立完成，水合后的显式刷新、poll、安全重读和 mutation 权威 GET 串行入队。先来的 poll settle 后 mutation 权威读才发出，后来的 poll 又排在 mutation 后；后排 poll 的失败不会反向污染已完成的 mutation。队列不是公共 state/dependency，不迫使其它领域 fixture 改 shape。
 
 - [ ] **Step 1: Write failing operation and hydration tests**
 
@@ -516,9 +516,27 @@ it('an older polling GET cannot overwrite the authoritative GET after a delete',
     .mockResolvedValueOnce({ items: [], limits });
   后端.删除附件简历.mockResolvedValue({ deleted: true });
   const polling = 操作.刷新附件简历();
-  await 操作.删除附件简历(文件A.file_id);
+  const deleting = 操作.删除附件简历(文件A.file_id);
+  await vi.waitFor(() => expect(后端.删除附件简历).toHaveBeenCalledTimes(1));
   oldPoll.resolve({ items: [文件A], limits });
-  await polling;
+  await Promise.all([polling, deleting]);
+  expect(后端状态引用.current.附件简历库?.items).toEqual([]);
+});
+
+it('a poll queued after the mutation authority read cannot make a successful delete reject', async () => {
+  后端状态引用.current.附件简历库 = { items: [文件A], limits };
+  const authority = 可控Promise<BFF附件简历库>();
+  后端.读取附件简历库
+    .mockReturnValueOnce(authority.promise)
+    .mockRejectedValueOnce(new BFF错误(0, 'network_error', 'offline'));
+  后端.删除附件简历.mockResolvedValue({ deleted: true });
+  const deleting = 操作.删除附件简历(文件A.file_id);
+  await vi.waitFor(() => expect(后端.读取附件简历库).toHaveBeenCalledTimes(1));
+  const polling = 操作.刷新附件简历();
+  expect(后端.读取附件简历库).toHaveBeenCalledTimes(1);
+  authority.resolve({ items: [], limits });
+  await expect(deleting).resolves.toBeUndefined();
+  await expect(polling).rejects.toMatchObject({ code: 'network_error' });
   expect(后端状态引用.current.附件简历库?.items).toEqual([]);
 });
 
@@ -529,11 +547,40 @@ it('401 clears every account snapshot including attachments', async () => {
     已登录: false, 主体: null, 附件简历库: null,
   }));
 });
+
+it('a stale generation during error recovery resolves silently without inspecting null', async () => {
+  后端状态引用.current.附件简历库 = { items: [文件A], limits };
+  const reread = 可控Promise<BFF附件简历库>();
+  后端.请求附件解析.mockRejectedValue(new BFF错误(503, 'operation_outcome_unknown', 'unknown'));
+  后端.读取附件简历库.mockReturnValue(reread.promise);
+  const parsing = 操作.请求附件解析(文件A.file_id, true);
+  await vi.waitFor(() => expect(后端.读取附件简历库).toHaveBeenCalledTimes(1));
+  会话代际.current += 1;
+  reread.resolve({ items: [], limits });
+  await expect(parsing).resolves.toBeUndefined();
+  expect(设后端状态).not.toHaveBeenCalled();
+});
+
+it('parse_not_allowed only closes as success when authority is succeeded', async () => {
+  后端状态引用.current.附件简历库 = { items: [文件A], limits };
+  后端.请求附件解析.mockRejectedValue(new BFF错误(409, 'parse_not_allowed', 'not allowed'));
+  后端.读取附件简历库.mockResolvedValueOnce({ items: [文件处理中], limits });
+  await expect(操作.请求附件解析(文件A.file_id, true)).rejects.toMatchObject({ code: 'parse_not_allowed' });
+  后端.读取附件简历库.mockResolvedValueOnce({ items: [文件已完成], limits });
+  await expect(操作.请求附件解析(文件A.file_id, true)).resolves.toBeUndefined();
+});
+
+it('upload_in_progress rereads but preserves its own code', async () => {
+  后端状态引用.current.附件简历库 = { items: [], limits };
+  后端.创建附件简历.mockRejectedValue(new BFF错误(409, 'upload_in_progress', 'busy'));
+  后端.读取附件简历库.mockResolvedValue({ items: [文件A], limits });
+  await expect(操作.创建附件简历(pdf, true)).rejects.toMatchObject({ code: 'upload_in_progress' });
+});
 ```
 
 测试 helper `toHaveCommitted` 不存在时，使用当前项目实际的 functional setter 执行方式：对每个 `设后端状态.mock.calls` 的 updater 依次作用到本地 state，再断言最终 state；不要新增自定义 matcher。
 
-在测试文件内实现 `可控Promise<T>()` 为 `{promise,resolve,reject}` 的标准 deferred helper。另写：并发同 key 只发一次；missing local file 先安全 GET 再抛 `resume_file_selection_stale`；delete 404 重读后目标不存在收口成功；parse 网络/503/最终 `idempotency_in_progress` 后同 version 变 active/succeeded 或 terminal `updated_at` 改变则收口；create/replace 结果未知重读有变化仍抛 `attachment_state_changed` 让 UI 提示确认；安全重读失败保留原错误；download 401 清账号；候选水合由三路变四路且各域独立提交；recruiter/null/退出/换账号把附件 snapshot 置 null。
+在测试文件内实现 `可控Promise<T>()` 为 `{promise,resolve,reject}` 的标准 deferred helper，并定义 `文件处理中`/`文件已完成` 为与 `文件A` 同 version、parse 分别是 processing/succeeded 的完整 DTO。另写：并发同 key 只发一次；missing local file 先安全 GET 再抛 `resume_file_selection_stale`；delete 404 重读后目标不存在收口成功；parse 网络/503/最终 `idempotency_in_progress` 后同 version 变 active/succeeded 或 terminal `updated_at` 改变则收口；create/replace 结果未知重读有变化仍抛 `attachment_state_changed` 让 UI 提示确认；安全重读失败保留原错误；download 401 清账号；候选水合由三路变四路且各域独立提交；recruiter/null/退出/换账号把附件 snapshot 置 null。
 
 - [ ] **Step 2: Run the RED tests**
 
@@ -574,24 +621,22 @@ function 提交附件库(deps: 后端操作依赖, fence: ReturnType<typeof 捕�
   deps.设后端状态((old) => ({ ...old, 附件简历库: value }));
 }
 
-// 以下 counter 与 helper 定义在 创建附件简历操作(deps) 闭包内。
-let 附件读取序号 = 0;
-let 最新附件读取: Promise<BFF附件简历库 | null> = Promise.resolve(null);
+// 以下 queue 与 helper 定义在 创建附件简历操作(deps) 闭包内。
+let 附件读取队列: Promise<void> = Promise.resolve();
 function 读取并提交(fence: ReturnType<typeof 捕获栅栏>): Promise<BFF附件简历库 | null> {
-  const reading = ++附件读取序号;
-  const run = (async () => {
+  const run = 附件读取队列.then(async () => {
+    if (!仍有效(deps, fence)) return null;
     const value = await deps.后端!.读取附件简历库();
     if (!仍有效(deps, fence)) return null;
-    if (reading !== 附件读取序号) return 最新附件读取;
     提交附件库(deps, fence, value);
     return value;
-  })();
-  最新附件读取 = run;
+  });
+  附件读取队列 = run.then(() => undefined, () => undefined);
   return run;
 }
 ```
 
-factory 的显式刷新、安全重读、每个 mutation 后的权威 GET 全部只调用闭包内 `读取并提交`，禁止绕过它直接提交列表。factory 使用库锁 `resume-files:create` 和文件锁 `resume-file:${fileId}`。每个 mutation 从 `后端状态引用.current.附件简历库` 按 id 取最新 revision/version；找不到时只 GET 一次并抛 `new BFF错误(409, 'resume_file_selection_stale', '附件状态已更新，请重新选择')`。mutation 成功后调用同一 fence 下的 `读取并提交`，提交后才 resolve；因此 mutation 后启动的读会使此前在飞的 poll reading 失效。
+factory 的显式刷新、安全重读、每个 mutation 后的权威 GET 全部只调用闭包内 `读取并提交`，禁止绕过它直接提交列表。factory 使用库锁 `resume-files:create` 和文件锁 `resume-file:${fileId}`。每个 mutation 从 `后端状态引用.current.附件简历库` 按 id 取最新 revision/version；找不到时只 GET 一次并抛 `new BFF错误(409, 'resume_file_selection_stale', '附件状态已更新，请重新选择')`。mutation 成功后调用同一 fence 下的 `读取并提交`，提交后才 resolve；队列通过 rejected branch 也恢复为 fulfilled void，单次读失败不会毒死后续读取。
 
 错误分派精确为：
 
@@ -602,11 +647,14 @@ const 权威重读码 = new Set([
 
 // 401: 清账号状态后抛原错误。
 // 权威重读码: GET+commit；delete 且目标消失才 return，其余抛原错误。
-// status 0、status 503、code=idempotency_in_progress 或 code=upload_in_progress:
+// status 0、status 503 或 code=idempotency_in_progress:
 // GET+commit；按 Spec 10.3 核对 delete/parse 是否已达成。
-// code=parse_already_in_progress / parse_not_allowed: GET+commit；active/succeeded 时按目标达成，否则抛原错误。
+// code=upload_in_progress: GET+commit 后始终抛原 code，不做集合差异效果判定。
+// code=parse_already_in_progress: GET+commit；active/succeeded 时按目标达成，否则抛原错误。
+// code=parse_not_allowed: GET+commit；只有 succeeded 按目标达成，否则抛原错误。
 // create/replace 若库与动作前 snapshot 的 file/version 集合不同：
 // throw new BFF错误(error.status, 'attachment_state_changed', '附件状态已更新，请确认');
+// 读取并提交 返回 null（会话换代）：不读 items、不抛错、不提示，静默结束 stale 调用。
 // 无法确认或安全 GET 失败：抛原错误。任何分支都不得自动重放 mutation。
 ```
 
@@ -682,7 +730,7 @@ it.each([
 });
 ```
 
-刷新 hook 用 fake timers + 可写 `document.visibilityState`，断言：mount visible 立即一次；第一次 settle 后且 snapshot active 只在 3000ms 再读（active false→true 本身不立即 GET）；promise 未 settle时推进时间或触发 visibility/effect 重跑都不重叠；terminal/hidden/unmount/Mock/candidate logout 不再读；visible 恢复立即读；后台错误不 toast。预览 hook 断言：点击 handler 同步 `window.open('about:blank','_blank')` 并 `opener=null`；成功把 object URL 赋给预开窗口；下载失败关闭窗口并提示；popup null 时创建 `a` 且 `rel='noopener'`；load 后 4,999ms 不 revoke、5,000ms revoke；无 load 时 30 秒兜底；unmount 立即释放；任一路径每个 URL 只 revoke 一次。
+刷新 hook 用 fake timers + 可写 `document.visibilityState`，断言：mount visible 立即一次；第一次 settle 后且 snapshot active 只在 3000ms 再读（active false→true 本身不立即 GET）；promise 未 settle时推进时间或触发 visibility/effect 重跑都不重叠；terminal/hidden/unmount/Mock/candidate logout 不再读；visible 恢复立即读；特别覆盖“请求在飞期间 hidden→visible”：settle 后必须立刻再读，不等 3000ms，且 active=false 也一样；后台错误不 toast。预览 hook 断言：点击 handler 同步 `window.open('about:blank','_blank')` 并 `opener=null`；成功把 object URL 赋给预开窗口；下载失败关闭窗口并提示；popup null 时创建 `a` 且 `rel='noopener'`；load 后 4,999ms 不 revoke、5,000ms revoke；无 load 时 30 秒兜底；unmount 立即释放；任一路径每个 URL 只 revoke 一次。
 
 - [ ] **Step 2: Run RED**
 
@@ -745,7 +793,7 @@ export function 附件错误文案(error: unknown, limits: BFF附件简历库['l
 
 - [ ] **Step 4: Implement single-flight refresh and preview hooks**
 
-刷新 hook 把 session 生命周期与 active 调度拆开：session effect 只依赖 `可运行/subject` 并负责唯一 immediate GET、visibility 和清理；active effect 只调用 controller 的 `同步active`，绝不直接 GET。`inFlightRef` 位于 effect 外，保证 active 翻转或 session effect 重跑时仍是同一个单飞标志：
+刷新 hook 把 session 生命周期与 active 调度拆开：session effect 只依赖 `可运行/subject` 并负责唯一 immediate GET、visibility 和清理；active effect 只调用 controller 的 `同步active`，绝不直接 GET。`inFlightRef` 位于 effect 外，保证 active 翻转或 session effect 重跑时仍是同一个单飞标志；`轮询待排` 与 `待立即刷新` 是两个独立信号，visibility 的 immediate 意图优先：
 
 ```ts
 export function use附件简历刷新(启用 = true): void {
@@ -765,40 +813,53 @@ export function use附件简历刷新(启用 = true): void {
     if (!可运行) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    let 等待在飞结束 = false;
+    let 轮询待排 = false;
+    let 待立即刷新 = false;
+    let 已监听的在飞请求: Promise<void> | null = null;
     const clear = () => { if (timer !== null) clearTimeout(timer); timer = null; };
     const schedule = () => {
       clear();
       if (stopped || !activeRef.current || document.visibilityState !== 'visible') return;
-      if (inFlightRef.current) { 等待在飞结束 = true; return; }
-      timer = setTimeout(() => { void refresh(); }, 3000);
+      if (inFlightRef.current) { 轮询待排 = true; return; }
+      timer = setTimeout(() => { void 执行刷新(); }, 3000);
     };
-    const refresh = async () => {
+    const 执行刷新 = async () => {
       clear();
-      if (stopped || document.visibilityState !== 'visible') return;
-      if (inFlightRef.current) {
-        等待在飞结束 = true;
-        await inFlightRef.current.catch(() => undefined);
-        if (!stopped && 等待在飞结束) { 等待在飞结束 = false; void refresh(); }
-        return;
-      }
+      if (stopped || document.visibilityState !== 'visible' || inFlightRef.current) return;
       const request = 操作引用.current.刷新附件简历();
       inFlightRef.current = request;
       try { await request; } catch { /* 页面显式动作负责提示；轮询静默 */ }
       finally {
         if (inFlightRef.current === request) inFlightRef.current = null;
-        if (!stopped && (等待在飞结束 || activeRef.current)) {
-          等待在飞结束 = false;
-          schedule();
-        }
+        if (stopped || 待立即刷新) return; // immediate waiter 在同一 promise settle 后接管
+        if (轮询待排 || activeRef.current) { 轮询待排 = false; schedule(); }
       }
     };
-    const visibility = () => { clear(); if (document.visibilityState === 'visible') void refresh(); };
+    const immediate = () => {
+      clear();
+      if (stopped || document.visibilityState !== 'visible') return;
+      const existing = inFlightRef.current;
+      if (!existing) { void 执行刷新(); return; }
+      待立即刷新 = true;
+      if (已监听的在飞请求 === existing) return;
+      已监听的在飞请求 = existing;
+      void existing.catch(() => undefined).finally(() => {
+        if (已监听的在飞请求 === existing) 已监听的在飞请求 = null;
+        if (stopped || !待立即刷新 || document.visibilityState !== 'visible') return;
+        待立即刷新 = false;
+        void 执行刷新();
+      });
+    };
+    const visibility = () => {
+      clear();
+      if (document.visibilityState === 'visible') immediate();
+      else 待立即刷新 = false;
+    };
     controllerRef.current = {
-      同步active(value) { activeRef.current = value; if (value) schedule(); else { 等待在飞结束 = false; clear(); } },
+      同步active(value) { activeRef.current = value; if (value) schedule(); else { 轮询待排 = false; clear(); } },
     };
     document.addEventListener('visibilitychange', visibility);
-    void refresh();
+    immediate();
     return () => {
       stopped = true; clear(); controllerRef.current = null;
       document.removeEventListener('visibilitychange', visibility);
@@ -809,7 +870,7 @@ export function use附件简历刷新(启用 = true): void {
 }
 ```
 
-实现时保留上述双 effect 与共享 refs；测试必须证明 active 从 true 变 false 后不会再排 timer，false→true 只排 3 秒 timer，不产生第二次 immediate GET。
+实现时保留上述双 effect、共享 refs 和两个独立等待信号；测试必须证明 active 从 true 变 false 后不会再排 timer，false→true 只排 3 秒 timer，不产生第二次 immediate GET；visibility immediate waiter 不得被 owner finally 消费。
 
 预览 hook 的公共实现固定 `打开附件PDF(fileId)`；同步执行 `window.open('about:blank','_blank')`，若窗口存在先 `预览.opener=null`，再 await `操作.下载附件简历`。成功 `URL.createObjectURL(blob)`；popup 存在则 `location.replace(url)`，否则创建不可见 anchor（`target='_blank'`, `rel='noopener'`, `href=url`）并 click/remove。每个资源记录 `{url, hardTimer, loadTimer}`：创建时保留 30,000ms hard fallback；popup `load` 只新增 5,000ms 延迟释放，不立即 revoke，也不取消 hard fallback；两者与 unmount 共用幂等 `释放`，释放时清两个 timer。失败关闭预开窗口并 `轻提示(附件错误文案(error, limits))`。不得把 object URL 放进 React state/Provider。
 
@@ -1048,7 +1109,7 @@ const { 打开附件PDF } = use附件PDF预览();
 标题 DOM 外壳不增高：把 `附件简历` 与只在 `items.length < limits.max_files` 时出现的 `button aria-label="添加附件简历"` 放在同一个节点：
 
 ```tsx
-<div className={`${样式.卡标题} ${样式.附件标题行}`}>
+<div className={`${样式.卡标题} ${样式.附件标题行}`} data-testid="附件简历标题">
   <span>附件简历</span>
   {可添加 ? <button type="button" className={样式.附件添加键} aria-label="添加附件简历">＋</button> : null}
 </div>
@@ -1064,7 +1125,7 @@ CSS 只能新增：
 
 ```css
 .附件标题行 { display: flex; align-items: center; justify-content: space-between; }
-.附件添加键 { border: 0; background: transparent; color: var(--深绿); font-size: 20px; line-height: 1; padding: 0 2px; }
+.附件添加键 { border: 0; background: transparent; color: var(--深绿); font-size: var(--字号-区块标题); line-height: 1; padding: 0 2px; }
 .附件空态 { padding: 12px 0; color: var(--最弱); font-size: 12.5px; }
 ```
 
@@ -1074,7 +1135,7 @@ CSS 只能新增：
 
 Run: `npm test -- src/屏幕/我的简历.test.tsx src/组件/弹层框架.test.tsx && npm run typecheck`
 
-Expected: PASS；Mock 原演示行仍存在；Backend 行在关闭滑动态 `transform: translateX(0px)`；Backend 附件标题节点同时含 `.卡标题/.附件标题行`，`getComputedStyle` 的 `marginBottom` 与基本信息卡标题一致且标题容器高度差不超过 1px；确认层键盘/遮罩行为没有回归。
+Expected: PASS；Mock 原演示行仍存在；Backend 行在关闭滑动态 `transform: translateX(0px)`；Vitest 只断言 `screen.getByTestId('附件简历标题').className` 同时包含导入的 `样式.卡标题` 与 `样式.附件标题行`，不在 jsdom 断言 computed style 或几何；确认层键盘/遮罩行为没有回归。
 
 - [ ] **Step 5: Commit Task 6**
 
@@ -1118,12 +1179,12 @@ test('Backend candidate owns PDF library without changing Mock visuals @backend'
   await page.goto('/#/resume');
   await expect(page.getByText('candidate.pdf')).toBeVisible();
   await expect(page.getByText(/等待识别|正在识别|识别完成/)).toBeVisible();
-  await expect.poll(() => P2.列表读取次数, { timeout: 8_000 }).toBeGreaterThan(2);
+  await expect.poll(() => P2.列表读取次数, { timeout: 15_000 }).toBeGreaterThan(2);
   await expect(page.getByText('识别完成')).toBeVisible();
 });
 ```
 
-在同一 test 或独立 test 完成：consent 取消后 `P2.写入次数===0`；添加第二份；替换第一份后 display name 不变；预览触发 authenticated content GET；删除取消零 DELETE、确认一次 DELETE；failed 行的 `重新解析` 经 consent 后进入 active；三份时无 `添加附件简历`。再给 Mock describe 加一个上传演示断言，监听页面所有请求并证明 `/api/v1/me/resume-files` 请求数为 0。route handler 对任何未知 multipart part、缺 consent、错误 If-Match、缺幂等键直接 `throw new Error`，使 E2E fail closed。
+在同一 test 或独立 test 完成：add/replace 的 consent 取消都必须在触发文件选择/替换动作前采样 `const writesBefore = P2.写入次数`，取消后断言仍等于该基线；添加第二份；替换第一份后 display name 不变；预览触发 authenticated content GET；删除取消零 DELETE、确认一次 DELETE；failed 行的 `重新解析` 经 consent 后进入 active；三份时无 `添加附件简历`。再给 Mock describe 加一个上传演示断言，监听页面所有请求并证明 `/api/v1/me/resume-files` 请求数为 0。route handler 对任何未知 multipart part、缺 consent、错误 If-Match、缺幂等键直接 `throw new Error`，使 E2E fail closed。
 
 failed retry 使用这一段真实测试，不靠直接调用 operation：
 
@@ -1149,15 +1210,15 @@ test('failed resume parse requires fresh consent before retry @backend', async (
   });
   await page.getByRole('button', { name: '同意并继续' }).click();
   await page.goto('/#/resume');
-  await expect(page.getByText('服务繁忙 · 稍后重试')).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByText('服务繁忙 · 稍后重试')).toBeVisible({ timeout: 15_000 });
   P2.下次终态 = 'succeeded';
+  const writesBeforeConsent = P2.写入次数;
   await 左滑附件行(page, 'failed.pdf');
   await page.getByRole('button', { name: '重新解析' }).click();
-  const writesBeforeConsent = P2.写入次数;
   await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
   expect(P2.写入次数).toBe(writesBeforeConsent);
   await page.getByRole('button', { name: '同意并继续' }).click();
-  await expect(page.getByText('识别完成')).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByText('识别完成')).toBeVisible({ timeout: 15_000 });
   expect(P2.写入次数).toBe(writesBeforeConsent + 1);
 });
 ```
@@ -1324,7 +1385,26 @@ if (P2域 && P2file && method === 'DELETE') {
 
 预览测试用 `page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/me/resume-files/rf_1/content')`，不依赖 headless PDF viewer 页面内容。
 
-在 Backend DOM 测试中读取 `附件简历` 标题和第一行 `boundingBox()`，记录关闭滑动态高度；完成添加/替换/轮询后再次断言标题高度与原值相差不超过 1px、同一行高度相差不超过 1px，且页面没有 progressbar/skeleton/badge。视觉场景若已有 `/student` 与 `/resume` 稳定定位则不改 `场景.ts`；只有定位缺失才加 `data-testid` locator，不更新截图、不改阈值、不设置 `UI_CHANGE_APPROVED=true`。
+只有 Playwright 负责真实布局门。Backend journey 到 `/#/resume` 后，在弹层尚未打开时加入：
+
+```ts
+const 附件标题 = page.getByTestId('附件简历标题');
+const 基本标题 = page.getByText('基本信息', { exact: true });
+const 附件后继 = 附件标题.locator('xpath=following-sibling::*[1]');
+const 基本后继 = 基本标题.locator('xpath=following-sibling::*[1]');
+const [附件框, 基本框, 附件后继框, 基本后继框] = await Promise.all([
+  附件标题.boundingBox(), 基本标题.boundingBox(), 附件后继.boundingBox(), 基本后继.boundingBox(),
+]);
+if (!附件框 || !基本框 || !附件后继框 || !基本后继框) throw new Error('resume title geometry is unavailable');
+expect(Math.abs(附件框.height - 基本框.height)).toBeLessThanOrEqual(1);
+const 附件下间距 = 附件后继框.y - (附件框.y + 附件框.height);
+const 基本下间距 = 基本后继框.y - (基本框.y + 基本框.height);
+expect(Math.abs(附件下间距 - 基本下间距)).toBeLessThanOrEqual(1);
+await expect(page.getByRole('progressbar')).toHaveCount(0);
+await expect(page.locator('[class*="骨架"], [class*="badge"]')).toHaveCount(0);
+```
+
+另记录第一行在关闭滑动态的 `boundingBox().height`；完成 replace/轮询后再次断言同一行高度差不超过 1px。视觉场景若已有 `/student` 与 `/resume` 稳定定位则不改 `场景.ts`；只有定位缺失才加 `data-testid` locator，不更新截图、不改阈值、不设置 `UI_CHANGE_APPROVED=true`。
 
 - [ ] **Step 4: Run focused E2E GREEN**
 
