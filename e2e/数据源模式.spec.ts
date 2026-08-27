@@ -2667,10 +2667,12 @@ test.describe('P3 Backend 隐私主链路 @backend', () => {
     await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
     const 切换后链 = 请求们.map((项) => `${项.method} ${项.path}`);
-    const 偏好位 = 切换后链.indexOf('PUT /api/v1/me/preferences/last-used-role');
+    // P6 并行水合的 recruiter 规则/提案读与组织链并发起跑；先滤掉再断言固定组织链
+    const 组织链 = 切换后链.filter((项) => !项.startsWith('GET /api/v1/recruiter/agent-rule'));
+    const 偏好位 = 组织链.indexOf('PUT /api/v1/me/preferences/last-used-role');
     expect(偏好位).toBeGreaterThanOrEqual(0);
     // 唯一 verified 关系自动选中 ⇒ 固定链含一次公开企业直读；owner Jobs 收尾
-    expect(切换后链.slice(偏好位 + 1, 偏好位 + 5)).toEqual([
+    expect(组织链.slice(偏好位 + 1, 偏好位 + 5)).toEqual([
       'GET /api/v1/recruiter/profile',
       'GET /api/v1/recruiter/affiliations',
       `GET /api/v1/organizations/${P1C标记.组织甲编号}`,
@@ -3532,11 +3534,14 @@ test.describe('P6 规则域 fixture @backend', () => {
     let 放行!: () => void;
     const 门 = new Promise<void>((ok) => { 放行 = ok; });
     const 请求序: string[] = [];
+    // 切回候选端是交互式水合：隐私域缺席会按「Mock 不顶替 HTTP」边界拒绝并中断切换，故提供 fixture
+    const 隐私 = P3隐私fixture();
     await 安装BFF路由(page, {
       登录尝试id: 'att-p6-stale',
       记录目录请求: () => undefined,
       招聘组织Fixture: P1C招聘组织Fixture,
       主体初始角色: 'candidate',
+      隐私fixture: 隐私,
       P6分支: { 规则清单首次失败: true, 挂起候选规则: 门 },
       请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`),
     });

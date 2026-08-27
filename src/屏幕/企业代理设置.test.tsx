@@ -26,9 +26,11 @@ import type { BFF角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
 import { 从BFF简历 } from '../数据/后端映射';
+import { 从BFF隐私 } from '../数据/隐私映射';
 import {
   BFF主体样本,
   BFF简历样本,
+  BFF隐私快照样本,
   BFF企业关系样本,
   BFF企业媒体样本,
   BFF企业档案样本,
@@ -155,6 +157,8 @@ function 创建后端桩() {
     重开岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     删除岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     清空目录缓存: vi.fn(),
+    // P3：candidate mount 水合的隐私链（本文件用例不触达，桩保持完整以防串域访问）
+    读取隐私: vi.fn(async () => 从BFF隐私(BFF隐私快照样本)),
     读取招聘方档案: vi.fn(async () => BFF招聘方档案样本),
     保存招聘方档案: vi.fn(async () => BFF招聘方档案样本),
     读取我的企业关系: vi.fn(async () => [BFF企业关系样本]),
