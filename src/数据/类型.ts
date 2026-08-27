@@ -131,12 +131,19 @@ export interface 阶段小结 {
   附件?: { 文件名: string; 说明: string } | null;
 }
 
-/** 代理规则（叮嘱沉淀下来的长期约束） */
+/** 代理规则（叮嘱沉淀下来的长期约束）。
+ *  可选的三个字段只由 Backend 映射写入（P6）；Mock 规则不写，保持 fixture 简洁。 */
 export interface 规则 {
   编号: string;
   内容: string;
   来源: string;
   生效: boolean;
+  /** Backend 模式的所属范围；Mock 规则为 undefined */
+  作用域?: { 类型: '全局' } | { 类型: '意向'; 意向编号: string };
+  /** Backend 权威 version（mutation 以它作 If-Match 引号值）；Mock 为 undefined */
+  服务端版本?: number;
+  /** Backend 服务端生命周期状态；paused 显示为未生效，archived 不进当前列表 */
+  服务端状态?: 'active' | 'paused' | 'archived';
 }
 
 /** 求职意向 */

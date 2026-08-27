@@ -1,6 +1,8 @@
-// Agent 规则域 reducer：双端规则 CRUD、开关和规则草案。
-// 从根 归约 按业务 owner 拆出，case body 逐字搬移。造规则编号 随规则 case 移入本文件，
-// 它没有其他消费者，不建立共享 utils 文件。对根 状态 只使用 type-only import。
+// Agent 规则域 reducer：双端规则 CRUD、开关和规则草案，外加 P6 Backend 的
+// 水合（整体替换）与清空。从根 归约 按业务 owner 拆出，case body 逐字搬移。
+// 造规则编号 随规则 case 移入本文件，它没有其他消费者，不建立共享 utils 文件。
+// 对根 状态 只使用 type-only import。水合/清空不在 reducer 里判断数据源模式 ——
+// 操作/会话层拥有模式边界，reducer 只负责替换数组。
 
 import type { 规则 } from '../../数据/类型';
 import type { 状态 } from '../应用状态';
@@ -19,7 +21,11 @@ export type Agent规则动作 =
   | { 型: '企业新增规则'; 内容: string; 来源: string }
   | { 型: '企业改规则'; 编号: string; 内容: string }
   | { 型: '企业删规则'; 编号: string }
-  | { 型: '企业切规则开关'; 编号: string };
+  | { 型: '企业切规则开关'; 编号: string }
+  // ── P6 Backend：入参是已映射的页面 Rule，整组替换（Mock 行一条不留）──
+  | { 型: '水合后端候选规则'; 全局: 规则[]; 意向级: 规则[] }
+  | { 型: '水合后端招聘规则'; 规则: 规则[] }
+  | { 型: '清后端Agent规则' };
 
 export type Agent规则归约 = (旧: 状态, 动作: Agent规则动作) => 状态;
 
@@ -89,6 +95,15 @@ export const 归约Agent规则: Agent规则归约 = (旧, 动作) => {
           条.编号 === 动作.编号 ? { ...条, 生效: !条.生效 } : 条
         ),
       };
+
+    // ── P6 Backend：整体替换，不做乐观追加；任何 mutation 都经权威重读后再水合 ──
+    case '水合后端候选规则':
+      return { ...旧, 全局规则: 动作.全局, 意向级规则: 动作.意向级 };
+    case '水合后端招聘规则':
+      return { ...旧, 企业规则: 动作.规则 };
+    // 只清三组规则数组，不碰其他域；退出登录/切主体后由会话层派发
+    case '清后端Agent规则':
+      return { ...旧, 全局规则: [], 意向级规则: [], 企业规则: [] };
     default: {
       const 不可能: never = 动作;
       return 不可能;

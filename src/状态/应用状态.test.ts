@@ -26,6 +26,7 @@ import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF招聘方档案, BFF公开企业, BFF角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
+import type { 规则 } from '../数据/类型';
 import { 从BFF简历 } from '../数据/后端映射';
 
 beforeEach(() => {
@@ -470,6 +471,52 @@ describe('应用状态提供者 后端会话', () => {
     expect(下一.全局规则.at(-1)).toEqual({
       编号: 'R-06', 内容: '不接受大小周', 来源: '测试', 生效: true,
     });
+  });
+
+  // Task 2：P6 Backend 水合/清空动作必须在根归约里路由到 Agent 规则域 ——
+  // 根 switch 是逐项列 case，漏列会被 default 静默吞掉
+  it('P6 水合与清空动作经根归约路由到 Agent 规则域', () => {
+    const 后端全局规则: 规则 = {
+      编号: 'rul_0123456789abcdef0123456789abcdef',
+      内容: '大小周不谈',
+      来源: '全局 · 更新于 2026-08-27',
+      生效: true,
+      作用域: { 类型: '全局' },
+      服务端版本: 3,
+      服务端状态: 'active',
+    };
+    const 后端意向规则: 规则 = {
+      编号: 'rul_fedcba9876543210fedcba9876543210',
+      内容: '双休是底线；隔周六可谈',
+      来源: '意向「AI 产品经理」 · 更新于 2026-08-27',
+      生效: true,
+      作用域: { 类型: '意向', 意向编号: 'int_0123456789abcdef0123456789abcdef' },
+      服务端版本: 1,
+      服务端状态: 'active',
+    };
+    const 后端招聘规则: 规则 = {
+      编号: 'rul_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      内容: '不透露 HC 剩余数量',
+      来源: '全局 · 更新于 2026-08-27',
+      生效: true,
+      作用域: { 类型: '全局' },
+      服务端版本: 2,
+      服务端状态: 'active',
+    };
+
+    const 水合候选 = 归约(初始状态, {
+      型: '水合后端候选规则', 全局: [后端全局规则], 意向级: [后端意向规则],
+    });
+    expect(水合候选.全局规则).toEqual([后端全局规则]);
+    expect(水合候选.意向级规则).toEqual([后端意向规则]);
+
+    const 水合招聘 = 归约(水合候选, { 型: '水合后端招聘规则', 规则: [后端招聘规则] });
+    expect(水合招聘.企业规则).toEqual([后端招聘规则]);
+
+    const 清后 = 归约(水合招聘, { 型: '清后端Agent规则' });
+    expect(清后.全局规则).toEqual([]);
+    expect(清后.意向级规则).toEqual([]);
+    expect(清后.企业规则).toEqual([]);
   });
 
   it('消息 action 删除真实存在的未读键', () => {
