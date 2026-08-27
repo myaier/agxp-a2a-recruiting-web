@@ -286,8 +286,9 @@ export const BFF组织搜索页样本: BFF组织搜索页 = {
 
 // ── Agent 规则域样本（P6 Task 1）──
 // ID 满足 mobile-v1 OpenAPI 的 ^rul_|arp|int_[0-9a-f]{32}$，时间用固定 UTC。
-// 正向 fixture 用 mixed 后果，使其同时满足实现与 accept 文案；auto_deny/advisory
-// 的展示/恢复分支在 Agent规则.test.ts 里单列，绝不只用单一后果断言可操作性。
+// 正向 fixture 用 mixed 后果，使其同时满足实现与 accept 文案；auto_deny 与 advisory
+// 的就绪回执用例放在 Agent规则.test.ts 的『auto_deny 与 advisory 的就绪回执…』一条里，
+// 单一后果字段只作展示事实，不作为可操作性断言。
 
 export const BFFAgent规则样本: BFFAgent规则 = {
   rule_id: 'rul_0123456789abcdef0123456789abcdef',

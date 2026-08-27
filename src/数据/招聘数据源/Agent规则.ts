@@ -263,7 +263,8 @@ export function 创建Agent规则数据源(请求: 请求函数): Agent规则数
     let 基础路径 = `${角色前缀[role]}/agent-rules`;
     if (filter?.type === 'global') 基础路径 += '?scope=global';
     if (filter?.type === 'intention') {
-      基础路径 += `?scope=intention&intention_id=${filter.intention_id}`;
+      // 与 cursor 同样过一遍 encodeURIComponent（合法 ID 下是恒等变换）。
+      基础路径 += `?scope=intention&intention_id=${encodeURIComponent(filter.intention_id)}`;
     }
     return 读取全部页(分页路径(基础路径), 'rules', 解Agent规则);
   }

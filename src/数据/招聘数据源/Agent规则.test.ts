@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
-import type { BFFAgent规则作用域 } from '../BFF契约';
+import type { BFFAgent规则作用域, BFFAgent规则提案 } from '../BFF契约';
 import {
   BFFAgent规则样本,
   BFF意向Agent规则样本,
@@ -307,6 +307,41 @@ describe('Agent 规则数据源', () => {
       .resolves.toEqual(BFFAgent规则就绪提案样本);
   });
 
+  // 展示/恢复分支：auto_deny 与 advisory 各有自己的就绪回执，单读和列表两条路径都放行
+  // 且后果原值保留。单一后果字段只作展示事实 —— 是否可接受由服务端 accept 裁决，
+  // 这里不断言任何一个后果单独等于可操作。
+  it('auto_deny 与 advisory 的就绪回执分别通过单读和列表解码且后果保真', async () => {
+    const 自拒样本: BFFAgent规则提案 = {
+      ...BFFAgent规则就绪提案样本,
+      proposal_id: 'arp_11111111111111111111111111111111',
+      normalized_text: '在职竞对候选人一律不联系',
+      consequence: 'auto_deny',
+    };
+    const 参考样本: BFFAgent规则提案 = {
+      ...BFFAgent规则就绪提案样本,
+      proposal_id: 'arp_22222222222222222222222222222222',
+      normalized_text: '跨城通勤可提示但不拦截',
+      consequence: 'advisory',
+    };
+    请求Mock
+      .mockResolvedValueOnce({ result: 自拒样本, etag: null, requestId: 'cd1' })
+      .mockResolvedValueOnce({ result: 参考样本, etag: null, requestId: 'cd2' });
+    await expect(数据源.读取Agent规则提案('candidate', 自拒样本.proposal_id)).resolves.toEqual(自拒样本);
+    await expect(数据源.读取Agent规则提案('candidate', 参考样本.proposal_id)).resolves.toEqual(参考样本);
+
+    // 列表路径同样接受两种后果，翻页后逐条保真
+    请求Mock
+      .mockResolvedValueOnce({ result: { proposals: [自拒样本, 参考样本], next_cursor: '收尾' }, etag: null, requestId: 'cd3' })
+      .mockResolvedValueOnce({ result: { proposals: [] }, etag: null, requestId: 'cd4' });
+    await expect(数据源.读取Agent规则提案列表('candidate', 'ready')).resolves.toEqual([自拒样本, 参考样本]);
+    expect(请求Mock.mock.calls.map(([选项]) => 选项.path)).toEqual([
+      `/api/v1/me/agent-rule-proposals/${自拒样本.proposal_id}`,
+      `/api/v1/me/agent-rule-proposals/${参考样本.proposal_id}`,
+      '/api/v1/me/agent-rule-proposals?state=ready',
+      `/api/v1/me/agent-rule-proposals?state=ready&cursor=${encodeURIComponent('收尾')}`,
+    ]);
+  });
+
   it('terminal 回执只允许五个公开键，出现过的可选项须过同样的校验', async () => {
     // 终态最小形状：只有 proposal_id + state
     请求Mock.mockResolvedValueOnce({
@@ -351,6 +386,8 @@ describe('Agent 规则数据源', () => {
 
   it('提案非法 ID、缺 proposal_id、未知键抛 invalid_response', async () => {
     for (const 破损 of [
+      // 注意：第二条刻意缺 proposal_id（校验的就是这个），并非 advisory 的展示用例 ——
+      // 后果字段的正向用例在上一条 auto_deny/advisory 测试里。
       { ...BFFAgent规则解释中提案样本, proposal_id: 'pro_0123456789abcdef0123456789abcdef' },
       { state: 'ready' as const, normalized_text: '', consequence: 'advisory' as const, created_at: '2026-08-27T02:05:00Z' },
       { ...BFFAgent规则就绪提案样本, weight: 3 },
@@ -371,13 +408,18 @@ describe('Agent 规则数据源', () => {
     await 数据源.创建Agent规则提案('candidate', '𝕏'.repeat(1500), { type: 'global' });
     expect(请求Mock).toHaveBeenCalledTimes(2);
 
+    // 上界闭合：恰好 2000 码点放行，2001 才拒绝
+    请求Mock.mockResolvedValueOnce({ result: BFFAgent规则解释中提案样本, etag: null, requestId: 'cp3' });
+    await 数据源.创建Agent规则提案('candidate', 'あ'.repeat(2000), { type: 'global' });
+    expect(请求Mock).toHaveBeenCalledTimes(3);
+
     for (const 无效 of ['', '   ', 'あ'.repeat(2001)]) {
       await expect(数据源.创建Agent规则提案('candidate', 无效, { type: 'global' }))
         .rejects.toMatchObject({ code: 'validation_failed' });
       await expect(数据源.创建Agent规则替换提案('recruiter', BFFAgent规则样本, 无效))
         .rejects.toMatchObject({ code: 'validation_failed' });
     }
-    expect(请求Mock).toHaveBeenCalledTimes(2);
+    expect(请求Mock).toHaveBeenCalledTimes(3);
   });
 
   it('candidate 创建必须有 scope，recruiter 创建拒绝传入 scope 且不发请求', async () => {
