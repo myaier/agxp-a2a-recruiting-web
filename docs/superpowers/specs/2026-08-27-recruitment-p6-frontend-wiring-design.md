@@ -170,7 +170,7 @@ interface BFFAgent规则提案 {
 
 字段条件必须严格验证：
 
-- `interpreting` 不得携带 settled facts；
+- `interpreting` 不得携带 `normalized_text` 或 `consequence`；`created_at` 是可选 lifecycle metadata，出现时必须是合法 date-time。当前 BFF Go view 会为 interpreting list/get 序列化它，而 OpenAPI 仍允许 fresh create receipt 缺省；
 - `ready` 必须携带 `normalized_text`、`consequence`、`created_at`；
 - terminal state 的可选字段只按 OpenAPI 接受，不制造缺失默认；
 - unknown state/consequence、unknown key、trailing JSON、畸形 envelope 一律拒绝。
@@ -220,7 +220,7 @@ interface 规则 {
 `Agent规则` reducer 保留现有 Mock CRUD action，并新增闭合 Backend hydration/clear action：
 
 ```ts
-| { 型: '水合后端候选规则'; 规则: 规则[] }
+| { 型: '水合后端候选规则'; 全局: 规则[]; 意向级: 规则[] }
 | { 型: '水合后端招聘规则'; 规则: 规则[] }
 | { 型: '清后端Agent规则' }
 ```
@@ -286,7 +286,7 @@ recruiter hydration
      )
 ```
 
-各域独立提交成功 snapshot。P6 失败不撤销 Resume/Privacy/Job 成功结果，也不回退 Mock。首次没有对应 role 的 P6 snapshot 时，规则页保留外壳但不显示 Mock rows、计数或可写控件。
+各域独立提交成功 snapshot。P6 失败不撤销 Resume/Privacy/Job 成功结果，也不回退 Mock。Rule 与 Proposal 水合也独立呈现：Rule 成功后立即显示权威 rows 与计数；Proposal 两个 actionable list 都成功前隐藏 create/edit/accept/dismiss 控件。初始化完成后若任一 P6 子快照仍未成功，页面显示明确的“规则加载失败，重试”入口并调用 `刷新Agent规则()`，不能停在无说明空壳。首次 Rule snapshot 尚未成功时不显示 Mock rows 或 Mock 计数。
 
 退出、401、切 subject、切 role 时：
 
@@ -344,6 +344,8 @@ mixed      → 这条规则同时包含推进、拦截或参考条件
 
 确认卡只呈现后端 safe summary，不自行承诺某个具体 MatchCase 动作。
 
+`consequence` 只用于安全摘要，不能作为 acceptability 判定。公开 DTO 不暴露隐藏的 executable/advisory classification；当前后端实际按 classification 判断，executable 的 `auto_deny` 也可 accept，而顶层 advisory 会返回 `agent_rule_proposal_not_actionable`。因此所有 `ready` 卡均保留显式“确认规则/放弃”，`not_actionable` 时重读 Proposal、保留卡片并提示用户放弃或重新表述；不能把某个 consequence 在浏览器里硬编码为一定可接受或一定不可接受。
+
 ### 7.4 筛选抽屉和其它规则消费者
 
 所有规则计数继续读取同一权威领域数组。
@@ -386,6 +388,8 @@ PATCH/DELETE/replacement create 遇 `409 version_conflict`：
 
 前端不通过文本相等猜哪条 proposal 属于这次创建。
 
+`409 idempotency_conflict` 不是 `version_conflict`，也不得自动重试：重读两类 actionable Proposal list；create 没有 receipt 时保留草稿并显示冲突错误，replacement 有目标 Rule 时同时重读 Rule。`403 agent_rule_scope_denied` 保留文本、刷新权威意向，并提示“这个意向已不可用，请重新选择规则范围”，不静默改成 global。
+
 ### 8.4 Accept/dismiss
 
 accept/dismiss 使用幂等 POST。错误或响应丢失后 GET proposal：
@@ -396,7 +400,7 @@ accept/dismiss 使用幂等 POST。错误或响应丢失后 GET proposal：
 - `failed`：进入失败 UI；
 - not found：重读 actionable lists，无法确认则保留错误提示。
 
-`agent_rule_proposal_not_ready`、`agent_rule_proposal_not_actionable`、`agent_rule_proposal_terminal` 都先读 proposal，再按权威 state 恢复；不把所有 409 当 version conflict。
+`agent_rule_proposal_not_ready`、`agent_rule_proposal_not_actionable`、`agent_rule_proposal_terminal`、`idempotency_conflict` 都先读 proposal，再按权威 state 恢复；不把所有 409 当 version conflict。`idempotency_conflict` 仍向用户显示冲突错误，不能因为 GET 恢复到 `ready` 就伪造原操作成功。
 
 ### 8.5 Pause/resume/archive
 
@@ -424,7 +428,7 @@ accept/dismiss 使用幂等 POST。错误或响应丢失后 GET proposal：
 - 双端 role prefix、Rule list/get/patch/delete、Proposal create/list/get/accept/dismiss/replacement；
 - scope/intention/cursor query encoding，未知或重复 cursor 防护；
 - exact If-Match、Idempotency-Key、empty body、204；
-- Rule/Proposal exact keys、conditional fields、enum、ID/date/version、trailing JSON 与 malformed envelope；
+- Rule/Proposal exact keys、conditional fields、enum、ID/date/version、trailing JSON 与 malformed envelope；特别覆盖 interpreting create 缺 `created_at` 与 list/get 带合法 `created_at` 两种真实形状；
 - all-page pagination、duplicate cursor、actionable proposal 两状态合并；
 - ETag/version 一致性。
 
@@ -445,6 +449,7 @@ accept/dismiss 使用幂等 POST。错误或响应丢失后 GET proposal：
 - recruiter global、active count、pause/resume、manual create；
 - interpreting/ready/failed card 与 consequence 文案；
 - Backend 未水合无 Mock rows/count/mutation；
+- Rule 成功但 Proposal 失败时仍显示权威 Rule rows，隐藏写控件并提供重试；
 - Backend 筛选抽屉只读并导航 canonical page；Mock 仍可编辑；
 - Backend 问 AI/Case 不污染 Rule state；Mock 剧情不回归；
 - 所有按钮在中文输入法 composing Enter 时不误提交。

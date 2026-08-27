@@ -28,7 +28,8 @@
   - `auto_deny`: `命中条件时，AI代理会自动拦下`
   - `advisory`: `这是一条参考偏好，不会单独触发自动决定`
   - `mixed`: `这条规则同时包含推进、拦截或参考条件`
-- `ready` alone does not prove acceptability because the public DTO hides executable/advisory classification. Show explicit accept and dismiss; recover `agent_rule_proposal_not_actionable` by re-reading the Proposal and telling the user to dismiss or rephrase.
+- `ready` alone does not prove acceptability because the public DTO hides executable/advisory classification. `consequence` is display-only: the backend accepts executable `auto_deny` and can reject top-level advisory with the same public lifecycle. Show explicit accept and dismiss; recover `agent_rule_proposal_not_actionable` by re-reading the Proposal and telling the user to dismiss or rephrase. Do not encode the stale OpenAPI prose “only auto_allow or mixed” as a browser gate.
+- Rule and Proposal hydration are independently visible. A successful Rule read shows authoritative rows/counts immediately; create/edit/accept/dismiss controls require both actionable Proposal lists. After initialization, any incomplete P6 hydration shows an explicit retry action and never a silent permanent shell.
 - P3 and P6 share composition files. Implement P6 on its isolated branch; after P3 lands on `origin/main`, rebase and mechanically combine both domains rather than introducing registries.
 
 ## File Map
@@ -150,16 +151,19 @@ export const BFFAgent规则样本: BFFAgent规则 = {
 export const BFFAgent规则解释中提案样本: BFFAgent规则提案 = {
   proposal_id: 'arp_0123456789abcdef0123456789abcdef',
   state: 'interpreting',
+  created_at: '2026-08-27T02:03:00Z',
 };
 
 export const BFFAgent规则就绪提案样本: BFFAgent规则提案 = {
   proposal_id: 'arp_fedcba9876543210fedcba9876543210',
   state: 'ready',
-  normalized_text: '不考虑大小周岗位',
-  consequence: 'auto_deny',
+  normalized_text: '双休岗位可推进，大小周岗位拦下',
+  consequence: 'mixed',
   created_at: '2026-08-27T02:05:00Z',
 };
 ```
+
+The canonical happy-path fixture uses `mixed` so it agrees with both the current implementation and the published accept prose. Keep separate display/recovery cases for `auto_deny` and `advisory`; never assert that either public consequence alone proves actionability.
 
 Create `Agent规则.test.ts` and assert representative candidate and recruiter requests exactly:
 
@@ -225,7 +229,23 @@ it('replacement, pause, accept, dismiss and archive freeze headers and bodies', 
 });
 ```
 
-In the same RED step, add table tests for both role prefixes; global/intention query encoding; all-page Rule and Proposal reads; duplicate cursor rejection; ETag mismatch; missing/extra keys; invalid ID, version, date, enum, and clause kind; `interpreting` with settled fields; `ready` missing any settled field; malformed terminal optional fields; and recruiter calls that try to send a scope.
+In the same RED step, add table tests for both role prefixes; global/intention query encoding; all-page Rule and Proposal reads; duplicate cursor rejection; ETag mismatch; missing/extra keys; invalid ID, version, date, enum, and clause kind; `interpreting` with forbidden `normalized_text`/`consequence`; `interpreting` with valid, invalid, and absent `created_at`; `ready` missing any settled field; malformed terminal optional fields; and recruiter calls that try to send a scope.
+
+Add a recruiter replacement request test that freezes the role-aware body:
+
+```ts
+it('recruiter replacement omits candidate scope', async () => {
+  请求Mock.mockResolvedValueOnce({ result: BFFAgent规则解释中提案样本, etag: null, requestId: 'rp1' });
+  await 数据源.创建Agent规则替换提案('recruiter', BFFAgent规则样本, '竞对候选人先人工确认');
+  expect(请求Mock.mock.calls[0][0]).toEqual({
+    path: `/api/v1/recruiter/agent-rules/${BFFAgent规则样本.rule_id}/replacement-proposals`,
+    method: 'POST',
+    body: { text: '竞对候选人先人工确认' },
+    ifMatch: '"3"',
+    幂等: true,
+  });
+});
+```
 
 - [ ] **Step 2: Run the facade tests and verify RED**
 
@@ -268,7 +288,7 @@ Decoder rules are exact:
 - Rule keys are exactly `rule_id,version,state,scope,clause_kinds,display_text,created_at,updated_at`.
 - IDs match `^rul_[0-9a-f]{32}$`, `^arp_[0-9a-f]{32}$`, and intention IDs match `^int_[0-9a-f]{32}$`.
 - Version is a safe positive integer; dates parse and preserve the original string; `display_text` is a non-empty string.
-- `interpreting` has exactly `proposal_id,state`.
+- `interpreting` has no `normalized_text` or `consequence`; it accepts either `proposal_id,state` (fresh create allowed by OpenAPI) or those keys plus a valid `created_at` (the current BFF Go view used by list/get).
 - `ready` has exactly `proposal_id,state,normalized_text,consequence,created_at`.
 - Terminal states allow only those five public keys; any optional key present must pass the same type/enum/date validation.
 - Create text is trimmed, 1–2,000 Unicode code points as measured by `Array.from(text).length`. Candidate requires a scope; recruiter rejects a provided scope.
@@ -285,6 +305,14 @@ recruiter proposals:       /api/v1/recruiter/agent-rule-proposals?state=interpre
 ```
 
 Append `&cursor=` when a query already exists and `?cursor=` otherwise. The recruiter Rule list rejects any filter argument.
+
+Replacement request bodies are role-aware and reuse the base Rule's scope only for candidate:
+
+```ts
+const body = role === 'candidate'
+  ? { text, scope: rule.scope }
+  : { text };
+```
 
 Compose the facade in `HTTP招聘数据源.ts`:
 
@@ -496,7 +524,8 @@ export interface Agent规则操作 {
 }
 
 export async function 水合Agent规则角色数据(
-  deps: Pick<后端操作依赖, '后端' | '派发' | '设后端状态' | '主体标识引用' | '会话代际'>,
+  deps: Pick<后端操作依赖, '后端' | '派发' | '设后端状态' | '主体标识引用' | '会话代际'> &
+    { 后端: HTTP招聘数据源 },
   role: BFF角色,
   subjectId: string,
   generation: number,
@@ -563,7 +592,7 @@ it('version conflict re-reads but never replays the mutation', async () => {
 });
 ```
 
-Also cover candidate scope required; recruiter scope rejected before the facade; replacement uses raw current Rule and preserves the edit text outside state; dismiss removes only a terminal Proposal; accept/dismiss 409 recovery via GET Proposal; 404/503/network reconciliation; 401 calls `清账号状态`; locks suppress duplicate same-key mutations; different Rule/Proposal keys run independently; role/subject/generation changes discard late results.
+Also cover candidate scope required; `agent_rule_scope_denied` preserves text and refreshes authoritative intentions; recruiter scope rejected before the facade; replacement uses raw current Rule and preserves the edit text outside state; dismiss removes only a terminal Proposal; accept/dismiss `agent_rule_proposal_not_ready|not_actionable|terminal|idempotency_conflict` recovery via GET Proposal; create/replacement `idempotency_conflict` reloads actionable lists without replay; 404/503/network reconciliation; 401 calls `清账号状态`; locks suppress duplicate same-key mutations; different Rule/Proposal keys run independently; role/subject/generation changes discard late results.
 
 - [ ] **Step 2: Run operation tests and verify RED**
 
@@ -634,6 +663,26 @@ Mutation recovery matrix:
 | create/replacement | reload both actionable Proposal lists; without a known receipt keep input in component and throw |
 | accept/dismiss | GET Proposal, then reload Rules/actionable lists according to terminal state |
 | pause/resume/archive | reload all Rules once; never send the mutation again |
+
+Handle named conflicts before the generic status fallback:
+
+```ts
+async function 处理提案冲突(错误: BFF错误, role: BFF角色, proposalId?: string): Promise<never> {
+  if (错误.code === 'agent_rule_scope_denied' && role === 'candidate') {
+    const intentions = await 后端.读取意向();
+    派发({ 型: '水合后端意向', 快照: intentions });
+    设后端状态((旧) => ({ ...旧, 意向快照: intentions.服务端 }));
+    throw new BFF错误(403, 错误.code, '这个意向已不可用，请重新选择规则范围');
+  }
+  if (错误.code === 'idempotency_conflict') {
+    if (proposalId !== undefined) await 后端.读取Agent规则提案(role, proposalId);
+    await 刷新Agent规则();
+  }
+  throw 错误;
+}
+```
+
+An idempotency conflict is never retried and never converted to success merely because the re-read Proposal remains `ready`.
 
 `刷新Agent规则提案` replaces/removes only the addressed Proposal if the response is authoritative; it does not alter Rule arrays. `accepted` triggers a Rule refresh; `dismissed` removes the card; `failed` remains available to the page for the failure message until the page acknowledges it locally.
 
@@ -902,7 +951,11 @@ it('renders the four frozen consequence summaries and explicit actions', async (
   const user = userEvent.setup();
   const 接受 = vi.fn();
   const 放弃 = vi.fn();
-  render(<Agent规则提案卡 提案={BFFAgent规则就绪提案样本} 忙={false} 接受={接受} 放弃={放弃} 关闭失败={vi.fn()} />);
+  render(<Agent规则提案卡 提案={{
+    ...BFFAgent规则就绪提案样本,
+    normalized_text: '不考虑大小周岗位',
+    consequence: 'auto_deny',
+  }} 忙={false} 接受={接受} 放弃={放弃} 关闭失败={vi.fn()} />);
   expect(screen.getByText('不考虑大小周岗位')).toBeInTheDocument();
   expect(screen.getByText('命中条件时，AI代理会自动拦下')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: '确认规则' }));
@@ -996,11 +1049,11 @@ Render under the real application Context test harness and cover:
 ```tsx
 it('Backend candidate groups by authoritative intention and creates an intention-scoped Proposal', async () => {
   const user = userEvent.setup();
-  renderCandidateRules({ mode: 'backend', hydrated: true });
+  renderCandidateRules({ mode: 'backend', rulesHydrated: true, proposalsHydrated: true, initialized: true });
   expect(screen.getByText('意向规则 · AI 产品经理')).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: '手动添加规则' }));
+  await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
   await user.selectOptions(screen.getByLabelText('规则范围'), 'int_0123456789abcdef0123456789abcdef');
-  await user.type(screen.getByPlaceholderText('例：大小周不谈'), '只接受双休');
+  await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
   await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
   expect(操作.创建Agent规则提案).toHaveBeenCalledWith({
     文本: '只接受双休',
@@ -1010,17 +1063,28 @@ it('Backend candidate groups by authoritative intention and creates an intention
 });
 ```
 
-Add tests for global default, replacement preserving old Rule until accept, archive by current ID, `interpreting/ready/failed` cards, active count, no Mock rows/count/write controls before both hydration markers, orphan rules absent, operation error preserving draft, `agent_rule_proposal_not_actionable` rephrase copy, and composing Enter not submitting.
+Add tests for global default, replacement preserving old Rule until accept, archive by current ID, `interpreting/ready/failed` cards, active count, no Mock rows/count before Rule hydration, orphan rules absent, operation error preserving draft, `agent_rule_proposal_not_actionable` rephrase copy, `agent_rule_scope_denied` preserving text and showing `这个意向已不可用，请重新选择规则范围`, `idempotency_conflict` preserving the card/draft without success copy, and composing Enter not submitting. Add this partial-hydration case:
+
+```tsx
+it('shows loaded Rules and a retry affordance when Proposal hydration failed', async () => {
+  const user = userEvent.setup();
+  renderCandidateRules({ mode: 'backend', rulesHydrated: true, proposalsHydrated: false, initialized: true });
+  expect(screen.getByText(BFFAgent规则样本.display_text)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /手动添加规则/ })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '规则加载失败，重试' }));
+  expect(操作.刷新Agent规则).toHaveBeenCalledTimes(1);
+});
+```
 
 - [ ] **Step 2: Write failing recruiter page tests**
 
 ```tsx
 it('Backend recruiter toggles active Rule through pause and never sends a scope', async () => {
   const user = userEvent.setup();
-  renderRecruiterRules({ mode: 'backend', hydrated: true });
+  renderRecruiterRules({ mode: 'backend', rulesHydrated: true, proposalsHydrated: true, initialized: true });
   await user.click(screen.getByRole('switch', { name: `规则：${BFFAgent规则样本.display_text}` }));
   expect(操作.切换Agent规则).toHaveBeenCalledWith(BFFAgent规则样本.rule_id, 'pause');
-  await user.click(screen.getByRole('button', { name: '手动添加规则' }));
+  await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
   await user.type(screen.getByPlaceholderText(/到岗超过/), '竞对在职候选人不接触');
   await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
   expect(操作.创建Agent规则提案).toHaveBeenCalledWith({ 文本: '竞对在职候选人不接触' });
@@ -1045,15 +1109,24 @@ Read these Context fields once per page:
 
 ```ts
 const { 状态, 派发, 数据源模式, 后端状态, 操作 } = use应用状态();
-const role = 数据源模式 === 'backend' ? 后端状态.主体?.last_used_role : null;
-const hydrated = role !== null &&
-  后端状态.Agent规则水合[role].rules &&
-  后端状态.Agent规则水合[role].proposals;
+// 规则库.tsx uses 'candidate'; 企业代理设置.tsx uses 'recruiter'.
+const expectedRole: BFF角色 = 'candidate';
+const activeRole = 数据源模式 === 'backend' ? (后端状态.主体?.last_used_role ?? null) : null;
+const role = activeRole === expectedRole ? expectedRole : null;
+const roleHydration = role === null
+  ? { rules: false, proposals: false }
+  : 后端状态.Agent规则水合[role];
+const rulesReady = roleHydration.rules;
+const proposalsReady = roleHydration.proposals;
+const showRetry = role !== null && 后端状态.初始化 === '完成' &&
+  (!rulesReady || !proposalsReady);
 ```
 
-Backend handlers await `操作`, catch with `轻提示(取后端错误文案(error))`, and preserve local text/scope on failure. Mock handlers keep current dispatches and close immediately. Candidate scope options come from active `状态.求职意向表` entries whose IDs exist in `后端状态.意向快照`; do not render a free-text ID option.
+Repeat the block in `企业代理设置.tsx` with `expectedRole: BFF角色 = 'recruiter'`. A direct visit to the wrong-role or unauthenticated route renders a safe shell: it neither indexes hydration with `undefined` nor exposes mutation controls for the active role under the other role's page.
 
-Get Proposal lists from the role-specific raw dictionary, sorted by `created_at` when present and then `proposal_id`. Call `useAgent规则提案轮询` only when Backend mode, the matching role is active, both hydration markers are true, and the page is mounted.
+Backend renders authoritative rows/counts whenever `rulesReady` is true. It renders create/edit/accept/dismiss controls and Proposal cards only when `rulesReady && proposalsReady`; `showRetry` renders a button named exactly `规则加载失败，重试` that awaits `操作.刷新Agent规则()`. Backend handlers await `操作`, catch with `轻提示(取后端错误文案(error))`, and preserve local text/scope on failure. Mock handlers keep current dispatches and close immediately. Candidate scope options come from active `状态.求职意向表` entries whose IDs exist in `后端状态.意向快照`; do not render a free-text ID option.
+
+Get Proposal lists from the role-specific raw dictionary, sorted by `created_at` when present and then `proposal_id`. Call `useAgent规则提案轮询` only when Backend mode, the matching role is active, `proposalsReady` is true, and the page is mounted.
 
 Exact UI actions:
 
@@ -1225,6 +1298,8 @@ const p6: P6FixtureState = {
 ```
 
 Route list pagination with two pages, transition an `interpreting` Proposal to `ready` on the second single GET, advance Rule versions on pause/resume, materialize new/replacement Rules only on accept, archive only when `If-Match` equals current version, and return fixed 409/503/response-loss branches selected by dedicated fixture IDs. Every successful JSON response must use the existing `信封()` helper; Rule responses include strong ETag.
+
+Use `consequence:'mixed'` for the accept-success fixture, a separate `auto_deny` ready fixture to prove its safe-summary copy without browser-side gating, and a dedicated accept response returning `409 agent_rule_proposal_not_actionable` to prove authoritative recovery. The public consequence never selects the fixture's hidden actionability.
 
 - [ ] **Step 2: Write the Backend happy-path browser test**
 
