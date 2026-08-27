@@ -51,13 +51,15 @@ export function 创建隐私操作(deps: 后端操作依赖): 隐私操作 {
     return 后端状态引用.current.隐私快照?.revision ?? 0;
   }
 
-  /** 重读一次权威隐私视图并提交。重读自身失败不能顶替原始错误，返回 null 让调用方原样抛出。 */
+  /** 重读一次权威隐私视图并提交。重读自身失败不能顶替原始错误，返回 null 让调用方原样抛出；
+   *  唯 401 例外——会话在重读途中过期时仍走统一 清账号状态，不把陈旧隐私留在失效登录态里。 */
   async function 安全重读权威(): Promise<页面隐私快照 | null> {
     try {
       const 权威 = await 后端!.读取隐私();
       提交隐私快照(deps, 权威);
       return 权威;
-    } catch {
+    } catch (错误) {
+      if (错误 instanceof BFF错误 && 错误.status === 401) 清账号状态(账号清理依赖);
       return null;
     }
   }

@@ -152,6 +152,22 @@ describe('创建隐私操作 · 冲突按 code 分派：重读权威 + 原样抛
     expect(更新后的隐私快照(deps)?.revision).toBe(9);
   });
 
+  it('重读权威遇 401 也走统一清账号，原始冲突错误仍原样抛出', async () => {
+    const 修改 = vi.fn().mockRejectedValue(new BFF错误(409, 'version_conflict', 'conflict'));
+    const 读取 = vi.fn().mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const deps = 创建隐私测试依赖(
+      { 修改隐私: 修改, 读取隐私: 读取, 清空目录缓存: vi.fn() } as unknown as HTTP招聘数据源,
+      BFF隐私快照样本,
+    );
+    await expect(创建隐私操作(deps).设置雇主隐私(false)).rejects.toMatchObject({ code: 'version_conflict' });
+    expect(修改).toHaveBeenCalledTimes(1);
+    expect(读取).toHaveBeenCalledTimes(1);
+    // 会话在重读途中过期：清理必须落地（隐私清空 + 主体/代际复位），不能顶着失效会话
+    expect(deps.派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '清后端隐私' }));
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(deps.会话代际.current).toBe(2);
+  });
+
   it('解除组织屏蔽 risk_acknowledgement_required 以 HTTP 422 到达时重读并提交权威来源再抛出', async () => {
     const 解除组织屏蔽 = vi.fn().mockRejectedValue(new BFF错误(422, 'risk_acknowledgement_required', 'risk'));
     const 读取隐私 = vi.fn().mockResolvedValue(从BFF隐私({ ...BFF隐私快照样本, organization_blocks: [], revision: 7 }));
