@@ -6,7 +6,7 @@
 
 **范围：** `agxp-a2a-recruiting-web` 的候选人附件简历前端接线：PDF 文件库、显式处理授权、创建/替换/删除/下载、解析状态和失败后重试；尽量不改变现有页面效果
 
-**前端设计基线：** `origin/main@57783ac9dc11b0766b06e05442c2bd8e125eb38a`
+**前端设计基线：** `origin/main@96257a2683dfe775eda61b6076a9aab12ded9c9a`
 
 **后端只读契约基线：** `agxp-monorepo` 的 `origin/release/0.2.5@83007f1555514c2b427ba337b64118221f4dd4d2`
 
@@ -183,7 +183,7 @@ type BFF附件解析状态 =
 - `src/数据/BFF契约.ts`：增加附件库、文件、版本、parse 判别联合和 failure-code 类型；不增加解析正文类型。
 - `src/数据/招聘数据源类型.ts`：定义页面附件库投影和必要输入；不把附件名写进结构化简历快照。
 - `src/数据/招聘数据源/附件简历.ts`：拥有六条 route、strict decoder、FormData、If-Match、Idempotency-Key 和 PDF Blob 校验；不 import React、Mock 或页面状态。
-- `src/数据/HTTP招聘数据源.ts`：把 `附件简历数据源` 组合成现有根数据源的第八个 facade；不改变其它领域 owner。
+- `src/数据/HTTP招聘数据源.ts`：在已含 P6 Agent 规则的八个现有领域后，把 `附件简历数据源` 组合成根数据源的第九个 facade；不改变其它领域 owner。
 - `src/数据/HTTP客户端.ts`：在现有 JSON 请求旁增加窄的 authenticated binary GET；复用 credentials、GET 网络重试和 JSON 错误信封解析，不建立第二个 fetch client。
 
 二进制成功响应返回：
@@ -206,6 +206,8 @@ interface BFF二进制响应 {
 - `src/状态/后端/会话操作.ts`：候选人水合并行加入附件列表；所有账号清理路径将 snapshot 置 null。
 - `src/状态/应用状态.tsx`：初始化 snapshot、组合操作；不承载 wire decoder 或页面文案。
 - `src/流程/附件简历刷新.ts`：只负责页面可见期的 immediate refresh、单飞 setTimeout 轮询和清理；不拥有另一份列表。
+
+基线已包含 P6：`后端状态` 具有双角色规则/提案快照与 `Agent规则水合`，`应用操作` 已相交 `Agent规则操作`，`水合角色数据` 也会先启动独立的 `p6Promise`。P2 只能在这些 shape 上增量增加附件字段/操作；不得用旧的五域类型联合、三路候选水合或只清 P3 的对象字面量覆盖 P6。账号清理继续复用 `重置Agent规则后端状态`，并在同一次 functional update 中把附件 snapshot 置 null。
 
 附件操作 factory 闭包另持有一个不渲染的读取序号、最近成功提交序号/快照和只串行同步 commit 的 Promise 链。候选登录水合仍由会话层用 generation fence 独立完成；水合后的显式刷新、轮询、安全重读和 mutation 后权威 GET 都立即发出，不被无关的 stalled GET 阻塞。成功响应才进入短 commit 链：序号新于最近成功提交才提交，迟到旧成功返回最近提交快照而不覆盖，失败响应不推进序号也不污染其它调用。mutation 只有在自己的成功响应已提交、或确认有更新的成功读取已经提交后才 resolve。该协调器与 factory 同生命周期，不扩展公共 Provider 状态或其它领域依赖。
 
@@ -315,18 +317,20 @@ BFF 下载带 `Content-Disposition: attachment`，直接导航会下载而不是
 
 ## 9. 水合、刷新与轮询
 
-候选人 Backend 水合扩展为：
+候选人 Backend 水合的支持域数组扩展为：
 
 ```text
-Promise.allSettled(
+const p6Promise = 水合Agent规则角色数据(...); // 基线已有，先行并发启动
+const supportResults = Promise.allSettled(
   GET structured Resume,
   GET Intention list,
   GET Privacy,
   GET Resume File list
-)
+);
+const p6Results = await p6Promise; // 保持基线三路 P6 结果扫描/401 收口
 ```
 
-四域独立提交。附件读取失败不撤销其它成功域，也不加载 Mock 文件名。页面挂载时仍进行一次附件 refresh，使未经过完整登录水合的深链路和长期打开页面可以恢复。
+四个支持域独立提交，且与既有 P6 三路读取并行；附件读取失败不撤销其它成功域、不改变 P6 水合阶段，也不加载 Mock 文件名。页面挂载时仍进行一次附件 refresh，使未经过完整登录水合的深链路和长期打开页面可以恢复。
 
 `附件简历刷新` hook 固定行为：
 
@@ -437,11 +441,11 @@ Backend 模式只使用 `后端状态.附件简历库`。Backend 初始状态不
 - list/create/replace/delete/parse/download 的 exact method/path/body/formData/If-Match/idempotency；
 - create FormData 精确含 `display_name,file,processing_consent_confirmed="true"`；replace 精确含 `file,processing_consent_confirmed="true"`，不含 display name；
 - strict decoder 覆盖每种合法 parse union，以及 extra/missing/null/unknown enum/非法组合/超过三项/非法 limits；
-- 根 `HTTP招聘数据源` 加入第八个 facade 后不丢现有方法。
+- 根 `HTTP招聘数据源` 加入第九个 facade 后不丢已有八域方法，尤其不得删除 P6 Agent 规则/提案方法。
 
 ### 13.2 后端操作与水合
 
-- candidate 水合四域 partial success；招聘方不读附件；
+- candidate 四个支持域 partial success，同时保留 P6 三路并发水合与错误扫描；招聘方不读附件；
 - logout、401、subject change、role change 清空附件 snapshot；
 - create/replace/delete/parse 成功后权威 GET；
 - 文件/库锁拒绝重复提交；
@@ -482,13 +486,14 @@ UI_VISUAL_GATE=required UI_CHANGE_APPROVED=false npm run ui:check -- --base orig
 
 ## 14. 实施前基线与完成证据
 
-2026-08-28 在前端基线 `57783ac9` 已验证：
+2026-08-28 在校准后的前端基线 `96257a2` 已验证：
 
-- `npm test`：66 files、563 tests PASS；
+- `npm test`：76 files、764 tests PASS；
+- `npm run typecheck`：PASS；
 - `npm run lint`：PASS；
 - `npm run build`：PASS；
-- worktree clean；
-- `plan-p2-frontend-integration` 与最新 `origin/main` 同 SHA，无 rebase commit。
+- 验证 worktree clean；
+- `plan-p2-frontend-integration` 已 rebase 到 `origin/main@96257a2`，其上仅有 P2 Spec/Plan 与审查/校准文档提交。
 
 实施完成不能只以单测或 build 宣称成功；必须同时提供 data-source E2E 和 UI regression verdict。浏览器/Chrome 基础设施缺失属于环境阻塞，不得写成产品 PASS；若 UI gate 报未授权漂移，必须定位并恢复几何，不能通过放宽阈值或设置 `UI_CHANGE_APPROVED=true` 绕过。
 

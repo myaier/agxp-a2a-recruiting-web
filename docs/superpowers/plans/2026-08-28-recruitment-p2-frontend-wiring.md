@@ -13,7 +13,8 @@
 ## Global Constraints
 
 - 开始前必须完整读取仓库根 `AGENTS.md` / `CLAUDE.md`（若存在）及本 Spec；实现不得超出 Spec。
-- 前端基线是 `origin/main@57783ac9dc11b0766b06e05442c2bd8e125eb38a`；后端只读契约基线是 `origin/release/0.2.5@83007f1555514c2b427ba337b64118221f4dd4d2`。
+- 前端基线是 `origin/main@96257a2683dfe775eda61b6076a9aab12ded9c9a`；后端只读契约基线是 `origin/release/0.2.5@83007f1555514c2b427ba337b64118221f4dd4d2`。
+- 该前端基线已完整合入 P6：根数据源现有八域、`应用操作` 已含 `Agent规则操作`、候选水合另有先行并发的 `p6Promise`、E2E `安装BFF路由` 返回 `{ p6 }`。P2 只能增量扩展这些接口，任何代码片段都不得把 P6 shape 替换回旧基线。
 - 不新增路由、页面、状态库、依赖、通用上传框架、解析正文类型、自动预填、主简历或重命名能力。
 - Mock 模式保留当前 `学生分流` 文件名 reducer、提示、硬编码演示附件和视觉基线；Backend 失败绝不回退 Mock。
 - 创建、替换、显式解析只有确认层执行键能传 literal `true`；取消确认产生零 mutation。
@@ -28,7 +29,7 @@
 
 ## Preconditions, Non-goals, and Completion
 
-**前置条件：** 当前分支已 rebase 到上述 `origin/main`；`npm install` 已完成；基线 `npm test`（66 files / 563 tests）、`npm run lint`、`npm run build` 均通过。执行前重新运行 `git status --short`，必须为空。
+**前置条件：** 当前分支已 rebase 到上述 `origin/main`；`npm install` 已完成；基线 `npm test`（76 files / 764 tests）、`npm run typecheck`、`npm run lint`、`npm run build` 均通过。执行前重新运行 `git status --short`，必须为空。
 
 **非目标：** 解析正文展示或采用、在线简历写入、招聘方披露、S1 原件递交、重命名、全局通知/轮询、进度百分比、视觉重做以及后端 OpenAPI 修复。
 
@@ -61,15 +62,15 @@
 - `src/数据/BFF契约.ts`：加入附件库、文件、版本、parse 判别联合、failure code 和 delete receipt wire types。
 - `src/数据/招聘数据源类型.ts`：导出 `页面附件简历库` alias；不污染结构化简历。
 - `src/数据/HTTP客户端.ts` / `.test.ts`：加入复用同一认证/错误/GET retry 内核的 `请求二进制`。
-- `src/数据/HTTP招聘数据源.ts` / `.test.ts`：组合第八个附件 facade，并把 binary seam 注入它。
+- `src/数据/HTTP招聘数据源.ts` / `.test.ts`：在 P6 已占第八域的基础上组合第九个附件 facade，并把 binary seam 注入它。
 - `src/数据/接口层.test.ts`：固定默认 client 同时暴露 JSON 与 binary 能力；产品 `接口层.ts` 不需要额外逻辑。
 - `src/状态/后端/类型.ts`：加入 `附件简历库` snapshot 与六个页面操作签名。
-- `src/状态/后端/会话操作.ts` / `.test.ts`：候选四域并行水合及所有清理路径。
-- `src/状态/应用状态.tsx` / `src/状态/应用状态.test.ts`：初始化 snapshot 并组合附件操作。
+- `src/状态/后端/会话操作.ts` / `.test.ts`：候选四个支持域并行水合、既有 P6 三路并发保持不变，以及所有清理路径。
+- `src/状态/应用状态.tsx` / `src/状态/应用状态.test.ts`：在 P6 后端状态/操作 shape 上初始化附件 snapshot 并组合附件操作。
 - `src/屏幕/学生分流.tsx` / `.test.tsx`：Backend create/replace 授权接线；Mock 原行为保留。
 - `src/屏幕/学生分流.module.css`：只补确认交互所需的隐藏 input/disabled 规则；不得改已有上传行几何。
 - `src/屏幕/我的简历.tsx` / `.module.css`：真实 0–3 行、小型 `＋`、复用滑动操作和确认层；静止态附件行几何不变。
-- `e2e/数据源模式.spec.ts`：加入 P2 BFF fixture 和 Backend 浏览器主链路。
+- `e2e/数据源模式.spec.ts`：在现有 P1C/P3/P6 fixture 上增量加入 P2 BFF fixture 和 Backend 浏览器主链路；保留 `安装BFF路由(...): Promise<{ p6: P6FixtureState }>`。
 - `e2e/视觉回归/场景.ts`：只在既有场景缺少明确定位时补稳定 selector；不得更新参考图。
 
 ---
@@ -430,11 +431,11 @@ export function 创建附件简历数据源(client: 附件请求): 附件简历�
 
 实现 `解码附件简历库/解码附件简历/解码附件解析状态/解码删除回执` 时统一用这些规则：`对象且非数组`、`Object.keys` 与状态所需 key 集合排序后完全相等、字符串非空、revision/version 为 `Number.isInteger && >= 1`、size 为 `Number.isInteger && >= 0`、时间为非空 string、limits `max_files` 为 `1..3` 的整数、`items.length <= limits.max_files`、`max_file_bytes>=1`、accepted types 精确为单元素 `application/pdf`。`max_files>3` 同时违反当前产品上限与 OpenAPI `maxItems:3`，必须 fail closed，而不是静默支持 4–5 行。任一失败都 `throw new BFF错误(200, 'invalid_response', '附件简历响应不符合契约')`。parse exact keys 固定为：`not_started=[status]`、active=`[status,updated_at]`、succeeded=`[parse_id,status,updated_at]`、failed=`[failure_code,status,updated_at]`，failure code 只允许 Spec 四值。
 
-修改 `HTTP招聘数据源.ts`：client 类型改为 `Pick<BFF客户端, '请求' | '请求二进制'>`，根 type 加 `附件简历数据源`，factory return 加 `...创建附件简历数据源(deps.client)`。更新文件头“第八个域”。
+修改 `HTTP招聘数据源.ts`：client 类型改为 `Pick<BFF客户端, '请求' | '请求二进制'>`，根 type 在现有 `Agent规则数据源` 后加 `附件简历数据源`，factory return 在 `...创建Agent规则数据源(请求)` 后加 `...创建附件简历数据源(deps.client)`。更新文件头为“P2 加入第九个域”；不得删除或改序既有 P6 facade。
 
 - [ ] **Step 4: Add root-factory tests and run GREEN**
 
-在 `HTTP招聘数据源.test.ts` 的 method list 加上述六个精确方法名，并断言其它七域方法仍存在。在 `接口层.test.ts` 现有 backend factory seam 中断言传入 client 同时有 `请求` 与 `请求二进制`。
+在 `HTTP招聘数据源.test.ts` 现有“根 facade 组合八个域”测试中把标题改为九域，在 method list 加上述六个精确方法名，并保留其它八域全部方法，尤其是十个 P6 Agent 规则/提案方法。在 `接口层.test.ts` 现有 backend factory seam 中断言传入 client 同时有 `请求` 与 `请求二进制`。
 
 Run: `npm test -- src/数据/招聘数据源/附件简历.test.ts src/数据/HTTP招聘数据源.test.ts src/数据/接口层.test.ts && npm run typecheck`
 
@@ -462,6 +463,7 @@ git commit -m "feat: add strict resume file data source"
 - Consumes: Task 2 `附件简历数据源` 六方法；现有 `后端操作依赖` 的 `锁/主体标识引用/会话代际/后端状态引用/设后端状态`；现有 `清账号状态`。
 - Produces: `后端状态.附件简历库: BFF附件简历库 | null`；`附件变更结果 = '已提交' | '已换代'`；`附件简历操作`：`刷新附件简历(): Promise<void>`、四个 mutation 返回 `Promise<附件变更结果>`、`下载附件简历(fileId): Promise<Blob>`；`应用操作` 与该接口相交。
 - Internal invariant: factory 闭包持有读取序号、最近成功提交序号/快照和只串行同步 commit 的 Promise 链；GET 入队时立即发出，不等其它 GET settle。成功响应按序号提交，迟到旧成功复用最近提交快照，失败不推进提交序号或污染其它调用。协调器不是公共 state/dependency，不迫使其它领域 fixture 改 shape。
+- P6 coexistence invariant: 所有 `后端状态` fixture/initializer 在原有 `候选规则快照/招聘规则快照/候选规则提案/招聘规则提案/Agent规则水合` 上只追加 `附件简历库:null`；`应用操作` 保留 `Agent规则操作`；账号清理保留 `重置Agent规则后端状态` 与 `清后端Agent规则`，再清附件。不得为了让 P2 类型通过而删除、cast 掉或重建 P6 字段。
 
 - [ ] **Step 1: Write failing operation and hydration tests**
 
@@ -607,7 +609,7 @@ const 设后端状态 = vi.fn((更新: (old: 后端状态) => 后端状态) => {
 
 `not.toHaveBeenCalled()` 只用于明确证明 stale response 零提交的单测，并在该单测开始前 `设后端状态.mockClear()`。
 
-在测试文件内实现 `可控Promise<T>()` 为 `{promise,resolve,reject}` 的标准 deferred helper，并定义 `文件处理中`/`文件已完成` 为与 `文件A` 同 version、parse 分别是 processing/succeeded 的完整 DTO。另写：并发同 key 只发一次；missing local file 先安全 GET 再抛 `resume_file_selection_stale`；delete 404 重读后目标不存在收口成功；parse 网络/503/最终 `idempotency_in_progress` 后同 version 变 active/succeeded 或 terminal `updated_at` 改变则收口；create/replace 结果未知重读有变化仍抛 `attachment_state_changed` 让 UI 提示确认；安全重读失败保留原错误；download 401 清账号；候选水合由三路变四路且各域独立提交；recruiter/null/退出/换账号把附件 snapshot 置 null。
+在测试文件内实现 `可控Promise<T>()` 为 `{promise,resolve,reject}` 的标准 deferred helper，并定义 `文件处理中`/`文件已完成` 为与 `文件A` 同 version、parse 分别是 processing/succeeded 的完整 DTO。另写：并发同 key 只发一次；missing local file 先安全 GET 再抛 `resume_file_selection_stale`；delete 404 重读后目标不存在收口成功；parse 网络/503/最终 `idempotency_in_progress` 后同 version 变 active/succeeded 或 terminal `updated_at` 改变则收口；create/replace 结果未知重读有变化仍抛 `attachment_state_changed` 让 UI 提示确认；安全重读失败保留原错误；download 401 清账号；候选支持域由三路变四路且各域独立提交，同时基线 P6 三路调用/阶段/错误扫描断言继续通过；recruiter/null/退出/换账号把附件 snapshot 置 null 且 P6 清理断言不回归。
 
 - [ ] **Step 2: Run the RED tests**
 
@@ -631,7 +633,7 @@ export interface 附件简历操作 {
 
 export type 附件变更结果 = '已提交' | '已换代';
 
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & 附件简历操作;
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 附件简历操作;
 ```
 
 给 `后端状态` 加 `附件简历库: BFF附件简历库 | null`。创建 `附件简历操作.ts`，所有读写先捕获以下 fence：
@@ -700,23 +702,30 @@ const 权威重读码 = new Set([
 
 - [ ] **Step 4: Wire hydration and Provider composition**
 
-候选水合改为精确四路顺序：
+候选水合保留基线先启动的 `p6Promise = 水合Agent规则角色数据(...)`，只把随后支持域的 `结果` 从三项扩成精确四项：
 
 ```ts
+const p6Promise = 水合Agent规则角色数据(
+  { 后端, 派发, 设后端状态, 主体标识引用, 会话代际 },
+  角色,
+  主体.subject_id,
+  generation,
+);
 const 结果 = await Promise.allSettled([
   后端.读取简历(), 后端.读取意向(), 后端.读取隐私(), 后端.读取附件简历库(),
 ]);
+const p6结果 = await p6Promise;
 ```
 
-为第四项应用同一个 captured subject/generation fence：fulfilled 时只写 `后端状态.附件简历库`；rejected 401 进入现有统一失效分支；交互水合抛第一错误；mount 水合只提示一次该域错误且其它域保留。`清账号状态`、recruiter 清候选数据、last role null、主体变化清理都写 `附件简历库:null`。
+为第四项应用同一个 captured subject/generation fence：fulfilled 时只写 `后端状态.附件简历库`；rejected 401 进入现有统一失效分支；交互水合抛第一错误；mount 水合只提示一次该域错误且其它域保留。基线在支持域之后对 `p6结果` 的 rejection 收集、401 检测、提示和阶段提交逐字保留，附件失败不得改变 P6 阶段。`清账号状态`、recruiter 清候选数据、last role null、主体变化清理都在既有 P6 清理基础上写 `附件简历库:null`；更新对象必须从 `重置Agent规则后端状态(旧)` 或等价既有 helper 的结果扩展，不能绕开它。
 
-在 `应用状态.tsx` 初值加 `附件简历库:null`，import `创建附件简历操作`，操作组合末尾加 `...创建附件简历操作(deps)`；不新增 reducer action，因为附件 UI 直接读 `后端状态`。
+在 `应用状态.tsx` 含完整 P6 字段的 `后端状态` 初值中加 `附件简历库:null`，import `创建附件简历操作`，操作组合在 `...创建Agent规则操作(deps)` 后加 `...创建附件简历操作(deps)`；不新增 reducer action，因为附件 UI 直接读 `后端状态`。在 `会话操作.test.ts`、`应用状态.test.ts` 及其它编译报错的真实 `后端状态` literals 中只补 `附件简历库:null`，不以 `as unknown as` 掩盖遗漏。
 
 - [ ] **Step 5: Run GREEN and session regression**
 
 Run: `npm test -- src/状态/后端/附件简历操作.test.ts src/状态/后端/会话操作.test.ts src/状态/应用状态.test.ts && npm run typecheck`
 
-Expected: PASS；候选四域独立、招聘方不读附件、清账号不留附件、stale response 不提交。
+Expected: PASS；候选四个支持域独立、P6 三路仍并发且阶段不回退、招聘方不读附件、清账号同时不留附件与 P6 residue、stale response 不提交。
 
 - [ ] **Step 6: Commit Task 3**
 
@@ -1229,7 +1238,7 @@ git commit -m "feat: manage resume files from my resume"
 - Modify only if stable locator is absent: `e2e/视觉回归/场景.ts`
 
 **Interfaces:**
-- Consumes: Tasks 1–6 public UI and wire routes; existing `playwright.数据源模式.config.ts` backend fixture; existing Mock-only `playwright.视觉回归.config.ts` and `UI_VISUAL_GATE` script.
+- Consumes: Tasks 1–6 public UI and wire routes; existing P1C/P3/P6 `BFF路由选项`、`取multipart部件` 与 `安装BFF路由(...): Promise<{ p6: P6FixtureState }>`；existing `playwright.数据源模式.config.ts` backend fixture; existing Mock-only `playwright.视觉回归.config.ts` and `UI_VISUAL_GATE` script.
 - Produces: one deterministic P2 browser fixture proving multipart/header/body/refresh/download behavior; plan-scope evidence on current commit. No product API or CSS changes.
 
 - [ ] **Step 1: Add one failing Backend owner journey to the existing fixture**
@@ -1309,7 +1318,14 @@ Expected: FAIL before fixture/product selectors are complete；失败点必须�
 
 - [ ] **Step 3: Finish only the deterministic fixture/locator changes**
 
-给现有 `BFF路由选项` 增加 `附件fixture?: P2附件fixture形`，用现有 `取multipart部件`（已经返回 part name/type/bytes）实现上一步 route switch。fixture 的可变接口冻结为：
+先做一次必要的源文件卫生修复：基线 `e2e/数据源模式.spec.ts:1085` 的 fallback 字符串在开引号后含一个 raw NUL，导致 `file`/`rg` 把整份 TypeScript 识别为 binary。用下面的 binary-safe 机械替换把该单字节改成源码 escape `\0`；替换前后语义相同，随后断言 NUL 数为 0。不要改 fallback 文案或分页行为：
+
+```bash
+perl -0pi -e 's/\x00/\\0/g' e2e/数据源模式.spec.ts
+test "$(LC_ALL=C tr -cd '\000' < e2e/数据源模式.spec.ts | wc -c | tr -d ' ')" = "0"
+```
+
+然后给现有 `BFF路由选项` 增加 `附件fixture?: P2附件fixture形`，用现有 `取multipart部件`（已经返回 part name/type/bytes）实现上一步 route switch。保留 `P6分支?: P6分支配置` 以及其它 P1C/P3 options；fixture 的可变接口冻结为：
 
 ```ts
 interface P2附件fixture形 {
@@ -1368,7 +1384,7 @@ function P2新附件(id: number, displayName: string, bytes: Buffer): P2附件�
 }
 ```
 
-在 `安装BFF路由` 内、`await page.route` 之前声明 `const P2域 = 选项.附件fixture ?? 创建P2附件fixture();`，保证所有既有 Backend tests 默认收到合法权威空库，且每次安装各自隔离；不要在 route callback 内重复创建。然后在 session/me 分支之后、其它领域分支之前加入以下完整分派：
+在 `安装BFF路由` 内、`await page.route` 之前声明 `const P2域 = 选项.附件fixture ?? 创建P2附件fixture();`，保证所有既有 Backend tests 默认收到合法权威空库，且每次安装各自隔离；不要在 route callback 内重复创建。函数签名和 return 继续是 `Promise<{ p6: P6FixtureState }>` / `{ p6 }`，P2 fixture 由调用方持有，不改既有 P6 test seam。然后在 session/me/role/preference 分支之后、P3 隐私与 P6 Agent 规则分支之前加入以下完整分派：
 
 ```ts
 if (P2域 && path === '/api/v1/me/resume-files' && method === 'GET') {
