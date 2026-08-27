@@ -937,6 +937,71 @@ describe('水合Agent规则角色数据 与 刷新Agent规则', () => {
     expect(环境.最新后端状态().候选规则提案).toEqual({});
   });
 
+  // review-r3 R3-1：权威单卡 GET 撞 401 = 会话在读途中失效。轮询方/页面按约定安静
+  // 吞掉错误，但操作层必须先统一登出清理，不能顶着已登录壳吞掉。
+  it('刷新Agent规则提案 的权威 GET 撞 401 统一清账号并安静返回（不抛给轮询方）', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    vi.mocked(环境.数据源.读取Agent规则提案).mockRejectedValue(new BFF错误(401, 'invalid_session', '过期'));
+    const 操作 = 创建Agent规则操作(环境.deps);
+    await expect(操作.刷新Agent规则提案(BFFAgent规则解释中提案样本.proposal_id)).resolves.toBeUndefined();
+    const 最新 = 环境.最新后端状态();
+    expect(最新.已登录).toBe(false);
+    expect(最新.主体).toBeNull();
+    expect(环境.deps.主体标识引用.current).toBeNull();
+    expect(环境.deps.会话代际.current).toBe(8);
+  });
+
+  it('not-found 对账重读清单撞 401 也统一清账号并安静返回', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    vi.mocked(环境.数据源.读取Agent规则提案)
+      .mockRejectedValue(new BFF错误(404, 'agent_rule_proposal_not_found', '没了'));
+    vi.mocked(环境.数据源.读取Agent规则提案列表)
+      .mockRejectedValue(new BFF错误(401, 'invalid_session', '过期'));
+    const 操作 = 创建Agent规则操作(环境.deps);
+    await expect(操作.刷新Agent规则提案(BFFAgent规则解释中提案样本.proposal_id)).resolves.toBeUndefined();
+    // interpreting 先撞 401，ready 不再发
+    expect(环境.数据源.读取Agent规则提案列表).toHaveBeenCalledTimes(1);
+    const 最新 = 环境.最新后端状态();
+    expect(最新.已登录).toBe(false);
+    expect(环境.deps.主体标识引用.current).toBeNull();
+    expect(环境.deps.会话代际.current).toBe(8);
+  });
+
+  it('刷新Agent规则提案 的 401 在会话已换代时不清新会话，错误语义不变', async () => {
+    // 迟到的 401 属于旧会话：转移路径自己清过账号 —— 跳过清理，错误照抛（轮询方吞）
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    const 提案门 = deferred<never>();
+    vi.mocked(环境.数据源.读取Agent规则提案).mockReturnValue(提案门.promise as never);
+    const 操作 = 创建Agent规则操作(环境.deps);
+    const 轮询 = 操作
+      .刷新Agent规则提案(BFFAgent规则解释中提案样本.proposal_id)
+      .catch((错误: unknown) => 错误);
+    await vi.waitFor(() => expect(环境.数据源.读取Agent规则提案).toHaveBeenCalledTimes(1));
+    // 与 完成手机登录 同主体重登同构：subject 不变、代际 +1
+    环境.deps.会话代际.current += 1;
+    提案门.reject(new BFF错误(401, 'invalid_session', '过期'));
+    expect(await 轮询).toMatchObject({ status: 401 });
+    const 最新 = 环境.最新后端状态();
+    expect(最新.已登录).toBe(true);
+    expect(最新.主体).not.toBeNull();
+    expect(环境.deps.主体标识引用.current).toBe('sub_1');
+    // 代际只被本测试手动 +1：清账号状态 若被误触发会再递增到 9
+    expect(环境.deps.会话代际.current).toBe(8);
+  });
+
+  it('not-found 对账重读的非 401 失败维持安静吞掉：不清账号也不打断轮询方', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    vi.mocked(环境.数据源.读取Agent规则提案)
+      .mockRejectedValue(new BFF错误(404, 'agent_rule_proposal_not_found', '没了'));
+    vi.mocked(环境.数据源.读取Agent规则提案列表)
+      .mockRejectedValue(new BFF错误(503, 'downstream_unavailable', '抖'));
+    const 操作 = 创建Agent规则操作(环境.deps);
+    await expect(操作.刷新Agent规则提案(BFFAgent规则解释中提案样本.proposal_id)).resolves.toBeUndefined();
+    const 最新 = 环境.最新后端状态();
+    expect(最新.已登录).toBe(true);
+    expect(环境.deps.会话代际.current).toBe(7);
+  });
+
   it('刷新Agent规则 的水合 401 也统一清账号', async () => {
     const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
     vi.mocked(环境.数据源.读取Agent规则).mockRejectedValue(new BFF错误(401, 'invalid_session', '过期'));
@@ -1005,6 +1070,38 @@ describe('水合Agent规则角色数据 与 刷新Agent规则', () => {
     // 503 走通用映射的冻结文案：用户由此知道刷新没成，可以点「规则加载失败，重试」
     expect(轻提示).toHaveBeenCalledWith('后端服务暂时不可用，请稍后重试');
     // 不降级：两个阶段保持 成功，已提交的快照行与卡片原样可见
+    const 最新 = 环境.最新后端状态();
+    expect(最新.Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' });
+    expect(最新.候选规则快照[BFFAgent规则样本.rule_id]).toEqual(BFFAgent规则样本);
+    expect(最新.已登录).toBe(true);
+  });
+
+  it('follow-up 刷新非 401 失败在会话已换代时不轻提示（旧轮拒绝不弹进新会话）', async () => {
+    // review-r3 R3-3：提示与 401 清理同一把会话 fence —— 换代后迟到的旧轮拒绝整包
+    // 丢弃：不提示、不动阶段、不动快照（与 stale 丢弃口径一致）。
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    环境.deps.后端状态引用.current = {
+      ...环境.deps.后端状态引用.current,
+      候选规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+      候选规则提案: { [BFFAgent规则就绪提案样本.proposal_id]: BFFAgent规则就绪提案样本 },
+      Agent规则水合: {
+        candidate: { rules: '成功', proposals: '成功' },
+        recruiter: { rules: '未开始', proposals: '未开始' },
+      },
+    };
+    vi.mocked(环境.数据源.接受Agent规则提案).mockResolvedValue(BFFAgent规则样本);
+    const 规则门 = deferred<never[]>();
+    vi.mocked(环境.数据源.读取Agent规则).mockReturnValue(规则门.promise as never);
+    const 操作 = 创建Agent规则操作(环境.deps);
+    const 接受 = 操作
+      .接受Agent规则提案(BFFAgent规则就绪提案样本.proposal_id)
+      .catch((错误: unknown) => 错误);
+    await vi.waitFor(() => expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(1));
+    // 与 完成手机登录 同主体重登同构：subject 不变、代际 +1
+    环境.deps.会话代际.current += 1;
+    规则门.reject(new BFF错误(503, 'downstream_unavailable', '抖'));
+    await 接受;
+    expect(轻提示).not.toHaveBeenCalled();
     const 最新 = 环境.最新后端状态();
     expect(最新.Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' });
     expect(最新.候选规则快照[BFFAgent规则样本.rule_id]).toEqual(BFFAgent规则样本);

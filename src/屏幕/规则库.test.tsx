@@ -525,6 +525,56 @@ describe('规则库 · Backend 候选页', () => {
     expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
   });
 
+  it('sessionStorage 写入抛错时草稿落记忆层：同页关闭失败卡仍还原，且不跨页复活', async () => {
+    // review-r3 R3-2：配额满/隐私模式下 setItem 抛错的旧实现会把草稿直接丢掉
+    //（composer 又已清空）—— 记忆层兜底后同页还原照常，关闭时两层一起删。
+    const user = userEvent.setup();
+    // jsdom 的全局 Storage 与 window.sessionStorage 的原型不同域：桩要打在真实原型上
+    const 写入抛错 = vi.spyOn(
+      Object.getPrototypeOf(window.sessionStorage) as Storage,
+      'setItem',
+    ).mockImplementation(() => {
+      throw new Error('配额已满');
+    });
+    let 第一屏: ReturnType<typeof renderCandidateRules>;
+    try {
+      第一屏 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
+      await 挂载到稳定();
+      await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+      await user.selectOptions(screen.getByLabelText('规则范围'), 意向编号);
+      await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
+      await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
+      await waitFor(() => expect(screen.queryByPlaceholderText('例：不接受大小周的岗位直接过滤')).toBeNull());
+      // storage 层确实没写进去
+      expect(写入抛错).toHaveBeenCalled();
+      expect(window.sessionStorage.getItem(`agent规则草稿:${BFFAgent规则解释中提案样本.proposal_id}`)).toBeNull();
+      act(() => {
+        镜头.覆盖 = {
+          ...镜头.覆盖,
+          候选规则提案: {
+            [BFFAgent规则解释中提案样本.proposal_id]: { ...BFFAgent规则解释中提案样本, state: 'failed' as const },
+          },
+        };
+        镜头.版本 += 1;
+        for (const 通知 of 镜头.订阅们) 通知();
+      });
+      await user.click(screen.getByRole('button', { name: '关闭' }));
+      // 记忆层兜底：同页关闭失败卡照样还原原草稿与范围
+      expect((screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤') as HTMLInputElement).value).toBe('只接受双休');
+      expect((screen.getByLabelText('规则范围') as HTMLSelectElement).value).toBe(意向编号);
+    } finally {
+      写入抛错.mockRestore();
+    }
+    // storage 恢复后重进页面：关闭已把两层一起删干净，草稿不得复活
+    第一屏.unmount();
+    renderCandidateRules({
+      rulesStage: '成功', proposalsStage: '成功', initialized: true,
+      提案: [{ ...BFFAgent规则解释中提案样本, state: 'failed' as const }],
+    });
+    await user.click(screen.getByRole('button', { name: '关闭' }));
+    expect(screen.queryByPlaceholderText('例：不接受大小周的岗位直接过滤')).toBeNull();
+  });
+
   it('subject 不匹配的寄存草稿直接丢弃：不还原也不留键', async () => {
     // 换账号后的失败卡：上一个账号的草稿绝不回流到新账号的输入行
     window.sessionStorage.setItem(

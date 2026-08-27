@@ -264,11 +264,14 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     // 非 401 的 follow-up 刷新失败不能无声吞掉：已 成功 的域按 §6 不降级，页面看着正常，
     // 但用户没有任何信号也就没有重试入口 —— 提示第一份非 401 拒绝（401 已在上面统一
     // 清账号，不再重复提示）。首次挂载走 水合Agent规则角色数据，由 会话操作 呈现其拒绝，
-    // 不经过这里，不存在双弹。
-    for (const 落点 of 结果) {
-      if (落点.status === 'rejected' && !是401原因(落点.reason)) {
-        轻提示(取Agent规则错误文案(落点.reason));
-        break;
+    // 不经过这里，不存在双弹。提示同样过会话 fence（review-r3 R3-3）：已换代后迟到的
+    // 旧轮拒绝整包丢弃 —— 不提示、不动阶段、不动快照，绝不弹进新会话。
+    if (仍是当前会话(deps, subjectId, generation)) {
+      for (const 落点 of 结果) {
+        if (落点.status === 'rejected' && !是401原因(落点.reason)) {
+          轻提示(取Agent规则错误文案(落点.reason));
+          break;
+        }
       }
     }
     return 结果;
@@ -636,18 +639,33 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     const captured = 当前提案代际(proposalId);
     const 落点 = await 落定(后端.读取Agent规则提案(role, proposalId));
     if (落点.status !== 'fulfilled') {
+      const 原因 = 落点.status === 'rejected' ? 落点.reason : new BFF错误(0, 'invalid_response', '提案响应缺失');
+      // 权威读撞上 401 = 会话在读途中失效：轮询方/页面按约定安静处理，但这里必须先
+      // 统一登出清理，不能顶着已登录壳吞掉（review-r3 R3-1）—— 清完照常安静返回，
+      // 不把 401 抛给轮询方。已换代的迟到 401 则跳过清理、错误照抛不变（转移路径
+      // 自己清过账号，绝不能顺手吞掉旧会话的错误语义）。
+      if (是401原因(原因)) {
+        if (仍是当前会话(deps, subjectId, generation)) {
+          清账号状态(账号清理依赖);
+          return;
+        }
+        throw 原因;
+      }
       // 找不到这张卡 = 它已经不在 actionable 集合里：重读两份清单把它权威清掉
-      if (落点.status === 'rejected' && 落点.reason instanceof BFF错误 &&
-          落点.reason.code === 'agent_rule_proposal_not_found' &&
+      if (原因 instanceof BFF错误 && 原因.code === 'agent_rule_proposal_not_found' &&
           仍是当前会话(deps, subjectId, generation)) {
         try {
           await 构建清单对账(role, subjectId, generation)();
-        } catch {
-          // 恢复读失败就安静离开，不打断轮询方
+        } catch (恢复错误) {
+          // 恢复读失败就安静离开，不打断轮询方；但恢复读撞上 401 = 会话已失效，
+          // 同样统一登出清理（过 fence），不能顶着已登录壳吞掉。
+          if (是401原因(恢复错误) && 仍是当前会话(deps, subjectId, generation)) {
+            清账号状态(账号清理依赖);
+          }
         }
         return;
       }
-      throw 落点.status === 'rejected' ? 落点.reason : new BFF错误(0, 'invalid_response', '提案响应缺失');
+      throw 原因;
     }
     if (
       !仍是当前会话(deps, subjectId, generation) ||
