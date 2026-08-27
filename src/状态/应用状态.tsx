@@ -56,7 +56,7 @@ import type { 资料缓存快照 } from '../数据/资料缓存';
 import { 读资料缓存 } from '../数据/资料缓存';
 import { 轻提示 } from '../组件/轻提示';
 import type { 应用操作, 后端状态, 后端操作依赖 } from './后端/类型';
-import { 创建会话操作, 水合角色数据 } from './后端/会话操作';
+import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
 import { 创建候选操作 } from './后端/候选操作';
 import { 创建岗位操作 } from './后端/岗位操作';
 import { 创建组织操作 } from './后端/组织操作';
@@ -535,6 +535,11 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       主体标识引用.current = 主体.subject_id;
       会话代际.current += 1;
       const 本次代际 = 会话代际.current;
+      // P6 Task 4：mount 恢复 = 主体转移 —— 水合前先把规则域重置回干净底座
+      //（原始字典/双端阶段清零 + 页面数组清空），保证每次进入水合都跑完整链路，
+      // 阶段不可能粘住上个会话残留的 进行中|成功。
+      派发({ 型: '清后端Agent规则' });
+      设后端状态(重置Agent规则后端状态);
       // review-r2 R2-I-3：水合 401 时 水合角色数据 内部已走登出清理并返回 会话失效=true，
       // 不再落 已登录=true（旧实现会把上个会话的快照/草稿留给已失效的登录态）。
       const 会话失效 = await 水合角色数据({

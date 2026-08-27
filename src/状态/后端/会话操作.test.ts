@@ -3,7 +3,7 @@
 // P3 Task 2：候选隐私成为第三个并行水合域 —— 水合 / 清理 / 过时响应丢弃的用例也在本文件。
 
 import { describe, expect, it, vi } from 'vitest';
-import type { BFF主体 } from '../../数据/BFF契约';
+import type { BFF主体, BFF角色 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误 } from '../../数据/HTTP客户端';
 import {
@@ -12,14 +12,18 @@ import {
   BFF主体样本,
   BFF简历样本,
   BFF隐私快照样本,
+  BFFAgent规则就绪提案样本,
+  BFFAgent规则解释中提案样本,
+  BFFAgent规则样本,
+  BFF岗位样本,
   BFF招聘方档案样本,
 } from '../../测试/BFF样本';
 import { 从BFF简历 } from '../../数据/后端映射';
 import { 从BFF隐私 } from '../../数据/隐私映射';
 import type { 页面隐私快照 } from '../../数据/招聘数据源类型';
-import { 初始状态 } from '../初始状态';
+import { 创建初始状态, 初始状态 } from '../初始状态';
 import { 归约 } from '../应用状态';
-import type { 后端状态 } from './类型';
+import type { 后端操作依赖, 后端状态 } from './类型';
 import { 创建会话操作, 清账号状态, 水合角色数据 } from './会话操作';
 
 /** 依赖 helper：派发重放 归约 到可变 状态引用，断言可以读最终 state。 */
@@ -136,6 +140,8 @@ describe('P3 候选隐私水合与清理', () => {
       读取简历: vi.fn().mockResolvedValue(从BFF简历(BFF简历样本)),
       读取意向: vi.fn(async () => ({ 列表: [], 服务端: {} })),
       读取隐私: vi.fn().mockResolvedValue(从BFF隐私(BFF隐私快照样本)),
+      读取Agent规则: vi.fn().mockResolvedValue([]),
+      读取Agent规则提案列表: vi.fn().mockResolvedValue([]),
       ...覆盖,
     } as unknown as HTTP招聘数据源;
   }
@@ -146,6 +152,8 @@ describe('P3 候选隐私水合与清理', () => {
       读取简历: vi.fn().mockRejectedValue(new Error('resume unavailable')),
       读取意向: vi.fn().mockRejectedValue(new Error('intention unavailable')),
       读取隐私: vi.fn().mockResolvedValue(隐私页面样本2),
+      读取Agent规则: vi.fn().mockResolvedValue([]),
+      读取Agent规则提案列表: vi.fn().mockResolvedValue([]),
     } as unknown as HTTP招聘数据源;
     const { deps } = 创建会话测试依赖(后端);
     const candidate主体 = { ...BFF主体样本, last_used_role: 'candidate' as const };
@@ -234,6 +242,8 @@ describe('P3 候选隐私水合与清理', () => {
       读取企业管理员申请: vi.fn(async () => []),
       读取岗位: vi.fn(async () => ({ 列表: [], 服务端: {} })),
       清空目录缓存: vi.fn(),
+      读取Agent规则: vi.fn().mockResolvedValue([]),
+      读取Agent规则提案列表: vi.fn().mockResolvedValue([]),
     } as unknown as HTTP招聘数据源;
     const { deps, 动作流 } = 创建会话测试依赖(后端);
     deps.主体标识引用.current = 'sub_1';
@@ -247,5 +257,398 @@ describe('P3 候选隐私水合与清理', () => {
     expect(最终后端状态(deps).隐私快照).toBeNull();
     // 招聘方自有水合照常进行
     expect(后端.读取岗位).toHaveBeenCalled();
+  });
+});
+
+// ── P6 Task 4：会话水合 / 转移清理与 Backend 种子 ─────────────────────
+// 登录/恢复/切身份 把 P6 完整水合并进角色分支；401 / 退出 / 换主体 / 切角色
+// 统一清规则域（原始字典 + 双端阶段 + 页面数组），非 401 的 P6 失败不回滚已提交域。
+
+const backend数据源 = { 模式: 'backend' as const, 后端环境: 'stg' as const, 后端: {} as HTTP招聘数据源 };
+
+const candidate主体: BFF主体 = { ...BFF主体样本, subject_id: 'sub_c', last_used_role: 'candidate' };
+const recruiter主体: BFF主体 = { ...BFF主体样本, subject_id: 'sub_r', last_used_role: 'recruiter' };
+
+/** P6 会话用例的完整数据源桩：支持域 + 组织域 + Agent 规则域默认全成功（空集）。 */
+function 创建P6数据源桩(): HTTP招聘数据源 {
+  return {
+    完成手机登录: vi.fn(async () => undefined),
+    读取主体: vi.fn(async () => ({ ...BFF主体样本, subject_id: 'sub_1' })),
+    退出登录: vi.fn(async () => undefined),
+    确保角色: vi.fn(async (role: BFF角色) => ({ ...BFF主体样本, subject_id: 'sub_1', last_used_role: role })),
+    记录当前角色: vi.fn(async (role: BFF角色) => ({ ...BFF主体样本, subject_id: 'sub_1', last_used_role: role })),
+    读取简历: vi.fn(async () => ({
+      基本信息: { 真名: '', 开始工作年: '', 身份: '在职' },
+      个人优势: '',
+      技能: [],
+      经历: [],
+      教育: [],
+      证书: [],
+      服务端快照: {} as never,
+    })),
+    读取意向: vi.fn(async () => ({ 列表: [], 服务端: {} })),
+    读取岗位: vi.fn(async () => ({ 列表: [{ 编号: BFF岗位样本.job_id }], 服务端: { [BFF岗位样本.job_id]: BFF岗位样本 } })),
+    读取隐私: vi.fn(async () => 从BFF隐私(BFF隐私快照样本)),
+    读取招聘方档案: vi.fn(async () => BFF招聘方档案样本),
+    读取我的企业关系: vi.fn(async () => [BFF企业关系样本]),
+    读取公开企业: vi.fn(async () => BFF公开企业样本),
+    清空目录缓存: vi.fn(),
+    读取Agent规则: vi.fn(async () => [] as never[]),
+    读取Agent规则提案列表: vi.fn(async () => [] as never[]),
+  } as unknown as HTTP招聘数据源;
+}
+
+/** P6 会话依赖：派发重放 归约、设后端状态 镜像到可变值，断言可读最终 后端状态。 */
+function 创建P6会话依赖(后端: HTTP招聘数据源) {
+  const 状态引用 = { current: 创建初始状态(backend数据源) };
+  const 动作流: unknown[] = [];
+  const 派发 = vi.fn((动作: Parameters<typeof 归约>[1]) => {
+    动作流.push(动作);
+    状态引用.current = 归约(状态引用.current, 动作);
+  });
+  let 后端值: 后端状态 = {
+    初始化: '完成',
+    已登录: true,
+    主体: null,
+    简历快照: null,
+    意向快照: {},
+    岗位快照: {},
+    隐私快照: null,
+    候选规则快照: {},
+    招聘规则快照: {},
+    候选规则提案: {},
+    招聘规则提案: {},
+    Agent规则水合: {
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    },
+  };
+  const deps = {
+    是后端: true,
+    后端,
+    派发,
+    设后端状态: (更新: (旧: 后端状态) => 后端状态) => {
+      后端值 = 更新(后端值);
+    },
+    后端状态引用: {
+      get current() {
+        return 后端值;
+      },
+      set current(值: 后端状态) {
+        后端值 = 值;
+      },
+    },
+    状态引用,
+    锁: { current: new Set<string>() },
+    尝试引用: { current: null as string | null },
+    主体标识引用: { current: null as string | null },
+    会话代际: { current: 0 },
+    读取恢复企业关系编号: vi.fn(() => null),
+  };
+  return {
+    deps: deps as unknown as 后端操作依赖 & { 后端: HTTP招聘数据源 },
+    动作流,
+    状态引用,
+    最新后端状态: () => 后端值,
+  };
+}
+
+function 空水合阶段(): 后端状态['Agent规则水合'] {
+  return {
+    candidate: { rules: '未开始', proposals: '未开始' },
+    recruiter: { rules: '未开始', proposals: '未开始' },
+  };
+}
+
+describe('P6 会话水合、清理与 Backend 种子', () => {
+  it('backend seed contains no Mock Rule rows', () => {
+    const state = 创建初始状态(backend数据源);
+    expect(state.全局规则).toEqual([]);
+    expect(state.意向级规则).toEqual([]);
+    expect(state.企业规则).toEqual([]);
+  });
+
+  it('candidate hydration commits Rules and both actionable Proposal states', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取Agent规则).mockResolvedValue([BFFAgent规则样本]);
+    vi.mocked(后端.读取Agent规则提案列表)
+      .mockResolvedValueOnce([BFFAgent规则解释中提案样本])
+      .mockResolvedValueOnce([BFFAgent规则就绪提案样本]);
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    await 水合角色数据(deps, candidate主体, true, 7);
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('candidate');
+    expect(vi.mocked(后端.读取Agent规则提案列表).mock.calls).toEqual([
+      ['candidate', 'interpreting'],
+      ['candidate', 'ready'],
+    ]);
+    expect(最新后端状态().Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' });
+    expect(最新后端状态().候选规则快照[BFFAgent规则样本.rule_id]).toEqual(BFFAgent规则样本);
+    expect(最新后端状态().候选规则提案[BFFAgent规则就绪提案样本.proposal_id]).toEqual(BFFAgent规则就绪提案样本);
+  });
+
+  it('each initially incomplete P6 domain is 进行中 while its reads are outstanding', async () => {
+    const 后端 = 创建P6数据源桩();
+    const 规则门 = deferred<typeof BFFAgent规则样本[]>();
+    const 清单门 = deferred<never[]>();
+    vi.mocked(后端.读取Agent规则).mockReturnValue(规则门.promise as never);
+    vi.mocked(后端.读取Agent规则提案列表).mockReturnValue(清单门.promise as never);
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    const 运行 = 水合角色数据(deps, candidate主体, false, 7);
+    // 读取未落定时两域都在 进行中，另一角色的种子不受影响
+    expect(最新后端状态().Agent规则水合.candidate).toEqual({ rules: '进行中', proposals: '进行中' });
+    expect(最新后端状态().Agent规则水合.recruiter).toEqual({ rules: '未开始', proposals: '未开始' });
+    规则门.resolve([BFFAgent规则样本]);
+    清单门.resolve([] as never);
+    await 运行;
+    expect(最新后端状态().Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' });
+  });
+
+  it('role switch clears old P6 state before target hydration and discards late responses', async () => {
+    const 后端 = 创建P6数据源桩();
+    const lateCandidate = deferred<typeof BFFAgent规则样本[]>();
+    vi.mocked(后端.读取Agent规则).mockReturnValueOnce(lateCandidate.promise);
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 10;
+    const candidateRun = 水合角色数据(deps, candidate主体, true, 10);
+    deps.主体标识引用.current = recruiter主体.subject_id;
+    deps.会话代际.current = 11;
+    await 水合角色数据(deps, recruiter主体, true, 11);
+    lateCandidate.resolve([BFFAgent规则样本]);
+    await candidateRun;
+    expect(最新后端状态().候选规则快照).toEqual({});
+  });
+
+  it('a rejected Rule read marks rules 失败 without rolling back Resume/Intentions', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取Agent规则).mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const 简历快照 = {
+      基本信息: { 真名: '沈亦舟', 开始工作年: '2017', 身份: '在职' as const },
+      个人优势: '优势文本',
+      技能: [],
+      经历: [],
+      教育: [],
+      证书: [],
+      服务端快照: { profile_revision: 5 } as never,
+    };
+    vi.mocked(后端.读取简历).mockResolvedValue(简历快照 as never);
+    const { deps, 最新后端状态, 状态引用 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    // mount-init：非 401 失败只 轻提示，不抛出，初始化照常完成
+    const 会话失效 = await 水合角色数据(deps, candidate主体, false, 7);
+    expect(会话失效).toBe(false);
+    expect(最新后端状态().Agent规则水合.candidate.rules).toBe('失败');
+    // P6 失败不回滚已成功提交的简历/意向
+    expect(最新后端状态().简历快照).toEqual({ profile_revision: 5 });
+    expect(状态引用.current.个人优势).toBe('优势文本');
+  });
+
+  it('interactive P6 Rule failure surfaces with the existing error strategy', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取Agent规则).mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const { deps } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    await expect(水合角色数据(deps, candidate主体, true, 7)).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('either Proposal-list rejection marks proposals 失败 while the successful sibling stays 成功', async () => {
+    for (const 落败清单 of ['interpreting', 'ready'] as const) {
+      const 后端 = 创建P6数据源桩();
+      vi.mocked(后端.读取Agent规则).mockResolvedValue([BFFAgent规则样本]);
+      vi.mocked(后端.读取Agent规则提案列表).mockImplementation(async (_role: BFF角色, state: 'interpreting' | 'ready') => {
+        if (state === 落败清单) throw new BFF错误(503, 'downstream_unavailable', 'down');
+        return [] as never;
+      });
+      const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+      deps.主体标识引用.current = candidate主体.subject_id;
+      deps.会话代际.current = 7;
+      const 会话失效 = await 水合角色数据(deps, candidate主体, false, 7);
+      expect(会话失效).toBe(false);
+      expect(最新后端状态().Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '失败' });
+      // 任一清单失败就不提交半份提案表
+      expect(最新后端状态().候选规则提案).toEqual({});
+    }
+  });
+
+  it('a refresh starting from 成功 keeps both stages 成功 while reads are outstanding', async () => {
+    const 后端 = 创建P6数据源桩();
+    const 规则门 = deferred<typeof BFFAgent规则样本[]>();
+    const 清单门 = deferred<never[]>();
+    vi.mocked(后端.读取Agent规则).mockReturnValueOnce(规则门.promise as never);
+    vi.mocked(后端.读取Agent规则提案列表)
+      .mockReturnValueOnce(清单门.promise as never)
+      .mockReturnValueOnce(清单门.promise as never);
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    deps.设后端状态((旧) => ({
+      ...旧,
+      候选规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+      Agent规则水合: {
+        candidate: { rules: '成功', proposals: '成功' },
+        recruiter: { rules: '未开始', proposals: '未开始' },
+      },
+    }));
+    const 运行 = 水合角色数据(deps, candidate主体, false, 7);
+    // 刷新途中已 成功 的域不得降级，快照行不闪退
+    expect(最新后端状态().Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' });
+    expect(最新后端状态().候选规则快照[BFFAgent规则样本.rule_id]).toEqual(BFFAgent规则样本);
+    规则门.resolve([BFFAgent规则样本]);
+    清单门.resolve([] as never);
+    await 运行;
+    expect(最新后端状态().Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' });
+  });
+
+  it('P6 读取 401 时统一清账号：原始字典清空、双端回 未开始、页面数组清空', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取Agent规则).mockRejectedValue(new BFF错误(401, 'invalid_session', '过期'));
+    const { deps, 最新后端状态, 状态引用, 动作流 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    // 先埋上个会话的 P6 残留
+    deps.设后端状态((旧) => ({
+      ...旧,
+      候选规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+      招聘规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+      候选规则提案: { [BFFAgent规则就绪提案样本.proposal_id]: BFFAgent规则就绪提案样本 },
+      Agent规则水合: {
+        candidate: { rules: '成功', proposals: '成功' },
+        recruiter: { rules: '成功', proposals: '成功' },
+      },
+    }));
+    const 会话失效 = await 水合角色数据(deps, candidate主体, false, 7);
+    expect(会话失效).toBe(true);
+    const 最新 = 最新后端状态();
+    expect(最新.已登录).toBe(false);
+    expect(最新.主体).toBeNull();
+    expect(最新.候选规则快照).toEqual({});
+    expect(最新.招聘规则快照).toEqual({});
+    expect(最新.候选规则提案).toEqual({});
+    expect(最新.招聘规则提案).toEqual({});
+    expect(最新.Agent规则水合).toEqual(空水合阶段());
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(动作流).toContainEqual({ 型: '清后端Agent规则' });
+    expect(状态引用.current.全局规则).toEqual([]);
+    expect(状态引用.current.意向级规则).toEqual([]);
+    expect(状态引用.current.企业规则).toEqual([]);
+    expect(后端.清空目录缓存).toHaveBeenCalled();
+  });
+
+  it('recruiter P6 failure keeps Organization/Jobs commits intact', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取Agent规则).mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const { deps, 最新后端状态, 状态引用 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = recruiter主体.subject_id;
+    deps.会话代际.current = 7;
+    const 会话失效 = await 水合角色数据(deps, recruiter主体, false, 7);
+    expect(会话失效).toBe(false);
+    expect(最新后端状态().Agent规则水合.recruiter.rules).toBe('失败');
+    // P6 失败不回滚已成功提交的组织与岗位
+    expect(状态引用.current.招聘方档案).toEqual(BFF招聘方档案样本);
+    expect(状态引用.current.企业关系列表).toEqual([BFF企业关系样本]);
+    expect(最新后端状态().岗位快照).toEqual({ [BFF岗位样本.job_id]: BFF岗位样本 });
+  });
+
+  it('退出登录 clears P6 raw dicts, resets both roles, and clears page arrays', async () => {
+    const 后端 = 创建P6数据源桩();
+    const { deps, 最新后端状态, 状态引用, 动作流 } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    deps.设后端状态((旧) => ({
+      ...旧,
+      候选规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+      Agent规则水合: {
+        candidate: { rules: '成功', proposals: '成功' },
+        recruiter: { rules: '成功', proposals: '成功' },
+      },
+    }));
+    状态引用.current = 归约(初始状态, {
+      型: '水合后端候选规则',
+      全局: [{
+        编号: BFFAgent规则样本.rule_id, 内容: BFFAgent规则样本.display_text, 来源: '测试', 生效: true,
+        作用域: { 类型: '全局' as const }, 服务端版本: BFFAgent规则样本.version, 服务端状态: 'active' as const,
+      }],
+      意向级: [],
+    });
+    await 操作.退出登录();
+    expect(动作流).toContainEqual({ 型: '清后端Agent规则' });
+    expect(最新后端状态().候选规则快照).toEqual({});
+    expect(最新后端状态().Agent规则水合).toEqual(空水合阶段());
+    expect(状态引用.current.全局规则).toEqual([]);
+    expect(状态引用.current.意向级规则).toEqual([]);
+    expect(状态引用.current.企业规则).toEqual([]);
+  });
+
+  it('完成手机登录 new subject clears P6 raw dicts and resets both roles to 未开始', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_a' })
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b' });
+    const { deps, 最新后端状态, 动作流 } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    await 操作.完成手机登录('1111');
+    // A 留下 P6 残留
+    deps.设后端状态((旧) => ({
+      ...旧,
+      候选规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+      Agent规则水合: {
+        candidate: { rules: '成功', proposals: '成功' },
+        recruiter: { rules: '成功', proposals: '成功' },
+      },
+    }));
+    await 操作.完成手机登录('2222');
+    expect(动作流).toContainEqual({ 型: '清后端Agent规则' });
+    expect(最新后端状态().候选规则快照).toEqual({});
+    expect(最新后端状态().招聘规则快照).toEqual({});
+    expect(最新后端状态().Agent规则水合).toEqual(空水合阶段());
+  });
+
+  it('切身份 resets P6 before target hydration, advances generation, and runs the full path', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_1' });
+    const { deps, 最新后端状态, 动作流 } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    // 上个候选会话留下 成功 + 卡死的 进行中 与残留
+    deps.主体标识引用.current = 'sub_1';
+    deps.设后端状态((旧) => ({
+      ...旧,
+      主体: candidate主体,
+      候选规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+      Agent规则水合: {
+        candidate: { rules: '成功', proposals: '进行中' },
+        recruiter: { rules: '未开始', proposals: '未开始' },
+      },
+    }));
+    await 操作.切身份('招聘方');
+    expect(动作流).toContainEqual({ 型: '清后端Agent规则' });
+    // 切角色 = 角色转移：会话代际前进，上个角色的在飞响应整包作废
+    expect(deps.会话代际.current).toBe(1);
+    const 最新 = 最新后端状态();
+    // 上个角色的状态被清、阶段回 未开始，绝不粘住 进行中
+    expect(最新.候选规则快照).toEqual({});
+    expect(最新.Agent规则水合.candidate).toEqual({ rules: '未开始', proposals: '未开始' });
+    // 目标角色完整水合收口
+    expect(最新.Agent规则水合.recruiter).toEqual({ rules: '成功', proposals: '成功' });
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('recruiter');
+  });
+
+  it('last_used_role null keeps the identity screen: no P6 hydration, no reads', async () => {
+    const 后端 = 创建P6数据源桩();
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = 'sub_null';
+    deps.会话代际.current = 3;
+    const 会话失效 = await 水合角色数据(
+      deps, { ...BFF主体样本, subject_id: 'sub_null', last_used_role: null }, false, 3,
+    );
+    expect(会话失效).toBe(false);
+    expect(后端.读取Agent规则).not.toHaveBeenCalled();
+    expect(后端.读取Agent规则提案列表).not.toHaveBeenCalled();
+    expect(后端.读取简历).not.toHaveBeenCalled();
+    expect(最新后端状态().Agent规则水合).toEqual(空水合阶段());
   });
 });

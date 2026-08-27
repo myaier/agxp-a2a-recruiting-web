@@ -59,6 +59,10 @@ function 创建完整测试数据源(覆盖: Partial<HTTP招聘数据源> = {}):
     上传企业媒体: async () => BFF企业媒体样本,
     删除企业媒体: async () => undefined,
     读取公开企业: async () => BFF公开企业样本,
+    // P6 Task 4 起 水合角色数据 会把 Agent 规则水合并进角色分支：这里给空集，
+    // 让本文件的组织用例继续只钉组织/Jobs 的行为
+    读取Agent规则: async () => [],
+    读取Agent规则提案列表: async () => [],
   };
   return { ...基础, ...覆盖 } as unknown as HTTP招聘数据源;
 }

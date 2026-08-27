@@ -1493,3 +1493,95 @@ describe('应用状态提供者 review-r3 会话边界收口', () => {
     expect(当前.状态.当前Tab).toBe('职位');
   });
 });
+
+// ── P6 Task 4：mount / 退出 会话水合与清理（含 Backend 种子首帧隔离）──────────────
+
+describe('应用状态提供者 P6 会话水合与清理', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  it('candidate mount hydrates P6 with the role and lands the page arrays', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取Agent规则).mockResolvedValue([BFFAgent规则样本]);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('candidate');
+    await waitFor(() => expect(当前.后端状态.Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' }));
+    // Provider effect 从 raw 快照投影页面数组
+    await waitFor(() => expect(当前.状态.全局规则.map((条) => 条.编号)).toEqual([BFFAgent规则样本.rule_id]));
+  });
+
+  it('mount with last_used_role null leaves P6 empty and page arrays clear', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩(null);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(true);
+    // 保持身份选择页：不读任何规则，P6 状态停在干净底座
+    expect(后端.读取Agent规则).not.toHaveBeenCalled();
+    expect(当前.后端状态.候选规则快照).toEqual({});
+    expect(当前.后端状态.招聘规则快照).toEqual({});
+    expect(当前.后端状态.候选规则提案).toEqual({});
+    expect(当前.后端状态.招聘规则提案).toEqual({});
+    expect(当前.后端状态.Agent规则水合).toEqual({
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    });
+    expect(当前.状态.全局规则).toEqual([]);
+    expect(当前.状态.意向级规则).toEqual([]);
+    expect(当前.状态.企业规则).toEqual([]);
+  });
+
+  it('mount 水合 401 clears P6 dicts, resets stages, and clears page arrays', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取简历).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(false);
+    // P6 也被拉进统一清理：阶段回 未开始、原始字典与页面数组清空
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('candidate');
+    expect(当前.后端状态.候选规则快照).toEqual({});
+    expect(当前.后端状态.招聘规则快照).toEqual({});
+    expect(当前.后端状态.Agent规则水合).toEqual({
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    });
+    expect(当前.状态.全局规则).toEqual([]);
+    expect(当前.状态.意向级规则).toEqual([]);
+    expect(当前.状态.企业规则).toEqual([]);
+  });
+
+  it('退出登录 clears P6 raw dicts and page arrays', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取Agent规则).mockResolvedValue([BFFAgent规则样本]);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.候选规则快照[BFFAgent规则样本.rule_id]).toBeDefined());
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.候选规则快照).toEqual({});
+    expect(当前.后端状态.Agent规则水合).toEqual({
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    });
+    expect(当前.状态.全局规则).toEqual([]);
+    expect(当前.状态.意向级规则).toEqual([]);
+    expect(当前.状态.企业规则).toEqual([]);
+  });
+});

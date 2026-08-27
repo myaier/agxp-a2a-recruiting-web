@@ -8,7 +8,8 @@ import type { BFF主体, BFF角色 } from '../../数据/BFF契约';
 import type { 页面简历快照, 页面意向快照, 页面岗位快照 } from '../../数据/招聘数据源类型';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { 轻提示 } from '../../组件/轻提示';
-import type { 后端操作依赖, 会话操作 } from './类型';
+import type { 后端状态, 后端操作依赖, 会话操作 } from './类型';
+import { 水合Agent规则角色数据 } from './Agent规则操作';
 import { 水合招聘方组织数据 } from './组织操作';
 
 /** 退出登录 / 401 清理时把支持域重置为空：与 后端种子状态 的支持域一致，但不触达未支持演示域。 */
@@ -52,12 +53,38 @@ function 是会话失效错误(错误: unknown): boolean {
   return 错误 instanceof BFF错误 && 错误.status === 401;
 }
 
+/** 401 扫描用的结算结果谓词：拒绝原因里含 401 即会话失效。 */
+function 是会话失效落败(落点: PromiseSettledResult<unknown>): boolean {
+  return 落点.status === 'rejected' && 是会话失效错误(落点.reason);
+}
+
+/**
+ * P6 Task 4：会话边界把规则域重置回干净底座 —— 原始规则字典/提案表清空，
+ * 双端水合阶段回 未开始。与 清后端Agent规则（清页面数组）配套，在 清账号状态 /
+ * 登录换主体 / 切身份 / mount 恢复 四个转移口共用同一形状，保证任何转移后的
+ * 水合都跑完整链路，阶段不可能粘住上个会话残留的 进行中|成功。
+ */
+export function 重置Agent规则后端状态(旧: 后端状态): 后端状态 {
+  return {
+    ...旧,
+    候选规则快照: {},
+    招聘规则快照: {},
+    候选规则提案: {},
+    招聘规则提案: {},
+    Agent规则水合: {
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    },
+  };
+}
+
 /**
  * review-r3 R3-I-2：统一的账号状态清理——把所有 401 路径（资源写 / 目录 facade / 水合 / 登录读主体）
  * 收口到这里，避免某个 401 只清自己的域而把别的域的快照/草稿留给下一个登录。
  *
  * 清空内容：简历/意向/岗位三个支持域快照 + 后端状态登出 + 目录缓存 + Backend 专属草稿
- * （引导预填 + 意向草稿）+ 主体标识 + 会话代际递增（让在飞的目录 401 成为 stale）。
+ * （引导预填 + 意向草稿）+ P6 规则域（页面数组 + 原始字典 + 双端阶段，Task 4）
+ * + 主体标识 + 会话代际递增（让在飞的目录 401 成为 stale）。
  * 409 的「重读权威资源」语义不经过这里——409 不清会话，只让该域落回服务端最新值。
  */
 export function 清账号状态(
@@ -73,8 +100,11 @@ export function 清账号状态(
   // P1C：组织权威事实一起清（profile/affiliations/current/申请/公开缓存/未认证 claim），
   // 但不清 Mock fixture（企业认证/招聘头像/公司LOGO/公司自述 维持 Mock consumer）。
   派发({ 型: '清后端组织状态' });
+  // P6：规则域同口径清理 —— 清后端Agent规则 清空三个页面数组，raw 快照/提案表与
+  // 双端水合阶段一并回干净底座（Task 3 review ⚠️：这里此前漏清 P6 成员）。
+  派发({ 型: '清后端Agent规则' });
   设后端状态((旧) => ({
-    ...旧,
+    ...重置Agent规则后端状态(旧),
     初始化: '完成',
     已登录: false,
     主体: null,
@@ -91,9 +121,11 @@ export function 清账号状态(
 /**
  * 按主体.last_used_role 水合支持域：
  *   candidate → 简历 + 意向 + 隐私（P3 起三路并行读取，各自独立派发；隐私响应带
- *               主体/代际栅栏，过时成败都丢弃）；
- *   recruiter → 先清候选侧隐私，再固定组织水合（profile → affiliations → current → 公开企业）→ owner Jobs；
- *   null → 保持身份选择页不水合。
+ *               主体/代际栅栏，过时成败都丢弃）+ P6 规则三路读取（Task 4）；
+ *   recruiter → 先清候选侧隐私，再固定组织水合（profile → affiliations → current → 公开企业）→ owner Jobs
+ *   + P6 规则三路读取（Task 4，与组织/岗位并行起跑）； *   null → 保持身份选择页不水合。
+ * P6（Task 4）：水合Agent规则角色数据 与支持域并行，返回的三路 settled 结果并入共享
+ * 401 扫描；非 401 的规则失败不回滚任何已提交域（错误呈现走各分支的既有策略）。
  * P1C Task 2：签名改为 (deps, 主体, 交互, generation) —— 调用方（mount / 切身份）先写 subject fence
  * 并捕获当前会话代际再进入水合；两个水合函数共享同一 fence，过时响应在核心实现内丢弃。
  * mount-init（交互=false）：candidate 两条并行 allSettled，任一 rejected 只 轻提示 该资源，不抛出 —— 初始化仍要落成「完成」。
@@ -119,9 +151,18 @@ export async function 水合角色数据(
     // 成败都直接丢弃 —— 不派发、不提示、不触发清理，上个会话的隐私绝不落进下个会话。
     const 起始主体标识 = 主体标识引用.current;
     const 起始代际 = 会话代际.current;
+    // P6 Task 4：规则三路读取与简历/意向并行起跑，结算后统一扫 401；
+    // 非 401 的规则失败按既有错误策略呈现（各资源 轻提示 / 交互抛第一个），
+    // 与简历/意向互不牵连 —— 规则失败不回滚已提交的支持域。
+    const p6Promise = 水合Agent规则角色数据(
+      { 后端, 派发, 设后端状态, 主体标识引用, 会话代际 },
+      角色,
+      主体.subject_id,
+      generation,
+    );
     const 结果 = await Promise.allSettled([后端.读取简历(), 后端.读取意向(), 后端.读取隐私()]);
     const 隐私响应仍有效 = () => 主体标识引用.current === 起始主体标识 && 会话代际.current === 起始代际;
-    const 错误们: unknown[] = [];
+    const p6结果 = await p6Promise;    const 错误们: unknown[] = [];
     let 会话失效 = false;
     const 简历结果 = 结果[0];
     if (简历结果.status === 'fulfilled') {
@@ -153,8 +194,15 @@ export async function 水合角色数据(
         轻提示(取后端错误文案(隐私结果.reason));
       }
     }
+    // P6 的拒绝并入同一错误策略（P6 内部已按 fence 提交/丢弃，这里只管呈现与会话）
+    for (const 落点 of p6结果) {
+      if (落点.status === 'rejected') {
+        错误们.push(落点.reason);
+        if (是会话失效错误(落点.reason)) 会话失效 = true;
+        轻提示(取后端错误文案(落点.reason));      }
+    }
     // review-r2 R2-I-3：水合途中 401 → 统一登出清理，不把上个会话的快照/草稿留给已失效的登录态
-    // review-r3 R3-I-2：收口到 清账号状态，三个支持域一起清，避免只清自己域留下别的域的快照
+    // review-r3 R3-I-2：收口到 清账号状态，支持域与 P6 规则域一起清，避免只清自己域留下别的域的快照
     if (会话失效) {
       清账号状态({ 派发, 设后端状态, 后端, 主体标识引用, 会话代际 });
       return true;
@@ -167,23 +215,55 @@ export async function 水合角色数据(
     设后端状态((旧) => ({ ...旧, 隐私快照: null }));
     // P1C：current relation 恢复值只在最新 Affiliations 返回后经 选择当前企业关系() 校验进 state
     const restoredId = deps.读取恢复企业关系编号(主体.subject_id);
-    const organizationResult = await 水合招聘方组织数据(
-      deps, 主体.subject_id, generation, restoredId, 交互,
+    // P6 Task 4：规则三路读取先行起跑，与组织/岗位解耦；组织水合保持 P1C 固定顺序 ——
+    // owner Jobs 只在组织水合之后读取（组织 401 时不发 Jobs），组织失败不清空岗位水合。
+    const p6Promise = 水合Agent规则角色数据(
+      { 后端, 派发, 设后端状态, 主体标识引用, 会话代际 },
+      角色,
+      主体.subject_id,
+      generation,
     );
-    if (organizationResult.sessionExpired) return true;
-    try {
-      const 岗位快照 = await 后端.读取岗位();
-      if (主体标识引用.current !== 主体.subject_id) return false;
-      派发({ 型: '水合后端岗位', 快照: 岗位快照 });
-      设后端状态((旧) => ({ ...旧, 岗位快照: 岗位快照.服务端 }));
-    } catch (错误) {
-      if (是会话失效错误(错误)) {
-        // review-r2 R2-I-3：recruiter 水合 401 同口径登出清理（R3-I-2 收口到 清账号状态）
-        清账号状态(deps);
+    const [组织岗位落点] = await Promise.allSettled([
+      (async (): Promise<{ sessionExpired: boolean; 岗位快照?: 页面岗位快照 }> => {
+        const organizationResult = await 水合招聘方组织数据(deps, 主体.subject_id, generation, restoredId, 交互);
+        if (organizationResult.sessionExpired) return organizationResult;
+        return { sessionExpired: false, 岗位快照: await 后端.读取岗位() };
+      })(),
+    ]);
+    const p6结果 = await p6Promise;
+    if (组织岗位落点.status === 'rejected' && 是会话失效错误(组织岗位落点.reason)) {
+      // review-r2 R2-I-3：recruiter 水合 401 同口径登出清理（R3-I-2 收口到 清账号状态）
+      清账号状态(deps);
+      return true;
+    }
+    if (p6结果.some(是会话失效落败)) {
+      // P6 Task 4：规则读取的 401 与支持域共享同一登出收口 —— 会话已失效时清理优先于交互抛错
+      清账号状态(deps);
+      return true;
+    }
+    if (组织岗位落点.status === 'fulfilled') {
+      if (组织岗位落点.value.sessionExpired) {
+        // 组织水合 401：清账号状态 已在 水合招聘方组织数据 内部收口，这里只早退
         return true;
       }
-      if (交互) throw 错误;
-      轻提示(取后端错误文案(错误));
+      const 岗位快照 = 组织岗位落点.value.岗位快照;
+      // 401 清理已把 主体标识引用 清空：fence 不过就不提交，过期会话的岗位不落登出态
+      if (岗位快照 && 主体标识引用.current === 主体.subject_id) {
+        派发({ 型: '水合后端岗位', 快照: 岗位快照 });
+        设后端状态((旧) => ({ ...旧, 岗位快照: 岗位快照.服务端 }));
+      }
+    } else if (交互) {
+      // 交互模式：组织水合的非 401 失败 / Jobs 失败 原样抛回（组织水合交互路径本来就抛）
+      throw 组织岗位落点.reason;
+    } else {
+      // mount 模式：Jobs 失败只 轻提示（组织水合的非 401 失败在其内部已 轻提示，不会 reject）
+      轻提示(取后端错误文案(组织岗位落点.reason));
+    }
+    // P6 非 401 失败：既有错误策略（mount 只 轻提示；交互抛第一个），不回滚已提交的组织/岗位
+    const p6错误们 = p6结果.flatMap((落点) => (落点.status === 'rejected' ? [落点.reason] : []));
+    if (p6错误们.length > 0) {
+      if (交互) throw p6错误们[0];
+      for (const 错误 of p6错误们) 轻提示(取后端错误文案(错误));
     }
   }
   // last_used_role === null → 保持身份选择页，不水合
@@ -237,8 +317,10 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
         派发({ 型: '清后端草稿' });
         // P1C：A 的组织权威事实（claim/公开缓存/current 选择）同样不能串进 B
         派发({ 型: '清后端组织状态' });
+        // P6 Task 4：A 的规则域（原始字典/提案表/双端阶段/页面数组）同样不能串进 B
+        派发({ 型: '清后端Agent规则' });
         设后端状态((旧) => ({
-          ...旧,
+          ...重置Agent规则后端状态(旧),
           简历快照: null,
           意向快照: {},
           岗位快照: {},
@@ -303,14 +385,21 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
       // review-r1 P1-5：切身份前清掉上一个角色的 Backend 草稿（引导预填 + 意向草稿），
       // 否则候选选的目录引用会串到招聘方账号（同 Provider 实例的跨账号泄漏）。
       派发({ 型: '清后端草稿' });
+      // P6 Task 4：切角色 = 角色转移 —— 清掉上个角色的规则域（原始字典 + 页面数组 +
+      // 双端阶段回 未开始）并递增会话代际，上个角色还在飞的水合响应按旧代际整包丢弃，
+      // 阶段不可能粘住 进行中|成功；目标角色从干净底座重跑完整水合。
+      派发({ 型: '清后端Agent规则' });
+      设后端状态(重置Agent规则后端状态);
+      会话代际.current += 1;
       // 切身份后水合目标角色的支持域：mount-init 只按上次角色水合，
       // 不补这一步，候选切到招聘方会顶着一个空岗位盘，招聘方切到候选看到的是空简历/意向。
       // 交互模式：水合失败直接抛出，让 选身份.tsx catch 显示 轻提示并留在原地，
       // 不导航进一个空壳（支持域没水合成功，进去也是空盘）。
       // review-r2 R2-I-3：水合 401 时 水合角色数据 内部已走登出清理并返回 会话失效=true，
       // 不再抛出（会话已失效，用户需要重新登录，抛出反而让 选身份 屏显示错误却留在原地）。
-      // P1C：切角色仍是同一个登录会话，不递增 generation；只校准最新主体 ref 并捕获当前值，
-      // 否则会把切换前真实返回的目录 401 误判成旧会话响应。
+      // P1C：切角色仍是同一个登录会话；Task 4 起切角色也递增 generation（见上），
+      // 捕获递增后的当前值传入水合 —— 目录 401 被误判成旧会话的代价可接受：
+      // 会话真过期时下一个请求仍会 401 并走统一清理。
       主体标识引用.current = 最新主体.subject_id;
       const 本次代际 = 会话代际.current;
       const 会话失效 = await 水合角色数据({
