@@ -1,5 +1,5 @@
 import { createElement } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 初始状态, 归约, use应用状态, 应用状态提供者 } from './应用状态';
@@ -20,6 +20,8 @@ import {
   BFF隐私快照样本,
   BFF屏蔽回执样本,
   BFF组织搜索页样本,
+  BFFAgent规则样本,
+  BFF意向Agent规则样本,
 } from '../测试/BFF样本';
 import { 从BFF隐私 } from '../数据/隐私映射';
 import { BFF错误 } from '../数据/HTTP客户端';
@@ -423,6 +425,44 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     完成手机登录: vi.fn(),
     开始微信登录: vi.fn(),
     退出登录: vi.fn(),
+    // P6：Agent 规则 / 提案 facade（Task 3 起操作层会调用；默认全空集）
+    读取Agent规则: vi.fn(async (): Promise<unknown[]> => []),
+    读取单条Agent规则: vi.fn(async () => ({
+      rule_id: 'rul_0123456789abcdef0123456789abcdef',
+      version: 1,
+      state: 'active' as const,
+      scope: { type: 'global' as const },
+      clause_kinds: [] as never[],
+      display_text: 'x',
+      created_at: '2026-08-27T00:00:00Z',
+      updated_at: '2026-08-27T00:00:00Z',
+    })),
+    修改Agent规则: vi.fn(async () => ({
+      rule_id: 'rul_0123456789abcdef0123456789abcdef',
+      version: 1,
+      state: 'active' as const,
+      scope: { type: 'global' as const },
+      clause_kinds: [] as never[],
+      display_text: 'x',
+      created_at: '2026-08-27T00:00:00Z',
+      updated_at: '2026-08-27T00:00:00Z',
+    })),
+    删除Agent规则: vi.fn(async () => undefined),
+    创建Agent规则提案: vi.fn(async () => ({ proposal_id: 'arp_0123456789abcdef0123456789abcdef', state: 'interpreting' as const })),
+    读取Agent规则提案: vi.fn(async () => ({ proposal_id: 'arp_0123456789abcdef0123456789abcdef', state: 'interpreting' as const })),
+    读取Agent规则提案列表: vi.fn(async () => [] as never[]),
+    接受Agent规则提案: vi.fn(async () => ({
+      rule_id: 'rul_0123456789abcdef0123456789abcdef',
+      version: 1,
+      state: 'active' as const,
+      scope: { type: 'global' as const },
+      clause_kinds: [] as never[],
+      display_text: 'x',
+      created_at: '2026-08-27T00:00:00Z',
+      updated_at: '2026-08-27T00:00:00Z',
+    })),
+    放弃Agent规则提案: vi.fn(async () => ({ proposal_id: 'arp_0123456789abcdef0123456789abcdef', state: 'dismissed' as const })),
+    创建Agent规则替换提案: vi.fn(async () => ({ proposal_id: 'arp_0123456789abcdef0123456789abcdef', state: 'interpreting' as const })),
   };
 }
 
@@ -525,6 +565,39 @@ describe('应用状态提供者 后端会话', () => {
     expect(下一.消息未读['X-01']).toBeUndefined();
   });
 
+  // Task 3 Step 6：Rule 与 Intention 谁先到都不能永久隐藏或错组规则 ——
+  // 候选 Rules 先落地（意向快照还空着 → orphan intention scope 整条省略），
+  // 意向后到时 Provider effect 用同一 raw Rule 重算归组。
+  it('P6 候选规则先到、意向后到：全局立即出现，意向级随后自动归组', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 意向规则 = BFF意向Agent规则样本; // scope.intention_id = int_0123456789abcdef0123456789abcdef
+    vi.mocked(后端.读取Agent规则)
+      .mockResolvedValue([BFFAgent规则样本, 意向规则]);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // 此时意向快照仍是空的（mount 只水合了空意向）
+    await act(async () => {
+      await 当前.操作.刷新Agent规则();
+    });
+    // 全局 Rule 立即出现；orphan intention Rule 不许并入全局，也不显示假分组
+    expect(当前.状态.全局规则.map((rule) => rule.编号)).toEqual([BFFAgent规则样本.rule_id]);
+    expect(当前.状态.意向级规则).toEqual([]);
+    const resolveIntentions = (服务端: Record<string, typeof BFF意向样本>) => {
+      当前.派发({ 型: '水合后端意向', 快照: { 列表: [], 服务端 } });
+    };
+    act(() => resolveIntentions({
+      int_0123456789abcdef0123456789abcdef: BFF意向样本,
+    }));
+    await waitFor(() => {
+      expect(当前.状态.意向级规则.map((rule) => rule.编号)).toEqual([BFF意向Agent规则样本.rule_id]);
+    });
+    // 全局那条保持原样：重算不重复、不丢行
+    expect(当前.状态.全局规则.map((rule) => rule.编号)).toEqual([BFFAgent规则样本.rule_id]);
+  });
+
   it('应用操作公开 shape 在拆分后保持不变', () => {
     function 探针() {
       const { 操作 } = use应用状态();
@@ -541,6 +614,9 @@ describe('应用状态提供者 后端会话', () => {
       '保存企业档案', '上传并发布企业媒体', '移除企业媒体', '读取公开企业',
       // P3 隐私域方法（隐私操作）
       '设置雇主隐私', '设置披露偏好', '搜索可屏蔽组织', '添加组织屏蔽', '解除组织屏蔽',
+      // P6 Agent 规则域方法（Agent规则操作）
+      '刷新Agent规则', '创建Agent规则提案', '创建Agent规则替换提案', '刷新Agent规则提案',
+      '接受Agent规则提案', '放弃Agent规则提案', '切换Agent规则', '删除Agent规则',
     ].sort().join('|'))).toBeTruthy();
   });
 

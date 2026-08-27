@@ -30,6 +30,12 @@ function 创建隐私测试依赖(后端: HTTP招聘数据源, 服务端: BFF隐
     后端状态引用: { current: {
       初始化: '完成' as const, 已登录: true, 主体: null, 简历快照: null,
       意向快照: {}, 岗位快照: {}, 隐私快照: 服务端,
+      // P6：Task 3 起 后端状态 携带 Agent 规则原始快照与水合阶段（这里的用例不触达它们）
+      候选规则快照: {}, 招聘规则快照: {}, 候选规则提案: {}, 招聘规则提案: {},
+      Agent规则水合: {
+        candidate: { rules: '未开始' as const, proposals: '未开始' as const },
+        recruiter: { rules: '未开始' as const, proposals: '未开始' as const },
+      },
     } },
     锁: { current: new Set<string>() }, 尝试引用: { current: null as string | null },
     主体标识引用: { current: 'sub_1' as string | null }, 会话代际: { current: 1 },

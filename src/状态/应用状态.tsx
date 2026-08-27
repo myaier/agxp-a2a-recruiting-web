@@ -61,6 +61,8 @@ import { 创建候选操作 } from './后端/候选操作';
 import { 创建岗位操作 } from './后端/岗位操作';
 import { 创建组织操作 } from './后端/组织操作';
 import { 创建隐私操作 } from './后端/隐私操作';
+import { 创建Agent规则操作 } from './后端/Agent规则操作';
+import { 映射候选Agent规则, 映射招聘Agent规则 } from '../数据/Agent规则映射';
 import { 创建目录查询 } from './后端/目录查询';
 import { 归约候选资料 } from './领域/候选资料';
 import type { 候选资料状态, 候选资料动作 } from './领域/候选资料';
@@ -452,6 +454,15 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     意向快照: {},
     岗位快照: {},
     隐私快照: null,
+    // P6：Agent 规则域种子全空，双端水合阶段都从 未开始 起跑
+    候选规则快照: {},
+    招聘规则快照: {},
+    候选规则提案: {},
+    招聘规则提案: {},
+    Agent规则水合: {
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    },
   }));
 
   // 让异步操作读到最新的 后端状态 / 状态（useMemo 闭包只捕获首次值）
@@ -570,12 +581,36 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         ...创建岗位操作(deps),
         ...创建组织操作(deps),
         ...创建隐私操作(deps),
+        // P6：Agent 规则/提案操作与其它域共用同一把 deps（锁 / 主体标识 / 会话代际）
+        ...创建Agent规则操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [是后端, 后端],
   );
+
+  // ── P6 页面数组派生：raw 快照（或权威意向字典）任一变化都重算分组 ──
+  // Rule 请求与 Intention 请求谁先完成都不影响最终归属：这里只吃 raw 输入，
+  // orphan 意向 scope 在权威意向到达前整条省略，到达后同一 raw Rule 自动归组。
+  // 意向侧读 状态.后端意向服务端（水合后端意向 落的权威字典，操作与会话层双写），
+  // 与 候选分组 的其余消费者同源，避免再养第二份意向真相。
+  useEffect(() => {
+    if (!是后端 || 后端状态.Agent规则水合.candidate.rules !== '成功') return;
+    const mapped = 映射候选Agent规则(
+      Object.values(后端状态.候选规则快照),
+      状态.后端意向服务端,
+    );
+    派发({ 型: '水合后端候选规则', 全局: mapped.全局, 意向级: mapped.意向级 });
+  }, [是后端, 后端状态.Agent规则水合.candidate.rules, 后端状态.候选规则快照, 状态.后端意向服务端]);
+
+  useEffect(() => {
+    if (!是后端 || 后端状态.Agent规则水合.recruiter.rules !== '成功') return;
+    派发({
+      型: '水合后端招聘规则',
+      规则: 映射招聘Agent规则(Object.values(后端状态.招聘规则快照)),
+    });
+  }, [是后端, 后端状态.Agent规则水合.recruiter.rules, 后端状态.招聘规则快照]);
 
   // 目录查询 seam 已按 owner 拆到 ./后端/目录查询：Backend 模式暴露 查询Location/Taxonomy/Institution，
   // Mock 为 null；401 会话代际守卫与统一清理都在 创建目录查询 内部。

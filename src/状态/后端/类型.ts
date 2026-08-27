@@ -1,6 +1,6 @@
 // 后端操作组合的纯类型文件（无 React 依赖、无运行时副作用）。
 // Provider 把稳定 ref 与 React setter 组成 后端操作依赖 传给各域操作工厂，工厂返回操作方法；
-// 根 应用操作 是四个域操作子接口的交集（会话/候选/岗位/组织），公开 shape 与拆分前逐字一致。
+// 根 应用操作 是六个域操作子接口的交集（会话/候选/岗位/组织 + P3 隐私 + P6 Agent 规则），公开 shape 与拆分前逐字一致。
 //
 // 对根 状态 / 动作 只使用 type-only import，运行时依赖方向保持「根组合 → 域实现」，
 // 不建立互相调用的域模块。
@@ -16,6 +16,10 @@ import type {
   BFF企业媒体用途,
   BFF隐私快照,
   BFF组织搜索页,
+  BFF角色,
+  BFFAgent规则,
+  BFFAgent规则提案,
+  BFFAgent规则作用域,
 } from '../../数据/BFF契约';
 import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { 在招岗位, 披露档, 屏蔽来源, 屏蔽项 } from '../../数据/类型';
@@ -32,6 +36,26 @@ export interface 后端状态 {
   岗位快照: Record<string, BFFOwnerJob>;
   /** P3：隐私视图投影（PrivacySnapshot 四字段，无 updated_at）；未登录 / 已清理时为 null。 */
   隐私快照: BFF隐私快照 | null;
+  // ── P6：Agent 规则域的 raw owner snapshot 与水合阶段 ──
+  /** 双端规则字典按 role 隔离：refresh 只替换对应角色的键，不清另一端的已隔离快照。 */
+  候选规则快照: Record<string, BFFAgent规则>;
+  招聘规则快照: Record<string, BFFAgent规则>;
+  /** actionable 提案（interpreting + ready 合并）按 proposal_id 索引。 */
+  候选规则提案: Record<string, BFFAgent规则提案>;
+  招聘规则提案: Record<string, BFFAgent规则提案>;
+  /**
+   * 每个 P6 子域独立维护 未开始|进行中|成功|失败：
+   * 进行中 只允许从 未开始|失败 推进，已 成功 的域在刷新期间不得降级（设计 §6）。
+   */
+  Agent规则水合: Record<BFF角色, Agent规则角色水合状态>;
+}
+
+/** P6 单个水合子域的生命周期阶段。 */
+export type Agent规则水合阶段 = '未开始' | '进行中' | '成功' | '失败';
+
+export interface Agent规则角色水合状态 {
+  rules: Agent规则水合阶段;
+  proposals: Agent规则水合阶段;
 }
 
 export type 更新后端状态 = (更新: (旧: 后端状态) => 后端状态) => void;
@@ -112,4 +136,20 @@ export interface 隐私操作 {
   解除组织屏蔽(item: 屏蔽项): Promise<void>;
 }
 
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作;
+export interface Agent规则操作 {
+  /** 对当前角色重跑完整 水合Agent规则角色数据（Rules + interpreting + ready，更新两个阶段）。 */
+  刷新Agent规则(): Promise<void>;
+  /** candidate 必填 作用域；返回服务端 proposal_id。Mock 模式派发现有同步动作并返回合成空串。 */
+  创建Agent规则提案(input: { 文本: string; 作用域?: BFFAgent规则作用域 }): Promise<string>;
+  /** 用原始当前 Rule（含 version）发起替换提案；编辑文本留在组件里，不进任何快照。 */
+  创建Agent规则替换提案(ruleId: string, text: string): Promise<string>;
+  /** 权威 GET：提交/移除 addressed 提案；不取 提案 写锁（接受/放弃恢复要用它）。 */
+  刷新Agent规则提案(proposalId: string): Promise<void>;
+  接受Agent规则提案(proposalId: string): Promise<void>;
+  放弃Agent规则提案(proposalId: string): Promise<void>;
+  /** pause/resume 用当前 version 做 If-Match；冲突/丢失后重读全部 Rules，绝不重发 mutation。 */
+  切换Agent规则(ruleId: string, operation: 'pause' | 'resume'): Promise<void>;
+  删除Agent规则(ruleId: string): Promise<void>;
+}
+
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作;
