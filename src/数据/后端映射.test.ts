@@ -185,15 +185,22 @@ describe('候选人后端映射', () => {
     expect(转岗位补丁(页面, dto).hard_requirements).toEqual(dto.hard_requirements);
   });
 
-  // 页面没有 硬性事实（老 Mock 岗）时不硬造四员对象：创建 body 缺省，补丁沿用服务端值由缺省表达。
-  it('无硬性事实的页面岗位不向 body 写 hard_requirements', () => {
+  // Task 5 起 在招岗位.硬性事实 必填（组装岗位恒带完整四员）：
+  // 页面样本的四员在创建与补丁 body 里都要写成 hard_requirements，不许缺员。
+  it('页面的硬性事实四员在创建与补丁 body 里都写 hard_requirements', () => {
     const 带引用 = {
       ...页面岗位样本,
       类别引用: { id: 'tax_product', display_name: '产品经理' },
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
     };
-    expect('hard_requirements' in 转岗位创建(带引用, 直接发岗上下文('云衢科技'))).toBe(false);
-    expect('hard_requirements' in 转岗位补丁(带引用, BFF岗位样本)).toBe(false);
+    const 样本wire四员 = {
+      alternate_weekend_work: 'unknown',
+      outsourcing_only: 'not_required',
+      onsite_only: 'unknown',
+      frequent_travel: 'unknown',
+    } as const;
+    expect(转岗位创建(带引用, 直接发岗上下文('云衢科技')).hard_requirements).toEqual(样本wire四员);
+    expect(转岗位补丁(带引用, BFF岗位样本).hard_requirements).toEqual(样本wire四员);
   });
 
   it('已加载的校园/实习意向在用户没切招聘类型时保留原类型', () => {

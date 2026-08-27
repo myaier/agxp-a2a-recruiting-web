@@ -10,6 +10,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 发布岗位 from './发布岗位';
 import { 页面岗位样本 } from '../测试/BFF样本';
+import { BFF错误 } from '../数据/HTTP客户端';
 
 const mock返回 = vi.fn();
 const mock进企业主壳 = vi.fn();
@@ -109,6 +110,59 @@ describe('发布岗位页 Backend 提交', () => {
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
     expect(mock更新岗位.mock.calls[0][0]).toMatchObject({ 编号: 'job_1' });
+  });
+
+  // Task 5：编辑回环必须原样带走三态四员，存量 硬性条件 字符串不被触碰。
+  it('editing round-trips required/not-required/unknown without touching legacy strings', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    mock应用状态.状态.岗位列表 = [{ ...页面岗位样本,
+      硬性条件: ['本科及以上'],
+      硬性事实: { 大小周: '必须', 纯外包乙方: '不要求', 全现场办公: '未说明', 频繁出差: '必须' },
+    }];
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job/job_1']}>
+        <Routes><Route path="/hr/post-job/:id" element={<发布岗位 />} /></Routes>
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: '职位要求' }));
+    expect(screen.getByText('硬性条件')).toBeTruthy();
+    expect(screen.getByText('本科及以上')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /纯外包 \/ 乙方.*不要求/ })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0].硬性事实).toEqual({
+      大小周: '必须', 纯外包乙方: '不要求', 全现场办公: '未说明', 频繁出差: '必须',
+    });
+    // 存量合同字符串不改写：三态块是独立新增字段，legacy 数组原样随对象提交
+    expect(mock更新岗位.mock.calls[0][0].硬性条件).toContain('本科及以上');
+  });
+
+  // Task 5：保存失败（如 409）后留在本屏 toast 报错，四个本地选择一格都不动，
+  // 用户改完再点「保存」时仍是自己刚才选的档 —— 操作层重读服务端快照，不回滚表单。
+  it('failed save keeps the four local selections unchanged for the next explicit save', async () => {
+    const 用户 = userEvent.setup();
+    mock更新岗位.mockRejectedValue(new BFF错误(409, 'version_conflict', '版本冲突'));
+    mock应用状态.状态.岗位列表 = [{ ...页面岗位样本,
+      硬性条件: [],
+      硬性事实: { 大小周: '未说明', 纯外包乙方: '未说明', 全现场办公: '未说明', 频繁出差: '未说明' },
+    }];
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job/job_1']}>
+        <Routes><Route path="/hr/post-job/:id" element={<发布岗位 />} /></Routes>
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: '职位要求' }));
+    await 用户.click(screen.getByRole('button', { name: /大小周.*未说明/ }));
+    await 用户.click(screen.getByRole('button', { name: /全现场办公.*未说明/ }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    // 失败只弹现有轻提示（409 → 「数据已在其他地方更新」），不导航
+    expect(await screen.findByText('数据已在其他地方更新，请重试')).toBeTruthy();
+    expect(mock返回).not.toHaveBeenCalled();
+    // 四个本地选择与失败前完全一致：两个已点成 必须，另两个仍是 未说明
+    expect(screen.getByRole('button', { name: /大小周.*必须/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /全现场办公.*必须/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /纯外包 \/ 乙方.*未说明/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /频繁出差.*未说明/ })).toBeTruthy();
   });
 });
 
@@ -239,6 +293,20 @@ describe('发布岗位页 Backend 选择器', () => {
 
     expect(mock发布岗位).not.toHaveBeenCalled();
     expect(await screen.findByText('请从候选城市中选择')).toBeTruthy();
+  });
+
+  // Task 5：新岗四问全部从未说明起步；没点过的三问也必须以 未说明 随完整对象提交，
+  // 绝不允许缺员 —— 服务端 hard_requirements 四员必返/必收。
+  it('new job starts with four unknown facts and submits the complete object', async () => {
+    const { 用户 } = await 填到发布前(true);
+    expect(screen.getByRole('button', { name: /大小周.*未说明/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /纯外包 \/ 乙方.*未说明/ })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /大小周.*未说明/ }));
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    expect(mock发布岗位).toHaveBeenCalledWith(expect.objectContaining({
+      硬性事实: { 大小周: '必须', 纯外包乙方: '未说明', 全现场办公: '未说明', 频繁出差: '未说明' },
+    }));
   });
 });
 

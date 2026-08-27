@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 初始状态, 归约, use应用状态, 应用状态提供者 } from './应用状态';
 import { 创建初始状态, 空账号资料 } from './初始状态';
+import { 空岗位硬性事实 } from '../数据/类型';
 import {
   BFF主体样本,
   BFF简历样本,
@@ -199,6 +200,8 @@ describe('应用状态 reducer', () => {
       职位关键词: ['Java'],
       加分关键词: ['有相关课程项目'],
       硬性条件: ['本科及以上'],
+      // Task 5：四问硬性事实随岗必填（四员齐全；新岗未点过的问保持 未说明）
+      硬性事实: { ...空岗位硬性事实 },
     };
 
     const 下一状态 = 归约(初始状态, { 型: '发布岗位', 岗 });
