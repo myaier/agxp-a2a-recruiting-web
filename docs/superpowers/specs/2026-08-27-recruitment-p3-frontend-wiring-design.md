@@ -122,7 +122,7 @@ Job create 可以省略后由服务端规范化为全 `unknown`，但本前端�
 
 ### 5.1 Wire、数据源与映射
 
-- `src/数据/BFF契约.ts`：增加 Privacy、OrganizationSearch 与 HardRequirements 的闭合 wire DTO；扩展 Job create/patch/owner/candidate DTO。
+- `src/数据/BFF契约.ts`：增加 Privacy、OrganizationSearch 与 HardRequirements 的闭合 wire DTO；扩展 Job create/patch/owner/candidate DTO。CandidateJob 在 P3 只保留类型边界，不新增无消费者的请求方法或运行时 decoder。
 - `src/数据/招聘数据源/隐私.ts`：拥有四条 Privacy route、严格信封解码、If-Match、Idempotency-Key 与 200/201 receipt 处理；不 import React、Mock 或页面中文状态。
 - `src/数据/招聘数据源/组织.ts`：在现有公开 Organization 与 recruiter organization 能力旁增加 candidate search；query 参数白名单与分页 DTO 不与 Catalog 混用。
 - `src/数据/HTTP招聘数据源.ts` 与 `src/数据/招聘数据源类型.ts`：把 Privacy facade 组合进现有根数据源，扩充 Organization query 和 Job 类型，不改变既有 facade owner。
@@ -204,9 +204,9 @@ P3 没有企业可配置 disclosure profile。该页继续呈现现有 PM 内容
 
 - 新建：四项初始化为 `unknown`，用户未触碰也发送完整对象；
 - 编辑：从 OwnerJob 完整回显，任何保存都保留四项；若发生修改，PATCH 发送完整 replacement；
-- Mock：为本地岗位提供同一 typed object，缺失的历史 fixture 只在 Mock 映射边界补全 unknown；
+- Mock：为每个当前本地岗位 fixture 显式提供同一完整 typed object；当前没有岗位持久化/水合 seam，不新增虚构的历史归一化路径；
 - Backend：缺失/非法 hard requirement 直接触发契约错误，不补默认；
-- CandidateJob：DTO 和映射保留该对象，供未来真实 consumer 使用；本 P3 不新增 P4 岗位发现、推荐或 Recruiter candidate projection。
+- CandidateJob：DTO 类型和共享 hard-requirement 映射保留该对象，供未来真实 consumer 使用；本 P3 不提前新增 `GET /api/v1/jobs/{id}` facade、运行时 decoder、P4 岗位发现、推荐或 Recruiter candidate projection。
 
 岗位详情等现有消费 legacy `硬性条件` 的页面保持原展示；是否在未来展示四项 typed facts 需要另一个 PM 设计，不在本次接线中顺便新增文案或版式。
 
@@ -244,6 +244,7 @@ P3 没有企业可配置 disclosure profile。该页继续呈现现有 PM 内容
 
 - current/related 的确认只影响 request body，不提前删除 block；
 - `risk_acknowledgement_required` 表明本地 source 可能过期，重读 Privacy，以后端 source 为准；
+- 该错误在冻结 BFF 契约中是 HTTP 422，恢复按 error code 分派，不能只挂在 409 分支；
 - 404 或 version conflict 重读；若目标已不存在，可按重读结果收口，但不伪造一次成功 mutation；
 - manual block 不在前端自动升级为 derived source。
 
@@ -277,7 +278,7 @@ query generation 决定响应归属。旧 generation 的成功、失败和 curso
 - AddBlock 200/201 都严格解码 receipt；
 - Organization search 的 q 编码、limit/cursor、空页、nullable cursor 与 exact three-field item；
 - Privacy/Search 的缺字段、unknown field、unknown enum、null items、trailing JSON 与畸形信封拒绝；
-- HardRequirements 在 create/patch/OwnerJob/CandidateJob 的完整四字段 strict decode；
+- HardRequirements 在 create/patch/OwnerJob 的完整四字段写入/strict read；CandidateJob 用闭合 DTO 类型和同一纯映射 fixture 冻结四项，不在无消费者时增加网络 decoder；
 - 根 `HTTP招聘数据源` 加入 Privacy 后不丢现有六个 facade 方法。
 
 ### 10.2 映射、reducer 与后端操作测试
@@ -290,7 +291,7 @@ query generation 决定响应归属。旧 generation 的成功、失败和 curso
 - 409 重读但不自动重放，503/outcome unknown 读后确认；
 - 同 intent 复用幂等键，新 intent 换 key；
 - 搜索 debounce、generation、分页合并、query change reset 和 stale response discard；
-- Job 新建全 unknown、OwnerJob 回显、whole-object PATCH、Mock historical normalization 与 Backend fail closed。
+- Job 新建全 unknown、OwnerJob 回显、whole-object PATCH、Mock fixtures 显式完整与 Backend fail closed。
 
 ### 10.3 页面组件测试
 
