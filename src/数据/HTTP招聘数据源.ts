@@ -6,10 +6,11 @@
 // 2026-08-26 P1C 加入第六个域 facade：组织（RecruiterProfile / Affiliation / 企业管理员申请 / 企业档案与媒体）。
 // 2026-08-27 P3 加入第七个域 facade：隐私（PrivacyView 整读 / 补丁 / 组织屏蔽与解除）+ 组织搜索。
 // 2026-08-27 P6 加入第八个域 facade：Agent 规则与提案（agent-rules / agent-rule-proposals）。
+// 2026-08-28 P2 加入第九个域 facade：附件简历（resume-files 上传/替换/删除/解析/下载）。
 // 根 HTTP招聘数据源 是各域的交集，创建HTTP招聘数据源 只组合现有实现，不给 P1–P7 新增空方法，
 // 也不改变 URL、body、DTO 校验、错误映射或幂等行为。各域协议代码原样留在对应域文件里。
 
-import type { BFF请求选项, BFF响应 } from './HTTP客户端';
+import type { BFF客户端 } from './HTTP客户端';
 import type { 后端环境 } from '../配置/运行配置';
 import type { 岗位附属存储 } from './前端附属数据';
 import type { 会话数据源 } from './招聘数据源/会话';
@@ -20,6 +21,7 @@ import type { 岗位数据源 } from './招聘数据源/岗位';
 import type { 组织数据源 } from './招聘数据源/组织';
 import type { 隐私数据源 } from './招聘数据源/隐私';
 import type { Agent规则数据源 } from './招聘数据源/Agent规则';
+import type { 附件简历数据源 } from './招聘数据源/附件简历';
 import { 创建会话数据源 } from './招聘数据源/会话';
 import { 创建目录数据源 } from './招聘数据源/目录';
 import { 创建简历数据源 } from './招聘数据源/简历';
@@ -28,15 +30,16 @@ import { 创建岗位数据源 } from './招聘数据源/岗位';
 import { 创建组织数据源 } from './招聘数据源/组织';
 import { 创建隐私数据源 } from './招聘数据源/隐私';
 import { 创建Agent规则数据源 } from './招聘数据源/Agent规则';
+import { 创建附件简历数据源 } from './招聘数据源/附件简历';
 
 export interface HTTP招聘数据源依赖 {
-  client: { 请求: <T>(options: BFF请求选项) => Promise<BFF响应<T>> };
+  client: Pick<BFF客户端, '请求' | '请求二进制'>;
   后端环境: 后端环境;
   附属存储: 岗位附属存储;
 }
 
 export type HTTP招聘数据源 = 会话数据源 & 目录数据源 & 简历数据源 &
-  意向数据源 & 岗位数据源 & 组织数据源 & 隐私数据源 & Agent规则数据源;
+  意向数据源 & 岗位数据源 & 组织数据源 & 隐私数据源 & Agent规则数据源 & 附件简历数据源;
 
 export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP招聘数据源 {
   const 请求 = deps.client.请求;
@@ -49,5 +52,6 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
     ...创建组织数据源(请求),
     ...创建隐私数据源(请求),
     ...创建Agent规则数据源(请求),
+    ...创建附件简历数据源(deps.client),
   };
 }

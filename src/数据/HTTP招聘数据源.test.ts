@@ -21,7 +21,7 @@ describe('HTTP 招聘数据源', () => {
   const 请求Mock = vi.fn();
   const 请求 = 请求Mock as unknown as 请求函数;
   function 依赖() {
-    return { client: { 请求 }, 后端环境: 'stg' as const, 附属存储: 内存附属存储() };
+    return { client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg' as const, 附属存储: 内存附属存储() };
   }
   beforeEach(() => {
     请求Mock.mockReset();
@@ -38,7 +38,7 @@ describe('HTTP 招聘数据源', () => {
       };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const attempt = await source.开始手机登录('13800000000');
     await source.完成手机登录(attempt.attempt_id, '1234');
     expect(请求Mock.mock.calls.map(([options]) => options)).toMatchObject([
@@ -55,7 +55,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: BFF简历样本, etag: '"4"', requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     const 新页面 = {
       ...旧页面,
@@ -88,7 +88,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: 最终简历, etag: null, requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     const 新页面 = {
       ...旧页面,
@@ -119,7 +119,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: BFF简历样本, etag: null, requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     const 新页面 = { ...旧页面, 经历: 旧页面.经历.map((段) => 段.编号 === 'exp_1' ? { ...段, 行业: '金融', 行业引用: { id: 'fin_1', display_name: '金融' } } : 段) };
     await expect(source.保存简历(新页面, BFF简历样本)).resolves.toBeDefined();
@@ -141,7 +141,7 @@ describe('HTTP 招聘数据源', () => {
     const previous = BFF简历样本;
     const 请求Mock = vi.fn(async () => ({ result: BFF简历样本, etag: null, requestId: 'r1' }));
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     await expect(source.保存简历({ ...resume, 教育: [{ ...resume.教育[0], 学校: '手输学校', 学校引用: undefined }] }, previous))
       .rejects.toThrow('请从候选学校中选择');
     expect(请求).not.toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining('/catalog/') }));
@@ -159,7 +159,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: 最终简历, etag: null, requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     // previous 服务端只有 edu_1；next 额外两条：一条空白学校（onboarding 刚建）、一条完整新教育
     const 空白教育 = { 编号: 'edu_local_blank', 学校: '', 学历: '本科', 专业: '', 开始: '', 结束: '' };
@@ -191,7 +191,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: 最终简历, etag: null, requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     // 学校+专业已填但开始月份为空（onboarding 选专业后、选时间前的中间态）
     const 空开始教育 = { 编号: 'edu_local_no_start', 学校: '复旦大学', 学历: '本科', 专业: '计算机科学', 开始: '', 结束: '' };
@@ -222,7 +222,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: 最终简历, etag: null, requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     const 新页面 = {
       ...旧页面,
@@ -260,7 +260,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: 最终简历, etag: null, requestId: 'r1' };
     });
     const 请求2 = 请求Mock2 as unknown as 请求函数;
-    const source2 = 创建HTTP招聘数据源({ client: { 请求: 请求2 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source2 = 创建HTTP招聘数据源({ client: { 请求: 请求2, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     await source2.保存简历(新页面, 最终简历);
     // 经历没有被重复 POST
     const 经历POST2 = 请求Mock2.mock.calls
@@ -455,8 +455,9 @@ describe('HTTP 招聘数据源', () => {
     }
   });
 
-  // Task 1（P6）：第八个域 facade（Agent 规则）组合进根 facade，公开方法一个不丢。
-  it('根 facade 组合八个域且不丢公开方法', () => {
+  // Task 1（P6）/ Task 2（P2）：第八个域（Agent 规则）与第九个域（附件简历）组合进根 facade，
+  // 公开方法一个不丢。
+  it('根 facade 组合九个域且不丢公开方法', () => {
     const source = 创建HTTP招聘数据源(依赖());
     expect(Object.keys(source).sort()).toEqual([
       '保存简历', '保存招聘方档案', '创建岗位', '创建意向', '创建首次意向', '创建企业管理员申请',
@@ -472,6 +473,9 @@ describe('HTTP 招聘数据源', () => {
       '读取Agent规则', '读取单条Agent规则', '修改Agent规则', '删除Agent规则',
       '创建Agent规则提案', '读取Agent规则提案', '读取Agent规则提案列表',
       '接受Agent规则提案', '放弃Agent规则提案', '创建Agent规则替换提案',
+      // P2：附件简历域
+      '读取附件简历库', '创建附件简历', '替换附件简历',
+      '删除附件简历', '请求附件解析', '下载附件简历',
     ].sort());
     // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
     expect(Object.keys(source)).not.toContain('读取公开岗位');
