@@ -258,7 +258,9 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     // 所有 follow-up 刷新（accept 成功收口 / 提案读到 accepted / 手动重试）都从这里过：
     // mutation 本体已成功、会话却在读回执途中过期时，必须统一清账号，
     // 不能留下 已登录=true 而两个 P6 阶段停在 失败 的撕裂态。
-    if (结果.some(是401落败)) 清账号状态(账号清理依赖);
+    // 但 401 要过会话 fence：发送后用户已登出/重登/切身份时，转移路径自己清过账号，
+    // 迟到的旧会话 401 绝不能顺手登出新一代（跳过清理即可，错误语义不变）。
+    if (结果.some(是401落败) && 仍是当前会话(deps, subjectId, generation)) 清账号状态(账号清理依赖);
     // 非 401 的 follow-up 刷新失败不能无声吞掉：已 成功 的域按 §6 不降级，页面看着正常，
     // 但用户没有任何信号也就没有重试入口 —— 提示第一份非 401 拒绝（401 已在上面统一
     // 清账号，不再重复提示）。首次挂载走 水合Agent规则角色数据，由 会话操作 呈现其拒绝，
@@ -351,7 +353,15 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     return async () => {
       const captured = 推进提案代际(proposalId);
       const 落点 = await 落定(后端!.读取Agent规则提案(role, proposalId));
-      if (落点.status !== 'fulfilled') return; // 恢复读不到就算了，原始错误照抛
+      if (落点.status === 'rejected') {
+        // 恢复读自身撞上 401 = 会话在读回执途中失效：与 规则/清单对账 经 收口写入错误
+        // 的恢复口径一致，统一登出清理（同样过会话 fence，已换代绝不清新会话）；
+        // 原始错误仍由 收口写入错误 抛出，恢复失败永不顶替。
+        if (是401原因(落点.reason) && 仍是当前会话(deps, subjectId, generation)) {
+          清账号状态(账号清理依赖);
+        }
+        return; // 恢复读不到就算了，原始错误照抛
+      }
       const 回执 = 落点.value;
       if (!仍是当前会话(deps, subjectId, generation) || !提案响应仍新鲜(proposalId, captured)) return;
       if (回执.state === 'accepted') {
@@ -448,7 +458,9 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     proposalId?: string,
   ): Promise<never> {
     if (错误 instanceof BFF错误 && 错误.status === 401) {
-      清账号状态(账号清理依赖);
+      // 清理要过会话 fence：发送后用户已换代（登出/重登/切身份，转移路径自己清过
+      // 账号）时，迟到的旧会话 401 绝不能登出新会话 —— 跳过清理，错误照抛不变。
+      if (仍是当前会话(deps, subjectId, generation)) 清账号状态(账号清理依赖);
       throw 错误;
     }
     if (!(错误 instanceof BFF错误)) throw 错误;
@@ -461,7 +473,10 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
       } catch (恢复错误) {
         // 恢复动作自身的失败不能顶替原始错误；但恢复读撞上 401 = 会话已失效，
         // 必须走统一登出清理（与 401 扫描同口径），不能顶着已登录壳吞掉。
-        if (是401原因(恢复错误)) 清账号状态(账号清理依赖);
+        // 同样过会话 fence：已换代的迟到 401 不清新会话。
+        if (是401原因(恢复错误) && 仍是当前会话(deps, subjectId, generation)) {
+          清账号状态(账号清理依赖);
+        }
       }
     }
     throw 错误;

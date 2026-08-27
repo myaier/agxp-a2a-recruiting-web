@@ -298,6 +298,8 @@ beforeEach(() => {
     removeItem: vi.fn(),
     clear: vi.fn(),
   });
+  // P6 草稿寄存走 sessionStorage（跨卸载存活）：用例间清掉，杜绝跨用例残留还原
+  window.sessionStorage.clear();
   // 轻提示 是 body 下的纯 DOM 单例：上一用例的吐司还挂着会撞同名 getByText，只清子条不留壳
   for (const 壳 of Array.from(document.body.querySelectorAll('div'))) {
     if ((壳 as HTMLElement).style.zIndex === '999') 壳.innerHTML = '';
@@ -432,6 +434,83 @@ describe('企业代理设置 · Backend 招聘方页', () => {
     // §7.3：关闭后原草稿回到输入行，供再次明确提交
     expect((screen.getByPlaceholderText(/到岗超过/) as HTMLInputElement).value).toBe('竞对在职候选人不接触');
     expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+  });
+
+  it('unmount 后回到本页：关闭失败卡仍还原跨导航寄存的原草稿', async () => {
+    // §7.3「关闭后保留用户原草稿」必须跨导航存活：寄存在 sessionStorage 而不是页面 useState
+    const user = userEvent.setup();
+    const 第一屏 = renderRecruiterRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
+    await 挂载到稳定();
+    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.type(screen.getByPlaceholderText(/到岗超过/), '竞对在职候选人不接触');
+    await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
+    await waitFor(() => expect(screen.queryByPlaceholderText(/到岗超过/)).toBeNull());
+    // 模拟导航离开再回来：页面卸载重建，原始提案字典里这张卡已翻 failed
+    第一屏.unmount();
+    renderRecruiterRules({
+      rulesStage: '成功', proposalsStage: '成功', initialized: true,
+      提案: [{ ...BFFAgent规则解释中提案样本, state: 'failed' as const }],
+    });
+    expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '关闭' }));
+    // 原草稿回到输入行，供再次明确提交
+    expect((screen.getByPlaceholderText(/到岗超过/) as HTMLInputElement).value).toBe('竞对在职候选人不接触');
+    expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+  });
+
+  it('accept clears the stored draft: a later failed card for the same ID does not resurrect it', async () => {
+    const user = userEvent.setup();
+    const 视图 = renderRecruiterRules({
+      rulesStage: '成功', proposalsStage: '成功', initialized: true,
+      调桩: (桩) => {
+        // accept 之后的完整水合读到一份新权威规则：投影上屏即「完整刷新已收口」的实证
+        桩.接受Agent规则提案.mockImplementation(async () => {
+          桩.读取Agent规则.mockResolvedValue([{ ...BFFAgent规则样本, display_text: '权威刷新后的规则' }]);
+          return BFFAgent规则样本;
+        });
+      },
+    });
+    await 挂载到稳定();
+    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.type(screen.getByPlaceholderText(/到岗超过/), '竞对在职候选人不接触');
+    await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
+    await waitFor(() => expect(screen.queryByPlaceholderText(/到岗超过/)).toBeNull());
+    // 提案变成 ready：确认规则 走真实操作层成功收口
+    act(() => {
+      镜头.覆盖 = {
+        ...镜头.覆盖,
+        招聘规则提案: {
+          [BFFAgent规则解释中提案样本.proposal_id]: {
+            ...BFFAgent规则解释中提案样本,
+            state: 'ready' as const,
+            normalized_text: '归一化后的草稿',
+            consequence: 'mixed' as const,
+          },
+        },
+      };
+      镜头.版本 += 1;
+      for (const 通知 of 镜头.订阅们) 通知();
+    });
+    await user.click(screen.getByRole('button', { name: '确认规则' }));
+    await waitFor(() => expect(screen.getByText('权威刷新后的规则')).toBeTruthy());
+    await 挂载到稳定();
+    // 同一提案再翻 failed：寄存已随 accept 清掉，关闭失败卡不得再还原草稿
+    act(() => {
+      镜头.覆盖 = {
+        ...镜头.覆盖,
+        招聘规则提案: {
+          [BFFAgent规则解释中提案样本.proposal_id]: { ...BFFAgent规则解释中提案样本, state: 'failed' as const },
+        },
+      };
+      镜头.版本 += 1;
+      for (const 通知 of 镜头.订阅们) 通知();
+    });
+    expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '关闭' }));
+    // 寄存已清：输入行不弹开，草稿不复活
+    expect(screen.queryByPlaceholderText(/到岗超过/)).toBeNull();
+    expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+    expect(视图.操作.接受Agent规则提案).toHaveBeenCalledWith(BFFAgent规则解释中提案样本.proposal_id);
   });
 
   it('surfaces all seven frozen P6 error copies verbatim', async () => {

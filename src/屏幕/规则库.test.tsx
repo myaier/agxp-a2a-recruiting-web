@@ -334,6 +334,8 @@ beforeEach(() => {
     removeItem: vi.fn(),
     clear: vi.fn(),
   });
+  // P6 草稿寄存走 sessionStorage（跨卸载存活）：用例间清掉，杜绝跨用例残留还原
+  window.sessionStorage.clear();
   // 轻提示 是 body 下的纯 DOM 单例：上一用例的吐司还挂着会撞同名 getByText，只清子条不留壳
   for (const 壳 of Array.from(document.body.querySelectorAll('div'))) {
     if ((壳 as HTMLElement).style.zIndex === '999') 壳.innerHTML = '';
@@ -497,6 +499,48 @@ describe('规则库 · Backend 候选页', () => {
     expect((screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤') as HTMLInputElement).value).toBe('只接受双休');
     expect((screen.getByLabelText('规则范围') as HTMLSelectElement).value).toBe(意向编号);
     expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+  });
+
+  it('unmount 后回到本页：关闭失败卡仍还原跨导航寄存的原草稿与范围', async () => {
+    // §7.3「关闭后保留用户原草稿」必须跨导航存活：寄存在 sessionStorage 而不是页面 useState
+    const user = userEvent.setup();
+    const 第一屏 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
+    await 挂载到稳定();
+    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.selectOptions(screen.getByLabelText('规则范围'), 意向编号);
+    await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
+    await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
+    await waitFor(() => expect(screen.queryByPlaceholderText('例：不接受大小周的岗位直接过滤')).toBeNull());
+    // 模拟导航离开再回来：页面卸载重建，原始提案字典里这张卡已翻 failed
+    第一屏.unmount();
+    renderCandidateRules({
+      rulesStage: '成功', proposalsStage: '成功', initialized: true,
+      提案: [{ ...BFFAgent规则解释中提案样本, state: 'failed' as const }],
+    });
+    expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '关闭' }));
+    // 原草稿（含范围）回到输入行，供再次明确提交
+    expect((screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤') as HTMLInputElement).value).toBe('只接受双休');
+    expect((screen.getByLabelText('规则范围') as HTMLSelectElement).value).toBe(意向编号);
+    expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+  });
+
+  it('subject 不匹配的寄存草稿直接丢弃：不还原也不留键', async () => {
+    // 换账号后的失败卡：上一个账号的草稿绝不回流到新账号的输入行
+    window.sessionStorage.setItem(
+      `agent规则草稿:${失败提案.proposal_id}`,
+      JSON.stringify({ subjectId: 'sub_other', 文本: '别人的草稿', 作用域: { type: 'global' as const } }),
+    );
+    const user = userEvent.setup();
+    renderCandidateRules({
+      rulesStage: '成功', proposalsStage: '成功', initialized: true,
+      提案: [失败提案],
+    });
+    await user.click(screen.getByRole('button', { name: '关闭' }));
+    expect(screen.queryByPlaceholderText('例：不接受大小周的岗位直接过滤')).toBeNull();
+    expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+    // 不匹配的键也要删掉，不留残留
+    expect(window.sessionStorage.getItem(`agent规则草稿:${失败提案.proposal_id}`)).toBeNull();
   });
 
   it('accept clears the stored draft: a later failed card for the same ID does not resurrect it', async () => {

@@ -184,6 +184,48 @@ describe('创建Agent规则操作 · 权威提交与不做乐观追加', () => {
     expect(环境.deps.会话代际.current).toBe(8);
   });
 
+  it('回执对账读自身撞 401 也统一清账号，原始错误照抛不顶替', async () => {
+    // accept 409（可恢复码）→ 恢复读权威回执 → 回执 GET 自己撞上会话过期：
+    // 与 规则/清单对账 同口径统一登出；恢复失败不顶替原始 409。
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    vi.mocked(环境.数据源.接受Agent规则提案)
+      .mockRejectedValue(new BFF错误(409, 'agent_rule_proposal_not_ready', '还没好'));
+    vi.mocked(环境.数据源.读取Agent规则提案).mockRejectedValue(new BFF错误(401, 'invalid_session', '过期'));
+    const 操作 = 创建Agent规则操作(环境.deps);
+    await expect(操作.接受Agent规则提案(BFFAgent规则就绪提案样本.proposal_id))
+      .rejects.toMatchObject({ status: 409 });
+    expect(环境.数据源.接受Agent规则提案).toHaveBeenCalledTimes(1);
+    expect(环境.数据源.读取Agent规则提案).toHaveBeenCalledTimes(1);
+    const 最新 = 环境.最新后端状态();
+    expect(最新.已登录).toBe(false);
+    expect(最新.主体).toBeNull();
+    expect(环境.deps.主体标识引用.current).toBeNull();
+    expect(环境.deps.会话代际.current).toBe(8);
+  });
+
+  it('恢复读撞 401 但会话已换代时不清新会话，原始错误照抛', async () => {
+    // 迟到的 401 属于旧会话：转移路径（登出/重登）自己清过账号，恢复收口绝不能
+    // 顺手登出新一代；原始错误照抛，throw 契约不变。
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩(), 角色: 'recruiter' });
+    const 恢复门 = deferred<never>();
+    vi.mocked(环境.数据源.修改Agent规则).mockRejectedValue(new BFF错误(409, 'version_conflict', 'conflict'));
+    vi.mocked(环境.数据源.读取Agent规则).mockReturnValue(恢复门.promise as never);
+    const 操作 = 创建Agent规则操作(环境.deps);
+    const 切换 = 操作
+      .切换Agent规则(BFFAgent规则样本.rule_id, 'pause')
+      .catch((错误: unknown) => 错误);
+    await vi.waitFor(() => expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(1));
+    // 与 完成手机登录 同主体重登同构：subject 不变、代际 +1
+    环境.deps.会话代际.current += 1;
+    恢复门.reject(new BFF错误(401, 'invalid_session', '过期'));
+    expect(await 切换).toMatchObject({ status: 409 });
+    const 最新 = 环境.最新后端状态();
+    expect(最新.已登录).toBe(true);
+    expect(最新.主体).not.toBeNull();
+    expect(环境.deps.主体标识引用.current).toBe('sub_1');
+    expect(环境.deps.会话代际.current).toBe(8);
+  });
+
   it('切换成功用响应 Rule 并入原始快照并投影页面数组，不改其它行', async () => {
     const 另一条 = { ...BFFAgent规则样本, rule_id: 'rul_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', version: 1 };
     const 环境 = 创建测试依赖({
@@ -383,6 +425,29 @@ describe('创建Agent规则操作 · 作用域守卫与冲突恢复', () => {
     expect(最新.已登录).toBe(false);
     expect(最新.主体).toBeNull();
     expect(环境.deps.主体标识引用.current).toBeNull();
+    expect(环境.deps.会话代际.current).toBe(8);
+  });
+
+  it('mutation 直接 401 在会话已换代时不清新会话，错误照抛', async () => {
+    // 发送后用户已换代（登出/重登/切身份），迟到的 401 属于旧会话：
+    // 绝不能把新会话登出；错误本身仍原样抛出（throw 契约不变）。
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    const 过期门 = deferred<never>();
+    vi.mocked(环境.数据源.接受Agent规则提案).mockReturnValue(过期门.promise as never);
+    const 操作 = 创建Agent规则操作(环境.deps);
+    const 接受 = 操作
+      .接受Agent规则提案(BFFAgent规则就绪提案样本.proposal_id)
+      .catch((错误: unknown) => 错误);
+    await vi.waitFor(() => expect(环境.数据源.接受Agent规则提案).toHaveBeenCalledTimes(1));
+    // 与 完成手机登录 同主体重登同构：subject 不变、代际 +1
+    环境.deps.会话代际.current += 1;
+    过期门.reject(new BFF错误(401, 'invalid_session', '过期'));
+    expect(await 接受).toMatchObject({ status: 401 });
+    const 最新 = 环境.最新后端状态();
+    expect(最新.已登录).toBe(true);
+    expect(最新.主体).not.toBeNull();
+    expect(环境.deps.主体标识引用.current).toBe('sub_1');
+    // 代际只被本测试手动 +1：清账号状态 若被误触发会再递增到 9
     expect(环境.deps.会话代际.current).toBe(8);
   });
 
@@ -891,6 +956,32 @@ describe('水合Agent规则角色数据 与 刷新Agent规则', () => {
     expect(环境.最新后端状态().已登录).toBe(false);
     expect(环境.deps.主体标识引用.current).toBeNull();
     expect(环境.deps.会话代际.current).toBe(8);
+  });
+
+  it('accept 成功后的 follow-up 刷新遇 401 但会话已换代时不清新会话', async () => {
+    // 权威刷新途中用户已换代（登出/重登/切身份，转移路径自己清过账号）：
+    // 迟到的 401 扫描绝不能登出新一代 —— 过 fence 就跳过清理。
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    const 规则门 = deferred<never>();
+    vi.mocked(环境.数据源.接受Agent规则提案).mockResolvedValue(BFFAgent规则样本);
+    vi.mocked(环境.数据源.读取Agent规则).mockReturnValue(规则门.promise as never);
+    const 操作 = 创建Agent规则操作(环境.deps);
+    const 接受 = 操作
+      .接受Agent规则提案(BFFAgent规则就绪提案样本.proposal_id)
+      .catch((错误: unknown) => 错误);
+    await vi.waitFor(() => expect(环境.数据源.读取Agent规则).toHaveBeenCalledTimes(1));
+    // 与 完成手机登录 同主体重登同构：subject 不变、代际 +1
+    环境.deps.会话代际.current += 1;
+    规则门.reject(new BFF错误(401, 'invalid_session', '过期'));
+    await 接受;
+    const 最新 = 环境.最新后端状态();
+    expect(最新.已登录).toBe(true);
+    expect(最新.主体).not.toBeNull();
+    expect(环境.deps.主体标识引用.current).toBe('sub_1');
+    // 代际只被本测试手动 +1：清账号状态 若被误触发会再递增到 9
+    expect(环境.deps.会话代际.current).toBe(8);
+    // 401 不走非 401 的轻提示通道
+    expect(轻提示).not.toHaveBeenCalled();
   });
 
   it('accept 成功后的 follow-up 刷新非 401 失败也轻提示，已成功的域保持成功与旧快照', async () => {
