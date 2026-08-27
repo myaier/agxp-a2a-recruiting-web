@@ -18,6 +18,8 @@ import type {
   BFF隐私屏蔽回执,
   BFF组织搜索项,
   BFF组织搜索页,
+  BFFAgent规则,
+  BFFAgent规则提案,
 } from '../数据/BFF契约';
 import type { 在招岗位 } from '../数据/类型';
 
@@ -280,4 +282,45 @@ export const BFF组织搜索项样本: BFF组织搜索项 = {
 export const BFF组织搜索页样本: BFF组织搜索页 = {
   items: [BFF组织搜索项样本],
   next_cursor: null,
+};
+
+// ── Agent 规则域样本（P6 Task 1）──
+// ID 满足 mobile-v1 OpenAPI 的 ^rul_|arp|int_[0-9a-f]{32}$，时间用固定 UTC。
+// 正向 fixture 用 mixed 后果，使其同时满足实现与 accept 文案；auto_deny/advisory
+// 的展示/恢复分支在 Agent规则.test.ts 里单列，绝不只用单一后果断言可操作性。
+
+export const BFFAgent规则样本: BFFAgent规则 = {
+  rule_id: 'rul_0123456789abcdef0123456789abcdef',
+  version: 3,
+  state: 'active',
+  scope: { type: 'global' },
+  clause_kinds: ['work_schedule'],
+  display_text: '大小周不谈',
+  created_at: '2026-08-27T01:00:00Z',
+  updated_at: '2026-08-27T02:00:00Z',
+};
+
+export const BFF意向Agent规则样本: BFFAgent规则 = {
+  rule_id: 'rul_fedcba9876543210fedcba9876543210',
+  version: 1,
+  state: 'active',
+  scope: { type: 'intention', intention_id: 'int_0123456789abcdef0123456789abcdef' },
+  clause_kinds: ['work_schedule'],
+  display_text: '大小周不谈',
+  created_at: '2026-08-27T01:00:00Z',
+  updated_at: '2026-08-27T01:30:00Z',
+};
+
+export const BFFAgent规则解释中提案样本: BFFAgent规则提案 = {
+  proposal_id: 'arp_0123456789abcdef0123456789abcdef',
+  state: 'interpreting',
+  created_at: '2026-08-27T02:03:00Z',
+};
+
+export const BFFAgent规则就绪提案样本: BFFAgent规则提案 = {
+  proposal_id: 'arp_fedcba9876543210fedcba9876543210',
+  state: 'ready',
+  normalized_text: '双休岗位可推进，大小周岗位拦下',
+  consequence: 'mixed',
+  created_at: '2026-08-27T02:05:00Z',
 };

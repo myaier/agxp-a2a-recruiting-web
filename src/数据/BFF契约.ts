@@ -454,3 +454,36 @@ export interface BFF岗位创建 {
 }
 
 export type BFF岗位补丁 = Partial<BFF岗位创建>;
+
+// ── Agent 规则域 DTO（P6：agent-rules / agent-rule-proposals 的 owner 投影）──
+// 字段名逐项复制自 mobile-v1 OpenAPI；闭合 enum、ID 正则与 interpreting/ready/terminal
+// 的 exact key set 由 招聘数据源/Agent规则.ts 的 decoder 校验。
+
+export type BFFAgent规则作用域 =
+  | { type: 'global' }
+  | { type: 'intention'; intention_id: string };
+
+export type BFFAgent规则状态 = 'active' | 'paused' | 'archived';
+export type BFFAgent规则提案状态 = 'interpreting' | 'ready' | 'accepted' | 'dismissed' | 'failed';
+export type BFFAgent规则后果 = 'auto_allow' | 'auto_deny' | 'advisory' | 'mixed';
+
+export interface BFFAgent规则 {
+  rule_id: string;
+  version: number;
+  state: BFFAgent规则状态;
+  scope: BFFAgent规则作用域;
+  clause_kinds: ('information_disclosure' | 'workplace_mode' | 'work_schedule' |
+    'compensation_band' | 'role_domain' | 'candidate_affiliation' |
+    'qualification' | 'contact_cadence')[];
+  display_text: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BFFAgent规则提案 {
+  proposal_id: string;
+  state: BFFAgent规则提案状态;
+  normalized_text?: string;
+  consequence?: BFFAgent规则后果;
+  created_at?: string;
+}
