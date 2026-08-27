@@ -207,9 +207,11 @@ interface BFF二进制响应 {
 - `src/状态/应用状态.tsx`：初始化 snapshot、组合操作；不承载 wire decoder 或页面文案。
 - `src/流程/附件简历刷新.ts`：只负责页面可见期的 immediate refresh、单飞 setTimeout 轮询和清理；不拥有另一份列表。
 
-附件操作 factory 闭包另持有一个不渲染的附件列表读取队列。候选登录水合仍由会话层用 generation fence 独立完成；水合后的显式刷新、轮询、安全重读和 mutation 后权威 GET 都串行进入操作队列：先开始的读必须 settle，后排的 mutation 权威读才会发出并提交，mutation 只有在自己的权威读提交后才 resolve；后排 poll 的失败不会反向污染已经完成的 mutation。该协调器与 factory 同生命周期，不扩展公共 Provider 状态或其它领域依赖。
+附件操作 factory 闭包另持有一个不渲染的读取序号、最近成功提交序号/快照和只串行同步 commit 的 Promise 链。候选登录水合仍由会话层用 generation fence 独立完成；水合后的显式刷新、轮询、安全重读和 mutation 后权威 GET 都立即发出，不被无关的 stalled GET 阻塞。成功响应才进入短 commit 链：序号新于最近成功提交才提交，迟到旧成功返回最近提交快照而不覆盖，失败响应不推进序号也不污染其它调用。mutation 只有在自己的成功响应已提交、或确认有更新的成功读取已经提交后才 resolve。该协调器与 factory 同生命周期，不扩展公共 Provider 状态或其它领域依赖。
 
 `后端状态.附件简历库=null` 表示尚未完成读取，`{items:[], limits}` 才表示权威空库。Backend 页面不再读取或写入 legacy `状态.简历文件名`；该字段只服务 Mock 演示与现有缓存兼容。
+
+四个附件 mutation 操作返回 `Promise<'已提交' | '已换代'>`。`已提交` 表示当前会话已有相同或更新的权威列表提交，页面可以显示成功提示；`已换代` 表示 subject/generation 已变，页面必须静默结束，不显示成功或失败提示。刷新仍返回 `Promise<void>`，下载仍返回 `Promise<Blob>`。
 
 ### 6.3 页面责任
 
@@ -231,9 +233,9 @@ interface BFF二进制响应 {
 取消时清除待处理 `File`，不调用 operation。操作签名使用 literal `true`，让调用方不能传 `false` 假装已确认：
 
 ```ts
-创建附件简历(file: File, processingConsentConfirmed: true): Promise<void>;
-替换附件简历(fileId: string, file: File, processingConsentConfirmed: true): Promise<void>;
-请求附件解析(fileId: string, processingConsentConfirmed: true): Promise<void>;
+创建附件简历(file: File, processingConsentConfirmed: true): Promise<'已提交' | '已换代'>;
+替换附件简历(fileId: string, file: File, processingConsentConfirmed: true): Promise<'已提交' | '已换代'>;
+请求附件解析(fileId: string, processingConsentConfirmed: true): Promise<'已提交' | '已换代'>;
 ```
 
 操作层从 snapshot 取当前 revision/version，页面不手工携带陈旧 CAS 元数据。
@@ -347,7 +349,7 @@ Promise.allSettled(
 - create 使用库级锁 `resume-files:create`；replace/delete/parse 使用文件级锁 `resume-file:{id}`；download 只读，不与 mutation 共用写锁；
 - 同一动作执行中页面使用本地 `aria-busy/disabled` 防双击，但不新增可见 spinner；
 - mutation 成功后统一 GET 列表再 resolve，确保 order、limits、revision、version 和 parse 来自同一权威视图；
-- 登录水合以外的列表 GET 通过同一个 factory-local 队列串行读取和提交；mutation 后权威 GET 排在此前 poll 后、此后 poll 前，因而 mutation resolve 后不存在更旧的轮询响应；
+- 登录水合以外的列表 GET 立即并发发出，但只有成功响应的同步 commit 通过 factory-local 短队列；提交序号只前进，迟到旧成功不能覆盖，失败不反向影响其它调用；
 - 401 走现有 `清账号状态`，同时清 snapshot、timer 和待处理文件；
 - 不自动生成新幂等键重放一次结果未知的 mutation。
 
@@ -369,7 +371,7 @@ Promise.allSettled(
 - create/replace 出现新的权威 file/version：刷新页面，但不能仅凭同名或版本变化声称一定是本设备成功；提示 `附件状态已更新，请确认`；
 - 无法确认：保留权威列表并抛原始错误，用户明确重试才生成新意图。
 
-错误恢复中的权威读取若因 subject/generation 已换代而返回 `null`，不得读取 `items` 或把 null 解释为“已删除”；跳过效果判定并静默结束，不能把原始错误再抛给页面形成 stale toast。成功 mutation 的收尾读取若换代也静默结束，不向新会话提交或向旧页面提示。
+错误恢复中的权威读取若因 subject/generation 已换代而返回 `null`，不得读取 `items` 或把 null 解释为“已删除”；跳过效果判定并返回 `已换代`，不能把原始错误再抛给页面形成 stale toast。成功 mutation 的收尾读取若换代也返回 `已换代`。两页只有收到 `已提交` 才显示 mutation 成功提示，`已换代` 不向新会话提交或向旧页面提示。
 
 不得为了确认上传结果在 UI 或日志输出 SHA。若未来需要精确本地 digest 对账，应另有性能/隐私设计，本期不增加浏览器哈希。
 

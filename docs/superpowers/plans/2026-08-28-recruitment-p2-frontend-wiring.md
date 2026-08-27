@@ -460,8 +460,8 @@ git commit -m "feat: add strict resume file data source"
 
 **Interfaces:**
 - Consumes: Task 2 `附件简历数据源` 六方法；现有 `后端操作依赖` 的 `锁/主体标识引用/会话代际/后端状态引用/设后端状态`；现有 `清账号状态`。
-- Produces: `后端状态.附件简历库: BFF附件简历库 | null`；`附件简历操作`：`刷新附件简历(): Promise<void>`、`创建附件简历(file, true): Promise<void>`、`替换附件简历(fileId, file, true): Promise<void>`、`删除附件简历(fileId): Promise<void>`、`请求附件解析(fileId, true): Promise<void>`、`下载附件简历(fileId): Promise<Blob>`；`应用操作` 与该接口相交。
-- Internal invariant: `创建附件简历操作` factory 闭包持有一条 `附件读取队列`；候选登录水合继续由会话层 generation fence 独立完成，水合后的显式刷新、poll、安全重读和 mutation 权威 GET 串行入队。先来的 poll settle 后 mutation 权威读才发出，后来的 poll 又排在 mutation 后；后排 poll 的失败不会反向污染已完成的 mutation。队列不是公共 state/dependency，不迫使其它领域 fixture 改 shape。
+- Produces: `后端状态.附件简历库: BFF附件简历库 | null`；`附件变更结果 = '已提交' | '已换代'`；`附件简历操作`：`刷新附件简历(): Promise<void>`、四个 mutation 返回 `Promise<附件变更结果>`、`下载附件简历(fileId): Promise<Blob>`；`应用操作` 与该接口相交。
+- Internal invariant: factory 闭包持有读取序号、最近成功提交序号/快照和只串行同步 commit 的 Promise 链；GET 入队时立即发出，不等其它 GET settle。成功响应按序号提交，迟到旧成功复用最近提交快照，失败不推进提交序号或污染其它调用。协调器不是公共 state/dependency，不迫使其它领域 fixture 改 shape。
 
 - [ ] **Step 1: Write failing operation and hydration tests**
 
@@ -474,10 +474,10 @@ it('create uses a library lock, then commits only the authoritative reread', asy
   后端.创建附件简历.mockResolvedValue(created);
   后端.读取附件简历库.mockResolvedValue(authority);
   const promise = 操作.创建附件简历(pdf, true);
-  await promise;
+  await expect(promise).resolves.toBe('已提交');
   expect(后端.创建附件简历).toHaveBeenCalledWith(pdf, true);
   expect(后端.读取附件简历库).toHaveBeenCalledTimes(1);
-  expect(设后端状态).toHaveCommitted(expect.objectContaining({ 附件简历库: authority }));
+  expect(后端状态引用.current.附件简历库).toEqual(authority);
 });
 
 it('replace reads current revision from snapshot and never sends the picked filename as a display name', async () => {
@@ -501,6 +501,7 @@ it.each(['resume_file_version_conflict', 'resume_file_selection_stale', 'resume_
 it('a stale refresh response after generation changes is silently discarded', async () => {
   const deferred = 可控Promise<BFF附件简历库>();
   后端.读取附件简历库.mockReturnValue(deferred.promise);
+  设后端状态.mockClear();
   const promise = 操作.刷新附件简历();
   会话代际.current += 1;
   deferred.resolve({ items: [文件B], limits });
@@ -523,7 +524,7 @@ it('an older polling GET cannot overwrite the authoritative GET after a delete',
   expect(后端状态引用.current.附件简历库?.items).toEqual([]);
 });
 
-it('a poll queued after the mutation authority read cannot make a successful delete reject', async () => {
+it('a later failed poll cannot make a successful delete reject', async () => {
   后端状态引用.current.附件简历库 = { items: [文件A], limits };
   const authority = 可控Promise<BFF附件简历库>();
   后端.读取附件简历库
@@ -532,18 +533,35 @@ it('a poll queued after the mutation authority read cannot make a successful del
   后端.删除附件简历.mockResolvedValue({ deleted: true });
   const deleting = 操作.删除附件简历(文件A.file_id);
   await vi.waitFor(() => expect(后端.读取附件简历库).toHaveBeenCalledTimes(1));
-  const polling = 操作.刷新附件简历();
-  expect(后端.读取附件简历库).toHaveBeenCalledTimes(1);
+  const pollingRejection = expect(操作.刷新附件简历()).rejects.toMatchObject({ code: 'network_error' });
+  expect(后端.读取附件简历库).toHaveBeenCalledTimes(2);
   authority.resolve({ items: [], limits });
-  await expect(deleting).resolves.toBeUndefined();
-  await expect(polling).rejects.toMatchObject({ code: 'network_error' });
+  await expect(deleting).resolves.toBe('已提交');
+  await pollingRejection;
+  expect(后端状态引用.current.附件简历库?.items).toEqual([]);
+});
+
+it('a stalled poll does not delay delete authority GET or let the old result overwrite it', async () => {
+  后端状态引用.current.附件简历库 = { items: [文件A], limits };
+  const stalledPoll = 可控Promise<BFF附件简历库>();
+  后端.读取附件简历库
+    .mockReturnValueOnce(stalledPoll.promise)
+    .mockResolvedValueOnce({ items: [], limits });
+  后端.删除附件简历.mockResolvedValue({ deleted: true });
+  const polling = 操作.刷新附件简历();
+  const deleting = 操作.删除附件简历(文件A.file_id);
+  await expect(deleting).resolves.toBe('已提交');
+  expect(后端.读取附件简历库).toHaveBeenCalledTimes(2);
+  expect(后端状态引用.current.附件简历库?.items).toEqual([]);
+  stalledPoll.resolve({ items: [文件A], limits });
+  await polling;
   expect(后端状态引用.current.附件简历库?.items).toEqual([]);
 });
 
 it('401 clears every account snapshot including attachments', async () => {
   后端.读取附件简历库.mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
   await expect(操作.刷新附件简历()).rejects.toMatchObject({ status: 401 });
-  expect(设后端状态).toHaveCommitted(expect.objectContaining({
+  expect(后端状态引用.current).toEqual(expect.objectContaining({
     已登录: false, 主体: null, 附件简历库: null,
   }));
 });
@@ -553,11 +571,12 @@ it('a stale generation during error recovery resolves silently without inspectin
   const reread = 可控Promise<BFF附件简历库>();
   后端.请求附件解析.mockRejectedValue(new BFF错误(503, 'operation_outcome_unknown', 'unknown'));
   后端.读取附件简历库.mockReturnValue(reread.promise);
+  设后端状态.mockClear();
   const parsing = 操作.请求附件解析(文件A.file_id, true);
   await vi.waitFor(() => expect(后端.读取附件简历库).toHaveBeenCalledTimes(1));
   会话代际.current += 1;
   reread.resolve({ items: [], limits });
-  await expect(parsing).resolves.toBeUndefined();
+  await expect(parsing).resolves.toBe('已换代');
   expect(设后端状态).not.toHaveBeenCalled();
 });
 
@@ -567,7 +586,7 @@ it('parse_not_allowed only closes as success when authority is succeeded', async
   后端.读取附件简历库.mockResolvedValueOnce({ items: [文件处理中], limits });
   await expect(操作.请求附件解析(文件A.file_id, true)).rejects.toMatchObject({ code: 'parse_not_allowed' });
   后端.读取附件简历库.mockResolvedValueOnce({ items: [文件已完成], limits });
-  await expect(操作.请求附件解析(文件A.file_id, true)).resolves.toBeUndefined();
+  await expect(操作.请求附件解析(文件A.file_id, true)).resolves.toBe('已提交');
 });
 
 it('upload_in_progress rereads but preserves its own code', async () => {
@@ -578,7 +597,15 @@ it('upload_in_progress rereads but preserves its own code', async () => {
 });
 ```
 
-测试 helper `toHaveCommitted` 不存在时，使用当前项目实际的 functional setter 执行方式：对每个 `设后端状态.mock.calls` 的 updater 依次作用到本地 state，再断言最终 state；不要新增自定义 matcher。
+测试 fixture 把 setter 冻结为与真实 Provider 同步更新 ref 的语义，所有最终 snapshot 断言统一读取 `后端状态引用.current`，不使用自定义 matcher 或事后重放 calls：
+
+```ts
+const 设后端状态 = vi.fn((更新: (old: 后端状态) => 后端状态) => {
+  后端状态引用.current = 更新(后端状态引用.current);
+});
+```
+
+`not.toHaveBeenCalled()` 只用于明确证明 stale response 零提交的单测，并在该单测开始前 `设后端状态.mockClear()`。
 
 在测试文件内实现 `可控Promise<T>()` 为 `{promise,resolve,reject}` 的标准 deferred helper，并定义 `文件处理中`/`文件已完成` 为与 `文件A` 同 version、parse 分别是 processing/succeeded 的完整 DTO。另写：并发同 key 只发一次；missing local file 先安全 GET 再抛 `resume_file_selection_stale`；delete 404 重读后目标不存在收口成功；parse 网络/503/最终 `idempotency_in_progress` 后同 version 变 active/succeeded 或 terminal `updated_at` 改变则收口；create/replace 结果未知重读有变化仍抛 `attachment_state_changed` 让 UI 提示确认；安全重读失败保留原错误；download 401 清账号；候选水合由三路变四路且各域独立提交；recruiter/null/退出/换账号把附件 snapshot 置 null。
 
@@ -595,12 +622,14 @@ Expected: FAIL because the operation interface/factory and snapshot do not exist
 ```ts
 export interface 附件简历操作 {
   刷新附件简历(): Promise<void>;
-  创建附件简历(file: File, consent: true): Promise<void>;
-  替换附件简历(fileId: string, file: File, consent: true): Promise<void>;
-  删除附件简历(fileId: string): Promise<void>;
-  请求附件解析(fileId: string, consent: true): Promise<void>;
+  创建附件简历(file: File, consent: true): Promise<附件变更结果>;
+  替换附件简历(fileId: string, file: File, consent: true): Promise<附件变更结果>;
+  删除附件简历(fileId: string): Promise<附件变更结果>;
+  请求附件解析(fileId: string, consent: true): Promise<附件变更结果>;
   下载附件简历(fileId: string): Promise<Blob>;
 }
+
+export type 附件变更结果 = '已提交' | '已换代';
 
 export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & 附件简历操作;
 ```
@@ -621,22 +650,31 @@ function 提交附件库(deps: 后端操作依赖, fence: ReturnType<typeof 捕�
   deps.设后端状态((old) => ({ ...old, 附件简历库: value }));
 }
 
-// 以下 queue 与 helper 定义在 创建附件简历操作(deps) 闭包内。
-let 附件读取队列: Promise<void> = Promise.resolve();
+// 以下 coordinator 与 helper 定义在 创建附件简历操作(deps) 闭包内。
+let 下一个读取序号 = 0;
+let 最近提交序号 = 0;
+let 最近提交快照: BFF附件简历库 | null = null;
+let 附件提交队列: Promise<void> = Promise.resolve();
 function 读取并提交(fence: ReturnType<typeof 捕获栅栏>): Promise<BFF附件简历库 | null> {
-  const run = 附件读取队列.then(async () => {
-    if (!仍有效(deps, fence)) return null;
-    const value = await deps.后端!.读取附件简历库();
-    if (!仍有效(deps, fence)) return null;
-    提交附件库(deps, fence, value);
-    return value;
+  const reading = ++下一个读取序号;
+  const request = deps.后端!.读取附件简历库(); // 立即发出；不等 stalled poll
+  return request.then((value) => {
+    let committed: BFF附件简历库 | null = null;
+    const commit = 附件提交队列.then(() => {
+      if (!仍有效(deps, fence)) return;
+      if (reading <= 最近提交序号) { committed = 最近提交快照; return; }
+      最近提交序号 = reading;
+      最近提交快照 = value;
+      committed = value;
+      提交附件库(deps, fence, value);
+    });
+    附件提交队列 = commit.then(() => undefined, () => undefined);
+    return commit.then(() => committed);
   });
-  附件读取队列 = run.then(() => undefined, () => undefined);
-  return run;
 }
 ```
 
-factory 的显式刷新、安全重读、每个 mutation 后的权威 GET 全部只调用闭包内 `读取并提交`，禁止绕过它直接提交列表。factory 使用库锁 `resume-files:create` 和文件锁 `resume-file:${fileId}`。每个 mutation 从 `后端状态引用.current.附件简历库` 按 id 取最新 revision/version；找不到时只 GET 一次并抛 `new BFF错误(409, 'resume_file_selection_stale', '附件状态已更新，请重新选择')`。mutation 成功后调用同一 fence 下的 `读取并提交`，提交后才 resolve；队列通过 rejected branch 也恢复为 fulfilled void，单次读失败不会毒死后续读取。
+factory 的显式刷新、安全重读、每个 mutation 后的权威 GET 全部只调用闭包内 `读取并提交`，禁止绕过它直接提交列表。factory 使用库锁 `resume-files:create` 和文件锁 `resume-file:${fileId}`。每个 mutation 从 `后端状态引用.current.附件简历库` 按 id 取最新 revision/version；找不到时只 GET 一次并抛 `new BFF错误(409, 'resume_file_selection_stale', '附件状态已更新，请重新选择')`。mutation 成功/恢复路径得到非 null 权威快照后返回 `已提交`；null 只代表 generation fence 已失效，返回 `已换代`。`附件提交队列` 只包同步 commit，不 await 网络；单次 GET rejection 不进入队列，不会阻塞或污染其它读取。
 
 错误分派精确为：
 
@@ -646,7 +684,7 @@ const 权威重读码 = new Set([
 ]);
 
 // 401: 清账号状态后抛原错误。
-// 权威重读码: GET+commit；delete 且目标消失才 return，其余抛原错误。
+// 权威重读码: GET+commit；delete 且目标消失才 return '已提交'，其余抛原错误。
 // status 0、status 503 或 code=idempotency_in_progress:
 // GET+commit；按 Spec 10.3 核对 delete/parse 是否已达成。
 // code=upload_in_progress: GET+commit 后始终抛原 code，不做集合差异效果判定。
@@ -654,11 +692,11 @@ const 权威重读码 = new Set([
 // code=parse_not_allowed: GET+commit；只有 succeeded 按目标达成，否则抛原错误。
 // create/replace 若库与动作前 snapshot 的 file/version 集合不同：
 // throw new BFF错误(error.status, 'attachment_state_changed', '附件状态已更新，请确认');
-// 读取并提交 返回 null（会话换代）：不读 items、不抛错、不提示，静默结束 stale 调用。
+// 读取并提交 返回 null（会话换代）：不读 items、不抛错、不提示，return '已换代'。
 // 无法确认或安全 GET 失败：抛原错误。任何分支都不得自动重放 mutation。
 ```
 
-`刷新附件简历`/`下载附件简历` 也带 fence；迟到成败静默丢弃，当前 fence 的 401 才清账号，其他错误原样抛。Mock 或无 backend 时 mutation/read return，download 抛 `BFF错误(0,'backend_unavailable','附件仅在后端模式可用')`，避免生成假 Blob。
+`刷新附件简历`/`下载附件简历` 也带 fence；迟到成败静默丢弃，当前 fence 的 401 才清账号，其他错误原样抛。Mock 或无 backend 时 mutation return `'已换代'`、read return，download 抛 `BFF错误(0,'backend_unavailable','附件仅在后端模式可用')`，避免生成假 Blob 或错误成功提示。
 
 - [ ] **Step 4: Wire hydration and Provider composition**
 
@@ -900,13 +938,13 @@ git commit -m "feat: add resume file interaction lifecycle"
 
 - [ ] **Step 1: Extend the component fixture and write failing behavior tests**
 
-把 `render学生分流` 的 mock context 增加 `后端状态` 与 `操作`，但保留现有 5 个 onboarding 测试不改断言：
+把 `render学生分流` 的 mock context 增加 `后端状态` 与 `操作`，并用 `vi.hoisted(() => ({ mock轻提示: vi.fn() }))` + `vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }))` 捕获提示；保留现有 5 个 onboarding 测试不改断言：
 
 ```ts
 const mock操作 = {
   刷新附件简历: vi.fn().mockResolvedValue(undefined),
-  创建附件简历: vi.fn().mockResolvedValue(undefined),
-  替换附件简历: vi.fn().mockResolvedValue(undefined),
+  创建附件简历: vi.fn().mockResolvedValue('已提交'),
+  替换附件简历: vi.fn().mockResolvedValue('已提交'),
 };
 
 it('Backend empty library validates, asks consent, then creates with literal true', async () => {
@@ -950,6 +988,16 @@ it('Mock preserves legacy copy, reducer action, and has no consent dialog', asyn
   expect(派发).toHaveBeenCalledWith({ 型: '存简历文件名', 文件名: 'demo.pdf' });
   expect(screen.queryByText('允许 AI 识别这份简历？')).toBeNull();
 });
+
+it('does not toast success when an upload finishes after the session changed', async () => {
+  mock操作.创建附件简历.mockResolvedValueOnce('已换代');
+  render学生分流({ 数据源: 'backend', 附件库: { items: [], limits } });
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+  await userEvent.upload(input, new File(['%PDF'], 'stale.pdf', { type: 'application/pdf' }));
+  mock轻提示.mockClear();
+  await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+  expect(mock轻提示).not.toHaveBeenCalled();
+});
 ```
 
 另测：非法 extension/type/超 limit 在确认前提示且零 mutation；mutation rejection 保留原文件名并使用 `附件错误文案`；重复点击执行键只发一次且 `aria-busy=true`；Backend snapshot null 显示空库文案但服务端裁决大小。
@@ -982,9 +1030,11 @@ async function 同意处理附件() {
   const target = 最近附件;
   设附件提交中(true);
   try {
-    if (target) await 操作.替换附件简历(target.file_id, file, true);
-    else await 操作.创建附件简历(file, true);
+    const result = target
+      ? await 操作.替换附件简历(target.file_id, file, true)
+      : await 操作.创建附件简历(file, true);
     设待确认文件(null);
+    if (result === '已换代') return;
     轻提示('简历已上传，正在识别');
   } catch (error) {
     轻提示(附件错误文案(error, 附件库?.limits ?? null));
@@ -1019,12 +1069,12 @@ git commit -m "feat: wire onboarding resume file upload"
 - Create: `src/屏幕/我的简历.test.tsx`
 
 **Interfaces:**
-- Consumes: Task 3 operations/snapshot；Task 4 validation/status/error/refresh/preview；现有 `滑动行` props `{操作: 滑动操作[],打开:boolean,请求打开(开),按下?,children}`；现有 `确认层` props；现有附件 CSS primitives。
+- Consumes: Task 3 `附件变更结果`、operations/snapshot；Task 4 validation/status/error/refresh/preview；现有 `滑动行` props `{操作: 滑动操作[],打开:boolean,请求打开(开),按下?,children}`；现有 `确认层` props；现有附件 CSS primitives。
 - Produces: Backend 0–3 权威附件行、标题小 `＋`、状态动作矩阵、create/replace/delete/parse 授权与 PDF preview；Mock 硬编码 `沈亦舟_简历_2026.pdf` 和原说明切换不变。
 
 - [ ] **Step 1: Write a fresh screen test with exact Mock and Backend contracts**
 
-新测试 mock `use应用状态` 和 `use导航`，给结构化简历最小合法 fixture。加入：
+新测试 mock `use应用状态`、`use导航` 和 `轻提示`，四个 mutation mock 缺省 resolve `'已提交'`，给结构化简历最小合法 fixture。加入：
 
 ```ts
 it('Mock keeps the original one-row demo and explanation interaction', async () => {
@@ -1078,6 +1128,16 @@ it('clicking a Backend row opens the authenticated PDF helper', async () => {
   expect(打开附件PDF).toHaveBeenCalledWith(文件A.file_id);
   expect(screen.queryByText(/原型演示/)).toBeNull();
 });
+
+it('does not emit a success toast when a mutation reports a changed session', async () => {
+  操作.删除附件简历.mockResolvedValueOnce('已换代');
+  render我的简历({ mode: 'backend', library: { items: [文件A], limits } });
+  await revealActions();
+  await userEvent.click(screen.getByRole('button', { name: '删除' }));
+  mock轻提示.mockClear();
+  await userEvent.click(screen.getByRole('button', { name: '删除附件简历' }));
+  expect(mock轻提示).not.toHaveBeenCalled();
+});
 ```
 
 另测：0 项空态；3/3 隐藏 `＋`；add/replace 非 PDF 与超限在 consent 前拒绝；add/replace/parse 取消零 mutation；parse 确认传 literal true；replace 锁定触发动作的 file id；成功/错误 toast；只有一行可展开；mutation busy 防双击；Backend 不渲染 legacy filename。
@@ -1120,6 +1180,24 @@ const { 打开附件PDF } = use附件PDF预览();
 每个 Backend item 包进 `滑动行`，`操作` 精确按状态矩阵构造；静止 children 沿用现有 `.附件行/.PDF块/.PDF字/.附件主体/.附件名/.附件说明/.尖括号`。children 根用 `data-testid="附件简历行"`；`按下={() => void 打开附件PDF(file.file_id)}`。parse `not_started` 文本 `解析`，failed 文本 `重新解析`，两者都只打开统一 consent；replace 打开 hidden input 并记住 file id；delete 打开统一删除确认。
 
 文件选择 change 立即清 input value，再预检，再保存 `待确认文件`；执行时 capture `待上传`，create/replace 操作成功后关闭；失败保留权威行，仅 toast。显式 parse 执行 `操作.请求附件解析(fileId, true)`。删除确认标题 `删除附件简历？`、正文 `删除后无法恢复。`、执行文 `删除附件简历`。consent 的标题/正文/执行文与 Task 5 逐字相同。
+
+从 `../状态/后端/类型` 导入 `type 附件变更结果`。四个 mutation 都通过同一个返回值门，不允许在 handler 的 `await` 后无条件 toast：
+
+```ts
+async function 执行附件变更(run: () => Promise<附件变更结果>, successCopy: string): Promise<boolean> {
+  try {
+    const result = await run();
+    if (result === '已换代') return false;
+    轻提示(successCopy);
+    return true;
+  } catch (error) {
+    轻提示(附件错误文案(error, 附件库?.limits ?? null));
+    return false;
+  }
+}
+```
+
+create/replace 传 `简历已上传，正在识别`，parse 传 `已开始识别简历`，delete 传 `附件简历已删除`。调用方无论返回 true/false 都在 `finally` 清 busy/待确认 local state；只有 helper 内的 `'已提交'` 分支显示成功提示。
 
 CSS 只能新增：
 
@@ -1385,26 +1463,30 @@ if (P2域 && P2file && method === 'DELETE') {
 
 预览测试用 `page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/me/resume-files/rf_1/content')`，不依赖 headless PDF viewer 页面内容。
 
-只有 Playwright 负责真实布局门。Backend journey 到 `/#/resume` 后，在弹层尚未打开时加入：
+只有 Playwright 负责真实布局门。先在 E2E 文件定义可重复调用的 helper：
 
 ```ts
-const 附件标题 = page.getByTestId('附件简历标题');
-const 基本标题 = page.getByText('基本信息', { exact: true });
-const 附件后继 = 附件标题.locator('xpath=following-sibling::*[1]');
-const 基本后继 = 基本标题.locator('xpath=following-sibling::*[1]');
-const [附件框, 基本框, 附件后继框, 基本后继框] = await Promise.all([
-  附件标题.boundingBox(), 基本标题.boundingBox(), 附件后继.boundingBox(), 基本后继.boundingBox(),
-]);
-if (!附件框 || !基本框 || !附件后继框 || !基本后继框) throw new Error('resume title geometry is unavailable');
-expect(Math.abs(附件框.height - 基本框.height)).toBeLessThanOrEqual(1);
-const 附件下间距 = 附件后继框.y - (附件框.y + 附件框.height);
-const 基本下间距 = 基本后继框.y - (基本框.y + 基本框.height);
-expect(Math.abs(附件下间距 - 基本下间距)).toBeLessThanOrEqual(1);
-await expect(page.getByRole('progressbar')).toHaveCount(0);
-await expect(page.locator('[class*="骨架"], [class*="badge"]')).toHaveCount(0);
+async function 断言附件标题几何未漂移(page: Page): Promise<void> {
+  const 附件标题 = page.getByTestId('附件简历标题');
+  const 基本标题 = page.getByText('基本信息', { exact: true });
+  const 附件后继 = 附件标题.locator('xpath=following-sibling::*[1]');
+  const 基本后继 = 基本标题.locator('xpath=following-sibling::*[1]');
+  const [附件框, 基本框, 附件后继框, 基本后继框] = await Promise.all([
+    附件标题.boundingBox(), 基本标题.boundingBox(), 附件后继.boundingBox(), 基本后继.boundingBox(),
+  ]);
+  if (!附件框 || !基本框 || !附件后继框 || !基本后继框) {
+    throw new Error('resume title geometry is unavailable');
+  }
+  expect(Math.abs(附件框.height - 基本框.height)).toBeLessThanOrEqual(1);
+  const 附件下间距 = 附件后继框.y - (附件框.y + 附件框.height);
+  const 基本下间距 = 基本后继框.y - (基本框.y + 基本框.height);
+  expect(Math.abs(附件下间距 - 基本下间距)).toBeLessThanOrEqual(1);
+  await expect(page.getByRole('progressbar')).toHaveCount(0);
+  await expect(page.locator('[class*="骨架"], [class*="badge"]')).toHaveCount(0);
+}
 ```
 
-另记录第一行在关闭滑动态的 `boundingBox().height`；完成 replace/轮询后再次断言同一行高度差不超过 1px。视觉场景若已有 `/student` 与 `/resume` 稳定定位则不改 `场景.ts`；只有定位缺失才加 `data-testid` locator，不更新截图、不改阈值、不设置 `UI_CHANGE_APPROVED=true`。
+Backend owner journey 第一次进入 `/#/resume`、一份附件且标题 `＋` 可见时调用一次；添加到 3/3 并断言 `添加附件简历` 不存在后再调用一次。空库仍低于上限、按产品契约必须显示 `＋`，不能把删除到零误写成“无 `＋`”场景。这样同时锁住有 `＋` 与满额无 `＋` 两种标题几何。另记录第一行在关闭滑动态的 `boundingBox().height`；完成 replace/轮询后再次断言同一行高度差不超过 1px。视觉场景若已有 `/student` 与 `/resume` 稳定定位则不改 `场景.ts`；只有定位缺失才加 `data-testid` locator，不更新截图、不改阈值、不设置 `UI_CHANGE_APPROVED=true`。
 
 - [ ] **Step 4: Run focused E2E GREEN**
 
