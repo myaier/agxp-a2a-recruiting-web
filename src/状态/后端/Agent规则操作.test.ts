@@ -365,6 +365,26 @@ describe('创建Agent规则操作 · 作用域守卫与冲突恢复', () => {
     expect(环境.deps.会话代际.current).toBe(8);
   });
 
+  it('同主体下 会话代际 前进的迟到 toggle 响应不落地（raw 快照与投影都不动）', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩(), 角色: 'recruiter' });
+    const 响应门 = deferred<typeof BFFAgent规则样本>();
+    vi.mocked(环境.数据源.修改Agent规则).mockReturnValue(响应门.promise as never);
+    环境.deps.后端状态引用.current = {
+      ...环境.deps.后端状态引用.current,
+      招聘规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+    };
+    const 操作 = 创建Agent规则操作(环境.deps);
+    const 请求 = 操作.切换Agent规则(BFFAgent规则样本.rule_id, 'pause');
+    await vi.waitFor(() => expect(环境.数据源.修改Agent规则).toHaveBeenCalledTimes(1));
+    // 与 完成手机登录 同主体重登同构：subject 不变、代际 +1
+    环境.deps.会话代际.current += 1;
+    响应门.resolve({ ...BFFAgent规则样本, version: 4, state: 'paused' as const });
+    await 请求;
+    // 迟到的成功响应属于旧会话：快照保持 version 3，页面数组也没被重投
+    expect(环境.最新后端状态().招聘规则快照[BFFAgent规则样本.rule_id]).toEqual(BFFAgent规则样本);
+    expect(环境.deps.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '水合后端招聘规则' }));
+  });
+
   it('同键并发只发一次，不同键互不影响', async () => {
     const 闸门 = deferred<void>();
     const 环境 = 创建测试依赖({ 数据源: 创建数据源桩(), 角色: 'recruiter' });
@@ -736,6 +756,30 @@ describe('水合Agent规则角色数据 与 刷新Agent规则', () => {
     await 操作.刷新Agent规则();
     expect(环境.最新后端状态().已登录).toBe(false);
     expect(环境.deps.主体标识引用.current).toBeNull();
+  });
+
+  it('accept 成功后的权威刷新遇 401 也统一清账号（follow-up 扫描）', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    // mutation 本体成功，会话却在读回权威 Rules 的途中过期
+    vi.mocked(环境.数据源.接受Agent规则提案).mockResolvedValue(BFFAgent规则样本);
+    vi.mocked(环境.数据源.读取Agent规则).mockRejectedValue(new BFF错误(401, 'invalid_session', '过期'));
+    const 操作 = 创建Agent规则操作(环境.deps);
+    await 操作.接受Agent规则提案(BFFAgent规则就绪提案样本.proposal_id);
+    expect(环境.最新后端状态().已登录).toBe(false);
+    expect(环境.deps.主体标识引用.current).toBeNull();
+    expect(环境.deps.会话代际.current).toBe(8);
+  });
+
+  it('刷新Agent规则提案 读到 accepted 后的收口刷新遇 401 也统一清账号', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    vi.mocked(环境.数据源.读取Agent规则提案)
+      .mockResolvedValue({ ...BFFAgent规则就绪提案样本, state: 'accepted' as const });
+    vi.mocked(环境.数据源.读取Agent规则).mockRejectedValue(new BFF错误(401, 'invalid_session', '过期'));
+    const 操作 = 创建Agent规则操作(环境.deps);
+    await 操作.刷新Agent规则提案(BFFAgent规则就绪提案样本.proposal_id);
+    expect(环境.最新后端状态().已登录).toBe(false);
+    expect(环境.deps.主体标识引用.current).toBeNull();
+    expect(环境.deps.会话代际.current).toBe(8);
   });
 
   it('同角色完整水合期间二次刷新不重复发请求（single-flight）', async () => {

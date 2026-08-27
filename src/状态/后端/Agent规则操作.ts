@@ -240,6 +240,10 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     if (规则落点.status === 'fulfilled' && 仍是当前会话(deps, subjectId, generation)) {
       发布规则投影(规则落点.value as BFFAgent规则[], role);
     }
+    // 所有 follow-up 刷新（accept 成功收口 / 提案读到 accepted / 手动重试）都从这里过：
+    // mutation 本体已成功、会话却在读回执途中过期时，必须统一清账号，
+    // 不能留下 已登录=true 而两个 P6 阶段停在 失败 的撕裂态。
+    if (结果.some(是401落败)) 清账号状态(账号清理依赖);
     return 结果;
   }
 
@@ -421,16 +425,24 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
   /**
    * Rule CAS 的版本来源：优先 raw 快照里的原始 DTO；快照缺席（如水合失败后先操作）
    * 时用一次单条权威 GET 兜底取当前 version，同样并回快照。快照在手时逐字复用该对象，
-   * 替换提案的 If-Match 语义就是「创建时的当前版本」。
+   * 替换提案的 If-Match 语义就是「创建时的当前版本」。兜底 GET 的落地同样要过
+   * 调用方发送前捕获的会话 fence —— 过期就不写快照（DTO 仍交给调用方走各自的 fence）。
    */
-  async function 取原始规则(role: BFF角色, ruleId: string): Promise<BFFAgent规则 | null> {
+  async function 取原始规则(
+    role: BFF角色,
+    ruleId: string,
+    subjectId: string,
+    generation: number,
+  ): Promise<BFFAgent规则 | null> {
     const 快照 = role === 'candidate'
       ? 后端状态引用.current.候选规则快照[ruleId]
       : 后端状态引用.current.招聘规则快照[ruleId];
     if (快照) return 快照;
     try {
       const 单条 = await 后端!.读取单条Agent规则(role, ruleId);
-      并入单条规则(单条, role);
+      if (subjectId && 仍是当前会话(deps, subjectId, generation)) {
+        并入单条规则(单条, role);
+      }
       return 单条;
     } catch {
       // 单条都拿不到就没法做带 If-Match 的写：交给调用方按「目标不存在」早退
@@ -449,9 +461,8 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     锁.current.add(键);
     try {
       const generation = 会话代际.current;
-      const 结果 = await 运行完整水合并发布(role, subjectId, generation);
-      // 交互路径直接调用本方法时没有 session 层兜底：401 自行统一清理。
-      if (结果.some(是401落败)) 清账号状态(账号清理依赖);
+      // 401 扫描收在 运行完整水合并发布 内部：手动刷新与各 follow-up 刷新同一口径。
+      await 运行完整水合并发布(role, subjectId, generation);
     } finally {
       锁.current.delete(键);
     }
@@ -477,18 +488,21 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     const 键 = `Agent规则:new:${role}`;
     if (锁.current.has(键)) return '';
     锁.current.add(键);
+    // 发送前捕获 subject + generation：同主体重登会递增代际，
+    // 用捕获值 fence，迟到响应才不会把旧会话的回执写进新会话的快照。
     const subjectId = 主体标识引用.current ?? '';
+    const generation = 会话代际.current;
     try {
       const 回执 = await 后端.创建Agent规则提案(role, input.文本, input.作用域);
-      if (subjectId && 仍是当前会话(deps, subjectId, 会话代际.current)) {
+      if (subjectId && 仍是当前会话(deps, subjectId, generation)) {
         并入单个提案(回执, role);
       }
       return 回执.proposal_id;
     } catch (错误) {
       // 必抛收口：永远以原始错误结束，这里不可能落到返回值
       return await 收口写入错误(
-        错误, role, subjectId, 会话代际.current,
-        构建清单对账(role, subjectId, 会话代际.current),
+        错误, role, subjectId, generation,
+        构建清单对账(role, subjectId, generation),
       );
     } finally {
       锁.current.delete(键);
@@ -508,21 +522,23 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     const 键 = `Agent规则:${ruleId}`;
     if (锁.current.has(键)) return '';
     锁.current.add(键);
+    // 发送前捕获 subject + generation（同 创建Agent规则提案 的 fence 纪律）
     const subjectId = 主体标识引用.current ?? '';
+    const generation = 会话代际.current;
     try {
       // 替换必须点名创建时的当前版本：用 raw 快照里的原始 DTO，不用页面投影
-      const 原始 = await 取原始规则(role, ruleId);
+      const 原始 = await 取原始规则(role, ruleId, subjectId, generation);
       if (!原始 || !subjectId) return '';
       const 回执 = await 后端.创建Agent规则替换提案(role, 原始, text);
-      if (仍是当前会话(deps, subjectId, 会话代际.current)) 并入单个提案(回执, role);
+      if (仍是当前会话(deps, subjectId, generation)) 并入单个提案(回执, role);
       return 回执.proposal_id;
     } catch (错误) {
       // replacement 同时挂着 Rule 版本：清单与 Rules 都要重读；必抛收口同上
       return await 收口写入错误(
-        错误, role, subjectId, 会话代际.current,
+        错误, role, subjectId, generation,
         async () => {
-          await 构建清单对账(role, subjectId, 会话代际.current)();
-          await 构建规则对账(role, subjectId, 会话代际.current)();
+          await 构建清单对账(role, subjectId, generation)();
+          await 构建规则对账(role, subjectId, generation)();
         },
       );
     } finally {
@@ -537,16 +553,17 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     const subjectId = 主体标识引用.current;
     if (!subjectId) return;
     // 权威 GET：绝不取 Agent提案 写锁（accept/dismiss 的恢复路径就在这些锁内）；
-    // 并发安全由页面轮询单飞 + 这里读前捕获的提案代际保证。
+    // 并发安全由页面轮询单飞 + 这里读前捕获的提案代际与会话 fence 保证。
+    const generation = 会话代际.current;
     const captured = 当前提案代际(proposalId);
     const 落点 = await 落定(后端.读取Agent规则提案(role, proposalId));
     if (落点.status !== 'fulfilled') {
       // 找不到这张卡 = 它已经不在 actionable 集合里：重读两份清单把它权威清掉
       if (落点.status === 'rejected' && 落点.reason instanceof BFF错误 &&
           落点.reason.code === 'agent_rule_proposal_not_found' &&
-          仍是当前会话(deps, subjectId, 会话代际.current)) {
+          仍是当前会话(deps, subjectId, generation)) {
         try {
-          await 构建清单对账(role, subjectId, 会话代际.current)();
+          await 构建清单对账(role, subjectId, generation)();
         } catch {
           // 恢复读失败就安静离开，不打断轮询方
         }
@@ -555,7 +572,7 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
       throw 落点.status === 'rejected' ? 落点.reason : new BFF错误(0, 'invalid_response', '提案响应缺失');
     }
     if (
-      !仍是当前会话(deps, subjectId, 会话代际.current) ||
+      !仍是当前会话(deps, subjectId, generation) ||
       !提案响应仍新鲜(proposalId, captured)
     ) {
       // 过时的回执既不改快照也不动阶段
@@ -568,7 +585,7 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     }
     if (回执.state === 'accepted') {
       // accepted = 权威 Rule 已经生成：触发一轮完整刷新收口卡片
-      await 运行完整水合并发布(role, subjectId, 会话代际.current);
+      await 运行完整水合并发布(role, subjectId, generation);
       return;
     }
     // interpreting / ready / failed 原位写回（failed 文案留给页面本地确认后再清）
@@ -582,17 +599,19 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     const 键 = `Agent提案:${proposalId}`;
     if (锁.current.has(键)) return;
     锁.current.add(键);
+    // 发送前捕获 subject + generation（同 创建Agent规则提案 的 fence 纪律）
     const subjectId = 主体标识引用.current ?? '';
+    const generation = 会话代际.current;
     try {
       await 后端.接受Agent规则提案(role, proposalId);
-      if (subjectId && 仍是当前会话(deps, subjectId, 会话代际.current)) {
+      if (subjectId && 仍是当前会话(deps, subjectId, generation)) {
         // 接受后必须看权威 Rules：跑完整链路（顺便清掉 actionable 里的这张卡）
-        await 运行完整水合并发布(role, subjectId, 会话代际.current);
+        await 运行完整水合并发布(role, subjectId, generation);
       }
     } catch (错误) {
       await 收口写入错误(
-        错误, role, subjectId, 会话代际.current,
-        构建回执对账(proposalId, role, subjectId, 会话代际.current),
+        错误, role, subjectId, generation,
+        构建回执对账(proposalId, role, subjectId, generation),
         proposalId,
       );
     } finally {
@@ -607,16 +626,18 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     const 键 = `Agent提案:${proposalId}`;
     if (锁.current.has(键)) return;
     锁.current.add(键);
+    // 发送前捕获 subject + generation（同 创建Agent规则提案 的 fence 纪律）
     const subjectId = 主体标识引用.current ?? '';
+    const generation = 会话代际.current;
     try {
       const 回执 = await 后端.放弃Agent规则提案(role, proposalId);
-      if (!subjectId || !仍是当前会话(deps, subjectId, 会话代际.current)) return;
+      if (!subjectId || !仍是当前会话(deps, subjectId, generation)) return;
       if (回执.state === 'dismissed') 移除提案(proposalId, role);
       else 并入单个提案(回执, role);
     } catch (错误) {
       await 收口写入错误(
-        错误, role, subjectId, 会话代际.current,
-        构建回执对账(proposalId, role, subjectId, 会话代际.current),
+        错误, role, subjectId, generation,
+        构建回执对账(proposalId, role, subjectId, generation),
         proposalId,
       );
     } finally {
@@ -637,20 +658,22 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     const 键 = `Agent规则:${ruleId}`;
     if (锁.current.has(键)) return;
     锁.current.add(键);
+    // 发送前捕获 subject + generation（同 创建Agent规则提案 的 fence 纪律）
     const subjectId = 主体标识引用.current ?? '';
+    const generation = 会话代际.current;
     try {
-      const 原始 = await 取原始规则(role, ruleId);
+      const 原始 = await 取原始规则(role, ruleId, subjectId, generation);
       if (!原始 || !subjectId) return;
       const 下一 = await 后端.修改Agent规则(role, ruleId, 原始.version, operation);
-      if (仍是当前会话(deps, subjectId, 会话代际.current)) {
+      if (仍是当前会话(deps, subjectId, generation)) {
         // 并入单条规则 内部同样用本地表投影，避免依赖设后端状态 后未提交的 ref
         并入单条规则(下一, role);
       }
     } catch (错误) {
       // 这类 effect 没有 receipt：失败一律重读一次全部 Rules 收敛，绝不再发 mutation
       await 收口写入错误(
-        错误, role, subjectId, 会话代际.current,
-        构建规则对账(role, subjectId, 会话代际.current),
+        错误, role, subjectId, generation,
+        构建规则对账(role, subjectId, generation),
       );
     } finally {
       锁.current.delete(键);
@@ -669,12 +692,14 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     const 键 = `Agent规则:${ruleId}`;
     if (锁.current.has(键)) return;
     锁.current.add(键);
+    // 发送前捕获 subject + generation（同 创建Agent规则提案 的 fence 纪律）
     const subjectId = 主体标识引用.current ?? '';
+    const generation = 会话代际.current;
     try {
-      const 原始 = await 取原始规则(role, ruleId);
+      const 原始 = await 取原始规则(role, ruleId, subjectId, generation);
       if (!原始 || !subjectId) return;
       await 后端.删除Agent规则(role, ruleId, 原始.version);
-      if (仍是当前会话(deps, subjectId, 会话代际.current)) {
+      if (仍是当前会话(deps, subjectId, generation)) {
         // 在写之前本地算好「余下」：设后端状态 的 ref 要到下一个渲染提交才更新，
         // 写后再读会拿到没删干净的旧表并投给页面
         const 当前表 = role === 'candidate'
@@ -694,8 +719,8 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
       }
     } catch (错误) {
       await 收口写入错误(
-        错误, role, subjectId, 会话代际.current,
-        构建规则对账(role, subjectId, 会话代际.current),
+        错误, role, subjectId, generation,
+        构建规则对账(role, subjectId, generation),
       );
     } finally {
       锁.current.delete(键);
