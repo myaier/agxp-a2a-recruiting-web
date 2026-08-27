@@ -160,7 +160,7 @@ type BFF附件解析状态 =
 - `succeeded` 必须且只能带 `parse_id + updated_at`；
 - `failed` 必须且只能带闭集 `failure_code + updated_at`；
 - revision、version、size 必须是非负/正整数的契约值；
-- `items.length <= 3`，media type 只能是 `application/pdf`；
+- `max_files` 必须是 `1..3` 的整数，`items.length <= limits.max_files`，media type 只能是 `application/pdf`；大于 3 是当前产品与 wire 的 breaking change，必须 fail closed；
 - limits 和 accepted media types 不得缺失或为 null；
 - 任何畸形成功响应转成 `BFF错误(200, 'invalid_response', ...)`，不得回退 Mock。
 
@@ -206,6 +206,8 @@ interface BFF二进制响应 {
 - `src/状态/后端/会话操作.ts`：候选人水合并行加入附件列表；所有账号清理路径将 snapshot 置 null。
 - `src/状态/应用状态.tsx`：初始化 snapshot、组合操作；不承载 wire decoder 或页面文案。
 - `src/流程/附件简历刷新.ts`：只负责页面可见期的 immediate refresh、单飞 setTimeout 轮询和清理；不拥有另一份列表。
+
+附件操作 factory 闭包另持有一个不渲染的单调 `附件读取序号` 和最新读取 Promise。每次附件列表 GET 开始前递增并捕获该序号，只有仍是最新序号的响应才可提交；被更新读取超越的调用会 join 最新 Promise 后才返回，因此 mutation 不会在另一份更新权威读仍在飞时提前 resolve。mutation 后发起的权威 GET 会使更早的轮询 GET 作废，同一会话内也不会由迟到旧读覆盖新写结果。该协调器与 factory 同生命周期，不扩展公共 Provider 状态或其它领域依赖。
 
 `后端状态.附件简历库=null` 表示尚未完成读取，`{items:[], limits}` 才表示权威空库。Backend 页面不再读取或写入 legacy `状态.简历文件名`；该字段只服务 Mock 演示与现有缓存兼容。
 
@@ -329,6 +331,7 @@ Promise.allSettled(
 - `完善资料` 或 `我的简历` mount 且 document visible 时立即 GET；
 - snapshot 中存在 `pending|processing` 才启动下一次刷新；
 - 每次请求 settle 后 3 秒使用 `setTimeout` 发下一次，禁止 `setInterval` 和重叠请求；
+- active 状态变化只更新轮询控制器并安排/取消下一次 3 秒刷新，不触发第二次 immediate GET；单飞标志跨 React effect 重跑存活；
 - hidden、unmount、全部 terminal、登出、角色改变或 session generation 改变时清 timer；
 - `visibilitychange` 回到 visible 时立即刷新一次，再按最新结果决定是否继续；
 - 每次请求捕获 subject + generation；不匹配的迟到成功或失败都不提交、不提示；
@@ -344,6 +347,7 @@ Promise.allSettled(
 - create 使用库级锁 `resume-files:create`；replace/delete/parse 使用文件级锁 `resume-file:{id}`；download 只读，不与 mutation 共用写锁；
 - 同一动作执行中页面使用本地 `aria-busy/disabled` 防双击，但不新增可见 spinner；
 - mutation 成功后统一 GET 列表再 resolve，确保 order、limits、revision、version 和 parse 来自同一权威视图；
+- 所有列表 GET 通过同一个单调读取序号提交；mutation 的权威 GET 一旦开始，之前在飞的轮询响应即使随后到达也必须丢弃；
 - 401 走现有 `清账号状态`，同时清 snapshot、timer 和待处理文件；
 - 不自动生成新幂等键重放一次结果未知的 mutation。
 
@@ -374,7 +378,8 @@ Promise.allSettled(
 | `invalid_pdf` | 提示仅支持有效、未加密且无主动内容的 PDF；不改变列表 |
 | `resume_file_too_large` | 使用当前 limits 提示大小上限；无 limits 时使用服务端 message |
 | `resume_file_limit_reached` | 重读，隐藏 `＋`，提示最多可上传当前 max_files |
-| `upload_in_progress` | 重读，不换 key 自动重试，提示稍后再试 |
+| `upload_in_progress` | 按结果未知重读，不换 key 自动重试，提示稍后再试 |
+| `idempotency_in_progress` | HTTP 同 key 受控重试仍失败后按结果未知重读，不换 key 自动重试 |
 | `resume_file_version_conflict` | 重读，不重放 |
 | `parse_already_in_progress` | 重读；若已 active，按目标达成收口 |
 | `parse_not_allowed` | 重读；若 succeeded 保持成功，否则提示当前状态不可解析 |
@@ -437,6 +442,7 @@ Backend 模式只使用 `后端状态.附件简历库`。Backend 初始状态不
 - create/replace/delete/parse 成功后权威 GET；
 - 文件/库锁拒绝重复提交；
 - 409/404/503/network unknown 的重读和不重放规则；
+- 旧轮询 GET 在 mutation + 权威 GET 之后到达时不得覆盖最新列表；
 - stale generation 响应不能提交或提示；
 - Backend 不使用 legacy Mock 文件名。
 
