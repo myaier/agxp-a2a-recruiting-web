@@ -29,7 +29,7 @@
   - `advisory`: `这是一条参考偏好，不会单独触发自动决定`
   - `mixed`: `这条规则同时包含推进、拦截或参考条件`
 - `ready` alone does not prove acceptability because the public DTO hides executable/advisory classification. `consequence` is display-only: the backend accepts executable `auto_deny` and can reject top-level advisory with the same public lifecycle. Show explicit accept and dismiss; recover `agent_rule_proposal_not_actionable` by re-reading the Proposal and telling the user to dismiss or rephrase. Do not encode the stale OpenAPI prose “only auto_allow or mixed” as a browser gate.
-- Rule and Proposal hydration are independently visible through `未开始|进行中|成功|失败`. A successful Rule read shows authoritative rows/counts immediately; create/edit/accept/dismiss controls require both actionable Proposal lists. Only an explicit failed domain shows the retry action; pending hydration shows a loading shell and never a silent permanent shell.
+- Rule and Proposal hydration are independently visible through `未开始|进行中|成功|失败`. A successful Rule read shows authoritative rows/counts immediately; create/edit/accept/dismiss controls require both actionable Proposal lists. Only an explicit failed domain shows the retry action; pending hydration shows a loading shell and never a silent permanent shell. Refresh never downgrades a `成功` stage, so already-authoritative rows, cards, and counts stay visible while background reconciliation runs.
 - P3 and P6 share composition files. Implement P6 on its isolated branch; after P3 lands on `origin/main`, rebase and mechanically combine both domains rather than introducing registries.
 
 ## File Map
@@ -596,7 +596,7 @@ it('version conflict re-reads but never replays the mutation', async () => {
 });
 ```
 
-Also cover candidate scope required; `agent_rule_scope_denied` preserves text and refreshes authoritative intentions, while an intention response arriving after a subject/generation change commits nothing; recruiter scope rejected before the facade; replacement uses raw current Rule and preserves the edit text outside state; dismiss removes only a terminal Proposal; accept/dismiss `agent_rule_proposal_not_ready|not_actionable|terminal|idempotency_conflict` recovery via GET Proposal; a known proposal ID on `idempotency_conflict` updates the addressed raw Proposal snapshot through `刷新Agent规则提案` before the error is rethrown; create/replacement `idempotency_conflict` reloads actionable lists without replay; 404/503/network reconciliation; 401 calls `清账号状态`; locks suppress duplicate same-key mutations; different Rule/Proposal keys run independently; role/subject/generation changes discard late results. Pin the five P6 error codes to the exact Chinese copy below and prove an unrelated error falls back to `取后端错误文案`.
+Also cover candidate scope required; `agent_rule_scope_denied` preserves text and refreshes authoritative intentions, while an intention response arriving after a subject/generation change commits nothing; recruiter scope rejected before the facade; replacement uses raw current Rule and preserves the edit text outside state; dismiss removes only a terminal Proposal; accept/dismiss `agent_rule_proposal_not_ready|not_actionable|terminal|idempotency_conflict` recovery via GET Proposal; a known proposal ID on `idempotency_conflict` updates the addressed raw Proposal snapshot through `刷新Agent规则提案` before the error is rethrown; create/replacement `idempotency_conflict` reloads actionable lists without replay; 404/503/network reconciliation; 401 calls `清账号状态`; locks suppress duplicate same-key mutations; different Rule/Proposal keys run independently; role/subject/generation changes discard late results. Pin the seven P6 error codes to the exact Chinese copy below and prove an unrelated error falls back to `取后端错误文案`.
 
 - [ ] **Step 2: Run operation tests and verify RED**
 
@@ -647,9 +647,9 @@ function 提案响应仍新鲜(id: string, captured: number): boolean {
 }
 ```
 
-Hydration uses `Promise.allSettled` for Rules, interpreting Proposals, and ready Proposals. Before starting the three reads it marks both domains `进行中`. It commits Rules and marks `rules:'成功'` when the Rule read is fulfilled; it commits the merged Proposal table and marks `proposals:'成功'` only when both Proposal reads are fulfilled. Each rejected domain is marked `失败` independently. It returns all three settled results so the session layer can detect any 401. A call to `刷新Agent规则()` captures the current role/subject/generation and reruns this complete `水合Agent规则角色数据` path—one Rule list plus both `interpreting` and `ready` Proposal lists—rather than refreshing only Rules.
+Hydration uses `Promise.allSettled` for Rules, interpreting Proposals, and ready Proposals. Before starting the reads, a domain transitions to `进行中` only from `未开始|失败`; an already-`成功` domain remains `成功` so committed UI does not disappear during reconciliation. It commits Rules and marks `rules:'成功'` when the Rule read is fulfilled; a Rule rejection becomes `失败` only when that domain was not already `成功`. It commits the merged Proposal table and marks `proposals:'成功'` only when both Proposal reads are fulfilled; if either `interpreting` or `ready` rejects, Proposal becomes `失败` unless it was already `成功`. Once all three promises settle, neither attempted domain may remain `未开始|进行中`. It returns all three settled results so the session layer can detect any 401. A call to `刷新Agent规则()` captures the current role/subject/generation and reruns this complete `水合Agent规则角色数据` path—one Rule list plus both `interpreting` and `ready` Proposal lists—rather than refreshing only Rules.
 
-Failed hydration never loads Mock rows. Do not map candidate intention Rules inside the async operation: Rule and Intention requests finish independently, so mapping there can race an older intention snapshot. Add an operation test which starts from a failed Proposal stage, calls `刷新Agent规则()`, asserts exactly one Rule read plus `interpreting` and `ready` reads, and observes both stages become `成功`.
+Failed hydration never loads Mock rows. Do not map candidate intention Rules inside the async operation: Rule and Intention requests finish independently, so mapping there can race an older intention snapshot. Add operation tests which (a) start from a failed Proposal stage, call `刷新Agent规则()`, assert exactly one Rule read plus `interpreting` and `ready` reads, and observe both stages become `成功`; (b) start from successful stages with deferred refresh reads and prove both remain `成功` while the refresh is pending; and (c) reject only the `ready` list and prove Proposal ends at `失败`, never `进行中`.
 
 Use lock keys exactly:
 
@@ -658,7 +658,10 @@ Agent规则:new:candidate
 Agent规则:new:recruiter
 Agent规则:<rule_id>
 Agent提案:<proposal_id>
+Agent规则水合:<role>
 ```
+
+The first four shared keys guard mutations; `Agent规则水合:<role>` makes complete role hydration single-flight. `刷新Agent规则提案` is an authoritative GET and must not acquire or early-return on `Agent提案:<proposal_id>`; polling already enforces per-page single flight, and the operation layer's Proposal generation/session fences discard stale reads. Add a regression test with `deps.锁.current` already containing the matching mutation key and assert the recovery GET still runs and commits its snapshot.
 
 Mutation recovery matrix:
 
@@ -710,6 +713,10 @@ export function 取Agent规则错误文案(error: unknown): string {
         return '这次操作与之前的请求冲突，请检查最新状态后重试';
       case 'agent_rule_scope_denied':
         return '这个意向已不可用，请重新选择规则范围';
+      case 'agent_rule_not_found':
+        return '这条规则已不存在，请查看最新状态';
+      case 'agent_rule_proposal_not_found':
+        return '这条规则提案已不存在，请查看最新状态';
     }
   }
   return 取后端错误文案(error);
@@ -856,7 +863,7 @@ it('role switch clears old P6 state before target hydration and discards late re
 });
 ```
 
-Also assert each P6 domain is `进行中` while its reads are outstanding, a rejected Rule or Proposal domain becomes `失败`, and the successful sibling remains `成功`. Assert logout, 401, new subject, and `last_used_role:null` clear raw dictionaries, reset both roles to `未开始`, and clear all three page Rule arrays. P6 failure must not roll back successful Resume/Intentions/Privacy/Jobs/Organization hydration.
+Also assert each initially incomplete P6 domain is `进行中` while its reads are outstanding, a rejected Rule becomes `失败`, either one of the two Proposal-list rejections makes Proposal `失败`, and the successful sibling remains `成功`. A refresh starting from `成功` must keep that stage `成功` while reads are outstanding or fail. Assert logout, 401, new subject, and `last_used_role:null` clear raw dictionaries, reset both roles to `未开始`, and clear all three page Rule arrays. P6 failure must not roll back successful Resume/Intentions/Privacy/Jobs/Organization hydration.
 
 - [ ] **Step 2: Run session tests and verify RED**
 
@@ -1095,7 +1102,7 @@ it('Backend candidate groups by authoritative intention and creates an intention
 });
 ```
 
-Add tests for global default, replacement preserving old Rule until accept, archive by current ID, `interpreting/ready/failed` cards, active count, no Mock rows/count before Rule hydration, orphan rules absent, operation error preserving draft, `agent_rule_proposal_not_actionable` rephrase copy, `agent_rule_scope_denied` preserving text and showing `这个意向已不可用，请重新选择规则范围`, `idempotency_conflict` preserving the card/draft without success copy, and composing Enter not submitting. Extend the Context harness to return `setHydration(next: Agent规则角色水合状态)` so retry completion can be observed without replacing the real Provider. Add these partial/in-flight hydration cases:
+Add tests for global default, replacement preserving old Rule until accept, archive by current ID, `interpreting/ready/failed` cards, active count, no Mock rows/count before Rule hydration, orphan rules absent, operation error preserving draft, all seven frozen P6 error copies, `agent_rule_scope_denied` preserving text, `idempotency_conflict` preserving the card/draft without success copy, and composing Enter not submitting. Define the same local `deferred<T>()` helper from Task 3 and extend the Context harness to return `setHydration(next: Agent规则角色水合状态)` so retry progress/completion can be observed without replacing the real Provider. Add these partial/in-flight hydration cases:
 
 ```tsx
 it('shows loaded Rules and a retry affordance when Proposal hydration failed', async () => {
@@ -1103,13 +1110,21 @@ it('shows loaded Rules and a retry affordance when Proposal hydration failed', a
   const { setHydration } = renderCandidateRules({
     mode: 'backend', rulesStage: '成功', proposalsStage: '失败', initialized: true,
   });
+  const retry = deferred<void>();
   操作.刷新Agent规则.mockImplementation(async () => {
+    setHydration({ rules: '成功', proposals: '进行中' });
+    await retry.promise;
     setHydration({ rules: '成功', proposals: '成功' });
   });
   expect(screen.getByText(BFFAgent规则样本.display_text)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /手动添加规则/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: '规则加载失败，重试' }));
   expect(操作.刷新Agent规则).toHaveBeenCalledTimes(1);
+  await waitFor(() => {
+    expect(screen.getByRole('status', { name: '规则加载中' })).toBeInTheDocument();
+  });
+  expect(screen.getByText(BFFAgent规则样本.display_text)).toBeInTheDocument();
+  retry.resolve();
   await waitFor(() => {
     expect(screen.getByRole('button', { name: /手动添加规则/ })).toBeInTheDocument();
   });
@@ -1169,11 +1184,15 @@ const rulesReady = roleHydration.rules === '成功';
 const proposalsReady = roleHydration.proposals === '成功';
 const showRetry = role !== null &&
   (roleHydration.rules === '失败' || roleHydration.proposals === '失败');
+const showLoading = role !== null && !showRetry && (
+  roleHydration.rules === '未开始' || roleHydration.rules === '进行中' ||
+  roleHydration.proposals === '未开始' || roleHydration.proposals === '进行中'
+);
 ```
 
 Repeat the block in `企业代理设置.tsx` with `expectedRole: BFF角色 = 'recruiter'`. A direct visit to the wrong-role or unauthenticated route renders a safe shell: it neither indexes hydration with `undefined` nor exposes mutation controls for the active role under the other role's page.
 
-Backend renders authoritative rows/counts whenever `rulesReady` is true. It renders create/edit/accept/dismiss controls and Proposal cards only when `rulesReady && proposalsReady`; `showRetry` renders a button named exactly `规则加载失败，重试` that awaits the complete `操作.刷新Agent规则()` hydration. A `未开始` or `进行中` domain renders a `role="status"` loading shell with accessible name `规则加载中`, and never the retry button or a second automatic hydration. Backend handlers await `操作`, catch with `轻提示(取Agent规则错误文案(error))`, and preserve local text/scope on failure. Both page suites assert the exact five P6 messages frozen in Task 3; the not-actionable, scope-denied, and idempotency cases additionally preserve their card/draft and show no success copy. Mock handlers keep current dispatches and close immediately. Candidate scope options come from active `状态.求职意向表` entries whose IDs exist in `后端状态.意向快照`; do not render a free-text ID option.
+Backend renders authoritative rows/counts whenever `rulesReady` is true, including while a sibling failed domain is being retried. It renders create/edit/accept/dismiss controls and Proposal cards only when `rulesReady && proposalsReady`; `showRetry` renders a button named exactly `规则加载失败，重试` that awaits the complete `操作.刷新Agent规则()` hydration. `showLoading` renders a `role="status"` shell with accessible name `规则加载中`; an already-successful Rule domain remains visible beside that progress indicator. The operation-layer hydration lock prevents a second automatic or manual hydration while one is running. Backend handlers await `操作`, catch with `轻提示(取Agent规则错误文案(error))`, and preserve local text/scope on failure. Both page suites assert the exact seven P6 messages frozen in Task 3; the not-actionable, scope-denied, and idempotency cases additionally preserve their card/draft and show no success copy. Mock handlers keep current dispatches and close immediately. Candidate scope options come from active `状态.求职意向表` entries whose IDs exist in `后端状态.意向快照`; do not render a free-text ID option.
 
 Get Proposal lists from the role-specific raw dictionary, sorted by `created_at` when present and then `proposal_id`. Call `useAgent规则提案轮询` only when Backend mode, the matching role is active, `proposalsReady` is true, and the page is mounted.
 
@@ -1240,7 +1259,7 @@ git commit -m "feat: wire P6 canonical rule pages"
 ```tsx
 it('Backend candidate filter layer is read-only and navigates to canonical rules', async () => {
   const user = userEvent.setup();
-  renderMarketFilter({ mode: 'backend', hydrated: true });
+  renderMarketFilter({ mode: 'backend', rulesStage: '成功' });
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /删除规则/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: '管理规则 ›' }));

@@ -265,7 +265,7 @@ interface Agent规则操作 {
 
 Mock 分支继续派发现有 action；Backend 分支只调用 P6 facade。Replacement、accept、dismiss 不在 Mock 伪造异步状态，Mock 保持当前即时原型。
 
-每个 effect 使用现有 shared lock：`Agent规则:new:<role>`、`Agent规则:<rule_id>`、`Agent提案:<proposal_id>`。401 统一走 `清账号状态`；role/subject fence 与 P3 共用 session generation。
+mutation effect 使用现有 shared lock：`Agent规则:new:<role>`、`Agent规则:<rule_id>`、`Agent提案:<proposal_id>`；完整角色水合另用 `Agent规则水合:<role>` 保证 single-flight。权威 `刷新Agent规则提案` GET 不获取 `Agent提案:<proposal_id>` mutation lock，否则在 accept/dismiss catch 内会被自身锁静默短路；其并发安全由页面 polling single-flight、proposal generation 与 session fence 保证。401 统一走 `清账号状态`；role/subject fence 与 P3 共用 session generation。
 
 ## 6. 水合与并行 P3 组合
 
@@ -292,7 +292,7 @@ recruiter hydration
      )
 ```
 
-各域独立提交成功 snapshot。P6 失败不撤销 Resume/Privacy/Job 成功结果，也不回退 Mock。Rule 与 Proposal 水合各自维护 `未开始|进行中|成功|失败`：Rule 成功后立即显示权威 rows 与计数；Proposal 两个 actionable list 都成功前隐藏 create/edit/accept/dismiss 控件。仅当任一 P6 子域阶段为 `失败` 时显示明确的“规则加载失败，重试”入口；`进行中` 只显示加载外壳，不能误报失败或并发启动第二次水合。重试调用 `刷新Agent规则()`，其冻结语义是对当前 role 重新运行完整 `水合Agent规则角色数据`（Rules + `interpreting` + `ready`，并更新两个阶段），不是只读 Rule list。首次 Rule 阶段未成功时不显示 Mock rows 或 Mock 计数。
+各域独立提交成功 snapshot。P6 失败不撤销 Resume/Privacy/Job 成功结果，也不回退 Mock。Rule 与 Proposal 水合各自维护 `未开始|进行中|成功|失败`：Rule 成功后立即显示权威 rows 与计数；Proposal 两个 actionable list 都成功前隐藏 create/edit/accept/dismiss 控件。初次或失败重试才把对应域置为 `进行中`；已为 `成功` 的域在 refresh 期间不得降级，因此权威 rows/cards/count 不闪退。Proposal 的 `interpreting` 或 `ready` 任一读取失败即令该域进入 `失败`（已有成功 snapshot 时保留 `成功` 并由当前操作显示错误）；allSettled 结束后，参与本轮的非成功域不得残留 `未开始|进行中`。仅当任一 P6 子域阶段为 `失败` 时显示明确的“规则加载失败，重试”入口；`进行中` 只显示加载外壳，不能误报失败或并发启动第二次水合。重试调用 `刷新Agent规则()`，其冻结语义是对当前 role 重新运行完整 `水合Agent规则角色数据`（Rules + `interpreting` + `ready`，并更新两个阶段），不是只读 Rule list。首次 Rule 阶段未成功时不显示 Mock rows 或 Mock 计数。
 
 退出、401、切 subject、切 role 时：
 
@@ -416,6 +416,8 @@ agent_rule_proposal_not_actionable → 这条内容暂时不能成为长期规�
 agent_rule_proposal_terminal       → 这条规则提案已经处理，请查看最新状态
 idempotency_conflict               → 这次操作与之前的请求冲突，请检查最新状态后重试
 agent_rule_scope_denied            → 这个意向已不可用，请重新选择规则范围
+agent_rule_not_found               → 这条规则已不存在，请查看最新状态
+agent_rule_proposal_not_found      → 这条规则提案已不存在，请查看最新状态
 ```
 
 其它错误回落现有 `取后端错误文案`；双端 canonical 页面统一使用这个 P6 mapper。
@@ -468,8 +470,8 @@ agent_rule_scope_denied            → 这个意向已不可用，请重新选�
 - interpreting/ready/failed card 与 consequence 文案；
 - Backend 未水合无 Mock rows/count/mutation；
 - Rule 成功但 Proposal 失败时仍显示权威 Rule rows，隐藏写控件并提供重试；
-- Rule/Proposal `进行中` 时只显示加载外壳，不显示失败重试或启动重复水合；失败重试会重新读取 Rule、`interpreting` 与 `ready`，成功后写控件恢复；
-- 五个 P6 服务错误显示冻结的中文文案；scope 意向重读受 subject/session fence 保护，已知 proposal 的幂等冲突恢复会提交最新 raw Proposal snapshot；
+- Rule/Proposal 初次 `进行中` 时显示加载外壳，不显示失败重试或启动重复水合；刷新不降级已成功域，失败重试期间已加载 rows/count 保持可见，成功后写控件恢复；任一 Proposal list 失败都能落到可重试状态；
+- 七个 P6 服务错误显示冻结的中文文案；scope 意向重读受 subject/session fence 保护，已知 proposal 的幂等冲突恢复绕过 mutation lock 并提交最新 raw Proposal snapshot；
 - Backend 筛选抽屉只读并导航 canonical page；Mock 仍可编辑；
 - Backend 问 AI/Case 不污染 Rule state；Mock 剧情不回归；
 - 所有按钮在中文输入法 composing Enter 时不误提交。
