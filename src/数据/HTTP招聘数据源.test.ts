@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BFF简历样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
+import { BFF简历样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索页样本 } from '../测试/BFF样本';
 import { BFF错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
 import { 从BFF简历 } from './后端映射';
 import { 创建岗位附属存储 } from './前端附属数据';
@@ -455,7 +455,7 @@ describe('HTTP 招聘数据源', () => {
     }
   });
 
-  it('根 facade 组合六个域且不丢公开方法', () => {
+  it('根 facade 组合七个域且不丢公开方法', () => {
     const source = 创建HTTP招聘数据源(依赖());
     expect(Object.keys(source).sort()).toEqual([
       '保存简历', '保存招聘方档案', '创建岗位', '创建意向', '创建首次意向', '创建企业管理员申请',
@@ -465,9 +465,41 @@ describe('HTTP 招聘数据源', () => {
       '读取意向', '读取简历', '读取招聘方档案', '读取我的企业关系', '读取公开企业', '读取企业档案',
       '读取企业管理员申请', '记录当前角色', '接受企业邀请', '替换招聘方头像', '替换企业档案',
       '退出登录', '完成手机登录', '重开岗位',
+      // P3：隐私域 + 组织搜索
+      '修改隐私', '解除组织屏蔽', '读取隐私', '添加组织屏蔽', '搜索组织',
     ].sort());
     // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
     expect(Object.keys(source)).not.toContain('读取公开岗位');
     expect(Object.keys(source)).not.toContain('公开岗位表');
+  });
+
+  // P3：隐私与组织搜索经根 facade 走到线上；CandidateJob 只留编译期闭类型，无请求方法。
+  it('根 facade 提供隐私读写与组织搜索并按契约发请求', async () => {
+    请求Mock.mockImplementation(async (options: BFF请求选项) => {
+      if (options.method === 'POST' && options.path === '/api/v1/me/privacy/organization-blocks') {
+        return { result: BFF屏蔽回执样本, etag: '"3"', requestId: 'r-block' };
+      }
+      if (options.path === '/api/v1/organizations?q=Acme&limit=20') {
+        return { result: BFF组织搜索页样本, etag: null, requestId: 'r-search' };
+      }
+      return { result: BFF隐私视图样本, etag: '"2"', requestId: 'r-view' };
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    await source.读取隐私();
+    await expect(source.修改隐私({ disclosure_preferences: { education: 'resume_submission' } }, 2)).resolves.toBeDefined();
+    await expect(source.添加组织屏蔽('org_1', 'related_organization', 2)).resolves.toEqual(BFF屏蔽回执样本);
+    await expect(source.搜索组织({ q: 'Acme', limit: 20 })).resolves.toMatchObject({ items: [{ organization_id: 'org_1' }] });
+    expect(请求Mock.mock.calls.map(([o]) => [o.method ?? 'GET', o.path])).toEqual([
+      ['GET', '/api/v1/me/privacy'],
+      ['PATCH', '/api/v1/me/privacy'],
+      ['POST', '/api/v1/me/privacy/organization-blocks'],
+      ['GET', '/api/v1/organizations?q=Acme&limit=20'],
+    ]);
+    // 幂等键只落在 AddBlock 上
+    const post = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.method === 'POST')!;
+    expect(post.幂等).toBe(true);
+    expect(Object.keys(source)).not.toContain('读取候选岗位');
   });
 });

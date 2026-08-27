@@ -12,6 +12,12 @@ import type {
   BFF简历,
   BFFOwnerJob,
   BFFOwnerIntention,
+  BFF隐私组织屏蔽,
+  BFF隐私视图,
+  BFF隐私快照,
+  BFF隐私屏蔽回执,
+  BFF组织搜索项,
+  BFF组织搜索页,
 } from '../数据/BFF契约';
 import type { 在招岗位 } from '../数据/类型';
 
@@ -92,6 +98,12 @@ export const BFF岗位样本: BFFOwnerJob = {
   requirements: '在校生',
   keywords: ['Python'],
   private_screening_preferences: '',
+  hard_requirements: {
+    alternate_weekend_work: 'unknown',
+    outsourcing_only: 'not_required',
+    onsite_only: 'unknown',
+    frequent_travel: 'unknown',
+  },
   status: 'active',
   revision: 1,
   published_at: '2026-08-24T00:00:00Z',
@@ -218,4 +230,52 @@ export const BFF公开企业样本: BFF公开企业 = {
   verified_at: '2026-08-24T00:00:00Z',
   profile: BFF企业档案样本,
   active_verified_job_count: 2,
+};
+
+// ── 隐私域与组织搜索样本（P3 Task 1）──
+// 满足 BFF契约 的 closed DTO：PrivacyView 带 updated_at（wire 全视图），
+// PrivacySnapshot 只投影页面拥有的四字段；均为合成数据，无真实个人信息。
+
+export const BFF隐私组织屏蔽样本: BFF隐私组织屏蔽 = {
+  organization_id: 'org_block_1',
+  organization_display_name: '云衢科技',
+  organization_status: 'active',
+  source: 'manual',
+  created_at: '2026-08-24T00:00:00Z',
+};
+
+export const BFF隐私视图样本: BFF隐私视图 = {
+  employer_privacy_enabled: true,
+  disclosure_preferences: {
+    current_employer: 'never',
+    education: 'anonymous',
+    portfolio_links: 'anonymous',
+  },
+  organization_blocks: [BFF隐私组织屏蔽样本],
+  revision: 2,
+  updated_at: '2026-08-24T00:00:00Z',
+};
+
+export const BFF隐私快照样本: BFF隐私快照 = {
+  employer_privacy_enabled: true,
+  disclosure_preferences: BFF隐私视图样本.disclosure_preferences,
+  organization_blocks: BFF隐私视图样本.organization_blocks,
+  revision: 2,
+};
+
+export const BFF屏蔽回执样本: BFF隐私屏蔽回执 = {
+  organization_block: BFF隐私组织屏蔽样本,
+  privacy_revision: 3,
+  created_at: '2026-08-24T00:00:00Z',
+};
+
+export const BFF组织搜索项样本: BFF组织搜索项 = {
+  organization_id: 'org_1',
+  display_name: '云衢科技',
+  legal_name: '上海云衢科技有限公司',
+};
+
+export const BFF组织搜索页样本: BFF组织搜索页 = {
+  items: [BFF组织搜索项样本],
+  next_cursor: null,
 };

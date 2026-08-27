@@ -220,4 +220,45 @@ describe('组织数据源', () => {
       status: 200, code: 'invalid_response',
     });
   });
+
+  // P3：候选人组织搜索 —— q/limit/cursor 按序编码，结果只保留三个公开登记字段。
+  it('candidate organization search encodes q/cursor and strictly decodes the three public fields', async () => {
+    请求Mock.mockResolvedValueOnce({
+      result: { items: [{ organization_id: 'org_1', display_name: 'Acme', legal_name: 'Acme Ltd' }], next_cursor: null },
+      etag: null, requestId: 'r-search',
+    });
+    await expect(数据源.搜索组织({ q: 'Acme & Co', limit: 20, cursor: 'abc_DEF-12' })).resolves.toMatchObject({
+      items: [{ organization_id: 'org_1' }], next_cursor: null,
+    });
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/organizations?q=Acme%20%26%20Co&limit=20&cursor=abc_DEF-12',
+    });
+  });
+
+  it('搜索词、limit、cursor 越界直接拒绝且不发请求', async () => {
+    const 坏查询们 = [
+      { q: '   ' },                                  // trim 后空串
+      { q: '企'.repeat(201) },                       // 超过 200 个码点
+      { q: 'acme', limit: 0 },                       // limit 下限
+      { q: 'acme', limit: 51 },                      // limit 上限
+      { q: 'acme', limit: 2.5 },                     // 非整数 limit
+      { q: 'acme', cursor: 'a'.repeat(4097) },       // cursor 超 4096 字节
+    ];
+    for (const query of 坏查询们) {
+      await expect(数据源.搜索组织(query)).rejects.toMatchObject({ code: 'invalid_request' });
+    }
+    expect(请求Mock).not.toHaveBeenCalled();
+  });
+
+  it('组织搜索结果多字段 / items:null / 缺 next_cursor 都抛 invalid_response', async () => {
+    const 干净项 = { organization_id: 'org_1', display_name: 'Acme', legal_name: 'Acme Ltd' };
+    请求Mock.mockResolvedValueOnce({ result: { items: [{ ...干净项, status: 'active' }], next_cursor: null } });
+    await expect(数据源.搜索组织({ q: 'acme' })).rejects.toMatchObject({ code: 'invalid_response' });
+
+    请求Mock.mockResolvedValueOnce({ result: { items: null, next_cursor: null } });
+    await expect(数据源.搜索组织({ q: 'acme' })).rejects.toMatchObject({ code: 'invalid_response' });
+
+    请求Mock.mockResolvedValueOnce({ result: { items: [] } });
+    await expect(数据源.搜索组织({ q: 'acme' })).rejects.toMatchObject({ code: 'invalid_response' });
+  });
 });

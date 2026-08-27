@@ -5,9 +5,9 @@
 // 注：意向草稿型 当前形态与原 应用状态.tsx 中完全一致；Task 4 会再给它加
 // 后端招聘类型 / 求职类型已改 两个字段并改归约，本任务不动那两项。
 
-import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 在招岗位, 求职意向 } from './类型';
+import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 在招岗位, 求职意向, 披露项, 屏蔽项 } from './类型';
 import type { 求职初筛偏好, 求职薪资单位 } from '../流程/onboarding配置';
-import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob } from './BFF契约';
+import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF隐私快照 } from './BFF契约';
 
 // ── 分页目录查询（Task 1）：页面层只拿已选目录项的引用，不再全量预取 ──
 // 目录选择值 仍是 BFF目录引用，写入 body 里只带 id；页面层不感知后端返回的额外字段。
@@ -114,6 +114,20 @@ export interface 页面岗位快照 {
   列表: 在招岗位[];
   服务端: Record<string, BFFOwnerJob>;
 }
+
+/**
+ * P3：隐私页快照 —— wire PrivacyView 去掉 updated_at 后的页面投影。
+ * 状态层（Task 3）只认这四项页面自有字段；_revision 走 服务端.revision。
+ */
+export interface 页面隐私快照 {
+  对现雇主隐身: boolean;
+  披露偏好: 披露项[];
+  屏蔽名单: 屏蔽项[];
+  服务端: BFF隐私快照;
+}
+
+/** P3：候选人组织搜索查询。q 必填（trim 后 1–200 码点），limit 1–50，cursor ≤4096 字节 */
+export interface 组织搜索查询 { q: string; limit?: number; cursor?: string }
 
 export interface 后端会话快照 {
   已登录: boolean;

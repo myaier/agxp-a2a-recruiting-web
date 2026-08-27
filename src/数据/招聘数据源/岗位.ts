@@ -2,8 +2,9 @@
 // 从 HTTP招聘数据源 按真实后端 owner 拆出，协议代码（path / method / body / If-Match / 幂等 / 分页循环）
 // 原样搬移，不改 URL、body、DTO 校验或错误透传。接口失败绝不回退 Mock。
 
+import { BFF错误 } from '../HTTP客户端';
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
-import type { BFFOwnerJob } from '../BFF契约';
+import type { BFFOwnerJob, BFF硬性条件 } from '../BFF契约';
 import type { 后端环境 } from '../../配置/运行配置';
 import type { 岗位附属存储 } from '../前端附属数据';
 import type { 页面岗位快照, 岗位创建上下文 } from '../招聘数据源类型';
@@ -22,6 +23,28 @@ type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 
 function 修订etag(revision: number): string {
   return `"${revision}"`;
+}
+
+// ── P3：hard_requirements 完整性校验（fail closed）──
+// 只在权威 Owner Job 读页上校验；创建/PATCH 的响应体随后即被 读取岗位() 重读覆盖，不重复校验。
+// 缺员、未知档、多余成员都在状态层与映射层见到 DTO 之前按 invalid_response 拒绝，
+// 绝不缺省成 unknown 掩盖契约漂移。
+
+const 硬性条件必需键 = ['alternate_weekend_work', 'outsourcing_only', 'onsite_only', 'frequent_travel'] as const satisfies readonly (keyof BFF硬性条件)[];
+const 硬性档全表: readonly BFF硬性条件['alternate_weekend_work'][] = ['required', 'not_required', 'unknown'];
+
+function 是记录(值: unknown): 值 is Record<string, unknown> {
+  return typeof 值 === 'object' && 值 !== null && !Array.isArray(值);
+}
+
+/** exact key set + 闭合四员档位：多一字段、少一字段、坏一个枚举值都算契约漂移。 */
+function 校验硬性条件(值: unknown): void {
+  const 契约漂移 = () => new BFF错误(200, 'invalid_response', '服务返回了不符合契约的岗位硬性条件');
+  if (!是记录(值)) throw 契约漂移();
+  if (Object.keys(值).length !== 硬性条件必需键.length) throw 契约漂移();
+  for (const 键 of 硬性条件必需键) {
+    if (!硬性档全表.includes(值[键] as BFF硬性条件['alternate_weekend_work'])) throw 契约漂移();
+  }
 }
 
 export interface 岗位数据源 {
@@ -48,6 +71,8 @@ export function 创建岗位数据源(
         ? (`/api/v1/recruiter/jobs?cursor=${encodeURIComponent(cursor)}` as `/api/v1/${string}`)
         : '/api/v1/recruiter/jobs';
       const { result } = await 请求<BFF岗位页>({ path });
+      // 先校验四员硬性条件，再让 DTO 进入累积列表与映射层
+      for (const dto of result.jobs) 校验硬性条件(dto.hard_requirements);
       全部.push(...result.jobs);
       cursor = result.next_cursor ?? undefined;
       if (!cursor) break;

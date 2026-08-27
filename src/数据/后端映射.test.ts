@@ -168,6 +168,34 @@ describe('候选人后端映射', () => {
     });
   });
 
+  // P3：hard_requirements 完整四员对象在 owner 读与创建/补丁写之间往返，不丢成员也不造默认值。
+  it('hard_requirements complete object round-trips through owner mapping and writes', () => {
+    const dto = {
+      ...BFF岗位样本,
+      hard_requirements: {
+        alternate_weekend_work: 'required' as const,
+        outsourcing_only: 'not_required' as const,
+        onsite_only: 'unknown' as const,
+        frequent_travel: 'required' as const,
+      },
+    };
+    const 页面 = 从BFF岗位(dto, {});
+    expect(页面.硬性事实).toEqual({ 大小周: '必须', 纯外包乙方: '不要求', 全现场办公: '未说明', 频繁出差: '必须' });
+    expect(转岗位创建(页面, 直接发岗上下文('Acme')).hard_requirements).toEqual(dto.hard_requirements);
+    expect(转岗位补丁(页面, dto).hard_requirements).toEqual(dto.hard_requirements);
+  });
+
+  // 页面没有 硬性事实（老 Mock 岗）时不硬造四员对象：创建 body 缺省，补丁沿用服务端值由缺省表达。
+  it('无硬性事实的页面岗位不向 body 写 hard_requirements', () => {
+    const 带引用 = {
+      ...页面岗位样本,
+      类别引用: { id: 'tax_product', display_name: '产品经理' },
+      地点引用: { id: 'loc_shanghai', display_name: '上海' },
+    };
+    expect('hard_requirements' in 转岗位创建(带引用, 直接发岗上下文('云衢科技'))).toBe(false);
+    expect('hard_requirements' in 转岗位补丁(带引用, BFF岗位样本)).toBe(false);
+  });
+
   it('已加载的校园/实习意向在用户没切招聘类型时保留原类型', () => {
     const 草稿: 意向草稿型 = {
       ...空草稿,

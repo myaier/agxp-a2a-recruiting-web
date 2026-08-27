@@ -24,7 +24,10 @@ import type {
   BFF目录引用,
   BFF招聘方档案,
   BFF招聘方档案补丁,
+  BFF组织搜索页,
+  BFF组织搜索项,
 } from '../BFF契约';
+import type { 组织搜索查询 } from '../招聘数据源类型';
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 
@@ -42,6 +45,8 @@ export interface 组织数据源 {
   上传企业媒体(organizationId: string, purpose: BFF企业媒体用途, file: File): Promise<BFF企业媒体>;
   删除企业媒体(organizationId: string, mediaId: string): Promise<void>;
   读取公开企业(organizationId: string): Promise<BFF公开企业>;
+  /** P3：候选人按名称搜索活跃组织（屏蔽/授权选择器用）；结果只有三个公开登记字段。 */
+  搜索组织(query: 组织搜索查询): Promise<BFF组织搜索页>;
 }
 
 // ── 本域小 guard：只写组织域需要的几个断言，不引入第三方 validator ──
@@ -243,6 +248,47 @@ function 解公开企业(input: unknown): BFF公开企业 {
   };
 }
 
+// ── P3：候选人组织搜索（GET /api/v1/organizations）──
+
+/** 请求侧参数越界属客户端校验失败：发请求前就拒绝，绝不打线上。 */
+function 请求校验错误(message: string): BFF错误 {
+  return new BFF错误(0, 'invalid_request', message);
+}
+
+const 组织搜索项必需键 = ['organization_id', 'display_name', 'legal_name'] as const;
+
+function 解组织搜索项(input: unknown): BFF组织搜索项 {
+  const raw = 要求闭合对象(input, 组织搜索项必需键);
+  return {
+    organization_id: 要求字符串(raw.organization_id),
+    display_name: 要求字符串(raw.display_name),
+    legal_name: 要求字符串(raw.legal_name),
+  };
+}
+
+function 解组织搜索页(input: unknown): BFF组织搜索页 {
+  const raw = 要求闭合对象(input, ['items', 'next_cursor'] as const);
+  return {
+    items: 要求数组(raw.items).map(解组织搜索项),
+    next_cursor: 要求可空字符串(raw.next_cursor),
+  };
+}
+
+/**
+ * 服务端判断条件按 OpenAPI 冻结在客户端先行一遍：
+ * q trim 后 1–200 个 Unicode 码点；limit 整数且 1–50；cursor ≤4096 字节。
+ */
+function 校验组织搜索查询(query: 组织搜索查询): void {
+  const 码点数 = Array.from(query.q.trim()).length;
+  if (码点数 < 1 || 码点数 > 200) throw 请求校验错误('搜索词需为 1–200 个字符');
+  if (query.limit !== undefined && (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > 50)) {
+    throw 请求校验错误('每页数量需为 1–50 的整数');
+  }
+  if (query.cursor !== undefined && new TextEncoder().encode(query.cursor).byteLength > 4096) {
+    throw 请求校验错误('翻页游标已失效，请回到第一页重新搜索');
+  }
+}
+
 function 修订etag(revision: number): string {
   return `"${revision}"`;
 }
@@ -348,6 +394,17 @@ export function 创建组织数据源(请求: 请求函数): 组织数据源 {
     async 读取公开企业(organizationId) {
       const { result } = await 请求<unknown>({ path: `/api/v1/organizations/${organizationId}` });
       return 解公开企业(result);
+    },
+    async 搜索组织(query) {
+      校验组织搜索查询(query);
+      // query 顺序冻结为 q,limit,cursor；空格用 %20（与后端示例一致，不用 URLSearchParams 的 +）。
+      const 参数们 = [
+        `q=${encodeURIComponent(query.q)}`,
+        ...(query.limit !== undefined ? [`limit=${query.limit}`] : []),
+        ...(query.cursor !== undefined ? [`cursor=${encodeURIComponent(query.cursor)}`] : []),
+      ];
+      const { result } = await 请求<unknown>({ path: `/api/v1/organizations?${参数们.join('&')}` });
+      return 解组织搜索页(result);
     },
   };
 }

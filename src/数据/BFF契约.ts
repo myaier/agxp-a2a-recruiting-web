@@ -173,6 +173,9 @@ export interface BFFOwnerJob {
   onsite_days_per_week: number | null;
   experience_requirement: string;
   education_requirement: string;
+  // P3：四问硬性事实块 —— 服务端 Owner Job / Candidate Job 均必返完整四员（OpenAPI HardRequirements），
+  // 读到不完整对象按契约漂移 fail closed，绝不缺省成 unknown。
+  hard_requirements: BFF硬性条件;
   description: string;
   requirements: string;
   keywords: string[];
@@ -182,6 +185,70 @@ export interface BFFOwnerJob {
   published_at: string;
   created_at: string;
   updated_at: string;
+}
+
+// ── P3：隐私域 / 候选人组织搜索 / 硬性条件 DTO ──
+// 字段名与闭合 enum 逐项复制自 recruitment-bff OpenAPI 的
+// PrivacyView / PrivacyPatch / PrivacyBlockReceipt / OrganizationSearchPage / HardRequirements。
+
+export type BFF披露档 = 'never' | 'resume_submission' | 'anonymous';
+export type BFF屏蔽来源 = 'current_employer' | 'related_organization' | 'manual';
+export type BFF硬性要求档 = 'required' | 'not_required' | 'unknown';
+
+export interface BFF披露偏好 {
+  current_employer: BFF披露档;
+  education: BFF披露档;
+  portfolio_links: BFF披露档;
+}
+export interface BFF隐私组织屏蔽 {
+  organization_id: string;
+  organization_display_name: string;
+  organization_status: 'active' | 'suspended';
+  source: BFF屏蔽来源;
+  created_at: string;
+}
+export interface BFF隐私视图 {
+  employer_privacy_enabled: boolean;
+  disclosure_preferences: BFF披露偏好;
+  organization_blocks: BFF隐私组织屏蔽[];
+  revision: number;
+  updated_at: string;
+}
+export type BFF隐私快照 = Pick<BFF隐私视图,
+  'employer_privacy_enabled' | 'disclosure_preferences' | 'organization_blocks' | 'revision'>;
+export interface BFF隐私补丁 {
+  employer_privacy_enabled?: boolean;
+  disclosure_preferences?: Partial<BFF披露偏好>;
+}
+export interface BFF隐私屏蔽回执 {
+  organization_block: BFF隐私组织屏蔽;
+  privacy_revision: number;
+  created_at: string;
+}
+export interface BFF组织搜索项 { organization_id: string; display_name: string; legal_name: string }
+export interface BFF组织搜索页 { items: BFF组织搜索项[]; next_cursor: string | null }
+export interface BFF硬性条件 {
+  alternate_weekend_work: BFF硬性要求档;
+  outsourcing_only: BFF硬性要求档;
+  onsite_only: BFF硬性要求档;
+  frequent_travel: BFF硬性要求档;
+}
+
+/**
+ * Candidate Job 的编译期闭类型：owner-private 列（publisher_mode / affiliation ref /
+ * private_screening_preferences）显式 Omit，status 收敛为 active，四员硬性条件必在。
+ * P3 只保留类型边界 —— 无 fixture、无请求方法、无运行时 decoder；P4 有消费方再放开。
+ */
+export interface BFFCandidateJob extends Omit<BFFOwnerJob,
+  'publisher_mode' | 'publisher_affiliation_ref' | 'private_screening_preferences' | 'status'> {
+  publisher_profile?: {
+    public_name: string;
+    title: string;
+    personal_verification_status: 'unverified' | 'verified';
+    avatar_url?: string | null;
+  };
+  status: 'active';
+  hard_requirements: BFF硬性条件;
 }
 
 // ── 组织域 DTO（P1C：RecruiterProfile / Affiliation / 企业管理员申请 / 企业档案与媒体）──
@@ -377,6 +444,9 @@ export interface BFF岗位创建 {
   onsite_days_per_week?: number | null;
   experience_requirement: string;
   education_requirement: string;
+  // P3：创建 body 里四员块整体可选（OpenAPI JobCreate 不在 required），
+  // 缺省 = 服务端按全 unknown 处理；BFF岗位补丁 经 Partial 继承整个对象的补丁形态。
+  hard_requirements?: BFF硬性条件;
   description: string;
   requirements: string;
   keywords?: string[];
