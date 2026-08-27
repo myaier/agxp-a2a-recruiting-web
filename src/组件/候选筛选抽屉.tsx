@@ -4,6 +4,11 @@
 // 关掉就没了，等于白说。所以这一层是「给代理的硬性要求」清单：企业规则一排一条，
 // 每行一个输入框，可改、可删、可新增，改完失焦当场落进规则库，下一轮代理照它筛。
 //
+// P6 模式边界：写规则的入口收敛到 企业代理设置（canonical，右上「管理规则 ›」）。
+// Backend 下这一层转只读 —— 权威企业规则按行展示为纯文本，无输入、无删除、无新增；
+// 且与 规则库 同一口径：recruiter rules 未水合前不出清单，宁缺勿错。
+// Mock 保持原型交互原样：可改、可删、可新增，失焦即落库。
+//
 // 因此这里没有城市 / 学历 / 求职状态那类档位选项 —— 档位是把要求压成平台预设的几档，
 // 而规则行让用户用自己的话写（「必须双休」这类要求没有任何档位表达得了）。
 //
@@ -18,8 +23,12 @@ import { 路径 } from '../路由/路径表';
 import 弹层框架 from './弹层框架';
 
 export default function 候选筛选抽屉({ 关闭 }: { 关闭: () => void }) {
-  const { 状态, 派发 } = use应用状态();
+  const { 状态, 派发, 数据源模式, 后端状态 } = use应用状态();
   const { 跳转 } = use导航();
+
+  // P6：Backend 只读；权威规则展示同 规则库 门控 —— rules 成功前不出清单
+  const 是Backend = 数据源模式 === 'backend';
+  const 可显示规则 = 数据源模式 === 'mock' || 后端状态.Agent规则水合.recruiter.rules === '成功';
 
   // 只存被改动过的那几行；没动过的行直接显示规则库里的原值，避免打开层就整份复制一遍
   const [编辑文本, 设编辑文本] = useState<Record<string, string>>({});
@@ -73,55 +82,68 @@ export default function 候选筛选抽屉({ 关闭 }: { 关闭: () => void }) {
         </div>
 
         <div className={`${样式.内容区} 滚动区`}>
-          {状态.企业规则.map((条) => (
-            <div key={条.编号} className={样式.规则行}>
-              <input
-                className={样式.规则输入}
-                value={编辑文本[条.编号] ?? 条.内容}
-                enterKeyHint="done"
-                onChange={(事件) =>
-                  设编辑文本({ ...编辑文本, [条.编号]: 事件.target.value })
-                }
-                onBlur={() => 提交编辑(条.编号, 条.内容)}
-                onKeyDown={回车即失焦}
-              />
-              <button
-                className={`${样式.删行} 可点`}
-                onClick={() => 派发({ 型: '企业删规则', 编号: 条.编号 })}
-                aria-label={`删除规则 ${条.内容}`}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+          {是Backend ? (
+            // Backend：权威企业规则按行展示为纯文本 —— 增改删一律去 企业代理设置
+            (可显示规则
+              ? 状态.企业规则.map((条) => (
+                  <div key={条.编号} className={样式.规则只读行}>
+                    {条.内容}
+                  </div>
+                ))
+              : null)
+          ) : (
+            <>
+              {状态.企业规则.map((条) => (
+                <div key={条.编号} className={样式.规则行}>
+                  <input
+                    className={样式.规则输入}
+                    value={编辑文本[条.编号] ?? 条.内容}
+                    enterKeyHint="done"
+                    onChange={(事件) =>
+                      设编辑文本({ ...编辑文本, [条.编号]: 事件.target.value })
+                    }
+                    onBlur={() => 提交编辑(条.编号, 条.内容)}
+                    onKeyDown={回车即失焦}
+                  />
+                  <button
+                    className={`${样式.删行} 可点`}
+                    onClick={() => 派发({ 型: '企业删规则', 编号: 条.编号 })}
+                    aria-label={`删除规则 ${条.内容}`}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
 
-          {新行 !== null ? (
-            <div className={样式.规则行}>
-              <input
-                className={样式.规则输入}
-                value={新行}
-                autoFocus
-                enterKeyHint="done"
-                onChange={(事件) => 设新行(事件.target.value)}
-                onBlur={提交新行}
-                onKeyDown={回车即失焦}
-              />
-              {/* 按下就失焦会先触发 提交新行，那样点 ✕ 反而把这行存下来了；
-                  拦掉 mousedown 的默认行为，保证 ✕ 的语义就是丢弃这一行 */}
-              <button
-                className={`${样式.删行} 可点`}
-                onMouseDown={(事件) => 事件.preventDefault()}
-                onClick={() => 设新行(null)}
-                aria-label="放弃这一条"
-              >
-                ✕
-              </button>
-            </div>
-          ) : null}
+              {新行 !== null ? (
+                <div className={样式.规则行}>
+                  <input
+                    className={样式.规则输入}
+                    value={新行}
+                    autoFocus
+                    enterKeyHint="done"
+                    onChange={(事件) => 设新行(事件.target.value)}
+                    onBlur={提交新行}
+                    onKeyDown={回车即失焦}
+                  />
+                  {/* 按下就失焦会先触发 提交新行，那样点 ✕ 反而把这行存下来了；
+                      拦掉 mousedown 的默认行为，保证 ✕ 的语义就是丢弃这一行 */}
+                  <button
+                    className={`${样式.删行} 可点`}
+                    onMouseDown={(事件) => 事件.preventDefault()}
+                    onClick={() => 设新行(null)}
+                    aria-label="放弃这一条"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : null}
 
-          <button className={`${样式.添加行} 可点`} onClick={() => 设新行('')}>
-            ＋ 添加规则
-          </button>
+              <button className={`${样式.添加行} 可点`} onClick={() => 设新行('')}>
+                ＋ 添加规则
+              </button>
+            </>
+          )}
         </div>
 
         {/* 每一行都是即时落库，所以底部这一键只负责收起来 */}

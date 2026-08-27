@@ -18,6 +18,11 @@
 // 用户写下的是长期规则、不是一次性档位，所以这一屏不再做任何本地档位过滤 ——
 // 城市 / 办公方式 / 公司类型 / 薪资带交集那一套连同 过筛选 都已删掉，
 // 列表里的岗位就是代理按规则筛过之后的结果。
+//
+// P6 模式边界：写规则的入口收敛到 规则库（canonical，层内右上「管理规则 ›」）。
+// Backend 下筛选层转只读 —— 权威规则按行展示为纯文本，无输入、无删除、无新增，
+// 且与 规则库 同一口径：candidate rules 未水合前不出清单，角标数同样不出（宁缺勿错）。
+// Mock 保持原型交互原样。
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import 弹层框架 from '../组件/弹层框架';
@@ -42,7 +47,7 @@ function 命中搜索(岗: 市场职位, 关键词: string): boolean {
 }
 
 export default function 看市场() {
-  const { 状态, 派发 } = use应用状态();
+  const { 状态, 派发, 数据源模式, 后端状态 } = use应用状态();
   const { 跳转 } = use导航();
 
   const [搜索展开, 设搜索展开] = useState(false);
@@ -98,8 +103,13 @@ export default function 看市场() {
     [本意向市场, 关键词]
   );
 
-  // 顶栏「筛选 ▾」右上角的数字 = 代理正在生效的规则条数（不再是本地档位维度数）
-  const 生效规则数 = [...状态.全局规则, ...状态.意向级规则].filter((条) => 条.生效).length;
+  // 顶栏「筛选 ▾」右上角的数字 = 代理正在生效的规则条数（不再是本地档位维度数）。
+  // P6：Backend 只认已水合的权威规则 —— candidate rules 未水合时不出角标数，
+  // 宁可少显示一个数字，也不把 Mock 种子数当真（与 规则库 门控同一口径）。
+  const 可显示候选规则数 = 数据源模式 === 'mock' || 后端状态.Agent规则水合.candidate.rules === '成功';
+  const 生效规则数 = 可显示候选规则数
+    ? [...状态.全局规则, ...状态.意向级规则].filter((条) => 条.生效).length
+    : 0;
 
   // 需要你协调的条数从在谈列表实时算，横幅文案与「在谈」子视图保持一致，
   // 免得同一句话在两个子视图里给出不同数字。
@@ -215,10 +225,17 @@ function 空结果({ 搜索词, 问代理 }: { 搜索词: string; 问代理: () 
  * 关掉就没了，等于白说。所以这一层是规则清单：全局规则 + 意向级规则一排一条，
  * 每行一个输入框，可改、可删、可新增，改完失焦当场落进规则库，下一轮代理照它筛。
  * 与企业端 候选筛选抽屉 同构，只换数据源与「管理规则」的去处。
+ *
+ * P6 模式边界：Backend 下这一层转只读 —— 权威规则按行展示为纯文本，无输入、无删除、
+ * 无新增；rules 未水合前不出清单（宁缺勿错）。Mock 保持原型交互原样。
  */
 function 筛选层({ 关闭 }: { 关闭: () => void }) {
-  const { 状态, 派发 } = use应用状态();
+  const { 状态, 派发, 数据源模式, 后端状态 } = use应用状态();
   const { 跳转 } = use导航();
+
+  // P6：Backend 只读；权威规则展示同 规则库 门控 —— rules 成功前不出清单
+  const 是Backend = 数据源模式 === 'backend';
+  const 可显示规则 = 数据源模式 === 'mock' || 后端状态.Agent规则水合.candidate.rules === '成功';
 
   // 只存被改动过的那几行；没动过的行直接显示规则库里的原值，避免打开层就整份复制一遍
   const [编辑文本, 设编辑文本] = useState<Record<string, string>>({});
@@ -270,53 +287,67 @@ function 筛选层({ 关闭 }: { 关闭: () => void }) {
         </div>
 
         <div className={`${样式.筛选内容} 滚动区`}>
-          {规则清单.map((条) => (
-            <div key={条.编号} className={样式.规则行}>
-              <input
-                className={样式.规则输入}
-                value={编辑文本[条.编号] ?? 条.内容}
-                enterKeyHint="done"
-                onChange={(事件) => 设编辑文本({ ...编辑文本, [条.编号]: 事件.target.value })}
-                onBlur={() => 提交编辑(条.编号, 条.内容)}
-                onKeyDown={回车即失焦}
-              />
-              <button
-                className={`${样式.删行} 可点`}
-                onClick={() => 派发({ 型: '删规则', 编号: 条.编号 })}
-                aria-label={`删除规则 ${条.内容}`}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+          {是Backend ? (
+            // Backend：权威规则按行展示为纯文本（版式借用 .规则输入 的行外观）——
+            // 增改删一律去 规则库（右上 管理规则 ›），本层不提供任何写入口
+            (可显示规则
+              ? 规则清单.map((条) => (
+                  <div key={条.编号} className={`${样式.规则行} ${样式.规则输入}`}>
+                    {条.内容}
+                  </div>
+                ))
+              : null)
+          ) : (
+            <>
+              {规则清单.map((条) => (
+                <div key={条.编号} className={样式.规则行}>
+                  <input
+                    className={样式.规则输入}
+                    value={编辑文本[条.编号] ?? 条.内容}
+                    enterKeyHint="done"
+                    onChange={(事件) => 设编辑文本({ ...编辑文本, [条.编号]: 事件.target.value })}
+                    onBlur={() => 提交编辑(条.编号, 条.内容)}
+                    onKeyDown={回车即失焦}
+                  />
+                  <button
+                    className={`${样式.删行} 可点`}
+                    onClick={() => 派发({ 型: '删规则', 编号: 条.编号 })}
+                    aria-label={`删除规则 ${条.内容}`}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
 
-          {新行 !== null ? (
-            <div className={样式.规则行}>
-              <input
-                className={样式.规则输入}
-                value={新行}
-                autoFocus
-                enterKeyHint="done"
-                onChange={(事件) => 设新行(事件.target.value)}
-                onBlur={提交新行}
-                onKeyDown={回车即失焦}
-              />
-              {/* 按下就失焦会先触发 提交新行，那样点 ✕ 反而把这行存下来了；
-                  拦掉 mousedown 的默认行为，保证 ✕ 的语义就是丢弃这一行 */}
-              <button
-                className={`${样式.删行} 可点`}
-                onMouseDown={(事件) => 事件.preventDefault()}
-                onClick={() => 设新行(null)}
-                aria-label="放弃这一条"
-              >
-                ✕
-              </button>
-            </div>
-          ) : null}
+              {新行 !== null ? (
+                <div className={样式.规则行}>
+                  <input
+                    className={样式.规则输入}
+                    value={新行}
+                    autoFocus
+                    enterKeyHint="done"
+                    onChange={(事件) => 设新行(事件.target.value)}
+                    onBlur={提交新行}
+                    onKeyDown={回车即失焦}
+                  />
+                  {/* 按下就失焦会先触发 提交新行，那样点 ✕ 反而把这行存下来了；
+                      拦掉 mousedown 的默认行为，保证 ✕ 的语义就是丢弃这一行 */}
+                  <button
+                    className={`${样式.删行} 可点`}
+                    onMouseDown={(事件) => 事件.preventDefault()}
+                    onClick={() => 设新行(null)}
+                    aria-label="放弃这一条"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : null}
 
-          <button className={`${样式.添加行} 可点`} onClick={() => 设新行('')}>
-            ＋ 添加规则
-          </button>
+              <button className={`${样式.添加行} 可点`} onClick={() => 设新行('')}>
+                ＋ 添加规则
+              </button>
+            </>
+          )}
         </div>
 
         {/* 每一行都是即时落库，所以底部这一键只负责收起来 */}

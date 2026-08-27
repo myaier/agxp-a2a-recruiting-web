@@ -58,8 +58,13 @@ function 取统计色(色名: string): string {
 
 export default function 企业我的() {
   const { 跳转 } = use导航();
-  const { 状态, 派发, 数据源模式 } = use应用状态();
+  const { 状态, 派发, 数据源模式, 后端状态 } = use应用状态();
   const 在招数 = 状态.岗位列表.filter((岗) => 岗.状态 === '在招').length;
+
+  // P6：规则计数只认已水合的权威规则 —— Backend 未水合时不出计数（宁缺勿错，
+  // 不把 Mock 种子数当真，与 企业代理设置 门控同一口径）
+  const 可显示招聘规则数 = 数据源模式 === 'mock' || 后端状态.Agent规则水合.recruiter.rules === '成功';
+  const 生效规则数 = 状态.企业规则.filter((条) => 条.生效).length;
 
   // P1C：Backend 只读 从BFF招聘身份() 的 view model（不直接解释 DTO），
   // 公司 = current affiliation / 未认证声明；个人与任职状态分开、显式判定，
@@ -205,8 +210,11 @@ export default function 企业我的() {
             <span className={样式.在线点} />
           </span>
           <span className={`${样式.代理状态} 单行`}>
-            在线 · 正为 {在招数} 个岗位并行寻访 · 规则{' '}
-            {状态.企业规则.filter((条) => 条.生效).length} 条生效
+            在线 · 正为 {在招数} 个岗位并行寻访
+            {/* 规则计数未水合时（Backend）整段不出，不渲染 0 也不拿 Mock 数充数 */}
+            {可显示招聘规则数 ? (
+              <> · 规则 {生效规则数} 条生效</>
+            ) : null}
           </span>
         </span>
         <span className={样式.管理}>管理 ›</span>

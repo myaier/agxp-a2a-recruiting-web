@@ -23,7 +23,7 @@ import { use应用状态 } from '../状态/应用状态';
 
 export default function 企业代理详情() {
   const { 返回, 跳转 } = use导航();
-  const { 状态, 派发 } = use应用状态();
+  const { 状态, 派发, 数据源模式, 后端状态 } = use应用状态();
   const 已接入 = 状态.企业飞书已接入;
   const 设已接入 = (接入: boolean) => 派发({ 型: '设企业飞书接入', 接入 });
   // 接入通道：默认命令行；点「飞书扫码」码才生成/刷新（切换即重挂）
@@ -36,7 +36,12 @@ export default function 企业代理详情() {
     return () => window.clearTimeout(定时);
   }, [提示]);
 
-  const 生效规则数 = 状态.企业规则.filter((条) => 条.生效).length;
+  // P6：规则计数只认已水合的权威规则 —— Backend 未水合时不出计数（宁缺勿错，
+  // 不把 Mock 种子数当真，与 企业代理设置 门控同一口径）
+  const 可显示招聘规则数 = 数据源模式 === 'mock' || 后端状态.Agent规则水合.recruiter.rules === '成功';
+  const 生效规则数 = 可显示招聘规则数
+    ? 状态.企业规则.filter((条) => 条.生效).length
+    : null;
   const 在谈数 = 状态.企业候选列表.length;
 
   return (
@@ -63,10 +68,13 @@ export default function 企业代理详情() {
             <span className={`${样式.数} 等宽数字`}>{在谈数}</span>
             <span className={样式.数名}>正在代谈</span>
           </div>
-          <div className={样式.数项}>
-            <span className={`${样式.数} 等宽数字`}>{生效规则数}</span>
-            <span className={样式.数名}>条规则生效</span>
-          </div>
+          {/* 规则计数未水合时整格不出（Backend），不渲染 0 也不拿 Mock 数充数 */}
+          {生效规则数 !== null ? (
+            <div className={样式.数项}>
+              <span className={`${样式.数} 等宽数字`}>{生效规则数}</span>
+              <span className={样式.数名}>条规则生效</span>
+            </div>
+          ) : null}
           <div className={样式.数项}>
             <span className={`${样式.数} 等宽数字`}>186</span>
             <span className={样式.数名}>累计筛过候选</span>
@@ -154,7 +162,7 @@ export default function 企业代理详情() {
         {/* 权限边界三卡按标注 2026-08-24 整段删除（「把下面它的边界直接删了」）*/}
 
         <button className={`${样式.规则键} 可点`} onClick={() => 跳转(路径.企业代理设置)}>
-          管理代理规则（{生效规则数} 条生效）›
+          {生效规则数 !== null ? `管理代理规则（${生效规则数} 条生效）›` : '管理代理规则 ›'}
         </button>
       </滚动区>
 
