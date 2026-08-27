@@ -45,6 +45,12 @@ function 创建岗位测试依赖(input: {
     后端状态引用: { current: {
       初始化: '完成' as const, 已登录: true, 主体: null, 简历快照: null, 意向快照: {}, 岗位快照: {},
       隐私快照: null,
+      // P6：Task 3 起 后端状态 携带 Agent 规则原始快照与水合阶段（这里的用例不触达它们）
+      候选规则快照: {}, 招聘规则快照: {}, 候选规则提案: {}, 招聘规则提案: {},
+      Agent规则水合: {
+        candidate: { rules: '未开始', proposals: '未开始' },
+        recruiter: { rules: '未开始', proposals: '未开始' },
+      },
     } },
     锁: { current: new Set<string>() }, 尝试引用: { current: null }, 是后端: true,
   } satisfies 后端操作依赖;
