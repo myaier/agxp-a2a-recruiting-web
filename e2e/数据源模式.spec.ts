@@ -16,6 +16,12 @@
 // P1C（Task 6）：追加组织域 fixture —— RecruiterProfile / Affiliation / 公开企业 / 企业档案与媒体 /
 // 管理员申请 / owner Jobs。multipart 请求（头像 / 企业媒体 / 管理员申请证据）不用 JSON parser 解整体，
 // 按 content-type boundary 取 part 名；metadata part 内容只在测试进程内比对，不写日志、不进 snapshot。
+//
+// P6（Task 8）：追加 Agent 规则域可变 fixture —— agent-rules / agent-rule-proposals 双角色。
+// 清单一律两页翻页；解读中提案在第二次单项 GET 转 ready；pause/resume 各自推进版本；
+// 新规则/替换规则只在 accept 时物化；archive 只认当前版本 If-Match；409/503/响应丢失
+// 由专用 fixture ID 选择固定分支。变更回执（body / If-Match / Idempotency-Key）存在
+// fixture 的 mutationRequests 里供测试断言；Mock 场景断言 P6 域全程零 /api/v1 请求。
 
 import { expect, test, type Page, type Route } from '@playwright/test';
 
@@ -69,6 +75,72 @@ test.describe('Mock 数据源回归 @mock', () => {
     // 没有任何 /api/v1 请求（Mock 模式零 API）
     expect(apiRequests).toEqual([]);
   });
+
+  test('Mock 规则页与双端筛选抽屉全程零 API 请求 @mock', async ({ page }) => {
+    // P6（Task 8）：双端规则页（/rules、/hr/agent-settings）+ 双端筛选抽屉（看市场 / 候选推荐）
+    // 在 Mock 下全部走本地状态；本地新增/开关/编辑各做一次，断言 P6 的 agent-rule 请求恒为零。
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '微信登录' }).click();
+    await expect(page).toHaveURL(/#\/identity$/);
+    await page.getByRole('button', { name: '我要找工作' }).click();
+    await expect(page).toHaveURL(/#\/student$/);
+
+    // ── /rules：Mock 种子规则直接上屏（5 条种子里 1 条默认停用 → 生效计数 4）──
+    await page.goto('/#/rules');
+    await expect(page.getByText('不主动披露并行接触数量')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('双休是底线；隔周六可谈，大小周不谈')).toBeVisible();
+    await expect(page.getByText('4 条')).toBeVisible();
+
+    // ── 候选端市场筛选抽屉：本地新增一条规则（失焦即落库，不发请求）──
+    await page.goto('/#/app');
+    await page.getByRole('button', { name: '市场', exact: true }).click();
+    // 筛选键带生效条数（规则 > 0 时是「筛选 · N ▾」）
+    await page.getByRole('button', { name: /筛选.*▾/ }).click();
+    await expect(page.getByText('告诉AI代理你的硬性要求')).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '＋ 添加规则' }).click();
+    // 新增行自动聚焦且排在既有行之后；回车即失焦落库，回规则库核对真的进了清单
+    const 候选新行 = page.getByRole('dialog').getByRole('textbox').last();
+    await 候选新行.fill('只投双休岗位');
+    await 候选新行.press('Enter');
+    await page.goto('/#/rules');
+    await expect(page.getByRole('button', { name: /只投双休岗位/ })).toBeVisible({ timeout: 10_000 });
+
+    // ── 切到招聘端：/hr/agent-settings 的 Mock 开关一次翻转 ──
+    await page.goto('/#/identity?switch=1&from=app');
+    await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
+    await page.goto('/#/hr/agent-settings');
+    const 规则开关 = page.getByRole('switch', { name: '规则：竞对在职候选人不接触、不推进' });
+    await expect(规则开关).toBeVisible({ timeout: 10_000 });
+    await expect(规则开关).toHaveAttribute('aria-checked', 'true');
+    await 规则开关.click();
+    await expect(规则开关).toHaveAttribute('aria-checked', 'false');
+    await expect(page.getByText('2 条生效')).toBeVisible();
+
+    // ── 招聘端候选筛选抽屉（推荐子视图）：本地改一条规则 ──
+    await page.goto('/#/hr');
+    await page.getByRole('button', { name: '推荐', exact: true }).click();
+    await page.getByRole('button', { name: /筛选.*▾/ }).click();
+    await expect(page.getByText('告诉AI代理你的硬性要求')).toBeVisible({ timeout: 10_000 });
+    // 企业规则种子首行是「不透露 HC 剩余数量与紧迫度」，就地改写后回车落库，去 canonical 页核对
+    const 招聘规则行 = page.getByRole('dialog').getByRole('textbox').first();
+    await expect(招聘规则行).toHaveValue('不透露 HC 剩余数量与紧迫度');
+    await 招聘规则行.fill('不透露 HC 剩余数量与紧迫度（改）');
+    await 招聘规则行.press('Enter');
+    await page.goto('/#/hr/agent-settings');
+    await expect(page.getByText('不透露 HC 剩余数量与紧迫度（改）')).toBeVisible({ timeout: 10_000 });
+
+    // P6 域在 Mock 下零请求：agent-rule 一个都没有，整个会话也没有任何 /api/v1
+    expect(apiRequests.filter((url) => url.includes('agent-rule'))).toEqual([]);
+    expect(apiRequests).toEqual([]);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,6 +170,154 @@ function 目录页<T extends { id: string; display_name: string }>(items: T[]): 
   catalog_version: string;
 } {
   return { items, next_cursor: null, catalog_version: 'fixture-v1' };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P6 Agent 规则域 fixture（Task 8）。wire 形与其他 fixture 一样就地声明，不反向依赖 src；
+// 标记值只存在于 fixture，断言页面展示它们即证明渲染来自 HTTP 而非 Mock。
+// 可变状态（规则 / 提案 / 读取计数 / 变更回执）归每次 安装BFF路由 所有，页面写入只影响本测试。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** P6 wire 规则形（与 BFF契约.BFFAgent规则 同构；fixture 不伪造缺失键，解码器按闭合契约拒收） */
+interface P6Rule {
+  rule_id: string;
+  version: number;
+  state: 'active' | 'paused' | 'archived';
+  scope: { type: 'global' } | { type: 'intention'; intention_id: string };
+  clause_kinds: string[];
+  display_text: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** P6 wire 提案形（与 BFF契约.BFFAgent规则提案 同构；interpreting 可带 created_at 但永不带正文） */
+interface P6Proposal {
+  proposal_id: string;
+  state: 'interpreting' | 'ready' | 'accepted' | 'dismissed' | 'failed';
+  normalized_text?: string;
+  consequence?: 'auto_allow' | 'auto_deny' | 'advisory' | 'mixed';
+  created_at?: string;
+}
+
+interface P6FixtureState {
+  rules: Record<'candidate' | 'recruiter', P6Rule[]>;
+  proposals: Record<'candidate' | 'recruiter', P6Proposal[]>;
+  proposalReads: Record<string, number>;
+  mutationRequests: { method: string; path: string; body: unknown; ifMatch: string | null; idempotencyKey: string | null }[];
+}
+
+const P6标记 = {
+  意向编号: 'int_00112233445566778899aabbccddeec1',
+  候选全局规则: '不投单休大小周的公司（fixture 全局规则）',
+  候选意向规则: '只看 Fixture 市的产品岗（fixture 意向规则）',
+  招聘全局规则: '到岗超过 60 天的候选先不推进（fixture 规则）',
+  冲突规则: '薪资低于 30K 的岗位自动跳过（fixture 冲突规则）',
+  就绪提案正文: '命中大小周的岗位自动排除（fixture 就绪提案）',
+  解读完成正文: '优先推进薪酬透明的岗位（fixture 解读完成）',
+  不可接受提案正文: '只和讲清楚的招聘方谈（fixture 不可执行提案）',
+  丢失提案正文: '晚上十点后不聊工作（fixture 响应丢失提案）',
+  未知提案正文: '只看给缴社保的岗位（fixture 结果未知提案）',
+  全局新建草稿: '不接受外包岗位（fixture 新建规则）',
+  意向新建草稿: '只和 Fixture 市的岗位谈（fixture 意向新建）',
+  替换草稿: '只投双休岗位（fixture 替换规则）',
+  招聘新建草稿: '两周内到岗的候选优先（fixture 招聘新建）',
+  失败草稿: '这句语法不通顺代理理解不了（fixture 失败重试）',
+  创建失败提示: 'Fixture 创建暂时失败',
+} as const;
+
+const P6编号 = {
+  候选全局规则: 'rul_00112233445566778899aabbccddeea1',
+  候选意向规则: 'rul_00112233445566778899aabbccddeea2',
+  招聘全局规则: 'rul_00112233445566778899aabbccddeea3',
+  解释中提案: 'arp_00112233445566778899aabbccddeeb1',
+  就绪提案: 'arp_00112233445566778899aabbccddeeb2',
+} as const;
+
+/** 专用分支 fixture ID：只有测试显式 seed 时才会进入状态并选择固定错误分支 */
+const P6分支编号 = {
+  冲突规则: 'rul_00112233445566778899aabbccddeea4',
+  不可接受提案: 'arp_00112233445566778899aabbccddeeb3',
+  丢失提案: 'arp_00112233445566778899aabbccddeeb4',
+  未知提案: 'arp_00112233445566778899aabbccddeeb5',
+  失败提案: 'arp_00112233445566778899aabbccddeeb6',
+} as const;
+
+function P6规则(覆盖: Partial<P6Rule> & Pick<P6Rule, 'rule_id' | 'display_text' | 'scope'>): P6Rule {
+  return {
+    version: 1,
+    state: 'active',
+    clause_kinds: ['work_schedule'],
+    created_at: '2026-08-26T00:00:00Z',
+    updated_at: '2026-08-26T00:00:00Z',
+    ...覆盖,
+  };
+}
+
+const candidateGlobalRule: P6Rule = P6规则({
+  rule_id: P6编号.候选全局规则,
+  display_text: P6标记.候选全局规则,
+  scope: { type: 'global' },
+});
+const candidateIntentionRule: P6Rule = P6规则({
+  rule_id: P6编号.候选意向规则,
+  display_text: P6标记.候选意向规则,
+  scope: { type: 'intention', intention_id: P6标记.意向编号 },
+});
+const recruiterGlobalRule: P6Rule = P6规则({
+  rule_id: P6编号.招聘全局规则,
+  display_text: P6标记.招聘全局规则,
+  scope: { type: 'global' },
+});
+/** 解读中提案（清单视图可带 created_at）：轮询的第二次单项 GET 把它转 ready */
+const candidateInterpretingProposal: P6Proposal = {
+  proposal_id: P6编号.解释中提案,
+  state: 'interpreting',
+  created_at: '2026-08-26T00:00:00Z',
+};
+/** 就绪提案：auto_deny 专用 fixture —— 安全摘要逐字来自 consequence，页面不做任何浏览器侧判定 */
+const candidateReadyProposal: P6Proposal = {
+  proposal_id: P6编号.就绪提案,
+  state: 'ready',
+  normalized_text: P6标记.就绪提案正文,
+  consequence: 'auto_deny',
+  created_at: '2026-08-26T00:00:00Z',
+};
+
+/** 专用分支提案的 seed：提案本体 + 它在 fixture 里走哪条固定错误分支（不进 wire 形） */
+interface P6追加提案 {
+  提案: P6Proposal;
+  分支?: 'accept丢失' | 'accept未知' | 'accept不可接受' | '单读失败';
+}
+
+interface P6追加规则 {
+  规则: P6Rule;
+  分支?: '写入冲突';
+}
+
+/** fixture 内部提案元数据：草稿正文 / 权威解读 / 范围 / 替换目标 / 固定错误分支（不进 wire 形） */
+interface P6提案元数据形 {
+  草稿?: string;
+  权威正文?: string;
+  后果?: P6Proposal['consequence'];
+  scope?: P6Rule['scope'];
+  替换目标编号?: string;
+  分支?: P6追加提案['分支'];
+}
+
+/** P6 专用分支 fixture：按需叠加在基础状态上，用专用 fixture ID 选择固定 409/503/响应丢失应答 */
+interface P6分支配置 {
+  /** 追加进 recruiter 初始规则清单的专用规则（如 PATCH 一律 409 的冲突规则） */
+  追加规则们?: P6追加规则[];
+  /** 追加进 candidate 初始提案清单的专用提案（分支提案以现成形态入场） */
+  追加提案们?: P6追加提案[];
+  /** 规则清单翻页游标成环 → 前端按契约漂移整域失败（服务异常重试 UI，绝不回退 Mock） */
+  游标成环?: boolean;
+  /** candidate 规则清单第一次请求返回 503（先失败出重试键，重试请求再由 挂起候选规则 接管） */
+  规则清单首次失败?: boolean;
+  /** 挂起 candidate 规则清单第一页应答，直到测试放行（首屏 pending / 迟到响应隔离） */
+  挂起候选规则?: Promise<void>;
+  /** candidate 创建提案的前 N 次 POST 返回 500（失败保留草稿，再次提交是新意图、新 key） */
+  创建前几次失败?: number;
 }
 
 const fixture主体 = {
@@ -131,7 +351,9 @@ const fixture简历 = {
 const fixture意向列表 = {
   intentions: [
     {
-      intention_id: 'int-fixture-001',
+      // Task 8：用 P6 契约形的真实 intention_id（int_ + 32 hex），意向级规则 scope 与
+      // 意向级创建 body 引用的都是这一个权威 ID
+      intention_id: P6标记.意向编号,
       recruitment_type: 'social_full_time' as const,
       job_category: { id: 'job-fixture-001', display_name: 标记.职位display },
       primary_location: { id: 'loc-fixture-001', display_name: 标记.意向标题城市 },
@@ -585,8 +807,10 @@ interface BFF路由选项 {
   招聘组织Fixture?: P1C招聘组织Fixture形;
   /** P3：隐私域可变 fixture（me/privacy 整读补丁 / 组织搜索 / 屏蔽与解除）。缺席时这些路由走兜底空信封 */
   隐私fixture?: P3隐私fixture形;
-  /** 主体初始 last_used_role：null（缺省）→ 落身份选择页；'candidate' → 直入求职主壳；'recruiter' → 直入企业主壳 */
-  主体初始角色?: 'recruiter' | 'candidate' | null;
+  /** 主体初始 last_used_role：null（缺省）→ 落身份选择页；'candidate' → 直接水合进求职主壳；'recruiter' → 企业主壳 */
+  主体初始角色?: 'candidate' | 'recruiter' | null;
+  /** P6：Agent 规则域可变 fixture 的专用分支（追加规则/提案、游标成环、应答挂起） */
+  P6分支?: P6分支配置;
 }
 
 /** 请求拦截收到的请求投影；multipart 的 metadata 只在测试进程内比对 */
@@ -642,8 +866,8 @@ function 解metadata部件(字节: Buffer): unknown {
   }
 }
 
-/** 安装 /api/v1 route fixture：按 path + method 匹配，返回 fixture 信封。 */
-async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
+/** 安装 /api/v1 route fixture：按 path + method 匹配，返回 fixture 信封；P6 可变状态经返回值暴露给测试断言。 */
+async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p6: P6FixtureState }> {
   const 会话已登录 = 选项.会话已登录 ?? true;
   // P1C：组织 fixture 出现时 /me 与角色/偏好写入都返回招聘方主体（PUT last-used-role 会推进它的值）
   const 组织fixture = 选项.招聘组织Fixture ?? null;
@@ -654,8 +878,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
           { role: 'candidate' as const, status: 'active' as const },
           { role: 'recruiter' as const, status: 'active' as const },
         ],
-        last_used_role: (选项.主体初始角色 ?? null) as 'recruiter' | 'candidate' | null,
-      }
+        last_used_role: (选项.主体初始角色 ?? null) as 'candidate' | 'recruiter' | null,      }
     : fixture主体;
 
   // ── P1C 组织域可变 fixture 状态：每次安装独立一份，页面写入只影响本测试 ──
@@ -694,6 +917,45 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
     媒体登记.set(媒.media_id, 媒);
     return 媒;
   };
+  // ── P6 Agent 规则域：可变 fixture 状态每次安装独立一份，页面写入只影响本测试 ──
+  const p6: P6FixtureState = {
+    rules: {
+      candidate: [candidateGlobalRule, candidateIntentionRule].map((规) => ({ ...规, scope: { ...规.scope } })),
+      recruiter: [recruiterGlobalRule].map((规) => ({ ...规, scope: { ...规.scope } })),
+    },
+    proposals: {
+      candidate: [candidateInterpretingProposal, candidateReadyProposal].map((提) => ({ ...提 })),
+      recruiter: [],
+    },
+    proposalReads: {},
+    mutationRequests: [],
+  };
+  // 专用分支 seed 追加进基础状态；分支标记走 fixture 内部元数据，不进 wire 形
+  const 提案元数据 = new Map<string, P6提案元数据形>();
+  const 提案终态 = new Map<string, P6Proposal>();
+  const 冲突规则编号们 = new Set<string>();
+  for (const 追加 of 选项.P6分支?.追加规则们 ?? []) {
+    p6.rules.recruiter.push({ ...追加.规则, scope: { ...追加.规则.scope } });
+    if (追加.分支 === '写入冲突') 冲突规则编号们.add(追加.规则.rule_id);
+  }
+  for (const 追加 of 选项.P6分支?.追加提案们 ?? []) {
+    p6.proposals.candidate.push({ ...追加.提案 });
+    提案元数据.set(追加.提案.proposal_id, {
+      权威正文: 追加.提案.normalized_text,
+      后果: 追加.提案.consequence,
+      分支: 追加.分支,
+    });
+  }
+  // 基础解读中提案的权威解读结果：第二次单项 GET 转 ready 时带上这段正文
+  提案元数据.set(candidateInterpretingProposal.proposal_id, {
+    权威正文: P6标记.解读完成正文,
+    后果: 'auto_allow',
+  });
+  let 创建提案序 = 0;
+  let 物化规则序 = 0;
+  let 创建失败余数 = 选项.P6分支?.创建前几次失败 ?? 0;
+  let 规则清单请求数 = 0;
+
   await page.route('**/api/v1/**', async (route: Route) => {
     const 请求 = route.request();
     const url = new URL(请求.url());
@@ -1030,6 +1292,253 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
       }
     }
 
+    // ── P6 Agent 规则域 handlers：状态声明在 route 外（跨请求存活），闭包只读请求上下文 ──
+    // 变更回执：method/path/body + If-Match / Idempotency-Key 原样存证，测试断言全靠它
+    const 记录P6变更 = (变更路径: string) => {
+      p6.mutationRequests.push({
+        method,
+        path: 变更路径,
+        body,
+        ifMatch: 请求.headers()['if-match'] ?? null,
+        idempotencyKey: 请求.headers()['idempotency-key'] ?? null,
+      });
+    };
+    // accept 的统一落地：只有 accept 会物化 Rule；替换提案同时把目标旧规则归档出局
+    const 物化并终态 = (角色: 'candidate' | 'recruiter', 提案编号: string, 元: P6提案元数据形 | undefined): P6Rule | null => {
+      const 提案 = p6.proposals[角色].find((提) => 提.proposal_id === 提案编号);
+      if (!提案 || 提案.state !== 'ready') return null;
+      物化规则序 += 1;
+      if (元?.替换目标编号) {
+        const 目标 = p6.rules[角色].find((规) => 规.rule_id === 元.替换目标编号);
+        if (目标) 目标.state = 'archived';
+      }
+      const 新规则: P6Rule = {
+        rule_id: `rul_00112233445566778899aabbccddee${(0xd0 + 物化规则序 - 1).toString(16)}`,
+        version: 1,
+        state: 'active',
+        scope: 元?.scope ?? { type: 'global' },
+        clause_kinds: ['work_schedule'],
+        display_text: 元?.权威正文 ?? `已理解：${元?.草稿 ?? ''}`,
+        created_at: '2026-08-26T00:00:06Z',
+        updated_at: '2026-08-26T00:00:06Z',
+      };
+      p6.rules[角色].push(新规则);
+      提案终态.set(提案编号, { ...提案, state: 'accepted' });
+      p6.proposals[角色] = p6.proposals[角色].filter((提) => 提.proposal_id !== 提案编号);
+      return 新规则;
+    };
+
+    // 规则清单：一律两页翻页（首条 + cursor / 余下）；candidate 专用 503-首次与挂起分支
+    const 规则清单匹配 = /^\/api\/v1\/(me|recruiter)\/agent-rules$/.exec(path);
+    if (规则清单匹配 && method === 'GET') {
+      const 角色 = 规则清单匹配[1] === 'me' ? 'candidate' : 'recruiter';
+      规则清单请求数 += 1;
+      if (角色 === 'candidate' && 选项.P6分支?.规则清单首次失败 && 规则清单请求数 === 1) {
+        await route.fulfill({ status: 503, json: { error: { type: 'service_unavailable', message: 'fixture 首次规则清单失败' } } });
+        return;
+      }
+      if (角色 === 'candidate') await 选项.P6分支?.挂起候选规则;
+      const 全部 = p6.rules[角色];
+      const 游标 = url.searchParams.get('cursor');
+      const 成环 = 角色 === 'candidate' && Boolean(选项.P6分支?.游标成环);
+      const 页: { rules: P6Rule[]; next_cursor?: string } = 游标 === null
+        ? (全部.length > 0 ? { rules: [全部[0]], next_cursor: 'fixture-p6-page-2' } : { rules: [] })
+        : (成环 && 全部.length > 1
+          ? { rules: 全部.slice(1), next_cursor: 'fixture-p6-page-2' }
+          : { rules: 全部.slice(1) });
+      await route.fulfill({ status: 200, json: 信封(页) });
+      return;
+    }
+
+    // 规则单项：GET 带强 ETag；PATCH pause/resume 校验 If-Match 并推进版本；DELETE 只认当前版本
+    const 规则单项匹配 = /^\/api\/v1\/(me|recruiter)\/agent-rules\/([^/]+)$/.exec(path);
+    if (规则单项匹配 && method === 'GET') {
+      const 规则 = p6.rules[规则单项匹配[1] === 'me' ? 'candidate' : 'recruiter'].find((规) => 规.rule_id === 规则单项匹配[2]);
+      if (!规则) {
+        await route.fulfill({ status: 404, json: { error: { type: 'agent_rule_not_found', message: '规则不存在' } } });
+        return;
+      }
+      await route.fulfill({ status: 200, headers: { etag: `"${规则.version}"` }, json: 信封(规则) });
+      return;
+    }
+    if (规则单项匹配 && method === 'PATCH') {
+      记录P6变更(path);
+      const 角色 = 规则单项匹配[1] === 'me' ? 'candidate' : 'recruiter';
+      const 目标编号 = 规则单项匹配[2];
+      const 规则 = p6.rules[角色].find((规) => 规.rule_id === 目标编号);
+      if (冲突规则编号们.has(目标编号) || !规则 || 请求.headers()['if-match'] !== `"${规则.version}"`) {
+        await route.fulfill({ status: 409, json: { error: { type: 'version_conflict', message: '版本冲突' } } });
+        return;
+      }
+      const 换 = body as { operation?: 'pause' | 'resume' };
+      if (换.operation === 'pause') 规则.state = 'paused';
+      if (换.operation === 'resume') 规则.state = 'active';
+      规则.version += 1;
+      规则.updated_at = '2026-08-26T00:00:07Z';
+      await route.fulfill({ status: 200, headers: { etag: `"${规则.version}"` }, json: 信封(规则) });
+      return;
+    }
+    if (规则单项匹配 && method === 'DELETE') {
+      记录P6变更(path);
+      const 角色 = 规则单项匹配[1] === 'me' ? 'candidate' : 'recruiter';
+      const 规则 = p6.rules[角色].find((规) => 规.rule_id === 规则单项匹配[2]);
+      if (!规则) {
+        await route.fulfill({ status: 404, json: { error: { type: 'agent_rule_not_found', message: '规则不存在' } } });
+        return;
+      }
+      // archive 只在 If-Match 等于当前版本时生效，否则 409（客户端必须重读权威版本）
+      if (请求.headers()['if-match'] !== `"${规则.version}"`) {
+        await route.fulfill({ status: 409, json: { error: { type: 'version_conflict', message: '版本冲突' } } });
+        return;
+      }
+      规则.state = 'archived';
+      await route.fulfill({ status: 204 });
+      return;
+    }
+
+    // 替换提案：If-Match 必须点名创建时的当前版本；提案先以 interpreting 回执入场
+    const 替换匹配 = /^\/api\/v1\/(me|recruiter)\/agent-rules\/([^/]+)\/replacement-proposals$/.exec(path);
+    if (替换匹配 && method === 'POST') {
+      记录P6变更(path);
+      const 角色 = 替换匹配[1] === 'me' ? 'candidate' : 'recruiter';
+      const 目标规则 = p6.rules[角色].find((规) => 规.rule_id === 替换匹配[2]);
+      if (!目标规则) {
+        await route.fulfill({ status: 404, json: { error: { type: 'agent_rule_not_found', message: '规则不存在' } } });
+        return;
+      }
+      if (请求.headers()['if-match'] !== `"${目标规则.version}"`) {
+        await route.fulfill({ status: 409, json: { error: { type: 'version_conflict', message: '版本冲突' } } });
+        return;
+      }
+      const 换 = body as { text?: string; scope?: P6Rule['scope'] };
+      创建提案序 += 1;
+      const 编号 = `arp_00112233445566778899aabbccddee${(0xc0 + 创建提案序 - 1).toString(16)}`;
+      const 提案: P6Proposal = { proposal_id: 编号, state: 'interpreting' };
+      提案元数据.set(编号, {
+        草稿: 换.text ?? '',
+        scope: 角色 === 'candidate' ? 换.scope : undefined,
+        后果: 'mixed',
+        替换目标编号: 替换匹配[2],
+      });
+      p6.proposals[角色].push(提案);
+      await route.fulfill({ status: 200, json: 信封(提案) });
+      return;
+    }
+
+    // 提案清单：按 state 过滤后同样两页翻页
+    const 提案清单匹配 = /^\/api\/v1\/(me|recruiter)\/agent-rule-proposals$/.exec(path);
+    if (提案清单匹配 && method === 'GET') {
+      const 角色 = 提案清单匹配[1] === 'me' ? 'candidate' : 'recruiter';
+      const 想要状态 = url.searchParams.get('state') === 'interpreting' ? 'interpreting' as const : 'ready' as const;
+      const 全部 = p6.proposals[角色].filter((提) => 提.state === 想要状态);
+      const 游标 = url.searchParams.get('cursor');
+      const 页: { proposals: P6Proposal[]; next_cursor?: string } = 游标 === null
+        ? (全部.length > 0 ? { proposals: [全部[0]], next_cursor: 'fixture-p6-page-2' } : { proposals: [] })
+        : { proposals: 全部.slice(1) };
+      await route.fulfill({ status: 200, json: 信封(页) });
+      return;
+    }
+    if (提案清单匹配 && method === 'POST') {
+      记录P6变更(path);
+      if (创建失败余数 > 0) {
+        创建失败余数 -= 1;
+        await route.fulfill({ status: 500, json: { error: { type: 'internal_error', message: P6标记.创建失败提示 } } });
+        return;
+      }
+      const 角色 = 提案清单匹配[1] === 'me' ? 'candidate' : 'recruiter';
+      const 换 = body as { text?: string; scope?: P6Rule['scope'] };
+      创建提案序 += 1;
+      const 编号 = `arp_00112233445566778899aabbccddee${(0xc0 + 创建提案序 - 1).toString(16)}`;
+      // fresh create 回执只有 proposal_id + state（连 created_at 都不给，解码器允许）
+      const 提案: P6Proposal = { proposal_id: 编号, state: 'interpreting' };
+      提案元数据.set(编号, {
+        草稿: 换.text ?? '',
+        scope: 角色 === 'candidate' ? 换.scope : undefined,
+        后果: 'mixed',
+      });
+      p6.proposals[角色].push(提案);
+      await route.fulfill({ status: 200, json: 信封(提案) });
+      return;
+    }
+
+    // 提案单项 GET：第二次读取把 interpreting 转 ready（权威解读完成）；专用 ID 第一次读即 failed
+    const 单提案匹配 = /^\/api\/v1\/(me|recruiter)\/agent-rule-proposals\/([^/]+)$/.exec(path);
+    if (单提案匹配 && method === 'GET') {
+      const 角色 = 单提案匹配[1] === 'me' ? 'candidate' : 'recruiter';
+      const 提案编号 = 单提案匹配[2];
+      // 读取计数对终态回执同样生效（accept 恢复路径的 GET 也要留下存证）
+      p6.proposalReads[提案编号] = (p6.proposalReads[提案编号] ?? 0) + 1;
+      const 终态 = 提案终态.get(提案编号);
+      if (终态) {
+        await route.fulfill({ status: 200, json: 信封(终态) });
+        return;
+      }
+      const 提案 = p6.proposals[角色].find((提) => 提.proposal_id === 提案编号);
+      if (!提案) {
+        await route.fulfill({ status: 404, json: { error: { type: 'agent_rule_proposal_not_found', message: '提案不存在' } } });
+        return;
+      }
+      if (提案.state === 'interpreting') {
+        const 元 = 提案元数据.get(提案编号);
+        if (元?.分支 === '单读失败') {
+          提案.state = 'failed';
+        } else if ((p6.proposalReads[提案编号] ?? 0) >= 2) {
+          提案.state = 'ready';
+          提案.normalized_text = 元?.权威正文 ?? `已理解：${元?.草稿 ?? ''}`;
+          提案.consequence = 元?.后果 ?? 'mixed';
+          提案.created_at = 提案.created_at ?? '2026-08-26T00:00:05Z';
+        }
+      }
+      await route.fulfill({ status: 200, json: 信封(提案) });
+      return;
+    }
+
+    // accept：专用分支（不可执行 409 / 结果未知 503 / 响应丢失中断）都先按服务端语义落终态再丢应答
+    const 接受匹配 = /^\/api\/v1\/(me|recruiter)\/agent-rule-proposals\/([^/]+)\/accept$/.exec(path);
+    if (接受匹配 && method === 'POST') {
+      记录P6变更(path);
+      const 角色 = 接受匹配[1] === 'me' ? 'candidate' : 'recruiter';
+      const 提案编号 = 接受匹配[2];
+      const 元 = 提案元数据.get(提案编号);
+      if (元?.分支 === 'accept不可接受') {
+        // 公开 consequence 从不决定可执行性：这张卡看起来完全可接受，服务端仍裁决 not_actionable
+        await route.fulfill({ status: 409, json: { error: { type: 'agent_rule_proposal_not_actionable', message: 'proposal not actionable' } } });
+        return;
+      }
+      if (元?.分支 === 'accept丢失' || 元?.分支 === 'accept未知') {
+        if (!提案终态.has(提案编号)) 物化并终态(角色, 提案编号, 元);
+        if (元.分支 === 'accept丢失') {
+          await route.abort('connectionreset');
+          return;
+        }
+        await route.fulfill({ status: 503, json: { error: { type: 'operation_outcome_unknown', message: '结果未知' } } });
+        return;
+      }
+      const 新规则 = 物化并终态(角色, 提案编号, 元);
+      if (!新规则) {
+        await route.fulfill({ status: 409, json: { error: { type: 'agent_rule_proposal_not_ready', message: '提案还未就绪' } } });
+        return;
+      }
+      await route.fulfill({ status: 200, headers: { etag: `"${新规则.version}"` }, json: 信封(新规则) });
+      return;
+    }
+
+    // dismiss：提案出局并给 dismissed 回执（恢复路径靠单项 GET 也能读到同一终态）
+    const 放弃匹配 = /^\/api\/v1\/(me|recruiter)\/agent-rule-proposals\/([^/]+)\/dismiss$/.exec(path);
+    if (放弃匹配 && method === 'POST') {
+      记录P6变更(path);
+      const 角色 = 放弃匹配[1] === 'me' ? 'candidate' : 'recruiter';
+      const 提案 = p6.proposals[角色].find((提) => 提.proposal_id === 放弃匹配[2]);
+      if (!提案) {
+        await route.fulfill({ status: 404, json: { error: { type: 'agent_rule_proposal_not_found', message: '提案不存在' } } });
+        return;
+      }
+      提案终态.set(提案.proposal_id, { proposal_id: 提案.proposal_id, state: 'dismissed' });
+      p6.proposals[角色] = p6.proposals[角色].filter((提) => 提.proposal_id !== 提案.proposal_id);
+      await route.fulfill({ status: 200, json: 信封({ proposal_id: 提案.proposal_id, state: 'dismissed' }) });
+      return;
+    }
+
     // ── resume ──
     if (path === '/api/v1/me/resume' && method === 'GET') {
       await route.fulfill({ status: 200, json: 信封(fixture简历) });
@@ -1226,6 +1735,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项) {
     // 兜底：未匹配的 /api/v1/* 返回 200 空信封，避免测试因未处理路由挂死
     await route.fulfill({ status: 200, json: 信封(null) });
   });
+  return { p6 };
 }
 
 /**
@@ -1643,10 +2153,11 @@ test.describe('P1C 招聘组织 fixture @backend', () => {
 
     // 固定水合链：profile → affiliations →（无 current，不读公开企业）→ jobs；
     // admin request 不进登录链。渲染顺序错乱或登录链混入组织申请都会在这里翻车。
+    // P6（Task 8）起规则三路读取与组织水合并行起跑，所以这里只在组织域请求内部看相对顺序。
     const 链 = 请求们.map((项) => `${项.method} ${项.path}`);
-    const 头子 = 链.indexOf('PUT /api/v1/me/preferences/last-used-role');
-    expect(头子).toBeGreaterThanOrEqual(0);
-    expect(链.slice(头子 + 1, 头子 + 4)).toEqual([
+    const 组织链 = 链.filter((项) => 项.startsWith('GET /api/v1/recruiter/profile') ||
+      项.startsWith('GET /api/v1/recruiter/affiliations') || 项.startsWith('GET /api/v1/recruiter/jobs'));
+    expect(组织链.slice(0, 3)).toEqual([
       'GET /api/v1/recruiter/profile',
       'GET /api/v1/recruiter/affiliations',
       'GET /api/v1/recruiter/jobs',
@@ -2733,5 +3244,461 @@ test.describe('P3 Mock 数据源隔离 @mock', () => {
 
     // 全程累计：Mock 模式下没有任何 /api/v1 请求 —— P3 域也是纯本地
     expect(apiRequests).toEqual([]);
+  });
+});
+
+// P6 规则域 fixture @backend —— Agent 规则/提案全生命周期（intercepted boundary only）。
+// 断言以 fixture 存证的变更回执（body / If-Match / Idempotency-Key）为主，
+// 可见文案只做收口佐证；标记值只存在于 fixture，上屏即证明渲染来自 HTTP。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 就绪提案卡的正文 div 与动作键同属一张卡：正文唯一文本的父节点即卡，卡内恰一组动作键。 */
+function 就绪卡动作键(page: Page, 正文: string, 名称: string) {
+  return page.getByText(正文).locator('..').getByRole('button', { name: 名称 });
+}
+
+test.describe('P6 规则域 fixture @backend', () => {
+  // 显式 backend/stg server（端口 4182），与既有 @backend 用例同一口径
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+  test.use({ timeout: 60_000 });
+
+  test('P6 全链路：双端规则生命周期与请求契约 @backend', async ({ page }) => {
+    // 冻结序列：candidate restore → 双端水合 → global create→accept → 意向 create →
+    // 替换(If-Match) → 归档(If-Match) → 切招聘端 → 招聘 create(no scope)→accept → pause/resume 版本推进
+    test.setTimeout(150_000);
+    const { p6 } = await 安装BFF路由(page, {
+      登录尝试id: 'att-p6-life',
+      记录目录请求: () => undefined,
+      // 招聘端水合需要组织域 fixture；主体同时具备双角色，切身份走真实 PUT 角色链
+      招聘组织Fixture: P1C招聘组织Fixture,
+      主体初始角色: 'candidate',
+    });
+
+    // ── candidate restore：session 200 + last_used_role=candidate → 直接落求职主壳 ──
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+
+    // ── candidate Rule/Proposal 水合：标记值只存在于 fixture ──
+    await page.goto('/#/rules');
+    await expect(page.getByText(P6标记.候选全局规则)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(P6标记.候选意向规则)).toBeVisible();
+    await expect(page.getByText('2 条')).toBeVisible();
+    await expect(page.getByText('AI代理正在理解这条规则…')).toBeVisible();
+    await expect(page.getByText(P6标记.就绪提案正文)).toBeVisible();
+    // auto_deny 的安全摘要逐字来自 fixture 的 consequence，页面不做任何浏览器侧可接受性判定
+    await expect(page.getByText('命中条件时，AI代理会自动拦下')).toBeVisible();
+    // 解读中提案在第二次单项 GET 转 ready（轮询 2s 一拍 → 两次读 ≈ 4s）
+    await expect(page.getByText(P6标记.解读完成正文)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('符合条件时，AI代理可以自动推进')).toBeVisible();
+    expect(p6.proposalReads[P6编号.解释中提案]).toBeGreaterThanOrEqual(2);
+
+    // ── global create → interpreting → ready → accept → active Rule ──
+    await page.getByRole('button', { name: '手动添加规则' }).click();
+    const 候选输入 = page.getByPlaceholder('例：不接受大小周的岗位直接过滤');
+    await 候选输入.fill(P6标记.全局新建草稿);
+    await page.getByRole('button', { name: '提交给AI代理理解' }).click();
+    // 创建回执是 interpreting：卡片先出「解读中」，成功才收起输入行
+    await expect(候选输入).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByText(`已理解：${P6标记.全局新建草稿}`)).toBeVisible({ timeout: 20_000 });
+    // accept-success fixture 的公开 consequence 是 mixed
+    await expect(page.getByText('这条规则同时包含推进、拦截或参考条件')).toBeVisible();
+    await 就绪卡动作键(page, `已理解：${P6标记.全局新建草稿}`, '确认规则').click();
+    // 确认后权威 Rule 才物化：正文从卡片变成规则行（按钮）
+    await expect(page.getByRole('button', { name: new RegExp(`已理解：${P6标记.全局新建草稿}`) })).toBeVisible({ timeout: 15_000 });
+    const 创建全局 = p6.mutationRequests.find((项) => 项.method === 'POST' && 项.path === '/api/v1/me/agent-rule-proposals');
+    expect(创建全局).toBeDefined();
+    expect(创建全局!.body).toEqual({ text: P6标记.全局新建草稿, scope: { type: 'global' } });
+    expect(创建全局!.ifMatch).toBeNull();
+    expect(创建全局!.idempotencyKey).toMatch(/\S/);
+
+    // ── intention create：范围选择发的是 fixture 的真实 intention_id ──
+    await page.getByRole('button', { name: '手动添加规则' }).click();
+    await page.getByLabel('规则范围').selectOption(P6标记.意向编号);
+    await page.getByPlaceholder('例：不接受大小周的岗位直接过滤').fill(P6标记.意向新建草稿);
+    await page.getByRole('button', { name: '提交给AI代理理解' }).click();
+    await expect(page.getByText(`已理解：${P6标记.意向新建草稿}`)).toBeVisible({ timeout: 20_000 });
+    const 创建意向 = p6.mutationRequests.filter((项) => 项.method === 'POST' && 项.path === '/api/v1/me/agent-rule-proposals')[1];
+    expect(创建意向).toBeDefined();
+    expect(创建意向!.body).toEqual({
+      text: P6标记.意向新建草稿,
+      scope: { type: 'intention', intention_id: P6标记.意向编号 },
+    });
+    expect(创建意向!.idempotencyKey).toMatch(/\S/);
+
+    // ── replacement：发当前 If-Match；确认前旧 Rule 一直可见、新正文不是规则行 ──
+    await page.getByRole('button', { name: new RegExp(P6标记.候选全局规则) }).click();
+    // 编辑态下规则库只有这一只输入框（composer 已收起），草稿预填原文
+    const 编辑框 = page.getByRole('textbox');
+    await expect(编辑框).toHaveCount(1, { timeout: 10_000 });
+    await expect(编辑框).toHaveValue(P6标记.候选全局规则);
+    await 编辑框.fill(P6标记.替换草稿);
+    await page.getByRole('button', { name: '提交修改' }).click();
+    await expect(page.getByText(`已理解：${P6标记.替换草稿}`)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(P6标记.候选全局规则)).toBeVisible();
+    await expect(page.getByRole('button', { name: new RegExp(`已理解：${P6标记.替换草稿}`) })).toHaveCount(0);
+    const 替换回执 = p6.mutationRequests.find((项) => 项.path === `/api/v1/me/agent-rules/${P6编号.候选全局规则}/replacement-proposals`);
+    expect(替换回执).toBeDefined();
+    expect(替换回执!.ifMatch).toBe('"1"');
+    expect(替换回执!.body).toEqual({ text: P6标记.替换草稿, scope: { type: 'global' } });
+    expect(替换回执!.idempotencyKey).toMatch(/\S/);
+    await 就绪卡动作键(page, `已理解：${P6标记.替换草稿}`, '确认规则').click();
+    await expect(page.getByRole('button', { name: new RegExp(`已理解：${P6标记.替换草稿}`) })).toBeVisible({ timeout: 15_000 });
+    // 旧规则归档出局：原文整行（含卡片）消失
+    await expect(page.getByText(P6标记.候选全局规则)).toHaveCount(0);
+
+    // ── archive：DELETE 带当前 If-Match ──
+    await page.getByRole('button', { name: new RegExp(`已理解：${P6标记.替换草稿}`) }).click();
+    await page.getByRole('button', { name: '删除', exact: true }).click();
+    await expect(page.getByRole('button', { name: new RegExp(`已理解：${P6标记.替换草稿}`) })).toHaveCount(0, { timeout: 10_000 });
+    const 删除们 = p6.mutationRequests.filter((项) => 项.method === 'DELETE');
+    expect(删除们.length).toBe(1);
+    expect(删除们[0]!.ifMatch).toBe('"1"');
+    expect(删除们[0]!.path).toMatch(/^\/api\/v1\/me\/agent-rules\/rul_[0-9a-f]{32}$/);
+    await expect(page.getByText('2 条')).toBeVisible();
+
+    // ── 切到招聘端：真实 PUT 角色 + 偏好链，切完直接进企业主壳 ──
+    await page.goto('/#/identity?switch=1&from=app');
+    await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 30_000 });
+
+    // ── recruiter：规则水合 + create（body 永不携带 scope）→ accept ──
+    await page.goto('/#/hr/agent-settings');
+    await expect(page.getByText(P6标记.招聘全局规则)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('1 条生效')).toBeVisible();
+    const 总开关 = page.getByRole('switch', { name: `规则：${P6标记.招聘全局规则}` });
+    await expect(总开关).toHaveAttribute('aria-checked', 'true');
+    await page.getByRole('button', { name: '手动添加规则' }).click();
+    await page.getByPlaceholder('例：到岗超过 60 天的候选先不推进').fill(P6标记.招聘新建草稿);
+    await page.getByRole('button', { name: '提交给AI代理理解' }).click();
+    await expect(page.getByText(`已理解：${P6标记.招聘新建草稿}`)).toBeVisible({ timeout: 20_000 });
+    const 招聘创建 = p6.mutationRequests.find((项) => 项.method === 'POST' && 项.path === '/api/v1/recruiter/agent-rule-proposals');
+    expect(招聘创建).toBeDefined();
+    expect(招聘创建!.body).toEqual({ text: P6标记.招聘新建草稿 });
+    expect(招聘创建!.idempotencyKey).toMatch(/\S/);
+    await 就绪卡动作键(page, `已理解：${P6标记.招聘新建草稿}`, '确认规则').click();
+    // 招聘端规则行没有编辑按钮：权威落地以行内容 + 开关为准
+    await expect(page.getByRole('switch', { name: `规则：已理解：${P6标记.招聘新建草稿}` })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('2 条生效')).toBeVisible();
+    const 招聘接受 = p6.mutationRequests.find((项) => 项.path.startsWith('/api/v1/recruiter/agent-rule-proposals/') && 项.path.endsWith('/accept'));
+    expect(招聘接受).toBeDefined();
+    expect(招聘接受!.body).toEqual({});
+    expect(招聘接受!.idempotencyKey).toMatch(/\S/);
+
+    // ── pause → resume：每个应答的版本都在前进（resume 的 If-Match 就是 pause 应答的新版本）──
+    await 总开关.click();
+    await expect(总开关).toHaveAttribute('aria-checked', 'false', { timeout: 10_000 });
+    await expect(page.getByText('1 条生效')).toBeVisible();
+    await 总开关.click();
+    await expect(总开关).toHaveAttribute('aria-checked', 'true', { timeout: 10_000 });
+    await expect(page.getByText('2 条生效')).toBeVisible();
+    const 开关写 = p6.mutationRequests.filter((项) => 项.method === 'PATCH' && 项.path === `/api/v1/recruiter/agent-rules/${P6编号.招聘全局规则}`);
+    expect(开关写.length).toBe(2);
+    expect(开关写[0]!.body).toEqual({ operation: 'pause' });
+    expect(开关写[0]!.ifMatch).toBe('"1"');
+    expect(开关写[1]!.body).toEqual({ operation: 'resume' });
+    expect(开关写[1]!.ifMatch).toBe('"2"');
+    // 权威版本链落到 fixture：pause 1→2、resume 2→3
+    expect(p6.rules.recruiter.find((规) => 规.rule_id === P6编号.招聘全局规则)?.version).toBe(3);
+
+    // 幂等纪律：两次 candidate 创建是两个意图 → 两把不同的 key；accept 一律空对象 body + 非 key
+    const 候选创建们 = p6.mutationRequests.filter((项) => 项.method === 'POST' && 项.path === '/api/v1/me/agent-rule-proposals');
+    expect(候选创建们.length).toBe(2);
+    expect(候选创建们[0]!.idempotencyKey).not.toBe(候选创建们[1]!.idempotencyKey);
+    const 候选接受们 = p6.mutationRequests.filter((项) => 项.method === 'POST' && 项.path.includes('/me/') && 项.path.endsWith('/accept'));
+    expect(候选接受们.length).toBe(2);
+    for (const 项 of 候选接受们) {
+      expect(项.body).toEqual({});
+      expect(项.idempotencyKey).toMatch(/\S/);
+    }
+  });
+
+  test('P6 版本冲突只做一次权威重读且零重放 @backend', async ({ page }) => {
+    // PATCH 专用冲突规则 409 version_conflict：effect 没有 receipt，恢复只做一轮权威 Rule 重读
+    // （两页翻页 = 不带 cursor 的首页 GET 恰好一次），绝不再发 mutation；开关原样保留。
+    const 请求序: string[] = [];
+    const 清单读取: { url: string; ms: number }[] = [];
+    const { p6 } = await 安装BFF路由(page, {
+      登录尝试id: 'att-p6-conflict',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: P1C招聘组织Fixture,
+      主体初始角色: 'recruiter',
+      P6分支: {
+        追加规则们: [{
+          规则: P6规则({
+            rule_id: P6分支编号.冲突规则,
+            display_text: P6标记.冲突规则,
+            scope: { type: 'global' },
+          }),
+          分支: '写入冲突',
+        }],
+      },
+      请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`),
+    });
+    // 清单读取带完整 URL（cursor 参数区分翻页），补丁时间戳用来只数 PATCH 之后的读取
+    page.on('request', (请求) => {
+      const 地址 = new URL(请求.url());
+      if (地址.pathname === '/api/v1/recruiter/agent-rules' && 请求.method() === 'GET') {
+        清单读取.push({ url: 地址.pathname + 地址.search, ms: Date.now() });
+      }
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    await page.goto('/#/hr/agent-settings');
+    const 冲突开关 = page.getByRole('switch', { name: `规则：${P6标记.冲突规则}` });
+    await expect(冲突开关).toBeVisible({ timeout: 15_000 });
+    await expect(冲突开关).toHaveAttribute('aria-checked', 'true');
+
+    const 点击时刻 = Date.now();
+    await 冲突开关.click();
+    await expect(page.getByText('数据已在其他地方更新，请重试')).toBeVisible({ timeout: 10_000 });
+    await expect(冲突开关).toHaveAttribute('aria-checked', 'true');
+    const 补丁键 = `PATCH /api/v1/recruiter/agent-rules/${P6分支编号.冲突规则}`;
+    const 补丁位 = 请求序.lastIndexOf(补丁键);
+    expect(补丁位).toBeGreaterThanOrEqual(0);
+    // 零重放：PATCH 只发出过一次
+    expect(请求序.filter((项) => 项 === 补丁键).length).toBe(1);
+    // 一次权威重读：PATCH 之后带 cursor 的翻页请求恰一轮（首页 GET 恰好一次）
+    await expect.poll(() => 清单读取.filter((项) => 项.ms >= 点击时刻 && !项.url.includes('cursor=')).length, { timeout: 5_000 }).toBe(1);
+    // 回执存证：If-Match 是水合时的当前版本
+    const 冲突写 = p6.mutationRequests.find((项) => 项.path === `/api/v1/recruiter/agent-rules/${P6分支编号.冲突规则}`);
+    expect(冲突写).toBeDefined();
+    expect(冲突写!.ifMatch).toBe('"1"');
+    expect(冲突写!.body).toEqual({ operation: 'pause' });
+  });
+
+  test('P6 accept 响应丢失与结果未知经权威 GET 收敛 @backend', async ({ page }) => {
+    // 真·响应丢失（连接中断）：accept 已被服务端处理，客户端不重发 mutation，
+    // 恢复走 GET 提案（accepted 回执）→ 完整重读 Rules；503 outcome_unknown 额外证明
+    // 受控重试复用同一把 Idempotency-Key。
+    test.setTimeout(120_000);
+    const { p6 } = await 安装BFF路由(page, {
+      登录尝试id: 'att-p6-loss',
+      记录目录请求: () => undefined,
+      P6分支: {
+        追加提案们: [
+          {
+            提案: {
+              proposal_id: P6分支编号.丢失提案,
+              state: 'ready',
+              normalized_text: P6标记.丢失提案正文,
+              consequence: 'auto_allow',
+              created_at: '2026-08-26T00:00:00Z',
+            },
+            分支: 'accept丢失',
+          },
+          {
+            提案: {
+              proposal_id: P6分支编号.未知提案,
+              state: 'ready',
+              normalized_text: P6标记.未知提案正文,
+              consequence: 'advisory',
+              created_at: '2026-08-26T00:00:00Z',
+            },
+            分支: 'accept未知',
+          },
+        ],
+      },
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await page.goto('/#/rules');
+    await expect(page.getByText(P6标记.丢失提案正文)).toBeVisible({ timeout: 15_000 });
+
+    // 响应丢失：POST 恰一次（mutation 不自动重试），权威收敛后规则行出现、卡片消失
+    await 就绪卡动作键(page, P6标记.丢失提案正文, '确认规则').click();
+    await expect(page.getByRole('button', { name: new RegExp(P6标记.丢失提案正文) })).toBeVisible({ timeout: 20_000 });
+    await expect(就绪卡动作键(page, P6标记.丢失提案正文, '确认规则')).toHaveCount(0);
+    const 丢失接受们 = p6.mutationRequests.filter((项) => 项.path === `/api/v1/me/agent-rule-proposals/${P6分支编号.丢失提案}/accept`);
+    expect(丢失接受们.length).toBe(1);
+    expect(p6.proposalReads[P6分支编号.丢失提案]).toBeGreaterThanOrEqual(1);
+
+    // 结果未知：受控重试一次、两把 key 是同一把，仍 503 后同样经 GET 提案 + Rule 清单收敛
+    await 就绪卡动作键(page, P6标记.未知提案正文, '确认规则').click();
+    await expect(page.getByRole('button', { name: new RegExp(P6标记.未知提案正文) })).toBeVisible({ timeout: 20_000 });
+    await expect(就绪卡动作键(page, P6标记.未知提案正文, '确认规则')).toHaveCount(0);
+    const 未知接受们 = p6.mutationRequests.filter((项) => 项.path === `/api/v1/me/agent-rule-proposals/${P6分支编号.未知提案}/accept`);
+    expect(未知接受们.length).toBe(2);
+    expect(未知接受们[0]!.idempotencyKey).not.toBe('');
+    expect(未知接受们[0]!.idempotencyKey).toBe(未知接受们[1]!.idempotencyKey);
+    expect(p6.proposalReads[P6分支编号.未知提案]).toBeGreaterThanOrEqual(1);
+  });
+
+  test('P6 切换招聘端后迟到的候选端应答不再上屏 @backend', async ({ page }) => {
+    // 首次规则清单 503 → 重试键；重试的规则清单第一页被挂起到切身份之后才应答：
+    // 旧会话代际的迟到响应整包丢弃，候选端标记绝不上招聘端页面；切回候选端后完整水合照常。
+    test.setTimeout(120_000);
+    let 放行!: () => void;
+    const 门 = new Promise<void>((ok) => { 放行 = ok; });
+    const 请求序: string[] = [];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p6-stale',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: P1C招聘组织Fixture,
+      主体初始角色: 'candidate',
+      P6分支: { 规则清单首次失败: true, 挂起候选规则: 门 },
+      请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`),
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await page.goto('/#/rules');
+    await expect(page.getByRole('button', { name: '规则加载失败，重试' })).toBeVisible({ timeout: 15_000 });
+
+    // 重试：这一轮规则清单第一页被 fixture 挂起，请求横跨切身份全程
+    await page.getByRole('button', { name: '规则加载失败，重试' }).click();
+    await expect.poll(() => 请求序.filter((项) => 项 === 'GET /api/v1/me/agent-rules').length, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
+
+    // 切到招聘端（会话代际递增），招聘端事实先水合完成
+    await page.goto('/#/identity?switch=1&from=app');
+    await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 30_000 });
+    await page.goto('/#/hr/agent-settings');
+    await expect(page.getByText(P6标记.招聘全局规则)).toBeVisible({ timeout: 15_000 });
+
+    // 放行迟到应答：候选端规则/提案标记一个都不出现
+    放行();
+    await page.waitForTimeout(1500);
+    await expect(page.getByText(P6标记.招聘全局规则)).toBeVisible();
+    await expect(page.getByText(P6标记.候选全局规则)).toHaveCount(0);
+    await expect(page.getByText(P6标记.候选意向规则)).toHaveCount(0);
+    await expect(page.getByText(P6标记.就绪提案正文)).toHaveCount(0);
+
+    // 切回候选端：新代际的完整水合不受迟到应答影响
+    await page.goto('/#/identity?switch=1&from=hr');
+    await page.getByRole('button', { name: '翻到「求职者」那一面' }).click();
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto('/#/rules');
+    await expect(page.getByText(P6标记.候选全局规则)).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('P6 失败提案卡显示固定文案，失败保留草稿可再提交 @backend', async ({ page }) => {
+    // 专用提案单项 GET 即 failed：固定失败文案 + 关闭；创建失败（500）时草稿与范围原样保留，
+    // 再次提交是新意图、新 key。
+    test.setTimeout(120_000);
+    const { p6 } = await 安装BFF路由(page, {
+      登录尝试id: 'att-p6-failed',
+      记录目录请求: () => undefined,
+      P6分支: {
+        追加提案们: [{
+          提案: { proposal_id: P6分支编号.失败提案, state: 'interpreting', created_at: '2026-08-26T00:00:00Z' },
+          分支: '单读失败',
+        }],
+        创建前几次失败: 1,
+      },
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await page.goto('/#/rules');
+    await expect(page.getByText('AI代理正在理解这条规则…').first()).toBeVisible({ timeout: 15_000 });
+
+    // 轮询读到权威 failed → 固定失败文案；关闭只收起这一张卡
+    await expect(page.getByText('这条规则暂时无法理解，请换一种说法')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '关闭' }).click();
+    await expect(page.getByText('这条规则暂时无法理解，请换一种说法')).toHaveCount(0);
+
+    // 创建失败：composer 不收起，草稿/范围原样保留（绝不伪造成功）
+    await page.getByRole('button', { name: '手动添加规则' }).click();
+    const 候选输入 = page.getByPlaceholder('例：不接受大小周的岗位直接过滤');
+    await 候选输入.fill(P6标记.失败草稿);
+    await page.getByRole('button', { name: '提交给AI代理理解' }).click();
+    await expect(page.getByText(P6标记.创建失败提示)).toBeVisible({ timeout: 10_000 });
+    await expect(候选输入).toHaveValue(P6标记.失败草稿);
+    await expect(page.getByLabel('规则范围')).toHaveValue('');
+
+    // 再次提交：新意图、新 key，创建成功才收起输入行
+    await page.getByRole('button', { name: '提交给AI代理理解' }).click();
+    await expect(候选输入).toHaveCount(0, { timeout: 10_000 });
+    const 创建们 = p6.mutationRequests.filter((项) => 项.method === 'POST' && 项.path === '/api/v1/me/agent-rule-proposals');
+    expect(创建们.length).toBe(2);
+    expect(创建们[0]!.body).toEqual({ text: P6标记.失败草稿, scope: { type: 'global' } });
+    expect(创建们[1]!.body).toEqual({ text: P6标记.失败草稿, scope: { type: 'global' } });
+    expect(创建们[0]!.idempotencyKey).not.toBe('');
+    expect(创建们[0]!.idempotencyKey).not.toBe(创建们[1]!.idempotencyKey);
+  });
+
+  test('P6 重复 cursor 按契约漂移失败出服务异常重试，不回退 Mock @backend', async ({ page }) => {
+    // 清单游标成环 → 解码器按翻页死循环拒绝，rules 域整体失败：
+    // 重试键上屏、无清单/无计数/无写控件，Mock 种子绝不顶替 HTTP。
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p6-cursor',
+      记录目录请求: () => undefined,
+      P6分支: { 游标成环: true },
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await page.goto('/#/rules');
+    await expect(page.getByRole('button', { name: '规则加载失败，重试' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('规则加载中')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '手动添加规则' })).toHaveCount(0);
+    await expect(page.getByText('2 条')).toHaveCount(0);
+    await expect(page.getByText(P6标记.候选全局规则)).toHaveCount(0);
+    await expect(page.getByText(P6标记.候选意向规则)).toHaveCount(0);
+    await expect(page.getByText('不主动披露并行接触数量')).toHaveCount(0);
+    await expect(page.getByText('双休是底线；隔周六可谈，大小周不谈')).toHaveCount(0);
+  });
+
+  test('P6 首次水合挂起期间无任何规则内容与写入口 @backend', async ({ page }) => {
+    // 规则清单第一页被挂起：初始化完成前整壳只有路由加载中 ——
+    // Mock 种子行 / 计数 / 写控件 / 重试键都不上屏；放行后权威行与计数一并落地。
+    test.setTimeout(120_000);
+    let 放行!: () => void;
+    const 门 = new Promise<void>((ok) => { 放行 = ok; });
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p6-pending',
+      记录目录请求: () => undefined,
+      P6分支: { 挂起候选规则: 门 },
+    });
+
+    await page.goto('/#/rules');
+    await expect(page.getByText('正在加载…')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('不主动披露并行接触数量')).toHaveCount(0);
+    await expect(page.getByText('双休是底线；隔周六可谈，大小周不谈')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '手动添加规则' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '规则加载失败，重试' })).toHaveCount(0);
+
+    放行();
+    await expect(page.getByText(P6标记.候选全局规则)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(P6标记.候选意向规则)).toBeVisible();
+    await expect(page.getByText('2 条')).toBeVisible();
+  });
+
+  test('P6 accept 409 not_actionable 权威恢复保留卡片 @backend', async ({ page }) => {
+    // 专用提案公开 consequence 是 auto_allow（看起来完全可执行），服务端仍裁决 not_actionable：
+    // 公开后果从不决定可执行性 —— 恢复路径读权威回执，卡片保留、绝不本地物化规则、零重放。
+    const { p6 } = await 安装BFF路由(page, {
+      登录尝试id: 'att-p6-not-actionable',
+      记录目录请求: () => undefined,
+      P6分支: {
+        追加提案们: [{
+          提案: {
+            proposal_id: P6分支编号.不可接受提案,
+            state: 'ready',
+            normalized_text: P6标记.不可接受提案正文,
+            consequence: 'auto_allow',
+            created_at: '2026-08-26T00:00:00Z',
+          },
+          分支: 'accept不可接受',
+        }],
+      },
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await page.goto('/#/rules');
+    await expect(page.getByText(P6标记.不可接受提案正文)).toBeVisible({ timeout: 15_000 });
+
+    await 就绪卡动作键(page, P6标记.不可接受提案正文, '确认规则').click();
+    await expect(page.getByText('这条内容暂时不能成为长期规则，请放弃或换一种说法')).toBeVisible({ timeout: 10_000 });
+    // 权威恢复：GET 回执仍是 ready → 卡片原样保留，规则计数不变、没有规则行被物化
+    await expect(page.getByText(P6标记.不可接受提案正文)).toBeVisible();
+    await expect(page.getByRole('button', { name: new RegExp(P6标记.不可接受提案正文) })).toHaveCount(0);
+    await expect(page.getByText('2 条')).toBeVisible();
+    const 接受们 = p6.mutationRequests.filter((项) => 项.path === `/api/v1/me/agent-rule-proposals/${P6分支编号.不可接受提案}/accept`);
+    expect(接受们.length).toBe(1);
+    expect(p6.proposalReads[P6分支编号.不可接受提案]).toBeGreaterThanOrEqual(1);
   });
 });
