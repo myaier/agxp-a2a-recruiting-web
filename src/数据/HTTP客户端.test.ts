@@ -94,4 +94,43 @@ describe('BFF HTTP 客户端', () => {
       path: '/api/v1/recruiter/avatar', method: 'POST', body: {}, formData: new FormData(),
     } as unknown as BFF请求选项)).rejects.toThrow('body 与 formData 不能同时提供');
   });
+
+  it('binary GET includes credentials, retries one network failure and exposes fixed headers', async () => {
+    const pdf = new Blob(['%PDF-1.7'], { type: 'application/pdf' });
+    // vitest jsdom 环境里 Response 是 Node（undici）的：跨 realm 的 jsdom Blob 会被
+    // Response 构造器字符串化成 "[object Blob]"，所以 mock 用 pdf 自己的字节构造 body。
+    const fetcher = vi.fn()
+      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockImplementationOnce(async () => new Response(await pdf.arrayBuffer(), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': 'attachment; filename="resume.pdf"',
+          'X-Request-Id': 'req_pdf',
+        },
+      }));
+    const client = 创建BFF客户端({ fetcher });
+
+    const result = await client.请求二进制('/api/v1/me/resume-files/rf_1/content');
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenLastCalledWith('/api/v1/me/resume-files/rf_1/content', {
+      method: 'GET', headers: expect.any(Headers), credentials: 'include',
+    });
+    expect(await result.blob.text()).toBe('%PDF-1.7');
+    expect(result.contentType).toBe('application/pdf');
+    expect(result.contentDisposition).toBe('attachment; filename="resume.pdf"');
+    expect(result.requestId).toBe('req_pdf');
+  });
+
+  it('binary GET parses the normal JSON error envelope and does not retry HTTP errors', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { type: 'resume_file_not_found', message: 'missing', fields: [] },
+    }), { status: 404, headers: { 'Content-Type': 'application/json' } }));
+    const client = 创建BFF客户端({ fetcher });
+
+    await expect(client.请求二进制('/api/v1/me/resume-files/rf_missing/content'))
+      .rejects.toMatchObject({ status: 404, code: 'resume_file_not_found', message: 'missing' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
 });

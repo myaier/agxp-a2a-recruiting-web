@@ -52,6 +52,14 @@ export interface BFF响应<T> {
   requestId: string | null;
 }
 
+/** 二进制 GET（附件简历内容等）的原始字节流响应：contentType 取 media type 部分（去参数、小写）。 */
+export interface BFF二进制响应 {
+  blob: Blob;
+  contentType: string;
+  contentDisposition: string | null;
+  requestId: string | null;
+}
+
 export interface BFF客户端依赖 {
   fetcher?: typeof fetch;
   生成幂等键?: () => string;
@@ -60,6 +68,7 @@ export interface BFF客户端依赖 {
 
 export interface BFF客户端 {
   请求<T>(options: BFF请求选项): Promise<BFF响应<T>>;
+  请求二进制(path: `/api/v1/${string}`): Promise<BFF二进制响应>;
 }
 
 type 尝试结果<T> =
@@ -80,6 +89,32 @@ function 解析RetryAfter(resp: Response): number | null {
   if (值 === null) return null;
   const 数字 = Number(值);
   return Number.isFinite(数字) ? 数字 : null;
+}
+
+/** 非 2xx：解析 { error: { type, message, fields? } } 为 BFF错误；JSON 请求与 binary GET 共用。 */
+async function 解析错误响应(resp: Response): Promise<BFF错误> {
+  let code = 'invalid_response';
+  let message = '请求失败';
+  let fieldErrors: BFF字段错误[] = [];
+  try {
+    const body = await resp.json();
+    if (body && typeof body === 'object' && 'error' in body) {
+      const err = (body as { error: { type?: string; message?: string; fields?: unknown } }).error;
+      if (err && typeof err === 'object') {
+        if (typeof err.type === 'string') code = err.type;
+        if (typeof err.message === 'string') message = err.message;
+        // Task 2：fields 是有序数组，每项 {path,reason}；只保留两项都是字符串的条目，
+        // 其余形状（含旧的 Record<string,string>）一律忽略，避免 [object Object] 进文案。
+        fieldErrors = Array.isArray(err.fields)
+          ? err.fields.filter((item): item is BFF字段错误 =>
+              typeof item?.path === 'string' && typeof item?.reason === 'string')
+          : [];
+      }
+    }
+  } catch {
+    // 响应不是合法 JSON → 保持 invalid_response
+  }
+  return new BFF错误(resp.status, code, message, fieldErrors, 解析RetryAfter(resp));
 }
 
 export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 {
@@ -119,28 +154,7 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
     }
 
     // 非 2xx：解析 { error: { type, message, fields? } } 为 BFF错误。
-    let code = 'invalid_response';
-    let message = '请求失败';
-    let fieldErrors: BFF字段错误[] = [];
-    try {
-      const body = await resp.json();
-      if (body && typeof body === 'object' && 'error' in body) {
-        const err = (body as { error: { type?: string; message?: string; fields?: unknown } }).error;
-        if (err && typeof err === 'object') {
-          if (typeof err.type === 'string') code = err.type;
-          if (typeof err.message === 'string') message = err.message;
-          // Task 2：fields 是有序数组，每项 {path,reason}；只保留两项都是字符串的条目，
-          // 其余形状（含旧的 Record<string,string>）一律忽略，避免 [object Object] 进文案。
-          fieldErrors = Array.isArray(err.fields)
-            ? err.fields.filter((item): item is BFF字段错误 =>
-                typeof item?.path === 'string' && typeof item?.reason === 'string')
-            : [];
-        }
-      }
-    } catch {
-      // 响应不是合法 JSON → 保持 invalid_response
-    }
-    return { kind: '错误', error: new BFF错误(resp.status, code, message, fieldErrors, 解析RetryAfter(resp)) };
+    return { kind: '错误', error: await 解析错误响应(resp) };
   }
 
   async function 请求<T>(options: BFF请求选项): Promise<BFF响应<T>> {
@@ -196,7 +210,31 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
     return 结果.响应;
   }
 
-  return { 请求 };
+  // 二进制 GET：附件简历内容等原始字节流下载。与 JSON GET 一样只重试一次网络错误、
+  // 带 credentials: 'include'；非 2xx 复用同一套 解析错误响应 —— 不重试 HTTP 错误，
+  // 成功时也绝不尝试解析 JSON envelope（返回原始 Blob）。
+  async function 请求二进制(path: `/api/v1/${string}`): Promise<BFF二进制响应> {
+    const init: RequestInit = { method: 'GET', headers: new Headers(), credentials: 'include' };
+    let resp: Response;
+    try {
+      resp = await fetcher(path, init);
+    } catch {
+      try {
+        resp = await fetcher(path, init);
+      } catch {
+        throw new BFF错误(0, 'network_error', '网络连接失败，请稍后再试');
+      }
+    }
+    if (!resp.ok) throw await 解析错误响应(resp);
+    return {
+      blob: await resp.blob(),
+      contentType: resp.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase() ?? '',
+      contentDisposition: resp.headers.get('Content-Disposition'),
+      requestId: resp.headers.get('X-Request-Id'),
+    };
+  }
+
+  return { 请求, 请求二进制 };
 }
 
 export function 取后端错误文案(error: unknown): string {

@@ -487,3 +487,49 @@ export interface BFFAgent规则提案 {
   consequence?: BFFAgent规则后果;
   created_at?: string;
 }
+
+// ── 候选人附件简历域 DTO（P2：resume-files 与解析状态）──
+// 字段名逐项复制自 recruitment-bff OpenAPI；解析失败码与 media type 闭合，
+// 不增加协议中不存在的字段，不加入 extracted result。
+
+export type BFF附件解析失败码 =
+  | 'document_unreadable'
+  | 'document_too_complex'
+  | 'parser_invalid_output'
+  | 'parser_temporarily_unavailable';
+
+export type BFF附件解析状态 =
+  | { status: 'not_started' }
+  | { status: 'pending' | 'processing'; updated_at: string }
+  | { status: 'succeeded'; parse_id: string; updated_at: string }
+  | { status: 'failed'; failure_code: BFF附件解析失败码; updated_at: string };
+
+export interface BFF附件简历版本 {
+  version_id: string;
+  version: number;
+  size_bytes: number;
+  media_type: 'application/pdf';
+  sha256: string;
+  created_at: string;
+  parse: BFF附件解析状态;
+}
+
+export interface BFF附件简历 {
+  file_id: string;
+  display_name: string;
+  revision: number;
+  current_version: BFF附件简历版本;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BFF附件简历库 {
+  items: BFF附件简历[];
+  limits: {
+    max_files: number;
+    max_file_bytes: number;
+    accepted_media_types: ['application/pdf'];
+  };
+}
+
+export interface BFF删除回执 { deleted: true }
