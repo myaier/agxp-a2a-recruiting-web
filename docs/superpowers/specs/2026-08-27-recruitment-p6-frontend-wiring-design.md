@@ -232,10 +232,16 @@ Backend 页面只通过 hydration action 改规则数组；任何 mutation 都�
 `后端状态` 增加：
 
 ```ts
+type Agent规则水合阶段 = '未开始' | '进行中' | '成功' | '失败';
+
 候选规则快照: Record<string, BFFAgent规则>;
 招聘规则快照: Record<string, BFFAgent规则>;
 候选规则提案: Record<string, BFFAgent规则提案>;
 招聘规则提案: Record<string, BFFAgent规则提案>;
+Agent规则水合: Record<'candidate' | 'recruiter', {
+  rules: Agent规则水合阶段;
+  proposals: Agent规则水合阶段;
+}>;
 ```
 
 raw Rule snapshot 提供 version/CAS；proposal snapshot 提供 async lifecycle。页面展示 Rule 使用领域映射，proposal 卡直接消费 closed owner-safe proposal view，不复制 machine data。
@@ -286,7 +292,7 @@ recruiter hydration
      )
 ```
 
-各域独立提交成功 snapshot。P6 失败不撤销 Resume/Privacy/Job 成功结果，也不回退 Mock。Rule 与 Proposal 水合也独立呈现：Rule 成功后立即显示权威 rows 与计数；Proposal 两个 actionable list 都成功前隐藏 create/edit/accept/dismiss 控件。初始化完成后若任一 P6 子快照仍未成功，页面显示明确的“规则加载失败，重试”入口并调用 `刷新Agent规则()`，不能停在无说明空壳。首次 Rule snapshot 尚未成功时不显示 Mock rows 或 Mock 计数。
+各域独立提交成功 snapshot。P6 失败不撤销 Resume/Privacy/Job 成功结果，也不回退 Mock。Rule 与 Proposal 水合各自维护 `未开始|进行中|成功|失败`：Rule 成功后立即显示权威 rows 与计数；Proposal 两个 actionable list 都成功前隐藏 create/edit/accept/dismiss 控件。仅当任一 P6 子域阶段为 `失败` 时显示明确的“规则加载失败，重试”入口；`进行中` 只显示加载外壳，不能误报失败或并发启动第二次水合。重试调用 `刷新Agent规则()`，其冻结语义是对当前 role 重新运行完整 `水合Agent规则角色数据`（Rules + `interpreting` + `ready`，并更新两个阶段），不是只读 Rule list。首次 Rule 阶段未成功时不显示 Mock rows 或 Mock 计数。
 
 退出、401、切 subject、切 role 时：
 
@@ -388,7 +394,7 @@ PATCH/DELETE/replacement create 遇 `409 version_conflict`：
 
 前端不通过文本相等猜哪条 proposal 属于这次创建。
 
-`409 idempotency_conflict` 不是 `version_conflict`，也不得自动重试：重读两类 actionable Proposal list；create 没有 receipt 时保留草稿并显示冲突错误，replacement 有目标 Rule 时同时重读 Rule。`403 agent_rule_scope_denied` 保留文本、刷新权威意向，并提示“这个意向已不可用，请重新选择规则范围”，不静默改成 global。
+`409 idempotency_conflict` 不是 `version_conflict`，也不得自动重试：重读两类 actionable Proposal list；有已知 `proposal_id` 时必须通过会提交 raw snapshot 的 `刷新Agent规则提案(proposal_id)` 恢复，不能裸 GET 后丢弃结果。create 没有 receipt 时保留草稿并显示冲突错误，replacement 有目标 Rule 时同时重读 Rule。`403 agent_rule_scope_denied` 保留文本、刷新权威意向，并提示“这个意向已不可用，请重新选择规则范围”，不静默改成 global；意向重读的 dispatch/raw snapshot 写入必须经过捕获的 subject/session generation fence，迟到响应直接丢弃。
 
 ### 8.4 Accept/dismiss
 
@@ -401,6 +407,18 @@ accept/dismiss 使用幂等 POST。错误或响应丢失后 GET proposal：
 - not found：重读 actionable lists，无法确认则保留错误提示。
 
 `agent_rule_proposal_not_ready`、`agent_rule_proposal_not_actionable`、`agent_rule_proposal_terminal`、`idempotency_conflict` 都先读 proposal，再按权威 state 恢复；不把所有 409 当 version conflict。`idempotency_conflict` 仍向用户显示冲突错误，不能因为 GET 恢复到 `ready` 就伪造原操作成功。
+
+P6 页面不直接使用 BFF 固定英文 `error.message`。`Agent规则操作.ts` 导出闭合的 `取Agent规则错误文案(error)`，至少冻结：
+
+```text
+agent_rule_proposal_not_ready      → AI代理还在理解这条规则，请稍后再试
+agent_rule_proposal_not_actionable → 这条内容暂时不能成为长期规则，请放弃或换一种说法
+agent_rule_proposal_terminal       → 这条规则提案已经处理，请查看最新状态
+idempotency_conflict               → 这次操作与之前的请求冲突，请检查最新状态后重试
+agent_rule_scope_denied            → 这个意向已不可用，请重新选择规则范围
+```
+
+其它错误回落现有 `取后端错误文案`；双端 canonical 页面统一使用这个 P6 mapper。
 
 ### 8.5 Pause/resume/archive
 
@@ -450,6 +468,8 @@ accept/dismiss 使用幂等 POST。错误或响应丢失后 GET proposal：
 - interpreting/ready/failed card 与 consequence 文案；
 - Backend 未水合无 Mock rows/count/mutation；
 - Rule 成功但 Proposal 失败时仍显示权威 Rule rows，隐藏写控件并提供重试；
+- Rule/Proposal `进行中` 时只显示加载外壳，不显示失败重试或启动重复水合；失败重试会重新读取 Rule、`interpreting` 与 `ready`，成功后写控件恢复；
+- 五个 P6 服务错误显示冻结的中文文案；scope 意向重读受 subject/session fence 保护，已知 proposal 的幂等冲突恢复会提交最新 raw Proposal snapshot；
 - Backend 筛选抽屉只读并导航 canonical page；Mock 仍可编辑；
 - Backend 问 AI/Case 不污染 Rule state；Mock 剧情不回归；
 - 所有按钮在中文输入法 composing Enter 时不误提交。
