@@ -5,9 +5,9 @@
 // 注：意向草稿型 当前形态与原 应用状态.tsx 中完全一致；Task 4 会再给它加
 // 后端招聘类型 / 求职类型已改 两个字段并改归约，本任务不动那两项。
 
-import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 在招岗位, 求职意向, 披露项, 屏蔽项 } from './类型';
+import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 在招岗位, 求职意向, 披露项, 屏蔽项, 市场职位 } from './类型';
 import type { 求职初筛偏好, 求职薪资单位 } from '../流程/onboarding配置';
-import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF隐私快照 } from './BFF契约';
+import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF隐私快照, BFF委托摘要, BFF淘汰原因 } from './BFF契约';
 
 // ── 分页目录查询（Task 1）：页面层只拿已选目录项的引用，不再全量预取 ──
 // 目录选择值 仍是 BFF目录引用，写入 body 里只带 id；页面层不感知后端返回的额外字段。
@@ -132,4 +132,50 @@ export interface 组织搜索查询 { q: string; limit?: number; cursor?: string
 export interface 后端会话快照 {
   已登录: boolean;
   主体: BFF主体 | null;
+}
+
+// ── P4 发现推荐页面投影（Task 2）：发现推荐映射.ts 把 Discovery* wire DTO 收成这两份
+// owner-safe 视图供屏幕直用 —— 不带 Mock 查找键（公司 slug / Mock 编号）；招聘端视图
+// 不带 candidate subject、真名、联系方式、性别、出生数据、候选薪资数字。
+
+/**
+ * P4 候选岗位卡/详情页视图。发布人 absent → null，绝不拿公司声明合成招聘人；
+ * 公开公司路由 ID 只认 公司.organizationId（= wire 的 hiring_organization_ref）。
+ */
+export interface P4候选岗位页面 {
+  recommendationId: string | null;
+  intentionId: string | null;
+  jobId: string;
+  卡: 市场职位;
+  职位详情: string[];
+  职位要求: string[];
+  公司: {
+    名称: string; 首字: string; 简介: string;
+    organizationId: string | null;
+  };
+  发布人: {
+    姓名: string; 职务: string; 首字: string;
+    验证状态: 'unverified' | 'verified';
+  } | null;
+  委托: BFF委托摘要 | null;
+}
+
+/** P4 招聘端候选卡/详情页视图：匿名 allowlist 投影，淘汰原因保留 wire 码（文案经 P4淘汰原因文案 换取） */
+export interface P4招聘候选页面 {
+  recommendationId: string;
+  jobId: string;
+  代号: string;
+  头像字: string;
+  匹配分: number;
+  亮点: string[];
+  经验: string;
+  求职状态: string;
+  摘要: string;
+  技能: string[];
+  教育: { 学校: string; 专业: string; 学历: string; 起止: string }[];
+  薪资关系: '薪资带有交集' | '薪资带接近' | '薪资带无交集' | '薪资带未核对';
+  收藏: boolean;
+  已淘汰: boolean;
+  淘汰原因: BFF淘汰原因 | null;
+  委托: BFF委托摘要 | null;
 }
