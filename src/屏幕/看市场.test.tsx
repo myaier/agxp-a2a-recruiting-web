@@ -79,12 +79,13 @@ function 置应用状态(选项: {
   };
 }
 
-/** P4 候选状态底座：当前意向即 BFF 意向 ID（active），快照与操作桩由用例给 */
+/** P4 候选状态底座：按生产口径播种 —— 当前意向 是意向名（标题职位段），编号载体
+ *  当前意向编号 才是 intention_id；快照与操作桩由用例给 */
 function 置P4候选状态(items: BFF候选岗位推荐[]) {
   置应用状态({
     模式: 'backend', 候选规则阶段: '成功',
     状态: {
-      子视图: '看市场', 当前意向: BFF意向样本.intention_id,
+      子视图: '看市场', 当前意向: P4意向名, 当前意向编号: BFF意向样本.intention_id,
       后端意向服务端: { [BFF意向样本.intention_id]: BFF意向样本 },
       求职意向表: [], 在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
       全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
@@ -100,7 +101,11 @@ function 置P4候选状态(items: BFF候选岗位推荐[]) {
   });
 }
 
-/** 换意向时的第二份快照底座：同一份字段结构，只换意向 ID、快照键与操作桩 */
+/** BFF意向样本 的意向名（顶部意向栏派发的口径：标题 `[城市] 职位` 的职位段）*/
+const P4意向名 = '产品经理';
+
+/** 换意向时的第二份快照底座：同一份字段结构，只换意向 ID、快照键与操作桩。
+ *  两条意向共用同一个意向名（同城市同职位 = 现实的重名场景），编号载体才分得开。 */
 function 置P4候选意向(选项: {
   意向ID: string;
   阶段: string;
@@ -111,7 +116,7 @@ function 置P4候选意向(选项: {
   置应用状态({
     模式: 'backend', 候选规则阶段: '成功',
     状态: {
-      子视图: '看市场', 当前意向: 选项.意向ID,
+      子视图: '看市场', 当前意向: P4意向名, 当前意向编号: 选项.意向ID,
       后端意向服务端: { [选项.意向ID]: 意向 },
       求职意向表: [], 在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
       全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
@@ -345,7 +350,7 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
 
 /** P4 状态字段的复用底座（换阶段/快照时局部覆盖） */
 const P4状态底座 = (覆盖: Record<string, unknown> = {}) => ({
-  子视图: '看市场', 当前意向: BFF意向样本.intention_id,
+  子视图: '看市场', 当前意向: P4意向名, 当前意向编号: BFF意向样本.intention_id,
   后端意向服务端: { [BFF意向样本.intention_id]: BFF意向样本 },
   求职意向表: [], 在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
   全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
@@ -448,6 +453,7 @@ describe('看市场 · P4 候选发现（Backend）', () => {
   });
 
   it('切意向即换 scope：旧范围先清、新范围后注册，旧数据不闪进新列表', () => {
+    // 两条意向共用同一个意向名（重名场景）：列表跟着编号载体走，不跟着名字走
     置P4候选意向({
       意向ID: BFF意向样本.intention_id, 阶段: '成功', items: [BFF候选岗位推荐样本],
       操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载候选岗位: mock加载候选岗位 },
@@ -467,6 +473,40 @@ describe('看市场 · P4 候选发现（Backend）', () => {
       ['candidate', null],
       ['candidate', 'candidate:list:int_2'],
     ]);
+  });
+
+  it('编号载体缺席（意向未水合完）时不 admits、不发任何 P4 请求', () => {
+    置应用状态({
+      模式: 'backend', 候选规则阶段: '成功',
+      状态: { ...P4状态底座(), 当前意向编号: null },
+      后端状态: {
+        候选岗位推荐: { [BFF意向样本.intention_id]: P4快照({ 阶段: '成功', items: [BFF候选岗位推荐样本] }) },
+      },
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载候选岗位: mock加载候选岗位 },
+    });
+    render(<看市场 />);
+    expect(screen.getByText('还没有进行中的求职意向')).toBeTruthy();
+    expect(mock加载候选岗位).not.toHaveBeenCalled();
+    expect(mock设置发现推荐范围).not.toHaveBeenCalled();
+  });
+
+  it('编号载体指向非 active 意向时不 admits（宁空勿错）', () => {
+    const 停用意向 = { ...BFF意向样本, status: 'archived' as const };
+    置应用状态({
+      模式: 'backend', 候选规则阶段: '成功',
+      状态: {
+        ...P4状态底座(),
+        后端意向服务端: { [BFF意向样本.intention_id]: 停用意向 },
+      },
+      后端状态: {
+        候选岗位推荐: { [BFF意向样本.intention_id]: P4快照({ 阶段: '成功', items: [BFF候选岗位推荐样本] }) },
+      },
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载候选岗位: mock加载候选岗位 },
+    });
+    render(<看市场 />);
+    expect(screen.getByText('还没有进行中的求职意向')).toBeTruthy();
+    expect(screen.queryByText('AI 产品实习生')).toBeNull();
+    expect(mock加载候选岗位).not.toHaveBeenCalled();
   });
 
   it('本地搜索只在已加载卡上过滤', async () => {
@@ -631,5 +671,27 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     expect(screen.getByText('这个意向下暂时没有新职位')).toBeTruthy();
     expect(screen.queryByText('MiniMax')).toBeNull();
     expect(screen.queryByText('AI 产品经理（Agent 方向）')).toBeNull();
+  });
+
+  it('顶栏胶囊在 Backend 随切意向带上编号；Mock 不带（载体只在 Backend 写入）', async () => {
+    const user = userEvent.setup();
+    const 顶栏状态 = {
+      子视图: '看市场', 当前意向: P4意向名, 当前意向编号: BFF意向样本.intention_id,
+      求职意向表: [{ 编号: BFF意向样本.intention_id, 标题: '[上海] 产品经理', 说明: '' }],
+      在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+      全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
+    };
+    置应用状态({ 模式: 'backend', 状态: 顶栏状态 });
+    const 页 = render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: P4意向名 }));
+    expect(mock派发).toHaveBeenCalledWith({
+      型: '切意向', 意向: P4意向名, 编号: BFF意向样本.intention_id,
+    });
+    页.unmount();
+
+    置应用状态({ 模式: 'mock', 状态: 顶栏状态 });
+    render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: P4意向名 }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切意向', 意向: P4意向名 });
   });
 });

@@ -24,8 +24,8 @@
 // 且与 规则库 同一口径：candidate rules 未水合前不出清单，角标数同样不出（宁缺勿错）。
 // Mock 保持原型交互原样。
 //
-// P4 模式边界：Backend 列表只来自当前活跃意向（状态.当前意向 = 已水合 BFF 意向的
-// opaque ID，且 服务端 status === 'active'）的候选岗位快照，经 从P4候选岗位 投影；
+// P4 模式边界：Backend 列表只来自当前活跃意向（scope 坐标 = 当前意向编号 载体里的
+// intention_id，且 服务端 status === 'active'）的候选岗位快照，经 从P4候选岗位 投影；
 // 不读 市场列表、不做 Mock 屏蔽公司过滤（P4/P3 已在服务端收口）。搜索仍是本地包含
 // 匹配；下拉只重读（GET），空态「让AI代理帮我搜」才建新批次（POST+GET）。
 // 委托必过 确认层 的披露确认，确认不复用；委托后不写任何 Mock 在谈状态、不跳页，
@@ -79,10 +79,13 @@ export default function 看市场() {
   // 反馈/委托写进行中：并发写会被操作层单飞丢弃，禁用动作键防静默丢点击
   const [反馈中, 设反馈中] = useState(false);
 
-  // Backend 的 当前意向 = 已水合 BFF 意向表的 opaque ID；只有服务端 active 的意向
-  // 才 admits 进市场流，否则不发任何 P4 请求（宁空勿错）。
-  const 活跃意向 = 是后端 && 状态.后端意向服务端?.[状态.当前意向]?.status === 'active'
-    ? 状态.当前意向
+  // Backend 的 scope 坐标 = 当前意向编号 载体（水合后端意向 / Backend 切意向 写入的
+  // intention_id）；当前意向 本身仍是意向名（Mock 语义不动，名字不唯一不可反查）。
+  // 只有服务端 active 的编号才 admits 进市场流，否则不发任何 P4 请求（宁空勿错）。
+  const 意向编号 = 状态.当前意向编号 ?? null;
+  const 活跃意向 = 是后端 && 意向编号 !== null &&
+      状态.后端意向服务端?.[意向编号]?.status === 'active'
+    ? 意向编号
     : null;
   // 只选当前意向自己的快照：键按意向隔离，切换时旧 scope 的数据天然进不来
   const 后端快照 = 活跃意向 !== null ? 后端状态.候选岗位推荐?.[活跃意向] : undefined;
@@ -115,7 +118,9 @@ export default function 看市场() {
   const 进度未知 = use发现推荐委托轮询({
     开启: 是后端,
     委托: 进行中委托,
-    刷新: 操作.刷新委托,
+    // 生产 Provider 恒注入全表；部分桩宿主（冻结 helper）缺它时安全兜底，
+    // 绝不让轮询 interval 在 undefined 上 TypeError。
+    刷新: 操作.刷新委托 ?? (async () => {}),
   });
 
   // 确认层只在这里真正发起委托：先收层再 await —— 任何失败（含终态/拒绝回执）
@@ -142,6 +147,8 @@ export default function 看市场() {
   const 重读当前范围 = () => {
     if (活跃意向 === null) return;
     const 读取 = 操作.加载候选岗位?.(活跃意向, true);
+    // 这里的静默不是漏提示：加载失败（含下拉重读）的文案由操作层落进快照 error，
+    // 列表上方的错误/未决行负责呈现 —— 再 toast 一次就成了双重提示，别「修」它。
     if (读取) void 读取.catch(() => undefined);
   };
   const 请代理再搜 = () => {

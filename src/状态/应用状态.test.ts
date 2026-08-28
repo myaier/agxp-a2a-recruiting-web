@@ -1626,3 +1626,82 @@ describe('应用状态提供者 P4 发现初始状态', () => {
     expect(初始状态.企业候选列表.length).toBeGreaterThan(0);
   });
 });
+
+// ── P4 fix-r1：Backend 当前意向的编号载体（当前意向编号）──────────
+// 当前意向 是意向名（跨 Mock 全局同名复用、不可反查），P4 发现域的 scope 一律认
+// 编号载体：水合落「仍 active 的原值，否则第一条 active」，切意向 只认随 action
+// 带上的编号；Mock 不带编号，载体恒 null。
+
+describe('当前意向编号 · Backend 意向编号载体', () => {
+  const 列表与快照 = (entries: { 编号: string; active: boolean }[]) => {
+    const 列表 = entries.map(({ 编号 }) => ({
+      编号, 标题: `[上海] 产品经理`, 说明: '',
+    }));
+    const 服务端: Record<string, typeof BFF意向样本> = {};
+    for (const { 编号, active } of entries) {
+      服务端[编号] = { ...BFF意向样本, intention_id: 编号, status: active ? 'active' : 'archived' };
+    }
+    return { 列表, 服务端 };
+  };
+
+  it('水合后端意向 把载体落到列表序里第一条 active 意向', () => {
+    const { 列表, 服务端 } = 列表与快照([
+      { 编号: 'int_9', active: false },
+      { 编号: 'int_1', active: true },
+      { 编号: 'int_2', active: true },
+    ]);
+    const 水合后 = 归约(初始状态, { 型: '水合后端意向', 快照: { 列表, 服务端 } });
+    expect(水合后.当前意向编号).toBe('int_1');
+    expect(水合后.当前意向).toBe('产品经理');
+  });
+
+  it('重水合时保留仍 active 的已选载体；原值失效才回退第一条 active', () => {
+    const 第一次 = 列表与快照([
+      { 编号: 'int_1', active: true },
+      { 编号: 'int_2', active: true },
+    ]);
+    const 水合后 = 归约(初始状态, { 型: '水合后端意向', 快照: 第一次 });
+    const 已选第二条 = 归约(水合后, { 型: '切意向', 意向: '产品经理', 编号: 'int_2' });
+    expect(已选第二条.当前意向编号).toBe('int_2');
+    // 重水合（如编辑保存后的权威刷新）：int_2 仍 active → 保留用户的选择
+    const 保留 = 归约(已选第二条, { 型: '水合后端意向', 快照: 第一次 });
+    expect(保留.当前意向编号).toBe('int_2');
+    // int_2 被归档：载体回退到剩余的第一条 active，不指向死意向
+    const 归档后 = 列表与快照([
+      { 编号: 'int_1', active: true },
+      { 编号: 'int_2', active: false },
+    ]);
+    const 回退 = 归约(已选第二条, { 型: '水合后端意向', 快照: 归档后 });
+    expect(回退.当前意向编号).toBe('int_1');
+  });
+
+  it('水合不到任何 active 意向时载体归 null', () => {
+    const { 列表, 服务端 } = 列表与快照([{ 编号: 'int_1', active: false }]);
+    const 水合后 = 归约(初始状态, { 型: '水合后端意向', 快照: { 列表, 服务端 } });
+    expect(水合后.当前意向编号).toBeNull();
+  });
+
+  it('重名意向按编号区分：切意向带编号时载体指向被点的那条', () => {
+    const { 列表, 服务端 } = 列表与快照([
+      { 编号: 'int_1', active: true },
+      { 编号: 'int_2', active: true },
+    ]);
+    const 水合后 = 归约(初始状态, { 型: '水合后端意向', 快照: { 列表, 服务端 } });
+    // 两条意向的意向名完全相同，只有编号能区分 —— 名字反查在这里是错的
+    const 点第二条 = 归约(水合后, { 型: '切意向', 意向: '产品经理', 编号: 'int_2' });
+    expect(点第二条.当前意向).toBe('产品经理');
+    expect(点第二条.当前意向编号).toBe('int_2');
+  });
+
+  it('Mock 路径不带编号：切意向后载体归 null，Mock 行为原样', () => {
+    const 先水合 = 归约(初始状态, {
+      型: '水合后端意向',
+      快照: 列表与快照([{ 编号: 'int_1', active: true }]),
+    });
+    expect(先水合.当前意向编号).toBe('int_1');
+    // 顶栏在 Mock 下派发不带编号（字节级同型的旧 action）
+    const 切回 = 归约(先水合, { 型: '切意向', 意向: '产品经理' });
+    expect(切回.当前意向).toBe('产品经理');
+    expect(切回.当前意向编号).toBeNull();
+  });
+});
