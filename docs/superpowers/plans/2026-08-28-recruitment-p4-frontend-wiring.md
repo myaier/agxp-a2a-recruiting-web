@@ -886,10 +886,13 @@ export function P4拒绝文案(code: NonNullable<BFF委托回执['refusal_code']
   return copy[code];
 }
 
-export function P4委托终态文案(state: 'needs_user' | 'failed'): string {
-  return state === 'needs_user'
-    ? '这次委托需要你确认后才能继续'
-    : '这次委托没有成功，请稍后重试';
+export function P4委托终态文案(state: 'needs_user' | 'refused' | 'failed'): string {
+  const copy = {
+    needs_user: '这次委托需要你确认后才能继续',
+    refused: '这次委托未被接受，请稍后重试',
+    failed: '这次委托没有成功，请稍后重试',
+  } as const;
+  return copy[state];
 }
 ```
 
@@ -936,7 +939,9 @@ export function use发现推荐委托轮询(input: {
   委托: 可轮询委托[];
   刷新: (role: BFF角色, delegationId: string) => Promise<void>;
   间隔毫秒?: number;
-}): void;
+}): ReadonlySet<string>;
+
+export const P4委托进度未知文案 = '暂时无法确认进度，请稍后刷新';
 ```
 
 - [ ] **Step 1: Write failing receipt and polling tests**
@@ -975,7 +980,9 @@ it('polls accepted receipts every two seconds and stops at case_started', async 
 });
 ```
 
-Follow the existing `useAgent规则提案轮询` dependency-injection shape; do not mock `应用状态` inside the hook test. Also cover exactly one create receipt required; candidate direct-Job receipts with both null and non-null `recommendation_id` reconciling to the operation input's card and never using the receipt field; recruiter receipt recommendation mismatch; all six terminal/active states; refusal codes through `P4拒绝文案`; null-refusal `needs_user`/`failed` through `P4委托终态文案`; `case_started` requiring a non-null `case_id`; non-case state requiring null case; no MatchCase dispatch; same-pair create single-flight; candidate and recruiter body separation; `开启: false` issuing no GET; poll one in-flight GET per delegation; unmount stop; hidden/non-active omission; terminal stop; 401 cleanup; stale poll completion; and 404 delegation removal.
+Follow the existing `useAgent规则提案轮询` dependency-injection shape; do not mock `应用状态` inside the hook test. Also cover exactly one create receipt required; candidate direct-Job receipts with both null and non-null `recommendation_id` reconciling to the operation input's card and never using the receipt field; recruiter receipt recommendation mismatch; all six terminal/active states; refusal codes through `P4拒绝文案`; `needs_user`/`failed` always using `P4委托终态文案` regardless of a schema-valid nullable refusal field; refused using `P4拒绝文案` when a known code exists and `P4委托终态文案` otherwise; `state === null` requiring a known non-null refusal; `case_started` requiring a non-null `case_id`; other non-case states requiring null case; no MatchCase dispatch; same-pair create single-flight; candidate and recruiter body separation; `开启: false` issuing no GET; poll one in-flight GET per delegation; unmount stop; hidden/non-active omission; terminal stop; 401 cleanup; stale poll completion; 404 delegation removal; and the bounded-failure cases below.
+
+With fake timers, reject one delegation's refresh four times and assert it remains absent from the returned Set; reject the fifth consecutive non-401 call and assert the Set contains that `delegationId`, the exact neutral copy is exported, and later timer ticks issue no more GETs for it. Add a second test where one success between failures resets that delegation's count, plus a 401 case that relies on unified cleanup/unmount and never adds a paused marker.
 
 - [ ] **Step 2: Run delegation tests and verify RED**
 
@@ -998,9 +1005,9 @@ P4真实Case引用: {
 }
 ```
 
-Never dispatch `委托入谈`, `接触推荐候选`, or any `MatchCase动作`. `needs_user`, `refused`, and `failed` clear the card’s in-progress summary. Require `refused` and `state === null` receipts to carry a closed non-null `refusal_code` and use `P4拒绝文案`; require `needs_user`/`failed` to carry null refusal and use `P4委托终态文案`; transport/runtime failures use `P4错误文案`.
+Never dispatch `委托入谈`, `接触推荐候选`, or any `MatchCase动作`. `needs_user`, `refused`, and `failed` clear the card’s in-progress summary. `state === null` requires a known non-null refusal and uses `P4拒绝文案`; `refused` uses that mapping when a known code is present and otherwise uses `P4委托终态文案`; `needs_user`/`failed` ignore the schema-valid nullable refusal field and always use `P4委托终态文案`. Transport/runtime failures use `P4错误文案`.
 
-The page passes `开启: 数据源模式 === 'backend'`, current active receipts, and `操作.刷新委托` into the hook. The hook keeps input arrays/functions in refs like `useAgent规则提案轮询`, starts one interval only while enabled, defaults to 2,000 ms, and uses a local `Set<string>` to prevent overlapping GETs. The operation owns session/scope fences and terminal state commits. Cleanup clears the interval and invalidates the hook generation so late Promise completion cannot schedule more work.
+The page passes `开启: 数据源模式 === 'backend'`, current active receipts, and `操作.刷新委托` into the hook. The hook keeps input arrays/functions in refs like `useAgent规则提案轮询`, starts one interval only while enabled, defaults to 2,000 ms, and uses local in-flight, consecutive-failure, and paused Sets/Maps. Success resets only that delegation's count. The fifth consecutive non-401 rejection adds its ID to the returned paused Set and skips it on later ticks; 401 is left to unified cleanup and is never converted into this marker. A page uses the returned Set to override its active receipt label with `P4委托进度未知文案`, without fabricating a terminal receipt. Cleanup clears the interval, counters, and paused IDs and invalidates the hook generation; remounting the page begins a fresh bounded polling cycle. The operation still owns session/scope fences and terminal state commits.
 
 - [ ] **Step 4: Run delegation tests and verify GREEN**
 
@@ -1129,7 +1136,7 @@ it('Backend delegation requires fresh disclosure confirmation and never dispatch
 
 Add candidate list tests for lazy load by current real intention ID, scope switch, old data never showing in the new scope, local search over loaded cards, initial loading/error/empty states, pull-to-refresh GET only, Backend empty-state search button POST+GET, refresh failure preserving cards, candidate not-interested server-first removal, confirmation cancel zero request, failure closing confirmation and requiring a fresh confirmation, accepted/evaluating label, no navigation after delegation, Mock one-click behavior unchanged, and zero Backend reads from `市场列表`.
 
-Add detail tests for cached card, direct URL canonical Job GET, safe unavailable state, no `市场列表[0]` fallback, public organization navigation only when `hiring_organization_ref` exists, no Mock company slug, server-first not-interested, confirmation on every delegation, accepted/evaluating receipt polling while the detail stays visible, terminal polling stop, and no P5 navigation.
+Add detail tests for cached card, direct URL canonical Job GET, safe unavailable state, no `市场列表[0]` fallback, public organization navigation only when `hiring_organization_ref` exists, no Mock company slug, server-first not-interested, confirmation on every delegation, accepted/evaluating receipt polling while the detail stays visible, terminal polling stop, five-failure neutral-label override, and no P5 navigation.
 
 - [ ] **Step 2: Run candidate component tests and verify RED**
 
@@ -1185,7 +1192,7 @@ Store `待确认委托: P4候选岗位页面 | null`. Both card and detail open 
 
 Close the layer before awaiting the operation so any failure requires opening a fresh confirmation. Catch with `轻提示(P4错误文案(error))`. In Backend mode do not modify `本次已委托`, `状态.已委托`, or route to `在谈详情`.
 
-Both `看市场` and `职位详情` pass their visible candidate `accepted/evaluating` summaries to `use发现推荐委托轮询({ 开启: 数据源模式 === 'backend', 委托, 刷新: 操作.刷新委托 })`; a direct detail without recommendation context passes an empty array. Mock mode therefore owns no P4 interval.
+Both `看市场` and `职位详情` pass their visible candidate `accepted/evaluating` summaries to `use发现推荐委托轮询({ 开启: 数据源模式 === 'backend', 委托, 刷新: 操作.刷新委托 })`; a direct detail without recommendation context passes an empty array. If the returned Set contains the visible delegation, render `P4委托进度未知文案` instead of the active “已接手” label. Mock mode therefore owns no P4 interval.
 
 - [ ] **Step 5: Wire `职位详情` to cached/direct authoritative data**
 
@@ -1275,7 +1282,7 @@ it('Backend favorite filter is local and feedback is server-first', async () => 
 });
 ```
 
-Add tests for real current Job scope, scope switch, lazy load, pull GET only, “再找一批” POST+GET, previous-list preservation, exact four rejection codes, failure retention, favorite list/detail synchronization, accepted/evaluating label, recruiter delegation without confirmation, list and detail receipt polling while visible, terminal polling stop, no Mock `接触推荐候选`, no navigation into Mock in-talk, detail GET on every entry, 404 unavailable, no identity/age/gender/salary canaries, and Mock behavior/zero P4 requests.
+Add tests for real current Job scope, scope switch, lazy load, pull GET only, “再找一批” POST+GET, previous-list preservation, exact four rejection codes, failure retention, favorite list/detail synchronization, accepted/evaluating label, recruiter delegation without confirmation, list and detail receipt polling while visible, terminal polling stop, five-failure neutral-label override, no Mock `接触推荐候选`, no navigation into Mock in-talk, detail GET on every entry, 404 unavailable, no identity/age/gender/salary canaries, and Mock behavior/zero P4 requests.
 
 For `已筛候选`, test all active Jobs are requested, archived Jobs are excluded, one leg failure commits none, reason copy is closed, undo waits for server success, and undo does not immediately insert the card into the available current batch.
 
@@ -1322,7 +1329,7 @@ The screen owns `useState(false)`; toggling performs no HTTP request and filters
 
 Backend `候选推荐` registers `P4范围键.招聘列表(当前岗位编号)`, loads/selects `后端状态.招聘可用候选[当前岗位编号]`, and clears the visible range on unmount/scope change. It maps each row with `从P4招聘候选` and does not read `状态.推荐列表`, `收藏候选`, `不合适候选`, `已接触推荐`, `匿名简历表`, or `薪资初筛`. Mutations call P4 operations and catch `P4错误文案`.
 
-Recruiter delegation has no confirmation. It stays on the same page and renders receipt state. Both `候选推荐` and `匿名在线简历` pass only their visible accepted/evaluating summaries to `use发现推荐委托轮询({ 开启: 数据源模式 === 'backend', 委托, 刷新: 操作.刷新委托 })`.
+Recruiter delegation has no confirmation. It stays on the same page and renders receipt state. Both `候选推荐` and `匿名在线简历` pass only their visible accepted/evaluating summaries to `use发现推荐委托轮询({ 开启: 数据源模式 === 'backend', 委托, 刷新: 操作.刷新委托 })`; if the returned Set contains the visible delegation, render `P4委托进度未知文案` instead of the active label.
 
 Backend `匿名在线简历` registers `P4范围键.招聘详情(当前岗位编号, recommendationId)`, always calls `读取招聘候选详情(当前岗位编号, recommendationId, true)` on mount, and clears the visible range on unmount. Render only mapped alias, score, experience, job status, summary, skills, education, and salary-relationship copy. Omit age, gender, work-experience rows, candidate salary, direct-chat permission, and Mock resume fallback. Favorite and delegation use the same P4 operations and do not navigate after success.
 

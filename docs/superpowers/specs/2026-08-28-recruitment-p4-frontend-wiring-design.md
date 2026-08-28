@@ -411,8 +411,9 @@ create 的每个 receipt 独立判定：
 
 - `accepted/evaluating`：记录 receipt，当前 mount 显示现有“AI代理已接手/已接触”状态；
 - `case_started`：同时记录非空 `case_id`，但不生成本地 Case、不跳 P5 页面；
-- `refused` 或 `state=null + refusal_code`：要求非空闭合 refusal code，按拒绝码显示稳定原因；
-- `needs_user/failed`：要求 `refusal_code=null`，按 receipt state 显示稳定中文原因；
+- `state=null`：要求非空闭合 refusal code，按拒绝码显示稳定原因；
+- `refused`：有闭合 refusal code 时按拒绝码显示，无码时按 receipt state 显示稳定原因；
+- `needs_user/failed`：不依赖 `refusal_code`，始终按 receipt state 显示稳定中文原因；
 - receipt 的 `recommendation_id` 可空；候选直接 Job 委托完全忽略该字段，只用操作输入里的当前卡坐标做页面 reconcile，并按 `delegation_id` 保存/轮询 receipt。
 
 Backend 的 `职位详情` 委托成功后留在当前详情或返回推荐列表，不执行现有 Mock `替换跳转(在谈详情)`。Recruiter 继续留在推荐/匿名详情，不切换在谈子视图。
@@ -431,6 +432,7 @@ Mock 模式仍执行现有 `委托入谈`/`接触推荐候选`，立即生成演
 - unmount、role/subject/scope 变化立即停止并增加周期 generation；
 - 不在根 Provider 建永久 interval；
 - 轮询失败不把已接手改成失败，下一拍可重试；401 仍走统一账号清理；
+- 同一 delegation 连续 5 次非 401 轮询失败后暂停到本页面轮询周期结束，覆盖“已接手”标签为 `暂时无法确认进度，请稍后刷新`；成功一次即把该 delegation 的连续失败计数归零；
 - 重新进入页面由 recommendation card 的 delegation summary 恢复，不依赖旧 interval。
 
 P4 只缓存 `case_id` 供未来 P5 接线校准；本期没有 Case list/detail、决策、S1 PDF 或阶段页面写入。
@@ -487,9 +489,13 @@ delegation_not_allowed                 → 当前无法发起委托，请刷新�
 active_case_quota_reached              → 当前在谈已达到上限，请先处理已有在谈
 delegation_cooldown                    → 近期已联系过对方，暂时不能重复发起
 
-receipt state（refusal_code 为 null）：
+receipt state：
 needs_user                             → 这次委托需要你确认后才能继续
+refused                               → 这次委托未被接受，请稍后重试
 failed                                 → 这次委托没有成功，请稍后重试
+
+polling 连续 5 次非 401 失败：
+active receipt                        → 暂时无法确认进度，请稍后刷新
 ```
 
 其它 HTTP/运行时错误回落现有 `取后端错误文案`；未知 `refusal_code` 或未知 receipt state 按契约漂移失败，不显示后端英文 message。
