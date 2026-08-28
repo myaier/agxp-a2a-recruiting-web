@@ -48,7 +48,7 @@ export type 在谈范围档 = '当前' | '全部';
  */
 import type { 意向草稿型 } from '../数据/招聘数据源类型';
 export type { 意向草稿型 };
-import type { BFF主体 } from '../数据/BFF契约';
+import type { BFF主体, BFF角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
@@ -57,6 +57,7 @@ import { 读资料缓存 } from '../数据/资料缓存';
 import { 轻提示 } from '../组件/轻提示';
 import type { 应用操作, 后端状态, 后端操作依赖 } from './后端/类型';
 import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
+import { 创建发现推荐操作, 创建空P4发现状态 } from './后端/发现推荐操作';
 import { 创建候选操作 } from './后端/候选操作';
 import { 创建岗位操作 } from './后端/岗位操作';
 import { 创建组织操作 } from './后端/组织操作';
@@ -463,6 +464,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       candidate: { rules: '未开始', proposals: '未开始' },
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
+    // P4：发现推荐 raw scope 快照/详情/委托回执全部空底座起步（Mock 发现域不触达这里）
+    ...创建空P4发现状态(),
   }));
 
   // 让异步操作读到最新的 后端状态 / 状态（useMemo 闭包只捕获首次值）
@@ -482,6 +485,11 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   // review-r2 R2-M-4：会话代际。登录/退出/401 清理时递增；目录请求捕获起始代际，
   // 401 到达时若代际已变（新会话），stale 401 被忽略，不清新会话。
   const 会话代际 = useRef(0);
+  // P4 Task 3：discovery 运行时引用 —— scope 代际 / pending 幂等意图 / 双端可见范围。
+  // Provider 一次性初始化；清账号状态 / 登录换主体 / 切身份 时统一复位（会话操作.ts）。
+  const P4范围代际 = useRef(new Map<string, number>());
+  const P4幂等意图 = useRef(new Map<string, string>());
+  const P4可见范围 = useRef<Record<BFF角色, string | null>>({ candidate: null, recruiter: null });
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
   use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识 });
 
@@ -544,6 +552,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       // 不再落 已登录=true（旧实现会把上个会话的快照/草稿留给已失效的登录态）。
       const 会话失效 = await 水合角色数据({
         后端, 派发, 设后端状态, 主体标识引用, 会话代际, 读取恢复企业关系编号,
+        P4范围代际, P4幂等意图, P4可见范围,
       }, 主体, false, 本次代际);
       if (已取消) return;
       if (会话失效) {
@@ -579,6 +588,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         主体标识引用,
         会话代际,
         读取恢复企业关系编号,
+        P4范围代际,
+        P4幂等意图,
+        P4可见范围,
       };
       return {
         ...创建会话操作(deps),
@@ -588,6 +600,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         ...创建隐私操作(deps),
         // P6：Agent 规则/提案操作与其它域共用同一把 deps（锁 / 主体标识 / 会话代际）
         ...创建Agent规则操作(deps),
+        // P4 Task 3：发现推荐读操作（scope 注册 + 栅栏化读取），同一把 deps
+        ...创建发现推荐操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定

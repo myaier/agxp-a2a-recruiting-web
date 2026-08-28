@@ -617,6 +617,9 @@ describe('应用状态提供者 后端会话', () => {
       // P6 Agent 规则域方法（Agent规则操作）
       '刷新Agent规则', '创建Agent规则提案', '创建Agent规则替换提案', '刷新Agent规则提案',
       '接受Agent规则提案', '放弃Agent规则提案', '切换Agent规则', '删除Agent规则',
+      // P4 发现推荐域读方法（发现推荐操作；Task 4/5 再补 refresh/feedback/delegation）
+      '设置发现推荐范围', '加载候选岗位', '读取候选岗位详情',
+      '加载招聘候选', '加载招聘已筛', '读取招聘候选详情',
     ].sort().join('|'))).toBeTruthy();
   });
 
@@ -1583,5 +1586,40 @@ describe('应用状态提供者 P6 会话水合与清理', () => {
     expect(当前.状态.全局规则).toEqual([]);
     expect(当前.状态.意向级规则).toEqual([]);
     expect(当前.状态.企业规则).toEqual([]);
+  });
+});
+
+// ── P4 Task 3：Backend 初始 discovery raw 快照为空底座；Mock 发现域种子不动 ─────────
+
+describe('应用状态提供者 P4 发现初始状态', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  it('Backend 初始 P4 发现快照为空底座，Mock 发现种子保持不变', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.候选岗位推荐).toEqual({});
+    expect(当前.后端状态.候选岗位详情).toEqual({});
+    expect(当前.后端状态.候选岗位不可用).toEqual([]);
+    expect(当前.后端状态.招聘可用候选).toEqual({});
+    expect(当前.后端状态.招聘已筛候选).toEqual({});
+    expect(当前.后端状态.招聘已筛聚合).toEqual({ 阶段: '未开始', jobKey: '', error: null });
+    expect(当前.后端状态.招聘候选详情).toEqual({});
+    expect(当前.后端状态.招聘候选不可用).toEqual([]);
+    expect(当前.后端状态.P4委托回执).toEqual({});
+    expect(当前.后端状态.P4真实Case引用).toEqual({});
+    // Mock 发现域继续走 归约发现推荐 与既有种子（本轮未触碰）
+    expect(初始状态.推荐列表.length).toBeGreaterThan(0);
+    expect(初始状态.企业候选列表.length).toBeGreaterThan(0);
   });
 });

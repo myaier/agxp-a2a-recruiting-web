@@ -11,6 +11,7 @@ import { 初始状态 } from '../初始状态';
 import { 归约, type 动作 } from '../应用状态';
 import { BFF错误 } from '../../数据/HTTP客户端';
 import type { 后端操作依赖 } from './类型';
+import { 创建空P4发现状态 } from './发现推荐操作';
 import { 创建岗位操作 } from './岗位操作';
 
 /** 本文件内的页面岗位草稿：Backend 发布的最小完整对象（类别/地点引用齐备） */
@@ -51,6 +52,8 @@ function 创建岗位测试依赖(input: {
         candidate: { rules: '未开始', proposals: '未开始' },
         recruiter: { rules: '未开始', proposals: '未开始' },
       },
+      // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
+      ...创建空P4发现状态(),
     } },
     锁: { current: new Set<string>() }, 尝试引用: { current: null }, 是后端: true,
   } satisfies 后端操作依赖;

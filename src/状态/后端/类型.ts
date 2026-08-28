@@ -1,6 +1,7 @@
 // 后端操作组合的纯类型文件（无 React 依赖、无运行时副作用）。
 // Provider 把稳定 ref 与 React setter 组成 后端操作依赖 传给各域操作工厂，工厂返回操作方法；
-// 根 应用操作 是六个域操作子接口的交集（会话/候选/岗位/组织 + P3 隐私 + P6 Agent 规则），公开 shape 与拆分前逐字一致。
+// 根 应用操作 是各域操作子接口的交集（会话/候选/岗位/组织 + P3 隐私 + P6 Agent 规则 + P4 发现推荐读子集），
+// 公开 shape 与拆分前逐字一致。
 //
 // 对根 状态 / 动作 只使用 type-only import，运行时依赖方向保持「根组合 → 域实现」，
 // 不建立互相调用的域模块。
@@ -20,6 +21,11 @@ import type {
   BFFAgent规则,
   BFFAgent规则提案,
   BFFAgent规则作用域,
+  BFFCandidateJob,
+  BFF淘汰原因,
+  BFF委托回执,
+  BFF候选岗位推荐,
+  BFF招聘候选推荐,
 } from '../../数据/BFF契约';
 import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { 在招岗位, 披露档, 屏蔽来源, 屏蔽项 } from '../../数据/类型';
@@ -27,7 +33,7 @@ import type { 资料形 } from '../../数据/公司主页资料';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 动作, 状态 } from '../应用状态';
 
-export interface 后端状态 {
+export interface 后端状态 extends P4发现状态 {
   初始化: '跳过' | '进行中' | '完成';
   已登录: boolean;
   主体: BFF主体 | null;
@@ -58,6 +64,32 @@ export interface Agent规则角色水合状态 {
   proposals: Agent规则水合阶段;
 }
 
+// ── P4：发现推荐域的 raw scope 快照（仅 Backend；Mock 发现页继续走 归约发现推荐，不触达这里）──
+
+/** P4 scope 快照的生命周期阶段；已 成功 的快照在刷新途中保持 成功，不降级成空白。 */
+export type P4加载阶段 = '未开始' | '进行中' | '成功' | '失败';
+
+export interface P4ScopeSnapshot<T> {
+  阶段: P4加载阶段;
+  刷新中: boolean;
+  items: T[];
+  error: string | null;
+  generation: number;
+}
+
+export interface P4发现状态 {
+  候选岗位推荐: Record<string, P4ScopeSnapshot<BFF候选岗位推荐>>;
+  候选岗位详情: Record<string, BFFCandidateJob>;
+  候选岗位不可用: string[];
+  招聘可用候选: Record<string, P4ScopeSnapshot<BFF招聘候选推荐>>;
+  招聘已筛候选: Record<string, P4ScopeSnapshot<BFF招聘候选推荐>>;
+  招聘已筛聚合: { 阶段: P4加载阶段; jobKey: string; error: string | null };
+  招聘候选详情: Record<string, BFF招聘候选推荐>;
+  招聘候选不可用: string[];
+  P4委托回执: Record<string, BFF委托回执>;
+  P4真实Case引用: Record<string, string>;
+}
+
 export type 更新后端状态 = (更新: (旧: 后端状态) => 后端状态) => void;
 export type 可变引用<T> = { current: T };
 
@@ -77,6 +109,21 @@ export interface 后端操作依赖 {
    * 只作为 选择当前企业关系(affiliations, restoredId) 的输入；读取本身不派发选择 action。
    */
   读取恢复企业关系编号: (subjectId: string) => string | null;
+  /**
+   * P4 Task 3：discovery 运行时引用 —— scope 代际 / pending 幂等意图 / 双端可见范围。
+   * Provider 恒一次性初始化并传入；可选成员只为既有 测试依赖桩 与 清账号状态 子集调用方的
+   * 编译兼容，发现推荐操作 在工厂入口显式收窄，缺引用即接线缺陷。
+   */
+  P4范围代际?: 可变引用<Map<string, number>>;
+  P4幂等意图?: 可变引用<Map<string, string>>;
+  P4可见范围?: 可变引用<Record<BFF角色, string | null>>;
+}
+
+/** P4 discovery 的三个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
+export interface P4运行时引用 {
+  P4范围代际: 可变引用<Map<string, number>>;
+  P4幂等意图: 可变引用<Map<string, string>>;
+  P4可见范围: 可变引用<Record<BFF角色, string | null>>;
 }
 
 export interface 会话操作 {
@@ -136,6 +183,35 @@ export interface 隐私操作 {
   解除组织屏蔽(item: 屏蔽项): Promise<void>;
 }
 
+/**
+ * P4 Task 3：页面会调用的发现推荐操作方法表（页面不得直接调用数据源）。
+ * Task 4 落 refresh/feedback mutation、Task 5 落委托与轮询；本任务只实现 读子集。
+ */
+export interface 发现推荐操作 {
+  设置发现推荐范围(role: BFF角色, scopeKey: string | null): void;
+  加载候选岗位(intentionId: string, force?: boolean): Promise<void>;
+  读取候选岗位详情(jobId: string, force?: boolean): Promise<void>;
+  加载招聘候选(jobId: string, force?: boolean): Promise<void>;
+  加载招聘已筛(jobIds: string[], force?: boolean): Promise<void>;
+  读取招聘候选详情(jobId: string, recommendationId: string, force?: boolean): Promise<void>;
+  刷新候选岗位(intentionId: string): Promise<void>;
+  标记岗位不感兴趣(intentionId: string, recommendationId: string): Promise<void>;
+  刷新招聘候选(jobId: string): Promise<void>;
+  设置候选收藏(jobId: string, recommendationId: string, favorite: boolean): Promise<void>;
+  淘汰候选(jobId: string, recommendationId: string, reason: BFF淘汰原因): Promise<void>;
+  撤销淘汰候选(jobId: string, recommendationId: string): Promise<void>;
+  委托候选岗位(input: {
+    intentionId: string; recommendationId: string; jobId: string;
+    disclosureAcknowledged: true;
+  }): Promise<BFF委托回执>;
+  委托招聘候选(jobId: string, recommendationId: string): Promise<BFF委托回执>;
+  刷新委托(role: BFF角色, delegationId: string): Promise<void>;
+}
+
+/** Task 3 已落地的读子集；Task 4/5 补齐后收敛为完整 发现推荐操作。 */
+export type P4发现读操作 = Pick<发现推荐操作,
+  '设置发现推荐范围' | '加载候选岗位' | '读取候选岗位详情' | '加载招聘候选' | '加载招聘已筛' | '读取招聘候选详情'>;
+
 export interface Agent规则操作 {
   /** 对当前角色重跑完整 水合Agent规则角色数据（Rules + interpreting + ready，更新两个阶段）。 */
   刷新Agent规则(): Promise<void>;
@@ -152,4 +228,4 @@ export interface Agent规则操作 {
   删除Agent规则(ruleId: string): Promise<void>;
 }
 
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作;
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & P4发现读操作;

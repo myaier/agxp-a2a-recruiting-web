@@ -20,6 +20,7 @@ import { 初始状态 } from '../初始状态';
 import { 归约, type 动作, type 状态 } from '../应用状态';
 import type { 后端操作依赖 } from './类型';
 import { 水合角色数据 } from './会话操作';
+import { 创建空P4发现状态 } from './发现推荐操作';
 import { 水合招聘方组织数据, 创建组织操作, type 企业媒体脱离错误 } from './组织操作';
 
 function deferred<T>() {
@@ -85,6 +86,8 @@ function 创建组织测试依赖(input: {
         candidate: { rules: '未开始', proposals: '未开始' },
         recruiter: { rules: '未开始', proposals: '未开始' },
       },
+      // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
+      ...创建空P4发现状态(),
     } },
     锁: { current: new Set<string>() }, 尝试引用: { current: null }, 是后端: true,
   } satisfies 后端操作依赖;

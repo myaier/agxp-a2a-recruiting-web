@@ -20,6 +20,7 @@ import type { 组织搜索查询 } from '../../数据/招聘数据源类型';
 import { 初始状态 } from '../初始状态';
 import { 归约, type 动作 } from '../应用状态';
 import type { 后端操作依赖, 后端状态 } from './类型';
+import { 创建空P4发现状态 } from './发现推荐操作';
 import { 创建隐私操作 } from './隐私操作';
 
 function 创建隐私测试依赖(后端: HTTP招聘数据源, 服务端: BFF隐私快照) {
@@ -36,6 +37,8 @@ function 创建隐私测试依赖(后端: HTTP招聘数据源, 服务端: BFF隐
         candidate: { rules: '未开始' as const, proposals: '未开始' as const },
         recruiter: { rules: '未开始' as const, proposals: '未开始' as const },
       },
+      // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
+      ...创建空P4发现状态(),
     } },
     锁: { current: new Set<string>() }, 尝试引用: { current: null as string | null },
     主体标识引用: { current: 'sub_1' as string | null }, 会话代际: { current: 1 },

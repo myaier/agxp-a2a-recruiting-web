@@ -17,13 +17,15 @@ import {
   BFFAgent规则样本,
   BFF岗位样本,
   BFF招聘方档案样本,
+  BFF候选委托回执样本,
 } from '../../测试/BFF样本';
 import { 从BFF简历 } from '../../数据/后端映射';
 import { 从BFF隐私 } from '../../数据/隐私映射';
 import type { 页面隐私快照 } from '../../数据/招聘数据源类型';
 import { 创建初始状态, 初始状态 } from '../初始状态';
 import { 归约 } from '../应用状态';
-import type { 后端操作依赖, 后端状态 } from './类型';
+import { 创建空P4发现状态 } from './发现推荐操作';
+import type { 后端操作依赖, 后端状态, P4运行时引用 } from './类型';
 import { 创建会话操作, 清账号状态, 水合角色数据 } from './会话操作';
 
 /** 依赖 helper：派发重放 归约 到可变 状态引用，断言可以读最终 state。 */
@@ -48,6 +50,8 @@ function 创建会话测试依赖(后端: HTTP招聘数据源) {
         candidate: { rules: '未开始' as const, proposals: '未开始' as const },
         recruiter: { rules: '未开始' as const, proposals: '未开始' as const },
       },
+      // P4 Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
+      ...创建空P4发现状态(),
     } },
     状态引用,
     锁: { current: new Set<string>() },
@@ -322,6 +326,7 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
       candidate: { rules: '未开始', proposals: '未开始' },
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
+    ...创建空P4发现状态(),
   };
   const deps = {
     是后端: true,
@@ -344,9 +349,12 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
     主体标识引用: { current: null as string | null },
     会话代际: { current: 0 },
     读取恢复企业关系编号: vi.fn(() => null),
+    P4范围代际: { current: new Map<string, number>() },
+    P4幂等意图: { current: new Map<string, string>() },
+    P4可见范围: { current: { candidate: null, recruiter: null } },
   };
   return {
-    deps: deps as unknown as 后端操作依赖 & { 后端: HTTP招聘数据源 },
+    deps: deps as unknown as 后端操作依赖 & P4运行时引用 & { 后端: HTTP招聘数据源 },
     动作流,
     状态引用,
     最新后端状态: () => 后端值,
@@ -650,5 +658,86 @@ describe('P6 会话水合、清理与 Backend 种子', () => {
     expect(后端.读取Agent规则提案列表).not.toHaveBeenCalled();
     expect(后端.读取简历).not.toHaveBeenCalled();
     expect(最新后端状态().Agent规则水合).toEqual(空水合阶段());
+  });
+});
+
+// ── P4 Task 3：discovery 域加入会话边界清理 ─────────────────────────
+// 清账号状态 / 登录换主体 / 切身份 三个转移口都要：raw 快照回空底座 +
+// 双 Map（范围代际 / 幂等意图）清空 + 双端可见范围回 null。
+
+describe('P4 discovery 会话清理', () => {
+  /** 在 后端状态 与三个 P4 引用里播上如上个会话残留的痕迹。 */
+  function 播P4残留(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
+    deps.设后端状态((旧) => ({
+      ...旧,
+      候选岗位推荐: { int_old: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 } },
+      候选岗位不可用: ['job_gone'],
+      招聘已筛聚合: { 阶段: '成功', jobKey: 'recruiter:rejected:job_1', error: null },
+      P4委托回执: { del_1: BFF候选委托回执样本 },
+    }));
+    deps.P4范围代际.current.set('candidate:list:int_1', 3);
+    deps.P4幂等意图.current.set('candidate:list:int_1:refresh', 'idem_1');
+    deps.P4可见范围.current = { candidate: 'candidate:list:int_1', recruiter: 'recruiter:list:job_1' };
+  }
+
+  function 断言P4已清空(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
+    const 最新 = deps.后端状态引用.current;
+    expect(最新.候选岗位推荐).toEqual({});
+    expect(最新.候选岗位详情).toEqual({});
+    expect(最新.候选岗位不可用).toEqual([]);
+    expect(最新.招聘可用候选).toEqual({});
+    expect(最新.招聘已筛候选).toEqual({});
+    expect(最新.招聘已筛聚合).toEqual({ 阶段: '未开始', jobKey: '', error: null });
+    expect(最新.招聘候选详情).toEqual({});
+    expect(最新.招聘候选不可用).toEqual([]);
+    expect(最新.P4委托回执).toEqual({});
+    expect(最新.P4真实Case引用).toEqual({});
+    expect(deps.P4范围代际.current.size).toBe(0);
+    expect(deps.P4幂等意图.current.size).toBe(0);
+    expect(deps.P4可见范围.current).toEqual({ candidate: null, recruiter: null });
+  }
+
+  it('清账号状态 清空 P4 发现快照并复位双 Map 与可见范围', () => {
+    const { deps } = 创建P6会话依赖(创建P6数据源桩());
+    播P4残留(deps);
+    清账号状态(deps);
+    断言P4已清空(deps);
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(deps.会话代际.current).toBe(1);
+  });
+
+  it('退出登录 清空 P4 discovery 残留', async () => {
+    const { deps } = 创建P6会话依赖(创建P6数据源桩());
+    const 操作 = 创建会话操作(deps);
+    播P4残留(deps);
+    await 操作.退出登录();
+    断言P4已清空(deps);
+    expect(deps.后端状态引用.current.已登录).toBe(false);
+  });
+
+  it('完成手机登录 换主体时清 P4 discovery 残留', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_a' })
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b' });
+    const { deps } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    await 操作.完成手机登录('1111');
+    播P4残留(deps);
+    await 操作.完成手机登录('2222');
+    断言P4已清空(deps);
+    expect(deps.主体标识引用.current).toBe('sub_b');
+  });
+
+  it('切身份 清 P4 discovery 残留后才水合目标角色', async () => {
+    const { deps, 动作流 } = 创建P6会话依赖(创建P6数据源桩());
+    const 操作 = 创建会话操作(deps);
+    deps.主体标识引用.current = 'sub_1';
+    await 操作.完成手机登录('1111');
+    播P4残留(deps);
+    await 操作.切身份('招聘方');
+    断言P4已清空(deps);
+    // 目标角色的支持域水合照常跑完
+    expect(动作流).toContainEqual({ 型: '切身份', 到: '招聘方' });
   });
 });

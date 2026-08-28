@@ -20,6 +20,7 @@ import { 初始状态 } from '../初始状态';
 import { 归约, type 动作 } from '../应用状态';
 import type { 页面意向快照 } from '../../数据/招聘数据源类型';
 import type { 后端操作依赖, 后端状态 } from './类型';
+import { 创建空P4发现状态 } from './发现推荐操作';
 import { 创建Agent规则操作, 取Agent规则错误文案, 水合Agent规则角色数据 } from './Agent规则操作';
 
 // 轻提示 是纯 DOM 单例：操作层测试只断言「是否提示、提示什么」，桩掉 DOM 副作用
@@ -120,6 +121,8 @@ function 种子后端状态(role: BFF角色 | null): 后端状态 {
       candidate: { rules: '未开始', proposals: '未开始' },
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
+    // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
+    ...创建空P4发现状态(),
   };
 }
 

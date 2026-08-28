@@ -242,6 +242,9 @@ export const 初始状态: 状态 = {
 };
 
 const 后端种子状态: 状态 = {
+  // P4 Task 3：discovery raw scope 快照不在这里 —— 它们是 后端状态（extends P4发现状态）的
+  // Backend 专属成员，由 Provider 用 创建空P4发现状态() 播种；Mock 发现域种子
+  //（推荐列表 / 企业候选列表 / 已委托 等）保持原样，归约发现推荐 不被 Backend 触达。
   ...初始状态,
   ...空账号资料,
   资料缓存范围键: '',
