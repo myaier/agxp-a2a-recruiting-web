@@ -1,20 +1,37 @@
-// P4 Task 3：发现推荐 Backend raw scope 快照、可见范围栅栏化读取与会话清理的行为测试。
+// P4 Task 3/4：发现推荐 Backend raw scope 快照、可见范围栅栏化读取、会话清理与
+// refresh/feedback mutation（服务端先行 + 意图键生命周期）的行为测试。
 // 受控 deferred promise 证明原子提交与 stale 丢弃；派发 只是 spy，全部 P4 断言读 最新状态()。
 // 纪律：另一个 scope 的用例必须先 设置发现推荐范围 再发请求 —— 通过即证明生产可见范围栅栏，而非绕过它。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BFF主体, BFF候选岗位推荐, BFF招聘候选推荐 } from '../../数据/BFF契约';
+import type {
+  BFF主体,
+  BFF候选岗位推荐,
+  BFF发现批次,
+  BFF发现偏好,
+  BFF招聘候选推荐,
+} from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误 } from '../../数据/HTTP客户端';
 import {
   BFFCandidateJob样本,
   BFF主体样本,
+  BFF发现批次样本,
+  BFF发现偏好样本,
   BFF候选岗位推荐样本,
+  BFF招聘发现批次样本,
   BFF招聘候选推荐样本,
 } from '../../测试/BFF样本';
 import { 初始状态 } from '../初始状态';
 import type { 动作 } from '../应用状态';
-import { 创建空P4发现状态, 创建发现推荐操作, P4范围键 } from './发现推荐操作';
+import {
+  创建空P4发现状态,
+  创建发现推荐操作,
+  P4委托终态文案,
+  P4错误文案,
+  P4范围键,
+  P4拒绝文案,
+} from './发现推荐操作';
 import type { 后端操作依赖, 后端状态, 发现推荐操作 } from './类型';
 
 function deferred<T>() {
@@ -24,16 +41,25 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+/** crypto.randomUUID 的签名返回 UUID 模板串；brief 的测试键值（非 UUID 形）走同一显式宽化。 */
+const UUID键 = (值: string) => 值 as ReturnType<typeof globalThis.crypto.randomUUID>;
+
 const 候选主体: BFF主体 = { ...BFF主体样本, last_used_role: 'candidate' };
 const 招聘主体: BFF主体 = { ...BFF主体样本, last_used_role: 'recruiter' };
 
-/** 本文件内的数据源桩：只桩 P4 读取 + 清空目录缓存，默认全成功，逐测试用覆盖项替换。 */
+/** 本文件内的数据源桩：桩 P4 读取/refresh/feedback + 清空目录缓存，默认全成功，逐测试用覆盖项替换。 */
 function 创建P4数据源(覆盖: Record<string, unknown> = {}): HTTP招聘数据源 {
   return {
     读取候选岗位推荐: vi.fn(async (): Promise<BFF候选岗位推荐[]> => []),
     读取候选岗位详情: vi.fn(async () => BFFCandidateJob样本),
+    刷新候选岗位推荐: vi.fn(async (): Promise<BFF发现批次> => BFF发现批次样本),
+    标记候选岗位不感兴趣: vi.fn(async (): Promise<BFF发现偏好> => BFF发现偏好样本),
     读取招聘候选: vi.fn(async (): Promise<BFF招聘候选推荐[]> => []),
     读取招聘候选详情: vi.fn(async () => BFF招聘候选推荐样本),
+    刷新招聘候选: vi.fn(async (): Promise<BFF发现批次> => BFF招聘发现批次样本),
+    设置招聘候选收藏: vi.fn(async (): Promise<BFF发现偏好> => BFF发现偏好样本),
+    设置招聘候选淘汰: vi.fn(async (): Promise<BFF发现偏好> => BFF发现偏好样本),
+    撤销招聘候选淘汰: vi.fn(async (): Promise<BFF发现偏好> => BFF发现偏好样本),
     清空目录缓存: vi.fn(),
     ...覆盖,
   } as unknown as HTTP招聘数据源;
@@ -99,7 +125,7 @@ function 创建P4操作测试环境(): P4操作测试环境 {
     数据源,
     deps,
     派发,
-    // Task 4/5 的 refresh/feedback/delegation 尚未实现；本任务的用例只调用读方法
+    // Task 5 的 delegation 尚未实现；本文件用例覆盖 Task 3 读取 + Task 4 refresh/feedback
     操作: 创建发现推荐操作(deps) as 发现推荐操作,
     最新状态: () => 后端值,
   };
@@ -405,5 +431,304 @@ describe('创建空P4发现状态', () => {
       招聘候选详情: {}, 招聘候选不可用: [],
       P4委托回执: {}, P4真实Case引用: {},
     });
+  });
+});
+
+describe('刷新与幂等意图键', () => {
+  it('refresh reuses one key after outcome uncertainty and replaces only after GET succeeds', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('refresh-key-0001'))
+      .mockReturnValue(UUID键('refresh-key-0002'));
+    vi.mocked(env.数据源.刷新候选岗位推荐)
+      .mockRejectedValueOnce(new BFF错误(0, 'network_error', 'unknown'))
+      .mockResolvedValueOnce(BFF发现批次样本);
+    vi.mocked(env.数据源.读取候选岗位推荐)
+      .mockResolvedValueOnce([BFF候选岗位推荐样本]);
+
+    await expect(env.操作.刷新候选岗位('int_1')).rejects.toMatchObject({ code: 'network_error' });
+    await env.操作.刷新候选岗位('int_1');
+
+    expect(vi.mocked(env.数据源.刷新候选岗位推荐).mock.calls).toEqual([
+      ['int_1', 'refresh-key-0001'], ['int_1', 'refresh-key-0001'],
+    ]);
+    expect(randomUUID).toHaveBeenCalledTimes(1);
+    expect(env.最新状态().候选岗位推荐.int_1.items).toEqual([BFF候选岗位推荐样本]);
+    randomUUID.mockRestore();
+  });
+
+  it('refresh POST 成功 + GET 失败保留旧 items，落「已发起新一轮」文案且键保留', async () => {
+    vi.mocked(env.数据源.读取候选岗位推荐).mockResolvedValueOnce([BFF候选岗位推荐样本]);
+    await env.操作.加载候选岗位('int_1');
+    vi.mocked(env.数据源.刷新候选岗位推荐).mockResolvedValueOnce(BFF发现批次样本);
+    vi.mocked(env.数据源.读取候选岗位推荐)
+      .mockRejectedValueOnce(new BFF错误(503, 'source_unavailable', 'down'));
+
+    await env.操作.刷新候选岗位('int_1'); // follow-up GET 失败不抛：错误走快照 error
+
+    const 快照 = env.最新状态().候选岗位推荐.int_1;
+    expect(快照).toMatchObject({ 阶段: '成功', items: [BFF候选岗位推荐样本], 刷新中: false });
+    expect(快照?.error).toBe('已发起新一轮，结果暂未刷新');
+    // POST 已建批次、结果未上屏：同一意图重试沿用原键
+    expect(env.deps.P4幂等意图!.current.has('candidate:list:int_1:refresh')).toBe(true);
+  });
+
+  it('idempotency_conflict 不换键：重读权威 scope 后才释放，下一次刷新才铸新键', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('conflict-key-0001'))
+      .mockReturnValue(UUID键('conflict-key-0002'));
+    vi.mocked(env.数据源.刷新候选岗位推荐)
+      .mockRejectedValueOnce(new BFF错误(409, 'idempotency_conflict', 'conflict'))
+      .mockResolvedValueOnce(BFF发现批次样本);
+    vi.mocked(env.数据源.读取候选岗位推荐).mockResolvedValue([BFF候选岗位推荐样本]);
+
+    await expect(env.操作.刷新候选岗位('int_1')).rejects.toMatchObject({ code: 'idempotency_conflict' });
+    // 权威重读已落快照，冲突对账成功后键已释放
+    expect(env.最新状态().候选岗位推荐.int_1).toMatchObject({
+      阶段: '成功', items: [BFF候选岗位推荐样本],
+    });
+    expect(env.deps.P4幂等意图!.current.has('candidate:list:int_1:refresh')).toBe(false);
+
+    await env.操作.刷新候选岗位('int_1'); // 新的用户意图才铸造新键
+    expect(vi.mocked(env.数据源.刷新候选岗位推荐).mock.calls).toEqual([
+      ['int_1', 'conflict-key-0001'], ['int_1', 'conflict-key-0002'],
+    ]);
+    expect(randomUUID).toHaveBeenCalledTimes(2);
+    expect(env.deps.P4幂等意图!.current.has('candidate:list:int_1:refresh')).toBe(false);
+    randomUUID.mockRestore();
+  });
+
+  it('招聘刷新 POST+GET 成功提交可用候选快照并释放键', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValue([BFF招聘候选推荐样本]);
+    await env.操作.刷新招聘候选('job_1');
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledWith('job_1', expect.any(String));
+    expect(env.最新状态().招聘可用候选.job_1).toMatchObject({
+      阶段: '成功', items: [BFF招聘候选推荐样本], 刷新中: false, error: null,
+    });
+    expect(env.deps.P4幂等意图!.current.has('recruiter:list:job_1:refresh')).toBe(false);
+  });
+
+  it('scope GET 与 refresh 按 scope 串行：refresh 在飞时强制重读直接返回', async () => {
+    const 门 = deferred<BFF发现批次>();
+    vi.mocked(env.数据源.刷新候选岗位推荐).mockReturnValue(门.promise);
+    const 刷新 = env.操作.刷新候选岗位('int_1');
+    await env.操作.加载候选岗位('int_1', true); // 读锁被 refresh 持有：不重发 GET
+    expect(vi.mocked(env.数据源.读取候选岗位推荐)).not.toHaveBeenCalled();
+    门.resolve(BFF发现批次样本);
+    await 刷新;
+    expect(vi.mocked(env.数据源.读取候选岗位推荐)).toHaveBeenCalledTimes(1); // refresh 自己的 follow-up GET
+  });
+});
+
+describe('招聘反馈与服务端先行', () => {
+  it('feedback never moves a recruiter card before server success', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValue([BFF招聘候选推荐样本]);
+    await env.操作.加载招聘候选('job_1');
+    vi.mocked(env.数据源.设置招聘候选淘汰)
+      .mockRejectedValue(new BFF错误(503, 'source_unavailable', 'down'));
+    await expect(env.操作.淘汰候选('job_1', 'rec_1', 'direction_mismatch'))
+      .rejects.toMatchObject({ code: 'source_unavailable' });
+    expect(env.最新状态().招聘可用候选.job_1.items).toEqual([BFF招聘候选推荐样本]);
+    expect(env.最新状态().招聘已筛候选.job_1?.items ?? []).toEqual([]);
+  });
+
+  it('淘汰成功后经权威重读把服务端更新卡从 available 移入 rejected', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockImplementation(async (_jobId, state) =>
+      state === 'rejected' ? [] : [BFF招聘候选推荐样本]);
+    await env.操作.加载招聘候选('job_1');
+    env.操作.设置发现推荐范围('recruiter', P4范围键.招聘已筛(['job_1']));
+    await env.操作.加载招聘已筛(['job_1']);
+    vi.mocked(env.数据源.设置招聘候选淘汰).mockResolvedValue({
+      ...BFF发现偏好样本, rejected: true, rejection_reason: 'direction_mismatch',
+    });
+    // 服务端更新卡保留收藏（淘汰不能清收藏）并带权威 state/reason
+    const 已淘汰卡: BFF招聘候选推荐 = {
+      ...BFF招聘候选推荐样本,
+      favorite: true, rejected: true, rejection_reason: 'direction_mismatch', state: 'rejected',
+    };
+    vi.mocked(env.数据源.读取招聘候选详情).mockResolvedValue(已淘汰卡);
+
+    await env.操作.淘汰候选('job_1', 'rec_r1', 'direction_mismatch');
+
+    expect(vi.mocked(env.数据源.设置招聘候选淘汰))
+      .toHaveBeenCalledWith('job_1', 'rec_r1', 'direction_mismatch');
+    expect(vi.mocked(env.数据源.读取招聘候选详情)).toHaveBeenCalledWith('job_1', 'rec_r1');
+    expect(env.最新状态().招聘可用候选.job_1?.items ?? []).toEqual([]);
+    const jobKey = P4范围键.招聘已筛(['job_1']);
+    expect(env.最新状态().招聘已筛候选[jobKey]?.items).toEqual([已淘汰卡]);
+    expect(env.最新状态().招聘候选详情.rec_r1).toEqual(已淘汰卡);
+  });
+
+  it('撤销淘汰成功只移出 rejected，不回塞当前 available 批次', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockImplementation(async (_jobId, state) =>
+      state === 'rejected' ? [BFF招聘候选推荐样本] : []);
+    await env.操作.加载招聘候选('job_1');
+    env.操作.设置发现推荐范围('recruiter', P4范围键.招聘已筛(['job_1']));
+    await env.操作.加载招聘已筛(['job_1']);
+    vi.mocked(env.数据源.撤销招聘候选淘汰).mockResolvedValue({
+      ...BFF发现偏好样本, rejected: false, rejection_reason: null,
+    });
+
+    await env.操作.撤销淘汰候选('job_1', 'rec_r1');
+
+    const jobKey = P4范围键.招聘已筛(['job_1']);
+    expect(env.最新状态().招聘已筛候选[jobKey]?.items ?? []).toEqual([]);
+    expect(env.最新状态().招聘可用候选.job_1?.items ?? []).toEqual([]); // 等未来批次，不回塞
+  });
+
+  it('收藏成功同步 available/rejected/detail 每一处出现', async () => {
+    设主体角色(招聘主体);
+    // 同一卡同时出现在 available、rejected 聚合与详情缓存：收藏必须全量同步
+    vi.mocked(env.数据源.读取招聘候选).mockImplementation(async (_jobId) => [BFF招聘候选推荐样本]);
+    await env.操作.加载招聘候选('job_1');
+    env.操作.设置发现推荐范围('recruiter', P4范围键.招聘已筛(['job_1']));
+    await env.操作.加载招聘已筛(['job_1']);
+    await env.操作.读取招聘候选详情('job_1', 'rec_r1');
+    vi.mocked(env.数据源.设置招聘候选收藏).mockResolvedValue({
+      ...BFF发现偏好样本, favorite: true, rejected: false, rejection_reason: null,
+    });
+
+    await env.操作.设置候选收藏('job_1', 'rec_r1', true);
+
+    expect(vi.mocked(env.数据源.设置招聘候选收藏)).toHaveBeenCalledWith('job_1', 'rec_r1', true);
+    expect(env.最新状态().招聘可用候选.job_1?.items[0]?.favorite).toBe(true);
+    expect(env.最新状态().招聘已筛候选[P4范围键.招聘已筛(['job_1'])]?.items[0]?.favorite).toBe(true);
+    expect(env.最新状态().招聘候选详情.rec_r1?.favorite).toBe(true);
+  });
+
+  it('同一推荐的反馈写单飞：在飞期间第二次调用直接返回', async () => {
+    设主体角色(招聘主体);
+    const 门 = deferred<BFF发现偏好>();
+    vi.mocked(env.数据源.设置招聘候选淘汰).mockReturnValue(门.promise);
+    const 第一次 = env.操作.淘汰候选('job_1', 'rec_r1', 'other');
+    const 第二次 = env.操作.淘汰候选('job_1', 'rec_r1', 'other');
+    expect(vi.mocked(env.数据源.设置招聘候选淘汰)).toHaveBeenCalledTimes(1);
+    门.resolve({ ...BFF发现偏好样本 });
+    await Promise.all([第一次, 第二次]);
+    expect(vi.mocked(env.数据源.设置招聘候选淘汰)).toHaveBeenCalledTimes(1);
+  });
+
+  it('不同推荐的反馈写可并行', async () => {
+    设主体角色(招聘主体);
+    const 门 = deferred<BFF发现偏好>();
+    vi.mocked(env.数据源.设置招聘候选淘汰).mockReturnValue(门.promise);
+    const 甲 = env.操作.淘汰候选('job_1', 'rec_r1', 'other');
+    const 乙 = env.操作.淘汰候选('job_1', 'rec_r2', 'other');
+    expect(vi.mocked(env.数据源.设置招聘候选淘汰)).toHaveBeenCalledTimes(2);
+    门.resolve({ ...BFF发现偏好样本 });
+    await Promise.all([甲, 乙]);
+  });
+
+  it('反馈 404 按不可用收口：安全移除各处出现并重读 scope，不抛', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValueOnce([BFF招聘候选推荐样本]);
+    await env.操作.加载招聘候选('job_1');
+    await env.操作.读取招聘候选详情('job_1', 'rec_r1');
+    vi.mocked(env.数据源.设置招聘候选收藏)
+      .mockRejectedValue(new BFF错误(404, 'recommendation_not_found', 'gone'));
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValue([]); // 收口重读：卡已不存在
+
+    await env.操作.设置候选收藏('job_1', 'rec_r1', true);
+
+    expect(env.最新状态().招聘可用候选.job_1?.items ?? []).toEqual([]);
+    expect(env.最新状态().招聘候选详情.rec_r1).toBeUndefined();
+    expect(env.最新状态().招聘候选不可用).toEqual(['rec_r1']);
+    expect(vi.mocked(env.数据源.读取招聘候选)).toHaveBeenCalledTimes(2); // 种子读 + 收口重读
+  });
+});
+
+describe('候选不感兴趣', () => {
+  it('回执确认 not_interested 后才从当前 scope 移除', async () => {
+    vi.mocked(env.数据源.读取候选岗位推荐).mockResolvedValue([BFF候选岗位推荐样本]);
+    await env.操作.加载候选岗位('int_1');
+    vi.mocked(env.数据源.标记候选岗位不感兴趣).mockResolvedValue({
+      ...BFF发现偏好样本, rejected: true, rejection_reason: 'not_interested',
+    });
+
+    await env.操作.标记岗位不感兴趣('int_1', 'rec_c1');
+
+    expect(vi.mocked(env.数据源.标记候选岗位不感兴趣)).toHaveBeenCalledWith('rec_c1');
+    expect(env.最新状态().候选岗位推荐.int_1?.items ?? []).toEqual([]);
+  });
+
+  it('不感兴趣失败保留卡片并原样抛出', async () => {
+    vi.mocked(env.数据源.读取候选岗位推荐).mockResolvedValue([BFF候选岗位推荐样本]);
+    await env.操作.加载候选岗位('int_1');
+    vi.mocked(env.数据源.标记候选岗位不感兴趣)
+      .mockRejectedValue(new BFF错误(503, 'source_unavailable', 'down'));
+
+    await expect(env.操作.标记岗位不感兴趣('int_1', 'rec_c1'))
+      .rejects.toMatchObject({ code: 'source_unavailable' });
+
+    expect(env.最新状态().候选岗位推荐.int_1?.items).toEqual([BFF候选岗位推荐样本]);
+  });
+});
+
+describe('反馈 401 与迟到 401', () => {
+  it('反馈 401 走统一清账号状态并清 P4 引用，原样抛出', async () => {
+    env.deps.P4幂等意图!.current.set('candidate:list:int_1:refresh', 'idem_1');
+    vi.mocked(env.数据源.设置招聘候选淘汰)
+      .mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+
+    await expect(env.操作.淘汰候选('job_1', 'rec_1', 'other')).rejects.toMatchObject({ status: 401 });
+
+    expect(env.最新状态().已登录).toBe(false);
+    expect(env.最新状态().招聘可用候选).toEqual({});
+    expect(env.deps.P4幂等意图!.current.size).toBe(0);
+    expect(env.派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
+    expect(env.deps.会话代际.current).toBe(2);
+  });
+
+  it('反馈迟到 401 不清新会话', async () => {
+    const 门 = deferred<BFF发现偏好>();
+    vi.mocked(env.数据源.设置招聘候选淘汰).mockReturnValue(门.promise);
+    const 运行 = env.操作.淘汰候选('job_1', 'rec_1', 'other');
+    env.deps.主体标识引用.current = 'sub_new';
+    env.deps.会话代际.current += 1;
+    门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+
+    await 运行; // 迟到成败只释放本轮锁
+
+    expect(env.deps.主体标识引用.current).toBe('sub_new');
+    expect(env.最新状态().已登录).toBe(true);
+    expect(env.派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
+  });
+});
+
+describe('P4 闭合错误文案', () => {
+  it('P4错误文案 逐码冻结，未知 HTTP code 与非 BFF 错误回落 取后端错误文案', () => {
+    expect(P4错误文案(new BFF错误(404, 'recommendation_not_found', 'gone')))
+      .toBe('这条推荐当前已不可用，请刷新后查看');
+    expect(P4错误文案(new BFF错误(404, 'recommendation_unavailable', 'gone')))
+      .toBe('这条推荐当前已不可用，请刷新后查看');
+    expect(P4错误文案(new BFF错误(404, 'delegation_not_found', 'gone')))
+      .toBe('这次委托已不可用，请刷新后查看');
+    expect(P4错误文案(new BFF错误(422, 'disclosure_acknowledgement_required', 'required')))
+      .toBe('请先确认简历与联系方式披露说明');
+    expect(P4错误文案(new BFF错误(409, 'idempotency_conflict', 'conflict')))
+      .toBe('这次操作与之前的请求冲突，请刷新后重试');
+    expect(P4错误文案(new BFF错误(503, 'source_unavailable', 'down')))
+      .toBe('服务暂时不可用，请稍后再试');
+    expect(P4错误文案(new BFF错误(503, 'recruitment_service_unavailable', 'down')))
+      .toBe('服务暂时不可用，请稍后再试');
+    expect(P4错误文案(new BFF错误(503, 'operation_outcome_unknown', 'unknown')))
+      .toBe('操作结果暂未确认，请稍后重试');
+    // 闭合表之外的 HTTP code 与运行时错误才回落现有映射
+    expect(P4错误文案(new BFF错误(500, 'unexpected_code', 'boom'))).toBe('boom');
+    expect(P4错误文案(new TypeError('x'))).toBe('网络连接失败，请稍后再试');
+  });
+
+  it('P4拒绝文案 与 P4委托终态文案 逐项冻结', () => {
+    expect(P4拒绝文案('recommendation_not_found')).toBe('这条推荐当前已不可用，请刷新后查看');
+    expect(P4拒绝文案('recommendation_unavailable')).toBe('这条推荐当前已不可用，请刷新后查看');
+    expect(P4拒绝文案('delegation_not_allowed')).toBe('当前无法发起委托，请刷新后重试');
+    expect(P4拒绝文案('active_case_quota_reached')).toBe('当前在谈已达到上限，请先处理已有在谈');
+    expect(P4拒绝文案('delegation_cooldown')).toBe('近期已联系过对方，暂时不能重复发起');
+    expect(P4委托终态文案('needs_user')).toBe('这次委托需要你确认后才能继续');
+    expect(P4委托终态文案('refused')).toBe('这次委托未被接受，请稍后重试');
+    expect(P4委托终态文案('failed')).toBe('这次委托没有成功，请稍后重试');
   });
 });

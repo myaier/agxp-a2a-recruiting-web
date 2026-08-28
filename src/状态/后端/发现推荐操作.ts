@@ -1,5 +1,6 @@
-// 后端发现推荐域操作（P4 Task 3）：raw scope 快照的栅栏化读取、可见范围注册与会话清理底座。
-// 铁律（设计 §6/§9/§10）：
+// 后端发现推荐域操作（P4 Task 3 读取 + Task 4 refresh/feedback mutation）：raw scope 快照、
+// 可见范围注册、会话清理底座与服务端先行的反馈写。
+// 铁律（设计 §6/§7/§9/§10）：
 //   · Backend 才发请求（!是后端 || !后端 一律早退）；接口失败绝不回退 Mock，Mock 发现页
 //     继续走 归约发现推荐，本域不触达 Mock reducer。
 //   · 栅栏 = subject_id + active role + session generation + scope id + scope generation，
@@ -10,14 +11,27 @@
 //   · 加载招聘已筛 把在招岗位排序去重成 jobKey 后并发读取全部 rejected 腿，
 //     全部成功后才做唯一一次 设后端状态 原子提交；任一腿失败绝不落半份聚合。
 //   · 详情 404 按统一不可用收口（标记 + 不抛）；其余非 401 错误原样抛给屏。
-// Task 4 落 refresh/feedback mutation、Task 5 落委托与轮询；本文件先落地读子集。
+//   · 一次刷新/委托用户意图持有唯一显式幂等键：受控重试与结果不确定后的重试沿用同一键，
+//     idempotency_conflict 绝不换新键强发 —— 先重读权威 scope，对账成功才释放；完整
+//     POST+GET 成功才释放。POST 成功 + follow-up GET 失败不清旧列表，只落「已发起新一轮」文案。
+//   · 反馈（收藏/淘汰/撤销/不感兴趣）服务端先行：失败绝不移动卡片；成功后经权威重读或
+//     回执同步 available/rejected/detail 每一处出现；同推荐写单飞、跨推荐并行。
+// Task 5 落委托与轮询。
 
 import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
-import type { BFF角色, BFF候选岗位推荐, BFF招聘候选推荐 } from '../../数据/BFF契约';
+import type {
+  BFF发现偏好,
+  BFF委托回执,
+  BFF角色,
+  BFF候选岗位推荐,
+  BFF招聘候选推荐,
+} from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { 清账号状态 } from './会话操作';
 import type {
   后端操作依赖,
+  后端状态,
+  发现推荐操作,
   P4发现读操作,
   P4发现状态,
   P4运行时引用,
@@ -33,6 +47,30 @@ export const P4范围键 = {
     `recruiter:detail:${jobId}:${recommendationId}`,
   招聘已筛: (jobIds: string[]) => `recruiter:rejected:${[...jobIds].sort().join(',')}`,
 } as const;
+
+/** Task 4 已落地的变更子集；Task 5 落委托后收敛为完整 发现推荐操作。 */
+export type P4发现变更操作 = Pick<发现推荐操作,
+  '刷新候选岗位' | '标记岗位不感兴趣' | '刷新招聘候选' | '设置候选收藏' | '淘汰候选' | '撤销淘汰候选'>;
+
+// ── Task 4：一次刷新/委托用户意图的冻结幂等键坐标（与 P4范围键 同一冻结纪律）──
+// 键以目标 scope 为前缀，随 设置发现推荐范围 的旧 scope 前缀清理整体作废（§9.3）。
+// Task 4 消费 refresh 坐标；delegation 坐标由 Task 5（委托）取用，键形在此一并冻结。
+
+export const refreshKey = (visibleScope: string) => `${visibleScope}:refresh`;
+export const delegationKey = (visibleScope: string, objectId: string) =>
+  `${visibleScope}:delegation:${objectId}`;
+
+/** 同一意图沿用既有键；只有无键时才铸造（crypto.randomUUID），冲突/重试绝不在这里换键。 */
+function idempotencyKeyFor(deps: 后端操作依赖 & P4运行时引用, intent: string): string {
+  const existing = deps.P4幂等意图.current.get(intent);
+  if (existing) return existing;
+  const created = globalThis.crypto.randomUUID();
+  deps.P4幂等意图.current.set(intent, created);
+  return created;
+}
+
+/** POST 成功但 follow-up GET 失败时的快照 error 文案（§6.4 冻结；旧 items 保留，屏负责呈现）。 */
+const 刷新结果未决文案 = '已发起新一轮，结果暂未刷新';
 
 /** P4 discovery 的可复用初始化/重置底座：Provider 首帧与三个会话转移口共用同一形状。 */
 export function 创建空P4发现状态(): P4发现状态 {
@@ -120,7 +158,168 @@ function 失败快照<T>(
   return { 阶段: '失败', 刷新中: false, items: 旧?.items ?? [], error, generation };
 }
 
-export function 创建发现推荐操作(deps: 后端操作依赖): P4发现读操作 {
+/** 同 失败快照，但文案已按 P4 闭合映射收敛好（mutation 失败不走 取后端错误文案 的通用表）。 */
+function 失败快照文案<T>(
+  旧: P4ScopeSnapshot<T> | undefined,
+  文案: string,
+  generation: number,
+): P4ScopeSnapshot<T> {
+  if (旧?.阶段 === '成功') return { ...旧, 刷新中: false, error: 文案 };
+  return { 阶段: '失败', 刷新中: false, items: 旧?.items ?? [], error: 文案, generation };
+}
+
+// ── Task 4：反馈落位的纯 helper —— 每次提交都是 设后端状态 的一次纯函数更新 ──
+
+/** jobKey（recruiter:rejected:<排序逗号串>）覆盖某岗位的全部 rejected 快照键。 */
+function rejected键覆盖岗位(旧: 后端状态, jobId: string): string[] {
+  return Object.keys(旧.招聘已筛候选).filter((键) =>
+    键.startsWith('recruiter:rejected:') &&
+    键.slice('recruiter:rejected:'.length).split(',').includes(jobId));
+}
+
+/** 把同一 recommendation 的每处出现（available/rejected/detail）按 修补 替换 —— 收藏与撤销的同步核。 */
+function 替换招聘候选各处(
+  旧: 后端状态,
+  recommendationId: string,
+  修补: (卡: BFF招聘候选推荐) => BFF招聘候选推荐,
+): 后端状态 {
+  const 逐条 = (items: BFF招聘候选推荐[]) =>
+    items.map((卡) => (卡.recommendation_id === recommendationId ? 修补(卡) : 卡));
+  const 招聘可用候选: 后端状态['招聘可用候选'] = {};
+  for (const [键, 快照] of Object.entries(旧.招聘可用候选)) {
+    招聘可用候选[键] = { ...快照, items: 逐条(快照.items) };
+  }
+  const 招聘已筛候选: 后端状态['招聘已筛候选'] = {};
+  for (const [键, 快照] of Object.entries(旧.招聘已筛候选)) {
+    招聘已筛候选[键] = { ...快照, items: 逐条(快照.items) };
+  }
+  const 招聘候选详情 = { ...旧.招聘候选详情 };
+  if (招聘候选详情[recommendationId]) {
+    招聘候选详情[recommendationId] = 修补(招聘候选详情[recommendationId]);
+  }
+  return { ...旧, 招聘可用候选, 招聘已筛候选, 招聘候选详情 };
+}
+
+/** 404 收口的安全移除：available/rejected 快照过滤 + 详情缓存删除 + 不可用标记（不泄露差异）。 */
+function 移除招聘候选各处(旧: 后端状态, recommendationId: string): 后端状态 {
+  const 过滤 = (items: BFF招聘候选推荐[]) =>
+    items.filter((卡) => 卡.recommendation_id !== recommendationId);
+  const 招聘可用候选: 后端状态['招聘可用候选'] = {};
+  for (const [键, 快照] of Object.entries(旧.招聘可用候选)) {
+    招聘可用候选[键] = { ...快照, items: 过滤(快照.items) };
+  }
+  const 招聘已筛候选: 后端状态['招聘已筛候选'] = {};
+  for (const [键, 快照] of Object.entries(旧.招聘已筛候选)) {
+    招聘已筛候选[键] = { ...快照, items: 过滤(快照.items) };
+  }
+  const 招聘候选详情 = { ...旧.招聘候选详情 };
+  delete 招聘候选详情[recommendationId];
+  const 招聘候选不可用 = 旧.招聘候选不可用.includes(recommendationId)
+    ? 旧.招聘候选不可用
+    : [...旧.招聘候选不可用, recommendationId];
+  return { ...旧, 招聘可用候选, 招聘已筛候选, 招聘候选详情, 招聘候选不可用 };
+}
+
+/** 候选不感兴趣落位：只从当前 scope 快照移除该推荐。 */
+function 从候选范围移除(旧: 后端状态, intentionId: string, recommendationId: string): 后端状态 {
+  const 快照 = 旧.候选岗位推荐[intentionId];
+  if (!快照) return 旧;
+  const items = 快照.items.filter((卡) => 卡.recommendation_id !== recommendationId);
+  if (items.length === 快照.items.length) return 旧;
+  return { ...旧, 候选岗位推荐: { ...旧.候选岗位推荐, [intentionId]: { ...快照, items } } };
+}
+
+/** 淘汰落位（权威重读成功后）：available 全部出现移除；覆盖该岗位的 rejected 快照并入
+ *  服务端更新卡（rank 稳定序）；详情缓存落权威卡并撤销不可用标记。 */
+function 淘汰落位(旧: 后端状态, jobId: string, 卡: BFF招聘候选推荐): 后端状态 {
+  const 编号 = 卡.recommendation_id;
+  const 招聘可用候选: 后端状态['招聘可用候选'] = {};
+  for (const [键, 快照] of Object.entries(旧.招聘可用候选)) {
+    招聘可用候选[键] = { ...快照, items: 快照.items.filter((条) => 条.recommendation_id !== 编号) };
+  }
+  const 招聘已筛候选: 后端状态['招聘已筛候选'] = { ...旧.招聘已筛候选 };
+  for (const 键 of rejected键覆盖岗位(旧, jobId)) {
+    const 快照 = 招聘已筛候选[键];
+    const items = 快照.items.some((条) => 条.recommendation_id === 编号)
+      ? 快照.items.map((条) => (条.recommendation_id === 编号 ? 卡 : 条))
+      : [...快照.items, 卡].sort((甲, 乙) => 甲.rank - 乙.rank);
+    招聘已筛候选[键] = { ...快照, items };
+  }
+  return {
+    ...旧,
+    招聘可用候选,
+    招聘已筛候选,
+    招聘候选详情: { ...旧.招聘候选详情, [编号]: 卡 },
+    // 权威卡已回到手：早先的不可用标记一并撤销
+    招聘候选不可用: 旧.招聘候选不可用.filter((标记) => 标记 !== 编号),
+  };
+}
+
+/** 撤销落位：全部 rejected 快照移除；available/detail 出现按回执修正 —— 不回塞不在场卡，
+ *  该推荐等未来批次才可再进入 available（§7.3）。 */
+function 撤销淘汰落位(旧: 后端状态, recommendationId: string, 回执: BFF发现偏好): 后端状态 {
+  const 招聘已筛候选: 后端状态['招聘已筛候选'] = {};
+  for (const [键, 快照] of Object.entries(旧.招聘已筛候选)) {
+    招聘已筛候选[键] = {
+      ...快照,
+      items: 快照.items.filter((卡) => 卡.recommendation_id !== recommendationId),
+    };
+  }
+  // BFF发现偏好.rejection_reason 的 'not_interested' 分支对撤销端点是冗余联合成员：
+  // 卡片类型只容纳标准淘汰原因，其余取值按 null 落卡（decoder 已闭合输入域）。
+  const 卡原因: BFF招聘候选推荐['rejection_reason'] =
+    回执.rejection_reason === 'not_interested' ? null : 回执.rejection_reason;
+  return 替换招聘候选各处({ ...旧, 招聘已筛候选 }, recommendationId, (卡) => ({
+    ...卡,
+    favorite: 回执.favorite,
+    rejected: 回执.rejected,
+    rejection_reason: 卡原因,
+    state: 回执.rejected ? 'rejected' : 'available',
+  }));
+}
+
+// ── Task 4：闭合文案映射（§10）——HTTP BFF错误.code 与 200 回执 refusal/state 分列，P4 页面 ──
+//    绝不直接显示后端英文 message；未知 refusal/state 是契约漂移，由 decoder fail closed。
+
+/** P4 HTTP 错误的闭合文案：逐码冻结；只有闭合表之外的 HTTP/运行时错误回落 取后端错误文案。 */
+export function P4错误文案(error: unknown): string {
+  if (!(error instanceof BFF错误)) return 取后端错误文案(error);
+  const copy: Record<string, string> = {
+    recommendation_not_found: '这条推荐当前已不可用，请刷新后查看',
+    recommendation_unavailable: '这条推荐当前已不可用，请刷新后查看',
+    delegation_not_found: '这次委托已不可用，请刷新后查看',
+    disclosure_acknowledgement_required: '请先确认简历与联系方式披露说明',
+    idempotency_conflict: '这次操作与之前的请求冲突，请刷新后重试',
+    source_unavailable: '服务暂时不可用，请稍后再试',
+    recruitment_service_unavailable: '服务暂时不可用，请稍后再试',
+    operation_outcome_unknown: '操作结果暂未确认，请稍后重试',
+  };
+  return copy[error.code] ?? 取后端错误文案(error);
+}
+
+/** P4 200 回执 refusal_code 的闭合文案（与 HTTP 错误文案分列）。 */
+export function P4拒绝文案(code: NonNullable<BFF委托回执['refusal_code']>): string {
+  const copy: Record<NonNullable<BFF委托回执['refusal_code']>, string> = {
+    recommendation_not_found: '这条推荐当前已不可用，请刷新后查看',
+    recommendation_unavailable: '这条推荐当前已不可用，请刷新后查看',
+    delegation_not_allowed: '当前无法发起委托，请刷新后重试',
+    active_case_quota_reached: '当前在谈已达到上限，请先处理已有在谈',
+    delegation_cooldown: '近期已联系过对方，暂时不能重复发起',
+  };
+  return copy[code];
+}
+
+/** P4 200 回执终态的闭合文案。 */
+export function P4委托终态文案(state: 'needs_user' | 'refused' | 'failed'): string {
+  const copy = {
+    needs_user: '这次委托需要你确认后才能继续',
+    refused: '这次委托未被接受，请稍后重试',
+    failed: '这次委托没有成功，请稍后重试',
+  } as const;
+  return copy[state];
+}
+
+export function 创建发现推荐操作(deps: 后端操作依赖): P4发现读操作 & P4发现变更操作 {
   const { 是后端, 后端, 设后端状态, 后端状态引用, 锁, 主体标识引用, 会话代际 } = deps;
   // Provider 恒注入；收窄一次，域内不再到处断言。
   const 引用 = 取P4引用(deps);
@@ -167,6 +366,146 @@ export function 创建发现推荐操作(deps: 后端操作依赖): P4发现读�
       input.失败(错误, fence);
     } finally {
       锁.current.delete(键);
+    }
+  }
+
+  /**
+   * 刷新统一核：POST 建新批次（一次用户意图一把显式幂等键）→ 权威 GET → 栅栏内原子提交。
+   * 键生命周期（§9.3）：network_error / operation_outcome_unknown / 中断 保留键，同一意图的
+   * 重试沿用；idempotency_conflict 绝不换新键强发 —— 先重读权威 scope 对账，对账成功才释放；
+   * 完整 POST+GET 成功才释放，下一次刷新才是新意图。POST 成功 + follow-up GET 失败不清旧列表，
+   * 快照 error 落 刷新结果未决文案 且不抛（呈现是屏的关注点）。
+   */
+  async function 运行范围刷新<T>(input: {
+    scopeKey: string;
+    发起: (源: HTTP招聘数据源, 幂等键: string) => Promise<unknown>;
+    重读: (源: HTTP招聘数据源) => Promise<T>;
+    开始: (fence: P4Fence) => void;
+    成功: (items: T, fence: P4Fence) => void;
+    失败: (文案: string, fence: P4Fence) => void;
+  }): Promise<void> {
+    // scope 全量 GET 与 refresh 按 scope 串行（§9.2）：与读核共用同一把读锁
+    const 键 = 读锁键(input.scopeKey);
+    if (锁.current.has(键)) return;
+    锁.current.add(键);
+    const fence = 捕获栅栏(引用, input.scopeKey);
+    try {
+      if (!后端) return;
+      input.开始(fence);
+      const intent = refreshKey(input.scopeKey);
+      const 幂等键 = idempotencyKeyFor(引用, intent);
+      try {
+        await input.发起(后端, 幂等键);
+      } catch (错误) {
+        if (!fenceStillCurrent(引用, fence)) return; // 迟到失败只释放锁；键随意图保留
+        if (是401(错误)) {
+          清账号状态(账号清理依赖); // 统一清理已清空 P4幂等意图
+          throw 错误;
+        }
+        if (错误 instanceof BFF错误 && 错误.code === 'idempotency_conflict') {
+          // 冲突先重读权威 scope 对账；对账请求成功（含栅栏外完成）才释放键；冲突原文照抛给屏
+          let 已对账 = false;
+          try {
+            const items = await input.重读(后端);
+            已对账 = true;
+            if (fenceStillCurrent(引用, fence)) input.成功(items, fence);
+          } catch {
+            if (fenceStillCurrent(引用, fence)) input.失败(P4错误文案(错误), fence);
+          }
+          if (已对账) P4幂等意图.current.delete(intent);
+          throw 错误;
+        }
+        input.失败(P4错误文案(错误), fence);
+        throw 错误;
+      }
+      let items: T;
+      try {
+        items = await input.重读(后端);
+      } catch {
+        if (!fenceStillCurrent(引用, fence)) return;
+        input.失败(刷新结果未决文案, fence);
+        return;
+      }
+      P4幂等意图.current.delete(intent);
+      if (!fenceStillCurrent(引用, fence)) return;
+      input.成功(items, fence);
+    } finally {
+      锁.current.delete(键);
+    }
+  }
+
+  /**
+   * 反馈写统一核：按资源单飞（同一推荐的 favorite/rejection/not-interested 串行，跨推荐并行，
+   * §9.2）→ 捕获栅栏 → 服务端先行 → 栅栏内才落任何本地变化。失败绝不移动卡片；
+   * 401 统一 清账号状态 后照抛；404 按统一不可用收口（安全移除 + scope 重读）即达成意图不抛；
+   * 其余错误原样抛给屏。
+   */
+  async function 运行反馈写<T>(input: {
+    资源键: string;
+    scopeKey: string;
+    写: (源: HTTP招聘数据源) => Promise<T>;
+    收口404: (fence: P4Fence) => Promise<void>;
+    成功: (回执: T, 源: HTTP招聘数据源, fence: P4Fence) => void | Promise<void>;
+  }): Promise<void> {
+    if (锁.current.has(input.资源键)) return; // 同一推荐在飞：本次写直接让位
+    锁.current.add(input.资源键);
+    const fence = 捕获栅栏(引用, input.scopeKey);
+    try {
+      if (!后端) return;
+      let 回执: T;
+      try {
+        回执 = await input.写(后端);
+      } catch (错误) {
+        if (!fenceStillCurrent(引用, fence)) return;
+        if (是401(错误)) {
+          清账号状态(账号清理依赖);
+          throw 错误;
+        }
+        if (错误 instanceof BFF错误 && 错误.status === 404) {
+          await input.收口404(fence);
+          return;
+        }
+        throw 错误;
+      }
+      if (!fenceStillCurrent(引用, fence)) return;
+      await input.成功(回执, 后端, fence);
+    } finally {
+      锁.current.delete(input.资源键);
+    }
+  }
+
+  /** 404 统一不可用收口（招聘侧）：先安全移除每一处出现并标记不可用，再重读 available scope
+   *  收敛；重读失败静默 —— 安全移除已达成不可用事实，下一轮加载自愈。 */
+  async function 招聘反馈404收口(jobId: string, recommendationId: string, fence: P4Fence): Promise<void> {
+    if (!后端) return;
+    设后端状态((旧) => 移除招聘候选各处(旧, recommendationId));
+    try {
+      const items = await 后端.读取招聘候选(jobId);
+      if (!fenceStillCurrent(引用, fence)) return;
+      设后端状态((旧) => ({
+        ...旧,
+        招聘可用候选: { ...旧.招聘可用候选, [jobId]: 成功快照(items, fence.scopeGeneration) },
+      }));
+    } catch {
+      // 收口重读失败不补提示：移除事实已落，重读交给下一轮
+    }
+  }
+
+  /** 404 统一不可用收口（候选侧）：从当前 scope 移除后重读同一 scope 收敛，口径同上。 */
+  async function 候选反馈404收口(
+    intentionId: string, recommendationId: string, fence: P4Fence,
+  ): Promise<void> {
+    if (!后端) return;
+    设后端状态((旧) => 从候选范围移除(旧, intentionId, recommendationId));
+    try {
+      const items = await 后端.读取候选岗位推荐(intentionId);
+      if (!fenceStillCurrent(引用, fence)) return;
+      设后端状态((旧) => ({
+        ...旧,
+        候选岗位推荐: { ...旧.候选岗位推荐, [intentionId]: 成功快照(items, fence.scopeGeneration) },
+      }));
+    } catch {
+      // 同上
     }
   }
 
@@ -361,6 +700,147 @@ export function 创建发现推荐操作(deps: 后端操作依赖): P4发现读�
       } finally {
         锁.current.delete(键);
       }
+    },
+
+    // ── Task 4：刷新 mutation（POST 建批次 + GET 重读，键生命周期见 运行范围刷新）──
+
+    async 刷新候选岗位(intentionId) {
+      if (!是后端 || !后端) return;
+      await 运行范围刷新<BFF候选岗位推荐[]>({
+        scopeKey: P4范围键.候选列表(intentionId),
+        发起: (源, 幂等键) => 源.刷新候选岗位推荐(intentionId, 幂等键),
+        重读: (源) => 源.读取候选岗位推荐(intentionId),
+        开始: (fence) => 设后端状态((旧) => ({
+          ...旧,
+          候选岗位推荐: {
+            ...旧.候选岗位推荐,
+            [intentionId]: 起步快照(旧.候选岗位推荐[intentionId], fence.scopeGeneration),
+          },
+        })),
+        成功: (items, fence) => 设后端状态((旧) => ({
+          ...旧,
+          候选岗位推荐: {
+            ...旧.候选岗位推荐,
+            [intentionId]: 成功快照(items, fence.scopeGeneration),
+          },
+        })),
+        失败: (文案, fence) => 设后端状态((旧) => ({
+          ...旧,
+          候选岗位推荐: {
+            ...旧.候选岗位推荐,
+            [intentionId]: 失败快照文案(旧.候选岗位推荐[intentionId], 文案, fence.scopeGeneration),
+          },
+        })),
+      });
+    },
+
+    async 刷新招聘候选(jobId) {
+      if (!是后端 || !后端) return;
+      await 运行范围刷新<BFF招聘候选推荐[]>({
+        scopeKey: P4范围键.招聘列表(jobId),
+        发起: (源, 幂等键) => 源.刷新招聘候选(jobId, 幂等键),
+        重读: (源) => 源.读取招聘候选(jobId),
+        开始: (fence) => 设后端状态((旧) => ({
+          ...旧,
+          招聘可用候选: {
+            ...旧.招聘可用候选,
+            [jobId]: 起步快照(旧.招聘可用候选[jobId], fence.scopeGeneration),
+          },
+        })),
+        成功: (items, fence) => 设后端状态((旧) => ({
+          ...旧,
+          招聘可用候选: {
+            ...旧.招聘可用候选,
+            [jobId]: 成功快照(items, fence.scopeGeneration),
+          },
+        })),
+        失败: (文案, fence) => 设后端状态((旧) => ({
+          ...旧,
+          招聘可用候选: {
+            ...旧.招聘可用候选,
+            [jobId]: 失败快照文案(旧.招聘可用候选[jobId], 文案, fence.scopeGeneration),
+          },
+        })),
+      });
+    },
+
+    // ── Task 4：反馈 mutation（服务端先行，失败绝不移动卡片）──
+
+    /** 候选不感兴趣：PUT 成功且回执确认 rejection_reason: not_interested 才从当前 scope 移除。 */
+    async 标记岗位不感兴趣(intentionId, recommendationId) {
+      await 运行反馈写<BFF发现偏好>({
+        资源键: `P4写:candidate:${recommendationId}`,
+        scopeKey: P4范围键.候选列表(intentionId),
+        写: (源) => 源.标记候选岗位不感兴趣(recommendationId),
+        收口404: (fence) => 候选反馈404收口(intentionId, recommendationId, fence),
+        成功: (回执) => {
+          // 其余取值是契约漂移：fail closed 保留卡片，绝不按成功移除
+          if (回执.rejection_reason !== 'not_interested') {
+            throw new BFF错误(200, 'invalid_response', '服务返回了不符合契约的发现推荐数据');
+          }
+          设后端状态((旧) => 从候选范围移除(旧, intentionId, recommendationId));
+        },
+      });
+    },
+
+    /** 收藏：服务端权威偏好回执同步 available/rejected/detail 每一处出现的 favorite。 */
+    async 设置候选收藏(jobId, recommendationId, favorite) {
+      await 运行反馈写<BFF发现偏好>({
+        资源键: `P4写:${jobId}:${recommendationId}`,
+        scopeKey: P4范围键.招聘列表(jobId),
+        写: (源) => 源.设置招聘候选收藏(jobId, recommendationId, favorite),
+        收口404: (fence) => 招聘反馈404收口(jobId, recommendationId, fence),
+        成功: (回执) => {
+          // favorite 与 rejection 相互独立：只修 favorite，不动 rejected 状态字段
+          设后端状态((旧) => 替换招聘候选各处(旧, recommendationId, (卡) => ({
+            ...卡, favorite: 回执.favorite,
+          })));
+        },
+      });
+    },
+
+    /** 淘汰：PUT 成功后权威重读详情，拿到服务端更新卡才整体从 available 移入 rejected；
+     *  重读失败则卡原地不动，绝不半搬。 */
+    async 淘汰候选(jobId, recommendationId, reason) {
+      await 运行反馈写<BFF发现偏好>({
+        资源键: `P4写:${jobId}:${recommendationId}`,
+        scopeKey: P4范围键.招聘列表(jobId),
+        写: (源) => 源.设置招聘候选淘汰(jobId, recommendationId, reason),
+        收口404: (fence) => 招聘反馈404收口(jobId, recommendationId, fence),
+        成功: async (_回执, 源, fence) => {
+          let 卡: BFF招聘候选推荐;
+          try {
+            卡 = await 源.读取招聘候选详情(jobId, recommendationId);
+          } catch (错误) {
+            if (!fenceStillCurrent(引用, fence)) return;
+            if (是401(错误)) {
+              清账号状态(账号清理依赖);
+              throw 错误;
+            }
+            if (错误 instanceof BFF错误 && 错误.status === 404) {
+              await 招聘反馈404收口(jobId, recommendationId, fence);
+              return;
+            }
+            throw 错误;
+          }
+          if (!fenceStillCurrent(引用, fence)) return;
+          设后端状态((旧) => 淘汰落位(旧, jobId, 卡));
+        },
+      });
+    },
+
+    /** 撤销淘汰：DELETE 成功后按回执从 rejected 移除并修正详情缓存；不回塞当前 available
+     *  批次 —— 后端语义是该推荐可进入未来批次（§7.3）。 */
+    async 撤销淘汰候选(jobId, recommendationId) {
+      await 运行反馈写<BFF发现偏好>({
+        资源键: `P4写:${jobId}:${recommendationId}`,
+        scopeKey: P4范围键.招聘列表(jobId),
+        写: (源) => 源.撤销招聘候选淘汰(jobId, recommendationId),
+        收口404: (fence) => 招聘反馈404收口(jobId, recommendationId, fence),
+        成功: (回执) => {
+          设后端状态((旧) => 撤销淘汰落位(旧, recommendationId, 回执));
+        },
+      });
     },
   };
 }
