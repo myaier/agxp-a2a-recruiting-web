@@ -50,6 +50,13 @@ function 段(值: string): string {
   return encodeURIComponent(值);
 }
 
+/** 复合运行时键（写锁 / 委托单飞）的无歧义组装：前缀 + 角色 + 每个 opaque id 各自转义后
+ *  再用 `:` 连接。逐段转义保证 `a:b`/`c` 与 `a`/`b:c` 绝不撞键（撞键 = 单飞把一次写默默
+ *  丢掉、或让两组坐标共享同一张委托回执）；角色恒在段里，jobId 恰好叫 candidate 也不串。 */
+function 复合键(前缀: string, role: BFF角色, ...坐标: string[]): string {
+  return [前缀, role, ...坐标.map(段)].join(':');
+}
+
 /** 屏幕注册可见范围的冻结键表：注册唯一精确键、effect cleanup 时清成 null。 */
 export const P4范围键 = {
   候选列表: (intentionId: string) => `candidate:list:${段(intentionId)}`,
@@ -659,21 +666,24 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
           throw 错误;
         }
         if (错误 instanceof BFF错误 && 错误.code === 'idempotency_conflict') {
-          // 冲突先重读权威 scope 对账；对账请求成功（含栅栏外完成）才释放键；冲突原文照抛给屏
-          let 已对账 = false;
+          // 冲突先重读权威 scope 对账：对账成功则冲突原文照抛给屏（键已释放）；
+          // 对账失败按栅栏收口 —— 迟到丢弃、栅栏内 401 走统一清理，两者都不再抛旧冲突
+          let items: T;
           try {
-            const items = await input.重读(后端);
-            已对账 = true;
-            if (fenceStillCurrent(引用, fence)) input.成功(items, fence);
+            items = await input.重读(后端);
           } catch (对账错误) {
-            // 迟到的对账失败只丢弃（迟到 401 绝不登出新会话）；
-            // 栅栏内的 401 与其它核同口径走统一清理，其余仍落冲突文案
-            if (fenceStillCurrent(引用, fence)) {
-              if (是401(对账错误)) 清账号状态(账号清理依赖);
-              else input.失败(P4错误文案(错误), fence);
+            // 迟到的对账失败只丢弃：屏已换代，旧冲突错误再抛过去只是串场提示
+            if (!fenceStillCurrent(引用, fence)) return;
+            // 栅栏内 401 走统一清理后就此收口 —— 会话已拆，绝不再叠一条冲突文案
+            if (是401(对账错误)) {
+              清账号状态(账号清理依赖);
+              return;
             }
+            input.失败(P4错误文案(错误), fence);
+            throw 错误;
           }
-          if (已对账) P4幂等意图.current.delete(intent);
+          P4幂等意图.current.delete(intent); // 对账请求成功（含栅栏外完成）才释放键
+          if (fenceStillCurrent(引用, fence)) input.成功(items, fence);
           throw 错误;
         }
         input.失败(P4错误文案(错误), fence);
@@ -704,7 +714,8 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
    * 反馈写统一核：按资源单飞（同一推荐的 favorite/rejection/not-interested 串行，跨推荐并行，
    * §9.2）→ 捕获栅栏 → 服务端先行 → 栅栏内才落任何本地变化。失败绝不移动卡片；
    * 401 统一 清账号状态 后照抛；404 按统一不可用收口（安全移除 + scope 重读）即达成意图不抛；
-   * 其余错误原样抛给屏。锁用独立的 P4写: 资源键，不与读锁属主表交互。
+   * 其余错误原样抛给屏。锁用独立的 P4写: 资源键（复合键：角色 + 逐段转义坐标），
+   * 不与读锁属主表交互。
    */
   async function 运行反馈写<T>(input: {
     资源键: string;
@@ -1106,7 +1117,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     /** 候选不感兴趣：PUT 成功且回执确认 rejection_reason: not_interested 才从当前 scope 移除。 */
     async 标记岗位不感兴趣(intentionId, recommendationId) {
       await 运行反馈写<BFF发现偏好>({
-        资源键: `P4写:candidate:${recommendationId}`,
+        资源键: 复合键('P4写', 'candidate', recommendationId),
         scopeKey: P4范围键.候选列表(intentionId),
         写: (源) => 源.标记候选岗位不感兴趣(recommendationId),
         收口404: (fence) => 候选反馈404收口(intentionId, recommendationId, fence),
@@ -1123,7 +1134,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     /** 收藏：服务端权威偏好回执同步 available/rejected/detail 每一处出现的 favorite。 */
     async 设置候选收藏(jobId, recommendationId, favorite) {
       await 运行反馈写<BFF发现偏好>({
-        资源键: `P4写:${jobId}:${recommendationId}`,
+        资源键: 复合键('P4写', 'recruiter', jobId, recommendationId),
         scopeKey: P4范围键.招聘列表(jobId),
         写: (源) => 源.设置招聘候选收藏(jobId, recommendationId, favorite),
         收口404: (fence) => 招聘反馈404收口(jobId, recommendationId, fence),
@@ -1140,7 +1151,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
      *  重读失败则卡原地不动，绝不半搬。 */
     async 淘汰候选(jobId, recommendationId, reason) {
       await 运行反馈写<BFF发现偏好>({
-        资源键: `P4写:${jobId}:${recommendationId}`,
+        资源键: 复合键('P4写', 'recruiter', jobId, recommendationId),
         scopeKey: P4范围键.招聘列表(jobId),
         写: (源) => 源.设置招聘候选淘汰(jobId, recommendationId, reason),
         收口404: (fence) => 招聘反馈404收口(jobId, recommendationId, fence),
@@ -1170,7 +1181,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
      *  批次 —— 后端语义是该推荐可进入未来批次（§7.3）。 */
     async 撤销淘汰候选(jobId, recommendationId) {
       await 运行反馈写<BFF发现偏好>({
-        资源键: `P4写:${jobId}:${recommendationId}`,
+        资源键: 复合键('P4写', 'recruiter', jobId, recommendationId),
         scopeKey: P4范围键.招聘列表(jobId),
         写: (源) => 源.撤销招聘候选淘汰(jobId, recommendationId),
         收口404: (fence) => 招聘反馈404收口(jobId, recommendationId, fence),
@@ -1190,7 +1201,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     async 委托候选岗位(input) {
       if (!是后端 || !后端) throw new Error('委托只在 Backend 数据源下可用');
       const { intentionId, recommendationId, jobId, disclosureAcknowledged } = input;
-      return 单飞委托创建(`P4委托:candidate:${intentionId}:${jobId}`, () =>
+      return 单飞委托创建(复合键('P4委托', 'candidate', intentionId, jobId), () =>
         运行委托创建({
           scopeKey: P4范围键.候选列表(intentionId),
           意图对象: jobId,
@@ -1206,7 +1217,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     /** 招聘委托候选：无披露确认；选择坐标是 recommendation_id，回执非空坐标必须一致。 */
     async 委托招聘候选(jobId, recommendationId) {
       if (!是后端 || !后端) throw new Error('委托只在 Backend 数据源下可用');
-      return 单飞委托创建(`P4委托:recruiter:${jobId}:${recommendationId}`, () =>
+      return 单飞委托创建(复合键('P4委托', 'recruiter', jobId, recommendationId), () =>
         运行委托创建({
           scopeKey: P4范围键.招聘列表(jobId),
           意图对象: recommendationId,

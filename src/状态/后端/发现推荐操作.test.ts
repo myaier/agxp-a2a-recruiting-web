@@ -613,20 +613,38 @@ describe('刷新与幂等意图键', () => {
     expect(env.数据源.清空目录缓存).not.toHaveBeenCalled();
   });
 
-  it('idempotency_conflict 重读遇栅栏内 401 走统一清账号状态', async () => {
+  it('idempotency_conflict 重读遇栅栏内 401 走统一清账号状态，且不再向屏叠一条冲突错误', async () => {
     vi.mocked(env.数据源.刷新候选岗位推荐)
       .mockRejectedValueOnce(new BFF错误(409, 'idempotency_conflict', 'conflict'));
     vi.mocked(env.数据源.读取候选岗位推荐)
       .mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
 
-    await expect(env.操作.刷新候选岗位('int_1'))
-      .rejects.toMatchObject({ code: 'idempotency_conflict' });
+    // 会话已被拆掉：再抛冲突文案只会在登录页上叠一条无意义提示
+    await expect(env.操作.刷新候选岗位('int_1')).resolves.toBeUndefined();
 
     const 最新 = env.最新状态();
     expect(最新.已登录).toBe(false);
     expect(最新.候选岗位推荐).toEqual({});
     expect(env.deps.会话代际.current).toBe(2);
     expect(env.数据源.清空目录缓存).toHaveBeenCalled();
+  });
+
+  it('idempotency_conflict 的对账失败迟到时既不抛也不写状态', async () => {
+    const POST门 = deferred<BFF发现批次>();
+    const GET门 = deferred<BFF候选岗位推荐[]>();
+    vi.mocked(env.数据源.刷新候选岗位推荐).mockReturnValueOnce(POST门.promise);
+    vi.mocked(env.数据源.读取候选岗位推荐).mockReturnValueOnce(GET门.promise);
+    const 运行 = env.操作.刷新候选岗位('int_1');
+    POST门.reject(new BFF错误(409, 'idempotency_conflict', 'conflict'));
+    await POST门.promise.catch(() => undefined); // 对账重读已在飞
+    const 提交数 = 设后端状态调用数();
+    env.deps.会话代际.current += 1; // 屏已换代：这条对账结果与它无关
+    GET门.reject(new BFF错误(503, 'source_unavailable', 'down'));
+
+    await expect(运行).resolves.toBeUndefined();
+
+    expect(设后端状态调用数()).toBe(提交数);
+    expect(env.最新状态().已登录).toBe(true);
   });
 
   it('idempotency_conflict 不换键：重读权威 scope 后才释放，下一次刷新才铸新键', async () => {
@@ -794,6 +812,71 @@ describe('招聘反馈与服务端先行', () => {
     expect(env.最新状态().招聘候选详情.rec_r1).toBeUndefined();
     expect(env.最新状态().招聘候选不可用).toEqual(['rec_r1']);
     expect(vi.mocked(env.数据源.读取招聘候选)).toHaveBeenCalledTimes(2); // 种子读 + 收口重读
+  });
+});
+
+describe('复合写锁与委托单飞键的无歧义组装', () => {
+  it('含分隔符的 id 不撞写锁：a:b/c 与 a/b:c 是两个资源，各自发写', async () => {
+    设主体角色(招聘主体);
+    const 门 = deferred<BFF发现偏好>();
+    vi.mocked(env.数据源.设置招聘候选淘汰).mockReturnValue(门.promise);
+
+    const 甲 = env.操作.淘汰候选('a:b', 'c', 'other');
+    const 乙 = env.操作.淘汰候选('a', 'b:c', 'other');
+
+    expect(vi.mocked(env.数据源.设置招聘候选淘汰)).toHaveBeenCalledTimes(2);
+    门.resolve({ ...BFF发现偏好样本 });
+    await Promise.all([甲, 乙]);
+  });
+
+  it('跨角色不撞写锁：jobId 恰好是 candidate 时招聘写与候选不感兴趣仍各自发写', async () => {
+    const 候选门 = deferred<BFF发现偏好>();
+    const 招聘门 = deferred<BFF发现偏好>();
+    vi.mocked(env.数据源.标记候选岗位不感兴趣).mockReturnValue(候选门.promise);
+    vi.mocked(env.数据源.设置招聘候选收藏).mockReturnValue(招聘门.promise);
+
+    const 候选写 = env.操作.标记岗位不感兴趣('int_1', 'rec_x');
+    const 招聘写 = env.操作.设置候选收藏('candidate', 'rec_x', true);
+
+    expect(vi.mocked(env.数据源.标记候选岗位不感兴趣)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.设置招聘候选收藏)).toHaveBeenCalledTimes(1);
+    候选门.resolve({ ...BFF发现偏好样本, rejected: true, rejection_reason: 'not_interested' });
+    招聘门.resolve({ ...BFF发现偏好样本 });
+    await Promise.all([候选写, 招聘写]);
+  });
+
+  it('同一资源仍单飞：含分隔符的坐标重复调用只发一次写', async () => {
+    设主体角色(招聘主体);
+    const 门 = deferred<BFF发现偏好>();
+    vi.mocked(env.数据源.设置招聘候选淘汰).mockReturnValue(门.promise);
+
+    const 第一次 = env.操作.淘汰候选('a:b', 'c', 'other');
+    const 第二次 = env.操作.淘汰候选('a:b', 'c', 'other');
+
+    expect(vi.mocked(env.数据源.设置招聘候选淘汰)).toHaveBeenCalledTimes(1);
+    门.resolve({ ...BFF发现偏好样本 });
+    await Promise.all([第一次, 第二次]);
+  });
+
+  it('含分隔符的 id 不撞委托单飞：两组坐标各发一次 POST，同组坐标仍共享在飞', async () => {
+    vi.mocked(env.数据源.创建候选岗位委托).mockResolvedValue([
+      { ...BFF候选委托回执样本, state: 'accepted' },
+    ]);
+    const 输入 = (intentionId: string, jobId: string) =>
+      ({ intentionId, recommendationId: 'rec_c1', jobId, disclosureAcknowledged: true as const });
+
+    await Promise.all([
+      env.操作.委托候选岗位(输入('a:b', 'c')),
+      env.操作.委托候选岗位(输入('a', 'b:c')),
+    ]);
+    expect(vi.mocked(env.数据源.创建候选岗位委托)).toHaveBeenCalledTimes(2);
+
+    const 门 = deferred<BFF委托回执[]>();
+    vi.mocked(env.数据源.创建候选岗位委托).mockReturnValue(门.promise);
+    const 并发 = [env.操作.委托候选岗位(输入('a:b', 'c')), env.操作.委托候选岗位(输入('a:b', 'c'))];
+    expect(vi.mocked(env.数据源.创建候选岗位委托)).toHaveBeenCalledTimes(3); // 同 pair 共享在飞
+    门.resolve([{ ...BFF候选委托回执样本, state: 'accepted' }]);
+    await Promise.all(并发);
   });
 });
 
