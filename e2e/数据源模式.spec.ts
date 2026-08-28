@@ -4548,9 +4548,11 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     const fixture = P4发现fixture({ 候选刷新首次503: true });
     fixture.候选推荐[P4编号.intention] = [];
     const 刷新POST: { 键: string; 体: unknown }[] = [];
+    const P4请求: { method: string; path: string }[] = [];
     await 装P4候选(page, {
       fixture,
       请求拦截: ({ path, method, headers, body }) => {
+        if (path.includes('job-recommendation')) P4请求.push({ method, path });
         if (path === '/api/v1/me/job-recommendation-refreshes' && method === 'POST') {
           刷新POST.push({ 键: headers['idempotency-key'] ?? '', 体: body });
         }
@@ -4570,6 +4572,8 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     expect(刷新POST[0]!.键).not.toBe('');
     expect(刷新POST[0]!.键).toBe(刷新POST[1]!.键);
     expect(刷新POST[0]!.体).toEqual({ intention_id: P4编号.intention });
+    // POST 之后以权威 GET 收尾：日志最后一笔是列表读取
+    expect(P4请求[P4请求.length - 1]).toEqual({ method: 'GET', path: '/api/v1/me/job-recommendations' });
     expect(fixture.刷新次数.candidate).toBe(1);
   });
 
@@ -4805,8 +4809,8 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
   });
 
   test('P4 读取遇 401：统一清理把 P4 UI 带回登录页 @backend', async ({ page }) => {
-    // 401 只武装给首载成功后的强制重读：StrictMode 挂载期的首读本就是被代际丢弃的旧栅栏，
-    // 它撞上 401 也必须被静默丢弃（迟到的 401 绝不能登出新会话）
+    // 401 只武装给首载成功后的强制重读：本用例证明的是当前栅栏 401 的统一清理。
+    // StrictMode 挂载期的首读不发 401（未武装），本用例不断言 stale-fence 401 的丢弃行为
     let 已武装 = false;
     await 装P4候选(page, {
       覆盖: {
@@ -4891,7 +4895,8 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     // 第二次下拉走到被注毒的第二页：strict decoder 拒收整轮读取，旧卡依旧不被清掉
     fixture.分支 = { ...fixture.分支, 候选非法第二页: true };
     await 下拉刷新手势(page);
-    await expect(page.getByText('服务返回异常，请稍后重试')).toBeVisible({ timeout: 15_000 });
+    // 错误文案与恢复期隐私水合失败的 toast 同文：取 first 只认列表错误行
+    await expect(page.getByText('服务返回异常，请稍后重试').first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(P4标记.jobTitle)).toBeVisible();
     await expect(page.getByText('P4 Fixture 备选岗位')).toBeVisible();
   });
@@ -4999,40 +5004,5 @@ test.describe('P4 Mock 数据源隔离 @mock', () => {
     const isP4 = (url: string) => /\/(job-recommendation|candidate-recommendation|job-delegation|candidate-delegation)/.test(url);
     expect(apiRequests.filter(isP4)).toEqual([]);
     expect(apiRequests).toEqual([]);
-  });
-});
-
-test.describe('PROBE @mock', () => {
-  test.use({ baseURL: 'http://127.0.0.1:4181' });
-  test('probe swipe', async ({ page }) => {
-    await page.goto('/');
-    await page.getByText(/已阅读并同意/).click();
-    await page.getByRole('button', { name: '微信登录' }).click();
-    await expect(page).toHaveURL(/#\/identity$/);
-    await page.getByRole('button', { name: '我要找工作' }).click();
-    await expect(page).toHaveURL(/#\/student$/);
-    await page.goto('/#/identity?switch=1&from=app');
-    await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
-    await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
-    await page.goto('/#/hr');
-    await page.getByRole('button', { name: '推荐', exact: true }).click();
-    await expect(page.getByText('江叙白')).toBeVisible({ timeout: 10_000 });
-
-    const 行面 = page.locator('[role="button"][aria-expanded="false"]').filter({ hasText: '江叙白' }).first();
-    const 框 = (await 行面.boundingBox())!;
-    const 纵 = 框.y + 框.height / 2;
-    await page.mouse.move(框.x + 框.width - 30, 纵);
-    await page.mouse.down();
-    for (let 步 = 1; 步 <= 6; 步 += 1) await page.mouse.move(框.x + 框.width - 30 - 步 * ((框.width - 60) / 6), 纵);
-    await page.mouse.up();
-    await page.waitForTimeout(600);
-    const 行后 = page.locator('[role="button"][aria-expanded]').filter({ hasText: '江叙白' }).first();
-    console.log('EXPANDED=', await 行后.getAttribute('aria-expanded'));
-    const 按钮 = page.locator('button').filter({ hasText: '不合适' });
-    console.log('TEXT_COUNT=', await 按钮.count());
-    for (let i = 0; i < await 按钮.count(); i++) {
-      console.log('BTN_VISIBLE=', await 按钮.nth(i).isVisible(), 'ARIA_HIDDEN=', await 按钮.nth(i).evaluate((el) => el.closest('[aria-hidden]')?.getAttribute('aria-hidden')));
-    }
-    console.log('ROLE_COUNT=', await page.getByRole('button', { name: '不合适' }).count());
   });
 });
