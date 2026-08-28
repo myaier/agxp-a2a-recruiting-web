@@ -21,6 +21,7 @@ import { 路径 } from '../路由/路径表';
 import { 今日简报, 在谈列表 } from '../数据/模拟数据';
 import type { BFF候选岗位推荐 } from '../数据/BFF契约';
 import { BFF候选岗位推荐样本, BFF意向样本 } from '../测试/BFF样本';
+import { 发现推荐操作桩 } from '../测试/操作桩';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -36,10 +37,10 @@ const mock跳转 = vi.fn();
 const mock轻提示 = vi.hoisted(() => vi.fn());
 // P4 操作桩：屏幕只经上下文操作表触达后端，逐例注入需要的子集
 const mock委托候选岗位 = vi.fn();
-const mock加载候选岗位 = vi.fn();
-const mock刷新候选岗位 = vi.fn();
+const mock加载候选岗位 = vi.fn(async () => undefined);
+const mock刷新候选岗位 = vi.fn(async () => undefined);
 const mock设置发现推荐范围 = vi.fn();
-const mock刷新委托 = vi.fn();
+const mock刷新委托 = vi.fn(async () => undefined);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -68,7 +69,8 @@ function 置应用状态(选项: {
   const { 模式 = 'mock', 候选规则阶段 = '未开始', 状态 = {},
     后端状态 = {}, 操作 = {} } = 选项;
   mock应用状态 = {
-    状态, 派发: mock派发, 数据源模式: 模式, 操作,
+    // 生产 Provider 恒注入全表：桩宿主同样给全表，用例只覆盖自己要断言的 spy
+    状态, 派发: mock派发, 数据源模式: 模式, 操作: 发现推荐操作桩(操作),
     后端状态: {
       Agent规则水合: {
         candidate: { rules: 候选规则阶段, proposals: '未开始' },
@@ -572,6 +574,36 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     fireEvent.pointerUp(root, { clientY: 120 });
     expect(mock加载候选岗位).toHaveBeenCalledWith(BFF意向样本.intention_id, true);
     expect(mock刷新候选岗位).not.toHaveBeenCalled();
+  });
+
+  // Task 6 的异步接缝必须真的接上：下拉把 GET 的 Promise 交回 下拉刷新，
+  // 转圈等真实 settle，而不是恒定 900ms 就收
+  it('下拉转圈等真实 GET settle：过了最短动画仍在转，GET 回来才收', async () => {
+    vi.useFakeTimers();
+    置P4候选意向({
+      意向ID: BFF意向样本.intention_id, 阶段: '成功', items: [BFF候选岗位推荐样本],
+      操作: { 加载候选岗位: mock加载候选岗位, 刷新候选岗位: mock刷新候选岗位 },
+    });
+    render(<看市场 />);
+    // 进屏懒加载那一发先走完，下拉这一发才是被卡住的那个 GET
+    let 放行!: () => void;
+    mock加载候选岗位.mockImplementationOnce(
+      () => new Promise<undefined>((resolve) => {
+        放行 = () => resolve(undefined);
+      }),
+    );
+    const root = document.querySelector('.滚动区')!.parentElement!;
+    fireEvent.pointerDown(root, { clientY: 0 });
+    fireEvent.pointerMove(root, { clientY: 120 });
+    fireEvent.pointerUp(root, { clientY: 120 });
+    expect(mock加载候选岗位).toHaveBeenLastCalledWith(BFF意向样本.intention_id, true);
+    // 最短动画 900ms 早过了：GET 还没回来就不许收圈
+    await act(() => vi.advanceTimersByTimeAsync(3000));
+    expect(document.querySelector('[class*="刷新转"]')).not.toBeNull();
+    await act(async () => {
+      放行();
+    });
+    expect(document.querySelector('[class*="刷新转"]')).toBeNull();
   });
 
   it('刷新失败保留旧卡并给出未决文案', () => {

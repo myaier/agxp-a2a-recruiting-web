@@ -19,6 +19,7 @@ import { P4委托进度未知文案 } from '../状态/后端/use发现推荐委�
 import { 路径 } from '../路由/路径表';
 import type { BFF候选岗位推荐 } from '../数据/BFF契约';
 import { BFF候选岗位推荐样本, BFFCandidateJob样本 } from '../测试/BFF样本';
+import { 发现推荐操作桩 } from '../测试/操作桩';
 
 const mock派发 = vi.fn();
 const mock替换跳转 = vi.fn();
@@ -26,11 +27,11 @@ const mock返回 = vi.fn();
 const mock跳转 = vi.fn();
 const mock轻提示 = vi.hoisted(() => vi.fn());
 // P4 操作桩：Backend 分支只经上下文操作表触达后端
-const mock读取候选岗位详情 = vi.fn();
-const mock标记岗位不感兴趣 = vi.fn();
+const mock读取候选岗位详情 = vi.fn(async () => undefined);
+const mock标记岗位不感兴趣 = vi.fn(async () => undefined);
 const mock委托候选岗位 = vi.fn();
 const mock设置发现推荐范围 = vi.fn();
-const mock刷新委托 = vi.fn();
+const mock刷新委托 = vi.fn(async () => undefined);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -65,9 +66,15 @@ function 渲染Backend状态(选项: {
   候选岗位推荐?: Record<string, unknown>;
   候选岗位详情?: Record<string, unknown>;
   候选岗位不可用?: string[];
+  /** 真实简历事实（匹配对齐行的 Backend 证据来源）；缺省是空简历 */
+  简历?: Record<string, unknown>;
 }) {
   mock应用状态 = {
-    状态: { 已委托: [], 简历经历: [], 简历教育: [], 简历技能: [] },
+    状态: {
+      已委托: [], 简历经历: [], 简历教育: [], 简历技能: [],
+      基本信息: { 真名: '', 开始工作年: '', 身份: '在职' },
+      ...选项.简历,
+    },
     派发: mock派发,
     数据源模式: 'backend',
     后端状态: {
@@ -75,13 +82,14 @@ function 渲染Backend状态(选项: {
       候选岗位详情: 选项.候选岗位详情 ?? {},
       候选岗位不可用: 选项.候选岗位不可用 ?? [],
     },
-    操作: {
+    // 生产 Provider 恒注入全表：桩宿主同样给全表，用例只覆盖自己要断言的 spy
+    操作: 发现推荐操作桩({
       读取候选岗位详情: mock读取候选岗位详情,
       标记岗位不感兴趣: mock标记岗位不感兴趣,
       委托候选岗位: mock委托候选岗位,
       设置发现推荐范围: mock设置发现推荐范围,
       刷新委托: mock刷新委托,
-    },
+    }),
   };
 }
 
@@ -91,6 +99,22 @@ function 快照With(卡: BFF候选岗位推荐) {
 }
 
 const 推荐卡样本 = BFF候选岗位推荐样本;
+
+/** 「5 年以上」经验要求的推荐卡：门槛必须核用户真实年限，不许吃演示常量 */
+const 五年经验卡 = {
+  ...BFF候选岗位推荐样本,
+  job: { ...BFF候选岗位推荐样本.job, experience_requirement: 'five_plus_years' as const },
+};
+
+/** 用户真实简历段（Backend 水合而来，不是 Mock 演示简历） */
+const 真实经历段 = {
+  编号: 'exp_1', 公司: '云衢科技', 行业: '互联网', 职位: '前端工程师',
+  开始: '2024-01', 结束: null, 内容: '负责前端',
+};
+const 真实教育段 = {
+  编号: 'edu_1', 学校: '同济大学', 学历: '硕士', 专业: '计算机',
+  开始: '2019-09', 结束: '2022-06',
+};
 
 function 渲染(编号 = 'M-12') {
   return render(
@@ -241,6 +265,64 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     渲染('job_1');
     断言匹配卡在条件段与公司之前('云衢科技');
     expect(screen.getByRole('img', { name: '适配 92 分' })).toBeTruthy();
+  });
+
+  // 绝不编造事实：Backend 的匹配对齐行拿真实 JD 要求核真实简历，
+  // 门槛只能来自用户自己的 开始工作年 / 学历，绝不来自演示简历常量
+  it('经验行按用户真实工作年限判定：年限不够就不给证据', () => {
+    const 今年 = new Date().getFullYear();
+    渲染Backend状态({
+      候选岗位推荐: 快照With(五年经验卡),
+      简历: {
+        基本信息: { 真名: '', 开始工作年: String(今年 - 1), 身份: '在职' },
+        简历经历: [真实经历段],
+      },
+    });
+    渲染('job_1');
+    expect(screen.getByText('经验 5 年以上')).toBeTruthy();
+    // 只干过 1 年：真实公司·职位绝不能被当成「命中 5 年以上」的证据
+    expect(screen.queryByText('云衢科技 · 前端工程师')).toBeNull();
+  });
+
+  it('经验行按用户真实工作年限判定：够年限才给真实经历做证据', () => {
+    const 今年 = new Date().getFullYear();
+    渲染Backend状态({
+      候选岗位推荐: 快照With(五年经验卡),
+      简历: {
+        基本信息: { 真名: '', 开始工作年: String(今年 - 8), 身份: '在职' },
+        简历经历: [真实经历段],
+      },
+    });
+    渲染('job_1');
+    expect(screen.getByText('云衢科技 · 前端工程师')).toBeTruthy();
+  });
+
+  it('开始工作年为空（核不动）时经验行不给证据', () => {
+    渲染Backend状态({
+      候选岗位推荐: 快照With(五年经验卡),
+      简历: { 简历经历: [真实经历段] },
+    });
+    渲染('job_1');
+    expect(screen.getByText('经验 5 年以上')).toBeTruthy();
+    expect(screen.queryByText('云衢科技 · 前端工程师')).toBeNull();
+  });
+
+  it('学历行按用户真实学历判定：学历不够就不给证据，够了才给', () => {
+    渲染Backend状态({
+      候选岗位推荐: 快照With(推荐卡样本), // education_requirement: bachelor → 本科
+      简历: { 简历教育: [{ ...真实教育段, 学历: '大专' }] },
+    });
+    const 页 = 渲染('job_1');
+    expect(screen.getByText('学历 本科')).toBeTruthy();
+    expect(screen.queryByText('同济大学 · 大专')).toBeNull();
+    页.unmount();
+
+    渲染Backend状态({
+      候选岗位推荐: 快照With(推荐卡样本),
+      简历: { 简历教育: [真实教育段] },
+    });
+    渲染('job_1');
+    expect(screen.getByText('同济大学 · 硕士')).toBeTruthy();
   });
 
   it('详情直取路径不渲染匹配分环', () => {

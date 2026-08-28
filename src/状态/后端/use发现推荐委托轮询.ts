@@ -7,8 +7,9 @@
 //   · 同一委托连续 5 次非 401 失败：进暂停表（本周期内跳过），页面用它把进行中标签覆盖成
 //     P4委托进度未知文案 —— 绝不伪造终态回执；一次成功只把该委托的计数清零；
 //   · 401 属会话失效，由操作层的统一 清账号状态 收口，绝不变成这里的暂停标记；
-//   · 卸载 / 开启 翻 false 即清 interval、在途表、计数与暂停表，并翻转周期代际：
-//     旧周期（旧页面）的迟到完成只落在途清理；重进页面从一张干净的计数表起跑。
+//   · 卸载 / 开启 翻 false / 页面 scope 变化即清 interval、在途表、计数与暂停表，并翻转
+//     周期代际：旧周期（旧页面、旧 scope）的迟到完成只落在途清理；重进页面或换 scope
+//     都从一张干净的计数表起跑（§8.3：unmount、role/subject/scope 变化立即停止并增代）。
 // 会话/范围栅栏与终态提交归 操作层（发现推荐操作.ts 的 刷新委托）所有，
 // 本钩子只负责节拍、单飞与失败上界，不持有任何快照。
 
@@ -36,11 +37,16 @@ export function use发现推荐委托轮询(input: {
   开启: boolean;
   委托: 可轮询委托[];
   刷新: (role: BFF角色, delegationId: string) => Promise<void>;
+  /**
+   * 页面当前 scope 坐标（意向编号 / 岗位编号 / 详情键）。变化即结束本轮询周期并重开：
+   * 连续失败计数与暂停表绝不跨 scope 存活（§8.3）。页面没有 scope 概念时可不传。
+   */
+  范围键?: string | null;
   间隔毫秒?: number;
 }): ReadonlySet<string> {
-  const { 开启 } = input;
+  const { 开启, 范围键 = null } = input;
   // 页面数组/刷新函数是派生对象，每次渲染都是新引用：interval 回调一律走 ref 读最新值，
-  // effect 只依赖 开启，避免每次渲染重建 interval 打乱节拍。
+  // effect 只依赖 开启 与 范围键（两个稳定标量），避免每次渲染重建 interval 打乱节拍。
   const 委托引用 = useRef(input.委托);
   委托引用.current = input.委托;
   const 刷新引用 = useRef(input.刷新);
@@ -107,7 +113,7 @@ export function use发现推荐委托轮询(input: {
       暂停表.current = new Set();
       设暂停(new Set());
     };
-  }, [开启]);
+  }, [开启, 范围键]);
 
   return 暂停;
 }

@@ -118,10 +118,9 @@ function Backend已筛候选() {
   // 离开本屏时把可见范围清成 null，别让别的屏背上旧范围。
   useEffect(() => {
     if (!是后端 || 在招岗位编号们.length === 0) return;
-    操作.设置发现推荐范围?.('recruiter', 范围键);
-    const 加载 = 操作.加载招聘已筛?.(在招岗位编号们);
-    if (加载) void 加载.catch(() => undefined);
-    return () => 操作.设置发现推荐范围?.('recruiter', null);
+    操作.设置发现推荐范围('recruiter', 范围键);
+    void 操作.加载招聘已筛(在招岗位编号们).catch(() => undefined);
+    return () => 操作.设置发现推荐范围('recruiter', null);
   }, [是后端, 范围键, 在招岗位编号们, 操作]);
 
   // 只认原子提交：聚合与快照都是 操作层 同一次 设后端状态 写进去的，
@@ -137,7 +136,7 @@ function Backend已筛候选() {
     if (撤销中 !== null) return;
     设撤销中(卡.recommendation_id);
     try {
-      await 操作.撤销淘汰候选?.(卡.job_id, 卡.recommendation_id);
+      await 操作.撤销淘汰候选(卡.job_id, 卡.recommendation_id);
       // 文案中性：撤销只解除这条筛选，不承诺他立刻回到当前这批推荐
       轻提示(`已撤销「${代号}」的筛选`);
     } catch (错误) {
@@ -149,10 +148,12 @@ function Backend已筛候选() {
 
   const 重读 = () => {
     if (在招岗位编号们.length === 0) return;
-    const 加载 = 操作.加载招聘已筛?.(在招岗位编号们, true);
-    if (加载) void 加载.catch(() => undefined);
+    void 操作.加载招聘已筛(在招岗位编号们, true).catch(() => undefined);
   };
 
+  // 无在招岗位：本屏没有任何 scope 可读（上面的 effect 也不发请求），
+  // 直接给空态 —— 绝不让聚合停在 未开始 而永远显示「正在读取筛掉的候选…」
+  const 无在招岗位 = 在招岗位编号们.length === 0;
   // 加载态：聚合未提交（未开始/进行中，或腿还在飞）先给加载中；失败给明确重试
   const 载入中 = 聚合.阶段 === '未开始' || 聚合.阶段 === '进行中' ||
     (聚合.阶段 === '成功' && (!快照 || 快照.阶段 !== '成功'));
@@ -168,7 +169,15 @@ function Backend已筛候选() {
           。撤销只解除这条筛选，之后的推荐批次才可能再出现这位候选。
         </div>
 
-        {聚合.阶段 === '失败' ? (
+        {无在招岗位 ? (
+          <div className={样式.空态}>
+            <div className={样式.空态图}>◎</div>
+            <div className={样式.空态标题}>还没有在招的岗位</div>
+            <div className={样式.空态说明}>
+              发布或重开一个岗位后，这里才会显示它筛掉的候选。
+            </div>
+          </div>
+        ) : 聚合.阶段 === '失败' ? (
           <div className={样式.空态}>
             <div className={样式.空态标题}>筛掉的候选暂时加载不了</div>
             <div className={样式.空态说明}>{聚合.error}</div>

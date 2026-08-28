@@ -98,10 +98,9 @@ export default function 看市场() {
   // 离开本屏或换 scope 时把可见范围清成 null，别让详情页等屏背上旧范围。
   useEffect(() => {
     if (!是后端 || 活跃意向 === null) return;
-    操作.设置发现推荐范围?.('candidate', P4范围键.候选列表(活跃意向));
-    const 加载 = 操作.加载候选岗位?.(活跃意向);
-    if (加载) void 加载.catch(() => undefined);
-    return () => 操作.设置发现推荐范围?.('candidate', null);
+    操作.设置发现推荐范围('candidate', P4范围键.候选列表(活跃意向));
+    void 操作.加载候选岗位(活跃意向).catch(() => undefined);
+    return () => 操作.设置发现推荐范围('candidate', null);
   }, [是后端, 活跃意向, 操作]);
 
   // 进行中委托（accepted/evaluating）交给页面域轮询钩子；暂停表里的委托把
@@ -118,9 +117,9 @@ export default function 看市场() {
   const 进度未知 = use发现推荐委托轮询({
     开启: 是后端,
     委托: 进行中委托,
-    // 生产 Provider 恒注入全表；部分桩宿主（冻结 helper）缺它时安全兜底，
-    // 绝不让轮询 interval 在 undefined 上 TypeError。
-    刷新: 操作.刷新委托 ?? (async () => {}),
+    刷新: 操作.刷新委托,
+    // scope 变化即结束本轮询周期：换意向不带走上一意向的连续失败计数（§8.3）
+    范围键: 活跃意向,
   });
 
   // 确认层只在这里真正发起委托：先收层再 await —— 任何失败（含终态/拒绝回执）
@@ -143,18 +142,17 @@ export default function 看市场() {
     }
   };
 
-  // 下拉只重读当前 scope（GET）；空态的「让AI代理帮我搜」才建新批次（POST+GET）
+  // 下拉只重读当前 scope（GET）；空态的「让AI代理帮我搜」才建新批次（POST+GET）。
+  // 下拉把这个 Promise 交回 下拉刷新：转圈等真实 GET settle，不是干等最短动画。
   const 重读当前范围 = () => {
     if (活跃意向 === null) return;
-    const 读取 = 操作.加载候选岗位?.(活跃意向, true);
     // 这里的静默不是漏提示：加载失败（含下拉重读）的文案由操作层落进快照 error，
     // 列表上方的错误/未决行负责呈现 —— 再 toast 一次就成了双重提示，别「修」它。
-    if (读取) void 读取.catch(() => undefined);
+    return 操作.加载候选岗位(活跃意向, true).catch(() => undefined);
   };
   const 请代理再搜 = () => {
     if (活跃意向 === null) return;
-    const 刷新 = 操作.刷新候选岗位?.(活跃意向);
-    if (刷新) void 刷新.catch((错误: unknown) => 轻提示(P4错误文案(错误)));
+    void 操作.刷新候选岗位(活跃意向).catch((错误: unknown) => 轻提示(P4错误文案(错误)));
   };
 
   // 从「在谈」子视图点放大镜 / 筛选时本页还没挂载，顶部意向栏把意图存进模块级信号，

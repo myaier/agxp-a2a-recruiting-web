@@ -391,6 +391,28 @@ describe('详情读取与 404 不可用标记', () => {
     expect(env.最新状态().招聘候选不可用).toEqual(['rec_gone']);
     expect(env.最新状态().招聘候选详情.rec_gone).toBeUndefined();
   });
+
+  // fail closed：热缓存 + 重读 404 时，只加不可用标记会让旧详情继续渲染成活页
+  it('招聘候选详情 热缓存后重读 404：缓存条目删除，只留不可用标记', async () => {
+    设主体角色(招聘主体);
+    await env.操作.读取招聘候选详情('job_1', 'rec_r1');
+    expect(env.最新状态().招聘候选详情.rec_r1).toEqual(BFF招聘候选推荐样本);
+    vi.mocked(env.数据源.读取招聘候选详情)
+      .mockRejectedValue(new BFF错误(404, 'recommendation_not_found', 'gone'));
+    await expect(env.操作.读取招聘候选详情('job_1', 'rec_r1', true)).resolves.toBeUndefined();
+    expect(env.最新状态().招聘候选详情.rec_r1).toBeUndefined();
+    expect(env.最新状态().招聘候选不可用).toEqual(['rec_r1']);
+  });
+
+  it('候选岗位详情 热缓存后重读 404：缓存条目删除，只留不可用标记', async () => {
+    await env.操作.读取候选岗位详情('job_9');
+    expect(env.最新状态().候选岗位详情.job_9).toEqual(BFFCandidateJob样本);
+    vi.mocked(env.数据源.读取候选岗位详情)
+      .mockRejectedValue(new BFF错误(404, 'job_not_found', 'gone'));
+    await expect(env.操作.读取候选岗位详情('job_9', true)).resolves.toBeUndefined();
+    expect(env.最新状态().候选岗位详情.job_9).toBeUndefined();
+    expect(env.最新状态().候选岗位不可用).toEqual(['job_9']);
+  });
 });
 
 describe('401 会话清理与迟到 401', () => {

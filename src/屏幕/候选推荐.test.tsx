@@ -13,6 +13,7 @@ import 候选推荐 from './候选推荐';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF招聘候选推荐, BFF委托摘要 } from '../数据/BFF契约';
 import { BFF招聘候选推荐样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
+import { 发现推荐操作桩 } from '../测试/操作桩';
 import { 推荐列表 } from '../数据/企业端模拟数据';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
@@ -76,6 +77,8 @@ const P4快照 = (选项: {
 function 置P4状态(选项: {
   快照?: ReturnType<typeof P4快照>;
   岗位编号?: string;
+  /** 岗位列表：默认「当前岗位在招」；零在招 / 归档当前岗的用例自己给 */
+  岗位列表?: Record<string, unknown>[];
   操作?: Record<string, unknown>;
 }) {
   const 编号 = 选项.岗位编号 ?? 岗位编号;
@@ -83,7 +86,7 @@ function 置P4状态(选项: {
     数据源模式: 'backend', 派发: mock派发,
     状态: {
       当前岗位编号: 编号,
-      岗位列表: [{ ...页面岗位样本, 编号, 状态: '在招' }],
+      岗位列表: 选项.岗位列表 ?? [{ ...页面岗位样本, 编号, 状态: '在招' }],
       企业规则: [], 企业子视图: '推荐', 推荐列表: [], 收藏候选: [],
       不合适候选: {}, 已接触推荐: [],
     },
@@ -93,7 +96,8 @@ function 置P4状态(选项: {
       招聘可用候选: { [编号]: 选项.快照 ?? P4快照({ 阶段: '成功', items: [BFF招聘候选推荐样本] }) },
       P4委托回执: {},
     },
-    操作: 选项.操作 ?? {},
+    // 生产 Provider 恒注入全表：桩宿主同样给全表，用例只覆盖自己要断言的 spy
+    操作: 发现推荐操作桩(选项.操作),
   };
 }
 
@@ -189,6 +193,32 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     fireEvent.pointerUp(root, { clientY: 120 });
     expect(mock加载招聘候选).toHaveBeenCalledWith(岗位编号, true);
     expect(mock刷新招聘候选).not.toHaveBeenCalled();
+  });
+
+  // Task 6 的异步接缝必须真的接上：下拉把 GET 的 Promise 交回 下拉刷新，
+  // 转圈等真实 settle，而不是恒定 900ms 就收
+  it('下拉转圈等真实 GET settle：过了最短动画仍在转，GET 回来才收', async () => {
+    vi.useFakeTimers();
+    置P4状态({ 操作: { 加载招聘候选: mock加载招聘候选 } });
+    render(<候选推荐 />);
+    // 进屏懒加载那一发先走完，下拉这一发才是被卡住的那个 GET
+    let 放行!: () => void;
+    mock加载招聘候选.mockImplementationOnce(
+      () => new Promise<undefined>((resolve) => {
+        放行 = () => resolve(undefined);
+      }),
+    );
+    const root = document.querySelector('.滚动区')!.parentElement!;
+    fireEvent.pointerDown(root, { clientY: 0 });
+    fireEvent.pointerMove(root, { clientY: 120 });
+    fireEvent.pointerUp(root, { clientY: 120 });
+    expect(mock加载招聘候选).toHaveBeenLastCalledWith(岗位编号, true);
+    await act(() => vi.advanceTimersByTimeAsync(3000));
+    expect(document.querySelector('[class*="刷新转"]')).not.toBeNull();
+    await act(async () => {
+      放行();
+    });
+    expect(document.querySelector('[class*="刷新转"]')).toBeNull();
   });
 
   it('「让代理再找一批」建新批次（POST+GET），失败按 P4 文案提示', async () => {
@@ -391,6 +421,34 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     await act(() => vi.advanceTimersByTimeAsync(10000));
     expect(screen.getByText('暂时无法确认进度，请稍后刷新')).toBeTruthy();
     expect(screen.queryByText('AI代理已接触')).toBeNull();
+  });
+
+  // 招聘 scope 必须是自己名下的在招 job_id：一个在招岗都没有、或当前岗已归档时，
+  // 既不该永远转圈，也不该拿归档 job_id 去发 P4 请求
+  it('零在招岗位：给空态、不转圈、零 P4 请求', () => {
+    置P4状态({
+      岗位编号: '',
+      岗位列表: [],
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载招聘候选: mock加载招聘候选 },
+    });
+    render(<候选推荐 />);
+    expect(screen.getByText('还没有在招的岗位')).toBeTruthy();
+    expect(screen.queryByText('正在加载这个岗位的推荐候选…')).toBeNull();
+    expect(mock设置发现推荐范围).not.toHaveBeenCalled();
+    expect(mock加载招聘候选).not.toHaveBeenCalled();
+  });
+
+  it('当前岗位已归档：同样给空态，绝不拿归档 job_id 当 scope', () => {
+    置P4状态({
+      岗位列表: [{ ...页面岗位样本, 编号: 岗位编号, 状态: '已归档' }],
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载招聘候选: mock加载招聘候选 },
+    });
+    render(<候选推荐 />);
+    expect(screen.getByText('还没有在招的岗位')).toBeTruthy();
+    // 归档岗的快照哪怕还在后端状态里，也不许渲染出来
+    expect(screen.queryByText('候选人甲')).toBeNull();
+    expect(mock设置发现推荐范围).not.toHaveBeenCalled();
+    expect(mock加载招聘候选).not.toHaveBeenCalled();
   });
 
   it('Mock 分支行为原样且零 P4 请求', async () => {

@@ -13,6 +13,7 @@ import 已筛候选 from './已筛候选';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF淘汰原因, BFF招聘候选推荐 } from '../数据/BFF契约';
 import { BFF招聘候选推荐样本 } from '../测试/BFF样本';
+import { 发现推荐操作桩 } from '../测试/操作桩';
 
 const mock派发 = vi.fn();
 const mock跳转 = vi.fn();
@@ -69,7 +70,8 @@ function 置已筛状态(选项: {
       招聘已筛聚合: 选项.聚合 ?? { 阶段: '未开始', jobKey: '', error: null },
       P4委托回执: {},
     },
-    操作: 选项.操作 ?? {},
+    // 生产 Provider 恒注入全表：桩宿主同样给全表，用例只覆盖自己要断言的 spy
+    操作: 发现推荐操作桩(选项.操作),
   };
 }
 
@@ -102,6 +104,31 @@ describe('已筛候选 · P4 跨岗位淘汰史（Backend）', () => {
     mock设置发现推荐范围.mockClear();
     mock加载招聘已筛.mockClear();
     mock撤销淘汰候选.mockClear();
+  });
+
+  // 招聘 scope 必须是自己名下的在招 job_id：一个在招岗都没有时既不该永远转圈，
+  // 也不该发任何 P4 请求（与候选侧「无活跃意向」同一口径）
+  it('零在招岗位：给空态、不转圈、零 P4 请求', () => {
+    置已筛状态({
+      岗位们: [],
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载招聘已筛: mock加载招聘已筛 },
+    });
+    渲染已筛();
+    expect(screen.getByText('还没有在招的岗位')).toBeTruthy();
+    expect(screen.queryByText('正在读取筛掉的候选…')).toBeNull();
+    expect(mock设置发现推荐范围).not.toHaveBeenCalled();
+    expect(mock加载招聘已筛).not.toHaveBeenCalled();
+  });
+
+  it('当前岗位已归档且无其它在招岗：同样给空态，零 P4 请求', () => {
+    置已筛状态({
+      岗位们: [{ 编号: 'job_1', 状态: '已归档' }],
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载招聘已筛: mock加载招聘已筛 },
+    });
+    渲染已筛();
+    expect(screen.getByText('还没有在招的岗位')).toBeTruthy();
+    expect(mock设置发现推荐范围).not.toHaveBeenCalled();
+    expect(mock加载招聘已筛).not.toHaveBeenCalled();
   });
 
   it('全部在招岗位都请求，归档岗位排除；先注册后加载，离开即清', () => {

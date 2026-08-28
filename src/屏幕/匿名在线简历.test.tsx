@@ -14,6 +14,7 @@ import { 匿名简历表 } from '../数据/企业端模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF招聘候选推荐 } from '../数据/BFF契约';
 import { BFF招聘候选推荐样本, BFF岗位样本 } from '../测试/BFF样本';
+import { 发现推荐操作桩 } from '../测试/操作桩';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -65,7 +66,8 @@ function 置P4详情状态(选项: {
       招聘候选不可用: 选项.不可用 ?? [],
       P4委托回执: {},
     },
-    操作: 选项.操作 ?? {},
+    // 生产 Provider 恒注入全表：桩宿主同样给全表，用例只覆盖自己要断言的 spy
+    操作: 发现推荐操作桩(选项.操作),
   };
 }
 
@@ -178,6 +180,18 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     渲染详情();
     expect(screen.getByText('这位候选暂时看不了')).toBeTruthy();
     expect(screen.queryByText('候选人甲')).toBeNull();
+  });
+
+  // fail closed：上一轮 200 的详情还热在缓存里、这一轮重读 404 时，页面必须让不可用赢，
+  // 绝不把旧画像连同 ★收藏 / 让AI代理去谈 继续渲染成活页
+  it('缓存仍在但已标记不可用：仍走安全不可用页，收藏与委托入口都不出现', () => {
+    置P4详情状态({ 详情: BFF招聘候选推荐样本, 不可用: ['rec_r1'] });
+    渲染详情();
+    expect(screen.getByText('这位候选暂时看不了')).toBeTruthy();
+    expect(screen.queryByText('候选人甲')).toBeNull();
+    expect(screen.queryByRole('button', { name: '收藏' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '取消收藏' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '让AI代理去谈' })).toBeNull();
   });
 
   it('详情读取的非 404 失败给文案与重试（重试走 force GET）', async () => {

@@ -245,6 +245,31 @@ describe('use发现推荐委托轮询', () => {
     expect(刷新委托).toHaveBeenCalledTimes(6); // 新周期第一拍
     expect(result.current.has('del_cycle')).toBe(false); // 连续第 1 次失败，远未到上界
   });
+
+  // §8.3：scope 变化必须立即停止并增加周期 generation —— 切意向/切岗位后
+  // 连续失败计数与暂停表都不能跨 scope 存活
+  it('范围键变化即结束本周期：暂停表与连续失败计数都不跨 scope 存活', async () => {
+    vi.useFakeTimers();
+    const 刷新委托 = vi.fn(async () => {
+      throw new BFF错误(503, 'source_unavailable', 'down');
+    });
+    const { result, rerender } = renderHook(
+      ({ 范围键, 委托 }) => use发现推荐委托轮询({
+        开启: true, 委托, 刷新: 刷新委托, 间隔毫秒: 2000, 范围键,
+      }),
+      { initialProps: { 范围键: 'int_1', 委托: [活跃('del_scope')] } },
+    );
+    for (let 拍 = 1; 拍 <= 5; 拍 += 1) {
+      await 走(2000);
+    }
+    expect(result.current.has('del_scope')).toBe(true);
+    // 换 scope：旧周期结束，暂停表清空，新周期从零开始数
+    rerender({ 范围键: 'int_2', 委托: [活跃('del_scope')] });
+    expect(result.current.size).toBe(0);
+    await 走(2000);
+    expect(刷新委托).toHaveBeenCalledTimes(6);
+    expect(result.current.has('del_scope')).toBe(false);
+  });
 });
 
 function deferred<T>() {

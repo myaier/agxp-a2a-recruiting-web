@@ -18,6 +18,7 @@ import { 路径 } from '../路由/路径表';
 import { 企业日报, 在谈候选列表 } from '../数据/企业端模拟数据';
 import type { BFF招聘候选推荐 } from '../数据/BFF契约';
 import { BFF招聘候选推荐样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
+import { 发现推荐操作桩 } from '../测试/操作桩';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -274,7 +275,8 @@ function 置P4招聘状态(items: BFF招聘候选推荐[]) {
       } },
       P4委托回执: {},
     },
-    操作: { 加载招聘候选: mock加载招聘候选, 设置候选收藏: mock设置候选收藏 },
+    // 生产 Provider 恒注入全表：桩宿主同样给全表，用例只覆盖自己要断言的 spy
+    操作: 发现推荐操作桩({ 加载招聘候选: mock加载招聘候选, 设置候选收藏: mock设置候选收藏 }),
   };
 }
 
