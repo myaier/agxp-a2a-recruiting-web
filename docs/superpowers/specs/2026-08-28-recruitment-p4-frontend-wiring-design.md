@@ -8,9 +8,9 @@
 
 **前端基线：** `origin/main@96257a2683dfe775eda61b6076a9aab12ded9c9a`
 
-**后端候选契约基线：** `~/agxp-monorepo` 的 `recruitment/plan-p4-p5@8e8a0bb66df404cbf7fdf2bac6e085b6df706230`，以该提交的 `apps/recruitment-bff/openapi/mobile-v1.yaml`、`apps/recruitment-bff/internal/recruitmentclient/discovery.go` 和 `docs/superpowers/specs/2026-08-27-recruitment-p4-discovery-recommendation-watch-design.md` 为真相源。
+**后端最终契约基线：** `~/agxp-monorepo` 的 `origin/release/0.2.5@d7353d9162343f95cbf3b70d1e9952c1f17e9ea2`。该 release tip 同时是 P4 最终提交；前端以该提交的 `apps/recruitment-bff/openapi/mobile-v1.yaml`、`apps/recruitment-bff/internal/recruitmentclient/discovery.go` 和 `docs/superpowers/specs/2026-08-27-recruitment-p4-discovery-recommendation-watch-design.md` 为精确真相源。
 
-后端候选提交尚未完成最终 target 集成。本设计可以先冻结前端产品与状态边界；实施 Plan 开始前必须按第 14 节重新校准最终后端提交。
+2026-08-28 校准已完成：从原候选基线 `8e8a0bb66df404cbf7fdf2bac6e085b6df706230` 到 release tip，P4 的 method/path/query/body、DTO、nullable、enum、错误 union、receipt、CandidateJob、cursor 和幂等语义均未漂移；其间 OpenAPI 变化只来自独立的 P2 resume parsing。
 
 ## 1. 结论
 
@@ -274,9 +274,10 @@ Backend 清理使用闭合 action 清 raw P4 snapshot、详情、receipt 与 Cas
 interface 发现推荐操作 {
   加载候选岗位(intentionId: string): Promise<void>;
   刷新候选岗位(intentionId: string): Promise<void>;
-  标记岗位不感兴趣(recommendationId: string): Promise<void>;
+  标记岗位不感兴趣(intentionId: string, recommendationId: string): Promise<void>;
   委托候选岗位(input: {
     intentionId: string;
+    recommendationId: string;
     jobId: string;
     已确认披露: true;
   }): Promise<BFF委托回执>;
@@ -601,9 +602,9 @@ npm run ui:check -- --base 96257a2683dfe775eda61b6076a9aab12ded9c9a
 - 候选需要撤销负反馈时，先设计可回看的候选侧历史入口；
 - 现有 snapshot/facade 在另一个领域再次出现相同重复问题时，再评估通用 query cache。
 
-## 14. 后端最终提交校准门
+## 14. 后端最终提交校准记录
 
-本设计绑定的是后端候选提交 `8e8a0bb66df404cbf7fdf2bac6e085b6df706230`。写实施 Plan 前必须记录最终 P4 commit，并逐项比较：
+本设计原绑定后端候选提交 `8e8a0bb66df404cbf7fdf2bac6e085b6df706230`；实施 Plan 前已将它与最终 P4 提交 `d7353d9162343f95cbf3b70d1e9952c1f17e9ea2` 逐项比较：
 
 1. 本期消费 route 的 method/path/query/body；
 2. OpenAPI exact schema、nullable 字段和 enum；
@@ -613,7 +614,7 @@ npm run ui:check -- --base 96257a2683dfe775eda61b6076a9aab12ded9c9a
 6. delegation summary、receipt、`case_id` 和 polling 终态；
 7. Idempotency-Key、cursor 长度和分页规则。
 
-若完全一致，只更新 Spec/Plan 的后端精确 commit。若发生契约漂移，先修订受影响设计并请用户重新批准；不能把接口选择留给执行者现场猜测。
+比较结论为完全一致，无需修订产品或架构设计。Spec/Plan 统一绑定 `origin/release/0.2.5@d7353d9162343f95cbf3b70d1e9952c1f17e9ea2`；执行者不得现场猜测或改写接口。
 
 ## 15. 验收标准
 
