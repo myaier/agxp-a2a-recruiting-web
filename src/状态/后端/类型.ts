@@ -1,6 +1,6 @@
 // 后端操作组合的纯类型文件（无 React 依赖、无运行时副作用）。
 // Provider 把稳定 ref 与 React setter 组成 后端操作依赖 传给各域操作工厂，工厂返回操作方法；
-// 根 应用操作 是各域操作子接口的交集（会话/候选/岗位/组织 + P3 隐私 + P6 Agent 规则 + P4 发现推荐读子集），
+// 根 应用操作 是各域操作子接口的交集（会话/候选/岗位/组织 + P3 隐私 + P6 Agent 规则 + P4 发现推荐），
 // 公开 shape 与拆分前逐字一致。
 //
 // 对根 状态 / 动作 只使用 type-only import，运行时依赖方向保持「根组合 → 域实现」，
@@ -184,8 +184,9 @@ export interface 隐私操作 {
 }
 
 /**
- * P4 Task 3：页面会调用的发现推荐操作方法表（页面不得直接调用数据源）。
- * Task 4 落 refresh/feedback mutation、Task 5 落委托与轮询；本任务只实现 读子集。
+ * P4 Task 3/4/5：页面会调用的发现推荐操作方法表（页面不得直接调用数据源）。
+ * Task 4 落 refresh/feedback mutation、Task 5 落委托（真实回执）与轮询的操作层半边；
+ * 本表即完整闭合面（watch、委托列表 GET、top 选择不存在）。
  */
 export interface 发现推荐操作 {
   设置发现推荐范围(role: BFF角色, scopeKey: string | null): void;
@@ -208,10 +209,6 @@ export interface 发现推荐操作 {
   刷新委托(role: BFF角色, delegationId: string): Promise<void>;
 }
 
-/** Task 3 已落地的读子集；Task 4/5 补齐后收敛为完整 发现推荐操作。 */
-export type P4发现读操作 = Pick<发现推荐操作,
-  '设置发现推荐范围' | '加载候选岗位' | '读取候选岗位详情' | '加载招聘候选' | '加载招聘已筛' | '读取招聘候选详情'>;
-
 export interface Agent规则操作 {
   /** 对当前角色重跑完整 水合Agent规则角色数据（Rules + interpreting + ready，更新两个阶段）。 */
   刷新Agent规则(): Promise<void>;
@@ -228,4 +225,4 @@ export interface Agent规则操作 {
   删除Agent规则(ruleId: string): Promise<void>;
 }
 
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & P4发现读操作;
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作;

@@ -1,6 +1,6 @@
-// 后端发现推荐域操作（P4 Task 3 读取 + Task 4 refresh/feedback mutation）：raw scope 快照、
-// 可见范围注册、会话清理底座与服务端先行的反馈写。
-// 铁律（设计 §6/§7/§9/§10）：
+// 后端发现推荐域操作（P4 Task 3 读取 + Task 4 refresh/feedback mutation + Task 5 委托与轮询）：
+// raw scope 快照、可见范围注册、会话清理底座、服务端先行的反馈写与真实委托回执。
+// 铁律（设计 §6/§7/§8/§9/§10）：
 //   · Backend 才发请求（!是后端 || !后端 一律早退）；接口失败绝不回退 Mock，Mock 发现页
 //     继续走 归约发现推荐，本域不触达 Mock reducer。
 //   · 栅栏 = subject_id + active role + session generation + scope id + scope generation，
@@ -12,16 +12,23 @@
 //     全部成功后才做唯一一次 设后端状态 原子提交；任一腿失败绝不落半份聚合。
 //   · 详情 404 按统一不可用收口（标记 + 不抛）；其余非 401 错误原样抛给屏。
 //   · 一次刷新/委托用户意图持有唯一显式幂等键：受控重试与结果不确定后的重试沿用同一键，
-//     idempotency_conflict 绝不换新键强发 —— 先重读权威 scope，对账成功才释放；完整
-//     POST+GET 成功才释放。POST 成功 + follow-up GET 失败不清旧列表，只落「已发起新一轮」文案。
+//     idempotency_conflict 绝不换新键强发；权威回执在手（成功或明确拒绝）才释放。
+//     POST 成功 + follow-up GET 失败不清旧列表，只落「已发起新一轮」文案。
 //   · 反馈（收藏/淘汰/撤销/不感兴趣）服务端先行：失败绝不移动卡片；成功后经权威重读或
 //     回执同步 available/rejected/detail 每一处出现；同推荐写单飞、跨推荐并行。
-// Task 5 落委托与轮询。
+//   · 委托（Task 5 §8）：候选选择坐标是 job_id，回执 recommendation_id 可空且被完全忽略，
+//     页面落位一律用操作输入的 recommendationId；招聘选择坐标是 recommendation_id，
+//     回执非空坐标必须与所选一致。回执按 delegation_id 提交与轮询；accepted/evaluating
+//     显示进行中摘要，case_started 只写 P4真实Case引用，needs_user/refused/failed 清摘要；
+//     绝不派发 委托入谈/接触推荐候选/任何 MatchCase 动作，绝不在 P4 制造本地 Case。
+//     委托创建按 candidate-intention-job / recruiter-job-recommendation pair 单飞，
+//     delegation GET 不取创建锁（安全由轮询单飞 + 栅栏保证）。
 
 import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
 import type {
   BFF发现偏好,
   BFF委托回执,
+  BFF委托摘要,
   BFF角色,
   BFF候选岗位推荐,
   BFF招聘候选推荐,
@@ -32,7 +39,6 @@ import type {
   后端操作依赖,
   后端状态,
   发现推荐操作,
-  P4发现读操作,
   P4发现状态,
   P4运行时引用,
   P4ScopeSnapshot,
@@ -48,13 +54,14 @@ export const P4范围键 = {
   招聘已筛: (jobIds: string[]) => `recruiter:rejected:${[...jobIds].sort().join(',')}`,
 } as const;
 
-/** Task 4 已落地的变更子集；Task 5 落委托后收敛为完整 发现推荐操作。 */
+/** Task 4 已落地的变更子集；Task 5 落委托后由完整 发现推荐操作 取代（见 类型.ts 收敛）。 */
 export type P4发现变更操作 = Pick<发现推荐操作,
   '刷新候选岗位' | '标记岗位不感兴趣' | '刷新招聘候选' | '设置候选收藏' | '淘汰候选' | '撤销淘汰候选'>;
 
 // ── Task 4：一次刷新/委托用户意图的冻结幂等键坐标（与 P4范围键 同一冻结纪律）──
 // 键以目标 scope 为前缀，随 设置发现推荐范围 的旧 scope 前缀清理整体作废（§9.3）。
-// Task 4 消费 refresh 坐标；delegation 坐标由 Task 5（委托）取用，键形在此一并冻结。
+// Task 4 消费 refresh 坐标；Task 5 委托取 delegation 坐标：
+// 候选 (可见范围, jobId)、招聘 (可见范围, recommendationId)。
 
 export const refreshKey = (visibleScope: string) => `${visibleScope}:refresh`;
 export const delegationKey = (visibleScope: string, objectId: string) =>
@@ -319,7 +326,187 @@ export function P4委托终态文案(state: 'needs_user' | 'refused' | 'failed')
   return copy[state];
 }
 
-export function 创建发现推荐操作(deps: 后端操作依赖): P4发现读操作 & P4发现变更操作 {
+// ── Task 5：委托回执的跨字段校验、闭合文案与落位 ──
+// decoder 只闭合字段级契约；跨字段一致性（state↔refusal/case、回执坐标↔所选推荐）归操作层
+// fail closed，一律 Chinese invalid_response，绝不把英文后端 message 带上屏（§10）。
+
+/** 回执跨字段约束被破坏时的契约漂移错误（与 facade 的 契约错误 同一口径）。 */
+function 委托契约漂移(): BFF错误 {
+  return new BFF错误(200, 'invalid_response', '服务返回了不符合契约的发现推荐数据');
+}
+
+/**
+ * 回执内部一致性与坐标校验（create 与 轮询 GET 共用）：
+ *   · state null 必须带闭合非空 refusal_code；
+ *   · case_started 必须带非空 case_id；
+ *   · 其余状态（accepted/evaluating/needs_user/refused/failed）不得带 case_id；
+ *   · 期望推荐编号传入时（招聘侧：选择坐标就是 recommendation_id），回执非空坐标必须一致
+ *     （候选侧不传：选择坐标是 job_id，回执 recommendation_id 可空且被完全忽略）。
+ */
+function 校验委托回执(回执: BFF委托回执, 期望推荐编号?: string): void {
+  if (回执.state === null) {
+    if (回执.refusal_code === null) throw 委托契约漂移();
+  } else if (回执.state === 'case_started') {
+    if (回执.case_id === null) throw 委托契约漂移();
+  } else if (回执.case_id !== null) {
+    throw 委托契约漂移();
+  }
+  if (期望推荐编号 !== undefined && 回执.recommendation_id !== 期望推荐编号) throw 委托契约漂移();
+}
+
+/**
+ * 终态/拒绝回执 → 闭合展示文案（§8.2 的精确规则）：
+ * state null 只走拒绝码；refused 有码走拒绝码、无码走终态文案；
+ * needs_user/failed 无视 schema-valid 可空拒绝码恒走终态文案。
+ * active/case_started 没有失败文案，误用按契约漂移当面抛错。
+ */
+export function P4委托回执文案(回执: BFF委托回执): string {
+  const state = 回执.state;
+  if (state === null) {
+    if (回执.refusal_code === null) throw 委托契约漂移();
+    return P4拒绝文案(回执.refusal_code);
+  }
+  if (state === 'refused' && 回执.refusal_code !== null) return P4拒绝文案(回执.refusal_code);
+  if (state === 'needs_user' || state === 'refused' || state === 'failed') return P4委托终态文案(state);
+  throw 委托契约漂移();
+}
+
+/**
+ * 回执 → 卡片委托摘要（§8.2）：accepted/evaluating/case_started 保留摘要供页面显示进行中/
+ * 已开案并轮询，needs_user/refused/failed/state null 清摘要（null）——绝不伪造终态摘要。
+ */
+function 回执摘要(回执: BFF委托回执): BFF委托摘要 | null {
+  const state = 回执.state;
+  if (state === 'accepted' || state === 'evaluating' || state === 'case_started') {
+    return { delegation_id: 回执.delegation_id, state, case_id: 回执.case_id };
+  }
+  return null;
+}
+
+/** 候选卡落摘要：active → delegating、case_started → delegated、终态/清摘要 → 回 available。 */
+function 修补候选卡(卡: BFF候选岗位推荐, 摘要: BFF委托摘要 | null): BFF候选岗位推荐 {
+  const state = 摘要 === null
+    ? 'available'
+    : 摘要.state === 'case_started' ? 'delegated' : 'delegating';
+  return { ...卡, state, delegation: 摘要 };
+}
+
+/** 招聘卡落摘要：招聘卡 state 只有 available/rejected，进行中只体现在委托摘要上。 */
+function 修补招聘卡(卡: BFF招聘候选推荐, 摘要: BFF委托摘要 | null): BFF招聘候选推荐 {
+  return { ...卡, delegation: 摘要 };
+}
+
+/** 回执提交共用的底座：回执表恒按 delegation_id 提交；case_started 额外写且只写 Case 引用。 */
+function 提交委托回执(旧: 后端状态, 回执: BFF委托回执): 后端状态 {
+  return {
+    ...旧,
+    P4委托回执: { ...旧.P4委托回执, [回执.delegation_id]: 回执 },
+    P4真实Case引用: 回执.state === 'case_started' && 回执.case_id !== null
+      ? { ...旧.P4真实Case引用, [回执.delegation_id]: 回执.case_id }
+      : 旧.P4真实Case引用,
+  };
+}
+
+/** 候选创建落位：只修所选 intention scope 里选中推荐的那一张卡（操作输入坐标，§8.2）。 */
+function 落候选委托(
+  旧: 后端状态, intentionId: string, recommendationId: string, 回执: BFF委托回执,
+): 后端状态 {
+  const 底座 = 提交委托回执(旧, 回执);
+  const 快照 = 底座.候选岗位推荐[intentionId];
+  if (!快照) return 底座;
+  const 摘要 = 回执摘要(回执);
+  const items = 快照.items.map((卡) =>
+    (卡.recommendation_id === recommendationId ? 修补候选卡(卡, 摘要) : 卡));
+  return { ...底座, 候选岗位推荐: { ...底座.候选岗位推荐, [intentionId]: { ...快照, items } } };
+}
+
+/** 招聘创建落位：所选 job 的 available 卡 + 该推荐的详情缓存两处出现。 */
+function 落招聘委托(旧: 后端状态, jobId: string, recommendationId: string, 回执: BFF委托回执): 后端状态 {
+  let 下 = 提交委托回执(旧, 回执);
+  const 摘要 = 回执摘要(回执);
+  const 快照 = 下.招聘可用候选[jobId];
+  if (快照) {
+    下 = {
+      ...下,
+      招聘可用候选: {
+        ...下.招聘可用候选,
+        [jobId]: {
+          ...快照,
+          items: 快照.items.map((卡) =>
+            (卡.recommendation_id === recommendationId ? 修补招聘卡(卡, 摘要) : 卡)),
+        },
+      },
+    };
+  }
+  const 详情 = 下.招聘候选详情[recommendationId];
+  if (详情) {
+    下 = { ...下, 招聘候选详情: { ...下.招聘候选详情, [recommendationId]: 修补招聘卡(详情, 摘要) } };
+  }
+  return 下;
+}
+
+/**
+ * 轮询/单项 GET 的落位：按 delegation_id 找到该角色快照里的每处卡片改摘要 —— 回执坐标
+ * （候选侧可空）不可靠，卡片委托摘要里的 delegation_id 才是唯一可靠关联（§8.2）。
+ * 回执为 null 表示 404 不可用收口：删除回执行并摘掉每处摘要。
+ */
+function 按委托编号改摘要(
+  旧: 后端状态, role: BFF角色, delegationId: string, 摘要: BFF委托摘要 | null, 回执: BFF委托回执 | null,
+): 后端状态 {
+  let 底座: 后端状态;
+  if (回执 === null) {
+    const P4委托回执 = { ...旧.P4委托回执 };
+    delete P4委托回执[delegationId];
+    底座 = { ...旧, P4委托回执 };
+  } else {
+    底座 = 提交委托回执(旧, 回执);
+  }
+  const 命中 = (卡: { delegation: BFF委托摘要 | null }) => 卡.delegation?.delegation_id === delegationId;
+  if (role === 'candidate') {
+    let 改动 = false;
+    const 候选岗位推荐: 后端状态['候选岗位推荐'] = {};
+    for (const [键, 快照] of Object.entries(底座.候选岗位推荐)) {
+      if (!快照.items.some(命中)) {
+        候选岗位推荐[键] = 快照;
+        continue;
+      }
+      改动 = true;
+      候选岗位推荐[键] = {
+        ...快照,
+        items: 快照.items.map((卡) => (命中(卡) ? 修补候选卡(卡, 摘要) : 卡)),
+      };
+    }
+    return 改动 ? { ...底座, 候选岗位推荐 } : 底座;
+  }
+  const 修招聘快照表 = (表: 后端状态['招聘可用候选']): 后端状态['招聘可用候选'] => {
+    let 改动 = false;
+    const 下表 = { ...表 };
+    for (const [键, 快照] of Object.entries(表)) {
+      if (!快照.items.some(命中)) continue;
+      改动 = true;
+      下表[键] = {
+        ...快照,
+        items: 快照.items.map((卡) => (命中(卡) ? 修补招聘卡(卡, 摘要) : 卡)),
+      };
+    }
+    return 改动 ? 下表 : 表;
+  };
+  let 下 = {
+    ...底座,
+    招聘可用候选: 修招聘快照表(底座.招聘可用候选),
+    招聘已筛候选: 修招聘快照表(底座.招聘已筛候选),
+  };
+  const 详情编号 = Object.keys(下.招聘候选详情).find((键) => 命中(下.招聘候选详情[键]));
+  if (详情编号 !== undefined) {
+    下 = {
+      ...下,
+      招聘候选详情: { ...下.招聘候选详情, [详情编号]: 修补招聘卡(下.招聘候选详情[详情编号], 摘要) },
+    };
+  }
+  return 下;
+}
+
+export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐操作 {
   const { 是后端, 后端, 设后端状态, 后端状态引用, 锁, 主体标识引用, 会话代际 } = deps;
   // Provider 恒注入；收窄一次，域内不再到处断言。
   const 引用 = 取P4引用(deps);
@@ -507,6 +694,68 @@ export function 创建发现推荐操作(deps: 后端操作依赖): P4发现读�
     } catch {
       // 同上
     }
+  }
+
+  // ── Task 5：委托创建的单飞与统一核 ──
+
+  /**
+   * 委托创建单飞表：同 pair（candidate-intention-job / recruiter-job-recommendation）的并发
+   * 点击共享同一次在飞 POST（§9.2），完成即摘除。共用 Promise 而不是静默让位 —— 委托的
+   * 调用方要拿到回执。delegation GET（刷新委托）绝不查这张表、不取任何创建锁。
+   */
+  const 委托在飞 = new Map<string, Promise<BFF委托回执>>();
+
+  function 单飞委托创建(键: string, 运行: () => Promise<BFF委托回执>): Promise<BFF委托回执> {
+    const 在飞 = 委托在飞.get(键);
+    if (在飞) return 在飞;
+    const 本次 = 运行().finally(() => {
+      委托在飞.delete(键);
+    });
+    委托在飞.set(键, 本次);
+    return 本次;
+  }
+
+  /**
+   * 委托创建统一核：捕获栅栏 → 发起 POST（一次用户意图一把显式幂等键）→ 恰好一条回执 →
+   * 跨字段/坐标校验 → 权威回执在手释放意图键（明确成功与明确拒绝都是完成）→ 栅栏内才落
+   * 本地状态。transport/conflict/401 一律保留意图键（结果不确定 / 冲突绝不换键强发，§9.3）；
+   * 栅栏内的 401 走统一 清账号状态。终态/拒绝回执先提交再按 §8.2 文案抛 BFF错误 —— 屏的
+   * catch(P4错误文案) 恰好原样呈现；迟到成功只不落本地、照常返回回执。
+   */
+  async function 运行委托创建(input: {
+    scopeKey: string;
+    意图对象: string;
+    发起: (源: HTTP招聘数据源, 幂等键: string) => Promise<BFF委托回执[]>;
+    校验: (回执: BFF委托回执) => void;
+    提交: (回执: BFF委托回执) => void;
+  }): Promise<BFF委托回执> {
+    if (!后端) throw new Error('委托只在 Backend 数据源下可用'); // 与各域同一守卫：调用方已早退，这里兜底
+    const fence = 捕获栅栏(引用, input.scopeKey);
+    const intent = delegationKey(fence.visibleScope ?? input.scopeKey, input.意图对象);
+    let 批次: BFF委托回执[];
+    try {
+      批次 = await input.发起(后端, idempotencyKeyFor(引用, intent));
+    } catch (错误) {
+      if (!fenceStillCurrent(引用, fence)) throw 错误; // 迟到失败只随单飞收口；键随意图保留
+      if (是401(错误)) {
+        清账号状态(账号清理依赖);
+      }
+      throw 错误;
+    }
+    // facade 的 解委托批次 已按恰好一条闭合；防御性再守一道，绝不取 [0] 于空批次
+    if (批次.length !== 1) throw 委托契约漂移();
+    const 回执 = 批次[0];
+    input.校验(回执);
+    P4幂等意图.current.delete(intent);
+    if (!fenceStillCurrent(引用, fence)) return 回执; // 迟到成功只不落本地
+    input.提交(回执);
+    if (回执.state === 'accepted' || 回执.state === 'evaluating' || 回执.state === 'case_started') {
+      return 回执;
+    }
+    // 终态/拒绝回执在提交后按闭合文案抛出。错误 code 优先取 state 而不是 refusal_code：
+    // 屏的 catch 是 轻提示(P4错误文案(error))，state 形式的 code 不在 HTTP 闭合表里、
+    // 恰好回落 message 展示，needs_user/failed 带拒绝码时也绝不会被 HTTP 拒绝码文案截胡。
+    throw new BFF错误(200, 回执.state ?? 回执.refusal_code ?? 'invalid_response', P4委托回执文案(回执));
   }
 
   return {
@@ -841,6 +1090,74 @@ export function 创建发现推荐操作(deps: 后端操作依赖): P4发现读�
           设后端状态((旧) => 撤销淘汰落位(旧, recommendationId, 回执));
         },
       });
+    },
+
+    // ── Task 5：委托（真实回执，绝不在 P4 制造 MatchCase）──
+
+    /**
+     * 候选委托岗位（§8.1/§8.2）：disclosureAcknowledged 是字面 true —— 只有 确认层 的字面
+     * 确认才走到这里，确认不复用。选择坐标是 job_id；回执 recommendation_id 可空且被完全
+     * 忽略，落位一律用操作输入的 recommendationId。终态/拒绝回执在提交后按闭合文案抛出。
+     */
+    async 委托候选岗位(input) {
+      if (!是后端 || !后端) throw new Error('委托只在 Backend 数据源下可用');
+      const { intentionId, recommendationId, jobId, disclosureAcknowledged } = input;
+      return 单飞委托创建(`P4委托:candidate:${intentionId}:${jobId}`, () =>
+        运行委托创建({
+          scopeKey: P4范围键.候选列表(intentionId),
+          意图对象: jobId,
+          发起: (源, 幂等键) => 源.创建候选岗位委托({
+            intentionId, jobId, idempotencyKey: 幂等键, disclosureAcknowledged,
+          }),
+          校验: (回执) => 校验委托回执(回执),
+          提交: (回执) =>
+            设后端状态((旧) => 落候选委托(旧, intentionId, recommendationId, 回执)),
+        }));
+    },
+
+    /** 招聘委托候选：无披露确认；选择坐标是 recommendation_id，回执非空坐标必须一致。 */
+    async 委托招聘候选(jobId, recommendationId) {
+      if (!是后端 || !后端) throw new Error('委托只在 Backend 数据源下可用');
+      return 单飞委托创建(`P4委托:recruiter:${jobId}:${recommendationId}`, () =>
+        运行委托创建({
+          scopeKey: P4范围键.招聘列表(jobId),
+          意图对象: recommendationId,
+          发起: (源, 幂等键) => 源.创建招聘候选委托({ jobId, recommendationId, idempotencyKey: 幂等键 }),
+          校验: (回执) => 校验委托回执(回执, recommendationId),
+          提交: (回执) => 设后端状态((旧) => 落招聘委托(旧, jobId, recommendationId, 回执)),
+        }));
+    },
+
+    /**
+     * 刷新委托（§8.3 轮询的操作层半边）：单项权威 GET。不取创建单飞、不取任何写锁 ——
+     * 安全由页面的轮询单飞与本栅栏保证。回执按 delegation_id 提交并落到每处卡片；
+     * 404 按统一不可用收口（删回执行 + 摘摘要，不抛）；栅栏内 401 走统一清理且不向轮询抛
+     * （读路径口径）；迟到成败只丢弃。
+     */
+    async 刷新委托(role, delegationId) {
+      if (!是后端 || !后端) return;
+      const scopeKey = P4可见范围.current[role] ?? `P4委托轮询:${role}`;
+      const fence = 捕获栅栏(引用, scopeKey);
+      try {
+        const 回执 = role === 'candidate'
+          ? await 后端.读取候选岗位委托(delegationId)
+          : await 后端.读取招聘候选委托(delegationId);
+        校验委托回执(回执);
+        if (回执.delegation_id !== delegationId) throw 委托契约漂移();
+        if (!fenceStillCurrent(引用, fence)) return; // 迟到回执只丢弃（§9.1）
+        设后端状态((旧) => 按委托编号改摘要(旧, role, delegationId, 回执摘要(回执), 回执));
+      } catch (错误) {
+        if (!fenceStillCurrent(引用, fence)) return;
+        if (是401(错误)) {
+          清账号状态(账号清理依赖);
+          return;
+        }
+        if (错误 instanceof BFF错误 && 错误.status === 404) {
+          设后端状态((旧) => 按委托编号改摘要(旧, role, delegationId, null, null));
+          return;
+        }
+        throw 错误;
+      }
     },
   };
 }
