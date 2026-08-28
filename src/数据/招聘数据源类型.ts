@@ -7,7 +7,7 @@
 
 import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 在招岗位, 求职意向, 披露项, 屏蔽项, 市场职位 } from './类型';
 import type { 求职初筛偏好, 求职薪资单位 } from '../流程/onboarding配置';
-import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF隐私快照, BFF委托摘要, BFF淘汰原因 } from './BFF契约';
+import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF隐私快照, BFF委托摘要, BFF淘汰原因, BFF附件简历库 } from './BFF契约';
 
 // ── 分页目录查询（Task 1）：页面层只拿已选目录项的引用，不再全量预取 ──
 // 目录选择值 仍是 BFF目录引用，写入 body 里只带 id；页面层不感知后端返回的额外字段。
@@ -114,6 +114,9 @@ export interface 页面岗位快照 {
   列表: 在招岗位[];
   服务端: Record<string, BFFOwnerJob>;
 }
+
+// ── P2：候选人附件简历库 —— wire 形状原样作为页面别名，Task 3 映射层与 Task 4 数据源消费 ──
+export type 页面附件简历库 = BFF附件简历库;
 
 /**
  * P3：隐私页快照 —— wire PrivacyView 去掉 updated_at 后的页面投影。

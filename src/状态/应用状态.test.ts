@@ -25,7 +25,7 @@ import {
 } from '../测试/BFF样本';
 import { 从BFF隐私 } from '../数据/隐私映射';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFF招聘方档案, BFF公开企业, BFF角色 } from '../数据/BFF契约';
+import type { BFF招聘方档案, BFF公开企业, BFF角色, BFF附件简历库 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
 import type { 规则 } from '../数据/类型';
@@ -463,6 +463,11 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     })),
     放弃Agent规则提案: vi.fn(async () => ({ proposal_id: 'arp_0123456789abcdef0123456789abcdef', state: 'dismissed' as const })),
     创建Agent规则替换提案: vi.fn(async () => ({ proposal_id: 'arp_0123456789abcdef0123456789abcdef', state: 'interpreting' as const })),
+    // P2 Task 3：附件库第四支持域（candidate mount 水合会调用；默认空库成功）
+    读取附件简历库: vi.fn(async (): Promise<BFF附件简历库> => ({
+      items: [],
+      limits: { max_files: 3, max_file_bytes: 10485760, accepted_media_types: ['application/pdf'] },
+    })),
   };
 }
 
@@ -623,6 +628,8 @@ describe('应用状态提供者 后端会话', () => {
       '刷新候选岗位', '标记岗位不感兴趣', '刷新招聘候选',
       '设置候选收藏', '淘汰候选', '撤销淘汰候选',
       '委托候选岗位', '委托招聘候选', '刷新委托',
+      // P2 附件简历域方法（附件简历操作）
+      '刷新附件简历', '创建附件简历', '替换附件简历', '删除附件简历', '请求附件解析', '下载附件简历',
     ].sort().join('|'))).toBeTruthy();
   });
 
@@ -1725,5 +1732,112 @@ describe('当前意向编号 · Backend 意向编号载体', () => {
     const 切回 = 归约(先水合, { 型: '切意向', 意向: '产品经理' });
     expect(切回.当前意向).toBe('产品经理');
     expect(切回.当前意向编号).toBeNull();
+  });
+});
+
+// ── P2 Task 3：Provider 附件库快照 —— 四域水合 / 招聘方不读附件 / 清理路径 ──
+
+describe('应用状态提供者 P2 附件库快照', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  const 附件库样本: BFF附件简历库 = {
+    items: [{
+      file_id: 'rf_1', display_name: '沈亦舟_简历_2026.pdf', revision: 1,
+      current_version: {
+        version_id: 'rfv_1', version: 1, size_bytes: 1, media_type: 'application/pdf',
+        sha256: 'a'.repeat(64), created_at: '2026-08-28T00:00:00Z', parse: { status: 'not_started' },
+      },
+      created_at: '2026-08-28T00:00:00Z', updated_at: '2026-08-28T00:00:00Z',
+    }],
+    limits: { max_files: 3, max_file_bytes: 10485760, accepted_media_types: ['application/pdf'] },
+  };
+
+  it('candidate mount 水合提交附件库，P6 三路照旧，切到招聘方后清空且不读附件', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取附件简历库).mockResolvedValue(附件库样本);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // 第四支持域已提交
+    expect(后端.读取附件简历库).toHaveBeenCalledTimes(1);
+    expect(当前.后端状态.附件简历库).toEqual(附件库样本);
+    // P6 三路并发照旧且阶段收口
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('candidate');
+    await waitFor(() => expect(当前.后端状态.Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' }));
+    // 切到招聘方：附件快照清空且招聘方水合不读附件
+    await 当前.操作.切身份('招聘方');
+    await waitFor(() => expect(当前.后端状态.附件简历库).toBeNull());
+    expect(后端.读取附件简历库).toHaveBeenCalledTimes(1);
+  });
+
+  it('mount 附件读取 401 统一清理：不落已登录，附件与 P6 同清', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取附件简历库).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(false);
+    expect(当前.后端状态.附件简历库).toBeNull();
+    expect(当前.后端状态.主体).toBe(null);
+    expect(当前.后端状态.Agent规则水合.candidate).toEqual({ rules: '未开始', proposals: '未开始' });
+    expect(后端.清空目录缓存).toHaveBeenCalled();
+  });
+
+  it('mount 附件读取非 401 失败不阻塞初始化：已登录照常，附件为 null，简历/P6 保留', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取附件简历库).mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(true);
+    expect(当前.后端状态.附件简历库).toBeNull();
+    expect(当前.后端状态.简历快照).not.toBe(null);
+    await waitFor(() => expect(当前.后端状态.Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' }));
+  });
+
+  it('退出登录清空附件快照，P6 清理不回归', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取附件简历库).mockResolvedValue(附件库样本);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.附件简历库).toEqual(附件库样本));
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.附件简历库).toBeNull();
+    expect(当前.后端状态.候选规则快照).toEqual({});
+    expect(当前.后端状态.Agent规则水合).toEqual({
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    });
+  });
+
+  it('换账号登录清空上个账号的附件快照', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取附件简历库).mockResolvedValue(附件库样本);
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.附件简历库).toEqual(附件库样本));
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
+    await 当前.操作.完成手机登录('1234');
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
+    expect(当前.后端状态.附件简历库).toBeNull();
   });
 });

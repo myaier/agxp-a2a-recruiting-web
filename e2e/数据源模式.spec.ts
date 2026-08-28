@@ -29,6 +29,11 @@
 // fixture 拥有 available/rejected 数组、收藏、刷新计数、委托单项读取、变更回执存证
 // （method/path/body/If-Match/Idempotency-Key）与一个非法翻页分支；受控重试同键回同一张
 // 回执。Mock 场景以任务书原文的 isP4 正则断言发现域全程零请求。
+//
+// P2（Task 7）：追加附件简历域可变 fixture —— /api/v1/me/resume-files 的 0–3 行 PDF 库。
+// 清单 GET 驱动 pending→processing→终态状态机（写入归零重放）；multipart part 形状 /
+// consent / If-Match / 幂等键 fail closed；预览只认 authenticated content GET；
+// Mock describe 证明 resume-files 请求数为 0。
 
 import { expect, test, type Page, type Route } from '@playwright/test';
 
@@ -146,6 +151,36 @@ test.describe('Mock 数据源回归 @mock', () => {
 
     // P6 域在 Mock 下零请求：agent-rule 一个都没有，整个会话也没有任何 /api/v1
     expect(apiRequests.filter((url) => url.includes('agent-rule'))).toEqual([]);
+    expect(apiRequests).toEqual([]);
+  });
+
+  test('Mock 上传演示零 resume-files 请求 @mock', async ({ page }) => {
+    // P2：Mock 的附件简历仍是硬编码演示行，上传演示只落本地文件名 + 轻提示。
+    // 监听页面所有请求，证明 /api/v1/me/resume-files 请求数为 0（Mock 不接 BFF 附件库）。
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '微信登录' }).click();
+    await expect(page).toHaveURL(/#\/identity$/);
+    await page.getByRole('button', { name: '我要找工作' }).click();
+    await expect(page).toHaveURL(/#\/student$/);
+
+    // 上传演示（Mock）：本地派发文件名 + 轻提示，不发网络请求
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'demo.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await expect(page.getByText('demo.pdf')).toBeVisible();
+    await expect(page.getByText('已选择简历，可识别的信息将用于预填')).toBeVisible();
+
+    // 我的简历的附件区照旧是 Mock 演示行，不是权威 0–3 行
+    await page.goto('/#/resume');
+    await expect(page.getByText('沈亦舟_简历_2026.pdf')).toBeVisible();
+
+    expect(apiRequests.filter((url) => new URL(url).pathname.startsWith('/api/v1/me/resume-files'))).toEqual([]);
     expect(apiRequests).toEqual([]);
   });
 });
@@ -1230,6 +1265,65 @@ function P3克隆视图(视图: P3隐私形): P3隐私形 {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// P2 附件简历域 fixture（Task 7）。wire 形就地声明，不反向依赖 src；PDF bytes 统一
+// Buffer.from('%PDF-1.7\nfixture\n')，不把二进制字面量写进 spec。可变接口冻结为
+// P2附件fixture形：清单 GET 驱动 pending →(第 2 读)→ processing →(第 3+ 读)→ 终态
+// 状态机，写入（create/replace/parse）把 列表读取次数 归零重放状态机；删除不重置读取。
+// handler 对未知 multipart part、缺 consent、错 If-Match、缺幂等键直接 throw（fail closed）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+type P2失败码 = 'document_unreadable' | 'document_too_complex' | 'parser_invalid_output' | 'parser_temporarily_unavailable';
+type P2解析形 =
+  | { status: 'not_started' }
+  | { status: 'pending' | 'processing'; updated_at: string }
+  | { status: 'succeeded'; parse_id: string; updated_at: string }
+  | { status: 'failed'; failure_code: P2失败码; updated_at: string };
+
+interface P2附件形 {
+  file_id: string;
+  display_name: string;
+  revision: number;
+  current_version: {
+    version_id: string; version: number; size_bytes: number; media_type: 'application/pdf';
+    sha256: string; created_at: string; parse: P2解析形;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+const P2限制 = { max_files: 3, max_file_bytes: 10_485_760, accepted_media_types: ['application/pdf'] } as const;
+const P2时间 = '2026-08-28T00:00:00Z';
+
+function P2要求(condition: unknown): asserts condition {
+  if (!condition) throw new Error('P2 fixture received an invalid wire request');
+}
+
+function P2新附件(id: number, displayName: string, bytes: Buffer): P2附件形 {
+  return {
+    file_id: `rf_${id}`, display_name: displayName, revision: 1,
+    current_version: {
+      version_id: `rfv_${id}_1`, version: 1, size_bytes: bytes.length,
+      media_type: 'application/pdf', sha256: 'a'.repeat(64), created_at: P2时间,
+      parse: { status: 'pending', updated_at: P2时间 },
+    },
+    created_at: P2时间, updated_at: P2时间,
+  };
+}
+
+interface P2附件fixture形 {
+  items: P2附件形[];
+  列表读取次数: number;
+  写入次数: number;
+  下载次数: number;
+  下一个编号: number;
+  下次终态: 'succeeded' | P2失败码;
+}
+
+function 创建P2附件fixture(下次终态: 'succeeded' | P2失败码 = 'succeeded'): P2附件fixture形 {
+  return { items: [], 列表读取次数: 0, 写入次数: 0, 下载次数: 0, 下一个编号: 1, 下次终态 };
+}
+
 interface BFF路由选项 {
   记录目录请求: (path: string) => void;
   登录尝试id: string;
@@ -1243,6 +1337,9 @@ interface BFF路由选项 {
   招聘组织Fixture?: P1C招聘组织Fixture形;
   /** P3：隐私域可变 fixture（me/privacy 整读补丁 / 组织搜索 / 屏蔽与解除）。缺席时这些路由走兜底空信封 */
   隐私fixture?: P3隐私fixture形;
+  /** P2：附件简历域可变 fixture（resume-files 上传/替换/删除/解析/下载）。缺席时 安装BFF路由
+      自建一份隔离的合法空库（权威应答），既有 Backend 用例每次安装各自独立 */
+  附件fixture?: P2附件fixture形;
   /** 主体初始 last_used_role：null（缺省）→ 落身份选择页；'candidate' → 直接水合进求职主壳；'recruiter' → 企业主壳 */
   主体初始角色?: 'candidate' | 'recruiter' | null;
   /** P6：Agent 规则域可变 fixture 的专用分支（追加规则/提案、游标成环、应答挂起） */
@@ -1400,6 +1497,9 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
   let 物化规则序 = 0;
   let 创建失败余数 = 选项.P6分支?.创建前几次失败 ?? 0;
   let 规则清单请求数 = 0;
+  // ── P2 附件简历域：route callback 之外声明（跨请求存活的可变状态）；
+  // 缺席时每次安装自建一份隔离的合法空库，既有 Backend 用例默认拿到权威空清单 ──
+  const P2域 = 选项.附件fixture ?? 创建P2附件fixture();
 
   await page.route('**/api/v1/**', async (route: Route) => {
     const 请求 = route.request();
@@ -1472,6 +1572,98 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       return;
     }
 
+    // ── P2 附件简历域（Task 7）：multipart / If-Match / Idempotency-Key 契约 fail closed。
+    //    清单 GET 驱动 pending →(第 2 读)→ processing →(第 3+ 读)→ 下次终态；
+    //    create / replace / parse 把 列表读取次数 归零，重放状态机 ──
+    if (P2域 && path === '/api/v1/me/resume-files' && method === 'GET') {
+      P2域.列表读取次数 += 1;
+      for (const item of P2域.items) {
+        if (P2域.列表读取次数 === 2 && item.current_version.parse.status === 'pending') {
+          item.current_version.parse = { status: 'processing', updated_at: P2时间 };
+        } else if (P2域.列表读取次数 >= 3) {
+          if (item.current_version.parse.status === 'pending' || item.current_version.parse.status === 'processing') {
+            item.current_version.parse = P2域.下次终态 === 'succeeded'
+              ? { status: 'succeeded', parse_id: `parse_${item.file_id}`, updated_at: P2时间 }
+              : { status: 'failed', failure_code: P2域.下次终态, updated_at: P2时间 };
+          }
+        }
+      }
+      await route.fulfill({ status: 200, json: 信封({ items: P2域.items, limits: P2限制 }) });
+      return;
+    }
+    if (P2域 && path === '/api/v1/me/resume-files' && method === 'POST') {
+      P2要求((请求.headers()['idempotency-key'] ?? '') !== '');
+      P2要求(部件们?.map((part) => part.name).join(',') === 'display_name,file,processing_consent_confirmed');
+      const display = 部件们[0].bytes.toString('utf8');
+      const filePart = 部件们[1];
+      P2要求(filePart.contentType === 'application/pdf');
+      P2要求(部件们[2].bytes.toString('utf8') === 'true');
+      P2要求(P2域.items.length < P2限制.max_files);
+      const item = P2新附件(P2域.下一个编号++, display, filePart.bytes);
+      P2域.items.unshift(item);
+      P2域.列表读取次数 = 0;
+      P2域.写入次数 += 1;
+      await route.fulfill({ status: 201, json: 信封(item) });
+      return;
+    }
+    const P2content = /^\/api\/v1\/me\/resume-files\/([^/]+)\/content$/.exec(path);
+    if (P2域 && P2content && method === 'PUT') {
+      const item = P2域.items.find((candidate) => candidate.file_id === P2content[1]);
+      P2要求(item);
+      P2要求(请求.headers()['if-match'] === `"${item.revision}"`);
+      P2要求((请求.headers()['idempotency-key'] ?? '') !== '');
+      P2要求(部件们?.map((part) => part.name).join(',') === 'file,processing_consent_confirmed');
+      P2要求(部件们[0].contentType === 'application/pdf');
+      P2要求(部件们[1].bytes.toString('utf8') === 'true');
+      item.revision += 1;
+      item.current_version = {
+        version_id: `rfv_${item.file_id}_${item.revision}`, version: item.current_version.version + 1,
+        size_bytes: 部件们[0].bytes.length, media_type: 'application/pdf', sha256: 'b'.repeat(64),
+        created_at: P2时间, parse: { status: 'pending', updated_at: P2时间 },
+      };
+      item.updated_at = P2时间;
+      P2域.items.splice(P2域.items.indexOf(item), 1);
+      P2域.items.unshift(item);
+      P2域.列表读取次数 = 0;
+      P2域.写入次数 += 1;
+      await route.fulfill({ status: 200, json: 信封(item), headers: { ETag: `"${item.revision}"` } });
+      return;
+    }
+    if (P2域 && P2content && method === 'GET') {
+      P2要求(P2域.items.some((item) => item.file_id === P2content[1]));
+      P2域.下载次数 += 1;
+      await route.fulfill({
+        status: 200, body: Buffer.from('%PDF-1.7\nfixture\n'),
+        contentType: 'application/pdf',
+        headers: { 'Content-Disposition': 'attachment; filename="resume.pdf"', 'X-Request-Id': 'fixture-pdf' },
+      });
+      return;
+    }
+    const P2parse = /^\/api\/v1\/me\/resume-files\/([^/]+)\/parse$/.exec(path);
+    if (P2域 && P2parse && method === 'POST') {
+      const item = P2域.items.find((candidate) => candidate.file_id === P2parse[1]);
+      P2要求(item);
+      P2要求((请求.headers()['idempotency-key'] ?? '') !== '');
+      P2要求(JSON.stringify(body) === JSON.stringify({
+        version_id: item.current_version.version_id, processing_consent_confirmed: true,
+      }));
+      item.current_version.parse = { status: 'pending', updated_at: P2时间 };
+      P2域.列表读取次数 = 0;
+      P2域.写入次数 += 1;
+      await route.fulfill({ status: 202, json: 信封(item.current_version.parse) });
+      return;
+    }
+    const P2file = /^\/api\/v1\/me\/resume-files\/([^/]+)$/.exec(path);
+    if (P2域 && P2file && method === 'DELETE') {
+      const index = P2域.items.findIndex((candidate) => candidate.file_id === P2file[1]);
+      P2要求(index >= 0);
+      P2要求(请求.headers()['if-match'] === `"${P2域.items[index].revision}"`);
+      P2域.items.splice(index, 1);
+      P2域.写入次数 += 1;
+      await route.fulfill({ status: 200, json: 信封({ deleted: true }) });
+      return;
+    }
+
     // ── P3 隐私域（隐私 fixture 存在时才应答；缺席走兜底空信封 → strict decode 拒绝，
     //    正是「Mock 内容不顶替 HTTP」的既有边界）──
     const P3域 = 选项.隐私fixture ?? null;
@@ -1526,7 +1718,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         if (游标原文 !== '') {
           const 解码 = Buffer.from(游标原文, 'base64url').toString('utf8');
           const 分隔 = 解码.lastIndexOf('|');
-          归属词 = 分隔 >= 0 ? 解码.slice(0, 分隔) : ' 不匹配';
+          归属词 = 分隔 >= 0 ? 解码.slice(0, 分隔) : '\0不匹配';
           页码 = Number(分隔 >= 0 ? 解码.slice(分隔 + 1) : NaN);
         }
         const 池 = Object.entries(P3域.组织库)
@@ -5004,5 +5196,207 @@ test.describe('P4 Mock 数据源隔离 @mock', () => {
     const isP4 = (url: string) => /\/(job-recommendation|candidate-recommendation|job-delegation|candidate-delegation)/.test(url);
     expect(apiRequests.filter(isP4)).toEqual([]);
     expect(apiRequests).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P2 附件简历 Backend @backend —— candidate 拥有 0–3 份 PDF 附件库的真实浏览器契约。
+// fixture（创建P2附件fixture）fail closed：未知 multipart part、缺 consent、错 If-Match、
+// 缺幂等键一律 throw，让 E2E 在契约漂移时直接红。预览只断言 authenticated content GET，
+// 不依赖 headless PDF viewer 的页面内容；布局门由 断言附件标题几何未漂移 承担。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 左滑附件行露出操作键：真实 pointer 手势驱动 滑动行，绝不直接调 operation。
+    两处浏览器实况补偿（手势路径与位移仍是「右缘 → 左缘」的左滑本体）：
+    1. 附件卡贴在长页底部、容器已滚到底时，行的右缘中点会落进右下角常驻 ✎ 标注钮
+       （zIndex 90、pointerEvents auto）的命中区，pointerdown 会被它截走 ——
+       这种情况下手势线钳到行顶部 12px 处，其余场景保持行中点；
+    2. 真实触摸左滑不会派生 click，桌面鼠标拖拽会派生一发 click 落回行面，
+       触发「打开态点行 = 收起」把刚打开的行立刻关上 —— 手势期间在 document
+       捕获段拦掉这一发派生 click，随后撤掉拦截，不碰任何真实交互。 */
+async function 左滑附件行(page: Page, name: string): Promise<void> {
+  const row = page.getByTestId('附件简历行').filter({ hasText: name });
+  await row.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+  const box = await row.boundingBox();
+  if (!box) throw new Error(`resume row is not visible: ${name}`);
+  const 中点y = box.y + box.height / 2;
+  const 铅笔区上缘 = (page.viewportSize()?.height ?? 664) - 160;
+  const 手势y = 中点y <= 铅笔区上缘 ? 中点y : box.y + 12;
+  await page.evaluate(() => {
+    const 拦 = (事件: Event) => 事件.stopPropagation();
+    document.addEventListener('click', 拦, { capture: true, once: true });
+    (window as unknown as { __撤滑动派生click拦截: () => void }).__撤滑动派生click拦截 = () =>
+      document.removeEventListener('click', 拦, { capture: true });
+  });
+  await page.mouse.move(box.x + box.width - 10, 手势y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 10, 手势y, { steps: 5 });
+  await page.mouse.up();
+  await page.evaluate(() => (window as unknown as { __撤滑动派生click拦截?: () => void }).__撤滑动派生click拦截?.());
+}
+
+/** 附件简历标题几何门：与「基本信息」标题同高、同下间距，且无全局 loading / 骨架残留。 */
+async function 断言附件标题几何未漂移(page: Page): Promise<void> {
+  const 附件标题 = page.getByTestId('附件简历标题');
+  const 基本标题 = page.getByText('基本信息', { exact: true });
+  const 附件后继 = 附件标题.locator('xpath=following-sibling::*[1]');
+  const 基本后继 = 基本标题.locator('xpath=following-sibling::*[1]');
+  const [附件框, 基本框, 附件后继框, 基本后继框] = await Promise.all([
+    附件标题.boundingBox(), 基本标题.boundingBox(), 附件后继.boundingBox(), 基本后继.boundingBox(),
+  ]);
+  if (!附件框 || !基本框 || !附件后继框 || !基本后继框) {
+    throw new Error('resume title geometry is unavailable');
+  }
+  expect(Math.abs(附件框.height - 基本框.height)).toBeLessThanOrEqual(1);
+  const 附件下间距 = 附件后继框.y - (附件框.y + 附件框.height);
+  const 基本下间距 = 基本后继框.y - (基本框.y + 基本框.height);
+  expect(Math.abs(附件下间距 - 基本下间距)).toBeLessThanOrEqual(1);
+  await expect(page.getByRole('progressbar')).toHaveCount(0);
+  await expect(page.locator('[class*="骨架"], [class*="badge"]')).toHaveCount(0);
+}
+
+test.describe('P2 附件简历 Backend @backend', () => {
+  // 显式 backend/stg server（端口 4182），与既有 @backend 用例同一口径
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('Backend candidate owns PDF library without changing Mock visuals @backend', async ({ page }) => {
+    // 轮询节拍是 3s 一读，多段轮询 + 手势全在一条 journey 里：显式放宽到 120s
+    test.setTimeout(120_000);
+    const P2 = 创建P2附件fixture();
+    await 安装BFF路由(page, {
+      记录目录请求: () => {}, 登录尝试id: 'att-p2', 附件fixture: P2,
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    await page.goto('/#/student');
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'candidate.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    await expect(page.getByText('candidate.pdf')).toBeVisible();
+
+    await page.goto('/#/resume');
+    // 授权层成功轻提示存活约 2s；等它退场，避免「简历已上传，正在识别」与行状态文案
+    // 同时命中下面的 alternation（strict mode 会把 toast 记为第二个匹配，属测试噪声）。
+    await expect(page.getByText('简历已上传，正在识别')).toBeHidden({ timeout: 5_000 });
+    await expect(page.getByText('candidate.pdf')).toBeVisible();
+    await expect(page.getByText(/等待识别|正在识别|识别完成/)).toBeVisible();
+    await expect.poll(() => P2.列表读取次数, { timeout: 15_000 }).toBeGreaterThan(2);
+    await expect(page.getByText('识别完成')).toBeVisible();
+
+    // ── 布局门一：1/3（未满额）＋ 可见 —— 有 ＋ 的标题几何 ──
+    await expect(page.getByRole('button', { name: '添加附件简历' })).toBeVisible();
+    await 断言附件标题几何未漂移(page);
+    // 记录第一行关闭滑动态的高度：replace + 轮询完成后同一行高度差不得 >1px
+    const 首行 = page.getByTestId('附件简历行').filter({ hasText: 'candidate.pdf' });
+    const 首行闭高 = (await 首行.boundingBox())?.height;
+    expect(首行闭高).toBeDefined();
+
+    // ── ＋ 授权取消：零写入零请求（基线采样在触发文件选择之前）──
+    const writesBeforeAddCancel = P2.写入次数;
+    await page.getByRole('button', { name: '添加附件简历' }).click();
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'cancel-me.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    await page.getByRole('button', { name: '取消' }).click();
+    expect(P2.写入次数).toBe(writesBeforeAddCancel);
+    await expect(page.getByText('允许 AI 识别这份简历？')).toHaveCount(0);
+    await expect(page.getByTestId('附件简历行')).toHaveCount(1);
+
+    // ── 添加第二份 ──
+    await page.getByRole('button', { name: '添加附件简历' }).click();
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'second.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    await expect(page.getByTestId('附件简历行')).toHaveCount(2);
+    await expect(page.getByTestId('附件简历行').filter({ hasText: 'second.pdf' })).toBeVisible();
+
+    // ── 替换 candidate.pdf：display name 由槽位保留，与新挑的文件名无关 ──
+    await 左滑附件行(page, 'candidate.pdf');
+    await page.getByRole('button', { name: '替换', exact: true }).click();
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'replacement.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    await expect(page.getByText('replacement.pdf')).toHaveCount(0);
+    await expect(首行).toBeVisible();
+    // replace 后重新入列 pending → 轮询回 识别完成；同一行高度不漂移
+    await expect(首行.getByText('识别完成')).toBeVisible({ timeout: 15_000 });
+    const 首行复高 = (await 首行.boundingBox())?.height;
+    expect(Math.abs(首行复高! - 首行闭高!)).toBeLessThanOrEqual(1);
+
+    // ── 预览：只断言 authenticated content GET，不依赖 PDF viewer 页面内容 ──
+    const 内容请求 = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === '/api/v1/me/resume-files/rf_1/content',
+    );
+    await 首行.click();
+    await 内容请求;
+    expect(P2.下载次数).toBeGreaterThanOrEqual(1);
+
+    // ── 添加到 3/3：＋ 消失；布局门二：满额无 ＋ 的标题几何 ──
+    await page.getByRole('button', { name: '添加附件简历' }).click();
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'third.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    await expect(page.getByTestId('附件简历行')).toHaveCount(3);
+    await expect(page.getByRole('button', { name: '添加附件简历' })).toHaveCount(0);
+    await 断言附件标题几何未漂移(page);
+
+    // ── 删除：取消零 DELETE，确认恰一次 DELETE ──
+    const 删除请求: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'DELETE' && new URL(request.url()).pathname.startsWith('/api/v1/me/resume-files')) {
+        删除请求.push(request.url());
+      }
+    });
+    const writesBeforeDelete = P2.写入次数;
+    await 左滑附件行(page, 'third.pdf');
+    await page.getByRole('button', { name: '删除', exact: true }).click();
+    await expect(page.getByText('删除后无法恢复。')).toBeVisible();
+    await page.getByRole('button', { name: '取消' }).click();
+    expect(P2.写入次数).toBe(writesBeforeDelete);
+    expect(删除请求).toEqual([]);
+    await expect(page.getByTestId('附件简历行').filter({ hasText: 'third.pdf' })).toBeVisible();
+
+    await 左滑附件行(page, 'third.pdf');
+    await page.getByRole('button', { name: '删除', exact: true }).click();
+    await expect(page.getByText('删除后无法恢复。')).toBeVisible();
+    // 弹层遮罩的 aria-label「关闭删除附件简历？」也含这段文字：exact 只认执行键
+    await page.getByRole('button', { name: '删除附件简历', exact: true }).click();
+    await expect(page.getByTestId('附件简历行').filter({ hasText: 'third.pdf' })).toHaveCount(0, { timeout: 10_000 });
+    expect(P2.写入次数).toBe(writesBeforeDelete + 1);
+    expect(删除请求.length).toBe(1);
+  });
+
+  test('failed resume parse requires fresh consent before retry @backend', async ({ page }) => {
+    // 失败态要等两拍 3s 轮询 + 重试后两拍：显式放宽到 120s
+    test.setTimeout(120_000);
+    const P2 = 创建P2附件fixture('parser_temporarily_unavailable');
+    await 安装BFF路由(page, { 记录目录请求: () => {}, 登录尝试id: 'att-p2-failed', 附件fixture: P2 });
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    await page.goto('/#/student');
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'failed.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    await page.goto('/#/resume');
+    await expect(page.getByText('服务繁忙 · 稍后重试')).toBeVisible({ timeout: 15_000 });
+    P2.下次终态 = 'succeeded';
+    const writesBeforeConsent = P2.写入次数;
+    await 左滑附件行(page, 'failed.pdf');
+    await page.getByRole('button', { name: '重新解析' }).click();
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    expect(P2.写入次数).toBe(writesBeforeConsent);
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    await expect(page.getByText('识别完成')).toBeVisible({ timeout: 15_000 });
+    expect(P2.写入次数).toBe(writesBeforeConsent + 1);
   });
 });

@@ -18,10 +18,14 @@ import 内嵌双滚轮 from '../组件/内嵌双滚轮';
 import 弹层框架 from '../组件/弹层框架';
 import 轮层样式 from '../组件/数字滚轮层.module.css';
 import { 次级页外壳, 返回栏, 页面大标题, 主按钮, 滚动区 } from '../组件/通用';
+import 确认层 from '../组件/确认层';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
+import { 附件错误文案, 校验附件PDF } from '../流程/附件简历交互';
+import { BFF错误 } from '../数据/HTTP客户端';
+import { use附件简历刷新 } from '../流程/附件简历刷新';
 import {
   默认求职初筛偏好,
   求职初筛缺失项,
@@ -35,9 +39,18 @@ import {
 
 export default function 学生分流() {
   const { 跳转, 返回 } = use导航();
-  const { 状态: 全局, 派发, 数据源模式 } = use应用状态();
+  const { 状态: 全局, 派发, 数据源模式, 后端状态, 操作 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
   const 文件选择框 = useRef<HTMLInputElement>(null);
+
+  // P2 Task 5：附件简历（Backend）—— 权威快照只读 items[0] 一行；空库创建、非空替换。
+  // 待确认文件是「授权层背后的那一份」：选中只预检不发送，同意后才真正上传。
+  const 附件库 = 是后端 ? 后端状态.附件简历库 : null;
+  const 最近附件 = 附件库?.items[0] ?? null;
+  const [待确认文件, 设待确认文件] = useState<File | null>(null);
+  const [附件提交中, 设附件提交中] = useState(false);
+  // Backend 页面可见期轮询附件解析状态（钩子内部自判 Mock / 未登录 / 角色，静默）
+  use附件简历刷新(是后端);
 
   // 是否学生：直接读全局身份 —— 城市 / 职位选择改成跳页后，本屏会被卸载重挂，
   // 本地 useState 会把「是」的选择丢掉，所以点选钮时就落全局（见 选身份）
@@ -93,13 +106,50 @@ export default function 学生分流() {
     当前.includes(项) ? 当前.filter((值) => 值 !== 项) : [...当前, 项];
 
 
-  /** 上传简历（一键读取入口）：文件名落全局，行内占位换成文件名 */
+  /** 上传简历（一键读取入口）：Mock 文件名落全局，行内占位换成文件名；
+      Backend 只预检 + 挂起待授权，同意后才真正上传（见 同意处理附件） */
   function 选中简历文件(事件: ChangeEvent<HTMLInputElement>) {
     const 文件 = 事件.target.files?.[0];
     事件.target.value = ''; // 允许再次选同一个文件
     if (!文件) return;
+    if (是后端) {
+      // 先本地预检（扩展名 / media type / 快照大小上限），有错只提示、零副作用；
+      // 快照未到（limits 未知）不硬编码本地限制，大小交服务端裁决
+      const 错误 = 校验附件PDF(文件, 附件库?.limits ?? null);
+      if (错误) {
+        轻提示(错误);
+        return;
+      }
+      设待确认文件(文件);
+      return;
+    }
     派发({ 型: '存简历文件名', 文件名: 文件.name });
     轻提示('已选择简历，可识别的信息将用于预填');
+  }
+
+  /** 授权层「同意并继续」：空库创建 / 非空替换 items[0]，consent 字面量 true。
+      已换代（会话已转移）静默；失败用 附件错误文案 的闭合表，行上保留权威展示名。
+      附件提交中 + aria-busy 防重复提交，上传不阻塞「下一步」。 */
+  async function 同意处理附件() {
+    if (!待确认文件 || 附件提交中) return;
+    const file = 待确认文件;
+    const target = 最近附件;
+    设附件提交中(true);
+    try {
+      const result = target
+        ? await 操作.替换附件简历(target.file_id, file, true)
+        : await 操作.创建附件简历(file, true);
+      设待确认文件(null);
+      if (result === '已换代') return;
+      轻提示('简历已上传，正在识别');
+    } catch (error) {
+      // 401 时操作层已清账号状态（Spec §10.1：snapshot、timer 与待处理文件一起失效），
+      // 保留授权层只会对着死会话重发注定失败的 mutation —— 关层，仍按闭合表提示
+      if (error instanceof BFF错误 && error.status === 401) 设待确认文件(null);
+      轻提示(附件错误文案(error, 附件库?.limits ?? null));
+    } finally {
+      设附件提交中(false);
+    }
   }
 
   /** 点「是 / 不是」当场落全局身份（跳页选城市 / 职位回来后选择不能丢）：
@@ -163,11 +213,24 @@ export default function 学生分流() {
       <页面大标题 标题="完善资料" />
 
       <滚动区 样式覆盖={{ padding: '4px 18px 10px' }}>
-        {/* ── 上传简历：一键读取入口（观感同 工作经历 顶部上传行）── */}
+        {/* ── 上传简历：一键读取入口（观感同 工作经历 顶部上传行）──
+            Backend：空库占位「确认后开始识别」，非空回显权威行 items[0] 的展示名；
+            Mock：沿用原 已选简历名 回显与原文案（逐字保留，防视觉漂移）。
+            提交中外层 aria-busy + .附件忙碌（pointer-events:none），不新增 spinner */}
         <div className={样式.节问}>上传简历</div>
-        <button className={`${样式.上传行} 可点`} onClick={() => 文件选择框.current?.click()}>
+        <button
+          className={附件提交中 ? `${样式.上传行} ${样式.附件忙碌} 可点` : `${样式.上传行} 可点`}
+          aria-busy={附件提交中 || undefined}
+          onClick={() => 文件选择框.current?.click()}
+        >
           <span className={样式.上传图标}>⬆</span>
-          {已选简历名 === '' ? (
+          {是后端 ? (
+            最近附件 ? (
+              <span className={`${样式.选择值} 单行`}>{最近附件.display_name}</span>
+            ) : (
+              <span className={`${样式.选择占位} 单行`}>上传 PDF 简历，确认后开始识别</span>
+            )
+          ) : 已选简历名 === '' ? (
             <span className={`${样式.选择占位} 单行`}>上传简历，AI识别后自动填充</span>
           ) : (
             <span className={`${样式.选择值} 单行`}>{已选简历名}</span>
@@ -177,7 +240,7 @@ export default function 学生分流() {
         <input
           ref={文件选择框}
           type="file"
-          accept=".pdf"
+          accept=".pdf,application/pdf"
           className={样式.隐藏文件框}
           onChange={选中简历文件}
         />
@@ -366,6 +429,21 @@ export default function 学生分流() {
             />
           </div>
         </弹层框架>
+      ) : null}
+
+      {/* P2 Task 5：附件上传授权确认层（文案冻结，Task 6 的 consent 复用同一组字）——
+          选中只预检，用户同意后才发送；取消 / 遮罩 / Escape 都只清 待确认文件，零 mutation。
+          失败时 待确认文件 保留，确认层不关，可直接重试。 */}
+      {待确认文件 ? (
+        <确认层
+          标题="允许 AI 识别这份简历？"
+          正文="这份 PDF 将发送给受控模型服务进行简历识别，可能包含个人信息。确认后才会上传并开始处理。"
+          执行文="同意并继续"
+          执行={() => {
+            void 同意处理附件();
+          }}
+          取消={() => 设待确认文件(null)}
+        />
       ) : null}
 
     </次级页外壳>

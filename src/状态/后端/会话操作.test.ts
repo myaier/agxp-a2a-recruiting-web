@@ -3,7 +3,7 @@
 // P3 Task 2：候选隐私成为第三个并行水合域 —— 水合 / 清理 / 过时响应丢弃的用例也在本文件。
 
 import { describe, expect, it, vi } from 'vitest';
-import type { BFF主体, BFF角色 } from '../../数据/BFF契约';
+import type { BFF主体, BFF角色, BFF附件简历库 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误 } from '../../数据/HTTP客户端';
 import {
@@ -52,6 +52,8 @@ function 创建会话测试依赖(后端: HTTP招聘数据源) {
       },
       // P4 Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
       ...创建空P4发现状态(),
+      // P2：附件库权威快照（只追加，不动 P6 字段）
+      附件简历库: null,
     } },
     状态引用,
     锁: { current: new Set<string>() },
@@ -146,6 +148,8 @@ describe('P3 候选隐私水合与清理', () => {
       读取隐私: vi.fn().mockResolvedValue(从BFF隐私(BFF隐私快照样本)),
       读取Agent规则: vi.fn().mockResolvedValue([]),
       读取Agent规则提案列表: vi.fn().mockResolvedValue([]),
+      // P2 Task 3 起候选水合并行读第四个支持域（附件库）：默认空库成功
+      读取附件简历库: vi.fn().mockResolvedValue(空附件库样本),
       ...覆盖,
     } as unknown as HTTP招聘数据源;
   }
@@ -158,6 +162,8 @@ describe('P3 候选隐私水合与清理', () => {
       读取隐私: vi.fn().mockResolvedValue(隐私页面样本2),
       读取Agent规则: vi.fn().mockResolvedValue([]),
       读取Agent规则提案列表: vi.fn().mockResolvedValue([]),
+      // P2 Task 3 起候选水合并行读第四个支持域（附件库）：默认空库成功
+      读取附件简历库: vi.fn().mockResolvedValue(空附件库样本),
     } as unknown as HTTP招聘数据源;
     const { deps } = 创建会话测试依赖(后端);
     const candidate主体 = { ...BFF主体样本, last_used_role: 'candidate' as const };
@@ -273,6 +279,12 @@ const backend数据源 = { 模式: 'backend' as const, 后端环境: 'stg' as co
 const candidate主体: BFF主体 = { ...BFF主体样本, subject_id: 'sub_c', last_used_role: 'candidate' };
 const recruiter主体: BFF主体 = { ...BFF主体样本, subject_id: 'sub_r', last_used_role: 'recruiter' };
 
+/** P2 附件域的空权威库样本：与数据源 decoder 的闭合 limits 同形。 */
+const 空附件库样本: BFF附件简历库 = {
+  items: [],
+  limits: { max_files: 3, max_file_bytes: 10485760, accepted_media_types: ['application/pdf'] },
+};
+
 /** P6 会话用例的完整数据源桩：支持域 + 组织域 + Agent 规则域默认全成功（空集）。 */
 function 创建P6数据源桩(): HTTP招聘数据源 {
   return {
@@ -299,6 +311,8 @@ function 创建P6数据源桩(): HTTP招聘数据源 {
     清空目录缓存: vi.fn(),
     读取Agent规则: vi.fn(async () => [] as never[]),
     读取Agent规则提案列表: vi.fn(async () => [] as never[]),
+    // P2 Task 3 起候选水合并行读第四个支持域（附件库）：默认空库成功
+    读取附件简历库: vi.fn(async () => 空附件库样本),
   } as unknown as HTTP招聘数据源;
 }
 
@@ -327,6 +341,8 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
     ...创建空P4发现状态(),
+    // P2：附件库权威快照（只追加，不动 P6 字段）
+    附件简历库: null,
   };
   const deps = {
     是后端: true,
@@ -739,5 +755,220 @@ describe('P4 discovery 会话清理', () => {
     断言P4已清空(deps);
     // 目标角色的支持域水合照常跑完
     expect(动作流).toContainEqual({ 型: '切身份', 到: '招聘方' });
+  });
+});
+
+// ── P2 Task 3：附件简历第四支持域水合与清理 ─────────────────────────
+// 候选支持域由三路扩成四路（简历/意向/隐私/附件库）且各域独立提交；
+// P6 三路并发与错误扫描断言不回归；所有账号清理路径同时清附件快照。
+
+describe('P2 附件支持域水合与清理', () => {
+  it('candidate 水合并行读四个支持域，附件独立提交且 P6 三路照旧', async () => {
+    const 后端 = 创建P6数据源桩();
+    // 隐私失败不牵连附件：支持域各域独立提交
+    vi.mocked(后端.读取隐私).mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const 有附件库: BFF附件简历库 = {
+      items: [{
+        file_id: 'rf_1', display_name: '沈亦舟_简历_2026.pdf', revision: 1,
+        current_version: {
+          version_id: 'rfv_1', version: 1, size_bytes: 1, media_type: 'application/pdf',
+          sha256: 'a'.repeat(64), created_at: '2026-08-28T00:00:00Z', parse: { status: 'not_started' },
+        },
+        created_at: '2026-08-28T00:00:00Z', updated_at: '2026-08-28T00:00:00Z',
+      }],
+      limits: { max_files: 3, max_file_bytes: 10485760, accepted_media_types: ['application/pdf'] },
+    };
+    vi.mocked(后端.读取附件简历库).mockResolvedValue(有附件库);
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    const 会话失效 = await 水合角色数据(deps, candidate主体, false, 7);
+    expect(会话失效).toBe(false);
+    // 四个支持域各读一次
+    expect(后端.读取简历).toHaveBeenCalledTimes(1);
+    expect(后端.读取意向).toHaveBeenCalledTimes(1);
+    expect(后端.读取隐私).toHaveBeenCalledTimes(1);
+    expect(后端.读取附件简历库).toHaveBeenCalledTimes(1);
+    // P6 三路并发照旧
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('candidate');
+    expect(vi.mocked(后端.读取Agent规则提案列表).mock.calls).toEqual([
+      ['candidate', 'interpreting'],
+      ['candidate', 'ready'],
+    ]);
+    // 附件独立提交：隐私失败不撤销附件
+    expect(最新后端状态().附件简历库).toEqual(有附件库);
+    // P6 阶段照常收口，不因附件域改变
+    expect(最新后端状态().Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' });
+  });
+
+  it('附件读取 401 走统一登出清理：附件与 P6 一起清空', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取附件简历库).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const { deps, 最新后端状态, 状态引用, 动作流 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    const 会话失效 = await 水合角色数据(deps, candidate主体, false, 7);
+    expect(会话失效).toBe(true);
+    const 最新 = 最新后端状态();
+    expect(最新.已登录).toBe(false);
+    expect(最新.主体).toBeNull();
+    expect(最新.附件简历库).toBeNull();
+    expect(最新.Agent规则水合).toEqual(空水合阶段());
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(动作流).toContainEqual({ 型: '清后端Agent规则' });
+    expect(状态引用.current.全局规则).toEqual([]);
+  });
+
+  it('附件读取非 401 失败只影响该域：mount 不抛、只提示该域一次、其它支持域与 P6 阶段保留', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取附件简历库).mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const { deps, 最新后端状态, 状态引用 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    // 轻提示 是纯 DOM 单例容器：清掉此前用例的残留条目，水合后应恰好新增该域一条
+    const 提示容器 = Array.from(document.body.children).find(
+      (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+    ) as HTMLElement | undefined;
+    if (提示容器) 提示容器.innerHTML = '';
+    const 会话失效 = await 水合角色数据(deps, candidate主体, false, 7);
+    expect(会话失效).toBe(false);
+    expect(提示容器?.childElementCount).toBe(1);
+    expect(最新后端状态().附件简历库).toBeNull();
+    // 其它支持域照常提交
+    expect(状态引用.current.求职意向表).toEqual([]);
+    // P6 阶段不被附件失败改变
+    expect(最新后端状态().Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' });
+  });
+
+  it('交互水合附件失败时抛出该错误', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取附件简历库).mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const { deps } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    await expect(水合角色数据(deps, candidate主体, true, 7)).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('附件读取在会话代际变化后到达时被丢弃，不写附件快照', async () => {
+    const 后端 = 创建P6数据源桩();
+    const 附件门 = deferred<BFF附件简历库>();
+    vi.mocked(后端.读取附件简历库).mockReturnValue(附件门.promise);
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    const 水合 = 水合角色数据(deps, candidate主体, false, 7);
+    deps.会话代际.current += 1; // 读在飞期间换了会话
+    附件门.resolve(空附件库样本);
+    await expect(水合).resolves.toBe(false);
+    expect(最新后端状态().附件简历库).toBeNull();
+  });
+
+  it('附件读取在主体标识变化后到达时被丢弃，不写附件快照', async () => {
+    const 后端 = 创建P6数据源桩();
+    const 附件门 = deferred<BFF附件简历库>();
+    vi.mocked(后端.读取附件简历库).mockReturnValue(附件门.promise);
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    const 水合 = 水合角色数据(deps, candidate主体, false, 7);
+    deps.主体标识引用.current = 'sub_other'; // 读在飞期间换了账号
+    附件门.resolve(空附件库样本);
+    await expect(水合).resolves.toBe(false);
+    expect(最新后端状态().附件简历库).toBeNull();
+  });
+
+  it('recruiter 水合不读附件并把候选附件快照清成 null', async () => {
+    const 后端 = 创建P6数据源桩();
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = recruiter主体.subject_id;
+    deps.会话代际.current = 7;
+    // 上个候选会话留下的附件残留
+    deps.设后端状态((旧) => ({ ...旧, 附件简历库: 空附件库样本 }));
+    const 会话失效 = await 水合角色数据(deps, recruiter主体, false, 7);
+    expect(会话失效).toBe(false);
+    expect(后端.读取附件简历库).not.toHaveBeenCalled();
+    expect(最新后端状态().附件简历库).toBeNull();
+    // P6 招聘方水合照常
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('recruiter');
+  });
+
+  it('last_used_role null 不读附件，附件快照保持 null', async () => {
+    const 后端 = 创建P6数据源桩();
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = 'sub_null';
+    deps.会话代际.current = 3;
+    const 会话失效 = await 水合角色数据(
+      deps, { ...BFF主体样本, subject_id: 'sub_null', last_used_role: null }, false, 3,
+    );
+    expect(会话失效).toBe(false);
+    expect(后端.读取附件简历库).not.toHaveBeenCalled();
+    expect(最新后端状态().附件简历库).toBeNull();
+  });
+
+  it('退出登录清空附件快照且 P6 清理断言不回归', async () => {
+    const 后端 = 创建P6数据源桩();
+    const { deps, 最新后端状态, 状态引用, 动作流 } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    deps.设后端状态((旧) => ({ ...旧, 附件简历库: 空附件库样本 }));
+    状态引用.current = 归约(初始状态, {
+      型: '水合后端候选规则',
+      全局: [{
+        编号: BFFAgent规则样本.rule_id, 内容: BFFAgent规则样本.display_text, 来源: '测试', 生效: true,
+        作用域: { 类型: '全局' as const }, 服务端版本: BFFAgent规则样本.version, 服务端状态: 'active' as const,
+      }],
+      意向级: [],
+    });
+    await 操作.退出登录();
+    expect(最新后端状态().附件简历库).toBeNull();
+    expect(动作流).toContainEqual({ 型: '清后端Agent规则' });
+    expect(最新后端状态().候选规则快照).toEqual({});
+    expect(最新后端状态().Agent规则水合).toEqual(空水合阶段());
+    expect(状态引用.current.全局规则).toEqual([]);
+  });
+
+  it('完成手机登录换主体清空附件快照且 P6 清理不回归', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_a' })
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b' });
+    const { deps, 最新后端状态, 动作流 } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    await 操作.完成手机登录('1111');
+    // A 留下附件与 P6 残留
+    deps.设后端状态((旧) => ({
+      ...旧,
+      附件简历库: 空附件库样本,
+      候选规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+    }));
+    await 操作.完成手机登录('2222');
+    expect(动作流).toContainEqual({ 型: '清后端Agent规则' });
+    expect(最新后端状态().附件简历库).toBeNull();
+    expect(最新后端状态().候选规则快照).toEqual({});
+    expect(最新后端状态().Agent规则水合).toEqual(空水合阶段());
+  });
+
+  it('清账号状态 同时清附件快照与 P6 域', () => {
+    const { deps, 最新后端状态, 动作流 } = 创建P6会话依赖(创建P6数据源桩());
+    deps.设后端状态((旧) => ({
+      ...旧,
+      附件简历库: 空附件库样本,
+      候选规则快照: { [BFFAgent规则样本.rule_id]: BFFAgent规则样本 },
+    }));
+    清账号状态(deps);
+    expect(最新后端状态().附件简历库).toBeNull();
+    expect(最新后端状态().候选规则快照).toEqual({});
+    expect(最新后端状态().已登录).toBe(false);
+    expect(动作流).toContainEqual({ 型: '清后端Agent规则' });
+  });
+
+  it('切身份到招聘方清空附件快照且招聘方水合不读附件', async () => {
+    const 后端 = 创建P6数据源桩();
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.设后端状态((旧) => ({ ...旧, 附件简历库: 空附件库样本 }));
+    await 操作.切身份('招聘方');
+    expect(后端.读取附件简历库).not.toHaveBeenCalled();
+    expect(最新后端状态().附件简历库).toBeNull();
   });
 });

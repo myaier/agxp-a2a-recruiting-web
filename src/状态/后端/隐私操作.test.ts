@@ -39,6 +39,8 @@ function 创建隐私测试依赖(后端: HTTP招聘数据源, 服务端: BFF隐
       },
       // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
       ...创建空P4发现状态(),
+      // P2：附件库权威快照（只追加，不动 P6 字段）
+      附件简历库: null,
     } },
     锁: { current: new Set<string>() }, 尝试引用: { current: null as string | null },
     主体标识引用: { current: 'sub_1' as string | null }, 会话代际: { current: 1 },

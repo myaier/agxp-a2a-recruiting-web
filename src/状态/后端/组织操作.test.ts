@@ -88,6 +88,8 @@ function 创建组织测试依赖(input: {
       },
       // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
       ...创建空P4发现状态(),
+      // P2：附件库权威快照（只追加，不动 P6 字段）
+      附件简历库: null,
     } },
     锁: { current: new Set<string>() }, 尝试引用: { current: null }, 是后端: true,
   } satisfies 后端操作依赖;
