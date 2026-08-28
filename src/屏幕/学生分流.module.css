@@ -51,6 +51,11 @@
   display: none;
 }
 
+/* P2 Task 5：附件提交中挂在上传行上 —— 只挡交互，不加任何视觉态（busy 由 aria-busy 表达） */
+.附件忙碌 {
+  pointer-events: none;
+}
+
 /* ── 你是学生吗：并排双选钮 ── */
 .双选行 {
   display: flex;
