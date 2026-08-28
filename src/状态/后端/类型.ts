@@ -20,6 +20,7 @@ import type {
   BFFAgent规则,
   BFFAgent规则提案,
   BFFAgent规则作用域,
+  BFF附件简历库,
 } from '../../数据/BFF契约';
 import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { 在招岗位, 披露档, 屏蔽来源, 屏蔽项 } from '../../数据/类型';
@@ -48,6 +49,8 @@ export interface 后端状态 {
    * 进行中 只允许从 未开始|失败 推进，已 成功 的域在刷新期间不得降级（设计 §6）。
    */
   Agent规则水合: Record<BFF角色, Agent规则角色水合状态>;
+  // ── P2：候选人附件简历库的权威快照（0–3 行 + limits）；未登录 / 已清理时为 null。 ──
+  附件简历库: BFF附件简历库 | null;
 }
 
 /** P6 单个水合子域的生命周期阶段。 */
@@ -152,4 +155,22 @@ export interface Agent规则操作 {
   删除Agent规则(ruleId: string): Promise<void>;
 }
 
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作;
+/**
+ * P2 Task 3：页面会调用的附件简历操作方法表（页面不得直接调用数据源）。
+ * 四个 mutation 都不做乐观写：mutation 成功 / 歧义恢复后统一权威 GET 列表再 resolve，
+ * 返回 已提交 表示「当前会话已拿到非 null 权威快照」，已换代 只表示会话已换代（不提示、不抛错）。
+ * 冲突 / 结果未知 / 401 按 Spec 10.2–10.4 分派：重读提交权威视图后按目标核对，
+ * 绝不重放 mutation。Mock 模式 mutation 返回 已换代、read 静默、download 抛 backend_unavailable。
+ */
+export interface 附件简历操作 {
+  刷新附件简历(): Promise<void>;
+  创建附件简历(file: File, consent: true): Promise<附件变更结果>;
+  替换附件简历(fileId: string, file: File, consent: true): Promise<附件变更结果>;
+  删除附件简历(fileId: string): Promise<附件变更结果>;
+  请求附件解析(fileId: string, consent: true): Promise<附件变更结果>;
+  下载附件简历(fileId: string): Promise<Blob>;
+}
+
+export type 附件变更结果 = '已提交' | '已换代';
+
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 附件简历操作;

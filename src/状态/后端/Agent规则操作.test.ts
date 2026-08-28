@@ -120,6 +120,8 @@ function 种子后端状态(role: BFF角色 | null): 后端状态 {
       candidate: { rules: '未开始', proposals: '未开始' },
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
+    // P2：附件库权威快照（只追加，不动 P6 字段）
+    附件简历库: null,
   };
 }
 

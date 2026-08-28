@@ -62,6 +62,7 @@ import { 创建岗位操作 } from './后端/岗位操作';
 import { 创建组织操作 } from './后端/组织操作';
 import { 创建隐私操作 } from './后端/隐私操作';
 import { 创建Agent规则操作 } from './后端/Agent规则操作';
+import { 创建附件简历操作 } from './后端/附件简历操作';
 import { 映射候选Agent规则, 映射招聘Agent规则 } from '../数据/Agent规则映射';
 import { 创建目录查询 } from './后端/目录查询';
 import { 归约候选资料 } from './领域/候选资料';
@@ -463,6 +464,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       candidate: { rules: '未开始', proposals: '未开始' },
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
+    // P2：附件库权威快照种子为 null（Backend 初始不带任何演示附件行）
+    附件简历库: null,
   }));
 
   // 让异步操作读到最新的 后端状态 / 状态（useMemo 闭包只捕获首次值）
@@ -539,7 +542,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       //（原始字典/双端阶段清零 + 页面数组清空），保证每次进入水合都跑完整链路，
       // 阶段不可能粘住上个会话残留的 进行中|成功。
       派发({ 型: '清后端Agent规则' });
-      设后端状态(重置Agent规则后端状态);
+      // P2 Task 3：mount 恢复 = 主体转移，候选侧附件库快照随 P6 底座一并清空
+      设后端状态((旧) => ({ ...重置Agent规则后端状态(旧), 附件简历库: null }));
       // review-r2 R2-I-3：水合 401 时 水合角色数据 内部已走登出清理并返回 会话失效=true，
       // 不再落 已登录=true（旧实现会把上个会话的快照/草稿留给已失效的登录态）。
       const 会话失效 = await 水合角色数据({
@@ -588,6 +592,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         ...创建隐私操作(deps),
         // P6：Agent 规则/提案操作与其它域共用同一把 deps（锁 / 主体标识 / 会话代际）
         ...创建Agent规则操作(deps),
+        // P2：附件简历操作同样共用同一把 deps（库锁/文件锁落在同一把 锁 里）
+        ...创建附件简历操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定

@@ -195,6 +195,11 @@ function 创建后端桩() {
     接受Agent规则提案: vi.fn(async () => BFFAgent规则样本),
     放弃Agent规则提案: vi.fn(async () => ({ ...BFFAgent规则就绪提案样本, state: 'dismissed' as const })),
     创建Agent规则替换提案: vi.fn(async () => BFFAgent规则解释中提案样本),
+    // P2 Task 3 起候选水合并行读第四个支持域（附件库）：默认空库成功
+    读取附件简历库: vi.fn(async () => ({
+      items: [],
+      limits: { max_files: 3, max_file_bytes: 10485760, accepted_media_types: ['application/pdf'] },
+    })),
   } as unknown as Record<string, ReturnType<typeof vi.fn>>;
 }
 

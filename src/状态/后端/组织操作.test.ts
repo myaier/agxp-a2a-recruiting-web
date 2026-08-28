@@ -85,6 +85,8 @@ function 创建组织测试依赖(input: {
         candidate: { rules: '未开始', proposals: '未开始' },
         recruiter: { rules: '未开始', proposals: '未开始' },
       },
+      // P2：附件库权威快照（只追加，不动 P6 字段）
+      附件简历库: null,
     } },
     锁: { current: new Set<string>() }, 尝试引用: { current: null }, 是后端: true,
   } satisfies 后端操作依赖;
