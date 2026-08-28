@@ -97,7 +97,7 @@ function 创建附件测试依赖(后端: HTTP招聘数据源, 是后端 = true)
     会话代际: { current: 1 },
     读取恢复企业关系编号: vi.fn(() => null),
   } satisfies 后端操作依赖;
-  return { deps, 设后端状态, 后端状态引用, 会话代际: deps.会话代际 };
+  return { deps, 设后端状态, 后端状态引用, 会话代际: deps.会话代际, 主体标识引用: deps.主体标识引用 };
 }
 
 function 创建场景() {
@@ -110,9 +110,9 @@ function 创建场景() {
     下载附件简历: vi.fn(),
     清空目录缓存: vi.fn(),
   };
-  const { deps, 设后端状态, 后端状态引用, 会话代际 } = 创建附件测试依赖(后端 as unknown as HTTP招聘数据源);
+  const { deps, 设后端状态, 后端状态引用, 会话代际, 主体标识引用 } = 创建附件测试依赖(后端 as unknown as HTTP招聘数据源);
   const 操作 = 创建附件简历操作(deps);
-  return { 后端, 操作, 设后端状态, 后端状态引用, 会话代际 };
+  return { 后端, 操作, 设后端状态, 后端状态引用, 会话代际, 主体标识引用 };
 }
 
 describe('创建附件简历操作 · 成功路径（mutation 后只信权威 GET）', () => {
@@ -434,6 +434,42 @@ describe('创建附件简历操作 · 401 与会话换代', () => {
       已登录: false, 主体: null, 附件简历库: null,
     }));
     expect(后端.清空目录缓存).toHaveBeenCalled();
+  });
+
+  it('mutation 401 在会话换代后到达时不登出新会话，原错误照抛', async () => {
+    const { 后端, 操作, 设后端状态, 后端状态引用, 会话代际 } = 创建场景();
+    后端状态引用.current.附件简历库 = { items: [文件A], limits };
+    const 门 = 可控Promise<never>();
+    后端.替换附件简历.mockImplementation(() => 门.promise);
+    设后端状态.mockClear();
+    const 请求 = 操作.替换附件简历('rf_1', pdf, true);
+    await vi.waitFor(() => expect(后端.替换附件简历).toHaveBeenCalledTimes(1));
+    // mutation 在飞期间用户已登出并重新登录（会话代际已前进）
+    会话代际.current += 1;
+    门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(请求).rejects.toMatchObject({ status: 401 });
+    // 迟到的旧会话 401 绝不能清掉新一代：零清理、零提交（mirror stale-response 零提交断言）
+    expect(设后端状态).not.toHaveBeenCalled();
+    expect(后端.清空目录缓存).not.toHaveBeenCalled();
+    expect(后端状态引用.current.已登录).toBe(true);
+    expect(后端状态引用.current.附件简历库?.items).toEqual([文件A]);
+  });
+
+  it('mutation 401 在主体标识变化后到达时同样不清新账号', async () => {
+    const { 后端, 操作, 设后端状态, 后端状态引用, 主体标识引用 } = 创建场景();
+    后端状态引用.current.附件简历库 = { items: [文件A], limits };
+    const 门 = 可控Promise<never>();
+    后端.删除附件简历.mockImplementation(() => 门.promise);
+    设后端状态.mockClear();
+    const 请求 = 操作.删除附件简历('rf_1');
+    await vi.waitFor(() => expect(后端.删除附件简历).toHaveBeenCalledTimes(1));
+    // 只换主体、代际不动：fence 两个分量任一失效都算换代
+    主体标识引用.current = 'sub_other';
+    门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(请求).rejects.toMatchObject({ status: 401 });
+    expect(设后端状态).not.toHaveBeenCalled();
+    expect(后端.清空目录缓存).not.toHaveBeenCalled();
+    expect(后端状态引用.current.已登录).toBe(true);
   });
 
   it('刷新的非 401 错误原样抛出且不清账号', async () => {
