@@ -253,6 +253,18 @@ describe('学生分流 附件简历上传（P2 Task 5）', () => {
     expect(mock轻提示).not.toHaveBeenCalled();
   });
 
+  it('closes the consent layer after a 401 so no doomed mutation can be re-fired', async () => {
+    const 用户 = userEvent.setup();
+    mock操作.创建附件简历.mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
+    render学生分流({ 数据源: 'backend', 附件库: { items: [], limits } });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await 用户.upload(input, new File(['%PDF'], 'expired.pdf', { type: 'application/pdf' }));
+    await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
+    await waitFor(() => expect(mock操作.创建附件简历).toHaveBeenCalledTimes(1));
+    // 401 时操作层已清账号（Spec §10.1 待处理文件一并失效）：授权层必须关掉
+    await waitFor(() => expect(screen.queryByText('允许 AI 识别这份简历？')).toBeNull());
+  });
+
   it('rejects invalid extension, media type, and over-limit files before consent with zero mutation', async () => {
     const 用户 = userEvent.setup();
     render学生分流({ 数据源: 'backend', 附件库: { items: [], limits } });

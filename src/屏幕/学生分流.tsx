@@ -24,6 +24,7 @@ import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
 import { 附件错误文案, 校验附件PDF } from '../流程/附件简历交互';
+import { BFF错误 } from '../数据/HTTP客户端';
 import { use附件简历刷新 } from '../流程/附件简历刷新';
 import {
   默认求职初筛偏好,
@@ -142,6 +143,9 @@ export default function 学生分流() {
       if (result === '已换代') return;
       轻提示('简历已上传，正在识别');
     } catch (error) {
+      // 401 时操作层已清账号状态（Spec §10.1：snapshot、timer 与待处理文件一起失效），
+      // 保留授权层只会对着死会话重发注定失败的 mutation —— 关层，仍按闭合表提示
+      if (error instanceof BFF错误 && error.status === 401) 设待确认文件(null);
       轻提示(附件错误文案(error, 附件库?.limits ?? null));
     } finally {
       设附件提交中(false);

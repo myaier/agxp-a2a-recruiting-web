@@ -47,8 +47,12 @@ export function use附件简历刷新(启用 = true): void {
       try { await request; } catch { /* 页面显式动作负责提示；轮询静默 */ }
       finally {
         if (inFlightRef.current === request) inFlightRef.current = null;
-        if (stopped || 待立即刷新) return; // immediate waiter 在同一 promise settle 后接管
-        if (轮询待排 || activeRef.current) { 轮询待排 = false; schedule(); }
+        // immediate waiter 在同一 promise settle 后接管，不再排 3 秒轮询；
+        // 不用 finally 内 return（no-unsafe-finally：会吞掉未来 catch 可能的重抛）
+        if (!(stopped || 待立即刷新) && (轮询待排 || activeRef.current)) {
+          轮询待排 = false;
+          schedule();
+        }
       }
     };
     const immediate = () => {
