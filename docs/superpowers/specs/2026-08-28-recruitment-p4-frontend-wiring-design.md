@@ -131,6 +131,14 @@ Recruiter refresh body 只能是：
 {"job_id":"job_..."}
 ```
 
+Recruiter 淘汰 `PUT .../rejection` 的 body 只能是以下 exact shape，且不带 Idempotency-Key 或 If-Match：
+
+```json
+{"reason":"direction_mismatch"}
+```
+
+`reason` 只能是 `experience_insufficient | direction_mismatch | primary_stack_mismatch | other`；favorite PUT、favorite DELETE 与 rejection DELETE 均无 body。
+
 Recruiter 单对象 delegation：
 
 ```json
@@ -166,7 +174,7 @@ interface BFF委托摘要 {
   case_id: string | null;
 }
 
-interface BFF岗位推荐 {
+interface BFF候选岗位推荐 {
   recommendation_id: string;
   batch_id: string;
   intention_id: string;
@@ -184,7 +192,7 @@ type BFF淘汰原因 =
   | 'primary_stack_mismatch'
   | 'other';
 
-interface BFF候选推荐 {
+interface BFF招聘候选推荐 {
   recommendation_id: string;
   batch_id: string;
   job_id: string;
@@ -245,17 +253,18 @@ type P4加载阶段 = '未开始' | '进行中' | '成功' | '失败';
 
 interface P4ScopeSnapshot<T> {
   阶段: P4加载阶段;
-  项: T[];
-  代际: number;
-  错误: string | null;
+  刷新中: boolean;
+  items: T[];
+  error: string | null;
+  generation: number;
 }
 
-候选岗位推荐: Record<string, P4ScopeSnapshot<BFF岗位推荐>>; // intention_id
-招聘可用候选: Record<string, P4ScopeSnapshot<BFF候选推荐>>; // job_id
-招聘已筛候选: Record<string, P4ScopeSnapshot<BFF候选推荐>>; // job_id
-招聘候选详情: Record<string, BFF候选推荐>;                 // job_id/recommendation_id
-P4委托回执: Record<string, BFF委托回执>;                  // delegation_id
-P4真实Case引用: Record<string, string>;                    // delegation_id -> case_id
+候选岗位推荐: Record<string, P4ScopeSnapshot<BFF候选岗位推荐>>; // intention_id
+招聘可用候选: Record<string, P4ScopeSnapshot<BFF招聘候选推荐>>; // job_id
+招聘已筛候选: Record<string, P4ScopeSnapshot<BFF招聘候选推荐>>; // job_id
+招聘候选详情: Record<string, BFF招聘候选推荐>;                 // job_id/recommendation_id
+P4委托回执: Record<string, BFF委托回执>;                      // delegation_id
+P4真实Case引用: Record<string, string>;                        // delegation_id -> case_id
 ```
 
 快照保存 raw DTO，供 strict state、feedback 和 polling 使用。页面模型由 selector/mapping 派生，不复制一份可漂移的后端数组进现有 Mock reducer。
@@ -314,7 +323,7 @@ P4 不加入登录时的全量会话水合：
 
 ### 6.2 Candidate 页面映射
 
-每个 `BFF岗位推荐` 派生现有市场卡需要的岗位、公司、Publisher、薪资带、标签、匹配分和 safe reason。详情优先复用 card 内完整 `CandidateJob`；直接 URL 或缓存缺失时才 GET `/api/v1/jobs/{job_id}`。
+每个 `BFF候选岗位推荐` 派生现有市场卡需要的岗位、公司、Publisher、薪资带、标签、匹配分和 safe reason。详情优先复用 card 内完整 `CandidateJob`；直接 URL 或缓存缺失时才 GET `/api/v1/jobs/{job_id}`。
 
 Backend route 不再用 `市场列表.find(...) ?? 市场列表[0]`。未知/不可见 Job 显示安全不可用状态，不能回落第一条 Mock 岗位。
 
@@ -413,6 +422,7 @@ Mock 模式仍执行现有 `委托入谈`/`接触推荐候选`，立即生成演
 
 新增与 P6 proposal poll 同型但类型独立的 delegation polling hook：
 
+- hook 显式接收 `开启`、当前委托、刷新函数和可选测试间隔；只有 Backend 页面传 `开启: true`；
 - 页面可见时每 2 秒 GET 当前可见 `accepted/evaluating` delegation；
 - 每个 delegation 同时最多一个在飞 GET；
 - terminal 后停止该 delegation；
@@ -448,6 +458,7 @@ subject_id + active role + session generation + scope id + scope generation
 
 refresh 和 delegation 的 key 绑定一次用户点击意图：
 
+- 调用方显式传入的 key 必须满足 16–128 个 visible ASCII 字节；生产 key 使用 `crypto.randomUUID()`；
 - HTTP 客户端受控重试沿用原 key；
 - outcome unknown 时用户对同一 pending 操作重试沿用原 key；
 - 明确成功、明确拒绝、取消或 scope 改变后释放；
@@ -457,18 +468,21 @@ PUT/DELETE feedback 使用资源状态操作，不新增客户端 receipt framew
 
 ## 10. 错误语义
 
-P4 页面不直接显示后端英文 message。`发现推荐操作.ts` 导出闭合错误映射，至少冻结：
+P4 页面不直接显示后端英文 message。`发现推荐操作.ts` 分开处理 HTTP `BFF错误.code` 与 200 receipt 的 `refusal_code`，至少冻结：
 
 ```text
 recommendation_not_found/unavailable   → 这条推荐当前已不可用，请刷新后查看
-recommendation_stale                   → 推荐信息已更新，请刷新后重试
 delegation_not_found                   → 这次委托已不可用，请刷新后查看
-delegation_not_allowed                 → 当前无法发起委托，请刷新后重试
 disclosure_acknowledgement_required    → 请先确认简历与联系方式披露说明
+idempotency_conflict                   → 这次操作与之前的请求冲突，请刷新后重试
+source_unavailable/recruitment_service_unavailable
+                                      → 服务暂时不可用，请稍后再试
+operation_outcome_unknown              → 操作结果暂未确认，请稍后重试
+
+receipt refusal_code:
+delegation_not_allowed                 → 当前无法发起委托，请刷新后重试
 active_case_quota_reached              → 当前在谈已达到上限，请先处理已有在谈
 delegation_cooldown                    → 近期已联系过对方，暂时不能重复发起
-idempotency_conflict                   → 这次操作与之前的请求冲突，请刷新后重试
-source_unavailable                     → 服务暂时不可用，请稍后再试
 ```
 
 其它错误回落现有 `取后端错误文案`。
@@ -477,7 +491,7 @@ source_unavailable                     → 服务暂时不可用，请稍后再�
 - 403：不改变现有数据，显示当前角色无权执行；
 - 404 list item：按不可用收口并重读 scope，不泄露 block/organization/candidate 差异；
 - 404 detail：显示安全不可用页；
-- 409 stale/conflict：保留旧数据，重读后让用户再次明确操作；
+- 409 idempotency conflict/in-progress：保留旧数据，按既有受控重试或重读后让用户再次明确操作；
 - 422 disclosure required 是前端契约缺陷，绝不能 catch 后自动补 `true`；
 - 503/network/invalid response：Backend 不回落 Mock；首次加载显示失败重试，已有 snapshot 保持可见；
 - 分页中途失败：不提交 partial page；
