@@ -43,6 +43,10 @@ function 创建隐私测试依赖(后端: HTTP招聘数据源, 服务端: BFF隐
     锁: { current: new Set<string>() }, 尝试引用: { current: null as string | null },
     主体标识引用: { current: 'sub_1' as string | null }, 会话代际: { current: 1 },
     读取恢复企业关系编号: vi.fn(() => null),
+    // P4 Task 3 fix：依赖桩带齐三个 P4 引用，验证子集调用方的 401 清理也会清 discovery
+    P4范围代际: { current: new Map<string, number>() },
+    P4幂等意图: { current: new Map<string, string>() },
+    P4可见范围: { current: { candidate: null as string | null, recruiter: null as string | null } },
   } satisfies 后端操作依赖;
   deps.派发 = vi.fn((动作: 动作) => {
     deps.状态引用.current = 归约(deps.状态引用.current, 动作);
@@ -365,5 +369,24 @@ describe('创建隐私操作 · 401 统一清理', () => {
     await expect(创建隐私操作(deps).设置雇主隐私(false)).rejects.toMatchObject({ status: 401 });
     expect(读取隐私).not.toHaveBeenCalled();
     expect(deps.派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '清后端隐私' }));
+  });
+
+  // P4 Task 3 fix：清账号状态 的依赖子集必须带上三个 P4 引用 —— 隐私这类子集调用方的
+  // 401 也要把 discovery 双 Map（范围代际 / 幂等意图）与双端可见范围一并复位，
+  // 否则上个会话的 pending 幂等意图与可见范围会穿过登出/重登存活。
+  it('修改隐私 401 统一清理时同步清 P4 双 Map 与可见范围', async () => {
+    const 修改隐私 = vi.fn().mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const deps = 创建隐私测试依赖(
+      { 修改隐私, 清空目录缓存: vi.fn() } as unknown as HTTP招聘数据源, BFF隐私快照样本,
+    );
+    deps.P4范围代际!.current.set('candidate:list:int_1', 3);
+    deps.P4幂等意图!.current.set('candidate:list:int_1:refresh', 'idem_1');
+    deps.P4可见范围!.current = { candidate: 'candidate:list:int_1', recruiter: 'recruiter:list:job_1' };
+    await expect(创建隐私操作(deps).设置雇主隐私(false)).rejects.toMatchObject({ status: 401 });
+    expect(deps.P4范围代际!.current.size).toBe(0);
+    expect(deps.P4幂等意图!.current.size).toBe(0);
+    expect(deps.P4可见范围!.current).toEqual({ candidate: null, recruiter: null });
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(deps.会话代际.current).toBe(2);
   });
 });

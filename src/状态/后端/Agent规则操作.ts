@@ -204,7 +204,11 @@ export function 水合Agent规则角色数据(
 
 export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则操作 {
   const { 是后端, 后端, 派发, 设后端状态, 后端状态引用, 状态引用, 锁, 主体标识引用, 会话代际 } = deps;
-  const 账号清理依赖 = { 派发, 设后端状态, 后端, 主体标识引用, 会话代际 };
+  // P4 Task 3 fix：三个 P4 引用随行 —— 规则域 401 的统一清理同样清 discovery 双 Map 与可见范围
+  const 账号清理依赖 = {
+    派发, 设后端状态, 后端, 主体标识引用, 会话代际,
+    P4范围代际: deps.P4范围代际, P4幂等意图: deps.P4幂等意图, P4可见范围: deps.P4可见范围,
+  };
 
   /** per-Proposal 代际：轮询捕获当前值，接受/放弃与其恢复 GET 发送前各自增一次。 */
   const 提案代际 = new Map<string, number>();

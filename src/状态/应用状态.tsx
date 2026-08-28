@@ -635,7 +635,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   // Mock 为 null；401 会话代际守卫与统一清理都在 创建目录查询 内部。
   // useMemo 键 是后端/后端（同 Provider 实例下不变），使 目录查询 引用稳定。
   const 目录查询 = useMemo(
-    () => 创建目录查询({ 是后端, 后端, 派发, 设后端状态, 主体标识引用, 会话代际 }),
+    () => 创建目录查询({ 是后端, 后端, 派发, 设后端状态, 主体标识引用, 会话代际, P4范围代际, P4幂等意图, P4可见范围 }),
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [是后端, 后端],

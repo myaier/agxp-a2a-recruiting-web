@@ -152,8 +152,9 @@ export function 创建发现推荐操作(deps: 后端操作依赖): P4发现读�
     // 栅栏捕获只是读引用 + 回写同值代际种子，不可能抛；起步提交放进 try，锁由 finally 收口
     const fence = 捕获栅栏(引用, input.scopeKey);
     try {
-      input.开始(fence);
+      // 数据源守卫必须先于起步提交：否则这条（当前不可达的）路径会把快照永远搁在 进行中
       if (!后端) return;
+      input.开始(fence);
       const 结果 = await input.读(后端);
       if (!fenceStillCurrent(引用, fence)) return;
       input.成功(结果, fence);
