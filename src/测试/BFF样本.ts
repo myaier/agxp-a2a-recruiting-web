@@ -20,6 +20,12 @@ import type {
   BFF组织搜索页,
   BFFAgent规则,
   BFFAgent规则提案,
+  BFFCandidateJob,
+  BFF委托回执,
+  BFF发现批次,
+  BFF发现偏好,
+  BFF候选岗位推荐,
+  BFF招聘候选推荐,
 } from '../数据/BFF契约';
 import type { 在招岗位 } from '../数据/类型';
 
@@ -324,4 +330,124 @@ export const BFFAgent规则就绪提案样本: BFFAgent规则提案 = {
   normalized_text: '双休岗位可推进，大小周岗位拦下',
   consequence: 'mixed',
   created_at: '2026-08-27T02:05:00Z',
+};
+
+// ── 发现推荐域样本（P4 Task 1）──
+// 满足 BFF契约 的 closed P4 DTO：CandidateJob 是 BFF岗位样本去掉 owner-only 列的公开投影；
+// 候选直投 Job 的回执 recommendation_id 为 null（选择坐标是 job），招聘回执的
+// recommendation_id 与所选卡的 rec_ 坐标一致；均为合成数据，无真实个人信息。
+
+export const BFFCandidateJob样本: BFFCandidateJob = {
+  job_id: 'job_1',
+  publisher_verification_status: 'unverified',
+  hiring_organization_verification_status: 'unverified',
+  hiring_organization_claim: { display_name: '云衢科技', legal_name: null },
+  title: 'AI 产品实习生',
+  recruitment_type: 'internship',
+  category: { id: 'tax_product', display_name: '产品经理' },
+  location: { id: 'loc_shanghai', display_name: '上海' },
+  office_location: '张江路 1 号',
+  workplace_mode: 'hybrid',
+  salary_lower: 300,
+  salary_upper: 500,
+  salary_period: 'day',
+  annual_salary_months: null,
+  campus_cohort: null,
+  internship_months: 3,
+  onsite_days_per_week: 4,
+  experience_requirement: 'none',
+  education_requirement: 'bachelor',
+  description: '参与产品工作',
+  requirements: '在校生',
+  keywords: ['Python'],
+  hard_requirements: {
+    alternate_weekend_work: 'unknown',
+    outsourcing_only: 'not_required',
+    onsite_only: 'unknown',
+    frequent_travel: 'unknown',
+  },
+  status: 'active',
+  revision: 1,
+  published_at: '2026-08-24T00:00:00Z',
+  created_at: '2026-08-24T00:00:00Z',
+  updated_at: '2026-08-24T00:00:00Z',
+};
+
+export const BFF发现批次样本: BFF发现批次 = {
+  batch_id: 'bat_c1',
+  direction: 'candidate_jobs',
+  scope_ref: 'int_1',
+  ranking_version: 'discovery-ranking.v1',
+  count: 1,
+  created_at: '2026-08-24T00:00:00Z',
+};
+
+export const BFF招聘发现批次样本: BFF发现批次 = {
+  batch_id: 'bat_r1',
+  direction: 'recruiter_candidates',
+  scope_ref: 'job_1',
+  ranking_version: 'discovery-ranking.v1',
+  count: 1,
+  created_at: '2026-08-24T00:00:00Z',
+};
+
+export const BFF候选岗位推荐样本: BFF候选岗位推荐 = {
+  recommendation_id: 'rec_c1',
+  batch_id: 'bat_c1',
+  intention_id: 'int_1',
+  rank: 1,
+  match_score: 92,
+  match_reasons: ['direction_match'],
+  state: 'available',
+  job: BFFCandidateJob样本,
+  delegation: null,
+};
+
+export const BFF招聘候选推荐样本: BFF招聘候选推荐 = {
+  recommendation_id: 'rec_r1',
+  batch_id: 'bat_r1',
+  job_id: 'job_1',
+  rank: 2,
+  match_score: 87,
+  highlights: ['full_stack'],
+  compensation_relationship: 'overlap',
+  candidate_alias: '候选人甲',
+  experience_years: 4,
+  job_status: 'employed',
+  summary: '四年全栈经验',
+  skills: ['TypeScript', 'React'],
+  educations: [
+    { institution: '复旦大学', major: '计算机科学', degree: '本科', start_month: '2017-09', end_month: '2021-06' },
+  ],
+  favorite: false,
+  rejected: false,
+  rejection_reason: null,
+  state: 'available',
+  delegation: null,
+};
+
+export const BFF候选委托回执样本: BFF委托回执 = {
+  delegation_id: 'del_c1',
+  recommendation_id: null,
+  state: 'accepted',
+  evaluation_id: null,
+  case_id: null,
+  refusal_code: null,
+};
+
+export const BFF招聘委托回执样本: BFF委托回执 = {
+  delegation_id: 'del_r1',
+  recommendation_id: 'rec_r1',
+  state: 'accepted',
+  evaluation_id: null,
+  case_id: null,
+  refusal_code: null,
+};
+
+export const BFF发现偏好样本: BFF发现偏好 = {
+  favorite: false,
+  rejected: true,
+  rejection_reason: 'direction_mismatch',
+  revision: 2,
+  updated_at: '2026-08-24T00:00:00Z',
 };

@@ -38,6 +38,8 @@ interface BFF请求共同选项 {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   ifMatch?: string;
   幂等?: boolean;
+  /** One user intent may retain this key across separate calls after outcome uncertainty. */
+  幂等键?: string;
 }
 
 /** body 与 formData 互斥：JSON 请求走 body，multipart 上传走 formData（浏览器生成 boundary）。 */
@@ -66,6 +68,9 @@ type 尝试结果<T> =
   | { kind: '成功'; 响应: BFF响应<T> }
   | { kind: '错误'; error: BFF错误 }
   | { kind: '网络错误' };
+
+/** 调用方提供的幂等键：16–128 个可见 ASCII 字节（不含空格），与 OpenAPI IdempotencyKeyHeader 一致。 */
+const 幂等键模式 = /^[!-~]{16,128}$/;
 
 /** 409 idempotency_in_progress 与 503 operation_outcome_unknown 可受控重试一次。 */
 function 可受控重试(error: BFF错误): boolean {
@@ -148,6 +153,10 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
     if (options.body !== undefined && options.formData !== undefined) {
       throw new BFF错误(0, 'invalid_request', 'body 与 formData 不能同时提供');
     }
+    // 幂等键只在幂等请求上有意义：裸键是调用方错误，在任何 fetch 之前拒绝。
+    if (options.幂等键 !== undefined && !options.幂等) {
+      throw new BFF错误(0, 'invalid_request', '幂等键只能与幂等请求一起提供');
+    }
     const method = options.method ?? 'GET';
     const isGet = method === 'GET';
     const headers = new Headers();
@@ -155,10 +164,19 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
     // Content-Type 只在 JSON body 时发送；FormData 原样交给浏览器生成 multipart boundary。
     if (hasBody) headers.set('Content-Type', 'application/json');
     if (options.ifMatch !== undefined) headers.set('If-Match', options.ifMatch);
-    // 幂等请求生成一次 Idempotency-Key，受控重试时复用同一把。
+    // 幂等请求确定一次 Idempotency-Key，受控重试时复用同一把。调用方提供的键
+    // （一次用户意图在结果未知后可跨调用复用）先过 16–128 可见 ASCII 校验，
+    // 非法输入在任何 fetch 之前拒绝；注入/生成键路径维持既有行为，不在本边界内。
     let 幂等键: string | null = null;
     if (options.幂等) {
-      幂等键 = 生成幂等键();
+      if (options.幂等键 !== undefined) {
+        if (!幂等键模式.test(options.幂等键)) {
+          throw new BFF错误(0, 'invalid_request', 'Idempotency-Key 需要 16 到 128 个可见 ASCII 字符');
+        }
+        幂等键 = options.幂等键;
+      } else {
+        幂等键 = 生成幂等键();
+      }
       headers.set('Idempotency-Key', 幂等键);
     }
     const init: RequestInit = {

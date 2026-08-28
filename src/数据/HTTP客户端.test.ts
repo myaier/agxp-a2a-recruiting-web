@@ -94,4 +94,57 @@ describe('BFF HTTP 客户端', () => {
       path: '/api/v1/recruiter/avatar', method: 'POST', body: {}, formData: new FormData(),
     } as unknown as BFF请求选项)).rejects.toThrow('body 与 formData 不能同时提供');
   });
+
+  // P4：调用方显式传入的幂等键（一次用户意图在结果未知后可跨调用复用）必须原样落在
+  // Idempotency-Key 上：覆盖键生成器，且受控重试复用同一把。
+  it('调用方提供的幂等键覆盖生成器并在受控重试中保持不变', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: { type: 'idempotency_in_progress', message: 'pending', request_id: 'r1' },
+      }), { status: 409, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        result: { batch_id: 'bat_1' }, meta: { request_id: 'r2', api_version: 'v1' },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const 生成幂等键 = vi.fn(() => 'generated-key');
+    const client = 创建BFF客户端({ fetcher, 生成幂等键, 等待: async () => {} });
+
+    await client.请求({
+      path: '/api/v1/me/job-recommendation-refreshes',
+      method: 'POST', body: { intention_id: 'int_1' },
+      幂等: true, 幂等键: 'click-key-0000001',
+    });
+
+    expect(生成幂等键).not.toHaveBeenCalled();
+    expect(fetcher.mock.calls.map(([, init]) =>
+      new Headers(init?.headers).get('Idempotency-Key'))).toEqual([
+        'click-key-0000001', 'click-key-0000001',
+      ]);
+  });
+
+  it.each([
+    ['短于 16 字节', 'short-key'],
+    ['长于 128 字节', 'k'.repeat(129)],
+    ['包含空格', 'key with space-000001'],
+    ['包含非 ASCII', '键键键键键键键键键键键键键键键键'],
+  ])('调用方幂等键%s在发请求前按 invalid_request 拒绝', async (_label, key) => {
+    const fetcher = vi.fn();
+    const client = 创建BFF客户端({ fetcher, 生成幂等键: () => 'generated-key' });
+    await expect(client.请求({
+      path: '/api/v1/me/job-recommendation-refreshes',
+      method: 'POST', body: { intention_id: 'int_1' },
+      幂等: true, 幂等键: key,
+    })).rejects.toMatchObject({ status: 0, code: 'invalid_request' });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('裸幂等键（未开幂等）在发请求前按 invalid_request 拒绝', async () => {
+    const fetcher = vi.fn();
+    const client = 创建BFF客户端({ fetcher, 生成幂等键: () => 'generated-key' });
+    await expect(client.请求({
+      path: '/api/v1/me/job-recommendation-refreshes',
+      method: 'POST', body: { intention_id: 'int_1' },
+      幂等键: 'click-key-0000001',
+    })).rejects.toMatchObject({ status: 0, code: 'invalid_request' });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
 });

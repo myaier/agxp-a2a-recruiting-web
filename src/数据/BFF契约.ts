@@ -487,3 +487,91 @@ export interface BFFAgent规则提案 {
   consequence?: BFFAgent规则后果;
   created_at?: string;
 }
+
+// ── 发现推荐域 DTO（P4：job-recommendations / candidate-recommendations / 双端委托）──
+// 字段名与闭合 enum 逐项复制自 mobile-v1 OpenAPI 的 Discovery* 家族；
+// exact key set、rank/score 边界与条件可空由 招聘数据源/发现推荐.ts 的 decoder 校验。
+
+export type BFF发现方向 = 'candidate_jobs' | 'recruiter_candidates';
+export type BFF委托状态 =
+  | 'accepted' | 'evaluating' | 'case_started'
+  | 'needs_user' | 'refused' | 'failed';
+export type BFF淘汰原因 =
+  | 'experience_insufficient' | 'direction_mismatch'
+  | 'primary_stack_mismatch' | 'other';
+
+export interface BFF委托摘要 {
+  delegation_id: string;
+  state: BFF委托状态;
+  case_id: string | null;
+}
+
+export interface BFF候选岗位推荐 {
+  recommendation_id: string;
+  batch_id: string;
+  intention_id: string;
+  rank: number;
+  match_score: number;
+  match_reasons: string[];
+  state: 'available' | 'delegating' | 'delegated';
+  job: BFFCandidateJob;
+  delegation: BFF委托摘要 | null;
+}
+
+export interface BFF招聘候选教育 {
+  institution: string | null;
+  major: string | null;
+  degree: string;
+  start_month: string;
+  end_month: string | null;
+}
+
+export interface BFF招聘候选推荐 {
+  recommendation_id: string;
+  batch_id: string;
+  job_id: string;
+  rank: number;
+  match_score: number;
+  highlights: string[];
+  compensation_relationship: 'overlap' | 'near_miss' | 'disjoint' | 'unknown';
+  candidate_alias: string;
+  experience_years: number | null;
+  job_status: string;
+  summary: string;
+  skills: string[];
+  educations: BFF招聘候选教育[];
+  favorite: boolean;
+  rejected: boolean;
+  rejection_reason: BFF淘汰原因 | null;
+  state: 'available' | 'rejected';
+  delegation: BFF委托摘要 | null;
+}
+
+export interface BFF发现偏好 {
+  favorite: boolean;
+  rejected: boolean;
+  rejection_reason: 'not_interested' | BFF淘汰原因 | null;
+  revision: number;
+  updated_at: string;
+}
+
+export interface BFF发现批次 {
+  batch_id: string;
+  direction: BFF发现方向;
+  scope_ref: string;
+  ranking_version: 'discovery-ranking.v1';
+  count: number;
+  created_at: string;
+}
+
+export interface BFF委托回执 {
+  delegation_id: string;
+  recommendation_id: string | null;
+  state: BFF委托状态 | null;
+  evaluation_id: string | null;
+  case_id: string | null;
+  refusal_code:
+    | 'recommendation_not_found' | 'recommendation_unavailable'
+    | 'delegation_not_allowed' | 'active_case_quota_reached'
+    | 'delegation_cooldown' | null;
+}

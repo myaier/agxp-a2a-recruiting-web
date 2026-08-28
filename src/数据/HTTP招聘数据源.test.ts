@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BFF简历样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本 } from '../测试/BFF样本';
+import { BFF简历样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本, BFF发现批次样本 } from '../测试/BFF样本';
 import { BFF错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
 import { 从BFF简历 } from './后端映射';
 import { 创建岗位附属存储 } from './前端附属数据';
@@ -456,7 +456,9 @@ describe('HTTP 招聘数据源', () => {
   });
 
   // Task 1（P6）：第八个域 facade（Agent 规则）组合进根 facade，公开方法一个不丢。
-  it('根 facade 组合八个域且不丢公开方法', () => {
+  // Task 1（P4）：第九个域 facade（发现推荐）组合进根 facade；watch / 候选撤销 /
+  // 委托列表 / top 选择仍不进入浏览器 facade。
+  it('根 facade 组合九个域且不丢公开方法', () => {
     const source = 创建HTTP招聘数据源(依赖());
     expect(Object.keys(source).sort()).toEqual([
       '保存简历', '保存招聘方档案', '创建岗位', '创建意向', '创建首次意向', '创建企业管理员申请',
@@ -472,10 +474,19 @@ describe('HTTP 招聘数据源', () => {
       '读取Agent规则', '读取单条Agent规则', '修改Agent规则', '删除Agent规则',
       '创建Agent规则提案', '读取Agent规则提案', '读取Agent规则提案列表',
       '接受Agent规则提案', '放弃Agent规则提案', '创建Agent规则替换提案',
+      // P4：发现推荐域
+      '读取候选岗位推荐', '读取候选岗位详情', '刷新候选岗位推荐', '标记候选岗位不感兴趣',
+      '创建候选岗位委托', '读取候选岗位委托',
+      '读取招聘候选', '读取招聘候选详情', '刷新招聘候选', '设置招聘候选收藏',
+      '设置招聘候选淘汰', '撤销招聘候选淘汰', '创建招聘候选委托', '读取招聘候选委托',
     ].sort());
     // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
     expect(Object.keys(source)).not.toContain('读取公开岗位');
     expect(Object.keys(source)).not.toContain('公开岗位表');
+    // P4 非目标：watch、候选撤销、委托列表读取与 top 选择不存在于 facade。
+    expect(Object.keys(source)).not.toContain('创建候选岗位watch');
+    expect(Object.keys(source)).not.toContain('撤销候选岗位不感兴趣');
+    expect(Object.keys(source)).not.toContain('读取候选岗位委托列表');
   });
 
   // P3：隐私与组织搜索经根 facade 走到线上；CandidateJob 只留编译期闭类型，无请求方法。
@@ -516,6 +527,17 @@ describe('HTTP 招聘数据源', () => {
       .resolves.toEqual(BFFAgent规则解释中提案样本);
     expect(请求Mock.mock.calls[0][0]).toMatchObject({
       path: '/api/v1/me/agent-rule-proposals', method: 'POST', 幂等: true,
+    });
+  });
+
+  // Task 1（P4）：组合后的发现推荐方法直接走冻结的 refresh 路径，带调用方幂等键并解码批次。
+  it('根 facade 组合后可刷新候选岗位推荐并冻结调用方幂等键', async () => {
+    请求Mock.mockResolvedValueOnce({ result: BFF发现批次样本, etag: null, requestId: 'p4' });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.刷新候选岗位推荐('int_1', 'candidate-refresh-key')).resolves.toEqual(BFF发现批次样本);
+    expect(请求Mock.mock.calls[0][0]).toMatchObject({
+      path: '/api/v1/me/job-recommendation-refreshes', method: 'POST',
+      body: { intention_id: 'int_1' }, 幂等: true, 幂等键: 'candidate-refresh-key',
     });
   });
 });
