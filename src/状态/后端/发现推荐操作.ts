@@ -143,6 +143,27 @@ function 是401(错误: unknown): boolean {
   return 错误 instanceof BFF错误 && 错误.status === 401;
 }
 
+// ── scope 读锁的属主登记：单飞 + 过期接管 ──────────────────────────
+// 单纯的 Set 锁会让 StrictMode 卸载重挂死锁：旧挂载的在飞读取持锁，cleanup/重挂把
+// scope 代际两连跳后，重挂的读取被锁吞掉，旧响应又因栅栏过期整包丢弃 —— 一发 GET、
+// 零提交、页面永远 进行中。属主登记让新请求在「在飞属主栅栏已过期」时接管锁。
+
+/** 在飞属主：捕获栅栏 + 属主凭据（token，对象身份即凭据）。 */
+interface 读锁属主 {
+  fence: P4Fence;
+  token: object;
+}
+
+/** 按 Provider 锁集隔离的属主表：WeakMap 随锁集（即 Provider / 测试环境）回收。 */
+const 读锁属主表 = new WeakMap<Set<string>, Map<string, 读锁属主>>();
+
+/** 一次成功的读锁获取：键 + 本次属主凭据 + 本次捕获的栅栏。 */
+interface 读锁凭证 {
+  键: string;
+  token: object;
+  fence: P4Fence;
+}
+
 // ── scope 快照的三个纯构造器：起步 / 成功 / 失败（成功快照永不降级）──
 
 function 起步快照<T>(旧: P4ScopeSnapshot<T> | undefined, generation: number): P4ScopeSnapshot<T> {
@@ -521,9 +542,46 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     return `P4读:${scopeKey}`;
   }
 
+  function 属主表(): Map<string, 读锁属主> {
+    let 表 = 读锁属主表.get(锁.current);
+    if (!表) {
+      表 = new Map();
+      读锁属主表.set(锁.current, 表);
+    }
+    return 表;
+  }
+
   /**
-   * scope 读取统一核：拿单飞锁 → 捕获栅栏 → 起步提交 → 读 → 栅栏内才结算。
-   * 迟到成败（含迟到 401）只走 finally 释放本把锁；栅栏内的 401 走统一 清账号状态。
+   * scope 读锁获取 + 过期接管：
+   *   · 无在飞属主 → 获取，捕获栅栏即本次属主凭据；
+   *   · 在飞属主栅栏仍新（subject/role/会话代际/可见范围/scope 代际 全部一致）→ 单飞让路（null）；
+   *   · 在飞属主栅栏已过期（StrictMode 卸载重挂 / 登出换代 / 换 scope）→ 新请求接管锁：
+   *     换上自己的栅栏与 token 重发 GET；旧属主的迟到结算按它自己的栅栏整包丢弃，
+   *     其 finally 发现 token 已易主，绝不动新属主的锁。
+   */
+  function 获取读锁(scopeKey: string): 读锁凭证 | null {
+    const 键 = 读锁键(scopeKey);
+    const 表 = 属主表();
+    const 现属主 = 表.get(键);
+    if (现属主 && fenceStillCurrent(引用, 现属主.fence)) return null;
+    const fence = 捕获栅栏(引用, scopeKey);
+    const token: object = {};
+    表.set(键, { fence, token });
+    return { 键, token, fence };
+  }
+
+  /** 释放 scope 读锁：仅当属主仍是自己（未被接管）时才真正释放键。 */
+  function 释放读锁(取得: 读锁凭证): void {
+    const 表 = 属主表();
+    if (表.get(取得.键)?.token === 取得.token) {
+      表.delete(取得.键);
+      锁.current.delete(取得.键);
+    }
+  }
+
+  /**
+   * scope 读取统一核：获取读锁（含过期接管）→ 起步提交 → 读 → 栅栏内才结算。
+   * 迟到成败（含迟到 401）只走 finally 且仅在锁属主仍是自己时释放；栅栏内的 401 走统一 清账号状态。
    */
   async function 运行范围读<T>(input: {
     scopeKey: string;
@@ -532,27 +590,24 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     成功: (结果: T, fence: ReturnType<typeof 捕获栅栏>) => void;
     失败: (错误: unknown, fence: ReturnType<typeof 捕获栅栏>) => void;
   }): Promise<void> {
-    const 键 = 读锁键(input.scopeKey);
-    if (锁.current.has(键)) return;
-    锁.current.add(键);
-    // 栅栏捕获只是读引用 + 回写同值代际种子，不可能抛；起步提交放进 try，锁由 finally 收口
-    const fence = 捕获栅栏(引用, input.scopeKey);
+    const 取得 = 获取读锁(input.scopeKey);
+    if (!取得) return;
     try {
       // 数据源守卫必须先于起步提交：否则这条（当前不可达的）路径会把快照永远搁在 进行中
       if (!后端) return;
-      input.开始(fence);
+      input.开始(取得.fence);
       const 结果 = await input.读(后端);
-      if (!fenceStillCurrent(引用, fence)) return;
-      input.成功(结果, fence);
+      if (!fenceStillCurrent(引用, 取得.fence)) return;
+      input.成功(结果, 取得.fence);
     } catch (错误) {
-      if (!fenceStillCurrent(引用, fence)) return;
+      if (!fenceStillCurrent(引用, 取得.fence)) return;
       if (是401(错误)) {
         清账号状态(账号清理依赖);
         return;
       }
-      input.失败(错误, fence);
+      input.失败(错误, 取得.fence);
     } finally {
-      锁.current.delete(键);
+      释放读锁(取得);
     }
   }
 
@@ -571,11 +626,12 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     成功: (items: T, fence: P4Fence) => void;
     失败: (文案: string, fence: P4Fence) => void;
   }): Promise<void> {
-    // scope 全量 GET 与 refresh 按 scope 串行（§9.2）：与读核共用同一把读锁
-    const 键 = 读锁键(input.scopeKey);
-    if (锁.current.has(键)) return;
-    锁.current.add(键);
-    const fence = 捕获栅栏(引用, input.scopeKey);
+    // scope 全量 GET 与 refresh 按 scope 串行（§9.2）：与读核共用同一把读锁 + 同一张属主表。
+    // 在飞属主栅栏仍新 → 刷新让位（原样）；栅栏已过期（StrictMode 重挂 / 换代）→ 接管重发 ——
+    // 旧属主的 POST 迟到结算按它自己的栅栏丢弃，token 易主后它也动不了新属主的锁。
+    const 取得 = 获取读锁(input.scopeKey);
+    if (!取得) return;
+    const fence = 取得.fence;
     try {
       if (!后端) return;
       input.开始(fence);
@@ -617,7 +673,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
       if (!fenceStillCurrent(引用, fence)) return;
       input.成功(items, fence);
     } finally {
-      锁.current.delete(键);
+      释放读锁(取得);
     }
   }
 
@@ -625,7 +681,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
    * 反馈写统一核：按资源单飞（同一推荐的 favorite/rejection/not-interested 串行，跨推荐并行，
    * §9.2）→ 捕获栅栏 → 服务端先行 → 栅栏内才落任何本地变化。失败绝不移动卡片；
    * 401 统一 清账号状态 后照抛；404 按统一不可用收口（安全移除 + scope 重读）即达成意图不抛；
-   * 其余错误原样抛给屏。
+   * 其余错误原样抛给屏。锁用独立的 P4写: 资源键，不与读锁属主表交互。
    */
   async function 运行反馈写<T>(input: {
     资源键: string;
@@ -811,13 +867,11 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
       if (!是后端 || !后端) return;
       if (force !== true && 后端状态引用.current.候选岗位详情[jobId]) return;
       const scopeKey = P4范围键.候选详情(jobId);
-      const 键 = 读锁键(scopeKey);
-      if (锁.current.has(键)) return;
-      锁.current.add(键);
-      const fence = 捕获栅栏(引用, scopeKey);
+      const 取得 = 获取读锁(scopeKey);
+      if (!取得) return;
       try {
         const job = await 后端.读取候选岗位详情(jobId);
-        if (!fenceStillCurrent(引用, fence)) return;
+        if (!fenceStillCurrent(引用, 取得.fence)) return;
         设后端状态((旧) => ({
           ...旧,
           候选岗位详情: { ...旧.候选岗位详情, [jobId]: job },
@@ -825,7 +879,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
           候选岗位不可用: 旧.候选岗位不可用.filter((编号) => 编号 !== jobId),
         }));
       } catch (错误) {
-        if (!fenceStillCurrent(引用, fence)) return;
+        if (!fenceStillCurrent(引用, 取得.fence)) return;
         if (是401(错误)) {
           清账号状态(账号清理依赖);
           throw 错误;
@@ -842,7 +896,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
         }
         throw 错误;
       } finally {
-        锁.current.delete(键);
+        释放读锁(取得);
       }
     },
 
@@ -918,20 +972,18 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
       if (!是后端 || !后端) return;
       if (force !== true && 后端状态引用.current.招聘候选详情[recommendationId]) return;
       const scopeKey = P4范围键.招聘详情(jobId, recommendationId);
-      const 键 = 读锁键(scopeKey);
-      if (锁.current.has(键)) return;
-      锁.current.add(键);
-      const fence = 捕获栅栏(引用, scopeKey);
+      const 取得 = 获取读锁(scopeKey);
+      if (!取得) return;
       try {
         const 卡 = await 后端.读取招聘候选详情(jobId, recommendationId);
-        if (!fenceStillCurrent(引用, fence)) return;
+        if (!fenceStillCurrent(引用, 取得.fence)) return;
         设后端状态((旧) => ({
           ...旧,
           招聘候选详情: { ...旧.招聘候选详情, [recommendationId]: 卡 },
           招聘候选不可用: 旧.招聘候选不可用.filter((编号) => 编号 !== recommendationId),
         }));
       } catch (错误) {
-        if (!fenceStillCurrent(引用, fence)) return;
+        if (!fenceStillCurrent(引用, 取得.fence)) return;
         if (是401(错误)) {
           清账号状态(账号清理依赖);
           throw 错误;
@@ -947,7 +999,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
         }
         throw 错误;
       } finally {
-        锁.current.delete(键);
+        释放读锁(取得);
       }
     },
 

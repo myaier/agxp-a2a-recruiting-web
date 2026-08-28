@@ -430,6 +430,59 @@ describe('401 会话清理与迟到 401', () => {
   });
 });
 
+describe('读锁过期接管（StrictMode 卸载重挂）', () => {
+  it('在飞属主栅栏过期后新读取接管锁并重发 GET，旧迟到响应不写状态', async () => {
+    const 旧门 = deferred<BFF候选岗位推荐[]>();
+    const 新门 = deferred<BFF候选岗位推荐[]>();
+    vi.mocked(env.数据源.读取候选岗位推荐)
+      .mockReturnValueOnce(旧门.promise)
+      .mockReturnValueOnce(新门.promise);
+    // (1) 首次挂载：可见范围已注册，读取起跑、GET 在飞
+    const 旧读 = env.操作.加载候选岗位('int_1');
+    // (2) StrictMode cleanup 清范围 → remount 重注册：scope 代际两连跳
+    env.操作.设置发现推荐范围('candidate', null);
+    env.操作.设置发现推荐范围('candidate', P4范围键.候选列表('int_1'));
+    // (3) 重挂的读取不被在飞锁吞掉：接管锁、重发 GET
+    const 新读 = env.操作.加载候选岗位('int_1');
+    expect(vi.mocked(env.数据源.读取候选岗位推荐)).toHaveBeenCalledTimes(2);
+    // (4) 新属主的响应原子落地
+    新门.resolve([BFF候选岗位推荐样本]);
+    await 新读;
+    expect(env.最新状态().候选岗位推荐.int_1).toMatchObject({
+      阶段: '成功', items: [BFF候选岗位推荐样本], 刷新中: false, error: null,
+    });
+    // (5) 被放弃的旧属主迟到响应：整包丢弃 —— 不写状态、不派发、不动新属主的锁
+    旧门.resolve([{ ...BFF候选岗位推荐样本, recommendation_id: 'rec_旧属主' }]);
+    await 旧读;
+    expect(env.最新状态().候选岗位推荐.int_1?.items).toEqual([BFF候选岗位推荐样本]);
+    expect(env.派发).not.toHaveBeenCalled();
+    expect(设后端状态调用数()).toBe(3); // 旧起步 + 接管起步 + 新成功；旧完成零写入
+    // 锁已归新属主并正常释放：后续 force 读取照常工作
+    await env.操作.加载候选岗位('int_1', true);
+    expect(env.最新状态().候选岗位推荐.int_1).toMatchObject({ 阶段: '成功' });
+  });
+
+  it('详情读同样过期接管（屏以详情键注册可见范围），旧迟到响应不写缓存', async () => {
+    env.操作.设置发现推荐范围('candidate', P4范围键.候选详情('job_1'));
+    const 旧门 = deferred<typeof BFFCandidateJob样本>();
+    const 新门 = deferred<typeof BFFCandidateJob样本>();
+    vi.mocked(env.数据源.读取候选岗位详情)
+      .mockReturnValueOnce(旧门.promise)
+      .mockReturnValueOnce(新门.promise);
+    const 旧读 = env.操作.读取候选岗位详情('job_1');
+    env.操作.设置发现推荐范围('candidate', null);
+    env.操作.设置发现推荐范围('candidate', P4范围键.候选详情('job_1'));
+    const 新读 = env.操作.读取候选岗位详情('job_1');
+    expect(vi.mocked(env.数据源.读取候选岗位详情)).toHaveBeenCalledTimes(2);
+    新门.resolve(BFFCandidateJob样本);
+    await 新读;
+    expect(env.最新状态().候选岗位详情.job_1).toEqual(BFFCandidateJob样本);
+    旧门.resolve({ ...BFFCandidateJob样本, job_id: 'job_旧属主' });
+    await 旧读;
+    expect(env.最新状态().候选岗位详情.job_1).toEqual(BFFCandidateJob样本);
+  });
+});
+
 describe('创建空P4发现状态', () => {
   it('返回十个字段的空底座', () => {
     expect(创建空P4发现状态()).toEqual({
