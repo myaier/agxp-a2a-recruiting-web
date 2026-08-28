@@ -311,6 +311,26 @@
   color: var(--次要浅);
 }
 
+/* 首载失败空态里的重试键：白描边，与 .补给键 同语汇但小一号 */
+.空态重试 {
+  margin-top: 10px;
+  padding: 9px 26px;
+  border-radius: var(--圆角-按钮);
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+
+/* Backend：刷新未决/错误单独一行（旧卡保留时才出现），不抢空态版式 */
+.错误行 {
+  padding: 0 4px 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--次要浅);
+}
+
 /* ── 补给键：翻到底不该是一堵墙，给一个「再来一批」的出口（白描边，不抢主色）── */
 .补给键 {
   width: 100%;

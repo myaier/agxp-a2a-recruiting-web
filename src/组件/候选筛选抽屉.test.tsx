@@ -13,8 +13,11 @@ import 候选筛选抽屉 from './候选筛选抽屉';
 import 企业问AI代理 from '../屏幕/企业问AI代理';
 import 企业往来记录 from '../屏幕/企业往来记录';
 import 候选详情 from '../屏幕/候选详情';
+import 候选推荐 from '../屏幕/候选推荐';
 import { 路径 } from '../路由/路径表';
 import { 企业日报, 在谈候选列表 } from '../数据/企业端模拟数据';
+import type { BFF招聘候选推荐 } from '../数据/BFF契约';
+import { BFF招聘候选推荐样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -32,7 +35,13 @@ const mock轻提示 = vi.hoisted(() => vi.fn());
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
-vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
+const mock加载招聘候选 = vi.fn(async () => undefined);
+const mock设置候选收藏 = vi.fn(async () => undefined);
+
+vi.mock('../状态/应用状态', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  use应用状态: () => mock应用状态,
+}));
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 返回: vi.fn(), 跳转: mock跳转 }) }));
 // 轻提示 是挂在 document.body 上的全局 DOM 容器，跨用例不清理 —— 换成间谍逐例断言
 vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
@@ -243,5 +252,50 @@ describe('招聘端演示页 · 记成规则的模式边界', () => {
       expect.objectContaining({ 型: '企业新增规则', 内容: expect.any(String) }),
     );
     expect(mock跳转).toHaveBeenCalledWith(路径.企业代理设置);
+  });
+});
+
+// ── P4 Task 7：抽屉的「只看收藏」本地开关（Backend 才有；切开关零请求）──
+
+/** P4 招聘状态底座：当前岗位/岗位列表都携带 BFF job_id（生产水合口径，见 从BFF岗位） */
+function 置P4招聘状态(items: BFF招聘候选推荐[]) {
+  mock应用状态 = {
+    数据源模式: 'backend', 派发: vi.fn(),
+    状态: {
+      当前岗位编号: BFF岗位样本.job_id,
+      岗位列表: [{ ...页面岗位样本, 编号: BFF岗位样本.job_id, 状态: '在招' }],
+      企业规则: [], 推荐列表: [], 收藏候选: [], 不合适候选: {}, 已接触推荐: [],
+    },
+    后端状态: {
+      Agent规则水合: { candidate: { rules: '未开始', proposals: '未开始' },
+        recruiter: { rules: '成功', proposals: '成功' } },
+      招聘可用候选: { [BFF岗位样本.job_id]: {
+        阶段: '成功', 刷新中: false, items, error: null, generation: 1,
+      } },
+      P4委托回执: {},
+    },
+    操作: { 加载招聘候选: mock加载招聘候选, 设置候选收藏: mock设置候选收藏 },
+  };
+}
+
+describe('候选筛选抽屉 · 只看收藏本地开关（P4）', () => {
+  beforeEach(() => {
+    mock加载招聘候选.mockClear();
+    mock设置候选收藏.mockClear();
+    mock轻提示.mockClear();
+    mock跳转.mockClear();
+  });
+
+  it('Backend favorite filter is local and feedback is server-first', async () => {
+    const user = userEvent.setup();
+    置P4招聘状态([{ ...BFF招聘候选推荐样本, favorite: true }, { ...BFF招聘候选推荐样本,
+      recommendation_id: 'rec_other', candidate_alias: '匿名乙', favorite: false }]);
+    render(<候选推荐 />);
+    await user.click(screen.getByRole('button', { name: /筛选.*▾/ }));
+    await user.click(screen.getByRole('switch', { name: '只看收藏' }));
+    expect(screen.getByText(BFF招聘候选推荐样本.candidate_alias)).toBeTruthy();
+    expect(screen.queryByText('匿名乙')).toBeNull();
+    expect(mock加载招聘候选).toHaveBeenCalledTimes(1);
+    expect(mock设置候选收藏).not.toHaveBeenCalled();
   });
 });

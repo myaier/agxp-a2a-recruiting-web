@@ -22,7 +22,15 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from './弹层框架';
 
-export default function 候选筛选抽屉({ 关闭 }: { 关闭: () => void }) {
+interface 候选筛选抽屉属性 {
+  关闭: () => void;
+  /** 「只看收藏」的当前值；与 切只看收藏 同时在场才渲染开关（P4：调用方自持 useState）*/
+  只看收藏?: boolean;
+  /** 切换「只看收藏」；纯本地状态，不发任何请求 */
+  切只看收藏?: (value: boolean) => void;
+}
+
+export default function 候选筛选抽屉({ 关闭, 只看收藏, 切只看收藏 }: 候选筛选抽屉属性) {
   const { 状态, 派发, 数据源模式, 后端状态 } = use应用状态();
   const { 跳转 } = use导航();
 
@@ -145,6 +153,24 @@ export default function 候选筛选抽屉({ 关闭 }: { 关闭: () => void }) {
             </>
           )}
         </div>
+
+        {/* P4：规则清单之后的唯一本地过滤开关。只看收藏 不问服务端 ——
+            它只过滤本屏已经完整加载的当前候选快照，两个可选 props 都在场才渲染
+            （调用方不传就保持这层是纯规则清单，Mock 路径零变化）。
+            label 包裹的就是这个开关按钮（labelable element），lint 只认 input 系，故局部豁免 */}
+        {只看收藏 !== undefined && 切只看收藏 !== undefined ? (
+          // eslint-disable-next-line jsx-a11y/label-has-associated-control
+          <label className={样式.收藏筛选行}>
+            <span>只看收藏</span>
+            <button
+              role="switch"
+              aria-label="只看收藏"
+              aria-checked={只看收藏}
+              className={`${样式.收藏筛选开关} ${只看收藏 ? 样式.收藏筛选已开 : ''} 可点`}
+              onClick={() => 切只看收藏(!只看收藏)}
+            />
+          </label>
+        ) : null}
 
         {/* 每一行都是即时落库，所以底部这一键只负责收起来 */}
         <button className={`${样式.完成键} 可点`} onClick={关闭}>

@@ -9,7 +9,20 @@
   padding: 48px 24px;
   text-align: center;
   font-size: 13px;
+  line-height: 1.8;
   color: var(--次要浅);
+}
+
+/* Backend 详情加载失败空态里的重试键：白描边，与列表页重试键同语汇 */
+.重试键 {
+  margin-top: 12px;
+  padding: 9px 26px;
+  border-radius: var(--圆角-按钮);
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿文字);
 }
 
 .栏右组 {
