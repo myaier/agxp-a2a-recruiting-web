@@ -163,7 +163,7 @@ function Mock职位详情() {
 /** Backend 分支（P4）：只吃候选岗位快照 / 详情缓存 / 单个 CandidateJob GET 的权威数据。 */
 function Backend职位详情() {
   const { id: 编号 } = useParams<{ id: string }>();
-  const { 后端状态, 操作 } = use应用状态();
+  const { 状态, 后端状态, 操作 } = use应用状态();
   const { 返回 } = use导航();
 
   // 「⋯」拉起的更多操作抽屉是否展开
@@ -182,16 +182,16 @@ function Backend职位详情() {
     return () => 操作.设置发现推荐范围('candidate', null);
   }, [编号, 操作]);
 
-  // 先在候选岗位快照里按 job.job_id 找推荐卡：命中即有当前卡的推荐坐标
-  // （intention_id + recommendation_id），反馈与委托都只用它，绝不猜。
+  // 推荐坐标只认当前意向那一份快照（编号载体，同 看市场）：同一 job_id 可能同时躺在
+  // 多个意向的缓存 scope 里，扫全表会借到别的意向的 intention_id + recommendation_id。
+  // 当前意向缺位或这份快照里没有该岗位 → 推荐卡 为 null，退回权威详情直取（反馈与委托
+  // 在那条路径上本就禁用），绝不猜坐标。
+  const 当前意向编号 = 状态.当前意向编号 ?? null;
   const 推荐卡 = useMemo(() => {
-    if (!编号) return null;
-    for (const 快照 of Object.values(后端状态.候选岗位推荐 ?? {})) {
-      const 命中 = 快照.items.find((卡) => 卡.job.job_id === 编号);
-      if (命中) return 命中;
-    }
-    return null;
-  }, [后端状态.候选岗位推荐, 编号]);
+    if (!编号 || 当前意向编号 === null) return null;
+    const 快照 = 后端状态.候选岗位推荐?.[当前意向编号];
+    return 快照?.items.find((卡) => 卡.job.job_id === 编号) ?? null;
+  }, [后端状态.候选岗位推荐, 编号, 当前意向编号]);
 
   // 权威 Job：快照卡自带完整 CandidateJob（详情优先复用卡），没有才靠缓存 / GET
   const 岗位 = 推荐卡?.job ?? (编号 ? 后端状态.候选岗位详情?.[编号] ?? null : null);

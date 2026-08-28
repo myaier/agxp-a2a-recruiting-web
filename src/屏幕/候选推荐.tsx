@@ -280,8 +280,10 @@ function Backend候选推荐() {
   // 淘汰：服务端先行，PUT 成功并权威重读后卡片才从可用流消失；失败原地保留。
   // 原因用四员闭合文案反向成 BFF 码，绝不发展示文案上 wire。
   const 标记不合适 = async (视图: P4招聘候选页面, 原因: string) => {
+    // 与 切收藏/委托候选 同一把闸：操作层的按资源单飞会丢弃并发写并直接 resolve，
+    // 没有这道闸就会给一次根本没发生的淘汰弹成功提示
+    if (反馈中 || 活跃岗位 === null) return;
     设待标记(null);
-    if (活跃岗位 === null) return;
     设反馈中(true);
     try {
       await 操作.淘汰候选(活跃岗位, 视图.recommendationId, P4淘汰原因码(原因));
@@ -367,7 +369,7 @@ function Backend候选推荐() {
                 显示列表.map(({ 视图 }) => (
                   <div key={视图.recommendationId} className={样式.滑动包}>
                     <滑动行
-                      操作={[{ 文字: '不合适', 按下: () => 设待标记(视图) }]}
+                      操作={[{ 文字: '不合适', 禁用: 反馈中, 按下: () => 设待标记(视图) }]}
                       打开={滑开的 === 视图.recommendationId}
                       请求打开={(开) => 设滑开的(开 ? 视图.recommendationId : null)}
                     >

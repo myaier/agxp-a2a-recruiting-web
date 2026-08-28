@@ -164,6 +164,24 @@ describe('P4范围键 与 设置发现推荐范围', () => {
     expect(P4范围键.招聘已筛(['job_b', 'job_a'])).toBe('recruiter:rejected:job_a,job_b');
   });
 
+  it('含 : / , 的 opaque id 生成互异 scope 键，rejected 成员判定不误配', async () => {
+    // 解码器不约束 opaque id 形态：含分隔符的 id 必须逐段转义，绝不允许两组坐标撞成同一把键
+    expect(P4范围键.招聘详情('a:b', 'c')).not.toBe(P4范围键.招聘详情('a', 'b:c'));
+    expect(P4范围键.招聘已筛(['a,b'])).not.toBe(P4范围键.招聘已筛(['a', 'b']));
+    expect(P4范围键.候选列表('a:b')).not.toBe(P4范围键.候选列表('a') + ':b');
+
+    设主体角色(招聘主体);
+    const jobKey = P4范围键.招聘已筛(['a,b']);
+    env.操作.设置发现推荐范围('recruiter', jobKey);
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValue([]);
+    await env.操作.加载招聘已筛(['a,b']);
+    expect(env.最新状态().招聘已筛候选[jobKey]).toMatchObject({ 阶段: '成功', items: [] });
+
+    // 岗位 'a' 的淘汰绝不能并进 'a,b' 这份聚合（旧的逗号回解会把它当成成员）
+    await env.操作.淘汰候选('a', 'rec_r1', 'other');
+    expect(env.最新状态().招聘已筛候选[jobKey]?.items).toEqual([]);
+  });
+
   it('设置发现推荐范围 只更新指名角色的可见范围', () => {
     env.操作.设置发现推荐范围('candidate', P4范围键.候选详情('job_5'));
     expect(env.deps.P4可见范围!.current.candidate).toBe('candidate:detail:job_5');
@@ -553,6 +571,62 @@ describe('刷新与幂等意图键', () => {
     expect(快照?.error).toBe('已发起新一轮，结果暂未刷新');
     // POST 已建批次、结果未上屏：同一意图重试沿用原键
     expect(env.deps.P4幂等意图!.current.has('candidate:list:int_1:refresh')).toBe(true);
+  });
+
+  it('refresh follow-up GET 的栅栏内 401 走统一清账号状态，不落未决文案', async () => {
+    vi.mocked(env.数据源.读取候选岗位推荐).mockResolvedValueOnce([BFF候选岗位推荐样本]);
+    await env.操作.加载候选岗位('int_1');
+    vi.mocked(env.数据源.刷新候选岗位推荐).mockResolvedValueOnce(BFF发现批次样本);
+    vi.mocked(env.数据源.读取候选岗位推荐)
+      .mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
+
+    await env.操作.刷新候选岗位('int_1');
+
+    const 最新 = env.最新状态();
+    expect(最新.已登录).toBe(false);
+    expect(最新.主体).toBeNull();
+    expect(最新.候选岗位推荐).toEqual({});
+    expect(env.deps.会话代际.current).toBe(2);
+    expect(env.deps.P4幂等意图!.current.size).toBe(0);
+    expect(env.数据源.清空目录缓存).toHaveBeenCalled();
+  });
+
+  it('refresh follow-up GET 的迟到 401 不清新会话也不写状态', async () => {
+    const POST门 = deferred<BFF发现批次>();
+    const GET门 = deferred<BFF候选岗位推荐[]>();
+    vi.mocked(env.数据源.刷新候选岗位推荐).mockReturnValueOnce(POST门.promise);
+    vi.mocked(env.数据源.读取候选岗位推荐).mockReturnValueOnce(GET门.promise);
+    const 运行 = env.操作.刷新候选岗位('int_1');
+    POST门.resolve(BFF发现批次样本);
+    await POST门.promise; // follow-up GET 已在飞
+    const 提交数 = 设后端状态调用数();
+    env.deps.主体标识引用.current = 'sub_new';
+    env.deps.会话代际.current += 1;
+    GET门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+
+    await 运行;
+
+    expect(env.deps.主体标识引用.current).toBe('sub_new');
+    expect(env.deps.会话代际.current).toBe(2);
+    expect(env.最新状态().已登录).toBe(true);
+    expect(设后端状态调用数()).toBe(提交数);
+    expect(env.数据源.清空目录缓存).not.toHaveBeenCalled();
+  });
+
+  it('idempotency_conflict 重读遇栅栏内 401 走统一清账号状态', async () => {
+    vi.mocked(env.数据源.刷新候选岗位推荐)
+      .mockRejectedValueOnce(new BFF错误(409, 'idempotency_conflict', 'conflict'));
+    vi.mocked(env.数据源.读取候选岗位推荐)
+      .mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
+
+    await expect(env.操作.刷新候选岗位('int_1'))
+      .rejects.toMatchObject({ code: 'idempotency_conflict' });
+
+    const 最新 = env.最新状态();
+    expect(最新.已登录).toBe(false);
+    expect(最新.候选岗位推荐).toEqual({});
+    expect(env.deps.会话代际.current).toBe(2);
+    expect(env.数据源.清空目录缓存).toHaveBeenCalled();
   });
 
   it('idempotency_conflict 不换键：重读权威 scope 后才释放，下一次刷新才铸新键', async () => {
@@ -1120,6 +1194,20 @@ describe('委托招聘候选', () => {
     });
     expect(env.最新状态().招聘候选详情.rec_r1?.delegation).toEqual(摘要);
     expect(env.派发).not.toHaveBeenCalled();
+  });
+
+  it('recruiter 回执 recommendation_id 为 null 时按 delegation_id 提交，不算契约漂移', async () => {
+    await 种招聘卡();
+    vi.mocked(env.数据源.创建招聘候选委托).mockResolvedValue([
+      { ...BFF招聘委托回执样本, delegation_id: 'del_rn1', recommendation_id: null, state: 'accepted' },
+    ]);
+
+    const 回执 = await env.操作.委托招聘候选('job_1', 'rec_r1');
+
+    expect(回执.state).toBe('accepted');
+    expect(env.最新状态().P4委托回执.del_rn1).toMatchObject({ recommendation_id: null });
+    expect(env.最新状态().招聘可用候选.job_1?.items[0]?.delegation)
+      .toEqual({ delegation_id: 'del_rn1', state: 'accepted', case_id: null });
   });
 
   it('recruiter receipt recommendation mismatch 按契约漂移失败且不落状态', async () => {

@@ -44,14 +44,20 @@ import type {
   P4ScopeSnapshot,
 } from './类型';
 
+/** opaque id 的键内转义：decoder 不约束 id 形态，含 `:`/`,` 的 id 直接拼接会撞键或错解成员。
+ *  普通 id（字母数字与 `-_.~`）转义后原样不变，既有键串因此保持稳定。 */
+function 段(值: string): string {
+  return encodeURIComponent(值);
+}
+
 /** 屏幕注册可见范围的冻结键表：注册唯一精确键、effect cleanup 时清成 null。 */
 export const P4范围键 = {
-  候选列表: (intentionId: string) => `candidate:list:${intentionId}`,
-  候选详情: (jobId: string) => `candidate:detail:${jobId}`,
-  招聘列表: (jobId: string) => `recruiter:list:${jobId}`,
+  候选列表: (intentionId: string) => `candidate:list:${段(intentionId)}`,
+  候选详情: (jobId: string) => `candidate:detail:${段(jobId)}`,
+  招聘列表: (jobId: string) => `recruiter:list:${段(jobId)}`,
   招聘详情: (jobId: string, recommendationId: string) =>
-    `recruiter:detail:${jobId}:${recommendationId}`,
-  招聘已筛: (jobIds: string[]) => `recruiter:rejected:${[...jobIds].sort().join(',')}`,
+    `recruiter:detail:${段(jobId)}:${段(recommendationId)}`,
+  招聘已筛: (jobIds: string[]) => `recruiter:rejected:${[...jobIds].sort().map(段).join(',')}`,
 } as const;
 
 /** Task 4 已落地的变更子集；Task 5 落委托后由完整 发现推荐操作 取代（见 类型.ts 收敛）。 */
@@ -198,11 +204,13 @@ function 失败快照文案<T>(
 
 // ── Task 4：反馈落位的纯 helper —— 每次提交都是 设后端状态 的一次纯函数更新 ──
 
-/** jobKey（recruiter:rejected:<排序逗号串>）覆盖某岗位的全部 rejected 快照键。 */
+/** jobKey（recruiter:rejected:<排序逗号串>）覆盖某岗位的全部 rejected 快照键。
+ *  串里的每段都是 段() 转义过的 id（`,` 已转义成 %2C），逗号回解因此无歧义。 */
 function rejected键覆盖岗位(旧: 后端状态, jobId: string): string[] {
+  const 目标 = 段(jobId);
   return Object.keys(旧.招聘已筛候选).filter((键) =>
     键.startsWith('recruiter:rejected:') &&
-    键.slice('recruiter:rejected:'.length).split(',').includes(jobId));
+    键.slice('recruiter:rejected:'.length).split(',').includes(目标));
 }
 
 /** 把同一 recommendation 的每处出现（available/rejected/detail）按 修补 替换 —— 收藏与撤销的同步核。 */
@@ -361,7 +369,8 @@ function 委托契约漂移(): BFF错误 {
  *   · state null 必须带闭合非空 refusal_code；
  *   · case_started 必须带非空 case_id；
  *   · 其余状态（accepted/evaluating/needs_user/refused/failed）不得带 case_id；
- *   · 期望推荐编号传入时（招聘侧：选择坐标就是 recommendation_id），回执非空坐标必须一致
+ *   · 期望推荐编号传入时（招聘侧：选择坐标就是 recommendation_id），回执坐标**非空时**必须
+ *     与所选一致；wire 上该字段可空，null 是合规回执（按 delegation_id 提交），绝不当漂移
  *     （候选侧不传：选择坐标是 job_id，回执 recommendation_id 可空且被完全忽略）。
  */
 function 校验委托回执(回执: BFF委托回执, 期望推荐编号?: string): void {
@@ -372,7 +381,10 @@ function 校验委托回执(回执: BFF委托回执, 期望推荐编号?: string
   } else if (回执.case_id !== null) {
     throw 委托契约漂移();
   }
-  if (期望推荐编号 !== undefined && 回执.recommendation_id !== 期望推荐编号) throw 委托契约漂移();
+  if (期望推荐编号 !== undefined && 回执.recommendation_id !== null &&
+    回执.recommendation_id !== 期望推荐编号) {
+    throw 委托契约漂移();
+  }
 }
 
 /**
@@ -653,8 +665,13 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
             const items = await input.重读(后端);
             已对账 = true;
             if (fenceStillCurrent(引用, fence)) input.成功(items, fence);
-          } catch {
-            if (fenceStillCurrent(引用, fence)) input.失败(P4错误文案(错误), fence);
+          } catch (对账错误) {
+            // 迟到的对账失败只丢弃（迟到 401 绝不登出新会话）；
+            // 栅栏内的 401 与其它核同口径走统一清理，其余仍落冲突文案
+            if (fenceStillCurrent(引用, fence)) {
+              if (是401(对账错误)) 清账号状态(账号清理依赖);
+              else input.失败(P4错误文案(错误), fence);
+            }
           }
           if (已对账) P4幂等意图.current.delete(intent);
           throw 错误;
@@ -665,8 +682,13 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
       let items: T;
       try {
         items = await input.重读(后端);
-      } catch {
+      } catch (重读错误) {
         if (!fenceStillCurrent(引用, fence)) return;
+        // 栅栏内 401：会话已失效，落「已发起新一轮」等于把过期数据留在屏上 —— 走统一清理
+        if (是401(重读错误)) {
+          清账号状态(账号清理依赖);
+          return;
+        }
         input.失败(刷新结果未决文案, fence);
         return;
       }

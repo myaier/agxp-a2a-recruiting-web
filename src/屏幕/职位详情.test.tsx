@@ -66,6 +66,8 @@ function 渲染Backend状态(选项: {
   候选岗位推荐?: Record<string, unknown>;
   候选岗位详情?: Record<string, unknown>;
   候选岗位不可用?: string[];
+  /** 当前意向编号载体：推荐卡只从这一个 scope 里找，缺省是快照惯例的 int_1 */
+  当前意向编号?: string | null;
   /** 真实简历事实（匹配对齐行的 Backend 证据来源）；缺省是空简历 */
   简历?: Record<string, unknown>;
 }) {
@@ -73,6 +75,7 @@ function 渲染Backend状态(选项: {
     状态: {
       已委托: [], 简历经历: [], 简历教育: [], 简历技能: [],
       基本信息: { 真名: '', 开始工作年: '', 身份: '在职' },
+      当前意向编号: 选项.当前意向编号 === undefined ? 'int_1' : 选项.当前意向编号,
       ...选项.简历,
     },
     派发: mock派发,
@@ -380,6 +383,67 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     });
     expect(mock替换跳转).not.toHaveBeenCalled();
     expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '委托入谈' }));
+  });
+
+  // 同一 job_id 可能同时在多个意向的缓存快照里：推荐坐标只能来自当前意向那一份，
+  // 否则不感兴趣/委托会带着别的意向的 intention_id + recommendation_id 上 wire。
+  const 双意向快照 = {
+    int_1: {
+      阶段: '成功', 刷新中: false, error: null, generation: 1,
+      items: [{ ...推荐卡样本, recommendation_id: 'rec_旧意向', intention_id: 'int_1' }],
+    },
+    int_2: {
+      阶段: '成功', 刷新中: false, error: null, generation: 1,
+      items: [{ ...推荐卡样本, recommendation_id: 'rec_当前', intention_id: 'int_2' }],
+    },
+  };
+
+  it('同一 job_id 在多个意向快照里时，不感兴趣只用当前意向的推荐坐标', async () => {
+    const 用户 = userEvent.setup();
+    mock标记岗位不感兴趣.mockResolvedValue(undefined);
+    渲染Backend状态({ 当前意向编号: 'int_2', 候选岗位推荐: 双意向快照 });
+    渲染('job_1');
+    await 用户.click(screen.getByRole('button', { name: '不感兴趣' }));
+    expect(mock标记岗位不感兴趣).toHaveBeenCalledWith('int_2', 'rec_当前');
+  });
+
+  it('同一 job_id 在多个意向快照里时，委托只用当前意向的推荐坐标', async () => {
+    const 用户 = userEvent.setup();
+    mock委托候选岗位.mockResolvedValue({
+      delegation_id: 'del_9', recommendation_id: null, state: 'accepted',
+      refusal_code: null, case_id: null,
+    });
+    渲染Backend状态({ 当前意向编号: 'int_2', 候选岗位推荐: 双意向快照 });
+    渲染('job_1');
+    await 用户.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    await 用户.click(screen.getByRole('button', { name: '确认委托' }));
+    await waitFor(() => expect(mock委托候选岗位).toHaveBeenCalledTimes(1));
+    expect(mock委托候选岗位).toHaveBeenCalledWith({
+      intentionId: 'int_2',
+      recommendationId: 'rec_当前',
+      jobId: 'job_1',
+      disclosureAcknowledged: true,
+    });
+  });
+
+  it('岗位只在非当前意向的快照里时走详情直取，绝不借别的意向坐标', async () => {
+    const 用户 = userEvent.setup();
+    渲染Backend状态({
+      当前意向编号: 'int_2',
+      候选岗位推荐: { int_1: 快照With(推荐卡样本).int_1 },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
+    渲染('job_1');
+    const 去谈键 = screen.getByRole('button', { name: '让AI代理去谈' }) as HTMLButtonElement;
+    const 不感兴趣键 = screen.getByRole('button', { name: '不感兴趣' }) as HTMLButtonElement;
+    expect(去谈键.disabled).toBe(true);
+    expect(不感兴趣键.disabled).toBe(true);
+    await 用户.click(去谈键);
+    expect(screen.queryByRole('dialog', { name: '确认委托AI代理？' })).toBeNull();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+    expect(mock标记岗位不感兴趣).not.toHaveBeenCalled();
+    // 详情直取路径：wire 无匹配分，藏环不伪造
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
   });
 
   it('详情直取（无推荐坐标）禁用不感兴趣与委托，绝不猜推荐坐标', async () => {

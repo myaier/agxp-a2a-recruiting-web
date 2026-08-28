@@ -311,6 +311,28 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     expect(screen.getByText('候选人甲')).toBeTruthy();
   });
 
+  it('收藏写在飞时淘汰按钮禁用：不发请求，也绝不弹撤销成功提示', async () => {
+    const user = userEvent.setup();
+    // 操作层的按资源单飞会把并发的第二次写直接丢弃并 resolve —— 屏必须先自己挡住，
+    // 否则会给一次根本没发生的淘汰弹「已标记…可撤销」
+    mock设置候选收藏.mockReturnValueOnce(new Promise<undefined>(() => {}));
+    置P4状态({
+      操作: { 设置候选收藏: mock设置候选收藏, 淘汰候选: mock淘汰候选 },
+    });
+    render(<候选推荐 />);
+    await user.click(screen.getByRole('button', { name: '收藏' }));
+    expect(mock设置候选收藏).toHaveBeenCalledTimes(1);
+
+    await 左滑露不合适();
+    const 不合适键 = screen.getByRole('button', { name: '不合适' }) as HTMLButtonElement;
+    expect(不合适键.disabled).toBe(true);
+    await user.click(不合适键);
+
+    expect(screen.queryByText('年限不足')).toBeNull();
+    expect(mock淘汰候选).not.toHaveBeenCalled();
+    expect(mock轻提示).not.toHaveBeenCalled();
+  });
+
   it('收藏服务端先行：列表点击即写服务端，权威快照回改后两处一致', async () => {
     const user = userEvent.setup();
     置P4状态({
