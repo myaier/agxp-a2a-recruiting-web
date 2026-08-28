@@ -411,8 +411,9 @@ create 的每个 receipt 独立判定：
 
 - `accepted/evaluating`：记录 receipt，当前 mount 显示现有“AI代理已接手/已接触”状态；
 - `case_started`：同时记录非空 `case_id`，但不生成本地 Case、不跳 P5 页面；
-- `needs_user/refused/failed` 或 `state=null + refusal_code`：不显示已接手，恢复按钮并显示稳定原因；
-- receipt 的 `recommendation_id` 可空，候选直接 Job 委托不能依赖它作唯一 key。
+- `refused` 或 `state=null + refusal_code`：要求非空闭合 refusal code，按拒绝码显示稳定原因；
+- `needs_user/failed`：要求 `refusal_code=null`，按 receipt state 显示稳定中文原因；
+- receipt 的 `recommendation_id` 可空；候选直接 Job 委托完全忽略该字段，只用操作输入里的当前卡坐标做页面 reconcile，并按 `delegation_id` 保存/轮询 receipt。
 
 Backend 的 `职位详情` 委托成功后留在当前详情或返回推荐列表，不执行现有 Mock `替换跳转(在谈详情)`。Recruiter 继续留在推荐/匿名详情，不切换在谈子视图。
 
@@ -423,6 +424,7 @@ Mock 模式仍执行现有 `委托入谈`/`接触推荐候选`，立即生成演
 新增与 P6 proposal poll 同型但类型独立的 delegation polling hook：
 
 - hook 显式接收 `开启`、当前委托、刷新函数和可选测试间隔；只有 Backend 页面传 `开启: true`；
+- `看市场`、`职位详情`、`候选推荐`、`匿名在线简历` 四个可发起委托且成功后原地停留的页面都轮询各自当前可见的 active receipt；
 - 页面可见时每 2 秒 GET 当前可见 `accepted/evaluating` delegation；
 - 每个 delegation 同时最多一个在飞 GET；
 - terminal 后停止该 delegation；
@@ -480,12 +482,17 @@ source_unavailable/recruitment_service_unavailable
 operation_outcome_unknown              → 操作结果暂未确认，请稍后重试
 
 receipt refusal_code:
+recommendation_not_found/unavailable   → 这条推荐当前已不可用，请刷新后查看
 delegation_not_allowed                 → 当前无法发起委托，请刷新后重试
 active_case_quota_reached              → 当前在谈已达到上限，请先处理已有在谈
 delegation_cooldown                    → 近期已联系过对方，暂时不能重复发起
+
+receipt state（refusal_code 为 null）：
+needs_user                             → 这次委托需要你确认后才能继续
+failed                                 → 这次委托没有成功，请稍后重试
 ```
 
-其它错误回落现有 `取后端错误文案`。
+其它 HTTP/运行时错误回落现有 `取后端错误文案`；未知 `refusal_code` 或未知 receipt state 按契约漂移失败，不显示后端英文 message。
 
 - 401：统一 `清账号状态`，清 P4 状态与 poll；
 - 403：不改变现有数据，显示当前角色无权执行；
