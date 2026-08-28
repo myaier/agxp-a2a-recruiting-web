@@ -3,19 +3,24 @@
 // 已水合的权威规则（未水合不出 Mock 数字，水合后只数 生效:true）；Mock 原样可编辑。
 // 候选端演示页（问AI代理 / 往来记录 / 在谈详情）：记成规则 只在 Mock 派发 新增规则，
 // Backend 只给中性提示，不落规则、不冒充已生效。
+// P4 Task 6：候选看市场接上发现推荐 —— Backend 列表只来自当前活跃意向的候选岗位
+// 快照（本地搜索、下拉 GET 重读、空态建新批次），委托一律先过 确认层 的披露确认；
+// Mock 保持一键派发 委托入谈 的原型行为。
 // 测试宿主：mock 应用状态 / 导航钩子（同 企业我的.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 看市场 from './看市场';
 import 问AI代理 from './问AI代理';
 import 往来记录 from './往来记录';
 import 在谈详情 from './在谈详情';
 import { 路径 } from '../路由/路径表';
 import { 今日简报, 在谈列表 } from '../数据/模拟数据';
+import type { BFF候选岗位推荐 } from '../数据/BFF契约';
+import { BFF候选岗位推荐样本, BFF意向样本 } from '../测试/BFF样本';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -29,6 +34,12 @@ const mock派发 = vi.fn();
 const mock跳转 = vi.fn();
 // vi.mock 工厂被提升到文件顶 —— 间谍必须用 vi.hoisted 声明才能在工厂里引用
 const mock轻提示 = vi.hoisted(() => vi.fn());
+// P4 操作桩：屏幕只经上下文操作表触达后端，逐例注入需要的子集
+const mock委托候选岗位 = vi.fn();
+const mock加载候选岗位 = vi.fn();
+const mock刷新候选岗位 = vi.fn();
+const mock设置发现推荐范围 = vi.fn();
+const mock刷新委托 = vi.fn();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -48,23 +59,81 @@ const 候选规则种子 = [
   { 编号: 'R-02', 内容: '薪资低于 20K 不谈', 来源: '你手动添加 · 刚刚', 生效: false },
 ];
 
-/** 共用状态底座：mode + 双端水合阶段由用例给，页面字段按需补 */
+/** 共用状态底座：mode + 双端水合阶段由用例给，页面字段、P4 后端状态补丁与操作桩按需补 */
 function 置应用状态(选项: {
-  模式?: 'mock' | 'backend';
-  候选规则阶段?: string;
-  状态?: Record<string, unknown>;
+  模式?: 'mock' | 'backend'; 候选规则阶段?: string;
+  状态?: Record<string, unknown>; 后端状态?: Record<string, unknown>;
+  操作?: Record<string, unknown>;
 }) {
-  const { 模式 = 'mock', 候选规则阶段 = '未开始', 状态 = {} } = 选项;
+  const { 模式 = 'mock', 候选规则阶段 = '未开始', 状态 = {},
+    后端状态 = {}, 操作 = {} } = 选项;
   mock应用状态 = {
-    状态,
-    派发: mock派发,
-    数据源模式: 模式,
+    状态, 派发: mock派发, 数据源模式: 模式, 操作,
     后端状态: {
       Agent规则水合: {
         candidate: { rules: 候选规则阶段, proposals: '未开始' },
         recruiter: { rules: '未开始', proposals: '未开始' },
       },
+      ...后端状态,
     },
+  };
+}
+
+/** P4 候选状态底座：当前意向即 BFF 意向 ID（active），快照与操作桩由用例给 */
+function 置P4候选状态(items: BFF候选岗位推荐[]) {
+  置应用状态({
+    模式: 'backend', 候选规则阶段: '成功',
+    状态: {
+      子视图: '看市场', 当前意向: BFF意向样本.intention_id,
+      后端意向服务端: { [BFF意向样本.intention_id]: BFF意向样本 },
+      求职意向表: [], 在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+      全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
+    },
+    后端状态: {
+      候选岗位推荐: {
+        [BFF意向样本.intention_id]: {
+          阶段: '成功', 刷新中: false, items, error: null, generation: 1,
+        },
+      },
+    },
+    操作: { 委托候选岗位: mock委托候选岗位 },
+  });
+}
+
+/** 换意向时的第二份快照底座：同一份字段结构，只换意向 ID、快照键与操作桩 */
+function 置P4候选意向(选项: {
+  意向ID: string;
+  阶段: string;
+  items: BFF候选岗位推荐[];
+  操作?: Record<string, unknown>;
+}) {
+  const 意向 = { ...BFF意向样本, intention_id: 选项.意向ID };
+  置应用状态({
+    模式: 'backend', 候选规则阶段: '成功',
+    状态: {
+      子视图: '看市场', 当前意向: 选项.意向ID,
+      后端意向服务端: { [选项.意向ID]: 意向 },
+      求职意向表: [], 在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+      全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
+    },
+    后端状态: {
+      候选岗位推荐: {
+        [选项.意向ID]: {
+          阶段: 选项.阶段, 刷新中: false, items: 选项.items, error: null, generation: 1,
+        },
+      },
+    },
+    操作: 选项.操作 ?? { 委托候选岗位: mock委托候选岗位 },
+  });
+}
+
+/** 便捷卡：换 ID/标题的候选推荐卡 */
+function 换卡卡(选项: { 推荐ID: string; 岗位ID: string; 职位: string }): BFF候选岗位推荐 {
+  return {
+    ...BFF候选岗位推荐样本,
+    recommendation_id: 选项.推荐ID,
+    intention_id: BFF意向样本.intention_id,
+    job: { ...BFF候选岗位推荐样本.job, job_id: 选项.岗位ID, title: 选项.职位 },
   };
 }
 
@@ -94,6 +163,11 @@ describe('看市场 · Backend 筛选层只读与角标门控', () => {
     mock派发.mockClear();
     mock跳转.mockClear();
     mock轻提示.mockClear();
+    mock委托候选岗位.mockClear();
+    mock加载候选岗位.mockClear();
+    mock刷新候选岗位.mockClear();
+    mock设置发现推荐范围.mockClear();
+    mock刷新委托.mockClear();
   });
 
   it('Backend candidate filter layer is read-only and navigates to canonical rules', async () => {
@@ -264,5 +338,298 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
       expect.objectContaining({ 型: '新增规则', 内容: expect.any(String) }),
     );
     expect(mock跳转).toHaveBeenCalledWith(路径.规则库);
+  });
+});
+
+// ── P4 Task 6：候选看市场的发现推荐接线 ──────────────────────────
+
+/** P4 状态字段的复用底座（换阶段/快照时局部覆盖） */
+const P4状态底座 = (覆盖: Record<string, unknown> = {}) => ({
+  子视图: '看市场', 当前意向: BFF意向样本.intention_id,
+  后端意向服务端: { [BFF意向样本.intention_id]: BFF意向样本 },
+  求职意向表: [], 在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+  全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
+  ...覆盖,
+});
+
+/** P4 scope 快照构造器（阶段/error/刷新中 按用例给） */
+const P4快照 = (选项: {
+  阶段: string; items?: BFF候选岗位推荐[]; error?: string | null; 刷新中?: boolean;
+}) => ({
+  阶段: 选项.阶段,
+  刷新中: 选项.刷新中 ?? false,
+  items: 选项.items ?? [],
+  error: 选项.error ?? null,
+  generation: 1,
+});
+
+/** 已接手卡：delegation 摘要 accepted，卡 state delegating */
+const 接手卡: BFF候选岗位推荐 = {
+  ...BFF候选岗位推荐样本,
+  state: 'delegating',
+  delegation: { delegation_id: 'del_1', state: 'accepted', case_id: null },
+};
+
+describe('看市场 · P4 候选发现（Backend）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+    mock委托候选岗位.mockClear();
+    mock加载候选岗位.mockClear();
+    mock刷新候选岗位.mockClear();
+    mock设置发现推荐范围.mockClear();
+    mock刷新委托.mockClear();
+  });
+
+  afterEach(() => {
+    // 假时钟每个用例后恢复，避免泄漏进其它测试文件
+    vi.useRealTimers();
+  });
+
+  it('Backend delegation requires fresh disclosure confirmation and never dispatches Mock Case actions', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([BFF候选岗位推荐样本]);
+    render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    expect(screen.getByRole('dialog', { name: '确认委托AI代理？' }).textContent).toContain(
+      'S0 通过后，本 Case 可按固定规则提交默认/已选 PDF，并向该招聘方披露姓名和联系方式。');
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '确认委托' }));
+    expect(mock委托候选岗位).toHaveBeenCalledWith({
+      intentionId: BFF候选岗位推荐样本.intention_id,
+      recommendationId: BFF候选岗位推荐样本.recommendation_id,
+      jobId: BFF候选岗位推荐样本.job.job_id,
+      disclosureAcknowledged: true,
+    });
+    expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '委托入谈' }));
+  });
+
+  it('取消确认零请求零状态变化', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([BFF候选岗位推荐样本]);
+    render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    expect(screen.getByRole('dialog', { name: '确认委托AI代理？' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '暂不委托' }));
+    expect(screen.queryByRole('dialog', { name: '确认委托AI代理？' })).toBeNull();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+  });
+
+  it('委托失败即收层并提示，下一次点击必须重新确认', async () => {
+    const user = userEvent.setup();
+    mock委托候选岗位.mockRejectedValueOnce(new Error('委托被拒'));
+    置P4候选状态([BFF候选岗位推荐样本]);
+    render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    await user.click(screen.getByRole('button', { name: '确认委托' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog', { name: '确认委托AI代理？' })).toBeNull();
+    // 再点必须重新过确认层：上一次的授权不能复用
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    expect(screen.getByRole('dialog', { name: '确认委托AI代理？' })).toBeTruthy();
+    expect(mock委托候选岗位).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: '确认委托' }));
+    await waitFor(() => expect(mock委托候选岗位).toHaveBeenCalledTimes(2));
+  });
+
+  it('进屏按当前真实意向注册可见范围并懒加载（先注册后加载，离开即清）', () => {
+    置P4候选意向({
+      意向ID: BFF意向样本.intention_id, 阶段: '未开始', items: [],
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载候选岗位: mock加载候选岗位 },
+    });
+    const 页 = render(<看市场 />);
+    expect(mock设置发现推荐范围).toHaveBeenCalledWith('candidate', `candidate:list:${BFF意向样本.intention_id}`);
+    expect(mock加载候选岗位).toHaveBeenCalledWith(BFF意向样本.intention_id);
+    expect(mock设置发现推荐范围.mock.invocationCallOrder[0]).toBeLessThan(
+      mock加载候选岗位.mock.invocationCallOrder[0]);
+    页.unmount();
+    expect(mock设置发现推荐范围).toHaveBeenCalledWith('candidate', null);
+  });
+
+  it('切意向即换 scope：旧范围先清、新范围后注册，旧数据不闪进新列表', () => {
+    置P4候选意向({
+      意向ID: BFF意向样本.intention_id, 阶段: '成功', items: [BFF候选岗位推荐样本],
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载候选岗位: mock加载候选岗位 },
+    });
+    const { rerender } = render(<看市场 />);
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
+    置P4候选意向({
+      意向ID: 'int_2', 阶段: '成功',
+      items: [换卡卡({ 推荐ID: 'rec_c2', 岗位ID: 'job_2', 职位: '数据工程师' })],
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载候选岗位: mock加载候选岗位 },
+    });
+    rerender(<看市场 />);
+    expect(screen.queryByText('AI 产品实习生')).toBeNull();
+    expect(screen.getByText('数据工程师')).toBeTruthy();
+    expect(mock设置发现推荐范围.mock.calls).toEqual([
+      ['candidate', `candidate:list:${BFF意向样本.intention_id}`],
+      ['candidate', null],
+      ['candidate', 'candidate:list:int_2'],
+    ]);
+  });
+
+  it('本地搜索只在已加载卡上过滤', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([
+      BFF候选岗位推荐样本,
+      换卡卡({ 推荐ID: 'rec_c2', 岗位ID: 'job_2', 职位: '数据工程师' }),
+    ]);
+    render(<看市场 />);
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '搜索职位' }));
+    await user.type(screen.getByPlaceholderText('搜职位、公司或关键词'), '数据');
+    expect(screen.getByText('数据工程师')).toBeTruthy();
+    expect(screen.queryByText('AI 产品实习生')).toBeNull();
+  });
+
+  it('初次载入给加载态；失败态给错误文案与重试（重试走 force GET）', async () => {
+    const user = userEvent.setup();
+    置P4候选意向({ 意向ID: BFF意向样本.intention_id, 阶段: '进行中', items: [], 操作: {} });
+    const 页 = render(<看市场 />);
+    expect(screen.getByText('正在为你挑岗位…')).toBeTruthy();
+    页.unmount();
+
+    置应用状态({
+      模式: 'backend', 候选规则阶段: '成功',
+      状态: P4状态底座(),
+      后端状态: {
+        候选岗位推荐: {
+          [BFF意向样本.intention_id]: P4快照({ 阶段: '失败', error: '服务暂时不可用，请稍后再试' }),
+        },
+      },
+      操作: { 加载候选岗位: mock加载候选岗位 },
+    });
+    render(<看市场 />);
+    expect(screen.getByText('推荐暂时加载不了')).toBeTruthy();
+    expect(screen.getByText('服务暂时不可用，请稍后再试')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '重试' }));
+    expect(mock加载候选岗位).toHaveBeenCalledWith(BFF意向样本.intention_id, true);
+  });
+
+  it('空快照给「没有新职位」空态；让AI代理帮我搜建新批次（POST+GET）', async () => {
+    const user = userEvent.setup();
+    置P4候选意向({
+      意向ID: BFF意向样本.intention_id, 阶段: '成功', items: [],
+      操作: { 刷新候选岗位: mock刷新候选岗位 },
+    });
+    render(<看市场 />);
+    expect(screen.getByText('这个意向下暂时没有新职位')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '让AI代理帮我搜' }));
+    expect(mock刷新候选岗位).toHaveBeenCalledWith(BFF意向样本.intention_id);
+    expect(mock加载候选岗位).not.toHaveBeenCalled();
+  });
+
+  it('下拉刷新只重读当前 scope（GET），不建新批次', () => {
+    置P4候选意向({
+      意向ID: BFF意向样本.intention_id, 阶段: '成功', items: [BFF候选岗位推荐样本],
+      操作: { 加载候选岗位: mock加载候选岗位, 刷新候选岗位: mock刷新候选岗位 },
+    });
+    render(<看市场 />);
+    const root = document.querySelector('.滚动区')!.parentElement!;
+    fireEvent.pointerDown(root, { clientY: 0 });
+    fireEvent.pointerMove(root, { clientY: 120 });
+    fireEvent.pointerUp(root, { clientY: 120 });
+    expect(mock加载候选岗位).toHaveBeenCalledWith(BFF意向样本.intention_id, true);
+    expect(mock刷新候选岗位).not.toHaveBeenCalled();
+  });
+
+  it('刷新失败保留旧卡并给出未决文案', () => {
+    置P4候选状态([BFF候选岗位推荐样本]);
+    const { rerender } = render(<看市场 />);
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
+    置应用状态({
+      模式: 'backend', 候选规则阶段: '成功',
+      状态: P4状态底座(),
+      后端状态: {
+        候选岗位推荐: {
+          [BFF意向样本.intention_id]: P4快照({
+            阶段: '成功', items: [BFF候选岗位推荐样本], error: '已发起新一轮，结果暂未刷新',
+          }),
+        },
+      },
+      操作: { 委托候选岗位: mock委托候选岗位 },
+    });
+    rerender(<看市场 />);
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
+    expect(screen.getByText('已发起新一轮，结果暂未刷新')).toBeTruthy();
+  });
+
+  it('不感兴趣服务端移除后，列表只按权威快照出卡', () => {
+    置P4候选状态([
+      BFF候选岗位推荐样本,
+      换卡卡({ 推荐ID: 'rec_c2', 岗位ID: 'job_2', 职位: '数据工程师' }),
+    ]);
+    const { rerender } = render(<看市场 />);
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
+    // 操作层 PUT 成功并从 scope 移除之后的权威快照：卡不残留、不靠本地过滤
+    置P4候选状态([换卡卡({ 推荐ID: 'rec_c2', 岗位ID: 'job_2', 职位: '数据工程师' })]);
+    rerender(<看市场 />);
+    expect(screen.queryByText('AI 产品实习生')).toBeNull();
+    expect(screen.getByText('数据工程师')).toBeTruthy();
+  });
+
+  it('accepted/evaluating 委托显示「AI代理已接手」状态标，去谈键不在', () => {
+    置P4候选状态([接手卡]);
+    render(<看市场 />);
+    expect(screen.getByText('AI代理已接手')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '让AI代理去谈' })).toBeNull();
+  });
+
+  it('页面挂载时对进行中委托按节拍刷新回执', async () => {
+    vi.useFakeTimers();
+    mock刷新委托.mockResolvedValue(undefined);
+    置应用状态({
+      模式: 'backend', 候选规则阶段: '成功',
+      状态: P4状态底座(),
+      后端状态: {
+        候选岗位推荐: { [BFF意向样本.intention_id]: P4快照({ 阶段: '成功', items: [接手卡] }) },
+      },
+      操作: { 委托候选岗位: mock委托候选岗位, 刷新委托: mock刷新委托 },
+    });
+    render(<看市场 />);
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(mock刷新委托).toHaveBeenCalledWith('candidate', 'del_1');
+  });
+
+  it('委托成功后原地停留：不跳在谈详情、不派发任何 Mock 动作', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([BFF候选岗位推荐样本]);
+    render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    await user.click(screen.getByRole('button', { name: '确认委托' }));
+    await waitFor(() => expect(mock委托候选岗位).toHaveBeenCalledTimes(1));
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock派发).not.toHaveBeenCalled();
+  });
+
+  it('Mock 保持一键委托：立即派发 委托入谈，无确认层', async () => {
+    const user = userEvent.setup();
+    置应用状态({
+      模式: 'mock',
+      状态: {
+        子视图: '看市场', 当前意向: 'AI 产品经理',
+        求职意向表: [{ 编号: 'I-01', 标题: '[上海] AI 产品经理' }],
+        在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+        全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
+      },
+    });
+    render(<看市场 />);
+    const 去谈键 = screen.getAllByRole('button', { name: '让AI代理去谈' });
+    expect(去谈键.length).toBeGreaterThan(0);
+    await user.click(去谈键[0]!);
+    expect(mock派发).toHaveBeenCalledWith({
+      型: '委托入谈',
+      岗: expect.objectContaining({ 意向: 'AI 产品经理' }),
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('Backend 列表零 Mock 兜底：空快照也不回退市场列表', () => {
+    置P4候选意向({ 意向ID: BFF意向样本.intention_id, 阶段: '成功', items: [], 操作: {} });
+    render(<看市场 />);
+    expect(screen.getByText('这个意向下暂时没有新职位')).toBeTruthy();
+    expect(screen.queryByText('MiniMax')).toBeNull();
+    expect(screen.queryByText('AI 产品经理（Agent 方向）')).toBeNull();
   });
 });
