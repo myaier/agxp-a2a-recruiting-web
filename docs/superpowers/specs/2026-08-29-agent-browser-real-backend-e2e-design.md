@@ -138,6 +138,8 @@ prepare -> up -> health -> bootstrap
 - 四条用户旅程和共享的 `agent-browser` 语义步骤；
 - 视觉场景、环境 manifest、基线 PNG、candidate/diff 与报告；
 - console/page error、失败请求和 cleanup 判定；
+- 真实后端 E2E TypeScript 的独立 typecheck project；
+- 为披露偏好分段按钮补真实 accessible name/pressed state，并同步既有数据源 E2E 定位；
 - 被 `.gitignore` 排除的运行产物。
 
 前端通过必填的 `AGXP_MONOREPO_DIR` 找后端仓库，不硬编码 `~/agxp-monorepo`，也不直接调用 Docker Compose 内部文件。
@@ -345,7 +347,7 @@ backend-local-recruiter
 
 基线 PNG 和 manifest 提交到前端仓库。candidate、diff、annotated screenshot 和运行报告全部写入 gitignored artifact 目录。
 
-只有显式 `--update-baseline` 可以生成候选基线；命令必须先通过全部功能旅程和 fixture verify。已有 manifest 时还必须通过环境一致性检查；仓库尚无 manifest 的首次 bootstrap 则记录当前环境并把七个场景报告为 `missing`，允许生成独立 review 目录。损坏的 manifest 或已有 manifest 的环境不兼容仍是 `INFRA_BLOCKED`。命令不能在同一次失败运行中直接覆盖已提交基线，最终更新仍需人工查看 diff 后提交。
+只有显式 `--update-baseline` 可以生成候选基线，且它只接受 `--journey all`，因为七张 reference 是一个原子集合。命令必须先通过全部功能旅程和 fixture verify。已有 manifest 时还必须通过环境一致性检查；仓库尚无 manifest 的首次 bootstrap 则记录当前环境并把七个场景报告为 `missing`，允许生成独立 review 目录。损坏的 manifest 或已有 manifest 的环境不兼容仍是 `INFRA_BLOCKED`。命令不能在同一次失败运行中直接覆盖已提交基线，最终更新仍需人工查看 diff 后提交。
 
 ## 13. 运行时错误与网络证据
 
@@ -401,8 +403,13 @@ backend-local-recruiter
 
 ```text
 e2e/真实后端/
+├── 类型.ts
+├── 报告.ts
+├── 报告.test.ts
 ├── 运行整栈验收.sh
+├── 运行整栈验收.test.sh
 ├── 公共步骤.sh
+├── 公共步骤.test.sh
 ├── 旅程/
 │   ├── 候选数据加载.sh
 │   ├── 候选CRUD.sh
@@ -411,11 +418,17 @@ e2e/真实后端/
 ├── 视觉/
 │   ├── 场景清单.ts
 │   ├── 比较.ts
+│   ├── 比较.test.ts
 │   ├── 基线清单.json
 │   └── 基线/*.png
 └── 资源/
     ├── 简历-v1.pdf
     └── 简历-v2.pdf
+
+tsconfig.e2e.json
+src/屏幕/披露偏好.tsx
+src/屏幕/披露偏好.test.tsx
+e2e/数据源模式.spec.ts
 ```
 
 后端新增窄入口：
@@ -436,7 +449,7 @@ npm run test:agent-browser:backend-local -- --headed
 npm run test:agent-browser:backend-local -- --update-baseline
 ```
 
-单旅程模式仍写出五个固定 journey fragment；未选旅程显式记为 `skipped`，只把已选择但缺失的 fragment 判为功能失败。
+单旅程模式仍写出五个固定 journey fragment；未选旅程显式记为 `skipped`，只把已选择但缺失的 fragment 判为功能失败。视觉层同样只比较所选旅程对应的 scene，其他 scene 记为 `skipped`；已有基线模式下，所选 scene 缺 reference/candidate 是 `INFRA_BLOCKED`，首次 bootstrap 的所选 scene 才允许记为 `missing`。
 
 固定退出码：
 

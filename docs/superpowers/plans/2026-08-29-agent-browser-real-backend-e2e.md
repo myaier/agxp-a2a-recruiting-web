@@ -76,6 +76,7 @@
 - `tsconfig.json`：引用 `tsconfig.e2e.json`，让现有 `npm run typecheck` 真正覆盖新增 TypeScript。
 - `src/屏幕/披露偏好.tsx`：给每个披露档按钮补字段化 `aria-label` 与 `aria-pressed`，不改变视觉。
 - `src/屏幕/披露偏好.test.tsx`：冻结可访问名称与选中状态。
+- `e2e/数据源模式.spec.ts`：把披露偏好的 role/name 定位更新为字段化 accessible name，继续覆盖真实页面合同。
 
 ## Stable Interfaces
 
@@ -172,7 +173,7 @@ export interface 视觉结果 {
   environment: 'matched' | 'bootstrap' | 'blocked';
   scenes: Array<{
     sceneId: string;
-    status: 'pass' | 'warning' | 'blocked' | 'missing';
+    status: 'pass' | 'warning' | 'blocked' | 'missing' | 'skipped';
     pixelDiffRatio: number | null;
     reference: string | null;
     candidate: string | null;
@@ -574,6 +575,8 @@ run converge
 
 Add a failure scene where an exact fixed organization exists but belongs to another fixture identity; expected `BLOCKED` 75 and zero review/job mutation.
 
+Add a stale-receipt scene: pre-state excludes one exact `浏览器验收岗位 · 临时CRUD` job, current owner list contains exactly that delta, and the next `converge` deletes it before baseline verification. A missing receipt, second delta or title mismatch must block without deletion.
+
 - [ ] **Step 2: 实现受控 internal approval**
 
 The persistent Compose file does not publish Recruitment Service. Run a one-shot curl container on the private project network and mount only the Recruitment secret volume:
@@ -616,6 +619,7 @@ The bearer is read and expanded only inside the one-shot container, the config i
 Algorithm:
 
 ```text
+reconcile every stale run receipt's recruiter job delta before login; delete only the sole receipt-proven fixed temp title and fail closed on ambiguity
 login recruiter → ensure recruiter role → set last-used-role recruiter
 GET/PATCH recruiter profile to public_name="浏览器验收招聘官", title="招聘负责人"
 GET affiliations
@@ -654,7 +658,7 @@ Both use no candidate/matchcase relation, deterministic salary/description, and 
 
 Verify exact profile, one verified active admin affiliation, exact company intro, exactly one active baseline job and one archived baseline job, and no job named `浏览器验收岗位 · 临时CRUD`.
 
-Cleanup compares the current owner job list with the receipt pre-state, requires the only new row to have title `浏览器验收岗位 · 临时CRUD`, deletes it at current revision, then calls `recruiter_converge` and `recruiter_verify`. Zero delta means the UI already deleted it; unknown or multiple deltas fail closed.
+Cleanup compares the current owner job list with the receipt pre-state, requires the only new row to have title `浏览器验收岗位 · 临时CRUD`, deletes it at current revision, then calls `recruiter_converge` and `recruiter_verify`. Zero delta means the UI already deleted it; unknown or multiple deltas fail closed. The same helper runs at the start of both candidate and recruiter converge for stale receipts, so a process crash cannot wedge either fixed reserved name permanently.
 
 - [ ] **Step 5: 完成 fake runtime 与 source security contract**
 
@@ -764,7 +768,7 @@ describe('真实后端整栈 verdict', () => {
 });
 ```
 
-Visual tests must synthesize 20×20 PNGs and assert 1/400 pass, 20/400 warning, 21+/400 blocked according to the existing comparator's strict boundaries; also assert a mismatched agent-browser version or Chrome build returns environment blocked before reading PNGs.
+Visual tests must synthesize 20×20 PNGs and assert 1/400 pass, 20/400 warning, 21+/400 blocked according to the existing comparator's strict boundaries; also assert a mismatched agent-browser version or Chrome build returns environment blocked before reading PNGs. Add matrix cases for all seven selected, one journey's selected scenes, selected candidate/reference missing, and unselected scenes.
 
 - [ ] **Step 2: 运行失败测试**
 
@@ -792,11 +796,11 @@ export const 真实后端场景们 = [
 export type 真实后端场景ID = typeof 真实后端场景们[number];
 ```
 
-`判定整栈结果()` has an explicit `reportParseError` input and priority report parse error 2, infra 75, cleanup 1, functional 1, enforce visual 1, report visual 0 with classification `VISUAL_DRIFT`, otherwise PASS 0. The runner passes the selected journey set to the report reader: a selected fragment missing is `FUNCTIONAL_FAILED`; every unselected journey must have a present `status:'skipped'` fragment. An absent visual manifest is bootstrap, a malformed manifest or an existing incompatible manifest is `INFRA_BLOCKED`.
+`判定整栈结果()` has an explicit `reportParseError` input and priority report parse error 2, infra 75, cleanup 1, functional 1, enforce visual 1, report visual 0 with classification `VISUAL_DRIFT`, otherwise PASS 0. The runner passes the selected journey set to the report reader: a selected fragment missing is `FUNCTIONAL_FAILED`; every unselected journey must have a present `status:'skipped'` fragment. An absent visual manifest is bootstrap; a malformed manifest, an existing incompatible manifest, or a selected scene missing under matched mode is `INFRA_BLOCKED`.
 
 - [ ] **Step 4: 实现视觉比较**
 
-`比较真实后端视觉()` handles three explicit states. With no committed manifest/reference directory it returns environment `bootstrap`, records the current environment, and returns all seven scenes as `missing` without calling `比较图片`. With a valid manifest it deep-compares environment fields except `baselineCommit`, then loops the seven scene IDs, calls existing `比较图片(reference,candidate,diff,默认比较阈值)`, and returns paths relative to the output root. A malformed or incompatible existing manifest returns `blocked`. It never uses the Mock comparison directory API because that API treats real `/api/v1` requests as structure failures.
+`比较真实后端视觉()` accepts the selected journey set and derives the expected scene set (`candidate-load`→3 candidate load scenes, `candidate-crud`→resume-updated, `recruiter-load`→2 recruiter load scenes, `recruiter-crud`→jobs-after-create, `all`→7). Unselected scenes return `skipped` and never read PNGs. With no committed manifest/reference directory it returns environment `bootstrap`, records the current environment, marks selected scenes `missing`, and leaves unselected scenes `skipped`. With a valid manifest it deep-compares environment fields except `baselineCommit`; before each expected comparison it checks both reference and candidate existence, and any missing expected file returns scene `missing` plus environment `blocked`/`INFRA_BLOCKED` instead of throwing or silently passing. Only then call existing `比较图片(reference,candidate,diff,默认比较阈值)`. A malformed or incompatible existing manifest also returns `blocked`. It never uses the Mock comparison directory API because that API treats real `/api/v1` requests as structure failures.
 
 Baseline update API is two-phase:
 
@@ -857,6 +861,7 @@ git commit -m "test: add real-backend acceptance report core"
 - Create: `e2e/真实后端/资源/简历-v2.pdf`
 - Modify: `src/屏幕/披露偏好.tsx`
 - Modify: `src/屏幕/披露偏好.test.tsx`
+- Modify: `e2e/数据源模式.spec.ts`
 
 **Interfaces:**
 - Consumes: `AGENT_BROWSER_SESSION`、`RUN_DIR`、`PRIVATE_LEDGER`、`FRONTEND_ORIGIN=http://localhost:5173`。
@@ -880,6 +885,8 @@ grep -Fq 'find role button click --name 我要找工作' "$CALLS"
 Also test `capture_scene` issues viewport/media/eval stabilization before screenshot, writes candidate PNG under `$RUN_DIR/visual/candidate/<scene>.png`, and rejects an unknown scene ID.
 
 Extend `src/屏幕/披露偏好.test.tsx` first so it fails until every segmented button exposes a unique accessible name such as `当前公司：不披露` and the selected button exposes `aria-pressed="true"`; assert changing the backend snapshot moves the pressed state without relying on a CSS class.
+
+Update the existing `e2e/数据源模式.spec.ts` disclosure locators from the now-obsolete generic names (`不披露`/`意向确认后`/`一直允许`) to the exact field-qualified names. Do not weaken them to `.first()`; each locator must name the intended field and state.
 
 - [ ] **Step 2: 运行失败测试**
 
@@ -994,6 +1001,8 @@ Extend the fake CLI test to source both candidate journeys and assert the ordere
 bash e2e/真实后端/公共步骤.test.sh
 npm test -- --run src/屏幕/披露偏好.test.tsx
 npm run test:agent-browser:unit
+npm run test:e2e:data-source
+npm run ui:check
 ```
 
 Expected: PASS.
@@ -1004,7 +1013,7 @@ Expected: PASS.
 git add e2e/真实后端/公共步骤.sh e2e/真实后端/公共步骤.test.sh \
   e2e/真实后端/旅程/候选数据加载.sh e2e/真实后端/旅程/候选CRUD.sh \
   e2e/真实后端/资源/简历-v1.pdf e2e/真实后端/资源/简历-v2.pdf \
-  src/屏幕/披露偏好.tsx src/屏幕/披露偏好.test.tsx
+  src/屏幕/披露偏好.tsx src/屏幕/披露偏好.test.tsx e2e/数据源模式.spec.ts
 git commit -m "test: add candidate real-backend browser journeys"
 ```
 
@@ -1048,7 +1057,7 @@ Use fixed reserved title `浏览器验收岗位 · 临时CRUD` and exact steps; 
 
 ```text
 招聘名片 → change public title to 浏览器验收招聘负责人 → save → reload → restore 招聘负责人 → reload
-公司资料 → 公司介绍 → change to 浏览器验收科技 · $RUN_ID → save → reload
+公司资料 → 公司介绍 → change to 浏览器验收科技 · 临时CRUD介绍 → save → reload
 restore 真实后端企业介绍基线 → reload
 岗位管理 → 发布新岗位 → complete three semantic form steps with exact Catalog choices → publish
 append exact title 浏览器验收岗位 · 临时CRUD to recruiter_job_titles in the private cleanup journal
@@ -1123,6 +1132,7 @@ report mode visual blocked → exit 0 classification VISUAL_DRIFT
 enforce mode visual blocked → exit 1
 SIGINT/failure → close only two named sessions and owned Vite; preserve preexisting backend
 unknown journey/argument → exit 2 before mutations
+--update-baseline combined with a journey other than all → exit 2 before mutations
 single selected journey passes → emit four unselected/session-isolation fragments as skipped; exit 0
 ```
 
@@ -1143,6 +1153,8 @@ Accepted arguments only:
 --headed
 --update-baseline
 ```
+
+`--update-baseline` is valid only with `--journey all` (or the default `all`) because a committed baseline set is atomic across all seven scenes; reject partial baseline candidates as usage 2 before stack mutation.
 
 Preflight requires absolute existing `AGXP_MONOREPO_DIR`, cleanly executable backend entrypoints, `node_modules/.bin/vite`, `agent-browser`, Chrome doctor, `jq`, `curl`, Docker daemon, free `localhost:5173`, and safe output path under the frontend root. Generate run ID from UTC timestamp plus six random hex chars; create `$RUN_DIR/private` mode 0700 and cleanup journal mode 0600.
 
@@ -1348,6 +1360,8 @@ npm run test:agent-browser:unit
 bash e2e/真实后端/公共步骤.test.sh
 bash e2e/真实后端/运行整栈验收.test.sh
 npm test
+npm run test:e2e:data-source
+npm run ui:check
 npm run typecheck
 npm run lint
 npm run build
