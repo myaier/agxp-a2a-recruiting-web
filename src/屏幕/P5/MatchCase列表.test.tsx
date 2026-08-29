@@ -412,6 +412,8 @@ function 置求职屏状态(选项: {
   看什么?: '全部' | '待我拍板' | '进行中';
   filterRef?: string | null;
   快照?: P5列表快照;
+  /** 首帧用：不预置任何 P5 工作区快照（快照 undefined = 还没读回来） */
+  不预置快照?: boolean;
   意向表编号?: string[];
   当前意向?: string;
 }) {
@@ -430,7 +432,7 @@ function 置求职屏状态(选项: {
       在谈列表: [],
     },
     后端状态: {
-      P5工作区: {
+      P5工作区: 选项.不预置快照 === true ? {} : {
         [P5范围键.open('candidate', 选项.filterRef === undefined ? 意向ID : 选项.filterRef)]:
           选项.快照 ?? 快照({ items: [候选行({ caseId: 'mc_1' })] }),
       },
@@ -445,6 +447,8 @@ function 置招聘屏状态(选项: {
   看什么?: '全部' | '待我拍板' | '进行中';
   filterRef?: string | null;
   快照?: P5列表快照;
+  /** 首帧用：不预置任何 P5 工作区快照（快照 undefined = 还没读回来） */
+  不预置快照?: boolean;
   岗位状态?: string;
   岗位编号?: string;
 }) {
@@ -467,7 +471,7 @@ function 置招聘屏状态(选项: {
         candidate: { rules: '未开始', proposals: '未开始' },
         recruiter: { rules: '成功', proposals: '成功' },
       },
-      P5工作区: {
+      P5工作区: 选项.不预置快照 === true ? {} : {
         [P5范围键.open('recruiter', 选项.filterRef === undefined ? 编号 : 选项.filterRef)]:
           选项.快照 ?? 快照({ items: [招聘行({ caseId: 'mc_1' })] }),
       },
@@ -503,6 +507,8 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     });
     render(<在谈首页 />);
     expect(screen.getByText('这个意向下暂时没有在谈职位。')).toBeTruthy();
+    // 护栏空态刻意零请求、没有未读数据 —— 横幅定论与 Mock 同口径
+    expect(screen.getByText('暂时没有需要你介入的')).toBeTruthy();
     expect(mock设置P5范围).not.toHaveBeenCalled();
     expect(mock加载工作区).not.toHaveBeenCalled();
   });
@@ -533,6 +539,54 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     expect(screen.getByText('1 个职位需要你协调')).toBeTruthy();
   });
 
+  it('求职端横幅零待办分支：首帧/游标未尽都不下「暂时没有」的定论，读尽后才定论', () => {
+    // (a) 首帧（scope 已注册、快照还没读回来）：只说正在读入，绝不出现定论文案
+    置求职屏状态({ filterRef: 意向ID, 不预置快照: true });
+    const { rerender } = render(<在谈首页 />);
+    expect(mock加载工作区).toHaveBeenCalledWith('candidate', 意向ID);
+    expect(screen.getByText('正在读入在谈职位…')).toBeTruthy();
+    expect(screen.queryByText('暂时没有需要你介入的')).toBeNull();
+    // (b) 游标未尽 + 已载零待办：只给非定论兜底
+    置求职屏状态({
+      filterRef: 意向ID,
+      快照: 快照({ items: [候选行({ caseId: 'mc_1', 待办: false })], nextCursor: 'b2x' }),
+    });
+    rerender(<在谈首页 />);
+    expect(screen.getByText('已读入的里暂时没有需要你介入的')).toBeTruthy();
+    expect(screen.queryByText('暂时没有需要你介入的')).toBeNull();
+    // (c) 游标读尽 + 零待办：才下「暂时没有」的定论
+    置求职屏状态({
+      filterRef: 意向ID,
+      快照: 快照({ items: [候选行({ caseId: 'mc_1', 待办: false })], nextCursor: null }),
+    });
+    rerender(<在谈首页 />);
+    expect(screen.getByText('暂时没有需要你介入的')).toBeTruthy();
+  });
+
+  it('招聘端横幅零待办分支：首帧/游标未尽都不下「暂时没有」的定论，读尽后才定论', () => {
+    // (a) 首帧：只说正在读入
+    置招聘屏状态({ filterRef: 职位ID, 不预置快照: true });
+    const { rerender } = render(<企业在谈候选 />);
+    expect(mock加载工作区).toHaveBeenCalledWith('recruiter', 职位ID);
+    expect(screen.getByText('正在读入在谈候选…')).toBeTruthy();
+    expect(screen.queryByText('暂时没有需要你拍板的')).toBeNull();
+    // (b) 游标未尽 + 已载零待办：只给非定论兜底
+    置招聘屏状态({
+      filterRef: 职位ID,
+      快照: 快照({ items: [招聘行({ caseId: 'mc_1', 待办: false })], nextCursor: 'b2x' }),
+    });
+    rerender(<企业在谈候选 />);
+    expect(screen.getByText('已读入的里暂时没有需要你拍板的')).toBeTruthy();
+    expect(screen.queryByText('暂时没有需要你拍板的')).toBeNull();
+    // (c) 游标读尽 + 零待办：才下「暂时没有」的定论
+    置招聘屏状态({
+      filterRef: 职位ID,
+      快照: 快照({ items: [招聘行({ caseId: 'mc_1', 待办: false })], nextCursor: null }),
+    });
+    rerender(<企业在谈候选 />);
+    expect(screen.getByText('暂时没有需要你拍板的')).toBeTruthy();
+  });
+
   it('招聘端：当前档按在招 job_id 过滤，全部档不带过滤；归档岗绝不拿来当 scope', () => {
     置招聘屏状态({ filterRef: 职位ID });
     const { rerender } = render(<企业在谈候选 />);
@@ -549,6 +603,8 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     置招聘屏状态({ filterRef: 职位ID, 岗位状态: '已归档' });
     render(<企业在谈候选 />);
     expect(screen.getByText('还没有在招的岗位')).toBeTruthy();
+    // 护栏空态刻意零请求、没有未读数据 —— 横幅定论与 Mock 同口径
+    expect(screen.getByText('暂时没有需要你拍板的')).toBeTruthy();
     expect(mock设置P5范围).not.toHaveBeenCalled();
     expect(mock加载工作区).not.toHaveBeenCalled();
   });

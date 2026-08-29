@@ -65,7 +65,8 @@ function Backend在谈首页() {
   const filterRef = 范围 === '全部' ? null : (当前意向条?.编号 ?? null);
   const 当前意向仍在表内 = 当前意向条 !== undefined;
 
-  const 快照 = 当前意向仍在表内 || 范围 === '全部'
+  const 有scope = 当前意向仍在表内 || 范围 === '全部';
+  const 快照 = 有scope
     ? 后端状态.P5工作区?.[P5范围键.open('candidate', filterRef)]
     : undefined;
   const 已载待办数 = 快照?.items.filter((条) => 条.needsAction).length ?? 0;
@@ -76,9 +77,20 @@ function Backend在谈首页() {
   const 全档待办数 = 全部快照 !== undefined && 全部快照.nextCursor === null
     ? 全部快照.items.filter((条) => 条.needsAction).length : 0;
 
+  // 横幅：0 也可能是「还没读完」（§10.1 未读尽不声称全量）—— 读尽前一律非定论文案，
+  // 首帧（快照未落）只说正在读入。护栏空态（当前意向已删，本屏刻意零请求）没有
+  // 未读数据，定论与 Mock 同口径。
+  const 横幅强调 = !有scope
+    ? '暂时没有需要你介入的'
+    : 快照 === undefined
+      ? '正在读入在谈职位…'
+      : 已载待办数 > 0
+        ? (读尽 ? `${已载待办数} 个职位需要你协调` : '有职位需要你协调')
+        : (读尽 ? '暂时没有需要你介入的' : '已读入的里暂时没有需要你介入的');
+
   // 下拉只重读当前 scope（GET）；错误文案由快照 error 承载，列表上方错误行呈现
   const 重读当前范围 = () =>
-    当前意向仍在表内 || 范围 === '全部'
+    有scope
       ? 操作.刷新工作区('candidate', filterRef).catch(() => undefined)
       : undefined;
 
@@ -92,9 +104,7 @@ function Backend在谈首页() {
 
       <代理横幅
         前文="初筛与前几轮我已谈完，"
-        强调={已载待办数 > 0
-          ? (读尽 ? `${已载待办数} 个职位需要你协调` : '有职位需要你协调')
-          : '暂时没有需要你介入的'}
+        强调={横幅强调}
         按下={() => 跳转(路径.问AI代理)}
       />
 
