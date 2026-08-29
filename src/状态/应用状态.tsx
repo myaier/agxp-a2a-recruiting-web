@@ -48,16 +48,18 @@ export type 在谈范围档 = '当前' | '全部';
  */
 import type { 意向草稿型 } from '../数据/招聘数据源类型';
 export type { 意向草稿型 };
-import type { BFF主体, BFF角色 } from '../数据/BFF契约';
+import type { BFF主体, BFF角色, P5角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
 import type { 资料缓存快照 } from '../数据/资料缓存';
 import { 读资料缓存 } from '../数据/资料缓存';
+import type { PDF对象租约 } from '../数据/PDF对象租约';
 import { 轻提示 } from '../组件/轻提示';
 import type { 应用操作, 后端状态, 后端操作依赖 } from './后端/类型';
 import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
 import { 创建发现推荐操作, 创建空P4发现状态 } from './后端/发现推荐操作';
+import { 创建MatchCase操作, 创建空P5MatchCase状态, 清P5MatchCase引用 } from './后端/MatchCase操作';
 import { 创建候选操作 } from './后端/候选操作';
 import { 创建岗位操作 } from './后端/岗位操作';
 import { 创建组织操作 } from './后端/组织操作';
@@ -469,6 +471,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     },
     // P4：发现推荐 raw scope 快照/详情/委托回执全部空底座起步（Mock 发现域不触达这里）
     ...创建空P4发现状态(),
+    // P5：MatchCase 内存态快照（工作区/历史/详情）空底座起步；绝不进 资料持久化
+    ...创建空P5MatchCase状态(),
     // P2：附件库权威快照种子为 null（Backend 初始不带任何演示附件行）
     附件简历库: null,
   }));
@@ -495,6 +499,12 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const P4范围代际 = useRef(new Map<string, number>());
   const P4幂等意图 = useRef(new Map<string, string>());
   const P4可见范围 = useRef<Record<BFF角色, string | null>>({ candidate: null, recruiter: null });
+  // P5 Task 3：MatchCase 运行时引用 —— scope 代际 / pending 幂等意图 / 双端可见范围 /
+  // 在途 PDF 对象租约。一次性初始化；会话转移由下方主体基串 effect 统一复位。
+  const P5范围代际 = useRef(new Map<string, number>());
+  const P5幂等意图 = useRef(new Map<string, string>());
+  const P5可见范围 = useRef<Record<P5角色, string | null>>({ candidate: null, recruiter: null });
+  const P5对象租约 = useRef(new Set<PDF对象租约>());
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
   use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识 });
 
@@ -580,6 +590,23 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [是后端, 后端]);
 
+  // ── P5 Task 3：MatchCase 会话边界的反应式清理 ─────────────────────────────────
+  // 登出 / 401 清理 / 换主体登录 / 切身份在状态上全部表现为「主体基串（subject + 角色）」
+  // 变化：这里统一清 P5 内存快照、scope 代际与幂等意图引用，并回收全部在途 PDF 对象
+  // 租约（内存纪律：P5 状态绝不进 资料持久化 / 浏览器存储；在飞请求由操作层自身的
+  // subject/role/会话代际栅栏按旧代整包丢弃）。同主体重登（基串不变）不清 —— 与 P4
+  // 草稿保留口径一致，且不确定结果的同键重试跨重登仍可沿用。
+  const P5会话基 = useRef('');
+  useEffect(() => {
+    const 基 = 后端状态.主体 === null ? '' : `${后端状态.主体.subject_id}|${后端状态.主体.last_used_role}`;
+    if (P5会话基.current === 基) return;
+    P5会话基.current = 基;
+    清P5MatchCase引用({ P5范围代际, P5幂等意图, P5可见范围, P5对象租约 });
+    设后端状态((旧) => ({ ...旧, ...创建空P5MatchCase状态() }));
+    // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [后端状态.主体]);
+
   const 操作 = useMemo<应用操作>(
     () => {
       const deps: 后端操作依赖 = {
@@ -597,6 +624,10 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         P4范围代际,
         P4幂等意图,
         P4可见范围,
+        P5范围代际,
+        P5幂等意图,
+        P5可见范围,
+        P5对象租约,
       };
       return {
         ...创建会话操作(deps),
@@ -610,6 +641,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         ...创建发现推荐操作(deps),
         // P2：附件简历操作同样共用同一把 deps（库锁/文件锁落在同一把 锁 里）
         ...创建附件简历操作(deps),
+        // P5 Task 3：MatchCase 操作（内存态快照 + 意图键化命令 + 租约），同一把 deps
+        ...创建MatchCase操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定

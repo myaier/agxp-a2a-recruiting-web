@@ -29,12 +29,15 @@ import type {
   BFF附件简历库,
 } from '../../数据/BFF契约';
 import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
+import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
+import type { P5列表项, P5详情 } from '../../数据/招聘数据源/MatchCase';
+import type { PDF对象租约 } from '../../数据/PDF对象租约';
 import type { 在招岗位, 披露档, 屏蔽来源, 屏蔽项 } from '../../数据/类型';
 import type { 资料形 } from '../../数据/公司主页资料';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 动作, 状态 } from '../应用状态';
 
-export interface 后端状态 extends P4发现状态 {
+export interface 后端状态 extends P4发现状态, P5MatchCase状态 {
   初始化: '跳过' | '进行中' | '完成';
   已登录: boolean;
   主体: BFF主体 | null;
@@ -94,6 +97,40 @@ export interface P4发现状态 {
 }
 
 export type 更新后端状态 = (更新: (旧: 后端状态) => 后端状态) => void;
+
+// ── P5：MatchCase 域的内存态 scope 快照（仅 Backend；快照绝不进 资料持久化 / 浏览器存储）──
+
+/** P5 scope 快照的生命周期阶段；已 成功 的快照在刷新途中保持 成功（旧 items/detail 不降级）。 */
+export type P5加载阶段 = '未开始' | '进行中' | '成功' | '失败';
+
+/**
+ * 工作区 / 历史架子的列表快照：key 是 P5范围键.open / .history（role + 角色专属过滤）。
+ * 已加载页数 是「已载窗口」的深度：刷新从第一页重建同样深度的窗口，追加逐页 +1。
+ */
+export interface P5列表快照 {
+  阶段: P5加载阶段;
+  刷新中: boolean;
+  items: P5列表项[];
+  nextCursor: string | null;
+  已加载页数: number;
+  error: string | null;
+  generation: number;
+}
+
+/** 详情快照：key 是 P5范围键.detail(role, caseId)；detail 只来自权威 GET，mutation 响应绝不写入。 */
+export interface P5详情快照 {
+  阶段: P5加载阶段;
+  刷新中: boolean;
+  detail: P5详情 | null;
+  error: string | null;
+  generation: number;
+}
+
+export interface P5MatchCase状态 {
+  P5工作区: Record<string, P5列表快照>;
+  P5历史: Record<string, P5列表快照>;
+  P5详情: Record<string, P5详情快照>;
+}
 export type 可变引用<T> = { current: T };
 
 export interface 后端操作依赖 {
@@ -120,6 +157,23 @@ export interface 后端操作依赖 {
   P4范围代际?: 可变引用<Map<string, number>>;
   P4幂等意图?: 可变引用<Map<string, string>>;
   P4可见范围?: 可变引用<Record<BFF角色, string | null>>;
+  /**
+   * P5 Task 3：MatchCase 运行时引用 —— scope 代际 / pending 幂等意图 / 双端可见范围 /
+   * 在途 PDF 对象租约。与 P4 同一纪律：Provider 恒一次性注入；可选成员只为既有
+   * 测试依赖桩 的编译兼容，MatchCase操作 在工厂入口显式收窄。
+   */
+  P5范围代际?: 可变引用<Map<string, number>>;
+  P5幂等意图?: 可变引用<Map<string, string>>;
+  P5可见范围?: 可变引用<Record<P5角色, string | null>>;
+  P5对象租约?: 可变引用<Set<PDF对象租约>>;
+}
+
+/** P5 MatchCase 的四个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
+export interface P5运行时引用 {
+  P5范围代际: 可变引用<Map<string, number>>;
+  P5幂等意图: 可变引用<Map<string, string>>;
+  P5可见范围: 可变引用<Record<P5角色, string | null>>;
+  P5对象租约: 可变引用<Set<PDF对象租约>>;
 }
 
 /** P4 discovery 的三个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -264,4 +318,35 @@ export interface 附件简历操作 {
 
 export type 附件变更结果 = '已提交' | '已换代';
 
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作;
+/**
+ * P5 Task 3：页面会调用的 MatchCase 操作方法表（页面不得直接调用数据源）。
+ * 铁律：调用方不携带幂等键 —— 每个 mutation 由域内按 role + case_id + action + target/ref
+ * 派生一把稳定意图键（spec §12）；mutation 一律服务端先行 + 成功（或确认重放）后权威
+ * detail 重读 + 已载列表/历史刷新，响应本体绝不替换详情快照。
+ */
+export interface MatchCase操作 {
+  /** 屏幕注册当前可见 P5 scope（列表键 / 详情键 / null 卸载）；换键递增旧新 scope 代际。 */
+  设置P5范围(role: P5角色, 范围键: string | null): void;
+  加载工作区(role: P5角色, filterRef: string | null, force?: boolean): Promise<void>;
+  /** 已载窗口向后追加一页（透传快照里的 next_cursor）；游标已尽时零请求。 */
+  追加工作区(role: P5角色, filterRef: string | null): Promise<void>;
+  /** 从第一页重建已载窗口（同深度），轮询与手动刷新共用。 */
+  刷新工作区(role: P5角色, filterRef: string | null): Promise<void>;
+  加载历史(role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null, force?: boolean): Promise<void>;
+  追加历史(role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null): Promise<void>;
+  刷新历史(role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null): Promise<void>;
+  /** 直读详情：URL case_id + 已认证角色，绝不读列表记忆填上下文；force=true 恒权威重读。 */
+  读取详情(role: P5角色, caseId: string, force?: boolean): Promise<void>;
+  回答事实(role: P5角色, caseId: string, promptId: string, response: string): Promise<void>;
+  /** 候选端 S1 简历提交：屏层完成披露确认后传入显式文件/版本对，本层透传字面 true。 */
+  提交简历(caseId: string, fileId: string, fileVersionId: string): Promise<void>;
+  决定S0(caseId: string, action: 'continue' | 'end'): Promise<void>;
+  决定S1(caseId: string, action: 'continue' | 'not_fit'): Promise<void>;
+  决定S2(role: P5角色, caseId: string, issueId: string, action: 'accept' | 'reject'): Promise<void>;
+  决定S3(role: P5角色, caseId: string, action: 'confirm' | 'decline'): Promise<void>;
+  新增叮嘱(role: P5角色, caseId: string, text: string): Promise<void>;
+  /** 披露后的原始简历 PDF：返回 Plan 1 对象租约（登记在域内，会话边界统一回收）。 */
+  读取简历PDF(role: P5角色, caseId: string): Promise<PDF对象租约>;
+}
+
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作;

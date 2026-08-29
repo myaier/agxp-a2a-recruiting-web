@@ -5,6 +5,7 @@
 // 重读权威视图并原样抛出，绝不重放变更）；只有变更 status 0/503 允许一次 GET 校验结果。
 
 import { describe, expect, it, vi, type Mock } from 'vitest';
+import { 创建空P5MatchCase状态 } from './MatchCase操作';
 import { BFF错误 } from '../../数据/HTTP客户端';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { BFF隐私快照 } from '../../数据/BFF契约';
@@ -39,6 +40,8 @@ function 创建隐私测试依赖(后端: HTTP招聘数据源, 服务端: BFF隐
       },
       // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
       ...创建空P4发现状态(),
+      // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
+      ...创建空P5MatchCase状态(),
       // P2：附件库权威快照（只追加，不动 P6 字段）
       附件简历库: null,
     } },

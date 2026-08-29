@@ -26,6 +26,9 @@ import {
 import { 从BFF隐私 } from '../数据/隐私映射';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF招聘方档案, BFF公开企业, BFF角色, BFF附件简历库 } from '../数据/BFF契约';
+import type { BFF二进制响应 } from '../数据/HTTP客户端';
+import { 解P5详情, type P5列表页, type P5详情 } from '../数据/招聘数据源/MatchCase';
+import { P5候选详情Wire } from '../测试/BFF样本';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
 import type { 规则 } from '../数据/类型';
@@ -48,6 +51,9 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+/** P5 Task 3：Provider 用例的候选侧权威详情 DTO（由 Task 1 wire 样本解出）。 */
+const P5候选详情DTO: P5详情 = 解P5详情(P5候选详情Wire, 'candidate');
 
 describe('应用状态 reducer', () => {
   const 写入 = vi.fn();
@@ -468,6 +474,23 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
       items: [],
       limits: { max_files: 3, max_file_bytes: 10485760, accepted_media_types: ['application/pdf'] },
     })),
+    // P5 Task 3：MatchCase 域 facade（默认空页/空详情成功，mutation 默认 void；逐用例覆盖）
+    读取P5Open列表: vi.fn(async (): Promise<P5列表页> => ({ role: 'candidate', items: [], nextCursor: null })),
+    读取P5历史: vi.fn(async (): Promise<P5列表页> => ({ role: 'candidate', items: [], nextCursor: null })),
+    读取P5详情: vi.fn(async (): Promise<P5详情> => P5候选详情DTO),
+    回答P5事实: vi.fn(async (): Promise<void> => undefined),
+    提交P5简历: vi.fn(async (): Promise<void> => undefined),
+    决定P5S0: vi.fn(async (): Promise<void> => undefined),
+    决定P5S1: vi.fn(async (): Promise<void> => undefined),
+    决定P5S2: vi.fn(async (): Promise<void> => undefined),
+    决定P5S3: vi.fn(async (): Promise<void> => undefined),
+    新增P5叮嘱: vi.fn(async (): Promise<void> => undefined),
+    读取P5简历PDF: vi.fn(async (): Promise<BFF二进制响应> => ({
+      blob: { type: 'application/pdf' } as Blob,
+      contentType: 'application/pdf',
+      contentDisposition: null,
+      requestId: 'fixture',
+    })),
   };
 }
 
@@ -631,6 +654,12 @@ describe('应用状态提供者 后端会话', () => {
       // P2 附件简历域方法（附件简历操作）；P5 追加委托前的权威库准备
       '刷新附件简历', '创建附件简历', '替换附件简历', '删除附件简历', '请求附件解析', '下载附件简历',
       '准备候选委托简历',
+      // P5 MatchCase 域方法（MatchCase操作）：scope 注册、工作区/历史窗口、详情直读、
+      // S0–S3 命令、叮嘱与披露后的简历 PDF 租约
+      '设置P5范围', '加载工作区', '追加工作区', '刷新工作区',
+      '加载历史', '追加历史', '刷新历史',
+      '读取详情', '回答事实', '提交简历', '决定S0', '决定S1', '决定S2', '决定S3',
+      '新增叮嘱', '读取简历PDF',
     ].sort().join('|'))).toBeTruthy();
   });
 
@@ -1840,5 +1869,148 @@ describe('应用状态提供者 P2 附件库快照', () => {
     await 当前.操作.完成手机登录('1234');
     await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
     expect(当前.后端状态.附件简历库).toBeNull();
+  });
+});
+
+// ── P5 Task 3：Provider 的 MatchCase 运行时状态 —— 内存快照、会话清理与对象租约 ──
+
+describe('应用状态提供者 P5 MatchCase 运行时状态', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  it('Backend 初始 P5 快照为空底座', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.P5工作区).toEqual({});
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('加载工作区经 facade 提交 scope 快照；成功后非 force 不重发', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 行: P5列表页['items'][number] = {
+      role: 'candidate',
+      state: {
+        caseId: 'mc_1', lifecycle: 'open', stage: 'anonymous_screening', status: 'running',
+        step: 'policy_check', round: 0, roundBudget: 3, needsUser: false,
+        outcome: null, outcomeCode: null,
+        createdAt: '2026-08-29T01:00:00Z', updatedAt: '2026-08-29T02:00:00Z', finalizedAt: null,
+      },
+      needsAction: true,
+      intentionId: 'int_0123456789abcdef0123456789abcdef',
+      job: {
+        jobId: 'job_0123456789abcdef0123456789abcdef',
+        job: { title: 'AI 产品实习生', location: '上海', publicSalaryRange: '300-500 元/天', requiredSkills: ['Python'] },
+      },
+    };
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [行], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    expect(后端.读取P5Open列表).toHaveBeenCalledWith('candidate', null, null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({
+      阶段: '成功', 刷新中: false, items: [行], nextCursor: null, 已加载页数: 1,
+    }));
+    await 当前.操作.加载工作区('candidate', null);
+    expect(后端.读取P5Open列表).toHaveBeenCalledTimes(1);
+  });
+
+  it('Mock 模式零 P5 请求：操作惰性返回，不触碰任何 facade', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    render(createElement(应用状态提供者, null, createElement(上下文探针)));
+    expect(当前.数据源模式).toBe('mock');
+    await expect(当前.操作.加载工作区('candidate', null)).resolves.toBeUndefined();
+    await expect(当前.操作.读取详情('candidate', 'mc_1', true)).resolves.toBeUndefined();
+    await expect(当前.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天')).resolves.toBeUndefined();
+    await expect(当前.操作.决定S0('mc_1', 'end')).resolves.toBeUndefined();
+  });
+
+  it('退出登录清空 P5 快照与引用（主体转移的反应式清理）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({ 阶段: '成功' }));
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.P5工作区).toEqual({});
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('切身份（角色转移）清空 P5 快照', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({ 阶段: '成功' }));
+    await 当前.操作.切身份('招聘方');
+    await waitFor(() => expect(当前.后端状态.P5工作区).toEqual({}));
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('换主体登录清空上个账号的 P5 快照（主体基串变化）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [], nextCursor: null });
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({ 阶段: '成功' }));
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
+    await 当前.操作.完成手机登录('1234');
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
+    expect(当前.后端状态.P5工作区).toEqual({});
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('退出登录回收在途 PDF 对象租约（URL.revokeObjectURL 恰好一次）', async () => {
+    const 建造 = vi.fn(() => 'blob:p5-provider');
+    const 回收 = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { value: 建造, configurable: true, writable: true });
+    Object.defineProperty(URL, 'revokeObjectURL', { value: 回收, configurable: true, writable: true });
+    try {
+      let 当前!: ReturnType<typeof use应用状态>;
+      function 上下文探针() { 当前 = use应用状态(); return null; }
+      const 后端 = 创建后端桩('candidate');
+      const 后端源 = 后端 as unknown as HTTP招聘数据源;
+      render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+      await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+      const 租约 = await 当前.操作.读取简历PDF('candidate', 'mc_1');
+      expect(建造).toHaveBeenCalledTimes(1);
+      await 当前.操作.退出登录();
+      await waitFor(() => expect(回收).toHaveBeenCalledWith('blob:p5-provider'));
+      租约.revoke(); // 二次回收安全
+    } finally {
+      delete (URL as unknown as Record<string, unknown>).createObjectURL;
+      delete (URL as unknown as Record<string, unknown>).revokeObjectURL;
+    }
   });
 });

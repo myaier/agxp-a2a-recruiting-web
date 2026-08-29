@@ -3,6 +3,7 @@
 // P3 Task 2：候选隐私成为第三个并行水合域 —— 水合 / 清理 / 过时响应丢弃的用例也在本文件。
 
 import { describe, expect, it, vi } from 'vitest';
+import { 创建空P5MatchCase状态 } from './MatchCase操作';
 import type { BFF主体, BFF角色, BFF附件简历库 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误 } from '../../数据/HTTP客户端';
@@ -52,6 +53,8 @@ function 创建会话测试依赖(后端: HTTP招聘数据源) {
       },
       // P4 Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
       ...创建空P4发现状态(),
+      // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
+      ...创建空P5MatchCase状态(),
       // P2：附件库权威快照（只追加，不动 P6 字段）
       附件简历库: null,
     } },
@@ -341,6 +344,8 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
     ...创建空P4发现状态(),
+    // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
+    ...创建空P5MatchCase状态(),
     // P2：附件库权威快照（只追加，不动 P6 字段）
     附件简历库: null,
   };
