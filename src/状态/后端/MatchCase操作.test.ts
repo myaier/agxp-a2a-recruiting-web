@@ -546,6 +546,23 @@ describe('scope 隔离与迟到完成', () => {
     expect(env.最新状态().已登录).toBe(true);
     expect(env.数据源.清空目录缓存).not.toHaveBeenCalled();
   });
+
+  it('mutation 后的权威重读作废同 scope 在飞的旧轮询读（迟到旧读不得回写新状态）', async () => {
+    const 旧门 = deferred<P5详情>();
+    vi.mocked(env.数据源.读取P5详情)
+      .mockReturnValueOnce(旧门.promise)
+      .mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
+    // 轮询读 A 先出发（在飞，服务端尚未应用 mutation）
+    void env.操作.读取详情('candidate', 'mc_1');
+    // mutation 成功 → 权威重读 B 拿到新态并落库
+    await env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toEqual(已解事实详情);
+    // A 迟到返回旧态：必须被作废，不得把新状态覆盖回旧状态
+    旧门.resolve(权威候选详情);
+    await new Promise((完成) => setTimeout(完成, 0));
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toEqual(已解事实详情);
+  });
 });
 
 describe('Mock 模式：零 P5 请求', () => {
@@ -620,6 +637,31 @@ describe('S0–S3 命令与幂等意图', () => {
       'p5:意图:candidate:mc_1:respond_fact:prompt_2',
     ]);
     randomUUID.mockRestore();
+  });
+
+  it('对账 GET 401：清账号后原样抛出，绝不解析成「已确认」的假成功', async () => {
+    vi.mocked(env.数据源.回答P5事实)
+      .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
+    vi.mocked(env.数据源.读取P5详情)
+      .mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天'))
+      .rejects.toMatchObject({ status: 401 });
+    expect(env.最新状态().已登录).toBe(false);
+    expect(env.deps.会话代际.current).toBe(2);
+    expect(env.数据源.清空目录缓存).toHaveBeenCalled();
+  });
+
+  it('命令单飞按会话代际隔离：旧会话在飞的承诺不吞新会话的同名命令', async () => {
+    const 甲门 = deferred<void>();
+    vi.mocked(env.数据源.回答P5事实).mockReturnValue(甲门.promise);
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    void env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
+    expect(vi.mocked(env.数据源.回答P5事实)).toHaveBeenCalledTimes(1);
+    env.deps.会话代际.current += 1; // 登出后换会话
+    const 乙 = env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
+    expect(vi.mocked(env.数据源.回答P5事实)).toHaveBeenCalledTimes(2); // 新会话必须发自己的 POST
+    甲门.resolve();
+    await 乙;
   });
 
   it('503 结果不确定：先权威 detail GET 对账，动作仍在则原样抛且键保留，重试沿用同一键', async () => {
@@ -800,6 +842,18 @@ describe('读取简历PDF 与对象租约', () => {
     租约.revoke();
     expect(回收).toHaveBeenCalledTimes(1);
     expect(env.deps.P5对象租约!.current.has(租约)).toBe(true); // 已手动回收的租约仍可安全再清
+  });
+
+  it('迟到成功（会话已换代）不建租约不登记，按失败收口', async () => {
+    const { 建造 } = 桩URL();
+    const 门 = deferred<BFF二进制响应>();
+    vi.mocked(env.数据源.读取P5简历PDF).mockReturnValue(门.promise);
+    const 取 = env.操作.读取简历PDF('recruiter', 'mc_1');
+    env.deps.会话代际.current += 1; // 取回途中登出换代
+    门.resolve(PDF响应);
+    await expect(取).rejects.toThrow();
+    expect(建造).not.toHaveBeenCalled();
+    expect(env.deps.P5对象租约!.current.size).toBe(0);
   });
 
   it('非 PDF 响应不创建租约、不登记', async () => {

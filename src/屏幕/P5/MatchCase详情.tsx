@@ -253,7 +253,8 @@ export function MatchCase详情(props: { role: P5角色 }) {
               : `${正常.职位.职位名} · ${正常.职位.城市} · ${正常.职位.薪资带}`
         }
         右侧={
-          正常 === null ? undefined : (
+          // 终局（ended/completed）只读：不挂「需要你/代理处理中」徽标 —— 那是进行中的语义。
+          正常 === null || 终局 ? undefined : (
             <span
               className={`${列表样式.徽标} ${正常.待办 ? 列表样式.徽标待办 : 列表样式.徽标代理}`}
             >

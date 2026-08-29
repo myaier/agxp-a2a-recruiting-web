@@ -236,6 +236,15 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       P5范围代际.current.get(fence.scopeKey) === fence.scopeGeneration;
   }
 
+  /**
+   * 权威重读/对账前的 scope 换代：作废同 scope 在飞的旧读（3 秒轮询的迟到 GET
+   * 服务端可能早于 mutation 执行，迟到回写会把已确认的新状态覆盖回旧状态）。
+   */
+  function 换代并捕获(scopeKey: string): P5栅栏 {
+    P5范围代际.current.set(scopeKey, (P5范围代际.current.get(scopeKey) ?? 0) + 1);
+    return 捕获栅栏(scopeKey);
+  }
+
   // ── 读锁（属主登记 + 过期接管）──
 
   function 读锁键(scopeKey: string): string {
@@ -366,12 +375,14 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
   const 命令在飞 = new Map<string, Promise<void>>();
 
   function 单飞命令(键: string, 运行: () => Promise<void>): Promise<void> {
-    const 在飞 = 命令在飞.get(键);
+    // 会话代际入键：旧会话未收口的在飞承诺绝不吞掉新会话的同名命令（新会话必须发自己的 POST）。
+    const 会话键 = `${会话代际.current}:${键}`;
+    const 在飞 = 命令在飞.get(会话键);
     if (在飞) return 在飞;
     const 本次 = 运行().finally(() => {
-      命令在飞.delete(键);
+      命令在飞.delete(会话键);
     });
-    命令在飞.set(键, 本次);
+    命令在飞.set(会话键, 本次);
     return 本次;
   }
 
@@ -416,8 +427,10 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
   }
 
   /** mutation 成功（或对账确认）后的权威 detail 重读 + 已载列表刷新；重读失败绝不 reject。 */
-  async function 权威重读详情(role: P5角色, caseId: string, fence: P5栅栏): Promise<void> {
+  async function 权威重读详情(role: P5角色, caseId: string): Promise<void> {
     const scopeKey = P5范围键.detail(role, caseId);
+    // 先换代再读：mutation 已确认，同 scope 在飞的旧轮询读全部作废，迟到旧 GET 不得回写。
+    const fence = 换代并捕获(scopeKey);
     try {
       const 详情 = await 后端!.读取P5详情(role, caseId);
       if (!栅栏仍当前(fence)) return;
@@ -476,22 +489,24 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
         P5幂等意图.current.delete(intent); // 明确拒绝：意图结束，下一次尝试是全新意图
         throw 错误;
       }
-      // 结果不确定：先做一次权威 detail GET 对账（§12）。
+      // 结果不确定：先做一次权威 detail GET 对账（§12）。换代作废在飞旧读，同 权威重读详情。
+      const 对账栅栏 = 换代并捕获(scopeKey);
       let 详情: P5详情;
       try {
         详情 = await 后端!.读取P5详情(input.role, input.caseId);
       } catch (对账错误) {
-        if (!栅栏仍当前(fence)) return;
+        if (!栅栏仍当前(对账栅栏)) return;
         if (是401(对账错误)) {
+          // 会话已失效：清账号后按失败收口 —— 效果从未确认，绝不解析成「已成功」。
           清账号与P5();
-          return;
+          throw 对账错误;
         }
         throw 错误; // 对账失败：保留键与原错误，重试沿用同一键
       }
-      if (!栅栏仍当前(fence)) return;
+      if (!栅栏仍当前(对账栅栏)) return;
       设后端状态((旧态) => ({
         ...旧态,
-        P5详情: { ...旧态.P5详情, [scopeKey]: 成功详情(详情, fence.scopeGeneration) },
+        P5详情: { ...旧态.P5详情, [scopeKey]: 成功详情(详情, 对账栅栏.scopeGeneration) },
       }));
       if (!input.已生效(详情)) throw 错误; // 动作仍在：原样抛，同键重放由下一次调用完成
       P5幂等意图.current.delete(intent); // 对账确认：按已生效收口
@@ -501,7 +516,7 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     // POST 明确成功：键即刻释放；权威态全部由下面的 detail 重读提供（响应本体是 void）。
     P5幂等意图.current.delete(intent);
     if (!栅栏仍当前(fence)) return; // 迟到成功只不落本地
-    await 权威重读详情(input.role, input.caseId, fence);
+    await 权威重读详情(input.role, input.caseId);
   }
 
   /** 命令包装：同目标单飞 + 命令核。 */
@@ -713,6 +728,10 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
         if (!栅栏仍当前(fence)) throw 错误; // 迟到失败照抛但不清新会话
         if (是401(错误)) 清账号与P5();
         throw 错误;
+      }
+      if (!栅栏仍当前(fence)) {
+        // 迟到成功：会话/scope 已换代 —— 不建租约不登记（此刻新登记会逃过下一次会话清扫）。
+        throw new BFF错误(0, 'session_stale', '会话已变化，请重新打开简历');
       }
       // 租约即刻登记：哪怕调用方忘记 revoke，会话边界也会统一回收（§ 内存纪律）。
       const 租约 = 创建PDF对象租约(响应);

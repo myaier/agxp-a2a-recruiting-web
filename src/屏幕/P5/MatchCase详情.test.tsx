@@ -425,6 +425,14 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(mock读取详情).toHaveBeenCalledTimes(3);
   });
 
+  it('终局详情不显示「代理处理中」徽标（只读终局，不是在处理）', async () => {
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已终止详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    await screen.findByText('终局'); // 终局卡在场（缺失则 findBy 抛错）
+    expect(screen.queryByText('代理处理中')).toBeNull();
+    expect(screen.queryByText('需要你')).toBeNull();
+  });
+
   it('终局详情停 3 秒轮询、隐藏输入，终局摘要原样展示', async () => {
     vi.useFakeTimers();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已终止详情DTO() }) });
