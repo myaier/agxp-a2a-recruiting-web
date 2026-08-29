@@ -73,6 +73,25 @@ function 候选页(items: P5列表项[], nextCursor: string | null): P5列表页
 
 /** Task 1 wire 样本解出的权威详情：respond_fact + prompt_1 仍待答、updated_at 02:00。 */
 const 权威候选详情 = 解P5详情(P5候选详情Wire, 'candidate');
+
+/** 带自定义叮嘱回执的候选 wire 详情（回执全部落在 S0 区；owner/expression 逐条给定）。 */
+function 带叮嘱Wire(回执: { owner: 'candidate' | 'recruiter'; expression: string }[]) {
+  return {
+    ...P5候选详情Wire,
+    stages: P5候选详情Wire.stages.map((区, 下标) => 下标 === 0
+      ? {
+        ...区,
+        instruction_receipts: 回执.map((条, 序) => ({
+          instruction_id: `aci_fix_${序}`,
+          owner: 条.owner,
+          stage: 'anonymous_screening' as const,
+          expression: 条.expression,
+          occurred_at: '2026-08-29T01:05:00Z',
+        })),
+      }
+      : 区),
+  };
+}
 /** 对账用「问题已解」详情：动作只剩 end_screening、时间线不再有待答问题、updated_at 03:00。 */
 const 已解事实详情: P5详情 = 解P5详情({
   ...P5候选详情Wire,
@@ -711,7 +730,7 @@ describe('S0–S3 命令与幂等意图', () => {
     vi.mocked(env.数据源.读取P5详情).mockResolvedValue(权威候选详情);
     await env.操作.决定S0('mc_1', 'end');
     expect(env.数据源.决定P5S0).toHaveBeenCalledWith('mc_1', 'end', 'cmd-key');
-    await env.操作.提交简历('mc_1', 'rf_1', 'rfv_1');
+    await env.操作.提交简历('mc_1', 'rf_1', 'rfv_1', true);
     expect(env.数据源.提交P5简历).toHaveBeenCalledWith('mc_1', 'rf_1', 'rfv_1', true, 'cmd-key');
     设主体角色(招聘主体);
     await env.操作.决定S1('mc_1', 'not_fit');
@@ -722,6 +741,42 @@ describe('S0–S3 命令与幂等意图', () => {
     expect(env.数据源.决定P5S3).toHaveBeenCalledWith('recruiter', 'mc_1', 'decline', 'cmd-key');
     await env.操作.新增叮嘱('recruiter', 'mc_1', '请工作日联系');
     expect(env.数据源.新增P5叮嘱).toHaveBeenCalledWith('recruiter', 'mc_1', '请工作日联系', 'cmd-key');
+    randomUUID.mockRestore();
+  });
+
+  it('新增叮嘱 503 对账：对方叮嘱落了不算本端已生效 —— 不确认、键保留、同键可重放', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(UUID键('ins-key'));
+    // 发送前基线：对方已有 1 条叮嘱，本端 0 条
+    vi.mocked(env.数据源.读取P5详情)
+      .mockResolvedValueOnce(解P5详情(带叮嘱Wire([{ owner: 'recruiter', expression: '对方早期叮嘱' }]), 'candidate'));
+    await env.操作.读取详情('candidate', 'mc_1');
+    vi.mocked(env.数据源.新增P5叮嘱)
+      .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
+    // 对账权威详情：对方又落了 1 条（总数 1→2），本端仍 0 —— 回执总数增长不得冒充本端生效
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(解P5详情(带叮嘱Wire([
+      { owner: 'recruiter', expression: '对方早期叮嘱' },
+      { owner: 'recruiter', expression: '对方后来的叮嘱' },
+    ]), 'candidate'));
+    await expect(env.操作.新增叮嘱('candidate', 'mc_1', '工作日全天可联系'))
+      .rejects.toMatchObject({ code: 'downstream_unavailable' });
+    expect(env.deps.P5幂等意图!.current.size).toBe(1); // 键保留：同键重放仍可发生
+    randomUUID.mockRestore();
+  });
+
+  it('新增叮嘱 503 对账：本端同文叮嘱已落才算已生效 —— 确认收口、键释放', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(UUID键('ins-key-2'));
+    vi.mocked(env.数据源.读取P5详情)
+      .mockResolvedValueOnce(解P5详情(带叮嘱Wire([]), 'candidate'));
+    await env.操作.读取详情('candidate', 'mc_1');
+    vi.mocked(env.数据源.新增P5叮嘱)
+      .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
+    // 对账权威详情：本端同文回执已在（对面那条是干扰项，绝不能单独顶替确认）
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(解P5详情(带叮嘱Wire([
+      { owner: 'recruiter', expression: '工作日全天可联系' },
+      { owner: 'candidate', expression: '工作日全天可联系' },
+    ]), 'candidate'));
+    await expect(env.操作.新增叮嘱('candidate', 'mc_1', '工作日全天可联系')).resolves.toBeUndefined();
+    expect(env.deps.P5幂等意图!.current.size).toBe(0);
     randomUUID.mockRestore();
   });
 });

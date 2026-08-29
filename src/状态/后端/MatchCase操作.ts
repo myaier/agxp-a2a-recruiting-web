@@ -524,9 +524,14 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     return 结果.kind === 'one' ? 结果.promptId : null;
   }
 
-  /** 全部阶段区的叮嘱回执总数：新增叮嘱 的对账谓词以「回执变多」为准。 */
-  function 叮嘱回执数(详情: P5详情): number {
-    return 详情.stages.reduce((和, 区) => 和 + 区.instructionReceipts.length, 0);
+  /**
+   * 本端同文叮嘱的回执数：新增叮嘱 的对账谓词只认 `owner === role 且 expression === text`
+   * 的回执。总回执数会把对方的落条冒充成本端生效（false-confirm → 静默丢用户输入），
+   * 绝不采用；对不上时按 §12 保守偏置走同键重放。
+   */
+  function 本端同文回执数(详情: P5详情, role: P5角色, text: string): number {
+    return 详情.stages.reduce((和, 区) =>
+      和 + 区.instructionReceipts.filter((回执) => 回执.owner === role && 回执.expression === text).length, 0);
   }
 
   return {
@@ -632,10 +637,11 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       });
     },
 
-    提交简历(caseId, fileId, fileVersionId) {
+    提交简历(caseId, fileId, fileVersionId, disclosureConfirmed) {
       return 命令({
         role: 'candidate', caseId, 动作: 'submit_resume', 目标: fileVersionId,
-        写: (源, 键) => 源.提交P5简历(caseId, fileId, fileVersionId, true, 键),
+        // disclosureConfirmed 只由屏层的 Case 专属披露确认传入（类型级字面 true），本层不代确认。
+        写: (源, 键) => 源.提交P5简历(caseId, fileId, fileVersionId, disclosureConfirmed, 键),
         // 对账：披露/校验/更换这一族 S1 简历动作不再提供（S1 已推进）即视为已生效。
         已生效: (详情) => !详情.availableActions.some((动作) =>
           动作 === 'accept_resume_invitation' || 动作 === 'retry_resume_readiness' ||
@@ -684,14 +690,14 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     },
 
     新增叮嘱(role, caseId, text) {
-      // 发送前基线：详情快照在场才有可比对的回执数；缺失时对账恒不通过（同键重放兜底）。
+      // 发送前基线：详情快照在场才有可比对的本端同文回执数；缺失时对账恒不通过（同键重放兜底）。
       const 发送前详情 = 后端状态引用.current.P5详情[P5范围键.detail(role, caseId)]?.detail ?? null;
-      const 发送前回执数 = 发送前详情 === null ? null : 叮嘱回执数(发送前详情);
+      const 发送前回执数 = 发送前详情 === null ? null : 本端同文回执数(发送前详情, role, text);
       return 命令({
         role, caseId, 动作: 'add_instruction', 目标: text,
         写: (源, 键) => 源.新增P5叮嘱(role, caseId, text, 键),
-        // 对账：权威回执数比发送前多一条（任何一方的新叮嘱都算 Case 已推进）。
-        已生效: (详情) => 发送前回执数 !== null && 叮嘱回执数(详情) > 发送前回执数,
+        // 对账：本端同文回执比发送前多一条才算已生效；对方的落条绝不冒充本端生效。
+        已生效: (详情) => 发送前回执数 !== null && 本端同文回执数(详情, role, text) > 发送前回执数,
       });
     },
 

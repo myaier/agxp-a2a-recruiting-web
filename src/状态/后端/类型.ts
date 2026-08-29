@@ -338,8 +338,12 @@ export interface MatchCase操作 {
   /** 直读详情：URL case_id + 已认证角色，绝不读列表记忆填上下文；force=true 恒权威重读。 */
   读取详情(role: P5角色, caseId: string, force?: boolean): Promise<void>;
   回答事实(role: P5角色, caseId: string, promptId: string, response: string): Promise<void>;
-  /** 候选端 S1 简历提交：屏层完成披露确认后传入显式文件/版本对，本层透传字面 true。 */
-  提交简历(caseId: string, fileId: string, fileVersionId: string): Promise<void>;
+  /**
+   * 候选端 S1 简历提交：disclosureConfirmed 是字面 true —— 只有屏层每次提交前新做的
+   * Case 专属披露确认才把它传进来（确认不复用）；操作层只透传，绝不代确认、绝无缺省。
+   * 与 候选P4委托输入.disclosureAcknowledged: true 同一纪律。
+   */
+  提交简历(caseId: string, fileId: string, fileVersionId: string, disclosureConfirmed: true): Promise<void>;
   决定S0(caseId: string, action: 'continue' | 'end'): Promise<void>;
   决定S1(caseId: string, action: 'continue' | 'not_fit'): Promise<void>;
   决定S2(role: P5角色, caseId: string, issueId: string, action: 'accept' | 'reject'): Promise<void>;
