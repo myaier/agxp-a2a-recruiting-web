@@ -19,3 +19,24 @@
 教训：**验证命令必须以退出码为准**——playwright 失败时进程本身退出非 0，
 应该直接 `npx playwright test && git push`，不要在中间插会吞状态码的
 grep 管道；要摘要就 `tee` 出来另行 grep。
+
+## 2026-08-29 · P5 前端地基切片验收门（Task 5）
+
+- 执行前前端 SHA：`1f249ddd67a75d8ee1206c0af6aea4912d161fa7`（分支
+  `brainstorm/frontend-p5-integration` 在 Task 1 之前的 HEAD）。
+- Step 1 范围禁写扫描（两条 `scan_forbidden`，rg 退出码 1＝干净）：**两条均通过，
+  exit 0，生产文件零匹配**。测试文件不在扫描范围（brief 原文允许）。
+- Step 2 验证链逐条以退出码记录：
+  - 聚焦套件 `npm test -- --run <8 个测试文件>` → 8 files / **217 passed**，exit 0
+  - 全量 `npm test` → 92 files / **1231 passed**，exit 0
+  - `npm run typecheck`（`tsc -b --noEmit`）→ exit 0
+  - `npm run lint`（oxlint）→ exit 0
+  - `npm run build` → built in 666ms，exit 0
+- 移交口径（brief 逐字）：
+
+  ```text
+  P5 frontend foundation complete; contract-gated wiring not started.
+  Delivered: opt-in no-store transport, exact P4 resume file/version selection,
+  closed supplementary-prompt resolver, and one-shot PDF object URL lease.
+  Excluded: P5 list/history/detail DTOs, state enum/matrix, polling, page routes and actions.
+  ```
