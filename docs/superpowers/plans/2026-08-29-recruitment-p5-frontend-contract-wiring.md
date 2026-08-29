@@ -29,6 +29,7 @@
 - Treat P5 alias as opaque display text. Show it verbatim; never parse, truncate, derive an avatar, or use it as key/ID/request/cache coordinate. Use `case_id`.
 - P5 snapshots, locks and idempotency intents are memory-only. Never add them to `资料持久化`, browser storage, Cache API or a service worker.
 - Every P5 JSON/PDF request opts into Plan 1 `不缓存: true`. PDF display uses Plan 1 `创建PDF对象租约` and revokes on close/unmount.
+- Every S1 submit/replace intent requires a fresh Case-specific disclosure confirmation and sends the exact selected file/version pair with `disclosure_confirmed: true`. Never default the flag or reuse the P4 delegation confirmation.
 - Direct detail refresh uses URL `case_id` plus authenticated role only; it never reads list memory to fill context.
 - Mock mode sends zero P5 requests and preserves the current immediate reducer/demo behavior.
 - Use TDD for every code task and commit each independently green slice.
@@ -132,7 +133,7 @@ export interface MatchCase数据源 {
   读取P5历史(role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null, cursor: string | null): Promise<P5列表页>;
   读取P5详情(role: P5角色, caseId: string): Promise<P5详情>;
   回答P5事实(role: P5角色, caseId: string, promptId: string, response: string, key: string): Promise<void>;
-  提交P5简历(caseId: string, fileId: string, fileVersionId: string, key: string): Promise<void>;
+  提交P5简历(caseId: string, fileId: string, fileVersionId: string, disclosureConfirmed: true, key: string): Promise<void>;
   决定P5S0(caseId: string, action: 'continue' | 'end', key: string): Promise<void>;
   决定P5S1(caseId: string, action: 'continue' | 'not_fit', key: string): Promise<void>;
   决定P5S2(role: P5角色, caseId: string, issueId: string, action: 'accept' | 'reject', key: string): Promise<void>;
@@ -170,6 +171,23 @@ expect(() => 解P5详情({ ...P5候选详情Wire, candidate_alias: 'candidate-x'
 - [ ] **Step 2: Write failing request-path/body tests**
 
 Assert exact method/path/query/body for both lists, both history shelves, detail, fact response, resume submission/content, S0/S1/S2/S3 decisions and Case instruction. Every GET uses `不缓存: true`; PDF uses the role-scoped Case path and rejects non-PDF content.
+
+The S1 resume assertion must require a literal `true` confirmation and preserve it in the strict body:
+
+```ts
+await source.提交P5简历('mc_1', 'rf_1', 'rfv_7', true, 'p5-resume-key-0001');
+expect(请求).toHaveBeenCalledWith({
+  path: '/api/v1/me/match-cases/mc_1/resume-submission',
+  method: 'POST',
+  body: {
+    file_id: 'rf_1',
+    file_version_id: 'rfv_7',
+    disclosure_confirmed: true,
+  },
+  幂等: true,
+  幂等键: 'p5-resume-key-0001',
+});
+```
 
 ```ts
 await source.回答P5事实('candidate', 'mc_1', 'prompt_1', '四天远程', 'p5-fact-key-0001');
@@ -411,7 +429,7 @@ Expected: PASS.
 - Modify: `src/屏幕/在谈详情.tsx`
 - Modify: `src/屏幕/在谈详情.test.tsx`
 - Modify: `src/屏幕/候选详情.tsx`
-- Modify: `src/屏幕/候选详情.test.tsx`
+- Create: `src/屏幕/候选详情.test.tsx`
 
 **Interfaces:**
 - Consumes: role-specific detail context, Tasks 2–3 views/operations, existing `阶段对话流` and `真输入条`.
@@ -431,7 +449,7 @@ it('direct URL refresh renders context without list memory', async () => {
 });
 ```
 
-Cover recruiter refresh showing alias but no name/contact, fixed S0→S3 order, checklist/transcript/instruction receipts, timeline display-only, unknown state hiding controls, terminal stopping polling, missing P5.1 sections absent and `case_id` as the sole coordinate.
+Cover recruiter refresh showing alias but no name/contact, fixed S0→S3 order, checklist/transcript/instruction receipts, timeline display-only, unknown state hiding controls, terminal stopping polling, missing P5.1 sections absent and `case_id` as the sole coordinate. `候选详情.test.tsx` has no predecessor on the admitted frontend baseline; create it as the recruiter wrapper's first test file rather than assuming an existing suite.
 
 - [ ] **Step 2: Write failing Case-instruction tests**
 
@@ -488,7 +506,7 @@ it('submits supplementary_question.ref and rereads authority', async () => {
 });
 ```
 
-Cover same-key replay, zero/multiple prompt fail closed, exact candidate S0 decisions, S1 invitation/readiness/replace using an explicit Plan 1 file/version pair, recruiter `continue|not_fit`, and action absence sending zero requests.
+Cover same-key replay, zero/multiple prompt fail closed, exact candidate S0 decisions, S1 invitation/readiness/replace using an explicit Plan 1 file/version pair, recruiter `continue|not_fit`, and action absence sending zero requests. Every S1 submit/replace opens a fresh disclosure confirmation naming the selected PDF; cancel sends zero requests, confirm passes the literal `true`, and a second attempt cannot reuse the prior confirmation.
 
 - [ ] **Step 2: Write failing S2/S3 tests**
 
@@ -644,15 +662,26 @@ Expected: every command passes.
 - [ ] **Step 5: Run the P5.1/P7 absence scan**
 
 ```bash
-if rg -n "next_step|handoff.*published|conversation[_-]?(id|ref)|candidate_identity|match_score|match_reasons|highlights|compensation_relationship" \
+scan_forbidden() {
+  pattern=$1
+  shift
+  rg -n "$pattern" "$@"
+  code=$?
+  case "$code" in
+    0) return 1 ;;
+    1) return 0 ;;
+    *) return "$code" ;;
+  esac
+}
+scan_forbidden "next_step|handoff.*published|conversation[_-]?(id|ref)|candidate_identity|match_score|match_reasons|highlights|compensation_relationship" \
   src/数据/招聘数据源/MatchCase.ts src/数据/MatchCase展示映射.ts \
-  src/状态/后端/MatchCase操作.ts src/屏幕/P5; then exit 1; fi
-if rg -n "模拟数据|企业端模拟数据|取在谈岗位详情|公司档案|求职侧对齐行" \
+  src/状态/后端/MatchCase操作.ts src/屏幕/P5 || exit 1
+scan_forbidden "模拟数据|企业端模拟数据|取在谈岗位详情|公司档案|求职侧对齐行" \
   src/数据/招聘数据源/MatchCase.ts src/数据/MatchCase展示映射.ts \
-  src/状态/后端/MatchCase操作.ts src/屏幕/P5; then exit 1; fi
+  src/状态/后端/MatchCase操作.ts src/屏幕/P5 || exit 1
 ```
 
-Expected: exit 0 with no production matches. Inspect any match; do not suppress it mechanically.
+Expected: exit 0 with no production matches. A match or any `rg` scan error, including a missing path, exits non-zero. Inspect any match; do not suppress it mechanically.
 
 - [ ] **Step 6: Record evidence and commit**
 

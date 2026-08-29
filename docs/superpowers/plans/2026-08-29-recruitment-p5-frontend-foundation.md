@@ -383,6 +383,8 @@ it.each(['看市场', '职位详情'])('%s requires an explicit resume coordinat
 
 Assert cancel clears the captured recommendation and selection, a second click rereads current state rather than reusing an old grant, and Mock mode keeps the existing Mock delegation behavior without reading the attachment library.
 
+For both screens, also assert a rejected preparation read shows the existing P4 failure toast with zero navigation/delegation, while a `null` return caused by session/role generation change is a silent no-op. `null` is not an empty authoritative library and must never enter the zero-file redirect branch.
+
 - [ ] **Step 3: Write the failing authoritative-library return tests**
 
 In `附件简历操作.test.ts`, assert `准备候选委托简历()` returns the exact committed library from the existing read coordinator, rather than requiring a React closure to observe a state update:
@@ -418,12 +420,14 @@ Use the existing modal shell and native radio inputs. The action copy must state
 
 For each screen:
 
-1. on each delegation click, await `操作.准备候选委托简历()` and use its returned library; do not read a pre-await React closure;
-2. zero rows: show `请先上传一份 PDF 简历` and navigate to `路径.我的简历`;
-3. one row: open the existing confirmation layer with the visible file name;
-4. multiple rows: open `附件简历选择层`;
-5. confirmation calls `操作.委托候选岗位` with the exact captured file/version pair and `disclosureAcknowledged: true`;
-6. close the layer and clear the captured values before awaiting the mutation, so failures require a fresh explicit confirmation.
+1. on each delegation click, call `操作.准备候选委托简历()` inside `try/catch`; do not read a pre-await React closure;
+2. rejected read: show `P4错误文案(error)` through the existing toast, then return with zero navigation and zero delegation;
+3. `null` result: return silently because the session/role generation changed; do not treat it as an empty library;
+4. authoritative zero-row library: show `请先上传一份 PDF 简历` and navigate to `路径.我的简历`;
+5. one row: open the existing confirmation layer with the visible file name;
+6. multiple rows: open `附件简历选择层`;
+7. confirmation calls `操作.委托候选岗位` with the exact captured file/version pair and `disclosureAcknowledged: true`;
+8. close the layer and clear the captured values before awaiting the mutation, so failures require a fresh explicit confirmation.
 
 Do not write the choice to application persistence, do not remember a default, and do not inspect parse output.
 
@@ -571,16 +575,27 @@ Expected: PASS.
 - [ ] **Step 1: Run the scope-forbidden scan**
 
 ```bash
-if rg -n "next_step|handoff.*published|conversation[_-]?(id|ref)|candidate_identity" \
+scan_forbidden() {
+  pattern=$1
+  shift
+  rg -n "$pattern" "$@"
+  code=$?
+  case "$code" in
+    0) return 1 ;;
+    1) return 0 ;;
+    *) return "$code" ;;
+  esac
+}
+scan_forbidden "next_step|handoff.*published|conversation[_-]?(id|ref)|candidate_identity" \
   src/数据/MatchCase基础.ts src/数据/PDF对象租约.ts \
-  src/组件/附件简历选择层.tsx; then exit 1; fi
-if rg -n "读取P5(Open|历史|详情)|P5列表页|P5详情|MatchCaseStep|needs_action" \
+  src/组件/附件简历选择层.tsx || exit 1
+scan_forbidden "读取P5(Open|历史|详情)|P5列表页|P5详情|MatchCaseStep|needs_action" \
   src/数据/MatchCase基础.ts src/数据/PDF对象租约.ts \
   src/组件/附件简历选择层.tsx \
-  src/屏幕/看市场.tsx src/屏幕/职位详情.tsx; then exit 1; fi
+  src/屏幕/看市场.tsx src/屏幕/职位详情.tsx || exit 1
 ```
 
-Expected: exit 0 with no production matches. Test names may state a forbidden behavior only inside test files, which are not part of this scan.
+Expected: exit 0 with no production matches. A match or any `rg` scan error, including a missing path, exits non-zero. Test names may state a forbidden behavior only inside test files, which are not part of this scan.
 
 - [ ] **Step 2: Run focused and full verification**
 

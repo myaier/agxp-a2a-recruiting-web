@@ -32,7 +32,7 @@ P5 和 P5.1 是两个完成面：P5 Core 与 P5 Minimal Context 可以在四组 
 | 双端 terminal history | `/history?lifecycle=ended|completed` 两个独立 shelf；terminal Case 仍可按 `case_id` 读取 detail。 |
 | 四阶段详情 | `state`、四个 `stages`、checklist、transcript、instruction receipts、coordination、intent confirmations、terminal summary 已存在。 |
 | viewer-specific detail actions | detail 的 `needs_action` 与 `available_actions` 已按 authenticated viewer 投影；前端只显示服务端给出的 action。 |
-| S0 `respond_fact` | 当前 stage transcript 提供 `kind=supplementary_question`、`ref=prompt_id`、`role=owner`、`text=viewer-safe prompt`；提交 `{prompt_id: ref, response}`。不新增 action payload DTO。 |
+| S0 `respond_fact` | 当前 stage transcript 提供 `kind=supplementary_question`、`ref=prompt_id`、`role=prompt 所有者角色（candidate\|recruiter）`、`text=viewer-safe prompt`；提交 `{prompt_id: ref, response}`。不新增 action payload DTO。 |
 | S0 结束、S1 resume invitation/readiness/reselection/screening | 已有 candidate decision、resume submission、recruiter screening decision 与原始 PDF content routes；具体按钮只按 `available_actions` 出现。 |
 | S2 decision | detail 提供单个 active coordination 与 `issue_id`；双端各有 accept/reject route。 |
 | S3 decision | 双端各有 confirm/decline route；intent confirmations 是闭合词。 |
@@ -176,6 +176,7 @@ step = handoff_pending
 
 - disclosure 前：招聘端只显示 Case alias；不显示姓名、联系方式或 PDF 入口。
 - parse pending/failed：仍保持匿名，且不显示下载入口。
+- candidate 每次提交/替换 S1 PDF 都必须看到本次 Case 的明确披露确认；确认后才发送所选 `file_id`、不可变 `file_version_id` 与 `disclosure_confirmed=true`。前端不得默认该布尔值、复用 P4 委托确认或复用另一 Case/另一次提交的授权。
 - disclosure 后：只有 detail 的后端授权 attachment 出现时，才允许用该 Case 的 role-scoped content route 打开原始 PDF。
 - PDF blob 只存在弹层生命周期；关闭/unmount 时 revoke object URL，不进缓存或持久化。
 
