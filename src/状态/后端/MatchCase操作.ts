@@ -245,6 +245,24 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     return 捕获栅栏(scopeKey);
   }
 
+  /**
+   * 命令/PDF 取件类栅栏校验：不含 scope 代际 —— 权威重读/对账的换代只作废在飞「读」，
+   * 绝不误伤同 Case 并发命令（否则另一方的迟到未知结果会被静默 resolve 伪装成成功）。
+   * 主体/角色/会话代际/可见范围仍全量把关。
+   */
+  function 会话栅栏仍当前(fence: P5栅栏): boolean {
+    const 主体 = 后端状态引用.current.主体;
+    return 主体标识引用.current === fence.subjectId &&
+      主体?.last_used_role === fence.role &&
+      会话代际.current === fence.sessionGeneration &&
+      (fence.role === null || P5可见范围.current[fence.role as P5角色] === fence.visibleScope);
+  }
+
+  /** 只删自己那把键：旧会话的迟到成败绝不动新会话为同一意图新铸的键（防重复提交）。 */
+  function 删意图键(intent: string, 键: string): void {
+    if (P5幂等意图.current.get(intent) === 键) P5幂等意图.current.delete(intent);
+  }
+
   // ── 读锁（属主登记 + 过期接管）──
 
   function 读锁键(scopeKey: string): string {
@@ -478,7 +496,7 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     try {
       await input.写(后端!, 键);
     } catch (错误) {
-      if (!栅栏仍当前(fence)) return; // 迟到失败只随单飞收口；键随意图保留
+      if (!会话栅栏仍当前(fence)) return; // 迟到失败只随单飞收口；键随意图保留
       if (是401(错误)) {
         // 会话已失效：统一清理（P5 状态/引用/意图键一并作废）后原样抛给屏收口。
         清账号与P5();
@@ -486,7 +504,7 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       }
       if (!(错误 instanceof BFF错误)) throw 错误; // 普通网络错误：键保留、原样抛，绝不换键重发
       if (!是结果不确定(错误)) {
-        P5幂等意图.current.delete(intent); // 明确拒绝：意图结束，下一次尝试是全新意图
+        删意图键(intent, 键); // 明确拒绝：意图结束，下一次尝试是全新意图
         throw 错误;
       }
       // 结果不确定：先做一次权威 detail GET 对账（§12）。换代作废在飞旧读，同 权威重读详情。
@@ -495,7 +513,7 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       try {
         详情 = await 后端!.读取P5详情(input.role, input.caseId);
       } catch (对账错误) {
-        if (!栅栏仍当前(对账栅栏)) return;
+        if (!会话栅栏仍当前(对账栅栏)) return;
         if (是401(对账错误)) {
           // 会话已失效：清账号后按失败收口 —— 效果从未确认，绝不解析成「已成功」。
           清账号与P5();
@@ -503,19 +521,19 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
         }
         throw 错误; // 对账失败：保留键与原错误，重试沿用同一键
       }
-      if (!栅栏仍当前(对账栅栏)) return;
+      if (!会话栅栏仍当前(对账栅栏)) return;
       设后端状态((旧态) => ({
         ...旧态,
         P5详情: { ...旧态.P5详情, [scopeKey]: 成功详情(详情, 对账栅栏.scopeGeneration) },
       }));
       if (!input.已生效(详情)) throw 错误; // 动作仍在：原样抛，同键重放由下一次调用完成
-      P5幂等意图.current.delete(intent); // 对账确认：按已生效收口
+      删意图键(intent, 键); // 对账确认：按已生效收口
       await 刷新已载列表(input.role);
       return;
     }
-    // POST 明确成功：键即刻释放；权威态全部由下面的 detail 重读提供（响应本体是 void）。
-    P5幂等意图.current.delete(intent);
-    if (!栅栏仍当前(fence)) return; // 迟到成功只不落本地
+    // POST 明确成功：键即刻释放（只删自己那把）；权威态全部由下面的 detail 重读提供（响应本体是 void）。
+    删意图键(intent, 键);
+    if (!会话栅栏仍当前(fence)) return; // 迟到成功只不落本地
     await 权威重读详情(input.role, input.caseId);
   }
 
@@ -725,12 +743,13 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       try {
         响应 = await 后端.读取P5简历PDF(role, caseId);
       } catch (错误) {
-        if (!栅栏仍当前(fence)) throw 错误; // 迟到失败照抛但不清新会话
+        if (!会话栅栏仍当前(fence)) throw 错误; // 迟到失败照抛但不清新会话
         if (是401(错误)) 清账号与P5();
         throw 错误;
       }
-      if (!栅栏仍当前(fence)) {
-        // 迟到成功：会话/scope 已换代 —— 不建租约不登记（此刻新登记会逃过下一次会话清扫）。
+      if (!会话栅栏仍当前(fence)) {
+        // 迟到成功：会话已换代 —— 不建租约不登记（此刻新登记会逃过下一次会话清扫）。
+        // 用 会话栅栏：并发命令的读换代不得误伤在飞的取件。
         throw new BFF错误(0, 'session_stale', '会话已变化，请重新打开简历');
       }
       // 租约即刻登记：哪怕调用方忘记 revoke，会话边界也会统一回收（§ 内存纪律）。

@@ -664,6 +664,47 @@ describe('S0–S3 命令与幂等意图', () => {
     await 乙;
   });
 
+  it('并发多目标命令：一方的权威重读换代不把另一方迟到的未知结果伪装成成功', async () => {
+    const 事实门 = deferred<void>();
+    vi.mocked(env.数据源.回答P5事实).mockReturnValueOnce(事实门.promise);
+    const 叮嘱门 = deferred<void>();
+    vi.mocked(env.数据源.新增P5叮嘱).mockReturnValueOnce(叮嘱门.promise);
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    const 事实 = env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
+    const 叮嘱 = env.操作.新增叮嘱('candidate', 'mc_1', '工作日全天可联系');
+    事实门.resolve(); // 事实先成功 → 权威重读换代落库（作废在飞旧读）
+    await 事实;
+    叮嘱门.reject(new BFF错误(503, 'downstream_unavailable', 'down')); // 叮嘱迟到未知
+    // 绝不静默 resolve：走对账，效果未确认就原样抛，屏层保留草稿
+    await expect(叮嘱).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('旧会话的迟到成功只删自己的键，不动新会话为同一意图新铸的键', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('old-key'))
+      .mockReturnValue(UUID键('new-key'));
+    const 旧门 = deferred<void>();
+    vi.mocked(env.数据源.新增P5叮嘱).mockReturnValueOnce(旧门.promise);
+    const 旧 = env.操作.新增叮嘱('candidate', 'mc_1', '工作日全天可联系');
+    // 登出换会话：意图表清空、会话代际 +1
+    env.deps.会话代际.current += 1;
+    env.deps.P5幂等意图!.current.clear();
+    // 新会话重发同一意图：新铸 new-key，自己的 POST 在飞
+    const 新门 = deferred<void>();
+    vi.mocked(env.数据源.新增P5叮嘱).mockReturnValueOnce(新门.promise);
+    const 新 = env.操作.新增叮嘱('candidate', 'mc_1', '工作日全天可联系');
+    expect(env.deps.P5幂等意图!.current.size).toBe(1);
+    expect([...env.deps.P5幂等意图!.current.values()][0]).toBe(UUID键('new-key'));
+    旧门.resolve(); // 旧会话迟到成功
+    await 旧;
+    // 旧成功绝不删新会话的键（否则新会话的结果未知重试会另铸键造成重复提交）
+    expect(env.deps.P5幂等意图!.current.size).toBe(1);
+    expect([...env.deps.P5幂等意图!.current.values()][0]).toBe(UUID键('new-key'));
+    新门.resolve();
+    await 新;
+    randomUUID.mockRestore();
+  });
+
   it('503 结果不确定：先权威 detail GET 对账，动作仍在则原样抛且键保留，重试沿用同一键', async () => {
     const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
       .mockReturnValueOnce(UUID键('fact-key-503'))
