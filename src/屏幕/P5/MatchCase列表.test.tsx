@@ -539,14 +539,33 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     expect(screen.getByText('1 个职位需要你协调')).toBeTruthy();
   });
 
-  it('求职端横幅零待办分支：首帧/游标未尽都不下「暂时没有」的定论，读尽后才定论', () => {
+  it('求职端横幅零待办分支：首帧/在飞/失败/游标未尽都不下「暂时没有」的定论，成功读尽后才定论', () => {
     // (a) 首帧（scope 已注册、快照还没读回来）：只说正在读入，绝不出现定论文案
     置求职屏状态({ filterRef: 意向ID, 不预置快照: true });
     const { rerender } = render(<在谈首页 />);
     expect(mock加载工作区).toHaveBeenCalledWith('candidate', 意向ID);
     expect(screen.getByText('正在读入在谈职位…')).toBeTruthy();
     expect(screen.queryByText('暂时没有需要你介入的')).toBeNull();
-    // (b) 游标未尽 + 已载零待办：只给非定论兜底
+    // (a2) 首次读取在飞：起步构造把 nextCursor 兜底成 null —— 只看游标会误读成读尽
+    置求职屏状态({
+      filterRef: 意向ID,
+      快照: 快照({ 阶段: '进行中', items: [], nextCursor: null, 刷新中: true }),
+    });
+    rerender(<在谈首页 />);
+    expect(screen.getByText('正在读入在谈职位…')).toBeTruthy();
+    expect(screen.queryByText('暂时没有需要你介入的')).toBeNull();
+    expect(screen.queryByText(/^[\d]+ 个职位需要你协调$/)).toBeNull();
+    // (b2) 首载失败：nextCursor 同样是 null —— 错误卡在场，横幅只给非定论兜底、不给计数
+    置求职屏状态({
+      filterRef: 意向ID,
+      快照: 快照({ 阶段: '失败', items: [], nextCursor: null, error: '服务暂时不可用，请稍后再试' }),
+    });
+    rerender(<在谈首页 />);
+    expect(screen.getByText('已读入的里暂时没有需要你介入的')).toBeTruthy();
+    expect(screen.queryByText('暂时没有需要你介入的')).toBeNull();
+    expect(screen.getByText('在谈暂时加载不了')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重试' })).toBeTruthy();
+    // (b) 成功但游标未尽 + 已载零待办：只给非定论兜底
     置求职屏状态({
       filterRef: 意向ID,
       快照: 快照({ items: [候选行({ caseId: 'mc_1', 待办: false })], nextCursor: 'b2x' }),
@@ -554,7 +573,7 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     rerender(<在谈首页 />);
     expect(screen.getByText('已读入的里暂时没有需要你介入的')).toBeTruthy();
     expect(screen.queryByText('暂时没有需要你介入的')).toBeNull();
-    // (c) 游标读尽 + 零待办：才下「暂时没有」的定论
+    // (c) 成功读尽 + 零待办：才下「暂时没有」的定论
     置求职屏状态({
       filterRef: 意向ID,
       快照: 快照({ items: [候选行({ caseId: 'mc_1', 待办: false })], nextCursor: null }),
@@ -563,14 +582,32 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     expect(screen.getByText('暂时没有需要你介入的')).toBeTruthy();
   });
 
-  it('招聘端横幅零待办分支：首帧/游标未尽都不下「暂时没有」的定论，读尽后才定论', () => {
+  it('招聘端横幅零待办分支：首帧/在飞/失败/游标未尽都不下「暂时没有」的定论，成功读尽后才定论', () => {
     // (a) 首帧：只说正在读入
     置招聘屏状态({ filterRef: 职位ID, 不预置快照: true });
     const { rerender } = render(<企业在谈候选 />);
     expect(mock加载工作区).toHaveBeenCalledWith('recruiter', 职位ID);
     expect(screen.getByText('正在读入在谈候选…')).toBeTruthy();
     expect(screen.queryByText('暂时没有需要你拍板的')).toBeNull();
-    // (b) 游标未尽 + 已载零待办：只给非定论兜底
+    // (a2) 首次读取在飞（阶段 进行中，nextCursor 兜底 null）：仍只说正在读入
+    置招聘屏状态({
+      filterRef: 职位ID,
+      快照: 快照({ 阶段: '进行中', items: [], nextCursor: null, 刷新中: true }),
+    });
+    rerender(<企业在谈候选 />);
+    expect(screen.getByText('正在读入在谈候选…')).toBeTruthy();
+    expect(screen.queryByText('暂时没有需要你拍板的')).toBeNull();
+    // (b2) 首载失败（阶段 失败，nextCursor 也是 null）：错误卡在场，横幅只给非定论兜底
+    置招聘屏状态({
+      filterRef: 职位ID,
+      快照: 快照({ 阶段: '失败', items: [], nextCursor: null, error: '服务暂时不可用，请稍后再试' }),
+    });
+    rerender(<企业在谈候选 />);
+    expect(screen.getByText('已读入的里暂时没有需要你拍板的')).toBeTruthy();
+    expect(screen.queryByText('暂时没有需要你拍板的')).toBeNull();
+    expect(screen.getByText('在谈暂时加载不了')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重试' })).toBeTruthy();
+    // (b) 成功但游标未尽 + 已载零待办：只给非定论兜底
     置招聘屏状态({
       filterRef: 职位ID,
       快照: 快照({ items: [招聘行({ caseId: 'mc_1', 待办: false })], nextCursor: 'b2x' }),
@@ -578,13 +615,25 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     rerender(<企业在谈候选 />);
     expect(screen.getByText('已读入的里暂时没有需要你拍板的')).toBeTruthy();
     expect(screen.queryByText('暂时没有需要你拍板的')).toBeNull();
-    // (c) 游标读尽 + 零待办：才下「暂时没有」的定论
+    // (c) 成功读尽 + 零待办：才下「暂时没有」的定论
     置招聘屏状态({
       filterRef: 职位ID,
       快照: 快照({ items: [招聘行({ caseId: 'mc_1', 待办: false })], nextCursor: null }),
     });
     rerender(<企业在谈候选 />);
     expect(screen.getByText('暂时没有需要你拍板的')).toBeTruthy();
+  });
+
+  it('求职端筛选层待办数只在成功读尽后给数', async () => {
+    const user = userEvent.setup();
+    置求职屏状态({
+      filterRef: 意向ID,
+      快照: 快照({ items: [候选行({ caseId: 'mc_1', 待办: true })], nextCursor: null }),
+    });
+    render(<在谈首页 />);
+    await user.click(screen.getByRole('button', { name: '筛选 ▾' }));
+    // 待我拍板 档右侧的数字：成功 + 读尽（1 条待办）才出现
+    expect(screen.getByText('1')).toBeTruthy();
   });
 
   it('招聘端：当前档按在招 job_id 过滤，全部档不带过滤；归档岗绝不拿来当 scope', () => {
