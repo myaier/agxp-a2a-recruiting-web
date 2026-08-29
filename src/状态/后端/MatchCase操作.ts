@@ -22,7 +22,7 @@
 //   · 详情直读只认 URL case_id + 已认证角色，绝不读列表记忆填上下文；契约错误按
 //     facade fail closed，本层不再 decode，一律落重试错误态。
 //   · candidate_alias 只是展示文本：键、坐标、请求参数全部以 case_id / role+角色专属
-//     过滤 为准；绝不生成、缓存或推断任何会话标识，不添 published / next_step。
+//     过滤 为准；绝不生成、缓存或推断任何会话标识，不添移交发布标记或服务端下一步字段。
 
 import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
 import type { BFF二进制响应 } from '../../数据/HTTP客户端';

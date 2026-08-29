@@ -19,8 +19,7 @@ import type { P5列表快照 } from '../../状态/后端/类型';
 import type { P5列表项 } from '../../数据/招聘数据源/MatchCase';
 import { P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import { 路径 } from '../../路由/路径表';
-import { 在谈列表 } from '../../数据/模拟数据';
-import { 在招岗位列表, 在谈候选列表 } from '../../数据/企业端模拟数据';
+import { 在谈列表, 在招岗位列表, 在谈候选列表 } from '../../测试/P5Mock边界种子';
 
 // jsdom 不实现 scrollIntoView / scrollTo
 if (!HTMLElement.prototype.scrollIntoView) {

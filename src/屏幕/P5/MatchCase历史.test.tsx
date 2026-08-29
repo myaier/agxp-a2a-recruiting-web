@@ -19,7 +19,7 @@ import type { P5列表项, P5历史生命周期 } from '../../数据/招聘数�
 import { P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import { 路径 } from '../../路由/路径表';
-import { 归档列表初始 } from '../../数据/模拟数据';
+import { 归档列表初始 } from '../../测试/P5Mock边界种子';
 
 const mock派发 = vi.fn();
 const mock跳转 = vi.fn();

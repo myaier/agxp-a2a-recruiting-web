@@ -60,7 +60,7 @@ function 职位段({ 视图 }: { 视图: P5列表正常视图 }) {
   );
 }
 
-/** 阶段行：阶段标题 + 状态文案（权威是 state.lifecycle/stage/status，无 next_step）。 */
+/** 阶段行：阶段标题 + 状态文案（权威是 state.lifecycle/stage/status，无服务端下一步字段）。 */
 function 阶段段({ 视图 }: { 视图: P5列表正常视图 }) {
   return (
     <div className={样式.阶段区}>

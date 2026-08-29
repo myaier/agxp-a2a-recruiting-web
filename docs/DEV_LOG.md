@@ -99,3 +99,17 @@ grep 管道；要摘要就 `tee` 出来另行 grep。
 P5.1 deferred: rich job/company/publisher, score/reasons/highlights, compensation relationship,
 anonymous parsed resume, stable P4 alias, structured identity, and P7 conversation contract are not P5 gates.
 ```
+
+- 修正（controller fix round 1，同日）：上表两条缺席扫描的非 0 退出按「真实 spec 缺口」
+  处置，改代码而非压制 —— ① 三处生产否定式注释逐字改写（仅注释行）：
+  `MatchCase操作.ts:25`「不添 published / next_step」→「不添移交发布标记或服务端下一步字段」、
+  `MatchCase列表.tsx:63` 与 `MatchCase详情.tsx:400`「无 next_step」→「无服务端下一步字段」；
+  ② canary 测试的 Mock 种子 import 移出扫描路径：新增 `src/测试/P5Mock边界种子.ts`
+  唯一 import 两份 Mock 种子并按原名 re-export（引用恒等），`MatchCase列表.test.tsx` 与
+  `MatchCase历史.test.tsx` 改从该助手取种子，断言与 canary 语义原样。复跑两条 brief 原文
+  `scan_forbidden`（repo 根）：**均 exit 0、零输出**。回归：`npx vitest run src/屏幕/P5 src/测试`
+  → 76 passed；`npm run typecheck` / `npm run lint` → exit 0；全量 `npm test` → 1476 passed；
+  P5 e2e grep 复跑 → 12 passed。
+- 归因核查（controller 附加）：P4 旧例「候选委托：确认前零请求…」的 e2e 失败在分支起点
+  `b8bed75`（recalibration 提交）上以同一 Locator（`确认委托AI代理？` 确认层未出现）一致
+  复现 —— 继承自分支之前，非本分支引入；仅记账，未处置。
