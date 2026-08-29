@@ -53,8 +53,10 @@ describe('BFF HTTP 客户端', () => {
   it('普通网络错误不调用任何 Mock 数据源', async () => {
     const fetcher = vi.fn(async () => { throw new TypeError('offline'); });
     const client = 创建BFF客户端({ fetcher, 生成幂等键: () => 'idem-fixed' });
-    await expect(client.请求({ path: '/api/v1/session' })).rejects.toMatchObject({ code: 'network_error' });
+    await expect(client.请求({ path: '/api/v1/session', 不缓存: true })).rejects.toMatchObject({ code: 'network_error' });
     expect(fetcher).toHaveBeenCalledTimes(2); // 初次读取 + 唯一一次读取重试
+    // opt-in no-store 的 GET 重试必须复用同一 init：每次都带 cache: 'no-store'。
+    expect(fetcher.mock.calls.map(([, init]) => init?.cache)).toEqual(['no-store', 'no-store']);
   });
 
   it('区分网络、后端不可用与异常响应的用户提示', () => {
@@ -164,12 +166,14 @@ describe('BFF HTTP 客户端', () => {
       }));
     const client = 创建BFF客户端({ fetcher });
 
-    const result = await client.请求二进制('/api/v1/me/resume-files/rf_1/content');
+    const result = await client.请求二进制('/api/v1/me/resume-files/rf_1/content', { 不缓存: true });
 
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(fetcher).toHaveBeenLastCalledWith('/api/v1/me/resume-files/rf_1/content', {
-      method: 'GET', headers: expect.any(Headers), credentials: 'include',
+      method: 'GET', headers: expect.any(Headers), credentials: 'include', cache: 'no-store',
     });
+    // 二进制 GET 的网络错误重试同样保留 opt-in 的 cache: 'no-store'。
+    expect(fetcher.mock.calls.map(([, init]) => init?.cache)).toEqual(['no-store', 'no-store']);
     expect(await result.blob.text()).toBe('%PDF-1.7');
     expect(result.contentType).toBe('application/pdf');
     expect(result.contentDisposition).toBe('attachment; filename="resume.pdf"');
@@ -185,5 +189,32 @@ describe('BFF HTTP 客户端', () => {
     await expect(client.请求二进制('/api/v1/me/resume-files/rf_missing/content'))
       .rejects.toMatchObject({ status: 404, code: 'resume_file_not_found', message: 'missing' });
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  // P5：只有显式 不缓存: true 的 JSON / 二进制请求才设置 Request.cache = 'no-store'；
+  // 既有调用方（未传该选项）的 fetch init 保持原样（cache 为 undefined）。
+  it('only explicitly no-store JSON and binary requests set Request.cache', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        result: { ok: true }, meta: { request_id: 'json', api_version: 'v1' },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response('%PDF-1.7', {
+        status: 200, headers: { 'Content-Type': 'application/pdf' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        result: { ok: true }, meta: { request_id: 'normal', api_version: 'v1' },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    const client = 创建BFF客户端({ fetcher });
+    await client.请求({ path: '/api/v1/me/match-cases', 不缓存: true });
+    await client.请求二进制(
+      '/api/v1/me/match-cases/mc_1/resume-submission/content',
+      { 不缓存: true },
+    );
+    await client.请求({ path: '/api/v1/session' });
+
+    expect(fetcher.mock.calls.map(([, init]) => init?.cache)).toEqual([
+      'no-store', 'no-store', undefined,
+    ]);
   });
 });

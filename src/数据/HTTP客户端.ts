@@ -40,6 +40,8 @@ interface BFF请求共同选项 {
   幂等?: boolean;
   /** One user intent may retain this key across separate calls after outcome uncertainty. */
   幂等键?: string;
+  /** P5 opt-in：显式为 true 时设置 Request.cache = 'no-store'（非持久化读取）；缺省时 cache 保持 undefined。 */
+  不缓存?: true;
 }
 
 /** body 与 formData 互斥：JSON 请求走 body，multipart 上传走 formData（浏览器生成 boundary）。 */
@@ -68,9 +70,14 @@ export interface BFF客户端依赖 {
   等待?: (milliseconds: number) => Promise<void>;
 }
 
+/** 二进制 GET（附件简历内容等）的请求选项：不缓存 为 P5 opt-in no-store 标记。 */
+export interface BFF二进制请求选项 {
+  不缓存?: true;
+}
+
 export interface BFF客户端 {
   请求<T>(options: BFF请求选项): Promise<BFF响应<T>>;
-  请求二进制(path: `/api/v1/${string}`): Promise<BFF二进制响应>;
+  请求二进制(path: `/api/v1/${string}`, options?: BFF二进制请求选项): Promise<BFF二进制响应>;
 }
 
 type 尝试结果<T> =
@@ -197,6 +204,7 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
       method,
       headers,
       credentials: 'include',
+      ...(options.不缓存 ? { cache: 'no-store' as const } : {}),
     };
     if (hasBody) init.body = JSON.stringify(options.body);
     else if (options.formData !== undefined) init.body = options.formData;
@@ -231,8 +239,13 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
   // 二进制 GET：附件简历内容等原始字节流下载。与 JSON GET 一样只重试一次网络错误、
   // 带 credentials: 'include'；非 2xx 复用同一套 解析错误响应 —— 不重试 HTTP 错误，
   // 成功时也绝不尝试解析 JSON envelope（返回原始 Blob）。
-  async function 请求二进制(path: `/api/v1/${string}`): Promise<BFF二进制响应> {
-    const init: RequestInit = { method: 'GET', headers: new Headers(), credentials: 'include' };
+  async function 请求二进制(path: `/api/v1/${string}`, options?: BFF二进制请求选项): Promise<BFF二进制响应> {
+    const init: RequestInit = {
+      method: 'GET',
+      headers: new Headers(),
+      credentials: 'include',
+      ...(options?.不缓存 ? { cache: 'no-store' as const } : {}),
+    };
     let resp: Response;
     try {
       resp = await fetcher(path, init);
