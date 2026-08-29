@@ -7,6 +7,11 @@
 // 两条交互硬规矩（来自设计稿）：
 //   · 等你行动的卡置顶；紧急感只由红色阶段标 + 「需要你」胶囊表达（用户否了卡级红标记）
 //   · 卡上不放决策按钮，决策一律进详情页做
+//
+// P5 模式边界：Backend 的在谈列表只来自 P5 open 工作区快照（当前意向 =
+// 意向表内的 intention_id / 全部意向 = 无过滤），经 屏幕/P5/MatchCase列表 渲染；
+// 不读 在谈列表、不水合 Mock 在谈单。Mock 分支（Mock在谈首页）行为与接线前逐字一致、
+// 零 P5 请求。
 
 import { useState } from 'react';
 import 样式 from './在谈首页.module.css';
@@ -18,6 +23,8 @@ import 适配环 from '../组件/适配环';
 import { use应用状态, 取意向名 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
+import { MatchCase列表 } from './P5/MatchCase列表';
+import { P5范围键 } from '../状态/后端/MatchCase操作';
 import type { 在谈单, 求职意向 } from '../数据/类型';
 
 /**
@@ -38,6 +45,93 @@ function 按意向分组(列表: 在谈单[], 意向表: 求职意向[]): { 名:
 }
 
 export default function 在谈首页() {
+  const { 数据源模式 } = use应用状态();
+  return 数据源模式 === 'backend' ? <Backend在谈首页 /> : <Mock在谈首页 />;
+}
+
+/** Backend 分支（P5）：open 工作区快照 + MatchCase列表；Mock 的在谈单对象一概不读。 */
+function Backend在谈首页() {
+  const { 状态, 派发, 后端状态, 操作 } = use应用状态();
+  const { 跳转 } = use导航();
+  const [筛选层开, 设筛选层开] = useState(false);
+
+  const 看什么 = 状态.在谈看什么;
+  const 范围 = 状态.在谈范围;
+
+  // 当前档的过滤坐标 = 意向表内当前意向那条的编号（Backend 水合后就是 intention_id，
+  // 顶栏胶囊同一来源）。护栏镜像 Mock 分支：当前意向已不在表里时这一档整片空掉，
+  // 绝不拿别的坐标顶上、也不偷偷放宽成全部。
+  const 当前意向条 = 状态.求职意向表.find((条) => 取意向名(条.标题) === 状态.当前意向);
+  const filterRef = 范围 === '全部' ? null : (当前意向条?.编号 ?? null);
+  const 当前意向仍在表内 = 当前意向条 !== undefined;
+
+  const 快照 = 当前意向仍在表内 || 范围 === '全部'
+    ? 后端状态.P5工作区?.[P5范围键.open('candidate', filterRef)]
+    : undefined;
+  const 已载待办数 = 快照?.items.filter((条) => 条.needsAction).length ?? 0;
+  const 读尽 = 快照 !== undefined && 快照.nextCursor === null;
+  // 「全部意向」档右侧的跨意向待办数：只有那个 scope 自己已载且读尽才给数
+  // （宁缺勿错 —— 游标未尽时任何数字都不是全量，绝不声称）
+  const 全部快照 = 后端状态.P5工作区?.[P5范围键.open('candidate', null)];
+  const 全档待办数 = 全部快照 !== undefined && 全部快照.nextCursor === null
+    ? 全部快照.items.filter((条) => 条.needsAction).length : 0;
+
+  // 下拉只重读当前 scope（GET）；错误文案由快照 error 承载，列表上方错误行呈现
+  const 重读当前范围 = () =>
+    当前意向仍在表内 || 范围 === '全部'
+      ? 操作.刷新工作区('candidate', filterRef).catch(() => undefined)
+      : undefined;
+
+  return (
+    <主页外壳>
+      <顶部意向栏
+        跨意向={范围 === '全部'}
+        打开在谈筛选={() => 设筛选层开(true)}
+        在谈生效={看什么 !== '全部' || 范围 === '全部'}
+      />
+
+      <代理横幅
+        前文="初筛与前几轮我已谈完，"
+        强调={已载待办数 > 0
+          ? (读尽 ? `${已载待办数} 个职位需要你协调` : '有职位需要你协调')
+          : '暂时没有需要你介入的'}
+        按下={() => 跳转(路径.问AI代理)}
+      />
+
+      <div style={{ height: 10, flex: 'none' }} />
+
+      <下拉刷新 刷新={重读当前范围}>
+      <滚动区>
+        {范围 === '当前' && !当前意向仍在表内 ? (
+          <div className={样式.空态}>这个意向下暂时没有在谈职位。</div>
+        ) : (
+          // eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role
+          <MatchCase列表 role="candidate" filterRef={filterRef} />
+        )}
+      </滚动区>
+      </下拉刷新>
+      {筛选层开 ? (
+        <在谈筛选层
+          当前={看什么}
+          设当前={(档) => 派发({ 型: '设在谈看什么', 档 })}
+          待办数={读尽 ? 已载待办数 : 0}
+          范围组={{
+            标题: '看哪些意向',
+            当前档名: '当前意向',
+            全部档名: '全部意向',
+            当前: 范围,
+            设当前: (档) => 派发({ 型: '设在谈范围', 档 }),
+            全部待办数: 全档待办数,
+          }}
+          关闭={() => 设筛选层开(false)}
+        />
+      ) : null}
+    </主页外壳>
+  );
+}
+
+/** Mock 原型分支：静态在谈表 + 全局归约，行为与接线前逐字一致。 */
+function Mock在谈首页() {
   const { 状态, 派发 } = use应用状态();
   // 进入首页先给一小段加载体感（标注意见：用户进来应该有加载过程）
   const 数据就绪 = use模拟加载();
