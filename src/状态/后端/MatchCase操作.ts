@@ -129,8 +129,16 @@ interface P5栅栏 {
   role: BFF角色 | null;
   sessionGeneration: number;
   scopeKey: string;
+  /** 生命周期代际（设置P5范围 换 scope 时 +1）：卸载/重挂/换 scope 的作废凭据。 */
   scopeGeneration: number;
+  /** 读代际（权威重读/对账 换代时 +1）：只作废在飞「读」，绝不牵连并发命令与 PDF 取件。 */
+  readGeneration: number;
   visibleScope: string | null;
+}
+
+/** 读代际在 P5范围代际 表里的虚拟键（与生命周期键同表不同名，随 清P5MatchCase引用 一并清）。 */
+function 读代际键(scopeKey: string): string {
+  return `${scopeKey}#读`;
 }
 
 // ── scope 读锁的属主登记：单飞 + 过期接管（与 发现推荐操作 同一模式）──────────────
@@ -214,15 +222,18 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
   function 捕获栅栏(scopeKey: string): P5栅栏 {
     const role = 后端状态引用.current.主体?.last_used_role ?? null;
     // 首次触达的 scope 代际从 0 起跑并落表（与 P4 同款：未落表的键读回 undefined 会把
-    // 首读 completion 误判成 stale）。
+    // 首读 completion 误判成 stale）。读代际同理。
     const scopeGeneration = P5范围代际.current.get(scopeKey) ?? 0;
     P5范围代际.current.set(scopeKey, scopeGeneration);
+    const readGeneration = P5范围代际.current.get(读代际键(scopeKey)) ?? 0;
+    P5范围代际.current.set(读代际键(scopeKey), readGeneration);
     return {
       subjectId: 主体标识引用.current,
       role,
       sessionGeneration: 会话代际.current,
       scopeKey,
       scopeGeneration,
+      readGeneration,
       visibleScope: role === null ? null : P5可见范围.current[role as P5角色],
     };
   }
@@ -233,29 +244,33 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       主体?.last_used_role === fence.role &&
       会话代际.current === fence.sessionGeneration &&
       (fence.role === null || P5可见范围.current[fence.role as P5角色] === fence.visibleScope) &&
-      P5范围代际.current.get(fence.scopeKey) === fence.scopeGeneration;
+      P5范围代际.current.get(fence.scopeKey) === fence.scopeGeneration &&
+      P5范围代际.current.get(读代际键(fence.scopeKey)) === fence.readGeneration;
   }
 
   /**
-   * 权威重读/对账前的 scope 换代：作废同 scope 在飞的旧读（3 秒轮询的迟到 GET
+   * 权威重读/对账前的读换代：作废同 scope 在飞的旧读（3 秒轮询的迟到 GET
    * 服务端可能早于 mutation 执行，迟到回写会把已确认的新状态覆盖回旧状态）。
+   * 只 +1 读代际 —— 生命周期代际不动，绝不牵连并发命令与 PDF 取件。
    */
   function 换代并捕获(scopeKey: string): P5栅栏 {
-    P5范围代际.current.set(scopeKey, (P5范围代际.current.get(scopeKey) ?? 0) + 1);
+    const 读键 = 读代际键(scopeKey);
+    P5范围代际.current.set(读键, (P5范围代际.current.get(读键) ?? 0) + 1);
     return 捕获栅栏(scopeKey);
   }
 
   /**
-   * 命令/PDF 取件类栅栏校验：不含 scope 代际 —— 权威重读/对账的换代只作废在飞「读」，
+   * 命令/PDF 取件类栅栏校验：不含读代际 —— 权威重读/对账的换代只作废在飞「读」，
    * 绝不误伤同 Case 并发命令（否则另一方的迟到未知结果会被静默 resolve 伪装成成功）。
-   * 主体/角色/会话代际/可见范围仍全量把关。
+   * 主体/角色/会话代际/可见范围 + 生命周期代际（卸载重挂 ABA / 换 scope）全量把关。
    */
   function 会话栅栏仍当前(fence: P5栅栏): boolean {
     const 主体 = 后端状态引用.current.主体;
     return 主体标识引用.current === fence.subjectId &&
       主体?.last_used_role === fence.role &&
       会话代际.current === fence.sessionGeneration &&
-      (fence.role === null || P5可见范围.current[fence.role as P5角色] === fence.visibleScope);
+      (fence.role === null || P5可见范围.current[fence.role as P5角色] === fence.visibleScope) &&
+      P5范围代际.current.get(fence.scopeKey) === fence.scopeGeneration;
   }
 
   /** 只删自己那把键：旧会话的迟到成败绝不动新会话为同一意图新铸的键（防重复提交）。 */
@@ -521,7 +536,9 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
         }
         throw 错误; // 对账失败：保留键与原错误，重试沿用同一键
       }
-      if (!会话栅栏仍当前(对账栅栏)) return;
+      // 提交前过完整栅栏（含读代际）：更新的权威重读已换代时，本对账携带的是更旧视图 ——
+      // 不回写、不确认，保留键按原不确定性收口（屏层可见失败，同键可重放）。
+      if (!栅栏仍当前(对账栅栏)) throw 错误;
       设后端状态((旧态) => ({
         ...旧态,
         P5详情: { ...旧态.P5详情, [scopeKey]: 成功详情(详情, 对账栅栏.scopeGeneration) },

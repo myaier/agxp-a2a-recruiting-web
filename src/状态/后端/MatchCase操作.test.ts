@@ -705,6 +705,27 @@ describe('S0–S3 命令与幂等意图', () => {
     randomUUID.mockRestore();
   });
 
+  it('对账读迟到于更新的权威重读：不回写旧详情，按原不确定性收口且键保留', async () => {
+    // 顺序：叮嘱 POST 未知 → 对账 GET 出发挂起 → 另一命令成功并完成更晚的权威重读落库
+    const 叮嘱门 = deferred<void>();
+    vi.mocked(env.数据源.新增P5叮嘱).mockReturnValueOnce(叮嘱门.promise);
+    vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
+    const 对账门 = deferred<P5详情>();
+    vi.mocked(env.数据源.读取P5详情)
+      .mockReturnValueOnce(对账门.promise)  // 第 1 次 GET：叮嘱的对账（服务端早执行，迟到回包）
+      .mockResolvedValueOnce(已解事实详情); // 第 2 次 GET：事实命令的权威重读（新态）
+    const 叮嘱 = env.操作.新增叮嘱('candidate', 'mc_1', '工作日全天可联系');
+    await vi.waitFor(() => expect(vi.mocked(env.数据源.新增P5叮嘱)).toHaveBeenCalledTimes(1));
+    叮嘱门.reject(new BFF错误(503, 'downstream_unavailable', 'down')); // 未知 → 对账 GET 出发挂起
+    await vi.waitFor(() => expect(vi.mocked(env.数据源.读取P5详情)).toHaveBeenCalledTimes(1));
+    const 事实 = env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天'); // 成功 → 权威重读换代落新态
+    await 事实;
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toEqual(已解事实详情);
+    对账门.resolve(权威候选详情); // 迟到的旧对账视图
+    await expect(叮嘱).rejects.toMatchObject({ status: 503 }); // 绝不按旧对账确认成功
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toEqual(已解事实详情); // 不回写旧详情
+  });
+
   it('503 结果不确定：先权威 detail GET 对账，动作仍在则原样抛且键保留，重试沿用同一键', async () => {
     const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
       .mockReturnValueOnce(UUID键('fact-key-503'))
@@ -883,6 +904,21 @@ describe('读取简历PDF 与对象租约', () => {
     租约.revoke();
     expect(回收).toHaveBeenCalledTimes(1);
     expect(env.deps.P5对象租约!.current.has(租约)).toBe(true); // 已手动回收的租约仍可安全再清
+  });
+
+  it('PDF 取件途中同 scope 卸载重挂（ABA）：迟到成功不建租约不登记', async () => {
+    const { 建造 } = 桩URL();
+    const 门 = deferred<BFF二进制响应>();
+    vi.mocked(env.数据源.读取P5简历PDF).mockReturnValue(门.promise);
+    const 详情键 = P5范围键.detail('recruiter', 'mc_1');
+    env.操作.设置P5范围('recruiter', 详情键); // 挂载
+    const 取 = env.操作.读取简历PDF('recruiter', 'mc_1');
+    env.操作.设置P5范围('recruiter', null); // 卸载：生命周期换代 + 可见范围清空
+    env.操作.设置P5范围('recruiter', 详情键); // 同 role/case 重挂：可见范围回到同值（ABA）
+    门.resolve(PDF响应);
+    await expect(取).rejects.toThrow();
+    expect(建造).not.toHaveBeenCalled();
+    expect(env.deps.P5对象租约!.current.size).toBe(0);
   });
 
   it('迟到成功（会话已换代）不建租约不登记，按失败收口', async () => {
