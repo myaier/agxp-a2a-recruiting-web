@@ -1325,3 +1325,117 @@ describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
     expect(mock读取简历PDF).not.toHaveBeenCalled();
   });
 });
+
+// ══ Task 7 夹具：completed + handoff_pending 的招聘端镜像 ══
+
+/** completed + handoff_pending（招聘端）：移交文案 + 恒禁用的「开始私聊」，零 mutation。 */
+function 招聘已完成移交DTO(): P5详情 {
+  return 招聘详情DTO({
+    state: 状态({
+      caseId: 'mc_done', lifecycle: 'completed', stage: 'intent_confirmation', status: 'passed',
+      step: 'handoff_pending', needsUser: false, outcome: null, outcomeCode: null,
+      finalizedAt: '2026-08-29T04:00:00Z',
+    }),
+    needsAction: false,
+    availableActions: [],
+    stages: 阶段区组({
+      anonymous_screening: { state: 'passed' },
+      resume_submission: { state: 'passed' },
+      needs_coordination: { state: 'passed' },
+      intent_confirmation: { state: 'passed', summary: '双方已确认意向' },
+    }),
+    intentConfirmations: { candidate: 'confirm', recruiter: 'confirm' },
+    terminalSummary: { stage: 'intent_confirmation', outcome: '', reasonSummary: '', finalizedAt: '2026-08-29T04:00:00Z' },
+  });
+}
+
+describe('MatchCase详情 · completed 移交只读（Task 7）', () => {
+  beforeEach(() => {
+    mock读取详情.mockClear();
+    mock跳转.mockClear();
+    mock新增叮嘱.mockClear();
+    mock回答事实.mockClear();
+    mock决定S0.mockClear();
+    mock决定S1.mockClear();
+    mock决定S2.mockClear();
+    mock决定S3.mockClear();
+    mock提交简历.mockClear();
+    mock读取简历PDF.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // brief 片段：completed handoff never navigates to chat —— 按钮在场但恒禁用，
+  // 点击零导航（仓库无 jest-dom，toBeDisabled 换成 disabled 属性断言）。
+  it('completed handoff never navigates to chat（双端）', async () => {
+    const user = userEvent.setup();
+    置详情状态({
+      role: 'recruiter', caseId: 'mc_done',
+      快照: 详情快照({ detail: 招聘已完成移交DTO() }),
+    });
+    渲染详情('recruiter', 'mc_done');
+    // 移交文案与 handoff_pending 步骤说明同词：findAllByText（在场即算，出现两处属正常）
+    expect((await screen.findAllByText('双方已确认，正在创建会话')).length).toBeGreaterThan(0);
+    const 按钮 = screen.getByRole('button', { name: '开始私聊' }) as HTMLButtonElement;
+    expect(按钮.disabled).toBe(true); // toBeDisabled 的仓库等价断言
+    expect(按钮.hasAttribute('disabled')).toBe(true);
+    await user.click(按钮); // 禁用键点击无效：零导航、零 mutation
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock决定S3).not.toHaveBeenCalled();
+
+    // 候选端镜像：同一形态同样只给文案 + 恒禁用键
+    cleanup();
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已完成移交详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    expect((await screen.findAllByText('双方已确认，正在创建会话')).length).toBeGreaterThan(0);
+    const 候选键 = screen.getByRole('button', { name: '开始私聊' }) as HTMLButtonElement;
+    expect(候选键.disabled).toBe(true);
+    await user.click(候选键);
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('移交视图零会话标识：视图/导航参数/存储/请求坐标都不存在会话标识', async () => {
+    const user = userEvent.setup();
+    const 存储写入 = vi.spyOn(Storage.prototype, 'setItem');
+    try {
+      置详情状态({
+        role: 'recruiter', caseId: 'mc_done',
+        快照: 详情快照({ detail: 招聘已完成移交DTO() }),
+      });
+      渲染详情('recruiter', 'mc_done');
+      expect((await screen.findAllByText('双方已确认，正在创建会话')).length).toBeGreaterThan(0);
+      await user.click(screen.getByRole('button', { name: '开始私聊' }));
+
+      // 视图态：页面上含「会话」的文本只有那句准备文案（移交行 + 步骤说明），无任何会话标识
+      const 含会话 = screen.getAllByText(/会话/);
+      expect(含会话.length).toBeGreaterThan(0);
+      含会话.forEach((元) => expect(元.textContent).toBe('双方已确认，正在创建会话'));
+      expect(screen.queryByText(/conversation|chat[-_]?id|conv[-_]|session[-_]?id/i)).toBeNull();
+
+      // 导航参数：零跳转（禁用键点击与整页任何入口都不产生会话路由）
+      expect(mock跳转).not.toHaveBeenCalled();
+
+      // 存储：全程零写入（快照/标识只在内存）
+      expect(存储写入).not.toHaveBeenCalled();
+
+      // 请求坐标：读详情只有 (role, case_id, force) 三元组，无第四个会话参数
+      expect(mock读取详情.mock.calls.length).toBeGreaterThan(0);
+      mock读取详情.mock.calls.forEach((调) => {
+        expect(调).toEqual(['recruiter', 'mc_done', true]);
+      });
+      // 其余 mutation/PDF 操作一概零调用
+      expect(mock新增叮嘱).not.toHaveBeenCalled();
+      expect(mock回答事实).not.toHaveBeenCalled();
+      expect(mock决定S0).not.toHaveBeenCalled();
+      expect(mock决定S1).not.toHaveBeenCalled();
+      expect(mock决定S2).not.toHaveBeenCalled();
+      expect(mock决定S3).not.toHaveBeenCalled();
+      expect(mock提交简历).not.toHaveBeenCalled();
+      expect(mock读取简历PDF).not.toHaveBeenCalled();
+    } finally {
+      存储写入.mockRestore();
+    }
+  });
+});

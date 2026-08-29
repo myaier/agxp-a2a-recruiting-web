@@ -1,5 +1,6 @@
 // P5 Task 5：双端四阶段详情（Backend 专用共享组件；Mock 屏不渲染本组件）。
 // P5 Task 6：S0–S3 动作卡与授权原始 PDF 接入 Task 5 留下的 尾部/附件 缝。
+// P5 Task 7：completed 移交行补恒禁用的「开始私聊」键（在场不可点、零导航、零会话标识）。
 //
 // 模式边界（spec §5/§6/§8/§10.3 与 P5 冻结契约）：
 //   · 详情只凭 URL case_id + 已认证角色强制 GET（读取详情 恒 force=true —— 非 force 在
@@ -127,9 +128,18 @@ const 终局题样式: CSSProperties = {
   fontSize: 10.5, fontWeight: 700, color: 'var(--次要浅)', letterSpacing: '0.04em',
 };
 const 终局弱样式: CSSProperties = { fontSize: 11, color: 'var(--最弱)' };
+const 移交区样式: CSSProperties = {
+  margin: '0 16px 10px', display: 'flex', flexDirection: 'column', gap: 10,
+};
 const 移交行样式: CSSProperties = {
-  margin: '0 16px 10px', padding: '12px 14px', borderRadius: 14, background: 'var(--意向底)',
+  padding: '12px 14px', borderRadius: 14, background: 'var(--意向底)',
   color: 'var(--意向)', fontSize: 13, fontWeight: 700, lineHeight: 1.6,
+};
+/** 移交态的「开始私聊」：在场但恒禁用（准备中，会话标识属 P7）——弱化到不可点的观感。 */
+const 移交键样式: CSSProperties = {
+  alignSelf: 'flex-start', padding: '7px 15px', borderRadius: 999,
+  border: '1px solid var(--描边)', background: 'var(--浅灰底)', color: 'var(--最弱)',
+  fontSize: 12.5, fontWeight: 700,
 };
 
 // ── Task 6：动作卡与回答框的行内版式（沿用设计令牌，不另建 CSS 文件）──────────
@@ -412,8 +422,17 @@ function 详情主体({
         </div>
       ) : null}
 
-      {/* 移交只有 completed + handoff_pending 一种：只文案、不可聊、零动作（§7） */}
-      {视图.handoff !== null ? <div style={移交行样式}>{视图.handoff.copy}</div> : null}
+      {/* 移交只有 completed + handoff_pending 一种（§7）：准备文案 + 恒禁用的「开始私聊」，
+          点击零导航（canChat 恒 false）；P5 视图里不存在任何会话标识 —— 不生成、不缓存、
+          不推断，会话路由与标识属 P7。 */}
+      {视图.handoff !== null ? (
+        <div style={移交区样式}>
+          <div style={移交行样式}>{视图.handoff.copy}</div>
+          <button type="button" style={移交键样式} disabled>
+            开始私聊
+          </button>
+        </div>
+      ) : null}
 
       {/* 四阶段对话流：类型化分段的渲染器（时间线/回执只是展示文本）。
           动作卡在 分段项.尾部、招聘端 PDF 入口在 附件 槽（点附件 只走 Case 专属 role 路径）。 */}
