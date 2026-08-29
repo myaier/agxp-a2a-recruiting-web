@@ -347,7 +347,7 @@ backend-local-recruiter
 
 基线 PNG 和 manifest 提交到前端仓库。candidate、diff、annotated screenshot 和运行报告全部写入 gitignored artifact 目录。
 
-只有显式 `--update-baseline` 可以生成候选基线，且它只接受 `--journey all`，因为七张 reference 是一个原子集合。命令必须先通过全部功能旅程和 fixture verify。已有 manifest 时还必须通过环境一致性检查；仓库尚无 manifest 的首次 bootstrap 则记录当前环境并把七个场景报告为 `missing`，允许生成独立 review 目录。损坏的 manifest 或已有 manifest 的环境不兼容仍是 `INFRA_BLOCKED`。命令不能在同一次失败运行中直接覆盖已提交基线，最终更新仍需人工查看 diff 后提交。
+只有显式 `--update-baseline` 可以生成候选基线，且它只接受 `--journey all`，因为七张 reference 是一个原子集合。命令必须先通过全部功能旅程和 fixture verify。首次 bootstrap 要求 manifest 与 reference 目录同时不存在；半存在状态按损坏处理。已有 manifest 时通常还必须通过环境一致性检查；唯一可恢复例外是差异只限 `agent-browser`/Chrome renderer 版本，此时命令仍保持 `INFRA_BLOCKED` exit 75，但允许生成七图 review 目录，并同时记录安全的旧/新 renderer 元数据供人工审批。viewport、语言、时区、颜色、scale、schema、scene 清单不一致，manifest 损坏或期望图片缺失都不允许借更新命令绕过。命令不能直接覆盖已提交基线，最终更新仍需人工查看全部图片后显式安装并提交 manifest/PNG；不得只删除 manifest 来伪造 bootstrap。
 
 ## 13. 运行时错误与网络证据
 

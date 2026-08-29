@@ -171,6 +171,7 @@ export interface 视觉结果 {
   schemaVersion: 1;
   gate: 'report' | 'enforce';
   environment: 'matched' | 'bootstrap' | 'blocked';
+  environmentIssue: null | 'bootstrap' | 'renderer-version-mismatch' | 'manifest-invalid' | 'expected-file-missing';
   scenes: Array<{
     sceneId: string;
     status: 'pass' | 'warning' | 'blocked' | 'missing' | 'skipped';
@@ -471,8 +472,8 @@ The exact display names are taken from the live seeded Catalog after inspecting 
 Algorithm, with every write using the revision just read:
 
 ```text
-reconcile stale run receipts with the same fail-closed delta rules
 login candidate → ensure candidate role → set last-used-role candidate
+reconcile stale run receipts with the authenticated candidate owner list and the same fail-closed delta rules
 GET resume → PATCH profile, summary, skills to fixed baseline
 GET intentions → keep/update exactly one fixture intention; remove only duplicate fixture-owned intentions; block on every non-baseline row rather than treating a dedicated test account as disposable
 GET privacy → PATCH employer/disclosure fixed baseline
@@ -619,8 +620,8 @@ The bearer is read and expanded only inside the one-shot container, the config i
 Algorithm:
 
 ```text
-reconcile every stale run receipt's recruiter job delta before login; delete only the sole receipt-proven fixed temp title and fail closed on ambiguity
 login recruiter → ensure recruiter role → set last-used-role recruiter
+reconcile every stale run receipt's recruiter job delta with the authenticated recruiter owner list; delete only the sole receipt-proven fixed temp title and fail closed on ambiguity
 GET/PATCH recruiter profile to public_name="浏览器验收招聘官", title="招聘负责人"
 GET affiliations
   verified active admin for exact organization exists → reuse it
@@ -800,7 +801,7 @@ export type 真实后端场景ID = typeof 真实后端场景们[number];
 
 - [ ] **Step 4: 实现视觉比较**
 
-`比较真实后端视觉()` accepts the selected journey set and derives the expected scene set (`candidate-load`→3 candidate load scenes, `candidate-crud`→resume-updated, `recruiter-load`→2 recruiter load scenes, `recruiter-crud`→jobs-after-create, `all`→7). Unselected scenes return `skipped` and never read PNGs. With no committed manifest/reference directory it returns environment `bootstrap`, records the current environment, marks selected scenes `missing`, and leaves unselected scenes `skipped`. With a valid manifest it deep-compares environment fields except `baselineCommit`; before each expected comparison it checks both reference and candidate existence, and any missing expected file returns scene `missing` plus environment `blocked`/`INFRA_BLOCKED` instead of throwing or silently passing. Only then call existing `比较图片(reference,candidate,diff,默认比较阈值)`. A malformed or incompatible existing manifest also returns `blocked`. It never uses the Mock comparison directory API because that API treats real `/api/v1` requests as structure failures.
+`比较真实后端视觉()` accepts the selected journey set and derives the expected scene set (`candidate-load`→3 candidate load scenes, `candidate-crud`→resume-updated, `recruiter-load`→2 recruiter load scenes, `recruiter-crud`→jobs-after-create, `all`→7). Unselected scenes return `skipped` and never read PNGs. Bootstrap requires both manifest and reference directory to be absent; a half-present pair is `manifest-invalid`. With a valid manifest it deep-compares environment fields except `baselineCommit`: a difference limited to `agentBrowserVersion`/`chromeBuild` is structured `renderer-version-mismatch`, while viewport/locale/timezone/color/device-scale/schema/scene differences are non-refreshable `manifest-invalid`. Before each expected comparison it checks both reference and candidate existence, and any missing expected file returns scene `missing` plus `expected-file-missing`/`INFRA_BLOCKED` instead of throwing or silently passing. Only then call existing `比较图片(reference,candidate,diff,默认比较阈值)`. It never uses the Mock comparison directory API because that API treats real `/api/v1` requests as structure failures.
 
 Baseline update API is two-phase:
 
@@ -809,12 +810,15 @@ export function 生成候选基线目录(options: {
   functionalPassed: boolean;
   fixtureVerified: boolean;
   environment: 'matched' | 'bootstrap' | 'blocked';
+  environmentIssue: null | 'bootstrap' | 'renderer-version-mismatch' | 'manifest-invalid' | 'expected-file-missing';
+  baselineManifest: 真实后端视觉Manifest | null;
+  candidateManifest: 真实后端视觉Manifest;
   candidateDir: string;
   reviewDir: string;
 }): void;
 ```
 
-Functional/fixture false or environment `blocked` throws before copying. `matched` and first-run `bootstrap` copy the seven candidates plus a candidate manifest containing the current environment to `reviewDir`, never to committed `基线/`. Tests cover absent manifest bootstrap success, corrupt manifest refusal and existing-manifest environment mismatch refusal.
+Functional/fixture false always throws. `matched` and first-run `bootstrap` may copy the seven candidates. In explicit `--update-baseline` mode only, `blocked + renderer-version-mismatch` may also copy after all seven functional journeys and fixture verify pass; it writes `environment-review.json` containing the safe old/new renderer versions plus the candidate manifest for human review. `manifest-invalid` and `expected-file-missing` never qualify. Nothing writes committed `基线/`. Tests cover clean bootstrap, half-present/corrupt baseline refusal, matched refresh, renderer-only upgrade candidate success, non-renderer environment mismatch refusal and expected-file-missing refusal.
 
 - [ ] **Step 5: 添加 scripts 与 ignore**
 
@@ -1130,6 +1134,9 @@ one journey fails → later independent journey still runs; cleanup+verify run; 
 cleanup fails → exit 1 even when journeys pass
 report mode visual blocked → exit 0 classification VISUAL_DRIFT
 enforce mode visual blocked → exit 1
+renderer-version mismatch without update → no baseline-review; exit 75
+renderer-version mismatch with --update-baseline/all and functional PASS → emit seven-file baseline-review + old/new environment metadata; still exit 75 until humans install it
+manifest-invalid/expected-file-missing with --update-baseline → no baseline-review; exit 75
 SIGINT/failure → close only two named sessions and owned Vite; preserve preexisting backend
 unknown journey/argument → exit 2 before mutations
 --update-baseline combined with a journey other than all → exit 2 before mutations
@@ -1349,6 +1356,7 @@ Document:
 - existing healthy stack preservation and owned-stack down behavior;
 - where report/candidate/diff live;
 - cleanup recovery using the printed private cleanup journal and backend run receipt paths;
+- renderer upgrade recovery: a normal run remains `INFRA_BLOCKED`; rerun `--journey all --update-baseline`, expect exit 75 plus a seven-file review directory and safe old/new renderer metadata, inspect every image, then explicitly install/commit the candidate manifest and PNGs; never delete only the manifest or treat a half-present baseline as bootstrap;
 - no route mocks/HAR/state save/video by default;
 - four journeys, seven scenes and explicit AI/matching non-goal;
 - feature changes that should trigger this test.
