@@ -51,7 +51,7 @@ describe('BFF HTTP 客户端', () => {
   });
 
   it('普通网络错误不调用任何 Mock 数据源', async () => {
-    const fetcher = vi.fn(async () => { throw new TypeError('offline'); });
+    const fetcher = vi.fn<typeof fetch>(async () => { throw new TypeError('offline'); });
     const client = 创建BFF客户端({ fetcher, 生成幂等键: () => 'idem-fixed' });
     await expect(client.请求({ path: '/api/v1/session', 不缓存: true })).rejects.toMatchObject({ code: 'network_error' });
     expect(fetcher).toHaveBeenCalledTimes(2); // 初次读取 + 唯一一次读取重试
