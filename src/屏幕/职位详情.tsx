@@ -13,7 +13,8 @@
 // （有推荐坐标，可反馈可委托），快照没有再读详情缓存 / GET 单个 CandidateJob；
 // 绝不回退 市场列表[0]，未知/不可见 Job 给安全不可用页。详情直取（无推荐坐标）
 // 渲染权威详情但禁用 不感兴趣 与 委托 —— 缺 recommendation_id 就绝不猜坐标。
-// 委托每次都过 确认层 披露确认，成功后原地停留（不跳 P5 在谈详情、不造本地 Case）；
+// 委托每次都过显式披露确认（P5：先拿权威附件库 —— 零份去上传、一份 确认层 点名、
+// 多份 附件简历选择层 单选），成功后原地停留（不跳 P5 在谈详情、不造本地 Case）；
 // 直聊入口整体隐藏（P4 没有直聊许可/会话坐标）；公司槽只在 hiring_organization_ref
 // 在场时可进公开企业页。Mock 分支保持原型行为原样。
 
@@ -36,9 +37,11 @@ import { 匹配对齐卡 } from '../组件/匹配对齐卡';
 import { 折算工作年限, 求职侧对齐行 } from '../数据/匹配对齐';
 import { 从P4候选岗位, 从P4CandidateJob } from '../数据/发现推荐映射';
 import type { P4候选岗位页面 } from '../数据/招聘数据源类型';
+import type { BFF附件简历 } from '../数据/BFF契约';
 import { P4错误文案, P4范围键 } from '../状态/后端/发现推荐操作';
 import { P4委托进度未知文案, use发现推荐委托轮询 } from '../状态/后端/use发现推荐委托轮询';
 import 确认层 from '../组件/确认层';
+import 附件简历选择层, { 从附件行取选择值, type 附件简历选择值 } from '../组件/附件简历选择层';
 
 export default function 职位详情() {
   const { 数据源模式 } = use应用状态();
@@ -164,7 +167,7 @@ function Mock职位详情() {
 function Backend职位详情() {
   const { id: 编号 } = useParams<{ id: string }>();
   const { 状态, 后端状态, 操作 } = use应用状态();
-  const { 返回 } = use导航();
+  const { 返回, 跳转 } = use导航();
 
   // 「⋯」拉起的更多操作抽屉是否展开
   const [抽屉展开, 设抽屉展开] = useState(false);
@@ -172,8 +175,11 @@ function Backend职位详情() {
   const [读取错误, 设读取错误] = useState<string | null>(null);
   // 反馈/委托写进行中：并发写会被操作层单飞丢弃，动作键统一禁用防静默丢点击
   const [写中, 设写中] = useState(false);
-  // 本次要委托的卡：确认层只在它非空时挂载，确认后立刻清（不复用授权）
-  const [待确认视图, 设待确认视图] = useState<P4候选岗位页面 | null>(null);
+  // 本次要委托的捕获（P5）：一份附件走 确认层 点名该文件；确认层只在它非空时挂载，
+  // 取消即清、确认后立刻清 —— 上一次的披露授权绝不复用
+  const [待确认视图, 设待确认视图] = useState<{ 视图: P4候选岗位页面; 选择: 附件简历选择值 } | null>(null);
+  // 多份附件走 附件简历选择层：捕获待选的卡与权威库行，取消 / 确认即清
+  const [待选择视图, 设待选择视图] = useState<{ 视图: P4候选岗位页面; 文件们: readonly BFF附件简历[] } | null>(null);
 
   // 进屏先注册可见范围（操作层栅栏要靠它对上），离开即清，别让别的屏背上旧范围
   useEffect(() => {
@@ -239,8 +245,32 @@ function Backend职位详情() {
       .catch((错误: unknown) => 设读取错误(P4错误文案(错误)));
   };
 
+  // 委托第一跳（P5）：先拿权威附件库，再让用户显式选定这次提交的简历坐标。
+  // 读失败 → P4 失败 toast（零导航零委托）；null（会话/角色换代）→ 静默返回，
+  // 绝不当成空库走「去上传」的跳转分支。
+  const 开始委托 = async (目标视图: P4候选岗位页面) => {
+    if (!目标视图.recommendationId || !目标视图.intentionId) return;
+    try {
+      const 库 = await 操作.准备候选委托简历();
+      if (库 === null) return;
+      if (库.items.length === 0) {
+        轻提示('请先上传一份 PDF 简历');
+        跳转(路径.我的简历);
+        return;
+      }
+      if (库.items.length === 1) {
+        const 唯一 = 库.items[0];
+        if (唯一) 设待确认视图({ 视图: 目标视图, 选择: 从附件行取选择值(唯一) });
+        return;
+      }
+      设待选择视图({ 视图: 目标视图, 文件们: 库.items });
+    } catch (错误) {
+      轻提示(P4错误文案(错误));
+    }
+  };
+
   // 确认层只在这里真正发起委托：先收层再 await —— 失败后下一次点击必须重新确认
-  const 执行候选委托 = async (候选视图: P4候选岗位页面) => {
+  const 执行候选委托 = async (候选视图: P4候选岗位页面, 选择: 附件简历选择值) => {
     if (!候选视图.recommendationId || !候选视图.intentionId) return;
     设待确认视图(null);
     设写中(true);
@@ -249,6 +279,8 @@ function Backend职位详情() {
         intentionId: 候选视图.intentionId,
         recommendationId: 候选视图.recommendationId,
         jobId: 候选视图.jobId,
+        resumeFileId: 选择.fileId,
+        resumeFileVersionId: 选择.fileVersionId,
         disclosureAcknowledged: true,
       });
     } catch (错误) {
@@ -346,7 +378,7 @@ function Backend职位详情() {
         <button
           className={`${样式.主按钮} ${已委托 ? 样式.已委托态 : 动作可用 ? '可点' : ''}`}
           disabled={!推荐卡 || 已委托 || 写中}
-          onClick={() => 设待确认视图(视图)}
+          onClick={() => void 开始委托(视图)}
         >
           <谈判图标 尺寸={15} 色={已委托 ? 'var(--深绿)' : undefined} />
           <span className={样式.主按钮文字}>{主键文字}</span>
@@ -375,14 +407,30 @@ function Backend职位详情() {
         </弹层框架>
       ) : null}
 
+      {待选择视图 ? (
+        // 多份附件：必须单选一份才可确认；取消 / 遮罩 / Esc 都只清捕获零请求，
+        // 确认值只来自所选行的当前 file/version，层内文案声明授权仅对这一次委托生效
+        <附件简历选择层
+          文件们={待选择视图.文件们}
+          取消={() => 设待选择视图(null)}
+          确认={(选择) => {
+            const 捕获 = 待选择视图;
+            设待选择视图(null); // 先收层再发委托：失败要求下一次重新选
+            if (捕获) void 执行候选委托(捕获.视图, 选择);
+          }}
+        />
+      ) : null}
+
       {待确认视图 ? (
+        // 不可逆动作的披露确认：正文点名这次提交哪份 PDF、披露什么，且仅对这一次
+        // 委托生效；取消 / 遮罩 / Esc 都是零请求零状态，确认后才发起委托
         <确认层
           标题="确认委托AI代理？"
-          正文="S0 通过后，本 Case 可按固定规则提交默认/已选 PDF，并向该招聘方披露姓名和联系方式。"
+          正文={`S0 通过后，本 Case 将提交「${待确认视图.选择.displayName}」这份 PDF，并向该招聘方披露姓名和联系方式。本次授权仅对这一次委托生效。`}
           执行文="确认委托"
           取消文="暂不委托"
           取消={() => 设待确认视图(null)}
-          执行={() => void 执行候选委托(待确认视图)}
+          执行={() => void 执行候选委托(待确认视图.视图, 待确认视图.选择)}
         />
       ) : null}
     </次级页外壳>

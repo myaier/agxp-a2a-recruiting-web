@@ -233,6 +233,25 @@ export function 创建附件简历操作(deps: 后端操作依赖): 附件简历
   }
 
   return {
+    /**
+     * 委托前的权威库准备（P5 Task 3）：立即 GET 一次并经既有 读取并提交 协调器落地，
+     * 把已提交的权威快照本体还给屏 —— 屏只依据这一份决定零/一/多文件的委托走向，
+     * 不再另起第二套读取。换代（读途中 / 失败迟到）一律返回 null 由屏静默返回；
+     * 当前 fence 的 401 与 刷新附件简历 同口径清账号后原样抛。
+     */
+    async 准备候选委托简历(): Promise<BFF附件简历库 | null> {
+      if (!是后端 || !后端) return null;
+      const fence = 捕获栅栏(deps);
+      try {
+        return await 读取并提交(fence);
+      } catch (错误) {
+        // 迟到的旧会话失败静默丢弃（null 交屏静默）；当前 fence 的 401 才清账号，其余原样抛
+        if (!仍有效(deps, fence)) return null;
+        if (错误 instanceof BFF错误 && 错误.status === 401) 清账号状态(账号清理依赖);
+        throw 错误;
+      }
+    },
+
     async 刷新附件简历() {
       if (!是后端 || !后端) return;
       const fence = 捕获栅栏(deps);

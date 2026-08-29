@@ -244,8 +244,16 @@ export interface Agent规则操作 {
  * 返回 已提交 表示「当前会话已拿到非 null 权威快照」，已换代 只表示会话已换代（不提示、不抛错）。
  * 冲突 / 结果未知 / 401 按 Spec 10.2–10.4 分派：重读提交权威视图后按目标核对，
  * 绝不重放 mutation。Mock 模式 mutation 返回 已换代、read 静默、download 抛 backend_unavailable。
+ * P5 Task 3 追加 准备候选委托简历：委托前的一次权威库读取，走同一提交协调器。
  */
 export interface 附件简历操作 {
+  /**
+   * 委托前的权威库准备（P5）：立即 GET 一次并经既有提交协调器落地，
+   * 返回已提交的权威快照本体；会话/角色换代（读途中或失败迟到）返回 null，
+   * 由屏静默处理 —— null 不是空库，绝不进「去上传」分支。
+   * 当前会话 401 与 刷新附件简历 同口径清账号后原样抛；Mock / 无后端返回 null 不发请求。
+   */
+  准备候选委托简历(): Promise<BFF附件简历库 | null>;
   刷新附件简历(): Promise<void>;
   创建附件简历(file: File, consent: true): Promise<附件变更结果>;
   替换附件简历(fileId: string, file: File, consent: true): Promise<附件变更结果>;

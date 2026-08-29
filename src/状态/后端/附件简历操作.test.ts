@@ -633,3 +633,87 @@ describe('创建附件简历操作 · Mock / 无后端', () => {
     expect(后端状态引用.current.附件简历库).toBeNull();
   });
 });
+
+// ── P5 Task 3：委托前的权威库准备（准备候选委托简历）──────────────────────────
+//   不新增第二套读取：走 factory 既有的 读取并提交 协调器，屏拿到的就是已提交的权威快照。
+//   换代（读途中 / 失败迟到）一律 null 静默；当前会话 401 与 刷新附件简历 同口径清账号。
+describe('创建附件简历操作 · 委托前的权威库准备', () => {
+  it('返回协调器已提交的权威快照本体，只发一次 GET', async () => {
+    const { 后端, 操作, 后端状态引用 } = 创建场景();
+    const 权威附件库: BFF附件简历库 = { items: [文件A, 文件B], limits };
+    后端.读取附件简历库.mockResolvedValue(权威附件库);
+    await expect(操作.准备候选委托简历()).resolves.toEqual(权威附件库);
+    expect(后端.读取附件简历库).toHaveBeenCalledTimes(1);
+    // 读到的同时照常提交进全局快照（同一协调器，不是屏外的第二份真相）
+    expect(后端状态引用.current.附件简历库).toEqual(权威附件库);
+  });
+
+  it('读途中会话换代：返回 null 且不提交，绝不当成空库', async () => {
+    const { 后端, 操作, 设后端状态, 会话代际 } = 创建场景();
+    const 门 = 可控Promise<BFF附件简历库>();
+    后端.读取附件简历库.mockReturnValue(门.promise);
+    设后端状态.mockClear();
+    const promise = 操作.准备候选委托简历();
+    会话代际.current += 1;
+    门.resolve({ items: [], limits });
+    await expect(promise).resolves.toBeNull();
+    expect(设后端状态).not.toHaveBeenCalled();
+  });
+
+  it('读途中主体标识变化同样返回 null（fence 任一分量失效即换代）', async () => {
+    const { 后端, 操作, 设后端状态, 主体标识引用 } = 创建场景();
+    const 门 = 可控Promise<BFF附件简历库>();
+    后端.读取附件简历库.mockReturnValue(门.promise);
+    设后端状态.mockClear();
+    const promise = 操作.准备候选委托简历();
+    主体标识引用.current = 'sub_other';
+    门.resolve({ items: [文件B], limits });
+    await expect(promise).resolves.toBeNull();
+    expect(设后端状态).not.toHaveBeenCalled();
+  });
+
+  it('当前会话 401：统一清账号后原样抛出', async () => {
+    const { 后端, 操作, 后端状态引用 } = 创建场景();
+    后端.读取附件简历库.mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(操作.准备候选委托简历()).rejects.toMatchObject({ status: 401 });
+    expect(后端状态引用.current).toEqual(expect.objectContaining({
+      已登录: false, 主体: null, 附件简历库: null,
+    }));
+    expect(后端.清空目录缓存).toHaveBeenCalled();
+  });
+
+  it('会话换代后到达的读失败静默返回 null，不清新会话', async () => {
+    const { 后端, 操作, 后端状态引用, 会话代际 } = 创建场景();
+    const 门 = 可控Promise<BFF附件简历库>();
+    后端.读取附件简历库.mockReturnValue(门.promise);
+    const promise = 操作.准备候选委托简历();
+    会话代际.current += 1;
+    门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(promise).resolves.toBeNull();
+    expect(后端状态引用.current.已登录).toBe(true);
+    expect(后端.清空目录缓存).not.toHaveBeenCalled();
+  });
+
+  it('当前会话的非 401 失败原样抛出且不清账号', async () => {
+    const { 后端, 操作, 后端状态引用 } = 创建场景();
+    后端.读取附件简历库.mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    await expect(操作.准备候选委托简历()).rejects.toMatchObject({ status: 503 });
+    expect(后端状态引用.current.已登录).toBe(true);
+  });
+
+  it('Mock / 无后端返回 null 且不发任何请求', async () => {
+    const 后端 = {
+      读取附件简历库: vi.fn(),
+      创建附件简历: vi.fn(),
+      替换附件简历: vi.fn(),
+      删除附件简历: vi.fn(),
+      请求附件解析: vi.fn(),
+      下载附件简历: vi.fn(),
+      清空目录缓存: vi.fn(),
+    };
+    const { deps } = 创建附件测试依赖(后端 as unknown as HTTP招聘数据源, false);
+    const 操作 = 创建附件简历操作(deps);
+    await expect(操作.准备候选委托简历()).resolves.toBeNull();
+    expect(后端.读取附件简历库).not.toHaveBeenCalled();
+  });
+});

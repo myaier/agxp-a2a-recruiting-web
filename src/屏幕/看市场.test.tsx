@@ -19,7 +19,8 @@ import 往来记录 from './往来记录';
 import 在谈详情 from './在谈详情';
 import { 路径 } from '../路由/路径表';
 import { 今日简报, 在谈列表 } from '../数据/模拟数据';
-import type { BFF候选岗位推荐 } from '../数据/BFF契约';
+import { BFF错误 } from '../数据/HTTP客户端';
+import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库 } from '../数据/BFF契约';
 import { BFF候选岗位推荐样本, BFF意向样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 
@@ -41,6 +42,8 @@ const mock加载候选岗位 = vi.fn(async () => undefined);
 const mock刷新候选岗位 = vi.fn(async () => undefined);
 const mock设置发现推荐范围 = vi.fn();
 const mock刷新委托 = vi.fn(async () => undefined);
+// P5 Task 3：委托前的权威附件库准备（附件简历操作 域的桩）
+const mock准备候选委托简历 = vi.fn();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -70,7 +73,9 @@ function 置应用状态(选项: {
     后端状态 = {}, 操作 = {} } = 选项;
   mock应用状态 = {
     // 生产 Provider 恒注入全表：桩宿主同样给全表，用例只覆盖自己要断言的 spy
-    状态, 派发: mock派发, 数据源模式: 模式, 操作: 发现推荐操作桩(操作),
+    // 准备候选委托简历 属附件域，同样默认给桩，用例再用 mockResolvedValue 定行为
+    状态, 派发: mock派发, 数据源模式: 模式,
+    操作: 发现推荐操作桩({ 准备候选委托简历: mock准备候选委托简历, ...操作 }),
     后端状态: {
       Agent规则水合: {
         candidate: { rules: 候选规则阶段, proposals: '未开始' },
@@ -377,6 +382,48 @@ const 接手卡: BFF候选岗位推荐 = {
   delegation: { delegation_id: 'del_1', state: 'accepted', case_id: null },
 };
 
+// ── P5 Task 3：委托前必须显式选定的附件简历坐标（零 / 一 / 多 表驱动底座）──
+
+/** 便捷附件版本行：坐标只认 current_version.version_id，parse 与本任务无关 */
+function 附件版本(id: string): BFF附件简历['current_version'] {
+  return {
+    version_id: id,
+    version: 1,
+    size_bytes: 1024,
+    media_type: 'application/pdf',
+    sha256: 'a'.repeat(64),
+    created_at: '2026-08-28T00:00:00Z',
+    parse: { status: 'not_started' },
+  };
+}
+
+const 附件文件甲: BFF附件简历 = {
+  file_id: 'rf_1',
+  display_name: '沈亦舟_简历_2026.pdf',
+  revision: 2,
+  current_version: 附件版本('rfv_1'),
+  created_at: '2026-08-28T00:00:00Z',
+  updated_at: '2026-08-28T00:00:00Z',
+};
+
+const 附件文件乙: BFF附件简历 = {
+  ...附件文件甲,
+  file_id: 'rf_2',
+  display_name: '产品简历_2026.pdf',
+  current_version: 附件版本('rfv_2'),
+};
+
+function 附件库(items: BFF附件简历[]): BFF附件简历库 {
+  return {
+    items,
+    limits: { max_files: 3, max_file_bytes: 10485760, accepted_media_types: ['application/pdf'] },
+  };
+}
+
+/** 单文件库：既有委托用例的缺省准备结果 —— 一份文件仍要披露确认点名它 */
+const 单文件附件库 = 附件库([附件文件甲]);
+const 双文件附件库 = 附件库([附件文件甲, 附件文件乙]);
+
 describe('看市场 · P4 候选发现（Backend）', () => {
   beforeEach(() => {
     mock派发.mockClear();
@@ -387,6 +434,9 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     mock刷新候选岗位.mockClear();
     mock设置发现推荐范围.mockClear();
     mock刷新委托.mockClear();
+    // 委托前的权威库准备缺省给单文件库：一份文件也必须披露确认点名后才发委托
+    mock准备候选委托简历.mockReset();
+    mock准备候选委托简历.mockResolvedValue(单文件附件库);
   });
 
   afterEach(() => {
@@ -400,13 +450,17 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     render(<看市场 />);
     await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
     expect(screen.getByRole('dialog', { name: '确认委托AI代理？' }).textContent).toContain(
-      'S0 通过后，本 Case 可按固定规则提交默认/已选 PDF，并向该招聘方披露姓名和联系方式。');
+      '沈亦舟_简历_2026.pdf');
+    expect(screen.getByRole('dialog', { name: '确认委托AI代理？' }).textContent).toContain(
+      '仅对这一次委托生效');
     expect(mock委托候选岗位).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: '确认委托' }));
     expect(mock委托候选岗位).toHaveBeenCalledWith({
       intentionId: BFF候选岗位推荐样本.intention_id,
       recommendationId: BFF候选岗位推荐样本.recommendation_id,
       jobId: BFF候选岗位推荐样本.job.job_id,
+      resumeFileId: 附件文件甲.file_id,
+      resumeFileVersionId: 附件文件甲.current_version.version_id,
       disclosureAcknowledged: true,
     });
     expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '委托入谈' }));
@@ -695,6 +749,8 @@ describe('看市场 · P4 候选发现（Backend）', () => {
       岗: expect.objectContaining({ 意向: 'AI 产品经理' }),
     });
     expect(screen.queryByRole('dialog')).toBeNull();
+    // Mock 委托不读附件库：一键派发的原型行为保持原样
+    expect(mock准备候选委托简历).not.toHaveBeenCalled();
   });
 
   it('Backend 列表零 Mock 兜底：空快照也不回退市场列表', () => {
@@ -725,5 +781,131 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     render(<看市场 />);
     await user.click(screen.getByRole('button', { name: P4意向名 }));
     expect(mock派发).toHaveBeenCalledWith({ 型: '切意向', 意向: P4意向名 });
+  });
+});
+
+// ── P5 Task 3：委托前的显式简历选择（零 / 一 / 多 表驱动）────────────────────
+//   委托第一跳先拿权威附件库：零份 → 提示去上传并跳 我的简历（零委托）；
+//   一份 → 披露确认点名该文件；多份 → 附件简历选择层 必须单选。
+//   读被拒 → P4 失败 toast（零导航零委托）；null（会话/角色换代）→ 静默返回，
+//   绝不进零文件的跳转分支。
+describe('看市场 · 委托前必须显式选定简历坐标（Backend）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+    mock委托候选岗位.mockClear();
+    mock准备候选委托简历.mockReset();
+  });
+
+  it.each([
+    {
+      名称: '0 份：提示先上传并跳 我的简历，零委托',
+      库: 附件库([]),
+      场景: '零',
+    },
+    {
+      名称: '1 份：披露确认点名该文件，确认只发它的当前 file/version',
+      库: 单文件附件库,
+      场景: '单',
+    },
+    {
+      名称: '2 份：必须单选后才可确认，只发所选行的当前 file/version',
+      库: 双文件附件库,
+      场景: '多',
+    },
+  ])('$名称', async ({ 库, 场景 }) => {
+    const user = userEvent.setup();
+    mock准备候选委托简历.mockResolvedValue(库);
+    置P4候选状态([BFF候选岗位推荐样本]);
+    render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    await waitFor(() => expect(mock准备候选委托简历).toHaveBeenCalledTimes(1));
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+
+    if (场景 === '零') {
+      await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('请先上传一份 PDF 简历'));
+      expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
+      expect(screen.queryByRole('dialog')).toBeNull();
+      return;
+    }
+
+    if (场景 === '单') {
+      const 确认框 = screen.getByRole('dialog', { name: '确认委托AI代理？' });
+      expect(确认框.textContent).toContain(附件文件甲.display_name);
+      await user.click(screen.getByRole('button', { name: '确认委托' }));
+      await waitFor(() => expect(mock委托候选岗位).toHaveBeenCalledTimes(1));
+      expect(mock委托候选岗位).toHaveBeenCalledWith({
+        intentionId: BFF候选岗位推荐样本.intention_id,
+        recommendationId: BFF候选岗位推荐样本.recommendation_id,
+        jobId: BFF候选岗位推荐样本.job.job_id,
+        resumeFileId: 附件文件甲.file_id,
+        resumeFileVersionId: 附件文件甲.current_version.version_id,
+        disclosureAcknowledged: true,
+      });
+      return;
+    }
+
+    // 多份：单选层先出，确认键未选禁用
+    expect(screen.getByRole('dialog', { name: '选择委托简历' })).toBeTruthy();
+    const 确认键 = screen.getByRole('button', { name: '确认并委托' }) as HTMLButtonElement;
+    expect(确认键.disabled).toBe(true);
+    await user.click(screen.getByRole('radio', { name: 附件文件乙.display_name }));
+    await user.click(确认键);
+    await waitFor(() => expect(mock委托候选岗位).toHaveBeenCalledTimes(1));
+    expect(mock委托候选岗位).toHaveBeenCalledWith({
+      intentionId: BFF候选岗位推荐样本.intention_id,
+      recommendationId: BFF候选岗位推荐样本.recommendation_id,
+      jobId: BFF候选岗位推荐样本.job.job_id,
+      resumeFileId: 附件文件乙.file_id,
+      resumeFileVersionId: 附件文件乙.current_version.version_id,
+      disclosureAcknowledged: true,
+    });
+  });
+
+  it('准备读被拒：P4 失败 toast，零导航零委托零弹层', async () => {
+    const user = userEvent.setup();
+    mock准备候选委托简历.mockRejectedValue(new BFF错误(503, 'source_unavailable', 'down'));
+    置P4候选状态([BFF候选岗位推荐样本]);
+    render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    await waitFor(() =>
+      expect(mock轻提示).toHaveBeenCalledWith('服务暂时不可用，请稍后再试'));
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('null（会话/角色换代）：静默无操作，绝不进零文件跳转分支', async () => {
+    const user = userEvent.setup();
+    mock准备候选委托简历.mockResolvedValue(null);
+    置P4候选状态([BFF候选岗位推荐样本]);
+    render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    await waitFor(() => expect(mock准备候选委托简历).toHaveBeenCalledTimes(1));
+    expect(mock轻提示).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('取消即清捕获：下一次点击重读权威库，绝不复用旧授权', async () => {
+    const user = userEvent.setup();
+    mock准备候选委托简历.mockResolvedValue(双文件附件库);
+    置P4候选状态([BFF候选岗位推荐样本]);
+    render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: '选择委托简历' })).toBeTruthy());
+    await user.click(screen.getByRole('radio', { name: 附件文件乙.display_name }));
+    await user.click(screen.getByRole('button', { name: '暂不委托' }));
+    expect(screen.queryByRole('dialog', { name: '选择委托简历' })).toBeNull();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+    // 再点是一次全新的准备：选择与推荐捕获都不带走
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    await waitFor(() => expect(mock准备候选委托简历).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('dialog', { name: '选择委托简历' })).toBeTruthy();
+    const 确认键 = screen.getByRole('button', { name: '确认并委托' }) as HTMLButtonElement;
+    expect(确认键.disabled).toBe(true);
   });
 });
