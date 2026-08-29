@@ -21,7 +21,7 @@
 - 浏览器交互优先使用 role、label、heading、可见业务词；`@eN` 只允许人工调试，长期脚本不得保存 snapshot ref、CSS module class、DOM 层级或坐标。
 - 业务硬门只断言播种对象可见、操作结果可见、刷新后仍成立、删除后仍不存在；不重复断言 HTTP 次数/顺序、body、headers、ETag、Idempotency-Key 或 toast 原文。
 - 固定 viewport `390x844`、`zh-CN`、`Asia/Shanghai`、light、reduced motion、device scale 1；截图前等待业务 ready、`document.fonts.ready` 和两帧 `requestAnimationFrame`，并关闭 animation、transition、caret。
-- 七个视觉场景固定为 `candidate-resume-loaded`、`candidate-intentions-loaded`、`candidate-disclosure-loaded`、`candidate-resume-updated`、`recruiter-card-loaded`、`recruiter-company-loaded`、`recruiter-jobs-after-create`。
+- 七个视觉场景固定为 `candidate-resume-loaded`、`candidate-intentions-loaded`、`candidate-disclosure-loaded`、`candidate-resume-updated`、`recruiter-card-loaded`、`recruiter-company-loaded`、`recruiter-jobs-after-create`；截图可见临时文案使用固定保留名称，run ID 只进私有 journal/receipt。
 - 视觉阈值复用现有值：warning `0.005`、blocking `0.05`、最大位移 `16px`、最大尺寸变化比例 `0.15`、pixelmatch threshold `0.2`。默认 `UI_VISUAL_GATE=report`；只有显式 `enforce` 才让 blocked drift 返回 1。
 - 运行产物写入 `agent-browser-backend-output/` 并 gitignore；基线写入 `e2e/真实后端/视觉/基线/` 并提交。失败运行不得覆盖已提交基线。
 - 退出码固定：`0` 通过；`1` 功能、清理或 enforce 视觉失败；`2` usage/report 错误；`75` 环境阻塞。
@@ -63,6 +63,7 @@
 - `e2e/真实后端/视觉/比较.test.ts`：七场景、环境漂移、阈值边界、report/enforce、基线更新保护测试。
 - `e2e/真实后端/视觉/基线清单.json`：提交的 reference 环境清单。
 - `e2e/真实后端/视觉/基线/*.png`：在 Task 8 的真实整栈 bootstrap 运行中生成并人工审阅的七张 reference。
+- `tsconfig.e2e.json`：只覆盖 `e2e/真实后端/**/*.ts` 的 Node/DOM 类型检查项目。
 - `e2e/真实后端/资源/简历-v1.pdf`、`e2e/真实后端/资源/简历-v2.pdf`：无真实个人信息、用于 create/replace 的小型合法 PDF。
 - `e2e/真实后端/运行整栈验收.sh`：唯一总入口；preflight、资源 ownership、stack/Vite/session 生命周期、journey 调度、visual/cleanup/report。
 - `e2e/真实后端/运行整栈验收.test.sh`：fake backend/Vite/agent-browser 的编排合同测试。
@@ -72,6 +73,9 @@
 
 - `package.json`：加入 `test:agent-browser:backend-local` 与纯报告/视觉测试脚本，不改普通 `test` 的语义。
 - `.gitignore`：加入 `/agent-browser-backend-output/`。
+- `tsconfig.json`：引用 `tsconfig.e2e.json`，让现有 `npm run typecheck` 真正覆盖新增 TypeScript。
+- `src/屏幕/披露偏好.tsx`：给每个披露档按钮补字段化 `aria-label` 与 `aria-pressed`，不改变视觉。
+- `src/屏幕/披露偏好.test.tsx`：冻结可访问名称与选中状态。
 
 ## Stable Interfaces
 
@@ -116,7 +120,7 @@ BROWSER_FIXTURE_CLEANUP PASS removed_intentions=N removed_files=N removed_jobs=N
 }
 ```
 
-journal 只记录浏览器已完成的业务里程碑和带本轮 run ID 的可见名称，不保存 raw ID。`converge` 还要在后端 gitignored 的 `apps/recruitment/.local-dev/browser-fixtures/$RUN_ID.json` 写 mode 0600 run receipt：记录开始时间以及两个专用账号在旅程前拥有的意向、附件和岗位 ID。`cleanup` 重新读取 owner list，与 receipt 做精确差集：附件和岗位还必须匹配本轮完整文件名/标题；意向必须是 pre-state 中不存在且完整业务签名等于本轮临时表单的唯一一条。零条表示 UI 已删除，多条、未知新增对象、foreign owner 或签名不符都立即失败。成功后删除 journal、receipt；下一次 `converge` 先以同样规则回收遗留 receipt，不扩大搜索，也不输出 ID。
+journal 只记录浏览器已完成的业务里程碑和固定保留的临时名称，不保存 raw ID。run ID 只用于关联后端 gitignored 的 `apps/recruitment/.local-dev/browser-fixtures/$RUN_ID.json` mode-0600 receipt；receipt 记录开始时间以及两个专用账号在旅程前拥有的意向、附件和岗位 ID。`cleanup` 重新读取 owner list，与 receipt 做精确差集：附件和岗位还必须匹配固定完整文件名/标题；意向必须是 pre-state 中不存在且完整业务签名等于本轮临时表单的唯一一条。零条表示 UI 已删除，多条、未知新增对象、foreign owner 或签名不符都立即失败。成功后删除 journal、receipt；下一次 `converge` 先以同样规则回收遗留 receipt，不扩大搜索，也不输出 ID。
 
 ### 前端报告类型
 
@@ -165,7 +169,7 @@ export interface 真实后端视觉Manifest {
 export interface 视觉结果 {
   schemaVersion: 1;
   gate: 'report' | 'enforce';
-  environment: 'matched' | 'blocked';
+  environment: 'matched' | 'bootstrap' | 'blocked';
   scenes: Array<{
     sceneId: string;
     status: 'pass' | 'warning' | 'blocked' | 'missing';
@@ -289,11 +293,17 @@ usage(){ printf 'usage: %s converge|verify|cleanup [--ledger ABSOLUTE_PATH]\n' "
 
 finish(){
   local rc=$?
-  logout_all || rc=1
-  [ -z "$PRIVATE_DIR" ] || rm -rf -- "$PRIVATE_DIR"
+  trap - EXIT HUP INT TERM
+  if [ -n "$PRIVATE_DIR" ]; then
+    logout_all || { [ "$rc" -ne 0 ] || rc=1; }
+    rm -rf -- "$PRIVATE_DIR"
+  fi
   exit "$rc"
 }
-trap finish EXIT HUP INT TERM
+trap finish EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 require_ready(){
   [ -n "$RUN_ID" ] || blocked 'BROWSER_FIXTURE_RUN_ID is required'
@@ -335,7 +345,7 @@ Add this object immediately after `recruitment-hub-source` in `tests/test-suites
 }
 ```
 
-Create the fake-runtime test as an executable hermetic test for the implemented Task 1 boundary only: unknown command 64, missing run ID 75, unhealthy stack 75, private directory mode 0700, logout finalizer, and no secret-shaped output. Candidate/recruiter scenario cases are appended in Tasks 2–3.
+Create the fake-runtime test as an executable hermetic test for the implemented Task 1 boundary only: unknown command remains 64 without calling logout, missing run ID 75, unhealthy stack 75, private directory mode 0700, logout finalizer, HUP/INT/TERM remain non-zero, and no secret-shaped output. Candidate/recruiter scenario cases are appended in Tasks 2–3.
 
 - [ ] **Step 6: 验证 source test 与正式 suite 转绿**
 
@@ -465,7 +475,7 @@ login candidate → ensure candidate role → set last-used-role candidate
 GET resume → PATCH profile, summary, skills to fixed baseline
 GET intentions → keep/update exactly one fixture intention; remove only duplicate fixture-owned intentions; block on every non-baseline row rather than treating a dedicated test account as disposable
 GET privacy → PATCH employer/disclosure fixed baseline
-GET resume-files → delete only names beginning "浏览器验收临时简历 · "; require available_slots >= 2
+GET resume-files → delete only the reserved exact name "浏览器验收临时简历.pdf" when a stale receipt proves it is a post-state delta; otherwise block; require available_slots >= 2
 atomically write candidate owner IDs + started_at to the current run receipt with mode 0600
 ```
 
@@ -480,7 +490,7 @@ Use these frozen baseline facts:
   "privacy": {
     "employer_privacy_enabled": true,
     "disclosure_preferences": {
-      "current_employer": "anonymous",
+      "current_employer": "never",
       "education": "resume_submission",
       "portfolio_links": "resume_submission"
     }
@@ -502,7 +512,7 @@ Freeze one distinct UI temporary-intention signature in the fake-runtime contrac
 compare current IDs with pre-state IDs from the receipt
 zero matching delta means the UI already cleaned it
 one new intention must match the exact temporary form signature before DELETE with current revision
-one new resume file must equal "浏览器验收临时简历 · $RUN_ID.pdf" before DELETE
+one new resume file must equal "浏览器验收临时简历.pdf" before DELETE
 unknown/multiple deltas, foreign ownership, signature mismatch or transport failure → FAIL without widening the query
 ```
 
@@ -642,9 +652,9 @@ Both use no candidate/matchcase relation, deterministic salary/description, and 
 
 - [ ] **Step 4: 实现 recruiter verify 与 cleanup**
 
-Verify exact profile, one verified active admin affiliation, exact company intro, exactly one active baseline job and one archived baseline job, and no job starting `浏览器验收岗位 · $RUN_ID`.
+Verify exact profile, one verified active admin affiliation, exact company intro, exactly one active baseline job and one archived baseline job, and no job named `浏览器验收岗位 · 临时CRUD`.
 
-Cleanup compares the current owner job list with the receipt pre-state, requires the only new row to have title `浏览器验收岗位 · $RUN_ID`, deletes it at current revision, then calls `recruiter_converge` and `recruiter_verify`. Zero delta means the UI already deleted it; unknown or multiple deltas fail closed.
+Cleanup compares the current owner job list with the receipt pre-state, requires the only new row to have title `浏览器验收岗位 · 临时CRUD`, deletes it at current revision, then calls `recruiter_converge` and `recruiter_verify`. Zero delta means the UI already deleted it; unknown or multiple deltas fail closed.
 
 - [ ] **Step 5: 完成 fake runtime 与 source security contract**
 
@@ -667,7 +677,7 @@ Expected: PASS.
 
 - [ ] **Step 6: 更新后端 README**
 
-Document exact commands, prerequisites (`dev-local.sh ... bootstrap` first), dedicated account ownership, no reset/SQL, safe internal review, cleanup ledger rules, and that this operator is not `recruitment-mobile-local` release evidence.
+Document exact commands, prerequisites (`dev-local.sh ... bootstrap` first), dedicated account ownership, no reset/SQL, safe internal review, cleanup journal/run-receipt rules, and that this operator is not `recruitment-mobile-local` release evidence.
 
 - [ ] **Step 7: 运行 backend L0–L2 selection**
 
@@ -715,8 +725,10 @@ Expected: clean backend worktree. Record both backend commit SHAs for frontend e
 - Create: `e2e/真实后端/视觉/场景清单.ts`
 - Create: `e2e/真实后端/视觉/比较.ts`
 - Create: `e2e/真实后端/视觉/比较.test.ts`
+- Create: `tsconfig.e2e.json`
 - Modify: `package.json`
 - Modify: `.gitignore`
+- Modify: `tsconfig.json`
 
 **Interfaces:**
 - Consumes: existing `e2e/视觉回归/比较器.ts` exports `比较图片` and `默认比较阈值`。
@@ -733,17 +745,21 @@ import { 判定整栈结果 } from './报告';
 
 describe('真实后端整栈 verdict', () => {
   it('基础设施阻塞不是 PASS', () => {
-    expect(判定整栈结果({ infraBlocked: true, functionalFailed: false, cleanupFailed: false, visualBlocked: false, gate: 'report' }))
+    expect(判定整栈结果({ reportParseError: false, infraBlocked: true, functionalFailed: false, cleanupFailed: false, visualBlocked: false, gate: 'report' }))
       .toEqual({ classification: 'INFRA_BLOCKED', exitCode: 75 });
   });
   it('report 模式只报告视觉漂移', () => {
-    expect(判定整栈结果({ infraBlocked: false, functionalFailed: false, cleanupFailed: false, visualBlocked: true, gate: 'report' }))
+    expect(判定整栈结果({ reportParseError: false, infraBlocked: false, functionalFailed: false, cleanupFailed: false, visualBlocked: true, gate: 'report' }))
       .toEqual({ classification: 'VISUAL_DRIFT', exitCode: 0 });
   });
   it('enforce、功能与清理失败返回 1', () => {
-    expect(判定整栈结果({ infraBlocked: false, functionalFailed: false, cleanupFailed: false, visualBlocked: true, gate: 'enforce' }).exitCode).toBe(1);
-    expect(判定整栈结果({ infraBlocked: false, functionalFailed: true, cleanupFailed: false, visualBlocked: false, gate: 'report' }).exitCode).toBe(1);
-    expect(判定整栈结果({ infraBlocked: false, functionalFailed: false, cleanupFailed: true, visualBlocked: false, gate: 'report' }).exitCode).toBe(1);
+    expect(判定整栈结果({ reportParseError: false, infraBlocked: false, functionalFailed: false, cleanupFailed: false, visualBlocked: true, gate: 'enforce' }).exitCode).toBe(1);
+    expect(判定整栈结果({ reportParseError: false, infraBlocked: false, functionalFailed: true, cleanupFailed: false, visualBlocked: false, gate: 'report' }).exitCode).toBe(1);
+    expect(判定整栈结果({ reportParseError: false, infraBlocked: false, functionalFailed: false, cleanupFailed: true, visualBlocked: false, gate: 'report' }).exitCode).toBe(1);
+  });
+  it('报告分片解析错误返回 usage/reporting exit 2', () => {
+    expect(判定整栈结果({ reportParseError: true, infraBlocked: false, functionalFailed: false, cleanupFailed: false, visualBlocked: false, gate: 'report' }))
+      .toEqual({ classification: 'USAGE_ERROR', exitCode: 2 });
   });
 });
 ```
@@ -776,11 +792,11 @@ export const 真实后端场景们 = [
 export type 真实后端场景ID = typeof 真实后端场景们[number];
 ```
 
-`判定整栈结果()` priority is usage/report parse error 2, infra 75, cleanup 1, functional 1, enforce visual 1, report visual 0 with classification `VISUAL_DRIFT`, otherwise PASS 0. Missing journey fragments are `FUNCTIONAL_FAILED`; missing or incompatible visual manifest is `INFRA_BLOCKED`.
+`判定整栈结果()` has an explicit `reportParseError` input and priority report parse error 2, infra 75, cleanup 1, functional 1, enforce visual 1, report visual 0 with classification `VISUAL_DRIFT`, otherwise PASS 0. The runner passes the selected journey set to the report reader: a selected fragment missing is `FUNCTIONAL_FAILED`; every unselected journey must have a present `status:'skipped'` fragment. An absent visual manifest is bootstrap, a malformed manifest or an existing incompatible manifest is `INFRA_BLOCKED`.
 
 - [ ] **Step 4: 实现视觉比较**
 
-`比较真实后端视觉()` first deep-compares environment fields except `baselineCommit`, then loops the seven scene IDs, calls existing `比较图片(reference,candidate,diff,默认比较阈值)`, and returns paths relative to the output root. It never uses the Mock comparison directory API because that API treats real `/api/v1` requests as structure failures.
+`比较真实后端视觉()` handles three explicit states. With no committed manifest/reference directory it returns environment `bootstrap`, records the current environment, and returns all seven scenes as `missing` without calling `比较图片`. With a valid manifest it deep-compares environment fields except `baselineCommit`, then loops the seven scene IDs, calls existing `比较图片(reference,candidate,diff,默认比较阈值)`, and returns paths relative to the output root. A malformed or incompatible existing manifest returns `blocked`. It never uses the Mock comparison directory API because that API treats real `/api/v1` requests as structure failures.
 
 Baseline update API is two-phase:
 
@@ -788,13 +804,13 @@ Baseline update API is two-phase:
 export function 生成候选基线目录(options: {
   functionalPassed: boolean;
   fixtureVerified: boolean;
-  environmentMatched: boolean;
+  environment: 'matched' | 'bootstrap' | 'blocked';
   candidateDir: string;
   reviewDir: string;
 }): void;
 ```
 
-Any false prerequisite throws before copying. The function copies to `reviewDir`, never to committed `基线/`.
+Functional/fixture false or environment `blocked` throws before copying. `matched` and first-run `bootstrap` copy the seven candidates plus a candidate manifest containing the current environment to `reviewDir`, never to committed `基线/`. Tests cover absent manifest bootstrap success, corrupt manifest refusal and existing-manifest environment mismatch refusal.
 
 - [ ] **Step 5: 添加 scripts 与 ignore**
 
@@ -805,7 +821,7 @@ Add to `package.json`:
 "test:agent-browser:unit": "vitest run e2e/真实后端/报告.test.ts e2e/真实后端/视觉/比较.test.ts"
 ```
 
-Append exactly `/agent-browser-backend-output/` to `.gitignore`.
+Append exactly `/agent-browser-backend-output/` to `.gitignore`. Add `tsconfig.e2e.json` with `moduleResolution:"bundler"`, Node/DOM libs and `include:["e2e/真实后端/**/*.ts"]`; add it to root `tsconfig.json` references so `tsc -b --noEmit` checks production and test modules imported by this suite.
 
 - [ ] **Step 6: 运行单测、类型与 lint**
 
@@ -820,7 +836,7 @@ Expected: PASS.
 - [ ] **Step 7: 提交报告与视觉核心**
 
 ```bash
-git add package.json .gitignore e2e/真实后端/类型.ts e2e/真实后端/报告.ts \
+git add package.json .gitignore tsconfig.json tsconfig.e2e.json e2e/真实后端/类型.ts e2e/真实后端/报告.ts \
   e2e/真实后端/报告.test.ts e2e/真实后端/视觉/场景清单.ts \
   e2e/真实后端/视觉/比较.ts e2e/真实后端/视觉/比较.test.ts
 git commit -m "test: add real-backend acceptance report core"
@@ -839,10 +855,12 @@ git commit -m "test: add real-backend acceptance report core"
 - Create: `e2e/真实后端/旅程/候选CRUD.sh`
 - Create: `e2e/真实后端/资源/简历-v1.pdf`
 - Create: `e2e/真实后端/资源/简历-v2.pdf`
+- Modify: `src/屏幕/披露偏好.tsx`
+- Modify: `src/屏幕/披露偏好.test.tsx`
 
 **Interfaces:**
 - Consumes: `AGENT_BROWSER_SESSION`、`RUN_DIR`、`PRIVATE_LEDGER`、`FRONTEND_ORIGIN=http://localhost:5173`。
-- Produces: `ab()`、`login_candidate()`、`login_recruiter()`、`wait_text()`、`assert_text()`、`assert_absent()`、`reload_and_assert()`、`capture_scene()`、`record_cleanup_marker()`、`write_journey_result()`。
+- Produces: `ab()`、`login_candidate()`、`login_recruiter()`、`wait_text()`、`assert_text()`、`assert_absent()`、`assert_pressed()`、`reload_and_assert()`、`capture_scene()`、`record_cleanup_marker()`、`write_journey_result()`。
 
 - [ ] **Step 1: 写公共步骤 fake CLI 测试**
 
@@ -860,6 +878,8 @@ grep -Fq 'find role button click --name 我要找工作' "$CALLS"
 ```
 
 Also test `capture_scene` issues viewport/media/eval stabilization before screenshot, writes candidate PNG under `$RUN_DIR/visual/candidate/<scene>.png`, and rejects an unknown scene ID.
+
+Extend `src/屏幕/披露偏好.test.tsx` first so it fails until every segmented button exposes a unique accessible name such as `当前公司：不披露` and the selected button exposes `aria-pressed="true"`; assert changing the backend snapshot moves the pressed state without relying on a CSS class.
 
 - [ ] **Step 2: 运行失败测试**
 
@@ -884,6 +904,13 @@ assert_absent(){
   unset body
 }
 reload_and_assert(){ ab reload >/dev/null; wait_text "$1"; }
+```
+
+Implement `assert_pressed()` as `ab get attr "[aria-label=\"$name\"]" aria-pressed` and require the exact string `true`; the selector is the product's accessible name, not a CSS module class or DOM hierarchy. Click the same control through `ab find role button click --name "$name" --exact`. In `披露偏好.tsx`, set the following on the real buttons; this is product accessibility state, not a test-only DOM node, and does not change the screenshot:
+
+```tsx
+aria-label={`${项.名称}：${档}`}
+aria-pressed={选中}
 ```
 
 For inputs use `find label`; for buttons use `find role button ... --name`; for long-lived paths never use `@eN`. `ab snapshot -i` is allowed only on failure and its output goes to the ignored artifact directory after a privacy scan.
@@ -921,7 +948,7 @@ Script path, after `login_candidate()`:
 capture candidate-resume-loaded
 返回/我 → 求职意向 → assert baseline intention derived title + 1/5 → reload
 capture candidate-intentions-loaded
-返回/我 → 披露偏好 → assert 当前雇主 + 不披露 → reload
+返回/我 → 披露偏好 → assert 当前公司 → assert_pressed 当前公司：不披露 → reload → assert_pressed again
 capture candidate-disclosure-loaded
 assert recruiter private marker absent
 ```
@@ -930,16 +957,16 @@ Use semantic UI clicks for every arrow. Direct hash navigation is allowed only i
 
 - [ ] **Step 6: 实现候选 CRUD 旅程**
 
-Use run label `浏览器验收候选人 · $BROWSER_FIXTURE_RUN_ID` for the temporary resume name and these business blocks. The current product exposes personal advantage/summary as read-only on “我的简历”; do not add a test-only editor or direct-nav through onboarding. Use the existing inline name editor as the stable resume update seam:
+Use fixed reserved label `浏览器验收候选人 · 临时CRUD` for the temporary resume name. Ownership still comes from the private run receipt delta, not the visible name alone. The current product exposes personal advantage/summary as read-only on “我的简历”; do not add a test-only editor or direct-nav through onboarding. Use the existing inline name editor as the stable resume update seam:
 
 ```text
-我的简历 → 姓名（递交简历后披露）→ inline edit to run label → blur/Enter save → assert → reload
+我的简历 → 姓名（递交简历后披露）→ inline edit to fixed temporary label → blur/Enter save → assert → reload
 求职意向 → 添加求职意向 → select exact seeded category/location → save
 atomically set candidate_intention_created=true in the private cleanup journal
 edit compensation 30–45 to 35–45 → save → reload → delete → reload absent
-披露偏好 → current employer 不披露→意向确认后 → reload → restore 不披露 → reload
-copy 简历-v1.pdf inside the private run directory as "浏览器验收临时简历 · $RUN_ID.pdf"
-我的简历 → 添加附件简历 → upload the run-named copy → consent → assert exact display name
+披露偏好 → click 当前公司：意向确认后 → assert_pressed → reload → assert_pressed → restore 当前公司：不披露 → reload → assert_pressed
+copy 简历-v1.pdf inside the private run directory as "浏览器验收临时简历.pdf"
+我的简历 → 添加附件简历 → upload the fixed-name copy → consent → assert exact display name
 append the exact display name to candidate_resume_file_names in the private cleanup journal
 left-swipe only through `agent-browser drag` after locating the row semantically → 替换 → upload 简历-v2.pdf → consent
 left-swipe → 删除 → confirm → reload absent
@@ -965,6 +992,7 @@ Extend the fake CLI test to source both candidate journeys and assert the ordere
 
 ```bash
 bash e2e/真实后端/公共步骤.test.sh
+npm test -- --run src/屏幕/披露偏好.test.tsx
 npm run test:agent-browser:unit
 ```
 
@@ -975,7 +1003,8 @@ Expected: PASS.
 ```bash
 git add e2e/真实后端/公共步骤.sh e2e/真实后端/公共步骤.test.sh \
   e2e/真实后端/旅程/候选数据加载.sh e2e/真实后端/旅程/候选CRUD.sh \
-  e2e/真实后端/资源/简历-v1.pdf e2e/真实后端/资源/简历-v2.pdf
+  e2e/真实后端/资源/简历-v1.pdf e2e/真实后端/资源/简历-v2.pdf \
+  src/屏幕/披露偏好.tsx src/屏幕/披露偏好.test.tsx
 git commit -m "test: add candidate real-backend browser journeys"
 ```
 
@@ -1015,14 +1044,14 @@ assert candidate private summary absent
 
 - [ ] **Step 3: 实现招聘 CRUD 旅程**
 
-Use `浏览器验收岗位 · $BROWSER_FIXTURE_RUN_ID` and exact steps:
+Use fixed reserved title `浏览器验收岗位 · 临时CRUD` and exact steps; run ownership comes from the pre-state receipt delta:
 
 ```text
 招聘名片 → change public title to 浏览器验收招聘负责人 → save → reload → restore 招聘负责人 → reload
 公司资料 → 公司介绍 → change to 浏览器验收科技 · $RUN_ID → save → reload
 restore 真实后端企业介绍基线 → reload
 岗位管理 → 发布新岗位 → complete three semantic form steps with exact Catalog choices → publish
-append exact title 浏览器验收岗位 · $RUN_ID to recruiter_job_titles in the private cleanup journal
+append exact title 浏览器验收岗位 · 临时CRUD to recruiter_job_titles in the private cleanup journal
 assert new job under 在招 → capture recruiter-jobs-after-create → reload
 left-swipe row → 编辑 → change description/requirements only → save → reload
 left-swipe row → 停止招聘 → assert under 已归档 → reload
@@ -1094,6 +1123,7 @@ report mode visual blocked → exit 0 classification VISUAL_DRIFT
 enforce mode visual blocked → exit 1
 SIGINT/failure → close only two named sessions and owned Vite; preserve preexisting backend
 unknown journey/argument → exit 2 before mutations
+single selected journey passes → emit four unselected/session-isolation fragments as skipped; exit 0
 ```
 
 - [ ] **Step 2: 运行失败测试**
@@ -1146,7 +1176,7 @@ Poll `http://localhost:5173/` with bounded curl attempts; no unbounded sleep and
 
 - [ ] **Step 5: 实现 journey 调度与 session isolation**
 
-Run load before CRUD per role. `--journey candidate-crud` still runs candidate login/precondition but reports only selected journey; `all` runs four journeys plus isolation. Capture each exit without aborting independent later journeys:
+Run load preconditions before CRUD per role without falsely reporting the load journey as selected. `--journey candidate-crud` emits `candidate-crud` plus four explicit `status:'skipped'` fragments; `all` runs four journeys plus isolation. The report reader receives the selected set and treats only a missing selected fragment as functional failure. Capture each exit without aborting independent later journeys:
 
 ```bash
 set +e
@@ -1169,7 +1199,8 @@ backend fixture verify
 close backend-local-candidate and backend-local-recruiter only
 terminate owned Vite PID; wait it; never kill by port/process name
 if backend was owned → dev-local.sh down
-remove private directory
+if cleanup succeeded → remove private directory and backend run receipt
+if cleanup failed → retain both mode 0600 and record only their paths
 run report writer with collected statuses
 return computed exit code
 ```

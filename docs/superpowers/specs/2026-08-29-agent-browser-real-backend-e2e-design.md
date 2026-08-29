@@ -61,6 +61,7 @@
 - 多浏览器、桌面/平板、真机或 Capacitor；
 - 通用场景 DSL、AI 自动生成/接受测试或失败后自动更新基线；
 - 数据库全量 reset、删除持久卷或清理非 fixture 数据；
+- 组织屏蔽/解除的 CRUD；第一版只覆盖披露偏好，避免为一个未进入四条旅程的域额外制造组织关系；
 - 把本验收加入普通 `npm test` 或默认 PR hosted-runner CI；
 - 重构业务页面、数据源或现有测试框架。
 
@@ -184,7 +185,6 @@ OTP 只作为本地测试输入，不写入报告、命令回显、截图说明�
 - 完整简历，摘要含固定“浏览器验收候选人”标记；
 - 一条固定求职意向；
 - 固定披露偏好；
-- 固定组织屏蔽；
 - 附件库有执行 create/replace/delete 所需的空余槽位。
 
 招聘账号：
@@ -206,13 +206,13 @@ Catalog ID 不硬编码。播种器用固定显示名查询真实目录，要求
 
 ### 8.5 临时 CRUD 对象
 
-能承载显示名称的临时对象带固定验收前缀和本次 run ID，例如：
+能承载显示名称的临时对象使用固定、保留的验收名称，例如：
 
 ```text
-浏览器验收岗位 · 20260829T123456Z
+浏览器验收岗位 · 临时CRUD
 ```
 
-正常路径通过 UI 删除。`converge` 在浏览器运行前把专用账号的 owner-list ID 与开始时间写入 mode-0600、gitignored 的本轮 receipt；长期报告不保存这些 ID。若旅程中途失败，`cleanup` 只允许在同一 owner list 中处理 receipt 之后出现的精确差集：附件和岗位还必须匹配完整 run-ID 名称；没有名称字段的意向必须是唯一新增行，并完整匹配本旅程冻结的 Catalog、工作方式和薪资签名。零条视为 UI 已清理，多条、未知差集、foreign owner 或签名不符都失败关闭。它不得按模糊前缀跨账号删除，也不得清理没有 fixture ownership 证明的对象。
+正常路径通过 UI 删除。run ID 只进入私有 journal/receipt，不进入截图内的业务文案。`converge` 在浏览器运行前把专用账号的 owner-list ID 与开始时间写入 mode-0600、gitignored 的本轮 receipt；长期报告不保存这些 ID。若旅程中途失败，`cleanup` 只允许在同一 owner list 中处理 receipt 之后出现的精确差集：附件和岗位还必须匹配各自完整的保留验收名称；没有名称字段的意向必须是唯一新增行，并完整匹配本旅程冻结的 Catalog、工作方式和薪资签名。零条视为 UI 已清理，多条、未知差集、foreign owner 或签名不符都失败关闭。它不得按模糊前缀跨账号删除，也不得清理没有 fixture ownership 证明的对象。
 
 账号、企业主体和不可删除关系不尝试销毁；下一次 `converge` 把它们覆盖回固定基准状态。cleanup 失败会使整次验收失败，但下一次运行仍先通过 converge 修复孤儿对象。
 
@@ -299,7 +299,7 @@ backend-local-recruiter
 - JSON body、headers、内部 ID、ETag 或 Idempotency-Key；
 - 动画帧、滚动像素或脆弱坐标点击。
 
-若无稳定可访问名称导致旅程只能依赖坐标或 CSS，实施应给对应产品控件补真实的 accessible name，而不是增加测试专用 DOM 层级。
+若无稳定可访问名称或状态导致旅程只能依赖坐标或 CSS，实施应给对应产品控件补真实的 accessible name 与 ARIA state，而不是增加测试专用 DOM 层级。披露偏好分段按钮第一版补包含字段名的 `aria-label` 与 `aria-pressed`，让旅程能证明选中档，而不是只证明三个常驻文案存在。
 
 ## 12. 视觉基线
 
@@ -327,7 +327,7 @@ backend-local-recruiter
 - 等待 `document.fonts.ready` 和页面业务 ready 条件；
 - 注入样式关闭 animation、transition、caret 和非业务闪烁；
 - 每个场景固定滚动位置；
-- 固定播种文案、分组和排序。
+- 固定播种文案、固定临时 CRUD 文案、分组和排序；run ID 不得出现在七张截图的可见区域。
 
 基线 manifest 记录 CLI 版本、Chrome build、viewport、时区/语言、场景 ID 和基线生成 commit。环境不一致时返回 `INFRA_BLOCKED`，不把浏览器渲染器变化误报为产品 UI 漂移。
 
@@ -345,7 +345,7 @@ backend-local-recruiter
 
 基线 PNG 和 manifest 提交到前端仓库。candidate、diff、annotated screenshot 和运行报告全部写入 gitignored artifact 目录。
 
-只有显式 `--update-baseline` 可以生成候选基线；命令必须先通过全部功能旅程、fixture verify 和环境一致性检查，再把新图放入独立 review 目录。它不能在同一次失败运行中直接覆盖已提交基线，最终更新仍需人工查看 diff 后提交。
+只有显式 `--update-baseline` 可以生成候选基线；命令必须先通过全部功能旅程和 fixture verify。已有 manifest 时还必须通过环境一致性检查；仓库尚无 manifest 的首次 bootstrap 则记录当前环境并把七个场景报告为 `missing`，允许生成独立 review 目录。损坏的 manifest 或已有 manifest 的环境不兼容仍是 `INFRA_BLOCKED`。命令不能在同一次失败运行中直接覆盖已提交基线，最终更新仍需人工查看 diff 后提交。
 
 ## 13. 运行时错误与网络证据
 
@@ -435,6 +435,8 @@ npm run test:agent-browser:backend-local -- --journey candidate-crud
 npm run test:agent-browser:backend-local -- --headed
 npm run test:agent-browser:backend-local -- --update-baseline
 ```
+
+单旅程模式仍写出五个固定 journey fragment；未选旅程显式记为 `skipped`，只把已选择但缺失的 fragment 判为功能失败。
 
 固定退出码：
 
