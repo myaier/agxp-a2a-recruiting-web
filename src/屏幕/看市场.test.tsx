@@ -908,4 +908,50 @@ describe('看市场 · 委托前必须显式选定简历坐标（Backend）', ()
     const 确认键 = screen.getByRole('button', { name: '确认并委托' }) as HTMLButtonElement;
     expect(确认键.disabled).toBe(true);
   });
+
+  // 准备读在途时换 scope / 离开本屏：迟到的权威库结果必须被栅栏丢弃 ——
+  // 不许在新意向下弹旧岗位的确认层，更不许离屏后还提示并跳 我的简历
+  //（plan：选择不跨 cancel/完成/卸载/scope 变化存活）。
+  it('准备读在途切换意向：迟到结果被丢弃，不提示不弹层不跳转零委托', async () => {
+    const user = userEvent.setup();
+    let 解决!: (库: BFF附件简历库) => void;
+    mock准备候选委托简历.mockImplementation(
+      () => new Promise<BFF附件简历库>((res) => { 解决 = res; }),
+    );
+    置P4候选状态([BFF候选岗位推荐样本]);
+    const 视图 = render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    expect(mock准备候选委托简历).toHaveBeenCalledTimes(1);
+    // 读取仍在途时切到另一条意向（同名意向、不同编号载体，同生产切换路径）
+    置P4候选意向({
+      意向ID: 'int_乙', 阶段: '成功',
+      items: [换卡卡({ 推荐ID: 'rec_乙', 岗位ID: 'job_乙', 职位: '产品经理' })],
+    });
+    视图.rerender(<看市场 />);
+    // 零文件是后果最重的分支：本该提示去上传 + 跳 我的简历
+    解决(附件库([]));
+    await act(async () => {});
+    expect(mock轻提示).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('准备读在途离开本屏（卸载）：迟到结果不提示不跳转零委托', async () => {
+    const user = userEvent.setup();
+    let 解决!: (库: BFF附件简历库) => void;
+    mock准备候选委托简历.mockImplementation(
+      () => new Promise<BFF附件简历库>((res) => { 解决 = res; }),
+    );
+    置P4候选状态([BFF候选岗位推荐样本]);
+    const 视图 = render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    视图.unmount();
+    // 迟到的零文件结果不许再触发提示 / 跳 我的简历
+    解决(附件库([]));
+    await act(async () => {});
+    expect(mock轻提示).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+  });
 });

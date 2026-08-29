@@ -95,6 +95,19 @@ export default function 看市场() {
     : null;
   // 只选当前意向自己的快照：键按意向隔离，切换时旧 scope 的数据天然进不来
   const 后端快照 = 活跃意向 !== null ? 后端状态.候选岗位推荐?.[活跃意向] : undefined;
+
+  // 委托准备的 scope 栅栏：权威附件库的读取是异步的，回来时用户可能已切意向或
+  // 离开本屏 —— 迟到的结果只许落进发起点击时的那个 scope，否则整体作废。
+  const 活跃意向引用 = useRef<string | null>(null);
+  const 在挂载引用 = useRef(true);
+  useEffect(() => () => { 在挂载引用.current = false; }, []);
+  useEffect(() => {
+    活跃意向引用.current = 活跃意向;
+    // scope 变化即作废已捕获的委托层状态：旧意向的确认层绝不在新意向下出现
+    设待确认委托(null);
+    设待选择委托(null);
+  }, [活跃意向]);
+
   const 后端卡们 = useMemo(
     () => (后端快照 ? 后端快照.items.map((卡) => ({ 视图: 从P4候选岗位(卡), 卡 })) : []),
     [后端快照]
@@ -133,8 +146,11 @@ export default function 看市场() {
   // 绝不当成空库走「去上传」的跳转分支。
   const 开始委托 = async (视图: P4候选岗位页面) => {
     if (!视图.recommendationId || !视图.intentionId) return;
+    const 起始意向 = 活跃意向;
     try {
       const 库 = await 操作.准备候选委托简历();
+      // 迟到栅栏：屏幕已卸载或意向已切换 → 本次权威结果整体作废（静默返回）
+      if (!在挂载引用.current || 活跃意向引用.current !== 起始意向) return;
       if (库 === null) return;
       if (库.items.length === 0) {
         轻提示('请先上传一份 PDF 简历');

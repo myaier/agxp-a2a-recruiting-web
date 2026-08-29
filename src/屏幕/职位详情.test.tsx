@@ -12,7 +12,7 @@
 
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 职位详情 from './职位详情';
 import { P4委托进度未知文案 } from '../状态/后端/use发现推荐委托轮询';
@@ -174,6 +174,12 @@ function 渲染(编号 = 'M-12') {
       </Routes>
     </MemoryRouter>,
   );
+}
+
+/** 挂在 Routes 旁的导航驱动：点它走真实路由导航到 目标（测 scope 栅栏用的换岗路径）*/
+function 换岗驱动(选项: { 目标: string }) {
+  const 换 = useNavigate();
+  return <button onClick={() => 换(选项.目标)}>换岗测试驱动</button>;
 }
 
 function 路由元素(编号: string) {
@@ -698,5 +704,65 @@ describe('职位详情 · 委托前必须显式选定简历坐标（Backend）',
     expect(screen.getByRole('dialog', { name: '选择委托简历' })).toBeTruthy();
     const 确认键 = screen.getByRole('button', { name: '确认并委托' }) as HTMLButtonElement;
     expect(确认键.disabled).toBe(true);
+  });
+
+  // 准备读在途时换岗位路由（编号）/ 离开详情：迟到的权威库结果必须被栅栏丢弃 ——
+  // 不许在新岗位下弹旧岗位的确认层，更不许离屏后还提示并跳 我的简历
+  //（plan：选择不跨 cancel/完成/卸载/scope 变化存活）。
+  it('准备读在途换岗位路由：迟到结果被丢弃，不提示不弹层不跳转零委托', async () => {
+    const 用户 = userEvent.setup();
+    let 解决!: (库: BFF附件简历库) => void;
+    mock准备候选委托简历.mockImplementation(
+      () => new Promise<BFF附件简历库>((res) => { 解决 = res; }),
+    );
+    渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
+    // 真实路由导航换岗（同一路由模式：/job/:id 参数变化、组件实例保留），
+    // 不用新 MemoryRouter rerender —— 那样 history 不会换、参数不变测不到竞态。
+    const 视图 = render(
+      <MemoryRouter initialEntries={['/job/job_1']}>
+        <换岗驱动 目标="/job/job_乙" />
+        <Routes>
+          <Route path="/job/:id" element={<职位详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    expect(mock准备候选委托简历).toHaveBeenCalledTimes(1);
+    // 读取仍在途时换到另一个岗位详情（快照里也换上乙岗）
+    const 乙岗快照 = {
+      int_1: {
+        阶段: '成功', 刷新中: false, error: null, generation: 1,
+        items: [{ ...推荐卡样本, job: { ...推荐卡样本.job, job_id: 'job_乙' } }],
+      },
+    };
+    渲染Backend状态({ 候选岗位推荐: 乙岗快照 });
+    await 用户.click(screen.getByRole('button', { name: '换岗测试驱动' }));
+    // 零文件是后果最重的分支：本该提示去上传 + 跳 我的简历
+    //（若导航没真换岗，栅栏不成立、下面第一条断言就会先被 toast 打爆 —— 测试自证）
+    解决(附件库([]));
+    await act(async () => {});
+    expect(mock轻提示).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    视图.unmount();
+  });
+
+  it('准备读在途离开详情（卸载）：迟到结果不提示不跳转零委托', async () => {
+    const 用户 = userEvent.setup();
+    let 解决!: (库: BFF附件简历库) => void;
+    mock准备候选委托简历.mockImplementation(
+      () => new Promise<BFF附件简历库>((res) => { 解决 = res; }),
+    );
+    渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
+    const 视图 = 渲染('job_1');
+    await 用户.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    视图.unmount();
+    // 迟到的零文件结果不许再触发提示 / 跳 我的简历
+    解决(附件库([]));
+    await act(async () => {});
+    expect(mock轻提示).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
   });
 });

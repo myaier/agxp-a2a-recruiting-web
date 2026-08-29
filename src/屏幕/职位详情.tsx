@@ -18,7 +18,7 @@
 // 直聊入口整体隐藏（P4 没有直聊许可/会话坐标）；公司槽只在 hiring_organization_ref
 // 在场时可进公开企业页。Mock 分支保持原型行为原样。
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './职位详情.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
@@ -188,6 +188,18 @@ function Backend职位详情() {
     return () => 操作.设置发现推荐范围('candidate', null);
   }, [编号, 操作]);
 
+  // 委托准备的 scope 栅栏：权威附件库的读取是异步的，回来时用户可能已换岗位路由
+  //（编号）或离开详情 —— 迟到的结果只许落进发起点击时那个岗位，否则整体作废。
+  const 编号引用 = useRef<string | undefined>(undefined);
+  const 在挂载引用 = useRef(true);
+  useEffect(() => () => { 在挂载引用.current = false; }, []);
+  useEffect(() => {
+    编号引用.current = 编号;
+    // scope 变化即作废已捕获的委托层状态：旧岗位的确认层绝不在新岗位下出现
+    设待确认视图(null);
+    设待选择视图(null);
+  }, [编号]);
+
   // 推荐坐标只认当前意向那一份快照（编号载体，同 看市场）：同一 job_id 可能同时躺在
   // 多个意向的缓存 scope 里，扫全表会借到别的意向的 intention_id + recommendation_id。
   // 当前意向缺位或这份快照里没有该岗位 → 推荐卡 为 null，退回权威详情直取（反馈与委托
@@ -250,8 +262,11 @@ function Backend职位详情() {
   // 绝不当成空库走「去上传」的跳转分支。
   const 开始委托 = async (目标视图: P4候选岗位页面) => {
     if (!目标视图.recommendationId || !目标视图.intentionId) return;
+    const 起始编号 = 编号;
     try {
       const 库 = await 操作.准备候选委托简历();
+      // 迟到栅栏：屏幕已卸载或岗位路由已换 → 本次权威结果整体作废（静默返回）
+      if (!在挂载引用.current || 编号引用.current !== 起始编号) return;
       if (库 === null) return;
       if (库.items.length === 0) {
         轻提示('请先上传一份 PDF 简历');
