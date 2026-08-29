@@ -18,19 +18,25 @@
 //     currentCoordination 且本端必需且未决；S3 要本端意向词为空；S1 重试要阶段区 typed
 //     附件（已绑定 file/version 对）；缺坐标一律零控件零请求（fail closed）。
 //   · 动作词 → 操作层路线（与 wire 唯一准许路线一一对应）：respond_fact→回答事实；
-//     end_screening（候选）/decline_resume_invitation→决定S0(continue|end)（decisions 路线
-//     只有候选端 /me 臂，招聘端结束卡零控件）；accept_resume_invitation/retry_resume_
-//     readiness/replace_resume→提交简历(file,version,字面 true)（resume-submission 路线）；
-//     decide_resume_screening→决定S1(continue|not_fit)；decide_coordination→决定S2(issueId,
-//     accept|reject)；confirm_intent/decline_intent→决定S3(confirm|decline)。
-//   · S1 每次提交/更换/重试都当场重跑 Plan 1 显式单选（准备候选委托简历 的权威库；null
-//     = 会话/角色换代，静默返回，绝不当空库）+ 一次 Case 专属披露确认点名所选 PDF；
-//     确认/取消都即刻清层，下一次绝不复用；disclosure_confirmed 只由这一次确认传字面
-//     true。委托准备读有代际栅栏：换 case/卸载后迟到成败整包作废（StrictMode 安全）。
+//     end_screening（候选）/decline_resume_invitation→决定S0(continue|end)；accept_resume_
+//     invitation/retry_resume_readiness/replace_resume→提交简历(file,version,字面 true)
+//     （resume-submission 路线）；decide_resume_screening→决定S1(continue|not_fit)；
+//     decide_coordination→决定S2(issueId,accept|reject)；confirm_intent/decline_intent→
+//     决定S3(confirm|decline)。已知后端缺口：投影器会给招聘端 needs_user 属主发
+//     end_screening，但冻结 wire 的 decisions 路线只有候选端 /me 臂 —— 招聘端结束卡
+//     fail closed（零控件零请求），待后端补 recruiter 臂。
+//   · S1 每次提交/更换/重试都当场重跑显式单选（准备候选委托简历 的权威库；null
+//     = 会话/角色换代，静默返回，绝不当空库）+ 一次 Case 专属披露确认（点名所选 PDF
+//     与冻结职位名，说清递交即披露）；确认/取消都即刻清层，下一次绝不复用；
+//     disclosure_confirmed 只由这一次确认传字面 true。委托准备读有代际栅栏：换 case/
+//     卸载后迟到成败整包作废（StrictMode 安全）。
 //   · 招聘端 PDF 入口只由阶段区 typed 附件（后端披露后才下发）授权；点击只调
 //     读取简历PDF(role, caseId)（Case 专属 role 路径），拿回的 Plan 1 租约只活在弹层
 //     生命周期：关闭/卸载即 revoke，不缓存不持久化，绝不读 blob 文本/字节提身份。
-//     候选端本任务不建 PDF 入口。
+//     弹层正文用 <iframe src=租约地址> 直接呈现真实 PDF（选 iframe 而非 <object>：
+//     无插件回退怪癖、字节留在嵌套浏览上下文、title 即无障碍名）；顶栏只有 PDF 徽标
+//     + 文件名 + 关闭，无任何解释文字，弹层里不存在姓名/联系方式渲染路径。候选端
+//     本任务不建 PDF 入口。
 //   · 未知契约（矩阵外四元组等）按展示映射 fail closed：只给契约错误提示 + 重试（重新
 //     GET），隐藏全部 mutation 控件。终局（ended/completed）只读：停 3 秒详情节拍、隐藏
 //     叮嘱输入。
@@ -45,9 +51,14 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { useParams } from 'react-router-dom';
 import 列表样式 from './MatchCase列表.module.css';
 import 阶段对话流, { type 分段项 } from '../../组件/阶段对话流';
-import 附件简历选择层, { 从附件行取选择值, type 附件简历选择值 } from '../../组件/附件简历选择层';
-import 简历原件层 from '../../组件/简历预览层';
+import { 从附件行取选择值, type 附件简历选择值 } from '../../组件/附件简历选择层';
+import 弹层框架 from '../../组件/弹层框架';
 import 确认层 from '../../组件/确认层';
+// P5 专属弹层只借两份既有 module 的壳（抽屉顶栏 / 单选面板的类），文案由本文件给：
+// Plan 1 的 简历原件层 渲染的是 Mock 仿真纸身（无 blob/url 通道），附件简历选择层 的
+// 确认键文案是「委托」口径 —— 评审 R1 裁定：这两处 P5 各建最小 UI，不硬套错口径的层。
+import 预览样式 from '../../组件/简历预览层.module.css';
+import 选择样式 from '../../组件/附件简历选择层.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../../组件/通用';
 import { 轻提示 } from '../../组件/轻提示';
 import { use应用状态 } from '../../状态/应用状态';
@@ -309,8 +320,8 @@ function 详情主体({
   const 有动作 = 视图.actions.length > 0;
 
   // 授权原始 PDF（招聘端）：租约只活在弹层生命周期 —— 关闭/卸载即 revoke，
-  // 绝不缓存；在飞单发防连点双租约。
-  const [PDF预览, 设PDF预览] = useState<{ 文件名: string; 代号: string | null } | null>(null);
+  // 绝不缓存；在飞单发防连点双租约。弹层正文直接以租约地址呈现真实 PDF 字节。
+  const [PDF预览, 设PDF预览] = useState<{ 文件名: string; 地址: string } | null>(null);
   const PDF租约引用 = useRef<PDF对象租约 | null>(null);
   const PDF在飞 = useRef(false);
   const 回收租约 = () => {
@@ -326,7 +337,7 @@ function 详情主体({
       const 租约 = await 操作.读取简历PDF(role, caseId);
       回收租约(); // 防御：上一张（理论上不存在）先回收再挂新的
       PDF租约引用.current = 租约;
-      设PDF预览({ 文件名, 代号: 视图.candidateAlias });
+      设PDF预览({ 文件名, 地址: 租约.url });
     } catch (错误) {
       轻提示(取后端错误文案(错误));
     } finally {
@@ -412,12 +423,12 @@ function 详情主体({
         点附件={role === 'recruiter' ? (文件名) => void 开PDF(文件名) : undefined}
       />
 
-      {/* 原始 PDF 弹层：顶栏只有 PDF 徽标 + 文件名 + 关闭；关闭即回收租约。
-          代号分支（别名 + 打码联系方式）保证弹层永不出现未披露的姓名/联系方式。 */}
+      {/* 原始 PDF 弹层：顶栏只有 PDF 徽标 + 文件名 + 关闭（无解释文字）；正文以
+          租约地址呈现真实字节；关闭即回收租约。弹层里不存在姓名/联系方式渲染路径。 */}
       {PDF预览 !== null ? (
-        <简历原件层
+        <原始PDF层
           文件名={PDF预览.文件名}
-          匿名代号={PDF预览.代号 ?? undefined}
+          地址={PDF预览.地址}
           关闭={() => {
             回收租约();
             设PDF预览(null);
@@ -425,6 +436,100 @@ function 详情主体({
         />
       ) : null}
     </>
+  );
+}
+
+// ── P5 专属弹层（评审 R1）：真实 PDF 抽屉与 S1 递交单选，借既有壳、P5 文案 ──────
+
+/**
+ * 授权原始 PDF 弹层：壳与顶栏逐类复用 简历预览层.module.css（抽屉 + PDF 徽标 +
+ * 文件名 + 关闭，无任何解释文字）；正文用 <iframe src=租约地址> 呈现真实字节
+ * （选 iframe 而非 <object>：无插件回退怪癖、字节留在嵌套浏览上下文、title 即
+ * 无障碍名）。经 URL 渲染不是解析 —— 代码绝不读 blob 文本/字节。
+ */
+function 原始PDF层({ 文件名, 地址, 关闭 }: { 文件名: string; 地址: string; 关闭: () => void }) {
+  return (
+    <弹层框架 标签="简历原件" 遮罩类名={预览样式.遮罩} 面板类名={预览样式.层} 关闭={关闭}>
+      <div className={预览样式.顶栏}>
+        <span className={预览样式.抓手} />
+        <div className={预览样式.顶栏行}>
+          <span className={预览样式.PDF徽标}>
+            <span className={预览样式.PDF徽标字}>PDF</span>
+          </span>
+          <span className={`${预览样式.文件名} 单行`}>{文件名}</span>
+          <button className={`${预览样式.关闭键} 可点`} onClick={关闭} aria-label="关闭">
+            ✕
+          </button>
+        </div>
+      </div>
+      <div className={`${预览样式.纸底} 滚动区`}>
+        <iframe
+          title="简历 PDF"
+          src={地址}
+          style={{
+            display: 'block', width: '100%', height: '100%', border: 0,
+            borderRadius: 10, background: 'var(--白)',
+          }}
+        />
+      </div>
+    </弹层框架>
+  );
+}
+
+/**
+ * S1 递交的单选层：面板类复用 附件简历选择层.module.css（单选清单同一版式），
+ * 文案是 P5 递交口径（评审 R1：Plan 1 层的「确认并委托」是委托话术，不表达
+ * S1 简历递交）。单选草稿只在层开着时存在，取消/确认/卸载即消失，绝不记默认。
+ */
+function S1简历选择层({
+  文件们,
+  职位名,
+  取消,
+  确认,
+}: {
+  文件们: readonly BFF附件简历[];
+  职位名: string;
+  取消: () => void;
+  确认: (选择: 附件简历选择值) => void;
+}) {
+  const [选中编号, 设选中编号] = useState<string | null>(null);
+  const 选中文件 = 文件们.find((条) => 条.file_id === 选中编号) ?? null;
+  return (
+    <弹层框架 标签="选择递交简历" 遮罩类名={选择样式.遮罩} 面板类名={选择样式.面板} 关闭={取消}>
+      <div className={选择样式.标题}>选择这次递交的简历</div>
+      <div className={选择样式.说明}>
+        本次 Case 是「{职位名}」；所选 PDF 与披露授权仅对这一次递交生效，不会记住为默认。
+      </div>
+      <div className={`${选择样式.清单} 滚动区`} role="radiogroup" aria-label="选择简历">
+        {文件们.map((条) => (
+          <label key={条.file_id} className={选择样式.行}>
+            <input
+              type="radio"
+              name="递交简历"
+              className={选择样式.单选钮}
+              checked={选中编号 === 条.file_id}
+              onChange={() => 设选中编号(条.file_id)}
+            />
+            <span className={`${选择样式.文件名} 单行`}>{条.display_name}</span>
+          </label>
+        ))}
+      </div>
+      <div className={选择样式.键行}>
+        <button type="button" className={`${选择样式.取消键} 可点`} onClick={取消}>
+          暂不递交
+        </button>
+        <button
+          type="button"
+          className={`${选择样式.确认键} 可点`}
+          disabled={选中文件 === null}
+          onClick={() => {
+            if (选中文件 !== null) 确认(从附件行取选择值(选中文件));
+          }}
+        >
+          选定这份
+        </button>
+      </div>
+    </弹层框架>
   );
 }
 
@@ -756,9 +861,11 @@ function 阶段动作区({
       </div>
 
       {待选择 !== null ? (
-        // 多份附件：当场单选一份（Plan 1 层）；取消/遮罩/Esc 零请求，确认进披露确认
-        <附件简历选择层
+        // 多份附件：当场单选一份（P5 递交口径的单选层）；取消/遮罩/Esc 零请求，
+        // 确认进披露确认
+        <S1简历选择层
           文件们={待选择.文件们}
+          职位名={视图.职位.职位名}
           取消={() => 设待选择(null)}
           确认={(选择) => {
             设待选择(null);
@@ -768,13 +875,14 @@ function 阶段动作区({
       ) : null}
 
       {待披露 !== null ? (
-        // Case 专属披露确认：正文点名这次提交哪份 PDF；仅对这一次提交生效。
-        // 确认/取消都即刻清层 —— 上一次的授权绝不复用（spec §8.1）。
+        // Case 专属披露确认：正文点名冻结职位（Case 上下文，无别名）与这次递交
+        // 哪份 PDF，说清递交即披露；仅对这一次递交生效。确认/取消都即刻清层 ——
+        // 上一次的授权绝不复用（spec §8.1）。
         <确认层
-          标题="确认提交这份简历？"
-          正文={`本次将向该招聘方提交「${待披露.选择.displayName}」并披露你的姓名和联系方式。授权仅对本 Case 的这一次提交生效。`}
-          执行文="确认提交"
-          取消文="暂不提交"
+          标题="确认递交这份简历？"
+          正文={`本次将向「${视图.职位.职位名}」这一 Case 递交「${待披露.选择.displayName}」，递交后本份简历与你的姓名、联系方式即向该招聘方披露。授权仅对这一次递交生效。`}
+          执行文="确认递交"
+          取消文="暂不递交"
           取消={() => 设待披露(null)}
           执行={() => 执行披露提交(待披露.选择)}
         />

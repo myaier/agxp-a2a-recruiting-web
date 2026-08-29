@@ -231,14 +231,7 @@ function 置详情状态(选项: {
   mock应用状态 = {
     数据源模式: 'backend',
     派发: mock派发,
-    // 简历原件层（PDF 弹层）内部会读全局简历切片：给空切片防炸（本组件不消费其内容）
-    状态: {
-      个人优势: '',
-      简历经历: [],
-      简历教育: [],
-      基本信息: { 真名: '' },
-      联系方式: { 手机: '', 邮箱: '' },
-    },
+    状态: {},
     后端状态: {
       已登录: 选项.已登录 ?? true,
       主体: {
@@ -889,7 +882,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     expect(mock决定S0).toHaveBeenLastCalledWith('mc_direct', 'end');
   });
 
-  it('end_screening（招聘）：无本端准许路线 → 零控件零请求（fail closed）', async () => {
+  it('end_screening（招聘）：wire 缺 recruiter decisions 臂 → 零控件零请求（fail closed，后端缺口观察）', async () => {
     置详情状态({
       role: 'recruiter', caseId: 'mc_hr',
       快照: 详情快照({
@@ -911,10 +904,15 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     渲染详情('recruiter', 'mc_hr');
     // respond_fact 双端都有准许路线（fact-responses 有 recruiter 臂）
     expect(screen.getByRole('textbox', { name: '回答问题' })).toBeTruthy();
-    // 决定路线只有候选端 /me/.../decisions：招聘端结束卡零控件（wire 无 recruiter decisions 臂）
+    // 投影器会给 needs_user 属主发 end_screening，但冻结 wire 的 decisions 路线只有
+    // 候选端 /me 臂 —— 招聘端结束卡零控件、零请求（fail closed，待后端补 recruiter 臂）
     expect(screen.queryByRole('button', { name: '继续初筛' })).toBeNull();
     expect(screen.queryByRole('button', { name: '结束初筛' })).toBeNull();
     expect(mock决定S0).not.toHaveBeenCalled();
+    expect(mock提交简历).not.toHaveBeenCalled();
+    expect(mock决定S1).not.toHaveBeenCalled();
+    expect(mock准备候选委托简历).not.toHaveBeenCalled();
+    expect(mock读取简历PDF).not.toHaveBeenCalled();
   });
 
   it('接受简历邀请：单选 → Case 专属披露确认点名所选 PDF → 字面 true；取消零请求', async () => {
@@ -923,40 +921,41 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
-    // Plan 1 单选层：多份附件必须当场单选一份
+    // 单选层：多份附件必须当场单选一份（S1 递交口径的文案）
     const 选择框 = await screen.findByRole('dialog');
+    expect(within(选择框).getByText(/本次 Case 是「平台工程师」/)).toBeTruthy();
     await user.click(within(选择框).getByRole('radio', { name: '简历_v2.pdf' }));
-    await user.click(within(选择框).getByRole('button', { name: '确认并委托' }));
-    // 披露确认：正文点名这次提交哪份 PDF，且只对这一次生效
+    await user.click(within(选择框).getByRole('button', { name: '选定这份' }));
+    // 披露确认：正文点名冻结职位（Case 上下文）与这次递交哪份 PDF，说清递交即披露
     const 披露框 = screen.getByRole('dialog');
-    expect(within(披露框).getByText(/简历_v2\.pdf/)).toBeTruthy();
-    expect(within(披露框).getByText(/仅对本 Case 的这一次提交生效/)).toBeTruthy();
-    await user.click(within(披露框).getByRole('button', { name: '暂不提交' })); // 取消：零请求
+    expect(within(披露框).getByText(/「平台工程师」这一 Case 递交「简历_v2\.pdf」/)).toBeTruthy();
+    expect(within(披露框).getByText(/仅对这一次递交生效/)).toBeTruthy();
+    await user.click(within(披露框).getByRole('button', { name: '暂不递交' })); // 取消：零请求
     expect(mock提交简历).not.toHaveBeenCalled();
     // 再来一次：选择与披露都重新走，不复用上一次的授权
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     const 再选 = await screen.findByRole('dialog');
     await user.click(within(再选).getByRole('radio', { name: '简历_v1.pdf' }));
-    await user.click(within(再选).getByRole('button', { name: '确认并委托' }));
+    await user.click(within(再选).getByRole('button', { name: '选定这份' }));
     const 再披露 = screen.getByRole('dialog');
     expect(within(再披露).getByText(/简历_v1\.pdf/)).toBeTruthy(); // 点名的是这次选的
-    await user.click(within(再披露).getByRole('button', { name: '确认提交' }));
+    await user.click(within(再披露).getByRole('button', { name: '确认递交' }));
     expect(mock提交简历).toHaveBeenCalledTimes(1);
     expect(mock提交简历).toHaveBeenCalledWith('mc_direct', `rf_${填充十六(1)}`, `rfv_${填充十六(1)}`, true);
     expect(mock准备候选委托简历).toHaveBeenCalledTimes(2); // 每次尝试都重跑权威库读取
     expect(mock决定S0).not.toHaveBeenCalled();
   });
 
-  it('接受简历邀请：单份附件直达披露确认（仍点名该 PDF）', async () => {
+  it('接受简历邀请：单份附件直达披露确认（仍点名该 PDF 与职位）', async () => {
     const user = userEvent.setup();
     mock准备候选委托简历.mockResolvedValue(附件库样本(1));
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     const 披露框 = await screen.findByRole('dialog');
-    expect(within(披露框).getByText(/简历_v1\.pdf/)).toBeTruthy();
+    expect(within(披露框).getByText(/「平台工程师」这一 Case 递交「简历_v1\.pdf」/)).toBeTruthy();
     expect(screen.queryByRole('radio', { name: '简历_v1.pdf' })).toBeNull(); // 单份不再过单选层
-    await user.click(within(披露框).getByRole('button', { name: '确认提交' }));
+    await user.click(within(披露框).getByRole('button', { name: '确认递交' }));
     expect(mock提交简历).toHaveBeenCalledWith('mc_direct', `rf_${填充十六(1)}`, `rfv_${填充十六(1)}`, true);
   });
 
@@ -1001,11 +1000,11 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     渲染详情('candidate', 'mc_direct');
     await user.click(screen.getByRole('button', { name: '重试校验' }));
     const 披露框 = screen.getByRole('dialog');
-    expect(within(披露框).getByText(/后端工程师_简历_v1\.pdf/)).toBeTruthy(); // 点名绑定中的那份
-    await user.click(within(披露框).getByRole('button', { name: '暂不提交' }));
+    expect(within(披露框).getByText(/「平台工程师」这一 Case 递交「后端工程师_简历_v1\.pdf」/)).toBeTruthy();
+    await user.click(within(披露框).getByRole('button', { name: '暂不递交' }));
     expect(mock提交简历).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: '重试校验' })); // 再来：重新确认
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认提交' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认递交' }));
     expect(mock提交简历).toHaveBeenCalledTimes(1);
     expect(mock提交简历).toHaveBeenCalledWith(
       'mc_direct', 绑定附件.fileId, 绑定附件.fileVersionId, true);
@@ -1028,15 +1027,15 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     await user.click(screen.getByRole('button', { name: '更换简历' }));
     const 选择框 = await screen.findByRole('dialog');
     await user.click(within(选择框).getByRole('radio', { name: '简历_v2.pdf' }));
-    await user.click(within(选择框).getByRole('button', { name: '确认并委托' }));
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '暂不提交' }));
+    await user.click(within(选择框).getByRole('button', { name: '选定这份' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '暂不递交' }));
     expect(mock提交简历).not.toHaveBeenCalled();
-    // 第二次：改选 v1，确认提交 —— 发出去的恰是这次选的对
+    // 第二次：改选 v1，确认递交 —— 发出去的恰是这次选的对
     await user.click(screen.getByRole('button', { name: '更换简历' }));
     const 再选 = await screen.findByRole('dialog');
     await user.click(within(再选).getByRole('radio', { name: '简历_v1.pdf' }));
-    await user.click(within(再选).getByRole('button', { name: '确认并委托' }));
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认提交' }));
+    await user.click(within(再选).getByRole('button', { name: '选定这份' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认递交' }));
     expect(mock提交简历).toHaveBeenCalledTimes(1);
     expect(mock提交简历).toHaveBeenCalledWith('mc_direct', `rf_${填充十六(1)}`, `rfv_${填充十六(1)}`, true);
   });
@@ -1285,7 +1284,7 @@ describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
     expect(mock读取简历PDF).not.toHaveBeenCalled();
   });
 
-  it('typed 附件在场：PDF 入口点击只走 Case 专属 role 路径一次，关闭即回收租约', async () => {
+  it('typed 附件在场：点击只走 Case 专属 role 路径一次，弹层以租约地址呈现真实 PDF，关闭即回收', async () => {
     const user = userEvent.setup();
     const 租约 = { url: 'blob:p5-resume', revoke: vi.fn() };
     mock读取简历PDF.mockResolvedValue(租约);
@@ -1297,6 +1296,9 @@ describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
     expect(mock读取简历PDF).toHaveBeenCalledWith('recruiter', 'mc_hr');
     const 弹层 = await screen.findByRole('dialog', { name: '简历原件' });
     expect(within(弹层).getByText('后端工程师_简历_v2.pdf')).toBeTruthy(); // 顶栏只有徽标+文件名+关闭
+    // 正文以租约对象地址直接呈现真实字节（经 URL 渲染，绝不读 blob 文本/字节）
+    const 阅览框 = within(弹层).getByTitle('简历 PDF') as HTMLIFrameElement;
+    expect(阅览框.getAttribute('src')).toBe('blob:p5-resume');
     await user.click(within(弹层).getByRole('button', { name: '关闭' }));
     expect(租约.revoke).toHaveBeenCalledTimes(1); // 关闭即回收
     expect(screen.queryByRole('dialog', { name: '简历原件' })).toBeNull();
