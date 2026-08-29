@@ -12,6 +12,7 @@
 
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 职位详情 from './职位详情';
@@ -764,5 +765,54 @@ describe('职位详情 · 委托前必须显式选定简历坐标（Backend）',
     expect(mock轻提示).not.toHaveBeenCalled();
     expect(mock跳转).not.toHaveBeenCalled();
     expect(mock委托候选岗位).not.toHaveBeenCalled();
+  });
+
+  // 评审 R2：入口在 StrictMode 下跑（effect 会 setup→cleanup→setup 双执行），
+  // 挂载栅栏若只在 cleanup 里落 false 而不在 setup 里回 true，dev 下全部委托都会
+  // 被误判成「已离屏」而静默丢弃 —— 弹层必须照常出现。
+  it('StrictMode 双重挂载不误判离屏：准备结果照常弹层', async () => {
+    const 用户 = userEvent.setup();
+    mock准备候选委托简历.mockResolvedValue(双文件附件库);
+    渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
+    render(
+      <StrictMode>
+        {路由元素('job_1')}
+      </StrictMode>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: '选择委托简历' })).toBeTruthy());
+  });
+
+  it('准备读被拒同样过栅栏：换岗后的迟到拒绝不提示', async () => {
+    const 用户 = userEvent.setup();
+    let 拒绝!: (错误: unknown) => void;
+    mock准备候选委托简历.mockImplementation(
+      () => new Promise<BFF附件简历库>((_, rej) => { 拒绝 = rej; }),
+    );
+    渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
+    const 视图 = render(
+      <MemoryRouter initialEntries={['/job/job_1']}>
+        <换岗驱动 目标="/job/job_乙" />
+        <Routes>
+          <Route path="/job/:id" element={<职位详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    const 乙岗快照 = {
+      int_1: {
+        阶段: '成功', 刷新中: false, error: null, generation: 1,
+        items: [{ ...推荐卡样本, job: { ...推荐卡样本.job, job_id: 'job_乙' } }],
+      },
+    };
+    渲染Backend状态({ 候选岗位推荐: 乙岗快照 });
+    await 用户.click(screen.getByRole('button', { name: '换岗测试驱动' }));
+    拒绝(new BFF错误(503, 'source_unavailable', 'down'));
+    await act(async () => {});
+    expect(mock轻提示).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+    视图.unmount();
   });
 });

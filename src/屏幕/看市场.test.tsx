@@ -11,6 +11,7 @@
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 看市场 from './看市场';
@@ -949,6 +950,84 @@ describe('看市场 · 委托前必须显式选定简历坐标（Backend）', ()
     视图.unmount();
     // 迟到的零文件结果不许再触发提示 / 跳 我的简历
     解决(附件库([]));
+    await act(async () => {});
+    expect(mock轻提示).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+  });
+
+  // 评审 R2：入口在 StrictMode 下跑（effect 会 setup→cleanup→setup 双执行），
+  // 挂载栅栏若只在 cleanup 里落 false 而不在 setup 里回 true，dev 下全部委托都会
+  // 被误判成「已离屏」而静默丢弃 —— 弹层必须照常出现。
+  it('StrictMode 双重挂载不误判离屏：准备结果照常弹层', async () => {
+    const user = userEvent.setup();
+    mock准备候选委托简历.mockResolvedValue(双文件附件库);
+    置P4候选状态([BFF候选岗位推荐样本]);
+    render(
+      <StrictMode>
+        <看市场 />
+      </StrictMode>,
+    );
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: '选择委托简历' })).toBeTruthy());
+  });
+
+  it('意向 A→B→A 往返：跨 scope 的迟到结果同样作废，不弹层零委托', async () => {
+    const user = userEvent.setup();
+    let 解决!: (库: BFF附件简历库) => void;
+    mock准备候选委托简历.mockImplementation(
+      () => new Promise<BFF附件简历库>((res) => { 解决 = res; }),
+    );
+    置P4候选状态([BFF候选岗位推荐样本]);
+    const 视图 = render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    // 切去乙再切回甲：坐标相等但 scope 已换过两轮，迟到结果必须作废
+    置P4候选意向({
+      意向ID: 'int_乙', 阶段: '成功',
+      items: [换卡卡({ 推荐ID: 'rec_乙', 岗位ID: 'job_乙', 职位: '产品经理' })],
+    });
+    视图.rerender(<看市场 />);
+    置P4候选状态([BFF候选岗位推荐样本]);
+    视图.rerender(<看市场 />);
+    解决(双文件附件库);
+    await act(async () => {});
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+  });
+
+  it('准备读被拒同样过栅栏：切意向后的迟到拒绝不提示', async () => {
+    const user = userEvent.setup();
+    let 拒绝!: (错误: unknown) => void;
+    mock准备候选委托简历.mockImplementation(
+      () => new Promise<BFF附件简历库>((_, rej) => { 拒绝 = rej; }),
+    );
+    置P4候选状态([BFF候选岗位推荐样本]);
+    const 视图 = render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    置P4候选意向({
+      意向ID: 'int_乙', 阶段: '成功',
+      items: [换卡卡({ 推荐ID: 'rec_乙', 岗位ID: 'job_乙', 职位: '产品经理' })],
+    });
+    视图.rerender(<看市场 />);
+    拒绝(new BFF错误(503, 'source_unavailable', 'down'));
+    await act(async () => {});
+    expect(mock轻提示).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+  });
+
+  it('准备读被拒同样过栅栏：离屏后的迟到拒绝不提示', async () => {
+    const user = userEvent.setup();
+    let 拒绝!: (错误: unknown) => void;
+    mock准备候选委托简历.mockImplementation(
+      () => new Promise<BFF附件简历库>((_, rej) => { 拒绝 = rej; }),
+    );
+    置P4候选状态([BFF候选岗位推荐样本]);
+    const 视图 = render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    视图.unmount();
+    拒绝(new BFF错误(503, 'source_unavailable', 'down'));
     await act(async () => {});
     expect(mock轻提示).not.toHaveBeenCalled();
     expect(mock跳转).not.toHaveBeenCalled();

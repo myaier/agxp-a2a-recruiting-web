@@ -96,13 +96,14 @@ export default function 看市场() {
   // 只选当前意向自己的快照：键按意向隔离，切换时旧 scope 的数据天然进不来
   const 后端快照 = 活跃意向 !== null ? 后端状态.候选岗位推荐?.[活跃意向] : undefined;
 
-  // 委托准备的 scope 栅栏：权威附件库的读取是异步的，回来时用户可能已切意向或
-  // 离开本屏 —— 迟到的结果只许落进发起点击时的那个 scope，否则整体作废。
-  const 活跃意向引用 = useRef<string | null>(null);
-  const 在挂载引用 = useRef(true);
-  useEffect(() => () => { 在挂载引用.current = false; }, []);
+  // 委托准备的代际栅栏（评审 R2）：权威附件库的读取是异步的，回来时用户可能已
+  // 切意向（含 A→B→A 往返）或离开本屏 —— 每次卸载与 scope 变化都让代际 +1，迟到
+  // 的结果（含拒绝）对不上代际就整体静默作废，绝不跨 scope 弹层/提示/跳转。
+  // 代际只在 effect 里动：StrictMode 的 setup→cleanup→setup 不会把它永久关死。
+  const 准备代际引用 = useRef(0);
+  useEffect(() => () => { 准备代际引用.current += 1; }, []);
   useEffect(() => {
-    活跃意向引用.current = 活跃意向;
+    准备代际引用.current += 1;
     // scope 变化即作废已捕获的委托层状态：旧意向的确认层绝不在新意向下出现
     设待确认委托(null);
     设待选择委托(null);
@@ -146,11 +147,11 @@ export default function 看市场() {
   // 绝不当成空库走「去上传」的跳转分支。
   const 开始委托 = async (视图: P4候选岗位页面) => {
     if (!视图.recommendationId || !视图.intentionId) return;
-    const 起始意向 = 活跃意向;
+    const 起始代际 = 准备代际引用.current;
     try {
       const 库 = await 操作.准备候选委托简历();
-      // 迟到栅栏：屏幕已卸载或意向已切换 → 本次权威结果整体作废（静默返回）
-      if (!在挂载引用.current || 活跃意向引用.current !== 起始意向) return;
+      // 迟到栅栏：scope 已变或屏幕已卸载 → 本次权威结果整体作废（静默返回）
+      if (准备代际引用.current !== 起始代际) return;
       if (库 === null) return;
       if (库.items.length === 0) {
         轻提示('请先上传一份 PDF 简历');
@@ -164,6 +165,8 @@ export default function 看市场() {
       }
       设待选择委托({ 视图, 文件们: 库.items });
     } catch (错误) {
+      // 拒绝路径同样过栅栏：切了 scope / 离屏后的迟到失败不再 toast
+      if (准备代际引用.current !== 起始代际) return;
       轻提示(P4错误文案(错误));
     }
   };

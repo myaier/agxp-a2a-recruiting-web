@@ -188,13 +188,14 @@ function Backend职位详情() {
     return () => 操作.设置发现推荐范围('candidate', null);
   }, [编号, 操作]);
 
-  // 委托准备的 scope 栅栏：权威附件库的读取是异步的，回来时用户可能已换岗位路由
-  //（编号）或离开详情 —— 迟到的结果只许落进发起点击时那个岗位，否则整体作废。
-  const 编号引用 = useRef<string | undefined>(undefined);
-  const 在挂载引用 = useRef(true);
-  useEffect(() => () => { 在挂载引用.current = false; }, []);
+  // 委托准备的代际栅栏（评审 R2）：权威附件库的读取是异步的，回来时用户可能已
+  // 换岗位路由（编号）或离开详情 —— 每次卸载与 scope 变化都让代际 +1，迟到的结果
+  //（含拒绝）对不上代际就整体静默作废，绝不跨 scope 弹层/提示/跳转。
+  // 代际只在 effect 里动：StrictMode 的 setup→cleanup→setup 不会把它永久关死。
+  const 准备代际引用 = useRef(0);
+  useEffect(() => () => { 准备代际引用.current += 1; }, []);
   useEffect(() => {
-    编号引用.current = 编号;
+    准备代际引用.current += 1;
     // scope 变化即作废已捕获的委托层状态：旧岗位的确认层绝不在新岗位下出现
     设待确认视图(null);
     设待选择视图(null);
@@ -262,11 +263,11 @@ function Backend职位详情() {
   // 绝不当成空库走「去上传」的跳转分支。
   const 开始委托 = async (目标视图: P4候选岗位页面) => {
     if (!目标视图.recommendationId || !目标视图.intentionId) return;
-    const 起始编号 = 编号;
+    const 起始代际 = 准备代际引用.current;
     try {
       const 库 = await 操作.准备候选委托简历();
-      // 迟到栅栏：屏幕已卸载或岗位路由已换 → 本次权威结果整体作废（静默返回）
-      if (!在挂载引用.current || 编号引用.current !== 起始编号) return;
+      // 迟到栅栏：scope 已变或屏幕已卸载 → 本次权威结果整体作废（静默返回）
+      if (准备代际引用.current !== 起始代际) return;
       if (库 === null) return;
       if (库.items.length === 0) {
         轻提示('请先上传一份 PDF 简历');
@@ -280,6 +281,8 @@ function Backend职位详情() {
       }
       设待选择视图({ 视图: 目标视图, 文件们: 库.items });
     } catch (错误) {
+      // 拒绝路径同样过栅栏：切了 scope / 离屏后的迟到失败不再 toast
+      if (准备代际引用.current !== 起始代际) return;
       轻提示(P4错误文案(错误));
     }
   };
