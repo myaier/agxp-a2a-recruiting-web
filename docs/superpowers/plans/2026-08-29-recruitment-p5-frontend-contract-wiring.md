@@ -41,7 +41,7 @@ The committed recalibration must record, in this document and `docs/DEV_LOG.md`:
 1. exact clean backend SHA and worktree/branch;
 2. exact BFF OpenAPI schema names for candidate/recruiter open item, history item, detail and detail envelope;
 3. exact required/nullable field sets and final public `MatchCaseStep` enum;
-4. the tested legal `lifecycle + stage + status + step` matrix;
+4. the tested 17-row `lifecycle + stage + status → steps` matrix, expanding to 32 legal `lifecycle + stage + status + step` tuples;
 5. proof that list `needs_action`, ordering and cursor use the same viewer-specific value;
 6. proof that completed/outbox reads and completion event expose `handoff_pending`;
 7. proof that both role detail responses include only their approved minimal context;
@@ -81,7 +81,7 @@ The BFF public document is the admitted `apps/recruitment-bff/openapi/mobile-v1.
 | `ended` / `completed` history | Deliberately reuses the candidate open-list schema chain; there is no separate history-item schema | Deliberately reuses the recruiter open-list schema chain; there is no separate history-item schema |
 | Detail | `CandidateMatchCaseDetailEnvelope.result` → `CandidateMatchCaseDetail` | `RecruiterMatchCaseDetailEnvelope.result` → `RecruiterMatchCaseDetail` |
 
-Open and history pages require non-null `items` plus present `next_cursor`; `next_cursor` is exactly `string | null`. List/history rows must omit `resume_submission` even though the shared item component retains that optional property for the existing workspace-detail projection; the route descriptions and BFF strict decoders reject it on a page row.
+Open and history pages require non-null `items` plus present `next_cursor`; `next_cursor` is exactly `string | null`. List/history rows must omit `resume_submission`; the route descriptions and BFF strict decoders reject it on a page row. The shared item component retains that optional property, but no admitted public path references the item-envelope components, so the frontend must not infer an additional detail route from them.
 
 Exact top-level required and absence/null rules:
 
@@ -122,7 +122,7 @@ awaiting_recruiter_confirmation
 handoff_pending
 ```
 
-The single fixture `apps/recruitment/testdata/matchcase-state-matrix.json` pins the exact 17 legal `lifecycle + stage + status → steps` rows used by the Recruitment validator, Recruitment OpenAPI tests, BFF validator and BFF OpenAPI tests:
+The single fixture `apps/recruitment/testdata/matchcase-state-matrix.json` pins the exact 17 legal `lifecycle + stage + status → steps` rows (32 expanded legal four-tuples) used by the Recruitment validator, Recruitment OpenAPI tests, BFF validator and BFF OpenAPI tests:
 
 | lifecycle | stage | status | legal steps |
 |---|---|---|---|
@@ -553,10 +553,10 @@ Expected: PASS.
 
 ```tsx
 it('renders viewer-specific action responsibility without state.needs_user', async () => {
-  render(<MatchCase列表 role="candidate" filterRef="int_case" />);
+  render(<MatchCase列表 role="candidate" filterRef="int_0123456789abcdef0123456789abcdef" />);
   expect(await screen.findByText('需要你')).toBeInTheDocument();
   cleanup();
-  render(<MatchCase列表 role="recruiter" filterRef="job_case" />);
+  render(<MatchCase列表 role="recruiter" filterRef="job_0123456789abcdef0123456789abcdef" />);
   expect(await screen.findByText('代理处理中')).toBeInTheDocument();
 });
 ```
