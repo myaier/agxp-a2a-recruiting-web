@@ -7,6 +7,11 @@
 //
 // 一条交互硬规矩（来自设计稿）：决策一律在这一页做，列表卡上不放按钮。
 // 所以这一页是全局状态的唯一写入点：接受方案 / 退出谈判 / 确认意向都从这里派发。
+//
+// P5 模式边界：Backend 的在谈详情只渲染共享 P5 详情（屏幕/P5/MatchCase详情，role=
+// candidate，URL case_id + 已认证角色直达），不读 在谈列表、不水合 Mock 在谈单、
+// 不调公司档案/取在谈岗位详情等 Mock/P4 查询；Mock 分支（Mock在谈详情）行为与接线前
+// 逐字一致、零 P5 请求。
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
@@ -41,6 +46,7 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 轻提示 } from '../组件/轻提示';
 import { 公司路由键 } from '../数据/公司档案';
+import { MatchCase详情 } from './P5/MatchCase详情';
 
 /** Tab 名即屏上文案。「代谈」是产品负责人 2026-08-22 在本屏（#/deal/J-02）定的口径：
  *  「我觉得谈判和接洽都不合适，应该是代谈进度」。
@@ -89,6 +95,13 @@ function 算决策文案(单: 在谈单, 类型: '接受' | '退出'): { 决定�
 }
 
 export default function 在谈详情() {
+  const { 数据源模式 } = use应用状态();
+  // eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role
+  return 数据源模式 === 'backend' ? <MatchCase详情 role="candidate" /> : <Mock在谈详情 />;
+}
+
+/** Mock 原型分支：静态在谈表 + 全局归约，行为与接线前逐字一致（P5 Task 5 仅移入，未改）。 */
+function Mock在谈详情() {
   const { id: 编号 = '' } = useParams<{ id: string }>();
   const { 状态, 派发, 数据源模式 } = use应用状态();
   const { 跳转, 返回 } = use导航();

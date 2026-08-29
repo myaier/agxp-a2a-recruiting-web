@@ -9,6 +9,11 @@
 // 承担首次交换身份。全屏不出现任何报价 / 出价 UI，薪资只属于岗位自己的带。
 // 交互硬规矩与求职端相同：决策一律在这一页做，列表卡上不放按钮，
 // 所以这一页是企业侧全局状态的唯一写入点：接受方案 / 终止 / 确认意向都从这里派发。
+//
+// P5 模式边界：Backend 的候选详情只渲染共享 P5 详情（屏幕/P5/MatchCase详情，role=
+// recruiter，URL case_id + 已认证角色直达）—— 招聘端只有 candidate_alias（不透明展示
+// 文本）与冻结职位，姓名/联系方式/结构化身份是 P5.1 依赖、不渲染；不读 企业候选列表、
+// 不读匿名简历表。Mock 分支（Mock候选详情）行为与接线前逐字一致、零 P5 请求。
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
@@ -34,6 +39,7 @@ import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 轻提示 } from '../组件/轻提示';
+import { MatchCase详情 } from './P5/MatchCase详情';
 
 /** Tab 名即屏上文案，与求职端 在谈详情 逐字同构 ——
  *  「代谈」的定名理由与全站改词范围见 在谈详情.tsx 的同名类型注释（产品负责人 2026-08-22）*/
@@ -92,6 +98,13 @@ function 算决策文案(候: 候选, 类型: '接受' | '终止'): { 决定文�
 }
 
 export default function 候选详情() {
+  const { 数据源模式 } = use应用状态();
+  // eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role
+  return 数据源模式 === 'backend' ? <MatchCase详情 role="recruiter" /> : <Mock候选详情 />;
+}
+
+/** Mock 原型分支：静态候选表 + 全局归约，行为与接线前逐字一致（P5 Task 5 仅移入，未改）。 */
+function Mock候选详情() {
   const { id: 编号 = '' } = useParams<{ id: string }>();
   const { 状态, 派发, 数据源模式 } = use应用状态();
   const { 跳转, 返回 } = use导航();
