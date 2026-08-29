@@ -6418,10 +6418,13 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     expect(请求序).toContain(`GET /api/v1/me/match-cases/${P5编号.乙}`);
     expect(请求序.filter((项) => /\/match-cases\?/.test(项))).toEqual([]); // 零列表/历史读取
 
-    // Case 叮嘱：POST 等服务器回话 —— 权威重读落条后才上屏，无乐观气泡
+    // Case 叮嘱：POST 等服务器回话 —— 权威重读落条后才上屏，无乐观气泡。
+    // 同步点用「输入框清空」：操作在 POST + 权威重读完成后才 resolve，成功才清草稿
+    // （getByText 会连 textarea 的值一起匹配，不能当「回执已上屏」的等待条件）。
     await page.getByPlaceholder('有想法就告诉你的AI代理').fill(P5标记.叮嘱);
     await page.getByRole('button', { name: '发送' }).click();
-    await expect(page.getByText(P5标记.叮嘱).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByPlaceholder('有想法就告诉你的AI代理')).toHaveValue('', { timeout: 10_000 });
+    await expect(page.getByText(P5标记.叮嘱).first()).toBeVisible();
     const 叮嘱POST = fixture.变更请求.filter((项) => 项.path.endsWith('/agent-instructions'));
     expect(叮嘱POST).toHaveLength(1);
     expect(叮嘱POST[0]!.body).toEqual({ text: P5标记.叮嘱 });
@@ -6544,7 +6547,10 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     //    Case 叮嘱（回执带 expression 文本落进当前 S1 段），权威重读落条后入口仍在 ──
     await page.getByPlaceholder('有想法就告诉你的AI代理').fill(P5标记.叮嘱);
     await page.getByRole('button', { name: '发送' }).click();
-    await expect(page.getByText(P5标记.叮嘱).first()).toBeVisible({ timeout: 10_000 }); // 回执落段
+    // 同步点 = 输入框清空（POST + 权威重读完成后才 resolve、成功才清草稿）；
+    // 清空后 getByText 只可能命中段内回执 —— 证明「回执落段」而非 textarea 值。
+    await expect(page.getByPlaceholder('有想法就告诉你的AI代理')).toHaveValue('', { timeout: 10_000 });
+    await expect(page.getByText(P5标记.叮嘱).first()).toBeVisible(); // 回执落段
     await expect(附件键).toBeVisible(); // 入口不被段内对话压掉
 
     // 点击只走 Case 专属 recruiter 路径；唯一一次内容 GET
