@@ -2,19 +2,21 @@
 
 **日期：** 2026-08-29
 
-**状态：** 已按产品校准，等待 P5 四组 backend blocker 的最终公开合同后实施
+**状态：** 已按产品校准并拆成两阶段：Plan 1 可立即实施；Plan 2 等 P5 四组 backend blocker 的最终公开合同后重新校准
 
 **范围：** `agxp-a2a-recruiting-web` 的双端 MatchCase workspace/history、四阶段详情、viewer-specific actions、S0–S3 mutation、terminal/archive、原始 PDF 披露与 handoff pending UI。
 
 **前端基线：** `origin/main@636fedefb81998436723ad1585ccdf7b439c5c21`
 
-**后端证据基线：** `recruitment/plan-p5@817d87050f8857dbf0c3cab2ef308d7d5f95df02`。只读取该已提交 HEAD 的 `apps/recruitment-bff/openapi/mobile-v1.yaml`、BFF strict client、Recruitment DTO/projector/store 与测试；后端工作树中未提交的 `apps/recruitment-bff/scripts/local-e2e.sh` 不属于本合同基线。
+**后端证据基线：** `recruitment/plan-p5@55968690f11386b2575a7768ef6fb483d66c068f`。该 clean HEAD 是此前审计提交 `817d87050f8857dbf0c3cab2ef308d7d5f95df02` 的后继，并包含后续 L3/runtime 收口提交。只读取已提交的 `apps/recruitment-bff/openapi/mobile-v1.yaml`、BFF strict client、Recruitment DTO/projector/store 与测试；页面 mock、候选 Spec 和未提交文件均不属于合同基线。
 
 ## 1. 校准结论
 
 前端采用独立 P5 facade、严格 wire decoder、backend-only raw snapshot、closed-code 展示映射和双端共用的 P5 页面组件。Backend 模式不再把 Mock `在谈单` / `候选` reducer 当成 MatchCase，也不从 P4、Job、Organization、Resume 或 timeline 自由文本补齐 P5 没有的数据；Mock 模式保持现有演示剧情。
 
-实施必须先通过四组 backend blocker admission。admission 只接受最终公开 OpenAPI/DTO/合同测试，不根据当前 Go 常量、页面 mock、示例数据或类型草稿猜测 wire shape。blocker 未全部闭合时，本 Plan 保持 `BLOCKED_BY_P5_CONTRACT`，不得先写兼容猜测。
+执行拆成两个独立完成面。Plan 1 只做合同无关基础：opt-in no-store transport、P4 委托的精确 PDF file/version 选择，以及只依赖已批准事实的 S0 prompt/PDF 安全 helper；它不创建 MatchCase list/detail DTO，不发 P5 页面读取，也不声称 P5 已完成。Plan 2 才实施 workspace/history/detail/state/action 页面接线，并且必须先通过四组 backend blocker admission。
+
+Plan 2 admission 只接受最终公开 OpenAPI/DTO/合同测试，不根据当前 Go 常量、页面 mock、示例数据、候选后端 Spec 或类型草稿猜测 wire shape。blocker 未全部闭合时，Plan 2 保持 `BLOCKED_PENDING_FINAL_BACKEND_RECALIBRATION`；不得先写兼容猜测。
 
 P5 和 P5.1 是两个完成面：P5 Core 与 P5 Minimal Context 可以在四组 blocker 闭合后完成；P5.1 Rich Presentation 只登记依赖，不进入本次代码、测试 gate 或完成声明。
 
@@ -223,6 +225,17 @@ P5 workspace alias 是 Case display alias；P4 alias 是 candidate × viewer org
 所有 P5 JSON/PDF fetch 显式 `cache: 'no-store'`，并继续验证服务端 no-store response。P5 snapshot 不写 `localStorage`、`sessionStorage`、Cache API、service worker 或持久化 reducer。退出、401、切 subject/role 清空 P5 snapshot、锁、幂等意图和 object URL。
 
 ## 11. 页面批次
+
+### 11.0 执行拆分与验收边界
+
+- **Plan 1 — Frontend Foundation：** 可在 backend blocker 补齐期间独立执行。交付 no-store seam、P4 精确附件坐标和 S0/PDF 安全 helper；完成口径固定为 `P5 frontend foundation complete; contract-gated wiring not started`。
+- **Plan 2 — Contract Wiring：** 只有后端最终 stable HEAD 发布并由前端重新校准后才能执行。它拥有 P5 read DTO、closed state mapper、runtime state、双端页面、actions、archive、handoff pending 与 E2E。
+- Plan 1 不创建 Plan 2 的临时 wire DTO 或页面 shell；Plan 2 只复用 Plan 1 已验收的 transport/selection/helper，不需要撤销或迁移临时代码。
+
+对应计划：
+
+- `docs/superpowers/plans/2026-08-29-recruitment-p5-frontend-foundation.md`
+- `docs/superpowers/plans/2026-08-29-recruitment-p5-frontend-contract-wiring.md`
 
 ### 11.1 P5 Core
 
