@@ -2,6 +2,8 @@
 // 候选筛选抽屉：Backend 只读（权威企业规则按行展示为纯文本，无输入 / 无删除 / 无新增，
 // 管理规则 › 跳 企业代理设置）；Mock 原样可编辑。招聘端演示页（企业问AI代理 /
 // 企业往来记录 / 候选详情）：记成规则 只在 Mock 派发 企业新增规则，Backend 只给中性提示。
+// P5 Task 5 起 候选详情 的 Backend 分支改渲染共享 P5 详情 —— Mock 决策/记成规则入口在
+// Backend 模式结构上不存在（详见该用例注释），规则写入边界由「Mock 体一概不挂载」保证。
 // 测试宿主：mock 应用状态 / 导航钩子（同 企业我的.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
@@ -16,6 +18,7 @@ import 候选详情 from '../屏幕/候选详情';
 import 候选推荐 from '../屏幕/候选推荐';
 import { 路径 } from '../路由/路径表';
 import { 企业日报, 在谈候选列表 } from '../数据/企业端模拟数据';
+import { P5范围键 } from '../状态/后端/MatchCase操作';
 import type { BFF招聘候选推荐 } from '../数据/BFF契约';
 import { BFF招聘候选推荐样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
@@ -32,6 +35,10 @@ const mock派发 = vi.fn();
 const mock跳转 = vi.fn();
 // vi.mock 工厂被提升到文件顶 —— 间谍必须用 vi.hoisted 声明才能在工厂里引用
 const mock轻提示 = vi.hoisted(() => vi.fn());
+// P5 Task 5：候选详情 Backend 分支的 P5 详情域操作桩（no-op，用例只断言调用坐标）
+const mock设置P5范围 = vi.fn();
+const mock读取详情 = vi.fn(async (): Promise<void> => undefined);
+const mock新增叮嘱 = vi.fn(async (): Promise<void> => undefined);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -53,22 +60,27 @@ const 招聘规则种子 = [
   { 编号: 'R-02', 内容: '五年以上经验', 来源: '筛选设定', 生效: false },
 ];
 
-/** 共用状态底座：mode + 招聘端水合阶段 + 页面字段由用例给 */
+/** 共用状态底座：mode + 招聘端水合阶段 + 页面字段由用例给；P5 用例按需补 操作/后端状态 */
 function 置应用状态(选项: {
   模式: 'mock' | 'backend';
   招聘规则阶段?: string;
   状态?: Record<string, unknown>;
+  操作?: Record<string, unknown>;
+  后端状态补丁?: Record<string, unknown>;
 }) {
-  const { 模式, 招聘规则阶段 = '成功', 状态 = { 企业规则: 招聘规则种子 } } = 选项;
+  const { 模式, 招聘规则阶段 = '成功', 状态 = { 企业规则: 招聘规则种子 },
+    操作, 后端状态补丁 } = 选项;
   mock应用状态 = {
     状态,
     派发: mock派发,
     数据源模式: 模式,
+    ...(操作 === undefined ? {} : { 操作 }),
     后端状态: {
       Agent规则水合: {
         candidate: { rules: '未开始', proposals: '未开始' },
         recruiter: { rules: 招聘规则阶段, proposals: '未开始' },
       },
+      ...(后端状态补丁 ?? {}),
     },
   };
 }
@@ -134,6 +146,9 @@ describe('招聘端演示页 · 记成规则的模式边界', () => {
     mock派发.mockClear();
     mock跳转.mockClear();
     mock轻提示.mockClear();
+    mock设置P5范围.mockClear();
+    mock读取详情.mockClear();
+    mock新增叮嘱.mockClear();
   });
 
   it('企业问AI代理：Backend 点「放宽薪资带」不派发 企业新增规则，只提示去AI代理设置', async () => {
@@ -206,10 +221,27 @@ describe('招聘端演示页 · 记成规则的模式边界', () => {
     expect(mock跳转).toHaveBeenCalledWith(路径.企业代理设置);
   });
 
-  it('候选详情：Backend 拍板后记成规则不派发 企业新增规则，只提示去AI代理设置', async () => {
+  it('候选详情：Backend 只渲染 P5 详情 —— Mock 拍板/记成规则入口整体退场，零规则派发', async () => {
+    // P5 Task 5 起 Backend 分支不再渲染 Mock 候选体（旧「Backend 借 Mock 剧情拍板、
+    // 只拦规则写入」的妥协面随之后退场）：决策卡/拿不准弹层/记成规则在 Backend 模式
+    // 结构上不存在，规则写入边界由「Mock 体一概不挂载」结构性保证。
     置应用状态({
       模式: 'backend',
       状态: { 企业候选列表: 在谈候选列表, 候选决策: {}, 候选决策快照: {}, 叮嘱表: {} },
+      操作: {
+        设置P5范围: mock设置P5范围,
+        读取详情: mock读取详情,
+        新增叮嘱: mock新增叮嘱,
+      },
+      后端状态补丁: {
+        已登录: true,
+        主体: {
+          subject_id: 'sub_1',
+          roles: [{ role: 'recruiter', status: 'active' }],
+          last_used_role: 'recruiter',
+        },
+        P5详情: {},
+      },
     });
     render(
       <MemoryRouter initialEntries={['/hr/candidate/A-01']}>
@@ -218,18 +250,18 @@ describe('招聘端演示页 · 记成规则的模式边界', () => {
         </Routes>
       </MemoryRouter>,
     );
-    await userEvent.click(await screen.findByRole('button', { name: '接受' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: '记成规则' })).toBeTruthy(),
-    );
-    await userEvent.click(screen.getByRole('button', { name: '记成规则' }));
+    expect(mock设置P5范围).toHaveBeenCalledWith('recruiter', P5范围键.detail('recruiter', 'A-01'));
+    expect(mock读取详情).toHaveBeenCalledWith('recruiter', 'A-01', true);
+    expect(await screen.findByText('正在读入这一单…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '接受' })).toBeNull(); // Mock 决策卡不进 Backend 视图
+    expect(screen.queryByRole('button', { name: '记成规则' })).toBeNull();
     expect(
       mock派发.mock.calls.some(
         ([动作]) => (动作 as { 型?: string } | undefined)?.型 === '企业新增规则',
       ),
     ).toBe(false);
     expect(mock跳转).not.toHaveBeenCalled();
-    expect(mock轻提示).toHaveBeenCalledWith('请到AI代理设置确认并添加长期规则');
+    expect(mock轻提示).not.toHaveBeenCalled();
   });
 
   it('候选详情：Mock 拍板后记成规则仍派发 企业新增规则 并跳企业代理设置', async () => {
