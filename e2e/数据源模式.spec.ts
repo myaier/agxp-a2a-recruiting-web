@@ -39,7 +39,8 @@
 // S0–S3 命令/Case 叮嘱/披露 PDF。10 条 Backend 旅程覆盖：同 Case 双端 needs_action
 // 分歧与列表顺序游标、未知词与矩阵外四元组 fail closed、双端详情直达刷新（空列表
 // 记忆）、S0 事实 503 同键重放、披露前/解析中失败隐私（零姓名零联系方式零 PDF）、
-// 已披露招聘端只开 Case 专属原始 PDF、S2/S3 权威重读与终态动作消失、completed 移交
+// 已披露招聘端只开 Case 专属原始 PDF（含终审回归钉：S1 段落有 Case 叮嘱回执时
+// 入口不得被段内对话压掉）、S2/S3 权威重读与终态动作消失、completed 移交
 // 文案且绝不请求会话路由、终局架子只读详情、登出/切角色清空可见 P5 状态。每个 Case
 // JSON 应答带 no-store、PDF 带 private, no-store（应答头存证）；Mock describe 记录
 // 全部含 /match-cases 的浏览器请求并证明清单为空。
@@ -6531,13 +6532,20 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     expect(fixture.PDF读取).toEqual([]); // 全程零内容 GET
   });
 
-  test('已披露招聘端只开 Case 专属原始 PDF @backend', async ({ page }) => {
+  test('已披露招聘端只开 Case 专属原始 PDF（叮嘱落段后入口仍在） @backend', async ({ page }) => {
     const 请求序: string[] = [];
     const fixture = await 装P5招聘(page, { 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
 
     await page.goto(`/#/hr/candidate/${P5编号.甲}`);
     const 附件键 = page.getByRole('button', { name: new RegExp(P5标记.简历名) });
     await expect(附件键).toBeVisible({ timeout: 20_000 });
+
+    // ── 终审回归钉：S1 段一旦有对话内容，PDF 入口不得消失。招聘端就在同一屏发一条
+    //    Case 叮嘱（回执带 expression 文本落进当前 S1 段），权威重读落条后入口仍在 ──
+    await page.getByPlaceholder('有想法就告诉你的AI代理').fill(P5标记.叮嘱);
+    await page.getByRole('button', { name: '发送' }).click();
+    await expect(page.getByText(P5标记.叮嘱).first()).toBeVisible({ timeout: 10_000 }); // 回执落段
+    await expect(附件键).toBeVisible(); // 入口不被段内对话压掉
 
     // 点击只走 Case 专属 recruiter 路径；唯一一次内容 GET
     const 内容请求 = page.waitForRequest(

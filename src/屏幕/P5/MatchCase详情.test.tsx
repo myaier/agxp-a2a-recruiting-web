@@ -654,8 +654,10 @@ function S1更换详情(): P5详情 {
   });
 }
 
-/** S1 needs_user 行（招聘）：初筛结论卡；S1 区带已披露 typed 附件。 */
-function S1初筛详情(带附件: boolean): P5详情 {
+/** S1 needs_user 行（招聘）：初筛结论卡；S1 区带已披露 typed 附件。
+ *  带段内对话 = 再给 S1 段一条带文本时间线 + 一条本端叮嘱回执（终审回归钉用：
+ *  段内有对话内容时 PDF 入口不得被压掉）。 */
+function S1初筛详情(带附件: boolean, 带段内对话 = false): P5详情 {
   return 招聘详情DTO({
     state: 状态({
       caseId: 'mc_hr', stage: 'resume_submission', status: 'needs_user',
@@ -666,7 +668,15 @@ function S1初筛详情(带附件: boolean): P5详情 {
     stages: 阶段区组({
       anonymous_screening: { state: 'passed', summary: '匿名初筛已通过' },
       resume_submission: {
-        state: 'active', summary: '简历已披露，等待初筛结论', transcript: [],
+        state: 'active', summary: '简历已披露，等待初筛结论',
+        transcript: 带段内对话 ? [{
+          eventId: 'evt_s1_note', stage: 'resume_submission', kind: 'stage_note',
+          role: '', text: '候选人已确认可以到岗', occurredAt: '2026-08-29T02:30:00Z',
+        }] : [],
+        instructionReceipts: 带段内对话 ? [{
+          instructionId: 'aci_s1', owner: 'recruiter', stage: 'resume_submission',
+          expression: '只在工作日 10:00-19:00 联系', occurredAt: '2026-08-29T02:31:00Z',
+        }] : [],
         attachment: 带附件 ? 已披露附件 : null,
       },
     }),
@@ -1303,6 +1313,28 @@ describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
     expect(租约.revoke).toHaveBeenCalledTimes(1); // 关闭即回收
     expect(screen.queryByRole('dialog', { name: '简历原件' })).toBeNull();
     expect(mock读取简历PDF).toHaveBeenCalledTimes(1); // 关闭不重取
+  });
+
+  it('S1 段有叮嘱回执与文本时间线时 PDF 入口仍在（终审回归钉），照常打开', async () => {
+    const user = userEvent.setup();
+    const 租约 = { url: 'blob:p5-resume', revoke: vi.fn() };
+    mock读取简历PDF.mockResolvedValue(租约);
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1初筛详情(true, true) }) });
+    渲染详情('recruiter', 'mc_hr');
+    // 段内对话非空：本端叮嘱回执与文本时间线都照常展示
+    expect(await screen.findByText('只在工作日 10:00-19:00 联系')).toBeTruthy();
+    expect(screen.getByText('候选人已确认可以到岗')).toBeTruthy();
+    // 入口不被段内对话压掉：仍在、可开、恰好一次租约
+    await user.click(screen.getByRole('button', { name: /后端工程师_简历_v2\.pdf/ }));
+    expect(mock读取简历PDF).toHaveBeenCalledTimes(1);
+    expect(mock读取简历PDF).toHaveBeenCalledWith('recruiter', 'mc_hr');
+    const 弹层 = await screen.findByRole('dialog', { name: '简历原件' });
+    expect(
+      (within(弹层).getByTitle('简历 PDF') as HTMLIFrameElement).getAttribute('src'),
+    ).toBe('blob:p5-resume');
+    await user.click(within(弹层).getByRole('button', { name: '关闭' }));
+    expect(租约.revoke).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog', { name: '简历原件' })).toBeNull();
   });
 
   it('弹层开着时整页卸载也回收租约（无缓存无持久化）', async () => {
