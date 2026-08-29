@@ -40,3 +40,20 @@ grep 管道；要摘要就 `tee` 出来另行 grep。
   closed supplementary-prompt resolver, and one-shot PDF object URL lease.
   Excluded: P5 list/history/detail DTOs, state enum/matrix, polling, page routes and actions.
   ```
+
+## 2026-08-29 · P5 前端 Plan 2 最终 backend 合同校准
+
+- 校准 verdict：`PASS — READY_FOR_EXECUTION`；本次只改前端 spec/plan/日志，未修改后端代码。
+- 精确 backend 候选：worktree `/Users/visionclaw/.paseo/worktrees/recruitment-p5-contract-completion`，分支 `impl/recruitment-p5-contract-completion`，clean SHA `34306f53984ff1624f857d05b9925f36da721b40`；校准时 `origin/release/0.2.5` 指向同一 SHA。
+- BFF 公开 schema：candidate open/history 复用 `CandidateWorkspacePageEnvelope → CandidateMatchCaseWorkspacePage → CandidateMatchCaseWorkspaceItem`；recruiter 复用 `RecruiterWorkspacePageEnvelope → RecruiterMatchCaseWorkspacePage → RecruiterMatchCaseWorkspaceItem`；history 没有另造 item。detail 分别是 `CandidateMatchCaseDetailEnvelope → CandidateMatchCaseDetail` 与 `RecruiterMatchCaseDetailEnvelope → RecruiterMatchCaseDetail`。
+- required / nullable：candidate item required `state, needs_action, intention_id, job`，recruiter item required `state, needs_action, job, candidate_alias`；page required `items, next_cursor`，其中 `next_cursor: string | null`。candidate detail required `state, needs_action, available_actions, stages, intent_confirmations, intention_id, job`；recruiter detail required 同一生命周期块加 `job, candidate_alias`。`current_coordination` / `terminal_summary` 只能 absent，不能显式 `null`；`MatchCaseView.outcome/outcome_code` required nullable，`finalized_at` optional nullable；cross-role/extra/missing 字段 fail closed。
+- `MatchCaseStep` 已发布 exact 17 词 closed enum；`apps/recruitment/testdata/matchcase-state-matrix.json` 的 exact 17 行合法 `lifecycle + stage + status + step` 矩阵同时约束 Recruitment validator/OpenAPI 与 BFF validator/OpenAPI，unknown/非法 tuple 拒绝。
+- viewer action 证据：open SELECT、keyset predicate、order 共用 viewer-specific `needs_action` 表达式，顺序固定 `needs_action DESC, updated_at DESC, case_id DESC`；history cursor 只含 `updated_at + case_id`。same-Case 双角色分歧、tie-break、无重复/遗漏测试均存在。
+- handoff 证据：完成事务把 completed row 与 durable outbox 原子写入；公开读、`case_completed` event metadata、timeline 全部输出 `completed/intent_confirmation/passed/handoff_pending`，rollback 不会泄露无 outbox 的 completed；ended 保持 `complete`。
+- 最小 context：candidate detail 只有 `intention_id + frozen job`，recruiter detail 只有 `frozen job + candidate_alias`；直接 detail 不依赖 list memory，missing/cross-role/extra 字段均 fail closed。
+- 精确 SHA 验证结果：
+  - `tools/test service recruitment-bff --suite recruitment-bff-unit --suite recruitment-bff-build --suite recruitment-bff-source --keep-going` → PASS，receipt `run-20260829T092114-7b7afff2`。
+  - `tools/test service recruitment --suite recruitment-unit --suite recruitment-build --keep-going` → PASS，receipt `run-20260829T092126-283ff96b`。
+  - 同 `test-postgres.sh` 临时 PostgreSQL 环境下定向运行 8 个 P5 store 顶层测试 → 全部 PASS，`ok recruitment.agxp.ai/internal/store 14.164s`。
+  - broad `recruitment-postgres` suite → `FAIL reason=timeout`，610.4s，receipt `run-20260829T092213-3deee8ab`；没有断言失败，不伪装 PASS。后端 authoritative affected receipt `run-20260829T083945-22fa739e` 在相同 production/store 代码上该 suite 396.3s PASS；之后仅 `apps/recruitment-bff/scripts/local-e2e.sh` 有测试脚本提交。因此本次归类为非合同 performance flake，不阻断已通过的 P5 focused admission。
+- 稳定能力未重设计：`supplementary_question.ref` 仍是 `prompt_id`；保留 `fact-responses`、Case-scoped `resume-submission/content`、`agent-instructions`；没有 action payload DTO、`next_step`、`conversation_ref` 或 `handoff.published`。
