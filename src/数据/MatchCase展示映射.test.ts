@@ -70,18 +70,23 @@ const 期望动作卡文案 = {
 
 const 动作全表 = Object.keys(期望动作卡文案) as P5动作[];
 
-/** 每行可出的动作卡（按钮可见性 = 行侧白名单 ∩ available_actions）；顺序即 wire 枚举顺序。 */
+/**
+ * 每行可出的动作卡（按钮可见性 = 行侧白名单 ∩ available_actions）；顺序即 wire 枚举顺序。
+ * 每格 = 已准入投影器 lifecycleViewerActions 在该行一切事实组合下的角色无关并集
+ * （respond_fact/end_screening 只在 S0 needs_user：预算内双卡、预算尽仅 end_screening，
+ * 并集双卡；邀请二卡只在 S0 passed；S1 waiting 仅 retry_resume_readiness、needs_user 三卡
+ * 并集、attention_required 落空；S2 三行皆 decide_coordination；S3 意向二卡；终态恒空）。
+ */
 const 期望可出动作: Record<string, readonly P5动作[]> = {
-  'open|anonymous_screening|running': ['respond_fact', 'end_screening'],
+  'open|anonymous_screening|running': [],
   'open|anonymous_screening|waiting': [],
-  'open|anonymous_screening|needs_user': ['end_screening'],
-  'open|anonymous_screening|passed':
-    ['accept_resume_invitation', 'decline_resume_invitation', 'retry_resume_readiness'],
-  'open|anonymous_screening|attention_required': ['respond_fact', 'end_screening'],
-  'open|resume_submission|waiting': ['replace_resume'],
+  'open|anonymous_screening|needs_user': ['respond_fact', 'end_screening'],
+  'open|anonymous_screening|passed': ['accept_resume_invitation', 'decline_resume_invitation'],
+  'open|anonymous_screening|attention_required': [],
+  'open|resume_submission|waiting': ['retry_resume_readiness'],
   'open|resume_submission|needs_user':
     ['retry_resume_readiness', 'replace_resume', 'decide_resume_screening'],
-  'open|resume_submission|attention_required': ['decide_resume_screening'],
+  'open|resume_submission|attention_required': [],
   'open|needs_coordination|waiting': ['decide_coordination'],
   'open|needs_coordination|needs_user': ['decide_coordination'],
   'open|needs_coordination|attention_required': ['decide_coordination'],
@@ -320,7 +325,7 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
   it('招聘端同一行同样映射，别名原样带出且不带意向 ID', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
       role: 'recruiter',
-      state: 造行状态('open', 'anonymous_screening', 'running', 'candidate_question'),
+      state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
       availableActions: ['respond_fact', 'end_screening'],
     })));
     expect(视图.candidateAlias).toBe('candidate-0123456789ab');
@@ -332,13 +337,13 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
 
 describe('映射P5详情：动作卡', () => {
   const 动作可行行: Record<P5动作, Parameters<typeof 造行状态>> = {
-    respond_fact: ['open', 'anonymous_screening', 'running', 'candidate_question'],
+    respond_fact: ['open', 'anonymous_screening', 'needs_user', 'human_decision'],
     end_screening: ['open', 'anonymous_screening', 'needs_user', 'human_decision'],
     accept_resume_invitation: ['open', 'anonymous_screening', 'passed', 'awaiting_candidate_resume_invitation'],
     decline_resume_invitation: ['open', 'anonymous_screening', 'passed', 'awaiting_candidate_resume_invitation'],
-    retry_resume_readiness: ['open', 'resume_submission', 'needs_user', 'awaiting_resume_parse'],
-    replace_resume: ['open', 'resume_submission', 'waiting', 'screening_resume'],
-    decide_resume_screening: ['open', 'resume_submission', 'attention_required', 'screening_resume'],
+    retry_resume_readiness: ['open', 'resume_submission', 'waiting', 'awaiting_resume_parse'],
+    replace_resume: ['open', 'resume_submission', 'needs_user', 'awaiting_resume_parse'],
+    decide_resume_screening: ['open', 'resume_submission', 'needs_user', 'awaiting_recruiter_decision'],
     decide_coordination: ['open', 'needs_coordination', 'needs_user', 'coordinating'],
     confirm_intent: ['open', 'intent_confirmation', 'needs_user', 'awaiting_confirmations'],
     decline_intent: ['open', 'intent_confirmation', 'needs_user', 'awaiting_confirmations'],
@@ -356,7 +361,7 @@ describe('映射P5详情：动作卡', () => {
 
   it('动作卡按 wire 枚举顺序渲染，不按 available_actions 顺序', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
-      state: 造行状态('open', 'anonymous_screening', 'running', 'candidate_question'),
+      state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
       availableActions: ['end_screening', 'respond_fact'],
     })));
     expect(视图.actions.map((卡) => 卡.action)).toEqual(['respond_fact', 'end_screening']);
@@ -503,7 +508,8 @@ describe('映射P5详情：别名与键纪律', () => {
 // ── 补充问题接入（Plan 1 取当前补充问题）──
 
 describe('映射P5详情：respond_fact 补充问题接入', () => {
-  const 提问行 = { state: 造行状态('open', 'anonymous_screening', 'running', 'candidate_question') };
+  // respond_fact 只在 S0 needs_user 行出卡（投影器：预算内双卡），补充问题接入挂在该卡上。
+  const 提问行 = { state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision') };
 
   it('respond_fact 在场且当前阶段恰好一个有效问题 → 补充问题视图 + 提交卡', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
@@ -559,7 +565,7 @@ describe('映射P5详情：respond_fact 补充问题接入', () => {
 
   it('问题只出现在非当前阶段 → 契约错误视图', () => {
     const 视图 = 映射P5详情(造详情({
-      state: 造行状态('open', 'anonymous_screening', 'running', 'candidate_question'),
+      state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
       availableActions: ['respond_fact'],
       时间线: {
         anonymous_screening: [],
@@ -592,7 +598,7 @@ describe('映射P5详情：respond_fact 补充问题接入', () => {
   it('招聘端按 recruiter 归属匹配当前阶段问题', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
       role: 'recruiter',
-      state: 造行状态('open', 'anonymous_screening', 'running', 'recruiter_answer'),
+      state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
       availableActions: ['respond_fact'],
       时间线: {
         anonymous_screening: [造时间线项({ role: 'recruiter', ref: 'prompt_9', text: '请补充面试时间偏好。' })],

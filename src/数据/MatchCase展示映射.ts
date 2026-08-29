@@ -128,25 +128,33 @@ export interface P5展示状态行 {
 
 /**
  * 17 行 lifecycle+stage+status 矩阵的展示侧数据（元组形态）：四元组与 Task 1 decode 矩阵同源；
- * 可出动作列按各阶段语义给出（终态恒空、S3 只有意向二卡、respond_fact 只在 S0 对话轮）。
+ * 可出动作列 = 已准入投影器 matchcase/lifecycle.go lifecycleViewerActions 在该行三元组下
+ * 一切事实组合所能出卡的角色无关并集（over-narrow 会藏掉后端真给的卡，一律取并集；
+ * over-broad 在交集规则下惰性）。逐行依据：终态恒空；S0 只有 needs_user 行可出
+ * respond_fact/end_screening（预算内双卡、预算尽只剩 end_screening，并集为双卡）与
+ * passed 行的邀请二卡（ResumeInvitationPending ⇔ step=awaiting_candidate_resume_invitation，
+ * 仅此行），running/waiting/attention_required 行落空；S1 waiting 行候选端可出
+ * retry_resume_readiness（披露前解析等待），needs_user 行并集候选端 retry/replace 与
+ * 招聘端 decide_resume_screening，attention_required 行落空；S2 协同块不绑 status，
+ * 三行皆可出 decide_coordination；S3 只有意向二卡。
  * 行数由 P5展示矩阵行数 在编译期钉死为 17；对外以 P5展示状态矩阵 的具名行形态导出。
  */
 const 矩阵元组表 = [
   ['open', 'anonymous_screening', 'running',
     ['policy_check', 'candidate_evaluation', 'candidate_question', 'recruiter_answer', 'candidate_reevaluation'],
-    ['respond_fact', 'end_screening']],
+    []],
   ['open', 'anonymous_screening', 'waiting', ['candidate_reevaluation'], []],
-  ['open', 'anonymous_screening', 'needs_user', ['human_decision'], ['end_screening']],
+  ['open', 'anonymous_screening', 'needs_user', ['human_decision'], ['respond_fact', 'end_screening']],
   ['open', 'anonymous_screening', 'passed',
     ['complete', 'awaiting_candidate_resume_invitation', 'awaiting_resume_parse'],
-    ['accept_resume_invitation', 'decline_resume_invitation', 'retry_resume_readiness']],
+    ['accept_resume_invitation', 'decline_resume_invitation']],
   ['open', 'anonymous_screening', 'attention_required',
     ['candidate_evaluation', 'candidate_question', 'recruiter_answer', 'candidate_reevaluation'],
-    ['respond_fact', 'end_screening']],
-  ['open', 'resume_submission', 'waiting', ['awaiting_resume_parse', 'screening_resume'], ['replace_resume']],
+    []],
+  ['open', 'resume_submission', 'waiting', ['awaiting_resume_parse', 'screening_resume'], ['retry_resume_readiness']],
   ['open', 'resume_submission', 'needs_user', ['awaiting_resume_parse', 'awaiting_recruiter_decision'],
     ['retry_resume_readiness', 'replace_resume', 'decide_resume_screening']],
-  ['open', 'resume_submission', 'attention_required', ['screening_resume'], ['decide_resume_screening']],
+  ['open', 'resume_submission', 'attention_required', ['screening_resume'], []],
   ['open', 'needs_coordination', 'waiting',
     ['coordinating', 'awaiting_candidate_decision', 'awaiting_recruiter_decision'], ['decide_coordination']],
   ['open', 'needs_coordination', 'needs_user', ['coordinating'], ['decide_coordination']],
