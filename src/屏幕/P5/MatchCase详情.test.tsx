@@ -5,23 +5,28 @@
 // mutation 控件）、首载失败/刷新失败的重试走 force 权威重读、可见 3 秒详情节拍（恒
 // force=true）、终局停轮询、会话/角色栅栏关轮询、缺 P5.1 段不渲染、case_id 是唯一坐标
 // （scope 键/请求都不用别名）、Case 叮嘱：POST 等服务器、无乐观气泡、仅成功清空草稿、
-// 失败保留草稿、终局/契约错误隐藏输入。测试宿主：mock 应用状态 / 导航钩子（同
-// MatchCase列表.test.tsx 惯例）；仓库未装 @testing-library/jest-dom，用 toBeTruthy /
-// queryBy* 缺席断言为 null。
+// 失败保留草稿、终局/契约错误隐藏输入。
+// P5 Task 6 追加：S0–S3 动作卡（只从映射交集渲染、typed prompt/issue/file 坐标、
+// S1 提交/更换的 Plan 1 单选 + Case 专属披露确认（字面 true、不复用、取消零请求）、
+// S2/S3 按必需未决/本端未决栅栏、动作缺席零请求、招聘端授权 PDF（typed 附件才出
+// 入口、只走 Case 专属 role 路径、租约关闭/卸载即回收、绝不读 blob 文本）。
+// 测试宿主：mock 应用状态 / 导航钩子（同 MatchCase列表.test.tsx 惯例）；仓库未装
+// @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatchCase详情 } from './MatchCase详情';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
+import { 路径 } from '../../路由/路径表';
 import type { P5详情快照 } from '../../状态/后端/类型';
 import type { P5列表项 } from '../../数据/招聘数据源/MatchCase';
 import type { P5详情 } from '../../数据/招聘数据源/MatchCase';
 import type { P5阶段区 } from '../../数据/招聘数据源/MatchCase';
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import { P5契约错误提示 } from '../../数据/MatchCase展示映射';
-import type { BFF主体 } from '../../数据/BFF契约';
+import type { BFF主体, BFF附件简历库 } from '../../数据/BFF契约';
 
 // jsdom 不实现 scrollIntoView（详情屏挂载后自动定位会调用它）
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -30,11 +35,21 @@ if (!HTMLElement.prototype.scrollIntoView) {
 
 const mock派发 = vi.fn();
 const mock返回 = vi.fn();
+const mock跳转 = vi.fn();
 const mock设置P5范围 = vi.fn();
 const mock读取详情 = vi.fn(async () => undefined);
 const mock新增叮嘱 = vi.fn(async (): Promise<void> => undefined);
 const mock加载工作区 = vi.fn(async () => undefined);
 const mock刷新工作区 = vi.fn(async () => undefined);
+// Task 6：S0–S3 命令、Case 专属 PDF 租约与委托前权威附件库读取
+const mock回答事实 = vi.fn(async (): Promise<void> => undefined);
+const mock决定S0 = vi.fn(async (): Promise<void> => undefined);
+const mock决定S1 = vi.fn(async (): Promise<void> => undefined);
+const mock决定S2 = vi.fn(async (): Promise<void> => undefined);
+const mock决定S3 = vi.fn(async (): Promise<void> => undefined);
+const mock提交简历 = vi.fn(async (): Promise<void> => undefined);
+const mock读取简历PDF = vi.fn(async () => ({ url: 'blob:p5-resume', revoke: () => undefined }));
+const mock准备候选委托简历 = vi.fn(async (): Promise<BFF附件简历库 | null> => null);
 // 生产 Provider 的 操作 引用稳定（useMemo），桩宿主同样给恒定表
 const mock操作 = {
   设置P5范围: mock设置P5范围,
@@ -42,13 +57,21 @@ const mock操作 = {
   新增叮嘱: mock新增叮嘱,
   加载工作区: mock加载工作区,
   刷新工作区: mock刷新工作区,
+  回答事实: mock回答事实,
+  决定S0: mock决定S0,
+  决定S1: mock决定S1,
+  决定S2: mock决定S2,
+  决定S3: mock决定S3,
+  提交简历: mock提交简历,
+  读取简历PDF: mock读取简历PDF,
+  准备候选委托简历: mock准备候选委托简历,
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
 vi.mock('../../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
-vi.mock('../../路由/导航钩子', () => ({ use导航: () => ({ 返回: mock返回, 跳转: vi.fn() }) }));
+vi.mock('../../路由/导航钩子', () => ({ use导航: () => ({ 返回: mock返回, 跳转: mock跳转 }) }));
 
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
 const 职位ID = 'job_0123456789abcdef0123456789abcdef';
@@ -122,6 +145,8 @@ interface 详情选项 {
   needsAction?: boolean;
   availableActions?: P5详情['availableActions'];
   terminalSummary?: P5详情['terminalSummary'];
+  currentCoordination?: P5详情['currentCoordination'];
+  intentConfirmations?: P5详情['intentConfirmations'];
 }
 
 function 候选详情DTO(选项: 详情选项 = {}): P5详情 {
@@ -132,8 +157,8 @@ function 候选详情DTO(选项: 详情选项 = {}): P5详情 {
     needsAction: 选项.needsAction ?? true,
     availableActions: 选项.availableActions ?? ['respond_fact', 'end_screening'],
     stages: 选项.stages ?? 阶段区组(),
-    currentCoordination: null,
-    intentConfirmations: { candidate: '', recruiter: '' },
+    currentCoordination: 选项.currentCoordination ?? null,
+    intentConfirmations: 选项.intentConfirmations ?? { candidate: '', recruiter: '' },
     terminalSummary: 选项.terminalSummary ?? null,
   };
 }
@@ -148,8 +173,8 @@ function 招聘详情DTO(选项: 详情选项 = {}): P5详情 {
     needsAction: 选项.needsAction ?? false,
     availableActions: 选项.availableActions ?? [],
     stages: 选项.stages ?? 阶段区组(),
-    currentCoordination: null,
-    intentConfirmations: { candidate: '', recruiter: '' },
+    currentCoordination: 选项.currentCoordination ?? null,
+    intentConfirmations: 选项.intentConfirmations ?? { candidate: '', recruiter: '' },
     terminalSummary: 选项.terminalSummary ?? null,
   };
 }
@@ -206,7 +231,14 @@ function 置详情状态(选项: {
   mock应用状态 = {
     数据源模式: 'backend',
     派发: mock派发,
-    状态: {},
+    // 简历原件层（PDF 弹层）内部会读全局简历切片：给空切片防炸（本组件不消费其内容）
+    状态: {
+      个人优势: '',
+      简历经历: [],
+      简历教育: [],
+      基本信息: { 真名: '' },
+      联系方式: { 手机: '', 邮箱: '' },
+    },
     后端状态: {
       已登录: 选项.已登录 ?? true,
       主体: {
@@ -537,5 +569,757 @@ describe('MatchCase详情 · Case 叮嘱输入', () => {
     expect(await screen.findAllByText('user_ended')).toBeTruthy();
     expect(screen.queryByPlaceholderText(叮嘱占位)).toBeNull();
     expect(screen.queryByRole('button', { name: '发送' })).toBeNull();
+  });
+});
+
+// ══ Task 6 夹具：各可见卡行（Task 2 pin）的详情 DTO + Plan 1 附件库样本 ══
+
+const 协同问题ID = 'cdi_0123456789abcdef0123456789abcdef';
+/** 候选人自己已绑定的 S1 附件（重试卡的 typed 坐标唯一来源）。 */
+const 绑定附件 = {
+  fileId: 'rf_00000000000000000000000000000007',
+  fileVersionId: 'rfv_00000000000000000000000000000007',
+  displayName: '后端工程师_简历_v1.pdf',
+};
+/** 披露后招聘端 S1 区的 typed 附件（PDF 按钮的唯一授权）。 */
+const 已披露附件 = {
+  fileId: 'rf_00000000000000000000000000000009',
+  fileVersionId: 'rfv_00000000000000000000000000000009',
+  displayName: '后端工程师_简历_v2.pdf',
+};
+
+/** 32 位十六进制填充（附件库样本 id 与 wire pattern 同形）。 */
+function 填充十六(序: number): string {
+  return String(序).padEnd(32, '0').slice(0, 32);
+}
+
+function 附件库样本(条数: number): BFF附件简历库 {
+  return {
+    items: Array.from({ length: 条数 }, (_, 下标) => {
+      const 序 = 下标 + 1;
+      return {
+        file_id: `rf_${填充十六(序)}`,
+        display_name: `简历_v${序}.pdf`,
+        revision: 1,
+        current_version: {
+          version_id: `rfv_${填充十六(序)}`,
+          version: 1,
+          size_bytes: 2048,
+          media_type: 'application/pdf' as const,
+          sha256: '0'.repeat(64),
+          created_at: '2026-08-29T00:00:00Z',
+          parse: { status: 'succeeded' as const, parse_id: `rp_${序}`, updated_at: '2026-08-29T00:00:00Z' },
+        },
+        created_at: '2026-08-29T00:00:00Z',
+        updated_at: '2026-08-29T00:00:00Z',
+      };
+    }),
+    limits: { max_files: 5, max_file_bytes: 10485760, accepted_media_types: ['application/pdf' as const] },
+  };
+}
+
+/** S0 passed 行：邀请二卡只在此行可见；S0 区已 passed，动作区仍必须可见可用。 */
+function S0邀请详情(): P5详情 {
+  return 候选详情DTO({
+    state: 状态({ status: 'passed', step: 'awaiting_candidate_resume_invitation', needsUser: false }),
+    needsAction: true,
+    availableActions: ['accept_resume_invitation', 'decline_resume_invitation'],
+    stages: 阶段区组({
+      anonymous_screening: { state: 'passed', summary: '匿名初筛已通过，等待候选人回应简历邀请' },
+    }),
+  });
+}
+
+/** S1 waiting 行（候选）：重试卡 + 本人已绑定附件。 */
+function S1等待详情(带绑定: boolean): P5详情 {
+  return 候选详情DTO({
+    state: 状态({ stage: 'resume_submission', status: 'waiting', step: 'awaiting_resume_parse', needsUser: false }),
+    needsAction: true,
+    availableActions: ['retry_resume_readiness'],
+    stages: 阶段区组({
+      anonymous_screening: { state: 'passed', summary: '匿名初筛已通过' },
+      resume_submission: {
+        state: 'active', summary: '简历已提交，等待校验',
+        attachment: 带绑定 ? 绑定附件 : null,
+      },
+    }),
+  });
+}
+
+/** S1 needs_user 行（候选）：重试 + 更换二卡。 */
+function S1更换详情(): P5详情 {
+  return 候选详情DTO({
+    state: 状态({ stage: 'resume_submission', status: 'needs_user', step: 'awaiting_resume_parse' }),
+    needsAction: true,
+    availableActions: ['retry_resume_readiness', 'replace_resume'],
+    stages: 阶段区组({
+      anonymous_screening: { state: 'passed', summary: '匿名初筛已通过' },
+      resume_submission: {
+        state: 'active', summary: '简历校验未通过，等待候选人处理', attachment: 绑定附件,
+      },
+    }),
+  });
+}
+
+/** S1 needs_user 行（招聘）：初筛结论卡；S1 区带已披露 typed 附件。 */
+function S1初筛详情(带附件: boolean): P5详情 {
+  return 招聘详情DTO({
+    state: 状态({
+      caseId: 'mc_hr', stage: 'resume_submission', status: 'needs_user',
+      step: 'awaiting_recruiter_decision', needsUser: true,
+    }),
+    needsAction: true,
+    availableActions: ['decide_resume_screening'],
+    stages: 阶段区组({
+      anonymous_screening: { state: 'passed', summary: '匿名初筛已通过' },
+      resume_submission: {
+        state: 'active', summary: '简历已披露，等待初筛结论', transcript: [],
+        attachment: 带附件 ? 已披露附件 : null,
+      },
+    }),
+  });
+}
+
+/** S1 waiting 行（招聘）：解析中附件保持闭合 —— 无姓名/联系方式/PDF 入口。 */
+function S1解析中详情(): P5详情 {
+  return 招聘详情DTO({
+    state: 状态({
+      caseId: 'mc_hr', stage: 'resume_submission', status: 'waiting',
+      step: 'awaiting_resume_parse', needsUser: false,
+    }),
+    needsAction: false,
+    availableActions: [],
+    stages: 阶段区组({
+      anonymous_screening: { state: 'passed', summary: '匿名初筛已通过' },
+      resume_submission: { state: 'active', summary: '正在解析简历', transcript: [], attachment: null },
+    }),
+  });
+}
+
+/** S2 行（双端）：协同卡 + 当前协同块。 */
+function S2详情(
+  role: P5角色,
+  协同: P5详情['currentCoordination'],
+  状态覆盖: Partial<P5列表项['state']> = {},
+): P5详情 {
+  const 公共 = {
+    needsAction: true,
+    availableActions: ['decide_coordination'] as P5详情['availableActions'],
+    stages: 阶段区组({
+      anonymous_screening: { state: 'passed', summary: '匿名初筛已通过' },
+      resume_submission: { state: 'passed', summary: '简历初筛已通过' },
+      needs_coordination: { state: 'active', summary: '存在待确认的差异事项' },
+    }),
+    currentCoordination: 协同,
+  };
+  return role === 'candidate'
+    ? 候选详情DTO({
+        ...公共,
+        state: 状态({ stage: 'needs_coordination', status: 'needs_user', step: 'coordinating', ...状态覆盖 }),
+      })
+    : 招聘详情DTO({
+        ...公共,
+        state: 状态({
+          caseId: 'mc_hr', stage: 'needs_coordination', status: 'needs_user',
+          step: 'coordinating', ...状态覆盖,
+        }),
+      });
+}
+
+/** S3 行（双端）：意向卡按本端意向词栅栏。 */
+function S3详情(
+  role: P5角色,
+  意向: P5详情['intentConfirmations'],
+  动作: P5详情['availableActions'] = ['confirm_intent', 'decline_intent'],
+  步骤: P5列表项['state']['step'] = 'awaiting_confirmations',
+): P5详情 {
+  const 公共 = {
+    needsAction: 动作.length > 0,
+    availableActions: 动作,
+    stages: 阶段区组({
+      anonymous_screening: { state: 'passed', summary: '匿名初筛已通过' },
+      resume_submission: { state: 'passed', summary: '简历初筛已通过' },
+      needs_coordination: { state: 'passed', summary: '差异事项已确认' },
+      intent_confirmation: { state: 'active', summary: '等待双方确认意向' },
+    }),
+    intentConfirmations: 意向,
+  };
+  return role === 'candidate'
+    ? 候选详情DTO({ ...公共, state: 状态({ stage: 'intent_confirmation', status: 'needs_user', step: 步骤 }) })
+    : 招聘详情DTO({
+        ...公共,
+        state: 状态({
+          caseId: 'mc_hr', stage: 'intent_confirmation', status: 'needs_user', step: 步骤,
+        }),
+      });
+}
+
+/** completed + handoff_pending：双方已确认的终局移交（第二次确认后的权威形态）。 */
+function 已完成移交详情DTO(): P5详情 {
+  return 候选详情DTO({
+    state: 状态({
+      lifecycle: 'completed', stage: 'intent_confirmation', status: 'passed', step: 'handoff_pending',
+      needsUser: false, outcome: null, outcomeCode: null, finalizedAt: '2026-08-29T04:00:00Z',
+    }),
+    needsAction: false,
+    availableActions: [],
+    stages: 阶段区组({
+      anonymous_screening: { state: 'passed' },
+      resume_submission: { state: 'passed' },
+      needs_coordination: { state: 'passed' },
+      intent_confirmation: { state: 'passed', summary: '双方已确认意向' },
+    }),
+    intentConfirmations: { candidate: 'confirm', recruiter: 'confirm' },
+    terminalSummary: { stage: 'intent_confirmation', outcome: '', reasonSummary: '', finalizedAt: '2026-08-29T04:00:00Z' },
+  });
+}
+
+describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
+  beforeEach(() => {
+    mock读取详情.mockClear();
+    mock回答事实.mockClear();
+    mock决定S0.mockClear();
+    mock决定S1.mockClear();
+    mock提交简历.mockClear();
+    mock准备候选委托简历.mockClear();
+    mock跳转.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('回答补充问题：prompt ref + 回答原文的精确调用；重读归操作层，成功才清空', async () => {
+    const user = userEvent.setup();
+    let 送达!: () => void;
+    mock回答事实.mockImplementation(() => new Promise<void>((解决) => { 送达 = 解决; }));
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    await user.type(screen.getByRole('textbox', { name: '回答问题' }), '每周可以到岗 3 天');
+    await user.click(screen.getByRole('button', { name: '提交回答' }));
+    // brief 片段同形：role、case_id、typed prompt ref、回答原文
+    expect(mock回答事实).toHaveBeenCalledTimes(1);
+    expect(mock回答事实).toHaveBeenCalledWith('candidate', 'mc_direct', 'prompt_1', '每周可以到岗 3 天');
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(mock读取详情).toHaveBeenCalledTimes(1); // 仍是挂载那次：权威重读归 Task 3 操作层
+    送达();
+    const 框 = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
+    await waitFor(() => expect(框.value).toBe('')); // 仅成功清空
+    expect(mock读取详情).toHaveBeenCalledTimes(1);
+  });
+
+  it('空回答不发送；在飞重复点击只发一次（同键重放归操作层）', async () => {
+    const user = userEvent.setup();
+    let 送达!: () => void;
+    mock回答事实.mockImplementation(() => new Promise<void>((解决) => { 送达 = 解决; }));
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: '提交回答' })); // 空输入
+    expect(mock回答事实).not.toHaveBeenCalled();
+    await user.type(screen.getByRole('textbox', { name: '回答问题' }), '负责交易网关');
+    const 键 = screen.getByRole('button', { name: '提交回答' });
+    await user.click(键);
+    await user.click(键); // 在飞：屏层单发，重放语义由操作层的稳定意图键承担
+    expect(mock回答事实).toHaveBeenCalledTimes(1);
+    送达();
+  });
+
+  it('多条/零条补充问题：整页契约错误，无回答控件，零请求', async () => {
+    const user = userEvent.setup();
+    const 双问阶段 = 阶段区组({
+      anonymous_screening: {
+        transcript: [
+          {
+            eventId: 'evt_q1', stage: 'anonymous_screening', kind: 'supplementary_question',
+            role: 'candidate', ref: 'prompt_1', text: '每周可以到岗几天？', occurredAt: '2026-08-29T01:10:00Z',
+          },
+          {
+            eventId: 'evt_q2', stage: 'anonymous_screening', kind: 'supplementary_question',
+            role: 'candidate', ref: 'prompt_2', text: '期望薪资是多少？', occurredAt: '2026-08-29T01:11:00Z',
+          },
+        ],
+      },
+    });
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({ detail: 候选详情DTO({ stages: 双问阶段 }) }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.getByText(P5契约错误提示)).toBeTruthy(); // 唯一匹配被破坏：整页 fail closed
+    expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: '重试' })); // 只允许重新 GET
+    expect(mock读取详情).toHaveBeenCalledTimes(2);
+    expect(mock回答事实).not.toHaveBeenCalled();
+
+    cleanup();
+    const 无问阶段 = 阶段区组({
+      anonymous_screening: {
+        transcript: [{
+          eventId: 'evt_n1', stage: 'anonymous_screening', kind: 'stage_note',
+          role: '', reasonCode: 'policy_checked', occurredAt: '2026-08-29T01:20:00Z',
+        }],
+      },
+    });
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({ detail: 候选详情DTO({ stages: 无问阶段 }) }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.getByText(P5契约错误提示)).toBeTruthy();
+    expect(mock回答事实).not.toHaveBeenCalled();
+  });
+
+  it('end_screening（候选）：继续/结束两条 S0 决定的精确调用，结束过二次确认', async () => {
+    const user = userEvent.setup();
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: '继续初筛' }));
+    expect(mock决定S0).toHaveBeenCalledTimes(1);
+    expect(mock决定S0).toHaveBeenCalledWith('mc_direct', 'continue');
+
+    await user.click(screen.getByRole('button', { name: '结束初筛' }));
+    const 确认框 = screen.getByRole('dialog');
+    expect(within(确认框).getByText('结束后这一单立即终止，无法恢复。')).toBeTruthy();
+    await user.click(within(确认框).getByRole('button', { name: '暂不结束' })); // 取消零请求
+    expect(mock决定S0).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: '结束初筛' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '结束初筛' }));
+    expect(mock决定S0).toHaveBeenCalledTimes(2);
+    expect(mock决定S0).toHaveBeenLastCalledWith('mc_direct', 'end');
+  });
+
+  it('end_screening（招聘）：无本端准许路线 → 零控件零请求（fail closed）', async () => {
+    置详情状态({
+      role: 'recruiter', caseId: 'mc_hr',
+      快照: 详情快照({
+        detail: 招聘详情DTO({
+          state: 状态({ caseId: 'mc_hr', stage: 'anonymous_screening', status: 'needs_user', step: 'human_decision' }),
+          needsAction: true,
+          availableActions: ['respond_fact', 'end_screening'],
+          stages: 阶段区组({
+            anonymous_screening: {
+              transcript: [{
+                eventId: 'evt_q9', stage: 'anonymous_screening', kind: 'supplementary_question',
+                role: 'recruiter', ref: 'prompt_hr', text: '这个岗位要求到岗时间？', occurredAt: '2026-08-29T01:10:00Z',
+              }],
+            },
+          }),
+        }),
+      }),
+    });
+    渲染详情('recruiter', 'mc_hr');
+    // respond_fact 双端都有准许路线（fact-responses 有 recruiter 臂）
+    expect(screen.getByRole('textbox', { name: '回答问题' })).toBeTruthy();
+    // 决定路线只有候选端 /me/.../decisions：招聘端结束卡零控件（wire 无 recruiter decisions 臂）
+    expect(screen.queryByRole('button', { name: '继续初筛' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '结束初筛' })).toBeNull();
+    expect(mock决定S0).not.toHaveBeenCalled();
+  });
+
+  it('接受简历邀请：单选 → Case 专属披露确认点名所选 PDF → 字面 true；取消零请求', async () => {
+    const user = userEvent.setup();
+    mock准备候选委托简历.mockResolvedValue(附件库样本(2));
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: '接受邀请' }));
+    // Plan 1 单选层：多份附件必须当场单选一份
+    const 选择框 = await screen.findByRole('dialog');
+    await user.click(within(选择框).getByRole('radio', { name: '简历_v2.pdf' }));
+    await user.click(within(选择框).getByRole('button', { name: '确认并委托' }));
+    // 披露确认：正文点名这次提交哪份 PDF，且只对这一次生效
+    const 披露框 = screen.getByRole('dialog');
+    expect(within(披露框).getByText(/简历_v2\.pdf/)).toBeTruthy();
+    expect(within(披露框).getByText(/仅对本 Case 的这一次提交生效/)).toBeTruthy();
+    await user.click(within(披露框).getByRole('button', { name: '暂不提交' })); // 取消：零请求
+    expect(mock提交简历).not.toHaveBeenCalled();
+    // 再来一次：选择与披露都重新走，不复用上一次的授权
+    await user.click(screen.getByRole('button', { name: '接受邀请' }));
+    const 再选 = await screen.findByRole('dialog');
+    await user.click(within(再选).getByRole('radio', { name: '简历_v1.pdf' }));
+    await user.click(within(再选).getByRole('button', { name: '确认并委托' }));
+    const 再披露 = screen.getByRole('dialog');
+    expect(within(再披露).getByText(/简历_v1\.pdf/)).toBeTruthy(); // 点名的是这次选的
+    await user.click(within(再披露).getByRole('button', { name: '确认提交' }));
+    expect(mock提交简历).toHaveBeenCalledTimes(1);
+    expect(mock提交简历).toHaveBeenCalledWith('mc_direct', `rf_${填充十六(1)}`, `rfv_${填充十六(1)}`, true);
+    expect(mock准备候选委托简历).toHaveBeenCalledTimes(2); // 每次尝试都重跑权威库读取
+    expect(mock决定S0).not.toHaveBeenCalled();
+  });
+
+  it('接受简历邀请：单份附件直达披露确认（仍点名该 PDF）', async () => {
+    const user = userEvent.setup();
+    mock准备候选委托简历.mockResolvedValue(附件库样本(1));
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: '接受邀请' }));
+    const 披露框 = await screen.findByRole('dialog');
+    expect(within(披露框).getByText(/简历_v1\.pdf/)).toBeTruthy();
+    expect(screen.queryByRole('radio', { name: '简历_v1.pdf' })).toBeNull(); // 单份不再过单选层
+    await user.click(within(披露框).getByRole('button', { name: '确认提交' }));
+    expect(mock提交简历).toHaveBeenCalledWith('mc_direct', `rf_${填充十六(1)}`, `rfv_${填充十六(1)}`, true);
+  });
+
+  it('婉拒简历邀请 = 决定S0 end（服务端唯一准许路线，e2e J2 同款）；确认前零请求', async () => {
+    const user = userEvent.setup();
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: '婉拒邀请' }));
+    const 确认框 = screen.getByRole('dialog');
+    expect(within(确认框).getByText(/不会向该招聘方披露你的简历/)).toBeTruthy();
+    await user.click(within(确认框).getByRole('button', { name: '婉拒邀请' }));
+    expect(mock决定S0).toHaveBeenCalledTimes(1);
+    expect(mock决定S0).toHaveBeenCalledWith('mc_direct', 'end');
+    expect(mock提交简历).not.toHaveBeenCalled(); // 婉拒绝不携带简历
+  });
+
+  it('附件库为空：提示去上传并跳转，零提交请求；null（会话/角色换代）静默返回', async () => {
+    const user = userEvent.setup();
+    mock准备候选委托简历.mockResolvedValue(附件库样本(0));
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: '接受邀请' }));
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.我的简历));
+    expect(screen.getByText('请先上传一份 PDF 简历')).toBeTruthy();
+    expect(mock提交简历).not.toHaveBeenCalled();
+
+    cleanup();
+    mock准备候选委托简历.mockResolvedValue(null); // null 不是空库：静默返回，绝不去上传
+    mock准备候选委托简历.mockClear();
+    mock跳转.mockClear();
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: '接受邀请' }));
+    await waitFor(() => expect(mock准备候选委托简历).toHaveBeenCalledTimes(1));
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock提交简历).not.toHaveBeenCalled();
+  });
+
+  it('S1 重试：用已绑定的 file/version 对 + 字面 true；每次都过新披露确认；取消零请求', async () => {
+    const user = userEvent.setup();
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1等待详情(true) }) });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: '重试校验' }));
+    const 披露框 = screen.getByRole('dialog');
+    expect(within(披露框).getByText(/后端工程师_简历_v1\.pdf/)).toBeTruthy(); // 点名绑定中的那份
+    await user.click(within(披露框).getByRole('button', { name: '暂不提交' }));
+    expect(mock提交简历).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '重试校验' })); // 再来：重新确认
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认提交' }));
+    expect(mock提交简历).toHaveBeenCalledTimes(1);
+    expect(mock提交简历).toHaveBeenCalledWith(
+      'mc_direct', 绑定附件.fileId, 绑定附件.fileVersionId, true);
+  });
+
+  it('S1 重试无 typed 附件：零控件零请求（fail closed，绝不猜坐标）', async () => {
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1等待详情(false) }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(await screen.findByText('重试简历校验')).toBeTruthy(); // 卡框架仍在（映射交集）
+    expect(screen.queryByRole('button', { name: '重试校验' })).toBeNull(); // 无坐标即无控件
+    expect(mock提交简历).not.toHaveBeenCalled();
+  });
+
+  it('S1 更换简历：同一单选 + 披露栅栏，第二份不复用第一份授权', async () => {
+    const user = userEvent.setup();
+    mock准备候选委托简历.mockResolvedValue(附件库样本(2));
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1更换详情() }) });
+    渲染详情('candidate', 'mc_direct');
+    // 第一次：选 v2 后在披露层取消
+    await user.click(screen.getByRole('button', { name: '更换简历' }));
+    const 选择框 = await screen.findByRole('dialog');
+    await user.click(within(选择框).getByRole('radio', { name: '简历_v2.pdf' }));
+    await user.click(within(选择框).getByRole('button', { name: '确认并委托' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '暂不提交' }));
+    expect(mock提交简历).not.toHaveBeenCalled();
+    // 第二次：改选 v1，确认提交 —— 发出去的恰是这次选的对
+    await user.click(screen.getByRole('button', { name: '更换简历' }));
+    const 再选 = await screen.findByRole('dialog');
+    await user.click(within(再选).getByRole('radio', { name: '简历_v1.pdf' }));
+    await user.click(within(再选).getByRole('button', { name: '确认并委托' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认提交' }));
+    expect(mock提交简历).toHaveBeenCalledTimes(1);
+    expect(mock提交简历).toHaveBeenCalledWith('mc_direct', `rf_${填充十六(1)}`, `rfv_${填充十六(1)}`, true);
+  });
+
+  it('S1 初筛结论（招聘）：continue|not_fit 精确调用，not_fit 过二次确认', async () => {
+    const user = userEvent.setup();
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1初筛详情(false) }) });
+    渲染详情('recruiter', 'mc_hr');
+    await user.click(screen.getByRole('button', { name: '通过初筛' }));
+    expect(mock决定S1).toHaveBeenCalledTimes(1);
+    expect(mock决定S1).toHaveBeenCalledWith('mc_hr', 'continue');
+    await user.click(screen.getByRole('button', { name: '不合适' }));
+    const 确认框 = screen.getByRole('dialog');
+    await user.click(within(确认框).getByRole('button', { name: '确认不合适' }));
+    expect(mock决定S1).toHaveBeenCalledTimes(2);
+    expect(mock决定S1).toHaveBeenLastCalledWith('mc_hr', 'not_fit');
+  });
+
+  it('行白名单外的动作词不渲染（映射交集）：needs_user 行给邀请词也不出卡、零请求', async () => {
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: 候选详情DTO({
+          needsAction: true,
+          availableActions: ['accept_resume_invitation', 'decline_resume_invitation'],
+        }),
+      }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    expect(await screen.findByText('待处理')).toBeTruthy();
+    expect(screen.queryByText('接受简历邀请')).toBeNull(); // S0 needs_user 行白名单不含邀请二卡
+    expect(screen.queryByRole('button', { name: '接受邀请' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '婉拒邀请' })).toBeNull();
+    expect(mock提交简历).not.toHaveBeenCalled();
+    expect(mock决定S0).not.toHaveBeenCalled();
+    expect(mock准备候选委托简历).not.toHaveBeenCalled();
+  });
+});
+
+describe('MatchCase详情 · S2/S3 动作（Task 6）', () => {
+  beforeEach(() => {
+    mock读取详情.mockClear();
+    mock决定S1.mockClear();
+    mock决定S2.mockClear();
+    mock决定S3.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('S2（候选）：接受/拒绝带精确 issueId（typed 协同块）', async () => {
+    const user = userEvent.setup();
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: S2详情('candidate', {
+          issueId: 协同问题ID, kind: 'work_mode', requiredRoles: ['candidate', 'recruiter'],
+          candidateDecided: false, recruiterDecided: false,
+        }),
+      }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: '接受' }));
+    expect(mock决定S2).toHaveBeenCalledTimes(1);
+    expect(mock决定S2).toHaveBeenCalledWith('candidate', 'mc_direct', 协同问题ID, 'accept');
+    await user.click(screen.getByRole('button', { name: '拒绝' }));
+    expect(mock决定S2).toHaveBeenCalledTimes(2);
+    expect(mock决定S2).toHaveBeenLastCalledWith('candidate', 'mc_direct', 协同问题ID, 'reject');
+  });
+
+  it('S2（招聘）：同 issueId 独立表态', async () => {
+    const user = userEvent.setup();
+    置详情状态({
+      role: 'recruiter', caseId: 'mc_hr',
+      快照: 详情快照({
+        detail: S2详情('recruiter', {
+          issueId: 协同问题ID, kind: 'work_schedule', requiredRoles: ['candidate', 'recruiter'],
+          candidateDecided: true, recruiterDecided: false,
+        }),
+      }),
+    });
+    渲染详情('recruiter', 'mc_hr');
+    await user.click(screen.getByRole('button', { name: '拒绝' }));
+    expect(mock决定S2).toHaveBeenCalledWith('recruiter', 'mc_hr', 协同问题ID, 'reject');
+  });
+
+  it('S2：非必需角色 / 本端已决 → 等待态零控件零请求', async () => {
+    // 本端（候选）不在必需名单：卡虽在映射交集里，typed 事实不给控件
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: S2详情('candidate', {
+          issueId: 协同问题ID, kind: 'travel', requiredRoles: ['recruiter'],
+          candidateDecided: false, recruiterDecided: false,
+        }),
+      }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    expect(await screen.findByText('回应协同事项')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '接受' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '拒绝' })).toBeNull();
+    expect(mock决定S2).not.toHaveBeenCalled();
+
+    cleanup();
+    // 本端已决：服务端形态是 waiting 行 + 空动作表（needs_action 与动作表精确耦合）
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: 候选详情DTO({
+          state: 状态({
+            stage: 'needs_coordination', status: 'waiting',
+            step: 'awaiting_recruiter_decision', needsUser: false,
+          }),
+          needsAction: false,
+          availableActions: [],
+          stages: 阶段区组({
+            anonymous_screening: { state: 'passed', summary: '匿名初筛已通过' },
+            resume_submission: { state: 'passed', summary: '简历初筛已通过' },
+            needs_coordination: { state: 'active', summary: '本端已表态，等待对方' },
+          }),
+          currentCoordination: {
+            issueId: 协同问题ID, kind: 'work_mode', requiredRoles: ['candidate', 'recruiter'],
+            candidateDecided: true, recruiterDecided: false,
+          },
+        }),
+      }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.getByText('等待招聘方决定')).toBeTruthy(); // 等待态来自 17 词闭表
+    expect(screen.queryByRole('button', { name: '接受' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '拒绝' })).toBeNull();
+    expect(mock决定S2).not.toHaveBeenCalled();
+  });
+
+  it('S2：卡在场但 currentCoordination 缺席 → fail closed 零请求', async () => {
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({ detail: S2详情('candidate', null) }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    expect(await screen.findByText('回应协同事项')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '接受' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '拒绝' })).toBeNull();
+    expect(mock决定S2).not.toHaveBeenCalled();
+  });
+
+  it('S3：双端独立确认/婉拒 → 决定S3 confirm|decline', async () => {
+    const user = userEvent.setup();
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({ detail: S3详情('candidate', { candidate: '', recruiter: '' }) }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: '确认意向' }));
+    expect(mock决定S3).toHaveBeenCalledWith('candidate', 'mc_direct', 'confirm');
+    await user.click(screen.getByRole('button', { name: '婉拒意向' }));
+    expect(mock决定S3).toHaveBeenLastCalledWith('candidate', 'mc_direct', 'decline');
+
+    cleanup();
+    置详情状态({
+      role: 'recruiter', caseId: 'mc_hr',
+      快照: 详情快照({
+        detail: S3详情('recruiter', { candidate: 'confirm', recruiter: '' }, ['confirm_intent', 'decline_intent'], 'awaiting_recruiter_confirmation'),
+      }),
+    });
+    渲染详情('recruiter', 'mc_hr');
+    await user.click(screen.getByRole('button', { name: '确认意向' }));
+    expect(mock决定S3).toHaveBeenLastCalledWith('recruiter', 'mc_hr', 'confirm');
+  });
+
+  it('S3：本端已决 → 等待态零控件（等待文案来自步骤闭表）', async () => {
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: S3详情(
+          'candidate',
+          { candidate: 'confirm', recruiter: '' },
+          [], 'awaiting_recruiter_confirmation',
+        ),
+      }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.getByText('等待招聘方确认意向')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '确认意向' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '婉拒意向' })).toBeNull();
+    expect(mock决定S3).not.toHaveBeenCalled();
+  });
+
+  it('第二次确认后的终局：移交文案在场、全部 mutation 控件缺席、屏层零本地重读', async () => {
+    const user = userEvent.setup();
+    // 先看确认动作本身：点击后屏层不做任何本地重建（权威重读归操作层）
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({ detail: S3详情('candidate', { candidate: '', recruiter: 'confirm' }, ['confirm_intent', 'decline_intent'], 'awaiting_candidate_confirmation') }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: '确认意向' }));
+    expect(mock决定S3).toHaveBeenCalledTimes(1);
+    expect(mock读取详情).toHaveBeenCalledTimes(1); // 仍是挂载那次
+    expect(mock派发).not.toHaveBeenCalled();
+
+    // 第二次确认后的权威形态（completed + handoff_pending）：只读移交，零动作控件
+    cleanup();
+    mock决定S3.mockClear(); // 两条腿分开计数
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已完成移交详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    // 移交文案在场（移交行 + handoff_pending 步骤说明同词，出现即算）
+    expect(screen.getAllByText('双方已确认，正在创建会话').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: '确认意向' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '婉拒意向' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '接受' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
+    expect(screen.queryByPlaceholderText(叮嘱占位)).toBeNull();
+    expect(mock决定S3).not.toHaveBeenCalled();
+  });
+});
+
+describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
+  beforeEach(() => {
+    mock读取详情.mockClear();
+    mock读取简历PDF.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('披露前与解析中：无姓名/联系方式/PDF 入口，零 PDF 请求', async () => {
+    // 解析中（S1 waiting）：后端保持附件闭合
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1解析中详情() }) });
+    渲染详情('recruiter', 'mc_hr');
+    expect(await screen.findByText(别名)).toBeTruthy();
+    expect(screen.queryByText('后端工程师_简历_v2.pdf')).toBeNull(); // 无 PDF 入口
+    expect(screen.queryByText('查看 ›')).toBeNull();
+    // 无姓名/联系方式/结构化身份（P5.1 缺席即不渲染）
+    expect(screen.queryByText('沈亦舟')).toBeNull();
+    expect(screen.queryByText(/手机：/)).toBeNull();
+    expect(screen.queryByText(/邮箱：/)).toBeNull();
+    expect(mock读取简历PDF).not.toHaveBeenCalled();
+    // 初筛卡不带附件的镜像（披露前 S1 needs_user 无附件）：同样无入口
+    cleanup();
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1初筛详情(false) }) });
+    渲染详情('recruiter', 'mc_hr');
+    expect(screen.queryByText('查看 ›')).toBeNull();
+    expect(mock读取简历PDF).not.toHaveBeenCalled();
+  });
+
+  it('typed 附件在场：PDF 入口点击只走 Case 专属 role 路径一次，关闭即回收租约', async () => {
+    const user = userEvent.setup();
+    const 租约 = { url: 'blob:p5-resume', revoke: vi.fn() };
+    mock读取简历PDF.mockResolvedValue(租约);
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1初筛详情(true) }) });
+    渲染详情('recruiter', 'mc_hr');
+    await user.click(screen.getByRole('button', { name: /后端工程师_简历_v2\.pdf/ }));
+    // 只调 Case 专属 role 路径（role + case_id），一次点击一次租约
+    expect(mock读取简历PDF).toHaveBeenCalledTimes(1);
+    expect(mock读取简历PDF).toHaveBeenCalledWith('recruiter', 'mc_hr');
+    const 弹层 = await screen.findByRole('dialog', { name: '简历原件' });
+    expect(within(弹层).getByText('后端工程师_简历_v2.pdf')).toBeTruthy(); // 顶栏只有徽标+文件名+关闭
+    await user.click(within(弹层).getByRole('button', { name: '关闭' }));
+    expect(租约.revoke).toHaveBeenCalledTimes(1); // 关闭即回收
+    expect(screen.queryByRole('dialog', { name: '简历原件' })).toBeNull();
+    expect(mock读取简历PDF).toHaveBeenCalledTimes(1); // 关闭不重取
+  });
+
+  it('弹层开着时整页卸载也回收租约（无缓存无持久化）', async () => {
+    const user = userEvent.setup();
+    const 租约 = { url: 'blob:p5-resume', revoke: vi.fn() };
+    mock读取简历PDF.mockResolvedValue(租约);
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1初筛详情(true) }) });
+    const 页 = 渲染详情('recruiter', 'mc_hr');
+    await user.click(screen.getByRole('button', { name: /后端工程师_简历_v2\.pdf/ }));
+    await screen.findByRole('dialog', { name: '简历原件' });
+    页.unmount();
+    expect(租约.revoke).toHaveBeenCalledTimes(1); // 卸载即回收
+  });
+
+  it('候选端无任何 PDF UI（本任务不建候选侧入口）', async () => {
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1等待详情(true) }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(await screen.findByText('重试简历校验')).toBeTruthy();
+    expect(screen.queryByText('查看 ›')).toBeNull(); // 自己的绑定附件不出查看入口
+    expect(mock读取简历PDF).not.toHaveBeenCalled();
   });
 });
