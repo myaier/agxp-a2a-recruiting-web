@@ -57,3 +57,45 @@ grep 管道；要摘要就 `tee` 出来另行 grep。
   - 同 `test-postgres.sh` 临时 PostgreSQL 环境下定向运行 8 个 P5 store 顶层测试 → 全部 PASS，`ok recruitment.agxp.ai/internal/store 14.164s`。
   - broad `recruitment-postgres` suite → `FAIL reason=timeout`，610.4s，receipt `run-20260829T092213-3deee8ab`；没有断言失败，不伪装 PASS。后端 authoritative affected receipt `run-20260829T083945-22fa739e` 在相同 production/store 代码上该 suite 396.3s PASS；之后仅 `apps/recruitment-bff/scripts/local-e2e.sh` 有测试脚本提交。因此本次归类为非合同 performance flake，不阻断已通过的 P5 focused admission。
 - 稳定能力未重设计：`supplementary_question.ref` 仍是 `prompt_id`；保留 `fact-responses`、Case-scoped `resume-submission/content`、`agent-instructions`；没有 action payload DTO、`next_step`、`conversation_ref` 或 `handoff.published`。
+
+### Task 8（2026-08-29）· 浏览器验收与最终门（P5 前端 Plan 2）
+
+- 交付物：`e2e/数据源模式.spec.ts` 追加 P5 MatchCase 域可变 fixture（双端 open 工作区
+  两页翻页 / ended+completed 历史架子 / 四阶段详情 / S0–S3 命令 / Case 叮嘱 / 披露后
+  Case 专属原始 PDF；每个 Case JSON 应答 `Cache-Control: no-store`、PDF `private, no-store`，
+  应答头逐笔存证）与 12 条旅程：Backend 10 条（同 Case 双端 needs_action 分歧 + 列表
+  顺序游标、未知词与矩阵外四元组 fail closed、双端详情直达刷新空列表记忆、S0 事实
+  503 同键重放、披露前/解析中失败零姓名零联系方式零 PDF + 失败重试重发同一对、
+  已披露招聘端只开 Case 专属 PDF、S2/S3 权威重读与终态动作消失、completed 移交文案
+  且零会话路由请求、终局架子只读详情、登出/切角色清空可见 P5 状态）+ Mock 隔离 1 条
+  （记录每个含 `/match-cases` 的浏览器请求，断言清单为空 + 全程零 `/api/v1`）。
+  零生产文件改动；只改 `e2e/数据源模式.spec.ts` 与本日志。
+- Step 4 验证链逐条以退出码记录：
+  - 聚焦套件 `npm test -- --run <P5 10 个测试文件>` → 10 files / **261 passed**，exit 0
+  - 全量 `npm test` → 100 files / **1476 passed**，exit 0
+  - `npm run typecheck`（`tsc -b --noEmit`）→ exit 0
+  - `npm run lint`（oxlint）→ exit 0
+  - `npm run build` → built in 667ms，exit 0
+  - `npm run test:e2e:data-source -- --grep 'P5|MatchCase|Mock in-talk'` → **12 passed**
+    （backend 11 + mock 1），exit 0；连续三轮重跑全部 12 passed（16–19s），无 flake。
+- Step 5 缺席扫描（brief 原文 `scan_forbidden`，rg 退出码 1＝干净）：两条脚本均非 0，
+  逐条人工核查（未机械压制）：
+  - 第一条（P5.1/P7 词）命中 3 处，全部是否定性注释而非用法：
+    `src/状态/后端/MatchCase操作.ts:25`「不添 published / next_step」、
+    `src/屏幕/P5/MatchCase列表.tsx:63`「无 next_step」、`src/屏幕/P5/MatchCase详情.tsx:400`
+    「无 next_step」。生产代码零字段/零类型/零文案使用（三个纯 ts/tsx 生产文件单独重扫
+    仅剩该 1 行注释）。
+  - 第二条（Mock 词）命中 3 处，全部是测试文件（`MatchCase历史.test.tsx` /
+    `MatchCase列表.test.tsx`）import Mock 种子做 canary 断言；三个生产 ts/tsx 单独重扫
+    零命中。
+  - 结论：无生产匹配（注释否定与测试 canary 不构成 P5.1/P7 泄漏），生产文件未改动。
+- 附加观察（超出 Step 4 的全量数据源 e2e 套件）：68 passed / 1 failed —— 失败的是
+  P4 旧例「候选委托：确认前零请求…」（确认层未出现，页面落在我的简历屏）；经
+  `git stash` 验证在未含本任务改动的基线上一致失败，属本 worktree 既存问题，与
+  Task 8 改动无关，未在本任务处置。
+- 移交口径（brief 逐字）：
+
+```text
+P5.1 deferred: rich job/company/publisher, score/reasons/highlights, compensation relationship,
+anonymous parsed resume, stable P4 alias, structured identity, and P7 conversation contract are not P5 gates.
+```
