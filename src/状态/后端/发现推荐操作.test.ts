@@ -865,7 +865,8 @@ describe('复合写锁与委托单飞键的无歧义组装', () => {
       { ...BFF候选委托回执样本, state: 'accepted' },
     ]);
     const 输入 = (intentionId: string, jobId: string) =>
-      ({ intentionId, recommendationId: 'rec_c1', jobId, disclosureAcknowledged: true as const });
+      ({ intentionId, recommendationId: 'rec_c1', jobId,
+        resumeFileId: 'rf_1', resumeFileVersionId: 'rfv_7', disclosureAcknowledged: true as const });
 
     await Promise.all([
       env.操作.委托候选岗位(输入('a:b', 'c')),
@@ -994,6 +995,8 @@ describe('委托候选岗位', () => {
     intentionId: 'int_1',
     recommendationId: 'rec_c1',
     jobId: 'job_1',
+    resumeFileId: 'rf_1',
+    resumeFileVersionId: 'rfv_7',
     disclosureAcknowledged: true as const,
   };
 
@@ -1010,11 +1013,59 @@ describe('委托候选岗位', () => {
       }]);
     const receipt = await env.操作.委托候选岗位({
       intentionId: 'int_1', recommendationId: 'rec_1', jobId: 'job_1',
+      resumeFileId: 'rf_1', resumeFileVersionId: 'rfv_7',
       disclosureAcknowledged: true,
     });
     expect(receipt.state).toBe('accepted');
     expect(env.最新状态().P4真实Case引用).toEqual({});
     expect(env.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '委托入谈' }));
+  });
+
+  it('委托候选岗位原样透传精确简历坐标，绝不代选文件', async () => {
+    vi.mocked(env.数据源.创建候选岗位委托).mockResolvedValue([
+      { ...BFF候选委托回执样本, delegation_id: 'del_rf1', state: 'accepted' },
+    ]);
+    await env.操作.委托候选岗位({
+      intentionId: 'int_1', recommendationId: 'rec_1', jobId: 'job_1',
+      resumeFileId: 'rf_1', resumeFileVersionId: 'rfv_7',
+      disclosureAcknowledged: true,
+    });
+    expect(vi.mocked(env.数据源.创建候选岗位委托)).toHaveBeenCalledWith(expect.objectContaining({
+      resumeFileId: 'rf_1',
+      resumeFileVersionId: 'rfv_7',
+    }));
+  });
+
+  it('outcome-uncertain 重放保留同一幂等键与同一简历坐标对（键坐标仍是 intention-job，不随重放漂移）', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('deleg-key-0001'))
+      .mockReturnValue(UUID键('deleg-key-0002'));
+    const 意图 = delegationKey('candidate:list:int_1', 'job_1');
+    vi.mocked(env.数据源.创建候选岗位委托)
+      .mockRejectedValueOnce(new BFF错误(0, 'network_error', 'unknown'))
+      .mockResolvedValueOnce([{ ...BFF候选委托回执样本, delegation_id: 'del_k3', state: 'accepted' }]);
+
+    await expect(env.操作.委托候选岗位(候选委托输入)).rejects.toMatchObject({ code: 'network_error' });
+    await env.操作.委托候选岗位(候选委托输入);
+
+    const 调用 = vi.mocked(env.数据源.创建候选岗位委托).mock.calls.map((调用) => 调用[0]);
+    expect(调用.map((调用) => 调用.idempotencyKey)).toEqual(['deleg-key-0001', 'deleg-key-0001']);
+    expect(调用.map((调用) => [调用.resumeFileId, 调用.resumeFileVersionId]))
+      .toEqual([['rf_1', 'rfv_7'], ['rf_1', 'rfv_7']]);
+    expect(env.deps.P4幂等意图!.current.has(意图)).toBe(false);
+    expect(randomUUID).toHaveBeenCalledTimes(1);
+    randomUUID.mockRestore();
+  });
+
+  it('单飞坐标仍是 intention-job 而非文件：换文件对的并发点击共享同一在飞', async () => {
+    const 门 = deferred<BFF委托回执[]>();
+    vi.mocked(env.数据源.创建候选岗位委托).mockReturnValue(门.promise);
+    const 第一次 = env.操作.委托候选岗位(候选委托输入);
+    const 第二次 = env.操作.委托候选岗位({ ...候选委托输入, resumeFileId: 'rf_2', resumeFileVersionId: 'rfv_8' });
+    expect(vi.mocked(env.数据源.创建候选岗位委托)).toHaveBeenCalledTimes(1);
+    门.resolve([{ ...BFF候选委托回执样本, delegation_id: 'del_sf2', state: 'accepted' }]);
+    const [甲, 乙] = await Promise.all([第一次, 第二次]);
+    expect(乙).toBe(甲);
   });
 
   it('创建回执批次必须恰好一条：空批次按契约漂移失败、不落状态、键按不确定保留', async () => {
@@ -1368,7 +1419,8 @@ describe('刷新委托', () => {
     const 门 = deferred<BFF委托回执[]>();
     vi.mocked(env.数据源.创建候选岗位委托).mockReturnValue(门.promise);
     const 创建 = env.操作.委托候选岗位({
-      intentionId: 'int_1', recommendationId: 'rec_c1', jobId: 'job_1', disclosureAcknowledged: true,
+      intentionId: 'int_1', recommendationId: 'rec_c1', jobId: 'job_1',
+      resumeFileId: 'rf_1', resumeFileVersionId: 'rfv_7', disclosureAcknowledged: true,
     });
     await env.操作.刷新委托('candidate', 'del_c1'); // 默认桩的回执编号，证明 GET 真的发出去并结算
     expect(vi.mocked(env.数据源.读取候选岗位委托)).toHaveBeenCalledWith('del_c1');

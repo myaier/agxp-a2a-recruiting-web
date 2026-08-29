@@ -1195,18 +1195,21 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
 
     /**
      * 候选委托岗位（§8.1/§8.2）：disclosureAcknowledged 是字面 true —— 只有 确认层 的字面
-     * 确认才走到这里，确认不复用。选择坐标是 job_id；回执 recommendation_id 可空且被完全
+     * 确认才走到这里，确认不复用。选择坐标是 job_id；BFF 还要求用户选中的附件简历精确坐标
+     * （resumeFileId/resumeFileVersionId），它与幂等键一样只透传：本层绝不代选文件，
+     * outcome-uncertain 重放沿用同一键与同一文件/版本对。回执 recommendation_id 可空且被完全
      * 忽略，落位一律用操作输入的 recommendationId。终态/拒绝回执在提交后按闭合文案抛出。
      */
     async 委托候选岗位(input) {
       if (!是后端 || !后端) throw new Error('委托只在 Backend 数据源下可用');
-      const { intentionId, recommendationId, jobId, disclosureAcknowledged } = input;
+      const { intentionId, recommendationId, jobId, resumeFileId, resumeFileVersionId, disclosureAcknowledged } = input;
       return 单飞委托创建(复合键('P4委托', 'candidate', intentionId, jobId), () =>
         运行委托创建({
           scopeKey: P4范围键.候选列表(intentionId),
           意图对象: jobId,
           发起: (源, 幂等键) => 源.创建候选岗位委托({
-            intentionId, jobId, idempotencyKey: 幂等键, disclosureAcknowledged,
+            intentionId, jobId, resumeFileId, resumeFileVersionId,
+            idempotencyKey: 幂等键, disclosureAcknowledged,
           }),
           校验: (回执) => 校验委托回执(回执),
           提交: (回执) =>

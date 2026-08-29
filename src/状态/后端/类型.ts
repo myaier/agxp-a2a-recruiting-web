@@ -187,6 +187,19 @@ export interface 隐私操作 {
 }
 
 /**
+ * P5：候选委托的精确输入 —— 屏层带用户选中的附件简历坐标（file + version）进来，
+ * 操作层原样透传到 BFF，绝不代选文件；单飞/幂等坐标仍是 intention-job，与简历坐标解耦。
+ */
+export interface 候选P4委托输入 {
+  intentionId: string;
+  recommendationId: string;
+  jobId: string;
+  resumeFileId: string;
+  resumeFileVersionId: string;
+  disclosureAcknowledged: true;
+}
+
+/**
  * P4 Task 3/4/5：页面会调用的发现推荐操作方法表（页面不得直接调用数据源）。
  * Task 4 落 refresh/feedback mutation、Task 5 落委托（真实回执）与轮询的操作层半边；
  * 本表即完整闭合面（watch、委托列表 GET、top 选择不存在）。
@@ -204,10 +217,7 @@ export interface 发现推荐操作 {
   设置候选收藏(jobId: string, recommendationId: string, favorite: boolean): Promise<void>;
   淘汰候选(jobId: string, recommendationId: string, reason: BFF淘汰原因): Promise<void>;
   撤销淘汰候选(jobId: string, recommendationId: string): Promise<void>;
-  委托候选岗位(input: {
-    intentionId: string; recommendationId: string; jobId: string;
-    disclosureAcknowledged: true;
-  }): Promise<BFF委托回执>;
+  委托候选岗位(input: 候选P4委托输入): Promise<BFF委托回执>;
   委托招聘候选(jobId: string, recommendationId: string): Promise<BFF委托回执>;
   刷新委托(role: BFF角色, delegationId: string): Promise<void>;
 }

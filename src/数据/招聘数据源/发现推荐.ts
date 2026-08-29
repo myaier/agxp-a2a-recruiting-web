@@ -387,7 +387,10 @@ export interface 发现推荐数据源 {
   刷新候选岗位推荐(intentionId: string, idempotencyKey: string): Promise<BFF发现批次>;
   标记候选岗位不感兴趣(recommendationId: string): Promise<BFF发现偏好>;
   创建候选岗位委托(input: {
-    intentionId: string; jobId: string; idempotencyKey: string;
+    intentionId: string; jobId: string;
+    /** 用户在屏层选中的附件简历精确坐标：本 facade 只透传，绝不代选文件。 */
+    resumeFileId: string; resumeFileVersionId: string;
+    idempotencyKey: string;
     disclosureAcknowledged: true;
   }): Promise<BFF委托回执[]>;
   读取候选岗位委托(delegationId: string): Promise<BFF委托回执>;
@@ -454,7 +457,10 @@ export function 创建发现推荐数据源(请求: 请求函数): 发现推荐�
   }
 
   async function 创建候选岗位委托(input: {
-    intentionId: string; jobId: string; idempotencyKey: string;
+    intentionId: string; jobId: string;
+    /** 用户在屏层选中的附件简历精确坐标：本 facade 只透传，绝不代选文件。 */
+    resumeFileId: string; resumeFileVersionId: string;
+    idempotencyKey: string;
     disclosureAcknowledged: true;
   }): Promise<BFF委托回执[]> {
     const { result } = await 请求<unknown>({
@@ -464,6 +470,8 @@ export function 创建发现推荐数据源(请求: 请求函数): 发现推荐�
         intention_id: input.intentionId,
         selection: { items: [input.jobId] },
         disclosure_acknowledged: input.disclosureAcknowledged,
+        resume_file_id: input.resumeFileId,
+        resume_file_version_id: input.resumeFileVersionId,
       },
       幂等: true,
       幂等键: input.idempotencyKey,

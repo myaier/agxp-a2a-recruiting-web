@@ -52,6 +52,8 @@ describe('发现推荐数据源', () => {
     await source.创建候选岗位委托({
       intentionId: BFF意向样本.intention_id,
       jobId: BFFCandidateJob样本.job_id,
+      resumeFileId: 'rf_1',
+      resumeFileVersionId: 'rfv_7',
       idempotencyKey: 'candidate-delegation-key',
       disclosureAcknowledged: true,
     });
@@ -67,7 +69,8 @@ describe('发现推荐数据源', () => {
         body: { intention_id: BFF意向样本.intention_id }, 幂等: true, 幂等键: 'candidate-refresh-key' },
       { path: '/api/v1/me/job-delegations', method: 'POST',
         body: { intention_id: BFF意向样本.intention_id,
-          selection: { items: [BFFCandidateJob样本.job_id] }, disclosure_acknowledged: true },
+          selection: { items: [BFFCandidateJob样本.job_id] }, disclosure_acknowledged: true,
+          resume_file_id: 'rf_1', resume_file_version_id: 'rfv_7' },
         幂等: true, 幂等键: 'candidate-delegation-key' },
       { path: '/api/v1/recruiter/candidate-recommendation-refreshes', method: 'POST',
         body: { job_id: BFF岗位样本.job_id }, 幂等: true, 幂等键: 'recruiter-refresh-key' },
@@ -76,6 +79,39 @@ describe('发现推荐数据源', () => {
           selection: { items: [BFF招聘候选推荐样本.recommendation_id] } },
         幂等: true, 幂等键: 'recruiter-delegation-key' },
     ]);
+  });
+
+  it('候选委托 exact body 绑定调用方给出的精确简历坐标，缺任一坐标编译期即拒绝', async () => {
+    // 下面两个 @ts-expect-error 探针在运行时也会真的发起（vitest 不做类型检查），
+    // 所以桩用常驻 resolved 值而不是 Once。
+    请求Mock.mockResolvedValue(响应({ receipts: [BFF候选委托回执样本] }));
+
+    await source.创建候选岗位委托({
+      intentionId: 'int_1',
+      jobId: 'job_1',
+      resumeFileId: 'rf_1',
+      resumeFileVersionId: 'rfv_7',
+      disclosureAcknowledged: true,
+      idempotencyKey: 'delegation-key-0001',
+    });
+
+    expect(请求Mock).toHaveBeenCalledWith(expect.objectContaining({
+      path: '/api/v1/me/job-delegations',
+      method: 'POST',
+      body: {
+        intention_id: 'int_1',
+        selection: { items: ['job_1'] },
+        disclosure_acknowledged: true,
+        resume_file_id: 'rf_1',
+        resume_file_version_id: 'rfv_7',
+      },
+    }));
+
+    // 编译期断言：缺任一简历坐标的输入都被拒绝（运行时这两行不该再被类型收留）
+    // @ts-expect-error 缺 resumeFileId
+    await source.创建候选岗位委托({ intentionId: 'int_1', jobId: 'job_1', resumeFileVersionId: 'rfv_7', disclosureAcknowledged: true, idempotencyKey: 'k2' });
+    // @ts-expect-error 缺 resumeFileVersionId
+    await source.创建候选岗位委托({ intentionId: 'int_1', jobId: 'job_1', resumeFileId: 'rf_1', disclosureAcknowledged: true, idempotencyKey: 'k3' });
   });
 
   it('招聘淘汰只发送 exact reason body，不发送幂等键或 If-Match', async () => {
