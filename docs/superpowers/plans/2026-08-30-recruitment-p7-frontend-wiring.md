@@ -109,7 +109,12 @@ export interface P7会话状态 {
 
 export type P7发送结果 =
   | { status: 'confirmed' }
-  | { status: 'unknown'; canAbandon: boolean; pendingContent: string };
+  | {
+      status: 'unknown';
+      reason: 'outcome_unknown' | 'in_progress';
+      canAbandon: boolean;
+      pendingContent: string;
+    };
 
 export interface 真人会话操作 {
   设置P7收件箱范围(role: P7角色, visible: boolean): void;
@@ -359,16 +364,18 @@ The test matrix must prove:
 1. no optimistic append;
 2. same `role+conversation+trimmed content` keeps one key across retry;
 3. after unknown, authoritative reread observes a newer own exact-content message after the watermark and returns `confirmed`;
-4. successful reread without evidence returns `unknown/canAbandon=true`;
-5. failed reread returns `unknown/canAbandon=false`;
+4. successful reread without evidence returns `unknown/reason=outcome_unknown/canAbandon=true`;
+5. failed reread returns `unknown/reason=outcome_unknown/canAbandon=false`;
 6. explicit abandon clears only the immutable pending content key; a live edited draft is unrelated;
-7. a final `idempotency_in_progress` after the HTTP client's controlled retry retains the same key and returns `unknown/canAbandon=false`;
+7. a final `idempotency_in_progress` after the HTTP client's controlled retry retains the same key and returns `unknown/reason=in_progress/canAbandon=false`;
 8. `idempotency_conflict` is terminal and does not reuse the key for changed content;
 9. the generated network key matches `/^[!-~]{16,128}$/`, while the possibly Chinese composite intent string never leaves the Map.
 
 ```ts
 const first = await 操作.发送真人消息('candidate', '3003', '  你好  ');
-expect(first).toEqual({ status: 'unknown', canAbandon: true, pendingContent: '你好' });
+expect(first).toEqual({
+  status: 'unknown', reason: 'outcome_unknown', canAbandon: true, pendingContent: '你好',
+});
 await 操作.发送真人消息('candidate', '3003', '你好');
 expect(数据源.发送消息.mock.calls[0][3]).toBe(数据源.发送消息.mock.calls[1][3]);
 ```
@@ -554,7 +561,7 @@ expect(mock操作.读取真人会话).toHaveBeenCalledWith('candidate', '3003');
 
 - [ ] **Step 2: Write rendering/send/read RED tests**
 
-Cover sender alignment for both roles, neutral `conversation_started` system row, chronological pages and “加载更早”, 404 clearing stale content, 503 preserving prior success, Enter send/Shift+Enter newline, code-point limit, no optimistic bubble, unknown retry/abandon behavior, and one read-through per actually rendered latest `user_text` ID.
+Cover sender alignment for both roles, neutral `conversation_started` system row, chronological pages and “加载更早”, 404 clearing stale content, 503 preserving prior success, Enter send/Shift+Enter newline, code-point limit, no optimistic bubble, unknown retry/abandon behavior, and one read-through per actually rendered latest `user_text` ID. Assert `reason=outcome_unknown` renders “暂时无法确认是否发送成功”，while `reason=in_progress` renders “消息仍在处理中，请稍后重试”.
 
 ```tsx
 await user.type(screen.getByRole('textbox', { name: '输入消息' }), '  你好  ');

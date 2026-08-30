@@ -251,7 +251,7 @@ interface P7会话状态 {
 }
 ```
 
-详情与消息 scope key 必须包含 `subject + role + conversationId`，或由当前后端状态保证等价隔离；不能只以 conversation ID 跨账号复用。退出、401、切角色、换账号和主体变化都清空 P7 snapshot、scope generation、待定发送意图和 socket。
+详情与消息 scope key 必须包含 `subject + role + conversationId`，或由当前后端状态保证等价隔离；不能只以 conversation ID 跨账号复用。退出、401、切角色、换账号和主体变化都清空 P7 snapshot、scope generation、待定发送意图、已读位置（成功 / 在飞 / 终局拒绝）和 socket。
 
 ### 7.2 读取与分页
 
@@ -275,11 +275,11 @@ interface P7会话状态 {
 收到 `operation_outcome_unknown` 时立即 no-store 重拉消息和收件箱：
 
 1. 若在 watermark 之后看到“当前角色 + 完全相同 trim 正文”的权威消息，收敛为成功；
-2. 若重拉成功但没看到，保留原 key，显示“重新确认发送结果 / 放弃本次发送”；
-3. 若重拉失败，保留原 key，只允许重试同一意图，不允许放弃或换 key；
+2. 若重拉成功但没看到，保留原 key，返回 `reason=outcome_unknown`，显示“重新确认发送结果 / 放弃本次发送”；
+3. 若重拉失败，保留原 key，返回 `reason=outcome_unknown`，只允许重试同一意图，不允许放弃或换 key；
 4. 用户显式放弃后只清该不可变正文对应的待定 key，保留当前编辑中的草稿；下一次点击才生成新 key。
 
-最终 `idempotency_in_progress` 表示同一 effect 仍在执行：保留原 key 与不可变正文，返回不可放弃的 unknown 状态，只允许稍后同 key 重试；不得落入“其余 4xx 释放 key”的默认路径。
+最终 `idempotency_in_progress` 表示同一 effect 仍在执行：保留原 key 与不可变正文，返回 `reason=in_progress` 的不可放弃 unknown 状态，只允许稍后同 key 重试；页面据此显示“消息仍在处理中，请稍后重试”，不得落入“其余 4xx 释放 key”的默认路径。
 
 `idempotency_conflict` 是终局冲突：不自动重试，刷新权威消息并提示用户重新确认正文。
 
