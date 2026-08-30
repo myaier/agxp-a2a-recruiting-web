@@ -63,6 +63,8 @@ new_sandbox(){
   printf '%s' 'http://localhost:5173/' >"$FAKE_STATE/url.txt"
   : >"$FAKE_STATE/attrs"
   : >"$FAKE_STATE/texts"
+  printf '%s\n' '{"success":true,"data":{"height":66,"width":320,"x":35,"y":400},"error":null}' \
+    >"$FAKE_STATE/box.json"
   printf '%s\n' '{"success":true,"data":{"requests":[
     {"method":"get","url":"http://localhost:5173/index.html","status":200,"headers":{"Cookie":"绝不能出现"}},
     {"method":"get","url":"http://127.0.0.1:8097/api/v1/me/resume?token=绝不能出现","status":200},
@@ -122,6 +124,7 @@ case "${1:-}" in
     case "${2:-}" in
       text) if [ "${3:-}" = 'body' ]; then cat "$state_dir/body.txt" 2>/dev/null; else lookup texts "${3:-}"; fi ;;
       attr) lookup attrs "${3:-}|${4:-}" ;;
+      box) cat "$state_dir/box.json" 2>/dev/null ;;
       url) cat "$state_dir/url.txt" 2>/dev/null ;;
       *) : ;;
     esac
@@ -267,6 +270,35 @@ assert_eq '不在页面上时返回 0' "$?" '0'
 ( . "$LIB"; assert_absent '浏览器验收候选人' ) >/dev/null 2>&1
 assert_false '在页面上时必须失败' "[ $? -eq 0 ]"
 
+testcase '左滑行'
+new_sandbox swipe
+export AGENT_BROWSER_SESSION='backend-local-candidate'
+set_attr '[aria-label="浏览器验收临时简历.pdf"]' 'aria-expanded' 'true'
+( . "$LIB"; 左滑行 '浏览器验收临时简历.pdf' ) >/dev/null 2>&1
+assert_eq '滑开后返回 0' "$?" '0'
+# 定位是语义的：按产品给行面的可访问名称找，不是 CSS module 类名、不是 DOM 层级
+assert_contains '先按可访问名称量这一行的矩形' \
+  'get box [aria-label="浏览器验收临时简历.pdf"] --json' "$CALLS"
+# 几何全部从那个矩形算出来：x=35 w=320 → 0.9/0.1 处是 323 / 67；y=400 h=66 → 433
+assert_contains '起点落在这一行右侧' 'mouse move 323 433' "$CALLS"
+assert_contains '真的按下鼠标' 'mouse down' "$CALLS"
+assert_contains '终点落在这一行左侧' 'mouse move 67 433' "$CALLS"
+assert_contains '真的松开鼠标' 'mouse up' "$CALLS"
+assert_true '中间至少走三步再落点（滑动行要先判定横向）' \
+  "[ $(grep -c '^--session backend-local-candidate mouse move ' "$CALLS") -ge 5 ]"
+assert_contains '结束后读产品自己的 aria-expanded 自检' \
+  'get attr [aria-label="浏览器验收临时简历.pdf"] aria-expanded' "$CALLS"
+assert_missing '绝不用 eval 造输入事件' 'eval' "$CALLS"
+assert_missing '没有 @eN 引用' '@e' "$CALLS"
+
+testcase '左滑行 · 没滑开就失败'
+new_sandbox swipe-stuck
+export AGENT_BROWSER_SESSION='backend-local-candidate'
+set_attr '[aria-label="浏览器验收临时简历.pdf"]' 'aria-expanded' 'false'
+( . "$LIB"; 左滑行 '浏览器验收临时简历.pdf' ) >/dev/null 2>"$SANDBOX/stderr.txt"
+assert_false 'aria-expanded 不是 true 必须失败' "[ $? -eq 0 ]"
+assert_contains '说明是这一行没展开' '左滑之后没有展开' "$SANDBOX/stderr.txt"
+
 # ── 4. 私密清理台账 ─────────────────────────────────────────────────
 
 testcase 'record_cleanup_marker'
@@ -370,6 +402,7 @@ new_sandbox journey-crud
 unset AGENT_BROWSER_SESSION
 set_attr '[aria-label="当前公司：不披露"]' 'aria-pressed' 'true'
 set_attr '[aria-label="当前公司：意向确认后"]' 'aria-pressed' 'true'
+set_attr '[aria-label="浏览器验收临时简历.pdf"]' 'aria-expanded' 'true'
 bash "$CRUD_JOURNEY" >"$SANDBOX/stdout.txt" 2>"$SANDBOX/stderr.txt"
 assert_eq '旅程返回 0' "$?" '0'
 assert_eq '分片记为 pass' "$(jq -r '.status' "$FRAGMENT_DIR/candidate-crud.json")" 'pass'
@@ -392,6 +425,15 @@ assert_contains '披露档改到意向确认后' 'find role button click --name 
 assert_contains '披露档还原成不披露' 'find role button click --name 当前公司：不披露 --exact' "$CALLS"
 assert_contains '上传固定保留名称的临时 PDF' 'upload input[type="file"]' "$CALLS"
 assert_contains '过 AI 识别授权层' 'find role button click --name 同意并继续 --exact' "$CALLS"
+assert_contains '左滑附件行（语义定位 + 自身矩形 + 真实鼠标输入）' \
+  'get box [aria-label="浏览器验收临时简历.pdf"] --json' "$CALLS"
+assert_contains '滑开后点替换' 'find role button click --name 替换 --exact' "$CALLS"
+assert_contains '滑开后点删除' 'find role button click --name 删除 --exact' "$CALLS"
+assert_contains '过删除确认层' 'find role button click --name 删除附件简历 --exact' "$CALLS"
+assert_contains '删完断言空态' 'wait --text 还未上传附件简历' "$CALLS"
+assert_true '左滑发生两次（替换一次、删除一次）' \
+  "[ $(grep -c 'get box \[aria-label=' "$CALLS") -eq 2 ]"
+assert_missing '旅程里不用 eval 造输入事件' 'eval --stdin' "$SANDBOX/stderr.txt"
 assert_line '还原基准姓名（整行精确匹配，不是临时名的前缀）' \
   '--session backend-local-candidate find label 姓名（递交简历后披露） fill 浏览器验收候选人' "$CALLS"
 assert_eq '台账记下已建意向' "$(jq -r '.candidate_intention_created' "$PRIVATE_LEDGER")" 'true'
@@ -403,9 +445,10 @@ assert_eq '台账没有多出任何字段' \
 assert_eq '台账仍是 0600' "$(ls -l "$PRIVATE_LEDGER" | cut -c2-10)" 'rw-------'
 assert_eq '原子替换后没有残留临时文件' \
   "$(find "$SANDBOX/run/private" -name '.cleanup.json.*' | wc -l | tr -d ' ')" '0'
-# 每个写块做完都硬刷新一次：改名 / 建意向 / 改意向 / 删意向 / 改档 / 还原档 / 传附件 / 还原姓名
+# 每个写块做完都硬刷新一次：改名 / 建意向 / 改意向 / 删意向 / 改档 / 还原档 /
+# 传附件 / 替换附件 / 删附件 / 还原姓名
 assert_true '每个 mutation 块之后都硬刷新' \
-  "[ $(grep -c '^--session backend-local-candidate reload$' "$CALLS") -ge 8 ]"
+  "[ $(grep -c '^--session backend-local-candidate reload$' "$CALLS") -ge 10 ]"
 assert_missing '通过路径不用 snapshot' 'snapshot' "$CALLS"
 
 # ── 8. 长期脚本的静态禁令 ───────────────────────────────────────────
@@ -420,9 +463,18 @@ for f in "$LIB" "$LOAD_JOURNEY" "$CRUD_JOURNEY"; do
   assert_false "$n 不含 @eN 引用" "grep -Eq '@e[0-9]+' '$CODE'"
   assert_false "$n 不含被禁的浏览器持久化 / 打桩命令" \
     "grep -Eq 'network[[:space:]]+route|network[[:space:]]+har|state[[:space:]]+save|--profile|--session-name|--state|cookies|record[[:space:]]+start' '$CODE'"
-  assert_false "$n 不含坐标点击" "grep -Eq 'mouse[[:space:]]+(move|down|up)' '$CODE'"
+  # 坐标点击仍然禁止：写死像素的 mouse move 一律不许。
+  # 库里唯一的例外是 左滑行 —— 滑动是空间手势，坐标只能从被语义定位到的那一行的
+  # 矩形推出来，所以那里的 mouse move 参数必须是变量/算式，不能是字面数字。
+  assert_false "$n 不含写死坐标的鼠标命令" "grep -Eq 'mouse[[:space:]]+move[[:space:]]+[0-9]' '$CODE'"
+  assert_false "$n 不用 eval 造输入事件" "grep -Eq 'dispatchEvent|new (Pointer|Mouse|Touch)Event' '$CODE'"
   # 非 ASCII 标识符不用单独查：整份测试就跑在 macOS 的 /bin/bash 3.2 上，
   # 那个版本只认 [A-Za-z_][A-Za-z0-9_]* 的变量名，写错了这里全线报错。
+done
+for f in "$LOAD_JOURNEY" "$CRUD_JOURNEY"; do
+  n="$(basename "$f")"
+  assert_false "$n 自己不下鼠标命令（走 左滑行）" \
+    "grep -v '^[[:space:]]*#' '$f' | grep -Eq 'ab mouse|agent-browser mouse'"
 done
 assert_eq 'snapshot -i 只被下达一次' "$(grep -c 'ab snapshot -i' "$LIB")" '1'
 assert_true '而且只在失败诊断函数里' "grep -q 'ab snapshot -i >' '$LIB'"

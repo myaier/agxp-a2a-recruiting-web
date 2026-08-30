@@ -2,8 +2,10 @@
 # 真实后端整栈验收 · agent-browser 公共步骤库。
 #
 # 被 e2e/真实后端/旅程/*.sh 用 `.` 引入，不单独执行。
-# 标识符一律 ASCII：macOS 的 /bin/bash 是 3.2，变量名/函数名只认 [A-Za-z_][A-Za-z0-9_]*，
-# 中文只出现在注释和字符串里。
+# 变量名一律 ASCII：macOS 的 /bin/bash 是 3.2，**变量名**只认 [A-Za-z_][A-Za-z0-9_]*
+# （`测试=1` 在 3.2 下直接 command not found；变量后面紧跟中文还会把中文吃进变量名，
+# 所以紧跟非 ASCII 字符的变量一律写成 `${var}`）。函数名 3.2 允许非 ASCII，
+# 只有 左滑行 用了中文名（计划里就叫这个），其余保持 ASCII。
 #
 # 三条硬规矩，改这个文件前先读：
 #   1. 每条 agent-browser 命令都显式带 --session，两个角色的浏览器状态永远不共用。
@@ -72,6 +74,40 @@ click_button_exact(){ ab find role button click --name "$1" --exact >/dev/null; 
 
 # 返回栏的 ‹ 键（src/组件/通用.tsx 返回栏，可访问名称「返回」）
 click_back(){ click_button_exact '返回'; }
+
+# 左滑露出行内操作（滑动行：附件简历行、岗位行）。
+#
+# 滑动是空间手势，没有任何语义写法能表达「往左滑」。所以这里把两件事分开：
+#   · 定位仍然是语义的 —— 按产品给行面的可访问名称找（src/组件/滑动行.tsx 的 名称 → aria-label）；
+#   · 几何全部从这个元素自己的矩形算出来，没有任何写死的像素常数；
+#   · 事件走 Chrome 的真实输入派发（mouse move/down/move/up），不用 eval 造 DOM 事件 ——
+#     合成事件绕开的正是这轮验收唯一要证明的东西。
+# 结束后读产品自己的 aria-expanded 自检，滑不开就立刻失败而不是让后面的断言瞎猜。
+左滑行(){
+  local name="$1" sel box x_from x_to y step k
+  sel="[aria-label=\"$name\"]"
+  box="$(ab get box "$sel" --json)" || return 1
+  x_from="$(printf '%s' "$box" | jq -r '.data | (.x + .width * 0.9 | floor)')" || return 1
+  x_to="$(printf '%s' "$box" | jq -r '.data | (.x + .width * 0.1 | floor)')" || return 1
+  y="$(printf '%s' "$box" | jq -r '.data | (.y + .height * 0.5 | floor)')" || return 1
+  case "$x_from$x_to$y" in *null*|'') echo "读不到行「${name}」的矩形" >&2; return 1 ;; esac
+
+  ab mouse move "$x_from" "$y" >/dev/null
+  ab mouse down >/dev/null
+  # 分四步走完，保证滑动行先收到位移判定为「横向」再收到落点
+  k=1
+  while [ "$k" -le 4 ]; do
+    step=$(( x_from + (x_to - x_from) * k / 4 ))
+    ab mouse move "$step" "$y" >/dev/null
+    k=$((k + 1))
+  done
+  ab mouse up >/dev/null
+
+  if [ "$(ab get attr "$sel" aria-expanded)" != 'true' ]; then
+    echo "行「${name}」左滑之后没有展开" >&2
+    return 1
+  fi
+}
 
 # 页面上不允许出现 Mock 专属数据
 assert_no_mock_data(){

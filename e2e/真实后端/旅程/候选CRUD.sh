@@ -168,19 +168,29 @@ assert_text "$TEMP_NAME"
 capture_scene 'candidate-resume-updated'
 
 # ── 5. 附件替换 / 删除 ──────────────────────────────────────────────
-# NEEDS_CONTEXT（Task 5 实现者留给控制方裁决，本轮未实现）：
-# 计划要求「先按语义定位附件行，再只用 agent-browser drag 左滑」露出 替换 / 删除。
-# 在 agent-browser 0.27.2 + 本产品上实测不可行，两条原因各自独立：
-#   1. drag 在 pointerup 之后还会补一个 click。滑动行（src/组件/滑动行.tsx）在 松手 里
-#      请求打开(true) 打开行，紧接着行面的 onClick 看到 打开=true 又请求打开(false)，
-#      行开了立刻关。实测：drag 之后 aria-expanded 仍是 false，且 document 上确实收到
-#      一个落在行内的 click。
-#   2. 就算 1 修好，drag 的两个端点必须都落在行面里（mouse 的 pointer 事件不做隐式捕获），
-#      而行内可用的稳定语义句柄只有 [data-testid="附件简历行"] 和行面自己，两者同心，
-#      水平位移恒为 0；其余靠左的元素只有 CSS module 类名可选，是明令禁止的定位方式。
-# 可选出路（都要控制方拍板）：(a) 修 滑动行 的滑后 click 抑制，并给行左端一个语义句柄；
-# (b) 允许用 ab eval 派发一次真实 PointerEvent 手势（实测可行）；(c) 让行内操作键在行展开后
-# 可直接按可访问名称点击。在此之前临时附件由后端 cleanup 按台账里的固定名称精确回收。
+# 左滑用 左滑行()：按行面的可访问名称语义定位，几何从这一行自己的矩形算，
+# 事件走 Chrome 真实输入派发。替换仍然传同一个固定保留文件名（换的是 v2 的内容），
+# 这样后端 cleanup 那条「新增附件必须逐字等于 浏览器验收临时简历.pdf」的精确差集始终成立。
+MILESTONE='替换附件'
+cp "$ROOT_DIR/资源/简历-v2.pdf" "$TEMP_PDF_DIR/$TEMP_FILE_NAME"
+左滑行 "$TEMP_FILE_NAME"
+click_button_exact '替换'
+ab upload 'input[type="file"]' "$TEMP_PDF_DIR/$TEMP_FILE_NAME" >/dev/null
+assert_text '允许 AI 识别这份简历？'
+click_button_exact '同意并继续'
+# 只硬断言附件行还在与刷新后仍在，不等解析终态（解析是异步的，等它会把旅程变成计时器）
+assert_text "$TEMP_FILE_NAME"
+reload_and_assert "$TEMP_FILE_NAME"
+
+MILESTONE='删除附件'
+左滑行 "$TEMP_FILE_NAME"
+click_button_exact '删除'
+assert_text '删除附件简历？'
+click_button_exact '删除附件简历'
+assert_text '还未上传附件简历'
+ab reload >/dev/null
+assert_text '还未上传附件简历'
+assert_absent "$TEMP_FILE_NAME"
 
 # ── 6. 还原基准姓名 ─────────────────────────────────────────────────
 MILESTONE='还原姓名'

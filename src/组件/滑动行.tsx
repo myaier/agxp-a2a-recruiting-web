@@ -2,6 +2,10 @@
 //
 // 手势实现要点：
 //   · 用 pointer 事件而不是 touch，桌面鼠标拖拽与手机触摸同一套代码；
+//     —— 但两者有一处不同必须自己抹平：触摸移动过后浏览器会抑制兼容 click，鼠标不会。
+//     不抹平的话鼠标滑开这一行之后，紧跟着那个合成 click 会落回行面，
+//     把刚打开的行立刻关掉（行本来关着时更糟：直接当成点行进了详情）。
+//     所以判定为「横向」的手势结束时武装一次性抑制，吞掉紧随其后的那一个 click。
 //   · 只有横向位移明显大于纵向时才认定为滑动（否则会把纵向滚动吃掉）；
 //   · 松手按位移过半吸附到「全开 / 全关」，不停在中间；
 //   · 打开状态下点行本身 = 先关闭，避免误触内容区。
@@ -24,6 +28,7 @@ export default function 滑动行({
   打开,
   请求打开,
   按下,
+  名称,
   children,
 }: {
   操作: 滑动操作[];
@@ -32,16 +37,23 @@ export default function 滑动行({
   请求打开: (开: boolean) => void;
   /** 点行本身。行处于打开态时点击只做关闭，不触发这个回调 */
   按下?: () => void;
+  /** 行面的可访问名称。不给时读屏念到的是行内容拼起来的一长串，
+   *  给了就能被「这一行是哪一条」的业务名直接念出来、也能被按名称定位 */
+  名称?: string;
   children: ReactNode;
 }) {
   const 起点 = useRef<{ x: number; y: number } | null>(null);
   const 判定 = useRef<'未定' | '横向' | '纵向'>('未定');
+  // 刚完成一次横向手势：吞掉浏览器紧接着合成的那一个 click，且只吞一次
+  const 吞下次点击 = useRef(false);
   // 每个操作按钮 76px 宽
   const 操作区宽 = 操作.length * 76;
 
   const 按下开始 = (事件: React指针事件<HTMLDivElement>) => {
     起点.current = { x: 事件.clientX, y: 事件.clientY };
     判定.current = '未定';
+    // 新手势开始：上一次没被消费掉的抑制作废，不许泄漏到这一次
+    吞下次点击.current = false;
   };
 
   const 移动 = (事件: React指针事件<HTMLDivElement>) => {
@@ -65,6 +77,9 @@ export default function 滑动行({
     }
     const 横移 = 事件.clientX - 起点.current.x;
     起点.current = null;
+    // 只有真被判成横向的手势才武装抑制：普通点按（判定 仍是「未定」）走上面那条早退，
+    // 一个字都没改，仍然是原来的点按行为
+    吞下次点击.current = true;
     // 左滑超过操作区一半 → 打开；右滑同理关闭
     if (横移 < -操作区宽 / 2) 请求打开(true);
     else if (横移 > 操作区宽 / 2) 请求打开(false);
@@ -95,6 +110,7 @@ export default function 滑动行({
         className={样式.行面}
         role="button"
         tabIndex={0}
+        aria-label={名称}
         aria-expanded={打开}
         style={{ transform: `translateX(${打开 ? -操作区宽 : 0}px)` }}
         onPointerDown={按下开始}
@@ -102,8 +118,14 @@ export default function 滑动行({
         onPointerUp={松手}
         onPointerCancel={() => {
           起点.current = null;
+          吞下次点击.current = false;
         }}
         onClick={() => {
+          // 刚滑完的那一次合成 click 不是用户的「点」，吞掉并复位
+          if (吞下次点击.current) {
+            吞下次点击.current = false;
+            return;
+          }
           // 打开态下点击只收起，不进详情 —— 否则用户想关掉却误入了下一屏
           if (打开) {
             请求打开(false);
