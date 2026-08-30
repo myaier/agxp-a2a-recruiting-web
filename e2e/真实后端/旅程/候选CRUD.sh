@@ -48,6 +48,11 @@ trap on_exit EXIT
 # 薪资双滚轮：档位表是 3–100 千元、步长 1（src/组件/薪资区间层.tsx:15 档位表），
 # 所以第 n 项（0 基）就是 n+3 千元。列用产品自己的 aria-label（薪资下限 / 薪资上限）限定，
 # 档位用这条恒等式定位；滚轮停下 90ms 才落值，所以要等它真的停在这一档再往下走。
+#
+# `[aria-label="薪资下限"] [role="option"]` 是两跳 ARIA（有名字的容器 + 角色），不是
+# 「穿过匿名 div 的结构路径」，也不是 CSS module 类名：语义不变的重构不会打断它。
+# 这一列除此之外没有别的语义句柄（src/组件/内嵌双滚轮.tsx:99-105 只有 listbox 名 + option 角色），
+# 而 --name 选不了上限那一列（两列 option 同名，只会命中第一列）。控制方 2026-08-30 裁定沿用。
 pick_salary_notch(){
   local column="$1" thousands="$2" tries=0 current
   ab find nth "$(( thousands - 3 ))" "[aria-label=\"$column\"] [role=\"option\"]" click >/dev/null

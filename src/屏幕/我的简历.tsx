@@ -452,7 +452,9 @@ export default function 我的简历() {
                       打开={打开附件编号 === file.file_id}
                       请求打开={(开) => 设打开附件编号(开 ? file.file_id : null)}
                       按下={() => void 打开附件PDF(file.file_id)}
-                      名称={file.display_name}
+                      // 行面 aria-label 会覆盖内容拼出来的名字，所以这里要把
+                      // 「哪一份」和「现在什么状态」一起给全，读屏听到的信息量不减
+                      名称={`${file.display_name} ${附件状态文案(file)}`}
                     >
                       <div className={样式.附件行} data-testid="附件简历行">
                         <span className={样式.PDF块}>

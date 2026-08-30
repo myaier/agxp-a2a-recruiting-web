@@ -147,6 +147,10 @@ describe('我的简历 · Backend 附件简历库（P2 Task 6）', () => {
     expect(screen.getByText('尚未识别')).toBeTruthy();
     expect(screen.getByText('服务繁忙 · 稍后重试')).toBeTruthy();
     expect(screen.getByRole('button', { name: '添加附件简历' })).toBeTruthy();
+    // 行面的 aria-label 覆盖内容拼出来的名字，所以它必须同时带上「哪一份」和「什么状态」——
+    // 只给文件名的话读屏用户在按钮浏览模式下会丢掉解析状态那一段
+    expect(screen.getByRole('button', { name: '旧简历A.pdf 尚未识别' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '旧简历B.pdf 服务繁忙 · 稍后重试' })).toBeTruthy();
   });
 
   it.each<[任意解析状态, string[]]>([

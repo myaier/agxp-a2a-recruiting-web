@@ -78,14 +78,17 @@ click_back(){ click_button_exact '返回'; }
 # 左滑露出行内操作（滑动行：附件简历行、岗位行）。
 #
 # 滑动是空间手势，没有任何语义写法能表达「往左滑」。所以这里把两件事分开：
-#   · 定位仍然是语义的 —— 按产品给行面的可访问名称找（src/组件/滑动行.tsx 的 名称 → aria-label）；
+#   · 定位仍然是语义的 —— 按产品给行面的可访问名称找（src/组件/滑动行.tsx 的 名称 → aria-label）。
+#     用前缀匹配 `^=` 而不是全等：行的完整可访问名称是「业务名 + 当前状态」，状态那一段
+#     （附件解析进度、岗位在招/已归档）是异步的、旅程无法预知；设计稿也明说定位
+#     「允许关键词或正则，不绑定整段产品文案」。前缀这一段仍然是那一行唯一的业务身份。
 #   · 几何全部从这个元素自己的矩形算出来，没有任何写死的像素常数；
 #   · 事件走 Chrome 的真实输入派发（mouse move/down/move/up），不用 eval 造 DOM 事件 ——
 #     合成事件绕开的正是这轮验收唯一要证明的东西。
 # 结束后读产品自己的 aria-expanded 自检，滑不开就立刻失败而不是让后面的断言瞎猜。
 左滑行(){
   local name="$1" sel box x_from x_to y step k
-  sel="[aria-label=\"$name\"]"
+  sel="[aria-label^=\"$name\"]"
   box="$(ab get box "$sel" --json)" || return 1
   x_from="$(printf '%s' "$box" | jq -r '.data | (.x + .width * 0.9 | floor)')" || return 1
   x_to="$(printf '%s' "$box" | jq -r '.data | (.x + .width * 0.1 | floor)')" || return 1
@@ -153,18 +156,20 @@ _read_fresh_otp(){
   return 1
 }
 
-# 敏感值只经过这一个出口，且填的瞬间关掉 xtrace —— 打开 set -x 调试时也不会把码回显出来。
+# 敏感值只经过这一个出口。
+#
+# xtrace 必须由调用方在**进入这个函数之前**就关掉，在函数体里关已经晚了一整帧：
+# bash 先把调用行连同展开后的实参打出来（`+ _fill_secret 短信验证码 824913`），
+# 才开始执行函数体；而 `local value="$2"` 还会把值再打一次
+# （`+ local label=… value=824913 …`）。所以这里既不收 local 也不自己关 xtrace，
+# 直接用 $2 传进去 —— 抑制的责任完全落在 _login 那一段。
 _fill_secret(){
-  local label="$1" value="$2" had_xtrace=0 rc=0
-  case "$-" in *x*) had_xtrace=1; set +x ;; esac
-  ab find label "$label" fill "$value" >/dev/null || rc=$?
-  if [ "$had_xtrace" = '1' ]; then set -x; fi
-  return $rc
+  ab find label "$1" fill "$2" >/dev/null
 }
 
 # $1 会话名 $2 手机号 $3 身份大卡名 $4 该角色主壳的 hash
 _login(){
-  local want_session="$1" phone="$2" identity="$3" shell_hash="$4" before code
+  local want_session="$1" phone="$2" identity="$3" shell_hash="$4" before code otp_xtrace otp_rc
   if [ "${AGENT_BROWSER_SESSION:-}" != "$want_session" ]; then
     echo "会话隔离：本旅程只允许 ${want_session}，当前是 ${AGENT_BROWSER_SESSION:-未设置}" >&2
     return 1
@@ -180,10 +185,21 @@ _login(){
   ab find label 手机号 fill "$phone" >/dev/null
   before="$(_otp_mtime)"
   ab find role button click --name 获取验证码 >/dev/null
-  code="$(_read_fresh_otp "$before")" || return 1
-  _fill_secret 短信验证码 "$code" || { code=''; unset code; return 1; }
+
+  # ── OTP 段：从读码到清掉，全程关 xtrace ──
+  # 必须在 code=$(...) **之前**关。开着 set -x 时，这一段会连泄五处：
+  # _read_fresh_otp 里的 `value=<码>` 与 `printf %s <码>`（命令替换是子 shell，同样被 trace）、
+  # 赋值行 `code=<码>`、调用行 `_fill_secret 短信验证码 <码>`、以及被调函数里的 `local value=<码>`。
+  # 在被调函数体里关掉一个都拦不住，所以抑制只能落在这里。
+  otp_xtrace=0
+  case "$-" in *x*) otp_xtrace=1; set +x ;; esac
+  otp_rc=0
+  code="$(_read_fresh_otp "$before")" || otp_rc=1
+  if [ "$otp_rc" = '0' ]; then _fill_secret 短信验证码 "$code" || otp_rc=1; fi
   code=''
   unset code
+  if [ "$otp_xtrace" = '1' ]; then set -x; fi
+  [ "$otp_rc" = '0' ] || return 1
 
   click_button '已阅读并同意'
   click_button_exact '进入'
@@ -232,15 +248,21 @@ capture_scene(){
 JS
   ab screenshot "$dir/$scene.png" >/dev/null
 
-  rel="$(_repo_relative_path "$dir/$scene.png")"
+  rel="$(_repo_relative_path "$dir/$scene.png")" || return 1
   CAPTURED_SCREENSHOTS="$CAPTURED_SCREENSHOTS $rel"
 }
 
-# 分片里的 screenshots 记的是仓库相对 artifact 路径（e2e/真实后端/类型.ts 旅程结果）。
+# 分片里的 screenshots 记的是**仓库相对** artifact 路径（e2e/真实后端/类型.ts:39 旅程结果）。
+# 落在仓库外就没有仓库相对写法可言，这时必须硬失败：静默回落成绝对路径会写出一份
+# 不符合自己声明的分片，报告和视觉审阅都拿它没办法，而且路径里还可能夹带用户名。
+# 运行器负责把 RUN_DIR 放在前端仓库里（Task 7 preflight 的「安全输出路径」那一条）。
 _repo_relative_path(){
   case "$1" in
     "$REPO_ROOT"/*) printf '%s' "${1#"$REPO_ROOT"/}" ;;
-    *) printf '%s' "$1" ;;
+    *)
+      echo "artifact 路径不在前端仓库内，写不出 类型.ts 要求的仓库相对路径：$1" >&2
+      return 1
+      ;;
   esac
 }
 

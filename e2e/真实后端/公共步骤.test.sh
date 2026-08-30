@@ -33,8 +33,13 @@ assert_eq(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1（期望 $3，实到
 
 # ── 沙盒 ────────────────────────────────────────────────────────────
 
-SANDBOX_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/agxp-steps-test.XXXXXX")"
-trap 'rm -rf "$SANDBOX_ROOT"' EXIT
+# 沙盒建在仓库内的 gitignore 目录下（/agent-browser-backend-output/）而不是 /tmp：
+# 分片的 screenshots 按 类型.ts 必须是仓库相对路径，RUN_DIR 在仓库外就根本走不到那条路径。
+REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+SANDBOX_PARENT="$REPO_ROOT/agent-browser-backend-output"
+mkdir -p "$SANDBOX_PARENT"
+SANDBOX_ROOT="$(mktemp -d "$SANDBOX_PARENT/steps-test.XXXXXX")"
+trap 'rm -rf "$SANDBOX_ROOT"; rmdir "$SANDBOX_PARENT" 2>/dev/null || true' EXIT
 
 new_sandbox(){
   SANDBOX="$SANDBOX_ROOT/$1"
@@ -47,16 +52,19 @@ new_sandbox(){
   FAKE_STATE="$SANDBOX/state"
   FAKE_OTP_FILE="$SANDBOX/monorepo/apps/recruitment/.local-dev/code"
   FAKE_OTP='824913'
+  # 上一轮遗留的旧码。刻意不选全 0 一类的值：手机号 13800000001 里就含 000000，
+  # 拿它去 grep trace 会假阳性
+  FAKE_STALE_OTP='713642'
   RUN_DIR="$SANDBOX/run"
   FRAGMENT_DIR="$SANDBOX/run/journeys"
   PRIVATE_LEDGER="$SANDBOX/run/private/cleanup.json"
   AGXP_MONOREPO_DIR="$SANDBOX/monorepo"
   FRONTEND_ORIGIN='http://localhost:5173'
-  export CALLS FAKE_STATE FAKE_OTP_FILE FAKE_OTP RUN_DIR FRAGMENT_DIR PRIVATE_LEDGER AGXP_MONOREPO_DIR FRONTEND_ORIGIN
+  export CALLS FAKE_STATE FAKE_OTP_FILE FAKE_OTP FAKE_STALE_OTP RUN_DIR FRAGMENT_DIR PRIVATE_LEDGER AGXP_MONOREPO_DIR FRONTEND_ORIGIN
   export PATH="$SANDBOX/bin:$PATH"
 
   # 上一轮留下的旧验证码：新鲜度判定读不到「点过获取验证码之后」的写入就不该用它
-  printf '000000\n' >"$FAKE_OTP_FILE"
+  printf '%s\n' "$FAKE_STALE_OTP" >"$FAKE_OTP_FILE"
   touch -t 200001010000 "$FAKE_OTP_FILE"
 
   printf '%s\n' '浏览器验收候选人 · 真实后端基准摘要' >"$FAKE_STATE/body.txt"
@@ -184,8 +192,21 @@ assert_contains '选身份点我要找工作' 'find role button click --name 我
 assert_missing 'OTP 不出现在命令记录里' "$FAKE_OTP" "$CALLS"
 assert_missing 'OTP 不出现在 stdout' "$FAKE_OTP" "$SANDBOX/stdout.txt"
 assert_missing 'OTP 不出现在 stderr' "$FAKE_OTP" "$SANDBOX/stderr.txt"
-assert_missing '上一轮的旧验证码没有被当成本轮的用' '000000' "$CALLS"
+assert_missing '上一轮的旧验证码没有被当成本轮的用' "$FAKE_STALE_OTP" "$CALLS"
 assert_session_and_bans 'backend-local-candidate'
+
+testcase '登录候选 · set -x 下 OTP 不进 trace'
+new_sandbox login-xtrace
+export AGENT_BROWSER_SESSION='backend-local-candidate'
+# xtrace 就是这个控制存在的理由：调试时开 bash -x 不能把本机验证码打出来
+( . "$LIB"; set -x; login_candidate ) >"$SANDBOX/stdout.txt" 2>"$SANDBOX/trace.txt"
+assert_eq '开着 xtrace 也能登录' "$?" '0'
+# 先证明 trace 真的开着，否则下面几条会空过
+assert_true 'trace 确实记录了命令（这条用例没有空过）' \
+  "grep -q 'find role button click' '$SANDBOX/trace.txt'"
+assert_missing 'OTP 不出现在 xtrace' "$FAKE_OTP" "$SANDBOX/trace.txt"
+assert_missing '上一轮的旧验证码也不出现在 xtrace' "$FAKE_STALE_OTP" "$SANDBOX/trace.txt"
+assert_contains '照样填了验证码（记录里是脱敏值）' 'find label 短信验证码 fill [REDACTED]' "$CALLS"
 
 testcase '登录候选 · 已有会话不重登'
 new_sandbox login-candidate-restored
@@ -273,12 +294,13 @@ assert_false '在页面上时必须失败' "[ $? -eq 0 ]"
 testcase '左滑行'
 new_sandbox swipe
 export AGENT_BROWSER_SESSION='backend-local-candidate'
-set_attr '[aria-label="浏览器验收临时简历.pdf"]' 'aria-expanded' 'true'
+set_attr '[aria-label^="浏览器验收临时简历.pdf"]' 'aria-expanded' 'true'
 ( . "$LIB"; 左滑行 '浏览器验收临时简历.pdf' ) >/dev/null 2>&1
 assert_eq '滑开后返回 0' "$?" '0'
-# 定位是语义的：按产品给行面的可访问名称找，不是 CSS module 类名、不是 DOM 层级
-assert_contains '先按可访问名称量这一行的矩形' \
-  'get box [aria-label="浏览器验收临时简历.pdf"] --json' "$CALLS"
+# 定位是语义的：按行面的可访问名称前缀找（完整名是「文件名 + 解析状态」，
+# 状态那一段是异步的，旅程无法预知），不是 CSS module 类名、不是 DOM 层级
+assert_contains '先按可访问名称前缀量这一行的矩形' \
+  'get box [aria-label^="浏览器验收临时简历.pdf"] --json' "$CALLS"
 # 几何全部从那个矩形算出来：x=35 w=320 → 0.9/0.1 处是 323 / 67；y=400 h=66 → 433
 assert_contains '起点落在这一行右侧' 'mouse move 323 433' "$CALLS"
 assert_contains '真的按下鼠标' 'mouse down' "$CALLS"
@@ -287,14 +309,14 @@ assert_contains '真的松开鼠标' 'mouse up' "$CALLS"
 assert_true '中间至少走三步再落点（滑动行要先判定横向）' \
   "[ $(grep -c '^--session backend-local-candidate mouse move ' "$CALLS") -ge 5 ]"
 assert_contains '结束后读产品自己的 aria-expanded 自检' \
-  'get attr [aria-label="浏览器验收临时简历.pdf"] aria-expanded' "$CALLS"
+  'get attr [aria-label^="浏览器验收临时简历.pdf"] aria-expanded' "$CALLS"
 assert_missing '绝不用 eval 造输入事件' 'eval' "$CALLS"
 assert_missing '没有 @eN 引用' '@e' "$CALLS"
 
 testcase '左滑行 · 没滑开就失败'
 new_sandbox swipe-stuck
 export AGENT_BROWSER_SESSION='backend-local-candidate'
-set_attr '[aria-label="浏览器验收临时简历.pdf"]' 'aria-expanded' 'false'
+set_attr '[aria-label^="浏览器验收临时简历.pdf"]' 'aria-expanded' 'false'
 ( . "$LIB"; 左滑行 '浏览器验收临时简历.pdf' ) >/dev/null 2>"$SANDBOX/stderr.txt"
 assert_false 'aria-expanded 不是 true 必须失败' "[ $? -eq 0 ]"
 assert_contains '说明是这一行没展开' '左滑之后没有展开' "$SANDBOX/stderr.txt"
@@ -336,16 +358,30 @@ assert_eq 'apiRequests 只留 /api/v1 的 METHOD + pathname（含失败的那条
   '["GET /api/v1/me/missing","GET /api/v1/me/resume","PATCH /api/v1/me/privacy"]'
 assert_eq 'failedRequests 只留 METHOD + pathname' \
   "$(jq -rc '.failedRequests' "$FRAGMENT")" '["GET /api/v1/me/missing"]'
-assert_eq 'screenshots 记下这一轮拍的那张' \
-  "$(jq -r '.screenshots[0]' "$FRAGMENT")" "$RUN_DIR/visual/candidate/candidate-resume-loaded.png"
-assert_eq 'RUN_DIR 落在仓库里时截图路径转成仓库相对' \
+# 类型.ts:39 说 screenshots 是仓库相对 artifact 路径，这里就按那个形状断言
+assert_eq 'screenshots 是仓库相对路径（不是绝对路径）' \
+  "$(jq -r '.screenshots[0]' "$FRAGMENT")" \
+  "${RUN_DIR#"$REPO_ROOT"/}/visual/candidate/candidate-resume-loaded.png"
+assert_false 'screenshots 里没有绝对路径' "jq -r '.screenshots[]' '$FRAGMENT' | grep -q '^/'"
+assert_eq '_repo_relative_path 把仓库内路径转成相对' \
   "$( . "$LIB"; _repo_relative_path "$ROOT_DIR/资源/简历-v1.pdf" )" 'e2e/真实后端/资源/简历-v1.pdf'
+
 assert_missing '分片里没有查询串' 'token=' "$FRAGMENT"
 assert_missing '分片里没有 Cookie' 'Cookie' "$FRAGMENT"
 assert_missing '分片里没有 host' '127.0.0.1' "$FRAGMENT"
 assert_eq '分片字段集合与 旅程结果 完全一致' \
   "$(jq -rc '[keys_unsorted[]]|sort|join(",")' "$FRAGMENT")" \
   'apiRequests,consoleErrors,failedRequests,failure,journey,milestone,pageErrors,schemaVersion,screenshots,status'
+
+testcase 'capture_scene · artifact 落在仓库外必须硬失败'
+new_sandbox outside-repo
+export AGENT_BROWSER_SESSION='backend-local-candidate'
+OUTSIDE_RUN="$(mktemp -d "${TMPDIR:-/tmp}/agxp-outside.XXXXXX")"
+( RUN_DIR="$OUTSIDE_RUN"; . "$LIB"; capture_scene 'candidate-resume-loaded' ) \
+  >/dev/null 2>"$SANDBOX/stderr.txt"
+assert_false '写不出仓库相对路径时不许静默通过' "[ $? -eq 0 ]"
+assert_contains '说明原因' '写不出 类型.ts 要求的仓库相对路径' "$SANDBOX/stderr.txt"
+rm -rf "$OUTSIDE_RUN"
 
 testcase 'write_journey_result · 零 API 请求判失败'
 new_sandbox fragment-no-api
@@ -402,7 +438,7 @@ new_sandbox journey-crud
 unset AGENT_BROWSER_SESSION
 set_attr '[aria-label="当前公司：不披露"]' 'aria-pressed' 'true'
 set_attr '[aria-label="当前公司：意向确认后"]' 'aria-pressed' 'true'
-set_attr '[aria-label="浏览器验收临时简历.pdf"]' 'aria-expanded' 'true'
+set_attr '[aria-label^="浏览器验收临时简历.pdf"]' 'aria-expanded' 'true'
 bash "$CRUD_JOURNEY" >"$SANDBOX/stdout.txt" 2>"$SANDBOX/stderr.txt"
 assert_eq '旅程返回 0' "$?" '0'
 assert_eq '分片记为 pass' "$(jq -r '.status' "$FRAGMENT_DIR/candidate-crud.json")" 'pass'
@@ -426,13 +462,13 @@ assert_contains '披露档还原成不披露' 'find role button click --name 当
 assert_contains '上传固定保留名称的临时 PDF' 'upload input[type="file"]' "$CALLS"
 assert_contains '过 AI 识别授权层' 'find role button click --name 同意并继续 --exact' "$CALLS"
 assert_contains '左滑附件行（语义定位 + 自身矩形 + 真实鼠标输入）' \
-  'get box [aria-label="浏览器验收临时简历.pdf"] --json' "$CALLS"
+  'get box [aria-label^="浏览器验收临时简历.pdf"] --json' "$CALLS"
 assert_contains '滑开后点替换' 'find role button click --name 替换 --exact' "$CALLS"
 assert_contains '滑开后点删除' 'find role button click --name 删除 --exact' "$CALLS"
 assert_contains '过删除确认层' 'find role button click --name 删除附件简历 --exact' "$CALLS"
 assert_contains '删完断言空态' 'wait --text 还未上传附件简历' "$CALLS"
 assert_true '左滑发生两次（替换一次、删除一次）' \
-  "[ $(grep -c 'get box \[aria-label=' "$CALLS") -eq 2 ]"
+  "[ $(grep -c 'get box \[aria-label\^=' "$CALLS") -eq 2 ]"
 assert_missing '旅程里不用 eval 造输入事件' 'eval --stdin' "$SANDBOX/stderr.txt"
 assert_line '还原基准姓名（整行精确匹配，不是临时名的前缀）' \
   '--session backend-local-candidate find label 姓名（递交简历后披露） fill 浏览器验收候选人' "$CALLS"
