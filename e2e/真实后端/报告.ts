@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { 失败分类, 整栈报告, 旅程ID, 旅程结果 } from './类型';
+import type { 失败分类, 整栈报告, 旅程ID, 旅程结果, 真实后端视觉Manifest } from './类型';
 import { 旅程们 } from './类型';
+import { 比较真实后端视觉, 生成候选基线目录 } from './视觉/比较';
+import { 真实后端场景们 } from './视觉/场景清单';
 
 // ---- 运行分片读取 ----
 
@@ -203,4 +205,176 @@ export function 写整栈报告(报告: 整栈报告, outputDir: string): void {
   mkdirSync(outputDir, { recursive: true });
   writeFileSync(join(outputDir, 'report.json'), JSON.stringify(报告, null, 2), 'utf8');
   writeFileSync(join(outputDir, 'report.md'), 生成Markdown(报告), 'utf8');
+}
+
+// ---- 整栈运行上下文 → 报告（运行器唯一的报告入口）----
+
+// 运行器（e2e/真实后端/运行整栈验收.sh）在收尾阶段把这份上下文写成 JSON 交给 报告命令.ts。
+// 视觉比较、候选基线生成、verdict 与报告落盘都在这里做完，bash 侧只负责编排与退出码转发。
+export interface 整栈运行上下文 {
+  selectedJourneys: 旅程ID[];
+  fragmentDir: string;
+  outputDir: string;
+  gate: 'report' | 'enforce';
+  updateBaseline: boolean;
+  cleanupFailed: boolean;
+  infraBlocked: boolean;
+  fixtureVerified: boolean;
+  frontendCommit: string;
+  backendCommit: string;
+  agentBrowserVersion: string;
+  chromeBuild: string;
+  stack: { preexisting: boolean; healthy: boolean };
+  fixture: { converge: string; verify: string; cleanup: string };
+  visual: {
+    baselineManifestPath: string;
+    baselineDir: string;
+    candidateDir: string;
+    diffDir: string;
+    reviewDir: string;
+  };
+}
+
+export interface 整栈报告产出 extends 整栈判定 {
+  baselineReview: string;
+  issues: string[];
+}
+
+// 候选清单的固定字段与 capture_scene（公共步骤.sh）的取景设置一一对应：
+// 视口 390x844、light、缩放 1。这些常量只在这里出现一次，基线清单按同一份格式比对。
+export function 构造候选视觉清单(上下文: 整栈运行上下文): 真实后端视觉Manifest {
+  return {
+    schemaVersion: 1,
+    agentBrowserVersion: 上下文.agentBrowserVersion,
+    chromeBuild: 上下文.chromeBuild,
+    viewport: { width: 390, height: 844 },
+    locale: 'zh-CN',
+    timezone: 'Asia/Shanghai',
+    colorScheme: 'light',
+    deviceScaleFactor: 1,
+    scenes: [...真实后端场景们],
+    baselineCommit: 上下文.frontendCommit,
+  };
+}
+
+function 断言上下文(值: unknown): 整栈运行上下文 {
+  if (typeof 值 !== 'object' || 值 === null || Array.isArray(值)) throw new Error('运行上下文不是对象');
+  const 记录 = 值 as Record<string, unknown>;
+  const 旅程集 = new Set<string>(旅程们);
+  if (!Array.isArray(记录.selectedJourneys) || 记录.selectedJourneys.length === 0
+    || 记录.selectedJourneys.some((项) => typeof 项 !== 'string' || !旅程集.has(项))) {
+    throw new Error('selectedJourneys 不合法');
+  }
+  for (const 键 of ['fragmentDir', 'outputDir', 'frontendCommit', 'backendCommit', 'agentBrowserVersion', 'chromeBuild']) {
+    if (typeof 记录[键] !== 'string' || 记录[键] === '') throw new Error(`${键} 缺失`);
+  }
+  if (记录.gate !== 'report' && 记录.gate !== 'enforce') throw new Error('gate 只能是 report 或 enforce');
+  for (const 键 of ['updateBaseline', 'cleanupFailed', 'infraBlocked', 'fixtureVerified']) {
+    if (typeof 记录[键] !== 'boolean') throw new Error(`${键} 必须是布尔`);
+  }
+  const 视觉 = 记录.visual as Record<string, unknown> | undefined;
+  if (typeof 视觉 !== 'object' || 视觉 === null) throw new Error('visual 缺失');
+  for (const 键 of ['baselineManifestPath', 'baselineDir', 'candidateDir', 'diffDir', 'reviewDir']) {
+    if (typeof 视觉[键] !== 'string' || 视觉[键] === '') throw new Error(`visual.${键} 缺失`);
+  }
+  const 栈 = 记录.stack as Record<string, unknown> | undefined;
+  if (typeof 栈 !== 'object' || 栈 === null || typeof 栈.preexisting !== 'boolean' || typeof 栈.healthy !== 'boolean') {
+    throw new Error('stack 不合法');
+  }
+  const 夹具 = 记录.fixture as Record<string, unknown> | undefined;
+  if (typeof 夹具 !== 'object' || 夹具 === null
+    || typeof 夹具.converge !== 'string' || typeof 夹具.verify !== 'string' || typeof 夹具.cleanup !== 'string') {
+    throw new Error('fixture 不合法');
+  }
+  return 记录 as unknown as 整栈运行上下文;
+}
+
+// 环境层面的视觉阻塞（renderer-version-mismatch / manifest-invalid / expected-file-missing）
+// 是基础设施问题，按 75 处理；但只有在功能结论本身可信时才这么升级 ——
+// 旅程失败时截图本来就拍不全，那时缺图是功能失败的**后果**，不该盖掉 exit 1。
+export function 生成整栈报告(输入: unknown): 整栈报告产出 {
+  const 上下文 = 断言上下文(输入);
+  const 分片 = 读取运行分片({ fragmentDir: 上下文.fragmentDir, selectedJourneys: 上下文.selectedJourneys });
+  const 候选清单 = 构造候选视觉清单(上下文);
+
+  const 视觉 = 比较真实后端视觉({
+    selectedJourneys: 上下文.selectedJourneys,
+    baselineManifestPath: 上下文.visual.baselineManifestPath,
+    baselineDir: 上下文.visual.baselineDir,
+    candidateDir: 上下文.visual.candidateDir,
+    diffDir: 上下文.visual.diffDir,
+    candidateManifest: 候选清单,
+    gate: 上下文.gate,
+  });
+
+  const 功能通过 = !分片.reportParseError && !分片.functionalFailed && !分片.infraBlocked && !上下文.infraBlocked;
+  const issues = [...分片.issues];
+
+  let baselineReview = 上下文.updateBaseline ? 'refused' : 'not-requested';
+  if (上下文.updateBaseline) {
+    const 允许环境 = (视觉.environment === 'matched' && 视觉.environmentIssue === null)
+      || (视觉.environment === 'bootstrap' && 视觉.environmentIssue === 'bootstrap')
+      || (视觉.environment === 'blocked' && 视觉.environmentIssue === 'renderer-version-mismatch');
+    if (!允许环境) {
+      baselineReview = `refused:${视觉.environmentIssue ?? 视觉.environment}`;
+      issues.push(`环境状态不允许生成候选基线：${视觉.environmentIssue ?? 视觉.environment}`);
+    } else if (!功能通过) {
+      baselineReview = 'refused:functional';
+      issues.push('功能旅程未全部通过，未生成候选基线');
+    } else {
+      // 基线清单读得出来才有“旧环境”可写；bootstrap 时本来就没有基线清单。
+      let 基线清单: 真实后端视觉Manifest | null = null;
+      if (视觉.environment !== 'bootstrap' && existsSync(上下文.visual.baselineManifestPath)) {
+        try {
+          基线清单 = JSON.parse(readFileSync(上下文.visual.baselineManifestPath, 'utf8')) as 真实后端视觉Manifest;
+        } catch {
+          基线清单 = null;
+        }
+      }
+      try {
+        生成候选基线目录({
+          functionalPassed: 功能通过,
+          fixtureVerified: 上下文.fixtureVerified,
+          environment: 视觉.environment,
+          environmentIssue: 视觉.environmentIssue,
+          baselineManifest: 基线清单,
+          candidateManifest: 候选清单,
+          candidateDir: 上下文.visual.candidateDir,
+          reviewDir: 上下文.visual.reviewDir,
+        });
+        baselineReview = 'generated';
+      } catch (错误) {
+        baselineReview = `refused:${(错误 as Error).message}`;
+        issues.push(`候选基线生成被拒：${(错误 as Error).message}`);
+      }
+    }
+  }
+
+  const 视觉环境阻塞 = 视觉.environment === 'blocked' && 功能通过;
+  if (视觉环境阻塞) issues.push(`视觉环境阻塞：${视觉.environmentIssue ?? 'blocked'}`);
+
+  const 判定 = 判定整栈结果({
+    reportParseError: 分片.reportParseError,
+    infraBlocked: 上下文.infraBlocked || 分片.infraBlocked || 视觉环境阻塞,
+    functionalFailed: 分片.functionalFailed,
+    cleanupFailed: 上下文.cleanupFailed,
+    visualBlocked: 视觉.scenes.some((场景) => 场景.status === 'blocked'),
+    gate: 上下文.gate,
+  });
+
+  const 报告: 整栈报告 = {
+    schemaVersion: 1,
+    classification: 判定.classification,
+    exitCode: 判定.exitCode,
+    frontendCommit: 上下文.frontendCommit,
+    backendCommit: 上下文.backendCommit,
+    agentBrowserVersion: 上下文.agentBrowserVersion,
+    chromeBuild: 上下文.chromeBuild,
+    stack: 上下文.stack,
+    fixture: 上下文.fixture,
+    journeys: 分片.journeys,
+    visual: 视觉,
+  };
+  写整栈报告(报告, 上下文.outputDir);
+  return { ...判定, baselineReview, issues };
 }

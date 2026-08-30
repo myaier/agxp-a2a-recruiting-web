@@ -1,9 +1,11 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { 判定整栈结果, 写整栈报告, 读取运行分片 } from './报告';
+import { 判定整栈结果, 生成整栈报告, 构造候选视觉清单, 写整栈报告, 读取运行分片 } from './报告';
+import type { 整栈运行上下文 } from './报告';
+import { 真实后端场景们 } from './视觉/场景清单';
 import type { 整栈报告, 旅程ID, 旅程结果 } from './类型';
 
 const 临时目录们: string[] = [];
@@ -214,5 +216,100 @@ describe('写整栈报告', () => {
     expect(md).toContain('退出码：0');
     expect(md).toContain('candidate-load');
     expect(md).toContain('candidate-resume-loaded');
+  });
+});
+
+// ---- 运行器入口：生成整栈报告 ----
+
+const 全部旅程: 旅程ID[] = ['candidate-load', 'candidate-crud', 'recruiter-load', 'recruiter-crud', 'session-isolation'];
+
+function 搭运行现场(选项: { 失败旅程?: 旅程ID; 基线清单?: string } = {}): 整栈运行上下文 {
+  const 根 = 新目录();
+  const 分片目录 = join(根, 'journeys');
+  const 基线目录 = join(根, 'baseline');
+  mkdirSync(分片目录, { recursive: true });
+  mkdirSync(基线目录, { recursive: true });
+  for (const 旅程 of 全部旅程) {
+    写分片(分片目录, 分片(旅程, 旅程 === 选项.失败旅程 ? 'failed' : 'pass'));
+  }
+  // 基线 PNG 只需要“存在”：候选目录整体缺图，比较在读像素之前就已经判成环境阻塞。
+  for (const 场景 of 真实后端场景们) writeFileSync(join(基线目录, `${场景}.png`), '', 'utf8');
+  writeFileSync(join(基线目录, '基线清单.json'), 选项.基线清单 ?? JSON.stringify({
+    schemaVersion: 1,
+    agentBrowserVersion: '0.27.2',
+    chromeBuild: 'Chrome/141.0.7390.55',
+    viewport: { width: 390, height: 844 },
+    locale: 'zh-CN',
+    timezone: 'Asia/Shanghai',
+    colorScheme: 'light',
+    deviceScaleFactor: 1,
+    scenes: [...真实后端场景们],
+    baselineCommit: '0000000',
+  }), 'utf8');
+
+  return {
+    selectedJourneys: [...全部旅程],
+    fragmentDir: 分片目录,
+    outputDir: 根,
+    gate: 'report',
+    updateBaseline: false,
+    cleanupFailed: false,
+    infraBlocked: false,
+    fixtureVerified: true,
+    frontendCommit: 'abc1234',
+    backendCommit: 'def5678',
+    agentBrowserVersion: '0.27.2',
+    chromeBuild: 'Chrome/141.0.7390.55',
+    stack: { preexisting: true, healthy: true },
+    fixture: { converge: 'PASS', verify: 'PASS', cleanup: 'PASS' },
+    visual: {
+      baselineManifestPath: join(基线目录, '基线清单.json'),
+      baselineDir: 基线目录,
+      candidateDir: join(根, 'visual/current'),
+      diffDir: join(根, 'visual/diff'),
+      reviewDir: join(根, 'visual/baseline-review'),
+    },
+  };
+}
+
+describe('生成整栈报告', () => {
+  it('候选清单锁死取景常量与七个场景', () => {
+    const 清单 = 构造候选视觉清单(搭运行现场());
+    expect(清单.viewport).toEqual({ width: 390, height: 844 });
+    expect(清单.locale).toBe('zh-CN');
+    expect(清单.timezone).toBe('Asia/Shanghai');
+    expect(清单.colorScheme).toBe('light');
+    expect(清单.deviceScaleFactor).toBe(1);
+    expect(清单.scenes).toEqual([...真实后端场景们]);
+    expect(清单.baselineCommit).toBe('abc1234');
+  });
+
+  it('功能全过时视觉环境阻塞升级成 INFRA_BLOCKED 75，并写出报告', () => {
+    const 上下文 = 搭运行现场();
+    const 产出 = 生成整栈报告(上下文);
+    expect(产出).toMatchObject({ classification: 'INFRA_BLOCKED', exitCode: 75 });
+    const 报告 = JSON.parse(readFileSync(join(上下文.outputDir, 'report.json'), 'utf8'));
+    expect(报告.visual.environmentIssue).toBe('expected-file-missing');
+    expect(报告.journeys).toHaveLength(5);
+    expect(报告.chromeBuild).toBe('Chrome/141.0.7390.55');
+  });
+
+  it('有旅程失败时缺图不再升级成基础设施阻塞：仍然是 FUNCTIONAL_FAILED 1', () => {
+    const 产出 = 生成整栈报告(搭运行现场({ 失败旅程: 'candidate-crud' }));
+    expect(产出).toMatchObject({ classification: 'FUNCTIONAL_FAILED', exitCode: 1 });
+  });
+
+  it('基线清单不合法时拒绝生成候选基线目录', () => {
+    const 上下文 = { ...搭运行现场({ 基线清单: '{"schemaVersion":1}' }), updateBaseline: true };
+    const 产出 = 生成整栈报告(上下文);
+    expect(产出.classification).toBe('INFRA_BLOCKED');
+    expect(产出.baselineReview).toBe('refused:manifest-invalid');
+    expect(existsSync(上下文.visual.reviewDir)).toBe(false);
+  });
+
+  it('上下文不合法时抛错，由 CLI 转成 exit 2', () => {
+    expect(() => 生成整栈报告({ ...搭运行现场(), gate: 'whatever' })).toThrow(/gate/);
+    expect(() => 生成整栈报告({ ...搭运行现场(), selectedJourneys: [] })).toThrow(/selectedJourneys/);
+    expect(() => 生成整栈报告(null)).toThrow();
   });
 });
