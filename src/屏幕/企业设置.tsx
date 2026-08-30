@@ -113,6 +113,10 @@ export default function 企业设置() {
               </button>
               <button
                 className={`${样式.确认执行} 可点`}
+                /* 与求职端 设置.tsx 同一处修复：<dialog open> 是非模态的，确认层开着时
+                   页面上那枚同样写着「退出登录」的触发键仍在可访问树里，读屏用户分不开。
+                   只改可访问名称，不动可见文案。 */
+                aria-label="退出企业账号"
                 onClick={async () => {
                   try {
                     await 操作.退出登录();

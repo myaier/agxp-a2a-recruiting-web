@@ -675,8 +675,12 @@ assert_contains '滑开后点编辑' 'find role button click --name 编辑 --exa
 assert_contains '编辑改职位描述' 'find label 职位描述 fill 浏览器验收岗位 · 临时CRUD 的职位描述改后' "$CALLS"
 assert_contains '编辑改加分偏好' 'find placeholder 用你自己的话写 fill' "$CALLS"
 assert_contains '硬刷新之后回编辑页逐字核描述' 'get value [aria-label="职位描述"]' "$CALLS"
-assert_missing '编辑页不重填岗位名称' \
-  'find placeholder 必填，如：资深后端工程师 · 交易网关 fill 浏览器验收岗位 · 临时CRUD 的' "$CALLS"
+# 岗位名称在后端建后不可改，编辑页也把它设成只读。这里按「placeholder + fill」计数：
+# 整条旅程只允许发生一次（发布那一步）。原来那条断言找的是一个任何代码路径都发不出来的
+# 字符串（发布填的是裸标题，不带「 的」），因此它对「编辑页又填了一次」这件事恒为真、
+# 抓不到自己声称要防的回归。
+assert_eq '岗位名称全程只在发布那一步填过一次（编辑页不许重填不可改字段）' \
+  "$(grep -c 'find placeholder 必填，如：资深后端工程师 · 交易网关 fill' "$CALLS")" '1'
 # 归档 → 重开 → 删除
 assert_contains '停止招聘' 'find role button click --name 停止招聘 --exact' "$CALLS"
 assert_contains '归档后落在「已归档」组' \
@@ -693,6 +697,14 @@ assert_contains '删完基线在招岗仍在' \
   'wait [aria-label^="浏览器验收岗位 · 在招基线"][aria-label$="在招"]' "$CALLS"
 assert_contains '删完基线归档岗仍在' \
   'wait [aria-label^="浏览器验收岗位 · 归档基线"][aria-label$="已归档"]' "$CALLS"
+# 缺席断言只读一次 body、不自带等待：硬刷新之后列表还没水合的那一小段里，
+# 「临时岗位不在页面上」对一张白页同样成立。所以每次硬刷新之后必须先用基线岗位
+# 把水合等出来，再问缺席 —— 顺序反了那条断言就永远不会为了正确的理由失败。
+LAST_RELOAD="$(grep -n '^--session backend-local-recruiter reload$' "$CALLS" | tail -1 | cut -d: -f1)"
+LAST_HYDRATION_GATE="$(grep -n 'wait \[aria-label\^="浏览器验收岗位 · 在招基线"\]' "$CALLS" | tail -1 | cut -d: -f1)"
+LAST_BODY_READ="$(grep -n 'get text body' "$CALLS" | tail -1 | cut -d: -f1)"
+assert_true '终局的缺席断言排在「最后一次硬刷新 → 基线岗位水合门」之后' \
+  "[ $LAST_RELOAD -lt $LAST_HYDRATION_GATE ] && [ $LAST_HYDRATION_GATE -lt $LAST_BODY_READ ]"
 # 每个写块之后都硬刷新：改职务 / 还原职务 / 改介绍 / 还原介绍 / 发布 / 编辑 / 归档 / 重开 / 删除
 assert_true '每个 mutation 块之后都硬刷新' \
   "[ $(grep -c '^--session backend-local-recruiter reload$' "$CALLS") -ge 9 ]"
@@ -727,8 +739,15 @@ assert_contains '招聘侧硬刷新招聘名片' \
   '--session backend-local-recruiter find role button click --name 招聘名片' "$CALLS"
 assert_line '候选侧硬刷新' '--session backend-local-candidate reload' "$CALLS"
 assert_line '招聘侧硬刷新' '--session backend-local-recruiter reload' "$CALLS"
-assert_contains '只退候选：退出确认走候选会话' \
+assert_contains '只退候选：退出触发键走候选会话' \
   '--session backend-local-candidate find role button click --name 退出登录 --exact' "$CALLS"
+# 确认键必须按它自己的可访问名称点。弹层框架是 <dialog open>（非模态），层开着时
+# 背景里那枚同名的「退出登录」仍在可访问树里，再点一次同名只会点回背景那枚，
+# 候选根本退不出去 —— 而后面的断言会以一个完全看不出病因的方式失败。
+assert_contains '退出确认点的是确认键自己的可访问名称，不是可见文案' \
+  '--session backend-local-candidate find role button click --name 退出当前账号 --exact' "$CALLS"
+assert_eq '同名的「退出登录」全程只点一次（那一次是触发键）' \
+  "$(grep -c -- 'find role button click --name 退出登录 --exact' "$CALLS")" '1'
 assert_false '招聘会话绝不退出登录' \
   "grep -q -- '--session backend-local-recruiter find role button click --name 退出登录' '$CALLS'"
 assert_contains '退出后停在登录页的手机号输入' \

@@ -181,18 +181,27 @@ assert_job_row "$TEMP_JOB" '在招'
 MILESTONE='删除岗位'
 左滑行 "$TEMP_JOB"
 click_button_exact '删除'
-# 确认层是 aria-modal 的原生 dialog（组件/弹层框架.tsx:62-66）：它开着的时候，
-# 行内那个同名的「删除」已经不在可访问树里，所以下面这一下只可能点到确认键
+# 行内那个同名的「删除」此刻已经不在可访问树里，所以下面这一下只可能点到确认键 ——
+# 靠的是 滑动行 的 aria-hidden（组件/滑动行.tsx:93 操作区 aria-hidden={!打开}）：
+# 操作按钮的 onClick 先 请求打开(false) 再 项.按下()，两个 setState 同一帧提交，
+# 行收起（操作区被整块 aria-hidden 剪掉）与确认层弹出是同时发生的。
+# 注意**不是**靠 aria-modal：弹层框架用的是 <dialog open>（组件/弹层框架.tsx:62-64），
+# 那是非模态的，页面其余部分既不 inert 也不会被剪枝，aria-modal 在这里挡不住任何东西。
 assert_text "删除「${TEMP_JOB}」？"
 click_button_exact '删除'
 # 删除落库成功产品才把行摘掉，等这一行真的消失＝服务端已经收下
 wait_row_gone "$TEMP_JOB"
+
+# 缺席断言只读一次 body，不自带等待。硬刷新之后 BFF 还没把岗位列表送回来的那一小段里，
+# 「临时岗位不在页面上」对一张根本还没加载完的白页同样成立 —— 那是一条**永远不会**
+# 为了正确的理由失败的断言。所以每次硬刷新之后都先用基线岗位把水合等出来，
+# 再问「临时岗位还在不在」；assert_no_mock_data 同样是读一次 body，一并放在门后面。
 ab reload >/dev/null
-assert_absent "$TEMP_JOB"
-# 两条基线岗位一个都没被误伤
 assert_job_row "$BASE_ACTIVE_JOB" '在招'
 assert_job_row "$BASE_ARCHIVED_JOB" '已归档'
+assert_absent "$TEMP_JOB"
 ab reload >/dev/null
+assert_job_row "$BASE_ACTIVE_JOB" '在招'
 assert_absent "$TEMP_JOB"
 assert_no_mock_data
 
