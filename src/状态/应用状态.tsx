@@ -61,6 +61,8 @@ import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 }
 import { 创建发现推荐操作, 创建空P4发现状态 } from './后端/发现推荐操作';
 import { 创建MatchCase操作, 创建空P5MatchCase状态, 清P5MatchCase引用 } from './后端/MatchCase操作';
 import { 创建真人会话操作, 创建空P7会话状态, 清P7会话引用 } from './后端/真人会话操作';
+import { use真人会话事件 } from './后端/use真人会话事件';
+import { 创建招聘事件源 } from '../数据/招聘事件源';
 import { 创建候选操作 } from './后端/候选操作';
 import { 创建岗位操作 } from './后端/岗位操作';
 import { 创建组织操作 } from './后端/组织操作';
@@ -518,6 +520,11 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
   use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识 });
 
+  // P7 Task 5：同源事件源只建一次（无 token/query/header；帧只触发 no-store 重拉）。
+  // 钩子输入全部由 Provider 注入（与 useMatchCase轮询 同一纪律，不读 Context）；
+  // 内部按 Backend + 已登录 + 有效角色 + 页面可见开关连接，Mock 零连接。
+  const 招聘事件源 = useMemo(() => 创建招聘事件源(), []);
+
   // P1C：从 subject-scoped sessionStorage 读取恢复的 current relation 候选值。
   // 只作为 选择当前企业关系(affiliations, restoredId) 的输入；读取本身不派发选择 action，
   // revoked ID 只会在最新 Affiliations 校验后被丢弃。
@@ -704,6 +711,15 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       规则: 映射招聘Agent规则(Object.values(后端状态.招聘规则快照)),
     });
   }, [是后端, 后端状态.Agent规则水合.recruiter.rules, 后端状态.招聘规则快照]);
+
+  use真人会话事件({
+    事件源: 招聘事件源,
+    可见会话引用: P7可见会话,
+    数据源模式: 源.模式,
+    已登录: 后端状态.已登录,
+    角色: (后端状态.主体?.last_used_role ?? null) as P7角色 | null,
+    操作,
+  });
 
   // 目录查询 seam 已按 owner 拆到 ./后端/目录查询：Backend 模式暴露 查询Location/Taxonomy/Institution，
   // Mock 为 null；401 会话代际守卫与统一清理都在 创建目录查询 内部。

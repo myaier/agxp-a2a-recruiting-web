@@ -508,6 +508,21 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
   };
 }
 
+/** P7 Task 5：受控假 WebSocket —— jsdom 无实现，Provider 的同源事件连接用桩。 */
+class 假WebSocket {
+  static 构造记录: string[] = [];
+  onopen: (() => void) | null = null;
+  onmessage: ((事件: { data: string }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  url: string;
+  constructor(url: string) {
+    this.url = url;
+    假WebSocket.构造记录.push(url);
+  }
+  close() { this.onclose?.(); }
+}
+
 describe('应用状态提供者 后端会话', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', {
@@ -516,6 +531,8 @@ describe('应用状态提供者 后端会话', () => {
       removeItem: vi.fn(),
       clear: vi.fn(),
     });
+    假WebSocket.构造记录 = [];
+    vi.stubGlobal('WebSocket', 假WebSocket);
   });
 
   it('候选资料 action 冻结具体结果', () => {
@@ -736,6 +753,23 @@ describe('应用状态提供者 后端会话', () => {
       expect(写入).not.toContain('3003');
       expect(写入).not.toContain('后端工程师');
     }
+  });
+
+  // P7 Task 5：Backend 登录后挂起同源事件连接；Mock 模式零连接。
+  it('Backend 登录后挂起一条同源事件连接，Mock 模式零连接', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await waitFor(() => expect(假WebSocket.构造记录.length).toBeGreaterThanOrEqual(1));
+    expect(假WebSocket.构造记录[0]).toContain('/api/v1/events/live');
+    const 构造数 = 假WebSocket.构造记录.length;
+    // 同一 Provider 的 Mock 渲染：零新增连接
+    render(createElement(应用状态提供者, null, createElement(上下文探针)));
+    await act(async () => {});
+    expect(假WebSocket.构造记录.length).toBe(构造数);
   });
 
   it('401 只清后端状态，不载入 Mock 支持域', async () => {
