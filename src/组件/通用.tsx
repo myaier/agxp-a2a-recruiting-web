@@ -239,6 +239,7 @@ export function 真输入条({
         <textarea
           ref={框}
           className={样式.输入框}
+          aria-label={占位}
           placeholder={占位}
           value={值}
           rows={1}

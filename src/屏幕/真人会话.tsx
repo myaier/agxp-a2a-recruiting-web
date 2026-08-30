@@ -12,6 +12,7 @@
 // 没有申请-同意这一步（见 真人会话操作栏.tsx）。
 
 import { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import 样式 from './真人会话.module.css';
 import 共用样式 from './直聊会话.module.css';
 import 谈详情样式 from './在谈详情.module.css';
@@ -34,13 +35,29 @@ import {
   市场列表,
   真人会话 as 真人会话数据,
 } from '../数据/模拟数据';
+import Backend真人会话, { 会话不可用 } from './P7/Backend真人会话';
 import type { 在谈单, 会话条 } from '../数据/类型';
 
 /** 这一屏写死服务 J-01 这一单（顶部职位卡、看职位层、「查看 ›」都指同一个岗）。
  *  编号只在这里出现一次，避免三个入口哪天被改歪、指向不同的岗。 */
 const 本单编号 = 'J-01';
 
+/**
+ * P7 Task 4：模式/参数双开关 —— Backend 且带 conversationId 时把坐标交给
+ * P7 Backend 真人会话（详情 + 消息 + 发送 + 已读 + 上下文动作）；Backend 访问
+ * 无参路由 fail closed 成「会话不可用」，绝不读默认 J-01；Mock 保留 J-01 剧情。
+ */
 export default function 真人会话() {
+  const { 数据源模式 } = use应用状态();
+  const { conversationId } = useParams();
+  if (数据源模式 === 'backend') {
+    if (conversationId === undefined) return <会话不可用 />;
+    return <Backend真人会话 role="candidate" conversationId={conversationId} />;
+  }
+  return <Mock真人会话 />;
+}
+
+function Mock真人会话() {
   const { 返回, 跳转 } = use导航();
   const { 状态 } = use应用状态();
   const [消息, 设消息] = useState<会话条[]>(真人会话数据.消息);

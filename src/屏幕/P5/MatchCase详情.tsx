@@ -58,8 +58,8 @@ import 确认层 from '../../组件/确认层';
 // P5 专属弹层只借两份既有 module 的壳（抽屉顶栏 / 单选面板的类），文案由本文件给：
 // Plan 1 的 简历原件层 渲染的是 Mock 仿真纸身（无 blob/url 通道），附件简历选择层 的
 // 确认键文案是「委托」口径 —— 评审 R1 裁定：这两处 P5 各建最小 UI，不硬套错口径的层。
-import 预览样式 from '../../组件/简历预览层.module.css';
 import 选择样式 from '../../组件/附件简历选择层.module.css';
+import 原始PDF层 from '../../组件/原始PDF层';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../../组件/通用';
 import { 轻提示 } from '../../组件/轻提示';
 import { use应用状态 } from '../../状态/应用状态';
@@ -463,41 +463,6 @@ function 详情主体({
 }
 
 // ── P5 专属弹层（评审 R1）：真实 PDF 抽屉与 S1 递交单选，借既有壳、P5 文案 ──────
-
-/**
- * 授权原始 PDF 弹层：壳与顶栏逐类复用 简历预览层.module.css（抽屉 + PDF 徽标 +
- * 文件名 + 关闭，无任何解释文字）；正文用 <iframe src=租约地址> 呈现真实字节
- * （选 iframe 而非 <object>：无插件回退怪癖、字节留在嵌套浏览上下文、title 即
- * 无障碍名）。经 URL 渲染不是解析 —— 代码绝不读 blob 文本/字节。
- */
-function 原始PDF层({ 文件名, 地址, 关闭 }: { 文件名: string; 地址: string; 关闭: () => void }) {
-  return (
-    <弹层框架 标签="简历原件" 遮罩类名={预览样式.遮罩} 面板类名={预览样式.层} 关闭={关闭}>
-      <div className={预览样式.顶栏}>
-        <span className={预览样式.抓手} />
-        <div className={预览样式.顶栏行}>
-          <span className={预览样式.PDF徽标}>
-            <span className={预览样式.PDF徽标字}>PDF</span>
-          </span>
-          <span className={`${预览样式.文件名} 单行`}>{文件名}</span>
-          <button className={`${预览样式.关闭键} 可点`} onClick={关闭} aria-label="关闭">
-            ✕
-          </button>
-        </div>
-      </div>
-      <div className={`${预览样式.纸底} 滚动区`}>
-        <iframe
-          title="简历 PDF"
-          src={地址}
-          style={{
-            display: 'block', width: '100%', height: '100%', border: 0,
-            borderRadius: 10, background: 'var(--白)',
-          }}
-        />
-      </div>
-    </弹层框架>
-  );
-}
 
 /**
  * S1 递交的单选层：面板类复用 附件简历选择层.module.css（单选清单同一版式），

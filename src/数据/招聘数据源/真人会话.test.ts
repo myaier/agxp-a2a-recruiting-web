@@ -220,7 +220,7 @@ describe('真人会话数据源', () => {
   it('会话 decode 拒绝缺键/多键/坏时间/不安全或负 unread/非规范坐标/预览 system 角色', () => {
     const 破 = (变异: Record<string, unknown>) => ({ ...可用会话Wire, ...变异 });
     expect(() => 解会话项({ ...可用会话Wire, 未知键: 1 })).toThrow(契约漂移);
-    const { last_activity_at, ...缺时间 } = 可用会话Wire;
+    const { last_activity_at: _缺, ...缺时间 } = 可用会话Wire;
     expect(() => 解会话项(缺时间)).toThrow(契约漂移);
     expect(() => 解会话项(破({ last_activity_at: '2026-08-30' }))).toThrow(契约漂移);
     expect(() => 解会话项(破({ unread_count: -1 }))).toThrow(契约漂移);
@@ -269,7 +269,7 @@ describe('真人会话数据源', () => {
   it('消息 decode 拒绝跨分支字段、user_text 缺 content、system 行坐标漂移、重复 ID', () => {
     expect(() => 解消息页('3003', { messages: [{ ...系统行Wire, content: '你好' }], next_cursor: null }))
       .toThrow(契约漂移);
-    const { content, ...缺content } = 文本消息Wire;
+    const { content: _无内容, ...缺content } = 文本消息Wire;
     expect(() => 解消息页('3003', { messages: [缺content], next_cursor: null })).toThrow(契约漂移);
     expect(() => 解消息页('3003', { messages: [{ ...文本消息Wire, content: null }], next_cursor: null }))
       .toThrow(契约漂移);

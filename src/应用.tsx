@@ -163,6 +163,9 @@ export default function 应用() {
       <Route path={路径.直聊会话} element={<直聊会话 />} />
       <Route path={路径.直聊会话岗位模板} element={<直聊会话 />} />
       <Route path={路径.真人会话} element={<真人会话 />} />
+      {/* P7 Task 4：Backend 参数化真人会话 —— 静态无参路由在前（Mock 剧情 / Backend fail closed），
+          参数模板紧随其后供收件箱与 P5 移交导航直达 */}
+      <Route path={路径.真人会话模板} element={<真人会话 />} />
       <Route path={路径.求职意向管理} element={<求职意向管理 />} />
       <Route path={路径.添加意向} element={<添加意向 />} />
       {/* 两条静态子路径写在 :id 模板之前：react-router 的排序本来就让静态段胜过动态段，
@@ -207,6 +210,8 @@ export default function 应用() {
       <Route path={路径.企业往来记录模板} element={<企业往来记录 />} />
       <Route path={路径.企业问AI代理} element={<企业问AI代理 />} />
       <Route path={路径.企业真人会话} element={<企业真人会话 />} />
+      {/* P7 Task 4：Backend 参数化企业真人会话（镜像求职端） */}
+      <Route path={路径.企业真人会话模板} element={<企业真人会话 />} />
       <Route path={路径.岗位管理} element={<岗位管理 />} />
       <Route path={路径.岗位详情模板} element={<岗位详情 />} />
       <Route path={路径.企业代理详情} element={<企业代理详情 />} />
