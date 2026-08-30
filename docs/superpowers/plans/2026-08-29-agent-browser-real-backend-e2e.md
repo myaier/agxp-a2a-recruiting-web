@@ -465,16 +465,28 @@ bff_request(){
 
 - [ ] **Step 3: 实现 Catalog 唯一解析**
 
-Resolve fixed display names through real `/api/v1/catalog/*?q=` calls. The function must select `status=active` and `selectable=true`, require exactly one exact `display_name` match, and return only the opaque ID to the caller:
+Resolve fixed display names through real `/api/v1/catalog/*?q=` calls, require exactly one exact `display_name` match, and return only the opaque ID to the caller.
+
+**2026-08-30 更正：** 原计划的单一过滤器 `.status=="active" and .selectable==true` 在 `fa0df4ab7` 上永远匹配不到任何条目，会让 converge 恒定 `BLOCKED`。`TaxonomyItem` 与 `LocationItem` 都是 `additionalProperties: false` 的封闭 schema，两者都没有 `status` 字段，`LocationItem` 也没有 `selectable`：
+
+- `TaxonomyItem` 必填 `[id, display_name, parent_id, selectable, has_children]`，`id` 形如 `tax_[a-z2-7]{26}`；
+- `LocationItem` 必填 `[id, display_name, country_code, country_name, admin1_code, admin1_name, timezone, population]`，`id` 形如 `loc_[a-z2-7]{26}`。
+
+因此按目录族分别过滤：taxonomy 要求 `selectable==true`，location 只要求精确 `display_name`。两者都要求整页恰好一条匹配，并且在还有 `next_cursor` 且本页零匹配时按环境阻塞处理，不静默翻页。
 
 ```bash
 resolve_catalog_exactly_one(){
-  local jar="$1" path="$2" display="$3" encoded body count
+  local jar="$1" path="$2" display="$3" require_selectable="$4" encoded body filter count
   encoded="$(jq -nr --arg v "$display" '$v|@uri')"
   body="$(bff_request GET "$path?q=$encoded&limit=50" "$jar")" || blocked 'catalog request failed'
-  count="$(jq -r --arg d "$display" '[.result.items[]|select(.display_name==$d and .status=="active" and .selectable==true)]|length' <<<"$body")"
+  if [ "$require_selectable" = 1 ]; then
+    filter='.result.items[]|select(.display_name==$d and .selectable==true)'
+  else
+    filter='.result.items[]|select(.display_name==$d)'
+  fi
+  count="$(jq -r --arg d "$display" "[$filter]|length" <<<"$body")"
   [ "$count" = 1 ] || blocked 'catalog fixture did not resolve exactly one selectable item'
-  jq -er --arg d "$display" '.result.items[]|select(.display_name==$d and .status=="active" and .selectable==true)|.id' <<<"$body"
+  jq -er --arg d "$display" "$filter|.id" <<<"$body"
 }
 ```
 
