@@ -17,7 +17,7 @@
 //     context 不可用只降级展示并保留「重新加载会话信息」，消息仍可读写。
 //     Backend 不渲染电话/微信 —— P7 context 不提供这些字段，绝不显示 Mock 值。
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import 共用样式 from '../直聊会话.module.css';
 import 真人会话样式 from '../真人会话.module.css';
 import 真人会话操作栏 from '../真人会话操作栏';
@@ -97,12 +97,14 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
   // 结果未知保留不可变待定正文进提示区（草稿已清空，可继续编辑新内容）。
   const [草稿, 设草稿] = useState('');
   const [未知结果, 设未知结果] = useState<P7发送结果 | null>(null);
-  // review-r2 R2-2：发送 scope 代际 —— 换会话/卸载作废在飞结算与在飞锁（-1 = 空闲，
-  // ≥0 = 该代际有在飞发送）；旧会话的迟到结果、草稿回填、错误提示绝不进新会话。
+  // review-r2 R2-2 / review-r3：发送 scope 代际 —— 换会话/卸载作废在飞结算与在飞锁
+  //（-1 = 空闲，≥0 = 该代际有在飞发送）。用 useLayoutEffect：代际推进发生在提交阶段
+  //（先于绘制与任何后续微任务），换会话首帧绝不带旧会话的草稿/未知横幅，该窗口内
+  // 落定的迟到结算也过不了旧代际检查；旧会话的结果/草稿绝不进新会话。
   const 发送代际 = useRef(0);
   const 发送在飞 = useRef(-1);
-  useEffect(() => {
-    设未知结果(null); // 换会话：旧会话的结果未知提示不进新会话
+  useLayoutEffect(() => {
+    设未知结果(null); // 换会话：旧会话的结果未知提示不进新会话（同步重渲染，先于绘制）
     设草稿(''); // 草稿按会话隔离：旧会话的在编草稿不带入新会话
     return () => {
       发送代际.current += 1;
@@ -171,8 +173,10 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
     PDF租约引用.current?.revoke();
     PDF租约引用.current = null;
   };
-  useEffect(() => {
-    设PDF预览(null); // 换会话：旧会话的取件层立即关闭
+  // review-r3：卸载/换会话敏感的代际推进与租约回收用 useLayoutEffect ——
+  // 与提交同步（先于绘制），迟到的取件结算在该窗口内即被作废。
+  useLayoutEffect(() => {
+    设PDF预览(null); // 换会话：旧会话的取件层立即关闭（同步重渲染，先于绘制）
     return () => {
       PDF代际.current += 1;
       回收租约();

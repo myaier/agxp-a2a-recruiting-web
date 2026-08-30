@@ -11,6 +11,10 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 真人会话 from './真人会话';
 import { 在谈列表 } from '../数据/模拟数据';
+// review-r3：scope 隔离合同的源码读取（仓库既有 ?raw 模式）
+import 真人会话tsx源码 from './真人会话.tsx?raw';
+import 企业真人会话tsx源码 from './企业真人会话.tsx?raw';
+import Backend真人会话tsx源码 from './P7/Backend真人会话.tsx?raw';
 
 // jsdom 不实现 scrollIntoView，消息流自动滚到底会调用它
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -177,5 +181,21 @@ describe('真人会话 · Mock 公司卡仍按原 slug 导航', () => {
     await userEvent.click(screen.getByRole('button', { name: new RegExp(本单.公司) }));
     expect(mock公司路由键).toHaveBeenCalledWith(本单.公司);
     expect(mock跳转).toHaveBeenCalledWith(`/company/slug-${本单.公司}`);
+  });
+});
+
+
+// ── review-r3：换会话 scope 隔离的源码合同（key 重挂 + layout-effect 代际）────────
+describe('真人会话 · review-r3 scope 隔离合同', () => {
+  it('双端父屏按 conversationId key 重挂 Backend 真人会话；卸载敏感代际用 useLayoutEffect', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    const 真人会话源码 = 真人会话tsx源码;
+    const 企业源码 = 企业真人会话tsx源码;
+    const 屏源码 = Backend真人会话tsx源码;
+    expect(真人会话源码.includes('key={conversationId}')).toBe(true);
+    expect(企业源码.includes('key={conversationId}')).toBe(true);
+    // 卸载/换会话敏感的代际推进与租约回收必须与提交同步（先于绘制）
+    expect(屏源码.includes('useLayoutEffect')).toBe(true);
+    expect(屏源码.includes('useLayoutEffect(() => {')).toBe(true);
   });
 });

@@ -52,7 +52,9 @@ export default function 真人会话() {
   const { conversationId } = useParams();
   if (数据源模式 === 'backend') {
     if (conversationId === undefined) return <会话不可用 />;
-    return <Backend真人会话 role="candidate" conversationId={conversationId} />;
+    // review-r3：按会话坐标 key 重挂 —— 换会话即全新实例，旧会话的草稿/未知提示/
+    // PDF 层不存在跨实例残留窗口（组件内另有 layout-effect 代际兜底）。
+    return <Backend真人会话 key={conversationId} role="candidate" conversationId={conversationId} />;
   }
   return <Mock真人会话 />;
 }

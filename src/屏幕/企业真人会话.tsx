@@ -42,7 +42,8 @@ export default function 企业真人会话() {
   const { conversationId } = useParams();
   if (数据源模式 === 'backend') {
     if (conversationId === undefined) return <会话不可用 />;
-    return <Backend真人会话 role="recruiter" conversationId={conversationId} />;
+    // review-r3：按会话坐标 key 重挂（镜像求职端 真人会话.tsx）。
+    return <Backend真人会话 key={conversationId} role="recruiter" conversationId={conversationId} />;
   }
   return <Mock企业真人会话 />;
 }
