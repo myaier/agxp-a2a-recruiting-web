@@ -64,7 +64,7 @@
 - `e2e/真实后端/类型.ts`：journey、visual、cleanup、manifest 与总报告的可序列化类型。
 - `e2e/真实后端/报告.ts`：读取分片、分类 verdict、计算最终退出码、写 JSON/Markdown。
 - `e2e/真实后端/报告.test.ts`：退出码优先级、缺失/损坏分片、report/enforce、隐私字段测试。
-- `e2e/真实后端/公共步骤.sh`：固定的 `agent-browser` session、登录、语义定位、刷新回读、稳定截图、诊断与私有 cleanup ledger 操作；不是 DSL。
+- `e2e/真实后端/公共步骤.sh`：固定的 `agent-browser` session、登录、语义定位、刷新回读、稳定截图、诊断与私有运行 journal（`$PRIVATE_JOURNAL`，人读证据，不是后端算子的输入）的原子写入；不是 DSL。
 - `e2e/真实后端/公共步骤.test.sh`：fake `agent-browser` 验证 session 隔离、无 route/HAR/state、截图稳定化与脱敏摘要。
 - `e2e/真实后端/旅程/候选数据加载.sh`：候选加载旅程和前三张 candidate reference candidate 截图。
 - `e2e/真实后端/旅程/候选CRUD.sh`：简历姓名、意向、隐私、附件完整 UI 生命周期和 `candidate-resume-updated` 截图。
@@ -1242,7 +1242,7 @@ An infra failure stops all remaining work; a functional failure continues only j
 The EXIT trap must be idempotent and run once:
 
 ```text
-backend fixture cleanup --ledger private cleanup journal
+backend fixture cleanup --ledger backend run receipt ($RECEIPT，绝不是前端私密 journal)
 backend fixture converge
 backend fixture verify
 close backend-local-candidate and backend-local-recruiter only
@@ -1254,7 +1254,13 @@ run report writer with collected statuses
 return computed exit code
 ```
 
-If cleanup fails, retain the private cleanup journal and backend run receipt until the report has recorded `CLEANUP_FAILED`, print only their restricted absolute locations, and keep both mode 0600 for manual recovery. On cleanup success delete both before report generation.
+`--ledger` 的实参只有一个合法值：后端 converge 自己写的本轮 run receipt
+`apps/recruitment/.local-dev/browser-fixtures/$RUN_ID.json`。前端的私密 journal
+（`$PRIVATE_JOURNAL`）**永远不是**这个算子的输入 —— 把它传过去，`receipt_has_role`
+找不到 owner-list 段，ownership 归零，§8.5 的差集清理整段空转。journal 只是人读证据：
+唯一的读者是清理失败路径上的 `print_private_journal`。
+
+If cleanup fails, retain the private run journal and backend run receipt until the report has recorded `CLEANUP_FAILED`, print only their restricted absolute locations, and keep both mode 0600 for manual recovery. On cleanup success delete both before report generation.
 
 - [ ] **Step 7: 实现运行 manifest 与隐私扫描**
 

@@ -125,6 +125,8 @@ done
 
 status='pass'; rc=0
 case " ${FAKE_JOURNEY_FAIL:-} " in *" $J "*) status='failed'; rc=1 ;; esac
+# 环境阻塞（设计稿 §14）：旅程写 blocked 分片并以 75 退出，例如本机 OTP 材料超时。
+case " ${FAKE_JOURNEY_BLOCK:-} " in *" $J "*) status='blocked'; rc=75 ;; esac
 
 mkdir -p "$FRAGMENT_DIR"
 if [ "$status" = 'pass' ]; then
@@ -134,7 +136,9 @@ fi
 jq -n --arg j "$J" --arg s "$status" \
   '{schemaVersion:1,journey:$j,status:$s,milestone:"完成",
     apiRequests:["GET /api/v1/me/resume"],consoleErrors:[],pageErrors:[],failedRequests:[],
-    screenshots:[],failure:(if $s=="pass" then null else "假旅程按要求失败" end)}' \
+    screenshots:[],failure:(if $s=="pass" then null
+                            elif $s=="blocked" then "假旅程按要求环境阻塞"
+                            else "假旅程按要求失败" end)}' \
   >"$FRAGMENT_DIR/$J.json"
 
 if [ "${FAKE_LEAK:-0}" = '1' ] && [ "$J" = 'recruiter-crud' ]; then
@@ -368,7 +372,7 @@ reset_case(){
   export AGXP_MONOREPO_DIR="$MONO"
   export FAKE_HEALTH_SEQ='0' FAKE_PREPARE_RC=0 FAKE_UP_RC=0 FAKE_BOOTSTRAP_RC=0
   export FAKE_CONVERGE_SEQ='0' FAKE_VERIFY_SEQ='0' FAKE_CLEANUP_SEQ='0' FAKE_INTERRUPTED=0
-  export FAKE_JOURNEY_FAIL='' FAKE_JOURNEY_SIGINT='' FAKE_ISOLATION_RC=0
+  export FAKE_JOURNEY_FAIL='' FAKE_JOURNEY_BLOCK='' FAKE_JOURNEY_SIGINT='' FAKE_ISOLATION_RC=0
   export FAKE_PORT_BUSY=0 FAKE_DOCKER_RC=0 FAKE_DOCTOR_RC=0 FAKE_VITE_START_RC=0 FAKE_LOGOUT_RC=0
   export FAKE_AB_VERSION='agent-browser 0.27.2'
   export FAKE_UA='Mozilla/5.0 (iPhone) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.55 Mobile Safari/537.36'
@@ -718,6 +722,33 @@ assert_eq '四条未选旅程都是 skipped' "$(jq -r '[.journeys[]|select(.stat
 assert_eq '分类 PASS' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'PASS'
 assert_eq '只比这一条旅程的场景' "$(jq -r '[.visual.scenes[]|select(.status=="pass")]|length' "$(report_json)" 2>/dev/null)" '1'
 assert_true '前置旅程的真实分片另存一处' "[ -f '$(run_dir)/preconditions/candidate-load.json' ]"
+
+# R2 / 设计稿 §14 失败分类学：前置加载的失败成因必须分两路报。
+# 前置分片写进 preconditions/，报告永远读不到它，所以「前置怎么败的」只能由
+# 编排层翻译进被选 CRUD 的那一份分片 —— 一律写 skipped 就会把环境问题
+# （本机 OTP 材料超时之类）洗成「已选旅程未执行」＝FUNCTIONAL_FAILED/1。
+testcase '单旅程模式：加载前置环境阻塞（75）判 INFRA_BLOCKED 退出 75'
+reset_case; setup_baseline
+export FAKE_JOURNEY_BLOCK='candidate-load'
+run_runner --journey candidate-crud
+assert_eq '退出码 75（不是 1）' "$RC" 75
+assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'INFRA_BLOCKED'
+assert_eq '被选 CRUD 记 blocked（不是 skipped）' \
+  "$(jq -r '.journeys[]|select(.journey=="candidate-crud")|.status' "$(report_json)" 2>/dev/null)" 'blocked'
+assert_contains '前置确实跑过' 'journey candidate-load' "$CALLS"
+assert_missing '前置阻塞后不再跑 CRUD' 'journey candidate-crud' "$CALLS"
+
+# 反方向：前置是普通功能失败时结论必须仍是 FUNCTIONAL_FAILED/1。
+# 「前置没过就一律报环境阻塞」会把真实业务失败藏进 75，同样是分类学违规。
+testcase '单旅程模式：加载前置功能失败（1）判 FUNCTIONAL_FAILED 退出 1'
+reset_case; setup_baseline
+export FAKE_JOURNEY_FAIL='candidate-load'
+run_runner --journey candidate-crud
+assert_eq '退出码 1（不是 75）' "$RC" 1
+assert_eq '分类 FUNCTIONAL_FAILED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'FUNCTIONAL_FAILED'
+assert_eq '被选 CRUD 记 skipped' \
+  "$(jq -r '.journeys[]|select(.journey=="candidate-crud")|.status' "$(report_json)" 2>/dev/null)" 'skipped'
+assert_missing '前置失败后不再跑 CRUD' 'journey candidate-crud' "$CALLS"
 
 testcase '产物里出现敏感字面量：判 CLEANUP_FAILED 退出 1'
 reset_case; setup_baseline

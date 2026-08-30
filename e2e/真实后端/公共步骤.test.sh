@@ -620,7 +620,7 @@ assert_eq '台账没有多出任何字段' \
   'candidate_intention_created,candidate_resume_file_names,recruiter_job_titles,run_id,schema_version'
 assert_eq '台账仍是 0600' "$(ls -l "$PRIVATE_JOURNAL" | cut -c2-10)" 'rw-------'
 assert_eq '原子替换后没有残留临时文件' \
-  "$(find "$SANDBOX/run/private" -name '.cleanup.json.*' | wc -l | tr -d ' ')" '0'
+  "$(find "$SANDBOX/run/private" -name '.run-journal.json.*' | wc -l | tr -d ' ')" '0'
 # 每个写块做完都硬刷新一次：改名 / 建意向 / 改意向 / 删意向 / 改档 / 还原档 /
 # 传附件 / 替换附件 / 删附件 / 还原姓名
 assert_true '每个 mutation 块之后都硬刷新' \

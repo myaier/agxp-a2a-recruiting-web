@@ -202,6 +202,17 @@ write_skipped(){
     >"$FRAGMENT_DIR_MAIN/$1.json"
 }
 
+# 被选中却因**环境阻塞**没能执行的旅程写 blocked 分片。
+# 这条路径和 write_skipped 只差一个 status，但结论完全相反：报告读到 blocked 升级成
+# INFRA_BLOCKED（75），读到被选中的 skipped 则判「已选旅程未执行」＝FUNCTIONAL_FAILED（1）。
+# 环境问题写成 skipped 就是设计稿 §14 分类学违规。
+write_blocked(){
+  jq -n --arg j "$1" --arg m "$2" --arg f "$3" \
+    '{schemaVersion:1,journey:$j,status:"blocked",milestone:$m,apiRequests:[],consoleErrors:[],
+      pageErrors:[],failedRequests:[],screenshots:[],failure:$f}' \
+    >"$FRAGMENT_DIR_MAIN/$1.json"
+}
+
 # ── 收尾（幂等，只跑一次）──────────────────────────────────────────
 
 on_signal(){
@@ -721,11 +732,28 @@ run_precondition(){
 run_precondition 'candidate-load' 'candidate-crud'
 run_precondition 'recruiter-load' 'recruiter-crud'
 
-# 前置失败＝这一屏的数据本来就读不出来，依赖它的 CRUD 不再跑（失败会被记成「已选旅程未执行」）。
+# 前置失败＝这一屏的数据本来就读不出来，依赖它的 CRUD 不再跑。
 precondition_ok(){
   local load="$1" rc
   rc="$(journey_rc "$load")"
   [ "$rc" = 'none' ] || [ "$rc" = '0' ]
+}
+
+# 前置的分片写在 preconditions/ 里，报告读取端永远看不到它 —— 所以「前置是怎么败的」
+# 只能由这里翻译进被选 CRUD 的那一份分片，而且必须按设计稿 §14 分两路：
+#   · 前置以 75 退出＝环境阻塞（本机 OTP 材料超时、Chrome 没起来一类），
+#     CRUD 记 blocked，报告升级成 INFRA_BLOCKED（75）；
+#   · 前置以其它非零码退出＝真实功能失败，CRUD 照旧记 skipped，
+#     报告判「已选旅程未执行」＝FUNCTIONAL_FAILED（1）。
+# 一律写 skipped 会把环境问题报成业务失败；一律写 blocked 会把业务失败藏进 75。
+skip_crud_for_precondition(){
+  local crud="$1" load="$2" rc
+  rc="$(journey_rc "$load")"
+  if [ "$rc" = '75' ]; then
+    write_blocked "$crud" '未开始' "同角色加载前置环境阻塞（$load 退出码 75），未执行"
+  else
+    write_skipped "$crud" '同角色加载前置失败，未执行'
+  fi
 }
 
 for journey in $ALL_JOURNEYS; do
@@ -735,14 +763,14 @@ for journey in $ALL_JOURNEYS; do
       if precondition_ok 'candidate-load'; then
         run_journey "$journey" "$FRAGMENT_DIR_MAIN"
       else
-        write_skipped "$journey" '同角色加载前置失败，未执行'
+        skip_crud_for_precondition "$journey" 'candidate-load'
       fi
       ;;
     recruiter-crud)
       if precondition_ok 'recruiter-load'; then
         run_journey "$journey" "$FRAGMENT_DIR_MAIN"
       else
-        write_skipped "$journey" '同角色加载前置失败，未执行'
+        skip_crud_for_precondition "$journey" 'recruiter-load'
       fi
       ;;
     session-isolation)
