@@ -1449,6 +1449,8 @@ interface P5Case记录形 {
   解析: 'none' | 'pending' | 'failed' | 'succeeded';
   /** 非法分支：原样覆盖 state wire（未知词 / 矩阵外四元组），decode 必须 fail closed */
   state覆盖?: Record<string, unknown>;
+  /** P7（Task 7）：completed + complete 时的已发布会话坐标；handoff_pending 恒 null。 */
+  conversationRef: string | null;
 }
 
 const P5阶段顺序 = ['anonymous_screening', 'resume_submission', 'needs_coordination', 'intent_confirmation'] as const;
@@ -1500,6 +1502,7 @@ function P5Case(基: Partial<P5Case记录形> & Pick<
     已绑定: false,
     已披露: false,
     解析: 'none' as P5Case记录形['解析'],
+    conversationRef: null,
     ...基,
   } as P5Case记录形;
   c.阶段区们 = 基.阶段区们 ?? P5阶段区组(c);
@@ -1583,6 +1586,10 @@ function P5详情wire(c: P5Case记录形, 角色: P5角色词): Record<string, u
     详情.current_coordination = { ...c.协同, required_roles: [...c.协同.required_roles] };
   }
   if (c.终局 && c.lifecycle !== 'open') 详情.terminal_summary = { ...c.终局 };
+  // P7（Task 7）：completed + complete 才携带已发布会话坐标；pending/open/ended 必缺席
+  if (c.lifecycle === 'completed' && c.step === 'complete' && c.conversationRef !== null) {
+    详情.conversation_ref = c.conversationRef;
+  }
   详情[角色 === 'candidate' ? 'intention_id' : 'candidate_alias'] = 角色 === 'candidate' ? c.intentionId : c.alias;
   return 详情;
 }
@@ -1719,6 +1726,91 @@ function 创建P5MatchCasefixture(): P5MatchCasefixture形 {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// P7 真人会话域可变 fixture（Task 7）。双端（候选 me / 招聘 recruiter）conversations
+// 的收件箱、详情、消息分页、纯文本发送（Idempotency-Key 同键重放只落一条）、
+// forward-only 已读（PUT 后该角色未读归零）与 context 投影（available /
+// unavailable 演练）。消息分页响应键是实际实现的 { messages, next_cursor }，
+// 已读回执是 { read_through_message_id }。会话不能由浏览器创建：fixture 只预置
+// 3003 一条会话，9900 可标记不存在（foreign / wrong-role 404 演练）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+const P7会话编号 = {
+  会话: '3003',
+  案例: 'mc_p7_000000000000000000000001',
+  职位: 'job_00112233445566778899aabbccddeeff',
+  简历: 'rf_00112233445566778899aabbccddeeff',
+} as const;
+
+const P7标记 = {
+  职位名: 'P7 Fixture 后端工程师',
+  地点: 'P7 Fixture 市',
+  候选代号: 'candidate-p7fixture01',
+  候选消息: 'P7 Fixture 候选：想约明天下午聊聊',
+  招聘消息: 'P7 Fixture 招聘：可以，下午三点见',
+  招聘回复: 'P7 Fixture 招聘：没问题，明天下午三点',
+} as const;
+
+type P7角色词 = 'candidate' | 'recruiter';
+
+interface P7消息wire形 {
+  message_id: string;
+  kind: 'user_text';
+  sender_role: P7角色词;
+  content: string;
+  created_at: string;
+}
+
+interface P7FixtureState {
+  messages: Record<string, P7消息wire形[]>;
+  unread: Record<P7角色词, number>;
+  sends: Array<{ role: P7角色词; key: string; content: string }>;
+  reads: Array<{ role: P7角色词; through: string }>;
+  /** 详情 context 投影：'unavailable' 或显式上下文（ref 可缺省隐藏动作）；缺省 available + 职位上下文 */
+  contexts: Record<string, { primary_label: string; secondary_label: string; job_ref?: string; resume_ref?: string } | 'unavailable'>;
+  /** 标记为不存在的会话坐标（foreign / wrong-role 404） */
+  不存在: string[];
+  /** 发送首答 503 operation_outcome_unknown（消息已落库、响应未知）：受控重试同键重放收敛一条 */
+  首答未知: boolean;
+}
+
+function 创建P7fixture(): P7FixtureState {
+  return {
+    messages: { [P7会话编号.会话]: [] },
+    unread: { candidate: 0, recruiter: 0 },
+    sends: [],
+    reads: [],
+    contexts: {},
+    不存在: [],
+    首答未知: false,
+  };
+}
+
+/** 会话条 wire：双端共用一条 3003；context 不可用只降级展示字段（消息事实仍在）。 */
+function P7会话项wire(P7域: P7FixtureState, id: string, role: P7角色词): Record<string, unknown> {
+  const 消息们 = P7域.messages[id] ?? [];
+  const 最后 = 消息们.at(-1) ?? null;
+  const 上下文 = P7域.contexts[id] ?? {
+    primary_label: P7标记.职位名,
+    secondary_label: role === 'candidate' ? P7标记.地点 : P7标记.候选代号,
+    job_ref: P7会话编号.职位,
+    resume_ref: P7会话编号.简历,
+  };
+  const 条: Record<string, unknown> = {
+    conversation_id: id,
+    case_id: P7会话编号.案例,
+    kind: 'human_handoff',
+    last_message: 最后 === null
+      ? null
+      : { message_id: 最后.message_id, sender_role: 最后.sender_role, preview: 最后.content, created_at: 最后.created_at },
+    last_activity_at: 最后?.created_at ?? '2026-08-30T00:00:00Z',
+    unread_count: P7域.unread[role],
+    context_status: 上下文 === 'unavailable' ? 'unavailable' : 'available',
+  };
+  if (上下文 !== 'unavailable') 条.context = { ...上下文 };
+  return 条;
+}
+
 interface BFF路由选项 {
   记录目录请求: (path: string) => void;
   登录尝试id: string;
@@ -1744,6 +1836,8 @@ interface BFF路由选项 {
   /** P5（Task 8）：MatchCase 域可变 fixture（双端工作区/历史/详情/S0–S3 命令/叮嘱/披露 PDF）。
    *  缺席时这些路由走兜底空信封 → strict decode 拒绝（Mock 内容不顶替 HTTP 的既有边界） */
   P5MatchCasefixture?: P5MatchCasefixture形;
+  /** P7（Task 7）：真人会话域可变 fixture（收件箱/详情/消息/发送/已读 + context 演练）。 */
+  P7fixture?: P7FixtureState;
 }
 
 /** 请求拦截收到的请求投影；multipart 的 metadata 只在测试进程内比对 */
@@ -1800,10 +1894,12 @@ function 解metadata部件(字节: Buffer): unknown {
 }
 
 /** 安装 /api/v1 route fixture：按 path + method 匹配，返回 fixture 信封；P6/P4 可变状态经返回值暴露给测试断言。 */
-async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p6: P6FixtureState; p4: P4发现fixture形 | null }> {
+async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p6: P6FixtureState; p4: P4发现fixture形 | null; p7: P7FixtureState | null }> {
   const 会话已登录 = 选项.会话已登录 ?? true;
   // P4 发现域：可变 fixture 状态由用例自持（handler 直读直写）；路由映射表与委托登记跨请求存活
   const P4域 = 选项.发现fixture ?? null;
+  // P7（Task 7）：真人会话域可变 fixture —— 函数级声明（return 也要暴露给测试断言）
+  const P7域 = 选项.P7fixture ?? null;
   const p4委托表 = new Map<string, { 回执: P4委托回执形; role: 'candidate' | 'recruiter'; 读数: number }>();
   const p4刷新503键 = new Set<string>();
   const p4委托503键 = new Set<string>();
@@ -3431,10 +3527,81 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       }
     }
 
+    // ── P7 真人会话域（Task 7）：可变 fixture 在场才应答；每个 JSON 应答带 no-store。
+    //    路由匹配：收件箱（无坐标）→ 详情 / 消息 / 已读（带坐标）。发送登记
+    //    Idempotency-Key：同键重放回已落库的那一条（不重复追加）；首答未知分支
+    //    消息已落库但响应 503，客户端受控重试同键收敛。已读 PUT 后该角色未读归零。──
+    if (P7域) {
+      const P7答复 = async (状态: number, json: unknown) => {
+        await route.fulfill({ status: 状态, json, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+      };
+      const P7匹配 = /^\/api\/v1\/(me|recruiter)\/conversations(?:\/([^/]+))?(?:\/(messages|read))?$/.exec(path);
+      if (P7匹配) {
+        const 角色: P7角色词 = P7匹配[1] === 'me' ? 'candidate' : 'recruiter';
+        const 坐标 = P7匹配[2] ?? null;
+        const 子路径 = P7匹配[3] ?? null;
+        if (坐标 === null && method === 'GET') {
+          await P7答复(200, 信封({ items: [P7会话项wire(P7域, P7会话编号.会话, 角色)], next_cursor: null }));
+          return;
+        }
+        if (坐标 !== null && !P7域.不存在.includes(坐标)) {
+          if (子路径 === null && method === 'GET') {
+            await P7答复(200, 信封(P7会话项wire(P7域, 坐标, 角色)));
+            return;
+          }
+          if (子路径 === 'messages' && method === 'GET') {
+            await P7答复(200, 信封({ messages: P7域.messages[坐标] ?? [], next_cursor: null }));
+            return;
+          }
+          if (子路径 === 'messages' && method === 'POST') {
+            const 键 = 请求.headers()['idempotency-key'] ?? '';
+            const 正文 = (body as { content?: string }).content ?? '';
+            P7域.sends.push({ role: 角色, key: 键, content: 正文 });
+            const 已落库 = (P7域.messages[坐标] ?? []).find((条) => 条.sender_role === 角色 && 条.content === 正文);
+            if (已落库) {
+              // 同键重放 / 同文重复：幂等服务端只回已落库的那一条，绝不二次追加
+              await P7答复(200, 信封(已落库));
+              return;
+            }
+            const 新消息: P7消息wire形 = {
+              message_id: `${4005 + P7域.sends.length}`,
+              kind: 'user_text', sender_role: 角色, content: 正文, created_at: '2026-08-30T02:00:00Z',
+            };
+            (P7域.messages[坐标] ??= []).push(新消息);
+            if (P7域.首答未知) {
+              P7域.首答未知 = false; // 消息已落库，但把首答替换成 503 结果未知
+              await route.fulfill({
+                status: 503,
+                json: { error: { type: 'operation_outcome_unknown', message: 'The outcome is unknown.' } },
+              });
+              return;
+            }
+            await P7答复(200, 信封(新消息));
+            return;
+          }
+          if (子路径 === 'read' && method === 'PUT') {
+            const through = (body as { read_through_message_id?: string }).read_through_message_id ?? '';
+            P7域.reads.push({ role: 角色, through });
+            P7域.unread[角色] = 0;
+            await P7答复(200, 信封({ read_through_message_id: through }));
+            return;
+          }
+        }
+        if (坐标 !== null && P7域.不存在.includes(坐标)) {
+          // foreign / wrong-role / unpublished 统一 404
+          await route.fulfill({
+            status: 404,
+            json: { error: { type: 'conversation_not_found', message: 'The conversation does not exist.', request_id: 'p7-fixture' } },
+          });
+          return;
+        }
+      }
+    }
+
     // 兜底：未匹配的 /api/v1/* 返回 200 空信封，避免测试因未处理路由挂死
     await route.fulfill({ status: 200, json: 信封(null) });
   });
-  return { p6, p4: P4域 };
+  return { p6, p4: P4域, p7: P7域 };
 }
 
 /**
@@ -6628,9 +6795,9 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     expect(请求序.filter((项) => /chat|conversation|handoff/i.test(项))).toEqual([]);
   });
 
-  test('completed 移交只有准备文案：会话路由零请求、开始私聊恒禁用 @backend', async ({ page }) => {
+  test('completed 移交两步：pending 继续低频重读恒禁用，发布后进入 P7 会话路由 @backend', async ({ page }) => {
     const 请求序: string[] = [];
-    await 装P5候选(page, { 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
+    const fixture = await 装P5候选(page, { 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
 
     await page.goto('/#/archived');
     await expect(page.getByText('已谈成')).toBeVisible({ timeout: 15_000 });
@@ -6638,7 +6805,7 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await page.getByText(P5标记.己职位名).click();
     await expect(page.getByText('双方已确认，正在创建会话').first()).toBeVisible({ timeout: 10_000 });
 
-    // 「开始私聊」在场但恒禁用：准备中，会话标识属 P7
+    // 「开始私聊」在场但恒禁用：准备中，会话坐标只能来自服务端发布
     const 私聊键 = page.getByRole('button', { name: '开始私聊' });
     await expect(私聊键).toBeVisible();
     await expect(私聊键).toBeDisabled();
@@ -6646,15 +6813,32 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await expect(page.getByRole('button', { name: '确认意向' })).toHaveCount(0);
     await expect(page.getByPlaceholder('有想法就告诉你的AI代理')).toHaveCount(0);
 
-    // 终局停节拍：3 秒详情节拍在终局即停（计数冻结）
+    // P7 Task 7：pending 不是详情终局 —— 3 秒节拍继续权威重读（same-party 长期
+    // pending 同形态：多拍后仍是准备态，绝不出现内部错误词或前端超时终态）
     const 详情GET数 = () => 请求序.filter((项) => 项 === `GET /api/v1/me/match-cases/${P5编号.己}`).length;
-    await page.waitForTimeout(4_500);
-    const 停拍数 = 详情GET数();
+    await page.waitForTimeout(4_000);
+    const 拍后数 = 详情GET数();
     await page.waitForTimeout(3_500);
-    expect(详情GET数()).toBe(停拍数);
+    expect(详情GET数()).toBeGreaterThan(拍后数); // 节拍仍在走
+    await expect(私聊键).toBeDisabled();
+    await expect(page.getByText('invalid_actor_identity')).toHaveCount(0);
+    await expect(page.getByText('真人会话已建立')).toHaveCount(0);
 
-    // 会话路由从未被请求
-    expect(请求序.filter((项) => /chat|conversation|handoff/i.test(项))).toEqual([]);
+    // 会话坐标在发布前绝不被请求（P5 阶段零会话路由）
+    const 发布前会话请求 = 请求序.filter((项) => /\/conversations|\/chat\//i.test(项)).length;
+
+    // ── 服务端发布：completed + complete + conversation_ref ──
+    const 己 = fixture.cases[P5编号.己]!;
+    己.step = 'complete';
+    己.conversationRef = P7会话编号.会话;
+
+    // 下一拍权威重读见到发布：文案切换、按钮启用
+    await expect(page.getByText('真人会话已建立').first()).toBeVisible({ timeout: 10_000 });
+    await expect(私聊键).toBeEnabled({ timeout: 5_000 });
+    await 私聊键.click();
+    await expect(page).toHaveURL(new RegExp(`#/chat/human/${P7会话编号.会话}$`), { timeout: 10_000 });
+    // 发布前 P5 屏从未请求过会话路由（发布后的进入是用户主动导航）
+    expect(发布前会话请求).toBe(0);
   });
 
   test('ended/completed 两架分开读取，终局详情只读 @backend', async ({ page }) => {
@@ -6783,5 +6967,320 @@ test.describe('P5 Mock 数据源隔离 @mock', () => {
     // P5 域在 Mock 下零请求：match-cases 请求清单为空（空列表），整段会话无任何 /api/v1
     expect(matchCase请求).toEqual([]);
     expect(apiRequests).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P7 真人会话 fixture（Task 7）—— 双端 conversations 的浏览器验收旅程。
+// 原生 WebSocket 在 app 加载前 stub（__emitP7/__P7断开 只存在于测试 init script，
+// 产品 bundle 不含该 seam）；帧不携带真相：内容一律经 no-store HTTP 重拉上屏。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** app 加载前 stub 原生 WebSocket；测试 seam：__emitP7(帧) / __P7断开() / __P7套接字数()。 */
+async function 安装P7事件桩(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const 套接字们: Array<{
+      url: string;
+      onopen: (() => void) | null;
+      onmessage: ((事件: { data: string }) => void) | null;
+      onclose: (() => void) | null;
+      onerror: (() => void) | null;
+      已关: boolean;
+    }> = [];
+    class 假WebSocket {
+      url: string;
+      onopen: (() => void) | null = null;
+      onmessage: ((事件: { data: string }) => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      已关 = false;
+      constructor(url: string) {
+        this.url = url;
+        套接字们.push(this);
+        // 模拟真实连接成功：构造后的下一轮事件循环触发 onopen（handlers 已由 adapter 挂好）
+        setTimeout(() => {
+          if (!this.已关) this.onopen?.();
+        }, 0);
+      }
+      close() {
+        if (this.已关) return;
+        this.已关 = true;
+        this.onclose?.();
+      }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).WebSocket = 假WebSocket;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__P7套接字们 = 套接字们;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__emitP7 = (帧: unknown) => {
+      for (const 套 of 套接字们) {
+        if (!套.已关) 套.onmessage?.({ data: JSON.stringify(帧) });
+      }
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__P7断开 = () => {
+      for (const 套 of [...套接字们]) 套.onclose?.();
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__P7套接字数 = () => 套接字们.filter((套) => !套.已关).length;
+  });
+}
+
+/** P7 候选端安装：candidate 会话 + P7 fixture + 事件桩（app 加载前）。 */
+async function 装P7候选(
+  page: Page,
+  选项: {
+    fixture?: P7FixtureState;
+    覆盖?: BFF路由选项['覆盖'];
+    请求拦截?: (请求: 拦截请求形) => void;
+  } = {},
+): Promise<P7FixtureState> {
+  const fixture = 选项.fixture ?? 创建P7fixture();
+  await 安装P7事件桩(page);
+  await 安装BFF路由(page, {
+    登录尝试id: 'att-p7-candidate',
+    记录目录请求: () => undefined,
+    主体初始角色: 'candidate',
+    隐私fixture: P3隐私fixture(),
+    P7fixture: fixture,
+    覆盖: 选项.覆盖,
+    请求拦截: 选项.请求拦截,
+  });
+  return fixture;
+}
+
+/** P7 招聘端安装：recruiter 会话（组织 fixture）+ P7 fixture + 事件桩。 */
+async function 装P7招聘(
+  page: Page,
+  选项: {
+    fixture?: P7FixtureState;
+    P5MatchCasefixture?: P5MatchCasefixture形;
+    请求拦截?: (请求: 拦截请求形) => void;
+  } = {},
+): Promise<P7FixtureState> {
+  const fixture = 选项.fixture ?? 创建P7fixture();
+  await 安装P7事件桩(page);
+  await 安装BFF路由(page, {
+    登录尝试id: 'att-p7-recruiter',
+    记录目录请求: () => undefined,
+    招聘组织Fixture: 带企业关系(
+      P1C招聘组织Fixture,
+      [P1C管理员关系],
+      { [P1C标记.组织甲编号]: P1C组织甲() },
+      [P4招聘岗位({ job_id: P5编号.job, title: P5标记.招聘岗标题 })],
+    ),
+    主体初始角色: 'recruiter',
+    P5MatchCasefixture: 选项.P5MatchCasefixture,
+    P7fixture: fixture,
+    请求拦截: 选项.请求拦截,
+  });
+  return fixture;
+}
+
+/** 预置一条 recruiter 消息的候选会话（read-through 旅程用）。 */
+function P7带消息fixture(消息: string): P7FixtureState {
+  const fixture = 创建P7fixture();
+  fixture.messages[P7会话编号.会话] = [{
+    message_id: '4004', kind: 'user_text', sender_role: 'recruiter', content: 消息, created_at: '2026-08-30T01:00:00Z',
+  }];
+  return fixture;
+}
+
+test.describe('P7 真人会话 fixture @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+  test.use({ timeout: 120_000 });
+
+  test('候选端收件箱未读 → 进会话 read-through → 权威收件箱归零 @backend', async ({ page }) => {
+    const fixture = P7带消息fixture(P7标记.招聘消息);
+    fixture.unread.candidate = 1;
+    const 请求序: string[] = [];
+    await 装P7候选(page, {
+      fixture,
+      请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`),
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    // 主壳首屏水合收件箱：未打开消息 Tab 之前，底部角标已是已加载未读（=1）
+    await expect(page.locator('nav').getByText('1', { exact: true })).toBeVisible({ timeout: 15_000 });
+
+    // 消息 Tab：行未读胶囊 + 点击只导航（绝不本地清零）。角标并入按钮无障碍名，用子串匹配。
+    await page.locator('nav').getByRole('button').filter({ hasText: '消息' }).click();
+    await expect(page.getByText(P7标记.职位名)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId(`unread-${P7会话编号.会话}`)).toHaveText('1');
+    await page.getByText(P7标记.职位名).click();
+    await expect(page).toHaveURL(new RegExp(`#/chat/human/${P7会话编号.会话}$`), { timeout: 10_000 });
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 10_000 });
+
+    // read-through：渲染到的最新 user_text 恰好提交一次，PUT 后权威未读归零
+    await expect.poll(
+      () => fixture.reads.filter((条) => 条.role === 'candidate' && 条.through === '4004').length,
+      { timeout: 15_000 },
+    ).toBe(1);
+    expect(fixture.unread.candidate).toBe(0);
+    // 同一 target 重渲染零重复提交
+    await page.waitForTimeout(1_000);
+    expect(fixture.reads.filter((条) => 条.role === 'candidate').length).toBe(1);
+  });
+
+  test('候选端发送：首答结果未知经同键重放收敛，消息只落一条 @backend', async ({ page }) => {
+    const fixture = P7带消息fixture(P7标记.招聘消息);
+    fixture.首答未知 = true; // 消息已落库，但首答 503 operation_outcome_unknown
+    await 装P7候选(page, { fixture });
+
+    await page.goto(`/#/chat/human/${P7会话编号.会话}`);
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
+    const 输入框 = page.getByRole('textbox', { name: '输入消息' });
+    await 输入框.fill(P7标记.候选消息);
+    await 输入框.press('Enter');
+
+    // 权威重拉见到同文消息：确认成功、无未知提示、恰一个气泡
+    await expect(page.getByText(P7标记.候选消息)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('暂时无法确认是否发送成功')).toHaveCount(0);
+    // 幂等服务端：首答 503 后受控重试同键重放 —— 两笔同键 POST、只落一条消息
+    const 候选发送 = fixture.sends.filter((条) => 条.content === P7标记.候选消息);
+    expect(候选发送.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(候选发送.map((条) => 条.key)).size).toBe(1);
+    expect(fixture.messages[P7会话编号.会话]!.filter((条) => 条.content === P7标记.候选消息)).toHaveLength(1);
+    // 草稿已清空
+    await expect(输入框).toHaveValue('');
+  });
+
+  test('招聘端经内容无关失效事件 HTTP 重拉看到候选新消息并回复 @backend', async ({ page }) => {
+    const fixture = 创建P7fixture();
+    fixture.messages[P7会话编号.会话] = [{
+      message_id: '4004', kind: 'user_text', sender_role: 'candidate', content: P7标记.候选消息, created_at: '2026-08-30T01:00:00Z',
+    }];
+    const 请求序: string[] = [];
+    await 装P7招聘(page, {
+      fixture,
+      请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`),
+    });
+
+    await page.goto(`/#/hr/chat/${P7会话编号.会话}`);
+    await expect(page.getByText(P7标记.候选消息)).toBeVisible({ timeout: 15_000 });
+
+    // 服务端事实先变（候选新消息落库），页面上还看不到
+    fixture.messages[P7会话编号.会话]!.push({
+      message_id: '5006', kind: 'user_text', sender_role: 'candidate', content: P7标记.招聘回复, created_at: '2026-08-30T01:30:00Z',
+    });
+    await expect(page.getByText(P7标记.招聘回复)).toHaveCount(0);
+
+    // 内容无关帧：只触发 no-store HTTP 重拉
+    const 消息GET数 = () => 请求序.filter((项) => 项 === `GET /api/v1/recruiter/conversations/${P7会话编号.会话}/messages`).length;
+    const 帧前 = 消息GET数();
+    await page.evaluate(() =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__emitP7({ type: 'recruitment.conversation_changed', conversation_id: '3003', reason: 'message_created' }));
+    await expect(page.getByText(P7标记.招聘回复)).toBeVisible({ timeout: 10_000 });
+    expect(消息GET数()).toBeGreaterThan(帧前); // 上屏来自 HTTP，不是帧
+
+    // 招聘回复走同一发送链
+    const 输入框 = page.getByRole('textbox', { name: '输入消息' });
+    await 输入框.fill(P7标记.招聘消息);
+    await 输入框.press('Enter');
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 10_000 });
+    expect(fixture.sends.some((条) => 条.role === 'recruiter' && 条.content === P7标记.招聘消息)).toBe(true);
+  });
+
+  test('断线重连无条件重拉当前角色收件箱与当前会话 @backend', async ({ page }) => {
+    const fixture = P7带消息fixture(P7标记.招聘消息);
+    const 请求序: string[] = [];
+    await 装P7候选(page, {
+      fixture,
+      请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`),
+    });
+
+    await page.goto(`/#/chat/human/${P7会话编号.会话}`);
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
+
+    const 收件箱GET数 = () => 请求序.filter((项) => 项 === 'GET /api/v1/me/conversations').length;
+    const 消息GET数 = () => 请求序.filter((项) => 项 === `GET /api/v1/me/conversations/${P7会话编号.会话}/messages`).length;
+    const 断前 = [收件箱GET数(), 消息GET数()];
+    // 主动断开（socket 关闭）→ 1s 退避重连 → onOpen 无条件重拉可见范围
+    await page.evaluate(() =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__P7断开());
+    await expect.poll(() => 收件箱GET数(), { timeout: 10_000 }).toBeGreaterThan(断前[0]);
+    await expect.poll(() => 消息GET数(), { timeout: 5_000 }).toBeGreaterThan(断前[1]);
+  });
+
+  test('context 不可用保留消息、隐藏上下文动作，提供重新加载会话信息 @backend', async ({ page }) => {
+    const fixture = P7带消息fixture(P7标记.招聘消息);
+    fixture.contexts[P7会话编号.会话] = 'unavailable';
+    await 装P7候选(page, { fixture });
+
+    await page.goto(`/#/chat/human/${P7会话编号.会话}`);
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '看职位' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '电话' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '微信' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '重新加载会话信息' })).toBeVisible();
+  });
+
+  test('foreign/wrong-role 404 不保留上一会话残留 @backend', async ({ page }) => {
+    const fixture = P7带消息fixture(P7标记.招聘消息);
+    fixture.不存在 = ['9900'];
+    await 装P7候选(page, { fixture });
+
+    await page.goto(`/#/chat/human/${P7会话编号.会话}`);
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
+
+    // 深链不存在的会话：404 fail closed，上一会话内容不泄漏
+    await page.goto('/#/chat/human/9900');
+    await expect(page.getByText('这段会话不存在或已不可访问').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(P7标记.招聘消息)).toHaveCount(0);
+    await expect(page.getByText(P7标记.职位名)).toHaveCount(0); // 详情 context 残留也不泄漏
+  });
+
+  test('P5 发布后招聘端「开始私聊」进入企业参数路由 @backend', async ({ page }) => {
+    const P5fixture = 创建P5MatchCasefixture();
+    const 己 = P5fixture.cases[P5编号.己]!;
+    己.step = 'complete';
+    己.conversationRef = P7会话编号.会话;
+    await 装P7招聘(page, {
+      fixture: 创建P7fixture(),
+      P5MatchCasefixture: P5fixture,
+    });
+
+    await page.goto(`/#/hr/candidate/${P5编号.己}`);
+    await expect(page.getByText('真人会话已建立').first()).toBeVisible({ timeout: 15_000 });
+    const 私聊键 = page.getByRole('button', { name: '开始私聊' });
+    await expect(私聊键).toBeEnabled();
+    await 私聊键.click();
+    await expect(page).toHaveURL(new RegExp(`#/hr/chat/${P7会话编号.会话}$`), { timeout: 10_000 });
+  });
+});
+
+// ── P7 Mock 隔离：Mock 双端零 P7 请求与零事件连接 ──────────────────────────────
+test.describe('P7 Mock 数据源隔离 @mock', () => {
+  test('Mock 双端消息旅程零 /conversations 请求与零 WebSocket @mock', async ({ page }) => {
+    await 安装P7事件桩(page);
+    const 会话请求: string[] = [];
+    page.on('request', (请求) => {
+      if (/\/api\/v1\/(me|recruiter)\/conversations/.test(请求.url())) {
+        会话请求.push(请求.url());
+      }
+    });
+
+    // Mock 无路由守卫：直接进两端主壳（零登录旅程，聚焦 P7 隔离断言）
+    await page.goto('/#/app');
+    await page.locator('nav').getByRole('button').filter({ hasText: '消息' }).click();
+    await expect(page.getByText('AI代理动态')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('林筱')).toBeVisible();
+    // 企业端镜像
+    await page.goto('/#/hr');
+    await page.locator('nav').getByRole('button').filter({ hasText: '消息' }).click();
+    await expect(page.getByText('AI代理动态')).toBeVisible({ timeout: 10_000 });
+
+    // 全程零 P7 HTTP 与零事件连接
+    expect(会话请求).toEqual([]);
+    // 零事件连接：Vite dev 的 HMR 也走 WebSocket（非事件端点），只统计 /api/v1/events/live
+    const 事件套接字数 = await page.evaluate(() =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((window as any).__P7套接字们 as Array<{ url: string }>)
+        .filter((套) => 套.url.includes('/api/v1/events/live')).length);
+    expect(事件套接字数).toBe(0);
   });
 });

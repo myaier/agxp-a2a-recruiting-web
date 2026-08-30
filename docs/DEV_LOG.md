@@ -113,3 +113,45 @@ anonymous parsed resume, stable P4 alias, structured identity, and P7 conversati
 - 归因核查（controller 附加）：P4 旧例「候选委托：确认前零请求…」的 e2e 失败在分支起点
   `b8bed75`（recalibration 提交）上以同一 Locator（`确认委托AI代理？` 确认层未出现）一致
   复现 —— 继承自分支之前，非本分支引入；仅记账，未处置。
+
+## 2026-08-30 · P7 真人会话前端接线（Recruitment P7 Frontend Wiring）
+
+计划：`docs/superpowers/plans/2026-08-30-recruitment-p7-frontend-wiring.md`（零上下文实施 Plan，Task 0–7 逐任务提交）。
+Spec：`docs/superpowers/specs/2026-08-30-recruitment-p7-frontend-wiring-design.md`。
+
+- 前端基线：`agxp-a2a-recruiting-web@7e75326f9d5924952783082c8372de39cd9b2a86`（merge-base 祖先成立；
+  漂移审计仅含本 Plan/Spec 两份文档提交）。
+- 后端发布基线：`agxp-monorepo origin/release/0.2.5@fa0df4ab7c9cba78d8687d6880560d6a987ec9b2`
+  （fetch 后 `rev-parse` 逐字一致）；合同锚点（`/conversations` 家族、`ConversationMessagesPage`
+  的 `messages` 键、`read_through_message_id`、P5 详情 `conversation_ref`、same-party known issue
+  open）全部在位。
+- 一任务一提交：`git log --oneline`（自基线起）＝ Task 1 strict data source → Task 2 fenced
+  runtime → Task 3 role inboxes → Task 4 conversation pages → Task 5 live events → Task 6 P5
+  publication → Task 7 browser journeys（本条目）。
+- 定向单测回执（Task 7 Step 3）：`npx vitest run src/数据/招聘数据源/真人会话.test.ts
+  src/数据/招聘事件源.test.ts src/状态/后端/真人会话操作.test.ts src/状态/后端/use真人会话事件.test.tsx
+  src/屏幕/P7/Backend会话列表.test.tsx src/屏幕/P7/Backend真人会话.test.tsx
+  src/屏幕/P5/MatchCase详情.test.tsx` → **26 + 13 + 26 + 8 + 10 + 13 + 49 全部通过**（合计 145 passed）。
+- 数据源 Playwright 回执：`npm run test:e2e:data-source -- --grep "P7|真人会话|移交"`
+  → **9 passed**（backend 8：未读→read-through→收件箱归零、发送首答未知同键重放收敛一条、
+  内容无关事件→HTTP 重拉上屏+回复、断线重连无条件重拉、context 不可用降级、foreign 404
+  不留残、P5 pending 继续轮询→发布后进候选参数路由、招聘端 P5 发布进企业参数路由；
+  mock 1：双端零 /conversations 请求与零事件连接）。
+- 不 stub Vite WebSocket upgrade 回执（Task 7 Step 4）：stg Backend dev server
+  （`VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=stg`，127.0.0.1:4182）以
+  `curl --http1.1 -i -N`（Connection: Upgrade / Upgrade: websocket / SW-Version 13 /
+  SW-Key / Origin: http://127.0.0.1:4182）打到 `/api/v1/events/live`：
+  - 观测：Vite dev 日志出现 `ws proxy error: getaddrinfo ENOTFOUND recruitment-stg.agxp.ai`
+    —— 升级请求已越过 Vite 的 **WS 代理转发层**（`ws: true` 生效；不是 Vite HTML、
+    不是 403 invalid_origin、不是连接拒绝），`proxyReqWs` 已执行（DNS 在上游连接阶段失败）。
+  - 环境限制（如实记录）：本执行环境无法解析 `recruitment-stg.agxp.ai`，上游
+    **401 invalid_session 回执未能端到端取得**；`proxyReqWs` 的 Origin 改写接线由
+    `src/配置/vite代理合同.test.ts`（`?raw` 源码合同）与本次 ws-proxy 转发日志共同佐证。
+    待有 stg 网络的环境重跑该 curl 取 401 回执即可闭合。
+- 静态门禁：`npm run typecheck`（tsc -b --noEmit）→ exit 0；`npm run lint`（oxlint）→ exit 0；
+  `npm run build` → built in 648ms，exit 0；`git diff --check` → clean。
+- 权威全量门禁：`npm test` → **1593 passed**，exit 0。
+- 已知问题口径（不宣称已修）：后端 same-party MatchCase 永久 `completed + handoff_pending`
+  在公开 wire 上与普通 pending 同形 —— 前端保持可见期间低频权威重读、恒禁用「开始私聊」、
+  零前端超时终态、零 `invalid_actor_identity` 文案（浏览器旅程已断言）；该产品缝隙待后端
+  P5/P7 侧决策关闭，属 `agxp-monorepo docs/known-issues/recruitment-p7-same-party-matchcase-handoff-stuck.md`。
