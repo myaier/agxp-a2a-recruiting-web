@@ -785,3 +785,49 @@ export interface BFF招聘MatchCase详情 {
   job: BFFMatchCase工作区职位;
   candidate_alias: string;
 }
+
+// ── P7 真人会话域 wire DTO（双端 /api/v1/{me|recruiter}/conversations 家族）──
+// 字段名逐项复制自 recruitment-bff mobile-v1 OpenAPI 的 ConversationItem / ConversationPage /
+// ConversationContext / MessagePreview / ConversationMessage / ConversationMessagesPage /
+// ReadThroughResult；exact key set、坐标十进制模式、RFC3339、unread_count 安全非负整数、
+// context_status↔context 联合不变式与 user_text/conversation_started 两分支由
+// 招聘数据源/真人会话.ts 的 decoder 校验。context 不含真名、电话、微信或简历正文。
+
+export type P7角色 = 'candidate' | 'recruiter';
+
+export interface BFF会话上下文 {
+  primary_label: string;
+  secondary_label: string;
+  job_ref?: string;
+  resume_ref?: string;
+}
+
+export interface BFF消息预览 {
+  message_id: string;
+  sender_role: P7角色;
+  preview: string;
+  created_at: string;
+}
+
+export interface BFF会话项 {
+  conversation_id: string;
+  case_id: string;
+  kind: 'human_handoff';
+  last_message: BFF消息预览 | null;
+  last_activity_at: string;
+  unread_count: number;
+  context_status: 'available' | 'unavailable';
+  context?: BFF会话上下文 | null;
+}
+
+export interface BFF会话消息 {
+  message_id: string;
+  kind: 'user_text' | 'conversation_started';
+  sender_role: P7角色 | 'system';
+  content?: string | null;
+  created_at: string;
+}
+
+export interface BFF会话页 { items: BFF会话项[]; next_cursor: string | null }
+export interface BFF消息页 { messages: BFF会话消息[]; next_cursor: string | null }
+export interface BFF已读回执 { read_through_message_id: string }

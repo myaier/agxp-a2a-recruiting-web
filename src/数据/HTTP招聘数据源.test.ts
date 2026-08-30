@@ -460,7 +460,8 @@ describe('HTTP 招聘数据源', () => {
   // 委托列表 / top 选择仍不进入浏览器 facade。
   // Task 2（P2）：第十个域 facade（附件简历）一并组合进根 facade。
   // Task 1（P5）：第十一个域 facade（MatchCase）一并组合进根 facade。
-  it('根 facade 组合十一个域且不丢公开方法', () => {
+  // Task 1（P7）：第十二个域 facade（真人会话）一并组合进根 facade。
+  it('根 facade 组合十二个域且不丢公开方法', () => {
     const source = 创建HTTP招聘数据源(依赖());
     expect(Object.keys(source).sort()).toEqual([
       '保存简历', '保存招聘方档案', '创建岗位', '创建意向', '创建首次意向', '创建企业管理员申请',
@@ -487,6 +488,8 @@ describe('HTTP 招聘数据源', () => {
       // P5：MatchCase 域
       '读取P5Open列表', '读取P5历史', '读取P5详情', '回答P5事实', '提交P5简历',
       '决定P5S0', '决定P5S1', '决定P5S2', '决定P5S3', '新增P5叮嘱', '读取P5简历PDF',
+      // P7：真人会话域
+      '读取会话列表', '读取会话', '读取消息', '发送消息', '标为已读',
     ].sort());
     // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
     expect(Object.keys(source)).not.toContain('读取公开岗位');
@@ -558,6 +561,18 @@ describe('HTTP 招聘数据源', () => {
     });
     expect(请求Mock.mock.calls[0][0]).toEqual({
       path: '/api/v1/me/match-cases?limit=50', 不缓存: true,
+    });
+  });
+
+  // Task 1（P7）：组合后的真人会话列表走双端前缀，GET 显式 no-store，role 只决定前缀。
+  it('根 facade 组合后 P7 会话列表走 no-store 双端前缀', async () => {
+    请求Mock.mockResolvedValueOnce({ result: { items: [], next_cursor: null }, etag: null, requestId: 'p7' });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.读取会话列表('recruiter')).resolves.toEqual({
+      items: [], nextCursor: null,
+    });
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/recruiter/conversations', 不缓存: true,
     });
   });
 });
