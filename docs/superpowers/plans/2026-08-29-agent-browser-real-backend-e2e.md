@@ -13,8 +13,20 @@
 ## Global Constraints
 
 - 前端实施基线冻结为 `agxp-a2a-recruiting-web origin/main@aa467312353eabc5a5445a333a751418c47c442a`；执行 Task 1 前先 fetch 并确认当前 implementation worktree 已包含该提交。
-- 后端实施基线冻结为 `agxp-monorepo origin/release/0.2.5@34306f539`，不是后端 `origin/main`；当前前端依赖的公司档案、隐私、附件解析、P4/P5 接口与 `+8613800000001..00005` local 账号都在该发布线上。执行前必须 fetch 并重新核对目标发布线；若接口或固定账号已迁移，先更新本计划与 Spec 的事实基线，不在代码里兼容两套历史合同。
-- 后端改动必须在从 `origin/release/0.2.5` 创建的独立 worktree 中完成；不得修改或清理 `/Users/visionclaw/agxp-monorepo` 当前 dirty checkout。
+- 后端实施基线冻结为 `agxp-monorepo origin/release/0.2.5@fa0df4ab7`，不是后端 `origin/main`；当前前端依赖的公司档案、隐私、附件解析、P4/P5 接口与 `+8613800000001..00005` local 账号都在该发布线上。执行前必须 fetch 并重新核对目标发布线；若接口或固定账号已迁移，先更新本计划与 Spec 的事实基线，不在代码里兼容两套历史合同。
+- 后端改动必须在从 `origin/release/0.2.5` 创建的独立 worktree 中完成；不得修改或清理 `/Users/visionclaw/agxp-monorepo` 当前 dirty checkout。本次执行使用的 worktree 是 `/Users/visionclaw/.paseo/worktrees/agxp-browser-fixture`，分支 `agent-browser-real-backend-fixture`。
+
+### 2026-08-30 基线重新校准
+
+原计划冻结的后端基线 `34306f539` 在执行前已被 `origin/release/0.2.5` 推进 24 个提交到 `fa0df4ab7`（`34306f539` 仍是其祖先）。按本节要求重新核对后，事实基线全部改写为 `fa0df4ab7`，并已在该 tip 上逐条验证：
+
+- `dev-local.sh:413` `BOOTSTRAP_PHONES='+8613800000001 ... +8613800000005'`，`dev-local.sh:49` `LOCAL_OTP=3141`，写入 `apps/recruitment/.local-dev/code`；
+- BFF `http://127.0.0.1:8097`、`RECRUITMENT_BFF_PUBLIC_ORIGIN=http://localhost:5173`；
+- `dev-local.sh` 命令仍为 `prepare|up|health|status|logs|bootstrap|down`；
+- `POST /internal/v1/organization-verification-requests/{request_id}/approve` 在 `apps/recruitment/internal/httpapi/internal.go:66` 注册（不在 openapi yaml 里），其 body 恰为 `reviewer_ref`/`reason`/`existing_organization_id`/`create_organization{legal_name,display_name,registry_key,domains}`，鉴权只接受 `Authorization: Bearer <recruitment-internal-bearer>`；
+- BFF 公共面已具备本计划需要的全部路径与方法，含 `DELETE /api/v1/me/intentions/{intention_id}` 与 `DELETE /api/v1/recruiter/jobs/{job_id}`。
+
+两处原计划事实错误已在下文改正：Recruitment 服务的 `recruitment:8448` 只挂在外部网络 `agxp-local-platform`（`dev-local.sh:17` `PLATFORM_NETWORK`），不是 `agxp-recruitment-dev_default`；`agxp-recruitment-dev-recruitment-secrets` 卷是 `chmod 700` + `chown 65532`，`curlimages/curl` 默认用户读不到，因此沿用 `dev-local.sh` health 自己的写法挂载 `$STATE:/tls:ro` 并以 `--user 0:0` 运行。
 - 页面 Origin 固定为 `http://localhost:5173`，BFF 固定为 `http://127.0.0.1:8097`；不得把页面改成 `127.0.0.1:5173`，不得换端口绕过占用。
 - 固定测试账号为候选 `+8613800000001`、招聘 `+8613800000002`，页面输入其 11 位国内号码；本地四位 OTP 从后端 local material 读取并只传给浏览器输入，不进入报告、命令回显、截图说明或持久化 state。
 - 不使用 `agent-browser network route`、Playwright `page.route`、service worker stub、HAR、`state save`、持久化 Chrome profile 或 Cookie 导出。
@@ -202,7 +214,7 @@ export interface 整栈报告 {
 
 ### Task 1: 建立后端 fixture operator 外壳与正式测试入口
 
-**Repository:** `agxp-monorepo` 独立 worktree，base `origin/release/0.2.5@34306f539`。
+**Repository:** `agxp-monorepo` 独立 worktree，base `origin/release/0.2.5@fa0df4ab7`。
 
 **Files:**
 - Create: `apps/recruitment/scripts/browser-fixture.sh`
@@ -220,8 +232,9 @@ Run from a clean clone of `agxp-monorepo`:
 
 ```bash
 git fetch origin release/0.2.5
-git worktree add ../agxp-browser-fixture -b agent-browser-real-backend-fixture origin/release/0.2.5
-cd ../agxp-browser-fixture
+git worktree add /Users/visionclaw/.paseo/worktrees/agxp-browser-fixture \
+  -b agent-browser-real-backend-fixture origin/release/0.2.5
+cd /Users/visionclaw/.paseo/worktrees/agxp-browser-fixture
 tools/cred-sync.sh worktree
 tools/dev-env.sh ensure base
 git rev-parse HEAD
@@ -229,7 +242,7 @@ git grep -n "BOOTSTRAP_PHONES='+8613800000001" -- apps/recruitment/scripts/dev-l
 git grep -n '/api/v1/organizations/{organization_id}/profile' -- apps/recruitment-bff/openapi/mobile-v1.yaml
 ```
 
-Expected: HEAD contains `34306f539`; both contract probes return one match. If the target branch advanced, record the new SHA in the implementation handoff and rerun both probes before editing.
+Expected: HEAD contains `fa0df4ab7`; both contract probes return one match. If the target branch advanced, record the new SHA in the implementation handoff and rerun both probes before editing.
 
 - [ ] **Step 2: 写 source contract 的失败测试**
 
@@ -595,16 +608,16 @@ approve_fixture_organization(){
       domains:["browser-fixture.invalid"]
     }
   }')"
-  docker run --rm --network agxp-recruitment-dev_default \
-    -v agxp-recruitment-dev-recruitment-secrets:/run/agxp/local:ro \
+  docker run --rm --user 0:0 --network agxp-local-platform \
+    -v "$STATE:/tls:ro" \
     -e REVIEW_PATH="/internal/v1/organization-verification-requests/$request_id/approve" \
     -e REVIEW_BODY="$body" curlimages/curl:8.8.0 sh -eu -c '
       umask 077
-      bearer="$(cat /run/agxp/local/recruitment-internal-bearer)"
+      bearer="$(cat /tls/recruitment-internal-bearer)"
       printf "header = \"Authorization: Bearer %s\"\n" "$bearer" > /tmp/review.curlrc
       unset bearer
       rc=0
-      curl -fsS --cacert /run/agxp/local/recruitment-ca.pem \
+      curl -fsS --cacert /tls/recruitment-ca.pem \
         --config /tmp/review.curlrc -H "Content-Type: application/json" \
         --data "$REVIEW_BODY" "https://recruitment:8448$REVIEW_PATH" || rc=$?
       rm -f /tmp/review.curlrc
@@ -613,7 +626,7 @@ approve_fixture_organization(){
 }
 ```
 
-The bearer is read and expanded only inside the one-shot container, the config inherits mode 0600 from `umask 077`, and every curl exit path removes it. The source test must prove the host command line/env never contains bearer contents, `/tmp/review.curlrc` is removed, and `--insecure` is absent.
+`STATE="$APP_DIR/.local-dev"` is the same host material directory `dev-local.sh health` already mounts read-only into its own one-shot probe container, and `agxp-local-platform` is the external network that actually resolves `recruitment:8448`. `--user 0:0` is required because the local material files are mode 0600 owned by the host user; the mount stays `:ro` so the operator can never write backend material. The bearer is read and expanded only inside the one-shot container, the config inherits mode 0600 from `umask 077`, and every curl exit path removes it. The source test must prove the host command line/env never contains bearer contents, `/tmp/review.curlrc` is removed, and `--insecure` is absent.
 
 - [ ] **Step 3: 实现 recruiter converge**
 
@@ -687,7 +700,7 @@ Document exact commands, prerequisites (`dev-local.sh ... bootstrap` first), ded
 - [ ] **Step 7: 运行 backend L0–L2 selection**
 
 ```bash
-BASE_SHA=34306f539
+BASE_SHA=fa0df4ab7
 tools/test affected --base "$BASE_SHA" --keep-going
 ```
 
@@ -1390,9 +1403,9 @@ Expected: exit 0, functional/cleanup PASS, seven visual results present, no hygi
 
 ```bash
 git -C "$AGXP_MONOREPO_DIR" status --short
-git -C "$AGXP_MONOREPO_DIR" diff --check 34306f539...HEAD
+git -C "$AGXP_MONOREPO_DIR" diff --check fa0df4ab7...HEAD
 cd "$AGXP_MONOREPO_DIR"
-tools/test affected --base 34306f539 --keep-going
+tools/test affected --base fa0df4ab7 --keep-going
 ```
 
 Expected: clean tree, diff check PASS, all selected L0–L2 PASS. Formal L3 remains `DEFERRED_TO_INTEGRATION` with `recruitment-mobile-local --case-set required`; no feature-worktree PASS claim.
@@ -1405,7 +1418,7 @@ Use this exact structure with actual commit/results substituted:
 TEST_DELTA
 - 新增/修改的测试：browser fixture source + fake runtime；frontend agent-browser real-backend acceptance
 - owner / layer / resource class：recruitment / L0 / none；frontend local explicit slow E2E / global-exclusive local resources
-- 当前 worktree 已运行的命令与结果：tools/test affected --base 34306f539 --keep-going = PASS；真实整栈命令 = PASS/报告路径
+- 当前 worktree 已运行的命令与结果：tools/test affected --base fa0df4ab7 --keep-going = PASS；真实整栈命令 = PASS/报告路径
 - DEFERRED_TO_INTEGRATION 的 L3：recruitment-mobile-local --case-set required
 - L3 的完整命令、前置条件、预期 case 和证据：tools/test global recruitment-mobile-local --case-set required；Docker/build toolchain；case-summary/evidence-path
 - 使用或新增的端口、Compose project、容器、卷、数据库：localhost:5173；127.0.0.1:8097；agxp-recruitment-dev；仅复用既有持久卷；新增一次性 curl review container
@@ -1430,7 +1443,7 @@ If `README.md` was intentionally unchanged, omit it from `git add`.
 git status --short
 git log --oneline aa46731..HEAD
 git -C "$AGXP_MONOREPO_DIR" status --short
-git -C "$AGXP_MONOREPO_DIR" log --oneline 34306f539..HEAD
+git -C "$AGXP_MONOREPO_DIR" log --oneline fa0df4ab7..HEAD
 ```
 
 Expected: both trees clean; frontend log contains report core, candidate journeys, recruiter journeys, runner, baselines and docs; backend log contains operator contract, candidate convergence and recruiter convergence. Hand off the exact two commit ranges together because neither side alone constitutes the promised real-backend acceptance.
