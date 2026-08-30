@@ -189,6 +189,8 @@ function 造详情(选项: {
   intentionId?: string;
   candidateAlias?: string;
   terminalSummary?: P5详情['terminalSummary'];
+  /** P7 Task 6：completed + complete 的已发布会话坐标。 */
+  conversationRef?: string | null;
 } = {}): P5详情 {
   const role = 选项.role ?? 'candidate';
   const state = 选项.state ?? 造状态();
@@ -201,6 +203,7 @@ function 造详情(选项: {
     currentCoordination: null,
     intentConfirmations: { candidate: '', recruiter: '' } as { candidate: ''; recruiter: '' },
     terminalSummary: 选项.terminalSummary ?? null,
+    conversationRef: 选项.conversationRef ?? null,
   };
   if (role === 'candidate') {
     return {
@@ -289,6 +292,8 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
       state: 造行状态(行.lifecycle, 行.stage, 行.status, 行.step),
       availableActions: 提供,
+      // P7 Task 6：completed + complete 行需要已发布会话坐标才能产出 ready 视图
+      conversationRef: 行.lifecycle === 'completed' && 行.step === 'complete' ? '3003' : null,
     })));
     const 键 = `${行.lifecycle}|${行.stage}|${行.status}`;
     expect(视图.caseId).toBe('mc_1');
@@ -303,7 +308,9 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
       expect(卡).toEqual({ action: 卡.action, ...期望动作卡文案[卡.action] });
     }
     expect(视图.handoff).toEqual(行.lifecycle === 'completed'
-      ? { copy: 期望移交文案, canChat: false }
+      ? (行.step === 'complete'
+        ? { state: 'ready', copy: '真人会话已建立', conversationId: '3003' }
+        : { state: 'pending', copy: 期望移交文案 })
       : null);
     expect(视图.补充问题).toEqual(期望可出动作[键].includes('respond_fact')
       ? { promptId: 'prompt_1', text: '每周可以到岗几天？' }
@@ -311,15 +318,47 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
   });
 
   it('completed handoff is preparation-only', () => {
-    const 视图 = 映射P5详情(造详情({
+    const 视图 = 断言正常(映射P5详情(造详情({
       state: 造行状态('completed', 'intent_confirmation', 'passed', 'handoff_pending'),
       availableActions: [],
-    }));
+    })));
     expect(视图.handoff).toEqual({
+      state: 'pending',
       copy: '双方已确认，正在创建会话',
-      canChat: false,
     });
     expect(视图.actions).toEqual([]);
+    // pending 不是详情终局：轮询继续（详情终局 = ended 或 已发布会话）
+    expect(视图.详情终局).toBe(false);
+  });
+
+  // P7 Task 6：completed 行两步移交 —— pending 只读等会话；ready 启用「开始私聊」并带权威会话坐标
+  it('completed 两步移交：pending 禁用待会话、ready 已建立且详情终局=true；ended 保持终局', () => {
+    const pending视图 = 断言正常(映射P5详情(造详情({
+      state: 造行状态('completed', 'intent_confirmation', 'passed', 'handoff_pending'),
+    })));
+    expect(pending视图.handoff).toEqual({ state: 'pending', copy: '双方已确认，正在创建会话' });
+    expect(pending视图.详情终局).toBe(false);
+
+    const ready视图 = 断言正常(映射P5详情(造详情({
+      state: 造行状态('completed', 'intent_confirmation', 'passed', 'complete'),
+      conversationRef: '3003',
+    })));
+    expect(ready视图.handoff).toEqual({ state: 'ready', copy: '真人会话已建立', conversationId: '3003' });
+    expect(ready视图.详情终局).toBe(true);
+
+    const ended视图 = 断言正常(映射P5详情(造详情({
+      state: 造行状态('ended', 'intent_confirmation', 'ended', 'complete'),
+      terminalSummary: { stage: 'intent_confirmation', outcome: 'user_ended', reasonSummary: 'user_ended', finalizedAt: '2026-08-29T03:00:00Z' },
+    })));
+    expect(ended视图.handoff).toBe(null);
+    expect(ended视图.终局).toBe(true);
+    expect(ended视图.详情终局).toBe(true);
+
+    // completed + complete 但无 conversation_ref（decode 已挡，映射再守一层）：契约错误
+    const 漂移视图 = 映射P5详情(造详情({
+      state: { ...造行状态('completed', 'intent_confirmation', 'passed', 'handoff_pending'), step: 'complete' },
+    }));
+    expect(漂移视图.kind).toBe('契约错误');
   });
 
   it('招聘端同一行同样映射，别名原样带出且不带意向 ID', () => {
@@ -442,7 +481,7 @@ describe('映射P5详情：别名与键纪律', () => {
     const 视图 = 断言正常(映射P5详情(造详情({ state: { ...造状态(), caseId: 'mc_42' } })));
     expect(视图.caseId).toBe('mc_42');
     expect(Object.keys(视图).sort()).toEqual([
-      'actions', 'caseId', 'candidateAlias', 'handoff', 'intentionId', 'kind', 'role',
+      'actions', 'caseId', 'candidateAlias', '详情终局', 'handoff', 'intentionId', 'kind', 'role',
       '补充问题', '状态文案', '终局', '终局摘要', '职位', '轮次', '阶段标题', '阶段区块', '步骤说明', '更新于', '待办',
     ].sort());
     const 序列化 = JSON.stringify(视图);

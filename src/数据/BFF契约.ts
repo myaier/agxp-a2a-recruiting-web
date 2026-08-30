@@ -773,6 +773,12 @@ export interface BFF候选MatchCase详情 {
   terminal_summary?: BFFMatchCase终局摘要;
   intention_id: string;
   job: BFFMatchCase工作区职位;
+  /**
+   * P7 Task 6：completed + complete 时必在的已发布会话坐标（^[1-9][0-9]{0,63}$）；
+   * handoff_pending / open / ended 详情必缺席 —— 与 state.step 的联合不变式由
+   * 招聘数据源/MatchCase.ts 的 decoder 校验。
+   */
+  conversation_ref?: string;
 }
 export interface BFF招聘MatchCase详情 {
   state: BFFMatchCase视图;
@@ -784,6 +790,8 @@ export interface BFF招聘MatchCase详情 {
   terminal_summary?: BFFMatchCase终局摘要;
   job: BFFMatchCase工作区职位;
   candidate_alias: string;
+  /** P7 Task 6：同 BFF候选MatchCase详情.conversation_ref。 */
+  conversation_ref?: string;
 }
 
 // ── P7 真人会话域 wire DTO（双端 /api/v1/{me|recruiter}/conversations 家族）──

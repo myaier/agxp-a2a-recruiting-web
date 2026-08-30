@@ -141,6 +141,11 @@ const 移交键样式: CSSProperties = {
   border: '1px solid var(--描边)', background: 'var(--浅灰底)', color: 'var(--最弱)',
   fontSize: 12.5, fontWeight: 700,
 };
+/** P7 Task 6：已发布移交的主键观感（与各动作卡主键同一设计令牌）。 */
+const 移交就绪键样式: CSSProperties = {
+  ...移交键样式,
+  border: 0, background: 'var(--荧光绿)', color: 'var(--墨)',
+};
 
 // ── Task 6：动作卡与回答框的行内版式（沿用设计令牌，不另建 CSS 文件）──────────
 
@@ -189,15 +194,18 @@ export function MatchCase详情(props: { role: P5角色 }) {
   const 正常 = 视图 !== null && 视图.kind === '正常' ? 视图 : null;
   const 契约错误 = 视图 !== null && 视图.kind === '契约错误';
   const 终局 = 正常 !== null && 正常.终局;
+  // P7 Task 6：详情轮询停止口径 = ended 或已发布会话；pending（含 same-party 长期
+  // pending）保持 3 秒权威重读，绝不加前端超时终态。
+  const 详情终局 = 正常 !== null && 正常.详情终局;
 
   // 可见 3 秒详情节拍（spec §10.3）：Backend + 会话/角色有效 + 详情在场 + 非终局；
   // 终局即停。每拍都走 读取详情(force=true) 的权威重读（成功快照不得短路节拍）。
   const 会话有效 = 后端状态.已登录 === true && 后端状态.主体?.last_used_role === role;
   useMatchCase轮询({
-    开启: 是后端 && caseId !== '' && 会话有效 && !终局,
+    开启: 是后端 && caseId !== '' && 会话有效 && !详情终局,
     列表: null,
     详情: { role, caseId },
-    详情终局: 终局,
+    详情终局,
     刷新列表: async () => undefined,
     刷新详情: (范围) => 操作.读取详情(范围.role, 范围.caseId, true),
   });
@@ -325,6 +333,9 @@ function 详情主体({
   当前节点引用: RefObject<HTMLDivElement | null>;
   重读: () => void;
 }): ReactNode {
+  const { 跳转 } = use导航();
+  // P7 Task 6：narrowing 到局部 const —— ready 分支的 conversationId 才能进回调
+  const 移交 = 视图.handoff;
   // 归一化 DTO（协同块/意向词不在展示视图里，typed 判定从这里取；正常视图必然由它映射）
   const 详情 = 快照?.detail ?? null;
   const 当前阶段 = 详情?.state.stage ?? null;
@@ -426,15 +437,29 @@ function 详情主体({
         </div>
       ) : null}
 
-      {/* 移交只有 completed + handoff_pending 一种（§7）：准备文案 + 恒禁用的「开始私聊」，
-          点击零导航（canChat 恒 false）；P5 视图里不存在任何会话标识 —— 不生成、不缓存、
-          不推断，会话路由与标识属 P7。 */}
-      {视图.handoff !== null ? (
+      {/* P7 Task 6：completed 两步移交 —— pending（handoff_pending）恒禁用零导航；
+          ready（complete + conversation_ref）启用「开始私聊」并按角色进入 P7 参数路由。
+          会话坐标唯一来自权威 conversation_ref —— 不生成、不缓存、不推断。 */}
+      {移交 !== null ? (
         <div style={移交区样式}>
-          <div style={移交行样式}>{视图.handoff.copy}</div>
-          <button type="button" style={移交键样式} disabled>
-            开始私聊
-          </button>
+          <div style={移交行样式}>{移交.copy}</div>
+          {移交.state === 'ready' ? (
+            <button
+              type="button"
+              className="可点"
+              style={移交就绪键样式}
+              onClick={() =>
+                跳转(role === 'candidate'
+                  ? 路径.真人会话路径(移交.conversationId)
+                  : 路径.企业真人会话路径(移交.conversationId))}
+            >
+              开始私聊
+            </button>
+          ) : (
+            <button type="button" style={移交键样式} disabled>
+              开始私聊
+            </button>
+          )}
         </div>
       ) : null}
 

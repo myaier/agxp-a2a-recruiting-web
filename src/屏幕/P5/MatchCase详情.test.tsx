@@ -147,6 +147,8 @@ interface 详情选项 {
   terminalSummary?: P5详情['terminalSummary'];
   currentCoordination?: P5详情['currentCoordination'];
   intentConfirmations?: P5详情['intentConfirmations'];
+  /** P7 Task 6：completed + complete 的已发布会话坐标。 */
+  conversationRef?: P5详情['conversationRef'];
 }
 
 function 候选详情DTO(选项: 详情选项 = {}): P5详情 {
@@ -160,6 +162,7 @@ function 候选详情DTO(选项: 详情选项 = {}): P5详情 {
     currentCoordination: 选项.currentCoordination ?? null,
     intentConfirmations: 选项.intentConfirmations ?? { candidate: '', recruiter: '' },
     terminalSummary: 选项.terminalSummary ?? null,
+    conversationRef: 选项.conversationRef ?? null,
   };
 }
 
@@ -176,6 +179,7 @@ function 招聘详情DTO(选项: 详情选项 = {}): P5详情 {
     currentCoordination: 选项.currentCoordination ?? null,
     intentConfirmations: 选项.intentConfirmations ?? { candidate: '', recruiter: '' },
     terminalSummary: 选项.terminalSummary ?? null,
+    conversationRef: 选项.conversationRef ?? null,
   };
 }
 
@@ -765,6 +769,15 @@ function S3详情(
       });
 }
 
+/** P7 Task 6：completed + complete + conversation_ref —— 会话已发布的权威移交形态。 */
+function 已发布移交详情DTO(role: P5角色 = 'candidate'): P5详情 {
+  const 底 = 已完成移交详情DTO();
+  const 已发布 = { ...底, state: { ...底.state, step: 'complete' as const }, conversationRef: '3003' };
+  return role === 'candidate'
+    ? 已发布
+    : { ...已发布, role, context: { candidateAlias: 别名, job: 底.context.job } };
+}
+
 /** completed + handoff_pending：双方已确认的终局移交（第二次确认后的权威形态）。 */
 function 已完成移交详情DTO(): P5详情 {
   return 候选详情DTO({
@@ -1269,6 +1282,64 @@ describe('MatchCase详情 · S2/S3 动作（Task 6）', () => {
     expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     expect(screen.queryByPlaceholderText(叮嘱占位)).toBeNull();
     expect(mock决定S3).not.toHaveBeenCalled();
+  });
+});
+
+// ── P7 Task 6：completed 两步移交接线（pending 继续轮询 → ready 启用并进 P7 路由）──
+describe('MatchCase详情 · P7 移交两步接线', () => {
+  beforeEach(() => {
+    mock读取详情.mockClear();
+    mock跳转.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('pending（handoff_pending）：开始私聊在场但禁用，3 秒节拍继续权威重读，无内部错误词', async () => {
+    vi.useFakeTimers();
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已完成移交详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.getAllByText('双方已确认，正在创建会话').length).toBeGreaterThan(0);
+    const 私聊键 = screen.getByRole('button', { name: '开始私聊' }) as HTMLButtonElement;
+    expect(私聊键.disabled).toBe(true);
+    const 基线 = mock读取详情.mock.calls.length;
+    await act(() => vi.advanceTimersByTimeAsync(3000));
+    await act(() => vi.advanceTimersByTimeAsync(3000));
+    // pending 不是详情终局：多拍后仍在权威重读（same-party 长期 pending 同形态）
+    expect(mock读取详情.mock.calls.length).toBeGreaterThan(基线);
+    expect(mock跳转).not.toHaveBeenCalled();
+    // 绝不出现内部错误词或前端自造的超时终态
+    expect(screen.queryByText(/invalid_actor_identity/)).toBeNull();
+    expect(screen.queryByText('真人会话已建立')).toBeNull();
+    expect((screen.getByRole('button', { name: '开始私聊' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('ready（complete + conversation_ref）：开始私聊启用并按角色进入 P7 会话路由', async () => {
+    const user = userEvent.setup();
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已发布移交详情DTO('candidate') }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.getByText('真人会话已建立')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '开始私聊' }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.真人会话路径('3003'));
+
+    // 招聘端镜像：进入企业参数路由
+    cleanup();
+    mock跳转.mockClear();
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 已发布移交详情DTO('recruiter') }) });
+    渲染详情('recruiter', 'mc_hr');
+    await user.click(screen.getByRole('button', { name: '开始私聊' }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业真人会话路径('3003'));
+  });
+
+  it('ready 详情终局停轮询：3 秒节拍不再重读', async () => {
+    vi.useFakeTimers();
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已发布移交详情DTO('candidate') }) });
+    渲染详情('candidate', 'mc_direct');
+    const 基线 = mock读取详情.mock.calls.length;
+    await act(() => vi.advanceTimersByTimeAsync(3000));
+    await act(() => vi.advanceTimersByTimeAsync(3000));
+    expect(mock读取详情.mock.calls.length).toBe(基线);
   });
 });
 

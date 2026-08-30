@@ -22,6 +22,8 @@ export type { P5角色, P5历史生命周期, P5步骤, P5动作 } from '../BFF�
 
 const P5前缀 = { candidate: '/api/v1/me', recruiter: '/api/v1/recruiter' } as const;
 const 游标模式 = /^[A-Za-z0-9_-]+$/;
+/** P7 发布会话坐标的闭合模式（与 真人会话.ts 的发布坐标同款，1–64 位十进制）。 */
+const 会话坐标模式 = /^[1-9][0-9]{0,63}$/;
 const 意向ID模式 = /^int_[0-9a-f]{32}$/;
 const 职位ID模式 = /^job_[0-9a-f]{32}$/;
 const 候选别名模式 = /^candidate-[0-9a-f]{12}$/;
@@ -178,7 +180,8 @@ const 状态矩阵行: readonly (readonly [P5生命周期, P5阶段, P5状态, r
   ['ended', 'resume_submission', 'ended', ['complete']],
   ['ended', 'needs_coordination', 'ended', ['complete']],
   ['ended', 'intent_confirmation', 'ended', ['complete']],
-  ['completed', 'intent_confirmation', 'passed', ['handoff_pending']],
+  // P7 Task 6：completed 行两步移交 —— handoff_pending（ref 必缺席）与 complete（ref 必在场）
+  ['completed', 'intent_confirmation', 'passed', ['handoff_pending', 'complete']],
 ];
 
 const 矩阵索引 = new Map(
@@ -294,6 +297,11 @@ interface P5详情主体 {
   currentCoordination: P5协同 | null;
   intentConfirmations: P5意向确认;
   terminalSummary: P5终局摘要 | null;
+  /**
+   * P7 Task 6：已发布会话坐标 —— 仅 completed + complete 详情非 null（wire 必在场且
+   * 规范）；handoff_pending / open / ended 归一为 null。列表/历史行不携带该字段。
+   */
+  conversationRef: string | null;
 }
 
 export type P5详情 =
@@ -535,7 +543,7 @@ function 解终局摘要块(raw: Record<string, unknown>, state: P5状态视图)
 const 详情共用必需键 = [
   'state', 'needs_action', 'available_actions', 'stages', 'intent_confirmations', 'job',
 ] as const;
-const 详情可选键 = ['current_coordination', 'terminal_summary'] as const;
+const 详情可选键 = ['current_coordination', 'terminal_summary', 'conversation_ref'] as const;
 
 /**
  * 解P5详情：把双端 role detail 的 wire 值解成归一化 P5详情。候选端带 intention_id、
@@ -560,6 +568,13 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
     ? null
     : 解协同(raw.current_coordination, state);
   const terminalSummary = 解终局摘要块(raw, state);
+  // P7 Task 6：发布联合不变式 —— conversation_ref 只属于 completed + complete（在场且
+  // 规范 decimal）；handoff_pending / open / ended 一律必缺席。
+  const conversationRef = raw.conversation_ref === undefined
+    ? null
+    : 要求模式串(raw.conversation_ref, 会话坐标模式);
+  const 已发布 = state.lifecycle === 'completed' && state.step === 'complete';
+  if ((conversationRef !== null) !== 已发布) throw 契约错误();
   if (role === 'candidate') {
     return {
       role,
@@ -571,6 +586,7 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
       currentCoordination,
       intentConfirmations,
       terminalSummary,
+      conversationRef,
     };
   }
   return {
@@ -583,6 +599,7 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
     currentCoordination,
     intentConfirmations,
     terminalSummary,
+    conversationRef,
   };
 }
 

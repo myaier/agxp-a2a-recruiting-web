@@ -320,6 +320,52 @@ describe('MatchCase数据源', () => {
       .toThrow(契约漂移);
   });
 
+  it('completed 行的两步移交：handoff_pending 必无 conversation_ref，complete 必带规范 ref', async () => {
+    const 已完成Wire = {
+      ...P5候选详情Wire,
+      state: P5已完成状态Wire,
+      needs_action: false,
+      available_actions: [],
+      intent_confirmations: { candidate: 'confirm', recruiter: 'confirm' },
+      terminal_summary: { ...P5终局摘要Wire, stage: 'intent_confirmation', outcome: '', reason_summary: '' },
+    };
+    const completeWire = (覆盖: Record<string, unknown> = {}) => ({
+      ...已完成Wire,
+      state: { ...P5已完成状态Wire, step: 'complete' },
+      ...覆盖,
+    });
+    // pending（handoff_pending）带 ref 即漂移；缺席时 conversationRef 归一为 null
+    expect(() => 解P5详情({ ...已完成Wire, conversation_ref: '3003' }, 'candidate')).toThrow(契约漂移);
+    expect(解P5详情(已完成Wire, 'candidate')).toMatchObject({ state: { step: 'handoff_pending' }, conversationRef: null });
+    // complete 必带规范 decimal ref；无 ref / 空 / 前导零 / 超长都漂移，64 位仍合法
+    expect(解P5详情(completeWire({ conversation_ref: '3003' }), 'candidate')).toMatchObject({
+      state: { step: 'complete' }, conversationRef: '3003',
+    });
+    expect(() => 解P5详情(completeWire(), 'candidate')).toThrow(契约漂移);
+    expect(() => 解P5详情(completeWire({ conversation_ref: '' }), 'candidate')).toThrow(契约漂移);
+    expect(() => 解P5详情(completeWire({ conversation_ref: '03003' }), 'candidate')).toThrow(契约漂移);
+    expect(() => 解P5详情(completeWire({ conversation_ref: '3'.repeat(65) }), 'candidate')).toThrow(契约漂移);
+    expect(解P5详情(completeWire({ conversation_ref: '3'.repeat(64) }), 'candidate'))
+      .toMatchObject({ conversationRef: '3'.repeat(64) });
+    // 合成 published 字段 = 白名单外多键，一并漂移
+    expect(() => 解P5详情(completeWire({ conversation_ref: '3003', published: true }), 'candidate'))
+      .toThrow(契约漂移);
+    // open / ended 详情带 ref 即漂移（发布事实只落在 completed 行）
+    expect(() => 解P5详情({ ...P5候选详情Wire, conversation_ref: '3003' }, 'candidate')).toThrow(契约漂移);
+    expect(() => 解P5详情({
+      ...P5候选详情Wire, state: P5已终止状态Wire, needs_action: false, available_actions: [],
+      terminal_summary: P5终局摘要Wire, conversation_ref: '3003',
+    }, 'candidate')).toThrow(契约漂移);
+    // 列表/历史行不携带会话标识（spec §9.2）：多键即漂移（经 facade 列表读拒绝）
+    请求Mock.mockClear();
+    请求Mock.mockResolvedValueOnce(响应({
+      items: [{ ...P5候选工作区项Wire, conversation_ref: '3003' as unknown as string }],
+      next_cursor: null,
+    }));
+    await expect(source.读取P5Open列表('candidate', null, null))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
   it('current_coordination 只在 open 的 S2 出现，issue/kind/required_roles 闭合', () => {
     const 协同Wire = {
       issue_id: 协同问题ID,

@@ -112,8 +112,10 @@ const 已知动作集合 = new Set<string>(动作顺序表);
 /** 契约错误视图的唯一提示文案（视图层据此渲染 fail-closed 状态）。 */
 export const P5契约错误提示 = '该 Case 数据不符合契约，已停用全部操作';
 
-/** completed + handoff_pending 的移交文案（唯一移交形态：只能等，不能聊）。 */
+/** completed + handoff_pending 的移交文案（准备中：只能等，不能聊）。 */
 export const P5移交文案 = '双方已确认，正在创建会话';
+/** P7 Task 6：completed + complete + conversation_ref 的移交就绪文案。 */
+export const P5移交就绪文案 = '真人会话已建立';
 
 // ── 已准入 17 行状态矩阵（展示侧）：steps 同 Task 1 decode 权威；可出动作是行侧白名单 ──
 
@@ -166,7 +168,9 @@ const 矩阵元组表 = [
   ['ended', 'resume_submission', 'ended', ['complete'], []],
   ['ended', 'needs_coordination', 'ended', ['complete'], []],
   ['ended', 'intent_confirmation', 'ended', ['complete'], []],
-  ['completed', 'intent_confirmation', 'passed', ['handoff_pending'], []],
+  // P7 Task 6：completed 行两步移交 —— handoff_pending（ref 必缺席）与 complete（ref 必在场）；
+  // 不新造第 18 行，矩阵仍 17 行。
+  ['completed', 'intent_confirmation', 'passed', ['handoff_pending', 'complete'], []],
 ] as const satisfies readonly (readonly [P5生命周期, P5阶段, P5状态, readonly P5步骤[], readonly P5动作[]])[];
 
 /** 编译期行数钉子：矩阵行数漂移（≠17）时 `17` 不再可赋值，typecheck 即红。 */
@@ -202,10 +206,11 @@ export interface P5补充问题视图 {
   text: string;
 }
 
-export interface P5移交视图 {
-  copy: string;
-  canChat: boolean;
-}
+/** P7 Task 6：completed 行的两步移交 —— pending 只读等会话（canChat 恒 false 语义），
+ *  ready 已发布（带权威 conversationId，唯一导航依据）；无 published 合成字段。 */
+export type P5移交视图 =
+  | { state: 'pending'; copy: '双方已确认，正在创建会话' }
+  | { state: 'ready'; copy: '真人会话已建立'; conversationId: string };
 
 export interface P5终局摘要视图 {
   /** 终局结束语（wire outcome 原样，不翻译不改写）。 */
@@ -243,7 +248,13 @@ export interface P5详情正常视图 {
   步骤说明: string;
   轮次: { 当前: number; 预算: number };
   待办: boolean;
+  /** lifecycle 终局（ended/completed）：只读口径 —— mutation/叮嘱输入隐藏。 */
   终局: boolean;
+  /**
+   * P7 Task 6：详情轮询的停止口径 —— ended，或 completed + complete + conversation_ref
+   * （已发布会话）。pending（handoff_pending，含 same-party 长期 pending）继续低频重读。
+   */
+  详情终局: boolean;
   更新于: string;
   handoff: P5移交视图 | null;
   actions: readonly P5动作卡[];
@@ -464,6 +475,22 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
     补充问题 = 问题;
   }
 
+  // P7 Task 6：completed 行两步移交 —— handoff_pending（无 ref）pending；
+  // complete（带 ref）ready；组合漂移（decode 已挡）在映射层再 fail closed 一次。
+  let handoff: P5移交视图 | null = null;
+  if (行.lifecycle === 'completed') {
+    if (state.step === 'handoff_pending' && detail.conversationRef === null) {
+      handoff = { state: 'pending', copy: P5移交文案 };
+    } else if (state.step === 'complete' && detail.conversationRef !== null) {
+      handoff = { state: 'ready', copy: P5移交就绪文案, conversationId: detail.conversationRef };
+    } else {
+      return 契约错误详情();
+    }
+  }
+  const 会话已发布 = 行.lifecycle === 'completed'
+    && state.step === 'complete'
+    && detail.conversationRef !== null;
+
   return {
     kind: '正常',
     caseId: state.caseId,
@@ -477,11 +504,9 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
     轮次: { 当前: state.round, 预算: state.roundBudget },
     待办: detail.needsAction === true,
     终局: 生命周期终局表[行.lifecycle],
+    详情终局: 行.lifecycle === 'ended' || 会话已发布,
     更新于: state.updatedAt,
-    // 移交只有 completed + handoff_pending 一种：只文案、不可聊、零动作。
-    handoff: 行.lifecycle === 'completed'
-      ? { copy: P5移交文案, canChat: false }
-      : null,
+    handoff,
     actions: 动作卡,
     补充问题,
     阶段区块: 区组.map(映射阶段区),
