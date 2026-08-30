@@ -57,20 +57,21 @@ new_sandbox(){
   CALLS="$SANDBOX/calls.txt"; : >"$CALLS"
   FAKE_STATE="$SANDBOX/state"
   FAKE_OTP_FILE="$SANDBOX/monorepo/apps/recruitment/.local-dev/code"
+  # 本地 dev 栈的短信验证码是**固定常量**：后端 dev-local.sh 的 prepare_material 一次性写下
+  # LOCAL_OTP，之后每次登录都复用同一份（bootstrap 直接拿常量、health 还会断言文件仍等于它）。
+  # 刻意不选全 0 一类的值：手机号 13800000001 里就含 000000，拿它去 grep trace 会假阳性。
   FAKE_OTP='824913'
-  # 上一轮遗留的旧码。刻意不选全 0 一类的值：手机号 13800000001 里就含 000000，
-  # 拿它去 grep trace 会假阳性
-  FAKE_STALE_OTP='713642'
   RUN_DIR="$SANDBOX/run"
   FRAGMENT_DIR="$SANDBOX/run/journeys"
   PRIVATE_JOURNAL="$SANDBOX/run/private/run-journal.json"
   AGXP_MONOREPO_DIR="$SANDBOX/monorepo"
   FRONTEND_ORIGIN='http://localhost:5173'
-  export CALLS FAKE_STATE FAKE_OTP_FILE FAKE_OTP FAKE_STALE_OTP RUN_DIR FRAGMENT_DIR PRIVATE_JOURNAL AGXP_MONOREPO_DIR FRONTEND_ORIGIN
+  export CALLS FAKE_STATE FAKE_OTP_FILE FAKE_OTP RUN_DIR FRAGMENT_DIR PRIVATE_JOURNAL AGXP_MONOREPO_DIR FRONTEND_ORIGIN
   export PATH="$SANDBOX/bin:$PATH"
 
-  # 上一轮留下的旧验证码：新鲜度判定读不到「点过获取验证码之后」的写入就不该用它
-  printf '%s\n' "$FAKE_STALE_OTP" >"$FAKE_OTP_FILE"
+  # 验证码文件写一次就再也不动，而且 mtime 停在很久以前 —— 真后端就是这样：
+  # 它是一个固定常量，没有任何「本轮刚写下」的新鲜版本可等。
+  printf '%s\n' "$FAKE_OTP" >"$FAKE_OTP_FILE"
   touch -t 200001010000 "$FAKE_OTP_FILE"
 
   printf '%s\n' '浏览器验收候选人 · 真实后端基准摘要' >"$FAKE_STATE/body.txt"
@@ -187,11 +188,8 @@ case "${1:-}" in
   snapshot) printf '%s\n' '- button "浏览器验收候选人"' ;;
   screenshot) : >"${2:-/dev/null}" ;;
   find)
-    # FAKE_NO_OTP=1 模拟「本地 dev 栈这一轮根本没写出验证码」
-    case "$*" in
-      *'--name 获取验证码'*)
-        [ "${FAKE_NO_OTP:-0}" = '1' ] || printf '%s\n' "$FAKE_OTP" >"$FAKE_OTP_FILE" ;;
-    esac
+    # 点「获取验证码」**不会**改写本地验证码文件：真后端写的是一个固定常量，
+    # 每次登录都复用同一份。假件曾经在这里重写它，正好把「等文件变新」的死等藏了起来。
     # 滚轮：find nth <序> [aria-label="列名"] [role="option"] click —— 记住这一列落到哪一档
     if [ "${2:-}" = 'nth' ]; then
       col="$(printf '%s' "${4:-}" | sed -n 's/^\[aria-label="\([^"]*\)"\].*/\1/p')"
@@ -263,8 +261,21 @@ assert_contains '选身份点我要找工作' 'find role button click --name 我
 assert_missing 'OTP 不出现在命令记录里' "$FAKE_OTP" "$CALLS"
 assert_missing 'OTP 不出现在 stdout' "$FAKE_OTP" "$SANDBOX/stdout.txt"
 assert_missing 'OTP 不出现在 stderr' "$FAKE_OTP" "$SANDBOX/stderr.txt"
-assert_missing '上一轮的旧验证码没有被当成本轮的用' "$FAKE_STALE_OTP" "$CALLS"
 assert_session_and_bans 'backend-local-candidate'
+
+# 本地 dev 栈的验证码是一个写死的常量：它在 prepare_material 里被写下一次，之后谁都不再动它。
+# 所以「等这个文件比点按钮之前更新」这种新鲜度判定永远等不到，会把每一条旅程都拖成超时阻塞。
+# 这条用例就是那面墙：文件全程不被改写、mtime 停在 2000 年，登录仍然必须走得通。
+testcase '登录候选 · 本地验证码是固定常量（文件从头到尾没被改写过）'
+new_sandbox login-static-otp
+export AGENT_BROWSER_SESSION='backend-local-candidate'
+otp_mtime(){ stat -f %m "$FAKE_OTP_FILE" 2>/dev/null || stat -c %Y "$FAKE_OTP_FILE" 2>/dev/null || printf '0'; }
+OTP_MTIME_BEFORE="$(otp_mtime)"
+( . "$LIB"; login_candidate ) >"$SANDBOX/stdout.txt" 2>"$SANDBOX/stderr.txt"
+assert_eq '静态验证码也能登录' "$?" '0'
+assert_eq '整轮登录没有任何人改写过验证码文件' "$(otp_mtime)" "$OTP_MTIME_BEFORE"
+assert_contains '照样填了验证码（记录里是脱敏值）' 'find label 短信验证码 fill [REDACTED]' "$CALLS"
+assert_missing 'OTP 不出现在命令记录里' "$FAKE_OTP" "$CALLS"
 
 testcase '登录候选 · set -x 下 OTP 不进 trace'
 new_sandbox login-xtrace
@@ -276,7 +287,6 @@ assert_eq '开着 xtrace 也能登录' "$?" '0'
 assert_true 'trace 确实记录了命令（这条用例没有空过）' \
   "grep -q 'find role button click' '$SANDBOX/trace.txt'"
 assert_missing 'OTP 不出现在 xtrace' "$FAKE_OTP" "$SANDBOX/trace.txt"
-assert_missing '上一轮的旧验证码也不出现在 xtrace' "$FAKE_STALE_OTP" "$SANDBOX/trace.txt"
 assert_contains '照样填了验证码（记录里是脱敏值）' 'find label 短信验证码 fill [REDACTED]' "$CALLS"
 
 testcase '登录候选 · 已有会话不重登'
@@ -295,23 +305,30 @@ assert_eq 'login_recruiter 返回 0' "$?" '0'
 assert_contains '选身份点我要招人' 'find role button click --name 我要招人' "$CALLS"
 assert_session_and_bans 'backend-local-recruiter'
 
-# 设计稿 §14：本机 OTP 材料不刷新是 INFRA_BLOCKED，不是 FUNCTIONAL_FAILED。
+# 设计稿 §14：本机 OTP 材料没准备好是 INFRA_BLOCKED，不是 FUNCTIONAL_FAILED。
 # 报成功能失败会让第一个跑这条命令的人去追一个不存在的产品缺陷。
-testcase '本机 OTP 材料超时：旅程写 blocked 分片，退出 75'
-new_sandbox otp-blocked
+testcase '本地验证码文件缺失：旅程写 blocked 分片，退出 75'
+new_sandbox otp-missing
 export AGENT_BROWSER_SESSION='backend-local-candidate'
-export FAKE_NO_OTP=1
-# 真库要等 60 轮 × 0.5s；沙盒里把 sleep 换成空操作，用例才不用真等 30 秒
-printf '#!/usr/bin/env bash\nexit 0\n' >"$SANDBOX/bin/sleep"
-chmod +x "$SANDBOX/bin/sleep"
+rm -f "$FAKE_OTP_FILE"
 bash "$LOAD_JOURNEY" >"$SANDBOX/stdout.txt" 2>"$SANDBOX/stderr.txt"
 OTP_RC=$?
-unset FAKE_NO_OTP
 assert_eq '旅程按环境阻塞退出 75（不是 1）' "$OTP_RC" '75'
 assert_eq '分片记 blocked' "$(jq -r '.status' "$FRAGMENT_DIR/candidate-load.json")" 'blocked'
 assert_true '失败摘要说明是环境阻塞' \
   "jq -e '.failure | contains(\"环境阻塞\")' '$FRAGMENT_DIR/candidate-load.json' >/dev/null"
 assert_missing 'OTP 值仍然不出现在分片里' "$FAKE_OTP" "$FRAGMENT_DIR/candidate-load.json"
+
+testcase '本地验证码文件为空：同样是环境阻塞，退出 75'
+new_sandbox otp-empty
+export AGENT_BROWSER_SESSION='backend-local-candidate'
+: >"$FAKE_OTP_FILE"
+bash "$LOAD_JOURNEY" >"$SANDBOX/stdout.txt" 2>"$SANDBOX/stderr.txt"
+OTP_RC=$?
+assert_eq '旅程按环境阻塞退出 75（不是 1）' "$OTP_RC" '75'
+assert_eq '分片记 blocked' "$(jq -r '.status' "$FRAGMENT_DIR/candidate-load.json")" 'blocked'
+assert_true '不曾拿空串当验证码去填' \
+  "! grep -q 'find label 短信验证码 fill$' '$CALLS'"
 
 testcase '普通断言失败仍然是功能失败，不会被洗成环境阻塞'
 new_sandbox otp-not-blocked

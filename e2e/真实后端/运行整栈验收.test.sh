@@ -193,7 +193,17 @@ case "$1" in
       http://localhost:5173/*|http://localhost:5173) exit 0 ;;
       *) printf 'FAKE agent-browser 非法地址：%s\n' "${2:-}" >>"$CALLS"; exit 1 ;;
     esac ;;
-  eval) printf '%s\n' "${FAKE_UA:-Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.55 Mobile Safari/537.36}"; exit 0 ;;
+  eval)
+    # 两种探测走同一个 eval：UA（摘 Chrome 构建）与 locale/timezone（核对冻结的取景环境）。
+    # 输出照真 CLI 的样子做成 JSON 字符串（真机实测 agent-browser 0.27.2 会带两侧引号），
+    # 不带引号的假件会把「运行器忘了剥引号」这种回归藏起来。
+    case "${2:-}" in
+      *navigator.language*|*resolvedOptions*)
+        printf '"%s %s"\n' "${FAKE_LOCALE:-zh-CN}" "${FAKE_TZ:-Asia/Shanghai}" ;;
+      *)
+        printf '"%s"\n' "${FAKE_UA:-Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.55 Mobile Safari/537.36}" ;;
+    esac
+    exit 0 ;;
   close) printf 'closed %s\n' "$session" >>"$CALLS"; exit 0 ;;
   reload|wait|find|get|set) exit "${FAKE_LOGOUT_RC:-0}" ;;
   *) printf 'FAKE agent-browser 未预期命令：%s\n' "$*" >>"$CALLS"; exit 1 ;;
@@ -358,14 +368,25 @@ chmod +x "$MONO/apps/recruitment/scripts/browser-fixture.sh"
 export CALLS STATE SANDBOX_ROOT
 export PATH="$BIN:$PATH"
 
+# 「运行期工具缺失」那一条用例需要一个除了假件之外什么都没有的 PATH。
+# jq 与 node 得单独软链进来：报告本身就是 jq + tsx 写的，而 tsx 的 shebang 是 /usr/bin/env node。
+SHIM="$SANDBOX_ROOT/shim"
+mkdir -p "$SHIM"
+for c in jq node; do ln -sf "$(command -v "$c")" "$SHIM/$c"; done
+
 # ── 每个用例的复位 ──────────────────────────────────────────────────
 
+# 已提交基线的安装布局照设计稿 §「目录树」：清单是 基线/ 的**兄弟**，不在 PNG 目录里面。
+#   视觉/基线清单.json
+#   视觉/基线/*.png
 BASELINE_DIR="$SANDBOX/e2e/真实后端/视觉/基线"
+BASELINE_MANIFEST="$SANDBOX/e2e/真实后端/视觉/基线清单.json"
 OUT_ROOT="$SANDBOX/agent-browser-backend-output"
 
 reset_case(){
   kill_fake_vite
   rm -rf "$OUT_ROOT" "$BASELINE_DIR" "$MONO/apps/recruitment/.local-dev/browser-fixtures"
+  rm -f "$BASELINE_MANIFEST"
   : >"$CALLS"
   rm -f "$STATE/health-calls" "$STATE/vite-up" "$STATE/stale-temp-object"
   rm -f "$STATE/converge-calls" "$STATE/verify-calls" "$STATE/cleanup-calls"
@@ -376,6 +397,9 @@ reset_case(){
   export FAKE_PORT_BUSY=0 FAKE_DOCKER_RC=0 FAKE_DOCTOR_RC=0 FAKE_VITE_START_RC=0 FAKE_LOGOUT_RC=0
   export FAKE_AB_VERSION='agent-browser 0.27.2'
   export FAKE_UA='Mozilla/5.0 (iPhone) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.55 Mobile Safari/537.36'
+  # 冻结的取景环境（视觉清单里就是这两个字面量）。agent-browser 0.27.2 没有任何
+  # locale / timezone 开关，只能读机器上真实解析出来的值再核对。
+  export FAKE_LOCALE='zh-CN' FAKE_TZ='Asia/Shanghai'
   export FAKE_SCENE_PNG="$RED_PNG"
   export FAKE_RECEIPT_MODE=600 FAKE_RECEIPT_MISSING=0 FAKE_LEAK=0
   export UI_VISUAL_GATE='report'
@@ -390,7 +414,7 @@ setup_baseline(){
   jq -n --arg v "$ab_version" --argjson scenes "$(printf '%s\n' $SCENE_LIST | jq -R . | jq -s .)" \
     '{schemaVersion:1,agentBrowserVersion:$v,chromeBuild:"Chrome/141.0.7390.55",
       viewport:{width:390,height:844},locale:"zh-CN",timezone:"Asia/Shanghai",colorScheme:"light",
-      deviceScaleFactor:1,scenes:$scenes,baselineCommit:"0000000"}' >"$BASELINE_DIR/基线清单.json"
+      deviceScaleFactor:1,scenes:$scenes,baselineCommit:"0000000"}' >"$BASELINE_MANIFEST"
 }
 
 RC=0
@@ -652,7 +676,7 @@ assert_true '绝不写进已提交基线目录' "[ \$(ls '$BASELINE_DIR'/*.png |
 
 testcase '基线清单不合法 + --update-baseline：不产候选基线，退出 75'
 reset_case; setup_baseline "$RED_PNG"
-printf '%s\n' '{"schemaVersion":1,"agentBrowserVersion":"0.27.2"}' >"$BASELINE_DIR/基线清单.json"
+printf '%s\n' '{"schemaVersion":1,"agentBrowserVersion":"0.27.2"}' >"$BASELINE_MANIFEST"
 run_runner --update-baseline
 assert_eq '退出码 75' "$RC" 75
 assert_eq '环境问题是 manifest-invalid' "$(jq -r .visual.environmentIssue "$(report_json)" 2>/dev/null)" 'manifest-invalid'
@@ -665,6 +689,68 @@ run_runner --update-baseline
 assert_eq '退出码 75' "$RC" 75
 assert_eq '环境问题是 expected-file-missing' "$(jq -r .visual.environmentIssue "$(report_json)" 2>/dev/null)" 'expected-file-missing'
 assert_true '没有候选基线目录' "[ ! -d '$(run_dir)/visual/baseline-review' ]"
+
+# 人按设计稿的目录树装完基线之后，清单是 基线/ 的**兄弟**（视觉/基线清单.json），
+# 不在 PNG 目录里面。运行器要是去 基线/ 里面找清单，比较器就会看到「有 PNG 没清单」的
+# 半存在状态，把装好基线之后的每一次运行都判成 manifest-invalid → 75。
+testcase '按文档布局安装的基线（清单与 基线/ 平级）：不判 manifest-invalid'
+reset_case; setup_baseline
+assert_true '清单装在 视觉/ 下，与 基线/ 平级' "[ -f '$BASELINE_MANIFEST' ]"
+assert_true 'PNG 装在 视觉/基线/ 下' "[ -f '$BASELINE_DIR/candidate-resume-loaded.png' ]"
+assert_false '清单不在 PNG 目录里面' "[ -f '$BASELINE_DIR/基线清单.json' ]"
+run_runner
+assert_eq '退出码 0' "$RC" 0
+assert_eq '视觉环境判 matched' "$(jq -r .visual.environment "$(report_json)" 2>/dev/null)" 'matched'
+assert_eq '没有环境问题' "$(jq -r '.visual.environmentIssue // "null"' "$(report_json)" 2>/dev/null)" 'null'
+assert_missing '报告里没有 manifest-invalid' 'manifest-invalid' "$(report_json)"
+
+# 视觉清单把 locale / timezone 冻死成 zh-CN / Asia/Shanghai，而 agent-browser 0.27.2
+# 没有任何开关能设定它们 —— 只能读机器上真实解析出来的值再核对。核不上就是环境阻塞：
+# 不核对的话，两台渲染环境其实不同的机器会照样比成 matched。
+testcase '浏览器 locale 与冻结值不符：退出 75，仍然出报告'
+reset_case; setup_baseline
+export FAKE_LOCALE='en-US'
+run_runner
+assert_eq '退出码 75' "$RC" 75
+assert_contains '说清是 locale 对不上' 'locale' "$OUT"
+assert_contains '把实到的值念出来' 'en-US' "$OUT"
+assert_missing '一条旅程都没跑' 'journey ' "$CALLS"
+assert_true '仍然写出了 report.json' "[ -f '$(report_json)' ]"
+assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'INFRA_BLOCKED'
+
+testcase '浏览器时区与冻结值不符：退出 75，仍然出报告'
+reset_case; setup_baseline
+export FAKE_TZ='America/New_York'
+run_runner
+assert_eq '退出码 75' "$RC" 75
+assert_contains '说清是 timezone 对不上' 'timezone' "$OUT"
+assert_contains '把实到的值念出来' 'America/New_York' "$OUT"
+assert_true '仍然写出了 report.json' "[ -f '$(report_json)' ]"
+assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'INFRA_BLOCKED'
+
+testcase 'locale 与 timezone 都对得上：照常跑完，退出 0'
+reset_case; setup_baseline
+run_runner
+assert_eq '退出码 0' "$RC" 0
+assert_contains '真的探过 locale 与 timezone' 'navigator.language' "$CALLS"
+
+# 只有 jq 与 tsx 有资格排在收尾 trap 前面（报告本身就是它们实现的）。
+# 其余运行期工具的检查一旦排在 trap 之前，缺一个就会 75 且一份报告都不留 ——
+# 那正是前一轮专门补上的证据缺口。
+testcase '运行期工具缺失（agent-browser 不在 PATH）：退出 75，且仍然出报告'
+reset_case; setup_baseline
+mv "$BIN/agent-browser" "$BIN/agent-browser.off"
+SAVED_PATH="$PATH"
+PATH="$BIN:$SHIM:/usr/bin:/bin"
+run_runner
+PATH="$SAVED_PATH"
+mv "$BIN/agent-browser.off" "$BIN/agent-browser"
+assert_eq '退出码 75' "$RC" 75
+assert_contains '说清缺的是哪一个命令' '缺少命令：agent-browser' "$OUT"
+assert_true '仍然写出了 report.json' "[ -f '$(report_json)' ]"
+assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'INFRA_BLOCKED'
+assert_eq '五条旅程都记 blocked' \
+  "$(jq -r '[.journeys[]|select(.status=="blocked")]|length' "$(report_json)" 2>/dev/null)" '5'
 
 testcase 'SIGINT：只关两个具名会话与自己起的 Vite，别人的栈原样保留'
 reset_case; setup_baseline

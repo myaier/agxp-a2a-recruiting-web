@@ -269,7 +269,9 @@ function 搭运行现场(选项: { 失败旅程?: 旅程ID; 基线清单?: strin
   } else {
     for (const 场景 of 真实后端场景们) writeFileSync(join(基线目录, `${场景}.png`), '', 'utf8');
   }
-  writeFileSync(join(基线目录, '基线清单.json'), 选项.基线清单 ?? 基线清单文本(), 'utf8');
+  // 基线清单按设计稿的安装布局放在 基线/ 的**兄弟**位置，不在 PNG 目录里面。
+  const 基线清单路径 = join(根, '基线清单.json');
+  writeFileSync(基线清单路径, 选项.基线清单 ?? 基线清单文本(), 'utf8');
 
   return {
     selectedJourneys: [...全部旅程],
@@ -288,7 +290,7 @@ function 搭运行现场(选项: { 失败旅程?: 旅程ID; 基线清单?: strin
     stack: { preexisting: true, healthy: true },
     fixture: { converge: 'PASS', verify: 'PASS', cleanup: 'PASS' },
     visual: {
-      baselineManifestPath: join(基线目录, '基线清单.json'),
+      baselineManifestPath: 基线清单路径,
       baselineDir: 基线目录,
       candidateDir: join(根, 'visual/current'),
       diffDir: join(根, 'visual/diff'),

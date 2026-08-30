@@ -161,9 +161,8 @@ classify_fixture_failure(){
 
 need_command(){ command -v "$1" >/dev/null 2>&1 || blocked "缺少命令：$1"; }
 
-[ -x "$FRONT_ROOT/node_modules/.bin/vite" ] || blocked '前端依赖未安装：node_modules/.bin/vite'
 [ -x "$FRONT_ROOT/node_modules/.bin/tsx" ] || blocked '前端依赖未安装：node_modules/.bin/tsx'
-for cmd in agent-browser jq curl npm docker; do need_command "$cmd"; done
+need_command jq
 
 # 安全输出路径：产物必须落在前端仓库内被 gitignore 的目录下 ——
 # 分片里的 screenshots 按 类型.ts 是仓库相对路径，落到仓库外 公共步骤.sh 会硬失败。
@@ -313,7 +312,7 @@ write_report(){
     --arg converge "$FIXTURE_CONVERGE_STATUS" \
     --arg verify "$FIXTURE_VERIFY_STATUS" \
     --arg cleanup "$FIXTURE_CLEANUP_STATUS" \
-    --arg baselineManifestPath "$ROOT_DIR/视觉/基线/基线清单.json" \
+    --arg baselineManifestPath "$ROOT_DIR/视觉/基线清单.json" \
     --arg baselineDir "$ROOT_DIR/视觉/基线" \
     --arg candidateDir "$RUN_DIR/visual/current" \
     --arg diffDir "$RUN_DIR/visual/diff" \
@@ -520,6 +519,10 @@ trap 'on_signal TERM' TERM
 # 全记 blocked 的 report.json（设计稿 §15 要求每一次运行的报告都带栈健康与
 # fixture converge/verify 状态，阻塞的那一次尤其需要）。
 
+# 其余运行期工具都查在这里：它们缺席同样是 75，但这一侧的 75 会带着一份 report.json 落地。
+[ -x "$FRONT_ROOT/node_modules/.bin/vite" ] || blocked '前端依赖未安装：node_modules/.bin/vite'
+for cmd in agent-browser curl npm docker; do need_command "$cmd"; done
+
 [ -n "${AGXP_MONOREPO_DIR:-}" ] || blocked 'AGXP_MONOREPO_DIR 未设置'
 case "$AGXP_MONOREPO_DIR" in
   /*) : ;;
@@ -647,6 +650,29 @@ agent-browser --session "$CANDIDATE_SESSION" open "$FRONTEND_ORIGIN/" >/dev/null
 CHROME_BUILD="$(agent-browser --session "$CANDIDATE_SESSION" eval 'navigator.userAgent' 2>/dev/null \
   | grep -o 'Chrome/[0-9][0-9.]*' | head -1 || true)"
 [ -n "$CHROME_BUILD" ] || blocked '读不到 Chrome 构建版本'
+
+# 视觉清单把取景环境的 locale / timezone 冻死成 zh-CN / Asia/Shanghai
+# （e2e/真实后端/报告.ts 构造候选视觉清单，两个字面量在类型里也是冻结的）。
+# 而 agent-browser 0.27.2 没有任何开关能设定它们 —— capture_scene 只管得了视口与 media。
+# 所以只能读这台机器上真实解析出来的值再逐字核对：核不上就是环境阻塞（设计稿 §14），
+# 不核对的话，两台渲染环境本来就不同的机器会照样把七个场景比成 matched。
+# eval 的输出是 JSON 编码的字符串（真机实测：`"en-US | Asia/Singapore"`），先剥掉两侧引号。
+FROZEN_LOCALE='zh-CN'
+FROZEN_TIMEZONE='Asia/Shanghai'
+browser_env="$(agent-browser --session "$CANDIDATE_SESSION" \
+  eval 'navigator.language + " " + Intl.DateTimeFormat().resolvedOptions().timeZone' 2>/dev/null \
+  | head -1 | tr -d '\r' | sed 's/^"//; s/"$//' || true)"
+browser_locale="${browser_env%% *}"
+browser_timezone="${browser_env##* }"
+case "$browser_env" in
+  *' '*) : ;;
+  *) blocked '读不到浏览器的 locale 与 timezone' ;;
+esac
+[ -n "$browser_locale" ] && [ -n "$browser_timezone" ] || blocked '读不到浏览器的 locale 与 timezone'
+[ "$browser_locale" = "$FROZEN_LOCALE" ] \
+  || blocked "浏览器 locale 不是冻结值 ${FROZEN_LOCALE}（实到 ${browser_locale}）：七张基线只在这一套取景环境下成立"
+[ "$browser_timezone" = "$FROZEN_TIMEZONE" ] \
+  || blocked "浏览器 timezone 不是冻结值 ${FROZEN_TIMEZONE}（实到 ${browser_timezone}）：七张基线只在这一套取景环境下成立"
 
 FRONTEND_COMMIT="$(git -C "$FRONT_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
 BACKEND_COMMIT="$(git -C "$AGXP_MONOREPO_DIR" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"

@@ -198,35 +198,31 @@ assert_no_mock_data(){
 login_candidate(){ _login "$CANDIDATE_SESSION" "$CANDIDATE_PHONE" '我要找工作' '#/app'; }
 login_recruiter(){ _login "$RECRUITER_SESSION" "$RECRUITER_PHONE" '我要招人' '#/hr'; }
 
-# 本地 dev 栈把当轮短信验证码写在这个文件里，只在本机可读。
+# 本地 dev 栈把短信验证码写在这个文件里，只在本机可读。
 _otp_file(){ printf '%s' "${AGXP_MONOREPO_DIR:-}/apps/recruitment/.local-dev/code"; }
 
-_otp_mtime(){
-  local file
+# 这个码是**固定常量**，不是「当轮验证码」：后端 apps/recruitment/scripts/dev-local.sh 在
+# prepare_material 里一次性写下 LOCAL_OTP，之后 bootstrap 直接复用同一个常量，health
+# 还会断言这个文件仍然等于它。没有任何环节会按次重写它。
+# 所以这里不做新鲜度判定 —— 等一个永远不会前进的 mtime 只会把每一条旅程都拖成超时阻塞。
+#
+# 文件不在或为空＝本机 dev 材料没准备好，是本机环境的问题，不是产品的问题：
+# 报成 FUNCTIONAL_FAILED 会让第一个跑这条命令的人去追一个不存在的产品缺陷。
+# 这个函数只在命令替换里被调用（子 shell），置全局标志出不来，所以结论走退出码：
+# 75 = 环境阻塞，由 _login 在父 shell 里翻译成 JOURNEY_BLOCKED。
+_read_local_otp(){
+  local file value
   file="$(_otp_file)"
-  if [ ! -f "$file" ]; then printf '0'; return 0; fi
-  stat -f %m "$file" 2>/dev/null || stat -c %Y "$file" 2>/dev/null || printf '0'
-}
-
-# 只接受「点过获取验证码之后才写下」的那一份，避免把上一轮的旧码填进去。
-_read_fresh_otp(){
-  local before="$1" file now value tries=0
-  file="$(_otp_file)"
-  while [ "$tries" -lt 60 ]; do
-    now="$(_otp_mtime)"
-    if [ -f "$file" ] && [ "$now" -gt "$before" ]; then
-      value="$(tr -d ' \t\r\n' <"$file")"
-      if [ -n "$value" ]; then printf '%s' "$value"; return 0; fi
-    fi
-    tries=$((tries + 1))
-    sleep 0.5
-  done
-  # 本地 dev 栈写不出当轮验证码，是本机环境的问题，不是产品的问题：
-  # 报成 FUNCTIONAL_FAILED 会让第一个跑这条命令的人去追一个不存在的产品缺陷。
-  # 这个函数只在命令替换里被调用（子 shell），置全局标志出不来，所以结论走退出码：
-  # 75 = 环境阻塞，由 _login 在父 shell 里翻译成 JOURNEY_BLOCKED。
-  echo '本地 OTP 文件在超时内没有刷新，登录中止' >&2
-  return 75
+  if [ ! -f "$file" ]; then
+    echo '本地 OTP 文件不存在，登录中止' >&2
+    return 75
+  fi
+  value="$(tr -d ' \t\r\n' <"$file")"
+  if [ -z "$value" ]; then
+    echo '本地 OTP 文件为空，登录中止' >&2
+    return 75
+  fi
+  printf '%s' "$value"
 }
 
 # 敏感值只经过这一个出口。
@@ -242,7 +238,7 @@ _fill_secret(){
 
 # $1 会话名 $2 手机号 $3 身份大卡名 $4 该角色主壳的 hash
 _login(){
-  local want_session="$1" phone="$2" identity="$3" shell_hash="$4" before code otp_xtrace otp_rc
+  local want_session="$1" phone="$2" identity="$3" shell_hash="$4" code otp_xtrace otp_rc
   if [ "${AGENT_BROWSER_SESSION:-}" != "$want_session" ]; then
     echo "会话隔离：本旅程只允许 ${want_session}，当前是 ${AGENT_BROWSER_SESSION:-未设置}" >&2
     return 1
@@ -256,21 +252,20 @@ _login(){
   case "$(ab get url)" in *"$shell_hash") return 0 ;; esac
 
   ab find label 手机号 fill "$phone" >/dev/null
-  before="$(_otp_mtime)"
   ab find role button click --name 获取验证码 >/dev/null
 
   # ── OTP 段：从读码到清掉，全程关 xtrace ──
   # 必须在 code=$(...) **之前**关。开着 set -x 时，这一段会连泄五处：
-  # _read_fresh_otp 里的 `value=<码>` 与 `printf %s <码>`（命令替换是子 shell，同样被 trace）、
+  # _read_local_otp 里的 `value=<码>` 与 `printf %s <码>`（命令替换是子 shell，同样被 trace）、
   # 赋值行 `code=<码>`、调用行 `_fill_secret 短信验证码 <码>`、以及被调函数里的 `local value=<码>`。
   # 在被调函数体里关掉一个都拦不住，所以抑制只能落在这里。
   otp_xtrace=0
   case "$-" in *x*) otp_xtrace=1; set +x ;; esac
   otp_rc=0
-  code="$(_read_fresh_otp "$before")" || otp_rc=$?
-  # 75 是 _read_fresh_otp 专门用来表达「本机 OTP 材料没刷新」的环境结论（见那个函数）。
+  code="$(_read_local_otp)" || otp_rc=$?
+  # 75 是 _read_local_otp 专门用来表达「本机 OTP 材料没准备好」的环境结论（见那个函数）。
   if [ "$otp_rc" = '75' ]; then
-    mark_journey_blocked '本地 dev 栈没有在超时内刷新当轮短信验证码文件'
+    mark_journey_blocked '本地 dev 栈没有写出可读的短信验证码文件'
   fi
   if [ "$otp_rc" = '0' ]; then _fill_secret 短信验证码 "$code" || otp_rc=1; fi
   code=''
