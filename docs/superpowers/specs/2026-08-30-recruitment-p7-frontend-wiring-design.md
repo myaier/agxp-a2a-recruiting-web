@@ -279,11 +279,13 @@ interface P7会话状态 {
 3. 若重拉失败，保留原 key，只允许重试同一意图，不允许放弃或换 key；
 4. 用户显式放弃后只清该不可变正文对应的待定 key，保留当前编辑中的草稿；下一次点击才生成新 key。
 
+最终 `idempotency_in_progress` 表示同一 effect 仍在执行：保留原 key 与不可变正文，返回不可放弃的 unknown 状态，只允许稍后同 key 重试；不得落入“其余 4xx 释放 key”的默认路径。
+
 `idempotency_conflict` 是终局冲突：不自动重试，刷新权威消息并提示用户重新确认正文。
 
 ### 7.4 已读
 
-会话页按服务端渲染顺序取得“当前实际渲染的最后一个 user_text message ID”。它与上一次成功/在飞 ID 不同时提交一次 read-through；不把可能超出 JavaScript 安全整数范围的十进制 ID 转成 `number` 比大小，系统行也永不提交。成功后刷新当前会话和收件箱。新消息在提交之后到达不会被误读，服务端 forward-only 保证重复提交幂等。
+会话页按服务端渲染顺序取得“当前实际渲染的最后一个 user_text message ID”。它与上一次成功、在飞或已被终局拒绝的 ID 不同时提交一次 read-through；不把可能超出 JavaScript 安全整数范围的十进制 ID 转成 `number` 比大小，系统行也永不提交。`role_required` / `role_suspended` 把该 target 记为终局拒绝，重渲染同一批消息不再重发；新 target 仍可尝试，subject/role/session 切换会随 P7 引用清理全部复位。成功后刷新当前会话和收件箱。新消息在提交之后到达不会被误读，服务端 forward-only 保证重复提交幂等。
 
 ## 8. 页面设计
 
@@ -434,7 +436,7 @@ const 已加载未读 = items.reduce((sum, item) => sum + item.unreadCount, 0);
 
 平台内部的 muted / moderation 拒绝在当前 BFF 实现里统一投影为公开 `invalid_request_body`，前端不猜内部原因，也不依赖未公开错误词。`idempotency_in_progress` 与结果未知同样保留原 key，但不允许放弃仍在处理的意图；`role_required` / `role_suspended` 是当前角色的终局拒绝，不清除仍有效的登录会话、不自动重试发送，并停止对同一 read target 的自动重发，直到用户切换身份、重新登录或消息 target 改变。
 
-公开错误的后端英文 message 不直接显示。未列入上表的错误码统一显示“请求失败，请稍后重试”，P7 页面不得直接复用 `取后端错误文案` 的 `error.message` 兜底。日志、测试样本与持久化不得包含 session token、Idempotency-Key、完整消息正文、电话、微信、简历正文或 identity subject。前端只把消息正文保存在当前内存状态与输入草稿，不写 localStorage。
+公开错误的后端英文 message 不直接显示。P7 可以复用 `取后端错误文案` 已闭合的断网、通用 502/503/504、invalid response/session 等中文分支，但未知错误码必须覆盖其最后的 `error.message` 路径并统一显示“请求失败，请稍后重试”。日志、测试样本与持久化不得包含 session token、Idempotency-Key、完整消息正文、电话、微信、简历正文或 identity subject。前端只把消息正文保存在当前内存状态与输入草稿，不写 localStorage。
 
 ## 13. 模块与改动边界
 

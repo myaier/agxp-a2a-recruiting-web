@@ -330,7 +330,11 @@ export interface P7运行时引用 {
   P7待定意图: 可变引用<Map<string, P7待定意图>>;
   P7可见收件箱: 可变引用<Record<P7角色, boolean>>;
   P7可见会话: 可变引用<Record<P7角色, string | null>>;
-  P7已读位置: 可变引用<Map<string, string>>;
+  P7已读位置: 可变引用<Map<string, {
+    lastSuccessful: string | null;
+    inFlight: string | null;
+    terminalRejected: string | null;
+  }>>;
 }
 ```
 
@@ -371,7 +375,7 @@ expect(数据源.发送消息.mock.calls[0][3]).toBe(数据源.发送消息.mock
 
 - [ ] **Step 3: Write read and cleanup RED tests**
 
-Assert only decimal `user_text` IDs are accepted, same rendered target is single-flight/deduplicated, success refreshes detail+inbox, and logout/401/subject/role transition clears P7 state, ranges, pending intents, read positions and active socket scope without persisting any P7 value.
+Assert only decimal `user_text` IDs are accepted, same rendered target is single-flight/deduplicated, success refreshes detail+inbox, and logout/401/subject/role transition clears P7 state, ranges, pending intents, read positions and active socket scope without persisting any P7 value. Add the terminal-permission matrix: after `role_required` or `role_suspended`, rerendering the same target makes zero further read calls; a different target may make one call; subject/role/session cleanup clears the refusal and permits the target in the new scope.
 
 - [ ] **Step 4: Run RED**
 
@@ -417,7 +421,7 @@ function pendingIntentFor(
 }
 ```
 
-Add a P7-specific public error mapper in this module. It must cover the Spec §12 table and use the neutral fallback `请求失败，请稍后重试`; never pass through `BFF错误.message`. `role_required` / `role_suspended` do not clear a valid session, do not auto-retry sends, and suppress repeat submission of the same automatic read target until subject/role/session changes or a different target is rendered. Test both role codes and one unknown English backend message.
+Add a P7-specific public error mapper in this module. Check the Spec §12 P7 table first. For unmapped failures, reuse only `取后端错误文案`'s closed safe branches: non-`BFF错误` transport, status 0 / `network_error`, status 502/503/504, `invalid_response`, and `invalid_session`; an otherwise unknown `BFF错误` must use `请求失败，请稍后重试` instead of the helper's final `error.message` fallback. `role_required` / `role_suspended` do not clear a valid session, do not auto-retry sends, and set `terminalRejected` for the same automatic read target until a different target or subject/role/session cleanup. Test both role codes, status 0 preserving the existing useful network copy, and one unknown English backend message being replaced.
 
 - [ ] **Step 6: Run PASS and commit**
 
@@ -887,4 +891,6 @@ Expected: clean worktree.
 - [ ] Candidate context action uses `job_ref`; recruiter PDF uses `case_id` and revokes its lease.
 - [ ] `handoff_pending` continues polling; only `complete + conversation_ref` stops and navigates.
 - [ ] WebSocket payload never enters message/unread/context state.
+- [ ] 双端主壳在用户尚未打开消息 Tab 时，已能由首屏 P7 收件箱水合显示已加载未读角标。
+- [ ] Task 7 的不 stub Vite WebSocket upgrade 得到 401 `invalid_session` 而非 403 `invalid_origin`，回执已记入 `docs/DEV_LOG.md`。
 - [ ] Focused tests, data-source Playwright, typecheck, lint, build and full `npm test` all pass on the final commit.
