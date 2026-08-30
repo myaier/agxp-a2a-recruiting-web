@@ -316,10 +316,10 @@ Mock 现有入口继续使用无参常量；Backend 导航必须使用带真实 
 
 可用动作遵守后端事实边界：
 
-- 候选侧“看职位”：用 P7 `context.job_ref` 进入现有 Backend 岗位详情路由；该页面已经能按 job ID 读取权威 CandidateJob，不借 `case_id` 猜岗位；
-- 招聘侧“看简历”：仍使用 Case 授权的 `读取简历PDF('recruiter', caseId)`，复用当前 PDF 租约和预览层，不按 `resume_ref` 自造下载 URL；
+- 候选侧“看职位”：仅在 context available 且 `context.job_ref` 在场时，进入现有 Backend 岗位详情路由；该页面已经能按 job ID 读取权威 CandidateJob，不借 `case_id` 猜岗位；
+- 招聘侧“看简历”：仅在 context available 且 `context.resume_ref` 在场时，使用 Case 授权的 `读取简历PDF('recruiter', caseId)`，复用当前 PDF 租约和预览层，不按 `resume_ref` 自造下载 URL；
 - 电话 / 微信：Backend 首版不渲染。P7 context 不提供这些字段，不能显示 Mock 值；
-- context 不可用时“看职位 / 看简历”也隐藏，只保留刷新上下文入口。
+- context 不可用，或对应 `job_ref` / `resume_ref` 缺席时，隐藏缺少授权坐标的“看职位 / 看简历”；context 不可用时只保留刷新上下文入口。
 
 Mock 继续完整显示现有“看职位/看简历、电话、微信”操作排。
 
@@ -340,7 +340,7 @@ Mock 继续完整显示现有“看职位/看简历、电话、微信”操作�
 
 ```text
 handoff_pending → conversation_ref 必须 absent
-complete        → conversation_ref 必须为非空 canonical conversation ID
+complete        → conversation_ref 必须匹配 ^[1-9][0-9]{0,63}$
 ```
 
 open、ended、其他 completed 组合带 `conversation_ref` 全部 fail closed；不增加 `published` boolean，也不从文本或本地状态推导。
