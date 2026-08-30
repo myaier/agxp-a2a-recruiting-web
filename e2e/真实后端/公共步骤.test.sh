@@ -19,6 +19,10 @@ CRUD_JOURNEY="$ROOT_DIR/旅程/候选CRUD.sh"
 HR_LOAD_JOURNEY="$ROOT_DIR/旅程/招聘数据加载.sh"
 HR_CRUD_JOURNEY="$ROOT_DIR/旅程/招聘CRUD.sh"
 
+# 后端仓库的真实位置要在建沙盒**之前**记下来：new_sandbox 会把 AGXP_MONOREPO_DIR
+# 指到沙盒里的假 monorepo，之后再读它就只剩假件了。
+REAL_MONOREPO_DIR="${AGXP_MONOREPO_DIR:-}"
+
 FAILURES=0
 CURRENT_CASE=''
 
@@ -59,10 +63,10 @@ new_sandbox(){
   FAKE_STALE_OTP='713642'
   RUN_DIR="$SANDBOX/run"
   FRAGMENT_DIR="$SANDBOX/run/journeys"
-  PRIVATE_LEDGER="$SANDBOX/run/private/cleanup.json"
+  PRIVATE_JOURNAL="$SANDBOX/run/private/run-journal.json"
   AGXP_MONOREPO_DIR="$SANDBOX/monorepo"
   FRONTEND_ORIGIN='http://localhost:5173'
-  export CALLS FAKE_STATE FAKE_OTP_FILE FAKE_OTP FAKE_STALE_OTP RUN_DIR FRAGMENT_DIR PRIVATE_LEDGER AGXP_MONOREPO_DIR FRONTEND_ORIGIN
+  export CALLS FAKE_STATE FAKE_OTP_FILE FAKE_OTP FAKE_STALE_OTP RUN_DIR FRAGMENT_DIR PRIVATE_JOURNAL AGXP_MONOREPO_DIR FRONTEND_ORIGIN
   export PATH="$SANDBOX/bin:$PATH"
 
   # 上一轮留下的旧验证码：新鲜度判定读不到「点过获取验证码之后」的写入就不该用它
@@ -90,7 +94,7 @@ new_sandbox(){
     >"$FAKE_STATE/console.json"
   printf '%s\n' '{"success":true,"data":{"errors":[]},"error":null}' >"$FAKE_STATE/errors.json"
 
-  cat >"$PRIVATE_LEDGER" <<'JSON'
+  cat >"$PRIVATE_JOURNAL" <<'JSON'
 {
   "schema_version": 1,
   "run_id": "20260830T000000Z-ab12cd",
@@ -99,7 +103,7 @@ new_sandbox(){
   "recruiter_job_titles": []
 }
 JSON
-  chmod 600 "$PRIVATE_LEDGER"
+  chmod 600 "$PRIVATE_JOURNAL"
 
   write_fake_cli
 }
@@ -183,7 +187,11 @@ case "${1:-}" in
   snapshot) printf '%s\n' '- button "浏览器验收候选人"' ;;
   screenshot) : >"${2:-/dev/null}" ;;
   find)
-    case "$*" in *'--name 获取验证码'*) printf '%s\n' "$FAKE_OTP" >"$FAKE_OTP_FILE" ;; esac
+    # FAKE_NO_OTP=1 模拟「本地 dev 栈这一轮根本没写出验证码」
+    case "$*" in
+      *'--name 获取验证码'*)
+        [ "${FAKE_NO_OTP:-0}" = '1' ] || printf '%s\n' "$FAKE_OTP" >"$FAKE_OTP_FILE" ;;
+    esac
     # 滚轮：find nth <序> [aria-label="列名"] [role="option"] click —— 记住这一列落到哪一档
     if [ "${2:-}" = 'nth' ]; then
       col="$(printf '%s' "${4:-}" | sed -n 's/^\[aria-label="\([^"]*\)"\].*/\1/p')"
@@ -286,6 +294,33 @@ export AGENT_BROWSER_SESSION='backend-local-recruiter'
 assert_eq 'login_recruiter 返回 0' "$?" '0'
 assert_contains '选身份点我要招人' 'find role button click --name 我要招人' "$CALLS"
 assert_session_and_bans 'backend-local-recruiter'
+
+# 设计稿 §14：本机 OTP 材料不刷新是 INFRA_BLOCKED，不是 FUNCTIONAL_FAILED。
+# 报成功能失败会让第一个跑这条命令的人去追一个不存在的产品缺陷。
+testcase '本机 OTP 材料超时：旅程写 blocked 分片，退出 75'
+new_sandbox otp-blocked
+export AGENT_BROWSER_SESSION='backend-local-candidate'
+export FAKE_NO_OTP=1
+# 真库要等 60 轮 × 0.5s；沙盒里把 sleep 换成空操作，用例才不用真等 30 秒
+printf '#!/usr/bin/env bash\nexit 0\n' >"$SANDBOX/bin/sleep"
+chmod +x "$SANDBOX/bin/sleep"
+bash "$LOAD_JOURNEY" >"$SANDBOX/stdout.txt" 2>"$SANDBOX/stderr.txt"
+OTP_RC=$?
+unset FAKE_NO_OTP
+assert_eq '旅程按环境阻塞退出 75（不是 1）' "$OTP_RC" '75'
+assert_eq '分片记 blocked' "$(jq -r '.status' "$FRAGMENT_DIR/candidate-load.json")" 'blocked'
+assert_true '失败摘要说明是环境阻塞' \
+  "jq -e '.failure | contains(\"环境阻塞\")' '$FRAGMENT_DIR/candidate-load.json' >/dev/null"
+assert_missing 'OTP 值仍然不出现在分片里' "$FAKE_OTP" "$FRAGMENT_DIR/candidate-load.json"
+
+testcase '普通断言失败仍然是功能失败，不会被洗成环境阻塞'
+new_sandbox otp-not-blocked
+export AGENT_BROWSER_SESSION='backend-local-candidate'
+mark_absent '[aria-label="手机号"]'
+printf '%s\n' '' >"$FAKE_STATE/body.txt"
+bash "$LOAD_JOURNEY" >/dev/null 2>&1
+assert_eq '旅程按功能失败退出（非 75）' "$( [ $? -eq 75 ] && echo blocked || echo failed )" 'failed'
+assert_eq '分片记 failed' "$(jq -r '.status' "$FRAGMENT_DIR/candidate-load.json")" 'failed'
 
 testcase '会话隔离'
 new_sandbox session-guard
@@ -431,11 +466,11 @@ export AGENT_BROWSER_SESSION='backend-local-candidate'
   record_cleanup_marker candidate_intention_created true
   record_cleanup_marker candidate_resume_file_names '浏览器验收临时简历.pdf' ) >/dev/null 2>&1
 assert_eq '两次记录都成功' "$?" '0'
-assert_eq '里程碑落到台账' "$(jq -r '.candidate_intention_created' "$PRIVATE_LEDGER")" 'true'
-assert_eq '固定保留名称落到台账' "$(jq -r '.candidate_resume_file_names[0]' "$PRIVATE_LEDGER")" '浏览器验收临时简历.pdf'
-assert_eq '台账仍是 0600' "$(ls -l "$PRIVATE_LEDGER" | cut -c2-10)" 'rw-------'
+assert_eq '里程碑落到台账' "$(jq -r '.candidate_intention_created' "$PRIVATE_JOURNAL")" 'true'
+assert_eq '固定保留名称落到台账' "$(jq -r '.candidate_resume_file_names[0]' "$PRIVATE_JOURNAL")" '浏览器验收临时简历.pdf'
+assert_eq '台账仍是 0600' "$(ls -l "$PRIVATE_JOURNAL" | cut -c2-10)" 'rw-------'
 assert_eq '原子替换后没有残留临时文件' \
-  "$(find "$SANDBOX/run/private" -name '.cleanup.json.*' | wc -l | tr -d ' ')" '0'
+  "$(find "$SANDBOX/run/private" -name '.run-journal.json.*' | wc -l | tr -d ' ')" '0'
 ( . "$LIB"; record_cleanup_marker recruiter_job_titles '某个原始ID' ) >/dev/null 2>&1
 assert_false '非保留名称必须被拒' "[ $? -eq 0 ]"
 ( . "$LIB"; record_cleanup_marker some_other_field true ) >/dev/null 2>&1
@@ -567,19 +602,23 @@ assert_contains '左滑附件行（语义定位 + 自身矩形 + 真实鼠标输
 assert_contains '滑开后点替换' 'find role button click --name 替换 --exact' "$CALLS"
 assert_contains '滑开后点删除' 'find role button click --name 删除 --exact' "$CALLS"
 assert_contains '过删除确认层' 'find role button click --name 删除附件简历 --exact' "$CALLS"
-assert_contains '删完断言空态' 'wait --text 还未上传附件简历' "$CALLS"
+# 删除后只断言「这一行消失」。断言空态文案会把「账号里另有一份合法既有附件」
+# 误判成旅程失败 —— candidate_converge 只保证还剩 >=2 个空槽位，不保证附件库是空的。
+assert_contains '删完只断言这一行消失' \
+  'wait --fn document.querySelectorAll('"'"'[aria-label^="浏览器验收临时简历.pdf"]'"'"').length === 0' "$CALLS"
+assert_missing '不再拿附件库空态文案当断言' 'wait --text 还未上传附件简历' "$CALLS"
 assert_true '左滑发生两次（替换一次、删除一次）' \
   "[ $(grep -c 'get box \[aria-label\^=' "$CALLS") -eq 2 ]"
 assert_missing '旅程里不用 eval 造输入事件' 'eval --stdin' "$SANDBOX/stderr.txt"
 assert_line '还原基准姓名（整行精确匹配，不是临时名的前缀）' \
   '--session backend-local-candidate find label 姓名（递交简历后披露） fill 浏览器验收候选人' "$CALLS"
-assert_eq '台账记下已建意向' "$(jq -r '.candidate_intention_created' "$PRIVATE_LEDGER")" 'true'
+assert_eq '台账记下已建意向' "$(jq -r '.candidate_intention_created' "$PRIVATE_JOURNAL")" 'true'
 assert_eq '台账记下临时附件的固定名称' \
-  "$(jq -r '.candidate_resume_file_names[0]' "$PRIVATE_LEDGER")" '浏览器验收临时简历.pdf'
+  "$(jq -r '.candidate_resume_file_names[0]' "$PRIVATE_JOURNAL")" '浏览器验收临时简历.pdf'
 assert_eq '台账没有多出任何字段' \
-  "$(jq -rc '[keys_unsorted[]]|sort|join(",")' "$PRIVATE_LEDGER")" \
+  "$(jq -rc '[keys_unsorted[]]|sort|join(",")' "$PRIVATE_JOURNAL")" \
   'candidate_intention_created,candidate_resume_file_names,recruiter_job_titles,run_id,schema_version'
-assert_eq '台账仍是 0600' "$(ls -l "$PRIVATE_LEDGER" | cut -c2-10)" 'rw-------'
+assert_eq '台账仍是 0600' "$(ls -l "$PRIVATE_JOURNAL" | cut -c2-10)" 'rw-------'
 assert_eq '原子替换后没有残留临时文件' \
   "$(find "$SANDBOX/run/private" -name '.cleanup.json.*' | wc -l | tr -d ' ')" '0'
 # 每个写块做完都硬刷新一次：改名 / 建意向 / 改意向 / 删意向 / 改档 / 还原档 /
@@ -683,13 +722,13 @@ assert_contains '办公方式选混合' 'find role button click --name 混合 --
 assert_contains '工作城市从候选里选' 'find role button click --name 上海市 --exact' "$CALLS"
 assert_contains '最后一步是发布' 'find role button click --name 发布岗位并开始寻访 --exact' "$CALLS"
 assert_eq '临时岗位标题逐字等于后端 cleanup 的差集名' \
-  "$(jq -r '.recruiter_job_titles[0]' "$PRIVATE_LEDGER")" '浏览器验收岗位 · 临时CRUD'
+  "$(jq -r '.recruiter_job_titles[0]' "$PRIVATE_JOURNAL")" '浏览器验收岗位 · 临时CRUD'
 assert_eq '台账只记这一个名称' \
-  "$(jq -r '.recruiter_job_titles | length' "$PRIVATE_LEDGER")" '1'
+  "$(jq -r '.recruiter_job_titles | length' "$PRIVATE_JOURNAL")" '1'
 assert_eq '台账没有多出任何字段' \
-  "$(jq -rc '[keys_unsorted[]]|sort|join(",")' "$PRIVATE_LEDGER")" \
+  "$(jq -rc '[keys_unsorted[]]|sort|join(",")' "$PRIVATE_JOURNAL")" \
   'candidate_intention_created,candidate_resume_file_names,recruiter_job_titles,run_id,schema_version'
-assert_eq '台账仍是 0600' "$(ls -l "$PRIVATE_LEDGER" | cut -c2-10)" 'rw-------'
+assert_eq '台账仍是 0600' "$(ls -l "$PRIVATE_JOURNAL" | cut -c2-10)" 'rw-------'
 # 编辑只动描述与加分偏好：标题 / 类别 / 城市在后端不可改，一个字都不许碰
 assert_contains '滑开临时岗位行（语义定位 + 自身矩形 + 真实鼠标输入）' \
   'get box [aria-label^="浏览器验收岗位 · 临时CRUD"] --json' "$CALLS"
@@ -789,6 +828,58 @@ assert_false '任一步不成立就必须返回非 0' "[ $? -eq 0 ]"
 assert_eq '仍然写出分片，记为 failed' \
   "$(jq -r '.status' "$FRAGMENT_DIR/session-isolation.json")" 'failed'
 assert_contains '分片写明卡在哪个里程碑' '双会话隔离门' "$FRAGMENT_DIR/session-isolation.json"
+# 四条业务旅程失败时都留一份失败快照；这道门最容易因为非显而易见的原因失败，
+# 少了它就是唯一一条「失败但零诊断」的路径。
+assert_contains '失败路径留下失败快照' 'snapshot -i' "$CALLS"
+assert_true '快照落在诊断目录里' "[ -f '$RUN_DIR/diagnostics/session-isolation-snapshot.txt' ]"
+
+# ── 10.5 与后端 fixture 共享的冻结业务字面量 ────────────────────────
+
+# 这 13 条业务字符串在两个仓库里各写一份：后端 browser-fixture.sh 把账号收敛成它们，
+# 前端旅程照着它们断言。任何一侧改一个字都会让整套验收在真实后端上假失败，
+# 而两边的单测各自都是绿的。做法与上面「场景表 vs 场景清单.ts」那一条一样：
+# 逐字比对两处，漂移即测试失败。AGXP_MONOREPO_DIR 没设置时干净跳过（本套件不需要后端仓库）。
+FROZEN_LITERALS='浏览器验收候选人
+浏览器验收候选人 · 真实后端基准摘要
+浏览器验收临时简历.pdf
+浏览器验收招聘官
+招聘负责人
+浏览器验收科技
+浏览器验收科技 · 真实后端企业介绍基线
+浏览器验收岗位 · 在招基线
+浏览器验收岗位 · 归档基线
+浏览器验收岗位 · 临时CRUD
+前端开发工程师
+上海市
+上海市浦东新区浏览器路 1 号'
+
+testcase '冻结业务字面量：前端旅程与后端 fixture 逐字一致'
+FRONT_SOURCES="$LIB $LOAD_JOURNEY $CRUD_JOURNEY $HR_LOAD_JOURNEY $HR_CRUD_JOURNEY"
+# 先证明这张表确实是前端在用的（否则下面对后端的比对可能在比一张过时的表）
+MISSING_FRONT=''
+while IFS= read -r literal; do
+  [ -n "$literal" ] || continue
+  # 带上两侧的单引号做**整词**比对：只 grep 裸串时，把后端改成
+  # 「浏览器验收岗位 · 临时CRUD2」这种加后缀的漂移会因为子串命中而漏过。
+  if ! grep -qF -- "'$literal'" $FRONT_SOURCES; then MISSING_FRONT="$MISSING_FRONT[$literal]"; fi
+done <<EOF
+$FROZEN_LITERALS
+EOF
+assert_eq '每一条都真的出现在前端长期脚本里' "$MISSING_FRONT" ''
+
+BACKEND_FIXTURE="$REAL_MONOREPO_DIR/apps/recruitment/scripts/browser-fixture.sh"
+if [ -z "$REAL_MONOREPO_DIR" ] || [ ! -f "$BACKEND_FIXTURE" ]; then
+  printf 'skip 未设置 AGXP_MONOREPO_DIR（或后端 fixture 不在），跳过跨仓库字面量比对\n'
+else
+  MISSING_BACK=''
+  while IFS= read -r literal; do
+    [ -n "$literal" ] || continue
+    if ! grep -qF -- "'$literal'" "$BACKEND_FIXTURE"; then MISSING_BACK="$MISSING_BACK[$literal]"; fi
+  done <<EOF
+$FROZEN_LITERALS
+EOF
+  assert_eq '每一条都逐字出现在后端 browser-fixture.sh 里' "$MISSING_BACK" ''
+fi
 
 # ── 11. 长期脚本的静态禁令 ──────────────────────────────────────────
 

@@ -41,6 +41,28 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CAPTURED_SCREENSHOTS=''
 # 分片只写一次：写完之后旅程脚本的失败收尾不再覆盖它
 FRAGMENT_WRITTEN=0
+# 本轮失败属于环境阻塞而不是业务失败（设计稿 §14 INFRA_BLOCKED）。
+# 只有明确可归因到环境的那几处才置位 —— 普通断言失败一律仍是 failed，
+# 否则「产品坏了」会被一路洗成「环境没准备好」。
+JOURNEY_BLOCKED=0
+JOURNEY_BLOCKED_REASON=''
+
+# 把当前失败标成环境阻塞。$1 人读原因（进分片的 failure 摘要）。
+mark_journey_blocked(){
+  JOURNEY_BLOCKED=1
+  JOURNEY_BLOCKED_REASON="$1"
+}
+
+# 旅程失败收尾的统一收口：按 JOURNEY_BLOCKED 决定写 blocked 还是 failed。
+# $1 旅程 ID  $2 里程碑
+write_journey_failure(){
+  if [ "$JOURNEY_BLOCKED" = '1' ]; then
+    write_journey_result "$1" blocked "$2" \
+      "旅程在里程碑「${2}」遇到环境阻塞：${JOURNEY_BLOCKED_REASON}"
+  else
+    write_journey_result "$1" failed "$2" "旅程在里程碑「${2}」失败"
+  fi
+}
 
 # ── agent-browser 包装 ───────────────────────────────────────────────
 
@@ -199,8 +221,12 @@ _read_fresh_otp(){
     tries=$((tries + 1))
     sleep 0.5
   done
+  # 本地 dev 栈写不出当轮验证码，是本机环境的问题，不是产品的问题：
+  # 报成 FUNCTIONAL_FAILED 会让第一个跑这条命令的人去追一个不存在的产品缺陷。
+  # 这个函数只在命令替换里被调用（子 shell），置全局标志出不来，所以结论走退出码：
+  # 75 = 环境阻塞，由 _login 在父 shell 里翻译成 JOURNEY_BLOCKED。
   echo '本地 OTP 文件在超时内没有刷新，登录中止' >&2
-  return 1
+  return 75
 }
 
 # 敏感值只经过这一个出口。
@@ -241,7 +267,11 @@ _login(){
   otp_xtrace=0
   case "$-" in *x*) otp_xtrace=1; set +x ;; esac
   otp_rc=0
-  code="$(_read_fresh_otp "$before")" || otp_rc=1
+  code="$(_read_fresh_otp "$before")" || otp_rc=$?
+  # 75 是 _read_fresh_otp 专门用来表达「本机 OTP 材料没刷新」的环境结论（见那个函数）。
+  if [ "$otp_rc" = '75' ]; then
+    mark_journey_blocked '本地 dev 栈没有在超时内刷新当轮短信验证码文件'
+  fi
   if [ "$otp_rc" = '0' ]; then _fill_secret 短信验证码 "$code" || otp_rc=1; fi
   code=''
   unset code
@@ -329,42 +359,49 @@ capture_failure_snapshot(){
   return 0
 }
 
-# ── 私密清理台账 ────────────────────────────────────────────────────
+# ── 私密运行 journal ────────────────────────────────────────────────
 
 # 只记录「浏览器已经做完」的里程碑和固定保留名称，永远不写 raw ID。
 # 写入用同目录临时文件 + mv 原子替换，保持 0600。
+#
+# 它是**人读证据**，不是后端算子的输入：`browser-fixture.sh cleanup --ledger`
+# 只接受后端自己写的 run receipt（带 candidate / recruiter 两段 owner-list），
+# 把这份 journal 传过去会让设计稿 §8.5 的差集清理整段空转。唯一的读者是
+# 运行整栈验收.sh 的 print_private_journal：清理失败时把这几个固定保留名称念给人听。
 record_cleanup_marker(){
   local key="$1" value="$2" result tmp
-  if [ -z "${PRIVATE_LEDGER:-}" ] || [ ! -f "$PRIVATE_LEDGER" ]; then
+  if [ -z "${PRIVATE_JOURNAL:-}" ] || [ ! -f "$PRIVATE_JOURNAL" ]; then
     echo '私密清理台账不存在，拒绝记录里程碑' >&2
     return 1
   fi
   case "$key" in
     candidate_intention_created)
       if [ "$value" != 'true' ]; then echo "$key 只接受 true" >&2; return 1; fi
-      result="$(jq '.candidate_intention_created = true' "$PRIVATE_LEDGER")" || return 1
+      result="$(jq '.candidate_intention_created = true' "$PRIVATE_JOURNAL")" || return 1
       ;;
     candidate_resume_file_names|recruiter_job_titles)
       case "$value" in
         浏览器验收*) : ;;
         *) echo '台账只记录固定保留的验收名称' >&2; return 1 ;;
       esac
-      result="$(jq --arg k "$key" --arg v "$value" '.[$k] = ((.[$k] // []) + [$v])' "$PRIVATE_LEDGER")" || return 1
+      result="$(jq --arg k "$key" --arg v "$value" '.[$k] = ((.[$k] // []) + [$v])' "$PRIVATE_JOURNAL")" || return 1
       ;;
     *)
       echo "未知清理台账字段：$key" >&2
       return 1
       ;;
   esac
-  tmp="$(dirname "$PRIVATE_LEDGER")/.$(basename "$PRIVATE_LEDGER").$$"
+  tmp="$(dirname "$PRIVATE_JOURNAL")/.$(basename "$PRIVATE_JOURNAL").$$"
   ( umask 077; printf '%s\n' "$result" >"$tmp" ) || return 1
   chmod 600 "$tmp" || return 1
-  mv -f "$tmp" "$PRIVATE_LEDGER"
+  mv -f "$tmp" "$PRIVATE_JOURNAL"
 }
 
 # ── 旅程结果分片 ────────────────────────────────────────────────────
 
 # 分片路径合同：<FRAGMENT_DIR>/<旅程ID>.json，字段与 e2e/真实后端/类型.ts 的 旅程结果 一致。
+# status 取 pass / failed / blocked / skipped 四种；blocked 表示环境阻塞（设计稿 §14），
+# 由 write_journey_failure 在 JOURNEY_BLOCKED 置位时写出，报告读取端据此升级成 exit 75。
 # apiRequests / failedRequests 只留 METHOD + pathname，形状不合规的条目直接丢弃 ——
 # 报告读取端（e2e/真实后端/报告.ts 请求形状）见到一条脏数据就把整轮判成 USAGE_ERROR。
 _fragment_dir(){ printf '%s' "${FRAGMENT_DIR:-$RUN_DIR/journeys}"; }
@@ -515,7 +552,15 @@ _isolation_steps(){
   if [ "$rc" -eq 0 ]; then
     write_journey_result 'session-isolation' pass "$ISOLATION_MILESTONE"
   else
-    write_journey_result 'session-isolation' failed "$ISOLATION_MILESTONE" \
-      "双会话隔离门在里程碑「${ISOLATION_MILESTONE}」失败"
+    # 四条业务旅程失败时都会留一份失败快照，这道门最容易因为非显而易见的原因失败，
+    # 少了它就是唯一一条「失败但零诊断」的路径。
+    capture_failure_snapshot 'session-isolation'
+    if [ "$JOURNEY_BLOCKED" = '1' ]; then
+      write_journey_result 'session-isolation' blocked "$ISOLATION_MILESTONE" \
+        "双会话隔离门在里程碑「${ISOLATION_MILESTONE}」遇到环境阻塞：${JOURNEY_BLOCKED_REASON}"
+    else
+      write_journey_result 'session-isolation' failed "$ISOLATION_MILESTONE" \
+        "双会话隔离门在里程碑「${ISOLATION_MILESTONE}」失败"
+    fi
   fi
 }

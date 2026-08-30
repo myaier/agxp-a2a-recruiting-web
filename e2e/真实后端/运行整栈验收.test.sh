@@ -116,12 +116,12 @@ esac
 printf 'journey %s fragmentdir=%s\n' "$J" "${FRAGMENT_DIR:-unset}" >>"$CALLS"
 
 # DENY：编排层必须把这些环境交到旅程手上，少一个就红
-for v in RUN_DIR FRAGMENT_DIR PRIVATE_LEDGER AGXP_MONOREPO_DIR FRONTEND_ORIGIN BROWSER_FIXTURE_RUN_ID; do
+for v in RUN_DIR FRAGMENT_DIR PRIVATE_JOURNAL AGXP_MONOREPO_DIR FRONTEND_ORIGIN BROWSER_FIXTURE_RUN_ID; do
   eval "have=\${$v:-}"
   [ -n "$have" ] || { printf 'FAKE journey %s 缺少环境 %s\n' "$J" "$v" >>"$CALLS"; exit 1; }
 done
 [ "$FRONTEND_ORIGIN" = 'http://localhost:5173' ] || { printf 'FAKE journey %s 页面源非法：%s\n' "$J" "$FRONTEND_ORIGIN" >>"$CALLS"; exit 1; }
-[ -f "$PRIVATE_LEDGER" ] || { printf 'FAKE journey %s 台账不存在\n' "$J" >>"$CALLS"; exit 1; }
+[ -f "$PRIVATE_JOURNAL" ] || { printf 'FAKE journey %s 台账不存在\n' "$J" >>"$CALLS"; exit 1; }
 
 status='pass'; rc=0
 case " ${FAKE_JOURNEY_FAIL:-} " in *" $J "*) status='failed'; rc=1 ;; esac
@@ -265,6 +265,12 @@ esac
 FAKE
 chmod +x "$MONO/apps/recruitment/scripts/dev-local.sh"
 
+# 假 browser-fixture.sh。除了记调用，它还复刻真算子的两条关键语义：
+#   · 退出码分层：64 usage / 75 BLOCKED（环境）/ 1 FAIL（功能）；
+#   · `--ledger` 只认**本轮的 run receipt**（带 candidate / recruiter 两段 owner-list）。
+#     传别的文件（比如前端自己的私密 journal）时，两条 reconcile 手臂全部空转，
+#     于是本轮留下的临时对象没人清，下一次 converge 就撞上「没有 receipt 能解释它」。
+#     这里把这条因果关系原样做出来，正常路径看不出差别、中断路径立刻见红。
 cat >"$MONO/apps/recruitment/scripts/browser-fixture.sh" <<'FAKE'
 #!/usr/bin/env bash
 set -u
@@ -272,28 +278,74 @@ printf 'fixture %s\n' "$*" >>"$CALLS"
 if [ -z "${BROWSER_FIXTURE_RUN_ID:-}" ]; then echo 'usage: 缺少 BROWSER_FIXTURE_RUN_ID' >&2; exit 64; fi
 receipt_dir="$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev/browser-fixtures"
 receipt="$receipt_dir/$BROWSER_FIXTURE_RUN_ID.json"
+stale="$STATE/stale-temp-object"
+
+# 按调用次序回放退出码，和假 dev-local health 用的是同一套：'1 0' 表示第一次失败、之后成功
+seq_rc(){
+  local name="$1" seq="$2" n rc
+  n=$(cat "$STATE/$name-calls" 2>/dev/null || printf '0'); n=$((n + 1))
+  printf '%s' "$n" >"$STATE/$name-calls"
+  rc="$(printf '%s\n' $seq | tr ' ' '\n' | sed -n "${n}p")"
+  [ -n "$rc" ] || rc="$(printf '%s\n' $seq | tr ' ' '\n' | tail -1)"
+  printf '%s' "$rc"
+}
+
 case "${1:-}" in
   converge)
-    case "${FAKE_CONVERGE_RC:-0}" in
+    case "$(seq_rc converge "${FAKE_CONVERGE_SEQ:-0}")" in
       0) : ;;
       75) echo 'BLOCKED: 本地栈没起来'; exit 75 ;;
-      *) echo 'FAIL: converge 失败'; exit 1 ;;
+      *) echo 'FAIL: the recruiter baseline jobs are not in place'; exit 1 ;;
     esac
+    # 上一轮/本轮留下、又没有任何 run receipt 能解释的临时对象：fail closed，绝不猜。
+    if [ -f "$stale" ]; then
+      echo 'BLOCKED: the candidate fixture account holds an intention no run receipt accounts for'
+      exit 75
+    fi
     mkdir -p "$receipt_dir"
-    ( umask 077; printf '{"run_id":"%s","schema_version":1}\n' "$BROWSER_FIXTURE_RUN_ID" >"$receipt" )
+    ( umask 077; jq -nc --arg run "$BROWSER_FIXTURE_RUN_ID" \
+        '{schema_version:1,run_id:$run,
+          candidate:{started_at:"2026-08-30T00:00:00Z",intention_ids:[],file_ids:[]},
+          recruiter:{started_at:"2026-08-30T00:00:00Z",job_ids:[]}}' >"$receipt" )
     chmod "${FAKE_RECEIPT_MODE:-600}" "$receipt"
     [ "${FAKE_RECEIPT_MISSING:-0}" = '1' ] && rm -f "$receipt"
+    # 「本轮被中断」：浏览器没来得及自己删掉临时对象。只在**第一次** converge 时造，
+    # 收尾那一次代表「清理之后重新收敛」，再造一个就模拟不出自愈了。
+    if [ "${FAKE_INTERRUPTED:-0}" = '1' ] && [ "$(cat "$STATE/converge-calls" 2>/dev/null)" = '1' ]; then
+      : >"$stale"
+    fi
     echo 'BROWSER_FIXTURE_CONVERGE PASS' ;;
   verify)
-    [ "${FAKE_VERIFY_RC:-0}" = '0' ] || { echo 'FAIL: verify 失败'; exit 1; }
+    case "$(seq_rc verify "${FAKE_VERIFY_SEQ:-0}")" in
+      0) : ;;
+      75) echo 'BLOCKED: verify 期间栈不健康'; exit 75 ;;
+      *) echo 'FAIL: the candidate resume baseline is not in place'; exit 1 ;;
+    esac
     echo 'BROWSER_FIXTURE_VERIFY PASS' ;;
   cleanup)
     shift
     [ "${1:-}" = '--ledger' ] || { echo 'usage: cleanup 必须带 --ledger'; exit 64; }
-    case "${2:-}" in /*) : ;; *) echo 'usage: --ledger 必须是绝对路径'; exit 64 ;; esac
-    [ -f "${2:-}" ] || { echo 'FAIL: 台账文件不存在'; exit 1; }
-    [ "${FAKE_CLEANUP_RC:-0}" = '0' ] || { echo 'FAIL: cleanup 失败'; exit 1; }
-    echo 'BROWSER_FIXTURE_CLEANUP PASS removed_intentions=1 removed_files=1 removed_jobs=2' ;;
+    ledger="${2:-}"
+    case "$ledger" in /*) : ;; *) echo 'usage: --ledger 必须是绝对路径'; exit 64 ;; esac
+    [ -f "$ledger" ] || { echo 'FAIL: 台账文件不存在'; exit 1; }
+    # DENY：--ledger 必须是本轮那一份 run receipt，路径与形状都要对得上
+    [ "$ledger" = "$receipt" ] \
+      || printf 'FAKE fixture cleanup --ledger 不是本轮 run receipt 的路径：%s\n' "$ledger" >>"$CALLS"
+    jq -e --arg run "$BROWSER_FIXTURE_RUN_ID" \
+      '.run_id == $run and has("candidate") and has("recruiter")' "$ledger" >/dev/null 2>&1 \
+      || printf 'FAKE fixture cleanup --ledger 的形状不是 run receipt：%s\n' "$ledger" >>"$CALLS"
+    case "$(seq_rc cleanup "${FAKE_CLEANUP_SEQ:-0}")" in
+      0) : ;;
+      75) echo 'BLOCKED: 拆台过程中本地栈不健康'; exit 75 ;;
+      *) echo 'FAIL: cleanup 失败'; exit 1 ;;
+    esac
+    removed=0
+    # 只有 receipt 里真的有这个 role 的段，才有权判定差集并删除。
+    if jq -e 'has("candidate")' "$ledger" >/dev/null 2>&1 && [ -f "$stale" ]; then
+      rm -f "$stale"; removed=1
+    fi
+    printf 'BROWSER_FIXTURE_CLEANUP PASS removed_intentions=%s removed_files=%s removed_jobs=%s\n' \
+      "$removed" "$removed" "$removed" ;;
   *) echo 'usage: 未知子命令'; exit 64 ;;
 esac
 FAKE
@@ -311,10 +363,11 @@ reset_case(){
   kill_fake_vite
   rm -rf "$OUT_ROOT" "$BASELINE_DIR" "$MONO/apps/recruitment/.local-dev/browser-fixtures"
   : >"$CALLS"
-  rm -f "$STATE/health-calls" "$STATE/vite-up"
+  rm -f "$STATE/health-calls" "$STATE/vite-up" "$STATE/stale-temp-object"
+  rm -f "$STATE/converge-calls" "$STATE/verify-calls" "$STATE/cleanup-calls"
   export AGXP_MONOREPO_DIR="$MONO"
   export FAKE_HEALTH_SEQ='0' FAKE_PREPARE_RC=0 FAKE_UP_RC=0 FAKE_BOOTSTRAP_RC=0
-  export FAKE_CONVERGE_RC=0 FAKE_VERIFY_RC=0 FAKE_CLEANUP_RC=0
+  export FAKE_CONVERGE_SEQ='0' FAKE_VERIFY_SEQ='0' FAKE_CLEANUP_SEQ='0' FAKE_INTERRUPTED=0
   export FAKE_JOURNEY_FAIL='' FAKE_JOURNEY_SIGINT='' FAKE_ISOLATION_RC=0
   export FAKE_PORT_BUSY=0 FAKE_DOCKER_RC=0 FAKE_DOCTOR_RC=0 FAKE_VITE_START_RC=0 FAKE_LOGOUT_RC=0
   export FAKE_AB_VERSION='agent-browser 0.27.2'
@@ -402,7 +455,7 @@ assert_missing 'down 绝不带 --volumes' 'FAKE dev-local down 带了 --volumes'
 assert_eq '报告记录栈不是预先存在' "$(jq -r .stack.preexisting "$(report_json)" 2>/dev/null)" 'false'
 assert_true 'prepare 在 up 之前' "[ \$(grep -n 'dev-local prepare' '$CALLS' | head -1 | cut -d: -f1) -lt \$(grep -n 'dev-local up' '$CALLS' | head -1 | cut -d: -f1) ]"
 
-testcase 'health 起不来：不碰 fixture、不起 Vite、不开浏览器，退出 75'
+testcase 'health 起不来：不碰 fixture、不起 Vite、不开浏览器，退出 75，仍然出报告'
 reset_case; setup_baseline
 export FAKE_HEALTH_SEQ='1 1 1'
 run_runner
@@ -412,8 +465,15 @@ assert_missing '没有起 Vite' 'npm run dev' "$CALLS"
 assert_missing '没有跑旅程' 'journey ' "$CALLS"
 assert_missing '没有开会话' 'agent-browser --session' "$CALLS"
 assert_contains '自己起的栈仍然被停掉' 'dev-local down' "$CALLS"
+# 设计稿 §15：每次运行的报告都带栈健康与 fixture converge/verify —— 阻塞那一次最需要它。
+assert_true '栈阻塞也写出了 report.json' "[ -f '$(report_json)' ]"
+assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'INFRA_BLOCKED'
+assert_eq '报告记下栈不健康' "$(jq -r .stack.healthy "$(report_json)" 2>/dev/null)" 'false'
+assert_eq 'fixture 三步都记 SKIPPED' \
+  "$(jq -rc '[.fixture.converge,.fixture.verify,.fixture.cleanup]|join(",")' "$(report_json)" 2>/dev/null)" \
+  'SKIPPED,SKIPPED,SKIPPED'
 
-testcase '5173 被占用：不换端口，退出 75'
+testcase '5173 被占用：不换端口，退出 75，仍然出报告'
 reset_case; setup_baseline
 export FAKE_PORT_BUSY=1
 run_runner
@@ -422,14 +482,59 @@ assert_missing '没有起 Vite' 'npm run dev' "$CALLS"
 assert_missing '没有动本地栈' 'dev-local ' "$CALLS"
 assert_missing '没有碰 fixture' 'fixture ' "$CALLS"
 assert_missing '没有尝试别的端口' 'FAKE curl 禁止的地址' "$CALLS"
+assert_true 'preflight 阻塞也写出了 report.json' "[ -f '$(report_json)' ]"
+assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'INFRA_BLOCKED'
+assert_eq '版本读不到时如实写 unknown' \
+  "$(jq -r .agentBrowserVersion "$(report_json)" 2>/dev/null)" 'unknown'
 
-testcase 'fixture converge 失败：不起 Vite，仍然收尾清理，退出 75'
+testcase 'fixture converge 判 BLOCKED（rc 75）：不起 Vite，退出 75，并且照样出报告'
 reset_case; setup_baseline
-export FAKE_CONVERGE_RC=1
+export FAKE_CONVERGE_SEQ='75 0'
 run_runner
 assert_eq '退出码 75' "$RC" 75
 assert_missing '没有起 Vite' 'npm run dev' "$CALLS"
-assert_contains '仍然做了一次清理' 'fixture cleanup --ledger' "$CALLS"
+assert_true '阻塞路径也写出了 report.json' "[ -f '$(report_json)' ]"
+assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'INFRA_BLOCKED'
+assert_eq '五条旅程如实记 blocked（不是 pass）' \
+  "$(jq -r '[.journeys[]|select(.status=="blocked")]|length' "$(report_json)" 2>/dev/null)" '5'
+assert_eq '一条都没被记成 pass' \
+  "$(jq -r '[.journeys[]|select(.status=="pass")]|length' "$(report_json)" 2>/dev/null)" '0'
+assert_contains '报告带上了栈健康' 'stack' "$(report_json)"
+assert_eq 'fixture converge 状态如实入报告' \
+  "$(jq -r .fixture.converge "$(report_json)" 2>/dev/null)" 'FAILED(rc=75)'
+assert_missing '没有拿假版本号造出渲染器不一致' 'renderer-version-mismatch' "$(report_json)"
+
+# 后端把 FAIL(1) 和 BLOCKED(75) 分得很清楚：基准岗位不在位是**功能**问题，
+# README 里有明确的换键补救，报成 INFRA_BLOCKED 会把人引去查 Docker 和端口。
+testcase 'fixture converge 判 FAIL（rc 1）：报功能失败退出 1，不报环境阻塞'
+reset_case; setup_baseline
+export FAKE_CONVERGE_SEQ='1 0'
+run_runner
+assert_eq '退出码 1（不是 75）' "$RC" 1
+assert_missing '没有起 Vite' 'npm run dev' "$CALLS"
+assert_contains '打印的是功能失败而不是阻塞' '整栈验收功能失败' "$OUT"
+assert_true '功能失败路径也写出了 report.json' "[ -f '$(report_json)' ]"
+assert_eq '分类 FUNCTIONAL_FAILED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'FUNCTIONAL_FAILED'
+assert_eq '五条旅程如实记 failed' \
+  "$(jq -r '[.journeys[]|select(.status=="failed")]|length' "$(report_json)" 2>/dev/null)" '5'
+assert_missing '没有 run receipt 时不去调 cleanup' 'fixture cleanup' "$CALLS"
+assert_contains '仍然收敛回基准' 'fixture converge' "$CALLS"
+assert_contains '仍然收尾 verify' 'fixture verify' "$CALLS"
+
+testcase 'fixture verify 判 FAIL（rc 1）：退出 1，不报环境阻塞'
+reset_case; setup_baseline
+export FAKE_VERIFY_SEQ='1 0'
+run_runner
+assert_eq '退出码 1（不是 75）' "$RC" 1
+assert_contains '打印的是功能失败' '整栈验收功能失败' "$OUT"
+assert_contains '有 run receipt，所以清理照做' 'fixture cleanup --ledger' "$CALLS"
+
+testcase 'fixture verify 判 BLOCKED（rc 75）：退出 75'
+reset_case; setup_baseline
+export FAKE_VERIFY_SEQ='75 0'
+run_runner
+assert_eq '退出码 75' "$RC" 75
+assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'INFRA_BLOCKED'
 
 testcase '后端运行回执缺失：拒绝开始旅程'
 reset_case; setup_baseline
@@ -462,15 +567,49 @@ assert_eq '招聘 CRUD 仍记 pass' "$(jq -r '.journeys[]|select(.journey=="recr
 
 testcase '清理失败：旅程全过也退出 1，私密目录与回执按 0600 保留'
 reset_case; setup_baseline
-export FAKE_CLEANUP_RC=1
+export FAKE_CLEANUP_SEQ='1'
 run_runner
 assert_eq '退出码 1' "$RC" 1
 assert_eq '分类 CLEANUP_FAILED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'CLEANUP_FAILED'
 assert_true '私密目录保留' "[ -d '$(run_dir)/private' ]"
-assert_eq '台账仍是 0600' "$(stat -f '%Lp' "$(run_dir)/private/cleanup.json" 2>/dev/null)" '600'
+assert_eq '台账仍是 0600' "$(stat -f '%Lp' "$(run_dir)/private/run-journal.json" 2>/dev/null)" '600'
 assert_true '后端运行回执保留' "[ \$(ls '$MONO/apps/recruitment/.local-dev/browser-fixtures' | wc -l) -eq 1 ]"
 assert_contains '打印了私密目录的绝对路径' "$(run_dir)/private" "$OUT"
 assert_contains '打印了回执路径' "$MONO/apps/recruitment/.local-dev/browser-fixtures" "$OUT"
+assert_contains '把 journal 里的固定保留名称念给人听（它唯一的读者）' '本轮 journal 记下的里程碑' "$OUT"
+
+# 后端 cleanup 判 BLOCKED 是「拆台过程中栈不健康」，不是「临时对象没清掉」。
+# 报成 CLEANUP_FAILED 会让人去翻残留数据，而真正坏的是本地栈。
+testcase '清理判 BLOCKED（rc 75）：报环境阻塞退出 75，不报清理失败'
+reset_case; setup_baseline
+export FAKE_CLEANUP_SEQ='75'
+run_runner
+assert_eq '退出码 75' "$RC" 75
+assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'INFRA_BLOCKED'
+assert_contains '清理状态记成 BLOCKED' 'BLOCKED(rc=75)' "$(report_json)"
+
+# C1：`--ledger` 的实参必须是后端自己写的本轮 run receipt。
+# 传前端私密 journal 时形状对不上，两条 reconcile 手臂全部空转 —— 正常路径完全看不出来。
+testcase 'cleanup 的 --ledger 就是本轮 run receipt（路径与形状都对得上）'
+reset_case; setup_baseline
+run_runner
+assert_eq '退出码 0' "$RC" 0
+assert_contains '清理带的是 .local-dev/browser-fixtures 下的回执' \
+  "fixture cleanup --ledger $MONO/apps/recruitment/.local-dev/browser-fixtures/" "$CALLS"
+assert_missing '绝不把前端私密 journal 当 --ledger' 'private/run-journal.json' "$CALLS"
+assert_missing '假件没有报告 ledger 形状问题' 'FAKE fixture cleanup --ledger' "$CALLS"
+
+# 中断过的那一轮：临时对象还在账号里。只有拿 run receipt 做差集才清得掉；
+# 拿别的文件当 ledger 会让它留到收尾 converge，撞上「没有 receipt 能解释它」直接关门。
+testcase '中断过的运行：收尾按 receipt 差集清掉临时对象，而不是被 converge 关在门外'
+reset_case; setup_baseline
+export FAKE_INTERRUPTED=1
+run_runner
+assert_eq '退出码 0（临时对象被差集清掉，收敛与复验都过）' "$RC" 0
+assert_eq '分类 PASS' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'PASS'
+assert_contains '清理真的按差集删了东西' 'removed_intentions=1' "$(run_dir)/fixture.log"
+assert_missing '没有撞上「没有回执能解释这条意向」' 'no run receipt accounts for' "$(run_dir)/fixture.log"
+assert_true '临时对象已经不在了' "[ ! -f '$STATE/stale-temp-object' ]"
 
 testcase 'report 门禁下的视觉阻断：只报告，退出 0'
 reset_case; setup_baseline "$RED_PNG"
@@ -623,6 +762,10 @@ assert_contains '运行器按库函数方式调隔离门' '会话隔离门' "$RU
 assert_contains '运行器用企业账号确认名收尾' '确认退出企业账号' "$RUNNER"
 assert_missing '运行器不按进程名杀进程' 'pkill' "$RUNNER"
 assert_missing '运行器不按端口找进程' 'lsof' "$RUNNER"
+# C1 的静态护栏：--ledger 只跟 $RECEIPT，私密 journal 永远不进这个参数。
+assert_contains '清理用的是后端运行回执' 'cleanup --ledger "$RECEIPT"' "$RUNNER"
+assert_missing '私密 journal 绝不当 --ledger' '--ledger "$PRIVATE_JOURNAL"' "$RUNNER"
+assert_contains '两个调用点共用同一张退出码翻译表' 'classify_fixture_failure' "$RUNNER"
 
 printf '\n'
 if [ "$FAILURES" -eq 0 ]; then

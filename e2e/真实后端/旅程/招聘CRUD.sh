@@ -50,8 +50,11 @@ on_exit(){
   trap - EXIT
   if [ "$rc" -ne 0 ] && [ "$FRAGMENT_WRITTEN" = '0' ]; then
     capture_failure_snapshot "$JOURNEY"
-    write_journey_result "$JOURNEY" failed "$MILESTONE" "旅程在里程碑「${MILESTONE}」失败" || true
+    # 失败是环境阻塞还是业务失败由 write_journey_failure 按 JOURNEY_BLOCKED 决定：
+    # 阻塞写 blocked 分片并把退出码抬成 75，让编排层与报告都看得见这是 INFRA_BLOCKED。
+    write_journey_failure "$JOURNEY" "$MILESTONE" || true
   fi
+  if [ "$rc" -ne 0 ] && [ "$JOURNEY_BLOCKED" = '1' ]; then rc=75; fi
   exit "$rc"
 }
 trap on_exit EXIT

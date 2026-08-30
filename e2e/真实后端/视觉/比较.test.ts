@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { PNG } from 'pngjs';
 import { 比较真实后端视觉, 生成候选基线目录 } from './比较';
 import { 真实后端场景们 } from './场景清单';
@@ -152,6 +152,29 @@ describe('比较真实后端视觉：阈值与旅程选择', () => {
       .toEqual(['candidate-resume-loaded', 'candidate-intentions-loaded', 'candidate-disclosure-loaded']);
     expect(单旅程.scenes.filter((项) => 项.status === 'skipped')).toHaveLength(4);
     expect(场景状态(单旅程, 'candidate-resume-updated')).toMatchObject({ reference: null, candidate: null, diff: null, pixelDiffRatio: null });
+  });
+
+  // 类型.ts 把 旅程结果.screenshots 定成仓库相对路径，报告里的 reference/candidate/diff
+  // 必须是同一条规矩：绝对路径会把操作者的 OS 用户名写进 report.json（设计稿 §15 不要）。
+  it('reference / candidate / diff 一律不是绝对路径', () => {
+    const 区 = 新工作区();
+    写基线清单(区);
+    写全部场景(区.基线目录, 0);
+    写全部场景(区.候选目录, 0);
+    const 结果 = 比较真实后端视觉({
+      selectedJourneys: ['candidate-crud'],
+      baselineManifestPath: 区.基线清单路径,
+      baselineDir: 区.基线目录,
+      candidateDir: 区.候选目录,
+      diffDir: 区.差异目录,
+      candidateManifest: 固定清单,
+      gate: 'report',
+    });
+    const 场景 = 场景状态(结果, 'candidate-resume-updated');
+    for (const 值 of [场景.reference, 场景.candidate, 场景.diff]) {
+      expect(值).not.toBeNull();
+      expect(isAbsolute(值 as string)).toBe(false);
+    }
   });
 
   it('已选场景缺基准或缺候选是 missing 加 expected-file-missing', () => {

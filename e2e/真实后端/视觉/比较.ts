@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { 比较图片, 默认比较阈值 } from '../../视觉回归/比较器';
 import type { 旅程ID, 真实后端视觉Manifest, 视觉结果 } from '../类型';
 import { 场景文件名, 旅程场景映射, 真实后端场景们, type 真实后端场景ID } from './场景清单';
@@ -9,6 +10,17 @@ import { 场景文件名, 旅程场景映射, 真实后端场景们, type 真实
 // 这里只复用像素比较核心 比较图片() 和 默认比较阈值。
 
 type 场景结果项 = 视觉结果['scenes'][number];
+
+// 报告里的 reference / candidate / diff 与 旅程结果.screenshots（类型.ts:39）同一条规矩：
+// **仓库相对**路径。绝对路径既和自己声明的合同对不上，也会把操作者的 OS 用户名写进
+// report.json / report.md —— 设计稿 §15 明说报告不留与结论无关的环境细节。
+// 仓库根从本模块自己的位置推出来（e2e/真实后端/视觉/比较.ts 往上四级），不依赖 cwd。
+// 仓库外的路径（只有单测的临时目录会走到）用 path.relative 表达，它永远不吐出公共前缀，
+// 所以同样不会泄漏用户名。
+const 仓库根 = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
+function 仓库相对(路径: string): string {
+  return relative(仓库根, resolve(路径));
+}
 
 export interface 比较真实后端视觉选项 {
   selectedJourneys: readonly 旅程ID[];
@@ -150,8 +162,8 @@ export function 比较真实后端视觉(options: 比较真实后端视觉选项
         sceneId: 场景,
         status: 'missing',
         pixelDiffRatio: null,
-        reference: 有基准 ? 基准路径 : null,
-        candidate: 有候选 ? 候选路径 : null,
+        reference: 有基准 ? 仓库相对(基准路径) : null,
+        candidate: 有候选 ? 仓库相对(候选路径) : null,
         diff: null,
         reasons,
       });
@@ -173,8 +185,8 @@ export function 比较真实后端视觉(options: 比较真实后端视觉选项
         sceneId: 场景,
         status: 'missing',
         pixelDiffRatio: null,
-        reference: 基准路径,
-        candidate: 候选路径,
+        reference: 仓库相对(基准路径),
+        candidate: 仓库相对(候选路径),
         diff: null,
         reasons: ['基准/候选截图无法解析'],
       });
@@ -184,9 +196,9 @@ export function 比较真实后端视觉(options: 比较真实后端视觉选项
       sceneId: 场景,
       status: 图.status,
       pixelDiffRatio: 图.pixelDiffRatio,
-      reference: 基准路径,
-      candidate: 候选路径,
-      diff: 差异路径,
+      reference: 仓库相对(基准路径),
+      candidate: 仓库相对(候选路径),
+      diff: 仓库相对(差异路径),
       reasons: 图.status === 'pass' ? [] : [`像素差异 ${(图.pixelDiffRatio * 100).toFixed(2)}%`],
     });
   }

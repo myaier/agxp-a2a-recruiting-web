@@ -99,8 +99,13 @@
 ```text
 apps/recruitment/scripts/browser-fixture.sh converge
 apps/recruitment/scripts/browser-fixture.sh verify
-apps/recruitment/scripts/browser-fixture.sh cleanup --ledger "$PRIVATE_LEDGER"
+apps/recruitment/scripts/browser-fixture.sh cleanup --ledger "$RECEIPT"
 ```
+
+> 更正（final review C1）：`--ledger` 的实参是**后端自己写的 run receipt**
+> （`apps/recruitment/.local-dev/browser-fixtures/<run id>.json`），不是前端的私密
+> journal。本节最初写成 `$PRIVATE_LEDGER`，实现照抄之后 §8.5 的差集清理整段空转。
+> 前端那份 journal 现在叫 `$PRIVATE_JOURNAL`，只作人读证据。
 
 环境：
 
@@ -893,7 +898,7 @@ git commit -m "test: add real-backend acceptance report core"
 - Modify: `e2e/数据源模式.spec.ts`
 
 **Interfaces:**
-- Consumes: `AGENT_BROWSER_SESSION`、`RUN_DIR`、`PRIVATE_LEDGER`、`FRONTEND_ORIGIN=http://localhost:5173`。
+- Consumes: `AGENT_BROWSER_SESSION`、`RUN_DIR`、`PRIVATE_JOURNAL`（人读证据，绝不当 `--ledger`）、`FRONTEND_ORIGIN=http://localhost:5173`。
 - Produces: `ab()`、`login_candidate()`、`login_recruiter()`、`wait_text()`、`assert_text()`、`assert_absent()`、`assert_pressed()`、`reload_and_assert()`、`capture_scene()`、`record_cleanup_marker()`、`write_journey_result()`。
 
 - [ ] **Step 1: 写公共步骤 fake CLI 测试**

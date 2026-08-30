@@ -39,8 +39,11 @@ on_exit(){
   trap - EXIT
   if [ "$rc" -ne 0 ] && [ "$FRAGMENT_WRITTEN" = '0' ]; then
     capture_failure_snapshot "$JOURNEY"
-    write_journey_result "$JOURNEY" failed "$MILESTONE" "旅程在里程碑「${MILESTONE}」失败" || true
+    # 失败是环境阻塞还是业务失败由 write_journey_failure 按 JOURNEY_BLOCKED 决定：
+    # 阻塞写 blocked 分片并把退出码抬成 75，让编排层与报告都看得见这是 INFRA_BLOCKED。
+    write_journey_failure "$JOURNEY" "$MILESTONE" || true
   fi
+  if [ "$rc" -ne 0 ] && [ "$JOURNEY_BLOCKED" = '1' ]; then rc=75; fi
   exit "$rc"
 }
 trap on_exit EXIT
@@ -153,7 +156,7 @@ assert_pressed '当前公司：不披露'
 
 # ── 4. 附件简历：上传固定保留名称的临时 PDF ─────────────────────────
 MILESTONE='上传附件'
-TEMP_PDF_DIR="$(dirname "$PRIVATE_LEDGER")"
+TEMP_PDF_DIR="$(dirname "$PRIVATE_JOURNAL")"
 cp "$ROOT_DIR/资源/简历-v1.pdf" "$TEMP_PDF_DIR/$TEMP_FILE_NAME"
 click_back
 click_button_exact '我的简历'
@@ -192,9 +195,14 @@ MILESTONE='删除附件'
 click_button_exact '删除'
 assert_text '删除附件简历？'
 click_button_exact '删除附件简历'
-assert_text '还未上传附件简历'
-ab reload >/dev/null
-assert_text '还未上传附件简历'
+# 断言的是**这一行没了**，不是「附件库空了」：candidate_converge 只保证
+# `max_files - items >= 2`（browser-fixture.sh 的附件槽位基线），并不保证账号里
+# 一份既有附件都没有。max_files == 3 时，一个持有一份合法既有附件的账号照样过收敛，
+# 却会在这里被空态文案判死。行消失是异步的，所以用 wait_row_gone 等它真的被摘掉。
+wait_row_gone "$TEMP_FILE_NAME"
+# 硬刷新后的水合门用这一屏必然在的临时姓名，不用「还未上传附件简历」空态：
+# 空态只在附件库真的空了时才出现，而这个账号可能合法地持有既有附件。
+reload_and_assert "$TEMP_NAME"
 assert_absent "$TEMP_FILE_NAME"
 
 # ── 6. 还原基准姓名 ─────────────────────────────────────────────────

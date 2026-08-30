@@ -15,6 +15,14 @@
 #   2. 只终止自己启动、且 kill -0 确认过的那一个 Vite PID —— 不按端口、不按进程名杀。
 #   3. 只关 backend-local-candidate 与 backend-local-recruiter 两个具名会话，绝不 close --all。
 #
+# 两份记录，不要混：
+#   · **run receipt**（$RECEIPT，后端写在 apps/recruitment/.local-dev/browser-fixtures/<run id>.json）
+#     是 `browser-fixture.sh cleanup --ledger` 唯一合法的实参。它带 candidate / recruiter
+#     两段收敛后 owner-list，是设计稿 §8.5 差集清理的全部依据。
+#   · **私密 journal**（$PRIVATE_JOURNAL，$RUN_DIR/private/run-journal.json）是本仓库自己的
+#     人读证据：旅程按里程碑往里记固定保留名称，清理失败时由 print_private_journal 念出来。
+#     它**永远不是**后端算子的输入 —— 把它当 --ledger 传过去会让差集清理整段空转。
+#
 # 标识符一律 ASCII：macOS 的 /bin/bash 是 3.2，变量名只认 [A-Za-z_][A-Za-z0-9_]*。
 
 set -euo pipefail
@@ -60,6 +68,13 @@ if [ "$UPDATE_BASELINE" = '1' ] && [ "$JOURNEY_ARG" != 'all' ]; then
   usage_error '--update-baseline 只能与 --journey all（或默认）同用：基线是七个场景的原子集合'
 fi
 
+# 选中集合在动任何环境之前就定下来：阻塞路径上的报告也要如实写出本轮选了哪几条旅程
+# （报告读取端要求 selectedJourneys 非空，否则整份上下文不合法）。
+case "$JOURNEY_ARG" in
+  all) SELECTED="$ALL_JOURNEYS" ;;
+  *) SELECTED="$JOURNEY_ARG" ;;
+esac
+
 GATE="${UI_VISUAL_GATE:-report}"
 case "$GATE" in
   report|enforce) : ;;
@@ -80,6 +95,9 @@ unset AGENT_BROWSER_SESSION AGENT_BROWSER_PROFILE AGENT_BROWSER_SESSION_NAME AGE
 # ── 运行期状态 ──────────────────────────────────────────────────────
 
 BLOCKED_REASON=''
+# 后端 fixture 算子在旅程开始之前就判 FAIL（rc 1）时的功能中止原因。
+# 它与 BLOCKED_REASON 是两条不同的结论：75 说「环境没准备好」，1 说「数据本身不对」。
+FUNCTIONAL_ABORT_REASON=''
 USAGE_FAILED=0
 TEARDOWN_DONE=0
 FINAL_EXIT=0
@@ -96,10 +114,11 @@ HYGIENE_OK=1
 JOURNEYS_STARTED=0
 BROWSER_TOUCHED=0
 JOURNEY_RCS=''
-SELECTED=''
 FIXTURE_OUT=''
 FIXTURE_RC=0
 VITE_PID=''
+DEV=''
+FIXTURE=''
 RUN_DIR=''
 RECEIPT=''
 CHROME_BUILD=''
@@ -113,31 +132,38 @@ blocked(){
   exit 75
 }
 
-# ── preflight ───────────────────────────────────────────────────────
+# 后端算子在旅程开始之前判功能失败（例如「基准岗位不在位」，README 里有明确的换键补救）。
+# 它不是环境阻塞：报成 75 会让人去查 Docker 和端口，而真正要做的是按 README 修 fixture。
+functional_abort(){
+  FUNCTIONAL_ABORT_REASON="$1"
+  printf '整栈验收功能失败：%s\n' "$1" >&2
+  exit 1
+}
+
+# 后端 fixture 算子的退出码是**有意分层**的（apps/recruitment/README.md「三条成功终止行」）：
+#   64 usage / 75 BLOCKED（环境） / 1 FAIL（功能） / 0 通过。
+# 这张表是两个调用点（旅程前的 converge+verify、收尾的 cleanup+converge+verify）唯一的翻译，
+# 缺了它同一个 rc 会在一处被报成 INFRA_BLOCKED、在另一处被报成 CLEANUP_FAILED。
+classify_fixture_failure(){
+  case "$1" in
+    0) printf 'ok' ;;
+    64) printf 'usage' ;;
+    75) printf 'infra' ;;
+    *) printf 'functional' ;;
+  esac
+}
+
+# ── preflight 之一：写得出报告的最低工具链 ──────────────────────────
+#
+# 这一段是唯一「只留 stderr、不产 report.json」的阻塞路径，因为报告本身就是由
+# jq 与 node_modules/.bin/tsx 实现的：它们不在，任何证据合同都无从谈起。
+# 其余每一条 preflight 都排在运行目录与收尾 trap 之后，好让阻塞也带着报告落地。
 
 need_command(){ command -v "$1" >/dev/null 2>&1 || blocked "缺少命令：$1"; }
 
-[ -n "${AGXP_MONOREPO_DIR:-}" ] || blocked 'AGXP_MONOREPO_DIR 未设置'
-case "$AGXP_MONOREPO_DIR" in
-  /*) : ;;
-  *) blocked "AGXP_MONOREPO_DIR 必须是绝对路径：$AGXP_MONOREPO_DIR" ;;
-esac
-[ -d "$AGXP_MONOREPO_DIR" ] || blocked "AGXP_MONOREPO_DIR 不存在：$AGXP_MONOREPO_DIR"
-
-DEV="$AGXP_MONOREPO_DIR/apps/recruitment/scripts/dev-local.sh"
-FIXTURE="$AGXP_MONOREPO_DIR/apps/recruitment/scripts/browser-fixture.sh"
-[ -x "$DEV" ] || blocked "后端入口不可执行：$DEV"
-[ -x "$FIXTURE" ] || blocked "后端 fixture 算子不可执行：$FIXTURE"
 [ -x "$FRONT_ROOT/node_modules/.bin/vite" ] || blocked '前端依赖未安装：node_modules/.bin/vite'
 [ -x "$FRONT_ROOT/node_modules/.bin/tsx" ] || blocked '前端依赖未安装：node_modules/.bin/tsx'
 for cmd in agent-browser jq curl npm docker; do need_command "$cmd"; done
-agent-browser doctor >/dev/null 2>&1 || blocked 'agent-browser doctor 不通过（Chrome 未就绪）'
-docker info >/dev/null 2>&1 || blocked 'Docker 守护进程不可用'
-
-# 端口只认 5173：占用就阻塞，绝不退让到别的端口（换端口＝换 Origin＝换会话域）。
-port_probe=0
-curl -sS -o /dev/null --max-time 2 "$FRONTEND_ORIGIN/" >/dev/null 2>&1 || port_probe=$?
-[ "$port_probe" = '7' ] || blocked "localhost:5173 已被占用（curl rc=${port_probe}），本验收不换端口"
 
 # 安全输出路径：产物必须落在前端仓库内被 gitignore 的目录下 ——
 # 分片里的 screenshots 按 类型.ts 是仓库相对路径，落到仓库外 公共步骤.sh 会硬失败。
@@ -156,13 +182,25 @@ PRECONDITION_DIR="$RUN_DIR/preconditions"
 mkdir -p "$FRAGMENT_DIR_MAIN" "$PRECONDITION_DIR" "$RUN_DIR/visual"
 mkdir -p "$RUN_DIR/private"
 chmod 700 "$RUN_DIR/private"
-PRIVATE_LEDGER="$RUN_DIR/private/cleanup.json"
+PRIVATE_JOURNAL="$RUN_DIR/private/run-journal.json"
 ( umask 077; jq -n --arg id "$RUN_ID" \
   '{schema_version:1,run_id:$id,candidate_intention_created:false,candidate_resume_file_names:[],recruiter_job_titles:[]}' \
-  >"$PRIVATE_LEDGER" )
-chmod 600 "$PRIVATE_LEDGER"
+  >"$PRIVATE_JOURNAL" )
+chmod 600 "$PRIVATE_JOURNAL"
 
 printf '运行目录：%s\n' "$RUN_DIR"
+
+# ── 分片写入原语（收尾也要用，所以定义在 trap 之前）────────────────
+
+is_selected(){ case " $SELECTED " in *" $1 "*) return 0 ;; esac; return 1; }
+
+# 未选中的旅程写 skipped 分片：报告读取端要求五个分片齐全，缺一个就是报告错误。
+write_skipped(){
+  jq -n --arg j "$1" --arg m "$2" \
+    '{schemaVersion:1,journey:$j,status:"skipped",milestone:$m,apiRequests:[],consoleErrors:[],
+      pageErrors:[],failedRequests:[],screenshots:[],failure:null}' \
+    >"$FRAGMENT_DIR_MAIN/$1.json"
+}
 
 # ── 收尾（幂等，只跑一次）──────────────────────────────────────────
 
@@ -238,9 +276,13 @@ collect_candidate_scenes(){
 }
 
 write_report(){
-  local rc=0 cleanup_failed='false' infra='false'
+  local rc=0 cleanup_failed='false' infra='false' ab_version="$AB_VERSION" chrome="$CHROME_BUILD"
   if [ "$FIXTURE_CLEANUP_OK" != '1' ] || [ "$HYGIENE_OK" != '1' ]; then cleanup_failed='true'; fi
   if [ -n "$BLOCKED_REASON" ]; then infra='true'; fi
+  # 旅程开始前就阻塞的那一轮读不到渲染器版本；上下文要求这两个字段非空，
+  # 所以显式写 unknown —— 报告里「不知道」必须是可见的，不能是空串。
+  [ -n "$ab_version" ] || ab_version='unknown'
+  [ -n "$chrome" ] || chrome='unknown'
   jq -n \
     --argjson selected "$(printf '%s\n' $SELECTED | jq -R . | jq -s .)" \
     --arg fragmentDir "$FRAGMENT_DIR_MAIN" \
@@ -250,10 +292,11 @@ write_report(){
     --argjson cleanupFailed "$cleanup_failed" \
     --argjson infraBlocked "$infra" \
     --argjson fixtureVerified "$([ "$FIXTURE_VERIFIED" = '1' ] && echo true || echo false)" \
+    --argjson journeysStarted "$([ "$JOURNEYS_STARTED" = '1' ] && echo true || echo false)" \
     --arg frontendCommit "$FRONTEND_COMMIT" \
     --arg backendCommit "$BACKEND_COMMIT" \
-    --arg agentBrowserVersion "$AB_VERSION" \
-    --arg chromeBuild "$CHROME_BUILD" \
+    --arg agentBrowserVersion "$ab_version" \
+    --arg chromeBuild "$chrome" \
     --argjson preexisting "$([ "$BACKEND_PREEXISTING" = '1' ] && echo true || echo false)" \
     --argjson healthy "$([ "$STACK_HEALTHY" = '1' ] && echo true || echo false)" \
     --arg converge "$FIXTURE_CONVERGE_STATUS" \
@@ -266,7 +309,8 @@ write_report(){
     --arg reviewDir "$RUN_DIR/visual/baseline-review" \
     '{selectedJourneys:$selected,fragmentDir:$fragmentDir,outputDir:$outputDir,gate:$gate,
       updateBaseline:$updateBaseline,cleanupFailed:$cleanupFailed,infraBlocked:$infraBlocked,
-      fixtureVerified:$fixtureVerified,frontendCommit:$frontendCommit,backendCommit:$backendCommit,
+      fixtureVerified:$fixtureVerified,journeysStarted:$journeysStarted,
+      frontendCommit:$frontendCommit,backendCommit:$backendCommit,
       agentBrowserVersion:$agentBrowserVersion,chromeBuild:$chromeBuild,
       stack:{preexisting:$preexisting,healthy:$healthy},
       fixture:{converge:$converge,verify:$verify,cleanup:$cleanup},
@@ -281,28 +325,97 @@ write_report(){
   return "$rc"
 }
 
+# 旅程一条都没开始就结束时，五个分片仍要齐全（报告读取端缺一个就判 USAGE_ERROR），
+# 但绝不能写成 pass：被选中的记 blocked（环境阻塞）或 failed（fixture 功能失败），
+# 未选中的照常记 skipped。这样 report.json 里「没跑成」是看得见的事实而不是空白。
+write_pre_journey_fragments(){
+  local status="$1" milestone="$2" failure="$3" journey
+  for journey in $ALL_JOURNEYS; do
+    if is_selected "$journey"; then
+      jq -n --arg j "$journey" --arg s "$status" --arg m "$milestone" --arg f "$failure" \
+        '{schemaVersion:1,journey:$j,status:$s,milestone:$m,apiRequests:[],consoleErrors:[],
+          pageErrors:[],failedRequests:[],screenshots:[],failure:$f}' \
+        >"$FRAGMENT_DIR_MAIN/$journey.json"
+    else
+      write_skipped "$journey" '未选中'
+    fi
+  done
+}
+
+# 清理没走完时，把本轮私密 journal 里的固定保留名称念给人听。
+# journal 本身**不是**后端算子的输入（那是 run receipt，见 on_exit 第 1 步），
+# 它只有这一个读者：清理失败时告诉人「本轮到底造过哪几样东西」。
+print_private_journal(){
+  local created files jobs
+  [ -f "$PRIVATE_JOURNAL" ] || return 0
+  created="$(jq -r '.candidate_intention_created' "$PRIVATE_JOURNAL" 2>/dev/null || printf 'unknown')"
+  files="$(jq -r '.candidate_resume_file_names | join("、")' "$PRIVATE_JOURNAL" 2>/dev/null || printf '')"
+  jobs="$(jq -r '.recruiter_job_titles | join("、")' "$PRIVATE_JOURNAL" 2>/dev/null || printf '')"
+  printf '  本轮 journal 记下的里程碑：临时意向已创建=%s 临时附件=%s 临时岗位=%s\n' \
+    "$created" "${files:-无}" "${jobs:-无}"
+}
+
 on_exit(){
   local rc=$?
   if [ "$TEARDOWN_DONE" = '1' ]; then exit "$FINAL_EXIT"; fi
   TEARDOWN_DONE=1
   trap - EXIT INT TERM
 
-  # 1. 后端 fixture：先清掉本轮临时对象，再收敛回基准并 verify
+  # 1. 后端 fixture：先清掉本轮临时对象，再收敛回基准并 verify。
+  #
+  #    `--ledger` 收的是**后端自己写的 run receipt**（converge 在交出控制权之前落盘的
+  #    收敛后 pre-state），不是本前端的私密 journal —— 只有 receipt 里有 candidate /
+  #    recruiter 两段 owner-list，delta 清理（设计稿 §8.5）才有权判定哪一行是临时对象。
+  #    传 journal 会让 receipt_has_role 恒假、owned=0，两条 reconcile 手臂全部空转：
+  #    正常路径看不出来（UI 已经删干净了），中断过的那一轮却会在 cleanup 的 converge 里
+  #    撞上「没有任何 run receipt 能解释这条意向」而 BLOCKED，孤儿留在账号里。
+  #    没有 receipt（converge 还没写就失败了）＝后端根本没记录过 pre-state，
+  #    也就没有任何差集可清；这时跳过 cleanup，仍然照常收敛回基准并 verify。
   if [ "$FIXTURE_TOUCHED" = '1' ]; then
-    fixture_step cleanup --ledger "$PRIVATE_LEDGER"
-    case "$FIXTURE_OUT" in
-      *'BROWSER_FIXTURE_CLEANUP PASS'*) FIXTURE_CLEANUP_STATUS='PASS' ;;
-      *) FIXTURE_CLEANUP_STATUS="FAILED(rc=$FIXTURE_RC)"; FIXTURE_CLEANUP_OK=0 ;;
-    esac
-    if [ "$FIXTURE_RC" != '0' ]; then
-      FIXTURE_CLEANUP_STATUS="FAILED(rc=$FIXTURE_RC)"
-      FIXTURE_CLEANUP_OK=0
+    if [ -n "$RECEIPT" ] && [ -f "$RECEIPT" ]; then
+      fixture_step cleanup --ledger "$RECEIPT"
+      case "$FIXTURE_OUT" in
+        *'BROWSER_FIXTURE_CLEANUP PASS'*) FIXTURE_CLEANUP_STATUS='PASS' ;;
+        *) FIXTURE_CLEANUP_STATUS="FAILED(rc=$FIXTURE_RC)"; FIXTURE_CLEANUP_OK=0 ;;
+      esac
+      # 后端把 75 和 1 分得很清楚，收尾这一侧也必须照分：栈在拆台过程中变不健康是
+      # 环境阻塞（75），残留对象清不掉才是 CLEANUP_FAILED（1），参数错是 usage（2）。
+      case "$(classify_fixture_failure "$FIXTURE_RC")" in
+        ok) : ;;
+        usage)
+          FIXTURE_CLEANUP_STATUS="USAGE(rc=$FIXTURE_RC)"
+          FIXTURE_CLEANUP_OK=0
+          USAGE_FAILED=1
+          ;;
+        infra)
+          FIXTURE_CLEANUP_STATUS="BLOCKED(rc=$FIXTURE_RC)"
+          # 环境阻塞不是清理失败：清理压根没能开始，报成 CLEANUP_FAILED 会把人
+          # 引去翻残留数据，而真正坏掉的是本地栈。
+          [ -n "$BLOCKED_REASON" ] || BLOCKED_REASON='收尾清理期间本地栈不健康（后端算子 BLOCKED）'
+          ;;
+        *)
+          FIXTURE_CLEANUP_STATUS="FAILED(rc=$FIXTURE_RC)"
+          FIXTURE_CLEANUP_OK=0
+          ;;
+      esac
+    else
+      FIXTURE_CLEANUP_STATUS='SKIPPED(无运行回执)'
+      printf '收尾提示：后端没有留下本轮 run receipt，没有可清理的差集，直接收敛回基准\n'
     fi
-    if [ "$FIXTURE_RC" = '64' ]; then USAGE_FAILED=1; fi
     fixture_step converge
-    [ "$FIXTURE_RC" = '0' ] || FIXTURE_CLEANUP_OK=0
+    case "$(classify_fixture_failure "$FIXTURE_RC")" in
+      ok) : ;;
+      usage) USAGE_FAILED=1; FIXTURE_CLEANUP_OK=0 ;;
+      infra) [ -n "$BLOCKED_REASON" ] || BLOCKED_REASON='收尾收敛期间本地栈不健康（后端算子 BLOCKED）' ;;
+      *) FIXTURE_CLEANUP_OK=0 ;;
+    esac
     fixture_step verify
-    [ "$FIXTURE_RC" = '0' ] || FIXTURE_CLEANUP_OK=0
+    case "$(classify_fixture_failure "$FIXTURE_RC")" in
+      ok) : ;;
+      usage) USAGE_FAILED=1; FIXTURE_CLEANUP_OK=0 ;;
+      infra) [ -n "$BLOCKED_REASON" ] || BLOCKED_REASON='收尾复验期间本地栈不健康（后端算子 BLOCKED）' ;;
+      *) FIXTURE_CLEANUP_OK=0 ;;
+    esac
   fi
 
   # 2. 浏览器：招聘方退出登录，然后只关这两个具名会话
@@ -335,9 +448,10 @@ on_exit(){
     if [ -n "$RECEIPT" ]; then rm -f "$RECEIPT"; fi
   else
     chmod 700 "$RUN_DIR/private" 2>/dev/null || true
-    chmod 600 "$PRIVATE_LEDGER" 2>/dev/null || true
+    chmod 600 "$PRIVATE_JOURNAL" 2>/dev/null || true
     printf '清理未完成，以下两处按 0600 保留待人工处置：\n'
-    printf '  私密清理台账：%s\n' "$PRIVATE_LEDGER"
+    printf '  本轮私密 journal（只读证据，不是后端算子的输入）：%s\n' "$PRIVATE_JOURNAL"
+    print_private_journal
     if [ -n "$RECEIPT" ] && [ -f "$RECEIPT" ]; then
       chmod 600 "$RECEIPT" 2>/dev/null || true
       printf '  后端运行回执：%s\n' "$RECEIPT"
@@ -350,13 +464,28 @@ on_exit(){
   hygiene_scan
 
   # 7. 报告与退出码
+  local report_rc=0
   if [ "$JOURNEYS_STARTED" = '1' ]; then
     collect_candidate_scenes
-    local report_rc=0
     write_report || report_rc=$?
     FINAL_EXIT="$report_rc"
-  elif [ -n "$BLOCKED_REASON" ]; then
-    FINAL_EXIT=75
+  elif [ -n "$BLOCKED_REASON" ] || [ -n "$FUNCTIONAL_ABORT_REASON" ]; then
+    # 设计稿 §15：每一次运行的报告都要带栈健康与 fixture converge/verify 状态。
+    # 第一条旅程都没跑成的那一轮最需要这份证据，所以这里照样出报告 ——
+    # 分片如实记 blocked / failed，绝不记 pass。退出码仍由本编排层给定：
+    # 报告生成失败只是少了一份证据，不该把 75 悄悄改写成 2。
+    if [ -n "$BLOCKED_REASON" ]; then
+      write_pre_journey_fragments blocked '未开始' "整栈验收在旅程开始前阻塞：$BLOCKED_REASON"
+      FINAL_EXIT=75
+    else
+      write_pre_journey_fragments failed '未开始' "整栈验收在旅程开始前功能失败：$FUNCTIONAL_ABORT_REASON"
+      FINAL_EXIT=1
+    fi
+    collect_candidate_scenes
+    write_report >/dev/null 2>&1 || report_rc=$?
+    if [ "$report_rc" != '0' ] && [ ! -f "$RUN_DIR/report.json" ]; then
+      printf '提示：阻塞路径上的报告没能生成（rc=%s），退出码仍按编排层结论给出\n' "$report_rc" >&2
+    fi
   elif [ "$rc" = '0' ]; then
     FINAL_EXIT=2
     printf '没有跑成任何旅程却没有阻塞原因，按报告错误处理\n' >&2
@@ -373,6 +502,31 @@ on_exit(){
 trap on_exit EXIT
 trap 'on_signal INT' INT
 trap 'on_signal TERM' TERM
+
+# ── preflight 之二：环境 ────────────────────────────────────────────
+#
+# 这些检查全部排在 trap 之后，所以它们的阻塞也会走 on_exit：写出一份 journeys
+# 全记 blocked 的 report.json（设计稿 §15 要求每一次运行的报告都带栈健康与
+# fixture converge/verify 状态，阻塞的那一次尤其需要）。
+
+[ -n "${AGXP_MONOREPO_DIR:-}" ] || blocked 'AGXP_MONOREPO_DIR 未设置'
+case "$AGXP_MONOREPO_DIR" in
+  /*) : ;;
+  *) blocked "AGXP_MONOREPO_DIR 必须是绝对路径：$AGXP_MONOREPO_DIR" ;;
+esac
+[ -d "$AGXP_MONOREPO_DIR" ] || blocked "AGXP_MONOREPO_DIR 不存在：$AGXP_MONOREPO_DIR"
+
+DEV="$AGXP_MONOREPO_DIR/apps/recruitment/scripts/dev-local.sh"
+FIXTURE="$AGXP_MONOREPO_DIR/apps/recruitment/scripts/browser-fixture.sh"
+[ -x "$DEV" ] || blocked "后端入口不可执行：$DEV"
+[ -x "$FIXTURE" ] || blocked "后端 fixture 算子不可执行：$FIXTURE"
+agent-browser doctor >/dev/null 2>&1 || blocked 'agent-browser doctor 不通过（Chrome 未就绪）'
+docker info >/dev/null 2>&1 || blocked 'Docker 守护进程不可用'
+
+# 端口只认 5173：占用就阻塞，绝不退让到别的端口（换端口＝换 Origin＝换会话域）。
+port_probe=0
+curl -sS -o /dev/null --max-time 2 "$FRONTEND_ORIGIN/" >/dev/null 2>&1 || port_probe=$?
+[ "$port_probe" = '7' ] || blocked "localhost:5173 已被占用（curl rc=${port_probe}），本验收不换端口"
 
 # ── 本地栈归属 ──────────────────────────────────────────────────────
 
@@ -392,7 +546,23 @@ fi
 # ── fixture 收敛 ────────────────────────────────────────────────────
 
 export BROWSER_FIXTURE_RUN_ID="$RUN_ID"
+
+# 后端运行回执的路径是纯派生量（STATE 目录 + 本轮 run id），在第一次 converge **之前**
+# 就定下来：收尾阶段的 delta 清理要拿它当 --ledger，而 converge 可能半路失败，
+# 那时也必须知道该去哪里找这一轮的回执。
+RECEIPT="$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev/browser-fixtures/$RUN_ID.json"
 FIXTURE_TOUCHED=1
+
+# 后端算子失败时按它自己的分层给结论：75 环境阻塞 / 1 功能失败 / 64 用法。
+# $1 步骤名（写进消息）
+fixture_gate(){
+  case "$(classify_fixture_failure "$FIXTURE_RC")" in
+    ok) return 0 ;;
+    usage) USAGE_FAILED=1; exit 2 ;;
+    infra) blocked "browser-fixture.sh $1 阻塞（rc=${FIXTURE_RC}）" ;;
+    *) functional_abort "browser-fixture.sh $1 判功能失败（rc=${FIXTURE_RC}）：专用账号的基准数据不在位，按后端 README 的恢复一节处理" ;;
+  esac
+}
 
 fixture_step converge
 case "$FIXTURE_OUT" in
@@ -400,8 +570,10 @@ case "$FIXTURE_OUT" in
   *) FIXTURE_CONVERGE_STATUS="FAILED(rc=$FIXTURE_RC)" ;;
 esac
 if [ "$FIXTURE_RC" != '0' ] || [ "$FIXTURE_CONVERGE_STATUS" != 'PASS' ]; then
-  if [ "$FIXTURE_RC" = '64' ]; then USAGE_FAILED=1; exit 2; fi
-  blocked "browser-fixture.sh converge 失败（rc=${FIXTURE_RC}）"
+  fixture_gate converge
+  # rc=0 却没打出终止行：算子的输出合同坏了，这是报告层面的问题。
+  USAGE_FAILED=1
+  exit 2
 fi
 
 fixture_step verify
@@ -410,14 +582,14 @@ case "$FIXTURE_OUT" in
   *) FIXTURE_VERIFY_STATUS="FAILED(rc=$FIXTURE_RC)" ;;
 esac
 if [ "$FIXTURE_RC" != '0' ] || [ "$FIXTURE_VERIFY_STATUS" != 'PASS' ]; then
-  if [ "$FIXTURE_RC" = '64' ]; then USAGE_FAILED=1; exit 2; fi
-  blocked "browser-fixture.sh verify 失败（rc=${FIXTURE_RC}）"
+  fixture_gate verify
+  USAGE_FAILED=1
+  exit 2
 fi
 FIXTURE_VERIFIED=1
 
-# 后端运行回执：converge 在把控制权交给浏览器之前写下它。没有它、权限不对、
+# 回执门：converge 在把控制权交给浏览器之前写下它。没有它、权限不对、
 # 或者不是本轮的 run id，就说明后端根本没为这一轮准备好数据，不能开始旅程。
-RECEIPT="$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev/browser-fixtures/$RUN_ID.json"
 [ -f "$RECEIPT" ] || blocked "后端运行回执缺失：$RECEIPT"
 receipt_mode="$(stat -f '%Lp' "$RECEIPT" 2>/dev/null || stat -c '%a' "$RECEIPT" 2>/dev/null || printf 'unknown')"
 [ "$receipt_mode" = '600' ] || blocked "后端运行回执权限不是 0600（实到 ${receipt_mode}）"
@@ -482,15 +654,8 @@ jq -n --arg runId "$RUN_ID" --arg front "$FRONTEND_COMMIT" --arg back "$BACKEND_
 
 # ── 旅程调度 ────────────────────────────────────────────────────────
 
-export RUN_DIR PRIVATE_LEDGER FRONTEND_ORIGIN AGXP_MONOREPO_DIR
+export RUN_DIR PRIVATE_JOURNAL FRONTEND_ORIGIN AGXP_MONOREPO_DIR
 export FRAGMENT_DIR="$FRAGMENT_DIR_MAIN"
-
-case "$JOURNEY_ARG" in
-  all) SELECTED="$ALL_JOURNEYS" ;;
-  *) SELECTED="$JOURNEY_ARG" ;;
-esac
-
-is_selected(){ case " $SELECTED " in *" $1 "*) return 0 ;; esac; return 1; }
 
 journey_script(){
   case "$1" in
@@ -513,13 +678,6 @@ journey_rc(){
     case "$item" in "$1="*) printf '%s' "${item#*=}"; return 0 ;; esac
   done
   printf 'none'
-}
-
-write_skipped(){
-  jq -n --arg j "$1" --arg m "$2" \
-    '{schemaVersion:1,journey:$j,status:"skipped",milestone:$m,apiRequests:[],consoleErrors:[],
-      pageErrors:[],failedRequests:[],screenshots:[],failure:null}' \
-    >"$FRAGMENT_DIR_MAIN/$1.json"
 }
 
 # $1 旅程 ID，$2 分片目录。前置旅程的分片写进 preconditions/，不进正式分片集合 ——

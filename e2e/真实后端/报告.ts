@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { 失败分类, 整栈报告, 旅程ID, 旅程结果, 真实后端视觉Manifest } from './类型';
+import type { 失败分类, 整栈报告, 旅程ID, 旅程结果, 真实后端视觉Manifest, 视觉结果 } from './类型';
 import { 旅程们 } from './类型';
 import { 比较真实后端视觉, 生成候选基线目录 } from './视觉/比较';
-import { 真实后端场景们 } from './视觉/场景清单';
+import { 旅程场景映射, 真实后端场景们 } from './视觉/场景清单';
 
 // ---- 运行分片读取 ----
 
@@ -220,6 +220,11 @@ export interface 整栈运行上下文 {
   cleanupFailed: boolean;
   infraBlocked: boolean;
   fixtureVerified: boolean;
+  // 本轮是否真的开始跑过旅程。第一条旅程之前就阻塞（或 fixture 判功能失败）的那一轮
+  // 一张候选截图都没拍，连 agent-browser / Chrome 版本都读不到 —— 那时拿占位版本号去比
+  // 环境，只会凭空造出一条 renderer-version-mismatch，把「环境陈旧」的结论安在一次
+  // 根本没渲染过任何东西的运行上。所以为 false 时不做视觉比较，如实记「没采到候选截图」。
+  journeysStarted: boolean;
   frontendCommit: string;
   backendCommit: string;
   agentBrowserVersion: string;
@@ -257,6 +262,40 @@ export function 构造候选视觉清单(上下文: 整栈运行上下文): 真�
   };
 }
 
+// 旅程一条都没开始时的视觉结果：不读任何 PNG，也不比对任何环境字段。
+// environmentIssue 用既有的 expected-file-missing —— 它本来就表示「该有的图不在」，
+// 而且是三种环境阻塞里唯一一种「功能结论不可信时不升级成 75」的，正好符合这里的事实：
+// 缺图是运行没开始的后果，不是本机渲染环境有问题。
+function 未开始运行的视觉(上下文: 整栈运行上下文): 视觉结果 {
+  const 期望 = new Set<string>();
+  for (const 旅程 of 上下文.selectedJourneys) for (const 场景 of 旅程场景映射[旅程]) 期望.add(场景);
+  return {
+    schemaVersion: 1,
+    gate: 上下文.gate,
+    environment: 'blocked',
+    environmentIssue: 'expected-file-missing',
+    scenes: 真实后端场景们.map((场景) => (期望.has(场景)
+      ? {
+        sceneId: 场景,
+        status: 'missing' as const,
+        pixelDiffRatio: null,
+        reference: null,
+        candidate: null,
+        diff: null,
+        reasons: ['旅程未开始，本轮没有采集任何候选截图'],
+      }
+      : {
+        sceneId: 场景,
+        status: 'skipped' as const,
+        pixelDiffRatio: null,
+        reference: null,
+        candidate: null,
+        diff: null,
+        reasons: [],
+      })),
+  };
+}
+
 function 断言上下文(值: unknown): 整栈运行上下文 {
   if (typeof 值 !== 'object' || 值 === null || Array.isArray(值)) throw new Error('运行上下文不是对象');
   const 记录 = 值 as Record<string, unknown>;
@@ -269,7 +308,7 @@ function 断言上下文(值: unknown): 整栈运行上下文 {
     if (typeof 记录[键] !== 'string' || 记录[键] === '') throw new Error(`${键} 缺失`);
   }
   if (记录.gate !== 'report' && 记录.gate !== 'enforce') throw new Error('gate 只能是 report 或 enforce');
-  for (const 键 of ['updateBaseline', 'cleanupFailed', 'infraBlocked', 'fixtureVerified']) {
+  for (const 键 of ['updateBaseline', 'cleanupFailed', 'infraBlocked', 'fixtureVerified', 'journeysStarted']) {
     if (typeof 记录[键] !== 'boolean') throw new Error(`${键} 必须是布尔`);
   }
   const 视觉 = 记录.visual as Record<string, unknown> | undefined;
@@ -289,15 +328,17 @@ function 断言上下文(值: unknown): 整栈运行上下文 {
   return 记录 as unknown as 整栈运行上下文;
 }
 
-// 环境层面的视觉阻塞（renderer-version-mismatch / manifest-invalid / expected-file-missing）
-// 是基础设施问题，按 75 处理；但只有在功能结论本身可信时才这么升级 ——
-// 旅程失败时截图本来就拍不全，那时缺图是功能失败的**后果**，不该盖掉 exit 1。
+// 环境层面的视觉阻塞分两类，规则在下面的「视觉环境阻塞」处实现，这里只说结论：
+//   · renderer-version-mismatch / manifest-invalid 是已提交基线与本机渲染器的属性，
+//     跟哪条旅程过没过无关，**无条件**升级成 INFRA_BLOCKED（75）；
+//   · expected-file-missing 只有在功能结论本身可信时才升级 —— 旅程失败时截图本来就拍不全，
+//     那时缺图是功能失败的**后果**，把它升级成 75 会盖掉真正的 exit 1。
 export function 生成整栈报告(输入: unknown): 整栈报告产出 {
   const 上下文 = 断言上下文(输入);
   const 分片 = 读取运行分片({ fragmentDir: 上下文.fragmentDir, selectedJourneys: 上下文.selectedJourneys });
   const 候选清单 = 构造候选视觉清单(上下文);
 
-  const 视觉 = 比较真实后端视觉({
+  const 视觉 = 上下文.journeysStarted ? 比较真实后端视觉({
     selectedJourneys: 上下文.selectedJourneys,
     baselineManifestPath: 上下文.visual.baselineManifestPath,
     baselineDir: 上下文.visual.baselineDir,
@@ -305,9 +346,16 @@ export function 生成整栈报告(输入: unknown): 整栈报告产出 {
     diffDir: 上下文.visual.diffDir,
     candidateManifest: 候选清单,
     gate: 上下文.gate,
-  });
+  }) : 未开始运行的视觉(上下文);
 
   const 功能通过 = !分片.reportParseError && !分片.functionalFailed && !分片.infraBlocked && !上下文.infraBlocked;
+  // 候选基线的功能门比 功能通过 严一格：计划要求「先通过全部功能旅程 **且** fixture verify」。
+  // 上下文.fixtureVerified 只反映**旅程前**那一次 verify；收尾那一次（清理后重新 converge + verify）
+  // 的结论走的是 cleanupFailed —— 运行器在 on_exit 里把收尾 converge/verify 的非零 rc
+  // 记进 FIXTURE_CLEANUP_OK。所以这两个一起看，才等于「首尾两次 fixture 结论都成立」。
+  // 它只管候选基线目录，不参与下面的视觉阻塞升级判断（那条规则问的是「功能结论可不可信」，
+  // 清理失败并不让已经拍好的截图变得不可信）。
+  const 候选基线功能门 = 功能通过 && !上下文.cleanupFailed;
   const issues = [...分片.issues];
 
   let baselineReview = 上下文.updateBaseline ? 'refused' : 'not-requested';
@@ -318,9 +366,11 @@ export function 生成整栈报告(输入: unknown): 整栈报告产出 {
     if (!允许环境) {
       baselineReview = `refused:${视觉.environmentIssue ?? 视觉.environment}`;
       issues.push(`环境状态不允许生成候选基线：${视觉.environmentIssue ?? 视觉.environment}`);
-    } else if (!功能通过) {
+    } else if (!候选基线功能门) {
       baselineReview = 'refused:functional';
-      issues.push('功能旅程未全部通过，未生成候选基线');
+      issues.push(功能通过
+        ? '收尾清理或 fixture 复验未通过，未生成候选基线'
+        : '功能旅程未全部通过，未生成候选基线');
     } else {
       // 基线清单读得出来才有“旧环境”可写；bootstrap 时本来就没有基线清单。
       let 基线清单: 真实后端视觉Manifest | null = null;
@@ -333,7 +383,7 @@ export function 生成整栈报告(输入: unknown): 整栈报告产出 {
       }
       try {
         生成候选基线目录({
-          functionalPassed: 功能通过,
+          functionalPassed: 候选基线功能门,
           fixtureVerified: 上下文.fixtureVerified,
           environment: 视觉.environment,
           environmentIssue: 视觉.environmentIssue,

@@ -1,8 +1,9 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
+import { PNG } from 'pngjs';
 import { 判定整栈结果, 生成整栈报告, 构造候选视觉清单, 写整栈报告, 读取运行分片 } from './报告';
 import type { 整栈运行上下文 } from './报告';
 import { 真实后端场景们 } from './视觉/场景清单';
@@ -238,7 +239,16 @@ function 基线清单文本(渲染器版本 = '0.27.2'): string {
   });
 }
 
-function 搭运行现场(选项: { 失败旅程?: 旅程ID; 基线清单?: string } = {}): 整栈运行上下文 {
+// 同尺寸纯色 PNG：要走到 environment === 'matched' 就必须真有能解码的候选与基准图。
+function 写纯色PNG(路径: string): void {
+  const 图 = new PNG({ width: 4, height: 4 });
+  for (let i = 0; i < 16; i += 1) {
+    图.data[i * 4] = 10; 图.data[i * 4 + 1] = 20; 图.data[i * 4 + 2] = 30; 图.data[i * 4 + 3] = 255;
+  }
+  writeFileSync(路径, PNG.sync.write(图));
+}
+
+function 搭运行现场(选项: { 失败旅程?: 旅程ID; 基线清单?: string; 候选图齐全?: boolean } = {}): 整栈运行上下文 {
   const 根 = 新目录();
   const 分片目录 = join(根, 'journeys');
   const 基线目录 = join(根, 'baseline');
@@ -247,8 +257,18 @@ function 搭运行现场(选项: { 失败旅程?: 旅程ID; 基线清单?: strin
   for (const 旅程 of 全部旅程) {
     写分片(分片目录, 分片(旅程, 旅程 === 选项.失败旅程 ? 'failed' : 'pass'));
   }
-  // 基线 PNG 只需要“存在”：候选目录整体缺图，比较在读像素之前就已经判成环境阻塞。
-  for (const 场景 of 真实后端场景们) writeFileSync(join(基线目录, `${场景}.png`), '', 'utf8');
+  // 默认：基线 PNG 只需要“存在”，候选目录整体缺图，比较在读像素之前就判成环境阻塞。
+  // 候选图齐全 时两侧都写真 PNG，环境才会落到 matched，候选基线那条门才走得到。
+  if (选项.候选图齐全 === true) {
+    const 候选目录 = join(根, 'visual/current');
+    mkdirSync(候选目录, { recursive: true });
+    for (const 场景 of 真实后端场景们) {
+      写纯色PNG(join(基线目录, `${场景}.png`));
+      写纯色PNG(join(候选目录, `${场景}.png`));
+    }
+  } else {
+    for (const 场景 of 真实后端场景们) writeFileSync(join(基线目录, `${场景}.png`), '', 'utf8');
+  }
   writeFileSync(join(基线目录, '基线清单.json'), 选项.基线清单 ?? 基线清单文本(), 'utf8');
 
   return {
@@ -260,6 +280,7 @@ function 搭运行现场(选项: { 失败旅程?: 旅程ID; 基线清单?: strin
     cleanupFailed: false,
     infraBlocked: false,
     fixtureVerified: true,
+    journeysStarted: true,
     frontendCommit: 'abc1234',
     backendCommit: 'def5678',
     agentBrowserVersion: '0.27.2',
@@ -338,9 +359,71 @@ describe('生成整栈报告', () => {
     expect(existsSync(上下文.visual.reviewDir)).toBe(false);
   });
 
+  // 计划要求 --update-baseline 先「通过全部功能旅程 **且** fixture verify」。
+  // 收尾那一次 converge+verify 的结论走 cleanupFailed（运行器把它记进 FIXTURE_CLEANUP_OK），
+  // 所以候选基线的功能门必须把它算进去，否则一次收尾复验失败的运行也能产出候选基线。
+  it('清理/收尾复验失败时拒绝生成候选基线', () => {
+    const 上下文 = { ...搭运行现场({ 候选图齐全: true }), updateBaseline: true, cleanupFailed: true };
+    const 产出 = 生成整栈报告(上下文);
+    expect(产出.baselineReview).toBe('refused:functional');
+    expect(产出.issues).toContain('收尾清理或 fixture 复验未通过，未生成候选基线');
+    expect(existsSync(上下文.visual.reviewDir)).toBe(false);
+  });
+
+  it('清理成功且功能全过时照常生成候选基线', () => {
+    const 上下文 = { ...搭运行现场({ 候选图齐全: true }), updateBaseline: true };
+    const 产出 = 生成整栈报告(上下文);
+    expect(产出.baselineReview).toBe('generated');
+    expect(existsSync(join(上下文.visual.reviewDir, '基线清单.json'))).toBe(true);
+  });
+
+  it('视觉路径一律仓库相对，不把绝对路径（含 OS 用户名）写进报告', () => {
+    const 上下文 = 搭运行现场({ 候选图齐全: true });
+    生成整栈报告(上下文);
+    const 报告 = JSON.parse(readFileSync(join(上下文.outputDir, 'report.json'), 'utf8'));
+    for (const 场景 of 报告.visual.scenes as Array<Record<string, string | null>>) {
+      for (const 键 of ['reference', 'candidate', 'diff']) {
+        const 值 = 场景[键];
+        if (值 !== null && 值 !== undefined) expect(isAbsolute(值)).toBe(false);
+      }
+    }
+    // §15：报告不带与结论无关的环境细节，操作者的 home 目录（含 OS 用户名）尤其不该出现。
+    expect(readFileSync(join(上下文.outputDir, 'report.md'), 'utf8')).not.toContain(homedir());
+  });
+
+  // 旅程一条都没开始的那一轮读不到 agent-browser / Chrome 版本，运行器写的是 unknown。
+  // 要是照常做视觉比较，占位版本号必然和已提交基线对不上，凭空造出一条
+  // renderer-version-mismatch，把 fixture 的功能失败（exit 1）盖成 INFRA_BLOCKED（75）。
+  it('journeysStarted=false 时不做视觉比较，功能结论不被伪造的环境差异盖掉', () => {
+    const 现场 = 搭运行现场();
+    const 分片目录 = 现场.fragmentDir;
+    for (const 旅程 of 全部旅程) 写分片(分片目录, 分片(旅程, 'failed', { milestone: '未开始', failure: 'fixture 判功能失败' }));
+    const 产出 = 生成整栈报告({
+      ...现场,
+      journeysStarted: false,
+      agentBrowserVersion: 'unknown',
+      chromeBuild: 'unknown',
+    });
+    expect(产出).toMatchObject({ classification: 'FUNCTIONAL_FAILED', exitCode: 1 });
+    const 报告 = JSON.parse(readFileSync(join(现场.outputDir, 'report.json'), 'utf8'));
+    expect(报告.visual.environmentIssue).toBe('expected-file-missing');
+    expect(报告.visual.scenes.every((场景: { reasons: string[] }) => 场景.reasons.every((条) => !条.includes('环境与基线不一致')))).toBe(true);
+  });
+
+  it('journeysStarted=false 且是环境阻塞时仍然是 INFRA_BLOCKED 75', () => {
+    const 现场 = 搭运行现场();
+    for (const 旅程 of 全部旅程) 写分片(现场.fragmentDir, 分片(旅程, 'blocked', { milestone: '未开始', failure: '旅程开始前阻塞' }));
+    const 产出 = 生成整栈报告({
+      ...现场, journeysStarted: false, infraBlocked: true,
+      agentBrowserVersion: 'unknown', chromeBuild: 'unknown',
+    });
+    expect(产出).toMatchObject({ classification: 'INFRA_BLOCKED', exitCode: 75 });
+  });
+
   it('上下文不合法时抛错，由 CLI 转成 exit 2', () => {
     expect(() => 生成整栈报告({ ...搭运行现场(), gate: 'whatever' })).toThrow(/gate/);
     expect(() => 生成整栈报告({ ...搭运行现场(), selectedJourneys: [] })).toThrow(/selectedJourneys/);
     expect(() => 生成整栈报告(null)).toThrow();
+    expect(() => 生成整栈报告({ ...搭运行现场(), journeysStarted: 'yes' })).toThrow(/journeysStarted/);
   });
 });
