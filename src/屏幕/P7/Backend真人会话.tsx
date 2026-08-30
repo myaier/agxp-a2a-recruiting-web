@@ -97,20 +97,33 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
   // 结果未知保留不可变待定正文进提示区（草稿已清空，可继续编辑新内容）。
   const [草稿, 设草稿] = useState('');
   const [未知结果, 设未知结果] = useState<P7发送结果 | null>(null);
-  const 发送中 = useRef(false);
+  // review-r2 R2-2：发送 scope 代际 —— 换会话/卸载作废在飞结算与在飞锁（-1 = 空闲，
+  // ≥0 = 该代际有在飞发送）；旧会话的迟到结果、草稿回填、错误提示绝不进新会话。
+  const 发送代际 = useRef(0);
+  const 发送在飞 = useRef(-1);
+  useEffect(() => {
+    设未知结果(null); // 换会话：旧会话的结果未知提示不进新会话
+    设草稿(''); // 草稿按会话隔离：旧会话的在编草稿不带入新会话
+    return () => {
+      发送代际.current += 1;
+    };
+  }, [conversationId, role]);
 
   const 发送 = (内容参数?: string) => {
     const 原文 = 内容参数 ?? 草稿;
     const 内容 = 原文.trim();
-    if (内容 === '' || 发送中.current) return;
+    if (内容 === '' || 发送在飞.current === 发送代际.current) return;
     if (Array.from(内容).length > 正文码点上限) {
       轻提示(超长提示);
       return;
     }
-    发送中.current = true;
-    设草稿('');
+    const 起始代际 = 发送代际.current;
+    发送在飞.current = 起始代际;
+    // review-r2 R2-3：只有发送草稿本身才清草稿；重试不可变待定正文不动在编草稿。
+    if (内容参数 === undefined) 设草稿('');
     操作.发送真人消息(role, conversationId, 内容)
       .then((结果) => {
+        if (发送代际.current !== 起始代际) return; // 迟到：会话已换/已卸载
         if (结果.status === 'confirmed') {
           设未知结果(null);
         } else {
@@ -118,6 +131,7 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
         }
       })
       .catch((错误) => {
+        if (发送代际.current !== 起始代际) return; // 迟到：不提示、不回填
         轻提示(取P7错误文案(错误));
         // review-r1 F6：明确拒绝的消息没发出去 —— 恢复失败正文，不让草稿凭空丢失；
         // 用户若已在途中编辑新草稿则原样保留，绝不覆盖。confirmed/unknown 不走这里
@@ -125,7 +139,7 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
         设草稿((现) => (现 === '' ? 内容 : 现));
       })
       .finally(() => {
-        发送中.current = false;
+        if (发送代际.current === 起始代际) 发送在飞.current = -1; // 只有属主代际释放锁
       });
   };
 
@@ -147,7 +161,9 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
   // 招聘端「看简历」的 PDF 租约：点击才取件，租约只活在弹层生命周期。
   const [PDF预览, 设PDF预览] = useState<{ 文件名: string; 地址: string } | null>(null);
   const PDF租约引用 = useRef<PDF对象租约 | null>(null);
-  const PDF在飞 = useRef(false);
+  // review-r2 R2-4：在飞锁按代际归属（-1 = 空闲，≥0 = 该代际在飞）—— 旧会话的
+  // 在飞取件不挡新会话取件；只有属主代际的结算才释放自己的锁。
+  const PDF在飞 = useRef(-1);
   // review-r1 F7：取件代际 —— 卸载/换会话都作废在飞取件；迟到的租约当场回收，
   // 绝不悬挂到会话边界才回收。
   const PDF代际 = useRef(0);
@@ -163,8 +179,8 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
     };
   }, [conversationId]);
   const 开PDF = async (caseId: string) => {
-    if (PDF在飞.current || PDF预览 !== null || caseId === '') return;
-    PDF在飞.current = true;
+    if (caseId === '' || PDF预览 !== null || PDF在飞.current === PDF代际.current) return;
+    PDF在飞.current = PDF代际.current;
     const 起始代际 = PDF代际.current;
     try {
       const 租约 = await 操作.读取简历PDF('recruiter', caseId);
@@ -177,9 +193,11 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
       PDF租约引用.current = 租约;
       设PDF预览({ 文件名: '简历原件.pdf', 地址: 租约.url });
     } catch (错误) {
+      // review-r2 R2-4：迟到的失败对新会话是无关错误 —— 不提示
+      if (PDF代际.current !== 起始代际) return;
       轻提示(取P7错误文案(错误));
     } finally {
-      PDF在飞.current = false;
+      if (PDF代际.current === 起始代际) PDF在飞.current = -1; // 只有属主代际释放锁
     }
   };
 

@@ -6,7 +6,7 @@
 // 招聘端「看简历」按 case_id 取 PDF 租约（关闭/卸载即回收）。绝不 import Mock
 // 联系人或 Mock 消息 fixture。
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { P7会话项, P7消息 } from '../../数据/招聘数据源/真人会话';
@@ -363,5 +363,70 @@ describe('Backend真人会话 review-r1 修复', () => {
     unmount();
     应答(PDF租约);
     await waitFor(() => expect(PDF租约.revoke).toHaveBeenCalled());
+  });
+});
+
+
+// ── review-r2：屏层发送/PDF 的换会话归属（Codex Round 2 发现）───────────────────
+describe('Backend真人会话 review-r2 修复', () => {
+  it('R2-2：发送结算绑当前会话——换会话后迟到结果不进新会话', async () => {
+    let 应答!: (值: P7发送结果) => void;
+    const 发送 = vi.fn().mockImplementation(
+      () => new Promise<P7发送结果>((完成) => { 应答 = 完成; }));
+    环境({ 发送 });
+    const 用户 = userEvent.setup();
+    const { rerender } = render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    await 用户.type(screen.getByRole('textbox', { name: '输入消息' }), '旧会话的话');
+    await 用户.type(screen.getByRole('textbox', { name: '输入消息' }), '{Enter}');
+    // 发送在飞期间换会话
+    rerender(<Backend真人会话 role="candidate" conversationId="3001" />);
+    应答({ status: 'unknown', reason: 'outcome_unknown', canAbandon: true, pendingContent: '旧会话的话' });
+    await act(async () => {});
+    // 迟到的旧会话结果不进新会话：无未知提示、草稿不被旧正文回填
+    expect(screen.queryByText('暂时无法确认是否发送成功')).toBeNull();
+    expect((screen.getByRole('textbox', { name: '输入消息' }) as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('R2-3：重新确认按不可变待定正文重试，不清在编草稿', async () => {
+    const 发送 = vi.fn()
+      .mockResolvedValueOnce({
+        status: 'unknown', reason: 'outcome_unknown', canAbandon: true, pendingContent: '你好',
+      } as P7发送结果)
+      .mockResolvedValueOnce({ status: 'confirmed' } as P7发送结果);
+    环境({ 发送 });
+    const 用户 = userEvent.setup();
+    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    await 用户.type(screen.getByRole('textbox', { name: '输入消息' }), '你好{Enter}');
+    await waitFor(() => expect(screen.getByText('暂时无法确认是否发送成功')).toBeTruthy());
+    // 结果未知期间用户编辑了新草稿
+    const 输入框 = screen.getByRole('textbox', { name: '输入消息' }) as HTMLTextAreaElement;
+    await 用户.type(输入框, '新草稿');
+    await 用户.click(screen.getByRole('button', { name: '重新确认发送结果' }));
+    // 重试按待定正文（你好），在编草稿原样保留
+    await waitFor(() => expect(发送).toHaveBeenLastCalledWith('candidate', '3003', '你好'));
+    expect((screen.getByRole('textbox', { name: '输入消息' }) as HTMLTextAreaElement).value).toBe('新草稿');
+  });
+
+  it('R2-4：换会话后旧会话的在飞取件不挡新会话，迟到失败不提示', async () => {
+    let 失败A!: (原因: unknown) => void;
+    const 读取简历PDF = vi.fn()
+      .mockImplementationOnce(() => new Promise<typeof PDF租约>((_, 拒绝) => { 失败A = 拒绝; }))
+      .mockResolvedValueOnce(PDF租约);
+    环境({ role: 'recruiter', 读取简历PDF });
+    // 新会话坐标也要有可看简历的详情快照（context available + resume_ref 在场）
+    mock应用状态.后端状态.P7会话详情['p7:detail:recruiter:3001'] = 详情快照();
+    const 用户 = userEvent.setup();
+    const { rerender } = render(<Backend真人会话 role="recruiter" conversationId="3003" />);
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    expect(读取简历PDF).toHaveBeenCalledTimes(1);
+    // 旧会话取件在飞期间换会话：新会话的取件不被旧锁挡住
+    rerender(<Backend真人会话 role="recruiter" conversationId="3001" />);
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    await waitFor(() => expect(读取简历PDF).toHaveBeenCalledTimes(2));
+    expect(读取简历PDF).toHaveBeenLastCalledWith('recruiter', 'mc_3003'); // 详情快照仍是 fixture 的 3003 详情
+    // 旧会话的迟到失败：不提示（新会话视角下是无关错误）
+    失败A(new Error('旧会话取件失败'));
+    await act(async () => {});
+    expect(轻提示).not.toHaveBeenCalled();
   });
 });

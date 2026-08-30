@@ -664,10 +664,13 @@ export function 创建真人会话操作(deps: 后端操作依赖): 真人会话
     }
     位置.inFlight = messageId;
     const fence = 捕获栅栏(P7范围键.消息(role, conversationId));
+    // review-r2 R2-1：结算只动自己捕获的记录对象 —— 会话清理后重建的同名记录
+    // 绝不被旧会话的迟到结算触碰（在飞标记 / 成功位归各自的提交方维护）。
+    const 捕获记录 = 位置;
     try {
       await 后端!.标为已读(role, conversationId, messageId);
       const 现位置 = P7已读位置.current.get(位置键);
-      if (现位置 && 现位置.inFlight === messageId) {
+      if (现位置 === 捕获记录 && 现位置.inFlight === messageId) {
         现位置.inFlight = null;
         现位置.lastSuccessful = messageId;
       }
@@ -679,7 +682,7 @@ export function 创建真人会话操作(deps: 后端操作依赖): 真人会话
       await Promise.allSettled([运行详情读(role, conversationId), 运行收件箱读(role, '窗口')]);
     } catch (错误) {
       const 现位置 = P7已读位置.current.get(位置键);
-      if (现位置 && 现位置.inFlight === messageId) 现位置.inFlight = null;
+      if (现位置 === 捕获记录 && 现位置.inFlight === messageId) 现位置.inFlight = null;
       // review-r1 F1：迟到的失败（含 401）先过栅栏 —— 会话已换代就整包丢弃，
       // 绝不登出新会话、也不往新会话的已读位置表写终局拒绝。
       if (!会话栅栏仍当前(fence)) return;
@@ -688,8 +691,9 @@ export function 创建真人会话操作(deps: 后端操作依赖): 真人会话
         return;
       }
       // role_* 是当前角色的终局拒绝：同 target 不再自动重发，直到换 target 或会话清理复位。
+      // （栅栏已过 + 记录未被清理 ⇒ 现位置即捕获记录；再守一次身份，防御性收口。）
       if (错误 instanceof BFF错误 && (错误.code === 'role_required' || 错误.code === 'role_suspended')) {
-        if (现位置) 现位置.terminalRejected = messageId;
+        if (现位置 === 捕获记录) 现位置.terminalRejected = messageId;
         return;
       }
       // 其余失败静默：不写状态、不重试（下一次渲染的 target 会再触发一次提交）。

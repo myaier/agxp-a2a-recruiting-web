@@ -711,3 +711,31 @@ describe('P7 review-r1 修复', () => {
     expect(env.最新状态().P7收件箱.candidate.items.map((条) => 条.conversationId)).toEqual(['3001']);
   });
 });
+
+
+// ── review-r2：结算归属与换会话残留（Codex Round 2 发现）────────────────────────
+describe('P7 review-r2 修复', () => {
+  it('R2-1：已读结算只动自己捕获的记录，换会话后不碰新会话的同名记录', async () => {
+    vi.mocked(env.数据源.读取消息).mockResolvedValue(
+      消息页([系统行, 文本消息('4004', 'recruiter', '你好')], null));
+    await env.操作.读取真人会话('candidate', '3003');
+    const 门A = deferred<string>();
+    vi.mocked(env.数据源.标为已读).mockReturnValueOnce(门A.promise);
+    const 读A = env.操作.提交真人已读('candidate', '3003', '4005');
+    await Promise.resolve(); // 读A 进入在飞
+    // 会话换代：引用清理（新会话同 scope 同 target 重新提交）
+    清P7会话引用(env.deps);
+    env.deps.会话代际.current += 1;
+    const 门B = deferred<string>();
+    vi.mocked(env.数据源.标为已读).mockReturnValueOnce(门B.promise);
+    const 读B = env.操作.提交真人已读('candidate', '3003', '4005');
+    门A.resolve('4005'); // A 迟到成功：绝不碰 B 捕获前建立的新记录
+    await 读A;
+    const 位置B = env.deps.P7已读位置.current.get('p7:read:candidate:3003');
+    expect(位置B?.inFlight).toBe('4005'); // B 的在飞标记不被 A 的结算清掉
+    expect(位置B?.lastSuccessful).toBeNull(); // A 的成功不冒充 B 的成功
+    门B.resolve('4005');
+    await 读B;
+    expect(env.deps.P7已读位置.current.get('p7:read:candidate:3003')?.lastSuccessful).toBe('4005');
+  });
+});
