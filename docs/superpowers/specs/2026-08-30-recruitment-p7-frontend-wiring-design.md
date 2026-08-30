@@ -174,6 +174,13 @@ export interface P7会话上下文 {
   resumeRef: string | null;
 }
 
+export interface P7消息预览 {
+  messageId: string;
+  senderRole: 'candidate' | 'recruiter';
+  preview: string;
+  createdAt: string;
+}
+
 export interface P7会话项 {
   conversationId: string;
   caseId: string;
@@ -204,7 +211,7 @@ export type P7消息 =
 ### 6.2 闭合校验
 
 - 所有对象拒绝 unknown/missing key、unknown enum、trailing JSON 和跨分支字段；
-- `conversation_id` 与真人 `message_id` 按后端 canonical decimal string 校验；`case_id` 沿用 P5 opaque Case ID 规则；
+- `conversation_id` 与真人 `message_id` 按发布坐标的闭合模式 `^[1-9][0-9]{0,63}$` 校验；`case_id` 沿用 P5 opaque Case ID 规则；
 - 时间只接受合法 RFC3339，不猜秒/毫秒；
 - `unread_count` 必须是安全非负整数；
 - `context_status=available` 必须有非空 context，`unavailable` 必须无 context 或为 null；
@@ -283,15 +290,15 @@ interface P7会话状态 {
 ### 8.1 路由
 
 ```ts
-真人会话: (id: string) => `/chat/human/${encodeURIComponent(id)}`,
+真人会话: '/chat/human',
+真人会话路径: (id: string) => `/chat/human/${encodeURIComponent(id)}`,
 真人会话模板: '/chat/human/:conversationId',
-真人会话Mock: '/chat/human',
-企业真人会话: (id: string) => `/hr/chat/${encodeURIComponent(id)}`,
+企业真人会话: '/hr/chat',
+企业真人会话路径: (id: string) => `/hr/chat/${encodeURIComponent(id)}`,
 企业真人会话模板: '/hr/chat/:conversationId',
-企业真人会话Mock: '/hr/chat',
 ```
 
-Mock 现有入口继续使用无参常量；Backend 导航必须使用带真实 ID 的 builder。Backend 访问无参路由显示会话不可用，不读取默认 `J-01/A-01`。
+现有 `真人会话` / `企业真人会话` 无参常量保持字符串语义，Mock 调用点无需迁移；Backend 导航只使用新增的 `真人会话路径` / `企业真人会话路径` builder。Backend 访问无参路由显示会话不可用，不读取默认 `J-01/A-01`。
 
 ### 8.2 收件箱字段映射
 
@@ -374,6 +381,8 @@ same-party 已知问题在公开 wire 上也是这一合法 pending 形态，因
 
 新增独立、很薄的事件源 adapter，连接同源 `ws(s)://<current-host>/api/v1/events/live`，不传 token、role、subject、conversation query 或自定义身份 header。
 
+当前 Backend 模式只允许 Vite dev，因此同源事件能否到达 BFF 也属于本期接线合同：`vite.config.ts` 的 `/api/v1` 代理必须启用 `ws: true`；stg 代理在 `proxyReqWs` 上把握手 `Origin` 改为配置的 public origin，local 代理保持浏览器原 Origin。HTTP 的 `proxyReq` 改写继续保留，两条事件不能互相替代。验收至少用一次不 stub WebSocket 的真实 upgrade 请求证明请求越过 Vite，且不会因未改写 Origin 得到 `invalid_origin`。
+
 严格接受且只接受：
 
 ```json
@@ -415,13 +424,17 @@ const 已加载未读 = items.reduce((sum, item) => sum + item.unreadCount, 0);
 | `idempotency_conflict` | 发送状态发生冲突，请刷新后确认 |
 | `operation_outcome_unknown` | 暂时无法确认是否发送成功 |
 | `request_too_large` | 消息太长，请缩短后再发送 |
+| `idempotency_in_progress` | 消息仍在处理中，请稍后重试 |
+| `invalid_origin` | 当前后端环境配置不正确 |
+| `role_required` | 当前身份不可用，请切换身份或重新登录 |
+| `role_suspended` | 当前身份不可用，请切换身份或重新登录 |
 | `identity_service_unavailable` | 账号服务暂时不可用，请重试 |
 | `recruitment_service_unavailable` | 招聘信息暂时不可用，请重试 |
 | `message_service_unavailable` | 消息服务暂时不可用，请重试 |
 
-平台内部的 muted / moderation 拒绝在当前 BFF 实现里统一投影为公开 `invalid_request_body`，前端不猜内部原因，也不依赖未公开错误词。
+平台内部的 muted / moderation 拒绝在当前 BFF 实现里统一投影为公开 `invalid_request_body`，前端不猜内部原因，也不依赖未公开错误词。`idempotency_in_progress` 与结果未知同样保留原 key，但不允许放弃仍在处理的意图；`role_required` / `role_suspended` 是当前角色的终局拒绝，不清除仍有效的登录会话、不自动重试发送，并停止对同一 read target 的自动重发，直到用户切换身份、重新登录或消息 target 改变。
 
-公开错误的后端英文 message 不直接显示。日志、测试样本与持久化不得包含 session token、Idempotency-Key、完整消息正文、电话、微信、简历正文或 identity subject。前端只把消息正文保存在当前内存状态与输入草稿，不写 localStorage。
+公开错误的后端英文 message 不直接显示。未列入上表的错误码统一显示“请求失败，请稍后重试”，P7 页面不得直接复用 `取后端错误文案` 的 `error.message` 兜底。日志、测试样本与持久化不得包含 session token、Idempotency-Key、完整消息正文、电话、微信、简历正文或 identity subject。前端只把消息正文保存在当前内存状态与输入草稿，不写 localStorage。
 
 ## 13. 模块与改动边界
 
@@ -436,6 +449,7 @@ const 已加载未读 = items.reduce((sum, item) => sum + item.unreadCount, 0);
 预计修改：
 
 - `BFF契约.ts`、`HTTP招聘数据源.ts`、后端状态类型/初值/会话清理/应用操作组合；
+- `vite.config.ts`：Backend dev 的 HTTP + WebSocket 同源代理与 stg Origin 改写；
 - `消息列表.tsx`、`企业消息.tsx`、`真人会话.tsx`、`企业真人会话.tsx`、双端主壳未读；
 - `路径表.ts`、`应用.tsx`；
 - P5 MatchCase decoder、展示映射、详情轮询和按钮；

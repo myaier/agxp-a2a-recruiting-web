@@ -19,6 +19,7 @@
 - 候选“看职位”只使用 `context.job_ref` 导航现有 `路径.职位详情(jobRef)`；招聘“看简历”只用 `case_id` 调现有 `操作.读取简历PDF('recruiter', caseId)`，绝不把 `resume_ref` 拼成 URL。
 - 发送内容使用 `Array.from(content.trim()).length` 校验 1–2000 Unicode code point；不得用 UTF-16 `string.length` 冒充 code point 数。
 - `operation_outcome_unknown` 必须保存原 Idempotency-Key 与不可变正文。无权威成功证据时不得乐观追加、清草稿或换 key。
+- 复合意图串 `role + conversationId + trim 后正文` 只作 pending Map key；真正的 Idempotency-Key 一律由 `crypto.randomUUID()` 铸造，满足 16–128 可见 ASCII，并在同一意图的所有重试中复用。
 - `conversation_started` 永不计未读、永不作为 read target；decimal message ID 保持 string，不能转 `number` 比大小。
 - WebSocket 帧不携带真相，只触发当前 role inbox 与对应可见 conversation 的 HTTP 重拉。
 - P5 same-party 已知问题在公开 DTO 上只表现为长期 `completed + handoff_pending`。前端继续可见轮询、保持禁用，不增加超时终态或内部错误文案。
@@ -132,9 +133,9 @@ State detail/message key is `role + encoded conversationId`; the Provider clears
 |---|---|
 | Strict wire facade | `src/数据/BFF契约.ts`, new `src/数据/招聘数据源/真人会话.ts`, `src/数据/HTTP招聘数据源.ts` and tests |
 | Runtime owner | new `src/状态/后端/真人会话操作.ts`, `src/状态/后端/类型.ts`, `src/状态/应用状态.tsx`, `src/状态/后端/会话操作.ts` and tests |
-| Inbox and badges | new `src/屏幕/P7/Backend会话列表.tsx`, `src/屏幕/消息列表.tsx`, `src/屏幕/企业消息.tsx`, `src/组件/玻璃导航栏.tsx`, `src/屏幕/企业主壳.tsx` and tests |
+| Inbox and badges | new `src/屏幕/P7/Backend会话列表.tsx`, `src/屏幕/消息列表.tsx`, `src/屏幕/企业消息.tsx`, `src/屏幕/主壳.tsx`, `src/组件/玻璃导航栏.tsx`, `src/屏幕/企业主壳.tsx` and tests |
 | Routes and chat | new `src/屏幕/P7/Backend真人会话.tsx`, both existing human-chat screens, action bar, route table/app, extracted PDF layer and tests |
-| Realtime invalidation | new `src/数据/招聘事件源.ts`, new `src/状态/后端/use真人会话事件.ts` and tests |
+| Realtime invalidation | new `src/数据/招聘事件源.ts`, new `src/状态/后端/use真人会话事件.ts`, `vite.config.ts`, new `src/配置/vite代理合同.test.ts` and tests |
 | P5 publication | P5 MatchCase decoder/mapper/polling/detail and tests |
 | Browser acceptance | `e2e/数据源模式.spec.ts`, `docs/DEV_LOG.md` |
 
@@ -181,7 +182,7 @@ git diff --name-status 7e75326f9d5924952783082c8372de39cd9b2a86..HEAD -- \
   src/数据 src/状态 src/路由/路径表.ts src/应用.tsx \
   src/屏幕/消息列表.tsx src/屏幕/企业消息.tsx \
   src/屏幕/真人会话.tsx src/屏幕/企业真人会话.tsx src/屏幕/P5 \
-  src/组件/玻璃导航栏.tsx e2e/数据源模式.spec.ts
+  src/组件/玻璃导航栏.tsx vite.config.ts e2e/数据源模式.spec.ts
 ```
 
 Expected at plan handoff: only the approved document commits differ. If product files changed, inspect them and stop on any contract/file-map conflict; do not silently overwrite newer work.
@@ -271,7 +272,7 @@ Expected: FAIL because the facade and root composition do not exist.
 
 - [ ] **Step 4: Implement the closed decoder and facade**
 
-Use exact-key guards local to the P7 module, canonical positive-decimal `/^[1-9][0-9]*$/` conversation/message IDs, existing RFC3339 discipline, safe non-negative integer unread, and opaque non-empty cursor. Normalize absent optional `job_ref`/`resume_ref` to `null`. Validate trimmed content locally with `Array.from(trimmed).length` before POST.
+Use exact-key guards local to the P7 module, the released coordinate pattern `/^[1-9][0-9]{0,63}$/` for conversation/message IDs, existing RFC3339 discipline, safe non-negative integer unread, and opaque non-empty cursor. Include a 65-digit rejection test. Normalize absent optional `job_ref`/`resume_ref` to `null`. Validate trimmed content locally with `Array.from(trimmed).length` before POST.
 
 ```ts
 const P7前缀 = { candidate: '/api/v1/me', recruiter: '/api/v1/recruiter' } as const;
@@ -357,7 +358,9 @@ The test matrix must prove:
 4. successful reread without evidence returns `unknown/canAbandon=true`;
 5. failed reread returns `unknown/canAbandon=false`;
 6. explicit abandon clears only the immutable pending content key; a live edited draft is unrelated;
-7. `idempotency_conflict` is terminal and does not reuse the key for changed content.
+7. a final `idempotency_in_progress` after the HTTP client's controlled retry retains the same key and returns `unknown/canAbandon=false`;
+8. `idempotency_conflict` is terminal and does not reuse the key for changed content;
+9. the generated network key matches `/^[!-~]{16,128}$/`, while the possibly Chinese composite intent string never leaves the Map.
 
 ```ts
 const first = await 操作.发送真人消息('candidate', '3003', '  你好  ');
@@ -397,6 +400,25 @@ function 是水位后同文消息(messages: P7消息[], intent: P7待定意图, 
 
 If a non-null watermark is absent from the reread window, do not claim success; return unknown and retain the key. All successful send/read paths re-read authoritative messages/detail/inbox before resolving.
 
+Freeze the two-layer key helper instead of deriving a header from content:
+
+```ts
+function pendingIntentFor(
+  refs: P7运行时引用,
+  intentCoordinate: string,
+  content: string,
+  watermark: string | null,
+): P7待定意图 {
+  const existing = refs.P7待定意图.current.get(intentCoordinate);
+  if (existing) return existing;
+  const created = { key: globalThis.crypto.randomUUID(), content, watermark };
+  refs.P7待定意图.current.set(intentCoordinate, created);
+  return created;
+}
+```
+
+Add a P7-specific public error mapper in this module. It must cover the Spec §12 table and use the neutral fallback `请求失败，请稍后重试`; never pass through `BFF错误.message`. `role_required` / `role_suspended` do not clear a valid session, do not auto-retry sends, and suppress repeat submission of the same automatic read target until subject/role/session changes or a different target is rendered. Test both role codes and one unknown English backend message.
+
 - [ ] **Step 6: Run PASS and commit**
 
 ```bash
@@ -409,33 +431,36 @@ git commit -m "feat: add fenced P7 conversation runtime"
 
 **Files:**
 
+- Modify: `src/路由/路径表.ts`
 - Create: `src/屏幕/P7/Backend会话列表.tsx`
 - Create: `src/屏幕/P7/Backend会话列表.test.tsx`
 - Modify: `src/屏幕/消息列表.tsx`
 - Create: `src/屏幕/消息列表.test.tsx`
 - Modify: `src/屏幕/企业消息.tsx`
 - Modify: `src/屏幕/企业消息.test.tsx`
+- Modify: `src/屏幕/主壳.tsx`
+- Create: `src/屏幕/主壳.test.tsx`
 - Modify: `src/组件/玻璃导航栏.tsx`
 - Create: `src/组件/玻璃导航栏.test.tsx`
 - Modify: `src/屏幕/企业主壳.tsx`
 - Create: `src/屏幕/企业主壳.test.tsx`
 
-**Interfaces:** `Backend会话列表` receives only `{ role: P7角色 }`; it reads `后端状态/操作`, maps viewer-safe context, and navigates with the P7 route builders added in Task 4. To keep this Task compiling before Task 4, add route builders at the start of this Task and their `<Route>` registrations in Task 4.
+**Interfaces:** `Backend会话列表` receives only `{ role: P7角色 }`; it reads `后端状态/操作`, maps viewer-safe context, and navigates with the P7 route builders added here. The existing Mock string constants keep their current names and meaning. Parameter `<Route>` registrations arrive in Task 4.
 
 - [ ] **Step 1: Add route-builder compile seam**
 
 Modify `src/路由/路径表.ts` now:
 
 ```ts
-真人会话: (id: string) => `/chat/human/${encodeURIComponent(id)}`,
+真人会话: '/chat/human',
+真人会话路径: (id: string) => `/chat/human/${encodeURIComponent(id)}`,
 真人会话模板: '/chat/human/:conversationId',
-真人会话Mock: '/chat/human',
-企业真人会话: (id: string) => `/hr/chat/${encodeURIComponent(id)}`,
+企业真人会话: '/hr/chat',
+企业真人会话路径: (id: string) => `/hr/chat/${encodeURIComponent(id)}`,
 企业真人会话模板: '/hr/chat/:conversationId',
-企业真人会话Mock: '/hr/chat',
 ```
 
-Update existing Mock callers in `消息列表.tsx` / `企业消息.tsx` to use `*Mock`. Do not register parameter routes yet.
+Do not change any existing Mock caller: `消息列表.tsx`, `企业消息.tsx`, `在谈详情.tsx`, `候选详情.tsx` and current static `<Route>` entries continue using `路径.真人会话` / `路径.企业真人会话`. Backend P7 callers use only the new `*路径(id)` builders. Do not register parameter routes yet.
 
 - [ ] **Step 2: Write Backend inbox RED tests**
 
@@ -460,19 +485,19 @@ export function 数P7已加载未读(items: P7会话项[]): number {
 }
 ```
 
-Candidate `玻璃导航栏` reads candidate inbox; recruiter `企业主壳` reads recruiter inbox. A zero sum renders no badge; no copy may call it an account total.
+Candidate `玻璃导航栏` reads candidate inbox; recruiter `企业主壳` reads recruiter inbox. A zero sum renders no badge; no copy may call it an account total. Add shell tests that mount Backend `主壳` / `企业主壳` on a non-message Tab, assert `加载会话列表(role)` runs once, resolve unread data, and assert the badge appears before the user ever opens the message Tab. Mock shells make zero P7 calls.
 
 - [ ] **Step 4: Run RED**
 
 ```bash
-npx vitest run src/屏幕/P7/Backend会话列表.test.tsx src/屏幕/消息列表.test.tsx src/屏幕/企业消息.test.tsx src/组件/玻璃导航栏.test.tsx src/屏幕/企业主壳.test.tsx
+npx vitest run src/屏幕/P7/Backend会话列表.test.tsx src/屏幕/消息列表.test.tsx src/屏幕/企业消息.test.tsx src/屏幕/主壳.test.tsx src/组件/玻璃导航栏.test.tsx src/屏幕/企业主壳.test.tsx
 ```
 
 Expected: FAIL on missing Backend component and route/badge branches.
 
 - [ ] **Step 5: Implement minimal Backend branches**
 
-`Backend会话列表` registers/unregisters inbox visibility, loads the first page on mount, keeps successful content while refreshing, and never imports Mock data. Candidate title/subtitle are `primaryLabel/secondaryLabel`; recruiter uses `secondaryLabel/primaryLabel`. Use a neutral avatar glyph, not a Mock name initial.
+The two main shells perform the initial non-force inbox hydration in Backend mode so badges work before the message Tab is opened. `Backend会话列表` registers/unregisters inbox visibility and requests a force refresh on entry; operation-layer single-flight prevents duplicate requests. It keeps successful content while refreshing and never imports Mock data. Candidate title/subtitle are `primaryLabel/secondaryLabel`; recruiter uses `secondaryLabel/primaryLabel`. Use a neutral avatar glyph, not a Mock name initial.
 
 ```tsx
 export default function 消息列表() {
@@ -486,8 +511,9 @@ export default function 消息列表() {
 - [ ] **Step 6: Run PASS and commit**
 
 ```bash
-npx vitest run src/屏幕/P7/Backend会话列表.test.tsx src/屏幕/消息列表.test.tsx src/屏幕/企业消息.test.tsx src/组件/玻璃导航栏.test.tsx src/屏幕/企业主壳.test.tsx
-git add src/路由/路径表.ts src/屏幕/P7/Backend会话列表.tsx src/屏幕/P7/Backend会话列表.test.tsx src/屏幕/消息列表.tsx src/屏幕/消息列表.test.tsx src/屏幕/企业消息.tsx src/屏幕/企业消息.test.tsx src/组件/玻璃导航栏.tsx src/组件/玻璃导航栏.test.tsx src/屏幕/企业主壳.tsx src/屏幕/企业主壳.test.tsx
+npx vitest run src/屏幕/P7/Backend会话列表.test.tsx src/屏幕/消息列表.test.tsx src/屏幕/企业消息.test.tsx src/屏幕/主壳.test.tsx src/组件/玻璃导航栏.test.tsx src/屏幕/企业主壳.test.tsx
+npm run typecheck
+git add src/路由/路径表.ts src/屏幕/P7/Backend会话列表.tsx src/屏幕/P7/Backend会话列表.test.tsx src/屏幕/消息列表.tsx src/屏幕/消息列表.test.tsx src/屏幕/企业消息.tsx src/屏幕/企业消息.test.tsx src/屏幕/主壳.tsx src/屏幕/主壳.test.tsx src/组件/玻璃导航栏.tsx src/组件/玻璃导航栏.test.tsx src/屏幕/企业主壳.tsx src/屏幕/企业主壳.test.tsx
 git commit -m "feat: wire P7 role inboxes"
 ```
 
@@ -513,7 +539,7 @@ git commit -m "feat: wire P7 role inboxes"
 
 - [ ] **Step 1: Write route and direct-load RED tests**
 
-Assert both parameter templates are registered, encoded IDs reach the screen, direct refresh invokes detail+latest messages, Backend static Mock routes fail closed with “会话不可用”, and Mock static routes retain existing `J-01/A-01` behavior.
+Assert both parameter templates are registered alongside the unchanged static string routes, encoded IDs reach the screen, direct refresh invokes detail+latest messages, Backend visits to the static routes fail closed with “会话不可用”, and Mock static routes retain existing `J-01/A-01` behavior.
 
 ```tsx
 <MemoryRouter initialEntries={['/chat/human/3003']}>
@@ -581,7 +607,7 @@ export default function 真人会话() {
 }
 ```
 
-Register static routes before parameter templates in `应用.tsx`. The shared Backend screen owns visible-scope registration, first read, scroll preservation on prepend, local draft and unknown-result UI. It renders only P7 data. Candidate context action calls `跳转(路径.职位详情(context.jobRef))`; recruiter calls `读取简历PDF('recruiter', detail.caseId)` and owns the returned lease until close/unmount.
+Keep the current `<Route path={路径.真人会话}>` / enterprise static entries and add their parameter templates immediately after them in `应用.tsx`. The shared Backend screen owns visible-scope registration, first read, scroll preservation on prepend, local draft and unknown-result UI. It renders only P7 data. Candidate context action calls `跳转(路径.职位详情(context.jobRef))`; recruiter calls `读取简历PDF('recruiter', detail.caseId)` and owns the returned lease until close/unmount.
 
 - [ ] **Step 7: Run PASS and commit**
 
@@ -601,6 +627,9 @@ git commit -m "feat: wire P7 human conversation pages"
 - Create: `src/状态/后端/use真人会话事件.test.tsx`
 - Modify: `src/状态/应用状态.tsx`
 - Modify: `src/状态/应用状态.test.ts`
+- Modify: `vite.config.ts`
+- Create: `src/配置/vite代理合同.test.ts`
+- Run unchanged regression: `src/配置/运行配置.test.ts`
 
 **Interfaces:**
 
@@ -639,7 +668,7 @@ expect(mock操作.读取真人会话).toHaveBeenCalledWith('candidate', '3003', 
 - [ ] **Step 3: Run RED**
 
 ```bash
-npx vitest run src/数据/招聘事件源.test.ts src/状态/后端/use真人会话事件.test.tsx src/状态/应用状态.test.ts
+npx vitest run src/数据/招聘事件源.test.ts src/状态/后端/use真人会话事件.test.tsx src/状态/应用状态.test.ts src/配置/vite代理合同.test.ts src/配置/运行配置.test.ts
 ```
 
 - [ ] **Step 4: Implement adapter and one Provider hook**
@@ -651,11 +680,28 @@ const url = `${protocol}//${location.host}/api/v1/events/live`;
 
 The adapter decodes frames and owns reconnect timing only. `use真人会话事件` reads current authenticated role and P7 visibility refs, calls operation invalidation/read methods, and never appends a payload. Mount the hook once inside `应用状态提供者`, enabled only for a logged-in Backend subject with active candidate/recruiter role and `document.visibilityState==='visible'`.
 
+Make Vite proxy the same-origin WebSocket path as well as HTTP. `src/配置/vite代理合同.test.ts` may follow the repository's existing `?raw` source-contract pattern: it must fail until `vite.config.ts` contains `ws: true` and a `proxyReqWs` Origin handler, while `运行配置.test.ts` continues proving local has no rewrite and stg names `https://recruitment-stg.agxp.ai`.
+
+```ts
+'/api/v1': {
+  target: 代理.target,
+  changeOrigin: 代理.改写Origin !== null,
+  ws: true,
+  configure(proxy) {
+    if (!代理.改写Origin) return;
+    proxy.on('proxyReq', (request) =>
+      request.setHeader('Origin', 代理.改写Origin!));
+    proxy.on('proxyReqWs', (request) =>
+      request.setHeader('Origin', 代理.改写Origin!));
+  },
+},
+```
+
 - [ ] **Step 5: Run PASS and commit**
 
 ```bash
-npx vitest run src/数据/招聘事件源.test.ts src/状态/后端/use真人会话事件.test.tsx src/状态/应用状态.test.ts
-git add src/数据/招聘事件源.ts src/数据/招聘事件源.test.ts src/状态/后端/use真人会话事件.ts src/状态/后端/use真人会话事件.test.tsx src/状态/应用状态.tsx src/状态/应用状态.test.ts
+npx vitest run src/数据/招聘事件源.test.ts src/状态/后端/use真人会话事件.test.tsx src/状态/应用状态.test.ts src/配置/vite代理合同.test.ts src/配置/运行配置.test.ts
+git add src/数据/招聘事件源.ts src/数据/招聘事件源.test.ts src/状态/后端/use真人会话事件.ts src/状态/后端/use真人会话事件.test.tsx src/状态/应用状态.tsx src/状态/应用状态.test.ts vite.config.ts src/配置/vite代理合同.test.ts
 git commit -m "feat: refresh P7 conversations from live events"
 ```
 
@@ -693,7 +739,7 @@ expect(() => 解详情(pendingWire({ conversation_ref: '3003' }), 'candidate')).
 
 - [ ] **Step 2: Write mapper/polling/navigation RED tests**
 
-Assert pending maps to a disabled button and `详情终局=false`; ready maps to enabled and `详情终局=true`; ended remains terminal. Candidate/recruiter ready buttons navigate to exact role routes. Add a long-pending/same-party fixture and advance multiple 3-second ticks: it stays pending, keeps reading, never navigates and never shows internal error/timeout.
+Assert pending maps to a disabled button and `详情终局=false`; ready maps to enabled and `详情终局=true`; ended remains terminal. Candidate/recruiter ready buttons navigate through `路径.真人会话路径(conversationId)` / `路径.企业真人会话路径(conversationId)`. Add a long-pending/same-party fixture and advance multiple 3-second ticks: it stays pending, keeps reading, never navigates and never shows internal error/timeout.
 
 - [ ] **Step 3: Run RED**
 
@@ -778,7 +824,29 @@ npm run test:e2e:data-source -- --grep "P7|真人会话|handoff"
 
 Expected: PASS.
 
-- [ ] **Step 4: Run static/build gates**
+- [ ] **Step 4: Verify one real un-stubbed WebSocket upgrade through Vite**
+
+Start the stg Backend dev server in a managed terminal/session:
+
+```bash
+VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=stg npm run dev -- --host 127.0.0.1 --port 4182
+```
+
+From a second terminal, send a real unauthenticated browser-shaped upgrade through Vite:
+
+```bash
+curl --http1.1 -i -N --max-time 10 \
+  -H 'Connection: Upgrade' \
+  -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' \
+  -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  -H 'Origin: http://127.0.0.1:4182' \
+  http://127.0.0.1:4182/api/v1/events/live
+```
+
+Expected: the request reaches stg and fails on the intentionally absent session (401 `invalid_session`), not 403 `invalid_origin`, Vite HTML, or connection refusal. This proves both upgrade proxying and `proxyReqWs` Origin rewrite without needing a real user cookie. Stop the managed dev server and record the status/body receipt in `docs/DEV_LOG.md`.
+
+- [ ] **Step 5: Run static/build gates**
 
 ```bash
 npm run typecheck
@@ -789,7 +857,7 @@ git diff --check
 
 Expected: all exit 0.
 
-- [ ] **Step 5: Run the authoritative broad test gate**
+- [ ] **Step 6: Run the authoritative broad test gate**
 
 ```bash
 npm test
@@ -797,9 +865,9 @@ npm test
 
 Expected: the full Vitest suite passes. This is required even if focused tests passed.
 
-- [ ] **Step 6: Record evidence and commit**
+- [ ] **Step 7: Record evidence and commit**
 
-Append to `docs/DEV_LOG.md`: frontend base, backend release SHA, focused test receipts, data-source Playwright receipt, typecheck/lint/build/full-test receipts, and any deliberately accepted known issue. Do not claim same-party fixed.
+Append to `docs/DEV_LOG.md`: frontend base, backend release SHA, focused test receipts, data-source Playwright receipt, un-stubbed Vite WebSocket upgrade receipt, typecheck/lint/build/full-test receipts, and any deliberately accepted known issue. Do not claim same-party fixed.
 
 ```bash
 git add e2e/数据源模式.spec.ts docs/DEV_LOG.md
