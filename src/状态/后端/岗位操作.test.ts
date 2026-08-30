@@ -5,6 +5,7 @@
 // hiring_organization_ref / verification status —— 服务端唯一推导 refs。
 
 import { describe, expect, it, vi } from 'vitest';
+import { 创建空P7会话状态 } from './真人会话操作';
 import { 创建空P5MatchCase状态 } from './MatchCase操作';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF岗位样本, BFF企业关系样本, 页面岗位样本 } from '../../测试/BFF样本';
@@ -57,6 +58,8 @@ function 创建岗位测试依赖(input: {
       ...创建空P4发现状态(),
       // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
       ...创建空P5MatchCase状态(),
+    // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
+    ...创建空P7会话状态(),
       // P2：附件库权威快照（只追加，不动 P6 字段）
       附件简历库: null,
     } },

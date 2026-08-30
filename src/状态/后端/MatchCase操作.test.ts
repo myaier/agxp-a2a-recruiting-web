@@ -25,6 +25,7 @@ import {
   创建空P5MatchCase状态,
   清P5MatchCase引用,
 } from './MatchCase操作';
+import { 创建空P7会话状态 } from './真人会话操作';
 import type { 后端操作依赖, 后端状态, MatchCase操作 } from './类型';
 
 function deferred<T>() {
@@ -159,6 +160,8 @@ function 创建P5操作测试环境(是后端 = true, 源 = 创建P5数据源())
     },
     ...创建空P4发现状态(),
     ...创建空P5MatchCase状态(),
+    // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
+    ...创建空P7会话状态(),
   };
   const deps: 后端操作依赖 = {
     是后端,

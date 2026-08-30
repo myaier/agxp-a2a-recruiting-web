@@ -3,6 +3,7 @@
 // P3 Task 2：候选隐私成为第三个并行水合域 —— 水合 / 清理 / 过时响应丢弃的用例也在本文件。
 
 import { describe, expect, it, vi } from 'vitest';
+import { 创建空P7会话状态 } from './真人会话操作';
 import { 创建空P5MatchCase状态 } from './MatchCase操作';
 import type { BFF主体, BFF角色, BFF附件简历库 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
@@ -26,7 +27,7 @@ import type { 页面隐私快照 } from '../../数据/招聘数据源类型';
 import { 创建初始状态, 初始状态 } from '../初始状态';
 import { 归约 } from '../应用状态';
 import { 创建空P4发现状态 } from './发现推荐操作';
-import type { 后端操作依赖, 后端状态, P4运行时引用 } from './类型';
+import type { 后端操作依赖, 后端状态, P4运行时引用, P7运行时引用 } from './类型';
 import { 创建会话操作, 清账号状态, 水合角色数据 } from './会话操作';
 
 /** 依赖 helper：派发重放 归约 到可变 状态引用，断言可以读最终 state。 */
@@ -55,6 +56,8 @@ function 创建会话测试依赖(后端: HTTP招聘数据源) {
       ...创建空P4发现状态(),
       // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
       ...创建空P5MatchCase状态(),
+    // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
+    ...创建空P7会话状态(),
       // P2：附件库权威快照（只追加，不动 P6 字段）
       附件简历库: null,
     } },
@@ -346,6 +349,8 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
     ...创建空P4发现状态(),
     // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
     ...创建空P5MatchCase状态(),
+    // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
+    ...创建空P7会话状态(),
     // P2：附件库权威快照（只追加，不动 P6 字段）
     附件简历库: null,
   };
@@ -373,9 +378,14 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
     P4范围代际: { current: new Map<string, number>() },
     P4幂等意图: { current: new Map<string, string>() },
     P4可见范围: { current: { candidate: null, recruiter: null } },
+    P7范围代际: { current: new Map<string, number>() },
+    P7待定意图: { current: new Map<string, never>() },
+    P7可见收件箱: { current: { candidate: false, recruiter: false } },
+    P7可见会话: { current: { candidate: null, recruiter: null } },
+    P7已读位置: { current: new Map<string, never>() },
   };
   return {
-    deps: deps as unknown as 后端操作依赖 & P4运行时引用 & { 后端: HTTP招聘数据源 },
+    deps: deps as unknown as 后端操作依赖 & P4运行时引用 & P7运行时引用 & { 后端: HTTP招聘数据源 },
     动作流,
     状态引用,
     最新后端状态: () => 后端值,
@@ -975,5 +985,109 @@ describe('P2 附件支持域水合与清理', () => {
     await 操作.切身份('招聘方');
     expect(后端.读取附件简历库).not.toHaveBeenCalled();
     expect(最新后端状态().附件简历库).toBeNull();
+  });
+});
+
+// ── P7 Task 2：真人会话域加入会话边界清理 ─────────────────────────
+// 清账号状态 / 登录换主体 / 切身份 三个转移口都要：raw 快照回空底座 +
+// 五个引用（范围代际 / 待定意图 / 可见收件箱 / 可见会话 / 已读位置）复位。
+// 已读位置含 成功 / 在飞 / 终局拒绝 三态，任何 P7 值都不落持久化。
+
+describe('P7 真人会话会话清理', () => {
+  /** 在 后端状态 与五个 P7 引用里播上上个会话残留的痕迹。 */
+  function 播P7残留(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
+    deps.设后端状态((旧) => ({
+      ...旧,
+      P7收件箱: {
+        candidate: {
+          阶段: '成功', 刷新中: false, items: [{
+            conversationId: '3003', caseId: 'mc_3003', kind: 'human_handoff',
+            lastMessage: null, lastActivityAt: '2026-08-30T01:00:00Z', unreadCount: 2,
+            contextStatus: 'available',
+            context: { primaryLabel: '后端工程师', secondaryLabel: '上海', jobRef: null, resumeRef: null },
+          }],
+          nextCursor: null, 已加载页数: 1, error: null, generation: 2,
+        },
+        recruiter: { 阶段: '未开始', 刷新中: false, items: [], nextCursor: null, 已加载页数: 0, error: null, generation: 0 },
+      },
+      P7会话详情: {
+        'p7:detail:candidate:3003': {
+          阶段: '成功', 刷新中: false, detail: null, error: null, generation: 1,
+        },
+      },
+      P7消息页: {
+        'p7:messages:candidate:3003': {
+          阶段: '成功', 刷新中: false, items: [], nextCursor: null, 已加载页数: 1, error: null, generation: 1,
+        },
+      },
+    }));
+    deps.P7范围代际.current.set('p7:detail:candidate:3003', 2);
+    deps.P7待定意图.current.set('p7:意图:candidate:3003', {
+      key: 'idem-p7-residue', content: '你好', watermark: '4004',
+    } as never);
+    deps.P7可见收件箱.current = { candidate: true, recruiter: true };
+    deps.P7可见会话.current = { candidate: '3003', recruiter: '3003' };
+    deps.P7已读位置.current.set('p7:read:candidate:3003', {
+      lastSuccessful: '4004', inFlight: '4005', terminalRejected: '4003',
+    } as never);
+  }
+
+  function 断言P7已清空(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
+    const 最新 = deps.后端状态引用.current;
+    expect(最新.P7收件箱.candidate).toEqual({
+      阶段: '未开始', 刷新中: false, items: [], nextCursor: null, 已加载页数: 0,
+      error: null, generation: 0,
+    });
+    expect(最新.P7收件箱.recruiter.阶段).toBe('未开始');
+    expect(最新.P7会话详情).toEqual({});
+    expect(最新.P7消息页).toEqual({});
+    expect(deps.P7范围代际.current.size).toBe(0);
+    expect(deps.P7待定意图.current.size).toBe(0);
+    expect(deps.P7已读位置.current.size).toBe(0);
+    expect(deps.P7可见收件箱.current).toEqual({ candidate: false, recruiter: false });
+    expect(deps.P7可见会话.current).toEqual({ candidate: null, recruiter: null });
+  }
+
+  it('清账号状态 清空 P7 真人会话快照并复位全部引用', () => {
+    const { deps } = 创建P6会话依赖(创建P6数据源桩());
+    播P7残留(deps);
+    清账号状态(deps);
+    断言P7已清空(deps);
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(deps.会话代际.current).toBe(1);
+  });
+
+  it('退出登录 清空 P7 真人会话残留', async () => {
+    const { deps } = 创建P6会话依赖(创建P6数据源桩());
+    const 操作 = 创建会话操作(deps);
+    播P7残留(deps);
+    await 操作.退出登录();
+    断言P7已清空(deps);
+    expect(deps.后端状态引用.current.已登录).toBe(false);
+  });
+
+  it('完成手机登录 换主体时清 P7 真人会话残留', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_a' })
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b' });
+    const { deps } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    await 操作.完成手机登录('1111');
+    播P7残留(deps);
+    await 操作.完成手机登录('2222');
+    断言P7已清空(deps);
+    expect(deps.主体标识引用.current).toBe('sub_b');
+  });
+
+  it('切身份 清 P7 真人会话残留后才水合目标角色', async () => {
+    const { deps, 动作流 } = 创建P6会话依赖(创建P6数据源桩());
+    const 操作 = 创建会话操作(deps);
+    deps.主体标识引用.current = 'sub_1';
+    await 操作.完成手机登录('1111');
+    播P7残留(deps);
+    await 操作.切身份('招聘方');
+    断言P7已清空(deps);
+    expect(动作流).toContainEqual({ 型: '切身份', 到: '招聘方' });
   });
 });

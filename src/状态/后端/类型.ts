@@ -31,13 +31,14 @@ import type {
 import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
 import type { P5列表项, P5详情 } from '../../数据/招聘数据源/MatchCase';
+import type { P7角色, P7会话项, P7消息 } from '../../数据/招聘数据源/真人会话';
 import type { PDF对象租约 } from '../../数据/PDF对象租约';
 import type { 在招岗位, 披露档, 屏蔽来源, 屏蔽项 } from '../../数据/类型';
 import type { 资料形 } from '../../数据/公司主页资料';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 动作, 状态 } from '../应用状态';
 
-export interface 后端状态 extends P4发现状态, P5MatchCase状态 {
+export interface 后端状态 extends P4发现状态, P5MatchCase状态, P7会话状态 {
   初始化: '跳过' | '进行中' | '完成';
   已登录: boolean;
   主体: BFF主体 | null;
@@ -97,6 +98,69 @@ export interface P4发现状态 {
 }
 
 export type 更新后端状态 = (更新: (旧: 后端状态) => 后端状态) => void;
+
+// ── P7：真人会话域的内存态 scope 快照（仅 Backend；快照绝不进 资料持久化 / 浏览器存储）──
+
+/** P7 scope 快照的生命周期阶段；已 成功 的快照在刷新途中保持 成功（旧 items/detail 不降级）。 */
+export type P7加载阶段 = '未开始' | '进行中' | '成功' | '失败';
+
+/**
+ * 收件箱 / 消息页共用 的分页快照：收件箱 key 是角色、消息页 key 是
+ * P7范围键.消息(role, conversationId)。已加载页数 是「已载窗口」深度：
+ * 刷新从第一页重建同样深度的窗口，收件箱 append / 更早消息 prepend 逐页 +1。
+ */
+export interface P7分页快照<T> {
+  阶段: P7加载阶段;
+  刷新中: boolean;
+  items: T[];
+  nextCursor: string | null;
+  已加载页数: number;
+  error: string | null;
+  generation: number;
+}
+
+/** 会话详情快照：key 是 P7范围键.详情(role, conversationId)；detail 只来自权威 GET。 */
+export interface P7详情快照 {
+  阶段: P7加载阶段;
+  刷新中: boolean;
+  detail: P7会话项 | null;
+  error: string | null;
+  generation: number;
+}
+
+export interface P7会话状态 {
+  P7收件箱: Record<P7角色, P7分页快照<P7会话项>>;
+  P7会话详情: Record<string, P7详情快照>;
+  P7消息页: Record<string, P7分页快照<P7消息>>;
+}
+
+/**
+ * 发送结果：confirmed = 权威证据已确认；unknown 携带不可变待定正文，
+ * outcome_unknown 在重拉成功时可放弃、重拉失败只允许同键重试，
+ * in_progress 表示同一 effect 仍在执行、不可放弃。
+ */
+export type P7发送结果 =
+  | { status: 'confirmed' }
+  | {
+      status: 'unknown';
+      reason: 'outcome_unknown' | 'in_progress';
+      canAbandon: boolean;
+      pendingContent: string;
+    };
+
+/** 每个待定发送意图：Idempotency-Key、不可变 trim 后正文与发送前水位。 */
+export interface P7待定意图 {
+  key: string;
+  content: string;
+  watermark: string | null;
+}
+
+/** 每会话的已读位置：上次成功 / 在飞 / 已被终局拒绝（role_*）的 decimal target。 */
+export interface P7已读位置记录 {
+  lastSuccessful: string | null;
+  inFlight: string | null;
+  terminalRejected: string | null;
+}
 
 // ── P5：MatchCase 域的内存态 scope 快照（仅 Backend；快照绝不进 资料持久化 / 浏览器存储）──
 
@@ -166,6 +230,25 @@ export interface 后端操作依赖 {
   P5幂等意图?: 可变引用<Map<string, string>>;
   P5可见范围?: 可变引用<Record<P5角色, string | null>>;
   P5对象租约?: 可变引用<Set<PDF对象租约>>;
+  /**
+   * P7 Task 2：真人会话运行时引用 —— scope 代际 / 待定发送意图 / 双端可见范围 /
+   * 已读位置。与 P4/P5 同一纪律：Provider 恒一次性注入；可选成员只为既有
+   * 测试依赖桩 的编译兼容，真人会话操作 在工厂入口显式收窄。
+   */
+  P7范围代际?: 可变引用<Map<string, number>>;
+  P7待定意图?: 可变引用<Map<string, P7待定意图>>;
+  P7可见收件箱?: 可变引用<Record<P7角色, boolean>>;
+  P7可见会话?: 可变引用<Record<P7角色, string | null>>;
+  P7已读位置?: 可变引用<Map<string, P7已读位置记录>>;
+}
+
+/** P7 真人会话的五个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
+export interface P7运行时引用 {
+  P7范围代际: 可变引用<Map<string, number>>;
+  P7待定意图: 可变引用<Map<string, P7待定意图>>;
+  P7可见收件箱: 可变引用<Record<P7角色, boolean>>;
+  P7可见会话: 可变引用<Record<P7角色, string | null>>;
+  P7已读位置: 可变引用<Map<string, P7已读位置记录>>;
 }
 
 /** P5 MatchCase 的四个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -353,4 +436,34 @@ export interface MatchCase操作 {
   读取简历PDF(role: P5角色, caseId: string): Promise<PDF对象租约>;
 }
 
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作;
+/**
+ * P7 Task 2：页面会调用的真人会话操作方法表（页面不得直接调用数据源）。
+ * 铁律：调用方不携带幂等键 —— 每个 (role + conversation + trim 后正文) 意图
+ * 由域内持有一把稳定 Idempotency-Key（crypto.randomUUID 铸造，同意图沿用）；
+ * 发送不乐观追加，成功 / 未知对账后一律权威 no-store 重拉消息/详情/收件箱。
+ */
+export interface 真人会话操作 {
+  /** 屏幕登记当前角色收件箱是否可见（消息 Tab 挂载/卸载）；事件层据此决定重拉范围。 */
+  设置P7收件箱范围(role: P7角色, visible: boolean): void;
+  /** 屏幕登记当前可见会话坐标（null = 卸载）；换会话递增旧新 scope 代际作废在飞读。 */
+  设置P7会话范围(role: P7角色, conversationId: string | null): void;
+  加载会话列表(role: P7角色, force?: boolean): Promise<void>;
+  /** 已载收件箱向后追加一页（透传快照里的 next_cursor）；游标已尽时零请求。 */
+  追加会话列表(role: P7角色): Promise<void>;
+  /** 直读会话详情 + 最新消息页（并行）；force=true 恒权威重读，直达不依赖收件箱。 */
+  读取真人会话(role: P7角色, conversationId: string, force?: boolean): Promise<void>;
+  /** 已载消息窗口向更早 prepend 一页；游标已尽时零请求。 */
+  追加更早消息(role: P7角色, conversationId: string): Promise<void>;
+  发送真人消息(role: P7角色, conversationId: string, content: string): Promise<P7发送结果>;
+  /** 显式放弃：只清该不可变正文对应的待定意图键，保留屏层当前编辑中的草稿。 */
+  放弃真人消息意图(role: P7角色, conversationId: string, pendingContent: string): void;
+  /**
+   * forward-only 已读：同 target 与 上次成功/在飞/终局拒绝 相同时零请求；
+   * 只接受 decimal user_text 坐标；成功后刷新详情与收件箱。
+   */
+  提交真人已读(role: P7角色, conversationId: string, messageId: string): Promise<void>;
+  /** 事件层入口：作废对应会话（或未指定坐标时的收件箱）的在飞读，随后由调用方 force 重拉。 */
+  使真人会话失效(role: P7角色, conversationId?: string): void;
+}
+
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作;

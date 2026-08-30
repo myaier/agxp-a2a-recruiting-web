@@ -4,6 +4,7 @@
 // 约束：失败恢复一律重读权威资源，绝不自动重放 mutation。
 
 import { describe, expect, it, vi } from 'vitest';
+import { 创建空P7会话状态 } from './真人会话操作';
 import { 创建空P5MatchCase状态 } from './MatchCase操作';
 import type { BFF角色 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
@@ -126,6 +127,8 @@ function 种子后端状态(role: BFF角色 | null): 后端状态 {
     ...创建空P4发现状态(),
     // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
     ...创建空P5MatchCase状态(),
+    // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
+    ...创建空P7会话状态(),
     // P2：附件库权威快照（只追加，不动 P6 字段）
     附件简历库: null,
   };

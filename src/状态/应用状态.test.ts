@@ -28,6 +28,7 @@ import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF招聘方档案, BFF公开企业, BFF角色, BFF附件简历库 } from '../数据/BFF契约';
 import type { BFF二进制响应 } from '../数据/HTTP客户端';
 import { 解P5详情, type P5列表页, type P5详情 } from '../数据/招聘数据源/MatchCase';
+import type { P7会话项, P7会话页, P7消息, P7消息页 } from '../数据/招聘数据源/真人会话';
 import { P5候选详情Wire } from '../测试/BFF样本';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
@@ -491,6 +492,19 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
       contentDisposition: null,
       requestId: 'fixture',
     })),
+    // P7 Task 2：真人会话域 facade（默认空页/空详情成功，mutation 默认成功；逐用例覆盖）
+    读取会话列表: vi.fn(async (): Promise<P7会话页> => ({ items: [], nextCursor: null })),
+    读取会话: vi.fn(async (): Promise<P7会话项> => ({
+      conversationId: '3003', caseId: 'mc_3003', kind: 'human_handoff',
+      lastMessage: null, lastActivityAt: '2026-08-30T01:00:00Z', unreadCount: 0,
+      contextStatus: 'unavailable', context: null,
+    })),
+    读取消息: vi.fn(async (): Promise<P7消息页> => ({ messages: [], nextCursor: null })),
+    发送消息: vi.fn(async (): Promise<P7消息> => ({
+      messageId: '4005', kind: 'user_text', senderRole: 'candidate',
+      content: '你好', createdAt: '2026-08-30T01:00:00Z',
+    })),
+    标为已读: vi.fn(async (): Promise<string> => '4004'),
   };
 }
 
@@ -660,6 +674,11 @@ describe('应用状态提供者 后端会话', () => {
       '加载历史', '追加历史', '刷新历史',
       '读取详情', '回答事实', '提交简历', '决定S0', '决定S1', '决定S2', '决定S3',
       '新增叮嘱', '读取简历PDF',
+      // P7 真人会话域方法（真人会话操作）：收件箱/会话可见范围注册、列表/详情/消息
+      // 读取与分页、发送对账、显式放弃、forward-only 已读与失效通知
+      '设置P7收件箱范围', '设置P7会话范围', '加载会话列表', '追加会话列表',
+      '读取真人会话', '追加更早消息', '发送真人消息', '放弃真人消息意图',
+      '提交真人已读', '使真人会话失效',
     ].sort().join('|'))).toBeTruthy();
   });
 
@@ -676,6 +695,47 @@ describe('应用状态提供者 后端会话', () => {
     expect(后端.确保角色).toHaveBeenCalledWith('recruiter');
     expect(后端.记录当前角色).toHaveBeenCalledWith('recruiter');
     expect(后端.确保角色.mock.invocationCallOrder[0]).toBeLessThan(后端.记录当前角色.mock.invocationCallOrder[0]);
+  });
+
+  // P7 Task 2：P7 内存快照随主体基串（subject + 角色）转移清空；
+  // 任何 P7 值（会话项、消息正文、幂等键）都不写 localStorage/sessionStorage。
+  it('P7 会话状态随角色转移清空且不落任何持久化', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 会话行: P7会话项 = {
+      conversationId: '3003', caseId: 'mc_3003', kind: 'human_handoff',
+      lastMessage: null, lastActivityAt: '2026-08-30T01:00:00Z', unreadCount: 1,
+      contextStatus: 'available',
+      context: { primaryLabel: '后端工程师', secondaryLabel: '上海', jobRef: null, resumeRef: null },
+    };
+    vi.mocked(后端.读取会话列表).mockResolvedValue({ items: [会话行], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    const 会话存储 = 创建Map存储();
+    vi.stubGlobal('sessionStorage', 会话存储);
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => {
+      await 当前.操作.加载会话列表('candidate', true);
+    });
+    expect(当前.后端状态.P7收件箱.candidate.items).toEqual([会话行]);
+    const setItem调用 = () => [
+      ...vi.mocked(localStorage.setItem).mock.calls,
+      ...vi.mocked(会话存储.setItem).mock.calls,
+    ].map((调用) => JSON.stringify(调用));
+    const 写入前 = setItem调用().length;
+    // 切身份 = 角色转移：P7 域整体摊平（收件箱/详情/消息页回空底座）
+    await act(async () => {
+      await 当前.操作.切身份('招聘方');
+    });
+    expect(当前.后端状态.P7收件箱.candidate.items).toEqual([]);
+    expect(当前.后端状态.P7会话详情).toEqual({});
+    expect(当前.后端状态.P7消息页).toEqual({});
+    // P7 值绝不进持久化：新增写入里既无会话坐标也无消息正文
+    for (const 写入 of setItem调用().slice(写入前)) {
+      expect(写入).not.toContain('3003');
+      expect(写入).not.toContain('后端工程师');
+    }
   });
 
   it('401 只清后端状态，不载入 Mock 支持域', async () => {
