@@ -209,14 +209,19 @@ hygiene_scan(){
     [ -n "$file" ] || continue
     case "$file" in "$RUN_DIR/private/"*) continue ;; esac
     if grep -Eq '__Host-agxp_recruitment_session|Authorization:|Bearer |"proof":\{"code|Cookie:|Set-Cookie:' "$file" 2>/dev/null; then
+      # 命中就整份删掉，和 公共步骤.sh 的失败快照同一条规矩：宁可没有这份产物，
+      # 也不把证据留在盘上。删在报告生成**之前**是关键 —— report.json / report.md
+      # 完全派生自这些分片（consoleErrors / pageErrors 各带 200 字页面文本），
+      # 先删源头，派生产物才不会把同一段泄漏再抄一份出去。
       hits="$hits $file"
+      rm -f "$file"
     fi
   done <<EOF
 $listing
 EOF
   if [ -n "$hits" ]; then
     HYGIENE_OK=0
-    printf '产物命中敏感字面量（判 CLEANUP_FAILED）：%s\n' "$hits" >&2
+    printf '产物命中敏感字面量，已删除（判 CLEANUP_FAILED）：%s\n' "$hits" >&2
   fi
 }
 
@@ -339,7 +344,9 @@ on_exit(){
     fi
   fi
 
-  # 6. 定稿前扫敏感字面量（只扫 JSON / Markdown / 日志，绝不把 PNG 当文本读）
+  # 6. 定稿前扫敏感字面量并删掉命中文件（只扫 JSON / Markdown / 日志，绝不把 PNG 当文本读）。
+  #    必须排在第 7 步写报告之前：报告只派生自这些分片与本运行器自己生成的元数据，
+  #    源头清干净了，report.json / report.md 就不可能再带出泄漏。
   hygiene_scan
 
   # 7. 报告与退出码

@@ -140,6 +140,13 @@ jq -n --arg j "$J" --arg s "$status" \
 if [ "${FAKE_LEAK:-0}" = '1' ] && [ "$J" = 'recruiter-crud' ]; then
   printf 'Authorization: Bearer redactme\n' >"$RUN_DIR/leak-diagnostics.log"
 fi
+# consoleErrors 会被报告原样带进 report.json：种在这里才能证明派生产物也不留泄漏
+if [ "${FAKE_LEAK:-0}" = '2' ] && [ "$J" = 'recruiter-crud' ]; then
+  jq -n --arg j "$J" '{schemaVersion:1,journey:$j,status:"pass",milestone:"完成",
+    apiRequests:["GET /api/v1/me/resume"],
+    consoleErrors:["Set-Cookie: __Host-agxp_recruitment_session=leaked"],
+    pageErrors:[],failedRequests:[],screenshots:[],failure:null}' >"$FRAGMENT_DIR/$J.json"
+fi
 
 if [ "${FAKE_JOURNEY_SIGINT:-}" = "$J" ]; then kill -INT "$PPID" 2>/dev/null || true; sleep 2; fi
 exit "$rc"
@@ -580,6 +587,32 @@ run_runner
 assert_eq '退出码 1' "$RC" 1
 assert_eq '分类 CLEANUP_FAILED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'CLEANUP_FAILED'
 assert_contains '打印了卫生扫描命中' '敏感字面量' "$OUT"
+assert_true '命中的日志已经删掉' "[ ! -f '$(run_dir)/leak-diagnostics.log' ]"
+
+testcase '泄漏在分片里：分片被删掉，派生的 report.json 里也不留痕'
+reset_case; setup_baseline
+export FAKE_LEAK=2
+run_runner
+assert_eq '退出码 1' "$RC" 1
+assert_eq '分类 CLEANUP_FAILED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'CLEANUP_FAILED'
+assert_true '命中的分片已经删掉' "[ ! -f '$(run_dir)/journeys/recruiter-crud.json' ]"
+assert_true '报告仍然写了出来' "[ -f '$(report_json)' ]"
+assert_missing '报告里没有 Set-Cookie' 'Set-Cookie:' "$(report_json)"
+assert_missing '报告里没有会话 Cookie 名' '__Host-agxp_recruitment_session' "$(report_json)"
+assert_missing 'Markdown 报告里也没有' 'Set-Cookie:' "$(run_dir)/report.md"
+assert_contains '打印了被删除的文件路径' 'journeys/recruiter-crud.json' "$OUT"
+
+testcase '隔离门失败：按分片判功能失败，收尾照做'
+reset_case; setup_baseline
+export FAKE_ISOLATION_RC=1
+run_runner
+assert_eq '退出码 1' "$RC" 1
+assert_contains '隔离门真的跑过' 'isolation session=' "$CALLS"
+assert_eq '分类 FUNCTIONAL_FAILED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'FUNCTIONAL_FAILED'
+assert_eq '隔离门分片记 failed' "$(jq -r '.journeys[]|select(.journey=="session-isolation")|.status' "$(report_json)" 2>/dev/null)" 'failed'
+assert_eq '四条业务旅程仍记 pass' "$(jq -r '[.journeys[]|select(.status=="pass")]|length' "$(report_json)" 2>/dev/null)" '4'
+assert_contains '收尾清理照做' 'fixture cleanup --ledger' "$CALLS"
+assert_true '清理成功仍然删私密目录' "[ ! -d '$(run_dir)/private' ]"
 
 testcase '与真实公共步骤库的静态契约'
 assert_contains '真库定义了 会话隔离门' '会话隔离门(){' "$REAL_LIB"

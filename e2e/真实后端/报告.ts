@@ -350,8 +350,19 @@ export function 生成整栈报告(输入: unknown): 整栈报告产出 {
     }
   }
 
-  const 视觉环境阻塞 = 视觉.environment === 'blocked' && 功能通过;
-  if (视觉环境阻塞) issues.push(`视觉环境阻塞：${视觉.environmentIssue ?? 'blocked'}`);
+  // 三种视觉环境阻塞里只有 expected-file-missing 与功能结论有因果关系：旅程失败时截图本来就
+  // 拍不全，那时的缺图是功能失败的**后果**，把它升级成 75 会盖掉真正的 exit 1。
+  // renderer-version-mismatch 与 manifest-invalid 则是已提交基线与本机渲染器的属性，
+  // 跟哪条旅程过没过毫无关系 —— 它们必须照常升级成 75，否则「环境陈旧」会被报成
+  // 「你的代码坏了」，正好把 判定整栈结果 里「基础设施高于功能」的优先级倒过来。
+  const 视觉环境阻塞 = 视觉.environment === 'blocked'
+    && (视觉.environmentIssue !== 'expected-file-missing' || 功能通过);
+  // 无论升不升级，环境阻塞本身都要出现在 issues 里：抑制得静悄悄，人就看不见基线该更新了。
+  if (视觉.environment === 'blocked') {
+    issues.push(视觉环境阻塞
+      ? `视觉环境阻塞：${视觉.environmentIssue ?? 'blocked'}`
+      : `视觉缺图（${视觉.environmentIssue ?? 'blocked'}）不升级为基础设施阻塞：功能旅程未全部通过，缺图是失败的后果`);
+  }
 
   const 判定 = 判定整栈结果({
     reportParseError: 分片.reportParseError,

@@ -223,6 +223,21 @@ describe('写整栈报告', () => {
 
 const 全部旅程: 旅程ID[] = ['candidate-load', 'candidate-crud', 'recruiter-load', 'recruiter-crud', 'session-isolation'];
 
+function 基线清单文本(渲染器版本 = '0.27.2'): string {
+  return JSON.stringify({
+    schemaVersion: 1,
+    agentBrowserVersion: 渲染器版本,
+    chromeBuild: 'Chrome/141.0.7390.55',
+    viewport: { width: 390, height: 844 },
+    locale: 'zh-CN',
+    timezone: 'Asia/Shanghai',
+    colorScheme: 'light',
+    deviceScaleFactor: 1,
+    scenes: [...真实后端场景们],
+    baselineCommit: '0000000',
+  });
+}
+
 function 搭运行现场(选项: { 失败旅程?: 旅程ID; 基线清单?: string } = {}): 整栈运行上下文 {
   const 根 = 新目录();
   const 分片目录 = join(根, 'journeys');
@@ -234,18 +249,7 @@ function 搭运行现场(选项: { 失败旅程?: 旅程ID; 基线清单?: strin
   }
   // 基线 PNG 只需要“存在”：候选目录整体缺图，比较在读像素之前就已经判成环境阻塞。
   for (const 场景 of 真实后端场景们) writeFileSync(join(基线目录, `${场景}.png`), '', 'utf8');
-  writeFileSync(join(基线目录, '基线清单.json'), 选项.基线清单 ?? JSON.stringify({
-    schemaVersion: 1,
-    agentBrowserVersion: '0.27.2',
-    chromeBuild: 'Chrome/141.0.7390.55',
-    viewport: { width: 390, height: 844 },
-    locale: 'zh-CN',
-    timezone: 'Asia/Shanghai',
-    colorScheme: 'light',
-    deviceScaleFactor: 1,
-    scenes: [...真实后端场景们],
-    baselineCommit: '0000000',
-  }), 'utf8');
+  writeFileSync(join(基线目录, '基线清单.json'), 选项.基线清单 ?? 基线清单文本(), 'utf8');
 
   return {
     selectedJourneys: [...全部旅程],
@@ -297,6 +301,33 @@ describe('生成整栈报告', () => {
   it('有旅程失败时缺图不再升级成基础设施阻塞：仍然是 FUNCTIONAL_FAILED 1', () => {
     const 产出 = 生成整栈报告(搭运行现场({ 失败旅程: 'candidate-crud' }));
     expect(产出).toMatchObject({ classification: 'FUNCTIONAL_FAILED', exitCode: 1 });
+  });
+
+  it('渲染器版本不一致：功能全过时是 INFRA_BLOCKED 75', () => {
+    const 产出 = 生成整栈报告(搭运行现场({ 基线清单: 基线清单文本('0.26.0') }));
+    expect(产出).toMatchObject({ classification: 'INFRA_BLOCKED', exitCode: 75 });
+    expect(产出.issues).toContain('视觉环境阻塞：renderer-version-mismatch');
+  });
+
+  // 这一条是缺图抑制规则的边界：renderer 版本不一致是「已提交基线 vs 本机渲染器」的属性，
+  // 跟哪条旅程过没过无关。要是让功能失败把它压成 exit 1，「环境陈旧」就会被报成「代码坏了」——
+  // 正是这份验收要防的那一种误判。
+  it('渲染器版本不一致：即使有旅程失败，仍然是 INFRA_BLOCKED 75', () => {
+    const 产出 = 生成整栈报告(搭运行现场({ 基线清单: 基线清单文本('0.26.0'), 失败旅程: 'candidate-crud' }));
+    expect(产出).toMatchObject({ classification: 'INFRA_BLOCKED', exitCode: 75 });
+    expect(产出.issues).toContain('视觉环境阻塞：renderer-version-mismatch');
+  });
+
+  it('基线清单不合法：即使有旅程失败，仍然是 INFRA_BLOCKED 75', () => {
+    const 产出 = 生成整栈报告(搭运行现场({ 基线清单: '{"schemaVersion":1}', 失败旅程: 'recruiter-crud' }));
+    expect(产出).toMatchObject({ classification: 'INFRA_BLOCKED', exitCode: 75 });
+    expect(产出.issues).toContain('视觉环境阻塞：manifest-invalid');
+  });
+
+  it('缺图被抑制时也要留下一条可见的说明', () => {
+    const 产出 = 生成整栈报告(搭运行现场({ 失败旅程: 'candidate-crud' }));
+    expect(产出.classification).toBe('FUNCTIONAL_FAILED');
+    expect(产出.issues.some((条) => 条.includes('expected-file-missing') && 条.includes('不升级'))).toBe(true);
   });
 
   it('基线清单不合法时拒绝生成候选基线目录', () => {
