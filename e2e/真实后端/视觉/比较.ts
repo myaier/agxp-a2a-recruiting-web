@@ -160,7 +160,26 @@ export function 比较真实后端视觉(options: 比较真实后端视觉选项
 
     mkdirSync(options.diffDir, { recursive: true });
     const 差异路径 = join(options.diffDir, 场景文件名(场景));
-    const 图 = 比较图片(基准路径, 候选路径, 差异路径, 默认比较阈值);
+    let 图: ReturnType<typeof 比较图片>;
+    try {
+      图 = 比较图片(基准路径, 候选路径, 差异路径, 默认比较阈值);
+    } catch {
+      // 截断或零字节 PNG（capture_scene 被打断）与缺图是同一类基础设施失败，
+      // 归入既有的 expected-file-missing，绝不让异常逃逸：逃逸会让 runner 退成
+      // 通用非零码被误判为功能失败，而且整份 report.json 都写不出来。
+      environment = 'blocked';
+      environmentIssue = 'expected-file-missing';
+      scenes.push({
+        sceneId: 场景,
+        status: 'missing',
+        pixelDiffRatio: null,
+        reference: 基准路径,
+        candidate: 候选路径,
+        diff: null,
+        reasons: ['基准/候选截图无法解析'],
+      });
+      continue;
+    }
     scenes.push({
       sceneId: 场景,
       status: 图.status,

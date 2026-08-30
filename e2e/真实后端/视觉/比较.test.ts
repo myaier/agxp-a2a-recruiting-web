@@ -61,6 +61,13 @@ function 写坏图(路径: string): void {
   writeFileSync(路径, '这不是 PNG', 'utf8');
 }
 
+// 采集被打断留下的半张 PNG：文件存在、头部合法，但数据被截断。
+function 写截断图(路径: string): void {
+  mkdirSync(join(路径, '..'), { recursive: true });
+  const 图 = new PNG({ width: 20, height: 20 });
+  writeFileSync(路径, PNG.sync.write(图).subarray(0, 30));
+}
+
 function 写全部场景(目录: string, 改色像素 = 0): void {
   for (const 场景 of 真实后端场景们) 写图(join(目录, `${场景}.png`), 改色像素);
 }
@@ -169,6 +176,35 @@ describe('比较真实后端视觉：阈值与旅程选择', () => {
     expect(场景状态(结果, 'candidate-resume-loaded').status).toBe('missing');
     expect(场景状态(结果, 'candidate-intentions-loaded').status).toBe('missing');
     expect(场景状态(结果, 'candidate-disclosure-loaded').status).toBe('pass');
+  });
+
+  it('已选场景的截图截断或零字节时归类为 expected-file-missing，不抛异常', () => {
+    const 区 = 新工作区();
+    写基线清单(区);
+    写全部场景(区.基线目录, 0);
+    写全部场景(区.候选目录, 0);
+    // 采集被打断留下的半张图与零字节文件，和缺图属于同一类基础设施失败。
+    写截断图(join(区.候选目录, 'candidate-resume-loaded.png'));
+    writeFileSync(join(区.候选目录, 'candidate-intentions-loaded.png'), '');
+    写截断图(join(区.基线目录, 'candidate-disclosure-loaded.png'));
+
+    const 结果 = 比较真实后端视觉({
+      selectedJourneys: ['candidate-load', 'candidate-crud'],
+      baselineManifestPath: 区.基线清单路径,
+      baselineDir: 区.基线目录,
+      candidateDir: 区.候选目录,
+      diffDir: 区.差异目录,
+      candidateManifest: 固定清单,
+      gate: 'report',
+    });
+    expect(结果.environment).toBe('blocked');
+    expect(结果.environmentIssue).toBe('expected-file-missing');
+    for (const 场景 of ['candidate-resume-loaded', 'candidate-intentions-loaded', 'candidate-disclosure-loaded']) {
+      expect(场景状态(结果, 场景)).toMatchObject({ status: 'missing', pixelDiffRatio: null, diff: null });
+      expect(场景状态(结果, 场景).reasons).toEqual(['基准/候选截图无法解析']);
+    }
+    // 同一轮里健康的已选场景仍然被正常比较。
+    expect(场景状态(结果, 'candidate-resume-updated').status).toBe('pass');
   });
 });
 
