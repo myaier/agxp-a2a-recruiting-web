@@ -67,6 +67,53 @@ assert_pressed(){
   [ "$value" = 'true' ]
 }
 
+# 输入框 / 文本域里的值不是页面文本，wait --text 看不见它（React 把 value 写成属性，
+# 不写进 innerText）。所以这一类字段按产品自己的可访问名称读 value，并逐字相等比对 ——
+# 子串比对在这一轮会出事：招聘名片的基线职务「招聘负责人」正好是临时值
+# 「浏览器验收招聘负责人」的后缀，只有逐字相等才分得开「改回来了」和「没改回来」。
+# 先 wait 再读：分区编辑页在企业档案水合之前根本不渲染这个文本域（公司档案分区编辑.tsx:244-254），
+# 等到它出现就等于等到了权威快照。
+assert_value(){
+  local sel got
+  sel="[aria-label=\"$1\"]"
+  ab wait "$sel" >/dev/null || return 1
+  got="$(ab get value "$sel")" || return 1
+  if [ "$got" = "$2" ]; then return 0; fi
+  echo "字段「$1」的值不是期望值：读到「${got}」" >&2
+  return 1
+}
+
+# 岗位行落在哪一组。
+#
+# 岗位管理的分组标（在招 / 已归档）是纯 div，没有任何可访问结构把行归进组里；
+# 行自己的可访问名称才是唯一的语义信号 —— 它是「岗位名 + 当前徽 + 薪资/在谈 + 状态徽」
+# （src/屏幕/岗位管理.tsx 岗位行名称），末尾那一段状态徽就是它所在的组。
+# 中间那一段（薪资带、在谈人数）来自后端、旅程无法预知，所以只钉两头：
+# 前缀＝这个岗位的业务身份，后缀＝它现在在哪一组。
+# wait 本身就是断言：归档/重开是异步的，等不到就说明这一行没进到目标分组。
+assert_job_row(){
+  ab wait "[aria-label^=\"$1\"][aria-label\$=\"$2\"]" >/dev/null
+}
+
+# 等某一行从列表里真的消失（删除要等服务端回来产品才把行摘掉）。
+# 仍然只认产品自己的可访问名称前缀。这里刻意不用 `wait --state hidden`：
+# `--state` 是 agent-browser 的浏览器状态持久化开关，本轮明令禁止它出现在长期脚本里，
+# 同名的元素状态参数一并避开，免得禁令要靠「后面跟的是不是路径」来分辨。
+wait_row_gone(){
+  ab wait --fn "document.querySelectorAll('[aria-label^=\"$1\"]').length === 0" >/dev/null
+}
+
+# 写操作提交之后、硬刷新之前的收口：等这一屏的网络安静下来。
+# 有些保存动作做完不换屏也不改列表（招聘名片、公司介绍分区都只弹一条轻提示），
+# 没有任何业务信号可等；紧接着硬刷新就有可能把还在飞的写请求打断。
+# 这里只等网络空闲这一个加载态，不读任何请求的方法 / 路径 / 状态码 ——
+# 断言仍然只看硬刷新之后页面上的业务结果。
+#
+# 刻意**不**把它当断言：它只是稳定器。dev 服务器的长连接理论上可能让 networkidle
+# 一直等到超时，那属于环境噪音，不该把整条旅程判失败 —— 真正的结论仍然由硬刷新之后
+# 的业务断言给出，稳定器等不到就直接往下走。
+settle(){ ab wait --load networkidle >/dev/null 2>&1 || true; }
+
 # 按钮一律按可访问名称点。产品里有一类按钮的名称带 CSS ::before 画出来的选中勾
 # （如「✓ 全职」），所以默认用子串匹配；名称唯一且要防误配时用 click_button_exact。
 click_button(){ ab find role button click --name "$1" >/dev/null; }
@@ -398,4 +445,73 @@ write_journey_result(){
   FRAGMENT_WRITTEN=1
   printf 'JOURNEY %s %s %s\n' "$journey" "$status" "$milestone"
   [ "$status" = 'pass' ]
+}
+
+# ── 双会话隔离门 ────────────────────────────────────────────────────
+
+# 这道门不是一条旅程（不登录新账号、不做 CRUD、不拍截图），但它要写一份自己的分片，
+# 所以旅程 ID 用 session-isolation（e2e/真实后端/类型.ts 旅程们 里就有这一个）。
+#
+# 它证明三件事：
+#   1. 两个会话各看各的 —— 求职端硬刷新看不到招聘方的私有名片标记，反之亦然；
+#   2. 退出是会话级的 —— 只退候选，招聘会话一点没被牵连；
+#   3. 招聘方的退出**不在这里做** —— 那属于运行器的全局收尾（Task 7 teardown），
+#      在这里退掉会让后面的清理没有可用会话。
+#
+# 里程碑记在这个全局里：下面的步骤串成一条 && 链（这个函数不假设调用方开了 set -e），
+# 中间任何一步失败都会当场断链，链断在哪一步这个变量就停在哪一步。
+ISOLATION_MILESTONE='候选登录'
+
+_isolation_steps(){
+  # ── 候选侧：硬刷新我的简历，招聘方的私有名片标记一个字都不该出现 ──
+  AGENT_BROWSER_SESSION="$CANDIDATE_SESSION" &&
+  login_candidate &&
+  ISOLATION_MILESTONE='候选侧硬刷新' &&
+  click_button_exact '我' &&
+  click_button_exact '我的简历' &&
+  reload_and_assert '浏览器验收候选人' &&
+  assert_absent '浏览器验收招聘官' &&
+
+  # ── 招聘侧：硬刷新招聘名片，候选人的私有摘要一个字都不该出现 ──
+  AGENT_BROWSER_SESSION="$RECRUITER_SESSION" &&
+  login_recruiter &&
+  ISOLATION_MILESTONE='招聘侧硬刷新' &&
+  click_button_exact '我' &&
+  click_button_exact '设置' &&
+  click_button '招聘名片' &&
+  reload_and_assert '浏览器验收招聘官' &&
+  assert_absent '浏览器验收候选人 · 真实后端基准摘要' &&
+
+  # ── 只退候选 ──
+  AGENT_BROWSER_SESSION="$CANDIDATE_SESSION" &&
+  ISOLATION_MILESTONE='候选退出登录' &&
+  click_back &&
+  click_button_exact '设置' &&
+  click_button_exact '退出登录' &&
+  assert_text '退出当前账号？' &&
+  click_button_exact '退出登录' &&
+  # 登录页的手机号输入面（src/屏幕/登录.tsx:184 aria-label="手机号"）出现＝真的回到未登录
+  ab wait '[aria-label="手机号"]' >/dev/null &&
+
+  # ── 招聘会话不受影响：此刻硬刷新仍然读得到自己的公开名 ──
+  AGENT_BROWSER_SESSION="$RECRUITER_SESSION" &&
+  ISOLATION_MILESTONE='招聘会话仍在' &&
+  reload_and_assert '浏览器验收招聘官' &&
+  assert_no_mock_data &&
+  ISOLATION_MILESTONE='完成'
+}
+
+会话隔离门(){
+  local rc=0
+  ISOLATION_MILESTONE='候选登录'
+  _isolation_steps || rc=1
+  # 分片一律按招聘会话收口：这道门的最后一句话就是「招聘会话还在」，
+  # 证据（/api/v1 请求、控制台错误）也该取自那一侧。
+  AGENT_BROWSER_SESSION="$RECRUITER_SESSION"
+  if [ "$rc" -eq 0 ]; then
+    write_journey_result 'session-isolation' pass "$ISOLATION_MILESTONE"
+  else
+    write_journey_result 'session-isolation' failed "$ISOLATION_MILESTONE" \
+      "双会话隔离门在里程碑「${ISOLATION_MILESTONE}」失败"
+  fi
 }

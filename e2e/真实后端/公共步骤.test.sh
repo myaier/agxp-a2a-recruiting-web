@@ -16,6 +16,8 @@ LIB="$ROOT_DIR/公共步骤.sh"
 SCENE_LIST_TS="$ROOT_DIR/视觉/场景清单.ts"
 LOAD_JOURNEY="$ROOT_DIR/旅程/候选数据加载.sh"
 CRUD_JOURNEY="$ROOT_DIR/旅程/候选CRUD.sh"
+HR_LOAD_JOURNEY="$ROOT_DIR/旅程/招聘数据加载.sh"
+HR_CRUD_JOURNEY="$ROOT_DIR/旅程/招聘CRUD.sh"
 
 FAILURES=0
 CURRENT_CASE=''
@@ -71,6 +73,11 @@ new_sandbox(){
   printf '%s' 'http://localhost:5173/' >"$FAKE_STATE/url.txt"
   : >"$FAKE_STATE/attrs"
   : >"$FAKE_STATE/texts"
+  # 输入框/文本域的 value 桩表。同一个键允许写多行：按调用次序依次返回，用尽后停在最后一行 ——
+  # 招聘 CRUD 会把同一个字段改掉再改回来，两次读到的本来就该是不同的值
+  : >"$FAKE_STATE/values"
+  # 「永远等不到」的选择器清单：用来证明 ab wait <selector> 失败时断言真的会失败
+  : >"$FAKE_STATE/absent"
   printf '%s\n' '{"success":true,"data":{"height":66,"width":320,"x":35,"y":400},"error":null}' \
     >"$FAKE_STATE/box.json"
   printf '%s\n' '{"success":true,"data":{"requests":[
@@ -125,16 +132,48 @@ lookup(){
   printf '%s' "$hit"
 }
 
-if [ "${1:-}" = '--session' ]; then shift 2; fi
+# value 桩表按调用次序回放：第 n 次读同一个键就给第 n 行，行用尽后固定在最后一行。
+# 序号存盘（每条命令都是独立进程），所以「改掉 → 读到新值 → 改回 → 读到旧值」测得出来。
+lookup_value(){
+  local tbl="$state_dir/values" want="$1" k v idx idx_file count=0 hit=''
+  [ -f "$tbl" ] || return 0
+  idx_file="$state_dir/.seq-$(printf '%s' "$want" | cksum | tr -d ' ')"
+  idx=0
+  [ -f "$idx_file" ] && idx="$(cat "$idx_file")"
+  while IFS="$(printf '\t')" read -r k v; do
+    if [ "$k" = "$want" ]; then
+      if [ "$count" -le "$idx" ]; then hit="$v"; fi
+      count=$((count + 1))
+    fi
+  done <"$tbl"
+  if [ "$count" -gt 0 ]; then printf '%s\n' "$((idx + 1))" >"$idx_file"; fi
+  printf '%s' "$hit"
+}
+
+session=''
+if [ "${1:-}" = '--session' ]; then session="$2"; shift 2; fi
 
 case "${1:-}" in
   get)
     case "${2:-}" in
       text) if [ "${3:-}" = 'body' ]; then cat "$state_dir/body.txt" 2>/dev/null; else lookup texts "${3:-}"; fi ;;
+      value) lookup_value "${3:-}" ;;
       attr) lookup attrs "${3:-}|${4:-}" ;;
       box) cat "$state_dir/box.json" 2>/dev/null ;;
-      url) cat "$state_dir/url.txt" 2>/dev/null ;;
+      # 每个会话可以有自己的落点（url.<会话名>.txt）：双会话隔离门要同时表达
+      # 「候选已在求职端主壳」和「招聘已在招聘端主壳」，一份 url.txt 说不出两件事
+      url)
+        if [ -f "$state_dir/url.$session.txt" ]; then cat "$state_dir/url.$session.txt"
+        else cat "$state_dir/url.txt" 2>/dev/null; fi
+        ;;
       *) : ;;
+    esac
+    ;;
+  wait)
+    # 只有 wait <selector> 这一种形态查缺席表；--text / --fn / --load 一律照旧成功
+    case "${2:-}" in
+      --*) : ;;
+      *) if grep -Fxq -- "${2:-}" "$state_dir/absent" 2>/dev/null; then exit 1; fi ;;
     esac
     ;;
   network) cat "$state_dir/requests.json" ;;
@@ -162,6 +201,9 @@ FAKE
 }
 
 set_attr(){ printf '%s|%s\t%s\n' "$1" "$2" "$3" >>"$FAKE_STATE/attrs"; }
+# 同一个选择器可以调多次：按调用次序依次回放
+push_value(){ printf '%s\t%s\n' "$1" "$2" >>"$FAKE_STATE/values"; }
+mark_absent(){ printf '%s\n' "$1" >>"$FAKE_STATE/absent"; }
 
 # 每条记录到的命令都必须显式带上同一个会话，且不含任何被禁的持久化 / 打桩命令
 assert_session_and_bans(){
@@ -320,6 +362,44 @@ set_attr '[aria-label^="浏览器验收临时简历.pdf"]' 'aria-expanded' 'fals
 ( . "$LIB"; 左滑行 '浏览器验收临时简历.pdf' ) >/dev/null 2>"$SANDBOX/stderr.txt"
 assert_false 'aria-expanded 不是 true 必须失败' "[ $? -eq 0 ]"
 assert_contains '说明是这一行没展开' '左滑之后没有展开' "$SANDBOX/stderr.txt"
+
+testcase 'assert_value'
+new_sandbox value
+export AGENT_BROWSER_SESSION='backend-local-recruiter'
+push_value '[aria-label="职务"]' '招聘负责人'
+( . "$LIB"; assert_value '职务' '招聘负责人' ) >/dev/null 2>&1
+assert_eq '逐字相等返回 0' "$?" '0'
+assert_contains '先等这个字段出现再读值' 'wait [aria-label="职务"]' "$CALLS"
+assert_contains '按产品自己的可访问名称读 value' 'get value [aria-label="职务"]' "$CALLS"
+new_sandbox value-prefix
+export AGENT_BROWSER_SESSION='backend-local-recruiter'
+push_value '[aria-label="职务"]' '浏览器验收招聘负责人'
+# 招聘负责人 是 浏览器验收招聘负责人 的后缀：页面文本断言分不开这两个值，逐字相等分得开
+( . "$LIB"; assert_value '职务' '招聘负责人' ) >/dev/null 2>"$SANDBOX/stderr.txt"
+assert_false '只是子串必须失败' "[ $? -eq 0 ]"
+assert_contains '说明是哪个字段的值不对' '职务' "$SANDBOX/stderr.txt"
+new_sandbox value-missing
+export AGENT_BROWSER_SESSION='backend-local-recruiter'
+mark_absent '[aria-label="公司介绍"]'
+( . "$LIB"; assert_value '公司介绍' '随便什么' ) >/dev/null 2>&1
+assert_false '字段根本没出现也必须失败' "[ $? -eq 0 ]"
+assert_missing '等不到就不读值' 'get value' "$CALLS"
+
+testcase 'assert_job_row'
+new_sandbox job-row
+export AGENT_BROWSER_SESSION='backend-local-recruiter'
+( . "$LIB"; assert_job_row '浏览器验收岗位 · 在招基线' '在招' ) >/dev/null 2>&1
+assert_eq '在目标分组里返回 0' "$?" '0'
+# 行的完整可访问名称是「岗位名 + 当前徽 + 薪资/在谈 + 状态徽」，中间那段随后端数据变，
+# 所以只钉两头：前缀＝业务身份，后缀＝它现在在哪一组
+assert_contains '按可访问名称的前缀 + 后缀定位这一行' \
+  'wait [aria-label^="浏览器验收岗位 · 在招基线"][aria-label$="在招"]' "$CALLS"
+assert_missing '不按 CSS module 类名定位' 'class' "$CALLS"
+new_sandbox job-row-wrong-group
+export AGENT_BROWSER_SESSION='backend-local-recruiter'
+mark_absent '[aria-label^="浏览器验收岗位 · 在招基线"][aria-label$="已归档"]'
+( . "$LIB"; assert_job_row '浏览器验收岗位 · 在招基线' '已归档' ) >/dev/null 2>&1
+assert_false '不在目标分组里必须失败' "[ $? -eq 0 ]"
 
 # ── 4. 私密清理台账 ─────────────────────────────────────────────────
 
@@ -487,10 +567,196 @@ assert_true '每个 mutation 块之后都硬刷新' \
   "[ $(grep -c '^--session backend-local-candidate reload$' "$CALLS") -ge 10 ]"
 assert_missing '通过路径不用 snapshot' 'snapshot' "$CALLS"
 
-# ── 8. 长期脚本的静态禁令 ───────────────────────────────────────────
+# ── 8. 招聘数据加载旅程合同 ─────────────────────────────────────────
+
+# 招聘两条旅程共用的桩：页面文本换成招聘侧的，候选私有摘要绝不出现
+seed_recruiter_page(){
+  printf '%s\n' '浏览器验收招聘官 招聘负责人 浏览器验收科技 浏览器验收岗位 · 在招基线 浏览器验收岗位 · 归档基线' \
+    >"$FAKE_STATE/body.txt"
+}
+
+testcase '招聘数据加载旅程'
+new_sandbox journey-hr-load
+unset AGENT_BROWSER_SESSION
+seed_recruiter_page
+push_value '[aria-label="职务"]' '招聘负责人'
+push_value '[aria-label="公司介绍"]' '浏览器验收科技 · 真实后端企业介绍基线'
+push_value '[aria-label="公司介绍"]' '浏览器验收科技 · 真实后端企业介绍基线'
+bash "$HR_LOAD_JOURNEY" >"$SANDBOX/stdout.txt" 2>"$SANDBOX/stderr.txt"
+assert_eq '旅程返回 0' "$?" '0'
+assert_eq '分片记为 pass' "$(jq -r '.status' "$FRAGMENT_DIR/recruiter-load.json")" 'pass'
+assert_eq '终止行只报旅程 / 状态 / 里程碑' "$(cat "$SANDBOX/stdout.txt")" 'JOURNEY recruiter-load pass 完成'
+assert_session_and_bans 'backend-local-recruiter'
+for scene in recruiter-card-loaded recruiter-company-loaded; do
+  assert_true "拍下 $scene" "[ -f '$RUN_DIR/visual/recruiter/$scene.png' ]"
+done
+assert_eq '只拍属于本旅程的两个场景' "$(ls "$RUN_DIR/visual/recruiter" | wc -l | tr -d ' ')" '2'
+assert_false '不碰候选侧的任何目录' "[ -d '$RUN_DIR/visual/candidate' ]"
+assert_contains '进「我」这一 Tab' 'find role button click --name 我 --exact' "$CALLS"
+assert_contains '语义点进设置' 'find role button click --name 设置 --exact' "$CALLS"
+assert_contains '语义点进招聘名片' 'find role button click --name 招聘名片' "$CALLS"
+assert_contains '断言名片上的固定公开名' 'wait --text 浏览器验收招聘官' "$CALLS"
+assert_contains '断言名片上的固定职务' 'wait --text 招聘负责人' "$CALLS"
+assert_contains '断言名片上的固定品牌' 'wait --text 浏览器验收科技' "$CALLS"
+assert_contains '职务逐字核到输入框的值' 'get value [aria-label="职务"]' "$CALLS"
+assert_contains '语义点进公司资料' 'find role button click --name 公司资料 --exact' "$CALLS"
+assert_contains '语义点进公司介绍分区' 'find role button click --name 公司介绍' "$CALLS"
+assert_contains '公司介绍逐字核到文本域的值' 'get value [aria-label="公司介绍"]' "$CALLS"
+assert_contains '语义点进岗位管理' 'find role button click --name 岗位管理 --exact' "$CALLS"
+assert_contains '在招基线要落在「在招」组' \
+  'wait [aria-label^="浏览器验收岗位 · 在招基线"][aria-label$="在招"]' "$CALLS"
+assert_contains '归档基线要落在「已归档」组' \
+  'wait [aria-label^="浏览器验收岗位 · 归档基线"][aria-label$="已归档"]' "$CALLS"
+assert_true '名片 / 公司资料 / 岗位管理 三屏都硬刷新过' \
+  "[ $(grep -c '^--session backend-local-recruiter reload$' "$CALLS") -ge 3 ]"
+assert_false '通过路径的 open 只开站点根地址，不直接改 hash' \
+  "grep -E '^--session [^ ]+ open ' '$CALLS' | grep -q '#'"
+assert_missing '通过路径不用 snapshot' 'snapshot' "$CALLS"
+assert_missing '不下达候选专属的求职屏入口' '--name 我的简历' "$CALLS"
+assert_missing '不下达候选专属的意向屏入口' '--name 求职意向' "$CALLS"
+assert_missing '不下达候选专属的披露屏入口' '--name 披露偏好' "$CALLS"
+assert_missing '不选候选身份大卡' '--name 我要找工作' "$CALLS"
+
+# ── 9. 招聘 CRUD 旅程合同 ───────────────────────────────────────────
+
+testcase '招聘 CRUD 旅程'
+new_sandbox journey-hr-crud
+unset AGENT_BROWSER_SESSION
+seed_recruiter_page
+set_attr '[aria-label^="浏览器验收岗位 · 临时CRUD"]' 'aria-expanded' 'true'
+push_value '[aria-label="职务"]' '招聘负责人'
+push_value '[aria-label="职务"]' '浏览器验收招聘负责人'
+push_value '[aria-label="职务"]' '招聘负责人'
+push_value '[aria-label="公司介绍"]' '浏览器验收科技 · 真实后端企业介绍基线'
+push_value '[aria-label="公司介绍"]' '浏览器验收科技 · 临时CRUD介绍'
+push_value '[aria-label="公司介绍"]' '浏览器验收科技 · 真实后端企业介绍基线'
+push_value '[aria-label="职位描述"]' '浏览器验收岗位 · 临时CRUD 的职位描述改后'
+bash "$HR_CRUD_JOURNEY" >"$SANDBOX/stdout.txt" 2>"$SANDBOX/stderr.txt"
+assert_eq '旅程返回 0' "$?" '0'
+assert_eq '分片记为 pass' "$(jq -r '.status' "$FRAGMENT_DIR/recruiter-crud.json")" 'pass'
+assert_eq '终止行不带任何 ID' "$(cat "$SANDBOX/stdout.txt")" 'JOURNEY recruiter-crud pass 完成'
+assert_session_and_bans 'backend-local-recruiter'
+assert_true '拍下 recruiter-jobs-after-create' \
+  "[ -f '$RUN_DIR/visual/recruiter/recruiter-jobs-after-create.png' ]"
+assert_eq '本旅程只拍这一个场景' "$(ls "$RUN_DIR/visual/recruiter" | wc -l | tr -d ' ')" '1'
+# 名片：职务改一次再改回来，两头都逐字核
+assert_line '职务改成临时值' \
+  '--session backend-local-recruiter find label 职务 fill 浏览器验收招聘负责人' "$CALLS"
+assert_line '职务还原成基线值（整行精确匹配，不是临时值的后缀）' \
+  '--session backend-local-recruiter find label 职务 fill 招聘负责人' "$CALLS"
+# 公司介绍：改一次再改回来
+assert_line '公司介绍改成临时值' \
+  '--session backend-local-recruiter find label 公司介绍 fill 浏览器验收科技 · 临时CRUD介绍' "$CALLS"
+assert_line '公司介绍还原成基线值' \
+  '--session backend-local-recruiter find label 公司介绍 fill 浏览器验收科技 · 真实后端企业介绍基线' "$CALLS"
+# 发布：三步都走语义控件，目录三级按冻结的 display_name 点
+assert_contains '从岗位管理进发布新岗位' 'find role button click --name 发布新岗位' "$CALLS"
+assert_contains '打开职位类别选择层' 'find role button click --name 职位类别' "$CALLS"
+assert_contains '目录大类' 'find role button click --name 互联网/AI --exact' "$CALLS"
+assert_contains '目录分组' 'find role button click --name 前端/移动开发 --exact' "$CALLS"
+assert_contains '目录叶子' 'find role button click --name 前端开发工程师 --exact' "$CALLS"
+assert_contains '岗位名称用冻结的保留名称' \
+  'find placeholder 必填，如：资深后端工程师 · 交易网关 fill 浏览器验收岗位 · 临时CRUD' "$CALLS"
+assert_contains '办公方式选混合' 'find role button click --name 混合 --exact' "$CALLS"
+assert_contains '工作城市从候选里选' 'find role button click --name 上海市 --exact' "$CALLS"
+assert_contains '最后一步是发布' 'find role button click --name 发布岗位并开始寻访 --exact' "$CALLS"
+assert_eq '临时岗位标题逐字等于后端 cleanup 的差集名' \
+  "$(jq -r '.recruiter_job_titles[0]' "$PRIVATE_LEDGER")" '浏览器验收岗位 · 临时CRUD'
+assert_eq '台账只记这一个名称' \
+  "$(jq -r '.recruiter_job_titles | length' "$PRIVATE_LEDGER")" '1'
+assert_eq '台账没有多出任何字段' \
+  "$(jq -rc '[keys_unsorted[]]|sort|join(",")' "$PRIVATE_LEDGER")" \
+  'candidate_intention_created,candidate_resume_file_names,recruiter_job_titles,run_id,schema_version'
+assert_eq '台账仍是 0600' "$(ls -l "$PRIVATE_LEDGER" | cut -c2-10)" 'rw-------'
+# 编辑只动描述与加分偏好：标题 / 类别 / 城市在后端不可改，一个字都不许碰
+assert_contains '滑开临时岗位行（语义定位 + 自身矩形 + 真实鼠标输入）' \
+  'get box [aria-label^="浏览器验收岗位 · 临时CRUD"] --json' "$CALLS"
+assert_contains '滑开后点编辑' 'find role button click --name 编辑 --exact' "$CALLS"
+assert_contains '编辑改职位描述' 'find label 职位描述 fill 浏览器验收岗位 · 临时CRUD 的职位描述改后' "$CALLS"
+assert_contains '编辑改加分偏好' 'find placeholder 用你自己的话写 fill' "$CALLS"
+assert_contains '硬刷新之后回编辑页逐字核描述' 'get value [aria-label="职位描述"]' "$CALLS"
+assert_missing '编辑页不重填岗位名称' \
+  'find placeholder 必填，如：资深后端工程师 · 交易网关 fill 浏览器验收岗位 · 临时CRUD 的' "$CALLS"
+# 归档 → 重开 → 删除
+assert_contains '停止招聘' 'find role button click --name 停止招聘 --exact' "$CALLS"
+assert_contains '归档后落在「已归档」组' \
+  'wait [aria-label^="浏览器验收岗位 · 临时CRUD"][aria-label$="已归档"]' "$CALLS"
+assert_contains '重新开放' 'find role button click --name 重新开放 --exact' "$CALLS"
+assert_contains '重开后落回「在招」组' \
+  'wait [aria-label^="浏览器验收岗位 · 临时CRUD"][aria-label$="在招"]' "$CALLS"
+assert_contains '删除走二次确认' 'wait --text 删除「浏览器验收岗位 · 临时CRUD」？' "$CALLS"
+assert_contains '等这一行真的从列表里消失再往下' \
+  "wait --fn document.querySelectorAll('[aria-label^=\"浏览器验收岗位 · 临时CRUD\"]').length === 0" "$CALLS"
+assert_true '左滑发生五次（编辑 / 复核 / 停止 / 重开 / 删除）' \
+  "[ $(grep -c 'get box \[aria-label\^=' "$CALLS") -eq 5 ]"
+assert_contains '删完基线在招岗仍在' \
+  'wait [aria-label^="浏览器验收岗位 · 在招基线"][aria-label$="在招"]' "$CALLS"
+assert_contains '删完基线归档岗仍在' \
+  'wait [aria-label^="浏览器验收岗位 · 归档基线"][aria-label$="已归档"]' "$CALLS"
+# 每个写块之后都硬刷新：改职务 / 还原职务 / 改介绍 / 还原介绍 / 发布 / 编辑 / 归档 / 重开 / 删除
+assert_true '每个 mutation 块之后都硬刷新' \
+  "[ $(grep -c '^--session backend-local-recruiter reload$' "$CALLS") -ge 9 ]"
+assert_missing '通过路径不用 snapshot' 'snapshot' "$CALLS"
+assert_missing '不下达候选专属的求职屏入口' '--name 我的简历' "$CALLS"
+assert_missing '不选候选身份大卡' '--name 我要找工作' "$CALLS"
+
+# ── 10. 双会话隔离门合同 ────────────────────────────────────────────
+
+testcase '双会话隔离门'
+new_sandbox isolation
+export AGENT_BROWSER_SESSION='backend-local-candidate'
+# 两侧都要断言「对方的私有标记不在自己屏上」，假 CLI 的页面文本是同一份，
+# 所以这份桩里两个私有标记都不出现
+printf '%s\n' '浏览器验收科技' >"$FAKE_STATE/body.txt"
+# 这道门的前提是两个会话都已经登录（运行器在四条旅程之后才叫它），
+# 所以两个会话各自已经落在自己的主壳上
+printf '%s' 'http://localhost:5173/#/app' >"$FAKE_STATE/url.backend-local-candidate.txt"
+printf '%s' 'http://localhost:5173/#/hr' >"$FAKE_STATE/url.backend-local-recruiter.txt"
+( . "$LIB"; 会话隔离门 ) >"$SANDBOX/stdout.txt" 2>"$SANDBOX/stderr.txt"
+assert_eq '隔离门返回 0' "$?" '0'
+assert_missing '两个会话都还在，这道门不重登任何一个' 'find label 短信验证码' "$CALLS"
+assert_eq '分片记为 pass' "$(jq -r '.status' "$FRAGMENT_DIR/session-isolation.json")" 'pass'
+assert_eq '终止行只报旅程 / 状态 / 里程碑' \
+  "$(cat "$SANDBOX/stdout.txt")" 'JOURNEY session-isolation pass 完成'
+assert_eq '这道门不拍任何截图' "$(jq -rc '.screenshots' "$FRAGMENT_DIR/session-isolation.json")" '[]'
+assert_false '只用得到这两个命名会话' \
+  "grep -Ev '^--session backend-local-(candidate|recruiter) ' '$CALLS' | grep -q ."
+assert_contains '候选侧硬刷新我的简历' \
+  '--session backend-local-candidate find role button click --name 我的简历 --exact' "$CALLS"
+assert_contains '招聘侧硬刷新招聘名片' \
+  '--session backend-local-recruiter find role button click --name 招聘名片' "$CALLS"
+assert_line '候选侧硬刷新' '--session backend-local-candidate reload' "$CALLS"
+assert_line '招聘侧硬刷新' '--session backend-local-recruiter reload' "$CALLS"
+assert_contains '只退候选：退出确认走候选会话' \
+  '--session backend-local-candidate find role button click --name 退出登录 --exact' "$CALLS"
+assert_false '招聘会话绝不退出登录' \
+  "grep -q -- '--session backend-local-recruiter find role button click --name 退出登录' '$CALLS'"
+assert_contains '退出后停在登录页的手机号输入' \
+  '--session backend-local-candidate wait [aria-label="手机号"]' "$CALLS"
+assert_contains '招聘会话之后仍读得到自己的名片' \
+  '--session backend-local-recruiter wait --text 浏览器验收招聘官' "$CALLS"
+assert_true '招聘侧的名片断言排在候选退出之后' \
+  "[ $(grep -n -- '--session backend-local-candidate find role button click --name 退出登录 --exact' "$CALLS" | tail -1 | cut -d: -f1) -lt $(grep -n -- '--session backend-local-recruiter wait --text 浏览器验收招聘官' "$CALLS" | tail -1 | cut -d: -f1) ]"
+assert_missing '这道门不用 snapshot' 'snapshot' "$CALLS"
+
+testcase '双会话隔离门 · 招聘会话被退掉就判失败'
+new_sandbox isolation-broken
+export AGENT_BROWSER_SESSION='backend-local-candidate'
+printf '%s\n' '浏览器验收科技' >"$FAKE_STATE/body.txt"
+printf '%s' 'http://localhost:5173/#/app' >"$FAKE_STATE/url.backend-local-candidate.txt"
+printf '%s' 'http://localhost:5173/#/hr' >"$FAKE_STATE/url.backend-local-recruiter.txt"
+# 候选点完退出却没落到登录页 = 退出根本没生效，这道门必须判失败
+mark_absent '[aria-label="手机号"]'
+( . "$LIB"; 会话隔离门 ) >"$SANDBOX/stdout.txt" 2>"$SANDBOX/stderr.txt"
+assert_false '任一步不成立就必须返回非 0' "[ $? -eq 0 ]"
+assert_eq '仍然写出分片，记为 failed' \
+  "$(jq -r '.status' "$FRAGMENT_DIR/session-isolation.json")" 'failed'
+assert_contains '分片写明卡在哪个里程碑' '双会话隔离门' "$FRAGMENT_DIR/session-isolation.json"
+
+# ── 11. 长期脚本的静态禁令 ──────────────────────────────────────────
 
 testcase '长期脚本静态检查'
-for f in "$LIB" "$LOAD_JOURNEY" "$CRUD_JOURNEY"; do
+for f in "$LIB" "$LOAD_JOURNEY" "$CRUD_JOURNEY" "$HR_LOAD_JOURNEY" "$HR_CRUD_JOURNEY"; do
   n="$(basename "$f")"
   # 只查可执行行：注释里本来就要写清哪些命令被禁、为什么禁
   CODE="$SANDBOX_ROOT/$n.code"
@@ -507,7 +773,7 @@ for f in "$LIB" "$LOAD_JOURNEY" "$CRUD_JOURNEY"; do
   # 非 ASCII 标识符不用单独查：整份测试就跑在 macOS 的 /bin/bash 3.2 上，
   # 那个版本只认 [A-Za-z_][A-Za-z0-9_]* 的变量名，写错了这里全线报错。
 done
-for f in "$LOAD_JOURNEY" "$CRUD_JOURNEY"; do
+for f in "$LOAD_JOURNEY" "$CRUD_JOURNEY" "$HR_LOAD_JOURNEY" "$HR_CRUD_JOURNEY"; do
   n="$(basename "$f")"
   assert_false "$n 自己不下鼠标命令（走 左滑行）" \
     "grep -v '^[[:space:]]*#' '$f' | grep -Eq 'ab mouse|agent-browser mouse'"
