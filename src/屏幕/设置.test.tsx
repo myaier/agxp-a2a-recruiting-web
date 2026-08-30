@@ -97,14 +97,27 @@ describe('设置 · 退出确认键的可访问名称', () => {
     // 层开着时「退出登录」这个名字必须仍然只指向那一枚触发键（不再有第二枚同名键）
     expect(screen.getAllByRole('button', { name: '退出登录' })).toHaveLength(1);
     // 确认键有自己的名字
-    expect(screen.getByRole('button', { name: '退出当前账号' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '确认退出当前账号' })).toBeTruthy();
+  });
+
+  it('确认键的名字不是任何其它按钮名字的子串（子串匹配的定位器不能有歧义）', async () => {
+    const 用户 = userEvent.setup();
+    渲染设置();
+    await 用户.click(screen.getByRole('button', { name: '退出登录' }));
+    // 弹层框架会给遮罩生成 `关闭${标签}`（组件/弹层框架.tsx:61）。确认键若叫「退出当前账号」，
+    // 就成了遮罩名「关闭退出当前账号」的子串 —— Playwright 的 getByRole({name}) 与
+    // agent-browser 不带 --exact 的 --name 都是子串匹配，会同时命中两枚并报 strict violation。
+    const 名字们 = screen.getAllByRole('button').map(
+      (键) => 键.getAttribute('aria-label') ?? 键.textContent ?? '',
+    );
+    expect(名字们.filter((名) => 名.includes('确认退出当前账号'))).toHaveLength(1);
   });
 
   it('确认键仍然可见文案不变，且点它才真的退出', async () => {
     const 用户 = userEvent.setup();
     渲染设置();
     await 用户.click(screen.getByRole('button', { name: '退出登录' }));
-    const 确认键 = screen.getByRole('button', { name: '退出当前账号' });
+    const 确认键 = screen.getByRole('button', { name: '确认退出当前账号' });
     expect(确认键.textContent).toBe('退出登录');
     await 用户.click(确认键);
     expect(mock应用状态.操作.退出登录).toHaveBeenCalledTimes(1);

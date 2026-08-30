@@ -4005,8 +4005,14 @@ test.describe('P3 Backend 恢复分派 @backend', () => {
       window.location.hash = '#/settings';
     });
     await expect(page.getByText('隐私与可见性')).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: '退出登录' }).first().click();
-    await page.getByRole('button', { name: '退出登录' }).last().click();
+    // 触发键与确认层的确认键**不再同名**：确认键有自己的可访问名称「确认退出当前账号」
+    // （src/屏幕/设置.tsx:225 的 aria-label，可见文案仍是「退出登录」）。
+    // 弹层框架用的是 <dialog open>，非模态 —— 层开着时背景那枚触发键仍在可访问树里，
+    // 两枚同名会让 getByRole 分不开，也让读屏用户分不开，所以产品侧把名字拆开了。
+    // 「确认」前缀同时避开了遮罩键「关闭退出当前账号」：getByRole 的 name 是子串匹配，
+    // 确认键若直接叫「退出当前账号」会同时命中遮罩，触发 strict mode violation。
+    await page.getByRole('button', { name: '退出登录' }).click();
+    await page.getByRole('button', { name: '确认退出当前账号' }).click();
     await expect(page.getByLabel('手机号')).toBeVisible({ timeout: 10_000 });
     挂起兑现?.();
 

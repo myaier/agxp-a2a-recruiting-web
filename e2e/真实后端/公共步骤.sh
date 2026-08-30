@@ -489,11 +489,11 @@ _isolation_steps(){
   click_button_exact '设置' &&
   click_button_exact '退出登录' &&
   assert_text '退出当前账号？' &&
-  # 确认键点的是它自己的可访问名称「退出当前账号」（src/屏幕/设置.tsx:219 的 aria-label），
+  # 确认键点的是它自己的可访问名称「确认退出当前账号」（src/屏幕/设置.tsx:225 的 aria-label），
   # 不是可见文案「退出登录」—— 那个名字上面那枚触发键也叫，而弹层框架用的是
   # <dialog open>（组件/弹层框架.tsx:62-64），非模态，页面其余部分既不 inert 也不剪枝，
   # 再点一次「退出登录」只会重新点到背景里那枚触发键，候选根本退不出去。
-  click_button_exact '退出当前账号' &&
+  click_button_exact '确认退出当前账号' &&
   # 登录页的手机号输入面（src/屏幕/登录.tsx:184 aria-label="手机号"）出现＝真的回到未登录
   ab wait '[aria-label="手机号"]' >/dev/null &&
 

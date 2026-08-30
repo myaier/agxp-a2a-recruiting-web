@@ -25,8 +25,14 @@ describe('企业设置 · 退出确认键的可访问名称', () => {
     await 用户.click(screen.getByRole('button', { name: '退出登录' }));
     expect(screen.getByText('退出当前账号？')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: '退出登录' })).toHaveLength(1);
-    const 确认键 = screen.getByRole('button', { name: '退出企业账号' });
+    const 确认键 = screen.getByRole('button', { name: '确认退出企业账号' });
     expect(确认键.textContent).toBe('退出登录');
+    // 遮罩键叫「关闭退出企业账号」（组件/弹层框架.tsx:61 的 `关闭${标签}`）：
+    // 确认键的名字不能是它的子串，否则子串匹配的定位器会同时命中两枚
+    const 名字们 = screen.getAllByRole('button').map(
+      (键) => 键.getAttribute('aria-label') ?? 键.textContent ?? '',
+    );
+    expect(名字们.filter((名) => 名.includes('确认退出企业账号'))).toHaveLength(1);
     await 用户.click(确认键);
     expect(退出登录).toHaveBeenCalledTimes(1);
   });

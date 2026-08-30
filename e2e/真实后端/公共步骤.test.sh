@@ -205,6 +205,27 @@ set_attr(){ printf '%s|%s\t%s\n' "$1" "$2" "$3" >>"$FAKE_STATE/attrs"; }
 push_value(){ printf '%s\t%s\n' "$1" "$2" >>"$FAKE_STATE/values"; }
 mark_absent(){ printf '%s\n' "$1" >>"$FAKE_STATE/absent"; }
 
+# 缺席类断言（assert_absent / assert_no_mock_data）都是**单次** `get text body`，不自带等待。
+# 紧跟在裸 reload 后面时，「这个东西不在页面上」对一张还没水合完的白页同样成立 ——
+# 那是一条永远不会为了正确的理由失败的断言。
+# 所以规矩是：每一次读 body 之前，如果中间发生过硬刷新，那么从那次刷新到这次读之间
+# 必须至少有一条 wait（wait --text / wait <选择器> 都算）把水合等出来。
+# 逐条检查所有 body 读，不只是最后一条 —— 否则把某一条缺席断言挪到「刷新之后、水合门之前」
+# 仍然能蒙混过关。
+assert_body_reads_gated(){
+  local ungated
+  ungated="$(awk '
+    /^--session [^ ]+ reload$/ { last_reload = NR }
+    / wait /                   { last_wait = NR }
+    / get text body$/          { if (last_reload > last_wait) printf "%d ", NR }
+  ' "$CALLS")"
+  if [ -z "$ungated" ]; then
+    ok "$1"
+  else
+    bad "$1（这些行号上的 body 读紧跟硬刷新、中间没有任何 wait：${ungated}）"
+  fi
+}
+
 # 每条记录到的命令都必须显式带上同一个会话，且不含任何被禁的持久化 / 打桩命令
 assert_session_and_bans(){
   if grep -vq "^--session $1 " "$CALLS"; then
@@ -612,6 +633,7 @@ assert_true '名片 / 公司资料 / 岗位管理 三屏都硬刷新过' \
 assert_false '通过路径的 open 只开站点根地址，不直接改 hash' \
   "grep -E '^--session [^ ]+ open ' '$CALLS' | grep -q '#'"
 assert_missing '通过路径不用 snapshot' 'snapshot' "$CALLS"
+assert_body_reads_gated '每一条缺席断言都排在硬刷新之后的水合门后面'
 assert_missing '不下达候选专属的求职屏入口' '--name 我的简历' "$CALLS"
 assert_missing '不下达候选专属的意向屏入口' '--name 求职意向' "$CALLS"
 assert_missing '不下达候选专属的披露屏入口' '--name 披露偏好' "$CALLS"
@@ -697,14 +719,10 @@ assert_contains '删完基线在招岗仍在' \
   'wait [aria-label^="浏览器验收岗位 · 在招基线"][aria-label$="在招"]' "$CALLS"
 assert_contains '删完基线归档岗仍在' \
   'wait [aria-label^="浏览器验收岗位 · 归档基线"][aria-label$="已归档"]' "$CALLS"
-# 缺席断言只读一次 body、不自带等待：硬刷新之后列表还没水合的那一小段里，
-# 「临时岗位不在页面上」对一张白页同样成立。所以每次硬刷新之后必须先用基线岗位
-# 把水合等出来，再问缺席 —— 顺序反了那条断言就永远不会为了正确的理由失败。
-LAST_RELOAD="$(grep -n '^--session backend-local-recruiter reload$' "$CALLS" | tail -1 | cut -d: -f1)"
-LAST_HYDRATION_GATE="$(grep -n 'wait \[aria-label\^="浏览器验收岗位 · 在招基线"\]' "$CALLS" | tail -1 | cut -d: -f1)"
-LAST_BODY_READ="$(grep -n 'get text body' "$CALLS" | tail -1 | cut -d: -f1)"
-assert_true '终局的缺席断言排在「最后一次硬刷新 → 基线岗位水合门」之后' \
-  "[ $LAST_RELOAD -lt $LAST_HYDRATION_GATE ] && [ $LAST_HYDRATION_GATE -lt $LAST_BODY_READ ]"
+assert_body_reads_gated '每一条缺席断言都排在硬刷新之后的水合门后面'
+# 终局那两条尤其要紧：它们是本旅程「删掉了、硬刷新之后仍然没有」的最终主张
+assert_contains '删完之后仍用基线在招岗把水合等出来' \
+  'wait [aria-label^="浏览器验收岗位 · 在招基线"][aria-label$="在招"]' "$CALLS"
 # 每个写块之后都硬刷新：改职务 / 还原职务 / 改介绍 / 还原介绍 / 发布 / 编辑 / 归档 / 重开 / 删除
 assert_true '每个 mutation 块之后都硬刷新' \
   "[ $(grep -c '^--session backend-local-recruiter reload$' "$CALLS") -ge 9 ]"
@@ -745,7 +763,7 @@ assert_contains '只退候选：退出触发键走候选会话' \
 # 背景里那枚同名的「退出登录」仍在可访问树里，再点一次同名只会点回背景那枚，
 # 候选根本退不出去 —— 而后面的断言会以一个完全看不出病因的方式失败。
 assert_contains '退出确认点的是确认键自己的可访问名称，不是可见文案' \
-  '--session backend-local-candidate find role button click --name 退出当前账号 --exact' "$CALLS"
+  '--session backend-local-candidate find role button click --name 确认退出当前账号 --exact' "$CALLS"
 assert_eq '同名的「退出登录」全程只点一次（那一次是触发键）' \
   "$(grep -c -- 'find role button click --name 退出登录 --exact' "$CALLS")" '1'
 assert_false '招聘会话绝不退出登录' \
