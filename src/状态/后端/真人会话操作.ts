@@ -73,6 +73,15 @@ const 坐标模式 = /^[1-9][0-9]{0,63}$/;
 /** 发送正文 trim 后的 Unicode code point 上限；计数用 Array.from，不用 UTF-16 length。 */
 const 正文码点上限 = 2000;
 
+/**
+ * Backend 消息 Tab 角标：只汇总当前已加载收件箱页的 unreadCount。
+ * 它是「已加载会话的未读」，不是账号全量总数 —— UI 不得宣称全量；
+ * 加载更多自然扩大统计范围，read-through 后由权威收件箱刷新下降。
+ */
+export function 数P7已加载未读(items: P7会话项[]): number {
+  return items.reduce((和, 条) => 和 + 条.unreadCount, 0);
+}
+
 /** P7 真人会话的可复用初始化/重置底座：Provider 首帧与会话转移口共用同一形状。 */
 export function 创建空P7会话状态(): P7会话状态 {
   return {
