@@ -11,6 +11,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { P7会话项, P7消息 } from '../../数据/招聘数据源/真人会话';
 import type { P7发送结果, P7分页快照, P7详情快照 } from '../../状态/后端/类型';
+/** F6 测试内的发送结果别名（避免与导入名冲突的行内形状）。 */
+type P7发送ResultShape = { status: 'confirmed' } | { status: 'unknown'; reason: string; canAbandon: boolean; pendingContent: string };
 import Backend真人会话 from './Backend真人会话';
 import { 轻提示 } from '../../组件/轻提示';
 
@@ -310,5 +312,56 @@ describe('Backend真人会话', () => {
     });
     render(<Backend真人会话 role="recruiter" conversationId="3003" />);
     expect(screen.queryByRole('button', { name: '看简历' })).toBeNull();
+  });
+});
+
+// ── review-r1：屏层发送与取件生命周期（Codex Round 1 发现）──────────────────────
+describe('Backend真人会话 review-r1 修复', () => {
+  it('F6：明确拒绝的发送恢复草稿且不覆盖在途编辑', async () => {
+    let 应答!: (值: P7发送结果) => void;
+    const 发送 = vi.fn().mockImplementation(
+      () => new Promise<P7发送结果>((完成, 拒绝) => { 应答 = 拒绝 as typeof 应答; void 完成; }));
+    环境({ 发送 });
+    const 用户 = userEvent.setup();
+    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    const 输入框 = screen.getByRole('textbox', { name: '输入消息' }) as HTMLTextAreaElement;
+    await 用户.type(输入框, '这条发不出去');
+    await 用户.type(输入框, '{Enter}');
+    expect(输入框.value).toBe(''); // 在飞清空
+    // 在途期间用户已开始编辑新草稿
+    await 用户.type(输入框, '新草稿');
+    应答(new Error('明确拒绝') as never);
+    await waitFor(() => expect(轻提示).toHaveBeenCalled());
+    // 拒绝到达：草稿恢复为失败正文？不 —— 在途编辑优先，绝不覆盖用户已输入的新草稿
+    await waitFor(() => expect((screen.getByRole('textbox', { name: '输入消息' }) as HTMLTextAreaElement).value).toBe('新草稿'));
+  });
+
+  it('F6b：拒绝到达时若用户未再编辑，失败正文原样回填草稿', async () => {
+    let 失败!: (原因: unknown) => void;
+    const 发送 = vi.fn().mockImplementation(
+      () => new Promise<P7发送ResultShape>((完成, 拒绝) => { 失败 = 拒绝; void 完成; }));
+    环境({ 发送 });
+    const 用户 = userEvent.setup();
+    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    const 输入框 = screen.getByRole('textbox', { name: '输入消息' }) as HTMLTextAreaElement;
+    await 用户.type(输入框, '这条发不出去');
+    await 用户.type(输入框, '{Enter}');
+    失败(new Error('明确拒绝'));
+    await waitFor(() =>
+      expect((screen.getByRole('textbox', { name: '输入消息' }) as HTMLTextAreaElement).value).toBe('这条发不出去'));
+  });
+
+  it('F7：离开会话后迟到的 PDF 租约立即回收，不悬挂到会话边界', async () => {
+    let 应答!: (租约: typeof PDF租约) => void;
+    const 读取简历PDF = vi.fn().mockImplementation(() => new Promise<typeof PDF租约>((完成) => { 应答 = 完成; }));
+    环境({ role: 'recruiter', 读取简历PDF });
+    const 用户 = userEvent.setup();
+    const { unmount } = render(<Backend真人会话 role="recruiter" conversationId="3003" />);
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    expect(读取简历PDF).toHaveBeenCalledWith('recruiter', 'mc_3003');
+    // 取件在飞时离开：卸载清理先跑（当时无租约），迟到租约必须当场回收
+    unmount();
+    应答(PDF租约);
+    await waitFor(() => expect(PDF租约.revoke).toHaveBeenCalled());
   });
 });

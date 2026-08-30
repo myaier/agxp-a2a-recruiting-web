@@ -148,11 +148,13 @@ export type P7发送结果 =
       pendingContent: string;
     };
 
-/** 每个待定发送意图：Idempotency-Key、不可变 trim 后正文与发送前水位。 */
+/** 每个待定发送意图：Idempotency-Key、不可变 trim 后正文与发送前水位。
+ *  watermark 缺席（undefined）＝快照不在场/未成功，无权威水位 —— 对账不得据此确认；
+ *  null ＝权威空水位（成功快照里没有任何 user_text）。 */
 export interface P7待定意图 {
   key: string;
   content: string;
-  watermark: string | null;
+  watermark?: string | null;
 }
 
 /** 每会话的已读位置：上次成功 / 在飞 / 已被终局拒绝（role_*）的 decimal target。 */

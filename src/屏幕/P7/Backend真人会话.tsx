@@ -119,6 +119,10 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
       })
       .catch((错误) => {
         轻提示(取P7错误文案(错误));
+        // review-r1 F6：明确拒绝的消息没发出去 —— 恢复失败正文，不让草稿凭空丢失；
+        // 用户若已在途中编辑新草稿则原样保留，绝不覆盖。confirmed/unknown 不走这里
+        //（unknown 的不可变正文由提示区携带）。
+        设草稿((现) => (现 === '' ? 内容 : 现));
       })
       .finally(() => {
         发送中.current = false;
@@ -144,16 +148,31 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
   const [PDF预览, 设PDF预览] = useState<{ 文件名: string; 地址: string } | null>(null);
   const PDF租约引用 = useRef<PDF对象租约 | null>(null);
   const PDF在飞 = useRef(false);
+  // review-r1 F7：取件代际 —— 卸载/换会话都作废在飞取件；迟到的租约当场回收，
+  // 绝不悬挂到会话边界才回收。
+  const PDF代际 = useRef(0);
   const 回收租约 = () => {
     PDF租约引用.current?.revoke();
     PDF租约引用.current = null;
   };
-  useEffect(() => 回收租约, []);
+  useEffect(() => {
+    设PDF预览(null); // 换会话：旧会话的取件层立即关闭
+    return () => {
+      PDF代际.current += 1;
+      回收租约();
+    };
+  }, [conversationId]);
   const 开PDF = async (caseId: string) => {
     if (PDF在飞.current || PDF预览 !== null || caseId === '') return;
     PDF在飞.current = true;
+    const 起始代际 = PDF代际.current;
     try {
       const 租约 = await 操作.读取简历PDF('recruiter', caseId);
+      if (PDF代际.current !== 起始代际) {
+        // 迟到：会话已换/组件已卸载 —— 租约即刻回收，不挂不渲染
+        租约.revoke();
+        return;
+      }
       回收租约(); // 防御：上一张（理论上不存在）先回收再挂新的
       PDF租约引用.current = 租约;
       设PDF预览({ 文件名: '简历原件.pdf', 地址: 租约.url });

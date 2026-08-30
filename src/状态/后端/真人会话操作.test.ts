@@ -357,9 +357,12 @@ describe('P7 真人会话运行时', () => {
   });
 
   it('结果未知：重拉在水位后看到本端同文消息即收敛 confirmed', async () => {
+    // 预载权威消息快照（只有系统行 → 权威空水位）：对账的比对基准必须真实在场
+    vi.mocked(env.数据源.读取消息).mockResolvedValueOnce(消息页([系统行], null));
+    await env.操作.读取真人会话('candidate', '3003');
     vi.mocked(env.数据源.发送消息).mockRejectedValueOnce(
       new BFF错误(503, 'operation_outcome_unknown', 'unknown'));
-    vi.mocked(env.数据源.读取消息).mockResolvedValueOnce(
+    vi.mocked(env.数据源.读取消息).mockResolvedValue(
       消息页([系统行, 文本消息('4005', 'candidate', '你好')], null));
     await expect(env.操作.发送真人消息('candidate', '3003', '你好'))
       .resolves.toEqual({ status: 'confirmed' });
@@ -615,5 +618,96 @@ describe('P7 真人会话运行时', () => {
     expect(mock环境.数据源.读取消息).not.toHaveBeenCalled();
     expect(mock环境.数据源.发送消息).not.toHaveBeenCalled();
     expect(mock环境.数据源.标为已读).not.toHaveBeenCalled();
+  });
+});
+
+// ── review-r1：栅栏与对账纪律（Codex Round 1 发现）──────────────────────────────
+describe('P7 review-r1 修复', () => {
+  it('F1：已读 401 在会话换代后到达只丢弃，绝不登出新会话', async () => {
+    vi.mocked(env.数据源.读取消息).mockResolvedValue(
+      消息页([系统行, 文本消息('4004', 'recruiter', '你好')], null));
+    await env.操作.读取真人会话('candidate', '3003');
+    await env.操作.提交真人已读('candidate', '3003', '4004');
+    const 门 = deferred<string>();
+    vi.mocked(env.数据源.标为已读).mockReturnValueOnce(门.promise);
+    const run = env.操作.提交真人已读('candidate', '3003', '4005');
+    // 途中换账号换代（B 已登录），旧会话 A 的已读 401 迟到到达
+    env.deps.主体标识引用.current = 'sub_2';
+    env.deps.会话代际.current += 1;
+    门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await run;
+    // 新会话未被登出、已成功的快照不被摊平
+    expect(env.最新状态().已登录).toBe(true);
+    expect(env.最新状态().P7消息页[P7范围键.消息('candidate', '3003')].阶段).toBe('成功');
+    expect(env.最新状态().P7收件箱.candidate.阶段).not.toBe('未开始');
+  });
+
+  it('F2：无权威消息快照时水位不可用，重拉见同文历史消息也不确认', async () => {
+    // 初始消息 GET 失败/未完成（快照不在场）：发送前水位不可用，不是权威空
+    vi.mocked(env.数据源.发送消息).mockRejectedValueOnce(
+      new BFF错误(503, 'operation_outcome_unknown', 'unknown'));
+    vi.mocked(env.数据源.读取消息).mockResolvedValueOnce(
+      消息页([系统行, 文本消息('4004', 'candidate', '你好')], null)); // 历史同文消息（发送前就有）
+    await expect(env.操作.发送真人消息('candidate', '3003', '你好')).resolves.toEqual({
+      status: 'unknown', reason: 'outcome_unknown', canAbandon: true, pendingContent: '你好',
+    });
+    // 意图保留（绝不凭不可验证的水位宣称成功）
+    expect(env.deps.P7待定意图.current.size).toBe(1);
+  });
+
+  it('F3：对账 GET 在飞期间换会话，迟到证据不写新会话快照', async () => {
+    vi.mocked(env.数据源.读取消息).mockResolvedValueOnce(消息页([系统行], null));
+    await env.操作.读取真人会话('candidate', '3003');
+    // POST 的拒绝先被处理（catch 进入、对账 GET 挂起），会话切换落在对账 await 期间
+    const 发送门 = deferred<never>();
+    vi.mocked(env.数据源.发送消息).mockReturnValueOnce(发送门.promise as never);
+    const 门 = deferred<P7消息页>();
+    vi.mocked(env.数据源.读取消息).mockReturnValueOnce(门.promise);
+    const run = env.操作.发送真人消息('candidate', '3003', '你好');
+    发送门.reject(new BFF错误(503, 'operation_outcome_unknown', 'unknown'));
+    await Promise.resolve(); // 让 catch 的同步段（含栅栏检查）先跑完，对账 allSettled 挂起中
+    env.deps.主体标识引用.current = 'sub_2';
+    env.deps.会话代际.current += 1;
+    // 迟到的重拉带着本端同文消息到达 —— 栅栏已换代，绝不按已生效收口
+    门.resolve(消息页([系统行, 文本消息('4005', 'candidate', '你好')], null));
+    await expect(run).resolves.toEqual({
+      status: 'unknown', reason: 'outcome_unknown', canAbandon: false, pendingContent: '你好',
+    });
+    // 新会话的旧会话消息快照不被旧 scope 的权威重读污染
+    expect(env.最新状态().P7消息页[P7范围键.消息('candidate', '3003')].items).toEqual([系统行]);
+  });
+
+  it('F4：窗口重建按时间序 prepend 更早页，深窗口强制刷新不乱序', async () => {
+    vi.mocked(env.数据源.读取消息)
+      .mockResolvedValueOnce(消息页([系统行, 文本消息('4004', 'candidate', '在吗')], 'older_1'))
+      .mockResolvedValueOnce(消息页([文本消息('4001', 'recruiter', '你好')], null))
+      .mockResolvedValueOnce(消息页([系统行, 文本消息('4004', 'candidate', '在吗')], 'older_1'))
+      .mockResolvedValueOnce(消息页([文本消息('4001', 'recruiter', '你好')], null));
+    await env.操作.读取真人会话('candidate', '3003');
+    await env.操作.追加更早消息('candidate', '3003');
+    // 强制刷新重建同深（2 页）窗口：更早页必须 prepend，保持时间序
+    await env.操作.读取真人会话('candidate', '3003', true);
+    expect(env.最新状态().P7消息页[P7范围键.消息('candidate', '3003')].items).toEqual([
+      文本消息('4001', 'recruiter', '你好'),
+      系统行,
+      文本消息('4004', 'candidate', '在吗'),
+    ]);
+  });
+
+  it('F5：会话失效同时作废收件箱读，事件后的强制收件箱刷新可接管在飞旧读', async () => {
+    // 旧收件箱读在飞（慢响应）
+    const 门 = deferred<P7会话页>();
+    vi.mocked(env.数据源.读取会话列表).mockReturnValueOnce(门.promise);
+    const 旧读 = env.操作.加载会话列表('candidate', true);
+    // conversation_changed 到达：失效（带会话坐标）+ 事件层强制收件箱刷新。
+    // 新响应先入队（新读的 facade 调用是同步发起的，入队晚了会被缺省空页截走）。
+    vi.mocked(env.数据源.读取会话列表).mockResolvedValueOnce(会话页([会话项('3001')], null));
+    env.操作.使真人会话失效('candidate', '3003');
+    const 新读 = env.操作.加载会话列表('candidate', true);
+    // 旧响应（3003，含过期未读）先到达：属主栅栏已换代，整包丢弃
+    门.resolve(会话页([会话项('3003', 5)], null));
+    await Promise.all([旧读, 新读]);
+    // 强制刷新接管读锁：最终快照是新响应（3001），不是旧响应的过期投影
+    expect(env.最新状态().P7收件箱.candidate.items.map((条) => 条.conversationId)).toEqual(['3001']);
   });
 });

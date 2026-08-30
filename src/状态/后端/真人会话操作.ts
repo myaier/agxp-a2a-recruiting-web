@@ -484,7 +484,9 @@ export function 创建真人会话操作(deps: 后端操作依赖): 真人会话
           ? await 后端!.读取消息(role, conversationId)
           : await 后端!.读取消息(role, conversationId, 游标);
         页数 += 1;
-        messages.push(...页.messages);
+        // review-r1 F4：消息页是时间序、游标向更老 —— 重建窗口时更早页必须 prepend
+        //（首页最新、后续页更老），否则深窗口强制刷新后 [最新, 更早] 乱序。
+        messages.unshift(...页.messages);
         nextCursor = 页.nextCursor;
         if (nextCursor === null) break;
         游标 = nextCursor;
@@ -523,10 +525,14 @@ export function 创建真人会话操作(deps: 后端操作依赖): 真人会话
 
   // ── 发送意图与结果未知对账 ──
 
-  /** 当前消息快照里最新的 user_text 坐标（发送前水位）；无快照或只有系统行时为 null。 */
-  function 当前水位(role: P7角色, conversationId: string): string | null {
+  /**
+   * 当前消息快照里最新的 user_text 坐标（发送前水位）。review-r1 F2：区分两形 ——
+   * undefined = 快照不在场/未成功（无权威水位，对账绝不据此确认，否则历史同文消息
+   * 会被误认成本次发送）；null = 权威空水位（成功快照里没有任何 user_text）。
+   */
+  function 当前水位(role: P7角色, conversationId: string): string | null | undefined {
     const 快照 = 读消息快照(P7范围键.消息(role, conversationId));
-    if (!快照) return null;
+    if (快照 === undefined || 快照.阶段 !== '成功') return undefined;
     for (let 下标 = 快照.items.length - 1; 下标 >= 0; 下标 -= 1) {
       const 行 = 快照.items[下标];
       if (行.kind === 'user_text') return 行.messageId;
@@ -538,7 +544,7 @@ export function 创建真人会话操作(deps: 后端操作依赖): 真人会话
    * 同一意图沿用既有键；只有无键时才铸造（crypto.randomUUID，16–128 可见 ASCII）。
    * 复合意图串（含中文正文）只作 Map 键，绝不进请求参数。
    */
-  function 待定意图For(intent坐标: string, 正文: string, 水位: string | null): P7待定意图 {
+  function 待定意图For(intent坐标: string, 正文: string, 水位: string | null | undefined): P7待定意图 {
     const existing = P7待定意图.current.get(intent坐标);
     if (existing) return existing;
     const created: P7待定意图 = { key: globalThis.crypto.randomUUID(), content: 正文, watermark: 水位 };
@@ -553,6 +559,10 @@ export function 创建真人会话操作(deps: 后端操作依赖): 真人会话
    */
   function 是水位后同文消息(messages: P7消息[], 意图: P7待定意图, role: P7角色): boolean {
     let 起点: number;
+    if (意图.watermark === undefined) {
+      // review-r1 F2：无权威水位（发送前快照不在场/未成功）—— 不可验证即不确认
+      return false;
+    }
     if (意图.watermark === null) {
       起点 = 0;
     } else {
@@ -621,6 +631,9 @@ export function 创建真人会话操作(deps: 后端操作依赖): 真人会话
       ]);
       const 消息落点 = 对账[0];
       if (消息落点.status !== 'fulfilled') return 未知('outcome_unknown', false); // 重拉失败：只允许同键重试
+      // review-r1 F3：对账 GET 在飞期间换了会话 —— 迟到证据只随单飞收口，
+      // 绝不删键收口、绝不为旧 scope 发权威重读（那会污染新会话的 P7 快照）。
+      if (!会话栅栏仍当前(fence)) return 未知('outcome_unknown', false);
       const 页 = 消息落点.value as P7消息页;
       if (!是水位后同文消息(页.messages, 意图, role)) {
         return 未知('outcome_unknown', true); // 重拉成功无证据：可放弃或同键重试
@@ -667,6 +680,9 @@ export function 创建真人会话操作(deps: 后端操作依赖): 真人会话
     } catch (错误) {
       const 现位置 = P7已读位置.current.get(位置键);
       if (现位置 && 现位置.inFlight === messageId) 现位置.inFlight = null;
+      // review-r1 F1：迟到的失败（含 401）先过栅栏 —— 会话已换代就整包丢弃，
+      // 绝不登出新会话、也不往新会话的已读位置表写终局拒绝。
+      if (!会话栅栏仍当前(fence)) return;
       if (是401(错误)) {
         清账号与P7();
         return;
@@ -760,8 +776,13 @@ export function 创建真人会话操作(deps: 后端操作依赖): 真人会话
         换读代际(P7范围键.收件箱(role));
         return;
       }
+      // 带坐标：作废该会话详情/消息 + 角色收件箱（见分支内 F5 注释）。
+      // review-r1 F5：conversation_changed 的语义是「该会话的收件箱投影变了」——
+      // 带坐标失效时同时作废收件箱在飞读，事件后的强制收件箱刷新才能接管读锁，
+      // 不会被在飞的旧读单飞挡掉、让过期未读/摘要落屏。
       换读代际(P7范围键.详情(role, conversationId));
       换读代际(P7范围键.消息(role, conversationId));
+      换读代际(P7范围键.收件箱(role));
     },
   };
 }
