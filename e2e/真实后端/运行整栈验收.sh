@@ -129,7 +129,6 @@ FIXTURE_CALLS=0
 FIXTURE_RECEIPTS=''
 LAST_LOGIN_EPOCH=0
 FRONTEND_COMMIT='unknown'
-FRONTEND_COMMIT='unknown'
 BACKEND_COMMIT='unknown'
 
 blocked(){
@@ -172,6 +171,11 @@ classify_fixture_failure(){
 # 必然继承这里的 TZ。与会话一样，这是验收自己的隔离资源。
 export TZ='Asia/Shanghai'
 export AGENT_BROWSER_NAMESPACE='agxp-accept'
+# 双会话各有一个 Chrome 窗口：被遮挡的那只会被 macOS 上 Chrome 的后台启发式
+# 节流——JS 照跑、辅助功能树/渲染长期停摆，恰好造出「DOM 在动、find 看旧屏」
+# 的全部形状变化（#run7 至 #run29 的形状漂移）。这里显式关掉节流：这是
+# 自动化基础设施设置，与页面取景冻结无关。
+export AGENT_BROWSER_ARGS='--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding,--disable-background-timer-throttling'
 
 need_command(){ command -v "$1" >/dev/null 2>&1 || blocked "缺少命令：$1"; }
 

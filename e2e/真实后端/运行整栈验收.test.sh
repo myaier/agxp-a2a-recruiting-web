@@ -116,7 +116,7 @@ esac
 printf 'journey %s fragmentdir=%s\n' "$J" "${FRAGMENT_DIR:-unset}" >>"$CALLS"
 
 # DENY：编排层必须把这些环境交到旅程手上，少一个就红
-for v in RUN_DIR FRAGMENT_DIR PRIVATE_JOURNAL AGXP_MONOREPO_DIR FRONTEND_ORIGIN BROWSER_FIXTURE_RUN_ID AGENT_BROWSER_NAMESPACE; do
+for v in RUN_DIR FRAGMENT_DIR PRIVATE_JOURNAL AGXP_MONOREPO_DIR FRONTEND_ORIGIN BROWSER_FIXTURE_RUN_ID AGENT_BROWSER_NAMESPACE AGENT_BROWSER_ARGS; do
   eval "have=\${$v:-}"
   [ -n "$have" ] || { printf 'FAKE journey %s 缺少环境 %s\n' "$J" "$v" >>"$CALLS"; exit 1; }
 done
