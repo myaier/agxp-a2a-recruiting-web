@@ -4603,6 +4603,7 @@ async function 装P4候选(
   page: Page,
   选项: {
     fixture?: P4发现fixture形;
+    附件fixture?: P2附件fixture形;
     覆盖?: BFF路由选项['覆盖'];
     请求拦截?: (请求: 拦截请求形) => void;
   } = {},
@@ -4612,6 +4613,7 @@ async function 装P4候选(
     登录尝试id: 'att-p4-candidate',
     记录目录请求: () => undefined,
     发现fixture: fixture,
+    附件fixture: 选项.附件fixture,
     覆盖: 选项.覆盖,
     请求拦截: 选项.请求拦截,
   });
@@ -4777,11 +4779,14 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     expect(fixture.刷新次数.candidate).toBe(1);
   });
 
-  test('候选委托：确认前零请求 → 字面披露 true → 同键同回执 → 轮询到 case_started，绝不落 Mock 在谈 @backend', async ({ page }) => {
+  test('候选委托：确认前零变更请求 → 字面披露 true → 同键同回执 → 轮询到 case_started，绝不落 Mock 在谈 @backend', async ({ page }) => {
     const fixture = P4发现fixture({ 候选委托先503: true });
+    const 附件fixture = 创建P2附件fixture();
+    附件fixture.items = [P2新附件(1, 'P4 Fixture 候选简历.pdf', Buffer.from('%PDF-1.7\nfixture\n'))];
     const 请求序: { method: string; path: string; body: unknown; headers: Record<string, string> }[] = [];
     await 装P4候选(page, {
       fixture,
+      附件fixture,
       请求拦截: (项) => 请求序.push({ method: 项.method, path: 项.path, body: 项.body, headers: 项.headers }),
     });
 
@@ -4790,11 +4795,11 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await page.getByRole('button', { name: '市场', exact: true }).click();
     await expect(page.getByText(P4标记.jobTitle)).toBeVisible({ timeout: 15_000 });
 
-    // 确认层之前零请求
-    const 确认前 = 请求序.length;
+    // 确认层之前零变更请求；打开确认层允许重读附件库校验当前选择仍然有效
+    const 确认前变更数 = 请求序.filter((项) => 项.method !== 'GET').length;
     await page.getByRole('button', { name: '让AI代理去谈' }).click();
     await expect(page.getByRole('dialog', { name: '确认委托AI代理？' })).toBeVisible({ timeout: 5_000 });
-    expect(请求序.length).toBe(确认前);
+    expect(请求序.filter((项) => 项.method !== 'GET')).toHaveLength(确认前变更数);
 
     // 确认层遮罩钮的可及名是「关闭确认委托AI代理？」：exact 才只命中执行键
     await page.getByRole('button', { name: '确认委托', exact: true }).click();
@@ -4807,6 +4812,8 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
       intention_id: P4编号.intention,
       selection: { items: [P4编号.job] },
       disclosure_acknowledged: true,
+      resume_file_id: 'rf_1',
+      resume_file_version_id: 'rfv_1_1',
     });
     expect(委托POST[0]!.headers['idempotency-key']).not.toBe('');
     expect(委托POST[0]!.headers['idempotency-key']).toBe(委托POST[1]!.headers['idempotency-key']);
