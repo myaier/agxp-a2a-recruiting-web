@@ -128,7 +128,7 @@ click_button_exact '保存'
 settle
 # 真实栈上保存成功只落库不换屏/#run18：弹层还开着，reload 会原样重新打开弹层。
 # 断言「改后的列表」之前必须真的回到列表——还在弹层路由（#/intentions/）就点返回。
-[ "$(ab eval 'location.hash.includes("/intentions/")' 2>/dev/null | tr -d '"')" = 'true' ] && click_back
+if on_screen '编辑求职期望'; then click_back; fi
 reload_and_assert "$TEMP_SALARY_2"
 assert_absent "$TEMP_SALARY_1"
 assert_text '2/5'
@@ -149,6 +149,7 @@ MILESTONE='披露偏好改档'
 click_back
 click_after_hydrate '我'
 click_after_hydrate '披露偏好'
+wait_text '当前公司'
 assert_pressed '当前公司：不披露'
 click_button_exact '当前公司：意向确认后'
 assert_pressed '当前公司：意向确认后'

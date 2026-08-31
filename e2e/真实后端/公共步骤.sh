@@ -184,6 +184,14 @@ click_after_hydrate(){
   click_with_retry "$1" "${2:-exact}"
 }
 
+# set -e 安全的屏面判断：当前页面文本是否包含语义标记。[ x ] && cmd 的裸 && 在
+# 条件不成立时返回 1，会把整条旅程错杀；所有「按屏面二选一」都走这里 + if。
+on_screen(){
+  local hit
+  hit="$(ab eval "document.body.innerText.includes($(jq -Rn --arg t "$1" '$t|@json'))" 2>/dev/null | tr -d '"')"
+  [ "$hit" = 'true' ]
+}
+
 # 切屏后 Chrome 会有一段辅助功能树重算窗口：期间整棵 AX 塌成一个以全文为名的
 # generic + 壳外那枚「标注模式」（manual-run 失败快照实证：像素正常渲染、wait --text
 # 走的 DOM 文本不受影响，唯独 role find 必然扑空），数秒后自愈。所以屏幕切换后的

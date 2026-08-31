@@ -96,6 +96,8 @@ find_retry label 公司介绍 fill "$TEMP_COMPANY_INTRO" >/dev/null
 click_button_exact '保存'
 settle
 ab reload >/dev/null
+# 保存只落库不换屏：reload 若落在分区列表（无 文本域 aria-label=公司介绍）就再进分区
+if on_screen '编辑品牌信息'; then click_button '公司介绍'; fi
 assert_value '公司介绍' "$TEMP_COMPANY_INTRO"
 
 MILESTONE='公司介绍还原'
@@ -103,7 +105,7 @@ find_retry label 公司介绍 fill "$BASE_COMPANY_INTRO" >/dev/null
 click_button_exact '保存'
 settle
 ab reload >/dev/null
-[ "$(ab eval 'document.body.innerText.includes("编辑品牌信息")' 2>/dev/null | tr -d '"')" = 'true' ] && click_button '公司介绍'
+if on_screen '编辑品牌信息'; then click_button '公司介绍'; fi
 assert_value '公司介绍' "$BASE_COMPANY_INTRO"
 
 # ── 3. 发布临时岗位：三步向导全部走语义控件 ─────────────────────────
