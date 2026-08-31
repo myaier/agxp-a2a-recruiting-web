@@ -116,7 +116,7 @@ esac
 printf 'journey %s fragmentdir=%s\n' "$J" "${FRAGMENT_DIR:-unset}" >>"$CALLS"
 
 # DENY：编排层必须把这些环境交到旅程手上，少一个就红
-for v in RUN_DIR FRAGMENT_DIR PRIVATE_JOURNAL AGXP_MONOREPO_DIR FRONTEND_ORIGIN BROWSER_FIXTURE_RUN_ID; do
+for v in RUN_DIR FRAGMENT_DIR PRIVATE_JOURNAL AGXP_MONOREPO_DIR FRONTEND_ORIGIN BROWSER_FIXTURE_RUN_ID AGENT_BROWSER_NAMESPACE; do
   eval "have=\${$v:-}"
   [ -n "$have" ] || { printf 'FAKE journey %s 缺少环境 %s\n' "$J" "$v" >>"$CALLS"; exit 1; }
 done
@@ -198,17 +198,8 @@ case "$1" in
     # 输出照真 CLI 的样子做成 JSON 字符串（真机实测 agent-browser 0.27.2 会带两侧引号），
     # 不带引号的假件会把「运行器忘了剥引号」这种回归藏起来。
     case "${2:-}" in
-      *navigator.language*)
+      *navigator.language*|*resolvedOptions*)
         printf '"%s %s"\n' "${FAKE_LOCALE:-zh-CN}" "${FAKE_TZ:-Asia/Shanghai}" ;;
-      *resolvedOptions*)
-        # 取景守护的探测：模拟「daemon 由无 TZ 终端拉起」。fake pkill 记下重启标记后，
-        # 视为 daemon 已由带 TZ 的客户端重新拉起，返回冻结值。
-        if [ -n "${FAKE_DAEMON_TZ:-}" ]; then
-          if [ -e "$STATE/daemon-restarted" ]; then printf '"Asia/Shanghai"\n'
-          else printf '"%s"\n' "$FAKE_DAEMON_TZ"; fi
-        else
-          printf '"%s"\n' "${FAKE_TZ:-Asia/Shanghai}"
-        fi ;;
       *)
         printf '"%s"\n' "${FAKE_UA:-Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.55 Mobile Safari/537.36}" ;;
     esac
@@ -219,12 +210,6 @@ case "$1" in
 esac
 FAKE
 chmod +x "$BIN/agent-browser"
-
-# 假 pkill：只记调用 + 置重启标记，绝不碰真进程
-printf '%s\n' '#!/usr/bin/env bash
-printf "pkill %s\\n" "$*" >>"$CALLS"
-: >"$STATE/daemon-restarted"' >"$BIN/pkill"
-chmod +x "$BIN/pkill"
 
 # ── 假 npm（只认运行器那一条 dev 命令）────────────────────────────
 cat >"$BIN/npm" <<'FAKE'
@@ -430,7 +415,6 @@ reset_case(){
   export AGXP_MONOREPO_DIR="$MONO"
   export FAKE_HEALTH_SEQ='0' FAKE_PREPARE_RC=0 FAKE_UP_RC=0 FAKE_BOOTSTRAP_RC=0
   unset FAKE_BOOTSTRAP_BLOCK_DIR FAKE_DAEMON_TZ 2>/dev/null || true
-  rm -f "$STATE/daemon-restarted" 2>/dev/null || true
   export FAKE_CONVERGE_SEQ='0' FAKE_VERIFY_SEQ='0' FAKE_CLEANUP_SEQ='0' FAKE_INTERRUPTED=0
   export FAKE_JOURNEY_FAIL='' FAKE_JOURNEY_BLOCK='' FAKE_JOURNEY_SIGINT='' FAKE_ISOLATION_RC=0
   export FAKE_PORT_BUSY=0 FAKE_DOCKER_RC=0 FAKE_DOCTOR_RC=0 FAKE_VITE_START_RC=0 FAKE_LOGOUT_RC=0
@@ -480,15 +464,6 @@ run_dir(){ ls -d "$OUT_ROOT"/*/ 2>/dev/null | head -1 | sed 's#/$##'; }
 report_json(){ printf '%s' "$(run_dir)/report.json"; }
 
 # ── 用例 ────────────────────────────────────────────────────────────
-
-testcase 'daemon 时区不对：重启它再复测，旅程照跑'
-reset_case; setup_baseline
-export FAKE_DAEMON_TZ='Asia/Singapore'
-run_runner
-assert_eq '退出码 0' "$RC" 0
-assert_contains '守护进程被重启过' 'pkill' "$CALLS"
-assert_missing '假件没有报告任何未预期调用' 'FAKE ' "$CALLS"
-assert_eq '分类 PASS' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'PASS'
 
 testcase '已健康的本地栈被复用：不 prepare / 不 up / 不 down'
 reset_case; setup_baseline
