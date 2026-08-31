@@ -32,13 +32,26 @@ import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
 import type { P5列表项, P5详情 } from '../../数据/招聘数据源/MatchCase';
 import type { P7角色, P7会话项, P7消息 } from '../../数据/招聘数据源/真人会话';
+import type {
+  P8Credential,
+  P8Session,
+  P8DataExport,
+  P8ReplacementAttempt,
+  P8ReplacementResult,
+  P8FeedbackCategory,
+  P8FeedbackReceipt,
+  P8ReportReason,
+  P8ReportReceipt,
+  P8ReportTarget,
+} from '../../数据/招聘数据源/P8控制面';
+import type { P8导出恢复存储 } from '../../数据/P8导出恢复';
 import type { PDF对象租约 } from '../../数据/PDF对象租约';
 import type { 在招岗位, 披露档, 屏蔽来源, 屏蔽项 } from '../../数据/类型';
 import type { 资料形 } from '../../数据/公司主页资料';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 动作, 状态 } from '../应用状态';
 
-export interface 后端状态 extends P4发现状态, P5MatchCase状态, P7会话状态 {
+export interface 后端状态 extends P4发现状态, P5MatchCase状态, P7会话状态, P8控制面状态 {
   初始化: '跳过' | '进行中' | '完成';
   已登录: boolean;
   主体: BFF主体 | null;
@@ -197,6 +210,37 @@ export interface P5MatchCase状态 {
   P5历史: Record<string, P5列表快照>;
   P5详情: Record<string, P5详情快照>;
 }
+
+// ── P8：控制面域的内存态资源快照（仅 Backend；快照绝不进 资料持久化 / 浏览器存储）──
+
+/** P8 资源快照的生命周期；已 success 的快照在刷新途中保持 success（旧 data 不降级）。 */
+export type P8阶段 = 'idle' | 'loading' | 'success' | 'error';
+
+export interface P8资源快照<T> {
+  phase: P8阶段;
+  refreshing: boolean;
+  data: T | null;
+  error: string | null;
+  generation: number;
+}
+
+/**
+ * P8 控制面三块资源快照：credentials / sessions / dataExport。账号资源以
+ * subject_id + 会话代际为隔离边界（不按 candidate/recruiter 重复保存）：
+ * 同一主体切角色可以复用已确认快照；登出 / 401 / 换主体整域摊平。
+ */
+export interface P8控制面状态 {
+  credentials: P8资源快照<P8Credential[]>;
+  sessions: P8资源快照<P8Session[]>;
+  dataExport: P8资源快照<P8DataExport>;
+}
+
+/** 每个 P8 待定意图：Idempotency-Key + 不可变请求（坐标只作内存 Map 键，绝不进请求参数）。 */
+export interface P8待定意图<T> {
+  key: string;
+  request: T;
+}
+
 export type 可变引用<T> = { current: T };
 
 export interface 后端操作依赖 {
@@ -242,6 +286,16 @@ export interface 后端操作依赖 {
   P7可见收件箱?: 可变引用<Record<P7角色, boolean>>;
   P7可见会话?: 可变引用<Record<P7角色, string | null>>;
   P7已读位置?: 可变引用<Map<string, P7已读位置记录>>;
+  /**
+   * P8 Task 3：控制面运行时引用 —— 范围代际 / 账号可见 / 读锁 / 待定意图 /
+   * 导出恢复。与 P4–P7 同一纪律：Provider 恒一次性注入；可选成员只为既有
+   * 测试依赖桩 的编译兼容，P8控制面操作 在工厂入口显式收窄。
+   */
+  P8范围代际?: 可变引用<number>;
+  P8账号可见?: 可变引用<boolean>;
+  P8读取锁?: 可变引用<Map<'credentials' | 'sessions' | 'export', Promise<void>>>;
+  P8待定意图?: 可变引用<Map<string, P8待定意图<unknown>>>;
+  P8导出恢复?: 可变引用<P8导出恢复存储 | null>;
 }
 
 /** P7 真人会话的五个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -259,6 +313,19 @@ export interface P5运行时引用 {
   P5幂等意图: 可变引用<Map<string, string>>;
   P5可见范围: 可变引用<Record<P5角色, string | null>>;
   P5对象租约: 可变引用<Set<PDF对象租约>>;
+}
+
+/** P8 控制面的五个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
+export interface P8运行时引用 {
+  /** P8 范围代际：唯一的域级栅栏计数，force 刷新与引用级清理递增。 */
+  P8范围代际: 可变引用<number>;
+  /** 账号 UI 是否可见：只影响迟到提示的抑制，绝不参与快照提交栅栏。 */
+  P8账号可见: 可变引用<boolean>;
+  /** 每资源一把单飞读锁（export 资源 Task 5 接线，锁表先收录）。 */
+  P8读取锁: 可变引用<Map<'credentials' | 'sessions' | 'export', Promise<void>>>;
+  P8待定意图: 可变引用<Map<string, P8待定意图<unknown>>>;
+  /** 按 subject 隔离的导出恢复坐标；Provider 先置 null，Task 5 供给 subject 绑定适配器。 */
+  P8导出恢复: 可变引用<P8导出恢复存储 | null>;
 }
 
 /** P4 discovery 的三个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -468,4 +535,79 @@ export interface 真人会话操作 {
   使真人会话失效(role: P7角色, conversationId?: string): void;
 }
 
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作;
+/**
+ * P8 Task 3+5：页面会调用的账号控制面操作方法表（页面不得直接调用数据源）。
+ * 铁律：调用方不携带幂等键 —— 每个 mutation 由域内按意图坐标（换绑开始=手机号、
+ * 换绑完成=attempt+验证码、退出其他设备=恒定、创建导出=落盘 createKey、注销=恒定）
+ * 铸造一把 crypto.randomUUID 键，同意图的所有重试沿用同一把键；mutation 一律
+ * 服务端先行，成功（或确认重放）后权威重读，响应本体绝不替换快照。
+ * 导出创建的幂等键即恢复句柄里的 createKey：先落盘 {exportId:null} 再 POST，
+ * 响应丢失/刷新后按句柄同键重放。合规两法另立 P8合规操作（Task 6 反馈 + Task 7 举报）。
+ */
+export interface P8账号控制面操作 {
+  /** 登记账号 UI 可见性：只影响迟到提示抑制与 UI 可见，绝不递增 P8 栅栏、不清快照。 */
+  设置P8账号范围(visible: boolean): void;
+  /** 按需读取凭证（设置页只读凭证，零会话请求）；非 force 且已成功时零请求。 */
+  加载P8凭证(force?: boolean): Promise<void>;
+  /** 按需读取会话（账号安全页与凭证并行）；非 force 且已成功时零请求。 */
+  加载P8会话(force?: boolean): Promise<void>;
+  /** 11 位中国大陆裸号进 facade（facade 构造 +86 E.164）；返回 attempt 供完成步使用。 */
+  开始P8手机号换绑(phone: string): Promise<P8ReplacementAttempt>;
+  /** 证明执行产品全局 4 位规则；成功后强制重读凭证+会话再 resolve，绝不乐观写掩码手机号。 */
+  完成P8手机号换绑(attemptId: string, code: string): Promise<P8ReplacementResult>;
+  /** 退出其他设备：返回 revoked_sessions 回执计数；成功后权威重读会话，不影响当前会话。 */
+  退出P8其他设备(): Promise<number>;
+  /**
+   * 被动恢复（进屏/打开抽屉）：读当前 subject 句柄 —— 无适配器或无句柄零导出请求；
+   * exportId:null 用落盘 createKey 同键重放 POST；有 ID 只权威 GET。
+   */
+  恢复P8数据导出(): Promise<void>;
+  /**
+   * 显式创建/续接：无句柄先落盘 {subjectId, createKey, exportId:null} 再 POST
+   * （适配器缺席或写入失败 → 固定「数据导出暂不可用」文案 + 零请求）；有 ID 句柄时
+   * 退化为权威 GET（绝不向已有导出再 POST）。
+   */
+  创建P8数据导出(): Promise<void>;
+  /** 权威 GET 导出状态（'export' 单飞）；无已知 exportId 零请求；404/expired 清句柄。 */
+  刷新P8数据导出(): Promise<void>;
+  /** 清当前 subject 句柄并摊平导出快照：404/expired/明确重新生成用，下次创建铸新键。 */
+  废弃P8数据导出(): void;
+  /** ready+downloadReady 是唯一可下载组合，其余一律 null；URL 委托 facade 严格校验构造。 */
+  取P8数据导出下载地址(): string | null;
+  /**
+   * 注销：终局确认单飞（body {} 由 facade 冻结）；未知结果同键 1s/2s 显式重放至多
+   * 两次，持续不确定原样抛出且保留意图供手动重试；202 的本地收口以会话栅栏为界 ——
+   * 栅栏仍立时先统一清 P4–P8 再 resolve 并删当前 subject 导出句柄（尽力而为）；
+   * 重放窗内换会话/换主体的迟到 202 固定文案抛出，绝不摊平新会话或删新主体句柄；
+   * 成功后的导航归屏幕。
+   */
+  请求P8账号注销(): Promise<void>;
+}
+
+/**
+ * P8 Task 6+7：合规两法 —— 产品反馈与上下文举报。
+ * 铁律与账号控制面同款：调用方不带幂等键 —— 域内按各自意图坐标铸一把
+ * crypto.randomUUID 键，同意图沿用；入参校验在本层收口，非法输入零请求、零意图；
+ * 成功清意图，未知/网络异常同键同 body 重试，409 冲突与 429 限流是终局
+ * （清意图；合规 429 不带 Retry-After，绝不排定时器自动重试）。
+ * 反馈坐标 = 线协议分类 + trim 后正文（5–500 Unicode 码点）；
+ * 举报坐标 = 目标(type+ref) + 线协议原因 + 是否同时屏蔽 —— 请求体恰
+ * {target, reason, also_block}，绝不携带身份/角色/组织名/展示名/证据/正文；
+ * 409 block_unavailable 是终局（无半成功，取消勾选屏蔽即新意图新键），
+ * 404 report_target_not_found 是统一终局（屏层关层并刷新来源）；
+ * 回执 blockStatus='applied' 且当前角色是候选时，操作层恰做一次权威隐私读取并
+ * 走既有 P3 水合路径（招聘端绝不读候选隐私；任何角色都绝不本地派发 拉黑）。
+ */
+export interface P8合规操作 {
+  /** 分类用线协议枚举（UI→wire 映射归屏）；回执 ticketId 原样上屏，绝不本地编造工单号。 */
+  提交P8反馈(category: P8FeedbackCategory, details: string): Promise<P8FeedbackReceipt>;
+  /**
+   * 上下文举报：target 是权威对象坐标（job / match_case / conversation 的 opaque ID，
+   * 绝不是展示名或 P4 推荐 ID），reason 用线协议枚举（UI→wire 映射归 共用举报层），
+   * alsoBlock 只是布尔 —— 屏蔽对象由服务端按目标解析，请求里没有第二个目标。
+   */
+  提交P8举报(target: P8ReportTarget, reason: P8ReportReason, alsoBlock: boolean): Promise<P8ReportReceipt>;
+}
+
+/** Task 6+7 公开面：合规两法齐备（反馈 + 举报）。 */
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 & P8账号控制面操作 & P8合规操作;

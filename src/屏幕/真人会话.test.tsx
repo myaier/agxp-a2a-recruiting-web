@@ -185,6 +185,29 @@ describe('真人会话 · Mock 公司卡仍按原 slug 导航', () => {
 });
 
 
+// ── P8 Task 7：Mock 真人会话调用点的举报层回归 ──────────────────────
+//   共用 举报层 的可选 target/已确认/目标失效 扩展绝不能改变本调用点的既有行为：
+//   ⋯ 打开层、本地拉黑（屏蔽顾问所属机构）、固定 toast、关层，零 P8 操作。
+describe('真人会话 · Mock 举报层调用点（P7 Task 7 回归）', () => {
+  it('⋯ → 举报层：本地拉黑 + 关层，零 P8 操作', async () => {
+    const mock派发 = vi.fn();
+    mock应用状态 = {
+      数据源模式: 'mock',
+      状态: { 在谈列表, 简历经历: [], 简历教育: [], 简历技能: [] },
+      派发: mock派发,
+    };
+    const 用户 = userEvent.setup();
+    渲染();
+    await 用户.click(screen.getByRole('button', { name: '举报' }));
+    expect(screen.getByRole('dialog', { name: '举报' })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '骚扰' }));
+    await 用户.click(screen.getByRole('button', { name: /同时屏蔽铨衡人才/ }));
+    await 用户.click(screen.getByRole('button', { name: '提交举报' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '拉黑', 名称: '铨衡人才' });
+    expect(screen.queryByRole('dialog', { name: '举报' })).toBeNull();
+  });
+});
+
 // ── review-r3：换会话 scope 隔离的源码合同（key 重挂 + layout-effect 代际）────────
 describe('真人会话 · review-r3 scope 隔离合同', () => {
   it('双端父屏按 conversationId key 重挂 Backend 真人会话；卸载敏感代际用 useLayoutEffect', () => {

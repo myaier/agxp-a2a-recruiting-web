@@ -10,6 +10,7 @@
 // 2026-08-28 P2 加入第十个域 facade：附件简历（resume-files 上传/替换/删除/解析/下载）。
 // 2026-08-29 P5 加入第十一个域 facade：MatchCase（双端 match-cases 工作区/历史/详情/S0–S3 命令/叮嘱/PDF）。
 // 2026-08-30 P7 加入第十二个域 facade：真人会话（双端 conversations 收件箱/详情/消息/发送/已读）。
+// 2026-09-01 P8 加入第十三个域 facade：P8 控制面（账号安全/换绑/退出其他设备/导出/注销/反馈/举报）。
 // 根 HTTP招聘数据源 是各域的交集，创建HTTP招聘数据源 只组合现有实现，不给既有域新增空方法，
 // 也不改变 URL、body、DTO 校验、错误映射或幂等行为。各域协议代码原样留在对应域文件里。
 
@@ -28,6 +29,7 @@ import type { 发现推荐数据源 } from './招聘数据源/发现推荐';
 import type { 附件简历数据源 } from './招聘数据源/附件简历';
 import type { MatchCase数据源 } from './招聘数据源/MatchCase';
 import type { 真人会话数据源 } from './招聘数据源/真人会话';
+import type { P8控制面数据源 } from './招聘数据源/P8控制面';
 import { 创建会话数据源 } from './招聘数据源/会话';
 import { 创建目录数据源 } from './招聘数据源/目录';
 import { 创建简历数据源 } from './招聘数据源/简历';
@@ -40,6 +42,7 @@ import { 创建发现推荐数据源 } from './招聘数据源/发现推荐';
 import { 创建附件简历数据源 } from './招聘数据源/附件简历';
 import { 创建MatchCase数据源 } from './招聘数据源/MatchCase';
 import { 创建真人会话数据源 } from './招聘数据源/真人会话';
+import { 创建P8控制面数据源 } from './招聘数据源/P8控制面';
 
 export interface HTTP招聘数据源依赖 {
   client: Pick<BFF客户端, '请求' | '请求二进制'>;
@@ -49,7 +52,7 @@ export interface HTTP招聘数据源依赖 {
 
 export type HTTP招聘数据源 = 会话数据源 & 目录数据源 & 简历数据源 &
   意向数据源 & 岗位数据源 & 组织数据源 & 隐私数据源 & Agent规则数据源 &
-  发现推荐数据源 & 附件简历数据源 & MatchCase数据源 & 真人会话数据源;
+  发现推荐数据源 & 附件简历数据源 & MatchCase数据源 & 真人会话数据源 & P8控制面数据源;
 
 export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP招聘数据源 {
   const 请求 = deps.client.请求;
@@ -66,5 +69,6 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
     ...创建附件简历数据源(deps.client),
     ...创建MatchCase数据源(deps.client),
     ...创建真人会话数据源(请求),
+    ...创建P8控制面数据源(请求),
   };
 }

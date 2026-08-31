@@ -2,22 +2,73 @@
 // 「对现雇主隐身」在 Backend 模式必须走 操作.设置雇主隐私（服务端成功先于任何本地提交），
 // 绝不派发本地 切设置开关 假成功；服务端隐私未水合（隐私快照 null）时开关禁用，
 // 点击不产生任何写入、也不弹出关闭确认。关闭确认弹层的文案保持字节级不变。
+//
+// Task 4 追加账号行测试：Backend 只按需读取凭证（零会话请求）、显示服务端掩码或中性
+// 占位（绝不出现硬编码手机号）；Mock 设置页字节级不变且零 P8 读取；账号与安全入口保持。
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 设置 from './设置';
 import { 初始状态 } from '../状态/初始状态';
 import { BFF隐私快照样本 } from '../测试/BFF样本';
 import { BFF错误 } from '../数据/HTTP客户端';
+import { 路径 } from '../路由/路径表';
+import type { P8Credential, P8Session } from '../数据/招聘数据源/P8控制面';
+import type { P8资源快照 } from '../状态/后端/类型';
+
+const 导航 = vi.hoisted(() => ({ 返回: vi.fn(), 跳转: vi.fn(), 替换跳转: vi.fn() }));
+vi.mock('../路由/导航钩子', () => ({ use导航: () => 导航 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
-vi.mock('../路由/导航钩子', () => ({
-  use导航: () => ({ 返回: vi.fn(), 跳转: vi.fn(), 替换跳转: vi.fn() }),
-}));
+
+// ── P8 账号快照/操作桩（缺方法立即 TypeError，绝不静默 no-op）──
+
+const 手机凭证: P8Credential = {
+  credentialId: 'cred_0000000000000001',
+  provider: 'phone_otp',
+  display: '+86 138 **** 0000',
+  verifiedAt: '2026-08-20T10:00:00Z',
+};
+
+function 空快照<T>(): P8资源快照<T> {
+  return { phase: 'idle', refreshing: false, data: null, error: null, generation: 0 };
+}
+
+function 成功快照<T>(data: T): P8资源快照<T> {
+  return { phase: 'success', refreshing: false, data, error: null, generation: 1 };
+}
+
+function P8操作桩(覆盖: Record<string, unknown> = {}) {
+  return {
+    设置P8账号范围: vi.fn(),
+    加载P8凭证: vi.fn(async () => undefined),
+    加载P8会话: vi.fn(async () => undefined),
+    开始P8手机号换绑: vi.fn(),
+    完成P8手机号换绑: vi.fn(),
+    退出P8其他设备: vi.fn(),
+    退出登录: vi.fn(async () => undefined),
+    ...覆盖,
+  };
+}
+
+/** Backend 测试的 后端状态 底座：隐私快照按测试覆盖，P8 快照恒给全形状。 */
+function 后端底座(覆盖: { 隐私快照?: typeof BFF隐私快照样本 | null; 凭证?: P8资源快照<P8Credential[]> } = {}) {
+  return {
+    隐私快照: 覆盖.隐私快照 !== undefined ? 覆盖.隐私快照 : BFF隐私快照样本,
+    credentials: 覆盖.凭证 ?? 空快照<P8Credential[]>(),
+    sessions: 空快照<P8Session[]>(),
+  };
+}
+
+beforeEach(() => {
+  导航.返回.mockClear();
+  导航.跳转.mockClear();
+  导航.替换跳转.mockClear();
+});
 
 describe('设置 · Backend 隐私写线', () => {
   it('Backend 对现雇主隐身使用 Privacy operation，成功前不派发本地 toggle', async () => {
@@ -26,8 +77,10 @@ describe('设置 · Backend 隐私写线', () => {
     const 派发 = vi.fn();
     mock应用状态 = {
       状态: { 设置开关: { ...初始状态.设置开关, 对现雇主隐身: true } },
-      派发, 操作: { 设置雇主隐私, 退出登录: vi.fn() },
-      数据源模式: 'backend', 后端状态: { 隐私快照: BFF隐私快照样本 },
+      派发,
+      操作: { 设置雇主隐私, ...P8操作桩() },
+      数据源模式: 'backend',
+      后端状态: 后端底座(),
     };
     render(<MemoryRouter><设置 /></MemoryRouter>);
     await 用户.click(screen.getByRole('switch', { name: '对现雇主隐身' }));
@@ -43,8 +96,10 @@ describe('设置 · Backend 隐私写线', () => {
     const 派发 = vi.fn();
     mock应用状态 = {
       状态: { 设置开关: { ...初始状态.设置开关, 对现雇主隐身: false } },
-      派发, 操作: { 设置雇主隐私, 退出登录: vi.fn() },
-      数据源模式: 'backend', 后端状态: { 隐私快照: null },
+      派发,
+      操作: { 设置雇主隐私, ...P8操作桩() },
+      数据源模式: 'backend',
+      后端状态: 后端底座({ 隐私快照: null }),
     };
     render(<MemoryRouter><设置 /></MemoryRouter>);
     // 仓库未装 @testing-library/jest-dom：disabled 用原生属性断言
@@ -62,13 +117,87 @@ describe('设置 · Backend 隐私写线', () => {
     const 派发 = vi.fn();
     mock应用状态 = {
       状态: { 设置开关: { ...初始状态.设置开关, 对现雇主隐身: false } },
-      派发, 操作: { 设置雇主隐私, 退出登录: vi.fn() },
-      数据源模式: 'backend', 后端状态: { 隐私快照: BFF隐私快照样本 },
+      派发,
+      操作: { 设置雇主隐私, ...P8操作桩() },
+      数据源模式: 'backend',
+      后端状态: 后端底座(),
     };
     render(<MemoryRouter><设置 /></MemoryRouter>);
     await 用户.click(screen.getByRole('switch', { name: '对现雇主隐身' }));
     // 409 version_conflict → 现有错误文案映射（同 发布岗位 failed-save 断言）
     expect(await screen.findByText('数据已在其他地方更新，请重试')).toBeTruthy();
     expect(派发).not.toHaveBeenCalled();
+  });
+});
+
+describe('设置 · 账号行（P8 Task 4）', () => {
+  it('Backend 只按需读取凭证（零会话请求、零账号范围登记），显示服务端掩码', async () => {
+    const 操作 = P8操作桩();
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作,
+      数据源模式: 'backend',
+      后端状态: 后端底座({ 凭证: 成功快照([手机凭证]) }),
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    await waitFor(() => expect(操作.加载P8凭证).toHaveBeenCalledTimes(1));
+    expect(操作.加载P8会话).not.toHaveBeenCalled();
+    expect(操作.设置P8账号范围).not.toHaveBeenCalled();
+    expect(screen.getByText('+86 138 **** 0000')).toBeTruthy();
+    expect(screen.queryByText('138 **** 6021')).toBeNull();
+  });
+
+  it('Backend 凭证未成功时手机号显示中性占位，绝不回退硬编码手机号', async () => {
+    const 操作 = P8操作桩();
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作,
+      数据源模式: 'backend',
+      后端状态: 后端底座({ 凭证: { ...空快照<P8Credential[]>(), phase: 'loading', refreshing: true } }),
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    await waitFor(() => expect(操作.加载P8凭证).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.queryByText('138 **** 6021')).toBeNull();
+  });
+
+  it('Backend 凭证成功但无 phone_otp 行时显示「未绑定」', () => {
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: P8操作桩(),
+      数据源模式: 'backend',
+      后端状态: 后端底座({
+        凭证: 成功快照([{
+          credentialId: 'cred_0000000000000002',
+          provider: 'wechat',
+          display: '微信 · 已绑定',
+          verifiedAt: '2026-08-21T10:00:00Z',
+        }]),
+      }),
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    expect(screen.getByText('未绑定')).toBeTruthy();
+  });
+
+  it('Mock 设置页字节级不变：固定手机号原样、账号与安全入口保持、零 P8 读取', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = P8操作桩();
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: { ...操作, 设置雇主隐私: vi.fn() },
+      数据源模式: 'mock',
+      后端状态: 后端底座(),
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    expect(screen.getByText('138 **** 6021')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /账号与安全/ }));
+    expect(导航.跳转).toHaveBeenCalledWith(路径.账号安全);
+    expect(操作.加载P8凭证).not.toHaveBeenCalled();
+    expect(操作.加载P8会话).not.toHaveBeenCalled();
+    expect(操作.设置P8账号范围).not.toHaveBeenCalled();
   });
 });

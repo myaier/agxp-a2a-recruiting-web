@@ -461,7 +461,8 @@ describe('HTTP 招聘数据源', () => {
   // Task 2（P2）：第十个域 facade（附件简历）一并组合进根 facade。
   // Task 1（P5）：第十一个域 facade（MatchCase）一并组合进根 facade。
   // Task 1（P7）：第十二个域 facade（真人会话）一并组合进根 facade。
-  it('根 facade 组合十二个域且不丢公开方法', () => {
+  // Task 1（P8）：第十三个域 facade（P8 控制面）一并组合进根 facade。
+  it('根 facade 组合十三个域且不丢公开方法', () => {
     const source = 创建HTTP招聘数据源(依赖());
     expect(Object.keys(source).sort()).toEqual([
       '保存简历', '保存招聘方档案', '创建岗位', '创建意向', '创建首次意向', '创建企业管理员申请',
@@ -490,6 +491,10 @@ describe('HTTP 招聘数据源', () => {
       '决定P5S0', '决定P5S1', '决定P5S2', '决定P5S3', '新增P5叮嘱', '读取P5简历PDF',
       // P7：真人会话域
       '读取会话列表', '读取会话', '读取消息', '发送消息', '标为已读',
+      // P8：控制面域（账号安全/换绑/导出/注销/反馈/举报）
+      '读取P8凭证', '读取P8会话', '开始P8手机号换绑', '完成P8手机号换绑', '退出P8其他设备',
+      '创建P8数据导出', '读取P8数据导出', '取P8数据导出下载地址', '请求P8账号注销',
+      '提交P8反馈', '提交P8举报',
     ].sort());
     // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
     expect(Object.keys(source)).not.toContain('读取公开岗位');
@@ -573,6 +578,33 @@ describe('HTTP 招聘数据源', () => {
     });
     expect(请求Mock.mock.calls[0][0]).toEqual({
       path: '/api/v1/recruiter/conversations', 不缓存: true,
+    });
+  });
+
+  // Task 1（P8）：第十三个域 facade 组合后，创建导出无 body、带调用方幂等键并开严格信封。
+  it('根 facade 组合后 P8 创建数据导出无 body 且走严格信封', async () => {
+    const 导出ID = `exp_${'0123456789abcdef'.repeat(2)}`;
+    请求Mock.mockResolvedValueOnce({
+      result: {
+        export_id: 导出ID,
+        status: 'ready',
+        created_at: '2026-08-30T00:00:00Z',
+        expires_at: null,
+        download_ready: true,
+      },
+      etag: null,
+      requestId: 'p8',
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.创建P8数据导出('p8-export-key-0001')).resolves.toMatchObject({
+      exportId: 导出ID,
+      status: 'ready',
+      expiresAt: null,
+      downloadReady: true,
+    });
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/me/data-exports', method: 'POST',
+      幂等: true, 幂等键: 'p8-export-key-0001', 严格信封: true,
     });
   });
 });
