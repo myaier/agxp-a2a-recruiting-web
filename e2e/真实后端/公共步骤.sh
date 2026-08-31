@@ -138,8 +138,17 @@ settle(){ ab wait --load networkidle >/dev/null 2>&1 || true; }
 
 # 按钮一律按可访问名称点。产品里有一类按钮的名称带 CSS ::before 画出来的选中勾
 # （如「✓ 全职」），所以默认用子串匹配；名称唯一且要防误配时用 click_button_exact。
-click_button(){ ab find role button click --name "$1" >/dev/null; }
-click_button_exact(){ ab find role button click --name "$1" --exact >/dev/null; }
+#
+# 所有 find 都走 find_retry：切屏后 Chrome 的辅助功能树重建是秒级瞬态——DOM 与像素
+# 都已就位、`wait --text` 也能过，唯独此刻的 find 会拿旧屏/塌缩树扑空（#run12 的
+# 姓名行 find 失败、数秒后同屏同参成功）。单发 find 在真实栈上等于掷骰子。
+find_retry(){
+  local tries=0
+  while [ "$tries" -lt 30 ]; do ab find "$@" && return 0; tries=$((tries + 1)); sleep 1; done
+  return 1
+}
+click_button(){ find_retry role button click --name "$1" >/dev/null; }
+click_button_exact(){ find_retry role button click --name "$1" --exact >/dev/null; }
 
 # 返回栏的 ‹ 键（src/组件/通用.tsx 返回栏，可访问名称「返回」）
 click_back(){ click_with_retry '返回'; }
@@ -259,7 +268,7 @@ _read_local_otp(){
 # （`+ local label=… value=824913 …`）。所以这里既不收 local 也不自己关 xtrace，
 # 直接用 $2 传进去 —— 抑制的责任完全落在 _login 那一段。
 _fill_secret(){
-  ab find label "$1" fill "$2" >/dev/null
+  find_retry label "$1" fill "$2" >/dev/null
 }
 
 # $1 会话名 $2 手机号 $3 身份大卡名 $4 该角色主壳的 hash
@@ -277,8 +286,8 @@ _login(){
   ab wait --fn "location.hash === '$shell_hash' || document.body.innerText.includes('获取验证码')" >/dev/null
   case "$(ab get url)" in *"$shell_hash") return 0 ;; esac
 
-  ab find label 手机号 fill "$phone" >/dev/null
-  ab find role button click --name 获取验证码 >/dev/null
+  find_retry label 手机号 fill "$phone" >/dev/null
+  find_retry role button click --name 获取验证码 >/dev/null
   # backend 模式下 begin 是一次真实的 BFF 网络往返，验证码格要等响应成功才渲染
   # （src/屏幕/登录.tsx：剩余秒 非 null 才渲染验证码格）。读 OTP 文件只要几毫秒，
   # 中间不先等格出现，就是在拿毫秒赌一次后端往返 —— mock 模式同步渲染看不出来，

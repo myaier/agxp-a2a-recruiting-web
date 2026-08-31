@@ -84,7 +84,7 @@ click_after_hydrate '我'
 click_after_hydrate '我的简历'
 assert_text "$BASE_NAME"
 click_button '姓名（递交简历后披露）'
-ab find label '姓名（递交简历后披露）' fill "$TEMP_NAME" >/dev/null
+find_retry label '姓名（递交简历后披露）' fill "$TEMP_NAME" >/dev/null
 ab press Enter >/dev/null
 assert_text "$TEMP_NAME"
 reload_and_assert "$TEMP_NAME"
@@ -100,13 +100,13 @@ assert_text '添加求职期望'
 # 求职类型默认就是「全职」（src/状态/领域/候选资料.ts:95 空意向草稿），对应 social_full_time
 click_button '混合'
 click_button '工作城市'
-ab find placeholder '搜索城市 / 省份' fill "$CATALOG_CITY" >/dev/null
+find_retry placeholder '搜索城市 / 省份' fill "$CATALOG_CITY" >/dev/null
 # 候选芯片是异步搜索回来的，等它出现再点
 wait_text "$CATALOG_CITY"
 click_button_exact "$CATALOG_CITY"
 click_button_exact '保存'
 click_button '期望职位'
-ab find placeholder '搜索职位' fill "$CATALOG_JOB" >/dev/null
+find_retry placeholder '搜索职位' fill "$CATALOG_JOB" >/dev/null
 wait_text "$CATALOG_JOB"
 click_button_exact "$CATALOG_JOB"
 click_button_exact '保存'
@@ -214,7 +214,7 @@ assert_absent "$TEMP_FILE_NAME"
 # ── 6. 还原基准姓名 ─────────────────────────────────────────────────
 MILESTONE='还原姓名'
 click_button "$TEMP_NAME"
-ab find label '姓名（递交简历后披露）' fill "$BASE_NAME" >/dev/null
+find_retry label '姓名（递交简历后披露）' fill "$BASE_NAME" >/dev/null
 ab press Enter >/dev/null
 assert_text "$BASE_NAME"
 reload_and_assert "$BASE_NAME"

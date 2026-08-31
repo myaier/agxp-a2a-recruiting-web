@@ -70,14 +70,14 @@ click_after_hydrate '设置'
 click_after_hydrate '招聘名片' prefix
 assert_text "$BASE_RECRUITER_NAME"
 assert_value '职务' "$BASE_RECRUITER_TITLE"
-ab find label 职务 fill "$TEMP_RECRUITER_TITLE" >/dev/null
+find_retry label 职务 fill "$TEMP_RECRUITER_TITLE" >/dev/null
 click_button_exact '保存'
 settle
 reload_and_assert "$TEMP_RECRUITER_TITLE"
 assert_value '职务' "$TEMP_RECRUITER_TITLE"
 
 MILESTONE='名片还原职务'
-ab find label 职务 fill "$BASE_RECRUITER_TITLE" >/dev/null
+find_retry label 职务 fill "$BASE_RECRUITER_TITLE" >/dev/null
 click_button_exact '保存'
 settle
 reload_and_assert "$BASE_RECRUITER_NAME"
@@ -91,14 +91,14 @@ click_after_hydrate '我'
 click_after_hydrate '公司资料'
 click_button '公司介绍'
 assert_value '公司介绍' "$BASE_COMPANY_INTRO"
-ab find label 公司介绍 fill "$TEMP_COMPANY_INTRO" >/dev/null
+find_retry label 公司介绍 fill "$TEMP_COMPANY_INTRO" >/dev/null
 click_button_exact '保存'
 settle
 ab reload >/dev/null
 assert_value '公司介绍' "$TEMP_COMPANY_INTRO"
 
 MILESTONE='公司介绍还原'
-ab find label 公司介绍 fill "$BASE_COMPANY_INTRO" >/dev/null
+find_retry label 公司介绍 fill "$BASE_COMPANY_INTRO" >/dev/null
 click_button_exact '保存'
 settle
 ab reload >/dev/null
@@ -119,22 +119,22 @@ click_button_exact "$CATALOG_ROOT"
 click_button_exact "$CATALOG_GROUP"
 click_button_exact "$CATALOG_LEAF"
 # 选完叶子产品会拿叶子名预填岗位名称（发布岗位.tsx:601-604），所以名称必须在选类别之后再写
-ab find placeholder '必填，如：资深后端工程师 · 交易网关' fill "$TEMP_JOB" >/dev/null
+find_retry placeholder '必填，如：资深后端工程师 · 交易网关' fill "$TEMP_JOB" >/dev/null
 click_button_exact '混合'
 click_button_exact '下一步'
 assert_text '职位描述'
-ab find label 职位描述 fill "$JOB_DESC" >/dev/null
+find_retry label 职位描述 fill "$JOB_DESC" >/dev/null
 click_button_exact '下一步'
 assert_text '职位要求'
-ab find label 薪资下限 fill '30' >/dev/null
-ab find label 薪资上限 fill '45' >/dev/null
+find_retry label 薪资下限 fill '30' >/dev/null
+find_retry label 薪资上限 fill '45' >/dev/null
 # 社招全职必须确认年薪月数（发布岗位.tsx:251）；滚轮初值就是 12 薪，直接点完成收下这一档
 click_button '年薪月数'
 click_button_exact '完成'
-ab find placeholder '搜索城市名，从下方候选选择' fill "$CATALOG_CITY" >/dev/null
+find_retry placeholder '搜索城市名，从下方候选选择' fill "$CATALOG_CITY" >/dev/null
 wait_text "$CATALOG_CITY"
 click_button_exact "$CATALOG_CITY"
-ab find placeholder '如：浦东新区世纪大道 1568 号中建大厦 28 层' fill "$JOB_OFFICE" >/dev/null
+find_retry placeholder '如：浦东新区世纪大道 1568 号中建大厦 28 层' fill "$JOB_OFFICE" >/dev/null
 click_button_exact '发布岗位并开始寻访'
 # 发布成功之后产品自己把我们送回企业主壳（发布岗位.tsx:357 进企业主壳）——
 # 底部导航的「我」出现就是服务端已经收下这个岗位的信号
@@ -154,9 +154,9 @@ MILESTONE='编辑岗位'
 click_button_exact '编辑'
 assert_text '编辑岗位'
 click_button_exact '职位描述'
-ab find label 职位描述 fill "$JOB_DESC_2" >/dev/null
+find_retry label 职位描述 fill "$JOB_DESC_2" >/dev/null
 click_button_exact '职位要求'
-ab find placeholder '用你自己的话写' fill "$JOB_SCREEN" >/dev/null
+find_retry placeholder '用你自己的话写' fill "$JOB_SCREEN" >/dev/null
 click_button_exact '保存'
 # 保存成功产品才返回岗位管理（发布岗位.tsx:344-346），行重新出现就是写已经落库
 assert_job_row "$TEMP_JOB" '在招'
