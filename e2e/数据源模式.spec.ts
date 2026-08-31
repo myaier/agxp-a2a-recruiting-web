@@ -100,7 +100,7 @@ test.describe('Mock 数据源回归 @mock', () => {
 
   test('Mock 规则页与双端筛选抽屉全程零 API 请求 @mock', async ({ page }) => {
     // P6（Task 8）：双端规则页（/rules、/hr/agent-settings）+ 双端筛选抽屉（看市场 / 候选推荐）
-    // 在 Mock 下全部走本地状态；本地新增/开关/编辑各做一次，断言 P6 的 agent-rule 请求恒为零。
+    // 在 Mock 下全部走本地状态；本地新增/展示/编辑各走一次，断言 P6 的 agent-rule 请求恒为零。
     test.setTimeout(120_000);
     const apiRequests: string[] = [];
     page.on('request', (request) => {
@@ -134,17 +134,14 @@ test.describe('Mock 数据源回归 @mock', () => {
     await page.goto('/#/rules');
     await expect(page.getByRole('button', { name: /只投双休岗位/ })).toBeVisible({ timeout: 10_000 });
 
-    // ── 切到招聘端：/hr/agent-settings 的 Mock 开关一次翻转 ──
+    // ── 切到招聘端：Mock 定稿规则只展示，不提供维护型开关 ──
     await page.goto('/#/identity?switch=1&from=app');
     await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
     await page.goto('/#/hr/agent-settings');
-    const 规则开关 = page.getByRole('switch', { name: '规则：竞对在职候选人不接触、不推进' });
-    await expect(规则开关).toBeVisible({ timeout: 10_000 });
-    await expect(规则开关).toHaveAttribute('aria-checked', 'true');
-    await 规则开关.click();
-    await expect(规则开关).toHaveAttribute('aria-checked', 'false');
-    await expect(page.getByText('2 条生效')).toBeVisible();
+    await expect(page.getByText('竞对在职候选人不接触、不推进')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('switch')).toHaveCount(0);
+    await expect(page.getByText('3 条生效')).toBeVisible();
 
     // ── 招聘端候选筛选抽屉（推荐子视图）：本地改一条规则 ──
     await page.goto('/#/hr');
