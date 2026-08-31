@@ -68,7 +68,18 @@ write_journey_failure(){
 
 ab(){ agent-browser --session "$AGENT_BROWSER_SESSION" "$@"; }
 
-wait_text(){ ab wait --text "$1" >/dev/null; }
+# 文本等待带 3 次有界重试：`wait --text` 的超时写死 25s，而 dev 栈上写请求（保存类
+# PATCH 要过 BFF+hub 两跳）实测可以慢过它——#run17 的快照实证断言超时那一刻业务
+# 内容明明就绪（编辑弹层开着、35-50K 已写上）。保持 wait --text 的调用形态不变
+# （合同测试靠它核对缺席表），只在外面补次数。
+wait_text(){
+  local tries=0
+  while [ "$tries" -lt 3 ]; do
+    ab wait --text "$1" >/dev/null 2>&1 && return 0
+    tries=$((tries + 1))
+  done
+  return 1
+}
 
 assert_text(){ wait_text "$1"; }
 
@@ -96,12 +107,22 @@ assert_pressed(){
 # 先 wait 再读：分区编辑页在企业档案水合之前根本不渲染这个文本域（公司档案分区编辑.tsx:244-254），
 # 等到它出现就等于等到了权威快照。
 assert_value(){
-  local sel got
+  local sel got tries=0
   sel="[aria-label=\"$1\"]"
-  ab wait "$sel" >/dev/null || return 1
-  got="$(ab get value "$sel")" || return 1
-  if [ "$got" = "$2" ]; then return 0; fi
-  echo "字段「$1」的值不是期望值：读到「${got}」" >&2
+  # 与 wait_text 同理：分区编辑页在档案快照水合前不渲染文本域，快照慢时 25s 不够。
+  # 三次有界重试保持「先等出现、出现才读值」的原合同；值错了到点后按最终读数判。
+  while [ "$tries" -lt 3 ]; do
+    if ab wait "$sel" >/dev/null 2>&1; then
+      got="$(ab get value "$sel")" || return 1
+      [ "$got" = "$2" ] && return 0
+    fi
+    tries=$((tries + 1))
+    sleep 1
+  done
+  if ab wait "$sel" >/dev/null 2>&1; then
+    got="$(ab get value "$sel" 2>/dev/null)"
+    echo "字段「$1」的值不是期望值：读到「${got}」" >&2
+  fi
   return 1
 }
 
