@@ -54,13 +54,18 @@ import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
 import type { 资料缓存快照 } from '../数据/资料缓存';
 import { 读资料缓存 } from '../数据/资料缓存';
+import type { P8导出恢复存储 } from '../数据/P8导出恢复';
 import type { PDF对象租约 } from '../数据/PDF对象租约';
 import { 轻提示 } from '../组件/轻提示';
-import type { 应用操作, 后端状态, 后端操作依赖, P7待定意图, P7已读位置记录 } from './后端/类型';
+import type {
+  应用操作, 后端状态, 后端操作依赖, P7待定意图, P7已读位置记录,
+  P8待定意图,
+} from './后端/类型';
 import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
 import { 创建发现推荐操作, 创建空P4发现状态 } from './后端/发现推荐操作';
 import { 创建MatchCase操作, 创建空P5MatchCase状态, 清P5MatchCase引用 } from './后端/MatchCase操作';
 import { 创建真人会话操作, 创建空P7会话状态, 清P7会话引用 } from './后端/真人会话操作';
+import { 创建P8账号安全操作, 创建空P8控制面状态, 清P8控制面引用 } from './后端/P8控制面操作';
 import { use真人会话事件 } from './后端/use真人会话事件';
 import { 创建招聘事件源 } from '../数据/招聘事件源';
 import { 创建候选操作 } from './后端/候选操作';
@@ -478,6 +483,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     ...创建空P5MatchCase状态(),
     // P7：真人会话内存态快照（收件箱/详情/消息页）空底座起步；绝不进 资料持久化
     ...创建空P7会话状态(),
+    // P8：账号控制面内存态快照（凭证/会话/导出）空底座起步；绝不进 资料持久化
+    ...创建空P8控制面状态(),
     // P2：附件库权威快照种子为 null（Backend 初始不带任何演示附件行）
     附件简历库: null,
   }));
@@ -517,6 +524,14 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const P7可见收件箱 = useRef<Record<P7角色, boolean>>({ candidate: false, recruiter: false });
   const P7可见会话 = useRef<Record<P7角色, string | null>>({ candidate: null, recruiter: null });
   const P7已读位置 = useRef(new Map<string, P7已读位置记录>());
+  // P8 Task 3：账号控制面运行时引用 —— 范围代际 / 账号可见 / 读锁 / 待定意图 /
+  // 导出恢复（先置 null，Task 5 供给 subject 绑定适配器）。一次性初始化；
+  // 会话转移由下方主体（不含角色）effect 与 会话操作 的清理口统一复位。
+  const P8范围代际 = useRef(0);
+  const P8账号可见 = useRef(false);
+  const P8读取锁 = useRef(new Map<'credentials' | 'sessions' | 'export', Promise<void>>());
+  const P8待定意图 = useRef(new Map<string, P8待定意图<unknown>>());
+  const P8导出恢复 = useRef<P8导出恢复存储 | null>(null);
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
   use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识 });
 
@@ -640,6 +655,22 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [后端状态.主体]);
 
+  // ── P8 Task 3：账号控制面会话边界的反应式清理 ─────────────────────────────────
+  // 与 P5/P7 不同，P8 的清理键只认主体（账号资源以 subject 为隔离边界，不按
+  // candidate/recruiter 重复保存）：登出 / 401 清理 / 换主体登录在状态上表现为
+  // 「主体基串」变化，这里清三块账号快照并复位四个引用；同主体切角色基串不变，
+  // 已确认快照保留（切身份 里的显式栅栏递增负责作废上个角色的在飞读写）。
+  const P8会话基 = useRef('');
+  useEffect(() => {
+    const 基 = 后端状态.主体 === null ? '' : 后端状态.主体.subject_id;
+    if (P8会话基.current === 基) return;
+    P8会话基.current = 基;
+    清P8控制面引用({ P8范围代际, P8账号可见, P8读取锁, P8待定意图 });
+    设后端状态((旧) => ({ ...旧, ...创建空P8控制面状态() }));
+    // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [后端状态.主体]);
+
   const 操作 = useMemo<应用操作>(
     () => {
       const deps: 后端操作依赖 = {
@@ -666,6 +697,11 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         P7可见收件箱,
         P7可见会话,
         P7已读位置,
+        P8范围代际,
+        P8账号可见,
+        P8读取锁,
+        P8待定意图,
+        P8导出恢复,
       };
       return {
         ...创建会话操作(deps),
@@ -683,6 +719,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         ...创建MatchCase操作(deps),
         // P7 Task 2：真人会话操作（内存态快照 + 意图键化发送对账 + forward-only 已读），同一把 deps
         ...创建真人会话操作(deps),
+        // P8 Task 3：账号控制面操作（内存态快照 + 单飞读取 + 意图键化换绑/退出其他设备），
+        // 同一把 deps；Task 3 只组合 P8账号安全操作 六法（导出/注销 Task 5、合规 Task 6–7）
+        ...创建P8账号安全操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定

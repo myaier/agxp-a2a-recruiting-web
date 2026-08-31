@@ -27,8 +27,9 @@ import type { 页面隐私快照 } from '../../数据/招聘数据源类型';
 import { 创建初始状态, 初始状态 } from '../初始状态';
 import { 归约 } from '../应用状态';
 import { 创建空P4发现状态 } from './发现推荐操作';
-import type { 后端操作依赖, 后端状态, P4运行时引用, P7运行时引用 } from './类型';
+import type { 后端操作依赖, 后端状态, P4运行时引用, P7运行时引用, P8运行时引用 } from './类型';
 import { 创建会话操作, 清账号状态, 水合角色数据 } from './会话操作';
+import { 创建空P8控制面状态 } from './P8控制面操作';
 
 /** 依赖 helper：派发重放 归约 到可变 状态引用，断言可以读最终 state。 */
 function 创建会话测试依赖(后端: HTTP招聘数据源) {
@@ -58,6 +59,8 @@ function 创建会话测试依赖(后端: HTTP招聘数据源) {
       ...创建空P5MatchCase状态(),
     // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
     ...创建空P7会话状态(),
+      // P8：Task 3 起 后端状态 extends P8控制面状态（这里的用例不触达它们）
+      ...创建空P8控制面状态(),
       // P2：附件库权威快照（只追加，不动 P6 字段）
       附件简历库: null,
     } },
@@ -351,6 +354,8 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
     ...创建空P5MatchCase状态(),
     // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
     ...创建空P7会话状态(),
+    // P8：Task 3 起 后端状态 extends P8控制面状态（P8 清理用例会播残留）
+    ...创建空P8控制面状态(),
     // P2：附件库权威快照（只追加，不动 P6 字段）
     附件简历库: null,
   };
@@ -383,9 +388,14 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
     P7可见收件箱: { current: { candidate: false, recruiter: false } },
     P7可见会话: { current: { candidate: null, recruiter: null } },
     P7已读位置: { current: new Map<string, never>() },
+    // P8 Task 3：控制面运行时引用（范围代际 / 可见 / 读锁 / 待定意图；导出恢复 Task 5 接线）
+    P8范围代际: { current: 0 },
+    P8账号可见: { current: false },
+    P8读取锁: { current: new Map<'credentials' | 'sessions' | 'export', Promise<void>>() },
+    P8待定意图: { current: new Map<string, { key: string; request: unknown }>() },
   };
   return {
-    deps: deps as unknown as 后端操作依赖 & P4运行时引用 & P7运行时引用 & { 后端: HTTP招聘数据源 },
+    deps: deps as unknown as 后端操作依赖 & P4运行时引用 & P7运行时引用 & P8运行时引用 & { 后端: HTTP招聘数据源 },
     动作流,
     状态引用,
     最新后端状态: () => 后端值,
@@ -993,9 +1003,8 @@ describe('P2 附件支持域水合与清理', () => {
 // 五个引用（范围代际 / 待定意图 / 可见收件箱 / 可见会话 / 已读位置）复位。
 // 已读位置含 成功 / 在飞 / 终局拒绝 三态，任何 P7 值都不落持久化。
 
-describe('P7 真人会话会话清理', () => {
-  /** 在 后端状态 与五个 P7 引用里播上上个会话残留的痕迹。 */
-  function 播P7残留(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
+/** 在 后端状态 与五个 P7 引用里播上上个会话残留的痕迹（P7 / P8 清理用例共用）。 */
+function 播P7残留(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
     deps.设后端状态((旧) => ({
       ...旧,
       P7收件箱: {
@@ -1030,9 +1039,9 @@ describe('P7 真人会话会话清理', () => {
     deps.P7已读位置.current.set('p7:read:candidate:3003', {
       lastSuccessful: '4004', inFlight: '4005', terminalRejected: '4003',
     } as never);
-  }
+}
 
-  function 断言P7已清空(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
+function 断言P7已清空(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
     const 最新 = deps.后端状态引用.current;
     expect(最新.P7收件箱.candidate).toEqual({
       阶段: '未开始', 刷新中: false, items: [], nextCursor: null, 已加载页数: 0,
@@ -1046,8 +1055,9 @@ describe('P7 真人会话会话清理', () => {
     expect(deps.P7已读位置.current.size).toBe(0);
     expect(deps.P7可见收件箱.current).toEqual({ candidate: false, recruiter: false });
     expect(deps.P7可见会话.current).toEqual({ candidate: null, recruiter: null });
-  }
+}
 
+describe('P7 真人会话会话清理', () => {
   it('清账号状态 清空 P7 真人会话快照并复位全部引用', () => {
     const { deps } = 创建P6会话依赖(创建P6数据源桩());
     播P7残留(deps);
@@ -1088,6 +1098,118 @@ describe('P7 真人会话会话清理', () => {
     播P7残留(deps);
     await 操作.切身份('招聘方');
     断言P7已清空(deps);
+    expect(动作流).toContainEqual({ 型: '切身份', 到: '招聘方' });
+  });
+});
+
+// ── P8 Task 3：控制面域加入会话边界清理 ────────────────────────────
+// 普通登出 / 401 / 换主体三个转移口：三块 P8 快照回空底座 + 读锁与待定意图清空 +
+// 范围代际递增（在飞读写按旧代整包作废）。同主体切角色不同：P8 的清理键只认主体 ——
+// 已确认的共享账号快照保留，只递增范围代际并清待定意图。
+
+describe('P8 控制面会话清理', () => {
+  const 手机凭证DTO = {
+    credentialId: 'cred_0000000000000001',
+    provider: 'phone_otp' as const,
+    display: '+86 138 **** 0000',
+    verifiedAt: '2026-08-20T10:00:00Z',
+  };
+  const 会话DTO = {
+    sessionId: 'sess_0000000000000001',
+    createdAt: '2026-08-30T00:00:00Z',
+    expiresAt: '2026-09-05T00:00:00Z',
+    current: true,
+  };
+
+  /** 在 后端状态 与四个 P8 引用里播上上个会话残留的痕迹。 */
+  function 播P8残留(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
+    deps.设后端状态((旧) => ({
+      ...旧,
+      credentials: { phase: 'success', refreshing: false, data: [手机凭证DTO], error: null, generation: 3 },
+      sessions: { phase: 'success', refreshing: false, data: [会话DTO], error: null, generation: 3 },
+      dataExport: { phase: 'idle', refreshing: false, data: null, error: null, generation: 0 },
+    }));
+    deps.P8读取锁.current.set('sessions', Promise.resolve());
+    deps.P8待定意图.current.set('p8:退出其他设备', { key: 'idem-p8-residue', request: {} });
+    deps.P8账号可见.current = true;
+  }
+
+  function 断言P8已清空(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
+    const 空 = { phase: 'idle', refreshing: false, data: null, error: null, generation: 0 };
+    const 最新 = deps.后端状态引用.current;
+    expect(最新.credentials).toEqual(空);
+    expect(最新.sessions).toEqual(空);
+    expect(最新.dataExport).toEqual(空);
+    expect(deps.P8读取锁.current.size).toBe(0);
+    expect(deps.P8待定意图.current.size).toBe(0);
+    expect(deps.P8账号可见.current).toBe(false);
+    expect(deps.P8范围代际.current).toBeGreaterThan(0); // 范围代际递增：迟到读写按旧代作废
+  }
+
+  it('清账号状态 清空三块 P8 快照与引用；P4/P7/隐私/规则/附件清理恰好各一次', () => {
+    const { deps, 动作流 } = 创建P6会话依赖(创建P6数据源桩());
+    播P7残留(deps);
+    播P8残留(deps);
+    清账号状态(deps);
+    断言P7已清空(deps);
+    断言P8已清空(deps);
+    expect(deps.后端状态引用.current.附件简历库).toBeNull();
+    expect(deps.后端状态引用.current.隐私快照).toBeNull();
+    expect(deps.后端状态引用.current.候选规则快照).toEqual({});
+    expect(deps.后端状态引用.current.候选岗位推荐).toEqual({});
+    // 加 P8 不重复派发任何清理动作（各恰好一次）
+    const 次数 = (型: string) => 动作流.filter((条) => (条 as { 型: string }).型 === 型).length;
+    expect(次数('清后端隐私')).toBe(1);
+    expect(次数('清后端组织状态')).toBe(1);
+    expect(次数('清后端Agent规则')).toBe(1);
+    expect(次数('清后端草稿')).toBe(1);
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(deps.会话代际.current).toBe(1);
+  });
+
+  it('退出登录 清空 P8 控制面残留', async () => {
+    const { deps } = 创建P6会话依赖(创建P6数据源桩());
+    const 操作 = 创建会话操作(deps);
+    播P8残留(deps);
+    await 操作.退出登录();
+    断言P8已清空(deps);
+    expect(deps.后端状态引用.current.已登录).toBe(false);
+  });
+
+  it('完成手机登录 换主体时清 P8 控制面残留', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_a' })
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b' });
+    const { deps } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    await 操作.完成手机登录('1111');
+    播P8残留(deps);
+    await 操作.完成手机登录('2222');
+    断言P8已清空(deps);
+    expect(deps.主体标识引用.current).toBe('sub_b');
+  });
+
+  it('切身份 保留已确认 P8 快照：只递增范围代际并清待定意图（清理键只认主体）', async () => {
+    const { deps, 动作流 } = 创建P6会话依赖(创建P6数据源桩());
+    const 操作 = 创建会话操作(deps);
+    deps.主体标识引用.current = 'sub_1';
+    await 操作.完成手机登录('1111');
+    播P8残留(deps);
+    播P7残留(deps);
+    const 代际前 = deps.P8范围代际.current;
+    await 操作.切身份('招聘方');
+    // P7 照旧整域清空（角色基串变化）
+    断言P7已清空(deps);
+    // P8：三块快照保留（同主体共享账号事实不因切角色丢失）
+    const 最新 = deps.后端状态引用.current;
+    expect(最新.credentials).toMatchObject({ phase: 'success', data: [手机凭证DTO] });
+    expect(最新.sessions).toMatchObject({ phase: 'success', data: [会话DTO] });
+    expect(最新.dataExport).toEqual({ phase: 'idle', refreshing: false, data: null, error: null, generation: 0 });
+    // 但范围代际递增、读锁与待定意图清空：上个角色的在飞读写与未收口命令不再作数
+    expect(deps.P8范围代际.current).toBeGreaterThan(代际前);
+    expect(deps.P8读取锁.current.size).toBe(0);
+    expect(deps.P8待定意图.current.size).toBe(0);
     expect(动作流).toContainEqual({ 型: '切身份', 到: '招聘方' });
   });
 });
