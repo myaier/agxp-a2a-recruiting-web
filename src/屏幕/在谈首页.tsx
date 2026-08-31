@@ -21,6 +21,7 @@ import 在谈筛选层 from '../组件/在谈筛选层';
 import { 主页外壳, 代理横幅, 阶段标签, 滚动区, 白卡, 公司字标, use模拟加载, 骨架卡组 } from '../组件/通用';
 import 适配环 from '../组件/适配环';
 import { use应用状态, 取意向名 } from '../状态/应用状态';
+import { use适配分 } from '../状态/use适配分';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { MatchCase列表 } from './P5/MatchCase列表';
@@ -251,6 +252,8 @@ function Mock在谈首页() {
 }
 
 function 在谈卡({ 单, 按下 }: { 单: 在谈单; 按下: () => void }) {
+  // 分从行来(2026-08-31):卡上的环与详情页同一份计算分
+  const 计算适配分 = use适配分(单);
   return (
     <白卡 按下={按下} 类名={样式.卡}>
       {/* 公司头行：右侧列 = 适配环，薪资挂在环正下方（标注 2026-08-18：卡太高，
@@ -262,7 +265,7 @@ function 在谈卡({ 单, 按下 }: { 单: 在谈单; 按下: () => void }) {
           <div className={`${样式.公司简介} 单行`}>{单.公司简介}</div>
         </div>
         <div className={样式.右列}>
-          <适配环 分={单.适配分} 标={null} />
+          <适配环 分={计算适配分} 标={null} />
           <span className={`${样式.薪资} 薪资体`}>{单.薪资.replace('-', '–')}</span>
         </div>
       </div>
