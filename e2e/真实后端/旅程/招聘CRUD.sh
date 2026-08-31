@@ -130,7 +130,7 @@ click_after_hydrate '我'
 _stamp 发布岗位我后
 click_until_screen '岗位管理' '在招' prefix
 _stamp 发布岗位岗位管理后
-click_after_hydrate '发布新岗位' prefix
+click_until_screen '发布新岗位' '岗位基础信息' prefix
 _stamp 发布新岗位后
 assert_text '岗位基础信息'
 _stamp 向导屏后
