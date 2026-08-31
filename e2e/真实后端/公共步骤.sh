@@ -95,9 +95,18 @@ reload_and_assert(){ ab reload >/dev/null; wait_text "$1"; }
 # 选中态只读产品自己的 aria-pressed，选择器用产品的可访问名称 —— 不是 CSS module 类名，
 # 也不是 DOM 层级。要求严格等于字符串 true：属性缺失、false、空串都算没选中。
 assert_pressed(){
-  local name="$1" value
-  value="$(ab get attr "[aria-label=\"$name\"]" aria-pressed)" || return 1
-  [ "$value" = 'true' ]
+  local name="$1" value tries=0
+  # 带 15s 有界轮询：#run20 实证披露偏好屏的水合行比首屏慢数秒，裸读一次必然扑空；
+  # 切档后的 aria-pressed 翻面也是异步的，读到再判。
+  while [ "$tries" -lt 15 ]; do
+    value="$(ab get attr "[aria-label=\"$name\"]" aria-pressed 2>/dev/null)" \
+      && [ "$value" = 'true' ] && return 0
+    tries=$((tries + 1))
+    sleep 1
+  done
+  value="$(ab get attr "[aria-label=\"$name\"]" aria-pressed 2>/dev/null || printf '缺')"
+  echo "「${name}」没有处于选中态（实到 aria-pressed=${value}）" >&2
+  return 1
 }
 
 # 输入框 / 文本域里的值不是页面文本，wait --text 看不见它（React 把 value 写成属性，
