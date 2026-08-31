@@ -165,6 +165,12 @@ classify_fixture_failure(){
 # jq 与 node_modules/.bin/tsx 实现的：它们不在，任何证据合同都无从谈起。
 # 其余每一条 preflight 都排在运行目录与收尾 trap 之后，好让阻塞也带着报告落地。
 
+# 七个视觉场景冻结 Asia/Shanghai 取景（报告端逐字核对）。agent-browser 0.27.2 没有
+# timezone 开关，Chrome 的 Intl 解析跟随**浏览器进程**的 TZ：本导出保证 daemon 冷启动
+# 时解析出冻结值。daemon 已被别处（无 TZ）拉起时，后面的取景门会照常以 mismatch 阻塞，
+# 那是环境问题，不被这里悄悄吞掉。
+export TZ='Asia/Shanghai'
+
 need_command(){ command -v "$1" >/dev/null 2>&1 || blocked "缺少命令：$1"; }
 
 [ -x "$FRONT_ROOT/node_modules/.bin/tsx" ] || blocked '前端依赖未安装：node_modules/.bin/tsx'
