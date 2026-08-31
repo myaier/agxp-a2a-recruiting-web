@@ -114,7 +114,7 @@ beforeEach(() => {
 describe('Backend真人会话', () => {
   it('直达注册可见会话并读取详情+最新消息，卸载注销', () => {
     环境({});
-    const { unmount } = render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    const { unmount } = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     expect(mock应用状态.操作.设置P7会话范围).toHaveBeenCalledWith('candidate', '3003');
     expect(mock应用状态.操作.读取真人会话).toHaveBeenCalledWith('candidate', '3003');
     unmount();
@@ -127,7 +127,7 @@ describe('Backend真人会话', () => {
       items: [系统行, 文本('4004', 'recruiter', '你好，想约时间聊聊'), 文本('4005', 'candidate', '可以的')],
     };
     环境({ 消息 });
-    const { unmount } = render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    const { unmount } = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     expect(screen.getByText('双方已确认意向，现在可以直接沟通')).toBeTruthy();
     expect(screen.getByText('你好，想约时间聊聊').closest('[data-侧]')?.getAttribute('data-侧')).toBe('左');
     expect(screen.getByText('可以的').closest('[data-侧]')?.getAttribute('data-侧')).toBe('右');
@@ -135,7 +135,7 @@ describe('Backend真人会话', () => {
 
     // 招聘端视角：同一条 recruiter 消息落在右侧
     环境({ role: 'recruiter', 消息 });
-    render(<Backend真人会话 role="recruiter" conversationId="3003" />);
+    render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
     expect(screen.getByText('你好，想约时间聊聊').closest('[data-侧]')?.getAttribute('data-侧')).toBe('右');
     expect(screen.getByText('可以的').closest('[data-侧]')?.getAttribute('data-侧')).toBe('左');
   });
@@ -146,7 +146,7 @@ describe('Backend真人会话', () => {
       items: [系统行, 文本('4004', 'candidate', '在吗')],
     };
     环境({ 消息 });
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     await userEvent.click(screen.getByRole('button', { name: '加载更早' }));
     expect(mock应用状态.操作.追加更早消息).toHaveBeenCalledWith('candidate', '3003');
   });
@@ -161,7 +161,7 @@ describe('Backend真人会话', () => {
       详情: { 阶段: '失败', 刷新中: false, detail: null, error: '这段会话不存在或已不可访问', generation: 2 },
       消息: 成功消息,
     });
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     expect(screen.getByText('这段会话不存在或已不可访问')).toBeTruthy();
     // 消息保留旧成功内容 + 错误行
     expect(screen.getByText('在吗')).toBeTruthy();
@@ -172,7 +172,7 @@ describe('Backend真人会话', () => {
     const 发送 = vi.fn().mockResolvedValue({ status: 'confirmed' } as P7发送结果);
     环境({ 发送 });
     const 用户 = userEvent.setup();
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     const 输入框 = screen.getByRole('textbox', { name: '输入消息' });
     await 用户.type(输入框, '  你好  ');
     await 用户.type(输入框, '{Enter}');
@@ -200,7 +200,7 @@ describe('Backend真人会话', () => {
       消息: { 阶段: '成功', 刷新中: false, nextCursor: null, 已加载页数: 1, error: null, generation: 1, items: [系统行] },
     });
     const 用户 = userEvent.setup();
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     await 用户.type(screen.getByRole('textbox', { name: '输入消息' }), '在吗');
     await 用户.type(screen.getByRole('textbox', { name: '输入消息' }), '{Enter}');
     // 在飞：不乐观追加
@@ -215,7 +215,7 @@ describe('Backend真人会话', () => {
     } as P7发送结果);
     环境({ 发送 });
     const 用户 = userEvent.setup();
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     await 用户.type(screen.getByRole('textbox', { name: '输入消息' }), '你好{Enter}');
     expect(screen.getByText('暂时无法确认是否发送成功')).toBeTruthy();
     // 用户在结果未知时继续编辑新草稿，点「放弃本次发送」只清那条不可变正文键
@@ -239,7 +239,7 @@ describe('Backend真人会话', () => {
     } as P7发送结果);
     环境({ 发送 });
     const 用户 = userEvent.setup();
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     await 用户.type(screen.getByRole('textbox', { name: '输入消息' }), '你好{Enter}');
     expect(screen.getByText('消息仍在处理中，请稍后重试')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '放弃本次发送' })).toBeNull();
@@ -252,11 +252,11 @@ describe('Backend真人会话', () => {
       items: [系统行, 文本('4004', 'recruiter', '你好'), 文本('4005', 'candidate', '在吗')],
     };
     环境({ 消息 });
-    const { rerender } = render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    const { rerender } = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     expect(mock应用状态.操作.提交真人已读).toHaveBeenCalledTimes(1);
     expect(mock应用状态.操作.提交真人已读).toHaveBeenCalledWith('candidate', '3003', '4005');
     // 同批消息重渲染：零新调用（操作层单飞去重 + effect 依赖不变）
-    rerender(<Backend真人会话 role="candidate" conversationId="3003" />);
+    rerender(<Backend真人会话 角色="candidate" conversationId="3003" />);
     expect(mock应用状态.操作.提交真人已读).toHaveBeenCalledTimes(1);
   });
 
@@ -266,14 +266,14 @@ describe('Backend真人会话', () => {
       items: [系统行],
     };
     环境({ 消息 });
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     expect(mock应用状态.操作.提交真人已读).not.toHaveBeenCalled();
   });
 
   it('候选端「看职位」只在 context available 且 job_ref 在场时出现，点击走权威岗位路由', async () => {
     环境({});
     const 用户 = userEvent.setup();
-    const { unmount } = render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    const { unmount } = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     await 用户.click(screen.getByRole('button', { name: '看职位' }));
     expect(导航.跳转).toHaveBeenCalledWith('/job/job_00112233445566778899aabbccddeeff');
     expect(mock应用状态.操作.读取简历PDF).not.toHaveBeenCalled();
@@ -284,7 +284,7 @@ describe('Backend真人会话', () => {
 
     // job_ref 缺席：隐藏「看职位」
     环境({ 详情: 详情快照({ detail: 会话详情({ context: { primaryLabel: '后端工程师', secondaryLabel: '上海', jobRef: null, resumeRef: null } }) }) });
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     expect(screen.queryByRole('button', { name: '看职位' })).toBeNull();
   });
 
@@ -294,7 +294,7 @@ describe('Backend真人会话', () => {
       消息: { 阶段: '成功', 刷新中: false, nextCursor: null, 已加载页数: 1, error: null, generation: 1, items: [系统行, 文本('4004', 'recruiter', '你好')] },
     });
     const 用户 = userEvent.setup();
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     expect(screen.getByText('真人会话')).toBeTruthy();
     expect(screen.getByText('你好')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '看职位' })).toBeNull();
@@ -306,7 +306,7 @@ describe('Backend真人会话', () => {
     const 读取简历PDF = vi.fn().mockResolvedValue(PDF租约);
     环境({ role: 'recruiter', 读取简历PDF });
     const 用户 = userEvent.setup();
-    const { unmount } = render(<Backend真人会话 role="recruiter" conversationId="3003" />);
+    const { unmount } = render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
     // 点击前零请求
     expect(读取简历PDF).not.toHaveBeenCalled();
     await 用户.click(screen.getByRole('button', { name: '看简历' }));
@@ -321,7 +321,7 @@ describe('Backend真人会话', () => {
       role: 'recruiter',
       详情: 详情快照({ detail: 会话详情({ context: { primaryLabel: '后端工程师', secondaryLabel: 'candidate-0123', jobRef: null, resumeRef: null } }) }),
     });
-    render(<Backend真人会话 role="recruiter" conversationId="3003" />);
+    render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
     expect(screen.queryByRole('button', { name: '看简历' })).toBeNull();
   });
 });
@@ -334,7 +334,7 @@ describe('Backend真人会话 review-r1 修复', () => {
       () => new Promise<P7发送结果>((完成, 拒绝) => { 应答 = 拒绝 as typeof 应答; void 完成; }));
     环境({ 发送 });
     const 用户 = userEvent.setup();
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     const 输入框 = screen.getByRole('textbox', { name: '输入消息' }) as HTMLTextAreaElement;
     await 用户.type(输入框, '这条发不出去');
     await 用户.type(输入框, '{Enter}');
@@ -353,7 +353,7 @@ describe('Backend真人会话 review-r1 修复', () => {
       () => new Promise<P7发送ResultShape>((完成, 拒绝) => { 失败 = 拒绝; void 完成; }));
     环境({ 发送 });
     const 用户 = userEvent.setup();
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     const 输入框 = screen.getByRole('textbox', { name: '输入消息' }) as HTMLTextAreaElement;
     await 用户.type(输入框, '这条发不出去');
     await 用户.type(输入框, '{Enter}');
@@ -367,7 +367,7 @@ describe('Backend真人会话 review-r1 修复', () => {
     const 读取简历PDF = vi.fn().mockImplementation(() => new Promise<typeof PDF租约>((完成) => { 应答 = 完成; }));
     环境({ role: 'recruiter', 读取简历PDF });
     const 用户 = userEvent.setup();
-    const { unmount } = render(<Backend真人会话 role="recruiter" conversationId="3003" />);
+    const { unmount } = render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
     await 用户.click(screen.getByRole('button', { name: '看简历' }));
     expect(读取简历PDF).toHaveBeenCalledWith('recruiter', 'mc_3003');
     // 取件在飞时离开：卸载清理先跑（当时无租约），迟到租约必须当场回收
@@ -386,11 +386,11 @@ describe('Backend真人会话 review-r2 修复', () => {
       () => new Promise<P7发送结果>((完成) => { 应答 = 完成; }));
     环境({ 发送 });
     const 用户 = userEvent.setup();
-    const { rerender } = render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    const { rerender } = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     await 用户.type(screen.getByRole('textbox', { name: '输入消息' }), '旧会话的话');
     await 用户.type(screen.getByRole('textbox', { name: '输入消息' }), '{Enter}');
     // 发送在飞期间换会话
-    rerender(<Backend真人会话 role="candidate" conversationId="3001" />);
+    rerender(<Backend真人会话 角色="candidate" conversationId="3001" />);
     应答({ status: 'unknown', reason: 'outcome_unknown', canAbandon: true, pendingContent: '旧会话的话' });
     await act(async () => {});
     // 迟到的旧会话结果不进新会话：无未知提示、草稿不被旧正文回填
@@ -406,7 +406,7 @@ describe('Backend真人会话 review-r2 修复', () => {
       .mockResolvedValueOnce({ status: 'confirmed' } as P7发送结果);
     环境({ 发送 });
     const 用户 = userEvent.setup();
-    render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     await 用户.type(screen.getByRole('textbox', { name: '输入消息' }), '你好{Enter}');
     await waitFor(() => expect(screen.getByText('暂时无法确认是否发送成功')).toBeTruthy());
     // 结果未知期间用户编辑了新草稿
@@ -427,11 +427,11 @@ describe('Backend真人会话 review-r2 修复', () => {
     // 新会话坐标也要有可看简历的详情快照（context available + resume_ref 在场）
     mock应用状态.后端状态.P7会话详情['p7:detail:recruiter:3001'] = 详情快照();
     const 用户 = userEvent.setup();
-    const { rerender } = render(<Backend真人会话 role="recruiter" conversationId="3003" />);
+    const { rerender } = render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
     await 用户.click(screen.getByRole('button', { name: '看简历' }));
     expect(读取简历PDF).toHaveBeenCalledTimes(1);
     // 旧会话取件在飞期间换会话：新会话的取件不被旧锁挡住
-    rerender(<Backend真人会话 role="recruiter" conversationId="3001" />);
+    rerender(<Backend真人会话 角色="recruiter" conversationId="3001" />);
     await 用户.click(screen.getByRole('button', { name: '看简历' }));
     await waitFor(() => expect(读取简历PDF).toHaveBeenCalledTimes(2));
     expect(读取简历PDF).toHaveBeenLastCalledWith('recruiter', 'mc_3003'); // 详情快照仍是 fixture 的 3003 详情

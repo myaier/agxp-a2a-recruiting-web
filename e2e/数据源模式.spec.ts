@@ -108,7 +108,7 @@ test.describe('Mock 数据源回归 @mock', () => {
 
   test('Mock 规则页与双端筛选抽屉全程零 API 请求 @mock', async ({ page }) => {
     // P6（Task 8）：双端规则页（/rules、/hr/agent-settings）+ 双端筛选抽屉（看市场 / 候选推荐）
-    // 在 Mock 下全部走本地状态；本地新增/开关/编辑各做一次，断言 P6 的 agent-rule 请求恒为零。
+    // 在 Mock 下全部走本地状态；本地新增/展示/编辑各走一次，断言 P6 的 agent-rule 请求恒为零。
     test.setTimeout(120_000);
     const apiRequests: string[] = [];
     page.on('request', (request) => {
@@ -142,17 +142,14 @@ test.describe('Mock 数据源回归 @mock', () => {
     await page.goto('/#/rules');
     await expect(page.getByRole('button', { name: /只投双休岗位/ })).toBeVisible({ timeout: 10_000 });
 
-    // ── 切到招聘端：/hr/agent-settings 的 Mock 开关一次翻转 ──
+    // ── 切到招聘端：Mock 定稿规则只展示，不提供维护型开关 ──
     await page.goto('/#/identity?switch=1&from=app');
     await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
     await page.goto('/#/hr/agent-settings');
-    const 规则开关 = page.getByRole('switch', { name: '规则：竞对在职候选人不接触、不推进' });
-    await expect(规则开关).toBeVisible({ timeout: 10_000 });
-    await expect(规则开关).toHaveAttribute('aria-checked', 'true');
-    await 规则开关.click();
-    await expect(规则开关).toHaveAttribute('aria-checked', 'false');
-    await expect(page.getByText('2 条生效')).toBeVisible();
+    await expect(page.getByText('竞对在职候选人不接触、不推进')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('switch')).toHaveCount(0);
+    await expect(page.getByText('3 条生效')).toBeVisible();
 
     // ── 招聘端候选筛选抽屉（推荐子视图）：本地改一条规则 ──
     await page.goto('/#/hr');
@@ -5035,16 +5032,11 @@ test.describe('P3 Backend 隐私主链路 @backend', () => {
       expect(['required', 'not_required', 'unknown']).toContain(档);
     }
 
-    // ── 编辑岗位：三态钮 未说明→必须→不要求；PATCH 回传完整四员块 + immutable 字段原值 ──
+    // ── 编辑岗位：硬性事实控件已从 UI 删除；PATCH 仍须原样回传完整四员块 + immutable 字段原值 ──
     await page.goto('/#/hr/post-job/job-fixture-created-1');
     await expect(page.getByPlaceholder(/资深后端工程师/)).toHaveValue('Fixture 实习岗位', { timeout: 10_000 });
     await page.getByRole('button', { name: '职位要求' }).click();
-    const 大小周片 = page.getByRole('button', { name: '大小周 未说明' });
-    await expect(大小周片).toBeVisible({ timeout: 10_000 });
-    await 大小周片.click();
-    await expect(page.getByRole('button', { name: '大小周 必须' })).toBeVisible();
-    await page.getByRole('button', { name: '大小周 必须' }).click();
-    await expect(page.getByRole('button', { name: '大小周 不要求' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /大小周/ })).toHaveCount(0);
 
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByText('岗位已保存')).toBeVisible({ timeout: 15_000 });
@@ -5065,12 +5057,7 @@ test.describe('P3 Backend 隐私主链路 @backend', () => {
     expect(补丁体.recruitment_type).toBe('internship');
     expect(补丁体.category_id).toBe('job-fixture-001');
     expect(补丁体.location_id).toBe('loc-fixture-001');
-    expect(补丁体.hard_requirements).toEqual({
-      alternate_weekend_work: 'not_required',
-      outsourcing_only: 'unknown',
-      onsite_only: 'unknown',
-      frequent_travel: 'unknown',
-    });
+    expect(补丁体.hard_requirements).toEqual(发布硬性);
   });
 });
 
@@ -6060,6 +6047,7 @@ async function 装P4候选(
   page: Page,
   选项: {
     fixture?: P4发现fixture形;
+    附件fixture?: P2附件fixture形;
     覆盖?: BFF路由选项['覆盖'];
     请求拦截?: (请求: 拦截请求形) => void;
   } = {},
@@ -6069,6 +6057,7 @@ async function 装P4候选(
     登录尝试id: 'att-p4-candidate',
     记录目录请求: () => undefined,
     发现fixture: fixture,
+    附件fixture: 选项.附件fixture,
     覆盖: 选项.覆盖,
     请求拦截: 选项.请求拦截,
   });
@@ -6115,7 +6104,7 @@ async function 下拉刷新手势(page: Page) {
 /** 触屏左滑候选卡露出「不合适」。走 CDP touch 而不是鼠标拖拽：真实触屏手势在大幅移动后
  *  浏览器不会合成 click，行面的「打开态点击即收起」不会被拖拽尾随的 click 误触。 */
 async function 左滑候选卡(page: Page, 别名: string) {
-  const 行面 = page.locator('[role="button"][aria-expanded="false"]').filter({ hasText: 别名 }).first();
+  const 行面 = page.locator('[role="group"][aria-expanded="false"]').filter({ hasText: 别名 }).first();
   const 框 = (await 行面.boundingBox())!;
   const 纵 = 框.y + 框.height / 2;
   const 起 = 框.x + 框.width - 30;
@@ -6234,11 +6223,14 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     expect(fixture.刷新次数.candidate).toBe(1);
   });
 
-  test('候选委托：确认前零请求 → 字面披露 true → 同键同回执 → 轮询到 case_started，绝不落 Mock 在谈 @backend', async ({ page }) => {
+  test('候选委托：确认前零变更请求 → 字面披露 true → 同键同回执 → 轮询到 case_started，绝不落 Mock 在谈 @backend', async ({ page }) => {
     const fixture = P4发现fixture({ 候选委托先503: true });
+    const 附件fixture = 创建P2附件fixture();
+    附件fixture.items = [P2新附件(1, 'P4 Fixture 候选简历.pdf', Buffer.from('%PDF-1.7\nfixture\n'))];
     const 请求序: { method: string; path: string; body: unknown; headers: Record<string, string> }[] = [];
     await 装P4候选(page, {
       fixture,
+      附件fixture,
       请求拦截: (项) => 请求序.push({ method: 项.method, path: 项.path, body: 项.body, headers: 项.headers }),
     });
 
@@ -6247,11 +6239,11 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await page.getByRole('button', { name: '市场', exact: true }).click();
     await expect(page.getByText(P4标记.jobTitle)).toBeVisible({ timeout: 15_000 });
 
-    // 确认层之前零请求
-    const 确认前 = 请求序.length;
+    // 确认层之前零变更请求；打开确认层允许重读附件库校验当前选择仍然有效
+    const 确认前变更数 = 请求序.filter((项) => 项.method !== 'GET').length;
     await page.getByRole('button', { name: '让AI代理去谈' }).click();
     await expect(page.getByRole('dialog', { name: '确认委托AI代理？' })).toBeVisible({ timeout: 5_000 });
-    expect(请求序.length).toBe(确认前);
+    expect(请求序.filter((项) => 项.method !== 'GET')).toHaveLength(确认前变更数);
 
     // 确认层遮罩钮的可及名是「关闭确认委托AI代理？」：exact 才只命中执行键
     await page.getByRole('button', { name: '确认委托', exact: true }).click();
@@ -6264,6 +6256,8 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
       intention_id: P4编号.intention,
       selection: { items: [P4编号.job] },
       disclosure_acknowledged: true,
+      resume_file_id: 'rf_1',
+      resume_file_version_id: 'rfv_1_1',
     });
     expect(委托POST[0]!.headers['idempotency-key']).not.toBe('');
     expect(委托POST[0]!.headers['idempotency-key']).toBe(委托POST[1]!.headers['idempotency-key']);
@@ -7258,7 +7252,8 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await expect(page.getByText('双方已确认，正在创建会话').first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('已通过', { exact: true }).first()).toBeVisible();
 
-    // 每个 mutation 恰一次 POST、各走本端唯一准许路线；会话路由零请求（P5 无会话标识，会话契约属 P7）
+    // 每个 mutation 恰一次 POST、各走本端唯一准许路线；主壳可预载 P7 收件箱集合，
+    // 但 P5 没有会话标识，不能提前读取会话详情、消息或移交路由。
     const 决定POST们 = fixture.变更请求.filter((项) => 项.method === 'POST');
     expect(决定POST们.map((项) => `${项.method} ${项.path} ${JSON.stringify(项.body)}`)).toEqual([
       `POST /api/v1/me/match-cases/${P5编号.丁}/coordination/${P5编号.协同}/decisions {"action":"accept"}`,
@@ -7266,7 +7261,7 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
       `POST /api/v1/recruiter/match-cases/${P5编号.丁}/intent-decisions {"action":"confirm"}`,
       `POST /api/v1/me/match-cases/${P5编号.丁}/intent-decisions {"action":"confirm"}`,
     ]);
-    expect(请求序.filter((项) => /chat|conversation|handoff/i.test(项))).toEqual([]);
+    expect(请求序.filter((项) => /\/conversations\/|\/chat\/|handoff/i.test(项))).toEqual([]);
   });
 
   test('completed 移交两步：pending 继续低频重读恒禁用，发布后进入 P7 会话路由 @backend', async ({ page }) => {

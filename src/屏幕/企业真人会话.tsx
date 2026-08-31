@@ -43,7 +43,7 @@ export default function 企业真人会话() {
   if (数据源模式 === 'backend') {
     if (conversationId === undefined) return <会话不可用 />;
     // review-r3：按会话坐标 key 重挂（镜像求职端 真人会话.tsx）。
-    return <Backend真人会话 key={conversationId} role="recruiter" conversationId={conversationId} />;
+    return <Backend真人会话 key={conversationId} 角色="recruiter" conversationId={conversationId} />;
   }
   return <Mock企业真人会话 />;
 }

@@ -11,7 +11,7 @@ const 导航 = vi.hoisted(() => ({ 跳转: vi.fn() }));
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: 导航.跳转 }) }));
 vi.mock('./P7/Backend会话列表', () => ({
-  default: ({ role }: { role: string }) => <div data-testid="backend-inbox" data-role={role} />,
+  default: ({ 角色 }: { 角色: string }) => <div data-testid="backend-inbox" data-role={角色} />,
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

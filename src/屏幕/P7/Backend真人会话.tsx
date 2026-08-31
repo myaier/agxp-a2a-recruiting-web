@@ -63,7 +63,7 @@ export function 会话不可用() {
   );
 }
 
-export default function Backend真人会话({ role, conversationId }: { role: P7角色; conversationId: string }) {
+export default function Backend真人会话({ 角色: role, conversationId }: { 角色: P7角色; conversationId: string }) {
   const { 返回, 跳转 } = use导航();
   const { 后端状态, 操作 } = use应用状态();
   const 详情键 = P7范围键.详情(role, conversationId);
