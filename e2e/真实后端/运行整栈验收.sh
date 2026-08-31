@@ -597,8 +597,31 @@ FIXTURE="$AGXP_MONOREPO_DIR/apps/recruitment/scripts/browser-fixture.sh"
 FIXTURE_RECEIPT_DIR="$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev/browser-fixtures"
 [ -x "$DEV" ] || blocked "后端入口不可执行：$DEV"
 [ -x "$FIXTURE" ] || blocked "后端 fixture 算子不可执行：$FIXTURE"
+# 取景环境守护：Chrome 的 Intl 时区跟随 **agent-browser 守护进程进程**的启动环境。
+# daemon 若是被无 TZ 的别的终端先拉起的（闲置超时 1h 后极易发生），后面每个会话的
+# Chrome 都会解析成 Asia/Singapore（#run10/#run14 实测）。所以先探测，mismatch 就重启
+# daemon —— 本进程的 TZ 已导出，重启后的 daemon 由它带起。只做一次；重启后仍不对就是
+# 本机环境问题，按阻塞落地。探针会话名 runner-tzprobe，专用于此，与业务会话隔离。
+probe_browser_timezone(){
+  agent-browser --session runner-tzprobe open about:blank >/dev/null 2>&1 || true
+  agent-browser --session runner-tzprobe eval 'Intl.DateTimeFormat().resolvedOptions().timeZone' 2>/dev/null \
+    | head -1 | tr -d '"\r'
+}
+
+guard_browser_timezone(){
+  local tz
+  tz="$(probe_browser_timezone)"
+  [ "$tz" = 'Asia/Shanghai' ] && return 0
+  printf 'agent-browser 守护进程时区是 %s（冻结取景需要 Asia/Shanghai），重启它\n' "${tz:-未知}" >&2
+  pkill -f agent-browser-darwin-arm64 2>/dev/null || true
+  sleep 2
+  tz="$(probe_browser_timezone)"
+  [ "$tz" = 'Asia/Shanghai' ] || blocked "agent-browser 守护进程时区仍是 ${tz}（需要 Asia/Shanghai）：请用 TZ=Asia/Shanghai 重启本机 agent-browser 后重跑"
+}
+
 agent-browser doctor >/dev/null 2>&1 || blocked 'agent-browser doctor 不通过（Chrome 未就绪）'
 docker info >/dev/null 2>&1 || blocked 'Docker 守护进程不可用'
+guard_browser_timezone
 
 # 端口只认 5173：占用就阻塞，绝不退让到别的端口（换端口＝换 Origin＝换会话域）。
 port_probe=0
