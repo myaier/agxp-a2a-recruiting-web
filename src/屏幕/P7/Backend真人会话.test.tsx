@@ -14,7 +14,10 @@ import type { P7发送结果, P7分页快照, P7详情快照 } from '../../状�
 /** F6 测试内的发送结果别名（避免与导入名冲突的行内形状）。 */
 type P7发送ResultShape = { status: 'confirmed' } | { status: 'unknown'; reason: string; canAbandon: boolean; pendingContent: string };
 import Backend真人会话 from './Backend真人会话';
+// 仓库既有的 ?raw 源码合同模式（⋯ 控件形态 / 举报目标类型）
+import Backend真人会话tsx源码 from './Backend真人会话.tsx?raw';
 import { 轻提示 } from '../../组件/轻提示';
+import type { P8ReportReceipt } from '../../数据/招聘数据源/P8控制面';
 
 const 导航 = vi.hoisted(() => ({ 跳转: vi.fn(), 返回: vi.fn() }));
 vi.mock('../../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
@@ -70,9 +73,12 @@ function 环境(input: {
   消息?: P7分页快照<P7消息>;
   发送?: (role: string, id: string, content: string) => Promise<P7发送结果>;
   读取简历PDF?: () => Promise<typeof PDF租约>;
+  提交P8举报?: (target: unknown, reason: unknown, alsoBlock: unknown) => Promise<P8ReportReceipt>;
 }) {
   const role = input.role ?? 'candidate';
   mock应用状态 = {
+    数据源模式: 'backend',
+    派发: 派发spy,
     后端状态: {
       P7收件箱: { candidate: 空分页(), recruiter: 空分页() },
       P7会话详情: { 'p7:detail:candidate:3003': input.详情 ?? 详情快照(), 'p7:detail:recruiter:3003': input.详情 ?? 详情快照() },
@@ -89,10 +95,15 @@ function 环境(input: {
       放弃真人消息意图: vi.fn(),
       提交真人已读: vi.fn().mockResolvedValue(undefined),
       读取简历PDF: input.读取简历PDF ?? vi.fn().mockResolvedValue(PDF租约),
+      提交P8举报: input.提交P8举报 ?? vi.fn().mockResolvedValue(举报回执),
     },
   };
   return role;
 }
+
+/** 举报层断言用的全局 spy（举报绝不本地拉黑）。 */
+const 派发spy = vi.fn();
+const 举报回执: P8ReportReceipt = { ticketId: 'TICKET-P8-RPT-001', status: 'received', blockStatus: 'not_requested' };
 
 beforeEach(() => {
   导航.跳转.mockClear();
@@ -428,5 +439,69 @@ describe('Backend真人会话 review-r2 修复', () => {
     失败A(new Error('旧会话取件失败'));
     await act(async () => {});
     expect(轻提示).not.toHaveBeenCalled();
+  });
+});
+
+// ── P8 Task 7：会话上下文举报 ──────────────────────────────────────
+//   ⋯ 保持原 span 与 class，补键盘可达（role=button + tabIndex + Enter/Space）；
+//   举报 target 恒为 {type:'conversation', ref:conversationId}（路由坐标，不是
+//   展示名）；确认回执后强制重读该会话；绝不本地拉黑、绝不用 match_case 目标。
+describe('Backend真人会话 · P8 会话举报', () => {
+  beforeEach(() => {
+    派发spy.mockClear();
+  });
+
+  it('⋯ 是键盘可达控件：点击 / Enter / Space 都打开同一个举报层', async () => {
+    const 用户 = userEvent.setup();
+    环境({});
+    const 视图 = render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    const 点号 = screen.getByRole('button', { name: '举报' });
+    // 视觉合同：仍是那枚 ⋯ 文本（不是换成重置过字体的原生按钮）
+    expect(点号.textContent).toBe('⋯');
+    await 用户.click(点号);
+    expect(screen.getByRole('dialog', { name: '举报' })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    // Enter 打开
+    fireEvent.keyDown(screen.getByRole('button', { name: '举报' }), { key: 'Enter' });
+    expect(screen.getByRole('dialog', { name: '举报' })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    // Space 打开
+    fireEvent.keyDown(screen.getByRole('button', { name: '举报' }), { key: ' ' });
+    expect(screen.getByRole('dialog', { name: '举报' })).toBeTruthy();
+    视图.unmount();
+  });
+
+  it('提交举报：target 是不可变会话坐标，确认后强制重读该会话', async () => {
+    const 提交P8举报 = vi.fn().mockResolvedValue(举报回执);
+    环境({ 提交P8举报 });
+    const 读取真人会话 = mock应用状态.操作.读取真人会话;
+    const 用户 = userEvent.setup();
+    const 视图 = render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    await 用户.click(screen.getByRole('button', { name: '举报' }));
+    await 用户.click(screen.getByRole('button', { name: '骚扰' }));
+    await 用户.click(screen.getByRole('button', { name: /同时屏蔽/ }));
+    await 用户.click(screen.getByRole('button', { name: '提交举报' }));
+    await waitFor(() => expect(提交P8举报).toHaveBeenCalledWith(
+      { type: 'conversation', ref: '3003' }, 'harassment', true));
+    await waitFor(() => expect(读取真人会话).toHaveBeenCalledWith('candidate', '3003', true));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '举报' })).toBeNull());
+    视图.unmount();
+  });
+
+  it('举报绝不本地拉黑；目标不是 match_case（P8 没有为 MatchCase 加举报按钮）', async () => {
+    const 提交P8举报 = vi.fn().mockResolvedValue(举报回执);
+    环境({ role: 'recruiter', 提交P8举报 });
+    const 用户 = userEvent.setup();
+    const 视图 = render(<Backend真人会话 role="recruiter" conversationId="3003" />);
+    await 用户.click(screen.getByRole('button', { name: '举报' }));
+    await 用户.click(screen.getByRole('button', { name: '其他' }));
+    await 用户.click(screen.getByRole('button', { name: '提交举报' }));
+    await waitFor(() => expect(提交P8举报).toHaveBeenCalledTimes(1));
+    expect(提交P8举报.mock.calls[0][0]).toEqual({ type: 'conversation', ref: '3003' });
+    expect(派发spy).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '拉黑' }));
+    视图.unmount();
+    // 源码合同：⋯ 仍是共用样式类的那枚 span，绝无 match_case 目标
+    expect(Backend真人会话tsx源码).toContain('className={共用样式.更多}');
+    expect(Backend真人会话tsx源码).not.toContain("type: 'match_case'");
   });
 });

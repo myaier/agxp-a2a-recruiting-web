@@ -29,10 +29,12 @@ vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状�
 
 const 反馈回执: P8FeedbackReceipt = { ticketId: 'TICKET-P8-001', status: 'received' };
 
-/** 反馈屏只消费 提交P8反馈 一个操作方法：缺方法立即 TypeError，绝不静默 no-op。 */
+/** 反馈屏的操作桩：Task 7 起公开操作面已含 提交P8举报（举报从具体对象入口发起，
+ *  本屏绝不调它）—— 桩给全表面，缺方法立即 TypeError，绝不静默 no-op。 */
 function 操作桩(覆盖: Record<string, unknown> = {}) {
   return {
     提交P8反馈: vi.fn(async (_分类: P8FeedbackCategory, _正文: string): Promise<P8FeedbackReceipt> => 反馈回执),
+    提交P8举报: vi.fn(),
     ...覆盖,
   };
 }
@@ -129,27 +131,27 @@ describe('反馈 · Backend 产品反馈', () => {
     视图.unmount();
   });
 
-  it('举报类分类提交只给入口指引：不调反馈、无举报操作可调、不进致谢态', async () => {
+  it('举报类分类提交只给入口指引：举报操作在场也不调（举报只从具体对象入口发起）', async () => {
     const 用户 = userEvent.setup();
     for (const 分类 of ['举报虚假岗位', '举报骚扰行为']) {
       const { 视图, 操作 } = 挂载('backend');
-      expect('提交P8举报' in 操作).toBe(false); // Task 7 之前举报操作不存在，绝无空桩可触达
+      expect('提交P8举报' in 操作).toBe(true); // Task 7 起公开操作面已含举报
       await 填写并提交(用户, 分类, 'JD 与代理转述不一致');
       // 轻提示是纯 DOM toast（1.8s 后才移除）：上一轮分类的指引还在 body 里，用复数查询
       expect((await screen.findAllByText(/岗位、谈判或真人会话/)).length).toBeGreaterThan(0);
       expect(操作.提交P8反馈).not.toHaveBeenCalled();
+      expect(操作.提交P8举报).not.toHaveBeenCalled();
       expect(screen.queryByText(/已收到，谢谢你/)).toBeNull();
       expect(screen.queryByText(/TICKET-P8-001/)).toBeNull();
       视图.unmount();
     }
   });
 
-  it('源码合同：分类表原序保留、既有两份 CSS 不变、绝不预置举报操作', () => {
+  it('源码合同：分类表原序保留、既有两份 CSS 不变', () => {
     expect(反馈源码).toContain(
       "const 分类表 = ['举报虚假岗位', '举报骚扰行为', '功能异常', '体验建议', '其他'];",
     );
     expect(反馈源码.match(/\.module\.css';/g)).toHaveLength(2);
-    expect(反馈源码).not.toMatch(/提交P8举报/);
   });
 });
 

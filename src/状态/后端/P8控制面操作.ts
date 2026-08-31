@@ -37,13 +37,21 @@
 //   · 合规两法按法各立意图：反馈（Task 6）坐标=线协议分类+trim 后正文，入参校验在本层
 //     收口（trim 后按 Unicode 码点计 5–500，非法零请求零意图），成功清意图、未知/网络
 //     异常同键同 body 重试，409 冲突与 429 限流是终局（清意图；合规 429 不带 Retry-After，
-//     绝不排定时器自动重试）；举报（Task 7）不在本表：绝不预留空桩。
+//     绝不排定时器自动重试）。举报（Task 7）坐标=目标(type+ref)+线协议原因+是否同时屏蔽，
+//     请求恰 {target, reason, also_block}（无身份/角色/组织名/展示名/证据/正文/屏蔽对象，
+//     屏蔽对象由服务端按目标解析），409 block_unavailable 是终局（无半成功；用户取消勾选
+//     屏蔽＝新意图新键）、404 report_target_not_found 是统一终局；回执 blockStatus=applied
+//     且当前角色是候选时恰做一次权威隐私读取并走既有 P3 水合路径（招聘端绝不读候选隐私；
+//     两种角色都绝不本地派发 拉黑）。
 
 import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
 import type {
   P8Credential,
   P8DataExport,
   P8FeedbackCategory,
+  P8ReportReason,
+  P8ReportReceipt,
+  P8ReportTarget,
   P8Session,
 } from '../../数据/招聘数据源/P8控制面';
 import type { P8导出恢复句柄 } from '../../数据/P8导出恢复';
@@ -51,7 +59,7 @@ import { 短信验证码位数 } from '../../数据/验证码规则';
 import { 清账号状态 } from './会话操作';
 import type {
   P8账号控制面操作,
-  P8反馈操作,
+  P8合规操作,
   P8待定意图,
   P8控制面状态,
   P8运行时引用,
@@ -68,6 +76,14 @@ const 验证码模式 = new RegExp(`^\\d{${短信验证码位数}}$`);
 /** 合规反馈的线协议分类表（与 facade 同一口径）；UI 中文分类→线协议的映射归屏。 */
 const 反馈分类全表: readonly P8FeedbackCategory[] = ['bug', 'suggestion', 'other'];
 
+/** 合规举报的线协议原因表（与 facade 同一口径）；UI 中文原因→线协议的映射归共用举报层。 */
+const 举报原因全表: readonly P8ReportReason[] = [
+  'false_information', 'salary_misrepresentation', 'harassment', 'other',
+];
+
+/** 举报目标的闭合分支表（job / match_case / conversation；与 facade 同一口径）。 */
+const 举报目标分支全表: readonly P8ReportTarget['type'][] = ['job', 'match_case', 'conversation'];
+
 /** 反馈正文规则：trim 后 5–500 个 Unicode 码点（按码点数计，绝不是 UTF-16 单元数）。 */
 const 反馈正文码点上下限 = { 下限: 5, 上限: 500 } as const;
 
@@ -78,7 +94,8 @@ function 段(值: string): string {
 
 /**
  * 意图坐标（内存 Map 的键，可含中文）：换绑开始=手机号、换绑完成=attempt+验证码、
- * 退出恒定、创建导出=落盘 createKey、注销恒定、提交反馈=线协议分类+trim 后正文。
+ * 退出恒定、创建导出=落盘 createKey、注销恒定、提交反馈=线协议分类+trim 后正文、
+ * 提交举报=目标(type+ref)+线协议原因+是否同时屏蔽（取消勾选屏蔽即新意图新键）。
  */
 const 意图坐标 = {
   换绑开始: (手机号: string): string => `p8:换绑开始:${手机号}`,
@@ -87,6 +104,8 @@ const 意图坐标 = {
   创建数据导出: (createKey: string): string => `p8:创建数据导出:${段(createKey)}`,
   注销账号: 'p8:注销账号',
   提交反馈: (分类: string, 正文: string): string => `p8:提交反馈:${段(分类)}:${段(正文)}`,
+  提交举报: (目标: P8ReportTarget, 原因: P8ReportReason, 屏蔽: boolean): string =>
+    `p8:提交举报:${段(目标.type)}:${段(目标.ref)}:${段(原因)}:${屏蔽 ? '1' : '0'}`,
 } as const;
 
 /** P8 读锁表里的资源键：credentials / sessions / export（export 于 Task 5 接线）。 */
@@ -142,6 +161,10 @@ const P8专属文案: Record<string, string> = {
   credential_replacement_conflict: '验证码不正确或已过期，请重新获取后再试',
   export_in_progress: '已有导出正在生成或等待下载，请稍后重试',
   data_export_not_found: '导出已失效，请重新生成',
+  // 合规举报两码（Task 7）：屏蔽暂不可用是可绕开的终局（取消勾选即纯举报）；
+  // 目标不存在是统一终局 —— 屏层关掉过期层并刷新来源
+  block_unavailable: '暂时无法同时屏蔽，可取消勾选后仅提交举报',
+  report_target_not_found: '举报对象已不存在，请刷新后重试',
   rate_limited: '操作过于频繁，请稍后再试',
   invalid_request_body: '请求内容无法处理，请检查输入后重试',
   invalid_origin: '当前后端环境配置不正确',
@@ -159,6 +182,14 @@ export function 取P8错误文案(错误: unknown): string {
   if (错误.status === 0 || 错误.code === 'network_error') return '无法连接后端服务，请检查网络或稍后重试';
   if (错误.status === 502 || 错误.status === 503 || 错误.status === 504) return '后端服务暂时不可用，请稍后重试';
   return '请求失败，请稍后重试';
+}
+
+/**
+ * 举报目标不存在的统一终局判据（Task 7）：共用举报层据此关层并回调 目标失效
+ * （屏层各自刷新来源）；文案统一走 取P8错误文案 的闭合表，绝不透传 error.message。
+ */
+export function 是举报目标失效(错误: unknown): boolean {
+  return 错误 instanceof BFF错误 && 错误.status === 404 && 错误.code === 'report_target_not_found';
 }
 
 /** 快照的纯构造器：起步 / 失败（成功构造内联在读取核里；成功快照永不降级）。 */
@@ -188,7 +219,7 @@ function 取P8引用(deps: 后端操作依赖): 后端操作依赖 & P8运行时
   return deps as 后端操作依赖 & P8运行时引用;
 }
 
-export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号控制面操作 & P8反馈操作 {
+export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号控制面操作 & P8合规操作 {
   const { 是后端, 后端, 设后端状态, 后端状态引用, 主体标识引用, 会话代际 } = deps;
   const 引用 = 取P8引用(deps);
   const { P8范围代际, P8账号可见, P8读取锁, P8待定意图, P8导出恢复 } = 引用;
@@ -328,11 +359,11 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
   }
 
   /**
-   * 反馈的结果不确定判据（Task 6）：合规反馈端点的 429 不带 Retry-After，没有可等的
-   * 窗口 —— 限流是终局拒绝（清意图、绝不排定时器自动重试），用户手动再提交才铸新键。
-   * 其余与账号控制面同口径。
+   * 合规端点（反馈 Task 6 / 举报 Task 7）的结果不确定判据：合规 429 不带 Retry-After，
+   * 没有可等的窗口 —— 限流是终局拒绝（清意图、绝不排定时器自动重试），用户手动再
+   * 提交才铸新键。其余与账号控制面同口径。
    */
-  function 是反馈结果不确定(错误: unknown): boolean {
+  function 是合规结果不确定(错误: unknown): boolean {
     if (错误 instanceof BFF错误 && 错误.status === 429 && 错误.code === 'rate_limited') return false;
     return 是结果不确定(错误);
   }
@@ -397,10 +428,29 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
 
   /**
    * 反馈的意图键化命令：无成功后重读（回执 ticketId 就是权威结果，无快照要落位），
-   * 不确定判据换成 反馈版（429 终局）。
+   * 不确定判据换成 合规版（429 终局）。
    */
   function 运行反馈命令<T>(坐标: string, request: unknown, 发出: (键: string) => Promise<T>): Promise<T> {
-    return 运行命令(坐标, request, 发出, undefined, 是反馈结果不确定);
+    return 运行命令(坐标, request, 发出, undefined, 是合规结果不确定);
+  }
+
+  /**
+   * 举报确认后的隐私收口（Task 7）：回执 blockStatus='applied' 说明服务端已把屏蔽
+   * 落进候选侧组织屏蔽名单 —— 当前角色是候选时恰做一次权威隐私读取，并走既有 P3
+   * 水合路径（派发 水合后端隐私 + 写 后端状态.隐私快照，与会话水合同一收口）。
+   * 招聘端绝不读候选隐私；本地绝不派发 {型:'拉黑'}（P8 之前/之后的屏蔽名单都只认
+   * 权威视图）。重读失败不冒充举报失败 —— 举报已权威受理，镜像滞后留给下次隐私读取。
+   */
+  async function 举报后重读隐私(回执: P8ReportReceipt): Promise<void> {
+    if (回执.blockStatus !== 'applied') return;
+    if (后端状态引用.current.主体?.last_used_role !== 'candidate') return;
+    try {
+      const 权威 = await 后端!.读取隐私();
+      deps.派发({ 型: '水合后端隐私', 快照: 权威 });
+      设后端状态((旧) => ({ ...旧, 隐私快照: 权威.服务端 }));
+    } catch {
+      // 屏蔽已权威生效：隐私镜像的滞后不影响已确认的举报结果
+    }
   }
 
   // ── 数据导出（Task 5）：恢复句柄与三态读写 ──────────────────────
@@ -709,7 +759,43 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
         (键) => 后端!.提交P8反馈(分类, 正文, 键),
       ));
     },
+
+    提交P8举报(target, reason, alsoBlock) {
+      if (!是后端 || !后端) return Promise.reject(仅后端可用());
+      // 入参校验在本层收口（facade 同款 exact key set）：目标恰 {type, ref} 且分支
+      // 在表内、ref 非空；原因在四值表内；屏蔽是布尔 —— 展示名等多出的键绝不随目标
+      // 上车，非法输入零请求、零意图。
+      if (!是合法举报目标(target) || !举报原因全表.includes(reason) || typeof alsoBlock !== 'boolean') {
+        return Promise.reject(new BFF错误(0, 'invalid_request', '举报参数不合法'));
+      }
+      const 坐标 = 意图坐标.提交举报(target, reason, alsoBlock);
+      // 意图请求恰 {target, reason, also_block}：无身份/角色/组织名/展示名/证据/正文，
+      // 也没有第二个屏蔽目标（服务端按目标解析）。成功清意图并按回执收口隐私镜像；
+      // 未知/网络异常同键同请求重试；409 冲突（含 block_unavailable）、404 目标不存在
+      // 与 429 限流是终局；取消勾选屏蔽＝新坐标新键。
+      let 回执: P8ReportReceipt;
+      return 单飞命令(坐标, () => 运行命令(
+        坐标,
+        { target, reason, also_block: alsoBlock },
+        (键) => 后端!.提交P8举报(target, reason, alsoBlock, 键).then((值) => {
+          回执 = 值;
+          return 值;
+        }),
+        () => 举报后重读隐私(回执),
+        是合规结果不确定,
+      ));
+    },
   };
+}
+
+/** 举报目标的入参形状：恰 {type, ref}（exact key set）、分支在表内、ref 非空串。 */
+function 是合法举报目标(值: P8ReportTarget): 值 is P8ReportTarget {
+  if (typeof 值 !== 'object' || 值 === null) return false;
+  const 键们 = Object.keys(值);
+  if (键们.length !== 2 || !键们.includes('type') || !键们.includes('ref')) return false;
+  const 目标 = 值 as { type: unknown; ref: unknown };
+  if (typeof 目标.ref !== 'string' || 目标.ref.length === 0) return false;
+  return 举报目标分支全表.some((分支) => 目标.type === 分支);
 }
 
 /** Mock / 无后端模式的写路径拒绝：不伪造成功回执（读路径静默早退）。 */

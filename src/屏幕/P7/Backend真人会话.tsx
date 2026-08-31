@@ -22,6 +22,7 @@ import 共用样式 from '../直聊会话.module.css';
 import 真人会话样式 from '../真人会话.module.css';
 import 真人会话操作栏 from '../真人会话操作栏';
 import 原始PDF层 from '../../组件/原始PDF层';
+import 举报层 from '../../组件/举报层';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../../组件/通用';
 import { 公文包图标, 简历图标 } from '../../组件/图标';
 import { 轻提示 } from '../../组件/轻提示';
@@ -97,6 +98,8 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
   // 结果未知保留不可变待定正文进提示区（草稿已清空，可继续编辑新内容）。
   const [草稿, 设草稿] = useState('');
   const [未知结果, 设未知结果] = useState<P7发送结果 | null>(null);
+  // P8：右上「⋯」拉起的举报层（target 恒为该会话的路由坐标，不是展示名）
+  const [举报层开, 设举报层开] = useState(false);
   // review-r2 R2-2 / review-r3：发送 scope 代际 —— 换会话/卸载作废在飞结算与在飞锁
   //（-1 = 空闲，≥0 = 该代际有在飞发送）。用 useLayoutEffect：代际推进发生在提交阶段
   //（先于绘制与任何后续微任务），换会话首帧绝不带旧会话的草稿/未知横幅，该窗口内
@@ -177,6 +180,7 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
   // 与提交同步（先于绘制），迟到的取件结算在该窗口内即被作废。
   useLayoutEffect(() => {
     设PDF预览(null); // 换会话：旧会话的取件层立即关闭（同步重渲染，先于绘制）
+    设举报层开(false); // 旧会话的举报层同样不跨会话存活
     return () => {
       PDF代际.current += 1;
       回收租约();
@@ -234,7 +238,25 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
         标题={标题}
         副标题={副标题}
         居中标题
-        右侧={<span className={共用样式.更多}>⋯</span>}
+        右侧={
+          // P8：仍是那枚视觉 ⋯（span + 原类，不换成会改字体/边框/底色的原生按钮），
+          // 补键盘可达（role=button + tabIndex + Enter/Space）打开会话举报层
+          <span
+            className={共用样式.更多}
+            role="button"
+            tabIndex={0}
+            aria-label="举报"
+            onClick={() => 设举报层开(true)}
+            onKeyDown={(事件) => {
+              if (事件.key === 'Enter' || 事件.key === ' ') {
+                事件.preventDefault();
+                设举报层开(true);
+              }
+            }}
+          >
+            ⋯
+          </span>
+        }
       />
 
       {/* 上下文动作排：只在有权威坐标时渲染；Backend 永不渲染电话/微信（§8.3）。
@@ -376,6 +398,19 @@ export default function Backend真人会话({ role, conversationId }: { role: P7
             回收租约();
             设PDF预览(null);
           }}
+        />
+      ) : null}
+
+      {/* P8 会话举报层：target 是该会话的权威路由坐标；确认回执后强制重读该会话，
+          目标失效（会话已不存在）同样强制重读 —— 详情快照会给出权威的不可用态 */}
+      {举报层开 ? (
+        <举报层
+          对象名={标题}
+          屏蔽名称={副标题}
+          target={{ type: 'conversation', ref: conversationId }}
+          已确认={() => 操作.读取真人会话(role, conversationId, true)}
+          目标失效={() => 操作.读取真人会话(role, conversationId, true)}
+          关闭={() => 设举报层开(false)}
         />
       ) : null}
     </次级页外壳>

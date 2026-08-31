@@ -12,6 +12,11 @@
 // P8 Task 6：产品反馈 —— trim 后按 Unicode 码点计 5–500 的入参校验（非法零请求零意图）、
 // 分类+正文坐标的意图键化（成功清键、未知/网络异常同键同 body 重试）、409 冲突与 429
 // 限流是终局（清键、绝不排定时器自动重试）、Mock 拒绝 backend_unavailable。
+// P8 Task 7：上下文举报 —— 目标/原因/屏蔽三项的线协议透传与请求隐私冻结（意图请求恰含
+// target/reason/also_block，绝无身份/角色/组织名/展示名/证据/正文/屏蔽对象）、block_
+// unavailable 与 report_target_not_found 的终局语义、取消勾选屏蔽＝新意图新键、429 零定时器、
+// 回执 blockStatus=applied 且候选角色的恰一次权威隐私读取走既有 P3 水合路径（招聘端零
+// 隐私读取；两种角色都绝不本地派发 拉黑）。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF主体 } from '../../数据/BFF契约';
@@ -24,13 +29,17 @@ import {
   type P8FeedbackReceipt,
   type P8ReplacementAttempt,
   type P8ReplacementResult,
+  type P8ReportReceipt,
+  type P8ReportReason,
+  type P8ReportTarget,
   type P8Session,
 } from '../../数据/招聘数据源/P8控制面';
 import { BFF错误, type BFF请求选项, type BFF响应 } from '../../数据/HTTP客户端';
 import { 短信验证码位数 } from '../../数据/验证码规则';
-import { BFF主体样本 } from '../../测试/BFF样本';
+import { BFF主体样本, BFF隐私快照样本 } from '../../测试/BFF样本';
 import { 创建P8导出恢复存储, type P8导出恢复存储 } from '../../数据/P8导出恢复';
 import { 账号存储键 } from '../../数据/资料缓存';
+import { 从BFF隐私 } from '../../数据/隐私映射';
 import { 初始状态 } from '../初始状态';
 import type { 动作 } from '../应用状态';
 import { 创建空P4发现状态 } from './发现推荐操作';
@@ -45,7 +54,7 @@ import {
 } from './P8控制面操作';
 import type {
   P7待定意图,
-  P8反馈操作,
+  P8合规操作,
   P8待定意图,
   P8运行时引用,
   后端操作依赖,
@@ -136,6 +145,12 @@ const 注销回执: P8AccountDeletion = {
 
 const 反馈回执: P8FeedbackReceipt = { ticketId: 'TICKET-P8-001', status: 'received' };
 
+// ── Task 7 DTO 样本：举报回执（多一个 block_status）与隐私权威快照 ──
+
+const 举报回执: P8ReportReceipt = { ticketId: 'TICKET-P8-RPT-001', status: 'received', blockStatus: 'not_requested' };
+const 屏蔽已生效回执: P8ReportReceipt = { ticketId: 'TICKET-P8-RPT-002', status: 'received', blockStatus: 'applied' };
+const 隐私页面样本 = 从BFF隐私(BFF隐私快照样本);
+
 /**
  * Task 5：受控恢复存储 —— 包住真实 创建P8导出恢复存储（键位 / 校验 / 序列化语义保真），
  * 以 vi.fn 追踪写入与删除（invocationCallOrder 断言用）；多个账号可共享同一底层 Map，
@@ -174,6 +189,9 @@ function 创建P8数据源(覆盖: Record<string, unknown> = {}): HTTP招聘数�
     取P8数据导出下载地址: vi.fn((id: string): string => `/api/v1/me/data-exports/${id}/download`),
     请求P8账号注销: vi.fn(async (): Promise<P8AccountDeletion> => 注销回执),
     提交P8反馈: vi.fn(async (): Promise<P8FeedbackReceipt> => 反馈回执),
+    提交P8举报: vi.fn(async (): Promise<P8ReportReceipt> => 举报回执),
+    // Task 7：屏蔽已生效回执后的候选侧权威隐私读取（P3 既有水合路径的输入）
+    读取隐私: vi.fn(async () => 隐私页面样本),
     清空目录缓存: vi.fn(),
     ...覆盖,
   } as unknown as HTTP招聘数据源;
@@ -184,7 +202,7 @@ interface P8操作测试环境 {
   deps: 后端操作依赖 & P8运行时引用;
   派发: ReturnType<typeof vi.fn>;
   恢复存储: ReturnType<typeof 创建恢复存储桩>;
-  操作: P8账号控制面操作 & P8反馈操作;
+  操作: P8账号控制面操作 & P8合规操作;
   最新状态(): 后端状态;
 }
 
@@ -1296,6 +1314,183 @@ describe('P8 产品反馈', () => {
   });
 });
 
+// ── Task 7：上下文举报 —— 线协议、请求隐私与终局纪律 ────────────────
+
+describe('P8 上下文举报', () => {
+  it('三种目标 × 四个线协议原因原样透传：键是可见 ASCII，成功清意图并原样返回回执', async () => {
+    const 目标们: P8ReportTarget[] = [
+      { type: 'job', ref: 'job_00112233445566778899aabbccddeeff' },
+      { type: 'match_case', ref: 'mc_7' },
+      { type: 'conversation', ref: '3003' },
+    ];
+    const 原因们: P8ReportReason[] = ['false_information', 'salary_misrepresentation', 'harassment', 'other'];
+    for (const 目标 of 目标们) {
+      for (const 原因 of 原因们) {
+        vi.mocked(env.数据源.提交P8举报).mockResolvedValueOnce(举报回执);
+        await expect(env.操作.提交P8举报(目标, 原因, true)).resolves.toEqual(举报回执);
+        const 调用 = vi.mocked(env.数据源.提交P8举报).mock.calls.at(-1)!;
+        expect(调用.slice(0, 3)).toEqual([目标, 原因, true]);
+        expect(调用[3]).toMatch(/^[!-~]{16,128}$/);
+      }
+    }
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+    expect(env.最新状态().已登录).toBe(true);
+  });
+
+  it('意图请求恰含 target/reason/also_block：无身份/角色/组织名/展示名/证据/正文/屏蔽对象', async () => {
+    vi.mocked(env.数据源.提交P8举报).mockRejectedValueOnce(
+      new BFF错误(503, 'operation_outcome_unknown', 'unknown'));
+    await expect(env.操作.提交P8举报({ type: 'job', ref: 'job_001' }, 'salary_misrepresentation', true))
+      .rejects.toMatchObject({ code: 'operation_outcome_unknown' });
+    const 保留 = [...env.deps.P8待定意图.current.values()];
+    expect(保留).toHaveLength(1);
+    expect(保留[0].request).toEqual({
+      target: { type: 'job', ref: 'job_001' },
+      reason: 'salary_misrepresentation',
+      also_block: true,
+    });
+    // 举报走平台侧：对象/展示/屏蔽名绝不进请求（屏蔽只是个布尔，没有第二个目标）
+    const 序列化 = JSON.stringify(保留[0].request);
+    expect(序列化).not.toContain('云衢科技');
+    expect(序列化).not.toContain('displayName');
+    expect(序列化).not.toContain('organization');
+    expect(序列化).not.toContain('identity');
+  });
+
+  it('未知/网络异常保留同一把键与不可变请求，同键重试成功后清意图', async () => {
+    vi.mocked(env.数据源.提交P8举报)
+      .mockRejectedValueOnce(new BFF错误(503, 'operation_outcome_unknown', 'unknown'))
+      .mockRejectedValueOnce(new Error('网络断了'));
+    await expect(env.操作.提交P8举报({ type: 'conversation', ref: '3003' }, 'harassment', false))
+      .rejects.toBeInstanceOf(Error);
+    await expect(env.操作.提交P8举报({ type: 'conversation', ref: '3003' }, 'harassment', false))
+      .rejects.toBeInstanceOf(Error);
+    expect([...env.deps.P8待定意图.current.values()]).toHaveLength(1);
+    vi.mocked(env.数据源.提交P8举报).mockResolvedValueOnce(举报回执);
+    await env.操作.提交P8举报({ type: 'conversation', ref: '3003' }, 'harassment', false);
+    const 调用 = vi.mocked(env.数据源.提交P8举报).mock.calls;
+    expect(new Set(调用.map((行) => 行[3])).size).toBe(1); // 三次同一把键
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+
+  it('中文意图坐标只作内存 Map 键：数据源键参数仍是纯可见 ASCII', async () => {
+    vi.mocked(env.数据源.提交P8举报).mockRejectedValueOnce(
+      new BFF错误(503, 'operation_outcome_unknown', 'unknown'));
+    await expect(env.操作.提交P8举报({ type: 'conversation', ref: '3003' }, 'harassment', false))
+      .rejects.toMatchObject({ code: 'operation_outcome_unknown' });
+    expect([...env.deps.P8待定意图.current.keys()].join('\n')).toMatch(/[一-鿿]/);
+    expect(vi.mocked(env.数据源.提交P8举报).mock.calls[0][3]).toMatch(/^[!-~]{16,128}$/);
+  });
+
+  it('block_unavailable 是终局：无半成功、清意图；用户取消勾选屏蔽后重试铸新键', async () => {
+    vi.mocked(env.数据源.提交P8举报).mockRejectedValueOnce(
+      new BFF错误(409, 'block_unavailable', 'cannot block now'));
+    await expect(env.操作.提交P8举报({ type: 'job', ref: 'job_001' }, 'false_information', true))
+      .rejects.toMatchObject({ code: 'block_unavailable' });
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+    expect(取P8错误文案(new BFF错误(409, 'block_unavailable', 'x')))
+      .toBe('暂时无法同时屏蔽，可取消勾选后仅提交举报');
+    // 取消勾选「同时屏蔽」＝新意图新键（不是同键重放）
+    vi.mocked(env.数据源.提交P8举报).mockResolvedValueOnce(举报回执);
+    await env.操作.提交P8举报({ type: 'job', ref: 'job_001' }, 'false_information', false);
+    const 调用 = vi.mocked(env.数据源.提交P8举报).mock.calls;
+    expect(调用[1][2]).toBe(false);
+    expect(调用[1][3]).not.toBe(调用[0][3]);
+  });
+
+  it('report_target_not_found 是统一终局：清意图、原样抛出、固定文案', async () => {
+    vi.mocked(env.数据源.提交P8举报).mockRejectedValueOnce(
+      new BFF错误(404, 'report_target_not_found', 'gone'));
+    await expect(env.操作.提交P8举报({ type: 'conversation', ref: '3003' }, 'other', false))
+      .rejects.toMatchObject({ code: 'report_target_not_found' });
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+    expect(取P8错误文案(new BFF错误(404, 'report_target_not_found', 'x')))
+      .toBe('举报对象已不存在，请刷新后重试');
+  });
+
+  it('429 限流终局且绝不排定时器：合规 429 无 Retry-After，清意图、零自动重试', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(env.数据源.提交P8举报).mockRejectedValueOnce(
+        new BFF错误(429, 'rate_limited', 'slow down'));
+      await expect(env.操作.提交P8举报({ type: 'job', ref: 'job_001' }, 'other', false))
+        .rejects.toMatchObject({ code: 'rate_limited' });
+      expect(env.deps.P8待定意图.current.size).toBe(0);
+      await vi.advanceTimersByTimeAsync(60_000); // 无倒计时：推进一分钟也不会自动重发
+      expect(env.数据源.提交P8举报).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('非法目标/原因/屏蔽参数：零请求零意图（入参校验在本层收口）', async () => {
+    await expect(env.操作.提交P8举报({ type: 'job', ref: '' }, 'harassment', true))
+      .rejects.toMatchObject({ code: 'invalid_request' });
+    await expect(env.操作.提交P8举报({ type: 'pigeon', ref: 'x' } as never, 'harassment', true))
+      .rejects.toMatchObject({ code: 'invalid_request' });
+    // 多出的展示名键：exact key set 拒绝，展示名绝不随目标上车
+    await expect(env.操作.提交P8举报({ type: 'job', ref: 'job_1', displayName: '云衢科技' } as never, 'harassment', true))
+      .rejects.toMatchObject({ code: 'invalid_request' });
+    await expect(env.操作.提交P8举报({ type: 'job', ref: 'job_1' }, 'annoying' as never, true))
+      .rejects.toMatchObject({ code: 'invalid_request' });
+    await expect(env.操作.提交P8举报({ type: 'job', ref: 'job_1' }, 'harassment', 'yes' as never))
+      .rejects.toMatchObject({ code: 'invalid_request' });
+    expect(env.数据源.提交P8举报).not.toHaveBeenCalled();
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+
+  it('在飞单飞：同一目标+原因+屏蔽的重复点击并入同一 Promise，只发一次请求', async () => {
+    const 门 = deferred<P8ReportReceipt>();
+    vi.mocked(env.数据源.提交P8举报).mockReturnValueOnce(门.promise);
+    const a = env.操作.提交P8举报({ type: 'job', ref: 'job_001' }, 'other', false);
+    const b = env.操作.提交P8举报({ type: 'job', ref: 'job_001' }, 'other', false);
+    expect(env.数据源.提交P8举报).toHaveBeenCalledTimes(1);
+    门.resolve(举报回执);
+    expect(await Promise.all([a, b])).toEqual([举报回执, 举报回执]);
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+
+  it('回执 blockStatus=applied 且当前角色是候选：恰一次权威隐私读取并走既有 P3 水合路径，绝不本地拉黑', async () => {
+    vi.mocked(env.数据源.提交P8举报).mockResolvedValueOnce(屏蔽已生效回执);
+    await expect(env.操作.提交P8举报({ type: 'job', ref: 'job_001' }, 'false_information', true))
+      .resolves.toEqual(屏蔽已生效回执);
+    expect(env.数据源.读取隐私).toHaveBeenCalledTimes(1);
+    expect(env.派发).toHaveBeenCalledWith({ 型: '水合后端隐私', 快照: 隐私页面样本 });
+    expect(env.最新状态().隐私快照).toEqual(BFF隐私快照样本);
+    expect(env.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '拉黑' }));
+    // not_requested：零隐私读取（服务端没动屏蔽名单）
+    vi.mocked(env.数据源.提交P8举报).mockResolvedValueOnce(举报回执);
+    await env.操作.提交P8举报({ type: 'conversation', ref: '3003' }, 'harassment', false);
+    expect(env.数据源.读取隐私).toHaveBeenCalledTimes(1);
+  });
+
+  it('招聘端回执 applied 绝不读候选隐私，也绝不本地拉黑', async () => {
+    env.deps.设后端状态((旧) => ({ ...旧, 主体: { ...候选主体, last_used_role: 'recruiter' } }));
+    vi.mocked(env.数据源.提交P8举报).mockResolvedValueOnce(屏蔽已生效回执);
+    await env.操作.提交P8举报({ type: 'conversation', ref: '3003' }, 'harassment', true);
+    expect(env.数据源.读取隐私).not.toHaveBeenCalled();
+    expect(env.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '拉黑' }));
+  });
+
+  it('隐私重读失败不冒充举报失败：回执照常返回（镜像滞后留给下次隐私读取）', async () => {
+    vi.mocked(env.数据源.提交P8举报).mockResolvedValueOnce(屏蔽已生效回执);
+    vi.mocked(env.数据源.读取隐私).mockRejectedValueOnce(new Error('隐私读失败'));
+    await expect(env.操作.提交P8举报({ type: 'job', ref: 'job_001' }, 'harassment', true))
+      .resolves.toEqual(屏蔽已生效回执);
+    expect(env.最新状态().已登录).toBe(true);
+  });
+
+  it('当前会话 401：统一清账号后原样抛出（写路径 rethrow，屏幕走登录恢复）', async () => {
+    await env.操作.加载P8凭证();
+    vi.mocked(env.数据源.提交P8举报).mockRejectedValueOnce(
+      new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(env.操作.提交P8举报({ type: 'job', ref: 'job_001' }, 'harassment', false))
+      .rejects.toMatchObject({ code: 'invalid_session' });
+    expect(env.最新状态().已登录).toBe(false);
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+});
+
 // ── 错误文案 ───────────────────────────────────────────────────────
 
 describe('P8 错误文案', () => {
@@ -1316,6 +1511,11 @@ describe('P8 错误文案', () => {
       .toBe('已有导出正在生成或等待下载，请稍后重试');
     expect(取P8错误文案(new BFF错误(404, 'data_export_not_found', 'x')))
       .toBe('导出已失效，请重新生成');
+    // Task 7：举报两码（屏蔽暂不可用 / 举报对象不存在）
+    expect(取P8错误文案(new BFF错误(409, 'block_unavailable', 'x')))
+      .toBe('暂时无法同时屏蔽，可取消勾选后仅提交举报');
+    expect(取P8错误文案(new BFF错误(404, 'report_target_not_found', 'x')))
+      .toBe('举报对象已不存在，请刷新后重试');
     expect(取P8错误文案(new BFF错误(429, 'rate_limited', 'x'))).toBe('操作过于频繁，请稍后再试');
     expect(取P8错误文案(new BFF错误(400, 'invalid_request_body', 'bad')))
       .toBe('请求内容无法处理，请检查输入后重试');
@@ -1392,6 +1592,9 @@ describe('P8 清理与可见范围', () => {
     // Task 6：产品反馈同样只在 Backend 可用
     await expect(mock环境.操作.提交P8反馈('bug', '导出按钮没有响应'))
       .rejects.toMatchObject({ code: 'backend_unavailable' });
+    // Task 7：上下文举报同样只在 Backend 可用（零隐私读取）
+    await expect(mock环境.操作.提交P8举报({ type: 'job', ref: 'job_1' }, 'harassment', true))
+      .rejects.toMatchObject({ code: 'backend_unavailable' });
     expect(mock环境.操作.取P8数据导出下载地址()).toBeNull();
     mock环境.操作.废弃P8数据导出();
     mock环境.操作.设置P8账号范围(true);
@@ -1406,6 +1609,8 @@ describe('P8 清理与可见范围', () => {
     expect(mock环境.数据源.取P8数据导出下载地址).not.toHaveBeenCalled();
     expect(mock环境.数据源.请求P8账号注销).not.toHaveBeenCalled();
     expect(mock环境.数据源.提交P8反馈).not.toHaveBeenCalled();
+    expect(mock环境.数据源.提交P8举报).not.toHaveBeenCalled();
+    expect(mock环境.数据源.读取隐私).not.toHaveBeenCalled();
     expect(mock环境.恢复存储.写入).not.toHaveBeenCalled();
     expect(mock环境.恢复存储.删除).not.toHaveBeenCalled();
   });
