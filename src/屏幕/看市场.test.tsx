@@ -234,7 +234,7 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
     expect(mock轻提示).toHaveBeenCalledWith('请到规则库确认并添加长期规则');
   });
 
-  it('问AI代理：Mock 仍派发 新增规则 并跳规则库', async () => {
+  it('问AI代理：Mock 派发 新增规则 后留在本页并轻提示', async () => {
     置应用状态({ 模式: 'mock', 状态: { 基本信息: { 真名: '测试' } } });
     render(<问AI代理 />);
     await userEvent.click(screen.getByRole('button', { name: '改成可谈' }));
@@ -243,7 +243,9 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
       内容: 今日简报.松一档.规则内容,
       来源: 今日简报.松一档.规则来源,
     });
-    expect(mock跳转).toHaveBeenCalledWith(路径.规则库);
+    // 2026-08-31 用户:「点记成规则不应该跳到规则库」—— 留在本页,轻提示告知
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.规则库);
+    expect(mock轻提示).toHaveBeenCalledWith('已记成规则');
   });
 
   it('往来记录：Backend 记成规则不派发 新增规则，只提示去规则库', async () => {
@@ -269,7 +271,7 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
     expect(mock轻提示).toHaveBeenCalledWith('请到规则库确认并添加长期规则');
   });
 
-  it('往来记录：Mock 记成规则仍派发 新增规则 并跳规则库', async () => {
+  it('往来记录：Mock 记成规则派发 新增规则 后留在本页并轻提示', async () => {
     置应用状态({ 模式: 'mock', 状态: { 在谈列表: [] } });
     render(
       <MemoryRouter initialEntries={['/thread/J-02']}>
@@ -292,7 +294,9 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
       内容: '只要双休',
       来源: '来自小红书单的叮嘱 · 刚刚',
     });
-    expect(mock跳转).toHaveBeenCalledWith(路径.规则库);
+    // 2026-08-31 用户:「点记成规则不应该跳到规则库」—— 留在本页,轻提示告知
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.规则库);
+    expect(mock轻提示).toHaveBeenCalledWith('已记成规则');
   });
 
   it('在谈详情：Backend 只渲染 P5 详情 —— Mock 决策/记成规则入口整体退场，零规则派发', async () => {
@@ -342,7 +346,7 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
     expect(mock轻提示).not.toHaveBeenCalled();
   });
 
-  it('在谈详情：Mock 决策后记成规则仍派发 新增规则 并跳规则库', async () => {
+  it('在谈详情：Mock 决策后记成规则派发 新增规则 后留在本页并轻提示', async () => {
     置应用状态({
       模式: 'mock',
       状态: {
@@ -371,7 +375,9 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
     expect(mock派发).toHaveBeenCalledWith(
       expect.objectContaining({ 型: '新增规则', 内容: expect.any(String) }),
     );
-    expect(mock跳转).toHaveBeenCalledWith(路径.规则库);
+    // 2026-08-31 用户:「点记成规则不应该跳到规则库」—— 留在本页,轻提示告知
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.规则库);
+    expect(mock轻提示).toHaveBeenCalledWith('已记成规则');
   });
 });
 
