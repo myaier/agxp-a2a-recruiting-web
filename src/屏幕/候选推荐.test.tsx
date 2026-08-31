@@ -121,7 +121,7 @@ function 置Mock状态() {
 
 /** 左滑第一张候选卡露出「不合适」 */
 async function 左滑露不合适() {
-  const 行面 = document.querySelector('[role="button"][aria-expanded="false"]')!;
+  const 行面 = document.querySelector('[aria-expanded="false"]')!;
   fireEvent.pointerDown(行面, { clientX: 300, clientY: 10 });
   fireEvent.pointerMove(行面, { clientX: 200, clientY: 10 });
   fireEvent.pointerUp(行面, { clientX: 200, clientY: 10 });

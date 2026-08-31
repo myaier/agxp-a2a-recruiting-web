@@ -91,10 +91,12 @@ export default function 滑动行({
         ))}
       </div>
 
+      {/* role 始终存在；按下缺省时是纯分组，oxlint 无法从条件表达式推断这一点。 */}
+      {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
         className={样式.行面}
-        role="button"
-        tabIndex={0}
+        role={按下 ? 'button' : 'group'}
+        tabIndex={按下 ? 0 : undefined}
         aria-expanded={打开}
         style={{ transform: `translateX(${打开 ? -操作区宽 : 0}px)` }}
         onPointerDown={按下开始}
@@ -111,12 +113,12 @@ export default function 滑动行({
           }
           按下?.();
         }}
-        onKeyDown={(事件: KeyboardEvent<HTMLDivElement>) => {
+        onKeyDown={按下 ? (事件: KeyboardEvent<HTMLDivElement>) => {
           if (事件.key !== 'Enter' && 事件.key !== ' ') return;
           事件.preventDefault();
           if (打开) 请求打开(false);
-          else 按下?.();
-        }}
+          else 按下();
+        } : undefined}
       >
         {children}
       </div>
