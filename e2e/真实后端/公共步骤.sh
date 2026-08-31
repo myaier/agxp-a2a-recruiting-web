@@ -217,9 +217,10 @@ enter_company_intro(){
     fi
     if [ "$tries" = 5 ]; then
       # 终极兜底：本会话的 CDP 响应已失效（eval 空响应/AX 落后整屏），重启会话、
-      # 重新走完整语义登录与导航，再试最后两轮。
+      # 本角色重新走完整语义登录（同手机号限流窗一分钟一次，先错峰），再试最后两轮。
       agent-browser --session "$AGENT_BROWSER_SESSION" close >/dev/null 2>&1 || true
-      login_recruiter || login_candidate
+      pace_before_login
+      login_recruiter || { sleep 65; login_recruiter; }
       click_after_hydrate '我'
       click_until_screen '公司资料' '编辑品牌信息'
     fi
