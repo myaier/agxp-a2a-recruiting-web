@@ -531,11 +531,13 @@ export interface 真人会话操作 {
 }
 
 /**
- * P8 Task 3：页面会调用的账号控制面操作方法表（页面不得直接调用数据源）。
+ * P8 Task 3+5：页面会调用的账号控制面操作方法表（页面不得直接调用数据源）。
  * 铁律：调用方不携带幂等键 —— 每个 mutation 由域内按意图坐标（换绑开始=手机号、
- * 换绑完成=attempt+验证码、退出其他设备=恒定）铸造一把 crypto.randomUUID 键，
- * 同意图的所有重试沿用同一把键；mutation 一律服务端先行，成功（或确认重放）后
- * 权威重读，响应本体绝不替换快照。Task 5 在本表上扩导出/注销，Task 6–7 加合规两法。
+ * 换绑完成=attempt+验证码、退出其他设备=恒定、创建导出=落盘 createKey、注销=恒定）
+ * 铸造一把 crypto.randomUUID 键，同意图的所有重试沿用同一把键；mutation 一律
+ * 服务端先行，成功（或确认重放）后权威重读，响应本体绝不替换快照。
+ * 导出创建的幂等键即恢复句柄里的 createKey：先落盘 {exportId:null} 再 POST，
+ * 响应丢失/刷新后按句柄同键重放。Task 6–7 在本表上再加合规两法。
  */
 export interface P8账号控制面操作 {
   /** 登记账号 UI 可见性：只影响迟到提示抑制与 UI 可见，绝不递增 P8 栅栏、不清快照。 */
@@ -550,20 +552,29 @@ export interface P8账号控制面操作 {
   完成P8手机号换绑(attemptId: string, code: string): Promise<P8ReplacementResult>;
   /** 退出其他设备：返回 revoked_sessions 回执计数；成功后权威重读会话，不影响当前会话。 */
   退出P8其他设备(): Promise<number>;
+  /**
+   * 被动恢复（进屏/打开抽屉）：读当前 subject 句柄 —— 无适配器或无句柄零导出请求；
+   * exportId:null 用落盘 createKey 同键重放 POST；有 ID 只权威 GET。
+   */
+  恢复P8数据导出(): Promise<void>;
+  /**
+   * 显式创建/续接：无句柄先落盘 {subjectId, createKey, exportId:null} 再 POST
+   * （适配器缺席或写入失败 → 固定「数据导出暂不可用」文案 + 零请求）；有 ID 句柄时
+   * 退化为权威 GET（绝不向已有导出再 POST）。
+   */
+  创建P8数据导出(): Promise<void>;
+  /** 权威 GET 导出状态（'export' 单飞）；无已知 exportId 零请求；404/expired 清句柄。 */
+  刷新P8数据导出(): Promise<void>;
+  /** 清当前 subject 句柄并摊平导出快照：404/expired/明确重新生成用，下次创建铸新键。 */
+  废弃P8数据导出(): void;
+  /** ready+downloadReady 是唯一可下载组合，其余一律 null；URL 委托 facade 严格校验构造。 */
+  取P8数据导出下载地址(): string | null;
+  /**
+   * 注销：终局确认单飞（body {} 由 facade 冻结）；未知结果同键 1s/2s 显式重放至多
+   * 两次，持续不确定原样抛出且保留意图供手动重试；202 先统一清 P4–P8 再 resolve，
+   * 当前 subject 导出句柄一并删除（尽力而为）；成功后的导航归屏幕。
+   */
+  请求P8账号注销(): Promise<void>;
 }
 
-/**
- * P8 Task 3 组合进 应用操作 的真实子面：恰为上方六个账号安全方法。
- * 导出/注销（Task 5）与反馈/举报（Task 6–7）在各自 RED 测试落地前绝不在此出现。
- */
-export type P8账号安全操作 = Pick<
-  P8账号控制面操作,
-  | '设置P8账号范围'
-  | '加载P8凭证'
-  | '加载P8会话'
-  | '开始P8手机号换绑'
-  | '完成P8手机号换绑'
-  | '退出P8其他设备'
->;
-
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 & P8账号安全操作;
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 & P8账号控制面操作;

@@ -54,7 +54,7 @@ import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
 import type { 资料缓存快照 } from '../数据/资料缓存';
 import { 读资料缓存 } from '../数据/资料缓存';
-import type { P8导出恢复存储 } from '../数据/P8导出恢复';
+import { 创建P8导出恢复存储, type P8导出恢复存储 } from '../数据/P8导出恢复';
 import type { PDF对象租约 } from '../数据/PDF对象租约';
 import { 轻提示 } from '../组件/轻提示';
 import type {
@@ -525,14 +525,25 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const P7可见会话 = useRef<Record<P7角色, string | null>>({ candidate: null, recruiter: null });
   const P7已读位置 = useRef(new Map<string, P7已读位置记录>());
   // P8 Task 3：账号控制面运行时引用 —— 范围代际 / 账号可见 / 读锁 / 待定意图 /
-  // 导出恢复（先置 null，Task 5 供给 subject 绑定适配器）。一次性初始化；
-  // 会话转移由下方主体（不含角色）effect 与 会话操作 的清理口统一复位。
+  // 导出恢复。一次性初始化；会话转移由下方主体（不含角色）effect 与 会话操作 的
+  // 清理口统一复位（导出恢复句柄跨登出保留，spec §8.3）。
   const P8范围代际 = useRef(0);
   const P8账号可见 = useRef(false);
   const P8读取锁 = useRef(new Map<'credentials' | 'sessions' | 'export', Promise<void>>());
   const P8待定意图 = useRef(new Map<string, P8待定意图<unknown>>());
   const P8导出恢复 = useRef<P8导出恢复存储 | null>(null);
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
+  // P8 Task 5：subject 绑定的导出恢复适配器。Backend 主体在场才构造（local 存储 +
+  // 模式/环境/账号 三重隔离键）；主体/环境每次变化都在渲染期先写 ref —— 子组件
+  // （账号安全页）的被动恢复 effect 一定看到新适配器（或 null），操作方法在调用时
+  // 解引用 .current。Mock 恒 null、零存储触碰；绝不把普通适配器捕获进 Provider
+  // 生命期的 useMemo。
+  P8导出恢复.current = 是后端 && 当前主体标识 !== null
+    ? 创建P8导出恢复存储({
+      storage: 安全取存储('local'),
+      范围: { 模式: 'backend', 环境, 账号: 当前主体标识 },
+    })
+    : null;
   use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识 });
 
   // P7 Task 5：同源事件源只建一次（无 token/query/header；帧只触发 no-store 重拉）。
@@ -719,8 +730,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         ...创建MatchCase操作(deps),
         // P7 Task 2：真人会话操作（内存态快照 + 意图键化发送对账 + forward-only 已读），同一把 deps
         ...创建真人会话操作(deps),
-        // P8 Task 3：账号控制面操作（内存态快照 + 单飞读取 + 意图键化换绑/退出其他设备），
-        // 同一把 deps；Task 3 只组合 P8账号安全操作 六法（导出/注销 Task 5、合规 Task 6–7）
+        // P8 Task 3+5：账号控制面操作（内存态快照 + 单飞读取 + 意图键化换绑/退出其他
+        // 设备 + 导出恢复/创建/刷新/废弃/下载地址 + 账号注销），同一把 deps；
+        // 导出恢复适配器由上方渲染期按主体换绑（合规两法 Task 6–7 再加）
         ...创建P8账号安全操作(deps),
       };
     },

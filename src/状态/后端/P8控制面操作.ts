@@ -1,15 +1,18 @@
-// 后端 P8 控制面域运行时 owner（Task 3）：账号安全资源（凭证/会话）的内存态快照、
-// 单飞读取、subject/会话/范围三代栅栏，与手机号换绑、退出其他设备的意图键化命令。
+// 后端 P8 控制面域运行时 owner（Task 3 + Task 5）：账号安全资源（凭证/会话/导出）的
+// 内存态快照、单飞读取、subject/会话/范围三代栅栏，与手机号换绑、退出其他设备、
+// 数据导出（恢复/创建/刷新/废弃/下载地址）、账号注销的意图键化命令。
 // 铁律（spec §7–§8 与已准入 P8 冻结契约）：
 //   · Backend 才发请求：读路径早退、写路径拒绝 backend_unavailable；Mock 模式零 P8
 //     请求，接口失败绝不回退 Mock。快照 / 锁 / 意图只在内存（后端状态 + 运行时引用），
-//     绝不进 资料持久化、浏览器存储、Cache API 或 Service Worker。
+//     绝不进 资料持久化、浏览器存储、Cache API 或 Service Worker —— 唯一例外是导出
+//     恢复句柄（Task 5）：恰三字段 {subjectId, createKey, exportId}，按 subject 隔离的
+//     localStorage 键由 Provider 供给适配器（P8导出恢复.current），跨登出保留。
 //   · 读栅栏 = subject_id + 会话代际 + P8 范围代际，每个请求发送前捕获；任一不匹配的
 //     迟到成败只释放本轮读锁 —— 数据不写快照、不派发、不清会话（迟到的 401 绝不能
-//     登出新会话）。credentials / sessions 各自单飞，重复调用并入同一 Promise；force 刷新
-//     递增范围代际使旧在飞读整包过时并由新读接管锁，被作废的结算把快照滚回起飞前状态
-//     （姊妹资源的 force 换代绝不把本资源永久滞留在 loading/refreshing）；已成功快照
-//     刷新途中保留旧 data 不降级为空。
+//     登出新会话）。credentials / sessions / export 各自单飞，重复调用并入同一 Promise；
+//     force 刷新递增范围代际使旧在飞读整包过时并由新读接管锁，被作废的结算把快照滚回
+//     起飞前状态（姊妹资源的 force 换代绝不把本资源永久滞留在 loading/refreshing）；
+//     已成功快照刷新途中保留旧 data 不降级为空。
 //   · 写栅栏 = subject_id + 会话代际（范围代际只是 UI 刷新换代，绝不终结写）：当前会话
 //     401 走统一 清账号状态 并原样抛出，让屏幕沿既有登录恢复路径；栅栏已换代的迟到写
 //     401 只丢弃。完成换绑成功先强制重读凭证+会话（一次换代、两路共享同一新代）再
@@ -17,14 +20,20 @@
 //     回执计数原样返回，不影响当前会话、不清账号状态。
 //   · 写意图：key 由 crypto.randomUUID 铸造（16–128 可见 ASCII）；意图坐标（可含中文）
 //     只作内存 Map 键，绝不进数据源键参数。换绑开始坐标=手机号、换绑完成坐标=
-//     attempt+验证码（begin/complete 各自独立键）、退出其他设备坐标恒定 —— 换手机号 /
-//     换 attempt / 换验证码即新意图新键；operation_outcome_unknown / idempotency_in_progress /
-//     限流 / 下游不可用 / 传输层异常保留原键与不可变请求只允许同键重试；成功与终局拒绝
-//     （400/403/409 冲突）清意图；同一动作在飞时重复点击只并入同一 Promise。
+//     attempt+验证码（begin/complete 各自独立键）、退出其他设备坐标恒定、创建导出
+//     坐标=落盘 createKey（幂等键即句柄里的 createKey，跨刷新同键重放由句柄承载）、
+//     注销坐标恒定 —— 换手机号 / 换 attempt / 换验证码 / 明确重新生成即新意图新键；
+//     operation_outcome_unknown / idempotency_in_progress / 限流 / 下游不可用 / 传输层
+//     异常保留原键与不可变请求只允许同键重试；成功与终局拒绝（400/403/409 冲突）清
+//     意图（创建导出的终局拒绝同时回滚预写句柄，不留死键）；同一动作在飞时重复点击
+//     只并入同一 Promise。
+//   · 导出创建先落盘后 POST：写入失败/适配器缺席/主体缺席 → 固定「数据导出暂不可用」
+//     文案 + 零请求；有 ID 句柄只 GET 绝不 POST；404/expired/明确重新生成/注销 202 清
+//     当前 subject 句柄；注销未知结果同键 1s/2s 显式重放至多两次，持续不确定保留意图。
 //   · 入参校验在本层收口：换绑开始只收 11 位中国大陆裸号（facade 只负责 +86 E.164 构造），
 //     换绑完成证明执行产品全局 短信验证码位数 规则 —— 非法输入零请求、零意图。
 //   · 错误文案是本模块闭合的固定中文表：未知 BFF错误.message 绝不透传。
-//   · 导出/注销（Task 5）与反馈/举报（Task 6–7）不在本表：绝不预留空桩。
+//   · 反馈/举报（Task 6–7）不在本表：绝不预留空桩。
 
 import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
 import type {
@@ -32,10 +41,11 @@ import type {
   P8DataExport,
   P8Session,
 } from '../../数据/招聘数据源/P8控制面';
+import type { P8导出恢复句柄 } from '../../数据/P8导出恢复';
 import { 短信验证码位数 } from '../../数据/验证码规则';
 import { 清账号状态 } from './会话操作';
 import type {
-  P8账号安全操作,
+  P8账号控制面操作,
   P8待定意图,
   P8控制面状态,
   P8运行时引用,
@@ -54,15 +64,23 @@ function 段(值: string): string {
   return encodeURIComponent(值);
 }
 
-/** 意图坐标（内存 Map 的键，可含中文）：换绑开始=手机号、换绑完成=attempt+验证码、退出恒定。 */
+/**
+ * 意图坐标（内存 Map 的键，可含中文）：换绑开始=手机号、换绑完成=attempt+验证码、
+ * 退出恒定、创建导出=落盘 createKey、注销恒定。
+ */
 const 意图坐标 = {
   换绑开始: (手机号: string): string => `p8:换绑开始:${手机号}`,
   换绑完成: (attemptId: string, code: string): string => `p8:换绑完成:${段(attemptId)}:${code}`,
   退出其他设备: 'p8:退出其他设备',
+  创建数据导出: (createKey: string): string => `p8:创建数据导出:${段(createKey)}`,
+  注销账号: 'p8:注销账号',
 } as const;
 
-/** P8 读锁表里的资源键（export 的读锁 Task 5 接线，锁表先收录该坐标）。 */
-type P8资源 = 'credentials' | 'sessions';
+/** P8 读锁表里的资源键：credentials / sessions / export（export 于 Task 5 接线）。 */
+type P8资源 = 'credentials' | 'sessions' | 'export';
+
+/** 注销未知结果的显式重放间隔（spec §7.5：无 Retry-After 时分别等 1 秒、2 秒）。 */
+const 等待毫秒 = (毫秒: number): Promise<void> => new Promise((完成) => { setTimeout(完成, 毫秒); });
 
 /** P8 账号安全域可复用初始化/重置底座：Provider 首帧与会话转移口共用同一形状。 */
 export function 创建空P8控制面状态(): P8控制面状态 {
@@ -80,7 +98,8 @@ export function 创建空P8控制面状态(): P8控制面状态 {
  * P8 引用级清理：范围代际递增（在飞读写按旧代整包作废）+ 读锁与待定意图清空 +
  * 账号可见复位。登出 / 401 / 换主体 / Provider 卸载统一走这里；可选成员缺省时
  * （旧依赖桩）静默跳过，快照仍由 创建空P8控制面状态() 的状态摊平兜底。
- * P8导出恢复 不在此列：它是按 subject 隔离的恢复坐标，跨登出保留（spec §8.3，Task 5 接线）。
+ * P8导出恢复 不在此列：它是按 subject 隔离的恢复坐标，跨登出保留（spec §8.3）；
+ * 只有注销 202 与 export 404/expired/明确重新生成在域内删当前 subject 句柄。
  */
 export function 清P8控制面引用(
   deps: Partial<Pick<后端操作依赖, 'P8范围代际' | 'P8账号可见' | 'P8读取锁' | 'P8待定意图'>>,
@@ -108,6 +127,8 @@ const P8专属文案: Record<string, string> = {
   idempotency_in_progress: '操作仍在处理中，请稍后重试',
   idempotency_conflict: '操作状态发生冲突，请刷新后确认',
   credential_replacement_conflict: '验证码不正确或已过期，请重新获取后再试',
+  export_in_progress: '已有导出正在生成或等待下载，请稍后重试',
+  data_export_not_found: '导出已失效，请重新生成',
   rate_limited: '操作过于频繁，请稍后再试',
   invalid_request_body: '请求内容无法处理，请检查输入后重试',
   invalid_origin: '当前后端环境配置不正确',
@@ -154,10 +175,10 @@ function 取P8引用(deps: 后端操作依赖): 后端操作依赖 & P8运行时
   return deps as 后端操作依赖 & P8运行时引用;
 }
 
-export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号安全操作 {
+export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号控制面操作 {
   const { 是后端, 后端, 设后端状态, 后端状态引用, 主体标识引用, 会话代际 } = deps;
   const 引用 = 取P8引用(deps);
-  const { P8范围代际, P8账号可见, P8读取锁, P8待定意图 } = 引用;
+  const { P8范围代际, P8账号可见, P8读取锁, P8待定意图, P8导出恢复 } = 引用;
   // 清账号状态 需要的子集（与其它域同口径；P4/P7/P8 引用做三域清理）
   const 账号清理依赖 = {
     派发: deps.派发, 设后端状态, 后端, 主体标识引用, 会话代际,
@@ -192,13 +213,16 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
 
   // ── 快照落位的小工具 ──
 
-  /** 读路径的统一核（credentials / sessions 行为完全一致，按资源参数化）：
-   *  起步 / 成功 / 失败 / 换代回滚；迟到成败按栅栏整包作废，锁随单飞收口。 */
+  /** 读路径的统一核（credentials / sessions / export 行为一致，按资源参数化）：
+   *  起步 / 成功 / 失败 / 换代回滚；迟到成败按栅栏整包作废，锁随单飞收口。
+   *  结算处理 只在栅栏仍立（且非 401）的落位前调用 —— export 用它做 404/expired
+   *  的句柄清理，其余资源不传。 */
   function 发起读取<T>(
     资源: P8资源,
     发请求: () => Promise<T>,
     读取快照: () => P8资源快照<T>,
     写快照: (快照: P8资源快照<T>) => void,
+    结算处理?: (结果: { ok: true; data: T } | { ok: false; error: unknown }) => void,
   ): Promise<void> {
     const fence = 捕获栅栏();
     const 本次 = (async (): Promise<void> => {
@@ -220,6 +244,7 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
           回滚起飞前(); // 迟到成功：数据整包作废，快照滚回起飞前
           return;
         }
+        结算处理?.({ ok: true, data: 数据 });
         写快照({ phase: 'success', refreshing: false, data: 数据, error: null, generation: fence.scope });
       } catch (错误) {
         if (!栅栏仍当前(fence)) {
@@ -231,6 +256,7 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
           清账号与P8();
           return;
         }
+        结算处理?.({ ok: false, error: 错误 });
         写快照(失败快照(读取快照(), 错误, fence.scope));
       }
     })();
@@ -259,7 +285,7 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
     );
   }
 
-  async function 运行读取(资源: P8资源, force: boolean): Promise<void> {
+  async function 运行读取(资源: 'credentials' | 'sessions', force: boolean): Promise<void> {
     if (!force) {
       const 在飞 = P8读取锁.current.get(资源);
       if (在飞) return 在飞; // 单飞：重复调用并入同一 Promise
@@ -345,6 +371,164 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
     }
   }
 
+  // ── 数据导出（Task 5）：恢复句柄与三态读写 ──────────────────────
+
+  /** 当前 subject 的恢复句柄；适配器缺席时 null（存储本身 fail closed，绝不外抛）。 */
+  function 取恢复句柄(): P8导出恢复句柄 | null {
+    const 存储 = P8导出恢复.current;
+    if (存储 === null) return null;
+    return 存储.读取();
+  }
+
+  /** 清当前 subject 句柄：export 404/expired、明确重新生成、注销 202 用。 */
+  function 清恢复句柄(): void {
+    const 存储 = P8导出恢复.current;
+    if (存储 === null) return;
+    存储.删除();
+  }
+
+  function 是导出不存在(错误: unknown): boolean {
+    return 错误 instanceof BFF错误 && 错误.status === 404 && 错误.code === 'data_export_not_found';
+  }
+
+  /** 已知 exportId：快照（权威）优先，句柄兜底；都没有时调用方零请求。 */
+  function 取当前导出ID(): string | null {
+    const 快照ID = 后端状态引用.current.dataExport.data?.exportId ?? null;
+    if (快照ID !== null) return 快照ID;
+    const 句柄 = 取恢复句柄();
+    if (句柄 === null) return null;
+    return 句柄.exportId;
+  }
+
+  function 发起导出读(exportId: string): Promise<void> {
+    return 发起读取(
+      'export',
+      () => 后端!.读取P8数据导出(exportId),
+      () => 后端状态引用.current.dataExport,
+      (快照) => 设后端状态((旧态) => ({ ...旧态, dataExport: 快照 })),
+      // 404 / expired：清句柄回到可创建态（spec §5.3/§7.4）；快照照常落位（错误文案/终态）
+      (结果) => {
+        if (结果.ok) {
+          if (结果.data.status === 'expired') 清恢复句柄();
+          return;
+        }
+        if (是导出不存在(结果.error)) 清恢复句柄();
+      },
+    );
+  }
+
+  /** 导出状态读取（'export' 单飞）：无已知 exportId 零请求。 */
+  async function 运行导出读(): Promise<void> {
+    const 在飞 = P8读取锁.current.get('export');
+    if (在飞) return 在飞; // 单飞：重复调用并入同一 Promise
+    const exportId = 取当前导出ID();
+    if (exportId === null) return;
+    return 发起导出读(exportId);
+  }
+
+  /** 创建回执落位：句柄补 exportId（best-effort —— POST 已成，落盘失败只损失跨刷新
+   *  恢复）+ 权威快照写入；只在会话栅栏仍立时提交。 */
+  function 落位导出回执(subjectId: string, createKey: string, 回执: P8DataExport, fence: P8栅栏): void {
+    if (!会话栅栏仍当前(fence)) return;
+    const 存储 = P8导出恢复.current;
+    if (存储 !== null) 存储.写入({ subjectId, createKey, exportId: 回执.exportId });
+    设后端状态((旧) => ({
+      ...旧,
+      dataExport: { phase: 'success', refreshing: false, data: 回执, error: null, generation: fence.scope },
+    }));
+  }
+
+  /**
+   * 导出创建/续接的共用核（spec §7.4 三分支）：
+   *   有 ID 句柄 → 只权威 GET，绝不 POST；
+   *   exportId:null 句柄 → 用落盘 createKey 同键重放 POST（响应丢失/跨刷新续接）；
+   *   无句柄且 允许新建 → 先落盘 {exportId:null} 再 POST（写入失败固定暂不可用 + 零请求）。
+   */
+  async function 确保数据导出(允许新建: boolean): Promise<void> {
+    const 存储 = P8导出恢复.current;
+    if (存储 === null) {
+      if (允许新建) throw 数据导出暂不可用();
+      return; // 被动恢复：无适配器零导出请求
+    }
+    const 既有 = 存储.读取();
+    if (既有 !== null && 既有.exportId !== null) {
+      await 运行导出读(); // 有 ID：只 GET
+      return;
+    }
+    if (既有 === null && !允许新建) return; // 被动恢复：无句柄零请求
+    const subjectId = 主体标识引用.current;
+    if (subjectId === null) throw 数据导出暂不可用();
+    const createKey = 既有 === null ? globalThis.crypto.randomUUID() : 既有.createKey;
+    const 坐标 = 意图坐标.创建数据导出(createKey);
+    // 落盘严格先于 POST（spec §5.3）：预写失败绝不为了继续请求而静默跳过恢复句柄
+    if (存储.写入({ subjectId, createKey, exportId: null }) !== true) throw 数据导出暂不可用();
+    // 幂等键就是落盘的 createKey：跨刷新重放由句柄承载，Map 只保会话内同键纪律
+    if (!P8待定意图.current.has(坐标)) {
+      P8待定意图.current.set(坐标, { key: createKey, request: { createKey } } as P8待定意图<unknown>);
+    }
+    const fence = 捕获栅栏();
+    try {
+      const 回执 = await 单飞命令(坐标, () => 运行命令(
+        坐标,
+        { createKey },
+        (键) => 后端!.创建P8数据导出(键),
+      ));
+      落位导出回执(subjectId, createKey, 回执, fence);
+    } catch (错误) {
+      // 终局拒绝（409 冲突 / 403 / 400）：预写的 {exportId:null} 句柄是死键，回滚删除，
+      // 下一次创建铸新键；未知/进行中/401 保留 —— 那正是同键重放要用的键
+      if (错误 instanceof BFF错误 && !是401(错误) && !是结果不确定(错误)) {
+        const 当前 = 存储.读取();
+        if (当前 !== null && 当前.createKey === createKey && 当前.exportId === null) 存储.删除();
+      }
+      throw 错误;
+    }
+  }
+
+  /**
+   * 注销（spec §7.5）：body {} 已由 facade 冻结；未知结果同键 1s/2s 显式重放至多两次
+   * （HTTP 客户端自带 Retry-After 重试发生在单次调用内，这里绝不另铸键）；持续不确定
+   * 保留意图供手动重试并原样抛出；202 先统一清 P4–P8 再 resolve，句柄清理尽力而为。
+   */
+  async function 运行注销(): Promise<void> {
+    const 坐标 = 意图坐标.注销账号;
+    const fence = 捕获栅栏();
+    const 意图 = 待定意图For(坐标, {});
+    let 最后不确定: unknown = null;
+    for (let 次 = 0; 次 < 3; 次 += 1) {
+      if (次 > 0) await 等待毫秒(次 === 1 ? 1_000 : 2_000);
+      try {
+        await 后端!.请求P8账号注销(意图.key);
+        删意图键(坐标, 意图.key);
+        // 202：统一清理（支持域 + P4/P6/P7/P8 快照与引用 + 会话代际 + 目录缓存）先于
+        // resolve；当前 subject 导出句柄一并删除（可选 no-op，存储失败不冒充注销失败）；
+        // 导航与页面收口归屏幕。
+        清账号状态(账号清理依赖);
+        const 存储 = P8导出恢复.current;
+        if (存储 !== null) {
+          try {
+            存储.删除();
+          } catch {
+            // 句柄清理失败不影响已确认的注销结果
+          }
+        }
+        return;
+      } catch (错误) {
+        if (是401(错误)) {
+          if (会话栅栏仍当前(fence)) 清账号与P8();
+          throw 错误;
+        }
+        if (!是结果不确定(错误)) {
+          删意图键(坐标, 意图.key);
+          throw 错误;
+        }
+        最后不确定 = 错误; // 未知/进行中/网络异常：同键同请求，稍后显式重放
+      }
+    }
+    // 持续不确定：停止自动请求，保留原键供手动重试；原样抛出（固定文案由闭合表映射）
+    throw 最后不确定;
+  }
+
   // ── 公开操作 ──
 
   return {
@@ -412,10 +596,60 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
         () => 运行读取('sessions', true),
       ));
     },
+
+    async 恢复P8数据导出() {
+      if (!是后端 || !后端) return; // 读路径早退：Mock 零请求
+      await 确保数据导出(false);
+    },
+
+    async 创建P8数据导出() {
+      if (!是后端 || !后端) return Promise.reject(仅后端可用());
+      await 确保数据导出(true);
+    },
+
+    async 刷新P8数据导出() {
+      if (!是后端 || !后端) return; // 读路径早退：Mock 零请求
+      await 运行导出读();
+    },
+
+    废弃P8数据导出() {
+      if (!是后端 || !后端) return;
+      const 旧句柄 = 取恢复句柄();
+      清恢复句柄();
+      // 旧 createKey 的意图一并终结：明确重新生成 = 新键（spec §8.2）
+      if (旧句柄 !== null) 删意图键(意图坐标.创建数据导出(旧句柄.createKey), 旧句柄.createKey);
+      // 在飞导出读按旧代整包作废；快照摊平回可创建态（generation 用新代，迟到的回滚不覆盖）
+      P8范围代际.current += 1;
+      设后端状态((旧) => ({
+        ...旧,
+        dataExport: { phase: 'idle', refreshing: false, data: null, error: null, generation: P8范围代际.current },
+      }));
+    },
+
+    取P8数据导出下载地址(): string | null {
+      if (!是后端 || !后端) return null;
+      // ready+downloadReady 是唯一可下载组合；其余（含携带 expiresAt 的）一律不可下载
+      const 数据 = 后端状态引用.current.dataExport.data;
+      if (数据 === null || 数据.status !== 'ready' || !数据.downloadReady) return null;
+      // 同源相对 URL 由 facade 严格校验构造（非法 exportId 在 facade 零请求拒绝）
+      return 后端.取P8数据导出下载地址(数据.exportId);
+    },
+
+    请求P8账号注销() {
+      if (!是后端 || !后端) return Promise.reject(仅后端可用());
+      const 坐标 = 意图坐标.注销账号;
+      // 终局确认单飞：未知重放窗口内的重复点击只并入同一 Promise，不铸第二把键
+      return 单飞命令(坐标, () => 运行注销());
+    },
   };
 }
 
 /** Mock / 无后端模式的写路径拒绝：不伪造成功回执（读路径静默早退）。 */
 function 仅后端可用(): BFF错误 {
   return new BFF错误(0, 'backend_unavailable', '账号安全操作仅在后端模式可用');
+}
+
+/** 导出创建的持久化闸门失败（适配器缺席 / 主体缺席 / 写入失败）：固定文案 + 零请求。 */
+function 数据导出暂不可用(): BFF错误 {
+  return new BFF错误(0, 'invalid_request', '数据导出暂不可用，请稍后重试');
 }

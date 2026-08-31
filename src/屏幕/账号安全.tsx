@@ -1,6 +1,7 @@
 // 账号与安全 —— 两端设置页的「账号」组共用这一屏（/account）。
 //
-// 两件事：换绑手机号（验证码两步流，位数与登录页统一）与注销账号（二次确认）。
+// 三件事：换绑手机号（验证码两步流，位数与登录页统一）、导出我的数据（P8 Task 5 新增
+// 的唯一一行入口）与注销账号（二次确认）。
 //
 // 注销的文案不能含糊：这个平台上「谈判档案」是双方共同的记录，一方注销不能让对方
 // 手里的记录凭空消失，所以口径是「匿名化保留 30 天」——身份要素立刻抹掉，
@@ -12,6 +13,13 @@
 // 「未绑定」、未成功快照 → 中性占位且动作禁用）；换绑两步走真实操作（11 位裸号进
 // 操作层、完成成功等权威重读落地后才关抽屉、绝不乐观写手机号）；冲突/未知保留抽屉
 // 与输入；401 由操作层统一清账号后由应用级路由回收，本屏只保证无本地成功。
+//
+// P8 Task 5：Backend 在注销按钮之前加一组同款「数据」卡（唯一一行「导出我的数据」）。
+// 导出抽屉复用既有弹层样式，按恢复句柄三分支：无句柄先创建、有 ID 只查状态、
+// null ID 同键续接（归操作层）；queued/running 轮询（关闭抽屉只停前端节拍）；
+// ready 下载先权威预检再同源锚点，ZIP 绝不进内存/对象 URL。注销最终确认走真实操作：
+// export_in_progress 留在弹层等待导出；ready 未下载给警示与先下载入口但可继续；
+// 成功后由本屏跳登录页。Mock 不渲染导出行、保留本地注销演示。
 
 import { useEffect, useState } from 'react';
 import 样式 from './我的功能页.module.css';
@@ -24,6 +32,7 @@ import { 短信验证码位数 } from '../数据/验证码规则';
 import { 打码手机号 } from '../数据/隐私展示';
 import { use应用状态 } from '../状态/应用状态';
 import { 取P8错误文案 } from '../状态/后端/P8控制面操作';
+import { useP8导出轮询 } from '../状态/后端/useP8导出轮询';
 
 type 换绑步骤 = null | '填手机号' | '填验证码';
 
@@ -48,17 +57,23 @@ export default function 账号安全() {
   const [提示, 设提示] = useState<string | null>(null);
   // Backend 换绑：begin 回执的 attempt id，完成步原样透传（Mock 不用）
   const [换绑尝试号, 设换绑尝试号] = useState<string | null>(null);
+  // Backend 数据导出：抽屉开关（轮询只在抽屉开着时节拍，关闭不中断服务端任务）
+  const [导出层开, 设导出层开] = useState(false);
+  // Backend 注销：最终确认提交中（重复点击禁用；单飞由操作层保证）
+  const [注销提交中, 设注销提交中] = useState(false);
   // 注销分两步：先读完后果（说明层），再做最终确认（确认框）
   const [注销说明开, 设注销说明开] = useState(false);
   const [注销确认开, 设注销确认开] = useState(false);
 
-  // Backend 进屏：登记账号 UI 可见范围 + 凭证/会话并行按需读取；卸载注销可见范围。
+  // Backend 进屏：登记账号 UI 可见范围 + 凭证/会话并行按需读取 + 被动导出恢复
+  // （无句柄零请求，恢复语义归操作层）；卸载注销可见范围。
   // Mock 零 P8 调用（Mock 下这些操作拒绝 backend_unavailable，绝不能触达）。
   useEffect(() => {
     if (!是后端) return;
     操作.设置P8账号范围(true);
     void 操作.加载P8凭证().catch(() => undefined);
     void 操作.加载P8会话().catch(() => undefined);
+    void 操作.恢复P8数据导出().catch(() => undefined);
     return () => 操作.设置P8账号范围(false);
   }, [是后端, 操作]);
 
@@ -91,6 +106,114 @@ export default function 账号安全() {
   const 退出其他说明 = 是后端 && 其他会话数 !== null
     ? `其他设备 ${其他会话数} 台 · ${退出其他基础说明}`
     : 退出其他基础说明;
+
+  // ── Backend 数据导出投影（Task 5）：行提示与抽屉内容全部来自 dataExport 快照，
+  //    只展示服务端 status，不用本地计时把 ready 改写成 expired（spec §6.2）。──
+  const 导出快照 = 是后端 ? 后端状态.dataExport : null;
+  const 导出数据 = 导出快照?.data ?? null;
+  const 导出状态 = 导出数据?.status ?? null;
+  const 导出查询中 = 导出快照 !== null && (导出快照.phase === 'loading' || 导出快照.refreshing);
+  const 导出可下载 = 导出数据 !== null && 导出数据.status === 'ready' && 导出数据.downloadReady;
+
+  function 取导出行说明(): string {
+    if (导出快照 === null) return '打包下载你的简历与协商记录';
+    if (导出状态 === null) {
+      return 导出快照.phase === 'error' ? '导出状态获取失败，可重试' : '打包下载你的简历与协商记录';
+    }
+    if (导出状态 === 'queued' || 导出状态 === 'running') return '正在生成，回到本页可继续查看';
+    if (导出状态 === 'ready') return 导出数据 !== null && 导出数据.downloadReady ? '已生成，可下载' : '已生成，下载准备中';
+    if (导出状态 === 'failed') return '上次生成失败，可重新生成';
+    return '已过期，可重新生成'; // expired
+  }
+
+  type 导出动作 = null | '创建' | '重新生成' | '下载';
+  let 导出抽屉说明 = '';
+  let 导出主键文案: string | null = null;
+  let 导出主键动作: 导出动作 = null;
+  if (导出数据 === null) {
+    if (导出快照 !== null && 导出快照.phase === 'error') {
+      导出抽屉说明 = 导出快照.error ?? '';
+      导出主键文案 = '重试';
+      导出主键动作 = '创建';
+    } else if (导出查询中) {
+      导出抽屉说明 = '正在查询导出状态，稍候…';
+    } else {
+      导出抽屉说明 = '把你的简历与协商记录打包成 ZIP 文件。生成需要一点时间，关闭本页不会中断，回到这里可以继续查看。';
+      导出主键文案 = '生成导出文件';
+      导出主键动作 = '创建';
+    }
+  } else if (导出数据.status === 'queued' || 导出数据.status === 'running') {
+    导出抽屉说明 = '正在生成导出文件，完成后可以在这里下载。你可以先去忙别的，生成不会中断。';
+  } else if (导出数据.status === 'ready') {
+    导出抽屉说明 = 导出数据.downloadReady
+      ? `导出已生成${导出数据.expiresAt ? `，${取展示时间(导出数据.expiresAt)} 前可下载` : ''}。点击下载前会再确认一次状态。`
+      : '导出已生成，下载正在准备中，稍后再试。';
+    导出主键文案 = '下载数据导出';
+    导出主键动作 = '下载';
+  } else if (导出数据.status === 'failed') {
+    导出抽屉说明 = '上次导出没有生成成功。你可以重新生成一份。';
+    导出主键文案 = '重新生成';
+    导出主键动作 = '重新生成';
+  } else {
+    导出抽屉说明 = '这份导出已过期。如仍需要，请重新生成。';
+    导出主键文案 = '重新生成';
+    导出主键动作 = '重新生成';
+  }
+
+  /** Backend：下载先权威预检（下载与过期的竞态由同源 endpoint 诚实呈现），再同源
+   *  锚点导航让响应流式落盘 —— ZIP 绝不进 React 状态、存储或对象 URL。 */
+  const 下载数据导出 = () => {
+    void (async () => {
+      try {
+        await 操作.刷新P8数据导出();
+      } catch (错误) {
+        设提示(取P8错误文案(错误));
+        return;
+      }
+      const href = 操作.取P8数据导出下载地址();
+      if (href !== null) {
+        const link = document.createElement('a');
+        link.href = href;
+        link.download = '';
+        link.click();
+        return;
+      }
+      设提示('导出尚未就绪或已过期，请稍后重试');
+    })();
+  };
+
+  const 开导出层 = () => {
+    设导出层开(true);
+    // 打开即恢复：无句柄零请求；null ID 同键续接；有 ID 权威 GET（spec §7.4）
+    void 操作.恢复P8数据导出().catch((错误) => 设提示(取P8错误文案(错误)));
+  };
+
+  const 点导出主键 = () => {
+    if (导出主键动作 === null) return;
+    if (导出主键动作 === '下载') {
+      下载数据导出();
+      return;
+    }
+    void (async () => {
+      // failed/expired 的「重新生成」先废弃清旧句柄，操作层才铸新键
+      if (导出主键动作 === '重新生成') 操作.废弃P8数据导出();
+      try {
+        await 操作.创建P8数据导出();
+      } catch (错误) {
+        // 冲突/未知/401：无本地成功，抽屉保留可重试
+        设提示(取P8错误文案(错误));
+      }
+    })();
+  };
+
+  // 导出轮询：只在 Backend 抽屉开着且有已知导出 ID 时节拍 —— 关闭/卸载/隐藏/终态
+  // 停表，服务端任务继续；依赖显式注入，钩子内部绝不读 Context。
+  useP8导出轮询({
+    enabled: 是后端 && 导出层开,
+    exportId: 导出数据 !== null ? 导出数据.exportId : null,
+    status: 导出状态,
+    refresh: () => 操作.刷新P8数据导出(),
+  });
 
   const 关换绑 = () => {
     设步骤(null);
@@ -174,6 +297,22 @@ export default function 账号安全() {
             <span className={样式.尖括号}>›</span>
           </button>
         </div>
+
+        {/* P8 Task 5：Backend 专属「数据」组 —— 恰一组同款卡/行，位于注销按钮之前 */}
+        {是后端 ? (
+          <>
+            <div className={`${样式.组标} ${样式.组标间距}`}>数据</div>
+            <div className={样式.卡}>
+              <button className={`${样式.行} 可点`} onClick={开导出层}>
+                <span className={样式.行文字组}>
+                  <span className={样式.行标题}>导出我的数据</span>
+                  <span className={样式.行说明}>{取导出行说明()}</span>
+                </span>
+                <span className={样式.尖括号}>›</span>
+              </button>
+            </div>
+          </>
+        ) : null}
 
         <button className={`${样式.危险键} 可点`} onClick={() => 设注销说明开(true)}>
           注销账号
@@ -287,6 +426,23 @@ export default function 账号安全() {
         </弹层框架>
       ) : null}
 
+      {/* ── 数据导出（Backend 专属）：恢复/创建/轮询/下载 复用既有抽屉 ── */}
+      {导出层开 ? (
+        <弹层框架 标签="导出我的数据" 遮罩类名={本屏样式.遮罩} 面板类名={本屏样式.抽屉} 关闭={() => 设导出层开(false)}>
+            <div className={本屏样式.抓手} />
+            <div className={本屏样式.抽屉标题}>导出我的数据</div>
+            <div className={本屏样式.抽屉说明}>{导出抽屉说明}</div>
+            {导出主键文案 !== null ? (
+              <button className={`${本屏样式.主键} 可点`} onClick={点导出主键}>
+                {导出主键文案}
+              </button>
+            ) : null}
+            <button className={`${本屏样式.次键} 可点`} onClick={() => 设导出层开(false)}>
+              先不导出
+            </button>
+        </弹层框架>
+      ) : null}
+
       {/* ── 注销第一步：把后果讲清楚 ── */}
       {注销说明开 ? (
         <弹层框架 标签="注销账号说明" 遮罩类名={本屏样式.遮罩} 面板类名={本屏样式.抽屉} 关闭={() => 设注销说明开(false)}>
@@ -303,6 +459,18 @@ export default function 账号安全() {
               （抹掉全部身份要素，只留经过与结论），到期自动彻底清除。
               这 30 天内你无法用同一手机号重新注册。
             </div>
+            {/* Backend：ready 未下载的导出在注销后无法再取回 —— 警示 + 同款先下载入口，
+                但不拦截继续（spec §7.5） */}
+            {是后端 && 导出可下载 ? (
+              <>
+                <div className={样式.说明条} style={{ marginTop: 14 }}>
+                  你有一份已生成的数据导出，<span className={样式.说明强调}>注销后将无法下载</span>。建议先下载留存。
+                </div>
+                <button className={`${本屏样式.主键} 可点`} onClick={下载数据导出}>
+                  先下载数据导出
+                </button>
+              </>
+            ) : null}
             <button
               className={`${本屏样式.主键} 可点`}
               style={{ background: 'var(--意向)', color: '#fff', boxShadow: 'none' }}
@@ -332,7 +500,28 @@ export default function 账号安全() {
               </button>
               <button
                 className={`${样式.确认执行} 可点`}
-                onClick={() => 替换跳转(路径.登录)}
+                disabled={是后端 && 注销提交中}
+                onClick={() => {
+                  if (!是后端) {
+                    替换跳转(路径.登录);
+                    return;
+                  }
+                  void (async () => {
+                    设注销提交中(true);
+                    try {
+                      await 操作.请求P8账号注销();
+                      // 成功（202）：操作层已统一清 P4–P8 与本地账号状态；导航归本屏
+                      设注销确认开(false);
+                      设注销说明开(false);
+                      替换跳转(路径.登录);
+                    } catch (错误) {
+                      // export_in_progress / 未知结果 / 401：无本地成功，两层弹层流程保留
+                      设提示(取P8错误文案(错误));
+                    } finally {
+                      设注销提交中(false);
+                    }
+                  })();
+                }}
               >
                 确认注销
               </button>

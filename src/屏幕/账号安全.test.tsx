@@ -19,7 +19,9 @@ import { 短信验证码位数 } from '../数据/验证码规则';
 import { 路径 } from '../路由/路径表';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type {
+  P8AccountDeletion,
   P8Credential,
+  P8DataExport,
   P8ReplacementAttempt,
   P8ReplacementResult,
   P8Session,
@@ -77,6 +79,27 @@ const 换绑回执: P8ReplacementResult = {
   unchanged: false,
 };
 
+// ── Task 5：导出/注销 DTO 样本 ──
+
+const 导出ID = `exp_${'0123456789abcdef'.repeat(2)}`;
+
+function 导出DTO(覆盖: Partial<P8DataExport> = {}): P8DataExport {
+  return {
+    exportId: 导出ID,
+    status: 'queued',
+    createdAt: '2026-08-30T00:00:00Z',
+    expiresAt: null,
+    downloadReady: false,
+    ...覆盖,
+  };
+}
+
+const 注销回执: P8AccountDeletion = {
+  deletionId: `del_${'0123456789abcdef'.repeat(2)}`,
+  status: 'deletion_pending',
+  retentionUntil: '2026-09-29T00:00:00Z',
+};
+
 function 空快照<T>(): P8资源快照<T> {
   return { phase: 'idle', refreshing: false, data: null, error: null, generation: 0 };
 }
@@ -85,7 +108,7 @@ function 成功快照<T>(data: T): P8资源快照<T> {
   return { phase: 'success', refreshing: false, data, error: null, generation: 1 };
 }
 
-/** P8 六法操作桩：全表补齐（缺方法应立即 TypeError，绝不静默 no-op），逐测试覆盖替换。 */
+/** P8 十二法操作桩：全表补齐（缺方法应立即 TypeError，绝不静默 no-op），逐测试覆盖替换。 */
 function P8操作桩(覆盖: Record<string, unknown> = {}) {
   return {
     设置P8账号范围: vi.fn(),
@@ -94,6 +117,12 @@ function P8操作桩(覆盖: Record<string, unknown> = {}) {
     开始P8手机号换绑: vi.fn(async (): Promise<P8ReplacementAttempt> => 换绑尝试),
     完成P8手机号换绑: vi.fn(async (): Promise<P8ReplacementResult> => 换绑回执),
     退出P8其他设备: vi.fn(async (): Promise<number> => 1),
+    恢复P8数据导出: vi.fn(async () => undefined),
+    创建P8数据导出: vi.fn(async () => undefined),
+    刷新P8数据导出: vi.fn(async () => undefined),
+    废弃P8数据导出: vi.fn(),
+    取P8数据导出下载地址: vi.fn((): string | null => null),
+    请求P8账号注销: vi.fn(async (): Promise<P8AccountDeletion> => 注销回执),
     ...覆盖,
   };
 }
@@ -103,6 +132,7 @@ function 环境(input: {
   模式?: 'mock' | 'backend';
   凭证?: P8资源快照<P8Credential[]>;
   会话?: P8资源快照<P8Session[]>;
+  导出?: P8资源快照<P8DataExport>;
   操作覆盖?: Record<string, unknown>;
 } = {}) {
   const 操作 = P8操作桩(input.操作覆盖);
@@ -111,13 +141,14 @@ function 环境(input: {
     后端状态: {
       credentials: input.凭证 ?? 空快照<P8Credential[]>(),
       sessions: input.会话 ?? 空快照<P8Session[]>(),
+      dataExport: input.导出 ?? 空快照<P8DataExport>(),
     },
     操作,
   };
   return 操作;
 }
 
-/** 断言六个账号安全操作在 Mock 下零调用。 */
+/** 断言全部 P8 控制面操作在 Mock 下零调用。 */
 function 断言零P8调用(操作: ReturnType<typeof P8操作桩>) {
   expect(操作.设置P8账号范围).not.toHaveBeenCalled();
   expect(操作.加载P8凭证).not.toHaveBeenCalled();
@@ -125,6 +156,12 @@ function 断言零P8调用(操作: ReturnType<typeof P8操作桩>) {
   expect(操作.开始P8手机号换绑).not.toHaveBeenCalled();
   expect(操作.完成P8手机号换绑).not.toHaveBeenCalled();
   expect(操作.退出P8其他设备).not.toHaveBeenCalled();
+  expect(操作.恢复P8数据导出).not.toHaveBeenCalled();
+  expect(操作.创建P8数据导出).not.toHaveBeenCalled();
+  expect(操作.刷新P8数据导出).not.toHaveBeenCalled();
+  expect(操作.废弃P8数据导出).not.toHaveBeenCalled();
+  expect(操作.取P8数据导出下载地址).not.toHaveBeenCalled();
+  expect(操作.请求P8账号注销).not.toHaveBeenCalled();
 }
 
 beforeEach(() => {
@@ -203,6 +240,17 @@ describe('账号安全 · Mock 冻结', () => {
     expect(导航.替换跳转).toHaveBeenCalledWith(路径.登录);
 
     断言零P8调用(操作);
+  });
+
+  it('Mock 不渲染 Backend 专属的「数据」组与导出行（现有页面一个像素不多）', () => {
+    环境({ 模式: 'mock' });
+    render(
+      <MemoryRouter>
+        <账号安全 />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText('数据')).toBeNull();
+    expect(screen.queryByText('导出我的数据')).toBeNull();
   });
 });
 
@@ -472,5 +520,253 @@ describe('账号安全 · Backend 接线', () => {
   it('验证码位数继续全量派生自 短信验证码位数：生产源码不出现六位字面量', () => {
     expect(账号安全源码).toMatch(/短信验证码位数/);
     expect(账号安全源码).not.toMatch(/6\s*位(验证码|数字)/);
+  });
+});
+
+// ── Task 5：数据导出行 + 抽屉 + 注销接线 ──────────────────────────
+// 新 DOM 恰为一组现有样式的 组标/卡/行，紧跟在既有注销按钮之前；下载走同源锚点
+// （先权威预检），绝不 请求二进制/blob()/createObjectURL；Mock 零渲染零调用。
+
+describe('账号安全 · Backend 数据导出与注销', () => {
+  function 渲染() {
+    return render(
+      <MemoryRouter>
+        <账号安全 />
+      </MemoryRouter>,
+    );
+  }
+
+  it('「数据」组恰为一组：组标 + 一张卡 + 导出行，DOM 序在注销按钮之前', () => {
+    环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+    });
+    渲染();
+    const 组标 = screen.getByText('数据');
+    const 行 = screen.getByRole('button', { name: /^导出我的数据/ });
+    const 注销 = screen.getByRole('button', { name: '注销账号' });
+    expect(组标.compareDocumentPosition(行) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(行.compareDocumentPosition(注销) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(行.className).toContain('可点');
+    expect(screen.getAllByText('数据')).toHaveLength(1); // 恰一组，不重复
+  });
+
+  it('进屏被动恢复零弹层；打开抽屉即恢复 + 立即刷新，queued/running 显示生成中', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = 环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+      导出: 成功快照(导出DTO({ status: 'running', exportId: 导出ID })),
+    });
+    渲染();
+    expect(操作.恢复P8数据导出).toHaveBeenCalledTimes(1); // 进屏被动恢复
+    expect(操作.刷新P8数据导出).not.toHaveBeenCalled(); // 弹层未开：轮询零请求
+    await 用户.click(screen.getByRole('button', { name: /^导出我的数据/ }));
+    expect(操作.恢复P8数据导出).toHaveBeenCalledTimes(2); // 打开即恢复
+    expect(操作.刷新P8数据导出).toHaveBeenCalledTimes(1); // 打开立即一拍
+    expect(screen.getByText(/正在生成导出文件/)).toBeTruthy();
+    expect(screen.getByText('正在生成，回到本页可继续查看')).toBeTruthy(); // 行提示同步
+  });
+
+  it('无句柄起步：抽屉给「生成导出文件」，点击走真实创建', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = 环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+    });
+    渲染();
+    await 用户.click(screen.getByRole('button', { name: /^导出我的数据/ }));
+    await 用户.click(screen.getByRole('button', { name: '生成导出文件' }));
+    expect(操作.创建P8数据导出).toHaveBeenCalledTimes(1);
+  });
+
+  it('ready+downloadReady：显示过期时间，下载先权威预检再同源锚点；无 Blob/对象 URL', async () => {
+    const 用户 = userEvent.setup();
+    const 下载地址 = `/api/v1/me/data-exports/${导出ID}/download`;
+    const 操作 = 环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+      导出: 成功快照(导出DTO({
+        status: 'ready', downloadReady: true, expiresAt: '2026-09-05T12:30:00Z',
+      })),
+      操作覆盖: { 取P8数据导出下载地址: vi.fn((): string | null => 下载地址) },
+    });
+    const 点击桩 = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    渲染();
+    await 用户.click(screen.getByRole('button', { name: /^导出我的数据/ }));
+    expect(screen.getByText(/2026-09-05 12:30 前可下载/)).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '下载数据导出' }));
+    expect(操作.刷新P8数据导出).toHaveBeenCalled(); // 预检在前
+    expect(操作.取P8数据导出下载地址).toHaveBeenCalled();
+    expect(操作.刷新P8数据导出.mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(操作.取P8数据导出下载地址).mock.invocationCallOrder[0]);
+    expect(点击桩).toHaveBeenCalledTimes(1);
+    const 锚 = 点击桩.mock.instances[0] as HTMLAnchorElement;
+    expect(锚.href).toContain(下载地址);
+    expect(锚.download).toBe('');
+    点击桩.mockRestore();
+    // 生产源码绝不出现二进制/对象 URL 路径
+    expect(账号安全源码).not.toMatch(/请求二进制|\.blob\(|createObjectURL/);
+  });
+
+  it('下载预检后不可下载（未就绪/已过期）：不点锚点，固定提示', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = 环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+      导出: 成功快照(导出DTO({ status: 'ready', downloadReady: true })),
+      操作覆盖: { 取P8数据导出下载地址: vi.fn((): string | null => null) },
+    });
+    const 点击桩 = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    渲染();
+    await 用户.click(screen.getByRole('button', { name: /^导出我的数据/ }));
+    await 用户.click(screen.getByRole('button', { name: '下载数据导出' }));
+    expect(操作.刷新P8数据导出).toHaveBeenCalledTimes(1); // 预检照常发出
+    expect(点击桩).not.toHaveBeenCalled();
+    expect(await screen.findByText('导出尚未就绪或已过期，请稍后重试')).toBeTruthy();
+    点击桩.mockRestore();
+  });
+
+  it('failed / expired：显示对应终态，「重新生成」= 先废弃再创建（废弃先于创建）', async () => {
+    const 用户 = userEvent.setup();
+    for (const 终态 of ['failed', 'expired'] as const) {
+      const 操作 = 环境({
+        模式: 'backend',
+        凭证: 成功快照([旧手机凭证]),
+        会话: 成功快照([本机会话]),
+        导出: 成功快照(导出DTO({ status: 终态 })),
+      });
+      const 视图 = 渲染();
+      await 用户.click(screen.getByRole('button', { name: /^导出我的数据/ }));
+      expect(screen.getByText(终态 === 'failed' ? /上次导出没有生成成功/ : /这份导出已过期/)).toBeTruthy();
+      await 用户.click(screen.getByRole('button', { name: '重新生成' }));
+      expect(操作.废弃P8数据导出).toHaveBeenCalledTimes(1);
+      expect(操作.创建P8数据导出).toHaveBeenCalledTimes(1);
+      expect(操作.废弃P8数据导出.mock.invocationCallOrder[0])
+        .toBeLessThan(操作.创建P8数据导出.mock.invocationCallOrder[0]);
+      视图.unmount(); // 逐终态独立挂载，避免两块屏同屏互撞
+    }
+  });
+
+  it('创建冲突（跨设备 409）：固定跨设备文案上屏，抽屉与重试入口保留', async () => {
+    const 用户 = userEvent.setup();
+    环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+      操作覆盖: {
+        创建P8数据导出: vi.fn(async () => {
+          throw new BFF错误(409, 'export_in_progress', 'another device holds an active export');
+        }),
+      },
+    });
+    渲染();
+    await 用户.click(screen.getByRole('button', { name: /^导出我的数据/ }));
+    await 用户.click(screen.getByRole('button', { name: '生成导出文件' }));
+    expect(await screen.findByText('已有导出正在生成或等待下载，请稍后重试')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '生成导出文件' })).toBeTruthy(); // 可重试
+  });
+
+  it('关闭抽屉再打开：恢复与立即刷新重新起拍（服务端任务继续）', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = 环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+      导出: 成功快照(导出DTO({ status: 'queued', exportId: 导出ID })),
+    });
+    渲染();
+    await 用户.click(screen.getByRole('button', { name: /^导出我的数据/ }));
+    await 用户.click(screen.getByRole('button', { name: '关闭导出我的数据' }));
+    expect(screen.queryByText(/正在生成导出文件/)).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: /^导出我的数据/ }));
+    expect(操作.恢复P8数据导出).toHaveBeenCalledTimes(3);
+    expect(操作.刷新P8数据导出).toHaveBeenCalledTimes(2);
+  });
+
+  it('注销说明层：有 ready 未下载导出时给「注销后将无法下载」警示与先下载入口，仍可继续', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = 环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+      导出: 成功快照(导出DTO({ status: 'ready', downloadReady: true })),
+      操作覆盖: { 取P8数据导出下载地址: vi.fn((): string | null => `/api/v1/me/data-exports/${导出ID}/download`) },
+    });
+    const 点击桩 = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    渲染();
+    await 用户.click(screen.getByRole('button', { name: '注销账号' }));
+    expect(screen.getByText(/注销后将无法下载/)).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '先下载数据导出' }));
+    expect(点击桩).toHaveBeenCalledTimes(1); // 同款先下载入口
+    点击桩.mockRestore();
+    // 警示不拦截：继续进入最终确认
+    await 用户.click(screen.getByRole('button', { name: '我已了解，继续注销' }));
+    expect(screen.getByRole('button', { name: '确认注销' })).toBeTruthy();
+    expect(操作.请求P8账号注销).not.toHaveBeenCalled();
+  });
+
+  it('Backend 注销：最终确认单发真实注销，成功后跳登录页；失败保留确认层与提示', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = 环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+    });
+    const { rerender } = 渲染();
+    await 用户.click(screen.getByRole('button', { name: '注销账号' }));
+    await 用户.click(screen.getByRole('button', { name: '我已了解，继续注销' }));
+    await 用户.click(screen.getByRole('button', { name: '确认注销' }));
+    expect(操作.请求P8账号注销).toHaveBeenCalledTimes(1);
+    expect(导航.替换跳转).toHaveBeenCalledWith(路径.登录); // 导航归屏幕
+    // 失败路径：保留确认层，无本地成功
+    导航.替换跳转.mockClear();
+    环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+      操作覆盖: {
+        请求P8账号注销: vi.fn(async () => {
+          throw new BFF错误(503, 'operation_outcome_unknown', 'unknown');
+        }),
+      },
+    });
+    rerender(
+      <MemoryRouter>
+        <账号安全 />
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '注销账号' }));
+    await 用户.click(screen.getByRole('button', { name: '我已了解，继续注销' }));
+    await 用户.click(screen.getByRole('button', { name: '确认注销' }));
+    expect(await screen.findByText('暂时无法确认操作是否成功，请稍后重试')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '确认注销' })).toBeTruthy(); // 确认层保留可重试
+    expect(导航.替换跳转).not.toHaveBeenCalled();
+  });
+
+  it('注销遇 export_in_progress：保留确认层、不本地登出，提示等待导出', async () => {
+    const 用户 = userEvent.setup();
+    环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+      操作覆盖: {
+        请求P8账号注销: vi.fn(async () => {
+          throw new BFF错误(409, 'export_in_progress', 'export running');
+        }),
+      },
+    });
+    渲染();
+    await 用户.click(screen.getByRole('button', { name: '注销账号' }));
+    await 用户.click(screen.getByRole('button', { name: '我已了解，继续注销' }));
+    await 用户.click(screen.getByRole('button', { name: '确认注销' }));
+    expect(await screen.findByText('已有导出正在生成或等待下载，请稍后重试')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '确认注销' })).toBeTruthy(); // 两层流程不收口
+    expect(导航.替换跳转).not.toHaveBeenCalled(); // 不本地登出、不伪装成功
   });
 });

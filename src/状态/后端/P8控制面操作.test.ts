@@ -5,24 +5,34 @@
 // Promise）、当前会话 401 统一清账号、引用级清理与 UI 可见范围的边界。受控 deferred
 // promise 证明「完成换绑成功先强制重读两资源再 resolve」与「不乐观写掩码手机号」；
 // 派发 只是 spy，全部断言读 最新状态()。快照/锁/意图只在内存，绝不进持久化。
+// P8 Task 5：数据导出与账号注销 —— 恢复句柄先落盘后 POST、响应丢失同键重放、
+// null-ID 只重放 POST / 有 ID 只 GET、跨主体键隔离、404/expired 清句柄、显式重新生成
+// 铸新键、ready+downloadReady 唯一可下载组合与 facade URL 委托、注销 {} 契约、
+// 单飞、未知结果同键 1s/2s 至多两次显式重放、202 统一清 P4–P8 后才 resolve。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF主体 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
-import type {
-  P8Credential,
-  P8ReplacementAttempt,
-  P8ReplacementResult,
-  P8Session,
+import {
+  创建P8控制面数据源,
+  type P8AccountDeletion,
+  type P8Credential,
+  type P8DataExport,
+  type P8ReplacementAttempt,
+  type P8ReplacementResult,
+  type P8Session,
 } from '../../数据/招聘数据源/P8控制面';
-import { BFF错误 } from '../../数据/HTTP客户端';
+import { BFF错误, type BFF请求选项, type BFF响应 } from '../../数据/HTTP客户端';
 import { 短信验证码位数 } from '../../数据/验证码规则';
 import { BFF主体样本 } from '../../测试/BFF样本';
+import { 创建P8导出恢复存储, type P8导出恢复存储 } from '../../数据/P8导出恢复';
+import { 账号存储键 } from '../../数据/资料缓存';
 import { 初始状态 } from '../初始状态';
 import type { 动作 } from '../应用状态';
 import { 创建空P4发现状态 } from './发现推荐操作';
 import { 创建空P5MatchCase状态 } from './MatchCase操作';
 import { 创建空P7会话状态 } from './真人会话操作';
+import { 清账号状态 } from './会话操作';
 import {
   创建P8账号安全操作,
   创建空P8控制面状态,
@@ -35,7 +45,7 @@ import type {
   P8运行时引用,
   后端操作依赖,
   后端状态,
-  P8账号安全操作,
+  P8账号控制面操作,
 } from './类型';
 
 function deferred<T>() {
@@ -95,6 +105,53 @@ const 换绑回执: P8ReplacementResult = {
   unchanged: false,
 };
 
+// ── Task 5 DTO 样本：导出五态 × downloadReady 与注销回执 ──
+
+const 导出ID甲 = `exp_${'0123456789abcdef'.repeat(2)}`;
+const 导出ID乙 = `exp_${'fedcba9876543210'.repeat(2)}`;
+
+function 导出DTO(覆盖: Partial<P8DataExport> = {}): P8DataExport {
+  return {
+    exportId: 导出ID甲,
+    status: 'queued',
+    createdAt: '2026-08-30T00:00:00Z',
+    expiresAt: null,
+    downloadReady: false,
+    ...覆盖,
+  };
+}
+
+const 注销回执: P8AccountDeletion = {
+  deletionId: `del_${'0123456789abcdef'.repeat(2)}`,
+  status: 'deletion_pending',
+  retentionUntil: '2026-09-29T00:00:00Z',
+};
+
+/**
+ * Task 5：受控恢复存储 —— 包住真实 创建P8导出恢复存储（键位 / 校验 / 序列化语义保真），
+ * 以 vi.fn 追踪写入与删除（invocationCallOrder 断言用）；多个账号可共享同一底层 Map，
+ * 用于断言跨主体键隔离。
+ */
+function 创建恢复存储桩(账号: string, 底层?: Map<string, string>) {
+  const 仓 = 底层 ?? new Map<string, string>();
+  const 范围 = { 模式: 'backend' as const, 环境: 'stg' as const, 账号 };
+  const 原生 = 创建P8导出恢复存储({
+    storage: {
+      getItem: (键: string) => 仓.get(键) ?? null,
+      setItem: (键: string, 值: string) => { 仓.set(键, 值); },
+      removeItem: (键: string) => { 仓.delete(键); },
+    },
+    范围,
+  });
+  return {
+    仓,
+    键: 账号存储键('P8数据导出v1', 范围),
+    读取: vi.fn(原生.读取),
+    写入: vi.fn(原生.写入),
+    删除: vi.fn(原生.删除),
+  };
+}
+
 /** 本文件内的数据源桩：桩 P8 facade 全部方法 + 清空目录缓存，默认全成功，逐测试覆盖替换。 */
 function 创建P8数据源(覆盖: Record<string, unknown> = {}): HTTP招聘数据源 {
   return {
@@ -103,6 +160,10 @@ function 创建P8数据源(覆盖: Record<string, unknown> = {}): HTTP招聘数�
     开始P8手机号换绑: vi.fn(async (): Promise<P8ReplacementAttempt> => 换绑尝试),
     完成P8手机号换绑: vi.fn(async (): Promise<P8ReplacementResult> => 换绑回执),
     退出P8其他设备: vi.fn(async (): Promise<number> => 1),
+    创建P8数据导出: vi.fn(async (): Promise<P8DataExport> => 导出DTO()),
+    读取P8数据导出: vi.fn(async (id: string): Promise<P8DataExport> => 导出DTO({ exportId: id, status: 'running' })),
+    取P8数据导出下载地址: vi.fn((id: string): string => `/api/v1/me/data-exports/${id}/download`),
+    请求P8账号注销: vi.fn(async (): Promise<P8AccountDeletion> => 注销回执),
     清空目录缓存: vi.fn(),
     ...覆盖,
   } as unknown as HTTP招聘数据源;
@@ -112,11 +173,16 @@ interface P8操作测试环境 {
   数据源: HTTP招聘数据源;
   deps: 后端操作依赖 & P8运行时引用;
   派发: ReturnType<typeof vi.fn>;
-  操作: P8账号安全操作;
+  恢复存储: ReturnType<typeof 创建恢复存储桩>;
+  操作: P8账号控制面操作;
   最新状态(): 后端状态;
 }
 
-function 创建P8操作测试环境(是后端 = true, 源 = 创建P8数据源()): P8操作测试环境 {
+function 创建P8操作测试环境(
+  是后端 = true,
+  源 = 创建P8数据源(),
+  恢复存储: ReturnType<typeof 创建恢复存储桩> = 创建恢复存储桩('sub_1'),
+): P8操作测试环境 {
   const 状态引用 = { current: 初始状态 };
   const 派发 = vi.fn<(动作: 动作) => void>();
   let 后端值: 后端状态 = {
@@ -179,12 +245,13 @@ function 创建P8操作测试环境(是后端 = true, 源 = 创建P8数据源())
     P8账号可见: { current: false },
     P8读取锁: { current: new Map<'credentials' | 'sessions' | 'export', Promise<void>>() },
     P8待定意图: { current: new Map<string, P8待定意图<unknown>>() },
-    P8导出恢复: { current: null },
+    P8导出恢复: { current: 恢复存储 as P8导出恢复存储 },
   };
   return {
     数据源: 源,
     deps,
     派发,
+    恢复存储,
     操作: 创建P8账号安全操作(deps),
     最新状态: () => 后端值,
   };
@@ -697,6 +764,345 @@ describe('P8 换绑与退出其他设备意图', () => {
   });
 });
 
+// ── Task 5：数据导出 —— 恢复句柄与创建纪律 ────────────────────────
+
+describe('P8 数据导出：恢复句柄与创建纪律', () => {
+  it('创建先落盘 {exportId:null} 再 POST：写入严格先于请求，回执 exportId 事后补写', async () => {
+    await env.操作.创建P8数据导出();
+    const 后端 = vi.mocked(env.数据源.创建P8数据导出);
+    const 写入 = env.恢复存储.写入;
+    expect(写入.mock.calls[0][0]).toMatchObject({ subjectId: 'sub_1', exportId: null });
+    expect(写入.mock.invocationCallOrder[0]).toBeLessThan(后端.mock.invocationCallOrder[0]);
+    const 键 = 后端.mock.calls[0][0];
+    expect(键).toMatch(/^[!-~]{16,128}$/);
+    expect(写入.mock.calls.at(-1)?.[0]).toEqual({ subjectId: 'sub_1', createKey: 键, exportId: 导出ID甲 });
+    expect(env.最新状态().dataExport).toMatchObject({ phase: 'success', data: 导出DTO(), error: null });
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+
+  it('POST 响应丢失（网络异常）：exportId:null 句柄保留，重试同键重放后补写 ID', async () => {
+    vi.mocked(env.数据源.创建P8数据导出).mockRejectedValueOnce(new Error('网络断了'));
+    await expect(env.操作.创建P8数据导出()).rejects.toBeInstanceOf(Error);
+    expect(JSON.parse(env.恢复存储.仓.get(env.恢复存储.键) ?? '')).toEqual({
+      subjectId: 'sub_1',
+      createKey: expect.stringMatching(/^[!-~]{8,128}$/),
+      exportId: null,
+    });
+    await env.操作.创建P8数据导出();
+    const 调用 = vi.mocked(env.数据源.创建P8数据导出).mock.calls;
+    expect(调用[0][0]).toBe(调用[1][0]); // 同键重放
+    expect(env.恢复存储.读取()?.exportId).toBe(导出ID甲);
+    expect(env.最新状态().dataExport).toMatchObject({ phase: 'success' });
+  });
+
+  it('恢复遇到 exportId:null 句柄：用落盘 createKey 重放 POST，不铸第二把键', async () => {
+    env.恢复存储.写入({ subjectId: 'sub_1', createKey: 'p8-export-key-0001', exportId: null });
+    await env.操作.恢复P8数据导出();
+    expect(env.数据源.创建P8数据导出).toHaveBeenCalledTimes(1);
+    expect(env.数据源.创建P8数据导出).toHaveBeenCalledWith('p8-export-key-0001');
+    expect(env.数据源.读取P8数据导出).not.toHaveBeenCalled();
+    expect(env.恢复存储.读取()?.exportId).toBe(导出ID甲);
+  });
+
+  it('恢复遇到有 ID 句柄：只权威 GET，零 POST；创建同样只 GET，绝不向已有导出再 POST', async () => {
+    env.恢复存储.写入({ subjectId: 'sub_1', createKey: 'p8-export-key-0001', exportId: 导出ID甲 });
+    await env.操作.恢复P8数据导出();
+    expect(env.数据源.读取P8数据导出).toHaveBeenCalledWith(导出ID甲);
+    expect(env.数据源.创建P8数据导出).not.toHaveBeenCalled();
+    expect(env.最新状态().dataExport).toMatchObject({ phase: 'success', data: { exportId: 导出ID甲 } });
+    await env.操作.创建P8数据导出(); // 有 ID 时创建退化为权威 GET
+    expect(env.数据源.创建P8数据导出).not.toHaveBeenCalled();
+    expect(vi.mocked(env.数据源.读取P8数据导出).mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('适配器缺席：创建拒绝固定「数据导出暂不可用」且零 POST；恢复/刷新零请求；废弃 no-throw', async () => {
+    env.deps.P8导出恢复.current = null;
+    let 文案 = '';
+    try {
+      await env.操作.创建P8数据导出();
+    } catch (错误) {
+      文案 = 取P8错误文案(错误);
+    }
+    expect(文案).toBe('数据导出暂不可用，请稍后重试');
+    expect(env.数据源.创建P8数据导出).not.toHaveBeenCalled();
+    await expect(env.操作.恢复P8数据导出()).resolves.toBeUndefined();
+    await expect(env.操作.刷新P8数据导出()).resolves.toBeUndefined();
+    expect(env.数据源.读取P8数据导出).not.toHaveBeenCalled();
+    expect(env.数据源.创建P8数据导出).not.toHaveBeenCalled();
+    expect(() => env.操作.废弃P8数据导出()).not.toThrow();
+    expect(env.操作.取P8数据导出下载地址()).toBeNull();
+  });
+
+  it('落盘失败（写入返回 false）：固定暂不可用文案且零 POST 调用', async () => {
+    env.恢复存储.写入.mockReturnValueOnce(false);
+    let 文案 = '';
+    try {
+      await env.操作.创建P8数据导出();
+    } catch (错误) {
+      文案 = 取P8错误文案(错误);
+    }
+    expect(文案).toBe('数据导出暂不可用，请稍后重试');
+    expect(env.数据源.创建P8数据导出).not.toHaveBeenCalled();
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+
+  it('普通登出保留句柄：同主体重登后恢复只 GET，不再 POST（spec §5.3）', async () => {
+    await env.操作.创建P8数据导出();
+    const POST数 = vi.mocked(env.数据源.创建P8数据导出).mock.calls.length;
+    // 登出 = 统一 清账号状态：P8 快照/引用整域摊平，但导出句柄是按 subject 隔离的恢复坐标
+    清账号状态(env.deps);
+    expect(env.最新状态().已登录).toBe(false);
+    expect(env.恢复存储.读取()?.exportId).toBe(导出ID甲); // 句柄仍在
+    // 同主体重新登录：会话代际前进、主体标识复位
+    env.deps.主体标识引用.current = 'sub_1';
+    env.deps.会话代际.current += 1;
+    await env.操作.恢复P8数据导出();
+    expect(env.数据源.创建P8数据导出).toHaveBeenCalledTimes(POST数); // 零新 POST
+    expect(env.数据源.读取P8数据导出).toHaveBeenCalledWith(导出ID甲);
+    expect(env.最新状态().dataExport).toMatchObject({ phase: 'success' });
+  });
+
+  it('换主体只写新主体的键：A 的句柄逐字节不变，跨账号互不可见互不覆盖', async () => {
+    const 共享仓 = new Map<string, string>();
+    const A存储 = 创建恢复存储桩('sub_1', 共享仓);
+    const B存储 = 创建恢复存储桩('sub_B', 共享仓);
+    env.deps.P8导出恢复.current = A存储 as P8导出恢复存储;
+    await env.操作.创建P8数据导出();
+    const A原文 = 共享仓.get(A存储.键);
+    expect(A原文).toContain('"exportId"');
+    // 同一 Provider 实例切换主体：适配器换绑到 B（Provider 在主体变化时重指 ref）
+    env.deps.P8导出恢复.current = B存储 as P8导出恢复存储;
+    env.deps.主体标识引用.current = 'sub_B';
+    await env.操作.创建P8数据导出();
+    expect([...共享仓.keys()].sort()).toEqual([A存储.键, B存储.键].sort());
+    expect(共享仓.get(A存储.键)).toBe(A原文); // A 逐字节不变
+    expect(JSON.parse(共享仓.get(B存储.键) ?? '')).toMatchObject({ subjectId: 'sub_B' });
+  });
+
+  it('跨设备冲突：无本地句柄时 create 只得 409 export_in_progress，固定文案且不残留死键', async () => {
+    vi.mocked(env.数据源.创建P8数据导出).mockRejectedValueOnce(
+      new BFF错误(409, 'export_in_progress', 'another export active'));
+    let 文案 = '';
+    try {
+      await env.操作.创建P8数据导出();
+    } catch (错误) {
+      文案 = 取P8错误文案(错误);
+    }
+    expect(文案).toBe('已有导出正在生成或等待下载，请稍后重试');
+    // 终局拒绝：预写的 {exportId:null} 句柄是死键，回滚删除，下一次创建铸新键
+    expect(env.恢复存储.读取()).toBeNull();
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+
+  it('failed 明确重新生成：废弃清旧句柄后创建铸新键（旧键不再重放）', async () => {
+    await env.操作.创建P8数据导出();
+    vi.mocked(env.数据源.读取P8数据导出).mockResolvedValueOnce(导出DTO({ status: 'failed' }));
+    await env.操作.刷新P8数据导出();
+    expect(env.最新状态().dataExport.data?.status).toBe('failed');
+    expect(env.恢复存储.读取()?.exportId).toBe(导出ID甲); // failed 不自动清（404/expired 才清）
+    // 页面「重新生成」= 废弃（清句柄 + 摊平快照）+ 创建（新键）
+    env.操作.废弃P8数据导出();
+    expect(env.恢复存储.读取()).toBeNull();
+    expect(env.最新状态().dataExport).toEqual({
+      phase: 'idle', refreshing: false, data: null, error: null, generation: expect.any(Number),
+    });
+    vi.mocked(env.数据源.创建P8数据导出).mockResolvedValueOnce(导出DTO({ exportId: 导出ID乙 }));
+    await env.操作.创建P8数据导出();
+    const 键们 = vi.mocked(env.数据源.创建P8数据导出).mock.calls.map((调用) => 调用[0]);
+    expect(键们[1]).not.toBe(键们[0]); // 新键
+    expect(env.恢复存储.读取()).toMatchObject({ createKey: 键们[1], exportId: 导出ID乙 });
+  });
+});
+
+// ── Task 5：数据导出 —— 读取、下载地址与失效清理 ────────────────────
+
+describe('P8 数据导出：读取、下载地址与失效清理', () => {
+  it('ready+downloadReady 是唯一可下载组合：其余一律 null；URL 委托 facade', async () => {
+    const 组合: Array<[P8DataExport['status'], boolean]> = [
+      ['queued', false], ['running', false], ['ready', false], ['failed', false],
+      ['expired', false], ['expired', true], ['failed', true], ['running', true], ['queued', true],
+    ];
+    for (const [status, downloadReady] of 组合) {
+      // 每轮重新播句柄（expired 轮会清掉它）
+      env.恢复存储.写入({ subjectId: 'sub_1', createKey: 'p8-export-key-0001', exportId: 导出ID甲 });
+      vi.mocked(env.数据源.读取P8数据导出).mockReset()
+        .mockResolvedValueOnce(导出DTO({ status, downloadReady }));
+      await env.操作.刷新P8数据导出();
+      expect(env.最新状态().dataExport.data).toMatchObject({ status, downloadReady });
+      expect(env.操作.取P8数据导出下载地址()).toBeNull();
+    }
+    // 唯一组合：URL 严格来自 facade（同源相对地址由 facade 校验构造）
+    env.恢复存储.写入({ subjectId: 'sub_1', createKey: 'p8-export-key-0001', exportId: 导出ID甲 });
+    vi.mocked(env.数据源.读取P8数据导出).mockReset().mockResolvedValueOnce(
+      导出DTO({ status: 'ready', downloadReady: true, expiresAt: '2026-09-05T00:00:00Z' }));
+    await env.操作.刷新P8数据导出();
+    expect(env.操作.取P8数据导出下载地址()).toBe(`/api/v1/me/data-exports/${导出ID甲}/download`);
+    expect(env.数据源.取P8数据导出下载地址).toHaveBeenCalledWith(导出ID甲);
+  });
+
+  it('GET 404 data_export_not_found：清句柄、快照落「已失效」文案（回到可创建态）', async () => {
+    env.恢复存储.写入({ subjectId: 'sub_1', createKey: 'p8-export-key-0001', exportId: 导出ID甲 });
+    vi.mocked(env.数据源.读取P8数据导出).mockRejectedValueOnce(
+      new BFF错误(404, 'data_export_not_found', 'gone'));
+    await env.操作.恢复P8数据导出();
+    expect(env.恢复存储.读取()).toBeNull();
+    expect(env.最新状态().dataExport).toMatchObject({ phase: 'error', error: '导出已失效，请重新生成' });
+  });
+
+  it('GET 返回 expired：清句柄；快照保留 expired 终态供页面给「重新生成」', async () => {
+    env.恢复存储.写入({ subjectId: 'sub_1', createKey: 'p8-export-key-0001', exportId: 导出ID甲 });
+    vi.mocked(env.数据源.读取P8数据导出).mockResolvedValueOnce(导出DTO({ status: 'expired' }));
+    await env.操作.恢复P8数据导出();
+    expect(env.恢复存储.读取()).toBeNull();
+    expect(env.最新状态().dataExport).toMatchObject({ phase: 'success', data: { status: 'expired' } });
+  });
+
+  it('导出 GET 单飞：并发刷新并入同一 Promise 只发一次请求', async () => {
+    env.恢复存储.写入({ subjectId: 'sub_1', createKey: 'p8-export-key-0001', exportId: 导出ID甲 });
+    const 门 = deferred<P8DataExport>();
+    vi.mocked(env.数据源.读取P8数据导出).mockReset().mockReturnValueOnce(门.promise);
+    const a = env.操作.刷新P8数据导出();
+    const b = env.操作.刷新P8数据导出();
+    expect(env.数据源.读取P8数据导出).toHaveBeenCalledTimes(1);
+    门.resolve(导出DTO({ status: 'running', exportId: 导出ID甲 }));
+    await Promise.all([a, b]);
+    expect(env.最新状态().dataExport.data).toMatchObject({ status: 'running' });
+  });
+
+  it('无任何已知 exportId（快照与句柄皆空）时刷新零请求', async () => {
+    await expect(env.操作.刷新P8数据导出()).resolves.toBeUndefined();
+    expect(env.数据源.读取P8数据导出).not.toHaveBeenCalled();
+  });
+});
+
+// ── Task 5：账号注销 ───────────────────────────────────────────────
+
+describe('P8 账号注销', () => {
+  it('注销走 Task 1 冻结契约：body 精确 {}、操作层铸可见 ASCII 幂等键', async () => {
+    const 请求桩 = vi.fn(async (_选项: BFF请求选项): Promise<BFF响应<unknown>> => ({
+      result: {
+        deletion_id: `del_${'0123456789abcdef'.repeat(2)}`,
+        status: 'deletion_pending',
+        retention_until: '2026-09-29T00:00:00Z',
+      },
+      etag: null,
+      requestId: 'fixture',
+    }));
+    const 真面源 = 创建P8控制面数据源(请求桩 as unknown as <T>(options: BFF请求选项) => Promise<BFF响应<T>>);
+    const 本环境 = 创建P8操作测试环境(true, 创建P8数据源({ 请求P8账号注销: 真面源.请求P8账号注销 }));
+    await 本环境.操作.请求P8账号注销();
+    const 选项 = 请求桩.mock.calls[0][0] as BFF请求选项;
+    expect(选项.method).toBe('POST');
+    expect(选项.path).toBe('/api/v1/me/account-deletion');
+    expect(选项.body).toEqual({}); // 精确 {}：一个多余键都不许有
+    expect(选项.幂等键).toMatch(/^[!-~]{16,128}$/);
+  });
+
+  it('最终确认单飞：并发两次只发一次 POST，两个调用并入同一结果', async () => {
+    const 门 = deferred<P8AccountDeletion>();
+    vi.mocked(env.数据源.请求P8账号注销).mockReturnValueOnce(门.promise);
+    const a = env.操作.请求P8账号注销();
+    const b = env.操作.请求P8账号注销();
+    expect(env.数据源.请求P8账号注销).toHaveBeenCalledTimes(1);
+    门.resolve(注销回执);
+    await expect(Promise.all([a, b])).resolves.toBeDefined();
+  });
+
+  it('export_in_progress：原样抛出、不本地登出、清意图（两层弹层留给屏幕处理）', async () => {
+    await env.操作.加载P8凭证(); // 账号状态在场
+    vi.mocked(env.数据源.请求P8账号注销).mockRejectedValueOnce(
+      new BFF错误(409, 'export_in_progress', 'export running'));
+    let 文案 = '';
+    try {
+      await env.操作.请求P8账号注销();
+    } catch (错误) {
+      文案 = 取P8错误文案(错误);
+    }
+    expect(文案).toBe('已有导出正在生成或等待下载，请稍后重试');
+    expect(env.最新状态().已登录).toBe(true); // 不登出
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+
+  it('结果未知：同键 1s/2s 显式重放至多两次；持续不确定原样抛出且保留意图供手动重试', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(env.数据源.请求P8账号注销)
+        .mockRejectedValueOnce(new BFF错误(503, 'operation_outcome_unknown', 'unknown'))
+        .mockRejectedValueOnce(new BFF错误(503, 'operation_outcome_unknown', 'unknown'))
+        .mockRejectedValueOnce(new BFF错误(0, 'network_error', '断网'));
+      const run = env.操作.请求P8账号注销();
+      // 断言先行挂上：run 的拒绝发生在推进假时钟期间，迟挂会变成未处理 rejection
+      const 收口断言 = expect(run).rejects.toMatchObject({ code: 'network_error' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(env.数据源.请求P8账号注销).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(env.数据源.请求P8账号注销).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(env.数据源.请求P8账号注销).toHaveBeenCalledTimes(3); // 初发 + 至多两次重放
+      await 收口断言; // 固定 P8 未知文案（闭合表）
+      const 键们 = () => vi.mocked(env.数据源.请求P8账号注销).mock.calls.map((调用) => 调用[0]);
+      expect(new Set(键们()).size).toBe(1); // 三次同一把键，绝不铸第二把
+      expect(env.deps.P8待定意图.current.size).toBe(1); // 意图保留
+      // 手动重试：同键 → 成功收口并清意图
+      vi.mocked(env.数据源.请求P8账号注销).mockResolvedValueOnce(注销回执);
+      await env.操作.请求P8账号注销();
+      expect(new Set(键们()).size).toBe(1);
+      expect(env.deps.P8待定意图.current.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('202：先统一清 P4–P8（登出态 + 目录缓存 + 代际）再 resolve；当前主体导出句柄一并删除', async () => {
+    await env.操作.创建P8数据导出(); // 句柄在场
+    await env.操作.加载P8凭证();
+    const P4范围 = env.deps.P4范围代际;
+    const P7意图 = env.deps.P7待定意图;
+    if (P4范围 === undefined || P7意图 === undefined) throw new Error('P4/P7 引用未初始化');
+    P4范围.current.set('candidate:list:int_1', 3);
+    P7意图.current.set('p7:残', { key: 'k', content: 'x' } as never);
+    const 代际前 = env.deps.会话代际.current;
+    await env.操作.请求P8账号注销();
+    const 最新 = env.最新状态();
+    expect(最新.已登录).toBe(false);
+    expect(最新.主体).toBeNull();
+    expect(最新.credentials).toEqual(创建空P8控制面状态().credentials);
+    expect(最新.dataExport).toEqual(创建空P8控制面状态().dataExport);
+    expect(env.deps.主体标识引用.current).toBeNull();
+    expect(P4范围.current.size).toBe(0);
+    expect(P7意图.current.size).toBe(0);
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+    expect(env.deps.会话代际.current).toBeGreaterThan(代际前);
+    expect(env.数据源.清空目录缓存).toHaveBeenCalled();
+    expect(env.恢复存储.删除).toHaveBeenCalled();
+    expect(env.恢复存储.读取()).toBeNull();
+  });
+
+  it('注销不依赖恢复适配器：null 适配器照常收口；句柄清理是尽力而为，删除抛错不冒充注销失败', async () => {
+    env.deps.P8导出恢复.current = null;
+    await expect(env.操作.请求P8账号注销()).resolves.toBeUndefined();
+    expect(env.最新状态().已登录).toBe(false);
+    // 适配器在场但 删除 抛异常：202 仍成功收口
+    env.deps.主体标识引用.current = 'sub_1';
+    env.deps.P8导出恢复.current = {
+      ...(env.恢复存储 as unknown as P8导出恢复存储),
+      删除: vi.fn(() => { throw new Error('存储被拒'); }),
+    };
+    vi.mocked(env.数据源.请求P8账号注销).mockResolvedValueOnce(注销回执);
+    await expect(env.操作.请求P8账号注销()).resolves.toBeUndefined();
+    expect(env.最新状态().已登录).toBe(false);
+  });
+
+  it('当前会话 401：统一清账号后原样抛出（写路径 rethrow，屏幕走登录恢复）', async () => {
+    await env.操作.加载P8凭证();
+    vi.mocked(env.数据源.请求P8账号注销).mockRejectedValueOnce(
+      new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(env.操作.请求P8账号注销()).rejects.toMatchObject({ code: 'invalid_session' });
+    expect(env.最新状态().已登录).toBe(false);
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+});
+
 // ── 错误文案 ───────────────────────────────────────────────────────
 
 describe('P8 错误文案', () => {
@@ -712,6 +1118,11 @@ describe('P8 错误文案', () => {
       .toBe('操作状态发生冲突，请刷新后确认');
     expect(取P8错误文案(new BFF错误(409, 'credential_replacement_conflict', 'x')))
       .toBe('验证码不正确或已过期，请重新获取后再试');
+    // Task 5：导出/注销两码（创建/注销冲突与导出已失效）
+    expect(取P8错误文案(new BFF错误(409, 'export_in_progress', 'x')))
+      .toBe('已有导出正在生成或等待下载，请稍后重试');
+    expect(取P8错误文案(new BFF错误(404, 'data_export_not_found', 'x')))
+      .toBe('导出已失效，请重新生成');
     expect(取P8错误文案(new BFF错误(429, 'rate_limited', 'x'))).toBe('操作过于频繁，请稍后再试');
     expect(取P8错误文案(new BFF错误(400, 'invalid_request_body', 'bad')))
       .toBe('请求内容无法处理，请检查输入后重试');
@@ -768,7 +1179,7 @@ describe('P8 清理与可见范围', () => {
     expect(env.数据源.读取P8会话).toHaveBeenCalledTimes(1); // 范围登记零请求
   });
 
-  it('Mock 模式零 P8 请求：读静默、写拒绝 backend_unavailable', async () => {
+  it('Mock 模式零 P8 请求：读静默、写拒绝 backend_unavailable、导出恢复零触碰', async () => {
     const mock环境 = 创建P8操作测试环境(false);
     await expect(mock环境.操作.加载P8凭证()).resolves.toBeUndefined();
     await expect(mock环境.操作.加载P8会话()).resolves.toBeUndefined();
@@ -778,6 +1189,15 @@ describe('P8 清理与可见范围', () => {
       .rejects.toMatchObject({ code: 'backend_unavailable' });
     await expect(mock环境.操作.退出P8其他设备())
       .rejects.toMatchObject({ code: 'backend_unavailable' });
+    // Task 5：导出/注销六法 —— Mock 拒绝或静默，绝不触达恢复存储
+    await expect(mock环境.操作.恢复P8数据导出()).resolves.toBeUndefined();
+    await expect(mock环境.操作.刷新P8数据导出()).resolves.toBeUndefined();
+    await expect(mock环境.操作.创建P8数据导出())
+      .rejects.toMatchObject({ code: 'backend_unavailable' });
+    await expect(mock环境.操作.请求P8账号注销())
+      .rejects.toMatchObject({ code: 'backend_unavailable' });
+    expect(mock环境.操作.取P8数据导出下载地址()).toBeNull();
+    mock环境.操作.废弃P8数据导出();
     mock环境.操作.设置P8账号范围(true);
     expect(mock环境.deps.P8账号可见.current).toBe(true);
     expect(mock环境.数据源.读取P8凭证).not.toHaveBeenCalled();
@@ -785,5 +1205,11 @@ describe('P8 清理与可见范围', () => {
     expect(mock环境.数据源.开始P8手机号换绑).not.toHaveBeenCalled();
     expect(mock环境.数据源.完成P8手机号换绑).not.toHaveBeenCalled();
     expect(mock环境.数据源.退出P8其他设备).not.toHaveBeenCalled();
+    expect(mock环境.数据源.创建P8数据导出).not.toHaveBeenCalled();
+    expect(mock环境.数据源.读取P8数据导出).not.toHaveBeenCalled();
+    expect(mock环境.数据源.取P8数据导出下载地址).not.toHaveBeenCalled();
+    expect(mock环境.数据源.请求P8账号注销).not.toHaveBeenCalled();
+    expect(mock环境.恢复存储.写入).not.toHaveBeenCalled();
+    expect(mock环境.恢复存储.删除).not.toHaveBeenCalled();
   });
 });

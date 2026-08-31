@@ -1212,4 +1212,34 @@ describe('P8 控制面会话清理', () => {
     expect(deps.P8待定意图.current.size).toBe(0);
     expect(动作流).toContainEqual({ 型: '切身份', 到: '招聘方' });
   });
+
+  // P8 Task 5：导出恢复句柄跨登出保留 —— 清理口绝不触碰 P8导出恢复 引用。
+  // 普通 logout / 401 只清内存与在飞操作；按 subject 隔离的句柄留给同主体重登恢复
+  // （spec §5.3/§8.3）。只有注销 202 与 export 404/expired/明确重新生成才删句柄
+  // （归 P8控制面操作 的注销/废弃路径，不在会话清理口）。
+  it('清账号状态 / 退出登录 / 换主体登录都不触碰 P8导出恢复 引用（句柄跨登出保留）', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_a' })
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b' });
+    const { deps } = 创建P6会话依赖(后端);
+    const 恢复适配器 = {
+      读取: vi.fn(() => null),
+      写入: vi.fn(() => false),
+      删除: vi.fn(),
+    };
+    (deps as unknown as { P8导出恢复: { current: unknown } }).P8导出恢复 = { current: 恢复适配器 };
+    const 操作 = 创建会话操作(deps);
+    await 操作.完成手机登录('1111'); // sub_a
+    清账号状态(deps); // 401 统一清理口
+    expect(deps.P8导出恢复?.current).toBe(恢复适配器);
+    expect(恢复适配器.删除).not.toHaveBeenCalled();
+    await 操作.退出登录();
+    expect(deps.P8导出恢复?.current).toBe(恢复适配器);
+    expect(恢复适配器.删除).not.toHaveBeenCalled();
+    await 操作.完成手机登录('2222'); // 换主体 sub_b：句柄坐标仍归操作层换绑
+    expect(deps.P8导出恢复?.current).toBe(恢复适配器);
+    expect(恢复适配器.写入).not.toHaveBeenCalled();
+    expect(恢复适配器.删除).not.toHaveBeenCalled();
+  });
 });
