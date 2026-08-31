@@ -5,9 +5,11 @@
 //     请求，接口失败绝不回退 Mock。快照 / 锁 / 意图只在内存（后端状态 + 运行时引用），
 //     绝不进 资料持久化、浏览器存储、Cache API 或 Service Worker。
 //   · 读栅栏 = subject_id + 会话代际 + P8 范围代际，每个请求发送前捕获；任一不匹配的
-//     迟到成败只释放本轮读锁 —— 不写快照、不派发、不清会话（迟到的 401 绝不能登出新会话）。
-//     credentials / sessions 各自单飞，重复调用并入同一 Promise；force 刷新递增范围代际
-//     使旧在飞读整包过时并由新读接管锁；已成功快照刷新途中保留旧 data 不降级为空。
+//     迟到成败只释放本轮读锁 —— 数据不写快照、不派发、不清会话（迟到的 401 绝不能
+//     登出新会话）。credentials / sessions 各自单飞，重复调用并入同一 Promise；force 刷新
+//     递增范围代际使旧在飞读整包过时并由新读接管锁，被作废的结算把快照滚回起飞前状态
+//     （姊妹资源的 force 换代绝不把本资源永久滞留在 loading/refreshing）；已成功快照
+//     刷新途中保留旧 data 不降级为空。
 //   · 写栅栏 = subject_id + 会话代际（范围代际只是 UI 刷新换代，绝不终结写）：当前会话
 //     401 走统一 清账号状态 并原样抛出，让屏幕沿既有登录恢复路径；栅栏已换代的迟到写
 //     401 只丢弃。完成换绑成功先强制重读凭证+会话（一次换代、两路共享同一新代）再
@@ -39,7 +41,6 @@ import type {
   P8运行时引用,
   P8资源快照,
   后端操作依赖,
-  后端状态,
 } from './类型';
 
 /** 与 会话.开始手机登录 同款产品手机号规则：中国大陆 11 位裸号（1 开头）。 */
@@ -191,50 +192,71 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
 
   // ── 快照落位的小工具 ──
 
-  function 落(资源: P8资源, 构造: <T>(旧: P8资源快照<T>) => P8资源快照<T>): void {
-    设后端状态((旧态: 后端状态) => 资源 === 'credentials'
-      ? { ...旧态, credentials: 构造(旧态.credentials) }
-      : { ...旧态, sessions: 构造(旧态.sessions) });
-  }
-
-  // ── 单飞读取核（credentials / sessions 各自一把锁；属主换代接管）──────────────
-
-  /** 发起读取（不换代）：捕获栅栏、落起步快照、登记读锁；迟到成败按栅栏整包丢弃。 */
-  function 发起读取(资源: P8资源): Promise<void> {
+  /** 读路径的统一核（credentials / sessions 行为完全一致，按资源参数化）：
+   *  起步 / 成功 / 失败 / 换代回滚；迟到成败按栅栏整包作废，锁随单飞收口。 */
+  function 发起读取<T>(
+    资源: P8资源,
+    发请求: () => Promise<T>,
+    读取快照: () => P8资源快照<T>,
+    写快照: (快照: P8资源快照<T>) => void,
+  ): Promise<void> {
     const fence = 捕获栅栏();
     const 本次 = (async (): Promise<void> => {
-      落(资源, (旧) => 起步快照(旧, fence.scope));
+      const 起飞前 = 读取快照();
+      /** 范围换代作废本轮结算时滚回起飞前状态：姊妹资源的 force 换代绝不把本资源
+       *  永久滞留在 loading/refreshing（spec §7.1 两块独立结算；「整包过时」只管数据
+       *  新旧，不留转不动的 spinner）。两道闸门：会话/主体已换代 ⇒ 清理已摊平，
+       *  旧会话数据绝不回写新会话；本资源已停到更新一代（接管的 force 新读已落位）
+       *  ⇒ 绝不覆盖新读的结果。 */
+      const 回滚起飞前 = (): void => {
+        if (!会话栅栏仍当前(fence)) return;
+        if (读取快照().generation !== fence.scope) return;
+        写快照({ ...起飞前, refreshing: false });
+      };
+      写快照(起步快照(起飞前, fence.scope));
       try {
-        if (资源 === 'credentials') {
-          const 凭证 = await 后端!.读取P8凭证();
-          if (!栅栏仍当前(fence)) return; // 迟到成功：只随单飞收口，不写共享快照
-          设后端状态((旧态) => ({
-            ...旧态,
-            credentials: { phase: 'success', refreshing: false, data: 凭证, error: null, generation: fence.scope },
-          }));
-        } else {
-          const 会话们 = await 后端!.读取P8会话();
-          if (!栅栏仍当前(fence)) return;
-          设后端状态((旧态) => ({
-            ...旧态,
-            sessions: { phase: 'success', refreshing: false, data: 会话们, error: null, generation: fence.scope },
-          }));
+        const 数据 = await 发请求();
+        if (!栅栏仍当前(fence)) {
+          回滚起飞前(); // 迟到成功：数据整包作废，快照滚回起飞前
+          return;
         }
+        写快照({ phase: 'success', refreshing: false, data: 数据, error: null, generation: fence.scope });
       } catch (错误) {
-        if (!栅栏仍当前(fence)) return; // 迟到失败（含 401）只丢弃：绝不登出新会话
+        if (!栅栏仍当前(fence)) {
+          回滚起飞前(); // 迟到失败（含 401）只丢弃：绝不登出新会话，也不滞留 spinner
+          return;
+        }
         if (是401(错误)) {
           // 当前会话 401：统一清账号（P8 快照随摊平为空底座）；读路径不抛出
           清账号与P8();
           return;
         }
-        落(资源, (旧) => 失败快照(旧, 错误, fence.scope));
+        写快照(失败快照(读取快照(), 错误, fence.scope));
       }
     })();
     const 收口 = 本次.finally(() => {
       if (P8读取锁.current.get(资源) === 收口) P8读取锁.current.delete(资源);
     });
-    P8读取锁.current.set(资源, 收口); // force 换代后新读接管锁；旧读迟到只整包丢弃
+    P8读取锁.current.set(资源, 收口); // force 换代后新读接管锁；旧读迟到只整包作废
     return 收口;
+  }
+
+  function 发起凭证读(): Promise<void> {
+    return 发起读取(
+      'credentials',
+      () => 后端!.读取P8凭证(),
+      () => 后端状态引用.current.credentials,
+      (快照) => 设后端状态((旧态) => ({ ...旧态, credentials: 快照 })),
+    );
+  }
+
+  function 发起会话读(): Promise<void> {
+    return 发起读取(
+      'sessions',
+      () => 后端!.读取P8会话(),
+      () => 后端状态引用.current.sessions,
+      (快照) => 设后端状态((旧态) => ({ ...旧态, sessions: 快照 })),
+    );
   }
 
   async function 运行读取(资源: P8资源, force: boolean): Promise<void> {
@@ -242,15 +264,15 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
       const 在飞 = P8读取锁.current.get(资源);
       if (在飞) return 在飞; // 单飞：重复调用并入同一 Promise
     } else {
-      P8范围代际.current += 1; // force 提升 P8 范围代际：旧在飞读整包过时
+      P8范围代际.current += 1; // force 提升 P8 范围代际：旧在飞读整包过时（结算回滚不滞留）
     }
-    return 发起读取(资源);
+    return 资源 === 'credentials' ? 发起凭证读() : 发起会话读();
   }
 
   /** 完成换绑成功后的双资源强制重读：一次换代、两路共享同一新代，绝不互相作废。 */
   async function 强制重读账号安全(): Promise<void> {
     P8范围代际.current += 1;
-    await Promise.all([发起读取('credentials'), 发起读取('sessions')]);
+    await Promise.all([发起凭证读(), 发起会话读()]);
   }
 
   // ── 写意图与单飞命令 ──

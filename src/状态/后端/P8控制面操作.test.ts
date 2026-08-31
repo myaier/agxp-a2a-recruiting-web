@@ -277,6 +277,62 @@ describe('P8 账号安全读取 owner', () => {
     expect(env.最新状态().sessions.data).toEqual([当前会话, 其他会话('sess_new')]);
   });
 
+  it('姊妹资源 force 换代不把首读滞留在 loading：被作废的结算回滚到起飞前状态', async () => {
+    const 凭证门 = deferred<P8Credential[]>();
+    const 会话门 = deferred<P8Session[]>();
+    vi.mocked(env.数据源.读取P8凭证).mockReturnValueOnce(凭证门.promise);
+    vi.mocked(env.数据源.读取P8会话).mockReturnValueOnce(会话门.promise);
+    const 会话读 = env.操作.加载P8会话(); // 姊妹在飞：快照 loading
+    expect(env.最新状态().sessions).toMatchObject({ phase: 'loading', refreshing: true });
+    const 凭证读 = env.操作.加载P8凭证(true); // force 换代：会话读的结算将被整包作废
+    会话门.resolve([当前会话]); // 迟到结算：数据作废，但快照绝不滞留在 loading/refreshing
+    await 会话读;
+    expect(env.最新状态().sessions).toEqual({
+      phase: 'idle', refreshing: false, data: null, error: null, generation: 0,
+    });
+    凭证门.resolve([手机凭证]);
+    await 凭证读;
+    expect(env.最新状态().credentials.data).toEqual([手机凭证]);
+  });
+
+  it('姊妹资源 force 换代不把再刷新滞留在 refreshing：回滚保留旧成功数据', async () => {
+    await env.操作.加载P8会话(); // 旧成功数据先在场
+    const 凭证门 = deferred<P8Credential[]>();
+    const 会话门 = deferred<P8Session[]>();
+    vi.mocked(env.数据源.读取P8凭证).mockReturnValueOnce(凭证门.promise);
+    vi.mocked(env.数据源.读取P8会话).mockReturnValueOnce(会话门.promise);
+    const 会话读 = env.操作.加载P8会话(true); // 再刷新：success + refreshing:true
+    const 凭证读 = env.操作.加载P8凭证(true); // 姊妹 force 换代
+    expect(env.最新状态().sessions).toMatchObject({
+      phase: 'success', refreshing: true, data: [当前会话],
+    });
+    会话门.resolve([当前会话, 其他会话('sess_2')]); // 迟到：新数据整包作废，状态不滞留
+    await 会话读;
+    expect(env.最新状态().sessions).toEqual({
+      phase: 'success', refreshing: false, data: [当前会话], error: null,
+      generation: expect.any(Number),
+    });
+    凭证门.resolve([新手机凭证]);
+    await 凭证读;
+  });
+
+  it('被作废的旧读回滚绝不覆盖接管新读的结果', async () => {
+    await env.操作.加载P8凭证(); // 旧成功（[手机凭证]）
+    const 旧门 = deferred<P8Credential[]>();
+    vi.mocked(env.数据源.读取P8凭证).mockReturnValueOnce(旧门.promise);
+    const 旧读 = env.操作.加载P8凭证(true); // 再刷新在飞
+    const 新门 = deferred<P8Credential[]>();
+    vi.mocked(env.数据源.读取P8凭证).mockReturnValueOnce(新门.promise);
+    const 新读 = env.操作.加载P8凭证(true); // force 接管：旧读将被作废
+    新门.resolve([新手机凭证]); // 新读先结算成功
+    await 新读;
+    旧门.resolve([手机凭证]); // 旧读迟到：回滚不得把快照打回旧数据
+    await 旧读;
+    expect(env.最新状态().credentials).toMatchObject({
+      phase: 'success', refreshing: false, data: [新手机凭证],
+    });
+  });
+
   it('会话代际变化后迟到的成功整包丢弃', async () => {
     const 会话请求 = deferred<P8Session[]>();
     vi.mocked(env.数据源.读取P8会话).mockReturnValueOnce(会话请求.promise);
