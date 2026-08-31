@@ -81,16 +81,17 @@
   justify-content: center;
 }
 
-/* 数字右对齐到同一条轴线 —— 单位到数字的距离恒定，不会因为 5 / 460 位数不同而左右抖。
-   宽度写死、不用 max-content：选中档 22px、未选中 17px，用 max-content 会让列宽
-   随「当前选中哪一档」变化，单位就跟着挪了。
-   96px = 最宽一档（4 位年份 @22px 实测 53px）+ 左内边距 40px + 3px 余量；
-   左内边距开到 40px 是因为这是个底部弹层，可拖动面积要够大（留白在滚动区内）。 */
+/* 数字在列内居中(2026-08-27 用户:「下面为什么是歪的,把薪资弄正」)——
+   原为右对齐 + 左 40px 死留白(为四位年份的单位防抖设计),两位数被推到
+   高亮带右侧,选中/未选中两种字号的左缘也不齐,整列看着是歪的。
+   改居中后同一列所有档共轴;同一个滚轮里位数几乎恒定(12-16 薪 / 四位年份),
+   单位到数字的距离在实际取值域内依然稳定。
+   宽度仍写死 96px:兼作触摸拖动面积,且不随选中档字号变化。 */
 .列 {
   position: relative;
   width: 96px;
   height: 200px;
-  padding: 80px 0 80px 40px;
+  padding: 80px 0;
   scroll-snap-type: y mandatory;
   overscroll-behavior: contain;
 }
@@ -99,7 +100,7 @@
   height: 40px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   scroll-snap-align: center;
 }
 
