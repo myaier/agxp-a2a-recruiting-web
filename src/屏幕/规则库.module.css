@@ -29,6 +29,20 @@
 
 /* 分组标题（定稿甲 2026-08-24）：撑字距的做法废弃 —— 那种「字 距 硬 撑」
    连同文案里写死的空格一起清掉，回到全 app 灰组标同款 */
+.授权组 {
+  flex: none;
+  margin: 2px 18px 0;
+  display: flex;
+  flex-direction: column; /* RN 默认 column，DOM 必须显式写 */
+  gap: 8px;
+}
+
+.授权卡 {
+  /* 2026-08-31 无框定稿：与下方规则卡同款，无壳 */
+  background: var(--白);
+  padding: 0 2px;
+}
+
 .分组标 {
   font-size: 12px;
   font-weight: 700;
@@ -101,9 +115,9 @@
 /* ── 虚线「＋ 手动添加规则」── */
 .手动添加 {
   width: 100%;
-  border: 1px solid var(--描边中);
+  /* 2026-08-31 无框定稿：去按钮壳，只留加号与文字 */
+  border: none;
   background: transparent;
-  border-radius: var(--圆角-中卡);
   padding: 13px 0;
   display: flex;
   align-items: center;

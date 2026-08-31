@@ -575,17 +575,19 @@ describe('企业代理设置 · Backend 招聘方页', () => {
 });
 
 describe('企业代理设置 · Mock 原型分支', () => {
-  it('Mock mode flips the prototype switch and adds through the same composer', async () => {
+  it('Mock mode shows choice rows without switches and adds through the same composer', async () => {
     const user = userEvent.setup();
     const 视图 = renderRecruiterRules({ mode: 'mock' });
+    // 2026-08-31 定稿：Mock 规则不渲染开关（规则来自叮嘱与选择，不是要维护的配置）
     expect(screen.getByText('不透露 HC 剩余数量与紧迫度')).toBeTruthy();
-    const 开关 = screen.getByRole('switch', { name: '规则：竞对在职候选人不接触、不推进' });
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(screen.getByText('3 条生效')).toBeTruthy();
     await 挂载到稳定();
-    await user.click(开关);
-    expect(视图.操作.切换Agent规则).toHaveBeenCalledWith('R-03', 'pause');
-    // Mock：一次翻转立即生效，计数跟着走
-    expect(screen.getByRole('switch', { name: '规则：竞对在职候选人不接触、不推进' }).getAttribute('aria-checked')).toBe('false');
-    expect(screen.getByText('2 条生效')).toBeTruthy();
+    // 「哪些事先问你」：真选项，点击即改选中态
+    const 回绝 = screen.getByRole('button', { name: '直接回绝' });
+    expect(回绝.getAttribute('aria-pressed')).toBe('false');
+    await user.click(回绝);
+    expect(screen.getByRole('button', { name: '直接回绝' }).getAttribute('aria-pressed')).toBe('true');
     await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
     expect(screen.queryByLabelText('规则范围')).toBeNull();
     await user.type(screen.getByPlaceholderText(/到岗超过/), '只招上海本地的候选');

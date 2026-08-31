@@ -18,10 +18,9 @@
 
 /* 授权卡：三行 设置行，行高靠 设置行 自身撑开，上下各留 2px（同 求职意向管理.设置卡） */
 .授权卡 {
+  /* 2026-08-31 全站设计原则「所有设计不要框」：卡壳拆掉，行间靠发丝线 */
   background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: var(--圆角-中卡);
-  padding: 2px 16px;
+  padding: 0 2px;
   display: flex;
   flex-direction: column;
 }
@@ -62,10 +61,9 @@
 
 /* ── 规则分组卡 ── */
 .卡 {
+  /* 2026-08-31 无框定稿：与 规则库 同款，分组靠组标 + 行间发丝线 */
   background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: var(--圆角-中卡);
-  padding: 0 16px;
+  padding: 0 2px;
 }
 
 .规则行 {
@@ -122,10 +120,9 @@
 /* ── 「＋ 手动添加规则」── */
 .手动添加 {
   width: 100%;
-  /* 2026-08-24 全站选择风格统一（C1 定稿）：虚线改实线，淡绿底改白底 */
-  border: 1px solid var(--描边深);
-  background: var(--白);
-  border-radius: var(--圆角-中卡);
+  /* 2026-08-31 无框定稿：去按钮壳，只留加号与文字 */
+  border: none;
+  background: transparent;
   padding: 13px 0;
   display: flex;
   align-items: center;

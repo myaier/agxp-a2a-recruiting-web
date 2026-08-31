@@ -241,6 +241,7 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     case '企业改规则':
     case '企业删规则':
     case '企业切规则开关':
+    case '设先问偏好':
     // P6：Backend 水合/清空也在 Agent 规则域；不在 reducer 里判模式，操作/会话层拥有边界
     case '水合后端候选规则':
     case '水合后端招聘规则':
