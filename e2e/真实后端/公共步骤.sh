@@ -204,6 +204,21 @@ click_until_screen(){
   return 1
 }
 
+# 进「公司介绍」分区：textarea [aria-label=公司介绍] 在屏才是到位标准。
+# 点行有时派发了却未换屏/AX 未跟上，以选择器在屏为准做有限轮次，每轮点前先滚到行。
+enter_company_intro(){
+  local tries=0
+  while [ "$tries" -lt 8 ]; do
+    if ab wait '[aria-label="公司介绍"]' >/dev/null 2>&1; then return 0; fi
+    click_button '公司介绍' 2>/dev/null || click_row_geometry '公司介绍' || true
+    ab scrollintoview '[aria-label^="公司介绍"]' >/dev/null 2>&1 || true
+    tries=$((tries + 1))
+    sleep 1
+  done
+  echo '公司介绍分区页没进到位（textarea 始终未渲染）' >&2
+  return 1
+}
+
 # set -e 安全的屏面判断：当前页面文本是否包含语义标记。[ x ] && cmd 的裸 && 在
 # 条件不成立时返回 1，会把整条旅程错杀；所有「按屏面二选一」都走这里 + if。
 on_screen(){
