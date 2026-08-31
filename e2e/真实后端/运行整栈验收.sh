@@ -171,7 +171,7 @@ classify_fixture_failure(){
 # Asia/Singapore）。所以这里开一个**专属命名空间的 daemon**：它必然由本进程拉起、
 # 必然继承这里的 TZ。与会话一样，这是验收自己的隔离资源。
 export TZ='Asia/Shanghai'
-export AGENT_BROWSER_NAMESPACE='agxp-real-backend-acceptance'
+export AGENT_BROWSER_NAMESPACE='agxp-accept'
 
 need_command(){ command -v "$1" >/dev/null 2>&1 || blocked "缺少命令：$1"; }
 
