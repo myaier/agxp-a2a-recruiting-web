@@ -2,17 +2,17 @@
 
 **日期：** 2026-08-31
 
-**状态：** 已批准方向，待后端 P8 最终汇总 SHA 校准
+**状态：** 已批准，并已按后端 `release/0.2.5` 最终合同校准
 
 **前端基线：** `agxp-a2a-recruiting-web@659de17be7aac4797bd572228179aedfc5768ae3`
 
-**后端设计基线：** `agxp-monorepo plan/recruitment-backend-p8@a33d5a79c40d7a33416f18e29b321327b3a68aad`
+**后端发布基线：** `agxp-monorepo release/0.2.5@897468e5221f0078533178a28119bb259dbb676e`
 
-**后端候选实现：** Identity Security `f39e8607b`、Compliance Intake `e15fdd9a7`、Data Export `ee0f72c04`、Account Deletion `9b99c80b2`
+**后端设计来源：** `agxp-monorepo plan/recruitment-backend-p8@a33d5a79c40d7a33416f18e29b321327b3a68aad`
 
 **上游：** 已落地的前端 P0–P7 Backend 接线、后端 P8 账号生命周期与合规设计
 
-**后续：** 后端四个子计划汇入同一最终分支并通过最终 L3 后，校准本 Spec，生成零上下文实施 Plan
+**后续：** 依据本校准 Spec 生成零上下文实施 Plan；实施 Task 0 重新验证发布 SHA、OpenAPI 与 canonical L3
 
 ## 1. 摘要
 
@@ -65,7 +65,7 @@ POST   /api/v1/compliance/reports
 
 - 浏览器只得到服务端生成的 credential 掩码，不能得到手机号明文、identity ID、digest 或 key material。
 - Session 只有 `session_id / created_at / expires_at / current`，没有设备名、UA、IP 或地点；前端不得继续展示硬编码设备事实。
-- 换绑 begin 只提交新手机号；complete 只提交 6 位 OTP proof。成功后新手机号成为唯一 active `phone_otp` credential，当前招聘 Session 保留，其他招聘 Session 被撤销。
+- 换绑 begin 只提交新手机号；complete 只提交全产品统一的 4 位 OTP proof。成功后新手机号成为唯一 active `phone_otp` credential，当前招聘 Session 保留，其他招聘 Session 被撤销。
 - revoke-others、换绑两步、创建导出、注销、反馈和举报均要求 caller-provided Idempotency-Key。
 - 数据导出是 `queued → running → ready | failed`，ready artifact 之后过期；下载由 BFF 同源流式代理，不暴露对象存储坐标。
 - 注销冻结 candidate 与 recruiter 共用的 Recruitment principal，清 Cookie 并立即禁止招聘访问；跨域物理清理由后端 durable workflow 完成。
@@ -74,24 +74,23 @@ POST   /api/v1/compliance/reports
 - `also_block=true` 无合法 block edge 时返回 `block_unavailable`，且不创建半份举报。
 - `operation_outcome_unknown` 与 `idempotency_in_progress` 必须使用同一 key 和不可变请求重试。
 
-### 2.3 当前后端完成度
+### 2.3 最终后端基线
 
-P8 四个子面已形成候选实现，但尚未全部处于同一个最终集成提交：
+P8 四个子面已经合并到同一个发布提交 `release/0.2.5@897468e5221f0078533178a28119bb259dbb676e`：
 
-- Identity Security `f39e8607b`：干净提交，包含 credential、Session、换绑与 product block 合同。
-- Compliance Intake `e15fdd9a7`：干净提交，并已进入当前 P8 integration 分支。
-- Data Export `ee0f72c04`：干净独立分支，尚未进入当前 integration 分支。
-- Account Deletion `9b99c80b2`：公开 OpenAPI 已形成，分支仍有内部编排与部署修正尚未提交。
-- 当前 `integration/recruitment-p8-account-lifecycle@e15fdd9a7` 只共同包含 Identity Security 与 Compliance Intake。
+- `apps/recruitment-bff/openapi/mobile-v1.yaml` 在该 SHA 同时声明 credential、Session、手机号换绑、revoke-others、数据导出、账号注销、反馈和举报全部公开路径。
+- 最终错误合同包含各写操作自己的闭合 409/503 union；只有声明 `Retry-After` 的换绑、revoke-others、注销未知结果等分支才允许据此自动重试。
+- `tests/l3/recruitment-mobile-local-cases.json` 的 canonical case 在同一 SHA 包含 `account-security`、`compliance-intake`、`typed-report`、`report-evidence`、`data-export`、`object-lifecycle`、`portable-copy`、`account-deletion`、`account-retention` 与 `product-re-registration` 风险标签。
+- release 顶部另含账号冻结、举报 subject fence、删除 settled event 与压缩 retention deadline 的集成修正；前端不得回退到四个候选子分支分别取合同。
 
-因此前端设计可以依赖已批准的公开语义和各候选 OpenAPI，但实施 Plan 的 Task 0 必须重新钉住同时包含四组路径的最终后端 SHA。当前候选 SHA 不是可发布基线，任何计划不得把它们拼成“已集成”的虚假声明。
+本 Spec 后续所有“最终 OpenAPI”均特指上述单一 SHA；实施 Plan 的 Task 0 仍要重新 fetch 并验证该 SHA 未漂移，再运行前端接线。
 
 ## 3. 目标、视觉约束与非目标
 
 ### 3.1 目标
 
 1. 两端共用的账号安全页展示真实 masked phone、当前 Session 时间和其他 Session 数量。
-2. 保留现有两步抽屉完成 6 位 OTP 手机号换绑，未知结果可安全重试。
+2. 保留现有两步抽屉完成全产品统一的 4 位 OTP 手机号换绑，未知结果可安全重试。
 3. 退出其他设备只在后端确认成功后显示真实回执，并权威刷新 Session。
 4. 用户可以创建、恢复、查看并下载自己的异步数据导出；刷新或离开页面不重复创建任务。
 5. 注销与导出状态正确联动，注销未知结果不伪装成功，成功后清除全部前端账号状态。
@@ -108,7 +107,7 @@ P8 四个子面已形成候选实现，但尚未全部处于同一个最终集�
 - 反馈继续使用现有分类片、textarea、提交键和成功页。
 - 举报继续使用现有原因项、同时屏蔽行、提交键和取消键。
 - 唯一允许的新产品行是在账号安全页、注销按钮之前增加一组同款卡，内含“导出我的数据”。它复用现有行与弹层样式，不引入新的视觉体系。
-- 因真实合同必须变化的文案只限：验证码位数、真实时间/数量、导出状态、错误提示、真实工单号以及移除不受支持的 24 小时 SLA。
+- 因真实合同必须变化的文案只限：真实时间/数量、导出状态、错误提示、真实工单号以及移除不受支持的 24 小时 SLA；验证码位数继续沿用现有 4 位规则，不产生视觉变化。
 
 ### 3.3 非目标
 
@@ -239,8 +238,8 @@ interface P8ReplacementAttempt {
   attemptId: string;
   nextAction: {
     type: 'enter_code';
-    expiresAt: string;
-    retryAfterSeconds: number;
+    expiresAt: string | null;
+    retryAfterSeconds: number | null;
   };
 }
 
@@ -253,7 +252,7 @@ interface P8ReplacementResult {
 
 Credential 与 Session 列表拒绝 duplicate ID。Session 列表必须恰好有一个 `current=true`；零个或多个 current 均视为合同错误，不能自行选择第一行。手机号展示选择 active credential 列表中唯一 `provider=phone_otp` 的行；缺席显示“未绑定”，重复视为合同错误。设置页和账号安全页只显示服务端 `display`，不对掩码二次加工。
 
-换绑 UI 仍输入中国大陆 11 位号码；facade 按本产品现有手机号规则构造 `+86` E.164 请求。complete proof 固定为 6 位数字，不复用登录页的 4 位 `短信验证码位数` 常量。
+换绑 UI 仍输入中国大陆 11 位号码；facade 按本产品现有手机号规则构造 `+86` E.164 请求。complete proof 复用产品全局 `短信验证码位数=4` 规则；最终 OpenAPI 的 6 位示例不是 schema 约束，后端 `AGXP_MOCK_OTP_CODE` 与 P8 集成测试均以 4 位 proof 为准。`LinkNextAction` 只要求 `type`，时间窗与重发冷却字段缺席时领域层映射为 `null`，页面不得编造倒计时。
 
 ### 6.2 数据导出与注销
 
@@ -337,7 +336,7 @@ interface P8ReportReceipt extends P8FeedbackReceipt {
   → 输入 11 位新号
   → 首次提交前铸造 begin key
   → POST begin
-  → 保存 attempt_id，进入现有验证码抽屉（6 位）
+  → 保存 attempt_id，进入现有验证码抽屉（4 位）
   → 首次 complete 前铸造 complete key
   → POST complete
   → 成功后权威重读 credentials + sessions
@@ -346,7 +345,7 @@ interface P8ReportReceipt extends P8FeedbackReceipt {
 
 - begin/complete 的 `idempotency_in_progress` 或 `operation_outcome_unknown` 都保留原输入、attempt 与 key。
 - complete 不乐观更新手机号，不用用户输入自行生成最终展示掩码。
-- replacement conflict、credential bound、验证码错误或过期使用固定错误文案并允许用户回到可修改步骤。
+- replacement conflict、验证码错误或过期使用最终公开错误合同的固定文案并允许用户回到可修改步骤；换绑 complete 不声明 `credential_already_bound`，前端不得自行增加该分支。
 - 成功回执的 `revoked_sessions` 可用于轻提示；列表仍以随后 GET 为权威。
 - 当前 Session 按合同必须保留；任何 401 仍走统一账号清理，不能解释为“换绑成功”。
 
@@ -460,7 +459,7 @@ subject-scoped export handle 只作为无授权能力的恢复坐标保留；后
 - 409 export_in_progress：注销时阻塞；create 时说明已有 active export，但无本地句柄时不猜 ID。
 - 409 block_unavailable：不创建半份举报，不自动降级。
 - 409 replacement/idempotency conflict：终结自动重试，保留 UI 供用户明确重新开始。
-- 429：遵守 Retry-After，保持输入，不在倒计时内重复提交。
+- 429：保持输入并显示固定限流提示；P8 合规 429 不声明 `Retry-After`，不得伪造倒计时或自动重试。
 - 503 unknown/in-progress：同 key、同请求重试；普通 downstream unavailable 可让用户重试，但不得伪造成功。
 
 ## 9. 严格解码
@@ -470,7 +469,7 @@ subject-scoped export handle 只作为无授权能力的恢复坐标保留；后
 - 拒绝 missing/unknown key、unknown enum、trailing JSON、重复 ID 与跨分支字段；
 - 时间只接受合法 RFC3339；不猜秒/毫秒；
 - 计数必须是安全非负整数；
-- opaque ID 必须满足最终 OpenAPI 的精确 pattern/minLength；
+- opaque ID 必须满足最终 OpenAPI 的精确 pattern/minLength；其中 data export 为 `^exp_[0-9a-f]{32}$`、account deletion 为 `^del_[0-9a-f]{32}$`，session、credential、attempt 与 report target ref 按 `minLength: 1`；合规 `ticket_id` 只声明 `type: string`，前端不得自行声称后端发布了更严格 pattern/minLength；
 - envelope 必须同时具有 closed `result` 与 `meta`；
 - credential provider 只接受最终合同枚举；
 - Session 必须恰有一个 current；
@@ -479,7 +478,7 @@ subject-scoped export handle 只作为无授权能力的恢复坐标保留；后
 - data export 只有 `ready + download_ready=true` 可下载；
 - download 响应不经过 JSON decoder，不把 headers 或字节写入状态。
 
-最终实现 Plan 必须从最终 P8 OpenAPI 重抄精确 ID pattern、错误 union 和 response status；本 Spec 的候选实现描述不能替代该校准门。
+最终实现 Plan 必须从发布基线 P8 OpenAPI 重抄精确错误 union、response status、body/no-body 语义与每个 `Retry-After`；本节的通用规则不能替代逐端点契约测试。
 
 ## 10. 文件边界
 
@@ -520,7 +519,7 @@ subject-scoped export handle 只作为无授权能力的恢复坐标保留；后
 
 - 读取 single-flight、refresh generation、旧成功刷新不降级；
 - unmount、换主体、401、logout 后迟到响应不提交；
-- begin/complete 双 key 不混用，6 位验证码；
+- begin/complete 双 key 不混用，复用全局 4 位验证码规则；
 - revoke-others lost response 同 key 重放真实 count；
 - export create key 先落盘、create replay、ID 恢复、轮询不重叠、隐藏停止、重新可见恢复；
 - export 404/expired/deletion 清句柄，普通 logout 后同 subject 可恢复；
@@ -534,7 +533,7 @@ subject-scoped export handle 只作为无授权能力的恢复坐标保留；后
 - Backend 不显示固定手机号、iPhone、上海、固定工单号或本地注销成功。
 - 加载失败保留页面外壳和中性占位；相关动作禁用。
 - 设置页显示真实 masked phone 或中性占位。
-- 换绑仍使用现有两步抽屉，但验证码为 6 位。
+- 换绑仍使用现有两步抽屉和既有 4 位验证码视觉与规则。
 - 导出只新增批准的一行和复用弹层，状态闭合。
 - 无目标举报显示引导，不发送 feedback/report。
 - Backend job/P7 target 精确，Backend 直聊没有举报入口。
@@ -547,7 +546,7 @@ Backend fixture 至少覆盖：
 
 1. 真实 masked phone 与 Session 时间；
 2. 退出其他设备并刷新 count；
-3. 6 位换绑成功、业务冲突和 unknown 重试；
+3. 4 位换绑成功、业务冲突和 unknown 重试；
 4. 创建导出、关闭弹层、重新进入恢复、ready 下载；
 5. queued/running export 阻塞注销，ready 未下载警示；
 6. 注销 202 清状态并进入登录；
@@ -558,21 +557,21 @@ Backend fixture 至少覆盖：
 11. Backend 直聊无无效举报；
 12. 401、换账号和迟到响应不泄漏旧主体状态。
 
-视觉回归以当前前端基线截图为准，允许差异只有：导出行、真实 masked phone/时间/数量、6 位验证码文案、真实导出状态、真实工单号和已批准的合规提示。布局、CSS、弹层尺寸、色彩、字号、间距和操作层级出现其他差异即失败。
+视觉回归以当前前端基线截图为准，允许差异只有：导出行、真实 masked phone/时间/数量、真实导出状态、真实工单号和已批准的合规提示。换绑继续保持现有 4 位验证码视觉；布局、CSS、弹层尺寸、色彩、字号、间距和操作层级出现其他差异即失败。
 
-真实后端验收只在 P8 最终 integration SHA、最终 OpenAPI 和最终 L3 PASS 可用后运行。route fixture 通过不能冒充真实后端联调通过。
+真实后端验收固定使用 `release/0.2.5@897468e5221f0078533178a28119bb259dbb676e` 的 BFF、OpenAPI 和 canonical L3 环境。route fixture 通过不能冒充真实后端联调通过。
 
 ## 12. 实施前硬门
 
 零上下文 Plan 的 Task 0 必须全部通过：
 
 1. 前端仍从本 Spec 基线可追溯，审计 P8 File Map 漂移并保护 P7 并发/会话清理合同。
-2. 后端存在一个单一最终 SHA，同时包含 Identity Security、Compliance Intake、Data Export 和 Account Deletion；不得分别读取四个实现分支实施。
-3. 最终 `apps/recruitment-bff/openapi/mobile-v1.yaml` 同时声明本 Spec §2.2 的全部公开路径。
-4. 精确核对 response status、错误 union、ID pattern、OTP proof、empty/no-body 语义、download headers 与 Retry-After。
-5. Account Deletion 分支当前未提交修正已收口，最终 integration 工作树干净。
-6. 后端 P8 canonical L3 Case 与所需风险 gate 已最终 PASS，并记录运行证据。
-7. 如最终合同改变本 Spec 的用户行为、错误恢复或文件边界，先修订 Spec 并重新取得批准，再写实施任务。
+2. 执行 `git fetch origin release/0.2.5`，并确认 `origin/release/0.2.5` 仍解析为 `897468e5221f0078533178a28119bb259dbb676e`；如发布分支前移，停止实施并重新校准，不静默追随。
+3. 从该 SHA 读取 `apps/recruitment-bff/openapi/mobile-v1.yaml`，确认本 Spec §2.2 的全部公开路径仍共存于同一合同。
+4. 精确核对 response status、错误 union、`^exp_[0-9a-f]{32}$`、`^del_[0-9a-f]{32}$`、4 位 OTP、account deletion 的 `{}`、data export create 的 no-body、download headers 与逐端点 `Retry-After`。
+5. 从该 SHA 读取 `tests/l3/recruitment-mobile-local-cases.json`，确认 §2.3 的 P8 风险标签仍在 canonical case 中；记录实际 L3 命令与 PASS 证据，不能只引用 route fixture。
+6. 确认前端执行工作树不夹带未审查修改；实施只消费单一 release SHA，不分别读取四个历史候选分支。
+7. 如上述检查改变本 Spec 的用户行为、错误恢复或文件边界，先修订 Spec 并重新取得批准，再执行后续任务。
 
 ## 13. 已知限制与后续证据
 
@@ -587,9 +586,9 @@ Backend fixture 至少覆盖：
 
 - P8 账号资源与 P4–P7 业务状态分离，所有单元有单一 owner 和闭合接口。
 - PM 视觉不变量与新增导出入口不矛盾；除必要一行外没有页面重构。
-- 换绑 6 位 OTP 与现有登录 4 位 OTP 明确分离，不复用错误常量。
+- 换绑与登录复用产品全局 4 位 OTP 规则，不因 OpenAPI 非规范性示例另造常量或改变 PM 视觉。
 - 导出恢复、注销阻塞和 ready 未下载警示形成闭合流程；未知结果没有本地假成功。
 - 普通反馈、无目标举报和上下文举报三者语义分离；浏览器不能发明 target 或 block edge。
 - Mock/Backend、subject、session 与 scope 边界明确；退出和注销清理不把旧响应留给新账号。
-- 后端尚未最终汇总被显式建模为实施硬门，没有把候选分支伪装成 release。
+- 后端已冻结为单一 `release/0.2.5` SHA；Task 0 会阻止静默跟随分支漂移或回退到候选合同。
 - 本设计没有扩大到设备风控、全局 identity 删除、管理后台、通用工作流或视觉改版。
