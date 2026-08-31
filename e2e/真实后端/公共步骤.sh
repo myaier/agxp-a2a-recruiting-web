@@ -229,6 +229,19 @@ click_with_retry(){
 #     合成事件绕开的正是这轮验收唯一要证明的东西。
 # 结束后读产品自己的 aria-expanded 自检，滑不开就立刻失败而不是让后面的断言瞎猜。
 左滑行(){
+  # 整体带 10 次重试：硬刷新后行还在水合（#run22 实证 get box 拿旧屏扑空），
+  # 滑开自检不过就整段重滑，10 秒仍未滑开才按失败落地。
+  local tries=0
+  while [ "$tries" -lt 10 ]; do
+    _左滑一次 "$1" && return 0
+    tries=$((tries + 1))
+    sleep 1
+  done
+  echo "行「$1」10 次重试后仍未滑开" >&2
+  return 1
+}
+
+_左滑一次(){
   local name="$1" sel box x_from x_to y step k
   sel="[aria-label^=\"$name\"]"
   box="$(ab get box "$sel" --json)" || return 1
