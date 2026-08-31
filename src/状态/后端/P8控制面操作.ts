@@ -1,6 +1,6 @@
-// 后端 P8 控制面域运行时 owner（Task 3 + Task 5）：账号安全资源（凭证/会话/导出）的
-// 内存态快照、单飞读取、subject/会话/范围三代栅栏，与手机号换绑、退出其他设备、
-// 数据导出（恢复/创建/刷新/废弃/下载地址）、账号注销的意图键化命令。
+// 后端 P8 控制面域运行时 owner（Task 3 + Task 5 + Task 6）：账号安全资源（凭证/会话/导出）
+// 的内存态快照、单飞读取、subject/会话/范围三代栅栏，与手机号换绑、退出其他设备、
+// 数据导出（恢复/创建/刷新/废弃/下载地址）、账号注销、产品反馈的意图键化命令。
 // 铁律（spec §7–§8 与已准入 P8 冻结契约）：
 //   · Backend 才发请求：读路径早退、写路径拒绝 backend_unavailable；Mock 模式零 P8
 //     请求，接口失败绝不回退 Mock。快照 / 锁 / 意图只在内存（后端状态 + 运行时引用），
@@ -34,12 +34,16 @@
 //   · 入参校验在本层收口：换绑开始只收 11 位中国大陆裸号（facade 只负责 +86 E.164 构造），
 //     换绑完成证明执行产品全局 短信验证码位数 规则 —— 非法输入零请求、零意图。
 //   · 错误文案是本模块闭合的固定中文表：未知 BFF错误.message 绝不透传。
-//   · 反馈/举报（Task 6–7）不在本表：绝不预留空桩。
+//   · 合规两法按法各立意图：反馈（Task 6）坐标=线协议分类+trim 后正文，入参校验在本层
+//     收口（trim 后按 Unicode 码点计 5–500，非法零请求零意图），成功清意图、未知/网络
+//     异常同键同 body 重试，409 冲突与 429 限流是终局（清意图；合规 429 不带 Retry-After，
+//     绝不排定时器自动重试）；举报（Task 7）不在本表：绝不预留空桩。
 
 import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
 import type {
   P8Credential,
   P8DataExport,
+  P8FeedbackCategory,
   P8Session,
 } from '../../数据/招聘数据源/P8控制面';
 import type { P8导出恢复句柄 } from '../../数据/P8导出恢复';
@@ -47,6 +51,7 @@ import { 短信验证码位数 } from '../../数据/验证码规则';
 import { 清账号状态 } from './会话操作';
 import type {
   P8账号控制面操作,
+  P8反馈操作,
   P8待定意图,
   P8控制面状态,
   P8运行时引用,
@@ -60,6 +65,12 @@ const 大陆手机号模式 = /^1\d{10}$/;
 /** 产品全局短信验证码位数（登录与换绑共用，绝不在 P8 自立位数）。 */
 const 验证码模式 = new RegExp(`^\\d{${短信验证码位数}}$`);
 
+/** 合规反馈的线协议分类表（与 facade 同一口径）；UI 中文分类→线协议的映射归屏。 */
+const 反馈分类全表: readonly P8FeedbackCategory[] = ['bug', 'suggestion', 'other'];
+
+/** 反馈正文规则：trim 后 5–500 个 Unicode 码点（按码点数计，绝不是 UTF-16 单元数）。 */
+const 反馈正文码点上下限 = { 下限: 5, 上限: 500 } as const;
+
 /** opaque id 的键内转义：意图坐标里的 id 逐段转义绝不撞键（与 P7 同一纪律）。 */
 function 段(值: string): string {
   return encodeURIComponent(值);
@@ -67,7 +78,7 @@ function 段(值: string): string {
 
 /**
  * 意图坐标（内存 Map 的键，可含中文）：换绑开始=手机号、换绑完成=attempt+验证码、
- * 退出恒定、创建导出=落盘 createKey、注销恒定。
+ * 退出恒定、创建导出=落盘 createKey、注销恒定、提交反馈=线协议分类+trim 后正文。
  */
 const 意图坐标 = {
   换绑开始: (手机号: string): string => `p8:换绑开始:${手机号}`,
@@ -75,6 +86,7 @@ const 意图坐标 = {
   退出其他设备: 'p8:退出其他设备',
   创建数据导出: (createKey: string): string => `p8:创建数据导出:${段(createKey)}`,
   注销账号: 'p8:注销账号',
+  提交反馈: (分类: string, 正文: string): string => `p8:提交反馈:${段(分类)}:${段(正文)}`,
 } as const;
 
 /** P8 读锁表里的资源键：credentials / sessions / export（export 于 Task 5 接线）。 */
@@ -176,7 +188,7 @@ function 取P8引用(deps: 后端操作依赖): 后端操作依赖 & P8运行时
   return deps as 后端操作依赖 & P8运行时引用;
 }
 
-export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号控制面操作 {
+export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号控制面操作 & P8反馈操作 {
   const { 是后端, 后端, 设后端状态, 后端状态引用, 主体标识引用, 会话代际 } = deps;
   const 引用 = 取P8引用(deps);
   const { P8范围代际, P8账号可见, P8读取锁, P8待定意图, P8导出恢复 } = 引用;
@@ -315,6 +327,16 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
     return 错误.status === 0 || 错误.status >= 500;
   }
 
+  /**
+   * 反馈的结果不确定判据（Task 6）：合规反馈端点的 429 不带 Retry-After，没有可等的
+   * 窗口 —— 限流是终局拒绝（清意图、绝不排定时器自动重试），用户手动再提交才铸新键。
+   * 其余与账号控制面同口径。
+   */
+  function 是反馈结果不确定(错误: unknown): boolean {
+    if (错误 instanceof BFF错误 && 错误.status === 429 && 错误.code === 'rate_limited') return false;
+    return 是结果不确定(错误);
+  }
+
   /** 同一意图沿用既有键；只有无键时才铸造（crypto.randomUUID，16–128 可见 ASCII）。 */
   function 待定意图For<T>(坐标: string, request: T): P8待定意图<T> {
     const 既有 = P8待定意图.current.get(坐标);
@@ -347,13 +369,14 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
    * 意图键化命令的共用收口：成功 → 清意图，会话栅栏仍立时执行成功后权威重读
    * （重读完成前不 resolve）；当前会话 401 → 清账号并摊平后原样抛出（屏幕走登录恢复）；
    * 结果不确定 → 保留原键与不可变请求；终局拒绝（400/403/409 冲突）→ 清意图。
-   * 绝不重放变更、绝不乐观写。
+   * 绝不重放变更、绝不乐观写。不确定判据可按法替换（反馈的 429 是终局）。
    */
   async function 运行命令<T>(
     坐标: string,
     request: unknown,
     发出: (键: string) => Promise<T>,
     成功后?: () => Promise<void>,
+    不确定判据: (错误: unknown) => boolean = 是结果不确定,
   ): Promise<T> {
     const fence = 捕获栅栏();
     const 意图 = 待定意图For(坐标, request);
@@ -367,9 +390,17 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
         if (会话栅栏仍当前(fence)) 清账号与P8();
         throw 错误;
       }
-      if (!是结果不确定(错误)) 删意图键(坐标, 意图.key);
+      if (!不确定判据(错误)) 删意图键(坐标, 意图.key);
       throw 错误;
     }
+  }
+
+  /**
+   * 反馈的意图键化命令：无成功后重读（回执 ticketId 就是权威结果，无快照要落位），
+   * 不确定判据换成 反馈版（429 终局）。
+   */
+  function 运行反馈命令<T>(坐标: string, request: unknown, 发出: (键: string) => Promise<T>): Promise<T> {
+    return 运行命令(坐标, request, 发出, undefined, 是反馈结果不确定);
   }
 
   // ── 数据导出（Task 5）：恢复句柄与三态读写 ──────────────────────
@@ -653,6 +684,30 @@ export function 创建P8账号安全操作(deps: 后端操作依赖): P8账号�
       const 坐标 = 意图坐标.注销账号;
       // 终局确认单飞：未知重放窗口内的重复点击只并入同一 Promise，不铸第二把键
       return 单飞命令(坐标, () => 运行注销());
+    },
+
+    提交P8反馈(category, details) {
+      if (!是后端 || !后端) return Promise.reject(仅后端可用());
+      // 入参校验在本层收口（facade 只挡 wire 形状）：分类必须在表内；正文先 trim 再按
+      // Unicode 码点计数（Array.from，绝不是 UTF-16 单元数）—— 非法输入零请求、零意图。
+      const 分类 = typeof category === 'string' ? category : ('' as P8FeedbackCategory);
+      if (!反馈分类全表.includes(分类)) {
+        return Promise.reject(new BFF错误(0, 'invalid_request', '反馈分类不合法'));
+      }
+      const 正文 = typeof details === 'string' ? details.trim() : '';
+      const 码点数 = Array.from(正文).length;
+      if (码点数 < 反馈正文码点上下限.下限 || 码点数 > 反馈正文码点上下限.上限) {
+        return Promise.reject(new BFF错误(0, 'invalid_request',
+          `反馈内容需要 ${反馈正文码点上下限.下限}–${反馈正文码点上下限.上限} 字`));
+      }
+      const 坐标 = 意图坐标.提交反馈(分类, 正文);
+      // body 与线协议逐字一致（恰 {category, details}）；回执 ticketId 原样返回给屏幕，
+      // 成功清意图，未知/网络异常同键同 body 重试，409 冲突与 429 限流是终局
+      return 单飞命令(坐标, () => 运行反馈命令(
+        坐标,
+        { category: 分类, details: 正文 },
+        (键) => 后端!.提交P8反馈(分类, 正文, 键),
+      ));
     },
   };
 }

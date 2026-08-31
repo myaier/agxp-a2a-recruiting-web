@@ -9,6 +9,9 @@
 // null-ID 只重放 POST / 有 ID 只 GET、跨主体键隔离、404/expired 清句柄、显式重新生成
 // 铸新键、ready+downloadReady 唯一可下载组合与 facade URL 委托、注销 {} 契约、
 // 单飞、未知结果同键 1s/2s 至多两次显式重放、202 统一清 P4–P8 后才 resolve。
+// P8 Task 6：产品反馈 —— trim 后按 Unicode 码点计 5–500 的入参校验（非法零请求零意图）、
+// 分类+正文坐标的意图键化（成功清键、未知/网络异常同键同 body 重试）、409 冲突与 429
+// 限流是终局（清键、绝不排定时器自动重试）、Mock 拒绝 backend_unavailable。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF主体 } from '../../数据/BFF契约';
@@ -18,6 +21,7 @@ import {
   type P8AccountDeletion,
   type P8Credential,
   type P8DataExport,
+  type P8FeedbackReceipt,
   type P8ReplacementAttempt,
   type P8ReplacementResult,
   type P8Session,
@@ -41,6 +45,7 @@ import {
 } from './P8控制面操作';
 import type {
   P7待定意图,
+  P8反馈操作,
   P8待定意图,
   P8运行时引用,
   后端操作依赖,
@@ -127,6 +132,10 @@ const 注销回执: P8AccountDeletion = {
   retentionUntil: '2026-09-29T00:00:00Z',
 };
 
+// ── Task 6 DTO 样本：合规反馈回执（ticket_id 发布为裸 string）──
+
+const 反馈回执: P8FeedbackReceipt = { ticketId: 'TICKET-P8-001', status: 'received' };
+
 /**
  * Task 5：受控恢复存储 —— 包住真实 创建P8导出恢复存储（键位 / 校验 / 序列化语义保真），
  * 以 vi.fn 追踪写入与删除（invocationCallOrder 断言用）；多个账号可共享同一底层 Map，
@@ -164,6 +173,7 @@ function 创建P8数据源(覆盖: Record<string, unknown> = {}): HTTP招聘数�
     读取P8数据导出: vi.fn(async (id: string): Promise<P8DataExport> => 导出DTO({ exportId: id, status: 'running' })),
     取P8数据导出下载地址: vi.fn((id: string): string => `/api/v1/me/data-exports/${id}/download`),
     请求P8账号注销: vi.fn(async (): Promise<P8AccountDeletion> => 注销回执),
+    提交P8反馈: vi.fn(async (): Promise<P8FeedbackReceipt> => 反馈回执),
     清空目录缓存: vi.fn(),
     ...覆盖,
   } as unknown as HTTP招聘数据源;
@@ -174,7 +184,7 @@ interface P8操作测试环境 {
   deps: 后端操作依赖 & P8运行时引用;
   派发: ReturnType<typeof vi.fn>;
   恢复存储: ReturnType<typeof 创建恢复存储桩>;
-  操作: P8账号控制面操作;
+  操作: P8账号控制面操作 & P8反馈操作;
   最新状态(): 后端状态;
 }
 
@@ -1153,6 +1163,139 @@ describe('P8 账号注销', () => {
   });
 });
 
+// ── Task 6：产品反馈 —— 校验、意图键化与终局纪律 ────────────────────
+
+describe('P8 产品反馈', () => {
+  it('三个线协议分类原样透传：trim 后正文进 facade、键是可见 ASCII、成功清意图', async () => {
+    for (const 分类 of ['bug', 'suggestion', 'other'] as const) {
+      vi.mocked(env.数据源.提交P8反馈).mockResolvedValueOnce(反馈回执);
+      await expect(env.操作.提交P8反馈(分类, '  导出按钮没有响应  ')).resolves.toEqual(反馈回执);
+      const 调用 = vi.mocked(env.数据源.提交P8反馈).mock.calls.at(-1)!;
+      expect(调用.slice(0, 2)).toEqual([分类, '导出按钮没有响应']);
+      expect(调用[2]).toMatch(/^[!-~]{16,128}$/);
+      expect(调用[2]).toHaveLength(36);
+    }
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+    expect(env.最新状态().已登录).toBe(true);
+  });
+
+  it('正文规则在操作层收口：trim 后按 Unicode 码点计 5–500（不是 UTF-16 长度），非法零请求零意图', async () => {
+    // 4 个码点 = 8 个 UTF-16 单元：按 UTF-16 长度会放行，码点计数必须拒绝
+    await expect(env.操作.提交P8反馈('bug', '😀😀😀😀')).rejects.toMatchObject({ code: 'invalid_request' });
+    // 5 个码点：放行
+    vi.mocked(env.数据源.提交P8反馈).mockResolvedValueOnce(反馈回执);
+    await env.操作.提交P8反馈('bug', '😀😀😀😀😀');
+    // 纯空白 trim 后零码点：拒绝
+    await expect(env.操作.提交P8反馈('bug', '     ')).rejects.toMatchObject({ code: 'invalid_request' });
+    // 恰 500 码点放行，501 码点拒绝
+    vi.mocked(env.数据源.提交P8反馈).mockResolvedValueOnce(反馈回执);
+    await env.操作.提交P8反馈('other', 'a'.repeat(500));
+    await expect(env.操作.提交P8反馈('other', 'a'.repeat(501))).rejects.toMatchObject({ code: 'invalid_request' });
+    expect(vi.mocked(env.数据源.提交P8反馈).mock.calls).toHaveLength(2);
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+    // 固定中文文案（闭合表），绝不透传校验细节之外的英文 message
+    let 文案 = '';
+    try {
+      await env.操作.提交P8反馈('bug', '太短');
+    } catch (错误) {
+      文案 = 取P8错误文案(错误);
+    }
+    expect(文案).toBe('反馈内容需要 5–500 字');
+  });
+
+  it('分类非法：零请求零意图、固定文案（举报不在此法，Task 7 前绝无空桩）', async () => {
+    await expect(env.操作.提交P8反馈('complaint' as never, '内容长度足够'))
+      .rejects.toMatchObject({ code: 'invalid_request' });
+    expect(env.数据源.提交P8反馈).not.toHaveBeenCalled();
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+
+  it('未知/进行中/网络异常：保留同一把键与不可变 body（恰 {category, details}），同键重试；换正文 = 新键', async () => {
+    vi.mocked(env.数据源.提交P8反馈)
+      .mockRejectedValueOnce(new BFF错误(503, 'operation_outcome_unknown', 'unknown'))
+      .mockRejectedValueOnce(new BFF错误(409, 'idempotency_in_progress', 'in progress'))
+      .mockRejectedValueOnce(new Error('网络断了'));
+    for (let 次 = 0; 次 < 3; 次 += 1) {
+      await expect(env.操作.提交P8反馈('suggestion', '希望增加状态说明'))
+        .rejects.toBeInstanceOf(Error);
+    }
+    const 保留 = [...env.deps.P8待定意图.current.values()];
+    expect(保留).toHaveLength(1);
+    expect(保留[0].request).toEqual({ category: 'suggestion', details: '希望增加状态说明' });
+    vi.mocked(env.数据源.提交P8反馈).mockResolvedValueOnce(反馈回执);
+    await env.操作.提交P8反馈('suggestion', '希望增加状态说明');
+    const 调用 = vi.mocked(env.数据源.提交P8反馈).mock.calls;
+    expect(new Set(调用.slice(0, 4).map((行) => 行[2])).size).toBe(1); // 四次同一把键
+    vi.mocked(env.数据源.提交P8反馈).mockResolvedValueOnce(反馈回执);
+    await env.操作.提交P8反馈('suggestion', '希望增加进度说明'); // 换正文 = 新意图新键
+    expect(调用[4][2]).not.toBe(调用[3][2]);
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+
+  it('中文意图坐标（分类+正文）只作内存 Map 键：数据源键参数仍是纯可见 ASCII', async () => {
+    vi.mocked(env.数据源.提交P8反馈).mockRejectedValueOnce(
+      new BFF错误(503, 'operation_outcome_unknown', 'unknown'));
+    await expect(env.操作.提交P8反馈('other', '想说说其他问题'))
+      .rejects.toMatchObject({ code: 'operation_outcome_unknown' });
+    expect([...env.deps.P8待定意图.current.keys()].join('\n')).toMatch(/[一-鿿]/);
+    expect(vi.mocked(env.数据源.提交P8反馈).mock.calls[0][2]).toMatch(/^[!-~]{16,128}$/);
+  });
+
+  it('409 idempotency_conflict 终局：清意图、原样抛出、下次铸新键（绝不自动重放）', async () => {
+    vi.mocked(env.数据源.提交P8反馈).mockRejectedValueOnce(
+      new BFF错误(409, 'idempotency_conflict', 'conflict'));
+    await expect(env.操作.提交P8反馈('bug', '导出按钮没有响应'))
+      .rejects.toMatchObject({ code: 'idempotency_conflict' });
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+    vi.mocked(env.数据源.提交P8反馈).mockResolvedValueOnce(反馈回执);
+    await env.操作.提交P8反馈('bug', '导出按钮没有响应');
+    const 调用 = vi.mocked(env.数据源.提交P8反馈).mock.calls;
+    expect(调用[0][2]).not.toBe(调用[1][2]);
+  });
+
+  it('429 终局且绝不排定时器：合规 429 无 Retry-After，清意图、零自动重试、下次铸新键', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(env.数据源.提交P8反馈).mockRejectedValueOnce(
+        new BFF错误(429, 'rate_limited', 'slow down'));
+      await expect(env.操作.提交P8反馈('bug', '导出按钮没有响应'))
+        .rejects.toMatchObject({ code: 'rate_limited' });
+      expect(env.deps.P8待定意图.current.size).toBe(0);
+      await vi.advanceTimersByTimeAsync(60_000); // 无倒计时：推进一分钟也不会有自动重发
+      expect(env.数据源.提交P8反馈).toHaveBeenCalledTimes(1);
+      expect(env.最新状态().已登录).toBe(true);
+      // 手动重试：铸新键
+      vi.mocked(env.数据源.提交P8反馈).mockResolvedValueOnce(反馈回执);
+      await env.操作.提交P8反馈('bug', '导出按钮没有响应');
+      const 调用 = vi.mocked(env.数据源.提交P8反馈).mock.calls;
+      expect(调用[0][2]).not.toBe(调用[1][2]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('在飞单飞：同一分类+正文的重复点击并入同一 Promise，只发一次请求', async () => {
+    const 门 = deferred<P8FeedbackReceipt>();
+    vi.mocked(env.数据源.提交P8反馈).mockReturnValueOnce(门.promise);
+    const a = env.操作.提交P8反馈('bug', '导出按钮没有响应');
+    const b = env.操作.提交P8反馈('bug', '导出按钮没有响应');
+    expect(env.数据源.提交P8反馈).toHaveBeenCalledTimes(1);
+    门.resolve(反馈回执);
+    expect(await Promise.all([a, b])).toEqual([反馈回执, 反馈回执]);
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+
+  it('当前会话 401：统一清账号后原样抛出，意图随引用级清理收走', async () => {
+    await env.操作.加载P8凭证();
+    vi.mocked(env.数据源.提交P8反馈).mockRejectedValueOnce(
+      new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(env.操作.提交P8反馈('bug', '导出按钮没有响应'))
+      .rejects.toMatchObject({ code: 'invalid_session' });
+    expect(env.最新状态().已登录).toBe(false);
+    expect(env.deps.P8待定意图.current.size).toBe(0);
+  });
+});
+
 // ── 错误文案 ───────────────────────────────────────────────────────
 
 describe('P8 错误文案', () => {
@@ -1246,6 +1389,9 @@ describe('P8 清理与可见范围', () => {
       .rejects.toMatchObject({ code: 'backend_unavailable' });
     await expect(mock环境.操作.请求P8账号注销())
       .rejects.toMatchObject({ code: 'backend_unavailable' });
+    // Task 6：产品反馈同样只在 Backend 可用
+    await expect(mock环境.操作.提交P8反馈('bug', '导出按钮没有响应'))
+      .rejects.toMatchObject({ code: 'backend_unavailable' });
     expect(mock环境.操作.取P8数据导出下载地址()).toBeNull();
     mock环境.操作.废弃P8数据导出();
     mock环境.操作.设置P8账号范围(true);
@@ -1259,6 +1405,7 @@ describe('P8 清理与可见范围', () => {
     expect(mock环境.数据源.读取P8数据导出).not.toHaveBeenCalled();
     expect(mock环境.数据源.取P8数据导出下载地址).not.toHaveBeenCalled();
     expect(mock环境.数据源.请求P8账号注销).not.toHaveBeenCalled();
+    expect(mock环境.数据源.提交P8反馈).not.toHaveBeenCalled();
     expect(mock环境.恢复存储.写入).not.toHaveBeenCalled();
     expect(mock环境.恢复存储.删除).not.toHaveBeenCalled();
   });

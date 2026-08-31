@@ -38,6 +38,8 @@ import type {
   P8DataExport,
   P8ReplacementAttempt,
   P8ReplacementResult,
+  P8FeedbackCategory,
+  P8FeedbackReceipt,
 } from '../../数据/招聘数据源/P8控制面';
 import type { P8导出恢复存储 } from '../../数据/P8导出恢复';
 import type { PDF对象租约 } from '../../数据/PDF对象租约';
@@ -537,7 +539,7 @@ export interface 真人会话操作 {
  * 铸造一把 crypto.randomUUID 键，同意图的所有重试沿用同一把键；mutation 一律
  * 服务端先行，成功（或确认重放）后权威重读，响应本体绝不替换快照。
  * 导出创建的幂等键即恢复句柄里的 createKey：先落盘 {exportId:null} 再 POST，
- * 响应丢失/刷新后按句柄同键重放。Task 6–7 在本表上再加合规两法。
+ * 响应丢失/刷新后按句柄同键重放。合规两法另立 P8合规操作（Task 6 已接反馈，举报 Task 7）。
  */
 export interface P8账号控制面操作 {
   /** 登记账号 UI 可见性：只影响迟到提示抑制与 UI 可见，绝不递增 P8 栅栏、不清快照。 */
@@ -579,4 +581,19 @@ export interface P8账号控制面操作 {
   请求P8账号注销(): Promise<void>;
 }
 
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 & P8账号控制面操作;
+/**
+ * P8 Task 6：合规两法里的产品反馈（举报 Task 7 再进本表，绝不预留空桩）。
+ * 铁律与账号控制面同款：调用方不带幂等键 —— 域内按（线协议分类 + trim 后正文）坐标
+ * 铸一把 crypto.randomUUID 键，同意图沿用；入参校验在本层收口（trim 后按 Unicode 码点
+ * 计 5–500），非法输入零请求、零意图；成功清意图，未知/网络异常同键同 body 重试，
+ * 409 idempotency_conflict 与 429 rate_limited 是终局（清意图，绝不排定时器自动重试）。
+ */
+export interface P8合规操作 {
+  /** 分类用线协议枚举（UI→wire 映射归屏）；回执 ticketId 原样上屏，绝不本地编造工单号。 */
+  提交P8反馈(category: P8FeedbackCategory, details: string): Promise<P8FeedbackReceipt>;
+}
+
+/** Task 6 公开面：只含反馈一法（举报 Task 7 落地前调用方拿不到举报入口）。 */
+export type P8反馈操作 = Pick<P8合规操作, '提交P8反馈'>;
+
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 & P8账号控制面操作 & P8反馈操作;
