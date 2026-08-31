@@ -88,17 +88,7 @@ export default function 初始化页({ 端 }: { 端: '求职' | '招聘' }) {
   return (
     <div className={样式.页} role="status" aria-label="正在初始化">
       <div className={样式.品牌区}>
-        {/* 品牌占位标：圆角六边形蜂巢单元（正式蜂标定稿后替换） */}
-        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <polygon
-            points="12,2.6 20.2,7.3 20.2,16.7 12,21.4 3.8,16.7 3.8,7.3"
-            fill="var(--荧光绿)"
-            stroke="var(--深绿文字)"
-            strokeWidth="1.4"
-            strokeLinejoin="round"
-          />
-          <circle cx="12" cy="12" r="2.6" fill="var(--深绿文字)" />
-        </svg>
+        {/* 蜂巢占位标已删(用户 2026-08-31:「太丑了,先去掉」),只留品牌名 */}
         <div className={样式.品牌名}>工作蜂</div>
         {上下文.值 ? (
           <div className={样式.上下文芯}>
