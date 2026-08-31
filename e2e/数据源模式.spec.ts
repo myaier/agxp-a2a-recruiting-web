@@ -4558,16 +4558,11 @@ test.describe('P3 Backend 隐私主链路 @backend', () => {
       expect(['required', 'not_required', 'unknown']).toContain(档);
     }
 
-    // ── 编辑岗位：三态钮 未说明→必须→不要求；PATCH 回传完整四员块 + immutable 字段原值 ──
+    // ── 编辑岗位：硬性事实控件已从 UI 删除；PATCH 仍须原样回传完整四员块 + immutable 字段原值 ──
     await page.goto('/#/hr/post-job/job-fixture-created-1');
     await expect(page.getByPlaceholder(/资深后端工程师/)).toHaveValue('Fixture 实习岗位', { timeout: 10_000 });
     await page.getByRole('button', { name: '职位要求' }).click();
-    const 大小周片 = page.getByRole('button', { name: '大小周 未说明' });
-    await expect(大小周片).toBeVisible({ timeout: 10_000 });
-    await 大小周片.click();
-    await expect(page.getByRole('button', { name: '大小周 必须' })).toBeVisible();
-    await page.getByRole('button', { name: '大小周 必须' }).click();
-    await expect(page.getByRole('button', { name: '大小周 不要求' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /大小周/ })).toHaveCount(0);
 
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByText('岗位已保存')).toBeVisible({ timeout: 15_000 });
@@ -4588,12 +4583,7 @@ test.describe('P3 Backend 隐私主链路 @backend', () => {
     expect(补丁体.recruitment_type).toBe('internship');
     expect(补丁体.category_id).toBe('job-fixture-001');
     expect(补丁体.location_id).toBe('loc-fixture-001');
-    expect(补丁体.hard_requirements).toEqual({
-      alternate_weekend_work: 'not_required',
-      outsourcing_only: 'unknown',
-      onsite_only: 'unknown',
-      frequent_travel: 'unknown',
-    });
+    expect(补丁体.hard_requirements).toEqual(发布硬性);
   });
 });
 
