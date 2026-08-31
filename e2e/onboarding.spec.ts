@@ -235,7 +235,8 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByText('预计面试轮次')).toHaveCount(0);
     await expect(page.getByText('招聘紧急程度')).toHaveCount(0);
     await expect(page.getByText(/开始日期：最晚/)).toHaveCount(0);
-    await expect(page.getByText('AI 只按以下条件进行初筛。薪资仅判断双方区间是否匹配，不询问或协商具体金额。')).toBeVisible();
+    // AI 初筛卡 2026-08-26 已删,薪资承诺句降格为薪资区小字
+    await expect(page.getByText('薪资仅判断双方区间是否匹配，不询问或协商具体金额。')).toBeVisible();
 
     await page.getByRole('button', { name: '— 元/天' }).first().click();
     await page.getByRole('button', { name: '完成' }).click();
