@@ -254,6 +254,11 @@ assert_eq 'login_candidate 返回 0' "$?" '0'
 assert_contains '从站点根地址开场' '--session backend-local-candidate open http://localhost:5173/' "$CALLS"
 assert_contains '手机号按 label 填，且值已脱敏' 'find label 手机号 fill [REDACTED]' "$CALLS"
 assert_contains '点获取验证码' 'find role button click --name 获取验证码' "$CALLS"
+assert_true 'backend 模式 begin 是真实网络往返：等验证码格渲染出来再填，不吃竞速' \
+  "C=\$(grep -n 'click --name 获取验证码' '$CALLS' | head -1 | cut -d: -f1); \
+   W=\$(grep -n 'wait \[aria-label=\"短信验证码\"\]' '$CALLS' | head -1 | cut -d: -f1); \
+   F=\$(grep -n 'fill \[REDACTED\]' '$CALLS' | sed -n 2p | cut -d: -f1); \
+   [ -n \"\$C\" ] && [ -n \"\$W\" ] && [ -n \"\$F\" ] && [ \"\$C\" -lt \"\$W\" ] && [ \"\$W\" -lt \"\$F\" ]"
 assert_contains '短信验证码按 label 填，且值已脱敏' 'find label 短信验证码 fill [REDACTED]' "$CALLS"
 assert_contains '勾选用户协议' 'find role button click --name 已阅读并同意' "$CALLS"
 assert_contains '点进入' 'find role button click --name 进入' "$CALLS"

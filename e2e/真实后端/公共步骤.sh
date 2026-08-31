@@ -253,6 +253,11 @@ _login(){
 
   ab find label 手机号 fill "$phone" >/dev/null
   ab find role button click --name 获取验证码 >/dev/null
+  # backend 模式下 begin 是一次真实的 BFF 网络往返，验证码格要等响应成功才渲染
+  # （src/屏幕/登录.tsx：剩余秒 非 null 才渲染验证码格）。读 OTP 文件只要几毫秒，
+  # 中间不先等格出现，就是在拿毫秒赌一次后端往返 —— mock 模式同步渲染看不出来，
+  # 真实后端上两连败。等格出现再继续。
+  ab wait '[aria-label="短信验证码"]' >/dev/null
 
   # ── OTP 段：从读码到清掉，全程关 xtrace ──
   # 必须在 code=$(...) **之前**关。开着 set -x 时，这一段会连泄五处：
