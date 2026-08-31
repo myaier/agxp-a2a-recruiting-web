@@ -245,10 +245,9 @@ _左滑一次(){
   local name="$1" sel box x_from x_to y step k
   sel="[aria-label^=\"$name\"]"
   # 硬刷新恢复滚动位后，行的矩形可能在视口外（#run23 的 10 连败：坐标全打在空处）。
-  # 先按语义把行滚到视口中央，再取几何做手势。
-  local anchor
-  anchor="$(jq -Rn --arg s "$sel" '$s|@json')"
-  ab eval "const e=document.querySelector($anchor);if(e){e.scrollIntoView({block:'center'});};true" >/dev/null 2>&1 || true
+  # 先按语义把行滚到视口里再取几何做手势。scrollintoview 是 agent-browser 的
+  # 正规命令（不是 eval 造事件），合同里「滑行上下文禁 eval」依旧成立。
+  ab scrollintoview "$sel" >/dev/null 2>&1 || true
   box="$(ab get box "$sel" --json)" || return 1
   x_from="$(printf '%s' "$box" | jq -r '.data | (.x + .width * 0.9 | floor)')" || return 1
   x_to="$(printf '%s' "$box" | jq -r '.data | (.x + .width * 0.1 | floor)')" || return 1
