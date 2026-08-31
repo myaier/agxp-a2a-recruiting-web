@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BFF简历样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
+import { BFF简历样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本, BFF发现批次样本 } from '../测试/BFF样本';
 import { BFF错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
 import { 从BFF简历 } from './后端映射';
 import { 创建岗位附属存储 } from './前端附属数据';
@@ -21,7 +21,7 @@ describe('HTTP 招聘数据源', () => {
   const 请求Mock = vi.fn();
   const 请求 = 请求Mock as unknown as 请求函数;
   function 依赖() {
-    return { client: { 请求 }, 后端环境: 'stg' as const, 附属存储: 内存附属存储() };
+    return { client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg' as const, 附属存储: 内存附属存储() };
   }
   beforeEach(() => {
     请求Mock.mockReset();
@@ -38,7 +38,7 @@ describe('HTTP 招聘数据源', () => {
       };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const attempt = await source.开始手机登录('13800000000');
     await source.完成手机登录(attempt.attempt_id, '1234');
     expect(请求Mock.mock.calls.map(([options]) => options)).toMatchObject([
@@ -55,7 +55,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: BFF简历样本, etag: '"4"', requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     const 新页面 = {
       ...旧页面,
@@ -88,7 +88,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: 最终简历, etag: null, requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     const 新页面 = {
       ...旧页面,
@@ -119,7 +119,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: BFF简历样本, etag: null, requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     const 新页面 = { ...旧页面, 经历: 旧页面.经历.map((段) => 段.编号 === 'exp_1' ? { ...段, 行业: '金融', 行业引用: { id: 'fin_1', display_name: '金融' } } : 段) };
     await expect(source.保存简历(新页面, BFF简历样本)).resolves.toBeDefined();
@@ -141,7 +141,7 @@ describe('HTTP 招聘数据源', () => {
     const previous = BFF简历样本;
     const 请求Mock = vi.fn(async () => ({ result: BFF简历样本, etag: null, requestId: 'r1' }));
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     await expect(source.保存简历({ ...resume, 教育: [{ ...resume.教育[0], 学校: '手输学校', 学校引用: undefined }] }, previous))
       .rejects.toThrow('请从候选学校中选择');
     expect(请求).not.toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining('/catalog/') }));
@@ -159,7 +159,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: 最终简历, etag: null, requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     // previous 服务端只有 edu_1；next 额外两条：一条空白学校（onboarding 刚建）、一条完整新教育
     const 空白教育 = { 编号: 'edu_local_blank', 学校: '', 学历: '本科', 专业: '', 开始: '', 结束: '' };
@@ -191,7 +191,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: 最终简历, etag: null, requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     // 学校+专业已填但开始月份为空（onboarding 选专业后、选时间前的中间态）
     const 空开始教育 = { 编号: 'edu_local_no_start', 学校: '复旦大学', 学历: '本科', 专业: '计算机科学', 开始: '', 结束: '' };
@@ -222,7 +222,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: 最终简历, etag: null, requestId: 'r1' };
     });
     const 请求 = 请求Mock as unknown as 请求函数;
-    const source = 创建HTTP招聘数据源({ client: { 请求 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     const 旧页面 = 从BFF简历(BFF简历样本);
     const 新页面 = {
       ...旧页面,
@@ -260,7 +260,7 @@ describe('HTTP 招聘数据源', () => {
       return { result: 最终简历, etag: null, requestId: 'r1' };
     });
     const 请求2 = 请求Mock2 as unknown as 请求函数;
-    const source2 = 创建HTTP招聘数据源({ client: { 请求: 请求2 }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const source2 = 创建HTTP招聘数据源({ client: { 请求: 请求2, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
     await source2.保存简历(新页面, 最终简历);
     // 经历没有被重复 POST
     const 经历POST2 = 请求Mock2.mock.calls
@@ -392,6 +392,7 @@ describe('HTTP 招聘数据源', () => {
   });
 
   // Task 7：创建岗位 body 用 类别引用/地点引用 的 ID，不再按显示名反查目录（无 /catalog/ 请求）。
+  // P1C Task 5：上下文改为显式 岗位创建上下文（direct + claim）。
   it('创建岗位 body 用引用 ID，不请求 /catalog/', async () => {
     // POST /recruiter/jobs 返回单个 job；后续 读取岗位 GET 返回 jobs 页
     请求Mock.mockImplementation(async (options: BFF请求选项) => {
@@ -406,11 +407,17 @@ describe('HTTP 招聘数据源', () => {
       类别引用: { id: 'tax_pm', display_name: '产品经理' },
       地点引用: { id: 'loc_sh', display_name: '上海市' },
     };
-    await source.创建岗位(job, { 公司: '甲公司' });
+    await source.创建岗位(job, {
+      publisherMode: 'direct',
+      hiringOrganizationClaim: { display_name: '甲公司', legal_name: null },
+    });
     const post = 请求Mock.mock.calls
       .map(([o]) => o as BFF请求选项)
       .find((o) => o.method === 'POST' && o.path === '/api/v1/recruiter/jobs');
-    expect(post?.body).toMatchObject({ category_id: 'tax_pm', location_id: 'loc_sh' });
+    expect(post?.body).toMatchObject({
+      category_id: 'tax_pm', location_id: 'loc_sh',
+      publisher_mode: 'direct', hiring_organization_claim: { display_name: '甲公司', legal_name: null },
+    });
     // 没有任何 /catalog/ 请求
     const 目录请求 = 请求Mock.mock.calls
       .map(([o]) => o as BFF请求选项)
@@ -418,14 +425,154 @@ describe('HTTP 招聘数据源', () => {
     expect(目录请求).toBeUndefined();
   });
 
-  it('根 facade 组合五个现有域且不丢公开方法', () => {
+  // P1C Task 5：创建/更新 的实际 JSON 不携带服务端专有 refs 与 verification status；
+  // 更新不接公司 context，只吃 previous owner DTO（补丁沿用 previous claim/mode）。
+  it('创建与更新的 JSON 无 organization refs / verification status，更新只吃 previous', async () => {
+    请求Mock.mockImplementation(async (options: BFF请求选项) => {
+      if (options.method === 'POST' || options.method === 'PATCH') {
+        return { result: BFF岗位样本, etag: null, requestId: 'r-write' };
+      }
+      return { result: { jobs: [BFF岗位样本], next_cursor: null }, etag: null, requestId: 'r-list' };
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    const job = {
+      ...页面岗位样本,
+      类别引用: { id: 'tax_pm', display_name: '产品经理' },
+      地点引用: { id: 'loc_sh', display_name: '上海市' },
+    };
+    await source.创建岗位(job, {
+      publisherMode: 'direct',
+      hiringOrganizationClaim: { display_name: '甲公司', legal_name: null },
+    });
+    await source.更新岗位(job, BFF岗位样本);
+    const 写入们 = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .filter((o) => o.method === 'POST' || o.method === 'PATCH');
+    expect(写入们).toHaveLength(2);
+    for (const 写入 of 写入们) {
+      expect(JSON.stringify(写入.body))
+        .not.toMatch(/publisher_affiliation_ref|publisher_organization_ref|hiring_organization_ref|verification_status/);
+    }
+  });
+
+  // Task 1（P6）：第八个域 facade（Agent 规则）组合进根 facade，公开方法一个不丢。
+  // Task 1（P4）：第九个域 facade（发现推荐）组合进根 facade；watch / 候选撤销 /
+  // 委托列表 / top 选择仍不进入浏览器 facade。
+  // Task 2（P2）：第十个域 facade（附件简历）一并组合进根 facade。
+  // Task 1（P5）：第十一个域 facade（MatchCase）一并组合进根 facade。
+  // Task 1（P7）：第十二个域 facade（真人会话）一并组合进根 facade。
+  it('根 facade 组合十二个域且不丢公开方法', () => {
     const source = 创建HTTP招聘数据源(依赖());
     expect(Object.keys(source).sort()).toEqual([
-      '保存简历', '创建岗位', '创建意向', '创建首次意向', '删除岗位', '删除意向',
-      '开始微信登录', '开始手机登录', '归档岗位', '恢复会话', '更新岗位', '更新意向',
-      '查询Institution', '查询Location', '查询Taxonomy', '清空目录缓存', '确保角色',
-      '读取主体', '读取岗位', '读取意向', '读取简历', '记录当前角色', '退出登录',
-      '完成手机登录', '重开岗位',
+      '保存简历', '保存招聘方档案', '创建岗位', '创建意向', '创建首次意向', '创建企业管理员申请',
+      '删除岗位', '删除意向', '删除企业媒体', '开始微信登录', '开始手机登录', '归档岗位',
+      '恢复会话', '更新岗位', '更新意向', '上传企业媒体', '查询Institution', '查询Location',
+      '查询Taxonomy', '清空目录缓存', '确保角色', '取消企业管理员申请', '读取主体', '读取岗位',
+      '读取意向', '读取简历', '读取招聘方档案', '读取我的企业关系', '读取公开企业', '读取企业档案',
+      '读取企业管理员申请', '记录当前角色', '接受企业邀请', '替换招聘方头像', '替换企业档案',
+      '退出登录', '完成手机登录', '重开岗位',
+      // P3：隐私域 + 组织搜索
+      '修改隐私', '解除组织屏蔽', '读取隐私', '添加组织屏蔽', '搜索组织',
+      // P6：Agent 规则与提案域
+      '读取Agent规则', '读取单条Agent规则', '修改Agent规则', '删除Agent规则',
+      '创建Agent规则提案', '读取Agent规则提案', '读取Agent规则提案列表',
+      '接受Agent规则提案', '放弃Agent规则提案', '创建Agent规则替换提案',
+      // P4：发现推荐域
+      '读取候选岗位推荐', '读取候选岗位详情', '刷新候选岗位推荐', '标记候选岗位不感兴趣',
+      '创建候选岗位委托', '读取候选岗位委托',
+      '读取招聘候选', '读取招聘候选详情', '刷新招聘候选', '设置招聘候选收藏',
+      '设置招聘候选淘汰', '撤销招聘候选淘汰', '创建招聘候选委托', '读取招聘候选委托',
+      // P2：附件简历域
+      '读取附件简历库', '创建附件简历', '替换附件简历',
+      '删除附件简历', '请求附件解析', '下载附件简历',
+      // P5：MatchCase 域
+      '读取P5Open列表', '读取P5历史', '读取P5详情', '回答P5事实', '提交P5简历',
+      '决定P5S0', '决定P5S1', '决定P5S2', '决定P5S3', '新增P5叮嘱', '读取P5简历PDF',
+      // P7：真人会话域
+      '读取会话列表', '读取会话', '读取消息', '发送消息', '标为已读',
     ].sort());
+    // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
+    expect(Object.keys(source)).not.toContain('读取公开岗位');
+    expect(Object.keys(source)).not.toContain('公开岗位表');
+    // P4 非目标：watch、候选撤销、委托列表读取与 top 选择不存在于 facade。
+    expect(Object.keys(source)).not.toContain('创建候选岗位watch');
+    expect(Object.keys(source)).not.toContain('撤销候选岗位不感兴趣');
+    expect(Object.keys(source)).not.toContain('读取候选岗位委托列表');
+  });
+
+  // P3：隐私与组织搜索经根 facade 走到线上；CandidateJob 只留编译期闭类型，无请求方法。
+  it('根 facade 提供隐私读写与组织搜索并按契约发请求', async () => {
+    请求Mock.mockImplementation(async (options: BFF请求选项) => {
+      if (options.method === 'POST' && options.path === '/api/v1/me/privacy/organization-blocks') {
+        return { result: BFF屏蔽回执样本, etag: '"3"', requestId: 'r-block' };
+      }
+      if (options.path === '/api/v1/organizations?q=Acme&limit=20') {
+        return { result: BFF组织搜索页样本, etag: null, requestId: 'r-search' };
+      }
+      return { result: BFF隐私视图样本, etag: '"2"', requestId: 'r-view' };
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    await source.读取隐私();
+    await expect(source.修改隐私({ disclosure_preferences: { education: 'resume_submission' } }, 2)).resolves.toBeDefined();
+    await expect(source.添加组织屏蔽('org_1', 'related_organization', 2)).resolves.toEqual(BFF屏蔽回执样本);
+    await expect(source.搜索组织({ q: 'Acme', limit: 20 })).resolves.toMatchObject({ items: [{ organization_id: 'org_1' }] });
+    expect(请求Mock.mock.calls.map(([o]) => [o.method ?? 'GET', o.path])).toEqual([
+      ['GET', '/api/v1/me/privacy'],
+      ['PATCH', '/api/v1/me/privacy'],
+      ['POST', '/api/v1/me/privacy/organization-blocks'],
+      ['GET', '/api/v1/organizations?q=Acme&limit=20'],
+    ]);
+    // 幂等键只落在 AddBlock 上
+    const post = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.method === 'POST')!;
+    expect(post.幂等).toBe(true);
+    expect(Object.keys(source)).not.toContain('读取候选岗位');
+  });
+
+  // Task 1（P6）：组合后的 Agent 规则方法直接走冻结的 agent-rule-proposals 路径并解码。
+  it('根 facade 组合后可发起候选人 Agent 规则提案创建', async () => {
+    请求Mock.mockResolvedValueOnce({ result: BFFAgent规则解释中提案样本, etag: null, requestId: 'p6' });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.创建Agent规则提案('candidate', '大小周不谈', { type: 'global' }))
+      .resolves.toEqual(BFFAgent规则解释中提案样本);
+    expect(请求Mock.mock.calls[0][0]).toMatchObject({
+      path: '/api/v1/me/agent-rule-proposals', method: 'POST', 幂等: true,
+    });
+  });
+
+  // Task 1（P4）：组合后的发现推荐方法直接走冻结的 refresh 路径，带调用方幂等键并解码批次。
+  it('根 facade 组合后可刷新候选岗位推荐并冻结调用方幂等键', async () => {
+    请求Mock.mockResolvedValueOnce({ result: BFF发现批次样本, etag: null, requestId: 'p4' });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.刷新候选岗位推荐('int_1', 'candidate-refresh-key')).resolves.toEqual(BFF发现批次样本);
+    expect(请求Mock.mock.calls[0][0]).toMatchObject({
+      path: '/api/v1/me/job-recommendation-refreshes', method: 'POST',
+      body: { intention_id: 'int_1' }, 幂等: true, 幂等键: 'candidate-refresh-key',
+    });
+  });
+
+  // Task 1（P5）：组合后的 MatchCase open 列表直接走冻结的双端前缀 + 固定 limit=50，GET 显式 no-store。
+  it('根 facade 组合后 P5 open 列表走 no-store 双端前缀', async () => {
+    请求Mock.mockResolvedValueOnce({ result: { items: [], next_cursor: null }, etag: null, requestId: 'p5' });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.读取P5Open列表('candidate', null, null)).resolves.toEqual({
+      role: 'candidate', items: [], nextCursor: null,
+    });
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/me/match-cases?limit=50', 不缓存: true,
+    });
+  });
+
+  // Task 1（P7）：组合后的真人会话列表走双端前缀，GET 显式 no-store，role 只决定前缀。
+  it('根 facade 组合后 P7 会话列表走 no-store 双端前缀', async () => {
+    请求Mock.mockResolvedValueOnce({ result: { items: [], next_cursor: null }, etag: null, requestId: 'p7' });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.读取会话列表('recruiter')).resolves.toEqual({
+      items: [], nextCursor: null,
+    });
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/recruiter/conversations', 不缓存: true,
+    });
   });
 });

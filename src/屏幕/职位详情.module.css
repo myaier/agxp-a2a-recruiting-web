@@ -14,6 +14,40 @@
   color: var(--次要);
 }
 
+/* ── Backend 加载 / 错误 / 安全不可用占位（P4 Task 6）──
+   真实 DTO 到手前不给任何 Mock 内容：居中一句结论 + 一句说明（错误态附重试），
+   版式借用全站空态的「结论 + 出路」两段式，垫底距离与浮动条一致。 */
+.后端态 {
+  padding: 56px 24px calc(var(--安全区下) + 88px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.后端态标题 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.后端态说明 {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--次要);
+}
+
+.后端态按钮 {
+  margin-top: 10px;
+  padding: 9px 26px;
+  border-radius: 999px;
+  background: var(--荧光绿);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
 /* ── 滚动内容 ── */
 /* RN 里这三个值写在 滚动区 的内边距样式上；DOM 里 滚动区 只管滚动，
    内边距下移到这层内容容器，避免内边距参与滚动高度计算时出偏差。 */

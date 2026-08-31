@@ -1,13 +1,38 @@
 import { createElement } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 初始状态, 归约, use应用状态, 应用状态提供者 } from './应用状态';
-import { BFF主体样本, BFF简历样本, BFF岗位样本, BFF意向样本, 页面岗位样本 } from '../测试/BFF样本';
+import { 创建初始状态, 空账号资料 } from './初始状态';
+import { 空岗位硬性事实 } from '../数据/类型';
+import {
+  BFF主体样本,
+  BFF简历样本,
+  BFF岗位样本,
+  BFF意向样本,
+  页面岗位样本,
+  BFF企业关系样本,
+  BFF企业媒体样本,
+  BFF企业档案样本,
+  BFF企业管理员申请样本,
+  BFF公开企业样本,
+  BFF招聘方档案样本,
+  BFF隐私快照样本,
+  BFF屏蔽回执样本,
+  BFF组织搜索页样本,
+  BFFAgent规则样本,
+  BFF意向Agent规则样本,
+} from '../测试/BFF样本';
+import { 从BFF隐私 } from '../数据/隐私映射';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFF角色 } from '../数据/BFF契约';
+import type { BFF招聘方档案, BFF公开企业, BFF角色, BFF附件简历库 } from '../数据/BFF契约';
+import type { BFF二进制响应 } from '../数据/HTTP客户端';
+import { 解P5详情, type P5列表页, type P5详情 } from '../数据/招聘数据源/MatchCase';
+import type { P7会话项, P7会话页, P7消息, P7消息页 } from '../数据/招聘数据源/真人会话';
+import { P5候选详情Wire } from '../测试/BFF样本';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
+import type { 规则 } from '../数据/类型';
 import { 从BFF简历 } from '../数据/后端映射';
 
 beforeEach(() => {
@@ -28,9 +53,22 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+/** P5 Task 3：Provider 用例的候选侧权威详情 DTO（由 Task 1 wire 样本解出）。 */
+const P5候选详情DTO: P5详情 = 解P5详情(P5候选详情Wire, 'candidate');
+
 describe('应用状态 reducer', () => {
   const 写入 = vi.fn();
   const 删除 = vi.fn();
+
+  // P1C Task 2：组织域 reducer 用例的本地 fixture（只在本 describe 内使用）
+  const 企业A身份: Omit<BFF公开企业, 'profile'> = {
+    organization_id: 'org_a',
+    legal_name: '甲公司法务主体',
+    display_name: '甲公司',
+    verified_at: '2026-08-24T00:00:00Z',
+    active_verified_job_count: 1,
+  };
+  const 企业A档案 = BFF企业档案样本;
 
   beforeEach(() => {
     写入.mockClear();
@@ -172,6 +210,8 @@ describe('应用状态 reducer', () => {
       职位关键词: ['Java'],
       加分关键词: ['有相关课程项目'],
       硬性条件: ['本科及以上'],
+      // Task 5：四问硬性事实随岗必填（四员齐全；新岗未点过的问保持 未说明）
+      硬性事实: { ...空岗位硬性事实 },
     };
 
     const 下一状态 = 归约(初始状态, { 型: '发布岗位', 岗 });
@@ -193,6 +233,150 @@ describe('应用状态 reducer', () => {
     });
     // 真实的在谈人数由起步候选实时算出来 —— 岗位管理行内与删除守卫读的都是这个
     expect(下一状态.企业候选列表.filter((候) => 候.岗位编号 === 'P-99')).toHaveLength(2);
+  });
+
+  // ── P1C Task 2：Organization 权威状态的 reducer 用例 ──
+
+  it('清后端组织状态只清 Backend 权威事实', () => {
+    const 水合后 = 归约(归约(初始状态, {
+      型: '水合企业关系', 关系: [BFF企业关系样本], 当前编号: BFF企业关系样本.affiliation_id,
+    }), { 型: '水合招聘方档案', 档案: BFF招聘方档案样本 });
+    const 清后 = 归约(水合后, { 型: '清后端组织状态' });
+    expect(清后.招聘方档案).toBeNull();
+    expect(清后.企业关系列表).toEqual([]);
+    expect(清后.当前企业关系编号).toBeNull();
+    expect(清后.公开企业表).toEqual({});
+    expect(清后.不可用公开企业编号).toEqual([]);
+    expect(清后.企业认证).toEqual(初始状态.企业认证);
+  });
+
+  it('revoke 当前关系时清选择而不猜另一个关系', () => {
+    const 水合后 = 归约(初始状态, {
+      型: '水合企业关系',
+      关系: [BFF企业关系样本, { ...BFF企业关系样本, affiliation_id: 'aff_2' }],
+      当前编号: BFF企业关系样本.affiliation_id,
+    });
+    const revoke后 = 归约(水合后, {
+      型: '水合企业关系',
+      关系: [{ ...BFF企业关系样本, status: 'revoked' }, { ...BFF企业关系样本, affiliation_id: 'aff_2' }],
+      当前编号: null,
+    });
+    expect(revoke后.当前企业关系编号).toBeNull();
+    expect(revoke后.当前企业身份).toBeNull();
+  });
+
+  it('选择不同关系时立即清掉旧企业身份与完整档案', () => {
+    const A = { ...初始状态, 当前企业关系编号: 'aff_a', 当前企业身份: 企业A身份, 企业档案快照: 企业A档案 };
+    const 切B = 归约(A, { 型: '选择当前企业关系', 编号: 'aff_b' });
+    expect(切B.当前企业关系编号).toBe('aff_b');
+    expect(切B.当前企业身份).toBeNull();
+    expect(切B.企业档案快照).toBeNull();
+  });
+
+  it('Backend 种子组织权威事实为空，Mock 仍保留现有 fixture', () => {
+    const 后端种子 = 创建初始状态({ 模式: 'backend', 后端环境: 'stg', 后端: {} as HTTP招聘数据源 });
+    expect(后端种子.招聘方档案).toBeNull();
+    expect(后端种子.企业关系列表).toEqual([]);
+    expect(后端种子.当前企业关系编号).toBeNull();
+    expect(后端种子.企业管理员申请列表).toEqual([]);
+    expect(后端种子.当前企业身份).toBeNull();
+    expect(后端种子.企业档案快照).toBeNull();
+    expect(后端种子.公开企业表).toEqual({});
+    expect(后端种子.不可用公开企业编号).toEqual([]);
+    expect(后端种子.未认证公司声明).toBe('');
+    // Backend seed 不把 Mock 的云衢 fixture 当权威事实
+    expect(后端种子.企业认证).toEqual(空账号资料.企业认证);
+    // Mock 初始状态仍播种现有 fixture
+    expect(初始状态.企业认证.公司).toBe('云衢科技');
+    expect(初始状态.企业关系列表).toEqual([]);
+  });
+
+  it('水合组织权威事实，admin request 只经显式按需 action', () => {
+    const 档案后 = 归约(初始状态, { 型: '水合招聘方档案', 档案: BFF招聘方档案样本 });
+    expect(档案后.招聘方档案).toEqual(BFF招聘方档案样本);
+    const 关系后 = 归约(档案后, {
+      型: '水合企业关系', 关系: [BFF企业关系样本], 当前编号: BFF企业关系样本.affiliation_id,
+    });
+    expect(关系后.企业关系列表).toEqual([BFF企业关系样本]);
+    expect(关系后.当前企业关系编号).toBe(BFF企业关系样本.affiliation_id);
+    const 当前后 = 归约(关系后, { 型: '水合当前企业', 身份: 企业A身份, 档案: 企业A档案 });
+    expect(当前后.当前企业身份).toEqual(企业A身份);
+    expect(当前后.企业档案快照).toEqual(企业A档案);
+    const 申请后 = 归约(当前后, { 型: '水合企业管理员申请', 申请: [BFF企业管理员申请样本] });
+    expect(申请后.企业管理员申请列表).toEqual([BFF企业管理员申请样本]);
+  });
+
+  it('水合账号资料 丢弃快照中未经 affiliations 校验的当前企业关系编号', () => {
+    // 最新 affiliations 已确认 revoked → current 已被校验为 null
+    const 已校验 = 归约(初始状态, {
+      型: '水合企业关系',
+      关系: [{ ...BFF企业关系样本, status: 'revoked' }],
+      当前编号: null,
+    });
+    expect(已校验.当前企业关系编号).toBeNull();
+    // 之后到达的 水合账号资料 带着缓存里的旧编号，不能把它写回 state
+    const 快照后 = 归约(已校验, {
+      型: '水合账号资料',
+      范围键: 'AGXP账号资料v2:backend:stg:sub_1',
+      快照: {
+        ...空账号资料,
+        当前企业关系编号: BFF企业关系样本.affiliation_id,
+        未认证公司声明: '缓存里的声明',
+      },
+    });
+    expect(快照后.当前企业关系编号).toBeNull();
+    // 其它白名单字段照常恢复
+    expect(快照后.未认证公司声明).toBe('缓存里的声明');
+    expect(快照后.资料缓存范围键).toBe('AGXP账号资料v2:backend:stg:sub_1');
+  });
+
+  it('水合后端隐私 覆盖屏蔽名单/披露偏好/隐身开关，清后端隐私 三者归零', () => {
+    const 页面 = 从BFF隐私(BFF隐私快照样本);
+    const 水合后 = 归约(初始状态, { 型: '水合后端隐私', 快照: 页面 });
+    expect(水合后.屏蔽名单).toEqual(页面.屏蔽名单);
+    expect(水合后.披露偏好).toEqual(页面.披露偏好);
+    expect(水合后.设置开关.对现雇主隐身).toBe(true);
+    // 隐私之外的设置开关不被触碰
+    expect(水合后.设置开关['只接受与意向匹配的接触'])
+      .toBe(初始状态.设置开关['只接受与意向匹配的接触']);
+    const 清后 = 归约(水合后, { 型: '清后端隐私' });
+    expect(清后.屏蔽名单).toEqual([]);
+    expect(清后.披露偏好).toEqual([]);
+    expect(清后.设置开关.对现雇主隐身).toBe(false);
+  });
+
+  it('Backend 种子隐私域为空，Mock 保留三条种子屏蔽与七行披露', () => {
+    const 后端种子 = 创建初始状态({ 模式: 'backend', 后端环境: 'stg', 后端: {} as HTTP招聘数据源 });
+    expect(后端种子.屏蔽名单).toEqual([]);
+    expect(后端种子.披露偏好).toEqual([]);
+    expect(后端种子.设置开关.对现雇主隐身).toBe(false);
+    // Mock 初始状态仍保留现有 fixture（三条种子屏蔽 + 七行披露模板）
+    expect(初始状态.屏蔽名单).toHaveLength(3);
+    expect(初始状态.披露偏好).toHaveLength(7);
+  });
+
+  it('当前企业关系编号不进入 localStorage（Mock 原型路径）', async () => {
+    function 测试按钮() {
+      const { 派发 } = use应用状态();
+      return createElement('button', {
+        onClick: () => {
+          派发({ 型: '水合企业关系', 关系: [BFF企业关系样本], 当前编号: 'aff_local' });
+          派发({ 型: '设企业飞书接入', 接入: true });
+        },
+      }, '写入组织选择');
+    }
+
+    render(createElement(应用状态提供者, null, createElement(测试按钮)));
+    写入.mockClear();
+    await userEvent.click(document.querySelector('button')!);
+    // 设企业飞书接入 触发一次账号资料写回；该写回不得携带组织选择
+    await waitFor(() => expect(写入).toHaveBeenCalledWith(
+      'AGXP账号资料v2:mock:stg:demo',
+      expect.stringContaining('"企业飞书已接入":true'),
+    ));
+    const 全部写入 = 写入.mock.calls.map(([, 值]) => String(值)).join('');
+    expect(全部写入).not.toContain('当前企业关系编号');
+    expect(全部写入).not.toContain('aff_local');
   });
 });
 
@@ -221,14 +405,122 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     重开岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     删除岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     清空目录缓存: vi.fn(),
+    // P1C Task 2：组织域方法（recruiter mount 水合会调用）
+    读取招聘方档案: vi.fn(async () => BFF招聘方档案样本),
+    保存招聘方档案: vi.fn(async () => BFF招聘方档案样本),
+    读取我的企业关系: vi.fn(async () => [BFF企业关系样本]),
+    读取企业管理员申请: vi.fn(async () => [BFF企业管理员申请样本]),
+    创建企业管理员申请: vi.fn(async () => BFF企业管理员申请样本),
+    取消企业管理员申请: vi.fn(async () => BFF企业管理员申请样本),
+    接受企业邀请: vi.fn(async () => BFF企业关系样本),
+    替换招聘方头像: vi.fn(async () => BFF招聘方档案样本),
+    读取企业档案: vi.fn(async () => BFF企业档案样本),
+    替换企业档案: vi.fn(async () => BFF企业档案样本),
+    上传企业媒体: vi.fn(async () => BFF企业媒体样本),
+    删除企业媒体: vi.fn(async () => undefined),
+    读取公开企业: vi.fn(async () => BFF公开企业样本),
     查询Location: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
     查询Taxonomy: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
     查询Institution: vi.fn(async (): Promise<{ items: never[]; nextCursor: null; catalogVersion: string }> => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+    // P3 Task 2：隐私域（candidate mount 水合会调用 读取隐私）
+    读取隐私: vi.fn(async () => 从BFF隐私(BFF隐私快照样本)),
+    修改隐私: vi.fn(async () => 从BFF隐私(BFF隐私快照样本)),
+    添加组织屏蔽: vi.fn(async () => BFF屏蔽回执样本),
+    解除组织屏蔽: vi.fn(async () => 从BFF隐私(BFF隐私快照样本)),
+    搜索组织: vi.fn(async () => BFF组织搜索页样本),
     开始手机登录: vi.fn(),
     完成手机登录: vi.fn(),
     开始微信登录: vi.fn(),
     退出登录: vi.fn(),
+    // P6：Agent 规则 / 提案 facade（Task 3 起操作层会调用；默认全空集）
+    读取Agent规则: vi.fn(async (): Promise<unknown[]> => []),
+    读取单条Agent规则: vi.fn(async () => ({
+      rule_id: 'rul_0123456789abcdef0123456789abcdef',
+      version: 1,
+      state: 'active' as const,
+      scope: { type: 'global' as const },
+      clause_kinds: [] as never[],
+      display_text: 'x',
+      created_at: '2026-08-27T00:00:00Z',
+      updated_at: '2026-08-27T00:00:00Z',
+    })),
+    修改Agent规则: vi.fn(async () => ({
+      rule_id: 'rul_0123456789abcdef0123456789abcdef',
+      version: 1,
+      state: 'active' as const,
+      scope: { type: 'global' as const },
+      clause_kinds: [] as never[],
+      display_text: 'x',
+      created_at: '2026-08-27T00:00:00Z',
+      updated_at: '2026-08-27T00:00:00Z',
+    })),
+    删除Agent规则: vi.fn(async () => undefined),
+    创建Agent规则提案: vi.fn(async () => ({ proposal_id: 'arp_0123456789abcdef0123456789abcdef', state: 'interpreting' as const })),
+    读取Agent规则提案: vi.fn(async () => ({ proposal_id: 'arp_0123456789abcdef0123456789abcdef', state: 'interpreting' as const })),
+    读取Agent规则提案列表: vi.fn(async () => [] as never[]),
+    接受Agent规则提案: vi.fn(async () => ({
+      rule_id: 'rul_0123456789abcdef0123456789abcdef',
+      version: 1,
+      state: 'active' as const,
+      scope: { type: 'global' as const },
+      clause_kinds: [] as never[],
+      display_text: 'x',
+      created_at: '2026-08-27T00:00:00Z',
+      updated_at: '2026-08-27T00:00:00Z',
+    })),
+    放弃Agent规则提案: vi.fn(async () => ({ proposal_id: 'arp_0123456789abcdef0123456789abcdef', state: 'dismissed' as const })),
+    创建Agent规则替换提案: vi.fn(async () => ({ proposal_id: 'arp_0123456789abcdef0123456789abcdef', state: 'interpreting' as const })),
+    // P2 Task 3：附件库第四支持域（candidate mount 水合会调用；默认空库成功）
+    读取附件简历库: vi.fn(async (): Promise<BFF附件简历库> => ({
+      items: [],
+      limits: { max_files: 3, max_file_bytes: 10485760, accepted_media_types: ['application/pdf'] },
+    })),
+    // P5 Task 3：MatchCase 域 facade（默认空页/空详情成功，mutation 默认 void；逐用例覆盖）
+    读取P5Open列表: vi.fn(async (): Promise<P5列表页> => ({ role: 'candidate', items: [], nextCursor: null })),
+    读取P5历史: vi.fn(async (): Promise<P5列表页> => ({ role: 'candidate', items: [], nextCursor: null })),
+    读取P5详情: vi.fn(async (): Promise<P5详情> => P5候选详情DTO),
+    回答P5事实: vi.fn(async (): Promise<void> => undefined),
+    提交P5简历: vi.fn(async (): Promise<void> => undefined),
+    决定P5S0: vi.fn(async (): Promise<void> => undefined),
+    决定P5S1: vi.fn(async (): Promise<void> => undefined),
+    决定P5S2: vi.fn(async (): Promise<void> => undefined),
+    决定P5S3: vi.fn(async (): Promise<void> => undefined),
+    新增P5叮嘱: vi.fn(async (): Promise<void> => undefined),
+    读取P5简历PDF: vi.fn(async (): Promise<BFF二进制响应> => ({
+      blob: { type: 'application/pdf' } as Blob,
+      contentType: 'application/pdf',
+      contentDisposition: null,
+      requestId: 'fixture',
+    })),
+    // P7 Task 2：真人会话域 facade（默认空页/空详情成功，mutation 默认成功；逐用例覆盖）
+    读取会话列表: vi.fn(async (): Promise<P7会话页> => ({ items: [], nextCursor: null })),
+    读取会话: vi.fn(async (): Promise<P7会话项> => ({
+      conversationId: '3003', caseId: 'mc_3003', kind: 'human_handoff',
+      lastMessage: null, lastActivityAt: '2026-08-30T01:00:00Z', unreadCount: 0,
+      contextStatus: 'unavailable', context: null,
+    })),
+    读取消息: vi.fn(async (): Promise<P7消息页> => ({ messages: [], nextCursor: null })),
+    发送消息: vi.fn(async (): Promise<P7消息> => ({
+      messageId: '4005', kind: 'user_text', senderRole: 'candidate',
+      content: '你好', createdAt: '2026-08-30T01:00:00Z',
+    })),
+    标为已读: vi.fn(async (): Promise<string> => '4004'),
   };
+}
+
+/** P7 Task 5：受控假 WebSocket —— jsdom 无实现，Provider 的同源事件连接用桩。 */
+class 假WebSocket {
+  static 构造记录: string[] = [];
+  onopen: (() => void) | null = null;
+  onmessage: ((事件: { data: string }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  url: string;
+  constructor(url: string) {
+    this.url = url;
+    假WebSocket.构造记录.push(url);
+  }
+  close() { this.onclose?.(); }
 }
 
 describe('应用状态提供者 后端会话', () => {
@@ -239,6 +531,8 @@ describe('应用状态提供者 后端会话', () => {
       removeItem: vi.fn(),
       clear: vi.fn(),
     });
+    假WebSocket.构造记录 = [];
+    vi.stubGlobal('WebSocket', 假WebSocket);
   });
 
   it('候选资料 action 冻结具体结果', () => {
@@ -254,8 +548,10 @@ describe('应用状态提供者 后端会话', () => {
 
   it('隐私设置 action 冻结具体结果', () => {
     const 下一 = 归约(初始状态, { 型: '拉黑', 名称: '示例公司' });
+    // P3：屏蔽项新增必需元数据 —— 拉黑路径固定 手动添加/有效 + 合成组织编号
     expect(下一.屏蔽名单[0]).toEqual({
       编号: 'B-04', 名称: '示例公司', 首字: '示', 理由: '你手动加入 · 双向不可见', 时间: '刚刚',
+      组织编号: 'org_local_04', 来源: '手动添加', 组织状态: '有效',
     });
   });
 
@@ -276,10 +572,89 @@ describe('应用状态提供者 后端会话', () => {
     });
   });
 
+  // Task 2：P6 Backend 水合/清空动作必须在根归约里路由到 Agent 规则域 ——
+  // 根 switch 是逐项列 case，漏列会被 default 静默吞掉
+  it('P6 水合与清空动作经根归约路由到 Agent 规则域', () => {
+    const 后端全局规则: 规则 = {
+      编号: 'rul_0123456789abcdef0123456789abcdef',
+      内容: '大小周不谈',
+      来源: '全局 · 更新于 2026-08-27',
+      生效: true,
+      作用域: { 类型: '全局' },
+      服务端版本: 3,
+      服务端状态: 'active',
+    };
+    const 后端意向规则: 规则 = {
+      编号: 'rul_fedcba9876543210fedcba9876543210',
+      内容: '双休是底线；隔周六可谈',
+      来源: '意向「AI 产品经理」 · 更新于 2026-08-27',
+      生效: true,
+      作用域: { 类型: '意向', 意向编号: 'int_0123456789abcdef0123456789abcdef' },
+      服务端版本: 1,
+      服务端状态: 'active',
+    };
+    const 后端招聘规则: 规则 = {
+      编号: 'rul_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      内容: '不透露 HC 剩余数量',
+      来源: '全局 · 更新于 2026-08-27',
+      生效: true,
+      作用域: { 类型: '全局' },
+      服务端版本: 2,
+      服务端状态: 'active',
+    };
+
+    const 水合候选 = 归约(初始状态, {
+      型: '水合后端候选规则', 全局: [后端全局规则], 意向级: [后端意向规则],
+    });
+    expect(水合候选.全局规则).toEqual([后端全局规则]);
+    expect(水合候选.意向级规则).toEqual([后端意向规则]);
+
+    const 水合招聘 = 归约(水合候选, { 型: '水合后端招聘规则', 规则: [后端招聘规则] });
+    expect(水合招聘.企业规则).toEqual([后端招聘规则]);
+
+    const 清后 = 归约(水合招聘, { 型: '清后端Agent规则' });
+    expect(清后.全局规则).toEqual([]);
+    expect(清后.意向级规则).toEqual([]);
+    expect(清后.企业规则).toEqual([]);
+  });
+
   it('消息 action 删除真实存在的未读键', () => {
     const 下一 = 归约(初始状态, { 型: '读消息', 编号: 'X-01' });
     expect(初始状态.消息未读['X-01']).toBe(4);
     expect(下一.消息未读['X-01']).toBeUndefined();
+  });
+
+  // Task 3 Step 6：Rule 与 Intention 谁先到都不能永久隐藏或错组规则 ——
+  // 候选 Rules 先落地（意向快照还空着 → orphan intention scope 整条省略），
+  // 意向后到时 Provider effect 用同一 raw Rule 重算归组。
+  it('P6 候选规则先到、意向后到：全局立即出现，意向级随后自动归组', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 意向规则 = BFF意向Agent规则样本; // scope.intention_id = int_0123456789abcdef0123456789abcdef
+    vi.mocked(后端.读取Agent规则)
+      .mockResolvedValue([BFFAgent规则样本, 意向规则]);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // 此时意向快照仍是空的（mount 只水合了空意向）
+    await act(async () => {
+      await 当前.操作.刷新Agent规则();
+    });
+    // 全局 Rule 立即出现；orphan intention Rule 不许并入全局，也不显示假分组
+    expect(当前.状态.全局规则.map((rule) => rule.编号)).toEqual([BFFAgent规则样本.rule_id]);
+    expect(当前.状态.意向级规则).toEqual([]);
+    const resolveIntentions = (服务端: Record<string, typeof BFF意向样本>) => {
+      当前.派发({ 型: '水合后端意向', 快照: { 列表: [], 服务端 } });
+    };
+    act(() => resolveIntentions({
+      int_0123456789abcdef0123456789abcdef: BFF意向样本,
+    }));
+    await waitFor(() => {
+      expect(当前.状态.意向级规则.map((rule) => rule.编号)).toEqual([BFF意向Agent规则样本.rule_id]);
+    });
+    // 全局那条保持原样：重算不重复、不丢行
+    expect(当前.状态.全局规则.map((rule) => rule.编号)).toEqual([BFFAgent规则样本.rule_id]);
   });
 
   it('应用操作公开 shape 在拆分后保持不变', () => {
@@ -292,6 +667,35 @@ describe('应用状态提供者 后端会话', () => {
       '保存个人优势', '保存首次意向', '保存意向', '保存简历', '删除岗位', '删除意向',
       '切身份', '发布岗位', '完成手机登录', '开始手机登录', '归档岗位', '微信登录',
       '更新岗位', '退出登录', '重开岗位',
+      // P1C 组织域方法（组织操作）
+      '选择企业关系', '保存未认证公司声明', '保存招聘方档案', '读取企业管理员申请',
+      '创建企业管理员申请', '取消企业管理员申请', '接受企业邀请', '替换招聘方头像',
+      '保存企业档案', '上传并发布企业媒体', '移除企业媒体', '读取公开企业',
+      // P3 隐私域方法（隐私操作）
+      '设置雇主隐私', '设置披露偏好', '搜索可屏蔽组织', '添加组织屏蔽', '解除组织屏蔽',
+      // P6 Agent 规则域方法（Agent规则操作）
+      '刷新Agent规则', '创建Agent规则提案', '创建Agent规则替换提案', '刷新Agent规则提案',
+      '接受Agent规则提案', '放弃Agent规则提案', '切换Agent规则', '删除Agent规则',
+      // P4 发现推荐域读 + Task 4 refresh/feedback + Task 5 委托方法（发现推荐操作）
+      '设置发现推荐范围', '加载候选岗位', '读取候选岗位详情',
+      '加载招聘候选', '加载招聘已筛', '读取招聘候选详情',
+      '刷新候选岗位', '标记岗位不感兴趣', '刷新招聘候选',
+      '设置候选收藏', '淘汰候选', '撤销淘汰候选',
+      '委托候选岗位', '委托招聘候选', '刷新委托',
+      // P2 附件简历域方法（附件简历操作）；P5 追加委托前的权威库准备
+      '刷新附件简历', '创建附件简历', '替换附件简历', '删除附件简历', '请求附件解析', '下载附件简历',
+      '准备候选委托简历',
+      // P5 MatchCase 域方法（MatchCase操作）：scope 注册、工作区/历史窗口、详情直读、
+      // S0–S3 命令、叮嘱与披露后的简历 PDF 租约
+      '设置P5范围', '加载工作区', '追加工作区', '刷新工作区',
+      '加载历史', '追加历史', '刷新历史',
+      '读取详情', '回答事实', '提交简历', '决定S0', '决定S1', '决定S2', '决定S3',
+      '新增叮嘱', '读取简历PDF',
+      // P7 真人会话域方法（真人会话操作）：收件箱/会话可见范围注册、列表/详情/消息
+      // 读取与分页、发送对账、显式放弃、forward-only 已读与失效通知
+      '设置P7收件箱范围', '设置P7会话范围', '加载会话列表', '追加会话列表',
+      '读取真人会话', '追加更早消息', '发送真人消息', '放弃真人消息意图',
+      '提交真人已读', '使真人会话失效',
     ].sort().join('|'))).toBeTruthy();
   });
 
@@ -310,6 +714,64 @@ describe('应用状态提供者 后端会话', () => {
     expect(后端.确保角色.mock.invocationCallOrder[0]).toBeLessThan(后端.记录当前角色.mock.invocationCallOrder[0]);
   });
 
+  // P7 Task 2：P7 内存快照随主体基串（subject + 角色）转移清空；
+  // 任何 P7 值（会话项、消息正文、幂等键）都不写 localStorage/sessionStorage。
+  it('P7 会话状态随角色转移清空且不落任何持久化', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 会话行: P7会话项 = {
+      conversationId: '3003', caseId: 'mc_3003', kind: 'human_handoff',
+      lastMessage: null, lastActivityAt: '2026-08-30T01:00:00Z', unreadCount: 1,
+      contextStatus: 'available',
+      context: { primaryLabel: '后端工程师', secondaryLabel: '上海', jobRef: null, resumeRef: null },
+    };
+    vi.mocked(后端.读取会话列表).mockResolvedValue({ items: [会话行], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    const 会话存储 = 创建Map存储();
+    vi.stubGlobal('sessionStorage', 会话存储);
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => {
+      await 当前.操作.加载会话列表('candidate', true);
+    });
+    expect(当前.后端状态.P7收件箱.candidate.items).toEqual([会话行]);
+    const setItem调用 = () => [
+      ...vi.mocked(localStorage.setItem).mock.calls,
+      ...vi.mocked(会话存储.setItem).mock.calls,
+    ].map((调用) => JSON.stringify(调用));
+    const 写入前 = setItem调用().length;
+    // 切身份 = 角色转移：P7 域整体摊平（收件箱/详情/消息页回空底座）
+    await act(async () => {
+      await 当前.操作.切身份('招聘方');
+    });
+    expect(当前.后端状态.P7收件箱.candidate.items).toEqual([]);
+    expect(当前.后端状态.P7会话详情).toEqual({});
+    expect(当前.后端状态.P7消息页).toEqual({});
+    // P7 值绝不进持久化：新增写入里既无会话坐标也无消息正文
+    for (const 写入 of setItem调用().slice(写入前)) {
+      expect(写入).not.toContain('3003');
+      expect(写入).not.toContain('后端工程师');
+    }
+  });
+
+  // P7 Task 5：Backend 登录后挂起同源事件连接；Mock 模式零连接。
+  it('Backend 登录后挂起一条同源事件连接，Mock 模式零连接', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await waitFor(() => expect(假WebSocket.构造记录.length).toBeGreaterThanOrEqual(1));
+    expect(假WebSocket.构造记录[0]).toContain('/api/v1/events/live');
+    const 构造数 = 假WebSocket.构造记录.length;
+    // 同一 Provider 的 Mock 渲染：零新增连接
+    render(createElement(应用状态提供者, null, createElement(上下文探针)));
+    await act(async () => {});
+    expect(假WebSocket.构造记录.length).toBe(构造数);
+  });
+
   it('401 只清后端状态，不载入 Mock 支持域', async () => {
     const 后端 = 创建后端桩();
     后端.恢复会话.mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
@@ -324,6 +786,75 @@ describe('应用状态提供者 后端会话', () => {
     expect(screen.getByText(/"已登录":false/)).toBeDefined();
     expect(screen.getByText(/"岗位数":0/)).toBeDefined();
     expect(screen.getByText(/"意向数":0/)).toBeDefined();
+  });
+
+  // P1C Task 2：mount 恢复 recruiter 会话时，subject fence 与新 generation 必须在
+  // 第一个异步组织请求（读取招聘方档案）之前就绪 —— 否则首个 profile 响应会被
+  // 当成 stale 丢掉。owner Jobs 只能在组织水合之后读取。
+  it('Backend mount recruiter 先立 fence 再水合组织，owner Jobs 在组织之后', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('recruiter');
+    const 档案门 = deferred<BFF招聘方档案>();
+    vi.mocked(后端.读取招聘方档案).mockReturnValue(档案门.promise);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    // 首个组织请求已发出（fence 必须在此之前已写入），响应稍后才到达
+    await waitFor(() => expect(后端.读取招聘方档案).toHaveBeenCalled());
+    档案门.resolve(BFF招聘方档案样本);
+    await waitFor(() => expect(当前.状态.招聘方档案).toEqual(BFF招聘方档案样本));
+    // affiliations → current → public organization 全链水合
+    await waitFor(() => expect(当前.状态.当前企业关系编号).toBe(BFF企业关系样本.affiliation_id));
+    expect(当前.状态.企业关系列表).toEqual([BFF企业关系样本]);
+    expect(当前.状态.当前企业身份?.organization_id).toBe(BFF公开企业样本.organization_id);
+    expect(当前.状态.企业档案快照).toEqual(BFF公开企业样本.profile);
+    // owner Jobs 在组织水合之后
+    expect(后端.读取岗位).toHaveBeenCalled();
+    expect(后端.读取招聘方档案.mock.invocationCallOrder[0])
+      .toBeLessThan(后端.读取岗位.mock.invocationCallOrder[0]);
+    expect(当前.后端状态.初始化).toBe('完成');
+    expect(当前.后端状态.已登录).toBe(true);
+  });
+
+  it('Backend 账号资料写回只含白名单字段，不含 P1C 已接管的旧字段', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('recruiter');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    const 会话 = 创建Map存储();
+    vi.stubGlobal('sessionStorage', 会话);
+    function 测试按钮() {
+      const { 派发 } = use应用状态();
+      return createElement('button', {
+        onClick: () => {
+          派发({ 型: '选择当前企业关系', 编号: BFF企业关系样本.affiliation_id });
+          派发({ 型: '存未认证公司声明', 公司: '云衢科技' });
+          派发({ 型: '设企业飞书接入', 接入: true });
+        },
+      }, '写入组织选择');
+    }
+    render(createElement(
+      应用状态提供者,
+      { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } },
+      [createElement(上下文探针), createElement(测试按钮)],
+    ));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await userEvent.click(document.querySelector('button')!);
+    await waitFor(() => expect(会话.setItem).toHaveBeenCalledWith(
+      'AGXP账号资料v2:backend:stg:sub_1',
+      expect.stringContaining('"当前企业关系编号":"aff_1"'),
+    ));
+    const 范围内写入 = 会话.setItem.mock.calls
+      .filter(([键]) => 键 === 'AGXP账号资料v2:backend:stg:sub_1')
+      .map(([, 值]) => String(值));
+    const 最后快照 = JSON.parse(范围内写入.at(-1)!);
+    expect(最后快照).toEqual({
+      当前企业关系编号: 'aff_1',
+      未认证公司声明: '云衢科技',
+      求职头像: null,
+      飞书已接入: false,
+      企业飞书已接入: true,
+    });
   });
 });
 
@@ -1097,5 +1628,483 @@ describe('应用状态提供者 review-r3 会话边界收口', () => {
     await expect(当前.操作.切身份('招聘方')).rejects.toMatchObject({ code: 'invalid_session' });
     await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
     expect(当前.状态.当前Tab).toBe('职位');
+  });
+});
+
+// ── P6 Task 4：mount / 退出 会话水合与清理（含 Backend 种子首帧隔离）──────────────
+
+describe('应用状态提供者 P6 会话水合与清理', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  it('candidate mount hydrates P6 with the role and lands the page arrays', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取Agent规则).mockResolvedValue([BFFAgent规则样本]);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('candidate');
+    await waitFor(() => expect(当前.后端状态.Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' }));
+    // Provider effect 从 raw 快照投影页面数组
+    await waitFor(() => expect(当前.状态.全局规则.map((条) => 条.编号)).toEqual([BFFAgent规则样本.rule_id]));
+  });
+
+  it('mount with last_used_role null leaves P6 empty and page arrays clear', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩(null);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(true);
+    // 保持身份选择页：不读任何规则，P6 状态停在干净底座
+    expect(后端.读取Agent规则).not.toHaveBeenCalled();
+    expect(当前.后端状态.候选规则快照).toEqual({});
+    expect(当前.后端状态.招聘规则快照).toEqual({});
+    expect(当前.后端状态.候选规则提案).toEqual({});
+    expect(当前.后端状态.招聘规则提案).toEqual({});
+    expect(当前.后端状态.Agent规则水合).toEqual({
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    });
+    expect(当前.状态.全局规则).toEqual([]);
+    expect(当前.状态.意向级规则).toEqual([]);
+    expect(当前.状态.企业规则).toEqual([]);
+  });
+
+  it('mount 水合 401 clears P6 dicts, resets stages, and clears page arrays', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取简历).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(false);
+    // P6 也被拉进统一清理：阶段回 未开始、原始字典与页面数组清空
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('candidate');
+    expect(当前.后端状态.候选规则快照).toEqual({});
+    expect(当前.后端状态.招聘规则快照).toEqual({});
+    expect(当前.后端状态.Agent规则水合).toEqual({
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    });
+    expect(当前.状态.全局规则).toEqual([]);
+    expect(当前.状态.意向级规则).toEqual([]);
+    expect(当前.状态.企业规则).toEqual([]);
+  });
+
+  it('退出登录 clears P6 raw dicts and page arrays', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取Agent规则).mockResolvedValue([BFFAgent规则样本]);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.候选规则快照[BFFAgent规则样本.rule_id]).toBeDefined());
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.候选规则快照).toEqual({});
+    expect(当前.后端状态.Agent规则水合).toEqual({
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    });
+    expect(当前.状态.全局规则).toEqual([]);
+    expect(当前.状态.意向级规则).toEqual([]);
+    expect(当前.状态.企业规则).toEqual([]);
+  });
+});
+
+// ── P4 Task 3：Backend 初始 discovery raw 快照为空底座；Mock 发现域种子不动 ─────────
+
+describe('应用状态提供者 P4 发现初始状态', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  it('Backend 初始 P4 发现快照为空底座，Mock 发现种子保持不变', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.候选岗位推荐).toEqual({});
+    expect(当前.后端状态.候选岗位详情).toEqual({});
+    expect(当前.后端状态.候选岗位不可用).toEqual([]);
+    expect(当前.后端状态.招聘可用候选).toEqual({});
+    expect(当前.后端状态.招聘已筛候选).toEqual({});
+    expect(当前.后端状态.招聘已筛聚合).toEqual({ 阶段: '未开始', jobKey: '', error: null });
+    expect(当前.后端状态.招聘候选详情).toEqual({});
+    expect(当前.后端状态.招聘候选不可用).toEqual([]);
+    expect(当前.后端状态.P4委托回执).toEqual({});
+    expect(当前.后端状态.P4真实Case引用).toEqual({});
+    // Mock 发现域继续走 归约发现推荐 与既有种子（本轮未触碰）
+    expect(初始状态.推荐列表.length).toBeGreaterThan(0);
+    expect(初始状态.企业候选列表.length).toBeGreaterThan(0);
+  });
+});
+
+// ── P4 fix-r1：Backend 当前意向的编号载体（当前意向编号）──────────
+// 当前意向 是意向名（跨 Mock 全局同名复用、不可反查），P4 发现域的 scope 一律认
+// 编号载体：水合落「仍 active 的原值，否则第一条 active」，切意向 只认随 action
+// 带上的编号；Mock 不带编号，载体恒 null。
+
+describe('当前意向编号 · Backend 意向编号载体', () => {
+  const 列表与快照 = (entries: { 编号: string; active: boolean }[]) => {
+    const 列表 = entries.map(({ 编号 }) => ({
+      编号, 标题: `[上海] 产品经理`, 说明: '',
+    }));
+    const 服务端: Record<string, typeof BFF意向样本> = {};
+    for (const { 编号, active } of entries) {
+      服务端[编号] = { ...BFF意向样本, intention_id: 编号, status: active ? 'active' : 'archived' };
+    }
+    return { 列表, 服务端 };
+  };
+
+  it('水合后端意向 把载体落到列表序里第一条 active 意向', () => {
+    const { 列表, 服务端 } = 列表与快照([
+      { 编号: 'int_9', active: false },
+      { 编号: 'int_1', active: true },
+      { 编号: 'int_2', active: true },
+    ]);
+    const 水合后 = 归约(初始状态, { 型: '水合后端意向', 快照: { 列表, 服务端 } });
+    expect(水合后.当前意向编号).toBe('int_1');
+    expect(水合后.当前意向).toBe('产品经理');
+  });
+
+  it('重水合时保留仍 active 的已选载体；原值失效才回退第一条 active', () => {
+    const 第一次 = 列表与快照([
+      { 编号: 'int_1', active: true },
+      { 编号: 'int_2', active: true },
+    ]);
+    const 水合后 = 归约(初始状态, { 型: '水合后端意向', 快照: 第一次 });
+    const 已选第二条 = 归约(水合后, { 型: '切意向', 意向: '产品经理', 编号: 'int_2' });
+    expect(已选第二条.当前意向编号).toBe('int_2');
+    // 重水合（如编辑保存后的权威刷新）：int_2 仍 active → 保留用户的选择
+    const 保留 = 归约(已选第二条, { 型: '水合后端意向', 快照: 第一次 });
+    expect(保留.当前意向编号).toBe('int_2');
+    // int_2 被归档：载体回退到剩余的第一条 active，不指向死意向
+    const 归档后 = 列表与快照([
+      { 编号: 'int_1', active: true },
+      { 编号: 'int_2', active: false },
+    ]);
+    const 回退 = 归约(已选第二条, { 型: '水合后端意向', 快照: 归档后 });
+    expect(回退.当前意向编号).toBe('int_1');
+  });
+
+  it('服务端改名后 当前意向 跟着载体走，绝不落到第一条的名字', () => {
+    const 第一次 = 列表与快照([
+      { 编号: 'int_1', active: true },
+      { 编号: 'int_2', active: true },
+    ]);
+    const 已选第二条 = 归约(
+      归约(初始状态, { 型: '水合后端意向', 快照: 第一次 }),
+      { 型: '切意向', 意向: '产品经理', 编号: 'int_2' },
+    );
+    // int_2 服务端改名：载体仍是 int_2，标题必须跟着同一条走（名字反查会错落到 int_1）
+    const 改名后 = {
+      列表: [
+        { 编号: 'int_1', 标题: '[上海] 产品经理', 说明: '' },
+        { 编号: 'int_2', 标题: '[北京] 数据分析', 说明: '' },
+      ],
+      服务端: 第一次.服务端,
+    };
+    const 重水合 = 归约(已选第二条, { 型: '水合后端意向', 快照: 改名后 });
+    expect(重水合.当前意向编号).toBe('int_2');
+    expect(重水合.当前意向).toBe('数据分析');
+  });
+
+  it('水合不到任何 active 意向时载体归 null', () => {
+    const { 列表, 服务端 } = 列表与快照([{ 编号: 'int_1', active: false }]);
+    const 水合后 = 归约(初始状态, { 型: '水合后端意向', 快照: { 列表, 服务端 } });
+    expect(水合后.当前意向编号).toBeNull();
+  });
+
+  it('重名意向按编号区分：切意向带编号时载体指向被点的那条', () => {
+    const { 列表, 服务端 } = 列表与快照([
+      { 编号: 'int_1', active: true },
+      { 编号: 'int_2', active: true },
+    ]);
+    const 水合后 = 归约(初始状态, { 型: '水合后端意向', 快照: { 列表, 服务端 } });
+    // 两条意向的意向名完全相同，只有编号能区分 —— 名字反查在这里是错的
+    const 点第二条 = 归约(水合后, { 型: '切意向', 意向: '产品经理', 编号: 'int_2' });
+    expect(点第二条.当前意向).toBe('产品经理');
+    expect(点第二条.当前意向编号).toBe('int_2');
+  });
+
+  it('Mock 路径不带编号：切意向后载体归 null，Mock 行为原样', () => {
+    const 先水合 = 归约(初始状态, {
+      型: '水合后端意向',
+      快照: 列表与快照([{ 编号: 'int_1', active: true }]),
+    });
+    expect(先水合.当前意向编号).toBe('int_1');
+    // 顶栏在 Mock 下派发不带编号（字节级同型的旧 action）
+    const 切回 = 归约(先水合, { 型: '切意向', 意向: '产品经理' });
+    expect(切回.当前意向).toBe('产品经理');
+    expect(切回.当前意向编号).toBeNull();
+  });
+});
+
+// ── P2 Task 3：Provider 附件库快照 —— 四域水合 / 招聘方不读附件 / 清理路径 ──
+
+describe('应用状态提供者 P2 附件库快照', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  const 附件库样本: BFF附件简历库 = {
+    items: [{
+      file_id: 'rf_1', display_name: '沈亦舟_简历_2026.pdf', revision: 1,
+      current_version: {
+        version_id: 'rfv_1', version: 1, size_bytes: 1, media_type: 'application/pdf',
+        sha256: 'a'.repeat(64), created_at: '2026-08-28T00:00:00Z', parse: { status: 'not_started' },
+      },
+      created_at: '2026-08-28T00:00:00Z', updated_at: '2026-08-28T00:00:00Z',
+    }],
+    limits: { max_files: 3, max_file_bytes: 10485760, accepted_media_types: ['application/pdf'] },
+  };
+
+  it('candidate mount 水合提交附件库，P6 三路照旧，切到招聘方后清空且不读附件', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取附件简历库).mockResolvedValue(附件库样本);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // 第四支持域已提交
+    expect(后端.读取附件简历库).toHaveBeenCalledTimes(1);
+    expect(当前.后端状态.附件简历库).toEqual(附件库样本);
+    // P6 三路并发照旧且阶段收口
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('candidate');
+    await waitFor(() => expect(当前.后端状态.Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' }));
+    // 切到招聘方：附件快照清空且招聘方水合不读附件
+    await 当前.操作.切身份('招聘方');
+    await waitFor(() => expect(当前.后端状态.附件简历库).toBeNull());
+    expect(后端.读取附件简历库).toHaveBeenCalledTimes(1);
+  });
+
+  it('mount 附件读取 401 统一清理：不落已登录，附件与 P6 同清', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取附件简历库).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(false);
+    expect(当前.后端状态.附件简历库).toBeNull();
+    expect(当前.后端状态.主体).toBe(null);
+    expect(当前.后端状态.Agent规则水合.candidate).toEqual({ rules: '未开始', proposals: '未开始' });
+    expect(后端.清空目录缓存).toHaveBeenCalled();
+  });
+
+  it('mount 附件读取非 401 失败不阻塞初始化：已登录照常，附件为 null，简历/P6 保留', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取附件简历库).mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(true);
+    expect(当前.后端状态.附件简历库).toBeNull();
+    expect(当前.后端状态.简历快照).not.toBe(null);
+    await waitFor(() => expect(当前.后端状态.Agent规则水合.candidate).toEqual({ rules: '成功', proposals: '成功' }));
+  });
+
+  it('退出登录清空附件快照，P6 清理不回归', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取附件简历库).mockResolvedValue(附件库样本);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.附件简历库).toEqual(附件库样本));
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.附件简历库).toBeNull();
+    expect(当前.后端状态.候选规则快照).toEqual({});
+    expect(当前.后端状态.Agent规则水合).toEqual({
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    });
+  });
+
+  it('换账号登录清空上个账号的附件快照', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取附件简历库).mockResolvedValue(附件库样本);
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.附件简历库).toEqual(附件库样本));
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
+    await 当前.操作.完成手机登录('1234');
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
+    expect(当前.后端状态.附件简历库).toBeNull();
+  });
+});
+
+// ── P5 Task 3：Provider 的 MatchCase 运行时状态 —— 内存快照、会话清理与对象租约 ──
+
+describe('应用状态提供者 P5 MatchCase 运行时状态', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  it('Backend 初始 P5 快照为空底座', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.P5工作区).toEqual({});
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('加载工作区经 facade 提交 scope 快照；成功后非 force 不重发', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 行: P5列表页['items'][number] = {
+      role: 'candidate',
+      state: {
+        caseId: 'mc_1', lifecycle: 'open', stage: 'anonymous_screening', status: 'running',
+        step: 'policy_check', round: 0, roundBudget: 3, needsUser: false,
+        outcome: null, outcomeCode: null,
+        createdAt: '2026-08-29T01:00:00Z', updatedAt: '2026-08-29T02:00:00Z', finalizedAt: null,
+      },
+      needsAction: true,
+      intentionId: 'int_0123456789abcdef0123456789abcdef',
+      job: {
+        jobId: 'job_0123456789abcdef0123456789abcdef',
+        job: { title: 'AI 产品实习生', location: '上海', publicSalaryRange: '300-500 元/天', requiredSkills: ['Python'] },
+      },
+    };
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [行], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    expect(后端.读取P5Open列表).toHaveBeenCalledWith('candidate', null, null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({
+      阶段: '成功', 刷新中: false, items: [行], nextCursor: null, 已加载页数: 1,
+    }));
+    await 当前.操作.加载工作区('candidate', null);
+    expect(后端.读取P5Open列表).toHaveBeenCalledTimes(1);
+  });
+
+  it('Mock 模式零 P5 请求：操作惰性返回，不触碰任何 facade', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    render(createElement(应用状态提供者, null, createElement(上下文探针)));
+    expect(当前.数据源模式).toBe('mock');
+    await expect(当前.操作.加载工作区('candidate', null)).resolves.toBeUndefined();
+    await expect(当前.操作.读取详情('candidate', 'mc_1', true)).resolves.toBeUndefined();
+    await expect(当前.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天')).resolves.toBeUndefined();
+    await expect(当前.操作.决定S0('mc_1', 'end')).resolves.toBeUndefined();
+  });
+
+  it('退出登录清空 P5 快照与引用（主体转移的反应式清理）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({ 阶段: '成功' }));
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.P5工作区).toEqual({});
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('切身份（角色转移）清空 P5 快照', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({ 阶段: '成功' }));
+    await 当前.操作.切身份('招聘方');
+    await waitFor(() => expect(当前.后端状态.P5工作区).toEqual({}));
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('换主体登录清空上个账号的 P5 快照（主体基串变化）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [], nextCursor: null });
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({ 阶段: '成功' }));
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
+    await 当前.操作.完成手机登录('1234');
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
+    expect(当前.后端状态.P5工作区).toEqual({});
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('退出登录回收在途 PDF 对象租约（URL.revokeObjectURL 恰好一次）', async () => {
+    const 建造 = vi.fn(() => 'blob:p5-provider');
+    const 回收 = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { value: 建造, configurable: true, writable: true });
+    Object.defineProperty(URL, 'revokeObjectURL', { value: 回收, configurable: true, writable: true });
+    try {
+      let 当前!: ReturnType<typeof use应用状态>;
+      function 上下文探针() { 当前 = use应用状态(); return null; }
+      const 后端 = 创建后端桩('candidate');
+      const 后端源 = 后端 as unknown as HTTP招聘数据源;
+      render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+      await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+      const 租约 = await 当前.操作.读取简历PDF('candidate', 'mc_1');
+      expect(建造).toHaveBeenCalledTimes(1);
+      await 当前.操作.退出登录();
+      await waitFor(() => expect(回收).toHaveBeenCalledWith('blob:p5-provider'));
+      租约.revoke(); // 二次回收安全
+    } finally {
+      delete (URL as unknown as Record<string, unknown>).createObjectURL;
+      delete (URL as unknown as Record<string, unknown>).revokeObjectURL;
+    }
   });
 });

@@ -10,13 +10,19 @@ import 样式 from './我的功能页.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
+import { 轻提示 } from '../组件/轻提示';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 import type { 披露档 } from '../数据/类型';
 
 const 全部档: 披露档[] = ['不披露', '意向确认后', '一直允许'];
 
 export default function 披露偏好() {
   const { 返回 } = use导航();
-  const { 状态, 派发 } = use应用状态();
+  const { 状态, 派发, 操作, 数据源模式, 后端状态 } = use应用状态();
+
+  // P3：Backend 隐私未水合（隐私快照 null）时不渲染任何档位行 ——
+  // Mock 七行模板不能冒充服务端值；Mock 模式照旧直接用本地状态。
+  const 隐私已水合 = 数据源模式 !== 'backend' || 后端状态.隐私快照 !== null;
 
   return (
     // 2026-08-24 全站选择风格统一（C1 定稿）：选择/填写屏页底一律白底
@@ -30,7 +36,7 @@ export default function 披露偏好() {
           —— 初筛时只判断「区间是否匹配」；意向确认后，由你决定是否在真人沟通中讨论具体金额。
         </div>
 
-        {状态.披露偏好.map((项) => {
+        {(隐私已水合 ? 状态.披露偏好 : []).map((项) => {
           const 锁了 = 项.锁定 !== null;
           return (
             <div key={项.编号} className={样式.披露卡}>
@@ -44,14 +50,28 @@ export default function 披露偏好() {
                 {全部档.map((档) => {
                   const 可选 = 项.可选档.includes(档);
                   const 选中 = 项.档 === 档;
+                  // P3：可写 = 服务端授权（可修改）+ 无机制锁 + 档位合法。
+                  // className 仍按 可选 计算 —— 固定行不新增视觉禁用样式（视觉边界由 UI 回归门冻结），
+                  // 只有行为用 可改 收口；Backend 点档走 操作.设置披露偏好 单字段 patch，Mock 走本地归约。
+                  const 可改 = 项.可修改 === true && 项.锁定 === null && 项.可选档.includes(档);
                   return (
                     <button
                       key={档}
                       className={`${样式.分段项} ${选中 ? 样式.分段项选中 : ''} ${
                         可选 ? '可点' : 样式.分段项禁用
                       }`}
-                      onClick={() => 可选 && !锁了 && 派发({ 型: '设披露档', 编号: 项.编号, 档 })}
-                      disabled={!可选 || 锁了}
+                      onClick={async () => {
+                        if (!可改) return;
+                        if (数据源模式 === 'backend') {
+                          // Backend 写档失败：复用现有轻提示与错误文案映射（Mock 本地归约不会拒绝，原样保留）
+                          try {
+                            await 操作.设置披露偏好(项.编号 as 'D-03' | 'D-04' | 'D-05', 档);
+                          } catch (错误) {
+                            轻提示(取后端错误文案(错误));
+                          }
+                        } else 派发({ 型: '设披露档', 编号: 项.编号, 档 });
+                      }}
+                      disabled={!可改}
                     >
                       {档}
                     </button>

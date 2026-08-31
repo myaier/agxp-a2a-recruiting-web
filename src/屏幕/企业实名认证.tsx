@@ -5,16 +5,22 @@
 // 招聘方却从一开始就实名示人。这一屏核验的「真实姓名 + 任职公司」
 // 正是候选人敢把条件交给 AI 代理的前提。
 //
-// 交互：点「开始人脸识别」→ 按钮变「认证中…」1.2 秒（setTimeout + 本地态）
-// → 轻提示('认证通过') → 跳 招聘名片。
+// P1C 起分双分支：
+//   Mock   —— 保留原 1.2 秒人脸识别原型：点「开始人脸识别」→「认证中…」
+//              （setTimeout + 本地态）→ 轻提示('认证通过') → 跳 招聘名片。
+//   Backend —— 这屏不再是「做一次认证」，而是诚实的身份摘要：
+//              个人 / 任职 / 管理员申请三条按服务端事实分开展示，
+//              两个动作入口（申请企业管理员 / 输入邀请口令加入）。
+//              Backend 分支不进任何计时器代码 —— 没有 KYC 结果就不伪造「认证通过」。
 
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './企业实名认证.module.css';
-import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 主按钮 } from '../组件/通用';
+import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 主按钮, 表单条目 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
+import { 从BFF招聘身份 } from '../数据/组织映射';
 
 /** 公司全称输入上限（对照 BOSS 的 46 字；营业执照名称不会超过这个长度） */
 const 公司全称上限 = 46;
@@ -27,6 +33,97 @@ const 公司注意事项 = [
 ];
 
 export default function 企业实名认证() {
+  const { 数据源模式 } = use应用状态();
+  return 数据源模式 === 'backend' ? <后端身份摘要 /> : <Mock人脸原型 />;
+}
+
+// ── Backend：只读身份摘要 + 两个组织动作入口 ─────────────────────────
+
+function 后端身份摘要() {
+  const { 跳转, 返回 } = use导航();
+  const { 状态, 操作 } = use应用状态();
+  const 身份 = 从BFF招聘身份(
+    状态.招聘方档案, 状态.企业关系列表, 状态.当前企业关系编号, 状态.企业管理员申请列表,
+  );
+  // 进入本屏才读管理员申请（不进登录链）：失败只收敛在本屏的申请行，不弹提示不阻断别处
+  const [申请读取失败, 设申请读取失败] = useState(false);
+  useEffect(() => {
+    let 已取消 = false;
+    操作.读取企业管理员申请().catch(() => {
+      if (!已取消) 设申请读取失败(true);
+    });
+    return () => {
+      已取消 = true;
+    };
+  }, [操作]);
+
+  const 当前任职 = 身份.currentAffiliation;
+  const 申请行 = 申请读取失败
+    ? '管理员申请：读取失败'
+    : 身份.latestAdminRequest
+      ? `管理员申请：${身份.latestAdminRequest.statusLabel}`
+      : '管理员申请：暂无';
+
+  return (
+    <次级页外壳>
+      <返回栏 返回={返回} />
+
+      <页面大标题 标题="实名认证" 说明="按服务端记录如实展示，不做本地认证" />
+
+      <滚动区 样式覆盖={{ padding: '0 0 8px' }}>
+        <div className={样式.表单区}>
+          {/* ── 个人：公开名 / 实名 / 验证状态 —— 三者分开，不合并成一个布尔 ── */}
+          <div className={样式.编辑条目}>
+            <div className={样式.条目标签}>公开名</div>
+            <div className={样式.条目输入}>{身份.publicName || '未设置'}</div>
+          </div>
+          <div className={样式.编辑条目}>
+            <div className={样式.条目标签}>个人认证</div>
+            <div className={样式.条目输入}>实名：{身份.verifiedName ?? '未实名'}</div>
+          </div>
+          <div className={样式.编辑条目}>
+            <div className={样式.条目标签}>验证状态</div>
+            <div className={样式.条目输入}>个人身份：{身份.personalVerification.label}</div>
+          </div>
+
+          {/* ── 任职：当前 Affiliation 的企业名 / 角色 / 关系状态（Organization 事实）── */}
+          <div className={样式.编辑条目}>
+            <div className={样式.条目标签}>当前任职</div>
+            <div className={样式.条目输入}>
+              {当前任职
+                ? `任职：${当前任职.organizationName} · ${当前任职.roleLabel} · ${当前任职.statusLabel}`
+                : '任职：暂无'}
+            </div>
+          </div>
+
+          {/* ── 管理员申请：最新一条的服务端状态 ── */}
+          <div className={样式.编辑条目}>
+            <div className={样式.条目标签}>组织管理员申请</div>
+            <div className={样式.条目输入}>{申请行}</div>
+          </div>
+        </div>
+
+        {/* ── 两个动作入口：申请企业管理员 / 输入邀请口令加入 ── */}
+        <div className={样式.表单区}>
+          <表单条目
+            标签="申请企业管理员"
+            值="提交组织事实与证明材料，人工审核"
+            按下={() => 跳转(路径.企业组织申请)}
+          />
+          <表单条目
+            标签="输入邀请口令加入企业"
+            值="收到管理员邀请口令后在此加入"
+            按下={() => 跳转(路径.企业邀请加入)}
+          />
+        </div>
+      </滚动区>
+    </次级页外壳>
+  );
+}
+
+// ── Mock：1.2 秒人脸识别原型（原实现逐字保留，Backend 条件不进这里）────
+
+function Mock人脸原型() {
   const { 跳转, 返回 } = use导航();
   const { 状态, 派发 } = use应用状态();
   // 预填上次认证的结果：老用户重走认证是「改」不是「重填」

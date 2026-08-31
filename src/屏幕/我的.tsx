@@ -54,9 +54,16 @@ function 取统计色(色名: string): string {
 
 export default function 我的() {
   const { 跳转 } = use导航();
-  const { 状态, 派发 } = use应用状态();
+  const { 状态, 派发, 数据源模式, 后端状态 } = use应用状态();
   const 姓名 = 状态.基本信息.真名.trim() || 我的信息.姓名;
   const 头像 = 状态.求职头像?.startsWith('data:image/') ? 状态.求职头像 : null;
+
+  // P6：规则计数只认已水合的权威规则 —— Backend 未水合时不出计数（宁缺勿错，
+  // 不把 Mock 种子数当真，与 规则库 门控同一口径）
+  const 可显示候选规则数 = 数据源模式 === 'mock' || 后端状态.Agent规则水合.candidate.rules === '成功';
+  const 生效规则数 =
+    状态.全局规则.filter((条) => 条.生效).length +
+    状态.意向级规则.filter((条) => 条.生效).length;
 
   // 四个统计数改成从真实状态算：在详情页接受/退出之后，这里要立刻跟着变，
   // 否则用户做完决策回到「我的」看到的还是建档时写死的数字。
@@ -190,10 +197,11 @@ export default function 我的() {
             <span className={样式.在线点} />
           </span>
           <span className={`${样式.代理状态} 单行`}>
-            在线 · 正在跟进 {状态.在谈列表.length} 个机会 · 规则{' '}
-            {状态.全局规则.filter((条) => 条.生效).length +
-              状态.意向级规则.filter((条) => 条.生效).length}{' '}
-            条生效
+            在线 · 正在跟进 {状态.在谈列表.length} 个机会
+            {/* 规则计数未水合时（Backend）整段不出，不渲染 0 也不拿 Mock 数充数 */}
+            {可显示候选规则数 ? (
+              <> · 规则 {生效规则数} 条生效</>
+            ) : null}
           </span>
         </span>
         <span className={样式.管理}>管理 ›</span>

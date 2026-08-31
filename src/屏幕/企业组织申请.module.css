@@ -1,0 +1,115 @@
+/* 企业组织申请 —— 表单区版式镜像 企业实名认证.module.css 的录入槽位；
+   状态行/错误行为本页专有。只复用既有设计语言，不新建设计系统。 */
+
+.表单区 {
+  padding: 2px 0 0;
+}
+
+.编辑条目 {
+  padding: 13px 0 11px;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.条目标签 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+  margin-bottom: 7px;
+}
+
+.条目输入 {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+  background: transparent;
+}
+
+.条目输入::placeholder {
+  color: var(--最弱);
+  font-weight: 400;
+}
+
+.条目输入行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.计数 {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--最弱);
+}
+
+.多行输入 {
+  width: 100%;
+  min-height: 96px;
+  border: none;
+  outline: none;
+  resize: vertical;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--墨);
+  background: transparent;
+}
+
+.多行输入::placeholder {
+  color: var(--最弱);
+}
+
+/* 槽位错误：贴在对应槽位下方，BFF {path,reason} 原样映射到这里 */
+.错误行 {
+  margin-top: 6px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--警示, #c0392b);
+}
+
+.文件行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--次要);
+}
+
+/* 当前申请状态行：只按服务端事实展示（pending/approved/rejected/cancelled） */
+.状态行 {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: var(--浅灰底2);
+  border-radius: 11px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.状态文字 {
+  font-size: 12.5px;
+  color: var(--次要);
+}
+
+.取消键 {
+  flex: none;
+  font-size: 12px;
+  color: var(--次要);
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--白);
+  border: 1px solid var(--描边深);
+}
+
+.提示行 {
+  margin-top: 12px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--次要);
+}

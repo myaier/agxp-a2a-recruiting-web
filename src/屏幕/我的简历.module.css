@@ -282,6 +282,29 @@
   padding-bottom: 10px;
 }
 
+/* P2 Task 6（Backend）：标题行只补 flex 排布，几何仍由 .卡标题 决定；
+   ＋ 复用区块标题字号；空态同卡内轻量一行 —— 三条之外不加任何新规则 */
+.附件标题行 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.附件添加键 {
+  border: 0;
+  background: transparent;
+  color: var(--深绿);
+  font-size: var(--字号-区块标题);
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.附件空态 {
+  padding: 12px 0;
+  color: var(--最弱);
+  font-size: 12.5px;
+}
+
 .尖括号 {
   flex: none;
   color: var(--最弱);

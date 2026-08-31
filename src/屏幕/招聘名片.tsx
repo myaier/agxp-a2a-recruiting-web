@@ -7,8 +7,16 @@
 // 点哪一行，那一行的值当场变成输入框并自动聚焦，失焦或回车即保存。
 // 原来那套底部升起的编辑抽屉（遮罩 + 抽屉 + 草稿 + 确定按钮）整套删掉：
 // 三个字段都是一行短文本，为改一个词升起半屏抽屉是多余的一层。
+//
+// P1C 起分双分支：
+//   Mock    —— 上述就地编辑原型原样保留（读 企业认证 fixture，落 存企业认证，去发岗）。
+//   Backend —— 姓名槽显示 verified_name ?? public_name（verified 即只读），职务落 title，
+//              一次保存调 保存招聘方档案；公司槽读 current affiliation / 未认证声明，
+//              多个可用关系列出待选、不自动猜。头像走原子保存：选图只生成 object URL
+//              内存预览（不压 data URL、不落 存招聘头像），保存时调 替换招聘方头像，
+//              成功后由 operation 用响应里的 avatar_url/revision 替换权威档案、回收预览。
 
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 样式 from './招聘名片.module.css';
 import {
   次级页外壳,
@@ -25,6 +33,261 @@ import { use应用状态 } from '../状态/应用状态';
 import { 相机图标 } from '../组件/图标';
 import { 路径 } from '../路由/路径表';
 import { 压成头像 } from '../组件/头像处理';
+import { 从BFF招聘身份 } from '../数据/组织映射';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
+
+export default function 招聘名片() {
+  const { 数据源模式 } = use应用状态();
+  return 数据源模式 === 'backend' ? <后端名片 /> : <Mock名片 />;
+}
+
+// ── Backend：诚实名片（服务端事实 + 一次保存）──────────────────────
+
+/** 头像上传的冻结边界（P1B runtime）：只收 PNG/JPEG，单文件 ≤ 10 MiB */
+const 头像字节上限 = 10 * 1024 * 1024;
+
+function 后端名片() {
+  const { 跳转, 返回 } = use导航();
+  const { 状态, 操作, 后端状态 } = use应用状态();
+  const 文件框 = useRef<HTMLInputElement>(null);
+  const 身份 = 从BFF招聘身份(
+    状态.招聘方档案, 状态.企业关系列表, 状态.当前企业关系编号, 状态.企业管理员申请列表,
+  );
+  // 显式判定，不从公司名推断：姓名槽 = verified_name ?? public_name；只有无实名才可编辑公开名
+  const 显示姓名 = 身份.verifiedName ?? 身份.publicName;
+  const 可编辑公开名 = 身份.verifiedName === null;
+  const 可选关系 = 身份.affiliations.filter((项) => 项.selectable);
+
+  const [公开名, 设公开名] = useState(身份.publicName);
+  const [职务, 设职务] = useState(身份.title);
+  // 水合晚于进屏时同步服务端权威值；保存成功后 re-hydrate 回写的是同一份内容
+  useEffect(() => {
+    设公开名(身份.publicName);
+  }, [身份.publicName]);
+  useEffect(() => {
+    设职务(身份.title);
+  }, [身份.title]);
+
+  // ── 头像原子保存：只留 object URL 内存预览，保存成功才让服务端响应成为权威 ──
+  const [头像文件, 设头像文件] = useState<File | null>(null);
+  const [头像预览, 设头像预览] = useState<string | null>(null);
+  const 预览引用 = useRef<string | null>(null);
+  /** 换新预览前先回收旧的；地址为 null 即清空 */
+  function 换预览(地址: string | null) {
+    if (预览引用.current !== null) URL.revokeObjectURL(预览引用.current);
+    预览引用.current = 地址;
+    设头像预览(地址);
+  }
+  /** 预览收口：回收 object URL 并丢弃待上传文件（成功或作废两条路都走这里） */
+  function 收口预览() {
+    换预览(null);
+    设头像文件(null);
+  }
+  // unmount 回收 object URL（内存预览不落任何全局状态）
+  useEffect(() => () => {
+    if (预览引用.current !== null) URL.revokeObjectURL(预览引用.current);
+  }, []);
+  // 账号变化：上一账号的预览与待上传文件一并作废，不把旧文件传给新账号
+  const 主体标识 = 后端状态.主体?.subject_id ?? null;
+  const 首次渲染 = useRef(true);
+  useEffect(() => {
+    if (首次渲染.current) {
+      首次渲染.current = false;
+      return;
+    }
+    if (预览引用.current !== null) 收口预览();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [主体标识]);
+
+  /** 保存一次带 public_name 与 title；失败原样抛回给按钮层（输入不清空） */
+  const 保存 = () => 操作.保存招聘方档案({ public_name: 公开名, title: 职务 });
+
+  async function 按下保存() {
+    try {
+      const 档案 = await 保存();
+      if (头像文件) {
+        // 头像 If-Match 必须用 PATCH 响应里的新 revision：dispatch 后 state ref 要到
+        // 下一个 React 提交才更新，此刻读 ref 拿到的是旧 revision（真实 BFF 会 409）
+        await 操作.替换招聘方头像(头像文件, 档案.revision);
+        收口预览();
+      }
+      轻提示('保存成功'); // 成功响应之后才提示
+    } catch (错误) {
+      // 409/503 等失败保留 file 与预览，用户检查后按同一个保存键重试
+      轻提示(取后端错误文案(错误));
+    }
+  }
+
+  async function 选了照片(事件: React.ChangeEvent<HTMLInputElement>) {
+    const 文件 = 事件.target.files?.[0];
+    事件.target.value = ''; // 允许再次选同一张
+    if (!文件) return;
+    if (文件.type !== 'image/png' && 文件.type !== 'image/jpeg') {
+      轻提示('仅支持 PNG / JPEG 图片');
+      return;
+    }
+    if (文件.size > 头像字节上限) {
+      轻提示('图片不超过 10 MiB');
+      return;
+    }
+    // 只生成内存预览：不压 data URL、不派发 存招聘头像，服务端成功前一切只是暂存
+    换预览(URL.createObjectURL(文件));
+    设头像文件(文件);
+  }
+
+  /** 无可用任职关系时的公司输入：落未认证声明，不创建 Organization */
+  function 公司收笔(输入值: string) {
+    const 新值 = 输入值.trim();
+    if (新值 && 新值 !== 状态.未认证公司声明) 操作.保存未认证公司声明(新值);
+  }
+
+  const 公司显示 = 身份.currentAffiliation?.organizationName ?? 状态.未认证公司声明;
+  // Backend 不落 存招聘头像：预览优先，权威头像始终来自 招聘方档案.avatar_url
+  const 头像地址 = 头像预览 ?? 身份.avatarUrl;
+
+  return (
+    <次级页外壳>
+      <返回栏 返回={返回} />
+
+      <页面大标题 标题="招聘名片" />
+
+      <滚动区 样式覆盖={{ padding: '6px 22px 0' }}>
+        {/* ── 名片预览：候选人从第一轮起看到的就是这一行（不对称双盲的实名侧）── */}
+        <div className={样式.预览行}>
+          <button
+            className={`${样式.头像键} 可点`}
+            onClick={() => 文件框.current?.click()}
+            aria-label="上传头像"
+          >
+            {头像地址 ? (
+              <img
+                className={样式.头像图}
+                src={头像地址}
+                alt={头像预览 !== null ? '头像预览' : ''}
+              />
+            ) : (
+              <公司字标
+                首字={显示姓名.charAt(0)}
+                尺寸={52}
+                圆角={999}
+                底色="var(--墨)"
+                字色="var(--荧光绿)"
+                描边={false}
+                字号={21}
+              />
+            )}
+            <span className={样式.相机角标}>
+              <相机图标 尺寸={11} 色="var(--正文)" />
+            </span>
+          </button>
+          <input
+            ref={文件框}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            aria-label="更换头像"
+            onChange={选了照片}
+          />
+          <span className={样式.预览文字}>
+            <span className={`${样式.预览姓名} 单行`}>
+              {显示姓名 || '未设置姓名'}
+              {身份.personalVerification.code === 'verified' ? (
+                <span className={样式.认证标}>已认证</span>
+              ) : null}
+            </span>
+            <span className={`${样式.预览副行} 单行`}>
+              {职务 || '未设置职务'} · {公司显示 || '未设置企业'}
+            </span>
+          </span>
+        </div>
+
+        {/* ── 姓名：verified 只读；无实名才可编辑公开名 ── */}
+        {可编辑公开名 ? (
+          <div className={样式.就地条目}>
+            <div className={样式.就地标签}>姓名（公开名）</div>
+            <input
+              className={样式.就地输入}
+              aria-label="姓名"
+              value={公开名}
+              onChange={(事件) => 设公开名(事件.target.value)}
+              enterKeyHint="done"
+            />
+          </div>
+        ) : (
+          <div className={样式.就地条目}>
+            <div className={样式.就地标签}>姓名（已实名，不可修改）</div>
+            <div className={样式.就地输入}>{显示姓名}</div>
+          </div>
+        )}
+
+        {/* ── 职务：映射 title ── */}
+        <div className={样式.就地条目}>
+          <div className={样式.就地标签}>职务</div>
+          <input
+            className={样式.就地输入}
+            aria-label="职务"
+            value={职务}
+            onChange={(事件) => 设职务(事件.target.value)}
+            enterKeyHint="done"
+          />
+        </div>
+
+        {/* ── 公司：current affiliation 的服务端事实；多个可用关系列出待选，不自动猜 ── */}
+        {身份.affiliations.length > 0 ? (
+          <div className={样式.就地条目}>
+            <div className={样式.就地标签}>任职企业</div>
+            {可选关系.length > 1 && !身份.currentAffiliation ? (
+              <div className={样式.就地标签}>请选择当前任职企业</div>
+            ) : null}
+            {身份.affiliations.map((项) =>
+              项.selectable ? (
+                <button
+                  key={项.id}
+                  className={`${样式.就地输入} 可点`}
+                  style={{ textAlign: 'left', cursor: 'pointer' }}
+                  onClick={() =>
+                    void 操作.选择企业关系(项.id).catch((错误) => 轻提示(取后端错误文案(错误)))
+                  }
+                >
+                  {项.organizationName} · {项.roleLabel} · {项.statusLabel}
+                  {身份.currentAffiliation?.id === 项.id ? '（当前）' : ''}
+                </button>
+              ) : (
+                <div key={项.id} className={样式.就地输入} style={{ color: 'var(--次要浅)' }}>
+                  {项.organizationName} · {项.roleLabel} · {项.statusLabel}（不可选）
+                </div>
+              ),
+            )}
+          </div>
+        ) : null}
+        {/* 没有任何可选关系且无 current：未认证声明是发岗的 company claim 唯一来源，输入面不能缺席 */}
+        {可选关系.length === 0 && !身份.currentAffiliation ? (
+          <div className={样式.就地条目}>
+            <div className={样式.就地标签}>公司（未认证声明）</div>
+            <input
+              className={样式.就地输入}
+              aria-label="公司"
+              defaultValue={状态.未认证公司声明}
+              onBlur={(事件) => 公司收笔(事件.currentTarget.value)}
+              enterKeyHint="done"
+            />
+          </div>
+        ) : null}
+
+        {/* ── 公司主页资料：名片是「这个人」，公司主页是「这家公司」── */}
+        <表单条目
+          标签="公司主页资料"
+          值="LOGO · 简介 · 规模 · 办公地"
+          按下={() => 跳转(路径.公司档案编辑)}
+        />
+      </滚动区>
+
+      <主按钮 文字="保存" 按下={按下保存} />
+    </次级页外壳>
+  );
+}
+
+// ── Mock：就地编辑原型（原实现逐字保留）───────────────────────────
 
 /** 可就地编辑的字段（标注 2026-08-20 13:35：认证已撤，公司也直接改） */
 type 表单键 = '姓名' | '职务' | '公司';
@@ -35,7 +298,7 @@ const 表单字段表: { 键: 表单键; 标签: string }[] = [
   { 键: '公司', 标签: '公司' },
 ];
 
-export default function 招聘名片() {
+function Mock名片() {
   const { 跳转, 返回 } = use导航();
   // 姓名与公司来自全局（企业认证切片），职务为设计稿 R9 预填值
   const { 状态, 派发 } = use应用状态();

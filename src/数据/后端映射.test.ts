@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { 从BFF简历, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿 } from './后端映射';
 import { BFF意向样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
-import type { 意向草稿型 } from './招聘数据源类型';
+import type { 意向草稿型, 岗位创建上下文 } from './招聘数据源类型';
 
 /** 构造空草稿（含 Task 6 新增的 办公方式 字段），测试用展开覆盖个别字段 */
 const 空草稿: 意向草稿型 = {
@@ -26,6 +26,12 @@ const 空草稿: 意向草稿型 = {
 function ref(id: string, display_name: string) {
   return { id, display_name };
 }
+
+/** P1C Task 5：Job 创建的显式 claim 输入（direct 直发 + 未认证声明起底） */
+const 直接发岗上下文 = (display_name: string): 岗位创建上下文 => ({
+  publisherMode: 'direct',
+  hiringOrganizationClaim: { display_name, legal_name: null },
+});
 
 describe('候选人后端映射', () => {
   it('完整映射 profile 并保留四类条目的真实 ID', () => {
@@ -94,7 +100,7 @@ describe('候选人后端映射', () => {
       ...页面岗位样本,
       类别引用: { id: 'tax_product', display_name: '产品经理' },
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
-    }, { 公司: '云衢科技' });
+    }, 直接发岗上下文('云衢科技'));
     expect(body).toMatchObject({
       publisher_mode: 'direct', hiring_organization_claim: { display_name: '云衢科技', legal_name: null },
       title: 页面岗位样本.名称, category_id: 'tax_product', location_id: 'loc_shanghai',
@@ -104,6 +110,31 @@ describe('候选人后端映射', () => {
     expect(body).not.toHaveProperty('实习转正');
   });
 
+  // P1C Task 5：创建/补丁 body 不得携带服务端专有 refs 与 verification status。
+  it('岗位创建与补丁不携带 organization refs / verification status', () => {
+    const 带引用 = {
+      ...页面岗位样本,
+      类别引用: { id: 'tax_product', display_name: '产品经理' },
+      地点引用: { id: 'loc_shanghai', display_name: '上海' },
+    };
+    expect(JSON.stringify(转岗位创建(带引用, 直接发岗上下文('云衢科技'))))
+      .not.toMatch(/publisher_affiliation_ref|publisher_organization_ref|hiring_organization_ref|verification_status/);
+    expect(JSON.stringify(转岗位补丁(带引用, BFF岗位样本)))
+      .not.toMatch(/publisher_affiliation_ref|publisher_organization_ref|hiring_organization_ref|verification_status/);
+  });
+
+  // P1C Task 5：普通 JD 编辑不拿当前自由文本改 claim，补丁沿用 previous 的 mode 与 claim。
+  it('岗位补丁沿用 previous.publisher_mode 与 previous.hiring_organization_claim', () => {
+    const previous = {
+      ...BFF岗位样本,
+      publisher_mode: 'agency' as const,
+      hiring_organization_claim: { display_name: '客户公司', legal_name: '客户公司有限公司' },
+    };
+    const body = 转岗位补丁({ ...页面岗位样本 }, previous);
+    expect(body.publisher_mode).toBe('agency');
+    expect(body.hiring_organization_claim).toEqual({ display_name: '客户公司', legal_name: '客户公司有限公司' });
+  });
+
   it('经验要求按 BFF enum 映射，不静默降级为 none', () => {
     const 带引用 = {
       ...页面岗位样本,
@@ -111,12 +142,12 @@ describe('候选人后端映射', () => {
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
     };
     // 页面岗位样本.经验要求 = '不限'；覆盖成 '3-5 年' 验证不被吞成 'none'
-    const body = 转岗位创建({ ...带引用, 经验要求: '3-5 年' }, { 公司: '云衢科技' });
+    const body = 转岗位创建({ ...带引用, 经验要求: '3-5 年' }, 直接发岗上下文('云衢科技'));
     expect(body.experience_requirement).toBe('three_to_five_years');
     // 不限 仍映射为 none
-    expect(转岗位创建(带引用, { 公司: '云衢科技' }).experience_requirement).toBe('none');
+    expect(转岗位创建(带引用, 直接发岗上下文('云衢科技')).experience_requirement).toBe('none');
     // 未映射的页值（演示域「3 年以上」）必须抛错，不静默落成 'none'
-    expect(() => 转岗位创建({ ...带引用, 经验要求: '3 年以上' }, { 公司: '云衢科技' }))
+    expect(() => 转岗位创建({ ...带引用, 经验要求: '3 年以上' }, 直接发岗上下文('云衢科技')))
       .toThrow('未映射的经验要求：3 年以上');
   });
 
@@ -125,16 +156,51 @@ describe('候选人后端映射', () => {
       ...页面岗位样本,
       类别引用: { id: 'tax_backend', display_name: '后端开发' },
       地点引用: { id: 'loc_sh', display_name: '上海市' },
-    }, { 公司: '甲公司' });
+    }, 直接发岗上下文('甲公司'));
     expect(body).toMatchObject({ category_id: 'tax_backend', location_id: 'loc_sh' });
   });
 
   it('岗位更新保留 immutable category/location/type/title', () => {
-    const body = 转岗位补丁({ ...页面岗位样本 }, { 原始: BFF岗位样本, 公司: '甲公司' });
+    const body = 转岗位补丁({ ...页面岗位样本 }, BFF岗位样本);
     expect(body).toMatchObject({
       title: BFF岗位样本.title, recruitment_type: BFF岗位样本.recruitment_type,
       category_id: BFF岗位样本.category.id, location_id: BFF岗位样本.location.id,
     });
+  });
+
+  // P3：hard_requirements 完整四员对象在 owner 读与创建/补丁写之间往返，不丢成员也不造默认值。
+  it('hard_requirements complete object round-trips through owner mapping and writes', () => {
+    const dto = {
+      ...BFF岗位样本,
+      hard_requirements: {
+        alternate_weekend_work: 'required' as const,
+        outsourcing_only: 'not_required' as const,
+        onsite_only: 'unknown' as const,
+        frequent_travel: 'required' as const,
+      },
+    };
+    const 页面 = 从BFF岗位(dto, {});
+    expect(页面.硬性事实).toEqual({ 大小周: '必须', 纯外包乙方: '不要求', 全现场办公: '未说明', 频繁出差: '必须' });
+    expect(转岗位创建(页面, 直接发岗上下文('Acme')).hard_requirements).toEqual(dto.hard_requirements);
+    expect(转岗位补丁(页面, dto).hard_requirements).toEqual(dto.hard_requirements);
+  });
+
+  // Task 5 起 在招岗位.硬性事实 必填（组装岗位恒带完整四员）：
+  // 页面样本的四员在创建与补丁 body 里都要写成 hard_requirements，不许缺员。
+  it('页面的硬性事实四员在创建与补丁 body 里都写 hard_requirements', () => {
+    const 带引用 = {
+      ...页面岗位样本,
+      类别引用: { id: 'tax_product', display_name: '产品经理' },
+      地点引用: { id: 'loc_shanghai', display_name: '上海' },
+    };
+    const 样本wire四员 = {
+      alternate_weekend_work: 'unknown',
+      outsourcing_only: 'not_required',
+      onsite_only: 'unknown',
+      frequent_travel: 'unknown',
+    } as const;
+    expect(转岗位创建(带引用, 直接发岗上下文('云衢科技')).hard_requirements).toEqual(样本wire四员);
+    expect(转岗位补丁(带引用, BFF岗位样本).hard_requirements).toEqual(样本wire四员);
   });
 
   it('已加载的校园/实习意向在用户没切招聘类型时保留原类型', () => {
@@ -157,13 +223,13 @@ describe('候选人后端映射', () => {
       类别引用: { id: 'tax_product', display_name: '产品经理' },
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
     };
-    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '不限' }, { 公司: '云衢科技' }).campus_cohort).toBe(null);
-    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: undefined }, { 公司: '云衢科技' }).campus_cohort).toBe(null);
-    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '本周' }, { 公司: '云衢科技' }).campus_cohort).toBe(null);
-    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '2027 届' }, { 公司: '云衢科技' }).campus_cohort).toBe(2027);
+    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '不限' }, 直接发岗上下文('云衢科技')).campus_cohort).toBe(null);
+    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: undefined }, 直接发岗上下文('云衢科技')).campus_cohort).toBe(null);
+    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '本周' }, 直接发岗上下文('云衢科技')).campus_cohort).toBe(null);
+    expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '2027 届' }, 直接发岗上下文('云衢科技')).campus_cohort).toBe(2027);
     // 补丁同样
-    expect(转岗位补丁({ ...带引用, 招聘类型: '校园招聘', 届别: '不限' }, { 原始: BFF岗位样本, 公司: '云衢科技' }).campus_cohort).toBe(null);
-    expect(转岗位补丁({ ...带引用, 招聘类型: '校园招聘', 届别: '2027 届' }, { 原始: BFF岗位样本, 公司: '云衢科技' }).campus_cohort).toBe(2027);
+    expect(转岗位补丁({ ...带引用, 招聘类型: '校园招聘', 届别: '不限' }, BFF岗位样本).campus_cohort).toBe(null);
+    expect(转岗位补丁({ ...带引用, 招聘类型: '校园招聘', 届别: '2027 届' }, BFF岗位样本).campus_cohort).toBe(2027);
   });
 
   // F4：办公方式 既接受中文标签（引导预填来源），也接受 wire code（已有意向快照来源）

@@ -165,6 +165,54 @@
   gap: 9px;
 }
 
+/* ── P6：水合进行中的加载壳（已成功的域保持在屏，壳只代表还在飞的域）── */
+.加载壳 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 4px;
+  font-size: 12px;
+  color: var(--次要浅);
+}
+
+.加载圈 {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--描边);
+  border-top-color: var(--深绿);
+  animation: 加载旋转 0.7s linear infinite;
+}
+
+@keyframes 加载旋转 {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── P6：失败重试（复用「手动添加」的整行按钮形状，语义是重新拉权威数据）── */
+.重试键 {
+  width: 100%;
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  border-radius: var(--圆角-中卡);
+  padding: 13px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+
+/* ── P6：提案确认卡组（卡本体样式归 Agent规则提案卡.module.css）── */
+.提案组 {
+  display: flex;
+  flex-direction: column; /* RN 默认 column，DOM 必须显式写 */
+  gap: 10px;
+}
+
 .添加输入框 {
   flex: 1;
   min-width: 0;

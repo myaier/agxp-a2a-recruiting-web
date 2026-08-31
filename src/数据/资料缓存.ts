@@ -15,15 +15,29 @@ export interface 资料缓存范围 {
   账号: string;
 }
 
+/**
+ * P1C：字段全部可选 —— Backend 白名单快照只带 服务端尚未接管 的键
+ * （当前企业关系编号/未认证公司声明/求职头像/飞书已接入/企业飞书已接入）；
+ * 企业认证/招聘头像/公司LOGO/公司自述 已被 P1C 服务端事实取代，只走 Mock 路径。
+ * Mock migration 仍显式补齐全量旧字段。
+ */
 export interface 资料缓存快照 {
-  公司自述: 公司自述覆盖 | null;
-  企业认证: { 姓名: string; 公司: string; 职务?: string };
-  招聘头像: string | null;
-  公司LOGO: string | null;
-  求职头像: string | null;
-  飞书已接入: boolean;
-  企业飞书已接入: boolean;
+  公司自述?: 公司自述覆盖 | null;
+  企业认证?: { 姓名: string; 公司: string; 职务?: string };
+  招聘头像?: string | null;
+  公司LOGO?: string | null;
+  求职头像?: string | null;
+  飞书已接入?: boolean;
+  企业飞书已接入?: boolean;
+  // ── P1C：可恢复的组织选择（恢复值须经最新 affiliations 校验）──
+  当前企业关系编号?: string | null;
+  未认证公司声明?: string;
 }
+
+/** Mock 种子 / 空账号资料：旧字段全量必带的形状（Mock migration 仍显式补齐旧字段）。 */
+export type 完整Mock资料快照 = Required<Pick<资料缓存快照,
+  '公司自述' | '企业认证' | '招聘头像' | '公司LOGO' | '求职头像' | '飞书已接入' | '企业飞书已接入'
+>>;
 
 const 前缀 = 'AGXP账号资料v2';
 
@@ -80,13 +94,18 @@ export function 读资料缓存(存储: 资料缓存存储 | null, 范围: 资�
     if (是求职头像(值.求职头像)) 快照.求职头像 = 值.求职头像;
     if (typeof 值.飞书已接入 === 'boolean') 快照.飞书已接入 = 值.飞书已接入;
     if (typeof 值.企业飞书已接入 === 'boolean') 快照.企业飞书已接入 = 值.企业飞书已接入;
+    // P1C：组织选择的新键逐键守卫——损坏类型被丢弃，不进入应用状态
+    if (值.当前企业关系编号 === null || typeof 值.当前企业关系编号 === 'string') {
+      快照.当前企业关系编号 = 值.当前企业关系编号;
+    }
+    if (typeof 值.未认证公司声明 === 'string') 快照.未认证公司声明 = 值.未认证公司声明;
     return 快照;
   } catch {
     return {};
   }
 }
 
-export function 写资料缓存(存储: 资料缓存存储 | null, 范围: 资料缓存范围, 快照: 资料缓存快照): boolean {
+export function 写资料缓存(存储: 资料缓存存储 | null, 范围: 资料缓存范围, 快照: Partial<资料缓存快照>): boolean {
   if (!存储) return false;
   try {
     存储.setItem(资料缓存键(范围), JSON.stringify(快照));

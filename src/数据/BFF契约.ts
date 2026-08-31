@@ -154,6 +154,10 @@ export interface BFFOwnerJob {
   publisher_affiliation_ref?: string;
   publisher_verification_status: 'unverified' | 'verified';
   hiring_organization_claim: { display_name: string; legal_name?: string | null };
+  // P1C：服务端推导的发布方/用人企业投影（只读）；创建岗位不提交这些字段。
+  publisher_organization_ref?: string;
+  hiring_organization_verification_status: BFF验证状态;
+  hiring_organization_ref?: string;
   title: string;
   recruitment_type: 'social_full_time' | 'campus' | 'internship' | 'part_time';
   category: BFF目录引用;
@@ -169,6 +173,9 @@ export interface BFFOwnerJob {
   onsite_days_per_week: number | null;
   experience_requirement: string;
   education_requirement: string;
+  // P3：四问硬性事实块 —— 服务端 Owner Job / Candidate Job 均必返完整四员（OpenAPI HardRequirements），
+  // 读到不完整对象按契约漂移 fail closed，绝不缺省成 unknown。
+  hard_requirements: BFF硬性条件;
   description: string;
   requirements: string;
   keywords: string[];
@@ -178,6 +185,188 @@ export interface BFFOwnerJob {
   published_at: string;
   created_at: string;
   updated_at: string;
+}
+
+// ── P3：隐私域 / 候选人组织搜索 / 硬性条件 DTO ──
+// 字段名与闭合 enum 逐项复制自 recruitment-bff OpenAPI 的
+// PrivacyView / PrivacyPatch / PrivacyBlockReceipt / OrganizationSearchPage / HardRequirements。
+
+export type BFF披露档 = 'never' | 'resume_submission' | 'anonymous';
+export type BFF屏蔽来源 = 'current_employer' | 'related_organization' | 'manual';
+export type BFF硬性要求档 = 'required' | 'not_required' | 'unknown';
+
+export interface BFF披露偏好 {
+  current_employer: BFF披露档;
+  education: BFF披露档;
+  portfolio_links: BFF披露档;
+}
+export interface BFF隐私组织屏蔽 {
+  organization_id: string;
+  organization_display_name: string;
+  organization_status: 'active' | 'suspended';
+  source: BFF屏蔽来源;
+  created_at: string;
+}
+export interface BFF隐私视图 {
+  employer_privacy_enabled: boolean;
+  disclosure_preferences: BFF披露偏好;
+  organization_blocks: BFF隐私组织屏蔽[];
+  revision: number;
+  updated_at: string;
+}
+export type BFF隐私快照 = Pick<BFF隐私视图,
+  'employer_privacy_enabled' | 'disclosure_preferences' | 'organization_blocks' | 'revision'>;
+export interface BFF隐私补丁 {
+  employer_privacy_enabled?: boolean;
+  disclosure_preferences?: Partial<BFF披露偏好>;
+}
+export interface BFF隐私屏蔽回执 {
+  organization_block: BFF隐私组织屏蔽;
+  privacy_revision: number;
+  created_at: string;
+}
+export interface BFF组织搜索项 { organization_id: string; display_name: string; legal_name: string }
+export interface BFF组织搜索页 { items: BFF组织搜索项[]; next_cursor: string | null }
+export interface BFF硬性条件 {
+  alternate_weekend_work: BFF硬性要求档;
+  outsourcing_only: BFF硬性要求档;
+  onsite_only: BFF硬性要求档;
+  frequent_travel: BFF硬性要求档;
+}
+
+/**
+ * Candidate Job 的编译期闭类型：owner-private 列（publisher_mode / affiliation ref /
+ * private_screening_preferences）显式 Omit，status 收敛为 active，四员硬性条件必在。
+ * P3 只保留类型边界 —— 无 fixture、无请求方法、无运行时 decoder；P4 有消费方再放开。
+ */
+export interface BFFCandidateJob extends Omit<BFFOwnerJob,
+  'publisher_mode' | 'publisher_affiliation_ref' | 'private_screening_preferences' | 'status'> {
+  publisher_profile?: {
+    public_name: string;
+    title: string;
+    personal_verification_status: 'unverified' | 'verified';
+    avatar_url?: string | null;
+  };
+  status: 'active';
+  hard_requirements: BFF硬性条件;
+}
+
+// ── 组织域 DTO（P1C：RecruiterProfile / Affiliation / 企业管理员申请 / 企业档案与媒体）──
+// 字段名严格对齐 P1B BFF OpenAPI；闭合 enum 与 exact key set 由 组织.ts 的 decoder 校验。
+
+export type BFF验证状态 = 'unverified' | 'verified';
+
+export interface BFF招聘方档案 {
+  public_name: string;
+  title: string;
+  personal_verification_status: BFF验证状态;
+  verified_name?: string | null;
+  avatar_url?: string | null;
+  revision: number;
+}
+
+export interface BFF企业关系 {
+  affiliation_id: string;
+  organization_id: string;
+  organization_display_name: string;
+  organization_status: 'active' | 'suspended';
+  status: 'pending' | 'verified' | 'revoked';
+  role: 'member' | 'admin';
+  verification_method: 'admin_invitation' | 'corporate_email' | 'manual_admin_review';
+  revision: number;
+}
+
+export interface BFF企业关系列表 { affiliations: BFF企业关系[] }
+
+export interface BFF企业管理员申请 {
+  request_id: string;
+  legal_name: string;
+  display_name: string;
+  domains: string[];
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  revision: number;
+}
+
+export interface BFF企业管理员申请列表 { requests: BFF企业管理员申请[] }
+
+export interface BFF企业媒体 {
+  media_id: string;
+  media_type: 'image/png' | 'image/jpeg';
+  size_bytes: number;
+  width: number;
+  height: number;
+  url: string;
+}
+
+export interface BFF团队成员 { name: string; title: string; summary: string }
+
+export type BFF企业规模 = '' | 'under_20' | '20_99' | '100_499' | '500_1000' | '1000_9999' | '10000_plus';
+export type BFF融资阶段 = '' | 'unfunded' | 'angel' | 'series_a' | 'series_b' | 'series_c' | 'series_d_plus' | 'public' | 'self_funded';
+export type BFF作息 = '' | 'two_day_weekend' | 'alternate_saturday' | 'flexible';
+export type BFF福利码 =
+  | 'social_insurance_housing_fund' | 'supplementary_medical' | 'stock_options' | 'flexible_work'
+  | 'annual_physical_exam' | 'regular_physical_exam' | 'paid_annual_leave' | 'meal_allowance'
+  | 'transport_allowance' | 'housing_allowance' | 'holiday_benefits' | 'team_building_meals'
+  | 'snacks_afternoon_tea' | 'overtime_allowance' | 'year_end_bonus' | 'shuttle_bus' | 'regular_training';
+
+export interface BFF企业档案 {
+  brand_name: string;
+  industry: BFF目录引用 | null;
+  company_size: BFF企业规模;
+  funding_stage: BFF融资阶段;
+  office_address: string;
+  benefit_codes: BFF福利码[];
+  work_schedule: BFF作息;
+  company_intro: string;
+  business_items: string[];
+  product_intro: string;
+  team_members: BFF团队成员[];
+  logo: BFF企业媒体 | null;
+  office_media: BFF企业媒体[];
+  company_media: BFF企业媒体[];
+  revision: number;
+  updated_at: string | null;
+}
+
+export interface BFF公开企业 {
+  organization_id: string;
+  legal_name: string;
+  display_name: string;
+  verified_at: string;
+  profile: BFF企业档案;
+  active_verified_job_count: number;
+}
+
+export interface BFF招聘方档案补丁 {
+  public_name?: string;
+  title?: string;
+}
+
+export interface BFF企业管理员申请元数据 {
+  legal_name: string;
+  display_name: string;
+  registry_key: string;
+  explanation: string;
+  domains: string[];
+}
+
+export type BFF企业媒体用途 = 'organization_logo' | 'office_photo' | 'company_photo';
+
+export interface BFF企业档案替换 {
+  brand_name: string;
+  industry_id: string;
+  company_size: BFF企业规模;
+  funding_stage: BFF融资阶段;
+  office_address: string;
+  benefit_codes: BFF福利码[];
+  work_schedule: BFF作息;
+  company_intro: string;
+  business_items: string[];
+  office_media_ids: string[];
+  company_media_ids: string[];
+  product_intro: string;
+  team_members: BFF团队成员[];
+  logo_media_id: string;
 }
 
 export interface BFF信封<T> {
@@ -238,6 +427,9 @@ export interface BFF意向写入 {
 
 export interface BFF岗位创建 {
   publisher_mode: 'direct' | 'agency';
+  // P1C Task 5：创建/补丁 body 只声明 claim；publisher_affiliation_ref /
+  // publisher_organization_ref / hiring_organization_ref 与 verification status
+  // 是服务端推导的只读投影（见 BFFOwnerJob），客户端不得提交。
   hiring_organization_claim: { display_name: string; legal_name: string | null };
   title: string;
   recruitment_type: BFFOwnerJob['recruitment_type'];
@@ -252,6 +444,9 @@ export interface BFF岗位创建 {
   onsite_days_per_week?: number | null;
   experience_requirement: string;
   education_requirement: string;
+  // P3：创建 body 里四员块整体可选（OpenAPI JobCreate 不在 required），
+  // 缺省 = 服务端按全 unknown 处理；BFF岗位补丁 经 Partial 继承整个对象的补丁形态。
+  hard_requirements?: BFF硬性条件;
   description: string;
   requirements: string;
   keywords?: string[];
@@ -259,3 +454,388 @@ export interface BFF岗位创建 {
 }
 
 export type BFF岗位补丁 = Partial<BFF岗位创建>;
+
+// ── Agent 规则域 DTO（P6：agent-rules / agent-rule-proposals 的 owner 投影）──
+// 字段名逐项复制自 mobile-v1 OpenAPI；闭合 enum、ID 正则与 interpreting/ready/terminal
+// 的 exact key set 由 招聘数据源/Agent规则.ts 的 decoder 校验。
+
+export type BFFAgent规则作用域 =
+  | { type: 'global' }
+  | { type: 'intention'; intention_id: string };
+
+export type BFFAgent规则状态 = 'active' | 'paused' | 'archived';
+export type BFFAgent规则提案状态 = 'interpreting' | 'ready' | 'accepted' | 'dismissed' | 'failed';
+export type BFFAgent规则后果 = 'auto_allow' | 'auto_deny' | 'advisory' | 'mixed';
+
+export interface BFFAgent规则 {
+  rule_id: string;
+  version: number;
+  state: BFFAgent规则状态;
+  scope: BFFAgent规则作用域;
+  clause_kinds: ('information_disclosure' | 'workplace_mode' | 'work_schedule' |
+    'compensation_band' | 'role_domain' | 'candidate_affiliation' |
+    'qualification' | 'contact_cadence')[];
+  display_text: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BFFAgent规则提案 {
+  proposal_id: string;
+  state: BFFAgent规则提案状态;
+  normalized_text?: string;
+  consequence?: BFFAgent规则后果;
+  created_at?: string;
+}
+
+// ── 发现推荐域 DTO（P4：job-recommendations / candidate-recommendations / 双端委托）──
+// 字段名与闭合 enum 逐项复制自 mobile-v1 OpenAPI 的 Discovery* 家族；
+// exact key set、rank/score 边界与条件可空由 招聘数据源/发现推荐.ts 的 decoder 校验。
+
+export type BFF发现方向 = 'candidate_jobs' | 'recruiter_candidates';
+export type BFF委托状态 =
+  | 'accepted' | 'evaluating' | 'case_started'
+  | 'needs_user' | 'refused' | 'failed';
+export type BFF淘汰原因 =
+  | 'experience_insufficient' | 'direction_mismatch'
+  | 'primary_stack_mismatch' | 'other';
+
+export interface BFF委托摘要 {
+  delegation_id: string;
+  state: BFF委托状态;
+  case_id: string | null;
+}
+
+export interface BFF候选岗位推荐 {
+  recommendation_id: string;
+  batch_id: string;
+  intention_id: string;
+  rank: number;
+  match_score: number;
+  match_reasons: string[];
+  state: 'available' | 'delegating' | 'delegated';
+  job: BFFCandidateJob;
+  delegation: BFF委托摘要 | null;
+}
+
+export interface BFF招聘候选教育 {
+  institution: string | null;
+  major: string | null;
+  degree: string;
+  start_month: string;
+  end_month: string | null;
+}
+
+export interface BFF招聘候选推荐 {
+  recommendation_id: string;
+  batch_id: string;
+  job_id: string;
+  rank: number;
+  match_score: number;
+  highlights: string[];
+  compensation_relationship: 'overlap' | 'near_miss' | 'disjoint' | 'unknown';
+  candidate_alias: string;
+  experience_years: number | null;
+  job_status: string;
+  summary: string;
+  skills: string[];
+  educations: BFF招聘候选教育[];
+  favorite: boolean;
+  rejected: boolean;
+  rejection_reason: BFF淘汰原因 | null;
+  state: 'available' | 'rejected';
+  delegation: BFF委托摘要 | null;
+}
+
+export interface BFF发现偏好 {
+  favorite: boolean;
+  rejected: boolean;
+  rejection_reason: 'not_interested' | BFF淘汰原因 | null;
+  revision: number;
+  updated_at: string;
+}
+
+export interface BFF发现批次 {
+  batch_id: string;
+  direction: BFF发现方向;
+  scope_ref: string;
+  ranking_version: 'discovery-ranking.v1';
+  count: number;
+  created_at: string;
+}
+
+export interface BFF委托回执 {
+  delegation_id: string;
+  recommendation_id: string | null;
+  state: BFF委托状态 | null;
+  evaluation_id: string | null;
+  case_id: string | null;
+  refusal_code:
+    | 'recommendation_not_found' | 'recommendation_unavailable'
+    | 'delegation_not_allowed' | 'active_case_quota_reached'
+    | 'delegation_cooldown' | null;
+}
+// ── 候选人附件简历域 DTO（P2：resume-files 与解析状态）──
+// 字段名逐项复制自 recruitment-bff OpenAPI；解析失败码与 media type 闭合，
+// 不增加协议中不存在的字段，不加入 extracted result。
+
+export type BFF附件解析失败码 =
+  | 'document_unreadable'
+  | 'document_too_complex'
+  | 'parser_invalid_output'
+  | 'parser_temporarily_unavailable';
+
+export type BFF附件解析状态 =
+  | { status: 'not_started' }
+  | { status: 'pending' | 'processing'; updated_at: string }
+  | { status: 'succeeded'; parse_id: string; updated_at: string }
+  | { status: 'failed'; failure_code: BFF附件解析失败码; updated_at: string };
+
+export interface BFF附件简历版本 {
+  version_id: string;
+  version: number;
+  size_bytes: number;
+  media_type: 'application/pdf';
+  sha256: string;
+  created_at: string;
+  parse: BFF附件解析状态;
+}
+
+export interface BFF附件简历 {
+  file_id: string;
+  display_name: string;
+  revision: number;
+  current_version: BFF附件简历版本;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BFF附件简历库 {
+  items: BFF附件简历[];
+  limits: {
+    max_files: number;
+    max_file_bytes: number;
+    accepted_media_types: ['application/pdf'];
+  };
+}
+
+export interface BFF删除回执 { deleted: true }
+
+// ── P5 MatchCase 域 wire DTO（双端 match-cases 工作区/历史/详情/命令与 Case 叮嘱）──
+// 字段名与闭合 enum 逐项复制自已准入 recruitment-bff mobile-v1 OpenAPI 的
+// MatchCaseView / Candidate(Recruiter)MatchCaseWorkspaceItem(Page) /
+// Candidate(Recruiter)MatchCaseDetail / MatchCaseStageSection 家族；
+// exact key set、17 行状态矩阵与声明 pattern 由 招聘数据源/MatchCase.ts 的 decoder 校验。
+
+export type P5角色 = 'candidate' | 'recruiter';
+export type P5历史生命周期 = 'ended' | 'completed';
+export type P5生命周期 = 'open' | 'ended' | 'completed';
+export type P5阶段 =
+  | 'anonymous_screening' | 'resume_submission' | 'needs_coordination' | 'intent_confirmation';
+export type P5状态 =
+  | 'running' | 'needs_user' | 'passed' | 'attention_required' | 'ended' | 'waiting';
+export type P5步骤 =
+  | 'policy_check'
+  | 'candidate_evaluation'
+  | 'candidate_question'
+  | 'recruiter_answer'
+  | 'candidate_reevaluation'
+  | 'human_decision'
+  | 'complete'
+  | 'awaiting_candidate_resume_invitation'
+  | 'awaiting_resume_parse'
+  | 'screening_resume'
+  | 'awaiting_recruiter_decision'
+  | 'coordinating'
+  | 'awaiting_candidate_decision'
+  | 'awaiting_confirmations'
+  | 'awaiting_candidate_confirmation'
+  | 'awaiting_recruiter_confirmation'
+  | 'handoff_pending';
+export type P5动作 =
+  | 'respond_fact'
+  | 'end_screening'
+  | 'accept_resume_invitation'
+  | 'decline_resume_invitation'
+  | 'retry_resume_readiness'
+  | 'replace_resume'
+  | 'decide_resume_screening'
+  | 'decide_coordination'
+  | 'confirm_intent'
+  | 'decline_intent';
+
+/** MatchCaseView：四端共用的裸状态。ended 携三列终局字段，completed 只留 finalized_at。 */
+export interface BFFMatchCase视图 {
+  case_id: string;
+  lifecycle: P5生命周期;
+  stage: P5阶段;
+  status: P5状态;
+  step: P5步骤;
+  round: number;
+  round_budget: number;
+  needs_user: boolean;
+  outcome: string | null;
+  outcome_code: string | null;
+  created_at: string;
+  updated_at: string;
+  finalized_at?: string | null;
+}
+
+/** WorkspacePublicJob + MatchCaseWorkspaceJob：Case 创建时冻结的公开职位四事实快照。 */
+export interface BFF公开职位快照 {
+  title: string;
+  location: string;
+  public_salary_range: string;
+  required_skills: string[];
+}
+export interface BFFMatchCase工作区职位 {
+  job_id: string;
+  job: BFF公开职位快照;
+}
+
+/** 列表行（工作区与历史刻意共用同一 role item 形状）；公开路径禁止 resume_submission。 */
+export interface BFF候选工作区项 {
+  state: BFFMatchCase视图;
+  needs_action: boolean;
+  intention_id: string;
+  job: BFFMatchCase工作区职位;
+}
+export interface BFF招聘工作区项 {
+  state: BFFMatchCase视图;
+  needs_action: boolean;
+  job: BFFMatchCase工作区职位;
+  candidate_alias: string;
+}
+export interface BFF候选工作区页 { items: BFF候选工作区项[]; next_cursor: string | null }
+export interface BFF招聘工作区页 { items: BFF招聘工作区项[]; next_cursor: string | null }
+
+/** 四阶段详情的 typed 块（checklist / transcript / instruction receipts / attachment）。 */
+export interface BFFMatchCase清单项 { label: string; done: boolean }
+export interface BFFMatchCase时间线项 {
+  event_id: string;
+  stage: P5阶段;
+  kind: string;
+  role: '' | P5角色;
+  reason_code?: string;
+  ref?: string;
+  text?: string;
+  occurred_at: string;
+}
+export interface BFFMatchCase叮嘱回执 {
+  instruction_id: string;
+  owner: P5角色;
+  stage: P5阶段;
+  expression?: string;
+  occurred_at: string;
+}
+export interface BFFMatchCase简历附件 {
+  file_id: string;
+  file_version_id: string;
+  display_name: string;
+}
+export interface BFFMatchCase阶段区 {
+  stage: P5阶段;
+  state: 'pending' | 'active' | 'passed' | 'ended';
+  occurred_at?: string | null;
+  summary: string;
+  checklist: BFFMatchCase清单项[];
+  transcript: BFFMatchCase时间线项[];
+  instruction_receipts: BFFMatchCase叮嘱回执[];
+  attachment?: BFFMatchCase简历附件;
+}
+
+export interface BFFMatchCase协同 {
+  issue_id: string;
+  kind: 'work_mode' | 'work_schedule' | 'travel' | 'team_and_reporting' | 'technical_direction';
+  required_roles: P5角色[];
+  candidate_decided: boolean;
+  recruiter_decided: boolean;
+}
+export interface BFFMatchCase意向确认 {
+  candidate: '' | 'confirm' | 'decline';
+  recruiter: '' | 'confirm' | 'decline';
+}
+export interface BFFMatchCase终局摘要 {
+  stage: P5阶段;
+  outcome: string;
+  reason_summary: string;
+  finalized_at: string;
+}
+
+/** 双端 role detail：current_coordination / terminal_summary 缺席而非 null；对端上下文键即漂移。 */
+export interface BFF候选MatchCase详情 {
+  state: BFFMatchCase视图;
+  needs_action: boolean;
+  available_actions: P5动作[];
+  stages: BFFMatchCase阶段区[];
+  current_coordination?: BFFMatchCase协同;
+  intent_confirmations: BFFMatchCase意向确认;
+  terminal_summary?: BFFMatchCase终局摘要;
+  intention_id: string;
+  job: BFFMatchCase工作区职位;
+  /**
+   * P7 Task 6：completed + complete 时必在的已发布会话坐标（^[1-9][0-9]{0,63}$）；
+   * handoff_pending / open / ended 详情必缺席 —— 与 state.step 的联合不变式由
+   * 招聘数据源/MatchCase.ts 的 decoder 校验。
+   */
+  conversation_ref?: string;
+}
+export interface BFF招聘MatchCase详情 {
+  state: BFFMatchCase视图;
+  needs_action: boolean;
+  available_actions: P5动作[];
+  stages: BFFMatchCase阶段区[];
+  current_coordination?: BFFMatchCase协同;
+  intent_confirmations: BFFMatchCase意向确认;
+  terminal_summary?: BFFMatchCase终局摘要;
+  job: BFFMatchCase工作区职位;
+  candidate_alias: string;
+  /** P7 Task 6：同 BFF候选MatchCase详情.conversation_ref。 */
+  conversation_ref?: string;
+}
+
+// ── P7 真人会话域 wire DTO（双端 /api/v1/{me|recruiter}/conversations 家族）──
+// 字段名逐项复制自 recruitment-bff mobile-v1 OpenAPI 的 ConversationItem / ConversationPage /
+// ConversationContext / MessagePreview / ConversationMessage / ConversationMessagesPage /
+// ReadThroughResult；exact key set、坐标十进制模式、RFC3339、unread_count 安全非负整数、
+// context_status↔context 联合不变式与 user_text/conversation_started 两分支由
+// 招聘数据源/真人会话.ts 的 decoder 校验。context 不含真名、电话、微信或简历正文。
+
+export type P7角色 = 'candidate' | 'recruiter';
+
+export interface BFF会话上下文 {
+  primary_label: string;
+  secondary_label: string;
+  job_ref?: string;
+  resume_ref?: string;
+}
+
+export interface BFF消息预览 {
+  message_id: string;
+  sender_role: P7角色;
+  preview: string;
+  created_at: string;
+}
+
+export interface BFF会话项 {
+  conversation_id: string;
+  case_id: string;
+  kind: 'human_handoff';
+  last_message: BFF消息预览 | null;
+  last_activity_at: string;
+  unread_count: number;
+  context_status: 'available' | 'unavailable';
+  context?: BFF会话上下文 | null;
+}
+
+export interface BFF会话消息 {
+  message_id: string;
+  kind: 'user_text' | 'conversation_started';
+  sender_role: P7角色 | 'system';
+  content?: string | null;
+  created_at: string;
+}
+
+export interface BFF会话页 { items: BFF会话项[]; next_cursor: string | null }
+export interface BFF消息页 { messages: BFF会话消息[]; next_cursor: string | null }
+export interface BFF已读回执 { read_through_message_id: string }

@@ -1,6 +1,6 @@
 // UI 回归总入口：解析参数 → 解析 base → 创建 detached base worktree →
 // 参考/候选采集 → 比较 → 返回比较器退出码。带一次性基础设施重试与安全清理。
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdtempSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { 解析UI回归参数, 决定采集模式, 运行命令, 解析门禁环境 } from './UI回归核心.mjs';
@@ -78,6 +78,18 @@ async function main() {
         return 2;
       }
     }
+
+    // Step 3.5: 把当前仓库的视觉回归 harness（场景定义/关键元素/采集 spec/采集 config）
+    // 同步进基准 worktree。基准侧只提供「产品代码」；「采集口径」必须与候选同一套：
+    // harness 只在候选侧修复（例如收敛歧义关键元素定位器、新增场景）时，基准侧仍按旧
+    // harness 采集会继续失败，比较器把「基准截图缺失」判成 infrastructure（退出码 2）。
+    // 比较器的几何比较本身要求两侧关键元素同名同定义，同步后由构造保证。
+    cpSync(join(仓库根, 'e2e', '视觉回归'), join(baseWorktree, 'e2e', '视觉回归'), { recursive: true });
+    cpSync(
+      join(仓库根, 'playwright.视觉回归.config.ts'),
+      join(baseWorktree, 'playwright.视觉回归.config.ts'),
+    );
+    log('已同步当前视觉回归 harness 到基准 worktree（两侧采集口径一致）');
 
     // Step 4: 读取 base worktree 的 package.json，检查 ui:capture。
     let baseHasCapture = false;

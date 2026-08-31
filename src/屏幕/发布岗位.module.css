@@ -376,6 +376,63 @@
   color: var(--次要);
 }
 
+/* ── Task 5：四问硬性事实的三态钮 ──
+   中性(未说明)=快捷片同款白底深描边 + 灰 —；
+   必须=全站选择风格统一的亮绿描边墨字 + 绿 ✓；
+   不要求=浅灰底次要字 + ×。三态共用胶囊圆角与既有色板，不引新颜色。 */
+.硬性事实行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+.硬性事实片 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--圆角-胶囊);
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--次要);
+}
+.硬性事实必须 {
+  border: 1.5px solid var(--亮绿);
+  color: var(--墨);
+  font-weight: 700;
+}
+.硬性事实必须 .档符号 {
+  color: var(--亮绿);
+}
+/* 不要求：降为灰排但保留同一枚胶囊与描边，跟「未说明」的空白 — 一眼分得开 */
+.硬性事实不要求 {
+  background: var(--浅灰底2);
+  color: var(--次要浅);
+}
+.硬性事实不要求 .档符号 {
+  font-weight: 700;
+}
+.档符号 {
+  min-width: 12px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--最弱);
+}
+
+/* 存量手动条只读展示：已选片同款淡绿胶囊，但没有删除叉、不是按钮 */
+.存量片 {
+  padding: 6px 12px;
+  border-radius: var(--圆角-胶囊);
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+
 /* ── BOSS 对照补齐（2026-08-19）：红线提示 / 不可改注 / 锁标 / 档位片 / 同意行 ── */
 
 /* JD 红线提示：联系方式与歧视性内容。中性灰底，不做成吓人的红框 */

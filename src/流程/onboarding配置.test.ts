@@ -26,6 +26,10 @@ describe('多角色 onboarding 合同', () => {
     expect(身份首次入口('企业')).toBe(路径.招聘名片);
     expect(Onboarding流程.招聘方).toEqual([路径.招聘名片, 路径.发布岗位, 路径.企业主壳]);
     expect(Onboarding流程.招聘方).not.toContain(路径.企业实名认证);
+    // P1C Task 3：组织管理员申请 / 邀请加入是账号管理入口（企业实名认证摘要页的两个动作），
+    // 不是注册步骤 —— Backend 注册流同样直接进招聘名片，不得把它们插进合同
+    expect(Onboarding流程.招聘方).not.toContain(路径.企业组织申请);
+    expect(Onboarding流程.招聘方).not.toContain(路径.企业邀请加入);
   });
 
   it('学生路径不会跳过实习经历、技能与证书所在页', () => {

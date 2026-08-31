@@ -37,9 +37,13 @@ export default defineConfig(({ command, mode }) => {
         '/api/v1': {
           target: 代理.target,
           changeOrigin: 代理.改写Origin !== null,
+          // P7 Task 5：同源事件走 WebSocket 升级 —— HTTP 与 WS 两条事件不能互相替代
+          ws: true,
           configure(proxy) {
             if (!代理.改写Origin) return;
+            // HTTP 改写继续保留；WS 握手 Origin 同样改写为配置的 public origin
             proxy.on('proxyReq', (request) => request.setHeader('Origin', 代理.改写Origin!));
+            proxy.on('proxyReqWs', (request) => request.setHeader('Origin', 代理.改写Origin!));
           },
         },
       } : undefined,

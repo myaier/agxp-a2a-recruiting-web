@@ -10,11 +10,16 @@ import { 清账号状态 } from './会话操作';
 export type 目录查询 = Pick<HTTP招聘数据源, '查询Location' | '查询Taxonomy' | '查询Institution'>;
 
 export function 创建目录查询(
-  deps: Pick<后端操作依赖, '是后端' | '后端' | '派发' | '设后端状态' | '主体标识引用' | '会话代际'>,
+  deps: Pick<后端操作依赖, '是后端' | '后端' | '派发' | '设后端状态' | '主体标识引用' | '会话代际'> &
+    Pick<后端操作依赖, 'P4范围代际' | 'P4幂等意图' | 'P4可见范围'>,
 ): 目录查询 | null {
   const { 是后端, 后端, 派发, 设后端状态, 主体标识引用, 会话代际 } = deps;
   if (!是后端 || !后端) return null;
-  const 账号清理依赖 = { 派发, 设后端状态, 后端, 主体标识引用, 会话代际 };
+  // P4 Task 3 fix：三个 P4 引用随行 —— 目录 401 的统一清理同样清 discovery 双 Map 与可见范围
+  const 账号清理依赖 = {
+    派发, 设后端状态, 后端, 主体标识引用, 会话代际,
+    P4范围代际: deps.P4范围代际, P4幂等意图: deps.P4幂等意图, P4可见范围: deps.P4可见范围,
+  };
 
   // Task 3 R8 / review-r1 P1-6 / review-r2 R2-M-4：目录查询 seam —— Backend 模式暴露
   // 后端.查询Location 等三个方法，Mock 为 null。facade 包一层 401 处理：选择器开着时会话过期 →

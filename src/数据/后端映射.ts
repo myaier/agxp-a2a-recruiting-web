@@ -20,13 +20,15 @@ import type {
   BFF意向排除,
   BFF岗位创建,
   BFF岗位补丁,
+  BFF硬性条件,
 } from './BFF契约';
-import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 简历项目, 在招岗位, 求职意向 } from './类型';
+import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 简历项目, 在招岗位, 求职意向, 岗位硬性事实 } from './类型';
 import type {
   页面简历快照,
   目录选择值,
   意向草稿型,
   意向映射上下文,
+  岗位创建上下文,
   首次意向输入,
 } from './招聘数据源类型';
 import { 迁移主要求职类型 } from '../流程/onboarding配置';
@@ -364,6 +366,30 @@ const 后端到经验要求 = {
   none: '不限', one_to_three_years: '1-3 年', three_to_five_years: '3-5 年',
   five_plus_years: '5 年以上', ten_plus_years: '10 年以上',
 } as const;
+// P3：四问硬性事实 双向闭合表。服务端 OwnerJob 必返完整四员（数据源层 fail closed 校验），
+// 映射层不做 `?? unknown` 兜底 —— 契约漂移要当面暴露。
+const 后端到硬性事实档 = { required: '必须', not_required: '不要求', unknown: '未说明' } as const;
+const 硬性事实档到后端 = { 必须: 'required', 不要求: 'not_required', 未说明: 'unknown' } as const;
+
+/** BFF四员硬性条件 → 页面 硬性事实；四个成员一一对应，无默认值。 */
+export function 从BFF硬性条件(dto: BFF硬性条件): 岗位硬性事实 {
+  return {
+    大小周: 后端到硬性事实档[dto.alternate_weekend_work],
+    纯外包乙方: 后端到硬性事实档[dto.outsourcing_only],
+    全现场办公: 后端到硬性事实档[dto.onsite_only],
+    频繁出差: 后端到硬性事实档[dto.frequent_travel],
+  };
+}
+
+/** 页面 硬性事实 → BFF四员硬性条件；写入方向同样无默认值。 */
+function 硬性事实到后端(事实: 岗位硬性事实): BFF硬性条件 {
+  return {
+    alternate_weekend_work: 硬性事实档到后端[事实.大小周],
+    outsourcing_only: 硬性事实档到后端[事实.纯外包乙方],
+    onsite_only: 硬性事实档到后端[事实.全现场办公],
+    frequent_travel: 硬性事实档到后端[事实.频繁出差],
+  };
+}
 
 /** 页面 经验要求 → BFF enum；未映射的页值抛错，绝不静默降级为 'none'。 */
 function 映射经验要求(页值: string | undefined): string {
@@ -417,6 +443,8 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
     筛选要求: dto.private_screening_preferences,
     经验要求: 后端到经验要求[dto.experience_requirement as keyof typeof 后端到经验要求] ?? dto.experience_requirement,
     最低学历: 后端到学历[dto.education_requirement as keyof typeof 后端到学历] ?? dto.education_requirement,
+    // P3：四问硬性事实随 owner DTO 必返；缺员/坏档由数据源层在映射前拒绝
+    硬性事实: 从BFF硬性条件(dto.hard_requirements),
     职位描述: dto.description,
     职位要求: dto.requirements,
     职位关键词: dto.keywords,
@@ -432,12 +460,13 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
 }
 
 /** 页面岗位 → BFF岗位创建 body。加分关键词/实习转正 不进 body（只进前端附属存储）。
- *  Task 7：category_id/location_id 直接读 类别引用/地点引用（选择器保存的引用），不再按显示名反查目录。 */
-export function 转岗位创建(页面岗位: 在招岗位, 上下文: { 公司: string }): BFF岗位创建 {
+ *  Task 7：category_id/location_id 直接读 类别引用/地点引用（选择器保存的引用），不再按显示名反查目录。
+ *  P1C Task 5：claim 只吃显式 岗位创建上下文（direct + 声明）；refs/verification status 由服务端推导，不进 body。 */
+export function 转岗位创建(页面岗位: 在招岗位, 上下文: 岗位创建上下文): BFF岗位创建 {
   const { lower, upper } = 解析薪资带(页面岗位.薪资带);
   return {
-    publisher_mode: 'direct',
-    hiring_organization_claim: { display_name: 上下文.公司, legal_name: null },
+    publisher_mode: 上下文.publisherMode,
+    hiring_organization_claim: 上下文.hiringOrganizationClaim,
     title: 页面岗位.名称,
     recruitment_type: 岗位类型到后端[页面岗位.招聘类型 as keyof typeof 岗位类型到后端],
     category_id: 必需引用(页面岗位.类别引用, '类别'),
@@ -453,6 +482,8 @@ export function 转岗位创建(页面岗位: 在招岗位, 上下文: { 公司:
     onsite_days_per_week: 页面岗位.每周天数 ?? null,
     experience_requirement: 映射经验要求(页面岗位.经验要求),
     education_requirement: 学历到后端[页面岗位.最低学历 as keyof typeof 学历到后端] ?? 'none',
+    // P3：四员块整体可选；页面没有 硬性事实（老 Mock 岗）时不硬造缺省对象
+    ...(页面岗位.硬性事实 ? { hard_requirements: 硬性事实到后端(页面岗位.硬性事实) } : {}),
     description: 页面岗位.职位描述 ?? '',
     requirements: 页面岗位.职位要求 ?? '',
     keywords: 页面岗位.职位关键词,
@@ -460,19 +491,24 @@ export function 转岗位创建(页面岗位: 在招岗位, 上下文: { 公司:
   };
 }
 
-/** 页面岗位 → BFF岗位补丁 body。title/type/category/location 带回服务端原值（immutable-field 契约），其余按编辑表单。 */
+/** 页面岗位 → BFF岗位补丁 body。title/type/category/location 带回服务端原值（immutable-field 契约），其余按编辑表单。
+ *  P1C Task 5：不接公司 context —— publisher_mode 与 hiring_organization_claim 直接沿用 previous
+ *  owner DTO，普通 JD 编辑不拿当前自由文本改 claim。 */
 export function 转岗位补丁(
   页面岗位: 在招岗位,
-  上下文: { 原始: BFFOwnerJob; 公司: string },
+  previous: BFFOwnerJob,
 ): BFF岗位补丁 {
   const { lower, upper } = 解析薪资带(页面岗位.薪资带);
   return {
-    publisher_mode: 上下文.原始.publisher_mode,
-    hiring_organization_claim: { display_name: 上下文.公司, legal_name: 上下文.原始.hiring_organization_claim.legal_name ?? null },
-    title: 上下文.原始.title,
-    recruitment_type: 上下文.原始.recruitment_type,
-    category_id: 上下文.原始.category.id,
-    location_id: 上下文.原始.location.id,
+    publisher_mode: previous.publisher_mode,
+    hiring_organization_claim: {
+      display_name: previous.hiring_organization_claim.display_name,
+      legal_name: previous.hiring_organization_claim.legal_name ?? null,
+    },
+    title: previous.title,
+    recruitment_type: previous.recruitment_type,
+    category_id: previous.category.id,
+    location_id: previous.location.id,
     office_location: 页面岗位.办公地 ?? '',
     workplace_mode: 办公方式到岗位后端[页面岗位.办公方式 as keyof typeof 办公方式到岗位后端] ?? 'onsite',
     salary: { lower, upper },
@@ -482,6 +518,8 @@ export function 转岗位补丁(
     onsite_days_per_week: 页面岗位.每周天数 ?? null,
     experience_requirement: 映射经验要求(页面岗位.经验要求),
     education_requirement: 学历到后端[页面岗位.最低学历 as keyof typeof 学历到后端] ?? 'none',
+    // P3：页面带 硬性事实 才写四员块；缺省（absent）= 服务端保持存储值
+    ...(页面岗位.硬性事实 ? { hard_requirements: 硬性事实到后端(页面岗位.硬性事实) } : {}),
     description: 页面岗位.职位描述 ?? '',
     requirements: 页面岗位.职位要求 ?? '',
     keywords: 页面岗位.职位关键词,

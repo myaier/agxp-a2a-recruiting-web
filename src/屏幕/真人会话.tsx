@@ -12,6 +12,7 @@
 // 没有申请-同意这一步（见 真人会话操作栏.tsx）。
 
 import { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import 样式 from './真人会话.module.css';
 import 共用样式 from './直聊会话.module.css';
 import 谈详情样式 from './在谈详情.module.css';
@@ -34,13 +35,31 @@ import {
   市场列表,
   真人会话 as 真人会话数据,
 } from '../数据/模拟数据';
+import Backend真人会话, { 会话不可用 } from './P7/Backend真人会话';
 import type { 在谈单, 会话条 } from '../数据/类型';
 
 /** 这一屏写死服务 J-01 这一单（顶部职位卡、看职位层、「查看 ›」都指同一个岗）。
  *  编号只在这里出现一次，避免三个入口哪天被改歪、指向不同的岗。 */
 const 本单编号 = 'J-01';
 
+/**
+ * P7 Task 4：模式/参数双开关 —— Backend 且带 conversationId 时把坐标交给
+ * P7 Backend 真人会话（详情 + 消息 + 发送 + 已读 + 上下文动作）；Backend 访问
+ * 无参路由 fail closed 成「会话不可用」，绝不读默认 J-01；Mock 保留 J-01 剧情。
+ */
 export default function 真人会话() {
+  const { 数据源模式 } = use应用状态();
+  const { conversationId } = useParams();
+  if (数据源模式 === 'backend') {
+    if (conversationId === undefined) return <会话不可用 />;
+    // review-r3：按会话坐标 key 重挂 —— 换会话即全新实例，旧会话的草稿/未知提示/
+    // PDF 层不存在跨实例残留窗口（组件内另有 layout-effect 代际兜底）。
+    return <Backend真人会话 key={conversationId} role="candidate" conversationId={conversationId} />;
+  }
+  return <Mock真人会话 />;
+}
+
+function Mock真人会话() {
   const { 返回, 跳转 } = use导航();
   const { 状态 } = use应用状态();
   const [消息, 设消息] = useState<会话条[]>(真人会话数据.消息);
@@ -142,8 +161,12 @@ export default function 真人会话() {
 // 这一层若不跟着挪，同一个岗从「在谈详情」和「真人会话·看职位」两个入口点进来会长得不一样。
 function 职位内容({ 单 }: { 单: 在谈单 }) {
   const { 跳转 } = use导航();
-  const { 状态: 全局 } = use应用状态();
+  const { 状态: 全局, 数据源模式 } = use应用状态();
   const 详 = 取在谈岗位详情(单);
+  // P1C Task 5：Backend 下本单来自未接线演示域，没有 CandidateJob/canonical ref。
+  // 公司槽只读：不传 按下、不调 路径.企业详情、不把静态键当 opaque ID 请求；
+  // Mock 仍按原 slug 导航。资料 走显式路径，Backend 不读静态公司档案。
+  const 是后端 = 数据源模式 === 'backend';
   // 适配分的依据：委托进来的 M- 单直接借市场岗位上的证据，剧本 J- 单用自己的同名字段
   const 证据源 = 市场列表.find((岗) => 岗.编号 === 单.编号) ?? 单;
 
@@ -182,13 +205,19 @@ function 职位内容({ 单 }: { 单: 在谈单 }) {
       </div>
 
       {/* 公司(2026-08-26「所有页面都要改」):共用 公司区块 组件。这一跳是用户主动
-          要看另一个对象(公司),与「看职位不该跳走」不冲突:回来按返回键即可 */}
+          要看另一个对象(公司),与「看职位不该跳走」不冲突:回来按返回键即可。
+          Backend(P1C Task 5)公司槽只读:显式 资料,不传 按下 */}
       <div className={谈详情样式.详情卡}>
         <公司区块
           名称={单.公司}
           首字={单.公司首字}
           一行简介={单.公司简介}
-          按下={() => 跳转(路径.企业详情(公司路由键(单.公司)))}
+          资料={是后端 ? { 介绍段: null, 元行组: [] } : undefined}
+          按下={
+            是后端
+              ? undefined
+              : () => 跳转(路径.企业详情(公司路由键(单.公司)))
+          }
         >
           {详.公司.标签.length ? (
             <span className={谈详情样式.公司标签行}>

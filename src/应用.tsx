@@ -47,6 +47,8 @@ const 归档谈判 = lazy(() => import('./屏幕/归档谈判'));
 const 帮助与客服 = lazy(() => import('./屏幕/帮助与客服'));
 const 企业实名认证 = lazy(() => import('./屏幕/企业实名认证'));
 const 招聘名片 = lazy(() => import('./屏幕/招聘名片'));
+const 企业组织申请 = lazy(() => import('./屏幕/企业组织申请'));
+const 企业邀请加入 = lazy(() => import('./屏幕/企业邀请加入'));
 const 发布岗位 = lazy(() => import('./屏幕/发布岗位'));
 const 公司档案编辑 = lazy(() => import('./屏幕/公司档案编辑'));
 const 公司档案分区编辑 = lazy(() => import('./屏幕/公司档案分区编辑'));
@@ -161,6 +163,9 @@ export default function 应用() {
       <Route path={路径.直聊会话} element={<直聊会话 />} />
       <Route path={路径.直聊会话岗位模板} element={<直聊会话 />} />
       <Route path={路径.真人会话} element={<真人会话 />} />
+      {/* P7 Task 4：Backend 参数化真人会话 —— 静态无参路由在前（Mock 剧情 / Backend fail closed），
+          参数模板紧随其后供收件箱与 P5 移交导航直达 */}
+      <Route path={路径.真人会话模板} element={<真人会话 />} />
       <Route path={路径.求职意向管理} element={<求职意向管理 />} />
       <Route path={路径.添加意向} element={<添加意向 />} />
       {/* 两条静态子路径写在 :id 模板之前：react-router 的排序本来就让静态段胜过动态段，
@@ -189,6 +194,9 @@ export default function 应用() {
       {/* ── 企业端（招人方）── */}
       <Route path={路径.企业实名认证} element={<企业实名认证 />} />
       <Route path={路径.招聘名片} element={<招聘名片 />} />
+      {/* 实名认证摘要页的两个账号管理入口：不是注册步骤，不进 onboarding 合同 */}
+      <Route path={路径.企业组织申请} element={<企业组织申请 />} />
+      <Route path={路径.企业邀请加入} element={<企业邀请加入 />} />
       <Route path={路径.发布岗位} element={<发布岗位 />} />
       {/* 编辑态复用同一个屏：带 :id 就预填那个岗位、主按钮变「保存修改」 */}
       <Route path={路径.编辑岗位模板} element={<发布岗位 />} />
@@ -202,6 +210,8 @@ export default function 应用() {
       <Route path={路径.企业往来记录模板} element={<企业往来记录 />} />
       <Route path={路径.企业问AI代理} element={<企业问AI代理 />} />
       <Route path={路径.企业真人会话} element={<企业真人会话 />} />
+      {/* P7 Task 4：Backend 参数化企业真人会话（镜像求职端） */}
+      <Route path={路径.企业真人会话模板} element={<企业真人会话 />} />
       <Route path={路径.岗位管理} element={<岗位管理 />} />
       <Route path={路径.岗位详情模板} element={<岗位详情 />} />
       <Route path={路径.企业代理详情} element={<企业代理详情 />} />

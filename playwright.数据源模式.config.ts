@@ -14,6 +14,12 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  // 视觉回归/ 与默认 config 同口径排除（本配置创建时该目录尚不存在）：
+  //   - 采集.spec.ts 需要专用 webServer（4174/4175）和 UI_CAPTURE_DIR，由
+  //     playwright.视觉回归.config.ts 单独驱动；
+  //   - *.test.ts 是 Vitest 单测，Playwright 收走会因找不到 vitest suite 直接崩，
+  //     连带整个 testDir 加载失败（0 tests in 0 files）。
+  testIgnore: ['**/视觉回归/**'],
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,

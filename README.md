@@ -117,12 +117,31 @@ Backend 模式不预取全量目录。选择器（城市 / 学校 / 职位 / 行
 ### 数据源边界 E2E
 
 ```bash
-npm run test:e2e:data-source
+npm run test:e2e:data-source                       # 全量（mock + backend 两组）
+npm run test:e2e:data-source -- --grep '@mock'     # 只跑 Mock 回归
+npm run test:e2e:data-source -- --grep '@backend'  # 只跑 Backend fixture
 ```
 
 由 `playwright.数据源模式.config.ts` 同时启动两个不可复用的 Vite dev server
-（`mock/stg` 端口 4181、`backend/stg` 端口 4182），各跑一组用例。Backend 用例用
-Playwright `page.route` 拦截 `/api/v1/*` 返回 fixture（不冒充真实联调）。
+（`mock/stg` 端口 4181、`backend/stg` 端口 4182），按测试标题里的 `@mock` / `@backend`
+标签分项目各跑一组用例（iPhone 13 视口、本机 Chrome）。
+
+- **Mock 运行方式**：显式 `VITE_DATA_SOURCE=mock` server。断言招聘剧情从身份选择进
+  招聘名片、公司档案分区导航与候选端静态公司页保持、图片仍是本地预览，且全程
+  **零 `/api/v1` 请求**；Mock fixture 不持有 opaque Organization ID。
+- **Backend 运行方式（intercepted）**：显式 `VITE_DATA_SOURCE=backend` server，
+  Playwright `page.route` 拦截全部 `/api/v1/*` 用确定性 fixture 应答。它只验证前端
+  在拦截边界上的行为（请求形状 / 信封解码 / 恢复路径 / 渲染来源），**不是真实 BFF
+  联调**——data-source Playwright 不启动、不修改、也不验证任何真实后端服务；
+  Backend dev server 的 `/api/v1` 代理目标（stg）从测试不可达，所有响应都来自 fixture。
+- fixture 通过 `安装BFF路由` 扩展：P1C 覆盖招聘方档案与头像（multipart 单 `media`
+  part + If-Match）、企业关系与 current 选择、公开企业直读、企业档案 CAS（409 用
+  `覆盖` seam 注入 `version_conflict`）、两步媒体协议（`metadata`+`media` part 名按
+  content-type boundary 检查、删除走 204）、管理员申请按屏读取、owner Jobs 创建
+  （body 只带 claim，无 refs / verification status）。multipart 不用 JSON parser 解
+  整体，敏感正文只在测试进程内比对。
+- 基线视觉回归（`e2e/视觉回归/`，固定 16 个 scene ID）由 `playwright.视觉回归.config.ts`
+  单独驱动，不为本套件增加 Backend 视觉场景；Backend 行为全部由数据源模式 Playwright 验证。
 
 确定性 fixture 通过后，还需按上面命令对可达的真实 `stg`（以及本地 BFF 可用时的 `local`）
 完成一次真实登录 / 资源读取 smoke。若目标环境或 OTP 前置未就绪，记录外部 blocker，

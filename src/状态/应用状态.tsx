@@ -48,16 +48,28 @@ export type 在谈范围档 = '当前' | '全部';
  */
 import type { 意向草稿型 } from '../数据/招聘数据源类型';
 export type { 意向草稿型 };
-import type { BFF主体 } from '../数据/BFF契约';
+import type { BFF主体, BFF角色, P5角色, P7角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
 import type { 资料缓存快照 } from '../数据/资料缓存';
+import { 读资料缓存 } from '../数据/资料缓存';
+import type { PDF对象租约 } from '../数据/PDF对象租约';
 import { 轻提示 } from '../组件/轻提示';
-import type { 应用操作, 后端状态, 后端操作依赖 } from './后端/类型';
-import { 创建会话操作, 水合角色数据 } from './后端/会话操作';
+import type { 应用操作, 后端状态, 后端操作依赖, P7待定意图, P7已读位置记录 } from './后端/类型';
+import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
+import { 创建发现推荐操作, 创建空P4发现状态 } from './后端/发现推荐操作';
+import { 创建MatchCase操作, 创建空P5MatchCase状态, 清P5MatchCase引用 } from './后端/MatchCase操作';
+import { 创建真人会话操作, 创建空P7会话状态, 清P7会话引用 } from './后端/真人会话操作';
+import { use真人会话事件 } from './后端/use真人会话事件';
+import { 创建招聘事件源 } from '../数据/招聘事件源';
 import { 创建候选操作 } from './后端/候选操作';
 import { 创建岗位操作 } from './后端/岗位操作';
+import { 创建组织操作 } from './后端/组织操作';
+import { 创建隐私操作 } from './后端/隐私操作';
+import { 创建Agent规则操作 } from './后端/Agent规则操作';
+import { 创建附件简历操作 } from './后端/附件简历操作';
+import { 映射候选Agent规则, 映射招聘Agent规则 } from '../数据/Agent规则映射';
 import { 创建目录查询 } from './后端/目录查询';
 import { 归约候选资料 } from './领域/候选资料';
 import type { 候选资料状态, 候选资料动作 } from './领域/候选资料';
@@ -73,7 +85,7 @@ import { 归约Agent规则 } from './领域/Agent规则';
 import type { Agent规则状态, Agent规则动作 } from './领域/Agent规则';
 import { 归约消息 } from './领域/消息';
 import type { 消息状态, 消息动作 } from './领域/消息';
-import { 创建初始状态, 空账号资料 } from './初始状态';
+import { 创建初始状态, 安全取存储, 空账号资料 } from './初始状态';
 import { use资料持久化 } from './资料持久化';
 
 // 顶部意向栏.tsx / 在谈首页.tsx 既有的导入路径不变：取意向名 仍从根模块导出
@@ -121,7 +133,7 @@ export type 动作 =
   | 消息动作
   // ── 保留在根的动作：导航 / Tab / 身份视图 + 跨域编排（发布岗位 / 委托入谈 / 接触推荐候选 /
   //    切意向 / 切当前岗位 / 看全部在谈 / 企业看全部在谈），逐字保留 ──
-  | { 型: '切意向'; 意向: string }
+  | { 型: '切意向'; 意向: string; /** Backend 顶栏随胶囊带上的 intention_id 编号载体；Mock 不传 */ 编号?: string }
   | { 型: '切子视图'; 子视图: 子视图 }
   | { 型: '切Tab'; Tab: 底部Tab }
   /** 「我的」的统计数字点进来：切到职位 Tab 的在谈列表，范围置全部，并落到指定档 */
@@ -177,9 +189,20 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     case '存企业认证':
     case '存招聘头像':
     case '存公司LOGO':
+    case '水合招聘方档案':
+    case '水合企业关系':
+    case '选择当前企业关系':
+    case '水合企业管理员申请':
+    case '水合当前企业':
+    case '缓存公开企业':
+    case '标记公开企业不可用':
+    case '存未认证公司声明':
+    case '清后端组织状态':
       return 归约组织岗位(旧, 动作);
 
     case '拉黑':
+    case '水合后端隐私':
+    case '清后端隐私':
     case '解除屏蔽':
     case '设披露档':
     case '设企业披露档':
@@ -218,6 +241,10 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     case '企业改规则':
     case '企业删规则':
     case '企业切规则开关':
+    // P6：Backend 水合/清空也在 Agent 规则域；不在 reducer 里判模式，操作/会话层拥有边界
+    case '水合后端候选规则':
+    case '水合后端招聘规则':
+    case '清后端Agent规则':
       return 归约Agent规则(旧, 动作);
 
     case '读消息':
@@ -228,7 +255,9 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     // 顶栏点某条意向 = 明确说了「我要看这一条」，范围跟着收回当前 ——
     // 否则处在「全部意向」档时点胶囊会毫无反应（列表照旧全量），顶栏看起来是坏的
     case '切意向':
-      return { ...旧, 当前意向: 动作.意向, 在谈范围: '当前' };
+      // Backend 随 action 带上的编号载体是 P4 发现域的唯一 scope 坐标；
+      // 不带（Mock 全部路径）就归 null —— 编号载体在 Mock 里恒空、无人读。
+      return { ...旧, 当前意向: 动作.意向, 当前意向编号: 动作.编号 ?? null, 在谈范围: '当前' };
     case '切子视图':
       return { ...旧, 子视图: 动作.子视图 };
     case '切Tab':
@@ -290,8 +319,12 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
         企业在谈看什么: 动作.档,
       };
 
-    case '水合账号资料':
-      return { ...旧, ...动作.快照, 资料缓存范围键: 动作.范围键 };
+    // P1C：快照里的 当前企业关系编号 未经最新 affiliations 校验，必须丢弃；
+    // 该编号只能经 水合企业关系 或 可用企业关系() 校验后的 选择当前企业关系 写入。
+    case '水合账号资料': {
+      const { 当前企业关系编号: _未校验编号, ...已校验账号资料 } = 动作.快照;
+      return { ...旧, ...已校验账号资料, 资料缓存范围键: 动作.范围键 };
+    }
     case '清账号资料':
       return { ...旧, ...空账号资料, 资料缓存范围键: '' };
 
@@ -429,6 +462,24 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     简历快照: null,
     意向快照: {},
     岗位快照: {},
+    隐私快照: null,
+    // P6：Agent 规则域种子全空，双端水合阶段都从 未开始 起跑
+    候选规则快照: {},
+    招聘规则快照: {},
+    候选规则提案: {},
+    招聘规则提案: {},
+    Agent规则水合: {
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    },
+    // P4：发现推荐 raw scope 快照/详情/委托回执全部空底座起步（Mock 发现域不触达这里）
+    ...创建空P4发现状态(),
+    // P5：MatchCase 内存态快照（工作区/历史/详情）空底座起步；绝不进 资料持久化
+    ...创建空P5MatchCase状态(),
+    // P7：真人会话内存态快照（收件箱/详情/消息页）空底座起步；绝不进 资料持久化
+    ...创建空P7会话状态(),
+    // P2：附件库权威快照种子为 null（Backend 初始不带任何演示附件行）
+    附件简历库: null,
   }));
 
   // 让异步操作读到最新的 后端状态 / 状态（useMemo 闭包只捕获首次值）
@@ -448,14 +499,44 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   // review-r2 R2-M-4：会话代际。登录/退出/401 清理时递增；目录请求捕获起始代际，
   // 401 到达时若代际已变（新会话），stale 401 被忽略，不清新会话。
   const 会话代际 = useRef(0);
+  // P4 Task 3：discovery 运行时引用 —— scope 代际 / pending 幂等意图 / 双端可见范围。
+  // Provider 一次性初始化；清账号状态 / 登录换主体 / 切身份 时统一复位（会话操作.ts）。
+  const P4范围代际 = useRef(new Map<string, number>());
+  const P4幂等意图 = useRef(new Map<string, string>());
+  const P4可见范围 = useRef<Record<BFF角色, string | null>>({ candidate: null, recruiter: null });
+  // P5 Task 3：MatchCase 运行时引用 —— scope 代际 / pending 幂等意图 / 双端可见范围 /
+  // 在途 PDF 对象租约。一次性初始化；会话转移由下方主体基串 effect 统一复位。
+  const P5范围代际 = useRef(new Map<string, number>());
+  const P5幂等意图 = useRef(new Map<string, string>());
+  const P5可见范围 = useRef<Record<P5角色, string | null>>({ candidate: null, recruiter: null });
+  const P5对象租约 = useRef(new Set<PDF对象租约>());
+  // P7 Task 2：真人会话运行时引用 —— scope 代际 / 待定发送意图 / 双端可见收件箱与
+  // 可见会话 / 已读位置。一次性初始化；会话转移由下方主体基串 effect 统一复位。
+  const P7范围代际 = useRef(new Map<string, number>());
+  const P7待定意图 = useRef(new Map<string, P7待定意图>());
+  const P7可见收件箱 = useRef<Record<P7角色, boolean>>({ candidate: false, recruiter: false });
+  const P7可见会话 = useRef<Record<P7角色, string | null>>({ candidate: null, recruiter: null });
+  const P7已读位置 = useRef(new Map<string, P7已读位置记录>());
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
   use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识 });
 
+  // P7 Task 5：同源事件源只建一次（无 token/query/header；帧只触发 no-store 重拉）。
+  // 钩子输入全部由 Provider 注入（与 useMatchCase轮询 同一纪律，不读 Context）；
+  // 内部按 Backend + 已登录 + 有效角色 + 页面可见开关连接，Mock 零连接。
+  const 招聘事件源 = useMemo(() => 创建招聘事件源(), []);
+
+  // P1C：从 subject-scoped sessionStorage 读取恢复的 current relation 候选值。
+  // 只作为 选择当前企业关系(affiliations, restoredId) 的输入；读取本身不派发选择 action，
+  // revoked ID 只会在最新 Affiliations 校验后被丢弃。
+  const 读取恢复企业关系编号 = (subjectId: string): string | null => {
+    const 快照 = 读资料缓存(安全取存储('session'), { 模式: 'backend', 环境, 账号: subjectId });
+    const 值 = 快照.当前企业关系编号;
+    return typeof 值 === 'string' ? 值 : null;
+  };
+
   // ── Backend 初始化：mount 时恢复会话一次；401 视为未登录，其他错误轻提示；均不回退 Mock ──
-  // 已知边缘：水合/写入的 in-flight 代际守卫未实现（R3-I-1 延后）——
-  // 水合途中登出后再登新账号，旧水合响应理论上可能提交到新账号。现实跨账号路径已由
-  // 目录 401 会话代际（R2-M-4）、主体 subject_id 变化清理（R2-I-4）、退出清后端草稿（P1-5）、
-  // 以及 R3-I-2 的统一 401 清理覆盖；对每条水合/写入都加代际守卫属于过度工程，延后。
+  // 已知边缘：资源写入的 in-flight 代际守卫未实现（R3-I-1 延后）——但登录水合链（P1C 起）带
+  // subject fence + 会话代际：mount/切角色 先写 ref 再水合，组织水合内部逐响应丢弃过时结果。
   useEffect(() => {
     if (!是后端 || !后端) return;
     if (已初始化.current) return;
@@ -488,19 +569,30 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         return;
       }
       if (已取消) return;
+      // P1C：读取主体后先建立 subject fence 再开始任何角色水合 —— mount 恢复出一个新会话，
+      // 先递增 generation 再把捕获值传入水合；不能在水合完成后才写 ref（否则同一次恢复会话
+      // 会被无意义地再次换代，且水合途中无 fence 可拦 stale 响应）。
+      主体标识引用.current = 主体.subject_id;
+      会话代际.current += 1;
+      const 本次代际 = 会话代际.current;
+      // P6 Task 4：mount 恢复 = 主体转移 —— 水合前先把规则域重置回干净底座
+      //（原始字典/双端阶段清零 + 页面数组清空），保证每次进入水合都跑完整链路，
+      // 阶段不可能粘住上个会话残留的 进行中|成功。
+      派发({ 型: '清后端Agent规则' });
+      // P2 Task 3：mount 恢复 = 主体转移，候选侧附件库快照随 P6 底座一并清空
+      设后端状态((旧) => ({ ...重置Agent规则后端状态(旧), 附件简历库: null }));
       // review-r2 R2-I-3：水合 401 时 水合角色数据 内部已走登出清理并返回 会话失效=true，
       // 不再落 已登录=true（旧实现会把上个会话的快照/草稿留给已失效的登录态）。
-      const 会话失效 = await 水合角色数据({ 后端, 派发, 设后端状态, 主体标识引用, 会话代际 }, 主体, false);
+      const 会话失效 = await 水合角色数据({
+        后端, 派发, 设后端状态, 主体标识引用, 会话代际, 读取恢复企业关系编号,
+        P4范围代际, P4幂等意图, P4可见范围,
+      }, 主体, false, 本次代际);
       if (已取消) return;
       if (会话失效) {
         // review-r3 R3-I-2：清账号状态 已在 水合角色数据 内部清完（含主体标识 + 会话代际），
         // 这里只早退，不再重复清理。
         return;
       }
-      // review-r2 R2-I-4：记录主体标识，后续新主体到达时可比对 subject_id 决定是否清账号域。
-      主体标识引用.current = 主体.subject_id;
-      // review-r2 R2-M-4：会话建立，递增代际（让此前在飞的目录请求 401 成为 stale）
-      会话代际.current += 1;
       设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: true, 主体 }));
     })();
     return () => {
@@ -515,6 +607,39 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [是后端, 后端]);
 
+  // ── P5 Task 3：MatchCase 会话边界的反应式清理 ─────────────────────────────────
+  // 登出 / 401 清理 / 换主体登录 / 切身份在状态上全部表现为「主体基串（subject + 角色）」
+  // 变化：这里统一清 P5 内存快照、scope 代际与幂等意图引用，并回收全部在途 PDF 对象
+  // 租约（内存纪律：P5 状态绝不进 资料持久化 / 浏览器存储；在飞请求由操作层自身的
+  // subject/role/会话代际栅栏按旧代整包丢弃）。同主体重登（基串不变）不清 —— 与 P4
+  // 草稿保留口径一致，且不确定结果的同键重试跨重登仍可沿用。
+  const P5会话基 = useRef('');
+  useEffect(() => {
+    const 基 = 后端状态.主体 === null ? '' : `${后端状态.主体.subject_id}|${后端状态.主体.last_used_role}`;
+    if (P5会话基.current === 基) return;
+    P5会话基.current = 基;
+    清P5MatchCase引用({ P5范围代际, P5幂等意图, P5可见范围, P5对象租约 });
+    设后端状态((旧) => ({ ...旧, ...创建空P5MatchCase状态() }));
+    // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [后端状态.主体]);
+
+  // ── P7 Task 2：真人会话会话边界的反应式清理 ─────────────────────────────────
+  // 与 P5 同一主体基串口径：登出 / 401 清理 / 换主体登录 / 切身份在状态上全部表现为
+  // 「主体基串（subject + 角色）」变化。这里统一清 P7 内存快照与五个引用（范围代际 /
+  // 待定发送意图 / 双端可见收件箱与可见会话 / 已读位置），在飞请求由操作层自身的
+  // subject/role/会话代际栅栏按旧代整包丢弃。同主体重登（基串不变）不清。
+  const P7会话基 = useRef('');
+  useEffect(() => {
+    const 基 = 后端状态.主体 === null ? '' : `${后端状态.主体.subject_id}|${后端状态.主体.last_used_role}`;
+    if (P7会话基.current === 基) return;
+    P7会话基.current = 基;
+    清P7会话引用({ P7范围代际, P7待定意图, P7可见收件箱, P7可见会话, P7已读位置 });
+    设后端状态((旧) => ({ ...旧, ...创建空P7会话状态() }));
+    // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [后端状态.主体]);
+
   const 操作 = useMemo<应用操作>(
     () => {
       const deps: 后端操作依赖 = {
@@ -528,11 +653,36 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         尝试引用,
         主体标识引用,
         会话代际,
+        读取恢复企业关系编号,
+        P4范围代际,
+        P4幂等意图,
+        P4可见范围,
+        P5范围代际,
+        P5幂等意图,
+        P5可见范围,
+        P5对象租约,
+        P7范围代际,
+        P7待定意图,
+        P7可见收件箱,
+        P7可见会话,
+        P7已读位置,
       };
       return {
         ...创建会话操作(deps),
         ...创建候选操作(deps),
         ...创建岗位操作(deps),
+        ...创建组织操作(deps),
+        ...创建隐私操作(deps),
+        // P6：Agent 规则/提案操作与其它域共用同一把 deps（锁 / 主体标识 / 会话代际）
+        ...创建Agent规则操作(deps),
+        // P4 Task 3：发现推荐读操作（scope 注册 + 栅栏化读取），同一把 deps
+        ...创建发现推荐操作(deps),
+        // P2：附件简历操作同样共用同一把 deps（库锁/文件锁落在同一把 锁 里）
+        ...创建附件简历操作(deps),
+        // P5 Task 3：MatchCase 操作（内存态快照 + 意图键化命令 + 租约），同一把 deps
+        ...创建MatchCase操作(deps),
+        // P7 Task 2：真人会话操作（内存态快照 + 意图键化发送对账 + forward-only 已读），同一把 deps
+        ...创建真人会话操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
@@ -540,11 +690,42 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     [是后端, 后端],
   );
 
+  // ── P6 页面数组派生：raw 快照（或权威意向字典）任一变化都重算分组 ──
+  // Rule 请求与 Intention 请求谁先完成都不影响最终归属：这里只吃 raw 输入，
+  // orphan 意向 scope 在权威意向到达前整条省略，到达后同一 raw Rule 自动归组。
+  // 意向侧读 状态.后端意向服务端（水合后端意向 落的权威字典，操作与会话层双写），
+  // 与 候选分组 的其余消费者同源，避免再养第二份意向真相。
+  useEffect(() => {
+    if (!是后端 || 后端状态.Agent规则水合.candidate.rules !== '成功') return;
+    const mapped = 映射候选Agent规则(
+      Object.values(后端状态.候选规则快照),
+      状态.后端意向服务端,
+    );
+    派发({ 型: '水合后端候选规则', 全局: mapped.全局, 意向级: mapped.意向级 });
+  }, [是后端, 后端状态.Agent规则水合.candidate.rules, 后端状态.候选规则快照, 状态.后端意向服务端]);
+
+  useEffect(() => {
+    if (!是后端 || 后端状态.Agent规则水合.recruiter.rules !== '成功') return;
+    派发({
+      型: '水合后端招聘规则',
+      规则: 映射招聘Agent规则(Object.values(后端状态.招聘规则快照)),
+    });
+  }, [是后端, 后端状态.Agent规则水合.recruiter.rules, 后端状态.招聘规则快照]);
+
+  use真人会话事件({
+    事件源: 招聘事件源,
+    可见会话引用: P7可见会话,
+    数据源模式: 源.模式,
+    已登录: 后端状态.已登录,
+    角色: (后端状态.主体?.last_used_role ?? null) as P7角色 | null,
+    操作,
+  });
+
   // 目录查询 seam 已按 owner 拆到 ./后端/目录查询：Backend 模式暴露 查询Location/Taxonomy/Institution，
   // Mock 为 null；401 会话代际守卫与统一清理都在 创建目录查询 内部。
   // useMemo 键 是后端/后端（同 Provider 实例下不变），使 目录查询 引用稳定。
   const 目录查询 = useMemo(
-    () => 创建目录查询({ 是后端, 后端, 派发, 设后端状态, 主体标识引用, 会话代际 }),
+    () => 创建目录查询({ 是后端, 后端, 派发, 设后端状态, 主体标识引用, 会话代际, P4范围代际, P4幂等意图, P4可见范围 }),
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [是后端, 后端],

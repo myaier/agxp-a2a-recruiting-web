@@ -61,6 +61,11 @@ export const 路径 = {
   直聊会话岗位: (编号: string) => `/chat/direct/${编号}`,
   直聊会话岗位模板: '/chat/direct/:id',
   真人会话: '/chat/human',
+  /** P7 Backend 真人会话的参数路由：Builder 供 Backend 导航用，模板供 <Route> 注册用。
+   *  上面的无参常量保持字符串语义 —— Mock 调用点（消息列表/在谈详情等）不迁移；
+   *  Backend 访问无参路由由会话页 fail closed 成「会话不可用」。 */
+  真人会话路径: (id: string) => `/chat/human/${encodeURIComponent(id)}`,
+  真人会话模板: '/chat/human/:conversationId',
   求职意向管理: '/intentions',
   添加意向: '/intentions/new',
   /** 「添加求职期望」次级页 A：其他感兴趣城市多选（0/9），写 意向草稿.感兴趣城市们 */
@@ -96,6 +101,11 @@ export const 路径 = {
   // ── 企业端（招人方）。前缀 /hr，参数名同样必须 ASCII ──
   企业实名认证: '/hr/verify',
   招聘名片: '/hr/card',
+  /** 企业组织管理员申请：填写组织事实 + 证明材料提交审核（实名认证摘要页的入口，
+   *  不是注册步骤 —— 注册流仍直接进招聘名片，见 onboarding配置 的合同测试） */
+  企业组织申请: '/hr/organization-application',
+  /** 邀请加入：输入管理员分享的邀请口令加入企业；raw token 只进 POST body，不进 URL/状态 */
+  企业邀请加入: '/hr/organization-invitation',
   发布岗位: '/hr/post-job',
   /** 编辑已发布的岗位：同一个「发布岗位」屏的编辑态，带岗位编号 */
   编辑岗位: (编号: string) => `/hr/post-job/${编号}`,
@@ -118,6 +128,9 @@ export const 路径 = {
   企业往来记录模板: '/hr/thread/:id',
   企业问AI代理: '/hr/agent',
   企业真人会话: '/hr/chat',
+  /** P7 Backend 企业真人会话的参数路由（镜像求职端）：Builder 只供 Backend 导航。 */
+  企业真人会话路径: (id: string) => `/hr/chat/${encodeURIComponent(id)}`,
+  企业真人会话模板: '/hr/chat/:conversationId',
   岗位管理: '/hr/jobs',
   /** 岗位详情：从岗位管理点一行进来，看这个岗位的全貌（数据 / JD / 公司 / 地址）*/
   岗位详情: (编号: string) => `/hr/job/${编号}`,
