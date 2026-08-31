@@ -378,7 +378,7 @@ If `src/测试/BFF样本.ts` is unchanged, omit it from `git add`.
 ```ts
 export interface P8导出恢复存储 {
   读取(): P8导出恢复句柄 | null;
-  写入(handle: P8导出恢复句柄): void;
+  写入(handle: P8导出恢复句柄): boolean;
   删除(): void;
 }
 
@@ -390,11 +390,11 @@ export function 创建P8导出恢复存储(input: {
 
 - [ ] **Step 1: Write strict-storage RED tests**
 
-Prove one physical key per mode+environment+subject, Backend A/B isolation, exact-key JSON, valid UUID-like visible ASCII create key, export ID null-or-pattern, corrupt/extra/mismatched-subject values discarded and removed, and both unavailable storage (`storage: null`) and storage exceptions fail closed without crashing the page. With unavailable storage, reads return `null` and writes/deletes are no-ops. Reject a handle whose `subjectId` differs from `范围.账号`.
+Prove one physical key per mode+environment+subject, Backend A/B isolation, exact-key JSON, valid UUID-like visible ASCII create key, export ID null-or-pattern, corrupt/extra/mismatched-subject values discarded and removed, and both unavailable storage (`storage: null`) and storage exceptions fail closed without crashing the page. A successfully persisted write returns `true`; unavailable/throwing storage makes reads return `null`, writes return `false`, and deletes no-op. Reject a handle whose `subjectId` differs from `范围.账号`.
 
 ```ts
 const A存储 = 创建P8导出恢复存储({ storage, 范围: { 模式: 'backend', 环境: 'local', 账号: 'sub_A' } });
-A存储.写入({ subjectId: 'sub_A', createKey: 'p8-export-key-0001', exportId: null });
+expect(A存储.写入({ subjectId: 'sub_A', createKey: 'p8-export-key-0001', exportId: null })).toBe(true);
 expect(A存储.读取()?.createKey).toBe('p8-export-key-0001');
 expect(创建P8导出恢复存储({ storage, 范围: { 模式: 'backend', 环境: 'local', 账号: 'sub_B' } }).读取()).toBeNull();
 ```
@@ -636,7 +636,7 @@ export function useP8导出轮询(input: {
 
 - [ ] **Step 1: Write export recovery/operation RED tests**
 
-Cover save-key-before-POST, lost create response replay, null-ID handle replaying POST, non-null ID doing GET only, same-subject logout/relogin recovery, other-subject isolation, create 409 without local handle showing cross-device limitation, 404/expired clearing, failed explicit regeneration using a new key, and deletion clearing the handle. On one Provider instance, switch subject A→B, update `P8导出恢复.current`, then prove a B create writes only B's `账号存储键` and leaves A's entry byte-for-byte unchanged.
+Cover save-key-before-POST, lost create response replay, null-ID handle replaying POST, non-null ID doing GET only, same-subject logout/relogin recovery, other-subject isolation, create 409 without local handle showing cross-device limitation, 404/expired clearing, failed explicit regeneration using a new key, and deletion clearing the handle. On one Provider instance, switch subject A→B, update `P8导出恢复.current`, then prove a B create writes only B's `账号存储键` and leaves A's entry byte-for-byte unchanged. With `P8导出恢复.current === null` or `写入(...) === false`, create rejects with fixed copy “数据导出暂不可用，请稍后重试” and makes zero `创建P8数据导出` calls; recovery also makes zero export calls. Deletion remains usable with a null adapter and treats post-202 handle deletion as an optional no-op, without throwing.
 
 ```ts
 await 操作.创建P8数据导出();
@@ -691,7 +691,9 @@ npx vitest run src/状态/后端/P8控制面操作.test.ts \
 
 - [ ] **Step 6: Implement recovery, hook and existing-style UI**
 
-Construct the recovery adapter in Provider only when a Backend subject exists, from `安全取存储('local')` and `{ 模式:'backend', 环境, 账号: subjectId }`. On every subject/environment change assign the new adapter (or `null`) to `P8导出恢复.current`; the memoized deps carries only this stable ref, and every export/deletion operation dereferences `.current` at call time. Never capture a plain adapter in the Provider-lifetime `useMemo`. Mock leaves the ref `null` and never touches storage. Never put the handle into React reducer state. Download uses a normal same-origin anchor/navigation after a successful status preflight:
+Construct the recovery adapter in Provider only when a Backend subject exists, from `安全取存储('local')` and `{ 模式:'backend', 环境, 账号: subjectId }`. On every subject/environment change assign the new adapter (or `null`) to `P8导出恢复.current` before child passive recovery effects run; the memoized deps carries only this stable ref, and every export/deletion operation dereferences `.current` at call time. Never capture a plain adapter in the Provider-lifetime `useMemo`.
+
+Mock leaves the ref `null` and never touches storage. In Backend, a null adapter blocks recovery/create, and a create may call POST only after `写入(handle) === true`; null or failed persistence surfaces the fixed unavailable copy and sends no export request. Do not use a non-null assertion, and do not use optional chaining that silently skips persistence then continues. Account deletion may proceed without an adapter; its successful handle cleanup is optional. Never put the handle into React reducer state. Download uses a normal same-origin anchor/navigation after a successful status preflight:
 
 ```ts
 const href = 操作.取P8数据导出下载地址();

@@ -194,6 +194,7 @@ interface P8导出恢复句柄 {
 纪律：
 
 - POST 前先原子保存 `subjectId + createKey + exportId:null`；响应后补 `exportId`。
+- 若当前 subject 的恢复适配器尚未就绪，或浏览器存储不可用/写入失败，则显示固定的导出暂不可用提示且不发送 POST；不能为了继续请求而静默跳过恢复句柄。
 - `exportId=null` 时只能用同 createKey 重放创建；有 ID 时只 GET 状态。
 - 句柄不保存 ZIP、手机号、credential、Session、举报内容、错误正文或对象存储坐标。
 - 普通 logout/401 清 P8 内存与在飞操作，但保留按 subject 隔离的导出句柄，使同一账号重新登录后可以恢复；其他账号不得读取或覆盖该主体状态。
