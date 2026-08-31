@@ -247,9 +247,12 @@ enter_company_intro(){
 # set -e 安全的屏面判断：当前页面文本是否包含语义标记。[ x ] && cmd 的裸 && 在
 # 条件不成立时返回 1，会把整条旅程错杀；所有「按屏面二选一」都走这里 + if。
 on_screen(){
-  local hit
-  hit="$(ab eval "document.body.innerText.includes($(jq -Rn --arg t "$1" '$t|@json'))" 2>/dev/null | tr -d '"')"
-  [ "$hit" = 'true' ]
+  # 用 get text body 而不是 eval：#run34-36 实证本会话的 eval 偶发空/陈旧响应，
+  # 而 get text body（innerText 全量）全程可靠——assert_absent 一直用它。
+  local body
+  body="$(ab get text body 2>/dev/null)" || return 1
+  case "$body" in *"$1"*) return 0 ;; esac
+  return 1
 }
 
 # 切屏后 Chrome 会有一段辅助功能树重算窗口：期间整棵 AX 塌成一个以全文为名的
@@ -289,7 +292,7 @@ click_row_geometry(){
     tries=$((tries + 1))
     sleep 1
   done
-  echo "行「$name」取不到几何，几何兜底点击失败" >&2
+  echo "行「${name:-?}」取不到几何，几何兜底点击失败" >&2
   return 1
 }
 
