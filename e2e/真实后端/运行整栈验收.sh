@@ -16,9 +16,11 @@
 #   3. 只关 backend-local-candidate 与 backend-local-recruiter 两个具名会话，绝不 close --all。
 #
 # 两份记录，不要混：
-#   · **run receipt**（$RECEIPT，后端写在 apps/recruitment/.local-dev/browser-fixtures/<run id>.json）
+#   · **run receipt**（后端写在 apps/recruitment/.local-dev/browser-fixtures/<run id>.json）
 #     是 `browser-fixture.sh cleanup --ledger` 唯一合法的实参。它带 candidate / recruiter
-#     两段收敛后 owner-list，是设计稿 §8.5 差集清理的全部依据。
+#     两段收敛后 owner-list，是设计稿 §8.5 差集清理的全部依据。本文件里**每一次**算子
+#     调用（converge/verify/cleanup 都算）都发一个全新 RUN_ID，所以这份 ledger 特指
+#     旅程开始前那一次 converge 写下的收条（2026-08-31 重校准，见计划文档）。
 #   · **私密 journal**（$PRIVATE_JOURNAL，$RUN_DIR/private/run-journal.json）是本仓库自己的
 #     人读证据：旅程按里程碑往里记固定保留名称，清理失败时由 print_private_journal 念出来。
 #     它**永远不是**后端算子的输入 —— 把它当 --ledger 传过去会让差集清理整段空转。
@@ -123,6 +125,10 @@ RUN_DIR=''
 RECEIPT=''
 CHROME_BUILD=''
 AB_VERSION=''
+FIXTURE_CALLS=0
+FIXTURE_RECEIPTS=''
+LAST_LOGIN_EPOCH=0
+FRONTEND_COMMIT='unknown'
 FRONTEND_COMMIT='unknown'
 BACKEND_COMMIT='unknown'
 
@@ -220,14 +226,45 @@ on_signal(){
   exit 75
 }
 
+# 2026-08-31 重校准：后端 0.2.5 实测两件硬事实改写了算子的调用姿势。
+#   1. 同一 RUN_ID 的第二次算子调用，登录命中 24h 幂等键，重放出已 logout 的死
+#      token，首个 catalog 请求必 401（后端已实锤并在交接里确认）——所以每一次
+#      算子调用都发全新 RUN_ID，绝不复用。
+#   2. mock SMS 的 begin 接收桶是「同手机号一分钟一次」；换新 ID 紧接着调用就会
+#      429。所以每次调用前都对齐到距上一次登录锚点 ≥ PACE_SECS 秒（锚点＝相邻
+#      的算子调用起点与隔离门结束时刻；旅程之间复用会话不重登，不另设锚）。
+PACE_SECS="${FIXTURE_LOGIN_PACE:-70}"
+
+pace_before_login(){
+  local now remain
+  if [ "$LAST_LOGIN_EPOCH" -gt 0 ] && [ "$PACE_SECS" -gt 0 ]; then
+    now="$(date +%s)"
+    remain=$(( LAST_LOGIN_EPOCH + PACE_SECS - now ))
+    if [ "$remain" -gt 0 ]; then
+      printf '错峰等待 %ss：同手机号的登录限流窗口是每分钟一次\n' "$remain"
+      sleep "$remain"
+    fi
+  fi
+  LAST_LOGIN_EPOCH="$(date +%s)"
+}
+
 fixture_step(){
   local rc=0
+  FIXTURE_CALLS=$((FIXTURE_CALLS + 1))
+  export BROWSER_FIXTURE_RUN_ID="$RUN_ID-$FIXTURE_CALLS"
+  pace_before_login
   set +e
   FIXTURE_OUT="$("$FIXTURE" "$@" 2>&1)"
   rc=$?
   set -e
   FIXTURE_RC="$rc"
   printf '%s\n' "$FIXTURE_OUT" >>"$RUN_DIR/fixture.log"
+  # 每一次 converge 都会在 STATE 目录落一份 run receipt。收尾成功时它们全部退休；
+  # 失败时全部按 0600 留给人手工处置 —— 所以每一次调用后都把「确实落了盘」的
+  # 那份记进名单。
+  if [ -f "$FIXTURE_RECEIPT_DIR/$BROWSER_FIXTURE_RUN_ID.json" ]; then
+    FIXTURE_RECEIPTS="$FIXTURE_RECEIPTS $FIXTURE_RECEIPT_DIR/$BROWSER_FIXTURE_RUN_ID.json"
+  fi
   return 0
 }
 
@@ -455,6 +492,10 @@ on_exit(){
   # 5. 清理成功就删私密目录与后端运行回执；失败就按 0600 留着并只打印受限路径
   if [ "$FIXTURE_CLEANUP_OK" = '1' ]; then
     rm -rf "$RUN_DIR/private"
+    # 清理成功：本轮全部 run receipt 退休（主 converge 一份、收尾重新收敛一份）。
+    if [ -n "$FIXTURE_RECEIPTS" ]; then
+      for receipts_path in $FIXTURE_RECEIPTS; do rm -f "$receipts_path"; done
+    fi
     if [ -n "$RECEIPT" ]; then rm -f "$RECEIPT"; fi
   else
     chmod 700 "$RUN_DIR/private" 2>/dev/null || true
@@ -466,6 +507,12 @@ on_exit(){
       chmod 600 "$RECEIPT" 2>/dev/null || true
       printf '  后端运行回执：%s\n' "$RECEIPT"
     fi
+    for receipts_path in $FIXTURE_RECEIPTS; do
+      case "$receipts_path" in "$RECEIPT") continue ;; esac
+      [ -f "$receipts_path" ] || continue
+      chmod 600 "$receipts_path" 2>/dev/null || true
+      printf '  后端算子其他回执（本轮重新 converge 落下的，同样待人工处置）：%s\n' "$receipts_path"
+    done
   fi
 
   # 6. 定稿前扫敏感字面量并删掉命中文件（只扫 JSON / Markdown / 日志，绝不把 PNG 当文本读）。
@@ -532,6 +579,7 @@ esac
 
 DEV="$AGXP_MONOREPO_DIR/apps/recruitment/scripts/dev-local.sh"
 FIXTURE="$AGXP_MONOREPO_DIR/apps/recruitment/scripts/browser-fixture.sh"
+FIXTURE_RECEIPT_DIR="$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev/browser-fixtures"
 [ -x "$DEV" ] || blocked "后端入口不可执行：$DEV"
 [ -x "$FIXTURE" ] || blocked "后端 fixture 算子不可执行：$FIXTURE"
 agent-browser doctor >/dev/null 2>&1 || blocked 'agent-browser doctor 不通过（Chrome 未就绪）'
@@ -555,16 +603,36 @@ else
   "$DEV" health >/dev/null 2>&1 || blocked 'dev-local.sh health 失败'
   STACK_HEALTHY=1
 fi
-"$DEV" bootstrap >/dev/null 2>&1 || blocked 'dev-local.sh bootstrap 失败'
+# 后端已知缺陷（0.2.5）：.local-dev/browser-fixtures 目录不在 dev-local validate_material
+# 白名单里，目录还在（上一次的 run receipt 还没退休）时 bootstrap 必 BLOCKED『existing
+# Recruitment local material is invalid』。绕法：临时改名目录 → bootstrap → **无论成败**
+# 都原样改回；改不回来就把 receipt 滞留的事实报成阻塞，绝不静默丢收条。
+bootstrap_stack(){
+  if "$DEV" bootstrap >/dev/null 2>&1; then return 0; fi
+  if [ ! -d "$FIXTURE_RECEIPT_DIR" ]; then
+    blocked 'dev-local.sh bootstrap 失败'
+    return 0
+  fi
+  local moved="$FIXTURE_RECEIPT_DIR.lockbak-$RUN_ID"
+  mv "$FIXTURE_RECEIPT_DIR" "$moved" || blocked 'dev-local.sh bootstrap 失败（回执目录改名失败）'
+  if "$DEV" bootstrap >/dev/null 2>&1; then
+    if mv "$moved" "$FIXTURE_RECEIPT_DIR" 2>/dev/null; then
+      return 0
+    fi
+    blocked "bootstrap 成功，但回执目录没能改回原位：$moved（请手工 mv 回 $FIXTURE_RECEIPT_DIR）"
+  fi
+  mv "$moved" "$FIXTURE_RECEIPT_DIR" 2>/dev/null || true
+  blocked 'dev-local.sh bootstrap 失败（剔除回执目录后仍然失败）'
+}
+bootstrap_stack
 
 # ── fixture 收敛 ────────────────────────────────────────────────────
 
-export BROWSER_FIXTURE_RUN_ID="$RUN_ID"
-
-# 后端运行回执的路径是纯派生量（STATE 目录 + 本轮 run id），在第一次 converge **之前**
+# 后端运行回执的路径是纯派生量（STATE 目录 + converge 那一次的 RUN_ID，见
+# fixture_step 的发号规则：第一次算子调用是 <run id>-1），在第一次 converge **之前**
 # 就定下来：收尾阶段的 delta 清理要拿它当 --ledger，而 converge 可能半路失败，
 # 那时也必须知道该去哪里找这一轮的回执。
-RECEIPT="$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev/browser-fixtures/$RUN_ID.json"
+RECEIPT="$FIXTURE_RECEIPT_DIR/$RUN_ID-1.json"
 FIXTURE_TOUCHED=1
 
 # 后端算子失败时按它自己的分层给结论：75 环境阻塞 / 1 功能失败 / 64 用法。
@@ -607,7 +675,7 @@ FIXTURE_VERIFIED=1
 [ -f "$RECEIPT" ] || blocked "后端运行回执缺失：$RECEIPT"
 receipt_mode="$(stat -f '%Lp' "$RECEIPT" 2>/dev/null || stat -c '%a' "$RECEIPT" 2>/dev/null || printf 'unknown')"
 [ "$receipt_mode" = '600' ] || blocked "后端运行回执权限不是 0600（实到 ${receipt_mode}）"
-grep -Fq "$RUN_ID" "$RECEIPT" || blocked '后端运行回执里没有本轮 run id'
+grep -Fq "$RUN_ID-1" "$RECEIPT" || blocked '后端运行回执里没有本轮 run id'
 
 # ── 起 Vite ─────────────────────────────────────────────────────────
 
@@ -739,9 +807,14 @@ run_isolation(){
   rc=$?
   set -e
   record_journey_rc 'session-isolation' "$rc"
+  # 隔离门的最后一登是候选退出后重新登录（全新的 begin）；这是收尾 cleanup 的
+  # 登录锚点——离它不足一分钟就去 converge 登录，会撞 429。
+  LAST_LOGIN_EPOCH="$(date +%s)"
 }
 
 # 未选中的旅程先写 skipped 分片：报告读取端要求五个分片齐全，缺一个就是报告错误。
+# 第一条业务旅程的开场就是候选登录（begin 限流同手机号一分钟一次），这里先错峰。
+pace_before_login
 for journey in $ALL_JOURNEYS; do
   is_selected "$journey" || write_skipped "$journey" '未选中'
 done

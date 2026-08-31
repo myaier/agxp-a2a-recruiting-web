@@ -16,6 +16,28 @@
 - 后端实施基线冻结为 `agxp-monorepo origin/release/0.2.5@fa0df4ab7`，不是后端 `origin/main`；当前前端依赖的公司档案、隐私、附件解析、P4/P5 接口与 `+8613800000001..00005` local 账号都在该发布线上。执行前必须 fetch 并重新核对目标发布线；若接口或固定账号已迁移，先更新本计划与 Spec 的事实基线，不在代码里兼容两套历史合同。
 - 后端改动必须在从 `origin/release/0.2.5` 创建的独立 worktree 中完成；不得修改或清理 `/Users/visionclaw/agxp-monorepo` 当前 dirty checkout。本次执行使用的 worktree 是 `/Users/visionclaw/.paseo/worktrees/agxp-browser-fixture`，分支 `agent-browser-real-backend-fixture`。
 
+### 2026-08-31 后端契约重校准（fixture 调用姿势三改）
+
+后端 Agent（`juicy-lamprey`，fixture worktree）在 0.2.5 实测出三条新事实，本计划 Task 7 落下的
+调用姿势按此重校准，改动已连同合同测试提交在前端仓库：
+
+1. **同 RUN_ID 的第二次算子调用必 401**：EXIT 钩子退出时 logout（删 session 行），同 id
+   重登录命中 24h 幂等键，重放的是已死 session 的 token，首个 catalog 请求即
+   `401 invalid_session`。⇒ 每次 `browser-fixture.sh` 调用（converge / verify / cleanup /
+   收尾重收敛、收尾复验，共五次）都由运行器发**全新** `BROWSER_FIXTURE_RUN_ID`；
+   `cleanup --ledger` 仍指向旅程 begin 前那一次 converge 落下的 receipt 绝对路径。
+2. **相邻登录错峰**：mock SMS begin 接收桶是同手机号一分钟一个窗（
+   `apps/server/internal/productauth/limiter.go` credential 维度 limit 1 / window 1m）。
+   ⇒ 运行器在每次算子调用前与旅程首登前错峰 `FIXTURE_LOGIN_PACE`（默认 70s）；
+   隔离门最后一登（候选退出后重登）作为收尾 cleanup 的锚点。
+3. **bootstrap 会被回执 目录卡住**:`.local-dev/browser-fixtures/` 不在 validate_material
+   白名单，目录在（有 receipt）时 bootstrap 报 `BLOCKED: existing Recruitment local material
+   is invalid`。⇒ 运行器先试 bootstrap，被卡就临时改名目录重试，无论成败都原样改回；
+   改回失败显式报 75，不静默丢收条。后端的一行正向修复（白名单）在途，合入后此绕法可移除。
+
+计划正文里「converge 写下本轮 receipt」「一个 run id 一份 receipt」的旧表述按本节口径修正理解：
+receipt 文件名随每次 converge 的 RUN_ID 变化，差集清理的 ledger 只认旅程 begin 前的那一份。
+
 ### 2026-08-30 基线重新校准
 
 原计划冻结的后端基线 `34306f539` 在执行前已被 `origin/release/0.2.5` 推进 24 个提交到 `fa0df4ab7`（`34306f539` 仍是其祖先）。按本节要求重新核对后，事实基线全部改写为 `fa0df4ab7`，并已在该 tip 上逐条验证：

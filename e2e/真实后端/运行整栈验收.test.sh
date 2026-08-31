@@ -270,7 +270,20 @@ case "${1:-}" in
     exit "$rc" ;;
   prepare) exit "${FAKE_PREPARE_RC:-0}" ;;
   up) exit "${FAKE_UP_RC:-0}" ;;
-  bootstrap) exit "${FAKE_BOOTSTRAP_RC:-0}" ;;
+  bootstrap)
+    # 复刻后端已知缺陷：.local-dev/browser-fixtures 目录不在 validate_material 白名单里，
+    # 目录存在（里面有 receipt）时 bootstrap BLOCKED。1=只在目录存在时 blocked，
+    # 2=无论怎样都 blocked（用来验证改名绕法失败时目录被原样改回）。
+    case "${FAKE_BOOTSTRAP_BLOCK_DIR:-}" in
+      2) exit 75 ;;
+      1)
+        if [ -d "$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev/browser-fixtures" ]; then
+          printf 'BLOCKED: existing Recruitment local material is invalid\n' >&2
+          exit 75
+        fi
+        ;;
+    esac
+    exit "${FAKE_BOOTSTRAP_RC:-0}" ;;
   down)
     case "$*" in *--volumes*) printf 'FAKE dev-local down 带了 --volumes\n' >>"$CALLS"; exit 1 ;; esac
     exit 0 ;;
@@ -288,7 +301,10 @@ chmod +x "$MONO/apps/recruitment/scripts/dev-local.sh"
 cat >"$MONO/apps/recruitment/scripts/browser-fixture.sh" <<'FAKE'
 #!/usr/bin/env bash
 set -u
-printf 'fixture %s\n' "$*" >>"$CALLS"
+# 每次调用都带毫秒时间戳与本轮 RUN_ID 落账：合同测试靠它断言「每一次算子调用都是
+# 全新 RUN_ID」以及「相邻两次登录错峰 ≥ FIXTURE_LOGIN_PACE 秒」（后端 0.2.5 实测缺陷）。
+printf 'fixture %s run=%s t=%s\n' "$*" "$BROWSER_FIXTURE_RUN_ID" \
+  "$(node -e 'process.stdout.write(String(Date.now()))' 2>/dev/null || date +%s)" >>"$CALLS"
 if [ -z "${BROWSER_FIXTURE_RUN_ID:-}" ]; then echo 'usage: 缺少 BROWSER_FIXTURE_RUN_ID' >&2; exit 64; fi
 receipt_dir="$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev/browser-fixtures"
 receipt="$receipt_dir/$BROWSER_FIXTURE_RUN_ID.json"
@@ -342,12 +358,15 @@ case "${1:-}" in
     ledger="${2:-}"
     case "$ledger" in /*) : ;; *) echo 'usage: --ledger 必须是绝对路径'; exit 64 ;; esac
     [ -f "$ledger" ] || { echo 'FAIL: 台账文件不存在'; exit 1; }
-    # DENY：--ledger 必须是本轮那一份 run receipt，路径与形状都要对得上
-    [ "$ledger" = "$receipt" ] \
-      || printf 'FAKE fixture cleanup --ledger 不是本轮 run receipt 的路径：%s\n' "$ledger" >>"$CALLS"
-    jq -e --arg run "$BROWSER_FIXTURE_RUN_ID" \
-      '.run_id == $run and has("candidate") and has("recruiter")' "$ledger" >/dev/null 2>&1 \
-      || printf 'FAKE fixture cleanup --ledger 的形状不是 run receipt：%s\n' "$ledger" >>"$CALLS"
+    # DENY：--ledger 必须是本轮 converge 写下的那份 run receipt——
+    # 0.2.5 实测缺陷：cleanup 自己用全新 RUN_ID 调进来，ledger 是**另一次** converge
+    # 的收条，所以 ledger 的 run_id 必须与本次调用的 RUN_ID 不同；相等＝编排层根本
+    # 没有按「每次调用全新 RUN_ID」发号。路径与形状都要对得上。
+    [ "$ledger" != "$receipt" ] \
+      || printf 'FAKE fixture cleanup --ledger 不该是本次调用自己的回执路径：%s\n' "$ledger" >>"$CALLS"
+    jq -e --arg own "$BROWSER_FIXTURE_RUN_ID" \
+      '(.run_id != "") and (.run_id != $own) and has("candidate") and has("recruiter")' "$ledger" >/dev/null 2>&1 \
+      || printf 'FAKE fixture cleanup --ledger 的形状不是本轮 converge 的 run receipt：%s\n' "$ledger" >>"$CALLS"
     case "$(seq_rc cleanup "${FAKE_CLEANUP_SEQ:-0}")" in
       0) : ;;
       75) echo 'BLOCKED: 拆台过程中本地栈不健康'; exit 75 ;;
@@ -392,6 +411,7 @@ reset_case(){
   rm -f "$STATE/converge-calls" "$STATE/verify-calls" "$STATE/cleanup-calls"
   export AGXP_MONOREPO_DIR="$MONO"
   export FAKE_HEALTH_SEQ='0' FAKE_PREPARE_RC=0 FAKE_UP_RC=0 FAKE_BOOTSTRAP_RC=0
+  unset FAKE_BOOTSTRAP_BLOCK_DIR 2>/dev/null || true
   export FAKE_CONVERGE_SEQ='0' FAKE_VERIFY_SEQ='0' FAKE_CLEANUP_SEQ='0' FAKE_INTERRUPTED=0
   export FAKE_JOURNEY_FAIL='' FAKE_JOURNEY_BLOCK='' FAKE_JOURNEY_SIGINT='' FAKE_ISOLATION_RC=0
   export FAKE_PORT_BUSY=0 FAKE_DOCKER_RC=0 FAKE_DOCTOR_RC=0 FAKE_VITE_START_RC=0 FAKE_LOGOUT_RC=0
@@ -403,6 +423,9 @@ reset_case(){
   export FAKE_SCENE_PNG="$RED_PNG"
   export FAKE_RECEIPT_MODE=600 FAKE_RECEIPT_MISSING=0 FAKE_LEAK=0
   export UI_VISUAL_GATE='report'
+  # 相邻算子调用的错峰秒数（mock SMS 同手机号 begin 限流是一分钟一个窗）。
+  # 默认值在运行器里是 70；合同测试用 1 秒，快，且足以证明节奏机制在跑。
+  export FIXTURE_LOGIN_PACE=1
   unset AGENT_BROWSER_HEADED 2>/dev/null || true
 }
 
@@ -461,6 +484,19 @@ assert_eq '栈被记为预先存在' "$(jq -r .stack.preexisting "$(report_json)
 assert_true '清理成功后私密目录被删除' "[ ! -d '$(run_dir)/private' ]"
 assert_eq '清理成功后后端运行回执被删除' "$(ls "$MONO/apps/recruitment/.local-dev/browser-fixtures" 2>/dev/null | wc -l | tr -d ' ')" '0'
 assert_contains '运行 manifest 记了 Chrome 构建' 'Chrome/141.0.7390.55' "$(run_dir)/run-manifest.json"
+
+# 0.2.5 实测缺陷的两条编排合同：每一次算子调用都要全新 RUN_ID（同 id 二次调用
+# 会重放出已 logout 的死 token，首个 catalog 请求必 401）；相邻两次登录要错峰
+# ≥ FIXTURE_LOGIN_PACE 秒（mock SMS 同手机号 begin 限流一分钟一个窗）。
+fixture_runs(){
+  grep -o ' run=[^ ]*' "$CALLS" | sed 's/^ run=//'
+}
+assert_eq '五次算子调用（converge/verify/cleanup/converge/verify）' "$(fixture_runs | wc -l | tr -d ' ')" '5'
+assert_eq '每一次算子调用的 RUN_ID 都是全新的' "$(fixture_runs | sort -u | wc -l | tr -d ' ')" '5'
+assert_true '相邻算子调用错峰 ≥ PACE' \
+  "T1=\$(grep 'fixture converge' '$CALLS' | head -1 | grep -o ' t=[0-9]*' | cut -c4-); \
+   T2=\$(grep 'fixture verify' '$CALLS' | head -1 | grep -o ' t=[0-9]*' | cut -c4-); \
+   [ \$((T2 - T1)) -ge 900 ]"
 
 testcase '收尾：招聘方按企业账号的确认名退出，只关两个具名会话'
 assert_contains '招聘确认键用 确认退出企业账号 --exact' '--name 确认退出企业账号 --exact' "$CALLS"
@@ -601,10 +637,40 @@ assert_eq '退出码 1' "$RC" 1
 assert_eq '分类 CLEANUP_FAILED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'CLEANUP_FAILED'
 assert_true '私密目录保留' "[ -d '$(run_dir)/private' ]"
 assert_eq '台账仍是 0600' "$(stat -f '%Lp' "$(run_dir)/private/run-journal.json" 2>/dev/null)" '600'
-assert_true '后端运行回执保留' "[ \$(ls '$MONO/apps/recruitment/.local-dev/browser-fixtures' | wc -l) -eq 1 ]"
+assert_eq '后端运行回执保留（主 converge 一份 + 收尾重新收敛一份）' \
+  "$(ls "$MONO/apps/recruitment/.local-dev/browser-fixtures" 2>/dev/null | wc -l | tr -d ' ')" '2'
 assert_contains '打印了私密目录的绝对路径' "$(run_dir)/private" "$OUT"
 assert_contains '打印了回执路径' "$MONO/apps/recruitment/.local-dev/browser-fixtures" "$OUT"
 assert_contains '把 journal 里的固定保留名称念给人听（它唯一的读者）' '本轮 journal 记下的里程碑' "$OUT"
+
+# 后端已知缺陷（0.2.5）：.local-dev/browser-fixtures 目录不在 dev-local validate_material
+# 白名单里，目录还在（receipt 还没退休）时 bootstrap 必 BLOCKED。绕法是改名目录 →
+# bootstrap → 无论成败都改回。改回失败＝receipt 滞留在 .lockbak 里，阻塞而不是丢。
+testcase 'bootstrap 撞上回执目录：改名重试成功，目录与 receipt 原样归位'
+reset_case; setup_baseline
+FIXDIR="$MONO/apps/recruitment/.local-dev/browser-fixtures"
+mkdir -p "$FIXDIR"
+printf '%s' '{"schema_version":1,run_id:"preexisting"}' >"$FIXDIR/preexisting.json"
+export FAKE_BOOTSTRAP_BLOCK_DIR=1
+run_runner
+assert_eq '退出码 0' "$RC" 0
+assert_true 'bootstrap 尝试了不止一次' "[ \$(grep -c 'dev-local bootstrap' '$CALLS') -ge 2 ]"
+assert_true '目录归位，没有滞留的改名目录' "[ -d '$FIXDIR' ] && ! ls -d '$FIXDIR'.lockbak-* >/dev/null 2>&1"
+assert_true '原有的 receipt 原样还在' "[ -f '$FIXDIR/preexisting.json' ]"
+assert_missing '假件没有报告任何未预期调用' 'FAKE ' "$CALLS"
+
+testcase '改名之后 bootstrap 仍失败：退出 75，回执目录被原样改回'
+reset_case; setup_baseline
+FIXDIR="$MONO/apps/recruitment/.local-dev/browser-fixtures"
+mkdir -p "$FIXDIR"
+printf '%s' '{"schema_version":1,run_id:"preexisting"}' >"$FIXDIR/preexisting.json"
+export FAKE_BOOTSTRAP_BLOCK_DIR=2
+run_runner
+assert_eq '退出码 75' "$RC" 75
+assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'INFRA_BLOCKED'
+assert_true '目录被改回原位' "[ -d '$FIXDIR' ]"
+assert_true '回执没有滞留在改名目录里' "[ -f '$FIXDIR/preexisting.json' ]"
+assert_missing '没有 fixture 被调用' 'fixture ' "$CALLS"
 
 # 后端 cleanup 判 BLOCKED 是「拆台过程中栈不健康」，不是「临时对象没清掉」。
 # 报成 CLEANUP_FAILED 会让人去翻残留数据，而真正坏的是本地栈。
