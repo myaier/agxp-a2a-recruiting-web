@@ -95,7 +95,8 @@ root_back
 click_after_hydrate '我'
 click_until_screen '公司资料' '编辑品牌信息'
 enter_company_intro
-assert_value '公司介绍' "$BASE_COMPANY_INTRO"
+# 不做进场前基线断言：上一轮旅程若死在中间，账号可能停在临时值——
+# 权威校验交给改后的 assert_value 与还原步骤，进场直接改。
 find_retry label 公司介绍 fill "$TEMP_COMPANY_INTRO" >/dev/null
 click_button_exact '保存'
 settle
