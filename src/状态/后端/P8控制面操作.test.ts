@@ -1078,6 +1078,56 @@ describe('P8 账号注销', () => {
     expect(env.恢复存储.读取()).toBeNull();
   });
 
+  it('重放窗内换会话/换主体：迟到的 202 不摊平新会话、不删新主体句柄，固定文案抛出', async () => {
+    vi.useFakeTimers();
+    try {
+      // 主体 A（sub_1）持有导出句柄；主体 B 的适配器与句柄在场（Provider 主体变化时换绑 ref）
+      env.恢复存储.写入({ subjectId: 'sub_1', createKey: 'p8-export-key-0001', exportId: 导出ID甲 });
+      const B存储 = 创建恢复存储桩('sub_B');
+      B存储.写入({ subjectId: 'sub_B', createKey: 'p8-export-key-0002', exportId: 导出ID乙 });
+      // 第一发结果未知（进入 1s 重放窗），第二发挂起 —— 202 在会话换 代后才落定
+      const 门 = deferred<P8AccountDeletion>();
+      vi.mocked(env.数据源.请求P8账号注销)
+        .mockRejectedValueOnce(new BFF错误(503, 'operation_outcome_unknown', 'unknown'))
+        .mockReturnValueOnce(门.promise);
+      const run = env.操作.请求P8账号注销();
+      let 收口错误: unknown = null;
+      run.catch((错误) => { 收口错误 = 错误; }); // 只观察；拒绝由下方断言收口
+      const 断言 = expect(run).rejects.toMatchObject({ code: 'invalid_request' });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(1_000); // 第二发在飞
+      // 重放窗内：A 登出、B 登录 —— 会话代际前进、主体标识换人、ref 换绑到 B 的适配器
+      env.deps.主体标识引用.current = 'sub_B';
+      env.deps.会话代际.current += 1;
+      env.deps.P8导出恢复.current = B存储 as P8导出恢复存储;
+      env.deps.设后端状态((旧) => ({
+        ...旧,
+        已登录: true,
+        主体: { ...候选主体, subject_id: 'sub_B' },
+        credentials: { phase: 'success', refreshing: false, data: [手机凭证], error: null, generation: 9 },
+      }));
+      门.resolve(注销回执); // 迟到的 202
+      await 断言;
+      expect(取P8错误文案(收口错误)).toBe('注销已受理，但会话已切换，请在重新登录后确认');
+      // 新会话的登录态与已确认快照原样存活
+      const 最新 = env.最新状态();
+      expect(最新.已登录).toBe(true);
+      expect(最新.主体).toMatchObject({ subject_id: 'sub_B' });
+      expect(最新.credentials).toMatchObject({ phase: 'success', data: [手机凭证] });
+      // 新主体的导出句柄未被删除（ref 已换绑 —— 收口绝不能顺着 ref 清掉 B 的句柄）
+      expect(B存储.删除).not.toHaveBeenCalled();
+      expect(B存储.读取()).toMatchObject({ subjectId: 'sub_B', exportId: 导出ID乙 });
+      // 统一清理未被触发：目录缓存不动、会话代际不再前进
+      expect(env.数据源.清空目录缓存).not.toHaveBeenCalled();
+      expect(env.deps.会话代际.current).toBe(2);
+      // 旧主体（A）的句柄也未被顺手动过：留给重新登录后的 404 兜底
+      expect(env.恢复存储.删除).not.toHaveBeenCalled();
+      expect(env.恢复存储.读取()?.exportId).toBe(导出ID甲);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('注销不依赖恢复适配器：null 适配器照常收口；句柄清理是尽力而为，删除抛错不冒充注销失败', async () => {
     env.deps.P8导出恢复.current = null;
     await expect(env.操作.请求P8账号注销()).resolves.toBeUndefined();
