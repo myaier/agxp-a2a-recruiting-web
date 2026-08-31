@@ -142,7 +142,7 @@ click_button(){ ab find role button click --name "$1" >/dev/null; }
 click_button_exact(){ ab find role button click --name "$1" --exact >/dev/null; }
 
 # 返回栏的 ‹ 键（src/组件/通用.tsx 返回栏，可访问名称「返回」）
-click_back(){ click_button_exact '返回'; }
+click_back(){ click_with_retry '返回'; }
 
 # 导航（click_back、底部 tab、返回上级）之后的目标屏要等数据回来才渲染：
 # 真实后端每一屏先拉 /me 与业务数据才画菜单行，mock 数据源是同步渲染、
@@ -151,7 +151,23 @@ click_back(){ click_button_exact '返回'; }
 # 等到目标控件的**可访问名文本**出现再按名点。默认严格匹配；传 prefix 用子串匹配。
 click_after_hydrate(){
   wait_text "$1"
-  if [ "${2:-}" = 'prefix' ]; then click_button "$1"; else click_button_exact "$1"; fi
+  click_with_retry "$1" "${2:-exact}"
+}
+
+# 切屏后 Chrome 会有一段辅助功能树重算窗口：期间整棵 AX 塌成一个以全文为名的
+# generic + 壳外那枚「标注模式」（manual-run 失败快照实证：像素正常渲染、wait --text
+# 走的 DOM 文本不受影响，唯独 role find 必然扑空），数秒后自愈。所以屏幕切换后的
+# 点击一律带有限重试，单次 find 撞上重算窗口就把整条旅程错杀。成功即返回；
+# 30 次仍未点上＝真找不到，按失败落地（错误信息由 find 自己打）。
+click_with_retry(){
+  local name="$1" mode="${2:-exact}" tries=0
+  while [ "$tries" -lt 30 ]; do
+    if [ "$mode" = 'prefix' ]; then click_button "$name" && return 0; else click_button_exact "$name" && return 0; fi
+    tries=$((tries + 1))
+    sleep 1
+  done
+  printf '按钮「%s」重试 30 秒仍未点上\n' "$name" >&2
+  return 1
 }
 
 # 左滑露出行内操作（滑动行：附件简历行、岗位行）。
@@ -520,7 +536,7 @@ _isolation_steps(){
   AGENT_BROWSER_SESSION="$CANDIDATE_SESSION" &&
   login_candidate &&
   ISOLATION_MILESTONE='候选侧硬刷新' &&
-  click_button_exact '我' &&
+  click_after_hydrate '我' &&
   click_after_hydrate '我的简历' &&
   reload_and_assert '浏览器验收候选人' &&
   assert_absent '浏览器验收招聘官' &&
@@ -529,7 +545,7 @@ _isolation_steps(){
   AGENT_BROWSER_SESSION="$RECRUITER_SESSION" &&
   login_recruiter &&
   ISOLATION_MILESTONE='招聘侧硬刷新' &&
-  click_button_exact '我' &&
+  click_after_hydrate '我' &&
   click_after_hydrate '设置' &&
   click_after_hydrate '招聘名片' prefix &&
   reload_and_assert '浏览器验收招聘官' &&
@@ -539,7 +555,7 @@ _isolation_steps(){
   AGENT_BROWSER_SESSION="$CANDIDATE_SESSION" &&
   ISOLATION_MILESTONE='候选退出登录' &&
   click_back &&
-  click_button_exact '我' &&
+  click_after_hydrate '我' &&
   click_after_hydrate '设置' &&
   click_button_exact '退出登录' &&
   assert_text '退出当前账号？' &&

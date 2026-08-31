@@ -80,7 +80,7 @@ login_candidate
 
 # ── 1. 简历：姓名行内编辑 ────────────────────────────────────────────
 MILESTONE='简历改名'
-click_button_exact '我'
+click_after_hydrate '我'
 click_after_hydrate '我的简历'
 assert_text "$BASE_NAME"
 click_button '姓名（递交简历后披露）'
@@ -92,7 +92,7 @@ reload_and_assert "$TEMP_NAME"
 # ── 2. 求职意向：新建 → 编辑 → 删除 ─────────────────────────────────
 MILESTONE='新建意向'
 click_back
-click_button_exact '我'
+click_after_hydrate '我'
 click_after_hydrate '求职意向'
 assert_text '1/5'
 click_button '添加求职意向'
@@ -143,7 +143,7 @@ assert_text "$BASE_SALARY"
 # ── 3. 披露偏好：改一档再改回来 ─────────────────────────────────────
 MILESTONE='披露偏好改档'
 click_back
-click_button_exact '我'
+click_after_hydrate '我'
 click_after_hydrate '披露偏好'
 assert_pressed '当前公司：不披露'
 click_button_exact '当前公司：意向确认后'
@@ -164,7 +164,7 @@ MILESTONE='上传附件'
 TEMP_PDF_DIR="$(dirname "$PRIVATE_JOURNAL")"
 cp "$ROOT_DIR/资源/简历-v1.pdf" "$TEMP_PDF_DIR/$TEMP_FILE_NAME"
 click_back
-click_button_exact '我'
+click_after_hydrate '我'
 click_after_hydrate '我的简历'
 assert_text "$TEMP_NAME"
 click_button_exact '添加附件简历'

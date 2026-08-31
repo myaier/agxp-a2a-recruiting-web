@@ -65,7 +65,7 @@ login_recruiter
 # 保存成功只弹一条轻提示、不换屏也不改列表，没有业务信号可等（招聘名片.tsx:114），
 # 所以保存与硬刷新之间用 settle 等这一屏网络安静，免得刷新把还在飞的写请求打断。
 MILESTONE='名片改职务'
-click_button_exact '我'
+click_after_hydrate '我'
 click_after_hydrate '设置'
 click_after_hydrate '招聘名片' prefix
 assert_text "$BASE_RECRUITER_NAME"
@@ -87,7 +87,7 @@ assert_value '职务' "$BASE_RECRUITER_TITLE"
 MILESTONE='公司介绍改文'
 click_back
 click_back
-click_button_exact '我'
+click_after_hydrate '我'
 click_after_hydrate '公司资料'
 click_button '公司介绍'
 assert_value '公司介绍' "$BASE_COMPANY_INTRO"
@@ -108,7 +108,7 @@ assert_value '公司介绍' "$BASE_COMPANY_INTRO"
 MILESTONE='发布岗位'
 click_back
 click_back
-click_button_exact '我'
+click_after_hydrate '我'
 click_after_hydrate '岗位管理'
 click_after_hydrate '发布新岗位' prefix
 assert_text '岗位基础信息'
@@ -138,7 +138,7 @@ ab find placeholder '如：浦东新区世纪大道 1568 号中建大厦 28 层'
 click_button_exact '发布岗位并开始寻访'
 # 发布成功之后产品自己把我们送回企业主壳（发布岗位.tsx:357 进企业主壳）——
 # 底部导航的「我」出现就是服务端已经收下这个岗位的信号
-click_button_exact '我'
+click_after_hydrate '我'
 # 浏览器已经把这个固定保留名称建出来了，先记台账再往下做，中途崩掉也能被精确回收
 record_cleanup_marker recruiter_job_titles "$TEMP_JOB"
 click_after_hydrate '岗位管理'

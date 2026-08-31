@@ -58,7 +58,7 @@ login_recruiter
 # 头像行的可访问名称是公司名 + 两枚服务端状态胶囊拼出来的（企业我的.tsx:154-172），
 # 随任职状态变；设置里这一行的名称是固定的产品文案。
 MILESTONE='招聘名片'
-click_button_exact '我'
+click_after_hydrate '我'
 click_after_hydrate '设置'
 click_after_hydrate '招聘名片' prefix
 assert_text "$BASE_RECRUITER_NAME"
@@ -76,7 +76,7 @@ capture_scene 'recruiter-card-loaded'
 MILESTONE='公司资料'
 click_back
 click_back
-click_button_exact '我'
+click_after_hydrate '我'
 click_after_hydrate '公司资料'
 assert_text '编辑品牌信息'
 click_button '公司介绍'
@@ -90,7 +90,7 @@ capture_scene 'recruiter-company-loaded'
 MILESTONE='岗位管理'
 click_back
 click_back
-click_button_exact '我'
+click_after_hydrate '我'
 click_after_hydrate '岗位管理'
 assert_job_row "$BASE_ACTIVE_JOB" '在招'
 assert_job_row "$BASE_ARCHIVED_JOB" '已归档'
