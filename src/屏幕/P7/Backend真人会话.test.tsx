@@ -454,7 +454,7 @@ describe('Backend真人会话 · P8 会话举报', () => {
   it('⋯ 是键盘可达控件：点击 / Enter / Space 都打开同一个举报层', async () => {
     const 用户 = userEvent.setup();
     环境({});
-    const 视图 = render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    const 视图 = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     const 点号 = screen.getByRole('button', { name: '举报' });
     // 视觉合同：仍是那枚 ⋯ 文本（不是换成重置过字体的原生按钮）
     expect(点号.textContent).toBe('⋯');
@@ -476,7 +476,7 @@ describe('Backend真人会话 · P8 会话举报', () => {
     环境({ 提交P8举报 });
     const 读取真人会话 = mock应用状态.操作.读取真人会话;
     const 用户 = userEvent.setup();
-    const 视图 = render(<Backend真人会话 role="candidate" conversationId="3003" />);
+    const 视图 = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     await 用户.click(screen.getByRole('button', { name: '举报' }));
     await 用户.click(screen.getByRole('button', { name: '骚扰' }));
     await 用户.click(screen.getByRole('button', { name: /同时屏蔽/ }));
@@ -492,7 +492,7 @@ describe('Backend真人会话 · P8 会话举报', () => {
     const 提交P8举报 = vi.fn().mockResolvedValue(举报回执);
     环境({ role: 'recruiter', 提交P8举报 });
     const 用户 = userEvent.setup();
-    const 视图 = render(<Backend真人会话 role="recruiter" conversationId="3003" />);
+    const 视图 = render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
     await 用户.click(screen.getByRole('button', { name: '举报' }));
     await 用户.click(screen.getByRole('button', { name: '其他' }));
     await 用户.click(screen.getByRole('button', { name: '提交举报' }));
