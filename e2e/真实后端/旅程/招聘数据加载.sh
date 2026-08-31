@@ -76,6 +76,7 @@ capture_scene 'recruiter-card-loaded'
 MILESTONE='公司资料'
 click_back
 click_back
+click_button_exact '我'
 click_after_hydrate '公司资料'
 assert_text '编辑品牌信息'
 click_button '公司介绍'
@@ -89,6 +90,7 @@ capture_scene 'recruiter-company-loaded'
 MILESTONE='岗位管理'
 click_back
 click_back
+click_button_exact '我'
 click_after_hydrate '岗位管理'
 assert_job_row "$BASE_ACTIVE_JOB" '在招'
 assert_job_row "$BASE_ARCHIVED_JOB" '已归档'

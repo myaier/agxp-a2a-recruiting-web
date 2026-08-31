@@ -87,6 +87,7 @@ assert_value '职务' "$BASE_RECRUITER_TITLE"
 MILESTONE='公司介绍改文'
 click_back
 click_back
+click_button_exact '我'
 click_after_hydrate '公司资料'
 click_button '公司介绍'
 assert_value '公司介绍' "$BASE_COMPANY_INTRO"
@@ -107,6 +108,7 @@ assert_value '公司介绍' "$BASE_COMPANY_INTRO"
 MILESTONE='发布岗位'
 click_back
 click_back
+click_button_exact '我'
 click_after_hydrate '岗位管理'
 click_after_hydrate '发布新岗位' prefix
 assert_text '岗位基础信息'

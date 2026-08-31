@@ -539,6 +539,7 @@ _isolation_steps(){
   AGENT_BROWSER_SESSION="$CANDIDATE_SESSION" &&
   ISOLATION_MILESTONE='候选退出登录' &&
   click_back &&
+  click_button_exact '我' &&
   click_after_hydrate '设置' &&
   click_button_exact '退出登录' &&
   assert_text '退出当前账号？' &&
