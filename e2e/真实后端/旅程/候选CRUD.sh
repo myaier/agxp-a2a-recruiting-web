@@ -120,8 +120,9 @@ assert_text '2/5'
 record_cleanup_marker candidate_intention_created true
 
 MILESTONE='编辑意向'
+# 列表重渲染后点名可能「成功却没有落点」（stale AX 节点）：没开成弹层就重走一轮
 click_button "$TEMP_SALARY_1"
-assert_text '编辑求职期望'
+assert_text '编辑求职期望' || { click_back; click_button "$TEMP_SALARY_1"; assert_text '编辑求职期望'; }
 set_salary_range 35 50
 click_button_exact '保存'
 assert_text "$TEMP_SALARY_2"

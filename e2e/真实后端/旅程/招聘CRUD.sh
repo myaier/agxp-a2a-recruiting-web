@@ -89,8 +89,9 @@ click_back
 click_back
 click_after_hydrate '我'
 click_after_hydrate '公司资料'
+# 分区行的可访问名可能与列表预览子串重合：点完没换屏就重走一轮（先回再进）
 click_button '公司介绍'
-assert_value '公司介绍' "$BASE_COMPANY_INTRO"
+assert_value '公司介绍' "$BASE_COMPANY_INTRO" || { click_back; click_button '公司资料'; click_button '公司介绍'; assert_value '公司介绍' "$BASE_COMPANY_INTRO"; }
 find_retry label 公司介绍 fill "$TEMP_COMPANY_INTRO" >/dev/null
 click_button_exact '保存'
 settle
