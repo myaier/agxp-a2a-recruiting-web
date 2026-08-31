@@ -42,6 +42,11 @@ interface BFF请求共同选项 {
   幂等键?: string;
   /** P5 opt-in：显式为 true 时设置 Request.cache = 'no-store'（非持久化读取）；缺省时 cache 保持 undefined。 */
   不缓存?: true;
+  /** P8 opt-in：显式为 true 时严格校验 2xx JSON 体恰为 {result, meta:{request_id, api_version:'v1'}}
+   *  （OpenAPI Meta：additionalProperties false、request_id minLength 1、api_version const v1）。
+   *  缺/多根键、缺/多 meta 键、空 request_id、错版本与 JSON 尾随内容都按 invalid_response
+   *  fail closed；缺省时保持既有宽松行为，不改变任何既有请求。 */
+  严格信封?: true;
 }
 
 /** body 与 formData 互斥：JSON 请求走 body，multipart 上传走 formData（浏览器生成 boundary）。 */
@@ -103,6 +108,29 @@ function 解析RetryAfter(resp: Response): number | null {
   return Number.isFinite(数字) ? 数字 : null;
 }
 
+/** P8 opt-in 严格信封：body 恰为 {result, meta:{request_id, api_version:'v1'}}；返回漂移说明，合规返回 null。 */
+function 校验严格信封(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return '响应不是 {result, meta} 信封';
+  }
+  const 根键 = Object.keys(body);
+  if (根键.length !== 2 || !根键.includes('result') || !根键.includes('meta')) {
+    return '响应根键不符合 {result, meta} 信封';
+  }
+  const meta = (body as { meta: unknown }).meta;
+  if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) {
+    return '响应 meta 不符合契约';
+  }
+  const meta键 = Object.keys(meta);
+  if (meta键.length !== 2 || !meta键.includes('request_id') || !meta键.includes('api_version')) {
+    return '响应 meta 键不符合契约';
+  }
+  const { request_id, api_version } = meta as { request_id: unknown; api_version: unknown };
+  if (typeof request_id !== 'string' || request_id.length === 0) return '响应 request_id 不符合契约';
+  if (api_version !== 'v1') return '响应 api_version 不符合契约';
+  return null;
+}
+
 /** 非 2xx：解析 { error: { type, message, fields? } } 为 BFF错误；JSON 请求与 binary GET 共用。 */
 async function 解析错误响应(resp: Response): Promise<BFF错误> {
   let code = 'invalid_response';
@@ -134,7 +162,7 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
   const 生成幂等键 = deps.生成幂等键 ?? (() => globalThis.crypto.randomUUID());
   const 等待 = deps.等待 ?? ((毫秒: number) => new Promise<void>((完成) => setTimeout(完成, 毫秒)));
 
-  async function 单次<T>(path: string, init: RequestInit): Promise<尝试结果<T>> {
+  async function 单次<T>(path: string, init: RequestInit, 严格信封?: boolean): Promise<尝试结果<T>> {
     let resp: Response;
     try {
       resp = await fetcher(path, init);
@@ -156,6 +184,13 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
         body = await resp.json();
       } catch {
         return { kind: '错误', error: new BFF错误(resp.status, 'invalid_response', '响应不是合法 JSON') };
+      }
+      // P8 opt-in 严格信封：初次与受控重试共用同一条校验，漂移即 fail closed。
+      if (严格信封) {
+        const 漂移 = 校验严格信封(body);
+        if (漂移 !== null) {
+          return { kind: '错误', error: new BFF错误(resp.status, 'invalid_response', 漂移) };
+        }
       }
       const 信封 = body as BFF信封<T> | undefined;
       const requestId = 信封 && typeof 信封 === 'object' && 'meta' in 信封 && 信封.meta ? 信封.meta.request_id ?? null : null;
@@ -209,11 +244,11 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
     if (hasBody) init.body = JSON.stringify(options.body);
     else if (options.formData !== undefined) init.body = options.formData;
 
-    let 结果 = await 单次<T>(options.path, init);
+    let 结果 = await 单次<T>(options.path, init, options.严格信封);
 
     // GET 网络错误只重试一次；mutation 网络错误不自动重试。
     if (结果.kind === '网络错误' && isGet) {
-      结果 = await 单次<T>(options.path, init);
+      结果 = await 单次<T>(options.path, init, options.严格信封);
     }
 
     if (结果.kind === '网络错误') {
@@ -225,7 +260,7 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
     if (结果.kind === '错误' && 幂等键 !== null && 可受控重试(结果.error)) {
       const 等待毫秒 = (结果.error.retryAfterSeconds ?? 0) * 1000;
       await 等待(等待毫秒);
-      结果 = await 单次<T>(options.path, init);
+      结果 = await 单次<T>(options.path, init, options.严格信封);
       // 受控重试本身遇网络错误时按网络错误抛出，绝不回退 Mock。
       if (结果.kind === '网络错误') {
         throw new BFF错误(0, 'network_error', '网络连接失败，请稍后再试');
