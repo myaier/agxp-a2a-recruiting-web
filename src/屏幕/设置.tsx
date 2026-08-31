@@ -17,6 +17,7 @@ import { 取后端错误文案 } from '../数据/HTTP客户端';
 export default function 设置() {
   const { 返回, 跳转, 替换跳转 } = use导航();
   const { 状态, 派发, 操作, 数据源模式, 后端状态 } = use应用状态();
+  const 是后端 = 数据源模式 === 'backend';
   const [提示, 设提示] = useState<string | null>(null);
   const [待关隐身, 设待关隐身] = useState(false);
   const [待退出, 设待退出] = useState(false);
@@ -26,6 +27,21 @@ export default function 设置() {
     const 定时 = window.setTimeout(() => 设提示(null), 1600);
     return () => window.clearTimeout(定时);
   }, [提示]);
+
+  // P8 Task 4：Backend 账号行只按需读取凭证（设置页零会话请求、零账号范围登记）；
+  // Mock 不发任何 P8 调用。非 force 且已成功时操作层零请求。
+  useEffect(() => {
+    if (!是后端) return;
+    void 操作.加载P8凭证().catch(() => undefined);
+  }, [是后端, 操作]);
+
+  // P8：唯一 phone_otp 行的服务端 display 原样上屏（无客户端重掩码）；未成功快照
+  // （含读取失败）落中性占位，绝不回退硬编码手机号。
+  const 手机号显示 = 是后端
+    ? 后端状态.credentials.phase === 'success'
+      ? 后端状态.credentials.data?.find((行) => 行.provider === 'phone_otp')?.display ?? '未绑定'
+      : '—'
+    : '138 **** 6021';
 
   // P3：Mock 下隐私开关照旧走本地归约；Backend 必须等 服务端成功
   // （操作.设置雇主隐私 内部无乐观写），绝不派发本地 切设置开关 假成功。
@@ -82,7 +98,7 @@ export default function 设置() {
             <span className={样式.行文字组}>
               <span className={样式.行标题}>手机号</span>
             </span>
-            <span className={样式.行值}>138 **** 6021</span>
+            <span className={样式.行值}>{手机号显示}</span>
           </div>
           <button
             className={`${样式.行} 可点`}
