@@ -198,15 +198,19 @@ click_after_hydrate(){
 # （#run25-28 实证）。这里封装：语义点击 → 屏面标记在不在 → 不在再语义/几何补点。
 click_until_screen(){
   local button="$1" marker="$2" mode="${3:-exact}"
-  if on_screen "$marker"; then return 0; fi
-  if [ "$mode" = 'prefix' ]; then click_button "$button" || click_row_geometry "$button"; else click_button_exact "$button" || click_row_geometry "$button"; fi
-  # 点击派发到 SPA 换屏有延迟：立即查屏会把「已点成、尚未换屏」当失败（#run34 死点）。
-  # 给 10s 的屏面确认窗口——marker 到了才算导航成功。
-  local tries=0
-  while [ "$tries" -lt 10 ]; do
-    on_screen "$marker" && return 0
+  # 点击派发到 SPA 换屏有延迟，且点击可能落进旧 AX 树打空（#run34 死点）：
+  # 「没到屏就再点」共六轮，每轮给 5s 屏面确认窗口；到屏立即成功。
+  local tries=0 w
+  while [ "$tries" -lt 6 ]; do
+    if on_screen "$marker"; then return 0; fi
+    if [ "$mode" = 'prefix' ]; then click_button "$button" || click_row_geometry "$button"; else click_button_exact "$button" || click_row_geometry "$button"; fi
+    w=0
+    while [ "$w" -lt 5 ]; do
+      on_screen "$marker" && return 0
+      w=$((w + 1))
+      sleep 1
+    done
     tries=$((tries + 1))
-    sleep 1
   done
   return 1
 }
