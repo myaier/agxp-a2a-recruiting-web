@@ -810,6 +810,10 @@ run_journey(){
   script="$(journey_script "$id")" || blocked "没有这条旅程的脚本：$id"
   JOURNEYS_STARTED=1
   mkdir -p "$dir"
+  # 旅程开场往往就是一次真实的 UI 登录（会话失效或 URL 不匹配时重登）——
+  # 旅程之间不再共用一个锚点：每条旅程前都错峰，收尾 cleanup 的锚点也就如实
+  # 反映了最近一次旅程的登录（#run16：cleanup 的 begin 撞上旅程刚发过的 begin）。
+  pace_before_login
   set +e
   FRAGMENT_DIR="$dir" bash "$script"
   rc=$?
@@ -821,6 +825,7 @@ run_isolation(){
   local rc=0
   JOURNEYS_STARTED=1
   set +e
+  pace_before_login
   ( . "$ROOT_DIR/公共步骤.sh" && 会话隔离门 )
   rc=$?
   set -e
