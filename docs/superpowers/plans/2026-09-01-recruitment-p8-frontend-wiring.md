@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - 产品代码冻结基线是 `659de17be7aac4797bd572228179aedfc5768ae3`；其后的 `20e5bd49` 与 `4df9d192` 只应是 P8 设计文档。Task 0 必须审计 File Map 漂移，不能在未知产品改动上照抄本 Plan。
-- 后端合同固定为 `agxp-monorepo release/0.2.5@897468e5221f0078533178a28119bb259dbb676e`。如果 `origin/release/0.2.5` 前移，立即 STOP 并重新校准 Spec/Plan；不得静默跟随新 SHA。
+- 后端合同固定为 `agxp-monorepo release/0.2.5@13c12450eab0be090fd4be2ac43a0ad076563d7e`。相对先前校准点 `897468e5221f0078533178a28119bb259dbb676e`，P8 OpenAPI、canonical L3 catalog 与 `tools/test` blob 未变化；如果 `origin/release/0.2.5` 再前移，立即 STOP 并重新校准 Spec/Plan，不得静默跟随新 SHA。
 - 不修改后端仓库。Task 0 只读取最终 OpenAPI、canonical L3 catalog 和运行证据。
 - 不修改现有 CSS。若现有 class 无法表达获批入口，必须提出单独的视觉变更请求；未获批准前不得改 `.module.css`。
 - 不重排页面、卡片、按钮、弹层、色彩、字号、间距、动效或操作层级。允许的 Backend 入口差异只有：账号安全页在注销按钮前插入一组复用 `.卡/.行` 的数据行；职位详情复用既有“⋯”与抽屉样式并增加“举报这个职位”；P7 真人会话把同像素装饰性“⋯”变成键盘可访问入口；直聊隐藏没有权威 target 的举报入口。Mock 入口不变。
@@ -219,7 +219,7 @@ Expected at handoff: no product-file diff. If product files changed, inspect eac
 git -C /Users/visionclaw/agxp-monorepo fetch origin release/0.2.5
 git -C /Users/visionclaw/agxp-monorepo rev-parse origin/release/0.2.5
 git -C /Users/visionclaw/agxp-monorepo show --no-patch --oneline \
-  897468e5221f0078533178a28119bb259dbb676e
+  13c12450eab0be090fd4be2ac43a0ad076563d7e
 ```
 
 Expected: `origin/release/0.2.5` equals the exact 40-character SHA. Any other value is STOP/recalibrate.
@@ -228,11 +228,11 @@ Expected: `origin/release/0.2.5` equals the exact 40-character SHA. Any other va
 
 ```bash
 git -C /Users/visionclaw/agxp-monorepo show \
-  897468e5221f0078533178a28119bb259dbb676e:apps/recruitment-bff/openapi/mobile-v1.yaml \
+  13c12450eab0be090fd4be2ac43a0ad076563d7e:apps/recruitment-bff/openapi/mobile-v1.yaml \
   | rg -n "/api/v1/security/sessions|/api/v1/me/credentials|credential-replacement-attempts|/api/v1/me/data-exports|/api/v1/me/account-deletion|/api/v1/compliance/(feedback|reports)|\\^exp_|\\^del_|ComplianceRateLimited"
 
 git -C /Users/visionclaw/agxp-monorepo show \
-  897468e5221f0078533178a28119bb259dbb676e:tests/l3/recruitment-mobile-local-cases.json \
+  13c12450eab0be090fd4be2ac43a0ad076563d7e:tests/l3/recruitment-mobile-local-cases.json \
   | rg -n "account-security|compliance-intake|typed-report|report-evidence|data-export|object-lifecycle|portable-copy|account-deletion|account-retention|product-re-registration"
 ```
 
@@ -1012,7 +1012,7 @@ Expected: final worktree clean.
 
 ## Final Completion Checklist
 
-- [ ] Backend SHA is still exactly `897468e5221f0078533178a28119bb259dbb676e`; canonical L3 has a recorded PASS.
+- [ ] Backend SHA is still exactly `13c12450eab0be090fd4be2ac43a0ad076563d7e`; canonical L3 has a recorded PASS.
 - [ ] Every P8 endpoint uses the exact method/body/no-body/key contract and closed error union.
 - [ ] Strict decoders reject drift; optional next-action window fields map to null; no invented ticket ID constraint.
 - [ ] Credentials/sessions/export never cross subject/session fences; logout/401/deletion cleanup is complete.

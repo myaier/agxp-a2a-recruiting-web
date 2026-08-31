@@ -6,7 +6,7 @@
 
 **前端基线：** `agxp-a2a-recruiting-web@659de17be7aac4797bd572228179aedfc5768ae3`
 
-**后端发布基线：** `agxp-monorepo release/0.2.5@897468e5221f0078533178a28119bb259dbb676e`
+**后端发布基线：** `agxp-monorepo release/0.2.5@13c12450eab0be090fd4be2ac43a0ad076563d7e`
 
 **后端设计来源：** `agxp-monorepo plan/recruitment-backend-p8@a33d5a79c40d7a33416f18e29b321327b3a68aad`
 
@@ -76,12 +76,13 @@ POST   /api/v1/compliance/reports
 
 ### 2.3 最终后端基线
 
-P8 四个子面已经合并到同一个发布提交 `release/0.2.5@897468e5221f0078533178a28119bb259dbb676e`：
+P8 四个子面已经合并到同一个发布提交 `release/0.2.5@13c12450eab0be090fd4be2ac43a0ad076563d7e`：
 
 - `apps/recruitment-bff/openapi/mobile-v1.yaml` 在该 SHA 同时声明 credential、Session、手机号换绑、revoke-others、数据导出、账号注销、反馈和举报全部公开路径。
 - 最终错误合同包含各写操作自己的闭合 409/503 union；只有声明 `Retry-After` 的换绑、revoke-others、注销未知结果等分支才允许据此自动重试。
 - `tests/l3/recruitment-mobile-local-cases.json` 的 canonical case 在同一 SHA 包含 `account-security`、`compliance-intake`、`typed-report`、`report-evidence`、`data-export`、`object-lifecycle`、`portable-copy`、`account-deletion`、`account-retention` 与 `product-re-registration` 风险标签。
 - release 顶部另含账号冻结、举报 subject fence、删除 settled event 与压缩 retention deadline 的集成修正；前端不得回退到四个候选子分支分别取合同。
+- 相比先前校准点 `897468e5221f0078533178a28119bb259dbb676e`，当前 release 只新增 Product Auth OTP 冷却实现/配置；P8 OpenAPI、canonical L3 catalog 与 `tools/test` 的 Git blob 均未变化，因此本 Spec 的 P8 请求/响应合同无需语义修改。
 
 本 Spec 后续所有“最终 OpenAPI”均特指上述单一 SHA；实施 Plan 的 Task 0 仍要重新 fetch 并验证该 SHA 未漂移，再运行前端接线。
 
@@ -560,14 +561,14 @@ Backend fixture 至少覆盖：
 
 视觉回归以当前前端基线截图为准，允许差异只有：导出行、真实 masked phone/时间/数量、真实导出状态、真实工单号、已批准的合规提示，以及三个明确的 Backend 举报入口校正（职位详情显示既有“⋯”并增加一个抽屉项、P7 真人会话同像素“⋯”变为可访问入口、Backend 直聊隐藏无 target 入口）。换绑继续保持现有 4 位验证码视觉；布局、CSS、弹层尺寸、色彩、字号、间距和操作层级出现其他差异即失败。
 
-真实后端验收固定使用 `release/0.2.5@897468e5221f0078533178a28119bb259dbb676e` 的 BFF、OpenAPI 和 canonical L3 环境。route fixture 通过不能冒充真实后端联调通过。
+真实后端验收固定使用 `release/0.2.5@13c12450eab0be090fd4be2ac43a0ad076563d7e` 的 BFF、OpenAPI 和 canonical L3 环境。route fixture 通过不能冒充真实后端联调通过。
 
 ## 12. 实施前硬门
 
 零上下文 Plan 的 Task 0 必须全部通过：
 
 1. 前端仍从本 Spec 基线可追溯，审计 P8 File Map 漂移并保护 P7 并发/会话清理合同。
-2. 执行 `git fetch origin release/0.2.5`，并确认 `origin/release/0.2.5` 仍解析为 `897468e5221f0078533178a28119bb259dbb676e`；如发布分支前移，停止实施并重新校准，不静默追随。
+2. 执行 `git fetch origin release/0.2.5`，并确认 `origin/release/0.2.5` 仍解析为 `13c12450eab0be090fd4be2ac43a0ad076563d7e`；如发布分支前移，停止实施并重新校准，不静默追随。
 3. 从该 SHA 读取 `apps/recruitment-bff/openapi/mobile-v1.yaml`，确认本 Spec §2.2 的全部公开路径仍共存于同一合同。
 4. 精确核对 response status、错误 union、`^exp_[0-9a-f]{32}$`、`^del_[0-9a-f]{32}$`、4 位 OTP、account deletion 的 `{}`、data export create 的 no-body、download headers 与逐端点 `Retry-After`。
 5. 从该 SHA 读取 `tests/l3/recruitment-mobile-local-cases.json`，确认 §2.3 的 P8 风险标签仍在 canonical case 中；记录实际 L3 命令与 PASS 证据，不能只引用 route fixture。
