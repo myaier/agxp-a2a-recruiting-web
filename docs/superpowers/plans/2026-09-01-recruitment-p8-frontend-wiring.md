@@ -454,6 +454,7 @@ export interface P8运行时引用 {
   P8账号可见: 可变引用<boolean>;
   P8读取锁: 可变引用<Map<'credentials' | 'sessions' | 'export', Promise<void>>>;
   P8待定意图: 可变引用<Map<string, P8待定意图<unknown>>>;
+  P8导出恢复: 可变引用<P8导出恢复存储 | null>;
 }
 ```
 
@@ -487,7 +488,7 @@ Assert Chinese intent coordinates never reach the data source key argument. Comp
 
 - [ ] **Step 3: Write cleanup and cross-role RED tests**
 
-Logout, 401, provider unmount and subject A→B must clear all three P8 snapshots, locks and pending intents and invalidate late settlements. Same-subject candidate↔recruiter role switch preserves confirmed account snapshots but increments the P8 fence and clears pending mutation intents. Ordinary logout must not delete the export recovery handle.
+Logout, 401, provider unmount and subject A→B must clear all three P8 snapshots, locks and pending intents and invalidate late settlements. Same-subject candidate↔recruiter role switch preserves confirmed account snapshots but increments the P8 fence and clears pending mutation intents.
 
 Add P5/P7 regression assertions: extending `清账号状态` with P8 must still clear P7 refs, P5 leases via the existing subject effect, privacy, rules, discovery and attachments exactly once.
 
@@ -516,7 +517,7 @@ function 捕获Fence(deps: 后端操作依赖) {
 }
 ```
 
-Add refs once in `应用状态提供者`, inject them through `后端操作依赖`, spread the `P8账号安全操作` returned by `创建P8账号安全操作(deps)` into `应用操作`, seed `创建空P8控制面状态()`, and extend the existing account cleanup path. Do not declare or ship export/deletion stubs. P8's Provider cleanup key is subject-only, not `subject+role`; role switching uses an explicit fence bump so confirmed shared data is retained.
+Add refs once in `应用状态提供者` (initialize `P8导出恢复` to `null`; Task 5 supplies its subject-bound adapter), inject them through `后端操作依赖`, spread the `P8账号安全操作` returned by `创建P8账号安全操作(deps)` into `应用操作`, seed `创建空P8控制面状态()`, and extend the existing account cleanup path. Do not declare or ship export/deletion stubs. P8's Provider cleanup key is subject-only, not `subject+role`; role switching uses an explicit fence bump so confirmed shared data is retained.
 
 Use a closed P8 error mapper in this module. Map each known code to fixed Chinese copy; unknown `BFF错误.message` is never shown. A current-session 401 calls `清账号状态` and rethrows for the screen to navigate through the existing login recovery path.
 
@@ -635,7 +636,7 @@ export function useP8导出轮询(input: {
 
 - [ ] **Step 1: Write export recovery/operation RED tests**
 
-Cover save-key-before-POST, lost create response replay, null-ID handle replaying POST, non-null ID doing GET only, same-subject logout/relogin recovery, other-subject isolation, create 409 without local handle showing cross-device limitation, 404/expired clearing, failed explicit regeneration using a new key, and deletion clearing the handle.
+Cover save-key-before-POST, lost create response replay, null-ID handle replaying POST, non-null ID doing GET only, same-subject logout/relogin recovery, other-subject isolation, create 409 without local handle showing cross-device limitation, 404/expired clearing, failed explicit regeneration using a new key, and deletion clearing the handle. On one Provider instance, switch subject A→B, update `P8导出恢复.current`, then prove a B create writes only B's `账号存储键` and leaves A's entry byte-for-byte unchanged.
 
 ```ts
 await 操作.创建P8数据导出();
@@ -690,7 +691,7 @@ npx vitest run src/状态/后端/P8控制面操作.test.ts \
 
 - [ ] **Step 6: Implement recovery, hook and existing-style UI**
 
-Construct the recovery adapter in Provider only when a Backend subject exists, from `安全取存储('local')` and `{ 模式:'backend', 环境, 账号: subjectId }`; recreate it on subject/environment change and inject it into P8 deps. Mock never constructs or touches it. Never put the handle into React reducer state. Download uses a normal same-origin anchor/navigation after a successful status preflight:
+Construct the recovery adapter in Provider only when a Backend subject exists, from `安全取存储('local')` and `{ 模式:'backend', 环境, 账号: subjectId }`. On every subject/environment change assign the new adapter (or `null`) to `P8导出恢复.current`; the memoized deps carries only this stable ref, and every export/deletion operation dereferences `.current` at call time. Never capture a plain adapter in the Provider-lifetime `useMemo`. Mock leaves the ref `null` and never touches storage. Never put the handle into React reducer state. Download uses a normal same-origin anchor/navigation after a successful status preflight:
 
 ```ts
 const href = 操作.取P8数据导出下载地址();
@@ -826,7 +827,7 @@ Do not add a details textarea: the existing report layer has no approved one.
 
 - [ ] **Step 3: Write source-entry RED tests**
 
-1. Backend job detail currently has no report state/item and suppresses “⋯” without a P4 recommendation coordinate. Add the real report state/layer, use its authoritative `jobId` as `{type:'job',ref}`, render the existing-style “⋯” whenever that `jobId` exists, and add “举报这个职位” alongside the current action when a recommendation exists (or as the only non-cancel action on the direct-detail path). On target-not-found force-refresh the source and close stale layer. Do not enable recommendation-only feedback/delegation actions on the direct-detail path.
+1. Backend job detail currently has no report state/item and suppresses “⋯” without a P4 recommendation coordinate. Add the real report state/layer and take `{type:'job',ref}` only from `视图.jobId` backed by a successfully decoded CandidateJob snapshot—never from `useParams` `编号`. Render the existing-style “⋯” only after that snapshot succeeds; keep it hidden during absent/loading/failure/404 states. Add “举报这个职位” alongside the current action when a recommendation exists (or as the only non-cancel action on the successful direct-detail path). RED tests must cover those four hidden states and prove a stale/typo route parameter alone cannot open or submit a report. On target-not-found force-refresh the source and close stale layer. Do not enable recommendation-only feedback/delegation actions on the direct-detail path.
 2. Backend P7 page keeps the visual `⋯` span and same class but makes it a keyboard-accessible control (`role="button"`, `tabIndex=0`, Enter/Space handler), opens the same report layer, and passes `{type:'conversation',ref:conversationId}`. Confirmed report force-refreshes that conversation. Do not swap in an unreset native button that changes font/border/background geometry.
 3. Backend direct-chat route hides the report button/layer because it has no authoritative P8 target. Mock direct chat remains unchanged.
 4. No MatchCase button is added in P8.
@@ -973,7 +974,7 @@ Expected:
 - the Backend P7 screenshot preserves the existing “⋯” pixels while its tests prove keyboard/click behavior, and the Backend direct-chat screenshot shows the invalid report entry absent; no other report-page geometry changes;
 - no CSS file changed.
 
-Open `/tmp/agxp-p8-ui-regression/report.md`, both Mock account screenshots and the Backend screenshot, manually list every diff, and fix any extra visual change before continuing. Do not turn on the approval bypass to hide a Mock regression.
+Open `/tmp/agxp-p8-ui-regression/report.md`, both Mock account screenshots and all four Backend screenshots from Step 3, manually list every diff, and fix any extra visual change before continuing. Do not turn on the approval bypass to hide a Mock regression.
 
 - [ ] **Step 7: Run full verification**
 
