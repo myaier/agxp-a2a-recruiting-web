@@ -13,7 +13,7 @@ vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状�
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: vi.fn() }) }));
 // P7 Task 3：Backend 分支只挂招聘端 P7 收件箱（Mock 企业消息 fixture 不进 Backend 分支）
 vi.mock('./P7/Backend会话列表', () => ({
-  default: ({ role }: { role: string }) => <div data-testid="backend-inbox" data-role={role} />,
+  default: ({ 角色 }: { 角色: string }) => <div data-testid="backend-inbox" data-role={角色} />,
 }));
 
 function 候选(覆盖: Partial<{ 真名: string | null; 阶段: string; 辅助文案: string | null }>) {

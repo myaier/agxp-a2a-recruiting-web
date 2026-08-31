@@ -37,7 +37,7 @@ function 取会话时间(iso: string): string {
   return `${月}-${日}`;
 }
 
-export default function Backend会话列表({ role }: { role: P7角色 }) {
+export default function Backend会话列表({ 角色: role }: { 角色: P7角色 }) {
   const { 跳转 } = use导航();
   const { 后端状态, 操作 } = use应用状态();
   const 快照 = 后端状态.P7收件箱[role];

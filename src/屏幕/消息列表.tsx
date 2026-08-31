@@ -30,7 +30,7 @@ type 页签 = (typeof 页签列表)[number];
 export default function 消息列表() {
   const { 数据源模式 } = use应用状态();
   return 数据源模式 === 'backend'
-    ? <Backend会话列表 role="candidate" />
+    ? <Backend会话列表 角色="candidate" />
     : <Mock消息列表 />;
 }
 
