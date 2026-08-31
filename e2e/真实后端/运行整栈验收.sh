@@ -604,25 +604,26 @@ else
   STACK_HEALTHY=1
 fi
 # 后端已知缺陷（0.2.5）：.local-dev/browser-fixtures 目录不在 dev-local validate_material
-# 白名单里，目录还在（上一次的 run receipt 还没退休）时 bootstrap 必 BLOCKED『existing
-# Recruitment local material is invalid』。绕法：临时改名目录 → bootstrap → **无论成败**
-# 都原样改回；改不回来就把 receipt 滞留的事实报成阻塞，绝不静默丢收条。
+# 白名单里；validate_material 会拒绝 .local-dev 下**任何**白名单外条目——所以改名成同级
+# 的 .lockbak 也没用，必须把整个目录挪出 .local-dev（放本轮 run 目录里）。绕法：挪出 →
+# bootstrap → **无论成败**都原样挪回；挪不回来就把 receipt 滞留的事实报成阻塞，绝不静默
+# 丢收条。
 bootstrap_stack(){
   if "$DEV" bootstrap >/dev/null 2>&1; then return 0; fi
   if [ ! -d "$FIXTURE_RECEIPT_DIR" ]; then
     blocked 'dev-local.sh bootstrap 失败'
     return 0
   fi
-  local moved="$FIXTURE_RECEIPT_DIR.lockbak-$RUN_ID"
-  mv "$FIXTURE_RECEIPT_DIR" "$moved" || blocked 'dev-local.sh bootstrap 失败（回执目录改名失败）'
+  local moved="$RUN_DIR/browser-fixtures.lockbak"
+  mv "$FIXTURE_RECEIPT_DIR" "$moved" || blocked 'dev-local.sh bootstrap 失败（回执目录挪出失败）'
   if "$DEV" bootstrap >/dev/null 2>&1; then
     if mv "$moved" "$FIXTURE_RECEIPT_DIR" 2>/dev/null; then
       return 0
     fi
-    blocked "bootstrap 成功，但回执目录没能改回原位：$moved（请手工 mv 回 $FIXTURE_RECEIPT_DIR）"
+    blocked "bootstrap 成功，但回执目录没能归回原位：$moved（请手工挪回 $FIXTURE_RECEIPT_DIR）"
   fi
   mv "$moved" "$FIXTURE_RECEIPT_DIR" 2>/dev/null || true
-  blocked 'dev-local.sh bootstrap 失败（剔除回执目录后仍然失败）'
+  blocked 'dev-local.sh bootstrap 失败（挪走回执目录后仍然失败）'
 }
 bootstrap_stack
 

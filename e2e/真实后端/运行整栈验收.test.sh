@@ -271,16 +271,19 @@ case "${1:-}" in
   prepare) exit "${FAKE_PREPARE_RC:-0}" ;;
   up) exit "${FAKE_UP_RC:-0}" ;;
   bootstrap)
-    # 复刻后端已知缺陷：.local-dev/browser-fixtures 目录不在 validate_material 白名单里，
-    # 目录存在（里面有 receipt）时 bootstrap BLOCKED。1=只在目录存在时 blocked，
-    # 2=无论怎样都 blocked（用来验证改名绕法失败时目录被原样改回）。
+    # 复刻后端已知缺陷：validate_material 拒绝 .local-dev 下任何白名单外条目——
+    # browser-fixtures（或它的任何同级残留，比如 browser-fixtures.lockbak-*）存在时
+    # bootstrap BLOCKED。1=只在存在残留时 blocked，2=无论怎样都 blocked
+    # （用来验证挪出绕法失败时目录被原样归回）。
     case "${FAKE_BOOTSTRAP_BLOCK_DIR:-}" in
       2) exit 75 ;;
       1)
-        if [ -d "$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev/browser-fixtures" ]; then
-          printf 'BLOCKED: existing Recruitment local material is invalid\n' >&2
-          exit 75
-        fi
+        for entry in "$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev"/browser-fixtures*; do
+          if [ -e "$entry" ]; then
+            printf 'BLOCKED: existing Recruitment local material is invalid\n' >&2
+            exit 75
+          fi
+        done
         ;;
     esac
     exit "${FAKE_BOOTSTRAP_RC:-0}" ;;
@@ -655,7 +658,8 @@ export FAKE_BOOTSTRAP_BLOCK_DIR=1
 run_runner
 assert_eq '退出码 0' "$RC" 0
 assert_true 'bootstrap 尝试了不止一次' "[ \$(grep -c 'dev-local bootstrap' '$CALLS') -ge 2 ]"
-assert_true '目录归位，没有滞留的改名目录' "[ -d '$FIXDIR' ] && ! ls -d '$FIXDIR'.lockbak-* >/dev/null 2>&1"
+assert_true '目录归位，没有滞留在 run 目录里的副本' \
+  "[ -d '$FIXDIR' ] && [ ! -e '$(run_dir)/browser-fixtures.lockbak' ]"
 assert_true '原有的 receipt 原样还在' "[ -f '$FIXDIR/preexisting.json' ]"
 assert_missing '假件没有报告任何未预期调用' 'FAKE ' "$CALLS"
 
