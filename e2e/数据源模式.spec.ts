@@ -6778,7 +6778,8 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await expect(page.getByText('双方已确认，正在创建会话').first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('已通过', { exact: true }).first()).toBeVisible();
 
-    // 每个 mutation 恰一次 POST、各走本端唯一准许路线；会话路由零请求（P5 无会话标识，会话契约属 P7）
+    // 每个 mutation 恰一次 POST、各走本端唯一准许路线；主壳可预载 P7 收件箱集合，
+    // 但 P5 没有会话标识，不能提前读取会话详情、消息或移交路由。
     const 决定POST们 = fixture.变更请求.filter((项) => 项.method === 'POST');
     expect(决定POST们.map((项) => `${项.method} ${项.path} ${JSON.stringify(项.body)}`)).toEqual([
       `POST /api/v1/me/match-cases/${P5编号.丁}/coordination/${P5编号.协同}/decisions {"action":"accept"}`,
@@ -6786,7 +6787,7 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
       `POST /api/v1/recruiter/match-cases/${P5编号.丁}/intent-decisions {"action":"confirm"}`,
       `POST /api/v1/me/match-cases/${P5编号.丁}/intent-decisions {"action":"confirm"}`,
     ]);
-    expect(请求序.filter((项) => /chat|conversation|handoff/i.test(项))).toEqual([]);
+    expect(请求序.filter((项) => /\/conversations\/|\/chat\/|handoff/i.test(项))).toEqual([]);
   });
 
   test('completed 移交两步：pending 继续低频重读恒禁用，发布后进入 P7 会话路由 @backend', async ({ page }) => {
