@@ -188,6 +188,13 @@ case "${1:-}" in
   snapshot) printf '%s\n' '- button "浏览器验收候选人"' ;;
   screenshot) : >"${2:-/dev/null}" ;;
   find)
+    # 复刻「已建档真实账号」的登录落点：点「进入」后直接进主壳，无身份大卡。
+    # 编排层必须以 get url 分叉——主壳 hash 在手就跳过选身份。默认关，专测归位分叉时开。
+    if [ "${FAKE_LOGIN_LANDS_SHELL:-0}" = '1' ] \
+      && [ "${2:-}" = 'role' ] && [ "${3:-}" = 'button' ] && [ "${4:-}" = 'click' ] \
+      && [ "${6:-}" = '进入' ]; then
+      printf '%s\n' 'http://localhost:5173/#/app' >"$state_dir/url.txt"
+    fi
     # 点「获取验证码」**不会**改写本地验证码文件：真后端写的是一个固定常量，
     # 每次登录都复用同一份。假件曾经在这里重写它，正好把「等文件变新」的死等藏了起来。
     # 滚轮：find nth <序> [aria-label="列名"] [role="option"] click —— 记住这一列落到哪一档
@@ -267,6 +274,20 @@ assert_missing 'OTP 不出现在命令记录里' "$FAKE_OTP" "$CALLS"
 assert_missing 'OTP 不出现在 stdout' "$FAKE_OTP" "$SANDBOX/stdout.txt"
 assert_missing 'OTP 不出现在 stderr' "$FAKE_OTP" "$SANDBOX/stderr.txt"
 assert_session_and_bans 'backend-local-candidate'
+
+# 真实后端上已建档账号登录后直接落主壳（无身份大卡）；mock / 新档案才有身份选择屏。
+# 编排层在「进入」之后必须以 get url 分叉：主壳 hash 已在手就不再点大卡 —— 否则干等
+# 「我要找工作」25 秒把每条旅程拖死（#run6 实测）。
+testcase '登录候选 · 已建档直落主壳：不再找身份大卡'
+new_sandbox login-lands-shell
+export AGENT_BROWSER_SESSION='backend-local-candidate'
+export FAKE_LOGIN_LANDS_SHELL=1
+( . "$LIB"; login_candidate ) >"$SANDBOX/stdout.txt" 2>"$SANDBOX/stderr.txt"
+assert_eq '直落主壳也能登录返回 0' "$?" '0'
+assert_contains '等的是身份大卡或主壳 hash 二者其一' \
+  'wait --fn' "$CALLS"
+assert_contains '照样点进' 'find role button click --name 进入' "$CALLS"
+assert_missing '没有去找不存在的身份大卡' 'click --name 我要找工作' "$CALLS"
 
 # 本地 dev 栈的验证码是一个写死的常量：它在 prepare_material 里被写下一次，之后谁都不再动它。
 # 所以「等这个文件比点按钮之前更新」这种新鲜度判定永远等不到，会把每一条旅程都拖成超时阻塞。

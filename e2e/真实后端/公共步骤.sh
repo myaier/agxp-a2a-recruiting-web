@@ -280,8 +280,14 @@ _login(){
 
   click_button '已阅读并同意'
   click_button_exact '进入'
-  wait_text "$identity"
-  click_button_exact "$identity"
+  # 登录后有两个落点：已建档的真实账号直接进对应主壳（无身份大卡）；mock / 新档案
+  # 才落身份选择屏。等「大卡出现或主壳 hash 到手」二者其一，再按 url 分叉——干等
+  # 大卡文本会把真实账号的每条旅程拖成 25 秒超时（#run6 实测）。
+  ab wait --fn "document.body.innerText.includes('$identity') || location.hash === '$shell_hash'" >/dev/null
+  case "$(ab get url)" in
+    *"$shell_hash") : ;;
+    *) click_button_exact "$identity" ;;
+  esac
 
   # 选身份落的是注册引导入口（src/流程/onboarding配置.ts 身份首次入口），
   # 而专用账号早就建过档。回站点根地址硬刷新，让真实会话恢复把我们送进对应主壳 ——
