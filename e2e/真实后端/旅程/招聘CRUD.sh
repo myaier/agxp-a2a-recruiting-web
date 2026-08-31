@@ -91,19 +91,27 @@ root_back(){
   ab reload >/dev/null
   ab wait --fn "location.hash === '#/hr'" >/dev/null 2>&1 || true
 }
+_stamp(){ printf '[改文·%s] %s\n' "$(date +%T)" "$1" >&2; }
+_stamp root_back前
 root_back
+_stamp root_back后
 click_after_hydrate '我'
+_stamp 我后
 click_until_screen '公司资料' '编辑品牌信息'
+_stamp 公司资料后
 enter_company_intro
-# 不做进场前基线断言：上一轮旅程若死在中间，账号可能停在临时值——
-# 权威校验交给改后的 assert_value 与还原步骤，进场直接改。
+_stamp 分区后
 find_retry label 公司介绍 fill "$TEMP_COMPANY_INTRO" >/dev/null
+_stamp fill后
 click_button_exact '保存'
 settle
+_stamp 保存后
 ab reload >/dev/null
-# 保存只落库不换屏：reload 若落在分区列表（无 文本域 aria-label=公司介绍）就再进分区
+_stamp reload后
 enter_company_intro
+_stamp 二次分区后
 assert_value '公司介绍' "$TEMP_COMPANY_INTRO" || { click_row_geometry '公司介绍'; assert_value '公司介绍' "$TEMP_COMPANY_INTRO"; }
+_stamp 断言后
 
 MILESTONE='公司介绍还原'
 find_retry label 公司介绍 fill "$BASE_COMPANY_INTRO" >/dev/null
@@ -115,11 +123,17 @@ assert_value '公司介绍' "$BASE_COMPANY_INTRO" || { click_row_geometry '公�
 
 # ── 3. 发布临时岗位：三步向导全部走语义控件 ─────────────────────────
 MILESTONE='发布岗位'
+_stamp 发布岗位root前
 root_back
+_stamp 发布岗位root后
 click_after_hydrate '我'
+_stamp 发布岗位我后
 click_until_screen '岗位管理' '在招' prefix
+_stamp 发布岗位岗位管理后
 click_after_hydrate '发布新岗位' prefix
+_stamp 发布新岗位后
 assert_text '岗位基础信息'
+_stamp 向导屏后
 click_button '职位类别'
 # 目录树从后端 catalog 异步拉，等根节点出现再逐级点
 wait_text "$CATALOG_ROOT"
