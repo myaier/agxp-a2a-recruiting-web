@@ -5630,7 +5630,7 @@ async function 下拉刷新手势(page: Page) {
 /** 触屏左滑候选卡露出「不合适」。走 CDP touch 而不是鼠标拖拽：真实触屏手势在大幅移动后
  *  浏览器不会合成 click，行面的「打开态点击即收起」不会被拖拽尾随的 click 误触。 */
 async function 左滑候选卡(page: Page, 别名: string) {
-  const 行面 = page.locator('[role="button"][aria-expanded="false"]').filter({ hasText: 别名 }).first();
+  const 行面 = page.locator('[role="group"][aria-expanded="false"]').filter({ hasText: 别名 }).first();
   const 框 = (await 行面.boundingBox())!;
   const 纵 = 框.y + 框.height / 2;
   const 起 = 框.x + 框.width - 30;
