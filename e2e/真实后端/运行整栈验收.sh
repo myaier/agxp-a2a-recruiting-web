@@ -243,6 +243,12 @@ PACE_SECS="${FIXTURE_LOGIN_PACE:-70}"
 
 pace_before_login(){
   local now remain
+  # 锚点跨进程持久化：上一轮的**收尾** verify 就在退出前一刻登录过，新进程若不读
+  # 持久锚点，第一次 converge 必撞 429（#run11 实测间隔 44s）。mtime 即窗口时刻。
+  local anchor_file="$OUT_ROOT/.fixture-pace-anchor"
+  if [ "$LAST_LOGIN_EPOCH" = '0' ] && [ -f "$anchor_file" ]; then
+    LAST_LOGIN_EPOCH="$(stat -f %m "$anchor_file" 2>/dev/null || stat -c %Y "$anchor_file" 2>/dev/null || printf '0')"
+  fi
   if [ "$LAST_LOGIN_EPOCH" -gt 0 ] && [ "$PACE_SECS" -gt 0 ]; then
     now="$(date +%s)"
     # date +%s 是秒级截断：锚点可能在窗口尾（X.9 记成 X），按裸差值算会少睡一截。
@@ -254,6 +260,7 @@ pace_before_login(){
     fi
   fi
   LAST_LOGIN_EPOCH="$(date +%s)"
+  touch "$anchor_file" 2>/dev/null || true
 }
 
 fixture_step(){
