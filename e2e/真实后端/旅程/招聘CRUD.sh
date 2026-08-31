@@ -103,6 +103,7 @@ find_retry label 公司介绍 fill "$BASE_COMPANY_INTRO" >/dev/null
 click_button_exact '保存'
 settle
 ab reload >/dev/null
+[ "$(ab eval 'document.body.innerText.includes("编辑品牌信息")' 2>/dev/null | tr -d '"')" = 'true' ] && click_button '公司介绍'
 assert_value '公司介绍' "$BASE_COMPANY_INTRO"
 
 # ── 3. 发布临时岗位：三步向导全部走语义控件 ─────────────────────────

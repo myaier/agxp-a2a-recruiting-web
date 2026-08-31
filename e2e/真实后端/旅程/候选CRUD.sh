@@ -125,7 +125,10 @@ click_button "$TEMP_SALARY_1"
 assert_text '编辑求职期望' || { click_back; click_button "$TEMP_SALARY_1"; assert_text '编辑求职期望'; }
 set_salary_range 35 50
 click_button_exact '保存'
-assert_text "$TEMP_SALARY_2"
+settle
+# 真实栈上保存成功只落库不换屏/#run18：弹层还开着，reload 会原样重新打开弹层。
+# 断言「改后的列表」之前必须真的回到列表——还在弹层路由（#/intentions/）就点返回。
+[ "$(ab eval 'location.hash.includes("/intentions/")' 2>/dev/null | tr -d '"')" = 'true' ] && click_back
 reload_and_assert "$TEMP_SALARY_2"
 assert_absent "$TEMP_SALARY_1"
 assert_text '2/5'
