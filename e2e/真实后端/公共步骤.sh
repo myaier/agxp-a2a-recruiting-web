@@ -215,6 +215,14 @@ enter_company_intro(){
     if [ $(( tries % 4 )) = 3 ] && [ "$reloads" -lt 2 ]; then
       reloads=$((reloads + 1)); ab reload >/dev/null || true
     fi
+    if [ "$tries" = 5 ]; then
+      # 终极兜底：本会话的 CDP 响应已失效（eval 空响应/AX 落后整屏），重启会话、
+      # 重新走完整语义登录与导航，再试最后两轮。
+      agent-browser --session "$AGENT_BROWSER_SESSION" close >/dev/null 2>&1 || true
+      login_recruiter || login_candidate
+      click_after_hydrate '我'
+      click_until_screen '公司资料' '编辑品牌信息'
+    fi
     click_button '公司介绍' 2>/dev/null || click_row_geometry '公司介绍' || true
     ab scrollintoview '[aria-label^="公司介绍"]' >/dev/null 2>&1 || true
     tries=$((tries + 1))
