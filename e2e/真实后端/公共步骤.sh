@@ -193,6 +193,17 @@ click_after_hydrate(){
   click_with_retry "$1" "${2:-exact}"
 }
 
+# 「点过去、到屏为准」：某些点击命令在页面换屏后以非零退出（点击已派发、
+# 命令收尾扫到新屏的 AX），调用方若按退出码硬判就会把成功的导航当失败重试 30 次
+# （#run25-28 实证）。这里封装：语义点击 → 屏面标记在不在 → 不在再语义/几何补点。
+click_until_screen(){
+  local button="$1" marker="$2" mode="${3:-exact}"
+  if on_screen "$marker"; then return 0; fi
+  if [ "$mode" = 'prefix' ]; then click_button "$button" || click_row_geometry "$button"; else click_button_exact "$button" || click_row_geometry "$button"; fi
+  on_screen "$marker" && return 0
+  return 1
+}
+
 # set -e 安全的屏面判断：当前页面文本是否包含语义标记。[ x ] && cmd 的裸 && 在
 # 条件不成立时返回 1，会把整条旅程错杀；所有「按屏面二选一」都走这里 + if。
 on_screen(){
@@ -214,6 +225,31 @@ click_with_retry(){
     sleep 1
   done
   printf '按钮「%s」重试 30 秒仍未点上\n' "$name" >&2
+  return 1
+}
+
+# AX 兜底点击：长会话后段的 AX 树会对整屏返回别的 tab（#run25：DOM 在公司资料列表，
+# role find 的 Names seen 仍是 主壳 tab，30s 不追平）。对这类「语义名稳定、AX 却看
+# 不到」的行，允许最后一层兜底：按 aria-label 前缀取**行自己的矩形**，走真实鼠标
+# 派发——授权与 左滑行 相同（几何取自语义定位的元素自身，事件是 Chrome 真实输入，
+# 不合成 DOM 事件）。语义定位仍然优先于它，这里只给调用方在语义路径失败后用。
+click_row_geometry(){
+  local name="$1" sel box x y tries=0
+  sel="[aria-label^=\"$name\"]"
+  while [ "$tries" -lt 5 ]; do
+    if box="$(ab get box "$sel" --json 2>/dev/null)"; then
+      x="$(printf '%s' "$box" | jq -r '.data | (.x + .width / 2 | floor)')"
+      y="$(printf '%s' "$box" | jq -r '.data | (.y + .height / 2 | floor)')"
+      case "$x$y" in *null*|'') tries=$((tries + 1)); sleep 1; continue ;; esac
+      ab mouse move "$x" "$y" >/dev/null
+      ab mouse down >/dev/null
+      ab mouse up >/dev/null
+      return 0
+    fi
+    tries=$((tries + 1))
+    sleep 1
+  done
+  echo "行「$name」取不到几何，几何兜底点击失败" >&2
   return 1
 }
 

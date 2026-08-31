@@ -85,10 +85,15 @@ assert_value '职务' "$BASE_RECRUITER_TITLE"
 
 # ── 2. 公司介绍：改一次再改回来 ─────────────────────────────────────
 MILESTONE='公司介绍改文'
-click_back
-click_back
+# 连环返回的落点在真实栈上不可控（AX 常落后一屏）：回站点根重新走一遍语义路径
+root_back(){
+  ab open "$FRONTEND_ORIGIN/" >/dev/null
+  ab reload >/dev/null
+  ab wait --fn "location.hash === '#/hr'" >/dev/null 2>&1 || true
+}
+root_back
 click_after_hydrate '我'
-click_after_hydrate '公司资料'
+click_until_screen '公司资料' '编辑品牌信息'
 # 分区行的可访问名可能与列表预览子串重合：点完没换屏就重走一轮（先回再进）
 click_button '公司介绍'
 assert_value '公司介绍' "$BASE_COMPANY_INTRO" || { click_back; click_button '公司资料'; click_button '公司介绍'; assert_value '公司介绍' "$BASE_COMPANY_INTRO"; }
@@ -97,23 +102,26 @@ click_button_exact '保存'
 settle
 ab reload >/dev/null
 # 保存只落库不换屏：reload 若落在分区列表（无 文本域 aria-label=公司介绍）就再进分区
-if on_screen '编辑品牌信息'; then click_button '公司介绍'; fi
-assert_value '公司介绍' "$TEMP_COMPANY_INTRO"
+if on_screen '编辑品牌信息'; then
+  click_button '公司介绍' || click_row_geometry '公司介绍'
+fi
+assert_value '公司介绍' "$TEMP_COMPANY_INTRO" || { click_row_geometry '公司介绍'; assert_value '公司介绍' "$TEMP_COMPANY_INTRO"; }
 
 MILESTONE='公司介绍还原'
 find_retry label 公司介绍 fill "$BASE_COMPANY_INTRO" >/dev/null
 click_button_exact '保存'
 settle
 ab reload >/dev/null
-if on_screen '编辑品牌信息'; then click_button '公司介绍'; fi
-assert_value '公司介绍' "$BASE_COMPANY_INTRO"
+if on_screen '编辑品牌信息'; then
+  click_button '公司介绍' || click_row_geometry '公司介绍'
+fi
+assert_value '公司介绍' "$BASE_COMPANY_INTRO" || { click_row_geometry '公司介绍'; assert_value '公司介绍' "$BASE_COMPANY_INTRO"; }
 
 # ── 3. 发布临时岗位：三步向导全部走语义控件 ─────────────────────────
 MILESTONE='发布岗位'
-click_back
-click_back
+root_back
 click_after_hydrate '我'
-click_after_hydrate '岗位管理'
+click_until_screen '岗位管理' '在招' prefix
 click_after_hydrate '发布新岗位' prefix
 assert_text '岗位基础信息'
 click_button '职位类别'
