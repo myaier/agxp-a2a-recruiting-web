@@ -245,7 +245,9 @@ pace_before_login(){
   local now remain
   if [ "$LAST_LOGIN_EPOCH" -gt 0 ] && [ "$PACE_SECS" -gt 0 ]; then
     now="$(date +%s)"
-    remain=$(( LAST_LOGIN_EPOCH + PACE_SECS - now ))
+    # date +%s 是秒级截断：锚点可能在窗口尾（X.9 记成 X），按裸差值算会少睡一截。
+    # 补 1s 余量，保证实测间隔 ≥ PACE - 2s（默认 70 时 ≥68s），限流窗是整 60s 足够。
+    remain=$(( LAST_LOGIN_EPOCH + PACE_SECS + 1 - now ))
     if [ "$remain" -gt 0 ]; then
       printf '错峰等待 %ss：同手机号的登录限流窗口是每分钟一次\n' "$remain"
       sleep "$remain"
