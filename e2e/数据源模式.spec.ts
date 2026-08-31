@@ -3932,9 +3932,14 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         return;
       }
 
-      // 读取数据导出：当前导出才 200，其余一律 404 data_export_not_found（过期回收/他端清理）
+      // 读取数据导出：当前导出才 200，其余一律 404 data_export_not_found（过期回收/他端清理）；
+      // 注销后的保护读取先于存在性判定按 invalid_session 收口
       const P8导出匹配 = /^\/api\/v1\/me\/data-exports\/([^/]+)$/.exec(path);
       if (P8导出匹配 && method === 'GET') {
+        if (P8已注销()) {
+          await P8失败(401, 'invalid_session');
+          return;
+        }
         const 编号 = decodeURIComponent(P8导出匹配[1]);
         if (P8域.导出.数据 === null || P8域.导出.数据.export_id !== 编号) {
           await P8失败(404, 'data_export_not_found');
@@ -3949,9 +3954,14 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         return;
       }
 
-      // 下载：只在 ready+download_ready 应答固定头的 application/zip 字节流
+      // 下载：只在 ready+download_ready 应答固定头的 application/zip 字节流；
+      // 注销后的保护读取先于存在性判定按 invalid_session 收口
       const P8下载匹配 = /^\/api\/v1\/me\/data-exports\/([^/]+)\/download$/.exec(path);
       if (P8下载匹配 && method === 'GET') {
+        if (P8已注销()) {
+          await P8失败(401, 'invalid_session');
+          return;
+        }
         const 编号 = decodeURIComponent(P8下载匹配[1]);
         P8域.导出下载.push({ exportId: 编号, origin: 请求.headers()['origin'] ?? null, contentType: 'application/zip' });
         const 当前 = P8域.导出.数据;
@@ -8049,12 +8059,23 @@ test.describe('P8 控制面 fixture @backend', () => {
     await expect(page).toHaveURL(/#\/$/, { timeout: 15_000 });
     await expect(page.getByLabel('手机号')).toBeVisible();
     await expect(page.getByText(P8标记.手机掩码)).toHaveCount(0);
-    // P8 保护读取在注销后一律 401 invalid_session（页面上下文直接取权威状态码）
-    const 状态码 = await page.evaluate(async () => {
-      const 响 = await fetch('/api/v1/me/credentials', { credentials: 'include' });
-      return 响.status;
-    });
-    expect(状态码).toBe(401);
+    // P8 保护读取在注销后一律 401 invalid_session —— fixture 级探针（页面上下文 fetch，
+    // page.request 不经 page.route，会打到真实代理）：凭证 + 导出读取 + 导出下载
+    // 三路全部先于存在性判定按 invalid_session 收口（ID 用合法形状即可，守卫与存在性无关）
+    const 保护读取 = await page.evaluate(async (导出编号: string) => {
+      const 取 = async (路径: string) => {
+        const 响 = await fetch(路径, { credentials: 'include' });
+        return { 状态: 响.status, 码: ((await 响.json()) as { error?: { type?: string } }).error?.type ?? null };
+      };
+      return {
+        凭证: await 取('/api/v1/me/credentials'),
+        导出: await 取(`/api/v1/me/data-exports/${导出编号}`),
+        下载: await 取(`/api/v1/me/data-exports/${导出编号}/download`),
+      };
+    }, P8编号.导出甲);
+    expect(保护读取.凭证).toEqual({ 状态: 401, 码: 'invalid_session' });
+    expect(保护读取.导出).toEqual({ 状态: 401, 码: 'invalid_session' });
+    expect(保护读取.下载).toEqual({ 状态: 401, 码: 'invalid_session' });
   });
 
   test('P8 产品反馈真实工单上屏；举报两类零 reports 请求 @backend', async ({ page }) => {
