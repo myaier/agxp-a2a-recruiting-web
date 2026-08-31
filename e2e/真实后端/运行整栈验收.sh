@@ -287,8 +287,8 @@ recruiter_logout(){
   ab open "$FRONTEND_ORIGIN/" >/dev/null 2>&1 || return 0
   {
     click_button_exact '我' &&
-    click_button_exact '设置' &&
-    click_button_exact '退出登录' &&
+    click_after_hydrate '设置' &&
+    click_after_hydrate '退出登录' &&
     click_button_exact '确认退出企业账号' &&
     ab wait '[aria-label="手机号"]' >/dev/null
   } >/dev/null 2>&1 || printf '收尾提示：招聘会话没能走完退出流程，直接关闭会话\n'

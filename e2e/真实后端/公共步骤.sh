@@ -144,6 +144,16 @@ click_button_exact(){ ab find role button click --name "$1" --exact >/dev/null; 
 # 返回栏的 ‹ 键（src/组件/通用.tsx 返回栏，可访问名称「返回」）
 click_back(){ click_button_exact '返回'; }
 
+# 导航（click_back、底部 tab、返回上级）之后的目标屏要等数据回来才渲染：
+# 真实后端每一屏先拉 /me 与业务数据才画菜单行，mock 数据源是同步渲染、
+# 这块「find 跟骨架屏赛跑」的竞速从来看不见，真实栈上两连败（#run7）。
+# 规矩：屏幕切换后的第一个动作必须是等待，不能是 find —— 这里把它封成一个词，
+# 等到目标控件的**可访问名文本**出现再按名点。默认严格匹配；传 prefix 用子串匹配。
+click_after_hydrate(){
+  wait_text "$1"
+  if [ "${2:-}" = 'prefix' ]; then click_button "$1"; else click_button_exact "$1"; fi
+}
+
 # 左滑露出行内操作（滑动行：附件简历行、岗位行）。
 #
 # 滑动是空间手势，没有任何语义写法能表达「往左滑」。所以这里把两件事分开：
@@ -511,7 +521,7 @@ _isolation_steps(){
   login_candidate &&
   ISOLATION_MILESTONE='候选侧硬刷新' &&
   click_button_exact '我' &&
-  click_button_exact '我的简历' &&
+  click_after_hydrate '我的简历' &&
   reload_and_assert '浏览器验收候选人' &&
   assert_absent '浏览器验收招聘官' &&
 
@@ -520,8 +530,8 @@ _isolation_steps(){
   login_recruiter &&
   ISOLATION_MILESTONE='招聘侧硬刷新' &&
   click_button_exact '我' &&
-  click_button_exact '设置' &&
-  click_button '招聘名片' &&
+  click_after_hydrate '设置' &&
+  click_after_hydrate '招聘名片' prefix &&
   reload_and_assert '浏览器验收招聘官' &&
   assert_absent '浏览器验收候选人 · 真实后端基准摘要' &&
 
@@ -529,7 +539,7 @@ _isolation_steps(){
   AGENT_BROWSER_SESSION="$CANDIDATE_SESSION" &&
   ISOLATION_MILESTONE='候选退出登录' &&
   click_back &&
-  click_button_exact '设置' &&
+  click_after_hydrate '设置' &&
   click_button_exact '退出登录' &&
   assert_text '退出当前账号？' &&
   # 确认键点的是它自己的可访问名称「确认退出当前账号」（src/屏幕/设置.tsx:225 的 aria-label），

@@ -81,7 +81,7 @@ login_candidate
 # ── 1. 简历：姓名行内编辑 ────────────────────────────────────────────
 MILESTONE='简历改名'
 click_button_exact '我'
-click_button_exact '我的简历'
+click_after_hydrate '我的简历'
 assert_text "$BASE_NAME"
 click_button '姓名（递交简历后披露）'
 ab find label '姓名（递交简历后披露）' fill "$TEMP_NAME" >/dev/null
@@ -92,7 +92,7 @@ reload_and_assert "$TEMP_NAME"
 # ── 2. 求职意向：新建 → 编辑 → 删除 ─────────────────────────────────
 MILESTONE='新建意向'
 click_back
-click_button_exact '求职意向'
+click_after_hydrate '求职意向'
 assert_text '1/5'
 click_button '添加求职意向'
 assert_text '添加求职期望'
@@ -100,10 +100,13 @@ assert_text '添加求职期望'
 click_button '混合'
 click_button '工作城市'
 ab find placeholder '搜索城市 / 省份' fill "$CATALOG_CITY" >/dev/null
+# 候选芯片是异步搜索回来的，等它出现再点
+wait_text "$CATALOG_CITY"
 click_button_exact "$CATALOG_CITY"
 click_button_exact '保存'
 click_button '期望职位'
 ab find placeholder '搜索职位' fill "$CATALOG_JOB" >/dev/null
+wait_text "$CATALOG_JOB"
 click_button_exact "$CATALOG_JOB"
 click_button_exact '保存'
 set_salary_range 35 45
@@ -139,7 +142,7 @@ assert_text "$BASE_SALARY"
 # ── 3. 披露偏好：改一档再改回来 ─────────────────────────────────────
 MILESTONE='披露偏好改档'
 click_back
-click_button_exact '披露偏好'
+click_after_hydrate '披露偏好'
 assert_pressed '当前公司：不披露'
 click_button_exact '当前公司：意向确认后'
 assert_pressed '当前公司：意向确认后'
@@ -159,7 +162,7 @@ MILESTONE='上传附件'
 TEMP_PDF_DIR="$(dirname "$PRIVATE_JOURNAL")"
 cp "$ROOT_DIR/资源/简历-v1.pdf" "$TEMP_PDF_DIR/$TEMP_FILE_NAME"
 click_back
-click_button_exact '我的简历'
+click_after_hydrate '我的简历'
 assert_text "$TEMP_NAME"
 click_button_exact '添加附件简历'
 # 隐藏的 file input 没有可访问名称，只能按元素类型选；这不是 CSS module 类名也不是层级路径。

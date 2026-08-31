@@ -46,7 +46,7 @@ login_candidate
 
 MILESTONE='我的简历'
 click_button_exact '我'
-click_button_exact '我的简历'
+click_after_hydrate '我的简历'
 assert_text "$BASE_NAME"
 assert_text "$BASE_SUMMARY"
 reload_and_assert "$BASE_NAME"
@@ -56,7 +56,7 @@ capture_scene 'candidate-resume-loaded'
 
 MILESTONE='求职意向'
 click_back
-click_button_exact '求职意向'
+click_after_hydrate '求职意向'
 assert_text "$BASE_INTENTION_TITLE"
 # 配额行「1/5」：基准只有一条意向（src/屏幕/求职意向管理.tsx 意向配额上限 = 5）
 assert_text '1/5'
@@ -67,7 +67,7 @@ capture_scene 'candidate-intentions-loaded'
 
 MILESTONE='披露偏好'
 click_back
-click_button_exact '披露偏好'
+click_after_hydrate '披露偏好'
 assert_text '当前公司'
 assert_pressed '当前公司：不披露'
 ab reload >/dev/null

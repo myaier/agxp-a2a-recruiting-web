@@ -66,8 +66,8 @@ login_recruiter
 # 所以保存与硬刷新之间用 settle 等这一屏网络安静，免得刷新把还在飞的写请求打断。
 MILESTONE='名片改职务'
 click_button_exact '我'
-click_button_exact '设置'
-click_button '招聘名片'
+click_after_hydrate '设置'
+click_after_hydrate '招聘名片' prefix
 assert_text "$BASE_RECRUITER_NAME"
 assert_value '职务' "$BASE_RECRUITER_TITLE"
 ab find label 职务 fill "$TEMP_RECRUITER_TITLE" >/dev/null
@@ -87,7 +87,7 @@ assert_value '职务' "$BASE_RECRUITER_TITLE"
 MILESTONE='公司介绍改文'
 click_back
 click_back
-click_button_exact '公司资料'
+click_after_hydrate '公司资料'
 click_button '公司介绍'
 assert_value '公司介绍' "$BASE_COMPANY_INTRO"
 ab find label 公司介绍 fill "$TEMP_COMPANY_INTRO" >/dev/null
@@ -107,10 +107,12 @@ assert_value '公司介绍' "$BASE_COMPANY_INTRO"
 MILESTONE='发布岗位'
 click_back
 click_back
-click_button_exact '岗位管理'
-click_button '发布新岗位'
+click_after_hydrate '岗位管理'
+click_after_hydrate '发布新岗位' prefix
 assert_text '岗位基础信息'
 click_button '职位类别'
+# 目录树从后端 catalog 异步拉，等根节点出现再逐级点
+wait_text "$CATALOG_ROOT"
 click_button_exact "$CATALOG_ROOT"
 click_button_exact "$CATALOG_GROUP"
 click_button_exact "$CATALOG_LEAF"
@@ -128,6 +130,7 @@ ab find label 薪资上限 fill '45' >/dev/null
 click_button '年薪月数'
 click_button_exact '完成'
 ab find placeholder '搜索城市名，从下方候选选择' fill "$CATALOG_CITY" >/dev/null
+wait_text "$CATALOG_CITY"
 click_button_exact "$CATALOG_CITY"
 ab find placeholder '如：浦东新区世纪大道 1568 号中建大厦 28 层' fill "$JOB_OFFICE" >/dev/null
 click_button_exact '发布岗位并开始寻访'
@@ -136,7 +139,7 @@ click_button_exact '发布岗位并开始寻访'
 click_button_exact '我'
 # 浏览器已经把这个固定保留名称建出来了，先记台账再往下做，中途崩掉也能被精确回收
 record_cleanup_marker recruiter_job_titles "$TEMP_JOB"
-click_button_exact '岗位管理'
+click_after_hydrate '岗位管理'
 assert_job_row "$TEMP_JOB" '在招'
 assert_no_mock_data
 capture_scene 'recruiter-jobs-after-create'
