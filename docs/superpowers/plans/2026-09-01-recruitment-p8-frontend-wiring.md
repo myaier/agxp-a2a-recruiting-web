@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended in the same session) or `superpowers:executing-plans` (in a fresh session) to implement this plan task-by-task. Use `superpowers:test-driven-development` for every product change and `superpowers:verification-before-completion` before claiming completion. Keep the checkboxes current.
 
-**Goal:** 在 Backend 模式把 P8 的账号安全、手机号换绑、退出其他设备、数据导出、招聘账号注销、普通反馈与上下文举报接到 `release/0.2.5` 的真实控制面，同时逐字保留 PM 已定稿的前端视觉；唯一批准的新视觉是账号安全页的一行“导出我的数据”。
+**Goal:** 在 Backend 模式把 P8 的账号安全、手机号换绑、退出其他设备、数据导出、招聘账号注销、普通反馈与上下文举报接到 `release/0.2.5` 的真实控制面，同时保留 PM 已定稿的前端视觉；只允许新增账号安全页的“导出我的数据”行、Backend 职位详情的既有样式举报抽屉项，并校正 P7/直聊已有“⋯”入口的可用性，不改 CSS。
 
 **Architecture:** 新增第十三个严格招聘数据源 facade、subject-scoped 导出恢复句柄、独立 P8 内存 owner 与带 subject/session/scope fence 的操作层。现有页面仍是视觉壳：Mock 路径原样保留，Backend 路径只替换数据和动作；所有真实写入服务端先行，未知结果复用原 Idempotency-Key，失败绝不回退 Mock。
 
@@ -15,8 +15,8 @@
 - 产品代码冻结基线是 `659de17be7aac4797bd572228179aedfc5768ae3`；其后的 `20e5bd49` 与 `4df9d192` 只应是 P8 设计文档。Task 0 必须审计 File Map 漂移，不能在未知产品改动上照抄本 Plan。
 - 后端合同固定为 `agxp-monorepo release/0.2.5@897468e5221f0078533178a28119bb259dbb676e`。如果 `origin/release/0.2.5` 前移，立即 STOP 并重新校准 Spec/Plan；不得静默跟随新 SHA。
 - 不修改后端仓库。Task 0 只读取最终 OpenAPI、canonical L3 catalog 和运行证据。
-- 不修改现有 CSS。只有在现有 class 无法表达“导出我的数据”行时才允许提出单独的视觉变更请求；未获批准前不得改 `.module.css`。
-- 不重排页面、卡片、按钮、弹层、色彩、字号、间距、动效或操作层级。账号安全页只允许在注销按钮前插入一组复用现有 `.卡/.行` 的数据行。
+- 不修改现有 CSS。若现有 class 无法表达获批入口，必须提出单独的视觉变更请求；未获批准前不得改 `.module.css`。
+- 不重排页面、卡片、按钮、弹层、色彩、字号、间距、动效或操作层级。允许的 Backend 入口差异只有：账号安全页在注销按钮前插入一组复用 `.卡/.行` 的数据行；职位详情复用既有“⋯”与抽屉样式并增加“举报这个职位”；P7 真人会话把同像素装饰性“⋯”变成键盘可访问入口；直聊隐藏没有权威 target 的举报入口。Mock 入口不变。
 - Mock 模式不得发任何 P8 HTTP 请求、不得读写 P8 导出恢复句柄，现有四位验证码、本地换绑、本地举报和本地注销演示行为保持不变。
 - Backend 失败不回退 Mock；不得继续显示固定手机号、`iPhone · 上海`、固定工单号或本地假成功。
 - 全产品验证码位数继续使用 `src/数据/验证码规则.ts` 的 `短信验证码位数 === 4`。OpenAPI complete 示例里的六位字符串不是 schema 约束，不得另造 P8 位数常量。
@@ -137,7 +137,6 @@ export interface P8导出恢复句柄 {
   subjectId: string;
   createKey: string;
   exportId: string | null;
-  storedAt: string;
 }
 
 export interface P8账号控制面操作 {
@@ -163,18 +162,18 @@ export interface P8合规操作 {
 export type P8控制面操作 = P8账号控制面操作 & P8合规操作;
 ```
 
-`设置P8账号范围` controls only UI visibility and late-toast suppression. Shared account snapshots may still commit after unmount only when subject/session fences remain valid. Task 3 first composes `P8账号控制面操作`; Tasks 6–7 add the two `P8合规操作` methods test-first, after which `应用操作` carries the final intersection. Report source refresh is a screen callback after a confirmed receipt; the report operation never guesses whether the target came from P4, P5 or P7.
+`设置P8账号范围` controls only UI visibility and late-toast suppression. Shared account snapshots may still commit after unmount only when subject/session fences remain valid. Task 3 first composes the narrower `P8账号安全操作`; Task 5 widens it to `P8账号控制面操作`; Tasks 6–7 add the two `P8合规操作` methods test-first, after which `应用操作` carries the final intersection. Report source refresh is a screen callback after a confirmed receipt; the report operation never guesses whether the target came from P4, P5 or P7.
 
 ## File Map
 
 | Responsibility | Files |
 |---|---|
 | Strict transport/facade | `src/数据/HTTP客户端.ts`, `src/数据/BFF契约.ts`, new `src/数据/招聘数据源/P8控制面.ts`, `src/数据/HTTP招聘数据源.ts`, `src/测试/BFF样本.ts` and tests |
-| Export recovery | new `src/数据/P8导出恢复.ts` and test |
+| Export recovery | new `src/数据/P8导出恢复.ts` and test; reuse `账号存储键` / `资料缓存范围` from `src/数据/资料缓存.ts` |
 | Runtime owner | new `src/状态/后端/P8控制面操作.ts`, new `src/状态/后端/useP8导出轮询.ts`, `src/状态/后端/类型.ts`, `src/状态/应用状态.tsx`, `src/状态/后端/会话操作.ts` and tests |
 | Account UI | `src/屏幕/账号安全.tsx`, `src/屏幕/账号安全.test.tsx`, `src/屏幕/设置.tsx`, `src/屏幕/设置.test.tsx`; regression coverage for `src/屏幕/企业设置.tsx` |
 | Feedback | `src/屏幕/反馈.tsx`, new `src/屏幕/反馈.test.tsx` |
-| Context reports | `src/组件/举报层.tsx`, new `src/组件/举报层.test.tsx`, `src/屏幕/职位详情.tsx`, `src/屏幕/职位详情.test.tsx`, `src/屏幕/P7/Backend真人会话.tsx`, its test, `src/屏幕/直聊会话.tsx` and test |
+| Context reports | `src/组件/举报层.tsx`, new `src/组件/举报层.test.tsx`, `src/屏幕/职位详情.tsx`, `src/屏幕/职位详情.test.tsx`, `src/屏幕/P7/Backend真人会话.tsx`, its test, `src/屏幕/直聊会话.tsx` and test, plus Mock regression in `src/屏幕/真人会话.test.tsx` |
 | Acceptance/visual | `e2e/数据源模式.spec.ts`, `e2e/视觉回归/场景.ts`, `docs/DEV_LOG.md` |
 
 ---
@@ -378,26 +377,26 @@ If `src/测试/BFF样本.ts` is unchanged, omit it from `git add`.
 
 ```ts
 export interface P8导出恢复存储 {
-  读取(subjectId: string): P8导出恢复句柄 | null;
+  读取(): P8导出恢复句柄 | null;
   写入(handle: P8导出恢复句柄): void;
-  删除(subjectId: string): void;
+  删除(): void;
 }
 
 export function 创建P8导出恢复存储(input: {
-  storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
-  environment: 'local' | 'stg';
-  now?: () => string;
+  storage: 资料缓存存储 | null;
+  范围: 资料缓存范围;
 }): P8导出恢复存储;
 ```
 
 - [ ] **Step 1: Write strict-storage RED tests**
 
-Prove one physical key per environment+subject, A/B isolation, exact-key JSON, valid UUID-like visible ASCII create key, export ID null-or-pattern, RFC3339 `storedAt`, corrupt/extra/mismatched-subject values discarded and removed, and both unavailable storage (`storage: null`) and storage exceptions fail closed without crashing the page. With unavailable storage, reads return `null` and writes/deletes are no-ops.
+Prove one physical key per mode+environment+subject, Backend A/B isolation, exact-key JSON, valid UUID-like visible ASCII create key, export ID null-or-pattern, corrupt/extra/mismatched-subject values discarded and removed, and both unavailable storage (`storage: null`) and storage exceptions fail closed without crashing the page. With unavailable storage, reads return `null` and writes/deletes are no-ops. Reject a handle whose `subjectId` differs from `范围.账号`.
 
 ```ts
-存储.写入({ subjectId: 'sub_A', createKey: 'p8-export-key-0001', exportId: null, storedAt: 时间 });
-expect(存储.读取('sub_A')?.createKey).toBe('p8-export-key-0001');
-expect(存储.读取('sub_B')).toBeNull();
+const A存储 = 创建P8导出恢复存储({ storage, 范围: { 模式: 'backend', 环境: 'local', 账号: 'sub_A' } });
+A存储.写入({ subjectId: 'sub_A', createKey: 'p8-export-key-0001', exportId: null });
+expect(A存储.读取()?.createKey).toBe('p8-export-key-0001');
+expect(创建P8导出恢复存储({ storage, 范围: { 模式: 'backend', 环境: 'local', 账号: 'sub_B' } }).读取()).toBeNull();
 ```
 
 Assert the serialized value never contains phone, credential, session, ticket, report details, ZIP bytes, object key or download URL fields.
@@ -410,7 +409,7 @@ npx vitest run src/数据/P8导出恢复.test.ts
 
 - [ ] **Step 3: Implement a minimal namespaced adapter**
 
-Use a key such as `agxp:recruitment:${environment}:p8:data-export:${encodeURIComponent(subjectId)}`. JSON parse is strict; a bad entry is deleted. Do not enumerate storage or keep a cross-subject index.
+Import and reuse `账号存储键('P8数据导出v1', 范围)` from `src/数据/资料缓存.ts`; do not create a second key convention. JSON parse is strict; a bad entry is deleted. Do not enumerate storage or keep a cross-subject index.
 
 - [ ] **Step 4: Run PASS and commit**
 
@@ -432,9 +431,19 @@ git commit -m "feat: add P8 export recovery store"
 - Modify: `src/状态/后端/会话操作.ts`
 - Modify: `src/状态/后端/会话操作.test.ts`
 
-**Interfaces:** Adds `P8控制面状态` and the `P8账号控制面操作` subset from the Zero-Context Contract plus runtime refs. Feedback/report are deliberately absent until their RED tests in Tasks 6–7.
+**Interfaces:** Adds `P8控制面状态`, runtime refs and a truthful Task-3-only surface. Export/deletion are deliberately absent until Task 5; feedback/report are absent until their RED tests in Tasks 6–7.
 
 ```ts
+export type P8账号安全操作 = Pick<
+  P8账号控制面操作,
+  | '设置P8账号范围'
+  | '加载P8凭证'
+  | '加载P8会话'
+  | '开始P8手机号换绑'
+  | '完成P8手机号换绑'
+  | '退出P8其他设备'
+>;
+
 export interface P8待定意图<T> {
   key: string;
   request: T;
@@ -507,7 +516,7 @@ function 捕获Fence(deps: 后端操作依赖) {
 }
 ```
 
-Add refs once in `应用状态提供者`, inject them through `后端操作依赖`, spread `创建P8控制面操作(deps)` into `应用操作`, seed `创建空P8控制面状态()`, and extend the existing account cleanup path. P8's Provider cleanup key is subject-only, not `subject+role`; role switching uses an explicit fence bump so confirmed shared data is retained.
+Add refs once in `应用状态提供者`, inject them through `后端操作依赖`, spread the `P8账号安全操作` returned by `创建P8账号安全操作(deps)` into `应用操作`, seed `创建空P8控制面状态()`, and extend the existing account cleanup path. Do not declare or ship export/deletion stubs. P8's Provider cleanup key is subject-only, not `subject+role`; role switching uses an explicit fence bump so confirmed shared data is retained.
 
 Use a closed P8 error mapper in this module. Map each known code to fixed Chinese copy; unknown `BFF错误.message` is never shown. A current-session 401 calls `清账号状态` and rethrows for the screen to navigate through the existing login recovery path.
 
@@ -612,7 +621,7 @@ git commit -m "feat: wire P8 account security UI"
 - Modify: `src/屏幕/账号安全.tsx`
 - Modify: `src/屏幕/账号安全.test.tsx`
 
-**Interfaces:** Completes the export/deletion methods already declared in `P8控制面操作`. `useP8导出轮询` receives explicit dependencies and never reads Context internally:
+**Interfaces:** Extends the Task 3 `P8账号安全操作` implementation with the six tested export/deletion methods, then widens the composed application surface to the final `P8账号控制面操作`. `useP8导出轮询` receives explicit dependencies and never reads Context internally:
 
 ```ts
 export function useP8导出轮询(input: {
@@ -641,10 +650,15 @@ Ready+downloadReady is the only downloadable combination. `取P8数据导出下�
 Assert immediate GET on open/revisible; delays 2s, 4s, 8s then capped 10s; status change resets backoff; no overlapping requests; close/unmount/hidden stops timers but not the server job; ready/failed/expired/404 stops; stale settlement after subject/session change is discarded.
 
 ```ts
-vi.advanceTimersByTime(2_000);
-expect(refresh).toHaveBeenCalledTimes(1);
-vi.advanceTimersByTime(4_000);
+expect(refresh).toHaveBeenCalledTimes(1); // immediate on mount/open
+await vi.advanceTimersByTimeAsync(2_000);
 expect(refresh).toHaveBeenCalledTimes(2);
+await vi.advanceTimersByTimeAsync(4_000);
+expect(refresh).toHaveBeenCalledTimes(3);
+await vi.advanceTimersByTimeAsync(8_000);
+expect(refresh).toHaveBeenCalledTimes(4);
+await vi.advanceTimersByTimeAsync(10_000);
+expect(refresh).toHaveBeenCalledTimes(5); // capped at 10s thereafter
 ```
 
 - [ ] **Step 3: Write deletion RED tests**
@@ -676,7 +690,7 @@ npx vitest run src/状态/后端/P8控制面操作.test.ts \
 
 - [ ] **Step 6: Implement recovery, hook and existing-style UI**
 
-Construct the recovery adapter in Provider from `安全取存储('local')` and the current backend environment; inject it into P8 deps. Never put the handle into React reducer state. Download uses a normal same-origin anchor/navigation after a successful status preflight:
+Construct the recovery adapter in Provider only when a Backend subject exists, from `安全取存储('local')` and `{ 模式:'backend', 环境, 账号: subjectId }`; recreate it on subject/environment change and inject it into P8 deps. Mock never constructs or touches it. Never put the handle into React reducer state. Download uses a normal same-origin anchor/navigation after a successful status preflight:
 
 ```ts
 const href = 操作.取P8数据导出下载地址();
@@ -776,6 +790,7 @@ git commit -m "feat: wire P8 product feedback"
 - Modify: `src/屏幕/P7/Backend真人会话.test.tsx`
 - Modify: `src/屏幕/直聊会话.tsx`
 - Create if absent: `src/屏幕/直聊会话.test.tsx`
+- Modify: `src/屏幕/真人会话.test.tsx`
 
 **Interfaces:** Adds `提交P8举报` so `应用操作` now carries the final `P8控制面操作` intersection, and extends the existing report layer props without adding style props:
 
@@ -798,7 +813,7 @@ When a confirmed receipt has `blockStatus='applied'` and current role is candida
 
 - [ ] **Step 2: Write shared-layer RED tests**
 
-Mock without target must preserve existing local dispatch/toast/close. Backend with target submits the immutable target, disables reasons/block/submit while pending, closes only on confirmed receipt, never local-dispatches block, keeps open for block_unavailable, and retries with a new key after user unchecks. Target-not-found closes and calls `目标失效`; unknown stays open with original selections.
+Mock without target must preserve existing local dispatch/toast/close. Cover both a direct shared-layer render and the real `Mock真人会话` call site in `src/屏幕/真人会话.test.tsx`, so the optional prop expansion cannot silently break its existing report button/layer. Backend with target submits the immutable target, disables reasons/block/submit while pending, closes only on confirmed receipt, never local-dispatches block, keeps open for block_unavailable, and retries with a new key after user unchecks. Target-not-found closes and calls `目标失效`; unknown stays open with original selections.
 
 ```tsx
 expect(mock操作.提交P8举报).toHaveBeenCalledWith(
@@ -811,7 +826,7 @@ Do not add a details textarea: the existing report layer has no approved one.
 
 - [ ] **Step 3: Write source-entry RED tests**
 
-1. Backend job detail uses its authoritative `jobId` as `{type:'job',ref}`. The existing “⋯” and drawer styling stay; add “举报这个职位” alongside the current action. On target-not-found force-refresh the source and close stale layer.
+1. Backend job detail currently has no report state/item and suppresses “⋯” without a P4 recommendation coordinate. Add the real report state/layer, use its authoritative `jobId` as `{type:'job',ref}`, render the existing-style “⋯” whenever that `jobId` exists, and add “举报这个职位” alongside the current action when a recommendation exists (or as the only non-cancel action on the direct-detail path). On target-not-found force-refresh the source and close stale layer. Do not enable recommendation-only feedback/delegation actions on the direct-detail path.
 2. Backend P7 page keeps the visual `⋯` span and same class but makes it a keyboard-accessible control (`role="button"`, `tabIndex=0`, Enter/Space handler), opens the same report layer, and passes `{type:'conversation',ref:conversationId}`. Confirmed report force-refreshes that conversation. Do not swap in an unreset native button that changes font/border/background geometry.
 3. Backend direct-chat route hides the report button/layer because it has no authoritative P8 target. Mock direct chat remains unchanged.
 4. No MatchCase button is added in P8.
@@ -823,7 +838,7 @@ Assert object/display/block names never appear in the operation request. Also as
 ```bash
 npx vitest run src/状态/后端/P8控制面操作.test.ts src/组件/举报层.test.tsx \
   src/屏幕/职位详情.test.tsx src/屏幕/P7/Backend真人会话.test.tsx \
-  src/屏幕/直聊会话.test.tsx
+  src/屏幕/直聊会话.test.tsx src/屏幕/真人会话.test.tsx
 ```
 
 - [ ] **Step 5: Implement typed report wiring with the existing DOM/classes**
@@ -848,7 +863,7 @@ Fixed user copies belong in `P8控制面操作.ts` or the report component's clo
 ```bash
 npx vitest run src/状态/后端/P8控制面操作.test.ts src/组件/举报层.test.tsx \
   src/屏幕/职位详情.test.tsx src/屏幕/P7/Backend真人会话.test.tsx \
-  src/屏幕/直聊会话.test.tsx
+  src/屏幕/直聊会话.test.tsx src/屏幕/真人会话.test.tsx
 npm run typecheck
 git diff --name-only -- '*.css' '*.module.css'
 git add src/状态/后端/P8控制面操作.ts src/状态/后端/P8控制面操作.test.ts \
@@ -856,7 +871,7 @@ git add src/状态/后端/P8控制面操作.ts src/状态/后端/P8控制面操�
   src/组件/举报层.tsx src/组件/举报层.test.tsx \
   src/屏幕/职位详情.tsx src/屏幕/职位详情.test.tsx \
   src/屏幕/P7/Backend真人会话.tsx src/屏幕/P7/Backend真人会话.test.tsx \
-  src/屏幕/直聊会话.tsx src/屏幕/直聊会话.test.tsx
+  src/屏幕/直聊会话.tsx src/屏幕/直聊会话.test.tsx src/屏幕/真人会话.test.tsx
 git commit -m "feat: wire P8 contextual reports"
 ```
 
@@ -915,7 +930,7 @@ At minimum cover:
 
 For every mutation assert browser `Origin` equals the fixture server origin and keys are 16–128 visible ASCII. For same intent replay, assert byte-identical key/body.
 
-In the Backend account journey, write a full-page screenshot to Playwright's test output after credentials/sessions/export row are visible. This is the manual evidence for the approved Backend-only export row; it is not checked into the repository.
+Write full-page screenshots to Playwright's test output for: (a) Backend account after credentials/sessions/export row are visible; (b) Backend direct-detail job with “⋯” and its report drawer open; (c) Backend P7 conversation with the same-looking accessible “⋯”; and (d) Backend direct chat with the invalid report entry absent. These are manual evidence for the approved Backend-only entry differences and are not checked into the repository.
 
 - [ ] **Step 4: Add visual scenes using the current harness**
 
@@ -934,7 +949,7 @@ npx vitest run \
   src/屏幕/账号安全.test.tsx src/屏幕/设置.test.tsx src/屏幕/企业设置.test.tsx \
   src/屏幕/反馈.test.tsx src/组件/举报层.test.tsx \
   src/屏幕/职位详情.test.tsx src/屏幕/P7/Backend真人会话.test.tsx \
-  src/屏幕/直聊会话.test.tsx
+  src/屏幕/直聊会话.test.tsx src/屏幕/真人会话.test.tsx
 
 npm run test:e2e:data-source -- --grep "P8|账号安全|数据导出|账号注销|反馈|举报"
 ```
@@ -954,6 +969,8 @@ Expected:
 - `candidate-account-security` and `candidate-feedback` pass in Mock mode;
 - all pre-existing scenes have no unexplained structural or visual diff;
 - the Backend Playwright screenshot from Step 3 shows exactly one additional existing-style export row and otherwise preserves the account-page visual shell;
+- the Backend job screenshot shows the existing-style “⋯” on an authoritative direct-detail path and exactly one added existing-style drawer item, “举报这个职位”;
+- the Backend P7 screenshot preserves the existing “⋯” pixels while its tests prove keyboard/click behavior, and the Backend direct-chat screenshot shows the invalid report entry absent; no other report-page geometry changes;
 - no CSS file changed.
 
 Open `/tmp/agxp-p8-ui-regression/report.md`, both Mock account screenshots and the Backend screenshot, manually list every diff, and fix any extra visual change before continuing. Do not turn on the approval bypass to hide a Mock regression.
@@ -1001,5 +1018,5 @@ Expected: final worktree clean.
 - [ ] Feedback, targetless guidance and typed report are semantically separate.
 - [ ] Job and P7 reports use only authoritative refs; Backend direct chat has no invented report target.
 - [ ] Mock makes zero P8 requests and retains existing prototype behavior.
-- [ ] CSS diff is empty; the only approved new visual is the export row.
+- [ ] CSS diff is empty; approved entry diffs are limited to the export row, the Backend job report drawer item/availability, the same-pixel accessible P7 “⋯”, and removal of Backend direct chat's invalid report entry.
 - [ ] Focused tests, full tests, typecheck, lint, build, Playwright and visual report all have recorded evidence.
