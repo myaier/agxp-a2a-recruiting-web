@@ -4,7 +4,7 @@
 // Mock：三行就地编辑 + 存企业认证 + 去发岗 原样保留。
 // 仓库未装 @testing-library/jest-dom，值断言直接读 DOM value。
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -393,7 +393,7 @@ describe('招聘名片 · Backend 缺失档案首写', () => {
     清空轻提示();
   });
 
-  it('缺失 profile 不触发 blur 也会同步公司声明、保存 profile 并进入发岗', async () => {
+  it('缺失 profile 首写：公司声明随保存落库并进入发岗', async () => {
     mock保存招聘方档案.mockResolvedValue({
       public_name: '林澈', title: '招聘负责人', personal_verification_status: 'unverified', revision: 1,
     });
@@ -439,6 +439,74 @@ describe('招聘名片 · Backend 缺失档案首写', () => {
     expect(mock保存招聘方档案).toHaveBeenCalledTimes(1);
     兑现({ ...BFF招聘方档案样本, revision: 2 });
     await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.发布岗位, { 从注册流: true }));
+  });
+
+  it('缺失 profile 首写：头像续用 PATCH 响应的 revision，不被「尚未水合」拦下', async () => {
+    // 复审 Important #1：首写链上 状态引用 里还没有档案，If-Match 只能靠 PATCH 响应的
+    // revision。页面必须把它显式传给头像 CAS，且这一步不得吞掉去发岗的导航
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:first-write');
+    mock保存招聘方档案.mockResolvedValue({ ...BFF招聘方档案样本, revision: 1 });
+    const 用户 = userEvent.setup();
+    await render填写完成的缺失Profile名片(用户);
+    await 用户.upload(screen.getByLabelText('更换头像'), pngFile);
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    await waitFor(() => expect(mock替换头像).toHaveBeenCalledWith(pngFile, 1));
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.发布岗位, { 从注册流: true }));
+  });
+
+  it('有可用关系但未选当前时提示去选企业（公司格不在屏上），零 mutation', async () => {
+    const 用户 = userEvent.setup();
+    render缺失Profile名片({
+      企业关系列表: [BFF企业关系样本, { ...BFF企业关系样本, affiliation_id: 'aff_2' }],
+      当前企业关系编号: null,
+    });
+    // 这一态公司格根本不渲染：不能叫用户去填一个屏上没有的字段
+    expect(screen.queryByLabelText('公司')).toBeNull();
+    expect(screen.getAllByText('请选择当前任职企业')).toHaveLength(1);
+    await 用户.type(screen.getByLabelText('姓名'), '林澈');
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    // 屏内提示 + 轻提示 各一份
+    expect(screen.getAllByText('请选择当前任职企业')).toHaveLength(2);
+    expect(screen.queryByText('请填写公司名称')).toBeNull();
+    expect(mock保存未认证公司声明).not.toHaveBeenCalled();
+    expect(mock保存招聘方档案).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('同一批次连点两次只提交一次（保存锁挡住 disabled 生效前的重入）', async () => {
+    let 兑现!: (值: BFF招聘方档案) => void;
+    mock保存招聘方档案.mockReturnValue(new Promise<BFF招聘方档案>((r) => { 兑现 = r; }));
+    const 用户 = userEvent.setup();
+    await render填写完成的缺失Profile名片(用户);
+    const 按钮 = screen.getByRole('button', { name: '保存并继续' }) as HTMLButtonElement;
+    // 两次 click 落在同一个 act 批次里：第二次进 按下保存 时 保存中 还没提交到 DOM，
+    // 按钮也还没 disabled —— 能拦住它的只有 保存锁 这个 ref
+    await act(async () => {
+      fireEvent.click(按钮);
+      fireEvent.click(按钮);
+    });
+    expect(mock保存招聘方档案).toHaveBeenCalledTimes(1);
+    兑现({ ...BFF招聘方档案样本, revision: 2 });
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.发布岗位, { 从注册流: true }));
+  });
+
+  it('已选定当前任职企业时不校验公司、也不写未认证声明', async () => {
+    const 用户 = userEvent.setup();
+    置Backend应用状态({
+      企业关系列表: [BFF企业关系样本],
+      当前企业关系编号: BFF企业关系样本.affiliation_id,
+      未认证公司声明: '',
+    });
+    render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    // 有 current：公司格不渲染，权威公司来自任职企业
+    expect(screen.queryByLabelText('公司')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock保存招聘方档案).toHaveBeenCalledWith({
+      public_name: BFF招聘方档案样本.public_name,
+      title: BFF招聘方档案样本.title,
+    });
+    expect(mock保存未认证公司声明).not.toHaveBeenCalled();
+    expect(await screen.findByText('保存成功')).toBeTruthy();
   });
 
   it('已有 profile 的普通编辑保存后停留并提示成功', async () => {

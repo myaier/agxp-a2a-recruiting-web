@@ -706,6 +706,33 @@ describe('组织操作：替换招聘方头像', () => {
     expect(替换头像).not.toHaveBeenCalled();
   });
 
+  it('首写链：档案还没进 state ref，但显式 revision 在场就照常上传', async () => {
+    // P0 修复 Task 3：缺失档案的一次保存里 PATCH 刚 派发 完 水合招聘方档案，
+    // 状态引用 要到下一个 React 提交才更新。此刻 If-Match 依据是 PATCH 响应的 revision，
+    // 不该被「招聘方档案尚未水合」拦成一个假的网络错误
+    const 新档案 = { ...BFF招聘方档案样本, avatar_url: 'https://cdn.example.com/a.png', revision: 1 };
+    const 替换头像 = vi.fn(async (_文件: File, _修订: number) => 新档案);
+    const 后端 = 创建完整测试数据源({ 替换招聘方头像: 替换头像 });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 }); // 故意不水合档案
+    expect(deps.状态引用.current.招聘方档案).toBeNull();
+    await 操作.替换招聘方头像(头像文件, 0);
+    expect(替换头像).toHaveBeenCalledWith(头像文件, 0);
+    expect(deps.状态引用.current.招聘方档案).toEqual(新档案);
+  });
+
+  it('首写链的 503 没有比较基线，一律抛回原始 503（不猜 confirmed success）', async () => {
+    const 后端 = 创建完整测试数据源({
+      替换招聘方头像: vi.fn(async () => { throw new BFF错误(503, 'operation_outcome_unknown', 'unknown'); }),
+      读取招聘方档案: vi.fn(async () => ({
+        ...BFF招聘方档案样本, avatar_url: 'https://cdn.example.com/a.png', revision: 2,
+      })),
+    });
+    const { 操作 } = 创建操作测试环境({ 后端 }); // before 为 null
+    await expect(操作.替换招聘方头像(头像文件, 0)).rejects.toMatchObject({
+      code: 'operation_outcome_unknown',
+    });
+  });
+
   it('409 重读权威档案但不确认成功，原始错误抛回页面', async () => {
     const 后端 = 创建完整测试数据源({
       替换招聘方头像: vi.fn(async () => { throw new BFF错误(409, 'version_conflict', 'conflict'); }),

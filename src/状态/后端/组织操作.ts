@@ -355,12 +355,16 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
     async 替换招聘方头像(file, revision) {
       if (!是后端 || !后端) return;
       const before = 状态引用.current.招聘方档案;
-      if (!before) throw new Error('招聘方档案尚未水合');
+      // P0 修复 Task 3：缺失档案首写链（PATCH → 头像）走到这里时 before 还是 null ——
+      // 上一步 派发 的 水合招聘方档案 要到下一个 React 提交才写进 state ref。这一步的
+      // If-Match 依据本来就由显式 revision 提供，before 只是 503 confirmed-success 的
+      // 比较基线，缺席不该把上传拦成一个假的「尚未水合」网络错误。
+      if (revision === undefined && !before) throw new Error('招聘方档案尚未水合');
       try {
         // 一次原子替换：multipart + If-Match 当前 revision，响应即权威档案。
         // revision 显式传入时优先（同一次保存里前一步 PATCH 的响应值）——dispatch 后
         // state ref 要到下一个 React 提交才更新，读 ref 会拿旧 revision 被 BFF 409。
-        const after = await 后端.替换招聘方头像(file, revision ?? before.revision);
+        const after = await 后端.替换招聘方头像(file, revision ?? before!.revision);
         派发({ 型: '水合招聘方档案', 档案: after });
       } catch (error) {
         if (error instanceof BFF错误 && error.status === 401) {
@@ -378,8 +382,9 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
           } catch {
             throw error; // 重读失败不能替换原始 409/503
           }
-          // 503 只有 avatar_url 与 revision 都已前进时才视作 confirmed success
-          if (error.status === 503 &&
+          // 503 只有 avatar_url 与 revision 都已前进时才视作 confirmed success；
+          // 首写链上没有 before 这个比较基线，无从确认，只能把原始 503 抛回
+          if (error.status === 503 && before !== null &&
               current.revision !== before.revision && current.avatar_url !== before.avatar_url) {
             return;
           }
