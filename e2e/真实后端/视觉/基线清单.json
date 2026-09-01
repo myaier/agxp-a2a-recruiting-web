@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "agentBrowserVersion": "0.35.2",
+  "chromeBuild": "Chrome/149.0.0.0",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "locale": "zh-CN",
+  "timezone": "Asia/Shanghai",
+  "colorScheme": "light",
+  "deviceScaleFactor": 1,
+  "scenes": [
+    "candidate-resume-loaded",
+    "candidate-intentions-loaded",
+    "candidate-disclosure-loaded",
+    "candidate-resume-updated",
+    "recruiter-card-loaded",
+    "recruiter-company-loaded",
+    "recruiter-jobs-after-create"
+  ],
+  "baselineCommit": "51393d41"
+}
