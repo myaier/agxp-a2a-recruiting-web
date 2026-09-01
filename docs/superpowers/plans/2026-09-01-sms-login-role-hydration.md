@@ -135,6 +135,54 @@ it('candidate 当前轮水合 401 清 P7 与 P8 运行时引用', async () => {
 
 Import `页面简历快照` and `页面意向快照` from `../../数据/招聘数据源类型` and use those exact types for the two deferred promises; do not use `any`.
 
+In the predecessor `src/状态/后端/组织操作.test.ts`, extend `创建组织测试依赖` with the complete runtime refs used by `创建P6会话依赖`:
+
+```ts
+P4范围代际: { current: new Map<string, number>() },
+P4幂等意图: { current: new Map<string, string>() },
+P4可见范围: { current: { candidate: null, recruiter: null } },
+P7范围代际: { current: new Map<string, number>() },
+P7待定意图: { current: new Map<string, never>() },
+P7可见收件箱: { current: { candidate: false, recruiter: false } },
+P7可见会话: { current: { candidate: null, recruiter: null } },
+P7已读位置: { current: new Map<string, never>() },
+P8范围代际: { current: 0 },
+P8账号可见: { current: false },
+P8读取锁: { current: new Map<'credentials' | 'sessions' | 'export', Promise<void>>() },
+P8待定意图: { current: new Map<string, { key: string; request: unknown }>() },
+```
+
+Then add a recruiter-specific cleanup regression:
+
+```ts
+it('组织水合当前轮 401 清 P7 与 P8 运行时引用', async () => {
+  const 后端 = 创建完整测试数据源({
+    读取招聘方档案: async () => {
+      throw new BFF错误(401, 'invalid_session', 'expired');
+    },
+  });
+  const deps = 创建组织测试依赖({
+    后端,
+    派发: vi.fn(),
+    subject: 'sub_1',
+    generation: 7,
+  });
+  deps.P7范围代际.current.set('recruiter:inbox', 3);
+  deps.P7可见收件箱.current.recruiter = true;
+  deps.P8读取锁.current.set('sessions', Promise.resolve());
+  deps.P8账号可见.current = true;
+
+  await expect(水合招聘方组织数据(deps, 'sub_1', 7, null))
+    .resolves.toEqual({ sessionExpired: true });
+  expect(deps.P7范围代际.current.size).toBe(0);
+  expect(deps.P7可见收件箱.current.recruiter).toBe(false);
+  expect(deps.P8读取锁.current.size).toBe(0);
+  expect(deps.P8账号可见.current).toBe(false);
+});
+```
+
+Do not create a second cleanup helper in the test.
+
 - [ ] **Step 2: Add recruiter jobs and Provider-final-commit fence regressions**
 
 Add to `src/状态/后端/会话操作.test.ts`:
@@ -185,6 +233,7 @@ it('迟到的 mount 水合不覆盖期间建立的新短信会话', async () => 
   await act(async () => { await 旧简历门.promise; });
   await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('fresh-subject'));
   expect(当前.后端状态.已登录).toBe(true);
+  expect(当前.后端状态.初始化).toBe('完成');
 });
 ```
 
@@ -231,7 +280,7 @@ const p6结果 = await p6Promise;
 if (!是当前水合(deps, 主体.subject_id, generation)) return false;
 ```
 
-After that guard, process all four support results and P6 rejections with the existing independent-commit/error policy. Remove the separate privacy/attachment captured-fence functions because the one outer fence now governs the same settled batch. Pass `deps` directly to `清账号状态(deps)` so P4/P7/P8 refs travel with the current 401.
+After that guard, process all four support results and P6 rejections with the existing independent-commit/error policy. Remove the separate privacy/attachment captured-fence functions because the one outer fence now governs the same settled batch. For a rejected result, mark 401 as session-expired but do not call `轻提示` for that individual domain; continue to present each non-401 failure as today. This prevents duplicate 401 toasts when multiple settled domains fail together. Pass `deps` directly to `清账号状态(deps)` so P4/P7/P8 refs travel with the current 401. Task 2's interactive login owner presents the one terminal 401 message; cold start remains silent.
 
 In the recruiter branch, preserve the predecessor organization-before-jobs semantics. Honor a fulfilled `{ sessionExpired: true }` before the stale early return; otherwise require the outer fence before scanning P6 errors, presenting errors, or committing jobs:
 
@@ -260,14 +309,19 @@ const 会话失效 = await 水合角色数据({
 }, 主体, false, 本次代际);
 ```
 
-Before the cold-start final state update, add the same exact guard used by interactive login:
+Before the cold-start final state update, distinguish cleanup, supersession, and successful commit. `清账号状态` already closes initialization for current-session 401; a superseded mount must close only `初始化` and must not write its stale subject/login state:
 
 ```ts
+if (会话失效) return;
 if (
-  会话失效 ||
   主体标识引用.current !== 主体.subject_id ||
   会话代际.current !== 本次代际
-) return;
+) {
+  设后端状态((旧) => 旧.初始化 === '进行中'
+    ? { ...旧, 初始化: '完成' }
+    : 旧);
+  return;
+}
 设后端状态((旧) => ({ ...旧, 初始化: '完成', 已登录: true, 主体 }));
 ```
 
@@ -376,11 +430,43 @@ it('交互登录水合 401 不落登录态并统一清理', async () => {
     new BFF错误(401, 'invalid_session', 'expired'),
   );
   const { deps, 最新后端状态, 状态引用 } = 创建P6会话依赖(后端);
+  const 原提示容器 = Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined;
+  if (原提示容器) 原提示容器.innerHTML = '';
   deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
   await 创建会话操作(deps).完成手机登录('1234');
   expect(最新后端状态()).toMatchObject({ 已登录: false, 主体: null });
   expect(状态引用.current.求职意向表).toEqual([]);
   expect(最新后端状态().附件简历库).toBeNull();
+  const 提示容器 = Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined;
+  expect(提示容器?.childElementCount).toBe(1);
+  expect(提示容器?.textContent).toContain('登录状态已失效，请重新登录');
+});
+
+it('recruiter 组织水合 401 同样只提示一次并保持未登录', async () => {
+  const 后端 = 创建P6数据源桩();
+  vi.mocked(后端.读取主体).mockResolvedValue(recruiter主体);
+  vi.mocked(后端.读取招聘方档案).mockRejectedValue(
+    new BFF错误(401, 'invalid_session', 'expired'),
+  );
+  const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+  const 原提示容器 = Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined;
+  if (原提示容器) 原提示容器.innerHTML = '';
+  deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
+
+  await 创建会话操作(deps).完成手机登录('1234');
+
+  expect(最新后端状态()).toMatchObject({ 已登录: false, 主体: null });
+  const 提示容器 = Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined;
+  expect(提示容器?.childElementCount).toBe(1);
+  expect(提示容器?.textContent).toContain('登录状态已失效，请重新登录');
 });
 
 it('单域非 401 失败保留兄弟域并完成登录', async () => {
@@ -511,8 +597,11 @@ const 本次代际 = 会话代际.current;
 }));
 
 const 会话失效 = await 水合角色数据(角色水合依赖, 主体, false, 本次代际);
+if (会话失效) {
+  轻提示('登录状态已失效，请重新登录');
+  return;
+}
 if (
-  会话失效 ||
   主体标识引用.current !== 主体.subject_id ||
   会话代际.current !== 本次代际
 ) return;
@@ -520,7 +609,7 @@ if (
 设后端状态((旧) => ({ ...旧, 已登录: true, 主体 }));
 ```
 
-Import `创建空招聘方组织水合状态` from its post-predecessor module. Do not set `主体` during hydration. Do not call candidate draft storage directly. Keep `读取主体` failure behavior, cross-subject cleanup, generation increment, directory cleanup, P7/P8 semantics, and attempt handling unchanged.
+Import `创建空招聘方组织水合状态` from its post-predecessor module. Do not set `主体` during hydration. Do not call candidate draft storage directly. Keep `读取主体` failure behavior, cross-subject cleanup, generation increment, directory cleanup, P7/P8 semantics, and attempt handling unchanged. The fixed message above belongs only to the current interactive SMS operation. Candidate per-domain 401 messages were suppressed in Task 1, recruiter organization 401 is already returned without a toast, and stale 401 returns `false`, so this produces exactly one message without notifying for cold-start or stale work.
 
 - [ ] **Step 6: Run focused tests and commit**
 
@@ -542,7 +631,7 @@ git commit -m "fix: hydrate roles before SMS login commit"
 
 **Interfaces:**
 - Consumes: Task 2's delayed login commit and predecessor recruiter phase-aware route guard.
-- Produces: a Backend login page with zero post-success navigation, while Mock retains immediate identity navigation.
+- Produces: a Backend login page with zero post-success navigation and an explicit disabled “正在进入…” pending state, while Mock retains immediate identity navigation.
 
 - [ ] **Step 1: Rewrite the login-page regression around single ownership**
 
@@ -559,10 +648,16 @@ vi.mock('../状态/应用状态', () => ({
 Reset it to `backend` in `beforeEach`. Change the current success test's final assertion:
 
 ```ts
-完成.resolve();
-await act(async () => { await 完成.promise; });
+const 等待按钮 = screen.getByRole('button', { name: '正在进入…' });
+expect((等待按钮 as HTMLButtonElement).disabled).toBe(true);
 expect(mock操作.完成手机登录).toHaveBeenCalledWith('1234');
 expect(mock跳转).not.toHaveBeenCalled();
+
+完成.resolve();
+await act(async () => { await 完成.promise; });
+expect(mock跳转).not.toHaveBeenCalled();
+const 恢复按钮 = screen.getByRole('button', { name: '进入' });
+expect((恢复按钮 as HTMLButtonElement).disabled).toBe(false);
 ```
 
 Add a Mock regression:
@@ -638,11 +733,11 @@ Import `useEffect` and `useLocation` for the path-recording probe. Do not create
 npm test -- src/屏幕/登录.test.tsx src/应用.test.tsx
 ```
 
-Expected: Backend login test fails because `登录.tsx` still calls `跳转(路径.选身份)` after the operation resolves. Predecessor recruiter guard tests remain green.
+Expected: Backend login test fails because `登录.tsx` still calls `跳转(路径.选身份)` after the operation resolves and exposes no pending label/disabled state. Predecessor recruiter guard tests remain green.
 
 - [ ] **Step 4: Remove only the Backend SMS navigation**
 
-In `src/屏幕/登录.tsx`, change the Backend `try` body to:
+In `src/屏幕/登录.tsx`, keep the existing `进入中` ref as the synchronous duplicate-click guard and add `const [正在进入, 设正在进入] = useState(false)`. Set both guards before the await, and change the Backend `try` body to:
 
 ```ts
 try {
@@ -651,10 +746,21 @@ try {
   轻提示(取后端错误文案(错误));
 } finally {
   进入中.current = false;
+  设正在进入(false);
 }
 ```
 
-Keep the Mock branch's `跳转(路径.选身份)` unchanged. Do not simplify or replace the predecessor recruiter effect in `src/应用.tsx`; only make a product edit there if the new tests expose a duplicate-navigation defect, and in that case add the exact failing assertion before changing the effect.
+Immediately after `进入中.current = true`, call `设正在进入(true)`. Render the existing shared button as:
+
+```tsx
+<主按钮
+  文字={正在进入 ? '正在进入…' : '进入'}
+  按下={进入下一步}
+  禁用={!可进入 || 正在进入}
+/>
+```
+
+Keep the Mock branch's `跳转(路径.选身份)` unchanged; Mock never sets the pending state. Do not simplify or replace the predecessor recruiter effect in `src/应用.tsx`; only make a product edit there if the new tests expose a duplicate-navigation defect, and in that case add the exact failing assertion before changing the effect.
 
 - [ ] **Step 5: Run focused tests and commit**
 
@@ -672,8 +778,8 @@ git commit -m "fix: centralize Backend login landing"
 - Create: `src/屏幕/我的.test.tsx`
 
 **Interfaces:**
-- Consumes: `数据源模式`, authoritative `状态.基本信息`, and `后端状态.简历快照`.
-- Produces: Backend copy `未填写姓名` / `资料暂不可用` / authoritative identity, with existing Mock copy unchanged.
+- Consumes: `数据源模式`, authoritative `状态.基本信息`, and raw `后端状态.简历快照.profile.status`.
+- Produces: Backend copy `未填写姓名` / `资料暂不可用` / `未填写求职状态` / authoritative identity and an authority-only avatar initial, with existing Mock copy unchanged.
 
 - [ ] **Step 1: Add Backend and Mock component regressions**
 
@@ -689,7 +795,7 @@ interface 我的测试上下文 {
       candidate: { rules: '未开始'; proposals: '未开始' };
       recruiter: { rules: '未开始'; proposals: '未开始' };
     };
-    简历快照: null | Record<string, never>;
+    简历快照: BFF简历 | null;
   };
 }
 
@@ -699,7 +805,11 @@ vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: vi.fn() }
 
 function 布置(
   模式: 'backend' | 'mock',
-  选项: { 真名?: string; 身份?: '在校' | '在职' | '离职'; 简历已水合?: boolean } = {},
+  选项: {
+    真名?: string;
+    身份?: '在校' | '在职' | '离职';
+    服务端状态?: BFF简历['profile']['status'];
+  } = {},
 ) {
   mock上下文.当前 = {
     状态: {
@@ -717,7 +827,12 @@ function 布置(
         candidate: { rules: '未开始', proposals: '未开始' },
         recruiter: { rules: '未开始', proposals: '未开始' },
       },
-      简历快照: 选项.简历已水合 ? ({} as never) : null,
+      简历快照: 选项.服务端状态 === undefined
+        ? null
+        : {
+            ...BFF简历样本,
+            profile: { ...BFF简历样本.profile, status: 选项.服务端状态 },
+          },
     },
   };
   return render(<我的 />);
@@ -729,10 +844,18 @@ it('Backend 空简历显示中性占位且不泄漏 Mock 身份', () => {
   expect(screen.getByText('资料暂不可用')).toBeTruthy();
   expect(screen.queryByText('沈亦舟')).toBeNull();
   expect(screen.queryByText('在职 · 保密求职中')).toBeNull();
+  const 头像行 = screen.getByRole('button', { name: /未填写姓名/ });
+  expect(头像行.textContent?.startsWith('未未填写姓名')).toBe(false);
 });
 
-it('Backend 已水合简历只显示权威姓名与身份', () => {
-  布置('backend', { 真名: '林澈', 身份: '离职', 简历已水合: true });
+it('Backend 已水合但服务端 status 为空时不采用表单默认在职', () => {
+  布置('backend', { 服务端状态: '' });
+  expect(screen.getByText('未填写求职状态')).toBeTruthy();
+  expect(screen.queryByText('在职')).toBeNull();
+});
+
+it('Backend 已水合简历只显示非空权威姓名与身份', () => {
+  布置('backend', { 真名: '林澈', 身份: '离职', 服务端状态: 'unemployed' });
   expect(screen.getByText('林澈')).toBeTruthy();
   expect(screen.getByText('离职')).toBeTruthy();
   expect(screen.queryByText(/保密求职中/)).toBeNull();
@@ -745,7 +868,7 @@ it('Mock 保留原型姓名与状态兜底', () => {
 });
 ```
 
-Use the typed local test-context interface above; the production assertions and copy must remain exact.
+Import `type BFF简历` from `../数据/BFF契约` and `BFF简历样本` from `../测试/BFF样本`. Use the typed local test-context interface above; the production assertions and copy must remain exact.
 
 - [ ] **Step 2: Run the new test and record the RED**
 
@@ -765,14 +888,17 @@ const 权威姓名 = 状态.基本信息.真名.trim();
 const 姓名 = 是后端
   ? 权威姓名 || '未填写姓名'
   : 权威姓名 || 我的信息.姓名;
+const 头像首字 = 是后端 ? 权威姓名.charAt(0) : 姓名.charAt(0);
 const 状态文案 = 是后端
   ? 后端状态.简历快照 === null
     ? '资料暂不可用'
-    : 状态.基本信息.身份
+    : 后端状态.简历快照.profile.status === ''
+      ? '未填写求职状态'
+      : 状态.基本信息.身份
   : 我的信息.状态;
 ```
 
-Render `{状态文案}` in the status pill. Do not add a page effect or data-source call.
+Render `{头像首字}` instead of `姓名.charAt(0)` in the no-image avatar and `{状态文案}` in the status pill. Do not add a page effect or data-source call, and do not change the form mapper's existing registration-flow default.
 
 - [ ] **Step 4: Run focused tests and commit**
 

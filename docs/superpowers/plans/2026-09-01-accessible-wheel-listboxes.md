@@ -35,6 +35,8 @@
 | `src/组件/薪资区间层.tsx`, tests | Salary confirmation, normalization, and reopen values |
 | `src/组件/数字滚轮层.tsx`, tests | Single-column consumer using row height 40 |
 | `src/组件/年月滚轮层.tsx`, tests | Dynamic year/month consumer using row height 40 |
+| `src/屏幕/基本信息.tsx`, `src/屏幕/就读时间段.tsx`, `src/屏幕/学生分流.tsx` | Existing non-salary `内嵌双滚轮` consumers; inherit the shared contract without product edits |
+| `src/屏幕/学生分流.test.tsx` | One screen-level focus-order regression for an embedded wheel inside a real dialog |
 
 ### Task 1: Build the headless Hook through the embedded double-wheel contract
 
@@ -42,6 +44,7 @@
 - Create: `src/组件/可访问滚轮.ts`
 - Modify: `src/组件/内嵌双滚轮.tsx`
 - Create: `src/组件/内嵌双滚轮.test.tsx`
+- Modify: `src/屏幕/学生分流.test.tsx`
 
 **Interfaces:**
 - Consumes: a readonly numeric option list, controlled numeric value, setter, and exact row height.
@@ -370,13 +373,50 @@ Wire the listbox and options:
 
 Import only `use可访问滚轮`; `内嵌双滚轮.tsx` should no longer import React hooks.
 
-- [ ] **Step 6: Run tests, typecheck, and commit**
+- [ ] **Step 6: Add one non-salary consumer focus-order regression**
+
+Extend the existing `src/屏幕/学生分流.test.tsx` harness; do not create another full Provider mock. Add a campus-recruiting case that opens its “预计毕业时间” dialog and proves the two inherited listboxes participate in the dialog's real Tab order:
+
+```tsx
+it('预计毕业时间弹层把毕业年和毕业月接入真实 Tab 顺序', async () => {
+  const 用户 = userEvent.setup();
+  render学生分流({
+    数据源: 'backend',
+    基本信息: { 身份: '在校' },
+    引导预填: {
+      ...完整预填,
+      筛选偏好: {
+        ...完整预填.筛选偏好,
+        求职类型: ['校园招聘'],
+        毕业时间: '2027-06',
+      },
+    },
+  });
+  await 用户.click(screen.getByRole('button', { name: /2027 年 06 月/ }));
+  const 取消 = screen.getByRole('button', { name: '取消' });
+  const 完成 = screen.getByRole('button', { name: '完成' });
+  const 年列 = screen.getByRole('listbox', { name: '毕业年' });
+  const 月列 = screen.getByRole('listbox', { name: '毕业月' });
+
+  expect(document.activeElement).toBe(取消);
+  await 用户.tab();
+  expect(document.activeElement).toBe(完成);
+  await 用户.tab();
+  expect(document.activeElement).toBe(年列);
+  await 用户.tab();
+  expect(document.activeElement).toBe(月列);
+});
+```
+
+This single integration case covers focus-trap composition. Keyboard selection, direct click, state isolation, and ARIA semantics remain owned by `内嵌双滚轮.test.tsx` and therefore cover all three screen consumers.
+
+- [ ] **Step 7: Run tests, typecheck, and commit**
 
 ```bash
-npm test -- src/组件/内嵌双滚轮.test.tsx
+npm test -- src/组件/内嵌双滚轮.test.tsx src/屏幕/学生分流.test.tsx
 npm run typecheck
 git diff --check
-git add src/组件/可访问滚轮.ts src/组件/内嵌双滚轮.tsx src/组件/内嵌双滚轮.test.tsx
+git add src/组件/可访问滚轮.ts src/组件/内嵌双滚轮.tsx src/组件/内嵌双滚轮.test.tsx src/屏幕/学生分流.test.tsx
 git commit -m "feat: add accessible wheel interactions"
 ```
 
