@@ -47,8 +47,11 @@ Content-Type: application/json
 8. 页面允许浏览器缩放，且静态合同测试禁止重新加入缩放限制。
 9. 数据源模式 E2E 覆盖 profile 404 → revision 0 首写 → 完整岗位 POST → 刷新恢复 `/hr` 的完整链路。
 
-另保留一个合同门控的后续能力范围，将全远程空办公地址和 JD PDF 建议稿导入合并为一个后续 Plan。它不阻塞
-P0，也不会在后端合同未知时生成伪实现计划。
+另保留一个实现门控的后续能力范围，将全远程空办公地址和 JD PDF 建议稿导入合并为一个后续 Plan。后端设计
+合同已由 `agxp-backend` 的
+`docs/superpowers/specs/2026-09-01-recruitment-employer-onboarding-backend-fixes-design.md`
+（commit `2b19cf230f3dd8c7176f2316d7eb576fbf74f46c`）冻结；该 Plan 不阻塞 P0，但在对应后端 OpenAPI、实现和合同测试
+合并并提供可核验 commit 前不得执行。
 
 ## 3. 架构选择与最小性
 
@@ -324,13 +327,17 @@ fixture 账号和 OTP 前置可用时运行对应 recruiter onboarding/CRUD 旅�
 规划时仓库依赖尚未安装，基线定向测试曾以 exit 127 结束，诊断为 `vitest: command not found`；这不是产品
 失败。执行 Plan 前必须安装锁文件规定的依赖，再取得有效 RED/GREEN evidence。
 
-## 6. 后续合同门控 Plan：remote 地址 + JD 导入
+## 6. 后续实现门控 Plan：remote 地址 + JD 导入
 
-这两个能力合并为一个后续 Plan，并依赖 P0 Plan。只有以下两项都可核验时才写零上下文实施计划：
+这两个能力按用户决定合并为一个后续 Plan，并依赖 P0 Plan。后端设计合同已冻结，本节据此冻结前端 wire contract
+和交互边界；它不是后端能力已经部署的证据。只有以下两项在同一个后端 handoff 中都可核验时，才生成并执行
+零上下文 Implementation Plan：
 
-1. 后端 OpenAPI、实现 commit 和合同测试明确 `workplace_mode=remote` 时 `office_location` 可为空，
-   onsite/hybrid 时非空；
-2. JD 导入 OpenAPI、实现 commit 和合同测试明确 multipart 创建任务、GET 状态、终态 DTO、错误码、限制和缓存策略。
+1. 两份 OpenAPI、后端实现 commit 和合同测试已经落地
+   `workplace_mode=remote` 时 `office_location` 可为空、onsite/hybrid 时非空；
+2. 两份 OpenAPI、后端实现 commit 和合同测试已经落地本节的 JD multipart、投影、错误与保留合同。
+
+若实现 commit 与后端设计 commit 不一致，先回到本 Spec 的规划 owner 做一次合同 diff；执行 Agent 不自行猜测。
 
 ### 6.1 remote 行为边界
 
@@ -340,19 +347,142 @@ fixture 账号和 OTP 前置可用时运行对应 recruiter onboarding/CRUD 旅�
 - 岗位详情在 remote + 空地址时不渲染空分隔符；
 - 新建和编辑均覆盖 workplace 两个方向的切换。
 
-### 6.2 JD 建议稿边界
+这是一组比后端更窄、但完全合法的前端行为。后端 wire shape 继续把 `office_location` 保留为 required string，
+数据库也继续非 null；remote 的全空白值由后端规范为 `""`，remote 非空地址仍允许且最多 300 rune。
+onsite/hybrid 的空白地址稳定返回 field error
+`path="office_location", reason="must_not_be_blank"`。更新是 sparse patch，但后端以合并后的最终
+`workplace_mode + office_location` 组合校验；失败不写入也不 bump revision。前端编辑页仍显式发送两字段，
+remote 切换必须显式发送空地址，不能依赖省略字段清除旧值。
+
+### 6.2 JD public wire contract
+
+浏览器只调用 public BFF：
+
+```http
+POST /api/v1/recruiter/job-draft-imports
+Content-Type: multipart/form-data
+Idempotency-Key: <一次上传意图的一把稳定键>
+
+file=<恰好一个 application/pdf>
+processing_consent_confirmed=true
+```
+
+`processing_consent_confirmed` 是恰好一个文本 part，值必须是字面量 `true`。数据源传 `FormData`，不得手工写
+multipart `Content-Type`，由浏览器生成 boundary。成功为 `202 { result: JobDraftImport }`。查询固定为：
+
+```http
+GET /api/v1/recruiter/job-draft-imports/{import_id}
+-> 200 { result: JobDraftImport }
+```
+
+POST 的 202 投影必须是 pending 且不带 suggestion/failure code；GET 使用现有“不缓存”请求选项，避免轮询读到
+浏览器缓存。
+
+Public DTO 冻结为：
+
+```ts
+type JobDraftImport = {
+  import_id: string;
+  status: 'pending' | 'processing' | 'succeeded' | 'failed';
+  failure_code?:
+    | 'invalid_pdf'
+    | 'document_too_complex'
+    | 'parser_invalid_output'
+    | 'parser_temporarily_unavailable';
+  suggestion?: JobDraftSuggestion;
+  created_at: string;
+  updated_at: string;
+};
+
+type JobDraftSuggestion = {
+  title: string | null;
+  recruitment_type:
+    | 'social_full_time' | 'campus' | 'internship' | 'part_time' | null;
+  workplace_mode: 'onsite' | 'hybrid' | 'remote' | null;
+  office_location: string | null;
+  description: string | null;
+  requirements: string | null;
+  education_requirement:
+    | 'none' | 'associate' | 'bachelor' | 'master' | 'doctorate' | null;
+  experience_requirement:
+    | 'none' | 'one_to_three_years' | 'three_to_five_years'
+    | 'five_plus_years' | 'ten_plus_years' | null;
+  category_source_name: string | null;
+  location_source_name: string | null;
+  keywords: string[];
+};
+```
+
+解码必须验证状态分支：pending/processing 不带 suggestion/failure code；failed 只带闭合 failure code；
+succeeded 只带 suggestion。建议稿所有 key 都存在，未知标量用 `null`，`keywords` 始终是数组；未知枚举、
+额外字段或非法分支按 `invalid_response` 诚实失败，不能尽力猜测。
+
+### 6.3 JD 前端状态、幂等和轮询
 
 - 发布岗位首屏提供 PDF 上传、明确模型处理同意和“手动填写”；
-- multipart 创建导入任务，轮询到 succeeded/failed；离页只停止前端轮询，不伪造服务端取消；
-- 结果只填入 title、description、requirements、workplace 等自由文本或合法枚举建议；
+- 未同意、未选文件或文件 `type !== 'application/pdf'` 时本地拒绝且零请求；大小、页数和 PDF 结构仍由后端
+  权威校验，前端提示不能替代后端约束；
+- 同一上传意图在内存中保存不可变的 File 引用、`consent=true` 和一把 `crypto.randomUUID()` 幂等键。网络结果
+  未知、503 或 `upload_in_progress` 后重试同一文件时复用该键；用户更换文件或明确重新开始才生成新键。绝不
+  用同一键配不同文件，也不把 raw key 写入浏览器持久化或日志；
+- 同 subject + 同 key + 同文件的顺序重放必须接受同一个 import；同 key + 不同文件按冲突呈现；不同 key 即使
+  文件相同也视为新的导入。前端不做跨 key 文件去重；
+- POST 回包立即成为当前权威 import；pending/processing 使用 settle 后 2 秒的单飞 `setTimeout` 轮询，禁止
+  重叠 GET。页面 hidden 时停排，重新 visible 立即读一次；subject、角色、import ID 变化或组件卸载时作废旧
+  generation，并停止后续调度；
+- 单次 network/500/503 查询失败保留最后状态并继续下一拍，连续 5 次后暂停自动轮询、显示“暂时无法获取解析
+  进度”和手动重试；401 沿用统一账号清理；
+- succeeded/failed、404 或离页都停轮询。GET 的 missing、foreign、24 小时 expired 均为
+  `404 job_draft_import_not_found`；页面显示“建议稿已失效，请重新上传”，清除当前 import 引用但保留用户已填
+  的手工表单内容；
+- 离页只停止前端轮询，不调用不存在的服务端 cancel。刷新后也不恢复 import：后端没有 list/recovery API，且
+  浏览器不得持久化 import ID、文件、正文、模型响应或建议稿；
+- failed 按闭合 `failure_code` 显示可行动文案并保留手填路径；不得把解析失败冒充网络失败。
+
+### 6.4 建议稿应用边界
+
+- succeeded 后先展示建议稿，由用户点击“应用建议稿”后才把非 null 值写入仍为空的表单字段；已手填字段不被
+  覆盖，用户可从预览中自行采用不同内容。解析完成和应用动作都不得触发 Job mutation；
+- 可应用字段为 title、recruitment type、workplace mode、office location、description、requirements、
+  education requirement 和 experience requirement；用户应用后仍可逐项编辑；
+- 建议为 remote 时按前端 remote 规则忽略 suggestion 的非空 office location 并清空地址；onsite/hybrid
+  可填入非 null 地址，但最终仍走发布前校验；
 - Catalog 建议只展示文字，用户必须选择真实 `{id, display_name}`；不得猜 ID 或自动选首项；
+- `keywords` 按 wire contract 严格解码，但当前发布页没有已批准的关键词编辑入口，因此本次不暗中回填或随
+  JobCreate 提交；若以后恢复关键词 UI，再以单独产品变更决定如何应用；
 - 不自动发布，用户必须逐步确认并点击发布；
 - 上传、解析或部分字段失败都保留手填路径；Backend 失败不回退 Mock；
 - PDF 字节、全文、模型响应和导入结果不进入 localStorage/sessionStorage。
 
-合同到齐前不冻结端点、DTO、轮询间隔、重试策略或错误码。任一未知项都要求回到本 Spec 的规划 owner 校准，
-不得留给执行 Agent 现场设计。合并 Plan 的代价是其中一份后端合同先到时也不提前执行半个 Plan；这是用户明确
-接受的串行门。
+### 6.5 错误映射和前后端责任
+
+POST 同步错误按稳定 code 映射：
+
+```text
+processing_consent_required                → 请先同意模型处理这份 JD
+invalid_request_body                       → 上传请求无效，请重新选择文件
+invalid_pdf                                → 请选择有效的 PDF 文件
+document_too_complex                       → PDF 页数或结构超出处理范围，请精简后重试
+job_draft_import_too_large                 → PDF 文件过大，请压缩后重试
+idempotency_conflict                       → 上传内容已变化，请重新选择文件
+upload_in_progress                         → 文件仍在上传处理中，保留同一意图稍后重试
+parser_invalid_output                      → 未能生成有效建议稿，请手动填写或重新上传
+parser_temporarily_unavailable             → 解析服务暂时不可用，请稍后重试或手动填写
+role_required / role_suspended             → 沿用招聘方角色错误处理
+未知 400 / 409 / 500 / 503                 → 通用安全文案，不显示内部 message
+```
+
+后端负责 workplace 组合校验、multipart/PDF 安全校验、owner 隔离、幂等、异步 worker、建议 schema、加密、
+24 小时清理、账号删除和日志/导出隐私；这些不在浏览器重复实现。前端负责精确请求形状、闭合响应解码、在内存
+持有同一上传意图、轮询生命周期、错误文案、建议稿显式应用、Catalog 不猜 ID、不自动发布和零浏览器持久化。
+
+前端单元/组件测试覆盖 FormData part/header、幂等键复用与换键、各 DTO 分支、单飞轮询/visibility/unmount/
+stale generation、错误映射、建议应用和 Catalog/keyword 边界。数据源模式 E2E 拦截真实 public POST/GET 并
+覆盖 pending → processing → succeeded，断言没有 Job POST，直到用户完成表单并点击发布。后端 hermetic
+PDF、store/worker、加密/清理、role/owner、OpenAPI 和正式 L3 由后端仓库负责；前端不得用拦截 E2E 冒充该
+后端证据。
+
+合并 Plan 的代价是其中一份后端实现先到时也不提前执行半个 Plan；这是用户明确接受的串行门。
 
 ## 7. 非目标
 
@@ -369,7 +499,7 @@ fixture 账号和 OTP 前置可用时运行对应 recruiter onboarding/CRUD 旅�
 - 只有后端提供显式 onboarding/completion 字段时，才重新考虑用 profile 存在性作为完成标记。
 - 只有产品要求跨设备保留未认证公司声明，且后端提供对应账号字段时，才迁移当前账号作用域本地状态。
 - 只有多个表单出现相同结构化字段错误需求并产生重复维护证据时，才考虑通用字段错误框架。
-- 只有 remote 和 JD 两份合同均满足第 6 节前置，才生成合并后续 Plan。
+- 只有 remote 和 JD 两份后端实现均满足第 6 节 handoff 前置，才生成合并后续 Plan；设计合同本身已冻结。
 
 ## 9. 实施拓扑与分级
 
@@ -395,10 +525,12 @@ fixture 账号和 OTP 前置可用时运行对应 recruiter onboarding/CRUD 旅�
 
 ### Plan 2：合同门控增强
 
-当前只冻结范围与准入条件，不生成 Implementation Plan。两份后端合同到齐后重新校准并单独 review。
+当前已冻结设计合同、范围与准入条件，不生成 Implementation Plan。两份后端实现、OpenAPI 与合同测试到齐后，
+按实际 handoff commit 做一次 diff，再单独规划和 review。
 
 - **预计计划本身复杂度：高。** 同时包含 workplace 编辑迁移和异步 PDF 导入。
-- **预计零上下文漂移风险：高，直至合同到齐。** 因端点、DTO、错误和轮询语义尚不可核验；合同冻结后重新评级。
+- **预计零上下文漂移风险：中高，直至实现 handoff 到齐。** 端点、DTO、错误和前端轮询语义已经冻结，剩余风险
+  来自跨仓实现/OpenAPI 是否与设计一致及异步 UI 生命周期；handoff diff 后重新评级。
 - **当前执行模型档位：不适用。** 未形成可执行 Plan。
 
 ## 10. 完成定义与交付证据
