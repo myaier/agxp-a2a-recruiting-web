@@ -55,7 +55,23 @@ function 取统计色(色名: string): string {
 export default function 我的() {
   const { 跳转 } = use导航();
   const { 状态, 派发, 数据源模式, 后端状态 } = use应用状态();
-  const 姓名 = 状态.基本信息.真名.trim() || 我的信息.姓名;
+  // 身份文案分两套投影：Backend 只认权威事实 —— 姓名没填就给中性占位，状态胶囊认
+  // 服务端简历快照（没水合到 = 资料暂不可用；水合到了但 status 为空 = 未填写，绝不拿
+  // 表单默认「在职」或 Mock 的「在职 · 保密求职中」充数）。Mock 继续走原型兜底文案，
+  // 演示观感不变。头像首字也只在 Backend 取权威姓名，避免占位文案被拆出一个假「姓」。
+  const 是后端 = 数据源模式 === 'backend';
+  const 权威姓名 = 状态.基本信息.真名.trim();
+  const 姓名 = 是后端
+    ? 权威姓名 || '未填写姓名'
+    : 权威姓名 || 我的信息.姓名;
+  const 头像首字 = 是后端 ? 权威姓名.charAt(0) : 姓名.charAt(0);
+  const 状态文案 = 是后端
+    ? 后端状态.简历快照 === null
+      ? '资料暂不可用'
+      : 后端状态.简历快照.profile.status === ''
+        ? '未填写求职状态'
+        : 状态.基本信息.身份
+    : 我的信息.状态;
   const 头像 = 状态.求职头像?.startsWith('data:image/') ? 状态.求职头像 : null;
 
   // P6：规则计数只认已水合的权威规则 —— Backend 未水合时不出计数（宁缺勿错，
@@ -148,12 +164,12 @@ export default function 我的() {
              简历入口在下方常用功能宫格,与这里不再重复;招聘端镜像是 招聘名片 ── */}
       <button className={`${样式.头像行} 可点`} onClick={() => 跳转(路径.个人信息)}>
         <span className={样式.头像}>
-          {头像 ? <img className={样式.头像图} src={头像} alt="" /> : 姓名.charAt(0)}
+          {头像 ? <img className={样式.头像图} src={头像} alt="" /> : 头像首字}
         </span>
         <span className={样式.头像信息}>
           <span className={`${样式.姓名} 单行`}>{姓名}</span>
           <span className={样式.状态行}>
-            <span className={`${样式.状态胶囊} 单行`}>{我的信息.状态}</span>
+            <span className={`${样式.状态胶囊} 单行`}>{状态文案}</span>
           </span>
         </span>
         <span className={样式.尖括号}>›</span>
