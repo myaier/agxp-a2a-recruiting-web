@@ -1,6 +1,8 @@
 // 公司档案编辑 · Backend/Mock 双分支测试（P1C Task 4 Step 3）。
 // Backend：分区清单从 企业档案快照 构造 资料形，绝不读静态 取公司档案；admin+verified+active
-// 才可编辑，member/pending/revoked/suspended 一律只读（清单页无保存入口）。
+// 才可编辑，member 只读（清单页无保存入口）；pending/revoked/suspended 没有可用关系，
+// 由 招聘方组织门 收口成申请空态。P0 Task 5 起页面态由门统一裁决：
+// 水合在飞才是加载，快照为 null 不再冒充加载。
 // Mock：仍读静态档 + 公司自述，分区行照旧。仓库未装 jest-dom，断言直接读 DOM。
 
 import { render, screen } from '@testing-library/react';
@@ -19,6 +21,7 @@ const mock保存企业档案 = vi.fn(async () => {});
 const mock上传媒体 = vi.fn(async () => {});
 const mock移除媒体 = vi.fn(async () => {});
 const mock查询Taxonomy = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v1' }));
+const mock重新水合招聘方组织 = vi.fn(async () => {});
 // 取公司档案 的调用记录：工厂委托真实实现（Mock 分支测试仍要真档），Backend 分支断言零调用
 const mock取公司档案 = vi.fn();
 
@@ -42,7 +45,18 @@ vi.mock('../数据/公司档案', async (导入原模块) => {
 
 const { profile: _档案, ...身份样本 } = BFF公开企业样本;
 
+// 两个 active+verified 的可用关系：多可用但 current 为空时走「先选任职企业」引导
+const verified关系A = BFF企业关系样本;
+const verified关系B = {
+  ...BFF企业关系样本,
+  affiliation_id: 'aff_2',
+  organization_id: 'org_2',
+  organization_display_name: '另一家企业',
+};
+
+/** 覆盖里的 后端状态 与 状态 字段平级传入（与 招聘方组织门 读的两处根状态一一对应）。 */
 function 置Backend应用状态(覆盖: Record<string, unknown> = {}) {
+  const { 后端状态: 后端覆盖, ...状态覆盖 } = 覆盖;
   mock应用状态 = {
     状态: {
       企业关系列表: [BFF企业关系样本],
@@ -51,13 +65,18 @@ function 置Backend应用状态(覆盖: Record<string, unknown> = {}) {
       当前企业身份: 身份样本,
       公司自述: null,
       公司LOGO: null,
-      ...覆盖,
+      ...状态覆盖,
+    },
+    后端状态: {
+      招聘方组织水合: { 阶段: '成功', 错误: null },
+      ...(后端覆盖 as Record<string, unknown> | undefined),
     },
     派发: mock派发,
     操作: {
       保存企业档案: mock保存企业档案,
       上传并发布企业媒体: mock上传媒体,
       移除企业媒体: mock移除媒体,
+      重新水合招聘方组织: mock重新水合招聘方组织,
     },
     目录查询: { 查询Taxonomy: mock查询Taxonomy },
     数据源模式: 'backend',
@@ -81,6 +100,8 @@ describe('公司档案编辑 · Backend 权威快照清单', () => {
     mock上传媒体.mockClear();
     mock移除媒体.mockClear();
     mock查询Taxonomy.mockClear();
+    mock重新水合招聘方组织.mockClear();
+    mock重新水合招聘方组织.mockResolvedValue(undefined);
     mock取公司档案.mockClear();
     置Backend应用状态();
   });
@@ -94,11 +115,87 @@ describe('公司档案编辑 · Backend 权威快照清单', () => {
     expect(mock取公司档案).not.toHaveBeenCalled();
   });
 
-  it('快照未水合时给加载占位，仍不读静态档', () => {
-    置Backend应用状态({ 企业档案快照: null, 当前企业身份: null });
+  it('只有真实组织水合在飞时显示加载', () => {
+    置Backend应用状态({
+      后端状态: { 招聘方组织水合: { 阶段: '进行中', 错误: null } },
+      企业档案快照: null,
+    });
     render(<MemoryRouter><公司档案编辑 /></MemoryRouter>);
-    expect(screen.getByText('正在加载企业资料')).toBeTruthy();
+    expect(screen.getByText('正在加载企业资料').textContent).toBe('正在加载企业资料');
     expect(mock取公司档案).not.toHaveBeenCalled();
+  });
+
+  it('水合未开始也算在飞', () => {
+    置Backend应用状态({
+      后端状态: { 招聘方组织水合: { 阶段: '未开始', 错误: null } },
+      企业档案快照: null,
+    });
+    render(<MemoryRouter><公司档案编辑 /></MemoryRouter>);
+    expect(screen.getByText('正在加载企业资料').textContent).toBe('正在加载企业资料');
+  });
+
+  it('无可用 affiliation 显示两个现有动作，不显示 loading', async () => {
+    置Backend应用状态({
+      后端状态: { 招聘方组织水合: { 阶段: '成功', 错误: null } },
+      企业关系列表: [], 当前企业关系编号: null, 企业档案快照: null, 当前企业身份: null,
+    });
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><公司档案编辑 /></MemoryRouter>);
+    expect(screen.queryByText('正在加载企业资料')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '申请成为企业管理员' }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业组织申请);
+    await 用户.click(screen.getByRole('button', { name: '使用邀请加入企业' }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业邀请加入);
+    expect(mock取公司档案).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['pending 尚未核验', { status: 'pending' as const }],
+    ['revoked 已解除', { status: 'revoked' as const }],
+    ['suspended 企业停用', { organization_status: 'suspended' as const }],
+  ])('%s：没有可用关系，落申请空态而不是假清单', (_名, 关系覆盖) => {
+    置Backend应用状态({
+      后端状态: { 招聘方组织水合: { 阶段: '成功', 错误: null } },
+      企业关系列表: [{ ...BFF企业关系样本, ...关系覆盖 }],
+    });
+    render(<MemoryRouter><公司档案编辑 /></MemoryRouter>);
+    expect(screen.getByRole('button', { name: '申请成为企业管理员' })).toBeTruthy();
+    expect(screen.queryByText('6/6')).toBeNull();
+  });
+
+  it('多个可用关系但 current 为空时引导选择，不显示申请空态', () => {
+    置Backend应用状态({
+      后端状态: { 招聘方组织水合: { 阶段: '成功', 错误: null } },
+      企业关系列表: [verified关系A, verified关系B],
+      当前企业关系编号: null, 企业档案快照: null, 当前企业身份: null,
+    });
+    render(<MemoryRouter><公司档案编辑 /></MemoryRouter>);
+    expect(screen.getByText('请先选择当前任职企业').textContent).toBe('请先选择当前任职企业');
+    expect(screen.queryByRole('button', { name: '申请成为企业管理员' })).toBeNull();
+  });
+
+  it('水合成功但快照缺失时给重试，不合成组织也不读静态档', async () => {
+    置Backend应用状态({ 企业档案快照: null, 当前企业身份: null });
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><公司档案编辑 /></MemoryRouter>);
+    expect(screen.queryByText('正在加载企业资料')).toBeNull();
+    expect(screen.getByText('企业资料状态不完整，请重新加载').textContent)
+      .toBe('企业资料状态不完整，请重新加载');
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    expect(mock重新水合招聘方组织).toHaveBeenCalledTimes(1);
+    expect(mock取公司档案).not.toHaveBeenCalled();
+  });
+
+  it('重试被拒绝也不清当前档案、不回落 Mock', async () => {
+    mock重新水合招聘方组织.mockRejectedValue(new Error('网络断开'));
+    置Backend应用状态({ 企业档案快照: null, 当前企业身份: null });
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><公司档案编辑 /></MemoryRouter>);
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(mock取公司档案).not.toHaveBeenCalled();
+    expect(screen.getByText('企业资料状态不完整，请重新加载').textContent)
+      .toBe('企业资料状态不完整，请重新加载');
   });
 
   it('点分区行跳对应分区页', async () => {
@@ -110,9 +207,6 @@ describe('公司档案编辑 · Backend 权威快照清单', () => {
 
   it.each([
     ['member 权限不足', { role: 'member' as const }],
-    ['pending 尚未核验', { status: 'pending' as const }],
-    ['revoked 已撤销', { status: 'revoked' as const }],
-    ['suspended 企业停用', { organization_status: 'suspended' as const }],
   ])('%s：只读清单，无保存入口，行仍可进只读页', async (_名, 关系覆盖) => {
     置Backend应用状态({
       企业关系列表: [{ ...BFF企业关系样本, ...关系覆盖 }],

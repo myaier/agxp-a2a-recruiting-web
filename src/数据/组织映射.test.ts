@@ -18,6 +18,7 @@ import {
   福利文案,
   融资阶段文案,
   可用企业关系,
+  取企业认证状态文案,
   从BFF企业档案,
   从BFF公开企业,
   从BFF岗位发布方,
@@ -280,5 +281,50 @@ describe('从BFF岗位发布方', () => {
     expect(视图.用人企业编号).toBeNull();
     expect(视图.发布方验证).toBe('unverified');
     expect(视图.用人企业验证).toBe('unverified');
+  });
+});
+
+describe('取企业认证状态文案', () => {
+  const verified关系 = BFF企业关系样本;
+  const 申请 = BFF企业管理员申请样本;
+
+  it.each([
+    ['verified current', [verified关系], verified关系.affiliation_id, [], '已认证'],
+    ['pending request', [], null, [{ ...申请, status: 'pending' }], '审核中'],
+    ['rejected request', [], null, [{ ...申请, status: 'rejected' }], '已拒绝'],
+    ['cancelled request', [], null, [{ ...申请, status: 'cancelled' }], '已撤销'],
+    ['revoked affiliation', [{ ...verified关系, status: 'revoked' }], null, [], '已解除'],
+    ['no organization fact', [], null, [], '未认证'],
+  ] as const)('%s 映射为 %s', (_name, affiliations, currentId, requests, expected) => {
+    expect(取企业认证状态文案([...affiliations], currentId, [...requests])).toBe(expected);
+  });
+
+  it('current 指向不可用关系时不算已认证', () => {
+    const 停用 = { ...BFF企业关系样本, organization_status: 'suspended' as const };
+    expect(取企业认证状态文案([停用], 停用.affiliation_id, [])).toBe('未认证');
+    const 待认证 = { ...BFF企业关系样本, status: 'pending' as const };
+    expect(取企业认证状态文案([待认证], 待认证.affiliation_id, [])).toBe('未认证');
+  });
+
+  it('已通过的申请本身不构成认证，认证只看 affiliation 事实', () => {
+    expect(取企业认证状态文案([], null, [{ ...BFF企业管理员申请样本, status: 'approved' }]))
+      .toBe('未认证');
+  });
+
+  it('已认证优先于任何在途申请', () => {
+    expect(取企业认证状态文案(
+      [BFF企业关系样本], BFF企业关系样本.affiliation_id,
+      [{ ...BFF企业管理员申请样本, status: 'pending' }],
+    )).toBe('已认证');
+  });
+
+  it('最新申请（首条）压过更早的申请与 revoked 关系', () => {
+    expect(取企业认证状态文案(
+      [{ ...BFF企业关系样本, status: 'revoked' }], null,
+      [
+        { ...BFF企业管理员申请样本, request_id: 'req_2', status: 'rejected' },
+        { ...BFF企业管理员申请样本, status: 'pending' },
+      ],
+    )).toBe('已拒绝');
   });
 });

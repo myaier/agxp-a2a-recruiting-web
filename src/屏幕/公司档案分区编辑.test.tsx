@@ -3,6 +3,7 @@
 // 409/503 草稿保留由用户重按保存；基本信息槽位改名「品牌名称」+ 只读「工商全称（已核验）」；
 // 行业走 industries taxonomy（roots/parentId 展开/q 搜索，selectable 叶子原子写显示名+引用）；
 // 媒体走 上传并发布企业媒体/移除企业媒体；P1B 长度/数量/文件上限冻结在页面。
+// P0 Task 5 起深链先过 招聘方组织门：任何非就绪态都不得挂出空的可编辑草稿。
 // Mock：原静态档 + 存公司自述 路径逐字保留。仓库未装 jest-dom，断言直接读 DOM。
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -19,6 +20,7 @@ import {
 import type { BFFTaxonomyItem } from '../数据/BFF契约';
 import { 从BFF企业档案 } from '../数据/组织映射';
 import { BFF错误 } from '../数据/HTTP客户端';
+import { 路径 } from '../路由/路径表';
 import type { 企业媒体脱离错误 } from '../状态/后端/组织操作';
 
 const mock派发 = vi.fn();
@@ -28,6 +30,7 @@ const mock保存企业档案 = vi.fn(async () => {});
 const mock上传媒体 = vi.fn(async () => {});
 const mock移除媒体 = vi.fn(async () => {});
 const mock查询Taxonomy = vi.fn();
+const mock重新水合招聘方组织 = vi.fn(async () => {});
 const mock取公司档案 = vi.fn();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,7 +75,18 @@ function 目录页Of(items: BFFTaxonomyItem[]) {
   return { items, nextCursor: null, catalogVersion: 'v1' };
 }
 
+// 两个 active+verified 的可用关系：多可用但 current 为空时走「先选任职企业」引导
+const verified关系A = BFF企业关系样本;
+const verified关系B = {
+  ...BFF企业关系样本,
+  affiliation_id: 'aff_2',
+  organization_id: 'org_2',
+  organization_display_name: '另一家企业',
+};
+
+/** 覆盖里的 后端状态 与 状态 字段平级传入（与 招聘方组织门 读的两处根状态一一对应）。 */
 function 置Backend应用状态(覆盖: Record<string, unknown> = {}) {
+  const { 后端状态: 后端覆盖, ...状态覆盖 } = 覆盖;
   mock应用状态 = {
     状态: {
       企业关系列表: [BFF企业关系样本],
@@ -81,13 +95,18 @@ function 置Backend应用状态(覆盖: Record<string, unknown> = {}) {
       当前企业身份: 身份样本,
       公司自述: null,
       公司LOGO: null,
-      ...覆盖,
+      ...状态覆盖,
+    },
+    后端状态: {
+      招聘方组织水合: { 阶段: '成功', 错误: null },
+      ...(后端覆盖 as Record<string, unknown> | undefined),
     },
     派发: mock派发,
     操作: {
       保存企业档案: mock保存企业档案,
       上传并发布企业媒体: mock上传媒体,
       移除企业媒体: mock移除媒体,
+      重新水合招聘方组织: mock重新水合招聘方组织,
     },
     目录查询: { 查询Taxonomy: mock查询Taxonomy },
     数据源模式: 'backend',
@@ -129,6 +148,8 @@ beforeEach(() => {
   mock上传媒体.mockResolvedValue(undefined);
   mock移除媒体.mockClear();
   mock移除媒体.mockResolvedValue(undefined);
+  mock重新水合招聘方组织.mockClear();
+  mock重新水合招聘方组织.mockResolvedValue(undefined);
   mock查询Taxonomy.mockReset();
   mock查询Taxonomy.mockImplementation(
     async (_kind: 'industries', query: { parentId?: string; q?: string }) => {
@@ -228,9 +249,6 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
 
   it.each([
     ['member 权限不足', { role: 'member' as const }],
-    ['pending 尚未核验', { status: 'pending' as const }],
-    ['revoked 已撤销', { status: 'revoked' as const }],
-    ['suspended 企业停用', { organization_status: 'suspended' as const }],
   ])('%s：无保存按钮、输入禁用、无上传入口', (_名, 关系覆盖) => {
     置Backend应用状态({ 企业关系列表: [{ ...BFF企业关系样本, ...关系覆盖 }] });
     渲染分区('basic');
@@ -241,6 +259,82 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     expect(screen.getByText('仅企业管理员可修改')).toBeTruthy();
     // 只读不等于不可看：工商全称照常展示
     expect(screen.getByText('上海云衢科技有限公司')).toBeTruthy();
+  });
+
+  // ── 深链直达同样过 招聘方组织门：任何非就绪态都不得挂出空的可编辑草稿 ──
+
+  it('只有真实组织水合在飞时显示加载，不挂草稿表单', () => {
+    置Backend应用状态({
+      后端状态: { 招聘方组织水合: { 阶段: '进行中', 错误: null } },
+      企业档案快照: null,
+    });
+    渲染分区('basic');
+    expect(screen.getByText('正在加载企业资料').textContent).toBe('正在加载企业资料');
+    expect(screen.queryByLabelText('品牌名称')).toBeNull();
+    expect(mock取公司档案).not.toHaveBeenCalled();
+  });
+
+  it('无可用 affiliation 深链显示两个现有动作，不挂草稿表单', async () => {
+    置Backend应用状态({
+      后端状态: { 招聘方组织水合: { 阶段: '成功', 错误: null } },
+      企业关系列表: [], 当前企业关系编号: null, 企业档案快照: null, 当前企业身份: null,
+    });
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    expect(screen.queryByText('正在加载企业资料')).toBeNull();
+    expect(screen.queryByLabelText('品牌名称')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '申请成为企业管理员' }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业组织申请);
+    await 用户.click(screen.getByRole('button', { name: '使用邀请加入企业' }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业邀请加入);
+  });
+
+  it.each([
+    ['pending 尚未核验', { status: 'pending' as const }],
+    ['revoked 已解除', { status: 'revoked' as const }],
+    ['suspended 企业停用', { organization_status: 'suspended' as const }],
+  ])('%s：深链落申请空态而不是空草稿', (_名, 关系覆盖) => {
+    置Backend应用状态({
+      后端状态: { 招聘方组织水合: { 阶段: '成功', 错误: null } },
+      企业关系列表: [{ ...BFF企业关系样本, ...关系覆盖 }],
+    });
+    渲染分区('basic');
+    expect(screen.getByRole('button', { name: '申请成为企业管理员' })).toBeTruthy();
+    expect(screen.queryByLabelText('品牌名称')).toBeNull();
+  });
+
+  it('多个可用关系但 current 为空时深链引导选择，不显示申请空态', () => {
+    置Backend应用状态({
+      后端状态: { 招聘方组织水合: { 阶段: '成功', 错误: null } },
+      企业关系列表: [verified关系A, verified关系B],
+      当前企业关系编号: null, 企业档案快照: null, 当前企业身份: null,
+    });
+    渲染分区('basic');
+    expect(screen.getByText('请先选择当前任职企业').textContent).toBe('请先选择当前任职企业');
+    expect(screen.queryByRole('button', { name: '申请成为企业管理员' })).toBeNull();
+    expect(screen.queryByLabelText('品牌名称')).toBeNull();
+  });
+
+  it('水合成功但快照缺失时深链给重试，不挂空草稿也不合成组织', async () => {
+    置Backend应用状态({ 企业档案快照: null, 当前企业身份: null });
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    expect(screen.queryByText('正在加载企业资料')).toBeNull();
+    expect(screen.queryByLabelText('品牌名称')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    expect(mock重新水合招聘方组织).toHaveBeenCalledTimes(1);
+  });
+
+  it('深链重试被拒绝也不清当前档案、不回落 Mock', async () => {
+    mock重新水合招聘方组织.mockRejectedValue(new Error('网络断开'));
+    置Backend应用状态({ 企业档案快照: null, 当前企业身份: null });
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(mock取公司档案).not.toHaveBeenCalled();
+    expect(screen.getByText('企业资料状态不完整，请重新加载').textContent)
+      .toBe('企业资料状态不完整，请重新加载');
   });
 
   it('P1B 长度上限冻结在输入端：办公地址 80 / 公司介绍 500 / 产品介绍 300', () => {

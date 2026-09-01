@@ -10,6 +10,7 @@ import 企业设置 from './企业设置';
 import { 路径 } from '../路由/路径表';
 import type { P8Credential, P8Session } from '../数据/招聘数据源/P8控制面';
 import type { P8资源快照 } from '../状态/后端/类型';
+import { BFF企业关系样本, BFF企业管理员申请样本 } from '../测试/BFF样本';
 
 const 导航 = vi.hoisted(() => ({ 返回: vi.fn(), 跳转: vi.fn(), 替换跳转: vi.fn() }));
 vi.mock('../路由/导航钩子', () => ({ use导航: () => 导航 }));
@@ -22,7 +23,7 @@ function 空快照<T>(): P8资源快照<T> {
   return { phase: 'idle', refreshing: false, data: null, error: null, generation: 0 };
 }
 
-/** P8 六法 + 退出登录 桩：全表补齐，断言零调用用。 */
+/** P8 六法 + 退出登录 + 管理员申请读取 桩：全表补齐，断言零调用用。 */
 function 操作桩() {
   return {
     设置P8账号范围: vi.fn(),
@@ -32,7 +33,34 @@ function 操作桩() {
     完成P8手机号换绑: vi.fn(),
     退出P8其他设备: vi.fn(),
     退出登录: vi.fn(async () => undefined),
+    读取企业管理员申请: vi.fn().mockResolvedValue(undefined),
   };
+}
+
+/** 组织事实默认空：认证文案只由 affiliation/申请 决定 */
+function 组织状态桩(覆盖: Record<string, unknown> = {}) {
+  return {
+    企业关系列表: [],
+    当前企业关系编号: null,
+    企业管理员申请列表: [],
+    未认证公司声明: '',
+    ...覆盖,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function 置Backend(操作: any, 状态覆盖: Record<string, unknown> = {}) {
+  mock应用状态 = {
+    数据源模式: 'backend',
+    状态: 组织状态桩(状态覆盖),
+    后端状态: { credentials: 空快照<P8Credential[]>(), sessions: 空快照<P8Session[]>() },
+    操作,
+  };
+}
+
+function 认证行文案() {
+  const 行 = screen.getByText('企业实名认证').closest('div');
+  return 行?.textContent?.replace('企业实名认证', '') ?? '';
 }
 
 beforeEach(() => {
@@ -44,11 +72,7 @@ beforeEach(() => {
 describe('企业设置 · P8 回归', () => {
   it('Backend 模式没有手机号行，零 P8 读取', () => {
     const 操作 = 操作桩();
-    mock应用状态 = {
-      数据源模式: 'backend',
-      后端状态: { credentials: 空快照<P8Credential[]>(), sessions: 空快照<P8Session[]>() },
-      操作,
-    };
+    置Backend(操作);
     render(<MemoryRouter><企业设置 /></MemoryRouter>);
     expect(screen.getByText('企业实名认证')).toBeTruthy();
     expect(screen.queryByText('手机号')).toBeNull();
@@ -61,11 +85,7 @@ describe('企业设置 · P8 回归', () => {
   it('账号与安全入口与退出登录保持原样（成功后回登录页，全程零 P8 读取）', async () => {
     const 用户 = userEvent.setup();
     const 操作 = 操作桩();
-    mock应用状态 = {
-      数据源模式: 'backend',
-      后端状态: { credentials: 空快照<P8Credential[]>(), sessions: 空快照<P8Session[]>() },
-      操作,
-    };
+    置Backend(操作);
     render(<MemoryRouter><企业设置 /></MemoryRouter>);
 
     await 用户.click(screen.getByRole('button', { name: /账号与安全/ }));
@@ -87,5 +107,68 @@ describe('企业设置 · P8 回归', () => {
     expect(操作.设置P8账号范围).not.toHaveBeenCalled();
     expect(操作.加载P8凭证).not.toHaveBeenCalled();
     expect(操作.加载P8会话).not.toHaveBeenCalled();
+  });
+});
+
+describe('企业设置 · 企业实名认证状态只反映组织事实', () => {
+  const verified关系 = BFF企业关系样本;
+
+  it('读取未落定时显示 正在读取，不预判 已认证', () => {
+    const 操作 = 操作桩();
+    let 放行!: () => void;
+    操作.读取企业管理员申请.mockReturnValue(new Promise<void>((ok) => { 放行 = () => ok(); }));
+    置Backend(操作, { 企业关系列表: [verified关系], 当前企业关系编号: verified关系.affiliation_id });
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    expect(screen.getByText('正在读取')).toBeTruthy();
+    expect(screen.queryByText('已认证')).toBeNull();
+    放行();
+  });
+
+  it.each([
+    [
+      '已认证',
+      { 企业关系列表: [verified关系], 当前企业关系编号: verified关系.affiliation_id },
+    ],
+    [
+      '审核中',
+      { 企业管理员申请列表: [{ ...BFF企业管理员申请样本, status: 'pending' }] },
+    ],
+    [
+      '已拒绝',
+      { 企业管理员申请列表: [{ ...BFF企业管理员申请样本, status: 'rejected' }] },
+    ],
+    [
+      '已撤销',
+      { 企业管理员申请列表: [{ ...BFF企业管理员申请样本, status: 'cancelled' }] },
+    ],
+    [
+      '已解除',
+      { 企业关系列表: [{ ...verified关系, status: 'revoked' }] },
+    ],
+    ['未认证', {}],
+  ])('读取成功后显示 %s', async (期望, 状态覆盖) => {
+    const 操作 = 操作桩();
+    置Backend(操作, 状态覆盖);
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText(期望)).toBeTruthy());
+    expect(操作.读取企业管理员申请).toHaveBeenCalledTimes(1);
+  });
+
+  it('读取失败显示 读取失败，不退回硬编码 已认证', async () => {
+    const 操作 = 操作桩();
+    操作.读取企业管理员申请.mockRejectedValue(new Error('网络断开'));
+    置Backend(操作, {});
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('读取失败')).toBeTruthy());
+    expect(screen.queryByText('已认证')).toBeNull();
+  });
+
+  it('只改 未认证公司声明 绝不产生 已认证', async () => {
+    const 操作 = 操作桩();
+    置Backend(操作, { 未认证公司声明: '上海云衢科技有限公司' });
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    await waitFor(() => expect(认证行文案()).toBe('未认证'));
+    expect(screen.queryByText('已认证')).toBeNull();
+    expect(screen.queryByText('上海云衢科技有限公司')).toBeNull();
   });
 });
