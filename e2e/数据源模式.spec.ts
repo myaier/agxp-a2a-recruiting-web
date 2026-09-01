@@ -7383,7 +7383,7 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     });
     await expect(page.getByRole('button', { name: '退出登录' }).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: '退出登录' }).first().click();
-    await page.getByRole('button', { name: '退出登录' }).last().click();
+    await page.getByRole('button', { name: '确认退出当前账号' }).click();
     await expect(page.getByLabel('手机号')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(P5标记.丁职位名)).toHaveCount(0);
     const P5请求数 = () => 请求序.filter((项) => 项.includes('/match-cases')).length;
