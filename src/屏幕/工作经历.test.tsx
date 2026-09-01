@@ -341,3 +341,26 @@ describe('工作经历 教育编辑页 Backend', () => {
     expect(存简历调用!.教育[0].专业引用).toEqual({ id: 'tax_cs', display_name: '计算机科学与技术' });
   });
 });
+
+// Task 1：证书添加不要求年份输入 —— BFF 契约里 year 可空（页面 年份 留空字符串 → 写 null），
+// 存简历 派发里每条证书都带全 BFF 必需的用户字段（名称/年份/编号），不需要新增年份输入框。
+describe('工作经历 证书与语言 Backend', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+  });
+
+  it('添加证书不带年份输入，存简历里 年份 为空字符串', async () => {
+    render工作经历({ 数据源: 'backend' });
+    const 用户 = userEvent.setup();
+    const 证书输入 = screen.getByPlaceholderText('证书或语言，如 CPA、雅思 7.0');
+    await 用户.type(证书输入, 'CET-4');
+    await 用户.click(证书输入.parentElement!.querySelector('button')!);
+    const 派发 = mock应用状态.派发;
+    const 存简历调用 = 派发.mock.calls.find((c: unknown[]) => (c[0] as { 型?: string })?.型 === '存简历')?.[0] as {
+      证书: { 名称: string; 年份: string; 编号: string }[];
+    } | undefined;
+    expect(存简历调用).toBeDefined();
+    expect(存简历调用!.证书).toEqual([{ 名称: 'CET-4', 年份: '', 编号: expect.any(String) }]);
+  });
+});

@@ -33,6 +33,22 @@ export class BFF错误 extends Error {
   }
 }
 
+/**
+ * Task 1：客户端本地校验错误（映射层在发请求前拒绝的字段问题）。
+ * 带 BFF 稳定字段名（如 certificate.year / intention.primary_location_id），
+ * 取后端错误文案 直接显示 message —— 只有真正的传输错误才落网络文案。
+ */
+export class 客户端校验错误 extends Error {
+  readonly code = 'client_validation';
+  readonly field: string;
+
+  constructor(field: string, message: string) {
+    super(message);
+    this.field = field;
+    this.name = '客户端校验错误';
+  }
+}
+
 interface BFF请求共同选项 {
   path: `/api/v1/${string}`;
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -304,6 +320,8 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
 }
 
 export function 取后端错误文案(error: unknown): string {
+  // 客户端本地校验错误先判：直接给出具体原因，不落网络文案
+  if (error instanceof 客户端校验错误) return error.message;
   if (!(error instanceof BFF错误)) return '网络连接失败，请稍后再试';
   if (error.status === 0 || error.code === 'network_error') return '无法连接后端服务，请检查网络或稍后重试';
   if (error.status === 502 || error.status === 503 || error.status === 504) return '后端服务暂时不可用，请稍后重试';

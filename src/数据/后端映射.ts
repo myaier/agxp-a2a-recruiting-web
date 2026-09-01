@@ -32,6 +32,7 @@ import type {
   首次意向输入,
 } from './招聘数据源类型';
 import { 迁移主要求职类型 } from '../流程/onboarding配置';
+import { BFF错误, 客户端校验错误 } from './HTTP客户端';
 
 // ── 身份 / 性别 枚举映射（固定）──
 const 身份到后端 = { 在校: 'student', 在职: 'employed', 离职: 'unemployed' } as const;
@@ -41,10 +42,10 @@ const 后端到性别 = { male: '男', female: '女' } as const;
 
 /**
  * 简历写入用：取选择器保存的目录引用 id。没有引用说明用户手输了显示名而没从候选选，
- * 直接抛客户端校验错——不回退按显示名反查目录（那是意向/岗位的 legacy 路径）。
+ * 直接抛客户端校验错（带 BFF 稳定字段名）——不回退按显示名反查目录（那是意向/岗位的 legacy 路径）。
  */
-function 必需引用(value: 目录选择值 | undefined, label: string): string {
-  if (!value) throw new Error(`请从候选${label}中选择`);
+function 必需引用(value: 目录选择值 | undefined, label: string, field: string): string {
+  if (!value?.id) throw new 客户端校验错误(field, `请从候选${label}中选择`);
   return value.id;
 }
 
@@ -104,9 +105,22 @@ function 转教育(段: BFF教育): 简历教育段 {
   };
 }
 
-/** Certificate 的整数 year 转字符串。 */
-function 转证书(段: BFF证书): 简历证书 {
-  return { 编号: 段.id, 名称: 段.name, 年份: String(段.year) };
+/**
+ * Certificate 的可空 year 转页面 年份 字符串：null → ''（列表里年份为空即不渲染）。
+ * Task 1：year 是 number | null 契约 —— 缺属性（不是 null）与非整数/越界年份都按响应契约错误 fail closed。
+ */
+export function 转证书(段: BFF证书): 简历证书 {
+  if (!Object.prototype.hasOwnProperty.call(段, 'year')) {
+    throw new BFF错误(200, 'invalid_response', '服务返回的证书缺少 year');
+  }
+  if (段.year !== null && (!Number.isInteger(段.year) || 段.year < 1900 || 段.year > 2100)) {
+    throw new BFF错误(200, 'invalid_response', '服务返回的证书 year 不符合契约');
+  }
+  return {
+    编号: 段.id,
+    名称: 段.name,
+    年份: 段.year === null ? '' : String(段.year),
+  };
 }
 
 /**
@@ -146,7 +160,7 @@ export function 转资料写入(基本: 基本信息): BFF资料写入 {
 export function 转经历写入(段: 简历经历段): BFF经历写入 {
   const 写入: BFF经历写入 = {
     company: 段.公司,
-    industry_id: 必需引用(段.行业引用, '行业'),
+    industry_id: 必需引用(段.行业引用, '行业', 'resume.experience.industry_id'),
     title: 段.职位,
     start_month: 段.开始,
     end_month: 段.结束,
@@ -160,8 +174,8 @@ export function 转经历写入(段: 简历经历段): BFF经历写入 {
 /** 页面教育段 → 后端教育写入 body；学校/专业引用.id 直接作 id，不再按显示名反查目录。 */
 export function 转教育写入(段: 简历教育段): BFF教育写入 {
   return {
-    institution_id: 必需引用(段.学校引用, '学校'),
-    major_id: 必需引用(段.专业引用, '专业'),
+    institution_id: 必需引用(段.学校引用, '学校', 'resume.education.institution_id'),
+    major_id: 必需引用(段.专业引用, '专业', 'resume.education.major_id'),
     degree: 段.学历,
     start_month: 段.开始,
     // 简历教育段.结束 是必填字符串；'' 表示至今，写入时落 null
@@ -169,12 +183,21 @@ export function 转教育写入(段: 简历教育段): BFF教育写入 {
   };
 }
 
-/** 页面证书 → 后端证书写入 body；年份空字符串拒绝写入，不写 NaN。 */
+/**
+ * 页面证书 → 后端证书写入 body。Task 1：year 可空 —— 没取得年份显式写 null，绝不编造年份；
+ * 非空年份必须是 1900..2100 的整数字符串，否则抛客户端校验错（不写 0/NaN）。
+ */
 export function 转证书写入(段: 简历证书): BFF证书写入 {
-  if (段.年份 === '') throw new Error('证书年份不能为空');
-  const 年 = Number(段.年份);
-  if (Number.isNaN(年)) throw new Error(`证书年份不是数字：${段.年份}`);
-  return { name: 段.名称, year: 年 };
+  const 文本 = 段.年份.trim();
+  if (文本 === '') return { name: 段.名称, year: null };
+  if (!/^\d+$/.test(文本)) {
+    throw new 客户端校验错误('certificate.year', '证书年份必须是 1900 到 2100 之间的整数');
+  }
+  const year = Number(文本);
+  if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+    throw new 客户端校验错误('certificate.year', '证书年份必须是 1900 到 2100 之间的整数');
+  }
+  return { name: 段.名称, year };
 }
 
 // ── 意向映射（BFFOwnerIntention <-> 页面 求职意向 / 意向草稿型）──
@@ -233,7 +256,9 @@ export function 从BFF意向草稿(dto: BFFOwnerIntention): 意向草稿型 {
 }
 
 function 映射办公方式(页值们: string[]): BFFOwnerIntention['workplace_modes'] {
-  if (页值们.length === 0) throw new Error('请先完善办公方式');
+  if (页值们.length === 0) {
+    throw new 客户端校验错误('intention.workplace_modes', '请先完善办公方式');
+  }
   // 兼容两种来源：引导预填.筛选偏好.办公方式 存的是中文标签（现场/混合/远程/全远程），
   // 而 已有意向的服务端快照 workplace_modes 存的是 BFF wire code（onsite/hybrid/remote）。
   // 原来只查中文表，wire code 进来 → undefined → workplace_modes:[null] 被 BFF 拒。
@@ -293,8 +318,8 @@ export function 转意向写入(草稿: 意向草稿型, 上下文: 意向映射
     : { alternate_weekend_work: 'unspecified', outsourcing_only: 'unspecified', onsite_only: 'unspecified', frequent_travel: 'unspecified' };
   return {
     recruitment_type,
-    job_category_id: 必需引用(草稿.职位引用, '职位'),
-    primary_location_id: 必需引用(草稿.工作城市引用, '工作城市'),
+    job_category_id: 必需引用(草稿.职位引用, '职位', 'intention.job_category_id'),
+    primary_location_id: 必需引用(草稿.工作城市引用, '城市', 'intention.primary_location_id'),
     alternate_location_ids,
     industry_ids: (草稿.行业引用们 ?? []).map((item) => item.id),
     workplace_modes: 映射办公方式(草稿.办公方式 ?? []),
@@ -328,10 +353,12 @@ export function 转首次意向写入(输入: 首次意向输入): BFF意向写�
   const 自定义 = 输入.排除项.filter((项) => !内置.includes(项));
   const private_preferences = 自定义.length > 0 ? `其他排除：${自定义.join('、')}` : '';
   const [primary, ...alternate] = 去重引用(输入.城市引用们 ?? []);
-  if (!primary) throw new Error('请从候选城市中选择');
+  if (!primary) {
+    throw new 客户端校验错误('intention.primary_location_id', '请从候选城市中选择');
+  }
   return {
     recruitment_type,
-    job_category_id: 必需引用(输入.职位引用, '职位'),
+    job_category_id: 必需引用(输入.职位引用, '职位', 'intention.job_category_id'),
     primary_location_id: primary.id,
     alternate_location_ids: alternate.map((item) => item.id),
     industry_ids: [],
@@ -469,8 +496,8 @@ export function 转岗位创建(页面岗位: 在招岗位, 上下文: 岗位创
     hiring_organization_claim: 上下文.hiringOrganizationClaim,
     title: 页面岗位.名称,
     recruitment_type: 岗位类型到后端[页面岗位.招聘类型 as keyof typeof 岗位类型到后端],
-    category_id: 必需引用(页面岗位.类别引用, '类别'),
-    location_id: 必需引用(页面岗位.地点引用, '地点'),
+    category_id: 必需引用(页面岗位.类别引用, '类别', 'job.category_id'),
+    location_id: 必需引用(页面岗位.地点引用, '地点', 'job.location_id'),
     office_location: 页面岗位.办公地 ?? '',
     workplace_mode: 办公方式到岗位后端[页面岗位.办公方式 as keyof typeof 办公方式到岗位后端] ?? 'onsite',
     salary: { lower, upper },
