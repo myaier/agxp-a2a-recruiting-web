@@ -5,9 +5,12 @@
 // 滚动手感与 引导问答 的薪资轮同源：scroll-snap-type: y mandatory 让浏览器
 // 负责吸附，停下（90ms 无新事件）后算一次落点；中间一行有高亮底。
 // 与 数字滚轮层 的区别：那是底部弹层，这里直接铺在页面卡片里（截图形态）。
+//
+// 交互机制（键盘、点档直选、aria-activedescendant、90ms 防抖与程序 scroll 抑制）
+// 收敛在 use可访问滚轮 —— 内嵌双滚轮 / 薪资区间层 等共用一套合同，本组件只留版式。
 
-import { useEffect, useRef } from 'react';
 import 样式 from './内嵌双滚轮.module.css';
+import { use可访问滚轮 } from './可访问滚轮';
 
 const 行高 = 46;
 
@@ -59,48 +62,34 @@ function 单列({
   名称: string;
   单位: string;
 }) {
-  const 轮引用 = useRef<HTMLDivElement>(null);
-  const 防抖计时 = useRef(0);
-  // 记住「本列自己滚出来的值」，区分外部改值与自身滚动，避免回滚打架
-  const 自报值 = useRef(值);
-  const 当前序 = 档表.indexOf(值);
-
-  useEffect(() => {
-    // scroll-snap 只管吸附、不管初始位置：挂载时手动把初值滚到正中间
-    if (轮引用.current) 轮引用.current.scrollTop = Math.max(0, 当前序) * 行高;
-    return () => window.clearTimeout(防抖计时.current);
-    // 只在挂载时定位一次，之后由用户滑动主导
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (值 === 自报值.current) return; // 自己滚出来的，不再滚一次
-    自报值.current = 值;
-    if (当前序 >= 0 && 轮引用.current) 轮引用.current.scrollTop = 当前序 * 行高;
-  }, [值, 当前序]);
-
-  /** 滚动中连续触发，防抖到停下再算落点，避免每帧 setState */
-  const 处理滚动 = () => {
-    const 位置 = 轮引用.current?.scrollTop ?? 0;
-    window.clearTimeout(防抖计时.current);
-    防抖计时.current = window.setTimeout(() => {
-      const 落点 = Math.min(Math.max(Math.round(位置 / 行高), 0), 档表.length - 1);
-      自报值.current = 档表[落点];
-      设值(档表[落点]);
-    }, 90);
-  };
+  const {
+    滚轮引用,
+    活动项编号,
+    处理滚动,
+    处理按键,
+    取选项属性,
+  } = use可访问滚轮({ 选项: 档表, 值, 设值, 行高 });
 
   return (
     <div className={样式.列包}>
       <div
-        ref={轮引用}
+        ref={滚轮引用}
         className={`${样式.滚轮} 滚动区`}
         onScroll={处理滚动}
+        onKeyDown={处理按键}
         role="listbox"
+        tabIndex={0}
         aria-label={名称}
+        aria-activedescendant={活动项编号}
       >
-        {档表.map((档) => (
-          <div key={档} className={样式.档} role="option" aria-selected={档 === 值}>
+        {档表.map((档, 序号) => (
+          <div
+            key={档}
+            className={样式.档}
+            role="option"
+            aria-selected={档 === 值}
+            {...取选项属性(序号)}
+          >
             {/* 档里只留数字。标注 2026-08-22：「这个年应该是固定的，用户只用转动数字就行，
                 包括后面的这个月份，不用每个滚轮数字后面都带有年和月」*/}
             <span className={`${档 === 值 ? 样式.档选中 : 样式.档未选} 等宽数字`}>{档}</span>

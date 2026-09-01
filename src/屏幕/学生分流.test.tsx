@@ -189,6 +189,37 @@ describe('学生分流 Mock onboarding（R2-I-1 回归）', () => {
   });
 });
 
+describe('学生分流 预计毕业时间弹层（可访问滚轮）', () => {
+  it('预计毕业时间弹层把毕业年和毕业月接入真实 Tab 顺序', async () => {
+    const 用户 = userEvent.setup();
+    render学生分流({
+      数据源: 'backend',
+      基本信息: { 身份: '在校' },
+      引导预填: {
+        ...完整预填,
+        筛选偏好: {
+          ...完整预填.筛选偏好,
+          求职类型: ['校园招聘'],
+          毕业时间: '2027-06',
+        },
+      },
+    });
+    await 用户.click(screen.getByRole('button', { name: /2027 年 06 月/ }));
+    const 取消 = screen.getByRole('button', { name: '取消' });
+    const 完成 = screen.getByRole('button', { name: '完成' });
+    const 年列 = screen.getByRole('listbox', { name: '毕业年' });
+    const 月列 = screen.getByRole('listbox', { name: '毕业月' });
+
+    expect(document.activeElement).toBe(取消);
+    await 用户.tab();
+    expect(document.activeElement).toBe(完成);
+    await 用户.tab();
+    expect(document.activeElement).toBe(年列);
+    await 用户.tab();
+    expect(document.activeElement).toBe(月列);
+  });
+});
+
 describe('学生分流 附件简历上传（P2 Task 5）', () => {
   beforeEach(() => {
     mock跳转.mockClear();
