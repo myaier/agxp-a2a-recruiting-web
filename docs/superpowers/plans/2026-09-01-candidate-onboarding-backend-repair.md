@@ -197,7 +197,31 @@ Make `取后端错误文案` check `客户端校验错误` before `BFF错误` an
 
 - [ ] **Step 4: Implement exact bidirectional mapping**
 
-Import `BFF错误` and `客户端校验错误` into `src/数据/后端映射.ts`. Make missing catalog references throw the local error with their existing field reason. Replace certificate mapping with:
+Import `BFF错误` and `客户端校验错误` into `src/数据/后端映射.ts`. Change the catalog helper to require a stable field name:
+
+```ts
+function 必需引用(value: 目录选择值 | undefined, label: string, field: string): string {
+  if (!value?.id) throw new 客户端校验错误(field, `请从候选${label}中选择`);
+  return value.id;
+}
+```
+
+Pass these exact fields at its eight call sites:
+
+```ts
+必需引用(段.行业引用, '行业', 'resume.experience.industry_id');
+必需引用(段.学校引用, '学校', 'resume.education.institution_id');
+必需引用(段.专业引用, '专业', 'resume.education.major_id');
+必需引用(草稿.职位引用, '职位', 'intention.job_category_id');
+必需引用(草稿.工作城市引用, '城市', 'intention.primary_location_id');
+必需引用(输入.职位引用, '职位', 'intention.job_category_id');
+必需引用(页面岗位.类别引用, '类别', 'job.category_id');
+必需引用(页面岗位.地点引用, '地点', 'job.location_id');
+```
+
+Keep each existing return-object assignment; only add the third argument, except normalize the edit-intention city label from `工作城市` to `城市` so both intention paths show the same reason. Add a `转意向写入({ ...意向草稿, 工作城市引用: undefined, 办公方式: ['混合'] }, { 原始: null })` regression and assert `{ field: 'intention.primary_location_id', message: '请从候选城市中选择' }`.
+
+Replace certificate mapping with:
 
 ```ts
 export function 转证书(段: BFF证书): 简历证书 {
@@ -566,14 +590,14 @@ const 上一候选范围 = useRef<资料缓存范围 | null>(null);
 const [候选恢复代际, 设候选恢复代际] = useState(0);
 ```
 
-On scope change, remove `上一候选范围` before replacing it when the new key differs, dispatch the existing in-memory clear action, then restore only if Backend + candidate + subject are all present. Dispatch `水合候选引导草稿` when a valid snapshot exists. After the read attempt finishes, execute this unconditionally—even when storage was empty:
+On scope change, remove `上一候选范围` before replacing it when the new key differs and dispatch the existing in-memory clear action. If Backend mode, candidate role, current subject, or computed range is absent, reset `已恢复候选键.current = null` and return without calling any candidate-draft read/write/delete helper. Only inside the fully scoped candidate branch, read storage and dispatch `水合候选引导草稿` when a valid snapshot exists. After that scoped read attempt finishes, execute this unconditionally—even when storage was empty:
 
 ```ts
 已恢复候选键.current = 当前键;
 设候选恢复代际((值) => 值 + 1);
 ```
 
-Include `候选恢复代际` in the write effect dependencies. This makes a brand-new subject writable while retaining the first-render overwrite barrier.
+Include `候选恢复代际` in the write effect dependencies. The write effect begins with the same non-null Backend/candidate/subject/range guard before comparing keys. This makes a brand-new subject writable while retaining the first-render overwrite barrier and prevents `null === null` from authorizing work in Mock, recruiter, or logged-out states.
 
 The write effect must recompute the current key and return unless it equals `已恢复候选键.current`; then write the allowlist or delete the key when `引导预填 === null`. This equality check is required on every write and prevents a stale effect from crossing subjects.
 
@@ -748,7 +772,24 @@ git commit -m "fix: show authoritative candidate credentials"
 
 - [ ] **Step 1: Add the narrow pointer-click regression**
 
-In `e2e/数据源模式.spec.ts`, add a top-level `标注评审构建 @annotation` describe and a test named `标注模式不遮挡技能添加 @annotation`. Set that describe's base URL to `http://127.0.0.1:4183`. After the normal authenticated fixture is installed, open the online-resume route, fill `如：Go、分布式事务` with `Rust`, compute the center of that input's sibling `添加` button, and use `page.mouse.click(x, y)`. Assert a visible `Rust` skill chip appears. Do not nest this test under an `@backend` describe and do not call `locator.click({ force: true })`, because the dedicated project and physical hit test are both part of the regression.
+In `e2e/数据源模式.spec.ts`, add a top-level `标注评审构建 @annotation` describe and set its base URL to `http://127.0.0.1:4183`. Before navigation, seed the maximum-height launcher branch:
+
+```ts
+await page.addInitScript(() => {
+  localStorage.setItem('AGXP标注意见', JSON.stringify([{
+    编号: 1,
+    路由: '/experience',
+    位置: '工作经历-module__录入键',
+    文本: '添加',
+    意见: 'fixture 标注',
+    时间: '2026-09-01T00:00:00.000Z',
+  }]));
+});
+```
+
+Add `标注模式不遮挡技能添加 @annotation`: install the normal authenticated fixture, open the online-resume route, fill `如：Go、分布式事务` with `Rust`, compute the center of that input's sibling `添加` button, and use `page.mouse.click(x, y)`. Assert a visible `Rust` skill chip appears.
+
+Add `桌面标注启动器位于设备外工具列 @annotation`: call `page.setViewportSize({ width: 1200, height: 900 })`, open the same route, and compare `getByRole('button', { name: '标注模式' }).boundingBox()` with `[data-标注工具位].boundingBox()`. Assert the launcher center lies inside the tool-lane rectangle and outside `[data-遮罩挂载点]`'s rectangle. Do not nest these tests under an `@backend` describe and do not use forced clicks.
 
 - [ ] **Step 2: Enable annotation only for the dedicated Playwright servers and reproduce**
 
@@ -790,18 +831,29 @@ Expected before layout implementation: the mouse click hits the annotation launc
 
 - [ ] **Step 3: Implement build gating and explicit height ownership**
 
-Create `src/组件/标注层.module.css` with a narrow two-row review layout, a wide two-column layout, and only the launcher positioned into the reserved lane:
+Create `src/组件/标注层.module.css` with a narrow two-row review layout, a wide two-column layout, and a normal-flow launcher inside its portal lane:
 
 ```css
 .评审布局 {
   height: 100dvh;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 58px;
+  grid-template-rows: minmax(0, 1fr) 80px;
   overflow: hidden;
 }
 .应用槽 { min-width: 0; min-height: 0; }
-.工具占位 { min-width: 0; min-height: 0; }
-.启动器 { position: fixed; right: 14px; bottom: 12px; pointer-events: auto; }
+.工具占位 {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+}
+.启动器 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
 
 @media (min-width: 700px) and (min-height: 640px) and (pointer: fine),
        (min-width: 1024px) and (min-height: 600px) {
@@ -809,43 +861,89 @@ Create `src/组件/标注层.module.css` with a narrow two-row review layout, a 
     grid-template-columns: minmax(0, 1fr) 64px;
     grid-template-rows: minmax(0, 1fr);
   }
-  .启动器 { right: 14px; bottom: auto; top: 50%; transform: translateY(-50%); }
 }
 ```
 
-Keep the annotation root's existing `position: absolute; inset: 0` inside `设备外框`, so its drawing overlay, input bar, export panel, and mask remain device-sized. Move only the launcher coordinates from inline styles to `.启动器`. The launcher escapes into the reserved row/column with `position: fixed`; the root and every other annotation child retain their current geometry and pointer behavior.
+Keep the annotation root's existing `position: absolute; inset: 0` inside `设备外框`, so its drawing overlay, input bar, export panel, and mask remain device-sized. Add a prop and portal only the existing launcher subtree:
+
+```tsx
+import { createPortal } from 'react-dom';
+
+export default function 标注层({ 启动器容器 }: { 启动器容器: HTMLElement | null }) {
+  const 启动器 = (
+    <div className={样式.启动器}>
+      {清单.length > 0 ? (
+        <button
+          onClick={() => 设导出面板(true)}
+          style={{
+            minWidth: 22, height: 22, borderRadius: 11,
+            background: 'var(--意向)', color: '#fff', fontSize: 11,
+            fontWeight: 700, padding: '0 6px', cursor: 'pointer',
+          }}
+        >
+          {清单.length}
+        </button>
+      ) : null}
+      <button
+        onClick={() => 设开启((旧) => !旧)}
+        aria-label="标注模式"
+        style={{
+          width: 34, height: 34, borderRadius: 17,
+          border: '1px solid rgba(0,0,0,0.08)',
+          background: 开启 ? 'var(--荧光绿)' : 'rgba(255,255,255,0.55)',
+          opacity: 开启 ? 1 : 0.55, fontSize: 15, cursor: 'pointer',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+        }}
+      >
+        {开启 ? '✕' : '✎'}
+      </button>
+    </div>
+  );
+  const 启动器Portal = 启动器容器 ? createPortal(启动器, 启动器容器) : null;
+  // Render 启动器Portal once inside the existing data-标注 root; React mounts it in the lane.
+}
+```
+
+Replace the current launcher subtree in the existing `data-标注` return with `{启动器Portal}`. Do not leave a fallback copy under the transformed device tree. The root and every non-launcher child retain current geometry and pointer behavior.
 
 Add optional `填满父级?: boolean` to `设备外框`, applying `.填满父级` to both frame variants. In its CSS add `height: 100%` for that class after the existing `100dvh` declarations.
 
-In `src/main.tsx`, keep `HashRouter`, `<应用 />`, `<换壳遮罩看守 />`, and `<标注层 />` inside the device frame:
+In `src/main.tsx`, introduce a small component so the lane DOM node can be passed to the in-device annotation root:
 
 ```tsx
 const 启用标注 = import.meta.env.VITE_ANNOTATION_ENABLED === 'true';
+function 入口内容() {
+  const [标注工具容器, 设标注工具容器] = useState<HTMLDivElement | null>(null);
 
-{启用标注 ? (
-  <div className={标注样式.评审布局}>
-    <div className={标注样式.应用槽}>
-      <设备外框 填满父级>
-        <HashRouter>
-          <应用 />
-          <换壳遮罩看守 />
-          <标注层 />
-        </HashRouter>
-      </设备外框>
+  return 启用标注 ? (
+    <div className={标注样式.评审布局}>
+      <div className={标注样式.应用槽}>
+        <设备外框 填满父级>
+          <HashRouter>
+            <应用 />
+            <换壳遮罩看守 />
+            <标注层 启动器容器={标注工具容器} />
+          </HashRouter>
+        </设备外框>
+      </div>
+      <div
+        ref={设标注工具容器}
+        className={标注样式.工具占位}
+        data-标注工具位
+      />
     </div>
-    <div className={标注样式.工具占位} aria-hidden />
-  </div>
-) : (
-  <设备外框>
-    <HashRouter>
-      <应用 />
-      <换壳遮罩看守 />
-    </HashRouter>
-  </设备外框>
-)}
+  ) : (
+    <设备外框>
+      <HashRouter>
+        <应用 />
+        <换壳遮罩看守 />
+      </HashRouter>
+    </设备外框>
+  );
+}
 ```
 
-Retain the existing `<换壳遮罩看守 />` sibling immediately after `<应用 />` in both branches. When disabled, do not render `<标注层>` at all.
+Import `useState` in `main.tsx` and render `<入口内容 />` inside the existing provider. Retain `<换壳遮罩看守 />` immediately after `<应用 />` in both branches. When disabled, do not render `<标注层>` or its lane at all.
 
 - [ ] **Step 4: Remove E2E collision workarounds and run green**
 
