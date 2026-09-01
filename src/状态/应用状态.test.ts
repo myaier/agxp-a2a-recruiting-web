@@ -2631,6 +2631,27 @@ describe('应用状态提供者 候选引导草稿持久化', () => {
     await waitFor(() => expect(globalThis.sessionStorage.getItem(键('sub_A'))).toBe(null));
   });
 
+  it('删除最后一条 active 意向后：已消费的引导答案不再作为草稿回写，新答案可重新起草', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    当前.派发({ 型: '存薪资预填', 下限: 30, 上限: 40, 单位: '月薪K' });
+    await waitFor(() => expect(globalThis.sessionStorage.getItem(键('sub_1'))).toContain('"下限":30'));
+    const 活跃快照 = { 列表: [{ 编号: 'int_1', 标题: '[上海] 后端工程师', 说明: '30-40K' }], 服务端: { int_1: BFF意向样本 } };
+    当前.派发({ 型: '水合后端意向', 快照: 活跃快照 });
+    await waitFor(() => expect(globalThis.sessionStorage.getItem(键('sub_1'))).toBe(null));
+    // 删除最后一条 active 意向：active→空，已消费的引导答案被清出内存与存储
+    当前.派发({ 型: '水合后端意向', 快照: { 列表: [], 服务端: {} } });
+    await waitFor(() => expect(当前.状态.引导预填).toBe(null));
+    expect(globalThis.sessionStorage.getItem(键('sub_1'))).toBe(null);
+    // 重新起草（新意向流程）不受影响：新答案照常落草稿
+    当前.派发({ 型: '存薪资预填', 下限: 50, 上限: 60, 单位: '月薪K' });
+    await waitFor(() => expect(globalThis.sessionStorage.getItem(键('sub_1'))).toContain('"下限":50'));
+  });
+
   it('Mock 模式：Mock 原型 localStorage 逐字节不变，也不创建任何候选会话键', async () => {
     localStorage.setItem('AGXP简历v2', '{"PM":"mock-resume"}');
     localStorage.setItem('AGXP求职筛选v1', '{"PM":"mock-onboarding"}');
