@@ -381,6 +381,31 @@ describe('发布岗位页 Backend 选择器', () => {
     expect(mock发布岗位).not.toHaveBeenCalled();
   });
 
+  // review-r1 回归：公司声明前置校验只管「新建」。编辑走 JobPatch —— claim 由服务端
+  // 沿用岗位原值，请求里根本不带客户端 claim；本页也没有公司名输入框，所以换设备
+  // （未认证公司声明 是设备本地态）或关系被撤销时挡在这里，那条 toast 无从消解。
+  // 与上一条创建用例互为对照：创建仍被挡，编辑必须放行。
+  it('编辑态无 verified affiliation 且公司声明为空时照常保存', async () => {
+    const 用户 = userEvent.setup();
+    mock更新岗位.mockResolvedValue(undefined);
+    置Backend应用状态(查询Taxonomy, 查询Location, {
+      企业关系列表: [], 当前企业关系编号: null, 未认证公司声明: '   ',
+    });
+    // Backend 编辑态的城市守卫（地点引用）不在本次修复范围内：编辑目标按存量岗位带引用
+    mock应用状态.状态.岗位列表 = [
+      { ...页面岗位样本, 地点引用: { id: 'loc_shanghai', display_name: '上海' } },
+    ];
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job/job_1']}>
+        <Routes><Route path="/hr/post-job/:id" element={<发布岗位 />} /></Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({ 编号: 'job_1' });
+    expect(screen.queryByText('请填写公司名称')).toBeNull();
+  });
+
   it('完整表单把独立 description 和 requirements 交给 operation', async () => {
     const { 用户 } = await 填到发布前(true, { 职位要求: '  应届或毕业年级；关注 AI 与开发工具  ' });
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
