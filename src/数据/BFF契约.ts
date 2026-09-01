@@ -839,3 +839,71 @@ export interface BFF会话消息 {
 export interface BFF会话页 { items: BFF会话项[]; next_cursor: string | null }
 export interface BFF消息页 { messages: BFF会话消息[]; next_cursor: string | null }
 export interface BFF已读回执 { read_through_message_id: string }
+
+// ── P8 控制面域 wire DTO（账号安全 / 换绑 / 数据导出 / 注销 / 合规反馈与举报）──
+// 字段名与闭合 enum 逐项复制自 recruitment-bff mobile-v1 OpenAPI 的
+// SecurityCredential(List) / SessionSummary(List) / SecurityRevokedSessions /
+// LinkAttempt + LinkNextAction / SecurityReplacementResult / DataExport /
+// AccountDeletion / ComplianceFeedback(Report)Receipt 家族；exact key set、
+// exp_/del_ pattern、RFC3339、安全非负计数、会话恰好一个 current、凭证至多一个
+// phone_otp 与逐端点闭合错误联合由 招聘数据源/P8控制面.ts 的 decoder 校验。
+
+export type BFF凭证提供者 = 'phone_otp' | 'wechat' | 'email_otp';
+
+export interface BFF安全凭证 {
+  credential_id: string;
+  provider: BFF凭证提供者;
+  display: string;
+  verified_at: string;
+}
+export interface BFF安全凭证列表 { credentials: BFF安全凭证[] }
+
+export interface BFF会话摘要 {
+  session_id: string;
+  expires_at: string;
+  created_at: string;
+  current: boolean;
+}
+export interface BFF会话摘要列表 { sessions: BFF会话摘要[] }
+
+export interface BFF撤销会话数 { revoked_sessions: number }
+
+export interface BFF换绑下一步 {
+  type: 'enter_code' | 'redirect' | 'completed';
+  expires_at?: string;
+  retry_after_seconds?: number;
+}
+export interface BFF换绑尝试 {
+  attempt_id: string;
+  next_action: BFF换绑下一步;
+}
+export interface BFF换绑结果 {
+  credential: BFF安全凭证;
+  revoked_sessions: number;
+  unchanged: boolean;
+}
+
+export type BFF导出状态 = 'queued' | 'running' | 'ready' | 'failed' | 'expired';
+export interface BFF数据导出 {
+  export_id: string;
+  status: BFF导出状态;
+  created_at: string;
+  expires_at: string | null;
+  download_ready: boolean;
+}
+
+export type BFF注销状态 = 'deletion_pending' | 'retention' | 'deleted';
+export interface BFF账号注销 {
+  deletion_id: string;
+  status: BFF注销状态;
+  retention_until: string;
+}
+
+export type BFF工单状态 = 'received' | 'reviewing' | 'resolved' | 'dismissed';
+export interface BFF反馈回执 {
+  ticket_id: string;
+  status: BFF工单状态;
+}
+export interface BFF举报回执 extends BFF反馈回执 {
+  block_status: 'applied' | 'not_requested';
+}

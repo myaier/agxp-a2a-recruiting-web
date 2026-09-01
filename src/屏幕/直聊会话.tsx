@@ -24,11 +24,16 @@ import 代理标 from '../组件/代理标';
 import 举报层 from '../组件/举报层';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
+import { use应用状态 } from '../状态/应用状态';
 import { 取直聊对象, 市场列表, 我的信息 } from '../数据/模拟数据';
 import type { 会话条 } from '../数据/类型';
 
 export default function 直聊会话() {
   const { 返回, 跳转 } = use导航();
+  // P8：Backend 直聊没有权威举报目标（P4 不发布直聊许可/会话坐标）——「⋯」举报
+  // 入口整体隐藏，绝不留一个点了无处可发的死按钮；Mock 原型行为原样
+  const { 数据源模式 } = use应用状态();
+  const 是后端 = 数据源模式 === 'backend';
   // 对方是谁由岗位编号决定 —— 从职位详情「直接聊」进来带 :id，
   // 消息 Tab 那条直聊行没有 id，取数函数会回落到看市场第一个岗（就是那条会话的对象）
   const { id: 岗位编号 } = useParams<{ id: string }>();
@@ -82,13 +87,15 @@ export default function 直聊会话() {
         副标题={[对方.机构, 对方.职务].filter(Boolean).join(' · ')}
         居中标题
         右侧={
-          <button
-            className={`${样式.更多} 可点`}
-            onClick={() => 设举报层开(true)}
-            aria-label="举报"
-          >
-            ⋯
-          </button>
+          是后端 ? undefined : (
+            <button
+              className={`${样式.更多} 可点`}
+              onClick={() => 设举报层开(true)}
+              aria-label="举报"
+            >
+              ⋯
+            </button>
+          )
         }
       />
 
@@ -126,7 +133,7 @@ export default function 直聊会话() {
 
       <真输入条 占位="发消息…" 值={草稿} 改变={设草稿} 发送={发送} 灰边 />
 
-      {举报层开 ? (
+      {举报层开 && !是后端 ? (
         <举报层
           对象名={`${对方.姓名} · ${对方.机构}`}
           屏蔽名称={对方.岗位公司}

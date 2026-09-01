@@ -191,6 +191,51 @@ describe('BFF HTTP 客户端', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  // P8 opt-in 严格信封：2xx JSON 体必须恰为 {result, meta:{request_id, api_version:'v1'}}。
+  // 缺/多根键、缺/多 meta 键、空 request_id、错 api_version、JSON 尾随内容与非 JSON
+  // 都按 invalid_response fail closed；未开启该选项的调用保持既有宽松行为。
+  it('严格信封接受恰好 {result, meta:{request_id, api_version:"v1"}} 的响应', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      result: { credential_id: 'cred_1' },
+      meta: { request_id: 'r1', api_version: 'v1' },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const client = 创建BFF客户端({ fetcher });
+    await expect(client.请求({ path: '/api/v1/me/credentials', 严格信封: true }))
+      .resolves.toMatchObject({ result: { credential_id: 'cred_1' }, requestId: 'r1' });
+  });
+
+  it.each([
+    ['缺 result 根键', JSON.stringify({ meta: { request_id: 'r1', api_version: 'v1' } })],
+    ['缺 meta 根键', JSON.stringify({ result: {} })],
+    ['多根键', JSON.stringify({ result: {}, meta: { request_id: 'r1', api_version: 'v1' }, extra: 1 })],
+    ['缺 meta 键', JSON.stringify({ result: {}, meta: { request_id: 'r1' } })],
+    ['多 meta 键', JSON.stringify({ result: {}, meta: { request_id: 'r1', api_version: 'v1', extra: 1 } })],
+    ['空 request_id', JSON.stringify({ result: {}, meta: { request_id: '', api_version: 'v1' } })],
+    ['错 api_version', JSON.stringify({ result: {}, meta: { request_id: 'r1', api_version: 'v2' } })],
+    ['meta 非对象', JSON.stringify({ result: {}, meta: null })],
+    ['JSON 尾随内容', '{"result":{},"meta":{"request_id":"r1","api_version":"v1"}} trailing'],
+    ['非 JSON', 'not json at all'],
+  ])('严格信封拒绝%s', async (_label, body) => {
+    const fetcher = vi.fn(async () => new Response(body, {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
+    const client = 创建BFF客户端({ fetcher });
+    await expect(client.请求({ path: '/api/v1/me/credentials', 严格信封: true }))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('未开启严格信封的调用保持宽松行为（多键响应照常透传 result）', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      result: { ok: true }, meta: { request_id: 'r1', api_version: 'v1' }, extra: 1,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const client = 创建BFF客户端({ fetcher });
+    await expect(client.请求({ path: '/api/v1/session' }))
+      .resolves.toMatchObject({ result: { ok: true }, requestId: 'r1' });
+    // opt-in 语义只在选项位上：fetch init 与既有调用完全一致
+    expect(fetcher).toHaveBeenCalledWith('/api/v1/session', expect.objectContaining({ credentials: 'include' }));
+    expect(fetcher.mock.calls[0][1]?.cache).toBeUndefined();
+  });
+
   // P5：只有显式 不缓存: true 的 JSON / 二进制请求才设置 Request.cache = 'no-store'；
   // 既有调用方（未传该选项）的 fetch init 保持原样（cache 为 undefined）。
   it('only explicitly no-store JSON and binary requests set Request.cache', async () => {

@@ -72,7 +72,7 @@ describe('Backend会话列表', () => {
         lastMessage: { messageId: '4003', senderRole: 'recruiter', preview: '简历已收到', createdAt: '2026-08-30T00:30:00Z' },
       }),
     ]);
-    render(<Backend会话列表 role="candidate" />);
+    render(<Backend会话列表 角色="candidate" />);
     expect(screen.getByText('后端工程师')).toBeTruthy();
     expect(screen.getByText('上海·浦东')).toBeTruthy();
     expect(screen.getByText('收到！明天下午聊')).toBeTruthy();
@@ -84,7 +84,7 @@ describe('Backend会话列表', () => {
 
   it('招聘端行映射：标题=候选代号、副标题=职位名，导航走企业参数路由', async () => {
     环境('recruiter', [会话项()]);
-    render(<Backend会话列表 role="recruiter" />);
+    render(<Backend会话列表 角色="recruiter" />);
     expect(screen.getByText('上海·浦东')).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: /上海·浦东/ }));
     expect(导航.跳转).toHaveBeenCalledWith('/hr/chat/3003');
@@ -93,21 +93,21 @@ describe('Backend会话列表', () => {
 
   it('unreadCount>0 显示数字胶囊，=0 无任何红点', () => {
     环境('candidate', [会话项({ unreadCount: 2 }), 会话项({ conversationId: '3001', unreadCount: 0 })]);
-    render(<Backend会话列表 role="candidate" />);
+    render(<Backend会话列表 角色="candidate" />);
     expect(screen.getByTestId('unread-3003').textContent).toBe('2');
     expect(screen.queryByTestId('unread-3001')).toBeNull();
   });
 
   it('context 不可用：标题「会话信息暂不可用」、副标题留空，摘要与消息保留', () => {
     环境('candidate', [会话项({ contextStatus: 'unavailable', context: null })]);
-    render(<Backend会话列表 role="candidate" />);
+    render(<Backend会话列表 角色="candidate" />);
     expect(screen.getByText('会话信息暂不可用')).toBeTruthy();
     expect(screen.getByText('收到！明天下午聊')).toBeTruthy();
   });
 
   it('last_message=null 显示「已建立真人会话」', () => {
     环境('candidate', [会话项({ lastMessage: null })]);
-    render(<Backend会话列表 role="candidate" />);
+    render(<Backend会话列表 角色="candidate" />);
     expect(screen.getByText('已建立真人会话')).toBeTruthy();
   });
 
@@ -116,7 +116,7 @@ describe('Backend会话列表', () => {
       会话项(),
       会话项({ conversationId: '3001', context: { primaryLabel: '前端工程师', secondaryLabel: '杭州', jobRef: null, resumeRef: null } }),
     ]);
-    render(<Backend会话列表 role="candidate" />);
+    render(<Backend会话列表 角色="candidate" />);
     await userEvent.type(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'), '后端');
     expect(screen.getByText('后端工程师')).toBeTruthy();
     expect(screen.queryByText('前端工程师')).toBeNull();
@@ -129,7 +129,7 @@ describe('Backend会话列表', () => {
 
   it('「通知」页签显示明确空态，不混入任何会话行', async () => {
     环境('candidate', [会话项()]);
-    render(<Backend会话列表 role="candidate" />);
+    render(<Backend会话列表 角色="candidate" />);
     await userEvent.click(screen.getByRole('button', { name: '通知' }));
     expect(screen.getByText('还没有通知')).toBeTruthy();
     expect(screen.queryByText('后端工程师')).toBeNull();
@@ -137,17 +137,17 @@ describe('Backend会话列表', () => {
 
   it('首读进行中显示正在读入，成功空页显示还没有真人会话，失败显示重试', async () => {
     环境('candidate', [], { 阶段: '进行中', 刷新中: true });
-    const { unmount } = render(<Backend会话列表 role="candidate" />);
+    const { unmount } = render(<Backend会话列表 角色="candidate" />);
     expect(screen.getByText('正在读入会话…')).toBeTruthy();
     unmount();
 
     环境('candidate', [], { 阶段: '成功' });
-    render(<Backend会话列表 role="candidate" />);
+    render(<Backend会话列表 角色="candidate" />);
     expect(screen.getByText('还没有真人会话')).toBeTruthy();
     unmount();
 
     环境('candidate', [], { 阶段: '失败', error: '后端服务暂时不可用，请稍后重试' });
-    render(<Backend会话列表 role="candidate" />);
+    render(<Backend会话列表 角色="candidate" />);
     expect(screen.getByText('后端服务暂时不可用，请稍后重试')).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: '重试' }));
     expect(mock应用状态.操作.加载会话列表).toHaveBeenCalledWith('candidate', true);
@@ -155,7 +155,7 @@ describe('Backend会话列表', () => {
 
   it('next_cursor 在场时提供加载更多，点击透传追加；游标已尽不渲染按钮', async () => {
     环境('candidate', [会话项()], { nextCursor: 'Pg1_1', 已加载页数: 1 });
-    render(<Backend会话列表 role="candidate" />);
+    render(<Backend会话列表 角色="candidate" />);
     await userEvent.click(screen.getByRole('button', { name: '加载更多' }));
     expect(mock应用状态.操作.追加会话列表).toHaveBeenCalledWith('candidate');
     // 换游标已尽的快照：无按钮
@@ -163,7 +163,7 @@ describe('Backend会话列表', () => {
 
   it('进入时 force 刷新并登记可见范围，卸载时注销', () => {
     环境('candidate', [会话项()]);
-    const { unmount } = render(<Backend会话列表 role="candidate" />);
+    const { unmount } = render(<Backend会话列表 角色="candidate" />);
     expect(mock应用状态.操作.设置P7收件箱范围).toHaveBeenCalledWith('candidate', true);
     expect(mock应用状态.操作.加载会话列表).toHaveBeenCalledWith('candidate', true);
     unmount();

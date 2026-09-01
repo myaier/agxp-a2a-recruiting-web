@@ -20,6 +20,7 @@ import { P4委托进度未知文案 } from '../状态/后端/use发现推荐委�
 import { 路径 } from '../路由/路径表';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库 } from '../数据/BFF契约';
+import type { P8ReportReceipt } from '../数据/招聘数据源/P8控制面';
 import { BFF候选岗位推荐样本, BFFCandidateJob样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 
@@ -36,6 +37,8 @@ const mock设置发现推荐范围 = vi.fn();
 const mock刷新委托 = vi.fn(async () => undefined);
 // P5 Task 3：委托前的权威附件库准备（附件简历操作 域的桩）
 const mock准备候选委托简历 = vi.fn();
+// P8 Task 7：上下文举报（P8合规操作 域的桩）
+const mock提交P8举报 = vi.fn();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -98,6 +101,7 @@ function 渲染Backend状态(选项: {
       设置发现推荐范围: mock设置发现推荐范围,
       刷新委托: mock刷新委托,
       准备候选委托简历: mock准备候选委托简历,
+      提交P8举报: mock提交P8举报,
     }),
   };
 }
@@ -814,5 +818,148 @@ describe('职位详情 · 委托前必须显式选定简历坐标（Backend）',
     expect(mock跳转).not.toHaveBeenCalled();
     expect(mock委托候选岗位).not.toHaveBeenCalled();
     视图.unmount();
+  });
+});
+
+// ── P8 Task 7：上下文举报 ──────────────────────────────────────────
+//   ⋯ 只在权威 CandidateJob 快照解码成功（视图在场）后出现；举报 target 只取
+//   视图.jobId，绝不用路由参数 编号、更不用 P4 推荐 ID。快照缺位 / 在飞 / 失败 /
+//   404 四个隐藏态一律无 ⋯ —— 拼错或过期的路由参数单凭自己打不开也提交不了举报。
+//   推荐路径的抽屉里「举报这个职位」与不感兴趣并列；详情直取路径它是唯一非取消
+//   动作（反馈/委托仍禁用）。target-not-found 强制重读来源并关掉过期层。
+describe('职位详情 · P8 上下文举报（Backend）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock轻提示.mockClear();
+    mock读取候选岗位详情.mockReset();
+    mock提交P8举报.mockReset().mockResolvedValue({
+      ticketId: 'TICKET-P8-RPT-001', status: 'received', blockStatus: 'not_requested',
+    } satisfies P8ReportReceipt);
+  });
+
+  it.each([
+    {
+      名称: '路由参数缺位（absent）：无 ⋯',
+      挂载: () => render(
+        <MemoryRouter initialEntries={['/job']}>
+          <Routes>
+            <Route path="/job" element={<职位详情 />} />
+          </Routes>
+        </MemoryRouter>,
+      ),
+      断言零读: true,
+    },
+    {
+      名称: '读取在飞（loading）：无 ⋯，GET 已发未归',
+      挂载: () => {
+        mock读取候选岗位详情.mockImplementation(() => new Promise(() => {}));
+        渲染Backend状态({});
+        return 渲染('job_new');
+      },
+      断言零读: false,
+    },
+    {
+      名称: '读取失败（failure）：无 ⋯，落错误态',
+      挂载: () => {
+        mock读取候选岗位详情.mockRejectedValue(new BFF错误(503, 'source_unavailable', 'down'));
+        渲染Backend状态({});
+        return 渲染('job_new');
+      },
+      断言零读: false,
+    },
+    {
+      名称: '404 收口的不可用态：无 ⋯',
+      挂载: () => {
+        渲染Backend状态({ 候选岗位不可用: ['job_gone'] });
+        return 渲染('job_gone');
+      },
+      断言零读: true,
+    },
+  ])('$名称', async ({ 挂载, 断言零读 }) => {
+    await act(async () => {});
+    挂载();
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull();
+    expect(screen.queryByText('举报这个职位')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: '举报' })).toBeNull();
+    if (断言零读) expect(mock读取候选岗位详情).not.toHaveBeenCalled();
+    expect(mock提交P8举报).not.toHaveBeenCalled();
+  });
+
+  it('拼错/过期的路由参数单凭参数打不开也提交不了举报（缓存与快照都没有这个岗）', async () => {
+    mock读取候选岗位详情.mockRejectedValue(new BFF错误(404, 'job_not_found', 'gone'));
+    渲染Backend状态({});
+    渲染('job_typo_404');
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull();
+    expect(screen.queryByText('举报这个职位')).toBeNull();
+    expect(mock提交P8举报).not.toHaveBeenCalled();
+    expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '拉黑' }));
+  });
+
+  it('推荐路径：⋯ 抽屉里「举报这个职位」与不感兴趣并列', async () => {
+    const 用户 = userEvent.setup();
+    渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
+    渲染('job_1');
+    await 用户.click(screen.getByRole('button', { name: '更多操作' }));
+    expect(screen.getByRole('dialog', { name: '职位更多操作' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '不感兴趣，别再推给我' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '举报这个职位' })).toBeTruthy();
+  });
+
+  it('举报提交：target 只取 视图.jobId 的权威 job_id，绝不用 P4 推荐 ID，也绝不本地拉黑', async () => {
+    const 用户 = userEvent.setup();
+    渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
+    渲染('job_1');
+    await 用户.click(screen.getByRole('button', { name: '更多操作' }));
+    await 用户.click(screen.getByRole('button', { name: '举报这个职位' }));
+    expect(screen.getByRole('dialog', { name: '举报' })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '骚扰' }));
+    await 用户.click(screen.getByRole('button', { name: /同时屏蔽云衢科技/ }));
+    await 用户.click(screen.getByRole('button', { name: '提交举报' }));
+    await waitFor(() => expect(mock提交P8举报).toHaveBeenCalledTimes(1));
+    expect(mock提交P8举报).toHaveBeenCalledWith({ type: 'job', ref: 'job_1' }, 'harassment', true);
+    // 请求里既没有推荐 ID，也没有对象/公司展示名（举报走平台侧）
+    const 序列化 = JSON.stringify(mock提交P8举报.mock.calls);
+    expect(序列化).not.toContain('rec_c1');
+    expect(序列化).not.toContain('云衢科技');
+    expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '拉黑' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '举报' })).toBeNull());
+  });
+
+  it('详情直取路径：举报这个职位是唯一非取消动作，用权威 job ID 即可举报（无推荐坐标）', async () => {
+    const 用户 = userEvent.setup();
+    渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
+    渲染('job_1');
+    await 用户.click(screen.getByRole('button', { name: '更多操作' }));
+    const 抽屉 = screen.getByRole('dialog', { name: '职位更多操作' });
+    expect(screen.getByRole('button', { name: '举报这个职位' })).toBeTruthy();
+    expect(抽屉.textContent).not.toContain('不感兴趣');
+    // 推荐专属动作在直取路径仍禁用（不因举报入口放开）
+    expect((screen.getByRole('button', { name: '让AI代理去谈' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '不感兴趣' }) as HTMLButtonElement).disabled).toBe(true);
+    await 用户.click(screen.getByRole('button', { name: '举报这个职位' }));
+    await 用户.click(screen.getByRole('button', { name: '虚假信息' }));
+    await 用户.click(screen.getByRole('button', { name: '提交举报' }));
+    await waitFor(() => expect(mock提交P8举报).toHaveBeenCalledWith(
+      { type: 'job', ref: 'job_1' }, 'false_information', false));
+    expect(JSON.stringify(mock提交P8举报.mock.calls)).not.toContain('rec_');
+    expect(mock标记岗位不感兴趣).not.toHaveBeenCalled();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+  });
+
+  it('target-not-found：强制重读该岗位来源并关掉过期举报层', async () => {
+    const 用户 = userEvent.setup();
+    mock读取候选岗位详情.mockResolvedValue(undefined);
+    mock提交P8举报.mockRejectedValue(new BFF错误(404, 'report_target_not_found', 'gone'));
+    渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
+    渲染('job_1');
+    await 用户.click(screen.getByRole('button', { name: '更多操作' }));
+    await 用户.click(screen.getByRole('button', { name: '举报这个职位' }));
+    await 用户.click(screen.getByRole('button', { name: '其他' }));
+    await 用户.click(screen.getByRole('button', { name: '提交举报' }));
+    await waitFor(() => expect(mock读取候选岗位详情).toHaveBeenCalledWith('job_1', true));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '举报' })).toBeNull());
+    expect(mock轻提示).toHaveBeenCalledWith('举报对象已不存在，请刷新后重试');
   });
 });

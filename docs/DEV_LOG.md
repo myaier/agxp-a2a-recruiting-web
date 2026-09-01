@@ -155,3 +155,74 @@ Spec：`docs/superpowers/specs/2026-08-30-recruitment-p7-frontend-wiring-design.
   在公开 wire 上与普通 pending 同形 —— 前端保持可见期间低频权威重读、恒禁用「开始私聊」、
   零前端超时终态、零 `invalid_actor_identity` 文案（浏览器旅程已断言）；该产品缝隙待后端
   P5/P7 侧决策关闭，属 `agxp-monorepo docs/known-issues/recruitment-p7-same-party-matchcase-handoff-stuck.md`。
+
+## 2026-09-01 · P8 控制面前端接线（Recruitment P8 Frontend Wiring）
+
+计划：`docs/superpowers/plans/2026-09-01-recruitment-p8-frontend-wiring.md`；Spec：
+`docs/superpowers/specs/2026-08-31-recruitment-p8-frontend-wiring-design.md`。
+
+- 前端基线：`659de17be7aac4797bd572228179aedfc5768ae3`；一任务一提交（自基线起）：
+  `dde3c96a`（strict P8 数据源）→ `bb6320ce`（导出恢复 store）→ `55367117`（fenced
+  账号 runtime）→ `0f8d5540`（review：姊妹读 force 换代）→ `8f5c1572`（账号安全 UI）→
+  `5145a9dd`（导出与注销）→ `7431941e`（review：注销 202 会话栅栏）→ `f9dfe348`
+  （产品反馈）→ `e74f2884`（上下文举报）→ Task 8 浏览器旅程（本条目）。
+- 后端冻结 SHA（release/0.2.5）：`13c12450eab0be090fd4be2ac43a0ad076563d7e`，
+  当日再次 `rev-parse` 复核仍逐字一致。Task 0 L3 回执：`run-20260831T183106-c996e864`
+  （命令 `tools/test global recruitment-mobile-local`，exit 0，suite PASS 473.3s，
+  case `foundation:auth-role-session` PASS gate:hard，回执 `commit` 字段＝冻结 SHA，
+  23 个 phase 全 PASS，含 account-security 61.3s / compliance-intake 5.0s /
+  data-export 5.8s / account-deletion 119.3s）。如实备注：回执 `dirty: true` 仅由
+  后端仓库一个既有未跟踪目录 `plugins/hermes-lite/`（8 月 5 日、与招聘域无关）造成，
+  不是产品漂移。`.test-results/` 里另有一张已作废的无效回执
+  `run-20260831T181910-98022bbb`（commit=a3d725473），不作证据引用。
+- Task 8 交付：`e2e/数据源模式.spec.ts` 追加 P8 控制面可变 fixture（凭证/会话/换绑/
+  导出状态机/注销/合规两法；变更存证 method/path/body/postData 原文/Idempotency-Key/
+  Origin；同键同原文重放同一张回执、同键异原文 409；创建导出拒绝任何 body、注销 body
+  精确 `{}`；block_unavailable 零写入、404 目标统一收口、applied 把组织写进 P3 权威
+  视图；注销 202 后 session/me 与全部 P8 保护读取（凭证/会话/导出读取/导出下载）一律
+  先于存在性判定按 401 invalid_session 收口，且由旅程内的页面 fetch 探针三路实证）＋
+  15 条 Backend 旅程 ＋ 1 条
+  Mock 隔离旅程；`e2e/视觉回归/场景.ts` 新增 Mock 场景 `candidate-account-security`
+  （/#/account）与 `candidate-feedback`（/#/feedback），`场景.test.ts` 清单 16→18。
+- 定向单测回执：`npx vitest run src/数据/HTTP客户端.test.ts src/数据/P8导出恢复.test.ts
+  src/数据/招聘数据源/P8控制面.test.ts src/数据/HTTP招聘数据源.test.ts
+  src/状态/后端/P8控制面操作.test.ts src/状态/后端/useP8导出轮询.test.tsx
+  src/状态/后端/会话操作.test.ts src/状态/应用状态.test.ts src/屏幕/账号安全.test.tsx
+  src/屏幕/设置.test.tsx src/屏幕/企业设置.test.tsx src/屏幕/反馈.test.tsx
+  src/组件/举报层.test.tsx src/屏幕/职位详情.test.tsx src/屏幕/P7/Backend真人会话.test.tsx
+  src/屏幕/直聊会话.test.tsx src/屏幕/真人会话.test.tsx` → **17 文件 467 passed，exit 0**；
+  harness 单测（场景清单/比较器）`npx vitest run e2e/视觉回归` → 7 passed，exit 0。
+- 数据源 Playwright 回执：`npm run test:e2e:data-source -- --grep
+  "P8|账号安全|数据导出|账号注销|反馈|举报"` → **16 passed，exit 0**（Backend 15：
+  首屏掩码/会话时间零设备地点字面量、退出其他设备无 body+权威重读归零、换绑成功/
+  冲突保留/首答未知同键字节一致重放、导出创建无 body→轮询 ready→关闭重开恢复→
+  同源下载、过期与 404 句柄清理新键重建、进行中挡注销+ready 未下载警示可继续、
+  注销 202 清会话跳登录+后续保护读取 401（凭证/导出/下载三路页面 fetch 探针实证
+  invalid_session）、产品反馈真实工单+举报两类零 reports、
+  详情直取职位举报隐私安全 body、block_unavailable 取消勾选新键+目标不存在关层
+  刷新来源、P7 会话举报 conversation 坐标+键盘可达 ⋯、直聊无举报入口零 reports、
+  401 清账号回登录、切身份后迟到应答不泄漏、合规 429 无倒计时零自动重试；Mock 1：
+  账号安全/反馈/职位举报/直聊举报以任务书 isP8 原文断言零控制面请求）。
+  连续 4 轮重跑全部 16 passed（16.7–22.8s），无 flake。
+- 视觉门禁回执：`UI_VISUAL_GATE=enforce UI_CHANGE_APPROVED=false npm run ui:check --
+  --base 659de17be7aac4797bd572228179aedfc5768ae3 --output /tmp/agxp-p8-ui-regression`
+  → **exit 0，pass=18 / warning=0 / blocked=0 / new=0 / removed=0**；
+  `candidate-account-security` 与 `candidate-feedback` 在 Mock 侧通过。人工核对
+  report.md 与截图：18 个场景的 reference/base 与 candidate 截图 **逐字节一致**
+  （md5 全等），两新场景 8 个关键元素几何全等、零 API 请求、零 console/page error、
+  无横向溢出。准入差异核对（Backend 截图，Playwright 输出、不入库）：账号页恰多一组
+  「数据」卡与唯一一行「导出我的数据」，其余视觉壳原样；详情直取职位页 ⋯ 为既有样式、
+  抽屉恰一项新增「举报这个职位」（直取无不感兴趣）；P7 会话保持同一枚 span 字形 ⋯
+  （键盘可达由旅程断言）；Backend 直聊右上无任何 ⋯/举报入口。无 CSS 文件变更。
+- 静态/全量门禁：`npm test` → **1838 passed**（120 文件），exit 0；`npm run typecheck`
+  → exit 0；`npm run lint`（oxlint）→ exit 0（仅既有文件的既有 warning）；`npm run build`
+  → 712ms，exit 0；`git diff --check` → clean；
+  `git diff 659de17..HEAD --name-only -- '*.css' '*.module.css'` → **空**；
+  **Mock P8 requests = 0；CSS changes = 0**。
+- 环境边界（如实记录）：① 同源导出下载的锚点请求由浏览器下载管理器接管，
+  Playwright 的 page.route / request 事件均看不到（探针实证）——浏览器边界上的证据是
+  download 事件的同源 `/api/v1/me/data-exports/{id}/download` URL ＋ 点击前权威预检
+  GET；ZIP 字节与 application/zip 固定应答头由 route fixture 与单测覆盖，本环境
+  stg 后端不可达（DNS ENOTFOUND），未做真实 BFF 落盘比对。② 本机 Playwright 1.62
+  下 describe 级 `test.use({ timeout })` 不生效（探针实证 effective timeout 仍 30s），
+  长旅程按本文件既有惯例改用测试内 `test.setTimeout`。
