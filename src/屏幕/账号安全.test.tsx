@@ -749,9 +749,10 @@ describe('账号安全 · Backend 数据导出与注销', () => {
     expect(导航.替换跳转).not.toHaveBeenCalled();
   });
 
-  // P0 修复 Task 6：导出/注销文案对招聘方也必须成立 —— 角色中性名词短语，
-  // 屏内任何位置（含未展开的注销说明抽屉）都不得出现「你的简历」。
-  it('招聘方导出与注销文案不出现你的简历', () => {
+  // P0 修复 Task 6：导出/注销文案必须角色中性 —— 中性名词短语上屏，且整份源码
+  // （含未展开的注销说明抽屉）不出现「你的简历」。环境() 没有角色开关：屏内断言
+  // 只证明这段文案与角色无关，源码级 ?raw 断言才是覆盖全屏的那一条。
+  it('导出与注销文案角色中性：中性名词上屏，源码内不出现你的简历', () => {
     环境({
       模式: 'backend',
       凭证: 成功快照([旧手机凭证]),
@@ -762,6 +763,27 @@ describe('账号安全 · Backend 数据导出与注销', () => {
     const 中性文案 = screen.getByText(/账号资料与业务记录/);
     expect(中性文案.isConnected).toBe(true);
     expect(中性文案.textContent).toContain('账号资料与业务记录');
+    expect(screen.queryByText(/你的简历/)).toBeNull();
+    expect(账号安全源码).not.toMatch(/你的简历/);
+  });
+
+  // review 复检：中性化不得吞掉注销披露 —— 「立即删除」时点、代谈终止、以及
+  // 对方只收到「对方已退出」这三条事实必须仍在同一段里说清楚（三条本来就与角色无关）。
+  it('注销说明抽屉在中性化后仍完整披露：立即删除 / 代谈终止 / 对方所见', async () => {
+    const 用户 = userEvent.setup();
+    环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+    });
+    渲染();
+    await 用户.click(screen.getByRole('button', { name: '注销账号' }));
+    const 说明 = await screen.findByText(/正在进行的代谈会全部终止/);
+    expect(说明.textContent).toContain('账号资料与业务记录'); // 中性名词短语保住
+    expect(说明.textContent).toContain('立即删除'); // (a) 删除时点
+    expect(说明.textContent).toContain('且无法恢复');
+    expect(说明.textContent).toContain('正在进行的代谈会全部终止'); // (b) 代谈终止
+    expect(说明.textContent).toContain('对方只会收到「对方已退出」，不会知道原因'); // (c) 对方所见
     expect(screen.queryByText(/你的简历/)).toBeNull();
     expect(账号安全源码).not.toMatch(/你的简历/);
   });

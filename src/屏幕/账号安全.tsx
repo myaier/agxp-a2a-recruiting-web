@@ -454,7 +454,9 @@ export default function 账号安全() {
             <div className={本屏样式.抓手} />
             <div className={本屏样式.抽屉标题}>注销账号会发生什么</div>
             <div className={样式.说明条} style={{ marginTop: 14 }}>
-              你的账号资料与业务记录会按注销规则处理，且无法恢复。
+              你的账号资料与业务记录会
+              <span className={样式.说明强调}>立即删除</span>
+              且无法恢复；正在进行的代谈会全部终止，对方只会收到「对方已退出」，不会知道原因。
             </div>
             <div className={本屏样式.抽屉说明}>
               代谈记录是双方共同的记录，不能因一方注销就凭空消失，因此它会被
