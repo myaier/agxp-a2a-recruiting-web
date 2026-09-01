@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Calibrated base (2026-09-01): this branch is rebased onto `origin/main` at `37b0a459e53b48dfb3e204a647c805334d0bff06`; candidate integration anchor `e1493eed1ba97c58379d7503f97ae2ca44d3adea` and recruiter implementation anchor `59cd1ee6dfa3a0ba43ec30b3b1d33cc28e8a23e8` are both ancestors.
+- Calibrated base (2026-09-01, recalibrated same day): this branch is rebased onto `origin/main` at `4280d8151a04f5a9489b65d39b32a0bc304a1aa6` (previous anchor `37b0a459e53b48dfb3e204a647c805334d0bff06`, which only added Mock-only copy removal in `src/屏幕/匿名在线简历(.test).tsx`, no plan-file overlap); candidate integration anchor `e1493eed1ba97c58379d7503f97ae2ca44d3adea` and recruiter implementation anchor `59cd1ee6dfa3a0ba43ec30b3b1d33cc28e8a23e8` are both ancestors.
 - Before product edits, fetch `origin/main`, require a clean worktree, and verify the calibrated base is still current. If `origin/main` moved, rebase and recalibrate this Plan and the Spec before implementation.
 - Preserve the candidate-only, subject-scoped onboarding draft effect. Do not add session storage reads or writes to `会话操作.ts`; keep the existing `清后端草稿` transition order.
 - Consume the recruiter predecessor interfaces exactly: `招聘方档案水合阶段`, `招聘方组织水合`, `创建空招聘方组织水合状态()`, the four-argument `水合招聘方组织数据(...)`, and `会话操作.重新水合招聘方数据()`.
@@ -34,7 +34,7 @@ git fetch origin main
 git status --short
 CANDIDATE_IMPL_COMMIT=e1493eed1ba97c58379d7503f97ae2ca44d3adea
 RECRUITER_IMPL_COMMIT=59cd1ee6dfa3a0ba43ec30b3b1d33cc28e8a23e8
-CALIBRATED_MAIN=37b0a459e53b48dfb3e204a647c805334d0bff06
+CALIBRATED_MAIN=4280d8151a04f5a9489b65d39b32a0bc304a1aa6
 git merge-base --is-ancestor "$CANDIDATE_IMPL_COMMIT" HEAD
 git merge-base --is-ancestor "$RECRUITER_IMPL_COMMIT" HEAD
 git merge-base --is-ancestor "$CALIBRATED_MAIN" HEAD

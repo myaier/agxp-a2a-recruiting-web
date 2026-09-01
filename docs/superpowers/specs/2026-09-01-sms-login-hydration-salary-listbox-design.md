@@ -13,7 +13,7 @@ Backend 模式下，已有账号完成交互式短信登录后，前端只完成
 2026-09-01 已确认两个前序分支按要求进入 `origin/main`，当前功能分支也已无冲突 rebase 到该基线：
 
 1. `fix/candidate-onboarding-backend-persist`（worktree：`skillful-snake`）最终整合锚点 `e1493eed1ba97c58379d7503f97ae2ca44d3adea`，包含候选草稿实现及 `09f447f7`、`f7dd9a27` 两轮收口；
-2. `fix-recruiter-onboarding-frontend`（worktree：`unarmed-wolverine`）最终实现锚点 `59cd1ee6dfa3a0ba43ec30b3b1d33cc28e8a23e8`；`68935537` 随后整合上述候选分支，主线校准锚点为 `37b0a459e53b48dfb3e204a647c805334d0bff06`。
+2. `fix-recruiter-onboarding-frontend`（worktree：`unarmed-wolverine`）最终实现锚点 `59cd1ee6dfa3a0ba43ec30b3b1d33cc28e8a23e8`；`68935537` 随后整合上述候选分支。2026-09-01 执行前校准：`origin/main` 前移至 `4280d8151a04f5a9489b65d39b32a0bc304a1aa6`（较 `37b0a459e53b48dfb3e204a647c805334d0bff06` 仅新增 Mock 展示层删改 `src/屏幕/匿名在线简历(.test).tsx`，与本设计文件无交集），功能分支已无冲突 rebase 至该基线。
 
 本设计以该合并后接口为准，消费而不重做以下前序能力：
 
