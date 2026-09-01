@@ -775,7 +775,9 @@ assert_contains '工作城市从候选里选' 'find role button click --name 上
 assert_contains '最后一步是发布' 'find role button click --name 发布岗位并开始寻访 --exact' "$CALLS"
 assert_contains '发布成功 toast 消失后才截图' 'wait 2000' "$CALLS"
 assert_true 'toast 稳定等待排在岗位基线截图之前' \
-  "[ $(grep -n 'wait 2000' '$CALLS' | tail -1 | cut -d: -f1) -lt $(grep -n 'screenshot .*recruiter-jobs-after-create.png' '$CALLS' | tail -1 | cut -d: -f1) ]"
+  "W=\$(grep -n 'wait 2000' '$CALLS' | tail -1 | cut -d: -f1); \
+   S=\$(grep -n 'screenshot .*recruiter-jobs-after-create.png' '$CALLS' | tail -1 | cut -d: -f1); \
+   [ -n \"\$W\" ] && [ -n \"\$S\" ] && [ \"\$W\" -lt \"\$S\" ]"
 assert_eq '临时岗位标题逐字等于后端 cleanup 的差集名' \
   "$(jq -r '.recruiter_job_titles[0]' "$PRIVATE_JOURNAL")" '浏览器验收岗位 · 临时CRUD'
 assert_eq '台账只记这一个名称' \
