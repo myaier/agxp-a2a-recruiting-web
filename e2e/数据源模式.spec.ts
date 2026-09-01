@@ -4727,8 +4727,10 @@ test.describe('Backend 数据源 fixture @backend', () => {
 
   test('422 array fields 返回字段错误 @backend', async ({ page }) => {
     // 覆盖 POST intentions → 422 + fields 数组。驱动真实 UI 填表提交，断言 POST 真正
-    // 发出且 422 fieldErrors 文案出现在 轻提示 toast 里——删掉 422 解析或 fieldErrors
-    // 映射这条断言就会失败。
+    // 发出且 422 落到 轻提示 toast 里。
+    // P0 修复 Task 6：通用文案不再展示机器 reason —— toast 是固定的
+    // 「填写内容未通过校验」，服务端 reason 绝不上屏（fieldErrors 仍完整解析，
+    // 由各表单屏按字段自行本地化）。
     let post次数 = 0;
     await 安装BFF路由(page, {
       记录目录请求: () => {},
@@ -4751,8 +4753,9 @@ test.describe('Backend 数据源 fixture @backend', () => {
 
     // POST 确实发出（填表 + 点保存触发了真实写入请求）
     expect(post次数).toBeGreaterThanOrEqual(1);
-    // 422 fieldErrors[0].reason 出现在 toast 里（取后端错误文案 → 轻提示）
-    await expect(page.getByText('至少选一种办公方式')).toBeVisible({ timeout: 10_000 });
+    // 422 落通用校验文案（取后端错误文案 → 轻提示），机器 reason 不泄露给用户
+    await expect(page.getByText('填写内容未通过校验')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('至少选一种办公方式')).toHaveCount(0);
   });
 
   test('401 清理会话并清空目录缓存 @backend', async ({ page }) => {

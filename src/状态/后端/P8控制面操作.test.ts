@@ -1534,7 +1534,8 @@ describe('P8 错误文案', () => {
     // 未知错误码：固定兜底文案，绝不透传英文 message
     expect(取P8错误文案(new BFF错误(400, 'some_unknown_code', 'English backend message')))
       .toBe('请求失败，请稍后重试');
-    expect(取P8错误文案(new Error('plain network error'))).toBe('网络连接失败，请稍后再试');
+    // P0 修复 Task 6：普通本地 Error 落通用请求失败文案，不冒充网络故障。
+    expect(取P8错误文案(new Error('plain network error'))).toBe('请求失败，请稍后再试');
   });
 });
 

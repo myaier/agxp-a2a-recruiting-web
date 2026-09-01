@@ -114,7 +114,8 @@ describe('附件错误文案', () => {
   });
 
   it('非 BFF错误 与闭合表外的 BFF错误 交给现有 取后端错误文案', () => {
-    expect(附件错误文案(new Error('任意失败'), limits)).toBe('网络连接失败，请稍后再试');
+    // P0 修复 Task 6：普通本地 Error 不再冒充网络故障，也不泄露内部 message。
+    expect(附件错误文案(new Error('任意失败'), limits)).toBe('请求失败，请稍后再试');
     expect(附件错误文案(new BFF错误(0, 'network_error', 'fetch failed'), limits))
       .toBe('无法连接后端服务，请检查网络或稍后重试');
     expect(附件错误文案(new BFF错误(400, '未登记的新错误码', '神秘失败'), limits)).toBe('神秘失败');

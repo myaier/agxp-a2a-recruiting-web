@@ -8,7 +8,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import 发布岗位 from './发布岗位';
+import 发布岗位, { 取岗位提交错误文案 } from './发布岗位';
 import { 页面岗位样本 } from '../测试/BFF样本';
 import { BFF错误 } from '../数据/HTTP客户端';
 
@@ -581,5 +581,29 @@ describe('发布岗位页 Backend 职业分类层分页与代际（review-r3）'
     await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
     expect(screen.getByText('B岗位1')).toBeTruthy();
     expect(screen.queryByText('A岗位1（过期）')).toBeNull();
+  });
+});
+
+// ── P0 修复 Task 6：岗位表单的服务端校验投影 ────────────────────────
+// 只有「已知字段路径 × 已知空值类 reason」才本地化；未知路径或未知 reason
+// 一律落通用岗位文案，绝不把机器 reason 原样上屏。点分与 JSON Pointer 两种
+// 路径写法都要归一。
+describe('取岗位提交错误文案', () => {
+  it.each([
+    ['hiring_organization_claim.display_name', 'must_not_be_blank', '请填写公司名称'],
+    ['/office_location', 'required', '请填写办公地点'],
+    ['description', 'blank', '请填写职位描述'],
+    ['/requirements', 'must_not_be_blank', '请填写职位要求'],
+  ] as const)('把字段错误 %s 本地化', (path, reason, expected) => {
+    expect(取岗位提交错误文案(
+      new BFF错误(422, 'validation_failed', 'bad', [{ path, reason }]),
+    )).toBe(expected);
+  });
+
+  it.each([
+    [new BFF错误(422, 'validation_failed', 'bad', [{ path: 'unknown', reason: 'required' }])],
+    [new BFF错误(422, 'validation_failed', 'bad', [{ path: 'requirements', reason: 'unsupported_code' }])],
+  ])('未知字段或 reason 使用通用岗位文案', (error) => {
+    expect(取岗位提交错误文案(error)).toBe('请检查岗位信息');
   });
 });

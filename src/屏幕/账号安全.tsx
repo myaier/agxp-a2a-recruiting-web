@@ -45,6 +45,9 @@ function 取展示时间(iso: string): string {
 const 中性占位 = '—';
 const 退出其他基础说明 = '不影响本机，也不影响代理在后台继续谈';
 
+/** P0 修复 Task 6：导出/注销文案的角色中性名词短语 —— 招聘方账号也没有「简历」。 */
+const 账号业务记录文案 = '账号资料与业务记录';
+
 export default function 账号安全() {
   const { 返回, 替换跳转 } = use导航();
   const { 操作, 数据源模式, 后端状态 } = use应用状态();
@@ -116,9 +119,11 @@ export default function 账号安全() {
   const 导出可下载 = 导出数据 !== null && 导出数据.status === 'ready' && 导出数据.downloadReady;
 
   function 取导出行说明(): string {
-    if (导出快照 === null) return '打包下载你的简历与协商记录';
+    if (导出快照 === null) return `打包下载${账号业务记录文案}`;
     if (导出状态 === null) {
-      return 导出快照.phase === 'error' ? '导出状态获取失败，可重试' : '打包下载你的简历与协商记录';
+      return 导出快照.phase === 'error'
+        ? '导出状态获取失败，可重试'
+        : `打包下载${账号业务记录文案}`;
     }
     if (导出状态 === 'queued' || 导出状态 === 'running') return '正在生成，回到本页可继续查看';
     if (导出状态 === 'ready') return 导出数据 !== null && 导出数据.downloadReady ? '已生成，可下载' : '已生成，下载准备中';
@@ -138,7 +143,7 @@ export default function 账号安全() {
     } else if (导出查询中) {
       导出抽屉说明 = '正在查询导出状态，稍候…';
     } else {
-      导出抽屉说明 = '把你的简历与协商记录打包成 ZIP 文件。生成需要一点时间，关闭本页不会中断，回到这里可以继续查看。';
+      导出抽屉说明 = `把${账号业务记录文案}打包成 ZIP 文件。生成需要一点时间，关闭本页不会中断，回到这里可以继续查看。`;
       导出主键文案 = '生成导出文件';
       导出主键动作 = '创建';
     }
@@ -449,9 +454,7 @@ export default function 账号安全() {
             <div className={本屏样式.抓手} />
             <div className={本屏样式.抽屉标题}>注销账号会发生什么</div>
             <div className={样式.说明条} style={{ marginTop: 14 }}>
-              你的简历、意向、规则与收藏会
-              <span className={样式.说明强调}>立即删除</span>
-              ；正在进行的代谈会全部终止，对方只会收到「对方已退出」，不会知道原因。
+              你的账号资料与业务记录会按注销规则处理，且无法恢复。
             </div>
             <div className={本屏样式.抽屉说明}>
               代谈记录是双方共同的记录，不能因一方注销就凭空消失，因此它会被

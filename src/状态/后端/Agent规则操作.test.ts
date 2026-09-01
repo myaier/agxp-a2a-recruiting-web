@@ -1275,8 +1275,9 @@ describe('取Agent规则错误文案 · 七码冻结 + 兜底', () => {
     expect(取Agent规则错误文案(未知)).toBe('奇葩错误原文');
   });
 
-  it('非 BFF 错误回落通用网络文案', () => {
-    expect(取Agent规则错误文案(new Error('boom'))).toBe('网络连接失败，请稍后再试');
+  // P0 修复 Task 6：非 BFF 错误不是传输故障 —— 回落通用请求失败文案，不冒充网络。
+  it('非 BFF 错误回落通用请求失败文案，不冒充网络也不泄露内部 message', () => {
+    expect(取Agent规则错误文案(new Error('boom'))).toBe('请求失败，请稍后再试');
   });
 });
 

@@ -18,7 +18,7 @@ import 样式 from './发布岗位.module.css';
 import 数字滚轮层 from '../组件/数字滚轮层';
 import { 主按钮, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
-import { 取后端错误文案 } from '../数据/HTTP客户端';
+import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
@@ -79,6 +79,33 @@ const 是经验条 = (条: string) => /^\d+(?:-\d+)?\s*年以上(经验)?$/.test
 
 /** 这条硬性条件是不是学历条 */
 const 是学历条 = (条: string) => /^(大专|本科|硕士|博士)及以上$/.test(条);
+
+// ── P0 修复 Task 6：服务端 422 的岗位表单投影 ──────────────────────
+// 只把「已知字段路径 × 已知空值类 reason」翻成用户能照做的中文；未知路径或未知
+// reason 一律落通用岗位文案 —— 机器 reason 绝不原样上屏。
+const 可本地化空值原因 = new Set(['required', 'blank', 'must_not_be_blank']);
+const 岗位字段文案: Record<string, string> = {
+  'hiring_organization_claim.display_name': '请填写公司名称',
+  office_location: '请填写办公地点',
+  description: '请填写职位描述',
+  requirements: '请填写职位要求',
+};
+
+/** 归一字段路径：点分（a.b）与 JSON Pointer（/a/b）两种写法收敛成同一把 key。 */
+function 归一字段路径(path: string): string {
+  return path.startsWith('/') ? path.slice(1).replaceAll('/', '.') : path;
+}
+
+export function 取岗位提交错误文案(error: unknown): string {
+  if (!(error instanceof BFF错误) || error.code !== 'validation_failed') {
+    return 取后端错误文案(error);
+  }
+  for (const field of error.fieldErrors) {
+    const message = 岗位字段文案[归一字段路径(field.path)];
+    if (message && 可本地化空值原因.has(field.reason)) return message;
+  }
+  return '请检查岗位信息';
+}
 
 /** 从存量硬性条件里把经验档拆出来，如 '5 年以上经验' → '5 年以上'；拆不出返回 null */
 function 拆出经验(条件: string[] | undefined): string | null {
@@ -351,7 +378,9 @@ export default function 发布岗位() {
       if (从注册流) 进企业初始化();
       else 进企业主壳();
     } catch (错误) {
-      轻提示(取后端错误文案(错误));
+      // 诊断只留在开发态；生产用户只看到本地化文案，绝不泄露内部错误对象。
+      if (import.meta.env.DEV) console.error('岗位提交失败', 错误);
+      轻提示(取岗位提交错误文案(错误));
     } finally {
       提交锁.current = false;
     }

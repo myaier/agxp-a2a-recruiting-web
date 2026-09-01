@@ -179,7 +179,7 @@ npm run test:agent-browser:shell   # 公共步骤库 + 整栈运行器的 bash �
 ## 目录结构
 
 ```
-index.html                    移动 App 形态的 meta（viewport-fit=cover / 禁缩放 / 主屏全屏）
+index.html                    移动 App 形态的 meta（viewport-fit=cover / 允许浏览器缩放 / 主屏全屏）
 capacitor.config.ts           iOS 壳配置，接壳时用
 src/样式/设计令牌.css          颜色 / 圆角 / 安全区 / 顶部渐变，改这里等于全局改版
 src/样式/全局.css              重置 + App 手感（禁整页滚动、禁橡皮筋、禁点击高亮）

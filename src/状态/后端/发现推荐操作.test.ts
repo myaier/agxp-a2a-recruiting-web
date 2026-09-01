@@ -973,7 +973,8 @@ describe('P4 闭合错误文案', () => {
       .toBe('操作结果暂未确认，请稍后重试');
     // 闭合表之外的 HTTP code 与运行时错误才回落现有映射
     expect(P4错误文案(new BFF错误(500, 'unexpected_code', 'boom'))).toBe('boom');
-    expect(P4错误文案(new TypeError('x'))).toBe('网络连接失败，请稍后再试');
+    // P0 修复 Task 6：运行时错误回落通用请求失败文案，不冒充网络故障。
+    expect(P4错误文案(new TypeError('x'))).toBe('请求失败，请稍后再试');
   });
 
   it('P4拒绝文案 与 P4委托终态文案 逐项冻结', () => {

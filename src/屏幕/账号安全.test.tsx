@@ -749,6 +749,23 @@ describe('账号安全 · Backend 数据导出与注销', () => {
     expect(导航.替换跳转).not.toHaveBeenCalled();
   });
 
+  // P0 修复 Task 6：导出/注销文案对招聘方也必须成立 —— 角色中性名词短语，
+  // 屏内任何位置（含未展开的注销说明抽屉）都不得出现「你的简历」。
+  it('招聘方导出与注销文案不出现你的简历', () => {
+    环境({
+      模式: 'backend',
+      凭证: 成功快照([旧手机凭证]),
+      会话: 成功快照([本机会话]),
+    });
+    渲染();
+    // jest-dom 未安装：用等价或更强的原生断言（存在 + 已挂载 + 文本内容）
+    const 中性文案 = screen.getByText(/账号资料与业务记录/);
+    expect(中性文案.isConnected).toBe(true);
+    expect(中性文案.textContent).toContain('账号资料与业务记录');
+    expect(screen.queryByText(/你的简历/)).toBeNull();
+    expect(账号安全源码).not.toMatch(/你的简历/);
+  });
+
   it('注销遇 export_in_progress：保留确认层、不本地登出，提示等待导出', async () => {
     const 用户 = userEvent.setup();
     环境({

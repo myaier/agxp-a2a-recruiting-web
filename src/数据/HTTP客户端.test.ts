@@ -76,6 +76,22 @@ describe('BFF HTTP 客户端', () => {
       .toBe('证书年份超出范围');
   });
 
+  // Task 6：本地 Error 不冒充网络故障、不泄露内部文本；422 通用文案不展示机器 reason。
+  it('client validation 显示可行动文案，未知本地 Error 不冒充网络也不泄露内部文本', () => {
+    expect(取后端错误文案(new 客户端校验错误('requirements', '请填写职位要求')))
+      .toBe('请填写职位要求');
+    expect(取后端错误文案(new Error('招聘方档案状态尚未就绪，请刷新后重试')))
+      .toBe('请求失败，请稍后再试');
+  });
+
+  it('422 保留 fieldErrors，但通用文案不展示机器 reason', () => {
+    const error = new BFF错误(422, 'validation_failed', 'bad', [
+      { path: 'requirements', reason: 'must_not_be_blank' },
+    ]);
+    expect(error.fieldErrors).toEqual([{ path: 'requirements', reason: 'must_not_be_blank' }]);
+    expect(取后端错误文案(error)).toBe('填写内容未通过校验');
+  });
+
   it('FormData 原样发送且不手写 Content-Type', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => new Response(
       JSON.stringify({ result: { ok: true }, meta: { request_id: 'r1', api_version: 'v1' } }),

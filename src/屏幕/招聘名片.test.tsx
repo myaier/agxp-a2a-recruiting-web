@@ -147,7 +147,9 @@ describe('招聘名片 · Backend 诚实身份', () => {
     expect(await screen.findByText('保存成功')).toBeTruthy();
   });
 
-  it('保存失败保留输入并展示该槽位的拒绝理由', async () => {
+  // P0 修复 Task 6：422 的通用提示不再把机器 reason 原样上屏（本屏没有按槽位
+  // 渲染 fieldErrors 的 UI，旧断言实际测的是 取后端错误文案 透传 reason）。
+  it('保存失败保留输入且只给通用校验文案，不泄露服务端 reason', async () => {
     mock保存招聘方档案.mockRejectedValue(
       new BFF错误(400, 'validation_failed', '校验未通过', [
         { path: 'title', reason: '职务过长' },
@@ -160,7 +162,8 @@ describe('招聘名片 · Backend 诚实身份', () => {
     await 用户.clear(screen.getByLabelText('职务'));
     await 用户.type(screen.getByLabelText('职务'), '超长职务');
     await 用户.click(screen.getByRole('button', { name: '保存' }));
-    expect(await screen.findByText('职务过长')).toBeTruthy();
+    expect(await screen.findByText('填写内容未通过校验')).toBeTruthy();
+    expect(screen.queryByText('职务过长')).toBeNull(); // 机器 reason 绝不上屏
     // 失败不清输入：两行仍保留用户键入值
     expect((screen.getByLabelText('姓名') as HTMLInputElement).value).toBe('新公开名');
     expect((screen.getByLabelText('职务') as HTMLInputElement).value).toBe('超长职务');
