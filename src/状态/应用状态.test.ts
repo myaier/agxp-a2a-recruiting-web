@@ -938,6 +938,43 @@ describe('应用状态提供者 后端会话', () => {
     expect(当前.后端状态.初始化).toBe('完成');
   });
 
+  // 无恢复会话（冷启动 401）后用户完成短信登录：完成手机登录 要在提交 已登录=true
+  // 之前按 last_used_role 水合权威资料 —— 导航可见时简历/意向已就位，不再是空壳。
+  it('无恢复会话后短信登录已有 candidate 会在导航可见前水合权威资料', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.恢复会话).mockRejectedValueOnce(
+      new BFF错误(401, 'invalid_session', 'no session'),
+    );
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({
+      ...BFF主体样本,
+      subject_id: 'sub-interactive',
+      last_used_role: 'candidate',
+    });
+    // 种一条在招意向：登录水合要带回权威意向，不接受默认空清单 fixture
+    vi.mocked(后端.读取意向).mockResolvedValue({
+      列表: [{ 编号: 'int_1', 标题: 'AI 产品经理', 说明: '20–30K' }],
+      服务端: { int_1: BFF意向样本 },
+    });
+    render(createElement(
+      应用状态提供者,
+      { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端 as unknown as HTTP招聘数据源 } },
+      createElement(探针),
+    ));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(false);
+
+    // act 包裹：登录提交与水合派发都要落进 React 提交，探针读到的是导航可见时的状态
+    await act(async () => { await 当前.操作.完成手机登录('1234'); });
+
+    expect(当前.后端状态.已登录).toBe(true);
+    expect(当前.状态.基本信息.真名).toBe(BFF简历样本.profile.real_name);
+    expect(当前.状态.求职意向表).not.toEqual([]);
+    expect(后端.读取简历).toHaveBeenCalledTimes(1);
+    expect(后端.读取意向).toHaveBeenCalledTimes(1);
+  });
+
   it('Backend 账号资料写回只含白名单字段，不含 P1C 已接管的旧字段', async () => {
     let 当前!: ReturnType<typeof use应用状态>;
     function 上下文探针() { 当前 = use应用状态(); return null; }
@@ -2141,7 +2178,9 @@ describe('应用状态提供者 P2 附件库快照', () => {
     let 当前!: ReturnType<typeof use应用状态>;
     function 上下文探针() { 当前 = use应用状态(); return null; }
     const 后端 = 创建后端桩('candidate');
-    vi.mocked(后端.读取附件简历库).mockResolvedValue(附件库样本);
+    // 附件 mock 只服务 A 的 mount 读取：Task 2 起登录自带水合，B 的登录会再读
+    // 附件库（桩默认空库）—— 断言 A 的附件条目不串进 B，B 名下是自己的空库
+    vi.mocked(后端.读取附件简历库).mockResolvedValueOnce(附件库样本);
     vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' });
     const 后端源 = 后端 as unknown as HTTP招聘数据源;
     render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
@@ -2149,7 +2188,7 @@ describe('应用状态提供者 P2 附件库快照', () => {
     vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
     await 当前.操作.完成手机登录('1234');
     await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
-    expect(当前.后端状态.附件简历库).toBeNull();
+    expect(当前.后端状态.附件简历库?.items).toEqual([]);
   });
 });
 

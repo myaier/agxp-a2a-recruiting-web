@@ -13,6 +13,7 @@ import {
   BFF企业关系样本,
   BFF主体样本,
   BFF简历样本,
+  BFF意向样本,
   BFF隐私快照样本,
   BFFAgent规则就绪提案样本,
   BFFAgent规则解释中提案样本,
@@ -23,7 +24,7 @@ import {
 } from '../../测试/BFF样本';
 import { 从BFF简历 } from '../../数据/后端映射';
 import { 从BFF隐私 } from '../../数据/隐私映射';
-import type { 页面岗位快照, 页面隐私快照 } from '../../数据/招聘数据源类型';
+import type { 页面简历快照, 页面岗位快照, 页面隐私快照 } from '../../数据/招聘数据源类型';
 import { 创建初始状态, 初始状态 } from '../初始状态';
 import { 归约 } from '../应用状态';
 import { 创建空P4发现状态 } from './发现推荐操作';
@@ -124,9 +125,10 @@ describe('完成手机登录 subject-change 组织清理', () => {
   it('A→B 登录派发 清后端组织状态，A 的 claim/公开缓存/current 不进 B', async () => {
     const 后端 = {
       完成手机登录: vi.fn(async () => undefined),
+      // last_used_role null：本用例只断言组织域清理，登录水合不进角色分支
       读取主体: vi.fn()
-        .mockResolvedValueOnce(主体('sub_a'))
-        .mockResolvedValueOnce(主体('sub_b')),
+        .mockResolvedValueOnce({ ...主体('sub_a'), last_used_role: null })
+        .mockResolvedValueOnce({ ...主体('sub_b'), last_used_role: null }),
       清空目录缓存: vi.fn(),
     } as unknown as HTTP招聘数据源;
     const { deps, 动作流 } = 创建会话测试依赖(后端);
@@ -156,7 +158,8 @@ describe('完成手机登录 subject-change 组织清理', () => {
   it('同 subject_id 再次登录不触发组织清理', async () => {
     const 后端 = {
       完成手机登录: vi.fn(async () => undefined),
-      读取主体: vi.fn().mockResolvedValue(主体('sub_a')),
+      // last_used_role null：只看组织清理口径，登录水合不进角色分支
+      读取主体: vi.fn().mockResolvedValue({ ...主体('sub_a'), last_used_role: null }),
       清空目录缓存: vi.fn(),
     } as unknown as HTTP招聘数据源;
     const { deps, 动作流 } = 创建会话测试依赖(后端);
@@ -255,9 +258,11 @@ describe('P3 候选隐私水合与清理', () => {
   it('跨主体登录 A→B 时清上个账号的隐私快照', async () => {
     const 后端 = {
       完成手机登录: vi.fn(async () => undefined),
+      // last_used_role null：本用例断言清理后的隐私快照为 null，B 不带角色就不会
+      // 被登录水合的 水合后端隐私 重新填上（candidate B 会读回自己的隐私）
       读取主体: vi.fn()
-        .mockResolvedValueOnce(主体('sub_a'))
-        .mockResolvedValueOnce(主体('sub_b')),
+        .mockResolvedValueOnce({ ...主体('sub_a'), last_used_role: null })
+        .mockResolvedValueOnce({ ...主体('sub_b'), last_used_role: null }),
       清空目录缓存: vi.fn(),
     } as unknown as HTTP招聘数据源;
     const { deps, 动作流 } = 创建会话测试依赖(后端);
@@ -668,7 +673,8 @@ describe('P6 会话水合、清理与 Backend 种子', () => {
     const 后端 = 创建P6数据源桩();
     vi.mocked(后端.读取主体)
       .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_a' })
-      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b' });
+      // B 无角色：登录只做清理不进角色水合，断言停在「两个角色都回 未开始」
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b', last_used_role: null });
     const { deps, 最新后端状态, 动作流 } = 创建P6会话依赖(后端);
     const 操作 = 创建会话操作(deps);
     await 操作.完成手机登录('1111');
@@ -1114,7 +1120,8 @@ describe('P2 附件支持域水合与清理', () => {
     const 后端 = 创建P6数据源桩();
     vi.mocked(后端.读取主体)
       .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_a' })
-      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b' });
+      // B 无角色：登录只做清理不进角色水合，附件快照停在清理后的 null
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b', last_used_role: null });
     const { deps, 最新后端状态, 动作流 } = 创建P6会话依赖(后端);
     const 操作 = 创建会话操作(deps);
     await 操作.完成手机登录('1111');
@@ -1516,5 +1523,173 @@ describe('重新水合招聘方数据', () => {
     expect(最终.招聘方组织水合).toEqual({ 阶段: '成功', 错误: null });
     // 重试期间 初始化 走 进行中 → 完成，加载屏全程可见
     expect(最终.初始化).toBe('完成');
+  });
+});
+
+// ── 交互短信登录的水合编排 ────────────────────────────────────────
+// 完成手机登录 在提交 已登录=true 之前先按 last_used_role 水合全部支持域：
+// 导航可见时权威资料已在；当前轮 401 统一清理后以标准 invalid_session 拒绝一次；
+// 同 subject 后一轮登录让前一轮的迟到水合整包作废，不得重复提交登录态。
+
+describe('交互短信登录水合编排', () => {
+  it('已有 candidate 短信登录在五类支持域结算后才提交登录态', async () => {
+    const 后端 = 创建P6数据源桩();
+    const 附件门 = deferred<BFF附件简历库>();
+    vi.mocked(后端.读取主体).mockResolvedValue(candidate主体);
+    vi.mocked(后端.读取简历).mockResolvedValue(从BFF简历(BFF简历样本));
+    vi.mocked(后端.读取意向).mockResolvedValue({
+      列表: [{ 编号: 'int_1', 标题: 'AI 产品经理', 说明: '20–30K' }],
+      服务端: { int_1: BFF意向样本 },
+    });
+    vi.mocked(后端.读取附件简历库).mockReturnValue(附件门.promise);
+    const { deps, 状态引用, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
+
+    const 登录 = 创建会话操作(deps).完成手机登录('1234');
+    await vi.waitFor(() => expect(后端.读取附件简历库).toHaveBeenCalledTimes(1));
+    expect(最新后端状态().已登录).toBe(false);
+    expect(后端.读取简历).toHaveBeenCalledTimes(1);
+    expect(后端.读取意向).toHaveBeenCalledTimes(1);
+    expect(后端.读取隐私).toHaveBeenCalledTimes(1);
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('candidate');
+    expect(后端.读取Agent规则提案列表).toHaveBeenCalledTimes(2);
+
+    附件门.resolve(空附件库样本);
+    await 登录;
+    expect(最新后端状态().已登录).toBe(true);
+    expect(最新后端状态().主体).toEqual(candidate主体);
+    expect(状态引用.current.求职意向表).toHaveLength(1);
+    expect(状态引用.current.基本信息).toEqual(expect.objectContaining({
+      真名: BFF简历样本.profile.real_name,
+    }));
+  });
+
+  it('已有 recruiter 短信登录执行组织、岗位和规则链', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体).mockResolvedValue(recruiter主体);
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
+
+    await 创建会话操作(deps).完成手机登录('1234');
+
+    expect(后端.读取招聘方档案).toHaveBeenCalledTimes(1);
+    expect(后端.读取我的企业关系).toHaveBeenCalledTimes(1);
+    expect(后端.读取岗位).toHaveBeenCalledTimes(1);
+    expect(后端.读取Agent规则).toHaveBeenCalledWith('recruiter');
+    expect(最新后端状态()).toMatchObject({
+      已登录: true,
+      主体: recruiter主体,
+      招聘方组织水合: { 阶段: '成功', 错误: null },
+    });
+  });
+
+  it('last_used_role null 登录不读取角色域', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, last_used_role: null });
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
+    await 创建会话操作(deps).完成手机登录('1234');
+    expect(后端.读取简历).not.toHaveBeenCalled();
+    expect(后端.读取岗位).not.toHaveBeenCalled();
+    expect(后端.读取Agent规则).not.toHaveBeenCalled();
+    expect(最新后端状态().已登录).toBe(true);
+  });
+
+  it('交互登录水合 401 不落登录态并统一清理', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体).mockResolvedValue(candidate主体);
+    vi.mocked(后端.读取意向).mockRejectedValue(
+      new BFF错误(401, 'invalid_session', 'expired'),
+    );
+    const { deps, 最新后端状态, 状态引用 } = 创建P6会话依赖(后端);
+    deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
+    await expect(创建会话操作(deps).完成手机登录('1234')).rejects.toMatchObject({
+      status: 401,
+      code: 'invalid_session',
+    });
+    expect(最新后端状态()).toMatchObject({ 已登录: false, 主体: null });
+    expect(状态引用.current.求职意向表).toEqual([]);
+    expect(最新后端状态().附件简历库).toBeNull();
+  });
+
+  it('recruiter 组织水合 401 同样拒绝并保持未登录', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体).mockResolvedValue(recruiter主体);
+    vi.mocked(后端.读取招聘方档案).mockRejectedValue(
+      new BFF错误(401, 'invalid_session', 'expired'),
+    );
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
+
+    await expect(创建会话操作(deps).完成手机登录('1234')).rejects.toMatchObject({
+      status: 401,
+      code: 'invalid_session',
+    });
+
+    expect(最新后端状态()).toMatchObject({ 已登录: false, 主体: null });
+  });
+
+  it('切身份水合 401 拒绝，让身份页阻止成功导航', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取简历).mockRejectedValue(
+      new BFF错误(401, 'invalid_session', 'expired'),
+    );
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+
+    await expect(创建会话操作(deps).切身份('求职者')).rejects.toMatchObject({
+      status: 401,
+      code: 'invalid_session',
+    });
+    expect(最新后端状态()).toMatchObject({ 已登录: false, 主体: null });
+  });
+
+  it('单域非 401 失败保留兄弟域并完成登录', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体).mockResolvedValue(candidate主体);
+    vi.mocked(后端.读取简历).mockResolvedValue(从BFF简历(BFF简历样本));
+    vi.mocked(后端.读取附件简历库).mockRejectedValue(
+      new BFF错误(503, 'storage_unavailable', 'down'),
+    );
+    const { deps, 最新后端状态, 状态引用 } = 创建P6会话依赖(后端);
+    deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
+    await expect(创建会话操作(deps).完成手机登录('1234')).resolves.toBeUndefined();
+    expect(最新后端状态().已登录).toBe(true);
+    expect(最新后端状态().附件简历库).toBeNull();
+    expect(状态引用.current.基本信息.真名).toBe(BFF简历样本.profile.real_name);
+  });
+
+  it('同 subject 后一轮登录完成后前一轮迟到水合不能再次提交登录态', async () => {
+    const 后端 = 创建P6数据源桩();
+    const 第一简历门 = deferred<页面简历快照>();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce(candidate主体)
+      .mockResolvedValueOnce(candidate主体);
+    vi.mocked(后端.读取简历)
+      .mockReturnValueOnce(第一简历门.promise)
+      .mockResolvedValue(从BFF简历(BFF简历样本));
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    const 原设后端状态 = deps.设后端状态;
+    const 登录提交 = vi.fn();
+    deps.设后端状态 = (更新) => {
+      const 之前 = 最新后端状态();
+      原设后端状态(更新);
+      const 之后 = 最新后端状态();
+      if (!之前.已登录 && 之后.已登录) 登录提交(之后.主体?.subject_id);
+    };
+    deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
+    const 操作 = 创建会话操作(deps);
+
+    const 第一轮 = 操作.完成手机登录('1111');
+    await vi.waitFor(() => expect(后端.读取简历).toHaveBeenCalledTimes(1));
+    const 第二轮 = 操作.完成手机登录('2222');
+    await 第二轮;
+    expect(登录提交).toHaveBeenCalledTimes(1);
+    expect(最新后端状态()).toMatchObject({ 已登录: true, 主体: candidate主体 });
+
+    第一简历门.resolve(从BFF简历(BFF简历样本));
+    await 第一轮;
+    expect(登录提交).toHaveBeenCalledTimes(1);
+    expect(deps.会话代际.current).toBe(2);
   });
 });
