@@ -37,3 +37,6 @@ ui-regression-output/
 
 # agent-browser 真实后端整栈验收的运行产物（候选截图、diff、报告、日志）
 /agent-browser-backend-output/
+
+# Agent dogfood 临时证据（截图、视频、HAR、Chrome profile、会话状态与原材料副本）
+dogfood-output/
