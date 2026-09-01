@@ -10,10 +10,20 @@
 // 从中能直接反查到 src/屏幕/在谈首页.module.css 的 .薪资 —— 所以收到标注的人
 // 不需要提意见的人解释「在哪个页面哪个位置」。
 //
-// 意见存 localStorage，刷新不丢；本组件全部用内联样式，避免自己的类名混进捕获结果。
+// 意见存 localStorage，刷新不丢；设备内的部分（输入条 / 导出面板 / 遮罩）全用内联
+// 样式，避免自己的类名混进捕获结果。启动器是唯一例外：它经 portal 挂到设备外的
+// 评审布局工具车道里（见 标注层.module.css），用 CSS Modules 排布。
+//
+// 启动器出设备（Task 7，2026-09-01）：铅笔 + 计数角标原先悬在设备内容右下角，
+// 会盖住业务键的右半边（物理点击被截走）。现在启动器子树经 createPortal 挂进
+// main.tsx 预留的工具车道（窄屏底部 80px 行 / 宽屏右侧 64px 列），设备内的标注
+// 覆盖件保持 absolute inset:0 的原几何不动 —— 桌面机身有 scale 变换，绝不能用
+// position: fixed（变换会成为 fixed 后代 的包含块），也不整体搬到视口。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
+import 样式 from './标注层.module.css';
 import { 轻提示 } from './轻提示';
 
 interface 标注 {
@@ -158,7 +168,7 @@ function 取元素位置(目标: Element): string {
   return 链.join(' ← ') || '（未命中具名元素）';
 }
 
-export default function 标注层() {
+export default function 标注层({ 启动器容器 }: { 启动器容器: HTMLElement | null }) {
   const 位置信息 = useLocation();
   const [开启, 设开启] = useState(false);
   const [草稿目标, 设草稿目标] = useState<Omit<标注, '编号' | '意见' | '时间'> | null>(null);
@@ -275,6 +285,52 @@ export default function 标注层() {
     }
   };
 
+  // 启动器子树（铅笔 + 计数角标）：渲染进 data-标注 根（React 树里占位），
+  // 但 DOM 经 portal 挂到设备外的工具车道 —— 它是「评审工具」，不是设备内容。
+  // data-标注 必须随身带：portal 后 DOM 不再是 data-标注 根的后代，
+  // 标注模式下靠它豁免自己的点击拦截（见上面的 拦截）。
+  const 启动器 = (
+    <div className={样式.启动器} data-标注>
+      {清单.length > 0 ? (
+        <button
+          onClick={() => 设导出面板(true)}
+          style={{
+            minWidth: 22,
+            height: 22,
+            borderRadius: 11,
+            background: 'var(--意向)',
+            color: '#fff',
+            fontSize: 11,
+            fontWeight: 700,
+            padding: '0 6px',
+            cursor: 'pointer',
+          }}
+        >
+          {清单.length}
+        </button>
+      ) : null}
+      <button
+        onClick={() => 设开启((旧) => !旧)}
+        aria-label="标注模式"
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          border: '1px solid rgba(0,0,0,0.08)',
+          background: 开启 ? 'var(--荧光绿)' : 'rgba(255,255,255,0.55)',
+          opacity: 开启 ? 1 : 0.55,
+          fontSize: 15,
+          cursor: 'pointer',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+        }}
+      >
+        {开启 ? '✕' : '✎'}
+      </button>
+    </div>
+  );
+  // 车道节点还没挂上 ref 时先不渲染启动器（首帧即恢复，无兜底副本）
+  const 启动器Portal = 启动器容器 ? createPortal(启动器, 启动器容器) : null;
+
   return (
     <div data-标注 style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 90 }}>
       {/* 标注模式提示条 */}
@@ -297,55 +353,8 @@ export default function 标注层() {
         </div>
       ) : null}
 
-      {/* 右下角铅笔（低调常驻）+ 计数角标（点开导出面板） */}
-      <div
-        style={{
-          position: 'absolute',
-          right: 14,
-          bottom: 'calc(var(--安全区下) + 96px)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 6,
-          pointerEvents: 'auto',
-        }}
-      >
-        {清单.length > 0 ? (
-          <button
-            onClick={() => 设导出面板(true)}
-            style={{
-              minWidth: 22,
-              height: 22,
-              borderRadius: 11,
-              background: 'var(--意向)',
-              color: '#fff',
-              fontSize: 11,
-              fontWeight: 700,
-              padding: '0 6px',
-              cursor: 'pointer',
-            }}
-          >
-            {清单.length}
-          </button>
-        ) : null}
-        <button
-          onClick={() => 设开启((旧) => !旧)}
-          aria-label="标注模式"
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: 17,
-            border: '1px solid rgba(0,0,0,0.08)',
-            background: 开启 ? 'var(--荧光绿)' : 'rgba(255,255,255,0.55)',
-            opacity: 开启 ? 1 : 0.55,
-            fontSize: 15,
-            cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-          }}
-        >
-          {开启 ? '✕' : '✎'}
-        </button>
-      </div>
+      {/* 铅笔 + 计数角标：portal 到设备外工具车道（见 启动器），设备内不留守副本 */}
+      {启动器Portal}
 
       {/* 点中元素后的意见输入条 */}
       {草稿目标 ? (

@@ -44,6 +44,16 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
+    {
+      // 标注评审构建：唯一带 VITE_ANNOTATION_ENABLED=true 的 server —— 标注 UI
+      // 只在显式开启的构建里存在，缺省构建（4181/4182、生产 Pages）不渲染标注层
+      name: 'backend-stg-annotation',
+      command:
+        'VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=stg VITE_ANNOTATION_ENABLED=true npm run dev -- --host 127.0.0.1 --port 4183 --strictPort',
+      url: 'http://127.0.0.1:4183',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
   ],
   projects: [
     {
@@ -66,6 +76,17 @@ export default defineConfig({
         baseURL: 'http://127.0.0.1:4182',
       },
       grep: /@backend/,
+    },
+    {
+      // 隔离的标注项目：只跑 @annotation 用例，钉到 4183 标注构建
+      name: 'backend-stg-annotation',
+      use: {
+        ...devices['iPhone 13'],
+        browserName: 'chromium',
+        channel: 'chrome',
+        baseURL: 'http://127.0.0.1:4183',
+      },
+      grep: /@annotation/,
     },
   ],
 });
