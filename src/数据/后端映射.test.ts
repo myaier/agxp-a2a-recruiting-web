@@ -35,6 +35,20 @@ const 直接发岗上下文 = (display_name: string): 岗位创建上下文 => (
   hiringOrganizationClaim: { display_name, legal_name: null },
 });
 
+/** P0 修复 Task 4：JobCreate 的最小完整草稿 —— 目录引用齐备，描述与要求各自独立非空。 */
+const 完整岗位草稿 = {
+  ...页面岗位样本,
+  类别引用: { id: 'tax_product', display_name: '产品经理' },
+  地点引用: { id: 'loc_shanghai', display_name: '上海' },
+  职位描述: '职位描述正文',
+  职位要求: '职位要求正文',
+};
+
+const 完整创建上下文 = 直接发岗上下文('星河科技');
+
+/** 编辑态的服务端权威 owner DTO（claim 由服务端拥有，页面不可改） */
+const 服务端岗位 = BFF岗位样本;
+
 describe('候选人后端映射', () => {
   it('完整映射 profile 并保留四类条目的真实 ID', () => {
     const 页面 = 从BFF简历({
@@ -145,18 +159,56 @@ describe('候选人后端映射', () => {
     expect(body).not.toHaveProperty('实习转正');
   });
 
-  // 产品已删除与职位描述重复的「职位要求」输入；新建态该隐藏字段为空时，
-  // BFF 的必填 requirements 必须复用用户刚确认过的职位描述，不能发空串被 422 拒绝。
-  it('新建岗位的隐藏职位要求为空时复用职位描述', () => {
-    const body = 转岗位创建({
-      ...页面岗位样本,
-      类别引用: { id: 'tax_product', display_name: '产品经理' },
-      地点引用: { id: 'loc_shanghai', display_name: '上海' },
-      职位描述: '负责真实后端整栈验收',
-      职位要求: '',
-    }, 直接发岗上下文('云衢科技'));
+  // P0 修复 Task 4：真实 BFF 的 JobCreate 要求公司声明 / 描述 / 要求 三条各自 trim 后非空。
+  // 「requirements 为空就复用 description」的老回退已删 —— 两个字段必须独立。
+  it('JobCreate 独立 trim 公司名、描述和要求，不互相复制', () => {
+    const body = 转岗位创建(完整岗位草稿, {
+      publisherMode: 'direct',
+      hiringOrganizationClaim: { display_name: '  星河科技  ', legal_name: null },
+    });
+    expect(body).toMatchObject({
+      hiring_organization_claim: { display_name: '星河科技', legal_name: null },
+      description: '职位描述正文',
+      requirements: '职位要求正文',
+    });
+  });
 
-    expect(body.requirements).toBe('负责真实后端整栈验收');
+  it.each([
+    ['职位描述', { 职位描述: '   ', 职位要求: '要求' }, 'description'],
+    ['职位要求', { 职位描述: '描述', 职位要求: '   ' }, 'requirements'],
+  ])('%s 为空时不生成 JobCreate', (_label, patch, field) => {
+    try {
+      转岗位创建({ ...完整岗位草稿, ...patch }, 完整创建上下文);
+      expect.unreachable('空白文本必须拒绝');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'client_validation', field });
+    }
+  });
+
+  it('公司声明为空时 mapper 不生成 JobCreate', () => {
+    try {
+      转岗位创建(完整岗位草稿, {
+        publisherMode: 'direct',
+        hiringOrganizationClaim: { display_name: '   ', legal_name: null },
+      });
+      expect.unreachable('空白公司声明必须拒绝');
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: 'client_validation', field: 'hiring_organization_claim.display_name',
+      });
+    }
+  });
+
+  it('JobPatch 保持两参 seam，只 trim 用户可编辑的描述和要求', () => {
+    const body = 转岗位补丁(
+      { ...完整岗位草稿, 职位描述: '  描述  ', 职位要求: '  要求  ' },
+      服务端岗位,
+    );
+    expect(body).toMatchObject({
+      hiring_organization_claim: 服务端岗位.hiring_organization_claim,
+      description: '描述',
+      requirements: '要求',
+    });
   });
 
   // P1C Task 5：创建/补丁 body 不得携带服务端专有 refs 与 verification status。

@@ -33,6 +33,15 @@ vi.mock('../路由/导航钩子', () => ({
 }));
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
 
+/** 轻提示 是挂在 document.body 上的纯 DOM 单例，RTL cleanup 不清它。
+ *  每个用例开头清一次，保证「有没有弹这条」问的是本用例自己弹的。 */
+function 清空轻提示() {
+  for (const 节点 of Array.from(document.body.children)) {
+    const 元素 = 节点 as HTMLElement;
+    if (元素.style.position === 'fixed' && 元素.style.zIndex === '999') 元素.innerHTML = '';
+  }
+}
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -43,19 +52,42 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+/** P0 修复 Task 4：发岗前置校验会读组织链三字段，两个桩都按 初始状态 的形状补齐。 */
+type 组织覆盖 = {
+  企业关系列表?: unknown[];
+  当前企业关系编号?: string | null;
+  未认证公司声明?: string;
+  企业认证?: { 姓名: string; 公司: string };
+};
+
+function 组基础状态(覆盖: 组织覆盖 = {}) {
+  return {
+    岗位列表: [页面岗位样本],
+    企业候选列表: [],
+    企业关系列表: 覆盖.企业关系列表 ?? [],
+    当前企业关系编号: 覆盖.当前企业关系编号 ?? null,
+    未认证公司声明: 覆盖.未认证公司声明 ?? '星河科技',
+    企业认证: 覆盖.企业认证 ?? { 姓名: '林澈', 公司: 'Mock 公司' },
+  };
+}
+
 /** 默认 Mock 模式桩：数据源模式 undefined → 是后端=false，与原 Mock 测试同形 */
-function 置Mock应用状态() {
+function 置Mock应用状态(覆盖: 组织覆盖 = {}) {
   mock应用状态 = {
-    状态: { 岗位列表: [页面岗位样本], 企业候选列表: [] },
+    状态: 组基础状态(覆盖),
     派发: vi.fn(),
     操作: { 更新岗位: mock更新岗位, 发布岗位: mock发布岗位, 删除岗位: mock删除岗位 },
   };
 }
 
 /** Backend 桩：数据源模式 'backend' + 目录查询 seam（查询Taxonomy/查询Location 可注入） */
-function 置Backend应用状态(查询Taxonomy: ReturnType<typeof vi.fn>, 查询Location: ReturnType<typeof vi.fn>) {
+function 置Backend应用状态(
+  查询Taxonomy: ReturnType<typeof vi.fn>,
+  查询Location: ReturnType<typeof vi.fn>,
+  覆盖: 组织覆盖 = {},
+) {
   mock应用状态 = {
-    状态: { 岗位列表: [页面岗位样本], 企业候选列表: [] },
+    状态: 组基础状态(覆盖),
     派发: vi.fn(),
     操作: { 更新岗位: mock更新岗位, 发布岗位: mock发布岗位, 删除岗位: mock删除岗位 },
     数据源模式: 'backend',
@@ -76,6 +108,7 @@ describe('发布岗位页 Backend 提交', () => {
     mock更新岗位.mockClear();
     mock发布岗位.mockClear();
     mock删除岗位.mockClear();
+    清空轻提示();
     // 默认 Mock 桩：原有编辑保存测试不依赖 数据源模式/目录查询
     置Mock应用状态();
   });
@@ -208,6 +241,7 @@ describe('发布岗位页 Backend 选择器', () => {
     mock更新岗位.mockClear();
     mock发布岗位.mockClear();
     mock删除岗位.mockClear();
+    清空轻提示();
     查询Taxonomy.mockClear();
     查询Location.mockClear();
     mock发布岗位.mockResolvedValue(undefined);
@@ -215,8 +249,10 @@ describe('发布岗位页 Backend 选择器', () => {
   });
 
   /** 把三步向导填到「只差点发布」的状态，返回候选城市按钮（已出现但未点）。
-   *  选城市=false 时只输入不选；选城市=true 时点候选，落 地点引用。 */
-  async function 填到发布前(选城市: boolean) {
+   *  选城市=false 时只输入不选；选城市=true 时点候选，落 地点引用。
+   *  P0 修复 Task 4：第三步恢复了独立的「职位要求」输入 —— 默认填一句与描述不同的话；
+   *  职位要求=null 时故意留空，用来验前置校验。 */
+  async function 填到发布前(选城市: boolean, 选项: { 职位要求?: string | null } = {}) {
     const 用户 = userEvent.setup();
     render(
       <MemoryRouter initialEntries={['/hr/post-job']}>
@@ -258,7 +294,11 @@ describe('发布岗位页 Backend 选择器', () => {
       screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'),
       '张江路 1 号',
     );
-    // 职位要求输入区 2026-08-24 已删（与职位描述重复），不再填写
+    // 职位要求：与职位描述各自独立的一段文本
+    const 职位要求文本 = 选项.职位要求 === undefined ? '有分布式系统与撮合引擎经验' : 选项.职位要求;
+    if (职位要求文本 !== null) {
+      await 用户.type(screen.getByRole('textbox', { name: '职位要求' }), 职位要求文本);
+    }
     // 工作城市：输入触发 250ms debounce 候选查询
     await 用户.type(
       screen.getByPlaceholderText('搜索城市名，从下方候选选择'),
@@ -289,6 +329,49 @@ describe('发布岗位页 Backend 选择器', () => {
     expect(await screen.findByText('请从候选城市中选择')).toBeTruthy();
   });
 
+  // ── P0 修复 Task 4：JobCreate 的三条独立必填文本 ──
+
+  it('第三步显示独立的职位要求 textarea', async () => {
+    const { 用户 } = await 填到发布前(true, { 职位要求: null });
+    const 要求框 = screen.getByRole('textbox', { name: '职位要求' }) as HTMLTextAreaElement;
+    expect(要求框.disabled).toBe(false);
+    expect(要求框.readOnly).toBe(false);
+    // 第二步填过的职位描述没有渗进来：这是一个独立的空输入
+    expect(要求框.value).toBe('');
+    await 用户.type(要求框, '要求正文');
+    expect((screen.getByRole('textbox', { name: '职位要求' }) as HTMLTextAreaElement).value)
+      .toBe('要求正文');
+  });
+
+  it('职位要求为空时回到第三步、显示可行动文案且零 mutation', async () => {
+    const { 用户 } = await 填到发布前(true, { 职位要求: null });
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    expect(await screen.findByText('请填写职位要求')).toBeTruthy();
+    expect(mock发布岗位).not.toHaveBeenCalled();
+    // 留在第三步：要求输入框仍在屏上，用户看得见该改哪儿
+    expect(screen.getByRole('textbox', { name: '职位要求' })).toBeTruthy();
+  });
+
+  it('无 verified affiliation 且公司声明为空时零 mutation', async () => {
+    置Backend应用状态(查询Taxonomy, 查询Location, {
+      企业关系列表: [], 当前企业关系编号: null, 未认证公司声明: '   ',
+    });
+    const { 用户 } = await 填到发布前(true);
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    expect(await screen.findByText('请填写公司名称')).toBeTruthy();
+    expect(mock发布岗位).not.toHaveBeenCalled();
+  });
+
+  it('完整表单把独立 description 和 requirements 交给 operation', async () => {
+    const { 用户 } = await 填到发布前(true, { 职位要求: '  应届或毕业年级；关注 AI 与开发工具  ' });
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
+      职位描述: '负责交易网关与撮合核心',
+      职位要求: '应届或毕业年级；关注 AI 与开发工具',
+    });
+  });
+
   // Task 5：新岗四问全部从未说明起步；没点过的三问也必须以 未说明 随完整对象提交，
   // 绝不允许缺员 —— 服务端 hard_requirements 四员必返/必收。
   it('new job starts with four unknown facts and submits the complete object', async () => {
@@ -302,6 +385,69 @@ describe('发布岗位页 Backend 选择器', () => {
   });
 });
 
+// ── P0 修复 Task 4：Mock 发岗语义冻结 —— 公司声明前置校验只在 Backend 生效 ──
+describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', () => {
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock进企业主壳.mockClear();
+    mock替换跳转.mockClear();
+    mock跳转.mockClear();
+    mock更新岗位.mockClear();
+    mock发布岗位.mockClear();
+    mock删除岗位.mockClear();
+    清空轻提示();
+    mock发布岗位.mockResolvedValue(undefined);
+  });
+
+  it('Mock 发岗不读取 Backend 专属未认证公司声明', async () => {
+    // Backend 专属的 未认证公司声明 为空，Mock 仍按 企业认证.公司 走原有发布流程
+    置Mock应用状态({ 未认证公司声明: '', 企业认证: { 姓名: '林澈', 公司: 'Mock 公司' } });
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job']}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // 第一步：基础信息（Mock 走本地职业分类表）
+    await 用户.type(
+      screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关'),
+      'AI 产品实习生',
+    );
+    await 用户.click(screen.getByRole('button', { name: '现场' }));
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    await 用户.click(screen.getByRole('button', { name: '产品' }));
+    await 用户.click(screen.getByRole('button', { name: '产品经理' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+
+    // 第二步：职位描述
+    await 用户.type(screen.getByRole('textbox', { name: '职位描述' }), '描述正文');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+
+    // 第三步：职位要求 + 薪资 + 城市 + 办公地
+    await 用户.type(screen.getByRole('textbox', { name: '职位要求' }), '要求正文');
+    await 用户.type(screen.getByLabelText('薪资下限'), '20');
+    await 用户.type(screen.getByLabelText('薪资上限'), '30');
+    await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.type(screen.getByPlaceholderText('如：上海'), '上海');
+    await 用户.type(
+      screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'),
+      '张江路 1 号',
+    );
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('请填写公司名称')).toBeNull();
+    expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
+      职位描述: '描述正文', 职位要求: '要求正文',
+    });
+  });
+});
+
 // ── review-r3 R3-I-5：职业分类层后端 分页 + R3-I-6 导航代际守 stale ──
 describe('发布岗位页 Backend 职业分类层分页与代际（review-r3）', () => {
   beforeEach(() => {
@@ -312,6 +458,7 @@ describe('发布岗位页 Backend 职业分类层分页与代际（review-r3）'
     mock更新岗位.mockClear();
     mock发布岗位.mockClear();
     mock删除岗位.mockClear();
+    清空轻提示();
     mock发布岗位.mockResolvedValue(undefined);
   });
 
