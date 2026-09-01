@@ -110,6 +110,19 @@ function 创建组织测试依赖(input: {
     状态引用: { current: 初始状态 },
     后端状态引用: { current: 创建测试后端状态() },
     锁: { current: new Set<string>() }, 尝试引用: { current: null }, 是后端: true,
+    // 会话栅栏用例：与 创建P6会话依赖 同形的 P4/P7/P8 运行时引用（401 清理断言用）
+    P4范围代际: { current: new Map<string, number>() },
+    P4幂等意图: { current: new Map<string, string>() },
+    P4可见范围: { current: { candidate: null, recruiter: null } },
+    P7范围代际: { current: new Map<string, number>() },
+    P7待定意图: { current: new Map<string, never>() },
+    P7可见收件箱: { current: { candidate: false, recruiter: false } as { candidate: boolean; recruiter: boolean } },
+    P7可见会话: { current: { candidate: null, recruiter: null } },
+    P7已读位置: { current: new Map<string, never>() },
+    P8范围代际: { current: 0 },
+    P8账号可见: { current: false as boolean },
+    P8读取锁: { current: new Map<'credentials' | 'sessions' | 'export', Promise<void>>() },
+    P8待定意图: { current: new Map<string, { key: string; request: unknown }>() },
   } satisfies 后端操作依赖;
 }
 
@@ -326,6 +339,31 @@ describe('水合招聘方组织数据', () => {
     expect(设后端状态).toHaveBeenCalledWith(expect.any(Function));
     expect(deps.主体标识引用.current).toBeNull();
     expect(deps.会话代际.current).toBe(8);
+  });
+
+  it('组织水合当前轮 401 清 P7 与 P8 运行时引用', async () => {
+    const 后端 = 创建完整测试数据源({
+      读取招聘方档案: async () => {
+        throw new BFF错误(401, 'invalid_session', 'expired');
+      },
+    });
+    const deps = 创建组织测试依赖({
+      后端,
+      派发: vi.fn(),
+      subject: 'sub_1',
+      generation: 7,
+    });
+    deps.P7范围代际.current.set('recruiter:inbox', 3);
+    deps.P7可见收件箱.current.recruiter = true;
+    deps.P8读取锁.current.set('sessions', Promise.resolve());
+    deps.P8账号可见.current = true;
+
+    await expect(水合招聘方组织数据(deps, 'sub_1', 7, null))
+      .resolves.toEqual({ sessionExpired: true });
+    expect(deps.P7范围代际.current.size).toBe(0);
+    expect(deps.P7可见收件箱.current.recruiter).toBe(false);
+    expect(deps.P8读取锁.current.size).toBe(0);
+    expect(deps.P8账号可见.current).toBe(false);
   });
 
   it('mount 初始化 非401 错误由 水合角色数据 轻提示一次，不算会话失效', async () => {

@@ -905,6 +905,39 @@ describe('应用状态提供者 后端会话', () => {
     expect(当前.后端状态.已登录).toBe(true);
   });
 
+  // 会话栅栏：mount 水合在飞期间用户完成了新的短信登录 —— 迟到的 mount 结算
+  // （外层 subject + generation 栅栏）不得把旧会话的简历/主体写进新会话，
+  // mount 收口也只关 初始化，不覆盖新登录态。本用例写在 Task 2 之前：当前
+  // 完成手机登录 只换代际不自带水合；Task 2 后第二份 读取简历 mock 服务新登录水合。
+  it('迟到的 mount 水合不覆盖期间建立的新短信会话', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 旧简历门 = deferred<页面简历快照>();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'stale-subject' })
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'fresh-subject' });
+    vi.mocked(后端.读取简历)
+      .mockReturnValueOnce(旧简历门.promise)
+      .mockResolvedValue(从BFF简历(BFF简历样本));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(
+      应用状态提供者,
+      { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } },
+      createElement(上下文探针),
+    ));
+    await waitFor(() => expect(后端.读取简历).toHaveBeenCalledTimes(1));
+
+    await act(async () => { await 当前.操作.完成手机登录('1234'); });
+    expect(当前.后端状态.主体?.subject_id).toBe('fresh-subject');
+
+    旧简历门.resolve(从BFF简历(BFF简历样本));
+    await act(async () => { await 旧简历门.promise; });
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('fresh-subject'));
+    expect(当前.后端状态.已登录).toBe(true);
+    expect(当前.后端状态.初始化).toBe('完成');
+  });
+
   it('Backend 账号资料写回只含白名单字段，不含 P1C 已接管的旧字段', async () => {
     let 当前!: ReturnType<typeof use应用状态>;
     function 上下文探针() { 当前 = use应用状态(); return null; }

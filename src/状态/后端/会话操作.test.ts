@@ -23,7 +23,7 @@ import {
 } from '../../测试/BFF样本';
 import { 从BFF简历 } from '../../数据/后端映射';
 import { 从BFF隐私 } from '../../数据/隐私映射';
-import type { 页面隐私快照 } from '../../数据/招聘数据源类型';
+import type { 页面岗位快照, 页面隐私快照 } from '../../数据/招聘数据源类型';
 import { 创建初始状态, 初始状态 } from '../初始状态';
 import { 归约 } from '../应用状态';
 import { 创建空P4发现状态 } from './发现推荐操作';
@@ -100,6 +100,20 @@ function deferred<T>() {
     reject = fail;
   });
   return { promise, resolve, reject };
+}
+
+/** 动态取轻提示条数：每次断言都重查单例容器，新创建的容器逃不出 undefined 的捕获引用。 */
+function 轻提示条数(): number {
+  return (Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined)?.childElementCount ?? 0;
+}
+
+function 清空轻提示(): void {
+  const 容器 = Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined;
+  if (容器) 容器.innerHTML = '';
 }
 
 function 主体(subject_id: string): BFF主体 {
@@ -185,6 +199,9 @@ describe('P3 候选隐私水合与清理', () => {
     } as unknown as HTTP招聘数据源;
     const { deps } = 创建会话测试依赖(后端);
     const candidate主体 = { ...BFF主体样本, last_used_role: 'candidate' as const };
+    // 会话栅栏：调用方（mount / 切身份）先写 subject fence 并捕获当前会话代际再进入水合
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 1;
     await expect(水合角色数据(deps, candidate主体, false, 1)).resolves.toBe(false);
     expect(deps.派发).toHaveBeenCalledWith({ 型: '水合后端隐私', 快照: 隐私页面样本2 });
     expect(deps.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '水合后端简历' }));
@@ -196,6 +213,8 @@ describe('P3 候选隐私水合与清理', () => {
       清空目录缓存: vi.fn(),
     });
     const { deps, 动作流 } = 创建会话测试依赖(后端);
+    // 会话栅栏：调用方（mount / 切身份）先写 subject fence 再进入水合
+    deps.主体标识引用.current = 'sub_1';
     const 会话失效 = await 水合角色数据(deps, 主体('sub_1'), false, 0);
     expect(会话失效).toBe(true);
     expect(动作流).toContainEqual({ 型: '清后端隐私' });
@@ -711,6 +730,134 @@ describe('P6 会话水合、清理与 Backend 种子', () => {
     expect(后端.读取Agent规则提案列表).not.toHaveBeenCalled();
     expect(后端.读取简历).not.toHaveBeenCalled();
     expect(最新后端状态().Agent规则水合).toEqual(空水合阶段());
+  });
+});
+
+// ── 会话栅栏：过时结算整包丢弃 + 当前轮 401 的全量清理 ─────────────
+// 主体 + 代际任一已变（登出 / 换号 / 新会话建立）时，水合的一切结算结果
+// （简历/意向/隐私/附件/岗位/P6 规则）整包丢弃：不派发、不提示、不触发清理；
+// 只有仍是当前轮的 401 才走 清账号状态，且清理要带上 P4/P7/P8 全部运行时引用。
+
+describe('水合会话栅栏', () => {
+  it('candidate 简历和意向在 generation 变化后结算时整包丢弃', async () => {
+    const 后端 = 创建P6数据源桩();
+    const 简历门 = deferred<Awaited<ReturnType<typeof 后端.读取简历>>>();
+    const 意向门 = deferred<Awaited<ReturnType<typeof 后端.读取意向>>>();
+    vi.mocked(后端.读取简历).mockReturnValue(简历门.promise);
+    vi.mocked(后端.读取意向).mockReturnValue(意向门.promise);
+    const { deps, 动作流 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+
+    const 运行 = 水合角色数据(deps, candidate主体, false, 7);
+    deps.会话代际.current = 8;
+    简历门.resolve(await 创建P6数据源桩().读取简历());
+    意向门.resolve({ 列表: [{ 编号: 'stale', 标题: '旧意向', 说明: '' }], 服务端: {} });
+    await expect(运行).resolves.toBe(false);
+
+    expect(动作流).not.toContainEqual(expect.objectContaining({ 型: '水合后端简历' }));
+    expect(动作流).not.toContainEqual(expect.objectContaining({ 型: '水合后端意向' }));
+  });
+
+  it('candidate 迟到 401 不清更新会话也不提示', async () => {
+    清空轻提示();
+    const 后端 = 创建P6数据源桩();
+    const 简历门 = deferred<never>();
+    vi.mocked(后端.读取简历).mockReturnValue(简历门.promise);
+    const { deps } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+
+    const 运行 = 水合角色数据(deps, candidate主体, false, 7);
+    deps.主体标识引用.current = 'sub_new';
+    deps.会话代际.current = 8;
+    简历门.reject(new BFF错误(401, 'invalid_session', '旧会话过期'));
+    await expect(运行).resolves.toBe(false);
+
+    expect(deps.主体标识引用.current).toBe('sub_new');
+    expect(deps.会话代际.current).toBe(8);
+    expect(deps.后端状态引用.current.已登录).toBe(true);
+    expect(轻提示条数()).toBe(0);
+  });
+
+  it('candidate 当前轮水合 401 清 P7 与 P8 运行时引用', async () => {
+    清空轻提示();
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取简历).mockRejectedValue(
+      new BFF错误(401, 'invalid_session', 'expired'),
+    );
+    const { deps } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = candidate主体.subject_id;
+    deps.会话代际.current = 7;
+    deps.P7范围代际.current.set('candidate:inbox', 3);
+    deps.P7可见收件箱.current.candidate = true;
+    deps.P8读取锁.current.set('sessions', Promise.resolve());
+    deps.P8账号可见.current = true;
+
+    await expect(水合角色数据(deps, candidate主体, false, 7)).resolves.toBe(true);
+    expect(deps.P7范围代际.current.size).toBe(0);
+    expect(deps.P7可见收件箱.current.candidate).toBe(false);
+    expect(deps.P8读取锁.current.size).toBe(0);
+    expect(deps.P8账号可见.current).toBe(false);
+    expect(轻提示条数()).toBe(0);
+  });
+
+  it('recruiter owner jobs 在 generation 变化后结算时不提交', async () => {
+    const 后端 = 创建P6数据源桩();
+    const 岗位门 = deferred<页面岗位快照>();
+    vi.mocked(后端.读取岗位).mockReturnValue(岗位门.promise);
+    const { deps, 动作流 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = recruiter主体.subject_id;
+    deps.会话代际.current = 11;
+
+    const 运行 = 水合角色数据(deps, recruiter主体, false, 11);
+    await vi.waitFor(() => expect(后端.读取岗位).toHaveBeenCalledTimes(1));
+    deps.会话代际.current = 12;
+    岗位门.resolve({ 列表: [{ 编号: 'stale-job' }], 服务端: {} } as 页面岗位快照);
+    await expect(运行).resolves.toBe(false);
+    expect(动作流).not.toContainEqual(expect.objectContaining({ 型: '水合后端岗位' }));
+  });
+
+  it('recruiter owner jobs 的迟到 401 不清更新会话也不提示', async () => {
+    清空轻提示();
+    const 后端 = 创建P6数据源桩();
+    const 岗位门 = deferred<页面岗位快照>();
+    vi.mocked(后端.读取岗位).mockReturnValue(岗位门.promise);
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = recruiter主体.subject_id;
+    deps.会话代际.current = 11;
+
+    const 运行 = 水合角色数据(deps, recruiter主体, false, 11);
+    await vi.waitFor(() => expect(后端.读取岗位).toHaveBeenCalledTimes(1));
+    deps.会话代际.current = 12;
+    岗位门.reject(new BFF错误(401, 'invalid_session', '旧岗位轮过期'));
+    await expect(运行).resolves.toBe(false);
+
+    expect(最新后端状态().已登录).toBe(true);
+    expect(deps.主体标识引用.current).toBe(recruiter主体.subject_id);
+    expect(deps.会话代际.current).toBe(12);
+    expect(轻提示条数()).toBe(0);
+  });
+
+  it('recruiter Agent 规则的迟到 401 不清更新会话也不提示', async () => {
+    清空轻提示();
+    const 后端 = 创建P6数据源桩();
+    const 规则门 = deferred<Awaited<ReturnType<typeof 后端.读取Agent规则>>>();
+    vi.mocked(后端.读取Agent规则).mockReturnValue(规则门.promise);
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = recruiter主体.subject_id;
+    deps.会话代际.current = 11;
+
+    const 运行 = 水合角色数据(deps, recruiter主体, false, 11);
+    await vi.waitFor(() => expect(后端.读取Agent规则).toHaveBeenCalledTimes(1));
+    deps.会话代际.current = 12;
+    规则门.reject(new BFF错误(401, 'invalid_session', '旧规则轮过期'));
+    await expect(运行).resolves.toBe(false);
+
+    expect(最新后端状态().已登录).toBe(true);
+    expect(deps.主体标识引用.current).toBe(recruiter主体.subject_id);
+    expect(deps.会话代际.current).toBe(12);
+    expect(轻提示条数()).toBe(0);
   });
 });
 
