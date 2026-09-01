@@ -997,6 +997,39 @@ interface P1C招聘组织Fixture形 {
   ownerJobs: P1C岗位形[];
 }
 
+/** 招聘方 onboarding 变更回执：写入方法 / 路径 / body 与该次写入实际带的 If-Match */
+interface 招聘方Onboarding变更 {
+  method: string;
+  path: string;
+  body: unknown;
+  ifMatch: string | null;
+}
+
+/**
+ * 全新招聘方 onboarding 的可变 fixture：与 P1C招聘组织Fixture形 同域但**独立**
+ * —— profile 真正可空（首读 404 not_found），首写经 revision-zero 的 CAS 变成权威 DTO。
+ * 与候选 onboarding fixture 无任何共享或复位关系：各测试自持一份。
+ */
+interface 招聘方OnboardingFixture形 {
+  profile: P1C招聘方档案形 | null;
+  affiliations: P1C企业关系形[];
+  organizations: Record<string, P1C组织形>;
+  adminRequests: P1C管理员申请形[];
+  ownerJobs: P1C岗位形[];
+  mutations: 招聘方Onboarding变更[];
+}
+
+function 创建招聘方OnboardingFixture(): 招聘方OnboardingFixture形 {
+  return {
+    profile: null,
+    affiliations: [],
+    organizations: {},
+    adminRequests: [],
+    ownerJobs: [],
+    mutations: [],
+  };
+}
+
 function P1C企业档案(): P1C企业档案形 {
   return {
     brand_name: P1C标记.品牌名,
@@ -2201,6 +2234,8 @@ interface BFF路由选项 {
   会话已登录?: boolean;
   /** P1C：组织域 fixture（profile / affiliations / 公开企业 / 档案与媒体 / 管理员申请 / owner Jobs） */
   招聘组织Fixture?: P1C招聘组织Fixture形;
+  /** 新招聘方专用：profile 从 null 经 revision-zero PATCH 变为权威 DTO。 */
+  招聘方OnboardingFixture?: 招聘方OnboardingFixture形;
   /** P3：隐私域可变 fixture（me/privacy 整读补丁 / 组织搜索 / 屏蔽与解除）。缺席时这些路由走兜底空信封 */
   隐私fixture?: P3隐私fixture形;
   /** P2：附件简历域可变 fixture（resume-files 上传/替换/删除/解析/下载）。缺席时 安装BFF路由
@@ -2295,7 +2330,11 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
   const p4委托503键 = new Set<string>();
   const p4不感兴趣失败键 = new Set<string>();
   // P1C：组织 fixture 出现时 /me 与角色/偏好写入都返回招聘方主体（PUT last-used-role 会推进它的值）
-  const 组织fixture = 选项.招聘组织Fixture ?? null;
+  // P0 修复 Task 7：新招聘方 onboarding fixture 与既有 P1C 组织 fixture 走同一套组织路由，
+  // 但只有前者的 profile 可空（首读 404）并登记写入回执；后者一字不动。
+  const onboardingFixture = 选项.招聘方OnboardingFixture ?? null;
+  const 组织fixture: P1C招聘组织Fixture形 | 招聘方OnboardingFixture形 | null =
+    onboardingFixture ?? 选项.招聘组织Fixture ?? null;
   const 主体 = 组织fixture
     ? {
         subject_id: 'subj-fixture-recruiter-001',
@@ -2308,7 +2347,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
     : fixture主体;
 
   // ── P1C 组织域可变 fixture 状态：每次安装独立一份，页面写入只影响本测试 ──
-  const 档案可变: P1C招聘方档案形 | null = 组织fixture ? { ...组织fixture.profile } : null;
+  let 档案可变: P1C招聘方档案形 | null = 组织fixture?.profile ? { ...组织fixture.profile } : null;
   const 关系可变: P1C企业关系形[] = 组织fixture ? 组织fixture.affiliations.map((项) => ({ ...项 })) : [];
   const 申请可变: P1C管理员申请形[] = 组织fixture ? 组织fixture.adminRequests.map((项) => ({ ...项 })) : [];
   const 岗位可变: P1C岗位形[] = 组织fixture ? 组织fixture.ownerJobs.map((项) => ({ ...项 })) : [];
@@ -2909,15 +2948,41 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
     //    strict decode 失败 → 水合抛错，这正是「Mock 内容不顶替 HTTP」的边界）──
     if (组织fixture) {
       if (path === '/api/v1/recruiter/profile' && method === 'GET') {
+        // 档案缺失是合法的「还没有」：404 not_found，不是故障（P0 修复 Task 1/7）
+        if (档案可变 === null) {
+          await route.fulfill({
+            status: 404,
+            json: { error: { type: 'not_found', message: 'Recruiter profile not found' } },
+          });
+          return;
+        }
         await route.fulfill({ status: 200, json: 信封(档案可变) });
         return;
       }
       if (path === '/api/v1/recruiter/profile' && method === 'PATCH') {
-        // CAS 不校验 If-Match：fixture 信任客户端带的是水合时的 revision
-        const 补丁 = body as { public_name?: string; title?: string };
-        if (补丁.public_name !== undefined) 档案可变!.public_name = 补丁.public_name;
-        if (补丁.title !== undefined) 档案可变!.title = 补丁.title;
-        档案可变!.revision += 1;
+        // CAS 按 fixture 的**实际**当前 revision 校验：缺失档案的首写必须带 If-Match: "0"
+        const ifMatch = 请求.headers()['if-match'] ?? null;
+        const expected = `"${档案可变?.revision ?? 0}"`;
+        if (ifMatch !== expected) {
+          await route.fulfill({
+            status: 409,
+            json: { error: { type: 'version_conflict', message: 'profile revision mismatch' } },
+          });
+          return;
+        }
+        const patch = body as { public_name?: string; title?: string };
+        档案可变 = {
+          public_name: patch.public_name ?? 档案可变?.public_name ?? '',
+          title: patch.title ?? 档案可变?.title ?? '',
+          personal_verification_status: 档案可变?.personal_verification_status ?? 'unverified',
+          verified_name: 档案可变?.verified_name ?? null,
+          avatar_url: 档案可变?.avatar_url ?? null,
+          revision: (档案可变?.revision ?? 0) + 1,
+        };
+        if (onboardingFixture) {
+          onboardingFixture.profile = { ...档案可变 };
+          onboardingFixture.mutations.push({ method, path, body, ifMatch });
+        }
         await route.fulfill({ status: 200, json: 信封(档案可变) });
         return;
       }
@@ -3645,7 +3710,16 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         updated_at: 现在,
       };
       岗位可变.push(新岗);
-      await route.fulfill({ status: 200, json: 信封(新岗) });
+      if (onboardingFixture) {
+        onboardingFixture.ownerJobs.push({ ...新岗 });
+        onboardingFixture.mutations.push({
+          method,
+          path,
+          body,
+          ifMatch: 请求.headers()['if-match'] ?? null,
+        });
+      }
+      await route.fulfill({ status: 201, json: 信封(新岗) });
       return;
     }
 
@@ -4577,8 +4651,15 @@ async function 走完后端发岗向导(page: Page) {
   await page.getByRole('button', { name: '混合', exact: true }).click();
   await page.getByRole('button', { name: '下一步' }).click();
 
-  await page.getByLabel('职位描述').fill('参与 fixture 岗位的 E2E 验证。');
+  await page.getByLabel('职位描述').fill(
+    '用户研究、产品验证、产品策略、实验、数据分析、需求执行、GTM、发布与增长',
+  );
   await page.getByRole('button', { name: '下一步' }).click();
+
+  // P0 修复 Task 4/7：职位要求是与描述互相独立的必填文本，第三步不填就发不出岗
+  await page.getByLabel('职位要求').fill(
+    '应届或毕业年级；有产品、技术、增长、分析或创业经历；关注 AI、SaaS、工作流、开发工具与 Agent',
+  );
 
   await page.getByRole('button', { name: '— 元/天' }).first().click();
   await page.getByRole('button', { name: '完成' }).click();
@@ -4914,7 +4995,8 @@ test.describe('P1C 招聘组织 fixture @backend', () => {
     await expect(page.getByText(P1C招聘组织Fixture.profile.public_name).first()).toBeVisible();
     await expect(page.getByLabel('姓名')).toHaveValue(P1C招聘组织Fixture.profile.public_name);
 
-    // 无企业关系 → 公司是自由输入（未认证声明），落本地不发请求
+    // 无企业关系 → 公司是自由输入（未认证声明），输入本身不发任何请求；
+    // P0 修复 Task 3 起它只在按下保存时才落库（blur 不再收笔）。
     await page.getByLabel('公司').fill('未认证客户公司');
     await page.getByLabel('公司').blur();
 
@@ -4930,6 +5012,11 @@ test.describe('P1C 招聘组织 fixture @backend', () => {
       'GET /api/v1/recruiter/jobs',
     ]);
     expect(链.some((项) => 项.includes('organization-admin-requests'))).toBe(false);
+
+    // P0 修复 Task 2/3：注册流名片的主按钮是「保存并继续」——按下它才把未认证声明与
+    // 档案一起落地，并推进到发岗；不保存就发岗，company claim 会是空的。
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/, { timeout: 20_000 });
 
     // 发岗（真实三步向导）→ POST /api/v1/recruiter/jobs
     await 走完后端发岗向导(page);
@@ -5020,7 +5107,10 @@ test.describe('P1C 招聘组织 fixture @backend', () => {
     // 文本区显示服务端事实但禁用；没有保存键；也没有任何写入请求
     await expect(page.getByLabel('公司介绍')).toBeDisabled();
     await expect(page.getByLabel('公司介绍')).toHaveValue(P1C标记.公司介绍);
+    // 只读的诚实证据：member 在这一屏没有**任何**保存控件（连改了标签的也没有）——
+    // 同一屏 admin 的「保存」键由 409 用例真实点击，所以这条 0 不是「标签变了匹配不上」。
     await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /保存/ })).toHaveCount(0);
     expect(写入们).toEqual([]);
   });
 
@@ -5072,11 +5162,17 @@ test.describe('P1C 招聘组织 fixture @backend', () => {
     await expect(page.getByLabel('姓名')).toHaveValue(P1C标记.招聘方公开名);
 
     await page.getByLabel('姓名').fill('沈 fixture');
+    // P0 修复 Task 3：本 fixture 无任何企业关系 → 公司是未认证声明，也是发岗 claim 的
+    // 唯一来源，因此是保存的前置必填；空着按保存只会得到本地提示，一个请求都不发。
+    await page.getByLabel('公司').fill('未认证客户公司');
     await page.setInputFiles('input[aria-label="更换头像"]', {
       name: '头像.png', mimeType: 'image/png', buffer: 一像素PNG,
     });
-    await page.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page.getByText('保存成功')).toBeVisible({ timeout: 10_000 });
+    // P0 修复 Task 2：本用例经「我要招人」进名片（从注册流），主按钮是「保存并继续」，
+    // 成功后直接推进到发岗 —— 不再停在本屏弹「保存成功」。
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/, { timeout: 20_000 });
 
     const 档案写 = 写入们.find((项) => 项.path === '/api/v1/recruiter/profile' && 项.method === 'PATCH');
     expect(档案写).toBeDefined();
@@ -9095,6 +9191,82 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     expect(fixture.mutations.some((条) => 条.path.includes('/catalog/'))).toBe(false);
     // 角色偏好已落 candidate：reload 直接进主壳而非身份选择页
     expect(fixture.主体.last_used_role).toBe('candidate');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 招聘方 onboarding Backend fixture @backend（P0 修复 Task 7）：全新招聘方从身份选择页
+// 起步 —— profile 首读 404 not_found（合法的「缺失」而非故障），名片首写走
+// PATCH + If-Match: "0"（fixture 按自己的当前 revision 做 CAS），发岗写出三段独立
+// 非空文本，刷新后从权威 HTTP 事实（profile revision 1 + owner Jobs）重新水合。
+// 这条 fixture 是独立对象：不与候选 onboarding fixture 共享或复位任何状态。
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('招聘方 onboarding Backend fixture @backend', () => {
+  // 显式 backend/stg server（端口 4182），与既有 @backend 用例同一口径
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+  test.use({ timeout: 120_000 });
+
+  test('新招聘方 onboarding：404 首写、完整发岗与刷新恢复 @backend', async ({ page }) => {
+    const fixture = 创建招聘方OnboardingFixture();
+    const requests: 拦截请求形[] = [];
+    const jobCreateStatuses: number[] = [];
+    const profileReadStatuses: number[] = [];
+    page.on('response', (response) => {
+      if (response.request().method() === 'POST' && response.url().endsWith('/api/v1/recruiter/jobs')) {
+        jobCreateStatuses.push(response.status());
+      }
+      if (response.request().method() === 'GET' && response.url().endsWith('/api/v1/recruiter/profile')) {
+        profileReadStatuses.push(response.status());
+      }
+    });
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-new-recruiter-onboarding',
+      记录目录请求: () => undefined,
+      主体初始角色: null,
+      招聘方OnboardingFixture: fixture,
+      请求拦截: (request) => requests.push(request),
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/identity$/, { timeout: 15_000 });
+    await page.getByRole('button', { name: '我要招人' }).click();
+    await expect(page).toHaveURL(/#\/hr\/card$/, { timeout: 20_000 });
+    expect(profileReadStatuses[0]).toBe(404);
+
+    await page.getByLabel('姓名').fill('林澈');
+    await page.getByLabel('职务').fill('招聘负责人');
+    await page.getByLabel('公司').fill('星河科技');
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/, { timeout: 20_000 });
+
+    const profileWrite = fixture.mutations.find((item) => item.path === '/api/v1/recruiter/profile');
+    expect(profileWrite).toEqual(expect.objectContaining({
+      method: 'PATCH',
+      ifMatch: '"0"',
+      body: { public_name: '林澈', title: '招聘负责人' },
+    }));
+    expect(fixture.profile).toEqual(expect.objectContaining({ revision: 1 }));
+
+    await 走完后端发岗向导(page);
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+
+    const jobWrite = fixture.mutations.find((item) => item.path === '/api/v1/recruiter/jobs');
+    expect(jobWrite).toBeDefined();
+    expect(jobWrite!.body).toMatchObject({
+      hiring_organization_claim: { display_name: '星河科技', legal_name: null },
+      description: '用户研究、产品验证、产品策略、实验、数据分析、需求执行、GTM、发布与增长',
+      requirements: '应届或毕业年级；有产品、技术、增长、分析或创业经历；关注 AI、SaaS、工作流、开发工具与 Agent',
+    });
+    expect(jobCreateStatuses).toEqual([201]);
+    expect(fixture.ownerJobs).toHaveLength(1);
+
+    await page.reload();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    await expect(page.getByText('Fixture 实习岗位')).toBeVisible();
+    expect(requests.filter((item) => item.path === '/api/v1/recruiter/profile' && item.method === 'GET').length)
+      .toBeGreaterThanOrEqual(2);
+    expect(profileReadStatuses).toContain(200);
   });
 });
 
