@@ -712,6 +712,23 @@ it('Backend 水合 401 显示一次会话失效且不导航', async () => {
 
 Extend `src/屏幕/选身份.test.tsx` with the corresponding page-owner assertion; reuse its existing mocks and ordinary-mode harness:
 
+First extend the file's existing `beforeEach` so the module-level DOM toast container cannot leak a same-copy entry between the ordinary and flip-mode cases:
+
+```ts
+beforeEach(() => {
+  mock跳转.mockClear();
+  mock替换跳转.mockClear();
+  mock返回.mockClear();
+  mock切身份.mockClear();
+  const 提示容器 = Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined;
+  if (提示容器) 提示容器.innerHTML = '';
+});
+```
+
+Do not export a test-only reset API from `轻提示`; the DOM cleanup belongs to this component-test harness.
+
 ```tsx
 it('切身份水合 401 显示会话失效且不执行成功导航', async () => {
   mock切身份.mockRejectedValueOnce(
