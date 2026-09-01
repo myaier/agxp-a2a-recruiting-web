@@ -191,7 +191,8 @@ test.describe('注册流换壳不闪中间屏', () => {
     await page.getByRole('button', { name: '完成' }).click();
     await page.getByPlaceholder('如：上海').fill('上海');
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');
-    // 职位要求输入区 2026-08-24 已删
+    // 职位要求与职位描述是两条互相独立的必填文本，各填各的
+    await page.getByLabel('职位要求').fill('在校生，熟悉用户研究方法，能独立推进需求。');
 
     const 序列 = await 采换壳画面(page, '发布岗位并开始寻访', /#\/hr$/);
 

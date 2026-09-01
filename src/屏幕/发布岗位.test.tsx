@@ -252,7 +252,10 @@ describe('发布岗位页 Backend 选择器', () => {
    *  选城市=false 时只输入不选；选城市=true 时点候选，落 地点引用。
    *  P0 修复 Task 4：第三步恢复了独立的「职位要求」输入 —— 默认填一句与描述不同的话；
    *  职位要求=null 时故意留空，用来验前置校验。 */
-  async function 填到发布前(选城市: boolean, 选项: { 职位要求?: string | null } = {}) {
+  async function 填到发布前(
+    选城市: boolean,
+    选项: { 职位描述?: string | null; 职位要求?: string | null } = {},
+  ) {
     const 用户 = userEvent.setup();
     render(
       <MemoryRouter initialEntries={['/hr/post-job']}>
@@ -279,8 +282,11 @@ describe('发布岗位页 Backend 选择器', () => {
     await 用户.click(await screen.findByRole('button', { name: '后端开发' }));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
 
-    // ── 第二步：职位描述 ──
-    await 用户.type(screen.getByLabelText('职位描述'), '负责交易网关与撮合核心');
+    // ── 第二步：职位描述 ── 职位描述=null 时故意留空，用来验校验失败的跨步回跳
+    const 职位描述文本 = 选项.职位描述 === undefined ? '负责交易网关与撮合核心' : 选项.职位描述;
+    if (职位描述文本 !== null) {
+      await 用户.type(screen.getByLabelText('职位描述'), 职位描述文本);
+    }
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
 
     // ── 第三步：职位要求 ──
@@ -350,6 +356,19 @@ describe('发布岗位页 Backend 选择器', () => {
     expect(mock发布岗位).not.toHaveBeenCalled();
     // 留在第三步：要求输入框仍在屏上，用户看得见该改哪儿
     expect(screen.getByRole('textbox', { name: '职位要求' })).toBeTruthy();
+  });
+
+  // 校验失败必须把用户带回出问题的那一步 —— 只弹 toast 不切步，用户当前屏上根本
+  // 看不见那个控件。职位描述是唯一会跨步回跳（第三步 → 第一步）的那条。
+  it('职位描述为空时从第三步跳回第二步的描述输入并零 mutation', async () => {
+    const { 用户 } = await 填到发布前(true, { 职位描述: null });
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    expect(await screen.findByText('请填写职位描述')).toBeTruthy();
+    expect(mock发布岗位).not.toHaveBeenCalled();
+    // 真的换了步：描述输入回到屏上，第三步的职位要求输入与提交键都不在了
+    expect(screen.getByRole('textbox', { name: '职位描述' })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: '职位要求' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '发布岗位并开始寻访' })).toBeNull();
   });
 
   it('无 verified affiliation 且公司声明为空时零 mutation', async () => {

@@ -211,6 +211,35 @@ describe('候选人后端映射', () => {
     });
   });
 
+  // 全局约束：不可修复的历史 claim 绝不能挡住一次普通的 JD 编辑 ——
+  // 补丁的 claim 归服务端所有，页面改不动它，所以它为空也不该让保存失败。
+  it('previous 的历史空 claim 不阻塞普通编辑保存', () => {
+    const 空claim岗位 = {
+      ...服务端岗位,
+      hiring_organization_claim: { display_name: '', legal_name: null },
+    };
+    const body = 转岗位补丁(
+      { ...完整岗位草稿, 职位描述: '改后的描述', 职位要求: '改后的要求' },
+      空claim岗位,
+    );
+    // 不抛错，且 claim 原样沿用 previous（不拿页面文本顶替、也不硬造一个值）
+    expect(body.hiring_organization_claim).toEqual({ display_name: '', legal_name: null });
+    expect(body).toMatchObject({ description: '改后的描述', requirements: '改后的要求' });
+  });
+
+  // 补丁侧的描述/要求也走同一套非空保护（旧实现是 ?? ''，会把空串发给服务端）
+  it.each([
+    ['职位描述', { 职位描述: '   ', 职位要求: '要求' }, 'description'],
+    ['职位要求', { 职位描述: '描述', 职位要求: '   ' }, 'requirements'],
+  ])('%s 为空时不生成 JobPatch', (_label, patch, field) => {
+    try {
+      转岗位补丁({ ...完整岗位草稿, ...patch }, 服务端岗位);
+      expect.unreachable('空白文本必须拒绝');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'client_validation', field });
+    }
+  });
+
   // P1C Task 5：创建/补丁 body 不得携带服务端专有 refs 与 verification status。
   it('岗位创建与补丁不携带 organization refs / verification status', () => {
     const 带引用 = {
