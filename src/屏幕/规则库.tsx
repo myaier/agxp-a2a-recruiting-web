@@ -18,6 +18,7 @@
 import { Fragment, useState } from 'react';
 import 样式 from './规则库.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
+import { 先问选择行 } from '../组件/先问选择行';
 import Agent规则提案卡 from '../组件/Agent规则提案卡';
 import { useAgent规则提案轮询 } from '../状态/后端/useAgent规则提案轮询';
 import { 读Agent规则草稿, 写Agent规则草稿, 删Agent规则草稿 } from './Agent规则草稿寄存';
@@ -49,7 +50,7 @@ function 提案展示序(提案们: BFFAgent规则提案[]): BFFAgent规则提�
 }
 
 export default function 规则库() {
-  const { 状态, 数据源模式, 后端状态, 操作 } = use应用状态();
+  const { 状态, 派发, 数据源模式, 后端状态, 操作 } = use应用状态();
   const { 返回 } = use导航();
 
   // ── P6 角色水合门控（企业代理设置 同构，仅 expectedRole 不同）──
@@ -227,12 +228,39 @@ export default function 规则库() {
         右侧={显示清单 ? <span className={`${样式.生效数} 等宽数字`}>{条数} 条</span> : null}
       />
 
-      <div className={样式.提示条}>
-        <div className={样式.提示文字}>
-          {/* P6 定稿：不再说「叮嘱自动沉淀」—— 规则由你在确认卡上明确「确认规则」后才生效 */}
-          你确认过的规则才会沉淀到这里，长期约束你的AI代理。
+      {/* ── 哪些事先问你(2026-08-31 定稿):页面只放真选项,铁律不渲染成设置。
+            Backend 角色不符时随安全壳一起收起 ── */}
+      {!是Backend || role !== null ? (
+        <div className={样式.授权组}>
+          <div className={样式.分组标}>哪 些 事 先 问 你</div>
+          <div className={样式.授权卡}>
+            <先问选择行
+              标题="发送正式简历"
+              注="带姓名与联系方式的 PDF 原件"
+              值={状态.求职先问偏好.递交材料}
+              选项={['先问我', '自动发送'] as const}
+              选择={(值) => 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 递交材料: 值 } })}
+            />
+            <先问选择行
+              标题="对方要的让步超出授权"
+              注="比如作息折中、提前到岗"
+              值={状态.求职先问偏好.超授权让步}
+              选项={['先问我', '直接回绝'] as const}
+              选择={(值) => 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 超授权让步: 值 } })}
+              末行
+            />
+          </div>
         </div>
-      </div>
+      ) : null}
+
+      {是Backend ? (
+        <div className={样式.提示条}>
+          <div className={样式.提示文字}>
+            {/* P6 定稿：不再说「叮嘱自动沉淀」—— 规则由你在确认卡上明确「确认规则」后才生效 */}
+            你确认过的规则才会沉淀到这里，长期约束你的AI代理。
+          </div>
+        </div>
+      ) : null}
 
       <滚动区>
         <div className={样式.列表}>
@@ -269,7 +297,7 @@ export default function 规则库() {
 
           {显示清单 ? (
             <>
-              <div className={样式.分组标}>全局规则 · 所有谈判生效</div>
+              <div className={样式.分组标}>你 教 它 的 规 则</div>
               <div className={样式.卡}>
                 {状态.全局规则.map((条, 序) => (
                   <规则行

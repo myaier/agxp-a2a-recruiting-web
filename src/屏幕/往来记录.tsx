@@ -15,12 +15,11 @@ import { 往来记录 as 初始记录, 在谈列表 } from '../数据/模拟数�
 import type { 往来条目 } from '../数据/类型';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
-import { 路径 } from '../路由/路径表';
 import { 轻提示 } from '../组件/轻提示';
 
 export default function 往来记录() {
   const { id: 编号 } = useParams<{ id: string }>();
-  const { 返回, 跳转 } = use导航();
+  const { 返回 } = use导航();
   const { 状态, 派发, 数据源模式 } = use应用状态();
 
   // 标题查找顺序：全局状态（新委托的 M- 单只存在这里）→ 静态剧本数据（J- 单，
@@ -95,7 +94,8 @@ export default function 往来记录() {
   const 记成规则 = (规则内容: string) => {
     if (数据源模式 === 'mock') {
       派发({ 型: '新增规则', 内容: 规则内容, 来源: `来自${单.公司}单的叮嘱 · 刚刚` });
-      跳转(路径.规则库);
+      // 用户 2026-08-31:「点记成规则不应该跳到规则库」—— 落规则后留在本页,轻提示告知
+      轻提示('已记成规则');
     } else {
       轻提示('请到规则库确认并添加长期规则');
     }

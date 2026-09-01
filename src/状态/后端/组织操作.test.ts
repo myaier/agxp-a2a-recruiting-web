@@ -2,6 +2,9 @@
 // 受控 deferred promise 证明 stale 响应被丢弃，不用同步 mock 掩盖时序。
 
 import { describe, expect, it, vi } from 'vitest';
+import { 创建空P7会话状态 } from './真人会话操作';
+import { 创建空P8控制面状态 } from './P8控制面操作';
+import { 创建空P5MatchCase状态 } from './MatchCase操作';
 import type { BFF企业档案, BFF企业档案替换, BFF招聘方档案 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 页面岗位快照 } from '../../数据/招聘数据源类型';
@@ -88,6 +91,12 @@ function 创建组织测试依赖(input: {
       },
       // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
       ...创建空P4发现状态(),
+      // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
+      ...创建空P5MatchCase状态(),
+    // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
+    ...创建空P7会话状态(),
+    // P8：Task 3 起 后端状态 extends P8控制面状态（这里的用例不触达它们）
+    ...创建空P8控制面状态(),
       // P2：附件库权威快照（只追加，不动 P6 字段）
       附件简历库: null,
     } },

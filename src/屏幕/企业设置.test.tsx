@@ -1,39 +1,91 @@
-// 企业设置 · 退出确认键的可访问名称。
-//
-// 与求职端 设置.test.tsx 同一处缺陷的镜像：弹层框架用的是 <dialog open>
-// （组件/弹层框架.tsx:62-64），那是**非模态**的 —— 层开着时页面其余部分既不 inert
-// 也不从可访问树里剪枝，触发键与确认键同名会让读屏用户分不出哪个是确认。
-// 两枚键的可见文案都仍是「退出登录」，区分只做在可访问名称上。
+// Task 4：企业设置（招聘端设置）回归测试。
+// 招聘端没有手机号行：Backend 模式零 P8 读取（凭证/会话/账号范围登记都不发起）；
+// 账号与安全入口与退出登录（含确认弹层、成功后回登录页）保持既有行为。
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 企业设置 from './企业设置';
+import { 路径 } from '../路由/路径表';
+import type { P8Credential, P8Session } from '../数据/招聘数据源/P8控制面';
+import type { P8资源快照 } from '../状态/后端/类型';
 
-const 退出登录 = vi.fn().mockResolvedValue(undefined);
+const 导航 = vi.hoisted(() => ({ 返回: vi.fn(), 跳转: vi.fn(), 替换跳转: vi.fn() }));
+vi.mock('../路由/导航钩子', () => ({ use导航: () => 导航 }));
 
-vi.mock('../状态/应用状态', () => ({ use应用状态: () => ({ 操作: { 退出登录 } }) }));
-vi.mock('../路由/导航钩子', () => ({
-  use导航: () => ({ 返回: vi.fn(), 跳转: vi.fn(), 替换跳转: vi.fn() }),
-}));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mock应用状态: any;
+vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
 
-describe('企业设置 · 退出确认键的可访问名称', () => {
-  it('确认层打开后，触发键与确认键的可访问名称互不相同', async () => {
-    const 用户 = userEvent.setup();
+function 空快照<T>(): P8资源快照<T> {
+  return { phase: 'idle', refreshing: false, data: null, error: null, generation: 0 };
+}
+
+/** P8 六法 + 退出登录 桩：全表补齐，断言零调用用。 */
+function 操作桩() {
+  return {
+    设置P8账号范围: vi.fn(),
+    加载P8凭证: vi.fn(async () => undefined),
+    加载P8会话: vi.fn(async () => undefined),
+    开始P8手机号换绑: vi.fn(),
+    完成P8手机号换绑: vi.fn(),
+    退出P8其他设备: vi.fn(),
+    退出登录: vi.fn(async () => undefined),
+  };
+}
+
+beforeEach(() => {
+  导航.返回.mockClear();
+  导航.跳转.mockClear();
+  导航.替换跳转.mockClear();
+});
+
+describe('企业设置 · P8 回归', () => {
+  it('Backend 模式没有手机号行，零 P8 读取', () => {
+    const 操作 = 操作桩();
+    mock应用状态 = {
+      数据源模式: 'backend',
+      后端状态: { credentials: 空快照<P8Credential[]>(), sessions: 空快照<P8Session[]>() },
+      操作,
+    };
     render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    expect(screen.getByText('企业实名认证')).toBeTruthy();
+    expect(screen.queryByText('手机号')).toBeNull();
+    expect(screen.queryByText('138 **** 6021')).toBeNull();
+    expect(操作.设置P8账号范围).not.toHaveBeenCalled();
+    expect(操作.加载P8凭证).not.toHaveBeenCalled();
+    expect(操作.加载P8会话).not.toHaveBeenCalled();
+  });
+
+  it('账号与安全入口与退出登录保持原样（成功后回登录页，全程零 P8 读取）', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = 操作桩();
+    mock应用状态 = {
+      数据源模式: 'backend',
+      后端状态: { credentials: 空快照<P8Credential[]>(), sessions: 空快照<P8Session[]>() },
+      操作,
+    };
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+
+    await 用户.click(screen.getByRole('button', { name: /账号与安全/ }));
+    expect(导航.跳转).toHaveBeenCalledWith(路径.账号安全);
+
     await 用户.click(screen.getByRole('button', { name: '退出登录' }));
     expect(screen.getByText('退出当前账号？')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: '退出登录' })).toHaveLength(1);
     const 确认键 = screen.getByRole('button', { name: '确认退出企业账号' });
     expect(确认键.textContent).toBe('退出登录');
-    // 遮罩键叫「关闭退出企业账号」（组件/弹层框架.tsx:61 的 `关闭${标签}`）：
-    // 确认键的名字不能是它的子串，否则子串匹配的定位器会同时命中两枚
     const 名字们 = screen.getAllByRole('button').map(
       (键) => 键.getAttribute('aria-label') ?? 键.textContent ?? '',
     );
     expect(名字们.filter((名) => 名.includes('确认退出企业账号'))).toHaveLength(1);
     await 用户.click(确认键);
-    expect(退出登录).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(操作.退出登录).toHaveBeenCalledTimes(1));
+    expect(导航.替换跳转).toHaveBeenCalledWith(路径.登录);
+
+    expect(操作.设置P8账号范围).not.toHaveBeenCalled();
+    expect(操作.加载P8凭证).not.toHaveBeenCalled();
+    expect(操作.加载P8会话).not.toHaveBeenCalled();
   });
 });

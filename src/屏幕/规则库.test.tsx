@@ -813,7 +813,9 @@ describe('规则库 · Backend 候选页', () => {
     const 视图 = renderCandidateRules({ mode: 'mock' });
     expect(screen.getByText('不主动披露并行接触数量')).toBeTruthy();
     expect(screen.getByText('意向级 · 仅「AI 产品经理」')).toBeTruthy();
-    expect(screen.getByText('你确认过的规则才会沉淀到这里，长期约束你的AI代理。')).toBeTruthy();
+    // 2026-08-31 定稿：Mock 页去掉提示条，顶部换成「哪些事先问你」真选项
+    expect(screen.queryByText('你确认过的规则才会沉淀到这里，长期约束你的AI代理。')).toBeNull();
+    expect(screen.getByText('发送正式简历')).toBeTruthy();
     expect(screen.queryByText('在任何一单的代谈进度里发给代理的话，都会自动沉淀到这里，长期约束你的AI代理。')).toBeNull();
     // Mock 头部计数与 Backend 同口径：只数 生效 行（种子 5 行里 R-03 暂停 → 4 条，E2E 同款）
     expect(screen.getByText('4 条')).toBeTruthy();

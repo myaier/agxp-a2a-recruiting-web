@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** `BLOCKED_PENDING_FINAL_BACKEND_RECALIBRATION`. Do not execute this plan while this status remains. After the backend contract-completion branch reaches a clean stable HEAD, the frontend owner must re-audit that exact commit, update this plan's contract references and change the status in a committed recalibration.
+**Status:** `READY_FOR_EXECUTION`. Recalibrated on 2026-08-29 against clean backend `impl/recruitment-p5-contract-completion@34306f53984ff1624f857d05b9925f36da721b40`; Task 0 is complete and Tasks 1–8 are authorized only while that exact contract evidence remains unchanged.
 
-**Goal:** After final backend recalibration, wire candidate and recruiter P5 MatchCase workspace/history, four-stage direct-refresh detail, viewer-specific actions, S0–S3 commands, authorized raw PDF, terminal archive and handoff-pending UI without manufacturing P5.1 data.
+**Goal:** Wire candidate and recruiter P5 MatchCase workspace/history, four-stage direct-refresh detail, viewer-specific actions, S0–S3 commands, authorized raw PDF, terminal archive and handoff-pending UI against the admitted final backend contract without manufacturing P5.1 data.
 
 **Architecture:** Extend the Plan 1 foundation with one strict role-aware MatchCase facade, memory-only role/scope snapshots and an exhaustive closed-code UI mapper. Backend-mode screens render shared P5 list/detail/history components; Mock mode retains the existing reducer story and sends no P5 request. The facade is the only owner of public wire shapes, and the UI consumes normalized internal views rather than OpenAPI objects.
 
@@ -16,10 +16,10 @@
 
 ## Global Constraints
 
-- Task 0 is a hard gate. If this document still says `BLOCKED_PENDING_FINAL_BACKEND_RECALIBRATION`, STOP before reading frontend product files.
-- Admission uses one clean exact backend commit. Page mocks, fixtures, Go constants without public schema, proposed Spec examples and TypeScript drafts are not contract evidence.
-- The only admissible P5 completion patch contains: viewer-specific open-list `needs_action` with matching sort/cursor semantics; a closed `state.step` plus legal state combinations; `completed + handoff_pending`; and role-specific minimal detail context.
-- Candidate detail context is only `intention_id + frozen WorkspaceJob`; recruiter detail context is only `frozen WorkspaceJob + candidate_alias`. Use the exact final public field names/nesting after recalibration.
+- Task 0 is a hard gate and is completed by the committed recalibration below. If the recorded backend SHA, public schemas, matrix fixture or focused receipts no longer match, restore `BLOCKED_PENDING_FINAL_BACKEND_RECALIBRATION` and STOP before product files.
+- Admission uses the one clean exact backend commit pinned in Recalibration Admission. Page mocks, ad-hoc fixtures, Go constants without public schema, proposed Spec examples and TypeScript drafts are not contract evidence.
+- The admitted P5 completion patch contains exactly: viewer-specific open-list `needs_action` with matching sort/cursor semantics; a closed `state.step` plus legal state combinations; `completed + handoff_pending`; and role-specific minimal detail context.
+- Candidate detail context is exactly `intention_id + MatchCaseWorkspaceJob`; recruiter detail context is exactly `MatchCaseWorkspaceJob + candidate_alias`, using the final public field names and nesting in Recalibration Admission.
 - `respond_fact` is already implemented. Resolve the current prompt through the Plan 1 helper from current-stage `supplementary_question.ref`; do not add an action payload DTO.
 - Do not add `next_step`. UI authority is `state.lifecycle/stage/status/step`, viewer `needs_action`, `available_actions` and typed detail blocks.
 - Unknown lifecycle/stage/status/step/action or any illegal combination fails closed with no mutation controls.
@@ -41,13 +41,152 @@ The committed recalibration must record, in this document and `docs/DEV_LOG.md`:
 1. exact clean backend SHA and worktree/branch;
 2. exact BFF OpenAPI schema names for candidate/recruiter open item, history item, detail and detail envelope;
 3. exact required/nullable field sets and final public `MatchCaseStep` enum;
-4. the tested legal `lifecycle + stage + status + step` matrix;
+4. the tested 17-row `lifecycle + stage + status → steps` matrix, expanding to 32 legal `lifecycle + stage + status + step` tuples;
 5. proof that list `needs_action`, ordering and cursor use the same viewer-specific value;
 6. proof that completed/outbox reads and completion event expose `handoff_pending`;
 7. proof that both role detail responses include only their approved minimal context;
 8. focused backend test commands and passing results.
 
 If any one is unavailable, the recalibration verdict stays blocked and Tasks 1–8 are not authorized.
+
+## Recalibration Admission — 2026-08-29
+
+**Verdict:** `PASS — READY_FOR_EXECUTION`.
+
+### Exact backend candidate
+
+- Worktree: `/Users/visionclaw/.paseo/worktrees/recruitment-p5-contract-completion`
+- Branch: `impl/recruitment-p5-contract-completion`
+- Admitted SHA: `34306f53984ff1624f857d05b9925f36da721b40`
+- Published target observed during calibration: `origin/release/0.2.5` at the same SHA
+- Clean check: `git status --short` was empty for the whole backend worktree before and after the focused runs.
+
+Executors must recheck the pinned candidate without fetching or substituting a moving branch:
+
+```bash
+test "$(git -C /Users/visionclaw/.paseo/worktrees/recruitment-p5-contract-completion rev-parse HEAD)" = \
+  34306f53984ff1624f857d05b9925f36da721b40
+test "$(git -C /Users/visionclaw/.paseo/worktrees/recruitment-p5-contract-completion branch --show-current)" = \
+  impl/recruitment-p5-contract-completion
+test -z "$(git -C /Users/visionclaw/.paseo/worktrees/recruitment-p5-contract-completion status --short)"
+```
+
+### Exact public schema names and nesting
+
+The BFF public document is the admitted `apps/recruitment-bff/openapi/mobile-v1.yaml` at the pinned SHA.
+
+| Surface | Candidate schema chain | Recruiter schema chain |
+|---|---|---|
+| Open list | `CandidateWorkspacePageEnvelope.result` → `CandidateMatchCaseWorkspacePage.items[]` → `CandidateMatchCaseWorkspaceItem` | `RecruiterWorkspacePageEnvelope.result` → `RecruiterMatchCaseWorkspacePage.items[]` → `RecruiterMatchCaseWorkspaceItem` |
+| `ended` / `completed` history | Deliberately reuses the candidate open-list schema chain; there is no separate history-item schema | Deliberately reuses the recruiter open-list schema chain; there is no separate history-item schema |
+| Detail | `CandidateMatchCaseDetailEnvelope.result` → `CandidateMatchCaseDetail` | `RecruiterMatchCaseDetailEnvelope.result` → `RecruiterMatchCaseDetail` |
+
+Open and history pages require non-null `items` plus present `next_cursor`; `next_cursor` is exactly `string | null`. List/history rows must omit `resume_submission`; the route descriptions and BFF strict decoders reject it on a page row. The shared item component retains that optional property, but no admitted public path references the item-envelope components, so the frontend must not infer an additional detail route from them.
+
+Exact top-level required and absence/null rules:
+
+| Schema | Required properties | Nullable / optional properties |
+|---|---|---|
+| `CandidateMatchCaseWorkspaceItem` | `state`, `needs_action`, `intention_id`, `job` | `resume_submission` is optional but forbidden on list/history rows; no required property is nullable |
+| `RecruiterMatchCaseWorkspaceItem` | `state`, `needs_action`, `job`, `candidate_alias` | `resume_submission` is optional but forbidden on list/history rows; no required property is nullable |
+| `CandidateMatchCaseDetail` | `state`, `needs_action`, `available_actions`, `stages`, `intent_confirmations`, `intention_id`, `job` | `current_coordination` and `terminal_summary` are optional/absent, not `null`; opposite-role `candidate_alias` is forbidden |
+| `RecruiterMatchCaseDetail` | `state`, `needs_action`, `available_actions`, `stages`, `intent_confirmations`, `job`, `candidate_alias` | `current_coordination` and `terminal_summary` are optional/absent, not `null`; opposite-role `intention_id` is forbidden |
+| Both detail envelopes | `result`, `meta` | neither property is nullable; `additionalProperties: false` |
+| `MatchCaseView` | `case_id`, `lifecycle`, `stage`, `status`, `step`, `round`, `round_budget`, `needs_user`, `outcome`, `outcome_code`, `created_at`, `updated_at` | required `outcome` and `outcome_code` are `string | null`; optional `finalized_at` is `string | null` |
+| `MatchCaseWorkspaceJob` | `job_id`, `job` | none |
+| `WorkspacePublicJob` | `title`, `location`, `public_salary_range`, `required_skills` | none |
+
+Both detail DTOs also require non-null arrays for `available_actions` and `stages`; `intent_confirmations` is always present. Terminal detail returns empty actions, not an absent or nullable action list.
+
+### Closed step vocabulary and legal matrix
+
+The final public `MatchCaseStep` enum contains exactly these 17 words:
+
+```text
+policy_check
+candidate_evaluation
+candidate_question
+recruiter_answer
+candidate_reevaluation
+human_decision
+complete
+awaiting_candidate_resume_invitation
+awaiting_resume_parse
+screening_resume
+awaiting_recruiter_decision
+coordinating
+awaiting_candidate_decision
+awaiting_confirmations
+awaiting_candidate_confirmation
+awaiting_recruiter_confirmation
+handoff_pending
+```
+
+The single fixture `apps/recruitment/testdata/matchcase-state-matrix.json` pins the exact 17 legal `lifecycle + stage + status → steps` rows (32 expanded legal four-tuples) used by the Recruitment validator, Recruitment OpenAPI tests, BFF validator and BFF OpenAPI tests:
+
+| lifecycle | stage | status | legal steps |
+|---|---|---|---|
+| `open` | `anonymous_screening` | `running` | `policy_check`, `candidate_evaluation`, `candidate_question`, `recruiter_answer`, `candidate_reevaluation` |
+| `open` | `anonymous_screening` | `waiting` | `candidate_reevaluation` |
+| `open` | `anonymous_screening` | `needs_user` | `human_decision` |
+| `open` | `anonymous_screening` | `passed` | `complete`, `awaiting_candidate_resume_invitation`, `awaiting_resume_parse` |
+| `open` | `anonymous_screening` | `attention_required` | `candidate_evaluation`, `candidate_question`, `recruiter_answer`, `candidate_reevaluation` |
+| `open` | `resume_submission` | `waiting` | `awaiting_resume_parse`, `screening_resume` |
+| `open` | `resume_submission` | `needs_user` | `awaiting_resume_parse`, `awaiting_recruiter_decision` |
+| `open` | `resume_submission` | `attention_required` | `screening_resume` |
+| `open` | `needs_coordination` | `waiting` | `coordinating`, `awaiting_candidate_decision`, `awaiting_recruiter_decision` |
+| `open` | `needs_coordination` | `needs_user` | `coordinating` |
+| `open` | `needs_coordination` | `attention_required` | `coordinating` |
+| `open` | `intent_confirmation` | `needs_user` | `awaiting_confirmations`, `awaiting_candidate_confirmation`, `awaiting_recruiter_confirmation` |
+| `ended` | `anonymous_screening` | `ended` | `complete` |
+| `ended` | `resume_submission` | `ended` | `complete` |
+| `ended` | `needs_coordination` | `ended` | `complete` |
+| `ended` | `intent_confirmation` | `ended` | `complete` |
+| `completed` | `intent_confirmation` | `passed` | `handoff_pending` |
+
+Unknown enum words, known steps in the wrong tuple, terminal `needs_action=true`, `completed + complete` and `open + handoff_pending` all fail closed in the strict BFF client.
+
+### Semantic proof for the four former blockers
+
+1. **Viewer-specific list action and cursor:** `apps/recruitment/internal/store/case_workspace_store.go` uses one `needs_action(viewer)` SQL expression in SELECT, keyset predicate and `ORDER BY needs_action DESC, updated_at DESC, case_id DESC`. `TestWorkspaceOpenKeysetOrdersViewerActionNotGlobalStatus`, `TestWorkspaceNeedsActionFollowsTheViewerTruthTable` and `TestWorkspaceOpenKeysetBreaksUpdatedAtTiesOnCaseID` cover disagreement and stable pagination. History uses only `updated_at + case_id`; `TestWorkspaceHistoryCursorCarriesOnlyUpdateAndCase` pins that exclusion.
+2. **Closed state:** the shared fixture above is exercised by `TestValidateCaseViewFailsClosed`, `TestMatchCaseStateMatrixIsExactlyTheFixture`, `TestMatchCaseStepEnumIsTheClosedFixtureVocabulary`, `TestWorkspaceListRejectsIllegalStepStates` and `TestMatchCaseDetailRejectsIllegalStepStates`.
+3. **Truthful completion:** `TestCompletionProjectsHandoffPendingInEveryRead` proves command/read/timeline parity, `TestCompletionRollsBackWithoutItsHandoff` proves the completed row cannot escape without the durable outbox, and `TestCaseCompletedDetailIsHandoffPendingWithoutAction` proves terminal detail. The stored `case_completed` event metadata and every completed projection use `handoff_pending`; `ended` remains `complete`.
+4. **Minimal role context:** direct reads return candidate `intention_id + job` or recruiter `job + candidate_alias` from the same party-fenced repeatable-read snapshot. `TestCaseDetailCarriesRoleContextWithoutAListRead`, `TestLoadCaseDetailFailsClosedOnMissingFrozenContext`, `TestMatchCaseDetailRejectsCrossRoleFields`, Recruitment `TestMatchCaseRoleDetailSchemasArePublishedAndWired` and BFF `TestMatchCaseRoleDetailSchemasArePublished` cover direct refresh, missing context, cross-role fields and `additionalProperties: false`.
+
+All six public list/history/detail routes retain `Cache-Control: no-store` on documented success/error responses. This is pinned by the OpenAPI response headers plus `TestNoStoreOnMatchCaseLifecycleResponses`, the BFF route policy and BFF handler/OpenAPI tests. The existing PDF route remains `private, no-store`.
+
+### Focused verification at the admitted SHA
+
+These commands were rerun from the clean admitted worktree during this frontend recalibration:
+
+```bash
+tools/test service recruitment-bff \
+  --suite recruitment-bff-unit \
+  --suite recruitment-bff-build \
+  --suite recruitment-bff-source \
+  --keep-going
+
+tools/test service recruitment \
+  --suite recruitment-unit \
+  --suite recruitment-build \
+  --keep-going
+
+GOWORK=off go test ./internal/store \
+  -run '^(TestWorkspaceOpenKeysetOrdersViewerActionNotGlobalStatus|TestWorkspaceNeedsActionFollowsTheViewerTruthTable|TestWorkspaceOpenKeysetBreaksUpdatedAtTiesOnCaseID|TestLifecycleWorkspaceDetailNeedsActionDiffersPerViewer|TestLoadCaseDetailParityAndFences|TestLoadCaseDetailFailsClosedOnMissingFrozenContext|TestCompletionProjectsHandoffPendingInEveryRead|TestCompletionRollsBackWithoutItsHandoff)$' \
+  -count=1 -v
+```
+
+The focused store command ran inside the same throwaway `postgres:16-alpine` setup and `RECRUITMENT_TEST_PG_DSN` contract used by `apps/recruitment/scripts/test-postgres.sh`.
+
+Results at `34306f53984ff1624f857d05b9925f36da721b40`:
+
+- BFF build/source/unit: PASS, receipt `.test-results/run-20260829T092114-7b7afff2/summary.json`.
+- Recruitment build/unit: PASS, receipt `.test-results/run-20260829T092126-283ff96b/summary.json`.
+- P5-focused PostgreSQL store tests: 8 top-level tests and all subtests PASS, package result `ok recruitment.agxp.ai/internal/store 14.164s`.
+
+The broad `tools/test service recruitment --suite recruitment-postgres --keep-going` was also attempted at the exact SHA and reached the suite's fixed 600-second timeout (`FAIL reason=timeout`, 610.4s; receipt `.test-results/run-20260829T092213-3deee8ab/summary.json`) without an assertion failure. This is recorded, not relabeled as PASS. It does not block this contract-focused frontend admission because: the exact P5 PostgreSQL tests above passed against a fresh database; the backend owner's authoritative affected run had the same production/store code PASS in 396.3s (`run-20260829T083945-22fa739e`); and the only later commit leading to the admitted SHA changes `apps/recruitment-bff/scripts/local-e2e.sh`, not production, store or PostgreSQL tests. Treat the broad-suite timeout as a non-contract performance flake; it must not be cited as a full-suite PASS.
+
+Stable P5 behavior was not redesigned: `supplementary_question.ref` remains the `prompt_id` coordinate; the public routes still use `fact-responses`, Case-scoped `resume-submission/content` and `agent-instructions`; there is no action payload DTO, `next_step`, P7 publication state or `conversation_ref`.
 
 ---
 
@@ -60,27 +199,27 @@ If any one is unavailable, the recalibration verdict stays blocked and Tasks 1�
 - Read: final backend `apps/recruitment-bff/internal/httpapi/openapi_test.go`
 - Read: final backend `apps/recruitment/internal/matchcase`
 - Read: final backend `apps/recruitment/internal/store`
-- Modify during the dedicated recalibration session: this plan and `docs/superpowers/specs/2026-08-29-recruitment-p5-frontend-wiring-design.md`
+- Modify during the dedicated recalibration session: this plan, `docs/superpowers/plans/2026-08-29-recruitment-p5-frontend-wiring.md`, `docs/superpowers/specs/2026-08-29-recruitment-p5-frontend-wiring-design.md` and `docs/DEV_LOG.md`
 - Modify during implementation execution: none
 
 **Interfaces:**
 - Consumes: backend owner's declared final clean P5 contract-completion candidate.
 - Produces: one committed `READY_FOR_EXECUTION` plan with exact contract evidence, or a STOP verdict.
 
-- [ ] **Step 1: Enforce the document status gate**
+- [x] **Step 1: Enforce the document status gate**
 
 ```bash
 rg -n '^\*\*Status:\*\* `READY_FOR_EXECUTION`' \
   docs/superpowers/plans/2026-08-29-recruitment-p5-frontend-contract-wiring.md
 ```
 
-Expected during execution: exactly one match. With the current committed `BLOCKED_PENDING_FINAL_BACKEND_RECALIBRATION` status, STOP and return the plan to the frontend owner; do not self-approve it inside an implementation session.
+Expected during execution: exactly one match. The dedicated recalibration session established that match; an implementation session must not self-approve a different SHA.
 
-- [ ] **Step 2: Verify the recorded backend candidate is exact and clean**
+- [x] **Step 2: Verify the recorded backend candidate is exact and clean**
 
-Run the exact worktree and SHA commands inserted by the recalibration commit. PASS requires that the recorded `git rev-parse HEAD` equals the plan's admitted SHA and that `git status --short` is empty for OpenAPI, BFF client/handlers, MatchCase and store paths.
+Run the exact worktree and SHA commands in the admission section. PASS requires that the recorded `git rev-parse HEAD` equals the admitted SHA and that `git status --short` is empty for the entire backend worktree.
 
-- [ ] **Step 3: Verify the four blocker groups semantically**
+- [x] **Step 3: Verify the four blocker groups semantically**
 
 The recalibration evidence must demonstrate all of these, not only matching words:
 
@@ -93,7 +232,7 @@ The recalibration evidence must demonstrate all of these, not only matching word
 7. cross-role context, missing context and extra fields fail closed;
 8. all list/history/detail success and error responses retain `Cache-Control: no-store`.
 
-- [ ] **Step 4: Verify stable P5 behavior was not redesigned**
+- [x] **Step 4: Verify stable P5 behavior was not redesigned**
 
 ```bash
 rg -n "supplementary_question|fact-responses|prompt_id|respond_fact|resume-submission/content|agent-instructions" \
@@ -104,9 +243,9 @@ rg -n "supplementary_question|fact-responses|prompt_id|respond_fact|resume-submi
 
 Expected: transcript `ref` remains the prompt coordinate; no action payload DTO, `next_step`, P7 publication state or conversation reference has appeared.
 
-- [ ] **Step 5: Run the exact focused backend tests recorded by recalibration**
+- [x] **Step 5: Run the exact focused backend tests recorded by recalibration**
 
-Expected: all tests pass at the exact admitted SHA. Task 0 creates no implementation commit.
+Expected: the focused commands in Recalibration Admission pass at the exact admitted SHA. Any broader diagnostic run is reported with its actual verdict; Task 0 creates no frontend implementation commit.
 
 ---
 
@@ -127,6 +266,35 @@ Expected: all tests pass at the exact admitted SHA. Task 0 creates no implementa
 ```ts
 export type P5角色 = 'candidate' | 'recruiter';
 export type P5历史生命周期 = 'ended' | 'completed';
+export type P5步骤 =
+  | 'policy_check'
+  | 'candidate_evaluation'
+  | 'candidate_question'
+  | 'recruiter_answer'
+  | 'candidate_reevaluation'
+  | 'human_decision'
+  | 'complete'
+  | 'awaiting_candidate_resume_invitation'
+  | 'awaiting_resume_parse'
+  | 'screening_resume'
+  | 'awaiting_recruiter_decision'
+  | 'coordinating'
+  | 'awaiting_candidate_decision'
+  | 'awaiting_confirmations'
+  | 'awaiting_candidate_confirmation'
+  | 'awaiting_recruiter_confirmation'
+  | 'handoff_pending';
+export type P5动作 =
+  | 'respond_fact'
+  | 'end_screening'
+  | 'accept_resume_invitation'
+  | 'decline_resume_invitation'
+  | 'retry_resume_readiness'
+  | 'replace_resume'
+  | 'decide_resume_screening'
+  | 'decide_coordination'
+  | 'confirm_intent'
+  | 'decline_intent';
 
 export interface MatchCase数据源 {
   读取P5Open列表(role: P5角色, filterRef: string | null, cursor: string | null): Promise<P5列表页>;
@@ -143,25 +311,25 @@ export interface MatchCase数据源 {
 }
 ```
 
-`P5列表页` is a role-discriminated normalized page; `P5详情` is a role-discriminated normalized detail. Both preserve final public values but expose candidate/recruiter context through distinct branches, so cross-role optional fields cannot enter UI code.
+`P5列表页` is a role-discriminated normalized page over `CandidateMatchCaseWorkspacePage | RecruiterMatchCaseWorkspacePage`; open and history deliberately share those page/item shapes. `P5详情` is a role-discriminated normalized detail over `CandidateMatchCaseDetail | RecruiterMatchCaseDetail`. Both preserve the admitted wire values but expose candidate/recruiter context through distinct branches, so cross-role optional fields cannot enter UI code. Decode absent `current_coordination` / `terminal_summary` as internal `null` only after exact-key wire validation; the public wire does not accept explicit `null` for those optional members.
 
 - [ ] **Step 1: Write failing role-specific list/detail decoder tests**
 
-Use the exact fixtures committed by recalibration. Cover:
+Build wire fixtures directly from the admitted schema table and 17-row matrix above. Cover:
 
 - candidate/recruiter open pages, viewer-specific `needs_action`, server order and opaque cursor;
 - separate ended/completed history pages;
 - candidate detail required intention/job and recruiter detail required job/alias;
 - direct terminal detail and empty action arrays;
 - missing/extra/cross-role keys, null required arrays, unknown enums and illegal state tuples;
-- duplicate `case_id` across an appended page and invalid/repeated cursors.
+- invalid/empty/oversized cursor inputs and invalid response cursor types.
 
 Representative assertion:
 
 ```ts
 expect(解P5详情(P5候选详情Wire, 'candidate')).toMatchObject({
   role: 'candidate',
-  context: { intentionId: 'int_1' },
+  context: { intentionId: 'int_0123456789abcdef0123456789abcdef' },
   state: { caseId: 'mc_1' },
 });
 expect(() => 解P5详情({ ...P5候选详情Wire, candidate_alias: 'candidate-x' }, 'candidate'))
@@ -175,13 +343,19 @@ Assert exact method/path/query/body for both lists, both history shelves, detail
 The S1 resume assertion must require a literal `true` confirmation and preserve it in the strict body:
 
 ```ts
-await source.提交P5简历('mc_1', 'rf_1', 'rfv_7', true, 'p5-resume-key-0001');
+await source.提交P5简历(
+  'mc_1',
+  'rf_0123456789abcdef0123456789abcdef',
+  'rfv_0123456789abcdef0123456789abcdef',
+  true,
+  'p5-resume-key-0001',
+);
 expect(请求).toHaveBeenCalledWith({
   path: '/api/v1/me/match-cases/mc_1/resume-submission',
   method: 'POST',
   body: {
-    file_id: 'rf_1',
-    file_version_id: 'rfv_7',
+    file_id: 'rf_0123456789abcdef0123456789abcdef',
+    file_version_id: 'rfv_0123456789abcdef0123456789abcdef',
     disclosure_confirmed: true,
   },
   幂等: true,
@@ -379,10 +553,10 @@ Expected: PASS.
 
 ```tsx
 it('renders viewer-specific action responsibility without state.needs_user', async () => {
-  render(<MatchCase列表 role="candidate" filterRef="int_case" />);
+  render(<MatchCase列表 role="candidate" filterRef="int_0123456789abcdef0123456789abcdef" />);
   expect(await screen.findByText('需要你')).toBeInTheDocument();
   cleanup();
-  render(<MatchCase列表 role="recruiter" filterRef="job_case" />);
+  render(<MatchCase列表 role="recruiter" filterRef="job_0123456789abcdef0123456789abcdef" />);
   expect(await screen.findByText('代理处理中')).toBeInTheDocument();
 });
 ```
@@ -685,7 +859,7 @@ Expected: exit 0 with no production matches. A match or any `rg` scan error, inc
 
 - [ ] **Step 6: Record evidence and commit**
 
-Append admitted backend SHA, Task 0 evidence and every command result to `docs/DEV_LOG.md`, followed by:
+Append every frontend implementation command result to the existing Task 0 admission entry in `docs/DEV_LOG.md`; retain the admitted backend SHA and receipts unchanged, then add:
 
 ```text
 P5.1 deferred: rich job/company/publisher, score/reasons/highlights, compensation relationship,
@@ -706,14 +880,14 @@ Expected: clean worktree.
 
 ## Plan 2 Self-Review
 
-- [ ] A committed recalibration changed status to `READY_FOR_EXECUTION` and pinned one clean exact backend SHA.
-- [ ] Task 0 proves all four backend gaps through public schemas and tests before product code changes.
-- [ ] No task treats `respond_fact` as missing or requests an action payload DTO.
-- [ ] No production type, mapper, copy or test introduces `next_step`.
-- [ ] Handoff UI is only `completed + handoff_pending`; no P7 publication/conversation requirement exists.
-- [ ] P5.1 fields appear only in exclusion checks, never production DTOs or completion gates.
-- [ ] Identity and raw PDF remain separate; PDF bytes are never parsed.
-- [ ] Alias is display-only and `case_id` owns every identity/key boundary.
-- [ ] Direct refresh consumes detail role context and never list memory.
-- [ ] Same-Case dual-viewer action responsibility, unknown-code fail-closed, prompt replay, privacy, terminal actions and no-store behavior all have unit/component/E2E ownership.
-- [ ] Mock isolation and full verification pass with a clean worktree.
+- [x] The recalibration commit changes status to `READY_FOR_EXECUTION` and pins one clean exact backend SHA.
+- [x] Task 0 proves all four backend gaps through public schemas and focused tests before product code changes, while recording the broad-suite timeout with its actual verdict.
+- [x] No task treats `respond_fact` as missing or requests an action payload DTO.
+- [x] No production type, mapper, copy or test introduces `next_step`.
+- [x] Handoff UI is only `completed + handoff_pending`; no P7 publication/conversation requirement exists.
+- [x] P5.1 fields appear only in exclusion checks, never production DTOs or completion gates.
+- [x] Identity and raw PDF remain separate; PDF bytes are never parsed.
+- [x] Alias is display-only and `case_id` owns every identity/key boundary.
+- [x] Direct refresh consumes detail role context and never list memory.
+- [x] Same-Case dual-viewer action responsibility, unknown-code fail-closed, prompt replay, privacy, terminal actions and no-store behavior all have unit/component/E2E ownership.
+- [x] Task 8 owns Mock isolation, full frontend verification, P5.1/P7 absence scans and the clean implementation handoff.

@@ -1,0 +1,57 @@
+/* 先问选择行:无框(2026-08-31 全站设计原则「所有设计不要框」),行间靠发丝线 */
+
+.行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.末行 {
+  border-bottom: none;
+}
+
+.文字区 {
+  flex: 1;
+  min-width: 0;
+}
+
+.标题 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--墨);
+  line-height: 1.5;
+}
+
+.注 {
+  font-size: 11.5px;
+  color: var(--弱化);
+  margin-top: 3px;
+}
+
+/* 双选胶囊:整组一圈描边,选中格荧光绿 —— 全页仅有的控件形状 */
+.选组 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  border: 1px solid var(--描边深);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.选项 {
+  padding: 7px 13px;
+  font-size: 12.5px;
+  color: var(--次要浅);
+  background: var(--白);
+  border: none;
+}
+
+.选中 {
+  background: var(--荧光绿);
+  color: var(--深绿文字);
+  font-weight: 700;
+}

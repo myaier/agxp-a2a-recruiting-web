@@ -2,21 +2,21 @@
 
 **日期：** 2026-08-29
 
-**状态：** 已按产品校准并拆成两阶段：Plan 1 可立即实施；Plan 2 等 P5 四组 backend blocker 的最终公开合同后重新校准
+**状态：** 已按最终 backend 合同完成二次校准：Plan 1 已完成并合入；Plan 2 已通过四组 admission，状态为 `READY_FOR_EXECUTION`
 
 **范围：** `agxp-a2a-recruiting-web` 的双端 MatchCase workspace/history、四阶段详情、viewer-specific actions、S0–S3 mutation、terminal/archive、原始 PDF 披露与 handoff pending UI。
 
-**前端基线：** `origin/main@636fedefb81998436723ad1585ccdf7b439c5c21`
+**前端基线：** `origin/main@aa467312353eabc5a5445a333a751418c47c442a`
 
-**后端证据基线：** `recruitment/plan-p5@55968690f11386b2575a7768ef6fb483d66c068f`。该 clean HEAD 是此前审计提交 `817d87050f8857dbf0c3cab2ef308d7d5f95df02` 的后继，并包含后续 L3/runtime 收口提交。只读取已提交的 `apps/recruitment-bff/openapi/mobile-v1.yaml`、BFF strict client、Recruitment DTO/projector/store 与测试；页面 mock、候选 Spec 和未提交文件均不属于合同基线。
+**后端证据基线：** `impl/recruitment-p5-contract-completion@34306f53984ff1624f857d05b9925f36da721b40`，校准时与 `origin/release/0.2.5` 同 SHA 且工作树 clean。合同只取该 commit 已提交的 `apps/recruitment-bff/openapi/mobile-v1.yaml`、BFF strict client、Recruitment DTO/projector/store、共享状态矩阵与测试；页面 mock、候选 Spec、Go 私有常量和未提交文件均不属于合同基线。
 
 ## 1. 校准结论
 
 前端采用独立 P5 facade、严格 wire decoder、backend-only raw snapshot、closed-code 展示映射和双端共用的 P5 页面组件。Backend 模式不再把 Mock `在谈单` / `候选` reducer 当成 MatchCase，也不从 P4、Job、Organization、Resume 或 timeline 自由文本补齐 P5 没有的数据；Mock 模式保持现有演示剧情。
 
-执行拆成两个独立完成面。Plan 1 只做合同无关基础：opt-in no-store transport、P4 委托的精确 PDF file/version 选择，以及只依赖已批准事实的 S0 prompt/PDF 安全 helper；它不创建 MatchCase list/detail DTO，不发 P5 页面读取，也不声称 P5 已完成。Plan 2 才实施 workspace/history/detail/state/action 页面接线，并且必须先通过四组 backend blocker admission。
+执行拆成两个独立完成面。Plan 1 已交付合同无关基础：opt-in no-store transport、P4 委托的精确 PDF file/version 选择，以及只依赖已批准事实的 S0 prompt/PDF 安全 helper；它没有创建 MatchCase list/detail DTO，也没有发 P5 页面读取。Plan 2 实施 workspace/history/detail/state/action 页面接线，其四组 backend admission 已在精确 clean SHA 上通过。
 
-Plan 2 admission 只接受最终公开 OpenAPI/DTO/合同测试，不根据当前 Go 常量、页面 mock、示例数据、候选后端 Spec 或类型草稿猜测 wire shape。blocker 未全部闭合时，Plan 2 保持 `BLOCKED_PENDING_FINAL_BACKEND_RECALIBRATION`；不得先写兼容猜测。
+Plan 2 admission 只接受最终公开 OpenAPI/DTO/合同测试，不根据 Go 私有常量、页面 mock、示例数据、候选后端 Spec 或类型草稿猜测 wire shape。最终合同已发布 viewer-specific `needs_action`、closed `MatchCaseStep` 与合法矩阵、`completed + handoff_pending`、双端最小 detail context；具体 schema、required/nullable 集合、17 行矩阵、测试命令和 receipts 固定在 `docs/superpowers/plans/2026-08-29-recruitment-p5-frontend-contract-wiring.md` 的 Recalibration Admission 中。
 
 P5 和 P5.1 是两个完成面：P5 Core 与 P5 Minimal Context 可以在四组 blocker 闭合后完成；P5.1 Rich Presentation 只登记依赖，不进入本次代码、测试 gate 或完成声明。
 
@@ -43,18 +43,18 @@ P5 和 P5.1 是两个完成面：P5 Core 与 P5 Minimal Context 可以在四组 
 
 当前 HEAD 已经证明 `respond_fact` 可达。除非未来合同测试证明同一当前 stage 会同时出现多个无法区分的 active prompt，否则不得要求后端增加 action payload DTO。
 
-### 2.2 P5 明确漏项：backend blocker
+### 2.2 P5 原四组 blocker：已闭合并准入
 
-仅以下四组是本次前端 P5 admission blocker，四组的 necessity 均为 `required`：
+四组 necessity 仍为 `required`，最终合同闭合结果如下：
 
-1. open list 的 viewer-specific `needs_action`，以及基于同一 viewer-specific 值的服务端排序和 cursor；前端不得用 `state.needs_user` 替代。
-2. `state.step` 的公开 closed enum，以及 `lifecycle + stage + status + step` 的合法组合矩阵；前端不得根据当前 Go 常量自行冻结未发布合同。
-3. 双方确认完成且 handoff outbox 已写入时，公开读模型必须返回 `lifecycle=completed`、`step=handoff_pending`；当前 HEAD 仍投影 `step=complete`。
-4. detail 恢复此前批准的最小 role context，使直接刷新不依赖列表内存：
-   - candidate：`intention_id + frozen WorkspaceJob`；
-   - recruiter：`frozen WorkspaceJob + candidate_alias`。
+1. candidate/recruiter `CandidateMatchCaseWorkspaceItem` / `RecruiterMatchCaseWorkspaceItem` 都 required `needs_action`。open SELECT、keyset predicate 与排序共用 viewer-specific 表达式，顺序为 `needs_action DESC, updated_at DESC, case_id DESC`；history cursor 只含 `updated_at + case_id`。前端仍不得用 `state.needs_user` 替代。
+2. `state.step` 公开为 `MatchCaseStep` closed enum，共 17 词；`apps/recruitment/testdata/matchcase-state-matrix.json` 的 17 行合法矩阵同时约束 Recruitment validator/OpenAPI 与 BFF validator/OpenAPI。unknown 或非法 tuple 必须 fail closed。
+3. 双方确认完成的事务同时持久化 handoff outbox；公开读模型、`case_completed` event metadata 与 timeline 都返回 `lifecycle=completed`、`stage=intent_confirmation`、`status=passed`、`step=handoff_pending`。`ended` 保持 `step=complete`，P5 不发布 conversation ref。
+4. detail 已拆为 closed role DTO：
+   - `CandidateMatchCaseDetail` required `intention_id + job`，禁止 `candidate_alias`；
+   - `RecruiterMatchCaseDetail` required `job + candidate_alias`，禁止 `intention_id`。
 
-前端可以依赖这四项，但只能写“等待 P5 最终合同”。admission 必须检查公开 OpenAPI 的 exact property name、nesting、required/nullable、enum 和 route response；本设计不预先规定新增字段在 wire 上如何嵌套。
+open/history 列表分别使用 `CandidateMatchCaseWorkspacePage` / `RecruiterMatchCaseWorkspacePage`；history 刻意复用同一 role item/page schema，没有另造 history item。双端 detail envelope 分别是 `CandidateMatchCaseDetailEnvelope` / `RecruiterMatchCaseDetailEnvelope`。所有对象 `additionalProperties: false`；精确 required、nullable 与 absent 规则以 Plan 2 admission 表为执行 SSOT。
 
 ### 2.3 P5.1 新需求：不阻塞 P5
 
@@ -229,8 +229,8 @@ P5 workspace alias 是 Case display alias；P4 alias 是 candidate × viewer org
 
 ### 11.0 执行拆分与验收边界
 
-- **Plan 1 — Frontend Foundation：** 可在 backend blocker 补齐期间独立执行。交付 no-store seam、P4 精确附件坐标和 S0/PDF 安全 helper；完成口径固定为 `P5 frontend foundation complete; contract-gated wiring not started`。
-- **Plan 2 — Contract Wiring：** 只有后端最终 stable HEAD 发布并由前端重新校准后才能执行。它拥有 P5 read DTO、closed state mapper、runtime state、双端页面、actions、archive、handoff pending 与 E2E。
+- **Plan 1 — Frontend Foundation：** 已完成并合入。交付 no-store seam、P4 精确附件坐标和 S0/PDF 安全 helper；其完成口径仍固定为 `P5 frontend foundation complete; contract-gated wiring not started`，不追溯改写成 P5 完成。
+- **Plan 2 — Contract Wiring：** 已在 backend `34306f53984ff1624f857d05b9925f36da721b40` 上重新校准并准入。它拥有 P5 read DTO、closed state mapper、runtime state、双端页面、actions、archive、handoff pending 与 E2E。
 - Plan 1 不创建 Plan 2 的临时 wire DTO 或页面 shell；Plan 2 只复用 Plan 1 已验收的 transport/selection/helper，不需要撤销或迁移临时代码。
 
 对应计划：

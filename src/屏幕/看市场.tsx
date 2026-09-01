@@ -43,6 +43,7 @@ import 确认层 from '../组件/确认层';
 import 附件简历选择层, { 从附件行取选择值, type 附件简历选择值 } from '../组件/附件简历选择层';
 import { 谈判图标, 放大镜图标 } from '../组件/图标';
 import { use应用状态 } from '../状态/应用状态';
+import { use适配分 } from '../状态/use适配分';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 市场列表 } from '../数据/模拟数据';
@@ -626,6 +627,8 @@ function 市场卡({
   /** Backend 反馈/委托写进行中时禁用去谈键（并发写会被操作层单飞丢弃） */
   委托禁用?: boolean;
 }) {
+  // 分从行来(2026-08-31):卡上的环与职位详情的环同一份计算分
+  const 计算适配分 = use适配分(岗);
   return (
     <白卡 类名={样式.卡}>
       {/* 卡主体整块点进职位详情 */}
@@ -638,7 +641,7 @@ function 市场卡({
             <div className={`${样式.公司简介} 单行`}>{岗.公司简介}</div>
           </div>
           <div className={样式.右列}>
-            <适配环 分={岗.适配分} 标={null} />
+            <适配环 分={计算适配分} 标={null} />
             <span className={`${样式.薪资} 薪资体`}>{岗.薪资.replace('-', '–')}</span>
           </div>
         </div>

@@ -4,10 +4,10 @@ import { 在谈候选列表, 各候选阶段对话 } from './企业端模拟数�
 import { 协议正文 } from '../屏幕/用户协议';
 
 describe('招聘渐进披露契约', () => {
-  it('S1 明确递交 PDF 原件并解除姓名和联系方式隐藏', () => {
+  it('S1 递交阶段的披露口径与协议一致', () => {
+    // 2026-08-31 用户定稿:「核过条件才发完整简历」——姓名/联系方式的披露说明收进用户协议
     const 递交 = 披露四阶段.find((项) => 项.编号 === '递交简历');
-    expect(递交?.说明).toContain('PDF 原件');
-    expect(递交?.说明).toMatch(/姓名|联系方式/);
+    expect(递交?.说明).toContain('完整简历');
     const 协议 = JSON.stringify(协议正文);
     expect(协议).toContain('简历原件成功递交');
     expect(协议).not.toContain('双方身份与联系方式同时互换');

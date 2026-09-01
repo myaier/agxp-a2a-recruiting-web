@@ -48,16 +48,26 @@ export type 在谈范围档 = '当前' | '全部';
  */
 import type { 意向草稿型 } from '../数据/招聘数据源类型';
 export type { 意向草稿型 };
-import type { BFF主体, BFF角色 } from '../数据/BFF契约';
+import type { BFF主体, BFF角色, P5角色, P7角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
 import type { 资料缓存快照 } from '../数据/资料缓存';
 import { 读资料缓存 } from '../数据/资料缓存';
+import { 创建P8导出恢复存储, type P8导出恢复存储 } from '../数据/P8导出恢复';
+import type { PDF对象租约 } from '../数据/PDF对象租约';
 import { 轻提示 } from '../组件/轻提示';
-import type { 应用操作, 后端状态, 后端操作依赖 } from './后端/类型';
+import type {
+  应用操作, 后端状态, 后端操作依赖, P7待定意图, P7已读位置记录,
+  P8待定意图,
+} from './后端/类型';
 import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
 import { 创建发现推荐操作, 创建空P4发现状态 } from './后端/发现推荐操作';
+import { 创建MatchCase操作, 创建空P5MatchCase状态, 清P5MatchCase引用 } from './后端/MatchCase操作';
+import { 创建真人会话操作, 创建空P7会话状态, 清P7会话引用 } from './后端/真人会话操作';
+import { 创建P8账号安全操作, 创建空P8控制面状态, 清P8控制面引用 } from './后端/P8控制面操作';
+import { use真人会话事件 } from './后端/use真人会话事件';
+import { 创建招聘事件源 } from '../数据/招聘事件源';
 import { 创建候选操作 } from './后端/候选操作';
 import { 创建岗位操作 } from './后端/岗位操作';
 import { 创建组织操作 } from './后端/组织操作';
@@ -236,6 +246,7 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     case '企业改规则':
     case '企业删规则':
     case '企业切规则开关':
+    case '设先问偏好':
     // P6：Backend 水合/清空也在 Agent 规则域；不在 reducer 里判模式，操作/会话层拥有边界
     case '水合后端候选规则':
     case '水合后端招聘规则':
@@ -469,6 +480,12 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     },
     // P4：发现推荐 raw scope 快照/详情/委托回执全部空底座起步（Mock 发现域不触达这里）
     ...创建空P4发现状态(),
+    // P5：MatchCase 内存态快照（工作区/历史/详情）空底座起步；绝不进 资料持久化
+    ...创建空P5MatchCase状态(),
+    // P7：真人会话内存态快照（收件箱/详情/消息页）空底座起步；绝不进 资料持久化
+    ...创建空P7会话状态(),
+    // P8：账号控制面内存态快照（凭证/会话/导出）空底座起步；绝不进 资料持久化
+    ...创建空P8控制面状态(),
     // P2：附件库权威快照种子为 null（Backend 初始不带任何演示附件行）
     附件简历库: null,
   }));
@@ -495,8 +512,45 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const P4范围代际 = useRef(new Map<string, number>());
   const P4幂等意图 = useRef(new Map<string, string>());
   const P4可见范围 = useRef<Record<BFF角色, string | null>>({ candidate: null, recruiter: null });
+  // P5 Task 3：MatchCase 运行时引用 —— scope 代际 / pending 幂等意图 / 双端可见范围 /
+  // 在途 PDF 对象租约。一次性初始化；会话转移由下方主体基串 effect 统一复位。
+  const P5范围代际 = useRef(new Map<string, number>());
+  const P5幂等意图 = useRef(new Map<string, string>());
+  const P5可见范围 = useRef<Record<P5角色, string | null>>({ candidate: null, recruiter: null });
+  const P5对象租约 = useRef(new Set<PDF对象租约>());
+  // P7 Task 2：真人会话运行时引用 —— scope 代际 / 待定发送意图 / 双端可见收件箱与
+  // 可见会话 / 已读位置。一次性初始化；会话转移由下方主体基串 effect 统一复位。
+  const P7范围代际 = useRef(new Map<string, number>());
+  const P7待定意图 = useRef(new Map<string, P7待定意图>());
+  const P7可见收件箱 = useRef<Record<P7角色, boolean>>({ candidate: false, recruiter: false });
+  const P7可见会话 = useRef<Record<P7角色, string | null>>({ candidate: null, recruiter: null });
+  const P7已读位置 = useRef(new Map<string, P7已读位置记录>());
+  // P8 Task 3：账号控制面运行时引用 —— 范围代际 / 账号可见 / 读锁 / 待定意图 /
+  // 导出恢复。一次性初始化；会话转移由下方主体（不含角色）effect 与 会话操作 的
+  // 清理口统一复位（导出恢复句柄跨登出保留，spec §8.3）。
+  const P8范围代际 = useRef(0);
+  const P8账号可见 = useRef(false);
+  const P8读取锁 = useRef(new Map<'credentials' | 'sessions' | 'export', Promise<void>>());
+  const P8待定意图 = useRef(new Map<string, P8待定意图<unknown>>());
+  const P8导出恢复 = useRef<P8导出恢复存储 | null>(null);
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
+  // P8 Task 5：subject 绑定的导出恢复适配器。Backend 主体在场才构造（local 存储 +
+  // 模式/环境/账号 三重隔离键）；主体/环境每次变化都在渲染期先写 ref —— 子组件
+  // （账号安全页）的被动恢复 effect 一定看到新适配器（或 null），操作方法在调用时
+  // 解引用 .current。Mock 恒 null、零存储触碰；绝不把普通适配器捕获进 Provider
+  // 生命期的 useMemo。
+  P8导出恢复.current = 是后端 && 当前主体标识 !== null
+    ? 创建P8导出恢复存储({
+      storage: 安全取存储('local'),
+      范围: { 模式: 'backend', 环境, 账号: 当前主体标识 },
+    })
+    : null;
   use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识 });
+
+  // P7 Task 5：同源事件源只建一次（无 token/query/header；帧只触发 no-store 重拉）。
+  // 钩子输入全部由 Provider 注入（与 useMatchCase轮询 同一纪律，不读 Context）；
+  // 内部按 Backend + 已登录 + 有效角色 + 页面可见开关连接，Mock 零连接。
+  const 招聘事件源 = useMemo(() => 创建招聘事件源(), []);
 
   // P1C：从 subject-scoped sessionStorage 读取恢复的 current relation 候选值。
   // 只作为 选择当前企业关系(affiliations, restoredId) 的输入；读取本身不派发选择 action，
@@ -580,6 +634,55 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [是后端, 后端]);
 
+  // ── P5 Task 3：MatchCase 会话边界的反应式清理 ─────────────────────────────────
+  // 登出 / 401 清理 / 换主体登录 / 切身份在状态上全部表现为「主体基串（subject + 角色）」
+  // 变化：这里统一清 P5 内存快照、scope 代际与幂等意图引用，并回收全部在途 PDF 对象
+  // 租约（内存纪律：P5 状态绝不进 资料持久化 / 浏览器存储；在飞请求由操作层自身的
+  // subject/role/会话代际栅栏按旧代整包丢弃）。同主体重登（基串不变）不清 —— 与 P4
+  // 草稿保留口径一致，且不确定结果的同键重试跨重登仍可沿用。
+  const P5会话基 = useRef('');
+  useEffect(() => {
+    const 基 = 后端状态.主体 === null ? '' : `${后端状态.主体.subject_id}|${后端状态.主体.last_used_role}`;
+    if (P5会话基.current === 基) return;
+    P5会话基.current = 基;
+    清P5MatchCase引用({ P5范围代际, P5幂等意图, P5可见范围, P5对象租约 });
+    设后端状态((旧) => ({ ...旧, ...创建空P5MatchCase状态() }));
+    // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [后端状态.主体]);
+
+  // ── P7 Task 2：真人会话会话边界的反应式清理 ─────────────────────────────────
+  // 与 P5 同一主体基串口径：登出 / 401 清理 / 换主体登录 / 切身份在状态上全部表现为
+  // 「主体基串（subject + 角色）」变化。这里统一清 P7 内存快照与五个引用（范围代际 /
+  // 待定发送意图 / 双端可见收件箱与可见会话 / 已读位置），在飞请求由操作层自身的
+  // subject/role/会话代际栅栏按旧代整包丢弃。同主体重登（基串不变）不清。
+  const P7会话基 = useRef('');
+  useEffect(() => {
+    const 基 = 后端状态.主体 === null ? '' : `${后端状态.主体.subject_id}|${后端状态.主体.last_used_role}`;
+    if (P7会话基.current === 基) return;
+    P7会话基.current = 基;
+    清P7会话引用({ P7范围代际, P7待定意图, P7可见收件箱, P7可见会话, P7已读位置 });
+    设后端状态((旧) => ({ ...旧, ...创建空P7会话状态() }));
+    // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [后端状态.主体]);
+
+  // ── P8 Task 3：账号控制面会话边界的反应式清理 ─────────────────────────────────
+  // 与 P5/P7 不同，P8 的清理键只认主体（账号资源以 subject 为隔离边界，不按
+  // candidate/recruiter 重复保存）：登出 / 401 清理 / 换主体登录在状态上表现为
+  // 「主体基串」变化，这里清三块账号快照并复位四个引用；同主体切角色基串不变，
+  // 已确认快照保留（切身份 里的显式栅栏递增负责作废上个角色的在飞读写）。
+  const P8会话基 = useRef('');
+  useEffect(() => {
+    const 基 = 后端状态.主体 === null ? '' : 后端状态.主体.subject_id;
+    if (P8会话基.current === 基) return;
+    P8会话基.current = 基;
+    清P8控制面引用({ P8范围代际, P8账号可见, P8读取锁, P8待定意图 });
+    设后端状态((旧) => ({ ...旧, ...创建空P8控制面状态() }));
+    // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [后端状态.主体]);
+
   const 操作 = useMemo<应用操作>(
     () => {
       const deps: 后端操作依赖 = {
@@ -597,6 +700,20 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         P4范围代际,
         P4幂等意图,
         P4可见范围,
+        P5范围代际,
+        P5幂等意图,
+        P5可见范围,
+        P5对象租约,
+        P7范围代际,
+        P7待定意图,
+        P7可见收件箱,
+        P7可见会话,
+        P7已读位置,
+        P8范围代际,
+        P8账号可见,
+        P8读取锁,
+        P8待定意图,
+        P8导出恢复,
       };
       return {
         ...创建会话操作(deps),
@@ -610,6 +727,15 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         ...创建发现推荐操作(deps),
         // P2：附件简历操作同样共用同一把 deps（库锁/文件锁落在同一把 锁 里）
         ...创建附件简历操作(deps),
+        // P5 Task 3：MatchCase 操作（内存态快照 + 意图键化命令 + 租约），同一把 deps
+        ...创建MatchCase操作(deps),
+        // P7 Task 2：真人会话操作（内存态快照 + 意图键化发送对账 + forward-only 已读），同一把 deps
+        ...创建真人会话操作(deps),
+        // P8 Task 3+5：账号控制面操作（内存态快照 + 单飞读取 + 意图键化换绑/退出其他
+        // 设备 + 导出恢复/创建/刷新/废弃/下载地址 + 账号注销），同一把 deps；
+        // 导出恢复适配器由上方渲染期按主体换绑；Task 6+7 合规两法（反馈 + 上下文举报）
+        // 同在此工厂返回
+        ...创建P8账号安全操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
@@ -638,6 +764,15 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       规则: 映射招聘Agent规则(Object.values(后端状态.招聘规则快照)),
     });
   }, [是后端, 后端状态.Agent规则水合.recruiter.rules, 后端状态.招聘规则快照]);
+
+  use真人会话事件({
+    事件源: 招聘事件源,
+    可见会话引用: P7可见会话,
+    数据源模式: 源.模式,
+    已登录: 后端状态.已登录,
+    角色: (后端状态.主体?.last_used_role ?? null) as P7角色 | null,
+    操作,
+  });
 
   // 目录查询 seam 已按 owner 拆到 ./后端/目录查询：Backend 模式暴露 查询Location/Taxonomy/Institution，
   // Mock 为 null；401 会话代际守卫与统一清理都在 创建目录查询 内部。

@@ -19,13 +19,25 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 企业消息列表 as 消息数据 } from '../数据/企业端模拟数据';
 import { use应用状态 } from '../状态/应用状态';
+import Backend会话列表 from './P7/Backend会话列表';
 import type { 消息条目 } from '../数据/类型';
 
 /** 三个筛选页签。顺序即设计稿顺序，别改 */
 const 页签列表 = ['全部', '仅会话', '通知'] as const;
 type 页签 = (typeof 页签列表)[number];
 
+/**
+ * 模式分支：Backend 只渲染招聘端 P7 收件箱，Mock 保留 S3 门控、reducer 未读
+ * 语义与既有无参路由剧情，二者互不渗漏。
+ */
 export default function 企业消息() {
+  const { 数据源模式 } = use应用状态();
+  return 数据源模式 === 'backend'
+    ? <Backend会话列表 角色="recruiter" />
+    : <Mock企业消息 />;
+}
+
+function Mock企业消息() {
   const { 跳转 } = use导航();
   const { 状态, 派发 } = use应用状态();
   const [当前页签, 设当前页签] = useState<页签>('全部');

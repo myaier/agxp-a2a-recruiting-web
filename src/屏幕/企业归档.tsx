@@ -5,6 +5,11 @@
 // 没有这一屏，终止就是一次静默删除：这一单谈到哪、卡在哪一条，再也打不开。
 //
 // 双盲不变：意向确认前只出现代号与画像，不出现真名，也不出现任何薪资数字。
+//
+// P5 模式边界：Backend 的历史代谈只来自 P5 历史快照（completed/ended 两个独立架子，
+// 屏幕/P5/MatchCase历史），点卡按 case_id 开同一候选详情（终局只读）；不读 企业归档列表、
+// 不水合 Mock 归档条、绝不从 Mock 归档条重建时间线或原因。Mock 分支（Mock企业归档）
+// 行为与接线前逐字一致、零 P5 请求。
 
 import 样式 from './我的功能页.module.css';
 import 本屏样式 from './企业归档.module.css';
@@ -12,8 +17,29 @@ import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
+import { MatchCase历史 } from './P5/MatchCase历史';
 
 export default function 企业归档() {
+  const { 数据源模式 } = use应用状态();
+  return 数据源模式 === 'backend' ? <Backend企业归档 /> : <Mock企业归档 />;
+}
+
+/** Backend 分支（P5）：completed/ended 两个独立终局架子；Mock 归档条一概不读。 */
+function Backend企业归档() {
+  const { 返回 } = use导航();
+  return (
+    <次级页外壳>
+      <返回栏 返回={返回} 标题="历史代谈" />
+      <滚动区 样式覆盖={{ padding: '14px 10px 24px' }}>
+        {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+        <MatchCase历史 role="recruiter" />
+      </滚动区>
+    </次级页外壳>
+  );
+}
+
+/** Mock 原型分支：静态归档表，行为与接线前逐字一致（P5 Task 7 仅移入，未改）。 */
+function Mock企业归档() {
   const { 返回, 跳转 } = use导航();
   const { 状态 } = use应用状态();
 

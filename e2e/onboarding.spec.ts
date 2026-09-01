@@ -224,13 +224,8 @@ test.describe('multi-role onboarding', () => {
     await page.getByRole('button', { name: '混合', exact: true }).click();
     await page.getByRole('button', { name: '下一步' }).click();
 
-    await expect(page.getByText('必须具备的技能（用于自动初筛）')).toBeVisible();
-    // 加分项块 2026-08-24 已删
+    // 技能词池块 2026-08-26 按标注删除(加分项块 2026-08-24 已删),本步只剩职位描述
     await page.getByLabel('职位描述').fill('参与 AI 招聘产品的需求分析、原型设计与用户研究。');
-    await page.getByRole('button', { name: 'Python', exact: true }).click();
-    // 选中态经 CSS ::before 带上「✓ 」前缀（C1 定稿），会进按钮的可达名，
-    // 所以选中后的断言不能再用 exact 原名
-    await expect(page.getByRole('button', { name: /Python/ })).toHaveAttribute('aria-pressed', 'true');
     await page.getByRole('button', { name: '下一步' }).click();
 
     await expect(page.getByText('日薪（元/天）')).toBeVisible();
@@ -240,7 +235,8 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByText('预计面试轮次')).toHaveCount(0);
     await expect(page.getByText('招聘紧急程度')).toHaveCount(0);
     await expect(page.getByText(/开始日期：最晚/)).toHaveCount(0);
-    await expect(page.getByText('AI 只按以下条件进行初筛。薪资仅判断双方区间是否匹配，不询问或协商具体金额。')).toBeVisible();
+    // AI 初筛卡 2026-08-26 已删,薪资承诺句降格为薪资区小字
+    await expect(page.getByText('薪资仅判断双方区间是否匹配，不询问或协商具体金额。')).toBeVisible();
 
     await page.getByRole('button', { name: '— 元/天' }).first().click();
     await page.getByRole('button', { name: '完成' }).click();

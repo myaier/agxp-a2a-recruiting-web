@@ -184,3 +184,39 @@ describe('双盲边界', () => {
     expect(企业真人会话源码.includes('真人会话操作栏')).toBe(true);
   });
 });
+
+// ── P7 Task 4：判别联合属性 —— Backend 只带主项按下（导航/取件回调），不带联系方式 ──
+describe('P7 判别联合属性', () => {
+  it('Backend：无联系方式时不渲染电话/微信；主项按下直接回调，不盖层', async () => {
+    const 用户 = userEvent.setup();
+    const 主项按下 = vi.fn();
+    render(
+      <真人会话操作栏
+        主项名="看职位"
+        主项图标={<span />}
+        主项按下={主项按下}
+      />
+    );
+    expect(screen.queryByRole('button', { name: '电话' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '微信' })).toBeNull();
+    expect(screen.queryByText('138 0013 2046')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '看职位' }));
+    expect(主项按下).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('主项内容（Mock）仍盖全屏层且行为不变', async () => {
+    const 用户 = userEvent.setup();
+    render(
+      <真人会话操作栏
+        主项名="看简历"
+        主项图标={<span />}
+        主项内容={<p>{简历正文占位}</p>}
+        联系方式={联系方式}
+      />
+    );
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    expect(screen.getByRole('dialog', { name: '看简历' })).not.toBeNull();
+    expect(screen.getByText(简历正文占位)).not.toBeNull();
+  });
+});

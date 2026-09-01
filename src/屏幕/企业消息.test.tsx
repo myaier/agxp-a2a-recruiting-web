@@ -11,6 +11,10 @@ let mock应用状态: any;
 
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: vi.fn() }) }));
+// P7 Task 3：Backend 分支只挂招聘端 P7 收件箱（Mock 企业消息 fixture 不进 Backend 分支）
+vi.mock('./P7/Backend会话列表', () => ({
+  default: ({ 角色 }: { 角色: string }) => <div data-testid="backend-inbox" data-role={角色} />,
+}));
 
 function 候选(覆盖: Partial<{ 真名: string | null; 阶段: string; 辅助文案: string | null }>) {
   return {
@@ -20,6 +24,19 @@ function 候选(覆盖: Partial<{ 真名: string | null; 阶段: string; 辅助�
     ...覆盖,
   };
 }
+
+describe('企业消息 · 模式分支', () => {
+  it('Backend 模式只渲染招聘端 P7 收件箱，Mock 真人行不出现', () => {
+    mock应用状态 = {
+      数据源模式: 'backend',
+      状态: { 企业候选列表: [候选({ 真名: '沈亦舟', 阶段: '意向确认', 辅助文案: '去消息页私聊' })], 企业消息未读: {} },
+      派发: vi.fn(),
+    };
+    render(<企业消息 />);
+    expect(screen.getByTestId('backend-inbox').getAttribute('data-role')).toBe('recruiter');
+    expect(screen.queryByText('沈亦舟')).toBeNull();
+  });
+});
 
 describe('企业消息 · 真人会话行门控', () => {
   it('S2 候选（真名已披露但未确认意向）不出现真人会话行', () => {

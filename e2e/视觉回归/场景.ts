@@ -397,6 +397,41 @@ const 候选画像场景: 视觉场景 = {
   },
 };
 
+// candidate-account-security：账号与安全页，求职端已注册（P8 Task 8 新增 Mock 场景）。
+// 注：本屏标题是 返回栏 标题（div，非 heading），按 carry-forward 规则用可见文本定位，
+// 不改产品代码。Backend 专属「数据」组/导出行在 Mock 不渲染 —— 本场景钉住的是
+// Mock 页与基线像素/几何兼容（换绑抽屉、注销按钮都在，导出相关一概缺席）。
+const 账号安全场景 = 构造场景({
+  id: 'candidate-account-security',
+  状态: '求职端已注册',
+  路径: '/#/account',
+  关键元素(page: Page) {
+    return [
+      { 名称: '标题 账号与安全', 定位: page.getByText('账号与安全', { exact: true }) },
+      { 名称: '手机号行', 定位: page.getByRole('button', { name: /手机号/ }) },
+      { 名称: '当前设备行', 定位: page.getByText('当前设备', { exact: true }) },
+      { 名称: '注销账号按钮', 定位: page.getByRole('button', { name: '注销账号' }) },
+    ];
+  },
+});
+
+// candidate-feedback：反馈与举报页，求职端已注册（P8 Task 8 新增 Mock 场景）。
+// 同上：标题是 返回栏 标题（div）；首分类片恰是举报类「举报虚假岗位」，输入区唯一
+// textarea，提交键与分类片用 exact 区分。
+const 反馈场景 = 构造场景({
+  id: 'candidate-feedback',
+  状态: '求职端已注册',
+  路径: '/#/feedback',
+  关键元素(page: Page) {
+    return [
+      { 名称: '标题 反馈与举报', 定位: page.getByText('反馈与举报', { exact: true }) },
+      { 名称: '首分类片 举报虚假岗位', 定位: page.getByRole('button', { name: '举报虚假岗位' }) },
+      { 名称: '输入区 textarea', 定位: page.getByRole('textbox') },
+      { 名称: '提交按钮', 定位: page.getByRole('button', { name: '提交', exact: true }) },
+    ];
+  },
+});
+
 export const 视觉场景们: 视觉场景[] = [
   登录场景,
   身份场景,
@@ -414,4 +449,6 @@ export const 视觉场景们: 视觉场景[] = [
   发岗二场景,
   发岗三场景,
   候选画像场景,
+  账号安全场景,
+  反馈场景,
 ];

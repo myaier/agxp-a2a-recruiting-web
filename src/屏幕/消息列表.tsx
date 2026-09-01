@@ -16,13 +16,25 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 消息列表 as 消息数据 } from '../数据/模拟数据';
 import { use应用状态 } from '../状态/应用状态';
+import Backend会话列表 from './P7/Backend会话列表';
 import type { 消息条目 } from '../数据/类型';
 
 /** 三个筛选页签。顺序即设计稿顺序，别改 */
 const 页签列表 = ['全部', '仅会话', '通知'] as const;
 type 页签 = (typeof 页签列表)[number];
 
+/**
+ * 模式分支：Backend 只渲染候选端 P7 收件箱（权威快照 + 参数路由导航），
+ * Mock 保留既有 fixture、reducer 未读语义与无参路由剧情，二者互不渗漏。
+ */
 export default function 消息列表() {
+  const { 数据源模式 } = use应用状态();
+  return 数据源模式 === 'backend'
+    ? <Backend会话列表 角色="candidate" />
+    : <Mock消息列表 />;
+}
+
+function Mock消息列表() {
   const { 跳转 } = use导航();
   const { 状态, 派发 } = use应用状态();
   const [当前页签, 设当前页签] = useState<页签>('全部');

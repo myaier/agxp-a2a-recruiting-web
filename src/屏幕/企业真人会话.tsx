@@ -11,6 +11,7 @@
 // 顶部操作排与求职端 A19 互为镜像：那边主项是「看职位」，这边是「看简历」。
 
 import { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import 样式 from './企业真人会话.module.css';
 import 共用样式 from './直聊会话.module.css';
 import { 消息条, use自动滚到底 } from './直聊会话';
@@ -22,6 +23,7 @@ import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
 import { 企业真人会话 as 会话数据, 候选简历原件表 } from '../数据/企业端模拟数据';
+import Backend真人会话, { 会话不可用 } from './P7/Backend真人会话';
 import type { 会话条 } from '../数据/类型';
 
 // 标注 2026-08-20 09:36/09:42：电话/微信/简历在 S1 原件递交后即对招聘方可见；面试邀约先不做。
@@ -30,7 +32,23 @@ import type { 会话条 } from '../数据/类型';
 // 而它本来就钉在流顶（在日期分隔条之前），已经不在时间轴上、不带任何时间信息；
 // 「联系方式在 S1 原件递交时已可见」由职位卡归档行（15:22 意向确认）继续承担。
 
+/**
+ * P7 Task 4：模式/参数双开关（镜像求职端 真人会话.tsx）—— Backend 且带
+ * conversationId 时交给 P7 Backend 真人会话（recruiter）；Backend 访问无参路由
+ * fail closed 成「会话不可用」，绝不读默认 A-01；Mock 保留真名/联系方式剧情。
+ */
 export default function 企业真人会话() {
+  const { 数据源模式 } = use应用状态();
+  const { conversationId } = useParams();
+  if (数据源模式 === 'backend') {
+    if (conversationId === undefined) return <会话不可用 />;
+    // review-r3：按会话坐标 key 重挂（镜像求职端 真人会话.tsx）。
+    return <Backend真人会话 key={conversationId} 角色="recruiter" conversationId={conversationId} />;
+  }
+  return <Mock企业真人会话 />;
+}
+
+function Mock企业真人会话() {
   // 双盲门控：对方名从全局状态派生 —— A-01 未确认意向时显示代号，确认后显示真名
   const { 状态 } = use应用状态();
   const A01 = 状态.企业候选列表.find((条) => 条.编号 === 'A-01');

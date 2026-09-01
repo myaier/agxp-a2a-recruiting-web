@@ -26,6 +26,11 @@ import {
 import { 从BFF隐私 } from '../数据/隐私映射';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF招聘方档案, BFF公开企业, BFF角色, BFF附件简历库 } from '../数据/BFF契约';
+import type { BFF二进制响应 } from '../数据/HTTP客户端';
+import { 解P5详情, type P5列表页, type P5详情 } from '../数据/招聘数据源/MatchCase';
+import type { P7会话项, P7会话页, P7消息, P7消息页 } from '../数据/招聘数据源/真人会话';
+import type { P8AccountDeletion, P8Credential, P8DataExport, P8Session } from '../数据/招聘数据源/P8控制面';
+import { P5候选详情Wire } from '../测试/BFF样本';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
 import type { 规则 } from '../数据/类型';
@@ -48,6 +53,9 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+/** P5 Task 3：Provider 用例的候选侧权威详情 DTO（由 Task 1 wire 样本解出）。 */
+const P5候选详情DTO: P5详情 = 解P5详情(P5候选详情Wire, 'candidate');
 
 describe('应用状态 reducer', () => {
   const 写入 = vi.fn();
@@ -468,7 +476,96 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
       items: [],
       limits: { max_files: 3, max_file_bytes: 10485760, accepted_media_types: ['application/pdf'] },
     })),
+    // P5 Task 3：MatchCase 域 facade（默认空页/空详情成功，mutation 默认 void；逐用例覆盖）
+    读取P5Open列表: vi.fn(async (): Promise<P5列表页> => ({ role: 'candidate', items: [], nextCursor: null })),
+    读取P5历史: vi.fn(async (): Promise<P5列表页> => ({ role: 'candidate', items: [], nextCursor: null })),
+    读取P5详情: vi.fn(async (): Promise<P5详情> => P5候选详情DTO),
+    回答P5事实: vi.fn(async (): Promise<void> => undefined),
+    提交P5简历: vi.fn(async (): Promise<void> => undefined),
+    决定P5S0: vi.fn(async (): Promise<void> => undefined),
+    决定P5S1: vi.fn(async (): Promise<void> => undefined),
+    决定P5S2: vi.fn(async (): Promise<void> => undefined),
+    决定P5S3: vi.fn(async (): Promise<void> => undefined),
+    新增P5叮嘱: vi.fn(async (): Promise<void> => undefined),
+    读取P5简历PDF: vi.fn(async (): Promise<BFF二进制响应> => ({
+      blob: { type: 'application/pdf' } as Blob,
+      contentType: 'application/pdf',
+      contentDisposition: null,
+      requestId: 'fixture',
+    })),
+    // P7 Task 2：真人会话域 facade（默认空页/空详情成功，mutation 默认成功；逐用例覆盖）
+    读取会话列表: vi.fn(async (): Promise<P7会话页> => ({ items: [], nextCursor: null })),
+    读取会话: vi.fn(async (): Promise<P7会话项> => ({
+      conversationId: '3003', caseId: 'mc_3003', kind: 'human_handoff',
+      lastMessage: null, lastActivityAt: '2026-08-30T01:00:00Z', unreadCount: 0,
+      contextStatus: 'unavailable', context: null,
+    })),
+    读取消息: vi.fn(async (): Promise<P7消息页> => ({ messages: [], nextCursor: null })),
+    发送消息: vi.fn(async (): Promise<P7消息> => ({
+      messageId: '4005', kind: 'user_text', senderRole: 'candidate',
+      content: '你好', createdAt: '2026-08-30T01:00:00Z',
+    })),
+    标为已读: vi.fn(async (): Promise<string> => '4004'),
+    // P8 Task 3：控制面域 facade（默认空凭证 + 单当前会话成功，mutation 默认成功；逐用例覆盖）
+    读取P8凭证: vi.fn(async (): Promise<P8Credential[]> => []),
+    读取P8会话: vi.fn(async (): Promise<P8Session[]> => [{
+      sessionId: 'sess_0000000000000001',
+      createdAt: '2026-08-30T00:00:00Z',
+      expiresAt: '2026-09-05T00:00:00Z',
+      current: true,
+    }]),
+    开始P8手机号换绑: vi.fn(async () => ({
+      attemptId: 'att_0123456789abcdef',
+      nextAction: { type: 'enter_code' as const, expiresAt: null, retryAfterSeconds: null },
+    })),
+    完成P8手机号换绑: vi.fn(async () => ({
+      credential: {
+        credentialId: 'cred_0000000000000009',
+        provider: 'phone_otp' as const,
+        display: '+86 139 **** 1111',
+        verifiedAt: '2026-08-31T10:00:00Z',
+      },
+      revokedSessions: 0,
+      unchanged: true,
+    })),
+    退出P8其他设备: vi.fn(async (): Promise<number> => 0),
+    // P8 Task 5：导出/注销 facade（默认创建 queued、GET running、同源下载地址、注销 202；逐用例覆盖）
+    创建P8数据导出: vi.fn(async (): Promise<P8DataExport> => ({
+      exportId: `exp_${'0123456789abcdef'.repeat(2)}`,
+      status: 'queued',
+      createdAt: '2026-08-30T00:00:00Z',
+      expiresAt: null,
+      downloadReady: false,
+    })),
+    读取P8数据导出: vi.fn(async (id: string): Promise<P8DataExport> => ({
+      exportId: id,
+      status: 'running',
+      createdAt: '2026-08-30T00:00:00Z',
+      expiresAt: null,
+      downloadReady: false,
+    })),
+    取P8数据导出下载地址: vi.fn((id: string): string => `/api/v1/me/data-exports/${id}/download`),
+    请求P8账号注销: vi.fn(async (): Promise<P8AccountDeletion> => ({
+      deletionId: `del_${'0123456789abcdef'.repeat(2)}`,
+      status: 'deletion_pending',
+      retentionUntil: '2026-09-29T00:00:00Z',
+    })),
   };
+}
+
+/** P7 Task 5：受控假 WebSocket —— jsdom 无实现，Provider 的同源事件连接用桩。 */
+class 假WebSocket {
+  static 构造记录: string[] = [];
+  onopen: (() => void) | null = null;
+  onmessage: ((事件: { data: string }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  url: string;
+  constructor(url: string) {
+    this.url = url;
+    假WebSocket.构造记录.push(url);
+  }
+  close() { this.onclose?.(); }
 }
 
 describe('应用状态提供者 后端会话', () => {
@@ -479,6 +576,8 @@ describe('应用状态提供者 后端会话', () => {
       removeItem: vi.fn(),
       clear: vi.fn(),
     });
+    假WebSocket.构造记录 = [];
+    vi.stubGlobal('WebSocket', 假WebSocket);
   });
 
   it('候选资料 action 冻结具体结果', () => {
@@ -631,6 +730,25 @@ describe('应用状态提供者 后端会话', () => {
       // P2 附件简历域方法（附件简历操作）；P5 追加委托前的权威库准备
       '刷新附件简历', '创建附件简历', '替换附件简历', '删除附件简历', '请求附件解析', '下载附件简历',
       '准备候选委托简历',
+      // P5 MatchCase 域方法（MatchCase操作）：scope 注册、工作区/历史窗口、详情直读、
+      // S0–S3 命令、叮嘱与披露后的简历 PDF 租约
+      '设置P5范围', '加载工作区', '追加工作区', '刷新工作区',
+      '加载历史', '追加历史', '刷新历史',
+      '读取详情', '回答事实', '提交简历', '决定S0', '决定S1', '决定S2', '决定S3',
+      '新增叮嘱', '读取简历PDF',
+      // P7 真人会话域方法（真人会话操作）：收件箱/会话可见范围注册、列表/详情/消息
+      // 读取与分页、发送对账、显式放弃、forward-only 已读与失效通知
+      '设置P7收件箱范围', '设置P7会话范围', '加载会话列表', '追加会话列表',
+      '读取真人会话', '追加更早消息', '发送真人消息', '放弃真人消息意图',
+      '提交真人已读', '使真人会话失效',
+      // P8 控制面域方法（P8账号控制面操作，Task 5 起全量组合）：范围登记、
+      // 凭证/会话按需读取、换绑开始/完成与退出其他设备、导出恢复/创建/刷新/废弃/
+      // 下载地址与账号注销；Task 6 起加合规反馈、Task 7 起加上下文举报（两法齐备）
+      '设置P8账号范围', '加载P8凭证', '加载P8会话',
+      '开始P8手机号换绑', '完成P8手机号换绑', '退出P8其他设备',
+      '恢复P8数据导出', '创建P8数据导出', '刷新P8数据导出',
+      '废弃P8数据导出', '取P8数据导出下载地址', '请求P8账号注销',
+      '提交P8反馈', '提交P8举报',
     ].sort().join('|'))).toBeTruthy();
   });
 
@@ -647,6 +765,64 @@ describe('应用状态提供者 后端会话', () => {
     expect(后端.确保角色).toHaveBeenCalledWith('recruiter');
     expect(后端.记录当前角色).toHaveBeenCalledWith('recruiter');
     expect(后端.确保角色.mock.invocationCallOrder[0]).toBeLessThan(后端.记录当前角色.mock.invocationCallOrder[0]);
+  });
+
+  // P7 Task 2：P7 内存快照随主体基串（subject + 角色）转移清空；
+  // 任何 P7 值（会话项、消息正文、幂等键）都不写 localStorage/sessionStorage。
+  it('P7 会话状态随角色转移清空且不落任何持久化', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 会话行: P7会话项 = {
+      conversationId: '3003', caseId: 'mc_3003', kind: 'human_handoff',
+      lastMessage: null, lastActivityAt: '2026-08-30T01:00:00Z', unreadCount: 1,
+      contextStatus: 'available',
+      context: { primaryLabel: '后端工程师', secondaryLabel: '上海', jobRef: null, resumeRef: null },
+    };
+    vi.mocked(后端.读取会话列表).mockResolvedValue({ items: [会话行], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    const 会话存储 = 创建Map存储();
+    vi.stubGlobal('sessionStorage', 会话存储);
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => {
+      await 当前.操作.加载会话列表('candidate', true);
+    });
+    expect(当前.后端状态.P7收件箱.candidate.items).toEqual([会话行]);
+    const setItem调用 = () => [
+      ...vi.mocked(localStorage.setItem).mock.calls,
+      ...vi.mocked(会话存储.setItem).mock.calls,
+    ].map((调用) => JSON.stringify(调用));
+    const 写入前 = setItem调用().length;
+    // 切身份 = 角色转移：P7 域整体摊平（收件箱/详情/消息页回空底座）
+    await act(async () => {
+      await 当前.操作.切身份('招聘方');
+    });
+    expect(当前.后端状态.P7收件箱.candidate.items).toEqual([]);
+    expect(当前.后端状态.P7会话详情).toEqual({});
+    expect(当前.后端状态.P7消息页).toEqual({});
+    // P7 值绝不进持久化：新增写入里既无会话坐标也无消息正文
+    for (const 写入 of setItem调用().slice(写入前)) {
+      expect(写入).not.toContain('3003');
+      expect(写入).not.toContain('后端工程师');
+    }
+  });
+
+  // P7 Task 5：Backend 登录后挂起同源事件连接；Mock 模式零连接。
+  it('Backend 登录后挂起一条同源事件连接，Mock 模式零连接', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await waitFor(() => expect(假WebSocket.构造记录.length).toBeGreaterThanOrEqual(1));
+    expect(假WebSocket.构造记录[0]).toContain('/api/v1/events/live');
+    const 构造数 = 假WebSocket.构造记录.length;
+    // 同一 Provider 的 Mock 渲染：零新增连接
+    render(createElement(应用状态提供者, null, createElement(上下文探针)));
+    await act(async () => {});
+    expect(假WebSocket.构造记录.length).toBe(构造数);
   });
 
   it('401 只清后端状态，不载入 Mock 支持域', async () => {
@@ -1840,5 +2016,384 @@ describe('应用状态提供者 P2 附件库快照', () => {
     await 当前.操作.完成手机登录('1234');
     await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
     expect(当前.后端状态.附件简历库).toBeNull();
+  });
+});
+
+// ── P5 Task 3：Provider 的 MatchCase 运行时状态 —— 内存快照、会话清理与对象租约 ──
+
+describe('应用状态提供者 P5 MatchCase 运行时状态', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  it('Backend 初始 P5 快照为空底座', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.P5工作区).toEqual({});
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('加载工作区经 facade 提交 scope 快照；成功后非 force 不重发', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 行: P5列表页['items'][number] = {
+      role: 'candidate',
+      state: {
+        caseId: 'mc_1', lifecycle: 'open', stage: 'anonymous_screening', status: 'running',
+        step: 'policy_check', round: 0, roundBudget: 3, needsUser: false,
+        outcome: null, outcomeCode: null,
+        createdAt: '2026-08-29T01:00:00Z', updatedAt: '2026-08-29T02:00:00Z', finalizedAt: null,
+      },
+      needsAction: true,
+      intentionId: 'int_0123456789abcdef0123456789abcdef',
+      job: {
+        jobId: 'job_0123456789abcdef0123456789abcdef',
+        job: { title: 'AI 产品实习生', location: '上海', publicSalaryRange: '300-500 元/天', requiredSkills: ['Python'] },
+      },
+    };
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [行], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    expect(后端.读取P5Open列表).toHaveBeenCalledWith('candidate', null, null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({
+      阶段: '成功', 刷新中: false, items: [行], nextCursor: null, 已加载页数: 1,
+    }));
+    await 当前.操作.加载工作区('candidate', null);
+    expect(后端.读取P5Open列表).toHaveBeenCalledTimes(1);
+  });
+
+  it('Mock 模式零 P5 请求：操作惰性返回，不触碰任何 facade', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    render(createElement(应用状态提供者, null, createElement(上下文探针)));
+    expect(当前.数据源模式).toBe('mock');
+    await expect(当前.操作.加载工作区('candidate', null)).resolves.toBeUndefined();
+    await expect(当前.操作.读取详情('candidate', 'mc_1', true)).resolves.toBeUndefined();
+    await expect(当前.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天')).resolves.toBeUndefined();
+    await expect(当前.操作.决定S0('mc_1', 'end')).resolves.toBeUndefined();
+  });
+
+  it('退出登录清空 P5 快照与引用（主体转移的反应式清理）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({ 阶段: '成功' }));
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.P5工作区).toEqual({});
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('切身份（角色转移）清空 P5 快照', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({ 阶段: '成功' }));
+    await 当前.操作.切身份('招聘方');
+    await waitFor(() => expect(当前.后端状态.P5工作区).toEqual({}));
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('换主体登录清空上个账号的 P5 快照（主体基串变化）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [], nextCursor: null });
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await 当前.操作.加载工作区('candidate', null);
+    await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({ 阶段: '成功' }));
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
+    await 当前.操作.完成手机登录('1234');
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
+    expect(当前.后端状态.P5工作区).toEqual({});
+    expect(当前.后端状态.P5历史).toEqual({});
+    expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('退出登录回收在途 PDF 对象租约（URL.revokeObjectURL 恰好一次）', async () => {
+    const 建造 = vi.fn(() => 'blob:p5-provider');
+    const 回收 = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { value: 建造, configurable: true, writable: true });
+    Object.defineProperty(URL, 'revokeObjectURL', { value: 回收, configurable: true, writable: true });
+    try {
+      let 当前!: ReturnType<typeof use应用状态>;
+      function 上下文探针() { 当前 = use应用状态(); return null; }
+      const 后端 = 创建后端桩('candidate');
+      const 后端源 = 后端 as unknown as HTTP招聘数据源;
+      render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+      await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+      const 租约 = await 当前.操作.读取简历PDF('candidate', 'mc_1');
+      expect(建造).toHaveBeenCalledTimes(1);
+      await 当前.操作.退出登录();
+      await waitFor(() => expect(回收).toHaveBeenCalledWith('blob:p5-provider'));
+      租约.revoke(); // 二次回收安全
+    } finally {
+      delete (URL as unknown as Record<string, unknown>).createObjectURL;
+      delete (URL as unknown as Record<string, unknown>).revokeObjectURL;
+    }
+  });
+});
+
+// ── P8 Task 3：Provider 的账号安全运行时状态 —— 空底座种子、按需读取、会话边界清理 ──
+// P8 的 Provider 清理键只认主体（不带角色）：同主体切角色保留已确认的共享账号快照，
+// 只递增 P8 范围代际并清待定意图；登出 / 401 / 换主体 / 卸载则三块快照整域摊平。
+
+describe('应用状态提供者 P8 控制面运行时状态', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+  });
+
+  const 手机凭证DTO: P8Credential = {
+    credentialId: 'cred_0000000000000001',
+    provider: 'phone_otp',
+    display: '+86 138 **** 0000',
+    verifiedAt: '2026-08-20T10:00:00Z',
+  };
+
+  it('Backend 初始 P8 控制面快照为空底座，初始化零 P8 请求', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    const 空底座 = { phase: 'idle', refreshing: false, data: null, error: null, generation: 0 };
+    expect(当前.后端状态.credentials).toEqual(空底座);
+    expect(当前.后端状态.sessions).toEqual(空底座);
+    expect(当前.后端状态.dataExport).toEqual(空底座);
+    // P8 是按需读取域：登录水合不触达凭证/会话
+    expect(后端.读取P8凭证).not.toHaveBeenCalled();
+    expect(后端.读取P8会话).not.toHaveBeenCalled();
+  });
+
+  it('加载P8凭证 经 Provider 提交成功快照；非 force 重复加载零请求', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P8凭证).mockResolvedValue([手机凭证DTO]);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => { await 当前.操作.加载P8凭证(); });
+    expect(当前.后端状态.credentials).toMatchObject({ phase: 'success', data: [手机凭证DTO] });
+    await act(async () => { await 当前.操作.加载P8凭证(); });
+    expect(后端.读取P8凭证).toHaveBeenCalledTimes(1);
+  });
+
+  it('退出登录清空三块 P8 快照；P7/P6/附件/隐私清理不回归', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P8凭证).mockResolvedValue([手机凭证DTO]);
+    vi.mocked(后端.读取P8会话).mockResolvedValue([{
+      sessionId: 'sess_0000000000000001',
+      createdAt: '2026-08-30T00:00:00Z',
+      expiresAt: '2026-09-05T00:00:00Z',
+      current: true,
+    }]);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => { await 当前.操作.加载P8凭证(); });
+    await act(async () => { await 当前.操作.加载P8会话(); });
+    expect(当前.后端状态.credentials.data).toEqual([手机凭证DTO]);
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    const 空底座 = { phase: 'idle', refreshing: false, data: null, error: null, generation: 0 };
+    expect(当前.后端状态.credentials).toEqual(空底座);
+    expect(当前.后端状态.sessions).toEqual(空底座);
+    expect(当前.后端状态.dataExport).toEqual(空底座);
+    // 相邻域清理不回归：P7 / P6 / 附件 / 隐私 / P4 同口径清空
+    expect(当前.后端状态.P7收件箱.candidate.阶段).toBe('未开始');
+    expect(当前.后端状态.候选规则快照).toEqual({});
+    expect(当前.后端状态.附件简历库).toBeNull();
+    expect(当前.后端状态.隐私快照).toBeNull();
+    expect(当前.后端状态.候选岗位推荐).toEqual({});
+    expect(当前.状态.屏蔽名单).toEqual([]);
+  });
+
+  it('换主体登录清空上个账号的 P8 快照（清理键只认主体）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P8凭证).mockResolvedValue([手机凭证DTO]);
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => { await 当前.操作.加载P8凭证(); });
+    expect(当前.后端状态.credentials.data).toEqual([手机凭证DTO]);
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
+    await 当前.操作.完成手机登录('1234');
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
+    expect(当前.后端状态.credentials).toMatchObject({ phase: 'idle', data: null });
+    expect(当前.后端状态.sessions).toMatchObject({ phase: 'idle', data: null });
+  });
+
+  it('同主体切角色保留已确认 P8 快照，非 force 重载零新请求', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P8凭证).mockResolvedValue([手机凭证DTO]);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => { await 当前.操作.加载P8凭证(); });
+    await act(async () => { await 当前.操作.切身份('招聘方'); });
+    // 同主体：已确认快照保留（candidate↔recruiter 共享账号事实）
+    expect(当前.后端状态.credentials).toMatchObject({ phase: 'success', data: [手机凭证DTO] });
+    await act(async () => { await 当前.操作.加载P8凭证(); });
+    expect(后端.读取P8凭证).toHaveBeenCalledTimes(1); // 非 force 命中成功快照：零新请求
+  });
+
+  it('P8 读取 401 统一清账号并摊平 P8 域', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P8凭证).mockResolvedValue([手机凭证DTO]);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => { await 当前.操作.加载P8凭证(); });
+    vi.mocked(后端.读取P8凭证).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    await act(async () => { await 当前.操作.加载P8凭证(true); });
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.主体).toBeNull();
+    expect(当前.后端状态.credentials).toMatchObject({ phase: 'idle', data: null });
+    expect(当前.后端状态.sessions).toMatchObject({ phase: 'idle', data: null });
+  });
+
+  it('Provider 卸载后的迟到结算被丢弃：迟到 resolve 不抛错、不再写状态', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 凭证门 = deferred<P8Credential[]>();
+    vi.mocked(后端.读取P8凭证).mockReturnValueOnce(凭证门.promise);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    const { unmount } = render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    const 读 = 当前.操作.加载P8凭证(true);
+    unmount(); // Provider 卸载：引用随实例消亡，迟到结算无处落位
+    凭证门.resolve([手机凭证DTO]);
+    await expect(读).resolves.toBeUndefined();
+  });
+
+  // ── Task 5：subject 绑定的导出恢复适配器 ─────────────────────────
+  // Backend 主体在场才构造（local 存储 + 模式/环境/账号 三重隔离键）；主体/环境变化在
+  // 渲染期先写 ref，子组件的被动恢复 effect 一定看到新适配器；Mock 恒 null、零存储触碰。
+
+  it('Backend 主体在场即供给 subject 绑定适配器：预置句柄恢复只 GET 不 POST', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_1' });
+    const 本地 = 创建Map存储();
+    vi.stubGlobal('localStorage', 本地);
+    本地.setItem('AGXPP8数据导出v1:backend:stg:sub_1', JSON.stringify({
+      subjectId: 'sub_1', createKey: 'p8-export-key-0001', exportId: `exp_${'0123456789abcdef'.repeat(2)}`,
+    }));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => { await 当前.操作.恢复P8数据导出(); });
+    expect(后端.读取P8数据导出).toHaveBeenCalledWith(`exp_${'0123456789abcdef'.repeat(2)}`);
+    expect(后端.创建P8数据导出).not.toHaveBeenCalled();
+    expect(当前.后端状态.dataExport).toMatchObject({ phase: 'success' });
+  });
+
+  it('同一 Provider 主体 A→B：适配器随渲染换绑，B 的创建只写 B 键，A 的句柄逐字节不变', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 本地 = 创建Map存储();
+    vi.stubGlobal('localStorage', 本地);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => { await 当前.操作.创建P8数据导出(); });
+    const A键 = 'AGXPP8数据导出v1:backend:stg:sub_A';
+    const A原文 = 本地.getItem(A键);
+    expect(A原文).toContain('"exportId"');
+    const A写入数 = 本地.setItem.mock.calls.filter(([键]) => 键 === A键).length;
+    // 同一 Provider 实例切换主体（完成手机登录换主体）：渲染期把 ref 换绑到 B 的适配器
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_B' });
+    await act(async () => { await 当前.操作.完成手机登录('1234'); });
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
+    await act(async () => { await 当前.操作.创建P8数据导出(); });
+    const B键 = 'AGXPP8数据导出v1:backend:stg:sub_B';
+    expect(本地.getItem(B键)).toContain('"exportId"');
+    expect(本地.getItem(A键)).toBe(A原文); // A 的条目逐字节不变
+    expect(本地.setItem.mock.calls.filter(([键]) => 键 === A键).length).toBe(A写入数); // 换主体后绝不再写 A
+  });
+
+  it('Mock 模式：P8导出恢复 引用保持 null、零 P8导出 存储；导出/注销写路径拒绝 backend_unavailable', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 本地 = 创建Map存储();
+    vi.stubGlobal('localStorage', 本地);
+    render(createElement(应用状态提供者, null, createElement(上下文探针)));
+    await act(async () => {});
+    await expect(当前.操作.创建P8数据导出()).rejects.toMatchObject({ code: 'backend_unavailable' });
+    await expect(当前.操作.请求P8账号注销()).rejects.toMatchObject({ code: 'backend_unavailable' });
+    await expect(当前.操作.恢复P8数据导出()).resolves.toBeUndefined();
+    expect(当前.操作.取P8数据导出下载地址()).toBeNull();
+    const P8导出键 = (键: string) => String(键).includes('P8数据导出');
+    expect(本地.setItem.mock.calls.filter(([键]) => P8导出键(键))).toEqual([]); // 零存储触碰
+  });
+
+  it('注销 202 清三块 P8 快照并删除当前主体导出句柄；成功后由屏幕导航（操作层不导航）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_1' });
+    const 本地 = 创建Map存储();
+    vi.stubGlobal('localStorage', 本地);
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => { await 当前.操作.创建P8数据导出(); });
+    expect(本地.getItem('AGXPP8数据导出v1:backend:stg:sub_1')).toContain('"exportId"');
+    await act(async () => { await 当前.操作.请求P8账号注销(); });
+    const 空底座 = { phase: 'idle', refreshing: false, data: null, error: null, generation: 0 };
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.credentials).toEqual(空底座);
+    expect(当前.后端状态.sessions).toEqual(空底座);
+    expect(当前.后端状态.dataExport).toEqual(空底座);
+    expect(本地.getItem('AGXPP8数据导出v1:backend:stg:sub_1')).toBeNull(); // 句柄已删
+    expect(后端.清空目录缓存).toHaveBeenCalled();
   });
 });

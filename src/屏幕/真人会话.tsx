@@ -12,6 +12,7 @@
 // 没有申请-同意这一步（见 真人会话操作栏.tsx）。
 
 import { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import 样式 from './真人会话.module.css';
 import 共用样式 from './直聊会话.module.css';
 import 谈详情样式 from './在谈详情.module.css';
@@ -20,8 +21,8 @@ import { 消息条, use自动滚到底 } from './直聊会话';
 import 真人会话操作栏 from './真人会话操作栏';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../组件/通用';
 import { 公司区块 } from '../组件/公司区块';
-import { 匹配对齐卡 } from '../组件/匹配对齐卡';
-import { 求职侧对齐行 } from '../数据/匹配对齐';
+import { 匹配分析块 } from '../组件/匹配分析块';
+import { 求职侧对齐行, 算适配分, 求职匹配分析 } from '../数据/匹配对齐';
 import { 公文包图标 } from '../组件/图标';
 import 举报层 from '../组件/举报层';
 import { use导航 } from '../路由/导航钩子';
@@ -34,13 +35,31 @@ import {
   市场列表,
   真人会话 as 真人会话数据,
 } from '../数据/模拟数据';
+import Backend真人会话, { 会话不可用 } from './P7/Backend真人会话';
 import type { 在谈单, 会话条 } from '../数据/类型';
 
 /** 这一屏写死服务 J-01 这一单（顶部职位卡、看职位层、「查看 ›」都指同一个岗）。
  *  编号只在这里出现一次，避免三个入口哪天被改歪、指向不同的岗。 */
 const 本单编号 = 'J-01';
 
+/**
+ * P7 Task 4：模式/参数双开关 —— Backend 且带 conversationId 时把坐标交给
+ * P7 Backend 真人会话（详情 + 消息 + 发送 + 已读 + 上下文动作）；Backend 访问
+ * 无参路由 fail closed 成「会话不可用」，绝不读默认 J-01；Mock 保留 J-01 剧情。
+ */
 export default function 真人会话() {
+  const { 数据源模式 } = use应用状态();
+  const { conversationId } = useParams();
+  if (数据源模式 === 'backend') {
+    if (conversationId === undefined) return <会话不可用 />;
+    // review-r3：按会话坐标 key 重挂 —— 换会话即全新实例，旧会话的草稿/未知提示/
+    // PDF 层不存在跨实例残留窗口（组件内另有 layout-effect 代际兜底）。
+    return <Backend真人会话 key={conversationId} 角色="candidate" conversationId={conversationId} />;
+  }
+  return <Mock真人会话 />;
+}
+
+function Mock真人会话() {
   const { 返回, 跳转 } = use导航();
   const { 状态 } = use应用状态();
   const [消息, 设消息] = useState<会话条[]>(真人会话数据.消息);
@@ -153,16 +172,22 @@ function 职位内容({ 单 }: { 单: 在谈单 }) {
 
   return (
     <div className={谈详情样式.详情列}>
-      {/* 匹配度分析(2026-08-26 定稿对齐表):与在谈详情同一个共用卡,两入口必然一致 */}
+      {/* 匹配度分析(2026-08-31 定稿「分从行来 + 三态行」):与在谈详情同一个共用块,两入口必然一致 */}
       <div className={详析样式.卡}>
-        <匹配对齐卡
-          分={单.适配分}
-          行们={求职侧对齐行(证据源, {
+        {(() => {
+          const 对齐行们 = 求职侧对齐行(证据源, {
             经历: 全局.简历经历,
             教育: 全局.简历教育,
             技能: 全局.简历技能,
-          })}
-        />
+          });
+          return (
+            <匹配分析块
+              分={算适配分(对齐行们, 单.适配分)}
+              行们={对齐行们}
+              分析={求职匹配分析(对齐行们, 证据源.编号)}
+            />
+          );
+        })()}
       </div>
 
       <div className={谈详情样式.详情卡}>
@@ -178,11 +203,7 @@ function 职位内容({ 单 }: { 单: 在谈单 }) {
             {行}
           </div>
         ))}
-        {/* 原对接人卡里的那行备注（汇报线 + 作息）落在这里，理由见 在谈详情.tsx 同位注释：
-            它说的是「岗位怎么运作」，与职位要求最后一条（常驻 / 办公方式 / 作息）同类 */}
-        {详.对接人 ? (
-          <div className={谈详情样式.岗位运作备注}>{详.对接人.备注}</div>
-        ) : null}
+        {/* 对接人备注行已删（用户 2026-08-31 标注）*/}
       </div>
 
       {/* 公司(2026-08-26「所有页面都要改」):共用 公司区块 组件。这一跳是用户主动

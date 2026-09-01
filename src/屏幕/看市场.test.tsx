@@ -45,6 +45,10 @@ const mock设置发现推荐范围 = vi.fn();
 const mock刷新委托 = vi.fn(async () => undefined);
 // P5 Task 3：委托前的权威附件库准备（附件简历操作 域的桩）
 const mock准备候选委托简历 = vi.fn();
+// P5 Task 5：在谈详情 Backend 分支改渲染共享 P5 详情 —— 详情域操作桩
+const mock设置P5范围 = vi.fn();
+const mock读取详情 = vi.fn(async () => undefined);
+const mock新增叮嘱 = vi.fn(async () => undefined);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -216,6 +220,9 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
     mock派发.mockClear();
     mock跳转.mockClear();
     mock轻提示.mockClear();
+    mock设置P5范围.mockClear();
+    mock读取详情.mockClear();
+    mock新增叮嘱.mockClear();
   });
 
   it('问AI代理：Backend 点「改成可谈」不派发 新增规则，只提示去规则库', async () => {
@@ -227,7 +234,7 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
     expect(mock轻提示).toHaveBeenCalledWith('请到规则库确认并添加长期规则');
   });
 
-  it('问AI代理：Mock 仍派发 新增规则 并跳规则库', async () => {
+  it('问AI代理：Mock 派发 新增规则 后留在本页并轻提示', async () => {
     置应用状态({ 模式: 'mock', 状态: { 基本信息: { 真名: '测试' } } });
     render(<问AI代理 />);
     await userEvent.click(screen.getByRole('button', { name: '改成可谈' }));
@@ -236,7 +243,9 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
       内容: 今日简报.松一档.规则内容,
       来源: 今日简报.松一档.规则来源,
     });
-    expect(mock跳转).toHaveBeenCalledWith(路径.规则库);
+    // 2026-08-31 用户:「点记成规则不应该跳到规则库」—— 留在本页,轻提示告知
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.规则库);
+    expect(mock轻提示).toHaveBeenCalledWith('已记成规则');
   });
 
   it('往来记录：Backend 记成规则不派发 新增规则，只提示去规则库', async () => {
@@ -262,7 +271,7 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
     expect(mock轻提示).toHaveBeenCalledWith('请到规则库确认并添加长期规则');
   });
 
-  it('往来记录：Mock 记成规则仍派发 新增规则 并跳规则库', async () => {
+  it('往来记录：Mock 记成规则派发 新增规则 后留在本页并轻提示', async () => {
     置应用状态({ 模式: 'mock', 状态: { 在谈列表: [] } });
     render(
       <MemoryRouter initialEntries={['/thread/J-02']}>
@@ -285,10 +294,15 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
       内容: '只要双休',
       来源: '来自小红书单的叮嘱 · 刚刚',
     });
-    expect(mock跳转).toHaveBeenCalledWith(路径.规则库);
+    // 2026-08-31 用户:「点记成规则不应该跳到规则库」—— 留在本页,轻提示告知
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.规则库);
+    expect(mock轻提示).toHaveBeenCalledWith('已记成规则');
   });
 
-  it('在谈详情：Backend 决策后记成规则不派发 新增规则，只提示去规则库', async () => {
+  it('在谈详情：Backend 只渲染 P5 详情 —— Mock 决策/记成规则入口整体退场，零规则派发', async () => {
+    // P5 Task 5 起 Backend 分支不再渲染 Mock 在谈体（旧「Backend 借 Mock 剧情做决策、
+    // 只拦规则写入」的妥协面随之后退场）：决策卡/拿不准弹层/记成规则在 Backend 模式
+    // 结构上不存在，规则写入边界由「Mock 体一概不挂载」结构性保证。
     置应用状态({
       模式: 'backend',
       状态: {
@@ -301,6 +315,20 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
         简历教育: [],
         简历技能: [],
       },
+      后端状态: {
+        已登录: true,
+        主体: {
+          subject_id: 'sub_1',
+          roles: [{ role: 'candidate', status: 'active' }],
+          last_used_role: 'candidate',
+        },
+        P5详情: {},
+      },
+      操作: {
+        设置P5范围: mock设置P5范围,
+        读取详情: mock读取详情,
+        新增叮嘱: mock新增叮嘱,
+      },
     });
     render(
       <MemoryRouter initialEntries={['/deal/J-02']}>
@@ -309,19 +337,16 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
         </Routes>
       </MemoryRouter>,
     );
-    await userEvent.click(await screen.findByRole('button', { name: '接受' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: '记成规则' })).toBeTruthy(),
-    );
-    await userEvent.click(screen.getByRole('button', { name: '记成规则' }));
-    expect(
-      mock派发.mock.calls.some(([动作]) => (动作 as { 型?: string } | undefined)?.型 === '新增规则'),
-    ).toBe(false);
+    expect(mock读取详情).toHaveBeenCalledWith('candidate', 'J-02', true);
+    expect(await screen.findByText('正在读入这一单…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '接受' })).toBeNull(); // Mock 决策卡不进 Backend 视图
+    expect(screen.queryByRole('button', { name: '记成规则' })).toBeNull();
+    expect(mock派发).not.toHaveBeenCalled();
     expect(mock跳转).not.toHaveBeenCalled();
-    expect(mock轻提示).toHaveBeenCalledWith('请到规则库确认并添加长期规则');
+    expect(mock轻提示).not.toHaveBeenCalled();
   });
 
-  it('在谈详情：Mock 决策后记成规则仍派发 新增规则 并跳规则库', async () => {
+  it('在谈详情：Mock 决策后记成规则派发 新增规则 后留在本页并轻提示', async () => {
     置应用状态({
       模式: 'mock',
       状态: {
@@ -350,7 +375,9 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
     expect(mock派发).toHaveBeenCalledWith(
       expect.objectContaining({ 型: '新增规则', 内容: expect.any(String) }),
     );
-    expect(mock跳转).toHaveBeenCalledWith(路径.规则库);
+    // 2026-08-31 用户:「点记成规则不应该跳到规则库」—— 留在本页,轻提示告知
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.规则库);
+    expect(mock轻提示).toHaveBeenCalledWith('已记成规则');
   });
 });
 

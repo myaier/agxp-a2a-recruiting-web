@@ -9,6 +9,11 @@
 // 承担首次交换身份。全屏不出现任何报价 / 出价 UI，薪资只属于岗位自己的带。
 // 交互硬规矩与求职端相同：决策一律在这一页做，列表卡上不放按钮，
 // 所以这一页是企业侧全局状态的唯一写入点：接受方案 / 终止 / 确认意向都从这里派发。
+//
+// P5 模式边界：Backend 的候选详情只渲染共享 P5 详情（屏幕/P5/MatchCase详情，role=
+// recruiter，URL case_id + 已认证角色直达）—— 招聘端只有 candidate_alias（不透明展示
+// 文本）与冻结职位，姓名/联系方式/结构化身份是 P5.1 依赖、不渲染；不读 企业候选列表、
+// 不读匿名简历表。Mock 分支（Mock候选详情）行为与接线前逐字一致、零 P5 请求。
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
@@ -34,6 +39,7 @@ import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 轻提示 } from '../组件/轻提示';
+import { MatchCase详情 } from './P5/MatchCase详情';
 
 /** Tab 名即屏上文案，与求职端 在谈详情 逐字同构 ——
  *  「代谈」的定名理由与全站改词范围见 在谈详情.tsx 的同名类型注释（产品负责人 2026-08-22）*/
@@ -92,6 +98,13 @@ function 算决策文案(候: 候选, 类型: '接受' | '终止'): { 决定文�
 }
 
 export default function 候选详情() {
+  const { 数据源模式 } = use应用状态();
+  // eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role
+  return 数据源模式 === 'backend' ? <MatchCase详情 role="recruiter" /> : <Mock候选详情 />;
+}
+
+/** Mock 原型分支：静态候选表 + 全局归约，行为与接线前逐字一致（P5 Task 5 仅移入，未改）。 */
+function Mock候选详情() {
   const { id: 编号 = '' } = useParams<{ id: string }>();
   const { 状态, 派发, 数据源模式 } = use应用状态();
   const { 跳转, 返回 } = use导航();
@@ -248,7 +261,6 @@ export default function 候选详情() {
         ) : 名 === '意向确认' && 候.阶段 === '意向确认' ? (
           <意向确认卡
             已确认={意向已确认}
-            小结={意向小结(已完成阶段)}
             真名行={`候选人是 ${候.真名 ?? 候.代号}`}
             确认={() => {
               // 标注 18:44：确认即直达私聊，不让用户再点一次
@@ -443,22 +455,14 @@ function 协调决策卡({
 }
 
 // ── D5·C 意向确认卡：确认后会发生什么（不可撤回，所以先把后果讲清）─────────
-/** 意向小结：与求职端同构 —— 各已完成阶段的小结原文汇总，不另造字。 */
-function 意向小结(已完成阶段: 阶段小结[]): { 名: string; 值: string }[] {
-  return 已完成阶段
-    .filter((段) => 段.阶段 !== '意向确认' && 段.小结)
-    .map((段) => ({ 名: 段.阶段, 值: 段.小结 }));
-}
 
 function 意向确认卡({
   已确认,
-  小结,
   真名行,
   确认,
   去私聊,
 }: {
   已确认: boolean;
-  小结: { 名: string; 值: string }[];
   /** 意向确认后的揭晓行：「候选人是 沈亦舟」（真名在 S1 原件递交时已向招聘方显示） */
   真名行: string;
   确认: () => void;
@@ -479,15 +483,7 @@ function 意向确认卡({
           「确认意向」（双方互相披露姓名与联系方式，不可撤回），只是不再由按钮
           自己喊出来 —— 那条警示由上面「确认后会发生什么」托盘承担。
           改这里之前先看那张托盘还在不在，它是这个不可撤回动作唯一的告知面。 */}
-      <div className={样式.确认小结卡}>
-        {小结.map((行) => (
-          <div key={行.名} className={样式.确认小结行}>
-            <span className={样式.确认小结勾}>✓</span>
-            <span className={样式.确认小结名}>{行.名}</span>
-            <span className={样式.确认小结值}>{行.值}</span>
-          </div>
-        ))}
-      </div>
+      {/* 阶段复述行已删(用户 2026-08-31:「核对部分信息太乱」)——结论在上方各阶段折叠行里 */}
 
       <button
         className={`${样式.主小按钮} ${样式.整宽} 可点`}

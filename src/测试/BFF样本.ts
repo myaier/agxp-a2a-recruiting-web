@@ -26,6 +26,14 @@ import type {
   BFF发现偏好,
   BFF候选岗位推荐,
   BFF招聘候选推荐,
+  BFFMatchCase视图,
+  BFFMatchCase工作区职位,
+  BFFMatchCase阶段区,
+  BFFMatchCase终局摘要,
+  BFF候选MatchCase详情,
+  BFF招聘MatchCase详情,
+  BFF候选工作区项,
+  BFF招聘工作区项,
 } from '../数据/BFF契约';
 import type { 在招岗位 } from '../数据/类型';
 
@@ -450,4 +458,127 @@ export const BFF发现偏好样本: BFF发现偏好 = {
   rejection_reason: 'direction_mismatch',
   revision: 2,
   updated_at: '2026-08-24T00:00:00Z',
+};
+
+// ── P5 MatchCase 域样本（P5 Task 1）──
+// wire 形状逐项来自已准入 mobile-v1 OpenAPI 的 MatchCase 家族与 17 行状态矩阵；
+// ID 满足声明的 ^int_|job_|cdi_|candidate- 等模式，时间统一 2026-08-29T…Z；
+// 列表行刻意不带 resume_submission（公开列表/历史路径禁止）。均为合成数据。
+
+export const P5状态视图Wire: BFFMatchCase视图 = {
+  case_id: 'mc_1',
+  lifecycle: 'open',
+  stage: 'anonymous_screening',
+  status: 'running',
+  step: 'policy_check',
+  round: 0,
+  round_budget: 3,
+  needs_user: false,
+  outcome: null,
+  outcome_code: null,
+  created_at: '2026-08-29T01:00:00Z',
+  updated_at: '2026-08-29T02:00:00Z',
+};
+
+export const P5已终止状态Wire: BFFMatchCase视图 = {
+  ...P5状态视图Wire,
+  lifecycle: 'ended',
+  status: 'ended',
+  step: 'complete',
+  outcome: 'user_ended',
+  outcome_code: 'user_ended',
+  finalized_at: '2026-08-29T03:00:00Z',
+};
+
+export const P5已完成状态Wire: BFFMatchCase视图 = {
+  ...P5状态视图Wire,
+  lifecycle: 'completed',
+  stage: 'intent_confirmation',
+  status: 'passed',
+  step: 'handoff_pending',
+  finalized_at: '2026-08-29T03:00:00Z',
+};
+
+export const P5工作区职位Wire: BFFMatchCase工作区职位 = {
+  job_id: 'job_0123456789abcdef0123456789abcdef',
+  job: {
+    title: 'AI 产品实习生',
+    location: '上海',
+    public_salary_range: '300-500 元/天',
+    required_skills: ['Python'],
+  },
+};
+
+export const P5阶段区组Wire: BFFMatchCase阶段区[] = [
+  {
+    stage: 'anonymous_screening',
+    state: 'active',
+    occurred_at: '2026-08-29T01:10:00Z',
+    summary: '匿名初筛进行中',
+    checklist: [{ label: '基础事实已答', done: true }],
+    transcript: [
+      {
+        event_id: 'evt_1',
+        stage: 'anonymous_screening',
+        kind: 'supplementary_question',
+        role: 'candidate',
+        ref: 'prompt_1',
+        text: '每周可以到岗几天？',
+        occurred_at: '2026-08-29T01:10:00Z',
+      },
+    ],
+    instruction_receipts: [
+      {
+        instruction_id: 'aci_0123456789abcdef0123456789abcdef',
+        owner: 'candidate',
+        stage: 'anonymous_screening',
+        expression: '工作日 10:00-19:00 联系',
+        occurred_at: '2026-08-29T01:05:00Z',
+      },
+    ],
+  },
+  { stage: 'resume_submission', state: 'pending', summary: '简历提交未开始', checklist: [], transcript: [], instruction_receipts: [] },
+  { stage: 'needs_coordination', state: 'pending', summary: '差异协同未开始', checklist: [], transcript: [], instruction_receipts: [] },
+  { stage: 'intent_confirmation', state: 'pending', summary: '意向确认未开始', checklist: [], transcript: [], instruction_receipts: [] },
+];
+
+export const P5终局摘要Wire: BFFMatchCase终局摘要 = {
+  stage: 'anonymous_screening',
+  outcome: 'user_ended',
+  reason_summary: 'user_ended',
+  finalized_at: '2026-08-29T03:00:00Z',
+};
+
+export const P5候选详情Wire: BFF候选MatchCase详情 = {
+  state: P5状态视图Wire,
+  needs_action: true,
+  available_actions: ['respond_fact', 'end_screening'],
+  stages: P5阶段区组Wire,
+  intent_confirmations: { candidate: '', recruiter: '' },
+  intention_id: 'int_0123456789abcdef0123456789abcdef',
+  job: P5工作区职位Wire,
+};
+
+export const P5招聘详情Wire: BFF招聘MatchCase详情 = {
+  state: P5状态视图Wire,
+  needs_action: false,
+  available_actions: [],
+  stages: P5阶段区组Wire,
+  intent_confirmations: { candidate: '', recruiter: '' },
+  job: P5工作区职位Wire,
+  candidate_alias: 'candidate-0123456789ab',
+};
+
+export const P5候选工作区项Wire: BFF候选工作区项 = {
+  state: P5状态视图Wire,
+  needs_action: true,
+  intention_id: 'int_0123456789abcdef0123456789abcdef',
+  job: P5工作区职位Wire,
+};
+
+export const P5招聘工作区项Wire: BFF招聘工作区项 = {
+  state: P5状态视图Wire,
+  needs_action: false,
+  job: P5工作区职位Wire,
+  candidate_alias: 'candidate-0123456789ab',
 };

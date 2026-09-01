@@ -195,7 +195,7 @@ test.describe('注册流换壳不闪中间屏', () => {
 
     const 序列 = await 采换壳画面(page, '发布岗位并开始寻访', /#\/hr$/);
 
-    expect(裸露的注册流帧(序列, '初筛条件')).toEqual([]);  // 特征词随职位要求输入删除改用 AI 初筛卡标题
+    expect(裸露的注册流帧(序列, '补充加分偏好')).toEqual([]); // 特征词:AI 初筛卡 2026-08-26 删除后改用加分偏好节标
     expect(序列.some((帧) => 帧.有遮罩)).toBe(true);
     expect(序列.at(-1)?.正文头).toContain('AI 产品实习生');
 

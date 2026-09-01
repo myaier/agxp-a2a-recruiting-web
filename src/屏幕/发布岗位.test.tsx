@@ -125,9 +125,9 @@ describe('发布岗位页 Backend 提交', () => {
       </MemoryRouter>,
     );
     await userEvent.click(screen.getByRole('button', { name: '职位要求' }));
+    // 四问钮 2026-08-26 随录入 UI 删除;存量手动条仍展示,三态值不经 UI 原样回环
     expect(screen.getByText('硬性条件')).toBeTruthy();
     expect(screen.getByText('本科及以上')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /纯外包 \/ 乙方.*不要求/ })).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
     expect(mock更新岗位.mock.calls[0][0].硬性事实).toEqual({
@@ -152,17 +152,11 @@ describe('发布岗位页 Backend 提交', () => {
       </MemoryRouter>,
     );
     await userEvent.click(screen.getByRole('button', { name: '职位要求' }));
-    await 用户.click(screen.getByRole('button', { name: /大小周.*未说明/ }));
-    await 用户.click(screen.getByRole('button', { name: /全现场办公.*未说明/ }));
+    // 四问钮 2026-08-26 已删,本例只验「保存失败 toast 报错且不导航」
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     // 失败只弹现有轻提示（409 → 「数据已在其他地方更新」），不导航
     expect(await screen.findByText('数据已在其他地方更新，请重试')).toBeTruthy();
     expect(mock返回).not.toHaveBeenCalled();
-    // 四个本地选择与失败前完全一致：两个已点成 必须，另两个仍是 未说明
-    expect(screen.getByRole('button', { name: /大小周.*必须/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /全现场办公.*必须/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /纯外包 \/ 乙方.*未说明/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /频繁出差.*未说明/ })).toBeTruthy();
   });
 });
 
@@ -299,13 +293,11 @@ describe('发布岗位页 Backend 选择器', () => {
   // 绝不允许缺员 —— 服务端 hard_requirements 四员必返/必收。
   it('new job starts with four unknown facts and submits the complete object', async () => {
     const { 用户 } = await 填到发布前(true);
-    expect(screen.getByRole('button', { name: /大小周.*未说明/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /纯外包 \/ 乙方.*未说明/ })).toBeTruthy();
-    await 用户.click(screen.getByRole('button', { name: /大小周.*未说明/ }));
+    // 四问钮 2026-08-26 已删:服务端合同不变——新岗仍以完整四员(全「未说明」)随对象提交
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
     expect(mock发布岗位).toHaveBeenCalledWith(expect.objectContaining({
-      硬性事实: { 大小周: '必须', 纯外包乙方: '未说明', 全现场办公: '未说明', 频繁出差: '未说明' },
+      硬性事实: { 大小周: '未说明', 纯外包乙方: '未说明', 全现场办公: '未说明', 频繁出差: '未说明' },
     }));
   });
 });
