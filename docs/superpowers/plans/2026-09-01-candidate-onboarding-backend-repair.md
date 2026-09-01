@@ -60,7 +60,7 @@
 - Consumes: page-domain `简历证书 { 编号: string; 名称: string; 年份: string }`.
 - Produces: `BFF证书.year: number | null`, `BFF证书写入.year: number | null`, `客户端校验错误(field, message)`, `转证书写入(段): BFF证书写入`, and `转证书(段): 简历证书` for Task 2 and Task 8.
 
-- [ ] **Step 1: Add the failing certificate and error-projection regressions**
+- [x] **Step 1: Add the failing certificate and error-projection regressions**
 
 Add `转证书写入`, `转证书`, and type `BFF证书` to the imports in `src/数据/后端映射.test.ts`, then add these cases:
 
@@ -152,7 +152,7 @@ Import `取后端错误文案` in this test file; the four assertions above lock
 
 In `src/屏幕/工作经历.test.tsx`, type `CET-4` into `证书或语言，如 CPA、雅思 7.0`, click its sibling `添加`, and assert `派发` receives a `存简历` action whose `证书` is `[{ 名称: 'CET-4', 年份: '', 编号: expect.any(String) }]`. This proves every BFF-required user field is represented without adding a year input.
 
-- [ ] **Step 2: Run the focused tests and record the red state**
+- [x] **Step 2: Run the focused tests and record the red state**
 
 Run:
 
@@ -162,7 +162,7 @@ npm test -- src/数据/后端映射.test.ts src/数据/HTTP客户端.test.ts src
 
 Expected: the empty-year write and null-year read tests fail because the existing mapper rejects `''` and stringifies `null`; the error test fails because `客户端校验错误` does not exist. The page action test may already pass and remains as a contract lock.
 
-- [ ] **Step 3: Implement the wire types and dedicated validation error**
+- [x] **Step 3: Implement the wire types and dedicated validation error**
 
 Change both certificate DTOs in `src/数据/BFF契约.ts`:
 
@@ -195,7 +195,7 @@ export class 客户端校验错误 extends Error {
 
 Make `取后端错误文案` check `客户端校验错误` before `BFF错误` and return `错误.message`. Keep `status === 0`/`network_error` copy exclusively for real transport errors.
 
-- [ ] **Step 4: Implement exact bidirectional mapping**
+- [x] **Step 4: Implement exact bidirectional mapping**
 
 Import `BFF错误` and `客户端校验错误` into `src/数据/后端映射.ts`. Change the catalog helper to require a stable field name:
 
@@ -266,7 +266,7 @@ if (!primary) {
 
 Do not add a missing-`year` compatibility branch: TypeScript and Task 8's strict fixture require the property to exist.
 
-- [ ] **Step 5: Run green tests, typecheck, and commit**
+- [x] **Step 5: Run green tests, typecheck, and commit**
 
 Run:
 
@@ -294,7 +294,7 @@ git commit -m "fix: align candidate certificate year contract"
 - Consumes: `客户端校验错误`, `转证书写入`, and nullable `BFF证书写入` from Task 1.
 - Produces: `保存简历(next: 页面简历写入, previous: BFF简历)` that either rejects before every mutation or executes an already-materialized ordered plan and finishes with authoritative `GET /api/v1/me/resume`.
 
-- [ ] **Step 1: Add the zero-request and complete-request regressions**
+- [x] **Step 1: Add the zero-request and complete-request regressions**
 
 In `src/数据/HTTP招聘数据源.test.ts`, add a test that starts from the existing resume snapshot, changes profile data, appends `{ 编号: 'local-cert', 名称: 'PMP', 年份: '1899' }`, calls `保存简历`, expects `客户端校验错误`, and asserts the request mock has zero calls. The changed profile is essential: it proves preflight prevents mutations that appeared earlier in execution order.
 
@@ -313,11 +313,11 @@ expect(请求Mock.mock.calls[3]?.[0].body).toEqual({ name: 'CET-4', year: null }
 
 Add a third regression: hydrate `year: null`, save that unchanged name-only certificate again after another field changes, and assert any certificate write still contains `year: null`, never `'null'`.
 
-- [ ] **Step 2: Add page single-flight tests**
+- [x] **Step 2: Add page single-flight tests**
 
 In `src/屏幕/工作经历.test.tsx`, make `操作.保存简历` return a deferred promise. Click `保存`, assert the button is disabled and reads `保存中…`, click again, and assert `保存简历` was called once. Resolve the deferred authoritative save, then assert `轻提示('简历已保存')` and navigation to the next onboarding route occur afterward. Add a rejection case that asserts navigation does not happen and the button returns to `保存`.
 
-- [ ] **Step 3: Run the tests and confirm the new assertions fail**
+- [x] **Step 3: Run the tests and confirm the new assertions fail**
 
 ```bash
 npm test -- src/数据/HTTP招聘数据源.test.ts src/屏幕/工作经历.test.tsx
@@ -325,7 +325,7 @@ npm test -- src/数据/HTTP招聘数据源.test.ts src/屏幕/工作经历.test.
 
 Expected: the full-preflight test observes an early mutation or delayed project-body validation, and the page accepts repeated save clicks.
 
-- [ ] **Step 4: Materialize every request body before execution**
+- [x] **Step 4: Materialize every request body before execution**
 
 In `src/数据/招聘数据源/简历.ts`, keep the existing `写入步骤 = () => Promise<unknown>` execution type, but construct every body before pushing a step. For new experience projects, replace body construction inside the async closure with an already-validated array:
 
@@ -360,7 +360,7 @@ Apply the same rule to profile, summary, skills, existing/new experiences, proje
 
 Retain current behavior for structurally incomplete draft experience/education entries, current mutation order, failure recovery GET, conflict snapshot attachment, final successful authoritative GET, and `段.编号 = 新经历Id` after an experience POST so a project failure retry cannot duplicate the parent experience.
 
-- [ ] **Step 5: Implement single-flight page state and truthful feedback**
+- [x] **Step 5: Implement single-flight page state and truthful feedback**
 
 In `src/屏幕/工作经历.tsx`, add:
 
@@ -392,7 +392,7 @@ const 保存 = async () => {
 
 Wire the existing header button to `保存`, set `disabled={保存中}`, `aria-busy={保存中 || undefined}`, and render `保存中…` while pending. Keep the existing portfolio-link validation immediately before entering the `try`; that link is already stored separately and is not part of `页面简历写入`.
 
-- [ ] **Step 6: Run green tests and commit**
+- [x] **Step 6: Run green tests and commit**
 
 ```bash
 npm test -- src/数据/HTTP招聘数据源.test.ts src/屏幕/工作经历.test.tsx src/数据/HTTP客户端.test.ts
@@ -414,7 +414,7 @@ git commit -m "fix: preflight candidate resume saves"
 - Consumes: current `候选资料状态['引导预填']` and `启程引导` action.
 - Produces: reducer merge semantics that update city/job/filter/reference fields while retaining `薪资` and `到岗`.
 
-- [ ] **Step 1: Extend the reducer regression**
+- [x] **Step 1: Extend the reducer regression**
 
 Seed:
 
@@ -431,7 +431,7 @@ Seed:
 
 Dispatch `启程引导` with new city/job/filter/refs. Assert the new values replace owned fields and the exact salary and arrival values survive. Keep the existing regression that omitted refs become `[]`.
 
-- [ ] **Step 2: Run red, implement the merge, and rerun green**
+- [x] **Step 2: Run red, implement the merge, and rerun green**
 
 ```bash
 npm test -- src/状态/应用状态.test.ts
@@ -456,7 +456,7 @@ case '启程引导':
 
 Run the same test command again; expect exit 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/状态/领域/候选资料.ts src/状态/应用状态.test.ts
@@ -478,7 +478,7 @@ git commit -m "fix: preserve candidate onboarding answers"
 - Consumes: `资料缓存范围`, `账号存储键`, current Backend environment, `/me.subject_id`, candidate role, `状态.引导预填`, and existing logout/401/role-transfer state transitions.
 - Produces: `候选引导草稿键`, `读候选引导草稿`, `写候选引导草稿`, `删候选引导草稿`, and a persistence write barrier keyed by the exact candidate scope.
 
-- [ ] **Step 1: Add strict codec regressions**
+- [x] **Step 1: Add strict codec regressions**
 
 In `src/数据/资料缓存.test.ts`, add an in-memory `sessionStorage` test that round-trips exactly:
 
@@ -503,7 +503,7 @@ expect(候选引导草稿键({ 数据源: 'backend', 环境: 'stg', subject_id: 
   .not.toBe(候选引导草稿键({ 数据源: 'backend', 环境: 'stg', subject_id: 'sub_B' }));
 ```
 
-- [ ] **Step 2: Add mount and lifecycle regressions**
+- [x] **Step 2: Add mount and lifecycle regressions**
 
 In `src/状态/应用状态.test.ts`, use the existing provider/remount helpers and real `window.sessionStorage` to cover these exact cases:
 
@@ -516,7 +516,7 @@ In `src/状态/应用状态.test.ts`, use the existing provider/remount helpers 
 6. candidate-to-recruiter role transfer removes the previous candidate key.
 7. Mock mode leaves a seeded `localStorage` string byte-for-byte unchanged and creates no candidate session key.
 
-- [ ] **Step 3: Run and record the red state**
+- [x] **Step 3: Run and record the red state**
 
 ```bash
 npm test -- src/数据/资料缓存.test.ts src/状态/应用状态.test.ts
@@ -524,7 +524,7 @@ npm test -- src/数据/资料缓存.test.ts src/状态/应用状态.test.ts
 
 Expected: helpers are missing, reload does not restore, and lifecycle events leave a scoped session key behind.
 
-- [ ] **Step 4: Implement the strict allowlist codec**
+- [x] **Step 4: Implement the strict allowlist codec**
 
 In `src/数据/资料缓存.ts`, export:
 
@@ -554,7 +554,7 @@ Implement `读候选引导草稿(storage, 范围)`, `写候选引导草稿(stora
 - any invalid present field rejects and removes the entire stored record;
 - writer constructs a fresh allowlisted object and never spreads the caller object.
 
-- [ ] **Step 5: Add an explicit draft hydration action**
+- [x] **Step 5: Add an explicit draft hydration action**
 
 In `src/状态/领域/候选资料.ts`, add:
 
@@ -571,7 +571,7 @@ case '水合候选引导草稿':
 
 Use the existing `清后端草稿` action to clear in-memory draft on logout/401/role/subject transitions; do not add storage calls to unrelated reducers.
 
-- [ ] **Step 6: Implement candidate scope, restore barrier, writes, and cleanup**
+- [x] **Step 6: Implement candidate scope, restore barrier, writes, and cleanup**
 
 In `src/状态/应用状态.tsx`, derive the candidate-only subject:
 
@@ -603,7 +603,7 @@ The write effect must recompute the current key and return unless it equals `已
 
 Inspect `src/状态/后端/会话操作.ts`: if its existing logout, 401, and role-switch paths already dispatch `清后端草稿` while the persistence hook observes the old scope, do not change it. If any path drops the old subject before emitting a state transition visible to the hook, move the existing `清后端草稿` dispatch before that subject reset; do not introduce a second draft-storage implementation there.
 
-- [ ] **Step 7: Run green tests, typecheck, and commit**
+- [x] **Step 7: Run green tests, typecheck, and commit**
 
 ```bash
 npm test -- src/数据/资料缓存.test.ts src/状态/应用状态.test.ts
@@ -629,7 +629,7 @@ The expected implementation does not edit `src/状态/后端/会话操作.ts`: i
 - Consumes: Backend taxonomy/location query results and selected `BFF目录引用`.
 - Produces: disabled/submit predicates tied to reference validity plus visible loading, empty, and error states.
 
-- [ ] **Step 1: Add failing interaction and search-state tests to both pages**
+- [x] **Step 1: Add failing interaction and search-state tests to both pages**
 
 For each page in Backend mode:
 
@@ -644,7 +644,7 @@ expect(screen.getByRole('button', { name: '下一步' })).toBeDisabled();
 
 Use `专业名称` and a major result for the second page. Add one query-deferred test asserting `加载中…`, one empty response test asserting `没有匹配结果，试试缩短关键词`, and one rejection test asserting `加载失败，请重试`. Resolve an older request after a newer request and assert the older result is not rendered.
 
-- [ ] **Step 2: Run and record the red state**
+- [x] **Step 2: Run and record the red state**
 
 ```bash
 npm test -- src/屏幕/毕业院校.test.tsx src/屏幕/选专业.test.tsx
@@ -652,7 +652,7 @@ npm test -- src/屏幕/毕业院校.test.tsx src/屏幕/选专业.test.tsx
 
 Expected: typed unselected text leaves `下一步` enabled, and explicit search states are absent.
 
-- [ ] **Step 3: Implement exact predicates and request sequencing**
+- [x] **Step 3: Implement exact predicates and request sequencing**
 
 In both pages add:
 
@@ -677,7 +677,7 @@ Render exact copy:
 
 Use `<主按钮 ... 禁用={不可继续} />`, retain the submit guard, clear the selected ref on any text edit, and preserve selected `{ id, display_name }` exactly.
 
-- [ ] **Step 4: Run green tests and commit**
+- [x] **Step 4: Run green tests and commit**
 
 ```bash
 npm test -- src/屏幕/毕业院校.test.tsx src/屏幕/选专业.test.tsx
@@ -699,7 +699,7 @@ git commit -m "fix: reflect catalog selection validity"
 - Consumes: `操作.加载P8凭证()`, `后端状态.credentials`, and the projection already used by `设置.tsx` and `账号安全.tsx`.
 - Produces: read-only Backend `账号手机号`, navigation to `路径.账号安全`, and separate Backend disclosure-phone/email/WeChat rows fixed to `未接入`.
 
-- [ ] **Step 1: Write the page tests**
+- [x] **Step 1: Write the page tests**
 
 Create a render helper around `应用状态上下文`. Add tests that assert:
 
@@ -713,7 +713,7 @@ Cover credential phase `loading` and `error` as `—`; `success` with no `phone_
 
 In Backend mode, assert `简历披露手机号`, email, and WeChat each show `未接入`, expose no edit input, and never dispatch `存联系方式`. Assert the server credential mask appears only on `账号手机号`, not on the disclosure-phone row. Add a Mock-mode regression proving existing editable phone/email/WeChat behavior and dispatch remain unchanged.
 
-- [ ] **Step 2: Run and record the red state**
+- [x] **Step 2: Run and record the red state**
 
 ```bash
 npm test -- src/屏幕/个人信息.test.tsx
@@ -721,7 +721,7 @@ npm test -- src/屏幕/个人信息.test.tsx
 
 Expected: the new file fails because the page does not load/project credentials and Backend contacts still use local editable state.
 
-- [ ] **Step 3: Reuse the P8 credential projection**
+- [x] **Step 3: Reuse the P8 credential projection**
 
 Import `useEffect`, `路径`, and required navigation/state hooks. On Backend mount:
 
@@ -743,7 +743,7 @@ const 账号手机号 = 后端状态.credentials.phase !== 'success'
 
 Render it under the exact label `账号手机号` in a read-only row/button that navigates to `路径.账号安全`. Do not copy the mask into component input state. In Backend mode also render `简历披露手机号`, `邮箱`, and `微信号` as three separate read-only `未接入` rows; none reads `状态.联系方式`. Conditionally retain the existing editable `手机号`/`邮箱`/`微信号` components only for Mock.
 
-- [ ] **Step 4: Run green tests and commit**
+- [x] **Step 4: Run green tests and commit**
 
 ```bash
 npm test -- src/屏幕/个人信息.test.tsx src/屏幕/账号安全.test.tsx src/屏幕/设置.test.tsx
@@ -770,7 +770,7 @@ git commit -m "fix: show authoritative candidate credentials"
 - Consumes: `import.meta.env.VITE_ANNOTATION_ENABLED`, existing device-frame breakpoints, and existing annotation controls.
 - Produces: no annotation component in default builds, a reserved external launcher lane when explicitly enabled, and annotation panels still anchored to device content.
 
-- [ ] **Step 1: Add the narrow pointer-click regression**
+- [x] **Step 1: Add the narrow pointer-click regression**
 
 In `e2e/数据源模式.spec.ts`, add a top-level `标注评审构建 @annotation` describe and set its base URL to `http://127.0.0.1:4183`. Before navigation, seed the maximum-height launcher branch:
 
@@ -791,7 +791,7 @@ Add `标注模式不遮挡技能添加 @annotation`: install the normal authenti
 
 Add `桌面标注启动器位于设备外工具列 @annotation`: call `page.setViewportSize({ width: 1200, height: 900 })`, open the same route, and compare `getByRole('button', { name: '标注模式' }).boundingBox()` with `[data-标注工具位].boundingBox()`. Assert the launcher center lies inside the tool-lane rectangle and outside `[data-遮罩挂载点]`'s rectangle. Do not nest these tests under an `@backend` describe and do not use forced clicks.
 
-- [ ] **Step 2: Enable annotation only for the dedicated Playwright servers and reproduce**
+- [x] **Step 2: Enable annotation only for the dedicated Playwright servers and reproduce**
 
 Add a third server to `playwright.数据源模式.config.ts` without changing the existing 4181/4182 command prefixes:
 
@@ -829,7 +829,7 @@ npm run test:e2e:data-source -- --grep "标注模式不遮挡技能添加"
 
 Expected before layout implementation: the mouse click hits the annotation launcher/overlay or the skill does not appear.
 
-- [ ] **Step 3: Implement build gating and explicit height ownership**
+- [x] **Step 3: Implement build gating and explicit height ownership**
 
 Create `src/组件/标注层.module.css` with a narrow two-row review layout, a wide two-column layout, and a normal-flow launcher inside its portal lane:
 
@@ -945,7 +945,7 @@ function 入口内容() {
 
 Import `useState` in `main.tsx` and render `<入口内容 />` inside the existing provider. Retain `<换壳遮罩看守 />` immediately after `<应用 />` in both branches. When disabled, do not render `<标注层>` or its lane at all.
 
-- [ ] **Step 4: Remove E2E collision workarounds and run green**
+- [x] **Step 4: Remove E2E collision workarounds and run green**
 
 If an existing annotation-specific mouse-coordinate clamp avoids the launcher, replace it with the target's actual center now that layout owns a separate lane. Run:
 
@@ -956,7 +956,7 @@ npm run build
 
 Expected: physical click succeeds with annotation enabled; the default build exits 0 with the annotation gate off.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main.tsx src/组件/标注层.tsx src/组件/标注层.module.css src/组件/设备外框.tsx src/组件/设备外框.module.css playwright.数据源模式.config.ts e2e/数据源模式.spec.ts
@@ -972,7 +972,7 @@ git commit -m "fix: keep annotation tools outside app controls"
 - Consumes: all Tasks 1–7, existing BFF route installer, `Onboarding流程`, and the deployed nullable-year wire contract.
 - Produces: an opt-in isolated fixture that records exact mutations, returns authoritative snapshots, rejects unknown request bodies, and one visible-UI closure test.
 
-- [ ] **Step 1: Add a fresh mutable fixture and strict body validators**
+- [x] **Step 1: Add a fresh mutable fixture and strict body validators**
 
 Add an opt-in field to `BFF路由选项` rather than changing shared static fixtures:
 
@@ -1034,7 +1034,7 @@ function 断言证书写入(body: unknown): asserts body is { name: string; year
 
 Do the same for skills, experience, education, profile/summary when mutated, and intention. Reject unknown keys. Each accepted mutation appends `{ method, path, body }`, updates only this fixture, increments relevant revisions, and makes later GETs return the updated state. Credentials return a unique masked `phone_otp.display` for the personal-page projection.
 
-- [ ] **Step 2: Add the failing full-flow E2E**
+- [x] **Step 2: Add the failing full-flow E2E**
 
 Create a Backend-tagged test named `候选 onboarding 完整保存并创建首次意向`. Install the mutable fixture with an authenticated subject whose `last_used_role` is `null`, then use visible navigation only:
 
@@ -1049,7 +1049,7 @@ Create a Backend-tagged test named `候选 onboarding 完整保存并创建首�
 
 Use the exact visible labels listed in steps 1–6 (`我要找工作`, `已毕业`, `保存`, `下一步`, `身份证上的名字`, `在职 · 考虑机会`, `添加工作经历`, both input placeholders, `保存并继续`, `完成设置，开始匹配`, and `完成注册`). Locate result cards by the fixture `display_name`. Do not introduce test IDs merely to bypass the UI.
 
-- [ ] **Step 3: Assert exact mutation counts and authoritative state**
+- [x] **Step 3: Assert exact mutation counts and authoritative state**
 
 At the end of the test, derive counts from `fixture.mutations` and assert:
 
@@ -1072,7 +1072,7 @@ expect(fixture.intentions[0]?.status).toBe('active');
 
 Also record request order and assert the last `/api/v1/me/resume` request is `GET`. Make the fixture's GET counter prove reload requested both authoritative resume and intentions rather than reusing local state.
 
-- [ ] **Step 4: Run focused red/green and repair only product-code defects revealed by the flow**
+- [x] **Step 4: Run focused red/green and repair only product-code defects revealed by the flow**
 
 First run before completing fixture mutations:
 
@@ -1082,7 +1082,7 @@ npm run test:e2e:data-source -- --grep "候选 onboarding 完整保存并创建�
 
 Expected red: an unsupported mutation, missing strict body field, or lost navigation state identifies the exact remaining seam. Complete the fixture and rerun the same command. If it reveals a product defect in Tasks 1–7, return to that task, add the exact focused regression, make the minimal fix, run that task's focused command, and create a separate fix commit before resuming Task 8.
 
-- [ ] **Step 5: Run the full verification matrix**
+- [x] **Step 5: Run the full verification matrix**
 
 ```bash
 npm test
@@ -1094,7 +1094,7 @@ npm run test:e2e:data-source
 
 Every command must exit 0. Capture the focused red reason, focused green result, full command exit status, exact five mutation counts, final authoritative resume section counts, one active intention, and certificate `year: null` in the completion report. State explicitly that real-service integration remains conditional on the joint Recruitment/BFF nullable baseline and that the parser invalid-output issue was not changed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add e2e/数据源模式.spec.ts
