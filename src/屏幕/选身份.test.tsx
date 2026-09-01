@@ -1,13 +1,15 @@
 // 选身份页普通模式卡片接入测试（F2）：
 // 普通身份卡也要调 操作.切身份 落角色，成功才跳转，失败复用 轻提示。
-// 切换模式（switch=1）已有自己的守卫逻辑，此处只测普通模式（新登录用户选身份）。
+// 切换模式（switch=1）已有自己的守卫逻辑，此处补两条水合 401 的页面责任回归：
+// 提示一次、绝不执行成功导航（P0 修复 Task 3）。
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 选身份 from './选身份';
 import { 路径 } from '../路由/路径表';
+import { BFF错误 } from '../数据/HTTP客户端';
 
 const mock跳转 = vi.fn();
 const mock替换跳转 = vi.fn();
@@ -37,6 +39,12 @@ describe('选身份页普通模式 F2', () => {
     mock替换跳转.mockClear();
     mock返回.mockClear();
     mock切身份.mockClear();
+    // 轻提示 是纯 DOM 单例，容器跨用例存活：清掉上一例的残条，
+    // 免得 getByText 在普通模式与翻面模式两例 401 里各匹配到两条（组件测试自己的清理，不给 轻提示 加测试专用重置口）
+    const 提示容器 = Array.from(document.body.children).find(
+      (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+    ) as HTMLElement | undefined;
+    if (提示容器) 提示容器.innerHTML = '';
   });
 
   it('普通模式卡片点「我要招人」调 切身份(招聘方)，成功才跳转', async () => {
@@ -82,5 +90,45 @@ describe('选身份页普通模式 F2', () => {
     );
     await 用户.click(screen.getByText('我要招人'));
     await waitFor(() => expect(mock跳转).not.toHaveBeenCalled());
+  });
+
+  // P0 修复 Task 3：水合 401 属于页面责任 —— 提示一次会话失效，成功导航绝不执行。
+  // 清理与拒绝形状由会话操作测试负责，这里只钉「不导航」。
+  it('切身份水合 401 显示会话失效且不执行成功导航', async () => {
+    mock切身份.mockRejectedValueOnce(
+      new BFF错误(401, 'invalid_session', 'expired'),
+    );
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/identity']}>
+        <选身份 />
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByText('我要找工作'));
+    await waitFor(() => expect(screen.getByText('登录已失效，请重新登录')).toBeTruthy());
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock替换跳转).not.toHaveBeenCalled();
+  });
+
+  it('翻面切换水合 401 也不执行替换导航', async () => {
+    vi.useFakeTimers();
+    try {
+      mock切身份.mockRejectedValueOnce(
+        new BFF错误(401, 'invalid_session', 'expired'),
+      );
+      // 假计时器下 userEvent.click 自身的等待计时器永不触发（会卡死整个用例），
+      // 与 登录.test.tsx 的 #6 用例同一口径：假计时器一律 fireEvent
+      render(
+        <MemoryRouter initialEntries={['/identity?switch=1&from=hr']}>
+          <选身份 />
+        </MemoryRouter>,
+      );
+      fireEvent.click(screen.getByRole('button', { name: '翻到「求职者」那一面' }));
+      await act(async () => { vi.advanceTimersByTime(950); });
+      expect(screen.getByText('登录已失效，请重新登录')).toBeTruthy();
+      expect(mock替换跳转).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

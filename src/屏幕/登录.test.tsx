@@ -1,6 +1,6 @@
-// 登录页 Backend 接入测试（Task 6）：
-// 守住四格验证码不被改成六格，并确保进入按钮等待 Backend 登录成功后才导航。
-// Mock 分支的即时行为由现有 onboarding E2E 覆盖，此处只测 Backend 分支。
+// 登录页短信登录测试（Task 6 + P0 修复 Task 3）：
+// 守住四格验证码不被改成六格；Backend 成功后**不**在登录页导航 —— 落点归根路由守卫，
+// 登录页只负责把按钮摆成「正在进入…」的禁用态；Mock 分支保留即点即进身份选择。
 
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import 登录 from './登录';
 import { 路径 } from '../路由/路径表';
+import { BFF错误 } from '../数据/HTTP客户端';
 
 const mock跳转 = vi.fn();
 const mock操作 = {
@@ -16,9 +17,11 @@ const mock操作 = {
   完成手机登录: vi.fn(),
   微信登录: vi.fn(),
 };
+// 数据源模式做成可变的：Mock 分支的即时导航也要在本文件钉住（P0 修复 Task 3）
+const mock环境 = vi.hoisted(() => ({ 数据源模式: 'backend' as 'backend' | 'mock' }));
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转 }) }));
 vi.mock('../状态/应用状态', () => ({
-  use应用状态: () => ({ 操作: mock操作, 数据源模式: 'backend' }),
+  use应用状态: () => ({ 操作: mock操作, 数据源模式: mock环境.数据源模式 }),
 }));
 
 function deferred<T>() {
@@ -33,13 +36,14 @@ function deferred<T>() {
 
 describe('登录页 Backend', () => {
   beforeEach(() => {
+    mock环境.数据源模式 = 'backend';
     mock跳转.mockClear();
     mock操作.开始手机登录.mockClear();
     mock操作.完成手机登录.mockClear();
     mock操作.微信登录.mockClear();
   });
 
-  it('保持四格验证码，并等待 Backend 登录成功才导航', async () => {
+  it('保持四格验证码，Backend 登录成功后停在登录页并复位按钮', async () => {
     const 完成 = deferred<void>();
     mock操作.开始手机登录.mockResolvedValue(undefined);
     mock操作.完成手机登录.mockReturnValue(完成.promise);
@@ -57,9 +61,59 @@ describe('登录页 Backend', () => {
     await 用户.type(screen.getByLabelText('短信验证码'), '1234');
     await 用户.click(screen.getByText(/已阅读并同意/));
     await 用户.click(screen.getByRole('button', { name: '进入' }));
+    // 请求飞行中：按钮换成「正在进入…」且禁用（比 ref 守卫多一层可见反馈）
+    const 等待按钮 = screen.getByRole('button', { name: '正在进入…' });
+    expect((等待按钮 as HTMLButtonElement).disabled).toBe(true);
+    expect(mock操作.完成手机登录).toHaveBeenCalledWith('1234');
     expect(mock跳转).not.toHaveBeenCalled();
+
     完成.resolve();
-    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.选身份));
+    await act(async () => { await 完成.promise; });
+    // 登录页绝不自己导航：落点归 应用.tsx 的水合守卫
+    expect(mock跳转).not.toHaveBeenCalled();
+    const 恢复按钮 = screen.getByRole('button', { name: '进入' });
+    expect((恢复按钮 as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  // P0 修复 Task 3：Mock 分支没有水合阶段可言，仍由登录页直接进身份选择
+  it('Mock 短信登录仍由登录页进入身份选择', async () => {
+    mock环境.数据源模式 = 'mock';
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <登录 />
+      </MemoryRouter>,
+    );
+    await 用户.type(screen.getByLabelText('手机号'), '13800000000');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    await 用户.type(screen.getByLabelText('短信验证码'), '1234');
+    await 用户.click(screen.getByText(/已阅读并同意/));
+    await 用户.click(screen.getByRole('button', { name: '进入' }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.选身份);
+    expect(mock操作.完成手机登录).not.toHaveBeenCalled();
+  });
+
+  // 会话失效（401 invalid_session）：登录页只提示一次，不复位成可重试的假象之外还导航
+  it('Backend 水合 401 显示一次会话失效且不导航', async () => {
+    mock操作.开始手机登录.mockResolvedValue(undefined);
+    mock操作.完成手机登录.mockRejectedValueOnce(
+      new BFF错误(401, 'invalid_session', 'expired'),
+    );
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <登录 />
+      </MemoryRouter>,
+    );
+    await 用户.type(screen.getByLabelText('手机号'), '13800000000');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    await 用户.type(screen.getByLabelText('短信验证码'), '1234');
+    await 用户.click(screen.getByText(/已阅读并同意/));
+    await 用户.click(screen.getByRole('button', { name: '进入' }));
+
+    await waitFor(() => expect(screen.getByText('登录已失效，请重新登录')).toBeTruthy());
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect((screen.getByRole('button', { name: '进入' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('微信登录必须先勾选协议', async () => {

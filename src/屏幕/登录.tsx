@@ -43,8 +43,10 @@ export default function 登录() {
   const [已同意, 设已同意] = useState(false);
   // 倒计时剩余秒数：null = 还没发过验证码；0 = 跑完可重发
   const [剩余秒, 设剩余秒] = useState<number | null>(null);
+  // Backend 登录提交的可见等待态：按钮换字并禁用（同步 ref 守卫之外的用户反馈）
+  const [正在进入, 设正在进入] = useState(false);
   const 验证码输入引用 = useRef<HTMLInputElement>(null);
-  // Backend 三个按钮的重复点击守卫：不增加 disabled class 或 Loading 文案
+  // Backend 三个按钮的重复点击守卫（取码/微信仍纯 ref 不动 UI；登录提交另有 正在进入 可见态）
   const 取码中 = useRef(false);
   const 进入中 = useRef(false);
   const 微信中 = useRef(false);
@@ -110,14 +112,17 @@ export default function 登录() {
     if (数据源模式 === 'backend') {
       if (进入中.current) return;
       进入中.current = true;
+      设正在进入(true);
       try {
-        // 完成登录原样发送 4 位 code；attempt_id 由 Provider 保存
+        // 完成登录原样发送 4 位 code；attempt_id 由 Provider 保存。
+        // P0 修复 Task 3：登录页不再自己导航 —— 会话在 操作.完成手机登录 内部
+        // 水合完角色才提交，落点（主壳/选身份/注册流名片）归 应用.tsx 的水合守卫独占。
         await 操作.完成手机登录(验证码);
-        跳转(路径.选身份);
       } catch (错误) {
         轻提示(取后端错误文案(错误));
       } finally {
         进入中.current = false;
+        设正在进入(false);
       }
       return;
     }
@@ -266,7 +271,12 @@ export default function 登录() {
         </button>
       </div>
 
-      <主按钮 文字="进入" 按下={进入下一步} 禁用={!可进入} />
+      {/* Backend 提交中按钮换字并禁用；Mock 分支不设等待态，保持即点即进 */}
+      <主按钮
+        文字={正在进入 ? '正在进入…' : '进入'}
+        按下={进入下一步}
+        禁用={!可进入 || 正在进入}
+      />
     </次级页外壳>
   );
 }

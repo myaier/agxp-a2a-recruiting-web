@@ -5,6 +5,7 @@
 // 屏幕一律换成轻量桩：本文件只钉 应用.tsx 自己的守卫与导航决策，不把各屏的数据依赖
 // 拖进路由用例（各屏行为由各自的测试覆盖）。
 
+import { useEffect } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -291,5 +292,35 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
       <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
     );
     await waitFor(() => expect(当前路径()).toBe(路径.主壳));
+  });
+
+  // P0 修复 Task 3：登录页不再自己导航后，candidate 的落点只由这里的守卫提交一次 ——
+  // 水合态从「未登录」翻到「已登录」时 replace 恰好一次，守卫重跑不得重复前往。
+  it('candidate 只在水合后登录态提交时 replace 一次', async () => {
+    const 路径记录 = vi.fn();
+    function 路径记录探针() {
+      const 位置 = useLocation();
+      useEffect(() => { 路径记录(位置.pathname); }, [位置.pathname]);
+      return <span data-testid="pathname">{位置.pathname}</span>;
+    }
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成', 已登录: false, 主体: null,
+    }));
+    const 树 = () => (
+      <MemoryRouter initialEntries={[路径.登录]}>
+        <应用 />
+        <路径记录探针 />
+      </MemoryRouter>
+    );
+    const { rerender } = render(树());
+    expect(screen.getByTestId('pathname').textContent).toBe(路径.登录);
+
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成', 已登录: true,
+      主体: { ...BFF主体样本, last_used_role: 'candidate' },
+    }));
+    rerender(树());
+    await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe(路径.主壳));
+    expect(路径记录.mock.calls.filter(([值]) => 值 === 路径.主壳)).toHaveLength(1);
   });
 });
