@@ -72,6 +72,7 @@ Expected: a clean worktree, the predecessor implementation commit is reachable f
 - Modify: `src/状态/应用状态.test.ts`
 - Modify: `src/状态/后端/组织操作.ts`
 - Modify: `src/状态/后端/组织操作.test.ts`
+- Modify: `src/状态/后端/类型.ts`
 - Modify: `src/状态/后端/会话操作.ts`
 - Modify: `src/状态/后端/会话操作.test.ts`
 
@@ -446,7 +447,7 @@ it('显式招聘方数据重试按组织链后 owner jobs 的顺序恢复', asyn
   deps.后端状态引用.current = {
     ...deps.后端状态引用.current,
     已登录: true,
-    主体: 招聘主体,
+    主体: recruiter主体,
     招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
   };
   deps.后端.读取招聘方档案 = vi.fn().mockResolvedValue(已有档案);
@@ -519,7 +520,7 @@ it('组织水合失败时直接岗位路径显示恢复面而不是假空列表'
   }));
   render(<MemoryRouter initialEntries={[路径.岗位管理]}><应用 /><位置探针 /></MemoryRouter>);
   expect(screen.getByRole('alert')).toHaveTextContent('企业资料读取失败');
-  expect(screen.queryByText('还没有发布岗位')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '发布新岗位' })).not.toBeInTheDocument();
 });
 
 it('直接打开招聘端且 profile 缺失时 replace 到注册流名片', async () => {
@@ -1263,7 +1264,7 @@ Expected: all focused tests PASS and both create and edit preserve separate requ
 - Modify: `src/屏幕/企业设置.test.tsx`
 
 **Interfaces:**
-- Consumes: Task 1's aggregate hydration state and retry operation, existing `可用企业关系`, and existing organization/admin-request DTOs.
+- Consumes: Task 1's aggregate hydration state and retry operation, Task 2's application-level failure recovery surface, existing `可用企业关系`, and existing organization/admin-request DTOs.
 - Produces: shared `招聘方组织门` for both organization routes and `取企业认证状态文案(...)` for settings.
 
 - [ ] **Step 1: Add failing page-state and verification regressions**
@@ -1292,19 +1293,6 @@ it('无可用 affiliation 显示两个现有动作，不显示 loading', async (
   expect(mock跳转).toHaveBeenCalledWith(路径.企业组织申请);
   await user.click(screen.getByRole('button', { name: '使用邀请加入企业' }));
   expect(mock跳转).toHaveBeenCalledWith(路径.企业邀请加入);
-});
-
-it('组织水合失败显示真实错误并从整条链重试', async () => {
-  mock重新水合招聘方组织.mockResolvedValue(undefined);
-  置Backend应用状态({
-    后端状态: { 招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' } },
-    企业档案快照: null,
-  });
-  const user = userEvent.setup();
-  render(<MemoryRouter><公司档案编辑 /></MemoryRouter>);
-  expect(screen.getByText('企业资料读取失败')).toBeVisible();
-  await user.click(screen.getByRole('button', { name: '重试' }));
-  expect(mock重新水合招聘方组织).toHaveBeenCalledTimes(1);
 });
 
 it('多个可用关系但 current 为空时引导选择，不显示申请空态', () => {
@@ -1366,17 +1354,7 @@ export default function 招聘方组织门({ children }: { children: ReactNode }
   if (hydration.阶段 === '未开始' || hydration.阶段 === '进行中') {
     return <div role="status">正在加载企业资料</div>;
   }
-  if (hydration.阶段 === '失败') {
-    return (
-      <div role="alert">
-        <p>{hydration.错误 ?? '企业资料读取失败'}</p>
-        <button
-          type="button"
-          onClick={() => void 操作.重新水合招聘方组织().catch(() => undefined)}
-        >重试</button>
-      </div>
-    );
-  }
+  // 聚合失败由 Task 2 的应用层 guard 统一接管；受保护招聘路径不会在失败态挂载此门。
   if (available.length === 0) {
     return (
       <div>
