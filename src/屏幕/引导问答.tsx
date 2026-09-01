@@ -27,6 +27,7 @@ import { 取后端错误文案 } from '../数据/HTTP客户端';
 import { 个人优势文本 } from '../数据/模拟数据';
 import { 城市字典, 热门城市, 行业字典 } from '../数据/城市与行业';
 import { use城市搜索 } from './城市查询钩子';
+import { use可访问滚轮 } from '../组件/可访问滚轮';
 import type { BFFTaxonomyItem, BFFLocationItem } from '../数据/BFF契约';
 import { 合并目录页 } from '../数据/目录选择';
 import {
@@ -1019,51 +1020,36 @@ function 薪资轮({
   /** 轮上显示的后缀，不是数据单位：月薪 `K`、日薪 `/天` */
   单位?: 'K' | '/天';
 }) {
-  const 轮引用 = useRef<HTMLDivElement>(null);
-  const 防抖计时 = useRef(0);
-  // 记住「本轮自己滚出来的值」，用来区分外部改值和自身滚动，避免回滚打架
-  const 自报值 = useRef(值);
-
-  const 当前序 = 档表.indexOf(值);
-
-  useEffect(() => {
-    // scroll-snap 只管吸附、不管初始位置，挂载时手动把初值那一档滚到正中间。
-    // 守卫 当前序 >= 0 与下面的更新 effect 保持同一口径：值不在档表里时 indexOf 给 -1，
-    // 乘出负 scrollTop 会被浏览器夹回 0，轮子停在「面议」而显示值是别的数 —— 两处不能一处有守卫一处没有
-    if (当前序 >= 0 && 轮引用.current) 轮引用.current.scrollTop = 当前序 * 行高;
-    return () => window.clearTimeout(防抖计时.current);
-    // 只在挂载时定位一次，之后由用户滑动主导
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (值 === 自报值.current) return; // 自己滚出来的，不要再滚一次
-    自报值.current = 值;
-    if (当前序 >= 0 && 轮引用.current) 轮引用.current.scrollTop = 当前序 * 行高;
-  }, [值, 当前序]);
-
-  /** 滚动过程中会连续触发，防抖到停下（90ms 无新事件）再算落点，避免每帧 setState */
-  const 处理滚动 = () => {
-    const 位置 = 轮引用.current?.scrollTop ?? 0;
-    window.clearTimeout(防抖计时.current);
-    防抖计时.current = window.setTimeout(() => {
-      const 落点 = Math.min(Math.max(Math.round(位置 / 行高), 0), 档表.length - 1);
-      自报值.current = 档表[落点];
-      设值(档表[落点]);
-    }, 90);
-  };
+  // 定位 / 防抖取值 / 键盘 / 点档直选 / aria-activedescendant 都收敛在 use可访问滚轮，
+  // 与 内嵌双滚轮 / 数字滚轮层 / 年月滚轮层 同一套合同（本屏的 DOM 与版式不动）。
+  const {
+    滚轮引用,
+    活动项编号,
+    处理滚动,
+    处理按键,
+    取选项属性,
+  } = use可访问滚轮({ 选项: 档表, 值, 设值, 行高 });
 
   return (
     <div className={样式.薪资列包}>
       <div
-        ref={轮引用}
+        ref={滚轮引用}
         className={`${样式.薪资轮} 滚动区`}
         onScroll={处理滚动}
+        onKeyDown={处理按键}
         role="listbox"
+        tabIndex={0}
         aria-label={名称}
+        aria-activedescendant={活动项编号}
       >
-        {档表.map((档) => (
-          <div key={档} className={样式.薪资档} role="option" aria-selected={档 === 值}>
+        {档表.map((档, 序号) => (
+          <div
+            key={档}
+            className={样式.薪资档}
+            role="option"
+            aria-selected={档 === 值}
+            {...取选项属性(序号)}
+          >
             {/* 档里只留数字（面议那一档是「面议」两个字）。标注 2026-08-22：
                 「这个年应该是固定的，用户只用转动数字就行……不用每个滚轮数字后面都带有年和月」*/}
             <span className={`${档 === 值 ? 样式.档选中 : 样式.档未选} 等宽数字`}>

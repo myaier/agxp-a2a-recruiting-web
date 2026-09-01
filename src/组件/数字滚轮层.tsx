@@ -2,9 +2,10 @@
 // 按标注删除 —— 滚轮范围放宽到 12-36，极端值也在轮内，不再需要手填）。
 // 滚动手感与薪资轮 / 年月轮同源。
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import 样式 from './数字滚轮层.module.css';
 import 弹层框架 from './弹层框架';
+import { use可访问滚轮 } from './可访问滚轮';
 
 const 行高 = 40;
 
@@ -72,48 +73,36 @@ function 滚轮列({
   单位: string;
   名称: string;
 }) {
-  const 引用 = useRef<HTMLDivElement>(null);
-  const 防抖 = useRef(0);
-  // 记住本列自己滚出来的值，区分外部改值（手填）与自身滚动，避免互相回弹
-  const 自报值 = useRef(值);
-  const 当前序 = 选项.indexOf(值);
-
-  useEffect(() => {
-    if (引用.current) 引用.current.scrollTop = Math.max(0, 当前序) * 行高;
-    return () => window.clearTimeout(防抖.current);
-    // 挂载定位一次，之后交给用户滑动
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (值 === 自报值.current) return;
-    自报值.current = 值;
-    // 手填了范围之外的数时 当前序 为 -1，滚轮保持原位，由手填框显示
-    if (当前序 >= 0 && 引用.current) 引用.current.scrollTop = 当前序 * 行高;
-  }, [值, 当前序]);
-
-  /** 滚动中连续触发，防抖到停下（90ms 无新事件）再取落点 */
-  const 处理滚动 = () => {
-    const 位置 = 引用.current?.scrollTop ?? 0;
-    window.clearTimeout(防抖.current);
-    防抖.current = window.setTimeout(() => {
-      const 落点 = Math.min(Math.max(Math.round(位置 / 行高), 0), 选项.length - 1);
-      自报值.current = 选项[落点];
-      设值(选项[落点]);
-    }, 90);
-  };
+  // 键盘、点档直选、aria-activedescendant、90ms 防抖与程序 scroll 抑制都收敛在
+  // use可访问滚轮（与 内嵌双滚轮 / 年月滚轮层 / 引导问答 薪资轮 同一套合同），这里只留版式。
+  const {
+    滚轮引用,
+    活动项编号,
+    处理滚动,
+    处理按键,
+    取选项属性,
+  } = use可访问滚轮({ 选项, 值, 设值, 行高 });
 
   return (
     <div className={样式.列包}>
       <div
-        ref={引用}
+        ref={滚轮引用}
         className={`${样式.列} 滚动区`}
         onScroll={处理滚动}
+        onKeyDown={处理按键}
         role="listbox"
+        tabIndex={0}
         aria-label={名称}
+        aria-activedescendant={活动项编号}
       >
-        {选项.map((项) => (
-          <div key={项} className={样式.档} role="option" aria-selected={项 === 值}>
+        {选项.map((项, 序号) => (
+          <div
+            key={项}
+            className={样式.档}
+            role="option"
+            aria-selected={项 === 值}
+            {...取选项属性(序号)}
+          >
             {/* 档里只留数字。标注 2026-08-22：「不用每个滚轮数字后面都带有年和月」*/}
             <span className={`${项 === 值 ? 样式.档选中 : 样式.档未选} 等宽数字`}>{项}</span>
           </div>
