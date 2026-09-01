@@ -166,7 +166,8 @@ npm run test:agent-browser:shell   # 公共步骤库 + 整栈运行器的 bash �
 退出码固定：`0` 通过 / `1` 功能、清理或 enforce 视觉失败 / `2` 用法或报告错误 / `75` 环境阻塞。
 `test:agent-browser:shell` 里的冻结业务字面量比对在设置了 `AGXP_MONOREPO_DIR` 时才跑，
 没设置就干净跳过。设计与失败分类见
-`docs/superpowers/specs/2026-08-29-agent-browser-real-backend-e2e-design.md`。
+`docs/superpowers/specs/2026-08-29-agent-browser-real-backend-e2e-design.md`；完整的前置条件、报告门、
+基线审阅和清理恢复步骤见 [Agent-Browser 真实后端整栈验收](docs/AgentBrowser真实后端验收.md)。
 
 ### 未接线演示域与前端附属字段
 
