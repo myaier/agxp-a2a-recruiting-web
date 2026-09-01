@@ -327,6 +327,11 @@ export async function 水合招聘方组织数据(
 
 Do not swallow or toast non-401 errors in this helper. Remove its old `interactive` parameter and update the `水合角色数据` call site to pass four arguments. In `水合角色数据`, keep the outer `Promise.allSettled`, do not call `读取岗位()` after a rejected organization result, show one mount error there, and continue to throw the first error only in interactive mode.
 Remove the now-unused `轻提示` import from `组织操作.ts` and update its header comment so mount/interactive presentation is owned by `水合角色数据`.
+Replace the stale mount comment in `会话操作.ts` with:
+
+```ts
+// mount 模式：组织链或 Jobs 的非 401 失败都在这里提示一次；helper 只记录阶段并 reject。
+```
 
 ```ts
 const organizationResult = await 水合招聘方组织数据(
@@ -375,14 +380,16 @@ Expected: all focused tests PASS and both checks exit `0`.
 - Modify: `src/数据/招聘数据源/组织.test.ts`
 - Modify: `src/状态/后端/组织操作.ts`
 - Modify: `src/状态/后端/组织操作.test.ts`
+- Modify: `src/状态/后端/会话操作.ts`
+- Modify: `src/状态/后端/会话操作.test.ts`
 - Modify: `src/应用.tsx`
 - Create: `src/应用.test.tsx`
 - Modify: `src/屏幕/选身份.tsx`
 - Modify: `src/屏幕/选身份.test.tsx`
 
 **Interfaces:**
-- Consumes: Task 1's two recruiter hydration fields and the predecessor's `客户端校验错误`.
-- Produces: revision-zero profile creation and a single recruiter route guard consumed by the card flow and E2E.
+- Consumes: Task 1's two recruiter hydration fields and organization retry, plus the predecessor's `客户端校验错误`.
+- Produces: revision-zero profile creation, `会话操作.重新水合招聘方数据(): Promise<void>`, and a single recruiter route/recovery guard consumed by the card flow and E2E.
 
 - [ ] **Step 1: Add failing data-source and operation regressions**
 
@@ -431,9 +438,35 @@ it.each(['未开始', '进行中', '失败'] as const)('%s 阶段不盲写 revis
 });
 ```
 
+In `src/状态/后端/会话操作.test.ts`, add:
+
+```ts
+it('显式招聘方数据重试按组织链后 owner jobs 的顺序恢复', async () => {
+  const deps = 建会话依赖();
+  deps.后端状态引用.current = {
+    ...deps.后端状态引用.current,
+    已登录: true,
+    主体: 招聘主体,
+    招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
+  };
+  deps.后端.读取招聘方档案 = vi.fn().mockResolvedValue(已有档案);
+  deps.后端.读取我的企业关系 = vi.fn().mockResolvedValue([]);
+  deps.后端.读取岗位 = vi.fn().mockResolvedValue(权威岗位快照);
+  await 创建会话操作(deps).重新水合招聘方数据();
+  expect(deps.后端.读取招聘方档案.mock.invocationCallOrder[0])
+    .toBeLessThan(deps.后端.读取岗位.mock.invocationCallOrder[0]);
+  expect(deps.后端.读取岗位).toHaveBeenCalledTimes(1);
+  expect(deps.派发).toHaveBeenCalledWith({ 型: '水合后端岗位', 快照: 权威岗位快照 });
+  expect(deps.设后端状态).toHaveProducedState(expect.objectContaining({
+    岗位快照: 权威岗位快照.服务端,
+  }));
+});
+```
+
 - [ ] **Step 2: Add failing route and identity regressions**
 
 Create `src/应用.test.tsx` with a hoisted `use应用状态` mock, `MemoryRouter`, and these table cases:
+The `后端应用值` fixture must provide both `重新水合招聘方组织: vi.fn()` and `重新水合招聘方数据: vi.fn()` in its complete `操作` object.
 
 ```tsx
 it.each([
@@ -462,13 +495,31 @@ it('组织水合失败在登录路径显示真实错误和重试入口', async (
   });
   mock应用状态.mockReturnValue({
     ...value,
-    操作: { ...value.操作, 重新水合招聘方组织: retry },
+    操作: {
+      ...value.操作,
+      重新水合招聘方数据: retry,
+    },
   });
   render(<MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>);
   expect(screen.getByTestId('pathname')).toHaveTextContent(路径.登录);
   expect(screen.getByRole('alert')).toHaveTextContent('企业资料读取失败');
   await user.click(screen.getByRole('button', { name: '重试' }));
   expect(retry).toHaveBeenCalledTimes(1);
+  const switchButton = screen.getByRole('button', { name: '切换身份' });
+  await waitFor(() => expect(switchButton).toBeEnabled());
+  await user.click(switchButton);
+  expect(screen.getByTestId('pathname')).toHaveTextContent(路径.选身份);
+});
+
+it('组织水合失败时直接岗位路径显示恢复面而不是假空列表', () => {
+  mock应用状态.mockReturnValue(后端应用值({
+    初始化: '完成', 已登录: true,
+    主体: { ...招聘主体, last_used_role: 'recruiter' },
+    招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
+  }));
+  render(<MemoryRouter initialEntries={[路径.岗位管理]}><应用 /><位置探针 /></MemoryRouter>);
+  expect(screen.getByRole('alert')).toHaveTextContent('企业资料读取失败');
+  expect(screen.queryByText('还没有发布岗位')).not.toBeInTheDocument();
 });
 
 it('直接打开招聘端且 profile 缺失时 replace 到注册流名片', async () => {
@@ -498,6 +549,7 @@ it.each([
   路径.账号安全,
   路径.选身份,
   路径.招聘名片,
+  路径.企业实名认证,
   路径.企业组织申请,
   路径.企业邀请加入,
 ])('缺失 profile 时放行恢复与退出路径 %s', (pathname) => {
@@ -532,7 +584,7 @@ expect(mock跳转).toHaveBeenCalledWith(路径.招聘名片, { 从注册流: tru
 - [ ] **Step 3: Run focused tests and record the RED**
 
 ```bash
-npm test -- src/数据/招聘数据源/组织.test.ts src/状态/后端/组织操作.test.ts src/屏幕/选身份.test.tsx src/应用.test.tsx
+npm test -- src/数据/招聘数据源/组织.test.ts src/状态/后端/组织操作.test.ts src/状态/后端/会话操作.test.ts src/屏幕/选身份.test.tsx src/应用.test.tsx
 ```
 
 Expected: the source test may already prove PATCH but the operation and route tests FAIL because missing profiles cannot be written and recruiter navigation ignores hydration phases.
@@ -572,11 +624,65 @@ return next;
 
 If `后端操作依赖` does not yet expose `后端状态引用`, add it as `MutableRefObject<后端状态>` and pass the existing provider ref; do not mirror runtime phases into root `状态`.
 
+Add the explicit recovery operation to `会话操作` in `src/状态/后端/类型.ts`:
+
+```ts
+重新水合招聘方数据(): Promise<void>;
+```
+
+Add it to the object returned by `创建会话操作`. It reruns the recruiter organization chain and then owner jobs without rerunning unrelated P6 rules:
+
+```ts
+async 重新水合招聘方数据() {
+  if (!是后端 || !后端) return;
+  const subject = deps.后端状态引用.current.主体;
+  if (!subject || subject.last_used_role !== 'recruiter') {
+    throw new 客户端校验错误('session', '当前不是招聘方会话');
+  }
+  const subjectId = subject.subject_id;
+  const generation = 会话代际.current;
+  设后端状态((旧) => ({ ...旧, 初始化: '进行中' }));
+  try {
+    const restoredId = 读取恢复企业关系编号(subjectId);
+    const result = await 水合招聘方组织数据(deps, subjectId, generation, restoredId);
+    if (result.sessionExpired) return;
+    const 快照 = await 后端.读取岗位();
+    if (主体标识引用.current !== subjectId || 会话代际.current !== generation) return;
+    派发({ 型: '水合后端岗位', 快照 });
+    设后端状态((旧) => ({ ...旧, 初始化: '完成', 岗位快照: 快照.服务端 }));
+  } catch (错误) {
+    if (错误 instanceof BFF错误 && 错误.status === 401) {
+      清账号状态(账号清理依赖);
+    } else if (主体标识引用.current === subjectId && 会话代际.current === generation) {
+      设后端状态((旧) => ({ ...旧, 初始化: '完成' }));
+      轻提示(取后端错误文案(错误));
+    }
+    throw 错误;
+  }
+},
+```
+
+Import the predecessor-provided `客户端校验错误` beside `BFF错误`. Reuse the existing `账号清理依赖`, `读取恢复企业关系编号`, subject/generation fence, and `水合招聘方组织数据`; this method has no mutation lock and never falls back to Mock.
+
 - [ ] **Step 5: Implement the single route guard and explicit identity navigation**
 
 Replace the recruiter branch of the effect in `src/应用.tsx`. Protect recruiter business routes, but explicitly allow account/identity and recruiter recovery routes:
 
 ```tsx
+const 招聘方恢复路径 = new Set([
+  路径.招聘名片,
+  路径.企业实名认证,
+  路径.企业组织申请,
+  路径.企业邀请加入,
+]);
+
+function 是受保护招聘路径(pathname: string): boolean {
+  const recruiterRoute = pathname === 路径.企业主壳 ||
+    pathname.startsWith(`${路径.企业主壳}/`);
+  return pathname === 路径.登录 ||
+    (recruiterRoute && !招聘方恢复路径.has(pathname));
+}
+
 useEffect(() => {
   if (数据源模式 !== 'backend' || 后端状态.初始化 !== '完成' || !后端状态.已登录) return;
   const role = 后端状态.主体?.last_used_role;
@@ -590,14 +696,7 @@ useEffect(() => {
   }
   if (role !== 'recruiter' || 后端状态.招聘方组织水合.阶段 !== '成功') return;
   if (后端状态.招聘方档案水合阶段 === '缺失') {
-    const allowed = new Set([
-      路径.招聘名片,
-      路径.企业组织申请,
-      路径.企业邀请加入,
-    ]);
-    const recruiterBusinessRoute = 位置.pathname === 路径.企业主壳 ||
-      位置.pathname.startsWith(`${路径.企业主壳}/`);
-    if (位置.pathname === 路径.登录 || (recruiterBusinessRoute && !allowed.has(位置.pathname))) {
+    if (是受保护招聘路径(位置.pathname)) {
       前往(路径.招聘名片, { replace: true, state: { 从注册流: true } });
     }
     return;
@@ -611,7 +710,15 @@ useEffect(() => {
 Destructure `操作` from `use应用状态()` and add the failure recovery surface before the loading/auth guards:
 
 ```tsx
-function 招聘方恢复失败({ error, retry }: { error: string | null; retry: () => Promise<void> }) {
+function 招聘方恢复失败({
+  error,
+  retry,
+  switchRole,
+}: {
+  error: string | null;
+  retry: () => Promise<void>;
+  switchRole: () => void;
+}) {
   const [重试中, 设重试中] = useState(false);
   return (
     <div role="alert">
@@ -622,11 +729,12 @@ function 招聘方恢复失败({ error, retry }: { error: string | null; retry: 
         onClick={() => {
           if (重试中) return;
           设重试中(true);
-          void retry().finally(() => 设重试中(false));
+          void retry().catch(() => undefined).finally(() => 设重试中(false));
         }}
       >
         {重试中 ? '重试中…' : '重试'}
       </button>
+      <button type="button" disabled={重试中} onClick={switchRole}>切换身份</button>
     </div>
   );
 }
@@ -637,18 +745,19 @@ if (
   后端状态.已登录 &&
   后端状态.主体?.last_used_role === 'recruiter' &&
   后端状态.招聘方组织水合.阶段 === '失败' &&
-  位置.pathname === 路径.登录
+  是受保护招聘路径(位置.pathname)
 ) {
   return (
     <招聘方恢复失败
       error={后端状态.招聘方组织水合.错误}
-      retry={操作.重新水合招聘方组织}
+      retry={操作.重新水合招聘方数据}
+      switchRole={() => 前往(路径.选身份, { replace: true })}
     />
   );
 }
 ```
 
-Import `useState` alongside `useEffect`. The retry operation owns its error-state update; this component only owns button single-flight state.
+Import `useState` alongside `useEffect`. The session recovery operation sets `初始化='进行中'`, reruns organization then jobs, and restores `初始化='完成'`, so the existing loading screen remains visible for the full retry. A non-401 retry failure keeps the service error toast; an organization-chain failure also leaves the aggregate phase failed and returns to this recovery surface. The component only owns button single-flight state.
 
 In `src/屏幕/选身份.tsx`, replace only the recruiter success navigation:
 
@@ -660,9 +769,9 @@ await 操作.切身份('招聘方');
 - [ ] **Step 6: Run focused tests and commit**
 
 ```bash
-npm test -- src/数据/招聘数据源/组织.test.ts src/状态/后端/组织操作.test.ts src/屏幕/选身份.test.tsx src/应用.test.tsx
+npm test -- src/数据/招聘数据源/组织.test.ts src/状态/后端/组织操作.test.ts src/状态/后端/会话操作.test.ts src/屏幕/选身份.test.tsx src/应用.test.tsx
 git diff --check
-git add src/数据/招聘数据源/组织.ts src/数据/招聘数据源/组织.test.ts src/状态/后端/类型.ts src/状态/后端/组织操作.ts src/状态/后端/组织操作.test.ts src/应用.tsx src/应用.test.tsx src/屏幕/选身份.tsx src/屏幕/选身份.test.tsx
+git add src/数据/招聘数据源/组织.ts src/数据/招聘数据源/组织.test.ts src/状态/后端/类型.ts src/状态/后端/组织操作.ts src/状态/后端/组织操作.test.ts src/状态/后端/会话操作.ts src/状态/后端/会话操作.test.ts src/应用.tsx src/应用.test.tsx src/屏幕/选身份.tsx src/屏幕/选身份.test.tsx
 git commit -m "fix: create and resume recruiter profiles"
 ```
 
@@ -979,9 +1088,7 @@ it('Mock 发岗不读取 Backend 专属未认证公司声明', async () => {
   const user = userEvent.setup();
   renderMock发布页({ 未认证公司声明: '', 企业认证: { 姓名: '林澈', 公司: 'Mock 公司' } });
   await 走完新建岗位(user, { 职位描述: '描述正文', 职位要求: '要求正文' });
-  await waitFor(() => expect(mock派发).toHaveBeenCalledWith(
-    expect.objectContaining({ 型: '发布岗位' }),
-  ));
+  await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
   expect(mock轻提示).not.toHaveBeenCalledWith('请填写公司名称');
 });
 
@@ -1036,8 +1143,8 @@ Import `岗位创建上下文` from `../../数据/招聘数据源类型`; do not
 In `src/数据/后端映射.ts`, preserve all predecessor Catalog validation and add:
 
 ```ts
-function 必需岗位文本(value: string, field: string, message: string): string {
-  const trimmed = value.trim();
+function 必需岗位文本(value: string | undefined, field: string, message: string): string {
+  const trimmed = (value ?? '').trim();
   if (!trimmed) throw new 客户端校验错误(field, message);
   return trimmed;
 }

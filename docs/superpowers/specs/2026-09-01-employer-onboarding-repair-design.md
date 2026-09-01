@@ -173,14 +173,15 @@ subject + generation fence 继续保护所有响应；过时响应不得改变�
 ```text
 组织水合成功 + profile 缺失 → replace 到 /hr/card，state={从注册流:true}
 组织水合成功 + profile 成功 → replace 到 /hr
-组织水合失败                 → 登录路径显示真实错误与“重试”，不伪装成 onboarding
+组织水合失败                 → 登录/受保护招聘路径显示真实错误与“重试”，不伪装成 onboarding
 ```
 
 缺失 profile 的 guard 只拦登录路径和需要完成 onboarding 才能使用的 `/hr` 业务路径。`/account`、`/identity`、
 `/hr/card`、`/hr/organization-application` 与 `/hr/organization-invitation` 是恢复/退出路径，必须放行，避免用户
-被锁在名片页而无法退出、换角色或建立企业关系。组织水合失败时登录路径渲染一个显式恢复面，调用
-`重新水合招聘方组织()`；重试成功后由同一 guard 导航。candidate 和任何非 candidate/recruiter 的角色值继续
-回落身份选择页。
+被锁在名片页而无法退出、换角色或建立企业关系；`/hr/verify` 也是可达这两个企业关系动作的恢复入口，必须放行。
+组织水合失败时登录路径或受保护招聘路径渲染一个显式恢复面，依次重跑组织链和 owner jobs；恢复面同时提供
+“切换身份”，持续故障不能把用户锁死。重试成功后由同一 guard 导航或恢复当前路径。candidate 和任何非
+candidate/recruiter 的角色值继续回落身份选择页。
 
 身份选择页成功选择招聘方时，显式以 `{ 从注册流: true }` 进入招聘名片；普通应用内“编辑招聘名片”不携带该
 标记。应用恢复发现 profile 缺失时也携带该标记。不得用 timeout 等待水合。
