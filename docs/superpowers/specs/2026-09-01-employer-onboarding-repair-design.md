@@ -1,7 +1,7 @@
 # Employer Onboarding 真实后端修复设计
 
 **日期：** 2026-09-01
-**状态：** 待用户书面批准
+**状态：** 已确认，待实施
 **目标仓库：** `agxp-a2a-recruiting-web`
 
 ## 1. 背景与失败事实
@@ -52,6 +52,46 @@ Content-Type: application/json
 `docs/superpowers/specs/2026-09-01-recruitment-employer-onboarding-backend-fixes-design.md`
 （commit `2b19cf230f3dd8c7176f2316d7eb576fbf74f46c`）冻结；该 Plan 不阻塞 P0，但在对应后端 OpenAPI、实现和合同测试
 合并并提供可核验 commit 前不得执行。
+
+### 2.1 与前序候选人 onboarding 分支的串行边界
+
+前序前端工作为 `fix/candidate-onboarding-backend-persist`，冻结文档是：
+
+```text
+docs/superpowers/specs/2026-09-01-candidate-onboarding-backend-repair-design.md
+docs/superpowers/plans/2026-09-01-candidate-onboarding-backend-repair.md
+reviewed document HEAD: db9ee9c7
+execution prompt HEAD: 6b480862
+```
+
+该分支在本设计确认时尚未提交产品实现。它与招聘方 P0 会共同修改
+`src/数据/HTTP客户端.ts`、`src/数据/后端映射.ts`、`src/状态/应用状态.tsx`、相关测试以及
+`e2e/数据源模式.spec.ts`，因此两个实现不能从各自旧基线独立完成后再盲合并。执行顺序冻结为：
+
+```text
+候选人 onboarding 实现 commit
+→ 合入招聘方执行 worktree
+→ 校准本 Plan 对共享文件的行号和局部上下文
+→ 执行招聘方 P0
+→ 后端 remote + JD 实现 handoff
+→ 执行合并增强 Plan
+```
+
+招聘方 P0 消费前序分支的以下产物契约，不重新实现或回滚：
+
+- 复用 `客户端校验错误(field, message)`；本地错误继续由 `取后端错误文案` 返回自身可行动 message。招聘方
+  页面只在自己的 Job 表单内把 BFF `fieldErrors` 映射为字段文案，不把候选人页面改回机器 reason；
+- 保留 `必需引用(value, label, field)` 和岗位 Catalog call site 的稳定 field 名；招聘方新增的公司、描述、
+  要求非空校验是额外文本合同，不得削弱目录引用校验；
+- 保留 candidate-only、subject-scoped sessionStorage 草稿、恢复写屏障和清理时序。招聘方 profile/组织水合
+  阶段只进入 Backend runtime state，不写候选草稿 codec，也不让 recruiter 状态授权 candidate storage；
+- 保留 `VITE_ANNOTATION_ENABLED` 及设备外评审布局。viewport 修复只修改缩放合同，不恢复默认标注入口；
+- 保留候选人可变 fixture 和 `@annotation` 场景。招聘方 E2E 使用独立 fixture option、独立可变对象和独立测试
+  标题，不能共享或重置候选 fixture。
+
+前序实现 Handoff 必须给出可解析 commit、干净 worktree、共享文件实际 diff 和验证结果。若实际实现改变上述
+接口、文件路径、清理时序或 E2E fixture 入口，本 Plan 在写产品代码前停止并回到规划 owner 校准；纯行号漂移、
+import 排序或保持接口的内部变化可机械调整，不构成重新设计。
 
 ## 3. 架构选择与最小性
 
@@ -504,6 +544,10 @@ PDF、store/worker、加密/清理、role/owner、OpenAPI 和正式 L3 由后端
 ## 9. 实施拓扑与分级
 
 ### Plan 1：即时 P0
+
+这是前序候选人 onboarding 实现的串行下游。执行基线必须包含其最终实现 commit；不得直接在当前仅含文档的
+`fix-recruiter-onboarding-frontend` HEAD 上启动产品修改。前序产物保持第 2.1 节契约时，Plan 只做机械上下文
+校准；发生契约漂移则先修订并重新 review Plan。
 
 预计 7 个顶层实现 Task，顺序为：
 
