@@ -586,11 +586,16 @@ it('年份改变导致月份范围收缩时 active descendant 跟随夹紧值', 
 
 - [ ] **Step 3: Add onboarding salary-wheel integration tests**
 
-Extend the existing `src/屏幕/引导问答.test.tsx` and reuse `render引导问答Mock()`; do not create a second full-screen harness. Let that helper accept an optional `引导预填` argument and assign it to `状态.引导预填`, defaulting to `null`, so the same harness can exercise monthly and daily salary modes. The salary-stage route already renders the salary question. Add:
+Extend the existing `src/屏幕/引导问答.test.tsx` and reuse `render引导问答Mock()`; do not create a second full-screen harness. Let that helper accept an optional `引导预填` argument and assign it to `状态.引导预填`, defaulting to `null`, so the same harness can exercise monthly and daily salary modes. Pass a non-null prefill without a `薪资` key in the first two cases: `已有引导预填=true` collapses the salary-stage sequence to `['期望薪资']`, while the missing salary still initializes both values to “面议”. Add:
 
 ```tsx
+const 月薪题预填 = {
+  城市们: [], 职位: [], 城市引用们: [], 职位引用们: [],
+  筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] },
+};
+
 it('onboarding 薪资双轮支持键盘和直接点选并保存同一值', async () => {
-  const { 派发 } = render引导问答Mock();
+  const { 派发 } = render引导问答Mock(月薪题预填);
   const 用户 = userEvent.setup();
   const 下限列 = screen.getByRole('listbox', { name: '最低月薪' });
 
@@ -603,21 +608,21 @@ it('onboarding 薪资双轮支持键盘和直接点选并保存同一值', async
 
   const 上限列 = screen.getByRole('listbox', { name: '最高月薪' });
   await 用户.click(within(上限列).getByRole('option', { name: '30' }));
-  await 用户.click(screen.getByRole('button', { name: /保存/ }));
+  await 用户.click(screen.getByRole('button', { name: /下一步/ }));
   expect(派发).toHaveBeenCalledWith(expect.objectContaining({
     型: '存薪资预填', 下限: 20, 上限: 30, 单位: '月薪K',
   }));
 });
 
 it('onboarding 下限回到面议时保持现有 0/0 与隐藏上限合同', async () => {
-  const { 派发 } = render引导问答Mock();
+  const { 派发 } = render引导问答Mock(月薪题预填);
   const 用户 = userEvent.setup();
   const 下限列 = screen.getByRole('listbox', { name: '最低月薪' });
   await 用户.click(within(下限列).getByRole('option', { name: '20' }));
   expect(screen.getByRole('listbox', { name: '最高月薪' })).toBeTruthy();
   await 用户.click(within(下限列).getByRole('option', { name: '面议' }));
   expect(screen.queryByRole('listbox', { name: '最高月薪' })).toBeNull();
-  await 用户.click(screen.getByRole('button', { name: /保存/ }));
+  await 用户.click(screen.getByRole('button', { name: /下一步/ }));
   expect(派发).toHaveBeenCalledWith(expect.objectContaining({
     型: '存薪资预填', 下限: 0, 上限: 0, 单位: '月薪K',
   }));
@@ -633,11 +638,11 @@ it('onboarding 日薪档继续使用元每天单位并接入同一键盘合同',
   const 下限列 = screen.getByRole('listbox', { name: '最低日薪' });
   下限列.focus();
   await 用户.keyboard('{ArrowDown}');
-  expect(within(下限列).getByRole('option', { name: '310' }).getAttribute('aria-selected'))
+  expect(within(下限列).getByRole('option', { name: '320' }).getAttribute('aria-selected'))
     .toBe('true');
-  await 用户.click(screen.getByRole('button', { name: /保存/ }));
+  await 用户.click(screen.getByRole('button', { name: /下一步/ }));
   expect(派发).toHaveBeenCalledWith(expect.objectContaining({
-    型: '存薪资预填', 下限: 310, 单位: '元/天',
+    型: '存薪资预填', 下限: 320, 单位: '元/天',
   }));
 });
 ```
