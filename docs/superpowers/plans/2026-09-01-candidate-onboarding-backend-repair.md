@@ -62,7 +62,7 @@
 
 - [ ] **Step 1: Add the failing certificate and error-projection regressions**
 
-Add `转证书写入` and `转证书` to the imports in `src/数据/后端映射.test.ts`, then add these cases:
+Add `转证书写入`, `转证书`, and type `BFF证书` to the imports in `src/数据/后端映射.test.ts`, then add these cases:
 
 ```ts
 it('证书没有取得年份时显式写 null，不编造年份', () => {
@@ -106,6 +106,49 @@ it('客户端字段校验显示具体原因而不是网络错误', () => {
     .toBe('证书年份超出范围');
 });
 ```
+
+In `src/数据/后端映射.test.ts`, also assert both intention-local failures remain field reasons rather than falling through as network errors:
+
+```ts
+const 意向草稿 = {
+  ...空草稿,
+  工作城市: '上海',
+  期望职位: '产品经理',
+  工作城市引用: ref('loc_shanghai', '上海'),
+  职位引用: ref('tax_product', '产品经理'),
+  薪资下限: 10,
+  薪资上限: 20,
+};
+const 首次输入 = {
+  职位们: ['产品经理'],
+  城市们: ['上海'],
+  薪资: { 下限: 10, 上限: 20, 单位: '月薪K' as const },
+  筛选偏好: {
+    求职类型: ['社招全职'] as ['社招全职'],
+    办公方式: ['混合'] as ['混合'],
+  },
+  排除项: [],
+  职位引用: ref('tax_product', '产品经理'),
+  城市引用们: [],
+};
+
+const 捕获 = (调用: () => unknown) => {
+  try {
+    调用();
+    throw new Error('预期调用失败');
+  } catch (错误) {
+    return 错误;
+  }
+};
+const 办公错误 = 捕获(() => 转意向写入({ ...意向草稿, 办公方式: [] }, { 原始: null }));
+const 城市错误 = 捕获(() => 转首次意向写入(首次输入));
+expect(办公错误).toMatchObject({ field: 'intention.workplace_modes', message: '请先完善办公方式' });
+expect(城市错误).toMatchObject({ field: 'intention.primary_location_id', message: '请从候选城市中选择' });
+expect(取后端错误文案(办公错误)).toBe('请先完善办公方式');
+expect(取后端错误文案(城市错误)).toBe('请从候选城市中选择');
+```
+
+Import `取后端错误文案` in this test file; the four assertions above lock both the stable field names and the visible copy.
 
 In `src/屏幕/工作经历.test.tsx`, type `CET-4` into `证书或语言，如 CPA、雅思 7.0`, click its sibling `添加`, and assert `派发` receives a `存简历` action whose `证书` is `[{ 名称: 'CET-4', 年份: '', 编号: expect.any(String) }]`. This proves every BFF-required user field is represented without adding a year input.
 
@@ -185,6 +228,18 @@ export function 转证书写入(段: 简历证书): BFF证书写入 {
 }
 ```
 
+Replace the remaining intention-path naked throws too:
+
+```ts
+if (页值们.length === 0) {
+  throw new 客户端校验错误('intention.workplace_modes', '请先完善办公方式');
+}
+// in 转首次意向写入
+if (!primary) {
+  throw new 客户端校验错误('intention.primary_location_id', '请从候选城市中选择');
+}
+```
+
 Do not add a missing-`year` compatibility branch: TypeScript and Task 8's strict fixture require the property to exist.
 
 - [ ] **Step 5: Run green tests, typecheck, and commit**
@@ -213,26 +268,24 @@ git commit -m "fix: align candidate certificate year contract"
 
 **Interfaces:**
 - Consumes: `客户端校验错误`, `转证书写入`, and nullable `BFF证书写入` from Task 1.
-- Produces: `保存简历(previous, next)` that either rejects before every mutation or executes an already-materialized ordered plan and finishes with authoritative `GET /api/v1/me/resume`.
+- Produces: `保存简历(next: 页面简历写入, previous: BFF简历)` that either rejects before every mutation or executes an already-materialized ordered plan and finishes with authoritative `GET /api/v1/me/resume`.
 
 - [ ] **Step 1: Add the zero-request and complete-request regressions**
 
 In `src/数据/HTTP招聘数据源.test.ts`, add a test that starts from the existing resume snapshot, changes profile data, appends `{ 编号: 'local-cert', 名称: 'PMP', 年份: '1899' }`, calls `保存简历`, expects `客户端校验错误`, and asserts the request mock has zero calls. The changed profile is essential: it proves preflight prevents mutations that appeared earlier in execution order.
 
-Add a second test with an empty previous resume and a next resume containing exactly one new skill, experience, education, and `{ 名称: 'CET-4', 年份: '' }`. Route the mocked responses to return generated IDs and end with an authoritative resume containing all four entries. Assert:
+Add a second test whose previous BFF resume has the same profile and summary as `next` but empty skills, experiences, educations, and certificates. Give `next` exactly one new skill, experience, education, and `{ 名称: 'CET-4', 年份: '' }`. Route the mocked responses to return generated IDs and end with an authoritative resume containing all four entries. Assert:
 
 ```ts
-expect(请求.mock.calls.map(([method, path]) => `${method} ${path}`)).toEqual([
+expect(请求Mock.mock.calls.map(([选项]) => `${选项.method} ${选项.path}`)).toEqual([
   'PATCH /api/v1/me/resume/skills',
   'POST /api/v1/me/resume/experiences',
   'POST /api/v1/me/resume/educations',
   'POST /api/v1/me/resume/certificates',
   'GET /api/v1/me/resume',
 ]);
-expect(请求.mock.calls[3]?.[2]).toEqual({ name: 'CET-4', year: null });
+expect(请求Mock.mock.calls[3]?.[0].body).toEqual({ name: 'CET-4', year: null });
 ```
-
-If the fixture requires profile or summary changes, include those requests at the start of the expected sequence; the last request remains exactly the resume GET.
 
 Add a third regression: hydrate `year: null`, save that unchanged name-only certificate again after another field changes, and assert any certificate write still contains `year: null`, never `'null'`.
 
@@ -253,18 +306,35 @@ Expected: the full-preflight test observes an early mutation or delayed project-
 In `src/数据/招聘数据源/简历.ts`, keep the existing `写入步骤 = () => Promise<unknown>` execution type, but construct every body before pushing a step. For new experience projects, replace body construction inside the async closure with an already-validated array:
 
 ```ts
-const 项目请求体们 = 段.项目们.map(转项目写入);
+const 项目请求体们 = (段.项目 ?? []).map((项目) => ({
+  name: 项目.名称,
+  role: 项目.角色,
+  result: 项目.结果,
+}));
 写入步骤们.push(async () => {
-  const 创建结果 = await 请求<BFF经历>('POST', '/api/v1/me/resume/experiences', 经历请求体);
+  const { result } = await 请求<BFF简历条目变更>({
+    path: '/api/v1/me/resume/experiences',
+    method: 'POST',
+    body: 经历请求体,
+    幂等: true,
+  });
+  const 新经历Id = result.entry.experience?.id;
+  if (!新经历Id) return;
+  段.编号 = 新经历Id;
   for (const 项目请求体 of 项目请求体们) {
-    await 请求('POST', `/api/v1/me/resume/experiences/${encodeURIComponent(创建结果.id)}/projects`, 项目请求体);
+    await 请求<BFF简历条目变更>({
+      path: `/api/v1/me/resume/experiences/${新经历Id}/projects`,
+      method: 'POST',
+      body: 项目请求体,
+      幂等: true,
+    });
   }
 });
 ```
 
 Apply the same rule to profile, summary, skills, existing/new experiences, projects, education, and certificates: all synchronous mapping completes before the first `for (const 步骤 of 写入步骤们) await 步骤()`.
 
-Retain current behavior for structurally incomplete draft experience/education entries, current mutation order, failure recovery GET, conflict snapshot attachment, and final successful authoritative GET.
+Retain current behavior for structurally incomplete draft experience/education entries, current mutation order, failure recovery GET, conflict snapshot attachment, final successful authoritative GET, and `段.编号 = 新经历Id` after an experience POST so a project failure retry cannot duplicate the parent experience.
 
 - [ ] **Step 5: Implement single-flight page state and truthful feedback**
 
@@ -413,7 +483,8 @@ expect(候选引导草稿键({ 数据源: 'backend', 环境: 'stg', subject_id: 
 
 In `src/状态/应用状态.test.ts`, use the existing provider/remount helpers and real `window.sessionStorage` to cover these exact cases:
 
-1. `sub_A` candidate remount restores 30–40K and arrival status.
+0. A brand-new candidate subject with empty storage fills 30–40K, unmounts, and remounts with that salary restored.
+1. A pre-seeded `sub_A` candidate remount restores 30–40K and arrival status.
 2. First-render empty state does not overwrite `sub_A`'s stored draft before hydration.
 3. Switching to `sub_B` neither restores nor rewrites `sub_A` data.
 4. Logout removes the active candidate draft and clears in-memory `引导预填`.
@@ -492,9 +563,17 @@ Pass it to `use资料持久化`. In `src/状态/资料持久化.ts`, keep Mock l
 ```ts
 const 已恢复候选键 = useRef<string | null>(null);
 const 上一候选范围 = useRef<资料缓存范围 | null>(null);
+const [候选恢复代际, 设候选恢复代际] = useState(0);
 ```
 
-On scope change, remove `上一候选范围` before replacing it when the new key differs, dispatch the existing in-memory clear action, then restore only if Backend + candidate + subject are all present. Dispatch `水合候选引导草稿` for a valid snapshot, store the exact restored key in `已恢复候选键`, and only then permit the write effect.
+On scope change, remove `上一候选范围` before replacing it when the new key differs, dispatch the existing in-memory clear action, then restore only if Backend + candidate + subject are all present. Dispatch `水合候选引导草稿` when a valid snapshot exists. After the read attempt finishes, execute this unconditionally—even when storage was empty:
+
+```ts
+已恢复候选键.current = 当前键;
+设候选恢复代际((值) => 值 + 1);
+```
+
+Include `候选恢复代际` in the write effect dependencies. This makes a brand-new subject writable while retaining the first-render overwrite barrier.
 
 The write effect must recompute the current key and return unless it equals `已恢复候选键.current`; then write the allowlist or delete the key when `引导预填 === null`. This equality check is required on every write and prevents a stale effect from crossing subjects.
 
@@ -594,7 +673,7 @@ git commit -m "fix: reflect catalog selection validity"
 
 **Interfaces:**
 - Consumes: `操作.加载P8凭证()`, `后端状态.credentials`, and the projection already used by `设置.tsx` and `账号安全.tsx`.
-- Produces: read-only Backend `账号手机号`, navigation to `路径.账号安全`, and Backend email/WeChat rows fixed to `未接入`.
+- Produces: read-only Backend `账号手机号`, navigation to `路径.账号安全`, and separate Backend disclosure-phone/email/WeChat rows fixed to `未接入`.
 
 - [ ] **Step 1: Write the page tests**
 
@@ -606,9 +685,9 @@ expect(screen.getByText('138****5678')).toBeTruthy();
 expect(screen.queryByRole('textbox', { name: '账号手机号' })).toBeNull();
 ```
 
-Cover credential phase `进行中` and `失败` as `—`; `成功` with no `phone_otp` as `未绑定`; and `成功` with a unique `phone_otp` as its exact server `display`. Click the phone row and assert navigation to `路径.账号安全`.
+Cover credential phase `loading` and `error` as `—`; `success` with no `phone_otp` as `未绑定`; `success` with one `phone_otp` as its exact server `display`; and `success` with two `phone_otp` entries as `—`. Click the account-phone row and assert navigation to `路径.账号安全`.
 
-In Backend mode, assert email and WeChat each show `未接入`, expose no edit input, and never dispatch `存联系方式`. Add a Mock-mode regression proving existing editable contact behavior and dispatch remain unchanged.
+In Backend mode, assert `简历披露手机号`, email, and WeChat each show `未接入`, expose no edit input, and never dispatch `存联系方式`. Assert the server credential mask appears only on `账号手机号`, not on the disclosure-phone row. Add a Mock-mode regression proving existing editable phone/email/WeChat behavior and dispatch remain unchanged.
 
 - [ ] **Step 2: Run and record the red state**
 
@@ -628,12 +707,17 @@ useEffect(() => {
   void 操作.加载P8凭证().catch(() => undefined);
 }, [是后端, 操作]);
 
-const 账号手机号 = 后端状态.credentials.阶段 === '成功'
-  ? 后端状态.credentials.数据.find((条) => 条.type === 'phone_otp')?.display ?? '未绑定'
-  : '—';
+const 手机凭证们 = 后端状态.credentials.data?.filter((行) => 行.provider === 'phone_otp') ?? [];
+const 账号手机号 = 后端状态.credentials.phase !== 'success'
+  ? '—'
+  : 手机凭证们.length === 0
+    ? '未绑定'
+    : 手机凭证们.length === 1
+      ? 手机凭证们[0].display
+      : '—';
 ```
 
-Render it under the exact label `账号手机号` in a read-only row/button that navigates to `路径.账号安全`. Do not copy the mask into component input state. In Backend mode render email and WeChat as read-only `未接入`; conditionally retain the existing editable components only for Mock.
+Render it under the exact label `账号手机号` in a read-only row/button that navigates to `路径.账号安全`. Do not copy the mask into component input state. In Backend mode also render `简历披露手机号`, `邮箱`, and `微信号` as three separate read-only `未接入` rows; none reads `状态.联系方式`. Conditionally retain the existing editable `手机号`/`邮箱`/`微信号` components only for Mock.
 
 - [ ] **Step 4: Run green tests and commit**
 
@@ -660,15 +744,43 @@ git commit -m "fix: show authoritative candidate credentials"
 
 **Interfaces:**
 - Consumes: `import.meta.env.VITE_ANNOTATION_ENABLED`, existing device-frame breakpoints, and existing annotation controls.
-- Produces: no annotation component in default builds and a reserved external tool lane when explicitly enabled.
+- Produces: no annotation component in default builds, a reserved external launcher lane when explicitly enabled, and annotation panels still anchored to device content.
 
 - [ ] **Step 1: Add the narrow pointer-click regression**
 
-In `e2e/数据源模式.spec.ts`, add a Backend-tagged test named `标注模式不遮挡技能添加`. After the normal authenticated fixture is installed, open the online-resume route, fill `如：Go、分布式事务` with `Rust`, compute the center of that input's sibling `添加` button, and use `page.mouse.click(x, y)`. Assert a visible `Rust` skill chip appears. Do not call `locator.click({ force: true })` because the regression is physical hit testing.
+In `e2e/数据源模式.spec.ts`, add a top-level `标注评审构建 @annotation` describe and a test named `标注模式不遮挡技能添加 @annotation`. Set that describe's base URL to `http://127.0.0.1:4183`. After the normal authenticated fixture is installed, open the online-resume route, fill `如：Go、分布式事务` with `Rust`, compute the center of that input's sibling `添加` button, and use `page.mouse.click(x, y)`. Assert a visible `Rust` skill chip appears. Do not nest this test under an `@backend` describe and do not call `locator.click({ force: true })`, because the dedicated project and physical hit test are both part of the regression.
 
 - [ ] **Step 2: Enable annotation only for the dedicated Playwright servers and reproduce**
 
-Set `VITE_ANNOTATION_ENABLED: 'true'` in the Backend and Mock web-server env blocks of `playwright.数据源模式.config.ts`, then run:
+Add a third server to `playwright.数据源模式.config.ts` without changing the existing 4181/4182 command prefixes:
+
+```ts
+{
+  name: 'backend-stg-annotation',
+  command:
+    'VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=stg VITE_ANNOTATION_ENABLED=true npm run dev -- --host 127.0.0.1 --port 4183 --strictPort',
+  url: 'http://127.0.0.1:4183',
+  reuseExistingServer: false,
+  timeout: 120_000,
+},
+```
+
+Add its isolated project:
+
+```ts
+{
+  name: 'backend-stg-annotation',
+  use: {
+    ...devices['iPhone 13'],
+    browserName: 'chromium',
+    channel: 'chrome',
+    baseURL: 'http://127.0.0.1:4183',
+  },
+  grep: /@annotation/,
+},
+```
+
+The existing Mock and Backend projects keep their default commands with no annotation variable, so the production-shaped layout retains E2E coverage. Then run:
 
 ```bash
 npm run test:e2e:data-source -- --grep "标注模式不遮挡技能添加"
@@ -678,7 +790,7 @@ Expected before layout implementation: the mouse click hits the annotation launc
 
 - [ ] **Step 3: Implement build gating and explicit height ownership**
 
-Create `src/组件/标注层.module.css` with a narrow two-row review layout and a wide two-column layout:
+Create `src/组件/标注层.module.css` with a narrow two-row review layout, a wide two-column layout, and only the launcher positioned into the reserved lane:
 
 ```css
 .评审布局 {
@@ -689,7 +801,6 @@ Create `src/组件/标注层.module.css` with a narrow two-row review layout and
 }
 .应用槽 { min-width: 0; min-height: 0; }
 .工具占位 { min-width: 0; min-height: 0; }
-.覆盖根 { position: fixed; inset: 0; pointer-events: none; z-index: 90; }
 .启动器 { position: fixed; right: 14px; bottom: 12px; pointer-events: auto; }
 
 @media (min-width: 700px) and (min-height: 640px) and (pointer: fine),
@@ -702,31 +813,39 @@ Create `src/组件/标注层.module.css` with a narrow two-row review layout and
 }
 ```
 
-Move the annotation root and launcher positioning out of inline styles into `.覆盖根` and `.启动器`; keep drawing overlays/panels pointer behavior unchanged. The reserved row/column, not z-index, prevents overlap.
+Keep the annotation root's existing `position: absolute; inset: 0` inside `设备外框`, so its drawing overlay, input bar, export panel, and mask remain device-sized. Move only the launcher coordinates from inline styles to `.启动器`. The launcher escapes into the reserved row/column with `position: fixed`; the root and every other annotation child retain their current geometry and pointer behavior.
 
 Add optional `填满父级?: boolean` to `设备外框`, applying `.填满父级` to both frame variants. In its CSS add `height: 100%` for that class after the existing `100dvh` declarations.
 
-In `src/main.tsx`:
+In `src/main.tsx`, keep `HashRouter`, `<应用 />`, `<换壳遮罩看守 />`, and `<标注层 />` inside the device frame:
 
 ```tsx
 const 启用标注 = import.meta.env.VITE_ANNOTATION_ENABLED === 'true';
 
-<HashRouter>
-  {启用标注 ? (
-    <div className={标注样式.评审布局}>
-      <div className={标注样式.应用槽}>
-        <设备外框 填满父级><应用 /></设备外框>
-      </div>
-      <div className={标注样式.工具占位} aria-hidden />
-      <标注层 />
+{启用标注 ? (
+  <div className={标注样式.评审布局}>
+    <div className={标注样式.应用槽}>
+      <设备外框 填满父级>
+        <HashRouter>
+          <应用 />
+          <换壳遮罩看守 />
+          <标注层 />
+        </HashRouter>
+      </设备外框>
     </div>
-  ) : (
-    <设备外框><应用 /></设备外框>
-  )}
-</HashRouter>
+    <div className={标注样式.工具占位} aria-hidden />
+  </div>
+) : (
+  <设备外框>
+    <HashRouter>
+      <应用 />
+      <换壳遮罩看守 />
+    </HashRouter>
+  </设备外框>
+)}
 ```
 
-Retain the existing shell-swap wrapper around `<应用 />` in both branches. When disabled, do not render `<标注层>` at all.
+Retain the existing `<换壳遮罩看守 />` sibling immediately after `<应用 />` in both branches. When disabled, do not render `<标注层>` at all.
 
 - [ ] **Step 4: Remove E2E collision workarounds and run green**
 
@@ -776,6 +895,17 @@ function 创建候选OnboardingFixture(): 候选OnboardingFixture {
   return {
     resume: {
       ...(structuredClone(fixture简历) as BFF简历),
+      profile: {
+        real_name: '',
+        work_start_year: null,
+        status: '',
+        current_education: null,
+        graduation_year: null,
+        gender: null,
+        birth_year: null,
+        birth_month: null,
+      },
+      summary: '',
       skills: [],
       experiences: [],
       educations: [],
