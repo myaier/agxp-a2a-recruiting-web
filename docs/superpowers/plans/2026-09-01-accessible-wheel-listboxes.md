@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give salary, numeric, and year/month wheel listboxes one shared keyboard, direct-click, scroll, and ARIA interaction contract without changing their visual design or data rules.
+**Goal:** Give intention salary, onboarding salary, numeric, and year/month wheel listboxes one shared keyboard, direct-click, scroll, and ARIA interaction contract without changing their visual design or data rules.
 
-**Architecture:** Add a headless `use可访问滚轮` Hook that owns focusable-listbox props, stable active-option IDs, bounded keyboard selection, direct option selection, programmatic scroll synchronization, and the existing 90ms scroll debounce. Keep all three existing visual components and CSS modules, and instantiate the Hook independently for every column.
+**Architecture:** Add a headless `use可访问滚轮` Hook that owns focusable-listbox props, stable active-option IDs, bounded keyboard selection, direct option selection, programmatic scroll synchronization, and the existing 90ms scroll debounce. Keep all four audited visual implementations and CSS modules, and instantiate the Hook independently for every column.
 
 **Tech Stack:** React 19, TypeScript 6, Vitest 4, Testing Library, jsdom.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Execute after `docs/superpowers/plans/2026-09-01-sms-login-role-hydration.md` is complete and its verification gate is green.
-- Use the login Plan's calibrated main anchor `37b0a459e53b48dfb3e204a647c805334d0bff06` or a later revalidated/rebased main. The 2026-09-01 calibration found no changes to the four target wheel components since the prior base.
+- Use the login Plan's calibrated main anchor `37b0a459e53b48dfb3e204a647c805334d0bff06` or a later revalidated/rebased main. The 2026-09-01 calibration found no changes to the four audited wheel implementations since the prior base.
 - Do not change wheel CSS, highlighter geometry, row height, option ranges, steps, units, scroll-snap behavior, or overlay structure.
 - Use `aria-activedescendant` with stable option IDs. Do not add roving option `tabIndex`.
 - Support ArrowUp, ArrowDown, Home, and End. Clamp at boundaries and do not wrap. PageUp/PageDown remain out of scope.
@@ -22,6 +22,7 @@
 - Programmatic scroll caused by keyboard, click, initial positioning, or external values must not produce a second state write.
 - Each column has independent refs, timer, active ID, and pending programmatic-scroll marker.
 - Salary remains 3–100K, allows an intermediate upper value below lower, and raises upper to lower only on confirmation.
+- Onboarding salary keeps `0 = 面议`, the existing monthly/daily option tables and unit text, dynamic upper-option generation, and the current lower-to-upper auto-band behavior.
 - Follow TDD in every task and commit each independently reviewable deliverable.
 
 ---
@@ -35,6 +36,7 @@
 | `src/组件/薪资区间层.tsx`, tests | Salary confirmation, normalization, and reopen values |
 | `src/组件/数字滚轮层.tsx`, tests | Single-column consumer using row height 40 |
 | `src/组件/年月滚轮层.tsx`, tests | Dynamic year/month consumer using row height 40 |
+| `src/屏幕/引导问答.tsx`, `src/屏幕/引导问答.test.tsx` | Onboarding monthly/daily salary consumer using row height 46; preserve negotiable and auto-band rules |
 | `src/屏幕/基本信息.tsx`, `src/屏幕/就读时间段.tsx`, `src/屏幕/学生分流.tsx` | Existing non-salary `内嵌双滚轮` consumers; inherit the shared contract without product edits |
 | `src/屏幕/学生分流.test.tsx` | One screen-level focus-order regression for an embedded wheel inside a real dialog |
 
@@ -507,17 +509,19 @@ git commit -m "test: lock accessible salary selection"
 
 If `薪资区间层.tsx` is unchanged, `git add` ignores it and the commit contains only the test file.
 
-### Task 3: Migrate numeric and year/month wheels to the same Hook
+### Task 3: Migrate the remaining numeric, year/month, and onboarding salary wheels
 
 **Files:**
 - Modify: `src/组件/数字滚轮层.tsx`
 - Create: `src/组件/数字滚轮层.test.tsx`
 - Modify: `src/组件/年月滚轮层.tsx`
 - Create: `src/组件/年月滚轮层.test.tsx`
+- Modify: `src/屏幕/引导问答.tsx`
+- Modify: `src/屏幕/引导问答.test.tsx`
 
 **Interfaces:**
-- Consumes: Task 1's `use可访问滚轮` and exact row height `40`.
-- Produces: the same focus, keyboard, click, scroll, and ARIA contract for single-number and dynamic year/month wheels.
+- Consumes: Task 1's `use可访问滚轮`, exact row height `40` for numeric/year-month, and exact row height `46` for onboarding salary.
+- Produces: the same focus, keyboard, click, scroll, and ARIA contract for single-number, dynamic year/month, and onboarding salary wheels.
 
 - [ ] **Step 1: Add a numeric-wheel integration test**
 
@@ -580,17 +584,77 @@ it('年份改变导致月份范围收缩时 active descendant 跟随夹紧值', 
 });
 ```
 
-- [ ] **Step 3: Run the tests and record the RED**
+- [ ] **Step 3: Add onboarding salary-wheel integration tests**
 
-```bash
-npm test -- src/组件/数字滚轮层.test.tsx src/组件/年月滚轮层.test.tsx
+Extend the existing `src/屏幕/引导问答.test.tsx` and reuse `render引导问答Mock()`; do not create a second full-screen harness. Let that helper accept an optional `引导预填` argument and assign it to `状态.引导预填`, defaulting to `null`, so the same harness can exercise monthly and daily salary modes. The salary-stage route already renders the salary question. Add:
+
+```tsx
+it('onboarding 薪资双轮支持键盘和直接点选并保存同一值', async () => {
+  const { 派发 } = render引导问答Mock();
+  const 用户 = userEvent.setup();
+  const 下限列 = screen.getByRole('listbox', { name: '最低月薪' });
+
+  下限列.focus();
+  await 用户.keyboard('{ArrowDown}');
+  expect(within(下限列).getByRole('option', { name: '1' }).getAttribute('aria-selected'))
+    .toBe('true');
+  await 用户.click(within(下限列).getByRole('option', { name: '20' }));
+  expect(document.activeElement).toBe(下限列);
+
+  const 上限列 = screen.getByRole('listbox', { name: '最高月薪' });
+  await 用户.click(within(上限列).getByRole('option', { name: '30' }));
+  await 用户.click(screen.getByRole('button', { name: /保存/ }));
+  expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+    型: '存薪资预填', 下限: 20, 上限: 30, 单位: '月薪K',
+  }));
+});
+
+it('onboarding 下限回到面议时保持现有 0/0 与隐藏上限合同', async () => {
+  const { 派发 } = render引导问答Mock();
+  const 用户 = userEvent.setup();
+  const 下限列 = screen.getByRole('listbox', { name: '最低月薪' });
+  await 用户.click(within(下限列).getByRole('option', { name: '20' }));
+  expect(screen.getByRole('listbox', { name: '最高月薪' })).toBeTruthy();
+  await 用户.click(within(下限列).getByRole('option', { name: '面议' }));
+  expect(screen.queryByRole('listbox', { name: '最高月薪' })).toBeNull();
+  await 用户.click(screen.getByRole('button', { name: /保存/ }));
+  expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+    型: '存薪资预填', 下限: 0, 上限: 0, 单位: '月薪K',
+  }));
+});
+
+it('onboarding 日薪档继续使用元每天单位并接入同一键盘合同', async () => {
+  const { 派发 } = render引导问答Mock({
+    城市们: [], 职位: [], 城市引用们: [], 职位引用们: [],
+    筛选偏好: { 求职类型: ['实习生'], 办公方式: ['混合'] },
+    薪资: { 下限: 300, 上限: 500, 单位: '元/天' },
+  });
+  const 用户 = userEvent.setup();
+  const 下限列 = screen.getByRole('listbox', { name: '最低日薪' });
+  下限列.focus();
+  await 用户.keyboard('{ArrowDown}');
+  expect(within(下限列).getByRole('option', { name: '310' }).getAttribute('aria-selected'))
+    .toBe('true');
+  await 用户.click(screen.getByRole('button', { name: /保存/ }));
+  expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+    型: '存薪资预填', 下限: 310, 单位: '元/天',
+  }));
+});
 ```
 
-Expected: keyboard, click, and active-descendant assertions fail because both components still use their duplicated scroll-only column implementation.
+Add `within` to the existing Testing Library import. These tests own the onboarding salary state contract; `内嵌双滚轮.test.tsx` continues to own the shared Hook's exhaustive keyboard, scroll, and duplicate-write matrix.
 
-- [ ] **Step 4: Replace both local column implementations with the Hook**
+- [ ] **Step 4: Run the tests and record the RED**
 
-In both components keep `行高 = 40`, local state, option construction, overlay shell, highlighter, and unit spans. Inside each private column use:
+```bash
+npm test -- src/组件/数字滚轮层.test.tsx src/组件/年月滚轮层.test.tsx src/屏幕/引导问答.test.tsx
+```
+
+Expected: keyboard, click, and active-descendant assertions fail because all three remaining consumers still use duplicated scroll-only column implementations.
+
+- [ ] **Step 5: Replace all three local column implementations with the Hook**
+
+In `数字滚轮层.tsx` and `年月滚轮层.tsx`, keep `行高 = 40`, local state, option construction, overlay shell, highlighter, and unit spans. In `引导问答.tsx`, keep its existing `行高 = 46`, `薪资档`/`日薪档`, `算上限档表`, “面议”, auto-band setters, fixed unit spans, and salary-card DOM. Inside each private column use:
 
 ```ts
 const {
@@ -604,15 +668,15 @@ const {
 
 Wire each listbox with `onKeyDown`, `tabIndex={0}`, and `aria-activedescendant`; spread `取选项属性(序号)` onto each option exactly as in Task 1. Remove the duplicated ref/effect/debounce/self-reported-value code and unused React hook imports.
 
-For `年月滚轮层`, do not move the existing month-clamping effect into the Hook. The parent remains responsible for making `月` valid for the selected year; the Hook responds to the resulting controlled value and changed option index.
+For `年月滚轮层`, do not move the existing month-clamping effect into the Hook. The parent remains responsible for making `月` valid for the selected year; the Hook responds to the resulting controlled value and changed option index. For `引导问答.薪资轮`, replace only its private ref/effect/debounce/self-reported-value mechanics; do not route it through `内嵌双滚轮`, change the screen DOM/CSS, or move lower/upper normalization into the Hook.
 
-- [ ] **Step 5: Run all wheel tests, typecheck, and commit**
+- [ ] **Step 6: Run all wheel tests, typecheck, and commit**
 
 ```bash
-npm test -- src/组件/内嵌双滚轮.test.tsx src/组件/薪资区间层.test.tsx src/组件/数字滚轮层.test.tsx src/组件/年月滚轮层.test.tsx
+npm test -- src/组件/内嵌双滚轮.test.tsx src/组件/薪资区间层.test.tsx src/组件/数字滚轮层.test.tsx src/组件/年月滚轮层.test.tsx src/屏幕/引导问答.test.tsx src/屏幕/薪资上限档.test.ts
 npm run typecheck
 git diff --check
-git add src/组件/数字滚轮层.tsx src/组件/数字滚轮层.test.tsx src/组件/年月滚轮层.tsx src/组件/年月滚轮层.test.tsx
+git add src/组件/数字滚轮层.tsx src/组件/数字滚轮层.test.tsx src/组件/年月滚轮层.tsx src/组件/年月滚轮层.test.tsx src/屏幕/引导问答.tsx src/屏幕/引导问答.test.tsx
 git commit -m "refactor: share accessible wheel behavior"
 ```
 
@@ -629,7 +693,7 @@ git commit -m "refactor: share accessible wheel behavior"
 
 ```bash
 npm test -- src/状态/后端/会话操作.test.ts src/状态/应用状态.test.ts src/屏幕/登录.test.tsx src/屏幕/添加意向.test.tsx src/屏幕/我的简历.test.tsx src/数据/HTTP招聘数据源.test.ts
-npm test -- src/组件/内嵌双滚轮.test.tsx src/组件/薪资区间层.test.tsx src/组件/数字滚轮层.test.tsx src/组件/年月滚轮层.test.tsx
+npm test -- src/组件/内嵌双滚轮.test.tsx src/组件/薪资区间层.test.tsx src/组件/数字滚轮层.test.tsx src/组件/年月滚轮层.test.tsx src/屏幕/引导问答.test.tsx src/屏幕/薪资上限档.test.ts
 ```
 
 Expected: every file passes.
@@ -684,6 +748,7 @@ Return:
 
 - Task commit SHAs and focused RED/GREEN evidence;
 - keyboard, direct-click, scroll, boundary, active-descendant, duplicate-write, and dynamic-month test results;
+- onboarding monthly/daily salary behavior, negotiable `0/0`, and dynamic upper-option regression results;
 - full repository verification exit statuses;
 - real Backend request counts and salary persistence evidence, or the exact non-Mock environment blocker;
 - confirmation that no CSS, range, `If-Match`, DTO, or page-level fetch behavior changed.

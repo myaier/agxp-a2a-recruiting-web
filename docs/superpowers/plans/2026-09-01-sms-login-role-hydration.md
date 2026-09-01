@@ -70,6 +70,23 @@ Expected: `git status --short` is empty; all four `merge-base --is-ancestor` cal
 - Consumes: predecessor `水合招聘方组织数据(deps, subjectId, generation, restoredId)`, `创建空招聘方组织水合状态()`, existing P4/P7/P8 runtime refs, `清账号状态`, and `水合Agent规则角色数据`.
 - Produces: `水合角色数据(...) => Promise<boolean>` whose commits, errors, and 401 handling are all fenced by exact subject + generation, and whose current-session cleanup reaches P4/P7/P8 refs.
 
+Add one dynamic toast-count helper near the existing test helpers. It must re-query the singleton container on every assertion so a newly created container cannot escape an `undefined` captured reference:
+
+```ts
+function 轻提示条数(): number {
+  return (Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined)?.childElementCount ?? 0;
+}
+
+function 清空轻提示(): void {
+  const 容器 = Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined;
+  if (容器) 容器.innerHTML = '';
+}
+```
+
 - [ ] **Step 1: Add candidate stale-result and current-401 regressions**
 
 In `src/状态/后端/会话操作.test.ts`, extend the existing `创建P6数据源桩`, `创建P6会话依赖`, and `deferred` harness:
@@ -96,6 +113,7 @@ it('candidate 简历和意向在 generation 变化后结算时整包丢弃', asy
 });
 
 it('candidate 迟到 401 不清更新会话也不提示', async () => {
+  清空轻提示();
   const 后端 = 创建P6数据源桩();
   const 简历门 = deferred<never>();
   vi.mocked(后端.读取简历).mockReturnValue(简历门.promise);
@@ -112,9 +130,11 @@ it('candidate 迟到 401 不清更新会话也不提示', async () => {
   expect(deps.主体标识引用.current).toBe('sub_new');
   expect(deps.会话代际.current).toBe(8);
   expect(deps.后端状态引用.current.已登录).toBe(true);
+  expect(轻提示条数()).toBe(0);
 });
 
 it('candidate 当前轮水合 401 清 P7 与 P8 运行时引用', async () => {
+  清空轻提示();
   const 后端 = 创建P6数据源桩();
   vi.mocked(后端.读取简历).mockRejectedValue(
     new BFF错误(401, 'invalid_session', 'expired'),
@@ -132,6 +152,7 @@ it('candidate 当前轮水合 401 清 P7 与 P8 运行时引用', async () => {
   expect(deps.P7可见收件箱.current.candidate).toBe(false);
   expect(deps.P8读取锁.current.size).toBe(0);
   expect(deps.P8账号可见.current).toBe(false);
+  expect(轻提示条数()).toBe(0);
 });
 ```
 
@@ -204,6 +225,48 @@ it('recruiter owner jobs 在 generation 变化后结算时不提交', async () =
   岗位门.resolve({ 列表: [{ 编号: 'stale-job' }], 服务端: {} } as 页面岗位快照);
   await expect(运行).resolves.toBe(false);
   expect(动作流).not.toContainEqual(expect.objectContaining({ 型: '水合后端岗位' }));
+});
+
+it('recruiter owner jobs 的迟到 401 不清更新会话也不提示', async () => {
+  清空轻提示();
+  const 后端 = 创建P6数据源桩();
+  const 岗位门 = deferred<页面岗位快照>();
+  vi.mocked(后端.读取岗位).mockReturnValue(岗位门.promise);
+  const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+  deps.主体标识引用.current = recruiter主体.subject_id;
+  deps.会话代际.current = 11;
+
+  const 运行 = 水合角色数据(deps, recruiter主体, false, 11);
+  await vi.waitFor(() => expect(后端.读取岗位).toHaveBeenCalledTimes(1));
+  deps.会话代际.current = 12;
+  岗位门.reject(new BFF错误(401, 'invalid_session', '旧岗位轮过期'));
+  await expect(运行).resolves.toBe(false);
+
+  expect(最新后端状态().已登录).toBe(true);
+  expect(deps.主体标识引用.current).toBe(recruiter主体.subject_id);
+  expect(deps.会话代际.current).toBe(12);
+  expect(轻提示条数()).toBe(0);
+});
+
+it('recruiter Agent 规则的迟到 401 不清更新会话也不提示', async () => {
+  清空轻提示();
+  const 后端 = 创建P6数据源桩();
+  const 规则门 = deferred<Awaited<ReturnType<typeof 后端.读取Agent规则>>>();
+  vi.mocked(后端.读取Agent规则).mockReturnValue(规则门.promise);
+  const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+  deps.主体标识引用.current = recruiter主体.subject_id;
+  deps.会话代际.current = 11;
+
+  const 运行 = 水合角色数据(deps, recruiter主体, false, 11);
+  await vi.waitFor(() => expect(后端.读取Agent规则).toHaveBeenCalledTimes(1));
+  deps.会话代际.current = 12;
+  规则门.reject(new BFF错误(401, 'invalid_session', '旧规则轮过期'));
+  await expect(运行).resolves.toBe(false);
+
+  expect(最新后端状态().已登录).toBe(true);
+  expect(deps.主体标识引用.current).toBe(recruiter主体.subject_id);
+  expect(deps.会话代际.current).toBe(12);
+  expect(轻提示条数()).toBe(0);
 });
 ```
 
@@ -284,7 +347,7 @@ if (!是当前水合(deps, 主体.subject_id, generation)) return false;
 
 After that guard, process all four support results and P6 rejections with the existing independent-commit/error policy. Remove the separate privacy/attachment captured-fence functions because the one outer fence now governs the same settled batch. For a rejected result, mark 401 as session-expired but do not call `轻提示` for that individual domain; continue to present each non-401 failure as today. This prevents duplicate 401 toasts when multiple settled domains fail together. Pass `deps` directly to `清账号状态(deps)` so P4/P7/P8 refs travel with the current 401. Task 2 makes both interactive owners (`完成手机登录` and `切身份`) convert the terminal boolean to one standard `invalid_session` rejection; their existing page catches present one message and block navigation. Cold start intentionally becomes silent and lands on the login page.
 
-In the recruiter branch, preserve the predecessor organization-before-jobs semantics. Honor a fulfilled `{ sessionExpired: true }` before the stale early return; otherwise require the outer fence before scanning P6 errors, presenting errors, or committing jobs:
+In the recruiter branch, preserve the predecessor organization-before-jobs semantics. Honor a fulfilled `{ sessionExpired: true }` before the stale early return because the organization helper has already performed current-session cleanup. For every other result, run the outer fence **before** both pre-existing 401 scans (`组织岗位落点.status === 'rejected' && 是会话失效错误(...)` and `p6结果.some(是会话失效落败)`), before presenting errors, and before committing jobs:
 
 ```ts
 if (
@@ -294,7 +357,7 @@ if (
 if (!是当前水合(deps, 主体.subject_id, generation)) return false;
 ```
 
-Replace any jobs commit check that only compares `主体标识引用` with `是当前水合(...)`.
+After this guard, perform the two current-session 401 scans and cleanup, then the existing non-401 error/commit policy. Replace any jobs commit check that only compares `主体标识引用` with `是当前水合(...)`. The two stale recruiter-401 tests above must fail if either 401 scan remains before the fence.
 
 In `src/状态/后端/组织操作.ts`, extend `组织水合依赖` with the same P4/P7/P8 cleanup-ref keys. Do not change the predecessor four-argument signature, missing-profile semantics, aggregate phases, or retry behavior; this edit only lets its current-session 401 call the complete `清账号状态` shape.
 
@@ -361,6 +424,7 @@ it('已有 candidate 短信登录在五类支持域结算后才提交登录态',
   const 后端 = 创建P6数据源桩();
   const 附件门 = deferred<BFF附件简历库>();
   vi.mocked(后端.读取主体).mockResolvedValue(candidate主体);
+  vi.mocked(后端.读取简历).mockResolvedValue(从BFF简历(BFF简历样本));
   vi.mocked(后端.读取意向).mockResolvedValue({
     列表: [{ 编号: 'int_1', 标题: 'AI 产品经理', 说明: '20–30K' }],
     服务端: { int_1: BFF意向样本 },
@@ -477,6 +541,7 @@ it('切身份水合 401 拒绝，让身份页阻止成功导航', async () => {
 it('单域非 401 失败保留兄弟域并完成登录', async () => {
   const 后端 = 创建P6数据源桩();
   vi.mocked(后端.读取主体).mockResolvedValue(candidate主体);
+  vi.mocked(后端.读取简历).mockResolvedValue(从BFF简历(BFF简历样本));
   vi.mocked(后端.读取附件简历库).mockRejectedValue(
     new BFF错误(503, 'storage_unavailable', 'down'),
   );
