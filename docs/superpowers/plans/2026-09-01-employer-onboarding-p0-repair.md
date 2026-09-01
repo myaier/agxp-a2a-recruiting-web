@@ -10,6 +10,10 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-01-employer-onboarding-repair-design.md`
 
+**计划本身复杂度：高。**
+
+**零上下文漂移风险：中。**
+
 ## Global Constraints
 
 - Execute only after the implementation of `fix/candidate-onboarding-backend-persist` has been merged into this worktree; record its final implementation commit before changing product code.
@@ -72,7 +76,6 @@ Expected: a clean worktree, the predecessor implementation commit is reachable f
 - Modify: `src/状态/应用状态.test.ts`
 - Modify: `src/状态/后端/组织操作.ts`
 - Modify: `src/状态/后端/组织操作.test.ts`
-- Modify: `src/状态/后端/类型.ts`
 - Modify: `src/状态/后端/会话操作.ts`
 - Modify: `src/状态/后端/会话操作.test.ts`
 
@@ -381,6 +384,7 @@ Expected: all focused tests PASS and both checks exit `0`.
 - Modify: `src/数据/招聘数据源/组织.test.ts`
 - Modify: `src/状态/后端/组织操作.ts`
 - Modify: `src/状态/后端/组织操作.test.ts`
+- Modify: `src/状态/后端/类型.ts`
 - Modify: `src/状态/后端/会话操作.ts`
 - Modify: `src/状态/后端/会话操作.test.ts`
 - Modify: `src/应用.tsx`
