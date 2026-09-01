@@ -180,7 +180,7 @@ assert_text '编辑岗位'
 click_button_exact '职位描述'
 find_retry label 职位描述 fill "$JOB_DESC_2" >/dev/null
 click_button_exact '职位要求'
-find_retry placeholder '用你自己的话写' fill "$JOB_SCREEN" >/dev/null
+find_retry placeholder '例如：985/211 或指定院校优先、有大厂或创业公司经历、重点看系统设计能力' fill "$JOB_SCREEN" >/dev/null
 click_button_exact '保存'
 # 保存成功产品才返回岗位管理（发布岗位.tsx:344-346），行重新出现就是写已经落库
 assert_job_row "$TEMP_JOB" '在招'

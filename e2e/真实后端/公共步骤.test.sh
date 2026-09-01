@@ -791,7 +791,8 @@ assert_contains '滑开临时岗位行（语义定位 + 自身矩形 + 真实鼠
   'get box [aria-label^="浏览器验收岗位 · 临时CRUD"] --json' "$CALLS"
 assert_contains '滑开后点编辑' 'find role button click --name 编辑 --exact' "$CALLS"
 assert_contains '编辑改职位描述' 'find label 职位描述 fill 浏览器验收岗位 · 临时CRUD 的职位描述改后' "$CALLS"
-assert_contains '编辑改加分偏好' 'find placeholder 用你自己的话写 fill' "$CALLS"
+assert_contains '编辑改加分偏好' \
+  'find placeholder 例如：985/211 或指定院校优先、有大厂或创业公司经历、重点看系统设计能力 fill' "$CALLS"
 assert_contains '硬刷新之后回编辑页逐字核描述' 'get value [aria-label="职位描述"]' "$CALLS"
 # 岗位名称在后端建后不可改，编辑页也把它设成只读。这里按「placeholder + fill」计数：
 # 整条旅程只允许发生一次（发布那一步）。原来那条断言找的是一个任何代码路径都发不出来的
