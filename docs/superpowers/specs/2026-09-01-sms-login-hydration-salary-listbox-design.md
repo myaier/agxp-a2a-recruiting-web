@@ -8,21 +8,21 @@ Backend 模式下，已有账号完成交互式短信登录后，前端只完成
 
 本次修复不修改 BFF 合同、意向 DTO、revision/ETag、`If-Match`、权威重读或 Backend 失败策略，也不在角色页面增加补偿 GET。
 
-## 前序分支依赖
+## 已整合的前序基线
 
-本设计必须在以下两个前序分支依次合并到 `main` 后实施：
+2026-09-01 已确认两个前序分支按要求进入 `origin/main`，当前功能分支也已无冲突 rebase 到该基线：
 
-1. `fix/candidate-onboarding-backend-persist`（worktree：`skillful-snake`）；
-2. `fix-recruiter-onboarding-frontend`（worktree：`unarmed-wolverine`，其计划本身依赖第一个分支）。
+1. `fix/candidate-onboarding-backend-persist`（worktree：`skillful-snake`）最终整合锚点 `e1493eed1ba97c58379d7503f97ae2ca44d3adea`，包含候选草稿实现及 `09f447f7`、`f7dd9a27` 两轮收口；
+2. `fix-recruiter-onboarding-frontend`（worktree：`unarmed-wolverine`）最终实现锚点 `59cd1ee6dfa3a0ba43ec30b3b1d33cc28e8a23e8`；`68935537` 随后整合上述候选分支，主线校准锚点为 `37b0a459e53b48dfb3e204a647c805334d0bff06`。
 
-实施前将当前功能分支 rebase 到包含两者最终实现的 `main`，记录两个实现提交，并以合并后的接口为准。当前设计消费而不重做以下前序能力：
+本设计以该合并后接口为准，消费而不重做以下前序能力：
 
 - candidate-only、subject-scoped onboarding 草稿及其恢复写屏障；会话层继续只发既有 `清后端草稿` 生命周期信号，不新增第二套存储。
 - recruiter 的 `招聘方档案水合阶段`、`招聘方组织水合`、完整组织链错误传播和显式恢复操作。
 - recruiter 根路由 guard：档案缺失进入招聘名片，档案成功进入招聘主壳，组织水合失败进入恢复面。
 - 前序分支创建的 `src/应用.test.tsx` 及扩展后的 Provider/session 测试桩。
 
-若最终合并实现改变上述接口或语义，先校准本设计和实施计划，不能把旧分支代码片段直接覆盖到新 `main`。
+若执行前 `origin/main` 再次移动，必须重新 rebase 并复核这些接口和语义；不能把本基线的代码片段直接覆盖到更新后的主线。
 
 ## 目标
 

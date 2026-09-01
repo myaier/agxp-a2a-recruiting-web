@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Execute after `docs/superpowers/plans/2026-09-01-sms-login-role-hydration.md` is complete and its verification gate is green.
-- The two predecessor onboarding branches must already be present through the login Plan's recorded base commits.
+- Use the login Plan's calibrated main anchor `37b0a459e53b48dfb3e204a647c805334d0bff06` or a later revalidated/rebased main. The 2026-09-01 calibration found no changes to the four target wheel components since the prior base.
 - Do not change wheel CSS, highlighter geometry, row height, option ranges, steps, units, scroll-snap behavior, or overlay structure.
 - Use `aria-activedescendant` with stable option IDs. Do not add roving option `tabIndex`.
 - Support ArrowUp, ArrowDown, Home, and End. Clamp at boundaries and do not wrap. PageUp/PageDown remain out of scope.

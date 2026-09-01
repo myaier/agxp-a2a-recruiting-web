@@ -12,8 +12,8 @@
 
 ## Global Constraints
 
-- Execute only after both predecessor implementations have merged to `main`, in this order: `fix/candidate-onboarding-backend-persist`, then `fix-recruiter-onboarding-frontend`.
-- Before product edits, rebase this branch onto that `main`, record both predecessor implementation commits, and require a clean worktree.
+- Calibrated base (2026-09-01): this branch is rebased onto `origin/main` at `37b0a459e53b48dfb3e204a647c805334d0bff06`; candidate integration anchor `e1493eed1ba97c58379d7503f97ae2ca44d3adea` and recruiter implementation anchor `59cd1ee6dfa3a0ba43ec30b3b1d33cc28e8a23e8` are both ancestors.
+- Before product edits, fetch `origin/main`, require a clean worktree, and verify the calibrated base is still current. If `origin/main` moved, rebase and recalibrate this Plan and the Spec before implementation.
 - Preserve the candidate-only, subject-scoped onboarding draft effect. Do not add session storage reads or writes to `会话操作.ts`; keep the existing `清后端草稿` transition order.
 - Consume the recruiter predecessor interfaces exactly: `招聘方档案水合阶段`, `招聘方组织水合`, `创建空招聘方组织水合状态()`, the four-argument `水合招聘方组织数据(...)`, and `会话操作.重新水合招聘方数据()`.
 - Extend the predecessor `src/应用.test.tsx`; do not replace its recruiter missing-profile, recovery-surface, or recovery-path tests.
@@ -30,19 +30,21 @@
 Run before Task 1:
 
 ```bash
+git fetch origin main
 git status --short
-git log --oneline --all --grep='candidate onboarding' -10
-git log --oneline --all --grep='recruiter onboarding\|employer onboarding' -10
-CANDIDATE_IMPL_COMMIT=$(git rev-parse fix/candidate-onboarding-backend-persist)
-RECRUITER_IMPL_COMMIT=$(git rev-parse fix-recruiter-onboarding-frontend)
+CANDIDATE_IMPL_COMMIT=e1493eed1ba97c58379d7503f97ae2ca44d3adea
+RECRUITER_IMPL_COMMIT=59cd1ee6dfa3a0ba43ec30b3b1d33cc28e8a23e8
+CALIBRATED_MAIN=37b0a459e53b48dfb3e204a647c805334d0bff06
 git merge-base --is-ancestor "$CANDIDATE_IMPL_COMMIT" HEAD
 git merge-base --is-ancestor "$RECRUITER_IMPL_COMMIT" HEAD
+git merge-base --is-ancestor "$CALIBRATED_MAIN" HEAD
+git merge-base --is-ancestor origin/main HEAD
 rg -n "招聘方档案水合阶段|招聘方组织水合|重新水合招聘方数据|水合招聘方组织数据" src/状态 src/应用.tsx src/应用.test.tsx
 git diff --check
 npm install
 ```
 
-Expected: `git status --short` is empty; both branch refs resolve and both `merge-base --is-ancestor` calls exit `0`; the `rg` output finds the predecessor state, recovery operation, route guard, and tests; `git diff --check` and `npm install` exit `0`. Record the two resolved immutable SHAs in the execution report. If either predecessor is absent or the listed interfaces changed semantically, stop and revise this Plan and the Spec before editing product code.
+Expected: `git status --short` is empty; all four `merge-base --is-ancestor` calls exit `0`; the `rg` output finds the predecessor state, four-argument organization hydration, recovery operation, route guard, and tests; `git diff --check` and `npm install` exit `0`. Record the three immutable SHAs in the execution report. If `origin/main` is not an ancestor of `HEAD`, or any listed interface changed semantically, stop and rebase/revise this Plan and the Spec before editing product code.
 
 | File | Responsibility in this Plan |
 | --- | --- |
@@ -770,9 +772,9 @@ it('翻面切换水合 401 也不执行替换导航', async () => {
 
 Import `act` and `BFF错误` in that test as well. These component tests own toast/navigation behavior; session-operation tests own cleanup and rejection shape.
 
-- [ ] **Step 2: Extend, do not replace, the predecessor root-route tests**
+- [ ] **Step 2: Extend, do not replace, the integrated root-route tests**
 
-In `src/应用.test.tsx`, keep all recruiter missing/success/failure/recovery-path cases. Reuse its planned `mock应用状态`, `后端应用值`, `位置探针`, and `MemoryRouter` harness and add:
+In `src/应用.test.tsx`, keep all recruiter missing/success/failure/recovery-path cases and the existing basic candidate/null-role landing cases. Reuse its existing `mock应用状态`, `后端应用值`, `位置探针`, and `MemoryRouter` harness; add only the missing delayed-commit/single-navigation regression:
 
 ```tsx
 it('candidate 只在水合后登录态提交时 replace 一次', async () => {
@@ -803,22 +805,9 @@ it('candidate 只在水合后登录态提交时 replace 一次', async () => {
   expect(路径记录.mock.calls.filter(([值]) => 值 === 路径.主壳)).toHaveLength(1);
 });
 
-it('null role 在登录提交后进入身份选择', async () => {
-  mock应用状态.mockReturnValue(后端应用值({
-    初始化: '完成', 已登录: true,
-    主体: { ...BFF主体样本, last_used_role: null },
-  }));
-  render(
-    <MemoryRouter initialEntries={[路径.登录]}>
-      <应用 />
-      <位置探针 />
-    </MemoryRouter>,
-  );
-  await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe(路径.选身份));
-});
 ```
 
-Import `useEffect` and `useLocation` for the path-recording probe. Do not create a second full-app state mock or replace the predecessor recruiter cases.
+Import `useEffect` for the path-recording probe; `useLocation` is already imported by the integrated test file. Do not create a second full-app state mock, duplicate the existing null-role/basic-candidate cases, or replace the recruiter cases.
 
 - [ ] **Step 3: Run the tests and confirm the Backend assertion fails**
 
