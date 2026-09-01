@@ -88,14 +88,15 @@ describe('简历正文 · 身份显示规则（spec §3.2）', () => {
     expect(screen.getByText('沈亦舟')).toBeTruthy();
     // 代号不应再作为大代号出现
     expect(screen.queryByText(档.代号)).toBeNull();
-    expect(screen.getByText('已披露身份')).toBeTruthy();
+    // 2026-09-01 定稿:披露胶囊删除,真名本身即披露状态
+    expect(screen.queryByText('已披露身份')).toBeNull();
   });
 
   it('真名为空（S0）仍显示代号与「匿名」', () => {
     const 档 = 匿名简历表['A-07'];
     render(<简历正文 档={档} />);
     expect(screen.getByText(档.代号)).toBeTruthy();
-    expect(screen.getByText('匿名')).toBeTruthy();
+    expect(screen.queryByText('匿名')).toBeNull();
   });
 
   it('S3 完成时页尾注说双方已确认意向，S1 已披露但未到 S3 时提示意向确认后进入真人沟通', () => {
