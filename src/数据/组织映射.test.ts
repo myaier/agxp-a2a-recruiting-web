@@ -311,6 +311,20 @@ describe('取企业认证状态文案', () => {
       .toBe('未认证');
   });
 
+  it('current 可用时压过同时存在的 revoked 关系（已解除 不得提到最前）', () => {
+    const 已解除关系 = { ...BFF企业关系样本, affiliation_id: 'aff_x', status: 'revoked' as const };
+    expect(取企业认证状态文案(
+      [BFF企业关系样本, 已解除关系], BFF企业关系样本.affiliation_id, [],
+    )).toBe('已认证');
+  });
+
+  it('在途申请压过同时存在的 revoked 关系（已解除 是最后一级）', () => {
+    const 已解除关系 = { ...BFF企业关系样本, affiliation_id: 'aff_x', status: 'revoked' as const };
+    expect(取企业认证状态文案(
+      [已解除关系], null, [{ ...BFF企业管理员申请样本, status: 'pending' }],
+    )).toBe('审核中');
+  });
+
   it('已认证优先于任何在途申请', () => {
     expect(取企业认证状态文案(
       [BFF企业关系样本], BFF企业关系样本.affiliation_id,

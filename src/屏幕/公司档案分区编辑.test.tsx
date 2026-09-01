@@ -271,6 +271,7 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     渲染分区('basic');
     expect(screen.getByText('正在加载企业资料').textContent).toBe('正在加载企业资料');
     expect(screen.queryByLabelText('品牌名称')).toBeNull();
+    expect(screen.getByLabelText('返回')).toBeTruthy();
     expect(mock取公司档案).not.toHaveBeenCalled();
   });
 
@@ -283,6 +284,7 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     渲染分区('basic');
     expect(screen.queryByText('正在加载企业资料')).toBeNull();
     expect(screen.queryByLabelText('品牌名称')).toBeNull();
+    expect(screen.getByLabelText('返回')).toBeTruthy();
     await 用户.click(screen.getByRole('button', { name: '申请成为企业管理员' }));
     expect(mock跳转).toHaveBeenCalledWith(路径.企业组织申请);
     await 用户.click(screen.getByRole('button', { name: '使用邀请加入企业' }));
@@ -301,6 +303,7 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     渲染分区('basic');
     expect(screen.getByRole('button', { name: '申请成为企业管理员' })).toBeTruthy();
     expect(screen.queryByLabelText('品牌名称')).toBeNull();
+    expect(screen.getByLabelText('返回')).toBeTruthy();
   });
 
   it('多个可用关系但 current 为空时深链引导选择，不显示申请空态', () => {
@@ -313,6 +316,7 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     expect(screen.getByText('请先选择当前任职企业').textContent).toBe('请先选择当前任职企业');
     expect(screen.queryByRole('button', { name: '申请成为企业管理员' })).toBeNull();
     expect(screen.queryByLabelText('品牌名称')).toBeNull();
+    expect(screen.getByLabelText('返回')).toBeTruthy();
   });
 
   it('水合成功但快照缺失时深链给重试，不挂空草稿也不合成组织', async () => {
@@ -323,6 +327,9 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     expect(screen.queryByLabelText('品牌名称')).toBeNull();
     await 用户.click(screen.getByRole('button', { name: '重试' }));
     expect(mock重新水合招聘方组织).toHaveBeenCalledTimes(1);
+    // 深链最坏态（只有 重试 一个动作）也必须留一条出路，不能把用户锁死在一屏
+    await 用户.click(screen.getByLabelText('返回'));
+    expect(mock返回).toHaveBeenCalledTimes(1);
   });
 
   it('深链重试被拒绝也不清当前档案、不回落 Mock', async () => {

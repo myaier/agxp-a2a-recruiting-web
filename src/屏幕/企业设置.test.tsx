@@ -1,6 +1,8 @@
 // Task 4：企业设置（招聘端设置）回归测试。
 // 招聘端没有手机号行：Backend 模式零 P8 读取（凭证/会话/账号范围登记都不发起）；
 // 账号与安全入口与退出登录（含确认弹层、成功后回登录页）保持既有行为。
+// P0 Task 5 起「企业实名认证」行双分支：Backend 走 取企业认证状态文案（affiliation/申请
+// 事实，自填的 未认证公司声明 永不构成认证），Mock 仍是自家人脸原型认证流的下游表达。
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -45,6 +47,17 @@ function 组织状态桩(覆盖: Record<string, unknown> = {}) {
     企业管理员申请列表: [],
     未认证公司声明: '',
     ...覆盖,
+  };
+}
+
+/** Mock 模式的状态：只带 企业认证 fixture（Mock 有自己的认证流程，见 企业实名认证 的人脸原型） */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function 置Mock(操作: any, 企业认证 = { 姓名: '邵铭', 公司: '云衢科技', 职务: '技术 VP' }) {
+  mock应用状态 = {
+    数据源模式: 'mock',
+    状态: { ...组织状态桩(), 企业认证 },
+    后端状态: { credentials: 空快照<P8Credential[]>(), sessions: 空快照<P8Session[]>() },
+    操作,
   };
 }
 
@@ -170,5 +183,55 @@ describe('企业设置 · 企业实名认证状态只反映组织事实', () => 
     await waitFor(() => expect(认证行文案()).toBe('未认证'));
     expect(screen.queryByText('已认证')).toBeNull();
     expect(screen.queryByText('上海云衢科技有限公司')).toBeNull();
+  });
+});
+
+describe('企业设置 · Mock 认证流程的下游表达不被 Backend 投影顶掉', () => {
+  it('Mock 走完人脸原型（企业认证 已落库）后仍显示 已认证，且不读管理员申请', async () => {
+    const 操作 = 操作桩();
+    置Mock(操作);
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    expect(认证行文案()).toBe('已认证');
+    expect(操作.读取企业管理员申请).not.toHaveBeenCalled();
+    // 不是异步态：Mock 分支从不进入 正在读取/读取失败
+    expect(screen.queryByText('正在读取')).toBeNull();
+    await waitFor(() => expect(认证行文案()).toBe('已认证'));
+  });
+
+  it('Mock 空账号（企业认证.公司 为空）如实显示 未认证', () => {
+    const 操作 = 操作桩();
+    置Mock(操作, { 姓名: '', 公司: '', 职务: '' });
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    expect(认证行文案()).toBe('未认证');
+  });
+
+  it('Mock 不读 affiliation/申请 事实：组织态为空也不影响 已认证', () => {
+    const 操作 = 操作桩();
+    置Mock(操作);
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    expect(screen.queryByText('未认证')).toBeNull();
+  });
+});
+
+describe('企业设置 · 申请读取失败不掩盖本地权威的 已认证', () => {
+  it('current 是 verified+active 时，读取失败仍显示 已认证', async () => {
+    const 操作 = 操作桩();
+    操作.读取企业管理员申请.mockRejectedValue(new Error('网络断开'));
+    置Backend(操作, {
+      企业关系列表: [BFF企业关系样本],
+      当前企业关系编号: BFF企业关系样本.affiliation_id,
+    });
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    await waitFor(() => expect(认证行文案()).toBe('已认证'));
+    expect(screen.queryByText('读取失败')).toBeNull();
+  });
+
+  it('没有 current 可用关系时，读取失败仍如实显示 读取失败', async () => {
+    const 操作 = 操作桩();
+    操作.读取企业管理员申请.mockRejectedValue(new Error('网络断开'));
+    置Backend(操作, { 企业关系列表: [{ ...BFF企业关系样本, status: 'revoked' }] });
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    await waitFor(() => expect(认证行文案()).toBe('读取失败'));
+    expect(screen.queryByText('已解除')).toBeNull();
   });
 });
