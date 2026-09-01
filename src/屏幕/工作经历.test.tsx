@@ -2,19 +2,22 @@
 // Backend 弹层按需 查询Taxonomy('industries')，点 selectable 叶子写 行业引用；
 // 继续自由输入清除引用。Mock 保留 常见行业 不变。
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 工作经历 from './工作经历';
+import { 路径 } from '../路由/路径表';
 
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
+const mock轻提示 = vi.hoisted(() => vi.fn());
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回 }) }));
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
+vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 
 const 简历经历初始 = [
   {
@@ -33,6 +36,7 @@ function render工作经历(选项: {
   数据源: 'backend' | 'mock';
   查询Taxonomy?: ReturnType<typeof vi.fn>;
   查询Institution?: ReturnType<typeof vi.fn>;
+  保存简历?: ReturnType<typeof vi.fn>;
 }) {
   mock应用状态 = {
     数据源模式: 选项.数据源,
@@ -54,7 +58,7 @@ function render工作经历(选项: {
       基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
     },
     派发: vi.fn(),
-    操作: { 保存简历: vi.fn(async () => {}) },
+    操作: { 保存简历: 选项.保存简历 ?? vi.fn(async () => {}) },
   };
   render(
     <MemoryRouter>
@@ -362,5 +366,51 @@ describe('工作经历 证书与语言 Backend', () => {
     } | undefined;
     expect(存简历调用).toBeDefined();
     expect(存简历调用!.证书).toEqual([{ 名称: 'CET-4', 年份: '', 编号: expect.any(String) }]);
+  });
+});
+
+// Task 2（onboarding 修复）：保存 single-flight —— 保存中按钮禁用并显示「保存中…」，
+// 重复点击只发一次 保存简历；权威保存完成后才 轻提示('简历已保存') 并跳转下一屏；
+// 失败不跳转，按钮恢复为「保存」。仓库未装 jest-dom，断言一律读原生 DOM。
+describe('工作经历 保存 single-flight', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('保存中按钮禁用显示保存中，重复点击只保存一次，成功后轻提示并跳转', async () => {
+    let resolve保存!: () => void;
+    const 保存简历 = vi.fn(() => new Promise<void>((resolve) => { resolve保存 = resolve; }));
+    render工作经历({ 数据源: 'mock', 保存简历 });
+    const 用户 = userEvent.setup();
+    const 保存键 = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
+    await 用户.click(保存键);
+    expect(保存简历).toHaveBeenCalledTimes(1);
+    expect(保存键.disabled).toBe(true);
+    expect(保存键.textContent).toBe('保存中…');
+    // 再点一次：disabled + single-flight 守卫，不再发保存
+    await 用户.click(保存键);
+    expect(保存简历).toHaveBeenCalledTimes(1);
+    // 权威保存完成后才提示并跳转（在职 → 引导问答）
+    await act(async () => { resolve保存(); });
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('简历已保存'));
+    expect(mock跳转).toHaveBeenCalledWith(路径.引导问答);
+  });
+
+  it('保存失败不跳转，轻提示错误文案，按钮恢复为保存', async () => {
+    let reject保存!: (错误: unknown) => void;
+    const 保存简历 = vi.fn(() => new Promise<void>((_resolve, reject) => { reject保存 = reject; }));
+    render工作经历({ 数据源: 'mock', 保存简历 });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    const 保存中键 = screen.getByRole('button', { name: '保存中…' }) as HTMLButtonElement;
+    expect(保存中键.disabled).toBe(true);
+    await act(async () => { reject保存(new Error('网络失败')); });
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('网络连接失败，请稍后再试'));
+    expect(mock跳转).not.toHaveBeenCalled();
+    const 恢复键 = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
+    expect(恢复键.disabled).toBe(false);
+    expect(恢复键.textContent).toBe('保存');
   });
 });

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BFF简历样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本, BFF发现批次样本 } from '../测试/BFF样本';
-import { BFF错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
+import { BFF错误, 客户端校验错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
 import { 从BFF简历 } from './后端映射';
 import { 创建岗位附属存储 } from './前端附属数据';
 import { 创建HTTP招聘数据源 } from './HTTP招聘数据源';
@@ -272,6 +272,129 @@ describe('HTTP 招聘数据源', () => {
       .map(([o]) => o as BFF请求选项)
       .filter((o) => o.method === 'POST' && o.path === '/api/v1/me/resume/experiences/exp_server/projects');
     expect(项目POST2).toHaveLength(1);
+  });
+
+  // Task 2（onboarding 修复）：保存简历 必须在第一个 mutation 之前物化并校验全部请求体。
+  // 改过的 profile 排在执行顺序最前 —— 若证书校验滞后到执行期，profile PATCH 就已经发出去了。
+  it('证书年份非法时保存零请求，客户端校验错在第一个 mutation 之前拒绝', async () => {
+    const 请求Mock = vi.fn(async () => ({ result: BFF简历样本, etag: '"9"', requestId: 'r1' }));
+    const 请求 = 请求Mock as unknown as 请求函数;
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const 旧页面 = 从BFF简历(BFF简历样本);
+    const 新页面 = {
+      ...旧页面,
+      基本信息: { ...旧页面.基本信息, 真名: '新名字' },
+      证书: [...旧页面.证书, { 编号: 'local-cert', 名称: 'PMP', 年份: '1899' }],
+    };
+    await expect(source.保存简历(新页面, BFF简历样本)).rejects.toBeInstanceOf(客户端校验错误);
+    expect(请求Mock).not.toHaveBeenCalled();
+  });
+
+  // Task 2：四分区全变时按 skills → experiences → educations → certificates 既定顺序执行
+  // （profile/summary 未变不写），最后 GET 权威快照收尾；证书空年份写 null。
+  it('完整保存按顺序物化执行并以权威 GET 收尾，证书空年份写 null', async () => {
+    const previous: typeof BFF简历样本 = {
+      ...BFF简历样本,
+      skills: [],
+      experiences: [],
+      educations: [],
+      certificates: [],
+    };
+    const 新经历服务端 = { ...BFF简历样本.experiences[0], id: 'exp_9', projects: [] };
+    const 新教育服务端 = { ...BFF简历样本.educations[0], id: 'edu_9' };
+    const 新证书服务端 = { id: 'cert_9', name: 'CET-4', year: null, revision: 1 };
+    const 权威简历: typeof BFF简历样本 = {
+      ...previous,
+      skills: ['Go'],
+      experiences: [新经历服务端],
+      educations: [新教育服务端],
+      certificates: [新证书服务端],
+    };
+    const 请求Mock = vi.fn(async (options: BFF请求选项) => {
+      if (options.method === 'PATCH' && options.path === '/api/v1/me/resume/skills') {
+        return { result: 权威简历, etag: '"13"', requestId: 'r-skills' };
+      }
+      if (options.method === 'POST' && options.path === '/api/v1/me/resume/experiences') {
+        return { result: { entry: { kind: 'experience', experience: 新经历服务端 }, aggregate_revision: 10 }, etag: null, requestId: 'r-exp' };
+      }
+      if (options.method === 'POST' && options.path === '/api/v1/me/resume/educations') {
+        return { result: { entry: { kind: 'education', education: 新教育服务端 }, aggregate_revision: 11 }, etag: null, requestId: 'r-edu' };
+      }
+      if (options.method === 'POST' && options.path === '/api/v1/me/resume/certificates') {
+        return { result: { entry: { kind: 'certificate', certificate: 新证书服务端 }, aggregate_revision: 12 }, etag: null, requestId: 'r-cert' };
+      }
+      return { result: 权威简历, etag: '"13"', requestId: 'r-get' };
+    });
+    const 请求 = 请求Mock as unknown as 请求函数;
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const 旧页面 = 从BFF简历(previous);
+    const 新页面 = {
+      ...旧页面,
+      技能: ['Go'],
+      经历: [{
+        编号: 'exp_local', 公司: '云衢', 行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' },
+        职位: '工程师', 开始: '2021-01', 结束: null, 内容: '平台', 隐藏: true,
+      }],
+      教育: [{
+        编号: 'edu_local', 学校: '复旦大学', 学校引用: { id: 'ins_1', display_name: '复旦大学' },
+        学历: '本科', 专业: '计算机科学', 专业引用: { id: 'tax_m', display_name: '计算机科学' },
+        开始: '2017-09', 结束: '2021-06',
+      }],
+      证书: [{ 编号: 'local-cert', 名称: 'CET-4', 年份: '' }],
+    };
+    const 出 = await source.保存简历(新页面, previous);
+    expect(请求Mock.mock.calls.map(([选项]) => `${选项.method ?? 'GET'} ${选项.path}`)).toEqual([
+      'PATCH /api/v1/me/resume/skills',
+      'POST /api/v1/me/resume/experiences',
+      'POST /api/v1/me/resume/educations',
+      'POST /api/v1/me/resume/certificates',
+      'GET /api/v1/me/resume',
+    ]);
+    expect(请求Mock.mock.calls[3]?.[0].body).toEqual({ name: 'CET-4', year: null });
+    expect(出.技能).toEqual(['Go']);
+    expect(出.证书).toEqual([{ 编号: 'cert_9', 名称: 'CET-4', 年份: '' }]);
+  });
+
+  // Task 2 回归：水合 year:null（页面 年份 ''）的证书后再次保存（另一分区变化触发），
+  // 未变化的证书不重写；若发生任何证书写入，year 仍必须是 null，绝不能落成字符串 'null'。
+  it('水合 year:null 证书后重存，任何证书写入仍是 year null 而非字符串 null', async () => {
+    const 阶段1previous: typeof BFF简历样本 = { ...BFF简历样本, certificates: [] };
+    const 证书服务端 = { id: 'cert_9', name: 'CET-4', year: null, revision: 1 };
+    const 权威简历: typeof BFF简历样本 = { ...阶段1previous, certificates: [证书服务端] };
+    // 第一次：另一分区变化 + 一条无名年份的新证书 → POST body 是 year: null
+    const 请求Mock1 = vi.fn(async (options: BFF请求选项) => {
+      if (options.method === 'POST' && options.path === '/api/v1/me/resume/certificates') {
+        return { result: { entry: { kind: 'certificate', certificate: 证书服务端 }, aggregate_revision: 10 }, etag: null, requestId: 'r-cert' };
+      }
+      return { result: 权威简历, etag: '"10"', requestId: 'r-get' };
+    });
+    const source1 = 创建HTTP招聘数据源({ client: { 请求: 请求Mock1 as unknown as 请求函数, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const next1 = {
+      ...从BFF简历(阶段1previous),
+      个人优势: '新的个人优势',
+      证书: [{ 编号: 'local-cert', 名称: 'CET-4', 年份: '' }],
+    };
+    await expect(source1.保存简历(next1, 阶段1previous)).resolves.toBeDefined();
+    const 证书POST1 = 请求Mock1.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.method === 'POST' && o.path === '/api/v1/me/resume/certificates');
+    expect(证书POST1?.body).toEqual({ name: 'CET-4', year: null });
+    // 第二次：previous 是权威快照（year:null 水合成 年份 ''），证书原样不动，技能分区变化
+    const 请求Mock2 = vi.fn(async (_options: BFF请求选项) => ({ result: 权威简历, etag: '"10"', requestId: 'r2' }));
+    const source2 = 创建HTTP招聘数据源({ client: { 请求: 请求Mock2 as unknown as 请求函数, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const 水合页面 = 从BFF简历(权威简历);
+    const next2 = { ...水合页面, 技能: [...水合页面.技能, 'Go'] };
+    await expect(source2.保存简历(next2, 权威简历)).resolves.toBeDefined();
+    const 证书写入2 = 请求Mock2.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .filter((o) => o.path.includes('/certificates') && o.method !== undefined);
+    // 未变化的证书不重写
+    expect(证书写入2).toHaveLength(0);
+    // 若实现改为重写未变化证书，year 必须仍是 null，绝不能落成字符串 'null'
+    for (const 写入 of 证书写入2) {
+      expect((写入.body as { year: unknown }).year).toBe(null);
+      expect((写入.body as { year: unknown }).year).not.toBe('null');
+    }
   });
 
   // Task 1：分页目录查询只请求一页，保留不可选 taxonomy 导航节点（不照旧 读取目录 过滤掉）。
