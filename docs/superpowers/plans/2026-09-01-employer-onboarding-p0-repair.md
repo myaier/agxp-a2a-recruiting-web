@@ -20,6 +20,7 @@
 - The first profile write is `PATCH /api/v1/recruiter/profile` with `If-Match: "0"`; do not add a profile POST.
 - An unverified company claim remains account-scoped local state and follows all existing logout, 401, role-transfer, and subject-transfer clearing boundaries.
 - `hiring_organization_claim.display_name`, `description`, and `requirements` must be independently non-blank after trimming before JobCreate is sent.
+- The company-claim preflight is Backend-only; Mock continues to use `企业认证.公司` and its existing publish flow.
 - Catalog writes preserve the predecessor's selected `{ id, display_name }` contract; never infer or invent a Catalog ID.
 - Keep the current deployed office-address contract in this Plan: remote, onsite, and hybrid all require a non-blank address. Remote empty-address behavior and JD PDF import belong to the gated follow-up Plan.
 - Preserve `VITE_ANNOTATION_ENABLED` behavior. The viewport change only restores zoom and must not re-enable annotation UI by default.
@@ -91,7 +92,7 @@ it('profile 404/not_found 是缺失态，仍读取 affiliations，无 current �
   deps.后端.读取我的企业关系 = vi.fn().mockResolvedValue([]);
   deps.后端.读取公开企业 = vi.fn();
 
-  await expect(水合招聘方组织数据(deps, 'subject-1', 7, null, true))
+  await expect(水合招聘方组织数据(deps, 'subject-1', 7, null))
     .resolves.toEqual({ sessionExpired: false });
 
   expect(deps.后端.读取我的企业关系).toHaveBeenCalledTimes(1);
@@ -106,10 +107,10 @@ it('profile 404/not_found 是缺失态，仍读取 affiliations，无 current �
 it.each([
   new BFF错误(500, 'internal_error', '读取失败'),
   new BFF错误(503, 'service_unavailable', '暂不可用'),
-])('profile 非 404 错误保留失败态并在交互模式 reject', async (错误) => {
+])('profile 非 404 错误保留失败态并 reject', async (错误) => {
   const deps = 建依赖();
   deps.后端.读取招聘方档案 = vi.fn().mockRejectedValue(错误);
-  await expect(水合招聘方组织数据(deps, 'subject-1', 7, null, true)).rejects.toBe(错误);
+  await expect(水合招聘方组织数据(deps, 'subject-1', 7, null)).rejects.toBe(错误);
   expect(deps.后端.读取我的企业关系).not.toHaveBeenCalled();
   expect(deps.设后端状态).toHaveProducedState(expect.objectContaining({
     招聘方档案水合阶段: '失败',
@@ -122,7 +123,7 @@ it('profile 401 统一清账号且不继续 affiliations', async () => {
   deps.后端.读取招聘方档案 = vi.fn().mockRejectedValue(
     new BFF错误(401, 'invalid_session', 'expired'),
   );
-  await expect(水合招聘方组织数据(deps, 'subject-1', 7, null, true))
+  await expect(水合招聘方组织数据(deps, 'subject-1', 7, null))
     .resolves.toEqual({ sessionExpired: true });
   expect(deps.后端.读取我的企业关系).not.toHaveBeenCalled();
   expect(deps.派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
@@ -140,7 +141,7 @@ it('profile 缺失后 affiliations 失败只让聚合链失败，不改写为缺
   deps.后端.读取我的企业关系 = vi.fn().mockRejectedValue(
     new BFF错误(503, 'service_unavailable', 'affiliations down'),
   );
-  await expect(水合招聘方组织数据(deps, 'subject-1', 7, null, true))
+  await expect(水合招聘方组织数据(deps, 'subject-1', 7, null))
     .rejects.toMatchObject({ status: 503 });
   expect(deps.设后端状态).toHaveProducedState(expect.objectContaining({
     招聘方档案水合阶段: '缺失',
@@ -155,7 +156,7 @@ it('有 current 时公开企业读取失败进入聚合失败', async () => {
   deps.后端.读取公开企业 = vi.fn().mockRejectedValue(
     new BFF错误(500, 'internal_error', 'organization down'),
   );
-  await expect(水合招聘方组织数据(deps, 'subject-1', 7, null, true))
+  await expect(水合招聘方组织数据(deps, 'subject-1', 7, null))
     .rejects.toMatchObject({ status: 500 });
   expect(deps.设后端状态).toHaveProducedState(expect.objectContaining({
     招聘方档案水合阶段: '成功',
@@ -207,6 +208,7 @@ it('登出、401 与主体切换把招聘方两个阶段恢复到未开始', asy
     招聘方档案水合阶段: '未开始',
     招聘方组织水合: { 阶段: '未开始', 错误: null },
   });
+  expect(result.current.状态.未认证公司声明).toBe('');
   rerender(<应用状态提供者 数据源={另一个主体数据源} />);
   expect(result.current.后端状态.招聘方档案水合阶段).toBe('未开始');
 });
@@ -266,7 +268,6 @@ export async function 水合招聘方组织数据(
   subjectId: string,
   generation: number,
   restoredAffiliationId: string | null,
-  interactive: boolean,
 ): Promise<{ sessionExpired: boolean }> {
   const 仍有效 = () => deps.主体标识引用.current === subjectId && deps.会话代际.current === generation;
   deps.设后端状态((旧) => ({
@@ -324,7 +325,19 @@ export async function 水合招聘方组织数据(
 }
 ```
 
-Do not swallow or toast non-401 errors in this helper. In `水合角色数据`, keep the outer `Promise.allSettled`, do not call `读取岗位()` after a rejected organization result, show one mount error there, and continue to throw the first error only in interactive mode.
+Do not swallow or toast non-401 errors in this helper. Remove its old `interactive` parameter and update the `水合角色数据` call site to pass four arguments. In `水合角色数据`, keep the outer `Promise.allSettled`, do not call `读取岗位()` after a rejected organization result, show one mount error there, and continue to throw the first error only in interactive mode.
+Remove the now-unused `轻提示` import from `组织操作.ts` and update its header comment so mount/interactive presentation is owned by `水合角色数据`.
+
+```ts
+const organizationResult = await 水合招聘方组织数据(
+  deps,
+  主体.subject_id,
+  generation,
+  restoredId,
+);
+if (organizationResult.sessionExpired) return organizationResult;
+return { sessionExpired: false, 岗位快照: await 后端.读取岗位() };
+```
 
 - [ ] **Step 6: Add the retry operation**
 
@@ -337,7 +350,7 @@ async 重新水合招聘方组织() {
   if (!subjectId) throw new 客户端校验错误('recruiter.organization', '登录状态已失效，请重新登录');
   const generation = deps.会话代际.current;
   const restoredId = deps.读取恢复企业关系编号(subjectId);
-  const result = await 水合招聘方组织数据(deps, subjectId, generation, restoredId, true);
+  const result = await 水合招聘方组织数据(deps, subjectId, generation, restoredId);
   if (result.sessionExpired) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
 },
 ```
@@ -438,15 +451,24 @@ it.each([
   await waitFor(() => expect(screen.getByTestId('pathname')).toHaveTextContent(expected));
 });
 
-it('组织水合失败不把 recruiter 送进名片或企业壳', async () => {
-  mock应用状态.mockReturnValue(后端应用值({
+it('组织水合失败在登录路径显示真实错误和重试入口', async () => {
+  const retry = vi.fn().mockResolvedValue(undefined);
+  const user = userEvent.setup();
+  const value = 后端应用值({
     初始化: '完成', 已登录: true,
     主体: { ...招聘主体, last_used_role: 'recruiter' },
     招聘方档案水合阶段: '失败',
     招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
-  }));
+  });
+  mock应用状态.mockReturnValue({
+    ...value,
+    操作: { ...value.操作, 重新水合招聘方组织: retry },
+  });
   render(<MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>);
   expect(screen.getByTestId('pathname')).toHaveTextContent(路径.登录);
+  expect(screen.getByRole('alert')).toHaveTextContent('企业资料读取失败');
+  await user.click(screen.getByRole('button', { name: '重试' }));
+  expect(retry).toHaveBeenCalledTimes(1);
 });
 
 it('直接打开招聘端且 profile 缺失时 replace 到注册流名片', async () => {
@@ -470,6 +492,32 @@ it('已有 profile 直接编辑招聘名片时不被改送企业主壳', async (
   }));
   render(<MemoryRouter initialEntries={[路径.招聘名片]}><应用 /><位置探针 /></MemoryRouter>);
   expect(screen.getByTestId('pathname')).toHaveTextContent(路径.招聘名片);
+});
+
+it.each([
+  路径.账号安全,
+  路径.选身份,
+  路径.招聘名片,
+  路径.企业组织申请,
+  路径.企业邀请加入,
+])('缺失 profile 时放行恢复与退出路径 %s', (pathname) => {
+  mock应用状态.mockReturnValue(后端应用值({
+    初始化: '完成', 已登录: true,
+    主体: { ...招聘主体, last_used_role: 'recruiter' },
+    招聘方档案水合阶段: '缺失',
+    招聘方组织水合: { 阶段: '成功', 错误: null },
+  }));
+  render(<MemoryRouter initialEntries={[pathname]}><应用 /><位置探针 /></MemoryRouter>);
+  expect(screen.getByTestId('pathname')).toHaveTextContent(pathname);
+});
+
+it('未知或缺失 last_used_role 保持现有身份选择兜底', async () => {
+  mock应用状态.mockReturnValue(后端应用值({
+    初始化: '完成', 已登录: true,
+    主体: { ...招聘主体, last_used_role: undefined },
+  }));
+  render(<MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>);
+  await waitFor(() => expect(screen.getByTestId('pathname')).toHaveTextContent(路径.选身份));
 });
 ```
 
@@ -526,7 +574,7 @@ If `后端操作依赖` does not yet expose `后端状态引用`, add it as `Mut
 
 - [ ] **Step 5: Implement the single route guard and explicit identity navigation**
 
-Replace the recruiter branch of the effect in `src/应用.tsx` and allow it to protect any `/hr` path except a valid existing-profile card edit:
+Replace the recruiter branch of the effect in `src/应用.tsx`. Protect recruiter business routes, but explicitly allow account/identity and recruiter recovery routes:
 
 ```tsx
 useEffect(() => {
@@ -536,13 +584,20 @@ useEffect(() => {
     前往(路径.主壳, { replace: true });
     return;
   }
-  if (role === null && 位置.pathname === 路径.登录) {
+  if (role !== 'candidate' && role !== 'recruiter' && 位置.pathname === 路径.登录) {
     前往(路径.选身份, { replace: true });
     return;
   }
   if (role !== 'recruiter' || 后端状态.招聘方组织水合.阶段 !== '成功') return;
   if (后端状态.招聘方档案水合阶段 === '缺失') {
-    if (位置.pathname !== 路径.招聘名片) {
+    const allowed = new Set([
+      路径.招聘名片,
+      路径.企业组织申请,
+      路径.企业邀请加入,
+    ]);
+    const recruiterBusinessRoute = 位置.pathname === 路径.企业主壳 ||
+      位置.pathname.startsWith(`${路径.企业主壳}/`);
+    if (位置.pathname === 路径.登录 || (recruiterBusinessRoute && !allowed.has(位置.pathname))) {
       前往(路径.招聘名片, { replace: true, state: { 从注册流: true } });
     }
     return;
@@ -552,6 +607,48 @@ useEffect(() => {
   }
 }, [数据源模式, 后端状态, 位置.pathname, 前往]);
 ```
+
+Destructure `操作` from `use应用状态()` and add the failure recovery surface before the loading/auth guards:
+
+```tsx
+function 招聘方恢复失败({ error, retry }: { error: string | null; retry: () => Promise<void> }) {
+  const [重试中, 设重试中] = useState(false);
+  return (
+    <div role="alert">
+      <p>{error ?? '企业资料读取失败'}</p>
+      <button
+        type="button"
+        disabled={重试中}
+        onClick={() => {
+          if (重试中) return;
+          设重试中(true);
+          void retry().finally(() => 设重试中(false));
+        }}
+      >
+        {重试中 ? '重试中…' : '重试'}
+      </button>
+    </div>
+  );
+}
+
+if (
+  数据源模式 === 'backend' &&
+  后端状态.初始化 === '完成' &&
+  后端状态.已登录 &&
+  后端状态.主体?.last_used_role === 'recruiter' &&
+  后端状态.招聘方组织水合.阶段 === '失败' &&
+  位置.pathname === 路径.登录
+) {
+  return (
+    <招聘方恢复失败
+      error={后端状态.招聘方组织水合.错误}
+      retry={操作.重新水合招聘方组织}
+    />
+  );
+}
+```
+
+Import `useState` alongside `useEffect`. The retry operation owns its error-state update; this component only owns button single-flight state.
 
 In `src/屏幕/选身份.tsx`, replace only the recruiter success navigation:
 
@@ -761,7 +858,7 @@ Expected: all Backend and frozen Mock card tests PASS; the company save does not
 
 **Interfaces:**
 - Consumes: the predecessor's `客户端校验错误` and three-argument `必需引用(value, label, field)`; existing `页面岗位草稿`, `转岗位创建`, and `转岗位补丁`.
-- Produces: `取发岗声明(state): BFF用人企业声明`, independent non-blank job text mapping, and a visible `职位要求` textarea.
+- Produces: `取发岗声明(state): 岗位创建上下文`, independent non-blank job text mapping, and a visible `职位要求` textarea.
 
 - [ ] **Step 1: Add failing operation and mapping regressions**
 
@@ -772,7 +869,7 @@ it('未认证公司声明为空时在 operation 层拒绝，零发布请求', as
   const deps = 建依赖({ 企业关系列表: [], 当前企业关系编号: null, 未认证公司声明: '   ' });
   await expect(创建岗位操作(deps).发布岗位(页面岗位草稿))
     .rejects.toMatchObject({ code: 'client_validation', field: 'hiring_organization_claim.display_name' });
-  expect(deps.后端.发布岗位).not.toHaveBeenCalled();
+  expect(deps.后端.创建岗位).not.toHaveBeenCalled();
 });
 
 it('verified affiliation 的企业名会 trim 后成为声明', async () => {
@@ -781,9 +878,12 @@ it('verified affiliation 的企业名会 trim 后成为声明', async () => {
     当前企业关系编号: verified关系.affiliation_id,
   });
   await 创建岗位操作(deps).发布岗位(完整页面岗位草稿);
-  expect(deps.后端.发布岗位).toHaveBeenCalledWith(
+  expect(deps.后端.创建岗位).toHaveBeenCalledWith(
     expect.anything(),
-    expect.objectContaining({ display_name: '星河科技' }),
+    expect.objectContaining({
+      publisherMode: 'direct',
+      hiringOrganizationClaim: { display_name: '星河科技', legal_name: null },
+    }),
   );
 });
 ```
@@ -792,7 +892,10 @@ In `src/数据/后端映射.test.ts`, add explicit create and patch cases:
 
 ```ts
 it('JobCreate 独立 trim 公司名、描述和要求，不互相复制', () => {
-  const body = 转岗位创建(完整岗位草稿, { display_name: '  星河科技  ', legal_name: null });
+  const body = 转岗位创建(完整岗位草稿, {
+    publisherMode: 'direct',
+    hiringOrganizationClaim: { display_name: '  星河科技  ', legal_name: null },
+  });
   expect(body).toMatchObject({
     hiring_organization_claim: { display_name: '星河科技', legal_name: null },
     description: '职位描述正文',
@@ -804,17 +907,38 @@ it.each([
   ['职位描述', { 职位描述: '   ', 职位要求: '要求' }, 'description'],
   ['职位要求', { 职位描述: '描述', 职位要求: '   ' }, 'requirements'],
 ])('%s 为空时不生成 JobCreate', (_label, patch, field) => {
-  expect(() => 转岗位创建({ ...完整岗位草稿, ...patch }, 完整声明))
-    .toThrowError(expect.objectContaining({ code: 'client_validation', field }));
+  try {
+    转岗位创建({ ...完整岗位草稿, ...patch }, 完整创建上下文);
+    expect.unreachable('空白文本必须拒绝');
+  } catch (error) {
+    expect(error).toMatchObject({ code: 'client_validation', field });
+  }
 });
 
-it('JobPatch 对三个文本字段使用同一非空合同', () => {
+it('公司声明为空时 mapper 不生成 JobCreate', () => {
+  try {
+    转岗位创建(完整岗位草稿, {
+      publisherMode: 'direct',
+      hiringOrganizationClaim: { display_name: '   ', legal_name: null },
+    });
+    expect.unreachable('空白公司声明必须拒绝');
+  } catch (error) {
+    expect(error).toMatchObject({
+      code: 'client_validation', field: 'hiring_organization_claim.display_name',
+    });
+  }
+});
+
+it('JobPatch 保持两参 seam，只 trim 用户可编辑的描述和要求', () => {
   const body = 转岗位补丁(
     { ...完整岗位草稿, 职位描述: '  描述  ', 职位要求: '  要求  ' },
-    完整声明,
     服务端岗位,
   );
-  expect(body).toMatchObject({ description: '描述', requirements: '要求' });
+  expect(body).toMatchObject({
+    hiring_organization_claim: 服务端岗位.hiring_organization_claim,
+    description: '描述',
+    requirements: '要求',
+  });
 });
 ```
 
@@ -851,6 +975,16 @@ it('无 verified affiliation 且公司声明为空时零 mutation', async () => 
   expect(mock发布岗位).not.toHaveBeenCalled();
 });
 
+it('Mock 发岗不读取 Backend 专属未认证公司声明', async () => {
+  const user = userEvent.setup();
+  renderMock发布页({ 未认证公司声明: '', 企业认证: { 姓名: '林澈', 公司: 'Mock 公司' } });
+  await 走完新建岗位(user, { 职位描述: '描述正文', 职位要求: '要求正文' });
+  await waitFor(() => expect(mock派发).toHaveBeenCalledWith(
+    expect.objectContaining({ 型: '发布岗位' }),
+  ));
+  expect(mock轻提示).not.toHaveBeenCalledWith('请填写公司名称');
+});
+
 it('完整表单把独立 description 和 requirements 交给 operation', async () => {
   const user = userEvent.setup();
   renderBackend发布页({ 未认证公司声明: '星河科技' });
@@ -879,7 +1013,7 @@ Expected: FAIL because `requirements` has no input, the mapper copies descriptio
 Export and use this helper in `src/状态/后端/岗位操作.ts`:
 
 ```ts
-export function 取发岗声明(state: 状态): BFF用人企业声明 {
+export function 取发岗声明(state: 状态): 岗位创建上下文 {
   const relation = state.企业关系列表.find(
     (item) => item.affiliation_id === state.当前企业关系编号 && 可用企业关系(item),
   );
@@ -890,9 +1024,14 @@ export function 取发岗声明(state: 状态): BFF用人企业声明 {
       '请填写公司名称',
     );
   }
-  return { display_name: displayName, legal_name: null };
+  return {
+    publisherMode: 'direct',
+    hiringOrganizationClaim: { display_name: displayName, legal_name: null },
+  };
 }
 ```
+
+Import `岗位创建上下文` from `../../数据/招聘数据源类型`; do not change the `后端.创建岗位(job, context)` seam.
 
 In `src/数据/后端映射.ts`, preserve all predecessor Catalog validation and add:
 
@@ -903,7 +1042,9 @@ function 必需岗位文本(value: string, field: string, message: string): stri
   return trimmed;
 }
 
-function 合法用人企业声明(claim: BFF用人企业声明): BFF用人企业声明 {
+function 合法用人企业声明(
+  claim: 岗位创建上下文['hiringOrganizationClaim'],
+): 岗位创建上下文['hiringOrganizationClaim'] {
   return {
     display_name: 必需岗位文本(
       claim.display_name,
@@ -915,15 +1056,25 @@ function 合法用人企业声明(claim: BFF用人企业声明): BFF用人企业
 }
 ```
 
-Set the create/patch fields directly:
+Set the create fields directly inside `转岗位创建(页面岗位, 上下文)`:
 
 ```ts
-hiring_organization_claim: 合法用人企业声明(claim),
-description: 必需岗位文本(job.职位描述, 'description', '请填写职位描述'),
-requirements: 必需岗位文本(job.职位要求, 'requirements', '请填写职位要求'),
+hiring_organization_claim: 合法用人企业声明(上下文.hiringOrganizationClaim),
+description: 必需岗位文本(页面岗位.职位描述, 'description', '请填写职位描述'),
+requirements: 必需岗位文本(页面岗位.职位要求, 'requirements', '请填写职位要求'),
 ```
 
-Delete any `requirements: job.职位要求.trim() || job.职位描述.trim()` fallback.
+Delete any `requirements: 页面岗位.职位要求.trim() || 页面岗位.职位描述.trim()` fallback.
+Keep `转岗位补丁(页面岗位, previous)` as a two-argument function. Its claim remains the service-owned previous value:
+
+```ts
+hiring_organization_claim: {
+  display_name: previous.hiring_organization_claim.display_name,
+  legal_name: previous.hiring_organization_claim.legal_name ?? null,
+},
+description: 必需岗位文本(页面岗位.职位描述, 'description', '请填写职位描述'),
+requirements: 必需岗位文本(页面岗位.职位要求, 'requirements', '请填写职位要求'),
+```
 
 - [ ] **Step 5: Restore the page field and preflight**
 
@@ -954,18 +1105,21 @@ Pass the two props from the page:
 设职位要求={设职位要求}
 ```
 
-Extend `岗位信息缺失()` in this order:
+Replace `岗位信息缺失()` with this complete ordered body, retaining both current city guards and limiting the company claim check to Backend mode:
 
 ```ts
 if (!职位描述.trim()) return { 步骤: 1, 文案: '请填写职位描述' };
 if (!职位要求.trim()) return { 步骤: 2, 文案: '请填写职位要求' };
+if (!工作城市.trim()) return { 步骤: 2, 文案: '请填写工作城市' };
+if (是后端 && !地点引用) return { 步骤: 2, 文案: '请从候选城市中选择' };
 const verified = 状态.企业关系列表.some(
   (item) => item.affiliation_id === 状态.当前企业关系编号 && 可用企业关系(item),
 );
-if (!verified && !状态.未认证公司声明.trim()) {
+if (是后端 && !verified && !状态.未认证公司声明.trim()) {
   return { 步骤: 2, 文案: '请填写公司名称' };
 }
 if (!办公地.trim()) return { 步骤: 2, 文案: '请填写办公地点' };
+return null;
 ```
 
 In `组装岗位`, keep the two independent trimmed assignments exactly:
@@ -1318,11 +1472,11 @@ Expected: all focused tests PASS, the two routes share the same guard, and free-
 Add to `src/数据/HTTP客户端.test.ts` without deleting the existing field-error parsing test:
 
 ```ts
-it('本地 client validation 和普通 Error 不冒充网络失败', () => {
+it('client validation 显示可行动文案，未知本地 Error 不冒充网络也不泄露内部文本', () => {
   expect(取后端错误文案(new 客户端校验错误('requirements', '请填写职位要求')))
     .toBe('请填写职位要求');
   expect(取后端错误文案(new Error('招聘方档案状态尚未就绪，请刷新后重试')))
-    .toBe('招聘方档案状态尚未就绪，请刷新后重试');
+    .toBe('请求失败，请稍后再试');
 });
 
 it('422 保留 fieldErrors，但通用文案不展示机器 reason', () => {
@@ -1369,6 +1523,8 @@ it('招聘方导出与注销文案不出现你的简历', () => {
 });
 ```
 
+Keep the file's existing `import 账号安全源码 from './账号安全.tsx?raw';`; the static assertion deliberately reuses that repository-standard Vite raw import.
+
 Create `src/配置/viewport合同.test.ts`:
 
 ```ts
@@ -1406,7 +1562,7 @@ Preserve the predecessor's class and make `取后端错误文案` use this order
 export function 取后端错误文案(error: unknown): string {
   if (error instanceof 客户端校验错误) return error.message;
   if (!(error instanceof BFF错误)) {
-    return error instanceof Error && error.message ? error.message : '请求失败，请稍后再试';
+    return '请求失败，请稍后再试';
   }
   if (error.status === 0 || error.code === 'network_error') return '无法连接后端服务，请检查网络或稍后重试';
   if (error.status === 502 || error.status === 503 || error.status === 504) return '后端服务暂时不可用，请稍后重试';
@@ -1450,9 +1606,7 @@ Use it in create/update catch blocks and preserve diagnostics only in developmen
 
 ```ts
 } catch (错误) {
-  if (import.meta.env.DEV && 错误 instanceof BFF错误 && 错误.code === 'validation_failed') {
-    console.error('岗位提交字段校验失败', 错误);
-  }
+  if (import.meta.env.DEV) console.error('岗位提交失败', 错误);
   轻提示(取岗位提交错误文案(错误));
 } finally {
 ```
@@ -1851,16 +2005,19 @@ Export `CANDIDATE_IMPL_COMMIT` as the exact commit recorded at baseline; the req
 - [ ] **Step 2: Re-run final local evidence on the exact candidate commit**
 
 ```bash
+: "${CANDIDATE_IMPL_COMMIT:?export the exact predecessor implementation commit recorded at baseline}"
 git status --short
 npm test
 npm run typecheck
 npm run lint
 npm run build
 npm run test:e2e:data-source -- --grep "新招聘方 onboarding"
+CI=true UI_VISUAL_GATE=report UI_CHANGE_APPROVED=false \
+  npm run ui:check -- --base "${CANDIDATE_IMPL_COMMIT}" --output ui-regression-output/employer-onboarding-p0
 git diff --check
 ```
 
-All commands must exit `0`, and `git status --short` must be empty before integration handoff. Record command, start/end time, exit code, and concise output summary.
+All commands must exit `0`, and `git status --short` must be empty before integration handoff. The UI command dynamically captures the predecessor commit as reference; do not commit a synthetic static baseline. Inspect `ui-regression-output/employer-onboarding-p0/report.md` plus the `reference`, `candidate`, and `diff` evidence for `recruiter-post-job-3`, then record the human visual verdict. A structure/API/infrastructure failure is not an approvable expected diff and must be fixed. Record every command, start/end time, exit code, and concise output summary.
 
 - [ ] **Step 3: Run or classify the real-BFF journey**
 
@@ -1904,6 +2061,7 @@ Create `docs/superpowers/handoffs/2026-09-01-employer-onboarding-p0-repair.md` w
 | `npm run lint` | `0` | PASS |
 | `npm run build` | `0` | PASS |
 | `npm run test:e2e:data-source -- --grep "新招聘方 onboarding"` | `0` | PASS |
+| `UI_VISUAL_GATE=report npm run ui:check -- --base candidate-implementation-commit` | `0` | record recruiter-post-job-3 visual verdict |
 
 ## Contract Proof
 - First profile GET: `404 not_found`
@@ -1912,6 +2070,7 @@ Create `docs/superpowers/handoffs/2026-09-01-employer-onboarding-p0-repair.md` w
 - Non-blank claim/description/requirements: write the three values captured by the fixture assertion.
 - Refresh route and authoritative state: write `/hr`, the captured profile revision, and captured job count.
 - Candidate predecessor contracts preserved: cite the shared-file diff and final verification evidence.
+- `recruiter-post-job-3` visual evidence: record report status, reviewed diff artifact, and human verdict.
 
 ## Real-BFF Integration
 - Verdict: `PASS | ENV_BLOCKED | NOT RUN`

@@ -173,11 +173,14 @@ subject + generation fence 继续保护所有响应；过时响应不得改变�
 ```text
 组织水合成功 + profile 缺失 → replace 到 /hr/card，state={从注册流:true}
 组织水合成功 + profile 成功 → replace 到 /hr
-组织水合失败                 → 不伪装成 onboarding；保留真实错误
+组织水合失败                 → 登录路径显示真实错误与“重试”，不伪装成 onboarding
 ```
 
-该判断同时保护恢复会话、身份选择后的导航和直接打开招聘端路由。这样切身份组件即使原本准备进入 `/hr`，
-缺失 profile 也会由同一 guard 收口到招聘名片。candidate 和 `last_used_role=null` 的现有路由行为不变。
+缺失 profile 的 guard 只拦登录路径和需要完成 onboarding 才能使用的 `/hr` 业务路径。`/account`、`/identity`、
+`/hr/card`、`/hr/organization-application` 与 `/hr/organization-invitation` 是恢复/退出路径，必须放行，避免用户
+被锁在名片页而无法退出、换角色或建立企业关系。组织水合失败时登录路径渲染一个显式恢复面，调用
+`重新水合招聘方组织()`；重试成功后由同一 guard 导航。candidate 和任何非 candidate/recruiter 的角色值继续
+回落身份选择页。
 
 身份选择页成功选择招聘方时，显式以 `{ 从注册流: true }` 进入招聘名片；普通应用内“编辑招聘名片”不携带该
 标记。应用恢复发现 profile 缺失时也携带该标记。不得用 timeout 等待水合。
@@ -227,7 +230,9 @@ trim 姓名、职务、公司
 
 1. 页面校验把空 description 带到第二步，把空 requirements、公司声明或办公地址带到第三步并显示字段文案；
 2. `取发岗声明` 对选择后的企业名或未认证声明执行 trim，空值抛出明确 `client_validation` 错误；
-3. `转岗位创建` 和 `转岗位补丁` 对 description、requirements 和 claim 使用 trim 后文本，空值拒绝生成请求。
+3. `转岗位创建` 对 description、requirements 和创建上下文里的 claim 使用 trim 后文本，空值拒绝生成请求；
+   `转岗位补丁` 保持既有两参签名与服务端 previous claim，只对用户可编辑的 description、requirements 做同一
+   非空保护，不让用户无法修正的历史 claim 阻断普通岗位编辑。
 
 创建合同必须满足：
 
@@ -272,7 +277,7 @@ HTTP 客户端继续完整解析并保留有序 `fieldErrors`。通用错误文�
 
 - 只有 `BFF错误.code === 'network_error'` 才显示网络连接失败；
 - `client_validation` 显示它自己的可行动 message；
-- 普通本地 `Error` 显示明确 message，不改写成网络失败；
+- 普通本地 `Error` 显示通用“请求失败，请稍后再试”，不改写成网络失败，也不把内部异常文本直接交给用户；
 - `validation_failed` 不再直接展示第一个机器 reason，默认显示“填写内容未通过校验”；
 - 其他 BFF 状态沿用现有 401、409、502/503/504 和 invalid_response 映射。
 
@@ -308,10 +313,10 @@ requirements                            → 请填写职位要求
 - profile 401 统一清理、500/503 失败、subject/generation stale 响应不提交；
 - 新状态在账号、主体和角色边界回未开始；
 - revision 0 PATCH、已有 revision CAS、非法阶段零请求；
-- 缺失/成功/失败三种恢复路由，以及直接招聘路由 guard；
+- 缺失/成功恢复路由、失败恢复面与重试，以及直接招聘路由 guard 的恢复路径白名单；
 - 名片不 blur 保存、空姓名/公司、busy、注册流与普通编辑、头像 revision 串联；
 - 独立 requirements 输入和三层非空保护；
-- 创建/补丁 body 三个关键文本均已 trim 且非空；
+- 创建 body 的 claim/description/requirements 均已 trim 且非空，补丁的 description/requirements 独立非空；
 - 公司档案加载、失败、无关系、待选择、权威资料五态与分区深链；
 - 企业认证优先级纯函数；
 - fieldErrors 保留、本地错误不冒充网络、发布字段本地化；
@@ -359,6 +364,10 @@ npm run lint
 npm run build
 npm run test:e2e:data-source -- --grep "新招聘方 onboarding"
 ```
+
+职位要求 textarea 是预期 UI 变化。终局验证另以 `UI_VISUAL_GATE=report` 运行 `npm run ui:check`，审查
+`recruiter-post-job-3` 的 reference/candidate/diff 产物并记录人工 verdict；本仓库的 UI 门禁按 base 动态采集，
+不提交一份伪造的静态基线，也不使用标签跳过结构/API/基础设施错误。
 
 数据源模式 Playwright 是 intercepted integration，不是真实 BFF。真实后端 smoke 作为条件集成交接：只有本地后端、
 fixture 账号和 OTP 前置可用时运行对应 recruiter onboarding/CRUD 旅程；不可用时记录 `ENV_BLOCKED` 或
