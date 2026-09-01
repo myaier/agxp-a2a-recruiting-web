@@ -96,7 +96,7 @@ export interface BFF教育 {
 export interface BFF证书 {
   id: string;
   name: string;
-  year: number;
+  year: number | null;
   revision: number;
 }
 
@@ -407,7 +407,7 @@ export interface BFF教育写入 {
 
 export interface BFF证书写入 {
   name: string;
-  year: number;
+  year: number | null;
 }
 
 export interface BFF意向写入 {

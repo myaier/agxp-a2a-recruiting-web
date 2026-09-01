@@ -182,6 +182,7 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     case '存到岗预填':
     case '水合后端简历':
     case '水合后端意向':
+    case '水合候选引导草稿':
     case '清后端草稿':
       return 归约候选资料(旧, 动作);
 
@@ -534,6 +535,12 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const P8待定意图 = useRef(new Map<string, P8待定意图<unknown>>());
   const P8导出恢复 = useRef<P8导出恢复存储 | null>(null);
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
+  // Task 4：候选 onboarding 草稿只认 candidate 角色 + 当前 subject 的双重范围；
+  // recruiter / 未登录 / Mock 一律 null，绝不给持久层授权任何候选草稿读写。
+  const 当前候选主体标识 =
+    后端状态.主体?.last_used_role === 'candidate'
+      ? 后端状态.主体.subject_id
+      : null;
   // P8 Task 5：subject 绑定的导出恢复适配器。Backend 主体在场才构造（local 存储 +
   // 模式/环境/账号 三重隔离键）；主体/环境每次变化都在渲染期先写 ref —— 子组件
   // （账号安全页）的被动恢复 effect 一定看到新适配器（或 null），操作方法在调用时
@@ -545,7 +552,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       范围: { 模式: 'backend', 环境, 账号: 当前主体标识 },
     })
     : null;
-  use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识 });
+  use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识, 当前候选主体标识 });
 
   // P7 Task 5：同源事件源只建一次（无 token/query/header；帧只触发 no-store 重拉）。
   // 钩子输入全部由 Provider 注入（与 useMatchCase轮询 同一纪律，不读 Context）；

@@ -159,6 +159,98 @@ describe('选专业 Backend', () => {
     // 过期结果不应出现
     expect(screen.queryByText('过期结果')).toBeNull();
   });
+
+  // Task 5：Backend 未点候选 → 下一步禁用；点候选 → 启用；继续输入 → 引用清除又禁用
+  // 注：仓库未装 @testing-library/jest-dom，disabled 用原生属性断言
+  it('未点候选时下一步禁用，点候选启用，再输入又禁用', async () => {
+    const 查询Taxonomy = vi.fn(async () => ({
+      items: [
+        { id: 'maj_cs', display_name: '计算机科学与技术', parent_id: null, selectable: true },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    render选专业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    const 下一步 = () => screen.getByRole('button', { name: '下一步' }) as HTMLButtonElement;
+    await 用户.type(screen.getByPlaceholderText('专业名称'), '计算机');
+    expect(下一步().disabled).toBe(true);
+    await 用户.click(await screen.findByRole('button', { name: /计算机科学与技术/ }));
+    expect(下一步().disabled).toBe(false);
+    await 用户.type(screen.getByPlaceholderText('专业名称'), '新');
+    expect(下一步().disabled).toBe(true);
+  });
+
+  // Task 5：搜索在途时显示「加载中…」（请求挂起，不 resolve）
+  it('搜索进行中显示 加载中…', async () => {
+    const { promise } = deferredPromise<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>();
+    const 查询Taxonomy = vi.fn(async () => promise);
+    render选专业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('专业名称'), '计算机');
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    expect(screen.getByRole('status').textContent).toBe('加载中…');
+  });
+
+  // Task 5：空结果 → 「没有匹配结果，试试缩短关键词」
+  it('空结果显示 没有匹配结果，试试缩短关键词', async () => {
+    const 查询Taxonomy = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' }));
+    render选专业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('专业名称'), '计算机');
+    // 加载中 → 空结果：等状态文案切换成「没有匹配结果」
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe('没有匹配结果，试试缩短关键词'),
+    );
+  });
+
+  // Task 5：请求失败 → 「加载失败，请重试」
+  it('请求失败显示 加载失败，请重试', async () => {
+    const 查询Taxonomy = vi.fn(async () => {
+      throw new Error('网络错误');
+    });
+    render选专业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('专业名称'), '计算机');
+    expect((await screen.findByRole('alert')).textContent).toBe('加载失败，请重试');
+  });
+
+  // Task 5：旧关键词的慢响应晚于新关键词到达 → 不覆盖当前结果
+  it('旧关键词的慢响应不覆盖新关键词的结果', async () => {
+    type 页 = { items: { id: string; display_name: string; parent_id: null; selectable: boolean }[]; nextCursor: null; catalogVersion: string };
+    const 待决: { promise: Promise<页>; resolve: (值: 页) => void }[] = [];
+    const 查询Taxonomy = vi.fn(() => {
+      const 延迟 = deferredPromise<页>();
+      待决.push(延迟);
+      return 延迟.promise;
+    });
+    render选专业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('专业名称'), '计算');
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledTimes(1));
+    await 用户.type(screen.getByPlaceholderText('专业名称'), '机');
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledTimes(2));
+    // 新关键词（计算机）先返回 → 渲染
+    待决[1].resolve({
+      items: [
+        { id: 'maj_cs', display_name: '计算机科学与技术', parent_id: null, selectable: true },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    });
+    await screen.findByText('计算机科学与技术');
+    // 旧关键词（计算）后返回 → 不得覆盖
+    待决[0].resolve({
+      items: [
+        { id: 'maj_old', display_name: '过期专业', parent_id: null, selectable: true },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    });
+    await new Promise((就绪) => setTimeout(就绪, 0));
+    expect(screen.queryByText('过期专业')).toBeNull();
+    expect(screen.getByText('计算机科学与技术')).toBeTruthy();
+  });
 });
 
 describe('选专业 Mock', () => {
