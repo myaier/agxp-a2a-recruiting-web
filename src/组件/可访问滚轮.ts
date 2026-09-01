@@ -92,7 +92,9 @@ export function use可访问滚轮({ 选项, 值, 设值, 行高 }: 可访问滚
 
   const 处理按键: KeyboardEventHandler<HTMLDivElement> = useCallback((事件) => {
     if (选项.length === 0) return;
-    const 基准 = 当前序号 < 0 ? 0 : 当前序号;
+    // 值不在档表内时两个方向的第一按都要夹回首档：基准取 -1，ArrowDown 落 0、
+    // ArrowUp 落 -1 再被夹到 0（取 0 会让 ArrowDown 跳到第二档，两个方向不一致）
+    const 基准 = 当前序号 < 0 ? -1 : 当前序号;
     const 目标 = 事件.key === 'ArrowUp' ? 基准 - 1
       : 事件.key === 'ArrowDown' ? 基准 + 1
         : 事件.key === 'Home' ? 0

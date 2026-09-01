@@ -141,4 +141,18 @@ describe('内嵌双滚轮 可访问合同', () => {
       vi.useRealTimers();
     }
   });
+
+  it('值不在档表内时 ArrowUp/ArrowDown 首按都落在第一档', async () => {
+    const 用户 = userEvent.setup();
+    // 左值 99 不在 [3,4,5,6] 里：轮子未定位，两个方向的第一按都应该夹到首档 3，
+    // 而不是 ArrowDown 跳到第二档（review-r1：越档值的首按一致性）
+    render(<宿主 左初值={99} />);
+    const 左列 = screen.getByRole('listbox', { name: '薪资下限' });
+    左列.focus();
+    await 用户.keyboard('{ArrowDown}');
+    expect(within(左列).getByRole('option', { name: '3' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByLabelText('左值').textContent).toBe('3');
+    await 用户.keyboard('{ArrowUp}');
+    expect(within(左列).getByRole('option', { name: '3' }).getAttribute('aria-selected')).toBe('true');
+  });
 });
