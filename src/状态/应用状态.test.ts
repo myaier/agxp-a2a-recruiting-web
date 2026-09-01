@@ -2591,6 +2591,46 @@ describe('应用状态提供者 候选引导草稿持久化', () => {
     expect(当前.状态.引导预填).toBe(null);
   });
 
+  // Codex review-loop R1 [P2]：已提交（存在 active 意向）后，引导草稿不再属于
+  // 「未提交答案」——不得写回 sessionStorage，也不得在重挂时恢复。
+  it('保存首次意向成功（水合 active 意向）后删除已提交草稿键，内存薪资保留', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    当前.派发({ 型: '存薪资预填', 下限: 30, 上限: 40, 单位: '月薪K' });
+    await waitFor(() => expect(globalThis.sessionStorage.getItem(键('sub_1'))).toContain('"下限":30'));
+    // 保存首次意向成功的权威落点：水合后端意向（快照含唯一 active 意向）
+    当前.派发({
+      型: '水合后端意向',
+      快照: { 列表: [{ 编号: 'int_1', 标题: '[上海] 后端工程师', 说明: '30-40K' }], 服务端: { int_1: BFF意向样本 } },
+    });
+    // 已提交答案不再以草稿形态落存储
+    await waitFor(() => expect(globalThis.sessionStorage.getItem(键('sub_1'))).toBe(null));
+    // 内存 引导预填 不被清（验收：返回/前进后薪资仍 30-40K，读的是内存预填）
+    expect(当前.状态.引导预填?.薪资).toEqual({ 下限: 30, 上限: 40, 单位: '月薪K' });
+  });
+
+  it('已有 active 意向的候选重挂：不恢复存量草稿并删除该键', async () => {
+    写候选引导草稿(globalThis.sessionStorage, { 模式: 'backend', 环境: 'stg', 账号: 'sub_A' }, 草稿样本());
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_A' });
+    vi.mocked(后端.读取意向).mockResolvedValue({
+      列表: [{ 编号: 'int_1', 标题: '[上海] 后端工程师', 说明: '30-40K' }],
+      服务端: { int_1: BFF意向样本 },
+    });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await waitFor(() => expect(当前.状态.求职意向表).toHaveLength(1));
+    // 已提交的存量草稿既不恢复、也被清出存储：下一次刷新不会再带回已提交答案
+    await waitFor(() => expect(globalThis.sessionStorage.getItem(键('sub_A'))).toBe(null));
+  });
+
   it('Mock 模式：Mock 原型 localStorage 逐字节不变，也不创建任何候选会话键', async () => {
     localStorage.setItem('AGXP简历v2', '{"PM":"mock-resume"}');
     localStorage.setItem('AGXP求职筛选v1', '{"PM":"mock-onboarding"}');
