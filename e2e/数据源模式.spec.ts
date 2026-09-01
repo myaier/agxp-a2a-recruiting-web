@@ -2987,10 +2987,20 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         return;
       }
       if (path === '/api/v1/recruiter/avatar' && method === 'POST') {
+        // 招聘方 onboarding fixture 下 档案可变 合法地为 null（首次 PATCH 之前还没有
+        // 档案）。此时头像 POST 与 profile GET 同一个事实：404 not_found —— 不解引用
+        // null，否则路由永不 fulfill，将来的用例会以 120s 超时死掉而不是给出可读失败。
+        if (档案可变 === null) {
+          await route.fulfill({
+            status: 404,
+            json: { error: { type: 'not_found', message: 'Recruiter profile not found' } },
+          });
+          return;
+        }
         // 冻结 multipart：恰一个 media part，返回带新头像 URL 的完整档案
         const 媒 = 登记媒体(部件们?.find((件) => 件.name === 'media'));
-        档案可变!.avatar_url = 媒.url;
-        档案可变!.revision += 1;
+        档案可变.avatar_url = 媒.url;
+        档案可变.revision += 1;
         await route.fulfill({ status: 200, json: 信封(档案可变) });
         return;
       }

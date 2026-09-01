@@ -327,7 +327,10 @@ export function 取后端错误文案(error: unknown): string {
   if (!(error instanceof BFF错误)) {
     return '请求失败，请稍后再试';
   }
-  if (error.status === 0 || error.code === 'network_error') return '无法连接后端服务，请检查网络或稍后重试';
+  // review-final：判据只认 code。真实传输故障永远由本模块铸成 network_error；
+  // status 0 还覆盖所有客户端自铸错误（本地校验、契约解码、入参拦截），
+  // 旧的 `status === 0 ||` 会把它们统统说成「网络连不上」，把用户支去查 wifi。
+  if (error.code === 'network_error') return '无法连接后端服务，请检查网络或稍后重试';
   if (error.status === 502 || error.status === 503 || error.status === 504) return '后端服务暂时不可用，请稍后重试';
   if (error.code === 'invalid_response') return '服务返回异常，请稍后重试';
   if (error.code === 'invalid_session') return '登录已失效，请重新登录';

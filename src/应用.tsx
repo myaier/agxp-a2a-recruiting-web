@@ -4,6 +4,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { 路径 } from './路由/路径表';
+import { 主按钮 } from './组件/通用';
 import 登录 from './屏幕/登录';
 import { use应用状态 } from './状态/应用状态';
 
@@ -123,22 +124,54 @@ function 招聘方恢复失败({
   retry: () => Promise<void>;
   switchRole: () => void;
 }) {
+  // 重入守卫只当双击保险：重新水合招聘方数据 在第一个 await 之前就同步把
+  // 初始化 落 进行中，本面当场让位给 路由加载中 —— 真正把整轮重试串起来的是
+  // 那块加载屏，不是这个组件（所以这里没有、也不可能有可见的「重试中」态）。
   const [重试中, 设重试中] = useState(false);
   return (
-    <div role="alert">
-      <p>{error ?? '企业资料读取失败'}</p>
-      <button
-        type="button"
-        disabled={重试中}
-        onClick={() => {
+    <div
+      role="alert"
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--页面底)',
+        paddingTop: 'var(--安全区上)',
+      }}
+    >
+      <div
+        style={{
+          flex: 1,
+          display: 'grid',
+          alignContent: 'center',
+          justifyItems: 'center',
+          gap: 16,
+          padding: '0 24px',
+          textAlign: 'center',
+        }}
+      >
+        <p style={{ margin: 0, color: 'var(--次要)', fontSize: 13, lineHeight: 1.7 }}>
+          {error ?? '企业资料读取失败'}
+        </p>
+        <button
+          type="button"
+          className="可点"
+          disabled={重试中}
+          onClick={switchRole}
+          style={{ color: 'var(--次要)', fontSize: 13, textDecoration: 'underline', textUnderlineOffset: 3 }}
+        >
+          切换身份
+        </button>
+      </div>
+      <主按钮
+        文字="重试"
+        禁用={重试中}
+        按下={() => {
           if (重试中) return;
           设重试中(true);
           void retry().catch(() => undefined).finally(() => 设重试中(false));
         }}
-      >
-        {重试中 ? '重试中…' : '重试'}
-      </button>
-      <button type="button" disabled={重试中} onClick={switchRole}>切换身份</button>
+      />
     </div>
   );
 }

@@ -377,7 +377,9 @@ describe('发布岗位页 Backend 选择器', () => {
     });
     const { 用户 } = await 填到发布前(true);
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
-    expect(await screen.findByText('请填写公司名称')).toBeTruthy();
+    // review-final 修复 3：本页没有公司名输入框（它在招聘名片屏）——
+    // 文案必须指路，否则用户被弹回第二步去找一个这里根本不存在的字段。
+    expect(await screen.findByText('请先在招聘名片填写公司名称')).toBeTruthy();
     expect(mock发布岗位).not.toHaveBeenCalled();
   });
 
@@ -403,7 +405,7 @@ describe('发布岗位页 Backend 选择器', () => {
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
     expect(mock更新岗位.mock.calls[0][0]).toMatchObject({ 编号: 'job_1' });
-    expect(screen.queryByText('请填写公司名称')).toBeNull();
+    expect(screen.queryByText('请先在招聘名片填写公司名称')).toBeNull();
   });
 
   it('完整表单把独立 description 和 requirements 交给 operation', async () => {
@@ -485,7 +487,7 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
 
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText('请填写公司名称')).toBeNull();
+    expect(screen.queryByText('请先在招聘名片填写公司名称')).toBeNull();
     expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
       职位描述: '描述正文', 职位要求: '要求正文',
     });

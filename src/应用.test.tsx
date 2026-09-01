@@ -18,6 +18,7 @@ import { 创建空P5MatchCase状态 } from './状态/后端/MatchCase操作';
 import { 创建空P7会话状态 } from './状态/后端/真人会话操作';
 import { 创建空P8控制面状态 } from './状态/后端/P8控制面操作';
 import 应用 from './应用';
+import 通用样式 from './组件/通用.module.css';
 
 const mock应用状态 = vi.hoisted(() => vi.fn());
 vi.mock('./状态/应用状态', () => ({ use应用状态: mock应用状态 }));
@@ -154,6 +155,47 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
     // 退出口不依赖重试结果：切换身份 始终把人送回身份选择，不会被锁在恢复面
     await 用户.click(screen.getByRole('button', { name: '切换身份' }));
     expect(当前路径()).toBe(路径.选身份);
+  });
+
+  // review-final 修复 2：恢复面 return 掉整个路由，它就是 设备外框 里的一整屏。
+  // 旧实现是没有页底、没有安全区、按钮走浏览器默认样式（全局 reset 后等于一行裸文字）
+  // 的裸块，读起来像应用崩了而不是一次可重试的失败。这里钉住外壳与主按钮，
+  // 免得以后又被改回裸 <div>。
+  it('恢复面渲染成带页底与安全区的整屏，重试走主按钮', () => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成', 已登录: true, 主体: 招聘主体,
+      招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.岗位管理]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    const 面 = screen.getByRole('alert');
+    expect(面.style.height).toBe('100%');
+    expect(面.style.background).toContain('--页面底');
+    expect(面.style.paddingTop).toContain('--安全区上');
+    expect(screen.getByRole('button', { name: '重试' }).className).toContain(通用样式.主按钮);
+  });
+
+  // 初始化='进行中' 由 重新水合招聘方数据 在第一个 await 之前同步写下，恢复面当场
+  // 让位给加载屏 —— 「重试中…」这个标签在真实运行里永远渲染不出来，是死文案。
+  it('重试后不出现不可达的「重试中…」文案', async () => {
+    const 用户 = userEvent.setup();
+    let 放行: () => void = () => {};
+    const 重试 = vi.fn(() => new Promise<void>((resolve) => { 放行 = () => resolve(); }));
+    const 值 = 后端应用值({
+      初始化: '完成', 已登录: true, 主体: 招聘主体,
+      招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
+    });
+    mock应用状态.mockReturnValue({ ...值, 操作: { ...值.操作, 重新水合招聘方数据: 重试 } });
+    render(
+      <MemoryRouter initialEntries={[路径.岗位管理]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    expect(screen.queryByText('重试中…')).toBeNull();
+    // 重入守卫仍在：飞行中再点一次不会重复触发水合
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    expect(重试).toHaveBeenCalledTimes(1);
+    放行();
   });
 
   it('组织水合失败时直接岗位路径显示恢复面而不是假空列表', () => {
