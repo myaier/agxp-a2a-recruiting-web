@@ -284,7 +284,8 @@ export async function 水合角色数据(
     // P1C：current relation 恢复值只在最新 Affiliations 返回后经 选择当前企业关系() 校验进 state
     const restoredId = deps.读取恢复企业关系编号(主体.subject_id);
     // P6 Task 4：规则三路读取先行起跑，与组织/岗位解耦；组织水合保持 P1C 固定顺序 ——
-    // owner Jobs 只在组织水合之后读取（组织 401 时不发 Jobs），组织失败不清空岗位水合。
+    // P0 修复 Task 1：owner Jobs 只在整条组织链成功之后读取 —— 组织链失败（401 或非 401）
+    // 一律不发 Jobs，不在失败的组织事实上继续拼岗位盘。
     const p6Promise = 水合Agent规则角色数据(
       { 后端, 派发, 设后端状态, 主体标识引用, 会话代际 },
       角色,

@@ -1264,6 +1264,28 @@ describe('应用状态提供者 切身份与退出登录', () => {
     expect(当前.状态.未认证公司声明).toBe('');
   });
 
+  it('mount 恢复换主体时把招聘方两个阶段恢复到未开始', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    // A：招聘方且 profile 缺失 → 档案阶段落在 缺失
+    const 后端A = 创建后端桩('recruiter');
+    vi.mocked(后端A.读取招聘方档案).mockRejectedValue(new BFF错误(404, 'not_found', 'missing'));
+    // B：另一个主体且是候选人 —— 水合角色数据 不进招聘方分支，两个阶段只能由 mount 复位收口
+    const 后端B = 创建后端桩('candidate');
+    vi.mocked(后端B.读取主体).mockResolvedValue({
+      ...BFF主体样本, subject_id: 'sub_b', last_used_role: 'candidate',
+    });
+    const 数据源A = { 模式: 'backend' as const, 后端环境: 'stg' as const, 后端: 后端A as unknown as HTTP招聘数据源 };
+    const 数据源B = { 模式: 'backend' as const, 后端环境: 'stg' as const, 后端: 后端B as unknown as HTTP招聘数据源 };
+    const { rerender } = render(createElement(应用状态提供者, { 数据源: 数据源A }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.招聘方档案水合阶段).toBe('缺失'));
+    // 后端 引用变化 → mount effect cleanup→setup → 以 sub_b 重跑恢复
+    rerender(createElement(应用状态提供者, { 数据源: 数据源B }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_b'));
+    expect(当前.后端状态.招聘方档案水合阶段).toBe('未开始');
+    expect(当前.后端状态.招聘方组织水合).toEqual({ 阶段: '未开始', 错误: null });
+  });
+
   it('重新水合招聘方组织 在缺失档案上重跑整条链并落成功', async () => {
     let 当前!: ReturnType<typeof use应用状态>;
     function 上下文探针() { 当前 = use应用状态(); return null; }

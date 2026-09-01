@@ -45,7 +45,9 @@ export async function 水合招聘方组织数据(
   restoredAffiliationId: string | null,
 ): Promise<{ sessionExpired: boolean }> {
   const 仍有效 = () => deps.主体标识引用.current === subjectId && deps.会话代际.current === generation;
-  deps.设后端状态((旧) => ({
+  // 入口写也过 fence：调用在入口就已过时（转移的复位已跑完）时写 进行中 会留下
+  // 没有任何后续写入去收口的终态 进行中 —— 重试 UI 会永远转圈。
+  if (仍有效()) deps.设后端状态((旧) => ({
     ...旧,
     招聘方档案水合阶段: '进行中',
     招聘方组织水合: { 阶段: '进行中', 错误: null },

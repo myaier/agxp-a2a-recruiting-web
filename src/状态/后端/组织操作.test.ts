@@ -8,7 +8,7 @@ import { 创建空P5MatchCase状态 } from './MatchCase操作';
 import type { BFF企业档案, BFF企业档案替换, BFF招聘方档案 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 页面岗位快照 } from '../../数据/招聘数据源类型';
-import { BFF错误 } from '../../数据/HTTP客户端';
+import { BFF错误, 客户端校验错误 } from '../../数据/HTTP客户端';
 import { 从BFF企业档案, 转BFF企业档案替换 } from '../../数据/组织映射';
 import {
   BFF主体样本,
@@ -77,7 +77,7 @@ function 创建组织测试依赖(input: {
 }) {
   return {
     后端: input.后端, 派发: input.派发, 设后端状态: vi.fn(),
-    主体标识引用: { current: input.subject }, 会话代际: { current: input.generation },
+    主体标识引用: { current: input.subject as string | null }, 会话代际: { current: input.generation },
     读取恢复企业关系编号: vi.fn(() => null),
     状态引用: { current: 初始状态 },
     后端状态引用: { current: {
@@ -435,6 +435,15 @@ describe('水合招聘方组织数据', () => {
     const 最终 = 最终后端状态(deps);
     expect(最终.招聘方档案水合阶段).toBe('缺失');
     expect(最终.招聘方组织水合.阶段).toBe('失败');
+  });
+
+  it('入口即过时的调用一个阶段都不写（不留下收不了口的 进行中）', async () => {
+    const 后端 = 创建完整测试数据源({});
+    const deps = 创建组织测试依赖({ 后端, 派发: vi.fn(), subject: 'sub_1', generation: 7 });
+    // 转移的复位已经跑完（代际已换），这次调用从入口起就是过时的
+    await expect(水合招聘方组织数据(deps, 'sub_1', 6, null))
+      .resolves.toEqual({ sessionExpired: false });
+    expect(deps.设后端状态).not.toHaveBeenCalled();
   });
 
   it('有 current 时公开企业读取失败进入聚合失败', async () => {
@@ -1026,5 +1035,58 @@ describe('组织操作：企业媒体移除', () => {
       .rejects.toMatchObject({ status: 401 });
     expect(派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
     expect(deps.主体标识引用.current).toBeNull();
+  });
+});
+
+// ── P0 修复 Task 1：重新水合招聘方组织 的四条分支 ──
+
+describe('组织操作：重新水合招聘方组织', () => {
+  it('Mock 模式静默 no-op，不发任何组织请求', async () => {
+    const 读取招聘方档案 = vi.fn(async () => BFF招聘方档案样本);
+    const 后端 = 创建完整测试数据源({ 读取招聘方档案 });
+    const deps = 创建组织测试依赖({ 后端, 派发: vi.fn(), subject: 'sub_1', generation: 1 });
+    const Mock操作 = 创建组织操作({ ...deps, 是后端: false, 后端: null });
+    await expect(Mock操作.重新水合招聘方组织()).resolves.toBeUndefined();
+    expect(读取招聘方档案).not.toHaveBeenCalled();
+    expect(deps.设后端状态).not.toHaveBeenCalled();
+  });
+
+  it('无主体标识时抛 recruiter.organization 校验错误且不发请求', async () => {
+    const 读取招聘方档案 = vi.fn(async () => BFF招聘方档案样本);
+    const 后端 = 创建完整测试数据源({ 读取招聘方档案 });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    deps.主体标识引用.current = null;
+    await expect(操作.重新水合招聘方组织()).rejects.toBeInstanceOf(客户端校验错误);
+    await expect(操作.重新水合招聘方组织()).rejects.toMatchObject({
+      field: 'recruiter.organization',
+      message: '登录状态已失效，请重新登录',
+    });
+    expect(读取招聘方档案).not.toHaveBeenCalled();
+  });
+
+  it('水合途中 401 已清账号后抛 session 校验错误', async () => {
+    const 后端 = 创建完整测试数据源({
+      读取招聘方档案: async () => { throw new BFF错误(401, 'invalid_session', 'expired'); },
+    });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.重新水合招聘方组织()).rejects.toMatchObject({
+      field: 'session',
+      message: '登录状态已失效，请重新登录',
+    });
+    // 401 已在 helper 内部走统一 清账号状态，重试只负责把失效结果告诉 UI
+    expect(派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
+    expect(deps.主体标识引用.current).toBeNull();
+  });
+
+  it('非 401 失败原样抛回并留下失败阶段', async () => {
+    const 后端 = 创建完整测试数据源({
+      读取招聘方档案: async () => { throw new BFF错误(503, 'service_unavailable', 'down'); },
+    });
+    const deps = 创建组织测试依赖({ 后端, 派发: vi.fn(), subject: 'sub_1', generation: 1 });
+    const 操作 = 创建组织操作(deps);
+    await expect(操作.重新水合招聘方组织()).rejects.toMatchObject({ status: 503 });
+    const 最终 = 最终后端状态(deps);
+    expect(最终.招聘方档案水合阶段).toBe('失败');
+    expect(最终.招聘方组织水合.阶段).toBe('失败');
   });
 });
