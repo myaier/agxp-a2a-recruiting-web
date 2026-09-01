@@ -120,6 +120,10 @@ for v in RUN_DIR FRAGMENT_DIR PRIVATE_JOURNAL AGXP_MONOREPO_DIR FRONTEND_ORIGIN 
   eval "have=\${$v:-}"
   [ -n "$have" ] || { printf 'FAKE journey %s 缺少环境 %s\n' "$J" "$v" >>"$CALLS"; exit 1; }
 done
+case ",$AGENT_BROWSER_ARGS," in
+  *",--accept-lang=zh-CN,"*) : ;;
+  *) printf 'FAKE journey %s 浏览器 locale 未冻结为 zh-CN\n' "$J" >>"$CALLS"; exit 1 ;;
+esac
 [ "$FRONTEND_ORIGIN" = 'http://localhost:5173' ] || { printf 'FAKE journey %s 页面源非法：%s\n' "$J" "$FRONTEND_ORIGIN" >>"$CALLS"; exit 1; }
 [ -f "$PRIVATE_JOURNAL" ] || { printf 'FAKE journey %s 台账不存在\n' "$J" >>"$CALLS"; exit 1; }
 
@@ -420,8 +424,8 @@ reset_case(){
   export FAKE_PORT_BUSY=0 FAKE_DOCKER_RC=0 FAKE_DOCTOR_RC=0 FAKE_VITE_START_RC=0 FAKE_LOGOUT_RC=0
   export FAKE_AB_VERSION='agent-browser 0.27.2'
   export FAKE_UA='Mozilla/5.0 (iPhone) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.55 Mobile Safari/537.36'
-  # 冻结的取景环境（视觉清单里就是这两个字面量）。agent-browser 0.27.2 没有任何
-  # locale / timezone 开关，只能读机器上真实解析出来的值再核对。
+  # 冻结的取景环境（视觉清单里就是这两个字面量）。假 CLI 回放真实解析值，
+  # 假旅程另行硬门 AGENT_BROWSER_ARGS 必须带 Chromium 的 accept-lang 开关。
   export FAKE_LOCALE='zh-CN' FAKE_TZ='Asia/Shanghai'
   export FAKE_SCENE_PNG="$RED_PNG"
   export FAKE_RECEIPT_MODE=600 FAKE_RECEIPT_MISSING=0 FAKE_LEAK=0

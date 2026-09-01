@@ -164,8 +164,8 @@ classify_fixture_failure(){
 # jq 与 node_modules/.bin/tsx 实现的：它们不在，任何证据合同都无从谈起。
 # 其余每一条 preflight 都排在运行目录与收尾 trap 之后，好让阻塞也带着报告落地。
 
-# 七个视觉场景冻结 Asia/Shanghai 取景（报告端逐字核对）。agent-browser 0.27.2 没有
-# timezone 开关，Chrome 的 Intl 解析跟随 agent-browser 守护进程**进程**的 TZ——
+# 七个视觉场景冻结 zh-CN / Asia/Shanghai 取景（报告端逐字核对）。Chrome 的
+# Intl 时区跟随 agent-browser 守护进程**进程**的 TZ——
 # 共享 daemon 是被哪个终端、什么环境先拉起的不可控（#run10/#run14 实测解析成
 # Asia/Singapore）。所以这里开一个**专属命名空间的 daemon**：它必然由本进程拉起、
 # 必然继承这里的 TZ。与会话一样，这是验收自己的隔离资源。
@@ -175,7 +175,7 @@ export AGENT_BROWSER_NAMESPACE='agxp-accept'
 # 节流——JS 照跑、辅助功能树/渲染长期停摆，恰好造出「DOM 在动、find 看旧屏」
 # 的全部形状变化（#run7 至 #run29 的形状漂移）。这里显式关掉节流：这是
 # 自动化基础设施设置，与页面取景冻结无关。
-export AGENT_BROWSER_ARGS='--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding,--disable-background-timer-throttling'
+export AGENT_BROWSER_ARGS='--accept-lang=zh-CN,--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding,--disable-background-timer-throttling'
 
 need_command(){ command -v "$1" >/dev/null 2>&1 || blocked "缺少命令：$1"; }
 
@@ -743,8 +743,8 @@ CHROME_BUILD="$(agent-browser --session "$CANDIDATE_SESSION" eval 'navigator.use
 
 # 视觉清单把取景环境的 locale / timezone 冻死成 zh-CN / Asia/Shanghai
 # （e2e/真实后端/报告.ts 构造候选视觉清单，两个字面量在类型里也是冻结的）。
-# 而 agent-browser 0.27.2 没有任何开关能设定它们 —— capture_scene 只管得了视口与 media。
-# 所以只能读这台机器上真实解析出来的值再逐字核对：核不上就是环境阻塞（设计稿 §14），
+# locale 由上面的 Chrome `--accept-lang` 冻结，timezone 由专属 daemon 继承的 TZ 冻结；
+# 这里再读真实解析值逐字核对：核不上就是环境阻塞（设计稿 §14），
 # 不核对的话，两台渲染环境本来就不同的机器会照样把七个场景比成 matched。
 # eval 的输出是 JSON 编码的字符串（真机实测：`"en-US | Asia/Singapore"`），先剥掉两侧引号。
 FROZEN_LOCALE='zh-CN'
