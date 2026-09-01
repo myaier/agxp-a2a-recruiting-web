@@ -1,13 +1,17 @@
 // Provider 的浏览器存储副作用。
 // 快照如何验证/命名归数据层，这里只把 React 状态与当前账号仓同步。
 
-import { useEffect, useMemo, type Dispatch } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch } from 'react';
 import type { 后端环境 } from '../配置/运行配置';
 import {
   账号存储键,
   写资料缓存,
   读资料缓存,
   资料缓存键,
+  候选引导草稿键,
+  删候选引导草稿,
+  读候选引导草稿,
+  写候选引导草稿,
   type 资料缓存快照,
   type 资料缓存范围,
 } from '../数据/资料缓存';
@@ -20,9 +24,11 @@ interface 资料持久化参数 {
   是后端: boolean;
   环境: 后端环境;
   当前主体标识: string | null;
+  /** Task 4：candidate 角色下的 subject_id；recruiter / 未登录 / Mock 恒 null。 */
+  当前候选主体标识: string | null;
 }
 
-export function use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识 }: 资料持久化参数): void {
+export function use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识, 当前候选主体标识 }: 资料持久化参数): void {
   const 本地存储 = 安全取存储('local');
   const 会话存储 = 安全取存储('session');
   const Mock范围 = useMemo(() => 演示范围(环境), [环境]);
@@ -125,4 +131,91 @@ export function use资料持久化({ 状态, 派发, 是后端, 环境, 当前�
     状态.飞书已接入,
     状态.企业飞书已接入,
   ]);
+
+  // ── Task 4：候选 onboarding 草稿（Backend + candidate + subject 三重范围的 sessionStorage）──
+  // 写屏障：只有「已完成当前键恢复」才允许写。已恢复候选键 记录恢复完成的键；
+  // null === null 绝不授权 —— Mock / recruiter / 未登录在这里一律不做任何候选草稿读写。
+  const 已恢复候选键 = useRef<string | null>(null);
+  const 上一候选范围 = useRef<资料缓存范围 | null>(null);
+  /** 已派发 水合候选引导草稿 但 reducer 尚未落地的键：该提交里 引导预填 还是旧值（null），
+   * 此时不得按 null 删键 —— 否则首帧空状态会在水合落地前删掉存量草稿。 */
+  const 待落水合键 = useRef<string | null>(null);
+  /** 上一提交里 已提交引导 的值：识别 active→空（最后一条意向被删）的转移。 */
+  const 上一已提交引导 = useRef(false);
+  const [候选恢复代际, 设候选恢复代际] = useState(0);
+  /** Codex review-loop R1 [P2]：权威意向里已有 active（引导已提交）时，
+   * 引导草稿不再属于「未提交答案」——不恢复、不写回，只清理。 */
+  const 已提交引导 = Object.values(状态.后端意向服务端).some((行) => 行.status === 'active');
+
+  useEffect(() => {
+    const 当前候选范围: 资料缓存范围 | null = 是后端 && 当前候选主体标识 !== null
+      ? { 模式: 'backend', 环境, 账号: 当前候选主体标识 }
+      : null;
+    const 当前键 = 当前候选范围 === null ? null : 候选引导草稿键(当前候选范围);
+    // 范围变化时先用「旧范围」解析键再丢弃引用：登出 / 401 / 切角色 / 换主体
+    // 都要清掉旧候选键与内存草稿，不能等主体引用丢了才想起键是什么。
+    const 旧范围 = 上一候选范围.current;
+    if (旧范围 !== null) {
+      const 旧键 = 候选引导草稿键(旧范围);
+      if (旧键 !== 当前键) {
+        删候选引导草稿(会话存储, 旧范围);
+        已恢复候选键.current = null;
+        上一已提交引导.current = false;
+        派发({ 型: '清后端草稿' });
+        上一候选范围.current = null;
+      }
+    }
+    if (当前候选范围 === null || 当前键 === null) {
+      // Backend / candidate 角色 / subject / 范围 任一缺失：复位写屏障即返回，
+      // 不做任何候选草稿读/写/删。
+      已恢复候选键.current = null;
+      上一已提交引导.current = false;
+      return;
+    }
+    上一候选范围.current = 当前候选范围;
+    if (已恢复候选键.current === 当前键) return;
+    const 草稿 = 读候选引导草稿(会话存储, 当前候选范围);
+    if (草稿 !== null && !已提交引导) {
+      待落水合键.current = 当前键;
+      派发({ 型: '水合候选引导草稿', 草稿 });
+    }
+    // 恢复尝试结束（哪怕存储为空）才打开写屏障：全新主体立即可写，
+    // 首帧空状态不会在水合前覆盖存量草稿。
+    已恢复候选键.current = 当前键;
+    设候选恢复代际((值) => 值 + 1);
+  }, [是后端, 环境, 当前候选主体标识, 会话存储, 派发, 已提交引导]);
+
+  useEffect(() => {
+    // 写前同一套守卫：Backend + candidate + subject 任一缺失直接返回，
+    // 防止 null === null 在 Mock / recruiter / 登出态授权写入。
+    if (!是后端 || 当前候选主体标识 === null) return;
+    const 范围: 资料缓存范围 = { 模式: 'backend', 环境, 账号: 当前候选主体标识 };
+    const 当前键 = 候选引导草稿键(范围);
+    // 每次写入都重比键：恢复未完成（或主体已换）的过期 effect 一律不写。
+    if (已恢复候选键.current !== 当前键) return;
+    // 引导已提交（存在 active 意向）：已提交答案不得再以草稿形态落存储。
+    if (已提交引导) {
+      上一已提交引导.current = true;
+      待落水合键.current = null;
+      删候选引导草稿(会话存储, 范围);
+      return;
+    }
+    // active→空（最后一条意向被删）：已消费的引导答案连内存一起清，
+    // 否则上面保留的 引导预填 会在 已提交引导 翻回 false 后重新落成草稿。
+    if (上一已提交引导.current) {
+      上一已提交引导.current = false;
+      待落水合键.current = null;
+      删候选引导草稿(会话存储, 范围);
+      派发({ 型: '清后端草稿' });
+      return;
+    }
+    if (状态.引导预填 !== null) {
+      待落水合键.current = null;
+      写候选引导草稿(会话存储, 范围, 状态.引导预填);
+      return;
+    }
+    // 引导预填 === null：若水合派发尚未落地（同一提交的旧值），先不删键。
+    if (待落水合键.current === 当前键) return;
+    删候选引导草稿(会话存储, 范围);
+  }, [是后端, 环境, 当前候选主体标识, 会话存储, 状态.引导预填, 候选恢复代际, 已提交引导, 派发]);
 }

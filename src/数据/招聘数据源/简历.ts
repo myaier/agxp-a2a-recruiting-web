@@ -62,7 +62,9 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
    * 简历分区 diff：profile → summary → skills → experiences/projects → educations → certificates。
    * 每分区比较 JSON.stringify，只写变化分区。条目按 编号 与 previous 对齐：
    * 新条目 POST、已有且变化 PATCH、消失 DELETE；嵌套项目同理。
-   * 中途失败 → GET 权威快照附在 BFF错误.权威简历 上后抛出；成功 → GET 最终快照返回。
+   * Task 2（onboarding 修复）：全部请求体（含嵌套项目）在推入步骤前同步物化并校验 ——
+   * 任何 客户端校验错误（缺引用、证书年份非法）都在第一个 mutation 之前抛出，零请求发出。
+   * 中途失败 → GET 权威快照附在 BFF错误.权威简历 上后抛出（失败绝不包装成成功）；成功 → GET 最终快照返回。
    */
   async function 保存简历(next: 页面简历写入, previous: BFF简历): Promise<页面简历快照> {
     const 旧页面 = 从BFF简历(previous);
@@ -70,20 +72,20 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
     // 简历写入直接用表单里选择器保存的目录引用（行业引用/学校引用/专业引用）取 id，
     // 不再保存前从 previous 快照建目录 + 确保目录 反查。缺引用的完整条目由 必需引用 抛客户端校验错。
 
-    const 步骤: 写入步骤[] = [];
+    const 写入步骤们: 写入步骤[] = [];
 
     // profile
     if (JSON.stringify(转资料写入(next.基本信息)) !== JSON.stringify(转资料写入(旧页面.基本信息))) {
       const body = 转资料写入(next.基本信息);
-      步骤.push(() => 请求<BFF简历>({ path: '/api/v1/me/resume/profile', method: 'PATCH', body, ifMatch: 修订etag(previous.profile_revision) }).then((r) => r.result));
+      写入步骤们.push(() => 请求<BFF简历>({ path: '/api/v1/me/resume/profile', method: 'PATCH', body, ifMatch: 修订etag(previous.profile_revision) }).then((r) => r.result));
     }
     // summary
     if (JSON.stringify(next.个人优势) !== JSON.stringify(旧页面.个人优势)) {
-      步骤.push(() => 请求<BFF简历>({ path: '/api/v1/me/resume/summary', method: 'PATCH', body: { value: next.个人优势 }, ifMatch: 修订etag(previous.summary_revision) }).then((r) => r.result));
+      写入步骤们.push(() => 请求<BFF简历>({ path: '/api/v1/me/resume/summary', method: 'PATCH', body: { value: next.个人优势 }, ifMatch: 修订etag(previous.summary_revision) }).then((r) => r.result));
     }
     // skills
     if (JSON.stringify(next.技能) !== JSON.stringify(旧页面.技能)) {
-      步骤.push(() => 请求<BFF简历>({ path: '/api/v1/me/resume/skills', method: 'PATCH', body: { skills: next.技能 }, ifMatch: 修订etag(previous.skills_revision) }).then((r) => r.result));
+      写入步骤们.push(() => 请求<BFF简历>({ path: '/api/v1/me/resume/skills', method: 'PATCH', body: { skills: next.技能 }, ifMatch: 修订etag(previous.skills_revision) }).then((r) => r.result));
     }
 
     // experiences + nested projects：用 旧页面.经历（已是页面形态）做 diff
@@ -102,34 +104,49 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
         continue;
       }
       if (!旧Page) {
-        const body = 转经历写入(段);
+        const 经历请求体 = 转经历写入(段);
+        // 新建经历的项目请求体同样在推入步骤前物化：全部映射/校验完成后才开始第一个 mutation。
+        const 项目请求体们 = (段.项目 ?? []).map((项目) => ({
+          name: 项目.名称,
+          role: 项目.角色,
+          result: 项目.结果,
+        }));
         // 新建经历的 POST 响应带回服务端分配的 id；用这个 id 再 POST 它的项目。
         // 旧实现只 POST 经历主体，项目 diff 仅对已有经历跑 → 新建带项目时项目丢失。
-        步骤.push(async () => {
-          const { result } = await 请求<BFF简历条目变更>({ path: '/api/v1/me/resume/experiences', method: 'POST', body, 幂等: true });
+        写入步骤们.push(async () => {
+          const { result } = await 请求<BFF简历条目变更>({
+            path: '/api/v1/me/resume/experiences',
+            method: 'POST',
+            body: 经历请求体,
+            幂等: true,
+          });
           const 新经历Id = result.entry.experience?.id;
           if (!新经历Id) return;
           // 将本地条目编号更新为服务端 id：若后续项目 POST 失败，catch 路径 GET 的权威快照
           // 已包含这条经历（服务端 id），重试时 previous 也有它 → diff 判定为已有条目，
           // 不会重复 POST 经历。项目也会 POST 到正确的服务端 id 下。
           段.编号 = 新经历Id;
-          for (const 项目 of 段.项目 ?? []) {
-            const 项目body = { name: 项目.名称, role: 项目.角色, result: 项目.结果 };
-            await 请求<BFF简历条目变更>({ path: `/api/v1/me/resume/experiences/${新经历Id}/projects`, method: 'POST', body: 项目body, 幂等: true });
+          for (const 项目请求体 of 项目请求体们) {
+            await 请求<BFF简历条目变更>({
+              path: `/api/v1/me/resume/experiences/${新经历Id}/projects`,
+              method: 'POST',
+              body: 项目请求体,
+              幂等: true,
+            });
           }
         });
       } else if (JSON.stringify(旧Page) !== JSON.stringify(段)) {
         // 经历段变化：PATCH 经历主体，再 diff 嵌套项目
         const body = 转经历写入(段);
-        步骤.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/experiences/${段.编号}`, method: 'PATCH', body, ifMatch: 修订etag(previous.experiences.find((e) => e.id === 段.编号)!.revision) }).then((r) => r.result));
-        步骤.push(...项目步骤(段, previous.experiences.find((e) => e.id === 段.编号)!));
+        写入步骤们.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/experiences/${段.编号}`, method: 'PATCH', body, ifMatch: 修订etag(previous.experiences.find((e) => e.id === 段.编号)!.revision) }).then((r) => r.result));
+        写入步骤们.push(...项目步骤(段, previous.experiences.find((e) => e.id === 段.编号)!));
       }
     }
     for (const 旧 of previous.experiences) {
       if (!next.经历.some((段) => 段.编号 === 旧.id)) {
         const id = 旧.id;
         const ifMatch = 修订etag(旧.revision);
-        步骤.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/experiences/${id}`, method: 'DELETE', ifMatch }).then((r) => r.result));
+        写入步骤们.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/experiences/${id}`, method: 'DELETE', ifMatch }).then((r) => r.result));
       }
     }
 
@@ -144,17 +161,17 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
       }
       if (!旧Page) {
         const body = 转教育写入(段);
-        步骤.push(() => 请求<BFF简历条目变更>({ path: '/api/v1/me/resume/educations', method: 'POST', body, 幂等: true }).then((r) => r.result));
+        写入步骤们.push(() => 请求<BFF简历条目变更>({ path: '/api/v1/me/resume/educations', method: 'POST', body, 幂等: true }).then((r) => r.result));
       } else if (JSON.stringify(旧Page) !== JSON.stringify(段)) {
         const body = 转教育写入(段);
-        步骤.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/educations/${段.编号}`, method: 'PATCH', body, ifMatch: 修订etag(previous.educations.find((e) => e.id === 段.编号)!.revision) }).then((r) => r.result));
+        写入步骤们.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/educations/${段.编号}`, method: 'PATCH', body, ifMatch: 修订etag(previous.educations.find((e) => e.id === 段.编号)!.revision) }).then((r) => r.result));
       }
     }
     for (const 旧 of previous.educations) {
       if (!next.教育.some((段) => 段.编号 === 旧.id)) {
         const id = 旧.id;
         const ifMatch = 修订etag(旧.revision);
-        步骤.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/educations/${id}`, method: 'DELETE', ifMatch }).then((r) => r.result));
+        写入步骤们.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/educations/${id}`, method: 'DELETE', ifMatch }).then((r) => r.result));
       }
     }
 
@@ -164,22 +181,22 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
       const 旧Page = 旧证书PageMap.get(段.编号);
       if (!旧Page) {
         const body = 转证书写入(段);
-        步骤.push(() => 请求<BFF简历条目变更>({ path: '/api/v1/me/resume/certificates', method: 'POST', body, 幂等: true }).then((r) => r.result));
+        写入步骤们.push(() => 请求<BFF简历条目变更>({ path: '/api/v1/me/resume/certificates', method: 'POST', body, 幂等: true }).then((r) => r.result));
       } else if (JSON.stringify(旧Page) !== JSON.stringify(段)) {
         const body = 转证书写入(段);
-        步骤.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/certificates/${段.编号}`, method: 'PATCH', body, ifMatch: 修订etag(previous.certificates.find((c) => c.id === 段.编号)!.revision) }).then((r) => r.result));
+        写入步骤们.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/certificates/${段.编号}`, method: 'PATCH', body, ifMatch: 修订etag(previous.certificates.find((c) => c.id === 段.编号)!.revision) }).then((r) => r.result));
       }
     }
     for (const 旧 of previous.certificates) {
       if (!next.证书.some((段) => 段.编号 === 旧.id)) {
         const id = 旧.id;
         const ifMatch = 修订etag(旧.revision);
-        步骤.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/certificates/${id}`, method: 'DELETE', ifMatch }).then((r) => r.result));
+        写入步骤们.push(() => 请求<BFF简历>({ path: `/api/v1/me/resume/certificates/${id}`, method: 'DELETE', ifMatch }).then((r) => r.result));
       }
     }
 
     try {
-      for (const 步 of 步骤) await 步();
+      for (const 步 of 写入步骤们) await 步();
     } catch (error) {
       const { result: 权威 } = await 请求<BFF简历>({ path: '/api/v1/me/resume' });
       if (error instanceof BFF错误) error.权威简历 = 权威;

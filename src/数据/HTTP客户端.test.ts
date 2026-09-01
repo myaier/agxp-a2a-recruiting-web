@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BFF错误, type BFF请求选项, 创建BFF客户端, 取后端错误文案 } from './HTTP客户端';
+import { BFF错误, 客户端校验错误, type BFF请求选项, 创建BFF客户端, 取后端错误文案 } from './HTTP客户端';
 
 describe('BFF HTTP 客户端', () => {
   it('始终带 Cookie，并返回 result、ETag', async () => {
@@ -68,6 +68,12 @@ describe('BFF HTTP 客户端', () => {
     }
     expect(取后端错误文案(new BFF错误(200, 'invalid_response', 'bad payload')))
       .toBe('服务返回异常，请稍后重试');
+  });
+
+  // Task 1：客户端字段校验错误直接显示具体原因，不落成网络错误文案。
+  it('客户端字段校验显示具体原因而不是网络错误', () => {
+    expect(取后端错误文案(new 客户端校验错误('certificate.year', '证书年份超出范围')))
+      .toBe('证书年份超出范围');
   });
 
   it('FormData 原样发送且不手写 Content-Type', async () => {

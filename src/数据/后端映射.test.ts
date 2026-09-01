@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { 从BFF简历, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿 } from './后端映射';
+import { 从BFF简历, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿, 转证书写入, 转证书 } from './后端映射';
 import { BFF意向样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 import type { 意向草稿型, 岗位创建上下文 } from './招聘数据源类型';
+import type { BFF证书 } from './BFF契约';
+import { 取后端错误文案 } from './HTTP客户端';
 
 /** 构造空草稿（含 Task 6 新增的 办公方式 字段），测试用展开覆盖个别字段 */
 const 空草稿: 意向草稿型 = {
@@ -67,6 +69,39 @@ describe('候选人后端映射', () => {
       编号: 'exp_local', 公司: '云衢', 行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' },
       职位: '工程师', 开始: '2021-01', 结束: null, 内容: '平台', 隐藏: true,
     })).toMatchObject({ industry_id: 'tax_i' });
+  });
+
+  // Task 1：证书 year 是可空契约 —— 没填年份显式写 null，绝不编造年份；非法年份在客户端拒绝。
+  it('证书没有取得年份时显式写 null，不编造年份', () => {
+    expect(转证书写入({ 编号: 'local-1', 名称: 'CET-4', 年份: '' }))
+      .toEqual({ name: 'CET-4', year: null });
+  });
+
+  it.each(['1899', '2101', '2024.5', '二零二四', 'NaN'])(
+    '拒绝非法证书年份 %s',
+    (年份) => {
+      expect(() => 转证书写入({ 编号: 'local-1', 名称: 'PMP', 年份 }))
+        .toThrow('证书年份必须是 1900 到 2100 之间的整数');
+    },
+  );
+
+  it('证书有合法年份时写整数', () => {
+    expect(转证书写入({ 编号: 'local-1', 名称: 'PMP', 年份: '2024' }))
+      .toEqual({ name: 'PMP', year: 2024 });
+  });
+
+  it('权威 null 年份回读为空字符串', () => {
+    expect(转证书({ id: 'cert-1', name: 'CET-4', year: null, revision: 1 }))
+      .toEqual({ 编号: 'cert-1', 名称: 'CET-4', 年份: '' });
+  });
+
+  it('权威证书缺失 year 时按响应契约错误拒绝', () => {
+    try {
+      转证书({ id: 'cert-1', name: 'CET-4', revision: 1 } as BFF证书);
+      expect.unreachable('缺失 year 必须失败');
+    } catch (错误) {
+      expect(错误).toMatchObject({ status: 200, code: 'invalid_response' });
+    }
   });
 
   it('没有候选引用时抛出请从候选选择，不反查目录', () => {
@@ -403,5 +438,50 @@ describe('候选人后端映射', () => {
       exclusions: ownerCampus.exclusions, private_preferences: ownerCampus.private_preferences,
     });
     expect(body.compensation.annual_salary_months).toBe(ownerCampus.compensation.annual_salary_months);
+  });
+
+  // Task 1：意向路径的本地校验失败必须是 客户端校验错误（带稳定 field 名），
+  // 取后端错误文案 直接给出具体原因，不再落成网络错误文案。
+  it('意向本地校验失败显示具体原因而不是网络错误', () => {
+    const 意向草稿 = {
+      ...空草稿,
+      工作城市: '上海',
+      期望职位: '产品经理',
+      工作城市引用: ref('loc_shanghai', '上海'),
+      职位引用: ref('tax_product', '产品经理'),
+      薪资下限: 10,
+      薪资上限: 20,
+    };
+    const 首次输入 = {
+      职位们: ['产品经理'],
+      城市们: ['上海'],
+      薪资: { 下限: 10, 上限: 20, 单位: '月薪K' as const },
+      筛选偏好: {
+        求职类型: ['社招全职'] as ['社招全职'],
+        办公方式: ['混合'] as ['混合'],
+      },
+      排除项: [],
+      职位引用: ref('tax_product', '产品经理'),
+      城市引用们: [],
+    };
+
+    const 捕获 = (调用: () => unknown) => {
+      try {
+        调用();
+        throw new Error('预期调用失败');
+      } catch (错误) {
+        return 错误;
+      }
+    };
+    const 办公错误 = 捕获(() => 转意向写入({ ...意向草稿, 办公方式: [] }, { 原始: null }));
+    const 城市错误 = 捕获(() => 转首次意向写入(首次输入));
+    expect(办公错误).toMatchObject({ field: 'intention.workplace_modes', message: '请先完善办公方式' });
+    expect(城市错误).toMatchObject({ field: 'intention.primary_location_id', message: '请从候选城市中选择' });
+    expect(取后端错误文案(办公错误)).toBe('请先完善办公方式');
+    expect(取后端错误文案(城市错误)).toBe('请从候选城市中选择');
+
+    // 编辑意向路径缺城市引用同样落 intention.primary_location_id，与首次路径同一原因
+    expect(捕获(() => 转意向写入({ ...意向草稿, 工作城市引用: undefined, 办公方式: ['混合'] }, { 原始: null })))
+      .toMatchObject({ field: 'intention.primary_location_id', message: '请从候选城市中选择' });
   });
 });

@@ -1,0 +1,39 @@
+/* 标注评审布局：标注工具与设备内容分道 —— 工具不再悬在设备里挡业务键。
+ *
+ * 窄视口（手机档）：两行 —— 设备内容占 1fr，底部 80px 是标注工具行。
+ * 工具行按「最大高度」定尺寸（计数角标 22 + gap 6 + 铅笔 34 = 62px + 余量），
+ * 而不是零标注时只剩铅笔的矮分支 —— 否则角标一出现就会溢出行高。
+ * 宽视口：两列 —— 设备内容占 1fr，右侧 64px 是常驻工具列。
+ *
+ * 启动器本体经 React portal 挂进 .工具占位 车道（见 标注层.tsx / main.tsx），
+ * 这里只管车道与启动器自身的排布；标注层其余部分（意见输入条、导出面板、遮罩）
+ * 仍是 设备外框 内 absolute inset:0 的设备尺寸覆盖件，不跟着出设备。 */
+
+.评审布局 {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 80px;
+  overflow: hidden;
+}
+.应用槽 { min-width: 0; min-height: 0; }
+.工具占位 {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+}
+.启动器 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+@media (min-width: 700px) and (min-height: 640px) and (pointer: fine),
+       (min-width: 1024px) and (min-height: 600px) {
+  .评审布局 {
+    grid-template-columns: minmax(0, 1fr) 64px;
+    grid-template-rows: minmax(0, 1fr);
+  }
+}

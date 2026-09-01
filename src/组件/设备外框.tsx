@@ -22,18 +22,23 @@ const 机身高 = 874;
 const 机身模式最小宽 = 700;
 const 机身模式最小高 = 640;
 
-export default function 设备外框({ children }: { children: ReactNode }) {
+/**
+ * 填满父级：标注评审布局（标注层.module.css）里外框交给 grid 槽定高 ——
+ * 主槽是 1fr 而不是整个视口，两种形态自带的 100dvh 会被 .填满父级 覆盖（见 CSS 尾部）。
+ * 缺省不传：外框继续自己占满视口，缺省构建的布局一像素不动。
+ */
+export default function 设备外框({ children, 填满父级 }: { children: ReactNode; 填满父级?: boolean }) {
   const 机身模式 = use机身模式();
   const 缩放 = use整机缩放(机身模式);
 
   if (!机身模式) {
     // 真手机：铺满视口，安全区由 :root 的 env() 提供
     // data-遮罩挂载点：换壳遮罩挂在这里，盖住的就是用户看到的整块屏（见 路由/换壳遮罩.ts）
-    return <div className={样式.全屏} data-遮罩挂载点>{children}</div>;
+    return <div className={填满父级 ? `${样式.全屏} ${样式.填满父级}` : 样式.全屏} data-遮罩挂载点>{children}</div>;
   }
 
   return (
-    <div className={样式.画布}>
+    <div className={填满父级 ? `${样式.画布} ${样式.填满父级}` : 样式.画布}>
       <div className={样式.缩放层} style={{ transform: `scale(${缩放})` }}>
         {/* data-遮罩挂载点 打在机身层而不是屏幕层：换壳遮罩要盖住机身内的一切
             —— 屏幕内容、灵动岛、状态栏、home 横条，一条缝都不留 */}
