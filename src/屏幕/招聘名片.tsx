@@ -12,11 +12,14 @@
 //   Mock    —— 上述就地编辑原型原样保留（读 企业认证 fixture，落 存企业认证，去发岗）。
 //   Backend —— 姓名槽显示 verified_name ?? public_name（verified 即只读），职务落 title，
 //              一次保存调 保存招聘方档案；公司槽读 current affiliation / 未认证声明，
-//              多个可用关系列出待选、不自动猜。头像走原子保存：选图只生成 object URL
+//              多个可用关系列出待选、不自动猜。公司格是受控输入，和姓名/职务一样只在
+//              按下保存 里落库（不再 blur 即落，否则按钮会抢在 blur 之前吃掉这一下）。
+//              头像走原子保存：选图只生成 object URL
 //              内存预览（不压 data URL、不落 存招聘头像），保存时调 替换招聘方头像，
 //              成功后由 operation 用响应里的 avatar_url/revision 替换权威档案、回收预览。
 
 import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import 样式 from './招聘名片.module.css';
 import {
   次级页外壳,
@@ -49,6 +52,10 @@ const 头像字节上限 = 10 * 1024 * 1024;
 function 后端名片() {
   const { 跳转, 返回 } = use导航();
   const { 状态, 操作, 后端状态 } = use应用状态();
+  // 注册流标记由招聘路由守卫 / 选身份写进 history.state：只有它决定保存成功后是继续去发岗，
+  // 还是（应用内普通编辑）留在本屏。应用内进来的名片没有这个标记
+  const 位置 = useLocation();
+  const 从注册流 = Boolean((位置.state as { 从注册流?: boolean } | null)?.从注册流);
   const 文件框 = useRef<HTMLInputElement>(null);
   const 身份 = 从BFF招聘身份(
     状态.招聘方档案, 状态.企业关系列表, 状态.当前企业关系编号, 状态.企业管理员申请列表,
@@ -99,22 +106,60 @@ function 后端名片() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [主体标识]);
 
-  /** 保存一次带 public_name 与 title；失败原样抛回给按钮层（输入不清空） */
-  const 保存 = () => 操作.保存招聘方档案({ public_name: 公开名, title: 职务 });
+  // ── 公司：受控字段，权威值 = current affiliation，没有关系时回落未认证声明 ──
+  // 原来这一格是 defaultValue + onBlur 收笔：全新招聘方在名片上填完公司直接按保存，
+  // 按钮抢在 blur 之前吃掉这一下，声明从没落过 —— 发岗那边拿到空 company claim。
+  // 现在输入即入 state，落库统一由 按下保存 这一条有序路径负责。
+  const 权威公司 = 身份.currentAffiliation?.organizationName ?? 状态.未认证公司声明;
+  const [公司, 设公司] = useState(权威公司);
+  // 权威值变化（水合晚于进屏 / 选了任职企业）或换账号都要重新同步，不把上一份留在框里
+  useEffect(() => 设公司(权威公司), [主体标识, 权威公司]);
+  /** 没有 current affiliation 时，未认证声明是发岗 company claim 的唯一来源，必填 */
+  const 需要公司声明 = 身份.currentAffiliation === null;
 
+  // 单飞保存：按钮 disabled 挡住鼠标，保存锁挡住 disabled 生效前的重入（键盘连按 / 竞态）
+  const [保存中, 设保存中] = useState(false);
+  const 保存锁 = useRef(false);
+
+  /** 一次保存 = 公司声明 → 档案 PATCH →（有待传头像才）头像 CAS，顺序固定。
+   *  本地校验不通过一律不发请求；失败保留输入、预览与文件，用户按同一个键重试。 */
   async function 按下保存() {
+    if (保存锁.current) return;
+    const publicName = 公开名.trim();
+    const title = 职务.trim();
+    const company = 公司.trim();
+    if (!publicName) {
+      轻提示('请填写姓名');
+      return;
+    }
+    if (需要公司声明 && !company) {
+      // 有可用任职关系却还没选当前：公司格在这一态根本不渲染（见下方渲染条件），
+      // 叫用户「填写公司名称」是死路 —— 这一态的正解是回去选当前任职企业
+      轻提示(可选关系.length > 0 ? '请选择当前任职企业' : '请填写公司名称');
+      return;
+    }
+    保存锁.current = true;
+    设保存中(true);
     try {
-      const 档案 = await 保存();
+      // 声明是账号内本地事实（不建 Organization），先落它再写档案：档案成功后
+      // 发岗立刻能读到同一份 claim
+      if (需要公司声明) 操作.保存未认证公司声明(company);
+      const 档案 = await 操作.保存招聘方档案({ public_name: publicName, title });
       if (头像文件) {
         // 头像 If-Match 必须用 PATCH 响应里的新 revision：dispatch 后 state ref 要到
         // 下一个 React 提交才更新，此刻读 ref 拿到的是旧 revision（真实 BFF 会 409）
         await 操作.替换招聘方头像(头像文件, 档案.revision);
         收口预览();
       }
-      轻提示('保存成功'); // 成功响应之后才提示
+      // 注册流：档案已经在服务端了，接着去发岗；应用内普通编辑留在本屏
+      if (从注册流) 跳转(路径.发布岗位, { 从注册流: true });
+      else 轻提示('保存成功'); // 成功响应之后才提示
     } catch (错误) {
       // 409/503 等失败保留 file 与预览，用户检查后按同一个保存键重试
       轻提示(取后端错误文案(错误));
+    } finally {
+      保存锁.current = false;
+      设保存中(false);
     }
   }
 
@@ -135,13 +180,6 @@ function 后端名片() {
     设头像文件(文件);
   }
 
-  /** 无可用任职关系时的公司输入：落未认证声明，不创建 Organization */
-  function 公司收笔(输入值: string) {
-    const 新值 = 输入值.trim();
-    if (新值 && 新值 !== 状态.未认证公司声明) 操作.保存未认证公司声明(新值);
-  }
-
-  const 公司显示 = 身份.currentAffiliation?.organizationName ?? 状态.未认证公司声明;
   // Backend 不落 存招聘头像：预览优先，权威头像始终来自 招聘方档案.avatar_url
   const 头像地址 = 头像预览 ?? 身份.avatarUrl;
 
@@ -196,7 +234,7 @@ function 后端名片() {
               ) : null}
             </span>
             <span className={`${样式.预览副行} 单行`}>
-              {职务 || '未设置职务'} · {公司显示 || '未设置企业'}
+              {职务 || '未设置职务'} · {公司 || '未设置企业'}
             </span>
           </span>
         </div>
@@ -267,8 +305,8 @@ function 后端名片() {
             <input
               className={样式.就地输入}
               aria-label="公司"
-              defaultValue={状态.未认证公司声明}
-              onBlur={(事件) => 公司收笔(事件.currentTarget.value)}
+              value={公司}
+              onChange={(事件) => 设公司(事件.target.value)}
               enterKeyHint="done"
             />
           </div>
@@ -282,7 +320,11 @@ function 后端名片() {
         />
       </滚动区>
 
-      <主按钮 文字="保存" 按下={按下保存} />
+      <主按钮
+        文字={保存中 ? '保存中…' : 从注册流 ? '保存并继续' : '保存'}
+        禁用={保存中}
+        按下={按下保存}
+      />
     </次级页外壳>
   );
 }

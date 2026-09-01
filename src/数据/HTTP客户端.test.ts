@@ -76,6 +76,37 @@ describe('BFF HTTP 客户端', () => {
       .toBe('证书年份超出范围');
   });
 
+  // Task 6：本地 Error 不冒充网络故障、不泄露内部文本；422 通用文案不展示机器 reason。
+  it('client validation 显示可行动文案，未知本地 Error 不冒充网络也不泄露内部文本', () => {
+    expect(取后端错误文案(new 客户端校验错误('requirements', '请填写职位要求')))
+      .toBe('请填写职位要求');
+    expect(取后端错误文案(new Error('招聘方档案状态尚未就绪，请刷新后重试')))
+      .toBe('请求失败，请稍后再试');
+  });
+
+  // review-final 修复 1：只有 code === 'network_error' 才是断网。客户端自铸的
+  // BFF错误 一律带 status 0（见 数据源层与 HTTP客户端 的入参拦截），旧实现的
+  // `status === 0 ||` 让每一条本地校验/本地契约错误都冒充「网络连不上」，
+  // 用户被支去查 wifi。真实传输故障永远带 network_error，判据只留这一条。
+  it('status 0 的本地校验错误不冒充网络失败，真正的 network_error 仍是网络文案', () => {
+    expect(取后端错误文案(new BFF错误(0, 'validation_failed', '规则内容需要 1 到 2000 个字符')))
+      .toBe('填写内容未通过校验');
+    expect(取后端错误文案(new BFF错误(0, 'invalid_response', '规则响应结构不合法')))
+      .toBe('服务返回异常，请稍后重试');
+    expect(取后端错误文案(new BFF错误(0, 'invalid_request', '幂等键只能与幂等请求一起提供')))
+      .toBe('幂等键只能与幂等请求一起提供');
+    expect(取后端错误文案(new BFF错误(0, 'network_error', '网络连接失败，请稍后再试')))
+      .toBe('无法连接后端服务，请检查网络或稍后重试');
+  });
+
+  it('422 保留 fieldErrors，但通用文案不展示机器 reason', () => {
+    const error = new BFF错误(422, 'validation_failed', 'bad', [
+      { path: 'requirements', reason: 'must_not_be_blank' },
+    ]);
+    expect(error.fieldErrors).toEqual([{ path: 'requirements', reason: 'must_not_be_blank' }]);
+    expect(取后端错误文案(error)).toBe('填写内容未通过校验');
+  });
+
   it('FormData 原样发送且不手写 Content-Type', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => new Response(
       JSON.stringify({ result: { ok: true }, meta: { request_id: 'r1', api_version: 'v1' } }),

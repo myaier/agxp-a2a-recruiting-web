@@ -3,7 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type BFF请求选项, type BFF响应 } from '../HTTP客户端';
-import { BFF岗位样本 } from '../../测试/BFF样本';
+import { BFF岗位样本, 页面岗位样本 } from '../../测试/BFF样本';
 import { 创建岗位附属存储 } from '../前端附属数据';
 import { 创建岗位数据源 } from './岗位';
 
@@ -51,6 +51,53 @@ describe('岗位数据源 hard_requirements 校验', () => {
     // 一个多余成员
     页返回([{ ...BFF岗位样本, hard_requirements: { ...完整硬性条件, extra_fact: true } }]);
     await expect(数据源.读取岗位()).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  // P0 修复 Task 4：POST /jobs 的 body 必须保住三条各自独立的非空文本，
+  // requirements 不许再从 description 复制过来（真实 BFF 把它们当两个字段）。
+  it('创建岗位 POST body 保留独立的公司声明 / 描述 / 要求三条文本', async () => {
+    请求Mock.mockImplementation(async (options: { method?: string }) => {
+      if (options.method === 'POST') {
+        return { result: { ...BFF岗位样本 }, etag: null, requestId: 'r-create' };
+      }
+      return { result: { jobs: [{ ...BFF岗位样本 }], next_cursor: null }, etag: null, requestId: 'r-jobs' };
+    });
+    await 数据源.创建岗位(
+      { ...页面岗位样本,
+        类别引用: { id: 'tax_product', display_name: '产品经理' },
+        地点引用: { id: 'loc_shanghai', display_name: '上海' },
+        职位描述: '负责真实后端整栈验收',
+        职位要求: '有分布式系统经验',
+      },
+      { publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null } },
+    );
+    const POST调用 = 请求Mock.mock.calls.find((调用) => 调用[0].method === 'POST');
+    expect(POST调用).toBeTruthy();
+    const body = POST调用![0].body as {
+      hiring_organization_claim: { display_name: string };
+      description: string;
+      requirements: string;
+    };
+    expect(body.hiring_organization_claim.display_name).toBe('星河科技');
+    expect(body.description).toBe('负责真实后端整栈验收');
+    expect(body.requirements).toBe('有分布式系统经验');
+    expect(body.requirements).not.toBe(body.description);
+  });
+
+  it('职位要求为空白时 创建岗位 在发请求前就拒绝', async () => {
+    请求Mock.mockImplementation(async () => {
+      throw new Error('不应该发出任何请求');
+    });
+    await expect(数据源.创建岗位(
+      { ...页面岗位样本,
+        类别引用: { id: 'tax_product', display_name: '产品经理' },
+        地点引用: { id: 'loc_shanghai', display_name: '上海' },
+        职位描述: '负责真实后端整栈验收',
+        职位要求: '   ',
+      },
+      { publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null } },
+    )).rejects.toMatchObject({ code: 'client_validation', field: 'requirements' });
+    expect(请求Mock).not.toHaveBeenCalled();
   });
 
   it('完整 hard_requirements 映射进页面 硬性事实，服务端快照保留 DTO', async () => {

@@ -40,6 +40,9 @@ function 创建隐私测试依赖(后端: HTTP招聘数据源, 服务端: BFF隐
         candidate: { rules: '未开始' as const, proposals: '未开始' as const },
         recruiter: { rules: '未开始' as const, proposals: '未开始' as const },
       },
+      // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段（这里的用例不触达它们）
+      招聘方档案水合阶段: '未开始' as const,
+      招聘方组织水合: { 阶段: '未开始' as const, 错误: null },
       // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
       ...创建空P4发现状态(),
       // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）

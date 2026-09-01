@@ -18,7 +18,7 @@ import 样式 from './发布岗位.module.css';
 import 数字滚轮层 from '../组件/数字滚轮层';
 import { 主按钮, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
-import { 取后端错误文案 } from '../数据/HTTP客户端';
+import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
@@ -26,6 +26,7 @@ import { use应用状态 } from '../状态/应用状态';
 import { 职业分类表, 查大类 } from '../数据/职业分类';
 import { use城市搜索 } from './城市查询钩子';
 import { 合并目录页 } from '../数据/目录选择';
+import { 可用企业关系 } from '../数据/组织映射';
 import { 空岗位硬性事实 } from '../数据/类型';
 import type { 在招岗位, 岗位硬性事实 } from '../数据/类型';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
@@ -78,6 +79,33 @@ const 是经验条 = (条: string) => /^\d+(?:-\d+)?\s*年以上(经验)?$/.test
 
 /** 这条硬性条件是不是学历条 */
 const 是学历条 = (条: string) => /^(大专|本科|硕士|博士)及以上$/.test(条);
+
+// ── P0 修复 Task 6：服务端 422 的岗位表单投影 ──────────────────────
+// 只把「已知字段路径 × 已知空值类 reason」翻成用户能照做的中文；未知路径或未知
+// reason 一律落通用岗位文案 —— 机器 reason 绝不原样上屏。
+const 可本地化空值原因 = new Set(['required', 'blank', 'must_not_be_blank']);
+const 岗位字段文案: Record<string, string> = {
+  'hiring_organization_claim.display_name': '请填写公司名称',
+  office_location: '请填写办公地点',
+  description: '请填写职位描述',
+  requirements: '请填写职位要求',
+};
+
+/** 归一字段路径：点分（a.b）与 JSON Pointer（/a/b）两种写法收敛成同一把 key。 */
+function 归一字段路径(path: string): string {
+  return path.startsWith('/') ? path.slice(1).replaceAll('/', '.') : path;
+}
+
+export function 取岗位提交错误文案(error: unknown): string {
+  if (!(error instanceof BFF错误) || error.code !== 'validation_failed') {
+    return 取后端错误文案(error);
+  }
+  for (const field of error.fieldErrors) {
+    const message = 岗位字段文案[归一字段路径(field.path)];
+    if (message && 可本地化空值原因.has(field.reason)) return message;
+  }
+  return '请检查岗位信息';
+}
 
 /** 从存量硬性条件里把经验档拆出来，如 '5 年以上经验' → '5 年以上'；拆不出返回 null */
 function 拆出经验(条件: string[] | undefined): string | null {
@@ -174,8 +202,9 @@ export default function 发布岗位() {
 
   // ── 第二步 / 第三步：描述与要求 ──
   const [职位描述, 设职位描述] = useState(编辑目标?.职位描述 ?? 职位描述预填);
-  // 输入区已删（2026-08-24），职位要求走预填/编辑值直提，不再有人改
-  const [职位要求] = useState(编辑目标?.职位要求 ?? 职位要求预填);
+  // P0 修复 Task 4：职位要求恢复为独立可编辑字段 —— 真实 BFF 的 JobCreate 把
+  // description 与 requirements 当两条互不复制的必填文本
+  const [职位要求, 设职位要求] = useState(编辑目标?.职位要求 ?? 职位要求预填);
   // 经验 / 学历是结构化档位：编辑存量岗位时优先读字段，老数据从硬性条件里拆
   const [经验要求, 设经验要求] = useState(
     编辑目标 ? 编辑目标.经验要求 ?? 拆出经验(编辑目标.硬性条件) ?? '不限' : '不限'
@@ -240,12 +269,28 @@ export default function 发布岗位() {
   };
 
   const 岗位信息缺失 = (): { 文案: string; 步骤: number } | null => {
-    if (职位描述.trim() === '') return { 文案: '请填写职位描述', 步骤: 1 };
-    if (工作城市.trim() === '') return { 文案: '请填写工作城市', 步骤: 2 };
-    if (办公地.trim() === '') return { 文案: '请填写办公地点', 步骤: 2 };
-    // 职位要求必填闸随输入区一起删（2026-08-24）：字段只剩预填/编辑值
+    // P0 修复 Task 4：JobCreate 的三条独立必填文本在这里先挡一道，
+    // 页面直接给可行动文案并把用户带回对应步骤，不让 422 从服务端兜回来。
+    if (!职位描述.trim()) return { 步骤: 1, 文案: '请填写职位描述' };
+    if (!职位要求.trim()) return { 步骤: 2, 文案: '请填写职位要求' };
+    if (!工作城市.trim()) return { 步骤: 2, 文案: '请填写工作城市' };
     // Task 7：Backend 工作城市必须从候选选（落 地点引用）；手输未选时阻止发布
-    if (是后端 && !地点引用) return { 文案: '请从候选城市中选择', 步骤: 2 };
+    if (是后端 && !地点引用) return { 步骤: 2, 文案: '请从候选城市中选择' };
+    // 公司声明只在 Backend 新建岗位时有意义（Mock 发岗语义冻结，仍走 企业认证.公司）：
+    // 新建走 JobCreate，没有可用的 verified 关系时 未认证公司声明 就是 claim 的唯一来源，
+    // 必须非空。编辑走 JobPatch —— 请求里根本不带客户端 claim，服务端沿用岗位原有的
+    // 那份声明，这里没有任何东西要护；何况本页没有公司名输入框（它在招聘名片屏），
+    // 换设备（未认证公司声明 是设备本地态）或关系被撤销时挡在这里，这条 toast 无从消解。
+    const verified = 状态.企业关系列表.some(
+      (项) => 项.affiliation_id === 状态.当前企业关系编号 && 可用企业关系(项),
+    );
+    if (是后端 && !编辑态 && !verified && !状态.未认证公司声明.trim()) {
+      // review-final：文案必须指路。本页没有公司名输入框，只说「请填写公司名称」
+      // 等于把用户弹回第二步去找一个不存在的字段。（文件头 岗位字段文案 里的同名
+      // 映射是服务端 422 的投影，属于契约层，不跟这条页面前置校验同步改。）
+      return { 步骤: 2, 文案: '请先在招聘名片填写公司名称' };
+    }
+    if (!办公地.trim()) return { 步骤: 2, 文案: '请填写办公地点' };
     // 面试轮次 / 招聘紧急度 两道闸门随字段一起撤（产品负责人 2026-08-22：
     // 「这个面试轮次写上面是干什么的，应该删掉吧」「这个招聘紧急程度也删了吧，感觉没什么用」）。
     // 剩下的岗位名称 / 职位类别 / 办公方式 / 薪资带 是发岗真必需项，闸门不动
@@ -339,7 +384,9 @@ export default function 发布岗位() {
       if (从注册流) 进企业初始化();
       else 进企业主壳();
     } catch (错误) {
-      轻提示(取后端错误文案(错误));
+      // 诊断只留在开发态；生产用户只看到本地化文案，绝不泄露内部错误对象。
+      if (import.meta.env.DEV) console.error('岗位提交失败', 错误);
+      轻提示(取岗位提交错误文案(错误));
     } finally {
       提交锁.current = false;
     }
@@ -478,6 +525,8 @@ export default function 发布岗位() {
             设工作城市={改工作城市}
             办公地={办公地}
             设办公地={设办公地}
+            职位要求={职位要求}
+            设职位要求={设职位要求}
             筛选要求={筛选要求}
             设筛选要求={设筛选要求}
             // Task 5：四问硬性事实三态钮 + 存量手动条只读展示（第三步 硬性条件 区）
@@ -1126,6 +1175,8 @@ function 职位要求步({
   设工作城市,
   办公地,
   设办公地,
+  职位要求,
+  设职位要求,
   筛选要求,
   设筛选要求,
   存量硬性条件,
@@ -1156,6 +1207,9 @@ function 职位要求步({
   设工作城市: (值: string) => void;
   办公地: string;
   设办公地: (值: string) => void;
+  // P0 修复 Task 4：写给候选人看的职位要求（与职位描述互相独立的必填文本）
+  职位要求: string;
+  设职位要求: (值: string) => void;
   筛选要求: string;
   设筛选要求: (值: string) => void;
   // Task 5：四问硬性事实（服务端 hard_requirements 的页面投影）
@@ -1319,7 +1373,22 @@ function 职位要求步({
 
       </div>
 
-      {/* 「给候选人看的职位要求」输入按标注 2026-08-24 删除（与职位描述重复）*/}
+      {/* P0 修复 Task 4：恢复独立的职位要求输入 —— BFF 的 requirements 是必填且
+          不能由 description 顶替（页面/操作/映射三层各挡一道） */}
+      <div className={样式.要求文标}>给候选人看的职位要求</div>
+      <div className={样式.描述卡}>
+        <textarea
+          className={样式.描述输入}
+          value={职位要求}
+          onChange={(事件) => 设职位要求(事件.target.value)}
+          placeholder="请填写候选人需要具备的经验、能力与条件"
+          maxLength={5000}
+          aria-label="职位要求"
+        />
+        <div className={样式.描述底}>
+          <span className={`${样式.描述计数} 等宽数字`}>{职位要求.length} / 5000</span>
+        </div>
+      </div>
 
       {/* 「AI 初筛条件确认」卡按标注 2026-08-26 删除:chips 全为同页表单复述;
           唯一有信息量的薪资承诺句已降格为薪资区的小字 */}

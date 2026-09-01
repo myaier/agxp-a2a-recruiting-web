@@ -107,6 +107,9 @@ function 创建P4操作测试环境(): P4操作测试环境 {
       candidate: { rules: '未开始', proposals: '未开始' },
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
+    // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段（这里的用例不触达它们）
+    招聘方档案水合阶段: '未开始' as const,
+    招聘方组织水合: { 阶段: '未开始' as const, 错误: null },
     ...创建空P4发现状态(),
     // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
     ...创建空P5MatchCase状态(),
@@ -970,7 +973,8 @@ describe('P4 闭合错误文案', () => {
       .toBe('操作结果暂未确认，请稍后重试');
     // 闭合表之外的 HTTP code 与运行时错误才回落现有映射
     expect(P4错误文案(new BFF错误(500, 'unexpected_code', 'boom'))).toBe('boom');
-    expect(P4错误文案(new TypeError('x'))).toBe('网络连接失败，请稍后再试');
+    // P0 修复 Task 6：运行时错误回落通用请求失败文案，不冒充网络故障。
+    expect(P4错误文案(new TypeError('x'))).toBe('请求失败，请稍后再试');
   });
 
   it('P4拒绝文案 与 P4委托终态文案 逐项冻结', () => {

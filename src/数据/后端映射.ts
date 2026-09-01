@@ -49,6 +49,32 @@ function 必需引用(value: 目录选择值 | undefined, label: string, field: 
   return value.id;
 }
 
+/**
+ * P0 修复 Task 4：岗位写入用的必填自由文本。真实 BFF 的 JobCreate 把
+ * hiring_organization_claim.display_name / description / requirements 当三条互相独立的
+ * 非空字符串，任何一条 trim 后为空都是 422 —— 这里在生成 body 之前先 fail closed。
+ * 与上面的 必需引用（Catalog 引用校验）互不替代：两套校验并存，谁都不放宽谁。
+ */
+function 必需岗位文本(value: string | undefined, field: string, message: string): string {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) throw new 客户端校验错误(field, message);
+  return trimmed;
+}
+
+/** 创建用的用人企业声明：display_name 必填并 trim；legal_name 空白按 null 发出。 */
+function 合法用人企业声明(
+  claim: 岗位创建上下文['hiringOrganizationClaim'],
+): 岗位创建上下文['hiringOrganizationClaim'] {
+  return {
+    display_name: 必需岗位文本(
+      claim.display_name,
+      'hiring_organization_claim.display_name',
+      '请填写公司名称',
+    ),
+    legal_name: claim.legal_name?.trim() || null,
+  };
+}
+
 /** 后端 null → 页面可选空字符串；数值年份/月份 → 字符串。 */
 function 转基本(资料: BFF简历资料): 基本信息 {
   const 基本: 基本信息 = {
@@ -493,7 +519,7 @@ export function 转岗位创建(页面岗位: 在招岗位, 上下文: 岗位创
   const { lower, upper } = 解析薪资带(页面岗位.薪资带);
   return {
     publisher_mode: 上下文.publisherMode,
-    hiring_organization_claim: 上下文.hiringOrganizationClaim,
+    hiring_organization_claim: 合法用人企业声明(上下文.hiringOrganizationClaim),
     title: 页面岗位.名称,
     recruitment_type: 岗位类型到后端[页面岗位.招聘类型 as keyof typeof 岗位类型到后端],
     category_id: 必需引用(页面岗位.类别引用, '类别', 'job.category_id'),
@@ -511,10 +537,10 @@ export function 转岗位创建(页面岗位: 在招岗位, 上下文: 岗位创
     education_requirement: 学历到后端[页面岗位.最低学历 as keyof typeof 学历到后端] ?? 'none',
     // P3：四员块整体可选；页面没有 硬性事实（老 Mock 岗）时不硬造缺省对象
     ...(页面岗位.硬性事实 ? { hard_requirements: 硬性事实到后端(页面岗位.硬性事实) } : {}),
-    description: 页面岗位.职位描述 ?? '',
-    // 产品已删除与职位描述重复的职位要求输入；新建态的隐藏字段为空时，复用用户
-    // 已确认的职位描述，满足 BFF requirements 必填契约。编辑态的服务端原值非空，原样保留。
-    requirements: 页面岗位.职位要求?.trim() ? 页面岗位.职位要求 : (页面岗位.职位描述 ?? ''),
+    // P0 修复 Task 4：描述与要求是两条互相独立的必填文本，
+    // 「requirements 为空就复用 description」的老回退已删。
+    description: 必需岗位文本(页面岗位.职位描述, 'description', '请填写职位描述'),
+    requirements: 必需岗位文本(页面岗位.职位要求, 'requirements', '请填写职位要求'),
     keywords: 页面岗位.职位关键词,
     private_screening_preferences: 页面岗位.筛选要求 ?? '',
   };
@@ -549,8 +575,10 @@ export function 转岗位补丁(
     education_requirement: 学历到后端[页面岗位.最低学历 as keyof typeof 学历到后端] ?? 'none',
     // P3：页面带 硬性事实 才写四员块；缺省（absent）= 服务端保持存储值
     ...(页面岗位.硬性事实 ? { hard_requirements: 硬性事实到后端(页面岗位.硬性事实) } : {}),
-    description: 页面岗位.职位描述 ?? '',
-    requirements: 页面岗位.职位要求 ?? '',
+    // P0 修复 Task 4：补丁的 claim 仍归服务端所有（上面沿用 previous），
+    // 只对用户可编辑的描述与要求做同一套非空保护 —— 历史坏 claim 不该挡住普通 JD 编辑。
+    description: 必需岗位文本(页面岗位.职位描述, 'description', '请填写职位描述'),
+    requirements: 必需岗位文本(页面岗位.职位要求, 'requirements', '请填写职位要求'),
     keywords: 页面岗位.职位关键词,
     private_screening_preferences: 页面岗位.筛选要求 ?? '',
   };

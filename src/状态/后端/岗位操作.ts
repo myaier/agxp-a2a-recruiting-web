@@ -2,7 +2,7 @@
 // 从 应用状态提供者 的 useMemo 操作体按真实后端 owner 拆出，行为逐字保持：
 // 写锁 / 409 + 503 重读岗位 / 401 统一清理 / revision 全部原样。接口失败绝不回退 Mock。
 
-import { BFF错误 } from '../../数据/HTTP客户端';
+import { BFF错误, 客户端校验错误 } from '../../数据/HTTP客户端';
 import { 可用企业关系 } from '../../数据/组织映射';
 import type { BFF企业关系 } from '../../数据/BFF契约';
 import type { 后端操作依赖, 岗位操作 } from './类型';
@@ -14,17 +14,22 @@ import { 清账号状态 } from './会话操作';
  * current active verified relation（Organization active 且关系 verified）只把批准的
  * organization_display_name 作为 direct claim 默认值；没有可用 current relation 时用
  * 未认证公司声明，仍允许发岗。refs / verification status 一律由服务端推导。
+ *
+ * P0 修复 Task 4：真实 BFF 的 JobCreate 要求 hiring_organization_claim.display_name
+ * trim 后非空。两个来源都只有空白时在 operation 层 fail closed —— 一个创建请求都不发，
+ * 让页面拿 客户端校验错误 弹可行动文案，而不是等服务端 422。
  */
-function 取发岗声明(状态: { 企业关系列表: BFF企业关系[]; 当前企业关系编号: string | null; 未认证公司声明: string }): 岗位创建上下文 {
-  const 当前 = 状态.企业关系列表.find((项) => 项.affiliation_id === 状态.当前企业关系编号);
+export function 取发岗声明(状态: { 企业关系列表: BFF企业关系[]; 当前企业关系编号: string | null; 未认证公司声明: string }): 岗位创建上下文 {
+  const 当前 = 状态.企业关系列表.find(
+    (项) => 项.affiliation_id === 状态.当前企业关系编号 && 可用企业关系(项),
+  );
+  const 声明名 = (当前?.organization_display_name ?? 状态.未认证公司声明).trim();
+  if (!声明名) {
+    throw new 客户端校验错误('hiring_organization_claim.display_name', '请填写公司名称');
+  }
   return {
     publisherMode: 'direct',
-    hiringOrganizationClaim: {
-      display_name: 当前 !== undefined && 可用企业关系(当前)
-        ? 当前.organization_display_name
-        : 状态.未认证公司声明,
-      legal_name: null,
-    },
+    hiringOrganizationClaim: { display_name: 声明名, legal_name: null },
   };
 }
 

@@ -74,6 +74,39 @@ export interface 后端状态 extends P4发现状态, P5MatchCase状态, P7会�
   Agent规则水合: Record<BFF角色, Agent规则角色水合状态>;
   // ── P2：候选人附件简历库的权威快照（0–3 行 + limits）；未登录 / 已清理时为 null。 ──
   附件简历库: BFF附件简历库 | null;
+  // ── P0 修复 Task 1：招聘方 onboarding 的两个闭合运行时阶段 ──
+  /** profile 资源自身的阶段：404 not_found 是「档案还没建」的合法缺失态，不是失败。 */
+  招聘方档案水合阶段: 招聘方档案水合阶段;
+  /** profile → affiliations → current organization 整条链的聚合阶段。 */
+  招聘方组织水合: 招聘方组织水合状态;
+}
+
+/**
+ * P0 修复 Task 1：招聘方 profile 资源的闭合阶段。
+ * 缺失 专指 GET /recruiter/profile 回 404 not_found —— 全新招聘方还没建档案，
+ * 引导流程要据此进入建档，而不是把整条组织水合判成失败。其余任何失败仍是 失败。
+ */
+export type 招聘方档案水合阶段 = '未开始' | '进行中' | '缺失' | '成功' | '失败';
+
+/** P0 修复 Task 1：profile → affiliations → current organization 整条链的聚合阶段。 */
+export interface 招聘方组织水合状态 {
+  阶段: '未开始' | '进行中' | '成功' | '失败';
+  错误: string | null;
+}
+
+/**
+ * P0 修复 Task 1：两个招聘方水合阶段的干净底座。
+ * Provider 种子与 清账号状态 / 换主体登录 / 切身份 三个转移口共用同一形状，
+ * 保证任何转移后的水合都从 未开始 起跑，阶段不会粘住上个会话/角色的残留。
+ */
+export function 创建空招聘方组织水合状态(): Pick<
+  后端状态,
+  '招聘方档案水合阶段' | '招聘方组织水合'
+> {
+  return {
+    招聘方档案水合阶段: '未开始',
+    招聘方组织水合: { 阶段: '未开始', 错误: null },
+  };
 }
 
 /** P6 单个水合子域的生命周期阶段。 */
@@ -341,6 +374,9 @@ export interface 会话操作 {
   微信登录(): Promise<string | null>;
   退出登录(): Promise<void>;
   切身份(to: '求职者' | '招聘方'): Promise<void>;
+  /** P0 修复 Task 2：招聘方数据的显式重试 —— 重跑组织链后再读一次 owner jobs，
+   *  不重跑其它角色域。失败原样 reject（401 已走统一清账号状态），由调用方呈现。 */
+  重新水合招聘方数据(): Promise<void>;
 }
 
 export interface 候选操作 {
@@ -376,6 +412,9 @@ export interface 组织操作 {
   上传并发布企业媒体(purpose: BFF企业媒体用途, file: File): Promise<void>;
   移除企业媒体(purpose: BFF企业媒体用途, mediaId: string): Promise<void>;
   读取公开企业(id: string): Promise<void>;
+  /** P0 修复 Task 1：重跑整条 profile → affiliations → current organization 链。
+   *  失败原样 reject（含会话失效的 客户端校验错误），由调用方呈现。 */
+  重新水合招聘方组织(): Promise<void>;
 }
 
 /**

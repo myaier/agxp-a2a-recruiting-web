@@ -3,12 +3,8 @@
   <head>
     <meta charset="UTF-8" />
 
-    <!-- viewport-fit=cover 是 env(safe-area-inset-*) 生效的前提；
-         user-scalable=no 关掉双指缩放与双击放大，让网页里的操作手感接近原生 App。 -->
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover"
-    />
+    <!-- viewport-fit=cover keeps safe-area insets; browser zoom remains available for accessibility. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
     <!-- 内部原型：GitHub Pages 上的仓库必须公开，用 noindex 至少挡掉搜索引擎收录 -->
     <meta name="robots" content="noindex, nofollow" />

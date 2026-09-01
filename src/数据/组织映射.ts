@@ -127,6 +127,30 @@ export function 选择当前企业关系(
   return 可用者.length === 1 ? 可用者[0].affiliation_id : null;
 }
 
+// ── 企业认证状态投影（招聘端设置的「企业实名认证」行）──
+
+export type 企业认证状态文案 = '未认证' | '审核中' | '已认证' | '已拒绝' | '已撤销' | '已解除';
+
+/** 只由 affiliation / admin request 两类服务端事实决定，优先级固定：
+ *  current 可用关系 > 最新申请 pending/rejected/cancelled > 存在 revoked 关系 > 未认证。
+ *  刻意不读 未认证公司声明（自填自由文本不构成认证），也不代入个人两态
+ *  personal_verification_status（那是本人实名，不是企业实名）。 */
+export function 取企业认证状态文案(
+  affiliations: BFF企业关系[],
+  currentAffiliationId: string | null,
+  requests: BFF企业管理员申请[],
+): 企业认证状态文案 {
+  const current = affiliations.find((item) => item.affiliation_id === currentAffiliationId);
+  if (current && 可用企业关系(current)) return '已认证';
+  // 服务端列表按最新在前返回（与 转最新申请视图 同一口径），取首条作为最新状态
+  const latest = requests[0];
+  if (latest?.status === 'pending') return '审核中';
+  if (latest?.status === 'rejected') return '已拒绝';
+  if (latest?.status === 'cancelled') return '已撤销';
+  if (affiliations.some((item) => item.status === 'revoked')) return '已解除';
+  return '未认证';
+}
+
 // ── 企业档案 wire ↔ 页面资料 ──
 
 export function 从BFF企业档案(profile: BFF企业档案): 资料形 {

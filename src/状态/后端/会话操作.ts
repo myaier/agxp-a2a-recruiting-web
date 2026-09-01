@@ -3,12 +3,13 @@
 // 401 / 409 / 503 / stale response / revision / 主体标识变化清理 / 会话代际守卫全部原样。
 // 不改变加载、错误、stale response guard、revision 或水合时序；接口失败绝不回退 Mock。
 
-import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
+import { BFF错误, 客户端校验错误, 取后端错误文案 } from '../../数据/HTTP客户端';
 import type { BFF主体, BFF角色 } from '../../数据/BFF契约';
 import type { 页面简历快照, 页面意向快照, 页面岗位快照 } from '../../数据/招聘数据源类型';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { 轻提示 } from '../../组件/轻提示';
 import type { 后端状态, 后端操作依赖, 会话操作 } from './类型';
+import { 创建空招聘方组织水合状态 } from './类型';
 import { 水合Agent规则角色数据 } from './Agent规则操作';
 import { 水合招聘方组织数据 } from './组织操作';
 import { 创建空P4发现状态 } from './发现推荐操作';
@@ -135,6 +136,9 @@ export function 清账号状态(
     ...创建空P7会话状态(),
     // P8 Task 3：控制面三块账号快照（凭证/会话/导出）一并回空底座，不跨主体 / 不跨会话存活
     ...创建空P8控制面状态(),
+    // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段回 未开始，不把上个会话的
+    // 缺失/失败判定留给下一个登录
+    ...创建空招聘方组织水合状态(),
     初始化: '完成',
     已登录: false,
     主体: null,
@@ -280,7 +284,8 @@ export async function 水合角色数据(
     // P1C：current relation 恢复值只在最新 Affiliations 返回后经 选择当前企业关系() 校验进 state
     const restoredId = deps.读取恢复企业关系编号(主体.subject_id);
     // P6 Task 4：规则三路读取先行起跑，与组织/岗位解耦；组织水合保持 P1C 固定顺序 ——
-    // owner Jobs 只在组织水合之后读取（组织 401 时不发 Jobs），组织失败不清空岗位水合。
+    // P0 修复 Task 1：owner Jobs 只在整条组织链成功之后读取 —— 组织链失败（401 或非 401）
+    // 一律不发 Jobs，不在失败的组织事实上继续拼岗位盘。
     const p6Promise = 水合Agent规则角色数据(
       { 后端, 派发, 设后端状态, 主体标识引用, 会话代际 },
       角色,
@@ -289,7 +294,12 @@ export async function 水合角色数据(
     );
     const [组织岗位落点] = await Promise.allSettled([
       (async (): Promise<{ sessionExpired: boolean; 岗位快照?: 页面岗位快照 }> => {
-        const organizationResult = await 水合招聘方组织数据(deps, 主体.subject_id, generation, restoredId, 交互);
+        const organizationResult = await 水合招聘方组织数据(
+          deps,
+          主体.subject_id,
+          generation,
+          restoredId,
+        );
         if (organizationResult.sessionExpired) return organizationResult;
         return { sessionExpired: false, 岗位快照: await 后端.读取岗位() };
       })(),
@@ -317,10 +327,10 @@ export async function 水合角色数据(
         设后端状态((旧) => ({ ...旧, 岗位快照: 岗位快照.服务端 }));
       }
     } else if (交互) {
-      // 交互模式：组织水合的非 401 失败 / Jobs 失败 原样抛回（组织水合交互路径本来就抛）
+      // 交互模式：组织链或 Jobs 的非 401 失败原样抛回（helper 一律 reject，不吞非 401）
       throw 组织岗位落点.reason;
     } else {
-      // mount 模式：Jobs 失败只 轻提示（组织水合的非 401 失败在其内部已 轻提示，不会 reject）
+      // mount 模式：组织链或 Jobs 的非 401 失败都在这里提示一次；helper 只记录阶段并 reject。
       轻提示(取后端错误文案(组织岗位落点.reason));
     }
     // P6 非 401 失败：既有错误策略（mount 只 轻提示；交互抛第一个），不回滚已提交的组织/岗位
@@ -401,6 +411,8 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
           ...创建空P4发现状态(),
           ...创建空P7会话状态(),
           ...创建空P8控制面状态(),
+          // P0 修复 Task 1：A 的招聘方水合阶段同样不能串进 B
+          ...创建空招聘方组织水合状态(),
           简历快照: null,
           意向快照: {},
           岗位快照: {},
@@ -481,6 +493,9 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
         ...重置Agent规则后端状态(旧),
         ...创建空P4发现状态(),
         ...创建空P7会话状态(),
+        // P0 修复 Task 1：切角色是角色转移 —— 招聘方两个水合阶段回干净底座，
+        // 目标角色从 未开始 重跑完整链路，阶段不粘住上个角色的 缺失/失败
+        ...创建空招聘方组织水合状态(),
         附件简历库: null,
       }));
       清P4发现引用({ P4范围代际, P4幂等意图, P4可见范围 });
@@ -508,6 +523,43 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
       if (会话失效) {
         // review-r3 R3-I-2：清账号状态 已在 水合角色数据 内部清完（含主体标识 + 会话代际）
         return;
+      }
+    },
+    /**
+     * P0 修复 Task 2：招聘方数据的显式重试（恢复面的「重试」按钮）。
+     * 只重跑招聘方自有的两步 —— 组织链（profile → affiliations → current organization）
+     * 成功后才读一次 owner jobs，不重跑 P6 规则等无关角色域，也没有互斥锁。
+     * 初始化 先落 进行中、收口时回 完成：现有加载屏在整个重试期间保持可见。
+     * 401 → 统一 清账号状态；其余失败 轻提示 后原样 reject（组织链的失败阶段由
+     * 水合招聘方组织数据 记录，调用方据此回到恢复面）。接口失败绝不回退 Mock。
+     */
+    async 重新水合招聘方数据() {
+      if (!是后端 || !后端) return;
+      const subject = deps.后端状态引用.current.主体;
+      if (!subject || subject.last_used_role !== 'recruiter') {
+        throw new 客户端校验错误('session', '当前不是招聘方会话');
+      }
+      const subjectId = subject.subject_id;
+      const generation = 会话代际.current;
+      设后端状态((旧) => ({ ...旧, 初始化: '进行中' }));
+      try {
+        const restoredId = 读取恢复企业关系编号(subjectId);
+        const result = await 水合招聘方组织数据({ ...deps, 后端 }, subjectId, generation, restoredId);
+        // 401 已在组织链内部收口（清账号状态 自己把 初始化 落回 完成）
+        if (result.sessionExpired) return;
+        const 快照 = await 后端.读取岗位();
+        // 岗位响应同样过 subject + generation fence：过时响应不提交
+        if (主体标识引用.current !== subjectId || 会话代际.current !== generation) return;
+        派发({ 型: '水合后端岗位', 快照 });
+        设后端状态((旧) => ({ ...旧, 初始化: '完成', 岗位快照: 快照.服务端 }));
+      } catch (错误) {
+        if (错误 instanceof BFF错误 && 错误.status === 401) {
+          清账号状态(账号清理依赖);
+        } else if (主体标识引用.current === subjectId && 会话代际.current === generation) {
+          设后端状态((旧) => ({ ...旧, 初始化: '完成' }));
+          轻提示(取后端错误文案(错误));
+        }
+        throw 错误;
       }
     },
   };

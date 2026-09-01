@@ -1,8 +1,10 @@
 // 后端组织域操作：固定水合（profile → affiliations → 校验/选择 current → 公开企业）
 // 与页面会调用的组织操作方法。stale 响应守卫（subject fence + 会话代际）在核心实现内部，
 // 不留给调用方；任一 401 走统一 清账号状态；接口失败绝不回退 Mock。
+// P0 修复 Task 1：水合只记录两个阶段并把非 401 失败原样 reject —— mount / 交互两种
+// 呈现（轻提示 还是抛回 UI）一律归调用方 水合角色数据，本文件不做任何提示。
 
-import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
+import { BFF错误, 客户端校验错误, 取后端错误文案 } from '../../数据/HTTP客户端';
 import type {
   BFF企业档案,
   BFF企业档案替换,
@@ -14,7 +16,6 @@ import type {
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 资料形 } from '../../数据/公司主页资料';
 import { 可用企业关系, 选择当前企业关系, 从BFF企业档案, 转BFF企业档案替换 } from '../../数据/组织映射';
-import { 轻提示 } from '../../组件/轻提示';
 import type { 后端操作依赖, 组织操作 } from './类型';
 import { 清账号状态 } from './会话操作';
 
@@ -26,8 +27,15 @@ export type 组织水合依赖 = Pick<后端操作依赖,
  * 固定顺序水合 Organization 权威事实：
  *   读取招聘方档案 → 读取我的企业关系 → 选择当前企业关系(affiliations, restoredId)
  *   → 有 current 时读取一次公开企业（其 profile 同时成为唯一 企业档案快照）。
- * 每步响应到达后都过 subject + generation fence；过时响应直接丢弃（不派发）。
- * 401 → 统一 清账号状态 并返回 会话失效=true；非 401：mount-init 只 轻提示，交互模式抛回 UI。
+ * 每步响应到达后都过 subject + generation fence；过时响应直接丢弃（不派发、不改阶段）。
+ *
+ * P0 修复 Task 1：两个闭合阶段一起推进 ——
+ *   招聘方档案水合阶段：只有 BFF错误 status 404 且 code not_found 才是 缺失（全新招聘方
+ *     还没建档案），派发 档案=null 后继续读 affiliations；其余任何 profile 失败都是失败。
+ *   招聘方组织水合：profile → affiliations → current organization 整条链的聚合阶段。
+ * 401 → 统一 清账号状态（两个阶段随之回 未开始）并返回 会话失效=true；
+ * 非 401 一律记录失败阶段后原样 reject —— 本函数不 轻提示、不吞错，
+ * mount / 交互 的呈现归 水合角色数据。
  * admin request 列表不进登录链（企业实名认证 屏显式调用 读取企业管理员申请()）。
  */
 export async function 水合招聘方组织数据(
@@ -35,13 +43,32 @@ export async function 水合招聘方组织数据(
   subjectId: string,
   generation: number,
   restoredAffiliationId: string | null,
-  interactive: boolean,
 ): Promise<{ sessionExpired: boolean }> {
   const 仍有效 = () => deps.主体标识引用.current === subjectId && deps.会话代际.current === generation;
+  // 入口写也过 fence：调用在入口就已过时（转移的复位已跑完）时写 进行中 会留下
+  // 没有任何后续写入去收口的终态 进行中 —— 重试 UI 会永远转圈。
+  if (仍有效()) deps.设后端状态((旧) => ({
+    ...旧,
+    招聘方档案水合阶段: '进行中',
+    招聘方组织水合: { 阶段: '进行中', 错误: null },
+  }));
   try {
-    const profile = await deps.后端.读取招聘方档案();
-    if (!仍有效()) return { sessionExpired: false };
-    deps.派发({ 型: '水合招聘方档案', 档案: profile });
+    try {
+      const profile = await deps.后端.读取招聘方档案();
+      if (!仍有效()) return { sessionExpired: false };
+      deps.派发({ 型: '水合招聘方档案', 档案: profile });
+      deps.设后端状态((旧) => ({ ...旧, 招聘方档案水合阶段: '成功' }));
+    } catch (error) {
+      if (!仍有效()) return { sessionExpired: false };
+      if (error instanceof BFF错误 && error.status === 404 && error.code === 'not_found') {
+        // 缺失不是失败：档案置 null（引导据此建档），组织链照常继续读 affiliations
+        deps.派发({ 型: '水合招聘方档案', 档案: null });
+        deps.设后端状态((旧) => ({ ...旧, 招聘方档案水合阶段: '缺失' }));
+      } else {
+        throw error;
+      }
+    }
+
     const affiliations = await deps.后端.读取我的企业关系();
     if (!仍有效()) return { sessionExpired: false };
     const currentId = 选择当前企业关系(affiliations, restoredAffiliationId);
@@ -53,15 +80,26 @@ export async function 水合招聘方组织数据(
       const { profile: organizationProfile, ...identity } = organization;
       deps.派发({ 型: '水合当前企业', 身份: identity, 档案: organizationProfile });
     }
+    if (仍有效()) deps.设后端状态((旧) => ({
+      ...旧,
+      招聘方组织水合: { 阶段: '成功', 错误: null },
+    }));
     return { sessionExpired: false };
   } catch (error) {
+    if (!仍有效()) return { sessionExpired: false };
     if (error instanceof BFF错误 && error.status === 401) {
       清账号状态(deps);
       return { sessionExpired: true };
     }
-    if (interactive) throw error;
-    轻提示(取后端错误文案(error));
-    return { sessionExpired: false };
+    const 错误 = 取后端错误文案(error);
+    deps.设后端状态((旧) => ({
+      ...旧,
+      // 已判定的 缺失/成功 不被聚合失败改写：只把还停在 进行中 的 profile 阶段结成 失败
+      招聘方档案水合阶段:
+        旧.招聘方档案水合阶段 === '进行中' ? '失败' : 旧.招聘方档案水合阶段,
+      招聘方组织水合: { 阶段: '失败', 错误 },
+    }));
+    throw error;
   }
 }
 
@@ -230,11 +268,26 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
       // 调用方（Backend 名片）拿返回值做同一次保存里的后续 CAS —— Mock 模式没有这条链，
       // 走到这里说明调用方搞错了模式，直接抛而不是悄悄返回半成品档案
       if (!是后端 || !后端) throw new Error('招聘方档案保存仅 Backend 模式可用');
-      const before = 状态引用.current.招聘方档案;
-      if (!before) throw new Error('招聘方档案尚未水合');
+      // P0 修复 Task 2：revision 只由**已判定**的水合阶段决定，不从 before 的真值反推 ——
+      //   缺失（服务端 404 not_found）+ 档案 null → 首写用 revision 0（0 是合法修订号，
+      //     写在同一条 PATCH /recruiter/profile + If-Match "0" 上，不另开 POST）；
+      //   成功 + 已有档案 → 用档案自己的 revision 做 CAS；
+      //   其余阶段（未开始 / 进行中 / 失败）事实未定，宁可让用户刷新，也不盲写 0 覆盖服务端。
+      const { 招聘方档案: before } = 状态引用.current;
+      const 阶段 = deps.后端状态引用.current.招聘方档案水合阶段;
+      const revision = 阶段 === '缺失' && before === null
+        ? 0
+        : 阶段 === '成功' && before !== null
+          ? before.revision
+          : null;
+      if (revision === null) {
+        throw new 客户端校验错误('recruiter.profile', '招聘方档案状态尚未就绪，请刷新后重试');
+      }
       try {
-        const next = await 后端.保存招聘方档案(patch, before.revision);
+        const next = await 后端.保存招聘方档案(patch, revision);
         派发({ 型: '水合招聘方档案', 档案: next });
+        // 首写成功即「有档案」：阶段从 缺失 收口到 成功，路由不再把用户按回注册流名片
+        deps.设后端状态((旧) => ({ ...旧, 招聘方档案水合阶段: '成功' }));
         return next;
       } catch (error) {
         处理组织401(error);
@@ -302,12 +355,16 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
     async 替换招聘方头像(file, revision) {
       if (!是后端 || !后端) return;
       const before = 状态引用.current.招聘方档案;
-      if (!before) throw new Error('招聘方档案尚未水合');
+      // P0 修复 Task 3：缺失档案首写链（PATCH → 头像）走到这里时 before 还是 null ——
+      // 上一步 派发 的 水合招聘方档案 要到下一个 React 提交才写进 state ref。这一步的
+      // If-Match 依据本来就由显式 revision 提供，before 只是 503 confirmed-success 的
+      // 比较基线，缺席不该把上传拦成一个假的「尚未水合」网络错误。
+      if (revision === undefined && !before) throw new Error('招聘方档案尚未水合');
       try {
         // 一次原子替换：multipart + If-Match 当前 revision，响应即权威档案。
         // revision 显式传入时优先（同一次保存里前一步 PATCH 的响应值）——dispatch 后
         // state ref 要到下一个 React 提交才更新，读 ref 会拿旧 revision 被 BFF 409。
-        const after = await 后端.替换招聘方头像(file, revision ?? before.revision);
+        const after = await 后端.替换招聘方头像(file, revision ?? before!.revision);
         派发({ 型: '水合招聘方档案', 档案: after });
       } catch (error) {
         if (error instanceof BFF错误 && error.status === 401) {
@@ -325,8 +382,9 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
           } catch {
             throw error; // 重读失败不能替换原始 409/503
           }
-          // 503 只有 avatar_url 与 revision 都已前进时才视作 confirmed success
-          if (error.status === 503 &&
+          // 503 只有 avatar_url 与 revision 都已前进时才视作 confirmed success；
+          // 首写链上没有 before 这个比较基线，无从确认，只能把原始 503 抛回
+          if (error.status === 503 && before !== null &&
               current.revision !== before.revision && current.avatar_url !== before.avatar_url) {
             return;
           }
@@ -466,6 +524,16 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
         }
       }
       await 删除已脱离();
+    },
+
+    async 重新水合招聘方组织() {
+      if (!是后端 || !后端) return;
+      const subjectId = deps.主体标识引用.current;
+      if (!subjectId) throw new 客户端校验错误('recruiter.organization', '登录状态已失效，请重新登录');
+      const generation = deps.会话代际.current;
+      const restoredId = deps.读取恢复企业关系编号(subjectId);
+      const result = await 水合招聘方组织数据({ ...deps, 后端 }, subjectId, generation, restoredId);
+      if (result.sessionExpired) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
     },
 
     async 读取公开企业(id) {

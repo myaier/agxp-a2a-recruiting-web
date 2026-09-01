@@ -8,18 +8,61 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { use应用状态 } from '../状态/应用状态';
+import { 取企业认证状态文案 } from '../数据/组织映射';
 
 export default function 企业设置() {
   const { 返回, 跳转, 替换跳转 } = use导航();
-  const { 操作 } = use应用状态();
+  const { 数据源模式, 状态, 操作 } = use应用状态();
   const [提示, 设提示] = useState<string | null>(null);
   const [待退出, 设待退出] = useState(false);
+  // 「企业实名认证」行原来是写死的「已认证」——Backend 下不管有没有企业关系都这么显示。
+  // 改成只读 affiliation/管理员申请 两类服务端事实；申请列表不进登录链，进屏读一次。
+  // Mock 不走这套：Mock 有自己的认证流程（企业实名认证 的人脸原型 → 存企业认证 →
+  // 轻提示『认证通过』），把 Backend 投影套到 Mock 上会让用户刚被告知认证通过、
+  // 转头在设置里看见「未认证」。双分支口径与 企业我的 的 显示公司 一致。
+  const 是后端 = 数据源模式 === 'backend';
+  const [申请读取状态, 设申请读取状态] = useState<'读取中' | '成功' | '失败'>(
+    是后端 ? '读取中' : '成功',
+  );
 
   useEffect(() => {
     if (!提示) return;
     const 定时 = window.setTimeout(() => 设提示(null), 1600);
     return () => window.clearTimeout(定时);
   }, [提示]);
+
+  useEffect(() => {
+    if (!是后端) return;
+    let active = true;
+    void 操作.读取企业管理员申请().then(
+      () => { if (active) 设申请读取状态('成功'); },
+      () => { if (active) 设申请读取状态('失败'); },
+    );
+    return () => { active = false; };
+  }, [是后端, 操作]);
+
+  const 企业认证文案 = 是后端 ? 取后端认证文案() : 取Mock认证文案();
+
+  /** Mock：认证事实就是 企业认证 fixture 本身（人脸原型走完会写进它）。 */
+  function 取Mock认证文案(): string {
+    return 状态.企业认证.公司.trim() !== '' ? '已认证' : '未认证';
+  }
+
+  /** Backend：读取未落定/失败时如实说「正在读取」「读取失败」，绝不退回乐观的「已认证」。
+   *  唯一例外在**终态失败**这一支：current 已是 verified+active 时，投影的答案根本不
+   *  依赖 requests（固定优先级里 current 就是决定性的一级），读申请失败不该盖掉这条
+   *  本地权威事实。读取中不套这个例外 —— 那是个转瞬即逝的中间态，说「正在读取」不算撒谎，
+   *  先把话说满反而会在读回来的结果推翻它时闪一下。 */
+  function 取后端认证文案(): string {
+    const 投影 = 取企业认证状态文案(
+      状态.企业关系列表,
+      状态.当前企业关系编号,
+      状态.企业管理员申请列表,
+    );
+    if (申请读取状态 === '成功') return 投影;
+    if (申请读取状态 === '读取中') return '正在读取';
+    return 投影 === '已认证' ? 投影 : '读取失败';
+  }
 
 
   return (
@@ -33,7 +76,7 @@ export default function 企业设置() {
             <span className={样式.行文字组}>
               <span className={样式.行标题}>企业实名认证</span>
             </span>
-            <span className={样式.行值}>已认证</span>
+            <span className={样式.行值}>{企业认证文案}</span>
           </div>
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.招聘名片)}>
             <span className={样式.行文字组}>

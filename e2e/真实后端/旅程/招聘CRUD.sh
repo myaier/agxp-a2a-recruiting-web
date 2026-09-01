@@ -43,6 +43,7 @@ CATALOG_CITY='上海市'
 JOB_OFFICE='上海市浦东新区浏览器路 1 号'
 JOB_DESC='浏览器验收岗位 · 临时CRUD 的职位描述基线'
 JOB_DESC_2='浏览器验收岗位 · 临时CRUD 的职位描述改后'
+JOB_REQ='浏览器验收岗位 · 临时CRUD 的职位要求基线（与描述互相独立）'
 JOB_SCREEN='浏览器验收临时CRUD的加分偏好'
 
 on_exit(){
@@ -148,6 +149,8 @@ assert_text '职位描述'
 find_retry label 职位描述 fill "$JOB_DESC" >/dev/null
 click_button_exact '下一步'
 assert_text '职位要求'
+# 职位要求与职位描述是 JobCreate 里两条互相独立的必填文本，各填各的
+find_retry label 职位要求 fill "$JOB_REQ" >/dev/null
 find_retry label 薪资下限 fill '30' >/dev/null
 find_retry label 薪资上限 fill '45' >/dev/null
 # 社招全职必须确认年薪月数（发布岗位.tsx:251）；滚轮初值就是 12 薪，直接点完成收下这一档

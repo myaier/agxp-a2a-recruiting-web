@@ -230,6 +230,9 @@ function 创建P8操作测试环境(
       candidate: { rules: '未开始', proposals: '未开始' },
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
+    // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段（这里的用例不触达它们）
+    招聘方档案水合阶段: '未开始' as const,
+    招聘方组织水合: { 阶段: '未开始' as const, 错误: null },
     ...创建空P4发现状态(),
     ...创建空P5MatchCase状态(),
     ...创建空P7会话状态(),
@@ -1531,7 +1534,8 @@ describe('P8 错误文案', () => {
     // 未知错误码：固定兜底文案，绝不透传英文 message
     expect(取P8错误文案(new BFF错误(400, 'some_unknown_code', 'English backend message')))
       .toBe('请求失败，请稍后重试');
-    expect(取P8错误文案(new Error('plain network error'))).toBe('网络连接失败，请稍后再试');
+    // P0 修复 Task 6：普通本地 Error 落通用请求失败文案，不冒充网络故障。
+    expect(取P8错误文案(new Error('plain network error'))).toBe('请求失败，请稍后再试');
   });
 });
 

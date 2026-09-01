@@ -55,6 +55,9 @@ function 创建岗位测试依赖(input: {
         candidate: { rules: '未开始', proposals: '未开始' },
         recruiter: { rules: '未开始', proposals: '未开始' },
       },
+      // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段（这里的用例不触达它们）
+      招聘方档案水合阶段: '未开始' as const,
+      招聘方组织水合: { 阶段: '未开始' as const, 错误: null },
       // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
       ...创建空P4发现状态(),
       // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
@@ -120,6 +123,36 @@ describe('创建岗位操作 · Job claim 边界', () => {
     });
   });
 
+  // P0 修复 Task 4：真实 BFF 的 JobCreate 必须带非空 hiring_organization_claim.display_name。
+  // 没有 verified 关系、未认证声明又只有空白时，operation 层就要 fail closed，一个请求都不发。
+  it('未认证公司声明为空时在 operation 层拒绝，零发布请求', async () => {
+    const deps = 创建岗位测试依赖({
+      数据源: { 创建岗位: vi.fn() } as unknown as HTTP招聘数据源,
+      企业关系列表: [], 当前企业关系编号: null, 未认证公司声明: '   ',
+    });
+    await expect(创建岗位操作(deps).发布岗位(页面岗位草稿))
+      .rejects.toMatchObject({ code: 'client_validation', field: 'hiring_organization_claim.display_name' });
+    expect(deps.后端.创建岗位).not.toHaveBeenCalled();
+  });
+
+  it('verified affiliation 的企业名会 trim 后成为声明', async () => {
+    const deps = 创建岗位测试依赖({
+      数据源: {
+        创建岗位: vi.fn(async () => ({ 列表: [页面岗位草稿], 服务端: { job_1: BFFOwnerJob样本 } })),
+      } as unknown as HTTP招聘数据源,
+      企业关系列表: [{ ...BFF企业关系样本, organization_display_name: '  星河科技  ' }],
+      当前企业关系编号: BFF企业关系样本.affiliation_id,
+    });
+    await 创建岗位操作(deps).发布岗位(页面岗位草稿);
+    expect(deps.后端.创建岗位).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        publisherMode: 'direct',
+        hiringOrganizationClaim: { display_name: '星河科技', legal_name: null },
+      }),
+    );
+  });
+
   it('发布岗位后 owner 响应连 publisher/hiring refs/status 存进 后端状态.岗位快照', async () => {
     const dto = {
       ...BFFOwnerJob样本,
@@ -131,6 +164,7 @@ describe('创建岗位操作 · Job claim 边界', () => {
     const 设后端状态 = vi.fn();
     const deps = 创建岗位测试依赖({
       数据源: { 创建岗位: vi.fn(async () => ({ 列表: [页面岗位草稿], 服务端: { job_1: dto } })) } as unknown as HTTP招聘数据源,
+      未认证公司声明: '示例客户公司',
     });
     deps.设后端状态 = 设后端状态;
     await 创建岗位操作(deps).发布岗位(页面岗位草稿);
@@ -178,7 +212,7 @@ describe('创建岗位操作 · 四问硬性事实边界', () => {
   it('create forwards the complete 硬性事实 object to the data source', async () => {
     const 创建岗位 = vi.fn(async () => ({ 列表: [带硬性事实草稿], 服务端: { job_1: BFFOwnerJob样本 } }));
     const 数据源 = { 创建岗位 } as unknown as HTTP招聘数据源;
-    const 操作 = 创建岗位操作(创建岗位测试依赖({ 数据源 }));
+    const 操作 = 创建岗位操作(创建岗位测试依赖({ 数据源, 未认证公司声明: '示例客户公司' }));
     await 操作.发布岗位(带硬性事实草稿);
     const 提交岗 = (创建岗位.mock.calls[0] as unknown[])[0] as { 硬性事实?: unknown };
     expect(提交岗.硬性事实).toEqual(完整硬性事实);
@@ -205,6 +239,7 @@ describe('创建岗位操作 · 四问硬性事实边界', () => {
       数据源: {
         创建岗位: vi.fn(async () => { throw new Error('invalid_response'); }),
       } as unknown as HTTP招聘数据源,
+      未认证公司声明: '示例客户公司',
     });
     deps.设后端状态 = 设后端状态;
     const 派发Spy = vi.fn((动作: 动作) => {

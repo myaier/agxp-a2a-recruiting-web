@@ -407,7 +407,9 @@ describe('工作经历 保存 single-flight', () => {
     const 保存中键 = screen.getByRole('button', { name: '保存中…' }) as HTMLButtonElement;
     expect(保存中键.disabled).toBe(true);
     await act(async () => { reject保存(new Error('网络失败')); });
-    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('网络连接失败，请稍后再试'));
+    // P0 修复 Task 6：普通本地 Error 落通用请求失败文案（不冒充网络，也不泄露 message）
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('请求失败，请稍后再试'));
+    expect(mock轻提示).not.toHaveBeenCalledWith('网络失败');
     expect(mock跳转).not.toHaveBeenCalled();
     const 恢复键 = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
     expect(恢复键.disabled).toBe(false);
