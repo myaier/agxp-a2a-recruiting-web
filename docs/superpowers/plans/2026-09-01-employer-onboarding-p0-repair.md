@@ -2068,14 +2068,30 @@ Expected: `git diff --check` exits `0` and the commit records only the independe
 
 ```yaml
 integration_requirement: conditional
+selection_ssot: none
+selection_gap: "Owner: recruitment frontend/backend integration owner. Observable condition: a locally reachable BFF, a disposable brand-new recruiter account, and an OTP/login fixture are supplied."
 l3_selection:
-  selector_kind: none
-  selected_suite: null
-  reason: "This frontend repository has no formal real-BFF fixture account or suite selector; Playwright data-source mode is intercepted integration only."
-selection_gap:
-  owner: "Recruitment frontend/backend integration owner"
-  condition: "A locally reachable BFF, a disposable brand-new recruiter account, and an OTP/login fixture are supplied."
-  required_journey: "choose recruiter -> GET profile 404 -> PATCH If-Match 0 -> POST complete job -> refresh -> authoritative profile/jobs"
+  - suite: real-bff-employer-onboarding-manual
+    impact_class: case-semantic
+    mode: suite
+    cases: catalog-derived
+    case_set: none
+    seeds: []
+    closure_reasons: catalog-derived
+    cadence_scope: required
+    fallback: true
+    fallback_reason: "The repository has no formal real-BFF Case catalog, disposable recruiter fixture, or machine-readable selector."
+    reason: "The changed onboarding contracts cross profile, affiliation, job-create, persistence, and refresh service boundaries."
+    prerequisites: "Reachable BFF, disposable brand-new recruiter account, and OTP/login fixture supplied by the integration owner."
+    evidence: "HTTP proof for profile 404; PATCH If-Match 0 and revision 1; complete JobCreate 201; refresh to authoritative profile/jobs."
+    granularity_gap: "No repository-owned canonical Case IDs or automated real-service runner exist; execute the one bounded manual journey when prerequisites are present."
+release_handoff:
+  required: false
+  owner: none
+  required_mode: none
+  nightly_only_mode: none
+  status: none
+  reason: "No separate nightly-only or release-only suite is defined for this repair."
 ```
 
 - [ ] **Step 1: Audit the predecessor boundary before final verification**
