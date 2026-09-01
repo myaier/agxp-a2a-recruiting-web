@@ -29,4 +29,19 @@ describe('视觉场景清单', () => {
     expect(视觉场景们.map((场景) => 场景.id)).toEqual(预期ID);
     expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(18);
   });
+
+  it('发布岗位第三步使用跨版本稳定的提交按钮作为关键元素', () => {
+    const 场景 = 视觉场景们.find((候选) => 候选.id === 'recruiter-post-job-3');
+    expect(场景).toBeDefined();
+
+    const 空定位器 = { first: () => 空定位器 };
+    const 假页面 = {
+      getByRole: () => 空定位器,
+      getByText: () => 空定位器,
+    } as never;
+    const 关键元素名称 = 场景!.关键元素(假页面).map((元素) => 元素.名称);
+
+    expect(关键元素名称).toContain('按钮 发布岗位并开始寻访');
+    expect(关键元素名称).not.toContain('文本 AI 初筛条件确认');
+  });
 });

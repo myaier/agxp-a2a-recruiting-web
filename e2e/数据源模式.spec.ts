@@ -5348,16 +5348,18 @@ test.describe('P3 Backend 隐私主链路 @backend', () => {
 
     // ── 披露偏好：D4 只发 education 单成员的稀疏补丁，If-Match 用服务端新 revision ──
     await page.goto('/#/disclosure-prefs');
-    const 学历卡 = page.locator('[class*="披露卡"]').filter({ hasText: '毕业院校与学历' });
-    await expect(学历卡.getByRole('button', { name: '意向确认后' })).toBeVisible({ timeout: 10_000 });
-    await 学历卡.getByRole('button', { name: '不披露' }).click();
+    // 档位按钮的可访问名称是字段化的「<字段名>：<档>」，选中态读 aria-pressed（见 披露偏好.tsx）
+    const 学历意向确认后 = page.getByRole('button', { name: '毕业院校与学历：意向确认后', exact: true });
+    const 学历不披露 = page.getByRole('button', { name: '毕业院校与学历：不披露', exact: true });
+    await expect(学历意向确认后).toBeVisible({ timeout: 10_000 });
+    await 学历不披露.click();
     await expect
       .poll(() => 请求们.filter((项) => 项.path === '/api/v1/me/privacy' && 项.method === 'PATCH').length, { timeout: 10_000 })
       .toBe(2);
     补丁们 = 请求们.filter((项) => 项.path === '/api/v1/me/privacy' && 项.method === 'PATCH');
     expect(补丁们[1].body).toEqual({ disclosure_preferences: { education: 'never' } });
     expect(补丁们[1].headers['if-match']).toBe('"2"');
-    await expect(学历卡.getByRole('button', { name: '不披露' })).toHaveClass(/分段项选中/, { timeout: 10_000 });
+    await expect(学历不披露).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
 
     // ── 屏蔽名单：选来源 → 搜组织（strict active 分页 + query 绑定游标）→ 点命中 → 屏蔽 ──
     await page.goto('/#/blocklist');
@@ -5549,8 +5551,8 @@ test.describe('P3 Backend 恢复分派 @backend', () => {
     await expect(隐身开关).toHaveAttribute('aria-checked', 'true');
     // 且他端写入的 D3=一直允许 已经在页面上（来自重读，不是本地假成功）
     await page.goto('/#/disclosure-prefs');
-    const 当前公司卡 = page.locator('[class*="披露卡"]').filter({ hasText: '当前公司' });
-    await expect(当前公司卡.getByRole('button', { name: '一直允许' })).toHaveClass(/分段项选中/, { timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '当前公司：一直允许', exact: true }))
+      .toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
   });
 
   test('AddBlock 遇 idempotency_in_progress 同键受控重试，后续新意图换新键 @backend', async ({ page }) => {
@@ -5866,14 +5868,14 @@ test.describe('P3 Backend 恢复分派 @backend', () => {
 
     // 触发一次带挂起重读的冲突（重读将在旧会话登出后才被放行）
     await page.goto('/#/disclosure-prefs');
-    const 作品卡 = page.locator('[class*="披露卡"]').filter({ hasText: '作品与代码仓库' });
+    const 作品意向确认后 = page.getByRole('button', { name: '作品与代码仓库：意向确认后', exact: true });
     const get挂起前 = 统计get(请求们);
     隐私.get脚本.push({
       保持: new Promise<void>((resolve) => {
         挂起兑现 = resolve;
       }),
     });
-    await 作品卡.getByRole('button', { name: '意向确认后' }).click();
+    await 作品意向确认后.click();
     await expect.poll(() => 统计get(请求们), { timeout: 10_000 }).toBe(get挂起前 + 1); // 重读已发出并被挂起
 
     // 旧会话登出（清理同步派发），然后才放行那个迟到的旧 GET。
@@ -5882,8 +5884,14 @@ test.describe('P3 Backend 恢复分派 @backend', () => {
       window.location.hash = '#/settings';
     });
     await expect(page.getByText('隐私与可见性')).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: '退出登录' }).first().click();
-    await page.getByRole('button', { name: '退出登录' }).last().click();
+    // 触发键与确认层的确认键**不再同名**：确认键有自己的可访问名称「确认退出当前账号」
+    // （src/屏幕/设置.tsx:225 的 aria-label，可见文案仍是「退出登录」）。
+    // 弹层框架用的是 <dialog open>，非模态 —— 层开着时背景那枚触发键仍在可访问树里，
+    // 两枚同名会让 getByRole 分不开，也让读屏用户分不开，所以产品侧把名字拆开了。
+    // 「确认」前缀同时避开了遮罩键「关闭退出当前账号」：getByRole 的 name 是子串匹配，
+    // 确认键若直接叫「退出当前账号」会同时命中遮罩，触发 strict mode violation。
+    await page.getByRole('button', { name: '退出登录' }).click();
+    await page.getByRole('button', { name: '确认退出当前账号' }).click();
     await expect(page.getByLabel('手机号')).toBeVisible({ timeout: 10_000 });
     挂起兑现?.();
 
@@ -5973,10 +5981,10 @@ test.describe('P3 Mock 数据源隔离 @mock', () => {
 
     // 披露偏好：D4 本地切档（Mock 七行模板照旧展示并可点）
     await page.goto('/#/disclosure-prefs');
-    const 学历卡 = page.locator('[class*="披露卡"]').filter({ hasText: '毕业院校与学历' });
-    await expect(学历卡.getByRole('button', { name: '一直允许' })).toBeVisible({ timeout: 10_000 });
-    await 学历卡.getByRole('button', { name: '不披露' }).click();
-    await expect(学历卡.getByRole('button', { name: '不披露' })).toHaveClass(/分段项选中/, { timeout: 10_000 });
+    const Mock学历不披露 = page.getByRole('button', { name: '毕业院校与学历：不披露', exact: true });
+    await expect(page.getByRole('button', { name: '毕业院校与学历：一直允许', exact: true })).toBeVisible({ timeout: 10_000 });
+    await Mock学历不披露.click();
+    await expect(Mock学历不披露).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
     expect(apiRequests).toEqual([]);
 
     // 屏蔽名单：自由文本本地加入（Mock 无组织搜索段）
@@ -7803,7 +7811,7 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     });
     await expect(page.getByRole('button', { name: '退出登录' }).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: '退出登录' }).first().click();
-    await page.getByRole('button', { name: '退出登录' }).last().click();
+    await page.getByRole('button', { name: '确认退出当前账号' }).click();
     await expect(page.getByLabel('手机号')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(P5标记.丁职位名)).toHaveCount(0);
     const P5请求数 = () => 请求序.filter((项) => 项.includes('/match-cases')).length;

@@ -60,6 +60,10 @@ export default function 披露偏好() {
                       className={`${样式.分段项} ${选中 ? 样式.分段项选中 : ''} ${
                         可选 ? '可点' : 样式.分段项禁用
                       }`}
+                      // 这一屏有 7 行 × 最多 3 档，光看「不披露」听不出是哪一行 ——
+                      // 可访问名称按字段限定，选中态用 aria-pressed 说，都是纯语义属性，不动一个像素。
+                      aria-label={`${项.名称}：${档}`}
+                      aria-pressed={选中}
                       onClick={async () => {
                         if (!可改) return;
                         if (数据源模式 === 'backend') {

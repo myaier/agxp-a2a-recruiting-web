@@ -34,3 +34,6 @@ playwright-report
 
 # UI 回归编排输出（参考/候选采集与报告）
 ui-regression-output/
+
+# agent-browser 真实后端整栈验收的运行产物（候选截图、diff、报告、日志）
+/agent-browser-backend-output/

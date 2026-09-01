@@ -73,8 +73,14 @@ describe('企业设置 · P8 回归', () => {
 
     await 用户.click(screen.getByRole('button', { name: '退出登录' }));
     expect(screen.getByText('退出当前账号？')).toBeTruthy();
-    // 弹层打开后页面上有两个「退出登录」按钮（行 + 确认键），确认键是第二个
-    await 用户.click(screen.getAllByRole('button', { name: '退出登录' })[1]);
+    expect(screen.getAllByRole('button', { name: '退出登录' })).toHaveLength(1);
+    const 确认键 = screen.getByRole('button', { name: '确认退出企业账号' });
+    expect(确认键.textContent).toBe('退出登录');
+    const 名字们 = screen.getAllByRole('button').map(
+      (键) => 键.getAttribute('aria-label') ?? 键.textContent ?? '',
+    );
+    expect(名字们.filter((名) => 名.includes('确认退出企业账号'))).toHaveLength(1);
+    await 用户.click(确认键);
     await waitFor(() => expect(操作.退出登录).toHaveBeenCalledTimes(1));
     expect(导航.替换跳转).toHaveBeenCalledWith(路径.登录);
 

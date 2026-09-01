@@ -130,6 +130,57 @@ describe('设置 · Backend 隐私写线', () => {
   });
 });
 
+describe('设置 · 退出确认键的可访问名称', () => {
+  // 弹层框架用的是 <dialog open>（组件/弹层框架.tsx:62-64），那是**非模态**的：
+  // 层开着的时候页面其余部分既不 inert 也不从可访问树里剪枝，所以触发键与确认键
+  // 如果同名，读屏用户按钮浏览会连着读到两枚一模一样的「退出登录」，分不出哪个是确认。
+  // 这两条把「两枚键的可访问名称必须不同」钉死；可见文案两处都仍是「退出登录」。
+  function 渲染设置() {
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: { 设置雇主隐私: vi.fn(), ...P8操作桩() },
+      数据源模式: 'backend',
+      后端状态: 后端底座(),
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+  }
+
+  it('确认层打开后，触发键与确认键的可访问名称互不相同', async () => {
+    const 用户 = userEvent.setup();
+    渲染设置();
+    await 用户.click(screen.getByRole('button', { name: '退出登录' }));
+    expect(screen.getByText('退出当前账号？')).toBeTruthy();
+    // 层开着时「退出登录」这个名字必须仍然只指向那一枚触发键（不再有第二枚同名键）
+    expect(screen.getAllByRole('button', { name: '退出登录' })).toHaveLength(1);
+    // 确认键有自己的名字
+    expect(screen.getByRole('button', { name: '确认退出当前账号' })).toBeTruthy();
+  });
+
+  it('确认键的名字不是任何其它按钮名字的子串（子串匹配的定位器不能有歧义）', async () => {
+    const 用户 = userEvent.setup();
+    渲染设置();
+    await 用户.click(screen.getByRole('button', { name: '退出登录' }));
+    // 弹层框架会给遮罩生成 `关闭${标签}`（组件/弹层框架.tsx:61）。确认键若叫「退出当前账号」，
+    // 就成了遮罩名「关闭退出当前账号」的子串 —— Playwright 的 getByRole({name}) 与
+    // agent-browser 不带 --exact 的 --name 都是子串匹配，会同时命中两枚并报 strict violation。
+    const 名字们 = screen.getAllByRole('button').map(
+      (键) => 键.getAttribute('aria-label') ?? 键.textContent ?? '',
+    );
+    expect(名字们.filter((名) => 名.includes('确认退出当前账号'))).toHaveLength(1);
+  });
+
+  it('确认键仍然可见文案不变，且点它才真的退出', async () => {
+    const 用户 = userEvent.setup();
+    渲染设置();
+    await 用户.click(screen.getByRole('button', { name: '退出登录' }));
+    const 确认键 = screen.getByRole('button', { name: '确认退出当前账号' });
+    expect(确认键.textContent).toBe('退出登录');
+    await 用户.click(确认键);
+    expect(mock应用状态.操作.退出登录).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('设置 · 账号行（P8 Task 4）', () => {
   it('Backend 只按需读取凭证（零会话请求、零账号范围登记），显示服务端掩码', async () => {
     const 操作 = P8操作桩();
