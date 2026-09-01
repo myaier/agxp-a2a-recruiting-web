@@ -166,6 +166,8 @@ record_cleanup_marker recruiter_job_titles "$TEMP_JOB"
 click_after_hydrate '岗位管理'
 assert_job_row "$TEMP_JOB" '在招'
 assert_no_mock_data
+# 发布成功 toast 保留 1.8 秒；视觉基线明确不收瞬态提示，等它完整退出后再截图。
+ab wait 2000 >/dev/null
 capture_scene 'recruiter-jobs-after-create'
 ab reload >/dev/null
 assert_job_row "$TEMP_JOB" '在招'
