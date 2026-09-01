@@ -1,7 +1,7 @@
 // 路由表。每屏一个文件，文件名对应设计稿编号（见 说明.md 的对照表）。
 // 新增屏幕只需在 屏幕/ 下建文件并在这里挂一行，不改动其它任何地方。
 
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { 路径 } from './路由/路径表';
 import 登录 from './屏幕/登录';
@@ -91,23 +91,108 @@ export function 路由加载中() {
   );
 }
 
+// ── P0 修复 Task 2：招聘方路由守卫 ───────────────────────────────
+// 恢复与退出路径永远放行：档案缺失或组织链失败时，用户仍能改名片、去实名认证、
+// 申请/加入企业、回身份选择、进账号安全 —— 绝不把人锁死在一屏上。
+const 招聘方恢复路径 = new Set<string>([
+  路径.招聘名片,
+  路径.企业实名认证,
+  路径.企业组织申请,
+  路径.企业邀请加入,
+]);
+
+/** 受保护的招聘业务路径：登录页（恢复落点）与 /hr 主壳及其子路径，去掉恢复/退出路径。 */
+function 是受保护招聘路径(pathname: string): boolean {
+  const 招聘路由 = pathname === 路径.企业主壳 ||
+    pathname.startsWith(`${路径.企业主壳}/`);
+  return pathname === 路径.登录 ||
+    (招聘路由 && !招聘方恢复路径.has(pathname));
+}
+
+/**
+ * 组织链失败时的恢复面：显示服务端给出的真实错误，而不是让业务屏渲染假空列表。
+ * 重试走 操作.重新水合招聘方数据（会话层把 初始化 落 进行中 再收口，加载屏全程可见），
+ * 本组件只持有自己按钮的单飞状态；非 401 失败仍由操作层 轻提示，并留在恢复面。
+ */
+function 招聘方恢复失败({
+  error,
+  retry,
+  switchRole,
+}: {
+  error: string | null;
+  retry: () => Promise<void>;
+  switchRole: () => void;
+}) {
+  const [重试中, 设重试中] = useState(false);
+  return (
+    <div role="alert">
+      <p>{error ?? '企业资料读取失败'}</p>
+      <button
+        type="button"
+        disabled={重试中}
+        onClick={() => {
+          if (重试中) return;
+          设重试中(true);
+          void retry().catch(() => undefined).finally(() => 设重试中(false));
+        }}
+      >
+        {重试中 ? '重试中…' : '重试'}
+      </button>
+      <button type="button" disabled={重试中} onClick={switchRole}>切换身份</button>
+    </div>
+  );
+}
+
 export default function 应用() {
-  const { 数据源模式, 后端状态 } = use应用状态();
+  const { 数据源模式, 后端状态, 操作 } = use应用状态();
   const 位置 = useLocation();
   const 前往 = useNavigate();
 
-  // Backend 初始化完成且已恢复会话、当前仍在登录页时：按上次角色替换到对应主壳，
-  // null 角色落到身份选择页。不新增中间页面。
+  // Backend 初始化完成且已恢复会话时的确定性落点（P0 修复 Task 2）：
+  // 候选与未知角色保持原有兜底；招聘方只在**组织链聚合阶段报成功之后**才解释
+  // profile 阶段 —— 组织链还没结论或已失败时不导航，后来的组织失败绝不被伪装成 onboarding。
+  // 招聘方 onboarding 是否走完只看档案是否存在（缺失 → 注册流名片），与岗位数无关。
   useEffect(() => {
-    if (数据源模式 !== 'backend') return;
-    if (后端状态.初始化 !== '完成') return;
-    if (位置.pathname !== 路径.登录) return;
-    if (!后端状态.已登录) return;
+    if (数据源模式 !== 'backend' || 后端状态.初始化 !== '完成' || !后端状态.已登录) return;
     const 角色 = 后端状态.主体?.last_used_role;
-    if (角色 === 'candidate') 前往(路径.主壳, { replace: true });
-    else if (角色 === 'recruiter') 前往(路径.企业主壳, { replace: true });
-    else 前往(路径.选身份, { replace: true });
-  }, [数据源模式, 后端状态, 位置, 前往]);
+    if (角色 === 'candidate' && 位置.pathname === 路径.登录) {
+      前往(路径.主壳, { replace: true });
+      return;
+    }
+    if (角色 !== 'candidate' && 角色 !== 'recruiter' && 位置.pathname === 路径.登录) {
+      前往(路径.选身份, { replace: true });
+      return;
+    }
+    if (角色 !== 'recruiter' || 后端状态.招聘方组织水合.阶段 !== '成功') return;
+    if (后端状态.招聘方档案水合阶段 === '缺失') {
+      if (是受保护招聘路径(位置.pathname)) {
+        前往(路径.招聘名片, { replace: true, state: { 从注册流: true } });
+      }
+      return;
+    }
+    if (后端状态.招聘方档案水合阶段 === '成功' && 位置.pathname === 路径.登录) {
+      前往(路径.企业主壳, { replace: true });
+    }
+  }, [数据源模式, 后端状态, 位置.pathname, 前往]);
+
+  // 组织链失败：受保护路径上换成恢复面（真实错误 + 重试 + 切换身份），
+  // 恢复/退出路径（名片、实名认证、组织申请、邀请加入、账号安全、身份选择）照常渲染。
+  if (
+    数据源模式 === 'backend' &&
+    后端状态.初始化 === '完成' &&
+    后端状态.已登录 &&
+    后端状态.主体?.last_used_role === 'recruiter' &&
+    后端状态.招聘方组织水合.阶段 === '失败' &&
+    是受保护招聘路径(位置.pathname)
+  ) {
+    return (
+      <招聘方恢复失败
+        error={后端状态.招聘方组织水合.错误}
+        retry={操作.重新水合招聘方数据}
+        switchRole={() => 前往(路径.选身份, { replace: true })}
+      />
+    );
+  }
 
   // Backend 初始化进行中：复用现有 路由加载中（不改其 JSX/样式）
   if (数据源模式 === 'backend' && 后端状态.初始化 === '进行中') {

@@ -71,6 +71,34 @@ function 创建完整测试数据源(覆盖: Partial<HTTP招聘数据源> = {}):
   return { ...基础, ...覆盖 } as unknown as HTTP招聘数据源;
 }
 
+/** 本测试文件内的 后端状态 底座：用例按 覆盖 换掉自己要钉的字段（如水合阶段）。 */
+function 创建测试后端状态(覆盖: Partial<后端状态> = {}): 后端状态 {
+  return {
+    初始化: '完成', 已登录: true, 主体: null, 简历快照: null, 意向快照: {}, 岗位快照: {},
+    隐私快照: null,
+    // P6：Task 3 起 后端状态 携带 Agent 规则原始快照与水合阶段（这里的用例不触达它们）
+    候选规则快照: {}, 招聘规则快照: {}, 候选规则提案: {}, 招聘规则提案: {},
+    Agent规则水合: {
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    },
+    // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
+    ...创建空P4发现状态(),
+    // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
+    ...创建空P5MatchCase状态(),
+    // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
+    ...创建空P7会话状态(),
+    // P8：Task 3 起 后端状态 extends P8控制面状态（这里的用例不触达它们）
+    ...创建空P8控制面状态(),
+    // P2：附件库权威快照（只追加，不动 P6 字段）
+    附件简历库: null,
+    // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段的干净底座
+    招聘方档案水合阶段: '未开始',
+    招聘方组织水合: { 阶段: '未开始', 错误: null },
+    ...覆盖,
+  };
+}
+
 /** 本测试文件内的依赖 helper：返回完整可变引用，不进入产品代码。 */
 function 创建组织测试依赖(input: {
   后端: HTTP招聘数据源; 派发: (动作: 动作) => void; subject: string; generation: number;
@@ -80,29 +108,7 @@ function 创建组织测试依赖(input: {
     主体标识引用: { current: input.subject as string | null }, 会话代际: { current: input.generation },
     读取恢复企业关系编号: vi.fn(() => null),
     状态引用: { current: 初始状态 },
-    后端状态引用: { current: {
-      初始化: '完成', 已登录: true, 主体: null, 简历快照: null, 意向快照: {}, 岗位快照: {},
-      隐私快照: null,
-      // P6：Task 3 起 后端状态 携带 Agent 规则原始快照与水合阶段（这里的用例不触达它们）
-      候选规则快照: {}, 招聘规则快照: {}, 候选规则提案: {}, 招聘规则提案: {},
-      Agent规则水合: {
-        candidate: { rules: '未开始', proposals: '未开始' },
-        recruiter: { rules: '未开始', proposals: '未开始' },
-      },
-      // P4：Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
-      ...创建空P4发现状态(),
-      // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
-      ...创建空P5MatchCase状态(),
-    // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
-    ...创建空P7会话状态(),
-    // P8：Task 3 起 后端状态 extends P8控制面状态（这里的用例不触达它们）
-    ...创建空P8控制面状态(),
-      // P2：附件库权威快照（只追加，不动 P6 字段）
-      附件简历库: null,
-      // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段的干净底座
-      招聘方档案水合阶段: '未开始' as const,
-      招聘方组织水合: { 阶段: '未开始' as const, 错误: null },
-    } },
+    后端状态引用: { current: 创建测试后端状态() },
     锁: { current: new Set<string>() }, 尝试引用: { current: null }, 是后端: true,
   } satisfies 后端操作依赖;
 }
@@ -613,6 +619,58 @@ describe('组织操作：选择企业关系 / 保存企业档案 / 公开企业�
       型: '水合企业关系', 当前编号: BFF企业关系样本.affiliation_id,
     }));
     expect(deps.状态引用.current.当前企业身份?.organization_id).toBe(BFF企业关系样本.organization_id);
+  });
+});
+
+// ── 保存招聘方档案：首写 revision 0 / 已有档案 CAS / 阶段未就绪拒绝（P0 修复 Task 2）──
+
+const 首写档案 = {
+  public_name: '林澈', title: '招聘负责人', personal_verification_status: 'unverified' as const,
+  verified_name: null, avatar_url: null, revision: 1,
+};
+
+describe('组织操作：保存招聘方档案的 revision 选择', () => {
+  it('缺失 profile 首写使用 revision 0，并进入成功态', async () => {
+    const 保存招聘方档案 = vi.fn(async (_补丁: unknown, _修订: number) => 首写档案);
+    const 后端 = 创建完整测试数据源({ 保存招聘方档案 });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    // 缺失 = 服务端 404 not_found 已判定「还没有档案」，state 里的档案是 null
+    deps.后端状态引用.current = 创建测试后端状态({ 招聘方档案水合阶段: '缺失' });
+    expect(deps.状态引用.current.招聘方档案).toBeNull();
+
+    const 结果 = await 操作.保存招聘方档案({ public_name: '林澈', title: '招聘负责人' });
+    expect(保存招聘方档案).toHaveBeenCalledWith(
+      { public_name: '林澈', title: '招聘负责人' }, 0,
+    );
+    expect(结果.revision).toBe(1);
+    expect(deps.状态引用.current.招聘方档案).toEqual(首写档案);
+    expect(最终后端状态(deps).招聘方档案水合阶段).toBe('成功');
+  });
+
+  it('成功 阶段的已有档案仍按当前 revision 走 CAS', async () => {
+    const 保存招聘方档案 = vi.fn(async (_补丁: unknown, _修订: number) => (
+      { ...BFF招聘方档案样本, title: 'HR 负责人', revision: 2 }
+    ));
+    const 后端 = 创建完整测试数据源({ 保存招聘方档案 });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    deps.状态引用.current = 归约(deps.状态引用.current, {
+      型: '水合招聘方档案', 档案: BFF招聘方档案样本,
+    });
+    deps.后端状态引用.current = 创建测试后端状态({ 招聘方档案水合阶段: '成功' });
+
+    await expect(操作.保存招聘方档案({ title: 'HR 负责人' })).resolves.toMatchObject({ revision: 2 });
+    expect(保存招聘方档案).toHaveBeenCalledWith({ title: 'HR 负责人' }, BFF招聘方档案样本.revision);
+  });
+
+  it.each(['未开始', '进行中', '失败'] as const)('%s 阶段不盲写 revision 0', async (阶段) => {
+    const 保存招聘方档案 = vi.fn(async (_补丁: unknown, _修订: number) => 首写档案);
+    const 后端 = 创建完整测试数据源({ 保存招聘方档案 });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    deps.后端状态引用.current = 创建测试后端状态({ 招聘方档案水合阶段: 阶段 });
+
+    await expect(操作.保存招聘方档案({ public_name: '林澈', title: '' }))
+      .rejects.toMatchObject({ code: 'client_validation', field: 'recruiter.profile' });
+    expect(保存招聘方档案).not.toHaveBeenCalled();
   });
 });
 

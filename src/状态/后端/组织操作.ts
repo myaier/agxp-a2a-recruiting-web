@@ -268,11 +268,26 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
       // 调用方（Backend 名片）拿返回值做同一次保存里的后续 CAS —— Mock 模式没有这条链，
       // 走到这里说明调用方搞错了模式，直接抛而不是悄悄返回半成品档案
       if (!是后端 || !后端) throw new Error('招聘方档案保存仅 Backend 模式可用');
-      const before = 状态引用.current.招聘方档案;
-      if (!before) throw new Error('招聘方档案尚未水合');
+      // P0 修复 Task 2：revision 只由**已判定**的水合阶段决定，不从 before 的真值反推 ——
+      //   缺失（服务端 404 not_found）+ 档案 null → 首写用 revision 0（0 是合法修订号，
+      //     写在同一条 PATCH /recruiter/profile + If-Match "0" 上，不另开 POST）；
+      //   成功 + 已有档案 → 用档案自己的 revision 做 CAS；
+      //   其余阶段（未开始 / 进行中 / 失败）事实未定，宁可让用户刷新，也不盲写 0 覆盖服务端。
+      const { 招聘方档案: before } = 状态引用.current;
+      const 阶段 = deps.后端状态引用.current.招聘方档案水合阶段;
+      const revision = 阶段 === '缺失' && before === null
+        ? 0
+        : 阶段 === '成功' && before !== null
+          ? before.revision
+          : null;
+      if (revision === null) {
+        throw new 客户端校验错误('recruiter.profile', '招聘方档案状态尚未就绪，请刷新后重试');
+      }
       try {
-        const next = await 后端.保存招聘方档案(patch, before.revision);
+        const next = await 后端.保存招聘方档案(patch, revision);
         派发({ 型: '水合招聘方档案', 档案: next });
+        // 首写成功即「有档案」：阶段从 缺失 收口到 成功，路由不再把用户按回注册流名片
+        deps.设后端状态((旧) => ({ ...旧, 招聘方档案水合阶段: '成功' }));
         return next;
       } catch (error) {
         处理组织401(error);

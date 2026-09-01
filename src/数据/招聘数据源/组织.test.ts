@@ -43,6 +43,25 @@ describe('组织数据源', () => {
     });
   });
 
+  // P0 修复 Task 2：全新招聘方还没有档案时的首写 —— revision 0 是合法值，
+  // 不能被真值判断吞掉：仍走同一条 PATCH + If-Match 路径，不另开 POST。
+  it('显式 revision 0 仍使用 PATCH 和 If-Match 0', async () => {
+    请求Mock.mockResolvedValueOnce({
+      result: {
+        public_name: '林澈', title: '招聘负责人', personal_verification_status: 'unverified', revision: 1,
+      },
+      etag: '"1"', requestId: 'r0',
+    });
+    await expect(数据源.保存招聘方档案({ public_name: '林澈', title: '招聘负责人' }, 0))
+      .resolves.toMatchObject({ public_name: '林澈', revision: 1 });
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/recruiter/profile',
+      method: 'PATCH',
+      body: { public_name: '林澈', title: '招聘负责人' },
+      ifMatch: '"0"',
+    });
+  });
+
   it('读取我的企业关系 解包 {affiliations:[...]} 返回数组', async () => {
     请求Mock.mockResolvedValueOnce({ result: { affiliations: [BFF企业关系样本] } });
     await expect(数据源.读取我的企业关系()).resolves.toEqual([BFF企业关系样本]);

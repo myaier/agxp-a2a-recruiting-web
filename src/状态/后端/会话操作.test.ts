@@ -31,6 +31,34 @@ import type { 后端操作依赖, 后端状态, P4运行时引用, P7运行时�
 import { 创建会话操作, 清账号状态, 水合角色数据 } from './会话操作';
 import { 创建空P8控制面状态 } from './P8控制面操作';
 
+/** 本测试文件内的 后端状态 底座：用例按 覆盖 换掉自己要钉的字段（如招聘方水合阶段）。 */
+function 创建测试后端状态(覆盖: Partial<后端状态> = {}): 后端状态 {
+  return {
+    初始化: '完成', 已登录: true, 主体: null, 简历快照: null, 意向快照: {}, 岗位快照: {},
+    隐私快照: null,
+    // P6：Task 3 起 后端状态 携带 Agent 规则原始快照与水合阶段（这里的用例不触达它们）
+    候选规则快照: {}, 招聘规则快照: {}, 候选规则提案: {}, 招聘规则提案: {},
+    Agent规则水合: {
+      candidate: { rules: '未开始', proposals: '未开始' },
+      recruiter: { rules: '未开始', proposals: '未开始' },
+    },
+    // P4 Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
+    ...创建空P4发现状态(),
+    // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
+    ...创建空P5MatchCase状态(),
+    // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
+    ...创建空P7会话状态(),
+    // P8：Task 3 起 后端状态 extends P8控制面状态（这里的用例不触达它们）
+    ...创建空P8控制面状态(),
+    // P2：附件库权威快照（只追加，不动 P6 字段）
+    附件简历库: null,
+    // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段的干净底座
+    招聘方档案水合阶段: '未开始',
+    招聘方组织水合: { 阶段: '未开始', 错误: null },
+    ...覆盖,
+  };
+}
+
 /** 依赖 helper：派发重放 归约 到可变 状态引用，断言可以读最终 state。 */
 function 创建会话测试依赖(后端: HTTP招聘数据源) {
   const 状态引用 = { current: 初始状态 };
@@ -44,29 +72,7 @@ function 创建会话测试依赖(后端: HTTP招聘数据源) {
     后端,
     派发,
     设后端状态: vi.fn(),
-    后端状态引用: { current: {
-      初始化: '完成' as const, 已登录: true, 主体: null, 简历快照: null, 意向快照: {}, 岗位快照: {},
-      隐私快照: null,
-      // P6：Task 3 起 后端状态 携带 Agent 规则原始快照与水合阶段（这里的用例不触达它们）
-      候选规则快照: {}, 招聘规则快照: {}, 候选规则提案: {}, 招聘规则提案: {},
-      Agent规则水合: {
-        candidate: { rules: '未开始' as const, proposals: '未开始' as const },
-        recruiter: { rules: '未开始' as const, proposals: '未开始' as const },
-      },
-      // P4 Task 3 起 后端状态 extends P4发现状态（这里的用例不触达它们）
-      ...创建空P4发现状态(),
-      // P5：Task 3 起 后端状态 extends P5MatchCase状态（这里的用例不触达它们）
-      ...创建空P5MatchCase状态(),
-    // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
-    ...创建空P7会话状态(),
-      // P8：Task 3 起 后端状态 extends P8控制面状态（这里的用例不触达它们）
-      ...创建空P8控制面状态(),
-      // P2：附件库权威快照（只追加，不动 P6 字段）
-      附件简历库: null,
-      // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段的干净底座
-      招聘方档案水合阶段: '未开始' as const,
-      招聘方组织水合: { 阶段: '未开始' as const, 错误: null },
-    } },
+    后端状态引用: { current: 创建测试后端状态() },
     状态引用,
     锁: { current: new Set<string>() },
     尝试引用: { current: null as string | null },
@@ -1327,5 +1333,41 @@ describe('招聘方组织水合生命周期', () => {
     // 切角色是角色转移：招聘方两个阶段回干净底座，不粘住上个角色的 失败
     expect(最新后端状态().招聘方档案水合阶段).toBe('未开始');
     expect(最新后端状态().招聘方组织水合).toEqual({ 阶段: '未开始', 错误: null });
+  });
+});
+
+// ── P0 修复 Task 2：招聘方数据的显式重试（组织链 → owner jobs）──
+
+describe('重新水合招聘方数据', () => {
+  const 招聘主体 = { ...BFF主体样本, subject_id: 'sub_1', last_used_role: 'recruiter' as const };
+  const 权威岗位快照 = { 列表: [], 服务端: { [BFF岗位样本.job_id]: BFF岗位样本 } };
+
+  it('显式招聘方数据重试按组织链后 owner jobs 的顺序恢复', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取我的企业关系).mockResolvedValue([]);
+    vi.mocked(后端.读取岗位).mockResolvedValue(权威岗位快照);
+    const { deps, 动作流, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = 'sub_1';
+    deps.后端状态引用.current = {
+      ...deps.后端状态引用.current,
+      已登录: true,
+      主体: 招聘主体,
+      招聘方档案水合阶段: '失败',
+      招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
+    };
+
+    await 创建会话操作(deps).重新水合招聘方数据();
+
+    // 组织链先跑完再读 owner jobs：失败的组织事实上不拼岗位盘
+    expect(vi.mocked(后端.读取招聘方档案).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(后端.读取岗位).mock.invocationCallOrder[0]);
+    expect(后端.读取岗位).toHaveBeenCalledTimes(1);
+    expect(动作流).toContainEqual({ 型: '水合后端岗位', 快照: 权威岗位快照 });
+    const 最终 = 最新后端状态();
+    expect(最终.岗位快照).toEqual(权威岗位快照.服务端);
+    expect(最终.招聘方档案水合阶段).toBe('成功');
+    expect(最终.招聘方组织水合).toEqual({ 阶段: '成功', 错误: null });
+    // 重试期间 初始化 走 进行中 → 完成，加载屏全程可见
+    expect(最终.初始化).toBe('完成');
   });
 });

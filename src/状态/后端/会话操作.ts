@@ -3,7 +3,7 @@
 // 401 / 409 / 503 / stale response / revision / 主体标识变化清理 / 会话代际守卫全部原样。
 // 不改变加载、错误、stale response guard、revision 或水合时序；接口失败绝不回退 Mock。
 
-import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
+import { BFF错误, 客户端校验错误, 取后端错误文案 } from '../../数据/HTTP客户端';
 import type { BFF主体, BFF角色 } from '../../数据/BFF契约';
 import type { 页面简历快照, 页面意向快照, 页面岗位快照 } from '../../数据/招聘数据源类型';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
@@ -523,6 +523,43 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
       if (会话失效) {
         // review-r3 R3-I-2：清账号状态 已在 水合角色数据 内部清完（含主体标识 + 会话代际）
         return;
+      }
+    },
+    /**
+     * P0 修复 Task 2：招聘方数据的显式重试（恢复面的「重试」按钮）。
+     * 只重跑招聘方自有的两步 —— 组织链（profile → affiliations → current organization）
+     * 成功后才读一次 owner jobs，不重跑 P6 规则等无关角色域，也没有互斥锁。
+     * 初始化 先落 进行中、收口时回 完成：现有加载屏在整个重试期间保持可见。
+     * 401 → 统一 清账号状态；其余失败 轻提示 后原样 reject（组织链的失败阶段由
+     * 水合招聘方组织数据 记录，调用方据此回到恢复面）。接口失败绝不回退 Mock。
+     */
+    async 重新水合招聘方数据() {
+      if (!是后端 || !后端) return;
+      const subject = deps.后端状态引用.current.主体;
+      if (!subject || subject.last_used_role !== 'recruiter') {
+        throw new 客户端校验错误('session', '当前不是招聘方会话');
+      }
+      const subjectId = subject.subject_id;
+      const generation = 会话代际.current;
+      设后端状态((旧) => ({ ...旧, 初始化: '进行中' }));
+      try {
+        const restoredId = 读取恢复企业关系编号(subjectId);
+        const result = await 水合招聘方组织数据({ ...deps, 后端 }, subjectId, generation, restoredId);
+        // 401 已在组织链内部收口（清账号状态 自己把 初始化 落回 完成）
+        if (result.sessionExpired) return;
+        const 快照 = await 后端.读取岗位();
+        // 岗位响应同样过 subject + generation fence：过时响应不提交
+        if (主体标识引用.current !== subjectId || 会话代际.current !== generation) return;
+        派发({ 型: '水合后端岗位', 快照 });
+        设后端状态((旧) => ({ ...旧, 初始化: '完成', 岗位快照: 快照.服务端 }));
+      } catch (错误) {
+        if (错误 instanceof BFF错误 && 错误.status === 401) {
+          清账号状态(账号清理依赖);
+        } else if (主体标识引用.current === subjectId && 会话代际.current === generation) {
+          设后端状态((旧) => ({ ...旧, 初始化: '完成' }));
+          轻提示(取后端错误文案(错误));
+        }
+        throw 错误;
       }
     },
   };

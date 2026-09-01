@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 选身份 from './选身份';
+import { 路径 } from '../路由/路径表';
 
 const mock跳转 = vi.fn();
 const mock替换跳转 = vi.fn();
@@ -54,6 +55,8 @@ describe('选身份页普通模式 F2', () => {
     expect(mock跳转).not.toHaveBeenCalled();
     完成.resolve();
     await waitFor(() => expect(mock跳转).toHaveBeenCalledTimes(1));
+    // P0 修复 Task 2：招聘方注册流落点显式带「从注册流」，与路由守卫的缺失档案落点同形
+    expect(mock跳转).toHaveBeenCalledWith(路径.招聘名片, { 从注册流: true });
   });
 
   it('普通模式卡片点「我要找工作」调 切身份(求职者)，成功才跳转', async () => {

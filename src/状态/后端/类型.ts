@@ -374,6 +374,9 @@ export interface 会话操作 {
   微信登录(): Promise<string | null>;
   退出登录(): Promise<void>;
   切身份(to: '求职者' | '招聘方'): Promise<void>;
+  /** P0 修复 Task 2：招聘方数据的显式重试 —— 重跑组织链后再读一次 owner jobs，
+   *  不重跑其它角色域。失败原样 reject（401 已走统一清账号状态），由调用方呈现。 */
+  重新水合招聘方数据(): Promise<void>;
 }
 
 export interface 候选操作 {
