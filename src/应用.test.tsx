@@ -144,11 +144,15 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
     expect(当前路径()).toBe(路径.登录);
     expect(screen.getByRole('alert').textContent).toContain('企业资料读取失败');
 
+    // 重试只钉「调用一次」：重新水合招聘方数据 在第一个 await 之前就同步写下
+    // 初始化='进行中'，恢复面随即让位给 路由加载中 —— 真实运行里 重试中 的
+    // 禁用态在本面上根本观察不到（失败后是一块**新**的恢复面重新挂载）。
+    // 这里的 mock 初始化 恒为 完成，任何 disabled 迁移断言都只是在复述冻结的 mock。
     await 用户.click(screen.getByRole('button', { name: '重试' }));
     expect(重试).toHaveBeenCalledTimes(1);
-    const 切换按钮 = screen.getByRole('button', { name: '切换身份' }) as HTMLButtonElement;
-    await waitFor(() => expect(切换按钮.disabled).toBe(false));
-    await 用户.click(切换按钮);
+
+    // 退出口不依赖重试结果：切换身份 始终把人送回身份选择，不会被锁在恢复面
+    await 用户.click(screen.getByRole('button', { name: '切换身份' }));
     expect(当前路径()).toBe(路径.选身份);
   });
 
@@ -162,6 +166,23 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
     );
     expect(screen.getByRole('alert').textContent).toContain('企业资料读取失败');
     expect(screen.queryByRole('button', { name: '发布新岗位' })).toBeNull();
+  });
+
+  // 聚合阶段闸门的回归：profile 已判定 缺失、但组织链随后失败时，缺失 绝不能被
+  // 当成 onboarding —— 去掉 应用.tsx 里「组织水合.阶段 === '成功' 才解释 profile 阶段」
+  // 这一句，用户会被 replace 到 /hr/card（恢复面在那条路径上不设防），真实错误就此消失。
+  it('profile 缺失但组织链失败时留在恢复面，不被伪装成注册流', () => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成', 已登录: true, 主体: 招聘主体,
+      招聘方档案水合阶段: '缺失',
+      招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.岗位管理]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    expect(当前路径()).toBe(路径.岗位管理);
+    expect(screen.getByRole('alert').textContent).toContain('企业资料读取失败');
+    expect(screen.queryByTestId('屏幕:招聘名片')).toBeNull();
   });
 
   it('直接打开招聘端且 profile 缺失时 replace 到注册流名片', async () => {
