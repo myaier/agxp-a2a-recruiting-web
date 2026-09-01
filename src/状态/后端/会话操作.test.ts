@@ -63,6 +63,9 @@ function 创建会话测试依赖(后端: HTTP招聘数据源) {
       ...创建空P8控制面状态(),
       // P2：附件库权威快照（只追加，不动 P6 字段）
       附件简历库: null,
+      // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段的干净底座
+      招聘方档案水合阶段: '未开始' as const,
+      招聘方组织水合: { 阶段: '未开始' as const, 错误: null },
     } },
     状态引用,
     锁: { current: new Set<string>() },
@@ -358,6 +361,9 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
     ...创建空P8控制面状态(),
     // P2：附件库权威快照（只追加，不动 P6 字段）
     附件简历库: null,
+    // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段的干净底座
+    招聘方档案水合阶段: '未开始',
+    招聘方组织水合: { 阶段: '未开始', 错误: null },
   };
   const deps = {
     是后端: true,
@@ -1241,5 +1247,85 @@ describe('P8 控制面会话清理', () => {
     expect(deps.P8导出恢复?.current).toBe(恢复适配器);
     expect(恢复适配器.写入).not.toHaveBeenCalled();
     expect(恢复适配器.删除).not.toHaveBeenCalled();
+  });
+});
+
+// ── P0 修复 Task 1：缺失招聘方档案 / 组织链聚合阶段 在会话编排与三个转移口的行为 ──
+
+describe('招聘方组织水合生命周期', () => {
+  it('招聘方 profile 缺失时 jobs 在完整组织链成功后读取，交互切身份 resolve', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取招聘方档案).mockRejectedValue(new BFF错误(404, 'not_found', 'missing'));
+    vi.mocked(后端.读取我的企业关系).mockResolvedValue([]);
+    const { deps, 最新后端状态, 状态引用 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = recruiter主体.subject_id;
+    deps.会话代际.current = 4;
+    await expect(水合角色数据(deps, recruiter主体, true, 4)).resolves.toBe(false);
+    expect(后端.读取岗位).toHaveBeenCalledTimes(1);
+    // 缺失档案不阻断 onboarding：档案落 缺失，聚合链仍成功，岗位盘照常起来
+    expect(状态引用.current.招聘方档案).toBeNull();
+    expect(最新后端状态().招聘方档案水合阶段).toBe('缺失');
+    expect(最新后端状态().招聘方组织水合).toEqual({ 阶段: '成功', 错误: null });
+    expect(最新后端状态().岗位快照).toEqual({ [BFF岗位样本.job_id]: BFF岗位样本 });
+  });
+
+  it.each([500, 503])('招聘方组织链 %i 失败时不读取 jobs 且交互调用 reject', async (status) => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取招聘方档案).mockRejectedValue(new BFF错误(status, 'service_error', '失败'));
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = recruiter主体.subject_id;
+    deps.会话代际.current = 4;
+    await expect(水合角色数据(deps, recruiter主体, true, 4)).rejects.toBeInstanceOf(BFF错误);
+    expect(后端.读取岗位).not.toHaveBeenCalled();
+    expect(最新后端状态().招聘方档案水合阶段).toBe('失败');
+    expect(最新后端状态().招聘方组织水合.阶段).toBe('失败');
+  });
+
+  it('401 统一清账号把招聘方两个阶段恢复到未开始', () => {
+    const 后端 = 创建P6数据源桩();
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.后端状态引用.current = {
+      ...deps.后端状态引用.current,
+      招聘方档案水合阶段: '成功',
+      招聘方组织水合: { 阶段: '失败', 错误: '上个账号错误' },
+    };
+    清账号状态(deps);
+    expect(最新后端状态().招聘方档案水合阶段).toBe('未开始');
+    expect(最新后端状态().招聘方组织水合).toEqual({ 阶段: '未开始', 错误: null });
+  });
+
+  it('换主体登录把招聘方两个阶段恢复到未开始', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce(主体('sub_a'))
+      .mockResolvedValueOnce(主体('sub_b'));
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    await 操作.完成手机登录('1111');
+    deps.后端状态引用.current = {
+      ...deps.后端状态引用.current,
+      招聘方档案水合阶段: '缺失',
+      招聘方组织水合: { 阶段: '失败', 错误: 'A 的错误' },
+    };
+    await 操作.完成手机登录('2222');
+    expect(deps.主体标识引用.current).toBe('sub_b');
+    expect(最新后端状态().招聘方档案水合阶段).toBe('未开始');
+    expect(最新后端状态().招聘方组织水合).toEqual({ 阶段: '未开始', 错误: null });
+  });
+
+  it('切身份到求职者把招聘方两个阶段恢复到未开始', async () => {
+    const 后端 = 创建P6数据源桩();
+    const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.主体标识引用.current = 'sub_1';
+    deps.后端状态引用.current = {
+      ...deps.后端状态引用.current,
+      招聘方档案水合阶段: '失败',
+      招聘方组织水合: { 阶段: '失败', 错误: '上个角色错误' },
+    };
+    const 操作 = 创建会话操作(deps);
+    await 操作.切身份('求职者');
+    // 切角色是角色转移：招聘方两个阶段回干净底座，不粘住上个角色的 失败
+    expect(最新后端状态().招聘方档案水合阶段).toBe('未开始');
+    expect(最新后端状态().招聘方组织水合).toEqual({ 阶段: '未开始', 错误: null });
   });
 });

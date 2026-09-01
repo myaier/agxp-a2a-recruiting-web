@@ -9,6 +9,7 @@ import type { 页面简历快照, 页面意向快照, 页面岗位快照 } from 
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { 轻提示 } from '../../组件/轻提示';
 import type { 后端状态, 后端操作依赖, 会话操作 } from './类型';
+import { 创建空招聘方组织水合状态 } from './类型';
 import { 水合Agent规则角色数据 } from './Agent规则操作';
 import { 水合招聘方组织数据 } from './组织操作';
 import { 创建空P4发现状态 } from './发现推荐操作';
@@ -135,6 +136,9 @@ export function 清账号状态(
     ...创建空P7会话状态(),
     // P8 Task 3：控制面三块账号快照（凭证/会话/导出）一并回空底座，不跨主体 / 不跨会话存活
     ...创建空P8控制面状态(),
+    // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段回 未开始，不把上个会话的
+    // 缺失/失败判定留给下一个登录
+    ...创建空招聘方组织水合状态(),
     初始化: '完成',
     已登录: false,
     主体: null,
@@ -289,7 +293,12 @@ export async function 水合角色数据(
     );
     const [组织岗位落点] = await Promise.allSettled([
       (async (): Promise<{ sessionExpired: boolean; 岗位快照?: 页面岗位快照 }> => {
-        const organizationResult = await 水合招聘方组织数据(deps, 主体.subject_id, generation, restoredId, 交互);
+        const organizationResult = await 水合招聘方组织数据(
+          deps,
+          主体.subject_id,
+          generation,
+          restoredId,
+        );
         if (organizationResult.sessionExpired) return organizationResult;
         return { sessionExpired: false, 岗位快照: await 后端.读取岗位() };
       })(),
@@ -317,10 +326,10 @@ export async function 水合角色数据(
         设后端状态((旧) => ({ ...旧, 岗位快照: 岗位快照.服务端 }));
       }
     } else if (交互) {
-      // 交互模式：组织水合的非 401 失败 / Jobs 失败 原样抛回（组织水合交互路径本来就抛）
+      // 交互模式：组织链或 Jobs 的非 401 失败原样抛回（helper 一律 reject，不吞非 401）
       throw 组织岗位落点.reason;
     } else {
-      // mount 模式：Jobs 失败只 轻提示（组织水合的非 401 失败在其内部已 轻提示，不会 reject）
+      // mount 模式：组织链或 Jobs 的非 401 失败都在这里提示一次；helper 只记录阶段并 reject。
       轻提示(取后端错误文案(组织岗位落点.reason));
     }
     // P6 非 401 失败：既有错误策略（mount 只 轻提示；交互抛第一个），不回滚已提交的组织/岗位
@@ -401,6 +410,8 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
           ...创建空P4发现状态(),
           ...创建空P7会话状态(),
           ...创建空P8控制面状态(),
+          // P0 修复 Task 1：A 的招聘方水合阶段同样不能串进 B
+          ...创建空招聘方组织水合状态(),
           简历快照: null,
           意向快照: {},
           岗位快照: {},
@@ -481,6 +492,9 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 {
         ...重置Agent规则后端状态(旧),
         ...创建空P4发现状态(),
         ...创建空P7会话状态(),
+        // P0 修复 Task 1：切角色是角色转移 —— 招聘方两个水合阶段回干净底座，
+        // 目标角色从 未开始 重跑完整链路，阶段不粘住上个角色的 缺失/失败
+        ...创建空招聘方组织水合状态(),
         附件简历库: null,
       }));
       清P4发现引用({ P4范围代际, P4幂等意图, P4可见范围 });

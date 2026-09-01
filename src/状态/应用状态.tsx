@@ -61,6 +61,7 @@ import type {
   应用操作, 后端状态, 后端操作依赖, P7待定意图, P7已读位置记录,
   P8待定意图,
 } from './后端/类型';
+import { 创建空招聘方组织水合状态 } from './后端/类型';
 import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
 import { 创建发现推荐操作, 创建空P4发现状态 } from './后端/发现推荐操作';
 import { 创建MatchCase操作, 创建空P5MatchCase状态, 清P5MatchCase引用 } from './后端/MatchCase操作';
@@ -489,6 +490,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     ...创建空P8控制面状态(),
     // P2：附件库权威快照种子为 null（Backend 初始不带任何演示附件行）
     附件简历库: null,
+    // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段从 未开始 起跑
+    ...创建空招聘方组织水合状态(),
   }));
 
   // 让异步操作读到最新的 后端状态 / 状态（useMemo 闭包只捕获首次值）

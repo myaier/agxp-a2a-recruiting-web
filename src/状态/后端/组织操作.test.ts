@@ -21,7 +21,7 @@ import {
 } from '../../测试/BFF样本';
 import { 初始状态 } from '../初始状态';
 import { 归约, type 动作, type 状态 } from '../应用状态';
-import type { 后端操作依赖 } from './类型';
+import type { 后端操作依赖, 后端状态 } from './类型';
 import { 水合角色数据 } from './会话操作';
 import { 创建空P4发现状态 } from './发现推荐操作';
 import { 水合招聘方组织数据, 创建组织操作, type 企业媒体脱离错误 } from './组织操作';
@@ -99,6 +99,9 @@ function 创建组织测试依赖(input: {
     ...创建空P8控制面状态(),
       // P2：附件库权威快照（只追加，不动 P6 字段）
       附件简历库: null,
+      // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段的干净底座
+      招聘方档案水合阶段: '未开始' as const,
+      招聘方组织水合: { 阶段: '未开始' as const, 错误: null },
     } },
     锁: { current: new Set<string>() }, 尝试引用: { current: null }, 是后端: true,
   } satisfies 后端操作依赖;
@@ -107,6 +110,15 @@ function 创建组织测试依赖(input: {
 /** 断言用：取派发的动作型列表 */
 function 动作型列表(派发: { mock: { calls: ReadonlyArray<[动作, ...unknown[]]> } }): string[] {
   return 派发.mock.calls.map(([动作]) => 动作.型);
+}
+
+/** 断言用：把 设后端状态 收到的函数式更新依序折叠到起始 后端状态 上，取最终值。 */
+function 最终后端状态(deps: { 设后端状态: unknown; 后端状态引用: { current: 后端状态 } }): 后端状态 {
+  let 最新 = deps.后端状态引用.current;
+  for (const 调用 of vi.mocked(deps.设后端状态 as (更新: (旧: 后端状态) => 后端状态) => void).mock.calls) {
+    最新 = 调用[0](最新);
+  }
+  return 最新;
 }
 
 // ── 组织操作方法的 A/B 切换与读错误测试用的双企业 fixture ──
@@ -157,7 +169,7 @@ describe('水合招聘方组织数据', () => {
     } as unknown as HTTP招聘数据源;
     const 派发 = vi.fn<(_: 动作) => void>();
     const deps = 创建组织测试依赖({ 后端, 派发, subject: 'sub_1', generation: 7 });
-    const 运行 = 水合招聘方组织数据(deps, 'sub_1', 7, null, false);
+    const 运行 = 水合招聘方组织数据(deps, 'sub_1', 7, null);
     档案门.resolve(BFF招聘方档案样本);
     await expect(运行).resolves.toEqual({ sessionExpired: false });
     expect(顺序).toEqual(['profile', 'affiliations', 'organization']);
@@ -187,7 +199,7 @@ describe('水合招聘方组织数据', () => {
     });
     const 派发 = vi.fn<(_: 动作) => void>();
     const deps = 创建组织测试依赖({ 后端, 派发, subject: 'sub_1', generation: 1 });
-    await expect(水合招聘方组织数据(deps, 'sub_1', 1, null, false)).resolves.toEqual({ sessionExpired: false });
+    await expect(水合招聘方组织数据(deps, 'sub_1', 1, null)).resolves.toEqual({ sessionExpired: false });
     expect(读取公开企业).not.toHaveBeenCalled();
     expect(动作型列表(派发)).toEqual(['水合招聘方档案', '水合企业关系']);
     expect(派发).toHaveBeenCalledWith(expect.objectContaining({
@@ -202,7 +214,7 @@ describe('水合招聘方组织数据', () => {
     });
     const 派发 = vi.fn<(_: 动作) => void>();
     const deps = 创建组织测试依赖({ 后端, 派发, subject: 'sub_1', generation: 1 });
-    await 水合招聘方组织数据(deps, 'sub_1', 1, BFF企业关系样本.affiliation_id, false);
+    await 水合招聘方组织数据(deps, 'sub_1', 1, BFF企业关系样本.affiliation_id);
     expect(派发).toHaveBeenCalledWith(expect.objectContaining({
       型: '水合企业关系', 当前编号: null,
     }));
@@ -214,7 +226,7 @@ describe('水合招聘方组织数据', () => {
     const 派发1 = vi.fn<(_: 动作) => void>();
     await 水合招聘方组织数据(
       创建组织测试依赖({ 后端: 单一, 派发: 派发1, subject: 'sub_1', generation: 1 }),
-      'sub_1', 1, null, false,
+      'sub_1', 1, null,
     );
     expect(派发1).toHaveBeenCalledWith(expect.objectContaining({
       型: '水合企业关系', 当前编号: BFF企业关系样本.affiliation_id,
@@ -224,7 +236,7 @@ describe('水合招聘方组织数据', () => {
     const 派发2 = vi.fn<(_: 动作) => void>();
     await 水合招聘方组织数据(
       创建组织测试依赖({ 后端: 多个, 派发: 派发2, subject: 'sub_1', generation: 1 }),
-      'sub_1', 1, null, false,
+      'sub_1', 1, null,
     );
     expect(派发2).toHaveBeenCalledWith(expect.objectContaining({
       型: '水合企业关系', 当前编号: null,
@@ -237,7 +249,7 @@ describe('水合招聘方组织数据', () => {
     });
     const 派发 = vi.fn<(_: 动作) => void>();
     const deps = 创建组织测试依赖({ 后端, 派发, subject: 'sub_1', generation: 1 });
-    await 水合招聘方组织数据(deps, 'sub_1', 1, BFF企业关系样本.affiliation_id, false);
+    await 水合招聘方组织数据(deps, 'sub_1', 1, BFF企业关系样本.affiliation_id);
     expect(派发).toHaveBeenCalledWith(expect.objectContaining({
       型: '水合企业关系', 当前编号: null,
     }));
@@ -252,13 +264,16 @@ describe('水合招聘方组织数据', () => {
     } as unknown as HTTP招聘数据源;
     const 派发 = vi.fn<(_: 动作) => void>();
     const deps = 创建组织测试依赖({ 后端, 派发, subject: 'sub_1', generation: 7 });
-    const 运行 = 水合招聘方组织数据(deps, 'sub_1', 7, null, false);
+    const 运行 = 水合招聘方组织数据(deps, 'sub_1', 7, null);
     // 首个组织请求已发出后才切到别的账号 —— 该响应属于旧 subject
     deps.主体标识引用.current = 'sub_2';
     档案门.resolve(BFF招聘方档案样本);
     await expect(运行).resolves.toEqual({ sessionExpired: false });
     expect(派发).not.toHaveBeenCalled();
     expect(后端.读取我的企业关系).not.toHaveBeenCalled();
+    // 过时响应不改任何阶段：只保留进入水合时写下的 进行中
+    expect(最终后端状态(deps).招聘方档案水合阶段).toBe('进行中');
+    expect(最终后端状态(deps).招聘方组织水合).toEqual({ 阶段: '进行中', 错误: null });
   });
 
   it('过时代际的迟到响应不派发（中途清账号换代）', async () => {
@@ -271,7 +286,7 @@ describe('水合招聘方组织数据', () => {
     } as unknown as HTTP招聘数据源;
     const 派发 = vi.fn<(_: 动作) => void>();
     const deps = 创建组织测试依赖({ 后端, 派发, subject: 'sub_1', generation: 7 });
-    const 运行 = 水合招聘方组织数据(deps, 'sub_1', 7, null, false);
+    const 运行 = 水合招聘方组织数据(deps, 'sub_1', 7, null);
     档案门.resolve(BFF招聘方档案样本);
     // 等 profile 已派发、affiliations 请求在飞时账号被清（代际递增）——旧会话响应全部丢弃
     await vi.waitFor(() => expect(动作型列表(派发)).toEqual(['水合招聘方档案']));
@@ -281,6 +296,9 @@ describe('水合招聘方组织数据', () => {
     await expect(运行).resolves.toEqual({ sessionExpired: false });
     expect(动作型列表(派发)).toEqual(['水合招聘方档案']);
     expect(后端.读取公开企业).not.toHaveBeenCalled();
+    // profile 在有效期内落 成功；过时的 affiliations 响应不把聚合阶段推向 成功/失败
+    expect(最终后端状态(deps).招聘方档案水合阶段).toBe('成功');
+    expect(最终后端状态(deps).招聘方组织水合).toEqual({ 阶段: '进行中', 错误: null });
   });
 
   it('组织水合 401 走统一清账号状态并返回会话失效', async () => {
@@ -293,7 +311,7 @@ describe('水合招聘方组织数据', () => {
     const 设后端状态 = vi.fn();
     const deps = 创建组织测试依赖({ 后端, 派发, subject: 'sub_1', generation: 7 });
     deps.设后端状态 = 设后端状态;
-    await expect(水合招聘方组织数据(deps, 'sub_1', 7, null, false))
+    await expect(水合招聘方组织数据(deps, 'sub_1', 7, null))
       .resolves.toEqual({ sessionExpired: true });
     expect(派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '水合后端简历' }));
     expect(派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
@@ -304,42 +322,135 @@ describe('水合招聘方组织数据', () => {
     expect(deps.会话代际.current).toBe(8);
   });
 
-  it('mount 初始化 非401 错误轻提示但不算会话失效', async () => {
+  it('mount 初始化 非401 错误由 水合角色数据 轻提示一次，不算会话失效', async () => {
     const 后端 = 创建完整测试数据源({
       读取我的企业关系: async () => { throw new BFF错误(503, 'downstream_unavailable', 'down'); },
     });
     const 派发 = vi.fn<(_: 动作) => void>();
     const deps = 创建组织测试依赖({ 后端, 派发, subject: 'sub_1', generation: 7 });
-    await expect(水合招聘方组织数据(deps, 'sub_1', 7, null, false))
-      .resolves.toEqual({ sessionExpired: false });
+    // helper 自身只记录阶段并 reject；mount 提示归 水合角色数据
+    await expect(水合角色数据(deps, recruiter主体样本, false, 7)).resolves.toBe(false);
     expect(document.body.textContent).toContain('后端服务暂时不可用，请稍后重试');
     // 非 401 不清账号
     expect(派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
     expect(deps.主体标识引用.current).toBe('sub_1');
   });
 
-  it('交互模式 非401 错误原样抛回 UI', async () => {
+  it('非401 错误无论 mount 还是交互都从 helper 原样 reject', async () => {
     const 后端 = 创建完整测试数据源({
       读取招聘方档案: async () => { throw new BFF错误(503, 'downstream_unavailable', 'down'); },
     });
     const deps = 创建组织测试依赖({ 后端, 派发: () => {}, subject: 'sub_1', generation: 7 });
-    await expect(水合招聘方组织数据(deps, 'sub_1', 7, null, true))
+    await expect(水合招聘方组织数据(deps, 'sub_1', 7, null))
       .rejects.toMatchObject({ code: 'downstream_unavailable' });
   });
 
-  it('affiliations 失败不拿旧 Organization 发岗（不读公开企业、不派发 current）', async () => {
+  it('affiliations 失败不拿旧 Organization 发岗，且不读 owner Jobs', async () => {
     const 读取公开企业 = vi.fn(async () => BFF公开企业样本);
+    const 读取岗位 = vi.fn(async () => 页面岗位快照样本);
     const 后端 = 创建完整测试数据源({
       读取我的企业关系: async () => { throw new BFF错误(503, 'downstream_unavailable', 'down'); },
       读取公开企业,
+      读取岗位,
     });
     const 派发 = vi.fn<(_: 动作) => void>();
     const deps = 创建组织测试依赖({ 后端, 派发, subject: 'sub_1', generation: 1 });
     await expect(水合角色数据(deps, recruiter主体样本, false, 1)).resolves.toBe(false);
     expect(读取公开企业).not.toHaveBeenCalled();
     expect(动作型列表(派发)).not.toContain('水合当前企业');
-    // 组织失败不清空 owner Jobs 水合（岗位盘仍要起来）
-    expect(派发).toHaveBeenCalledWith({ 型: '水合后端岗位', 快照: 页面岗位快照样本 });
+    // 组织链失败即整条聚合失败：不在失败的组织事实上继续读 owner Jobs
+    expect(读取岗位).not.toHaveBeenCalled();
+    expect(动作型列表(派发)).not.toContain('水合后端岗位');
+  });
+
+  // ── P0 修复 Task 1：缺失招聘方档案 与 组织链聚合阶段 ──
+
+  it('profile 404/not_found 是缺失态，仍读取 affiliations，无 current 时不读公开企业', async () => {
+    const 读取我的企业关系 = vi.fn(async () => []);
+    const 读取公开企业 = vi.fn(async () => BFF公开企业样本);
+    const 后端 = 创建完整测试数据源({
+      读取招聘方档案: async () => {
+        throw new BFF错误(404, 'not_found', 'Recruiter profile not found');
+      },
+      读取我的企业关系,
+      读取公开企业,
+    });
+    const 派发 = vi.fn<(_: 动作) => void>();
+    const deps = 创建组织测试依赖({ 后端, 派发, subject: 'sub_1', generation: 7 });
+    await expect(水合招聘方组织数据(deps, 'sub_1', 7, null))
+      .resolves.toEqual({ sessionExpired: false });
+    expect(读取我的企业关系).toHaveBeenCalledTimes(1);
+    expect(读取公开企业).not.toHaveBeenCalled();
+    expect(派发).toHaveBeenCalledWith({ 型: '水合招聘方档案', 档案: null });
+    const 最终 = 最终后端状态(deps);
+    expect(最终.招聘方档案水合阶段).toBe('缺失');
+    expect(最终.招聘方组织水合).toEqual({ 阶段: '成功', 错误: null });
+  });
+
+  it.each([
+    new BFF错误(500, 'internal_error', '读取失败'),
+    new BFF错误(503, 'service_unavailable', '暂不可用'),
+  ])('profile 非 404 错误保留失败态并 reject（%s）', async (错误) => {
+    const 读取我的企业关系 = vi.fn(async () => [BFF企业关系样本]);
+    const 后端 = 创建完整测试数据源({
+      读取招聘方档案: async () => { throw 错误; },
+      读取我的企业关系,
+    });
+    const deps = 创建组织测试依赖({ 后端, 派发: vi.fn(), subject: 'sub_1', generation: 7 });
+    await expect(水合招聘方组织数据(deps, 'sub_1', 7, null)).rejects.toBe(错误);
+    expect(读取我的企业关系).not.toHaveBeenCalled();
+    const 最终 = 最终后端状态(deps);
+    expect(最终.招聘方档案水合阶段).toBe('失败');
+    expect(最终.招聘方组织水合.阶段).toBe('失败');
+    expect(最终.招聘方组织水合.错误).toBeTruthy();
+  });
+
+  it('profile 401 统一清账号且不继续 affiliations', async () => {
+    const 读取我的企业关系 = vi.fn(async () => [BFF企业关系样本]);
+    const 后端 = 创建完整测试数据源({
+      读取招聘方档案: async () => { throw new BFF错误(401, 'invalid_session', 'expired'); },
+      读取我的企业关系,
+    });
+    const 派发 = vi.fn<(_: 动作) => void>();
+    const deps = 创建组织测试依赖({ 后端, 派发, subject: 'sub_1', generation: 7 });
+    await expect(水合招聘方组织数据(deps, 'sub_1', 7, null))
+      .resolves.toEqual({ sessionExpired: true });
+    expect(读取我的企业关系).not.toHaveBeenCalled();
+    expect(派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
+    const 最终 = 最终后端状态(deps);
+    expect(最终.招聘方档案水合阶段).toBe('未开始');
+    expect(最终.招聘方组织水合).toEqual({ 阶段: '未开始', 错误: null });
+  });
+
+  it('profile 缺失后 affiliations 失败只让聚合链失败，不改写为缺失成功', async () => {
+    const 后端 = 创建完整测试数据源({
+      读取招聘方档案: async () => { throw new BFF错误(404, 'not_found', 'missing'); },
+      读取我的企业关系: async () => {
+        throw new BFF错误(503, 'service_unavailable', 'affiliations down');
+      },
+    });
+    const deps = 创建组织测试依赖({ 后端, 派发: vi.fn(), subject: 'sub_1', generation: 7 });
+    await expect(水合招聘方组织数据(deps, 'sub_1', 7, null))
+      .rejects.toMatchObject({ status: 503 });
+    const 最终 = 最终后端状态(deps);
+    expect(最终.招聘方档案水合阶段).toBe('缺失');
+    expect(最终.招聘方组织水合.阶段).toBe('失败');
+  });
+
+  it('有 current 时公开企业读取失败进入聚合失败', async () => {
+    const 后端 = 创建完整测试数据源({
+      读取招聘方档案: async () => BFF招聘方档案样本,
+      读取我的企业关系: async () => [BFF企业关系样本],
+      读取公开企业: async () => {
+        throw new BFF错误(500, 'internal_error', 'organization down');
+      },
+    });
+    const deps = 创建组织测试依赖({ 后端, 派发: vi.fn(), subject: 'sub_1', generation: 7 });
+    await expect(水合招聘方组织数据(deps, 'sub_1', 7, null))
+      .rejects.toMatchObject({ status: 500 });
+    const 最终 = 最终后端状态(deps);
+    expect(最终.招聘方档案水合阶段).toBe('成功');
+    expect(最终.招聘方组织水合.阶段).toBe('失败');
   });
 });
 

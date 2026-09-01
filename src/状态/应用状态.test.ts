@@ -748,6 +748,8 @@ describe('应用状态提供者 后端会话', () => {
       '选择企业关系', '保存未认证公司声明', '保存招聘方档案', '读取企业管理员申请',
       '创建企业管理员申请', '取消企业管理员申请', '接受企业邀请', '替换招聘方头像',
       '保存企业档案', '上传并发布企业媒体', '移除企业媒体', '读取公开企业',
+      // P0 修复 Task 1：招聘方组织链重试
+      '重新水合招聘方组织',
       // P3 隐私域方法（隐私操作）
       '设置雇主隐私', '设置披露偏好', '搜索可屏蔽组织', '添加组织屏蔽', '解除组织屏蔽',
       // P6 Agent 规则域方法（Agent规则操作）
@@ -1230,6 +1232,49 @@ describe('应用状态提供者 切身份与退出登录', () => {
     expect(后端2.恢复会话).toHaveBeenCalled();
     // 清理：resolve 第一次的 deferred（第一次 init 已被取消，resolve 不会影响状态）
     恢复完成.resolve({ identity_id: 'id_1', session_id: 'sess_1', expires_at: '2026-08-25T00:00:00Z' });
+  });
+
+  // ── P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段的种子与登出复位 ──
+
+  it('Provider 种子把招聘方两个阶段落在 未开始', () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    render(createElement(应用状态提供者, null, createElement(上下文探针)));
+    expect(当前.后端状态.招聘方档案水合阶段).toBe('未开始');
+    expect(当前.后端状态.招聘方组织水合).toEqual({ 阶段: '未开始', 错误: null });
+  });
+
+  it('登出把招聘方两个阶段恢复到未开始并清空未认证公司声明', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('recruiter');
+    // mount 时组织链失败 → 两个阶段都落在非 未开始，登出必须把它们清回底座
+    vi.mocked(后端.读取招聘方档案).mockRejectedValue(new BFF错误(503, 'service_unavailable', 'down'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await waitFor(() => expect(当前.后端状态.招聘方组织水合.阶段).toBe('失败'));
+    expect(当前.后端状态.招聘方档案水合阶段).toBe('失败');
+    expect(当前.后端状态.招聘方组织水合.错误).toBeTruthy();
+    act(() => { 当前.操作.保存未认证公司声明('上个账号的公司'); });
+    await waitFor(() => expect(当前.状态.未认证公司声明).toBe('上个账号的公司'));
+    await act(async () => { await 当前.操作.退出登录(); });
+    await waitFor(() => expect(当前.后端状态.招聘方档案水合阶段).toBe('未开始'));
+    expect(当前.后端状态.招聘方组织水合).toEqual({ 阶段: '未开始', 错误: null });
+    expect(当前.状态.未认证公司声明).toBe('');
+  });
+
+  it('重新水合招聘方组织 在缺失档案上重跑整条链并落成功', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('recruiter');
+    vi.mocked(后端.读取招聘方档案).mockRejectedValueOnce(new BFF错误(503, 'service_unavailable', 'down'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.招聘方组织水合.阶段).toBe('失败'));
+    await act(async () => { await 当前.操作.重新水合招聘方组织(); });
+    await waitFor(() => expect(当前.后端状态.招聘方组织水合).toEqual({ 阶段: '成功', 错误: null }));
+    expect(当前.后端状态.招聘方档案水合阶段).toBe('成功');
   });
 });
 

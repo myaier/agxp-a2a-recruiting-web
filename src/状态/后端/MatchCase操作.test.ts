@@ -159,6 +159,9 @@ function 创建P5操作测试环境(是后端 = true, 源 = 创建P5数据源())
       candidate: { rules: '未开始', proposals: '未开始' },
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
+    // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段（这里的用例不触达它们）
+    招聘方档案水合阶段: '未开始' as const,
+    招聘方组织水合: { 阶段: '未开始' as const, 错误: null },
     ...创建空P4发现状态(),
     ...创建空P5MatchCase状态(),
     // P7：Task 2 起 后端状态 extends P7会话状态（这里的用例不触达它们）
