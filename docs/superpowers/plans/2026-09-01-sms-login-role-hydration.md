@@ -156,7 +156,7 @@ it('candidate 当前轮水合 401 清 P7 与 P8 运行时引用', async () => {
 });
 ```
 
-Import `页面简历快照` and `页面意向快照` from `../../数据/招聘数据源类型` and use those exact types for the two deferred promises; do not use `any`.
+Import `页面简历快照`, `页面意向快照`, and `页面岗位快照` from `../../数据/招聘数据源类型`; import `BFF意向样本` from `../../测试/BFF样本`. Use the exact snapshot types for deferred promises and do not use `any`.
 
 In the predecessor `src/状态/后端/组织操作.test.ts`, extend `创建组织测试依赖` with the complete runtime refs used by `创建P6会话依赖`:
 
