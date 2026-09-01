@@ -10,6 +10,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 招聘名片 from './招聘名片';
 import { BFF企业关系样本, BFF招聘方档案样本 } from '../测试/BFF样本';
+import type { BFF招聘方档案 } from '../数据/BFF契约';
 import { BFF错误 } from '../数据/HTTP客户端';
 import { 路径 } from '../路由/路径表';
 
@@ -49,7 +50,9 @@ function 置Backend应用状态(
       企业关系列表: [],
       当前企业关系编号: null,
       企业管理员申请列表: [],
-      未认证公司声明: '',
+      // Task 3 起保存会校验 company claim：默认桩给一份已声明的公司，
+      // 让「保存」类用例继续落在原来的断言上，缺失态由 render缺失Profile名片 显式清空
+      未认证公司声明: '云衢科技',
       招聘头像: null,
       // 现组件无条件读 企业认证：Backend 桩补空值，让 RED 落在行为差异而不是读 undefined
       企业认证: { 姓名: '', 公司: '', 职务: '' },
@@ -62,7 +65,11 @@ function 置Backend应用状态(
       保存未认证公司声明: mock保存未认证公司声明,
       替换招聘方头像: mock替换头像,
     },
-    后端状态: { 主体: { subject_id: 'sub_1' }, ...覆盖后端状态 },
+    后端状态: {
+      主体: { subject_id: 'sub_1' },
+      招聘方档案水合阶段: '成功',
+      ...覆盖后端状态,
+    },
     数据源模式: 'backend',
   };
 }
@@ -159,11 +166,16 @@ describe('招聘名片 · Backend 诚实身份', () => {
     expect((screen.getByLabelText('职务') as HTMLInputElement).value).toBe('超长职务');
   });
 
-  it('无 current affiliation 时公司输入保存为未认证声明，不创建 Organization', () => {
+  it('无 current affiliation 时公司输入随保存落未认证声明，不创建 Organization', async () => {
+    const 用户 = userEvent.setup();
     render(<MemoryRouter><招聘名片 /></MemoryRouter>);
-    const 公司输入 = screen.getByLabelText('公司');
-    fireEvent.change(公司输入, { target: { value: '自由身科技' } });
+    const 公司输入 = screen.getByLabelText('公司') as HTMLInputElement;
+    await 用户.clear(公司输入);
+    await 用户.type(公司输入, '自由身科技');
+    // 收笔不再是提交点：blur 本身零 mutation，声明只跟着这一次保存走
     fireEvent.blur(公司输入);
+    expect(mock保存未认证公司声明).not.toHaveBeenCalled();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(mock保存未认证公司声明).toHaveBeenCalledWith('自由身科技');
     // 声明不是组织事实：不派发任何水合/选择动作
     expect(mock派发).not.toHaveBeenCalled();
@@ -192,7 +204,8 @@ describe('招聘名片 · Backend 诚实身份', () => {
     expect(mock选择企业关系).not.toHaveBeenCalled();
   });
 
-  it('全部关系不可用时仍能维护未认证公司声明', () => {
+  it('全部关系不可用时仍能维护未认证公司声明', async () => {
+    const 用户 = userEvent.setup();
     置Backend应用状态({
       企业关系列表: [{ ...BFF企业关系样本, status: 'revoked' }],
       当前企业关系编号: null,
@@ -202,9 +215,10 @@ describe('招聘名片 · Backend 诚实身份', () => {
     expect(screen.getByText(/（不可选）/)).toBeTruthy();
     // 无任何可选关系且无 current：未认证声明输入仍可维护
     // （取发岗声明在此态回退 未认证公司声明，输入面不能缺席）
-    const 公司输入 = screen.getByLabelText('公司');
-    fireEvent.change(公司输入, { target: { value: '未认证客户公司' } });
-    fireEvent.blur(公司输入);
+    const 公司输入 = screen.getByLabelText('公司') as HTMLInputElement;
+    await 用户.clear(公司输入);
+    await 用户.type(公司输入, '未认证客户公司');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(mock保存未认证公司声明).toHaveBeenCalledWith('未认证客户公司');
   });
 
@@ -328,6 +342,113 @@ describe('招聘名片 · Backend 头像原子保存', () => {
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock保存招聘方档案).toHaveBeenCalledTimes(1));
     expect(mock替换头像).not.toHaveBeenCalled();
+  });
+});
+
+// ── Task 3：缺失档案的首写（受控公司字段 + 单飞保存）──────────────────
+
+/** 轻提示 挂在 document.body 的模块级容器上，不随 RTL cleanup 清空：
+ *  用例开头清掉上一条，避免跨用例误命中同一句文案 */
+function 清空轻提示() {
+  Array.from(document.body.children).forEach((节点) => 节点.replaceChildren());
+}
+
+/** 全新招聘方：GET /recruiter/profile 404 → 档案 null、水合阶段 缺失、无任何任职关系，
+ *  且由路由守卫带着 从注册流 标记进屏 */
+function render缺失Profile名片(覆盖: Record<string, unknown> = {}) {
+  置Backend应用状态({
+    招聘方档案: null,
+    企业关系列表: [],
+    当前企业关系编号: null,
+    未认证公司声明: '',
+    后端状态: { 招聘方档案水合阶段: '缺失' },
+    ...覆盖,
+  });
+  return render(
+    <MemoryRouter initialEntries={[{ pathname: 路径.招聘名片, state: { 从注册流: true } }]}>
+      <招聘名片 />
+    </MemoryRouter>,
+  );
+}
+
+/** 同上，但姓名/职务/公司三项都已填妥，可以直接按保存 */
+async function render填写完成的缺失Profile名片(用户: ReturnType<typeof userEvent.setup>) {
+  render缺失Profile名片({ 未认证公司声明: '星河科技' });
+  await 用户.type(screen.getByLabelText('姓名'), '林澈');
+  await 用户.type(screen.getByLabelText('职务'), '招聘负责人');
+}
+
+describe('招聘名片 · Backend 缺失档案首写', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock保存招聘方档案.mockClear();
+    mock保存招聘方档案.mockResolvedValue(BFF招聘方档案样本);
+    mock选择企业关系.mockClear();
+    mock保存未认证公司声明.mockClear();
+    mock替换头像.mockClear();
+    mock替换头像.mockResolvedValue(undefined);
+    mock压成头像.mockClear();
+    清空轻提示();
+  });
+
+  it('缺失 profile 不触发 blur 也会同步公司声明、保存 profile 并进入发岗', async () => {
+    mock保存招聘方档案.mockResolvedValue({
+      public_name: '林澈', title: '招聘负责人', personal_verification_status: 'unverified', revision: 1,
+    });
+    const 用户 = userEvent.setup();
+    render缺失Profile名片();
+    await 用户.clear(screen.getByLabelText('姓名'));
+    await 用户.type(screen.getByLabelText('姓名'), '  林澈  ');
+    await 用户.type(screen.getByLabelText('职务'), '  招聘负责人  ');
+    await 用户.type(screen.getByLabelText('公司'), '  星河科技  ');
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    expect(mock保存未认证公司声明).toHaveBeenCalledWith('星河科技');
+    expect(mock保存招聘方档案).toHaveBeenCalledWith({ public_name: '林澈', title: '招聘负责人' });
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.发布岗位, { 从注册流: true }));
+  });
+
+  it.each([
+    { 姓名: '   ', 公司: '星河科技', 文案: '请填写姓名' },
+    { 姓名: '林澈', 公司: '   ', 文案: '请填写公司名称' },
+  ])('本地校验失败：$文案，零 mutation', async ({ 姓名, 公司, 文案 }) => {
+    const 用户 = userEvent.setup();
+    render缺失Profile名片();
+    await 用户.clear(screen.getByLabelText('姓名'));
+    await 用户.type(screen.getByLabelText('姓名'), 姓名);
+    await 用户.type(screen.getByLabelText('公司'), 公司);
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    expect(screen.getByText(文案)).toBeTruthy();
+    expect(mock保存未认证公司声明).not.toHaveBeenCalled();
+    expect(mock保存招聘方档案).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('保存中禁用按钮且第二次点击不重复提交', async () => {
+    // 目标 lib 是 ES2023（无 Promise.withResolvers）：手动接出 resolve
+    let 兑现!: (值: BFF招聘方档案) => void;
+    mock保存招聘方档案.mockReturnValue(new Promise<BFF招聘方档案>((r) => { 兑现 = r; }));
+    const 用户 = userEvent.setup();
+    await render填写完成的缺失Profile名片(用户);
+    const 按钮 = screen.getByRole('button', { name: '保存并继续' }) as HTMLButtonElement;
+    await 用户.click(按钮);
+    expect(按钮.disabled).toBe(true);
+    expect(按钮.textContent).toBe('保存中…');
+    await 用户.click(按钮);
+    expect(mock保存招聘方档案).toHaveBeenCalledTimes(1);
+    兑现({ ...BFF招聘方档案样本, revision: 2 });
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.发布岗位, { 从注册流: true }));
+  });
+
+  it('已有 profile 的普通编辑保存后停留并提示成功', async () => {
+    mock保存招聘方档案.mockResolvedValue({ ...BFF招聘方档案样本, revision: 3 });
+    const 用户 = userEvent.setup();
+    置Backend应用状态();
+    render(<MemoryRouter initialEntries={[路径.招聘名片]}><招聘名片 /></MemoryRouter>);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(await screen.findByText('保存成功')).toBeTruthy();
+    expect(mock跳转).not.toHaveBeenCalled();
   });
 });
 
