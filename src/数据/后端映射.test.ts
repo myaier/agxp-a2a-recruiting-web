@@ -110,6 +110,20 @@ describe('候选人后端映射', () => {
     expect(body).not.toHaveProperty('实习转正');
   });
 
+  // 产品已删除与职位描述重复的「职位要求」输入；新建态该隐藏字段为空时，
+  // BFF 的必填 requirements 必须复用用户刚确认过的职位描述，不能发空串被 422 拒绝。
+  it('新建岗位的隐藏职位要求为空时复用职位描述', () => {
+    const body = 转岗位创建({
+      ...页面岗位样本,
+      类别引用: { id: 'tax_product', display_name: '产品经理' },
+      地点引用: { id: 'loc_shanghai', display_name: '上海' },
+      职位描述: '负责真实后端整栈验收',
+      职位要求: '',
+    }, 直接发岗上下文('云衢科技'));
+
+    expect(body.requirements).toBe('负责真实后端整栈验收');
+  });
+
   // P1C Task 5：创建/补丁 body 不得携带服务端专有 refs 与 verification status。
   it('岗位创建与补丁不携带 organization refs / verification status', () => {
     const 带引用 = {
