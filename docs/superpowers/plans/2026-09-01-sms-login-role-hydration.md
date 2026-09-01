@@ -280,7 +280,7 @@ const p6结果 = await p6Promise;
 if (!是当前水合(deps, 主体.subject_id, generation)) return false;
 ```
 
-After that guard, process all four support results and P6 rejections with the existing independent-commit/error policy. Remove the separate privacy/attachment captured-fence functions because the one outer fence now governs the same settled batch. For a rejected result, mark 401 as session-expired but do not call `轻提示` for that individual domain; continue to present each non-401 failure as today. This prevents duplicate 401 toasts when multiple settled domains fail together. Pass `deps` directly to `清账号状态(deps)` so P4/P7/P8 refs travel with the current 401. Task 2's interactive login owner presents the one terminal 401 message; cold start remains silent.
+After that guard, process all four support results and P6 rejections with the existing independent-commit/error policy. Remove the separate privacy/attachment captured-fence functions because the one outer fence now governs the same settled batch. For a rejected result, mark 401 as session-expired but do not call `轻提示` for that individual domain; continue to present each non-401 failure as today. This prevents duplicate 401 toasts when multiple settled domains fail together. Pass `deps` directly to `清账号状态(deps)` so P4/P7/P8 refs travel with the current 401. Task 2 makes both interactive owners (`完成手机登录` and `切身份`) convert the terminal boolean to one standard `invalid_session` rejection; their existing page catches present one message and block navigation. Cold start intentionally becomes silent and lands on the login page.
 
 In the recruiter branch, preserve the predecessor organization-before-jobs semantics. Honor a fulfilled `{ sessionExpired: true }` before the stale early return; otherwise require the outer fence before scanning P6 errors, presenting errors, or committing jobs:
 
@@ -348,7 +348,7 @@ Expected: all focused tests pass; typecheck and diff check exit `0`.
 
 **Interfaces:**
 - Consumes: Task 1's fully fenced `水合角色数据`, predecessor recruiter empty-state factory and phase semantics, existing cross-subject cleanup, and candidate draft lifecycle signals.
-- Produces: `完成手机登录(code): Promise<void>` that resolves only after role hydration settles or a fenced terminal condition occurs, with `已登录=true` committed only for the current round.
+- Produces: `完成手机登录(code): Promise<void>` that resolves only after current role hydration settles, rejects once with standard `invalid_session` after a current 401 cleanup, and commits `已登录=true` only for the current round; `切身份` uses the same terminal rejection so its page owner cannot navigate after expiry.
 
 - [ ] **Step 1: Add the candidate atomic-visibility regression**
 
@@ -430,43 +430,46 @@ it('交互登录水合 401 不落登录态并统一清理', async () => {
     new BFF错误(401, 'invalid_session', 'expired'),
   );
   const { deps, 最新后端状态, 状态引用 } = 创建P6会话依赖(后端);
-  const 原提示容器 = Array.from(document.body.children).find(
-    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
-  ) as HTMLElement | undefined;
-  if (原提示容器) 原提示容器.innerHTML = '';
   deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
-  await 创建会话操作(deps).完成手机登录('1234');
+  await expect(创建会话操作(deps).完成手机登录('1234')).rejects.toMatchObject({
+    status: 401,
+    code: 'invalid_session',
+  });
   expect(最新后端状态()).toMatchObject({ 已登录: false, 主体: null });
   expect(状态引用.current.求职意向表).toEqual([]);
   expect(最新后端状态().附件简历库).toBeNull();
-  const 提示容器 = Array.from(document.body.children).find(
-    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
-  ) as HTMLElement | undefined;
-  expect(提示容器?.childElementCount).toBe(1);
-  expect(提示容器?.textContent).toContain('登录状态已失效，请重新登录');
 });
 
-it('recruiter 组织水合 401 同样只提示一次并保持未登录', async () => {
+it('recruiter 组织水合 401 同样拒绝并保持未登录', async () => {
   const 后端 = 创建P6数据源桩();
   vi.mocked(后端.读取主体).mockResolvedValue(recruiter主体);
   vi.mocked(后端.读取招聘方档案).mockRejectedValue(
     new BFF错误(401, 'invalid_session', 'expired'),
   );
   const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
-  const 原提示容器 = Array.from(document.body.children).find(
-    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
-  ) as HTMLElement | undefined;
-  if (原提示容器) 原提示容器.innerHTML = '';
   deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
 
-  await 创建会话操作(deps).完成手机登录('1234');
+  await expect(创建会话操作(deps).完成手机登录('1234')).rejects.toMatchObject({
+    status: 401,
+    code: 'invalid_session',
+  });
 
   expect(最新后端状态()).toMatchObject({ 已登录: false, 主体: null });
-  const 提示容器 = Array.from(document.body.children).find(
-    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
-  ) as HTMLElement | undefined;
-  expect(提示容器?.childElementCount).toBe(1);
-  expect(提示容器?.textContent).toContain('登录状态已失效，请重新登录');
+});
+
+it('切身份水合 401 拒绝，让身份页阻止成功导航', async () => {
+  const 后端 = 创建P6数据源桩();
+  vi.mocked(后端.读取简历).mockRejectedValue(
+    new BFF错误(401, 'invalid_session', 'expired'),
+  );
+  const { deps, 最新后端状态 } = 创建P6会话依赖(后端);
+  deps.主体标识引用.current = candidate主体.subject_id;
+
+  await expect(创建会话操作(deps).切身份('求职者')).rejects.toMatchObject({
+    status: 401,
+    code: 'invalid_session',
+  });
+  expect(最新后端状态()).toMatchObject({ 已登录: false, 主体: null });
 });
 
 it('单域非 401 失败保留兄弟域并完成登录', async () => {
@@ -598,8 +601,7 @@ const 本次代际 = 会话代际.current;
 
 const 会话失效 = await 水合角色数据(角色水合依赖, 主体, false, 本次代际);
 if (会话失效) {
-  轻提示('登录状态已失效，请重新登录');
-  return;
+  throw new BFF错误(401, 'invalid_session', 'expired');
 }
 if (
   主体标识引用.current !== 主体.subject_id ||
@@ -609,7 +611,15 @@ if (
 设后端状态((旧) => ({ ...旧, 已登录: true, 主体 }));
 ```
 
-Import `创建空招聘方组织水合状态` from its post-predecessor module. Do not set `主体` during hydration. Do not call candidate draft storage directly. Keep `读取主体` failure behavior, cross-subject cleanup, generation increment, directory cleanup, P7/P8 semantics, and attempt handling unchanged. The fixed message above belongs only to the current interactive SMS operation. Candidate per-domain 401 messages were suppressed in Task 1, recruiter organization 401 is already returned without a toast, and stale 401 returns `false`, so this produces exactly one message without notifying for cold-start or stale work.
+In the existing `切身份` operation, replace its `if (会话失效) return` with the identical standard rejection:
+
+```ts
+if (会话失效) {
+  throw new BFF错误(401, 'invalid_session', 'expired');
+}
+```
+
+Import `创建空招聘方组织水合状态` from its post-predecessor module. Do not set `主体` during hydration. Do not call candidate draft storage directly. Keep `读取主体` failure behavior, cross-subject cleanup, generation increment, directory cleanup, P7/P8 semantics, and attempt handling unchanged. Candidate per-domain 401 messages were suppressed in Task 1, recruiter organization 401 is already returned without a toast, and stale 401 returns `false`. Therefore only a current terminal 401 throws: `登录.tsx` and `选身份.tsx` already catch it, map `invalid_session` to “登录已失效，请重新登录”, and skip their success navigation. Cold-start sees the boolean directly and remains silent.
 
 - [ ] **Step 6: Run focused tests and commit**
 
@@ -626,6 +636,7 @@ git commit -m "fix: hydrate roles before SMS login commit"
 **Files:**
 - Modify: `src/屏幕/登录.tsx`
 - Modify: `src/屏幕/登录.test.tsx`
+- Modify: `src/屏幕/选身份.test.tsx`
 - Inspect: `src/应用.tsx`
 - Modify: `src/应用.test.tsx`
 
@@ -676,6 +687,71 @@ it('Mock 短信登录仍由登录页进入身份选择', async () => {
   expect(mock操作.完成手机登录).not.toHaveBeenCalled();
 });
 ```
+
+Add a Backend session-expiry case in `登录.test.tsx` using `BFF错误` from `../数据/HTTP客户端`:
+
+```tsx
+it('Backend 水合 401 显示一次会话失效且不导航', async () => {
+  mock操作.开始手机登录.mockResolvedValue(undefined);
+  mock操作.完成手机登录.mockRejectedValueOnce(
+    new BFF错误(401, 'invalid_session', 'expired'),
+  );
+  const 用户 = userEvent.setup();
+  render(<MemoryRouter><登录 /></MemoryRouter>);
+  await 用户.type(screen.getByLabelText('手机号'), '13800000000');
+  await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+  await 用户.type(screen.getByLabelText('短信验证码'), '1234');
+  await 用户.click(screen.getByText(/已阅读并同意/));
+  await 用户.click(screen.getByRole('button', { name: '进入' }));
+
+  await waitFor(() => expect(screen.getByText('登录已失效，请重新登录')).toBeTruthy());
+  expect(mock跳转).not.toHaveBeenCalled();
+  expect((screen.getByRole('button', { name: '进入' }) as HTMLButtonElement).disabled).toBe(false);
+});
+```
+
+Extend `src/屏幕/选身份.test.tsx` with the corresponding page-owner assertion; reuse its existing mocks and ordinary-mode harness:
+
+```tsx
+it('切身份水合 401 显示会话失效且不执行成功导航', async () => {
+  mock切身份.mockRejectedValueOnce(
+    new BFF错误(401, 'invalid_session', 'expired'),
+  );
+  const 用户 = userEvent.setup();
+  render(
+    <MemoryRouter initialEntries={['/identity']}>
+      <选身份 />
+    </MemoryRouter>,
+  );
+  await 用户.click(screen.getByText('我要找工作'));
+  await waitFor(() => expect(screen.getByText('登录已失效，请重新登录')).toBeTruthy());
+  expect(mock跳转).not.toHaveBeenCalled();
+  expect(mock替换跳转).not.toHaveBeenCalled();
+});
+
+it('翻面切换水合 401 也不执行替换导航', async () => {
+  vi.useFakeTimers();
+  try {
+    mock切身份.mockRejectedValueOnce(
+      new BFF错误(401, 'invalid_session', 'expired'),
+    );
+    const 用户 = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(
+      <MemoryRouter initialEntries={['/identity?switch=1&from=hr']}>
+        <选身份 />
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '翻到「求职者」那一面' }));
+    await act(async () => { vi.advanceTimersByTime(950); });
+    expect(screen.getByText('登录已失效，请重新登录')).toBeTruthy();
+    expect(mock替换跳转).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+```
+
+Import `act` and `BFF错误` in that test as well. These component tests own toast/navigation behavior; session-operation tests own cleanup and rejection shape.
 
 - [ ] **Step 2: Extend, do not replace, the predecessor root-route tests**
 
@@ -730,7 +806,7 @@ Import `useEffect` and `useLocation` for the path-recording probe. Do not create
 - [ ] **Step 3: Run the tests and confirm the Backend assertion fails**
 
 ```bash
-npm test -- src/屏幕/登录.test.tsx src/应用.test.tsx
+npm test -- src/屏幕/登录.test.tsx src/屏幕/选身份.test.tsx src/应用.test.tsx
 ```
 
 Expected: Backend login test fails because `登录.tsx` still calls `跳转(路径.选身份)` after the operation resolves and exposes no pending label/disabled state. Predecessor recruiter guard tests remain green.
@@ -765,9 +841,9 @@ Keep the Mock branch's `跳转(路径.选身份)` unchanged; Mock never sets the
 - [ ] **Step 5: Run focused tests and commit**
 
 ```bash
-npm test -- src/屏幕/登录.test.tsx src/应用.test.tsx
+npm test -- src/屏幕/登录.test.tsx src/屏幕/选身份.test.tsx src/应用.test.tsx
 git diff --check
-git add src/屏幕/登录.tsx src/屏幕/登录.test.tsx src/应用.test.tsx
+git add src/屏幕/登录.tsx src/屏幕/登录.test.tsx src/屏幕/选身份.test.tsx src/应用.test.tsx
 git commit -m "fix: centralize Backend login landing"
 ```
 
@@ -922,7 +998,7 @@ git commit -m "fix: isolate Backend candidate identity copy"
 - [ ] **Step 1: Run the complete focused matrix from the handoff plus predecessor seams**
 
 ```bash
-npm test -- src/状态/后端/会话操作.test.ts src/状态/后端/组织操作.test.ts src/状态/应用状态.test.ts src/屏幕/登录.test.tsx src/应用.test.tsx src/屏幕/我的.test.tsx src/屏幕/添加意向.test.tsx src/屏幕/我的简历.test.tsx src/数据/HTTP招聘数据源.test.ts
+npm test -- src/状态/后端/会话操作.test.ts src/状态/后端/组织操作.test.ts src/状态/应用状态.test.ts src/屏幕/登录.test.tsx src/屏幕/选身份.test.tsx src/应用.test.tsx src/屏幕/我的.test.tsx src/屏幕/添加意向.test.tsx src/屏幕/我的简历.test.tsx src/数据/HTTP招聘数据源.test.ts
 ```
 
 Expected: all listed files pass. Specifically record candidate, recruiter missing-profile/success/failure, null role, current 401, stale 401, same-subject, cross-subject, StrictMode, and Mock isolation cases.
