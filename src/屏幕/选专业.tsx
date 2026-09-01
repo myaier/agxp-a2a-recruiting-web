@@ -5,6 +5,8 @@
 // Task 4：Backend 分支按需 查询Taxonomy('majors', { q, limit })（专业无层级，
 // 只发 q + cursor）；点候选才存 专业引用，继续输入清除旧引用，
 // 没点候选时阻止保存。Mock 分支保持本地 专业名录 不变。
+// Task 5：下一步按钮绑定引用有效性（Backend 没点候选即禁用，提交守卫保留），
+// 搜索态如实展示 加载中/没有匹配结果/加载失败，请求序守 stale response。
 
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './入职引导.module.css';
@@ -21,6 +23,9 @@ import type { 目录选择值 } from '../数据/招聘数据源类型';
 
 const 搜索防抖毫秒 = 250;
 
+// Task 5：搜索状态机——加载中 / 成功（空结果给「没有匹配结果」）/ 失败
+type 搜索阶段 = 'idle' | 'loading' | 'success' | 'error';
+
 export default function 选专业() {
   const { 跳转, 返回 } = use导航();
   const { 状态: 全局, 操作, 数据源模式, 目录查询 } = use应用状态();
@@ -36,14 +41,18 @@ export default function 选专业() {
   // review-r2 R2-M-1：保留搜索的 nextCursor，滚到底加载第二页
   const [下一页游标, 设下一页游标] = useState<string | null>(null);
   const [加载中, 设加载中] = useState(false);
+  const [搜索阶段, 设搜索阶段] = useState<搜索阶段>('idle');
   const 计时 = useRef(0);
-  // review-r1 P2-2 / review-r2 R2-M-2：代际 ref 守 stale response——每次输入变化（含清空）都递增，
-  // 慢的旧搜索结果不覆盖新的；load-more 也捕获代际，query 变了不追加。
-  const 代际 = useRef(0);
+  // review-r1 P2-2 / review-r2 R2-M-2 / Task 5：请求序 ref 守 stale response——
+  // 每次输入变化（含清空）都递增，慢的旧搜索结果（含状态）不覆盖新的；
+  // load-more 也捕获请求序，query 变了不追加。
+  const 请求序 = useRef(0);
   const 方法引用 = useRef(目录查询?.查询Taxonomy);
   方法引用.current = 目录查询?.查询Taxonomy;
 
   const 词 = 专业.trim();
+  // Task 5：Backend 没点候选（无引用）就不许继续；Mock 只看词非空
+  const 不可继续 = 词 === '' || (是后端 && 专业引用 === undefined);
 
   // Backend 搜索：250ms debounce 后 查询Taxonomy('majors', { q, limit })
   useEffect(() => {
@@ -51,46 +60,52 @@ export default function 选专业() {
     const 方法 = 方法引用.current;
     const trimmed = 词;
     // review-r3 R3-I-7：每次查询词变化都重置分页状态（候选/游标/加载），避免新词带着旧游标请求
-    代际.current += 1;
+    请求序.current += 1;
     设候选项([]);
     设下一页游标(null);
     设加载中(false);
     if (!方法 || trimmed === '') {
+      // 空词 / 没有查询方法：回到 idle，不挂「加载中」
+      设搜索阶段('idle');
       return;
     }
+    // Task 5：非空词进入 loading（debounce 期间也算在途）
+    设搜索阶段('loading');
     window.clearTimeout(计时.current);
-    const 本次 = 代际.current;
+    const 本次 = 请求序.current;
     计时.current = window.setTimeout(async () => {
       try {
         const 页 = await 方法('majors', { q: trimmed, limit: 20 });
-        if (本次 !== 代际.current) return;
+        if (本次 !== 请求序.current) return;
         设候选项(页.items);
         设下一页游标(页.nextCursor);
+        设搜索阶段('success');
       } catch {
-        if (本次 !== 代际.current) return;
+        if (本次 !== 请求序.current) return;
         设候选项([]);
         设下一页游标(null);
+        设搜索阶段('error');
       }
     }, 搜索防抖毫秒);
     return () => window.clearTimeout(计时.current);
   }, [专业, 是后端, 词]);
 
-  // review-r2 R2-M-1：加载更多——用当前游标请求下一页，合并去重；代际检查防 stale 追加
+  // review-r2 R2-M-1：加载更多——用当前游标请求下一页，合并去重；请求序检查防 stale 追加
   const 加载更多 = async () => {
     if (下一页游标 === null || 加载中) return;
     const 方法 = 方法引用.current;
     if (!方法) return;
-    const 本次 = 代际.current;
+    const 本次 = 请求序.current;
     设加载中(true);
     try {
       const 页 = await 方法('majors', { q: 词, cursor: 下一页游标, limit: 20 });
-      if (本次 !== 代际.current) return;
+      if (本次 !== 请求序.current) return;
       设候选项((旧) => 合并目录页(旧, 页.items));
       设下一页游标(页.nextCursor);
     } catch {
-      if (本次 !== 代际.current) return;
+      if (本次 !== 请求序.current) return;
     } finally {
-      if (本次 === 代际.current) 设加载中(false);
+      if (本次 === 请求序.current) 设加载中(false);
     }
   };
 
@@ -185,9 +200,16 @@ export default function 选专业() {
             </button>
           ) : null}
         </div>
+
+        {/* Task 5：如实的搜索状态——在途 / 空结果 / 失败（Mock 分支永远 idle 不显示） */}
+        {搜索阶段 === 'loading' ? <div role="status">加载中…</div> : null}
+        {搜索阶段 === 'success' && 候选项.length === 0 ? (
+          <div role="status">没有匹配结果，试试缩短关键词</div>
+        ) : null}
+        {搜索阶段 === 'error' ? <div role="alert">加载失败，请重试</div> : null}
       </滚动区>
 
-      <主按钮 文字="下一步" 按下={下一步} 禁用={词 === ''} />
+      <主按钮 文字="下一步" 按下={下一步} 禁用={不可继续} />
     </次级页外壳>
   );
 }
