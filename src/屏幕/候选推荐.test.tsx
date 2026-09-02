@@ -11,9 +11,10 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 候选推荐 from './候选推荐';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFF招聘候选推荐, BFF委托摘要 } from '../数据/BFF契约';
+import type { BFFOwnerJob, BFF招聘候选推荐, BFF委托摘要 } from '../数据/BFF契约';
 import { BFF招聘候选推荐样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
+import { 路径 } from '../路由/路径表';
 import { 推荐列表 } from '../数据/企业端模拟数据';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
@@ -62,6 +63,17 @@ function 换卡(选项: {
   };
 }
 
+/** deferred promise：测试可控制异步 resolve/reject 的时机（模拟未决的刷新请求） */
+function deferred<T>() {
+  let resolve!: (值: T) => void;
+  let reject!: (错误: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 /** P4 scope 快照构造器（阶段/error/刷新中 按用例给） */
 const P4快照 = (选项: {
   阶段: string; items?: BFF招聘候选推荐[]; error?: string | null; 刷新中?: boolean;
@@ -79,9 +91,19 @@ function 置P4状态(选项: {
   岗位编号?: string;
   /** 岗位列表：默认「当前岗位在招」；零在招 / 归档当前岗的用例自己给 */
   岗位列表?: Record<string, unknown>[];
+  /** 权威 owner Job（后端状态.岗位快照）：默认已验证 + 带 ref；null = 快照还没水合 */
+  ownerJob?: BFFOwnerJob | null;
   操作?: Record<string, unknown>;
 }) {
   const 编号 = 选项.岗位编号 ?? 岗位编号;
+  const ownerJob = 选项.ownerJob === undefined
+    ? {
+        ...BFF岗位样本,
+        job_id: 编号,
+        hiring_organization_verification_status: 'verified' as const,
+        hiring_organization_ref: 'org_1',
+      }
+    : 选项.ownerJob;
   mock应用状态 = {
     数据源模式: 'backend', 派发: mock派发,
     状态: {
@@ -93,6 +115,8 @@ function 置P4状态(选项: {
     后端状态: {
       Agent规则水合: { candidate: { rules: '未开始', proposals: '未开始' },
         recruiter: { rules: '成功', proposals: '成功' } },
+      // 与生产同口径：岗位的 owner 投影按 job_id 存；水合未完成时键缺席
+      岗位快照: ownerJob === null ? {} : { [编号]: ownerJob },
       招聘可用候选: { [编号]: 选项.快照 ?? P4快照({ 阶段: '成功', items: [BFF招聘候选推荐样本] }) },
       P4委托回执: {},
     },
@@ -471,6 +495,89 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     expect(screen.queryByText('候选人甲')).toBeNull();
     expect(mock设置发现推荐范围).not.toHaveBeenCalled();
     expect(mock加载招聘候选).not.toHaveBeenCalled();
+  });
+
+  // ── 组织前提三态：P4 发现请求只对「已验证用人组织 + 有 ref」的在招岗位发 ──
+  it.each([
+    ['unverified', { ...BFF岗位样本, hiring_organization_verification_status: 'unverified' as const }],
+    ['missing ref', {
+      ...BFF岗位样本,
+      hiring_organization_verification_status: 'verified' as const,
+      hiring_organization_ref: undefined,
+    }],
+  ] as const)('%s job shows organization guidance and sends no discovery request', async (
+    _name, ownerJob,
+  ) => {
+    const user = userEvent.setup();
+    置P4状态({
+      ownerJob,
+      操作: {
+        设置发现推荐范围: mock设置发现推荐范围,
+        加载招聘候选: mock加载招聘候选,
+        刷新招聘候选: mock刷新招聘候选,
+      },
+    });
+    render(<候选推荐 />);
+    expect(screen.getByText(/匿名候选推荐需要已验证的用人组织/)).toBeTruthy();
+    // 零发现请求：注册、加载、刷新一发都不许发
+    expect(mock设置发现推荐范围).not.toHaveBeenCalled();
+    expect(mock加载招聘候选).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: /加入企业/ }));
+    expect(mock刷新招聘候选).not.toHaveBeenCalled();
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业邀请加入);
+  });
+
+  it('missing owner snapshot stays neutral and sends no request', () => {
+    置P4状态({
+      ownerJob: null,
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载招聘候选: mock加载招聘候选 },
+    });
+    render(<候选推荐 />);
+    expect(screen.getByText(/正在加载岗位信息/)).toBeTruthy();
+    expect(screen.queryByText(/需要已验证的用人组织/)).toBeNull();
+    expect(mock设置发现推荐范围).not.toHaveBeenCalled();
+    expect(mock加载招聘候选).not.toHaveBeenCalled();
+  });
+
+  it('verified job with ref keeps the exact existing load and refresh requests', async () => {
+    const user = userEvent.setup();
+    置P4状态({ 操作: { 加载招聘候选: mock加载招聘候选, 刷新招聘候选: mock刷新招聘候选 } });
+    render(<候选推荐 />);
+    expect(mock加载招聘候选).toHaveBeenCalledWith(岗位编号);
+    await user.click(screen.getByRole('button', { name: '让代理再找一批' }));
+    expect(mock刷新招聘候选).toHaveBeenCalledWith(岗位编号);
+  });
+
+  // 旧后端把「组织未验证」折进笼统的 recommendation_unavailable：只有发起请求那一刻
+  // 是同一个岗位、且现在的权威快照已说明组织受阻，才允许把这条错译成组织指引；
+  // 否则一律按 P4 通用文案，绝不拿别的错冒充「组织没认证」。
+  it('maps legacy recommendation_unavailable to organization guidance only with same-job evidence', async () => {
+    const refresh = deferred<void>();
+    置P4状态({ 操作: { 刷新招聘候选: vi.fn(() => refresh.promise) } });
+    const page = render(<候选推荐 />);
+    await userEvent.click(screen.getByRole('button', { name: '让代理再找一批' }));
+
+    置P4状态({
+      ownerJob: { ...BFF岗位样本, job_id: 岗位编号, hiring_organization_verification_status: 'unverified' },
+    });
+    page.rerender(<候选推荐 />);
+    refresh.reject(new BFF错误(409, 'recommendation_unavailable', 'legacy'));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith(
+      '匿名候选推荐需要已验证的用人组织',
+    ));
+  });
+
+  it.each([
+    new BFF错误(503, 'source_unavailable', 'down'),
+    new BFF错误(401, 'unauthorized', 'expired'),
+    new BFF错误(409, 'unknown_code', 'unknown'),
+  ])('does not misclassify %s as organization verification', async (error) => {
+    mock刷新招聘候选.mockRejectedValueOnce(error);
+    置P4状态({ 操作: { 刷新招聘候选: mock刷新招聘候选 } });
+    render(<候选推荐 />);
+    await userEvent.click(screen.getByRole('button', { name: '让代理再找一批' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    expect(mock轻提示).not.toHaveBeenCalledWith('匿名候选推荐需要已验证的用人组织');
   });
 
   it('Mock 分支行为原样且零 P4 请求', async () => {

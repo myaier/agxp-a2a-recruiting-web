@@ -302,6 +302,14 @@ function 置P4招聘状态(items: BFF招聘候选推荐[]) {
     后端状态: {
       Agent规则水合: { candidate: { rules: '未开始', proposals: '未开始' },
         recruiter: { rules: '成功', proposals: '成功' } },
+      // 候选推荐 现按权威 owner 投影闸 P4 请求：宿主给已验证 + 带 ref 的投影，列表才发请求
+      岗位快照: {
+        [BFF岗位样本.job_id]: {
+          ...BFF岗位样本,
+          hiring_organization_verification_status: 'verified' as const,
+          hiring_organization_ref: 'org_1',
+        },
+      },
       招聘可用候选: { [BFF岗位样本.job_id]: {
         阶段: '成功', 刷新中: false, items, error: null, generation: 1,
       } },
