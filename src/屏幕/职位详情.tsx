@@ -20,7 +20,7 @@
 // 在场时可进公开企业页。Mock 分支保持原型行为原样。
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import 样式 from './职位详情.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { 谈判图标, 禁止图标 } from '../组件/图标';
@@ -164,11 +164,31 @@ function Mock职位详情() {
   );
 }
 
+/** 深链/导航写入 history.state 的有限来源标记（只认看市场这一种来路）。 */
+type 候选职位来源状态 = { 来源?: 'candidate-market' };
+
 /** Backend 分支（P4）：只吃候选岗位快照 / 详情缓存 / 单个 CandidateJob GET 的权威数据。 */
 function Backend职位详情() {
   const { id: 编号 } = useParams<{ id: string }>();
-  const { 状态, 后端状态, 操作 } = use应用状态();
-  const { 返回, 跳转 } = use导航();
+  const { 状态, 派发, 后端状态, 操作 } = use应用状态();
+  const { 返回, 跳转, 替换跳转 } = use导航();
+  const 位置 = useLocation();
+  // 来路只认显式标记的看市场：没有标记（直链/刷新）就绝不盲退栈
+  const 来源 = (位置.state as 候选职位来源状态 | null)?.来源;
+
+  // 安全返回：来路可信且 history 确实有上一格才退栈；否则把主壳的「职位 → 看市场」
+  // 状态摆好再原地替换进主壳 —— 直链用户按返回永远落回市场列表，而不是退出一格空白
+  //（或被浏览器弹出站外）。不做 document.referrer、不做 navigate(-1) 猜测。
+  const 安全返回 = () => {
+    const 当前格 = (window.history.state as { idx?: number } | null)?.idx;
+    if (来源 === 'candidate-market' && typeof 当前格 === 'number' && 当前格 > 0) {
+      返回();
+      return;
+    }
+    派发({ 型: '切Tab', Tab: '职位' });
+    派发({ 型: '切子视图', 子视图: '看市场' });
+    替换跳转(路径.主壳);
+  };
 
   // 「⋯」拉起的更多操作抽屉是否展开
   const [抽屉展开, 设抽屉展开] = useState(false);
@@ -210,11 +230,22 @@ function Backend职位详情() {
   // 当前意向缺位或这份快照里没有该岗位 → 推荐卡 为 null，退回权威详情直取（反馈与委托
   // 在那条路径上本就禁用），绝不猜坐标。
   const 当前意向编号 = 状态.当前意向编号 ?? null;
+  const 当前意向快照 = 当前意向编号 === null
+    ? undefined
+    : 后端状态.候选岗位推荐?.[当前意向编号];
   const 推荐卡 = useMemo(() => {
     if (!编号 || 当前意向编号 === null) return null;
-    const 快照 = 后端状态.候选岗位推荐?.[当前意向编号];
-    return 快照?.items.find((卡) => 卡.job.job_id === 编号) ?? null;
-  }, [后端状态.候选岗位推荐, 编号, 当前意向编号]);
+    return 当前意向快照?.items.find((卡) => 卡.job.job_id === 编号) ?? null;
+  }, [当前意向快照, 编号, 当前意向编号]);
+
+  // 直链深链进详情时当前意向的快照可能还没进内存：只补加载当前意向这一份来恢复坐标。
+  // 快照已在（不论成功/失败/进行中）就绝不重发 —— 失败也不换 scope 重试；编号载体缺位
+  //（意向未水合）时同样不猜，等水合完成再有编号才发。
+  useEffect(() => {
+    if (!编号 || 后端状态.初始化 !== '完成' || 当前意向编号 === null) return;
+    if (当前意向快照 !== undefined && 当前意向快照.阶段 !== '未开始') return;
+    void 操作.加载候选岗位(当前意向编号).catch(() => undefined);
+  }, [编号, 后端状态.初始化, 当前意向编号, 当前意向快照, 操作]);
 
   // 权威 Job：快照卡自带完整 CandidateJob（详情优先复用卡），没有才靠缓存 / GET
   const 岗位 = 推荐卡?.job ?? (编号 ? 后端状态.候选岗位详情?.[编号] ?? null : null);
@@ -331,7 +362,7 @@ function Backend职位详情() {
     const 不可用态 = 不可用;
     return (
       <次级页外壳>
-        <返回栏 返回={返回} />
+        <返回栏 返回={安全返回} />
         <滚动区>
           <div className={样式.后端态}>
             <div className={样式.后端态标题}>
@@ -355,18 +386,29 @@ function Backend职位详情() {
 
   const 委托摘要 = 推荐卡?.delegation ?? null;
   const 已委托 = 委托摘要 !== null;
-  // 轮询连败的委托：把「已接手」覆盖成中性文案，绝不伪造终态回执
+  // 推荐坐标恢复的三种非命中态（直链进详情时快照可能还在途）：
+  //   · 当前意向缺位 / 快照未开始或进行中 → 恢复中，坐标回来前绝不给可点的委托键；
+  //   · 快照失败 → 通用不可用文案，不换 scope 重试（反馈与委托照样禁用）；
+  //   · 快照成功但没有这张卡 → 只读空态：当前意向确实没有这条推荐。
+  const 恢复中 = 推荐卡 === null && 当前意向编号 !== null &&
+    (当前意向快照 === undefined || 当前意向快照.阶段 === '未开始' || 当前意向快照.阶段 === '进行中');
   const 主键文字 = 已委托
     ? (委托摘要 !== null && 进度未知.has(委托摘要.delegation_id)
       ? P4委托进度未知文案
       : 'AI代理已接手')
-    : '让AI代理去谈';
+    : 推荐卡 !== null
+      ? '让AI代理去谈'
+      : 恢复中
+        ? '正在恢复推荐信息…'
+        : 当前意向快照?.阶段 === '失败'
+          ? (当前意向快照.error ?? '服务暂时不可用，请稍后再试')
+          : '当前求职意向暂无这条推荐';
   const 动作可用 = 推荐卡 !== null && !写中;
 
   return (
     <次级页外壳>
       <返回栏
-        返回={返回}
+        返回={安全返回}
         右侧={
           // P8：权威 CandidateJob 快照解码成功（视图在场）即可举报这个岗 —— 举报
           // target 用 job_id，与有没有推荐坐标无关；快照缺位/加载/失败/404 一律无 ⋯

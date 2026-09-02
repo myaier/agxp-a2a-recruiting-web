@@ -30,6 +30,7 @@ const mock返回 = vi.fn();
 const mock跳转 = vi.fn();
 const mock轻提示 = vi.hoisted(() => vi.fn());
 // P4 操作桩：Backend 分支只经上下文操作表触达后端
+const mock加载候选岗位 = vi.fn(async (_意向编号: string) => undefined);
 const mock读取候选岗位详情 = vi.fn(async () => undefined);
 const mock标记岗位不感兴趣 = vi.fn(async () => undefined);
 const mock委托候选岗位 = vi.fn();
@@ -75,6 +76,8 @@ function 渲染Backend状态(选项: {
   候选岗位不可用?: string[];
   /** 当前意向编号载体：推荐卡只从这一个 scope 里找，缺省是快照惯例的 int_1 */
   当前意向编号?: string | null;
+  /** Backend 初始化阶段：缺省 '完成'（既有用例代表水合后的渲染世界） */
+  后端初始化?: '进行中' | '完成' | '跳过';
   /** 真实简历事实（匹配对齐行的 Backend 证据来源）；缺省是空简历 */
   简历?: Record<string, unknown>;
 }) {
@@ -88,6 +91,7 @@ function 渲染Backend状态(选项: {
     派发: mock派发,
     数据源模式: 'backend',
     后端状态: {
+      初始化: 选项.后端初始化 ?? '完成',
       候选岗位推荐: 选项.候选岗位推荐 ?? {},
       候选岗位详情: 选项.候选岗位详情 ?? {},
       候选岗位不可用: 选项.候选岗位不可用 ?? [],
@@ -95,6 +99,7 @@ function 渲染Backend状态(选项: {
     // 生产 Provider 恒注入全表：桩宿主同样给全表，用例只覆盖自己要断言的 spy
     // 准备候选委托简历 属附件域，同样默认给桩，用例再用 mockResolvedValue 定行为
     操作: 发现推荐操作桩({
+      加载候选岗位: mock加载候选岗位,
       读取候选岗位详情: mock读取候选岗位详情,
       标记岗位不感兴趣: mock标记岗位不感兴趣,
       委托候选岗位: mock委托候选岗位,
@@ -254,6 +259,7 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     mock公司路由键.mockClear();
     mock取公司档案.mockClear();
     mock轻提示.mockClear();
+    mock加载候选岗位.mockReset();
     mock读取候选岗位详情.mockReset();
     mock标记岗位不感兴趣.mockReset();
     mock委托候选岗位.mockReset();
@@ -544,11 +550,15 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     const 用户 = userEvent.setup();
     渲染Backend状态({
       当前意向编号: 'int_2',
-      候选岗位推荐: { int_1: 快照With(推荐卡样本).int_1 },
+      候选岗位推荐: {
+        int_1: 快照With(推荐卡样本).int_1,
+        // 当前意向自己的快照已结算且没有这张卡：坐标恢复的终态就是只读空态
+        int_2: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 },
+      },
       候选岗位详情: { job_1: BFFCandidateJob样本 },
     });
     渲染('job_1');
-    const 去谈键 = screen.getByRole('button', { name: '让AI代理去谈' }) as HTMLButtonElement;
+    const 去谈键 = screen.getByRole('button', { name: '当前求职意向暂无这条推荐' }) as HTMLButtonElement;
     const 不感兴趣键 = screen.getByRole('button', { name: '不感兴趣' }) as HTMLButtonElement;
     expect(去谈键.disabled).toBe(true);
     expect(不感兴趣键.disabled).toBe(true);
@@ -562,9 +572,12 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
 
   it('详情直取（无推荐坐标）禁用不感兴趣与委托，绝不猜推荐坐标', async () => {
     const 用户 = userEvent.setup();
-    渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
+    渲染Backend状态({
+      候选岗位推荐: { int_1: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 } },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
     渲染('job_1');
-    const 去谈键 = screen.getByRole('button', { name: '让AI代理去谈' }) as HTMLButtonElement;
+    const 去谈键 = screen.getByRole('button', { name: '当前求职意向暂无这条推荐' }) as HTMLButtonElement;
     expect(去谈键.disabled).toBe(true);
     const 不感兴趣键 = screen.getByRole('button', { name: '不感兴趣' }) as HTMLButtonElement;
     expect(不感兴趣键.disabled).toBe(true);
@@ -629,6 +642,172 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
   });
 });
 
+// ── 深链恢复：推荐坐标只从当前活跃意向恢复 + 详情页的安全返回 ────────────────
+//   直链进详情（没经过看市场）时当前意向的快照可能还没进内存：页面只加载当前意向
+//   这一份快照来恢复坐标 —— 绝不扫别的意向、绝不用 CandidateJob 直取坐标补。
+//   快照在途 → 主键给「正在恢复推荐信息…」（禁用）；快照成功但没有这张卡 →
+//   「当前求职意向暂无这条推荐」（禁用）；快照失败 → 通用不可用文案，不换 scope 重试。
+//   返回：带 'candidate-market' 来源且 history idx > 0 → 普通 返回()；
+//   直链（无来源 / idx 0）→ 派发 切Tab '职位' + 切子视图 '看市场' 再 替换跳转(主壳)。
+describe('职位详情 · 深链恢复当前意向坐标与安全返回（Backend）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock替换跳转.mockClear();
+    mock返回.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+    mock加载候选岗位.mockReset();
+    mock读取候选岗位详情.mockReset();
+    mock委托候选岗位.mockReset();
+    mock标记岗位不感兴趣.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('当前意向快照已在内存：直接出推荐坐标，不再多发一次列表请求', () => {
+    渲染Backend状态({
+      当前意向编号: 'int_current',
+      候选岗位推荐: {
+        int_current: {
+          阶段: '成功', 刷新中: false, error: null, generation: 1,
+          items: [{ ...推荐卡样本, intention_id: 'int_current' }],
+        },
+      },
+    });
+    渲染('job_1');
+    expect(mock加载候选岗位).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '让AI代理去谈' })).toBeTruthy();
+  });
+
+  it('快照缺位只加载当前意向，回来后坐标恢复、主键回到可委托态', async () => {
+    渲染Backend状态({
+      当前意向编号: 'int_current',
+      候选岗位推荐: {},
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
+    const 页 = 渲染('job_1');
+    expect(mock加载候选岗位).toHaveBeenCalledWith('int_current');
+    expect(mock加载候选岗位.mock.calls.every(([意向]) => 意向 === 'int_current')).toBe(true);
+    expect(screen.getByRole('button', { name: /正在恢复推荐信息/ })).toBeTruthy();
+
+    渲染Backend状态({
+      当前意向编号: 'int_current',
+      候选岗位推荐: {
+        int_current: {
+          阶段: '成功', 刷新中: false, error: null, generation: 1,
+          items: [{ ...推荐卡样本, intention_id: 'int_current' }],
+        },
+      },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
+    页.rerender(路由元素('job_1'));
+    expect(screen.getByRole('button', { name: '让AI代理去谈' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: '让AI代理去谈' }) as HTMLButtonElement).disabled)
+      .toBe(false);
+  });
+
+  it('同一 job_id 只在别的意向快照里：绝不借坐标，退只读空态', () => {
+    渲染Backend状态({
+      当前意向编号: 'int_current',
+      候选岗位推荐: {
+        int_current: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 },
+        int_other: {
+          阶段: '成功', 刷新中: false, error: null, generation: 1,
+          items: [{ ...推荐卡样本, intention_id: 'int_other', recommendation_id: 'rec_other' }],
+        },
+      },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
+    渲染('job_1');
+    const 动作键 = screen.getByRole('button', { name: /当前求职意向暂无这条推荐/ }) as HTMLButtonElement;
+    expect(动作键.disabled).toBe(true);
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+    expect(mock标记岗位不感兴趣).not.toHaveBeenCalled();
+  });
+
+  it('初始化未完成且无当前意向时不发列表请求，水合完成且有编号载体才恢复', () => {
+    渲染Backend状态({
+      后端初始化: '进行中',
+      当前意向编号: null,
+      候选岗位推荐: {},
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
+    const 页 = 渲染('job_1');
+    expect(mock加载候选岗位).not.toHaveBeenCalled();
+
+    渲染Backend状态({
+      后端初始化: '完成',
+      当前意向编号: 'int_current',
+      候选岗位推荐: {},
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
+    页.rerender(路由元素('job_1'));
+    expect(mock加载候选岗位).toHaveBeenCalledWith('int_current');
+    expect(mock加载候选岗位.mock.calls.every(([意向]) => 意向 === 'int_current')).toBe(true);
+  });
+
+  it('快照失败不换 scope 重试：主键给通用不可用文案并禁用', () => {
+    渲染Backend状态({
+      当前意向编号: 'int_current',
+      候选岗位推荐: {
+        int_current: {
+          阶段: '失败', 刷新中: false, items: [], error: '服务暂时不可用，请稍后再试', generation: 1,
+        },
+      },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
+    渲染('job_1');
+    expect(mock加载候选岗位).not.toHaveBeenCalled();
+    const 动作键 = screen.getByRole('button', { name: '服务暂时不可用，请稍后再试' }) as HTMLButtonElement;
+    expect(动作键.disabled).toBe(true);
+  });
+
+  it('直链（无来源 / idx 0）返回：落回主壳的看市场，不盲退栈', async () => {
+    const 用户 = userEvent.setup();
+    window.history.replaceState({ idx: 0 }, '');
+    渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
+    渲染('job_1');
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切Tab', Tab: '职位' });
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切子视图', 子视图: '看市场' });
+    expect(mock替换跳转).toHaveBeenCalledWith(路径.主壳);
+    expect(mock返回).not.toHaveBeenCalled();
+  });
+
+  it('带看市场来源且 history 有格：走正常返回，不重派主壳', async () => {
+    const 用户 = userEvent.setup();
+    window.history.replaceState({ idx: 2 }, '');
+    渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
+    render(
+      <MemoryRouter
+        initialEntries={[{ pathname: '/job/job_1', state: { 来源: 'candidate-market' } }]}
+      >
+        <Routes>
+          <Route path="/job/:id" element={<职位详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(mock返回).toHaveBeenCalled();
+    expect(mock替换跳转).not.toHaveBeenCalled();
+    expect(mock派发).not.toHaveBeenCalledWith({ 型: '切Tab', Tab: '职位' });
+  });
+
+  it('加载/错误/不可用态的返回栏同样安全返回，不盲退栈', async () => {
+    const 用户 = userEvent.setup();
+    window.history.replaceState({ idx: 0 }, '');
+    mock读取候选岗位详情.mockImplementation(() => new Promise(() => {}));
+    渲染Backend状态({ 当前意向编号: null });
+    render(路由元素('job_new'));
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切子视图', 子视图: '看市场' });
+    expect(mock替换跳转).toHaveBeenCalledWith(路径.主壳);
+    expect(mock返回).not.toHaveBeenCalled();
+  });
+});
+
 // ── P5 Task 3：委托前的显式简历选择（零 / 一 / 多 表驱动）────────────────────
 //   委托第一跳先拿权威附件库：零份 → 提示去上传并跳 我的简历（零委托）；
 //   一份 → 披露确认点名该文件；多份 → 附件简历选择层 必须单选。
@@ -641,6 +820,7 @@ describe('职位详情 · 委托前必须显式选定简历坐标（Backend）',
     mock返回.mockClear();
     mock跳转.mockClear();
     mock轻提示.mockClear();
+    mock加载候选岗位.mockClear();
     mock委托候选岗位.mockReset();
     mock准备候选委托简历.mockReset();
   });
@@ -877,6 +1057,7 @@ describe('职位详情 · P8 上下文举报（Backend）', () => {
   beforeEach(() => {
     mock派发.mockClear();
     mock轻提示.mockClear();
+    mock加载候选岗位.mockClear();
     mock读取候选岗位详情.mockReset();
     mock提交P8举报.mockReset().mockResolvedValue({
       ticketId: 'TICKET-P8-RPT-001', status: 'received', blockStatus: 'not_requested',
@@ -975,14 +1156,17 @@ describe('职位详情 · P8 上下文举报（Backend）', () => {
 
   it('详情直取路径：举报这个职位是唯一非取消动作，用权威 job ID 即可举报（无推荐坐标）', async () => {
     const 用户 = userEvent.setup();
-    渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
+    渲染Backend状态({
+      候选岗位推荐: { int_1: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 } },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
     渲染('job_1');
     await 用户.click(screen.getByRole('button', { name: '更多操作' }));
     const 抽屉 = screen.getByRole('dialog', { name: '职位更多操作' });
     expect(screen.getByRole('button', { name: '举报这个职位' })).toBeTruthy();
     expect(抽屉.textContent).not.toContain('不感兴趣');
     // 推荐专属动作在直取路径仍禁用（不因举报入口放开）
-    expect((screen.getByRole('button', { name: '让AI代理去谈' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '当前求职意向暂无这条推荐' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: '不感兴趣' }) as HTMLButtonElement).disabled).toBe(true);
     await 用户.click(screen.getByRole('button', { name: '举报这个职位' }));
     await 用户.click(screen.getByRole('button', { name: '虚假信息' }));
