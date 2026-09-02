@@ -426,6 +426,15 @@ export interface 后端操作依赖 {
   P8读取锁?: 可变引用<Map<'credentials' | 'sessions' | 'export', Promise<void>>>;
   P8待定意图?: 可变引用<Map<string, P8待定意图<unknown>>>;
   P8导出恢复?: 可变引用<P8导出恢复存储 | null>;
+  /**
+   * 候选 onboarding 简历预填运行时引用 —— 预填代际 / exact tuple 单飞读锁 / 恢复元数据
+   * 适配器。与 P4–P8 同一纪律：Provider 恒一次性注入（恢复适配器按 candidate 主体换绑），
+   * 可选成员只为既有 测试依赖桩 与 清账号状态 子集调用方的编译兼容，
+   * 简历预填操作 在工厂入口显式收窄，缺引用即接线缺陷。
+   */
+  候选预填代际?: 可变引用<number>;
+  候选预填读取锁?: 可变引用<Map<string, Promise<void>>>;
+  候选预填恢复?: 可变引用<候选预填恢复存储 | null>;
 }
 
 /** P7 真人会话的五个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -463,6 +472,16 @@ export interface P4运行时引用 {
   P4范围代际: 可变引用<Map<string, number>>;
   P4幂等意图: 可变引用<Map<string, string>>;
   P4可见范围: 可变引用<Record<BFF角色, string | null>>;
+}
+
+/** 候选 onboarding 简历预填的三个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
+export interface 候选预填运行时引用 {
+  /** 预填代际：本域唯一栅栏计数，激活新轮 / 引用级清理递增，旧在飞读整包作废。 */
+  候选预填代际: 可变引用<number>;
+  /** exact tuple（fileId|versionId|parseId）单飞读锁，finally 释放。 */
+  候选预填读取锁: 可变引用<Map<string, Promise<void>>>;
+  /** 按 candidate subject 绑定的恢复元数据适配器；Provider 先置 null，主体在场才换绑。 */
+  候选预填恢复: 可变引用<候选预填恢复存储 | null>;
 }
 
 export interface 会话操作 {
@@ -746,4 +765,43 @@ export interface P8合规操作 {
 }
 
 /** Task 6+7 公开面：合规两法齐备（反馈 + 举报）。 */
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 & P8账号控制面操作 & P8合规操作;
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 & P8账号控制面操作 & P8合规操作 & 简历预填操作;
+
+/**
+ * 候选 onboarding 简历预填操作方法表（页面不得直接调用数据源）。
+ * Backend + candidate 才动作：Mock / 无后端 / 非候选一律零预填请求、零恢复元数据触碰。
+ * 恢复只认 pristine inactive 内存轮（活轮绝不替换/重读）；权威附件是解析真相源 ——
+ * succeeded 先把真实 parse_id 写进内存 source 与恢复元数据再单飞读取（读取途中刷新
+ * 仍可按 exact tuple 恢复），pending/processing 零预填读取。
+ */
+export interface 简历预填操作 {
+  /**
+   * 路由恢复边界入口：先查内存轮（非 pristine 一律 no-op），再读当前 subject 的恢复
+   * 元数据并等 candidate/附件水合，校验当前 file/version/parse。manual 元数据恢复为
+   * manual；权威 succeeded 用其当前非空 parse_id 升级内存与元数据后 loading 读取
+   * （存储 parse_id:null 绝不强制 manual）；pending/processing 下 允许等待解析:true
+   * 恢复 waiting_parse（零读取）、false 立即进入并落盘 manual；缺失/失配记录删除并
+   * 保持 inactive。
+   */
+  恢复候选Onboarding预填(options: { 允许等待解析: boolean }): Promise<void>;
+  /**
+   * 上传页一次明确上传/替换的开始口：递增预填代际（旧轮建议立即不可提交）并进入
+   * arming，按权威简历快照记录 eligibility，删除旧轮恢复元数据；来源绑定与解析推进
+   * 由权威附件落地后的 同步候选Onboarding解析 完成。
+   */
+  激活候选Onboarding预填(): void;
+  /**
+   * 权威解析推进：当前附件 items[0] 的 parse 状态是唯一真相源。succeeded 先把
+   * parse_id 写进内存 source 与恢复元数据（先于读取起飞），再以完整 tuple 单飞读取；
+   * pending/processing 停在 waiting_parse 零读取；parse failed 进入 failed 不请求建议。
+   */
+  同步候选Onboarding解析(): Promise<void>;
+  /** 显式重试（failed/在飞轮）：同 tuple 单飞并入，无 parse_id 的轮零请求。 */
+  重试候选Onboarding预填(): Promise<void>;
+  /** 明确继续手填：本轮 opt-out（phase manual、清建议、元数据落 manual），迟到建议不再应用。 */
+  继续手填候选Onboarding(): void;
+  /** 一次现有保存动作成功后标记分区确认：内存与恢复元数据同步。 */
+  确认候选Onboarding预填分区(section: 候选预填分区): void;
+  /** 全量清理：内存摊平 pristine、预填代际递增、单飞读锁清空、恢复元数据删除。 */
+  清候选Onboarding预填(): void;
+}

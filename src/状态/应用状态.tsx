@@ -55,18 +55,20 @@ import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
 import type { 资料缓存快照 } from '../数据/资料缓存';
 import { 读资料缓存 } from '../数据/资料缓存';
 import { 创建P8导出恢复存储, type P8导出恢复存储 } from '../数据/P8导出恢复';
+import { 创建候选预填恢复存储 } from '../数据/候选Onboarding预填恢复';
 import type { PDF对象租约 } from '../数据/PDF对象租约';
 import { 轻提示 } from '../组件/轻提示';
 import type {
-  应用操作, 后端状态, 后端操作依赖, P7待定意图, P7已读位置记录,
+  应用操作, 后端状态, 后端操作依赖, 候选预填恢复存储, P7待定意图, P7已读位置记录,
   P8待定意图,
 } from './后端/类型';
-import { 创建空招聘方组织水合状态 } from './后端/类型';
+import { 创建空招聘方组织水合状态, 创建空候选预填状态 } from './后端/类型';
 import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
 import { 创建发现推荐操作, 创建空P4发现状态 } from './后端/发现推荐操作';
 import { 创建MatchCase操作, 创建空P5MatchCase状态, 清P5MatchCase引用 } from './后端/MatchCase操作';
 import { 创建真人会话操作, 创建空P7会话状态, 清P7会话引用 } from './后端/真人会话操作';
 import { 创建P8账号安全操作, 创建空P8控制面状态, 清P8控制面引用 } from './后端/P8控制面操作';
+import { 创建简历预填操作 } from './后端/简历预填操作';
 import { use真人会话事件 } from './后端/use真人会话事件';
 import { 创建招聘事件源 } from '../数据/招聘事件源';
 import { 创建候选操作 } from './后端/候选操作';
@@ -492,6 +494,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     附件简历库: null,
     // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段从 未开始 起跑
     ...创建空招聘方组织水合状态(),
+    // 候选 onboarding 预填状态从 pristine inactive 起跑（Backend-only；Mock 不触达）
+    候选预填状态: 创建空候选预填状态(),
   }));
 
   // 让异步操作读到最新的 后端状态 / 状态（useMemo 闭包只捕获首次值）
@@ -537,6 +541,12 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const P8读取锁 = useRef(new Map<'credentials' | 'sessions' | 'export', Promise<void>>());
   const P8待定意图 = useRef(new Map<string, P8待定意图<unknown>>());
   const P8导出恢复 = useRef<P8导出恢复存储 | null>(null);
+  // 候选 onboarding 预填运行时引用 —— 预填代际 / exact tuple 单飞读锁 / 恢复元数据适配器。
+  // 一次性初始化；会话转移（登出 / 401 / 换主体 / 切离 candidate）由 会话操作 的清理口
+  // 与 清候选Onboarding预填 统一复位。
+  const 候选预填代际 = useRef(0);
+  const 候选预填读取锁 = useRef(new Map<string, Promise<void>>());
+  const 候选预填恢复 = useRef<候选预填恢复存储 | null>(null);
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
   // Task 4：候选 onboarding 草稿只认 candidate 角色 + 当前 subject 的双重范围；
   // recruiter / 未登录 / Mock 一律 null，绝不给持久层授权任何候选草稿读写。
@@ -553,6 +563,18 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     ? 创建P8导出恢复存储({
       storage: 安全取存储('local'),
       范围: { 模式: 'backend', 环境, 账号: 当前主体标识 },
+    })
+    : null;
+  // 候选 onboarding 预填恢复元数据适配器：candidate 角色强制在构造之前完成 ——
+  // 当前候选主体标识 已按 last_used_role==='candidate' 收窄，非候选 scope 绝不交给
+  // 存储工厂。Backend + candidate 主体在场才构造（session 存储按 subject 隔离），
+  // Mock / 招聘端 / 未登录恒 null、零存储触碰；主体每次变化都在渲染期先写 ref，
+  // 操作方法在调用时解引用 .current，绝不把普通适配器捕获进 Provider 生命期的 useMemo。
+  候选预填恢复.current = 是后端 && 当前候选主体标识 !== null
+    ? 创建候选预填恢复存储({
+      // 安全取存储 的运行时值就是完整的 sessionStorage（类型上只收窄成 Pick），可安全视为 Storage
+      storage: 安全取存储('session') as Storage | null,
+      范围: { 模式: 'backend', 环境, 账号: 当前候选主体标识 },
     })
     : null;
   use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识, 当前候选主体标识 });
@@ -627,12 +649,14 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       }));
       // review-r2 R2-I-3：水合 401 时 水合角色数据 内部已走登出清理并返回 会话失效=true，
       // 不再落 已登录=true（旧实现会把上个会话的快照/草稿留给已失效的登录态）。
-      // P7/P8 引用随行：当前轮 401 的 清账号状态 一并复位五个 P7 引用与四个 P8 引用。
+      // P7/P8/候选预填引用随行：当前轮 401 的 清账号状态 一并复位五个 P7 引用、
+      // 四个 P8 引用与三个候选预填引用。
       const 会话失效 = await 水合角色数据({
         后端, 派发, 设后端状态, 主体标识引用, 会话代际, 读取恢复企业关系编号,
         P4范围代际, P4幂等意图, P4可见范围,
         P7范围代际, P7待定意图, P7可见收件箱, P7可见会话, P7已读位置,
         P8范围代际, P8账号可见, P8读取锁, P8待定意图,
+        候选预填代际, 候选预填读取锁, 候选预填恢复,
       }, 主体, false, 本次代际);
       if (已取消) return;
       if (会话失效) {
@@ -746,6 +770,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         P8读取锁,
         P8待定意图,
         P8导出恢复,
+        候选预填代际,
+        候选预填读取锁,
+        候选预填恢复,
       };
       return {
         ...创建会话操作(deps),
@@ -768,6 +795,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         // 导出恢复适配器由上方渲染期按主体换绑；Task 6+7 合规两法（反馈 + 上下文举报）
         // 同在此工厂返回
         ...创建P8账号安全操作(deps),
+        // 候选 onboarding 简历预填操作（栅栏化单飞读取 + 恢复/激活/同步/重试/手填/确认/
+        // 清理），同一把 deps；恢复元数据适配器由上方渲染期按 candidate 主体换绑
+        ...创建简历预填操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定

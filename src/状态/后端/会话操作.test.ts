@@ -28,7 +28,11 @@ import type { 页面简历快照, 页面岗位快照, 页面隐私快照 } from 
 import { 创建初始状态, 初始状态 } from '../初始状态';
 import { 归约 } from '../应用状态';
 import { 创建空P4发现状态 } from './发现推荐操作';
-import type { 后端操作依赖, 后端状态, P4运行时引用, P7运行时引用, P8运行时引用 } from './类型';
+import type {
+  后端操作依赖, 后端状态, 候选预填恢复存储, 候选预填状态, 候选预填运行时引用,
+  P4运行时引用, P7运行时引用, P8运行时引用,
+} from './类型';
+import { 创建空候选预填状态 } from './类型';
 import { 创建会话操作, 清账号状态, 水合角色数据 } from './会话操作';
 import { 创建空P8控制面状态 } from './P8控制面操作';
 
@@ -429,9 +433,14 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
     P8账号可见: { current: false },
     P8读取锁: { current: new Map<'credentials' | 'sessions' | 'export', Promise<void>>() },
     P8待定意图: { current: new Map<string, { key: string; request: unknown }>() },
+    // 候选预填运行时引用（预填代际 / 单飞读锁 / 恢复元数据适配器；适配器按用例注入）
+    候选预填代际: { current: 3 },
+    候选预填读取锁: { current: new Map<string, Promise<void>>() },
+    候选预填恢复: { current: null as 候选预填恢复存储 | null },
   };
   return {
-    deps: deps as unknown as 后端操作依赖 & P4运行时引用 & P7运行时引用 & P8运行时引用 & { 后端: HTTP招聘数据源 },
+    deps: deps as unknown as 后端操作依赖 & P4运行时引用 & P7运行时引用 & P8运行时引用 &
+      候选预填运行时引用 & { 后端: HTTP招聘数据源 },
     动作流,
     状态引用,
     最新后端状态: () => 后端值,
@@ -1407,6 +1416,95 @@ describe('P8 控制面会话清理', () => {
     expect(deps.P8导出恢复?.current).toBe(恢复适配器);
     expect(恢复适配器.写入).not.toHaveBeenCalled();
     expect(恢复适配器.删除).not.toHaveBeenCalled();
+  });
+});
+
+// ── 候选 onboarding 简历预填：会话边界清理 ──────────────────────────
+// 登出 / 401 / 换主体 / 切离 candidate 四个转移口都要：内存轮摊平 pristine +
+// 预填代际递增（在飞读整包作废）+ 单飞读锁清空 + outgoing subject 的恢复元数据删除。
+
+describe('候选 onboarding 预填会话清理', () => {
+  /** 在 后端状态 与预填引用里播上上个候选会话的活轮痕迹。 */
+  function 播预填残留(deps: ReturnType<typeof 创建P6会话依赖>['deps']): 候选预填状态 {
+    const 活轮: 候选预填状态 = {
+      ...创建空候选预填状态(5),
+      phase: 'ready',
+      source: { file_id: 'rf_1', version_id: 'rfv_1', parse_id: 'rp_1' },
+      eligibility: {
+        profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+        summary: true, skills: true, experiences: true, educations: true, certificates: true,
+      },
+      suggestion: { schema_version: 'resume-prefill.v1' } as never,
+    };
+    deps.设后端状态((旧) => ({ ...旧, 候选预填状态: 活轮 }));
+    deps.候选预填读取锁.current.set('rf_1|rfv_1|rp_1', Promise.resolve());
+    return 活轮;
+  }
+
+  /** 注入 subject 绑定的假恢复适配器（删除 spy 可断言）。 */
+  function 注入恢复适配器(deps: ReturnType<typeof 创建P6会话依赖>['deps']) {
+    const 适配器 = {
+      读取: vi.fn(() => null),
+      写入: vi.fn(() => false),
+      删除: vi.fn(),
+    };
+    deps.候选预填恢复.current = 适配器;
+    return 适配器;
+  }
+
+  function 断言预填已清空(
+    deps: ReturnType<typeof 创建P6会话依赖>['deps'],
+    适配器: ReturnType<typeof 注入恢复适配器>,
+  ): void {
+    expect(deps.后端状态引用.current.候选预填状态).toEqual(创建空候选预填状态());
+    expect(deps.候选预填读取锁.current.size).toBe(0);
+    expect(deps.候选预填代际.current).toBeGreaterThan(3); // 预填代际递增：迟到读按旧代作废
+    expect(适配器.删除).toHaveBeenCalledTimes(1); // outgoing subject 的恢复元数据删除
+  }
+
+  it('清账号状态 摊平预填内存、递增代际、清读锁并删恢复元数据', () => {
+    const { deps } = 创建P6会话依赖(创建P6数据源桩());
+    播预填残留(deps);
+    const 适配器 = 注入恢复适配器(deps);
+    清账号状态(deps);
+    断言预填已清空(deps, 适配器);
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(deps.会话代际.current).toBe(1);
+  });
+
+  it('退出登录 清空候选预填残留', async () => {
+    const { deps } = 创建P6会话依赖(创建P6数据源桩());
+    const 操作 = 创建会话操作(deps);
+    播预填残留(deps);
+    const 适配器 = 注入恢复适配器(deps);
+    await 操作.退出登录();
+    断言预填已清空(deps, 适配器);
+    expect(deps.后端状态引用.current.已登录).toBe(false);
+  });
+
+  it('完成手机登录 换主体时清上个账号的候选预填残留', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_a' })
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b', last_used_role: null });
+    const { deps } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    await 操作.完成手机登录('1111');
+    播预填残留(deps);
+    const 适配器 = 注入恢复适配器(deps);
+    await 操作.完成手机登录('2222');
+    断言预填已清空(deps, 适配器);
+    expect(deps.主体标识引用.current).toBe('sub_b');
+  });
+
+  it('切身份 离开 candidate 时清预填残留（预填会话键不跨角色存活）', async () => {
+    const { deps } = 创建P6会话依赖(创建P6数据源桩());
+    const 操作 = 创建会话操作(deps);
+    deps.主体标识引用.current = 'sub_1';
+    播预填残留(deps);
+    const 适配器 = 注入恢复适配器(deps);
+    await 操作.切身份('招聘方');
+    断言预填已清空(deps, 适配器);
   });
 });
 
