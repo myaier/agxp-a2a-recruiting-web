@@ -49,7 +49,7 @@ import { 路径 } from '../路由/路径表';
 import { 市场列表 } from '../数据/模拟数据';
 import type { 市场职位 } from '../数据/类型';
 import type { BFF附件简历 } from '../数据/BFF契约';
-import { 从P4候选岗位 } from '../数据/发现推荐映射';
+import { 从P4候选岗位, 映射P4委托展示 } from '../数据/发现推荐映射';
 import type { P4候选岗位页面 } from '../数据/招聘数据源类型';
 import { P4错误文案, P4范围键 } from '../状态/后端/发现推荐操作';
 import { P4委托进度未知文案, use发现推荐委托轮询 } from '../状态/后端/use发现推荐委托轮询';
@@ -71,7 +71,7 @@ export default function 看市场() {
   const [搜索词, 设搜索词] = useState('');
   const [筛选层开, 设筛选层开] = useState(false);
   const 搜索框 = useRef<HTMLInputElement>(null);
-  // 本次进屏内点过「让AI代理去谈」的岗：卡先留在原位显示「AI代理已接手」，
+  // 本次进屏内点过「让AI代理去谈」的岗：卡先留在原位显示委托状态标，
   // 让用户看到这一下点到了；离开这一屏再回来就不再出现（它已经是一张在谈单了）。
   // 与企业端 候选推荐 的 本次已接触 同一写法。
   const 本次已委托 = useRef<Set<string>>(new Set());
@@ -111,8 +111,14 @@ export default function 看市场() {
   }, [活跃意向]);
 
   const 后端卡们 = useMemo(
-    () => (后端快照 ? 后端快照.items.map((卡) => ({ 视图: 从P4候选岗位(卡), 卡 })) : []),
-    [后端快照]
+    () => (后端快照 ? 后端快照.items.map((卡) => {
+      // 委托状态槽只认 映射P4委托展示 的闭合六态投影：摘要 + 权威回执（按 delegation_id 对上）
+      const 委托回执 = 卡.delegation === null
+        ? null
+        : 后端状态.P4委托回执?.[卡.delegation.delegation_id] ?? null;
+      return { 视图: 从P4候选岗位(卡), 卡, 展示: 映射P4委托展示(卡.delegation, 委托回执) };
+    }) : []),
+    [后端快照, 后端状态.P4委托回执]
   );
 
   // 进屏 / 切意向：先注册可见范围再懒加载（操作层的栅栏要靠注册的可见范围对上）；
@@ -124,15 +130,19 @@ export default function 看市场() {
     return () => 操作.设置发现推荐范围('candidate', null);
   }, [是后端, 活跃意向, 操作]);
 
-  // 进行中委托（accepted/evaluating）交给页面域轮询钩子；暂停表里的委托把
-  // 「AI代理已接手」覆盖成中性文案 —— 绝不伪造终态回执。Mock 不开节拍。
+  // 进行中委托（accepted/evaluating，即 映射P4委托展示.inProgress === true 的那两个状态）
+  // 交给页面域轮询钩子；暂停表里的委托把状态文案覆盖成中性「进度未知」—— 绝不伪造终态回执。
+  // Mock 不开节拍。
   const 进行中委托 = useMemo(
-    () => 后端卡们.flatMap(({ 卡 }) => {
-      const 委托 = 卡.delegation;
-      return 委托 !== null && (委托.state === 'accepted' || 委托.state === 'evaluating')
-        ? [{ role: 'candidate' as const, delegationId: 委托.delegation_id, state: 委托.state }]
-        : [];
-    }),
+    () => 后端卡们.flatMap(({ 卡, 展示 }) =>
+      展示?.inProgress === true && 卡.delegation !== null
+        ? [{
+          role: 'candidate' as const,
+          delegationId: 卡.delegation.delegation_id,
+          // inProgress === true 已闭合出 accepted/evaluating 两员
+          state: 展示.state === 'accepted' ? ('accepted' as const) : ('evaluating' as const),
+        }]
+        : []),
     [后端卡们]
   );
   const 进度未知 = use发现推荐委托轮询({
@@ -240,7 +250,7 @@ export default function 看市场() {
           // 已委托代理去谈的岗要退出市场流：它已经变成一张在谈单，继续留在待选列表里
           // 就是一张点不动的死卡 —— 委托 8 个岗就永久堵 8 张，而且会让用户反过来怀疑
           // 「我到底委托成功没有」（还在待选列表 = 看起来像没委托上）。
-          // 只有本次进屏里刚点的那张先留着显示「AI代理已接手」，把这一下的反馈给足，
+          // 只有本次进屏里刚点的那张先留着显示委托状态标，把这一下的反馈给足，
           // 下次进来才移出 —— 企业端 候选推荐 的已接触推荐就是这个口径，照它写。
           if (状态.已委托.includes(岗.编号) && !本次已委托.current.has(岗.编号)) return false;
           return true;
@@ -365,22 +375,33 @@ export default function 看市场() {
               ) : 后端显示.length === 0 ? (
                 <空结果 搜索词={搜索词.trim()} 问代理={请代理再搜} />
               ) : (
-                后端显示.map(({ 视图, 卡 }) => (
-                  <市场卡
-                    key={卡.recommendation_id}
-                    岗={视图.卡}
-                    已委托={卡.delegation !== null}
-                    已委托文字={
-                      卡.delegation !== null && 进度未知.has(卡.delegation.delegation_id)
-                        ? P4委托进度未知文案
-                        : 'AI代理已接手'
-                    }
-                    委托禁用={反馈中}
-                    委托={() => void 开始委托(视图)}
-                    // 带上有限来源标记：详情页据此走安全返回（直链/无标记则摆好主壳状态再替换进主壳）
-                    按下={() => 跳转(路径.职位详情(视图.jobId), { 来源: 'candidate-market' })}
-                  />
-                ))
+                后端显示.map(({ 视图, 卡, 展示 }) => {
+                  // 状态槽只认 映射P4委托展示 的闭合六态：进行中给状态标、开案带服务端 Case
+                  // 才给「查看进展」、终态给禁用的权威文案（附上服务端拒绝原因，如有）
+                  const 委托进度未知 = 展示?.inProgress === true && 卡.delegation !== null
+                    && 进度未知.has(卡.delegation.delegation_id);
+                  const 委托文字 = 委托进度未知
+                    ? P4委托进度未知文案
+                    : 展示 === null
+                      ? '让AI代理去谈'
+                      : `${展示.copy}${展示.reason === null ? '' : `：${展示.reason}`}`;
+                  return (
+                    <市场卡
+                      key={卡.recommendation_id}
+                      岗={视图.卡}
+                      已委托={展示 !== null}
+                      已委托文字={委托文字}
+                      进展Case={展示?.state === 'case_started' ? 展示.caseId : null}
+                      进展按下={() => {
+                        if (展示?.caseId) 跳转(路径.在谈详情(展示.caseId));
+                      }}
+                      委托禁用={反馈中}
+                      委托={() => void 开始委托(视图)}
+                      // 带上有限来源标记：详情页据此走安全返回（直链/无标记则摆好主壳状态再替换进主壳）
+                      按下={() => 跳转(路径.职位详情(视图.jobId), { 来源: 'candidate-market' })}
+                    />
+                  );
+                })
               )}
             </>
           ) : (
@@ -618,15 +639,20 @@ function 市场卡({
   按下,
   已委托文字 = 'AI代理已接手',
   委托禁用 = false,
+  进展Case = null,
+  进展按下,
 }: {
   岗: 市场职位;
   已委托: boolean;
   委托: () => void;
   按下: () => void;
-  /** 状态标文字；Backend 轮询连败时被「进度未知」的中性文案覆盖 */
+  /** 状态标文字；Backend 按闭合六态给权威文案，轮询连败时被「进度未知」的中性文案覆盖 */
   已委托文字?: string;
   /** Backend 反馈/委托写进行中时禁用去谈键（并发写会被操作层单飞丢弃） */
   委托禁用?: boolean;
+  /** Backend 已开案且回执带非空服务端 case_id 时，状态槽换成「查看进展」；null 恒为禁用状态标 */
+  进展Case?: string | null;
+  进展按下?: () => void;
 }) {
   // 分从行来(2026-08-31):卡上的环与职位详情的环同一份计算分
   const 计算适配分 = use适配分(岗);
@@ -678,10 +704,18 @@ function 市场卡({
         </button>
 
         {已委托 ? (
-          // 委托后按钮换成不可点的状态标（代理已接手，不需要再点第二次）
-          <span className={样式.已委托}>
-            <span className={样式.已委托文字}>{已委托文字}</span>
-          </span>
+          // 已开案且回执带服务端 case_id：状态槽换成「查看进展」（唯一导航凭据就是它）；
+          // 其余委托态都是不可点的状态标（不需要再点第二次）
+          进展Case !== null && 进展按下 ? (
+            <button className={`${样式.去谈键} 可点`} onClick={进展按下}>
+              <谈判图标 />
+              <span className={样式.去谈文字}>查看进展</span>
+            </button>
+          ) : (
+            <span className={样式.已委托}>
+              <span className={样式.已委托文字}>{已委托文字}</span>
+            </span>
+          )
         ) : (
           <button
             className={`${样式.去谈键} 可点`}

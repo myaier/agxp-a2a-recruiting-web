@@ -8,6 +8,7 @@ import type {
   BFF主体,
   BFF候选岗位推荐,
   BFF委托回执,
+  BFF委托摘要,
   BFF发现批次,
   BFF发现偏好,
   BFF招聘候选推荐,
@@ -983,9 +984,10 @@ describe('P4 闭合错误文案', () => {
     expect(P4拒绝文案('delegation_not_allowed')).toBe('当前无法发起委托，请刷新后重试');
     expect(P4拒绝文案('active_case_quota_reached')).toBe('当前在谈已达到上限，请先处理已有在谈');
     expect(P4拒绝文案('delegation_cooldown')).toBe('近期已联系过对方，暂时不能重复发起');
-    expect(P4委托终态文案('needs_user')).toBe('这次委托需要你确认后才能继续');
-    expect(P4委托终态文案('refused')).toBe('这次委托未被接受，请稍后重试');
-    expect(P4委托终态文案('failed')).toBe('这次委托没有成功，请稍后重试');
+    // 终态文案 = 共享状态文案 + 安全下一步提示：不发明动作、不许诺可重试
+    expect(P4委托终态文案('needs_user')).toBe('需要你处理，请查看当前可用入口');
+    expect(P4委托终态文案('refused')).toBe('本次未能继续，请查看页面状态');
+    expect(P4委托终态文案('failed')).toBe('本次处理未完成，请稍后重试');
   });
 
   it('P4委托回执文案 按 §8.2 精确映射终态：state null 只走拒绝码，refused 有码走拒绝码，needs_user/failed 无视拒绝码', () => {
@@ -995,11 +997,11 @@ describe('P4 闭合错误文案', () => {
     expect(P4委托回执文案(回执({ state: 'refused', refusal_code: 'active_case_quota_reached' })))
       .toBe('当前在谈已达到上限，请先处理已有在谈');
     expect(P4委托回执文案(回执({ state: 'refused', refusal_code: null })))
-      .toBe('这次委托未被接受，请稍后重试');
+      .toBe('本次未能继续，请查看页面状态');
     expect(P4委托回执文案(回执({ state: 'needs_user', refusal_code: 'delegation_cooldown' })))
-      .toBe('这次委托需要你确认后才能继续');
+      .toBe('需要你处理，请查看当前可用入口');
     expect(P4委托回执文案(回执({ state: 'failed', refusal_code: 'recommendation_not_found' })))
-      .toBe('这次委托没有成功，请稍后重试');
+      .toBe('本次处理未完成，请稍后重试');
   });
 });
 
@@ -1152,7 +1154,7 @@ describe('委托候选岗位', () => {
     expect(env.最新状态().候选岗位推荐.int_1?.items[0]?.delegation ?? null).toBeNull();
   });
 
-  it('needs_user/failed 无视拒绝码恒走终态文案，并清卡片进行中摘要', async () => {
+  it('needs_user/failed 无视拒绝码恒走终态文案，权威摘要保留在卡上、卡回到 available', async () => {
     await 种候选卡();
     vi.mocked(env.数据源.创建候选岗位委托).mockResolvedValueOnce([
       { ...BFF候选委托回执样本, delegation_id: 'del_in1', state: 'accepted' },
@@ -1170,20 +1172,25 @@ describe('委托候选岗位', () => {
         state: 'failed', refusal_code: 'active_case_quota_reached',
       }]);
     await expect(env.操作.委托候选岗位(候选委托输入))
-      .rejects.toMatchObject({ code: 'needs_user', message: '这次委托需要你确认后才能继续' });
+      .rejects.toMatchObject({ code: 'needs_user', message: '需要你处理，请查看当前可用入口' });
     await expect(env.操作.委托候选岗位(候选委托输入))
-      .rejects.toMatchObject({ code: 'failed', message: '这次委托没有成功，请稍后重试' });
+      .rejects.toMatchObject({ code: 'failed', message: '本次处理未完成，请稍后重试' });
     // 屏的 catch 是 轻提示(P4错误文案(error))：state 形式的 code 不在 HTTP 闭合表里，
-    // 恰好回落 message —— 带拒绝码的终态也绝不被 HTTP 拒绝码文案截胡
-    expect(P4错误文案(new BFF错误(200, 'needs_user', '这次委托需要你确认后才能继续')))
-      .toBe('这次委托需要你确认后才能继续');
-    expect(env.最新状态().候选岗位推荐.int_1?.items[0]).toMatchObject({ state: 'available', delegation: null });
+    // 恰好回落 message —— 带拒绝码的终态也绝不会被 HTTP 拒绝码文案截胡
+    expect(P4错误文案(new BFF错误(200, 'needs_user', '需要你处理，请查看当前可用入口')))
+      .toBe('需要你处理，请查看当前可用入口');
+    // 六个非空状态都保留权威摘要；终态只是不再进行中 —— 卡业务态回 available
     expect(env.最新状态().P4委托回执.del_nu?.state).toBe('needs_user');
+    expect(env.最新状态().候选岗位推荐.int_1?.items[0]).toEqual({
+      ...BFF候选岗位推荐样本,
+      state: 'available',
+      delegation: { delegation_id: 'del_fa', state: 'failed', case_id: null },
+    });
     expect(env.最新状态().P4委托回执.del_fa?.state).toBe('failed');
     expect(env.派发).not.toHaveBeenCalled();
   });
 
-  it('refused 有闭合拒绝码走拒绝码文案，无码走终态文案；两种都释放意图键', async () => {
+  it('refused 有闭合拒绝码走拒绝码文案，无码走终态文案；两种都释放意图键且摘要保留', async () => {
     await 种候选卡();
     const 意图 = delegationKey('candidate:list:int_1', 'job_1');
     vi.mocked(env.数据源.创建候选岗位委托)
@@ -1194,13 +1201,22 @@ describe('委托候选岗位', () => {
       .mockResolvedValueOnce([{ ...BFF候选委托回执样本, delegation_id: 'del_r2x', state: 'refused', refusal_code: null }]);
     await expect(env.操作.委托候选岗位(候选委托输入))
       .rejects.toMatchObject({ code: 'refused', message: '当前在谈已达到上限，请先处理已有在谈' });
+    // 有码：卡上的权威摘要保留 state:refused（具体拒绝文案由页面按回执映射，不落卡）
+    expect(env.最新状态().候选岗位推荐.int_1?.items[0]).toEqual({
+      ...BFF候选岗位推荐样本,
+      state: 'available',
+      delegation: { delegation_id: 'del_r1x', state: 'refused', case_id: null },
+    });
     await expect(env.操作.委托候选岗位(候选委托输入))
-      .rejects.toMatchObject({ message: '这次委托未被接受，请稍后重试' });
-    expect(env.最新状态().候选岗位推荐.int_1?.items[0]?.delegation ?? null).toBeNull();
+      .rejects.toMatchObject({ message: '本次未能继续，请查看页面状态' });
+    // 无码 refused 同样是六个闭合状态之一：权威摘要保留，只有 state null 才清摘要
+    expect(env.最新状态().候选岗位推荐.int_1?.items[0]?.delegation).toEqual({
+      delegation_id: 'del_r2x', state: 'refused', case_id: null,
+    });
     expect(env.deps.P4幂等意图!.current.has(意图)).toBe(false);
   });
 
-  it('state null 按已知非空拒绝码走拒绝码文案', async () => {
+  it('state null 按已知非空拒绝码走拒绝码文案，回执只进表、卡片摘要清空', async () => {
     await 种候选卡();
     vi.mocked(env.数据源.创建候选岗位委托).mockResolvedValue([
       { ...BFF候选委托回执样本, delegation_id: 'del_nn', state: null, refusal_code: 'delegation_cooldown' },
@@ -1208,6 +1224,8 @@ describe('委托候选岗位', () => {
     await expect(env.操作.委托候选岗位(候选委托输入))
       .rejects.toMatchObject({ code: 'delegation_cooldown', message: '近期已联系过对方，暂时不能重复发起' });
     expect(env.最新状态().P4委托回执.del_nn).toMatchObject({ state: null, refusal_code: 'delegation_cooldown' });
+    // state null 不属于六个闭合委托状态：仍清摘要，卡回 available
+    expect(env.最新状态().候选岗位推荐.int_1?.items[0]).toMatchObject({ state: 'available', delegation: null });
   });
 
   it('同一 intention-job 对单飞：并发点击共享同一在飞回执', async () => {
@@ -1368,6 +1386,40 @@ describe('委托招聘候选', () => {
     expect(env.最新状态().P4委托回执).toEqual({});
     expect(env.最新状态().招聘可用候选.job_1?.items[0]?.delegation ?? null).toBeNull();
   });
+
+  it('recruiter 终态回执同样保留权威摘要：available 卡与详情缓存两处都在，卡业务态不变', async () => {
+    await 种招聘卡();
+    await env.操作.读取招聘候选详情('job_1', 'rec_r1');
+    vi.mocked(env.数据源.创建招聘候选委托)
+      .mockResolvedValueOnce([{
+        ...BFF招聘委托回执样本, delegation_id: 'del_rnu', state: 'needs_user', refusal_code: null,
+      }])
+      .mockResolvedValueOnce([{
+        ...BFF招聘委托回执样本, delegation_id: 'del_rrf', state: 'refused',
+        refusal_code: 'delegation_cooldown',
+      }])
+      .mockResolvedValueOnce([{
+        ...BFF招聘委托回执样本, delegation_id: 'del_rfa', state: 'failed', refusal_code: null,
+      }]);
+    // 三次终态各自落同一张卡：每次落位后卡与详情缓存都带该次的权威摘要
+    const 各次: [string, string, BFF委托摘要][] = [
+      ['del_rnu', '需要你处理，请查看当前可用入口',
+        { delegation_id: 'del_rnu', state: 'needs_user', case_id: null }],
+      ['del_rrf', '近期已联系过对方，暂时不能重复发起',
+        { delegation_id: 'del_rrf', state: 'refused', case_id: null }],
+      ['del_rfa', '本次处理未完成，请稍后重试',
+        { delegation_id: 'del_rfa', state: 'failed', case_id: null }],
+    ];
+    for (const [编号, 文案, 摘要] of 各次) {
+      await expect(env.操作.委托招聘候选('job_1', 'rec_r1'))
+        .rejects.toMatchObject({ message: 文案 });
+      expect(env.最新状态().P4委托回执[编号]?.state).toBe(摘要.state);
+      expect(env.最新状态().招聘可用候选.job_1?.items[0]?.delegation).toEqual(摘要);
+      expect(env.最新状态().招聘候选详情.rec_r1?.delegation).toEqual(摘要);
+      expect(env.最新状态().招聘可用候选.job_1?.items[0]?.state).toBe('available');
+    }
+    expect(env.派发).not.toHaveBeenCalled();
+  });
 });
 
 describe('刷新委托', () => {
@@ -1406,13 +1458,56 @@ describe('刷新委托', () => {
     expect(env.派发).not.toHaveBeenCalled();
   });
 
-  it('轮询到终态清卡摘要并提交回执，resolve 不抛（轮询不把已接手改成失败）', async () => {
+  it('轮询到终态保留权威摘要并把卡业务态回 available，resolve 不抛（轮询不把已接手改成失败）', async () => {
     await 种在途候选委托();
     vi.mocked(env.数据源.读取候选岗位委托).mockResolvedValue(
       { ...BFF候选委托回执样本, delegation_id: 'del_p1', state: 'refused', refusal_code: 'delegation_cooldown' });
     await expect(env.操作.刷新委托('candidate', 'del_p1')).resolves.toBeUndefined();
-    expect(env.最新状态().候选岗位推荐.int_1?.items[0]).toMatchObject({ state: 'available', delegation: null });
+    expect(env.最新状态().候选岗位推荐.int_1?.items[0]).toEqual({
+      ...BFF候选岗位推荐样本,
+      state: 'available',
+      delegation: { delegation_id: 'del_p1', state: 'refused', case_id: null },
+    });
     expect(env.最新状态().P4委托回执.del_p1?.state).toBe('refused');
+  });
+
+  it.each(['needs_user', 'refused', 'failed'] as const)('轮询把 evaluating 推进到 %s：摘要保留权威 state，卡回 available', async (state) => {
+    vi.mocked(env.数据源.读取候选岗位推荐).mockResolvedValue([
+      {
+        ...BFF候选岗位推荐样本,
+        state: 'delegating',
+        delegation: { delegation_id: 'del_ev', state: 'evaluating', case_id: null },
+      },
+    ]);
+    await env.操作.加载候选岗位('int_1');
+    vi.mocked(env.数据源.读取候选岗位委托).mockResolvedValue(
+      { ...BFF候选委托回执样本, delegation_id: 'del_ev', state, refusal_code: null });
+    await expect(env.操作.刷新委托('candidate', 'del_ev')).resolves.toBeUndefined();
+    expect(env.最新状态().候选岗位推荐.int_1?.items[0]).toEqual({
+      ...BFF候选岗位推荐样本,
+      state: 'available',
+      delegation: { delegation_id: 'del_ev', state, case_id: null },
+    });
+    expect(env.最新状态().P4委托回执.del_ev?.state).toBe(state);
+  });
+
+  it('招聘侧轮询到终态同样保留摘要：available 卡业务态不变', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValue([
+      {
+        ...BFF招聘候选推荐样本,
+        state: 'available',
+        delegation: { delegation_id: 'del_rp', state: 'accepted', case_id: null },
+      },
+    ]);
+    await env.操作.加载招聘候选('job_1');
+    vi.mocked(env.数据源.读取招聘候选委托).mockResolvedValue(
+      { ...BFF招聘委托回执样本, delegation_id: 'del_rp', state: 'failed', refusal_code: null });
+    await expect(env.操作.刷新委托('recruiter', 'del_rp')).resolves.toBeUndefined();
+    expect(env.最新状态().招聘可用候选.job_1?.items[0]?.delegation)
+      .toEqual({ delegation_id: 'del_rp', state: 'failed', case_id: null });
+    expect(env.最新状态().招聘可用候选.job_1?.items[0]?.state).toBe('available');
+    expect(env.最新状态().P4委托回执.del_rp?.state).toBe('failed');
   });
 
   it('轮询 404 统一不可用收口：摘掉各处摘要并删除回执行，不抛', async () => {

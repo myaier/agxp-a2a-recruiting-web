@@ -390,29 +390,74 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
   it('终态/拒绝回执给闭合文案，卡片不伪造在谈', async () => {
     const user = userEvent.setup();
     mock委托招聘候选.mockRejectedValueOnce(
-      new BFF错误(200, 'refused', '这次委托未被接受，请稍后重试'));
+      new BFF错误(200, 'refused', '本次未能继续，请查看页面状态'));
     置P4状态({
       操作: { 委托招聘候选: mock委托招聘候选 },
     });
     render(<候选推荐 />);
     await user.click(screen.getByRole('button', { name: '让AI代理去聊' }));
-    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('这次委托未被接受，请稍后重试'));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('本次未能继续，请查看页面状态'));
     expect(screen.getByRole('button', { name: '让AI代理去聊' })).toBeTruthy();
   });
 
-  it('accepted/evaluating 显示「AI代理已接触」，去聊键不在', () => {
+  // 六个闭合委托状态的权威文案（与 发现推荐映射 的 P4委托状态文案表 逐字一致）
+  const 状态文案 = [
+    ['accepted', '已提交给 AI，等待处理'],
+    ['evaluating', 'AI 正在评估'],
+    ['case_started', '已创建真实在谈'],
+    ['needs_user', '需要你处理'],
+    ['refused', '本次未能继续'],
+    ['failed', '本次处理未完成'],
+  ] as const;
+
+  it.each(状态文案)('%s 委托按闭合表显示「%s」，去聊键不在', (state, 文案) => {
     置P4状态({
       快照: P4快照({
         阶段: '成功',
         items: [换卡({
           推荐ID: 'rec_r1', 别名: '候选人甲',
-          委托: { delegation_id: 'del_r1', state: 'evaluating', case_id: null },
+          委托: { delegation_id: `del_${state}`, state, case_id: null },
         })],
       }),
     });
     render(<候选推荐 />);
-    expect(screen.getByText('AI代理已接触')).toBeTruthy();
+    expect(screen.getByText(文案)).toBeTruthy();
     expect(screen.queryByRole('button', { name: '让AI代理去聊' })).toBeNull();
+    // 已退役的自创文案绝不在 Backend 卡上复活
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
+    expect(screen.queryByText('已开始沟通')).toBeNull();
+  });
+
+  it('recruiter case_started navigates only by server case_id', async () => {
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [{
+          ...BFF招聘候选推荐样本,
+          delegation: { delegation_id: 'del_r1', state: 'case_started', case_id: 'case_server_r1' },
+        }],
+      }),
+    });
+    render(<候选推荐 />);
+    await userEvent.click(screen.getByRole('button', { name: '查看进展' }));
+    expect(mock跳转).toHaveBeenCalledTimes(1);
+    expect(mock跳转).toHaveBeenCalledWith(路径.候选详情('case_server_r1'));
+  });
+
+  it('case_started 无服务端 case_id 时只给禁用状态标，绝不拿 job/recommendation/delegation ID 或别名充当 Case', () => {
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [换卡({
+          推荐ID: 'rec_r1', 别名: '候选人甲',
+          委托: { delegation_id: 'del_r2', state: 'case_started', case_id: null },
+        })],
+      }),
+    });
+    render(<候选推荐 />);
+    expect(screen.getByText('已创建真实在谈')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    expect(mock跳转).not.toHaveBeenCalled();
   });
 
   it('case_started 已开案不再轮询，只显示状态标', async () => {
@@ -463,10 +508,11 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
       操作: { 刷新委托: mock刷新委托 },
     });
     render(<候选推荐 />);
-    expect(screen.getByText('AI代理已接触')).toBeTruthy();
+    expect(screen.getByText('已提交给 AI，等待处理')).toBeTruthy();
     await act(() => vi.advanceTimersByTimeAsync(10000));
     expect(screen.getByText('暂时无法确认进度，请稍后刷新')).toBeTruthy();
-    expect(screen.queryByText('AI代理已接触')).toBeNull();
+    expect(screen.queryByText('已提交给 AI，等待处理')).toBeNull();
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
   });
 
   // 招聘 scope 必须是自己名下的在招 job_id：一个在招岗都没有、或当前岗已归档时，

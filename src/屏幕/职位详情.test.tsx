@@ -587,7 +587,7 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(mock标记岗位不感兴趣).not.toHaveBeenCalled();
   });
 
-  it('详情停留期间按节拍轮询 accepted 回执，并显示「AI代理已接手」', async () => {
+  it('详情停留期间按节拍轮询 accepted 回执，主键显示进行中状态文案', async () => {
     vi.useFakeTimers();
     mock刷新委托.mockResolvedValue(undefined);
     渲染Backend状态({
@@ -598,13 +598,15 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
       }),
     });
     render(路由元素('job_1'));
-    expect(screen.getByText('AI代理已接手')).toBeTruthy();
+    expect(screen.getByText('已提交给 AI，等待处理')).toBeTruthy();
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
+    expect(screen.queryByText('已开始沟通')).toBeNull();
     await act(() => vi.advanceTimersByTimeAsync(2000));
     expect(mock刷新委托).toHaveBeenCalledWith('candidate', 'del_9');
     expect(mock替换跳转).not.toHaveBeenCalled();
   });
 
-  it('终态回执落位（摘要摘除）后停止轮询', async () => {
+  it('终态回执落位（摘要保留、卡回 available）后停止轮询', async () => {
     vi.useFakeTimers();
     mock刷新委托.mockResolvedValue(undefined);
     渲染Backend状态({
@@ -617,14 +619,21 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     const { rerender } = render(路由元素('job_1'));
     await act(() => vi.advanceTimersByTimeAsync(2000));
     expect(mock刷新委托).toHaveBeenCalledTimes(1);
-    // 操作层提交终态后摘要被摘除：回到 available，不再有可轮询委托
-    渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
+    // 操作层提交终态后摘要保留权威 state：卡回 available，只有 accepted/evaluating 才轮询
+    渲染Backend状态({
+      候选岗位推荐: 快照With({
+        ...推荐卡样本,
+        state: 'available',
+        delegation: { delegation_id: 'del_9', state: 'refused', case_id: null },
+      }),
+    });
     rerender(路由元素('job_1'));
+    expect(screen.getByText('本次未能继续')).toBeTruthy();
     await act(() => vi.advanceTimersByTimeAsync(6000));
     expect(mock刷新委托).toHaveBeenCalledTimes(1);
   });
 
-  it('同一委托连续五次轮询失败后，已接手标被中性文案覆盖', async () => {
+  it('同一委托连续五次轮询失败后，进行中标被中性文案覆盖', async () => {
     vi.useFakeTimers();
     mock刷新委托.mockRejectedValue(new Error('网络失败'));
     渲染Backend状态({
@@ -638,7 +647,69 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     await act(() => vi.advanceTimersByTimeAsync(10000));
     expect(mock刷新委托).toHaveBeenCalledTimes(5);
     expect(screen.getByText(P4委托进度未知文案)).toBeTruthy();
+    expect(screen.queryByText('已提交给 AI，等待处理')).toBeNull();
     expect(screen.queryByText('AI代理已接手')).toBeNull();
+    expect(screen.queryByText('已开始沟通')).toBeNull();
+  });
+
+  // 六个闭合委托状态的权威文案（与 发现推荐映射 的 P4委托状态文案表 逐字一致）
+  const 状态文案 = [
+    ['accepted', '已提交给 AI，等待处理'],
+    ['evaluating', 'AI 正在评估'],
+    ['case_started', '已创建真实在谈'],
+    ['needs_user', '需要你处理'],
+    ['refused', '本次未能继续'],
+    ['failed', '本次处理未完成'],
+  ] as const;
+  const 候选卡态 = {
+    accepted: 'delegating', evaluating: 'delegating', case_started: 'delegated',
+    needs_user: 'available', refused: 'available', failed: 'available',
+  } as const;
+
+  it.each(状态文案)('%s 委托按闭合表在主键显示「%s」且禁用', (state, 文案) => {
+    渲染Backend状态({
+      候选岗位推荐: 快照With({
+        ...推荐卡样本,
+        state: 候选卡态[state],
+        delegation: { delegation_id: `del_${state}`, state, case_id: null },
+      }),
+    });
+    render(路由元素('job_1'));
+    const 主键 = screen.getByRole('button', { name: 文案 }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '让AI代理去谈' })).toBeNull();
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
+    expect(screen.queryByText('已开始沟通')).toBeNull();
+  });
+
+  it('candidate case_started navigates only by server case_id', async () => {
+    渲染Backend状态({
+      候选岗位推荐: 快照With({
+        ...推荐卡样本,
+        state: 'delegated',
+        delegation: { delegation_id: 'del_c1', state: 'case_started', case_id: 'case_server_c1' },
+      }),
+    });
+    render(路由元素('job_1'));
+    await userEvent.click(screen.getByRole('button', { name: '查看进展' }));
+    expect(mock跳转).toHaveBeenCalledTimes(1);
+    expect(mock跳转).toHaveBeenCalledWith(路径.在谈详情('case_server_c1'));
+  });
+
+  it('case_started 无服务端 case_id 时主键只是禁用状态，绝不拿任何本地 ID 充当 Case', async () => {
+    渲染Backend状态({
+      候选岗位推荐: 快照With({
+        ...推荐卡样本,
+        state: 'delegated',
+        delegation: { delegation_id: 'del_c2', state: 'case_started', case_id: null },
+      }),
+    });
+    render(路由元素('job_1'));
+    const 主键 = screen.getByRole('button', { name: '已创建真实在谈' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    await userEvent.click(主键);
+    expect(mock跳转).not.toHaveBeenCalled();
   });
 });
 

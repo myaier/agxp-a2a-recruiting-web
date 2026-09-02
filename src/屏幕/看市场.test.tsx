@@ -92,8 +92,8 @@ function 置应用状态(选项: {
 }
 
 /** P4 候选状态底座：按生产口径播种 —— 当前意向 是意向名（标题职位段），编号载体
- *  当前意向编号 才是 intention_id；快照与操作桩由用例给 */
-function 置P4候选状态(items: BFF候选岗位推荐[]) {
+ *  当前意向编号 才是 intention_id；快照与操作桩由用例给（操作补丁在缺省委托桩之后展开）*/
+function 置P4候选状态(items: BFF候选岗位推荐[], 操作补丁: Record<string, unknown> = {}) {
   置应用状态({
     模式: 'backend', 候选规则阶段: '成功',
     状态: {
@@ -109,7 +109,7 @@ function 置P4候选状态(items: BFF候选岗位推荐[]) {
         },
       },
     },
-    操作: { 委托候选岗位: mock委托候选岗位 },
+    操作: { 委托候选岗位: mock委托候选岗位, ...操作补丁 },
   });
 }
 
@@ -723,11 +723,103 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     expect(screen.getByText('数据工程师')).toBeTruthy();
   });
 
-  it('accepted/evaluating 委托显示「AI代理已接手」状态标，去谈键不在', () => {
-    置P4候选状态([接手卡]);
+  // 六个闭合委托状态的权威文案（与 发现推荐映射 的 P4委托状态文案表 逐字一致）
+  const 状态文案 = [
+    ['accepted', '已提交给 AI，等待处理'],
+    ['evaluating', 'AI 正在评估'],
+    ['case_started', '已创建真实在谈'],
+    ['needs_user', '需要你处理'],
+    ['refused', '本次未能继续'],
+    ['failed', '本次处理未完成'],
+  ] as const;
+  const 候选卡态 = {
+    accepted: 'delegating', evaluating: 'delegating', case_started: 'delegated',
+    needs_user: 'available', refused: 'available', failed: 'available',
+  } as const;
+
+  it.each(状态文案)('%s 委托按闭合表显示「%s」，去谈键不在', (state, 文案) => {
+    置P4候选状态([{
+      ...BFF候选岗位推荐样本,
+      state: 候选卡态[state],
+      delegation: { delegation_id: `del_${state}`, state, case_id: null },
+    }]);
     render(<看市场 />);
-    expect(screen.getByText('AI代理已接手')).toBeTruthy();
+    expect(screen.getByText(文案)).toBeTruthy();
     expect(screen.queryByRole('button', { name: '让AI代理去谈' })).toBeNull();
+    // 已退役的自创文案绝不在 Backend 卡上复活
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
+    expect(screen.queryByText('已开始沟通')).toBeNull();
+  });
+
+  it('candidate case_started navigates only by server case_id', async () => {
+    置P4候选状态([{
+      ...BFF候选岗位推荐样本,
+      state: 'delegated',
+      delegation: { delegation_id: 'del_c1', state: 'case_started', case_id: 'case_server_c1' },
+    }]);
+    render(<看市场 />);
+    await userEvent.click(screen.getByRole('button', { name: '查看进展' }));
+    expect(mock跳转).toHaveBeenCalledTimes(1);
+    expect(mock跳转).toHaveBeenCalledWith(路径.在谈详情('case_server_c1'));
+  });
+
+  it('case_started 无服务端 case_id 时只给禁用状态标，绝不拿任何本地 ID 充当 Case', () => {
+    置P4候选状态([{
+      ...BFF候选岗位推荐样本,
+      state: 'delegated',
+      delegation: { delegation_id: 'del_c2', state: 'case_started', case_id: null },
+    }]);
+    render(<看市场 />);
+    expect(screen.getByText('已创建真实在谈')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    // job_id / recommendation_id / delegation_id 一个都不进导航
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock跳转.mock.calls.flat().map(String))
+      .not.toEqual(expect.arrayContaining([expect.stringContaining('job_1')]));
+    expect(mock跳转.mock.calls.flat().map(String))
+      .not.toEqual(expect.arrayContaining([expect.stringContaining('rec_c1')]));
+    expect(mock跳转.mock.calls.flat().map(String))
+      .not.toEqual(expect.arrayContaining([expect.stringContaining('del_c2')]));
+  });
+
+  it.each(['accepted', 'evaluating'] as const)('%s remains the only polling state', async (state) => {
+    vi.useFakeTimers();
+    置P4候选状态([{
+      ...BFF候选岗位推荐样本,
+      state: 'delegating',
+      delegation: { delegation_id: `del_${state}`, state, case_id: null },
+    }], { 刷新委托: mock刷新委托 });
+    render(<看市场 />);
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(mock刷新委托).toHaveBeenCalledWith('candidate', `del_${state}`);
+  });
+
+  it.each(['case_started', 'needs_user', 'refused', 'failed'] as const)(
+    '%s does not poll or render an in-progress label',
+    async (state) => {
+      vi.useFakeTimers();
+      置P4候选状态([{
+        ...BFF候选岗位推荐样本,
+        state: state === 'case_started' ? 'delegated' : 'available',
+        delegation: { delegation_id: `del_${state}`, state, case_id: null },
+      }], { 刷新委托: mock刷新委托 });
+      render(<看市场 />);
+      await act(() => vi.advanceTimersByTimeAsync(10000));
+      expect(mock刷新委托).not.toHaveBeenCalled();
+      expect(screen.queryByText('AI 正在评估')).toBeNull();
+    },
+  );
+
+  it('重载进屏只有权威摘要、回执表为空：状态照常出现，不依赖本地归约历史', () => {
+    置P4候选状态([{
+      ...BFF候选岗位推荐样本,
+      state: 'delegating',
+      delegation: { delegation_id: 'del_reload', state: 'evaluating', case_id: null },
+    }]);
+    render(<看市场 />);
+    expect(screen.getByText('AI 正在评估')).toBeTruthy();
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
+    expect(screen.queryByText('已开始沟通')).toBeNull();
   });
 
   it('页面挂载时对进行中委托按节拍刷新回执', async () => {

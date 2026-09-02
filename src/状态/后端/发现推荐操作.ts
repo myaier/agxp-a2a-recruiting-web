@@ -18,13 +18,17 @@
 //     回执同步 available/rejected/detail 每一处出现；同推荐写单飞、跨推荐并行。
 //   · 委托（Task 5 §8）：候选选择坐标是 job_id，回执 recommendation_id 可空且被完全忽略，
 //     页面落位一律用操作输入的 recommendationId；招聘选择坐标是 recommendation_id，
-//     回执非空坐标必须与所选一致。回执按 delegation_id 提交与轮询；accepted/evaluating
-//     显示进行中摘要，case_started 只写 P4真实Case引用，needs_user/refused/failed 清摘要；
-//     绝不派发 委托入谈/接触推荐候选/任何 MatchCase 动作，绝不在 P4 制造本地 Case。
+//     回执非空坐标必须与所选一致。回执按 delegation_id 提交与轮询；六个非空回执状态
+//     （accepted/evaluating/case_started/needs_user/refused/failed）都保留权威委托摘要，
+//     只有 accepted/evaluating 是进行中（页面据此轮询）；终态（needs_user/refused/failed）
+//     把候选卡业务态回 available，不再推进；case_started 独自写且只写 P4真实Case引用；
+//     state null（非闭合委托状态）仍只进回执表、清摘要。绝不派发
+//     委托入谈/接触推荐候选/任何 MatchCase 动作，绝不在 P4 制造本地 Case。
 //     委托创建按 candidate-intention-job / recruiter-job-recommendation pair 单飞，
 //     delegation GET 不取创建锁（安全由轮询单飞 + 栅栏保证）。
 
 import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
+import { P4拒绝原因文案, P4委托状态文案 } from '../../数据/发现推荐映射';
 import type {
   BFF发现偏好,
   BFF委托回执,
@@ -340,26 +344,20 @@ export function P4错误文案(error: unknown): string {
   return copy[error.code] ?? 取后端错误文案(error);
 }
 
-/** P4 200 回执 refusal_code 的闭合文案（与 HTTP 错误文案分列）。 */
+/** P4 200 回执 refusal_code 的闭合文案（与 HTTP 错误文案分列；同一份闭合表在 发现推荐映射 收口，
+ *  这里只做委托域的命名转发，绝不另立第二份文案表）。 */
 export function P4拒绝文案(code: NonNullable<BFF委托回执['refusal_code']>): string {
-  const copy: Record<NonNullable<BFF委托回执['refusal_code']>, string> = {
-    recommendation_not_found: '这条推荐当前已不可用，请刷新后查看',
-    recommendation_unavailable: '这条推荐当前已不可用，请刷新后查看',
-    delegation_not_allowed: '当前无法发起委托，请刷新后重试',
-    active_case_quota_reached: '当前在谈已达到上限，请先处理已有在谈',
-    delegation_cooldown: '近期已联系过对方，暂时不能重复发起',
-  };
-  return copy[code];
+  return P4拒绝原因文案(code);
 }
 
-/** P4 200 回执终态的闭合文案。 */
+/** P4 200 回执终态的闭合文案：共享状态文案 + 安全下一步提示 —— 不发明动作、不许诺可重试。 */
 export function P4委托终态文案(state: 'needs_user' | 'refused' | 'failed'): string {
-  const copy = {
-    needs_user: '这次委托需要你确认后才能继续',
-    refused: '这次委托未被接受，请稍后重试',
-    failed: '这次委托没有成功，请稍后重试',
+  const guidance = {
+    needs_user: '，请查看当前可用入口',
+    refused: '，请查看页面状态',
+    failed: '，请稍后重试',
   } as const;
-  return copy[state];
+  return `${P4委托状态文案(state)}${guidance[state]}`;
 }
 
 // ── Task 5：委托回执的跨字段校验、闭合文案与落位 ──
@@ -412,22 +410,33 @@ export function P4委托回执文案(回执: BFF委托回执): string {
 }
 
 /**
- * 回执 → 卡片委托摘要（§8.2）：accepted/evaluating/case_started 保留摘要供页面显示进行中/
- * 已开案并轮询，needs_user/refused/failed/state null 清摘要（null）——绝不伪造终态摘要。
+ * 回执 → 卡片委托摘要（§8.2）：六个非空回执状态（accepted/evaluating/case_started/
+ * needs_user/refused/failed）都保留权威摘要 —— 终态摘要也是权威事实，页面据此显示
+ * 闭合状态文案；只有 state null（非闭合委托状态，回执只进表）才清摘要（null）。
  */
 function 回执摘要(回执: BFF委托回执): BFF委托摘要 | null {
-  const state = 回执.state;
-  if (state === 'accepted' || state === 'evaluating' || state === 'case_started') {
-    return { delegation_id: 回执.delegation_id, state, case_id: 回执.case_id };
-  }
-  return null;
+  return 回执.state === null
+    ? null
+    : {
+        delegation_id: 回执.delegation_id,
+        state: 回执.state,
+        case_id: 回执.case_id,
+      };
 }
 
-/** 候选卡落摘要：active → delegating、case_started → delegated、终态/清摘要 → 回 available。 */
+/**
+ * 候选卡落摘要：case_started → delegated（唯一记录 Case 引用的状态）；accepted/evaluating
+ * → delegating（唯一进行中，页面据此轮询）；终态（needs_user/refused/failed）与清摘要
+ * （state null / 404 收口）→ 回 available —— 终态卡不再推进，但权威摘要保留。
+ */
 function 修补候选卡(卡: BFF候选岗位推荐, 摘要: BFF委托摘要 | null): BFF候选岗位推荐 {
   const state = 摘要 === null
     ? 'available'
-    : 摘要.state === 'case_started' ? 'delegated' : 'delegating';
+    : 摘要.state === 'case_started'
+      ? 'delegated'
+      : 摘要.state === 'accepted' || 摘要.state === 'evaluating'
+        ? 'delegating'
+        : 'available';
   return { ...卡, state, delegation: 摘要 };
 }
 

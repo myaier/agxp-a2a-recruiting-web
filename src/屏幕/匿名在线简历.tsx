@@ -12,7 +12,9 @@
 // （注册 招聘详情 可见范围 → force GET，离开即清），只渲染映射后的匿名 allowlist
 // 画像：别名 / 匹配分 / 经验 / 求职状态 / 小结 / 技能 / 教育 / 薪资关系。
 // 年龄、性别、工作经历段、候选薪资数字、直聊许可与 Mock 简历兜底一概不出现；
-// 收藏与委托走 P4 操作，成功后原地停留，进行中回执交给轮询钩子。Mock 分支原样保留。
+// 收藏与委托走 P4 操作，成功后原地停留，进行中回执交给轮询钩子；委托状态槽只认
+// 映射P4委托展示 的闭合六态 —— 已开案且回执带非空服务端 case_id 才给「查看进展」
+// （招聘侧跳 路径.候选详情(case_id)）。Mock 分支原样保留。
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -25,7 +27,7 @@ import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
 import { 匿名简历表, 推荐列表, type 匿名简历档 } from '../数据/企业端模拟数据';
 import { 薪资初筛, 薪资初筛文案 } from '../数据/薪资初筛';
-import { 从P4招聘候选 } from '../数据/发现推荐映射';
+import { 从P4招聘候选, 映射P4委托展示 } from '../数据/发现推荐映射';
 import { 轻提示 } from '../组件/轻提示';
 import { P4错误文案, P4范围键 } from '../状态/后端/发现推荐操作';
 import { P4委托进度未知文案, use发现推荐委托轮询 } from '../状态/后端/use发现推荐委托轮询';
@@ -322,7 +324,7 @@ function Mock匿名简历() {
 function Backend匿名简历() {
   const { id: 推荐编号 = '' } = useParams<{ id: string }>();
   const { 数据源模式, 状态, 后端状态, 操作 } = use应用状态();
-  const { 返回 } = use导航();
+  const { 返回, 跳转 } = use导航();
   // 详情读取的非 404 错误文案（404 走统一不可用页，不进这里）
   const [读取错误, 设读取错误] = useState<string | null>(null);
   // 反馈/委托写进行中：并发写会被操作层单飞丢弃，动作键统一禁用防静默丢点击
@@ -368,7 +370,7 @@ function Backend匿名简历() {
   };
 
   // 委托：无确认层（招聘侧没有披露确认动作），点了就发起；终态/拒绝回执由操作层抛成
-  // 带文案的错误，catch 呈现即可。成功不导航 —— 原地切成「AI代理已接手」状态条。
+  // 带文案的错误，catch 呈现即可。提交后不导航 —— 原地切成闭合六态的权威状态条。
   const 委托候选 = async () => {
     if (反馈中 || !当前岗位编号 || !推荐编号) return;
     设反馈中(true);
@@ -381,13 +383,25 @@ function Backend匿名简历() {
     }
   };
 
-  // 本页唯一可见的进行中委托（accepted/evaluating）
-  const 进行中委托 = useMemo(() => {
-    const 委托 = 视图?.委托 ?? null;
-    return 委托 !== null && (委托.state === 'accepted' || 委托.state === 'evaluating')
-      ? [{ role: 'recruiter' as const, delegationId: 委托.delegation_id, state: 委托.state }]
-      : [];
-  }, [视图]);
+  // 委托状态只认 映射P4委托展示 的闭合六态投影：摘要 + 权威回执（按 delegation_id 对上）
+  const 委托摘要 = 视图?.委托 ?? null;
+  const 委托回执 = 委托摘要 === null
+    ? null
+    : 后端状态.P4委托回执?.[委托摘要.delegation_id] ?? null;
+  const 委托展示 = 映射P4委托展示(委托摘要, 委托回执);
+  // 已开案且回执带非空服务端 case_id 才有「查看进展」；job_id / recommendation_id /
+  // delegation_id / 别名 一律不作 Case 凭据，也绝不拿 P4真实Case引用 兜底
+  const 进展Case编号 = 委托展示?.state === 'case_started' ? 委托展示.caseId : null;
+
+  // 本页唯一可见的进行中委托（accepted/evaluating，即 inProgress === true 的那两个状态）
+  const 进行中委托 = useMemo(() => (委托展示?.inProgress === true && 委托摘要 !== null
+    ? [{
+      role: 'recruiter' as const,
+      delegationId: 委托摘要.delegation_id,
+      // inProgress === true 已闭合出 accepted/evaluating 两员
+      state: 委托展示.state === 'accepted' ? ('accepted' as const) : ('evaluating' as const),
+    }]
+    : []), [委托展示, 委托摘要]);
   const 进度未知 = use发现推荐委托轮询({
     开启: 是后端,
     委托: 进行中委托,
@@ -395,6 +409,9 @@ function Backend匿名简历() {
     // scope 变化即结束本轮询周期：换岗位/换推荐不带走上一条的连续失败计数（§8.3）
     范围键: 当前岗位编号 && 推荐编号 ? P4范围键.招聘详情(当前岗位编号, 推荐编号) : null,
   });
+  // 轮询连败的委托：状态文案覆盖成中性「进度未知」，绝不伪造终态回执
+  const 委托进度未知 = 委托展示?.inProgress === true && 委托摘要 !== null
+    && 进度未知.has(委托摘要.delegation_id);
 
   // ── 加载 / 错误 / 安全不可用页：权威卡到手前不给任何 Mock 内容 ──
   if (视图 === null) {
@@ -425,12 +442,14 @@ function Backend匿名简历() {
 
   const 教育头 = 视图.教育[0] ?? null;
   const 概览项们 = [视图.经验, 教育头?.学历, 视图.薪资关系].filter(Boolean);
-  const 委托摘要 = 视图.委托;
   const 已委托 = 委托摘要 !== null;
-  // 轮询连败的委托：把「已接手」覆盖成中性文案，绝不伪造终态回执
-  const 委托文字 = 已委托 && 进度未知.has(委托摘要.delegation_id)
-    ? P4委托进度未知文案
-    : 'AI代理已接手';
+  // 权威文案 = 闭合六态 copy（refused 附服务端拒绝原因）；轮询连败被中性「进度未知」覆盖，
+  // 绝不伪造终态回执
+  const 委托文字 = 委托展示 === null
+    ? '让AI代理去谈'
+    : 委托进度未知
+      ? P4委托进度未知文案
+      : `${委托展示.copy}${委托展示.reason === null ? '' : `：${委托展示.reason}`}`;
 
   return (
     <次级页外壳>
@@ -552,8 +571,21 @@ function Backend匿名简历() {
       <div className={样式.底栏}>
         <div className={样式.键行}>
           {已委托 ? (
-            // 委托中/已接手态：换成不可点的状态条（代理已接手，不需要再点第二次）
-            <span className={样式.已谈条}>{委托文字}</span>
+            // 已开案且回执带服务端 case_id：状态槽换成「查看进展」（唯一导航凭据就是它）；
+            // 其余委托态都是不可点的状态条（不需要再点第二次）
+            进展Case编号 !== null ? (
+              <button
+                className={`${样式.去谈键} 可点`}
+                onClick={() => 跳转(路径.候选详情(进展Case编号))}
+              >
+                <span className={样式.去谈图} aria-hidden>
+                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M13 7.5c0 2.9-2.5 5.2-5.5 5.2-.8 0-1.6-.2-2.3-.5L2 13l.9-2.8A5 5 0 0 1 2 7.5C2 4.6 4.5 2.3 7.5 2.3S13 4.6 13 7.5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>
+                </span>
+                查看进展
+              </button>
+            ) : (
+              <span className={样式.已谈条}>{委托文字}</span>
+            )
           ) : (
             <button
               className={`${样式.去谈键} 可点`}
