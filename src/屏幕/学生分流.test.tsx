@@ -265,7 +265,7 @@ describe('学生分流 附件简历上传（P2 Task 5）', () => {
   it('Mock preserves legacy copy, reducer action, and has no consent dialog', async () => {
     const 用户 = userEvent.setup();
     const { 派发 } = render学生分流({ 数据源: 'mock' });
-    expect(screen.getByText('上传简历，AI识别后自动填充')).toBeTruthy();
+    expect(screen.getByText('这张表我来填')).toBeTruthy();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     await 用户.upload(input, new File(['%PDF'], 'demo.pdf', { type: 'application/pdf' }));
     expect(派发).toHaveBeenCalledWith({ 型: '存简历文件名', 文件名: 'demo.pdf' });
@@ -358,7 +358,7 @@ describe('学生分流 附件简历上传（P2 Task 5）', () => {
     const 用户 = userEvent.setup();
     render学生分流({ 数据源: 'backend' });
     // 快照未到：空库占位文案（不硬编码本地大小限制）
-    expect(screen.getByText('上传 PDF 简历，确认后开始识别')).toBeTruthy();
+    expect(screen.getByText('确认后开始识别')).toBeTruthy();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const 大文件 = new File([new Uint8Array(3 * 1024 * 1024)], 'big.pdf', { type: 'application/pdf' });
     await 用户.upload(input, 大文件);

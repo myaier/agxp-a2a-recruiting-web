@@ -17,7 +17,7 @@ import 样式 from './学生分流.module.css';
 import 内嵌双滚轮 from '../组件/内嵌双滚轮';
 import 弹层框架 from '../组件/弹层框架';
 import 轮层样式 from '../组件/数字滚轮层.module.css';
-import { 次级页外壳, 返回栏, 页面大标题, 主按钮, 滚动区 } from '../组件/通用';
+import { 代理横幅, 次级页外壳, 返回栏, 页面大标题, 主按钮, 滚动区 } from '../组件/通用';
 import 确认层 from '../组件/确认层';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
@@ -217,26 +217,26 @@ export default function 学生分流() {
             Backend：空库占位「确认后开始识别」，非空回显权威行 items[0] 的展示名；
             Mock：沿用原 已选简历名 回显与原文案（逐字保留，防视觉漂移）。
             提交中外层 aria-busy + .附件忙碌（pointer-events:none），不新增 spinner */}
-        <div className={样式.节问}>上传简历</div>
-        <button
-          className={附件提交中 ? `${样式.上传行} ${样式.附件忙碌} 可点` : `${样式.上传行} 可点`}
+        {/* 上传简历入口改成主页同款代理横幅(用户 2026-09-02:与发岗端「上传 JD」同构)。
+            Backend:空库文案保留「确认后开始识别」语义,非空回显权威行展示名;
+            Mock:未选时「把简历给我,这张表我来填」,选中后回显文件名。
+            提交中外层 aria-busy + .附件忙碌(pointer-events:none),不新增 spinner */}
+        <div
+          className={附件提交中 ? `${样式.上传横幅区} ${样式.附件忙碌}` : 样式.上传横幅区}
           aria-busy={附件提交中 || undefined}
-          onClick={() => 文件选择框.current?.click()}
         >
-          <span className={样式.上传图标}>⬆</span>
-          {是后端 ? (
-            最近附件 ? (
-              <span className={`${样式.选择值} 单行`}>{最近附件.display_name}</span>
+          {(() => {
+            const 已选名 = 是后端 ? 最近附件?.display_name ?? '' : 已选简历名;
+            if (已选名 !== '') {
+              return <代理横幅 前文="已收到 " 强调={已选名} 动作文="重新上传 ›" 按下={() => 文件选择框.current?.click()} />;
+            }
+            return 是后端 ? (
+              <代理横幅 前文="上传 PDF 简历，" 强调="确认后开始识别" 动作文="上传简历 ›" 按下={() => 文件选择框.current?.click()} />
             ) : (
-              <span className={`${样式.选择占位} 单行`}>上传 PDF 简历，确认后开始识别</span>
-            )
-          ) : 已选简历名 === '' ? (
-            <span className={`${样式.选择占位} 单行`}>上传简历，AI识别后自动填充</span>
-          ) : (
-            <span className={`${样式.选择值} 单行`}>{已选简历名}</span>
-          )}
-          <span className={样式.选择尖}>›</span>
-        </button>
+              <代理横幅 前文="把简历给我，" 强调="这张表我来填" 动作文="上传简历 ›" 按下={() => 文件选择框.current?.click()} />
+            );
+          })()}
+        </div>
         <input
           ref={文件选择框}
           type="file"
