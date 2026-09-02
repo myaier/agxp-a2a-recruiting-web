@@ -139,6 +139,8 @@ A closed pure presentation map is shared by candidate/recruiter cards and detail
 
 Only `accepted` and `evaluating` enter the existing poller. All other states clear in-progress styling and polling. Every Backend delegation-summary slot uses the closed table above, so Backend occurrences of `AI代理已接手` and `已开始沟通` are removed. Mock copy and reducers remain unchanged.
 
+The closed table has one exported presentation accessor. Card/detail copy uses its value exactly. Immediate mutation-error toasts reuse the same accessor value as their prefix and may append only a safe, state-specific next-step hint; they must not maintain a second copy table or imply that retry is contractually allowed when it is not.
+
 When the same delegation's authoritative receipt remains available, `refused` may use the existing closed refusal-code copy. After reload, if the recommendation summary contains only the state, it uses the generic safe copy and does not infer a reason.
 
 The existing primary status/action slot is reused. For `case_started`, it becomes `查看进展` only when the backend `case_id` is non-blank:

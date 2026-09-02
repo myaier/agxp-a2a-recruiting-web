@@ -55,7 +55,7 @@
 
 **Interfaces:**
 - Consumes: `BFFOwnerJob`, `BFF委托摘要`, and an optional same-delegation `BFF委托回执`.
-- Produces: `判断P4招聘组织前提(job)`, `P4拒绝原因文案(code)`, and `映射P4委托展示(summary, receipt)` for Tasks 2-4.
+- Produces: `判断P4招聘组织前提(job)`, `P4委托状态文案(state)`, `P4拒绝原因文案(code)`, and `映射P4委托展示(summary, receipt)` for Tasks 2-4.
 
 - [ ] **Step 1: Write failing organization-prerequisite table tests**
 
@@ -131,6 +131,13 @@ describe('映射P4委托展示', () => {
 });
 ```
 
+Also import `P4委托状态文案` and pin the shared accessor directly so operation-layer tests cannot pass against a duplicated table:
+
+```ts
+expect(P4委托状态文案('accepted')).toBe('已提交给 AI，等待处理');
+expect(P4委托状态文案('failed')).toBe('本次处理未完成');
+```
+
 - [ ] **Step 3: Run the mapper tests and verify missing exports fail**
 
 ```bash
@@ -178,7 +185,7 @@ export interface P4委托展示 {
   caseId: string | null;
 }
 
-const P4委托状态文案 = {
+const P4委托状态文案表 = {
   accepted: '已提交给 AI，等待处理',
   evaluating: 'AI 正在评估',
   case_started: '已创建真实在谈',
@@ -186,6 +193,10 @@ const P4委托状态文案 = {
   refused: '本次未能继续',
   failed: '本次处理未完成',
 } as const satisfies Record<BFF委托摘要['state'], string>;
+
+export function P4委托状态文案(state: BFF委托摘要['state']): string {
+  return P4委托状态文案表[state];
+}
 
 const P4拒绝原因文案表 = {
   recommendation_not_found: '这条推荐当前已不可用，请刷新后查看',
@@ -211,7 +222,7 @@ export function 映射P4委托展示(
     : null;
   return {
     state: summary.state,
-    copy: P4委托状态文案[summary.state],
+    copy: P4委托状态文案(summary.state),
     reason: summary.state === 'refused'
       && receipt?.delegation_id === summary.delegation_id
       && receipt.state === 'refused'
@@ -658,7 +669,7 @@ git commit -m "fix: recover candidate job recommendation scope"
 - Modify: `src/屏幕/匿名在线简历.tsx:370-480`
 
 **Interfaces:**
-- Consumes: `映射P4委托展示(summary, receipt)` from Task 1 and role-specific route builders.
+- Consumes: `P4委托状态文案(state)`, `映射P4委托展示(summary, receipt)` from Task 1 and role-specific route builders.
 - Produces: identical six-state Backend copy and server-Case navigation across candidate/recruiter list/detail surfaces.
 
 - [ ] **Step 1: Write failing operation tests that retain authoritative terminal summaries**
@@ -683,22 +694,22 @@ Add symmetric recruiter-card assertions and a polling-GET transition from `evalu
 
 - [ ] **Step 2: Make receipt landing preserve all six non-null states**
 
-In `发现推荐操作.ts`, import `P4拒绝原因文案` and have the existing `P4拒绝文案` delegate to it. Change `回执摘要` to return a summary for every non-null decoded state:
+In `发现推荐操作.ts`, import `P4委托状态文案` and `P4拒绝原因文案`; have the existing `P4拒绝文案` delegate to the refusal accessor. Change `回执摘要` to return a summary for every non-null decoded state:
 
-First align the generic terminal toast table with the shared Backend state table and update its existing literal tests:
+The immediate error toast is not the card/detail copy slot: it reuses the shared state copy as its prefix, then appends a safe next-step hint. Update its existing literal tests to pin these full strings:
 
 ```ts
 export function P4委托终态文案(state: 'needs_user' | 'refused' | 'failed'): string {
-  const copy = {
-    needs_user: '需要你处理',
-    refused: '本次未能继续',
-    failed: '本次处理未完成',
+  const guidance = {
+    needs_user: '，请查看当前可用入口',
+    refused: '，请查看页面状态',
+    failed: '，请稍后重试',
   } as const;
-  return copy[state];
+  return `${P4委托状态文案(state)}${guidance[state]}`;
 }
 ```
 
-`refused` with a non-null closed `refusal_code` continues to use the more specific `P4拒绝原因文案`; only its generic fallback changes.
+Assert `需要你处理，请查看当前可用入口`, `本次未能继续，请查看页面状态`, and `本次处理未完成，请稍后重试`. The first two do not invent an action or promise that retry is allowed. `refused` with a non-null closed `refusal_code` continues to use the more specific `P4拒绝原因文案`; only its generic fallback changes.
 
 ```ts
 function 回执摘要(回执: BFF委托回执): BFF委托摘要 | null {
