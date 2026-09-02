@@ -224,7 +224,9 @@ export default function 添加意向() {
             className={样式.类型组}
             role="group"
             aria-label="办公方式"
+            // oxlint-disable-next-line role-supports-aria-props —— aria-invalid 是全局属性，挂组合法，规则元数据滞后
             aria-invalid={办公方式错误 || undefined}
+            // oxlint-disable-next-line role-supports-aria-props —— aria-description 是全局属性，挂组合法，规则元数据滞后
             aria-description={办公方式错误 ? '请选择办公方式' : undefined}
           >
             {(['现场', '混合', '远程'] as const).map((方式) => {
