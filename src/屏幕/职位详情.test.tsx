@@ -17,6 +17,7 @@ import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 职位详情 from './职位详情';
 import { P4委托进度未知文案 } from '../状态/后端/use发现推荐委托轮询';
+import { 标记看市场来路, 复位看市场来路 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库 } from '../数据/BFF契约';
@@ -44,7 +45,9 @@ const mock提交P8举报 = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
-vi.mock('../路由/导航钩子', () => ({
+// 导航钩子只换 use导航：会话内来路信号（标记/复位）用真实现，安全返回的会话证据靠它
+vi.mock('../路由/导航钩子', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   use导航: () => ({ 返回: mock返回, 替换跳转: mock替换跳转, 跳转: mock跳转 }),
 }));
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
@@ -252,6 +255,7 @@ describe('职位详情 · 让 AI 代理去谈（Mock 原样）', () => {
 
 describe('职位详情 · P4 权威数据（Backend）', () => {
   beforeEach(() => {
+    复位看市场来路();
     mock派发.mockClear();
     mock替换跳转.mockClear();
     mock返回.mockClear();
@@ -450,14 +454,17 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(screen.queryByText('12 薪')).toBeNull();
   });
 
-  it('不感兴趣服务端先行：PUT 成功才回列表', async () => {
+  it('不感兴趣服务端先行：PUT 成功才回列表（无来路证据走安全替换）', async () => {
     const 用户 = userEvent.setup();
     mock标记岗位不感兴趣.mockResolvedValue(undefined);
     渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
     渲染('job_1');
     await 用户.click(screen.getByRole('button', { name: '不感兴趣' }));
     expect(mock标记岗位不感兴趣).toHaveBeenCalledWith('int_1', 'rec_c1');
-    await waitFor(() => expect(mock返回).toHaveBeenCalled());
+    // 本用例没给市场来路证据：成功落点 = 摆好看市场再替换进主壳（同样是「回列表」）
+    await waitFor(() => expect(mock替换跳转).toHaveBeenCalledWith(路径.主壳));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切子视图', 子视图: '看市场' });
+    expect(mock返回).not.toHaveBeenCalled();
     expect(mock轻提示).not.toHaveBeenCalled();
   });
 
@@ -718,10 +725,12 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
 //   这一份快照来恢复坐标 —— 绝不扫别的意向、绝不用 CandidateJob 直取坐标补。
 //   快照在途 → 主键给「正在恢复推荐信息…」（禁用）；快照成功但没有这张卡 →
 //   「当前求职意向暂无这条推荐」（禁用）；快照失败 → 通用不可用文案，不换 scope 重试。
-//   返回：带 'candidate-market' 来源且 history idx > 0 → 普通 返回()；
-//   直链（无来源 / idx 0）→ 派发 切Tab '职位' + 切子视图 '看市场' 再 替换跳转(主壳)。
+//   返回：带 'candidate-market' 来源 + 本会话内真的从看市场跳过来（内存标记）且
+//   history idx > 0 → 普通 返回()；直链 / 刷新残留标记 / idx 0 → 派发 切Tab '职位' +
+//   切子视图 '看市场' 再 替换跳转(主壳)（刷新会重置内存 reducer，退栈会落错子视图）。
 describe('职位详情 · 深链恢复当前意向坐标与安全返回（Backend）', () => {
   beforeEach(() => {
+    复位看市场来路();
     mock派发.mockClear();
     mock替换跳转.mockClear();
     mock返回.mockClear();
@@ -864,6 +873,8 @@ describe('职位详情 · 深链恢复当前意向坐标与安全返回（Backen
   it('带看市场来源且 history 有格：走正常返回，不重派主壳', async () => {
     const 用户 = userEvent.setup();
     window.history.replaceState({ idx: 2 }, '');
+    // 模拟「本会话内真的从看市场跳过来」：来源标记 + 会话内来路证据同时成立
+    标记看市场来路();
     渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
     render(
       <MemoryRouter
@@ -878,6 +889,43 @@ describe('职位详情 · 深链恢复当前意向坐标与安全返回（Backen
     expect(mock返回).toHaveBeenCalled();
     expect(mock替换跳转).not.toHaveBeenCalled();
     expect(mock派发).not.toHaveBeenCalledWith({ 型: '切Tab', Tab: '职位' });
+  });
+
+  it('刷新残留的来源标记不算本会话来路：仍摆好主壳再替换，不盲退栈', async () => {
+    // market → detail 后按 F5：来源标记与 idx 都活在 history.state 里，但内存里的
+    // 会话来路证据随刷新归零、reducer 也回到启动默认（在谈）—— 退栈会落错子视图
+    const 用户 = userEvent.setup();
+    window.history.replaceState({ idx: 2 }, '');
+    渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
+    render(
+      <MemoryRouter
+        initialEntries={[{ pathname: '/job/job_1', state: { 来源: 'candidate-market' } }]}
+      >
+        <Routes>
+          <Route path="/job/:id" element={<职位详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切Tab', Tab: '职位' });
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切子视图', 子视图: '看市场' });
+    expect(mock替换跳转).toHaveBeenCalledWith(路径.主壳);
+  });
+
+  it('直链恢复出推荐卡后点不感兴趣：成功也走安全返回，不盲退栈', async () => {
+    // 直链详情经当前意向快照恢复出推荐坐标后「不感兴趣」可用：PUT 成功的落点
+    // 与返回栏同一套安全返回 —— idx 0 / 外链前一格时绝不能 navigate(-1) 退出应用
+    const 用户 = userEvent.setup();
+    window.history.replaceState({ idx: 0 }, '');
+    mock标记岗位不感兴趣.mockResolvedValue(undefined);
+    渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
+    渲染('job_1');
+    await 用户.click(screen.getByRole('button', { name: '不感兴趣' }));
+    expect(mock标记岗位不感兴趣).toHaveBeenCalledWith('int_1', 'rec_c1');
+    await waitFor(() => expect(mock替换跳转).toHaveBeenCalledWith(路径.主壳));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切子视图', 子视图: '看市场' });
+    expect(mock返回).not.toHaveBeenCalled();
   });
 
   it('加载/错误/不可用态的返回栏同样安全返回，不盲退栈', async () => {

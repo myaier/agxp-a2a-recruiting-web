@@ -19,6 +19,7 @@ import 问AI代理 from './问AI代理';
 import 往来记录 from './往来记录';
 import 在谈详情 from './在谈详情';
 import { 路径 } from '../路由/路径表';
+import { 有会话内看市场来路, 复位看市场来路 } from '../路由/导航钩子';
 import { 今日简报, 在谈列表 } from '../数据/模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库 } from '../数据/BFF契约';
@@ -58,7 +59,11 @@ vi.mock('../状态/应用状态', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   use应用状态: () => mock应用状态,
 }));
-vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 返回: vi.fn(), 跳转: mock跳转 }) }));
+// 导航钩子只换 use导航：看市场来路信号（标记/复位）用真实现
+vi.mock('../路由/导航钩子', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  use导航: () => ({ 返回: vi.fn(), 跳转: mock跳转 }),
+}));
 // 轻提示 是挂在 document.body 上的全局 DOM 容器，跨用例不清理 —— 换成间谍逐例断言
 vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 
@@ -877,6 +882,9 @@ describe('看市场 · P4 候选发现（Backend）', () => {
       路径.职位详情(BFF候选岗位推荐样本.job.job_id),
       { 来源: 'candidate-market' },
     );
+    // 来源标记之外还留下会话内来路证据：详情页的安全返回靠它区分本会话跳转与刷新残留
+    expect(有会话内看市场来路()).toBe(true);
+    复位看市场来路();
     页.unmount();
 
     // Mock 卡的按下导航保持原样：不带任何 location state

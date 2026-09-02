@@ -5,6 +5,27 @@ import { useNavigate } from 'react-router-dom';
 import { 路径 } from './路径表';
 import { 遮住退栈换壳 } from './换壳遮罩';
 
+/** 「看市场 → 职位详情」的会话内来路证据（真话批次交付 C 的安全返回补强）。
+ *  history.state 里的 来源 标记能活过刷新，这个内存标记不能：两者同时成立才说明
+ *  本会话真的从看市场跳过来 —— 刷新后的详情页带着残留标记也绝不能盲退栈
+ *  （刷新会重置内存 reducer 到启动默认子视图，退栈会落错地方）。 */
+let 会话内看市场来路 = false;
+
+/** 看市场跳详情时随跳转一起标记（每张市场卡的按下都会调，幂等） */
+export function 标记看市场来路() {
+  会话内看市场来路 = true;
+}
+
+/** 会话证据查询。不取走：一次市场跳转之后可能多次进出同一张详情（返回后再前进） */
+export function 有会话内看市场来路(): boolean {
+  return 会话内看市场来路;
+}
+
+/** 测试用：清掉上个用例留下的会话标记，保证用例间互不渗漏 */
+export function 复位看市场来路() {
+  会话内看市场来路 = false;
+}
+
 export function use导航() {
   const 前往 = useNavigate();
 

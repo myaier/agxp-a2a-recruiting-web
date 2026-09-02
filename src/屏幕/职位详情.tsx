@@ -31,7 +31,7 @@ import { 轻提示 } from '../组件/轻提示';
 import { 市场列表, 取市场岗位详情 } from '../数据/模拟数据';
 import type { 市场职位 } from '../数据/类型';
 import { use应用状态 } from '../状态/应用状态';
-import { use导航 } from '../路由/导航钩子';
+import { use导航, 有会话内看市场来路 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { 公司路由键 } from '../数据/公司档案';
@@ -178,12 +178,16 @@ function Backend职位详情() {
   // 来路只认显式标记的看市场：没有标记（直链/刷新）就绝不盲退栈
   const 来源 = (位置.state as 候选职位来源状态 | null)?.来源;
 
-  // 安全返回：来路可信且 history 确实有上一格才退栈；否则把主壳的「职位 → 看市场」
-  // 状态摆好再原地替换进主壳 —— 直链用户按返回永远落回市场列表，而不是退出一格空白
-  //（或被浏览器弹出站外）。不做 document.referrer、不做 navigate(-1) 猜测。
+  // 安全返回：来路可信（来源标记 + 本会话内真的从看市场跳过来，内存证据随刷新归零，
+  // 刷新残留的标记不能算数）且 history 确实有上一格才退栈；否则把主壳的「职位 → 看市场」
+  // 状态摆好再原地替换进主壳 —— 直链/刷新链用户按返回永远落回市场列表，而不是退出一格
+  // 空白（或被浏览器弹出站外）。不做 document.referrer、不做 navigate(-1) 猜测。
   const 安全返回 = () => {
     const 当前格 = (window.history.state as { idx?: number } | null)?.idx;
-    if (来源 === 'candidate-market' && typeof 当前格 === 'number' && 当前格 > 0) {
+    if (
+      来源 === 'candidate-market' && 有会话内看市场来路()
+      && typeof 当前格 === 'number' && 当前格 > 0
+    ) {
       返回();
       return;
     }
@@ -363,13 +367,15 @@ function Backend职位详情() {
     }
   };
 
-  // 不感兴趣：服务端先行，PUT 成功（或 404 收口）才回列表；失败原地提示不移动
+  // 不感兴趣：服务端先行，PUT 成功（或 404 收口）才回列表；失败原地提示不移动。
+  // 落点与返回栏同一套 安全返回 —— 直链/刷新链进来恢复出推荐坐标的详情页，
+  // 成功剔除后同样不能盲退栈（idx 0 会卡死、外链前一格会退出应用）
   const 标记不感兴趣 = async () => {
     if (!推荐卡) return;
     设写中(true);
     try {
       await 操作.标记岗位不感兴趣(推荐卡.intention_id, 推荐卡.recommendation_id);
-      返回();
+      安全返回();
     } catch (错误) {
       轻提示(P4错误文案(错误));
     } finally {
