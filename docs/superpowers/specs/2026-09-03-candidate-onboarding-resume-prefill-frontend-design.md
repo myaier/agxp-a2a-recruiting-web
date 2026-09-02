@@ -323,7 +323,9 @@ file_id + version_id + parse_id
 
 不应用 `profile.status`。当前“是否在校”和后续求职状态会改变 onboarding 分支及意向语义，继续要求用户显式选择，不让 PDF 替用户决定当前状态。
 
-页面本地出生滚轮必须用“当前页面值 → suggestion → 既有 UI 默认”的顺序初始化；mapper 为滚轮输出 number，并分别限制在 `1970..2010`、`1..12`。姓名、性别、开始工作年继续使用页面既有的根 Resume 客户端草稿与逐次 `存简历` dispatch，避免返回再进入页面时丢失编辑；页面首次挂载只把 eligible 且当前为空的这三个 basic 字段一次性种入根草稿。该动作只更新客户端 draft，不调用 `/me/resume`，也不能顺带写出生值、教育、经历、技能或证书。
+页面本地出生滚轮必须用“当前页面值 → suggestion → 既有 UI 默认”的顺序初始化；mapper 为滚轮输出 number，并分别限制在 `1970..2010`、`1..12`。姓名、性别、开始工作年继续使用页面既有的根 Resume 客户端草稿与逐次 `存简历` dispatch，避免返回再进入页面时丢失非空编辑；页面首次挂载只把 eligible 且当前为空的这三个 basic 字段一次性种入根草稿。该动作只更新客户端 draft，不调用 `/me/resume`，也不能顺带写出生值、教育、经历、技能或证书。
+
+本轮明确接受一个窄边界：`basic` 确认前，若用户把建议字段清空、离页、再进入，auto 模式会把这个仍为空的字段再次建议；非空用户值始终优先，选择“继续手填”进入 manual 后则完全不再建议。为这个低风险边界不引入持久化逐字段 touched 状态，也不把 §4.3 已拒绝的通用异步 touched 合并框架带回设计。
 
 ### 8.2 `最高学历`
 
@@ -397,7 +399,7 @@ unresolved 或 missing required 条目仍显示原始建议。页面不新增顶
 4. 读取期间复用现有 `路由加载中`，ready 后再挂载实际表单；
 5. 失败复用现有 `确认层` 提供重试与继续手填，不能把空建议冒充恢复成功。
 
-只有带 `parse_id` 的 exact succeeded tuple 能在消费页面恢复为 `loading` 并重新读取。若刷新恢复时附件仍是 pending/processing 或 metadata 没有 `parse_id`，立即把本轮转为 `manual` 并挂载原表单：消费页面没有 `use附件简历刷新` poller，不能恢复成永远无法推进的 `waiting_parse`。`waiting_parse` 只存在于仍挂载 poller 的 `学生分流` 激活阶段。
+只有带 `parse_id` 的 exact succeeded tuple 能在消费页面恢复为 `loading` 并重新读取。若刷新恢复时附件仍是 pending/processing 或 metadata 没有 `parse_id`，消费页面立即把本轮转为 `manual` 并挂载原表单，因为这里没有 `use附件简历刷新` poller。`学生分流` 则用同一恢复操作的“允许等待解析”策略恢复 `waiting_parse`，由该页已挂载的 poller 推进。换言之，`waiting_parse` 只允许存在于实际挂载 `use附件简历刷新` 的路由，不能恢复到无 poller 的页面。
 
 manual/inactive 或普通从 `我的简历` 进入同路径时直接渲染原页面。
 

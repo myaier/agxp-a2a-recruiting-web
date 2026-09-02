@@ -155,7 +155,7 @@ expect(请求).toHaveBeenCalledWith({
 });
 ```
 
-Treat this copied object as the immutable **wire-decode fixture only**. Do not mutate it to manufacture positive page-mapping cases. Add clearly named local fixture builders/variants for valid gender, valid birth values, supported degree vocabulary, and exact institution/major Catalog matches; those variants test frontend mapping and must not be described as backend public fixtures.
+Treat this copied object as the immutable **wire-decode fixture only**. Do not mutate it to manufacture positive page-mapping cases. Add clearly named local fixture builders/variants for valid gender, valid birth values, supported degree vocabulary, exact institution/major Catalog matches, and at least two education entries; those variants test frontend mapping and must not be described as backend public fixtures.
 
 Add table cases that reject: extra/missing keys at every object level, `null` arrays, invalid echoed source ID grammar, unknown enum/warning reason, non-integer years, invalid `YYYY-MM`, mismatched scalar null/confidence pairs, `exact + null match`, `unresolved + non-null match`, and forbidden `contact/evidence/provider` keys. Each response rejection must match `{status: 200, code: 'invalid_response'}`. A caller-supplied source with invalid ID grammar must issue zero HTTP calls and follow the existing preflight-error convention: `{status: 0, code: 'invalid_request'}`.
 
@@ -498,7 +498,7 @@ Define the page-facing API:
 
 ```ts
 export interface 简历预填操作 {
-  恢复候选Onboarding预填(): Promise<void>;
+  恢复候选Onboarding预填(options: { 允许等待解析: boolean }): Promise<void>;
   激活候选Onboarding预填(): void;
   同步候选Onboarding解析(): Promise<void>;
   重试候选Onboarding预填(): Promise<void>;
@@ -508,7 +508,7 @@ export interface 简历预填操作 {
 }
 ```
 
-Use a real factory with fake refs, following `附件简历操作.test.ts`. Cover Mock/no backend/no candidate zero calls; explicit activation from the authoritative attachment and Resume eligibility snapshot; metadata recovery only when the bound subject and exact current file/version match; pending zero reads; succeeded exact-tuple single flight; replacement invalidation; subject/role/session/prefill/tuple late-response fences; current versus stale 401; terminal 400/403/`invalid_response`; one-shot 404/409 refresh; retryable 503/network failure; manual opt-out; post-save section confirmation; and full memory/lock/storage cleanup. Terminal contract/role failures enter `failed`, keep online Resume data intact, and never apply partial decoded data.
+Use a real factory with fake refs, following `附件简历操作.test.ts`. Cover Mock/no backend/no candidate zero calls; explicit activation from the authoritative attachment and Resume eligibility snapshot; metadata recovery only when the bound subject and exact current file/version match; pending zero reads; route-aware pending recovery (`允许等待解析:true` restores `waiting_parse`, `false` enters/persists `manual`); succeeded exact-tuple single flight; replacement invalidation; subject/role/session/prefill/tuple late-response fences; current versus stale 401; terminal 400/403/`invalid_response`; one-shot 404/409 refresh; retryable 503/network failure; manual opt-out; post-save section confirmation; and full memory/lock/storage cleanup. Terminal contract/role failures enter `failed`, keep online Resume data intact, and never apply partial decoded data.
 
 Define `创建预填场景()` to return `{后端, 操作, 后端状态引用, 会话代际, 候选预填代际, 恢复存储}` and use controlled promises for fence tests:
 
@@ -565,7 +565,7 @@ The Provider always initializes and passes them. Keep them optional only on the 
 
 - [ ] **Step 4: Wire unified account cleanup**
 
-Seed `候选预填状态` in `应用状态提供者` and compose `创建简历预填操作(deps)` into `应用操作`. `恢复候选Onboarding预填()` reads only the current subject-bound metadata, waits for candidate/attachment hydration, and validates current file/version and parse state. Restore explicit `manual` metadata as `manual`. Restore an exact succeeded tuple with a parse ID as `loading` and read it. If recovery lands on a consumer route while parsing is still pending/processing or `parse_id` is null, immediately persist/enter `manual`: those routes do not mount `use附件简历刷新`, so `waiting_parse` there cannot advance. A missing or mismatched record is deleted and leaves state inactive. Add an operation test for this pending-on-consumer recovery rule. Extend `清账号状态` plus login/switch-role reset paths to remove outgoing-subject metadata, increment prefill generation, clear read locks, and reset state. Reuse any calibrated shared cleanup registry from the adjacent branch; do not create a second session owner.
+Seed `候选预填状态` in `应用状态提供者` and compose `创建简历预填操作(deps)` into `应用操作`. `恢复候选Onboarding预填({允许等待解析})` reads only the current subject-bound metadata, waits for candidate/attachment hydration, and validates current file/version and parse state. Restore explicit `manual` metadata as `manual`. Restore an exact succeeded tuple with a parse ID as `loading` and read it. For a matching auto record whose authoritative parse is pending/processing or whose `parse_id` is null: `允许等待解析:true` restores `waiting_parse` with zero prefill reads, while `false` immediately persists/enters `manual`. A missing or mismatched record is deleted and leaves state inactive. Add operation tests for both pending branches. Extend `清账号状态` plus login/switch-role reset paths to remove outgoing-subject metadata, increment prefill generation, clear read locks, and reset state. Reuse any calibrated shared cleanup registry from the adjacent branch; do not create a second session owner.
 
 - [ ] **Step 5: Run operation and session tests, then commit**
 
@@ -594,7 +594,7 @@ Expected: all three test files PASS; existing attachment behavior is unchanged.
 Extend the existing `render学生分流` fixture with prefill state and operation spies. Prove:
 
 - entering with an old succeeded attachment and no recovery metadata never activates or reads prefill;
-- mounting calls `恢复候选Onboarding预填`; only previously persisted matching metadata may resume a flow;
+- mounting calls `恢复候选Onboarding预填({允许等待解析:true})`; only previously persisted matching metadata may resume a flow, and matching pending/processing metadata restores `waiting_parse` so this page's existing poller can advance it;
 - after create/replace resolves `'已提交'`, activation is called exactly once;
 - `'已换代'` does not activate or show success feedback;
 - authoritative parse-coordinate changes call `同步候选Onboarding解析`, while the page owns no direct BFF request;
@@ -635,7 +635,7 @@ Expected: FAIL on missing activation/gate behavior.
 
 - [ ] **Step 3: Wire the existing controls**
 
-After create/replace returns `'已提交'`, call `操作.激活候选Onboarding预填()`. Watch only the authoritative current attachment parse coordinates and call `同步候选Onboarding解析()` from an effect; operation-layer single flight owns duplication.
+On mount after candidate/attachment hydration, call `操作.恢复候选Onboarding预填({允许等待解析:true})` once. After create/replace returns `'已提交'`, call `操作.激活候选Onboarding预填()`. Watch only the authoritative current attachment parse coordinates and call `同步候选Onboarding解析()` from an effect; operation-layer single flight owns duplication.
 
 Keep the existing `代理横幅` node in the same JSX position and vary only its existing props. Reuse the already imported `确认层` for the leave-page decision. Add no wrapper DOM, status row, class name, or inline style.
 
@@ -730,6 +730,8 @@ useLayoutEffect(() => {
 ```
 
 `仅取根基本字段` may be an inline pure helper, but must return only non-empty mapper keys among `真名`/`性别`/`开始工作年`; do not write status or birth-wheel values during mount. Keep `存基本信息` behavior and controls bound to `基本`, and pass `基本` plus the local birth values to the existing `保存简历` call. Call the matching confirmation operation only after the existing save promise resolves and before navigation. A failed save leaves the section unconfirmed.
+
+This intentionally has mount-scoped rather than persisted touched state: before `basic` is confirmed, if the user clears a suggested root field, leaves the page, and re-enters while auto prefill remains active, that blank field may be suggested again. A non-empty user edit still wins, and the explicit manual path disables all re-seeding. Pin this accepted behavior in the page test; do not add a general or persisted touched-field framework for this edge case.
 
 - [ ] **Step 4: Run tests and commit**
 
@@ -841,7 +843,7 @@ function 是预填消费位置(pathname: string, search: string): boolean {
 }
 ```
 
-Build the active onboarding set from the union of candidate flows before `路径.主壳`, plus city/job subpages. Route identity must include `location.search` so `/wizard?stage=salary` stays active but never consumes the summary suggestion. Assert exact-succeeded-tuple refresh loading/recovery; pending/processing or null-parse recovery on a consumer route immediately becomes manual and mounts the form without a poll/read; safe mismatch failure; manual/inactive bypass; no reads on salary/status/disclosure/city/job/avatar; cleanup on main/other product routes; cleanup before “完成注册” navigation; no old suggestion after completion; and no visible wrapper DOM or route-order change.
+Build the active onboarding set from the union of candidate flows before `路径.主壳`, plus city/job subpages. Route identity must include `location.search` so `/wizard?stage=salary` stays active but never consumes the summary suggestion. The boundary always calls `恢复候选Onboarding预填({允许等待解析:false})`. Assert exact-succeeded-tuple refresh loading/recovery; pending/processing or null-parse recovery on a consumer route immediately becomes manual and mounts the form without a poll/read; safe mismatch failure; manual/inactive bypass; no reads on salary/status/disclosure/city/job/avatar; cleanup on main/other product routes; cleanup before “完成注册” navigation; no old suggestion after completion; and no visible wrapper DOM or route-order change.
 
 ```tsx
 it('restores an exact tuple before mounting the consumer form', async () => {
