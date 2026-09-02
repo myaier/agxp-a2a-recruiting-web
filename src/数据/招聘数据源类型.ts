@@ -142,6 +142,21 @@ export interface 后端会话快照 {
 // 不带 candidate subject、真名、联系方式、性别、出生数据、候选薪资数字。
 
 /**
+ * P4 候选岗位事实：只从已解码 BFFCandidateJob 字段投影的硬事实（城市/办公方式/
+ * 办公地点/年薪月数/经验要求/学历要求），不编造。办公地点 blank → null；
+ * 年薪月数 wire 是 null 就 null；经验/学历 BFF 字段是开放字符串而非闭合枚举，
+ * 未知码原样透传服务端值，不推断不解析。
+ */
+export interface P4岗位事实 {
+  城市: string;
+  办公方式: '现场' | '混合' | '全远程';
+  办公地点: string | null;
+  年薪月数: number | null;
+  经验要求: string;
+  学历要求: string;
+}
+
+/**
  * P4 候选岗位卡/详情页视图。发布人 absent → null，绝不拿公司声明合成招聘人；
  * 公开公司路由 ID 只认 公司.organizationId（= wire 的 hiring_organization_ref）。
  */
@@ -150,6 +165,7 @@ export interface P4候选岗位页面 {
   intentionId: string | null;
   jobId: string;
   卡: 市场职位;
+  岗位事实: P4岗位事实;
   职位详情: string[];
   职位要求: string[];
   公司: {

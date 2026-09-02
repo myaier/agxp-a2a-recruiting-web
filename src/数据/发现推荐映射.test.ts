@@ -8,7 +8,7 @@ import {
   BFF候选岗位推荐样本,
   BFF招聘候选推荐样本,
 } from '../测试/BFF样本';
-import type { BFF候选岗位推荐, BFF招聘候选推荐 } from './BFF契约';
+import type { BFFCandidateJob, BFF候选岗位推荐, BFF招聘候选推荐 } from './BFF契约';
 import {
   P4淘汰原因文案,
   P4淘汰原因码,
@@ -107,6 +107,68 @@ describe('从P4候选岗位 / 从P4CandidateJob', () => {
     const view = 从P4候选岗位(card);
     expect(view.职位详情).toEqual(['参与产品工作', '跟进 Agent 评测']);
     expect(view.职位要求).toEqual(['在校生']);
+  });
+
+  it('CandidateJob allowlist projects city, mode, office, months, experience and education', () => {
+    const view = 从P4CandidateJob({
+      ...BFFCandidateJob样本,
+      location: { ...BFFCandidateJob样本.location, display_name: '上海' },
+      workplace_mode: 'hybrid',
+      office_location: '浦东新区世纪大道 1 号',
+      annual_salary_months: 15,
+      experience_requirement: 'three_to_five_years',
+      education_requirement: 'bachelor',
+    });
+    expect(view.岗位事实).toEqual({
+      城市: '上海',
+      办公方式: '混合',
+      办公地点: '浦东新区世纪大道 1 号',
+      年薪月数: 15,
+      经验要求: '3-5 年',
+      学历要求: '本科',
+    });
+  });
+
+  it.each([
+    ['remote', '', null, null],
+    ['remote', '   ', null, null],
+    ['onsite', '徐汇区漕河泾', 12, '徐汇区漕河泾'],
+    ['hybrid', '静安区南京西路', 14, '静安区南京西路'],
+  ] as const)('mode=%s office/months preserve null boundaries', (mode, office, months, expectedOffice) => {
+    const view = 从P4CandidateJob({
+      ...BFFCandidateJob样本,
+      workplace_mode: mode,
+      office_location: office,
+      annual_salary_months: months,
+    });
+    expect(view.岗位事实.办公地点).toBe(expectedOffice);
+    expect(view.岗位事实.年薪月数).toBe(months);
+  });
+
+  it('unknown structured requirement codes remain visible instead of becoming undefined', () => {
+    const view = 从P4CandidateJob({
+      ...BFFCandidateJob样本,
+      experience_requirement: 'backend_specific_experience',
+      education_requirement: 'backend_specific_education',
+    });
+    expect(view.岗位事实.经验要求).toBe('backend_specific_experience');
+    expect(view.岗位事实.学历要求).toBe('backend_specific_education');
+  });
+
+  it('allowlist 顶层键逐一对齐：岗位事实在册，DTO 注入键带不出去', () => {
+    const poisoned = {
+      ...BFFCandidateJob样本,
+      company_slug: 'yunqu',
+      candidate_subject: 'sub_secret',
+    } as BFFCandidateJob & Record<string, unknown>;
+    const view = 从P4CandidateJob(poisoned);
+    expect(Object.keys(view)).toEqual([
+      'recommendationId', 'intentionId', 'jobId', '卡', '岗位事实',
+      '职位详情', '职位要求', '公司', '发布人', '委托',
+    ]);
+    const text = JSON.stringify(view);
+    expect(text).not.toContain('yunqu');
+    expect(text).not.toContain('sub_secret');
   });
 
   it('详情直取：无推荐/意向坐标，匹配分与委托不编造', () => {

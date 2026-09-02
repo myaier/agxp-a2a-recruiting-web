@@ -93,11 +93,30 @@ function 建候选岗位视图(
     委托: BFF候选岗位推荐['delegation'];
   },
 ): P4候选岗位页面 {
+  // 岗位事实只取已解码 BFFCandidateJob 字段；办公地点 blank（含纯空白）→ null。
+  // 经验/学历 BFF 字段是开放字符串而非闭合枚举：未知码原样透传服务端值（不推断不解析），
+  // 绝不让展示层拿到 undefined。
+  const 办公地点 = job.office_location.trim();
+  const 经验要求 = 经验要求文案[
+    job.experience_requirement as keyof typeof 经验要求文案
+  ] ?? job.experience_requirement;
+  const 学历要求 = 学历要求文案[
+    job.education_requirement as keyof typeof 学历要求文案
+  ] ?? job.education_requirement;
+
   return {
     recommendationId: 建议.recommendationId,
     intentionId: 建议.intentionId,
     jobId: job.job_id,
     卡: 建卡(job, 建议.适配分, 建议.intentionId ?? '', 建议.理由),
+    岗位事实: {
+      城市: job.location.display_name,
+      办公方式: 办公方式文案[job.workplace_mode],
+      办公地点: 办公地点 === '' ? null : 办公地点,
+      年薪月数: job.annual_salary_months,
+      经验要求,
+      学历要求,
+    },
     职位详情: 拆行(job.description),
     职位要求: 拆行(job.requirements),
     公司: {
