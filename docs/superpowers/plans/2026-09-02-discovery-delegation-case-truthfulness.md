@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-02-frontend-truthfulness-batch-design.md`
 
+**Execution order:** This is Slice 2 of 3. Start only after Slice 1 is committed in the same worktree; use named symbols rather than frozen numeric line anchors where Slice 1 moved code. One writer continues with Slice 3 after this Plan. Do not parallelize these Plans.
+
 ## Global Constraints
 
 - Frontend baseline is `origin/main@b2827dae16e89b199b487ab1564246b7b66e34f6`.
@@ -135,7 +137,7 @@ describe('映射P4委托展示', () => {
 npm run test -- src/数据/发现推荐映射.test.ts
 ```
 
-Expected: FAIL because both selector exports are absent.
+Expected: FAIL because the organization selector, delegation selector, and refusal-reason export are absent.
 
 - [ ] **Step 4: Implement the closed selectors without fallbacks**
 
@@ -683,6 +685,21 @@ Add symmetric recruiter-card assertions and a polling-GET transition from `evalu
 
 In `发现推荐操作.ts`, import `P4拒绝原因文案` and have the existing `P4拒绝文案` delegate to it. Change `回执摘要` to return a summary for every non-null decoded state:
 
+First align the generic terminal toast table with the shared Backend state table and update its existing literal tests:
+
+```ts
+export function P4委托终态文案(state: 'needs_user' | 'refused' | 'failed'): string {
+  const copy = {
+    needs_user: '需要你处理',
+    refused: '本次未能继续',
+    failed: '本次处理未完成',
+  } as const;
+  return copy[state];
+}
+```
+
+`refused` with a non-null closed `refusal_code` continues to use the more specific `P4拒绝原因文案`; only its generic fallback changes.
+
 ```ts
 function 回执摘要(回执: BFF委托回执): BFF委托摘要 | null {
   return 回执.state === null
@@ -711,6 +728,8 @@ function 修补候选卡(卡: BFF候选岗位推荐, 摘要: BFF委托摘要 | n
 ```
 
 Do not change receipt validation, exception behavior, idempotency, fencing, or `P4真实Case引用`. No terminal state may create a Case.
+
+Update the module header and the `回执摘要`/candidate-card docblocks to state the new behavior: all six non-null states retain an authoritative summary; only `accepted/evaluating` are progressing; terminal states restore the candidate card business state to `available`; `case_started` alone records a Case reference. Do not leave comments claiming `needs_user/refused/failed` clear the summary.
 
 - [ ] **Step 3: Run operation tests**
 

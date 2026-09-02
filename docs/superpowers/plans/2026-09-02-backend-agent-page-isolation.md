@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-02-frontend-truthfulness-batch-design.md`
 
+**Execution order:** This is Slice 3 of 3. Start only after Slices 1 and 2 are committed in the same worktree; use named symbols rather than frozen numeric line anchors where prior slices moved code. Do not run a parallel writer.
+
 ## Global Constraints
 
 - Frontend baseline is `origin/main@b2827dae16e89b199b487ab1564246b7b66e34f6`.
@@ -40,6 +42,7 @@
 **Files:**
 - Create: `src/屏幕/问AI代理.test.tsx`
 - Modify: `src/屏幕/问AI代理.tsx:12-151`
+- Modify: `src/屏幕/看市场.test.tsx:228-250`
 
 **Interfaces:**
 - Consumes: `数据源模式`, `派发`, `use导航`, `路径.主壳`, and `路径.规则库`.
@@ -148,6 +151,30 @@ it('switching Mock to Backend cancels a queued fake reply', async () => {
 });
 ```
 
+Replace the existing cross-page Backend test in `看市场.test.tsx` that clicks `改成可谈`; that control is intentionally absent after the mode-first split. Merge it with the adjacent Mock assertion:
+
+```tsx
+it('问AI代理：Backend 不挂载模拟规则动作，Mock 仍可改成可谈', async () => {
+  置应用状态({ 模式: 'backend', 状态: { 基本信息: { 真名: '测试' } } });
+  const page = render(<问AI代理 />);
+  expect(screen.queryByRole('button', { name: '改成可谈' })).toBeNull();
+  expect(mock派发).not.toHaveBeenCalled();
+
+  置应用状态({ 模式: 'mock', 状态: { 基本信息: { 真名: '测试' } } });
+  page.rerender(<问AI代理 />);
+  await userEvent.click(screen.getByRole('button', { name: '改成可谈' }));
+  expect(mock派发).toHaveBeenCalledWith({
+    型: '新增规则',
+    内容: 今日简报.松一档.规则内容,
+    来源: 今日简报.松一档.规则来源,
+  });
+  expect(mock跳转).not.toHaveBeenCalledWith(路径.规则库);
+  expect(mock轻提示).toHaveBeenCalledWith('已记成规则');
+});
+```
+
+Delete the now-duplicate adjacent Mock-only test after merging its assertions.
+
 - [ ] **Step 4: Run the new tests and confirm the Backend branch fails**
 
 ```bash
@@ -224,7 +251,7 @@ Do not render `真输入条`. Preserve the existing ellipsis Agent-detail action
 
 ```bash
 npm run test -- src/屏幕/问AI代理.test.tsx src/屏幕/看市场.test.tsx
-git add src/屏幕/问AI代理.tsx src/屏幕/问AI代理.test.tsx
+git add src/屏幕/问AI代理.tsx src/屏幕/问AI代理.test.tsx src/屏幕/看市场.test.tsx
 git commit -m "fix: isolate candidate backend agent page"
 ```
 
@@ -511,8 +538,8 @@ Expected: textual matches remain because Mock is intentionally preserved; inspec
 - [ ] **Step 3: Enforce the visual freeze**
 
 ```bash
-test -z "$(git diff origin/main...HEAD --name-only -- '*.css' '*.module.css')"
-test -z "$(git diff origin/main...HEAD --name-only -- 'src/组件/*.tsx' 'src/组件/**/*.tsx' | rg -v '\.test\.tsx$')"
+test -z "$(git diff b2827dae16e89b199b487ab1564246b7b66e34f6...HEAD --name-only -- '*.css' '*.module.css')"
+test -z "$(git diff b2827dae16e89b199b487ab1564246b7b66e34f6...HEAD --name-only -- 'src/组件/*.tsx' 'src/组件/**/*.tsx' | rg -v '\.test\.tsx$')"
 git diff --check
 ```
 

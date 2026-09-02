@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-02-frontend-truthfulness-batch-design.md`
 
+**Execution order:** This is Slice 1 of 3. One writer executes this Plan first, then the Discovery/Case Plan, then the Backend Agent isolation Plan in the same worktree. Do not parallelize the three Plans.
+
 ## Global Constraints
 
 - Frontend baseline is `origin/main@b2827dae16e89b199b487ab1564246b7b66e34f6`.
@@ -275,6 +277,16 @@ it.each([
   expect(view.岗位事实.办公地点).toBe(expectedOffice);
   expect(view.岗位事实.年薪月数).toBe(months);
 });
+
+it('unknown structured requirement codes remain visible instead of becoming undefined', () => {
+  const view = 从P4CandidateJob({
+    ...BFFCandidateJob样本,
+    experience_requirement: 'backend_specific_experience',
+    education_requirement: 'backend_specific_education',
+  });
+  expect(view.岗位事实.经验要求).toBe('backend_specific_experience');
+  expect(view.岗位事实.学历要求).toBe('backend_specific_education');
+});
 ```
 
 Extend the existing exact-key allowlist test so `岗位事实` is an expected page key while injected DTO-only keys remain absent.
@@ -308,8 +320,12 @@ In `建候选岗位视图`, populate only CandidateJob values:
 
 ```ts
 const 办公地点 = job.office_location.trim();
-const 经验要求 = 经验要求文案[job.experience_requirement];
-const 学历要求 = 学历要求文案[job.education_requirement];
+const 经验要求 = 经验要求文案[
+  job.experience_requirement as keyof typeof 经验要求文案
+] ?? job.experience_requirement;
+const 学历要求 = 学历要求文案[
+  job.education_requirement as keyof typeof 学历要求文案
+] ?? job.education_requirement;
 
 return {
   recommendationId: 建议.recommendationId,
@@ -344,7 +360,7 @@ return {
 };
 ```
 
-Index the closed maps directly; do not add `?? job.experience_requirement` or another permissive fallback.
+Keep the existing raw structured-code fallback because these two BFF fields and their decoder are currently typed as validated non-empty strings rather than closed enums. The fallback displays the server value instead of silently producing `undefined`; it must not infer or parse free text.
 
 - [ ] **Step 4: Run the mapper and type tests**
 
@@ -399,6 +415,8 @@ it('Backend detail displays CandidateJob facts in existing text slots', async ()
   expect(screen.getByText('办公方式：混合')).toBeTruthy();
   expect(screen.getByText('办公地点：浦东新区世纪大道 1 号')).toBeTruthy();
   expect(screen.getByText('年薪月数：15 薪')).toBeTruthy();
+  expect(screen.getByText('结构化经验要求：3-5 年')).toBeTruthy();
+  expect(screen.getByText('结构化学历要求：本科')).toBeTruthy();
   expect(screen.getByText(/按岗位设置的结构化要求核对/)).toBeTruthy();
   expect(screen.getByText('职位要求（补充说明，不自动解析）')).toBeTruthy();
   expect(screen.getByText('熟悉 TypeScript')).toBeTruthy();
@@ -443,6 +461,8 @@ const 事实行 = 视图 === null ? [] : [
   `办公方式：${视图.岗位事实.办公方式}`,
   ...(视图.岗位事实.办公地点 === null ? [] : [`办公地点：${视图.岗位事实.办公地点}`]),
   ...(视图.岗位事实.年薪月数 === null ? [] : [`年薪月数：${视图.岗位事实.年薪月数} 薪`]),
+  `结构化经验要求：${视图.岗位事实.经验要求}`,
+  `结构化学历要求：${视图.岗位事实.学历要求}`,
 ];
 
 const 内容 = 视图 !== null
@@ -498,12 +518,19 @@ Use the existing analysis prop and title slot; do not add elements:
 ```
 
 ```tsx
+<div className={样式.卡标题}>
+  {视图 !== null ? '岗位信息与职位详情' : '职位详情'}
+</div>
+{内容.职位详情.map((行, index) => (
+  <div key={`${index}:${行}`} className={样式.卡正文}>{行}</div>
+))}
+
 <div className={样式.卡小标题}>
   {视图 !== null ? '职位要求（补充说明，不自动解析）' : '职位要求'}
 </div>
 ```
 
-Do not touch `匹配分析块`, `公司区块`, or any CSS.
+The Backend title change makes the mixed fact/JD slot truthful, and the indexed key prevents a CandidateJob description line identical to a fact line from colliding. Do not add a DOM block or touch `匹配分析块`, `公司区块`, or any CSS.
 
 - [ ] **Step 4: Run detail and mapping regression tests**
 
@@ -550,7 +577,8 @@ it('结构化经验学历与补充文字使用精确说明且不改 payload', as
   await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
   expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
     职位要求: '至少 3 年经验，本科优先',
-    经验要求: expect.not.stringContaining('3 年'),
+    经验要求: '不限',
+    最低学历: '不限',
   });
 });
 ```

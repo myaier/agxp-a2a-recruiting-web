@@ -219,7 +219,7 @@ Deliver B, C, E, and F: organization prerequisite, active-intention recovery, sa
 
 Deliver G: mode-first page branches, Mock timer cleanup, existing-slot Backend explanation/CTAs, and entry-copy audit.
 
-One integration owner combines and verifies all slices. No slice creates a shared UI component or new state layer.
+The slices are an ordered series owned by one writer in one worktree: Slice 1 → Slice 2 → Slice 3. This ordering is mandatory because the mapping and recommendation/detail page files overlap. The separate Plan documents are zero-context execution boundaries, not authorization to run parallel writers. Line references in later Plans are navigation anchors against the frozen baseline; after an earlier slice lands, locate the named symbol rather than assuming its numeric line is unchanged. No slice creates a shared UI component or new state layer.
 
 ## Expected File Scope
 
