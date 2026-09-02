@@ -151,18 +151,16 @@ describe('招聘端演示页 · 记成规则的模式边界', () => {
     mock新增叮嘱.mockClear();
   });
 
-  it('企业问AI代理：Backend 点「放宽薪资带」不派发 企业新增规则，只提示去AI代理设置', async () => {
+  it('企业问AI代理：Backend 不挂载模拟规则动作，Mock 仍可放宽薪资带', async () => {
+    // Backend 模式下 Mock 体一概不挂载，「放宽薪资带」在结构上不存在（零派发零跳转）；
+    // 同页切回 Mock 后原型动作原样可用 —— 派发 企业新增规则 并跳企业代理设置。
     置应用状态({ 模式: 'backend', 状态: 招聘页状态() });
-    render(<企业问AI代理 />);
-    await userEvent.click(screen.getByRole('button', { name: '放宽薪资带' }));
+    const page = render(<企业问AI代理 />);
+    expect(screen.queryByRole('button', { name: '放宽薪资带' })).toBeNull();
     expect(mock派发).not.toHaveBeenCalled();
-    expect(mock跳转).not.toHaveBeenCalled();
-    expect(mock轻提示).toHaveBeenCalledWith('请到AI代理设置确认并添加长期规则');
-  });
 
-  it('企业问AI代理：Mock 仍派发 企业新增规则 并跳企业代理设置', async () => {
     置应用状态({ 模式: 'mock', 状态: 招聘页状态() });
-    render(<企业问AI代理 />);
+    page.rerender(<企业问AI代理 />);
     await userEvent.click(screen.getByRole('button', { name: '放宽薪资带' }));
     expect(mock派发).toHaveBeenCalledWith({
       型: '企业新增规则',
