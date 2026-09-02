@@ -225,18 +225,16 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
     mock新增叮嘱.mockClear();
   });
 
-  it('问AI代理：Backend 点「改成可谈」不派发 新增规则，只提示去规则库', async () => {
+  it('问AI代理：Backend 不挂载模拟规则动作，Mock 仍可改成可谈', async () => {
+    // Backend 模式下 Mock 体一概不挂载，「改成可谈」在结构上不存在（零派发零跳转）；
+    // 同页切回 Mock 后原型动作原样可用 —— 派发 新增规则、留在本页、轻提示告知。
     置应用状态({ 模式: 'backend', 状态: { 基本信息: { 真名: '测试' } } });
-    render(<问AI代理 />);
-    await userEvent.click(screen.getByRole('button', { name: '改成可谈' }));
+    const page = render(<问AI代理 />);
+    expect(screen.queryByRole('button', { name: '改成可谈' })).toBeNull();
     expect(mock派发).not.toHaveBeenCalled();
-    expect(mock跳转).not.toHaveBeenCalled();
-    expect(mock轻提示).toHaveBeenCalledWith('请到规则库确认并添加长期规则');
-  });
 
-  it('问AI代理：Mock 派发 新增规则 后留在本页并轻提示', async () => {
     置应用状态({ 模式: 'mock', 状态: { 基本信息: { 真名: '测试' } } });
-    render(<问AI代理 />);
+    page.rerender(<问AI代理 />);
     await userEvent.click(screen.getByRole('button', { name: '改成可谈' }));
     expect(mock派发).toHaveBeenCalledWith({
       型: '新增规则',
