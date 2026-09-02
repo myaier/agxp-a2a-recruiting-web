@@ -255,7 +255,7 @@ source 绑定时，从 `后端状态.简历快照` 的原始 BFF DTO 记录哪�
 - 进入 `学生分流` 本身不消费已有附件；只有本页一次明确上传/替换成功后才激活，避免把日常维护的旧附件误当 onboarding 来源。
 - 上传开始先进入 `arming` 并递增 generation；旧建议立即不可提交。
 - 附件操作完成权威 GET 后，以新 `items[0].file_id + current_version.version_id` 绑定来源；pending/processing 进入 `waiting_parse`。
-- 状态变为 succeeded 后，以完整 tuple 单飞读取；同 tuple 成功只提交一次。
+- 状态变为 succeeded 后，先把 authoritative `current_version.parse.parse_id` 写入内存 source 与 recovery metadata，再以完整 tuple 单飞读取；写 metadata 必须早于 await 读取，以便读取途中刷新仍可恢复。同 tuple 成功只提交一次。
 - replace 后新 file/version 重置 suggestion、error 和尚未确认分区；已写入服务端的值会在新 eligibility 快照中变为不可覆盖。
 - 401、登出、换 subject、切离 candidate、退出 onboarding 路由集合、完成注册全部清内存和 session key，并递增 generation。
 - `我的简历` 的上传、替换和重解析不调用激活方法；其现有轮询与附件操作保持原样。
@@ -391,7 +391,7 @@ unresolved 或 missing required 条目仍显示原始建议。页面不新增顶
 /wizard（仅个人优势题消费）
 ```
 
-边界只在 session metadata 表明本轮 auto prefill 活跃、但内存 suggestion 因刷新缺失时工作：
+边界只在 session metadata 表明本轮 auto prefill 活跃、且内存 round 是 pristine `inactive`（`source:null`、`suggestion:null`）时工作。已有 `arming`、`waiting_parse`、`loading`、`ready`、`failed` 或 `manual` round 时不调用恢复；恢复操作本身重复这个 no-op guard，避免正常路由切换覆盖活状态或重复读取：
 
 1. 等 candidate 水合完成并取得附件库；
 2. 验证 metadata source 仍是当前附件 exact tuple；
@@ -399,7 +399,7 @@ unresolved 或 missing required 条目仍显示原始建议。页面不新增顶
 4. 读取期间复用现有 `路由加载中`，ready 后再挂载实际表单；
 5. 失败复用现有 `确认层` 提供重试与继续手填，不能把空建议冒充恢复成功。
 
-只有带 `parse_id` 的 exact succeeded tuple 能在消费页面恢复为 `loading` 并重新读取。若刷新恢复时附件仍是 pending/processing 或 metadata 没有 `parse_id`，消费页面立即把本轮转为 `manual` 并挂载原表单，因为这里没有 `use附件简历刷新` poller。`学生分流` 则用同一恢复操作的“允许等待解析”策略恢复 `waiting_parse`，由该页已挂载的 poller 推进。换言之，`waiting_parse` 只允许存在于实际挂载 `use附件简历刷新` 的路由，不能恢复到无 poller 的页面。
+恢复时 authoritative current attachment 是 parse 真相源。若它已 `succeeded`，使用其当前非空 `parse_id` 升级内存 source 和 recovery metadata，再进入 `loading` 并重新读取；stored metadata 的 `parse_id:null` 本身不能触发降级。若 authoritative parse 仍是 pending/processing，消费页面立即把本轮转为 `manual` 并挂载原表单，因为这里没有 `use附件简历刷新` poller；`学生分流` 则用同一恢复操作的“允许等待解析”策略恢复 `waiting_parse`，由该页已挂载的 poller 推进。换言之，`waiting_parse` 只允许存在于实际挂载 `use附件简历刷新` 的路由，不能恢复到无 poller 的页面。
 
 manual/inactive 或普通从 `我的简历` 进入同路径时直接渲染原页面。
 
