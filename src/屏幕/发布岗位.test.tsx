@@ -303,7 +303,7 @@ describe('发布岗位页 Backend 选择器', () => {
     // 职位要求：与职位描述各自独立的一段文本
     const 职位要求文本 = 选项.职位要求 === undefined ? '有分布式系统与撮合引擎经验' : 选项.职位要求;
     if (职位要求文本 !== null) {
-      await 用户.type(screen.getByRole('textbox', { name: '职位要求' }), 职位要求文本);
+      await 用户.type(screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }), 职位要求文本);
     }
     // 工作城市：输入触发 250ms debounce 候选查询
     await 用户.type(
@@ -339,13 +339,13 @@ describe('发布岗位页 Backend 选择器', () => {
 
   it('第三步显示独立的职位要求 textarea', async () => {
     const { 用户 } = await 填到发布前(true, { 职位要求: null });
-    const 要求框 = screen.getByRole('textbox', { name: '职位要求' }) as HTMLTextAreaElement;
+    const 要求框 = screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }) as HTMLTextAreaElement;
     expect(要求框.disabled).toBe(false);
     expect(要求框.readOnly).toBe(false);
     // 第二步填过的职位描述没有渗进来：这是一个独立的空输入
     expect(要求框.value).toBe('');
     await 用户.type(要求框, '要求正文');
-    expect((screen.getByRole('textbox', { name: '职位要求' }) as HTMLTextAreaElement).value)
+    expect((screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }) as HTMLTextAreaElement).value)
       .toBe('要求正文');
   });
 
@@ -355,7 +355,7 @@ describe('发布岗位页 Backend 选择器', () => {
     expect(await screen.findByText('请填写职位要求')).toBeTruthy();
     expect(mock发布岗位).not.toHaveBeenCalled();
     // 留在第三步：要求输入框仍在屏上，用户看得见该改哪儿
-    expect(screen.getByRole('textbox', { name: '职位要求' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' })).toBeTruthy();
   });
 
   // 校验失败必须把用户带回出问题的那一步 —— 只弹 toast 不切步，用户当前屏上根本
@@ -367,7 +367,7 @@ describe('发布岗位页 Backend 选择器', () => {
     expect(mock发布岗位).not.toHaveBeenCalled();
     // 真的换了步：描述输入回到屏上，第三步的职位要求输入与提交键都不在了
     expect(screen.getByRole('textbox', { name: '职位描述' })).toBeTruthy();
-    expect(screen.queryByRole('textbox', { name: '职位要求' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' })).toBeNull();
     expect(screen.queryByRole('button', { name: '发布岗位并开始寻访' })).toBeNull();
   });
 
@@ -415,6 +415,26 @@ describe('发布岗位页 Backend 选择器', () => {
     expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
       职位描述: '负责交易网关与撮合核心',
       职位要求: '应届或毕业年级；关注 AI 与开发工具',
+    });
+  });
+
+  // Task 4（frontend truthfulness）：结构化档位（自动匹配读取）与补充文字（不自动解析）
+  // 的文案边界 —— 只改可见/可访问文案，不改 payload：用户选的结构化值原样、手打补充文字原样。
+  it('结构化经验学历与补充文字使用精确说明且不改 payload', async () => {
+    const { 用户 } = await 填到发布前(true);
+    expect(screen.getByText('经验要求（自动匹配读取）')).toBeTruthy();
+    expect(screen.getByText('最低学历（自动匹配读取）')).toBeTruthy();
+    const 要求框 = screen.getByRole('textbox', {
+      name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）',
+    });
+    await 用户.clear(要求框);
+    await 用户.type(要求框, '至少 3 年经验，本科优先');
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
+      职位要求: '至少 3 年经验，本科优先',
+      经验要求: '不限',
+      最低学历: '不限',
     });
   });
 
@@ -474,7 +494,7 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
 
     // 第三步：职位要求 + 薪资 + 城市 + 办公地
-    await 用户.type(screen.getByRole('textbox', { name: '职位要求' }), '要求正文');
+    await 用户.type(screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }), '要求正文');
     await 用户.type(screen.getByLabelText('薪资下限'), '20');
     await 用户.type(screen.getByLabelText('薪资上限'), '30');
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));

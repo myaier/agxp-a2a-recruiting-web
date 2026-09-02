@@ -1277,7 +1277,7 @@ function 职位要求步({
         {/* 经验要求：校招/实习面向没有工龄的人，这一档整个不出现 */}
         {按年限筛(当前类型) ? (
           <div className={样式.编辑条目}>
-            <div className={样式.条目标签}>经验要求</div>
+            <div className={样式.条目标签}>经验要求（自动匹配读取）</div>
             <div className={样式.快捷片行}>
               {经验要求选项.map((项) => (
                 <button
@@ -1294,7 +1294,7 @@ function 职位要求步({
         ) : null /* 校招/实习不按年限筛，经验档位整块收起（标注 14:44：说明小字删） */}
 
         <div className={样式.编辑条目}>
-          <div className={样式.条目标签}>最低学历</div>
+          <div className={样式.条目标签}>最低学历（自动匹配读取）</div>
           <div className={样式.快捷片行}>
             {最低学历选项.map((项) => (
               <button
@@ -1410,7 +1410,7 @@ function 职位要求步({
 
       {/* P0 修复 Task 4：恢复独立的职位要求输入 —— BFF 的 requirements 是必填且
           不能由 description 顶替（页面/操作/映射三层各挡一道） */}
-      <div className={样式.要求文标}>给候选人看的职位要求</div>
+      <div className={样式.要求文标}>给候选人看的职位要求（补充文字，不自动解析为硬门槛）</div>
       <div className={样式.描述卡}>
         <textarea
           className={样式.描述输入}
@@ -1418,7 +1418,7 @@ function 职位要求步({
           onChange={(事件) => 设职位要求(事件.target.value)}
           placeholder="请填写候选人需要具备的经验、能力与条件"
           maxLength={5000}
-          aria-label="职位要求"
+          aria-label="给候选人看的职位要求（补充文字，不自动解析为硬门槛）"
         />
         <div className={样式.描述底}>
           <span className={`${样式.描述计数} 等宽数字`}>{职位要求.length} / 5000</span>
