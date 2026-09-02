@@ -73,6 +73,8 @@ Public 错误闭集：
 
 后端已用单事务验证 owner、current ready version、exact succeeded parse；前端仍必须验证成功响应的 `source` 与请求三元组逐字相等，防止 relay/合同漂移被当成当前建议。
 
+调用方传入不符合 ID grammar 的 source 属于前端 preflight 错误：不得发 HTTP，并沿用现有客户端约定返回 `status:0, code:'invalid_request'`。上表的 `400 invalid_request_body` 只表示服务端实际返回的 Public API 错误，不能由本地校验伪造。
+
 ### 2.2 当前前端与 handoff 的三个差异
 
 1. `use附件简历刷新` 只挂在 `学生分流` 和 `我的简历`。用户从 `学生分流` 进入下一页后，当前轮询会卸载；不能假定它会在整个 onboarding 后台继续运行。
@@ -152,7 +154,7 @@ Public 错误闭集：
 
 ```ts
 interface 简历预填数据源 {
-  读取简历预填(fileId: string, versionId: string, parseId: string): Promise<BFF简历预填>;
+  读取简历预填(source: BFF简历预填来源): Promise<BFF简历预填建议>;
 }
 ```
 
@@ -198,33 +200,30 @@ type 预填阶段 =
   | 'failed'
   | 'manual';
 
-interface Onboarding简历预填状态 {
+interface 候选预填状态 {
   phase: 预填阶段;
-  subjectId: string | null;
-  environment: 后端环境 | null;
-  source: { fileId: string; versionId: string; parseId: string | null } | null;
-  suggestion: BFF简历预填 | null;       // 仅内存
-  eligible: 预填资格快照 | null;
-  confirmedSections: 预填分区[];
-  errorCode: string | null;
+  source: { file_id: string; version_id: string; parse_id: string | null } | null;
+  eligibility: 候选预填Eligibility | null;
+  suggestion: BFF简历预填建议 | null;       // 仅内存
+  confirmed: Record<候选预填分区, boolean>;
+  error: string | null;
   generation: number;
 }
 ```
 
-`confirmedSections` 至少细分为：
+`confirmed` 的分区键固定为：
 
 ```text
 basic
-education.degree
-education.institution
-education.major
-education.period
-resume.experiences
-resume.educations.additional
-resume.skills
-resume.certificates
+degree
+institution
+major
+education_period
+work
 summary
 ```
+
+`work` 对应 `工作经历` 页一次保存的 experiences、additional educations、skills、certificates 四个可见分区；当前保存动作没有四个独立确认边界，因此不伪造更细的 confirmed 状态。
 
 ### 6.2 为什么保留 eligibility 快照
 
@@ -324,7 +323,7 @@ file_id + version_id + parse_id
 
 不应用 `profile.status`。当前“是否在校”和后续求职状态会改变 onboarding 分支及意向语义，继续要求用户显式选择，不让 PDF 替用户决定当前状态。
 
-页面本地出生滚轮必须用“当前页面值 → suggestion → 既有 UI 默认”的顺序初始化。姓名等根状态字段只写当前 basic 分区，不能顺带写教育/经历。
+页面本地出生滚轮必须用“当前页面值 → suggestion → 既有 UI 默认”的顺序初始化；mapper 为滚轮输出 number，并分别限制在 `1970..2010`、`1..12`。姓名、性别、开始工作年继续使用页面既有的根 Resume 客户端草稿与逐次 `存简历` dispatch，避免返回再进入页面时丢失编辑；页面首次挂载只把 eligible 且当前为空的这三个 basic 字段一次性种入根草稿。该动作只更新客户端 draft，不调用 `/me/resume`，也不能顺带写出生值、教育、经历、技能或证书。
 
 ### 8.2 `最高学历`
 
@@ -359,7 +358,7 @@ file_id + version_id + parse_id
 - skills；
 - certificates。
 
-每个分区只在 source 绑定时服务端列表为空、当前页面列表仍为空且尚未 confirmed 时物化。顺序保持后端 parser 顺序，不排序、不去重、不按下标合并已有条目。
+experiences、skills、certificates 只在 source 绑定时对应服务端列表为空、当前页面对应列表仍为空且 `work` 尚未 confirmed 时物化。additional educations 使用同一个 source-time `educations` eligibility，但它的页面空条件是“已有前四页形成的 `education[0]`，且 `current.educations.slice(1)` 为空”；满足时保留第 0 条并追加 `suggestion.educations.slice(1)`。若当前已有任意 additional education，则完全不追加。顺序保持后端 parser 顺序，不排序、不去重、不按下标合并已有条目。
 
 映射规则：
 
@@ -398,6 +397,8 @@ unresolved 或 missing required 条目仍显示原始建议。页面不新增顶
 4. 读取期间复用现有 `路由加载中`，ready 后再挂载实际表单；
 5. 失败复用现有 `确认层` 提供重试与继续手填，不能把空建议冒充恢复成功。
 
+只有带 `parse_id` 的 exact succeeded tuple 能在消费页面恢复为 `loading` 并重新读取。若刷新恢复时附件仍是 pending/processing 或 metadata 没有 `parse_id`，立即把本轮转为 `manual` 并挂载原表单：消费页面没有 `use附件简历刷新` poller，不能恢复成永远无法推进的 `waiting_parse`。`waiting_parse` 只存在于仍挂载 poller 的 `学生分流` 激活阶段。
+
 manual/inactive 或普通从 `我的简历` 进入同路径时直接渲染原页面。
 
 这里要区分“消费 suggestion 的页面”和“保持 onboarding 会话活跃的页面”：前者是上面的窄集合；后者必须覆盖 `Onboarding流程.学生求职`、`Onboarding流程.社招求职` 中进入主壳前的并集，并额外包含 `学生分流` 打开的 `/onboard/city`、`/onboard/job` 子页。经过薪资段、求职状态、披露说明或头像页时只保留状态，不读取 suggestion。进入 `/app`、切到其它产品路由，或在头像页完成注册时才清理。这样既不会在注册中途误清，也能防止中断注册后从主壳进入 `/basic` 被误判为 onboarding。
@@ -420,25 +421,41 @@ manual/inactive 或普通从 `我的简历` 进入同路径时直接渲染原页
 src/数据/BFF契约.ts
 src/数据/招聘数据源/简历预填.ts
 src/数据/招聘数据源/简历预填.test.ts
+src/数据/招聘数据源/简历预填.fixture.ts
 src/数据/HTTP招聘数据源.ts
 src/数据/HTTP招聘数据源.test.ts
+src/数据/候选Onboarding预填恢复.ts
+src/数据/候选Onboarding预填恢复.test.ts
 src/状态/后端/类型.ts
 src/状态/后端/简历预填操作.ts
 src/状态/后端/简历预填操作.test.ts
 src/状态/后端/会话操作.ts
+src/状态/后端/会话操作.test.ts
 src/状态/应用状态.tsx
-src/流程/候选Onboarding简历预填.tsx
-src/流程/候选Onboarding简历预填.test.tsx
+src/流程/候选Onboarding简历预填.ts
+src/流程/候选Onboarding简历预填.test.ts
+src/流程/候选Onboarding预填边界.tsx
+src/流程/候选Onboarding预填边界.test.tsx
+src/流程/附件简历刷新.test.tsx
 src/屏幕/学生分流.tsx
 src/屏幕/学生分流.test.tsx
 src/屏幕/基本信息.tsx
+src/屏幕/基本信息.test.tsx
 src/屏幕/最高学历.tsx
+src/屏幕/最高学历.test.tsx
 src/屏幕/毕业院校.tsx
+src/屏幕/毕业院校.test.tsx
 src/屏幕/选专业.tsx
+src/屏幕/选专业.test.tsx
 src/屏幕/就读时间段.tsx
+src/屏幕/就读时间段.test.tsx
 src/屏幕/工作经历.tsx
+src/屏幕/工作经历.test.tsx
 src/屏幕/引导问答.tsx
+src/屏幕/引导问答.test.tsx
 src/屏幕/添加头像.tsx
+src/屏幕/添加头像.test.tsx
+src/屏幕/我的简历.test.tsx
 src/应用.tsx
 src/应用.test.tsx
 ```

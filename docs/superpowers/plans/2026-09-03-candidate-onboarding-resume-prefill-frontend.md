@@ -40,7 +40,7 @@ Expected: the approved Spec is present; unrelated user changes remain untouched.
 - [ ] Record the zero-style baseline for later comparison.
 
 ```bash
-git diff --name-only -- '*.css' '*.module.css' 'src/组件/**'
+git diff --name-only 25c4f041bccde33c7b21c2cb96f9f9fbadb0140c...HEAD -- '*.css' '*.module.css' 'src/组件/**'
 ```
 
 Expected: no output attributable to this feature branch.
@@ -58,7 +58,7 @@ Expected: no output attributable to this feature branch.
 - Modify: `src/数据/HTTP招聘数据源.test.ts`
 
 **Interfaces:**
-- Consumes: `BFF客户端['请求']` and its existing `{不缓存, 严格信封}` options.
+- Consumes: the established module-local `请求函数` shape and existing `{不缓存, 严格信封}` options.
 - Produces: `BFF简历预填建议`, `BFF简历预填来源`, `简历预填数据源`, and `读取简历预填(source)`.
 
 - [ ] **Step 1: Add failing contract tests using the backend public fixture**
@@ -155,7 +155,9 @@ expect(请求).toHaveBeenCalledWith({
 });
 ```
 
-Add table cases that reject: extra/missing keys at every object level, `null` arrays, invalid echoed source ID grammar, unknown enum/warning reason, non-integer years, invalid `YYYY-MM`, mismatched scalar null/confidence pairs, `exact + null match`, `unresolved + non-null match`, and forbidden `contact/evidence/provider` keys. Each response rejection must match `{status: 200, code: 'invalid_response'}`. A caller-supplied source with invalid ID grammar must issue zero HTTP calls and reject as `{status: 400, code: 'invalid_request_body'}`.
+Treat this copied object as the immutable **wire-decode fixture only**. Do not mutate it to manufacture positive page-mapping cases. Add clearly named local fixture builders/variants for valid gender, valid birth values, supported degree vocabulary, and exact institution/major Catalog matches; those variants test frontend mapping and must not be described as backend public fixtures.
+
+Add table cases that reject: extra/missing keys at every object level, `null` arrays, invalid echoed source ID grammar, unknown enum/warning reason, non-integer years, invalid `YYYY-MM`, mismatched scalar null/confidence pairs, `exact + null match`, `unresolved + non-null match`, and forbidden `contact/evidence/provider` keys. Each response rejection must match `{status: 200, code: 'invalid_response'}`. A caller-supplied source with invalid ID grammar must issue zero HTTP calls and follow the existing preflight-error convention: `{status: 0, code: 'invalid_request'}`.
 
 - [ ] **Step 2: Run the new tests and verify the red state**
 
@@ -252,14 +254,18 @@ The read method validates source IDs before the request, encodes each path/query
 Expose only this facade surface:
 
 ```ts
+type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
+
 export interface 简历预填数据源 {
   读取简历预填(source: BFF简历预填来源): Promise<BFF简历预填建议>;
 }
 
 export function 创建简历预填数据源(
-  请求: Pick<BFF客户端, '请求'>['请求'],
+  请求: 请求函数,
 ): 简历预填数据源;
 ```
+
+Keep `请求函数` module-local, matching the existing `会话.ts`/`简历.ts` facade pattern; do not add a shared client-type abstraction solely for this reader.
 
 - [ ] **Step 4: Compose the facade into `HTTP招聘数据源`**
 
@@ -332,7 +338,7 @@ export interface 候选预填Eligibility {
 
 The initial state is `inactive`, has no source/suggestion/error, all confirmed flags are false, and generation is `0`. Recovery metadata contains only mode, `{file_id, version_id, parse_id|null}`, eligibility, confirmed flags, and generation; prove serialized JSON does not contain `draft`, `summary`, candidate text, or the full suggestion.
 
-Add mapping tests for all Spec §8 cases: page/server values win; status is never mapped; unsupported degrees are not translated; exact Catalog values carry refs while unresolved values do not; years are limited to `2000..2030`; certificate null year stays empty; non-empty server lists are not merged; temporary keys start with `prefill:` and cannot match server ID grammar; order is preserved; parsed experiences retain the existing UI privacy default `隐藏:true`; summary only applies to the preference-stage personal-advantage question.
+Add mapping tests for all Spec §8 cases: page/server values win; status is never mapped; unsupported degrees are not translated; exact Catalog values carry refs while unresolved values do not; birth year/month are limited to `1970..2010` / `1..12`; education years are limited to `2000..2030`; certificate null year stays empty; non-empty server list partitions are not merged; additional educations may materialize only when the current list has a primary entry but no entries beyond index 0; temporary keys start with `prefill:` and cannot match server ID grammar; order is preserved; parsed experiences retain the existing UI privacy default `隐藏:true`; summary only applies to the preference-stage personal-advantage question. Use the immutable backend fixture for decode coverage and the clearly labelled local variants from Task 1 for positive gender/birth/degree/exact-Catalog assertions.
 
 Use explicit assertions such as:
 
@@ -435,7 +441,15 @@ export interface 候选工作页当前值 {
   certificates: 简历证书[];
 }
 
-取基本信息预填(state: 候选预填状态, current: 基本信息): Partial<基本信息>
+export interface 候选基本信息预填 {
+  真名?: string;
+  开始工作年?: string;
+  性别?: 基本信息['性别'];
+  出生年?: number;
+  出生月?: number;
+}
+
+取基本信息预填(state: 候选预填状态, current: 基本信息): 候选基本信息预填
 取最高学历预填(state: 候选预填状态, isStudent: boolean, current: string): string | null
 取学校预填(state: 候选预填状态, currentText: string, currentRef?: 目录选择值): { text: string; ref?: 目录选择值 }
 取专业预填(state: 候选预填状态, currentText: string, currentRef?: 目录选择值): { text: string; ref?: 目录选择值 }
@@ -533,19 +547,25 @@ Expected: FAIL because the operation factory and state dependencies are absent.
 
 - [ ] **Step 3: Add runtime refs and the operation factory**
 
-Extend `后端操作依赖` and Provider with narrowly owned refs:
+Extend the broad `后端操作依赖` and Provider with narrowly owned refs, following the existing P4–P8 compatibility pattern:
 
 ```ts
 候选预填代际?: 可变引用<number>;
 候选预填读取锁?: 可变引用<Map<string, Promise<void>>>;
 候选预填恢复?: 可变引用<候选预填恢复存储 | null>;
+
+export interface 候选预填运行时引用 {
+  候选预填代际: 可变引用<number>;
+  候选预填读取锁: 可变引用<Map<string, Promise<void>>>;
+  候选预填恢复: 可变引用<候选预填恢复存储 | null>;
+}
 ```
 
-The Provider always initializes and passes them; optional typing only keeps old unit fixtures compiling while they are migrated. `创建简历预填操作` narrows them at factory entry. Capture `{subjectId, role:'candidate', sessionGeneration, prefillGeneration, fileId, versionId, parseId}` before each read and commit only if every coordinate still matches the refs and current attachment. The single-flight key is exact `fileId|versionId|parseId` and is released in `finally`.
+The Provider always initializes and passes them. Keep them optional only on the cross-domain `后端操作依赖` so unrelated operation fixtures do not all acquire prefill-only setup. At the first line of `创建简历预填操作`, call a `取候选预填引用` assertion equivalent to the existing `取P7引用`/`取P8引用`; it must throw on any missing ref and return `后端操作依赖 & 候选预填运行时引用`. All prefill helpers and tests use that required intersection after entry, so omission can never degrade into a no-op. Capture `{subjectId, role:'candidate', sessionGeneration, prefillGeneration, fileId, versionId, parseId}` before each read and commit only if every coordinate still matches the refs and current attachment. The single-flight key is exact `fileId|versionId|parseId` and is released in `finally`.
 
 - [ ] **Step 4: Wire unified account cleanup**
 
-Seed `候选预填状态` in `应用状态提供者` and compose `创建简历预填操作(deps)` into `应用操作`. `恢复候选Onboarding预填()` reads only the current subject-bound metadata, waits for candidate/attachment hydration, validates current file/version and parse state, then either restores `manual` or resumes `waiting_parse/loading`; a missing or mismatched record is deleted and leaves state inactive. Extend `清账号状态` plus login/switch-role reset paths to remove outgoing-subject metadata, increment prefill generation, clear read locks, and reset state. Reuse any calibrated shared cleanup registry from the adjacent branch; do not create a second session owner.
+Seed `候选预填状态` in `应用状态提供者` and compose `创建简历预填操作(deps)` into `应用操作`. `恢复候选Onboarding预填()` reads only the current subject-bound metadata, waits for candidate/attachment hydration, and validates current file/version and parse state. Restore explicit `manual` metadata as `manual`. Restore an exact succeeded tuple with a parse ID as `loading` and read it. If recovery lands on a consumer route while parsing is still pending/processing or `parse_id` is null, immediately persist/enter `manual`: those routes do not mount `use附件简历刷新`, so `waiting_parse` there cannot advance. A missing or mismatched record is deleted and leaves state inactive. Add an operation test for this pending-on-consumer recovery rule. Extend `清账号状态` plus login/switch-role reset paths to remove outgoing-subject metadata, increment prefill generation, clear read locks, and reset state. Reuse any calibrated shared cleanup registry from the adjacent branch; do not create a second session owner.
 
 - [ ] **Step 5: Run operation and session tests, then commit**
 
@@ -658,7 +678,7 @@ For each page fixture, add a ready prefill state and enforce this priority:
 current page/server value > eligible suggestion > existing UI default
 ```
 
-Verify Basic maps name, non-student work-start year, gender, and valid birth year/month but not status; degree only accepts Spec §8.2 vocabulary; exact school/major initializes text and canonical ref; unresolved initializes text without ref and remains blocked by the existing selector guard; education years only accept `2000..2030`; and section confirmation happens after `保存简历` resolves, never before or after rejection. Manual/inactive/non-eligible/already-confirmed states must retain old initialization.
+Verify Basic maps name, non-student work-start year, gender, and valid numeric birth year/month (`1970..2010` / `1..12`) but not status; out-of-range birth values retain the existing defaults; degree only accepts Spec §8.2 vocabulary; exact school/major initializes text and canonical ref; unresolved initializes text without ref and remains blocked by the existing selector guard; education years only accept `2000..2030`; and section confirmation happens after `保存简历` resolves, never before or after rejection. Use local positive variants rather than changing the immutable backend wire fixture. Manual/inactive/non-eligible/already-confirmed states must retain old initialization. For `基本信息`, also navigate back and re-enter after editing name/gender/work-start year and prove those edits remain in the root client draft.
 
 Use per-page assertions against existing controls and saves:
 
@@ -693,18 +713,23 @@ Expected: FAIL on the new prefill/confirmation assertions.
 
 - [ ] **Step 3: Use pure initializers in existing `useState` initializers**
 
-Compute values synchronously during first mount. Do not add effects that overwrite mounted input. Preserve each JSX branch and change only value/event wiring. `基本信息` needs one page-local draft because name, gender, and work-start year currently read the root object directly:
+Compute values synchronously during first mount. Do not add asynchronous effects that can overwrite mounted input. Preserve each JSX branch and change only value/event wiring. `基本信息` must preserve its existing per-keystroke root dispatch: the root Resume object is the page's client draft, and replacing it with page-local state would lose edits on back/re-entry. Capture the eligible suggestion once at mount, synchronously seed only the blank root fields `真名`/`性别`/`开始工作年` through the existing `存简历` dispatch in a one-shot `useLayoutEffect`, and keep rendering/editing those controls from `基本`. This is client-draft initialization only; it must not call `/me/resume` or seed education/experience/skills/certificates. Keep birth wheels page-local with numeric mapper output:
 
 ```ts
-const 基本预填 = 取基本信息预填(后端状态.候选预填状态, 基本);
-const [页面基本, 设页面基本] = useState(() => ({ ...基本, ...基本预填 }));
-const [出生年, 设出生年] = useState(() => 基本预填.出生年 ?? (Number(基本.出生年) || 1998));
+const [基本预填] = useState(() => 取基本信息预填(后端状态.候选预填状态, 基本));
+const [出生年, 设出生年] = useState<number>(() => 基本预填.出生年 ?? (Number(基本.出生年) || 1998));
+const [出生月, 设出生月] = useState<number>(() => 基本预填.出生月 ?? (Number(基本.出生月) || 6));
+const 已种基本预填 = useRef(false);
 
-const 存基本信息 = (改: Partial<基本信息类型>) =>
-  设页面基本((旧) => ({ ...旧, ...改 }));
+useLayoutEffect(() => {
+  if (已种基本预填.current) return;
+  已种基本预填.current = true;
+  const 根字段 = 仅取根基本字段(基本预填); // excludes 出生年/出生月
+  if (Object.keys(根字段).length > 0) 存基本信息(根字段);
+}, [基本预填, 存基本信息]);
 ```
 
-Render the existing controls from `页面基本`, and pass `页面基本` plus the local birth values to the existing `保存简历` call. Do not dispatch the suggestion into the root Resume merely to initialize the screen. Call the matching confirmation operation only after the existing save promise resolves and before navigation. A failed save leaves the section unconfirmed.
+`仅取根基本字段` may be an inline pure helper, but must return only non-empty mapper keys among `真名`/`性别`/`开始工作年`; do not write status or birth-wheel values during mount. Keep `存基本信息` behavior and controls bound to `基本`, and pass `基本` plus the local birth values to the existing `保存简历` call. Call the matching confirmation operation only after the existing save promise resolves and before navigation. A failed save leaves the section unconfirmed.
 
 - [ ] **Step 4: Run tests and commit**
 
@@ -733,7 +758,7 @@ Expected: all page tests PASS and zero style/component files changed.
 
 - [ ] **Step 1: Write failing work and summary tests**
 
-Cover empty-server-and-page-only list materialization; no index merge or append; exact versus unresolved refs; deterministic non-server `prefill:` keys; existing privacy default `隐藏=true`; unset internship; empty certificate year; parser order; save-success-only confirmation; preference-stage-only summary; and summary confirmation immediately after `保存个人优势` succeeds even if the later first-intention save fails. Manual/inactive/already-confirmed flows retain current behavior.
+Cover empty-server-and-page-only list materialization; no index merge into an existing server partition; exact versus unresolved refs; deterministic non-server `prefill:` keys; existing privacy default `隐藏=true`; unset internship; empty certificate year; parser order; save-success-only confirmation; preference-stage-only summary; and summary confirmation immediately after `保存个人优势` succeeds even if the later first-intention save fails. For additional education specifically, preserve the primary entry built by the four education pages and append `suggestion.educations.slice(1)` only when source-time `educations` eligibility is true, `current.educations[0]` exists, `current.educations.slice(1)` is empty, and `work` is unconfirmed. Assert it materializes once in the normal flow and does not append when any current additional entry exists. Manual/inactive/already-confirmed flows retain current behavior.
 
 ```ts
 it('does not append parsed experiences to an existing server list', () => {
@@ -816,7 +841,7 @@ function 是预填消费位置(pathname: string, search: string): boolean {
 }
 ```
 
-Build the active onboarding set from the union of candidate flows before `路径.主壳`, plus city/job subpages. Route identity must include `location.search` so `/wizard?stage=salary` stays active but never consumes the summary suggestion. Assert exact-tuple refresh loading/recovery; safe mismatch failure; manual/inactive bypass; no reads on salary/status/disclosure/city/job/avatar; cleanup on main/other product routes; cleanup before “完成注册” navigation; no old suggestion after completion; and no visible wrapper DOM or route-order change.
+Build the active onboarding set from the union of candidate flows before `路径.主壳`, plus city/job subpages. Route identity must include `location.search` so `/wizard?stage=salary` stays active but never consumes the summary suggestion. Assert exact-succeeded-tuple refresh loading/recovery; pending/processing or null-parse recovery on a consumer route immediately becomes manual and mounts the form without a poll/read; safe mismatch failure; manual/inactive bypass; no reads on salary/status/disclosure/city/job/avatar; cleanup on main/other product routes; cleanup before “完成注册” navigation; no old suggestion after completion; and no visible wrapper DOM or route-order change.
 
 ```tsx
 it('restores an exact tuple before mounting the consumer form', async () => {
