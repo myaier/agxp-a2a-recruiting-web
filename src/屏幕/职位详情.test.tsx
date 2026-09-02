@@ -199,7 +199,8 @@ function 路由元素(编号: string) {
 
 function 断言匹配卡在条件段与公司之前(公司名: string) {
   const 匹配卡标题 = screen.getByText('匹配度分析');
-  const 职位要求 = screen.getByText('职位要求');
+  // Backend 小标题是「职位要求（补充说明，不自动解析）」、Mock 是「职位要求」，用正则同时覆盖
+  const 职位要求 = screen.getByText(/职位要求/);
   const 公司节点 = screen.getByText(公司名);
   expect(匹配卡标题).toBeTruthy();
   // 匹配卡先于 JD 条件段，也先于公司区块（DOCUMENT_POSITION_FOLLOWING = 目标在参数节点之后）
@@ -396,6 +397,51 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     渲染('job_1');
     expect(screen.getByText('匹配度分析')).toBeTruthy();
     expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+  });
+
+  it('Backend detail displays CandidateJob facts in existing text slots', async () => {
+    渲染Backend状态({
+      候选岗位详情: {
+        job_1: {
+          ...BFFCandidateJob样本,
+          location: { ...BFFCandidateJob样本.location, display_name: '上海' },
+          workplace_mode: 'hybrid',
+          office_location: '浦东新区世纪大道 1 号',
+          annual_salary_months: 15,
+          experience_requirement: 'three_to_five_years',
+          education_requirement: 'bachelor',
+          requirements: '熟悉 TypeScript',
+        },
+      },
+    });
+    渲染('job_1');
+    expect(await screen.findByText('城市：上海')).toBeTruthy();
+    expect(screen.getByText('办公方式：混合')).toBeTruthy();
+    expect(screen.getByText('办公地点：浦东新区世纪大道 1 号')).toBeTruthy();
+    expect(screen.getByText('年薪月数：15 薪')).toBeTruthy();
+    expect(screen.getByText('结构化经验要求：3-5 年')).toBeTruthy();
+    expect(screen.getByText('结构化学历要求：本科')).toBeTruthy();
+    expect(screen.getByText(/按岗位设置的结构化要求核对/)).toBeTruthy();
+    expect(screen.getByText('职位要求（补充说明，不自动解析）')).toBeTruthy();
+    expect(screen.getByText('熟悉 TypeScript')).toBeTruthy();
+  });
+
+  it('remote with blank office and null months renders no empty fact labels or default', async () => {
+    渲染Backend状态({
+      候选岗位详情: {
+        job_1: {
+          ...BFFCandidateJob样本,
+          workplace_mode: 'remote',
+          office_location: ' ',
+          annual_salary_months: null,
+        },
+      },
+    });
+    渲染('job_1');
+    await screen.findByText('办公方式：全远程');
+    expect(screen.queryByText(/^办公地点：/)).toBeNull();
+    expect(screen.queryByText(/^年薪月数：/)).toBeNull();
+    expect(screen.queryByText('12 薪')).toBeNull();
   });
 
   it('不感兴趣服务端先行：PUT 成功才回列表', async () => {
