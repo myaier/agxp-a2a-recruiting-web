@@ -6,13 +6,22 @@
 // P2 Task 5：附件简历上传接线 —— Backend 空库创建 / 非空替换 items[0]，
 // 上传前本地预检 + 授权确认层（文案冻结），取消零 mutation、失败走 附件错误文案、
 // 已换代静默；Mock 分支逐字保留 存简历文件名 行为（防漂移回归）。
+//
+// 候选 onboarding 简历预填（Spec §7 上传页接线）：挂载恢复（等候选/附件水合，
+// 恰好一次）、权威上传/替换 resolves '已提交' 后才激活（invocationCallOrder 断言
+// 激活严格晚于上传）、只盯权威附件解析坐标调 同步候选Onboarding解析（页面零直接
+// BFF 请求）、离页决策门复用既有 确认层（再等等 / 继续手填）、failed 落位 轻提示、
+// 横幅只换既有 代理横幅 props。操作层行为（恢复分支/单飞/栅栏）归 Task 3 的
+// 简历预填操作.test.ts，这里只测页面接线。
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BFF附件简历 } from '../数据/BFF契约';
+import type { BFF附件简历, BFF附件解析状态 } from '../数据/BFF契约';
 import { BFF错误 } from '../数据/HTTP客户端';
+import { 路径 } from '../路由/路径表';
+import { 创建空候选预填状态, type 候选预填状态 } from '../状态/后端/类型';
 import 学生分流 from './学生分流';
 
 const mock跳转 = vi.fn();
@@ -22,6 +31,13 @@ const mock操作 = {
   刷新附件简历: vi.fn().mockResolvedValue(undefined),
   创建附件简历: vi.fn().mockResolvedValue('已提交'),
   替换附件简历: vi.fn().mockResolvedValue('已提交'),
+  恢复候选Onboarding预填: vi.fn().mockResolvedValue(undefined),
+  激活候选Onboarding预填: vi.fn(),
+  同步候选Onboarding解析: vi.fn().mockResolvedValue(undefined),
+  重试候选Onboarding预填: vi.fn().mockResolvedValue(undefined),
+  继续手填候选Onboarding: vi.fn(),
+  确认候选Onboarding预填分区: vi.fn(),
+  清候选Onboarding预填: vi.fn(),
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -37,8 +53,8 @@ const limits = {
   accepted_media_types: ['application/pdf'] as ['application/pdf'],
 };
 
-/** 权威库行 fixture：parse 终态（succeeded），不会触发 刷新钩子 的轮询 */
-function 附件行(编号: string, 名称: string): BFF附件简历 {
+/** 权威库行 fixture：默认 parse 终态（succeeded，不触发 刷新钩子 轮询） */
+function 附件行(编号: string, 名称: string, 解析?: BFF附件解析状态): BFF附件简历 {
   return {
     file_id: 编号,
     display_name: 名称,
@@ -50,7 +66,7 @@ function 附件行(编号: string, 名称: string): BFF附件简历 {
       media_type: 'application/pdf',
       sha256: 'a'.repeat(64),
       created_at: 't',
-      parse: { status: 'succeeded', parse_id: `p_${编号}`, updated_at: 't' },
+      parse: 解析 ?? { status: 'succeeded', parse_id: `p_${编号}`, updated_at: 't' },
     },
     created_at: 't',
     updated_at: 't',
@@ -59,6 +75,13 @@ function 附件行(编号: string, 名称: string): BFF附件简历 {
 
 const 文件A = 附件行('rf_a', '旧简历A.pdf');
 const 文件B = 附件行('rf_b', '旧简历B.pdf');
+/** 解析在途的权威行（onboarding 上传后的常态）：file/version 与 rf_w 终态行一致，只有解析坐标不同 */
+const 等待行 = 附件行('rf_w', '等待中.pdf', { status: 'processing', updated_at: 't' });
+
+/** 预填轮 fixture：默认 pristine inactive，测试只覆盖关心的字段 */
+function 预填轮(覆盖: Partial<候选预填状态> = {}): 候选预填状态 {
+  return { ...创建空候选预填状态(), ...覆盖 };
+}
 
 /** 城市与职位引用齐备的 引导预填（下一步可点） */
 const 完整预填 = {
@@ -74,6 +97,7 @@ function render学生分流(选项: {
   引导预填?: unknown;
   基本信息?: { 身份: '在校' | '在职' };
   附件库?: { items: BFF附件简历[]; limits: typeof limits } | null;
+  候选预填?: 候选预填状态;
 }) {
   const 派发 = vi.fn();
   const 是后端 = 选项.数据源 === 'backend';
@@ -94,21 +118,39 @@ function render学生分流(选项: {
       已登录: 是后端,
       主体: 是后端 ? { subject_id: 'sub_1', last_used_role: 'candidate' } : null,
       附件简历库: 选项.附件库 ?? null,
+      候选预填状态: 选项.候选预填 ?? 创建空候选预填状态(),
     },
     操作: mock操作,
     派发,
   };
-  render(
+  const 视图 = render(
     <MemoryRouter>
       <学生分流 />
     </MemoryRouter>,
   );
-  return { 派发 };
+  return {
+    派发,
+    /** 直改 mock应用状态.后端状态 后强制重渲染（模拟操作层提交新快照后的渲染） */
+    重渲染: () =>
+      视图.rerender(
+        <MemoryRouter>
+          <学生分流 />
+        </MemoryRouter>,
+      ),
+  };
 }
 
 /** 仓库未装 @testing-library/jest-dom，用 DOM 属性直接断言禁用态 */
 function 禁用(按钮: HTMLElement): boolean {
   return (按钮 as HTMLButtonElement).disabled;
+}
+
+/** 走完「选 PDF → 同意并继续」的权威上传流（brief Step 1 的显式辅助） */
+async function 选择并同意PDF(name: string): Promise<void> {
+  const 用户 = userEvent.setup();
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+  await 用户.upload(input, new File(['%PDF'], name, { type: 'application/pdf' }));
+  await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
 }
 
 describe('学生分流 Backend onboarding（R2-I-1）', () => {
@@ -366,5 +408,263 @@ describe('学生分流 附件简历上传（P2 Task 5）', () => {
     expect(screen.getByText('允许 AI 识别这份简历？')).toBeTruthy();
     await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
     await waitFor(() => expect(mock操作.创建附件简历).toHaveBeenCalledWith(大文件, true));
+  });
+});
+
+describe('学生分流 候选 onboarding 简历预填（Spec §7 上传页接线）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('entering with an old succeeded attachment and no recovery metadata never activates or reads prefill', async () => {
+    const { 重渲染 } = render学生分流({ 数据源: 'backend', 附件库: { items: [文件A], limits } });
+    // 挂载恢复：候选与附件水合后恰好一次，参数逐字（waiting 分支归操作层裁决）
+    await waitFor(() => expect(mock操作.恢复候选Onboarding预填).toHaveBeenCalledTimes(1));
+    expect(mock操作.恢复候选Onboarding预填).toHaveBeenCalledWith({ 允许等待解析: true });
+    // 旧 succeeded 附件 + pristine inactive 轮：不激活、不推进（零预填读取入口）
+    expect(mock操作.激活候选Onboarding预填).not.toHaveBeenCalled();
+    expect(mock操作.同步候选Onboarding解析).not.toHaveBeenCalled();
+    // 快照换代（轮询提交新对象）也不二次恢复
+    mock应用状态.后端状态.附件简历库 = { items: [文件B], limits };
+    重渲染();
+    expect(mock操作.恢复候选Onboarding预填).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for attachment hydration before the one-time recovery call', async () => {
+    const { 重渲染 } = render学生分流({ 数据源: 'backend' });
+    // 附件库未水合（null）：不调用，绝不对着空库做一次性恢复
+    expect(mock操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
+    mock应用状态.后端状态.附件简历库 = { items: [], limits };
+    重渲染();
+    await waitFor(() => expect(mock操作.恢复候选Onboarding预填).toHaveBeenCalledTimes(1));
+    // 再换代快照仍是恰好一次（ref 守卫）
+    mock应用状态.后端状态.附件简历库 = { items: [文件A], limits };
+    重渲染();
+    expect(mock操作.恢复候选Onboarding预填).toHaveBeenCalledTimes(1);
+  });
+
+  it('activates only after the authoritative upload flow resolves', async () => {
+    mock操作.创建附件简历.mockResolvedValue('已提交');
+    render学生分流({ 数据源: 'backend', 附件库: { items: [], limits } });
+    await 选择并同意PDF('resume.pdf');
+    await waitFor(() => expect(mock操作.激活候选Onboarding预填).toHaveBeenCalledTimes(1));
+    expect(mock操作.创建附件简历.mock.invocationCallOrder[0]!)
+      .toBeLessThan(mock操作.激活候选Onboarding预填.mock.invocationCallOrder[0]!);
+  });
+
+  it('activates exactly once after an authoritative replace resolves 已提交', async () => {
+    render学生分流({ 数据源: 'backend', 附件库: { items: [文件A], limits } });
+    await 选择并同意PDF('replacement.pdf');
+    await waitFor(() => expect(mock操作.替换附件简历).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mock操作.激活候选Onboarding预填).toHaveBeenCalledTimes(1));
+    expect(mock操作.替换附件简历.mock.invocationCallOrder[0]!)
+      .toBeLessThan(mock操作.激活候选Onboarding预填.mock.invocationCallOrder[0]!);
+  });
+
+  it('已换代 neither activates nor shows success feedback', async () => {
+    mock操作.创建附件简历.mockResolvedValueOnce('已换代');
+    render学生分流({ 数据源: 'backend', 附件库: { items: [], limits } });
+    const 前轻提示数 = mock轻提示.mock.calls.length;
+    await 选择并同意PDF('stale.pdf');
+    await waitFor(() => expect(mock操作.创建附件简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.激活候选Onboarding预填).not.toHaveBeenCalled();
+    // 动态前后计数（toast 单例纪律）：成功反馈一次都没有
+    expect(mock轻提示.mock.calls.length).toBe(前轻提示数);
+  });
+
+  it('watches only the authoritative parse coordinates: changes call 同步, non-coordinates do not', async () => {
+    const 取数 = vi.spyOn(globalThis, 'fetch');
+    const { 重渲染 } = render学生分流({
+      数据源: 'backend',
+      附件库: { items: [等待行], limits },
+      候选预填: 预填轮({
+        phase: 'waiting_parse',
+        source: { file_id: 'rf_w', version_id: 'v_rf_w', parse_id: null },
+      }),
+    });
+    // 恢复出的 waiting_parse 轮在本页在场：poller 推进解析坐标即由本页转交操作层
+    await waitFor(() => expect(mock操作.同步候选Onboarding解析).toHaveBeenCalledTimes(1));
+    // 非坐标字段换代（display_name / updated_at）不触发推进
+    mock应用状态.后端状态.附件简历库 = {
+      items: [{ ...等待行, display_name: '改名.pdf', updated_at: 't2' }],
+      limits,
+    };
+    重渲染();
+    expect(mock操作.同步候选Onboarding解析).toHaveBeenCalledTimes(1);
+    // 解析坐标升级（processing → succeeded + parse_id，file/version 不变）触发推进
+    mock应用状态.后端状态.附件简历库 = { items: [附件行('rf_w', '等待中.pdf')], limits };
+    重渲染();
+    await waitFor(() => expect(mock操作.同步候选Onboarding解析).toHaveBeenCalledTimes(2));
+    // 页面零直接 BFF 请求（本测试连 数据源 都没给页面），恢复也不重跑
+    expect(取数).not.toHaveBeenCalled();
+    expect(mock操作.恢复候选Onboarding预填).toHaveBeenCalledTimes(1);
+    取数.mockRestore();
+  });
+
+  it.each(['ready', 'manual'] as const)('%s round continues through the existing route with no gate layer', async (阶段) => {
+    const { 派发 } = render学生分流({
+      数据源: 'backend',
+      附件库: { items: [文件A], limits },
+      引导预填: 完整预填,
+      基本信息: { 身份: '在校' },
+      候选预填: 预填轮({ phase: 阶段 }),
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(screen.queryByRole('button', { name: '再等等' })).toBeNull();
+    expect(mock操作.继续手填候选Onboarding).not.toHaveBeenCalled();
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '启程引导' }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.基本信息);
+  });
+
+  it.each(['waiting_parse', 'loading'] as const)('%s round plus 下一步 opens the existing 确认层 with 再等等 / 继续手填', async (阶段) => {
+    const { 派发 } = render学生分流({
+      数据源: 'backend',
+      附件库: { items: [等待行], limits },
+      引导预填: 完整预填,
+      基本信息: { 身份: '在校' },
+      候选预填: 预填轮({
+        phase: 阶段,
+        source: { file_id: 'rf_w', version_id: 'v_rf_w', parse_id: null },
+      }),
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(screen.getByRole('button', { name: '再等等' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '继续手填' })).toBeTruthy();
+    // 不启程不跳转：决策留在层里
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '启程引导' }));
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('再等等 closes the layer and stays on the page', async () => {
+    const { 派发 } = render学生分流({
+      数据源: 'backend',
+      附件库: { items: [等待行], limits },
+      引导预填: 完整预填,
+      基本信息: { 身份: '在校' },
+      候选预填: 预填轮({
+        phase: 'waiting_parse',
+        source: { file_id: 'rf_w', version_id: 'v_rf_w', parse_id: null },
+      }),
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.click(screen.getByRole('button', { name: '再等等' }));
+    expect(screen.queryByRole('button', { name: '再等等' })).toBeNull();
+    expect(mock操作.继续手填候选Onboarding).not.toHaveBeenCalled();
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '启程引导' }));
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('继续手填 calls the manual operation then navigates the existing route', async () => {
+    const { 派发 } = render学生分流({
+      数据源: 'backend',
+      附件库: { items: [等待行], limits },
+      引导预填: 完整预填,
+      基本信息: { 身份: '在校' },
+      候选预填: 预填轮({
+        phase: 'waiting_parse',
+        source: { file_id: 'rf_w', version_id: 'v_rf_w', parse_id: null },
+      }),
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.click(screen.getByRole('button', { name: '继续手填' }));
+    expect(mock操作.继续手填候选Onboarding).toHaveBeenCalledTimes(1);
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '启程引导' }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.基本信息);
+    expect(mock操作.继续手填候选Onboarding.mock.invocationCallOrder[0]!)
+      .toBeLessThan(mock跳转.mock.invocationCallOrder[0]!);
+  });
+
+  it('failed landing reuses 轻提示 and keeps the existing re-upload action on the banner', async () => {
+    const { 重渲染 } = render学生分流({
+      数据源: 'backend',
+      附件库: { items: [文件A], limits },
+      候选预填: 预填轮({
+        phase: 'waiting_parse',
+        source: { file_id: 'rf_a', version_id: 'v_rf_a', parse_id: null },
+      }),
+    });
+    expect(screen.getByText('正在识别简历')).toBeTruthy();
+    // 读取失败落位（操作层 error 已是闭合文案）：复用 轻提示 告知
+    mock应用状态.后端状态.候选预填状态 = 预填轮({
+      phase: 'failed',
+      source: { file_id: 'rf_a', version_id: 'v_rf_a', parse_id: null },
+      error: '服务暂时不可用，请稍后重试',
+    });
+    重渲染();
+    await waitFor(() => expect(mock轻提示).toHaveBeenLastCalledWith('服务暂时不可用，请稍后重试'));
+    // 原横幅保留重新上传动作与权威展示名（failed 不是承诺态）
+    expect(screen.getByText(文件A.display_name)).toBeTruthy();
+    expect(screen.getByText('重新上传 ›')).toBeTruthy();
+    expect(screen.queryByText('正在识别简历')).toBeNull();
+  });
+
+  it('failed round plus 下一步 counts as continuing manually and takes the existing route', async () => {
+    const { 派发 } = render学生分流({
+      数据源: 'backend',
+      附件库: { items: [文件A], limits },
+      引导预填: 完整预填,
+      基本信息: { 身份: '在校' },
+      候选预填: 预填轮({
+        phase: 'failed',
+        source: { file_id: 'rf_a', version_id: 'v_rf_a', parse_id: null },
+        error: '服务暂时不可用，请稍后重试',
+      }),
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    // failed 不弹等待层：本次点击视为继续手填，横幅上的重新上传入口保留
+    expect(screen.queryByRole('button', { name: '再等等' })).toBeNull();
+    expect(mock操作.继续手填候选Onboarding).toHaveBeenCalledTimes(1);
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '启程引导' }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.基本信息);
+    expect(mock操作.继续手填候选Onboarding.mock.invocationCallOrder[0]!)
+      .toBeLessThan(mock跳转.mock.invocationCallOrder[0]!);
+  });
+
+  it('banner feedback only varies existing 代理横幅 props and stays in place across phases', async () => {
+    const { 重渲染 } = render学生分流({
+      数据源: 'backend',
+      附件库: { items: [等待行], limits },
+      候选预填: 预填轮({
+        phase: 'waiting_parse',
+        source: { file_id: 'rf_w', version_id: 'v_rf_w', parse_id: null },
+      }),
+    });
+    // pending/processing：原横幅显示「正在识别简历」
+    const 横幅钮 = screen.getByText('正在识别简历').closest('button') as HTMLElement;
+    // 节点位置不变：横幅仍在「你目前是否在校？」之前、隐藏文件框之前
+    expect(screen.getByText('你目前是否在校？').compareDocumentPosition(横幅钮) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    expect(横幅钮.compareDocumentPosition(document.querySelector('input[type="file"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // loading suggestion：原横幅显示「正在准备可填写内容」
+    mock应用状态.后端状态.候选预填状态 = 预填轮({
+      phase: 'loading',
+      source: { file_id: 'rf_w', version_id: 'v_rf_w', parse_id: 'p_rf_w' },
+    });
+    重渲染();
+    expect(screen.getByText('正在准备可填写内容')).toBeTruthy();
+    expect(screen.getByText('重新上传 ›')).toBeTruthy();
+    // ready：原横幅显示「已识别，将填写空白项」，上传/重新上传动作保持原位置
+    mock应用状态.后端状态.候选预填状态 = 预填轮({
+      phase: 'ready',
+      source: { file_id: 'rf_w', version_id: 'v_rf_w', parse_id: 'p_rf_w' },
+    });
+    重渲染();
+    expect(screen.getByText('已识别，')).toBeTruthy();
+    expect(screen.getByText('将填写空白项')).toBeTruthy();
+    expect(screen.getByText('重新上传 ›')).toBeTruthy();
+  });
+
+  it('Mock mode makes zero prefill operations and keeps legacy copy', () => {
+    render学生分流({ 数据源: 'mock' });
+    expect(mock操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
+    expect(mock操作.激活候选Onboarding预填).not.toHaveBeenCalled();
+    expect(mock操作.同步候选Onboarding解析).not.toHaveBeenCalled();
+    expect(screen.getByText('这张表我来填')).toBeTruthy();
   });
 });
