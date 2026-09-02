@@ -835,6 +835,20 @@ describe('职位详情 · 深链恢复当前意向坐标与安全返回（Backen
     expect(动作键.disabled).toBe(true);
   });
 
+  it('在途快照（进行中）也补发加载：可能已是栅栏作废的陈旧在途，交操作层单飞接管', () => {
+    渲染Backend状态({
+      当前意向编号: 'int_current',
+      候选岗位推荐: {
+        int_current: { 阶段: '进行中', 刷新中: true, items: [], error: null, generation: 1 },
+      },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
+    渲染('job_1');
+    expect(mock加载候选岗位).toHaveBeenCalledWith('int_current');
+    expect(mock加载候选岗位.mock.calls.every(([意向]) => 意向 === 'int_current')).toBe(true);
+    expect(screen.getByRole('button', { name: /正在恢复推荐信息/ })).toBeTruthy();
+  });
+
   it('直链（无来源 / idx 0）返回：落回主壳的看市场，不盲退栈', async () => {
     const 用户 = userEvent.setup();
     window.history.replaceState({ idx: 0 }, '');
