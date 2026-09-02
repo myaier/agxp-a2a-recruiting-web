@@ -362,7 +362,109 @@ EOF
 
 成功标准：role 为 recruiter；profile 200 且 revision ≥ 1；jobs 至少 1，title/company/description/requirements 非空；凭证存在。Affiliations 可以为空，页面必须把它显示成未加入/未认证的诚实空态，而不是永久 loading 或“已认证”。
 
-## 10. 横向检查
+## 10. 已走查范围与复验路径地图
+
+除两个首次 onboarding Case 外，2026-09-01 的 backend/local dogfood 还实际走过已有账号重登、求职意向增改查和两端“我”/设置页。下面把这些路径固化为长期回归入口；单次执行结果见 [`docs/runs/2026-09-01-backend-local-onboarding-dogfood.md`](../runs/2026-09-01-backend-local-onboarding-dogfood.md)。
+
+URL 使用 HashRouter 完整写法；`:id` 表示本次运行从服务端响应或页面链接取得的真实资源 ID，不得硬编码历史 ID。
+
+| Case | 角色与目的 | 页面路径 |
+| --- | --- | --- |
+| `CAND-ONB-001` | 全新候选人首次 onboarding | `/#/` → `/#/identity` → `/#/student` → `/#/wizard?stage=salary` → `/#/basic` 及 `/#/onboard/*` → `/#/experience` → `/#/wizard` → `/#/disclosure` → `/#/onboard/avatar` → `/#/init` → `/#/app` |
+| `EMP-ONB-001` | 全新招聘方首次 onboarding | `/#/` → `/#/identity` → `/#/hr/card` → `/#/hr/post-job` → `/#/hr-init` → `/#/hr` |
+| `CAND-AUTH-001` | 已有候选人交互登录后的角色水合 | `/#/settings` 退出 → `/#/` OTP 登录 → `/#/app` → `/#/resume` → `/#/intentions` → 刷新 |
+| `CAND-INT-001` | 求职意向创建、查询、编辑、再查询 | `/#/intentions` → `/#/intentions/new` → `/#/intentions/cities`、`/#/intentions/industries` → `/#/intentions` → `/#/intentions/:id` → 刷新/重登 |
+| `CAND-ME-001` | 候选人“我”和设置接线巡检 | `/#/app` 的“我”Tab → `/#/profile`、`/#/resume`、`/#/intentions`、`/#/rules`、`/#/settings` 及其下属页 |
+| `EMP-ME-001` | 招聘方“我”和设置接线巡检 | `/#/hr` 的“我”Tab → `/#/hr/card`、`/#/hr/jobs`、`/#/hr/company-profile`、`/#/hr/settings` 及其下属页 |
+
+路径地图只声明覆盖范围，不把 2026-09-01 的失败现象写成永久预期。修复后仍按下面的权威断言判定。
+
+## 11. Case CAND-AUTH-001：已有候选人交互登录水合
+
+### 前置状态
+
+- 使用已完成 candidate onboarding 的账号；服务端至少已有 resume，可有 0～5 条 active intention。
+- 先在已登录态用只读 GET 记录 resume 摘要、active intention 数量、privacy revision 和 Agent rule 数量，不记录正文或个人信息。
+
+### 步骤与断言
+
+| # | 操作 | 页面/网络断言 |
+| --- | --- | --- |
+| A1 | 从 `/#/settings` 正常退出 | 回到 `/#/`；旧账号姓名、简历和意向不再留在页面状态 |
+| A2 | 在同一浏览器完成 OTP 登录 | 登录完成后读取 `/api/v1/me`；已有 `last_used_role=candidate` 时，在进入主壳前完成 candidate 支持域水合 |
+| A3 | 不刷新，直接打开 `/#/resume` | 姓名、教育、经历、技能和证书与登录前权威摘要一致；不得显示 Mock 简历或全空简历 |
+| A4 | 不刷新，打开 `/#/intentions` | 数量与 `GET /api/v1/me/intentions?status=active` 一致；页面不得靠挂载后的临时补读掩盖登录水合缺口 |
+| A5 | 打开 `/#/rules` 和 `/#/settings` | Agent 规则、隐私和手机号凭证均有终态；不永久 loading，不回退演示数据 |
+| A6 | 刷新当前页 | 刷新前后数据和落点一致；刷新不能成为“修复”交互登录空状态的必要动作 |
+
+网络至少应包含登录完成、`GET /api/v1/me` 和当前 candidate 公共水合合同要求的 resume、intentions、privacy、附件、规则等请求。任何 401 必须清理账号态，非 401 单域失败应诚实展示且不得回退 Mock。
+
+## 12. Case CAND-INT-001：求职意向增改查闭环
+
+### 输入约束
+
+- 使用已有 candidate 账号，先记录当前 active intention 数量和每条 revision。
+- 新意向使用固定合成职位、城市、行业、薪资、求职类型、办公方式与到岗状态。
+- 若已有 5 条 active intention，先使用专门的清理账号或按产品正常归档路径腾出名额；不得直接删数据库。
+
+### 步骤与断言
+
+| # | 操作 | 页面/网络断言 |
+| --- | --- | --- |
+| I1 | 打开 `/#/intentions` | 页面数量与 active intentions GET 一致；记录创建前数量 |
+| I2 | 进入 `/#/intentions/new` | 新建态为空或只含明确产品默认值，不继承其他账号草稿 |
+| I3 | 填主职位、主城市、薪资、类型、办公方式、到岗等 | 目录字段必须实际点选；薪资双滚轮支持触摸/滚动，并至少用键盘或直接点选 option 验一次 |
+| I4 | 进入 `/#/intentions/cities` 和 `/#/intentions/industries` 后返回 | 次级页选择回显，主表单其他字段不丢失 |
+| I5 | 保存新意向 | 发出 `POST /api/v1/me/intentions`，成功为 201；随后权威 GET 数量加一，并在临时报告记录响应 revision |
+| I6 | 从列表进入 `/#/intentions/:id` | 所有字段与刚保存结果一致，尤其是薪资单位/区间、城市和行业 |
+| I7 | 修改至少一个普通字段和薪资区间后保存 | 发出 PATCH，`If-Match` 使用当前 revision；成功后 revision 增加且紧随其后的 GET 返回相同结果 |
+| I8 | 再次打开并直接刷新编辑页 | 修改仍在；刷新不回退旧 revision、不丢次级页字段 |
+| I9 | 退出并重新登录后回到意向列表 | 无需额外刷新即可看到同一条意向及最新 revision；同时覆盖 `CAND-AUTH-001` |
+
+若 POST/PATCH 成功但页面错误，应比较响应、随后 GET 和本地映射；若页面没有发 mutation，归为前端流程阻断，不得描述成“后端保存后丢失”。
+
+## 13. Case CAND-ME-001：候选人“我”与设置接线巡检
+
+使用一个服务端资源数量已知的 candidate 账号。进入每页前记录预期 GET；页面打开后检查 network、console、error，涉及 mutation 的控件必须执行一次成功路径或明确确认当前没有写合同。
+
+| 页面 | 路径 | 主要权威检查 |
+| --- | --- | --- |
+| “我”首页 | `/#/app` 的“我”Tab | 在谈、初筛、待拍、归档和代理跟进数来自 P5 MatchCase/会话/历史资源；0 必须显示 0，不得继承 Mock 数组 |
+| 个人信息 | `/#/profile` | 姓名来自 resume；手机号来自 P8 credential；头像、微信、邮箱没有持久化合同时不得出现“已保存”假象 |
+| 我的简历 | `/#/resume` | 与 resume GET 一致；交互登录后无需刷新即可回显 |
+| 求职意向 | `/#/intentions` | 与 active intentions GET 一致；必要时串行执行 `CAND-INT-001` |
+| AI 代理规则库 | `/#/rules` | P6 rules/proposals 有加载终态；系统内置“先问我”偏好若无合同则只读或明确仅本次，不得假保存 |
+| 设置 | `/#/settings` | 手机号、实名摘要、隐私开关均来自权威资源；逐项打开下属页 |
+| 账号与安全 | `/#/account` | sessions、退出其他设备、换绑、导出、注销走 P8；导出文案符合候选角色 |
+| 披露偏好 | `/#/disclosure-prefs` | GET/PATCH privacy + `If-Match`；刷新后保持；机制锁定项不可修改 |
+| 屏蔽名单 | `/#/blocklist` | 只提交目录返回的稳定 organization ID；无搜索结果时有解释，不把自由文本当 ID |
+| 谁接触过我 | `/#/visitors` | 有后端审计合同则显示权威列表；没有则显示诚实空态/未开放，不得显示演示公司 |
+| 历史代谈 | `/#/archived` | 与 completed/ended MatchCase history 一致，0 时为空态 |
+| 帮助、反馈、协议 | `/#/help`、`/#/feedback`、`/#/terms` | 静态内容可达；反馈产生真实工单号；不得泄漏另一个角色或旧账号数据 |
+
+额外执行“对现雇主隐身”开关的一次取消和一次确认路径，确认取消不 mutation、确认成功后 revision 增加，失败时 UI 回滚或保持原权威值。
+
+## 14. Case EMP-ME-001：招聘方“我”与设置接线巡检
+
+使用一个 profile、affiliation、job、conversation、MatchCase 和 Agent rule 数量已知的 recruiter 账号。合法 404/空数组是必须覆盖的正式状态，不得只用资料齐全账号。
+
+| 页面 | 路径 | 主要权威检查 |
+| --- | --- | --- |
+| “我”首页 | `/#/hr` 的“我”Tab | 岗位、在谈、待拍板、意向达成和代理状态来自 jobs/P5/规则资源；0 必须显示 0 |
+| 招聘名片 | `/#/hr/card` | profile 200 时回显；404 时进入首次创建态，并用 PATCH + `If-Match: "0"` 首写，不新增 profile POST |
+| 岗位管理 | `/#/hr/jobs` | 与 recruiter jobs GET 一致；0 岗位时其他统计不得显示演示候选数 |
+| 公司资料 | `/#/hr/company-profile` | 无 active/verified affiliation 时显示可操作空态；有组织时才读取/编辑 canonical organization |
+| 设置 | `/#/hr/settings` | 企业认证摘要与 `/#/hr/verify` 同源；逐项打开下属页 |
+| 认证摘要 | `/#/hr/verify` | 分别展示个人验证、当前任职和管理员申请的权威状态；不把 0 affiliation 写成已认证 |
+| 账号与安全 | `/#/account` | 共用 P8 能力正常，导出和注销文案符合招聘角色，不出现“导出简历” |
+| AI 代理设置 | `/#/hr/agent-settings` | P6 rules/proposals 有终态；系统内置偏好没有持久化合同时不得假保存 |
+| 披露策略 | `/#/hr/disclosure` | 若为产品固定机制，页面明确只读，不写“改动即时生效”；若允许编辑则必须有后端合同和刷新验证 |
+| 历史代谈 | `/#/hr/archived` | 与 recruiter completed/ended history 一致，空数组不显示 Mock 归档 |
+| 帮助、反馈、协议 | `/#/help`、`/#/feedback`、`/#/terms` | 共用页面可达且角色文案正确；反馈走真实接口 |
+
+对 profile 404、0 affiliation、0 job、0 rule、0 conversation、0 MatchCase 的空账号至少完整跑一次；再用资料齐全账号抽查非空回显，避免只修空态而破坏正常态。
+
+## 15. 横向检查
 
 两个角色都执行：
 
@@ -381,7 +483,7 @@ agent-browser --session "$SESSION" --cdp "$CDP_PORT" console
 - 中文界面不直接展示英文后端 message 或机器 reason；
 - 退出、401、换账号后不显示上一账号的姓名、公司、草稿或岗位。
 
-## 11. 结果判定
+## 16. 结果判定
 
 - `PASS`：主路径完成，刷新/重登录和权威回读一致，没有 blocker/high issue。
 - `PASS_WITH_NOTES`：主路径完成，仅有不影响完成和持久化的 medium/low 观察。
@@ -390,7 +492,7 @@ agent-browser --session "$SESSION" --cdp "$CDP_PORT" console
 
 一个角色失败不自动停止另一个角色；两条 case 独立给结论。Issue 数量不是目标，复现和权威证据优先。
 
-## 12. 收尾
+## 17. 收尾
 
 1. 更新临时 `report.md` 的 severity 计数。
 2. 确认报告和截图没有把手机号、OTP 或完整联系方式写进标题/文件名。
@@ -407,7 +509,7 @@ agent-browser --session "$SESSION" --cdp "$CDP_PORT" close
 4. 如需长期保存，按第二节规则编写 `docs/runs/` 脱敏摘要。
 5. 代码归因在 dogfood 结束后单独进行。归因文档必须自包含，不引用第二层本机证据作为唯一依据。
 
-## 13. 维护规则
+## 18. 维护规则
 
 - 产品路径、字段或 API 改变时，先更新本测试例，再执行新基线。
 - 已修复问题要保留其业务断言，不在本文保留过时的“应该失败”步骤。
