@@ -27,6 +27,7 @@ import type {
   BFF候选岗位推荐,
   BFF招聘候选推荐,
   BFF附件简历库,
+  BFF简历预填建议,
 } from '../../数据/BFF契约';
 import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
@@ -79,6 +80,12 @@ export interface 后端状态 extends P4发现状态, P5MatchCase状态, P7会�
   招聘方档案水合阶段: 招聘方档案水合阶段;
   /** profile → affiliations → current organization 整条链的聚合阶段。 */
   招聘方组织水合: 招聘方组织水合状态;
+  /**
+   * 候选 onboarding 简历预填状态（Backend-only；Mock 与日常 我的简历 上传不触达）。
+   * Task 2 先落类型与 创建空候选预填状态() 种子；Provider 的显式种子接线在 Task 3 ——
+   * 字段缺席一律视为 pristine inactive，读取方用 后端状态.候选预填状态 ?? 创建空候选预填状态() 收口。
+   */
+  候选预填状态?: 候选预填状态;
 }
 
 /**
@@ -272,6 +279,96 @@ export interface P8控制面状态 {
 export interface P8待定意图<T> {
   key: string;
   request: T;
+}
+
+// ── 候选 onboarding 简历预填（Backend-only 的独立建议状态，不进根 Resume reducer）──
+// 状态只描述「本轮预填轮次」：来源三元组、source 绑定时的服务端空白快照、内存里的
+// 建议本体与逐分区确认。suggestion 绝不落浏览器存储（恢复元数据只存控制面五元组，
+// 见 数据/候选Onboarding预填恢复.ts）；Mock 与日常 我的简历 上传不触达这里。
+
+/** 预填轮次的闭合生命周期；manual = 用户在上传页明确选择继续手填，本轮不再消费任何建议。 */
+export type 候选预填阶段 =
+  | 'inactive' | 'arming' | 'waiting_parse' | 'loading' | 'ready' | 'failed' | 'manual';
+
+/** 一次现有保存动作可确认的可见分区；work = 工作经历页一次保存的四个列表分区。 */
+export type 候选预填分区 =
+  | 'basic' | 'degree' | 'institution' | 'major' | 'education_period' | 'work' | 'summary';
+
+/**
+ * source 绑定时从权威 简历快照（原始 BFF DTO）记录的服务端空白：
+ * true = 该字段/列表当时为空，可被建议填充。不能只看页面中文模型 —— 它含有
+ * 「在职」「本科」「1998/6」等 UI 默认值，默认值不等于服务端已有事实。
+ */
+export interface 候选预填Eligibility {
+  profile: {
+    real_name: boolean;
+    work_start_year: boolean;
+    gender: boolean;
+    birth_year: boolean;
+    birth_month: boolean;
+  };
+  summary: boolean;
+  skills: boolean;
+  experiences: boolean;
+  educations: boolean;
+  certificates: boolean;
+}
+
+/** 绑定的附件简历坐标；parse_id 在解析成功前可为 null（waiting_parse 阶段）。 */
+export interface 候选预填绑定来源 {
+  file_id: string;
+  version_id: string;
+  parse_id: string | null;
+}
+
+export interface 候选预填状态 {
+  phase: 候选预填阶段;
+  source: 候选预填绑定来源 | null;
+  eligibility: 候选预填Eligibility | null;
+  /** 仅内存：resume-prefill.v1 响应是 no-store 的敏感履历，绝不序列化进浏览器存储。 */
+  suggestion: BFF简历预填建议 | null;
+  confirmed: Record<候选预填分区, boolean>;
+  error: string | null;
+  generation: number;
+}
+
+/** 刷新后恢复一轮未完成预填所需且仅需的控制面五元组（无 suggestion、无错误文本）。 */
+export interface 候选预填恢复元数据 {
+  mode: 'auto' | 'manual';
+  source: 候选预填绑定来源;
+  eligibility: 候选预填Eligibility;
+  confirmed: Record<候选预填分区, boolean>;
+  generation: number;
+}
+
+export interface 候选预填恢复存储 {
+  读取(): 候选预填恢复元数据 | null;
+  写入(metadata: 候选预填恢复元数据): boolean;
+  删除(): void;
+}
+
+/**
+ * pristine 预填轮次的干净底座：任何转移（激活/换代/清理）都从这里起跑，
+ * 保证 confirmed 分区与 generation 不残留上一轮的值。
+ */
+export function 创建空候选预填状态(generation = 0): 候选预填状态 {
+  return {
+    phase: 'inactive',
+    source: null,
+    eligibility: null,
+    suggestion: null,
+    confirmed: {
+      basic: false,
+      degree: false,
+      institution: false,
+      major: false,
+      education_period: false,
+      work: false,
+      summary: false,
+    },
+    error: null,
+    generation,
+  };
 }
 
 export type 可变引用<T> = { current: T };
