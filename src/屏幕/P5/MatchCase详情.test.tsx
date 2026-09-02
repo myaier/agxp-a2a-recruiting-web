@@ -711,6 +711,18 @@ function S1解析中详情(): P5详情 {
   });
 }
 
+/** S1 waiting + screening_resume（招聘）：AI 初筛进行中 —— 克隆 S1初筛详情(true) 后
+ *  只改 state 四元组与动作侧：waiting 行 + 空动作表，AI 文案在场、零决策控件。 */
+function S1AI初筛详情(): P5详情 {
+  const 基座 = S1初筛详情(true);
+  return {
+    ...基座,
+    state: { ...基座.state, status: 'waiting', step: 'screening_resume', needsUser: false },
+    needsAction: false,
+    availableActions: [],
+  };
+}
+
 /** S2 行（双端）：协同卡 + 当前协同块。 */
 function S2详情(
   role: P5角色,
@@ -1434,6 +1446,47 @@ describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
     expect(await screen.findByText('重试简历校验')).toBeTruthy();
     expect(screen.queryByText('查看 ›')).toBeNull(); // 自己的绑定附件不出查看入口
     expect(mock读取简历PDF).not.toHaveBeenCalled();
+  });
+});
+
+// ══ Task 5 夹具：S1 三条步骤文案逐词钉死（解析中 / AI 初筛中 / 人工决定）══
+
+describe('MatchCase详情 · S1 步骤文案三态（Task 5）', () => {
+  beforeEach(() => {
+    mock读取详情.mockClear();
+    mock决定S1.mockClear();
+    mock读取简历PDF.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('解析中 / AI 初筛中 / 人工决定：文案来自 17 词闭表，决策卡只随人工决定行出现', async () => {
+    // 解析中（S1 waiting + awaiting_resume_parse）：段摘要与步骤说明同词，出现即算
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1解析中详情() }) });
+    渲染详情('recruiter', 'mc_hr');
+    expect((await screen.findAllByText('正在解析简历')).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole('button', { name: '通过初筛' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '不合适' })).toBeNull();
+
+    // 人工决定（S1 needs_user + awaiting_recruiter_decision）：等待文案 + 招聘端唯一决策卡
+    cleanup();
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1初筛详情(true) }) });
+    渲染详情('recruiter', 'mc_hr');
+    expect(await screen.findByText('等待招聘方决定')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '通过初筛' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '不合适' })).toBeTruthy();
+
+    // AI 初筛中（S1 waiting + screening_resume + 空动作表）：新 AI 文案、零决策控件
+    cleanup();
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1AI初筛详情() }) });
+    渲染详情('recruiter', 'mc_hr');
+    expect(await screen.findByText('招聘方 AI 正在初筛已提交简历')).toBeTruthy();
+    expect(screen.queryByText('出具简历初筛结论')).toBeNull();
+    expect(screen.queryByRole('button', { name: '通过初筛' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '不合适' })).toBeNull();
+    expect(mock决定S1).not.toHaveBeenCalled();
   });
 });
 

@@ -37,17 +37,17 @@ const 期望状态文案 = {
 
 const 期望步骤说明 = {
   policy_check: '系统正在核对投递政策',
-  candidate_evaluation: '系统正在评估候选信息',
+  candidate_evaluation: '候选方 AI 正在评估岗位',
   candidate_question: '等待候选人补充事实',
-  recruiter_answer: '等待招聘方补充事实',
+  recruiter_answer: '等待招聘方 AI 回答补充问题',
   candidate_reevaluation: '系统正在复评候选信息',
   human_decision: '等待人工决定是否继续',
   complete: '本阶段已完成',
   awaiting_candidate_resume_invitation: '等待候选人回应简历邀请',
   awaiting_resume_parse: '正在解析简历',
-  screening_resume: '招聘方正在初筛简历',
+  screening_resume: '招聘方 AI 正在初筛已提交简历',
   awaiting_recruiter_decision: '等待招聘方决定',
-  coordinating: '正在协同确认差异事项',
+  coordinating: '双方 AI 正在核对剩余差异',
   awaiting_candidate_decision: '等待候选人确认协同事项',
   awaiting_confirmations: '等待双方确认意向',
   awaiting_candidate_confirmation: '等待候选人确认意向',
@@ -371,6 +371,32 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
     expect(视图.intentionId).toBe(null);
     expect(视图.actions.map((卡) => 卡.action)).toEqual(['respond_fact', 'end_screening']);
     expect(视图.补充问题).toEqual({ promptId: 'prompt_1', text: '每周可以到岗几天？' });
+  });
+
+  // Task 5：S1 三态语义钉死 —— 解析中/AI 初筛中/人工初筛决定三条文案互不混用，
+  // 且 waiting 行的初筛决策卡交集落空（动作只在 needs_user 人工决定行出现）。
+  it('S1 解析中 / AI 初筛中 / 人工决定：步骤说明逐词钉死且动作按行侧白名单交集', () => {
+    const 解析中 = 断言正常(映射P5详情(造详情({
+      state: 造行状态('open', 'resume_submission', 'waiting', 'awaiting_resume_parse'),
+      availableActions: [],
+    })));
+    const AI初筛中 = 断言正常(映射P5详情(造详情({
+      state: 造行状态('open', 'resume_submission', 'waiting', 'screening_resume'),
+      availableActions: ['decide_resume_screening'],
+    })));
+    const 等人工决定 = 断言正常(映射P5详情(造详情({
+      state: 造行状态(
+        'open', 'resume_submission', 'needs_user', 'awaiting_recruiter_decision',
+      ),
+      availableActions: ['decide_resume_screening'],
+    })));
+
+    expect(解析中.步骤说明).toBe('正在解析简历');
+    expect(AI初筛中.步骤说明).toBe('招聘方 AI 正在初筛已提交简历');
+    expect(AI初筛中.actions).toEqual([]);
+    expect(等人工决定.步骤说明).toBe('等待招聘方决定');
+    expect(等人工决定.actions.map((action) => action.action))
+      .toEqual(['decide_resume_screening']);
   });
 });
 
