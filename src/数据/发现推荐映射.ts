@@ -4,7 +4,15 @@
 // 性别、出生数据、候选薪资数字），也不编造 wire 上不存在的事实（发布人缺席 → null）。
 // 公开公司路由 ID 只认 hiring_organization_ref，公司名只认 hiring_organization_claim。
 
-import type { BFFCandidateJob, BFF候选岗位推荐, BFF招聘候选推荐, BFF淘汰原因 } from './BFF契约';
+import type {
+  BFFCandidateJob,
+  BFFOwnerJob,
+  BFF候选岗位推荐,
+  BFF委托回执,
+  BFF委托摘要,
+  BFF招聘候选推荐,
+  BFF淘汰原因,
+} from './BFF契约';
 import type { 市场职位 } from './类型';
 import type { P4候选岗位页面, P4招聘候选页面 } from './招聘数据源类型';
 
@@ -207,4 +215,77 @@ export function P4淘汰原因码(copy: string): BFF淘汰原因 {
     .find((键) => 淘汰文案[键] === copy);
   if (命中 === undefined) throw new Error(`未映射的淘汰原因文案：${copy}`);
   return 命中;
+}
+
+export type P4招聘组织前提 =
+  | { kind: 'unknown' }
+  | { kind: 'blocked'; reason: 'unverified' | 'missing_ref' }
+  | { kind: 'ready'; organizationRef: string };
+
+export function 判断P4招聘组织前提(job: BFFOwnerJob | null | undefined): P4招聘组织前提 {
+  if (job == null) return { kind: 'unknown' };
+  if (job.hiring_organization_verification_status !== 'verified') {
+    return { kind: 'blocked', reason: 'unverified' };
+  }
+  const organizationRef = job.hiring_organization_ref?.trim() ?? '';
+  return organizationRef === ''
+    ? { kind: 'blocked', reason: 'missing_ref' }
+    : { kind: 'ready', organizationRef };
+}
+
+export interface P4委托展示 {
+  state: BFF委托摘要['state'];
+  copy: string;
+  reason: string | null;
+  inProgress: boolean;
+  caseId: string | null;
+}
+
+const P4委托状态文案表 = {
+  accepted: '已提交给 AI，等待处理',
+  evaluating: 'AI 正在评估',
+  case_started: '已创建真实在谈',
+  needs_user: '需要你处理',
+  refused: '本次未能继续',
+  failed: '本次处理未完成',
+} as const satisfies Record<BFF委托摘要['state'], string>;
+
+export function P4委托状态文案(state: BFF委托摘要['state']): string {
+  return P4委托状态文案表[state];
+}
+
+const P4拒绝原因文案表 = {
+  recommendation_not_found: '这条推荐当前已不可用，请刷新后查看',
+  recommendation_unavailable: '这条推荐当前已不可用，请刷新后查看',
+  delegation_not_allowed: '当前无法发起委托，请刷新后重试',
+  active_case_quota_reached: '当前在谈已达到上限，请先处理已有在谈',
+  delegation_cooldown: '近期已联系过对方，暂时不能重复发起',
+} as const satisfies Record<NonNullable<BFF委托回执['refusal_code']>, string>;
+
+export function P4拒绝原因文案(
+  code: NonNullable<BFF委托回执['refusal_code']>,
+): string {
+  return P4拒绝原因文案表[code];
+}
+
+export function 映射P4委托展示(
+  summary: BFF委托摘要 | null,
+  receipt: BFF委托回执 | null,
+): P4委托展示 | null {
+  if (summary === null) return null;
+  const caseId = summary.state === 'case_started' && summary.case_id?.trim()
+    ? summary.case_id
+    : null;
+  return {
+    state: summary.state,
+    copy: P4委托状态文案(summary.state),
+    reason: summary.state === 'refused'
+      && receipt?.delegation_id === summary.delegation_id
+      && receipt.state === 'refused'
+      && receipt.refusal_code !== null
+      ? P4拒绝原因文案(receipt.refusal_code)
+      : null,
+    inProgress: summary.state === 'accepted' || summary.state === 'evaluating',
+    caseId,
+  };
 }

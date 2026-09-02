@@ -5,16 +5,22 @@
 import { describe, expect, it } from 'vitest';
 import {
   BFFCandidateJob样本,
+  BFF岗位样本,
   BFF候选岗位推荐样本,
   BFF招聘候选推荐样本,
+  BFF招聘委托回执样本,
 } from '../测试/BFF样本';
 import type { BFFCandidateJob, BFF候选岗位推荐, BFF招聘候选推荐 } from './BFF契约';
 import {
+  P4委托状态文案,
+  P4拒绝原因文案,
   P4淘汰原因文案,
   P4淘汰原因码,
+  判断P4招聘组织前提,
   从P4CandidateJob,
   从P4候选岗位,
   从P4招聘候选,
+  映射P4委托展示,
 } from './发现推荐映射';
 
 describe('从P4候选岗位 / 从P4CandidateJob', () => {
@@ -303,5 +309,75 @@ describe('淘汰原因 文案与反向码', () => {
 
   it('表外文案当面抛错，不静默落 other', () => {
     expect(() => P4淘汰原因码('不合适')).toThrow();
+  });
+});
+
+describe('判断P4招聘组织前提', () => {
+  it('missing owner snapshot is unknown, not unverified', () => {
+    expect(判断P4招聘组织前提(undefined)).toEqual({ kind: 'unknown' });
+  });
+
+  it.each([
+    [{ ...BFF岗位样本, hiring_organization_verification_status: 'unverified' }, 'unverified'],
+    [{ ...BFF岗位样本, hiring_organization_verification_status: 'verified', hiring_organization_ref: undefined }, 'missing_ref'],
+    [{ ...BFF岗位样本, hiring_organization_verification_status: 'verified', hiring_organization_ref: '   ' }, 'missing_ref'],
+  ] as const)('blocks only from owner Job evidence', (job, reason) => {
+    expect(判断P4招聘组织前提(job)).toEqual({ kind: 'blocked', reason });
+  });
+
+  it('requires verified plus a non-blank opaque ref', () => {
+    expect(判断P4招聘组织前提({
+      ...BFF岗位样本,
+      hiring_organization_verification_status: 'verified',
+      hiring_organization_ref: 'org_9',
+    })).toEqual({ kind: 'ready', organizationRef: 'org_9' });
+  });
+});
+
+describe('映射P4委托展示', () => {
+  it.each([
+    ['accepted', '已提交给 AI，等待处理', true, null],
+    ['evaluating', 'AI 正在评估', true, null],
+    ['case_started', '已创建真实在谈', false, 'case_server_1'],
+    ['needs_user', '需要你处理', false, null],
+    ['refused', '本次未能继续', false, null],
+    ['failed', '本次处理未完成', false, null],
+  ] as const)('%s maps to closed copy and navigation', (state, copy, inProgress, caseId) => {
+    expect(映射P4委托展示({
+      delegation_id: 'del_1',
+      state,
+      case_id: state === 'case_started' ? 'case_server_1' : null,
+    }, null)).toEqual({ state, copy, reason: null, inProgress, caseId });
+  });
+
+  it('case_started with a blank case_id exposes no navigation', () => {
+    expect(映射P4委托展示({
+      delegation_id: 'del_1', state: 'case_started', case_id: '   ',
+    }, null)?.caseId).toBeNull();
+  });
+
+  it('null summary stays null', () => {
+    expect(映射P4委托展示(null, null)).toBeNull();
+  });
+
+  it('uses a refusal reason only from the same authoritative receipt', () => {
+    const summary = { delegation_id: 'del_1', state: 'refused' as const, case_id: null };
+    const receipt = {
+      ...BFF招聘委托回执样本,
+      delegation_id: 'del_1', state: 'refused' as const,
+      refusal_code: 'active_case_quota_reached' as const, case_id: null,
+    };
+    expect(映射P4委托展示(summary, receipt)?.reason)
+      .toBe('当前在谈已达到上限，请先处理已有在谈');
+    expect(映射P4委托展示(summary, { ...receipt, delegation_id: 'del_other' })?.reason)
+      .toBeNull();
+  });
+});
+
+describe('P4委托状态文案', () => {
+  it('pins the shared closed copy accessor directly', () => {
+    expect(P4委托状态文案('accepted')).toBe('已提交给 AI，等待处理');
+    expect(P4委托状态文案('failed')).toBe('本次处理未完成');
+    expect(P4拒绝原因文案('active_case_quota_reached')).toBe('当前在谈已达到上限，请先处理已有在谈');
   });
 });
