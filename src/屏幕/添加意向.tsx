@@ -15,7 +15,7 @@
 //   删的只是「期望区间」之外那条更硬的底线字段 —— 薪资区间的下限仍然承担底线作用，
 //   代理之间依旧只交换「有没有交集」、不交换数字，双盲机制没有因为这次删除而改变。
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigationType, useParams } from 'react-router-dom';
 import 样式 from './添加意向.module.css';
 // 2026-08-24 全站选择风格统一（C1 定稿）：求职类型改选钮片后不再用 单选点
@@ -80,6 +80,17 @@ export default function 添加意向() {
   // 底线弹层删掉之后，本页只剩薪资一个底部弹层，开关用一个布尔就够，不再需要「弹层名」联合类型
   const [薪资层开, 设薪资层开] = useState(false);
 
+  // 办公方式必填校验的可见状态：只在点保存且没选时点亮（aria-invalid + aria-description），
+  // 用户点任一办公方式选钮立即熄灭 —— 错误跟着「最后一次校验」走，不常驻。
+  // 校验错误不是草稿的一部分，所以不放全局状态，本页局部 state 足够。
+  const [办公方式错误, 设办公方式错误] = useState(false);
+  const 办公方式组引用 = useRef<HTMLDivElement>(null);
+
+  // 换一条意向（新建 ↔ 编辑互跳）时上一次的错误不该带到新表单上
+  useEffect(() => {
+    设办公方式错误(false);
+  }, [路由编号]);
+
   // 挂载这一刻草稿装的是哪一条。用 useState 的初值锁住，之后草稿被本页和次级页改也不跟着变 ——
   // 下面那个 effect 要的正是「进来时」的快照，不是「此刻」的值。
   const [挂载时草稿编号] = useState(草稿.编辑编号);
@@ -113,16 +124,33 @@ export default function 添加意向() {
   const 感兴趣城市文本 = 草稿.感兴趣城市们.join('、');
   const 期望行业文本 = 草稿.期望行业们.join('、');
 
+  // 保存键不再因缺字段置灰（置灰让「为什么不让我存」变成哑谜），改成点保存时按序校验：
+  //   工作城市 → 期望职位 → 办公方式，缺哪条轻提示哪条，一条没过就停。
   // 城市和职位是标题「[城市] 职位」的两个组成部分，缺一条就会存出「[] 」这种空壳标题，
-  // 意向管理页那一行会变成一片空白且再也点不明白 —— 所以两项没填齐时保存键置灰。
-  const 可保存 = 草稿.工作城市 !== '' && 草稿.期望职位 !== '' && 草稿.办公方式.length > 0;
+  // 意向管理页那一行会变成一片空白且再也点不明白 —— 所以这三项都必须有。
+  // 办公方式没选时还要把那一组滚进视口、聚焦第一个选钮，并挂 aria-invalid 提示屏幕阅读器。
+  const 校验必填 = (): boolean => {
+    if (草稿.工作城市 === '') {
+      轻提示('请选择工作城市');
+      return false;
+    }
+    if (草稿.期望职位 === '') {
+      轻提示('请选择期望职位');
+      return false;
+    }
+    if (草稿.办公方式.length === 0) {
+      设办公方式错误(true);
+      轻提示('请选择办公方式');
+      const 组 = 办公方式组引用.current;
+      组?.scrollIntoView({ block: 'center' });
+      组?.querySelector<HTMLButtonElement>('button')?.focus();
+      return false;
+    }
+    return true;
+  };
 
   const 提交 = async () => {
-    if (!可保存) return;
-    if (草稿.办公方式.length === 0) {
-      轻提示('请选择办公方式');
-      return;
-    }
+    if (!校验必填()) return;
     try {
       await 操作.保存意向(草稿);
       派发({ 型: '清意向草稿' });
@@ -186,10 +214,19 @@ export default function 添加意向() {
 
         {/* 办公方式：复用 求职类型 的选钮片行样式，多选（现场/混合/远程）。
             Task 6 新增必填草稿字段：保存时映射为 BFF wire code，空数组时 映射办公方式 抛错，
-            这里在 可保存 与 提交 里提前挡住，给 轻提示 而不是让映射层抛。 */}
+            这里在 校验必填 里提前挡住，给 轻提示 而不是让映射层抛。
+            语义只挂在这一组上：role=group + aria-label 让读屏软件把它念成一个可命名分组，
+            校验没过时 aria-invalid / aria-description 指到组上（不建新元素、不动版式）。 */}
         <div className={样式.类型行}>
           <span className={样式.类型标}>办公方式</span>
-          <div className={样式.类型组}>
+          <div
+            ref={办公方式组引用}
+            className={样式.类型组}
+            role="group"
+            aria-label="办公方式"
+            aria-invalid={办公方式错误 || undefined}
+            aria-description={办公方式错误 ? '请选择办公方式' : undefined}
+          >
             {(['现场', '混合', '远程'] as const).map((方式) => {
               const 选中 = 草稿.办公方式.includes(方式);
               return (
@@ -197,13 +234,15 @@ export default function 添加意向() {
                   key={方式}
                   type="button"
                   className={`${样式.类型选项} ${选中 ? 样式.类型选项选中 : ''} 可点`}
-                  onClick={() =>
+                  onClick={() => {
+                    // 用户已经开始处理这一组了，校验错误立刻熄灭，再派发原有的选择
+                    设办公方式错误(false);
                     改草稿({
                       办公方式: 选中
                         ? 草稿.办公方式.filter((项) => 项 !== 方式)
                         : [...草稿.办公方式, 方式],
-                    })
-                  }
+                    });
+                  }}
                   aria-pressed={选中}
                 >
                   {方式}
@@ -251,23 +290,19 @@ export default function 添加意向() {
         />
       </滚动区>
 
-      {/* 编辑态底部是「删除 + 保存」两键，新建态只有一个「保存」 */}
+      {/* 编辑态底部是「删除 + 保存」两键，新建态只有一个「保存」。
+          保存键不再置灰：缺什么点保存时轻提示什么（见 校验必填） */}
       {编辑态 ? (
         <div className={样式.底键行}>
           <button type="button" className={`${样式.删除键} 可点`} onClick={删除}>
             删除
           </button>
-          <button
-            type="button"
-            className={`${样式.保存键} 可点`}
-            onClick={提交}
-            disabled={!可保存}
-          >
+          <button type="button" className={`${样式.保存键} 可点`} onClick={提交}>
             保存
           </button>
         </div>
       ) : (
-        <主按钮 文字="保存" 按下={提交} 禁用={!可保存} />
+        <主按钮 文字="保存" 按下={提交} 禁用={false} />
       )}
 
       {薪资层开 ? (
