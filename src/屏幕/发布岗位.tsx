@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import 样式 from './发布岗位.module.css';
 import 数字滚轮层 from '../组件/数字滚轮层';
-import { 主按钮, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
+import { 代理横幅, 主按钮, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
 import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { use导航 } from '../路由/导航钩子';
@@ -199,6 +199,8 @@ export default function 发布岗位() {
   const [职位关键词] = useState<string[]>(编辑目标?.职位关键词 ?? []);
   // 编辑态底部「删除」的二次确认
   const [待删, 设待删] = useState(false);
+  // 一键上传 JD(2026-09-01):前端只做入口与选中回执,解析与预填由后端接线
+  const JD文件框 = useRef<HTMLInputElement>(null);
 
   // ── 第二步 / 第三步：描述与要求 ──
   const [职位描述, 设职位描述] = useState(编辑目标?.职位描述 ?? 职位描述预填);
@@ -453,6 +455,21 @@ export default function 发布岗位() {
   return (
     // 2026-08-24 全站选择风格统一（C1 定稿）：页底改白底
     <次级页外壳 白底>
+
+      {/* 一键上传 JD 的隐藏文件框:accept 与求职端简历上传同族;
+          选中后交给后端解析预填(本期只回执文件名,不在前端猜字段) */}
+      <input
+        ref={JD文件框}
+        type="file"
+        accept=".pdf,.doc,.docx,.txt"
+        style={{ display: 'none' }}
+        onChange={(事件) => {
+          const 文件 = 事件.target.files?.[0];
+          事件.target.value = '';
+          if (!文件) return;
+          轻提示(`已收到「${文件.name}」，解析后自动预填`);
+        }}
+      />
       <div className={样式.发布壳}>
         <返回栏 返回={上一步} 标题={编辑态 ? '编辑岗位' : undefined} />
 
@@ -474,6 +491,7 @@ export default function 发布岗位() {
         {第几步 === 0 ? (
           <基础信息步
             编辑态={编辑态}
+            上传JD={() => JD文件框.current?.click()}
             岗位名称={岗位名称}
             设岗位名称={设岗位名称}
             办公方式={办公方式}
@@ -894,6 +912,7 @@ function 职业分类层后端({
 // ── D0 第一步：基础信息 —— 招聘类型先选（它是整张表单的开关）→ 名称 → 类别 → 办公方式 ──
 function 基础信息步({
   编辑态,
+  上传JD,
   岗位名称,
   设岗位名称,
   办公方式,
@@ -914,6 +933,8 @@ function 基础信息步({
   设实习转正,
 }: {
   编辑态: boolean;
+  /** 一键上传 JD:拉起文件选择;解析与预填由后端接线,本层只负责入口 */
+  上传JD: () => void;
   岗位名称: string;
   设岗位名称: (值: string) => void;
   办公方式: string;
@@ -942,6 +963,20 @@ function 基础信息步({
       <页面大标题
         标题={编辑态 ? '基础信息' : '岗位基础信息'}
       />
+
+      {/* 一键上传 JD(2026-09-01 用户定稿):用主页同款代理横幅收 JD ——
+          这是代理的活,就用代理的语气开口。解析与预填由后端接,前端只出入口:
+          点横幅拉起文件选择,交给上层回调。编辑态不出现(岗位已存在,不再从 JD 起手) */}
+      {编辑态 ? null : (
+        <div className={样式.上传JD区}>
+          <代理横幅
+            前文="把 JD 给我，"
+            强调="这张表我来填"
+            动作文="上传 JD ›"
+            按下={上传JD}
+          />
+        </div>
+      )}
 
       <div className={样式.表单区}>
         {/* 招聘类型宫格：放最前（BOSS 同位），选中项决定后面表单长什么样 */}

@@ -172,10 +172,13 @@ export function 代理横幅({
   前文,
   强调,
   按下,
+  动作文 = '问AI代理 ›',
 }: {
   前文: string;
   强调: string;
   按下: () => void;
+  /** 右侧动作字样;默认「问AI代理 ›」,发岗收 JD 横幅换成「上传 JD ›」(2026-09-01) */
+  动作文?: string;
 }) {
   return (
     <button className={`${样式.代理横幅} 可点`} onClick={按下}>
@@ -192,7 +195,7 @@ export function 代理横幅({
         {前文}
         <b className={样式.横幅强调}>{强调}</b>
       </span>
-      <span className={样式.横幅动作}>问AI代理 ›</span>
+      <span className={样式.横幅动作}>{动作文}</span>
     </button>
   );
 }
