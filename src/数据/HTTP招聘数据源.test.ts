@@ -4,6 +4,7 @@ import { BFF错误, 客户端校验错误, type BFF请求选项, type BFF响应 
 import { 从BFF简历 } from './后端映射';
 import { 创建岗位附属存储 } from './前端附属数据';
 import { 创建HTTP招聘数据源 } from './HTTP招聘数据源';
+import { 简历预填成功信封 } from './招聘数据源/简历预填.fixture';
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 
@@ -585,7 +586,8 @@ describe('HTTP 招聘数据源', () => {
   // Task 1（P5）：第十一个域 facade（MatchCase）一并组合进根 facade。
   // Task 1（P7）：第十二个域 facade（真人会话）一并组合进根 facade。
   // Task 1（P8）：第十三个域 facade（P8 控制面）一并组合进根 facade。
-  it('根 facade 组合十三个域且不丢公开方法', () => {
+  // Task 1（简历预填）：第十四个域 facade（onboarding resume-prefill.v1 只读建议）一并组合进根 facade。
+  it('根 facade 组合十四个域且不丢公开方法', () => {
     const source = 创建HTTP招聘数据源(依赖());
     expect(Object.keys(source).sort()).toEqual([
       '保存简历', '保存招聘方档案', '创建岗位', '创建意向', '创建首次意向', '创建企业管理员申请',
@@ -618,6 +620,8 @@ describe('HTTP 招聘数据源', () => {
       '读取P8凭证', '读取P8会话', '开始P8手机号换绑', '完成P8手机号换绑', '退出P8其他设备',
       '创建P8数据导出', '读取P8数据导出', '取P8数据导出下载地址', '请求P8账号注销',
       '提交P8反馈', '提交P8举报',
+      // 简历预填域（onboarding 只读建议）
+      '读取简历预填',
     ].sort());
     // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
     expect(Object.keys(source)).not.toContain('读取公开岗位');
@@ -728,6 +732,25 @@ describe('HTTP 招聘数据源', () => {
     expect(请求Mock.mock.calls[0][0]).toEqual({
       path: '/api/v1/me/data-exports', method: 'POST',
       幂等: true, 幂等键: 'p8-export-key-0001', 严格信封: true,
+    });
+  });
+
+  // Task 1（简历预填）：第十四个域 facade 组合后走冻结的 parse-result 路径，
+  // GET 显式 no-store + 严格信封；fixture 经根 facade 逐字解码，其余域零改动。
+  it('根 facade 组合后简历预填走冻结路径并严格解码', async () => {
+    请求Mock.mockResolvedValueOnce({
+      result: 简历预填成功信封.result,
+      etag: null,
+      requestId: 简历预填成功信封.meta.request_id,
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.读取简历预填(简历预填成功信封.result.source))
+      .resolves.toEqual(简历预填成功信封.result);
+    expect(请求Mock).toHaveBeenCalledTimes(1);
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/me/resume-files/rf_0123456789abcdef0123456789abcdef/parse-result?version_id=rfv_0123456789abcdef0123456789abcdef&parse_id=rp_0123456789abcdef0123456789abcdef',
+      不缓存: true,
+      严格信封: true,
     });
   });
 });

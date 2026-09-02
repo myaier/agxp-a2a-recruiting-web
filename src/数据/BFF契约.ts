@@ -907,3 +907,85 @@ export interface BFF反馈回执 {
 export interface BFF举报回执 extends BFF反馈回执 {
   block_status: 'applied' | 'not_requested';
 }
+
+// ── 候选人简历预填域 wire DTO（onboarding resume-prefill.v1 只读建议）──
+// 字段名与闭合 enum 逐项复制自已冻结的 recruitment-bff mobile-v1 OpenAPI
+// （agxp-monorepo@f2d7af565 的 ResumePrefill 家族）；exact key set、三个 ID grammar
+// （rf_/rfv_/rp_ + 32 位小写十六进制）、scalar value/confidence 同空或同在、非空月份
+// 必为真实日历月 YYYY-MM、exact 必有 match 而 unresolved 必 match:null、列表拒 null
+// 与回显 source 相等由 招聘数据源/简历预填.ts 的 decoder 校验。响应不含联系方式、
+// PDF 原文、证据或 provider/model：任何多余键都按契约漂移 fail closed。
+
+export type BFF简历预填置信度 = 'high' | 'medium' | 'low';
+export interface BFF简历预填标量<T> {
+  value: T | null;
+  confidence: BFF简历预填置信度 | null;
+}
+export interface BFF简历预填来源 {
+  file_id: string;
+  version_id: string;
+  parse_id: string;
+}
+export type BFF简历预填目录建议 =
+  | {
+      source_name: BFF简历预填标量<string>;
+      resolution: 'exact';
+      match: { id: string; display_name: string };
+    }
+  | {
+      source_name: BFF简历预填标量<string>;
+      resolution: 'unresolved';
+      match: null;
+    };
+export type BFF简历预填Warning原因 =
+  | 'missing_required' | 'unsafe_month' | 'catalog_unresolved'
+  | 'target_limit_exceeded' | 'enum_undetermined' | 'conflicting_sources';
+
+export interface BFF简历预填项目 {
+  name: BFF简历预填标量<string>;
+  role: BFF简历预填标量<string>;
+  result: BFF简历预填标量<string>;
+}
+export interface BFF简历预填经历 {
+  company: BFF简历预填标量<string>;
+  industry: BFF简历预填目录建议;
+  title: BFF简历预填标量<string>;
+  start_month: BFF简历预填标量<string>;
+  end_month: BFF简历预填标量<string>;
+  description: BFF简历预填标量<string>;
+  internship: BFF简历预填标量<boolean>;
+  projects: BFF简历预填项目[];
+}
+export interface BFF简历预填教育 {
+  institution: BFF简历预填目录建议;
+  degree: BFF简历预填标量<string>;
+  major: BFF简历预填目录建议;
+  start_month: BFF简历预填标量<string>;
+  end_month: BFF简历预填标量<string>;
+}
+export interface BFF简历预填证书 {
+  name: BFF简历预填标量<string>;
+  year: BFF简历预填标量<number>;
+}
+export interface BFF简历预填建议 {
+  schema_version: 'resume-prefill.v1';
+  source: BFF简历预填来源;
+  draft: {
+    profile: {
+      real_name: BFF简历预填标量<string>;
+      work_start_year: BFF简历预填标量<number>;
+      status: BFF简历预填标量<'student' | 'employed' | 'unemployed'>;
+      current_education: BFF简历预填标量<string>;
+      graduation_year: BFF简历预填标量<number>;
+      gender: BFF简历预填标量<'male' | 'female'>;
+      birth_year: BFF简历预填标量<number>;
+      birth_month: BFF简历预填标量<number>;
+    };
+    summary: BFF简历预填标量<string>;
+    skills: BFF简历预填标量<string>[];
+    experiences: BFF简历预填经历[];
+    educations: BFF简历预填教育[];
+    certificates: BFF简历预填证书[];
+  };
+  warnings: Array<{ field_path: string; reason: BFF简历预填Warning原因 }>;
+}
