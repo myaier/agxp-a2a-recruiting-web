@@ -870,10 +870,12 @@ describe('职位详情 · 深链恢复当前意向坐标与安全返回（Backen
     expect(mock返回).not.toHaveBeenCalled();
   });
 
-  it('带看市场来源且 history 有格：走正常返回，不重派主壳', async () => {
+  it('带看市场来源且 history 有格：归一主壳到看市场后正常返回', async () => {
     const 用户 = userEvent.setup();
     window.history.replaceState({ idx: 2 }, '');
-    // 模拟「本会话内真的从看市场跳过来」：来源标记 + 会话内来路证据同时成立
+    // 模拟「本会话内真的从看市场跳过来」：来源标记 + 会话内来路证据同时成立。
+    // 退栈前仍要把主壳摆回「职位 → 看市场」：用户可能 返回→切在谈→前进 回到本详情，
+    // 裸退栈会落在他后来选的子视图上，与来源标记承诺的「回看市场」不符
     标记看市场来路();
     渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
     render(
@@ -886,9 +888,10 @@ describe('职位详情 · 深链恢复当前意向坐标与安全返回（Backen
       </MemoryRouter>,
     );
     await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切Tab', Tab: '职位' });
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切子视图', 子视图: '看市场' });
     expect(mock返回).toHaveBeenCalled();
     expect(mock替换跳转).not.toHaveBeenCalled();
-    expect(mock派发).not.toHaveBeenCalledWith({ 型: '切Tab', Tab: '职位' });
   });
 
   it('刷新残留的来源标记不算本会话来路：仍摆好主壳再替换，不盲退栈', async () => {
