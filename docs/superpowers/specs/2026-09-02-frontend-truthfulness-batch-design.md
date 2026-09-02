@@ -17,7 +17,7 @@ This batch is owned as data-layer and logic wiring. Product Management retains o
 
 The implementation therefore must:
 
-- not modify any file under `src/组件/**`;
+- not modify runtime component files under `src/组件/**`; colocated `*.test.*` files may change only when their existing cross-page assertions must be updated;
 - not create a new visual or shared component;
 - not modify CSS;
 - not add, move, or redesign cards, rows, lists, panels, or other visual structures;
@@ -247,7 +247,7 @@ src/状态/后端/use发现推荐委托轮询.ts
 src/路由/导航钩子.ts
 ```
 
-Corresponding tests may change. Files under `src/组件/**`, all CSS, and `src/数据/BFF契约.ts` are excluded. The inspected BFF types already contain every required OwnerJob, CandidateJob, delegation, and MatchCase field/state.
+Corresponding tests may change, including existing cross-page assertions in `src/组件/**/*.test.*`. Runtime component files under `src/组件/**`, all CSS, and `src/数据/BFF契约.ts` are excluded. The inspected BFF types already contain every required OwnerJob, CandidateJob, delegation, and MatchCase field/state.
 
 ## Testing
 
@@ -268,7 +268,7 @@ Targeted tests must cover:
 - distinct parse, AI-screening, and manual-decision wording;
 - Backend Agent DOM without fixture statistics, conversation, input, or timer behavior;
 - Mock Agent behavior and timer cleanup after mode switching;
-- a guard that no file under `src/组件/**` and no CSS file changed in this batch.
+- a guard that no runtime component file under `src/组件/**` and no CSS file changed in this batch; `src/组件/**/*.test.*` is the only allowed exception.
 
 Implementation verification must run the repository's current gates:
 
