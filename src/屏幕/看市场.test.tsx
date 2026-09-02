@@ -847,6 +847,27 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     expect(mock派发).not.toHaveBeenCalled();
   });
 
+  it('Backend 代理横幅动作只说查看代理功能，Mock 保持 问AI代理 ›', () => {
+    // 交付 G：Backend 的入口文案不得承诺自由对话；Mock 原型文案原样保留
+    置P4候选状态([BFF候选岗位推荐样本]);
+    const page = render(<看市场 />);
+    expect(screen.getByRole('button', { name: /查看代理功能/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /问AI代理/ })).toBeNull();
+
+    置应用状态({
+      模式: 'mock',
+      状态: {
+        子视图: '看市场', 当前意向: 'AI 产品经理',
+        求职意向表: [{ 编号: 'I-01', 标题: '[上海] AI 产品经理' }],
+        在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+        全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
+      },
+    });
+    page.rerender(<看市场 />);
+    expect(screen.getByRole('button', { name: /问AI代理/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /查看代理功能/ })).toBeNull();
+  });
+
   it('Backend 市场卡进详情带来源标记，详情页才能安全返回本屏；Mock 卡不带', async () => {
     const user = userEvent.setup();
     置P4候选状态([BFF候选岗位推荐样本]);

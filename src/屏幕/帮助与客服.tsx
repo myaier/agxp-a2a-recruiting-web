@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import 样式 from './我的功能页.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
+import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
 import { 常见问答 } from '../数据/模拟数据';
 
@@ -14,6 +15,9 @@ const 全部分类 = ['全部', ...new Set(常见问答.map((条) => 条.分类)
 
 export default function 帮助与客服() {
   const { 返回, 跳转 } = use导航();
+  // 交付 G：Backend 没有 AI 代理自由对话，客服卡的推荐话术与按钮不能承诺「问我的 AI 代理」
+  const { 数据源模式 } = use应用状态();
+  const 是Backend = 数据源模式 === 'backend';
   const [分类, 设分类] = useState('全部');
   const [展开, 设展开] = useState<string | null>('Q-01');
   const [提示, 设提示] = useState<string | null>(null);
@@ -63,12 +67,13 @@ export default function 帮助与客服() {
         <div className={样式.客服卡}>
           <div className={样式.客服标题}>还是没解决？</div>
           <div className={样式.客服说明}>
-            先问你的 AI 代理 —— 它知道你每一单的上下文，能直接告诉你这一单卡在哪。
-            涉及账号、认证、投诉的问题再转人工。
+            {是Backend
+              ? '当前 Backend 模式不提供 AI 代理自由对话。真实匹配请到市场，真实阶段请到在谈查看；账号、认证和投诉问题可转人工。'
+              : '先问你的 AI 代理 —— 它知道你每一单的上下文，能直接告诉你这一单卡在哪。涉及账号、认证、投诉的问题再转人工。'}
           </div>
           <div className={样式.客服键行}>
             <button className={`${样式.客服主键} 可点`} onClick={() => 跳转(路径.问AI代理)}>
-              问我的 AI 代理
+              {是Backend ? '查看 AI 代理功能' : '问我的 AI 代理'}
             </button>
             <button
               className={`${样式.客服次键} 可点`}

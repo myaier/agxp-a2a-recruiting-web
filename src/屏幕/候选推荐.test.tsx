@@ -594,6 +594,19 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     expect(mock刷新招聘候选).toHaveBeenCalledWith(岗位编号);
   });
 
+  it('Backend 代理横幅动作只说查看代理功能，Mock 保持 问AI代理 ›', () => {
+    // 交付 G：Backend 的入口文案不得承诺自由对话；Mock 原型文案原样保留
+    置P4状态({});
+    const page = render(<候选推荐 />);
+    expect(screen.getByRole('button', { name: /查看代理功能/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /问AI代理/ })).toBeNull();
+
+    置Mock状态();
+    page.rerender(<候选推荐 />);
+    expect(screen.getByRole('button', { name: /问AI代理/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /查看代理功能/ })).toBeNull();
+  });
+
   // 旧后端把「组织未验证」折进笼统的 recommendation_unavailable：只有发起请求那一刻
   // 是同一个岗位、且现在的权威快照已说明组织受阻，才允许把这条错译成组织指引；
   // 否则一律按 P4 通用文案，绝不拿别的错冒充「组织没认证」。
