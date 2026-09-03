@@ -6,7 +6,7 @@
 
 import type { 后端环境 } from '../配置/运行配置';
 import type { 办公偏好, 求职类型, 求职初筛偏好 } from '../流程/onboarding配置';
-import type { 公司自述覆盖, 先问偏好 } from './类型';
+import type { 公司自述覆盖, 规则, 先问偏好 } from './类型';
 
 export type 资料缓存存储 = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -34,6 +34,10 @@ export interface 资料缓存快照 {
   求职先问偏好?: 先问偏好;
   /** 仅 Mock 本地演示持久化；Backend 不把它写进浏览器缓存。 */
   企业先问偏好?: 先问偏好;
+  /** Mock 规则清单；Backend 规则只来自服务端，不写这里。 */
+  全局规则?: 规则[];
+  意向级规则?: 规则[];
+  企业规则?: 规则[];
   // ── P1C：可恢复的组织选择（恢复值须经最新 affiliations 校验）──
   当前企业关系编号?: string | null;
   未认证公司声明?: string;
@@ -43,7 +47,7 @@ export interface 资料缓存快照 {
 export type 完整Mock资料快照 = Required<Pick<资料缓存快照,
   '公司自述' | '企业认证' | '招聘头像' | '公司LOGO' | '求职头像' | '飞书已接入' | '企业飞书已接入' |
   '求职先问偏好' | '企业先问偏好'
->>;
+>> & Pick<资料缓存快照, '全局规则' | '意向级规则' | '企业规则'>;
 
 const 前缀 = 'AGXP账号资料v2';
 
@@ -85,6 +89,22 @@ function 是先问偏好(值: unknown): 值 is 先问偏好 {
     (raw.超授权让步 === '先问我' || raw.超授权让步 === '直接回绝');
 }
 
+function 是Mock规则数组(值: unknown): 值 is 规则[] {
+  if (!Array.isArray(值) || 值.length > 200) return false;
+  const 编号们 = new Set<string>();
+  for (const 条 of 值) {
+    if (typeof 条 !== 'object' || 条 === null || Array.isArray(条)) return false;
+    const raw = 条 as Record<string, unknown>;
+    const 键们 = Object.keys(raw);
+    if (键们.length !== 4 || !['编号', '内容', '来源', '生效'].every((键) => 键 in raw)) return false;
+    if (typeof raw.编号 !== 'string' || raw.编号.length === 0 || raw.编号.length > 100 || 编号们.has(raw.编号)) return false;
+    if (typeof raw.内容 !== 'string' || raw.内容.length === 0 || raw.内容.length > 10_000) return false;
+    if (typeof raw.来源 !== 'string' || raw.来源.length > 1_000 || typeof raw.生效 !== 'boolean') return false;
+    编号们.add(raw.编号);
+  }
+  return true;
+}
+
 function 安全解析JSON(原文: string | null): unknown {
   if (!原文) return null;
   try {
@@ -110,6 +130,9 @@ export function 读资料缓存(存储: 资料缓存存储 | null, 范围: 资�
     if (typeof 值.企业飞书已接入 === 'boolean') 快照.企业飞书已接入 = 值.企业飞书已接入;
     if (是先问偏好(值.求职先问偏好)) 快照.求职先问偏好 = 值.求职先问偏好;
     if (是先问偏好(值.企业先问偏好)) 快照.企业先问偏好 = 值.企业先问偏好;
+    if (是Mock规则数组(值.全局规则)) 快照.全局规则 = 值.全局规则;
+    if (是Mock规则数组(值.意向级规则)) 快照.意向级规则 = 值.意向级规则;
+    if (是Mock规则数组(值.企业规则)) 快照.企业规则 = 值.企业规则;
     // P1C：组织选择的新键逐键守卫——损坏类型被丢弃，不进入应用状态
     if (值.当前企业关系编号 === null || typeof 值.当前企业关系编号 === 'string') {
       快照.当前企业关系编号 = 值.当前企业关系编号;
