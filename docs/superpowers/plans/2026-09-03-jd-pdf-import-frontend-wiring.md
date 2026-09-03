@@ -571,6 +571,7 @@ Add these complete behavioral cases:
 10. Every returned terminal `failure_code` shows its exact `JD失败码文案`, offers re-upload/manual only, and never retries POST/GET.
 11. uploading action is a no-op; pending/processing permits choosing a new file.
 12. edit mode contains no import banner behavior and no JD calls.
+13. POST `network_error` changes phase to failed, removes `aria-busy`, shows `JD 服务暂时不可用，请稍后重试或手动填写`, and clicking `重试 ›` issues exactly one second POST with the same File/key.
 
 - [ ] **Step 2: Run the red page tests**
 
@@ -690,9 +691,9 @@ const 安排JD读取 = (generation: number, importId: string) => {
 };
 ```
 
-`读取本轮JD` must set `JD读取中.current=true`, await exactly one GET, then reset in `finally`. It handles `'已换代'` silently; pending/processing updates phase and schedules only after the current GET completes; succeeded clears timers and enters succeeded. A returned `status:'failed'` clears timers, sets `phase:'failed'`, `retry:'none'`, and `error:JD失败码文案[result.failure_code]`. A current GET exception preserves `importId` and stores `取JD错误文案(error)`; it never calls POST, and sets `retry:'read'` only for `network_error`, HTTP 503, or `storage_unavailable`. `job_draft_import_not_found`, `invalid_response`, and every other deterministic error set `retry:'none'` while retaining their mapped safe text.
+`读取本轮JD` must set `JD读取中.current=true`, await exactly one GET, then reset it in `finally`. It handles `'已换代'` silently; pending/processing updates phase and schedules only after the current GET completes; succeeded clears timers and enters succeeded. A returned `status:'failed'` clears timers, sets `phase:'failed'`, `retry:'none'`, and `error:JD失败码文案[result.failure_code]`. Every current GET exception clears the timer, sets `phase:'failed'`, preserves `importId`, and stores `取JD错误文案(error)`; it never calls POST, and sets `retry:'read'` only for `network_error`, HTTP 503, or `storage_unavailable`. `job_draft_import_not_found`, `invalid_response`, and every other deterministic error set `retry:'none'` while retaining their mapped safe text. The `finally` reset of `JD读取中` must run for success, failure, and stale results.
 
-`提交待确认JD` must guard `phase === 'uploading'`, save the selected `{file,key}`, set uploading, and call POST. A current POST exception preserves `file + key`, has `importId:null`, and stores `取JD错误文案(error)`, but sets `retry:'create'` only for `network_error`, HTTP 503, `operation_outcome_unknown`, `storage_unavailable`, `upload_in_progress`, or `idempotency_in_progress`. `invalid_pdf`, `document_too_complex`, `processing_consent_required`, `idempotency_conflict`, and every other deterministic error set `retry:'none'` while retaining their mapped safe text. A successful pending/processing result stores the returned import ID before scheduling. A direct `status:'failed'` stores `JD失败码文案[result.failure_code]`, uses `retry:'none'`, and schedules no timer; a direct succeeded result is likewise terminal without a timer.
+`提交待确认JD` must begin with `if (JD状态引用.current.phase === 'uploading') return;`, then save the selected `{file,key}`, set uploading, and call POST. Every current POST exception clears the timer, sets `phase:'failed'` (therefore `aria-busy:false`), preserves `file + key`, has `importId:null`, and stores `取JD错误文案(error)`, but sets `retry:'create'` only for `network_error`, HTTP 503, `operation_outcome_unknown`, `storage_unavailable`, `upload_in_progress`, or `idempotency_in_progress`. `invalid_pdf`, `document_too_complex`, `processing_consent_required`, `idempotency_conflict`, and every other deterministic error set `retry:'none'` while retaining their mapped safe text. A successful pending/processing result stores the returned import ID before scheduling. A direct `status:'failed'` stores `JD失败码文案[result.failure_code]`, uses `retry:'none'`, and schedules no timer; a direct succeeded result is likewise terminal without a timer.
 
 Implement those allowlists as two small page-local predicates (`JD创建错误可重试` and `JD读取错误可重试`) and add Step 1 table cases proving each allowed code offers `重试 ›` while `invalid_pdf`, `idempotency_conflict`, `job_draft_import_not_found`, and `invalid_response` offer only re-upload/manual action.
 
@@ -723,7 +724,7 @@ Replace the hidden input behavior without changing its position, inline style, o
 />
 ```
 
-`选择JD文件` clears `event.currentTarget.value` before branching, uses `校验附件PDF(file, null)`, and in Backend recruiter mode creates key `jd-import-${crypto.randomUUID()}`. A new **valid** file increments generation and clears the old timer/state immediately; an invalid file does none of those.
+`选择JD文件` clears `event.currentTarget.value` before branching, uses `校验附件PDF(file, null)`, and in Backend recruiter mode creates key `jd-import-${crypto.randomUUID()}`. A new **valid** file increments generation, clears the old timer/import/error, and explicitly resets phase to idle before opening consent; this makes a new selection recover even from a prior uploading/failed round. An invalid file does none of those.
 
 Keep the existing `基础信息步` function and existing upload wrapper. Replace its single callback prop with a local plain-data prop—not a new component:
 

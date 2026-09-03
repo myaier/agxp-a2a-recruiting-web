@@ -220,7 +220,7 @@ GET /api/v1/recruiter/job-draft-imports/{import_id}
 - input 收紧为 `.pdf,application/pdf`，选择后立即清空 value。
 - 非法文件只显示 `请选择 PDF 文件`，不增加 generation，也不影响当前合法导入。
 - Mock 模式合法选择只显示“已选择，可继续手动填写”，不弹会声称真实处理的 consent，不调用 Backend，不伪造 succeeded。
-- Backend 模式选择新的合法 PDF 时立即：增加 generation、停止旧 timer、清除旧 import/error、生成稳定幂等键并保存待确认文件，然后复用现有 `确认层`。
+- Backend 模式选择新的合法 PDF 时立即：增加 generation、停止旧 timer、把 phase 复位为 idle、清除旧 import/error、生成稳定幂等键并保存待确认文件，然后复用现有 `确认层`。
 - 确认层文案固定为：
   - 标题：`允许 AI 识别这份职位描述？`
   - 正文：`这份 PDF 将发送给受控模型服务进行职位信息识别。确认后才会上传并开始处理。`
@@ -237,7 +237,7 @@ POST 可以返回任一合法状态：
 - failed：映射 failure code，进入 terminal failed；
 - `已换代`：静默结束，不修改新页面状态。
 
-POST 尚未取得 import ID 且发生 `network_error`、HTTP 503、`operation_outcome_unknown`、`storage_unavailable`、`upload_in_progress` 或 `idempotency_in_progress` 时，保留同一 `File + Idempotency-Key`，设 `retry:'create'`。这些情况分别表示传输/服务临时失败、结果未知或同一幂等意图仍在处理；用户显式重试仍调用 POST，让服务端按同一意图 replay。`invalid_pdf`、`document_too_complex`、`processing_consent_required`、`idempotency_conflict` 及其他确定性错误设 `retry:'none'`，只能重新选择/确认或继续手填；不得用同一确定失败意图循环重放，也不得生成新 key 自动制造第二个任务。
+当前 fence 的 POST 异常一律清 timer、把 phase 设为 failed 并解除 `aria-busy`。尚未取得 import ID 且发生 `network_error`、HTTP 503、`operation_outcome_unknown`、`storage_unavailable`、`upload_in_progress` 或 `idempotency_in_progress` 时，保留同一 `File + Idempotency-Key`，设 `retry:'create'`。这些情况分别表示传输/服务临时失败、结果未知或同一幂等意图仍在处理；用户显式重试仍调用 POST，让服务端按同一意图 replay。`invalid_pdf`、`document_too_complex`、`processing_consent_required`、`idempotency_conflict` 及其他确定性错误设 `retry:'none'`，只能重新选择/确认或继续手填；不得用同一确定失败意图循环重放，也不得生成新 key 自动制造第二个任务。
 
 ### 7.3 串行轮询
 
@@ -246,7 +246,7 @@ POST 尚未取得 import ID 且发生 `network_error`、HTTP 503、`operation_ou
 - 页面 `document.hidden` 时清 timer，恢复可见后立即 GET；
 - 卸载、新合法文件、succeeded 或 terminal failed 时清 timer；
 - 每次返回同时核对 mounted、页面 generation 和当前 import ID；任一不符时静默丢弃；
-- GET 的 `network_error`、HTTP 503 或 `storage_unavailable` 保留 import ID，设 `retry:'read'`；显式重试只读同一任务，绝不重新 POST；`job_draft_import_not_found`、`invalid_response` 及其他确定性错误设 `retry:'none'`；
+- 当前 fence 的 GET 异常一律清 timer、由 `finally` 复位 in-flight guard，并把 phase 设为 failed；其中 `network_error`、HTTP 503 或 `storage_unavailable` 保留 import ID，设 `retry:'read'`，显式重试只读同一任务，绝不重新 POST；`job_draft_import_not_found`、`invalid_response` 及其他确定性错误设 `retry:'none'`；
 - terminal failed 设 `retry:'none'`，只能重新选择 PDF 或继续手填。
 
 操作层 session fence 与页面 generation/import ID fence 缺一不可：前者保护账号边界，后者保护同一挂载周期内的多个文件意图。
@@ -395,6 +395,7 @@ POST 尚未取得 import ID 且发生 `network_error`、HTTP 503、`operation_ou
 - POST 失败复用 File/key，GET 失败只重试同一 import ID；
 - setTimeout 不重叠，页面隐藏暂停、恢复立即读、卸载停止；卸载后再次派发 `visibilitychange` 也必须零 GET；
 - POST/GET 仅对第 7 节闭合集合中的临时错误显示对应重试动作；确定性失败不得暴露会重复同一失败请求的“重试”；
+- POST `network_error` 后 phase 为 failed、`aria-busy` 为 false，横幅显示第 9.2 节文案；点击 `重试 ›` 使用同一 File/key 恰再发一次 POST；
 - 新合法文件使旧轮迟到成功、失败和提示全部失效；
 - 普通字段 compare-and-fill、`null` 不清空、invalid response 零部分应用；
 - 招聘类型、办公方式和城市组任一成员被用户修改时整组不覆盖；
