@@ -28,6 +28,7 @@
 
 - Modify: `src/数据/BFF契约.ts`
 - Modify: `src/测试/BFF样本.ts`
+- Modify: `src/数据/后端映射.ts`
 - Modify: `src/数据/招聘数据源/岗位.ts`
 - Modify: `src/数据/招聘数据源/岗位.test.ts`
 - Modify: `src/数据/招聘数据源/发现推荐.ts`
@@ -62,6 +63,8 @@ export type BFF学历要求 =
 ```
 
 Change `BFFOwnerJob.experience_requirement`/`education_requirement` and `BFF岗位创建.experience_requirement`/`education_requirement` to these same two unions, then add required `structured_requirements_confirmed: boolean` to Owner Job. `BFFCandidateJob` inherits that required field. Add `structured_requirements_confirmed: true` to `BFF岗位创建`; because `BFF岗位补丁` is partial, its field remains optional but can only be literal `true`. This gives both read and write mappings compile-time protection against new or mistyped enum codes.
+
+In `后端映射.ts`, import `BFF经验要求` as a type and change `映射经验要求(页值: string | undefined): string` to return `BFF经验要求`. Its existing closed lookup and throw behavior stays unchanged. The education map is already `as const` and needs no widening fix.
 
 In `岗位.ts`, extend the existing pre-mapping check with three direct checks: boolean confirmation, membership in the five experience codes, and membership in the five education codes. Keep the check local to Owner Job reads; throw a `BFF错误(200, 'invalid_response', '服务返回了不符合契约的岗位数据')` on drift.
 
@@ -123,7 +126,7 @@ Expected: all pass.
 Commit:
 
 ```bash
-git add src/数据/BFF契约.ts src/测试/BFF样本.ts src/数据/招聘数据源/岗位.ts src/数据/招聘数据源/岗位.test.ts src/数据/招聘数据源/发现推荐.ts src/数据/招聘数据源/发现推荐.test.ts
+git add src/数据/BFF契约.ts src/测试/BFF样本.ts src/数据/后端映射.ts src/数据/招聘数据源/岗位.ts src/数据/招聘数据源/岗位.test.ts src/数据/招聘数据源/发现推荐.ts src/数据/招聘数据源/发现推荐.test.ts
 git commit -m "feat: decode mutual discovery job truth"
 ```
 
@@ -578,7 +581,8 @@ Build on the existing operation harness. For one `刷新招聘候选(jobId)` cal
 5. Reread 503: no job hydration and a generic recoverable error reaches the caller.
 6. Change subject, role, session generation, visible scope, or scope generation while reread is in flight: late success and late 401 are discarded; no new-session clear, no hydration, no CTA signal.
 7. Direct refresh failures `recommendation_unavailable`, malformed contract (`invalid_response`), 401, and 503 perform zero Owner Jobs rereads; the only path allowed to perform the read is the exact organization 409 from cases 1–6.
-8. Existing synthetic `BFF错误` values with `status === 200` still expose their already-closed Chinese delegation/refusal copy through `P4错误文案`; only unknown real HTTP errors fall back to the generic sentence.
+8. Existing synthetic `BFF错误` values with `status === 200` still expose their already-closed Chinese delegation/refusal copy through `P4错误文案`; only an otherwise-unclassified real HTTP error that would expose its raw message falls back to the generic sentence.
+9. Existing `取后端错误文案` classifications remain intact: at minimum, `network_error` and a non-200 `invalid_response` still return their established Chinese copy, while an unknown status-500 code carrying English/raw message `boom` returns `请求失败，请稍后再试`.
 
 Every case asserts POST count; this is the regression guard against accidental retry with a new idempotency key.
 
@@ -619,14 +623,23 @@ For that one reread:
 
 - on current-fence 401, call the existing `清账号状态` and return;
 - on stale success/error, return without mutation or rethrow;
-- on another current-fence reread error, call `提交失败(P4错误文案(对账错误), 对账Fence)` before throwing it, so the list cannot remain stuck in `刷新中`;
+- on another current-fence reread error, replace the already-settled organization failure with `提交失败(P4错误文案(对账错误), 对账Fence)` before throwing it, so the persistent snapshot describes the actual reread failure;
 - on success/current fence, locate `快照.服务端[jobId]`; missing is contract drift;
 - dispatch `{ 型: '水合后端岗位', 快照 }` and update `后端状态.岗位快照` only after the fence check;
-- if `判断P4招聘组织前提(ownerJob).kind === 'blocked'`, call `提交失败` to clear `刷新中`, then throw the original exact organization error so the screen can suppress toast and let the newly hydrated precondition render the existing CTAs;
+- if `判断P4招聘组织前提(ownerJob).kind === 'blocked'`, do not settle the snapshot again: `运行范围刷新` has already stored `匿名候选推荐需要已验证的用人组织`; throw the original exact organization error so the screen can suppress toast and let the newly hydrated precondition render the existing CTAs;
 - if it is still `ready`, call `提交失败('数据状态异常，请稍后再试', 对账Fence)`, then throw `new BFF错误(409, 'invalid_response', '数据状态异常，请稍后再试')`;
 - `unknown` after an authoritative complete Owner Jobs page follows the same invalid-response settlement.
 
-Add `organization_verification_required: '匿名候选推荐需要已验证的用人组织'` to the closed P4 error table. For codes outside the table, preserve `取后端错误文案(error)` only when `error.status === 200`, because the operation deliberately encodes already-closed delegation/refusal UI copy in synthetic status-200 `BFF错误` values. Unknown real HTTP errors use `请求失败，请稍后再试` and never expose backend English. Update the existing `P4错误文案` test that currently expects an unknown status-500 message, and retain/add the status-200 delegation-copy regression.
+Add `organization_verification_required: '匿名候选推荐需要已验证的用人组织'` to the closed P4 error table. For codes outside that table, first call `取后端错误文案(error)`: preserve its established Chinese classifications and preserve synthetic status-200 delegation/refusal copy, but replace a non-200 result that is exactly the raw `error.message` with `请求失败，请稍后再试`. One minimal implementation is:
+
+```ts
+const 文案 = copy[error.code] ?? 取后端错误文案(error);
+return 文案 === error.message && error.status !== 200
+  ? '请求失败，请稍后再试'
+  : 文案;
+```
+
+Update the existing test that currently expects unknown status-500 message `boom`; retain/add status-200 delegation-copy, `network_error`, and `invalid_response` regressions.
 
 - [ ] **Step 4: Write failing screen-state tests**
 
