@@ -13,6 +13,7 @@
 // 2026-09-01 P8 加入第十三个域 facade：P8 控制面（账号安全/换绑/退出其他设备/导出/注销/反馈/举报）。
 // 2026-09-03 简历预填 加入第十四个域 facade：onboarding resume-prefill.v1 只读建议（parse-result）。
 // 2026-09-03 JD导入 加入第十五个域 facade：job-draft-imports 建议稿创建与轮询读取。
+// 2026-09-03 接触记录 加入第十六个域 facade：候选 me/contact-events 接触事件分页读取。
 // 根 HTTP招聘数据源 是各域的交集，创建HTTP招聘数据源 只组合现有实现，不给既有域新增空方法，
 // 也不改变 URL、body、DTO 校验、错误映射或幂等行为。各域协议代码原样留在对应域文件里。
 
@@ -34,6 +35,7 @@ import type { 真人会话数据源 } from './招聘数据源/真人会话';
 import type { P8控制面数据源 } from './招聘数据源/P8控制面';
 import type { 简历预填数据源 } from './招聘数据源/简历预填';
 import type { JD导入数据源 } from './招聘数据源/JD导入';
+import type { 接触记录数据源 } from './招聘数据源/接触记录';
 import { 创建会话数据源 } from './招聘数据源/会话';
 import { 创建目录数据源 } from './招聘数据源/目录';
 import { 创建简历数据源 } from './招聘数据源/简历';
@@ -49,6 +51,7 @@ import { 创建真人会话数据源 } from './招聘数据源/真人会话';
 import { 创建P8控制面数据源 } from './招聘数据源/P8控制面';
 import { 创建简历预填数据源 } from './招聘数据源/简历预填';
 import { 创建JD导入数据源 } from './招聘数据源/JD导入';
+import { 创建接触记录数据源 } from './招聘数据源/接触记录';
 
 export interface HTTP招聘数据源依赖 {
   client: Pick<BFF客户端, '请求' | '请求二进制'>;
@@ -59,7 +62,7 @@ export interface HTTP招聘数据源依赖 {
 export type HTTP招聘数据源 = 会话数据源 & 目录数据源 & 简历数据源 &
   意向数据源 & 岗位数据源 & 组织数据源 & 隐私数据源 & Agent规则数据源 &
   发现推荐数据源 & 附件简历数据源 & MatchCase数据源 & 真人会话数据源 & P8控制面数据源 &
-  简历预填数据源 & JD导入数据源;
+  简历预填数据源 & JD导入数据源 & 接触记录数据源;
 
 export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP招聘数据源 {
   const 请求 = deps.client.请求;
@@ -79,5 +82,6 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
     ...创建P8控制面数据源(请求),
     ...创建简历预填数据源(请求),
     ...创建JD导入数据源(请求),
+    ...创建接触记录数据源(请求),
   };
 }

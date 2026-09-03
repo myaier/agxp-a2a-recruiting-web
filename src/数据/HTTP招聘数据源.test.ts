@@ -588,7 +588,8 @@ describe('HTTP 招聘数据源', () => {
   // Task 1（P8）：第十三个域 facade（P8 控制面）一并组合进根 facade。
   // Task 1（简历预填）：第十四个域 facade（onboarding resume-prefill.v1 只读建议）一并组合进根 facade。
   // Task 1（JD 导入）：第十五个域 facade（job-draft-imports 建议稿）一并组合进根 facade。
-  it('根 facade 组合十五个域且不丢公开方法', () => {
+  // Task 1（接触记录）：第十六个域 facade（候选 me/contact-events）一并组合进根 facade。
+  it('根 facade 组合十六个域且不丢公开方法', () => {
     const source = 创建HTTP招聘数据源(依赖());
     expect(Object.keys(source).sort()).toEqual([
       '保存简历', '保存招聘方档案', '创建岗位', '创建意向', '创建首次意向', '创建企业管理员申请',
@@ -626,6 +627,8 @@ describe('HTTP 招聘数据源', () => {
       '读取简历预填',
       // JD 导入域（job-draft-imports 建议稿）
       '读取JD导入',
+      // 接触记录域（候选 me/contact-events）
+      '读取接触事件',
     ].sort());
     // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
     expect(Object.keys(source)).not.toContain('读取公开岗位');
@@ -634,6 +637,35 @@ describe('HTTP 招聘数据源', () => {
     expect(Object.keys(source)).not.toContain('创建候选岗位watch');
     expect(Object.keys(source)).not.toContain('撤销候选岗位不感兴趣');
     expect(Object.keys(source)).not.toContain('读取候选岗位委托列表');
+  });
+
+  // Task 1（接触记录）：第十六个域 facade 组合后经共用 mock client 捕获正确的 contact-events 路径。
+  it('根 facade 经接触记录域读取 contact-events 并带 limit=50', async () => {
+    请求Mock.mockResolvedValue({
+      result: {
+        items: [{
+          event_id: 'cev_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          organization: {
+            organization_id: 'org_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            display_name: 'Acme',
+          },
+          action: 'contact_started',
+          occurred_at: '2026-09-01T08:00:00Z',
+        }],
+        next_cursor: null,
+      },
+      etag: null,
+      requestId: 'r1',
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    const 页 = await source.读取接触事件();
+    expect(页.items[0]).toMatchObject({ eventId: 'cev_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
+    expect(页.nextCursor).toBeNull();
+    expect(请求Mock).toHaveBeenCalledTimes(1);
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/me/contact-events?limit=50',
+      不缓存: true,
+    });
   });
 
   // P3：隐私与组织搜索经根 facade 走到线上；CandidateJob 只留编译期闭类型，无请求方法。
