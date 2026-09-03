@@ -198,9 +198,11 @@ export function 创建接触记录操作(deps: 后端操作依赖): 接触记录
         : await 后端.读取接触事件();
       if (!栅栏仍当前(fence)) return; // 迟到成功只释放锁
       if (input.模式 === '追加') {
-        // 分页纪律：与请求相同的不前进 cursor、页内与已载窗口重叠都整页拒绝
-        if (页.nextCursor === 请求游标 || 页.items.some((项) =>
-          旧.items.some((已载) => 已载.eventId === 项.eventId))) {
+        // 分页纪律：与请求相同的不前进 cursor、返回已消费过的 cursor（一次性合同被
+        // 破坏）、页内与已载窗口重叠都整页拒绝
+        if (页.nextCursor === 请求游标 ||
+          (页.nextCursor !== null && 接触记录已消费游标.current.has(页.nextCursor)) ||
+          页.items.some((项) => 旧.items.some((已载) => 已载.eventId === 项.eventId))) {
           写快照((快照) => ({ ...快照, 刷新中: false, error: 取后端错误文案(分页契约错误()) }));
           return;
         }

@@ -62,13 +62,17 @@ export default function 接触记录() {
   const subjectId = 后端状态.主体?.last_used_role === 'candidate'
     ? 后端状态.主体.subject_id
     : null;
-  // 渲染 gate：只有当前 owner 的成功快照可见，其余一律零业务行
-  const 可见Backend事件 = 是后端 &&
+  // 渲染 gate：只有当前 owner 的成功快照可见；未开始/进行中/失败/owner 不匹配
+  // 一律零业务行，也不显示空态 —— 未知不是权威零（spec §B 中性状态）
+  const 快照可见 = 是后端 &&
     后端状态.接触记录.阶段 === '成功' &&
-    后端状态.接触记录.ownerSubjectId === subjectId
-    ? 后端状态.接触记录.items
-    : [];
-  const 页面记录 = 是后端 ? 可见Backend事件.map(接触事件到展示) : 接触记录列表;
+    后端状态.接触记录.ownerSubjectId === subjectId;
+  const 页面记录 = !是后端
+    ? 接触记录列表
+    : 快照可见 ? 后端状态.接触记录.items.map(接触事件到展示) : [];
+  // 空态文案只属于「当前 owner 的成功空快照」（或 Mock 的既有空列表）
+  const 显示空态 = 页面记录.length === 0 &&
+    (!是后端 || 快照可见);
 
   useEffect(() => {
     if (!是后端 || subjectId === null) return;
@@ -87,7 +91,7 @@ export default function 接触记录() {
           你只需要知道是哪家公司、在什么时候做了什么。
         </div>
 
-        {页面记录.length === 0 ? (
+        {显示空态 ? (
           <div className={样式.空态}>
             <div className={样式.空态图}>◎</div>
             <div className={样式.空态标题}>最近还没有企业接触过你</div>
@@ -95,7 +99,7 @@ export default function 接触记录() {
               代理会持续替你寻访；有人来看时，这里会记下企业与动作。
             </div>
           </div>
-        ) : (
+        ) : 页面记录.length === 0 ? null : (
           <div className={样式.卡}>
             {页面记录.map((条) => (
               <div className={样式.行} key={条.编号}>

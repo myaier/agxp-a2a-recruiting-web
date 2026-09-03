@@ -10,7 +10,7 @@ import { BFF错误 } from '../HTTP客户端';
 import type { BFF客户端 } from '../HTTP客户端';
 
 const 游标模式 = /^[A-Za-z0-9_-]+$/;
-const RFC3339模式 = /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/;
+const RFC3339模式 = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/;
 const 事件ID模式 = /^cev_[0-9a-f]{32}$/;
 const 组织ID模式 = /^org_[0-9a-f]{32}$/;
 /** contact-events 契约的 cursor 上限（与 MatchCase 域的 4096 不同，本域冻结为 512）。 */
@@ -67,10 +67,25 @@ function 要求枚举<T extends string>(值: unknown, 取值: readonly T[]): T {
   throw 契约错误();
 }
 
-/** occurred_at 按 OpenAPI 声明为 RFC 3339；形状或可解析性不对都拒绝。 */
+/**
+ * occurred_at 按 OpenAPI 声明为 RFC 3339；形状、可解析性与真实日历三者都过才放行。
+ * Date.parse 会把 2026-02-30 / 24:00 / :60 这类分量归一化成另一天 —— 把分量按原
+ * 时区偏移还原回去逐一比对，任何被归一化的非法日历都按契约漂移拒绝（Go 后端同口径）。
+ */
 function 要求RFC3339(值: unknown): string {
   const 字符串 = 要求字符串(值);
-  if (!RFC3339模式.test(字符串) || Number.isNaN(Date.parse(字符串))) throw 契约错误();
+  const 组 = RFC3339模式.exec(字符串);
+  if (组 === null || Number.isNaN(Date.parse(字符串))) throw 契约错误();
+  const [, 年, 月, 日, 时, 分, 秒, , 区] = 组;
+  const 偏移分钟 = 区 === 'Z' || 区 === 'z'
+    ? 0
+    : (区[0] === '-' ? -1 : 1) * (Number(区.slice(1, 3)) * 60 + Number(区.slice(4, 6)));
+  const 还原 = new Date(Date.parse(字符串) + 偏移分钟 * 60000);
+  if (还原.getUTCFullYear() !== Number(年) || 还原.getUTCMonth() !== Number(月) - 1 ||
+    还原.getUTCDate() !== Number(日) || 还原.getUTCHours() !== Number(时) ||
+    还原.getUTCMinutes() !== Number(分) || 还原.getUTCSeconds() !== Number(秒)) {
+    throw 契约错误();
+  }
   return 字符串;
 }
 

@@ -107,10 +107,12 @@ describe('接触记录 · Backend 权威快照', () => {
     ['进行中', { 阶段: '进行中' as const }],
     ['失败', { 阶段: '失败' as const, error: '后端服务暂时不可用，请稍后重试' }],
     ['owner 不匹配', { ownerSubjectId: 'sub_2', 阶段: '成功' as const, items: [事件A] }],
-  ])('%s 时渲染零业务行，不显示 Mock 公司', (_名, patch) => {
+  ])('%s 时渲染零业务行，不显示 Mock 公司，不冒充权威空结果', (_名, patch) => {
     渲染Backend(patch);
     expect(screen.queryByText(接触记录列表[0].公司)).toBeNull();
     expect(screen.queryByText('Acme')).toBeNull();
+    // 中性状态：未知不是零 —— 空态文案只在当前 owner 的成功空快照下出现
+    expect(screen.queryByText('最近还没有企业接触过你')).toBeNull();
   });
 
   it('仍有 nextCursor 时只显示已载窗口，不出现「加载更多」或全量承诺', () => {

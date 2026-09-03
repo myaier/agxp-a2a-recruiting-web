@@ -215,6 +215,23 @@ describe('接触记录操作', () => {
     expect(env.当前().接触记录.error).not.toBeNull();
   });
 
+  it('追加页返回更早已消费过的 cursor 也整页拒绝，不混入该页', async () => {
+    const env = 创建环境();
+    vi.mocked(env.数据源.读取接触事件)
+      .mockResolvedValueOnce({ items: [事件A], nextCursor: 'cursor_2' })
+      .mockResolvedValueOnce({ items: [事件B], nextCursor: 'cursor_3' })
+      .mockResolvedValueOnce({ items: [事件B], nextCursor: 'cursor_2' });
+    await env.操作.加载接触记录();
+    await env.操作.追加接触记录();
+    expect(env.当前().接触记录.items).toEqual([事件A, 事件B]);
+    expect(env.当前().接触记录.nextCursor).toBe('cursor_3');
+    await env.操作.追加接触记录();
+    // 第三页返回已消费过的 cursor_2：cursor 一次性合同被破坏，整页拒绝
+    expect(env.当前().接触记录.items).toEqual([事件A, 事件B]);
+    expect(env.当前().接触记录.nextCursor).toBe('cursor_3');
+    expect(env.当前().接触记录.error).not.toBeNull();
+  });
+
   it('cursor 已尽时追加零请求', async () => {
     const env = 创建环境();
     vi.mocked(env.数据源.读取接触事件)

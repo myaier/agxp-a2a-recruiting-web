@@ -74,6 +74,11 @@ describe('解接触事件页', () => {
     // 坏时间
     { ...wire页, items: [{ ...wire事件, occurred_at: 'yesterday' }] },
     { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-01' }] },
+    // 非法日历分量：Date.parse 会归一化成另一天，strict decoder 必须拒绝
+    { ...wire页, items: [{ ...wire事件, occurred_at: '2026-02-30T08:00:00Z' }] },
+    { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-31T08:00:00Z' }] },
+    { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-01T24:00:00Z' }] },
+    { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-01T08:60:00Z' }] },
     // 坏 ID
     { ...wire页, items: [{ ...wire事件, event_id: 'cev_short' }] },
     { ...wire页, items: [{ ...wire事件, organization: { ...wire事件.organization, organization_id: 'org_short' } }] },
