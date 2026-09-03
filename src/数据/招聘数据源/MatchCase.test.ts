@@ -263,6 +263,64 @@ describe('MatchCase数据源', () => {
       .toThrow(契约漂移);
   });
 
+  it.each(['agent_unavailable', 'agent_result_invalid'] as const)(
+    'attention 解码合法 code %s',
+    (code) => {
+      const result = 解P5详情({
+        ...P5候选详情Wire,
+        state: {
+          ...P5状态视图Wire,
+          lifecycle: 'open', stage: 'resume_submission', status: 'attention_required',
+          step: 'screening_resume', needs_user: false,
+          agent_attention: { code, retryable: false },
+        },
+        needs_action: false,
+        available_actions: [],
+      }, 'candidate');
+      expect(result.state.agentAttention).toEqual({ code, retryable: false });
+    },
+  );
+
+  it.each([
+    { code: 'future', retryable: false },
+    { code: 'agent_unavailable', retryable: true },
+    { code: 'agent_unavailable', retryable: false, task_id: 'secret' },
+    null,
+  ] as const)('非法 agent_attention %s fail closed', (agent_attention) => {
+    expect(() => 解P5详情({
+      ...P5候选详情Wire,
+      state: {
+        ...P5状态视图Wire,
+        lifecycle: 'open', stage: 'resume_submission', status: 'attention_required',
+        step: 'screening_resume', needs_user: false, agent_attention,
+      },
+      needs_action: false,
+      available_actions: [],
+    }, 'candidate')).toThrow(契约漂移);
+  });
+
+  it('非 attention 状态携带对象 fail closed；legacy attention 缺字段合法', () => {
+    expect(() => 解P5详情({
+      ...P5候选详情Wire,
+      state: {
+        ...P5状态视图Wire,
+        agent_attention: { code: 'agent_unavailable', retryable: false },
+      },
+    }, 'candidate')).toThrow(契约漂移);
+
+    const legacy = 解P5详情({
+      ...P5候选详情Wire,
+      state: {
+        ...P5状态视图Wire,
+        lifecycle: 'open', stage: 'resume_submission', status: 'attention_required',
+        step: 'screening_resume', needs_user: false,
+      },
+      needs_action: false,
+      available_actions: [],
+    }, 'candidate');
+    expect(legacy.state.agentAttention).toBeNull();
+  });
+
   it('available_actions 闭合十词、不重复、按 viewer 归属，且与 needs_action 精确耦合', () => {
     // 候选端收到招聘端专属 decide_resume_screening → 漂移
     expect(() => 解P5详情({ ...P5候选详情Wire, available_actions: ['decide_resume_screening'] }, 'candidate'))

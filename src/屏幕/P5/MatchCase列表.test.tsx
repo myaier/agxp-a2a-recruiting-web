@@ -71,6 +71,7 @@ function 候选行(选项: { caseId: string; 待办?: boolean; 更新于?: strin
       outcome: null, outcomeCode: null,
       createdAt: '2026-08-29T01:00:00Z',
       updatedAt: 选项.更新于 ?? '2026-08-29T02:00:00Z', finalizedAt: null,
+      agentAttention: null,
     },
     needsAction: 选项.待办 ?? true,
     intentionId: 意向ID,
@@ -98,6 +99,18 @@ function 招聘行(选项: { caseId: string; 待办?: boolean; 别名?: string }
 function 契约外行(caseId: string): P5列表项 {
   const 行 = 候选行({ caseId });
   return { ...行, state: { ...行.state, step: 'handoff_pending' } };
+}
+
+/** S1 attention 合法行 + owner-safe agent_attention：列表只给安全说明与徽标，零 retry。 */
+function 注意行(行: P5列表项): P5列表项 {
+  return {
+    ...行,
+    state: {
+      ...行.state,
+      stage: 'resume_submission', status: 'attention_required', step: 'screening_resume',
+      agentAttention: { code: 'agent_unavailable', retryable: false },
+    },
+  };
 }
 
 function 快照(选项: {
@@ -428,6 +441,56 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     await user.click(screen.getByRole('button', { name: '重试' }));
     expect(mock刷新工作区).toHaveBeenCalledWith('candidate', 意向ID);
   });
+
+  // Hosted Agent 失败合同：attention 行只给 owner-safe 说明；徽标按 viewer 待办优先，
+  // 非待办时是「需注意」而非「代理处理中」；不新增任何 Agent retry 入口。
+  it.each(['candidate', 'recruiter'] as const)(
+    'attention 行给安全说明与「需注意」徽标，待办优先，零 Agent 重试（%s）',
+    (role) => {
+      const filterRef = role === 'candidate' ? 意向ID : 职位ID;
+      // needsAction=false：说明在场、徽标「需注意」、「代理处理中」缺席
+      const 非待办 = role === 'candidate'
+        ? 候选行({ caseId: 'mc_att', 待办: false })
+        : 招聘行({ caseId: 'mc_att', 待办: false });
+      置P5状态({ role, filterRef, 快照: 快照({ items: [注意行(非待办)] }) });
+      render(列表元素(role, filterRef));
+      expect(screen.getByText('AI 服务暂时不可用，本 Case 尚未继续')).toBeTruthy();
+      // 「需注意」徽标与 attention 状态文案同词（闭词表）：出现即算
+      expect(screen.getAllByText('需注意').length).toBeGreaterThan(0);
+      expect(screen.queryByText('代理处理中')).toBeNull();
+      expect(screen.queryByText('需要你')).toBeNull();
+      // attention 不出 retry_resume_readiness 卡，也没有任何新增 Agent retry 键
+      expect(screen.queryByText('重试简历校验')).toBeNull();
+      expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
+      cleanup();
+
+      // needsAction=true：徽标仍是「需要你」且说明仍在
+      const 待办 = role === 'candidate'
+        ? 候选行({ caseId: 'mc_att', 待办: true })
+        : 招聘行({ caseId: 'mc_att', 待办: true });
+      置P5状态({ role, filterRef, 快照: 快照({ items: [注意行(待办)] }) });
+      render(列表元素(role, filterRef));
+      expect(screen.getByText('需要你')).toBeTruthy();
+      expect(screen.getByText('AI 服务暂时不可用，本 Case 尚未继续')).toBeTruthy();
+      expect(screen.queryByText('代理处理中')).toBeNull();
+      expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
+      cleanup();
+
+      // retry_resume_readiness 的既有合法 S1 waiting 行原样映射（不被 attention 改写）
+      const S1等待 = 候选行({ caseId: 'mc_s1', 待办: true });
+      const S1行 = {
+        ...S1等待,
+        state: {
+          ...S1等待.state,
+          stage: 'resume_submission' as const, status: 'waiting' as const, step: 'awaiting_resume_parse' as const,
+        },
+      };
+      置P5状态({ role: 'candidate', filterRef: 意向ID, 快照: 快照({ items: [S1行] }) });
+      render(列表元素('candidate', 意向ID));
+      expect(screen.getByText('需要你')).toBeTruthy();
+      expect(screen.queryByText('需注意')).toBeNull();
+    },
+  );
 });
 
 // ── 两屏 Backend 分支：scope 坐标选择 + 横幅不声称全量 + Mock 零 P5 ──────────────

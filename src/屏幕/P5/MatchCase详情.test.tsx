@@ -98,6 +98,7 @@ function 状态(覆盖: Partial<P5列表项['state']> = {}): P5列表项['state'
     step: 'human_decision', round: 1, roundBudget: 3, needsUser: true,
     outcome: null, outcomeCode: null,
     createdAt: '2026-08-29T01:00:00Z', updatedAt: '2026-08-29T02:00:00Z', finalizedAt: null,
+    agentAttention: null,
     ...覆盖,
   };
 }
@@ -1601,5 +1602,78 @@ describe('MatchCase详情 · completed 移交只读（Task 7）', () => {
     } finally {
       存储写入.mockRestore();
     }
+  });
+});
+
+// ══ Hosted Agent 失败合同：owner-safe agent_attention 只给安全说明，零重试入口 ══
+
+/** S1 attention 合法行（open|resume_submission|attention_required|screening_resume）：
+ *  行侧白名单为空（零动作卡），needsAction 可真可假 —— 徽标归属按 viewer 待办优先。 */
+function 注意详情DTO(role: P5角色, needsAction: boolean): P5详情 {
+  const state = 状态({
+    ...(role === 'recruiter' ? { caseId: 'mc_hr' } : {}),
+    stage: 'resume_submission', status: 'attention_required', step: 'screening_resume',
+    needsUser: false,
+    agentAttention: { code: 'agent_unavailable', retryable: false },
+  });
+  return role === 'candidate'
+    ? 候选详情DTO({ state, needsAction, availableActions: [] })
+    : 招聘详情DTO({ state, needsAction, availableActions: [] });
+}
+
+describe('MatchCase详情 · owner-safe agent_attention', () => {
+  beforeEach(() => {
+    mock读取详情.mockClear();
+    mock决定S0.mockClear();
+    mock决定S1.mockClear();
+    mock决定S2.mockClear();
+    mock决定S3.mockClear();
+    mock提交简历.mockClear();
+    mock跳转.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each(['candidate', 'recruiter'] as const)(
+    'attention 详情给安全说明，徽标按待办优先，零 Agent 重试（%s）',
+    async (role) => {
+      const caseId = role === 'candidate' ? 'mc_direct' : 'mc_hr';
+      // needsAction=false：说明在场（状态行后）、徽标「需注意」、「代理处理中」缺席
+      置详情状态({ role, caseId, 快照: 详情快照({ detail: 注意详情DTO(role, false) }) });
+      渲染详情(role, caseId);
+      expect(await screen.findByText('AI 服务暂时不可用，本 Case 尚未继续')).toBeTruthy();
+      // 「需注意」徽标与 attention 状态文案同词（闭词表）：出现即算
+      expect(screen.getAllByText('需注意').length).toBeGreaterThan(0);
+      expect(screen.queryByText('代理处理中')).toBeNull();
+      expect(screen.queryByText('需要你')).toBeNull();
+      // attention 行不出现 retry_resume_readiness 卡/控件，也没有任何新增 Agent retry 键
+      expect(screen.queryByText('重试简历校验')).toBeNull();
+      expect(screen.queryByRole('button', { name: '重试校验' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
+      expect(mock提交简历).not.toHaveBeenCalled();
+      cleanup();
+
+      // needsAction=true：徽标仍是「需要你」且说明仍在
+      置详情状态({ role, caseId, 快照: 详情快照({ detail: 注意详情DTO(role, true) }) });
+      渲染详情(role, caseId);
+      expect(screen.getByText('需要你')).toBeTruthy();
+      expect(screen.getByText('AI 服务暂时不可用，本 Case 尚未继续')).toBeTruthy();
+      expect(screen.queryByText('代理处理中')).toBeNull();
+      expect(screen.queryByRole('button', { name: '重试校验' })).toBeNull();
+      cleanup();
+    },
+  );
+
+  it('retry_resume_readiness 的既有合法 S1 case 原文案与 operation 仍在（attention 接线不触碰）', async () => {
+    const user = userEvent.setup();
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1等待详情(true) }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(await screen.findByText('重试简历校验')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '重试校验' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认递交' }));
+    expect(mock提交简历).toHaveBeenCalledTimes(1);
+    expect(mock提交简历).toHaveBeenCalledWith('mc_direct', 绑定附件.fileId, 绑定附件.fileVersionId, true);
   });
 });

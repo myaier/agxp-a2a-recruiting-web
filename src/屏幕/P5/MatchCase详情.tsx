@@ -262,11 +262,12 @@ export function MatchCase详情(props: { role: P5角色 }) {
         }
         右侧={
           // 终局（ended/completed）只读：不挂「需要你/代理处理中」徽标 —— 那是进行中的语义。
+          // attention 行非待办时给「需注意」（owner-safe），绝不显示「代理处理中」。
           正常 === null || 终局 ? undefined : (
             <span
-              className={`${列表样式.徽标} ${正常.待办 ? 列表样式.徽标待办 : 列表样式.徽标代理}`}
+              className={`${列表样式.徽标} ${正常.待办 || 正常.注意说明 !== null ? 列表样式.徽标待办 : 列表样式.徽标代理}`}
             >
-              {正常.待办 ? '需要你' : '代理处理中'}
+              {正常.待办 ? '需要你' : 正常.注意说明 !== null ? '需注意' : '代理处理中'}
             </span>
           )
         }
@@ -426,6 +427,11 @@ function 详情主体({
           轮次 {视图.轮次.当前}/{视图.轮次.预算}
         </span>
       </div>
+
+      {/* Hosted Agent 失败合同：attention 行的 owner-safe 说明（状态行之后，纯文本零操作） */}
+      {视图.注意说明 !== null ? (
+        <div className={列表样式.注意说明}>{视图.注意说明}</div>
+      ) : null}
 
       {/* 终局摘要（wire outcome/reason 原样，不翻译不改写） */}
       {视图.终局摘要 !== null ? (

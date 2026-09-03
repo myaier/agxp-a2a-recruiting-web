@@ -33,6 +33,7 @@ function 行(caseId: string): P5列表项 {
       step: 'policy_check', round: 0, roundBudget: 3, needsUser: false,
       outcome: null, outcomeCode: null,
       createdAt: '2026-09-01T08:00:00Z', updatedAt: '2026-09-01T09:00:00Z', finalizedAt: null,
+      agentAttention: null,
     },
     needsAction: true,
     intentionId: 意向ID,

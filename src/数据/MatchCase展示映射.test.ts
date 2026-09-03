@@ -128,6 +128,7 @@ function 造状态(覆盖: Partial<P5状态视图> = {}): P5状态视图 {
     createdAt: '2026-08-29T01:00:00Z',
     updatedAt: '2026-08-29T02:00:00Z',
     finalizedAt: null,
+    agentAttention: null,
     ...覆盖,
   };
 }
@@ -508,7 +509,7 @@ describe('映射P5详情：别名与键纪律', () => {
     expect(视图.caseId).toBe('mc_42');
     expect(Object.keys(视图).sort()).toEqual([
       'actions', 'caseId', 'candidateAlias', '详情终局', 'handoff', 'intentionId', 'kind', 'role',
-      '补充问题', '状态文案', '终局', '终局摘要', '职位', '轮次', '阶段标题', '阶段区块', '步骤说明', '更新于', '待办',
+      '补充问题', '状态文案', '终局', '终局摘要', '职位', '轮次', '阶段标题', '阶段区块', '步骤说明', '更新于', '待办', '注意说明',
     ].sort());
     const 序列化 = JSON.stringify(视图);
     expect(序列化).not.toMatch(/匹配分|评分|推荐理由|亮点|公司简介|公司档案|在线简历|score|highlights|match_reasons/);
@@ -676,6 +677,46 @@ describe('映射P5详情：respond_fact 补充问题接入', () => {
   });
 });
 
+// ── owner-safe agent_attention 投影（Hosted Agent 失败合同）──
+
+describe('映射P5列表项/映射P5详情：attention 投影统一安全说明', () => {
+  it.each([
+    [{ code: 'agent_unavailable', retryable: false } as const, 'AI 服务暂时不可用，本 Case 尚未继续'],
+    [{ code: 'agent_result_invalid', retryable: false } as const, '本次 AI 结果无法安全用于推进 Case'],
+    [null, '本阶段需要注意'],
+  ])('attention 投影统一安全说明', (agentAttention, copy) => {
+    const state = 造状态({
+      lifecycle: 'open', stage: 'resume_submission', status: 'attention_required',
+      step: 'screening_resume', needsUser: false, agentAttention,
+    });
+    expect(映射P5列表项(造列表项({ state }))).toMatchObject({
+      kind: '正常', 注意说明: copy,
+    });
+    expect(映射P5详情(造详情({ state }))).toMatchObject({
+      kind: '正常', 注意说明: copy,
+    });
+  });
+
+  it('attention 行仍优先显示 viewer 待办归属', () => {
+    const state = 造状态({
+      lifecycle: 'open', stage: 'needs_coordination', status: 'attention_required',
+      step: 'coordinating', needsUser: false,
+      agentAttention: { code: 'agent_unavailable', retryable: false },
+    });
+    expect(映射P5列表项(造列表项({ state, needsAction: true }))).toMatchObject({
+      kind: '正常', 待办: true, 注意说明: 'AI 服务暂时不可用，本 Case 尚未继续',
+    });
+  });
+
+  it('非 attention 状态注意说明恒 null（是否需注意由 注意说明!==null 唯一推导）', () => {
+    const 行 = 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision');
+    // 行侧 status=needs_user 且带 agentAttention 是 decode 已挡的组合：映射层不读该块
+    const 带块 = { ...行, agentAttention: { code: 'agent_unavailable', retryable: false } as const };
+    expect(映射P5列表项(造列表项({ state: 带块 }))).toMatchObject({ kind: '正常', 注意说明: null });
+    expect(映射P5详情(造详情({ state: 带块 }))).toMatchObject({ kind: '正常', 注意说明: null });
+  });
+});
+
 // ── 列表项 ──
 
 describe('映射P5列表项', () => {
@@ -721,7 +762,7 @@ describe('映射P5列表项', () => {
     expect(视图.intentionId).toBe(null);
     expect(Object.keys(视图).sort()).toEqual([
       'caseId', 'candidateAlias', 'intentionId', 'kind', 'role',
-      '待办', '更新于', '状态文案', '终局', '职位', '阶段标题',
+      '待办', '更新于', '状态文案', '终局', '职位', '阶段标题', '注意说明',
     ].sort());
     expect(JSON.stringify(视图)).not.toMatch(/匹配分|评分|推荐理由|亮点|公司简介|在线简历|score|highlights/);
   });

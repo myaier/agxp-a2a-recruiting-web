@@ -33,13 +33,12 @@ import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { useMatchCase轮询 } from '../../状态/后端/useMatchCase轮询';
 import type { P5列表快照 } from '../../状态/后端/类型';
 
-/** viewer 专属动作归属徽标：列表行 needs_action=true → 需要你；否则代理在替你谈。 */
-function 待办徽标({ 待办 }: { 待办: boolean }) {
-  return (
-    <span className={`${样式.徽标} ${待办 ? 样式.徽标待办 : 样式.徽标代理}`}>
-      {待办 ? '需要你' : '代理处理中'}
-    </span>
-  );
+/** viewer 专属动作归属徽标：needs_action=true → 需要你；否则 attention 行 → 需注意
+ *  （owner-safe：绝不把 hosted agent 失败显示成「代理处理中」）；其余 → 代理处理中。 */
+function 待办徽标({ 待办, 注意说明 }: { 待办: boolean; 注意说明: string | null }) {
+  const copy = 待办 ? '需要你' : 注意说明 !== null ? '需注意' : '代理处理中';
+  const tone = 待办 || 注意说明 !== null ? 样式.徽标待办 : 样式.徽标代理;
+  return <span className={`${样式.徽标} ${tone}`}>{copy}</span>;
 }
 
 /** 冻结职位四事实的展示段（职位名/城市·薪资带/技能标签），双端卡共用。 */
@@ -60,7 +59,8 @@ function 职位段({ 视图 }: { 视图: P5列表正常视图 }) {
   );
 }
 
-/** 阶段行：阶段标题 + 状态文案（权威是 state.lifecycle/stage/status，无服务端下一步字段）。 */
+/** 阶段行：阶段标题 + 状态文案（权威是 state.lifecycle/stage/status，无服务端下一步字段）。
+ *  attention 行在状态头后追加 owner-safe 说明（纯文本，零操作）。 */
 function 阶段段({ 视图 }: { 视图: P5列表正常视图 }) {
   return (
     <div className={样式.阶段区}>
@@ -69,6 +69,9 @@ function 阶段段({ 视图 }: { 视图: P5列表正常视图 }) {
         <span className={`${样式.状态文} 单行`}>{视图.状态文案}</span>
         <span className={样式.尖括号}>›</span>
       </div>
+      {视图.注意说明 !== null ? (
+        <div className={样式.注意说明}>{视图.注意说明}</div>
+      ) : null}
     </div>
   );
 }
@@ -79,7 +82,7 @@ function 候选在谈卡({ 视图, 按下 }: { 视图: P5列表正常视图; 按
     <白卡 按下={按下} 类名={样式.卡}>
       <div className={样式.头行}>
         <div className={`${样式.职位名} 单行`}>{视图.职位.职位名}</div>
-        <待办徽标 待办={视图.待办} />
+        <待办徽标 待办={视图.待办} 注意说明={视图.注意说明} />
       </div>
       <职位段 视图={视图} />
       <阶段段 视图={视图} />
@@ -97,7 +100,7 @@ function 招聘在谈卡({ 视图, 按下 }: { 视图: P5列表正常视图; 按
           <人像图标 尺寸={16} 色="var(--次要浅)" />
         </span>
         <span className={`${样式.代号} 单行`}>{视图.candidateAlias}</span>
-        <待办徽标 待办={视图.待办} />
+        <待办徽标 待办={视图.待办} 注意说明={视图.注意说明} />
       </div>
       <div className={`${样式.职位名} 单行`}>{视图.职位.职位名}</div>
       <职位段 视图={视图} />

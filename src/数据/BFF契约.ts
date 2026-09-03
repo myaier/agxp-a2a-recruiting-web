@@ -692,6 +692,13 @@ export type P5动作 =
   | 'confirm_intent'
   | 'decline_intent';
 
+/** Hosted Agent 失败合同（P5）：owner-safe attention 块，只在 status=attention_required 出现。 */
+export type BFFMatchCaseAgent注意码 = 'agent_unavailable' | 'agent_result_invalid';
+export interface BFFMatchCaseAgent注意 {
+  code: BFFMatchCaseAgent注意码;
+  retryable: false;
+}
+
 /** MatchCaseView：四端共用的裸状态。ended 携三列终局字段，completed 只留 finalized_at。 */
 export interface BFFMatchCase视图 {
   case_id: string;
@@ -707,6 +714,8 @@ export interface BFFMatchCase视图 {
   created_at: string;
   updated_at: string;
   finalized_at?: string | null;
+  /** 仅 status=attention_required 时可在场（缺席 = legacy）；显式 null / 未知键 / retryable=true 由 decoder 拒绝。 */
+  agent_attention?: BFFMatchCaseAgent注意;
 }
 
 /** WorkspacePublicJob + MatchCaseWorkspaceJob：Case 创建时冻结的公开职位四事实快照。 */

@@ -149,6 +149,7 @@ const 协同类目全表 = [
   'work_mode', 'work_schedule', 'travel', 'team_and_reporting', 'technical_direction',
 ] as const;
 const 意向词全表 = ['', 'confirm', 'decline'] as const;
+const Agent注意码全表 = ['agent_unavailable', 'agent_result_invalid'] as const satisfies readonly P5Agent注意码[];
 
 /** 详情四个阶段区的固定 S0→S3 顺序（严格客户端同款）：数量与顺序都不可漂。 */
 const 阶段顺序 = ['anonymous_screening', 'resume_submission', 'needs_coordination', 'intent_confirmation'] as const;
@@ -215,6 +216,10 @@ export interface P5工作区职位 {
   };
 }
 
+/** Hosted Agent 失败合同（P5）：owner-safe attention 的归一化形状；本 release 只收 retryable:false。 */
+export type P5Agent注意码 = 'agent_unavailable' | 'agent_result_invalid';
+export interface P5Agent注意 { code: P5Agent注意码; retryable: false }
+
 export interface P5状态视图 {
   caseId: string;
   lifecycle: P5生命周期;
@@ -229,6 +234,7 @@ export interface P5状态视图 {
   createdAt: string;
   updatedAt: string;
   finalizedAt: string | null;
+  agentAttention: P5Agent注意 | null;
 }
 
 export interface P5清单项 { label: string; done: boolean }
@@ -326,12 +332,22 @@ export interface P5列表页 {
 
 // ── 具体 decoder：逐字段过 guard，不做 `as` 直转 ──
 
+/**
+ * agent_attention：exact 二键闭合对象，本 release 只收 literal retryable:false
+ * （无重试动作/端点）；未知 code、多键、显式 null、retryable=true 全部 fail closed。
+ */
+function 解Agent注意(input: unknown): P5Agent注意 {
+  const raw = 要求闭合对象(input, ['code', 'retryable']);
+  if (raw.retryable !== false) throw 契约错误();
+  return { code: 要求枚举(raw.code, Agent注意码全表), retryable: false };
+}
+
 /** MatchCaseView：矩阵四元组、needs_user 镜像、round 预算与生命周期↔终局列组合全部闭合。 */
 function 解P5状态视图(input: unknown): P5状态视图 {
   const raw = 要求闭合对象(input, [
     'case_id', 'lifecycle', 'stage', 'status', 'step', 'round', 'round_budget',
     'needs_user', 'outcome', 'outcome_code', 'created_at', 'updated_at',
-  ], ['finalized_at']);
+  ], ['finalized_at', 'agent_attention']);
   const lifecycle = 要求枚举(raw.lifecycle, 生命周期全表);
   const stage = 要求枚举(raw.stage, 阶段全表);
   const status = 要求枚举(raw.status, 状态全表);
@@ -343,6 +359,10 @@ function 解P5状态视图(input: unknown): P5状态视图 {
   if (round > roundBudget) throw 契约错误();
   const needsUser = 要求布尔(raw.needs_user);
   if (needsUser !== (status === 'needs_user')) throw 契约错误();
+  // owner-safe attention 块只属于 attention_required 行：缺席（legacy）归一为 null，
+  // 非 attention 状态携带对象即漂移；缺 attention 不是 decoder error。
+  const agentAttention = raw.agent_attention === undefined ? null : 解Agent注意(raw.agent_attention);
+  if (agentAttention !== null && status !== 'attention_required') throw 契约错误();
   const outcome = 要求可空字符串(raw.outcome);
   const outcomeCode = 要求可空字符串(raw.outcome_code);
   const finalizedAt = raw.finalized_at === undefined ? null : 要求可空RFC3339(raw.finalized_at);
@@ -370,6 +390,7 @@ function 解P5状态视图(input: unknown): P5状态视图 {
     createdAt: 要求RFC3339(raw.created_at),
     updatedAt: 要求RFC3339(raw.updated_at),
     finalizedAt,
+    agentAttention,
   };
 }
 

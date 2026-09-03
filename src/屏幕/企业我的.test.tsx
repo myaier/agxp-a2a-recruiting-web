@@ -51,6 +51,7 @@ function 招聘行(
       outcome: null, outcomeCode: null,
       createdAt: '2026-09-01T08:00:00Z', updatedAt: '2026-09-01T09:00:00Z',
       finalizedAt: lifecycle === 'open' ? null : '2026-09-01T10:00:00Z',
+      agentAttention: null,
     },
     needsAction,
     candidateAlias: 'candidate-0123456789ab',

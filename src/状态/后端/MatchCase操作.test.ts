@@ -54,6 +54,7 @@ function 候选状态(caseId: string): P5列表项['state'] {
     step: 'policy_check', round: 0, roundBudget: 3, needsUser: false,
     outcome: null, outcomeCode: null,
     createdAt: '2026-08-29T01:00:00Z', updatedAt: '2026-08-29T02:00:00Z', finalizedAt: null,
+    agentAttention: null,
   };
 }
 

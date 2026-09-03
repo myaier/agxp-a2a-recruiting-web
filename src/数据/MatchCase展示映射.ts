@@ -19,6 +19,7 @@ import type {
   P5状态视图,
   P5终局摘要,
   P5工作区职位,
+  P5Agent注意码,
 } from './招聘数据源/MatchCase';
 
 export type { P5角色, P5动作, P5步骤 } from './招聘数据源/MatchCase';
@@ -87,6 +88,15 @@ const 阶段区状态文案表 = {
   passed: '已通过',
   ended: '已结束',
 } as const satisfies Record<P5阶段区['state'], string>;
+
+/**
+ * Hosted Agent 失败合同（owner-safe）：两个 code 的安全说明 —— 只描述事实（AI 服务
+ * 不可用 / AI 结果无法安全使用），不暴露内部错误词、不暗示「代理处理中」、不提供重试。
+ */
+const Agent注意文案表 = {
+  agent_unavailable: 'AI 服务暂时不可用，本 Case 尚未继续',
+  agent_result_invalid: '本次 AI 结果无法安全用于推进 Case',
+} as const satisfies Record<P5Agent注意码, string>;
 
 /** 生命周期 → 是否终局（ended / completed 终态不再有 mutation 控件）。 */
 const 生命周期终局表 = {
@@ -261,6 +271,12 @@ export interface P5详情正常视图 {
   补充问题: P5补充问题视图 | null;
   阶段区块: readonly P5阶段区块视图[];
   终局摘要: P5终局摘要视图 | null;
+  /**
+   * Hosted Agent 失败合同：attention_required 行的 owner-safe 说明（missing → 通用
+   * 「本阶段需要注意」；非 attention 状态恒 null）。是否需注意由 注意说明 !== null
+   * 唯一推导，不保存第二个同源字段。
+   */
+  注意说明: string | null;
 }
 
 /** 契约错误视图：动作表恒空、无补充问题、无移交（与正常视图共享字段名以便联合窄化）。 */
@@ -286,6 +302,8 @@ export interface P5列表正常视图 {
   待办: boolean;
   终局: boolean;
   更新于: string;
+  /** 同 P5详情正常视图.注意说明：attention_required 行的安全说明，其余恒 null。 */
+  注意说明: string | null;
 }
 
 export interface P5列表契约错误视图 {
@@ -351,6 +369,17 @@ function 映射职位(job: P5工作区职位): P5职位视图 | null {
 function 映射终局摘要(摘要: P5终局摘要 | null): P5终局摘要视图 | null {
   if (摘要 === null || typeof 摘要 !== 'object') return null;
   return { 结束语: 摘要.outcome, 原因: 摘要.reasonSummary, 定格于: 摘要.finalizedAt };
+}
+
+/**
+ * attention_required 行的 owner-safe 说明：missing（legacy）给通用「本阶段需要注意」，
+ * 已知 code 给安全文案；非 attention 状态恒 null（不读 agentAttention 块）。
+ */
+function 映射Agent注意(state: P5状态视图): string | null {
+  if (state.status !== 'attention_required') return null;
+  return state.agentAttention === null
+    ? '本阶段需要注意'
+    : Agent注意文案表[state.agentAttention.code];
 }
 
 function 映射阶段区(区: P5阶段区): P5阶段区块视图 {
@@ -421,6 +450,7 @@ export function 映射P5列表项(item: P5列表项): P5列表视图 {
     待办: item.needsAction === true,
     终局: 生命周期终局表[行.lifecycle],
     更新于: state.updatedAt,
+    注意说明: 映射Agent注意(state),
   };
 }
 
@@ -511,5 +541,6 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
     补充问题,
     阶段区块: 区组.map(映射阶段区),
     终局摘要: 映射终局摘要(detail.terminalSummary),
+    注意说明: 映射Agent注意(state),
   };
 }

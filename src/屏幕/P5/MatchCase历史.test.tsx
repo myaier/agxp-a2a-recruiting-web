@@ -74,6 +74,7 @@ function 终局状态(选项: 行选项): P5列表项['state'] {
     outcomeCode: 是完成 ? null : 'user_ended',
     createdAt: '2026-08-20T01:00:00Z', updatedAt: '2026-08-29T02:00:00Z',
     finalizedAt: '2026-08-29T03:00:00Z',
+    agentAttention: null,
   };
 }
 
