@@ -1,19 +1,98 @@
-/* R1 手机号进入 —— 像素值取自 RN 源 应用/屏幕/登录.js，与设计稿 R1 一比一。
-   RN 的 letterSpacing 是绝对值（px），这里按「值 ÷ 字号」换算成 em。 */
+/* R1 手机号进入 —— 登录改版「工作证」（2026-09-03 用户定稿）。
+   整页是主页同款的荧光绿渐变底，登录表单装在一张挂着的白色工牌卡里，
+   卡顶一条槽孔暗示它是牌，不要挂绳、金属夹、照片位（「一屏只留一个比喻，零装饰」）。
+   卡底的荧光绿色带就是主按钮「进入」。颜色全部走令牌，不新增色相。 */
 
-/* ── 表单卡：上半手机号行 + 下半验证码四格 ── */
-.表单卡 {
-  /* 标注 11:16：去掉卡片外框与白底 —— 输入区就是两条线 */
-  flex: none;
-  margin: 26px 22px 0;
+/* ── 整页渐变底：主页渐变头的同一笔，铺满整屏后落到淡绿底 ── */
+.渐变底 {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      480px 150px at 100% 0%,
+      rgba(126, 190, 245, 0.85) 0%,
+      rgba(150, 205, 248, 0.5) 30%,
+      rgba(190, 225, 250, 0.16) 58%,
+      rgba(200, 232, 255, 0) 76%
+    ),
+    linear-gradient(
+      168deg,
+      var(--荧光绿) 0%,
+      #d9f47a 10%,
+      #e4f0c8 22%,
+      var(--淡绿底) 34%,
+      var(--淡绿底) 50%,
+      var(--淡绿底2) 62%,
+      var(--淡绿底2) 100%
+    );
 }
 
+/* ── 工牌卡 ── */
+.证卡 {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  /* 卡顶留出渐变头的呼吸空间；左右 28 比列表卡（8/11）更收，像一张实物卡而不是列表项 */
+  margin: 150px 28px 0;
+  padding: 40px 22px 0;
+  background: var(--白);
+  border-radius: var(--圆角-卡片);
+  overflow: hidden;
+  /* 与 通用.module.css .白卡 同一组投影：贴地一层 + 抬升一层 */
+  box-shadow:
+    0 1px 2px rgba(26, 26, 26, 0.06),
+    0 10px 28px rgba(26, 26, 26, 0.09);
+}
+
+/* 卡顶槽孔：40×8 圆角槽，淡绿描边色填充 + 一点内阴影，暗示这是个洞 */
+.穿孔 {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  width: 40px;
+  height: 8px;
+  transform: translateX(-50%);
+  border-radius: 4px;
+  background: var(--淡绿描边);
+  box-shadow: inset 0 1px 1px rgba(26, 26, 26, 0.18);
+}
+
+/* 卡头：代理标线描小标 + 产品名 同一行 */
+.品牌行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+}
+
+.产品名 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--墨);
+  white-space: nowrap;
+}
+
+.主张 {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--次要);
+}
+
+/* ── 手机号行 ── */
 .手机行 {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 12px;
   height: 52px;
+  margin-top: 24px;
   padding: 0;
   border-bottom: 1.5px solid var(--描边深);
 }
@@ -56,7 +135,13 @@
   flex-direction: row;
   align-items: center;
   gap: 11px;
-  padding: 16px 0 0;
+  height: 52px;
+  margin-top: 4px;
+}
+
+/* 没取码时：整行一条底线，读起来是第二个输入行；取码后四格自带短底线，长线让位 */
+.验证码行.待取码 {
+  border-bottom: 1.5px solid var(--描边深);
 }
 
 /* 定位上下文：透明 input 铺满这一组，点任意格都能唤起键盘 */
@@ -72,7 +157,7 @@
   flex: none;
   width: 40px;
   height: 46px;
-  border-bottom: 2px solid var(--描边深);
+  border-bottom: 1.5px solid var(--描边深);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -83,9 +168,11 @@
   border-bottom-color: var(--深绿);
 }
 
+/* 用户 2026-09-03：数字太粗 —— 改常规字重、字号略放大、等宽数字，像印上去的号码而不是压上去的黑体 */
 .验证码字 {
-  font-size: 21px;
-  font-weight: 600;
+  font-size: 22px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
   color: var(--墨);
 }
 
@@ -114,6 +201,21 @@
   color: var(--次要浅);
 }
 
+/* 「获取验证码 / 重新获取」按钮：手机号没输满时灰置但可点（点了给提示） */
+.取码键 {
+  margin-left: auto;
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿);
+  background: none;
+  padding: 4px 0 4px 8px;
+}
+.取码键灰 {
+  color: var(--最弱);
+  font-weight: 500;
+}
+
 /* ── 协议勾选行 ── */
 .同意行 {
   flex: none;
@@ -122,7 +224,7 @@
   flex-direction: row;
   align-items: flex-start;
   gap: 8px;
-  padding: 16px 24px 0;
+  padding: 14px 0 0;
   text-align: left;
 }
 
@@ -132,7 +234,7 @@
   width: 16px;
   height: 16px;
   border-radius: 8px;
-  margin-top: 1px;
+  margin-top: 2px;
   background: var(--墨);
   border: 1.5px solid var(--墨);
   display: flex;
@@ -148,8 +250,8 @@
 .同意文字 {
   flex: 1;
   min-width: 0;
-  font-size: 11.5px;
-  line-height: 18.4px;
+  font-size: 12px;
+  line-height: 1.65;
   color: var(--次要浅);
 }
 
@@ -157,32 +259,65 @@
   color: var(--深绿);
 }
 
+/* ── 卡底色带 = 主按钮「进入」：荧光绿底 + 墨字，与 App 主按钮同色 ── */
+.进入带 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: calc(100% + 44px);
+  margin: 16px -22px 0;
+  height: 56px;
+  padding: 0 22px;
+  background: var(--荧光绿);
+  box-shadow: inset 0 -2px 0 rgba(47, 92, 23, 0.35);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
+  color: var(--墨);
+}
+.进入带:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.进入箭头 {
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: 0;
+  text-indent: 0;
+}
+
+/* ── 卡下：其他登录方式 ── */
 .分割行 {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 12px;
-  /* 设计稿 R1：margin:18px 44px 12px —— 距协议行 18px */
-  margin: 18px 44px 12px;
+  margin: 28px 44px 12px;
 }
 
 .分割线 {
   flex: 1;
   min-width: 0;
   height: 1px;
-  background: var(--分割线米色);
+  background: var(--淡绿描边);
 }
 
 .分割文字 {
   flex: none;
   font-size: 11px;
-  color: var(--最弱);
+  color: var(--次要浅);
 }
 
-/* ── 微信登录 ── */
 .微信区 {
+  position: relative;
+  z-index: 1;
   flex: none;
-  padding: 0 20px;
+  padding: 0 28px;
 }
 
 .微信键 {
@@ -190,7 +325,7 @@
   height: 46px;
   border-radius: var(--圆角-按钮);
   background: var(--白);
-  border: 1px solid var(--描边深);
+  border: 1px solid var(--淡绿描边);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -198,57 +333,3 @@
   font-weight: 500;
   color: var(--正文);
 }
-
-/* 「获取验证码 / 重新获取」按钮：真流程新增；手机号没输满时灰置但可点（点了给提示） */
-.取码键 {
-  margin-left: auto;
-  flex: none;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--深绿);
-  background: none;
-  padding: 4px 0 4px 8px;
-}
-.取码键灰 {
-  color: var(--最弱);
-  font-weight: 500;
-}
-
-/* ── 品牌区（只剩产品名），替代原来的「登录/注册」标题。
-   图标撤掉后少了 56px 高，上边距补到 40 让标题不至于顶在返回栏下面。
-   主张一行 2026-08-23 撤掉，.主张 样式随之删除 ── */
-.品牌区 {
-  flex: none;
-  padding: 40px 24px 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.产品名 {
-  margin: 0;
-  font-size: 30px;
-  font-weight: 800;
-  /* 定名「工作蜂」后回中文字标字距 */
-  letter-spacing: 0.04em;
-  line-height: 1.1;
-  color: var(--墨);
-}
-
-/* slogan（2026-08-24 产品负责人定稿「找工作，蜂替你谈」）*/
-.主张 {
-  margin: -4px 0 0;
-  font-size: 13.5px;
-  line-height: 1.6;
-  color: var(--次要);
-}
-
-/* ── 留白区：表单与登录方式之间的弹性空隙。
-   原来这里是代理引导气泡，按标注意见（2026-08-18）撤掉，只留撑开用的空位 ── */
-.留白区 {
-  flex: 1;
-  min-height: 0;
-}
-
-
