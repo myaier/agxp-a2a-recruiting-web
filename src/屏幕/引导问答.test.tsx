@@ -10,9 +10,18 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 引导问答 from './引导问答';
+import { 路径 } from '../路由/路径表';
+import type { 向导段 } from '../流程/onboarding配置';
+import { 构造映射变体基底 } from '../数据/招聘数据源/简历预填.fixture';
+import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
 
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
+const mock操作 = vi.hoisted(() => ({
+  保存个人优势: vi.fn(async () => {}),
+  保存首次意向: vi.fn(async () => {}),
+  确认候选Onboarding预填分区: vi.fn(),
+}));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
@@ -42,7 +51,7 @@ function render引导问答Mock(引导预填: object | null = null) {
       基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
     },
     派发,
-    操作: { 保存个人优势, 保存首次意向 },
+    操作: { 保存个人优势, 保存首次意向, 确认候选Onboarding预填分区: vi.fn() },
   };
   render(
     <MemoryRouter initialEntries={['/onboard/wizard?stage=salary']}>
@@ -182,7 +191,7 @@ function render引导问答后端(选项: {
       基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在校' as const },
     },
     派发,
-    操作: { 保存个人优势, 保存首次意向 },
+    操作: { 保存个人优势, 保存首次意向, 确认候选Onboarding预填分区: vi.fn() },
   };
   render(
     <MemoryRouter initialEntries={['/onboard/wizard?stage=salary']}>
@@ -273,7 +282,7 @@ describe('引导问答 Backend 分支', () => {
         基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '离职' as const },
       },
       派发,
-      操作: { 保存个人优势, 保存首次意向 },
+      操作: { 保存个人优势, 保存首次意向, 确认候选Onboarding预填分区: vi.fn() },
     };
     render(
       <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
@@ -498,5 +507,157 @@ describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', 
     expect(screen.queryByText('A岗位')).toBeNull();
     // B 无游标 → 不应出现「加载更多」
     expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
+  });
+});
+
+// ── 候选 onboarding 简历预填的个人优势（Spec §8 /wizard 偏好段，Task 6）──
+// draft.summary 只在偏好段的个人优势题作为初值；确认 summary 分区紧跟 保存个人优势
+// 成功，与随后的首次意向请求成败无关。
+
+const 全可预填: 候选预填Eligibility = {
+  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+  summary: true,
+  skills: true,
+  experiences: true,
+  educations: true,
+  certificates: true,
+};
+
+/** ready 轮 fixture（与 Task 2 映射测试同款形状）：wire fixture 深拷贝基底。 */
+function readySummary(): 候选预填状态 {
+  const 建议 = 构造映射变体基底();
+  return {
+    ...创建空候选预填状态(),
+    phase: 'ready',
+    source: 建议.source,
+    eligibility: 全可预填,
+    suggestion: 建议,
+  };
+}
+
+/** 非空 引导预填：偏好段题序塌到 硬性排除 → 个人优势（期望职位/工作城市 已在完善资料采过） */
+const 已采前两题 = {
+  城市们: [], 职位: [], 城市引用们: [], 职位引用们: [],
+  筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] },
+};
+
+function render引导问答(选项: { 段: 向导段; 预填?: 候选预填状态; 个人优势?: string }) {
+  mock应用状态 = {
+    数据源模式: 'backend',
+    目录查询: {
+      查询Taxonomy: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+      查询Location: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+      查询Institution: vi.fn(),
+    },
+    状态: {
+      引导预填: 已采前两题,
+      个人优势: 选项.个人优势 ?? '',
+      简历作品集链接: '',
+      简历经历: [],
+      // 非在校：偏好段题序 = 硬性排除 → 个人优势
+      基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '离职' as const },
+    },
+    后端状态: { 候选预填状态: 选项.预填 ?? 创建空候选预填状态() },
+    派发: vi.fn(),
+    操作: mock操作,
+  };
+  render(
+    <MemoryRouter initialEntries={[`/onboard/wizard?stage=${选项.段 === '薪资段' ? 'salary' : 'preference'}`]}>
+      <引导问答 />
+    </MemoryRouter>,
+  );
+}
+
+/** 个人优势题 textarea */
+function 优势框(): HTMLTextAreaElement {
+  return screen.getByLabelText('个人优势') as HTMLTextAreaElement;
+}
+
+/** 从偏好段首题（硬性排除）推进到个人优势题并提交 */
+async function 提交到个人优势题() {
+  const 用户 = userEvent.setup();
+  await 用户.click(screen.getByRole('button', { name: '下一步' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '保存并继续' })).toBeDefined());
+  await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+  await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
+}
+
+describe('引导问答 个人优势预填（Spec §8 偏好段）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
+    mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockReset();
+  });
+
+  it('偏好段空白时种入 summary 作为个人优势初值，保存个人优势携带预填文本', async () => {
+    render引导问答({ 段: '偏好段', 预填: readySummary() });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(优势框().value).toBe('Builds reliable synthetic systems.');
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('Builds reliable synthetic systems.'));
+  });
+
+  it('薪资段不问个人优势题（summary 不在社招首次薪资段应用）', () => {
+    render引导问答({ 段: '薪资段', 预填: readySummary() });
+    expect(screen.queryByLabelText('个人优势')).toBeNull();
+  });
+
+  it('当前已有个人优势时保留（页面现值优先）', async () => {
+    render引导问答({ 段: '偏好段', 预填: readySummary(), 个人优势: '我自己写的介绍' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(优势框().value).toBe('我自己写的介绍');
+  });
+
+  it.each([
+    ['manual 轮', (轮: 候选预填状态) => { 轮.phase = 'manual'; }],
+    ['summary 已确认', (轮: 候选预填状态) => { 轮.confirmed.summary = true; }],
+    ['inactive 轮（无建议）', null],
+  ])('%s 保留旧初始化（个人优势为空）', async (_名, 改) => {
+    const 轮 = readySummary();
+    if (改) 改(轮);
+    render引导问答({ 段: '偏好段', 预填: 改 ? 轮 : undefined });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(优势框().value).toBe('');
+  });
+
+  it('confirms summary after summary save even when first intention fails', async () => {
+    mock操作.保存个人优势.mockResolvedValue(undefined);
+    mock操作.保存首次意向.mockRejectedValue(new Error('offline'));
+    render引导问答({ 段: '偏好段', 预填: readySummary() });
+    await 提交到个人优势题();
+    expect(mock操作.确认候选Onboarding预填分区).toHaveBeenCalledWith('summary');
+    // 确认发生在 保存个人优势 成功之后、首次意向尝试之前；首次意向失败不回滚
+    expect(mock操作.保存个人优势.mock.invocationCallOrder[0])
+      .toBeLessThan(mock操作.确认候选Onboarding预填分区.mock.invocationCallOrder[0]);
+    expect(mock操作.确认候选Onboarding预填分区.mock.invocationCallOrder[0])
+      .toBeLessThan(mock操作.保存首次意向.mock.invocationCallOrder[0]);
+    // 首次意向失败：不跳转，错误走 轻提示
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('保存个人优势被拒时 summary 不确认、不发首次意向', async () => {
+    mock操作.保存个人优势.mockRejectedValue(new Error('保存失败'));
+    render引导问答({ 段: '偏好段', 预填: readySummary() });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledTimes(1));
+    // catch 分支已跑完（真实 轻提示 落错误文案）后再做否定断言
+    await waitFor(() => expect(document.body.textContent).toContain('请求失败，请稍后再试'));
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    expect(mock操作.保存首次意向).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('成功路径：summary 确认后保存首次意向并跳转披露说明', async () => {
+    render引导问答({ 段: '偏好段', 预填: readySummary() });
+    await 提交到个人优势题();
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.披露说明));
+    expect(mock操作.确认候选Onboarding预填分区).toHaveBeenCalledTimes(1);
   });
 });

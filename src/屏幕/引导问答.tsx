@@ -42,10 +42,12 @@ import {
   type 向导题名,
   type 求职薪资单位,
 } from '../流程/onboarding配置';
+import { 取个人优势预填 } from '../流程/候选Onboarding简历预填';
+import { 创建空候选预填状态 } from '../状态/后端/类型';
 
 export default function 引导问答() {
   const { 跳转, 返回 } = use导航();
-  const { 状态: 全局, 派发, 操作, 数据源模式, 目录查询 } = use应用状态();
+  const { 状态: 全局, 派发, 操作, 数据源模式, 目录查询, 后端状态 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
   const 查询 = new URLSearchParams(useLocation().search);
   const 段 = 读向导段(查询.get(向导段参数名));
@@ -95,7 +97,11 @@ export default function 引导问答() {
   // 排除项是硬性红线 —— 代理据此直接挡掉岗位、不来问人。替用户预设两条红线，
   // 等于替他做了一个他从没做过的决定，而且他多半不会注意到自己「设过」。
   const [排除项, 设排除项] = useState<string[]>([]);
-  const [自我介绍, 设自我介绍] = useState(全局.个人优势);
+  // 候选 onboarding 预填（Spec §8 /wizard）：draft.summary 只在偏好段的个人优势题作初值
+  // （社招首次薪资段不应用）；当前已有个人优势或轮不可建议时原样取 全局.个人优势
+  const [自我介绍, 设自我介绍] = useState(() =>
+    取个人优势预填(后端状态?.候选预填状态 ?? 创建空候选预填状态(), 段, 全局.个人优势)
+  );
   // 作品集链接 2026-08-22 从求职偏好迁进简历切片（它是简历内容，不是求职偏好）。
   // 本屏与 工作经历 屏是同一份数据的两个入口，任一处改动都立刻落盘、另一处立即可见。
   const 作品集链接 = 全局.简历作品集链接;
@@ -132,6 +138,9 @@ export default function 引导问答() {
       存作品集链接(规范化作品集链接(作品集链接));
       try {
         await 操作.保存个人优势(自我介绍);
+        // 候选 onboarding 预填（Spec §8）：summary 确认紧跟 保存个人优势 成功 ——
+        // 与随后的首次意向请求成败无关，不把已写入的 summary 伪装成未保存
+        操作.确认候选Onboarding预填分区('summary');
         // Task 6：Backend 分支带上选中候选的 refs，映射层直接用引用.id，不再反查目录。
         const 职位引用 = 是后端 && 已选职位引用.length > 0
           ? { id: 已选职位引用[0].id, display_name: 已选职位引用[0].display_name }

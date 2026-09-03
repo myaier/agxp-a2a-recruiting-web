@@ -9,8 +9,14 @@
 //
 // 在职时间用 <input type="month">：iOS 弹原生年月滚轮，桌面有日历下拉，
 // 不再是能输任意字符的自由文本 —— 这是上一版最大的 bug。
+//
+// 候选 onboarding 简历预填（Spec §8 /experience，Task 6）：首挂载同步用 取工作页预填
+// 一次物化四分区（空服务端且空页面才物化；附加教育只在前四页形成的 educations[0] 之后
+// 追加 slice(1)），经一次性 useLayoutEffect 走既有 存简历 通道种入根草稿；
+// unresolvedCount 只进保存点击的 轻提示「还有 N 处需要选择目录或补充必填项」，
+// 不新增任何提示节点；确认 work 分区只在既有保存成功后。
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import 样式 from './工作经历.module.css';
 // review-r1 P1-3：教育编辑页 Backend 候选列表复用 入职引导 的候选行样式
 import 引导样式 from './入职引导.module.css';
@@ -24,6 +30,8 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { 规范化作品集链接, 校验作品集链接, 校验起止年月 } from '../流程/onboarding配置';
+import { 取工作页预填 } from '../流程/候选Onboarding简历预填';
+import { 创建空候选预填状态 } from '../状态/后端/类型';
 import type { BFFTaxonomyItem, BFFInstitutionItem } from '../数据/BFF契约';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
 import { 学校副标题, 合并目录页 } from '../数据/目录选择';
@@ -58,7 +66,7 @@ function 开始上界(结束: string | null): string {
 
 export default function 工作经历() {
   const { 跳转, 返回 } = use导航();
-  const { 状态: 全局, 派发, 操作 } = use应用状态();
+  const { 状态: 全局, 派发, 操作, 后端状态 } = use应用状态();
   // 学生分支（身份来自学生分流屏）：教育置顶，工作经历段改叫「实习经历」
   const 在校中 = 全局.基本信息.身份 === '在校';
   const 经历区块名 = 在校中 ? '实习经历' : '工作经历';
@@ -99,6 +107,40 @@ export default function 工作经历() {
   // 保存 single-flight：保存中再点不重发；成功后才提示并跳转，失败提示错误且按钮恢复
   const [保存中, 设保存中] = useState(false);
 
+  // 候选 onboarding 预填（Spec §8 /experience）：首挂载同步用 取工作页预填 算一次 ——
+  // manual/inactive/已确认轮返回页面现值（四个列表原引用），只有真物化才换新数组。
+  // 物化条目与手建条目走同一条 存简历 通道进根草稿：列表数据本就来自全局（2026-08-18）。
+  const [工作页预填] = useState(() =>
+    取工作页预填(后端状态?.候选预填状态 ?? 创建空候选预填状态(), {
+      experiences: 经历列表,
+      educations: 教育列表,
+      skills: 技能列表,
+      certificates: 证书列表,
+    }),
+  );
+  // 一次性把物化结果种入根草稿（挂载域：work 未确认前清空物化条目、离开再回来会再次
+  // 建议的非空守卫在映射层；无物化时零派发，manual/inactive/已确认流程保持现状）
+  const 已种工作预填 = useRef(false);
+  useLayoutEffect(() => {
+    if (已种工作预填.current) return;
+    已种工作预填.current = true;
+    if (
+      工作页预填.experiences !== 经历列表
+      || 工作页预填.educations !== 教育列表
+      || 工作页预填.skills !== 技能列表
+      || 工作页预填.certificates !== 证书列表
+    ) {
+      存({
+        经历: 工作页预填.experiences,
+        教育: 工作页预填.educations,
+        技能: 工作页预填.skills,
+        证书: 工作页预填.certificates,
+      });
+    }
+    // ref 守卫保证只跑首次：依赖表按 brief 固定，存 每渲染换标不影响语义
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [工作页预填, 存]);
+
   /** 加一条技能：去重 + 去空白，重复的直接吞掉不报错（用户多半只是手抖点了两次）*/
   const 加技能 = () => {
     const 词 = 技能草稿.trim();
@@ -124,6 +166,12 @@ export default function 工作经历() {
    * 成功以最终权威 GET 的水合为准，之后才 轻提示 并跳转下一屏。 */
   const 保存 = async () => {
     if (保存中) return;
+    // 预填物化条目仍有未选目录或缺失必填：只用既有 轻提示 拦下（不渲染任何提示节点，
+    // 也不猜 ID）；编辑页完成守卫与 保存简历 同步预检仍是最终防线
+    if (工作页预填.unresolvedCount > 0) {
+      轻提示(`还有 ${工作页预填.unresolvedCount} 处需要选择目录或补充必填项`);
+      return;
+    }
     // 学生的实习经历可以为空（没实习过是常态），不拦；社招至少一段
     if (!在校中 && 经历列表.length === 0) {
       轻提示('至少填一段工作经历');
@@ -144,6 +192,8 @@ export default function 工作经历() {
         教育: 教育列表,
         证书: 证书列表,
       });
+      // 预填确认只在既有保存成功后（拒绝时分区不确认），且先于提示与跳转
+      操作.确认候选Onboarding预填分区('work');
       轻提示('简历已保存');
       跳转(在校中 ? 路径.求职状态 : 路径.引导问答);
     } catch (错误) {
