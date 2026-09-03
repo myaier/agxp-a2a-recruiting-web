@@ -1108,7 +1108,9 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
      *   · 权威页说仍 ready / 找不到该岗位 / unknown → 合同漂移，持久快照改述
      *     「数据状态异常」并抛 invalid_response（fail closed，绝不发组织 CTA）；
      *   · 重读受同一道栅栏约束：迟到成败整包丢弃，栅栏内 401 走统一 清账号状态；
-     *   · 绝不重发 refresh POST、绝不换幂等键（键生命周期仍归 运行范围刷新）。
+     *   · 绝不重发 refresh POST、绝不换幂等键（键生命周期仍归 运行范围刷新）；
+     *   · 对账全程重新持有同一把 scope 读锁（运行范围刷新 的 finally 先释放了它）：
+     *     重读在飞时同一未结算意图的第二次点击让路，零重复 POST / 零重复重读。
      */
     async 刷新招聘候选(jobId) {
       if (!是后端 || !后端) return;
@@ -1151,31 +1153,39 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
             错误.code !== 'organization_verification_required') throw 错误;
         // 屏已换代（切岗/换代/登出）：组织错误与对账结果都归新会话，静默收口
         if (!fenceStillCurrent(引用, 对账Fence)) return;
-        let 快照: 页面岗位快照;
+        // 运行范围刷新 的 finally 已先释放读锁：对账重读期间重新持有同一把 scope 单飞，
+        // 窗口期内第二次点击让路 —— 同一未结算意图绝不沿用保留键重复 POST / 重复重读
+        const 对账锁 = 获取读锁(scopeKey);
         try {
-          // 恰好一次 后端.读取岗位()；绝不再次调用 刷新招聘候选
-          快照 = await 后端.读取岗位();
-        } catch (对账错误) {
-          if (!fenceStillCurrent(引用, 对账Fence)) return; // 迟到失败只丢弃
-          if (是401(对账错误)) {
-            清账号状态(账号清理依赖); // 栅栏内 401 统一清会话，不再向屏叠抛
-            return;
+          let 快照: 页面岗位快照;
+          try {
+            // 恰好一次 后端.读取岗位()；绝不再次调用 刷新招聘候选
+            快照 = await 后端.读取岗位();
+          } catch (对账错误) {
+            if (!fenceStillCurrent(引用, 对账Fence)) return; // 迟到失败只丢弃
+            if (是401(对账错误)) {
+              清账号状态(账号清理依赖); // 栅栏内 401 统一清会话，不再向屏叠抛
+              return;
+            }
+            提交失败(P4错误文案(对账错误), 对账Fence); // 持久快照改述真实重读失败
+            throw 对账错误;
           }
-          提交失败(P4错误文案(对账错误), 对账Fence); // 持久快照改述真实重读失败
-          throw 对账错误;
+          if (!fenceStillCurrent(引用, 对账Fence)) return; // 迟到成功只丢弃
+          派发({ 型: '水合后端岗位', 快照 });
+          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+          if (判断P4招聘组织前提(快照.服务端[jobId]).kind === 'blocked') {
+            // 运行范围刷新 已把组织文案落进快照：不再二次结算，原组织错误照抛，
+            // 屏不 toast，权威水合驱动既有受阻态渲染两个 CTA
+            throw 错误;
+          }
+          // 权威岗位仍 ready / 页里没有该岗位 / unknown：权威页完整在手却对不上组织错误，
+          // 按合同漂移 fail closed —— 持久快照改述「数据状态异常」，抛带中文文案的 invalid_response
+          提交失败('数据状态异常，请稍后再试', 对账Fence);
+          throw new BFF错误(409, 'invalid_response', '数据状态异常，请稍后再试');
+        } finally {
+          // 仅当属主仍是自己（未被换代接管）才释放：token 已易主则绝不动新属主的锁
+          if (对账锁) 释放读锁(对账锁);
         }
-        if (!fenceStillCurrent(引用, 对账Fence)) return; // 迟到成功只丢弃
-        派发({ 型: '水合后端岗位', 快照 });
-        设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
-        if (判断P4招聘组织前提(快照.服务端[jobId]).kind === 'blocked') {
-          // 运行范围刷新 已把组织文案落进快照：不再二次结算，原组织错误照抛，
-          // 屏不 toast，权威水合驱动既有受阻态渲染两个 CTA
-          throw 错误;
-        }
-        // 权威岗位仍 ready / 页里没有该岗位 / unknown：权威页完整在手却对不上组织错误，
-        // 按合同漂移 fail closed —— 持久快照改述「数据状态异常」，抛带中文文案的 invalid_response
-        提交失败('数据状态异常，请稍后再试', 对账Fence);
-        throw new BFF错误(409, 'invalid_response', '数据状态异常，请稍后再试');
       }
     },
 

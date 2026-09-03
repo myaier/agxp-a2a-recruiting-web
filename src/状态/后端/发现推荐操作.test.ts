@@ -1773,6 +1773,33 @@ describe('组织认证竞态对账（一次 Owner Jobs 重读）', () => {
     expect(env.数据源.清空目录缓存).not.toHaveBeenCalled();
   });
 
+  it('对账重读在飞时第二次点击让路：不重复 POST、不发起第二次 Owner Jobs 重读', async () => {
+    设主体角色(招聘主体);
+    const POST门 = deferred<BFF发现批次>();
+    const 重读门 = deferred<页面岗位快照>();
+    vi.mocked(env.数据源.刷新招聘候选).mockReturnValueOnce(POST门.promise);
+    vi.mocked(env.数据源.读取岗位).mockReturnValueOnce(重读门.promise);
+    const 第一次 = env.操作.刷新招聘候选('job_1');
+    POST门.reject(组织409());
+    await POST门.promise.catch(() => undefined); // 对账重读已在飞（此时读锁已被 finally 释放）
+
+    // 窗口期内同一未结算意图的第二次点击：让路收场，绝不沿用保留键重复 POST
+    await expect(env.操作.刷新招聘候选('job_1')).resolves.toBeUndefined();
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
+
+    重读门.resolve(岗位页({ job_1: BFF岗位样本 })); // 权威页说组织受阻
+    await expect(第一次).rejects.toMatchObject({
+      status: 409, code: 'organization_verification_required',
+    });
+
+    // 第一次的对账照常结算：一次 POST、一次重读、一次水合，键仍按组织 409 语义保留
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
+    expect(env.派发).toHaveBeenCalledTimes(1);
+    expect(env.deps.P4幂等意图!.current.has('recruiter:list:job_1:refresh')).toBe(true);
+  });
+
   it.each([
     ['recommendation_unavailable', new BFF错误(409, 'recommendation_unavailable', 'gone')],
     ['invalid_response（合同漂移）', new BFF错误(409, 'invalid_response', 'drift')],
