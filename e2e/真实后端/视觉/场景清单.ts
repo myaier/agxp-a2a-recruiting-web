@@ -21,6 +21,7 @@ export const 旅程场景映射: Record<旅程ID, readonly 真实后端场景ID[
   'recruiter-load': ['recruiter-card-loaded', 'recruiter-company-loaded'],
   'recruiter-crud': ['recruiter-jobs-after-create'],
   'session-isolation': [],
+  'hosted-agent': [],
 };
 
 // 基线、候选和 diff 三处使用同一个文件名约定。

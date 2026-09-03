@@ -32,11 +32,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONT_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 
-ALL_JOURNEYS='candidate-load candidate-crud recruiter-load recruiter-crud session-isolation'
+# 报告 universe 是全部六条；默认 `all` 只展开原五条 CRUD/隔离验收 ——
+# hosted-agent 走真实 Provider，必须显式 --journey hosted-agent 选择，不能被普通 gate 隐式消费。
+ALL_JOURNEYS='candidate-load candidate-crud recruiter-load recruiter-crud session-isolation hosted-agent'
+DEFAULT_JOURNEYS='candidate-load candidate-crud recruiter-load recruiter-crud session-isolation'
 
 usage_error(){
   printf '%s\n' "usage: $1" >&2
-  printf '%s\n' 'usage: 运行整栈验收.sh [--journey candidate-load|candidate-crud|recruiter-load|recruiter-crud|all] [--headed] [--update-baseline]' >&2
+  printf '%s\n' 'usage: 运行整栈验收.sh [--journey candidate-load|candidate-crud|recruiter-load|recruiter-crud|hosted-agent|all] [--headed] [--update-baseline]' >&2
   exit 2
 }
 
@@ -60,7 +63,7 @@ while [ $# -gt 0 ]; do
 done
 
 case "$JOURNEY_ARG" in
-  candidate-load|candidate-crud|recruiter-load|recruiter-crud|all) : ;;
+  candidate-load|candidate-crud|recruiter-load|recruiter-crud|hosted-agent|all) : ;;
   *) usage_error "未知旅程：$JOURNEY_ARG" ;;
 esac
 
@@ -73,7 +76,7 @@ fi
 # 选中集合在动任何环境之前就定下来：阻塞路径上的报告也要如实写出本轮选了哪几条旅程
 # （报告读取端要求 selectedJourneys 非空，否则整份上下文不合法）。
 case "$JOURNEY_ARG" in
-  all) SELECTED="$ALL_JOURNEYS" ;;
+  all) SELECTED="$DEFAULT_JOURNEYS" ;;
   *) SELECTED="$JOURNEY_ARG" ;;
 esac
 
@@ -211,7 +214,7 @@ printf '运行目录：%s\n' "$RUN_DIR"
 
 is_selected(){ case " $SELECTED " in *" $1 "*) return 0 ;; esac; return 1; }
 
-# 未选中的旅程写 skipped 分片：报告读取端要求五个分片齐全，缺一个就是报告错误。
+# 未选中的旅程写 skipped 分片：报告读取端要求六个分片齐全，缺一个就是报告错误。
 write_skipped(){
   jq -n --arg j "$1" --arg m "$2" \
     '{schemaVersion:1,journey:$j,status:"skipped",milestone:$m,apiRequests:[],consoleErrors:[],
@@ -790,6 +793,7 @@ journey_script(){
     candidate-crud) printf '%s' "$ROOT_DIR/旅程/候选CRUD.sh" ;;
     recruiter-load) printf '%s' "$ROOT_DIR/旅程/招聘数据加载.sh" ;;
     recruiter-crud) printf '%s' "$ROOT_DIR/旅程/招聘CRUD.sh" ;;
+    hosted-agent) printf '%s' "$ROOT_DIR/旅程/HostedAgent闭环.sh" ;;
     *) return 1 ;;
   esac
 }
@@ -839,7 +843,7 @@ run_isolation(){
   LAST_LOGIN_EPOCH="$(date +%s)"
 }
 
-# 未选中的旅程先写 skipped 分片：报告读取端要求五个分片齐全，缺一个就是报告错误。
+# 未选中的旅程先写 skipped 分片：报告读取端要求六个分片齐全，缺一个就是报告错误。
 # 第一条业务旅程的开场就是候选登录（begin 限流同手机号一分钟一次），这里先错峰。
 pace_before_login
 for journey in $ALL_JOURNEYS; do

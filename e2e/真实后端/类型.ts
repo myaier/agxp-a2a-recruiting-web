@@ -8,15 +8,18 @@ export type 旅程ID =
   | 'candidate-crud'
   | 'recruiter-load'
   | 'recruiter-crud'
-  | 'session-isolation';
+  | 'session-isolation'
+  | 'hosted-agent';
 
-// 固定顺序的五条旅程：报告分片按此顺序读取与输出，`--journey all` 也展开成这个集合。
+// 固定顺序的六条旅程：报告 universe 按此顺序读取与输出。runner 的默认 `all` 只展开
+// 前五条（DEFAULT_JOURNEYS），`hosted-agent` 走真实 Provider，必须显式选择。
 export const 旅程们: readonly 旅程ID[] = [
   'candidate-load',
   'candidate-crud',
   'recruiter-load',
   'recruiter-crud',
   'session-isolation',
+  'hosted-agent',
 ];
 
 export type 失败分类 =

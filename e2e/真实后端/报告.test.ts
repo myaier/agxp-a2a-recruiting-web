@@ -39,7 +39,7 @@ function 写分片(目录: string, 值: 旅程结果 | Record<string, unknown>, 
 }
 
 function 写全部跳过(目录: string, 选中: 旅程ID[]): void {
-  const 全部: 旅程ID[] = ['candidate-load', 'candidate-crud', 'recruiter-load', 'recruiter-crud', 'session-isolation'];
+  const 全部: 旅程ID[] = ['candidate-load', 'candidate-crud', 'recruiter-load', 'recruiter-crud', 'session-isolation', 'hosted-agent'];
   for (const 旅程 of 全部) {
     if (选中.includes(旅程)) continue;
     写分片(目录, 分片(旅程, 'skipped'));
@@ -85,9 +85,9 @@ describe('真实后端整栈 verdict', () => {
 });
 
 describe('读取运行分片', () => {
-  it('五个分片齐全且通过时不产生任何失败标记', () => {
+  it('六个分片齐全且通过时不产生任何失败标记', () => {
     const 目录 = 新目录();
-    const 选中: 旅程ID[] = ['candidate-load', 'candidate-crud', 'recruiter-load', 'recruiter-crud', 'session-isolation'];
+    const 选中: 旅程ID[] = ['candidate-load', 'candidate-crud', 'recruiter-load', 'recruiter-crud', 'session-isolation', 'hosted-agent'];
     for (const 旅程 of 选中) 写分片(目录, 分片(旅程, 'pass'));
 
     const 结果 = 读取运行分片({ fragmentDir: 目录, selectedJourneys: 选中 });
@@ -104,7 +104,7 @@ describe('读取运行分片', () => {
     const 结果 = 读取运行分片({ fragmentDir: 目录, selectedJourneys: ['candidate-crud'] });
     expect(结果.reportParseError).toBe(false);
     expect(结果.functionalFailed).toBe(false);
-    expect(结果.journeys.filter((项) => 项.status === 'skipped')).toHaveLength(4);
+    expect(结果.journeys.filter((项) => 项.status === 'skipped')).toHaveLength(5);
   });
 
   it('已选分片缺失是功能失败，未选分片缺失是报告错误', () => {
@@ -222,7 +222,7 @@ describe('写整栈报告', () => {
 
 // ---- 运行器入口：生成整栈报告 ----
 
-const 全部旅程: 旅程ID[] = ['candidate-load', 'candidate-crud', 'recruiter-load', 'recruiter-crud', 'session-isolation'];
+const 全部旅程: 旅程ID[] = ['candidate-load', 'candidate-crud', 'recruiter-load', 'recruiter-crud', 'session-isolation', 'hosted-agent'];
 
 function 基线清单文本(渲染器版本 = '0.27.2'): string {
   return JSON.stringify({
@@ -317,7 +317,7 @@ describe('生成整栈报告', () => {
     expect(产出).toMatchObject({ classification: 'INFRA_BLOCKED', exitCode: 75 });
     const 报告 = JSON.parse(readFileSync(join(上下文.outputDir, 'report.json'), 'utf8'));
     expect(报告.visual.environmentIssue).toBe('expected-file-missing');
-    expect(报告.journeys).toHaveLength(5);
+    expect(报告.journeys).toHaveLength(6);
     expect(报告.chromeBuild).toBe('Chrome/141.0.7390.55');
   });
 

@@ -111,6 +111,7 @@ case "$(basename "$0")" in
   候选CRUD.sh)     J='candidate-crud'; ROLE='candidate'; SCENES='candidate-resume-updated' ;;
   招聘数据加载.sh) J='recruiter-load'; ROLE='recruiter'; SCENES='recruiter-card-loaded recruiter-company-loaded' ;;
   招聘CRUD.sh)     J='recruiter-crud'; ROLE='recruiter'; SCENES='recruiter-jobs-after-create' ;;
+  HostedAgent闭环.sh) J='hosted-agent'; ROLE='candidate'; SCENES='' ;;
   *) echo "FAKE journey 未知脚本名 $0" >>"$CALLS"; exit 1 ;;
 esac
 printf 'journey %s fragmentdir=%s\n' "$J" "${FRAGMENT_DIR:-unset}" >>"$CALLS"
@@ -165,6 +166,7 @@ write_fake_journey 候选数据加载.sh
 write_fake_journey 候选CRUD.sh
 write_fake_journey 招聘数据加载.sh
 write_fake_journey 招聘CRUD.sh
+write_fake_journey HostedAgent闭环.sh
 
 # ── 假 agent-browser ────────────────────────────────────────────────
 cat >"$BIN/agent-browser" <<'FAKE'
@@ -868,7 +870,7 @@ assert_eq '退出码 2' "$RC" 2
 assert_eq '一条外部命令都没调' "$(wc -l <"$CALLS" | tr -d ' ')" '0'
 assert_true '没有建运行目录' "[ ! -d '$OUT_ROOT' ]"
 
-testcase '单选一条旅程通过：另外四条写成 skipped 分片，退出 0'
+testcase '单选一条旅程通过：另外五条写成 skipped 分片，退出 0'
 reset_case; setup_baseline
 run_runner --journey candidate-crud
 assert_eq '退出码 0' "$RC" 0
@@ -878,10 +880,31 @@ assert_missing '没有跑招聘旅程' 'journey recruiter-' "$CALLS"
 assert_missing '没有跑隔离门' 'isolation session=' "$CALLS"
 assert_eq '被选旅程 pass' "$(jq -r '.journeys[]|select(.journey=="candidate-crud")|.status' "$(report_json)" 2>/dev/null)" 'pass'
 assert_eq '前置加载仍记 skipped' "$(jq -r '.journeys[]|select(.journey=="candidate-load")|.status' "$(report_json)" 2>/dev/null)" 'skipped'
-assert_eq '四条未选旅程都是 skipped' "$(jq -r '[.journeys[]|select(.status=="skipped")]|length' "$(report_json)" 2>/dev/null)" '4'
+assert_eq '五条未选旅程都是 skipped' "$(jq -r '[.journeys[]|select(.status=="skipped")]|length' "$(report_json)" 2>/dev/null)" '5'
 assert_eq '分类 PASS' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'PASS'
 assert_eq '只比这一条旅程的场景' "$(jq -r '[.visual.scenes[]|select(.status=="pass")]|length' "$(report_json)" 2>/dev/null)" '1'
 assert_true '前置旅程的真实分片另存一处' "[ -f '$(run_dir)/preconditions/candidate-load.json' ]"
+
+testcase '显式 hosted-agent 只运行 Hosted Agent 旅程'
+reset_case; setup_baseline
+run_runner --journey hosted-agent
+assert_eq 'hosted-agent 退出码' "$RC" '0'
+assert_contains '运行 Hosted Agent 旅程' 'journey hosted-agent' "$CALLS"
+assert_missing '不运行 candidate CRUD' 'journey candidate-crud' "$CALLS"
+assert_eq 'hosted-agent 记 pass' \
+  "$(jq -r '.journeys[]|select(.journey=="hosted-agent")|.status' "$(report_json)" 2>/dev/null)" 'pass'
+assert_eq '原五条均 skipped' \
+  "$(jq -r '[.journeys[]|select(.status=="skipped")]|length' "$(report_json)" 2>/dev/null)" '5'
+
+testcase '默认 all 保持原五条，不隐式运行真实 Provider 旅程'
+reset_case; setup_baseline
+run_runner
+assert_eq '默认 all 退出码' "$RC" '0'
+assert_missing '默认不运行 hosted-agent' 'journey hosted-agent' "$CALLS"
+assert_eq 'hosted-agent 记 skipped' \
+  "$(jq -r '.journeys[]|select(.journey=="hosted-agent")|.status' "$(report_json)" 2>/dev/null)" 'skipped'
+assert_eq '原五条保持 pass' \
+  "$(jq -r '[.journeys[]|select(.status=="pass")]|length' "$(report_json)" 2>/dev/null)" '5'
 
 # R2 / 设计稿 §14 失败分类学：前置加载的失败成因必须分两路报。
 # 前置分片写进 preconditions/，报告永远读不到它，所以「前置怎么败的」只能由
