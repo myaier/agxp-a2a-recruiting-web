@@ -23,8 +23,9 @@ on_exit(){
 trap on_exit EXIT
 
 wait_one_of(){
-  local first="$1" second="$2" tries=0 body
-  while [ "$tries" -lt 180 ]; do
+  local first="$1" second="$2" tries=0 body max
+  max="${3:-180}"
+  while [ "$tries" -lt "$max" ]; do
     body="$(ab get text body 2>/dev/null || printf '')"
     case "$body" in
       *"$first"*|*"$second"*) return 0 ;;
@@ -39,7 +40,7 @@ wait_one_of(){
 candidate_rule_count_once(){
   local body count
   body="$(ab get text body 2>/dev/null || printf '')"
-  count="$(printf '%s\n' "$body" | sed -n 's/.*\([0-9][0-9]*\) 条.*/\1/p' | head -n 1)"
+  count="$(printf '%s\n' "$body" | grep -o '[0-9][0-9]* 条' | head -n 1 | tr -dc '0-9')"
   [ -n "$count" ] || return 1
   printf '%s' "$count"
 }
@@ -125,23 +126,6 @@ capture_case_authority_marker(){
     sleep 1
   done
   echo '当前 Case 未出现可用于深链复核的权威步骤文案' >&2
-  return 1
-}
-
-wait_resume_invitation(){
-  local tries=0 body
-  while [ "$tries" -lt 180 ]; do
-    body="$(ab get text body 2>/dev/null || printf '')"
-    case "$body" in
-      *'等待候选人回应简历邀请'*) return 0 ;;
-      *'需注意'*|*'已结束'*)
-        echo 'S0 复评进入公开 attention 或结束终态' >&2
-        return 1 ;;
-    esac
-    tries=$((tries + 1))
-    sleep 1
-  done
-  echo '等待候选人简历邀请超时' >&2
   return 1
 }
 
@@ -245,12 +229,12 @@ esac
 
 # Candidate 侧完成当前公开动作；补问存在时回答，否则按 S0 可用动作继续。
 MILESTONE='candidate target 完成'
-wait_one_of '继续初筛' '接受邀请'
+wait_one_of '继续初筛' '提交回答'
 if has_button_exact '提交回答'; then
   find_retry label '回答问题' fill '我有 React 与 TypeScript 的真实项目经验，可以接受混合办公。' >/dev/null
   click_button_exact '提交回答'
 fi
-wait_one_of '继续初筛' '接受邀请'
+wait_one_of '继续初筛' '提交回答'
 if has_button_exact '继续初筛'; then click_button_exact '继续初筛'; fi
 
 # Recruiter 读取同一 Case；screen_resume 是 recruiter-target Hosted Agent task。
@@ -261,26 +245,9 @@ click_after_hydrate '人才'
 click_button_exact '在谈'
 wait_text '匿名初筛'
 click_button '匿名初筛'
-wait_resume_invitation
-
-# Candidate 接受简历邀请并提交同一 PDF；公开 readiness 推动 recruiter screen_resume。
-MILESTONE='candidate 提交简历'
-export AGENT_BROWSER_SESSION="$CANDIDATE_SESSION"
-ab reload >/dev/null
-wait_one_of '接受邀请' '确认递交'
-if has_button_exact '接受邀请'; then click_button_exact '接受邀请'; fi
-wait_one_of '选择这次递交的简历' '确认递交这份简历？'
-if on_screen '选择这次递交的简历'; then
-  find_retry role radio click --name "$RESUME_NAME" >/dev/null
-  click_button_exact '选定这份'
-fi
-assert_text '确认递交这份简历？'
-click_button_exact '确认递交'
 
 MILESTONE='recruiter target screen_resume 完成'
-export AGENT_BROWSER_SESSION="$RECRUITER_SESSION"
-ab reload >/dev/null
-wait_one_of '通过初筛' '需注意'
+wait_one_of '通过初筛' '需注意' 420
 assert_text '通过初筛'
 click_button_exact '通过初筛'
 
