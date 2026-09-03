@@ -52,7 +52,7 @@
 
 仓库已有 `e2e/真实后端` agent-browser 编排、candidate/recruiter 双会话、后端 fixture converge/verify/cleanup、脱敏报告和五条 CRUD/隔离旅程，但没有 Hosted Agent 旅程。
 
-后端当前 `apps/recruitment/testdata/hosted-agent-failure-contracts.json` 是合同映射 fixture，不是浏览器可消费的安全失败场景。现有 browser fixture 也没有公开选择 P4/P5/P6 失败终态的能力。
+后端当前 `apps/recruitment/testdata/hosted-agent-failure-contracts.json` 是合同映射 fixture，不是浏览器可消费的安全失败场景。现有 browser fixture 也没有公开选择 P4/P5/P6 失败终态的能力；它的 run receipt/cleanup 只拥有 candidate intention、resume file 与 recruiter job，不拥有本旅程会新增的 Agent rule、delegation 或 MatchCase。后两类会触发 cooldown/quota，不能把一次性成功冒充可重复的整栈门。
 
 ## 3. 方案选择
 
@@ -303,8 +303,9 @@ npm run test:agent-browser:shell
 - candidate 有 active intention 与可提交/成功 parse 的 PDF；
 - recruiter 有 verified organization、active job 与 `hiring_organization_ref`；
 - 两个 global identity 对应 active tenant 与 `recruitment.v1` enrollment。
+- 官方 browser fixture 能以 owner-safe run receipt 记录并收敛本旅程新增的 Agent rule、delegation 与 MatchCase，或提供等价的每轮唯一隔离数据；前端脚本不从数据库猜 ID，也不自建第二套清理器。
 
-缺少工具、真实 Provider、健康、model access、identity/enrollment 或 fixture 前置时记为 `INFRA_BLOCKED`；已经开始业务旅程后出现非法合同或错误终态记为 `FUNCTIONAL_FAILED`。启动成功和 HTTP 202 都不构成通过。
+缺少工具、真实 Provider、健康、model access、identity/enrollment 或 fixture ownership 前置时记为 `INFRA_BLOCKED`；已经开始业务旅程后出现非法合同或错误终态记为 `FUNCTIONAL_FAILED`。启动成功和 HTTP 202 都不构成通过。
 
 ### 9.3 Happy-path journey
 
