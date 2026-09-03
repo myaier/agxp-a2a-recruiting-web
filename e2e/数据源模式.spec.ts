@@ -6470,10 +6470,10 @@ test.describe('P6 规则域 fixture @backend', () => {
     await page.goto('/#/rules');
     await expect(page.getByText('AI代理正在理解这条规则…').first()).toBeVisible({ timeout: 15_000 });
 
-    // 轮询读到权威 failed → 固定失败文案；关闭只收起这一张卡
-    await expect(page.getByText('这条规则暂时无法理解，请换一种说法')).toBeVisible({ timeout: 15_000 });
+    // 轮询读到权威 failed（legacy 无 code）→ 兜底失败文案；关闭只收起这一张卡
+    await expect(page.getByText('本次规则没有生效')).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: '关闭' }).click();
-    await expect(page.getByText('这条规则暂时无法理解，请换一种说法')).toHaveCount(0);
+    await expect(page.getByText('本次规则没有生效')).toHaveCount(0);
 
     // 创建失败：composer 不收起，草稿/范围原样保留（绝不伪造成功）
     await page.getByRole('button', { name: '手动添加规则' }).click();
