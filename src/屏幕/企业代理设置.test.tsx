@@ -434,11 +434,11 @@ describe('企业代理设置 · Backend 招聘方页', () => {
       镜头.版本 += 1;
       for (const 通知 of 镜头.订阅们) 通知();
     });
-    expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
+    expect(screen.getByText('AI代理没有理解这条规则，请换一种更明确的说法')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '关闭' }));
     // §7.3：关闭后原草稿回到输入行，供再次明确提交
     expect((screen.getByPlaceholderText(/到岗超过/) as HTMLInputElement).value).toBe('竞对在职候选人不接触');
-    expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+    expect(screen.queryByText('AI代理没有理解这条规则，请换一种更明确的说法')).toBeNull();
   });
 
   it('unmount 后回到本页：关闭失败卡仍还原跨导航寄存的原草稿', async () => {
@@ -456,11 +456,11 @@ describe('企业代理设置 · Backend 招聘方页', () => {
       rulesStage: '成功', proposalsStage: '成功', initialized: true,
       提案: [{ ...BFFAgent规则解释中提案样本, state: 'failed' as const }],
     });
-    expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
+    expect(screen.getByText('AI代理没有理解这条规则，请换一种更明确的说法')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '关闭' }));
     // 原草稿回到输入行，供再次明确提交
     expect((screen.getByPlaceholderText(/到岗超过/) as HTMLInputElement).value).toBe('竞对在职候选人不接触');
-    expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+    expect(screen.queryByText('AI代理没有理解这条规则，请换一种更明确的说法')).toBeNull();
   });
 
   it('accept clears the stored draft: a later failed card for the same ID does not resurrect it', async () => {
@@ -510,11 +510,11 @@ describe('企业代理设置 · Backend 招聘方页', () => {
       镜头.版本 += 1;
       for (const 通知 of 镜头.订阅们) 通知();
     });
-    expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
+    expect(screen.getByText('AI代理没有理解这条规则，请换一种更明确的说法')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '关闭' }));
     // 寄存已清：输入行不弹开，草稿不复活
     expect(screen.queryByPlaceholderText(/到岗超过/)).toBeNull();
-    expect(screen.queryByText('这条规则暂时无法理解，请换一种说法')).toBeNull();
+    expect(screen.queryByText('AI代理没有理解这条规则，请换一种更明确的说法')).toBeNull();
     expect(视图.操作.接受Agent规则提案).toHaveBeenCalledWith(BFFAgent规则解释中提案样本.proposal_id);
   });
 

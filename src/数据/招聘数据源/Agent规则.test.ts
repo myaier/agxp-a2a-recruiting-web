@@ -384,6 +384,27 @@ describe('Agent 规则数据源', () => {
       .rejects.toMatchObject({ code: 'invalid_response' });
   });
 
+  it('failed 提案只接受公开失败码，非 failed 状态不得携带', async () => {
+    for (const failure_code of ['agent_unavailable', 'interpretation_failed'] as const) {
+      const 提案 = {
+        proposal_id: BFFAgent规则解释中提案样本.proposal_id,
+        state: 'failed' as const,
+        failure_code,
+      };
+      请求Mock.mockResolvedValueOnce({ result: 提案, etag: null, requestId: `failure-${failure_code}` });
+      await expect(数据源.读取Agent规则提案('candidate', 提案.proposal_id)).resolves.toEqual(提案);
+    }
+
+    for (const 破损 of [
+      { ...BFFAgent规则解释中提案样本, state: 'failed', failure_code: 'timeout' },
+      { ...BFFAgent规则就绪提案样本, failure_code: 'agent_unavailable' },
+    ]) {
+      请求Mock.mockResolvedValueOnce({ result: 破损, etag: null, requestId: 'bad-failure' });
+      await expect(数据源.读取Agent规则提案('candidate', BFFAgent规则解释中提案样本.proposal_id))
+        .rejects.toMatchObject({ code: 'invalid_response' });
+    }
+  });
+
   it('提案非法 ID、缺 proposal_id、未知键抛 invalid_response', async () => {
     for (const 破损 of [
       // 注意：第二条刻意缺 proposal_id（校验的就是这个），并非 advisory 的展示用例 ——

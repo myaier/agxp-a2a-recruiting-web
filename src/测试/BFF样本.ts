@@ -445,6 +445,7 @@ export const BFF候选委托回执样本: BFF委托回执 = {
   evaluation_id: null,
   case_id: null,
   refusal_code: null,
+  failure_code: null,
 };
 
 export const BFF招聘委托回执样本: BFF委托回执 = {
@@ -454,6 +455,7 @@ export const BFF招聘委托回执样本: BFF委托回执 = {
   evaluation_id: null,
   case_id: null,
   refusal_code: null,
+  failure_code: null,
 };
 
 export const BFF发现偏好样本: BFF发现偏好 = {

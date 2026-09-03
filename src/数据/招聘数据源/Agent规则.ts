@@ -150,7 +150,10 @@ function 解Agent规则(input: unknown): BFFAgent规则 {
   };
 }
 
-const 提案公开键 = new Set(['proposal_id', 'state', 'normalized_text', 'consequence', 'created_at']);
+const 提案公开键 = new Set([
+  'proposal_id', 'state', 'normalized_text', 'consequence', 'failure_code', 'created_at',
+]);
+const 提案失败码全表 = ['agent_unavailable', 'interpretation_failed'] as const;
 
 /**
  * 提案三种形状分开校验：
@@ -167,13 +170,14 @@ function 解Agent规则提案(input: unknown): BFFAgent规则提案 {
   const state = 要求枚举(input.state, 提案状态全表);
 
   if (state === 'interpreting') {
-    if ('normalized_text' in input || 'consequence' in input) throw 契约错误();
+    if ('normalized_text' in input || 'consequence' in input || 'failure_code' in input) throw 契约错误();
     if ('created_at' in input) {
       return { proposal_id, state, created_at: 要求日期(input.created_at) };
     }
     return { proposal_id, state };
   }
   if (state === 'ready') {
+    if ('failure_code' in input) throw 契约错误();
     if (!('normalized_text' in input && 'consequence' in input && 'created_at' in input)) throw 契约错误();
     return {
       proposal_id,
@@ -183,9 +187,11 @@ function 解Agent规则提案(input: unknown): BFFAgent规则提案 {
       created_at: 要求日期(input.created_at),
     };
   }
+  if (state !== 'failed' && 'failure_code' in input) throw 契约错误();
   const 回执: BFFAgent规则提案 = { proposal_id, state };
   if ('normalized_text' in input) 回执.normalized_text = 要求字符串(input.normalized_text);
   if ('consequence' in input) 回执.consequence = 要求枚举(input.consequence, 后果全表);
+  if ('failure_code' in input) 回执.failure_code = 要求枚举(input.failure_code, 提案失败码全表);
   if ('created_at' in input) 回执.created_at = 要求日期(input.created_at);
   return 回执;
 }

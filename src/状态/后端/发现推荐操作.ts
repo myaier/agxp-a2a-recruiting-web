@@ -363,9 +363,19 @@ export function P4委托终态文案(state: 'needs_user' | 'refused' | 'failed')
   const guidance = {
     needs_user: '，请查看当前可用入口',
     refused: '，请查看页面状态',
-    failed: '，请稍后重试',
+    failed: '，请查看最新状态',
   } as const;
   return `${P4委托状态文案(state)}${guidance[state]}`;
+}
+
+/** Hosted Agent 失败只展示 owner-safe 闭词；当前版本没有安全重试合同。 */
+export function P4委托失败文案(code: NonNullable<BFF委托回执['failure_code']>): string {
+  const 文案 = {
+    delegation_agent_unavailable: 'AI代理暂时不可用，本次委托没有完成',
+    delegation_evaluation_failed: 'AI代理没有完成评估，本次委托没有推进',
+    delegation_failed: '本次委托没有完成，请稍后查看最新状态',
+  } as const;
+  return 文案[code];
 }
 
 // ── Task 5：委托回执的跨字段校验、闭合文案与落位 ──
@@ -387,11 +397,17 @@ function 委托契约漂移(): BFF错误 {
  *     （候选侧不传：选择坐标是 job_id，回执 recommendation_id 可空且被完全忽略）。
  */
 function 校验委托回执(回执: BFF委托回执, 期望推荐编号?: string): void {
+  if (回执.refusal_code !== null && 回执.failure_code !== null) throw 委托契约漂移();
   if (回执.state === null) {
-    if (回执.refusal_code === null) throw 委托契约漂移();
+    if (回执.refusal_code === null || 回执.failure_code !== null) throw 委托契约漂移();
   } else if (回执.state === 'case_started') {
-    if (回执.case_id === null) throw 委托契约漂移();
+    if (回执.case_id === null || 回执.refusal_code !== null || 回执.failure_code !== null) throw 委托契约漂移();
   } else if (回执.case_id !== null) {
+    throw 委托契约漂移();
+  }
+  if (回执.state === 'failed') {
+    if (回执.failure_code === null || 回执.refusal_code !== null) throw 委托契约漂移();
+  } else if (回执.failure_code !== null) {
     throw 委托契约漂移();
   }
   if (期望推荐编号 !== undefined && 回执.recommendation_id !== null &&
@@ -413,6 +429,7 @@ export function P4委托回执文案(回执: BFF委托回执): string {
     return P4拒绝文案(回执.refusal_code);
   }
   if (state === 'refused' && 回执.refusal_code !== null) return P4拒绝文案(回执.refusal_code);
+  if (state === 'failed' && 回执.failure_code !== null) return P4委托失败文案(回执.failure_code);
   if (state === 'needs_user' || state === 'refused' || state === 'failed') return P4委托终态文案(state);
   throw 委托契约漂移();
 }

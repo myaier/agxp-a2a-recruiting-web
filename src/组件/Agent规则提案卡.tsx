@@ -46,9 +46,12 @@ export default function Agent规则提案卡({ 提案, 忙, 接受, 放弃, 关�
   }
 
   if (提案.state === 'failed') {
+    const 失败文案 = 提案.failure_code === 'agent_unavailable'
+      ? 'AI代理暂时不可用，这条规则没有完成理解'
+      : 'AI代理没有理解这条规则，请换一种更明确的说法';
     return (
       <div className={样式.卡}>
-        <div className={样式.后果}>这条规则暂时无法理解，请换一种说法</div>
+        <div className={样式.后果}>{失败文案}</div>
         <div className={样式.键行}>
           <button type="button" className={`${样式.关闭键} 可点`} onClick={关闭失败}>
             关闭

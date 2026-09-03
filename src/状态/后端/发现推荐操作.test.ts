@@ -40,6 +40,7 @@ import {
   创建空P4发现状态,
   创建发现推荐操作,
   P4委托回执文案,
+  P4委托失败文案,
   P4委托终态文案,
   P4错误文案,
   P4范围键,
@@ -1007,13 +1008,18 @@ describe('P4 闭合错误文案', () => {
     expect(P4拒绝文案('delegation_not_allowed')).toBe('当前无法发起委托，请刷新后重试');
     expect(P4拒绝文案('active_case_quota_reached')).toBe('当前在谈已达到上限，请先处理已有在谈');
     expect(P4拒绝文案('delegation_cooldown')).toBe('近期已联系过对方，暂时不能重复发起');
+    expect(P4拒绝文案('recommendation_stale')).toBe('这条推荐已经更新，请刷新后重新查看');
     // 终态文案 = 共享状态文案 + 安全下一步提示：不发明动作、不许诺可重试
     expect(P4委托终态文案('needs_user')).toBe('需要你处理，请查看当前可用入口');
     expect(P4委托终态文案('refused')).toBe('本次未能继续，请查看页面状态');
-    expect(P4委托终态文案('failed')).toBe('本次处理未完成，请稍后重试');
+    expect(P4委托终态文案('failed')).toBe('本次处理未完成，请查看最新状态');
+    expect(P4委托失败文案('delegation_agent_unavailable'))
+      .toBe('AI代理暂时不可用，本次委托没有完成');
+    expect(P4委托失败文案('delegation_evaluation_failed'))
+      .toBe('AI代理没有完成评估，本次委托没有推进');
   });
 
-  it('P4委托回执文案 按 §8.2 精确映射终态：state null 只走拒绝码，refused 有码走拒绝码，needs_user/failed 无视拒绝码', () => {
+  it('P4委托回执文案精确映射拒绝码与失败码', () => {
     const 回执 = (覆盖: Partial<BFF委托回执>): BFF委托回执 => ({ ...BFF候选委托回执样本, ...覆盖 });
     expect(P4委托回执文案(回执({ state: null, refusal_code: 'delegation_cooldown' })))
       .toBe('近期已联系过对方，暂时不能重复发起');
@@ -1023,8 +1029,9 @@ describe('P4 闭合错误文案', () => {
       .toBe('本次未能继续，请查看页面状态');
     expect(P4委托回执文案(回执({ state: 'needs_user', refusal_code: 'delegation_cooldown' })))
       .toBe('需要你处理，请查看当前可用入口');
-    expect(P4委托回执文案(回执({ state: 'failed', refusal_code: 'recommendation_not_found' })))
-      .toBe('本次处理未完成，请稍后重试');
+    expect(P4委托回执文案(回执({
+      state: 'failed', refusal_code: null, failure_code: 'delegation_agent_unavailable',
+    }))).toBe('AI代理暂时不可用，本次委托没有完成');
   });
 });
 
@@ -1192,12 +1199,12 @@ describe('委托候选岗位', () => {
       }])
       .mockResolvedValueOnce([{
         ...BFF候选委托回执样本, delegation_id: 'del_fa',
-        state: 'failed', refusal_code: 'active_case_quota_reached',
+        state: 'failed', refusal_code: null, failure_code: 'delegation_evaluation_failed',
       }]);
     await expect(env.操作.委托候选岗位(候选委托输入))
       .rejects.toMatchObject({ code: 'needs_user', message: '需要你处理，请查看当前可用入口' });
     await expect(env.操作.委托候选岗位(候选委托输入))
-      .rejects.toMatchObject({ code: 'failed', message: '本次处理未完成，请稍后重试' });
+      .rejects.toMatchObject({ code: 'failed', message: 'AI代理没有完成评估，本次委托没有推进' });
     // 屏的 catch 是 轻提示(P4错误文案(error))：state 形式的 code 不在 HTTP 闭合表里，
     // 恰好回落 message —— 带拒绝码的终态也绝不会被 HTTP 拒绝码文案截胡
     expect(P4错误文案(new BFF错误(200, 'needs_user', '需要你处理，请查看当前可用入口')))
@@ -1423,6 +1430,7 @@ describe('委托招聘候选', () => {
       }])
       .mockResolvedValueOnce([{
         ...BFF招聘委托回执样本, delegation_id: 'del_rfa', state: 'failed', refusal_code: null,
+        failure_code: 'delegation_failed',
       }]);
     // 三次终态各自落同一张卡：每次落位后卡与详情缓存都带该次的权威摘要
     const 各次: [string, string, BFF委托摘要][] = [
@@ -1430,7 +1438,7 @@ describe('委托招聘候选', () => {
         { delegation_id: 'del_rnu', state: 'needs_user', case_id: null }],
       ['del_rrf', '近期已联系过对方，暂时不能重复发起',
         { delegation_id: 'del_rrf', state: 'refused', case_id: null }],
-      ['del_rfa', '本次处理未完成，请稍后重试',
+      ['del_rfa', '本次委托没有完成，请稍后查看最新状态',
         { delegation_id: 'del_rfa', state: 'failed', case_id: null }],
     ];
     for (const [编号, 文案, 摘要] of 各次) {
@@ -1504,7 +1512,11 @@ describe('刷新委托', () => {
     ]);
     await env.操作.加载候选岗位('int_1');
     vi.mocked(env.数据源.读取候选岗位委托).mockResolvedValue(
-      { ...BFF候选委托回执样本, delegation_id: 'del_ev', state, refusal_code: null });
+      {
+        ...BFF候选委托回执样本,
+        delegation_id: 'del_ev', state, refusal_code: null,
+        failure_code: state === 'failed' ? 'delegation_failed' : null,
+      });
     await expect(env.操作.刷新委托('candidate', 'del_ev')).resolves.toBeUndefined();
     expect(env.最新状态().候选岗位推荐.int_1?.items[0]).toEqual({
       ...BFF候选岗位推荐样本,
@@ -1525,7 +1537,10 @@ describe('刷新委托', () => {
     ]);
     await env.操作.加载招聘候选('job_1');
     vi.mocked(env.数据源.读取招聘候选委托).mockResolvedValue(
-      { ...BFF招聘委托回执样本, delegation_id: 'del_rp', state: 'failed', refusal_code: null });
+      {
+        ...BFF招聘委托回执样本, delegation_id: 'del_rp', state: 'failed', refusal_code: null,
+        failure_code: 'delegation_agent_unavailable',
+      });
     await expect(env.操作.刷新委托('recruiter', 'del_rp')).resolves.toBeUndefined();
     expect(env.最新状态().招聘可用候选.job_1?.items[0]?.delegation)
       .toEqual({ delegation_id: 'del_rp', state: 'failed', case_id: null });

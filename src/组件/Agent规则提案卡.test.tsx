@@ -64,7 +64,7 @@ describe('Agent规则提案卡', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('failed 显示固定失败文案，关闭走 关闭失败', async () => {
+  it('failed 按公开失败码显示可理解文案，关闭走 关闭失败', async () => {
     const user = userEvent.setup();
     const 关闭失败 = vi.fn();
     render(
@@ -73,9 +73,19 @@ describe('Agent规则提案卡', () => {
         忙={false} 接受={vi.fn()} 放弃={vi.fn()} 关闭失败={关闭失败}
       />,
     );
-    expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
+    expect(screen.getByText('AI代理没有理解这条规则，请换一种更明确的说法')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '关闭' }));
     expect(关闭失败).toHaveBeenCalledTimes(1);
+  });
+
+  it('agent_unavailable 明确告知是 AI 代理暂时不可用', () => {
+    render(
+      <Agent规则提案卡
+        提案={{ ...BFFAgent规则解释中提案样本, state: 'failed', failure_code: 'agent_unavailable' }}
+        {...无动作}
+      />,
+    );
+    expect(screen.getByText('AI代理暂时不可用，这条规则没有完成理解')).toBeTruthy();
   });
 
   it('accepted 与 dismissed 整卡不渲染任何内容', () => {

@@ -271,6 +271,7 @@ const P4拒绝原因文案表 = {
   delegation_not_allowed: '当前无法发起委托，请刷新后重试',
   active_case_quota_reached: '当前在谈已达到上限，请先处理已有在谈',
   delegation_cooldown: '近期已联系过对方，暂时不能重复发起',
+  recommendation_stale: '这条推荐已经更新，请刷新后重新查看',
 } as const satisfies Record<NonNullable<BFF委托回执['refusal_code']>, string>;
 
 export function P4拒绝原因文案(

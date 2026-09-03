@@ -136,8 +136,11 @@ const 淘汰原因全表 = [
 ] as const satisfies readonly BFF淘汰原因[];
 const 委托拒绝码全表 = [
   'recommendation_not_found', 'recommendation_unavailable', 'delegation_not_allowed',
-  'active_case_quota_reached', 'delegation_cooldown',
+  'active_case_quota_reached', 'delegation_cooldown', 'recommendation_stale',
 ] as const satisfies readonly Exclude<BFF委托回执['refusal_code'], null>[];
+const 委托失败码全表 = [
+  'delegation_agent_unavailable', 'delegation_evaluation_failed', 'delegation_failed',
+] as const satisfies readonly Exclude<BFF委托回执['failure_code'], null>[];
 const 发现偏好原因全表 = [
   'not_interested', ...淘汰原因全表,
 ] as const satisfies readonly NonNullable<BFF发现偏好['rejection_reason']>[];
@@ -257,7 +260,7 @@ function 解委托摘要(input: unknown): BFF委托摘要 {
 
 function 解委托回执(input: unknown): BFF委托回执 {
   const raw = 要求闭合对象(input, [
-    'delegation_id', 'recommendation_id', 'state', 'evaluation_id', 'case_id', 'refusal_code',
+    'delegation_id', 'recommendation_id', 'state', 'evaluation_id', 'case_id', 'refusal_code', 'failure_code',
   ]);
   return {
     delegation_id: 要求非空字符串(raw.delegation_id),
@@ -266,6 +269,7 @@ function 解委托回执(input: unknown): BFF委托回执 {
     evaluation_id: 要求可空非空字符串(raw.evaluation_id),
     case_id: 要求可空非空字符串(raw.case_id),
     refusal_code: raw.refusal_code === null ? null : 要求枚举(raw.refusal_code, 委托拒绝码全表),
+    failure_code: raw.failure_code === null ? null : 要求枚举(raw.failure_code, 委托失败码全表),
   };
 }
 

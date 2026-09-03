@@ -263,6 +263,27 @@ describe('MatchCase数据源', () => {
       .toThrow(契约漂移);
   });
 
+  it('attention_required 仅接受不可重试的公开 Agent 异常', () => {
+    const 状态 = {
+      ...P5状态视图Wire,
+      status: 'attention_required',
+      step: 'candidate_evaluation',
+      agent_attention: { code: 'agent_unavailable', retryable: false },
+    };
+    expect(解P5详情({ ...P5候选详情Wire, state: 状态 }, 'candidate').state.agentAttention)
+      .toEqual({ code: 'agent_unavailable', retryable: false });
+
+    for (const 破损状态 of [
+      { ...状态, agent_attention: undefined },
+      { ...状态, agent_attention: { code: 'timeout', retryable: false } },
+      { ...状态, agent_attention: { code: 'agent_unavailable', retryable: true } },
+      { ...P5状态视图Wire, agent_attention: { code: 'agent_result_invalid', retryable: false } },
+    ]) {
+      expect(() => 解P5详情({ ...P5候选详情Wire, state: 破损状态 }, 'candidate'))
+        .toThrow(契约漂移);
+    }
+  });
+
   it('available_actions 闭合十词、不重复、按 viewer 归属，且与 needs_action 精确耦合', () => {
     // 候选端收到招聘端专属 decide_resume_screening → 漂移
     expect(() => 解P5详情({ ...P5候选详情Wire, available_actions: ['decide_resume_screening'] }, 'candidate'))

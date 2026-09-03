@@ -498,6 +498,7 @@ export interface BFFAgent规则提案 {
   state: BFFAgent规则提案状态;
   normalized_text?: string;
   consequence?: BFFAgent规则后果;
+  failure_code?: 'agent_unavailable' | 'interpretation_failed';
   created_at?: string;
 }
 
@@ -590,7 +591,12 @@ export interface BFF委托回执 {
   refusal_code:
     | 'recommendation_not_found' | 'recommendation_unavailable'
     | 'delegation_not_allowed' | 'active_case_quota_reached'
-    | 'delegation_cooldown' | null;
+    | 'delegation_cooldown' | 'recommendation_stale' | null;
+  failure_code:
+    | 'delegation_agent_unavailable'
+    | 'delegation_evaluation_failed'
+    | 'delegation_failed'
+    | null;
 }
 // ── 候选人附件简历域 DTO（P2：resume-files 与解析状态）──
 // 字段名逐项复制自 recruitment-bff OpenAPI；解析失败码与 media type 闭合，
@@ -696,6 +702,10 @@ export interface BFFMatchCase视图 {
   created_at: string;
   updated_at: string;
   finalized_at?: string | null;
+  agent_attention?: {
+    code: 'agent_unavailable' | 'agent_result_invalid';
+    retryable: false;
+  };
 }
 
 /** WorkspacePublicJob + MatchCaseWorkspaceJob：Case 创建时冻结的公开职位四事实快照。 */

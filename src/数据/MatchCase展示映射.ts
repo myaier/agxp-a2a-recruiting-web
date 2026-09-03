@@ -256,6 +256,7 @@ export interface P5详情正常视图 {
    */
   详情终局: boolean;
   更新于: string;
+  Agent异常: string | null;
   handoff: P5移交视图 | null;
   actions: readonly P5动作卡[];
   补充问题: P5补充问题视图 | null;
@@ -490,6 +491,11 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
   const 会话已发布 = 行.lifecycle === 'completed'
     && state.step === 'complete'
     && detail.conversationRef !== null;
+  const Agent异常 = state.agentAttention == null
+    ? null
+    : state.agentAttention.code === 'agent_unavailable'
+      ? 'AI代理暂时不可用，本次没有完成处理。'
+      : 'AI代理返回的结果无法使用，本次没有完成处理。';
 
   return {
     kind: '正常',
@@ -506,6 +512,7 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
     终局: 生命周期终局表[行.lifecycle],
     详情终局: 行.lifecycle === 'ended' || 会话已发布,
     更新于: state.updatedAt,
+    Agent异常,
     handoff,
     actions: 动作卡,
     补充问题,

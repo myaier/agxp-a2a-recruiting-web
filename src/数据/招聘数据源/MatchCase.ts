@@ -229,6 +229,10 @@ export interface P5状态视图 {
   createdAt: string;
   updatedAt: string;
   finalizedAt: string | null;
+  agentAttention?: {
+    code: 'agent_unavailable' | 'agent_result_invalid';
+    retryable: false;
+  } | null;
 }
 
 export interface P5清单项 { label: string; done: boolean }
@@ -331,7 +335,7 @@ function 解P5状态视图(input: unknown): P5状态视图 {
   const raw = 要求闭合对象(input, [
     'case_id', 'lifecycle', 'stage', 'status', 'step', 'round', 'round_budget',
     'needs_user', 'outcome', 'outcome_code', 'created_at', 'updated_at',
-  ], ['finalized_at']);
+  ], ['finalized_at', 'agent_attention']);
   const lifecycle = 要求枚举(raw.lifecycle, 生命周期全表);
   const stage = 要求枚举(raw.stage, 阶段全表);
   const status = 要求枚举(raw.status, 状态全表);
@@ -346,6 +350,17 @@ function 解P5状态视图(input: unknown): P5状态视图 {
   const outcome = 要求可空字符串(raw.outcome);
   const outcomeCode = 要求可空字符串(raw.outcome_code);
   const finalizedAt = raw.finalized_at === undefined ? null : 要求可空RFC3339(raw.finalized_at);
+  let agentAttention: P5状态视图['agentAttention'] = null;
+  if (raw.agent_attention !== undefined) {
+    const attention = 要求闭合对象(raw.agent_attention, ['code', 'retryable']);
+    const retryable = 要求布尔(attention.retryable);
+    if (retryable !== false) throw 契约错误();
+    agentAttention = {
+      code: 要求枚举(attention.code, ['agent_unavailable', 'agent_result_invalid']),
+      retryable: false,
+    };
+  }
+  if ((status === 'attention_required') !== (agentAttention !== null)) throw 契约错误();
   // 终局列组合：open 三列全空，ended 三列齐备，completed 只留 finalized_at（严格客户端同款）。
   if (lifecycle === 'open' && (outcome !== null || outcomeCode !== null || finalizedAt !== null)) {
     throw 契约错误();
@@ -370,6 +385,7 @@ function 解P5状态视图(input: unknown): P5状态视图 {
     createdAt: 要求RFC3339(raw.created_at),
     updatedAt: 要求RFC3339(raw.updated_at),
     finalizedAt,
+    agentAttention,
   };
 }
 
