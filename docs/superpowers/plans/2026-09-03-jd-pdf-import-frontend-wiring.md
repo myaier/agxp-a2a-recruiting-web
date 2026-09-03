@@ -616,7 +616,8 @@ const JD失败码文案: Record<BFFJD导入失败码, string> = {
 };
 
 function 取JD错误文案(error: unknown): string {
-  if (!(error instanceof BFF错误)) return '网络异常，请稍后重试';
+  const unavailable = 'JD 服务暂时不可用，请稍后重试或手动填写';
+  if (!(error instanceof BFF错误)) return unavailable;
   const known: Record<string, string> = {
     invalid_pdf: JD失败码文案.invalid_pdf,
     job_draft_import_too_large: '文件过大，请选择较小的 PDF',
@@ -628,14 +629,18 @@ function 取JD错误文案(error: unknown): string {
     parser_invalid_output: JD失败码文案.parser_invalid_output,
     parser_temporarily_unavailable: JD失败码文案.parser_temporarily_unavailable,
     job_draft_import_not_found: '这次识别已失效，请重新上传',
-    rate_limited: '操作太频繁，请稍后重试',
-    invalid_response: '识别结果格式异常，请重新上传或手动填写',
+    storage_unavailable: unavailable,
+    invalid_response: '服务返回异常，请稍后重试',
   };
-  return known[error.code] ?? (error.status === 0 ? '网络异常，请稍后重试' : '识别失败，请重新上传或手动填写');
+  if (known[error.code]) return known[error.code];
+  if (error.status === 503 || error.code === 'network_error') return unavailable;
+  return unavailable;
 }
 ```
 
 Never surface `error.message`.
+
+In Step 1, add a table-driven test containing every row of Spec §9.2 plus a non-`BFF错误` and an unknown backend code. Assert the exact text above and assert raw `message`, request ID, provider, and model output never appear.
 
 - [ ] **Step 4: Implement one serialized page lifecycle**
 
@@ -686,9 +691,11 @@ const 安排JD读取 = (generation: number, importId: string) => {
 };
 ```
 
-`读取本轮JD` must set `JD读取中.current=true`, await exactly one GET, then reset in `finally`. It handles `'已换代'` silently; pending/processing updates phase and schedules only after the current GET completes; succeeded/failed clear timers and enter terminal state. Current GET error preserves `importId`, sets `retry:'read'`, and never calls POST.
+`读取本轮JD` must set `JD读取中.current=true`, await exactly one GET, then reset in `finally`. It handles `'已换代'` silently; pending/processing updates phase and schedules only after the current GET completes; succeeded/failed clear timers and enter terminal state. A current GET error preserves `importId` and never calls POST, but sets `retry:'read'` only for `network_error`, HTTP 503, or `storage_unavailable`; `job_draft_import_not_found`, `invalid_response`, and every other deterministic error set `retry:'none'`.
 
-`提交待确认JD` must guard `phase === 'uploading'`, save the selected `{file,key}`, set uploading, and call POST. A current POST error preserves `file + key`, has `importId:null`, and sets `retry:'create'`. A successful pending/processing result stores the returned import ID before scheduling. A direct succeeded/failed result is terminal and schedules no timer.
+`提交待确认JD` must guard `phase === 'uploading'`, save the selected `{file,key}`, set uploading, and call POST. A current POST error preserves `file + key` and has `importId:null`, but sets `retry:'create'` only for `network_error`, HTTP 503, `operation_outcome_unknown`, `storage_unavailable`, `upload_in_progress`, or `idempotency_in_progress`. `invalid_pdf`, `document_too_complex`, `processing_consent_required`, `idempotency_conflict`, and every other deterministic error set `retry:'none'`. A successful pending/processing result stores the returned import ID before scheduling. A direct succeeded/failed result is terminal and schedules no timer.
+
+Implement those allowlists as two small page-local predicates (`JD创建错误可重试` and `JD读取错误可重试`) and add Step 1 table cases proving each allowed code offers `重试 ›` while `invalid_pdf`, `idempotency_conflict`, `job_draft_import_not_found`, and `invalid_response` offer only re-upload/manual action.
 
 `重试JD` dispatches by state only:
 
@@ -700,7 +707,7 @@ if (current.retry === 'create' && current.file && current.idempotencyKey) {
 }
 ```
 
-For `visibilitychange`, clear the timer when hidden. When visible and the current phase is pending/processing and no GET is in flight, call `读取本轮JD` immediately. If a GET remains in flight, its completion owns scheduling the next timer.
+Own `visibilitychange` in a dedicated effect: call `document.addEventListener` once for that effect and return cleanup that calls the matching `removeEventListener`. The handler first checks `JD已挂载.current`; when hidden it clears the timer. When visible and the current phase is pending/processing and no GET is in flight, it calls `读取本轮JD` immediately. If a GET remains in flight, its completion owns scheduling the next timer. Step 1 must unmount, dispatch `visibilitychange`, and assert zero additional GET so a leaked listener cannot pass.
 
 - [ ] **Step 5: Reuse the frozen UI in place**
 
@@ -770,7 +777,7 @@ Expected: tests PASS and the frozen-path diff emits no output.
 Use a POST deferred promise so every test can edit controls after consent but before resolving succeeded. Add all cases below:
 
 1. Every non-null independent suggestion replaces both blank and non-empty pre-upload values when the current field still equals the takeoff snapshot.
-2. Editing an independent field while parsing protects it; changing it back to the snapshot value makes it eligible, because the approved rule is value comparison rather than dirty-history tracking.
+2. Editing an independent field while parsing protects it while its current value differs; changing it back to the snapshot value makes it eligible, because the approved rule is value comparison rather than dirty-history tracking. Spec §8.1 explicitly uses this value-only rule.
 3. Every `null` suggestion preserves the current value.
 4. All valid education and experience wire enums map to the exact UI labels; unknown enums already fail in Task 1 and therefore apply nothing.
 5. Recruitment type changes only when all eight group values equal the snapshot; it clears salary bounds/annual months, and switching to internship resets conversion. Any one changed group member protects the whole group.
@@ -954,7 +961,7 @@ Expected: all focused tests PASS and frozen-path diff has no output.
 
 - [ ] **Step 1: Add a failing browser data-source scenario**
 
-In the established Backend data-source test harness, intercept exact routes. The POST fixture must return HTTP `202`; the first GET returns processing and the next returns succeeded.
+In the established Backend data-source test harness, add a test whose title contains exactly `JD 建议稿导入` and intercept exact routes. The POST fixture must return HTTP `202`; the first GET returns processing and the next returns succeeded.
 
 ```ts
 await page.route('**/api/v1/recruiter/job-draft-imports', async (route) => {
@@ -986,7 +993,7 @@ Add one separate cancellation assertion proving consent cancel issues zero POST.
 - [ ] **Step 2: Run the red E2E**
 
 ```bash
-npm run test:e2e:data-source -- --grep "JD PDF 导入"
+npm run test:e2e:data-source -- --grep "JD 建议稿导入"
 ```
 
 Expected: FAIL until the fixture and scenario are complete.
@@ -994,7 +1001,7 @@ Expected: FAIL until the fixture and scenario are complete.
 - [ ] **Step 3: Complete only fixture gaps, then run the focused vertical slice**
 
 ```bash
-npm run test:e2e:data-source -- --grep "JD PDF 导入"
+npm run test:e2e:data-source -- --grep "JD 建议稿导入"
 npm test -- src/数据/招聘数据源/JD导入.test.ts src/数据/HTTP招聘数据源.test.ts src/状态/后端/JD导入操作.test.ts src/状态/应用状态.test.ts src/屏幕/发布岗位.test.tsx
 npm run typecheck
 ```
@@ -1009,7 +1016,7 @@ git commit -m "test: cover JD import frontend flow"
 git status --short
 ```
 
-Do not create a second E2E harness and do not use `git add -A`.
+If Step 1 actually changes a colocated fixture or a Task 1–4 test, add each inspected file by its explicit repository path in the same `git add` command before committing. Do not create a second E2E harness and do not use `git add -A`.
 
 - [ ] **Step 5: Run the authoritative plan-scope gate once on the clean candidate commit**
 
@@ -1118,6 +1125,7 @@ git status --short
 - One narrow facade is required because multipart, idempotency, strict union decoding, and no-store GET are wire concerns; changing the shared HTTP client is not required.
 - One thin operation factory is required because account/session fencing and current-401 cleanup are existing application boundaries; adding import state there is not required.
 - Page-local state is required because compare-and-fill depends on the live form and a single mount. Global persistence would create stale-draft and privacy risk without a current recovery requirement.
+- The existing `useP8导出轮询` is not reused because it is typed to P8 export states, immediately GETs on enable, and owns a frozen 2/4/8/10-second backoff. JD begins only after POST and requires fixed ~3-second scheduling plus page-generation/import-ID/snapshot handling; parameterizing the P8 hook would expand a stable shared API for this one new caller.
 - Two page-local transition helpers prevent existing type/remote cleanup from diverging between manual and suggested changes. No broader form abstraction is introduced.
 - A single intercepted E2E plus focused unit/component coverage proves the vertical slice without claiming target-environment deployment.
 

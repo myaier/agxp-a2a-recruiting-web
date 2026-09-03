@@ -237,7 +237,7 @@ POST 可以返回任一合法状态：
 - failed：映射 failure code，进入 terminal failed；
 - `已换代`：静默结束，不修改新页面状态。
 
-POST 尚未取得 import ID 就发生网络错误、503 或 outcome unknown 时，保留同一 `File + Idempotency-Key`，设 `retry:'create'`。用户显式重试仍调用 POST，让服务端按同一意图 replay；不得生成新 key 或自动制造第二个任务。
+POST 尚未取得 import ID 且发生 `network_error`、HTTP 503、`operation_outcome_unknown`、`storage_unavailable`、`upload_in_progress` 或 `idempotency_in_progress` 时，保留同一 `File + Idempotency-Key`，设 `retry:'create'`。这些情况分别表示传输/服务临时失败、结果未知或同一幂等意图仍在处理；用户显式重试仍调用 POST，让服务端按同一意图 replay。`invalid_pdf`、`document_too_complex`、`processing_consent_required`、`idempotency_conflict` 及其他确定性错误设 `retry:'none'`，只能重新选择/确认或继续手填；不得用同一确定失败意图循环重放，也不得生成新 key 自动制造第二个任务。
 
 ### 7.3 串行轮询
 
@@ -246,7 +246,7 @@ POST 尚未取得 import ID 就发生网络错误、503 或 outcome unknown 时�
 - 页面 `document.hidden` 时清 timer，恢复可见后立即 GET；
 - 卸载、新合法文件、succeeded 或 terminal failed 时清 timer；
 - 每次返回同时核对 mounted、页面 generation 和当前 import ID；任一不符时静默丢弃；
-- GET 的临时失败保留 import ID，设 `retry:'read'`；显式重试只读同一任务，绝不重新 POST；
+- GET 的 `network_error`、HTTP 503 或 `storage_unavailable` 保留 import ID，设 `retry:'read'`；显式重试只读同一任务，绝不重新 POST；`job_draft_import_not_found`、`invalid_response` 及其他确定性错误设 `retry:'none'`；
 - terminal failed 设 `retry:'none'`，只能重新选择 PDF 或继续手填。
 
 操作层 session fence 与页面 generation/import ID fence 缺一不可：前者保护账号边界，后者保护同一挂载周期内的多个文件意图。
@@ -258,7 +258,7 @@ POST 尚未取得 import ID 就发生网络错误、503 或 outcome unknown 时�
 上传 POST 起飞前，捕获全部可建议字段和耦合字段的值。成功时：
 
 - 当前值仍与本轮快照按值相等，表示上传后未被用户修改，可以应用非空建议；
-- 当前值不同，即使用户后来清空，也视为用户已操作，不应用该字段或字段组；
+- 当前值与快照不同即视为用户已操作，不应用该字段或字段组；当前值重新等于快照时仍可填，本轮只做值比较，不引入 dirty/touched 历史跟踪；
 - 建议为 `null` 时始终保持当前值；
 - 普通文本或枚举在上传前已经非空、但上传后未修改，也允许被建议替换。这是本轮已经确认的自动填表语义；
 - Catalog canonical 引用是例外：已有真实引用始终优先于模型源文本；
@@ -392,7 +392,8 @@ POST 尚未取得 import ID 就发生网络错误、503 或 outcome unknown 时�
 - consent 取消零 mutation，双击确认只发一次 POST；
 - POST 的四种初始状态、pending→processing→succeeded、四个 parser failure code；
 - POST 失败复用 File/key，GET 失败只重试同一 import ID；
-- setTimeout 不重叠，页面隐藏暂停、恢复立即读、卸载停止；
+- setTimeout 不重叠，页面隐藏暂停、恢复立即读、卸载停止；卸载后再次派发 `visibilitychange` 也必须零 GET；
+- POST/GET 仅对第 7 节闭合集合中的临时错误显示对应重试动作；确定性失败不得暴露会重复同一失败请求的“重试”；
 - 新合法文件使旧轮迟到成功、失败和提示全部失效；
 - 普通字段 compare-and-fill、`null` 不清空、invalid response 零部分应用；
 - 招聘类型、办公方式和城市组任一成员被用户修改时整组不覆盖；
@@ -456,5 +457,7 @@ npm run build
 - 页面快照用于保护解析等待期间的用户编辑；
 - 三个耦合组用于防止类型、办公方式和 Catalog 字段产生真实隐藏覆盖；
 - `retry:create|read|none` 用于保证结果未知时不会错误创建第二个任务。
+
+仓库已有的 `useP8导出轮询` 不直接复用：它的公开输入绑定 `P8DataExport` 状态，打开即先 GET，并冻结为 2/4/8/10 秒退避；JD 必须先完成 consent/POST，随后才按固定约 3 秒读取，还要把结果交给页面 generation/import ID/快照合并。为复用而给该 P8 hook 增加状态和节拍配置会修改已稳定的共享机制，并为本轮唯一新用例增加公共参数面。因此本轮保留页面本地轮询；只有出现第二个同样需要“固定节拍 + 页面快照合并”的生产用例时再评估抽取。
 
 除此之外不新增公共抽象、全局状态、持久化、视觉组件或样式。该范围能够完整满足当前 JD PDF 自动填表需求，同时保持 PM 已交付 UI 不变。
