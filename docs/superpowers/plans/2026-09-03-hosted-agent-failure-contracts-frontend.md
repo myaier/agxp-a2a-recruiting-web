@@ -344,13 +344,14 @@ it('create-time refused 空 ID 显示当前业务拒绝但不写 receipt cache',
 });
 ```
 
-同一文件已有四组 nullable-state/错位-code 钉子必须迁移而不是删除覆盖：
+同一文件已有下列 nullable-state、错位-code 与 terminal fixture 钉子，必须迁移而不是删除覆盖：
 
 - `P4拒绝文案 与 P4委托终态文案 逐项冻结`：补 `recommendation_stale`，把 `delegation_not_allowed` 和 `failed` 期望改为本 Task 的新安全文案。
 - `P4委托回执文案 按...`：移除 `state:null` 输入；改为合法 `refused+refusal_code`、`failed+failure_code`、`needs_user+双 code null` 三条。交叉 code 组合归到 operation 的非法合同用例，不让纯文案函数重复 decoder 矩阵职责。
 - `case_started 缺 case_id...`：第三个变体从 `state:null` 改成 `state:'refused', refusal_code:null, failure_code:null`，继续证明非法合同不落状态。
 - `needs_user/failed 无视拒绝码...`：改成 `needs_user` 双 code null 与 `failed+delegation_evaluation_failed`，断言新的 safe message；原“错槽也忽略”语义不再合法。
 - `state null 按已知非空拒绝码...`：由上面的 create-time empty-ID refusal 用例取代，证明兼容点只在合法 `refused`，不再在 operation 层保留 nullable state 分支。
+- `刷新委托` describe 内两处 terminal fixture：parameterized `needs_user|refused|failed` 按 state 分别补合法双 null、`delegation_cooldown` refusal 与 `delegation_failed` failure；招聘侧 failed fixture 补 `failure_code:'delegation_failed'`。保留原来的“轮询 resolve、不派发 Mock、卡回 available”断言。
 
 这些迁移与新增 table 一起保留原来的“非法组合不提交、合法 terminal 先落权威状态”覆盖；不要用 `as unknown as BFF委托回执` 继续制造已从 normalized type 删除的 `state:null`。
 
@@ -1283,19 +1284,64 @@ wait_candidate_rule_count(){
 }
 
 wait_pdf_parse(){
-  local tries=0 body
+  local tries=0 status
   while [ "$tries" -lt 180 ]; do
-    body="$(ab get text body 2>/dev/null || printf '')"
-    case "$body" in
-      *'识别完成'*) return 0 ;;
-      *'未能读取 · 可重试'*|*'内容过多 · 请替换'*|*'识别失败 · 可重试'*|*'服务繁忙 · 稍后重试'*)
+    if ab find role button --name "$RESUME_NAME 识别完成" --exact >/dev/null 2>&1; then
+      return 0
+    fi
+    for status in '未能读取 · 可重试' '内容过多 · 请替换' '识别失败 · 可重试' '服务繁忙 · 稍后重试'; do
+      if ab find role button --name "$RESUME_NAME $status" --exact >/dev/null 2>&1; then
         echo 'PDF 解析进入公开失败终态' >&2
-        return 1 ;;
-    esac
+        return 1
+      fi
+    done
     tries=$((tries + 1))
     sleep 1
   done
   echo '等待 PDF 解析公开终态超时' >&2
+  return 1
+}
+
+has_button_exact(){
+  ab find role button --name "$1" --exact >/dev/null 2>&1
+}
+
+advance_case_for_current_role(){
+  local tries=0
+  while [ "$tries" -lt 120 ]; do
+    if has_button_exact '接受'; then
+      click_button_exact '接受'
+      return 0
+    fi
+    if has_button_exact '确认意向'; then
+      click_button_exact '确认意向'
+      return 0
+    fi
+    tries=$((tries + 1))
+    sleep 1
+  done
+  echo '当前角色未出现可执行的协同或意向决定' >&2
+  return 1
+}
+
+capture_case_authority_marker(){
+  local tries=0 body
+  while [ "$tries" -lt 60 ]; do
+    body="$(ab get text body 2>/dev/null || printf '')"
+    case "$body" in
+      *'等待招聘方确认意向'*) CASE_AUTHORITY_MARKER='等待招聘方确认意向'; return 0 ;;
+      *'等待候选人确认意向'*) CASE_AUTHORITY_MARKER='等待候选人确认意向'; return 0 ;;
+      *'等待双方确认意向'*) CASE_AUTHORITY_MARKER='等待双方确认意向'; return 0 ;;
+      *'双方已确认，正在创建会话'*) CASE_AUTHORITY_MARKER='双方已确认，正在创建会话'; return 0 ;;
+      *'真人会话已建立'*) CASE_AUTHORITY_MARKER='真人会话已建立'; return 0 ;;
+      *'等待招聘方决定'*) CASE_AUTHORITY_MARKER='等待招聘方决定'; return 0 ;;
+      *'等待候选人确认协同事项'*) CASE_AUTHORITY_MARKER='等待候选人确认协同事项'; return 0 ;;
+      *'双方 AI 正在核对剩余差异'*) CASE_AUTHORITY_MARKER='双方 AI 正在核对剩余差异'; return 0 ;;
+    esac
+    tries=$((tries + 1))
+    sleep 1
+  done
+  echo '当前 Case 未出现可用于深链复核的权威步骤文案' >&2
   return 1
 }
 
@@ -1313,6 +1359,23 @@ wait_rule_proposal_ready(){
     sleep 1
   done
   echo '等待 P6 规则解释公开终态超时' >&2
+  return 1
+}
+
+wait_delegation_case_started(){
+  local tries=0 body
+  while [ "$tries" -lt 180 ]; do
+    body="$(ab get text body 2>/dev/null || printf '')"
+    case "$body" in
+      *'查看进展'*) return 0 ;;
+      *'AI 服务暂时不可用，本次没有创建 Case'*|*'本次评估未完成，不代表候选或岗位不合适'*|*'本次委托未完成'*|*'当前政策或资格不允许发起这次委托'*|*'这条推荐已过期，请刷新后查看'*|*'这条推荐当前已不可用，请刷新后查看'*|*'当前在谈已达到上限，请先处理已有在谈'*|*'近期已联系过对方，暂时不能重复发起'*)
+        echo 'P4 委托进入公开拒绝或失败终态' >&2
+        return 1 ;;
+    esac
+    tries=$((tries + 1))
+    sleep 1
+  done
+  echo '等待 P4 委托公开终态超时' >&2
   return 1
 }
 
@@ -1365,11 +1428,12 @@ wait_one_of '选择这次提交的简历' '确认委托AI代理？'
 if on_screen '选择这次提交的简历'; then
   find_retry role radio click --name "$RESUME_NAME" >/dev/null
   click_button_exact '确认并委托'
+else
+  assert_text '确认委托AI代理？'
+  click_button_exact '确认委托'
 fi
-assert_text '确认委托AI代理？'
-click_button_exact '确认委托'
 MILESTONE='P4 等待开案'
-wait_one_of '查看进展' '本次委托未完成'
+wait_delegation_case_started
 assert_text '查看进展'
 click_button_exact '查看进展'
 assert_text '匿名初筛'
@@ -1381,8 +1445,8 @@ esac
 
 # Candidate 侧完成当前公开动作；补问存在时回答，否则按 S0 可用动作继续。
 MILESTONE='candidate target 完成'
-wait_one_of '回答问题' '继续初筛'
-if ab wait '[aria-label="回答问题"]' >/dev/null 2>&1; then
+wait_one_of '继续初筛' '接受邀请'
+if has_button_exact '提交回答'; then
   find_retry label '回答问题' fill '我有 React 与 TypeScript 的真实项目经验，可以接受混合办公。' >/dev/null
   click_button_exact '提交回答'
 fi
@@ -1397,7 +1461,7 @@ click_after_hydrate '人才'
 click_button_exact '在谈'
 wait_text '匿名初筛'
 click_button '匿名初筛'
-wait_one_of '通过初筛' '招聘方 AI 正在初筛已提交简历'
+assert_text '等待候选人回应简历邀请'
 
 # Candidate 接受简历邀请并提交同一 PDF；公开 readiness 推动 recruiter screen_resume。
 MILESTONE='candidate 提交简历'
@@ -1405,6 +1469,7 @@ export AGENT_BROWSER_SESSION="$CANDIDATE_SESSION"
 ab reload >/dev/null
 wait_one_of '接受邀请' '确认递交'
 if on_screen '接受邀请'; then click_button_exact '接受邀请'; fi
+wait_one_of '选择这次递交的简历' '确认递交这份简历？'
 if on_screen '选择这次递交的简历'; then
   find_retry role radio click --name "$RESUME_NAME" >/dev/null
   click_button_exact '选定这份'
@@ -1415,30 +1480,31 @@ click_button_exact '确认递交'
 MILESTONE='recruiter target screen_resume 完成'
 export AGENT_BROWSER_SESSION="$RECRUITER_SESSION"
 ab reload >/dev/null
-wait_one_of '通过初筛' '本次 AI 结果无法安全用于推进 Case'
+wait_one_of '通过初筛' '需注意'
 assert_text '通过初筛'
 click_button_exact '通过初筛'
 
 # 至少一轮 coordination/confirmation；两端各完成公开可用动作，随后硬刷新确认权威状态。
 MILESTONE='双方推进协调'
-wait_one_of '接受' '确认意向'
-if on_screen '接受'; then click_button_exact '接受'; fi
-if on_screen '确认意向'; then click_button_exact '确认意向'; fi
+advance_case_for_current_role
+settle
 ab reload >/dev/null
 assert_no_mock_data
 
 export AGENT_BROWSER_SESSION="$CANDIDATE_SESSION"
 ab reload >/dev/null
-wait_one_of '回应协同事项' '确认意向'
-if on_screen '接受'; then click_button_exact '接受'; fi
-if on_screen '确认意向'; then click_button_exact '确认意向'; fi
+advance_case_for_current_role
+settle
 ab reload >/dev/null
 assert_no_mock_data
+CASE_AUTHORITY_MARKER=''
+capture_case_authority_marker
 
-# 直接打开先前保存的公开 Case URL，不依赖列表内存；深链重进后仍由后端详情水合。
+# 直接打开先前保存的公开 Case URL，不依赖列表内存；深链重进后须恢复刚才捕获的当前步骤。
 MILESTONE='candidate Case 深链重进'
 ab open "$CANDIDATE_CASE_URL" >/dev/null
-assert_text '匿名初筛'
+wait_text "$CASE_AUTHORITY_MARKER"
+assert_text "$CASE_AUTHORITY_MARKER"
 assert_no_mock_data
 
 MILESTONE='完成'
