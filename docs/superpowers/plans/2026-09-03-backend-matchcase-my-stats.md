@@ -4,7 +4,7 @@
 
 **Goal:** 让候选端和招聘端“我的”页只显示当前 Backend 主体的权威 open MatchCase 统计，同时清除所有 legacy Mock Case 状态。
 
-**Architecture:** 保留现有 P5 data source、scope、operation、单飞与 fence。P5 列表快照增加最小 `ownerSubjectId` 内存标记，共享纯 selector 将当前 owner 的成功窗口映射为 `N/N+/0/—`；两个页面只负责注册各自的 unfiltered scope 和消费 selector。
+**Architecture:** 保留现有 P5 data source、scope、operation、单飞与 fence。P5 列表快照增加最小 `ownerSubjectId` 内存标记，共享纯 selector 将当前 owner 的成功窗口映射为 `N/N+/0/—`；两个“我的”页注册各自的 unfiltered scope，相邻展示页只消费已在内存的 selector、不另发请求。
 
 **Tech Stack:** React 19、TypeScript 6、Vitest、Testing Library、现有 P5 MatchCase operation。
 
@@ -40,16 +40,10 @@
 - Modify: `src/状态/后端/会话操作.ts`，`清账号状态`
 - Modify: `src/屏幕/P5/MatchCase列表.tsx`，当前 owner 门控与 effect 依赖
 - Modify: `src/屏幕/P5/MatchCase历史.tsx`，当前 owner 门控与 effect 依赖
-- Modify: `src/屏幕/看市场.tsx`，Backend legacy 待协调数门控
-- Modify: `src/屏幕/代理详情.tsx`，Backend legacy 在谈数门控
-- Modify: `src/屏幕/企业代理详情.tsx`，Backend legacy 在谈数门控
 - Test: `src/状态/后端/MatchCase操作.test.ts`
 - Test: `src/状态/应用状态.test.ts`
 - Test: `src/屏幕/P5/MatchCase列表.test.tsx`
 - Test: `src/屏幕/P5/MatchCase历史.test.tsx`
-- Test: `src/屏幕/看市场.test.tsx`
-- Create: `src/屏幕/代理详情.test.tsx`
-- Create: `src/屏幕/企业代理详情.test.tsx`
 
 **Interfaces:**
 - Consumes: `主体标识引用.current`、`后端状态.主体?.subject_id`、现有 `P5范围键` 与 session/scope fence。
@@ -126,18 +120,12 @@ it('快照 owner 与当前主体不同时不显示旧 case，仍加载当前 sco
 
 在 `MatchCase历史.test.tsx` 写镜像 owner mismatch 用例：当前 candidate subject=`sub_new`、ended/completed 快照 owner=`sub_old` 时两个旧历史标题均不可见，但 `加载历史` 仍对 `ended` 与 `completed` 各调用一次。这样 common 列表构造器给 history 写 owner 后，消费端也关闭同一过渡帧泄漏面。
 
-最后给清空 legacy 数组的三个无条件 Backend 消费者补回归：
-
-- `看市场.test.tsx`：Backend state 即使故意带入 Mock `在谈列表`，横幅强调值也固定为 `—`，不得出现对应演示待协调数字或把空数组解释成“暂时没有”；Mock 保持原分支。
-- 新建 `代理详情.test.tsx` 与 `企业代理详情.test.tsx`：分别以 Backend state 渲染，`正在代谈` 对应值为 `—`，不出现 `0` 或初始 Mock 数组长度；Mock 模式仍显示原数组长度。
-- `归档谈判.tsx`、`企业归档.tsx`、`企业消息.tsx` 已在组件入口先分 Backend/Mock；legacy 读取只位于未挂载的 Mock 子组件，本 Task 不修改它们，现有 P5 历史/会话页面测试继续覆盖 Backend 分支。
-
 - [ ] **Step 2: 运行 RED**
 
 Run:
 
 ```bash
-npx vitest run src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts src/屏幕/P5/MatchCase列表.test.tsx src/屏幕/P5/MatchCase历史.test.tsx src/屏幕/看市场.test.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx
+npx vitest run src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts src/屏幕/P5/MatchCase列表.test.tsx src/屏幕/P5/MatchCase历史.test.tsx
 ```
 
 Expected: FAIL，原因包含 `ownerSubjectId` 缺失、Backend seed 仍含演示数组或旧 owner 行仍可见；不得因测试桩缺必需字段而提前 TypeError。
@@ -249,14 +237,12 @@ useEffect(() => {
 }, [是后端, 当前SubjectId, role, filterRef, scope键, 操作]);
 ```
 
-三个非目标页只做 legacy 读取门控，不注册 P5、不新增请求：`看市场.tsx` 的横幅强调值在 Backend 固定 `—`；`代理详情.tsx` 与 `企业代理详情.tsx` 的“正在代谈”值在 Backend 固定 `—`。这是清空状态后的真实性保护，不改 CSS、布局或其它硬编码指标。
-
 - [ ] **Step 4: 运行 GREEN 与提交**
 
 Run the same Vitest command. Expected: PASS。
 
 ```bash
-git add src/状态/后端/类型.ts src/状态/后端/MatchCase操作.ts src/状态/初始状态.ts src/状态/应用状态.tsx src/状态/后端/会话操作.ts src/屏幕/P5/MatchCase列表.tsx src/屏幕/P5/MatchCase历史.tsx src/屏幕/看市场.tsx src/屏幕/代理详情.tsx src/屏幕/企业代理详情.tsx src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts src/屏幕/P5/MatchCase列表.test.tsx src/屏幕/P5/MatchCase历史.test.tsx src/屏幕/看市场.test.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx
+git add src/状态/后端/类型.ts src/状态/后端/MatchCase操作.ts src/状态/初始状态.ts src/状态/应用状态.tsx src/状态/后端/会话操作.ts src/屏幕/P5/MatchCase列表.tsx src/屏幕/P5/MatchCase历史.tsx src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts src/屏幕/P5/MatchCase列表.test.tsx src/屏幕/P5/MatchCase历史.test.tsx
 git commit -m "fix: isolate backend matchcase snapshots by subject"
 ```
 
@@ -404,17 +390,23 @@ git commit -m "feat: add authoritative matchcase stats selector"
 
 ---
 
-### Task 3: 两端“我的”页注册 unfiltered P5 scope 并消费 selector
+### Task 3: 两端“我的”页注册 scope，相邻展示页复用 selector
 
 **Files:**
 - Modify: `src/屏幕/我的.tsx`
 - Modify: `src/屏幕/企业我的.tsx`
+- Modify: `src/屏幕/看市场.tsx`
+- Modify: `src/屏幕/代理详情.tsx`
+- Modify: `src/屏幕/企业代理详情.tsx`
 - Modify: `src/屏幕/我的.test.tsx`
 - Modify: `src/屏幕/企业我的.test.tsx`
+- Modify: `src/屏幕/看市场.test.tsx`
+- Create: `src/屏幕/代理详情.test.tsx`
+- Create: `src/屏幕/企业代理详情.test.tsx`
 
 **Interfaces:**
 - Consumes: `P5范围键.open(role, null)`、`操作.设置P5范围`、`操作.加载工作区`、`取P5Open统计`、`后端状态.主体.subject_id`。
-- Produces: candidate Backend stats `[open, anonymousScreening, needsAction, '—']`；recruiter Backend stats `[在招岗位真实数, open, needsAction, '—']`。
+- Produces: candidate Backend stats `[open, anonymousScreening, needsAction, '—']`；recruiter Backend stats `[在招岗位真实数, open, needsAction, '—']`；相邻看市场/代理详情只消费同一份已在内存的 selector，不发新请求。
 - Navigation: 保留 `{ 型: '看全部在谈', 档: '待我拍板' }` 与招聘镜像 action；不新增路由。
 
 - [ ] **Step 1: 扩展页面测试宿主并写失败行为测试**
@@ -471,6 +463,14 @@ it('Mock 保留原统计且不调用 P5 operation', () => {
 扩展现有 `布置` 的 options 类型以接收 `主体?: BFF主体` 和 `P5快照?: P5列表快照`，并始终写入稳定 `{ 设置P5范围, 加载工作区 }`；Backend 默认主体为 candidate，Mock 默认 `主体:null/P5工作区:{}`。每个测试 `beforeEach` 清两个 spy。
 
 招聘测试沿用现有 `置Backend应用状态`：给其 `后端状态` 增加完整 recruiter 主体、`P5工作区` 和相同稳定 operation spy，再写镜像断言：在招岗位仍从 `岗位列表` 数，open/needsAction 来自 recruiter scope，意向达成为 `—`，点击“待拍板”仍派发 `{ 型:'企业看全部在谈', 档:'待我拍板' }`。recruiter 行 fixture 使用 `candidateAlias` 而非 `intentionId`，其余 state/job 字段与上面的完整 fixture 一致。
+
+三个相邻展示消费者补回归：
+
+- `看市场.test.tsx`：Backend state 带当前 owner 的 P5 快照时，横幅按 `needsAction` 显示 `2 个职位需要你协调`；无当前成功快照时显示精确中性串 `待办状态未载入`；即使 legacy `在谈列表` 故意带 5 条也不能出现 `5 个职位需要你协调`。Mock 仍按 legacy 数组显示。
+- 新建 `代理详情.test.tsx`：从“我的”进入时已有 candidate unfiltered 快照，`正在代谈` 显示 selector 的 open 值；直达无快照显示 `—`；Mock 仍显示 `状态.在谈列表.length`。
+- 新建 `企业代理详情.test.tsx`：recruiter 镜像验证 `企业候选列表` 不再进入 Backend 展示。
+
+这三个页面不调用 `设置P5范围` 或 `加载工作区`；它们只复用已有内存快照，直接进入时诚实显示缺失态。`归档谈判.tsx`、`企业归档.tsx`、`企业消息.tsx` 已在组件入口先分 Backend/Mock，legacy 读取只位于未挂载的 Mock 子组件，本 Plan 不修改它们。
 
 - [ ] **Step 2: 运行 RED**
 
@@ -530,18 +530,44 @@ const Backend统计 = 取P5Open统计(后端状态.P5工作区[P5Scope], 当前S
 
 Backend 的“在谈”用 `Backend统计.open`，“待拍板”用 `Backend统计.needsAction`，“意向达成”为 `—`；“在招岗位”和代理卡的岗位数保持当前实现。Mock 仍用 `企业候选列表`。
 
+`看市场.tsx`、`代理详情.tsx`、`企业代理详情.tsx` 使用相同的 role/subject/scope 取 selector，但不加 effect：
+
+```ts
+const scope = P5范围键.open('candidate', null);
+const Backend统计 = 取P5Open统计(
+  后端状态.P5工作区[scope],
+  后端状态.主体?.last_used_role === 'candidate'
+    ? 后端状态.主体.subject_id
+    : null,
+);
+```
+
+招聘镜像把 role 换成 `recruiter`。双端代理详情的 Backend “正在代谈”显示 `Backend统计.open`；Mock 保持 legacy 长度。看市场的 Backend 横幅按下式选强调串，避免不可读的“前文 + —”拼句：
+
+```ts
+const 横幅强调 = 是后端
+  ? Backend统计.needsAction === '—'
+    ? '待办状态未载入'
+    : `${Backend统计.needsAction} 个职位需要你协调`
+  : 待协调数 > 0
+    ? `${待协调数} 个职位需要你协调`
+    : '暂时没有需要你介入的';
+```
+
+随后把 `代理横幅` 的 `强调` 改为 `横幅强调`。这是数据缺失态标签，不增加新交互、请求、CSS 或布局。
+
 - [ ] **Step 4: 运行 GREEN、页面相关回归并提交**
 
 Run:
 
 ```bash
-npx vitest run src/屏幕/我的.test.tsx src/屏幕/企业我的.test.tsx src/屏幕/P5/MatchCase列表.test.tsx src/状态/后端/MatchCase统计.test.ts
+npx vitest run src/屏幕/我的.test.tsx src/屏幕/企业我的.test.tsx src/屏幕/看市场.test.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx src/屏幕/P5/MatchCase列表.test.tsx src/状态/后端/MatchCase统计.test.ts
 ```
 
 Expected: PASS。
 
 ```bash
-git add src/屏幕/我的.tsx src/屏幕/企业我的.tsx src/屏幕/我的.test.tsx src/屏幕/企业我的.test.tsx
+git add src/屏幕/我的.tsx src/屏幕/企业我的.tsx src/屏幕/看市场.tsx src/屏幕/代理详情.tsx src/屏幕/企业代理详情.tsx src/屏幕/我的.test.tsx src/屏幕/企业我的.test.tsx src/屏幕/看市场.test.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx
 git commit -m "fix: hydrate my-page stats from matchcases"
 ```
 
