@@ -9,6 +9,8 @@ import type {
   BFFOwnerJob,
   BFF候选岗位推荐,
   BFF委托回执,
+  BFF委托失败码,
+  BFF委托拒绝码,
   BFF委托摘要,
   BFF招聘候选推荐,
   BFF淘汰原因,
@@ -268,15 +270,24 @@ export function P4委托状态文案(state: BFF委托摘要['state']): string {
 const P4拒绝原因文案表 = {
   recommendation_not_found: '这条推荐当前已不可用，请刷新后查看',
   recommendation_unavailable: '这条推荐当前已不可用，请刷新后查看',
-  delegation_not_allowed: '当前无法发起委托，请刷新后重试',
+  recommendation_stale: '这条推荐已过期，请刷新后查看',
+  delegation_not_allowed: '当前政策或资格不允许发起这次委托',
   active_case_quota_reached: '当前在谈已达到上限，请先处理已有在谈',
   delegation_cooldown: '近期已联系过对方，暂时不能重复发起',
-} as const satisfies Record<NonNullable<BFF委托回执['refusal_code']>, string>;
+} as const satisfies Record<BFF委托拒绝码, string>;
 
-export function P4拒绝原因文案(
-  code: NonNullable<BFF委托回执['refusal_code']>,
-): string {
+export function P4拒绝原因文案(code: BFF委托拒绝码): string {
   return P4拒绝原因文案表[code];
+}
+
+const P4失败原因文案表 = {
+  delegation_agent_unavailable: 'AI 服务暂时不可用，本次没有创建 Case',
+  delegation_evaluation_failed: '本次评估未完成，不代表候选或岗位不合适',
+  delegation_failed: '本次委托未完成',
+} as const satisfies Record<BFF委托失败码, string>;
+
+export function P4失败原因文案(code: BFF委托失败码): string {
+  return P4失败原因文案表[code];
 }
 
 export function 映射P4委托展示(
@@ -287,15 +298,22 @@ export function 映射P4委托展示(
   const caseId = summary.state === 'case_started' && summary.case_id?.trim()
     ? summary.case_id
     : null;
+  // reason 只认权威 receipt：delegation_id 与 state 都与摘要对齐才按对应码槽取 owner-safe
+  // 文案；错 ID / 错槽 / 无码一律 null，绝不把别的委托的失败原因带到这张卡上。
+  const receiptMatches = receipt !== null
+    && receipt.delegation_id === summary.delegation_id
+    && receipt.state === summary.state;
+  const reason = receiptMatches && receipt !== null
+    ? summary.state === 'refused' && receipt.refusal_code !== null
+      ? P4拒绝原因文案(receipt.refusal_code)
+      : summary.state === 'failed' && receipt.failure_code !== null
+        ? P4失败原因文案(receipt.failure_code)
+        : null
+    : null;
   return {
     state: summary.state,
     copy: P4委托状态文案(summary.state),
-    reason: summary.state === 'refused'
-      && receipt?.delegation_id === summary.delegation_id
-      && receipt.state === 'refused'
-      && receipt.refusal_code !== null
-      ? P4拒绝原因文案(receipt.refusal_code)
-      : null,
+    reason,
     inProgress: summary.state === 'accepted' || summary.state === 'evaluating',
     caseId,
   };

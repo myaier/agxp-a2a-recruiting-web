@@ -7,6 +7,7 @@ import {
   BFFCandidateJob样本,
   BFF岗位样本,
   BFF候选岗位推荐样本,
+  BFF委托失败回执样本,
   BFF招聘候选推荐样本,
   BFF招聘委托回执样本,
 } from '../测试/BFF样本';
@@ -420,6 +421,36 @@ describe('映射P4委托展示', () => {
       .toBe('当前在谈已达到上限，请先处理已有在谈');
     expect(映射P4委托展示(summary, { ...receipt, delegation_id: 'del_other' })?.reason)
       .toBeNull();
+  });
+
+  it.each([
+    ['delegation_agent_unavailable', 'AI 服务暂时不可用，本次没有创建 Case'],
+    ['delegation_evaluation_failed', '本次评估未完成，不代表候选或岗位不合适'],
+    ['delegation_failed', '本次委托未完成'],
+  ] as const)('failed %s 只显示 owner-safe 原因', (failure_code, reason) => {
+    const summary = { delegation_id: 'del_1', state: 'failed', case_id: null } as const;
+    const receipt = {
+      ...BFF委托失败回执样本,
+      delegation_id: 'del_1',
+      failure_code,
+    };
+    expect(映射P4委托展示(summary, receipt)).toMatchObject({
+      state: 'failed', reason, inProgress: false, caseId: null,
+    });
+  });
+
+  it('refused stale/policy 使用业务原因，错 ID receipt 不泄漏 reason', () => {
+    const summary = { delegation_id: 'del_1', state: 'refused', case_id: null } as const;
+    const stale = 映射P4委托展示(summary, {
+      ...BFF委托失败回执样本,
+      delegation_id: 'del_1', state: 'refused', refusal_code: 'recommendation_stale', failure_code: null,
+    });
+    expect(stale?.reason).toBe('这条推荐已过期，请刷新后查看');
+    const mismatched = 映射P4委托展示(summary, {
+      ...BFF委托失败回执样本,
+      delegation_id: 'del_other', state: 'refused', refusal_code: 'delegation_not_allowed', failure_code: null,
+    });
+    expect(mismatched?.reason).toBeNull();
   });
 });
 

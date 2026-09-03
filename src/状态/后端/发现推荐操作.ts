@@ -18,17 +18,23 @@
 //     回执同步 available/rejected/detail 每一处出现；同推荐写单飞、跨推荐并行。
 //   · 委托（Task 5 §8）：候选选择坐标是 job_id，回执 recommendation_id 可空且被完全忽略，
 //     页面落位一律用操作输入的 recommendationId；招聘选择坐标是 recommendation_id，
-//     回执非空坐标必须与所选一致。回执按 delegation_id 提交与轮询；六个非空回执状态
+//     回执非空坐标必须与所选一致。回执按 delegation_id 提交与轮询；六个回执状态
 //     （accepted/evaluating/case_started/needs_user/refused/failed）都保留权威委托摘要，
 //     只有 accepted/evaluating 是进行中（页面据此轮询）；终态（needs_user/refused/failed）
 //     把候选卡业务态回 available，不再推进；case_started 独自写且只写 P4真实Case引用；
-//     state null（非闭合委托状态）仍只进回执表、清摘要。绝不派发
+//     refused 必带拒绝码、failed 必带失败码（错槽即漂移，不落状态）；create-time 空 ID
+//     拒绝不进回执表、只落当前卡摘要。绝不派发
 //     委托入谈/接触推荐候选/任何 MatchCase 动作，绝不在 P4 制造本地 Case。
 //     委托创建按 candidate-intention-job / recruiter-job-recommendation pair 单飞，
 //     delegation GET 不取创建锁（安全由轮询单飞 + 栅栏保证）。
 
 import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
-import { P4拒绝原因文案, P4委托状态文案, 判断P4招聘组织前提 } from '../../数据/发现推荐映射';
+import {
+  P4失败原因文案,
+  P4拒绝原因文案,
+  P4委托状态文案,
+  判断P4招聘组织前提,
+} from '../../数据/发现推荐映射';
 import type {
   BFF发现偏好,
   BFF委托回执,
@@ -358,12 +364,13 @@ export function P4拒绝文案(code: NonNullable<BFF委托回执['refusal_code']
   return P4拒绝原因文案(code);
 }
 
-/** P4 200 回执终态的闭合文案：共享状态文案 + 安全下一步提示 —— 不发明动作、不许诺可重试。 */
+/** P4 200 回执终态的闭合文案：共享状态文案 + 安全下一步提示 —— 不发明动作、不许诺可重试
+ *  （failed 没有可承诺的重试路径，guidance 为空）。 */
 export function P4委托终态文案(state: 'needs_user' | 'refused' | 'failed'): string {
   const guidance = {
     needs_user: '，请查看当前可用入口',
     refused: '，请查看页面状态',
-    failed: '，请稍后重试',
+    failed: '',
   } as const;
   return `${P4委托状态文案(state)}${guidance[state]}`;
 }
@@ -379,19 +386,25 @@ function 委托契约漂移(): BFF错误 {
 
 /**
  * 回执内部一致性与坐标校验（create 与 轮询 GET 共用）：
- *   · state null 必须带闭合非空 refusal_code；
  *   · case_started 必须带非空 case_id；
  *   · 其余状态（accepted/evaluating/needs_user/refused/failed）不得带 case_id；
+ *   · 码槽与 state 对齐：refused 只带非空拒绝码、failed 只带非空失败码，
+ *     其余状态双码皆空 —— 交叉组合（如 needs_user 带拒绝码）按漂移 fail closed；
  *   · 期望推荐编号传入时（招聘侧：选择坐标就是 recommendation_id），回执坐标**非空时**必须
  *     与所选一致；wire 上该字段可空，null 是合规回执（按 delegation_id 提交），绝不当漂移
  *     （候选侧不传：选择坐标是 job_id，回执 recommendation_id 可空且被完全忽略）。
  */
 function 校验委托回执(回执: BFF委托回执, 期望推荐编号?: string): void {
-  if (回执.state === null) {
-    if (回执.refusal_code === null) throw 委托契约漂移();
-  } else if (回执.state === 'case_started') {
+  if (回执.state === 'case_started') {
     if (回执.case_id === null) throw 委托契约漂移();
   } else if (回执.case_id !== null) {
+    throw 委托契约漂移();
+  }
+  if (回执.state === 'refused') {
+    if (回执.refusal_code === null || 回执.failure_code !== null) throw 委托契约漂移();
+  } else if (回执.state === 'failed') {
+    if (回执.failure_code === null || 回执.refusal_code !== null) throw 委托契约漂移();
+  } else if (回执.refusal_code !== null || 回执.failure_code !== null) {
     throw 委托契约漂移();
   }
   if (期望推荐编号 !== undefined && 回执.recommendation_id !== null &&
@@ -402,40 +415,37 @@ function 校验委托回执(回执: BFF委托回执, 期望推荐编号?: string
 
 /**
  * 终态/拒绝回执 → 闭合展示文案（§8.2 的精确规则）：
- * state null 只走拒绝码；refused 有码走拒绝码、无码走终态文案；
- * needs_user/failed 无视 schema-valid 可空拒绝码恒走终态文案。
- * active/case_started 没有失败文案，误用按契约漂移当面抛错。
+ * refused+拒绝码与 failed+失败码各走自己的 owner-safe 文案；needs_user 走终态文案。
+ * 缺码/错槽/active/case_started 都没有失败文案，误用按契约漂移当面抛错。
  */
 export function P4委托回执文案(回执: BFF委托回执): string {
-  const state = 回执.state;
-  if (state === null) {
-    if (回执.refusal_code === null) throw 委托契约漂移();
+  if (回执.state === 'refused' && 回执.refusal_code !== null) {
     return P4拒绝文案(回执.refusal_code);
   }
-  if (state === 'refused' && 回执.refusal_code !== null) return P4拒绝文案(回执.refusal_code);
-  if (state === 'needs_user' || state === 'refused' || state === 'failed') return P4委托终态文案(state);
+  if (回执.state === 'failed' && 回执.failure_code !== null) {
+    return P4失败原因文案(回执.failure_code);
+  }
+  if (回执.state === 'needs_user') return P4委托终态文案('needs_user');
   throw 委托契约漂移();
 }
 
 /**
- * 回执 → 卡片委托摘要（§8.2）：六个非空回执状态（accepted/evaluating/case_started/
+ * 回执 → 卡片委托摘要（§8.2）：六个回执状态（accepted/evaluating/case_started/
  * needs_user/refused/failed）都保留权威摘要 —— 终态摘要也是权威事实，页面据此显示
- * 闭合状态文案；只有 state null（非闭合委托状态，回执只进表）才清摘要（null）。
+ * 闭合状态文案；只有 404 不可用收口才清摘要（null）。
  */
-function 回执摘要(回执: BFF委托回执): BFF委托摘要 | null {
-  return 回执.state === null
-    ? null
-    : {
-        delegation_id: 回执.delegation_id,
-        state: 回执.state,
-        case_id: 回执.case_id,
-      };
+function 回执摘要(回执: BFF委托回执): BFF委托摘要 {
+  return {
+    delegation_id: 回执.delegation_id,
+    state: 回执.state,
+    case_id: 回执.case_id,
+  };
 }
 
 /**
  * 候选卡落摘要：case_started → delegated（唯一记录 Case 引用的状态）；accepted/evaluating
  * → delegating（唯一进行中，页面据此轮询）；终态（needs_user/refused/failed）与清摘要
- * （state null / 404 收口）→ 回 available —— 终态卡不再推进，但权威摘要保留。
+ * （404 收口）→ 回 available —— 终态卡不再推进，但权威摘要保留。
  */
 function 修补候选卡(卡: BFF候选岗位推荐, 摘要: BFF委托摘要 | null): BFF候选岗位推荐 {
   const state = 摘要 === null
@@ -453,11 +463,14 @@ function 修补招聘卡(卡: BFF招聘候选推荐, 摘要: BFF委托摘要 | n
   return { ...卡, delegation: 摘要 };
 }
 
-/** 回执提交共用的底座：回执表恒按 delegation_id 提交；case_started 额外写且只写 Case 引用。 */
+/** 回执提交共用的底座：回执表按非空 delegation_id 提交（create-time 空 ID 拒绝不是可轮询的
+ *  权威坐标，绝不进缓存，当前请求结果只落卡摘要）；case_started 额外写且只写 Case 引用。 */
 function 提交委托回执(旧: 后端状态, 回执: BFF委托回执): 后端状态 {
   return {
     ...旧,
-    P4委托回执: { ...旧.P4委托回执, [回执.delegation_id]: 回执 },
+    P4委托回执: 回执.delegation_id !== ''
+      ? { ...旧.P4委托回执, [回执.delegation_id]: 回执 }
+      : 旧.P4委托回执,
     P4真实Case引用: 回执.state === 'case_started' && 回执.case_id !== null
       ? { ...旧.P4真实Case引用, [回执.delegation_id]: 回执.case_id }
       : 旧.P4真实Case引用,
@@ -860,10 +873,10 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     if (回执.state === 'accepted' || 回执.state === 'evaluating' || 回执.state === 'case_started') {
       return 回执;
     }
-    // 终态/拒绝回执在提交后按闭合文案抛出。错误 code 优先取 state 而不是 refusal_code：
-    // 屏的 catch 是 轻提示(P4错误文案(error))，state 形式的 code 不在 HTTP 闭合表里、
-    // 恰好回落 message 展示，needs_user/failed 带拒绝码时也绝不会被 HTTP 拒绝码文案截胡。
-    throw new BFF错误(200, 回执.state ?? 回执.refusal_code ?? 'invalid_response', P4委托回执文案(回执));
+    // 终态/拒绝回执在提交后按闭合文案抛出。错误 code 优先取 failure_code，其次 refusal_code，
+    // 双码皆空才回落 state：屏的 catch 是 轻提示(P4错误文案(error))，state/failure 形式的
+    // code 不在 HTTP 闭合表里、恰好回落 message 展示，绝不丢安全文案也不被 HTTP 码截胡。
+    throw new BFF错误(200, 回执.failure_code ?? 回执.refusal_code ?? 回执.state, P4委托回执文案(回执));
   }
 
   return {
