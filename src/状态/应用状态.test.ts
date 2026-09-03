@@ -1,4 +1,4 @@
-import { createElement } from 'react';
+import { createElement, useEffect } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,6 +28,7 @@ import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF招聘方档案, BFF公开企业, BFF角色, BFF附件简历库 } from '../数据/BFF契约';
 import type { BFF二进制响应 } from '../数据/HTTP客户端';
 import { 解P5详情, type P5列表页, type P5详情 } from '../数据/招聘数据源/MatchCase';
+import { P5范围键 } from './后端/MatchCase操作';
 import type { P7会话项, P7会话页, P7消息, P7消息页 } from '../数据/招聘数据源/真人会话';
 import type { P8AccountDeletion, P8Credential, P8DataExport, P8Session } from '../数据/招聘数据源/P8控制面';
 import { P5候选详情Wire } from '../测试/BFF样本';
@@ -2327,6 +2328,59 @@ describe('应用状态提供者 P5 MatchCase 运行时状态', () => {
     expect(当前.后端状态.P5工作区).toEqual({});
     expect(当前.后端状态.P5历史).toEqual({});
     expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('首个主体到达不清掉同帧子组件注册的 P5 scope（刷新落在 P5 页面首个加载不被栅栏丢弃）', async () => {
+    // 探针复刻「我的」页的注册/加载 effect：依赖当前主体，主体落地的那一帧重跑。
+    // mount 恢复（'' → sub|candidate）时页面与主体同 commit 挂载 —— 子 effect 先于
+    // Provider 的 P5 主体基串清理 effect 执行；若那帧执行清理，刚注册的可见范围被
+    // 置 null、代际表清空，在飞读取被 fence 整包丢弃，且无轮询的页面（「我的」）
+    // 永远停在缺失态。首个主体到达必须跳过清理：登出/401 转移（基 → ''）已清空过。
+    let 当前!: ReturnType<typeof use应用状态>;
+    function P5注册探针() {
+      const 值 = use应用状态();
+      当前 = 值;
+      const 当前SubjectId = 值.后端状态.主体?.last_used_role === 'candidate'
+        ? 值.后端状态.主体.subject_id
+        : null;
+      useEffect(() => {
+        if (值.数据源模式 !== 'backend' || 当前SubjectId === null) return;
+        值.操作.设置P5范围('candidate', P5范围键.open('candidate', null));
+        void 值.操作.加载工作区('candidate', null).catch(() => undefined);
+        return () => 值.操作.设置P5范围('candidate', null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [值.数据源模式, 当前SubjectId, 值.操作]);
+      return null;
+    }
+    const 行: P5列表页['items'][number] = {
+      role: 'candidate',
+      state: {
+        caseId: 'mc_1', lifecycle: 'open', stage: 'anonymous_screening', status: 'running',
+        step: 'policy_check', round: 0, roundBudget: 3, needsUser: false,
+        outcome: null, outcomeCode: null,
+        createdAt: '2026-08-29T01:00:00Z', updatedAt: '2026-08-29T02:00:00Z', finalizedAt: null,
+      },
+      needsAction: true,
+      intentionId: 'int_0123456789abcdef0123456789abcdef',
+      job: {
+        jobId: 'job_0123456789abcdef0123456789abcdef',
+        job: { title: 'AI 产品实习生', location: '上海', publicSalaryRange: '300-500 元/天', requiredSkills: ['Python'] },
+      },
+    };
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [行], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(
+      应用状态提供者,
+      { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } },
+      createElement(P5注册探针),
+    ));
+    await waitFor(() => expect(当前 ?? undefined).toBeDefined(), { timeout: 3000 });
+    await waitFor(() => {
+      expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({
+        阶段: '成功', ownerSubjectId: 'sub_1', items: [行],
+      });
+    }, { timeout: 3000 });
   });
 
   it('退出登录回收在途 PDF 对象租约（URL.revokeObjectURL 恰好一次）', async () => {

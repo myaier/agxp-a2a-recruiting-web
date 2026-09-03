@@ -712,11 +712,17 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   // 草稿保留口径一致，且不确定结果的同键重试跨重登仍可沿用。
   // Backend MatchCase 真相源修复：主体基串变化同时派发 清后端MatchCase演示状态，
   // 四个 legacy 演示数组与 P5 快照同口径归零（Mock 下 主体 恒 null，基串不变，永不派发）。
+  // 首个主体到达（'' → 基，mount 恢复 / 登录后的第一个主体）跳过清理：登出 / 401 转移
+  //（基 → ''）已经清空过一切，再清只会把同帧子组件刚注册的可见范围拆掉 —— 刷新落在
+  // P5 页面时页面与主体同 commit 挂载，子 effect 先于本 effect 执行，这里的清理会让
+  // 刚发出的首个读取被栅栏整包丢弃，无轮询的页面（「我的」）将永远停在缺失态。
   const P5会话基 = useRef('');
   useEffect(() => {
     const 基 = 后端状态.主体 === null ? '' : `${后端状态.主体.subject_id}|${后端状态.主体.last_used_role}`;
     if (P5会话基.current === 基) return;
+    const 首个主体到达 = P5会话基.current === '';
     P5会话基.current = 基;
+    if (首个主体到达) return;
     清P5MatchCase引用({ P5范围代际, P5幂等意图, P5可见范围, P5对象租约 });
     设后端状态((旧) => ({ ...旧, ...创建空P5MatchCase状态() }));
     派发({ 型: '清后端MatchCase演示状态' });
