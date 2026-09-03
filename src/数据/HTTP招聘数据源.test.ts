@@ -530,6 +530,8 @@ describe('HTTP 招聘数据源', () => {
       ...页面岗位样本,
       类别引用: { id: 'tax_pm', display_name: '产品经理' },
       地点引用: { id: 'loc_sh', display_name: '上海市' },
+      // Task 2：Backend 创建必须显式确认结构化要求（页面事实，Mock fixture 不带）
+      结构化要求已确认: true,
     };
     await source.创建岗位(job, {
       publisherMode: 'direct',
@@ -563,6 +565,8 @@ describe('HTTP 招聘数据源', () => {
       ...页面岗位样本,
       类别引用: { id: 'tax_pm', display_name: '产品经理' },
       地点引用: { id: 'loc_sh', display_name: '上海市' },
+      // Task 2：Backend 创建必须显式确认结构化要求（页面事实，Mock fixture 不带）
+      结构化要求已确认: true,
     };
     await source.创建岗位(job, {
       publisherMode: 'direct',

@@ -279,6 +279,8 @@ export interface 在招岗位 {
   /** 结构化要求：与 硬性条件 合同联动（不限 = 不写进合同） */
   经验要求?: string;
   最低学历?: string;
+  /** Backend OwnerJob truth; absent in Mock fixtures and never inferred. */
+  结构化要求已确认?: boolean;
   /** 校园招聘专属：招收届别，如「2027 届」 */
   届别?: string;
   年薪月数?: number;

@@ -452,8 +452,11 @@ export interface BFF岗位创建 {
   campus_cohort?: number | null;
   internship_months?: number | null;
   onsite_days_per_week?: number | null;
-  experience_requirement: string;
-  education_requirement: string;
+  experience_requirement: BFF经验要求;
+  education_requirement: BFF学历要求;
+  // P4 互认：Create 必须携带显式确认的字面量 true（前端永不发送 false）；
+  // BFF岗位补丁 经 Partial 继承后 confirmation 变为可选 true —— 未变化时省略，服务端保留既有事实。
+  structured_requirements_confirmed: true;
   // P3：创建 body 里四员块整体可选（OpenAPI JobCreate 不在 required），
   // 缺省 = 服务端按全 unknown 处理；BFF岗位补丁 经 Partial 继承整个对象的补丁形态。
   hard_requirements?: BFF硬性条件;

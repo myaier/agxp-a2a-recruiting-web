@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { 从BFF简历, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿, 转证书写入, 转证书 } from './后端映射';
 import { BFF意向样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 import type { 意向草稿型, 岗位创建上下文 } from './招聘数据源类型';
-import type { BFF证书 } from './BFF契约';
+import type { BFF证书, BFFOwnerJob } from './BFF契约';
 import { 取后端错误文案 } from './HTTP客户端';
 
 /** 构造空草稿（含 Task 6 新增的 办公方式 字段），测试用展开覆盖个别字段 */
@@ -35,13 +35,15 @@ const 直接发岗上下文 = (display_name: string): 岗位创建上下文 => (
   hiringOrganizationClaim: { display_name, legal_name: null },
 });
 
-/** P0 修复 Task 4：JobCreate 的最小完整草稿 —— 目录引用齐备，描述与要求各自独立非空。 */
+/** P0 修复 Task 4：JobCreate 的最小完整草稿 —— 目录引用齐备，描述与要求各自独立非空。
+ *  Task 2：结构化要求确认是页面事实，Backend 发布必须显式勾选（Mock fixture 不带该字段）。 */
 const 完整岗位草稿 = {
   ...页面岗位样本,
   类别引用: { id: 'tax_product', display_name: '产品经理' },
   地点引用: { id: 'loc_shanghai', display_name: '上海' },
   职位描述: '职位描述正文',
   职位要求: '职位要求正文',
+  结构化要求已确认: true,
 };
 
 const 完整创建上下文 = 直接发岗上下文('星河科技');
@@ -149,6 +151,7 @@ describe('候选人后端映射', () => {
       ...页面岗位样本,
       类别引用: { id: 'tax_product', display_name: '产品经理' },
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
+      结构化要求已确认: true,
     }, 直接发岗上下文('云衢科技'));
     expect(body).toMatchObject({
       publisher_mode: 'direct', hiring_organization_claim: { display_name: '云衢科技', legal_name: null },
@@ -199,20 +202,22 @@ describe('候选人后端映射', () => {
     }
   });
 
+  // Task 2：补丁收敛为 sparse diff —— 只发实际变化的可编辑字段（trim 后参与比较），
+  // claim/title/type/refs 等 immutable 或服务端专有字段一律不再回传。
   it('JobPatch 保持两参 seam，只 trim 用户可编辑的描述和要求', () => {
     const body = 转岗位补丁(
       { ...完整岗位草稿, 职位描述: '  描述  ', 职位要求: '  要求  ' },
       服务端岗位,
     );
-    expect(body).toMatchObject({
-      hiring_organization_claim: 服务端岗位.hiring_organization_claim,
+    expect(body).toEqual({
       description: '描述',
       requirements: '要求',
+      structured_requirements_confirmed: true,
     });
   });
 
   // 全局约束：不可修复的历史 claim 绝不能挡住一次普通的 JD 编辑 ——
-  // 补丁的 claim 归服务端所有，页面改不动它，所以它为空也不该让保存失败。
+  // 补丁根本不带 claim（归服务端所有），previous 的历史空 claim 不影响保存。
   it('previous 的历史空 claim 不阻塞普通编辑保存', () => {
     const 空claim岗位 = {
       ...服务端岗位,
@@ -222,8 +227,8 @@ describe('候选人后端映射', () => {
       { ...完整岗位草稿, 职位描述: '改后的描述', 职位要求: '改后的要求' },
       空claim岗位,
     );
-    // 不抛错，且 claim 原样沿用 previous（不拿页面文本顶替、也不硬造一个值）
-    expect(body.hiring_organization_claim).toEqual({ display_name: '', legal_name: null });
+    // 不抛错，且补丁不含 claim（沿用 previous，不拿页面文本顶替、也不硬造一个值）
+    expect(body).not.toHaveProperty('hiring_organization_claim');
     expect(body).toMatchObject({ description: '改后的描述', requirements: '改后的要求' });
   });
 
@@ -246,6 +251,7 @@ describe('候选人后端映射', () => {
       ...页面岗位样本,
       类别引用: { id: 'tax_product', display_name: '产品经理' },
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
+      结构化要求已确认: true,
     };
     expect(JSON.stringify(转岗位创建(带引用, 直接发岗上下文('云衢科技'))))
       .not.toMatch(/publisher_affiliation_ref|publisher_organization_ref|hiring_organization_ref|verification_status/);
@@ -254,15 +260,16 @@ describe('候选人后端映射', () => {
   });
 
   // P1C Task 5：普通 JD 编辑不拿当前自由文本改 claim，补丁沿用 previous 的 mode 与 claim。
+  // Task 2：sparse 之后「沿用」的含义就是这两类字段根本不进 body。
   it('岗位补丁沿用 previous.publisher_mode 与 previous.hiring_organization_claim', () => {
     const previous = {
       ...BFF岗位样本,
       publisher_mode: 'agency' as const,
       hiring_organization_claim: { display_name: '客户公司', legal_name: '客户公司有限公司' },
     };
-    const body = 转岗位补丁({ ...页面岗位样本 }, previous);
-    expect(body.publisher_mode).toBe('agency');
-    expect(body.hiring_organization_claim).toEqual({ display_name: '客户公司', legal_name: '客户公司有限公司' });
+    const body = 转岗位补丁({ ...页面岗位样本, 结构化要求已确认: true }, previous);
+    expect(body).not.toHaveProperty('publisher_mode');
+    expect(body).not.toHaveProperty('hiring_organization_claim');
   });
 
   it('经验要求按 BFF enum 映射，不静默降级为 none', () => {
@@ -270,6 +277,7 @@ describe('候选人后端映射', () => {
       ...页面岗位样本,
       类别引用: { id: 'tax_product', display_name: '产品经理' },
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
+      结构化要求已确认: true,
     };
     // 页面岗位样本.经验要求 = '不限'；覆盖成 '3-5 年' 验证不被吞成 'none'
     const body = 转岗位创建({ ...带引用, 经验要求: '3-5 年' }, 直接发岗上下文('云衢科技'));
@@ -286,19 +294,13 @@ describe('候选人后端映射', () => {
       ...页面岗位样本,
       类别引用: { id: 'tax_backend', display_name: '后端开发' },
       地点引用: { id: 'loc_sh', display_name: '上海市' },
+      结构化要求已确认: true,
     }, 直接发岗上下文('甲公司'));
     expect(body).toMatchObject({ category_id: 'tax_backend', location_id: 'loc_sh' });
   });
 
-  it('岗位更新保留 immutable category/location/type/title', () => {
-    const body = 转岗位补丁({ ...页面岗位样本 }, BFF岗位样本);
-    expect(body).toMatchObject({
-      title: BFF岗位样本.title, recruitment_type: BFF岗位样本.recruitment_type,
-      category_id: BFF岗位样本.category.id, location_id: BFF岗位样本.location.id,
-    });
-  });
-
   // P3：hard_requirements 完整四员对象在 owner 读与创建/补丁写之间往返，不丢成员也不造默认值。
+  // Task 2：补丁侧 sparse —— 块未变则整体省略，变了才整体发出。
   it('hard_requirements complete object round-trips through owner mapping and writes', () => {
     const dto = {
       ...BFF岗位样本,
@@ -312,16 +314,22 @@ describe('候选人后端映射', () => {
     const 页面 = 从BFF岗位(dto, {});
     expect(页面.硬性事实).toEqual({ 大小周: '必须', 纯外包乙方: '不要求', 全现场办公: '未说明', 频繁出差: '必须' });
     expect(转岗位创建(页面, 直接发岗上下文('Acme')).hard_requirements).toEqual(dto.hard_requirements);
-    expect(转岗位补丁(页面, dto).hard_requirements).toEqual(dto.hard_requirements);
+    const 旧四员 = {
+      alternate_weekend_work: 'unknown', outsourcing_only: 'unknown',
+      onsite_only: 'unknown', frequent_travel: 'unknown',
+    } as const;
+    expect(转岗位补丁(页面, { ...dto, hard_requirements: 旧四员 }).hard_requirements)
+      .toEqual(dto.hard_requirements);
   });
 
   // Task 5 起 在招岗位.硬性事实 必填（组装岗位恒带完整四员）：
-  // 页面样本的四员在创建与补丁 body 里都要写成 hard_requirements，不许缺员。
+  // 页面样本的四员在创建 body 里写成 hard_requirements，不许缺员；补丁只在实际变化时发。
   it('页面的硬性事实四员在创建与补丁 body 里都写 hard_requirements', () => {
     const 带引用 = {
       ...页面岗位样本,
       类别引用: { id: 'tax_product', display_name: '产品经理' },
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
+      结构化要求已确认: true,
     };
     const 样本wire四员 = {
       alternate_weekend_work: 'unknown',
@@ -330,7 +338,10 @@ describe('候选人后端映射', () => {
       frequent_travel: 'unknown',
     } as const;
     expect(转岗位创建(带引用, 直接发岗上下文('云衢科技')).hard_requirements).toEqual(样本wire四员);
-    expect(转岗位补丁(带引用, BFF岗位样本).hard_requirements).toEqual(样本wire四员);
+    // 与 previous 一致 → sparse 省略；只有一档不同 → 四员整体发出
+    expect(转岗位补丁(带引用, BFF岗位样本)).not.toHaveProperty('hard_requirements');
+    expect(转岗位补丁(带引用, { ...BFF岗位样本, hard_requirements: { ...样本wire四员, onsite_only: 'required' } }))
+      .toMatchObject({ hard_requirements: 样本wire四员 });
   });
 
   it('已加载的校园/实习意向在用户没切招聘类型时保留原类型', () => {
@@ -352,14 +363,18 @@ describe('候选人后端映射', () => {
       ...页面岗位样本,
       类别引用: { id: 'tax_product', display_name: '产品经理' },
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
+      结构化要求已确认: true,
     };
     expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '不限' }, 直接发岗上下文('云衢科技')).campus_cohort).toBe(null);
     expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: undefined }, 直接发岗上下文('云衢科技')).campus_cohort).toBe(null);
     expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '本周' }, 直接发岗上下文('云衢科技')).campus_cohort).toBe(null);
     expect(转岗位创建({ ...带引用, 招聘类型: '校园招聘', 届别: '2027 届' }, 直接发岗上下文('云衢科技')).campus_cohort).toBe(2027);
-    // 补丁同样
-    expect(转岗位补丁({ ...带引用, 招聘类型: '校园招聘', 届别: '不限' }, BFF岗位样本).campus_cohort).toBe(null);
+    // 补丁 sparse：数字→null 显式清除，null→数字 显式发出，未变化则省略
+    const 校园previous = { ...BFF岗位样本, campus_cohort: 2027 };
+    expect(转岗位补丁({ ...带引用, 招聘类型: '校园招聘', 届别: '不限' }, 校园previous).campus_cohort).toBe(null);
     expect(转岗位补丁({ ...带引用, 招聘类型: '校园招聘', 届别: '2027 届' }, BFF岗位样本).campus_cohort).toBe(2027);
+    expect(转岗位补丁({ ...带引用, 招聘类型: '校园招聘', 届别: '2027 届' }, 校园previous))
+      .not.toHaveProperty('campus_cohort');
   });
 
   // F4：办公方式 既接受中文标签（引导预填来源），也接受 wire code（已有意向快照来源）
@@ -564,5 +579,126 @@ describe('候选人后端映射', () => {
     // 编辑意向路径缺城市引用同样落 intention.primary_location_id，与首次路径同一原因
     expect(捕获(() => 转意向写入({ ...意向草稿, 工作城市引用: undefined, 办公方式: ['混合'] }, { 原始: null })))
       .toMatchObject({ field: 'intention.primary_location_id', message: '请从候选城市中选择' });
+  });
+
+  // ── Task 2：结构化要求显式确认 + sparse Job 补丁 ──
+
+  // Create：未显式确认（缺字段 / false）一律在生成 body 前拒绝；「不限」是合法选择，与未确认无关。
+  it('转岗位创建 未显式确认时不生成 JobCreate', () => {
+    expect(() => 转岗位创建({ ...完整岗位草稿, 结构化要求已确认: false }, 完整创建上下文))
+      .toThrow('请确认经验和学历将作为自动匹配依据');
+    const { 结构化要求已确认: _未勾选, ...未确认草稿 } = 完整岗位草稿;
+    expect(() => 转岗位创建(未确认草稿, 完整创建上下文))
+      .toThrow('请确认经验和学历将作为自动匹配依据');
+  });
+
+  it('转岗位创建 确认后发送字面量 true；经验/学历都是不限 + 确认也合法', () => {
+    expect(转岗位创建({ ...完整岗位草稿, 经验要求: '不限', 最低学历: '不限', 结构化要求已确认: true }, 完整创建上下文))
+      .toMatchObject({
+        experience_requirement: 'none',
+        education_requirement: 'none',
+        structured_requirements_confirmed: true,
+      });
+  });
+
+  describe('转岗位补丁 sparse 语义', () => {
+    /** 从 previous 权威 DTO 反 hydrate 页面基线：除显式覆盖外，页面与 previous 完全一致 */
+    const 基线 = (覆盖: Partial<BFFOwnerJob> = {}) => {
+      const previous = { ...BFF岗位样本, ...覆盖 };
+      return { previous, 页面: 从BFF岗位(previous, {}) };
+    };
+
+    it('无变化时补丁为空对象', () => {
+      const { previous, 页面 } = 基线();
+      expect(转岗位补丁(页面, previous)).toEqual({});
+    });
+
+    it('无关编辑只带 office_location，legacy false 不被伪造确认', () => {
+      const { previous, 页面 } = 基线({ structured_requirements_confirmed: false });
+      expect(转岗位补丁({ ...页面, 办公地: '新办公地址' }, previous))
+        .toEqual({ office_location: '新办公地址' });
+    });
+
+    it('legacy false 显式勾选且内容未变时只发确认', () => {
+      const { previous, 页面 } = 基线({ structured_requirements_confirmed: false });
+      expect(转岗位补丁({ ...页面, 结构化要求已确认: true }, previous))
+        .toEqual({ structured_requirements_confirmed: true });
+    });
+
+    it('只改经验/学历时变化字段与确认同请求发送', () => {
+      const { previous, 页面 } = 基线();
+      expect(转岗位补丁({ ...页面, 经验要求: '3-5 年' }, previous))
+        .toEqual({ experience_requirement: 'three_to_five_years', structured_requirements_confirmed: true });
+      expect(转岗位补丁({ ...页面, 最低学历: '大专' }, previous))
+        .toEqual({ education_requirement: 'associate', structured_requirements_confirmed: true });
+    });
+
+    it('requirements trim 后变化才带确认；仅空白差异不算变化', () => {
+      const { previous, 页面 } = 基线();
+      expect(转岗位补丁({ ...页面, 职位要求: '  新的要求  ' }, previous))
+        .toEqual({ requirements: '新的要求', structured_requirements_confirmed: true });
+      expect(转岗位补丁({ ...页面, 职位要求: `  ${previous.requirements}  ` }, previous)).toEqual({});
+    });
+
+    it('只改描述时仅带 description，不带确认', () => {
+      const { previous, 页面 } = 基线();
+      expect(转岗位补丁({ ...页面, 职位描述: '新的描述' }, previous))
+        .toEqual({ description: '新的描述' });
+    });
+
+    it('只改薪资带时发整个 salary 对象（period 不可编辑，不回传）', () => {
+      const { previous, 页面 } = 基线();
+      expect(转岗位补丁({ ...页面, 薪资带: '400-600 元/天' }, previous))
+        .toEqual({ salary: { lower: 400, upper: 600 } });
+    });
+
+    it('年薪月数/届别 数字→null 显式发 null（三态清除）', () => {
+      const { previous, 页面 } = 基线({ annual_salary_months: 13, campus_cohort: 2027 });
+      const 清除页面 = { ...页面, 年薪月数: undefined, 届别: undefined };
+      expect(转岗位补丁(清除页面, previous))
+        .toEqual({ annual_salary_months: null, campus_cohort: null });
+    });
+
+    it('internship_months/onsite_days_per_week 页面缺值表示不变，不发 null', () => {
+      const { previous, 页面 } = 基线({ internship_months: 3, onsite_days_per_week: 4 });
+      expect(转岗位补丁({ ...页面, 实习月数: undefined, 每周天数: undefined }, previous)).toEqual({});
+  });
+
+    it('keywords 非空→[] 显式发空数组；页面缺 keywords 时保留服务端值', () => {
+      const { previous, 页面 } = 基线();
+      expect(转岗位补丁({ ...页面, 职位关键词: [] }, previous)).toEqual({ keywords: [] });
+      const 无关键词页面 = { ...页面 };
+      delete 无关键词页面.职位关键词;
+      expect(转岗位补丁(无关键词页面, previous)).toEqual({});
+    });
+
+    it('四员硬性条件块只在变化时整体发出，且不带确认', () => {
+      const { previous, 页面 } = 基线();
+      expect(转岗位补丁({ ...页面, 硬性事实: { ...页面.硬性事实, 大小周: '必须' } }, previous))
+        .toEqual({ hard_requirements: { ...previous.hard_requirements, alternate_weekend_work: 'required' } });
+    });
+
+    it('immutable 与服务端专有字段绝不回传', () => {
+      const { previous, 页面 } = 基线();
+      const patch = 转岗位补丁({ ...页面, 办公地: '新办公地址' }, previous);
+      for (const 键 of [
+        'publisher_mode', 'hiring_organization_claim', 'title', 'recruitment_type',
+        'category_id', 'location_id', 'salary_period', 'revision',
+        'publisher_affiliation_ref', 'publisher_organization_ref', 'hiring_organization_ref',
+        'publisher_verification_status', 'hiring_organization_verification_status',
+      ]) {
+        expect(patch).not.toHaveProperty(键);
+      }
+    });
+
+    it('相关变化缺确认（缺字段或 false）时在生成补丁前抛错', () => {
+      const { previous, 页面 } = 基线();
+      const 未确认页面 = { ...页面 };
+      delete 未确认页面.结构化要求已确认;
+      expect(() => 转岗位补丁({ ...未确认页面, 经验要求: '3-5 年' }, previous))
+        .toThrow('请确认经验和学历将作为自动匹配依据');
+      expect(() => 转岗位补丁({ ...页面, 结构化要求已确认: false, 最低学历: '大专' }, previous))
+        .toThrow('请确认经验和学历将作为自动匹配依据');
+    });
   });
 });

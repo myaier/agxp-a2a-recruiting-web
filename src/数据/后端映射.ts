@@ -18,6 +18,7 @@ import type {
   BFF意向写入,
   BFF意向补偿,
   BFF意向排除,
+  BFF经验要求,
   BFF岗位创建,
   BFF岗位补丁,
   BFF硬性条件,
@@ -445,7 +446,7 @@ function 硬性事实到后端(事实: 岗位硬性事实): BFF硬性条件 {
 }
 
 /** 页面 经验要求 → BFF enum；未映射的页值抛错，绝不静默降级为 'none'。 */
-function 映射经验要求(页值: string | undefined): string {
+function 映射经验要求(页值: string | undefined): BFF经验要求 {
   const 键 = (页值 ?? '') as keyof typeof 经验要求到后端;
   if (!(键 in 经验要求到后端)) throw new Error(`未映射的经验要求：${页值 ?? '(空)'}`);
   return 经验要求到后端[键];
@@ -496,6 +497,8 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
     筛选要求: dto.private_screening_preferences,
     经验要求: 后端到经验要求[dto.experience_requirement as keyof typeof 后端到经验要求] ?? dto.experience_requirement,
     最低学历: 后端到学历[dto.education_requirement as keyof typeof 后端到学历] ?? dto.education_requirement,
+    // P4 互认：确认事实原样投影（Backend OwnerJob truth；Mock fixture 没有该字段，也从不推断）
+    结构化要求已确认: dto.structured_requirements_confirmed,
     // P3：四问硬性事实随 owner DTO 必返；缺员/坏档由数据源层在映射前拒绝
     硬性事实: 从BFF硬性条件(dto.hard_requirements),
     职位描述: dto.description,
@@ -514,8 +517,12 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
 
 /** 页面岗位 → BFF岗位创建 body。加分关键词/实习转正 不进 body（只进前端附属存储）。
  *  Task 7：category_id/location_id 直接读 类别引用/地点引用（选择器保存的引用），不再按显示名反查目录。
- *  P1C Task 5：claim 只吃显式 岗位创建上下文（direct + 声明）；refs/verification status 由服务端推导，不进 body。 */
+ *  P1C Task 5：claim 只吃显式 岗位创建上下文（direct + 声明）；refs/verification status 由服务端推导，不进 body。
+ *  P4 互认 Task 2：未显式确认（缺字段/false）就在生成 body 前拒绝——「不限」也是合法选择，与未确认无关。 */
 export function 转岗位创建(页面岗位: 在招岗位, 上下文: 岗位创建上下文): BFF岗位创建 {
+  if (页面岗位.结构化要求已确认 !== true) {
+    throw new Error('请确认经验和学历将作为自动匹配依据');
+  }
   const { lower, upper } = 解析薪资带(页面岗位.薪资带);
   return {
     publisher_mode: 上下文.publisherMode,
@@ -535,6 +542,7 @@ export function 转岗位创建(页面岗位: 在招岗位, 上下文: 岗位创
     onsite_days_per_week: 页面岗位.每周天数 ?? null,
     experience_requirement: 映射经验要求(页面岗位.经验要求),
     education_requirement: 学历到后端[页面岗位.最低学历 as keyof typeof 学历到后端] ?? 'none',
+    structured_requirements_confirmed: true,
     // P3：四员块整体可选；页面没有 硬性事实（老 Mock 岗）时不硬造缺省对象
     ...(页面岗位.硬性事实 ? { hard_requirements: 硬性事实到后端(页面岗位.硬性事实) } : {}),
     // P0 修复 Task 4：描述与要求是两条互相独立的必填文本，
@@ -546,40 +554,73 @@ export function 转岗位创建(页面岗位: 在招岗位, 上下文: 岗位创
   };
 }
 
-/** 页面岗位 → BFF岗位补丁 body。title/type/category/location 带回服务端原值（immutable-field 契约），其余按编辑表单。
- *  P1C Task 5：不接公司 context —— publisher_mode 与 hiring_organization_claim 直接沿用 previous
- *  owner DTO，普通 JD 编辑不拿当前自由文本改 claim。 */
+/** 页面岗位 → BFF岗位补丁 body（P4 互认 Task 2：真实 sparse diff）。
+ *  先把页面值转成最终 wire 值，再逐项与 previous 比较，只输出实际变化的可编辑字段；
+ *  immutable（title/type/category/location/salary_period）与服务端专有
+ *  （publisher_mode、claim、refs、verification status、revision）一律不再回传。
+ *  P1C Task 5：不接公司 context —— 补丁根本不带 claim，普通 JD 编辑改不动它。
+ *  确认规则：经验/学历/requirements 任一变化必须携带显式确认；无关编辑不伪造确认；
+ *  唯一例外是 legacy false 岗位的显式重新确认（内容未变也发仅含确认的补丁）。前端永不发送 false。 */
 export function 转岗位补丁(
   页面岗位: 在招岗位,
   previous: BFFOwnerJob,
 ): BFF岗位补丁 {
   const { lower, upper } = 解析薪资带(页面岗位.薪资带);
-  return {
-    publisher_mode: previous.publisher_mode,
-    hiring_organization_claim: {
-      display_name: previous.hiring_organization_claim.display_name,
-      legal_name: previous.hiring_organization_claim.legal_name ?? null,
-    },
-    title: previous.title,
-    recruitment_type: previous.recruitment_type,
-    category_id: previous.category.id,
-    location_id: previous.location.id,
-    office_location: 页面岗位.办公地 ?? '',
-    workplace_mode: 办公方式到岗位后端[页面岗位.办公方式 as keyof typeof 办公方式到岗位后端] ?? 'onsite',
-    salary: { lower, upper },
-    annual_salary_months: 页面岗位.年薪月数 ?? null,
-    campus_cohort: 解析届别(页面岗位.届别),
-    internship_months: 页面岗位.实习月数 ?? null,
-    onsite_days_per_week: 页面岗位.每周天数 ?? null,
-    experience_requirement: 映射经验要求(页面岗位.经验要求),
-    education_requirement: 学历到后端[页面岗位.最低学历 as keyof typeof 学历到后端] ?? 'none',
-    // P3：页面带 硬性事实 才写四员块；缺省（absent）= 服务端保持存储值
-    ...(页面岗位.硬性事实 ? { hard_requirements: 硬性事实到后端(页面岗位.硬性事实) } : {}),
-    // P0 修复 Task 4：补丁的 claim 仍归服务端所有（上面沿用 previous），
-    // 只对用户可编辑的描述与要求做同一套非空保护 —— 历史坏 claim 不该挡住普通 JD 编辑。
-    description: 必需岗位文本(页面岗位.职位描述, 'description', '请填写职位描述'),
-    requirements: 必需岗位文本(页面岗位.职位要求, 'requirements', '请填写职位要求'),
-    keywords: 页面岗位.职位关键词,
-    private_screening_preferences: 页面岗位.筛选要求 ?? '',
-  };
+  // P0 修复 Task 4：只对用户可编辑的描述与要求做非空保护，trim 后的结果参与比较
+  // —— 历史坏 claim 不该挡住普通 JD 编辑，空白差异也不算一次真实变化。
+  const 描述 = 必需岗位文本(页面岗位.职位描述, 'description', '请填写职位描述');
+  const 要求 = 必需岗位文本(页面岗位.职位要求, 'requirements', '请填写职位要求');
+  const patch: BFF岗位补丁 = {};
+  const 办公方式 = 办公方式到岗位后端[页面岗位.办公方式 as keyof typeof 办公方式到岗位后端] ?? 'onsite';
+  if (办公方式 !== previous.workplace_mode) patch.workplace_mode = 办公方式;
+  if ((页面岗位.办公地 ?? '') !== previous.office_location) patch.office_location = 页面岗位.办公地 ?? '';
+  if (lower !== previous.salary_lower || upper !== previous.salary_upper) patch.salary = { lower, upper };
+  const 年薪月数 = 页面岗位.年薪月数 ?? null;
+  if (年薪月数 !== previous.annual_salary_months) patch.annual_salary_months = 年薪月数;
+  const 届别 = 解析届别(页面岗位.届别);
+  if (届别 !== previous.campus_cohort) patch.campus_cohort = 届别;
+  // OpenAPI 里这两员的 null 表示「不变」而非「清除」，所以页面缺值（null）不回传
+  const 实习月数 = 页面岗位.实习月数 ?? null;
+  if (实习月数 !== null && 实习月数 !== previous.internship_months) patch.internship_months = 实习月数;
+  const 每周天数 = 页面岗位.每周天数 ?? null;
+  if (每周天数 !== null && 每周天数 !== previous.onsite_days_per_week) patch.onsite_days_per_week = 每周天数;
+  const 经验要求 = 映射经验要求(页面岗位.经验要求);
+  if (经验要求 !== previous.experience_requirement) patch.experience_requirement = 经验要求;
+  const 学历要求 = 学历到后端[页面岗位.最低学历 as keyof typeof 学历到后端] ?? 'none';
+  if (学历要求 !== previous.education_requirement) patch.education_requirement = 学历要求;
+  // P3：页面带 硬性事实 才比较；任一档不同则四员整体发出，一致则缺省 = 服务端保持存储值
+  if (页面岗位.硬性事实) {
+    const 四员 = 硬性事实到后端(页面岗位.硬性事实);
+    const 硬性成员 = ['alternate_weekend_work', 'outsourcing_only', 'onsite_only', 'frequent_travel'] as const;
+    if (硬性成员.some((成员) => 四员[成员] !== previous.hard_requirements[成员])) {
+      patch.hard_requirements = 四员;
+    }
+  }
+  if (描述 !== previous.description) patch.description = 描述;
+  if (要求 !== previous.requirements) patch.requirements = 要求;
+  // 页面带 keywords 才比较（长度/顺序/值任一不同都算变化，[] 仍表示清空）；不带则保留服务端值
+  if (页面岗位.职位关键词) {
+    const 关键词 = 页面岗位.职位关键词;
+    const 未变 = 关键词.length === previous.keywords.length
+      && 关键词.every((词, 序号) => 词 === previous.keywords[序号]);
+    if (!未变) patch.keywords = 关键词;
+  }
+  const 筛选要求 = 页面岗位.筛选要求 ?? '';
+  if (筛选要求 !== previous.private_screening_preferences) patch.private_screening_preferences = 筛选要求;
+  // 相关内容变化必须携带当前显式确认；legacy false 岗位的显式重新确认例外——内容未变也发仅含确认的补丁
+  const 结构化字段有变化 =
+    patch.experience_requirement !== undefined ||
+    patch.education_requirement !== undefined ||
+    patch.requirements !== undefined;
+  if (结构化字段有变化) {
+    if (页面岗位.结构化要求已确认 !== true) {
+      throw new Error('请确认经验和学历将作为自动匹配依据');
+    }
+  }
+  if (结构化字段有变化 ||
+      (页面岗位.结构化要求已确认 === true &&
+       previous.structured_requirements_confirmed === false)) {
+    patch.structured_requirements_confirmed = true;
+  }
+  return patch;
 }

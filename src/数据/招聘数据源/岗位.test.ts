@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type BFF请求选项, type BFF响应 } from '../HTTP客户端';
+import type { BFFOwnerJob } from '../BFF契约';
 import { BFF岗位样本, 页面岗位样本 } from '../../测试/BFF样本';
 import { 创建岗位附属存储 } from '../前端附属数据';
 import { 创建岗位数据源 } from './岗位';
@@ -93,6 +94,7 @@ describe('岗位数据源 hard_requirements 校验', () => {
         地点引用: { id: 'loc_shanghai', display_name: '上海' },
         职位描述: '负责真实后端整栈验收',
         职位要求: '有分布式系统经验',
+        结构化要求已确认: true,
       },
       { publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null } },
     );
@@ -119,6 +121,7 @@ describe('岗位数据源 hard_requirements 校验', () => {
         地点引用: { id: 'loc_shanghai', display_name: '上海' },
         职位描述: '负责真实后端整栈验收',
         职位要求: '   ',
+        结构化要求已确认: true,
       },
       { publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null } },
     )).rejects.toMatchObject({ code: 'client_validation', field: 'requirements' });
@@ -138,5 +141,55 @@ describe('岗位数据源 hard_requirements 校验', () => {
       onsite_only: 'unknown',
       frequent_travel: 'unknown',
     });
+  });
+
+  // ── Task 2：更新岗位 发出的 PATCH body 就是 sparse diff ──
+  // 页面样本与 BFF岗位样本 逐字段对齐，除显式覆盖外补丁应为空。
+
+  function 捕获PATCH调用() {
+    const 调用 = 请求Mock.mock.calls.find((项) => 项[0].method === 'PATCH');
+    expect(调用).toBeTruthy();
+    return 调用![0] as { ifMatch?: string; body: Record<string, unknown> };
+  }
+
+  function 应答PATCH与重读(jobs: BFFOwnerJob[]) {
+    请求Mock.mockImplementation(async (options: { method?: string }) => {
+      if (options.method === 'PATCH') {
+        return { result: { ...BFF岗位样本 }, etag: null, requestId: 'r-patch' };
+      }
+      return { result: { jobs: jobs.map((job) => ({ ...job })), next_cursor: null }, etag: null, requestId: 'r-jobs' };
+    });
+  }
+
+  it('相关编辑只带变化字段与确认，并保留既有 If-Match 行为', async () => {
+    应答PATCH与重读([BFF岗位样本]);
+    await 数据源.更新岗位(
+      { ...页面岗位样本, 结构化要求已确认: true, 职位要求: '新的要求' },
+      BFF岗位样本,
+    );
+    const 请求 = 捕获PATCH调用();
+    expect(请求.ifMatch).toBe('"1"');
+    expect(请求.body).toEqual({ requirements: '新的要求', structured_requirements_confirmed: true });
+  });
+
+  it('legacy false 岗位的无关编辑只带该编辑，不带确认', async () => {
+    应答PATCH与重读([{ ...BFF岗位样本, structured_requirements_confirmed: false }]);
+    await 数据源.更新岗位(
+      { ...页面岗位样本, 办公地: '新办公地址' },
+      { ...BFF岗位样本, structured_requirements_confirmed: false },
+    );
+    expect(捕获PATCH调用().body).toEqual({ office_location: '新办公地址' });
+  });
+
+  it('更新岗位 body 不序列化 immutable / organization 字段', async () => {
+    应答PATCH与重读([BFF岗位样本]);
+    await 数据源.更新岗位(
+      { ...页面岗位样本, 结构化要求已确认: true, 职位描述: '新的描述' },
+      BFF岗位样本,
+    );
+    const body = 捕获PATCH调用().body;
+    expect(body).toEqual({ description: '新的描述' });
+    expect(JSON.stringify(body))
+      .not.toMatch(/publisher_|hiring_organization|category_id|location_id|recruitment_type|"title"|revision|salary_period/);
   });
 });
