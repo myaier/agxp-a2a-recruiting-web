@@ -587,10 +587,12 @@ describe('HTTP 招聘数据源', () => {
   // Task 1（P7）：第十二个域 facade（真人会话）一并组合进根 facade。
   // Task 1（P8）：第十三个域 facade（P8 控制面）一并组合进根 facade。
   // Task 1（简历预填）：第十四个域 facade（onboarding resume-prefill.v1 只读建议）一并组合进根 facade。
-  it('根 facade 组合十四个域且不丢公开方法', () => {
+  // Task 1（JD 导入）：第十五个域 facade（job-draft-imports 建议稿）一并组合进根 facade。
+  it('根 facade 组合十五个域且不丢公开方法', () => {
     const source = 创建HTTP招聘数据源(依赖());
     expect(Object.keys(source).sort()).toEqual([
       '保存简历', '保存招聘方档案', '创建岗位', '创建意向', '创建首次意向', '创建企业管理员申请',
+      '创建JD导入',
       '删除岗位', '删除意向', '删除企业媒体', '开始微信登录', '开始手机登录', '归档岗位',
       '恢复会话', '更新岗位', '更新意向', '上传企业媒体', '查询Institution', '查询Location',
       '查询Taxonomy', '清空目录缓存', '确保角色', '取消企业管理员申请', '读取主体', '读取岗位',
@@ -622,6 +624,8 @@ describe('HTTP 招聘数据源', () => {
       '提交P8反馈', '提交P8举报',
       // 简历预填域（onboarding 只读建议）
       '读取简历预填',
+      // JD 导入域（job-draft-imports 建议稿）
+      '读取JD导入',
     ].sort());
     // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
     expect(Object.keys(source)).not.toContain('读取公开岗位');
