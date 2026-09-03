@@ -1286,11 +1286,11 @@ wait_candidate_rule_count(){
 wait_pdf_parse(){
   local tries=0 status
   while [ "$tries" -lt 180 ]; do
-    if ab find role button --name "$RESUME_NAME 识别完成" --exact >/dev/null 2>&1; then
+    if ab find role button text --name "$RESUME_NAME 识别完成" --exact >/dev/null 2>&1; then
       return 0
     fi
     for status in '未能读取 · 可重试' '内容过多 · 请替换' '识别失败 · 可重试' '服务繁忙 · 稍后重试'; do
-      if ab find role button --name "$RESUME_NAME $status" --exact >/dev/null 2>&1; then
+      if ab find role button text --name "$RESUME_NAME $status" --exact >/dev/null 2>&1; then
         echo 'PDF 解析进入公开失败终态' >&2
         return 1
       fi
@@ -1303,7 +1303,7 @@ wait_pdf_parse(){
 }
 
 has_button_exact(){
-  ab find role button --name "$1" --exact >/dev/null 2>&1
+  ab find role button text --name "$1" --exact >/dev/null 2>&1
 }
 
 advance_case_for_current_role(){
@@ -1332,16 +1332,31 @@ capture_case_authority_marker(){
       *'等待招聘方确认意向'*) CASE_AUTHORITY_MARKER='等待招聘方确认意向'; return 0 ;;
       *'等待候选人确认意向'*) CASE_AUTHORITY_MARKER='等待候选人确认意向'; return 0 ;;
       *'等待双方确认意向'*) CASE_AUTHORITY_MARKER='等待双方确认意向'; return 0 ;;
-      *'双方已确认，正在创建会话'*) CASE_AUTHORITY_MARKER='双方已确认，正在创建会话'; return 0 ;;
       *'真人会话已建立'*) CASE_AUTHORITY_MARKER='真人会话已建立'; return 0 ;;
       *'等待招聘方决定'*) CASE_AUTHORITY_MARKER='等待招聘方决定'; return 0 ;;
       *'等待候选人确认协同事项'*) CASE_AUTHORITY_MARKER='等待候选人确认协同事项'; return 0 ;;
-      *'双方 AI 正在核对剩余差异'*) CASE_AUTHORITY_MARKER='双方 AI 正在核对剩余差异'; return 0 ;;
     esac
     tries=$((tries + 1))
     sleep 1
   done
   echo '当前 Case 未出现可用于深链复核的权威步骤文案' >&2
+  return 1
+}
+
+wait_resume_invitation(){
+  local tries=0 body
+  while [ "$tries" -lt 180 ]; do
+    body="$(ab get text body 2>/dev/null || printf '')"
+    case "$body" in
+      *'等待候选人回应简历邀请'*) return 0 ;;
+      *'需注意'*|*'已结束'*)
+        echo 'S0 复评进入公开 attention 或结束终态' >&2
+        return 1 ;;
+    esac
+    tries=$((tries + 1))
+    sleep 1
+  done
+  echo '等待候选人简历邀请超时' >&2
   return 1
 }
 
@@ -1451,7 +1466,7 @@ if has_button_exact '提交回答'; then
   click_button_exact '提交回答'
 fi
 wait_one_of '继续初筛' '接受邀请'
-if on_screen '继续初筛'; then click_button_exact '继续初筛'; fi
+if has_button_exact '继续初筛'; then click_button_exact '继续初筛'; fi
 
 # Recruiter 读取同一 Case；screen_resume 是 recruiter-target Hosted Agent task。
 MILESTONE='招聘方读取同一 Case'
@@ -1461,14 +1476,14 @@ click_after_hydrate '人才'
 click_button_exact '在谈'
 wait_text '匿名初筛'
 click_button '匿名初筛'
-assert_text '等待候选人回应简历邀请'
+wait_resume_invitation
 
 # Candidate 接受简历邀请并提交同一 PDF；公开 readiness 推动 recruiter screen_resume。
 MILESTONE='candidate 提交简历'
 export AGENT_BROWSER_SESSION="$CANDIDATE_SESSION"
 ab reload >/dev/null
 wait_one_of '接受邀请' '确认递交'
-if on_screen '接受邀请'; then click_button_exact '接受邀请'; fi
+if has_button_exact '接受邀请'; then click_button_exact '接受邀请'; fi
 wait_one_of '选择这次递交的简历' '确认递交这份简历？'
 if on_screen '选择这次递交的简历'; then
   find_retry role radio click --name "$RESUME_NAME" >/dev/null
