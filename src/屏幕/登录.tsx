@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import 样式 from './登录.module.css';
 import { 次级页外壳 } from '../组件/通用';
 import 代理标 from '../组件/代理标';
+import 工牌卡扣 from '../组件/工牌卡扣';
 import { 对勾图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
@@ -158,6 +159,21 @@ export default function 登录() {
           主页渐变头的同一笔 —— 荧光绿斜向渐变 + 右上天蓝光斑，铺满整屏后落到淡绿底，
           登录完进主页不跳戏 */}
       <div className={样式.渐变底} aria-hidden />
+
+      {/* 挂绳：两条亮绿织带从屏顶 V 形垂下，带上竖排印着品牌名，汇合处一枚哑光阳极铝卡扣
+          插进证卡顶部的槽孔（用户 2026-09-03 定稿「甲·印字挂绳 + 哑光阳极铝」）。
+          印字只印 4 组，尾字停在带尾 36px 之前，带子再裁切一次，卡扣附近绝不露字。 */}
+      <div className={样式.挂绳} aria-hidden>
+        <div className={样式.带组}>
+          <div className={`${样式.带} ${样式.带左}`}>
+            <span className={样式.带字}>工作蜂 工作蜂 工作蜂 工作蜂</span>
+          </div>
+          <div className={`${样式.带} ${样式.带右}`}>
+            <span className={样式.带字}>工作蜂 工作蜂 工作蜂 工作蜂</span>
+          </div>
+        </div>
+        <工牌卡扣 className={样式.卡扣} />
+      </div>
 
       {/* 工牌卡：整个登录表单装在一张挂着的「工作证」里。
           用户 2026-09-03 定的尺度：一张卡 + 卡顶一条槽孔暗示是工牌，不要挂绳、金属夹、
