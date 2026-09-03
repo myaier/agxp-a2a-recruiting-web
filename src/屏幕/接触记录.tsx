@@ -4,13 +4,20 @@
 // 做了什么动作」。所以列的是企业 + 动作 + 时间，绝不出现 HR 姓名、职务、头像 ——
 // 招聘方实名指的是「公司与对接人对候选人可见」这一层，不等于把每一次浏览都挂上人名，
 // 那会把浏览这个动作变成社交压力。同理也不显示对方看了多久、看了哪几段。
+//
+// Backend：只渲染当前 candidate 主体 成功 快照的 items（空页复用下方空态容器）；
+// 未开始/进行中/失败/owner 不匹配一律零业务行，绝不混入 Mock 公司。挂载触发一次
+// 加载接触记录；接口失败不回退 Mock。Mock：继续读 接触记录列表，零 contact 请求。
 
+import { useEffect } from 'react';
 import 样式 from './我的功能页.module.css';
 import 本屏样式 from './接触记录.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
+import { use应用状态 } from '../状态/应用状态';
 import { 接触记录列表 } from '../数据/模拟数据';
 import type { 接触记录 as 接触记录条 } from '../数据/类型';
+import type { 接触事件, 接触事件动作 } from '../数据/招聘数据源/接触记录';
 
 /** 动作 → 小标配色。三档：只是看画像 / 真的发起接触 / 递简历后回看 */
 function 取动作类名(动作: 接触记录条['动作']): string {
@@ -19,8 +26,54 @@ function 取动作类名(动作: 接触记录条['动作']): string {
   return 本屏样式.动作看画像;
 }
 
+/** 本地化绝对日期时间：不引入相对时间计时器与推断。 */
+export function 格式化接触时间(occurredAt: string): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(occurredAt));
+}
+
+/** wire 事件 → 既有页面行：动作映射为三个既有字面值，公司首字取 display_name 首个 Unicode 字符。 */
+export function 接触事件到展示(event: 接触事件): 接触记录条 {
+  const 动作文案: Record<接触事件动作, 接触记录条['动作']> = {
+    anonymous_profile_viewed: '匿名画像被查看',
+    contact_started: '发起接触',
+    submitted_resume_viewed: '递交简历后查看',
+  };
+  return {
+    编号: event.eventId,
+    公司: event.organization.displayName,
+    公司首字: Array.from(event.organization.displayName)[0] ?? '',
+    动作: 动作文案[event.action],
+    时间: 格式化接触时间(event.occurredAt),
+  };
+}
+
 export default function 接触记录() {
   const { 返回 } = use导航();
+  const { 数据源模式, 后端状态, 操作 } = use应用状态();
+
+  const 是后端 = 数据源模式 === 'backend';
+  const subjectId = 后端状态.主体?.last_used_role === 'candidate'
+    ? 后端状态.主体.subject_id
+    : null;
+  // 渲染 gate：只有当前 owner 的成功快照可见，其余一律零业务行
+  const 可见Backend事件 = 是后端 &&
+    后端状态.接触记录.阶段 === '成功' &&
+    后端状态.接触记录.ownerSubjectId === subjectId
+    ? 后端状态.接触记录.items
+    : [];
+  const 页面记录 = 是后端 ? 可见Backend事件.map(接触事件到展示) : 接触记录列表;
+
+  useEffect(() => {
+    if (!是后端 || subjectId === null) return;
+    void 操作.加载接触记录().catch(() => undefined);
+  }, [是后端, subjectId, 操作]);
 
   return (
     <次级页外壳>
@@ -34,7 +87,7 @@ export default function 接触记录() {
           你只需要知道是哪家公司、在什么时候做了什么。
         </div>
 
-        {接触记录列表.length === 0 ? (
+        {页面记录.length === 0 ? (
           <div className={样式.空态}>
             <div className={样式.空态图}>◎</div>
             <div className={样式.空态标题}>最近还没有企业接触过你</div>
@@ -44,7 +97,7 @@ export default function 接触记录() {
           </div>
         ) : (
           <div className={样式.卡}>
-            {接触记录列表.map((条) => (
+            {页面记录.map((条) => (
               <div className={样式.行} key={条.编号}>
                 <span className={样式.字标}>{条.公司首字}</span>
                 <span className={样式.行文字组}>
