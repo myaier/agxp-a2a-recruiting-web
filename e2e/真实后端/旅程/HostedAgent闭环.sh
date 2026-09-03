@@ -273,8 +273,8 @@ export AGENT_BROWSER_SESSION="$RECRUITER_SESSION"
 login_recruiter
 click_after_hydrate '人才'
 click_button_exact '在谈'
-wait_text '匿名初筛'
-click_button '匿名初筛'
+wait_text '简历提交'
+click_button '简历提交'
 
 MILESTONE='recruiter target screen_resume 完成'
 wait_one_of '通过初筛' '需注意' 420
