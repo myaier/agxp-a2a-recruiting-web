@@ -36,6 +36,7 @@ import type { P8控制面数据源 } from './招聘数据源/P8控制面';
 import type { 简历预填数据源 } from './招聘数据源/简历预填';
 import type { JD导入数据源 } from './招聘数据源/JD导入';
 import type { 接触记录数据源 } from './招聘数据源/接触记录';
+import type { Agent设置数据源 } from './招聘数据源/Agent设置';
 import { 创建会话数据源 } from './招聘数据源/会话';
 import { 创建目录数据源 } from './招聘数据源/目录';
 import { 创建简历数据源 } from './招聘数据源/简历';
@@ -52,6 +53,7 @@ import { 创建P8控制面数据源 } from './招聘数据源/P8控制面';
 import { 创建简历预填数据源 } from './招聘数据源/简历预填';
 import { 创建JD导入数据源 } from './招聘数据源/JD导入';
 import { 创建接触记录数据源 } from './招聘数据源/接触记录';
+import { 创建Agent设置数据源 } from './招聘数据源/Agent设置';
 
 export interface HTTP招聘数据源依赖 {
   client: Pick<BFF客户端, '请求' | '请求二进制'>;
@@ -62,7 +64,7 @@ export interface HTTP招聘数据源依赖 {
 export type HTTP招聘数据源 = 会话数据源 & 目录数据源 & 简历数据源 &
   意向数据源 & 岗位数据源 & 组织数据源 & 隐私数据源 & Agent规则数据源 &
   发现推荐数据源 & 附件简历数据源 & MatchCase数据源 & 真人会话数据源 & P8控制面数据源 &
-  简历预填数据源 & JD导入数据源 & 接触记录数据源;
+  简历预填数据源 & JD导入数据源 & 接触记录数据源 & Agent设置数据源;
 
 export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP招聘数据源 {
   const 请求 = deps.client.请求;
@@ -83,5 +85,6 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
     ...创建简历预填数据源(请求),
     ...创建JD导入数据源(请求),
     ...创建接触记录数据源(请求),
+    ...创建Agent设置数据源(请求),
   };
 }

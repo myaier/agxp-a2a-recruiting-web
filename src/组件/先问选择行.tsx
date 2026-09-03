@@ -11,6 +11,7 @@ export function 先问选择行<选 extends string>({
   选项,
   选择,
   末行 = false,
+  禁用 = false,
 }: {
   标题: string;
   注?: string;
@@ -18,6 +19,7 @@ export function 先问选择行<选 extends string>({
   选项: readonly 选[];
   选择: (值: 选) => void;
   末行?: boolean;
+  禁用?: boolean;
 }) {
   return (
     <div className={`${样式.行} ${末行 ? 样式.末行 : ''}`}>
@@ -32,6 +34,7 @@ export function 先问选择行<选 extends string>({
             type="button"
             className={`${样式.选项} ${项 === 值 ? 样式.选中 : ''} 可点`}
             aria-pressed={项 === 值}
+            disabled={禁用}
             onClick={() => 选择(项)}
           >
             {项}

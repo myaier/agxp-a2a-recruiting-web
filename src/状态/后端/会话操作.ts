@@ -9,7 +9,7 @@ import type { 页面简历快照, 页面意向快照, 页面岗位快照 } from 
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { 轻提示 } from '../../组件/轻提示';
 import type { 后端状态, 后端操作依赖, 会话操作 } from './类型';
-import { 创建空招聘方组织水合状态 } from './类型';
+import { 创建空Agent设置状态, 创建空招聘方组织水合状态 } from './类型';
 import { 水合Agent规则角色数据 } from './Agent规则操作';
 import { 水合招聘方组织数据 } from './组织操作';
 import { 创建空P4发现状态 } from './发现推荐操作';
@@ -82,6 +82,7 @@ export function 重置Agent规则后端状态(旧: 后端状态): 后端状态 {
       candidate: { rules: '未开始', proposals: '未开始' },
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
+    Agent设置: 创建空Agent设置状态(),
   };
 }
 

@@ -62,7 +62,7 @@ import type {
   应用操作, 后端状态, 后端操作依赖, 候选预填恢复存储, P7待定意图, P7已读位置记录,
   P8待定意图,
 } from './后端/类型';
-import { 创建空招聘方组织水合状态, 创建空候选预填状态 } from './后端/类型';
+import { 创建空Agent设置状态, 创建空招聘方组织水合状态, 创建空候选预填状态 } from './后端/类型';
 import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
 import { 创建发现推荐操作, 创建空P4发现状态 } from './后端/发现推荐操作';
 import { 创建MatchCase操作, 创建空P5MatchCase状态, 清P5MatchCase引用 } from './后端/MatchCase操作';
@@ -498,6 +498,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       candidate: { rules: '未开始', proposals: '未开始' },
       recruiter: { rules: '未开始', proposals: '未开始' },
     },
+    Agent设置: 创建空Agent设置状态(),
     // P4：发现推荐 raw scope 快照/详情/委托回执全部空底座起步（Mock 发现域不触达这里）
     ...创建空P4发现状态(),
     // P5：MatchCase 内存态快照（工作区/历史/详情）空底座起步；绝不进 资料持久化

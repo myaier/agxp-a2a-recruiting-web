@@ -15,7 +15,7 @@
 //
 // 结构：提示条 →（加载壳/重试）→ 提案卡组 → 全局规则分组卡 → 意向分组卡 → 手动添加 → 尾注。
 
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import 样式 from './规则库.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { 先问选择行 } from '../组件/先问选择行';
@@ -67,6 +67,28 @@ export default function 规则库() {
     roleHydration.proposals === '未开始' || roleHydration.proposals === '进行中'
   );
   const 是Backend = 数据源模式 === 'backend';
+  const Agent设置快照 = role === null ? null : 后端状态.Agent设置?.[role] ?? null;
+  const Agent设置已就绪 = !是Backend || Agent设置快照?.阶段 === '成功';
+  const [Agent设置保存中, 设Agent设置保存中] = useState(false);
+
+  useEffect(() => {
+    if (是Backend && role === 'candidate') void 操作.加载Agent设置();
+  }, [是Backend, role, 操作]);
+
+  const 保存候选Agent设置 = async (
+    patch: { material_submission?: 'ask_first' | 'auto_send'; out_of_authority_concession?: 'ask_first' | 'reject' },
+  ) => {
+    if (!是Backend) return;
+    设Agent设置保存中(true);
+    try {
+      await 操作.保存Agent设置(patch);
+      轻提示('设置已保存');
+    } catch {
+      轻提示('设置没有保存成功，请重试');
+    } finally {
+      设Agent设置保存中(false);
+    }
+  };
 
   // 手动添加：折叠态是一条虚线按钮，点开后原地变成输入行（不另开弹层，减少一次跳转）
   const [添加中, 设添加中] = useState(false);
@@ -234,19 +256,32 @@ export default function 规则库() {
         <div className={样式.授权组}>
           <div className={样式.分组标}>哪 些 事 先 问 你</div>
           <div className={样式.授权卡}>
+            {是Backend && Agent设置快照?.阶段 !== '成功' ? (
+              Agent设置快照?.阶段 === '失败'
+                ? <button className={`${样式.重试键} 可点`} onClick={() => { void 操作.加载Agent设置(true); }}>设置加载失败，重试</button>
+                : <div className={样式.加载壳} role="status">AI代理设置加载中</div>
+            ) : null}
             <先问选择行
               标题="发送正式简历"
               注="带姓名与联系方式的 PDF 原件"
               值={状态.求职先问偏好.递交材料}
               选项={['先问我', '自动发送'] as const}
-              选择={(值) => 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 递交材料: 值 } })}
+              选择={(值) => {
+                if (!是Backend) 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 递交材料: 值 } });
+                else void 保存候选Agent设置({ material_submission: 值 === '先问我' ? 'ask_first' : 'auto_send' });
+              }}
+              禁用={!Agent设置已就绪 || Agent设置保存中}
             />
             <先问选择行
               标题="对方要的让步超出授权"
               注="比如作息折中、提前到岗"
               值={状态.求职先问偏好.超授权让步}
               选项={['先问我', '直接回绝'] as const}
-              选择={(值) => 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 超授权让步: 值 } })}
+              选择={(值) => {
+                if (!是Backend) 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 超授权让步: 值 } });
+                else void 保存候选Agent设置({ out_of_authority_concession: 值 === '先问我' ? 'ask_first' : 'reject' });
+              }}
+              禁用={!Agent设置已就绪 || Agent设置保存中}
               末行
             />
           </div>

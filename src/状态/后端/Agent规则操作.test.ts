@@ -54,6 +54,18 @@ function 创建数据源桩(): HTTP招聘数据源 {
     放弃Agent规则提案: vi.fn(async () =>
       ({ ...BFFAgent规则就绪提案样本, state: 'dismissed' as const })),
     创建Agent规则替换提案: vi.fn(async () => BFFAgent规则解释中提案样本),
+    读取Agent设置: vi.fn(async () => ({
+      material_submission: 'ask_first' as const,
+      out_of_authority_concession: 'ask_first' as const,
+      revision: 1,
+      updated_at: '2026-09-03T19:00:00Z',
+    })),
+    修改Agent设置: vi.fn(async () => ({
+      material_submission: 'auto_send' as const,
+      out_of_authority_concession: 'ask_first' as const,
+      revision: 2,
+      updated_at: '2026-09-03T19:01:00Z',
+    })),
     // scope_denied 恢复链会重读意向
     读取意向: vi.fn(async (): Promise<页面意向快照> => ({ 列表: [], 服务端: {} })),
     清空目录缓存: vi.fn(),
@@ -124,6 +136,10 @@ function 种子后端状态(role: BFF角色 | null): 后端状态 {
     Agent规则水合: {
       candidate: { rules: '未开始', proposals: '未开始' },
       recruiter: { rules: '未开始', proposals: '未开始' },
+    },
+    Agent设置: {
+      candidate: { 阶段: '未开始', 设置: null, 错误: null },
+      recruiter: { 阶段: '未开始', 设置: null, 错误: null },
     },
     // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段（这里的用例不触达它们）
     招聘方档案水合阶段: '未开始' as const,
@@ -1251,6 +1267,42 @@ describe('水合Agent规则角色数据 与 刷新Agent规则', () => {
       另一提案.proposal_id,
     ]);
     expect(最新.已登录).toBe(true);
+  });
+});
+
+describe('Agent 设置权威读写', () => {
+  it('候选端加载后水合两个选项，保存用当前 revision 且不乐观写', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    const 操作 = 创建Agent规则操作(环境.deps);
+    await 操作.加载Agent设置();
+    expect(环境.最新后端状态().Agent设置?.candidate).toMatchObject({ 阶段: '成功', 设置: { revision: 1 } });
+    expect(环境.页面状态.current.求职先问偏好).toEqual({ 递交材料: '先问我', 超授权让步: '先问我' });
+
+    await 操作.保存Agent设置({ material_submission: 'auto_send' });
+    expect(环境.数据源.修改Agent设置).toHaveBeenCalledWith(
+      'candidate', { material_submission: 'auto_send' }, 1,
+    );
+    expect(环境.页面状态.current.求职先问偏好.递交材料).toBe('自动发送');
+  });
+
+  it('409 只重读权威设置，不重放 PATCH', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    const 操作 = 创建Agent规则操作(环境.deps);
+    await 操作.加载Agent设置();
+    vi.mocked(环境.数据源.修改Agent设置).mockRejectedValueOnce(
+      new BFF错误(409, 'version_conflict', 'conflict'),
+    );
+    vi.mocked(环境.数据源.读取Agent设置).mockResolvedValueOnce({
+      material_submission: 'ask_first',
+      out_of_authority_concession: 'reject',
+      revision: 3,
+      updated_at: '2026-09-03T19:02:00Z',
+    });
+    await expect(操作.保存Agent设置({ out_of_authority_concession: 'reject' }))
+      .rejects.toMatchObject({ code: 'version_conflict' });
+    expect(环境.数据源.修改Agent设置).toHaveBeenCalledTimes(1);
+    expect(环境.数据源.读取Agent设置).toHaveBeenCalledTimes(2);
+    expect(环境.页面状态.current.求职先问偏好.超授权让步).toBe('直接回绝');
   });
 });
 

@@ -502,6 +502,28 @@ export interface BFFAgent规则提案 {
   created_at?: string;
 }
 
+// Agent 设置是 owner 权威快照：候选端支持正式简历发送与超授权让步，
+// 招聘端当前只公开超授权让步，不在前端伪造「内部版 JD 自动发送」持久化。
+export type BFF材料发送偏好 = 'ask_first' | 'auto_send';
+export type BFF超授权让步偏好 = 'ask_first' | 'reject';
+
+export interface BFF候选Agent设置 {
+  material_submission: BFF材料发送偏好;
+  out_of_authority_concession: BFF超授权让步偏好;
+  revision: number;
+  updated_at: string;
+}
+
+export interface BFF招聘Agent设置 {
+  out_of_authority_concession: BFF超授权让步偏好;
+  revision: number;
+  updated_at: string;
+}
+
+export type BFFAgent设置 = BFF候选Agent设置 | BFF招聘Agent设置;
+export type BFFAgent设置补丁 = Partial<Pick<BFF候选Agent设置,
+  'material_submission' | 'out_of_authority_concession'>>;
+
 // ── 发现推荐域 DTO（P4：job-recommendations / candidate-recommendations / 双端委托）──
 // 字段名与闭合 enum 逐项复制自 mobile-v1 OpenAPI 的 Discovery* 家族；
 // exact key set、rank/score 边界与条件可空由 招聘数据源/发现推荐.ts 的 decoder 校验。
