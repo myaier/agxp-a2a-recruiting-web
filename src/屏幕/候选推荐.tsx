@@ -194,6 +194,9 @@ function Backend候选推荐() {
   const [只看收藏, 设只看收藏] = useState(false);
   // 反馈/委托写进行中：并发写会被操作层单飞丢弃，禁用动作键防静默丢点击
   const [反馈中, 设反馈中] = useState(false);
+  // Task 6 合同阻断：组织对账后权威岗位仍 ready 的「数据状态异常」——屏幕局部、按 job
+  // 隔离的持久状态；切岗即清、重挂天然复位，绝不外存到全局（§7.7）。
+  const [数据异常岗位, 设数据异常岗位] = useState<string | null>(null);
 
   const 是后端 = 数据源模式 === 'backend';
   // Backend 水合后 当前岗位编号 与 岗位列表[].编号 都是 BFF job_id（从BFF岗位 编号=dto.job_id）
@@ -222,6 +225,12 @@ function Backend候选推荐() {
   const 组织前提引用 = useRef(组织前提);
   当前岗位引用.current = 活跃岗位;
   组织前提引用.current = 组织前提;
+
+  const 当前数据异常 = 数据异常岗位 === 活跃岗位;
+  // 切岗即清：合同块绝不跟着岗位走，回到同一岗位也不带旧阻断（重挂由组件生命周期复位）
+  useEffect(() => {
+    设数据异常岗位(null);
+  }, [活跃岗位]);
 
   // 只选当前岗位自己的快照：键按岗位隔离，切换时旧 scope 的数据天然进不来
   const 后端快照 = 活跃岗位 !== null ? 后端状态.招聘可用候选?.[活跃岗位] : undefined;
@@ -276,19 +285,24 @@ function Backend候选推荐() {
     // 加载失败（含下拉重读）的文案由操作层落进快照 error，列表上方的错误行负责呈现
     return 操作.加载招聘候选(就绪岗位, true).catch(() => undefined);
   };
-  // 旧后端把「用人组织未验证」折进笼统的 recommendation_unavailable。这条错只有拿着
-  // 发起那一刻的岗位 + 现在的权威前提（同一岗位、当前确实 blocked）才允许译成组织指引；
-  // 其余一律走 P4 闭合文案 —— 401/503/未知码绝不冒充「组织没认证」。
+  // 「让代理再找一批」POST 建新批次。POST 以精确组织 409 失败时操作层已做一次 Owner Jobs
+  // 权威重读：组织受阻事实由水合后的岗位快照驱动既有受阻态（这里不 toast）；权威岗位
+  // 仍 ready 的合同漂移落本地持久「数据状态异常」块并禁用本岗刷新；其余错误一律 P4 闭合
+  // 文案，绝不制造组织 UI。旧 recommendation_unavailable 不再解释为组织认证错误。
   const 请代理再找一批 = () => {
-    if (活跃岗位 === null || 组织前提.kind !== 'ready') return;
+    if (活跃岗位 === null || 组织前提.kind !== 'ready' || 当前数据异常) return;
     const 发起岗位 = 活跃岗位;
     void 操作.刷新招聘候选(发起岗位).catch((错误: unknown) => {
-      const 同岗受阻 = 当前岗位引用.current === 发起岗位
-        && 组织前提引用.current.kind === 'blocked';
       if (错误 instanceof BFF错误
-        && 错误.code === 'recommendation_unavailable'
-        && 同岗受阻) {
-        轻提示('匿名候选推荐需要已验证的用人组织');
+        && 错误.status === 409
+        && 错误.code === 'organization_verification_required') {
+        return; // 权威水合已驱动受阻态，组织指引不再由 toast 冒充
+      }
+      if (错误 instanceof BFF错误
+        && 错误.code === 'invalid_response'
+        && 当前岗位引用.current === 发起岗位
+        && 组织前提引用.current.kind === 'ready') {
+        设数据异常岗位(发起岗位); // 持久 inline 合同块，按 job 隔离
         return;
       }
       轻提示(P4错误文案(错误));
@@ -421,8 +435,11 @@ function Backend候选推荐() {
             </div>
           ) : (
             <>
-              {/* 刷新未决（POST 成功 / follow-up GET 失败）：旧卡保留，错误单独一行交代 */}
-              {后端快照?.error && 后端卡们.length > 0 && !后端快照.刷新中 ? (
+              {/* 合同阻断（Task 6）优先占错误行：对账后权威岗位仍 ready 的持久「数据状态
+                  异常」块；无合同时仍走原快照错误行（刷新未决等）。 */}
+              {当前数据异常 ? (
+                <div className={样式.错误行}>数据状态异常，请稍后再试</div>
+              ) : 后端快照?.error && 后端卡们.length > 0 && !后端快照.刷新中 ? (
                 <div className={样式.错误行}>{后端快照.error}</div>
               ) : null}
               {后端卡们.length === 0 ? (
@@ -484,8 +501,8 @@ function Backend候选推荐() {
             </button>
           ) : (
             <button
-              className={`${样式.补给键} ${组织前提.kind === 'ready' && !反馈中 ? '可点' : ''}`}
-              disabled={组织前提.kind !== 'ready' || 反馈中}
+              className={`${样式.补给键} ${组织前提.kind === 'ready' && !反馈中 && !当前数据异常 ? '可点' : ''}`}
+              disabled={组织前提.kind !== 'ready' || 反馈中 || 当前数据异常}
               aria-label={组织前提.kind === 'ready'
                 ? undefined
                 : `${前提未知原因}，暂时不能让代理再找一批`}

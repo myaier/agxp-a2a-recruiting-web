@@ -636,25 +636,79 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     expect(screen.queryByRole('button', { name: /查看代理功能/ })).toBeNull();
   });
 
-  // 旧后端把「组织未验证」折进笼统的 recommendation_unavailable：只有发起请求那一刻
-  // 是同一个岗位、且现在的权威快照已说明组织受阻，才允许把这条错译成组织指引；
-  // 否则一律按 P4 通用文案，绝不拿别的错冒充「组织没认证」。
-  it('maps legacy recommendation_unavailable to organization guidance only with same-job evidence', async () => {
+  // ── Task 6：组织认证竞态对账在屏上的三面 ──
+  // 1. 精确组织 409：操作层做一次 Owner Jobs 权威重读并水合受阻事实，屏只认权威水合，
+  //    不再用 toast 冒充组织指引；受阻态是既有 inline 持久渲染（去认证 / 加入企业）。
+  it('精确组织 409 由权威水合驱动受阻态：不 toast，去认证/加入企业走既有路由', async () => {
     const refresh = deferred<void>();
     置P4状态({ 操作: { 刷新招聘候选: vi.fn(() => refresh.promise) } });
     const page = render(<候选推荐 />);
     await userEvent.click(screen.getByRole('button', { name: '让代理再找一批' }));
 
+    // 操作层的一次权威重读已水合受阻 owner job：后端状态回写后的权威重渲染
     置P4状态({
       ownerJob: { ...BFF岗位样本, job_id: 岗位编号, hiring_organization_verification_status: 'unverified' },
+      操作: { 刷新招聘候选: vi.fn(() => refresh.promise) },
     });
     page.rerender(<候选推荐 />);
-    refresh.reject(new BFF错误(409, 'recommendation_unavailable', 'legacy'));
-    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith(
-      '匿名候选推荐需要已验证的用人组织',
-    ));
+    refresh.reject(new BFF错误(409, 'organization_verification_required',
+      'A verified organization is required to discover candidates.'));
+    await act(async () => { await refresh.promise.catch(() => undefined); });
+
+    // 精确组织错误不 toast；受阻 inline 态持续在场
+    expect(mock轻提示).not.toHaveBeenCalled();
+    expect(screen.getByText(/匿名候选推荐需要已验证的用人组织/)).toBeTruthy();
+    expect(screen.getByText('这个岗位还没挂到已验证的用人组织')).toBeTruthy();
+    // 刷新动作不再可点：键位换成「加入企业」，让代理再找一批不复存在
+    expect(screen.queryByRole('button', { name: '让代理再找一批' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /去认证/ }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业实名认证);
+    await userEvent.click(screen.getByRole('button', { name: /加入企业/ }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业邀请加入);
   });
 
+  // 2. 对账后权威岗位仍 ready = 合同漂移：当前岗位落屏幕局部的持久「数据状态异常」块，
+  //    禁用本岗刷新；不是组织受阻，绝不出现组织 CTA。
+  it('对账后权威岗位仍 ready：当前岗位落本地持久「数据状态异常」块并禁用刷新', async () => {
+    const user = userEvent.setup();
+    mock刷新招聘候选.mockRejectedValueOnce(
+      new BFF错误(409, 'invalid_response', '数据状态异常，请稍后再试'));
+    置P4状态({ 操作: { 刷新招聘候选: mock刷新招聘候选 } });
+    render(<候选推荐 />);
+    await user.click(screen.getByRole('button', { name: '让代理再找一批' }));
+
+    await waitFor(() => expect(screen.getByText('数据状态异常，请稍后再试')).toBeTruthy());
+    const 再找键 = screen.getByRole('button', { name: '让代理再找一批' }) as HTMLButtonElement;
+    expect(再找键.disabled).toBe(true);
+    expect(mock轻提示).not.toHaveBeenCalled(); // 持久 inline 块，不弹一次性 toast
+    expect(screen.queryByText(/先完成企业实名认证/)).toBeNull(); // 绝不冒充组织受阻
+  });
+
+  // 3. 合同块按 job 隔离、屏幕局部：切岗或重挂即清，绝不阻断另一个岗位
+  it('本地合同块按岗位隔离：切岗或重挂即清，绝不阻断另一个岗位', async () => {
+    const user = userEvent.setup();
+    mock刷新招聘候选.mockRejectedValueOnce(
+      new BFF错误(409, 'invalid_response', '数据状态异常，请稍后再试'));
+    置P4状态({ 操作: { 刷新招聘候选: mock刷新招聘候选 } });
+    const { rerender, unmount } = render(<候选推荐 />);
+    await user.click(screen.getByRole('button', { name: '让代理再找一批' }));
+    await waitFor(() => expect(screen.getByText('数据状态异常，请稍后再试')).toBeTruthy());
+
+    // 切到另一个岗位：合同块不跟过去，新岗位刷新照常可用
+    置P4状态({ 岗位编号: 'job_2', 操作: { 刷新招聘候选: mock刷新招聘候选 } });
+    rerender(<候选推荐 />);
+    expect(screen.queryByText('数据状态异常，请稍后再试')).toBeNull();
+    const 新键 = screen.getByRole('button', { name: '让代理再找一批' }) as HTMLButtonElement;
+    expect(新键.disabled).toBe(false);
+
+    // 重挂本屏：块也不复活（屏幕局部状态，绝不外存）
+    unmount();
+    置P4状态({ 操作: { 刷新招聘候选: mock刷新招聘候选 } });
+    render(<候选推荐 />);
+    expect(screen.queryByText('数据状态异常，请稍后再试')).toBeNull();
+  });
+
+  // 4. 401/503/未知码：一律 P4 通用文案，绝不显示组织 CTA
   it.each([
     new BFF错误(503, 'source_unavailable', 'down'),
     new BFF错误(401, 'unauthorized', 'expired'),
@@ -665,6 +719,40 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     render(<候选推荐 />);
     await userEvent.click(screen.getByRole('button', { name: '让代理再找一批' }));
     await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    expect(mock轻提示).not.toHaveBeenCalledWith('匿名候选推荐需要已验证的用人组织');
+    expect(screen.queryByText(/先完成企业实名认证/)).toBeNull();
+  });
+
+  // 5. malformed（invalid_response）也不冒充组织受阻：无组织 CTA，只落合同块
+  it('malformed 合同漂移不显示组织 CTA', async () => {
+    const user = userEvent.setup();
+    mock刷新招聘候选.mockRejectedValueOnce(
+      new BFF错误(409, 'invalid_response', '服务返回了不符合契约的发现推荐数据'));
+    置P4状态({ 操作: { 刷新招聘候选: mock刷新招聘候选 } });
+    render(<候选推荐 />);
+    await user.click(screen.getByRole('button', { name: '让代理再找一批' }));
+    await waitFor(() => expect(screen.getByText('数据状态异常，请稍后再试')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: /去认证/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: '加入企业' })).toBeNull();
+  });
+
+  // 6. 旧 recommendation_unavailable 特判已删除：按 P4 闭合文案提示，
+  //    即使同一岗位此刻确实受阻，也绝不把这条错译成组织指引
+  it('旧 recommendation_unavailable 特判已删：按 P4 闭合文案提示，绝不译成组织指引', async () => {
+    const refresh = deferred<void>();
+    置P4状态({ 操作: { 刷新招聘候选: vi.fn(() => refresh.promise) } });
+    const page = render(<候选推荐 />);
+    await userEvent.click(screen.getByRole('button', { name: '让代理再找一批' }));
+
+    置P4状态({
+      ownerJob: { ...BFF岗位样本, job_id: 岗位编号, hiring_organization_verification_status: 'unverified' },
+      操作: { 刷新招聘候选: vi.fn(() => refresh.promise) },
+    });
+    page.rerender(<候选推荐 />);
+    refresh.reject(new BFF错误(409, 'recommendation_unavailable', 'legacy'));
+    await act(async () => { await refresh.promise.catch(() => undefined); });
+
+    expect(mock轻提示).toHaveBeenCalledWith('这条推荐当前已不可用，请刷新后查看');
     expect(mock轻提示).not.toHaveBeenCalledWith('匿名候选推荐需要已验证的用人组织');
   });
 

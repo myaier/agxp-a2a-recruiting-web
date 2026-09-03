@@ -11,6 +11,7 @@ import type {
   BFF委托摘要,
   BFF发现批次,
   BFF发现偏好,
+  BFFOwnerJob,
   BFF招聘候选推荐,
 } from '../../数据/BFF契约';
 import { 创建空P7会话状态 } from './真人会话操作';
@@ -25,10 +26,12 @@ import {
   BFF发现偏好样本,
   BFF候选岗位推荐样本,
   BFF候选委托回执样本,
+  BFF岗位样本,
   BFF招聘发现批次样本,
   BFF招聘候选推荐样本,
   BFF招聘委托回执样本,
 } from '../../测试/BFF样本';
+import type { 页面岗位快照 } from '../../数据/招聘数据源类型';
 import { 初始状态 } from '../初始状态';
 import type { 动作 } from '../应用状态';
 import {
@@ -74,6 +77,8 @@ function 创建P4数据源(覆盖: Record<string, unknown> = {}): HTTP招聘数�
     创建招聘候选委托: vi.fn(async (): Promise<BFF委托回执[]> => [BFF招聘委托回执样本]),
     读取招聘候选委托: vi.fn(async (): Promise<BFF委托回执> => BFF招聘委托回执样本),
     清空目录缓存: vi.fn(),
+    // Task 6 组织对账的唯一权威重读腿：默认空页，逐用例覆盖
+    读取岗位: vi.fn(async (): Promise<页面岗位快照> => ({ 列表: [], 服务端: {} })),
     ...覆盖,
   } as unknown as HTTP招聘数据源;
 }
@@ -972,8 +977,24 @@ describe('P4 闭合错误文案', () => {
       .toBe('服务暂时不可用，请稍后再试');
     expect(P4错误文案(new BFF错误(503, 'operation_outcome_unknown', 'unknown')))
       .toBe('操作结果暂未确认，请稍后重试');
-    // 闭合表之外的 HTTP code 与运行时错误才回落现有映射
-    expect(P4错误文案(new BFF错误(500, 'unexpected_code', 'boom'))).toBe('boom');
+    // Task 6 组织错误收敛进闭合表：精确 409 的组织文案不再裸抛后端英文 message
+    expect(P4错误文案(new BFF错误(
+      409, 'organization_verification_required',
+      'A verified organization is required to discover candidates.')))
+      .toBe('匿名候选推荐需要已验证的用人组织');
+    // 闭合表之外先走 取后端错误文案 的既有分类：network_error / 非 200 的 invalid_response 原样保留
+    expect(P4错误文案(new BFF错误(0, 'network_error', '网络连接失败，请稍后再试')))
+      .toBe('无法连接后端服务，请检查网络或稍后重试');
+    expect(P4错误文案(new BFF错误(409, 'invalid_response', 'raw drift')))
+      .toBe('服务返回异常，请稍后重试');
+    // status-200 的合成委托/拒绝回执错误带已闭合中文文案：按原样暴露，绝不落通用句
+    expect(P4错误文案(new BFF错误(200, 'needs_user', '需要你处理，请查看当前可用入口')))
+      .toBe('需要你处理，请查看当前可用入口');
+    expect(P4错误文案(new BFF错误(200, 'refused', '本次未能继续，请查看页面状态')))
+      .toBe('本次未能继续，请查看页面状态');
+    // 闭合表之外、且 取后端错误文案 只能回落原始英文 message 的非 200 错误：
+    // 页面不直接显示后端英文（§8），收敛为通用句
+    expect(P4错误文案(new BFF错误(500, 'unexpected_code', 'boom'))).toBe('请求失败，请稍后再试');
     // P0 修复 Task 6：运行时错误回落通用请求失败文案，不冒充网络故障。
     expect(P4错误文案(new TypeError('x'))).toBe('请求失败，请稍后再试');
   });
@@ -1573,5 +1594,199 @@ describe('刷新委托', () => {
     expect(env.最新状态().招聘可用候选.job_1?.items[0]?.delegation)
       .toEqual({ delegation_id: 'del_rp', state: 'case_started', case_id: 'case_r1' });
     expect(env.最新状态().P4真实Case引用).toEqual({ del_rp: 'case_r1' });
+  });
+});
+
+// ── Task 6：组织认证竞态对账 —— 精确组织 409 终止 POST，只做一次 Owner Jobs 权威重读 ──
+//    不变量（设计 §7/§8/§9.4）：每个用户意图最多一次 refresh POST + 一次 Owner Jobs GET；
+//    绝不换幂等键重发；迟到成败整包丢弃；栅栏内 401 走统一清会话；除精确组织 409 外
+//    的一切直接失败零重读。
+
+describe('组织认证竞态对账（一次 Owner Jobs 重读）', () => {
+  /** Task 5 strict contract 铸出的精确组织 409（仅 recruiter refresh 路由透传该码）。 */
+  const 组织409 = () => new BFF错误(
+    409, 'organization_verification_required',
+    'A verified organization is required to discover candidates.');
+  const 岗位页 = (服务端: Record<string, BFFOwnerJob>): 页面岗位快照 => ({ 列表: [], 服务端 });
+
+  it.each([
+    ['unverified', BFF岗位样本],
+    ['missing ref', {
+      ...BFF岗位样本, hiring_organization_verification_status: 'verified' as const,
+    }],
+  ] as const)('精确组织 409 + 权威重读 %s：一次 POST、一次读取岗位、水合一次并替换岗位快照，原组织错误照抛', async (_名, ownerJob) => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(组织409());
+    const 快照 = 岗位页({ job_1: { ...ownerJob, job_id: 'job_1' } });
+    vi.mocked(env.数据源.读取岗位).mockResolvedValueOnce(快照);
+
+    await expect(env.操作.刷新招聘候选('job_1')).rejects.toMatchObject({
+      status: 409, code: 'organization_verification_required',
+    });
+
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
+    expect(env.派发).toHaveBeenCalledTimes(1);
+    expect(env.派发).toHaveBeenCalledWith({ 型: '水合后端岗位', 快照 });
+    expect(env.最新状态().岗位快照).toEqual(快照.服务端);
+    // 运行范围刷新 的 POST 失败路径已把组织文案落进快照；对账确认受阻后不再二次落
+    expect(env.最新状态().招聘可用候选.job_1?.error).toBe('匿名候选推荐需要已验证的用人组织');
+    // 组织 409 绝不换幂等键重发：同一意图的键原样保留
+    expect(env.deps.P4幂等意图!.current.has('recruiter:list:job_1:refresh')).toBe(true);
+  });
+
+  it('权威重读后仍 verified + ref：一次 POST、一次读取岗位、零二次 POST，invalid_response 带中文「数据状态异常」', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(组织409());
+    vi.mocked(env.数据源.读取岗位).mockResolvedValueOnce(岗位页({
+      job_1: {
+        ...BFF岗位样本, hiring_organization_verification_status: 'verified' as const,
+        hiring_organization_ref: 'org_1',
+      },
+    }));
+
+    await expect(env.操作.刷新招聘候选('job_1')).rejects.toMatchObject({
+      status: 409, code: 'invalid_response', message: '数据状态异常，请稍后再试',
+    });
+
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
+    expect(env.派发).toHaveBeenCalledTimes(1); // 权威 owner 页照常水合
+    expect(env.最新状态().岗位快照).toEqual({
+      job_1: {
+        ...BFF岗位样本, hiring_organization_verification_status: 'verified' as const,
+        hiring_organization_ref: 'org_1',
+      },
+    });
+    // 仍 ready = 合同漂移：持久快照改述真实收口，绝不再留组织受阻文案
+    expect(env.最新状态().招聘可用候选.job_1?.error).toBe('数据状态异常，请稍后再试');
+  });
+
+  it('权威重读页里没有所请求的岗位：按 invalid_response 收口，不是组织 CTA', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(组织409());
+    vi.mocked(env.数据源.读取岗位).mockResolvedValueOnce(岗位页({}));
+
+    const 捕获 = await env.操作.刷新招聘候选('job_1').catch((错误: unknown) => 错误);
+
+    expect(捕获).toMatchObject({
+      status: 409, code: 'invalid_response', message: '数据状态异常，请稍后再试',
+    });
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
+    expect(env.派发).toHaveBeenCalledTimes(1); // 权威页水合照常：所请求岗位确实不在页里
+    expect(env.最新状态().岗位快照).toEqual({});
+    expect(env.最新状态().招聘可用候选.job_1?.error).toBe('数据状态异常，请稍后再试');
+  });
+
+  it('对账重读 401 且原栅栏仍新：走统一清账号状态，不再向屏叠抛', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(组织409());
+    vi.mocked(env.数据源.读取岗位).mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
+
+    await expect(env.操作.刷新招聘候选('job_1')).resolves.toBeUndefined();
+
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
+    expect(env.最新状态().已登录).toBe(false);
+    expect(env.最新状态().主体).toBeNull();
+    expect(env.最新状态().招聘可用候选).toEqual({});
+    expect(env.deps.会话代际.current).toBe(2);
+    expect(env.deps.P4幂等意图!.current.size).toBe(0);
+    expect(env.数据源.清空目录缓存).toHaveBeenCalled();
+  });
+
+  it('对账重读 503：无水合、岗位快照不动，通用可恢复错误落快照并照抛', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(组织409());
+    vi.mocked(env.数据源.读取岗位).mockRejectedValueOnce(new BFF错误(503, 'source_unavailable', 'down'));
+
+    await expect(env.操作.刷新招聘候选('job_1')).rejects.toMatchObject({
+      status: 503, code: 'source_unavailable',
+    });
+
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
+    expect(env.派发).not.toHaveBeenCalled();
+    expect(env.最新状态().岗位快照).toEqual({});
+    expect(env.最新状态().招聘可用候选.job_1?.error).toBe('服务暂时不可用，请稍后再试');
+    expect(env.最新状态().已登录).toBe(true);
+  });
+
+  // 栅栏五维（设计 §8）：subject / active role / session generation / visible scope /
+  // scope generation —— 任一换代后，对账重读的迟到结果整包丢弃
+  const 换代表: readonly [string, () => void][] = [
+    ['换主体', () => { env.deps.主体标识引用.current = 'sub_new'; }],
+    ['换角色', () => { 设主体角色(候选主体); }],
+    ['会话换代', () => { env.deps.会话代际.current += 1; }],
+    ['换可见范围', () => {
+      env.deps.P4可见范围!.current = { ...env.deps.P4可见范围!.current, recruiter: 'recruiter:list:job_9' };
+    }],
+    ['scope 代际 +1', () => {
+      const 键 = P4范围键.招聘列表('job_1');
+      env.deps.P4范围代际!.current.set(键, (env.deps.P4范围代际!.current.get(键) ?? 0) + 1);
+    }],
+  ];
+
+  it.each(换代表)('对账重读在飞时%s：迟到成功整包丢弃 —— 不水合、不写快照、不抛组织错', async (_名, 换代) => {
+    设主体角色(招聘主体);
+    const POST门 = deferred<BFF发现批次>();
+    const 重读门 = deferred<页面岗位快照>();
+    vi.mocked(env.数据源.刷新招聘候选).mockReturnValueOnce(POST门.promise);
+    vi.mocked(env.数据源.读取岗位).mockReturnValueOnce(重读门.promise);
+    const 运行 = env.操作.刷新招聘候选('job_1');
+    POST门.reject(组织409());
+    await POST门.promise.catch(() => undefined); // 对账重读已在飞
+    const 提交数 = 设后端状态调用数();
+    换代();
+    重读门.resolve(岗位页({ job_1: BFF岗位样本 })); // 权威页说组织受阻
+
+    await expect(运行).resolves.toBeUndefined();
+
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
+    expect(设后端状态调用数()).toBe(提交数); // 迟到成功零写入
+    expect(env.派发).not.toHaveBeenCalled(); // 无水合 = 屏上不出现组织 CTA 信号
+    expect(env.最新状态().岗位快照).toEqual({});
+  });
+
+  it.each(换代表)('对账重读在飞时%s：迟到 401 不清新会话也不写状态', async (_名, 换代) => {
+    设主体角色(招聘主体);
+    const POST门 = deferred<BFF发现批次>();
+    const 重读门 = deferred<页面岗位快照>();
+    vi.mocked(env.数据源.刷新招聘候选).mockReturnValueOnce(POST门.promise);
+    vi.mocked(env.数据源.读取岗位).mockReturnValueOnce(重读门.promise);
+    const 运行 = env.操作.刷新招聘候选('job_1');
+    POST门.reject(组织409());
+    await POST门.promise.catch(() => undefined); // 对账重读已在飞
+    const 提交数 = 设后端状态调用数();
+    换代();
+    重读门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+
+    await expect(运行).resolves.toBeUndefined();
+
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
+    expect(设后端状态调用数()).toBe(提交数);
+    expect(env.最新状态().已登录).toBe(true);
+    expect(env.派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
+    expect(env.数据源.清空目录缓存).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['recommendation_unavailable', new BFF错误(409, 'recommendation_unavailable', 'gone')],
+    ['invalid_response（合同漂移）', new BFF错误(409, 'invalid_response', 'drift')],
+    ['401', new BFF错误(401, 'invalid_session', 'expired')],
+    ['503', new BFF错误(503, 'source_unavailable', 'down')],
+  ] as const)('%s 直接失败零 Owner Jobs 重读，一次 POST 原样收口', async (_名, 错误) => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(错误);
+
+    await expect(env.操作.刷新招聘候选('job_1')).rejects.toMatchObject({
+      status: 错误.status, code: 错误.code,
+    });
+
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.读取岗位)).not.toHaveBeenCalled();
   });
 });
