@@ -11,6 +11,7 @@ import type {
   BFFAgent规则作用域,
   BFFAgent规则状态,
   BFFAgent规则提案,
+  BFFAgent规则提案失败码,
   BFFAgent规则提案状态,
   BFFAgent规则后果,
 } from '../BFF契约';
@@ -112,6 +113,7 @@ const 提案状态全表 = [
   'interpreting', 'ready', 'accepted', 'dismissed', 'failed',
 ] as const satisfies readonly BFFAgent规则提案状态[];
 const 后果全表 = ['auto_allow', 'auto_deny', 'advisory', 'mixed'] as const satisfies readonly BFFAgent规则后果[];
+const 提案失败码全表 = ['agent_unavailable', 'interpretation_failed'] as const satisfies readonly BFFAgent规则提案失败码[];
 
 // ── 具体 decoder：逐字段过 guard，不做 `as` 直转 ──
 
@@ -150,14 +152,18 @@ function 解Agent规则(input: unknown): BFFAgent规则 {
   };
 }
 
-const 提案公开键 = new Set(['proposal_id', 'state', 'normalized_text', 'consequence', 'created_at']);
+const 提案公开键 = new Set([
+  'proposal_id', 'state', 'normalized_text', 'consequence', 'created_at', 'failure_code',
+]);
 
 /**
  * 提案三种形状分开校验：
  * - interpreting：只有 proposal_id+state（fresh create）或再加合法 created_at（list/get 视图），
- *   永不携带 normalized_text/consequence；
- * - ready：五个公开键必须带齐（normalized_text/consequence/created_at 是已定事实）；
- * - accepted/dismissed/failed：只允许这五个键，出现过的可选项逐个过同样的类型/enum/日期校验。
+ *   永不携带 normalized_text/consequence/failure_code；
+ * - ready：五个已定事实键必须带齐（normalized_text/consequence/created_at），
+ *   携带 failure_code 即契约错误；
+ * - accepted/dismissed/failed：只允许这六个公开键，出现过的可选项逐个过同样的
+ *   类型/enum/日期校验；failure_code 只在 state='failed' 合法（legacy failed 缺席合法）。
  */
 function 解Agent规则提案(input: unknown): BFFAgent规则提案 {
   if (!是记录(input)) throw 契约错误();
@@ -167,13 +173,14 @@ function 解Agent规则提案(input: unknown): BFFAgent规则提案 {
   const state = 要求枚举(input.state, 提案状态全表);
 
   if (state === 'interpreting') {
-    if ('normalized_text' in input || 'consequence' in input) throw 契约错误();
+    if ('normalized_text' in input || 'consequence' in input || 'failure_code' in input) throw 契约错误();
     if ('created_at' in input) {
       return { proposal_id, state, created_at: 要求日期(input.created_at) };
     }
     return { proposal_id, state };
   }
   if (state === 'ready') {
+    if ('failure_code' in input) throw 契约错误();
     if (!('normalized_text' in input && 'consequence' in input && 'created_at' in input)) throw 契约错误();
     return {
       proposal_id,
@@ -187,6 +194,10 @@ function 解Agent规则提案(input: unknown): BFFAgent规则提案 {
   if ('normalized_text' in input) 回执.normalized_text = 要求字符串(input.normalized_text);
   if ('consequence' in input) 回执.consequence = 要求枚举(input.consequence, 后果全表);
   if ('created_at' in input) 回执.created_at = 要求日期(input.created_at);
+  if ('failure_code' in input) {
+    if (state !== 'failed') throw 契约错误();
+    回执.failure_code = 要求枚举(input.failure_code, 提案失败码全表);
+  }
   return 回执;
 }
 

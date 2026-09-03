@@ -341,6 +341,12 @@ export const BFFAgent规则就绪提案样本: BFFAgent规则提案 = {
   created_at: '2026-08-27T02:05:00Z',
 };
 
+export const BFFAgent规则失败提案样本: BFFAgent规则提案 = {
+  proposal_id: 'arp_ffffffffffffffffffffffffffffffff',
+  state: 'failed',
+  failure_code: 'agent_unavailable',
+};
+
 // ── 发现推荐域样本（P4 Task 1）──
 // 满足 BFF契约 的 closed P4 DTO：CandidateJob 是 BFF岗位样本去掉 owner-only 列的公开投影；
 // 候选直投 Job 的回执 recommendation_id 为 null（选择坐标是 job），招聘回执的

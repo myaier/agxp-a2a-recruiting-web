@@ -384,6 +384,47 @@ describe('Agent 规则数据源', () => {
       .rejects.toMatchObject({ code: 'invalid_response' });
   });
 
+  const 失败提案ID = 'arp_ffffffffffffffffffffffffffffffff';
+
+  it.each(['agent_unavailable', 'interpretation_failed'] as const)(
+    'failed proposal 接受 failure_code=%s',
+    async (failure_code) => {
+      请求Mock.mockResolvedValue({
+        result: { proposal_id: 失败提案ID, state: 'failed', failure_code },
+        etag: null,
+        requestId: 'failed-code',
+      });
+      await expect(数据源.读取Agent规则提案('candidate', 失败提案ID)).resolves.toEqual({
+        proposal_id: 失败提案ID, state: 'failed', failure_code,
+      });
+    },
+  );
+
+  it('legacy failed 缺 code 合法', async () => {
+    请求Mock.mockResolvedValue({
+      result: { proposal_id: 失败提案ID, state: 'failed' }, etag: null, requestId: 'legacy-failed',
+    });
+    await expect(数据源.读取Agent规则提案('candidate', 失败提案ID)).resolves.toEqual({
+      proposal_id: 失败提案ID, state: 'failed',
+    });
+  });
+
+  it.each([
+    { proposal_id: 失败提案ID, state: 'failed', failure_code: 'future' },
+    { proposal_id: 失败提案ID, state: 'failed', failure_code: null },
+    { proposal_id: 失败提案ID, state: 'interpreting', failure_code: 'agent_unavailable' },
+    {
+      proposal_id: 失败提案ID, state: 'ready', normalized_text: '规则',
+      consequence: 'advisory', created_at: '2026-08-27T02:05:00Z',
+      failure_code: 'interpretation_failed',
+    },
+  ] as const)('illegal proposal failure shape fail closed', async (result) => {
+    请求Mock.mockResolvedValue({ result, etag: null, requestId: 'illegal-failure' });
+    await expect(数据源.读取Agent规则提案('candidate', 失败提案ID)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+  });
+
   it('提案非法 ID、缺 proposal_id、未知键抛 invalid_response', async () => {
     for (const 破损 of [
       // 注意：第二条刻意缺 proposal_id（校验的就是这个），并非 advisory 的展示用例 ——

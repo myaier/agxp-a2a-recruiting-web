@@ -493,12 +493,15 @@ export interface BFFAgent规则 {
   updated_at: string;
 }
 
+export type BFFAgent规则提案失败码 = 'agent_unavailable' | 'interpretation_failed';
+
 export interface BFFAgent规则提案 {
   proposal_id: string;
   state: BFFAgent规则提案状态;
   normalized_text?: string;
   consequence?: BFFAgent规则后果;
   created_at?: string;
+  failure_code?: BFFAgent规则提案失败码;
 }
 
 // ── 发现推荐域 DTO（P4：job-recommendations / candidate-recommendations / 双端委托）──

@@ -2,7 +2,8 @@
 // 状态机逐条对齐设计 §7.3：
 //   · interpreting → 「AI代理正在理解这条规则…」，不给任何动作键；
 //   · ready → normalized_text + consequence 的固定安全摘要 + 「放弃/确认规则」双动作；
-//   · failed → 固定失败文案 + 关闭（关闭后由页面保留用户原草稿供再次明确提交）；
+//   · failed → failure_code 安全文案（legacy 缺 code 落兜底文案）+ 关闭
+//     （关闭后由页面保留用户原草稿供再次明确提交，绝不自动重发）；
 //   · accepted|dismissed → 整卡不渲染，快照清理由操作层负责。
 // 只呈现后端 safe summary：不显示 confidence、clauses、parameters、effect、
 // Agent task 或影响人数估算。consequence 只用于安全摘要，绝不做可接受性判定——
@@ -10,7 +11,7 @@
 // 纯展示：不读 Context、不 import 操作层，接受/放弃/关闭全部由调用方注入。
 
 import 样式 from './Agent规则提案卡.module.css';
-import type { BFFAgent规则后果, BFFAgent规则提案 } from '../数据/BFF契约';
+import type { BFFAgent规则后果, BFFAgent规则提案失败码, BFFAgent规则提案 } from '../数据/BFF契约';
 
 /** 冻结的 consequence 安全摘要（设计 §7.3）：一字不改，双端同一口径。 */
 export const Agent规则后果文案: Record<BFFAgent规则后果, string> = {
@@ -18,6 +19,12 @@ export const Agent规则后果文案: Record<BFFAgent规则后果, string> = {
   auto_deny: '命中条件时，AI代理会自动拦下',
   advisory: '这是一条参考偏好，不会单独触发自动决定',
   mixed: '这条规则同时包含推进、拦截或参考条件',
+};
+
+/** 冻结的 failure_code 安全文案：双端同一口径；legacy failed（缺 code）落兜底文案。 */
+export const Agent规则失败文案: Record<BFFAgent规则提案失败码, string> = {
+  agent_unavailable: 'AI 暂时不可用，本次规则没有生效',
+  interpretation_failed: '内容无法可靠转换为规则，可编辑后重新提交',
 };
 
 export interface Agent规则提案卡属性 {
@@ -48,7 +55,11 @@ export default function Agent规则提案卡({ 提案, 忙, 接受, 放弃, 关�
   if (提案.state === 'failed') {
     return (
       <div className={样式.卡}>
-        <div className={样式.后果}>这条规则暂时无法理解，请换一种说法</div>
+        <div className={样式.后果}>
+          {提案.failure_code === undefined
+            ? '本次规则没有生效'
+            : Agent规则失败文案[提案.failure_code]}
+        </div>
         <div className={样式.键行}>
           <button type="button" className={`${样式.关闭键} 可点`} onClick={关闭失败}>
             关闭

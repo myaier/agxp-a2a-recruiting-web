@@ -73,9 +73,25 @@ describe('Agent规则提案卡', () => {
         忙={false} 接受={vi.fn()} 放弃={vi.fn()} 关闭失败={关闭失败}
       />,
     );
-    expect(screen.getByText('这条规则暂时无法理解，请换一种说法')).toBeTruthy();
+    expect(screen.getByText('本次规则没有生效')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '关闭' }));
     expect(关闭失败).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['agent_unavailable', 'AI 暂时不可用，本次规则没有生效'],
+    ['interpretation_failed', '内容无法可靠转换为规则，可编辑后重新提交'],
+    [undefined, '本次规则没有生效'],
+  ] as const)('failed code %s 使用安全文案', (failure_code, copy) => {
+    render(<Agent规则提案卡
+      提案={{ proposal_id: 'arp_ffffffffffffffffffffffffffffffff', state: 'failed', failure_code }}
+      忙={false}
+      接受={vi.fn()}
+      放弃={vi.fn()}
+      关闭失败={vi.fn()}
+    />);
+    expect(screen.getByText(copy)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '确认规则' })).toBeNull();
   });
 
   it('accepted 与 dismissed 整卡不渲染任何内容', () => {

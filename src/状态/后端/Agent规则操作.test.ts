@@ -958,6 +958,24 @@ describe('水合Agent规则角色数据 与 刷新Agent规则', () => {
 
   // review-r3 R3-1：权威单卡 GET 撞 401 = 会话在读途中失效。轮询方/页面按约定安静
   // 吞掉错误，但操作层必须先统一登出清理，不能顶着已登录壳吞掉。
+  it('failed+code 原位保存，不刷新或新增 active Rules', async () => {
+    const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
+    const failed = {
+      proposal_id: 'arp_ffffffffffffffffffffffffffffffff',
+      state: 'failed' as const,
+      failure_code: 'agent_unavailable' as const,
+    };
+    vi.mocked(环境.数据源.读取Agent规则提案).mockResolvedValue(failed);
+    const 操作 = 创建Agent规则操作(环境.deps);
+    const before = 环境.页面状态.current.全局规则;
+    await 操作.刷新Agent规则提案(failed.proposal_id);
+    expect(环境.最新后端状态().候选规则提案[failed.proposal_id]).toEqual(failed);
+    expect(环境.数据源.读取Agent规则).not.toHaveBeenCalled();
+    expect(环境.页面状态.current.全局规则).toBe(before);
+  });
+
+  // review-r3 R3-1：权威单卡 GET 撞 401 = 会话在读途中失效。轮询方/页面按约定安静
+  // 吞掉错误，但操作层必须先统一登出清理，不能顶着已登录壳吞掉。
   it('刷新Agent规则提案 的权威 GET 撞 401 统一清账号并安静返回（不抛给轮询方）', async () => {
     const 环境 = 创建测试依赖({ 数据源: 创建数据源桩() });
     vi.mocked(环境.数据源.读取Agent规则提案).mockRejectedValue(new BFF错误(401, 'invalid_session', '过期'));
