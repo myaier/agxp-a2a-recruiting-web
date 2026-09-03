@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 发布岗位, { 取岗位提交错误文案 } from './发布岗位';
 import { 页面岗位样本 } from '../测试/BFF样本';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFFJD导入, BFFJD导入失败码 } from '../数据/BFF契约';
+import type { BFFJD导入, BFFJD导入失败码, BFFJD建议 } from '../数据/BFF契约';
 
 const mock返回 = vi.fn();
 const mock进企业主壳 = vi.fn();
@@ -399,9 +399,14 @@ describe('发布岗位页 Backend 选择器', () => {
     置Backend应用状态(查询Taxonomy, 查询Location, {
       企业关系列表: [], 当前企业关系编号: null, 未认证公司声明: '   ',
     });
-    // Backend 编辑态的城市守卫（地点引用）不在本次修复范围内：编辑目标按存量岗位带引用
+    // Backend 编辑态的城市守卫（地点引用）不在本次修复范围内：编辑目标按存量岗位带引用；
+    // 类别引用同口径补齐（Task 4 起 Backend 第一步要求真实 类别引用）
     mock应用状态.状态.岗位列表 = [
-      { ...页面岗位样本, 地点引用: { id: 'loc_shanghai', display_name: '上海' } },
+      {
+        ...页面岗位样本,
+        类别引用: { id: 'job_be', display_name: '产品经理' },
+        地点引用: { id: 'loc_shanghai', display_name: '上海' },
+      },
     ];
     render(
       <MemoryRouter initialEntries={['/hr/post-job/job_1']}>
@@ -1107,5 +1112,612 @@ describe('发布岗位页 JD 导入生命周期', () => {
     await 走(30000);
     // failed 后不再自动轮询
     expect(mock读取JD导入).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── JD PDF 建议稿导入：快照安全合并、耦合组与 Catalog 规则（Task 4）──
+// POST 起飞前捕获表单快照；succeeded 只写仍等于快照的字段；三个耦合组（招聘类型 /
+// 办公方式 / 工作城市+地点引用）整组比较；类别只走轻提示；keywords 忽略。
+describe('发布岗位页 JD 建议合并', () => {
+  const 分类查询 = vi.fn(async (_kind: 'job-categories', query: { parentId?: string }) => {
+    if (!query.parentId) {
+      return {
+        items: [{ id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    }
+    if (query.parentId === 'cat_tech') {
+      return {
+        items: [{ id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    }
+    return { items: [], nextCursor: null, catalogVersion: 'v2' };
+  });
+  const 地点查询 = vi.fn(async (query: { q?: string }) => {
+    const 名 = (query.q ?? '').includes('北京') ? '北京' : '上海';
+    return {
+      items: [{
+        id: `loc_${名}`, display_name: 名, country_code: 'CN', country_name: '中国',
+        admin1_code: 'SH', admin1_name: 名, timezone: 'Asia/Shanghai', population: 24000000,
+      }],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    };
+  });
+
+  const JD建议 = (覆盖: Partial<BFFJD建议>): BFFJD建议 => ({
+    title: null, recruitment_type: null, workplace_mode: null, office_location: null,
+    description: null, requirements: null, education_requirement: null,
+    experience_requirement: null, category_source_name: null, location_source_name: null,
+    keywords: [], ...覆盖,
+  });
+  const 成功 = (建议: BFFJD建议): BFFJD导入 => ({
+    import_id: 'jdi_0123456789abcdef0123456789abcdef', status: 'succeeded',
+    created_at: '2026-09-03T01:02:03Z', updated_at: '2026-09-03T01:02:06Z', suggestion: 建议,
+  });
+
+  const JDPDF = () => new File(['%PDF-1.7'], 'role.pdf', { type: 'application/pdf' });
+  const 第二份PDF = () => new File(['%PDF-1.7'], 'another.pdf', { type: 'application/pdf' });
+
+  const 标题框 = () => screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关') as HTMLInputElement;
+  const 描述框 = () => screen.getByLabelText('职位描述') as HTMLTextAreaElement;
+  const 要求框 = () => screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }) as HTMLTextAreaElement;
+  const 城市框 = () => screen.getByPlaceholderText('搜索城市名，从下方候选选择') as HTMLInputElement;
+  const 办公地框 = () => screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层') as HTMLInputElement;
+  /** 招聘类型块的 accessible name 含副标文案，统一按前缀匹配取按钮。 */
+  const 按钮前缀 = (名: string) => screen.getByRole('button', { name: new RegExp(`^${名}`) });
+  const 按下 = (名: string) => 按钮前缀(名).getAttribute('aria-pressed');
+  /** 学历/经验两行都有「不限」档：按行标签定位该行的快捷片。 */
+  const 按下片 = (区: RegExp, 名: string) => {
+    const 行 = screen.getByText(区).closest('div[class*="编辑条目"]');
+    const 键 = Array.from(行?.querySelectorAll('button') ?? []).find((b) => b.textContent === 名);
+    return 键?.getAttribute('aria-pressed');
+  };
+  const 类别提示数 = () => 轻提示文案们().filter((条) => 条.startsWith('AI 识别的职位类别')).length;
+
+  function 轻提示文案们(): string[] {
+    for (const 节点 of Array.from(document.body.children)) {
+      const 元素 = 节点 as HTMLElement;
+      if (元素.style.position === 'fixed' && 元素.style.zIndex === '999') {
+        return Array.from(元素.children).map((条) => 条.textContent ?? '');
+      }
+    }
+    return [];
+  }
+
+  async function 走(毫秒: number): Promise<void> {
+    await act(async () => { await vi.advanceTimersByTimeAsync(毫秒); });
+  }
+  async function 微任务结算(): Promise<void> {
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  }
+
+  function render发布岗位(路由 = '/hr/post-job') {
+    return render(
+      <MemoryRouter initialEntries={[路由]}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  function 选择JD(文件: File) {
+    fireEvent.change(screen.getByLabelText('上传 JD 文件'), { target: { files: [文件] } });
+  }
+  function 确认JD() {
+    fireEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+  }
+  function 选择并确认JD(文件: File) {
+    选择JD(文件);
+    确认JD();
+  }
+
+  /** 第一步就绪：标题 + 现场 + Backend 类别叶子（先写标题，避免类别预填覆盖标题断言）。 */
+  async function 第一步就绪(标题 = '上传前标题') {
+    fireEvent.change(标题框(), { target: { value: 标题 } });
+    fireEvent.click(screen.getByRole('button', { name: '现场' }));
+    fireEvent.click(screen.getByRole('button', { name: /职位类别/ }));
+    await 微任务结算();
+    fireEvent.click(screen.getByText('后端开发'));
+  }
+  function 下一步() {
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+  }
+  function 返回() {
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mock创建JD导入.mockReset();
+    mock读取JD导入.mockReset();
+    分类查询.mockClear();
+    地点查询.mockClear();
+    清空轻提示();
+    置Backend应用状态(分类查询, 地点查询);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    Reflect.deleteProperty(document, 'hidden');
+  });
+
+  it('只自动填入上传后仍等于快照的字段（代表性用例）', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪('上传前标题');
+    选择并确认JD(JDPDF());
+    下一步();
+    fireEvent.change(描述框(), { target: { value: '用户等待时写的描述' } });
+    POST门.resolve(成功(JD建议({ title: 'AI 标题', description: 'AI 描述' })));
+    await 微任务结算();
+    // 等待期间改过的描述保留
+    expect(描述框().value).toBe('用户等待时写的描述');
+    // 上传后未改的标题被建议替换
+    返回();
+    expect(标题框().value).toBe('AI 标题');
+    // 类别建议只走现有轻提示
+    expect(类别提示数()).toBe(0); // 本建议 category 为 null
+  });
+
+  it('独立字段替换空白与未改的既有值；学历经验枚举映射精确；keywords 不进 DOM', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪('上传前标题');
+    选择并确认JD(JDPDF());
+    下一步();
+    下一步();
+    POST门.resolve(成功(JD建议({
+      title: 'Senior Backend Engineer',
+      description: '负责核心招聘服务。',
+      requirements: '五年以上后端经验。',
+      education_requirement: 'bachelor',
+      experience_requirement: 'five_plus_years',
+      keywords: ['Go', 'PostgreSQL'],
+    })));
+    await 微任务结算();
+    expect(要求框().value).toBe('五年以上后端经验。');
+    expect(按下片(/最低学历/, '本科')).toBe('true');
+    expect(按下片(/经验要求/, '5 年以上')).toBe('true');
+    expect(screen.queryByText('Go')).toBeNull();
+    expect(screen.queryByText('PostgreSQL')).toBeNull();
+    返回();
+    expect(描述框().value).toBe('负责核心招聘服务。');
+    返回();
+    // 上传前已非空但未修改的标题同样允许被替换（本轮已确认的自动填表语义）
+    expect(标题框().value).toBe('Senior Backend Engineer');
+  });
+
+  it('解析期间改过的字段被保护；改回快照值后仍可被填（纯值比较）', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪('上传前标题');
+    选择并确认JD(JDPDF());
+    fireEvent.change(标题框(), { target: { value: '等待时改的标题' } });
+    fireEvent.change(标题框(), { target: { value: '上传前标题' } });
+    POST门.resolve(成功(JD建议({ title: 'AI 标题' })));
+    await 微任务结算();
+    expect(标题框().value).toBe('AI 标题');
+  });
+
+  it('null 建议保持当前值且不弹类别提示', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪('上传前标题');
+    选择并确认JD(JDPDF());
+    下一步();
+    fireEvent.change(描述框(), { target: { value: '描述正文' } });
+    下一步();
+    POST门.resolve(成功(JD建议({})));
+    await 微任务结算();
+    expect(要求框().value).toBe('');
+    expect(按下片(/最低学历/, '不限')).toBe('true');
+    expect(城市框().value).toBe('');
+    返回();
+    expect(描述框().value).toBe('描述正文');
+    返回();
+    expect(标题框().value).toBe('上传前标题');
+    expect(按下('现场')).toBe('true');
+    expect(类别提示数()).toBe(0);
+  });
+
+  it.each([
+    ['none', '不限'], ['associate', '大专'], ['bachelor', '本科'], ['master', '硕士'], ['doctorate', '博士'],
+  ] as const)('学历枚举 %s → %s', async (wire, label) => {
+    mock创建JD导入.mockImplementationOnce(() => Promise.resolve(成功(JD建议({ education_requirement: wire }))));
+    render发布岗位();
+    await 第一步就绪();
+    选择并确认JD(JDPDF());
+    下一步();
+    下一步();
+    await 微任务结算();
+    expect(按下片(/最低学历/, label)).toBe('true');
+  });
+
+  it.each([
+    ['none', '不限'], ['one_to_three_years', '1-3 年'], ['three_to_five_years', '3-5 年'],
+    ['five_plus_years', '5 年以上'], ['ten_plus_years', '10 年以上'],
+  ] as const)('经验枚举 %s → %s（类型未变时独立应用）', async (wire, label) => {
+    mock创建JD导入.mockImplementationOnce(() => Promise.resolve(成功(JD建议({ experience_requirement: wire }))));
+    render发布岗位();
+    await 第一步就绪();
+    选择并确认JD(JDPDF());
+    下一步();
+    下一步();
+    await 微任务结算();
+    expect(按下片(/经验要求/, label)).toBe('true');
+  });
+
+  it('招聘类型组：整组等于快照才切换；切换清空薪资与年薪月数；校园招聘隐藏经验档', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪();
+    下一步();
+    下一步();
+    fireEvent.change(screen.getByLabelText('薪资下限'), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText('薪资上限'), { target: { value: '65' } });
+    fireEvent.click(screen.getByRole('button', { name: /年薪月数/ }));
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    返回();
+    返回();
+    选择并确认JD(JDPDF());
+    下一步();
+    下一步();
+    POST门.resolve(成功(JD建议({ recruitment_type: 'campus', experience_requirement: 'five_plus_years' })));
+    await 微任务结算();
+    // 切到校园招聘：薪资清理、经验档整块收起（隐藏经验不被写成模型事实）
+    expect((screen.getByLabelText('薪资下限') as HTMLInputElement).value).toBe('');
+    expect(screen.getByRole('button', { name: /年薪月数/ }).textContent).toContain('请选择');
+    expect(screen.queryByText('经验要求（自动匹配读取）')).toBeNull();
+    返回();
+    返回();
+    expect(按下('校园招聘')).toBe('true');
+  });
+
+  it('招聘类型组：解析期间改过任一成员则整组保留', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪();
+    选择并确认JD(JDPDF());
+    下一步();
+    下一步();
+    fireEvent.change(screen.getByLabelText('薪资下限'), { target: { value: '40' } });
+    POST门.resolve(成功(JD建议({ recruitment_type: 'campus' })));
+    await 微任务结算();
+    返回();
+    返回();
+    expect(按下('社招全职')).toBe('true');
+  });
+
+  it('建议切到兼职时经验随组一起应用', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪();
+    选择并确认JD(JDPDF());
+    下一步();
+    下一步();
+    POST门.resolve(成功(JD建议({ recruitment_type: 'part_time', experience_requirement: 'ten_plus_years' })));
+    await 微任务结算();
+    expect(按下片(/经验要求/, '10 年以上')).toBe('true');
+    返回();
+    返回();
+    expect(按下('兼职')).toBe('true');
+  });
+
+  it('建议切到实习生时重置转正确认', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    // 先在实习生下设转正=true，再切回社招全职（转正保留隐藏值）
+    fireEvent.click(按钮前缀('实习生'));
+    fireEvent.click(screen.getByRole('button', { name: '提供转正机会' }));
+    fireEvent.click(按钮前缀('社招全职'));
+    await 第一步就绪();
+    选择并确认JD(JDPDF());
+    POST门.resolve(成功(JD建议({ recruitment_type: 'internship' })));
+    await 微任务结算();
+    expect(按下('实习生')).toBe('true');
+    expect(按下('提供转正机会')).toBe('false');
+    expect(按下('暂不提供')).toBe('false');
+  });
+
+  it('办公方式组：全远程清空并禁用办公地点', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪();
+    下一步();
+    下一步();
+    fireEvent.change(办公地框(), { target: { value: '张江路 1 号' } });
+    返回();
+    返回();
+    选择并确认JD(JDPDF());
+    下一步();
+    下一步();
+    POST门.resolve(成功(JD建议({ workplace_mode: 'remote', office_location: '不该出现的地址' })));
+    await 微任务结算();
+    expect(办公地框().value).toBe('');
+    expect(办公地框().disabled).toBe(true);
+    返回();
+    返回();
+    expect(按下('全远程')).toBe('true');
+  });
+
+  it('办公方式组：解析期间改过地址则整组保留', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪();
+    选择并确认JD(JDPDF());
+    下一步();
+    下一步();
+    fireEvent.change(办公地框(), { target: { value: '等待时改的地址' } });
+    POST门.resolve(成功(JD建议({ workplace_mode: 'remote', office_location: 'AI 地址' })));
+    await 微任务结算();
+    expect(办公地框().value).toBe('等待时改的地址');
+    expect(办公地框().disabled).toBe(false);
+    返回();
+    返回();
+    expect(按下('现场')).toBe('true');
+  });
+
+  it('办公方式组：解析期间改过方式则地址建议不应用', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪();
+    选择并确认JD(JDPDF());
+    fireEvent.click(screen.getByRole('button', { name: '混合' }));
+    POST门.resolve(成功(JD建议({ office_location: 'AI 地址' })));
+    await 微任务结算();
+    expect(按下('混合')).toBe('true');
+    下一步();
+    下一步();
+    expect(办公地框().value).toBe('');
+  });
+
+  it('地点组：无引用且未改时写入城市搜索并触发候选查询', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪();
+    选择并确认JD(JDPDF());
+    下一步();
+    下一步();
+    POST门.resolve(成功(JD建议({ location_source_name: '上海' })));
+    await 微任务结算();
+    expect(城市框().value).toBe('上海');
+    expect(screen.queryByText('已选')).toBeNull();
+    await 走(260);
+    expect(地点查询).toHaveBeenCalledWith(expect.objectContaining({ q: '上海' }));
+  });
+
+  it('地点组：已有 canonical 引用优先，源文本不覆盖', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪();
+    选择并确认JD(JDPDF());
+    下一步();
+    下一步();
+    fireEvent.change(城市框(), { target: { value: '北京' } });
+    await 走(260);
+    fireEvent.click(screen.getByRole('button', { name: '北京' }));
+    POST门.resolve(成功(JD建议({ location_source_name: '上海' })));
+    await 微任务结算();
+    expect(城市框().value).toBe('北京');
+  });
+
+  it('地点组：解析期间改过城市文本则源文本不应用', async () => {
+    const POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValue(POST门.promise);
+    render发布岗位();
+    await 第一步就绪();
+    选择并确认JD(JDPDF());
+    下一步();
+    下一步();
+    fireEvent.change(城市框(), { target: { value: '用户等待时改的城市' } });
+    POST门.resolve(成功(JD建议({ location_source_name: '上海' })));
+    await 微任务结算();
+    expect(城市框().value).toBe('用户等待时改的城市');
+  });
+
+  it('create 重试沿用原快照：失败后用户编辑在重放成功时仍受保护', async () => {
+    mock创建JD导入.mockRejectedValueOnce(new BFF错误(0, 'network_error', 'offline'));
+    render发布岗位();
+    await 第一步就绪('上传前标题');
+    选择并确认JD(JDPDF());
+    await 微任务结算();
+    fireEvent.change(标题框(), { target: { value: '失败后改的标题' } });
+    mock创建JD导入.mockResolvedValueOnce(成功(JD建议({ title: 'AI 标题' })));
+    fireEvent.click(screen.getByText('重试 ›'));
+    await 微任务结算();
+    expect(标题框().value).toBe('失败后改的标题');
+  });
+
+  it('迟到代际的 succeeded 零应用且无类别提示', async () => {
+    const 旧POST门 = deferred<BFFJD导入>();
+    mock创建JD导入.mockReturnValueOnce(旧POST门.promise);
+    render发布岗位();
+    await 第一步就绪('上传前标题');
+    选择并确认JD(JDPDF());
+    选择JD(第二份PDF());
+    旧POST门.resolve(成功(JD建议({
+      title: 'AI 标题', recruitment_type: 'campus', workplace_mode: 'remote',
+      office_location: 'AI 地址', description: 'AI 描述', location_source_name: '上海',
+      category_source_name: '后端开发',
+    })));
+    await 微任务结算();
+    expect(标题框().value).toBe('上传前标题');
+    expect(按下('社招全职')).toBe('true');
+    expect(按下('现场')).toBe('true');
+    expect(类别提示数()).toBe(0);
+  });
+});
+
+// ── Task 4：全远程办公地址合同与类别/地点发布门禁（真实时钟走完整发布流）──
+describe('发布岗位页 全远程地址与 Catalog 门禁', () => {
+  const 分类查询 = vi.fn(async (_kind: 'job-categories', query: { parentId?: string }) => {
+    if (!query.parentId) {
+      return {
+        items: [{ id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    }
+    if (query.parentId === 'cat_tech') {
+      return {
+        items: [{ id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    }
+    return { items: [], nextCursor: null, catalogVersion: 'v2' };
+  });
+  const 地点查询 = vi.fn(async () => ({
+    items: [{
+      id: 'loc_shanghai', display_name: '上海', country_code: 'CN', country_name: '中国',
+      admin1_code: 'SH', admin1_name: '上海', timezone: 'Asia/Shanghai', population: 24000000,
+    }],
+    nextCursor: null,
+    catalogVersion: 'v2',
+  }));
+
+  beforeEach(() => {
+    mock创建JD导入.mockReset();
+    mock读取JD导入.mockReset();
+    mock发布岗位.mockClear();
+    mock更新岗位.mockClear();
+    分类查询.mockClear();
+    地点查询.mockClear();
+    mock发布岗位.mockResolvedValue(undefined);
+    置Backend应用状态(分类查询, 地点查询);
+    清空轻提示();
+  });
+
+  function render发布岗位(路由 = '/hr/post-job') {
+    return render(
+      <MemoryRouter initialEntries={[路由]}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  /** 三步填到发布前；办公方式与办公地可覆盖（全远程用例不填地址）。 */
+  async function 填到发布前(用户: ReturnType<typeof userEvent.setup>, 选项: { 办公方式?: '现场' | '混合' | '全远程'; 办公地?: string | null; JD建议地点?: string | null } = {}) {
+    const { 办公方式 = '现场', 办公地 = '张江路 1 号', JD建议地点 = null } = 选项;
+    await 用户.type(screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关'), '资深后端');
+    fireEvent.click(screen.getByRole('button', { name: 办公方式 }));
+    fireEvent.click(screen.getByRole('button', { name: /职位类别/ }));
+    await screen.findByText('后端开发');
+    fireEvent.click(screen.getByText('后端开发'));
+    if (JD建议地点 !== null) {
+      mock创建JD导入.mockResolvedValue({
+        import_id: 'jdi_0123456789abcdef0123456789abcdef', status: 'succeeded',
+        created_at: '2026-09-03T01:02:03Z', updated_at: '2026-09-03T01:02:06Z',
+        suggestion: {
+          title: null, recruitment_type: null, workplace_mode: null, office_location: null,
+          description: null, requirements: null, education_requirement: null,
+          experience_requirement: null, category_source_name: '后端开发',
+          location_source_name: JD建议地点, keywords: [],
+        },
+      });
+      await 用户.upload(screen.getByLabelText('上传 JD 文件'), new File(['%PDF-1.7'], 'role.pdf', { type: 'application/pdf' }));
+      await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
+    }
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.type(screen.getByLabelText('职位描述'), '负责交易网关与撮合核心');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.type(screen.getByLabelText('薪资下限'), '50');
+    await 用户.type(screen.getByLabelText('薪资上限'), '65');
+    await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    if (办公地 !== null) {
+      await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), 办公地);
+    }
+    await 用户.type(screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }), '有分布式系统经验');
+    // 工作城市：JD 建议填了搜索文本的用例外，手输并点候选
+    if (JD建议地点 === null) {
+      await 用户.type(screen.getByPlaceholderText('搜索城市名，从下方候选选择'), '上海');
+      await 用户.click(await screen.findByRole('button', { name: '上海' }, { timeout: 2000 }));
+    }
+  }
+
+  it('手动全远程：清空并禁用办公地点、跳过地址校验、payload 办公地为空串', async () => {
+    const 用户 = userEvent.setup();
+    render发布岗位();
+    await 填到发布前(用户, { 办公方式: '全远程', 办公地: null });
+    // 办公地点仍占原位置，但为空且禁用
+    const 地址框 = screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层') as HTMLInputElement;
+    expect(地址框.disabled).toBe(true);
+    expect(地址框.value).toBe('');
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    expect(mock发布岗位.mock.calls[0][0].办公地).toBe('');
+    // 切回现场：恢复可填必填，不恢复旧地址
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    fireEvent.click(screen.getByRole('button', { name: '现场' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    expect((screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层') as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层') as HTMLInputElement).value).toBe('');
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    expect(await screen.findByText('请填写办公地点')).toBeTruthy();
+    expect(mock发布岗位).toHaveBeenCalledTimes(1);
+  });
+
+  it('JD 城市源文本只进搜索框：未经候选选择发布被拦，点候选后带地点引用发布', async () => {
+    const 用户 = userEvent.setup();
+    render发布岗位();
+    await 填到发布前(用户, { JD建议地点: '上海' });
+    // 建议只填了城市搜索文本，没有引用：发布被拦
+    expect((screen.getByPlaceholderText('搜索城市名，从下方候选选择') as HTMLInputElement).value).toBe('上海');
+    const 候选键 = await screen.findByRole('button', { name: '上海' }, { timeout: 2000 });
+    expect(候选键).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    expect(await screen.findByText('请从候选城市中选择')).toBeTruthy();
+    expect(mock发布岗位).not.toHaveBeenCalled();
+    // 点真实候选后发布：类别引用仍是用户选择的，地点引用来自候选
+    await 用户.click(候选键);
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    const 传入 = mock发布岗位.mock.calls[0][0];
+    expect(传入.类别引用).toEqual({ id: 'job_be', display_name: '后端开发' });
+    expect(传入.地点引用).toEqual({ id: 'loc_shanghai', display_name: '上海' });
+    expect(传入.城市).toBe('上海');
+  });
+
+  it('Backend 第一步要求真实类别引用；Mock 保持自由文本', async () => {
+    // Backend：编辑岗位无 类别引用（老数据）→ 保存被拦在第一步
+    置Backend应用状态(分类查询, 地点查询);
+    mock应用状态.状态.岗位列表 = [{ ...页面岗位样本 }];
+    const 用户 = userEvent.setup();
+    const 后端页 = render发布岗位('/hr/post-job/job_1');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(await screen.findByText('请选择职位类别')).toBeTruthy();
+    expect(mock更新岗位).not.toHaveBeenCalled();
+    // Mock：同样数据照常保存（自由文本类别）
+    后端页.unmount();
+    mock更新岗位.mockClear();
+    置Mock应用状态();
+    mock应用状态.状态.岗位列表 = [{ ...页面岗位样本 }];
+    render发布岗位('/hr/post-job/job_1');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
   });
 });

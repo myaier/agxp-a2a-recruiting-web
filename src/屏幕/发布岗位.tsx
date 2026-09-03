@@ -32,7 +32,15 @@ import { 可用企业关系 } from '../数据/组织映射';
 import { 空岗位硬性事实 } from '../数据/类型';
 import type { 在招岗位, 岗位硬性事实 } from '../数据/类型';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
-import type { BFFTaxonomyItem, BFFJD导入失败码 } from '../数据/BFF契约';
+import type {
+  BFFTaxonomyItem,
+  BFFJD建议,
+  BFFJD导入失败码,
+  BFFJD招聘类型,
+  BFFJD办公方式,
+  BFFJD学历,
+  BFFJD经验,
+} from '../数据/BFF契约';
 
 const 步骤顺序 = ['基础信息', '职位描述', '职位要求'] as const;
 
@@ -226,6 +234,48 @@ interface JD横幅属性 {
   按下: () => void;
 }
 
+// ── JD 建议的闭合映射（Spec §8.2）：wire 枚举 → 页面中文档位 ──
+
+const JD招聘类型映射: Record<BFFJD招聘类型, 招聘类型> = {
+  social_full_time: '社招全职', campus: '校园招聘', internship: '实习生', part_time: '兼职',
+};
+const JD办公方式映射: Record<BFFJD办公方式, string> = {
+  onsite: '现场', hybrid: '混合', remote: '全远程',
+};
+const JD学历映射: Record<BFFJD学历, string> = {
+  none: '不限', associate: '大专', bachelor: '本科', master: '硕士', doctorate: '博士',
+};
+const JD经验映射: Record<BFFJD经验, string> = {
+  none: '不限', one_to_three_years: '1-3 年', three_to_five_years: '3-5 年',
+  five_plus_years: '5 年以上', ten_plus_years: '10 年以上',
+};
+
+/** Catalog 引用比较只看 id + display_name，不依赖对象引用相等（Spec §8.1）。 */
+const 引用相等 = (left?: 目录选择值, right?: 目录选择值) =>
+  left?.id === right?.id && left?.display_name === right?.display_name;
+
+/** POST 起飞前的表单快照：全部可建议字段 + 三个耦合组的成员（Spec §8.1）。 */
+interface JD表单快照 {
+  岗位名称: string;
+  招聘类型: 招聘类型;
+  办公方式: string;
+  办公地: string;
+  职位描述: string;
+  职位要求: string;
+  最低学历: string;
+  经验要求: string;
+  薪资下限: string;
+  薪资上限: string;
+  年薪月数: number | null;
+  届别: string;
+  实习月数: number;
+  每周天数: number;
+  实习转正: boolean | null;
+  工作城市: string;
+  类别引用?: 目录选择值;
+  地点引用?: 目录选择值;
+}
+
 export default function 发布岗位() {
   const { id: 路由岗位编号 } = useParams<{ id: string }>();
   const { 返回, 进企业主壳, 进企业初始化, 替换跳转 } = use导航();
@@ -292,6 +342,19 @@ export default function 发布岗位() {
   const JD已挂载 = useRef(false);
   const JD定时器 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const JD读取中 = useRef(false);
+  // 表单影子 ref：每次渲染后同步当前值，建议应用读它而不是过期的回调闭包；
+  // 上传快照只在初始确认 POST 起飞前赋一次（create 重试不重拍，沿用原快照）。
+  const JD表单引用 = useRef<JD表单快照 | null>(null);
+  const JD上传快照 = useRef<{ generation: number; value: JD表单快照 } | null>(null);
+
+  useEffect(() => {
+    JD表单引用.current = {
+      岗位名称, 招聘类型, 办公方式, 办公地, 职位描述, 职位要求, 最低学历, 经验要求,
+      薪资下限, 薪资上限, 年薪月数, 届别, 实习月数, 每周天数, 实习转正, 工作城市,
+      类别引用: 类别引用 ? { ...类别引用 } : undefined,
+      地点引用: 地点引用 ? { ...地点引用 } : undefined,
+    };
+  });
 
   const 更新JD状态 = (next: JD导入页面状态) => {
     JD状态引用.current = next;
@@ -337,6 +400,7 @@ export default function 发布岗位() {
       if (!本轮仍有效(generation, importId) || result === '已换代') return;
       if (result.status === 'succeeded') {
         清JD定时器();
+        应用JD建议(generation, result.suggestion);
         更新JD状态({ ...JD状态引用.current, phase: 'succeeded', retry: 'none', error: null });
         return;
       }
@@ -367,6 +431,7 @@ export default function 发布岗位() {
       if (!本轮仍有效(generation) || result === '已换代') return;
       if (result.status === 'succeeded') {
         清JD定时器();
+        应用JD建议(generation, result.suggestion);
         更新JD状态({ ...JD状态引用.current, phase: 'succeeded', retry: 'none', error: null });
         return;
       }
@@ -388,12 +453,16 @@ export default function 发布岗位() {
     }
   };
 
-  /** 确认层「同意并继续」：busy guard 挡重复同意，起飞前清任务坐标。 */
+  /** 确认层「同意并继续」：busy guard 挡重复同意，起飞前捕获表单快照并清任务坐标。 */
   const 提交待确认JD = () => {
     if (JD状态引用.current.phase === 'uploading') return;
     const 待 = 待确认JD;
     if (!待) return;
     设待确认JD(null);
+    // POST 起飞前拍下当前表单快照（create 重试沿用这一份，不重拍）
+    if (JD表单引用.current) {
+      JD上传快照.current = { generation: 待.generation, value: { ...JD表单引用.current } };
+    }
     更新JD状态({
       ...JD状态引用.current, phase: 'uploading',
       file: 待.file, idempotencyKey: 待.key,
@@ -466,6 +535,96 @@ export default function 发布岗位() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [清JD定时器]);
 
+  /**
+   * 招聘类型切换的既有清理（手动与建议共用，Spec §8.3）：清空薪资上下限与年薪月数，
+   * 切到实习生时把转正确认重置为未确认。两个本地函数只集中这两条已重复的表单转移，
+   * 不是新抽象。
+   */
+  const 切换招聘类型 = (value: 招聘类型) => {
+    设招聘类型(value);
+    设薪资下限('');
+    设薪资上限('');
+    设年薪月数(null);
+    if (value === '实习生') 设实习转正(null);
+  };
+
+  /** 办公方式切换的既有清理（手动与建议共用，Spec §8.4）：切到全远程清空办公地点。 */
+  const 切换办公方式 = (value: string) => {
+    设办公方式(value);
+    if (value === '全远程') 设办公地('');
+  };
+
+  /**
+   * 应用一份 succeeded 建议（Spec §8）：只写当前值仍等于本轮起飞快照的字段；
+   * 招聘类型 / 办公方式 / 工作城市+地点引用 三个耦合组整组比较；Catalog 引用永远
+   * 优先于模型源文本；keywords 无录入入口，显式忽略。读表单走 JD表单引用.current。
+   */
+  const 应用JD建议 = (generation: number, suggestion: BFFJD建议) => {
+    const 快照包 = JD上传快照.current;
+    if (JD状态引用.current.generation !== generation) return;
+    if (!快照包 || 快照包.generation !== generation || !JD表单引用.current) return;
+    const 快照 = 快照包.value;
+    const 当前 = JD表单引用.current;
+
+    // ── 独立字段：建议非空且当前值仍等于快照才写入 ──
+    if (suggestion.title !== null && 当前.岗位名称 === 快照.岗位名称) 设岗位名称(suggestion.title);
+    if (suggestion.description !== null && 当前.职位描述 === 快照.职位描述) 设职位描述(suggestion.description);
+    if (suggestion.requirements !== null && 当前.职位要求 === 快照.职位要求) 设职位要求(suggestion.requirements);
+    if (suggestion.education_requirement !== null && 当前.最低学历 === 快照.最低学历) {
+      设最低学历(JD学历映射[suggestion.education_requirement]);
+    }
+
+    // ── 招聘类型耦合组：类型 + 薪资上下限 + 年薪月数 + 届别 + 实习月数/天数 + 转正 + 经验 ──
+    const 类型组等于快照 =
+      当前.招聘类型 === 快照.招聘类型 &&
+      当前.薪资下限 === 快照.薪资下限 &&
+      当前.薪资上限 === 快照.薪资上限 &&
+      当前.年薪月数 === 快照.年薪月数 &&
+      当前.届别 === 快照.届别 &&
+      当前.实习月数 === 快照.实习月数 &&
+      当前.每周天数 === 快照.每周天数 &&
+      当前.实习转正 === 快照.实习转正 &&
+      当前.经验要求 === 快照.经验要求;
+    const 建议类型 = suggestion.recruitment_type !== null ? JD招聘类型映射[suggestion.recruitment_type] : null;
+    if (建议类型 !== null && 建议类型 !== 当前.招聘类型) {
+      // 整组未被用户动过才切换；经验在切到按年限筛的类型时随组应用（校招/实习不写隐藏经验）
+      if (类型组等于快照) {
+        切换招聘类型(建议类型);
+        if (按年限筛(建议类型) && suggestion.experience_requirement !== null) {
+          设经验要求(JD经验映射[suggestion.experience_requirement]);
+        }
+      }
+    } else if (suggestion.experience_requirement !== null) {
+      // 类型建议缺席或与当前一致：经验独立应用 —— 当前类型按年限筛且经验未被修改
+      if (按年限筛(当前.招聘类型) && 当前.经验要求 === 快照.经验要求) {
+        设经验要求(JD经验映射[suggestion.experience_requirement]);
+      }
+    }
+
+    // ── 办公方式耦合组：方式 + 地址整组比较；先切方式，地址只在结果方式非全远程时填 ──
+    if (当前.办公方式 === 快照.办公方式 && 当前.办公地 === 快照.办公地) {
+      const 建议方式 = suggestion.workplace_mode !== null ? JD办公方式映射[suggestion.workplace_mode] : null;
+      if (建议方式 !== null && 建议方式 !== 当前.办公方式) {
+        切换办公方式(建议方式);
+        if (建议方式 !== '全远程' && suggestion.office_location !== null) 设办公地(suggestion.office_location);
+      } else if (suggestion.office_location !== null && 当前.办公方式 !== '全远程') {
+        设办公地(suggestion.office_location);
+      }
+    }
+
+    // ── 工作城市耦合组：文本与引用都未动，且起飞/当前都没有 canonical 引用，才写搜索文本 ──
+    if (当前.工作城市 === 快照.工作城市 && 引用相等(当前.地点引用, 快照.地点引用) &&
+      快照.地点引用 === undefined && 当前.地点引用 === undefined &&
+      suggestion.location_source_name !== null) {
+      改工作城市(suggestion.location_source_name);
+    }
+
+    // ── 类别：不写表单状态，只走一次现有轻提示；keywords 显式忽略（无录入入口）──
+    if (suggestion.category_source_name !== null && suggestion.category_source_name.trim() !== '') {
+      轻提示(`AI 识别的职位类别是「${suggestion.category_source_name}」，请手动选择`);
+    }
+  };
+
   /** JD 横幅四元组（Spec §9.1）：失败态把闭合 error 投影进现有横幅文案。 */
   const JD横幅: JD横幅属性 = (() => {
     switch (JD状态.phase) {
@@ -521,7 +680,11 @@ export default function 发布岗位() {
    */
   const 第一步缺失 = (): { 文案: string; 步骤: number } | null => {
     if (岗位名称.trim() === '') return { 文案: '请填写岗位名称', 步骤: 0 };
-    if (职位类别 === '') return { 文案: '请选择职位类别', 步骤: 0 };
+    // Backend 必须同时有类别展示值与真实 类别引用（模型源文本不能冒充 Catalog 选择）；
+    // Mock 保持既有自由文本行为。
+    if (是后端 ? (!职位类别.trim() || !类别引用) : 职位类别 === '') {
+      return { 文案: '请选择职位类别', 步骤: 0 };
+    }
     if (办公方式 === '') return { 文案: '请选择办公方式', 步骤: 0 };
     // 「最晚可接受实习开始日期」这道闸门随字段一起撤（产品负责人 2026-08-22：
     // 「最晚可接受实习开始日期…这个删了吧，没啥用」；该字段无书面出处）。
@@ -575,7 +738,8 @@ export default function 发布岗位() {
       // 映射是服务端 422 的投影，属于契约层，不跟这条页面前置校验同步改。）
       return { 步骤: 2, 文案: '请先在招聘名片填写公司名称' };
     }
-    if (!办公地.trim()) return { 步骤: 2, 文案: '请填写办公地点' };
+    // 全远程按后端合同允许空办公地址；其余办公方式地址必填
+    if (办公方式 !== '全远程' && !办公地.trim()) return { 步骤: 2, 文案: '请填写办公地点' };
     // 面试轮次 / 招聘紧急度 两道闸门随字段一起撤（产品负责人 2026-08-22：
     // 「这个面试轮次写上面是干什么的，应该删掉吧」「这个招聘紧急程度也删了吧，感觉没什么用」）。
     // 剩下的岗位名称 / 职位类别 / 办公方式 / 薪资带 是发岗真必需项，闸门不动
@@ -596,7 +760,8 @@ export default function 发布岗位() {
       // Task 7：Backend 选择器保存的目录引用；Mock 始终 undefined（可选字段 omitted）
       类别引用,
       地点引用,
-      办公地: 办公地.trim(),
+      // 全远程发送合同允许的空办公地址；其余照常 trim 提交
+      办公地: 办公方式 === '全远程' ? '' : 办公地.trim(),
       办公方式,
       招聘类型,
       届别: 招聘类型 === '校园招聘' ? 届别 : undefined,
@@ -774,17 +939,9 @@ export default function 发布岗位() {
             岗位名称={岗位名称}
             设岗位名称={设岗位名称}
             办公方式={办公方式}
-            设办公方式={设办公方式}
+            设办公方式={切换办公方式}
             招聘类型={招聘类型}
-            选招聘类型={(项) => {
-              // 类型是表单的「开关」。切换后清空计薪字段，让发布人重新确认，
-              // 既避免月薪/日薪单位错位，也不用演示默认值代替真实预算。
-              设招聘类型(项);
-              设薪资下限('');
-              设薪资上限('');
-              设年薪月数(null);
-              if (项 === '实习生') 设实习转正(null);
-            }}
+            选招聘类型={切换招聘类型}
             届别={届别}
             设届别={设届别}
             职位类别={职位类别}
@@ -806,6 +963,7 @@ export default function 发布岗位() {
           <职位要求步
             编辑态={编辑态}
             招聘类型={招聘类型}
+            办公方式={办公方式}
             经验要求={经验要求}
             设经验要求={设经验要求}
             最低学历={最低学历}
@@ -1484,6 +1642,7 @@ function 职位描述步({
 function 职位要求步({
   编辑态,
   招聘类型: 当前类型,
+  办公方式,
   经验要求: 当前经验,
   设经验要求,
   最低学历: 当前学历,
@@ -1516,6 +1675,8 @@ function 职位要求步({
 }: {
   编辑态: boolean;
   招聘类型: 招聘类型;
+  /** 全远程时办公地点保留原位但清空并禁用（后端合同允许空地址） */
+  办公方式: string;
   经验要求: string;
   设经验要求: (值: string) => void;
   最低学历: string;
@@ -1685,13 +1846,15 @@ function 职位要求步({
           ) : null}
         </div>
 
-        {/* 办公地点到楼宇级：候选人要据此判断通勤，只给城市不够用。 */}
+        {/* 办公地点到楼宇级：候选人要据此判断通勤，只给城市不够用。
+            全远程时保留原位、清空并禁用（不隐藏该行，不改布局）。 */}
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>办公地点</div>
           <input
             className={样式.条目输入}
             value={办公地}
             placeholder="如：浦东新区世纪大道 1568 号中建大厦 28 层"
+            disabled={办公方式 === '全远程'}
             onChange={(事件) => 设办公地(事件.target.value)}
           />
         </div>
