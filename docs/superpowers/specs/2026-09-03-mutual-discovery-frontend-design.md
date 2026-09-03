@@ -133,6 +133,7 @@ Backend 发岗第三步在 `requirements` 补充文字之后显示原生可访�
 - 页面不可编辑的 immutable 字段和服务端专有 organization 事实不再无条件回传。
 - 经验、学历或 trim 后 `requirements` 变化时，变化字段与 `structured_requirements_confirmed: true` 同请求发送。
 - 三者均未变化时省略确认字段，服务端保留既有事实。
+- 唯一例外是 legacy `false` 岗位的显式重新确认：页面从未确认变为已确认时，即使三项内容没有变化，也发送仅含 `structured_requirements_confirmed: true`（以及其他真实变化字段）的补丁，使权威事实真正转为 `true`。
 - 前端永不发送 `false`。
 - legacy false 岗位可仅修改无关字段，不伪造确认。
 
@@ -227,7 +228,7 @@ mutation 继续现有 `If-Match` 和幂等规则。成功后只以 Owner Jobs �
 
 ### 9.5 完整验证
 
-执行定向 Vitest、全量测试、typecheck、lint 和 build。Backend fixture 验收四组：
+执行定向 Vitest、全量测试、typecheck、lint 和 build。按可构造边界验收四组：
 
 ```text
 verified organization + confirmed basis
@@ -235,6 +236,8 @@ verified organization + unconfirmed legacy basis
 unverified organization + confirmed Job
 unverified organization + unconfirmed legacy Job
 ```
+
+其中 confirmed 两组可在当前 Backend API 上做联调；unconfirmed 只来自 migration 回填的 legacy 行，`JobCreate`/`JobPatch` 都不允许写入 `false`，因此两个 legacy 组合用 frontend decoder/mapper/screen fixtures 验收，不为测试篡改后端迁移数据，也不虚构 seed 接口。
 
 同时确认 Mock 不解码 Backend error、不增加确认 UI、不改变 fixture。
 
@@ -261,4 +264,4 @@ unverified organization + unconfirmed legacy Job
 - 组织错误提供持久 CTA，且不将其他错误误归因。
 - 合同矛盾、未知字段/枚举/错误词均 fail closed。
 - CAS、幂等、session fence、隐私边界与 Backend/Mock 隔离不回归。
-- 定向测试、全量测试、typecheck、lint、build 和四组 Backend fixture 验收通过。
+- 定向测试、全量测试、typecheck、lint、build、两组可构造 Backend 联调与两个 legacy frontend fixture 组合验收通过。

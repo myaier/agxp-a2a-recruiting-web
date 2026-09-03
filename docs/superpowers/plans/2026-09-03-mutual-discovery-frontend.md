@@ -61,7 +61,7 @@ export type BFF学历要求 =
   | 'none' | 'associate' | 'bachelor' | 'master' | 'doctorate';
 ```
 
-Change `BFFOwnerJob.experience_requirement`/`education_requirement` to these unions and add required `structured_requirements_confirmed: boolean`. `BFFCandidateJob` inherits that required field. Add `structured_requirements_confirmed: true` to `BFF岗位创建`; because `BFF岗位补丁` is partial, its field remains optional but can only be literal `true`.
+Change `BFFOwnerJob.experience_requirement`/`education_requirement` and `BFF岗位创建.experience_requirement`/`education_requirement` to these same two unions, then add required `structured_requirements_confirmed: boolean` to Owner Job. `BFFCandidateJob` inherits that required field. Add `structured_requirements_confirmed: true` to `BFF岗位创建`; because `BFF岗位补丁` is partial, its field remains optional but can only be literal `true`. This gives both read and write mappings compile-time protection against new or mistyped enum codes.
 
 In `岗位.ts`, extend the existing pre-mapping check with three direct checks: boolean confirmation, membership in the five experience codes, and membership in the five education codes. Keep the check local to Owner Job reads; throw a `BFF错误(200, 'invalid_response', '服务返回了不符合契约的岗位数据')` on drift.
 
@@ -159,6 +159,7 @@ For `转岗位补丁(page, previous)`, cover this matrix:
 | --- | --- |
 | no change | `{}` |
 | office location only, previous confirmation false | only `office_location`; no confirmation |
+| previous confirmation false, user explicitly checks, no content change | only `structured_requirements_confirmed: true` |
 | experience only | changed code plus `structured_requirements_confirmed: true` |
 | education only | changed code plus confirmation |
 | trimmed `requirements` only | changed text plus confirmation |
@@ -209,7 +210,7 @@ Use these comparison rules:
 - `description` and `requirements`: use the existing nonblank validation/trim result before comparison;
 - omit immutable and server-owned properties entirely.
 
-After comparison:
+After comparison, related content changes require a current explicit confirmation. Independently, an explicitly checked legacy-false Job must be promotable even with unchanged content:
 
 ```ts
 const 结构化字段有变化 =
@@ -220,6 +221,10 @@ if (结构化字段有变化) {
   if (页面岗位.结构化要求已确认 !== true) {
     throw new Error('请确认经验和学历将作为自动匹配依据');
   }
+}
+if (结构化字段有变化 ||
+    (页面岗位.结构化要求已确认 === true &&
+     previous.structured_requirements_confirmed === false)) {
   patch.structured_requirements_confirmed = true;
 }
 return patch;
@@ -269,6 +274,7 @@ Extend the existing publish-screen harness rather than creating a second harness
 - Backend create starts unchecked; submit remains on step three, shows `请确认经验和学历将作为自动匹配依据`, and calls neither create nor update.
 - Keeping experience and education at `不限`, then checking the box, allows create and passes `结构化要求已确认: true` in the page model.
 - Backend edit hydrates checked from a confirmed Owner Job and unchecked from a legacy-false one.
+- A legacy-false edit can check and save without altering the three texts; update receives `结构化要求已确认: true`, allowing the sparse mapper to emit a confirmation-only patch.
 - After checking, changing experience, education, or the `requirements` textarea independently unchecks it immediately.
 - Changing salary, office location, description, screening preferences, or another unrelated control does not uncheck it.
 - A legacy-false edit with only an unrelated change can save without checking.
@@ -408,7 +414,7 @@ Do not derive any of these from a score, reason text, highlight text, Job revisi
 
 Use a confirmed control and an unconfirmed case on each surface:
 
-- `职位详情.test.tsx`: historical `false` with embedded current Job `true` keeps the backend score but does not render deterministic experience/education rows or generated analysis; it renders `经验与学历尚未核对`. Historical `true` keeps the current analysis. Direct Candidate Job detail (`null` basis) shows current Job fact but no recommendation conclusion/score.
+- `职位详情.test.tsx`: historical `false` with embedded current Job `true` keeps the backend score but does not render deterministic experience/education rows or generated analysis; it renders `经验与学历尚未核对`. Historical `true` keeps the current analysis. Direct Candidate Job detail (`null` basis) shows current Job fact but no recommendation conclusion/score; run this assertion once with current Job confirmation `true` and once with `false`, and in both cases assert the experience/education alignment rows are absent.
 - `候选推荐.test.tsx`: recruiter card `false` keeps its score but renders no highlight strings and instead renders `经验与学历尚未核对`; `true` renders highlights.
 - `匿名在线简历.test.tsx`: the same recruiter-detail behavior applies; no hidden highlight remains in the document text for `false`.
 
@@ -418,7 +424,7 @@ Also retain an assertion that a card's open `match_reasons`/`highlights` are nev
 
 In Backend branches only:
 
-- `职位详情.tsx`: when `视图.匹配依据已确认 === false`, skip `求职侧对齐行`, `求职匹配分析`, and all deterministic row rendering; keep the backend match score ring and show the one neutral sentence. When basis is `null`, keep the existing direct-detail no-score behavior and show current Job status as `结构化设置：已确认/尚未确认` without synthesizing analysis.
+- `职位详情.tsx`: when `视图.匹配依据已确认 !== true` (both historical `false` and direct-detail `null`), skip `求职侧对齐行`, `求职匹配分析`, and all deterministic row rendering, and pass no alignment rows to `匹配分析块`. Historical `false` keeps the backend match score ring and shows `经验与学历尚未核对`. `null` keeps the existing direct-detail no-score behavior and shows only the current Job status as `结构化设置：已确认/尚未确认`, never a recommendation conclusion.
 - `候选推荐.tsx`: keep `视图.匹配分`; render either the complete `视图.亮点` group or the neutral sentence.
 - `匿名在线简历.tsx`: apply the same complete-group rule to `视图.亮点`.
 
@@ -571,7 +577,8 @@ Build on the existing operation harness. For one `刷新招聘候选(jobId)` cal
 4. Reread 401 while the original fence is current: run the existing unified account clear.
 5. Reread 503: no job hydration and a generic recoverable error reaches the caller.
 6. Change subject, role, session generation, visible scope, or scope generation while reread is in flight: late success and late 401 are discarded; no new-session clear, no hydration, no CTA signal.
-7. `recommendation_unavailable`, malformed contract (`invalid_response`), 401, and 503 perform zero Owner Jobs rereads.
+7. Direct refresh failures `recommendation_unavailable`, malformed contract (`invalid_response`), 401, and 503 perform zero Owner Jobs rereads; the only path allowed to perform the read is the exact organization 409 from cases 1–6.
+8. Existing synthetic `BFF错误` values with `status === 200` still expose their already-closed Chinese delegation/refusal copy through `P4错误文案`; only unknown real HTTP errors fall back to the generic sentence.
 
 Every case asserts POST count; this is the regression guard against accidental retry with a new idempotency key.
 
@@ -583,7 +590,7 @@ npx vitest run src/状态/后端/发现推荐操作.test.ts
 
 - [ ] **Step 3: Implement the one-read reconciliation in the existing operation**
 
-Keep the generic refresh algorithm. In its POST-error branch, let the exact `organization_verification_required` escape without first writing the generic list failure; do not classify any other code there.
+Keep `运行范围刷新` unchanged and business-code agnostic. Its existing POST-error path may first settle the job snapshot through `提交失败`; the recruiter-only catch below performs the authoritative reread and settles the same snapshot again with the final outcome. Do not teach the shared candidate/recruiter refresh kernel about `organization_verification_required`.
 
 In `刷新招聘候选(jobId)`, name the existing `开始`/`成功`/`失败` state writers as local closures so both `运行范围刷新` and the organization reconciliation can settle the same job-scoped snapshot. Then wrap the existing call:
 
@@ -619,7 +626,7 @@ For that one reread:
 - if it is still `ready`, call `提交失败('数据状态异常，请稍后再试', 对账Fence)`, then throw `new BFF错误(409, 'invalid_response', '数据状态异常，请稍后再试')`;
 - `unknown` after an authoritative complete Owner Jobs page follows the same invalid-response settlement.
 
-Add `organization_verification_required: '匿名候选推荐需要已验证的用人组织'` to the closed P4 error table, and change unknown `BFF错误` fallback to `请求失败，请稍后再试` instead of returning backend message. Keep known codes' current Chinese copy.
+Add `organization_verification_required: '匿名候选推荐需要已验证的用人组织'` to the closed P4 error table. For codes outside the table, preserve `取后端错误文案(error)` only when `error.status === 200`, because the operation deliberately encodes already-closed delegation/refusal UI copy in synthetic status-200 `BFF错误` values. Unknown real HTTP errors use `请求失败，请稍后再试` and never expose backend English. Update the existing `P4错误文案` test that currently expects an unknown status-500 message, and retain/add the status-200 delegation-copy regression.
 
 - [ ] **Step 4: Write failing screen-state tests**
 
@@ -702,32 +709,41 @@ git status --short
 
 Expected: tests/typecheck/lint/build pass, diff check is empty, and worktree status contains only intentional committed work (normally empty).
 
-- [ ] **Step 3: Verify the four Backend fixture quadrants**
+- [ ] **Step 3: Verify the two constructible live Backend quadrants**
 
-With `VITE_DATA_SOURCE=backend` and backend `release/0.2.5@37661dee9`, exercise:
+With `VITE_DATA_SOURCE=backend` and backend `release/0.2.5@37661dee9`, create confirmed Jobs through the supported API and exercise:
 
 ```text
 verified organization + confirmed basis
-verified organization + unconfirmed legacy basis
 unverified organization + confirmed Job
-unverified organization + unconfirmed legacy Job
 ```
 
-For each, verify:
+Verify that the verified Job can refresh and show a confirmed batch, while the known-unverified Job is blocked before refresh. The timing-sensitive 409 race is not forced by mutating backend state during manual acceptance; its exact one-POST/one-GET and stale-fence behavior is deterministically covered by Task 5 data-source tests and Task 6 operation/screen tests. Switching jobs must not carry cards or the local block across scope.
+
+- [ ] **Step 4: Verify the two legacy-only quadrants with frontend fixtures**
+
+The public Job API cannot create or patch `structured_requirements_confirmed: false`; only migration `000029` produces that legacy state. Do not mutate migration data and do not invent a seed endpoint. Use the focused tests from Tasks 1, 2, 3, 4, and 6 to verify:
+
+```text
+verified organization + unconfirmed legacy Job/card basis
+unverified organization + unconfirmed legacy Job/card basis
+```
+
+Across those deterministic fixtures, assert:
 
 - confirmed historical cards show the entire reason/highlight group;
 - unconfirmed historical cards retain scores but show only `经验与学历尚未核对`;
 - unverified organization blocks before refresh when already known;
-- the precise 409 race performs one refresh POST and one Owner Jobs GET, then shows authoritative CTAs or a same-job persistent data-abnormal block;
-- switching jobs cannot carry the previous job's cards or local block across scope.
+- legacy false can save an unrelated edit without confirmation and can also send a confirmation-only patch when the user explicitly checks;
+- historical card `false` remains authoritative even when the embedded current Job is `true`.
 
-- [ ] **Step 4: Verify create/edit interaction and Mock isolation**
+- [ ] **Step 5: Verify create/edit interaction and Mock isolation**
 
 In Backend mode, verify create defaults unchecked, `不限` still requires a click, each of the three relevant edits clears the checkbox, and an unrelated legacy edit stays saveable. Inspect the network body for literal `true`, sparse changed fields, and no `false`/immutable/organization echo.
 
 In Mock mode, verify the checkbox is absent and publish/edit/recommendation presentation is unchanged.
 
-- [ ] **Step 5: Inspect final history**
+- [ ] **Step 6: Inspect final history**
 
 ```bash
 git log --oneline --decorate -8
