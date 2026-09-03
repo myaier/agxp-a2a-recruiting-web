@@ -157,6 +157,9 @@ export type 动作 =
   | { 型: '发布岗位'; 岗: 在招岗位 }
   | { 型: '水合账号资料'; 范围键: string; 快照: 资料缓存快照 }
   | { 型: '清账号资料' }
+  // Backend MatchCase 真相源修复：只供 Backend 会话边界（登出 / 当前轮 401 / 主体基串
+  // 变化）原子清空四个 legacy 演示数组；Mock 初始化与普通 Mock reducer 不派发它
+  | { 型: '清后端MatchCase演示状态' }
   | { 型: '切身份'; 到: '求职者' | '招聘方' };
 
 export function 数未读(表: Record<string, number>): number {
@@ -337,6 +340,17 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     }
     case '清账号资料':
       return { ...旧, ...空账号资料, 资料缓存范围键: '' };
+
+    // Backend 会话边界的 legacy Case 状态归零（spec §A）：清空后的数组长度 0 不得被
+    // 任何 Backend 展示读成统计事实；Mock 路径永不触达这个 case
+    case '清后端MatchCase演示状态':
+      return {
+        ...旧,
+        在谈列表: [],
+        企业候选列表: [],
+        归档列表: [],
+        企业归档列表: [],
+      };
 
     // 让AI代理去聊（标注 2026-08-18 17:42）：这位候选真的进「在谈」列表，
     // 并把子视图切到在谈让用户看到 —— 镜像求职端「委托入谈」的闭环。
@@ -696,6 +710,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   // 租约（内存纪律：P5 状态绝不进 资料持久化 / 浏览器存储；在飞请求由操作层自身的
   // subject/role/会话代际栅栏按旧代整包丢弃）。同主体重登（基串不变）不清 —— 与 P4
   // 草稿保留口径一致，且不确定结果的同键重试跨重登仍可沿用。
+  // Backend MatchCase 真相源修复：主体基串变化同时派发 清后端MatchCase演示状态，
+  // 四个 legacy 演示数组与 P5 快照同口径归零（Mock 下 主体 恒 null，基串不变，永不派发）。
   const P5会话基 = useRef('');
   useEffect(() => {
     const 基 = 后端状态.主体 === null ? '' : `${后端状态.主体.subject_id}|${后端状态.主体.last_used_role}`;
@@ -703,6 +719,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     P5会话基.current = 基;
     清P5MatchCase引用({ P5范围代际, P5幂等意图, P5可见范围, P5对象租约 });
     设后端状态((旧) => ({ ...旧, ...创建空P5MatchCase状态() }));
+    派发({ 型: '清后端MatchCase演示状态' });
     // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [后端状态.主体]);

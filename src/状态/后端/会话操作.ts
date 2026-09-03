@@ -131,6 +131,9 @@ export function 清账号状态(
   // P6：规则域同口径清理 —— 清后端Agent规则 清空三个页面数组，raw 快照/提案表与
   // 双端水合阶段一并回干净底座（Task 3 review ⚠️：这里此前漏清 P6 成员）。
   派发({ 型: '清后端Agent规则' });
+  // Backend MatchCase 真相源修复：四个 legacy 演示数组一并归零，登出/当前轮 401 后
+  // 任何 Backend 展示都读不到 Mock fixture 数字（清空动作只在这里与 P5 主体基串 effect 派发）
+  派发({ 型: '清后端MatchCase演示状态' });
   // P4 Task 3：discovery raw 快照（scope 快照 / 详情 / 不可用标记 / 委托回执 / 聚合）回空底座
   // P2 Task 3：附件库快照同口径清理 —— 不跨主体 / 不跨会话存活
   设后端状态((旧) => ({

@@ -225,8 +225,12 @@ export type P5加载阶段 = '未开始' | '进行中' | '成功' | '失败';
 /**
  * 工作区 / 历史架子的列表快照：key 是 P5范围键.open / .history（role + 角色专属过滤）。
  * 已加载页数 是「已载窗口」的深度：刷新从第一页重建同样深度的窗口，追加逐页 +1。
+ * ownerSubjectId 只在内存标记快照归属的 subject（角色仍由 scope key 表达）：
+ * 成功快照的复用（缓存短路 / 刷新保留旧 items）以 owner 相同为前提，同角色换主体
+ * 时旧快照按不存在处理；它不替代 session/scope fence，也不进入任何持久化。
  */
 export interface P5列表快照 {
+  ownerSubjectId: string | null;
   阶段: P5加载阶段;
   刷新中: boolean;
   items: P5列表项[];

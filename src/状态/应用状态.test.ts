@@ -324,6 +324,14 @@ describe('应用状态 reducer', () => {
     expect(初始状态.企业关系列表).toEqual([]);
   });
 
+  it('Backend 种子不携带 legacy MatchCase 演示数组', () => {
+    const 种子 = 创建初始状态({ 模式: 'backend', 后端环境: 'stg', 后端: {} as HTTP招聘数据源 });
+    expect(种子.在谈列表).toEqual([]);
+    expect(种子.企业候选列表).toEqual([]);
+    expect(种子.归档列表).toEqual([]);
+    expect(种子.企业归档列表).toEqual([]);
+  });
+
   it('水合组织权威事实，admin request 只经显式按需 action', () => {
     const 档案后 = 归约(初始状态, { 型: '水合招聘方档案', 档案: BFF招聘方档案样本 });
     expect(档案后.招聘方档案).toEqual(BFF招聘方档案样本);
@@ -2279,6 +2287,11 @@ describe('应用状态提供者 P5 MatchCase 运行时状态', () => {
     expect(当前.后端状态.P5工作区).toEqual({});
     expect(当前.后端状态.P5历史).toEqual({});
     expect(当前.后端状态.P5详情).toEqual({});
+    // 统一登出清理同时摊平四个 legacy MatchCase 演示数组
+    expect(当前.状态.在谈列表).toEqual([]);
+    expect(当前.状态.企业候选列表).toEqual([]);
+    expect(当前.状态.归档列表).toEqual([]);
+    expect(当前.状态.企业归档列表).toEqual([]);
   });
 
   it('切身份（角色转移）清空 P5 快照', async () => {

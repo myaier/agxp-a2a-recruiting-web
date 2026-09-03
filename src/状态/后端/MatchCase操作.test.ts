@@ -279,7 +279,7 @@ describe('工作区列表读取', () => {
     expect(env.数据源.读取P5Open列表).toHaveBeenCalledWith('candidate', null, null);
     expect(env.最新状态().P5工作区['p5:open:candidate:*']).toEqual({
       阶段: '成功', 刷新中: false, items: [候选行('mc_1')], nextCursor: 'cur_2',
-      已加载页数: 1, error: null, generation: 1,
+      已加载页数: 1, error: null, generation: 1, ownerSubjectId: 'sub_1',
     });
   });
 
@@ -317,7 +317,7 @@ describe('工作区列表读取', () => {
     expect(env.数据源.读取P5Open列表).toHaveBeenLastCalledWith('candidate', null, 'cur_2');
     expect(env.最新状态().P5工作区['p5:open:candidate:*']).toEqual({
       阶段: '成功', 刷新中: false, items: [候选行('mc_1'), 候选行('mc_2')],
-      nextCursor: null, 已加载页数: 2, error: null, generation: 1,
+      nextCursor: null, 已加载页数: 2, error: null, generation: 1, ownerSubjectId: 'sub_1',
     });
     const 调用数 = vi.mocked(env.数据源.读取P5Open列表).mock.calls.length;
     await env.操作.追加工作区('candidate', null); // 游标已尽：no-op
@@ -338,7 +338,7 @@ describe('工作区列表读取', () => {
       .toEqual([null, 'cur_2b']); // 从第一页起，按窗口深度跟进刷新读到的新游标
     expect(env.最新状态().P5工作区['p5:open:candidate:*']).toEqual({
       阶段: '成功', 刷新中: false, items: [候选行('mc_9'), 候选行('mc_8')],
-      nextCursor: null, 已加载页数: 2, error: null, generation: 1,
+      nextCursor: null, 已加载页数: 2, error: null, generation: 1, ownerSubjectId: 'sub_1',
     });
     const 新设状态数 = (env.deps.设后端状态 as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
     expect(新设状态数 - 设状态数).toBe(2); // 起步 + 唯一一次原子提交
@@ -356,6 +356,27 @@ describe('工作区列表读取', () => {
     expect(vi.mocked(env.数据源.读取P5Open列表)).toHaveBeenCalledTimes(1);
     await env.操作.加载工作区('candidate', null, true);
     expect(vi.mocked(env.数据源.读取P5Open列表)).toHaveBeenCalledTimes(2);
+  });
+
+  it('同角色换主体不复用旧成功快照，旧响应不能覆盖新主体', async () => {
+    vi.mocked(env.数据源.读取P5Open列表)
+      .mockResolvedValueOnce(候选页([候选行('mc_old')], null))
+      .mockResolvedValueOnce(候选页([候选行('mc_new')], null));
+    await env.操作.加载工作区('candidate', null);
+    expect(env.最新状态().P5工作区['p5:open:candidate:*'])
+      .toMatchObject({ ownerSubjectId: 'sub_1', items: [候选行('mc_old')] });
+
+    env.deps.主体标识引用.current = 'sub_2';
+    env.deps.会话代际.current += 1;
+    env.deps.后端状态引用.current = {
+      ...env.deps.后端状态引用.current,
+      主体: { ...候选主体, subject_id: 'sub_2' },
+    };
+    await env.操作.加载工作区('candidate', null);
+
+    expect(env.数据源.读取P5Open列表).toHaveBeenCalledTimes(2);
+    expect(env.最新状态().P5工作区['p5:open:candidate:*'])
+      .toMatchObject({ 阶段: '成功', ownerSubjectId: 'sub_2', items: [候选行('mc_new')] });
   });
 
   it('首载失败落 失败 + 错误文案，不派发也不清账号', async () => {

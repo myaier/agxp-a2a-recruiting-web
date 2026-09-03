@@ -126,18 +126,21 @@ export function MatchCase列表(props: { role: P5角色; filterRef: string | nul
   // 状态档是全局纯视图态：双端各认各的档（在谈看什么 / 企业在谈看什么）
   const 看什么: 看什么档 = role === 'candidate' ? 状态.在谈看什么 : 状态.企业在谈看什么;
 
-  // 只选当前 role+过滤 自己的快照：键按 scope 隔离，切换时旧 scope 数据天然进不来
+  // 只选当前 role+过滤 自己的快照：键按 scope 隔离，切换时旧 scope 数据天然进不来；
+  // owner 与当前主体不匹配（同角色换主体的过渡帧）时按不存在处理，绝不渲染旧主体 items
   const scope键 = P5范围键.open(role, filterRef);
-  const 快照: P5列表快照 | undefined = 后端状态.P5工作区?.[scope键];
+  const 当前SubjectId = 后端状态.主体?.subject_id ?? null;
+  const 原快照 = 后端状态.P5工作区?.[scope键];
+  const 快照: P5列表快照 | undefined = 原快照?.ownerSubjectId === 当前SubjectId ? 原快照 : undefined;
 
-  // 进屏 / 换 scope：先注册可见范围再懒加载（操作层栅栏靠注册的可见范围对上）；
+  // 进屏 / 换 scope / 换主体：先注册可见范围再懒加载（操作层栅栏靠注册的可见范围对上）；
   // 离开本屏或换 scope 清回 null。Mock 模式本组件不挂载，操作层也恒早退。
   useEffect(() => {
-    if (!是后端) return;
+    if (!是后端 || 当前SubjectId === null) return;
     操作.设置P5范围(role, scope键);
     void 操作.加载工作区(role, filterRef).catch(() => undefined);
     return () => 操作.设置P5范围(role, null);
-  }, [是后端, role, filterRef, scope键, 操作]);
+  }, [是后端, 当前SubjectId, role, filterRef, scope键, 操作]);
 
   // 可见 5 秒列表节拍（spec §10.3）：刷新已载窗口；隐藏当拍跳过、卸载即停、
   // 单拍失败吞掉（错误态由快照承载，页面给重试）—— 都在钩子内实现。
