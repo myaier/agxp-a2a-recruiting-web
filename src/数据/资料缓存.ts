@@ -6,7 +6,7 @@
 
 import type { 后端环境 } from '../配置/运行配置';
 import type { 办公偏好, 求职类型, 求职初筛偏好 } from '../流程/onboarding配置';
-import type { 公司自述覆盖 } from './类型';
+import type { 公司自述覆盖, 先问偏好 } from './类型';
 
 export type 资料缓存存储 = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -30,6 +30,10 @@ export interface 资料缓存快照 {
   求职头像?: string | null;
   飞书已接入?: boolean;
   企业飞书已接入?: boolean;
+  /** 仅 Mock 本地演示持久化；Backend 始终由 Agent settings 权威接口水合。 */
+  求职先问偏好?: 先问偏好;
+  /** 仅 Mock 本地演示持久化；Backend 不把它写进浏览器缓存。 */
+  企业先问偏好?: 先问偏好;
   // ── P1C：可恢复的组织选择（恢复值须经最新 affiliations 校验）──
   当前企业关系编号?: string | null;
   未认证公司声明?: string;
@@ -37,7 +41,8 @@ export interface 资料缓存快照 {
 
 /** Mock 种子 / 空账号资料：旧字段全量必带的形状（Mock migration 仍显式补齐旧字段）。 */
 export type 完整Mock资料快照 = Required<Pick<资料缓存快照,
-  '公司自述' | '企业认证' | '招聘头像' | '公司LOGO' | '求职头像' | '飞书已接入' | '企业飞书已接入'
+  '公司自述' | '企业认证' | '招聘头像' | '公司LOGO' | '求职头像' | '飞书已接入' | '企业飞书已接入' |
+  '求职先问偏好' | '企业先问偏好'
 >>;
 
 const 前缀 = 'AGXP账号资料v2';
@@ -72,6 +77,14 @@ function 是求职头像(值: unknown): 值 is string | null {
   return 值 === null || (typeof 值 === 'string' && (值.startsWith('data:image/') || 值.startsWith('章:')));
 }
 
+function 是先问偏好(值: unknown): 值 is 先问偏好 {
+  if (typeof 值 !== 'object' || 值 === null || Array.isArray(值)) return false;
+  const raw = 值 as Record<string, unknown>;
+  if (Object.keys(raw).length !== 2) return false;
+  return (raw.递交材料 === '先问我' || raw.递交材料 === '自动发送') &&
+    (raw.超授权让步 === '先问我' || raw.超授权让步 === '直接回绝');
+}
+
 function 安全解析JSON(原文: string | null): unknown {
   if (!原文) return null;
   try {
@@ -95,6 +108,8 @@ export function 读资料缓存(存储: 资料缓存存储 | null, 范围: 资�
     if (是求职头像(值.求职头像)) 快照.求职头像 = 值.求职头像;
     if (typeof 值.飞书已接入 === 'boolean') 快照.飞书已接入 = 值.飞书已接入;
     if (typeof 值.企业飞书已接入 === 'boolean') 快照.企业飞书已接入 = 值.企业飞书已接入;
+    if (是先问偏好(值.求职先问偏好)) 快照.求职先问偏好 = 值.求职先问偏好;
+    if (是先问偏好(值.企业先问偏好)) 快照.企业先问偏好 = 值.企业先问偏好;
     // P1C：组织选择的新键逐键守卫——损坏类型被丢弃，不进入应用状态
     if (值.当前企业关系编号 === null || typeof 值.当前企业关系编号 === 'string') {
       快照.当前企业关系编号 = 值.当前企业关系编号;
@@ -156,6 +171,8 @@ export function 迁移旧资料缓存(存储: 资料缓存存储 | null, 范围:
       求职头像: null,
       飞书已接入: false,
       企业飞书已接入: false,
+      求职先问偏好: { 递交材料: '先问我', 超授权让步: '先问我' },
+      企业先问偏好: { 递交材料: '先问我', 超授权让步: '先问我' },
       ...快照,
     };
     if (!写资料缓存(存储, 范围, 完整)) return {};
