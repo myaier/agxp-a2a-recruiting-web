@@ -581,16 +581,27 @@ export interface BFF发现批次 {
   created_at: string;
 }
 
+export type BFF委托拒绝码 =
+  | 'recommendation_not_found'
+  | 'recommendation_unavailable'
+  | 'recommendation_stale'
+  | 'delegation_not_allowed'
+  | 'active_case_quota_reached'
+  | 'delegation_cooldown';
+
+export type BFF委托失败码 =
+  | 'delegation_agent_unavailable'
+  | 'delegation_evaluation_failed'
+  | 'delegation_failed';
+
 export interface BFF委托回执 {
   delegation_id: string;
   recommendation_id: string | null;
-  state: BFF委托状态 | null;
+  state: BFF委托状态;
   evaluation_id: string | null;
   case_id: string | null;
-  refusal_code:
-    | 'recommendation_not_found' | 'recommendation_unavailable'
-    | 'delegation_not_allowed' | 'active_case_quota_reached'
-    | 'delegation_cooldown' | null;
+  refusal_code: BFF委托拒绝码 | null;
+  failure_code: BFF委托失败码 | null;
 }
 // ── 候选人附件简历域 DTO（P2：resume-files 与解析状态）──
 // 字段名逐项复制自 recruitment-bff OpenAPI；解析失败码与 media type 闭合，

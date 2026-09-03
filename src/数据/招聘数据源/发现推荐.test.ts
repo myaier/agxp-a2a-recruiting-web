@@ -579,6 +579,62 @@ expect(fetcher).toHaveBeenCalledTimes(1);
     expect(请求Mock).toHaveBeenCalledTimes(卡变体们.length + 回执变体们.length);
   });
 
+  const 七键回执 = {
+    delegation_id: 'del_1',
+    recommendation_id: 'rec_1',
+    state: 'accepted',
+    evaluation_id: null,
+    case_id: null,
+    refusal_code: null,
+    failure_code: null,
+  };
+
+  it.each([
+    [{ state: 'accepted', evaluation_id: null }, 'accepted'],
+    [{ state: 'evaluating', evaluation_id: 'eval_1' }, 'evaluating'],
+    [{ state: 'needs_user', evaluation_id: 'eval_1', case_id: 'mc_existing' }, 'needs_user'],
+    [{ state: 'case_started', case_id: 'mc_1' }, 'case_started'],
+    [{ state: 'refused', refusal_code: 'recommendation_stale' }, 'refused'],
+    [{ state: 'failed', evaluation_id: 'eval_1', failure_code: 'delegation_agent_unavailable' }, 'failed'],
+  ] as const)('single GET 接受合法矩阵 %s', async (覆盖, state) => {
+    请求Mock.mockResolvedValue(响应({ ...七键回执, ...覆盖 }));
+    const result = await source.读取候选岗位委托('del_1');
+    expect(result.state).toBe(state);
+  });
+
+  it.each([
+    { ...七键回执, state: null },
+    { ...七键回执, failure_code: 'future_failure' },
+    { ...七键回执, state: 'failed', failure_code: null },
+    { ...七键回执, state: 'refused', refusal_code: null },
+    { ...七键回执, state: 'refused', refusal_code: 'delegation_cooldown', failure_code: 'delegation_failed' },
+    { ...七键回执, state: 'evaluating', evaluation_id: null },
+    { ...七键回执, state: 'accepted', evaluation_id: 'eval_1' },
+    { ...七键回执, state: 'case_started', case_id: null },
+    { ...七键回执, state: 'failed', failure_code: 'delegation_failed', task_id: 'secret' },
+  ] as const)('single GET 非法合同 fail closed', async (receipt) => {
+    请求Mock.mockResolvedValue(响应(receipt));
+    await expect(source.读取候选岗位委托('del_1'))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('create batch 只给 refused 空 delegation_id 例外，single GET 与 failed 均拒绝空 ID', async () => {
+    请求Mock.mockResolvedValueOnce(响应({
+      receipts: [{ ...七键回执, delegation_id: '', state: 'refused', refusal_code: 'delegation_not_allowed' }],
+    }));
+    await expect(source.创建招聘候选委托({
+      jobId: 'job_1', recommendationId: 'rec_1', idempotencyKey: 'idem_1',
+    })).resolves.toMatchObject([{ delegation_id: '', state: 'refused' }]);
+
+    for (const receipt of [
+      { ...七键回执, delegation_id: '', state: 'refused', refusal_code: 'delegation_not_allowed' },
+      { ...七键回执, delegation_id: '', state: 'failed', failure_code: 'delegation_failed' },
+    ]) {
+      请求Mock.mockResolvedValueOnce(响应(receipt));
+      await expect(source.读取招聘候选委托('del_1')).rejects.toMatchObject({ code: 'invalid_response' });
+    }
+  });
+
   it('CandidateJob 接受三个可选键并保留可选引用，时间必须 RFC3339', async () => {
     const 带可选键 = {
       ...BFFCandidateJob样本,

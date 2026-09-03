@@ -18,6 +18,8 @@ import type {
   BFF委托状态,
   BFF委托摘要,
   BFF淘汰原因,
+  BFF委托拒绝码,
+  BFF委托失败码,
   BFF委托回执,
   BFF发现批次,
   BFF发现偏好,
@@ -135,9 +137,12 @@ const 淘汰原因全表 = [
   'experience_insufficient', 'direction_mismatch', 'primary_stack_mismatch', 'other',
 ] as const satisfies readonly BFF淘汰原因[];
 const 委托拒绝码全表 = [
-  'recommendation_not_found', 'recommendation_unavailable', 'delegation_not_allowed',
-  'active_case_quota_reached', 'delegation_cooldown',
-] as const satisfies readonly Exclude<BFF委托回执['refusal_code'], null>[];
+  'recommendation_not_found', 'recommendation_unavailable', 'recommendation_stale',
+  'delegation_not_allowed', 'active_case_quota_reached', 'delegation_cooldown',
+] as const satisfies readonly BFF委托拒绝码[];
+const 委托失败码全表 = [
+  'delegation_agent_unavailable', 'delegation_evaluation_failed', 'delegation_failed',
+] as const satisfies readonly BFF委托失败码[];
 const 发现偏好原因全表 = [
   'not_interested', ...淘汰原因全表,
 ] as const satisfies readonly NonNullable<BFF发现偏好['rejection_reason']>[];
@@ -255,24 +260,51 @@ function 解委托摘要(input: unknown): BFF委托摘要 {
   };
 }
 
-function 解委托回执(input: unknown): BFF委托回执 {
+type 委托回执读取上下文 = 'create' | 'single';
+
+function 解委托回执(input: unknown, 上下文: 委托回执读取上下文): BFF委托回执 {
   const raw = 要求闭合对象(input, [
-    'delegation_id', 'recommendation_id', 'state', 'evaluation_id', 'case_id', 'refusal_code',
+    'delegation_id', 'recommendation_id', 'state', 'evaluation_id', 'case_id',
+    'refusal_code', 'failure_code',
   ]);
+  const state = 要求枚举(raw.state, 委托状态全表);
+  const delegation_id = 要求字符串(raw.delegation_id);
+  const evaluation_id = 要求可空非空字符串(raw.evaluation_id);
+  const case_id = 要求可空非空字符串(raw.case_id);
+  const refusal_code = raw.refusal_code === null
+    ? null
+    : 要求枚举(raw.refusal_code, 委托拒绝码全表);
+  const failure_code = raw.failure_code === null
+    ? null
+    : 要求枚举(raw.failure_code, 委托失败码全表);
+
+  const 允许空ID = 上下文 === 'create' && state === 'refused';
+  if (!允许空ID && delegation_id === '') throw 契约错误();
+  const 无码 = refusal_code === null && failure_code === null;
+  const 坐标合法 =
+    (state === 'accepted' && 无码 && evaluation_id === null && case_id === null) ||
+    (state === 'evaluating' && 无码 && evaluation_id !== null && case_id === null) ||
+    (state === 'needs_user' && 无码) ||
+    (state === 'case_started' && 无码 && case_id !== null) ||
+    (state === 'refused' && refusal_code !== null && failure_code === null) ||
+    (state === 'failed' && refusal_code === null && failure_code !== null);
+  if (!坐标合法) throw 契约错误();
+
   return {
-    delegation_id: 要求非空字符串(raw.delegation_id),
+    delegation_id,
     recommendation_id: 要求可空非空字符串(raw.recommendation_id),
-    state: raw.state === null ? null : 要求枚举(raw.state, 委托状态全表),
-    evaluation_id: 要求可空非空字符串(raw.evaluation_id),
-    case_id: 要求可空非空字符串(raw.case_id),
-    refusal_code: raw.refusal_code === null ? null : 要求枚举(raw.refusal_code, 委托拒绝码全表),
+    state,
+    evaluation_id,
+    case_id,
+    refusal_code,
+    failure_code,
   };
 }
 
 /** 创建应答按请求顺序逐对象回执；本 facade 只发单对象选择，恰好一条，零条或两条都是漂移。 */
 function 解委托批次(input: unknown): BFF委托回执[] {
   const raw = 要求闭合对象(input, ['receipts']);
-  const receipts = 要求数组(raw.receipts).map(解委托回执);
+  const receipts = 要求数组(raw.receipts).map((item) => 解委托回执(item, 'create'));
   if (receipts.length !== 1) throw 契约错误('委托批次应恰好返回一条回执');
   return receipts;
 }
@@ -498,7 +530,7 @@ export function 创建发现推荐数据源(请求: 请求函数): 发现推荐�
     const { result } = await 请求<unknown>({
       path: `${候选前缀}/job-delegations/${encodeURIComponent(delegationId)}`,
     });
-    return 解委托回执(result);
+    return 解委托回执(result, 'single');
   }
 
   async function 读取招聘候选(jobId: string, state?: 'rejected'): Promise<BFF招聘候选推荐[]> {
@@ -592,7 +624,7 @@ export function 创建发现推荐数据源(请求: 请求函数): 发现推荐�
     const { result } = await 请求<unknown>({
       path: `${招聘前缀}/candidate-delegations/${encodeURIComponent(delegationId)}`,
     });
-    return 解委托回执(result);
+    return 解委托回执(result, 'single');
   }
 
   return {
