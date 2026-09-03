@@ -211,17 +211,15 @@ function 解委托回执(input: unknown, 上下文: 委托回执读取上下文)
     : 要求枚举(raw.failure_code, 委托失败码全表);
 
   const 允许空ID = 上下文 === 'create' && state === 'refused';
-  if ((!允许空ID && delegation_id === '') || (允许空ID && typeof raw.delegation_id !== 'string')) {
-    throw 契约错误();
-  }
+  if (!允许空ID && delegation_id === '') throw 契约错误();
   const 无码 = refusal_code === null && failure_code === null;
   const 坐标合法 =
     (state === 'accepted' && 无码 && evaluation_id === null && case_id === null) ||
     (state === 'evaluating' && 无码 && evaluation_id !== null && case_id === null) ||
-    (state === 'needs_user' && delegation_id !== '' && 无码) ||
+    (state === 'needs_user' && 无码) ||
     (state === 'case_started' && 无码 && case_id !== null) ||
     (state === 'refused' && refusal_code !== null && failure_code === null) ||
-    (state === 'failed' && delegation_id !== '' && refusal_code === null && failure_code !== null);
+    (state === 'failed' && refusal_code === null && failure_code !== null);
   if (!坐标合法) throw 契约错误();
 
   return {
@@ -345,6 +343,16 @@ it('create-time refused 空 ID 显示当前业务拒绝但不写 receipt cache',
   expect(env.最新状态().P4委托回执['']).toBeUndefined();
 });
 ```
+
+同一文件已有四组 nullable-state/错位-code 钉子必须迁移而不是删除覆盖：
+
+- `P4拒绝文案 与 P4委托终态文案 逐项冻结`：补 `recommendation_stale`，把 `delegation_not_allowed` 和 `failed` 期望改为本 Task 的新安全文案。
+- `P4委托回执文案 按...`：移除 `state:null` 输入；改为合法 `refused+refusal_code`、`failed+failure_code`、`needs_user+双 code null` 三条。交叉 code 组合归到 operation 的非法合同用例，不让纯文案函数重复 decoder 矩阵职责。
+- `case_started 缺 case_id...`：第三个变体从 `state:null` 改成 `state:'refused', refusal_code:null, failure_code:null`，继续证明非法合同不落状态。
+- `needs_user/failed 无视拒绝码...`：改成 `needs_user` 双 code null 与 `failed+delegation_evaluation_failed`，断言新的 safe message；原“错槽也忽略”语义不再合法。
+- `state null 按已知非空拒绝码...`：由上面的 create-time empty-ID refusal 用例取代，证明兼容点只在合法 `refused`，不再在 operation 层保留 nullable state 分支。
+
+这些迁移与新增 table 一起保留原来的“非法组合不提交、合法 terminal 先落权威状态”覆盖；不要用 `as unknown as BFF委托回执` 继续制造已从 normalized type 删除的 `state:null`。
 
 - [ ] **Step 2: 运行 RED**
 
@@ -684,7 +692,7 @@ export interface P5状态视图 {
 }
 ```
 
-- Both list/detail normal views add `需注意:boolean` and `注意说明:string|null`。attention missing → `本阶段需要注意`; unavailable → `AI 服务暂时不可用，本 Case 尚未继续`; invalid → `本次 AI 结果无法安全用于推进 Case`。non-attention → false/null。
+- Both list/detail normal views add only `注意说明:string|null`。attention missing → `本阶段需要注意`; unavailable → `AI 服务暂时不可用，本 Case 尚未继续`; invalid → `本次 AI 结果无法安全用于推进 Case`。non-attention → null；是否需注意直接由 `注意说明 !== null` 推导，不保存第二个同源字段。
 
 - [ ] **Step 1: 写 decoder RED tests**
 
@@ -809,15 +817,26 @@ it.each([
     step: 'screening_resume', needsUser: false, agentAttention,
   });
   expect(映射P5列表项(造列表项({ state }))).toMatchObject({
-    kind: '正常', 需注意: true, 注意说明: copy,
+    kind: '正常', 注意说明: copy,
   });
   expect(映射P5详情(造详情({ state }))).toMatchObject({
-    kind: '正常', 需注意: true, 注意说明: copy,
+    kind: '正常', 注意说明: copy,
+  });
+});
+
+it('attention 行仍优先显示 viewer 待办归属', () => {
+  const state = 造状态({
+    lifecycle: 'open', stage: 'needs_coordination', status: 'attention_required',
+    step: 'coordinating', needsUser: false,
+    agentAttention: { code: 'agent_unavailable', retryable: false },
+  });
+  expect(映射P5列表项(造列表项({ state, needsAction: true }))).toMatchObject({
+    kind: '正常', 待办: true, 注意说明: 'AI 服务暂时不可用，本 Case 尚未继续',
   });
 });
 ```
 
-在 `MatchCase列表.test.tsx` 和 `MatchCase详情.test.tsx` 各加入 candidate/recruiter parameterized render，断言 attention 说明在场，徽标是 `需注意`，`代理处理中` 缺席，`重试简历校验`/`重试校验` 与任何新增 Agent retry button 缺席；另用 `retry_resume_readiness` 的既有合法 S1 case 证明其原文案/operation 仍在。
+在 `MatchCase列表.test.tsx` 和 `MatchCase详情.test.tsx` 各加入 candidate/recruiter parameterized render：`needsAction=false` 时断言 attention 说明在场、徽标是 `需注意`、`代理处理中` 缺席；`needsAction=true` 时断言徽标仍是 `需要你` 且说明仍在。两类都断言 `重试简历校验`/`重试校验` 与任何新增 Agent retry button 缺席；另用 `retry_resume_readiness` 的既有合法 S1 case 证明其原文案/operation 仍在。
 
 - [ ] **Step 5: 实现展示映射和双屏 UI**
 
@@ -829,25 +848,20 @@ const Agent注意文案表 = {
   agent_result_invalid: '本次 AI 结果无法安全用于推进 Case',
 } as const satisfies Record<P5Agent注意码, string>;
 
-function 映射Agent注意(state: P5状态视图): { 需注意: boolean; 注意说明: string | null } {
-  if (state.status !== 'attention_required') {
-    return { 需注意: false, 注意说明: null };
-  }
-  return {
-    需注意: true,
-    注意说明: state.agentAttention === null
-      ? '本阶段需要注意'
-      : Agent注意文案表[state.agentAttention.code],
-  };
+function 映射Agent注意(state: P5状态视图): string | null {
+  if (state.status !== 'attention_required') return null;
+  return state.agentAttention === null
+    ? '本阶段需要注意'
+    : Agent注意文案表[state.agentAttention.code];
 }
 ```
 
-两个 normal view interface 增加 `需注意`/`注意说明`，两个 mapper return spread `...映射Agent注意(state)`。列表徽标替换为：
+两个 normal view interface 增加 `注意说明`，两个 mapper return 加 `注意说明: 映射Agent注意(state)`。列表徽标替换为：
 
 ```tsx
-function 待办徽标({ 待办, 需注意 }: { 待办: boolean; 需注意: boolean }) {
-  const copy = 需注意 ? '需注意' : 待办 ? '需要你' : '代理处理中';
-  const tone = 需注意 || 待办 ? 样式.徽标待办 : 样式.徽标代理;
+function 待办徽标({ 待办, 注意说明 }: { 待办: boolean; 注意说明: string | null }) {
+  const copy = 待办 ? '需要你' : 注意说明 !== null ? '需注意' : '代理处理中';
+  const tone = 待办 || 注意说明 !== null ? 样式.徽标待办 : 样式.徽标代理;
   return <span className={`${样式.徽标} ${tone}`}>{copy}</span>;
 }
 ```
@@ -871,7 +885,7 @@ CSS 只加：
 }
 ```
 
-详情 header badge 同样以 `正常.需注意 ? '需注意' : 正常.待办 ? '需要你' : '代理处理中'` 计算；在正常详情主体状态行之后渲染同一 `正常.注意说明`，复用 `列表样式.注意说明`。不要增加任何 click handler 或 action。
+详情 header badge 同样以 `正常.待办 ? '需要你' : 正常.注意说明 !== null ? '需注意' : '代理处理中'` 计算；在正常详情主体状态行之后渲染同一 `正常.注意说明`，复用 `列表样式.注意说明`。不要增加任何 click handler 或 action。
 
 - [ ] **Step 6: 运行 GREEN 与提交**
 
@@ -1131,9 +1145,9 @@ assert_eq 'hosted-agent 退出码' "$RC" '0'
 assert_contains '运行 Hosted Agent 旅程' 'journey hosted-agent' "$CALLS"
 assert_missing '不运行 candidate CRUD' 'journey candidate-crud' "$CALLS"
 assert_eq 'hosted-agent 记 pass' \
-  "$(jq -r '.journeys[]|select(.journey==\"hosted-agent\")|.status' "$(report_json)" 2>/dev/null)" 'pass'
+  "$(jq -r '.journeys[]|select(.journey=="hosted-agent")|.status' "$(report_json)" 2>/dev/null)" 'pass'
 assert_eq '原五条均 skipped' \
-  "$(jq -r '[.journeys[]|select(.status==\"skipped\")]|length' "$(report_json)" 2>/dev/null)" '5'
+  "$(jq -r '[.journeys[]|select(.status=="skipped")]|length' "$(report_json)" 2>/dev/null)" '5'
 
 testcase '默认 all 保持原五条，不隐式运行真实 Provider 旅程'
 reset_case; setup_baseline
@@ -1141,9 +1155,9 @@ run_runner
 assert_eq '默认 all 退出码' "$RC" '0'
 assert_missing '默认不运行 hosted-agent' 'journey hosted-agent' "$CALLS"
 assert_eq 'hosted-agent 记 skipped' \
-  "$(jq -r '.journeys[]|select(.journey==\"hosted-agent\")|.status' "$(report_json)" 2>/dev/null)" 'skipped'
+  "$(jq -r '.journeys[]|select(.journey=="hosted-agent")|.status' "$(report_json)" 2>/dev/null)" 'skipped'
 assert_eq '原五条保持 pass' \
-  "$(jq -r '[.journeys[]|select(.status==\"pass\")]|length' "$(report_json)" 2>/dev/null)" '5'
+  "$(jq -r '[.journeys[]|select(.status=="pass")]|length' "$(report_json)" 2>/dev/null)" '5'
 ```
 
 - [ ] **Step 2: 运行 RED**
@@ -1236,7 +1250,7 @@ wait_one_of(){
   return 1
 }
 
-candidate_rule_count(){
+candidate_rule_count_once(){
   local body count
   body="$(ab get text body 2>/dev/null || printf '')"
   count="$(printf '%s\n' "$body" | sed -n 's/.*\([0-9][0-9]*\) 条.*/\1/p' | head -n 1)"
@@ -1244,15 +1258,61 @@ candidate_rule_count(){
   printf '%s' "$count"
 }
 
+candidate_rule_count(){
+  local tries=0 count
+  while [ "$tries" -lt 30 ]; do
+    count="$(candidate_rule_count_once 2>/dev/null || printf '')"
+    if [ -n "$count" ]; then printf '%s' "$count"; return 0; fi
+    tries=$((tries + 1))
+    sleep 1
+  done
+  echo '规则页水合后仍未出现 active rule 计数' >&2
+  return 1
+}
+
 wait_candidate_rule_count(){
   local expected="$1" tries=0 actual
   while [ "$tries" -lt 60 ]; do
-    actual="$(candidate_rule_count 2>/dev/null || printf '')"
+    actual="$(candidate_rule_count_once 2>/dev/null || printf '')"
     if [ "$actual" = "$expected" ]; then return 0; fi
     tries=$((tries + 1))
     sleep 1
   done
   echo "等待 active rule 数量变为 ${expected} 超时" >&2
+  return 1
+}
+
+wait_pdf_parse(){
+  local tries=0 body
+  while [ "$tries" -lt 180 ]; do
+    body="$(ab get text body 2>/dev/null || printf '')"
+    case "$body" in
+      *'识别完成'*) return 0 ;;
+      *'未能读取 · 可重试'*|*'内容过多 · 请替换'*|*'识别失败 · 可重试'*|*'服务繁忙 · 稍后重试'*)
+        echo 'PDF 解析进入公开失败终态' >&2
+        return 1 ;;
+    esac
+    tries=$((tries + 1))
+    sleep 1
+  done
+  echo '等待 PDF 解析公开终态超时' >&2
+  return 1
+}
+
+wait_rule_proposal_ready(){
+  local tries=0 body
+  while [ "$tries" -lt 180 ]; do
+    body="$(ab get text body 2>/dev/null || printf '')"
+    case "$body" in
+      *'确认规则'*) return 0 ;;
+      *'AI 暂时不可用，本次规则没有生效'*|*'内容无法可靠转换为规则，可编辑后重新提交'*|*'本次规则没有生效'*)
+        echo 'P6 规则解释进入公开失败终态' >&2
+        return 1 ;;
+    esac
+    tries=$((tries + 1))
+    sleep 1
+  done
+  echo '等待 P6 规则解释公开终态超时' >&2
   return 1
 }
 
@@ -1269,7 +1329,7 @@ find_retry placeholder '例：不接受大小周的岗位直接过滤' fill "$RU
 click_button_exact '提交给AI代理理解'
 assert_text 'AI代理正在理解这条规则…'
 MILESTONE='P6 等待就绪'
-wait_one_of '确认规则' '本次规则没有生效'
+wait_rule_proposal_ready
 assert_text '确认规则'
 click_button_exact '确认规则'
 wait_candidate_rule_count "$RULE_COUNT_AFTER"
@@ -1287,7 +1347,7 @@ ab upload 'input[type="file"]' "$TEMP_PDF_DIR/$RESUME_NAME" >/dev/null
 assert_text '允许 AI 识别这份简历？'
 click_button_exact '同意并继续'
 record_cleanup_marker candidate_resume_file_names "$RESUME_NAME"
-wait_one_of '识别完成' '识别失败'
+wait_pdf_parse
 assert_text '识别完成'
 
 # P4：candidate market delegation -> server case_started -> open real MatchCase.
@@ -1301,7 +1361,8 @@ if on_screen '让AI代理帮我搜'; then
   wait_text '让AI代理去谈'
 fi
 click_button '让AI代理去谈'
-if on_screen '选择这次委托的简历'; then
+wait_one_of '选择这次提交的简历' '确认委托AI代理？'
+if on_screen '选择这次提交的简历'; then
   find_retry role radio click --name "$RESUME_NAME" >/dev/null
   click_button_exact '确认并委托'
 fi
@@ -1312,6 +1373,11 @@ wait_one_of '查看进展' '本次委托未完成'
 assert_text '查看进展'
 click_button_exact '查看进展'
 assert_text '匿名初筛'
+CANDIDATE_CASE_URL="$(ab get url)"
+case "$CANDIDATE_CASE_URL" in
+  *'#/deal/'*) : ;;
+  *) echo '查看进展没有进入 candidate Case 深链' >&2; exit 1 ;;
+esac
 
 # Candidate 侧完成当前公开动作；补问存在时回答，否则按 S0 可用动作继续。
 MILESTONE='candidate target 完成'
@@ -1367,6 +1433,12 @@ wait_one_of '回应协同事项' '确认意向'
 if on_screen '接受'; then click_button_exact '接受'; fi
 if on_screen '确认意向'; then click_button_exact '确认意向'; fi
 ab reload >/dev/null
+assert_no_mock_data
+
+# 直接打开先前保存的公开 Case URL，不依赖列表内存；深链重进后仍由后端详情水合。
+MILESTONE='candidate Case 深链重进'
+ab open "$CANDIDATE_CASE_URL" >/dev/null
+assert_text '匿名初筛'
 assert_no_mock_data
 
 MILESTONE='完成'
@@ -1477,7 +1549,7 @@ Expected: PASS on final merged candidate。merge/repair 后不得复用旧 commi
 
 - [ ] **Step 5: 串行运行真实 Hosted Agent L3**
 
-先只读确认后端精确 commit、real health，以及 official browser fixture receipt/cleanup 已显式拥有 Agent rule、delegation 与 MatchCase（或后端 Handoff 明确给出每轮唯一隔离数据）。当前冻结 `f69fcec265cf634508d6e3236d85e7eeb74d9b37` 不满足最后一项；如果执行时仍未补齐，记录 `ENV_BLOCKED/BLOCKED_BY_BACKEND_FIXTURE_OWNERSHIP` 并停止，不启动旅程、不 push：
+先只读确认后端精确 commit、real health，以及 official browser fixture receipt/cleanup 已显式拥有 Agent rule、delegation 与 MatchCase（或后端 Handoff 明确给出每轮唯一隔离数据）。当前冻结 `f69fcec265cf634508d6e3236d85e7eeb74d9b37` 不满足最后一项；如果执行时仍未补齐，唯一处置是写 `integration-result.md` 为 `integration_status: BLOCKED`、`release_verdict: PENDING`、原因 `BLOCKED_BY_BACKEND_FIXTURE_OWNERSHIP`，保留 candidate branch/worktree 并向用户返回，不启动旅程、不写 admission PASS、不 push。后端补齐后可从本 Terminal Task Step 2 重新 fetch/merge 并重跑最终 gates；若用户要在 L3 缺席时仍集成，必须由 planning owner 修改本 Plan/manifest cadence 后重新审查，执行者不得临场降级：
 
 ```bash
 git -C /Users/visionclaw/agxp-monorepo rev-parse HEAD

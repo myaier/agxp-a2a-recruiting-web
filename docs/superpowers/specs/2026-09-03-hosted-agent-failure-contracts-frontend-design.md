@@ -204,7 +204,7 @@ list/detail 使用同一展示映射：
 - `agent_result_invalid`：本次 AI 结果无法安全用于推进 Case；
 - 缺 `agent_attention`：本阶段需要注意。
 
-`attention_required` 不显示“代理处理中”等仍在推进的暗示。前端不增加 Agent retry 按钮、action 或 operation。现有 `retry_resume_readiness` 永远只代表 PDF parse/readiness；end、replace、人工决定等既有动作仍由 17 行矩阵与后端 `available_actions` 交集决定。
+`attention_required` 不显示“代理处理中”等仍在推进的暗示；若 viewer 同时有合法 `available_actions`，动作归属徽标仍优先显示“需要你”，attention 原因在说明行展示。前端不增加 Agent retry 按钮、action 或 operation。现有 `retry_resume_readiness` 永远只代表 PDF parse/readiness；end、replace、人工决定等既有动作仍由 17 行矩阵与后端 `available_actions` 交集决定。
 
 ### 6.3 P6
 
@@ -306,6 +306,8 @@ npm run test:agent-browser:shell
 - 官方 browser fixture 能以 owner-safe run receipt 记录并收敛本旅程新增的 Agent rule、delegation 与 MatchCase，或提供等价的每轮唯一隔离数据；前端脚本不从数据库猜 ID，也不自建第二套清理器。
 
 缺少工具、真实 Provider、健康、model access、identity/enrollment 或 fixture ownership 前置时记为 `INFRA_BLOCKED`；已经开始业务旅程后出现非法合同或错误终态记为 `FUNCTIONAL_FAILED`。启动成功和 HTTP 202 都不构成通过。
+
+本批次的真实 Hosted L3 是 required gate，不因前端单测通过而自动降级。若 fixture ownership 仍缺失，集成结果明确停在 `BLOCKED`、分支保留且不 push；后端补齐后重同步 target 并重跑最终 gates。任何“先合前端、以后补 L3”的例外都需要用户通过新 Plan/manifest 明确改写 cadence，执行者不能现场决定。
 
 ### 9.3 Happy-path journey
 
