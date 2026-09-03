@@ -147,9 +147,26 @@ export default function 看市场() {
         : []),
     [后端卡们]
   );
+  // terminal summary 单次权威补读：摘要已 refused/failed 而权威回执表缺这条 ID 时，
+  // 钩子立即补读一次拿回拒绝/失败码 —— 页面摘要永远不给原因，回执来了才解释
+  const 待恢复终态 = useMemo(
+    () => 后端卡们.flatMap(({ 卡 }) => {
+      const summary = 卡.delegation;
+      if (summary === null || summary.delegation_id === '') return [];
+      if (summary.state !== 'refused' && summary.state !== 'failed') return [];
+      if (后端状态.P4委托回执?.[summary.delegation_id] !== undefined) return [];
+      return [{
+        role: 'candidate' as const,
+        delegationId: summary.delegation_id,
+        state: summary.state,
+      }];
+    }),
+    [后端卡们, 后端状态.P4委托回执]
+  );
   const 进度未知 = use发现推荐委托轮询({
     开启: 是后端,
     委托: 进行中委托,
+    待恢复终态,
     刷新: 操作.刷新委托,
     // scope 变化即结束本轮询周期：换意向不带走上一意向的连续失败计数（§8.3）
     范围键: 活跃意向,

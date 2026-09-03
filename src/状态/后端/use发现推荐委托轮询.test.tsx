@@ -5,7 +5,7 @@
 // 401 属统一清理，绝不变成暂停标记。
 // 注：仓库未装 @testing-library/jest-dom，断言一律用调用计数与 toBe/toEqual。
 
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BFF错误 } from '../../数据/HTTP客户端';
 import { P4委托进度未知文案, use发现推荐委托轮询 } from './use发现推荐委托轮询';
@@ -270,12 +270,68 @@ describe('use发现推荐委托轮询', () => {
     expect(刷新委托).toHaveBeenCalledTimes(6);
     expect(result.current.has('del_scope')).toBe(false);
   });
+
+  // ── terminal summary 单次权威补读（Hosted Agent 失败合同 Task 3）──
+  //   摘要已 refused/failed 而权威回执表缺这条 ID：每个 开启+范围键 scope 对每个
+  //   terminal ID 至多一次 immediate GET —— 无 interval、无自动 retry；换 scope
+  //   后同 ID 可再补读一次；迟到失败不污染新 scope（fence 归操作层）。
+  it('terminal summary 缺 receipt 时立即补读一次，rerender 与时间推进都不重发', async () => {
+    // 真实时钟：Vitest 4 禁止未装假时钟就 advanceTimersByTime，而 RTL 的 waitFor 在
+    // 假时钟下会挂死 —— 补读发生在挂载 effect 里，waitFor 首查即过；「时间推进」用
+    // 同样 100ms 的真实等待表达（20ms 间隔的 interval 在等待里空转数拍，仍不重发）
+    const 刷新 = vi.fn().mockResolvedValue(undefined);
+    const terminal = [{ role: 'candidate' as const, delegationId: 'del_t1', state: 'failed' as const }];
+    const page = renderHook((props: { items: typeof terminal }) => use发现推荐委托轮询({
+      开启: true,
+      委托: [],
+      待恢复终态: props.items,
+      刷新,
+      范围键: 'int_1',
+      间隔毫秒: 20,
+    }), { initialProps: { items: terminal } });
+    await waitFor(() => expect(刷新).toHaveBeenCalledTimes(1));
+    page.rerender({ items: [...terminal] });
+    await act(async () => { await new Promise((行) => setTimeout(行, 100)); });
+    expect(刷新).toHaveBeenCalledTimes(1);
+  });
+
+  it('换 scope 后同 ID 可补读一次；旧 scope 迟到失败不污染新 scope', async () => {
+    const first = deferred<void>();
+    const 刷新 = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce(undefined);
+    const item = [{ role: 'recruiter' as const, delegationId: 'del_t1', state: 'refused' as const }];
+    const page = renderHook((scope: string) => use发现推荐委托轮询({
+      开启: true, 委托: [], 待恢复终态: item, 刷新, 范围键: scope,
+    }), { initialProps: 'job_1' });
+    await waitFor(() => expect(刷新).toHaveBeenCalledTimes(1));
+    page.rerender('job_2');
+    await waitFor(() => expect(刷新).toHaveBeenCalledTimes(2));
+    first.reject(new Error('late'));
+    await act(async () => { await Promise.resolve(); });
+    expect(刷新).toHaveBeenCalledTimes(2);
+  });
+
+  it('空 ID、关闭状态和非 terminal 输入不发补读', async () => {
+    const 刷新 = vi.fn().mockResolvedValue(undefined);
+    renderHook(() => use发现推荐委托轮询({
+      开启: false,
+      委托: [],
+      待恢复终态: [{ role: 'candidate', delegationId: '', state: 'failed' }],
+      刷新,
+      范围键: 'int_1',
+    }));
+    await act(async () => { await Promise.resolve(); });
+    expect(刷新).not.toHaveBeenCalled();
+  });
 });
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((yes) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
     resolve = yes;
+    reject = no;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }

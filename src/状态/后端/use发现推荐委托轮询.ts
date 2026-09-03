@@ -10,6 +10,11 @@
 //   · 卸载 / 开启 翻 false / 页面 scope 变化即清 interval、在途表、计数与暂停表，并翻转
 //     周期代际：旧周期（旧页面、旧 scope）的迟到完成只落在途清理；重进页面或换 scope
 //     都从一张干净的计数表起跑（§8.3：unmount、role/subject/scope 变化立即停止并增代）。
+// terminal summary 单次权威补读（Hosted Agent 失败合同）：页面摘要已 refused/failed 而权威
+// 回执表缺这条 delegation ID（重载 / 跨端恢复的典型缺口）时，拒绝码 / 失败码只活在 GET
+// 回执里，页面摘要永远不给 —— 每个 开启+范围键 scope 对每个 terminal ID 至多一次
+// immediate GET：无 interval、无自动 retry，mark-before-call 防 rerender 重发，成功 / 失败
+// 都保留「已尝试」；scope 变化 / 卸载清表后同 ID 可再补读一次。
 // 会话/范围栅栏与终态提交归 操作层（发现推荐操作.ts 的 刷新委托）所有，
 // 本钩子只负责节拍、单飞与失败上界，不持有任何快照。
 
@@ -30,12 +35,21 @@ export interface 可轮询委托 {
   state: 'accepted' | 'evaluating';
 }
 
+/** 摘要已到 terminal 而权威回执表缺这条 ID 的委托：页面要求本钩子立即补读一次。 */
+export interface 待恢复终态委托 {
+  role: BFF角色;
+  delegationId: string;
+  state: 'refused' | 'failed';
+}
+
 /** 轮询连续失败后页面覆盖「已接手」标签用的中性文案（绝不伪造成终态回执）。 */
 export const P4委托进度未知文案 = '暂时无法确认进度，请稍后刷新';
 
 export function use发现推荐委托轮询(input: {
   开启: boolean;
   委托: 可轮询委托[];
+  /** 摘要已 refused/failed 而回执表缺这条 ID 的委托：每个 scope 至多补读一次 */
+  待恢复终态?: 待恢复终态委托[];
   刷新: (role: BFF角色, delegationId: string) => Promise<void>;
   /**
    * 页面当前 scope 坐标（意向编号 / 岗位编号 / 详情键）。变化即结束本轮询周期并重开：
@@ -114,6 +128,40 @@ export function use发现推荐委托轮询(input: {
       设暂停(new Set());
     };
   }, [开启, 范围键]);
+
+  // ── terminal summary 单次权威补读：与上面的 active interval 完全分离 ──
+  // active 轮询只管 accepted/evaluating（终态由页面 selector 摘除）；这里是摘要已
+  // refused/failed、回执表却缺这条 ID 的一次性 immediate GET。列表是派生对象（每次
+  // 渲染新引用），effect 只依赖 开启/范围键/恢复键 三个稳定标量，最新列表走 ref。
+  const 待恢复引用 = useRef(input.待恢复终态 ?? []);
+  待恢复引用.current = input.待恢复终态 ?? [];
+  const 已补读 = useRef<Set<string>>(new Set());
+  const 恢复键 = JSON.stringify(
+    (input.待恢复终态 ?? []).map(({ role, delegationId, state }) => [role, delegationId, state]),
+  );
+
+  // reset effect 声明在前：同一 commit 的 React effect 顺序先清后读，
+  // 换 scope / 关闭 / 卸载后同 ID 可再补读一次
+  useEffect(() => {
+    已补读.current = new Set();
+    return () => {
+      已补读.current = new Set();
+    };
+  }, [开启, 范围键]);
+
+  // one-shot effect 声明在后：mark-before-call 防 rerender 重发；成功/失败都保留
+  // 「已尝试」（拒绝码/失败码只活在 GET 回执里，失败绝不本地编造）；迟到结果能否
+  // 提交由操作层 刷新委托 的 session/scope generation fence 决定
+  useEffect(() => {
+    if (!开启) return;
+    for (const item of 待恢复引用.current) {
+      if (item.delegationId === '') continue;
+      const key = `${item.role}:${item.delegationId}`;
+      if (已补读.current.has(key)) continue;
+      已补读.current.add(key);
+      void 刷新引用.current(item.role, item.delegationId).catch(() => undefined);
+    }
+  }, [开启, 范围键, 恢复键]);
 
   return 暂停;
 }

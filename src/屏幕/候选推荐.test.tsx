@@ -11,7 +11,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 候选推荐 from './候选推荐';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFFOwnerJob, BFF招聘候选推荐, BFF委托摘要 } from '../数据/BFF契约';
+import type { BFFOwnerJob, BFF招聘候选推荐, BFF委托摘要, BFF委托回执 } from '../数据/BFF契约';
 import { BFF招聘候选推荐样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 import { 路径 } from '../路由/路径表';
@@ -93,6 +93,8 @@ function 置P4状态(选项: {
   岗位列表?: Record<string, unknown>[];
   /** 权威 owner Job（后端状态.岗位快照）：默认已验证 + 带 ref；null = 快照还没水合 */
   ownerJob?: BFFOwnerJob | null;
+  /** P4 委托回执表（terminal 补读用例给）；缺省空表 = 回执缺位 */
+  委托回执?: Record<string, BFF委托回执>;
   操作?: Record<string, unknown>;
 }) {
   const 编号 = 选项.岗位编号 ?? 岗位编号;
@@ -118,7 +120,7 @@ function 置P4状态(选项: {
       // 与生产同口径：岗位的 owner 投影按 job_id 存；水合未完成时键缺席
       岗位快照: ownerJob === null ? {} : { [编号]: ownerJob },
       招聘可用候选: { [编号]: 选项.快照 ?? P4快照({ 阶段: '成功', items: [BFF招聘候选推荐样本] }) },
-      P4委托回执: {},
+      P4委托回执: 选项.委托回执 ?? {},
     },
     // 生产 Provider 恒注入全表：桩宿主同样给全表，用例只覆盖自己要断言的 spy
     操作: 发现推荐操作桩(选项.操作),
@@ -542,6 +544,60 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     expect(screen.getByText('暂时无法确认进度，请稍后刷新')).toBeTruthy();
     expect(screen.queryByText('已提交给 AI，等待处理')).toBeNull();
     expect(screen.queryByText('AI代理已接手')).toBeNull();
+  });
+
+  // ── Hosted Agent 失败合同 Task 3：terminal summary 单次权威补读 ──
+  //   重载/跨端恢复时列表摘要可能已 refused/failed 而权威回执表缺这条 delegation ID：
+  //   拒绝/失败码只活在 GET 回执里 —— 进屏立即补读一次（无 interval、无 retry），
+  //   rerender 不重发；回执表已有同 ID receipt（七键齐全）就一个都不发。
+  const failedReceipt: BFF委托回执 = {
+    delegation_id: 'del_terminal', recommendation_id: 'rec_1', state: 'failed',
+    evaluation_id: null, case_id: null, refusal_code: null,
+    failure_code: 'delegation_agent_unavailable',
+  };
+  const refusedReceipt: BFF委托回执 = {
+    delegation_id: 'del_terminal', recommendation_id: 'rec_1', state: 'refused',
+    evaluation_id: null, case_id: null, refusal_code: 'delegation_cooldown',
+    failure_code: null,
+  };
+
+  it('terminal summary 缺 receipt：进屏立即补读一次，rerender 不重发', async () => {
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [换卡({
+          推荐ID: 'rec_r1', 别名: '候选人甲',
+          委托: { delegation_id: 'del_terminal', state: 'failed', case_id: null },
+        })],
+      }),
+      操作: { 刷新委托: mock刷新委托 },
+    });
+    const 页 = render(<候选推荐 />);
+    await waitFor(() => expect(mock刷新委托).toHaveBeenCalledTimes(1));
+    expect(mock刷新委托).toHaveBeenCalledWith('recruiter', 'del_terminal');
+    页.rerender(<候选推荐 />);
+    await act(async () => {});
+    expect(mock刷新委托).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['refused', refusedReceipt],
+    ['failed', failedReceipt],
+  ] as const)('%s 摘要已有同 ID receipt：零补读', async (state, receipt) => {
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [换卡({
+          推荐ID: 'rec_r1', 别名: '候选人甲',
+          委托: { delegation_id: 'del_terminal', state, case_id: null },
+        })],
+      }),
+      委托回执: { del_terminal: receipt },
+      操作: { 刷新委托: mock刷新委托 },
+    });
+    render(<候选推荐 />);
+    await act(async () => {});
+    expect(mock刷新委托).not.toHaveBeenCalled();
   });
 
   // 招聘 scope 必须是自己名下的在招 job_id：一个在招岗都没有、或当前岗已归档时，

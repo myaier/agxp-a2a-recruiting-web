@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 匿名在线简历, { 简历正文 } from './匿名在线简历';
 import { 匿名简历表 } from '../数据/企业端模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFF招聘候选推荐 } from '../数据/BFF契约';
+import type { BFF招聘候选推荐, BFF委托回执 } from '../数据/BFF契约';
 import { BFF招聘候选推荐样本, BFF岗位样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 import { 路径 } from '../路由/路径表';
@@ -50,6 +50,8 @@ const 岗位编号 = BFF岗位样本.job_id;
 function 置P4详情状态(选项: {
   详情?: BFF招聘候选推荐 | null;
   不可用?: string[];
+  /** P4 委托回执表（terminal 补读用例给）；缺省空表 = 回执缺位 */
+  委托回执?: Record<string, BFF委托回执>;
   操作?: Record<string, unknown>;
 }) {
   mock应用状态 = {
@@ -65,7 +67,7 @@ function 置P4详情状态(选项: {
         recruiter: { rules: '成功', proposals: '成功' } },
       招聘候选详情: 选项.详情 ? { rec_r1: 选项.详情 } : {},
       招聘候选不可用: 选项.不可用 ?? [],
-      P4委托回执: {},
+      P4委托回执: 选项.委托回执 ?? {},
     },
     // 生产 Provider 恒注入全表：桩宿主同样给全表，用例只覆盖自己要断言的 spy
     操作: 发现推荐操作桩(选项.操作),
@@ -385,5 +387,59 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     await act(() => vi.advanceTimersByTimeAsync(8000));
     expect(screen.getByText('暂时无法确认进度，请稍后刷新')).toBeTruthy();
     expect(screen.queryByText('已提交给 AI，等待处理')).toBeNull();
+  });
+
+  // ── Hosted Agent 失败合同 Task 3：terminal summary 单次权威补读 ──
+  //   重载/跨端恢复进详情时摘要可能已 refused/failed 而权威回执表缺这条 ID：
+  //   拒绝/失败码只活在 GET 回执里 —— 进屏立即补读一次（无 interval、无 retry），
+  //   rerender 不重发；回执表已有同 ID receipt（七键齐全）就一个都不发。
+  const failedReceipt: BFF委托回执 = {
+    delegation_id: 'del_terminal', recommendation_id: 'rec_1', state: 'failed',
+    evaluation_id: null, case_id: null, refusal_code: null,
+    failure_code: 'delegation_agent_unavailable',
+  };
+  const refusedReceipt: BFF委托回执 = {
+    delegation_id: 'del_terminal', recommendation_id: 'rec_1', state: 'refused',
+    evaluation_id: null, case_id: null, refusal_code: 'delegation_cooldown',
+    failure_code: null,
+  };
+
+  it('terminal summary 缺 receipt：进屏立即补读一次，rerender 不重发', async () => {
+    置P4详情状态({
+      详情: {
+        ...BFF招聘候选推荐样本,
+        delegation: { delegation_id: 'del_terminal', state: 'failed', case_id: null },
+      },
+      操作: { 刷新委托: mock刷新委托 },
+    });
+    const 页 = 渲染详情();
+    await waitFor(() => expect(mock刷新委托).toHaveBeenCalledTimes(1));
+    expect(mock刷新委托).toHaveBeenCalledWith('recruiter', 'del_terminal');
+    页.rerender(
+      <MemoryRouter initialEntries={['/hr/resume/rec_r1']}>
+        <Routes>
+          <Route path="/hr/resume/:id" element={<匿名在线简历 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(mock刷新委托).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['refused', refusedReceipt],
+    ['failed', failedReceipt],
+  ] as const)('%s 摘要已有同 ID receipt：零补读', async (state, receipt) => {
+    置P4详情状态({
+      详情: {
+        ...BFF招聘候选推荐样本,
+        delegation: { delegation_id: 'del_terminal', state, case_id: null },
+      },
+      委托回执: { del_terminal: receipt },
+      操作: { 刷新委托: mock刷新委托 },
+    });
+    渲染详情();
+    await act(async () => {});
+    expect(mock刷新委托).not.toHaveBeenCalled();
   });
 });

@@ -20,7 +20,7 @@ import { P4委托进度未知文案 } from '../状态/后端/use发现推荐委�
 import { 标记看市场来路, 复位看市场来路 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库 } from '../数据/BFF契约';
+import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库, BFF委托回执 } from '../数据/BFF契约';
 import type { P8ReportReceipt } from '../数据/招聘数据源/P8控制面';
 import { BFF候选岗位推荐样本, BFFCandidateJob样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
@@ -77,6 +77,8 @@ function 渲染Backend状态(选项: {
   候选岗位推荐?: Record<string, unknown>;
   候选岗位详情?: Record<string, unknown>;
   候选岗位不可用?: string[];
+  /** P4 委托回执表（terminal 补读用例给）；缺省空表 = 回执缺位 */
+  P4委托回执?: Record<string, BFF委托回执>;
   /** 当前意向编号载体：推荐卡只从这一个 scope 里找，缺省是快照惯例的 int_1 */
   当前意向编号?: string | null;
   /** Backend 初始化阶段：缺省 '完成'（既有用例代表水合后的渲染世界） */
@@ -98,6 +100,7 @@ function 渲染Backend状态(选项: {
       候选岗位推荐: 选项.候选岗位推荐 ?? {},
       候选岗位详情: 选项.候选岗位详情 ?? {},
       候选岗位不可用: 选项.候选岗位不可用 ?? [],
+      P4委托回执: 选项.P4委托回执 ?? {},
     },
     // 生产 Provider 恒注入全表：桩宿主同样给全表，用例只覆盖自己要断言的 spy
     // 准备候选委托简历 属附件域，同样默认给桩，用例再用 mockResolvedValue 定行为
@@ -683,7 +686,8 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     const { rerender } = render(路由元素('job_1'));
     await act(() => vi.advanceTimersByTimeAsync(2000));
     expect(mock刷新委托).toHaveBeenCalledTimes(1);
-    // 操作层提交终态后摘要保留权威 state：卡回 available，只有 accepted/evaluating 才轮询
+    // 操作层提交终态后摘要保留权威 state：卡回 available，只有 accepted/evaluating 才轮询。
+    // 摘要换成 refused 且回执表缺 del_9：terminal 单次补读再发一发拿权威拒绝码
     渲染Backend状态({
       候选岗位推荐: 快照With({
         ...推荐卡样本,
@@ -693,8 +697,57 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     });
     rerender(路由元素('job_1'));
     expect(screen.getByText('本次未能继续')).toBeTruthy();
+    expect(mock刷新委托).toHaveBeenCalledTimes(2);
     await act(() => vi.advanceTimersByTimeAsync(6000));
+    expect(mock刷新委托).toHaveBeenCalledTimes(2); // interval 已停：不再有第三发
+  });
+
+  // ── Hosted Agent 失败合同 Task 3：terminal summary 单次权威补读 ──
+  //   重载/跨端恢复进详情时摘要可能已 refused/failed 而权威回执表缺这条 ID：
+  //   拒绝/失败码只活在 GET 回执里 —— 进屏立即补读一次（无 interval、无 retry），
+  //   rerender 不重发；回执表已有同 ID receipt（七键齐全）就一个都不发。
+  const failedReceipt: BFF委托回执 = {
+    delegation_id: 'del_terminal', recommendation_id: 'rec_1', state: 'failed',
+    evaluation_id: null, case_id: null, refusal_code: null,
+    failure_code: 'delegation_agent_unavailable',
+  };
+  const refusedReceipt: BFF委托回执 = {
+    delegation_id: 'del_terminal', recommendation_id: 'rec_1', state: 'refused',
+    evaluation_id: null, case_id: null, refusal_code: 'delegation_cooldown',
+    failure_code: null,
+  };
+
+  it('terminal summary 缺 receipt：进屏立即补读一次，rerender 不重发', async () => {
+    渲染Backend状态({
+      候选岗位推荐: 快照With({
+        ...推荐卡样本,
+        state: 'available',
+        delegation: { delegation_id: 'del_terminal', state: 'failed', case_id: null },
+      }),
+    });
+    const 页 = render(路由元素('job_1'));
+    await waitFor(() => expect(mock刷新委托).toHaveBeenCalledTimes(1));
+    expect(mock刷新委托).toHaveBeenCalledWith('candidate', 'del_terminal');
+    页.rerender(路由元素('job_1'));
+    await act(async () => {});
     expect(mock刷新委托).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['refused', refusedReceipt],
+    ['failed', failedReceipt],
+  ] as const)('%s 摘要已有同 ID receipt：零补读', async (state, receipt) => {
+    渲染Backend状态({
+      候选岗位推荐: 快照With({
+        ...推荐卡样本,
+        state: 'available',
+        delegation: { delegation_id: 'del_terminal', state, case_id: null },
+      }),
+      P4委托回执: { del_terminal: receipt },
+    });
+    render(路由元素('job_1'));
+    await act(async () => {});
+    expect(mock刷新委托).not.toHaveBeenCalled();
   });
 
   it('同一委托连续五次轮询失败后，进行中标被中性文案覆盖', async () => {

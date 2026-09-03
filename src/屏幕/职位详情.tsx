@@ -305,9 +305,22 @@ function Backend职位详情() {
       state: 委托展示.state === 'accepted' ? ('accepted' as const) : ('evaluating' as const),
     }]
     : []), [委托展示, 委托摘要]);
+  // terminal summary 单次权威补读：摘要已 refused/failed 而权威回执表缺这条 ID 时，
+  // 钩子立即补读一次拿回拒绝/失败码 —— 页面摘要永远不给原因，回执来了才解释
+  const 待恢复终态 = useMemo(() => {
+    if (委托摘要 === null || 委托摘要.delegation_id === '') return [];
+    if (委托摘要.state !== 'refused' && 委托摘要.state !== 'failed') return [];
+    if (委托回执 !== null) return [];
+    return [{
+      role: 'candidate' as const,
+      delegationId: 委托摘要.delegation_id,
+      state: 委托摘要.state,
+    }];
+  }, [委托摘要, 委托回执]);
   const 进度未知 = use发现推荐委托轮询({
     开启: true,
     委托: 进行中委托,
+    待恢复终态,
     刷新: 操作.刷新委托,
     // scope 变化即结束本轮询周期：换 Job 不带走上一条的连续失败计数（§8.3）
     范围键: 编号 ?? null,

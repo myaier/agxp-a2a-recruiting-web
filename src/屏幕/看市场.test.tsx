@@ -22,7 +22,7 @@ import { 路径 } from '../路由/路径表';
 import { 有会话内看市场来路, 复位看市场来路 } from '../路由/导航钩子';
 import { 今日简报, 在谈列表 } from '../数据/模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库 } from '../数据/BFF契约';
+import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库, BFF委托回执 } from '../数据/BFF契约';
 import { BFF候选岗位推荐样本, BFF意向样本, BFF主体样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
@@ -800,18 +800,38 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     expect(mock刷新委托).toHaveBeenCalledWith('candidate', `del_${state}`);
   });
 
-  it.each(['case_started', 'needs_user', 'refused', 'failed'] as const)(
+  it.each(['case_started', 'needs_user'] as const)(
     '%s does not poll or render an in-progress label',
     async (state) => {
       vi.useFakeTimers();
       置P4候选状态([{
         ...BFF候选岗位推荐样本,
-        state: state === 'case_started' ? 'delegated' : 'available',
+        state: 'available',
         delegation: { delegation_id: `del_${state}`, state, case_id: null },
       }], { 刷新委托: mock刷新委托 });
       render(<看市场 />);
       await act(() => vi.advanceTimersByTimeAsync(10000));
       expect(mock刷新委托).not.toHaveBeenCalled();
+      expect(screen.queryByText('AI 正在评估')).toBeNull();
+    },
+  );
+
+  // 摘要已 refused/failed 而回执表缺这条 ID（置P4候选状态 不设 P4委托回执）：进屏立即
+  // 补读一次拿权威拒绝/失败码，此后无 interval、无重试；进行中标签同样不在
+  it.each(['refused', 'failed'] as const)(
+    '%s summary gets exactly one immediate authoritative read, never an interval poll',
+    async (state) => {
+      vi.useFakeTimers();
+      置P4候选状态([{
+        ...BFF候选岗位推荐样本,
+        state: 'available',
+        delegation: { delegation_id: `del_${state}`, state, case_id: null },
+      }], { 刷新委托: mock刷新委托 });
+      render(<看市场 />);
+      expect(mock刷新委托).toHaveBeenCalledTimes(1);
+      expect(mock刷新委托).toHaveBeenCalledWith('candidate', `del_${state}`);
+      await act(() => vi.advanceTimersByTimeAsync(10000));
+      expect(mock刷新委托).toHaveBeenCalledTimes(1);
       expect(screen.queryByText('AI 正在评估')).toBeNull();
     },
   );
@@ -1380,5 +1400,68 @@ describe('看市场 · P5 横幅共用（Backend）', () => {
     expect(screen.getByText('3 个职位需要你协调')).toBeTruthy();
     expect(不触P5桩.设置P5范围).not.toHaveBeenCalled();
     expect(不触P5桩.加载工作区).not.toHaveBeenCalled();
+  });
+});
+
+// ── Hosted Agent 失败合同 Task 3：terminal summary 单次权威补读 ──────────────
+//   重载/跨端恢复时列表摘要可能已 refused/failed 而权威回执表缺这条 delegation ID：
+//   拒绝/失败码只活在 GET 回执里 —— 进屏立即补读一次（无 interval、无 retry），
+//   rerender 不重发；回执表已有同 ID receipt（七键齐全）就一个都不发。
+describe('看市场 · terminal summary 单次权威补读（Backend）', () => {
+  const failedReceipt: BFF委托回执 = {
+    delegation_id: 'del_terminal', recommendation_id: 'rec_1', state: 'failed',
+    evaluation_id: null, case_id: null, refusal_code: null,
+    failure_code: 'delegation_agent_unavailable',
+  };
+  const refusedReceipt: BFF委托回执 = {
+    delegation_id: 'del_terminal', recommendation_id: 'rec_1', state: 'refused',
+    evaluation_id: null, case_id: null, refusal_code: 'delegation_cooldown',
+    failure_code: null,
+  };
+
+  /** terminal 摘要卡（refused/failed）+ 按用例给的回执表；缺省空表 = 缺 receipt */
+  function 置terminal摘要(state: 'refused' | 'failed', 回执: BFF委托回执 | null = null) {
+    置应用状态({
+      模式: 'backend', 候选规则阶段: '成功',
+      状态: P4状态底座(),
+      后端状态: {
+        候选岗位推荐: {
+          [BFF意向样本.intention_id]: P4快照({
+            阶段: '成功',
+            items: [{
+              ...BFF候选岗位推荐样本,
+              state: 'available',
+              delegation: { delegation_id: 'del_terminal', state, case_id: null },
+            }],
+          }),
+        },
+        P4委托回执: 回执 === null ? {} : { del_terminal: 回执 },
+      },
+      操作: { 委托候选岗位: mock委托候选岗位, 刷新委托: mock刷新委托 },
+    });
+  }
+
+  beforeEach(() => {
+    mock刷新委托.mockClear();
+  });
+
+  it('terminal summary 缺 receipt：进屏立即补读一次，rerender 不重发', async () => {
+    置terminal摘要('failed');
+    const 页 = render(<看市场 />);
+    await waitFor(() => expect(mock刷新委托).toHaveBeenCalledTimes(1));
+    expect(mock刷新委托).toHaveBeenCalledWith('candidate', 'del_terminal');
+    页.rerender(<看市场 />);
+    await act(async () => {});
+    expect(mock刷新委托).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['refused', refusedReceipt],
+    ['failed', failedReceipt],
+  ] as const)('%s 摘要已有同 ID receipt：零补读', async (state, receipt) => {
+    置terminal摘要(state, receipt);
+    render(<看市场 />);
+    await act(async () => {});
+    expect(mock刷新委托).not.toHaveBeenCalled();
   });
 });
