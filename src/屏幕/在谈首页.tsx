@@ -26,6 +26,7 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { MatchCase列表 } from './P5/MatchCase列表';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
+import { 取P5候选横幅状态 } from '../状态/后端/MatchCase统计';
 import type { 在谈单, 求职意向 } from '../数据/类型';
 
 /**
@@ -70,27 +71,19 @@ function Backend在谈首页() {
   const 快照 = 有scope
     ? 后端状态.P5工作区?.[P5范围键.open('candidate', filterRef)]
     : undefined;
-  const 已载待办数 = 快照?.items.filter((条) => 条.needsAction).length ?? 0;
-  // 「读尽」只在成功快照上成立：操作层的起步/失败构造会把还没读成的东西置
-  // 阶段 进行中/失败 且 nextCursor 兜底成 null —— 只看游标会把在飞/失败误读成读尽。
-  const 读尽 = 快照 !== undefined && 快照.阶段 === '成功' && 快照.nextCursor === null;
+  // 横幅四态投影复用共享纯 selector（与「看市场」同一在谈范围同一口径）：
+  // owner 不匹配（同角色换主体的过渡帧）按未载入处理，绝不显示旧主体的待办数
+  const 当前SubjectId = 后端状态.主体?.last_used_role === 'candidate'
+    ? 后端状态.主体.subject_id
+    : null;
+  const 横幅状态 = 取P5候选横幅状态(快照, 当前SubjectId, 有scope);
   // 「全部意向」档右侧的跨意向待办数：只有那个 scope 自己成功读尽才给数
-  // （宁缺勿错 —— 游标未尽时任何数字都不是全量，绝不声称）
+  // （宁缺勿错 —— 游标未尽时任何数字都不是全量，绝不声称）；owner 不匹配同样不算
   const 全部快照 = 后端状态.P5工作区?.[P5范围键.open('candidate', null)];
-  const 全档待办数 = 全部快照 !== undefined && 全部快照.阶段 === '成功' && 全部快照.nextCursor === null
+  const 全档待办数 = 全部快照 !== undefined && 全部快照.阶段 === '成功' &&
+    全部快照.nextCursor === null && 全部快照.ownerSubjectId === 当前SubjectId
     ? 全部快照.items.filter((条) => 条.needsAction).length : 0;
-
-  // 横幅：0 也可能是「还没读完」（§10.1 未读尽不声称全量）—— 成功读尽前一律非定论
-  // 文案；首帧与首次读取在飞（未开始/进行中）只说正在读入；首载失败由列表的错误卡
-  // 交代，横幅只给非定论兜底。护栏空态（当前意向已删，本屏刻意零请求）没有未读
-  // 数据，定论与 Mock 同口径。
-  const 横幅强调 = !有scope
-    ? '暂时没有需要你介入的'
-    : 快照 === undefined || 快照.阶段 === '未开始' || 快照.阶段 === '进行中'
-      ? '正在读入在谈职位…'
-      : 已载待办数 > 0
-        ? (读尽 ? `${已载待办数} 个职位需要你协调` : '有职位需要你协调')
-        : (读尽 ? '暂时没有需要你介入的' : '已读入的里暂时没有需要你介入的');
+  const 横幅强调 = 横幅状态.强调;
 
   // 下拉只重读当前 scope（GET）；错误文案由快照 error 承载，列表上方错误行呈现
   const 重读当前范围 = () =>
@@ -130,7 +123,7 @@ function Backend在谈首页() {
         <在谈筛选层
           当前={看什么}
           设当前={(档) => 派发({ 型: '设在谈看什么', 档 })}
-          待办数={读尽 ? 已载待办数 : 0}
+          待办数={横幅状态.读尽 ? 横幅状态.已载待办数 : 0}
           范围组={{
             标题: '看哪些意向',
             当前档名: '当前意向',

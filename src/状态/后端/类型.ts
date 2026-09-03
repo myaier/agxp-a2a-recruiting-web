@@ -28,10 +28,12 @@ import type {
   BFF招聘候选推荐,
   BFF附件简历库,
   BFF简历预填建议,
+  BFFJD导入,
 } from '../../数据/BFF契约';
 import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
 import type { P5列表项, P5详情 } from '../../数据/招聘数据源/MatchCase';
+import type { 接触事件 } from '../../数据/招聘数据源/接触记录';
 import type { P7角色, P7会话项, P7消息 } from '../../数据/招聘数据源/真人会话';
 import type {
   P8Credential,
@@ -52,7 +54,8 @@ import type { 资料形 } from '../../数据/公司主页资料';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 动作, 状态 } from '../应用状态';
 
-export interface 后端状态 extends P4发现状态, P5MatchCase状态, P7会话状态, P8控制面状态 {
+export interface 后端状态 extends P4发现状态, P5MatchCase状态, P7会话状态, P8控制面状态,
+  接触记录状态 {
   初始化: '跳过' | '进行中' | '完成';
   已登录: boolean;
   主体: BFF主体 | null;
@@ -225,8 +228,12 @@ export type P5加载阶段 = '未开始' | '进行中' | '成功' | '失败';
 /**
  * 工作区 / 历史架子的列表快照：key 是 P5范围键.open / .history（role + 角色专属过滤）。
  * 已加载页数 是「已载窗口」的深度：刷新从第一页重建同样深度的窗口，追加逐页 +1。
+ * ownerSubjectId 只在内存标记快照归属的 subject（角色仍由 scope key 表达）：
+ * 成功快照的复用（缓存短路 / 刷新保留旧 items）以 owner 相同为前提，同角色换主体
+ * 时旧快照按不存在处理；它不替代 session/scope fence，也不进入任何持久化。
  */
 export interface P5列表快照 {
+  ownerSubjectId: string | null;
   阶段: P5加载阶段;
   刷新中: boolean;
   items: P5列表项[];
@@ -279,6 +286,28 @@ export interface P8控制面状态 {
 export interface P8待定意图<T> {
   key: string;
   request: T;
+}
+
+// ── 接触记录：候选「谁接触过我」的内存态分页快照（仅 Backend；绝不进 资料持久化 / 浏览器存储）──
+
+/**
+ * 候选主体的 contact-events 分页快照（单主体单份，不按 scope 分表）：owner 只认
+ * candidate 的 subject_id，快照、cursor 与锁在登出 / 401 / 换主体 / 离开 candidate
+ * 角色时统一清空；items 只有当前 owner 的完整成功页才可见。
+ */
+export interface 接触记录快照 {
+  ownerSubjectId: string | null;
+  阶段: '未开始' | '进行中' | '成功' | '失败';
+  刷新中: boolean;
+  items: 接触事件[];
+  nextCursor: string | null;
+  已加载页数: number;
+  error: string | null;
+  generation: number;
+}
+
+export interface 接触记录状态 {
+  接触记录: 接触记录快照;
 }
 
 // ── 候选 onboarding 简历预填（Backend-only 的独立建议状态，不进根 Resume reducer）──
@@ -442,6 +471,14 @@ export interface 后端操作依赖 {
   候选预填代际?: 可变引用<number>;
   候选预填读取锁?: 可变引用<Map<string, Promise<void>>>;
   候选预填恢复?: 可变引用<候选预填恢复存储 | null>;
+  /**
+   * 接触记录运行时引用 —— 域读代际 / 同 owner 单飞读锁 / 已消费 cursor 集。
+   * 与 P4–P8 同一纪律：Provider 恒一次性注入；可选成员只为既有 测试依赖桩 与
+   * 清账号状态 子集调用方的编译兼容，接触记录操作 在工厂入口显式收窄。
+   */
+  接触记录代际?: 可变引用<number>;
+  接触记录读取锁?: 可变引用<Promise<void> | null>;
+  接触记录已消费游标?: 可变引用<Set<string>>;
 }
 
 /** P7 真人会话的五个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -479,6 +516,16 @@ export interface P4运行时引用 {
   P4范围代际: 可变引用<Map<string, number>>;
   P4幂等意图: 可变引用<Map<string, string>>;
   P4可见范围: 可变引用<Record<BFF角色, string | null>>;
+}
+
+/** 接触记录的三个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
+export interface 接触记录运行时引用 {
+  /** 域读代际：本域唯一栅栏计数，force 刷新与引用级清理递增，旧在飞读整包作废。 */
+  接触记录代际: 可变引用<number>;
+  /** 同 owner 单飞读锁（持有本次 Promise 身份，finally 只释放自己那把）。 */
+  接触记录读取锁: 可变引用<Promise<void> | null>;
+  /** 已消费 cursor 集：append 请求前登记，重复消费零请求进分页错误；force 重建前清空。 */
+  接触记录已消费游标: 可变引用<Set<string>>;
 }
 
 /** 候选 onboarding 简历预填的三个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -771,8 +818,23 @@ export interface P8合规操作 {
   提交P8举报(target: P8ReportTarget, reason: P8ReportReason, alsoBlock: boolean): Promise<P8ReportReceipt>;
 }
 
-/** Task 6+7 公开面：合规两法齐备（反馈 + 举报）。 */
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 & P8账号控制面操作 & P8合规操作 & 简历预填操作;
+/**
+ * 候选「谁接触过我」的操作方法表（页面不得直接调用数据源）。
+ * Backend + candidate 才发请求；Mock / 无后端 / 非 candidate 一律零 contact-events
+ * 请求。首载/force 刷新从第一页读取并原子替换；追加只消费当前成功快照的 next_cursor，
+ * 重复消费、不前进 cursor 或与已载窗口重叠整页拒绝。所有内容仅在内存。
+ */
+export interface 接触记录操作 {
+  /** 首载 / 刷新：非 force 且当前 owner 已成功时零请求；force 从第一页原子重建。 */
+  加载接触记录(force?: boolean): Promise<void>;
+  /** 已载窗口向后追加一页（透传快照里的 next_cursor）；游标已尽或已消费时零请求。 */
+  追加接触记录(): Promise<void>;
+}
+
+/** Task 6+7 公开面：合规两法齐备（反馈 + 举报）+ JD 导入两法。 */
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 &
+  发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 &
+  P8账号控制面操作 & P8合规操作 & 简历预填操作 & JD导入操作 & 接触记录操作;
 
 /**
  * 候选 onboarding 简历预填操作方法表（页面不得直接调用数据源）。
@@ -811,4 +873,17 @@ export interface 简历预填操作 {
   确认候选Onboarding预填分区(section: 候选预填分区): void;
   /** 全量清理：内存摊平 pristine、预填代际递增、单飞读锁清空、恢复元数据删除。 */
   清候选Onboarding预填(): void;
+}
+
+/**
+ * JD PDF 建议稿导入操作方法表（页面不得直接调用数据源）。
+ * Backend + recruiter 才调用数据源；Mock / 无后端 / 非 recruiter 一律返回 已换代。
+ * 请求前捕获 subject + 会话代际栅栏，迟到成败整包丢弃；当前栅栏 401 走统一 清账号状态，
+ * 非 401 错误原样抛给页面的 JD 闭合文案映射。页面级 generation/import ID/快照栅栏属于页面。
+ */
+export interface JD导入操作 {
+  /** consent 后创建导入任务：multipart POST + 调用方稳定幂等键；已换代时静默丢弃。 */
+  创建JD导入(file: File, idempotencyKey: string): Promise<BFFJD导入 | '已换代'>;
+  /** 串行轮询读取同一 import ID；已换代时静默丢弃。 */
+  读取JD导入(importId: string): Promise<BFFJD导入 | '已换代'>;
 }

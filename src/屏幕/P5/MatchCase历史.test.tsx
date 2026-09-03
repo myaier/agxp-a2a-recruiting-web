@@ -20,6 +20,7 @@ import { P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import { 路径 } from '../../路由/路径表';
 import { 归档列表初始 } from '../../测试/P5Mock边界种子';
+import { BFF主体样本 } from '../../测试/BFF样本';
 
 const mock派发 = vi.fn();
 const mock跳转 = vi.fn();
@@ -116,8 +117,10 @@ function 快照(选项: {
   nextCursor?: string | null;
   error?: string | null;
   刷新中?: boolean;
+  ownerSubjectId?: string | null;
 } = {}): P5列表快照 {
   return {
+    ownerSubjectId: 选项.ownerSubjectId ?? 'sub_1',
     阶段: 选项.阶段 ?? '成功',
     刷新中: 选项.刷新中 ?? false,
     items: 选项.items ?? [],
@@ -139,6 +142,7 @@ function 置历史状态(选项: {
     派发: mock派发,
     状态: {},
     后端状态: {
+      主体: { ...BFF主体样本, subject_id: 'sub_1', last_used_role: 选项.role },
       P5历史: {
         [P5范围键.history(选项.role, 'completed', null)]: 选项.completed快照 ?? 快照(),
         [P5范围键.history(选项.role, 'ended', null)]: 选项.ended快照 ?? 快照(),
@@ -204,6 +208,30 @@ describe('MatchCase历史 · 双架子（Backend）', () => {
     expect(mock设置P5范围).toHaveBeenCalledWith('recruiter', P5范围键.history('recruiter', 'ended', null));
     expect(mock加载历史).toHaveBeenCalledWith('recruiter', 'completed', null);
     expect(mock加载历史).toHaveBeenCalledWith('recruiter', 'ended', null);
+  });
+
+  it('快照 owner 与当前主体不同时不显示旧历史行，仍分别加载两个架子', () => {
+    置历史状态({
+      role: 'candidate',
+      completed快照: 快照({
+        ownerSubjectId: 'sub_old',
+        items: [候选终局行({ caseId: 'mc_old_c', lifecycle: 'completed', 职位名: '旧谈成行' })],
+      }),
+      ended快照: 快照({
+        ownerSubjectId: 'sub_old',
+        items: [候选终局行({ caseId: 'mc_old_e', lifecycle: 'ended', 职位名: '旧结束行' })],
+      }),
+    });
+    mock应用状态.后端状态.主体 = {
+      ...BFF主体样本,
+      subject_id: 'sub_new',
+      last_used_role: 'candidate',
+    };
+    render(历史元素('candidate'));
+    expect(screen.queryByText('旧谈成行')).toBeNull();
+    expect(screen.queryByText('旧结束行')).toBeNull();
+    expect(mock加载历史).toHaveBeenCalledWith('candidate', 'completed', null);
+    expect(mock加载历史).toHaveBeenCalledWith('candidate', 'ended', null);
   });
 
   it('两架子互不合并：行各归各组，加载更多只透传本架游标（游标绝不串架）', async () => {

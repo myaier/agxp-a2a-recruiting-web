@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { 从BFF简历, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿, 转证书写入, 转证书 } from './后端映射';
+import { 从BFF简历, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿, 转证书写入, 转证书, 岗位办公方式到Wire, Wire到岗位办公方式 } from './后端映射';
 import { BFF意向样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
 import type { 意向草稿型, 岗位创建上下文 } from './招聘数据源类型';
 import type { BFF证书, BFFOwnerJob } from './BFF契约';
@@ -143,6 +143,51 @@ describe('候选人后端映射', () => {
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
       加分关键词: ['课程项目'], 实习转正: true, 状态: '在招', 在谈数: 0,
     });
+  });
+
+  // ── 岗位办公方式闭合映射（backend 数据真相源 Task C）──
+  // 页面 canonical 固定 现场/混合/全远程，wire 固定 onsite/hybrid/remote，
+  // 读入与创建/补丁共用唯一一组双向映射；非法页值 fail closed，不再静默回退 onsite。
+  it.each([
+    ['onsite', '现场'],
+    ['hybrid', '混合'],
+    ['remote', '全远程'],
+  ] as const)('%s 与 %s 双向闭合', (wire, page) => {
+    expect(Wire到岗位办公方式(wire)).toBe(page);
+    expect(岗位办公方式到Wire(page)).toBe(wire);
+    expect(岗位办公方式到Wire(Wire到岗位办公方式(wire))).toBe(wire);
+  });
+
+  it('非法岗位办公方式 fail closed，不回退 onsite', () => {
+    expect(() => 岗位办公方式到Wire('远程' as never))
+      .toThrowError('未映射的岗位办公方式：远程');
+  });
+
+  // review-r1：`in` 会命中原型链 —— toString/constructor/__proto__ 必须当非法页值拒绝，
+  // 不能把继承来的函数/对象当 wire code 发出去。hasOwnProperty 只认自有键。
+  it.each(['toString', 'constructor', '__proto__'])('原型链键 %s 不是合法岗位办公方式', (键) => {
+    expect(() => 岗位办公方式到Wire(键 as never))
+      .toThrowError(`未映射的岗位办公方式：${键}`);
+  });
+
+  // 三态分别走完整 owner 读入 → 创建/补丁写回 round-trip（完整 DTO，不用稀疏对象）：
+  // remote 修复前回显「远程」，补丁时会被旧表静默落成 onsite（丢事实），这里整链钉死。
+  // 补丁是 sparse 语义：未变化缺省（服务端保持存储值），变化才携带映射后的 wire code。
+  it.each([
+    ['onsite', '现场'],
+    ['hybrid', '混合'],
+    ['remote', '全远程'],
+  ] as const)('岗位 %s 读入 %s：创建发回原档，补丁未变化缺省、变化携带映射值', (wire, page) => {
+    const dto = { ...BFF岗位样本, workplace_mode: wire };
+    const 页面 = 从BFF岗位(dto, {});
+    expect(页面.办公方式).toBe(page);
+    expect(转岗位创建(页面, 直接发岗上下文('云衢科技')).workplace_mode).toBe(wire);
+    // 与 previous 相同：sparse 补丁缺省 workplace_mode，服务端保持存储值
+    expect(转岗位补丁(页面, dto)).not.toHaveProperty('workplace_mode');
+    // 换成另一档：补丁携带闭合映射后的 wire code，绝不静默降级成 onsite
+    const 换页 = wire === 'remote' ? '现场' : '全远程';
+    const 换wire = wire === 'remote' ? 'onsite' : 'remote';
+    expect(转岗位补丁({ ...页面岗位样本, ...页面, 办公方式: 换页 }, dto).workplace_mode).toBe(换wire);
   });
 
   // Task 7：岗位创建直接用选择器保存的 类别引用/地点引用 取 ID，不再按显示名反查目录。

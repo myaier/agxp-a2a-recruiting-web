@@ -158,29 +158,42 @@ interface 读锁凭证 {
   fence: P5栅栏;
 }
 
-// ── 列表/详情快照的纯构造器：起步 / 成功 / 失败（成功快照永不降级）──────────────────
+// ── 列表/详情快照的纯构造器：起步 / 成功 / 失败（成功快照永不降级；owner 相同才可复用）──
 
-function 起步列表(旧: P5列表快照 | undefined, generation: number): P5列表快照 {
-  if (旧?.阶段 === '成功') return { ...旧, 刷新中: true, error: null, generation };
+function 起步列表(
+  旧: P5列表快照 | undefined, generation: number, ownerSubjectId: string | null,
+): P5列表快照 {
+  if (旧?.阶段 === '成功' && 旧.ownerSubjectId === ownerSubjectId) {
+    return { ...旧, 刷新中: true, error: null, generation };
+  }
   return {
+    ownerSubjectId,
     阶段: '进行中', 刷新中: true,
-    items: 旧?.items ?? [], nextCursor: 旧?.nextCursor ?? null, 已加载页数: 旧?.已加载页数 ?? 0,
+    items: [], nextCursor: null, 已加载页数: 0,
     error: null, generation,
   };
 }
 
 function 成功列表(
-  items: P5列表项[], nextCursor: string | null, 已加载页数: number, generation: number,
+  items: P5列表项[], nextCursor: string | null, 已加载页数: number,
+  generation: number, ownerSubjectId: string | null,
 ): P5列表快照 {
-  return { 阶段: '成功', 刷新中: false, items, nextCursor, 已加载页数, error: null, generation };
+  return {
+    ownerSubjectId, 阶段: '成功', 刷新中: false,
+    items, nextCursor, 已加载页数, error: null, generation,
+  };
 }
 
-function 失败列表(旧: P5列表快照 | undefined, 错误: unknown, generation: number): P5列表快照 {
+function 失败列表(
+  旧: P5列表快照 | undefined, 错误: unknown, generation: number, ownerSubjectId: string | null,
+): P5列表快照 {
   const error = 取后端错误文案(错误);
-  if (旧?.阶段 === '成功') return { ...旧, 刷新中: false, error, generation };
+  if (旧?.阶段 === '成功' && 旧.ownerSubjectId === ownerSubjectId) {
+    return { ...旧, 刷新中: false, error, generation };
+  }
   return {
-    阶段: '失败', 刷新中: false,
-    items: 旧?.items ?? [], nextCursor: 旧?.nextCursor ?? null, 已加载页数: 旧?.已加载页数 ?? 0,
+    ownerSubjectId, 阶段: '失败', 刷新中: false,
+    items: [], nextCursor: null, 已加载页数: 0,
     error, generation,
   };
 }
@@ -351,9 +364,12 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     const scopeKey = input.架子 === 'open'
       ? P5范围键.open(input.role, input.filterRef)
       : P5范围键.history(input.role, input.架子, input.filterRef);
+    const 当前SubjectId = 主体标识引用.current;
     if (input.模式 === '追加') {
       const 预检 = 读列表快照(input.架子, scopeKey);
-      if (预检 === undefined || 预检.nextCursor === null) return; // 游标已尽：零请求
+      // owner 不匹配的旧主体快照绝不拼接；游标已尽也零请求
+      if (预检 === undefined || 预检.nextCursor === null ||
+        预检.ownerSubjectId !== 当前SubjectId) return;
     }
     const 取得 = 获取读锁(scopeKey);
     if (!取得) return;
@@ -362,13 +378,16 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       if (!后端) return;
       // 锁内重读快照：锁定前的同 scope 读写可能已改变 items / 游标 / 窗口深度。
       const 旧 = 读列表快照(input.架子, scopeKey);
-      落列表(input.架子, scopeKey, () => 起步列表(旧, fence.scopeGeneration));
+      落列表(input.架子, scopeKey, () => 起步列表(旧, fence.scopeGeneration, fence.subjectId));
       if (input.模式 === '追加') {
-        if (旧 === undefined || 旧.nextCursor === null) return; // 锁内复查：游标已尽零请求
+        // 锁内复查：游标已尽零请求；owner 换主体绝不拼接
+        if (旧 === undefined || 旧.nextCursor === null ||
+          旧.ownerSubjectId !== fence.subjectId) return;
         const 页 = await 读一页(后端, input.架子, input.role, input.filterRef, 旧.nextCursor);
         if (!栅栏仍当前(fence)) return;
         落列表(input.架子, scopeKey, () => 成功列表(
-          [...旧.items, ...页.items], 页.nextCursor, 旧.已加载页数 + 1, fence.scopeGeneration));
+          [...旧.items, ...页.items], 页.nextCursor, 旧.已加载页数 + 1,
+          fence.scopeGeneration, fence.subjectId));
         return;
       }
       // 窗口重建：第一页起，按旧窗口深度跟进游标（服务端页数变少时按实际收敛）。
@@ -387,7 +406,8 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
         if (页数 < 目标页数 && !栅栏仍当前(fence)) return; // 页间换代：整包丢弃
       }
       if (!栅栏仍当前(fence)) return;
-      落列表(input.架子, scopeKey, () => 成功列表(items, nextCursor, 页数, fence.scopeGeneration));
+      落列表(input.架子, scopeKey, () => 成功列表(
+        items, nextCursor, 页数, fence.scopeGeneration, fence.subjectId));
     } catch (错误) {
       if (!栅栏仍当前(fence)) return; // 迟到失败只释放锁
       if (是401(错误)) {
@@ -396,7 +416,7 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       }
       落列表(input.架子, scopeKey, (旧态) => {
         const 表 = input.架子 === 'open' ? 旧态.P5工作区 : 旧态.P5历史;
-        return 失败列表(表[scopeKey], 错误, fence.scopeGeneration);
+        return 失败列表(表[scopeKey], 错误, fence.scopeGeneration, fence.subjectId);
       });
     } finally {
       释放读锁(取得);
@@ -604,7 +624,10 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     async 加载工作区(role, filterRef, force) {
       if (!是后端 || !后端) return;
       const scopeKey = P5范围键.open(role, filterRef);
-      if (force !== true && 后端状态引用.current.P5工作区[scopeKey]?.阶段 === '成功') return;
+      const 旧快照 = 后端状态引用.current.P5工作区[scopeKey];
+      // 缓存短路只认当前 owner 的成功快照：同角色换主体必须重读，绝不把旧主体的窗口当缓存
+      if (force !== true && 旧快照?.阶段 === '成功' &&
+        旧快照.ownerSubjectId === 主体标识引用.current) return;
       await 运行列表读({ 架子: 'open', role, filterRef, 模式: '窗口' });
     },
 
@@ -621,7 +644,10 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     async 加载历史(role, lifecycle, filterRef, force) {
       if (!是后端 || !后端) return;
       const scopeKey = P5范围键.history(role, lifecycle, filterRef);
-      if (force !== true && 后端状态引用.current.P5历史[scopeKey]?.阶段 === '成功') return;
+      const 旧快照 = 后端状态引用.current.P5历史[scopeKey];
+      // 缓存短路只认当前 owner 的成功快照（同 加载工作区 口径）
+      if (force !== true && 旧快照?.阶段 === '成功' &&
+        旧快照.ownerSubjectId === 主体标识引用.current) return;
       await 运行列表读({ 架子: lifecycle, role, filterRef, 模式: '窗口' });
     },
 

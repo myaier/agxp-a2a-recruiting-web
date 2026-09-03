@@ -113,25 +113,26 @@ function 契约错误行({ 重试 }: { 重试: () => void }) {
 
 export function MatchCase历史(props: { role: P5角色 }) {
   const { role } = props;
-  const { 数据源模式, 操作 } = use应用状态();
+  const { 数据源模式, 后端状态, 操作 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
+  const 当前SubjectId = 后端状态.主体?.subject_id ?? null;
 
   // 两个架子各自的 scope 键（filterRef 恒 null：归档架无角色专属过滤）
   const completed键 = P5范围键.history(role, 'completed', null);
   const ended键 = P5范围键.history(role, 'ended', null);
 
-  // 进屏：先注册两个架子的 scope 键，再分别懒加载（操作层栅栏靠注册的可见范围对上）。
+  // 进屏 / 换主体：先注册两个架子的 scope 键，再分别懒加载（操作层栅栏靠注册的可见范围对上）。
   // 可见范围槽每个角色只有一格（设置P5范围 的语义）：后注册的键占住槽位，两架的在飞
   // 读写都由这枚槽位栅栏在离开本屏时整包作废；换键递增旧新 scope 代际对两架同样成立
   // （StrictMode 卸载重挂安全）。离开本屏清回 null。Mock 模式本组件不挂载，操作层也恒早退。
   useEffect(() => {
-    if (!是后端) return;
+    if (!是后端 || 当前SubjectId === null) return;
     操作.设置P5范围(role, completed键);
     操作.设置P5范围(role, ended键);
     void 操作.加载历史(role, 'completed', null).catch(() => undefined);
     void 操作.加载历史(role, 'ended', null).catch(() => undefined);
     return () => 操作.设置P5范围(role, null);
-  }, [是后端, role, completed键, ended键, 操作]);
+  }, [是后端, 当前SubjectId, role, completed键, ended键, 操作]);
 
   return (
     <div style={双架间距样式}>
@@ -166,8 +167,11 @@ function 历史架子({
   const { 后端状态, 操作 } = use应用状态();
   const { 跳转 } = use导航();
 
-  // 只选本架子自己的快照：键按 lifecycle 隔离，另一架的数据天然进不来
-  const 快照: P5列表快照 | undefined = 后端状态.P5历史?.[P5范围键.history(role, lifecycle, null)];
+  // 只选本架子自己的快照：键按 lifecycle 隔离，另一架的数据天然进不来；owner 与当前
+  // 主体不匹配（同角色换主体的过渡帧）时按不存在处理，绝不渲染旧主体 items
+  const 当前SubjectId = 后端状态.主体?.subject_id ?? null;
+  const 原快照 = 后端状态.P5历史?.[P5范围键.history(role, lifecycle, null)];
+  const 快照: P5列表快照 | undefined = 原快照?.ownerSubjectId === 当前SubjectId ? 原快照 : undefined;
 
   // 展示映射逐行独立：契约错误行整行停用；服务端顺序原样保留（不重排）
   const 视图们 = useMemo(() => (快照?.items ?? []).map(映射P5列表项), [快照?.items]);

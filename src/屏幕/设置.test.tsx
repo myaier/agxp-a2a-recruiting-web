@@ -210,7 +210,8 @@ describe('设置 · 账号行（P8 Task 4）', () => {
     };
     render(<MemoryRouter><设置 /></MemoryRouter>);
     await waitFor(() => expect(操作.加载P8凭证).toHaveBeenCalledTimes(1));
-    expect(screen.getByText('—')).toBeTruthy();
+    // 实名行现在也显示中性「—」，手机行占位用 AllBy 断言（不回退硬编码手机号才是重点）
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('138 **** 6021')).toBeNull();
   });
 
@@ -250,5 +251,67 @@ describe('设置 · 账号行（P8 Task 4）', () => {
     expect(操作.加载P8凭证).not.toHaveBeenCalled();
     expect(操作.加载P8会话).not.toHaveBeenCalled();
     expect(操作.设置P8账号范围).not.toHaveBeenCalled();
+  });
+});
+
+// Backend 没有实名合同：phone_otp 只证明登录凭据已验证，简历姓名也不是实名。
+// 实名行必须回到中性「—」且不可点击，不得伪造「已认证/已通过」或点击反馈；
+// Mock 保留原型演示按钮与提示。
+describe('设置 · 实名状态真相源', () => {
+  it('仅有 phone_otp 的 Backend 候选不声称已实名且整行不可点击', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = P8操作桩();
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: { 设置雇主隐私: vi.fn(), ...操作 },
+      数据源模式: 'backend',
+      后端状态: 后端底座({ 凭证: 成功快照([手机凭证]) }),
+    };
+
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    expect(screen.getByText('实名认证').closest('button')).toBeNull();
+    expect(screen.queryByText('已认证')).toBeNull();
+    expect(screen.queryByText(/已通过/)).toBeNull();
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
+
+    await 用户.click(screen.getByText('实名认证'));
+    expect(screen.queryByText(/实名认证 · 已通过/)).toBeNull();
+    await waitFor(() => expect(操作.加载P8凭证).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(手机凭证.display)).toBeTruthy();
+  });
+
+  it('Mock 保留演示已认证与原点击提示，且不读 credentials', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = P8操作桩();
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: { 设置雇主隐私: vi.fn(), ...操作 },
+      数据源模式: 'mock',
+      后端状态: 后端底座(),
+    };
+
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    expect(screen.getByRole('button', { name: /实名认证.*已认证/ })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /实名认证.*已认证/ }));
+    expect(screen.getByText('实名认证 · 已通过，无需重复认证')).toBeTruthy();
+    expect(操作.加载P8凭证).not.toHaveBeenCalled();
+  });
+
+  it('Backend 账号与安全入口保持真接线', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = P8操作桩();
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: { 设置雇主隐私: vi.fn(), ...操作 },
+      数据源模式: 'backend',
+      后端状态: 后端底座(),
+    };
+
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    await 用户.click(screen.getByRole('button', { name: /账号与安全/ }));
+    expect(导航.跳转).toHaveBeenCalledWith(路径.账号安全);
   });
 });

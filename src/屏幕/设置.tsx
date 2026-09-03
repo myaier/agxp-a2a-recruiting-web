@@ -100,16 +100,27 @@ export default function 设置() {
             </span>
             <span className={样式.行值}>{手机号显示}</span>
           </div>
-          <button
-            className={`${样式.行} 可点`}
-            onClick={() => 设提示('实名认证 · 已通过，无需重复认证')}
-          >
-            <span className={样式.行文字组}>
-              <span className={样式.行标题}>实名认证</span>
-            </span>
-            <span className={样式.行值}>已认证</span>
-            <span className={样式.尖括号}>›</span>
-          </button>
+          {/* Backend 没有实名合同：phone_otp 只证明登录凭据已验证，简历姓名也不是实名，
+              不得伪称「已认证」。该行回中性「—」且不可交互；Mock 保留原型演示按钮。 */}
+          {是后端 ? (
+            <div className={样式.行}>
+              <span className={样式.行文字组}>
+                <span className={样式.行标题}>实名认证</span>
+              </span>
+              <span className={样式.行值}>—</span>
+            </div>
+          ) : (
+            <button
+              className={`${样式.行} 可点`}
+              onClick={() => 设提示('实名认证 · 已通过，无需重复认证')}
+            >
+              <span className={样式.行文字组}>
+                <span className={样式.行标题}>实名认证</span>
+              </span>
+              <span className={样式.行值}>已认证</span>
+              <span className={样式.尖括号}>›</span>
+            </button>
+          )}
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.账号安全)}>
             <span className={样式.行文字组}>
               <span className={样式.行标题}>账号与安全</span>

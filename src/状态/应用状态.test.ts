@@ -1,4 +1,4 @@
-import { createElement } from 'react';
+import { createElement, useEffect } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,8 +28,10 @@ import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF招聘方档案, BFF公开企业, BFF角色, BFF附件简历库 } from '../数据/BFF契约';
 import type { BFF二进制响应 } from '../数据/HTTP客户端';
 import { 解P5详情, type P5列表页, type P5详情 } from '../数据/招聘数据源/MatchCase';
+import { P5范围键 } from './后端/MatchCase操作';
 import type { P7会话项, P7会话页, P7消息, P7消息页 } from '../数据/招聘数据源/真人会话';
 import type { P8AccountDeletion, P8Credential, P8DataExport, P8Session } from '../数据/招聘数据源/P8控制面';
+import type { 接触事件, 接触事件页 } from '../数据/招聘数据源/接触记录';
 import { P5候选详情Wire } from '../测试/BFF样本';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
@@ -324,6 +326,14 @@ describe('应用状态 reducer', () => {
     expect(初始状态.企业关系列表).toEqual([]);
   });
 
+  it('Backend 种子不携带 legacy MatchCase 演示数组', () => {
+    const 种子 = 创建初始状态({ 模式: 'backend', 后端环境: 'stg', 后端: {} as HTTP招聘数据源 });
+    expect(种子.在谈列表).toEqual([]);
+    expect(种子.企业候选列表).toEqual([]);
+    expect(种子.归档列表).toEqual([]);
+    expect(种子.企业归档列表).toEqual([]);
+  });
+
   it('水合组织权威事实，admin request 只经显式按需 action', () => {
     const 档案后 = 归约(初始状态, { 型: '水合招聘方档案', 档案: BFF招聘方档案样本 });
     expect(档案后.招聘方档案).toEqual(BFF招聘方档案样本);
@@ -582,6 +592,8 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
       status: 'deletion_pending',
       retentionUntil: '2026-09-29T00:00:00Z',
     })),
+    // 接触记录域 facade（默认空页成功；逐用例覆盖）
+    读取接触事件: vi.fn(async (): Promise<接触事件页> => ({ items: [], nextCursor: null })),
   };
 }
 
@@ -790,7 +802,50 @@ describe('应用状态提供者 后端会话', () => {
       '恢复候选Onboarding预填', '激活候选Onboarding预填', '同步候选Onboarding解析',
       '重试候选Onboarding预填', '继续手填候选Onboarding', '确认候选Onboarding预填分区',
       '清候选Onboarding预填',
+      // JD 导入域方法（JD导入操作）：创建（consent 后 POST）与轮询读取
+      '创建JD导入', '读取JD导入',
+      // 接触记录域方法（接触记录操作）：候选「谁接触过我」首载/刷新与分页追加
+      '加载接触记录', '追加接触记录',
     ].sort().join('|'))).toBeTruthy();
+  });
+
+  // JD 导入：防止「类型存在但 Provider 没暴露」的假接线 —— Backend recruiter Provider
+  // 必须真正 spread 出两个可调用方法。
+  it('Backend recruiter Provider 暴露 JD 导入创建与读取方法', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('recruiter');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(typeof 当前.操作.创建JD导入).toBe('function');
+    expect(typeof 当前.操作.读取JD导入).toBe('function');
+  });
+
+  // 接触记录：Backend candidate Provider 必须真正 spread 出两个可调用方法；
+  // Mock Provider 创建零 contact-events 请求。
+  it('Backend candidate Provider 暴露接触记录加载与追加方法，Mock 零 contact 请求', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(typeof 当前.操作.加载接触记录).toBe('function');
+    expect(typeof 当前.操作.追加接触记录).toBe('function');
+    expect(后端.读取接触事件).not.toHaveBeenCalled();
+
+    const 取数 = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', 取数);
+    let 模拟当前!: ReturnType<typeof use应用状态>;
+    function 模拟探针() { 模拟当前 = use应用状态(); return null; }
+    render(createElement(应用状态提供者, null, createElement(模拟探针)));
+    await act(async () => {
+      await 模拟当前.操作.加载接触记录();
+      await 模拟当前.操作.追加接触记录();
+    });
+    expect(取数).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it('Backend 恢复会话与主体，角色完成后才派发切身份', async () => {
@@ -1860,6 +1915,111 @@ describe('应用状态提供者 review-r3 会话边界收口', () => {
   });
 });
 
+// ── 接触记录（contact-events）：Provider 种子 / 会话边界清理 / 主体隔离 ──────────
+
+describe('应用状态提供者 接触记录会话边界', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+    vi.stubGlobal('WebSocket', class {
+      onopen: (() => void) | null = null;
+      onmessage: ((事件: { data: string }) => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      constructor() {}
+      close() { this.onclose?.(); }
+    });
+  });
+
+  const 事件: 接触事件 = {
+    eventId: 'cev_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    organization: {
+      organizationId: 'org_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      displayName: 'Acme',
+    },
+    action: 'contact_started',
+    occurredAt: '2026-09-01T08:00:00Z',
+  };
+
+  const pristine快照 = {
+    ownerSubjectId: null,
+    阶段: '未开始' as const,
+    刷新中: false,
+    items: [],
+    nextCursor: null,
+    已加载页数: 0,
+    error: null,
+    generation: 0,
+  };
+
+  it('candidate 加载成功后登出，接触记录回 pristine', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取接触事件).mockResolvedValueOnce({ items: [事件], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => { await 当前.操作.加载接触记录(); });
+    expect(当前.后端状态.接触记录.items).toEqual([事件]);
+    await act(async () => { await 当前.操作.退出登录(); });
+    expect(当前.后端状态.已登录).toBe(false);
+    expect(当前.后端状态.接触记录).toEqual(pristine快照);
+  });
+
+  it('candidate 加载成功后切 recruiter，不保留 candidate 记录', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取接触事件).mockResolvedValueOnce({ items: [事件], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await act(async () => { await 当前.操作.加载接触记录(); });
+    expect(当前.后端状态.接触记录.items).toEqual([事件]);
+    await act(async () => { await 当前.操作.切身份('招聘方'); });
+    expect(当前.后端状态.接触记录).toEqual(pristine快照);
+    // 招聘方身份下追加/加载零 contact 请求
+    后端.读取接触事件.mockClear();
+    await act(async () => {
+      await 当前.操作.加载接触记录();
+      await 当前.操作.追加接触记录();
+    });
+    expect(后端.读取接触事件).not.toHaveBeenCalled();
+  });
+
+  it('换 candidate subject 后旧响应不落新主体，快照回 pristine', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // 主体 A 加载成功，拿到一条记录
+    vi.mocked(后端.读取接触事件).mockResolvedValueOnce({ items: [事件], nextCursor: null });
+    await act(async () => { await 当前.操作.加载接触记录(); });
+    expect(当前.后端状态.接触记录.items).toEqual([事件]);
+    // A 的在飞 force 重读（deferred，稍后才回来）
+    const 迟到门 = deferred<接触事件页>();
+    vi.mocked(后端.读取接触事件).mockReturnValueOnce(迟到门.promise);
+    await act(async () => { void 当前.操作.加载接触记录(true); });
+    // 主体 B 在同一 Provider 登录（完成手机登录 → 读取主体 返回 sub_B）
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
+    await act(async () => { await 当前.操作.完成手机登录('1234'); });
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
+    expect(当前.后端状态.接触记录).toEqual(pristine快照);
+    // 旧 candidate 响应迟到到达：不落新主体
+    迟到门.resolve({ items: [事件], nextCursor: null });
+    await act(async () => { await 迟到门.promise; });
+    expect(当前.后端状态.接触记录.items).toEqual([]);
+  });
+});
+
 // ── P6 Task 4：mount / 退出 会话水合与清理（含 Backend 种子首帧隔离）──────────────
 
 describe('应用状态提供者 P6 会话水合与清理', () => {
@@ -2279,6 +2439,11 @@ describe('应用状态提供者 P5 MatchCase 运行时状态', () => {
     expect(当前.后端状态.P5工作区).toEqual({});
     expect(当前.后端状态.P5历史).toEqual({});
     expect(当前.后端状态.P5详情).toEqual({});
+    // 统一登出清理同时摊平四个 legacy MatchCase 演示数组
+    expect(当前.状态.在谈列表).toEqual([]);
+    expect(当前.状态.企业候选列表).toEqual([]);
+    expect(当前.状态.归档列表).toEqual([]);
+    expect(当前.状态.企业归档列表).toEqual([]);
   });
 
   it('切身份（角色转移）清空 P5 快照', async () => {
@@ -2314,6 +2479,59 @@ describe('应用状态提供者 P5 MatchCase 运行时状态', () => {
     expect(当前.后端状态.P5工作区).toEqual({});
     expect(当前.后端状态.P5历史).toEqual({});
     expect(当前.后端状态.P5详情).toEqual({});
+  });
+
+  it('首个主体到达不清掉同帧子组件注册的 P5 scope（刷新落在 P5 页面首个加载不被栅栏丢弃）', async () => {
+    // 探针复刻「我的」页的注册/加载 effect：依赖当前主体，主体落地的那一帧重跑。
+    // mount 恢复（'' → sub|candidate）时页面与主体同 commit 挂载 —— 子 effect 先于
+    // Provider 的 P5 主体基串清理 effect 执行；若那帧执行清理，刚注册的可见范围被
+    // 置 null、代际表清空，在飞读取被 fence 整包丢弃，且无轮询的页面（「我的」）
+    // 永远停在缺失态。首个主体到达必须跳过清理：登出/401 转移（基 → ''）已清空过。
+    let 当前!: ReturnType<typeof use应用状态>;
+    function P5注册探针() {
+      const 值 = use应用状态();
+      当前 = 值;
+      const 当前SubjectId = 值.后端状态.主体?.last_used_role === 'candidate'
+        ? 值.后端状态.主体.subject_id
+        : null;
+      useEffect(() => {
+        if (值.数据源模式 !== 'backend' || 当前SubjectId === null) return;
+        值.操作.设置P5范围('candidate', P5范围键.open('candidate', null));
+        void 值.操作.加载工作区('candidate', null).catch(() => undefined);
+        return () => 值.操作.设置P5范围('candidate', null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [值.数据源模式, 当前SubjectId, 值.操作]);
+      return null;
+    }
+    const 行: P5列表页['items'][number] = {
+      role: 'candidate',
+      state: {
+        caseId: 'mc_1', lifecycle: 'open', stage: 'anonymous_screening', status: 'running',
+        step: 'policy_check', round: 0, roundBudget: 3, needsUser: false,
+        outcome: null, outcomeCode: null,
+        createdAt: '2026-08-29T01:00:00Z', updatedAt: '2026-08-29T02:00:00Z', finalizedAt: null,
+      },
+      needsAction: true,
+      intentionId: 'int_0123456789abcdef0123456789abcdef',
+      job: {
+        jobId: 'job_0123456789abcdef0123456789abcdef',
+        job: { title: 'AI 产品实习生', location: '上海', publicSalaryRange: '300-500 元/天', requiredSkills: ['Python'] },
+      },
+    };
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue({ role: 'candidate', items: [行], nextCursor: null });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(
+      应用状态提供者,
+      { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } },
+      createElement(P5注册探针),
+    ));
+    await waitFor(() => expect(当前 ?? undefined).toBeDefined(), { timeout: 3000 });
+    await waitFor(() => {
+      expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({
+        阶段: '成功', ownerSubjectId: 'sub_1', items: [行],
+      });
+    }, { timeout: 3000 });
   });
 
   it('退出登录回收在途 PDF 对象租约（URL.revokeObjectURL 恰好一次）', async () => {

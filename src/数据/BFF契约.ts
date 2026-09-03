@@ -1006,3 +1006,45 @@ export interface BFF简历预填建议 {
   };
   warnings: Array<{ field_path: string; reason: BFF简历预填Warning原因 }>;
 }
+
+// ── JD PDF 建议稿导入（job-draft-imports，handoff 2026-09-03 冻结合同）──
+
+export type BFFJD招聘类型 = 'social_full_time' | 'campus' | 'internship' | 'part_time';
+export type BFFJD办公方式 = 'onsite' | 'hybrid' | 'remote';
+export type BFFJD学历 = 'none' | 'associate' | 'bachelor' | 'master' | 'doctorate';
+export type BFFJD经验 =
+  | 'none'
+  | 'one_to_three_years'
+  | 'three_to_five_years'
+  | 'five_plus_years'
+  | 'ten_plus_years';
+export type BFFJD导入失败码 =
+  | 'invalid_pdf'
+  | 'document_too_complex'
+  | 'parser_invalid_output'
+  | 'parser_temporarily_unavailable';
+
+export interface BFFJD建议 {
+  title: string | null;
+  recruitment_type: BFFJD招聘类型 | null;
+  workplace_mode: BFFJD办公方式 | null;
+  office_location: string | null;
+  description: string | null;
+  requirements: string | null;
+  education_requirement: BFFJD学历 | null;
+  experience_requirement: BFFJD经验 | null;
+  category_source_name: string | null;
+  location_source_name: string | null;
+  keywords: string[];
+}
+
+interface BFFJD导入基础 {
+  import_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type BFFJD导入 =
+  | (BFFJD导入基础 & { status: 'pending' | 'processing' })
+  | (BFFJD导入基础 & { status: 'succeeded'; suggestion: BFFJD建议 })
+  | (BFFJD导入基础 & { status: 'failed'; failure_code: BFFJD导入失败码 });

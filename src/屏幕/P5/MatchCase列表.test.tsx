@@ -20,6 +20,7 @@ import type { P5列表项 } from '../../数据/招聘数据源/MatchCase';
 import { P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import { 路径 } from '../../路由/路径表';
 import { 在谈列表, 在招岗位列表, 在谈候选列表 } from '../../测试/P5Mock边界种子';
+import { BFF主体样本 } from '../../测试/BFF样本';
 
 // jsdom 不实现 scrollIntoView / scrollTo
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -105,8 +106,10 @@ function 快照(选项: {
   nextCursor?: string | null;
   error?: string | null;
   刷新中?: boolean;
+  ownerSubjectId?: string | null;
 } = {}): P5列表快照 {
   return {
+    ownerSubjectId: 选项.ownerSubjectId ?? 'sub_1',
     阶段: 选项.阶段 ?? '成功',
     刷新中: 选项.刷新中 ?? false,
     items: 选项.items ?? [],
@@ -142,6 +145,11 @@ function 置P5状态(选项: {
       ? { 在谈看什么: 选项.看什么 ?? '全部', 在谈范围: '当前', 求职意向表: [], 当前意向: '', 子视图: '在谈' }
       : { 企业在谈看什么: 选项.看什么 ?? '全部', 企业在谈范围: '当前', 企业子视图: '在谈' },
     后端状态: {
+      主体: {
+        ...BFF主体样本,
+        subject_id: 'sub_1',
+        last_used_role: 选项.role,
+      },
       P5工作区: { [P5范围键.open(选项.role, 选项.filterRef)]: 选项.快照 ?? 快照() },
     },
     操作: P5操作表(),
@@ -221,6 +229,25 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
       ['candidate', P5范围键.open('candidate', null)],
     ]);
     expect(mock加载工作区).toHaveBeenLastCalledWith('candidate', null);
+  });
+
+  it('快照 owner 与当前主体不同时不显示旧 case，仍加载当前 scope', () => {
+    置P5状态({
+      role: 'candidate',
+      filterRef: null,
+      快照: 快照({
+        ownerSubjectId: 'sub_old',
+        items: [候选行({ caseId: 'mc_old' })],
+      }),
+    });
+    mock应用状态.后端状态.主体 = {
+      ...BFF主体样本,
+      subject_id: 'sub_new',
+      last_used_role: 'candidate',
+    };
+    render(列表元素('candidate', null));
+    expect(screen.queryByText('AI 产品实习生')).toBeNull();
+    expect(mock加载工作区).toHaveBeenCalledWith('candidate', null);
   });
 
   it('保留服务端顺序：不按 needs_action 在客户端重排', () => {
@@ -431,6 +458,7 @@ function 置求职屏状态(选项: {
       在谈列表: [],
     },
     后端状态: {
+      主体: { ...BFF主体样本, subject_id: 'sub_1', last_used_role: 'candidate' },
       P5工作区: 选项.不预置快照 === true ? {} : {
         [P5范围键.open('candidate', 选项.filterRef === undefined ? 意向ID : 选项.filterRef)]:
           选项.快照 ?? 快照({ items: [候选行({ caseId: 'mc_1' })] }),
@@ -466,6 +494,7 @@ function 置招聘屏状态(选项: {
       企业候选列表: [],
     },
     后端状态: {
+      主体: { ...BFF主体样本, subject_id: 'sub_1', last_used_role: 'recruiter' },
       Agent规则水合: {
         candidate: { rules: '未开始', proposals: '未开始' },
         recruiter: { rules: '成功', proposals: '成功' },

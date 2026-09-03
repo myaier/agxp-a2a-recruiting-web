@@ -167,7 +167,7 @@ export default function 登录() {
         <span className={样式.穿孔} aria-hidden />
 
         {/* 卡头：代理标线描小标 + 产品名同一行。
-            2026-08-24 定名「工作蜂」；slogan 为产品负责人自拟版「找AI工作，上工作蜂」，不自拟文案 */}
+            2026-08-24 定名「工作蜂」；slogan 由产品负责人 2026-09-03 定为「AI找工作，就用工作蜂」，不自拟文案 */}
         <div className={样式.品牌行}>
           <代理标
             尺寸={22}
@@ -178,7 +178,7 @@ export default function 登录() {
           />
           <h1 className={样式.产品名}>工作蜂</h1>
         </div>
-        <p className={样式.主张}>找AI工作，上工作蜂</p>
+        <p className={样式.主张}>AI找工作，就用工作蜂</p>
 
         {/* 表单：上一行手机号、下一行验证码四格 + 获取验证码 */}
         <div className={样式.手机行}>

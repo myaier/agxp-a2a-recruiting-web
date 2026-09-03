@@ -69,6 +69,8 @@ import { 创建MatchCase操作, 创建空P5MatchCase状态, 清P5MatchCase引用
 import { 创建真人会话操作, 创建空P7会话状态, 清P7会话引用 } from './后端/真人会话操作';
 import { 创建P8账号安全操作, 创建空P8控制面状态, 清P8控制面引用 } from './后端/P8控制面操作';
 import { 创建简历预填操作 } from './后端/简历预填操作';
+import { 创建JD导入操作 } from './后端/JD导入操作';
+import { 创建接触记录操作, 创建空接触记录状态, 清接触记录引用 } from './后端/接触记录操作';
 import { use真人会话事件 } from './后端/use真人会话事件';
 import { 创建招聘事件源 } from '../数据/招聘事件源';
 import { 创建候选操作 } from './后端/候选操作';
@@ -157,6 +159,9 @@ export type 动作 =
   | { 型: '发布岗位'; 岗: 在招岗位 }
   | { 型: '水合账号资料'; 范围键: string; 快照: 资料缓存快照 }
   | { 型: '清账号资料' }
+  // Backend MatchCase 真相源修复：只供 Backend 会话边界（登出 / 当前轮 401 / 主体基串
+  // 变化）原子清空四个 legacy 演示数组；Mock 初始化与普通 Mock reducer 不派发它
+  | { 型: '清后端MatchCase演示状态' }
   | { 型: '切身份'; 到: '求职者' | '招聘方' };
 
 export function 数未读(表: Record<string, number>): number {
@@ -338,6 +343,17 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     case '清账号资料':
       return { ...旧, ...空账号资料, 资料缓存范围键: '' };
 
+    // Backend 会话边界的 legacy Case 状态归零（spec §A）：清空后的数组长度 0 不得被
+    // 任何 Backend 展示读成统计事实；Mock 路径永不触达这个 case
+    case '清后端MatchCase演示状态':
+      return {
+        ...旧,
+        在谈列表: [],
+        企业候选列表: [],
+        归档列表: [],
+        企业归档列表: [],
+      };
+
     // 让AI代理去聊（标注 2026-08-18 17:42）：这位候选真的进「在谈」列表，
     // 并把子视图切到在谈让用户看到 —— 镜像求职端「委托入谈」的闭环。
     // 同时写 发现推荐.已接触推荐 与 MatchCase.企业候选列表，保留在根跨域编排。
@@ -490,6 +506,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     ...创建空P7会话状态(),
     // P8：账号控制面内存态快照（凭证/会话/导出）空底座起步；绝不进 资料持久化
     ...创建空P8控制面状态(),
+    // 接触记录：候选 me/contact-events 内存态分页快照空底座起步；绝不进 资料持久化
+    ...创建空接触记录状态(),
     // P2：附件库权威快照种子为 null（Backend 初始不带任何演示附件行）
     附件简历库: null,
     // P0 修复 Task 1：招聘方档案 / 组织链两个水合阶段从 未开始 起跑
@@ -547,6 +565,11 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const 候选预填代际 = useRef(0);
   const 候选预填读取锁 = useRef(new Map<string, Promise<void>>());
   const 候选预填恢复 = useRef<候选预填恢复存储 | null>(null);
+  // 接触记录运行时引用 —— 域读代际 / 同 owner 单飞读锁 / 已消费 cursor 集。
+  // 一次性初始化；会话转移由下方主体基串 effect 与 会话操作 的清理口统一复位。
+  const 接触记录代际 = useRef(0);
+  const 接触记录读取锁 = useRef<Promise<void> | null>(null);
+  const 接触记录已消费游标 = useRef(new Set<string>());
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
   // Task 4：候选 onboarding 草稿只认 candidate 角色 + 当前 subject 的双重范围；
   // recruiter / 未登录 / Mock 一律 null，绝不给持久层授权任何候选草稿读写。
@@ -696,13 +719,22 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   // 租约（内存纪律：P5 状态绝不进 资料持久化 / 浏览器存储；在飞请求由操作层自身的
   // subject/role/会话代际栅栏按旧代整包丢弃）。同主体重登（基串不变）不清 —— 与 P4
   // 草稿保留口径一致，且不确定结果的同键重试跨重登仍可沿用。
+  // Backend MatchCase 真相源修复：主体基串变化同时派发 清后端MatchCase演示状态，
+  // 四个 legacy 演示数组与 P5 快照同口径归零（Mock 下 主体 恒 null，基串不变，永不派发）。
+  // 首个主体到达（'' → 基，mount 恢复 / 登录后的第一个主体）跳过清理：登出 / 401 转移
+  //（基 → ''）已经清空过一切，再清只会把同帧子组件刚注册的可见范围拆掉 —— 刷新落在
+  // P5 页面时页面与主体同 commit 挂载，子 effect 先于本 effect 执行，这里的清理会让
+  // 刚发出的首个读取被栅栏整包丢弃，无轮询的页面（「我的」）将永远停在缺失态。
   const P5会话基 = useRef('');
   useEffect(() => {
     const 基 = 后端状态.主体 === null ? '' : `${后端状态.主体.subject_id}|${后端状态.主体.last_used_role}`;
     if (P5会话基.current === 基) return;
+    const 首个主体到达 = P5会话基.current === '';
     P5会话基.current = 基;
+    if (首个主体到达) return;
     清P5MatchCase引用({ P5范围代际, P5幂等意图, P5可见范围, P5对象租约 });
     设后端状态((旧) => ({ ...旧, ...创建空P5MatchCase状态() }));
+    派发({ 型: '清后端MatchCase演示状态' });
     // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [后端状态.主体]);
@@ -719,6 +751,28 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     P7会话基.current = 基;
     清P7会话引用({ P7范围代际, P7待定意图, P7可见收件箱, P7可见会话, P7已读位置 });
     设后端状态((旧) => ({ ...旧, ...创建空P7会话状态() }));
+    // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [后端状态.主体]);
+
+  // ── 接触记录会话边界的反应式清理 ─────────────────────────────────────────────
+  // 与 P5 同一主体基串口径：登出 / 401 清理 / 换主体登录 / 切身份（离开 candidate 角色）
+  // 在状态上全部表现为「主体基串（subject + 角色）」变化。这里统一清接触事件快照、
+  // 域读代际、单飞读锁与已消费 cursor 集（内存纪律：绝不进 资料持久化 / 浏览器存储；
+  // 在飞请求由操作层自身的 subject/role/会话代际/域代际栅栏按旧代整包丢弃）。
+  // 首个主体到达（'' → 基）跳过清理：登出 / 401 转移（基 → ''）已经清空过一切，
+  // 再清只会把同帧子组件（「谁接触过我」页）刚发出的首载按域代际整包丢弃 ——
+  // 刷新落在该页时页面与主体同 commit 挂载，子 effect 先于本 effect 执行
+  //（与 P5 d82de7d6 同一竞态，语义照搬）。
+  const 接触记录会话基 = useRef('');
+  useEffect(() => {
+    const 基 = 后端状态.主体 === null ? '' : `${后端状态.主体.subject_id}|${后端状态.主体.last_used_role}`;
+    if (接触记录会话基.current === 基) return;
+    const 首个主体到达 = 接触记录会话基.current === '';
+    接触记录会话基.current = 基;
+    if (首个主体到达) return;
+    清接触记录引用({ 接触记录代际, 接触记录读取锁, 接触记录已消费游标 });
+    设后端状态((旧) => ({ ...旧, ...创建空接触记录状态() }));
     // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [后端状态.主体]);
@@ -773,6 +827,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         候选预填代际,
         候选预填读取锁,
         候选预填恢复,
+        接触记录代际,
+        接触记录读取锁,
+        接触记录已消费游标,
       };
       return {
         ...创建会话操作(deps),
@@ -798,6 +855,11 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         // 候选 onboarding 简历预填操作（栅栏化单飞读取 + 恢复/激活/同步/重试/手填/确认/
         // 清理），同一把 deps；恢复元数据适配器由上方渲染期按 candidate 主体换绑
         ...创建简历预填操作(deps),
+        // JD PDF 建议稿导入操作（consent 后创建 + 轮询读取，主体/角色/会话栅栏化），
+        // 同一把 deps；导入运行态留在 发布岗位 页面本地
+        ...创建JD导入操作(deps),
+        // 接触记录操作（候选「谁接触过我」首载/刷新/分页追加，栅栏化单飞），同一把 deps
+        ...创建接触记录操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定

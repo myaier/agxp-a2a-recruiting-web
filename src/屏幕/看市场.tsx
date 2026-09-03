@@ -42,7 +42,7 @@ import 适配环 from '../组件/适配环';
 import 确认层 from '../组件/确认层';
 import 附件简历选择层, { 从附件行取选择值, type 附件简历选择值 } from '../组件/附件简历选择层';
 import { 谈判图标, 放大镜图标 } from '../组件/图标';
-import { use应用状态 } from '../状态/应用状态';
+import { use应用状态, 取意向名 } from '../状态/应用状态';
 import { use适配分 } from '../状态/use适配分';
 import { use导航, 标记看市场来路 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -52,6 +52,8 @@ import type { BFF附件简历 } from '../数据/BFF契约';
 import { 从P4候选岗位, 映射P4委托展示 } from '../数据/发现推荐映射';
 import type { P4候选岗位页面 } from '../数据/招聘数据源类型';
 import { P4错误文案, P4范围键 } from '../状态/后端/发现推荐操作';
+import { P5范围键 } from '../状态/后端/MatchCase操作';
+import { 取P5候选横幅状态 } from '../状态/后端/MatchCase统计';
 import { P4委托进度未知文案, use发现推荐委托轮询 } from '../状态/后端/use发现推荐委托轮询';
 import { 轻提示 } from '../组件/轻提示';
 
@@ -293,6 +295,25 @@ export default function 看市场() {
   // 免得同一句话在两个子视图里给出不同数字。
   const 待协调数 = 状态.在谈列表.filter((单) => 单.需要你).length;
 
+  // Backend MatchCase 真相源：横幅复用在谈首页同一 在谈范围 的 P5 快照投影
+  // （与「在谈」子视图逐字同口径）。看市场只消费已在内存的快照：不注册 P5 scope、
+  // 不发任何 P5 请求 —— 直达没有快照时与在谈首载同口径显示「正在读入在谈职位…」，
+  // 绝不拿 legacy 在谈列表 冒充待办数。
+  const 在谈范围档 = 状态.在谈范围;
+  const 横幅意向条 = 状态.求职意向表.find((条) => 取意向名(条.标题) === 状态.当前意向);
+  const 横幅filterRef = 在谈范围档 === '全部' ? null : (横幅意向条?.编号 ?? null);
+  const 有横幅scope = 横幅意向条 !== undefined || 在谈范围档 === '全部';
+  const 横幅快照 = 有横幅scope
+    ? 后端状态.P5工作区?.[P5范围键.open('candidate', 横幅filterRef)]
+    : undefined;
+  const 当前SubjectId = 后端状态.主体?.last_used_role === 'candidate'
+    ? 后端状态.主体.subject_id
+    : null;
+  const 横幅状态 = 取P5候选横幅状态(横幅快照, 当前SubjectId, 有横幅scope);
+  const 横幅强调 = 是后端
+    ? 横幅状态.强调
+    : (待协调数 > 0 ? `${待协调数} 个职位需要你协调` : '暂时没有需要你介入的');
+
   const 关闭搜索 = () => {
     设搜索展开(false);
     设搜索词('');
@@ -336,7 +357,7 @@ export default function 看市场() {
         // 搜索时把代理横幅让出去：这一刻用户是自己在找岗，屏幕该留给结果
         <代理横幅
           前文="初筛与前几轮我已谈完，"
-          强调={待协调数 > 0 ? `${待协调数} 个职位需要你协调` : '暂时没有需要你介入的'}
+          强调={横幅强调}
           // 交付 G：Backend 的代理页是导航说明而非自由对话，入口文案不许承诺「问AI代理」；
           // Mock 保持默认「问AI代理 ›」
           动作文={是后端 ? '查看代理功能 ›' : undefined}

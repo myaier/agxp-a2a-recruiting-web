@@ -26,6 +26,8 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 我的信息 } from '../数据/模拟数据';
 import { use应用状态 } from '../状态/应用状态';
+import { P5范围键 } from '../状态/后端/MatchCase操作';
+import { 取P5Open统计 } from '../状态/后端/MatchCase统计';
 
 /** 图标.tsx 里所有图标共用的属性签名 —— 宫格数据里要存「图标组件本身」，所以需要这个类型 */
 type 图标组件 = ComponentType<{ 尺寸?: number; 色?: string; 线宽?: number }>;
@@ -54,7 +56,7 @@ function 取统计色(色名: string): string {
 
 export default function 我的() {
   const { 跳转 } = use导航();
-  const { 状态, 派发, 数据源模式, 后端状态 } = use应用状态();
+  const { 状态, 派发, 数据源模式, 后端状态, 操作 } = use应用状态();
   // 身份文案分两套投影：Backend 只认权威事实 —— 姓名没填就给中性占位，状态胶囊认
   // 服务端简历快照（没水合到 = 资料暂不可用；水合到了但 status 为空 = 未填写，绝不拿
   // 表单默认「在职」或 Mock 的「在职 · 保密求职中」充数）。Mock 继续走原型兜底文案，
@@ -81,6 +83,24 @@ export default function 我的() {
     状态.全局规则.filter((条) => 条.生效).length +
     状态.意向级规则.filter((条) => 条.生效).length;
 
+  // Backend MatchCase 真相源：四个统计数只读当前 candidate 主体的 unfiltered P5 open
+  // 快照（在谈/初筛中/待你拍），已归档本批固定 —（不请求 history）；owner 不匹配、
+  // 未载或分页未尽时 selector 诚实给出 —/N+，绝不回退 legacy 在谈列表 的 fixture 数字。
+  const P5Scope = P5范围键.open('candidate', null);
+  const 当前SubjectId = 后端状态.主体?.last_used_role === 'candidate'
+    ? 后端状态.主体.subject_id
+    : null;
+  const Backend统计 = 取P5Open统计(后端状态.P5工作区[P5Scope], 当前SubjectId);
+
+  // 进屏 / 换主体：先注册可见范围再懒加载 unfiltered scope（与 P5 列表同款栅栏）；
+  // 离开本屏清回 null。Mock 分支不注册、零 P5 请求。
+  useEffect(() => {
+    if (!是后端 || 当前SubjectId === null) return;
+    操作.设置P5范围('candidate', P5Scope);
+    void 操作.加载工作区('candidate', null).catch(() => undefined);
+    return () => 操作.设置P5范围('candidate', null);
+  }, [是后端, 当前SubjectId, P5Scope, 操作]);
+
   // 四个统计数改成从真实状态算：在详情页接受/退出之后，这里要立刻跟着变，
   // 否则用户做完决策回到「我的」看到的还是建档时写死的数字。
   //
@@ -89,7 +109,7 @@ export default function 我的() {
   // 用户从「我的」点完回到主页发现整个主页被换了档 —— 主页不该被「我的」影响。
   // 「待你拍」保留可点：它读的是**全量**在谈单（跨意向），落到「全部意向」档（拦路 6）。
   // 其余数（初筛中 / 已归档）没有对应的档位，保持不可点，不做假入口。
-  const 统计: 统计格[] = [
+  const 原Mock统计: 统计格[] = [
     {
       数值: String(状态.在谈列表.length),
       名称: '在谈',
@@ -108,6 +128,25 @@ export default function 我的() {
     },
     { 数值: String(状态.归档列表.length), 名称: '已归档', 色: '次要' },
   ];
+  const 统计: 统计格[] = 是后端 ? [
+    {
+      数值: Backend统计.open,
+      名称: '在谈',
+      色: '墨',
+    },
+    {
+      数值: Backend统计.anonymousScreening,
+      名称: '初筛中',
+      色: '深绿',
+    },
+    {
+      数值: Backend统计.needsAction,
+      名称: '待你拍',
+      色: '深绿',
+      按下: () => 派发({ 型: '看全部在谈', 档: '待我拍板' }),
+    },
+    { 数值: '—', 名称: '已归档', 色: '次要' },
+  ] : 原Mock统计;
 
   // 尚未实现的入口（屏蔽名单 / 帮助与客服 / 右上三枚工具图标）点了弹一条浮层提示，
   // 保证每个可点元素都有真实反馈，而不是按下去毫无动静的死按钮
@@ -213,7 +252,7 @@ export default function 我的() {
             <span className={样式.在线点} />
           </span>
           <span className={`${样式.代理状态} 单行`}>
-            在线 · 正在跟进 {状态.在谈列表.length} 个机会
+            在线 · 正在跟进 {是后端 ? Backend统计.open : 状态.在谈列表.length} 个机会
             {/* 规则计数未水合时（Backend）整段不出，不渲染 0 也不拿 Mock 数充数 */}
             {可显示候选规则数 ? (
               <> · 规则 {生效规则数} 条生效</>

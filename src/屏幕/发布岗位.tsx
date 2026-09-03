@@ -12,13 +12,15 @@
 // 双盲语义：薪资只有岗位自己的带（区间），没有任何报价 / 出价 UI；
 // 硬性条件交给 AI 代理在匿名初筛执行，数值互不披露。
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import 样式 from './发布岗位.module.css';
 import 数字滚轮层 from '../组件/数字滚轮层';
 import { 代理横幅, 主按钮, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
+import 确认层 from '../组件/确认层';
 import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
+import { 校验附件PDF } from '../流程/附件简历交互';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
@@ -30,7 +32,15 @@ import { 可用企业关系 } from '../数据/组织映射';
 import { 空岗位硬性事实 } from '../数据/类型';
 import type { 在招岗位, 岗位硬性事实 } from '../数据/类型';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
-import type { BFFTaxonomyItem } from '../数据/BFF契约';
+import type {
+  BFFTaxonomyItem,
+  BFFJD建议,
+  BFFJD导入失败码,
+  BFFJD招聘类型,
+  BFFJD办公方式,
+  BFFJD学历,
+  BFFJD经验,
+} from '../数据/BFF契约';
 
 const 步骤顺序 = ['基础信息', '职位描述', '职位要求'] as const;
 
@@ -144,14 +154,140 @@ function 拆薪资带(薪资带: string): [string, string] {
   return 命中 ? [命中[1], 命中[2]] : ['', ''];
 }
 
+// ── JD PDF 建议稿导入（页面本地运行态，2026-09-03）────────────────────
+// 只在 Backend + recruiter 新建岗位接线；consent 前零 mutation；pending/processing
+// 用约 3 秒 setTimeout 链串行轮询（隐藏暂停、恢复立即读）；新旧轮用页面 generation +
+// import ID 双栅栏隔离迟到结果。导入状态不落 localStorage/sessionStorage。
+
+type JD导入阶段 = 'idle' | 'uploading' | 'pending' | 'processing' | 'succeeded' | 'failed';
+type JD重试动作 = 'create' | 'read' | 'none';
+
+interface JD导入页面状态 {
+  generation: number;
+  phase: JD导入阶段;
+  file: File | null;
+  idempotencyKey: string | null;
+  importId: string | null;
+  retry: JD重试动作;
+  error: string | null;
+}
+
+const 初始JD导入状态: JD导入页面状态 = {
+  generation: 0,
+  phase: 'idle',
+  file: null,
+  idempotencyKey: null,
+  importId: null,
+  retry: 'none',
+  error: null,
+};
+
+/** 后端 terminal failed 的四值闭集文案（Spec §9.2）。 */
+const JD失败码文案: Record<BFFJD导入失败码, string> = {
+  invalid_pdf: '仅支持有效、未加密且不含主动内容的 PDF',
+  document_too_complex: '内容过多或过于复杂，请换一份 PDF',
+  parser_invalid_output: '未能识别这份 JD，可重新上传或手动填写',
+  parser_temporarily_unavailable: '识别服务繁忙，请稍后重试或手动填写',
+};
+
+/** JD 专用闭合错误文案：绝不上屏后端 message、request ID、provider 或模型输出。 */
+function 取JD错误文案(error: unknown): string {
+  const unavailable = 'JD 服务暂时不可用，请稍后重试或手动填写';
+  if (!(error instanceof BFF错误)) return unavailable;
+  const known: Record<string, string> = {
+    invalid_pdf: JD失败码文案.invalid_pdf,
+    job_draft_import_too_large: '文件过大，请选择较小的 PDF',
+    document_too_complex: JD失败码文案.document_too_complex,
+    processing_consent_required: '请重新确认后再继续',
+    upload_in_progress: 'JD 正在上传，请稍后重试',
+    idempotency_in_progress: 'JD 正在上传，请稍后重试',
+    idempotency_conflict: '上传意图已变化，请重新选择文件',
+    parser_invalid_output: JD失败码文案.parser_invalid_output,
+    parser_temporarily_unavailable: JD失败码文案.parser_temporarily_unavailable,
+    job_draft_import_not_found: '这次识别已失效，请重新上传',
+    storage_unavailable: unavailable,
+    invalid_response: '服务返回异常，请稍后重试',
+  };
+  // typeof 守卫原型链键（constructor/__proto__）：未登记 code 一律落安全文案
+  const 命中 = known[error.code];
+  if (typeof 命中 === 'string') return 命中;
+  return unavailable;
+}
+
+/** POST 异常允许显式重试创建的闭合集合：结果未知或临时失败才复用同一 File + 幂等键。 */
+function JD创建错误可重试(error: unknown): boolean {
+  if (!(error instanceof BFF错误)) return false;
+  return error.code === 'network_error' || error.status === 503 ||
+    error.code === 'operation_outcome_unknown' || error.code === 'storage_unavailable' ||
+    error.code === 'upload_in_progress' || error.code === 'idempotency_in_progress';
+}
+
+/** GET 异常允许显式重试读取的闭合集合：只重读同一 import ID，绝不重新 POST。 */
+function JD读取错误可重试(error: unknown): boolean {
+  if (!(error instanceof BFF错误)) return false;
+  return error.code === 'network_error' || error.status === 503 || error.code === 'storage_unavailable';
+}
+
+/** 基础信息步 里的 JD 横幅是纯数据 props（复用现有 代理横幅，不新增组件）。 */
+interface JD横幅属性 {
+  前文: string;
+  强调: string;
+  动作文: string;
+  按下: () => void;
+}
+
+// ── JD 建议的闭合映射（Spec §8.2）：wire 枚举 → 页面中文档位 ──
+
+const JD招聘类型映射: Record<BFFJD招聘类型, 招聘类型> = {
+  social_full_time: '社招全职', campus: '校园招聘', internship: '实习生', part_time: '兼职',
+};
+const JD办公方式映射: Record<BFFJD办公方式, string> = {
+  onsite: '现场', hybrid: '混合', remote: '全远程',
+};
+const JD学历映射: Record<BFFJD学历, string> = {
+  none: '不限', associate: '大专', bachelor: '本科', master: '硕士', doctorate: '博士',
+};
+const JD经验映射: Record<BFFJD经验, string> = {
+  none: '不限', one_to_three_years: '1-3 年', three_to_five_years: '3-5 年',
+  five_plus_years: '5 年以上', ten_plus_years: '10 年以上',
+};
+
+/** Catalog 引用比较只看 id + display_name，不依赖对象引用相等（Spec §8.1）。 */
+const 引用相等 = (left?: 目录选择值, right?: 目录选择值) =>
+  left?.id === right?.id && left?.display_name === right?.display_name;
+
+/** POST 起飞前的表单快照：全部可建议字段 + 三个耦合组的成员（Spec §8.1）。 */
+interface JD表单快照 {
+  岗位名称: string;
+  招聘类型: 招聘类型;
+  办公方式: string;
+  办公地: string;
+  职位描述: string;
+  职位要求: string;
+  最低学历: string;
+  经验要求: string;
+  薪资下限: string;
+  薪资上限: string;
+  年薪月数: number | null;
+  届别: string;
+  实习月数: number;
+  每周天数: number;
+  实习转正: boolean | null;
+  工作城市: string;
+  类别引用?: 目录选择值;
+  地点引用?: 目录选择值;
+}
+
 export default function 发布岗位() {
   const { id: 路由岗位编号 } = useParams<{ id: string }>();
   const { 返回, 进企业主壳, 进企业初始化, 替换跳转 } = use导航();
   // 注册流的招聘名片跳过来时在 history.state 上做了标记(刷新不丢);
   // 应用内入口(岗位管理/在谈/推荐的 ＋)没有标记 → 发布后不再播初始化页
   const 从注册流 = Boolean((useLocation().state as { 从注册流?: boolean } | null)?.从注册流);
-  const { 状态, 派发, 操作, 数据源模式, 目录查询 } = use应用状态();
+  const { 状态, 派发, 操作, 数据源模式, 目录查询, 后端状态 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
+  // JD 导入只服务 Backend + recruiter（plan 全局约束）：候选人角色直开本页时不接线
+  const 是招聘方 = 是后端 && (后端状态?.主体?.last_used_role === 'recruiter');
   // 提交/删除并发锁：await 操作.* 期间拒绝重复点击，不改变按钮样式
   const 提交锁 = useRef(false);
 
@@ -199,8 +335,330 @@ export default function 发布岗位() {
   const [职位关键词] = useState<string[]>(编辑目标?.职位关键词 ?? []);
   // 编辑态底部「删除」的二次确认
   const [待删, 设待删] = useState(false);
-  // 一键上传 JD(2026-09-01):前端只做入口与选中回执,解析与预填由后端接线
+  // 一键上传 JD(2026-09-01 → 2026-09-03 接线):consent → POST → 串行轮询 → 建议稿
   const JD文件框 = useRef<HTMLInputElement>(null);
+  // JD 导入运行态只在当前挂载周期内存里（Spec §5.3）：generation 隔离同页多轮，
+  // importId 隔离同轮多请求；文件、幂等键、建议、import ID 一律不持久化。
+  const [JD状态, 设JD状态] = useState(初始JD导入状态);
+  const [待确认JD, 设待确认JD] = useState<{ generation: number; file: File; key: string } | null>(null);
+  // 状态同步双写 ref：POST/GET 结算读的是最新 generation，不吃一渲染旧的闭包值。
+  const JD状态引用 = useRef(JD状态);
+  const JD已挂载 = useRef(false);
+  const JD定时器 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const JD读取中 = useRef(false);
+  // 表单影子 ref：每次渲染后同步当前值，建议应用读它而不是过期的回调闭包；
+  // 上传快照只在初始确认 POST 起飞前赋一次（create 重试不重拍，沿用原快照）。
+  const JD表单引用 = useRef<JD表单快照 | null>(null);
+  const JD上传快照 = useRef<{ generation: number; value: JD表单快照 } | null>(null);
+
+  useEffect(() => {
+    JD表单引用.current = {
+      岗位名称, 招聘类型, 办公方式, 办公地, 职位描述, 职位要求, 最低学历, 经验要求,
+      薪资下限, 薪资上限, 年薪月数, 届别, 实习月数, 每周天数, 实习转正, 工作城市,
+      类别引用: 类别引用 ? { ...类别引用 } : undefined,
+      地点引用: 地点引用 ? { ...地点引用 } : undefined,
+    };
+  });
+
+  const 更新JD状态 = (next: JD导入页面状态) => {
+    JD状态引用.current = next;
+    设JD状态(next);
+  };
+
+  const 清JD定时器 = useCallback(() => {
+    if (JD定时器.current !== null) clearTimeout(JD定时器.current);
+    JD定时器.current = null;
+  }, []);
+
+  useEffect(() => {
+    JD已挂载.current = true;
+    return () => {
+      JD已挂载.current = false;
+      清JD定时器();
+    };
+  }, [清JD定时器]);
+
+  /** 页面级栅栏：挂载中 + generation 一致（带 importId 时还要同轮同任务）。 */
+  const 本轮仍有效 = (generation: number, importId?: string) => {
+    const current = JD状态引用.current;
+    return JD已挂载.current && current.generation === generation &&
+      (importId === undefined || current.importId === importId);
+  };
+
+  const 安排JD读取 = (generation: number, importId: string) => {
+    清JD定时器();
+    if (document.hidden || !本轮仍有效(generation, importId)) return;
+    JD定时器.current = setTimeout(() => void 读取本轮JD(generation, importId), 3000);
+  };
+
+  /** 当前轮的一次 GET：单飞（JD读取中），结算按状态推进或终局，异常按闭合集合决定 read 重试。 */
+  const 读取本轮JD = async (generation: number, importId: string): Promise<void> => {
+    if (JD读取中.current) {
+      // 已有 GET 在飞（多半是旧轮的迟到读）：同一时刻仍最多一个 GET，但本轮不丢拍
+      安排JD读取(generation, importId);
+      return;
+    }
+    JD读取中.current = true;
+    try {
+      const result = await 操作.读取JD导入(importId);
+      if (!本轮仍有效(generation, importId)) return;
+      if (result === '已换代') {
+        // 操作层栅栏已换代（如角色翻转）但页面仍是本轮：收口回 idle，不卡在途状态
+        清JD定时器();
+        更新JD状态({ ...JD状态引用.current, phase: 'idle', importId: null, retry: 'none' });
+        return;
+      }
+      if (result.status === 'succeeded') {
+        清JD定时器();
+        应用JD建议(generation, result.suggestion);
+        更新JD状态({ ...JD状态引用.current, phase: 'succeeded', retry: 'none', error: null });
+        return;
+      }
+      if (result.status === 'failed') {
+        清JD定时器();
+        更新JD状态({ ...JD状态引用.current, phase: 'failed', retry: 'none', error: JD失败码文案[result.failure_code] });
+        return;
+      }
+      更新JD状态({ ...JD状态引用.current, phase: result.status, retry: 'none', error: null });
+      安排JD读取(generation, importId);
+    } catch (error) {
+      if (!本轮仍有效(generation, importId)) return;
+      清JD定时器();
+      更新JD状态({
+        ...JD状态引用.current, phase: 'failed', importId,
+        error: 取JD错误文案(error),
+        retry: JD读取错误可重试(error) ? 'read' : 'none',
+      });
+    } finally {
+      JD读取中.current = false;
+    }
+  };
+
+  /** 当前轮的一次 POST：四种状态都合法；异常保留 File+键，只有闭合集合给 create 重试。 */
+  const 创建本轮JD = async (generation: number, file: File, key: string): Promise<void> => {
+    try {
+      const result = await 操作.创建JD导入(file, key);
+      if (!本轮仍有效(generation)) return;
+      if (result === '已换代') {
+        // 操作层栅栏已换代（如角色翻转）但页面仍是本轮：收口回 idle，解除 aria-busy
+        更新JD状态({ ...JD状态引用.current, phase: 'idle', importId: null, retry: 'none' });
+        return;
+      }
+      if (result.status === 'succeeded') {
+        清JD定时器();
+        应用JD建议(generation, result.suggestion);
+        更新JD状态({ ...JD状态引用.current, phase: 'succeeded', retry: 'none', error: null });
+        return;
+      }
+      if (result.status === 'failed') {
+        清JD定时器();
+        更新JD状态({ ...JD状态引用.current, phase: 'failed', retry: 'none', error: JD失败码文案[result.failure_code] });
+        return;
+      }
+      更新JD状态({ ...JD状态引用.current, phase: result.status, importId: result.import_id, retry: 'none', error: null });
+      安排JD读取(generation, result.import_id);
+    } catch (error) {
+      if (!本轮仍有效(generation)) return;
+      清JD定时器();
+      更新JD状态({
+        ...JD状态引用.current, phase: 'failed', importId: null,
+        error: 取JD错误文案(error),
+        retry: JD创建错误可重试(error) ? 'create' : 'none',
+      });
+    }
+  };
+
+  /** 确认层「同意并继续」：busy guard 挡重复同意，起飞前捕获表单快照并清任务坐标。 */
+  const 提交待确认JD = () => {
+    if (JD状态引用.current.phase === 'uploading') return;
+    const 待 = 待确认JD;
+    if (!待) return;
+    设待确认JD(null);
+    // POST 起飞前拍下当前表单快照（create 重试沿用这一份，不重拍）
+    if (JD表单引用.current) {
+      JD上传快照.current = { generation: 待.generation, value: { ...JD表单引用.current } };
+    }
+    更新JD状态({
+      ...JD状态引用.current, phase: 'uploading',
+      file: 待.file, idempotencyKey: 待.key,
+      importId: null, retry: 'none', error: null,
+    });
+    void 创建本轮JD(待.generation, 待.file, 待.key);
+  };
+
+  /** 失败横幅的「重试 ›」：按状态分派，create 复用同一 File+键，read 只重读同一任务。 */
+  const 重试JD = () => {
+    const current = JD状态引用.current;
+    if (current.phase === 'uploading') return;
+    if (current.retry === 'create' && current.file && current.idempotencyKey) {
+      更新JD状态({ ...current, phase: 'uploading', error: null });
+      void 创建本轮JD(current.generation, current.file, current.idempotencyKey);
+    } else if (current.retry === 'read' && current.importId) {
+      void 读取本轮JD(current.generation, current.importId);
+    }
+  };
+
+  /** 隐藏文件框的选择：清 value 后分支 —— 编辑态零动作，非法文件只弹 toast，
+   *  Mock 只回执，Backend 新建的合法 PDF 递增 generation 开新轮并弹 consent。 */
+  const 选择JD文件 = (事件: React.ChangeEvent<HTMLInputElement>) => {
+    const 文件 = 事件.currentTarget.files?.[0];
+    事件.currentTarget.value = '';
+    if (!文件 || 编辑态) return;
+    const 问题 = 校验附件PDF(文件, null);
+    if (问题) {
+      轻提示(问题);
+      return;
+    }
+    if (!是招聘方) {
+      // Mock 演示回执与候选人角色同一口径：不弹会声称真实处理的 consent、零请求
+      轻提示('已选择，可继续手动填写');
+      return;
+    }
+    const generation = JD状态引用.current.generation + 1;
+    清JD定时器();
+    // 新合法 PDF：旧轮 timer/import/error 清零、phase 复位 idle —— 从 uploading/failed 也能重新起轮
+    更新JD状态({
+      generation, phase: 'idle', file: null, idempotencyKey: null,
+      importId: null, retry: 'none', error: null,
+    });
+    设待确认JD({ generation, file: 文件, key: `jd-import-${crypto.randomUUID()}` });
+  };
+
+  /** 横幅动作拉起文件框：uploading 的 busy guard 是 no-op，其余状态都允许重新起轮。 */
+  const 拉起JD文件框 = () => {
+    if (JD状态引用.current.phase === 'uploading') return;
+    JD文件框.current?.click();
+  };
+
+  // 可见性自持有一份监听（卸载即移除）：隐藏清 timer，恢复且在 pending/processing、
+  // 无在飞 GET 时立即读一次；在飞的 GET 由它自己的结算安排下一拍。
+  useEffect(() => {
+    const 处理可见性 = () => {
+      if (!JD已挂载.current) return;
+      if (document.hidden) {
+        清JD定时器();
+        return;
+      }
+      const current = JD状态引用.current;
+      if ((current.phase === 'pending' || current.phase === 'processing') &&
+        !JD读取中.current && current.importId !== null) {
+        void 读取本轮JD(current.generation, current.importId);
+      }
+    };
+    document.addEventListener('visibilitychange', 处理可见性);
+    return () => document.removeEventListener('visibilitychange', 处理可见性);
+    // 读取本轮JD 读的全部是 ref 与稳定 操作 引用，闭包不捕获渲染态
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [清JD定时器]);
+
+  /**
+   * 招聘类型切换的既有清理（手动与建议共用，Spec §8.3）：清空薪资上下限与年薪月数，
+   * 切到实习生时把转正确认重置为未确认。两个本地函数只集中这两条已重复的表单转移，
+   * 不是新抽象。
+   */
+  const 切换招聘类型 = (value: 招聘类型) => {
+    设招聘类型(value);
+    设薪资下限('');
+    设薪资上限('');
+    设年薪月数(null);
+    if (value === '实习生') 设实习转正(null);
+  };
+
+  /** 办公方式切换的既有清理（手动与建议共用，Spec §8.4）：切到全远程清空办公地点。 */
+  const 切换办公方式 = (value: string) => {
+    设办公方式(value);
+    if (value === '全远程') 设办公地('');
+  };
+
+  /**
+   * 应用一份 succeeded 建议（Spec §8）：只写当前值仍等于本轮起飞快照的字段；
+   * 招聘类型 / 办公方式 / 工作城市+地点引用 三个耦合组整组比较；Catalog 引用永远
+   * 优先于模型源文本；keywords 无录入入口，显式忽略。读表单走 JD表单引用.current。
+   */
+  const 应用JD建议 = (generation: number, suggestion: BFFJD建议) => {
+    const 快照包 = JD上传快照.current;
+    if (JD状态引用.current.generation !== generation) return;
+    if (!快照包 || 快照包.generation !== generation || !JD表单引用.current) return;
+    const 快照 = 快照包.value;
+    const 当前 = JD表单引用.current;
+
+    // ── 独立字段：建议非空且当前值仍等于快照才写入 ──
+    if (suggestion.title !== null && 当前.岗位名称 === 快照.岗位名称) 设岗位名称(suggestion.title);
+    if (suggestion.description !== null && 当前.职位描述 === 快照.职位描述) 设职位描述(suggestion.description);
+    if (suggestion.requirements !== null && 当前.职位要求 === 快照.职位要求) 设职位要求(suggestion.requirements);
+    if (suggestion.education_requirement !== null && 当前.最低学历 === 快照.最低学历) {
+      设最低学历(JD学历映射[suggestion.education_requirement]);
+    }
+
+    // ── 招聘类型耦合组：类型 + 薪资上下限 + 年薪月数 + 届别 + 实习月数/天数 + 转正 + 经验 ──
+    const 类型组等于快照 =
+      当前.招聘类型 === 快照.招聘类型 &&
+      当前.薪资下限 === 快照.薪资下限 &&
+      当前.薪资上限 === 快照.薪资上限 &&
+      当前.年薪月数 === 快照.年薪月数 &&
+      当前.届别 === 快照.届别 &&
+      当前.实习月数 === 快照.实习月数 &&
+      当前.每周天数 === 快照.每周天数 &&
+      当前.实习转正 === 快照.实习转正 &&
+      当前.经验要求 === 快照.经验要求;
+    const 建议类型 = suggestion.recruitment_type !== null ? JD招聘类型映射[suggestion.recruitment_type] : null;
+    if (建议类型 !== null && 建议类型 !== 当前.招聘类型) {
+      // 整组未被用户动过才切换；经验在切到按年限筛的类型时随组应用（校招/实习不写隐藏经验）
+      if (类型组等于快照) {
+        切换招聘类型(建议类型);
+        if (按年限筛(建议类型) && suggestion.experience_requirement !== null) {
+          设经验要求(JD经验映射[suggestion.experience_requirement]);
+        }
+      }
+    } else if (suggestion.experience_requirement !== null) {
+      // 类型建议缺席或与当前一致：经验独立应用 —— 当前类型按年限筛且经验未被修改
+      if (按年限筛(当前.招聘类型) && 当前.经验要求 === 快照.经验要求) {
+        设经验要求(JD经验映射[suggestion.experience_requirement]);
+      }
+    }
+
+    // ── 办公方式耦合组：方式 + 地址整组比较；先切方式，地址只在结果方式非全远程时填 ──
+    if (当前.办公方式 === 快照.办公方式 && 当前.办公地 === 快照.办公地) {
+      const 建议方式 = suggestion.workplace_mode !== null ? JD办公方式映射[suggestion.workplace_mode] : null;
+      if (建议方式 !== null && 建议方式 !== 当前.办公方式) {
+        切换办公方式(建议方式);
+        if (建议方式 !== '全远程' && suggestion.office_location !== null) 设办公地(suggestion.office_location);
+      } else if (suggestion.office_location !== null && 当前.办公方式 !== '全远程') {
+        设办公地(suggestion.office_location);
+      }
+    }
+
+    // ── 工作城市耦合组：文本与引用都未动，且起飞/当前都没有 canonical 引用，才写搜索文本 ──
+    if (当前.工作城市 === 快照.工作城市 && 引用相等(当前.地点引用, 快照.地点引用) &&
+      快照.地点引用 === undefined && 当前.地点引用 === undefined &&
+      suggestion.location_source_name !== null) {
+      改工作城市(suggestion.location_source_name);
+    }
+
+    // ── 类别：不写表单状态，只走一次现有轻提示；keywords 显式忽略（无录入入口）──
+    if (suggestion.category_source_name !== null && suggestion.category_source_name.trim() !== '') {
+      轻提示(`AI 识别的职位类别是「${suggestion.category_source_name}」，请手动选择`);
+    }
+  };
+
+  /** JD 横幅四元组（Spec §9.1）：失败态把闭合 error 投影进现有横幅文案。 */
+  const JD横幅: JD横幅属性 = (() => {
+    switch (JD状态.phase) {
+      case 'uploading':
+        return { 前文: '正在上传 JD', 强调: '', 动作文: '上传 JD ›', 按下: 拉起JD文件框 };
+      case 'pending':
+      case 'processing':
+        return { 前文: '正在识别 JD', 强调: '', 动作文: '上传 JD ›', 按下: 拉起JD文件框 };
+      case 'succeeded':
+        return { 前文: '已识别，请检查建议', 强调: '', 动作文: '重新上传 ›', 按下: 拉起JD文件框 };
+      case 'failed':
+        return JD状态.retry === 'create' || JD状态.retry === 'read'
+          ? { 前文: JD状态.error ?? '', 强调: '', 动作文: '重试 ›', 按下: 重试JD }
+          : { 前文: JD状态.error ?? '', 强调: '', 动作文: '重新上传 ›', 按下: 拉起JD文件框 };
+      default:
+        return { 前文: '把 JD 给我，', 强调: '这张表我来填', 动作文: '上传 JD ›', 按下: 拉起JD文件框 };
+    }
+  })();
 
   // ── 第二步 / 第三步：描述与要求 ──
   const [职位描述, 设职位描述] = useState(编辑目标?.职位描述 ?? 职位描述预填);
@@ -257,7 +715,11 @@ export default function 发布岗位() {
    */
   const 第一步缺失 = (): { 文案: string; 步骤: number } | null => {
     if (岗位名称.trim() === '') return { 文案: '请填写岗位名称', 步骤: 0 };
-    if (职位类别 === '') return { 文案: '请选择职位类别', 步骤: 0 };
+    // Backend 必须同时有类别展示值与真实 类别引用（模型源文本不能冒充 Catalog 选择）；
+    // Mock 保持既有自由文本行为。
+    if (是后端 ? (!职位类别.trim() || !类别引用) : 职位类别 === '') {
+      return { 文案: '请选择职位类别', 步骤: 0 };
+    }
     if (办公方式 === '') return { 文案: '请选择办公方式', 步骤: 0 };
     // 「最晚可接受实习开始日期」这道闸门随字段一起撤（产品负责人 2026-08-22：
     // 「最晚可接受实习开始日期…这个删了吧，没啥用」；该字段无书面出处）。
@@ -311,7 +773,8 @@ export default function 发布岗位() {
       // 映射是服务端 422 的投影，属于契约层，不跟这条页面前置校验同步改。）
       return { 步骤: 2, 文案: '请先在招聘名片填写公司名称' };
     }
-    if (!办公地.trim()) return { 步骤: 2, 文案: '请填写办公地点' };
+    // 全远程按后端合同允许空办公地址；其余办公方式地址必填
+    if (办公方式 !== '全远程' && !办公地.trim()) return { 步骤: 2, 文案: '请填写办公地点' };
     // 面试轮次 / 招聘紧急度 两道闸门随字段一起撤（产品负责人 2026-08-22：
     // 「这个面试轮次写上面是干什么的，应该删掉吧」「这个招聘紧急程度也删了吧，感觉没什么用」）。
     // 剩下的岗位名称 / 职位类别 / 办公方式 / 薪资带 是发岗真必需项，闸门不动
@@ -345,7 +808,8 @@ export default function 发布岗位() {
       // Task 7：Backend 选择器保存的目录引用；Mock 始终 undefined（可选字段 omitted）
       类别引用,
       地点引用,
-      办公地: 办公地.trim(),
+      // 全远程发送合同允许的空办公地址；其余照常 trim 提交
+      办公地: 办公方式 === '全远程' ? '' : 办公地.trim(),
       办公方式,
       招聘类型,
       届别: 招聘类型 === '校园招聘' ? 届别 : undefined,
@@ -497,21 +961,17 @@ export default function 发布岗位() {
     // 2026-08-24 全站选择风格统一（C1 定稿）：页底改白底
     <次级页外壳 白底>
 
-      {/* 一键上传 JD 的隐藏文件框:accept 与求职端简历上传同族;
-          选中后交给后端解析预填(本期只回执文件名,不在前端猜字段) */}
+      {/* 一键上传 JD 的隐藏文件框：只收 PDF；选中即清 value 允许重选同一文件；
+          consent 前零请求（2026-09-03 接线，位置与 inline style 不变） */}
       <input
         ref={JD文件框}
+        aria-label="上传 JD 文件"
         type="file"
-        accept=".pdf,.doc,.docx,.txt"
+        accept=".pdf,application/pdf"
         style={{ display: 'none' }}
-        onChange={(事件) => {
-          const 文件 = 事件.target.files?.[0];
-          事件.target.value = '';
-          if (!文件) return;
-          轻提示(`已收到「${文件.name}」，解析后自动预填`);
-        }}
+        onChange={选择JD文件}
       />
-      <div className={样式.发布壳}>
+      <div className={样式.发布壳} aria-busy={JD状态.phase === 'uploading'}>
         <返回栏 返回={上一步} 标题={编辑态 ? '编辑岗位' : undefined} />
 
         {编辑态 ? (
@@ -532,21 +992,13 @@ export default function 发布岗位() {
         {第几步 === 0 ? (
           <基础信息步
             编辑态={编辑态}
-            上传JD={() => JD文件框.current?.click()}
+            JD横幅={JD横幅}
             岗位名称={岗位名称}
             设岗位名称={设岗位名称}
             办公方式={办公方式}
-            设办公方式={设办公方式}
+            设办公方式={切换办公方式}
             招聘类型={招聘类型}
-            选招聘类型={(项) => {
-              // 类型是表单的「开关」。切换后清空计薪字段，让发布人重新确认，
-              // 既避免月薪/日薪单位错位，也不用演示默认值代替真实预算。
-              设招聘类型(项);
-              设薪资下限('');
-              设薪资上限('');
-              设年薪月数(null);
-              if (项 === '实习生') 设实习转正(null);
-            }}
+            选招聘类型={切换招聘类型}
             届别={届别}
             设届别={设届别}
             职位类别={职位类别}
@@ -568,6 +1020,7 @@ export default function 发布岗位() {
           <职位要求步
             编辑态={编辑态}
             招聘类型={招聘类型}
+            办公方式={办公方式}
             经验要求={经验要求}
             设经验要求={改经验要求}
             最低学历={最低学历}
@@ -657,6 +1110,17 @@ export default function 发布岗位() {
                 </button>
               </div>
           </弹层框架>
+        ) : null}
+
+        {/* JD 导入 consent：复用现有 确认层，文案冻结（Spec §7.1）；取消零 mutation */}
+        {待确认JD ? (
+          <确认层
+            标题="允许 AI 识别这份职位描述？"
+            正文="这份 PDF 将发送给受控模型服务进行职位信息识别。确认后才会上传并开始处理。"
+            执行文="同意并继续"
+            执行={提交待确认JD}
+            取消={() => 设待确认JD(null)}
+          />
         ) : null}
 
         {类别层开 ? (
@@ -956,7 +1420,7 @@ function 职业分类层后端({
 // ── D0 第一步：基础信息 —— 招聘类型先选（它是整张表单的开关）→ 名称 → 类别 → 办公方式 ──
 function 基础信息步({
   编辑态,
-  上传JD,
+  JD横幅,
   岗位名称,
   设岗位名称,
   办公方式,
@@ -977,8 +1441,8 @@ function 基础信息步({
   设实习转正,
 }: {
   编辑态: boolean;
-  /** 一键上传 JD:拉起文件选择;解析与预填由后端接线,本层只负责入口 */
-  上传JD: () => void;
+  /** JD 导入横幅四元组（纯数据 props）：状态文案/动作由页面运行态投影，本层只摆放 */
+  JD横幅: JD横幅属性;
   岗位名称: string;
   设岗位名称: (值: string) => void;
   办公方式: string;
@@ -1009,15 +1473,15 @@ function 基础信息步({
       />
 
       {/* 一键上传 JD(2026-09-01 用户定稿):用主页同款代理横幅收 JD ——
-          这是代理的活,就用代理的语气开口。解析与预填由后端接,前端只出入口:
-          点横幅拉起文件选择,交给上层回调。编辑态不出现(岗位已存在,不再从 JD 起手) */}
+          这是代理的活,就用代理的语气开口。2026-09-03 接线:横幅文案/动作由页面
+          JD 运行态投影(四元组纯数据 props)。编辑态不出现(岗位已存在,不再从 JD 起手) */}
       {编辑态 ? null : (
         <div className={样式.上传JD区}>
           <代理横幅
-            前文="把 JD 给我，"
-            强调="这张表我来填"
-            动作文="上传 JD ›"
-            按下={上传JD}
+            前文={JD横幅.前文}
+            强调={JD横幅.强调}
+            动作文={JD横幅.动作文}
+            按下={JD横幅.按下}
           />
         </div>
       )}
@@ -1238,6 +1702,7 @@ function 职位描述步({
 function 职位要求步({
   编辑态,
   招聘类型: 当前类型,
+  办公方式,
   经验要求: 当前经验,
   设经验要求,
   最低学历: 当前学历,
@@ -1272,6 +1737,8 @@ function 职位要求步({
 }: {
   编辑态: boolean;
   招聘类型: 招聘类型;
+  /** 全远程时办公地点保留原位但清空并禁用（后端合同允许空地址） */
+  办公方式: string;
   经验要求: string;
   设经验要求: (值: string) => void;
   最低学历: string;
@@ -1444,13 +1911,15 @@ function 职位要求步({
           ) : null}
         </div>
 
-        {/* 办公地点到楼宇级：候选人要据此判断通勤，只给城市不够用。 */}
+        {/* 办公地点到楼宇级：候选人要据此判断通勤，只给城市不够用。
+            全远程时保留原位、清空并禁用（不隐藏该行，不改布局）。 */}
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>办公地点</div>
           <input
             className={样式.条目输入}
             value={办公地}
             placeholder="如：浦东新区世纪大道 1568 号中建大厦 28 层"
+            disabled={办公方式 === '全远程'}
             onChange={(事件) => 设办公地(事件.target.value)}
           />
         </div>

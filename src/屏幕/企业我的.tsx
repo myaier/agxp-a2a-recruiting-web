@@ -8,7 +8,7 @@
 // 屏内只有「功能宫格 + 页脚」这一段滚动，上半部分钉住不动 —— 与同构源一致：
 // 公司状态是常驻信息，功能入口才是可翻的列表。
 
-import type { ComponentType } from 'react';
+import { useEffect, type ComponentType } from 'react';
 import 样式 from './企业我的.module.css';
 import { 主页外壳, 滚动区 } from '../组件/通用';
 import {
@@ -28,6 +28,8 @@ import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
 import { 轻提示 } from '../组件/轻提示';
 import { 从BFF招聘身份 } from '../数据/组织映射';
+import { P5范围键 } from '../状态/后端/MatchCase操作';
+import { 取P5Open统计 } from '../状态/后端/MatchCase统计';
 
 /** 图标.tsx 里所有图标共用的属性签名 —— 宫格数据里要存「图标组件本身」，所以需要这个类型 */
 type 图标组件 = ComponentType<{ 尺寸?: number; 色?: string; 线宽?: number }>;
@@ -58,7 +60,7 @@ function 取统计色(色名: string): string {
 
 export default function 企业我的() {
   const { 跳转 } = use导航();
-  const { 状态, 派发, 数据源模式, 后端状态 } = use应用状态();
+  const { 状态, 派发, 数据源模式, 后端状态, 操作 } = use应用状态();
   const 在招数 = 状态.岗位列表.filter((岗) => 岗.状态 === '在招').length;
 
   // P6：规则计数只认已水合的权威规则 —— Backend 未水合时不出计数（宁缺勿错，
@@ -80,11 +82,29 @@ export default function 企业我的() {
   const 显示公司 = 是后端
     ? (身份.currentAffiliation?.organizationName ?? 状态.未认证公司声明)
     : 状态.企业认证.公司;
+  // Backend MatchCase 真相源：在谈/待拍板 只读当前 recruiter 主体的 unfiltered P5 open
+  // 快照，意向达成本批固定 —（不请求 history）；owner 不匹配、未载或分页未尽时 selector
+  // 诚实给出 —/N+，企业候选列表（legacy fixture）不再进入 Backend 展示。
+  const P5Scope = P5范围键.open('recruiter', null);
+  const 当前SubjectId = 后端状态.主体?.last_used_role === 'recruiter'
+    ? 后端状态.主体.subject_id
+    : null;
+  const Backend统计 = 取P5Open统计(后端状态.P5工作区[P5Scope], 当前SubjectId);
+
+  // 进屏 / 换主体：先注册可见范围再懒加载 unfiltered scope（与 P5 列表同款栅栏）；
+  // 离开本屏清回 null。Mock 分支不注册、零 P5 请求。
+  useEffect(() => {
+    if (!是后端 || 当前SubjectId === null) return;
+    操作.设置P5范围('recruiter', P5Scope);
+    void 操作.加载工作区('recruiter', null).catch(() => undefined);
+    return () => 操作.设置P5范围('recruiter', null);
+  }, [是后端, 当前SubjectId, P5Scope, 操作]);
+
   // 「在谈」不可点（2026-08-25 用户裁定，与求职端同改）：它此前派发「企业看全部在谈」，
   // 会改写人才页的持久状态（子视图切「在谈」、范围切「全部」），主页不该被「我」页影响。
   // 「待拍板」保留可点：招聘方每天登录第一个要看的东西，跨岗位算的数落到「全部岗位」档（拦路 5）。
   // 「在招岗位」「意向达成」没有对应的列表档，保持不可点，不做假入口。
-  const 统计: 统计格[] = [
+  const 原Mock统计: 统计格[] = [
     { 数值: String(在招数), 名称: '在招岗位', 色: '墨' },
     {
       数值: String(状态.企业候选列表.length),
@@ -103,6 +123,25 @@ export default function 企业我的() {
       色: '次要',
     },
   ];
+  const 统计: 统计格[] = 是后端 ? [
+    { 数值: String(在招数), 名称: '在招岗位', 色: '墨' },
+    {
+      数值: Backend统计.open,
+      名称: '在谈',
+      色: '深绿',
+    },
+    {
+      数值: Backend统计.needsAction,
+      名称: '待拍板',
+      色: '深绿',
+      按下: () => 派发({ 型: '企业看全部在谈', 档: '待我拍板' }),
+    },
+    {
+      数值: '—',
+      名称: '意向达成',
+      色: '次要',
+    },
+  ] : 原Mock统计;
 
 
   const 常用功能: 宫格条目[] = [

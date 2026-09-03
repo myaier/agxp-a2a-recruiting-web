@@ -19,6 +19,7 @@ import { 创建空P4发现状态 } from './状态/后端/发现推荐操作';
 import { 创建空P5MatchCase状态 } from './状态/后端/MatchCase操作';
 import { 创建空P7会话状态 } from './状态/后端/真人会话操作';
 import { 创建空P8控制面状态 } from './状态/后端/P8控制面操作';
+import { 创建空接触记录状态 } from './状态/后端/接触记录操作';
 import 应用 from './应用';
 import 通用样式 from './组件/通用.module.css';
 
@@ -77,6 +78,7 @@ function 建后端状态(覆盖: Partial<后端状态> = {}): 后端状态 {
     ...创建空P5MatchCase状态(),
     ...创建空P7会话状态(),
     ...创建空P8控制面状态(),
+    ...创建空接触记录状态(),
     附件简历库: null,
     招聘方档案水合阶段: '未开始',
     招聘方组织水合: { 阶段: '未开始', 错误: null },
