@@ -338,7 +338,7 @@ P4/P5/P6 的失败合同先由 strict decoder、operation 和 UI 测试完整覆
 implementation plan 必须按最新主干再次缩窄。预计只涉及：
 
 - P4/P5/P6 wire 类型与各自 strict decoder；
-- P4 展示映射、operation/恢复 hook 与实际承载三个页面；
+- P4 展示映射、operation/恢复 hook 与实际承载四个页面（`看市场`、`职位详情`、`候选推荐`、`匿名在线简历`）；
 - MatchCase 展示映射以及 list/detail 的 attention 说明；
 - Agent rule proposal 共享卡片及其 decoder/operation 类型传播；
 - 对应 fixtures 和测试；
