@@ -69,6 +69,7 @@ import { 创建MatchCase操作, 创建空P5MatchCase状态, 清P5MatchCase引用
 import { 创建真人会话操作, 创建空P7会话状态, 清P7会话引用 } from './后端/真人会话操作';
 import { 创建P8账号安全操作, 创建空P8控制面状态, 清P8控制面引用 } from './后端/P8控制面操作';
 import { 创建简历预填操作 } from './后端/简历预填操作';
+import { 创建JD导入操作 } from './后端/JD导入操作';
 import { use真人会话事件 } from './后端/use真人会话事件';
 import { 创建招聘事件源 } from '../数据/招聘事件源';
 import { 创建候选操作 } from './后端/候选操作';
@@ -798,6 +799,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         // 候选 onboarding 简历预填操作（栅栏化单飞读取 + 恢复/激活/同步/重试/手填/确认/
         // 清理），同一把 deps；恢复元数据适配器由上方渲染期按 candidate 主体换绑
         ...创建简历预填操作(deps),
+        // JD PDF 建议稿导入操作（consent 后创建 + 轮询读取，主体/角色/会话栅栏化），
+        // 同一把 deps；导入运行态留在 发布岗位 页面本地
+        ...创建JD导入操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定

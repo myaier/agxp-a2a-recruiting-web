@@ -790,7 +790,22 @@ describe('应用状态提供者 后端会话', () => {
       '恢复候选Onboarding预填', '激活候选Onboarding预填', '同步候选Onboarding解析',
       '重试候选Onboarding预填', '继续手填候选Onboarding', '确认候选Onboarding预填分区',
       '清候选Onboarding预填',
+      // JD 导入域方法（JD导入操作）：创建（consent 后 POST）与轮询读取
+      '创建JD导入', '读取JD导入',
     ].sort().join('|'))).toBeTruthy();
+  });
+
+  // JD 导入：防止「类型存在但 Provider 没暴露」的假接线 —— Backend recruiter Provider
+  // 必须真正 spread 出两个可调用方法。
+  it('Backend recruiter Provider 暴露 JD 导入创建与读取方法', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('recruiter');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(typeof 当前.操作.创建JD导入).toBe('function');
+    expect(typeof 当前.操作.读取JD导入).toBe('function');
   });
 
   it('Backend 恢复会话与主体，角色完成后才派发切身份', async () => {

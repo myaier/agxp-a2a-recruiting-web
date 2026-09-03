@@ -28,6 +28,7 @@ import type {
   BFF招聘候选推荐,
   BFF附件简历库,
   BFF简历预填建议,
+  BFFJD导入,
 } from '../../数据/BFF契约';
 import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
@@ -771,8 +772,10 @@ export interface P8合规操作 {
   提交P8举报(target: P8ReportTarget, reason: P8ReportReason, alsoBlock: boolean): Promise<P8ReportReceipt>;
 }
 
-/** Task 6+7 公开面：合规两法齐备（反馈 + 举报）。 */
-export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 & 发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 & P8账号控制面操作 & P8合规操作 & 简历预填操作;
+/** Task 6+7 公开面：合规两法齐备（反馈 + 举报）+ JD 导入两法。 */
+export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 &
+  发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 &
+  P8账号控制面操作 & P8合规操作 & 简历预填操作 & JD导入操作;
 
 /**
  * 候选 onboarding 简历预填操作方法表（页面不得直接调用数据源）。
@@ -811,4 +814,17 @@ export interface 简历预填操作 {
   确认候选Onboarding预填分区(section: 候选预填分区): void;
   /** 全量清理：内存摊平 pristine、预填代际递增、单飞读锁清空、恢复元数据删除。 */
   清候选Onboarding预填(): void;
+}
+
+/**
+ * JD PDF 建议稿导入操作方法表（页面不得直接调用数据源）。
+ * Backend + recruiter 才调用数据源；Mock / 无后端 / 非 recruiter 一律返回 已换代。
+ * 请求前捕获 subject + 会话代际栅栏，迟到成败整包丢弃；当前栅栏 401 走统一 清账号状态，
+ * 非 401 错误原样抛给页面的 JD 闭合文案映射。页面级 generation/import ID/快照栅栏属于页面。
+ */
+export interface JD导入操作 {
+  /** consent 后创建导入任务：multipart POST + 调用方稳定幂等键；已换代时静默丢弃。 */
+  创建JD导入(file: File, idempotencyKey: string): Promise<BFFJD导入 | '已换代'>;
+  /** 串行轮询读取同一 import ID；已换代时静默丢弃。 */
+  读取JD导入(importId: string): Promise<BFFJD导入 | '已换代'>;
 }
