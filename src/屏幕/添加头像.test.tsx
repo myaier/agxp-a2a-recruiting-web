@@ -14,6 +14,7 @@ const mock返回 = vi.fn();
 const mock进初始化 = vi.fn();
 const mock操作 = {
   清候选Onboarding预填: vi.fn(),
+  保存候选头像: vi.fn(async () => undefined),
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -46,6 +47,7 @@ describe('添加头像：完成注册收尾清理（Task 7）', () => {
     mock返回.mockClear();
     mock进初始化.mockClear();
     mock操作.清候选Onboarding预填.mockClear();
+    mock操作.保存候选头像.mockClear();
   });
 
   it('cleanup before “完成注册” navigation：先清候选预填轮再进初始化页', async () => {
@@ -85,5 +87,13 @@ describe('添加头像：完成注册收尾清理（Task 7）', () => {
     expect(mock操作.清候选Onboarding预填).not.toHaveBeenCalled();
     expect(派发).toHaveBeenCalledTimes(2);
     expect(mock进初始化).toHaveBeenCalledTimes(1);
+  });
+
+  it('Backend 选择 PNG 走真实上传，上传完成前禁用完成注册', async () => {
+    render添加头像('backend');
+    const 用户 = userEvent.setup();
+    const 文件 = new File(['avatar'], 'avatar.png', { type: 'image/png' });
+    await 用户.upload(document.querySelector('input[type="file"]') as HTMLInputElement, 文件);
+    expect(mock操作.保存候选头像).toHaveBeenCalledWith(文件);
   });
 });

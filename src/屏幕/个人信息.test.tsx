@@ -56,6 +56,8 @@ function 环境(input: { 模式?: 'mock' | 'backend'; 凭证?: P8资源快照<P8
   const 操作 = {
     加载P8凭证: vi.fn(async () => undefined),
     保存简历: vi.fn(async () => undefined),
+    保存候选头像: vi.fn(async () => undefined),
+    删除候选头像: vi.fn(async () => undefined),
   };
   const 派发 = vi.fn();
   mock应用状态 = {
@@ -150,6 +152,17 @@ describe('个人信息 · Backend 披露联系方式只读', () => {
     await 用户.click(screen.getByRole('button', { name: '账号手机号' }));
     expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '存联系方式' }));
     expect(派发).not.toHaveBeenCalledWith({ 型: '存求职头像', 图: expect.anything() });
+  });
+});
+
+describe('个人信息 · Backend 候选头像', () => {
+  it('选择 JPG 走真实头像操作，不把 data URL 派发进账号状态', async () => {
+    const 用户 = userEvent.setup();
+    const { 操作, 派发 } = 环境();
+    const 文件 = new File(['avatar'], 'avatar.jpg', { type: 'image/jpeg' });
+    await 用户.upload(document.querySelector('input[type="file"]') as HTMLInputElement, 文件);
+    expect(操作.保存候选头像).toHaveBeenCalledWith(文件);
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '存求职头像' }));
   });
 });
 

@@ -74,7 +74,7 @@ export default function 我的() {
         ? '未填写求职状态'
         : 状态.基本信息.身份
     : 我的信息.状态;
-  const 头像 = 状态.求职头像?.startsWith('data:image/') ? 状态.求职头像 : null;
+  const 头像 = 状态.求职头像;
 
   // P6：规则计数只认已水合的权威规则 —— Backend 未水合时不出计数（宁缺勿错，
   // 不把 Mock 种子数当真，与 规则库 门控同一口径）

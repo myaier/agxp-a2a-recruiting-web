@@ -565,6 +565,9 @@ export interface 会话操作 {
 }
 
 export interface 候选操作 {
+  加载候选账号档案(): Promise<void>;
+  保存候选头像(file: File): Promise<void>;
+  删除候选头像(): Promise<void>;
   保存简历(next: 页面简历写入): Promise<void>;
   保存个人优势(text: string): Promise<void>;
   保存意向(draft: 意向草稿型): Promise<void>;

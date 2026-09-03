@@ -138,6 +138,7 @@ export function 清账号状态(
   // Backend MatchCase 真相源修复：四个 legacy 演示数组一并归零，登出/当前轮 401 后
   // 任何 Backend 展示都读不到 Mock fixture 数字（清空动作只在这里与 P5 主体基串 effect 派发）
   派发({ 型: '清后端MatchCase演示状态' });
+  派发({ 型: '存求职头像', 图: null });
   // P4 Task 3：discovery raw 快照（scope 快照 / 详情 / 不可用标记 / 委托回执 / 聚合）回空底座
   // P2 Task 3：附件库快照同口径清理 —— 不跨主体 / 不跨会话存活
   设后端状态((旧) => ({
@@ -233,9 +234,13 @@ export async function 水合角色数据(
       主体.subject_id,
       generation,
     );
-    // 四个支持域并行 allSettled（简历/意向/隐私/附件库），各域独立提交。
+    // 五个支持域并行 allSettled（简历/意向/隐私/附件库/候选账号档案），各域独立提交。
+    // 兼容旧测试桩：历史最小数据源没有候选账号方法时按无结果跳过；生产 HTTP facade 必定提供。
+    const 候选账号请求 = typeof 后端.读取候选账号档案 === 'function'
+      ? 后端.读取候选账号档案()
+      : Promise.resolve(null);
     const 结果 = await Promise.allSettled([
-      后端.读取简历(), 后端.读取意向(), 后端.读取隐私(), 后端.读取附件简历库(),
+      后端.读取简历(), 后端.读取意向(), 后端.读取隐私(), 后端.读取附件简历库(), 候选账号请求,
     ]);
     const p6结果 = await p6Promise;
     // 单一外层栅栏管整批结算：主体或代际任一已变，本轮一切结果整包丢弃。
@@ -281,6 +286,18 @@ export async function 水合角色数据(
       if (是会话失效错误(附件结果.reason)) 会话失效 = true;
       else 轻提示(取后端错误文案(附件结果.reason));
     }
+    const 账号档案结果 = 结果[4];
+    if (账号档案结果.status === 'fulfilled' && 账号档案结果.value !== null) {
+      const 档案 = 账号档案结果.value;
+      派发({
+        型: '存求职头像',
+        图: 档案.avatar_url === null ? null : `${档案.avatar_url}?v=${档案.revision}`,
+      });
+    } else if (账号档案结果.status === 'rejected') {
+      错误们.push(账号档案结果.reason);
+      if (是会话失效错误(账号档案结果.reason)) 会话失效 = true;
+      else 轻提示(取后端错误文案(账号档案结果.reason));
+    }
     // P6 的拒绝并入同一错误策略（P6 内部已按 fence 提交/丢弃，这里只管呈现与会话）
     for (const 落点 of p6结果) {
       if (落点.status === 'rejected') {
@@ -302,6 +319,7 @@ export async function 水合角色数据(
     // 必须在招聘方自有水合（组织 → owner Jobs）开始前落地。
     // P2 Task 3：候选侧附件库快照同口径清空 —— 招聘方不读附件，候选残留不跨角色存活。
     派发({ 型: '清后端隐私' });
+    派发({ 型: '存求职头像', 图: null });
     设后端状态((旧) => ({ ...旧, 隐私快照: null, 附件简历库: null }));
     // P1C：current relation 恢复值只在最新 Affiliations 返回后经 选择当前企业关系() 校验进 state
     const restoredId = deps.读取恢复企业关系编号(主体.subject_id);

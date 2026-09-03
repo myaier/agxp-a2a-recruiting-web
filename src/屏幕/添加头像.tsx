@@ -3,7 +3,7 @@
 // 头像落 全局.求职头像；Provider 统一按模式/环境/账号隔离缓存。
 // 「完成注册」（标注 2026-08-24：原「开启求职之旅」营销腔，产品负责人终定）→ 替换跳转进主壳，后退不能回注册流。
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import 样式 from './入职引导.module.css';
 import { 次级页外壳, 返回栏, 页面大标题, 主按钮, 滚动区 } from '../组件/通用';
 import { 相机图标 } from '../组件/图标';
@@ -11,11 +11,15 @@ import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 压成头像 } from '../组件/头像处理';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
+
+const 头像字节上限 = 10 * 1024 * 1024;
 
 export default function 添加头像() {
   const { 返回, 进初始化 } = use导航();
   const { 状态: 全局, 派发, 数据源模式, 操作 } = use应用状态();
   const 文件框 = useRef<HTMLInputElement>(null);
+  const [保存中, 设保存中] = useState(false);
   const 头像 = 全局.求职头像;
 
   /** 注册收尾：先进初始化页（2026-08-25 用户定稿的乙方案），
@@ -34,10 +38,23 @@ export default function 添加头像() {
     const 文件 = 事件.target.files?.[0];
     事件.target.value = ''; // 允许再次选同一张
     if (!文件) return;
+    if (文件.type !== 'image/png' && 文件.type !== 'image/jpeg') {
+      轻提示('请选择 JPG 或 PNG 图片');
+      return;
+    }
+    if (文件.size > 头像字节上限) {
+      轻提示('图片不超过 10 MiB');
+      return;
+    }
+    设保存中(true);
     try {
-      派发({ 型: '存求职头像', 图: await 压成头像(文件) });
-    } catch {
-      轻提示('这张图片读不出来，换一张试试');
+      if (数据源模式 === 'backend') await 操作.保存候选头像(文件);
+      else 派发({ 型: '存求职头像', 图: await 压成头像(文件) });
+      轻提示('头像已更新');
+    } catch (错误) {
+      轻提示(数据源模式 === 'backend' ? 取后端错误文案(错误) : '这张图片读不出来，换一张试试');
+    } finally {
+      设保存中(false);
     }
   }
 
@@ -54,8 +71,9 @@ export default function 添加头像() {
             className={`${样式.大圆} 可点`}
             onClick={() => 文件框.current?.click()}
             aria-label="上传头像照片"
+            disabled={保存中}
           >
-            {头像?.startsWith('data:image/') ? (
+            {头像 ? (
               <img className={样式.头像图} src={头像} alt="" />
             ) : (
               <相机图标 尺寸={30} 色="var(--弱化)" />
@@ -71,7 +89,7 @@ export default function 添加头像() {
         </div>
       </滚动区>
 
-      <主按钮 文字="完成注册" 按下={开启} />
+      <主按钮 文字="完成注册" 按下={开启} 禁用={保存中} />
     </次级页外壳>
   );
 }
