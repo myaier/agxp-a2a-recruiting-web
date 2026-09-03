@@ -29,96 +29,13 @@
     );
 }
 
-/* ── 挂绳：两条亮绿织带 V 形垂下，汇合于 y=166，卡扣从 164 到 228 插进证卡槽孔 ──
-   容器从安全区下缘算起，高 250；证卡顶 = 安全区 + 208，槽孔 y=220–228。
-   这些数与 组件/工牌卡扣.tsx 里的 SVG 坐标一一对应，改任何一处要一起动。 */
-.挂绳 {
-  position: absolute;
-  top: var(--安全区上);
-  left: 0;
-  right: 0;
-  height: 250px;
-  z-index: 3;
-  pointer-events: none;
-}
-
-/* 两条带包一层，投影用 drop-shadow 跟着裁切后的真实轮廓走 */
-.带组 {
-  position: absolute;
-  inset: 0;
-  filter: drop-shadow(0 5px 5px rgba(26, 26, 26, 0.16));
-}
-
-.带 {
-  position: absolute;
-  left: 182px; /* 带宽 26，中心线落在 195 */
-  bottom: 84px; /* 汇合点 y = 166 */
-  width: 26px;
-  height: 260px;
-  background: var(--亮绿);
-  transform-origin: 50% 100%;
-  overflow: hidden; /* 印字绝不越出带子 */
-  /* 带尾最后 32px 向中间收拢到 10px 宽：织带被压进扣顶插槽时的自然收口 */
-  clip-path: polygon(0 0, 100% 0, 100% 228px, 18px 100%, 8px 100%, 0 228px);
-}
-.带左 {
-  transform: rotate(-22deg);
-}
-.带右 {
-  transform: rotate(22deg);
-}
-
-/* 带子两侧的车线：织带的织边 */
-.带::before,
-.带::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  border-left: 1px dashed rgba(47, 92, 23, 0.55);
-}
-.带::before {
-  left: 5px;
-}
-.带::after {
-  right: 5px;
-}
-
-/* 带上印的品牌名：竖排、直立字符，沿带子往下读。4 组共 210px，尾字距带尾 36px */
-.带字 {
-  position: absolute;
-  left: 50%;
-  top: 14px;
-  transform: translateX(-50%);
-  writing-mode: vertical-rl;
-  text-orientation: upright;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 4px;
-  line-height: 1;
-  color: var(--墨);
-  white-space: nowrap;
-}
-
-/* 卡扣：SVG 画布与容器同大，扣在中线上 */
-.卡扣 {
-  position: absolute;
-  left: 0;
-  top: 0;
-}
-.卡扣 svg {
-  display: block;
-}
-
 /* ── 工牌卡 ── */
 .证卡 {
   position: relative;
   z-index: 1;
   flex: none;
-  /* 卡顶 208 给挂绳与卡扣留位（挂绳容器高 250，卡扣舌尖到 228）；
-     左右 28 比列表卡（8/11）更收，像一张实物卡而不是列表项 */
-  margin: 208px 28px 0;
+  /* 卡顶留出渐变头的呼吸空间；左右 28 比列表卡（8/11）更收，像一张实物卡而不是列表项 */
+  margin: 150px 28px 0;
   padding: 40px 22px 0;
   background: var(--白);
   border-radius: var(--圆角-卡片);
