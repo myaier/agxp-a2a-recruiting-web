@@ -5,7 +5,7 @@
 //
 // 数据流分两条：
 // · Mock：读全局状态里的 全局规则 / 意向级规则（不能本地 useState，「往来记录 → 记成规则」
-//   新增的那条要真的出现在这里）；手动添加经 操作 的 Mock 分支派发既有同步动作，保存即关闭。
+//   新增的那条要真的出现在这里）；手动新增/编辑先生成本地确认卡，明确确认后才派发长期规则。
 // · Backend（P6）：一切展示先过角色水合门控 ——
 //   rules 成功前不显示任何规则行/计数；proposals 也成功后才给 创建/编辑/确认/放弃 控件与提案卡；
 //   任一域 失败 出「规则加载失败，重试」（重试跑完整 刷新Agent规则 水合）；
@@ -15,7 +15,7 @@
 //
 // 结构：提示条 →（加载壳/重试）→ 提案卡组 → 全局规则分组卡 → 意向分组卡 → 手动添加 → 尾注。
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import 样式 from './规则库.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { 先问选择行 } from '../组件/先问选择行';
@@ -31,6 +31,11 @@ import type { Agent规则角色水合状态 } from '../状态/后端/类型';
 import type { 规则 } from '../数据/类型';
 
 const 未水合: Agent规则角色水合状态 = { rules: '未开始', proposals: '未开始' };
+
+type Mock候选提案 = {
+  dto: BFFAgent规则提案;
+  动作: { 型: '新增'; 文本: string } | { 型: '替换'; 编号: string; 文本: string };
+};
 
 /** actionable 提案展示序：created_at 早的在前，缺席的排最后，同刻按 proposal_id 稳定排序。 */
 function 提案展示序(提案们: BFFAgent规则提案[]): BFFAgent规则提案[] {
@@ -103,6 +108,8 @@ export default function 规则库() {
   const [删除中, 设删除中] = useState(false);
   // 提案卡的忙：只圈住正在接受/放弃的那一张卡（failed 卡的关闭永远可用）
   const [卡忙编号, 设卡忙编号] = useState<string | null>(null);
+  const [Mock提案们, 设Mock提案们] = useState<Mock候选提案[]>([]);
+  const Mock提案序 = useRef(0);
   // failed 卡的本地关闭：提案表里仍是 failed，页面先收起，原草稿保留给用户再次明确提交
   const [已关失败卡, 设已关失败卡] = useState<string[]>([]);
   // §7.3：公开的 Proposal DTO 不带正文/范围 —— 创建成功后把原草稿寄存进 sessionStorage
@@ -129,9 +136,11 @@ export default function 规则库() {
   const 全部规则 = [...状态.全局规则, ...状态.意向级规则];
   const 条数 = 全部规则.filter((条) => 条.生效).length;
 
-  // actionable 提案：Backend 按角色读 raw 字典；Mock 没有提案卡
+  // actionable 提案：Backend 按角色读 raw 字典；Mock 用同一确认卡模拟“理解后确认”。
   const 可见提案 = 提案展示序(
-    role === null ? [] : Object.values(role === 'candidate' ? 后端状态.候选规则提案 : 后端状态.招聘规则提案),
+    是Backend
+      ? (role === null ? [] : Object.values(role === 'candidate' ? 后端状态.候选规则提案 : 后端状态.招聘规则提案))
+      : Mock提案们.map((条) => 条.dto),
   ).filter((提案) => !(提案.state === 'failed' && 已关失败卡.includes(提案.proposal_id)));
 
   // 页面挂载且提案水合就绪才轮询 interpreting（节拍/单飞/卸载清理都归钩子）
@@ -158,6 +167,18 @@ export default function 规则库() {
       : { type: 'intention', intention_id: 选范围 };
     设提交中(true);
     try {
+      if (!是Backend) {
+        Mock提案序.current += 1;
+        const proposal_id = `mock-candidate-${Mock提案序.current}`;
+        设Mock提案们((旧) => [...旧, {
+          dto: { proposal_id, state: 'ready', normalized_text: 内容, consequence: 'advisory' },
+          动作: { 型: '新增', 文本: 内容 },
+        }]);
+        设新规则文本('');
+        设选范围('');
+        设添加中(false);
+        return;
+      }
       const 回执编号 = await 操作.创建Agent规则提案({ 文本: 内容, 作用域 });
       // 成功才寄存草稿并收起输入行；idempotency_conflict 等失败一律保留现场，不伪造成功
       if (回执编号) {
@@ -197,6 +218,16 @@ export default function 规则库() {
     if (!内容) return;
     设提交编辑中(true);
     try {
+      if (!是Backend) {
+        Mock提案序.current += 1;
+        const proposal_id = `mock-candidate-${Mock提案序.current}`;
+        设Mock提案们((旧) => [...旧, {
+          dto: { proposal_id, state: 'ready', normalized_text: 内容, consequence: 'advisory' },
+          动作: { 型: '替换', 编号: 编辑中编号, 文本: 内容 },
+        }]);
+        设编辑中编号(null);
+        return;
+      }
       await 操作.创建Agent规则替换提案(编辑中编号, 内容);
       设编辑中编号(null);
     } catch (错误) {
@@ -226,6 +257,16 @@ export default function 规则库() {
   const 处理接受 = async (编号: string) => {
     设卡忙编号(编号);
     try {
+      if (!是Backend) {
+        const 提案 = Mock提案们.find((条) => 条.dto.proposal_id === 编号);
+        if (提案?.动作.型 === '新增') {
+          派发({ 型: '新增规则', 内容: 提案.动作.文本, 来源: '你手动添加 · 刚刚' });
+        } else if (提案?.动作.型 === '替换') {
+          派发({ 型: '改规则', 编号: 提案.动作.编号, 内容: 提案.动作.文本 });
+        }
+        设Mock提案们((旧) => 旧.filter((条) => 条.dto.proposal_id !== 编号));
+        return;
+      }
       await 操作.接受Agent规则提案(编号);
       删Agent规则草稿(编号);
     } catch (错误) {
@@ -237,6 +278,10 @@ export default function 规则库() {
   const 处理放弃 = async (编号: string) => {
     设卡忙编号(编号);
     try {
+      if (!是Backend) {
+        设Mock提案们((旧) => 旧.filter((条) => 条.dto.proposal_id !== 编号));
+        return;
+      }
       await 操作.放弃Agent规则提案(编号);
       删Agent规则草稿(编号);
     } catch (错误) {

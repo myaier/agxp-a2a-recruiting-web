@@ -2,7 +2,7 @@
 //
 // 同构镜像：求职端 规则库.tsx（A10·B 清单版）。版式、字号、间距、圆角与同构源一致。
 // Mock：规则读全局状态的 企业规则（单组「全局规则 · 所有岗位生效」，无意向级分组），
-// 开关与手动添加经 操作 的 Mock 分支派发既有同步动作（企业切规则开关 / 企业新增规则）。
+// 开关沿用既有 Mock 动作；手动添加先显示确认卡，用户确认后才派发 企业新增规则。
 //
 // 企业侧增量（D16 授权分层语义）：提示条上方多一块「授权范围」卡 ——
 // 匿名初筛 / 递交简历 由 AI 代理自动执行，意向确认必须委托人拍板；右侧值只读。
@@ -16,7 +16,7 @@
 //
 // 规则**不能**用本地 useState —— 必须读全局状态，开关状态才能被别的屏看到。
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 样式 from './企业代理设置.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 开关 } from '../组件/通用';
 import { 先问选择行 } from '../组件/先问选择行';
@@ -32,6 +32,8 @@ import type { Agent规则角色水合状态 } from '../状态/后端/类型';
 import type { 规则 } from '../数据/类型';
 
 const 未水合: Agent规则角色水合状态 = { rules: '未开始', proposals: '未开始' };
+
+type Mock招聘提案 = { dto: BFFAgent规则提案; 文本: string };
 
 /** actionable 提案展示序：created_at 早的在前，缺席的排最后，同刻按 proposal_id 稳定排序。 */
 function 提案展示序(提案们: BFFAgent规则提案[]): BFFAgent规则提案[] {
@@ -94,6 +96,8 @@ export default function 企业代理设置() {
   const [提交中, 设提交中] = useState(false);
   // 提案卡的忙：只圈住正在接受/放弃的那一张卡（failed 卡的关闭永远可用）
   const [卡忙编号, 设卡忙编号] = useState<string | null>(null);
+  const [Mock提案们, 设Mock提案们] = useState<Mock招聘提案[]>([]);
+  const Mock提案序 = useRef(0);
   // failed 卡的本地关闭：提案表里仍是 failed，页面先收起，原草稿保留给用户再次明确提交
   const [已关失败卡, 设已关失败卡] = useState<string[]>([]);
   // §7.3：公开的 Proposal DTO 不带正文 —— 创建成功后把原草稿寄存进 sessionStorage
@@ -104,9 +108,11 @@ export default function 企业代理设置() {
   // Backend 只在 rules 水合成功后显示，首次成功前不出 Mock 计数）
   const 生效数 = 状态.企业规则.filter((条) => 条.生效).length;
 
-  // actionable 提案：Backend 读招聘方 raw 字典；Mock 没有提案卡
+  // actionable 提案：Backend 读招聘方 raw 字典；Mock 用同一确认卡模拟“理解后确认”。
   const 可见提案 = 提案展示序(
-    role === null ? [] : Object.values(后端状态.招聘规则提案),
+    是Backend
+      ? (role === null ? [] : Object.values(后端状态.招聘规则提案))
+      : Mock提案们.map((条) => 条.dto),
   ).filter((提案) => !(提案.state === 'failed' && 已关失败卡.includes(提案.proposal_id)));
 
   // 页面挂载且提案水合就绪才轮询 interpreting（节拍/单飞/卸载清理都归钩子）
@@ -139,6 +145,17 @@ export default function 企业代理设置() {
     if (提交中) return;
     设提交中(true);
     try {
+      if (!是Backend) {
+        Mock提案序.current += 1;
+        const proposal_id = `mock-recruiter-${Mock提案序.current}`;
+        设Mock提案们((旧) => [...旧, {
+          dto: { proposal_id, state: 'ready', normalized_text: 内容, consequence: 'advisory' },
+          文本: 内容,
+        }]);
+        设新规则文本('');
+        设添加中(false);
+        return;
+      }
       const 回执编号 = await 操作.创建Agent规则提案({ 文本: 内容 });
       // 成功才寄存草稿并收起输入行；失败一律保留现场，不伪造成功
       if (回执编号) {
@@ -173,6 +190,12 @@ export default function 企业代理设置() {
   const 处理接受 = async (编号: string) => {
     设卡忙编号(编号);
     try {
+      if (!是Backend) {
+        const 提案 = Mock提案们.find((条) => 条.dto.proposal_id === 编号);
+        if (提案) 派发({ 型: '企业新增规则', 内容: 提案.文本, 来源: '手动添加' });
+        设Mock提案们((旧) => 旧.filter((条) => 条.dto.proposal_id !== 编号));
+        return;
+      }
       await 操作.接受Agent规则提案(编号);
       删Agent规则草稿(编号);
     } catch (错误) {
@@ -184,6 +207,10 @@ export default function 企业代理设置() {
   const 处理放弃 = async (编号: string) => {
     设卡忙编号(编号);
     try {
+      if (!是Backend) {
+        设Mock提案们((旧) => 旧.filter((条) => 条.dto.proposal_id !== 编号));
+        return;
+      }
       await 操作.放弃Agent规则提案(编号);
       删Agent规则草稿(编号);
     } catch (错误) {

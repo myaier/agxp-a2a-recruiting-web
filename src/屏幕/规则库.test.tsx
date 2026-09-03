@@ -819,7 +819,7 @@ describe('规则库 · Backend 候选页', () => {
     expect(视图.操作.创建Agent规则提案).toHaveBeenCalledWith({ 文本: '只接受双休', 作用域: { type: 'global' } });
   });
 
-  it('Mock mode keeps the prototype list, source copy, and synchronous add', async () => {
+  it('Mock mode keeps the prototype list and requires confirmation before adding a rule', async () => {
     const user = userEvent.setup();
     const 视图 = renderCandidateRules({ mode: 'mock' });
     expect(screen.getByText('不主动披露并行接触数量')).toBeTruthy();
@@ -840,10 +840,14 @@ describe('规则库 · Backend 候选页', () => {
     expect(screen.queryByLabelText('规则范围')).toBeNull();
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
-    expect(视图.操作.创建Agent规则提案).toHaveBeenCalledTimes(1);
-    // Mock：保存即关闭、同步动作立即上屏，没有提案卡
+    expect(视图.操作.创建Agent规则提案).not.toHaveBeenCalled();
+    // 提交只生成确认卡，不立即增加长期规则或计数。
     expect(screen.getByText('只接受双休')).toBeTruthy();
-    expect(screen.queryByText('AI代理正在理解这条规则…')).toBeNull();
+    expect(screen.getByRole('button', { name: '确认规则' })).toBeTruthy();
+    expect(screen.getByText('3 条')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '确认规则' }));
+    expect(screen.queryByRole('button', { name: '确认规则' })).toBeNull();
+    expect(screen.getByText('4 条')).toBeTruthy();
   });
 
   it('shows loaded Rules and a retry affordance when Proposal hydration failed', async () => {
