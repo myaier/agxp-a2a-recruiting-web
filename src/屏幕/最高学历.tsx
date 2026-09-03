@@ -1,6 +1,10 @@
 // 最高学历（/onboard/degree）—— 2026-08-20 按 BOSS 截图顺序重排：
 // 方块单选七档。答案落 简历教育[0].学历（教育为空则先建一条空段，
 // 后面的 毕业院校 / 选专业 / 就读时间段 三屏继续往同一段里填）。
+//
+// 候选 onboarding 简历预填（Spec §8 /onboard/degree）：首挂载同步用 取最高学历预填
+// 预选档位 —— eligible 且未确认的 degree 分区才建议，词表外（如 Bachelor）不翻译
+// 不猜档、保留既有选择；确认 degree 分区只在既有保存成功后、跳转之前。
 
 import { useState } from 'react';
 import 样式 from './入职引导.module.css';
@@ -8,6 +12,8 @@ import { 次级页外壳, 返回栏, 页面大标题, 主按钮, 滚动区 } fro
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
+import { 取最高学历预填 } from '../流程/候选Onboarding简历预填';
+import { 创建空候选预填状态 } from '../状态/后端/类型';
 import { 轻提示 } from '../组件/轻提示';
 import { 路径 } from '../路由/路径表';
 import type { 简历教育段 } from '../数据/类型';
@@ -18,14 +24,17 @@ const 在读选项 = ['大专在读', '本科在读', '硕士在读', '博士在
 
 export default function 最高学历() {
   const { 跳转, 返回 } = use导航();
-  const { 状态: 全局, 操作 } = use应用状态();
+  const { 状态: 全局, 操作, 后端状态 } = use应用状态();
   const 首段 = 全局.简历教育[0];
   const 在校中 = 全局.基本信息.身份 === '在校';
   const 档表 = 在校中 ? 在读选项 : 学历选项;
 
   const [当前, 设当前] = useState(() => {
-    if (在校中) return 全局.基本信息.在读学历 ?? '本科在读';
-    return 首段 && 学历选项.includes(首段.学历) ? 首段.学历 : '本科';
+    const 既有 = 在校中
+      ? 全局.基本信息.在读学历 ?? '本科在读'
+      : 首段 && 学历选项.includes(首段.学历) ? 首段.学历 : '本科';
+    // 首挂载同步预选；无建议/词表外/与当前一致都返回 null，保留既有选择
+    return 取最高学历预填(后端状态.候选预填状态 ?? 创建空候选预填状态(), 在校中, 既有) ?? 既有;
   });
 
   const 下一步 = async () => {
@@ -44,6 +53,8 @@ export default function 最高学历() {
         教育: 新教育,
         证书: 全局.简历证书,
       });
+      // 预填确认只在既有保存成功后（拒绝时分区不确认），且先于跳转
+      操作.确认候选Onboarding预填分区('degree');
       跳转(路径.毕业院校);
     } catch (错误) {
       轻提示(取后端错误文案(错误));

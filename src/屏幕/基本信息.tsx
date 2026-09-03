@@ -6,8 +6,12 @@
 // 非学生保留「开始工作年份」行（匿名初筛核对「年限 ≥ 要求」的输入）与折算回显。
 //
 // 双盲口径：真名在这里采集，但意向确认前不会交给任何企业，代理对外一律用代号。
+//
+// 候选 onboarding 简历预填（Spec §8 /basic）：首挂载同步用 取基本信息预填 算一次建议，
+// 出生滚轮吃数字初值，空白根字段（真名/性别/开始工作年）经一次性 useLayoutEffect 种入
+// 根草稿 —— 根 Resume 对象是本页的客户端草稿，逐键 存简历 派发保持不变。
 
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import 样式 from './基本信息.module.css';
 import 数字滚轮层 from '../组件/数字滚轮层';
 import 内嵌双滚轮 from '../组件/内嵌双滚轮';
@@ -15,6 +19,8 @@ import { 主按钮, 次级页外壳, 滚动区, 页面大标题, 返回栏 } fro
 import { 轻提示 } from '../组件/轻提示';
 import { use应用状态 } from '../状态/应用状态';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
+import { 取基本信息预填, type 候选基本信息预填 } from '../流程/候选Onboarding简历预填';
+import { 创建空候选预填状态 } from '../状态/后端/类型';
 import type { 基本信息 as 基本信息类型 } from '../数据/类型';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -29,14 +35,27 @@ const 最早工作年 = 1990;
 const 出生年档 = Array.from({ length: 2010 - 1970 + 1 }, (_, 序) => 1970 + 序);
 const 出生月档 = Array.from({ length: 12 }, (_, 序) => 序 + 1);
 
+/** 预填产物里只取需要种入根草稿的键（真名/性别/开始工作年，非空才带）；
+ *  出生滚轮值是页本地态，status（身份）永不映射，在这里一并挡掉。 */
+function 仅取根基本字段(预填: 候选基本信息预填): Partial<基本信息类型> {
+  const 根: Partial<基本信息类型> = {};
+  if (预填.真名) 根.真名 = 预填.真名;
+  if (预填.性别 !== undefined) 根.性别 = 预填.性别;
+  if (预填.开始工作年) 根.开始工作年 = 预填.开始工作年;
+  return 根;
+}
+
 export default function 基本信息() {
   const { 跳转, 返回 } = use导航();
-  const { 状态: 全局, 派发, 操作 } = use应用状态();
+  const { 状态: 全局, 派发, 操作, 后端状态 } = use应用状态();
   const 基本 = 全局.基本信息;
   const [年份轮打开, 设年份轮打开] = useState(false);
-  // 出生年月：滚轮本地持值，下一步统一落 基本信息（滚动过程不必每档写盘）
-  const [出生年, 设出生年] = useState(Number(基本.出生年) || 1998);
-  const [出生月, 设出生月] = useState(Number(基本.出生月) || 6);
+  // 候选 onboarding 预填：首挂载同步算一次（manual/inactive/已确认/不可预填轮为空对象）
+  const [基本预填] = useState(() => 取基本信息预填(后端状态.候选预填状态 ?? 创建空候选预填状态(), 基本));
+  // 出生年月：滚轮本地持值，下一步统一落 基本信息（滚动过程不必每档写盘）；
+  // 建议的数字初值只在界内给出（超界/缺席由映射层落 undefined，保留既有默认）
+  const [出生年, 设出生年] = useState<number>(() => 基本预填.出生年 ?? (Number(基本.出生年) || 1998));
+  const [出生月, 设出生月] = useState<number>(() => 基本预填.出生月 ?? (Number(基本.出生月) || 6));
 
   const 当前年 = new Date().getFullYear();
 
@@ -50,6 +69,19 @@ export default function 基本信息() {
       证书: 全局.简历证书,
       基本信息: { ...基本, ...改 },
     });
+
+  // 一次性把建议里的空白根字段种入根草稿。种入是挂载域的：basic 未确认前清空建议
+  // 字段、离开再回来会再次建议（非空编辑总是赢，manual 轮完全不再种）—— 接受的
+  // 边界，不做持久 touched 框架。只在此处写根，出生滚轮值仍走「下一步统一落盘」。
+  const 已种基本预填 = useRef(false);
+  useLayoutEffect(() => {
+    if (已种基本预填.current) return;
+    已种基本预填.current = true;
+    const 根字段 = 仅取根基本字段(基本预填);
+    if (Object.keys(根字段).length > 0) 存基本信息(根字段);
+    // ref 守卫保证只跑首次：依赖表按 brief 固定，存基本信息 每渲染换标不影响语义
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [基本预填, 存基本信息]);
 
   // 开始工作年（非学生路径的年份轮初值）
   const 起始年 = Number(基本.开始工作年) || 当前年;
@@ -143,6 +175,8 @@ export default function 基本信息() {
               教育: 全局.简历教育,
               证书: 全局.简历证书,
             });
+            // 预填确认只在既有保存成功后（拒绝时分区不确认），且先于跳转
+            操作.确认候选Onboarding预填分区('basic');
             // 学生路径先补学业档案，求职状态挪到时间段之后
             跳转(全局.基本信息.身份 === '在校' ? 路径.最高学历 : 路径.求职状态);
           } catch (错误) {

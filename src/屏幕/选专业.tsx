@@ -7,6 +7,11 @@
 // 没点候选时阻止保存。Mock 分支保持本地 专业名录 不变。
 // Task 5：下一步按钮绑定引用有效性（Backend 没点候选即禁用，提交守卫保留），
 // 搜索态如实展示 加载中/没有匹配结果/加载失败，请求序守 stale response。
+//
+// 候选 onboarding 简历预填（Spec §8 /onboard/major）：首挂载同步用 取专业预填
+// 初始化文本与引用 —— exact Catalog 命中带 canonical 引用，unresolved 只落
+// source_name 文本（既有选择器守卫保持关闭），当前文本非空原样保留；
+// 确认 major 分区只在既有保存成功后、跳转之前。
 
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './入职引导.module.css';
@@ -15,6 +20,8 @@ import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
+import { 取专业预填 } from '../流程/候选Onboarding简历预填';
+import { 创建空候选预填状态 } from '../状态/后端/类型';
 import { 路径 } from '../路由/路径表';
 import { 专业名录 } from '../数据/专业名录';
 import { 合并目录页 } from '../数据/目录选择';
@@ -28,15 +35,17 @@ type 搜索阶段 = 'idle' | 'loading' | 'success' | 'error';
 
 export default function 选专业() {
   const { 跳转, 返回 } = use导航();
-  const { 状态: 全局, 操作, 数据源模式, 目录查询 } = use应用状态();
+  const { 状态: 全局, 操作, 数据源模式, 目录查询, 后端状态 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
   const 首段 = 全局.简历教育[0];
 
-  const [专业, 设专业] = useState(首段?.专业 ?? '');
+  // 候选 onboarding 预填：首挂载同步初始化文本与引用（当前文本非空原样保留）
+  const 专业初始 = 取专业预填(后端状态.候选预填状态 ?? 创建空候选预填状态(), 首段?.专业 ?? '', 首段?.专业引用);
+  const [专业, 设专业] = useState(专业初始.text);
   // 点过候选后收起联想，避免选完还挂着列表
   const [已点选, 设已点选] = useState(false);
   // Backend：点候选后才落的引用；继续输入立即清空
-  const [专业引用, 设专业引用] = useState<目录选择值 | undefined>(首段?.专业引用);
+  const [专业引用, 设专业引用] = useState<目录选择值 | undefined>(专业初始.ref);
   const [候选项, 设候选项] = useState<BFFTaxonomyItem[]>([]);
   // review-r2 R2-M-1：保留搜索的 nextCursor，滚到底加载第二页
   const [下一页游标, 设下一页游标] = useState<string | null>(null);
@@ -146,6 +155,8 @@ export default function 选专业() {
         ),
         证书: 全局.简历证书,
       });
+      // 预填确认只在既有保存成功后（拒绝时分区不确认），且先于跳转
+      操作.确认候选Onboarding预填分区('major');
       跳转(路径.就读时间段);
     } catch (错误) {
       轻提示(取后端错误文案(错误));

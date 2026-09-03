@@ -1,11 +1,21 @@
 // 毕业院校 Backend 接入测试（Task 4）：
 // Backend 按需 查询Institution，候选行显示「城市 · 国家」副行，点候选才存 学校引用；
 // 继续输入清除旧引用，未点候选阻止保存。Mock 分支保持本地 高校名录 不变。
+//
+// 候选 onboarding 预填（Spec §8 /onboard/school，Task 5）：exact Catalog 命中种入
+// 文本 + canonical 引用；unresolved 只落 source_name 文本，既有选择器守卫（未点候选
+// 下一步禁用 + 提交守卫）保持关闭；当前文本非空原样保留；确认 institution 分区只在
+// 既有保存 resolve 之后、跳转之前。
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BFF简历预填建议 } from '../数据/BFF契约';
+import { 目录精确命中变体, 构造映射变体基底 } from '../数据/招聘数据源/简历预填.fixture';
+import { 路径 } from '../路由/路径表';
+import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
+import type { 简历教育段 } from '../数据/类型';
 import 毕业院校 from './毕业院校';
 
 /** deferred promise：测试可控制异步 resolve 的时机（用于模拟慢响应到达） */
@@ -32,20 +42,46 @@ function 复旦结果页() {
 
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
+const mock轻提示 = vi.hoisted(() => vi.fn());
+const mock确认分区 = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回 }) }));
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
+vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 
 const 简历教育初始 = [
   { 编号: 'edu1', 学校: '', 学历: '硕士', 专业: '计算机科学', 开始: '2014-09', 结束: '2017-06' },
 ];
 
+const 全可预填: 候选预填Eligibility = {
+  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+  summary: true,
+  skills: true,
+  experiences: true,
+  educations: true,
+  certificates: true,
+};
+
+/** ready 轮 fixture（与 Task 2 映射测试同款形状） */
+function readyState(建议: BFF简历预填建议, 覆盖: Partial<候选预填状态> = {}): 候选预填状态 {
+  return {
+    ...创建空候选预填状态(),
+    phase: 'ready',
+    source: 建议.source,
+    eligibility: 全可预填,
+    suggestion: 建议,
+    ...覆盖,
+  };
+}
+
 function render毕业院校(选项: {
   数据源: 'backend' | 'mock';
   查询Institution?: ReturnType<typeof vi.fn>;
   保存简历?: ReturnType<typeof vi.fn>;
+  预填?: 候选预填状态;
+  简历教育?: 简历教育段[];
 }) {
   const 保存简历 = 选项.保存简历 ?? vi.fn(async () => {});
   mock应用状态 = {
@@ -55,18 +91,19 @@ function render毕业院校(选项: {
         ? {
             查询Location: vi.fn(),
             查询Taxonomy: vi.fn(),
-            查询Institution: 选项.查询Institution ?? vi.fn(),
+            查询Institution: 选项.查询Institution ?? vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
           }
         : null,
     状态: {
-      简历教育: 简历教育初始,
+      简历教育: 选项.简历教育 ?? 简历教育初始,
       基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
       个人优势: '',
       简历技能: [],
       简历经历: [],
       简历证书: [],
     },
-    操作: { 保存简历 },
+    后端状态: { 候选预填状态: 选项.预填 ?? 创建空候选预填状态() },
+    操作: { 保存简历, 确认候选Onboarding预填分区: mock确认分区 },
   };
   render(
     <MemoryRouter>
@@ -294,5 +331,97 @@ describe('毕业院校 Mock', () => {
     // Mock 不带 学校引用
     const 调用 = 保存简历.mock.calls[0][0] as { 教育: { 学校引用?: unknown }[] };
     expect(调用.教育[0].学校引用).toBeUndefined();
+  });
+});
+
+describe('毕业院校 候选 onboarding 预填（Spec §8）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+    mock确认分区.mockClear();
+  });
+
+  it('exact 学校建议种入文本与 canonical 引用，下一步直接保存并携带引用', async () => {
+    const { 保存简历 } = render毕业院校({ 数据源: 'backend', 预填: readyState(目录精确命中变体()) });
+    const 用户 = userEvent.setup();
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('Example University');
+    // exact 命中带引用：下一步不被守卫禁用
+    expect((screen.getByRole('button', { name: '下一步' }) as HTMLButtonElement).disabled).toBe(false);
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalled());
+    expect(保存简历).toHaveBeenCalledWith(
+      expect.objectContaining({
+        教育: [
+          expect.objectContaining({
+            学校: 'Example University',
+            学校引用: { id: 'ins_bbbbbbbbbbbbbbbbbbbbbbbbbb', display_name: 'Example University' },
+          }),
+        ],
+      }),
+    );
+    // 确认 institution 在保存之后、跳转之前
+    await waitFor(() => expect(mock确认分区).toHaveBeenCalledWith('institution'));
+    expect(mock确认分区.mock.invocationCallOrder[0]!).toBeLessThan(mock跳转.mock.invocationCallOrder[0]!);
+    expect(mock跳转).toHaveBeenCalledWith(路径.选专业);
+  });
+
+  it('unresolved 学校只落文本：既有选择器守卫保持关闭，保存不发生', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render毕业院校({ 数据源: 'backend', 预填: readyState(构造映射变体基底()), 保存简历 });
+    const 用户 = userEvent.setup();
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('Example University');
+    // 未点候选（无 canonical 引用）：下一步保持禁用，点了也不保存不跳转
+    const 下一步 = screen.getByRole('button', { name: '下一步' }) as HTMLButtonElement;
+    expect(下一步.disabled).toBe(true);
+    await 用户.click(下一步);
+    expect(保存简历).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock确认分区).not.toHaveBeenCalled();
+  });
+
+  it('当前文本非空优先：已有学校与引用不被建议覆盖', async () => {
+    const 已有引用 = { id: 'ins_qinghua', display_name: '清华大学' };
+    const { 保存简历 } = render毕业院校({
+      数据源: 'backend',
+      预填: readyState(目录精确命中变体()),
+      简历教育: [
+        { 编号: 'edu1', 学校: '清华大学', 学历: '硕士', 专业: '', 开始: '', 结束: '', 学校引用: 已有引用 },
+      ],
+    });
+    const 用户 = userEvent.setup();
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('清华大学');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalled());
+    expect(保存简历).toHaveBeenCalledWith(
+      expect.objectContaining({
+        教育: [expect.objectContaining({ 学校: '清华大学', 学校引用: 已有引用 })],
+      }),
+    );
+  });
+
+  it.each([
+    ['manual 轮', (状态: 候选预填状态) => { 状态.phase = 'manual'; }],
+    ['institution 已确认', (状态: 候选预填状态) => { 状态.confirmed.institution = true; }],
+    ['educations 非空（服务端已有教育）', (状态: 候选预填状态) => {
+      状态.eligibility = { ...全可预填, educations: false };
+    }],
+  ])('%s 保留旧初始化（文本为空）', (_名, 改) => {
+    const 轮 = readyState(目录精确命中变体());
+    改(轮);
+    render毕业院校({ 数据源: 'backend', 预填: 轮 });
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('');
+  });
+
+  it('保存被拒时 institution 分区不确认、不跳转', async () => {
+    const 保存简历 = vi.fn(async () => {
+      throw new Error('保存失败');
+    });
+    render毕业院校({ 数据源: 'backend', 预填: readyState(目录精确命中变体()), 保存简历 });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(mock确认分区).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
   });
 });
