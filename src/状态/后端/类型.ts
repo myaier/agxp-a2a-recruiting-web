@@ -306,6 +306,13 @@ export interface 候选预填Eligibility {
     gender: boolean;
     birth_year: boolean;
     birth_month: boolean;
+    /**
+     * 服务端 profile.current_education 是否为空（codex review-r1 P1）。学生的在读学历
+     * 可以先落 profile 而 educations 列表仍为空 —— 页面「既有选择」来自服务端值时与
+     * UI 默认（本科在读/本科）无法区分，只能由本键挡住建议，防止 PDF 建议覆盖已保存
+     * 在读学历（设计 §8：服务端值优先）。false = source 时服务端已有值，不建议。
+     */
+    current_education: boolean;
   };
   summary: boolean;
   skills: boolean;

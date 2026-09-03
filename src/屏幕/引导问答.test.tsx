@@ -515,7 +515,7 @@ describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', 
 // 成功，与随后的首次意向请求成败无关。
 
 const 全可预填: 候选预填Eligibility = {
-  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: true },
   summary: true,
   skills: true,
   experiences: true,

@@ -125,6 +125,9 @@ export function 取最高学历预填(state: 候选预填状态, isStudent: bool
 
   let 命中: string | null;
   if (isStudent) {
+    // codex review-r1 P1：页面「既有选择」来自服务端在读学历时与 UI 默认无法区分 ——
+    // source 时服务端 current_education 非空就整条不建议（设计 §8：服务端值优先）。
+    if (state.eligibility.profile.current_education !== true) return null;
     命中 = 学生学历档(建议.draft.profile.current_education.value);
     if (命中 === null && 档 !== null && 学历基词.includes(档)) 命中 = `${档}在读`;
   } else {

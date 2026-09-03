@@ -224,7 +224,13 @@ export default function 应用() {
   const 已清理路径引用 = useRef<string | null>(null);
   useEffect(() => {
     if (!预填清理就绪) return;
-    if (是活跃Onboarding位置(位置.pathname)) return;
+    if (是活跃Onboarding位置(位置.pathname)) {
+      // codex review-r1 P2：进入（或回到）活跃集合时复位栅栏 —— 下一次「活跃→非活跃」
+      // 转移必须再清一次。否则清过 /app 后重进 onboarding 激活新轮、再退回 /app 时，
+      // 路径相同被去重跳过，新 suggestion 与恢复元数据会活到刷新。
+      已清理路径引用.current = null;
+      return;
+    }
     if (已清理路径引用.current === 位置.pathname) return;
     已清理路径引用.current = 位置.pathname;
     操作.清候选Onboarding预填();

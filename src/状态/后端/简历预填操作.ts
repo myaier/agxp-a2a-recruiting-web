@@ -79,6 +79,7 @@ function 取预填Eligibility(简历: BFF简历 | null): 候选预填Eligibility
     return {
       profile: {
         real_name: false, work_start_year: false, gender: false, birth_year: false, birth_month: false,
+        current_education: false,
       },
       summary: false, skills: false, experiences: false, educations: false, certificates: false,
     };
@@ -90,6 +91,8 @@ function 取预填Eligibility(简历: BFF简历 | null): 候选预填Eligibility
       gender: 简历.profile.gender === null,
       birth_year: 简历.profile.birth_year === null,
       birth_month: 简历.profile.birth_month === null,
+      // codex review-r1 P1：服务端已有在读学历 → 学生学历档不建议（防止覆盖已保存值）
+      current_education: (简历.profile.current_education ?? '') === '',
     },
     summary: 简历.summary === '',
     skills: 简历.skills.length === 0,
@@ -274,14 +277,21 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
     if (主体标识引用.current !== fence.subject || 会话代际.current !== fence.session) return;
     设后端状态((旧) => ({ ...旧, 附件简历库: 库 }));
     if (!会话预填栅栏仍当前(fence)) return;
+    // codex review-r1 P1/P2：重派必须消费本次刷新结果（库），不能回读 后端状态引用 ——
+    // 真实 Provider 的 setState 到下次渲染才落引用，同步续行只会看到旧附件（旧 tuple），
+    // 而旧 tuple 的单飞正是当前 Promise：await 自己 = 永久 loading。
     const 附件 = 库.items[0] ?? null;
     const 解析 = 附件?.current_version.parse ?? null;
+    // 同 tuple 终局 = 同 file/version 且 parse 仍 succeeded 于原 parse_id（仍不可读才 failed）。
+    // 解析已换代（pending/processing/not_started/failed）时旧 parse_id 不再代表权威状态：
+    // 走重派，按新 parse 状态进 waiting_parse / failed（设计 §10）。
     const 同元组 = 附件 !== null
       && 附件.file_id === fence.fileId
       && 附件.current_version.version_id === fence.versionId
-      && (解析?.status !== 'succeeded' || 解析.parse_id === fence.parseId);
+      && 解析?.status === 'succeeded'
+      && 解析.parse_id === fence.parseId;
     if (!同元组) {
-      await 按权威附件推进(); // source 已变：重绑新 current source 并按新 parse 状态推进
+      await 按权威附件推进(库); // source 已变或 parse 已换代：重绑 current source 并按权威状态推进
       return;
     }
     落失败(原错误); // 同 tuple 仍不可读：终局 failed，不循环请求
@@ -293,11 +303,13 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
    * 元数据（先于读取起飞），再以完整 tuple 单飞读取；pending/processing/not_started
    * 停在 waiting_parse 零预填读取；parse failed 进入 failed 不请求建议。source 换新
    * （arming 首绑 / 替换上传 / 防御性漂移）重绑并把尚未确认分区与旧建议清零。
+   * 库 参数：重派路径传入本次权威刷新的结果 —— setState 的引用提交要等下次渲染，
+   * 回读 后端状态引用 只会看到旧附件（codex review-r1 P1 单飞死锁）；缺席时才读引用。
    */
-  async function 按权威附件推进(): Promise<void> {
+  async function 按权威附件推进(库?: BFF附件简历库): Promise<void> {
     const 状态 = 当前预填状态();
     if (状态.phase === 'inactive' || 状态.phase === 'manual' || 状态.phase === 'failed') return;
-    const 附件 = 当前附件();
+    const 附件 = (库 ?? 后端状态引用.current.附件简历库)?.items[0] ?? null;
     if (附件 === null) return; // 附件未水合：零动作，等权威库在场
     const 换绑 = 状态.source === null
       || 状态.source.file_id !== 附件.file_id

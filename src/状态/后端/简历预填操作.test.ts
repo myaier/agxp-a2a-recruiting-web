@@ -119,7 +119,7 @@ const 空白简历快照: BFF简历 = {
 };
 
 const 全可填Eligibility: 候选预填Eligibility = {
-  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: true },
   summary: true,
   skills: true,
   experiences: true,
@@ -667,6 +667,51 @@ describe('创建简历预填操作 · 404/409 一次性刷新', () => {
       file_id: 新文件ID, version_id: 新版本ID, parse_id: 新解析ID,
     });
     expect(预填(场景).phase).toBe('ready');
+  });
+
+  // codex review-r1 P1：真实 Provider 的 设后端状态 是 useState setter，引用要到下次
+  // 渲染才更新 —— 刷新落地后同步续行里 按权威附件推进 若回读引用，只能看到旧附件（旧
+  // tuple），而旧 tuple 的单飞正是当前 Promise：await 自己 = 永久 loading。重派必须消费
+  // 本次刷新结果本身。
+  it('404 刷新落地新 succeeded tuple：重派不依赖延迟提交的引用（旧写法会单飞死锁）', async () => {
+    const 场景 = 创建预填场景({ parse: 'succeeded' });
+    // 模拟真实 React 提交时机：更新排队到微任务，同步续行读到旧引用
+    const 原实现 = 场景.设后端状态.getMockImplementation()!;
+    场景.设后端状态.mockImplementation((更新: (旧: 后端状态) => 后端状态) => {
+      void Promise.resolve().then(() => 原实现(更新));
+    });
+    场景.后端.读取简历预填
+      .mockRejectedValueOnce(new BFF错误(404, 'not_found', 'gone'))
+      .mockResolvedValueOnce(构造映射变体基底());
+    场景.后端.读取附件简历库.mockResolvedValueOnce({
+      items: [附件(解析状态('succeeded', 新解析ID), 新文件ID, 新版本ID)],
+      limits,
+    });
+    const 同步 = 场景.操作.同步候选Onboarding解析();
+    await vi.waitFor(() => expect(场景.后端.读取简历预填).toHaveBeenCalledTimes(2));
+    expect(场景.后端.读取简历预填).toHaveBeenLastCalledWith({
+      file_id: 新文件ID, version_id: 新版本ID, parse_id: 新解析ID,
+    });
+    await 同步; // 修复后整链可结算；死锁写法在上方 waitFor 就已超时
+    expect(预填(场景).phase).toBe('ready');
+  });
+
+  // codex review-r1 P2：同 file/version 的解析已换代为 pending/processing 时，旧 parse_id
+  // tuple 已不可代表当前权威状态 —— 不能当「同 tuple 终局 failed」，要重绑 parse_id:null
+  // 进入 waiting_parse（设计 §10：按新 current parse 状态进入 waiting/loading/failed）。
+  it('404 后同 file/version 已重解析为 pending：重绑 parse_id:null 进入 waiting_parse，不落 failed', async () => {
+    const 场景 = 创建预填场景({ parse: 'succeeded' });
+    场景.后端.读取简历预填.mockRejectedValueOnce(new BFF错误(404, 'not_found', 'gone'));
+    场景.后端.读取附件简历库.mockResolvedValueOnce({
+      items: [附件(解析状态('pending'))], // 同 文件ID/版本ID，parse 换代
+      limits,
+    });
+    await 场景.操作.同步候选Onboarding解析();
+    expect(场景.后端.读取简历预填).toHaveBeenCalledTimes(1); // 不再读旧 tuple
+    const 状态 = 预填(场景);
+    expect(状态.phase).toBe('waiting_parse');
+    expect(状态.source).toEqual({ file_id: 文件ID, version_id: 版本ID, parse_id: null });
+    expect(场景.恢复存储.取值()?.source).toEqual({ file_id: 文件ID, version_id: 版本ID, parse_id: null });
   });
 
   it('刷新附件库自身失败：进入 failed，不再二次读取', async () => {

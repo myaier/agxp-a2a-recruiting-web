@@ -47,7 +47,7 @@ const limits = {
 };
 
 const 全可填: 候选预填Eligibility = {
-  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: true },
   summary: true,
   skills: true,
   experiences: true,

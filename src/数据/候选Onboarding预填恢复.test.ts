@@ -50,7 +50,7 @@ function 元数据(覆盖: Partial<候选预填恢复元数据> = {}): 候选预
       parse_id: `rp_${'c'.repeat(32)}`,
     },
     eligibility: {
-      profile: { real_name: true, work_start_year: true, gender: false, birth_year: false, birth_month: false },
+      profile: { real_name: true, work_start_year: true, gender: false, birth_year: false, birth_month: false, current_education: true },
       summary: false,
       skills: true,
       experiences: true,
@@ -117,7 +117,7 @@ describe('候选预填恢复存储', () => {
       ['certificates', 'educations', 'experiences', 'profile', 'skills', 'summary'],
     );
     expect(Object.keys((解析.eligibility as { profile: object }).profile).sort()).toEqual(
-      ['birth_month', 'birth_year', 'gender', 'real_name', 'work_start_year'],
+      ['birth_month', 'birth_year', 'current_education', 'gender', 'real_name', 'work_start_year'],
     );
     expect(Object.keys(解析.confirmed as object).sort()).toEqual(
       ['basic', 'degree', 'education_period', 'institution', 'major', 'summary', 'work'],

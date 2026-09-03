@@ -10,7 +10,7 @@ import type { BFF附件简历, BFF附件简历库 } from '../../数据/BFF契约
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误 } from '../../数据/HTTP客户端';
 import { 初始状态 } from '../初始状态';
-import type { 后端操作依赖, 后端状态 } from './类型';
+import type { 后端操作依赖, 后端状态, 候选预填恢复存储 } from './类型';
 import { 创建附件简历操作 } from './附件简历操作';
 
 const limits: BFF附件简历库['limits'] = {
@@ -84,6 +84,17 @@ function 创建附件测试依赖(后端: HTTP招聘数据源, 是后端 = true)
   const 设后端状态 = vi.fn((更新: (old: 后端状态) => 后端状态) => {
     后端状态引用.current = 更新(后端状态引用.current);
   });
+  // codex review-r1 P2：候选预填引用随行 —— 本域 401 的统一清理必须同样清预填代际/读锁/
+  // 恢复元数据（子集缺引用时旧 subject 的 session key 会跨登出残留）。
+  const 候选预填代际 = { current: 3 };
+  const 候选预填读取锁 = { current: new Map<string, Promise<void>>() };
+  const 候选预填恢复 = {
+    current: {
+      读取: vi.fn(() => null),
+      写入: vi.fn(),
+      删除: vi.fn(),
+    } as 候选预填恢复存储,
+  };
   const deps = {
     是后端,
     后端,
@@ -96,8 +107,15 @@ function 创建附件测试依赖(后端: HTTP招聘数据源, 是后端 = true)
     主体标识引用: { current: 'sub_1' as string | null },
     会话代际: { current: 1 },
     读取恢复企业关系编号: vi.fn(() => null),
+    候选预填代际,
+    候选预填读取锁,
+    候选预填恢复,
   } satisfies 后端操作依赖;
-  return { deps, 设后端状态, 后端状态引用, 会话代际: deps.会话代际, 主体标识引用: deps.主体标识引用 };
+  return {
+    deps, 设后端状态, 后端状态引用,
+    会话代际: deps.会话代际, 主体标识引用: deps.主体标识引用,
+    候选预填代际, 候选预填读取锁, 候选预填恢复,
+  };
 }
 
 function 创建场景() {
@@ -110,9 +128,9 @@ function 创建场景() {
     下载附件简历: vi.fn(),
     清空目录缓存: vi.fn(),
   };
-  const { deps, 设后端状态, 后端状态引用, 会话代际, 主体标识引用 } = 创建附件测试依赖(后端 as unknown as HTTP招聘数据源);
+  const { deps, 设后端状态, 后端状态引用, 会话代际, 主体标识引用, 候选预填代际, 候选预填读取锁, 候选预填恢复 } = 创建附件测试依赖(后端 as unknown as HTTP招聘数据源);
   const 操作 = 创建附件简历操作(deps);
-  return { 后端, 操作, 设后端状态, 后端状态引用, 会话代际, 主体标识引用 };
+  return { 后端, 操作, 设后端状态, 后端状态引用, 会话代际, 主体标识引用, 候选预填代际, 候选预填读取锁, 候选预填恢复 };
 }
 
 describe('创建附件简历操作 · 成功路径（mutation 后只信权威 GET）', () => {
@@ -434,6 +452,19 @@ describe('创建附件简历操作 · 401 与会话换代', () => {
       已登录: false, 主体: null, 附件简历库: null,
     }));
     expect(后端.清空目录缓存).toHaveBeenCalled();
+  });
+
+  // codex review-r1 P2：本域 401 的统一清理必须带着候选预填引用 —— 只摊平内存状态而
+  // 不删 subject 绑定的恢复元数据时，登出渲染会把恢复适配器解绑成 null，旧 session key
+  // 就再没有人删：同账号重登后恢复边界会复活上一轮预填。
+  it('401 统一清理同时清候选预填引用：代际递增、读锁清空、恢复元数据删除', async () => {
+    const { 后端, 操作, 候选预填代际, 候选预填读取锁, 候选预填恢复 } = 创建场景();
+    候选预填读取锁.current.set('rf_1|rfv_1|rp_1', Promise.resolve());
+    后端.读取附件简历库.mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(操作.刷新附件简历()).rejects.toMatchObject({ status: 401 });
+    expect(候选预填代际.current).toBe(4);
+    expect(候选预填读取锁.current.size).toBe(0);
+    expect(候选预填恢复.current!.删除).toHaveBeenCalledTimes(1);
   });
 
   it('mutation 401 在会话换代后到达时不登出新会话，原错误照抛', async () => {

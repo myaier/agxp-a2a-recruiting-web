@@ -32,7 +32,7 @@ vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状�
 vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 
 const 全可预填: 候选预填Eligibility = {
-  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: true },
   summary: true,
   skills: true,
   experiences: true,
@@ -197,7 +197,7 @@ describe('基本信息 预填种入', () => {
     ['eligibility 记录服务端已有值', (状态: 候选预填状态) => {
       状态.eligibility = {
         ...全可预填,
-        profile: { real_name: false, work_start_year: false, gender: false, birth_year: false, birth_month: false },
+        profile: { real_name: false, work_start_year: false, gender: false, birth_year: false, birth_month: false, current_education: false },
       };
     }],
   ])('%s 保留旧初始化（零种入派发）', (_名, 改) => {

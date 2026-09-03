@@ -54,7 +54,7 @@ const 现有经历fixture: 简历经历段 = {
 };
 
 const 全可预填: 候选预填Eligibility = {
-  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: true },
   summary: true,
   skills: true,
   experiences: true,
@@ -196,7 +196,7 @@ describe('取基本信息预填', () => {
     const state = readyState(wire建议());
     state.eligibility = {
       ...全可预填,
-      profile: { real_name: false, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+      profile: { real_name: false, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: true },
     };
     expect(取基本信息预填(state, 空白基本())).toEqual({ 开始工作年: '2021' });
   });
@@ -243,6 +243,19 @@ describe('取最高学历预填', () => {
       建议.draft.educations[0].degree = { value: '硕士', confidence: 'high' };
     }));
     expect(取最高学历预填(硕士档, true, '本科在读')).toBe('硕士在读');
+  });
+
+  // codex review-r1 P1：学生服务端在读学历（profile.current_education）可以非空而
+  // educations 列表仍为空（此前 onboarding 先落 profile、跳过未完整 education 段）。
+  // 此时 eligibility.educations 为 true，但页面 既有 来自已保存服务端值 —— 与 UI 默认
+  // 无法区分，必须由 eligibility 按「source 时服务端 current_education 是否为空」挡住
+  // 建议，否则下一轮上传的 PDF 建议会在保存时覆盖已有在读学历（设计 §8 服务端值优先）。
+  it('服务端已有在读学历时不建议：current_education 非空 → 学生路径整体返回 null', () => {
+    const state = {
+      ...readyState(受支持学历变体()),
+      eligibility: { ...全可预填, profile: { ...全可预填.profile, current_education: false } },
+    };
+    expect(取最高学历预填(state, true, '大专在读')).toBeNull(); // 建议「本科在读」不同也不给
   });
 
   it('非学生：只接受 education[0].degree 精确命中七档', () => {

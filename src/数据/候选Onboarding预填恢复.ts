@@ -8,7 +8,7 @@
 // 物理键复用 账号存储键('候选预填恢复v1', 范围)（候选预填分类 + 模式 + 环境 + 账号 四重隔离），
 // 只做按键精确读写：不枚举存储、不维护跨账号索引。candidate 角色的强制在 Provider
 // 创建绑定适配器之前完成（Task 3 接线），本模块只按传入范围绑定。
-// 反序列化严格按恰好闭合键集校验（root 五键、source 三键、eligibility 六键 + profile 五键、
+// 反序列化严格按恰好闭合键集校验（root 五键、source 三键、eligibility 六键 + profile 六键、
 // confirmed 七分区、ID grammar、非负整数 generation），任何损坏 JSON、多余字段（可能是
 // 敏感数据）或坏类型的旧值都会被丢弃并删除。无存储或存储抛异常一律 fail closed：
 // 读 null、写 false、删 no-op，绝不把存储故障抛进页面。
@@ -71,7 +71,7 @@ function 是有效Eligibility(值: unknown): 值 is 候选预填Eligibility {
     return false;
   }
   if (!是记录(值.profile)
-    || !键集恰好(值.profile, ['real_name', 'work_start_year', 'gender', 'birth_year', 'birth_month'])) {
+    || !键集恰好(值.profile, ['real_name', 'work_start_year', 'gender', 'birth_year', 'birth_month', 'current_education'])) {
     return false;
   }
   const 档 = 值.profile as Record<string, unknown>;
@@ -155,6 +155,7 @@ export function 创建候选预填恢复存储(input: {
               gender: metadata.eligibility.profile.gender,
               birth_year: metadata.eligibility.profile.birth_year,
               birth_month: metadata.eligibility.profile.birth_month,
+              current_education: metadata.eligibility.profile.current_education,
             },
             summary: metadata.eligibility.summary,
             skills: metadata.eligibility.skills,

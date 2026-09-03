@@ -29,7 +29,7 @@ vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状�
 vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 
 const 全可预填: 候选预填Eligibility = {
-  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: true },
   summary: true,
   skills: true,
   experiences: true,
@@ -108,6 +108,21 @@ describe('最高学历 预填预选', () => {
     render最高学历({ 身份: '在校', 候选预填: readyState(硕士学历建议()) });
     expect(档位('硕士在读').getAttribute('aria-pressed')).toBe('true');
     expect(档位('本科在读').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  // codex review-r1 P1：既有选择来自服务端已保存在读学历时与 UI 默认无法区分 ——
+  // source 时服务端 current_education 非空（eligibility 键 false）就整条不建议，
+  // 防止新一轮上传的 PDF 建议覆盖已保存值（设计 §8 服务端值优先）。
+  it('服务端已有在读学历：建议不同也不覆盖，既有选择保留', () => {
+    render最高学历({
+      身份: '在校',
+      在读学历: '大专在读',
+      候选预填: readyState(硕士学历建议(), {
+        eligibility: { ...全可预填, profile: { ...全可预填.profile, current_education: false } },
+      }),
+    });
+    expect(档位('大专在读').getAttribute('aria-pressed')).toBe('true');
+    expect(档位('硕士在读').getAttribute('aria-pressed')).toBe('false');
   });
 
   it('非学生：只认 education[0].degree 命中七档 → 预选（默认是 本科）', () => {

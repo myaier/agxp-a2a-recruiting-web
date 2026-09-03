@@ -462,7 +462,7 @@ describe('工作经历 保存 single-flight', () => {
 // ── 候选 onboarding 简历预填（Spec §8 /experience，Task 6）──
 
 const 全可预填: 候选预填Eligibility = {
-  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: true },
   summary: true,
   skills: true,
   experiences: true,

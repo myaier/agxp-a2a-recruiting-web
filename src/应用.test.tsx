@@ -8,7 +8,7 @@
 import { useEffect } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BFF主体样本 } from './测试/BFF样本';
 import { 初始状态 } from './状态/初始状态';
@@ -437,6 +437,37 @@ describe('应用路由：候选 onboarding 预填恢复与退出清理（Task 7�
     );
     await waitFor(() => expect(screen.getByTestId('屏幕:设置')).toBeTruthy());
     await waitFor(() => expect(值.操作.清候选Onboarding预填).toHaveBeenCalledTimes(1));
+  });
+
+  // codex review-r1 P2：清理栅栏不能按「上次清理过的路径」去重 —— 清过 /app 后重新
+  // 进入 onboarding 激活新一轮、再次退出到 /app 时，路径相同但轮是新轮，必须再清一次
+  //（否则新 suggestion 与恢复元数据在主壳内存活到刷新）。栅栏应在进入活跃集合时复位。
+  it('重新进入 onboarding 后退出：同一路径也再次清理', async () => {
+    const 值 = 候选后端应用值({ 候选预填状态: ready预填轮() });
+    mock应用状态.mockReturnValue(值);
+    const 探针 = () => {
+      const 导航 = useNavigate();
+      return (
+        <>
+          <button onClick={() => 导航(路径.基本信息)}>探针-去基本信息</button>
+          <button onClick={() => 导航(路径.主壳)}>探针-去主壳</button>
+        </>
+      );
+    };
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}>
+        <应用 />
+        <探针 />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(值.操作.清候选Onboarding预填).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole('button', { name: '探针-去基本信息' }));
+    await waitFor(() => expect(screen.getByTestId('屏幕:基本信息')).toBeTruthy());
+    // ready 轮直接挂载：进入活跃集合本身不清
+    expect(值.操作.清候选Onboarding预填).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('button', { name: '探针-去主壳' }));
+    await waitFor(() => expect(screen.getByTestId('屏幕:主壳')).toBeTruthy());
+    await waitFor(() => expect(值.操作.清候选Onboarding预填).toHaveBeenCalledTimes(2));
   });
 
   it.each([

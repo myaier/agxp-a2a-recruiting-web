@@ -29,7 +29,7 @@ vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状�
 vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 
 const 全可预填: 候选预填Eligibility = {
-  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+  profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: true },
   summary: true,
   skills: true,
   experiences: true,

@@ -1431,7 +1431,7 @@ describe('候选 onboarding 预填会话清理', () => {
       phase: 'ready',
       source: { file_id: 'rf_1', version_id: 'rfv_1', parse_id: 'rp_1' },
       eligibility: {
-        profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true },
+        profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: true },
         summary: true, skills: true, experiences: true, educations: true, certificates: true,
       },
       suggestion: { schema_version: 'resume-prefill.v1' } as never,
