@@ -1079,6 +1079,7 @@ describe('发布岗位页 JD 导入生命周期', () => {
     ['HTTP 503 operation_outcome_unknown', new BFF错误(503, 'operation_outcome_unknown', 'unknown'), 不可用文案, '重试 ›'],
     ['invalid_response', new BFF错误(200, 'invalid_response', 'drift'), '服务返回异常，请稍后重试', '重新上传 ›'],
     ['未知 code', new BFF错误(500, 'mystery_error', 'provider=openai'), 不可用文案, '重新上传 ›'],
+    ['原型链键 code', new BFF错误(422, 'constructor', 'proto'), 不可用文案, '重新上传 ›'],
     ['非 BFF错误', new Error('provider=openai request_id=req_9 model_output=SENSITIVE'), 不可用文案, '重新上传 ›'],
   ])('POST 失败 %s → 精确安全文案与动作，机器细节不上屏', async (_名, 错误, 文案, 动作) => {
     mock创建JD导入.mockRejectedValueOnce(错误).mockResolvedValueOnce(JDpending);

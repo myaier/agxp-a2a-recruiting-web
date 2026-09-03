@@ -208,7 +208,9 @@ function 取JD错误文案(error: unknown): string {
     storage_unavailable: unavailable,
     invalid_response: '服务返回异常，请稍后重试',
   };
-  if (known[error.code]) return known[error.code];
+  // typeof 守卫原型链键（constructor/__proto__）：未登记 code 一律落安全文案
+  const 命中 = known[error.code];
+  if (typeof 命中 === 'string') return 命中;
   return unavailable;
 }
 
