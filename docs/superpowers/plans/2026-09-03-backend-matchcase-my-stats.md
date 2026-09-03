@@ -256,7 +256,7 @@ git commit -m "fix: isolate backend matchcase snapshots by subject"
 
 **Interfaces:**
 - Consumes: `P5列表快照 | undefined`、当前 `subjectId: string | null`。
-- Produces: `取P5Open统计(snapshot, subjectId): P5Open统计`。
+- Produces: `取P5Open统计(snapshot, subjectId): P5Open统计` 与 `取P5候选横幅状态(snapshot, subjectId, hasScope): P5候选横幅状态`。
 - Exact output:
 
 ```ts
@@ -264,6 +264,12 @@ export interface P5Open统计 {
   open: string;
   anonymousScreening: string;
   needsAction: string;
+}
+
+export interface P5候选横幅状态 {
+  强调: string;
+  已载待办数: number;
+  读尽: boolean;
 }
 ```
 
@@ -273,7 +279,7 @@ export interface P5Open统计 {
 import { describe, expect, it } from 'vitest';
 import type { P5列表项 } from '../../数据/招聘数据源/MatchCase';
 import type { P5列表快照 } from './类型';
-import { 取P5Open统计 } from './MatchCase统计';
+import { 取P5Open统计, 取P5候选横幅状态 } from './MatchCase统计';
 
 function 行(
   caseId: string,
@@ -334,6 +340,21 @@ describe('取P5Open统计', () => {
     expect(取P5Open统计(成功([行('mc_1', 'anonymous_screening', true)], null), 'sub_2'))
       .toEqual({ open: '—', anonymousScreening: '—', needsAction: '—' });
   });
+
+  it('候选横幅保持既有四态且 owner 不匹配视为未载入', () => {
+    expect(取P5候选横幅状态(undefined, 'sub_1', true).强调).toBe('正在读入在谈职位…');
+    expect(取P5候选横幅状态(成功([], null), 'sub_1', true))
+      .toEqual({ 强调: '暂时没有需要你介入的', 已载待办数: 0, 读尽: true });
+    expect(取P5候选横幅状态(成功([], 'cursor_1'), 'sub_1', true).强调)
+      .toBe('已读入的里暂时没有需要你介入的');
+    expect(取P5候选横幅状态(成功([行('mc_1', 'anonymous_screening', true)], 'cursor_1'), 'sub_1', true).强调)
+      .toBe('有职位需要你协调');
+    expect(取P5候选横幅状态(成功([行('mc_1', 'anonymous_screening', true)], null), 'sub_1', true).强调)
+      .toBe('1 个职位需要你协调');
+    expect(取P5候选横幅状态(成功([], null), 'sub_2', true).强调).toBe('正在读入在谈职位…');
+    expect(取P5候选横幅状态(成功([], null), null, true).强调).toBe('正在读入在谈职位…');
+    expect(取P5候选横幅状态(undefined, 'sub_1', false).强调).toBe('暂时没有需要你介入的');
+  });
 });
 ```
 
@@ -356,6 +377,12 @@ export interface P5Open统计 {
   needsAction: string;
 }
 
+export interface P5候选横幅状态 {
+  强调: string;
+  已载待办数: number;
+  读尽: boolean;
+}
+
 const 中性统计: P5Open统计 = {
   open: '—', anonymousScreening: '—', needsAction: '—',
 };
@@ -374,6 +401,24 @@ export function 取P5Open统计(
     anonymousScreening: `${openItems.filter((item) => item.state.stage === 'anonymous_screening').length}${suffix}`,
     needsAction: `${openItems.filter((item) => item.needsAction === true).length}${suffix}`,
   };
+}
+
+export function 取P5候选横幅状态(
+  snapshot: P5列表快照 | undefined,
+  subjectId: string | null,
+  hasScope: boolean,
+): P5候选横幅状态 {
+  if (!hasScope) return { 强调: '暂时没有需要你介入的', 已载待办数: 0, 读尽: false };
+  const current = subjectId !== null && snapshot?.ownerSubjectId === subjectId ? snapshot : undefined;
+  if (current === undefined || current.阶段 === '未开始' || current.阶段 === '进行中') {
+    return { 强调: '正在读入在谈职位…', 已载待办数: 0, 读尽: false };
+  }
+  const 已载待办数 = current.items.filter((item) => item.needsAction).length;
+  const 读尽 = current.阶段 === '成功' && current.nextCursor === null;
+  const 强调 = 已载待办数 > 0
+    ? (读尽 ? `${已载待办数} 个职位需要你协调` : '有职位需要你协调')
+    : (读尽 ? '暂时没有需要你介入的' : '已读入的里暂时没有需要你介入的');
+  return { 强调, 已载待办数, 读尽 };
 }
 ```
 
@@ -395,18 +440,20 @@ git commit -m "feat: add authoritative matchcase stats selector"
 **Files:**
 - Modify: `src/屏幕/我的.tsx`
 - Modify: `src/屏幕/企业我的.tsx`
+- Modify: `src/屏幕/在谈首页.tsx`
 - Modify: `src/屏幕/看市场.tsx`
 - Modify: `src/屏幕/代理详情.tsx`
 - Modify: `src/屏幕/企业代理详情.tsx`
 - Modify: `src/屏幕/我的.test.tsx`
 - Modify: `src/屏幕/企业我的.test.tsx`
 - Modify: `src/屏幕/看市场.test.tsx`
+- Modify: `src/屏幕/P5/MatchCase列表.test.tsx`
 - Create: `src/屏幕/代理详情.test.tsx`
 - Create: `src/屏幕/企业代理详情.test.tsx`
 
 **Interfaces:**
-- Consumes: `P5范围键.open(role, null)`、`操作.设置P5范围`、`操作.加载工作区`、`取P5Open统计`、`后端状态.主体.subject_id`。
-- Produces: candidate Backend stats `[open, anonymousScreening, needsAction, '—']`；recruiter Backend stats `[在招岗位真实数, open, needsAction, '—']`；相邻看市场/代理详情只消费同一份已在内存的 selector，不发新请求。
+- Consumes: `P5范围键.open(role, filterRef)`、`操作.设置P5范围`、`操作.加载工作区`、`取P5Open统计`、`取P5候选横幅状态`、`后端状态.主体.subject_id`。
+- Produces: candidate Backend stats `[open, anonymousScreening, needsAction, '—']`；recruiter Backend stats `[在招岗位真实数, open, needsAction, '—']`；在谈首页/看市场共用同一当前范围的候选横幅投影，双端代理详情共用 unfiltered open 统计；相邻页都只消费已在内存的快照，不发新请求。
 - Navigation: 保留 `{ 型: '看全部在谈', 档: '待我拍板' }` 与招聘镜像 action；不新增路由。
 
 - [ ] **Step 1: 扩展页面测试宿主并写失败行为测试**
@@ -464,23 +511,24 @@ it('Mock 保留原统计且不调用 P5 operation', () => {
 
 招聘测试沿用现有 `置Backend应用状态`：给其 `后端状态` 增加完整 recruiter 主体、`P5工作区` 和相同稳定 operation spy，再写镜像断言：在招岗位仍从 `岗位列表` 数，open/needsAction 来自 recruiter scope，意向达成为 `—`，点击“待拍板”仍派发 `{ 型:'企业看全部在谈', 档:'待我拍板' }`。recruiter 行 fixture 使用 `candidateAlias` 而非 `intentionId`，其余 state/job 字段与上面的完整 fixture 一致。
 
-三个相邻展示消费者补回归：
+相邻展示消费者补回归：
 
-- `看市场.test.tsx`：Backend state 带当前 owner 的 P5 快照时，横幅按 `needsAction` 显示 `2 个职位需要你协调`；无当前成功快照时显示精确中性串 `待办状态未载入`；即使 legacy `在谈列表` 故意带 5 条也不能出现 `5 个职位需要你协调`。Mock 仍按 legacy 数组显示。
+- `在谈首页` 的既有横幅测试改为断言共享 `取P5候选横幅状态`；保留无 scope、首载/在飞、失败、分页未尽与成功读尽的现有四态覆盖。
+- `看市场.test.tsx`：分别将 `在谈范围` 设为“当前”与“全部”，证明它只读与在谈首页相同的 `open:candidate:<intentionId>` 或 `open:candidate:*` 快照；对无 scope、首载/在飞、分页未尽有/无待办与成功读尽断言与在谈首页完全相同的既有文案。即使 legacy `在谈列表` 故意带 5 条也不能出现 `5 个职位需要你协调`；Mock 仍按 legacy 数组显示。
 - 新建 `代理详情.test.tsx`：从“我的”进入时已有 candidate unfiltered 快照，`正在代谈` 显示 selector 的 open 值；直达无快照显示 `—`；Mock 仍显示 `状态.在谈列表.length`。
 - 新建 `企业代理详情.test.tsx`：recruiter 镜像验证 `企业候选列表` 不再进入 Backend 展示。
 
-这三个页面不调用 `设置P5范围` 或 `加载工作区`；它们只复用已有内存快照，直接进入时诚实显示缺失态。`归档谈判.tsx`、`企业归档.tsx`、`企业消息.tsx` 已在组件入口先分 Backend/Mock，legacy 读取只位于未挂载的 Mock 子组件，本 Plan 不修改它们。
+`看市场`、`代理详情`、`企业代理详情` 不调用 `设置P5范围` 或 `加载工作区`；它们只复用已有内存快照，直接进入时诚实显示缺失态。`归档谈判.tsx`、`企业归档.tsx`、`企业消息.tsx` 已在组件入口先分 Backend/Mock，legacy 读取只位于未挂载的 Mock 子组件，本 Plan 不修改它们。
 
 - [ ] **Step 2: 运行 RED**
 
 Run:
 
 ```bash
-npx vitest run src/屏幕/我的.test.tsx src/屏幕/企业我的.test.tsx
+npx vitest run src/屏幕/我的.test.tsx src/屏幕/企业我的.test.tsx src/屏幕/看市场.test.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx src/屏幕/P5/MatchCase列表.test.tsx src/状态/后端/MatchCase统计.test.ts
 ```
 
-Expected: FAIL，页面仍读 legacy 数组且没有 P5 scope 注册。
+Expected: FAIL，页面仍读 legacy 数组、没有 P5 scope 注册，且在谈/看市场还没有共用横幅投影。
 
 - [ ] **Step 3: 实现候选与招聘镜像接线**
 
@@ -530,31 +578,34 @@ const Backend统计 = 取P5Open统计(后端状态.P5工作区[P5Scope], 当前S
 
 Backend 的“在谈”用 `Backend统计.open`，“待拍板”用 `Backend统计.needsAction`，“意向达成”为 `—`；“在招岗位”和代理卡的岗位数保持当前实现。Mock 仍用 `企业候选列表`。
 
-`看市场.tsx`、`代理详情.tsx`、`企业代理详情.tsx` 使用相同的 role/subject/scope 取 selector，但不加 effect：
+`在谈首页.tsx` 将内联的 `已载待办数`、`读尽`、`横幅强调` 替换为共享纯投影，但保留它已有的 scope 选择与加载 effect：
 
 ```ts
-const scope = P5范围键.open('candidate', null);
-const Backend统计 = 取P5Open统计(
-  后端状态.P5工作区[scope],
-  后端状态.主体?.last_used_role === 'candidate'
-    ? 后端状态.主体.subject_id
-    : null,
+const 当前SubjectId = 后端状态.主体?.last_used_role === 'candidate'
+  ? 后端状态.主体.subject_id
+  : null;
+const 横幅状态 = 取P5候选横幅状态(快照, 当前SubjectId, 有scope);
+```
+
+`看市场.tsx` 在 Backend 分支复用在谈首页的范围选择，只取快照不发请求：
+
+```ts
+const 范围 = 状态.在谈范围;
+const 当前意向条 = 状态.求职意向表.find(
+  (条) => 取意向名(条.标题) === 状态.当前意向,
 );
+const filterRef = 范围 === '全部' ? null : (当前意向条?.编号 ?? null);
+const 有scope = 当前意向条 !== undefined || 范围 === '全部';
+const 快照 = 有scope
+  ? 后端状态.P5工作区?.[P5范围键.open('candidate', filterRef)]
+  : undefined;
+const 当前SubjectId = 后端状态.主体?.last_used_role === 'candidate'
+  ? 后端状态.主体.subject_id
+  : null;
+const 横幅状态 = 取P5候选横幅状态(快照, 当前SubjectId, 有scope);
 ```
 
-招聘镜像把 role 换成 `recruiter`。双端代理详情的 Backend “正在代谈”显示 `Backend统计.open`；Mock 保持 legacy 长度。看市场的 Backend 横幅按下式选强调串，避免不可读的“前文 + —”拼句：
-
-```ts
-const 横幅强调 = 是后端
-  ? Backend统计.needsAction === '—'
-    ? '待办状态未载入'
-    : `${Backend统计.needsAction} 个职位需要你协调`
-  : 待协调数 > 0
-    ? `${待协调数} 个职位需要你协调`
-    : '暂时没有需要你介入的';
-```
-
-随后把 `代理横幅` 的 `强调` 改为 `横幅强调`。这是数据缺失态标签，不增加新交互、请求、CSS 或布局。
+随后两屏都把 `代理横幅` 的 `强调` 改为 `横幅状态.强调`，在谈首页的筛选层待办数用 `横幅状态.读尽 ? 横幅状态.已载待办数 : 0`。双端代理详情则继续取 unfiltered role scope 的 `取P5Open统计`；Backend “正在代谈”显示 `Backend统计.open`，Mock 保持 legacy 长度。不增加新交互、请求、CSS 或布局。
 
 - [ ] **Step 4: 运行 GREEN、页面相关回归并提交**
 
@@ -567,7 +618,7 @@ npx vitest run src/屏幕/我的.test.tsx src/屏幕/企业我的.test.tsx src/�
 Expected: PASS。
 
 ```bash
-git add src/屏幕/我的.tsx src/屏幕/企业我的.tsx src/屏幕/看市场.tsx src/屏幕/代理详情.tsx src/屏幕/企业代理详情.tsx src/屏幕/我的.test.tsx src/屏幕/企业我的.test.tsx src/屏幕/看市场.test.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx
+git add src/屏幕/我的.tsx src/屏幕/企业我的.tsx src/屏幕/在谈首页.tsx src/屏幕/看市场.tsx src/屏幕/代理详情.tsx src/屏幕/企业代理详情.tsx src/屏幕/我的.test.tsx src/屏幕/企业我的.test.tsx src/屏幕/看市场.test.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx src/屏幕/P5/MatchCase列表.test.tsx
 git commit -m "fix: hydrate my-page stats from matchcases"
 ```
 
