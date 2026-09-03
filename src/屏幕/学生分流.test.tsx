@@ -667,4 +667,20 @@ describe('学生分流 候选 onboarding 简历预填（Spec §7 上传页接线
     expect(mock操作.同步候选Onboarding解析).not.toHaveBeenCalled();
     expect(screen.getByText('这张表我来填')).toBeTruthy();
   });
+
+  it('Mock mode upload flow leaves all seven prefill operations uncalled', async () => {
+    const 用户 = userEvent.setup();
+    const { 派发 } = render学生分流({ 数据源: 'mock' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await 用户.upload(input, new File(['%PDF'], 'demo.pdf', { type: 'application/pdf' }));
+    // Mock 的旧存名派发照常发生（证明流程真的走到了上传路径），预填域纹丝不动
+    expect(派发).toHaveBeenCalledWith({ 型: '存简历文件名', 文件名: 'demo.pdf' });
+    expect(mock操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
+    expect(mock操作.激活候选Onboarding预填).not.toHaveBeenCalled();
+    expect(mock操作.同步候选Onboarding解析).not.toHaveBeenCalled();
+    expect(mock操作.重试候选Onboarding预填).not.toHaveBeenCalled();
+    expect(mock操作.继续手填候选Onboarding).not.toHaveBeenCalled();
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    expect(mock操作.清候选Onboarding预填).not.toHaveBeenCalled();
+  });
 });

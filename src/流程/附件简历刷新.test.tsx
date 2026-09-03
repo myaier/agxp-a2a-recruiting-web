@@ -21,11 +21,32 @@ interface 刷新上下文 {
     主体: { subject_id: string; last_used_role: 'candidate' | 'recruiter' } | null;
     附件简历库: { items: BFF附件简历[]; limits: { max_files: number; max_file_bytes: number; accepted_media_types: ['application/pdf'] } } | null;
   };
-  操作: { 刷新附件简历: () => Promise<void> };
+  操作: {
+    刷新附件简历: () => Promise<void>;
+    恢复候选Onboarding预填: () => Promise<void>;
+    激活候选Onboarding预填: () => void;
+    同步候选Onboarding解析: () => Promise<void>;
+    重试候选Onboarding预填: () => Promise<void>;
+    继续手填候选Onboarding: () => void;
+    确认候选Onboarding预填分区: () => void;
+    清候选Onboarding预填: () => void;
+  };
 }
 
 let mock应用状态: 刷新上下文 | null = null;
 let 刷新 = vi.fn(async () => {});
+
+/** 候选 onboarding 预填操作探针（Task 8 回归）：刷新钩子只拥有轮询，
+ *  绝不触发预填域 —— 挂上探针只为了让越界调用立刻红。 */
+const mock预填操作 = {
+  恢复候选Onboarding预填: vi.fn().mockResolvedValue(undefined),
+  激活候选Onboarding预填: vi.fn(),
+  同步候选Onboarding解析: vi.fn().mockResolvedValue(undefined),
+  重试候选Onboarding预填: vi.fn().mockResolvedValue(undefined),
+  继续手填候选Onboarding: vi.fn(),
+  确认候选Onboarding预填分区: vi.fn(),
+  清候选Onboarding预填: vi.fn(),
+};
 
 function 行(parse: BFF附件简历['current_version']['parse'], 编号 = 'rf_1'): BFF附件简历 {
   return {
@@ -70,7 +91,7 @@ function 布置(选项: {
         limits: { max_files: 3, max_file_bytes: 2 * 1024 * 1024, accepted_media_types: ['application/pdf'] },
       },
     },
-    操作: { 刷新附件简历: () => 刷新() },
+    操作: { 刷新附件简历: () => 刷新(), ...mock预填操作 },
   };
 }
 
@@ -244,6 +265,28 @@ describe('use附件简历刷新', () => {
     await vi.advanceTimersByTimeAsync(10000);
     expect(刷新).not.toHaveBeenCalled();
     unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('Mock 模式零候选预填操作：挂载、时间推进与 session effect 重跑都不碰预填域', async () => {
+    vi.useFakeTimers();
+    布置({ items: [行(解析中)], 数据源模式: 'mock' });
+    const { rerender, unmount } = renderHook(() => use附件简历刷新());
+    await vi.advanceTimersByTimeAsync(10000);
+    // 换主体强制 session effect 在 Mock 模式下重跑一轮（探针是同一组引用，全程计数）
+    布置({ items: [行(解析中)], 数据源模式: 'mock', subject_id: 'sub_2' });
+    rerender();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(刷新).not.toHaveBeenCalled();
+    expect(mock预填操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
+    expect(mock预填操作.激活候选Onboarding预填).not.toHaveBeenCalled();
+    expect(mock预填操作.同步候选Onboarding解析).not.toHaveBeenCalled();
+    expect(mock预填操作.重试候选Onboarding预填).not.toHaveBeenCalled();
+    expect(mock预填操作.继续手填候选Onboarding).not.toHaveBeenCalled();
+    expect(mock预填操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    expect(mock预填操作.清候选Onboarding预填).not.toHaveBeenCalled();
+    unmount();
+    await vi.runAllTicks();
     expect(vi.getTimerCount()).toBe(0);
   });
 

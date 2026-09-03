@@ -26,6 +26,15 @@ const mock操作 = {
   替换附件简历: vi.fn().mockResolvedValue('已提交'),
   删除附件简历: vi.fn().mockResolvedValue('已提交'),
   请求附件解析: vi.fn().mockResolvedValue('已提交'),
+  // 候选 onboarding 预填操作探针（Task 8 回归）：本页属日常简历域，
+  // 七个预填操作一个都不该被碰 —— 挂上探针只为了让越界调用立刻红
+  恢复候选Onboarding预填: vi.fn().mockResolvedValue(undefined),
+  激活候选Onboarding预填: vi.fn(),
+  同步候选Onboarding解析: vi.fn().mockResolvedValue(undefined),
+  重试候选Onboarding预填: vi.fn().mockResolvedValue(undefined),
+  继续手填候选Onboarding: vi.fn(),
+  确认候选Onboarding预填分区: vi.fn(),
+  清候选Onboarding预填: vi.fn(),
 };
 const 操作 = mock操作;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -349,5 +358,55 @@ describe('我的简历 · Backend 附件简历库（P2 Task 6）', () => {
     const className = screen.getByTestId('附件简历标题').className;
     expect(className).toContain(样式.卡标题);
     expect(className).toContain(样式.附件标题行);
+  });
+});
+
+/** 七个候选 onboarding 预填操作零调用（我的简历 属日常简历域，绝不触发 onboarding 预填） */
+function 零预填操作() {
+  expect(mock操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
+  expect(mock操作.激活候选Onboarding预填).not.toHaveBeenCalled();
+  expect(mock操作.同步候选Onboarding解析).not.toHaveBeenCalled();
+  expect(mock操作.重试候选Onboarding预填).not.toHaveBeenCalled();
+  expect(mock操作.继续手填候选Onboarding).not.toHaveBeenCalled();
+  expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+  expect(mock操作.清候选Onboarding预填).not.toHaveBeenCalled();
+}
+
+describe('我的简历 · 候选 onboarding 预填边界（Task 8 日常域隔离回归）', () => {
+  it('daily resume reparse never activates onboarding prefill', async () => {
+    render我的简历({ mode: 'backend', library: { items: [文件B], limits } });
+    await revealActions();
+    await userEvent.click(screen.getByRole('button', { name: '重新解析' }));
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    expect(mock操作.请求附件解析).toHaveBeenCalledTimes(1);
+    expect(mock操作.激活候选Onboarding预填).not.toHaveBeenCalled();
+    expect(mock操作.同步候选Onboarding解析).not.toHaveBeenCalled();
+  });
+
+  it('upload, replace, and reparse never call a prefill operation or write recovery metadata', async () => {
+    // 恢复元数据只能落在 AGXP候选预填恢复v1:{mode}:{env}:{account} 键上
+    //（候选Onboarding预填恢复.ts 的 账号存储键 推导）：日常域一次都不该写。
+    // 注意：本环境（Node 原生实验 sessionStorage + vitest jsdom）里 setItem 不经
+    // 任何可 spyOn 的原型层，Storage.prototype 探针收不到调用 —— 改用终态枚举断言
+    render我的简历({ mode: 'backend', library: { items: [文件B], limits } });
+    // replace：左滑 → 替换 → 选文件 → 授权同意
+    await revealActions();
+    await userEvent.click(screen.getByRole('button', { name: '替换' }));
+    await userEvent.upload(附件输入框(), new File(['%PDF'], 'new.pdf', { type: 'application/pdf' }));
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    await waitFor(() => expect(mock操作.替换附件简历).toHaveBeenCalledTimes(1));
+    // upload：标题 ＋ → 选文件 → 授权同意
+    await userEvent.click(screen.getByRole('button', { name: '添加附件简历' }));
+    await userEvent.upload(附件输入框(), new File(['%PDF'], 'mine.pdf', { type: 'application/pdf' }));
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    await waitFor(() => expect(mock操作.创建附件简历).toHaveBeenCalledTimes(1));
+    // explicit reparse：左滑 → 重新解析 → 授权同意
+    await revealActions();
+    await userEvent.click(screen.getByRole('button', { name: '重新解析' }));
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    await waitFor(() => expect(mock操作.请求附件解析).toHaveBeenCalledTimes(1));
+    // 日常域隔离：七个预填操作零调用 + 恢复元数据存储键零残留
+    零预填操作();
+    expect(Object.keys(sessionStorage).filter((键) => 键.startsWith('AGXP候选预填恢复v1:'))).toEqual([]);
   });
 });
