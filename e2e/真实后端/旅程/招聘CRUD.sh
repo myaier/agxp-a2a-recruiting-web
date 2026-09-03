@@ -160,6 +160,10 @@ find_retry placeholder '搜索城市名，从下方候选选择' fill "$CATALOG_
 wait_text "$CATALOG_CITY"
 click_button_exact "$CATALOG_CITY"
 find_retry placeholder '如：浦东新区世纪大道 1568 号中建大厦 28 层' fill "$JOB_OFFICE" >/dev/null
+# P4 互认 Task 3：Backend 第三步新增「结构化要求确认」勾选框（Mock 发岗语义冻结、无此闸）——
+# 新建发布必须显式勾选，否则提交停在第三步、岗位不会创建（发布岗位.tsx 提交 的
+# 结构化确认缺失 分支）。只有改经验/学历/职位要求会清掉勾选，前面这些城市/地址动作不会。
+find_retry label '我已确认经验和学历设置将作为自动匹配依据' check >/dev/null
 click_button_exact '发布岗位并开始寻访'
 # 发布成功之后产品自己把我们送回企业主壳（发布岗位.tsx:357 进企业主壳）——
 # 底部导航的「我」出现就是服务端已经收下这个岗位的信号
