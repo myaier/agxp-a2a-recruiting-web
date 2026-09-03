@@ -34,8 +34,7 @@
    这些数与 组件/工牌卡扣.tsx 里的 SVG 坐标一一对应，改任何一处要一起动。 */
 .挂绳 {
   position: absolute;
-  /* 用户 2026-09-03「整体太靠下」：整组（挂绳 + 卡）比原稿上提 40px */
-  top: calc(var(--安全区上) - 40px);
+  top: var(--安全区上);
   left: 0;
   right: 0;
   height: 250px;
@@ -52,8 +51,7 @@
 
 .带 {
   position: absolute;
-  /* 带宽 26，中心线对准屏幕正中：桌面机身 402 宽、真机 390 宽都居中（写死 182 会在机身里偏左 6px） */
-  left: calc(50% - 13px);
+  left: 182px; /* 带宽 26，中心线落在 195 */
   bottom: 84px; /* 汇合点 y = 166 */
   width: 26px;
   height: 260px;
@@ -103,12 +101,11 @@
   white-space: nowrap;
 }
 
-/* 卡扣：390 宽的 SVG 画布，扣画在画布 x=195 的中线上；画布本身对准屏幕正中 */
+/* 卡扣：SVG 画布与容器同大，扣在中线上 */
 .卡扣 {
   position: absolute;
-  left: calc(50% - 195px);
+  left: 0;
   top: 0;
-  width: 390px;
 }
 .卡扣 svg {
   display: block;
@@ -119,9 +116,9 @@
   position: relative;
   z-index: 1;
   flex: none;
-  /* 卡顶 168 = 挂绳容器（上提 40）里的 208，给挂绳与卡扣留位（容器高 250，卡扣舌尖到 228）；
+  /* 卡顶 208 给挂绳与卡扣留位（挂绳容器高 250，卡扣舌尖到 228）；
      左右 28 比列表卡（8/11）更收，像一张实物卡而不是列表项 */
-  margin: 168px 28px 0;
+  margin: 208px 28px 0;
   padding: 40px 22px 0;
   background: var(--白);
   border-radius: var(--圆角-卡片);
