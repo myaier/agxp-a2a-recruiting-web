@@ -404,11 +404,42 @@ export function 转首次意向写入(输入: 首次意向输入): BFF意向写�
 // 真实岗位 在谈数 固定 0；演示候选仍由未支持演示域自行计算。
 
 const 后端到岗位类型 = { social_full_time: '社招全职', campus: '校园招聘', internship: '实习生', part_time: '兼职' } as const;
+// 后端到办公方式（remote → 远程）只服务意向域（从BFF意向草稿 的 现场|混合|远程 页面 vocabulary）；
+// 岗位域页面 vocabulary 是 现场|混合|全远程，走下面唯一的闭合双向表。
 const 后端到办公方式 = { onsite: '现场', hybrid: '混合', remote: '远程' } as const;
 const 后端到学历 = { none: '不限', associate: '大专', bachelor: '本科', master: '硕士', doctorate: '博士' } as const;
 const 岗位类型到后端 = { 社招全职: 'social_full_time', 校园招聘: 'campus', 实习生: 'internship', 兼职: 'part_time' } as const;
-const 办公方式到岗位后端 = { 现场: 'onsite', 混合: 'hybrid', 远程: 'remote', 全远程: 'remote' } as const;
 const 学历到后端 = { 不限: 'none', 大专: 'associate', 本科: 'bachelor', 硕士: 'master', 博士: 'doctorate' } as const;
+
+// ── 岗位办公方式闭合映射（backend 数据真相源 Task C）──
+// 岗位读入、创建、补丁共用这唯一一组双向表；remote ↔ 全远程 精确回显与保存。
+// 在招岗位.办公方式 是 string（Mock 域共用），映射层按 映射经验要求 同款 fail closed，
+// 未映射页值当面抛错，不再静默回退 'onsite'。
+type 页面岗位办公方式 = NonNullable<在招岗位['办公方式']>;
+type Wire岗位办公方式 = BFFOwnerJob['workplace_mode'];
+
+const Wire岗位办公方式表 = {
+  onsite: '现场',
+  hybrid: '混合',
+  remote: '全远程',
+} as const satisfies Record<Wire岗位办公方式, 页面岗位办公方式>;
+
+const 页面岗位办公方式表 = {
+  现场: 'onsite',
+  混合: 'hybrid',
+  全远程: 'remote',
+} as const satisfies Record<页面岗位办公方式, Wire岗位办公方式>;
+
+export function Wire到岗位办公方式(value: Wire岗位办公方式): 页面岗位办公方式 {
+  return Wire岗位办公方式表[value];
+}
+
+/** 页面岗位办公方式 → wire code；未映射页值抛错，绝不静默降级为 'onsite'。 */
+export function 岗位办公方式到Wire(页值: 在招岗位['办公方式']): Wire岗位办公方式 {
+  const 键 = (页值 ?? '') as keyof typeof 页面岗位办公方式表;
+  if (!(键 in 页面岗位办公方式表)) throw new Error(`未映射的岗位办公方式：${页值 ?? '(空)'}`);
+  return 页面岗位办公方式表[键];
+}
 // 经验要求：页面五档（发布岗位.tsx 的 经验要求选项）与 BFF enum 一一对应。
 // 未在映射里的页值（如演示域的「3 年以上」）直接抛错——契约漂移要当面暴露，不能静默落成 'none' 丢数据。
 const 经验要求到后端 = {
@@ -490,7 +521,7 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
     类别引用: dto.category,
     地点引用: dto.location,
     办公地: dto.office_location,
-    办公方式: 后端到办公方式[dto.workplace_mode],
+    办公方式: Wire到岗位办公方式(dto.workplace_mode),
     招聘类型: 后端到岗位类型[dto.recruitment_type],
     职位类别: dto.category.display_name,
     筛选要求: dto.private_screening_preferences,
@@ -525,7 +556,7 @@ export function 转岗位创建(页面岗位: 在招岗位, 上下文: 岗位创
     category_id: 必需引用(页面岗位.类别引用, '类别', 'job.category_id'),
     location_id: 必需引用(页面岗位.地点引用, '地点', 'job.location_id'),
     office_location: 页面岗位.办公地 ?? '',
-    workplace_mode: 办公方式到岗位后端[页面岗位.办公方式 as keyof typeof 办公方式到岗位后端] ?? 'onsite',
+    workplace_mode: 岗位办公方式到Wire(页面岗位.办公方式),
     salary: { lower, upper },
     annual_salary_months: 页面岗位.年薪月数 ?? null,
     // '不限'(UI 默认不限届别) / 空 / 非数字 一律落 null：原来 '不限'.replace(/\D/g,'')=''
@@ -565,7 +596,7 @@ export function 转岗位补丁(
     category_id: previous.category.id,
     location_id: previous.location.id,
     office_location: 页面岗位.办公地 ?? '',
-    workplace_mode: 办公方式到岗位后端[页面岗位.办公方式 as keyof typeof 办公方式到岗位后端] ?? 'onsite',
+    workplace_mode: 岗位办公方式到Wire(页面岗位.办公方式),
     salary: { lower, upper },
     annual_salary_months: 页面岗位.年薪月数 ?? null,
     campus_cohort: 解析届别(页面岗位.届别),
