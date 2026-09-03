@@ -5,7 +5,7 @@
 // 边界外的方法（watch、候选不感兴趣撤销、委托列表 GET、top 选择、服务端收藏过滤）不存在。
 
 import { BFF错误 } from '../HTTP客户端';
-import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
+import type { BFF请求选项, BFF响应, BFF严格错误项 } from '../HTTP客户端';
 import type {
   BFFCandidateJob,
   BFF目录引用,
@@ -515,6 +515,24 @@ export function 创建发现推荐数据源(请求: 请求函数): 发现推荐�
     return 解招聘候选推荐(result);
   }
 
+  // Task 5：POST /api/v1/recruiter/candidate-recommendation-refreshes 的路由级错误合同
+  // （mobile-v1 OpenAPI 冻结白名单，非 2xx 信封 exact-key + 固定 message 精确匹配）。
+  // 只挂在这条路由上 —— 候选 refresh 与其他发现推荐路由不启用，保持既有宽松解析。
+  const 招聘刷新错误合同 = [
+    { status: 400, type: 'invalid_request_body', message: 'The request body is not valid for this route.' },
+    { status: 401, type: 'invalid_session', message: 'The session is missing or no longer valid.' },
+    { status: 403, type: 'invalid_origin', message: 'Mutating requests must originate from the application origin.' },
+    { status: 403, type: 'role_required', message: 'This action requires an active recruitment role.' },
+    { status: 403, type: 'role_suspended', message: 'The role is suspended and cannot be restored here.' },
+    { status: 404, type: 'recommendation_not_found', message: 'The recommendation does not exist.' },
+    { status: 404, type: 'recommendation_unavailable', message: 'The recommendation is not available right now.' },
+    { status: 409, type: 'idempotency_conflict', message: 'This idempotency key was used with a different request.' },
+    { status: 409, type: 'organization_verification_required', message: 'A verified organization is required to discover candidates.' },
+    { status: 503, type: 'source_unavailable', message: 'The recruitment service is unavailable; retry shortly.' },
+    { status: 503, type: 'recruitment_service_unavailable', message: 'The recruitment service is unavailable; retry shortly.' },
+    { status: 503, type: 'operation_outcome_unknown', message: 'The operation outcome is unknown; retry with the same idempotency key.' },
+  ] as const satisfies readonly BFF严格错误项[];
+
   async function 刷新招聘候选(jobId: string, idempotencyKey: string): Promise<BFF发现批次> {
     const { result } = await 请求<unknown>({
       path: '/api/v1/recruiter/candidate-recommendation-refreshes',
@@ -522,6 +540,7 @@ export function 创建发现推荐数据源(请求: 请求函数): 发现推荐�
       body: { job_id: jobId },
       幂等: true,
       幂等键: idempotencyKey,
+      严格错误合同: 招聘刷新错误合同,
     });
     return 解发现批次(result);
   }

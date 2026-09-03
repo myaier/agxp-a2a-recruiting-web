@@ -4,6 +4,7 @@
 // 与委托批次恰好一条回执的闭合纪律。watch / 候选撤销 / 委托列表 / top 选择不在本 facade。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { 创建BFF客户端 } from '../HTTP客户端';
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
 import type { BFF淘汰原因, BFF发现偏好 } from '../BFF契约';
 import {
@@ -31,6 +32,22 @@ const 收藏路径 = `/api/v1/recruiter/jobs/${BFF岗位样本.job_id}/candidate
 const 候选列表路径 = `/api/v1/me/job-recommendations?intention_id=${BFF意向样本.intention_id}&limit=50`;
 const 招聘列表路径 = `/api/v1/recruiter/jobs/${BFF岗位样本.job_id}/candidate-recommendations?limit=50`;
 const 招聘已筛路径 = `/api/v1/recruiter/jobs/${BFF岗位样本.job_id}/candidate-recommendations?state=rejected&limit=50`;
+
+// Task 5：招聘 refresh 的路由级错误合同（与 发现推荐.ts 的 招聘刷新错误合同 逐行对照冻结）。
+const 招聘刷新错误合同 = [
+  { status: 400, type: 'invalid_request_body', message: 'The request body is not valid for this route.' },
+  { status: 401, type: 'invalid_session', message: 'The session is missing or no longer valid.' },
+  { status: 403, type: 'invalid_origin', message: 'Mutating requests must originate from the application origin.' },
+  { status: 403, type: 'role_required', message: 'This action requires an active recruitment role.' },
+  { status: 403, type: 'role_suspended', message: 'The role is suspended and cannot be restored here.' },
+  { status: 404, type: 'recommendation_not_found', message: 'The recommendation does not exist.' },
+  { status: 404, type: 'recommendation_unavailable', message: 'The recommendation is not available right now.' },
+  { status: 409, type: 'idempotency_conflict', message: 'This idempotency key was used with a different request.' },
+  { status: 409, type: 'organization_verification_required', message: 'A verified organization is required to discover candidates.' },
+  { status: 503, type: 'source_unavailable', message: 'The recruitment service is unavailable; retry shortly.' },
+  { status: 503, type: 'recruitment_service_unavailable', message: 'The recruitment service is unavailable; retry shortly.' },
+  { status: 503, type: 'operation_outcome_unknown', message: 'The operation outcome is unknown; retry with the same idempotency key.' },
+] as const;
 
 describe('发现推荐数据源', () => {
   let 请求Mock: ReturnType<typeof vi.fn>;
@@ -73,12 +90,97 @@ describe('发现推荐数据源', () => {
           resume_file_id: 'rf_1', resume_file_version_id: 'rfv_7' },
         幂等: true, 幂等键: 'candidate-delegation-key' },
       { path: '/api/v1/recruiter/candidate-recommendation-refreshes', method: 'POST',
-        body: { job_id: BFF岗位样本.job_id }, 幂等: true, 幂等键: 'recruiter-refresh-key' },
+        body: { job_id: BFF岗位样本.job_id }, 幂等: true, 幂等键: 'recruiter-refresh-key',
+        严格错误合同: 招聘刷新错误合同 },
       { path: '/api/v1/recruiter/candidate-delegations', method: 'POST',
         body: { job_id: BFF岗位样本.job_id,
           selection: { items: [BFF招聘候选推荐样本.recommendation_id] } },
         幂等: true, 幂等键: 'recruiter-delegation-key' },
     ]);
+  });
+
+  it('错误合同选项只挂在招聘 refresh 上，其他发现推荐请求不带', async () => {
+    请求Mock
+      .mockResolvedValueOnce(响应(BFF发现批次样本))
+      .mockResolvedValueOnce(响应(BFF发现批次样本))
+      .mockResolvedValueOnce(响应({ recommendations: [], next_cursor: null }));
+    await source.刷新招聘候选(BFF岗位样本.job_id, 'recruiter-refresh-key');
+    await source.刷新候选岗位推荐(BFF意向样本.intention_id, 'candidate-refresh-key');
+    await source.读取招聘候选(BFF岗位样本.job_id);
+    expect(请求Mock.mock.calls[0][0].严格错误合同).toEqual(招聘刷新错误合同);
+    expect(请求Mock.mock.calls[1][0].严格错误合同).toBeUndefined();
+    expect(请求Mock.mock.calls[2][0].严格错误合同).toBeUndefined();
+  });
+
+  // Task 5：错误合同经真实 HTTP 客户端全链路生效 —— 精确 409 保留原始 code，
+  // 任何漂移都转 invalid_response('错误响应不符合路由契约')，且 404
+  // recommendation_unavailable 保持自己的 code，不冒充组织认证错误。
+  describe('招聘刷新路由级错误合同', () => {
+    const 组织认证409 = JSON.stringify({
+      error: {
+        type: 'organization_verification_required',
+        message: 'A verified organization is required to discover candidates.',
+        request_id: 'req_1',
+      },
+    });
+
+    function 招聘刷新数据源(fetcher: typeof fetch) {
+      return 创建发现推荐数据源(
+        创建BFF客户端({ fetcher, 生成幂等键: () => 'idem-fixed', 等待: async () => {} }).请求,
+      );
+    }
+
+    async function 刷新(fetcher: typeof fetch): Promise<unknown> {
+      return 招聘刷新数据源(fetcher).刷新招聘候选(BFF岗位样本.job_id, 'recruiter-refresh-key');
+    }
+
+    function 错误响应(body: string, status: number): Response {
+      return new Response(body, { status, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    it('精确组织认证 409 保留原始 code 与固定 message', async () => {
+      const fetcher = vi.fn(async () => 错误响应(组织认证409, 409));
+      await expect(刷新(fetcher)).rejects.toMatchObject({
+        status: 409,
+        code: 'organization_verification_required',
+        message: 'A verified organization is required to discover candidates.',
+      });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['错 status（组织认证 type 配 400）', 组织认证409, 400],
+      ['未知 type', JSON.stringify({ error: { type: 'recommendation_not_found', message: 'A verified organization is required to discover candidates.', request_id: 'req_1' } }), 409],
+      ['错固定 message', JSON.stringify({ error: { type: 'organization_verification_required', message: '需要组织认证', request_id: 'req_1' } }), 409],
+      ['空 request_id', JSON.stringify({ error: { type: 'organization_verification_required', message: 'A verified organization is required to discover candidates.', request_id: '' } }), 409],
+      ['缺 error 键', JSON.stringify({ error: { type: 'organization_verification_required', message: 'A verified organization is required to discover candidates.' } }), 409],
+      ['根多键', JSON.stringify({ error: { type: 'organization_verification_required', message: 'A verified organization is required to discover candidates.', request_id: 'req_1' }, meta: {} }), 409],
+      ['error 多键', JSON.stringify({ error: { type: 'organization_verification_required', message: 'A verified organization is required to discover candidates.', request_id: 'req_1', fields: [] } }), 409],
+      ['error 非对象', JSON.stringify({ error: 7 }), 409],
+      ['根非对象', JSON.stringify(['error']), 409],
+      ['非 JSON', 'not json at all', 409],
+    ])('拒绝%s并按 invalid_response fail closed', async (_label, body, status) => {
+      const fetcher = vi.fn(async () => 错误响应(body, status));
+      await expect(刷新(fetcher)).rejects.toMatchObject({
+        status, code: 'invalid_response', message: '错误响应不符合路由契约',
+      });
+    });
+
+    it('recommendation_unavailable 保持自己的 code 而不是组织认证错误', async () => {
+      const fetcher = vi.fn(async () => 错误响应(JSON.stringify({
+        error: {
+          type: 'recommendation_unavailable',
+          message: 'The recommendation is not available right now.',
+          request_id: 'req_2',
+        },
+      }), 404));
+      await expect(刷新(fetcher)).rejects.toMatchObject({
+        status: 404,
+        code: 'recommendation_unavailable',
+        message: 'The recommendation is not available right now.',
+      });
+expect(fetcher).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('候选委托 exact body 绑定调用方给出的精确简历坐标，缺任一坐标编译期即拒绝', async () => {

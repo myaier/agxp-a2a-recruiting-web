@@ -261,6 +261,107 @@ describe('BFF HTTP 客户端', () => {
       .rejects.toMatchObject({ code: 'invalid_response' });
   });
 
+  // Task 5 路由 opt-in 严格错误合同：非 2xx 信封必须恰好命中路由 OpenAPI 白名单
+  // （根键只有 error、error 键只有 type/message/request_id、request_id 非空、
+  // status+type 恰好命中一行且 message 精确一致），任何漂移都按 invalid_response
+  // fail closed；未传该选项的调用保持既有宽松解析。
+  const 严格错误合同 = [{
+    status: 409,
+    type: 'organization_verification_required',
+    message: 'A verified organization is required to discover candidates.',
+  }] as const;
+
+  const 招聘刷新选项 = {
+    path: '/api/v1/recruiter/candidate-recommendation-refreshes' as const,
+    method: 'POST' as const,
+    body: { job_id: 'job_1' },
+    幂等: true,
+    幂等键: 'click-key-0000001',
+    严格错误合同,
+  };
+
+  it('严格错误合同接受精确 409 信封并保留 Retry-After', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        type: 'organization_verification_required',
+        message: 'A verified organization is required to discover candidates.',
+        request_id: 'req_1',
+      },
+    }), { status: 409, headers: { 'Content-Type': 'application/json', 'Retry-After': '7' } }));
+    const client = 创建BFF客户端({ fetcher });
+    await expect(client.请求(招聘刷新选项)).rejects.toMatchObject({
+      status: 409,
+      code: 'organization_verification_required',
+      message: 'A verified organization is required to discover candidates.',
+      retryAfterSeconds: 7,
+      fieldErrors: [],
+    });
+    // 409 organization_verification_required 不属于受控重试，绝不重发。
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  const 精确信封 = JSON.stringify({
+    error: {
+      type: 'organization_verification_required',
+      message: 'A verified organization is required to discover candidates.',
+      request_id: 'req_1',
+    },
+  });
+
+  it.each([
+    ['错 status', 精确信封, 400],
+    ['未知 type', JSON.stringify({ error: { type: 'recommendation_unavailable', message: 'A verified organization is required to discover candidates.', request_id: 'req_1' } }), 409],
+    ['错固定 message', JSON.stringify({ error: { type: 'organization_verification_required', message: '需要组织认证', request_id: 'req_1' } }), 409],
+    ['空 request_id', JSON.stringify({ error: { type: 'organization_verification_required', message: 'A verified organization is required to discover candidates.', request_id: '' } }), 409],
+    ['缺 error 键', JSON.stringify({ error: { type: 'organization_verification_required', message: 'A verified organization is required to discover candidates.' } }), 409],
+    ['缺 error 根键', JSON.stringify({ message: 'A verified organization is required to discover candidates.' }), 409],
+    ['根多键', JSON.stringify({ error: { type: 'organization_verification_required', message: 'A verified organization is required to discover candidates.', request_id: 'req_1' }, meta: {} }), 409],
+    ['error 多键', JSON.stringify({ error: { type: 'organization_verification_required', message: 'A verified organization is required to discover candidates.', request_id: 'req_1', fields: [] } }), 409],
+    ['error 非对象', JSON.stringify({ error: 'organization_verification_required' }), 409],
+    ['根非对象', JSON.stringify(['organization_verification_required']), 409],
+    ['非 JSON', 'not json at all', 409],
+  ])('严格错误合同拒绝%s', async (_label, body, status) => {
+    const fetcher = vi.fn(async () => new Response(body, {
+      status, headers: { 'Content-Type': 'application/json' },
+    }));
+    const client = 创建BFF客户端({ fetcher });
+    await expect(client.请求(招聘刷新选项)).rejects.toMatchObject({
+      status, code: 'invalid_response', message: '错误响应不符合路由契约',
+    });
+expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('未传严格错误合同的调用保持既有宽松解析（额外键与未知 type 照常透传）', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      error: { type: 'whatever', message: 'oops', extra: 1 },
+    }), { status: 422, headers: { 'Content-Type': 'application/json' } }));
+    const client = 创建BFF客户端({ fetcher });
+    await expect(client.请求({ path: '/api/v1/session' }))
+      .rejects.toMatchObject({ status: 422, code: 'whatever', message: 'oops' });
+expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('严格错误合同随受控重试透传：重试响应同样按合同校验', async () => {
+    const 重试合同 = [{
+      status: 409,
+      type: 'idempotency_in_progress',
+      message: 'The operation is still in progress.',
+    }] as const;
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: { type: 'idempotency_in_progress', message: 'The operation is still in progress.', request_id: 'req_1' },
+      }), { status: 409, headers: { 'Content-Type': 'application/json', 'Retry-After': '0' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: { type: 'idempotency_in_progress', message: 'drifted message', request_id: 'req_2' },
+      }), { status: 409, headers: { 'Content-Type': 'application/json' } }));
+    const client = 创建BFF客户端({ fetcher, 生成幂等键: () => 'idem-fixed', 等待: async () => {} });
+    await expect(client.请求({
+      path: '/api/v1/me/job-recommendation-refreshes', method: 'POST', body: {},
+      幂等: true, 幂等键: 'click-key-0000001', 严格错误合同: 重试合同,
+    })).rejects.toMatchObject({ status: 409, code: 'invalid_response' });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it('未开启严格信封的调用保持宽松行为（多键响应照常透传 result）', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
       result: { ok: true }, meta: { request_id: 'r1', api_version: 'v1' }, extra: 1,

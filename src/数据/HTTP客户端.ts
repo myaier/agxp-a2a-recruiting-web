@@ -10,6 +10,13 @@ export interface BFF字段错误 {
   reason: string;
 }
 
+/** Task 5 路由 opt-in 严格错误合同的一行：路由 OpenAPI 冻结的 status / type / 固定 message。 */
+export interface BFF严格错误项 {
+  status: number;
+  type: string;
+  message: string;
+}
+
 export class BFF错误 extends Error {
   status: number;
   code: string;
@@ -63,6 +70,9 @@ interface BFF请求共同选项 {
    *  缺/多根键、缺/多 meta 键、空 request_id、错版本与 JSON 尾随内容都按 invalid_response
    *  fail closed；缺省时保持既有宽松行为，不改变任何既有请求。 */
   严格信封?: true;
+  /** Task 5 opt-in：路由 OpenAPI 错误白名单。启用后非 2xx 信封先按它精确校验（见 解析严格错误），
+   *  任何漂移都转 invalid_response；缺省时保持既有宽松解析，不改变任何既有请求。 */
+  严格错误合同?: readonly BFF严格错误项[];
 }
 
 /** body 与 formData 互斥：JSON 请求走 body，multipart 上传走 formData（浏览器生成 boundary）。 */
@@ -173,12 +183,44 @@ async function 解析错误响应(resp: Response): Promise<BFF错误> {
   return new BFF错误(resp.status, code, message, fieldErrors, 解析RetryAfter(resp));
 }
 
+/**
+ * Task 5 路由 opt-in 严格错误合同：非 2xx JSON 体必须恰为
+ * { error: { type, message, request_id } }，且 status+type 恰好命中合同一行、
+ * message 与该行精确一致、request_id 非空。任何漂移（错 status/type/message、
+ * 空 request_id、缺/多键、非对象、非 JSON）都 fail closed 成 invalid_response。
+ * 与宽松解析的差异只在「原样丢失的 exact-key 信息」；合规时仍铸同一形状的 BFF错误。
+ */
+function 解析严格错误(resp: Response, body: unknown, 合同: readonly BFF严格错误项[]): BFF错误 {
+  const retryAfter = 解析RetryAfter(resp);
+  const 漂移 = () => new BFF错误(resp.status, 'invalid_response', '错误响应不符合路由契约', [], retryAfter);
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return 漂移();
+  const 根键 = Object.keys(body);
+  if (根键.length !== 1 || 根键[0] !== 'error') return 漂移();
+  const err = (body as { error: unknown }).error;
+  if (typeof err !== 'object' || err === null || Array.isArray(err)) return 漂移();
+  const error键 = Object.keys(err);
+  if (error键.length !== 3 ||
+      !error键.includes('type') || !error键.includes('message') || !error键.includes('request_id')) {
+    return 漂移();
+  }
+  const { type, message, request_id } = err as { type: unknown; message: unknown; request_id: unknown };
+  if (typeof request_id !== 'string' || request_id.length === 0) return 漂移();
+  const 命中 = 合同.filter((row) => row.status === resp.status && row.type === type);
+  if (命中.length !== 1 || message !== 命中[0].message) return 漂移();
+  return new BFF错误(resp.status, 命中[0].type, 命中[0].message, [], retryAfter);
+}
+
 export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 {
   const fetcher = deps.fetcher ?? globalThis.fetch;
   const 生成幂等键 = deps.生成幂等键 ?? (() => globalThis.crypto.randomUUID());
   const 等待 = deps.等待 ?? ((毫秒: number) => new Promise<void>((完成) => setTimeout(完成, 毫秒)));
 
-  async function 单次<T>(path: string, init: RequestInit, 严格信封?: boolean): Promise<尝试结果<T>> {
+  async function 单次<T>(
+    path: string,
+    init: RequestInit,
+    严格信封?: boolean,
+    严格错误合同?: readonly BFF严格错误项[],
+  ): Promise<尝试结果<T>> {
     let resp: Response;
     try {
       resp = await fetcher(path, init);
@@ -216,7 +258,16 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
       };
     }
 
-    // 非 2xx：解析 { error: { type, message, fields? } } 为 BFF错误。
+    // 非 2xx：带严格错误合同时先按路由白名单精确校验；否则走既有宽松解析。
+    if (严格错误合同 !== undefined) {
+      let body: unknown;
+      try {
+        body = await resp.json();
+      } catch {
+        body = undefined; // 非 JSON → 按 严格错误合同 fail closed
+      }
+      return { kind: '错误', error: 解析严格错误(resp, body, 严格错误合同) };
+    }
     return { kind: '错误', error: await 解析错误响应(resp) };
   }
 
@@ -260,11 +311,11 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
     if (hasBody) init.body = JSON.stringify(options.body);
     else if (options.formData !== undefined) init.body = options.formData;
 
-    let 结果 = await 单次<T>(options.path, init, options.严格信封);
+    let 结果 = await 单次<T>(options.path, init, options.严格信封, options.严格错误合同);
 
     // GET 网络错误只重试一次；mutation 网络错误不自动重试。
     if (结果.kind === '网络错误' && isGet) {
-      结果 = await 单次<T>(options.path, init, options.严格信封);
+      结果 = await 单次<T>(options.path, init, options.严格信封, options.严格错误合同);
     }
 
     if (结果.kind === '网络错误') {
@@ -276,7 +327,7 @@ export function 创建BFF客户端(deps: BFF客户端依赖 = {}): BFF客户端 
     if (结果.kind === '错误' && 幂等键 !== null && 可受控重试(结果.error)) {
       const 等待毫秒 = (结果.error.retryAfterSeconds ?? 0) * 1000;
       await 等待(等待毫秒);
-      结果 = await 单次<T>(options.path, init, options.严格信封);
+      结果 = await 单次<T>(options.path, init, options.严格信封, options.严格错误合同);
       // 受控重试本身遇网络错误时按网络错误抛出，绝不回退 Mock。
       if (结果.kind === '网络错误') {
         throw new BFF错误(0, 'network_error', '网络连接失败，请稍后再试');
