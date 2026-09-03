@@ -199,6 +199,68 @@ describe('发布岗位页 Backend 提交', () => {
     expect(await screen.findByText('数据已在其他地方更新，请重试')).toBeTruthy();
     expect(mock返回).not.toHaveBeenCalled();
   });
+
+  // ── 岗位办公方式 round-trip（backend 数据真相源 Task C）──
+  // remote owner job 经 从BFF岗位 回显「全远程」：编辑态快捷片精确选中（aria-pressed），
+  // 用户什么都不改直接保存，提交对象仍带 办公方式:'全远程'（补丁映射层发回 wire 'remote'）。
+  it('remote owner job 编辑时选中全远程，无修改保存仍提交全远程', async () => {
+    const 用户 = userEvent.setup();
+    mock更新岗位.mockResolvedValue(undefined);
+    const 查询Taxonomy = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' }));
+    const 查询Location = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' }));
+    置Backend应用状态(查询Taxonomy, 查询Location);
+    // Backend 编辑守卫口径：编辑目标按存量岗位带 类别引用/地点引用（同「照常保存」用例）
+    mock应用状态.状态.岗位列表 = [{
+      ...页面岗位样本,
+      办公方式: '全远程',
+      类别引用: { id: 'tax_product', display_name: '产品经理' },
+      地点引用: { id: 'loc_shanghai', display_name: '上海' },
+    }];
+
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job/job_1']}>
+        <Routes><Route path="/hr/post-job/:id" element={<发布岗位 />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    const remote = screen.getByRole('button', { name: '全远程' });
+    expect(remote.getAttribute('aria-pressed')).toBe('true');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({
+      编号: 'job_1',
+      办公方式: '全远程',
+    });
+  });
+
+  // onsite/hybrid 镜像用例：选中与保存不因 remote 修复回归。
+  it.each(['现场', '混合'] as const)('%s owner job 编辑选中与保存不回归', async (方式) => {
+    const 用户 = userEvent.setup();
+    mock更新岗位.mockResolvedValue(undefined);
+    const 查询Taxonomy = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' }));
+    const 查询Location = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' }));
+    置Backend应用状态(查询Taxonomy, 查询Location);
+    mock应用状态.状态.岗位列表 = [{
+      ...页面岗位样本,
+      办公方式: 方式,
+      类别引用: { id: 'tax_product', display_name: '产品经理' },
+      地点引用: { id: 'loc_shanghai', display_name: '上海' },
+    }];
+
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job/job_1']}>
+        <Routes><Route path="/hr/post-job/:id" element={<发布岗位 />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', { name: 方式 }).getAttribute('aria-pressed')).toBe('true');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({
+      编号: 'job_1',
+      办公方式: 方式,
+    });
+  });
 });
 
 describe('发布岗位页 Backend 选择器', () => {
