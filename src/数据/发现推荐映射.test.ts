@@ -152,10 +152,12 @@ describe('从P4候选岗位 / 从P4CandidateJob', () => {
   });
 
   it('unknown structured requirement codes remain visible instead of becoming undefined', () => {
+    // P4 互认闭合经验/学历枚举后，未知码已过不了 decoder，类型上不复存在；
+    // 这里的断言探针只验证映射层 `??` 兜底仍原样透传，绝不让展示层拿到 undefined。
     const view = 从P4CandidateJob({
       ...BFFCandidateJob样本,
-      experience_requirement: 'backend_specific_experience',
-      education_requirement: 'backend_specific_education',
+      experience_requirement: 'backend_specific_experience' as BFFCandidateJob['experience_requirement'],
+      education_requirement: 'backend_specific_education' as BFFCandidateJob['education_requirement'],
     });
     expect(view.岗位事实.经验要求).toBe('backend_specific_experience');
     expect(view.岗位事实.学历要求).toBe('backend_specific_education');

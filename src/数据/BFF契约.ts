@@ -148,6 +148,13 @@ export interface BFFOwnerIntention {
   updated_at: string;
 }
 
+// P4 互认：经验/学历要求在后端契约里闭合为五档枚举；开放 string 会掩盖契约漂移。
+export type BFF经验要求 =
+  | 'none' | 'one_to_three_years' | 'three_to_five_years'
+  | 'five_plus_years' | 'ten_plus_years';
+export type BFF学历要求 =
+  | 'none' | 'associate' | 'bachelor' | 'master' | 'doctorate';
+
 export interface BFFOwnerJob {
   job_id: string;
   publisher_mode: 'direct' | 'agency';
@@ -171,8 +178,11 @@ export interface BFFOwnerJob {
   campus_cohort: number | null;
   internship_months: number | null;
   onsite_days_per_week: number | null;
-  experience_requirement: string;
-  education_requirement: string;
+  experience_requirement: BFF经验要求;
+  education_requirement: BFF学历要求;
+  // P4 互认：服务端必返 boolean 确认事实；legacy Job 经 migration 读为 false，
+  // 读侧缺失/非布尔即契约漂移，绝不缺省成 true 或 false。
+  structured_requirements_confirmed: boolean;
   // P3：四问硬性事实块 —— 服务端 Owner Job / Candidate Job 均必返完整四员（OpenAPI HardRequirements），
   // 读到不完整对象按契约漂移 fail closed，绝不缺省成 unknown。
   hard_requirements: BFF硬性条件;
@@ -514,6 +524,8 @@ export interface BFF候选岗位推荐 {
   match_score: number;
   match_reasons: string[];
   state: 'available' | 'delegating' | 'delegated';
+  // P4 互认：生成不可变批次时冻结的 Job basis（非岗位当前 revision 值），必返 boolean。
+  structured_requirements_confirmed: boolean;
   job: BFFCandidateJob;
   delegation: BFF委托摘要 | null;
 }
@@ -544,6 +556,8 @@ export interface BFF招聘候选推荐 {
   rejected: boolean;
   rejection_reason: BFF淘汰原因 | null;
   state: 'available' | 'rejected';
+  // P4 互认：同 BFF候选岗位推荐.structured_requirements_confirmed。
+  structured_requirements_confirmed: boolean;
   delegation: BFF委托摘要 | null;
 }
 
@@ -559,7 +573,7 @@ export interface BFF发现批次 {
   batch_id: string;
   direction: BFF发现方向;
   scope_ref: string;
-  ranking_version: 'discovery-ranking.v1';
+  ranking_version: 'discovery-ranking.v1' | 'discovery-ranking.v2';
   count: number;
   created_at: string;
 }

@@ -53,6 +53,31 @@ describe('岗位数据源 hard_requirements 校验', () => {
     await expect(数据源.读取岗位()).rejects.toMatchObject({ code: 'invalid_response' });
   });
 
+  it.each([true, false] as const)(
+    'structured_requirements_confirmed=%s 原样进入服务端快照，绝不缺省',
+    async (confirmed) => {
+      页返回([{ ...BFF岗位样本, structured_requirements_confirmed: confirmed }]);
+      const 快照 = await 数据源.读取岗位();
+      expect(快照.服务端[BFF岗位样本.job_id].structured_requirements_confirmed).toBe(confirmed);
+    },
+  );
+
+  it('确认事实缺失/非布尔、经验或学历枚举外都抛 invalid_response，hard_requirements 校验仍生效', async () => {
+    const { structured_requirements_confirmed: _确认, ...缺确认 } = BFF岗位样本;
+    const 破损们: unknown[] = [
+      缺确认,
+      { ...BFF岗位样本, structured_requirements_confirmed: 'true' },
+      { ...BFF岗位样本, experience_requirement: 'two_years' },
+      { ...BFF岗位样本, education_requirement: 'college' },
+      // 确认事实合法但四员块破损：新检查不替代既有 exact hard_requirements 校验
+      { ...BFF岗位样本, hard_requirements: { ...完整硬性条件, frequent_travel: 'sometimes' } },
+    ];
+    for (const 破损 of 破损们) {
+      页返回([破损]);
+      await expect(数据源.读取岗位()).rejects.toMatchObject({ code: 'invalid_response' });
+    }
+  });
+
   // P0 修复 Task 4：POST /jobs 的 body 必须保住三条各自独立的非空文本，
   // requirements 不许再从 description 复制过来（真实 BFF 把它们当两个字段）。
   it('创建岗位 POST body 保留独立的公司声明 / 描述 / 要求三条文本', async () => {

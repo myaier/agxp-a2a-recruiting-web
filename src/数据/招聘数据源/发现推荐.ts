@@ -13,6 +13,8 @@ import type {
   BFF硬性要求档,
   BFF验证状态,
   BFFOwnerJob,
+  BFF学历要求,
+  BFF经验要求,
   BFF委托状态,
   BFF委托摘要,
   BFF淘汰原因,
@@ -139,6 +141,15 @@ const 委托拒绝码全表 = [
 const 发现偏好原因全表 = [
   'not_interested', ...淘汰原因全表,
 ] as const satisfies readonly NonNullable<BFF发现偏好['rejection_reason']>[];
+const 经验要求全表 = [
+  'none', 'one_to_three_years', 'three_to_five_years', 'five_plus_years', 'ten_plus_years',
+] as const satisfies readonly BFF经验要求[];
+const 学历要求全表 = [
+  'none', 'associate', 'bachelor', 'master', 'doctorate',
+] as const satisfies readonly BFF学历要求[];
+const 排名版本全表 = [
+  'discovery-ranking.v1', 'discovery-ranking.v2',
+] as const satisfies readonly BFF发现批次['ranking_version'][];
 
 // ── CandidateJob：required/optional 精确键清单（owner-only 列缺席即漂移）──
 
@@ -149,6 +160,7 @@ const CandidateJob必需键 = [
   'workplace_mode', 'salary_lower', 'salary_upper', 'salary_period',
   'annual_salary_months', 'campus_cohort', 'internship_months',
   'onsite_days_per_week', 'experience_requirement', 'education_requirement',
+  'structured_requirements_confirmed',
   'hard_requirements', 'description', 'requirements', 'keywords', 'status',
   'revision', 'published_at', 'created_at', 'updated_at',
 ] as const;
@@ -211,8 +223,9 @@ function 解CandidateJob(input: unknown): BFFCandidateJob {
     campus_cohort: 要求可空整数(raw.campus_cohort),
     internship_months: 要求可空整数(raw.internship_months),
     onsite_days_per_week: 要求可空整数(raw.onsite_days_per_week),
-    experience_requirement: 要求字符串(raw.experience_requirement),
-    education_requirement: 要求字符串(raw.education_requirement),
+    experience_requirement: 要求枚举(raw.experience_requirement, 经验要求全表),
+    education_requirement: 要求枚举(raw.education_requirement, 学历要求全表),
+    structured_requirements_confirmed: 要求布尔(raw.structured_requirements_confirmed),
     hard_requirements: 解硬性条件(raw.hard_requirements),
     description: 要求字符串(raw.description),
     requirements: 要求字符串(raw.requirements),
@@ -278,7 +291,7 @@ function 解招聘候选教育(input: unknown): BFF招聘候选教育 {
 function 解候选岗位推荐(input: unknown): BFF候选岗位推荐 {
   const raw = 要求闭合对象(input, [
     'recommendation_id', 'batch_id', 'intention_id', 'rank', 'match_score',
-    'match_reasons', 'state', 'job', 'delegation',
+    'match_reasons', 'state', 'structured_requirements_confirmed', 'job', 'delegation',
   ]);
   return {
     recommendation_id: 要求非空字符串(raw.recommendation_id),
@@ -288,6 +301,7 @@ function 解候选岗位推荐(input: unknown): BFF候选岗位推荐 {
     match_score: 要求范围整数(raw.match_score, 0, 100),
     match_reasons: 要求数组(raw.match_reasons).map(要求字符串),
     state: 要求枚举(raw.state, ['available', 'delegating', 'delegated']),
+    structured_requirements_confirmed: 要求布尔(raw.structured_requirements_confirmed),
     job: 解CandidateJob(raw.job),
     delegation: raw.delegation === null ? null : 解委托摘要(raw.delegation),
   };
@@ -298,7 +312,7 @@ function 解招聘候选推荐(input: unknown): BFF招聘候选推荐 {
     'recommendation_id', 'batch_id', 'job_id', 'rank', 'match_score', 'highlights',
     'compensation_relationship', 'candidate_alias', 'experience_years', 'job_status',
     'summary', 'skills', 'educations', 'favorite', 'rejected', 'rejection_reason',
-    'state', 'delegation',
+    'state', 'structured_requirements_confirmed', 'delegation',
   ]);
   return {
     recommendation_id: 要求非空字符串(raw.recommendation_id),
@@ -318,6 +332,7 @@ function 解招聘候选推荐(input: unknown): BFF招聘候选推荐 {
     rejected: 要求布尔(raw.rejected),
     rejection_reason: raw.rejection_reason === null ? null : 要求枚举(raw.rejection_reason, 淘汰原因全表),
     state: 要求枚举(raw.state, ['available', 'rejected']),
+    structured_requirements_confirmed: 要求布尔(raw.structured_requirements_confirmed),
     delegation: raw.delegation === null ? null : 解委托摘要(raw.delegation),
   };
 }
@@ -329,7 +344,7 @@ function 解发现批次(input: unknown): BFF发现批次 {
     batch_id: 要求非空字符串(raw.batch_id),
     direction: 要求枚举(raw.direction, ['candidate_jobs', 'recruiter_candidates']),
     scope_ref: 要求非空字符串(raw.scope_ref),
-    ranking_version: 要求枚举(raw.ranking_version, ['discovery-ranking.v1']),
+    ranking_version: 要求枚举(raw.ranking_version, 排名版本全表),
     count: 要求范围整数(raw.count, 0, 3),
     created_at: 要求非空字符串(raw.created_at),
   };

@@ -378,6 +378,19 @@ describe('发现推荐数据源', () => {
     }
   });
 
+  it('批次 ranking_version 接受 v1/v2 两个全字面量，拒绝其他字符串', async () => {
+    for (const 版本 of ['discovery-ranking.v1', 'discovery-ranking.v2'] as const) {
+      请求Mock.mockResolvedValueOnce(响应({ ...BFF发现批次样本, ranking_version: 版本 }));
+      await expect(source.刷新候选岗位推荐(BFF意向样本.intention_id, 'candidate-refresh-key'))
+        .resolves.toMatchObject({ ranking_version: 版本 });
+    }
+    for (const 坏版本 of ['v2', 'discovery-ranking.v3', 'discovery-ranking', '']) {
+      请求Mock.mockResolvedValueOnce(响应({ ...BFF发现批次样本, ranking_version: 坏版本 }));
+      await expect(source.刷新候选岗位推荐(BFF意向样本.intention_id, 'candidate-refresh-key'))
+        .rejects.toMatchObject({ code: 'invalid_response' });
+    }
+  });
+
   it('偏好回执的 rejection_reason 只接受 not_interested、四闭词或 null', async () => {
     for (const 合法 of [
       { ...BFF发现偏好样本, rejection_reason: 'not_interested' },
@@ -529,5 +542,65 @@ describe('发现推荐数据源', () => {
       await expect(source.读取招聘候选(BFF岗位样本.job_id)).rejects.toMatchObject({ code: 'invalid_response' });
     }
     expect(请求Mock).toHaveBeenCalledTimes(金丝雀们.length);
+  });
+
+  it('CandidateJob 的确认事实接受 true/false，缺失/非布尔与经验/学历枚举外都抛 invalid_response', async () => {
+    for (const confirmed of [true, false]) {
+      请求Mock.mockResolvedValueOnce(响应({ ...BFFCandidateJob样本, structured_requirements_confirmed: confirmed }));
+      await expect(source.读取候选岗位详情(BFFCandidateJob样本.job_id))
+        .resolves.toMatchObject({ structured_requirements_confirmed: confirmed });
+    }
+    const { structured_requirements_confirmed: _确认, ...缺确认 } = BFFCandidateJob样本;
+    for (const 破损 of [
+      缺确认,
+      { ...BFFCandidateJob样本, structured_requirements_confirmed: 'true' },
+      { ...BFFCandidateJob样本, experience_requirement: 'two_years' },
+      { ...BFFCandidateJob样本, education_requirement: 'college' },
+    ]) {
+      请求Mock.mockResolvedValueOnce(响应(破损));
+      await expect(source.读取候选岗位详情(BFFCandidateJob样本.job_id))
+        .rejects.toMatchObject({ code: 'invalid_response' });
+    }
+  });
+
+  it('双端推荐卡顶层 basis 接受 true/false，缺失/非布尔/多余键都抛 invalid_response', async () => {
+    for (const basis of [true, false]) {
+      请求Mock.mockResolvedValueOnce(响应({ recommendations: [{ ...BFF候选岗位推荐样本, structured_requirements_confirmed: basis }], next_cursor: null }));
+      await expect(source.读取候选岗位推荐(BFF意向样本.intention_id)).resolves.toMatchObject([{ structured_requirements_confirmed: basis }]);
+      请求Mock.mockResolvedValueOnce(响应({ recommendations: [{ ...BFF招聘候选推荐样本, structured_requirements_confirmed: basis }], next_cursor: null }));
+      await expect(source.读取招聘候选(BFF岗位样本.job_id)).resolves.toMatchObject([{ structured_requirements_confirmed: basis }]);
+    }
+    const { structured_requirements_confirmed: _候选确认, ...缺候选basis } = BFF候选岗位推荐样本;
+    const { structured_requirements_confirmed: _招聘确认, ...缺招聘basis } = BFF招聘候选推荐样本;
+    const 候选破损们: unknown[] = [
+      { recommendations: [缺候选basis], next_cursor: null },
+      { recommendations: [{ ...BFF候选岗位推荐样本, structured_requirements_confirmed: 'true' }], next_cursor: null },
+      { recommendations: [{ ...BFF候选岗位推荐样本, structured_requirements_confirmed: true, extra: 1 }], next_cursor: null },
+    ];
+    const 招聘破损们: unknown[] = [
+      { recommendations: [缺招聘basis], next_cursor: null },
+      { recommendations: [{ ...BFF招聘候选推荐样本, structured_requirements_confirmed: 1 }], next_cursor: null },
+      { recommendations: [{ ...BFF招聘候选推荐样本, structured_requirements_confirmed: false, weight: 2 }], next_cursor: null },
+    ];
+    for (const 破损 of 候选破损们) {
+      请求Mock.mockResolvedValueOnce(响应(破损));
+      await expect(source.读取候选岗位推荐(BFF意向样本.intention_id)).rejects.toMatchObject({ code: 'invalid_response' });
+    }
+    for (const 破损 of 招聘破损们) {
+      请求Mock.mockResolvedValueOnce(响应(破损));
+      await expect(source.读取招聘候选(BFF岗位样本.job_id)).rejects.toMatchObject({ code: 'invalid_response' });
+    }
+  });
+
+  it('候选卡顶层 basis=false 与内嵌 Job 确认=true 并存且可区分', async () => {
+    const 卡 = {
+      ...BFF候选岗位推荐样本,
+      structured_requirements_confirmed: false,
+      job: { ...BFFCandidateJob样本, structured_requirements_confirmed: true },
+    };
+    请求Mock.mockResolvedValueOnce(响应({ recommendations: [卡], next_cursor: null }));
+    await expect(source.读取候选岗位推荐(BFF意向样本.intention_id)).resolves.toEqual([卡]);
+    expect(卡.structured_requirements_confirmed).toBe(false);
+    expect(卡.job.structured_requirements_confirmed).toBe(true);
   });
 });

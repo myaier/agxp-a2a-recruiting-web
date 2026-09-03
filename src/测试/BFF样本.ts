@@ -110,6 +110,7 @@ export const BFF岗位样本: BFFOwnerJob = {
   onsite_days_per_week: 4,
   experience_requirement: 'none',
   education_requirement: 'bachelor',
+  structured_requirements_confirmed: true,
   description: '参与产品工作',
   requirements: '在校生',
   keywords: ['Python'],
@@ -365,6 +366,7 @@ export const BFFCandidateJob样本: BFFCandidateJob = {
   onsite_days_per_week: 4,
   experience_requirement: 'none',
   education_requirement: 'bachelor',
+  structured_requirements_confirmed: true,
   description: '参与产品工作',
   requirements: '在校生',
   keywords: ['Python'],
@@ -407,6 +409,7 @@ export const BFF候选岗位推荐样本: BFF候选岗位推荐 = {
   match_score: 92,
   match_reasons: ['direction_match'],
   state: 'available',
+  structured_requirements_confirmed: true,
   job: BFFCandidateJob样本,
   delegation: null,
 };
@@ -431,6 +434,7 @@ export const BFF招聘候选推荐样本: BFF招聘候选推荐 = {
   rejected: false,
   rejection_reason: null,
   state: 'available',
+  structured_requirements_confirmed: true,
   delegation: null,
 };
 

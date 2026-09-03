@@ -4,7 +4,7 @@
 
 import { BFF错误 } from '../HTTP客户端';
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
-import type { BFFOwnerJob, BFF硬性条件 } from '../BFF契约';
+import type { BFFOwnerJob, BFF学历要求, BFF经验要求, BFF硬性条件 } from '../BFF契约';
 import type { 后端环境 } from '../../配置/运行配置';
 import type { 岗位附属存储 } from '../前端附属数据';
 import type { 页面岗位快照, 岗位创建上下文 } from '../招聘数据源类型';
@@ -33,8 +33,22 @@ function 修订etag(revision: number): string {
 const 硬性条件必需键 = ['alternate_weekend_work', 'outsourcing_only', 'onsite_only', 'frequent_travel'] as const satisfies readonly (keyof BFF硬性条件)[];
 const 硬性档全表: readonly BFF硬性条件['alternate_weekend_work'][] = ['required', 'not_required', 'unknown'];
 
+// ── P4 互认：结构化要求确认事实与经验/学历闭合枚举（只在权威 Owner Job 读页上校验）──
+const 经验要求全表: readonly BFF经验要求[] = [
+  'none', 'one_to_three_years', 'three_to_five_years', 'five_plus_years', 'ten_plus_years',
+];
+const 学历要求全表: readonly BFF学历要求[] = ['none', 'associate', 'bachelor', 'master', 'doctorate'];
+
 function 是记录(值: unknown): 值 is Record<string, unknown> {
   return typeof 值 === 'object' && 值 !== null && !Array.isArray(值);
+}
+
+/** 确认事实必为 boolean、经验/学历必为五档闭词之一：缺失、错类型或未知枚举都算契约漂移。 */
+function 校验岗位事实(dto: BFFOwnerJob): void {
+  const 契约漂移 = () => new BFF错误(200, 'invalid_response', '服务返回了不符合契约的岗位数据');
+  if (typeof dto.structured_requirements_confirmed !== 'boolean') throw 契约漂移();
+  if (!经验要求全表.includes(dto.experience_requirement)) throw 契约漂移();
+  if (!学历要求全表.includes(dto.education_requirement)) throw 契约漂移();
 }
 
 /** exact key set + 闭合四员档位：多一字段、少一字段、坏一个枚举值都算契约漂移。 */
@@ -71,8 +85,11 @@ export function 创建岗位数据源(
         ? (`/api/v1/recruiter/jobs?cursor=${encodeURIComponent(cursor)}` as `/api/v1/${string}`)
         : '/api/v1/recruiter/jobs';
       const { result } = await 请求<BFF岗位页>({ path });
-      // 先校验四员硬性条件，再让 DTO 进入累积列表与映射层
-      for (const dto of result.jobs) 校验硬性条件(dto.hard_requirements);
+      // 先校验确认事实与四员硬性条件，再让 DTO 进入累积列表与映射层
+      for (const dto of result.jobs) {
+        校验岗位事实(dto);
+        校验硬性条件(dto.hard_requirements);
+      }
       全部.push(...result.jobs);
       cursor = result.next_cursor ?? undefined;
       if (!cursor) break;
