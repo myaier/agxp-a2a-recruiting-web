@@ -98,6 +98,8 @@ function 建候选岗位视图(
     intentionId: string | null;
     适配分: number;
     理由: string[];
+    /** 匹配依据是否确认：推荐卡取卡顶层 basis；详情直取无推荐批次 → null */
+    匹配依据已确认: boolean | null;
     委托: BFF候选岗位推荐['delegation'];
   },
 ): P4候选岗位页面 {
@@ -124,7 +126,11 @@ function 建候选岗位视图(
       年薪月数: job.annual_salary_months,
       经验要求,
       学历要求,
+      // 当前 CandidateJob 的现状事实，与卡顶层的历史 basis 是两回事，绝不互相覆盖
+      结构化要求已确认: job.structured_requirements_confirmed,
     },
+    // 历史 basis 只来自调用方给的卡顶层事实，不从分/理由/岗位 revision 推断
+    匹配依据已确认: 建议.匹配依据已确认,
     职位详情: 拆行(job.description),
     职位要求: 拆行(job.requirements),
     公司: {
@@ -153,6 +159,7 @@ export function 从P4候选岗位(card: BFF候选岗位推荐): P4候选岗位�
     intentionId: card.intention_id,
     适配分: card.match_score,
     理由: card.match_reasons,
+    匹配依据已确认: card.structured_requirements_confirmed,
     委托: card.delegation,
   });
 }
@@ -167,6 +174,8 @@ export function 从P4CandidateJob(job: BFFCandidateJob): P4候选岗位页面 {
     intentionId: null,
     适配分: 0,
     理由: [],
+    // 详情直取没有推荐批次：无历史 basis 可言，绝不拿当前 Job 事实伪造
+    匹配依据已确认: null,
     委托: null,
   });
 }
@@ -182,6 +191,8 @@ export function 从P4招聘候选(card: BFF招聘候选推荐): P4招聘候选�
     头像字: 首字(代号),
     匹配分: card.match_score,
     亮点: card.highlights,
+    // 卡顶层的历史 basis：决定亮点整组显示还是收起，不从分/亮点文字推断
+    匹配依据已确认: card.structured_requirements_confirmed,
     // wire 给多少年就显示多少年；null → 空串，不折算不编造
     经验: card.experience_years !== null ? `${card.experience_years} 年` : '',
     // job_status 是 open string，原样透传，不猜中文标签

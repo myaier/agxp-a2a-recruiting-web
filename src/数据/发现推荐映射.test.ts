@@ -132,6 +132,7 @@ describe('从P4候选岗位 / 从P4CandidateJob', () => {
       年薪月数: 15,
       经验要求: '3-5 年',
       学历要求: '本科',
+      结构化要求已确认: true,
     });
   });
 
@@ -172,7 +173,7 @@ describe('从P4候选岗位 / 从P4CandidateJob', () => {
     const view = 从P4CandidateJob(poisoned);
     expect(Object.keys(view)).toEqual([
       'recommendationId', 'intentionId', 'jobId', '卡', '岗位事实',
-      '职位详情', '职位要求', '公司', '发布人', '委托',
+      '匹配依据已确认', '职位详情', '职位要求', '公司', '发布人', '委托',
     ]);
     const text = JSON.stringify(view);
     expect(text).not.toContain('yunqu');
@@ -188,6 +189,42 @@ describe('从P4候选岗位 / 从P4CandidateJob', () => {
     expect(view.卡.适配分).toBe(0);
     expect(view.卡.对得上).toEqual([]);
     expect(view.委托).toBeNull();
+  });
+
+  it('历史 basis 只认卡顶层，嵌入 Job 的当前确认值不覆盖它（两个方向的矛盾夹具）', () => {
+    // 历史未确认 + 当前 Job 已确认：推荐结论收口到卡顶层 false
+    const 历史未确认 = 从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      structured_requirements_confirmed: false,
+      job: { ...BFFCandidateJob样本, structured_requirements_confirmed: true },
+    });
+    expect(历史未确认.匹配依据已确认).toBe(false);
+    expect(历史未确认.岗位事实.结构化要求已确认).toBe(true);
+    // 历史已确认 + 当前 Job 未确认：同理反向
+    const 历史已确认 = 从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      structured_requirements_confirmed: true,
+      job: { ...BFFCandidateJob样本, structured_requirements_confirmed: false },
+    });
+    expect(历史已确认.匹配依据已确认).toBe(true);
+    expect(历史已确认.岗位事实.结构化要求已确认).toBe(false);
+  });
+
+  it('匹配分是 wire 事实：basis 确认与否都不改写它', () => {
+    for (const basis of [true, false]) {
+      const view = 从P4候选岗位({ ...BFF候选岗位推荐样本, structured_requirements_confirmed: basis });
+      expect(view.卡.适配分).toBe(BFF候选岗位推荐样本.match_score);
+      expect(view.卡.对得上).toEqual(BFF候选岗位推荐样本.match_reasons);
+    }
+  });
+
+  it('详情直取：当前 Job 确认事实落在 岗位事实，匹配依据已确认 恒 null', () => {
+    for (const 确认 of [true, false]) {
+      const view = 从P4CandidateJob({ ...BFFCandidateJob样本, structured_requirements_confirmed: 确认 });
+      expect(view.匹配依据已确认).toBeNull();
+      expect(view.岗位事实.结构化要求已确认).toBe(确认);
+      expect(view.卡.适配分).toBe(0);
+    }
   });
 
   it('委托摘要原样透传（含真实 case 坐标）', () => {
@@ -224,6 +261,7 @@ describe('从P4招聘候选', () => {
       头像字: '候',
       匹配分: 87,
       亮点: ['full_stack'],
+      匹配依据已确认: true,
       经验: '4 年',
       求职状态: 'employed',
       摘要: '四年全栈经验',
@@ -235,6 +273,15 @@ describe('从P4招聘候选', () => {
       淘汰原因: null,
       委托: null,
     });
+  });
+
+  it('招聘卡匹配依据只认卡顶层 basis，匹配分与亮点原样带出', () => {
+    for (const basis of [true, false]) {
+      const view = 从P4招聘候选({ ...BFF招聘候选推荐样本, structured_requirements_confirmed: basis });
+      expect(view.匹配依据已确认).toBe(basis);
+      expect(view.匹配分).toBe(BFF招聘候选推荐样本.match_score);
+      expect(view.亮点).toEqual(BFF招聘候选推荐样本.highlights);
+    }
   });
 
   it('四种薪资关系按闭合文案表投影', () => {

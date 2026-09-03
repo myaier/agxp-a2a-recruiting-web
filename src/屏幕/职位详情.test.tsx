@@ -409,6 +409,61 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
   });
 
+  it('历史 basis 已确认（控制组）：核对行与生成分析照常渲染', () => {
+    渲染Backend状态({
+      候选岗位推荐: 快照With(推荐卡样本),
+      简历: { 简历教育: [真实教育段] },
+    });
+    渲染('job_1');
+    expect(screen.getByRole('img', { name: '适配 92 分' })).toBeTruthy();
+    expect(screen.getByText('学历 本科')).toBeTruthy();
+    expect(screen.getByText('同济大学 · 硕士')).toBeTruthy();
+    expect(screen.getByText(/按岗位设置的结构化要求核对/)).toBeTruthy();
+    expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
+  });
+
+  it('历史 basis 未确认 + 嵌入 Job 当前已确认：保留后端分，确定性核对行与生成分析整组不出，改显中性句', () => {
+    渲染Backend状态({
+      候选岗位推荐: 快照With({
+        ...推荐卡样本,
+        structured_requirements_confirmed: false,
+        job: { ...BFFCandidateJob样本, structured_requirements_confirmed: true },
+      }),
+      简历: { 简历教育: [真实教育段] },
+    });
+    渲染('job_1');
+    // 后端历史分保留
+    expect(screen.getByRole('img', { name: '适配 92 分' })).toBeTruthy();
+    // 中性句 + 当前 Job 事实（与历史 basis 分开表述）
+    expect(screen.getByText('经验与学历尚未核对')).toBeTruthy();
+    expect(screen.getByText('结构化设置：已确认')).toBeTruthy();
+    // 整组收起：核对行（要求 + 证据）与生成分析一条不留，不做选择性过滤
+    expect(screen.queryByText('学历 本科')).toBeNull();
+    expect(screen.queryByText('同济大学 · 硕士')).toBeNull();
+    expect(screen.queryByText('经验 不限')).toBeNull();
+    expect(screen.queryByText(/按岗位设置的结构化要求核对/)).toBeNull();
+    // 当前 Job 事实行（JD 卡里的「标签：值」）不属于推荐结论，照常在
+    expect(screen.getByText('结构化学历要求：本科')).toBeTruthy();
+  });
+
+  it.each([true, false])(
+    '详情直取（null basis）不渲染任何推荐结论：当前 Job 确认=%s 时只给 结构化设置',
+    (确认) => {
+      渲染Backend状态({
+        候选岗位详情: { job_1: { ...BFFCandidateJob样本, structured_requirements_confirmed: 确认 } },
+        简历: { 简历教育: [真实教育段] },
+      });
+      渲染('job_1');
+      expect(screen.getByText(`结构化设置：${确认 ? '已确认' : '尚未确认'}`)).toBeTruthy();
+      // 无推荐批次：无分、无核对行、无生成分析，也无中性核对句
+      expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+      expect(screen.queryByText('学历 本科')).toBeNull();
+      expect(screen.queryByText('同济大学 · 硕士')).toBeNull();
+      expect(screen.queryByText(/按岗位设置的结构化要求核对/)).toBeNull();
+      expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
+    },
+  );
+
   it('Backend detail displays CandidateJob facts in existing text slots', async () => {
     渲染Backend状态({
       候选岗位详情: {
@@ -431,7 +486,9 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(screen.getByText('年薪月数：15 薪')).toBeTruthy();
     expect(screen.getByText('结构化经验要求：3-5 年')).toBeTruthy();
     expect(screen.getByText('结构化学历要求：本科')).toBeTruthy();
-    expect(screen.getByText(/按岗位设置的结构化要求核对/)).toBeTruthy();
+    // 详情直取（null basis）：只给当前 Job 的结构化设置现状，不出生成分析
+    expect(screen.getByText('结构化设置：已确认')).toBeTruthy();
+    expect(screen.queryByText(/按岗位设置的结构化要求核对/)).toBeNull();
     expect(screen.getByText('职位要求（补充说明，不自动解析）')).toBeTruthy();
     expect(screen.getByText('熟悉 TypeScript')).toBeTruthy();
   });

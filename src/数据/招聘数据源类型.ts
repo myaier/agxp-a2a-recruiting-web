@@ -154,6 +154,8 @@ export interface P4岗位事实 {
   年薪月数: number | null;
   经验要求: string;
   学历要求: string;
+  /** 当前 CandidateJob 的结构化要求确认现状；与推荐卡的历史 basis 是两回事 */
+  结构化要求已确认: boolean;
 }
 
 /**
@@ -166,6 +168,11 @@ export interface P4候选岗位页面 {
   jobId: string;
   卡: 市场职位;
   岗位事实: P4岗位事实;
+  /**
+   * 匹配依据是否确认：推荐卡取卡顶层的历史 basis；详情直取（无推荐批次）为 null。
+   * 绝不用嵌入 CandidateJob 的当前值覆盖卡顶层历史值，也不从分/理由文字推断。
+   */
+  匹配依据已确认: boolean | null;
   职位详情: string[];
   职位要求: string[];
   公司: {
@@ -187,6 +194,8 @@ export interface P4招聘候选页面 {
   头像字: string;
   匹配分: number;
   亮点: string[];
+  /** 招聘卡顶层的历史 basis：false 时亮点整组收起，改显中性文案 */
+  匹配依据已确认: boolean;
   经验: string;
   求职状态: string;
   摘要: string;

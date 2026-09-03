@@ -545,21 +545,27 @@ function Backend匿名简历() {
             ))}
           </div>
 
-          {/* ── 亮点：推荐亮点行，与推荐卡标签同一批 wire 事实 ── */}
-          {视图.亮点.length > 0 ? (
-            <>
-              <div className={样式.节标行}>
-                <span className={样式.节标}>推荐亮点</span>
-              </div>
-              <div className={样式.技能行}>
-                {视图.亮点.map((亮点) => (
-                  <span key={亮点} className={样式.技能片}>
-                    {亮点}
-                  </span>
-                ))}
-              </div>
-            </>
-          ) : null}
+          {/* ── 亮点：推荐亮点行，与推荐卡标签同一批 wire 事实。
+              卡顶层 basis 未确认 = 这批亮点没核对过，整组收起、改显中性句，
+              绝不按亮点文字做选择性过滤 ── */}
+          {视图.匹配依据已确认 ? (
+            视图.亮点.length > 0 ? (
+              <>
+                <div className={样式.节标行}>
+                  <span className={样式.节标}>推荐亮点</span>
+                </div>
+                <div className={样式.技能行}>
+                  {视图.亮点.map((亮点) => (
+                    <span key={亮点} className={样式.技能片}>
+                      {亮点}
+                    </span>
+                  ))}
+                </div>
+              </>
+            ) : null
+          ) : (
+            <p className={样式.自述}>经验与学历尚未核对</p>
+          )}
 
           <div className={样式.页尾注}>
             这份简历由候选人的AI代理生成 · 内容真实性经双向核验 · 不可转发

@@ -164,6 +164,31 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     expect(screen.getByText('本科')).toBeTruthy();
   });
 
+  it('basis 已确认（控制组）：匹配分与推荐亮点整组照常渲染', () => {
+    置P4详情状态({ 详情: BFF招聘候选推荐样本 });
+    渲染详情();
+    expect(screen.getByText('full_stack')).toBeTruthy();
+    expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
+  });
+
+  it('basis 未确认：匹配分保留，推荐亮点整组收起且文档里不留任何亮点，改显中性句', async () => {
+    置P4详情状态({
+      详情: {
+        ...BFF招聘候选推荐样本,
+        structured_requirements_confirmed: false,
+        highlights: ['full_stack', 'react_depth'],
+      },
+    });
+    渲染详情();
+    // 后端历史分保留（返回栏 匹配 N）
+    expect(await screen.findByText('87')).toBeTruthy();
+    expect(screen.getByText('经验与学历尚未核对')).toBeTruthy();
+    // 整组收起：文档任何位置都不残留亮点文案，不做选择性过滤
+    expect(screen.queryByText('full_stack')).toBeNull();
+    expect(screen.queryByText('react_depth')).toBeNull();
+    expect(document.body.textContent).not.toContain('full_stack');
+  });
+
   it('身份与薪资 Canary：无真名/无直接聊/无工作经历段/无年龄性别/无 Mock 简历兜底', () => {
     置P4详情状态({ 详情: BFF招聘候选推荐样本 });
     渲染详情();

@@ -284,6 +284,35 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     expect(mock加载招聘候选).toHaveBeenCalledWith(岗位编号, true);
   });
 
+  it('basis 已确认（控制组）：匹配分与亮点整组照常渲染', () => {
+    置P4状态({ 快照: P4快照({ 阶段: '成功', items: [BFF招聘候选推荐样本] }) });
+    render(<候选推荐 />);
+    expect(screen.getByText('候选人甲')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '适配 87 分' })).toBeTruthy();
+    expect(screen.getByText('full_stack')).toBeTruthy();
+    expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
+  });
+
+  it('basis 未确认的招聘卡：匹配分保留，亮点整组收起，改显中性句', () => {
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [{
+          ...BFF招聘候选推荐样本,
+          structured_requirements_confirmed: false,
+          highlights: ['full_stack', 'react_depth'],
+        }],
+      }),
+    });
+    render(<候选推荐 />);
+    // 后端历史分保留，不因 basis 未确认而隐藏或改写
+    expect(screen.getByRole('img', { name: '适配 87 分' })).toBeTruthy();
+    expect(screen.getByText('经验与学历尚未核对')).toBeTruthy();
+    // 整组收起：亮点一条不留，不做选择性过滤
+    expect(screen.queryByText('full_stack')).toBeNull();
+    expect(screen.queryByText('react_depth')).toBeNull();
+  });
+
   it('淘汰四原因可回看可撤销；年限不足映射 experience_insufficient', async () => {
     const user = userEvent.setup();
     置P4状态({
