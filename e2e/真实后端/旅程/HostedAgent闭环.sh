@@ -93,7 +93,7 @@ has_button_exact(){
 }
 
 advance_candidate_s0(){
-  local tries=0 body t
+  local tries=0 body t only_decision=0
   while [ "$tries" -lt 240 ]; do
     body="$(ab get text body 2>/dev/null || printf '')"
     case "$body" in
@@ -103,18 +103,23 @@ advance_candidate_s0(){
         return 1 ;;
     esac
     if has_button_exact '提交回答'; then
+      only_decision=0
       find_retry label '回答问题' fill '我有 React 与 TypeScript 的真实项目经验，可以接受混合办公。' >/dev/null
       click_button_exact '提交回答'
       t=0
       while [ "$t" -lt 60 ] && has_button_exact '提交回答'; do
         t=$((t + 1)); sleep 1
       done
+      if has_button_exact '提交回答'; then
+        echo '提交回答 点击后 60 秒仍未从页面消失' >&2
+        return 1
+      fi
     elif has_button_exact '继续初筛'; then
-      click_button_exact '继续初筛'
-      t=0
-      while [ "$t" -lt 60 ] && has_button_exact '继续初筛'; do
-        t=$((t + 1)); sleep 1
-      done
+      only_decision=$((only_decision + 1))
+      if [ "$only_decision" -ge 20 ]; then
+        echo 'S0 停在不允许继续的人工决定卡（后端只认补答事实或结束）' >&2
+        return 1
+      fi
     fi
     tries=$((tries + 1))
     sleep 1
@@ -258,7 +263,7 @@ case "$CANDIDATE_CASE_URL" in
   *) echo '查看进展没有进入 candidate Case 深链' >&2; exit 1 ;;
 esac
 
-# Candidate 侧推进 S0：处理可多轮补问与人工继续决定；S0 可不经人工决定 fit 直通进 S1。
+# Candidate 侧推进 S0：补答可多轮事实补问；S0 可 fit 直通进 S1。人工停点后端只认补答事实或结束（continue 恒被拒），脚本不点击决策卡。
 MILESTONE='candidate target 完成'
 advance_candidate_s0
 
