@@ -24,6 +24,7 @@ import {
   取就读年份预填,
   取工作页预填,
   取个人优势预填,
+  数未完成项,
   type 候选工作页当前值,
 } from './候选Onboarding简历预填';
 import {
@@ -520,6 +521,15 @@ describe('取工作页预填', () => {
     ]);
   });
 
+  it('证书 name:null 物化空名称行并计入 unresolvedCount（与 数未完成项 同口径）', () => {
+    const state = readyState(映射变体((建议) => {
+      建议.draft.certificates[0].name = { value: null, confidence: null };
+    }));
+    const 结果 = 取工作页预填(state, 空工作页());
+    expect(结果.certificates).toEqual([{ 编号: 'prefill:cer:0', 名称: '', 年份: '' }]);
+    expect(结果.unresolvedCount).toBe(1);
+  });
+
   it('work 已确认时整页保留当前值', () => {
     const state = readyState(wire建议());
     state.confirmed.work = true;
@@ -556,6 +566,65 @@ describe('取工作页预填', () => {
     const 快照 = JSON.stringify({ state, current });
     取工作页预填(state, current);
     expect(JSON.stringify({ state, current })).toBe(快照);
+  });
+});
+
+// 保存点击时的实时重数（review Issue 1/9）：挂载时冻结的 unresolvedCount 在用户补齐或
+// 删除物化条目后不会归零，误拦保存；数未完成项 对当前列表求值，只认 prefill: 物化条目。
+describe('数未完成项', () => {
+  /** 未完成的物化经历（unresolved 行业无引用）。 */
+  const 未完成经历: 简历经历段 = {
+    编号: 'prefill:exp:0',
+    公司: 'Example Systems',
+    行业: 'Software',
+    职位: 'Backend Engineer',
+    开始: '2021-07',
+    结束: null,
+    内容: '',
+    隐藏: true,
+  };
+
+  /** 已补齐的物化经历（编辑页完成守卫放行后的形状：带 canonical 行业引用）。 */
+  const 已补齐经历: 简历经历段 = {
+    ...未完成经历,
+    编号: 'prefill:exp:1',
+    行业引用: { id: 'tax_aaaaaaaaaaaaaaaaaaaaaaaaaa', display_name: 'Software' },
+  };
+
+  /** 未完成的物化附加教育（学校/专业只留 source_name 文本，无 canonical 引用）。 */
+  const 未完成教育 = {
+    编号: 'prefill:edu:1',
+    学校: 'Example Graduate School',
+    学历: '硕士',
+    专业: 'Distributed Systems',
+    开始: '2021-09',
+    结束: '',
+  };
+
+  it('物化经历/教育未完成与证书空名称都计入，与取工作页预填的物化计数同口径', () => {
+    expect(数未完成项([未完成经历], [], [])).toBe(1);
+    expect(数未完成项([], [未完成教育], [])).toBe(1);
+    expect(数未完成项([], [], [{ 编号: 'prefill:cer:0', 名称: '', 年份: '' }])).toBe(1);
+    expect(
+      数未完成项([未完成经历, 已补齐经历], [未完成教育], [{ 编号: 'prefill:cer:0', 名称: '', 年份: '' }]),
+    ).toBe(3);
+  });
+
+  it('补齐后的物化条目不再计数（保存点击实时归零，不用挂载时冻结值）', () => {
+    expect(数未完成项([已补齐经历], [], [{ 编号: 'prefill:cer:0', 名称: 'CPA', 年份: '' }])).toBe(0);
+  });
+
+  it('删除物化条目后清零', () => {
+    expect(数未完成项([], [], [])).toBe(0);
+  });
+
+  it('用户自建条目（无 prefill: 前缀）不计数', () => {
+    // Mock 分支下用户自建的未完成经历/教育/证书不在预填守卫的职责内
+    expect(数未完成项(
+      [{ ...未完成经历, 编号: 'e1' }],
+      [{ ...未完成教育, 编号: 'edu1' }],
+      [{ 编号: 'c1', 名称: '', 年份: '' }],
+    )).toBe(0);
   });
 });
 

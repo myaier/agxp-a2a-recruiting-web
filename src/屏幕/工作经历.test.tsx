@@ -649,6 +649,93 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     expect('行业引用' in 段).toBe(false);
   });
 
+  // review Issue 1：保存拦截必须对当前列表实时重数 —— 挂载时冻结的 unresolvedCount
+  // 在用户补齐物化条目后仍非零，会把已经无未完成项的保存一直拦到离开页面为止。
+  it('补齐建议条目（编辑页选 canonical 行业）后再保存放行：重数当前列表而非挂载冻结值', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [
+            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'ind_fin') {
+        return {
+          items: [
+            { id: 'ind_pay', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render工作经历({
+      预填: readyWork({}, 映射变体((建议) => {
+        建议.draft.experiences[0].industry = {
+          source_name: { value: 'Software', confidence: 'medium' },
+          resolution: 'unresolved',
+          match: null,
+        };
+      })),
+      ...空列表页(),
+      保存简历,
+      查询Taxonomy,
+    });
+    const 用户 = userEvent.setup();
+    // 第一次保存：确实还有 1 处未完成，被拦
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenCalledWith('还有 1 处需要选择目录或补充必填项');
+    expect(保存简历).not.toHaveBeenCalled();
+    // 第一次保存的拦截提示已断言过；清零后再走补齐流程，断言只看后续调用
+    mock轻提示.mockClear();
+    // 进编辑页补 canonical 行业（完成守卫要求 行业引用）
+    await 用户.click(screen.getByText('Example Systems'));
+    await 用户.click(screen.getByText('所属行业'));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(await screen.findByText('金融科技'));
+    await 用户.click(await screen.findByText('支付与清结算'));
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    // 回列表再保存：无未完成项，放行（不再被挂载时冻结的计数拦下）
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(mock轻提示).not.toHaveBeenCalledWith('还有 1 处需要选择目录或补充必填项');
+  });
+
+  it('删除未完成的建议条目后重数清零：保存不再被冻结计数拦下', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({
+      预填: readyWork({}, 映射变体((建议) => {
+        建议.draft.experiences.push(structuredClone(建议.draft.experiences[0]));
+        建议.draft.experiences[1].company = { value: 'Second Corp', confidence: 'high' };
+        建议.draft.experiences[1].industry = {
+          source_name: { value: 'Finance', confidence: 'medium' },
+          resolution: 'unresolved',
+          match: null,
+        };
+      })),
+      ...空列表页(),
+      保存简历,
+    });
+    const 用户 = userEvent.setup();
+    // 第一条 exact 完整、第二条 unresolved：还有 1 处，先被拦
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenCalledWith('还有 1 处需要选择目录或补充必填项');
+    // 删除未完成的第二条
+    await 用户.click(screen.getByText('Second Corp'));
+    await 用户.click(screen.getByText('删除这段经历'));
+    // 回列表再保存：剩下的第一条完整，放行
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    const 存入 = 存简历调用们(mock应用状态.派发);
+    expect(存入.at(-1)!.经历).toHaveLength(1);
+    expect(存入.at(-1)!.经历[0].公司).toBe('Example Systems');
+  });
+
   it('exact 引用齐全时保存照常发生：unresolvedCount 为 0 不拦截', async () => {
     const 保存简历 = vi.fn(async () => {});
     render工作经历({ 预填: readyWork(), ...空列表页(), 保存简历 });

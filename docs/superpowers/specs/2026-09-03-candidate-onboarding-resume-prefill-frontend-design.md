@@ -360,7 +360,7 @@ file_id + version_id + parse_id
 - skills；
 - certificates。
 
-experiences、skills、certificates 只在 source 绑定时对应服务端列表为空、当前页面对应列表仍为空且 `work` 尚未 confirmed 时物化。additional educations 使用同一个 source-time `educations` eligibility，但它的页面空条件是“已有前四页形成的 `education[0]`，且 `current.educations.slice(1)` 为空”；满足时保留第 0 条并追加 `suggestion.educations.slice(1)`。若当前已有任意 additional education，则完全不追加。顺序保持后端 parser 顺序，不排序、不去重、不按下标合并已有条目。
+experiences、skills、certificates 只在 source 绑定时对应服务端列表为空、当前页面对应列表仍为空且 `work` 尚未 confirmed 时物化。additional educations 使用同一个 source-time `educations` eligibility，但它的页面空条件是“已有前四页形成的 `education[0]`，且 `current.educations.slice(1)` 为空”；满足时保留第 0 条并追加 `suggestion.educations.slice(1)`。若当前已有任意 additional education，则完全不追加。顺序保持后端 parser 顺序，不排序、不去重、不按下标合并已有条目（唯一例外是 skills：页面按原始字符串逐条作 React key，重复技能会撞键，skills 必须保序去重）。
 
 映射规则：
 
@@ -371,7 +371,9 @@ experiences、skills、certificates 只在 source 绑定时对应服务端列表
 - internship missing 保持未设置；
 - projects 保留 parser 顺序和空字段。
 
-unresolved 或 missing required 条目仍显示原始建议。页面不新增顶部提示节点；用户点击现有完成/保存动作时，复用 `轻提示` 给出“还有 N 处需要选择目录或补充必填项”。现有编辑页完成守卫和 `保存简历` 同步预检继续阻止无 canonical ref 的 mutation；不得静默丢弃或猜 ID。
+unresolved 或 missing required 条目仍显示原始建议。页面不新增顶部提示节点；用户点击现有完成/保存动作时，复用 `轻提示` 给出“还有 N 处需要选择目录或补充必填项”（N 对当前列表实时重数，用户补齐或删除物化条目后即放行）。现有编辑页完成守卫和 `保存简历` 同步预检继续阻止无 canonical ref 的 mutation；不得静默丢弃或猜 ID。
+
+与 §8.1 同类的已接受窄边界（挂载域）：`work` 确认前用户清空物化条目、离页再进入，物化空条件再次成立时会重新物化建议；非空用户内容始终优先，进入 manual 后完全不再播种。为这个低风险边界不引入持久化 touched 状态。
 
 ### 8.7 `引导问答` 的个人优势
 

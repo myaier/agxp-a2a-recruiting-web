@@ -2,9 +2,10 @@
 //
 // 只包装可能消费 suggestion 的 onboarding 页面（六个资料页 + 向导偏好段）：
 // 刷新后内存轮丢失、session 恢复元数据仍指向当前附件 exact tuple 时，先按 exact
-// tuple 恢复这轮建议 —— 恢复期间复用既有 路由加载中，绝不挂载消费表单；恢复结算成
-// failed 时复用既有 确认层 给「重试 / 继续手填」，绝不把空建议冒充恢复成功。内存已有
-// 轮（arming/waiting_parse/loading/ready/failed/manual）零恢复调用直接挂载 —— 恢复
+// tuple 恢复这轮建议 —— 恢复期间复用既有 路由加载中，绝不挂载消费表单（含附件库
+// 水合落地前的首帧窗口：pristine 消费轮不先挂表单再被恢复卸掉，敲进的键不丢）；
+// 恢复结算成 failed 时复用既有 确认层 给「重试 / 继续手填」，绝不把空建议冒充恢复成功。
+// 内存已有轮（arming/waiting_parse/loading/ready/failed/manual）零恢复调用直接挂载 —— 恢复
 // 操作内部重复同一 pristine 守卫，正常路由切换不覆盖活状态、不重复读取。
 // 消费页不挂 use附件简历刷新：权威解析仍是 pending/processing 时，恢复操作按
 // 允许等待解析:false 立即把本轮落 manual（Task 3），这里只需在结算前不放行表单。
@@ -111,6 +112,12 @@ export function 候选Onboarding预填边界({ children }: { children: ReactNode
   // 本组件随状态重渲染自然放行表单，无需另一份本地界面态。
   if (!消费中) return <>{children}</>;
   if (恢复在途) return <路由加载中 />;
+  // 水合落地、恢复结算前不挂消费表单（Spec §9「读取完成前不挂载待预填表单」）：
+  // 消费位置 + 候选会话 + pristine 内存轮时，附件库未水合的首帧与恢复结算之间都
+  // 只出 路由加载中 —— 否则表单先挂、恢复发起再卸掉它，那一帧里敲进的键全部丢失。
+  // 恢复结算（含无元数据 no-op）或轮不再 pristine（内存 ready/manual 直接挂载、零读取）
+  // 才放行；Mock / 非候选会话不进此门，直接挂载。
+  if (候选会话就绪 && 是原始轮(预填) && !恢复已结束) return <路由加载中 />;
   if (恢复已结束 && 预填.phase === 'failed') {
     return (
       <确认层

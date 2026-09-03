@@ -249,7 +249,9 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
   /**
    * 404/409 的一次性权威刷新（设计 §10）：刷新一次附件库并提交权威视图；同 tuple 仍
    * 不可读 → 终局 failed（绝不循环请求）；source 已变 → 按新 current source 与权威
-   * parse 状态重派（waiting/loading/failed）；刷新失败 → failed 保留原错误语义。
+   * parse 状态重派（waiting/loading/failed）；刷新失败 → failed 保留原错误语义 ——
+   * 唯独当前栅栏的 401 走统一 清账号状态（会话已在刷新途中失效，可重试 failed 无意义），
+   * 迟到的失配 401 与读路径同口径只丢弃。
    * 重派以本轮栅栏为界 —— 本轮已换代（新手填/新轮/清理）就不再动新轮。
    */
   async function 一次性刷新并重派(fence: 预填栅栏, 原错误: unknown): Promise<void> {
@@ -257,8 +259,15 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
     let 库: BFF附件简历库;
     try {
       库 = await 后端!.读取附件简历库();
-    } catch {
-      if (会话预填栅栏仍当前(fence)) 落失败(原错误);
+    } catch (错误) {
+      // 迟到失败（含 401）只丢弃：栅栏已失配的 401 绝不能登出新会话（与读路径同口径）
+      if (!会话预填栅栏仍当前(fence)) return;
+      // 当前栅栏 401：会话在刷新途中失效 —— 统一 清账号状态，不落成可重试 failed
+      if (是401(错误)) {
+        清账号状态(账号清理依赖);
+        return;
+      }
+      落失败(原错误); // 其它失败保留原 404/409 语义：failed 可显式重试
       return;
     }
     // 权威库是 subject 级事实：subject + 会话代际仍立就提交（供页面与后续推进消费）

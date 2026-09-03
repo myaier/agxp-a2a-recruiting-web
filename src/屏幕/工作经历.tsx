@@ -13,7 +13,8 @@
 // 候选 onboarding 简历预填（Spec §8 /experience，Task 6）：首挂载同步用 取工作页预填
 // 一次物化四分区（空服务端且空页面才物化；附加教育只在前四页形成的 educations[0] 之后
 // 追加 slice(1)），经一次性 useLayoutEffect 走既有 存简历 通道种入根草稿；
-// unresolvedCount 只进保存点击的 轻提示「还有 N 处需要选择目录或补充必填项」，
+// 保存点击用 数未完成项 对当前列表实时重数后进 轻提示「还有 N 处需要选择目录或补充必填项」
+// （不用挂载时冻结的 unresolvedCount：用户补齐/删除物化条目后要放行），
 // 不新增任何提示节点；确认 work 分区只在既有保存成功后。
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -30,7 +31,7 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { 规范化作品集链接, 校验作品集链接, 校验起止年月 } from '../流程/onboarding配置';
-import { 取工作页预填 } from '../流程/候选Onboarding简历预填';
+import { 取工作页预填, 数未完成项 } from '../流程/候选Onboarding简历预填';
 import { 创建空候选预填状态 } from '../状态/后端/类型';
 import type { BFFTaxonomyItem, BFFInstitutionItem } from '../数据/BFF契约';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
@@ -167,9 +168,12 @@ export default function 工作经历() {
   const 保存 = async () => {
     if (保存中) return;
     // 预填物化条目仍有未选目录或缺失必填：只用既有 轻提示 拦下（不渲染任何提示节点，
-    // 也不猜 ID）；编辑页完成守卫与 保存简历 同步预检仍是最终防线
-    if (工作页预填.unresolvedCount > 0) {
-      轻提示(`还有 ${工作页预填.unresolvedCount} 处需要选择目录或补充必填项`);
+    // 也不猜 ID）。计数对当前列表实时求值（数未完成项）—— 用户补齐或删除物化条目后
+    // 即放行，不受挂载时冻结的 unresolvedCount 牵制；编辑页完成守卫与 保存简历 同步
+    // 预检仍是最终防线
+    const 未完成数 = 数未完成项(经历列表, 教育列表, 证书列表);
+    if (未完成数 > 0) {
+      轻提示(`还有 ${未完成数} 处需要选择目录或补充必填项`);
       return;
     }
     // 学生的实习经历可以为空（没实习过是常态），不拦；社招至少一段

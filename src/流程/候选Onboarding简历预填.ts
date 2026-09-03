@@ -212,9 +212,12 @@ export interface 候选工作页当前值 {
   certificates: 简历证书[];
 }
 
+/** 物化条目临时编号前缀：仅供 React key/diff，绝不匹配服务端 ID grammar。 */
+const 预填编号前缀 = 'prefill:';
+
 /** 仅供 React key/diff 的确定性临时编号：以 prefill: 开头，绝不匹配服务端 ID grammar。 */
 function 临时编号(类: string, 序: number): string {
-  return `prefill:${类}:${序}`;
+  return `${预填编号前缀}${类}:${序}`;
 }
 
 /** exact 行业带 canonical 引用；unresolved 只留 source_name 文本。 */
@@ -278,6 +281,23 @@ function 教育未完成(段: 简历教育段): boolean {
 }
 
 /**
+ * 对当前页面列表实时重数预填物化条目（编号以 prefill: 开头）中仍有未选目录或缺失
+ * 必填的条数：经历/教育复用 经历未完成 / 教育未完成，物化证书名称为空（name:null
+ * 落成的空名称行）也计入。保存点击用它求值 —— 用户补齐或删除物化条目后计数实时
+ * 归零，不受挂载时冻结的 unresolvedCount 牵制；用户自建条目（无 prefill: 前缀）
+ * 不在此列，仍由页面既有必填守卫负责。
+ */
+export function 数未完成项(
+  经历列表: 简历经历段[],
+  教育列表: 简历教育段[],
+  证书列表: 简历证书[],
+): number {
+  return 经历列表.filter((段) => 段.编号.startsWith(预填编号前缀) && 经历未完成(段)).length
+    + 教育列表.filter((条) => 条.编号.startsWith(预填编号前缀) && 教育未完成(条)).length
+    + 证书列表.filter((条) => 条.编号.startsWith(预填编号前缀) && 条.名称 === '').length;
+}
+
+/**
  * 工作经历页一次物化该页可见的四个分区。experiences / skills / certificates 只在
  * source 绑定时对应服务端列表为空、当前页面对应列表仍为空且 work 未确认时物化；
  * 附加教育使用同一个 source-time educations eligibility，页面空条件是
@@ -285,7 +305,8 @@ function 教育未完成(段: 简历教育段): boolean {
  * suggestion.educations.slice(1)，当前已有任何附加教育则完全不追加。
  * 非空服务端/页面列表绝不按下标合并；顺序保持 parser 顺序，不排序、不去重（技能除外：
  * 页面自身按字符串作 React key，重复技能去重保序）。unresolvedCount 是物化条目中
- * 仍有未选目录或缺失必填的条数（复用 轻提示「还有 N 处」的输入），不做任何静默丢弃。
+ * 仍有未选目录或缺失必填的条数（含名称为空的物化证书行），与 数未完成项 同口径、
+ * 只反映挂载物化那一刻；保存点击的实时拦截请对当前列表调 数未完成项。不做任何静默丢弃。
  */
 export function 取工作页预填(state: 候选预填状态, current: 候选工作页当前值): {
   experiences: 简历经历段[];
@@ -329,6 +350,8 @@ export function 取工作页预填(state: 候选预填状态, current: 候选工
         // year:null → 页面空字符串（列表里年份为空即不渲染），不补年份
         年份: 证.year.value === null ? '' : String(证.year.value),
       }));
+      // name:null 物化的空名称行与 数未完成项 同口径计入（review Issue 9）
+      unresolvedCount += certificates.filter((证) => 证.名称 === '').length;
     }
   }
   return { experiences, educations, skills, certificates, unresolvedCount };

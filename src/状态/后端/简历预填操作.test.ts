@@ -677,6 +677,43 @@ describe('创建简历预填操作 · 404/409 一次性刷新', () => {
     expect(预填(场景).phase).toBe('failed');
     expect(场景.后端.读取简历预填).toHaveBeenCalledTimes(1);
   });
+
+  // review Issue 3：404/409 的一次性刷新途中 401 不能落成可重试 failed —— 当前栅栏
+  // 401 与读路径同口径走统一 清账号状态；栅栏已失配的迟到 401 仍是静默丢弃。
+  it('刷新附件库遇当前栅栏 401：统一 清账号状态，不落 failed', async () => {
+    const 场景 = 创建预填场景({ parse: 'succeeded', 元数据: 恢复元数据() });
+    场景.后端.读取简历预填.mockRejectedValueOnce(new BFF错误(404, 'not_found', 'gone'));
+    场景.后端.读取附件简历库.mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
+    await 场景.操作.同步候选Onboarding解析();
+    expect(场景.后端状态引用.current.已登录).toBe(false);
+    expect(场景.后端状态引用.current.主体).toBeNull();
+    expect(预填(场景)).toEqual(创建空候选预填状态());
+    expect(场景.候选预填代际.current).toBeGreaterThan(2);
+    expect(场景.候选预填读取锁.current.size).toBe(0);
+    expect(场景.恢复存储.删除).toHaveBeenCalledTimes(1);
+    expect(场景.后端.清空目录缓存).toHaveBeenCalled();
+    expect(场景.后端.读取简历预填).toHaveBeenCalledTimes(1); // 不循环请求
+  });
+
+  it('刷新附件库的迟到 401（栅栏已失配）只丢弃：不清账号、不删元数据、不落 failed', async () => {
+    const 场景 = 创建预填场景({ parse: 'succeeded', 元数据: 恢复元数据() });
+    const 读门 = 可控Promise<never>();
+    场景.后端.读取简历预填.mockReturnValue(读门.promise);
+    const 库门 = 可控Promise<never>();
+    场景.后端.读取附件简历库.mockReturnValue(库门.promise);
+    const 读取 = 场景.操作.同步候选Onboarding解析();
+    // 409 过当前栅栏进入一次性刷新；等刷新真正在飞后再换代 —— 401 到达时栅栏已失配，
+    // 与读路径的迟到 401 同语义（绝不登出新会话）
+    读门.reject(new BFF错误(409, 'resume_parse_stale', 'stale'));
+    await vi.waitFor(() => expect(场景.后端.读取附件简历库).toHaveBeenCalledTimes(1));
+    场景.会话代际.current += 1;
+    库门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await 读取;
+    expect(场景.后端状态引用.current.已登录).toBe(true);
+    expect(场景.后端.清空目录缓存).not.toHaveBeenCalled();
+    expect(场景.恢复存储.删除).not.toHaveBeenCalled();
+    expect(预填(场景).phase).toBe('loading');
+  });
 });
 
 // ── 可重试失败与显式重试 ────────────────────────────────────────

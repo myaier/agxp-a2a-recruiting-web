@@ -120,17 +120,21 @@ function renderBoundary(
     预填?: 候选预填状态;
     解析?: 'succeeded' | 'processing' | 'pending';
     附件?: BFF附件简历;
+    /** 附件库未水合（后端状态.附件简历库 === null）：消费页首屏必须先出加载屏。 */
+    附件库未水合?: boolean;
+    数据源模式?: 'backend' | 'mock';
+    角色?: 'candidate' | 'recruiter';
   } = {},
 ) {
   mock应用状态 = {
-    数据源模式: 'backend' as const,
+    数据源模式: (选项.数据源模式 ?? 'backend') as 'backend' | 'mock',
     状态: {},
     派发: vi.fn(),
     后端状态: {
       初始化: '完成' as const,
       已登录: true,
-      主体: { subject_id: 'sub_1', last_used_role: 'candidate' as const },
-      附件简历库: {
+      主体: { subject_id: 'sub_1', roles: [], last_used_role: (选项.角色 ?? 'candidate') as 'candidate' | 'recruiter' },
+      附件简历库: 选项.附件库未水合 === true ? null : {
         items: [选项.附件 ?? 权威附件(元数据?.source.version_id ?? 版本ID, 选项.解析 ?? 'succeeded')],
         limits,
       },
@@ -228,6 +232,42 @@ describe('候选Onboarding预填边界：消费页刷新恢复', () => {
     门.resolve();
     await waitFor(() => expect(screen.getByTestId('consumer-form')).toBeTruthy());
     expect(screen.queryByText('正在加载…')).toBeNull();
+  });
+
+  // review Issue 6：水合落地前不挂消费表单（Spec §9「读取完成前不挂载待预填表单」）——
+  // 首帧与附件库水合之间曾直接渲染表单，恢复一旦发起再卸掉它，那一帧里敲进的键全丢。
+  // 这里做结构性断言：pristine 轮 + 候选会话 + 消费位置，水合未落地时表单绝不挂载。
+  it('附件库未水合的 pristine 消费页先出 路由加载中：表单不挂载、恢复不烧机会；水合落地后再恢复放行', async () => {
+    const 门 = 可控Promise<void>();
+    mock操作.恢复候选Onboarding预填.mockReturnValue(门.promise);
+    const { 重渲染 } = renderBoundary(路径.基本信息, activeRecoveryMetadata(), { 附件库未水合: true });
+    expect(screen.getByText('正在加载…')).toBeTruthy();
+    expect(screen.queryByTestId('consumer-form')).toBeNull();
+    // 等水合的窗口里不发恢复（一次性机会不烧掉），只保持加载屏
+    expect(mock操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
+    // 水合落地：恢复发起，结算前仍不挂表单
+    mock应用状态.后端状态.附件简历库 = { items: [权威附件()], limits };
+    重渲染();
+    await waitFor(() => expect(mock操作.恢复候选Onboarding预填).toHaveBeenCalledWith({ 允许等待解析: false }));
+    expect(screen.getByText('正在加载…')).toBeTruthy();
+    expect(screen.queryByTestId('consumer-form')).toBeNull();
+    门.resolve();
+    await waitFor(() => expect(screen.getByTestId('consumer-form')).toBeTruthy());
+    expect(screen.queryByText('正在加载…')).toBeNull();
+  });
+
+  it('Mock / 非候选会话即使附件库未水合也不出加载屏：直接挂载、零恢复调用', () => {
+    renderBoundary(路径.基本信息, activeRecoveryMetadata(), { 附件库未水合: true, 数据源模式: 'mock' });
+    expect(screen.getByTestId('consumer-form')).toBeTruthy();
+    expect(screen.queryByText('正在加载…')).toBeNull();
+    expect(mock操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
+  });
+
+  it('非候选（recruiter）会话同样直接挂载，零恢复调用', () => {
+    renderBoundary(路径.基本信息, activeRecoveryMetadata(), { 附件库未水合: true, 角色: 'recruiter' });
+    expect(screen.getByTestId('consumer-form')).toBeTruthy();
+    expect(screen.queryByText('正在加载…')).toBeNull();
+    expect(mock操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
   });
 
   it('keeps salary wizard active without reading the summary suggestion', () => {
