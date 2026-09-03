@@ -23,8 +23,11 @@ import { 有会话内看市场来路, 复位看市场来路 } from '../路由/�
 import { 今日简报, 在谈列表 } from '../数据/模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库 } from '../数据/BFF契约';
-import { BFF候选岗位推荐样本, BFF意向样本 } from '../测试/BFF样本';
+import { BFF候选岗位推荐样本, BFF意向样本, BFF主体样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
+import { P5范围键 } from '../状态/后端/MatchCase操作';
+import type { P5列表项 } from '../数据/招聘数据源/MatchCase';
+import type { P5列表快照 } from '../状态/后端/类型';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -1207,5 +1210,175 @@ describe('看市场 · 委托前必须显式选定简历坐标（Backend）', ()
     expect(mock轻提示).not.toHaveBeenCalled();
     expect(mock跳转).not.toHaveBeenCalled();
     expect(mock委托候选岗位).not.toHaveBeenCalled();
+  });
+});
+
+// ── Backend MatchCase 真相源修复：看市场复用在谈首页同一 在谈范围 的 P5 横幅投影 ──
+
+describe('看市场 · P5 横幅共用（Backend）', () => {
+  // P5 操作桩：看市场只消费已载快照、绝不注册/请求 P5 —— 两个 spy 存在但必须零调用
+  const 不触P5桩 = { 设置P5范围: vi.fn(), 加载工作区: vi.fn(async () => undefined) };
+
+  const 意向ID = 'int_0123456789abcdef0123456789abcdef';
+
+  function 行(
+    caseId: string,
+    stage: P5列表项['state']['stage'],
+    needsAction: boolean,
+  ): P5列表项 {
+    return {
+      role: 'candidate',
+      state: {
+        caseId, lifecycle: 'open', stage, status: 'running',
+        step: 'policy_check', round: 0, roundBudget: 3, needsUser: false,
+        outcome: null, outcomeCode: null,
+        createdAt: '2026-09-01T08:00:00Z', updatedAt: '2026-09-01T09:00:00Z', finalizedAt: null,
+      },
+      needsAction,
+      intentionId: 意向ID,
+      job: {
+        jobId: 'job_0123456789abcdef0123456789abcdef',
+        job: { title: '后端工程师', location: '上海', publicSalaryRange: '20-30K', requiredSkills: ['Go'] },
+      },
+    };
+  }
+
+  function 快照(选项: {
+    阶段?: P5列表快照['阶段'];
+    items?: P5列表项[];
+    nextCursor?: string | null;
+    ownerSubjectId?: string | null;
+  } = {}): P5列表快照 {
+    return {
+      ownerSubjectId: 选项.ownerSubjectId ?? 'sub_1',
+      阶段: 选项.阶段 ?? '成功',
+      刷新中: false,
+      items: 选项.items ?? [],
+      nextCursor: 选项.nextCursor ?? null,
+      已加载页数: 1,
+      error: null,
+      generation: 1,
+    };
+  }
+
+  /** Backend 横幅底座：当前意向编号恒 null（零 P4 请求），legacy 在谈列表 故意带 5 条。 */
+  function 置P5横幅状态(选项: {
+    范围: '当前' | '全部';
+    快照?: P5列表快照;
+    当前意向在表内?: boolean;
+    主体?: { subject_id: string; last_used_role: string };
+  }) {
+    const 意向表 = 选项.当前意向在表内 === false
+      ? []
+      : [{ 编号: 意向ID, 标题: '意向0', 说明: '' }];
+    const filterRef = 选项.范围 === '全部' ? null : 意向ID;
+    置应用状态({
+      模式: 'backend',
+      状态: {
+        子视图: '看市场', 当前意向: '意向0', 当前意向编号: null,
+        在谈范围: 选项.范围,
+        求职意向表: 意向表,
+        后端意向服务端: {},
+        // legacy 数组故意带 5 条：Backend 分支绝不数它们
+        在谈列表: [1, 2, 3, 4, 5].map((序) => ({ 编号: `J-${序}`, 需要你: true })),
+        屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+        全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
+      },
+      后端状态: {
+        主体: 选项.主体 ?? { ...BFF主体样本, subject_id: 'sub_1', last_used_role: 'candidate' },
+        P5工作区: 选项.快照 === undefined
+          ? {}
+          : { [P5范围键.open('candidate', filterRef)]: 选项.快照 },
+      },
+      操作: 不触P5桩,
+    });
+  }
+
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+    不触P5桩.设置P5范围.mockClear();
+    不触P5桩.加载工作区.mockClear();
+  });
+
+  it('当前档读 open:candidate:<intentionId>，全部档读 open:candidate:*（与在谈首页同一坐标）', () => {
+    置P5横幅状态({ 范围: '当前', 快照: 快照({ items: [行('mc_1', 'anonymous_screening', true)] }) });
+    const { rerender } = render(<看市场 />);
+    expect(screen.getByText('1 个职位需要你协调')).toBeTruthy();
+    expect(不触P5桩.设置P5范围).not.toHaveBeenCalled();
+    expect(不触P5桩.加载工作区).not.toHaveBeenCalled();
+
+    置P5横幅状态({ 范围: '全部', 快照: 快照({ items: [行('mc_1', 'anonymous_screening', true)] }) });
+    rerender(<看市场 />);
+    expect(screen.getByText('1 个职位需要你协调')).toBeTruthy();
+  });
+
+  it('无 scope / 首载在飞 / 失败与在谈首页同文案，legacy 5 条绝不冒充待办数', () => {
+    // 无 scope（当前档且当前意向已删）：在谈首页同款定论文案
+    置P5横幅状态({ 范围: '当前', 当前意向在表内: false });
+    const { rerender } = render(<看市场 />);
+    expect(screen.getByText('暂时没有需要你介入的')).toBeTruthy();
+    expect(screen.queryByText('5 个职位需要你协调')).toBeNull();
+    // 首载在飞：正在读入
+    置P5横幅状态({ 范围: '当前', 快照: 快照({ 阶段: '进行中', items: [], nextCursor: null }) });
+    rerender(<看市场 />);
+    expect(screen.getByText('正在读入在谈职位…')).toBeTruthy();
+    // 首载失败：非定论兜底（列表错误态不在本屏，横幅不数失败窗口）
+    置P5横幅状态({ 范围: '当前', 快照: 快照({ 阶段: '失败', items: [], nextCursor: null }) });
+    rerender(<看市场 />);
+    expect(screen.getByText('已读入的里暂时没有需要你介入的')).toBeTruthy();
+    // owner 不匹配：视为未载入
+    置P5横幅状态({
+      范围: '当前',
+      快照: 快照({ items: [行('mc_1', 'anonymous_screening', true)], ownerSubjectId: 'sub_old' }),
+      主体: { ...BFF主体样本, subject_id: 'sub_new', last_used_role: 'candidate' },
+    });
+    rerender(<看市场 />);
+    expect(screen.getByText('正在读入在谈职位…')).toBeTruthy();
+    expect(screen.queryByText('1 个职位需要你协调')).toBeNull();
+  });
+
+  it('分页未尽有/无待办、成功读尽与在谈首页同文案', () => {
+    // 分页未尽 + 已载待办：不下定论数字
+    置P5横幅状态({
+      范围: '当前',
+      快照: 快照({ items: [行('mc_1', 'anonymous_screening', true)], nextCursor: 'b2x' }),
+    });
+    const { rerender } = render(<看市场 />);
+    expect(screen.getByText('有职位需要你协调')).toBeTruthy();
+    expect(screen.queryByText('1 个职位需要你协调')).toBeNull();
+    // 分页未尽 + 已载零待办
+    置P5横幅状态({
+      范围: '当前',
+      快照: 快照({ items: [行('mc_2', 'needs_coordination', false)], nextCursor: 'b2x' }),
+    });
+    rerender(<看市场 />);
+    expect(screen.getByText('已读入的里暂时没有需要你介入的')).toBeTruthy();
+    // 成功读尽 + 零待办：定论
+    置P5横幅状态({
+      范围: '当前',
+      快照: 快照({ items: [行('mc_2', 'needs_coordination', false)], nextCursor: null }),
+    });
+    rerender(<看市场 />);
+    expect(screen.getByText('暂时没有需要你介入的')).toBeTruthy();
+  });
+
+  it('Mock 仍按 legacy 在谈列表 显示横幅', () => {
+    置应用状态({
+      模式: 'mock',
+      状态: {
+        子视图: '看市场', 当前意向: '意向0',
+        求职意向表: [{ 编号: 'I-01', 标题: '意向0', 说明: '' }],
+        在谈列表: [1, 2, 3].map((序) => ({ 编号: `J-${序}`, 需要你: true })),
+        屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+        全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
+      },
+      操作: 不触P5桩,
+    });
+    render(<看市场 />);
+    expect(screen.getByText('3 个职位需要你协调')).toBeTruthy();
+    expect(不触P5桩.设置P5范围).not.toHaveBeenCalled();
+    expect(不触P5桩.加载工作区).not.toHaveBeenCalled();
   });
 });
