@@ -434,10 +434,14 @@ export function Wire到岗位办公方式(value: Wire岗位办公方式): 页面
   return Wire岗位办公方式表[value];
 }
 
-/** 页面岗位办公方式 → wire code；未映射页值抛错，绝不静默降级为 'onsite'。 */
+/** 页面岗位办公方式 → wire code；未映射页值抛错，绝不静默降级为 'onsite'。
+ *  自有属性检查：`in` 会命中 Object.prototype（toString/constructor/__proto__），
+ *  把继承成员当 wire code 发出去，所以只认表上的自有键。 */
 export function 岗位办公方式到Wire(页值: 在招岗位['办公方式']): Wire岗位办公方式 {
   const 键 = (页值 ?? '') as keyof typeof 页面岗位办公方式表;
-  if (!(键 in 页面岗位办公方式表)) throw new Error(`未映射的岗位办公方式：${页值 ?? '(空)'}`);
+  if (!Object.prototype.hasOwnProperty.call(页面岗位办公方式表, 键)) {
+    throw new Error(`未映射的岗位办公方式：${页值 ?? '(空)'}`);
+  }
   return 页面岗位办公方式表[键];
 }
 // 经验要求：页面五档（发布岗位.tsx 的 经验要求选项）与 BFF enum 一一对应。

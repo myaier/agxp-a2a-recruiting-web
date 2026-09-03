@@ -161,6 +161,13 @@ describe('候选人后端映射', () => {
       .toThrowError('未映射的岗位办公方式：远程');
   });
 
+  // review-r1：`in` 会命中原型链 —— toString/constructor/__proto__ 必须当非法页值拒绝，
+  // 不能把继承来的函数/对象当 wire code 发出去。hasOwnProperty 只认自有键。
+  it.each(['toString', 'constructor', '__proto__'])('原型链键 %s 不是合法岗位办公方式', (键) => {
+    expect(() => 岗位办公方式到Wire(键 as never))
+      .toThrowError(`未映射的岗位办公方式：${键}`);
+  });
+
   // 三态分别走完整 owner 读入 → 创建/补丁写回 round-trip（完整 DTO，不用稀疏对象）：
   // remote 修复前回显「远程」，补丁时会被旧表静默落成 onsite（丢事实），这里整链钉死。
   it.each([
