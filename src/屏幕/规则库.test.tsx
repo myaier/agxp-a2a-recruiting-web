@@ -729,6 +729,17 @@ describe('规则库 · Backend 候选页', () => {
     expect(screen.getByRole('button', { name: '提交给AI代理理解' })).toBeTruthy();
   });
 
+  it('空规则时提交键禁用，写入有效内容后才可提交', async () => {
+    const user = userEvent.setup();
+    renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
+    await 挂载到稳定();
+    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    const 提交 = screen.getByRole('button', { name: '提交给AI代理理解' }) as HTMLButtonElement;
+    expect(提交.disabled).toBe(true);
+    await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
+    expect(提交.disabled).toBe(false);
+  });
+
   it('surfaces all seven frozen P6 error copies verbatim', async () => {
     const user = userEvent.setup();
     const 视图 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });

@@ -575,6 +575,14 @@ describe('企业代理设置 · Backend 招聘方页', () => {
 });
 
 describe('企业代理设置 · Mock 原型分支', () => {
+  it('空规则时提交键不可用', async () => {
+    const user = userEvent.setup();
+    renderRecruiterRules({ mode: 'mock' });
+    await 挂载到稳定();
+    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    expect((screen.getByRole('button', { name: '提交给AI代理理解' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('Mock mode shows choice rows without switches and adds through the same composer', async () => {
     const user = userEvent.setup();
     const 视图 = renderRecruiterRules({ mode: 'mock' });

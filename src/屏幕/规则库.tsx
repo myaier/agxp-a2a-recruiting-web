@@ -148,7 +148,11 @@ export default function 规则库() {
   // 提交手动添加：candidate 必须点名范围（默认 global）；失败保留草稿与范围供再次明确提交
   const 提交新规则 = async () => {
     const 内容 = 新规则文本.trim();
-    if (!内容 || 提交中) return;
+    if (!内容) {
+      轻提示('请先写下希望AI代理遵守的规则');
+      return;
+    }
+    if (提交中) return;
     const 作用域: BFFAgent规则作用域 = 选范围 === ''
       ? { type: 'global' }
       : { type: 'intention', intention_id: 选范围 };
@@ -448,7 +452,7 @@ export default function 规则库() {
                   >
                     取消
                   </button>
-                  <button className={`${样式.确认添加} 可点`} disabled={提交中} onClick={() => { void 提交新规则(); }}>
+                  <button className={`${样式.确认添加} 可点`} disabled={提交中 || 新规则文本.trim() === ''} onClick={() => { void 提交新规则(); }}>
                     提交给AI代理理解
                   </button>
                 </div>

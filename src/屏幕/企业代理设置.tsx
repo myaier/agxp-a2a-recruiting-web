@@ -132,7 +132,11 @@ export default function 企业代理设置() {
   // 提交手动添加：招聘方提案永不携带范围；失败保留草稿供再次明确提交
   const 提交新规则 = async () => {
     const 内容 = 新规则文本.trim();
-    if (!内容 || 提交中) return;
+    if (!内容) {
+      轻提示('请先写下希望AI代理遵守的规则');
+      return;
+    }
+    if (提交中) return;
     设提交中(true);
     try {
       const 回执编号 = await 操作.创建Agent规则提案({ 文本: 内容 });
@@ -316,7 +320,7 @@ export default function 企业代理设置() {
                   >
                     取消
                   </button>
-                  <button className={`${样式.确认添加} 可点`} disabled={提交中} onClick={() => { void 提交新规则(); }}>
+                  <button className={`${样式.确认添加} 可点`} disabled={提交中 || 新规则文本.trim() === ''} onClick={() => { void 提交新规则(); }}>
                     提交给AI代理理解
                   </button>
                 </div>
