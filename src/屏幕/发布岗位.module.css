@@ -588,6 +588,23 @@
   padding: 16px 26px 10px;
 }
 
+/* ── P4 互认：结构化要求确认勾选框（仅 Backend 第三步，紧跟职位要求输入）── */
+.结构化确认 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 26px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--弱化);
+}
+
+.结构化确认 input {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
 /* ── 职业分类两级选择层（标注 00:21：像选省份那样 大类 → 小类）── */
 .分类遮罩 {
   position: absolute;

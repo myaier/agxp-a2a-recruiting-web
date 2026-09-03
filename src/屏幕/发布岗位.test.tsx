@@ -20,6 +20,10 @@ const mock更新岗位 = vi.fn();
 const mock发布岗位 = vi.fn();
 const mock删除岗位 = vi.fn();
 
+// P4 互认 Task 3：结构化要求确认勾选框的可访问名称（label 内 span 文案），测试与实现共用
+const 结构化确认文案 =
+  '我已确认经验和学历设置将作为自动匹配依据；补充要求不会被自动解析。修改上述内容后需要重新确认。';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
@@ -254,7 +258,7 @@ describe('发布岗位页 Backend 选择器', () => {
    *  职位要求=null 时故意留空，用来验前置校验。 */
   async function 填到发布前(
     选城市: boolean,
-    选项: { 职位描述?: string | null; 职位要求?: string | null } = {},
+    选项: { 职位描述?: string | null; 职位要求?: string | null; 勾选确认?: boolean } = {},
   ) {
     const 用户 = userEvent.setup();
     render(
@@ -314,7 +318,32 @@ describe('发布岗位页 Backend 选择器', () => {
     if (选城市) {
       await 用户.click(候选键);
     }
+    // P4 互认 Task 3：Backend 发岗必须显式确认结构化要求。默认勾上，
+    // 让既有用例继续走「表单填完即可发布」的主路径；确认语义本身的用例传 勾选确认:false 自己控制
+    if (选项.勾选确认 !== false) {
+      await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
+    }
     return { 用户 };
+  }
+
+  /** P4 互认 Task 3：打开 Backend 编辑态并切到第三步（勾选框所在步）。
+   *  编辑目标按存量岗位带 地点引用（城市守卫要求），覆盖项由用例注入。 */
+  async function 打开编辑第三步(岗位覆盖: Record<string, unknown> = {}) {
+    const 用户 = userEvent.setup();
+    mock应用状态.状态.岗位列表 = [
+      {
+        ...页面岗位样本,
+        地点引用: { id: 'loc_shanghai', display_name: '上海' },
+        ...岗位覆盖,
+      },
+    ];
+    const 视图 = render(
+      <MemoryRouter initialEntries={['/hr/post-job/job_1']}>
+        <Routes><Route path="/hr/post-job/:id" element={<发布岗位 />} /></Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '职位要求' }));
+    return { 用户, unmount: 视图.unmount };
   }
 
   it('选类别候选 + 选城市候选 → 发布带 类别引用/地点引用', async () => {
@@ -429,6 +458,8 @@ describe('发布岗位页 Backend 选择器', () => {
     });
     await 用户.clear(要求框);
     await 用户.type(要求框, '至少 3 年经验，本科优先');
+    // P4 互认 Task 3：改结构化的要求文本会撤掉默认勾选；本例只验 payload 文案边界，重新勾上再发
+    await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
     expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
@@ -448,6 +479,117 @@ describe('发布岗位页 Backend 选择器', () => {
     expect(mock发布岗位).toHaveBeenCalledWith(expect.objectContaining({
       硬性事实: { 大小周: '未说明', 纯外包乙方: '未说明', 全现场办公: '未说明', 频繁出差: '未说明' },
     }));
+  });
+  // ── P4 互认 Task 3：结构化要求确认（仅 Backend）──
+
+  const 勾选框 = () => screen.getByRole('checkbox', { name: 结构化确认文案 }) as HTMLInputElement;
+
+  it('未勾选确认时发岗被拦：留在第三步、显示文案且零 mutation', async () => {
+    const { 用户 } = await 填到发布前(true, { 勾选确认: false });
+    expect(勾选框().checked).toBe(false);
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    expect(await screen.findByText('请确认经验和学历将作为自动匹配依据')).toBeTruthy();
+    expect(mock发布岗位).not.toHaveBeenCalled();
+    expect(mock更新岗位).not.toHaveBeenCalled();
+    // 留在第三步：确认勾选框仍在屏上，用户看得见该勾哪儿
+    expect(勾选框()).toBeTruthy();
+  });
+
+  it('经验学历保持不限时勾选确认即可发岗并带 结构化要求已确认: true', async () => {
+    const { 用户 } = await 填到发布前(true, { 勾选确认: false });
+    await 用户.click(勾选框());
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
+      结构化要求已确认: true,
+      经验要求: '不限',
+      最低学历: '不限',
+    });
+  });
+
+  it('Backend 编辑按存量 Owner Job 水合勾选态：已确认勾上、legacy-false 不勾', async () => {
+    const 已确认 = await 打开编辑第三步({ 结构化要求已确认: true });
+    expect(勾选框().checked).toBe(true);
+    已确认.unmount();
+
+    await 打开编辑第三步({ 结构化要求已确认: false });
+    expect(勾选框().checked).toBe(false);
+  });
+
+  it('legacy-false 编辑勾选后不改动三处文本也能保存：update 带 结构化要求已确认: true', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    const { 用户 } = await 打开编辑第三步({ 结构化要求已确认: false });
+    await 用户.click(勾选框());
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({
+      编号: 'job_1',
+      结构化要求已确认: true,
+      经验要求: '不限',
+      最低学历: '本科',
+      职位要求: '在校生',
+    });
+  });
+
+  it('勾选后改经验、学历或职位要求任一项立即取消勾选', async () => {
+    const { 用户 } = await 填到发布前(true, { 勾选确认: false });
+    const 要求框 = screen.getByRole('textbox', {
+      name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）',
+    });
+
+    await 用户.click(勾选框());
+    await 用户.click(screen.getByRole('button', { name: '1-3 年' }));
+    expect(勾选框().checked).toBe(false);
+
+    await 用户.click(勾选框());
+    await 用户.click(screen.getByRole('button', { name: '本科' }));
+    expect(勾选框().checked).toBe(false);
+
+    await 用户.click(勾选框());
+    await 用户.type(要求框, '。');
+    expect(勾选框().checked).toBe(false);
+  });
+
+  it('改薪资、办公地点、筛选偏好、年薪月数或描述不取消勾选', async () => {
+    const { 用户 } = await 填到发布前(true, { 勾选确认: false });
+    await 用户.click(勾选框());
+
+    await 用户.clear(screen.getByLabelText('薪资下限'));
+    await 用户.type(screen.getByLabelText('薪资下限'), '52');
+    await 用户.type(
+      screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'),
+      '（改）',
+    );
+    await 用户.type(
+      screen.getByPlaceholderText('例如：985/211 或指定院校优先、有大厂或创业公司经历、重点看系统设计能力'),
+      '重点看系统设计',
+    );
+    // 年薪月数滚轮也是无关控件
+    await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    expect(勾选框().checked).toBe(true);
+
+    // 描述在第二步：返回 → 改描述 → 下一步回第三步，确认态不能被跨步编辑冲掉
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    await 用户.type(screen.getByRole('textbox', { name: '职位描述' }), '（改）');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(勾选框().checked).toBe(true);
+  });
+
+  it('legacy-false 编辑只改无关字段时不勾选也能保存', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    const { 用户 } = await 打开编辑第三步({ 结构化要求已确认: false });
+    expect(勾选框().checked).toBe(false);
+    await 用户.type(
+      screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'),
+      '（改）',
+    );
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({
+      编号: 'job_1',
+      结构化要求已确认: false,
+    });
   });
 });
 
@@ -504,6 +646,8 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
       screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'),
       '张江路 1 号',
     );
+    // P4 互认 Task 3：确认勾选框仅 Backend 渲染，Mock 发岗语义冻结、无需确认
+    expect(screen.queryByRole('checkbox', { name: 结构化确认文案 })).toBeNull();
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
 
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
