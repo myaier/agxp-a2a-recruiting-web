@@ -15,6 +15,7 @@ import type {
 } from '../../数据/BFF契约';
 import { 创建空P7会话状态 } from './真人会话操作';
 import { 创建空P8控制面状态 } from './P8控制面操作';
+import { 创建空接触记录状态 } from './接触记录操作';
 import { 创建空P5MatchCase状态 } from './MatchCase操作';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误 } from '../../数据/HTTP客户端';
@@ -118,6 +119,7 @@ function 创建P4操作测试环境(): P4操作测试环境 {
     ...创建空P7会话状态(),
     // P8：Task 3 起 后端状态 extends P8控制面状态（这里的用例不触达它们）
     ...创建空P8控制面状态(),
+    ...创建空接触记录状态(),
   };
   const deps: 后端操作依赖 = {
     是后端: true,
