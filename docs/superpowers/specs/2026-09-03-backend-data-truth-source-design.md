@@ -47,7 +47,7 @@ Backend 初始化、加载失败、401、登出、换主体和换角色都不得
 - 默认/最大页长均为 50，响应只有 `items` 与 `next_cursor`；
 - item 精确字段为：
   - `event_id`：`^cev_[0-9a-f]{32}$`；
-  - `organization`：只含 `organization_id`（`^org_[0-9a-f]{32}$`）与 `display_name`；
+  - `organization`：只含 `organization_id`（`^org_[0-9a-f]{32}$`）与长度 1–200 的 `display_name`；
   - `action`：`anonymous_profile_viewed | contact_started | submitted_resume_viewed`；
   - `occurred_at`：RFC3339 date-time；
 - 所有对象 `additionalProperties: false`；
@@ -67,7 +67,7 @@ Backend 初始化、加载失败、401、登出、换主体和换角色都不得
 - `归档列表`；
 - `企业归档列表`。
 
-新增一个只供 Backend 会话边界使用的根状态清理动作，原子清空这四个数组。它接入统一登出/当前轮 401 清理，以及主体基串（`subject_id + role`）变化的现有 P5 清理点。页面即使处于过渡渲染也不会读取这些数组；清空动作仍用于满足状态本身不残留 fixture 的约束。Mock 初始化和 reducer 行为不变。
+新增一个只供 Backend 会话边界使用的根状态清理动作，原子清空这四个数组。它接入统一登出/当前轮 401 清理，以及主体基串（`subject_id + role`）变化的现有 P5 清理点。本批目标页即使处于过渡渲染也不会读取这些数组；其它无条件读取 legacy 在谈数的 Backend 页面必须按模式门控为 `—`，不能把清空后的数组长度 `0` 冒充权威零。已有明确 Backend/Mock 分支的历史页和消息页在 Backend 分支本就不读取这些数组。Mock 初始化和 reducer 行为不变。
 
 ### Scope 注册与主体隔离
 
@@ -80,6 +80,7 @@ Backend 初始化、加载失败、401、登出、换主体和换角色都不得
 - 成功/加载/失败快照沿用当前 owner；
 - `加载工作区` 的“已有成功快照直接返回”只对当前 owner 生效；
 - selector 在 owner 与当前主体不匹配时返回不可用；
+- open 与 history 的展示组件都在 owner 与当前主体不匹配时拒绝渲染旧 items；
 - 既有 session generation fence 继续决定在飞响应能否落位，owner 标记不替代 fence。
 
 这项元数据只存在内存，不进入持久化。
@@ -182,7 +183,7 @@ Backend 页面只渲染当前 owner 的成功快照：
 - `发布岗位.tsx` 的办公方式状态收窄为三种 canonical 值加未选择态，选项、文案、布局和 CSS 不变；
 - `remote` owner job 进入编辑态时“全远程”精确选中，无修改保存仍发送 `remote`；
 - create/patch 其他字段完全沿用现有构造；
-- 同文件中意向水合若复用该 wire→页面映射，也统一得到 canonical “全远程”，不继续制造页面 vocabulary 外的“远程”；这不扩大到历史 onboarding 任务。
+- 求职意向页面仍使用其现有 `现场 | 混合 | 远程` vocabulary；本批不改变意向水合或添加意向选项，避免把岗位修复扩大到历史意向任务。
 
 不修改 `发布岗位.tsx` 的 JD 上传入口或相关流程。
 
@@ -240,6 +241,7 @@ src/屏幕/设置.tsx
 - 混合 stage/needsAction 的完整页分别精确计数；有 next cursor 时所有派生统计为 `N+`；
 - 未开始、加载、失败和 owner 不匹配显示 `—`，AI 跟进数同口径；
 - 切角色、登出重登、同角色换 subject 时旧快照/迟到响应不可见；成功重试后更新；
+- P5 open/history 组件都拒绝 owner 不匹配快照；看市场与双端代理详情在 Backend 不读取 legacy 数组，未接权威统计时显示 `—`；
 - 点击待办统计落到对应角色的 unfiltered Backend P5 列表；
 - Mock 不请求 P5，并保留原统计、卡片和 reducer 行为。
 

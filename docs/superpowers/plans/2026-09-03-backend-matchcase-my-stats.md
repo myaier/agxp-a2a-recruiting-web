@@ -39,9 +39,17 @@
 - Modify: `src/状态/应用状态.tsx`，根 `动作`/`归约` 与 P5 主体基串清理 effect
 - Modify: `src/状态/后端/会话操作.ts`，`清账号状态`
 - Modify: `src/屏幕/P5/MatchCase列表.tsx`，当前 owner 门控与 effect 依赖
+- Modify: `src/屏幕/P5/MatchCase历史.tsx`，当前 owner 门控与 effect 依赖
+- Modify: `src/屏幕/看市场.tsx`，Backend legacy 待协调数门控
+- Modify: `src/屏幕/代理详情.tsx`，Backend legacy 在谈数门控
+- Modify: `src/屏幕/企业代理详情.tsx`，Backend legacy 在谈数门控
 - Test: `src/状态/后端/MatchCase操作.test.ts`
 - Test: `src/状态/应用状态.test.ts`
 - Test: `src/屏幕/P5/MatchCase列表.test.tsx`
+- Test: `src/屏幕/P5/MatchCase历史.test.tsx`
+- Test: `src/屏幕/看市场.test.tsx`
+- Create: `src/屏幕/代理详情.test.tsx`
+- Create: `src/屏幕/企业代理详情.test.tsx`
 
 **Interfaces:**
 - Consumes: `主体标识引用.current`、`后端状态.主体?.subject_id`、现有 `P5范围键` 与 session/scope fence。
@@ -91,7 +99,7 @@ it('Backend 种子不携带 legacy MatchCase 演示数组', () => {
 
 并扩展现有“退出登录清空 P5 快照与引用”Provider 测试，在 `await 当前.操作.退出登录()` 后对 `当前.状态` 的四个 legacy 数组逐一断言为空；这条测试使用现有完整 Provider 宿主，不创建伪 `当前`。
 
-在 `MatchCase列表.test.tsx` 让现有 `快照` helper 接受 `ownerSubjectId`（默认 `sub_1`），让 `置P5状态` 的 `后端状态` 同时带当前 candidate/recruiter 主体；既有用例无需逐个改 fixture。再加入：
+在 `MatchCase列表.test.tsx` 让现有 `快照` helper 接受 `ownerSubjectId`（默认 `sub_1`），让 `置P5状态` 的 `后端状态` 同时带当前 candidate/recruiter 主体；既有用例无需逐个改 fixture。`MatchCase历史.test.tsx` 的快照 helper 做同样补充。再加入：
 
 ```ts
 it('快照 owner 与当前主体不同时不显示旧 case，仍加载当前 scope', () => {
@@ -116,12 +124,20 @@ it('快照 owner 与当前主体不同时不显示旧 case，仍加载当前 sco
 
 为此测试从 `../../测试/BFF样本` import `BFF主体样本`；`快照` helper 的返回对象总是写入 `ownerSubjectId: 选项.ownerSubjectId ?? 'sub_1'`。
 
+在 `MatchCase历史.test.tsx` 写镜像 owner mismatch 用例：当前 candidate subject=`sub_new`、ended/completed 快照 owner=`sub_old` 时两个旧历史标题均不可见，但 `加载历史` 仍对 `ended` 与 `completed` 各调用一次。这样 common 列表构造器给 history 写 owner 后，消费端也关闭同一过渡帧泄漏面。
+
+最后给清空 legacy 数组的三个无条件 Backend 消费者补回归：
+
+- `看市场.test.tsx`：Backend state 即使故意带入 Mock `在谈列表`，横幅强调值也固定为 `—`，不得出现对应演示待协调数字或把空数组解释成“暂时没有”；Mock 保持原分支。
+- 新建 `代理详情.test.tsx` 与 `企业代理详情.test.tsx`：分别以 Backend state 渲染，`正在代谈` 对应值为 `—`，不出现 `0` 或初始 Mock 数组长度；Mock 模式仍显示原数组长度。
+- `归档谈判.tsx`、`企业归档.tsx`、`企业消息.tsx` 已在组件入口先分 Backend/Mock；legacy 读取只位于未挂载的 Mock 子组件，本 Task 不修改它们，现有 P5 历史/会话页面测试继续覆盖 Backend 分支。
+
 - [ ] **Step 2: 运行 RED**
 
 Run:
 
 ```bash
-npx vitest run src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts src/屏幕/P5/MatchCase列表.test.tsx
+npx vitest run src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts src/屏幕/P5/MatchCase列表.test.tsx src/屏幕/P5/MatchCase历史.test.tsx src/屏幕/看市场.test.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx
 ```
 
 Expected: FAIL，原因包含 `ownerSubjectId` 缺失、Backend seed 仍含演示数组或旧 owner 行仍可见；不得因测试桩缺必需字段而提前 TypeError。
@@ -218,7 +234,7 @@ case '清后端MatchCase演示状态':
 
 `后端种子状态` 显式写入同样四个空数组；`清账号状态` 与 `应用状态.tsx` 的 P5 主体基串变化 effect 各派发一次该 action。不得在 Mock 初始化或普通 Mock reducer action 中调用。
 
-在 `MatchCase列表.tsx` 以当前主体门控快照，并把主体加入注册 effect 依赖：
+在 `MatchCase列表.tsx` 和 `MatchCase历史.tsx` 都以当前主体门控快照，并把主体加入注册 effect 依赖。open 核心代码：
 
 ```ts
 const 当前SubjectId = 后端状态.主体?.subject_id ?? null;
@@ -233,12 +249,14 @@ useEffect(() => {
 }, [是后端, 当前SubjectId, role, filterRef, scope键, 操作]);
 ```
 
+三个非目标页只做 legacy 读取门控，不注册 P5、不新增请求：`看市场.tsx` 的横幅强调值在 Backend 固定 `—`；`代理详情.tsx` 与 `企业代理详情.tsx` 的“正在代谈”值在 Backend 固定 `—`。这是清空状态后的真实性保护，不改 CSS、布局或其它硬编码指标。
+
 - [ ] **Step 4: 运行 GREEN 与提交**
 
 Run the same Vitest command. Expected: PASS。
 
 ```bash
-git add src/状态/后端/类型.ts src/状态/后端/MatchCase操作.ts src/状态/初始状态.ts src/状态/应用状态.tsx src/状态/后端/会话操作.ts src/屏幕/P5/MatchCase列表.tsx src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts src/屏幕/P5/MatchCase列表.test.tsx
+git add src/状态/后端/类型.ts src/状态/后端/MatchCase操作.ts src/状态/初始状态.ts src/状态/应用状态.tsx src/状态/后端/会话操作.ts src/屏幕/P5/MatchCase列表.tsx src/屏幕/P5/MatchCase历史.tsx src/屏幕/看市场.tsx src/屏幕/代理详情.tsx src/屏幕/企业代理详情.tsx src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts src/屏幕/P5/MatchCase列表.test.tsx src/屏幕/P5/MatchCase历史.test.tsx src/屏幕/看市场.test.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx
 git commit -m "fix: isolate backend matchcase snapshots by subject"
 ```
 

@@ -4,7 +4,7 @@
 
 **Goal:** 让岗位的 `onsite | hybrid | remote` 与页面 `现场 | 混合 | 全远程` 双向闭合，确保 remote 岗位进入编辑态选中“全远程”且无修改保存仍 PATCH `remote`。
 
-**Architecture:** 在现有 `后端映射.ts` 中只保留一组 canonical 页面办公方式与 wire 办公方式的闭合映射函数，意向水合、岗位读取、创建和补丁都经过它；添加意向屏仍产生的旧“远程”只在意向写入边界兼容为 `remote`。岗位非法页值立即抛错，不再静默回退 `onsite`。发布岗位组件不改变结构，只通过已有岗位对象预填和提交链自然完成 round-trip。
+**Architecture:** 在现有 `后端映射.ts` 的岗位域只保留一组页面办公方式与 wire 办公方式的闭合映射函数，岗位读取、创建和补丁都经过它；非法页值立即抛错，不再静默回退 `onsite`。求职意向的 `现场 | 混合 | 远程` 映射保持原样。发布岗位组件不改变结构，只通过已有岗位对象预填和提交链自然完成 round-trip。
 
 **Tech Stack:** TypeScript 6、React 19、Vitest、Testing Library、现有岗位 data source/operation。
 
@@ -37,7 +37,7 @@
 
 **Interfaces:**
 - Consumes/produces: `BFFOwnerJob['workplace_mode']` 与 `NonNullable<在招岗位['办公方式']>`。
-- Produces exported pure functions `页面办公方式到Wire`、`Wire到页面办公方式`，供映射测试直接穷举。
+- Produces exported pure functions `岗位办公方式到Wire`、`Wire到岗位办公方式`，供映射测试直接穷举。
 - Invariant: `onsite↔现场`、`hybrid↔混合`、`remote↔全远程`；任何非法页面值抛 `Error('未映射的岗位办公方式：…')`，不得默认 onsite。
 
 - [ ] **Step 1: 写失败的三态穷举与非法值测试**
@@ -47,8 +47,8 @@
 ```ts
 import {
   从BFF岗位,
-  页面办公方式到Wire,
-  Wire到页面办公方式,
+  岗位办公方式到Wire,
+  Wire到岗位办公方式,
   转岗位创建,
   转岗位补丁,
 } from './后端映射';
@@ -58,18 +58,18 @@ it.each([
   ['hybrid', '混合'],
   ['remote', '全远程'],
 ] as const)('%s 与 %s 双向闭合', (wire, page) => {
-  expect(Wire到页面办公方式(wire)).toBe(page);
-  expect(页面办公方式到Wire(page)).toBe(wire);
-  expect(页面办公方式到Wire(Wire到页面办公方式(wire))).toBe(wire);
+  expect(Wire到岗位办公方式(wire)).toBe(page);
+  expect(岗位办公方式到Wire(page)).toBe(wire);
+  expect(岗位办公方式到Wire(Wire到岗位办公方式(wire))).toBe(wire);
 });
 
 it('非法岗位办公方式 fail closed，不回退 onsite', () => {
-  expect(() => 页面办公方式到Wire('远程' as never))
+  expect(() => 岗位办公方式到Wire('远程' as never))
     .toThrowError('未映射的岗位办公方式：远程');
 });
 ```
 
-再基于现有 `BFF岗位样本`、`页面岗位样本` 与岗位创建/补丁上下文，针对三态分别断言：`从BFF岗位({...workplace_mode:wire}).办公方式===page`，且返回对象进入 `转岗位创建`/`转岗位补丁` 后 `workplace_mode===wire`。另断言 `从BFF意向草稿({...BFF意向样本,workplace_modes:['remote']}).办公方式` 为 `['全远程']`，以及旧添加意向草稿 `['远程']` 写回仍为 `['remote']`。不要用稀疏对象或 `as unknown as` 绕过完整 DTO。
+再基于现有 `BFF岗位样本`、`页面岗位样本` 与岗位创建/补丁上下文，针对三态分别断言：`从BFF岗位({...workplace_mode:wire}).办公方式===page`，且返回对象进入 `转岗位创建`/`转岗位补丁` 后 `workplace_mode===wire`。保留现有 `从BFF意向草稿` 的 `remote → 远程` 断言，证明岗位修复没有改变意向编辑 vocabulary。不要用稀疏对象或 `as unknown as` 绕过完整 DTO。
 
 - [ ] **Step 2: 运行 RED**
 
@@ -82,35 +82,35 @@ Expected: FAIL，remote 当前回显“远程”，新纯函数尚未导出。
 在岗位映射区定义：
 
 ```ts
-type 页面办公方式 = NonNullable<在招岗位['办公方式']>;
-type Wire办公方式 = BFFOwnerJob['workplace_mode'];
+type 页面岗位办公方式 = NonNullable<在招岗位['办公方式']>;
+type Wire岗位办公方式 = BFFOwnerJob['workplace_mode'];
 
-const Wire办公方式表 = {
+const Wire岗位办公方式表 = {
   onsite: '现场',
   hybrid: '混合',
   remote: '全远程',
-} as const satisfies Record<Wire办公方式, 页面办公方式>;
+} as const satisfies Record<Wire岗位办公方式, 页面岗位办公方式>;
 
-const 页面办公方式表 = {
+const 页面岗位办公方式表 = {
   现场: 'onsite',
   混合: 'hybrid',
   全远程: 'remote',
-} as const satisfies Record<页面办公方式, Wire办公方式>;
+} as const satisfies Record<页面岗位办公方式, Wire岗位办公方式>;
 
-export function Wire到页面办公方式(value: Wire办公方式): 页面办公方式 {
-  return Wire办公方式表[value];
+export function Wire到岗位办公方式(value: Wire岗位办公方式): 页面岗位办公方式 {
+  return Wire岗位办公方式表[value];
 }
 
-export function 页面办公方式到Wire(value: 页面办公方式): Wire办公方式 {
-  const mapped = 页面办公方式表[value];
+export function 岗位办公方式到Wire(value: 页面岗位办公方式): Wire岗位办公方式 {
+  const mapped = 页面岗位办公方式表[value];
   if (mapped === undefined) throw new Error(`未映射的岗位办公方式：${String(value)}`);
   return mapped;
 }
 ```
 
-`从BFF意向草稿` 与 `从BFF岗位` 改用 `Wire到页面办公方式(...)`；`转岗位创建` 和 `转岗位补丁` 都改用 `页面办公方式到Wire(页面岗位.办公方式)`。删除旧 `后端到办公方式`、`办公方式到岗位后端` 及两处 `?? 'onsite'`。
+`从BFF岗位` 改用 `Wire到岗位办公方式(...)`；`转岗位创建` 和 `转岗位补丁` 都改用 `岗位办公方式到Wire(页面岗位.办公方式)`。删除旧 `办公方式到岗位后端` 及两处 `?? 'onsite'`；意向域的 `后端到办公方式` 与 `办公方式到后端` 保持原样。
 
-候选意向写入的兼容逻辑仍接受 wire code 和旧添加意向屏的“远程”，但 canonical 中文值先走 `页面办公方式到Wire`；非法值继续由意向的 `客户端校验错误` fail closed。不修改添加意向页面本身。
+不修改候选意向水合、候选意向写入或 `添加意向.tsx`；它们的“远程”是独立页面 vocabulary，不属于本岗位 Handoff。
 
 - [ ] **Step 4: 运行 GREEN 与提交**
 
