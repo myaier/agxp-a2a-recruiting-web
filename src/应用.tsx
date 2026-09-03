@@ -1,9 +1,10 @@
 // 路由表。每屏一个文件，文件名对应设计稿编号（见 说明.md 的对照表）。
 // 新增屏幕只需在 屏幕/ 下建文件并在这里挂一行，不改动其它任何地方。
 
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { 路径 } from './路由/路径表';
+import { 候选Onboarding预填边界, 是活跃Onboarding位置 } from './流程/候选Onboarding预填边界';
 import { 主按钮 } from './组件/通用';
 import 登录 from './屏幕/登录';
 import { use应用状态 } from './状态/应用状态';
@@ -208,6 +209,29 @@ export default function 应用() {
     }
   }, [数据源模式, 后端状态, 位置.pathname, 前往]);
 
+  // ── 候选 onboarding 预填的退出清理（设计 §9 / Task 7）──────────────────
+  // 离开注册会话（进主壳、切其它产品路由）就作废预填轮与恢复元数据（内存 + session
+  // 存储随 清候选Onboarding预填 一起清），防止中断注册后从主壳进消费页被误判为
+  // onboarding。活跃集合以 Onboarding流程 为唯一事实源（见 流程/候选Onboarding预填边界），
+  // 薪资段 / 求职状态 / 披露说明 / 头像页只保状态；完成注册的收尾清理另在 添加头像 显式做。
+  // 只在 Backend + 已登录 candidate 且初始化完成后清理 —— 主体未落地时恢复元数据适配器
+  // 还是 null，先清只会烧掉内存态而删不掉存储；同一路径只清一次（清本身会写状态，
+  // 不设栅栏会与设态互相驱动成环）。
+  const 预填清理就绪 = 数据源模式 === 'backend'
+    && 后端状态.初始化 === '完成'
+    && 后端状态.已登录
+    && 后端状态.主体?.last_used_role === 'candidate';
+  const 已清理路径引用 = useRef<string | null>(null);
+  useEffect(() => {
+    if (!预填清理就绪) return;
+    if (是活跃Onboarding位置(位置.pathname)) return;
+    if (已清理路径引用.current === 位置.pathname) return;
+    已清理路径引用.current = 位置.pathname;
+    操作.清候选Onboarding预填();
+    // 操作 由 Provider 的 useMemo 保持稳定；后端状态刻意不进依赖（清理写状态会回环）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [预填清理就绪, 位置.pathname, 操作]);
+
   // 组织链失败：受保护路径上换成恢复面（真实错误 + 重试 + 切换身份），
   // 恢复/退出路径（名片、实名认证、组织申请、邀请加入、账号安全、身份选择）照常渲染。
   if (
@@ -253,17 +277,20 @@ export default function 应用() {
       <Route path={路径.登录} element={<登录 />} />
       <Route path={路径.选身份} element={<选身份 />} />
       <Route path={路径.学生分流} element={<学生分流 />} />
-      <Route path={路径.基本信息} element={<基本信息 />} />
-      <Route path={路径.工作经历} element={<工作经历 />} />
-      <Route path={路径.引导问答} element={<引导问答 />} />
+      {/* Task 7：消费 suggestion 的七条路由（六资料页 + 向导）套非视觉恢复边界 ——
+          刷新后先按 exact tuple 恢复一轮未完成预填再挂表单；向导薪资段由边界内
+          的 query 判定原样放行（不消费 summary）。路由顺序与登记不变。 */}
+      <Route path={路径.基本信息} element={<候选Onboarding预填边界><基本信息 /></候选Onboarding预填边界>} />
+      <Route path={路径.工作经历} element={<候选Onboarding预填边界><工作经历 /></候选Onboarding预填边界>} />
+      <Route path={路径.引导问答} element={<候选Onboarding预填边界><引导问答 /></候选Onboarding预填边界>} />
       <Route path={路径.披露说明} element={<披露说明 />} />
       <Route path={路径.选工作城市} element={<选工作城市 />} />
       <Route path={路径.选期望职位} element={<选期望职位 />} />
       <Route path={路径.求职状态} element={<求职状态 />} />
-      <Route path={路径.最高学历} element={<最高学历 />} />
-      <Route path={路径.毕业院校} element={<毕业院校 />} />
-      <Route path={路径.选专业} element={<选专业 />} />
-      <Route path={路径.就读时间段} element={<就读时间段 />} />
+      <Route path={路径.最高学历} element={<候选Onboarding预填边界><最高学历 /></候选Onboarding预填边界>} />
+      <Route path={路径.毕业院校} element={<候选Onboarding预填边界><毕业院校 /></候选Onboarding预填边界>} />
+      <Route path={路径.选专业} element={<候选Onboarding预填边界><选专业 /></候选Onboarding预填边界>} />
+      <Route path={路径.就读时间段} element={<候选Onboarding预填边界><就读时间段 /></候选Onboarding预填边界>} />
       <Route path={路径.添加头像} element={<添加头像 />} />
       {/* 注册流收尾的一次性初始化页：播完自己替换进主壳 */}
       <Route path={路径.初始化} element={<初始化页 端="求职" />} />

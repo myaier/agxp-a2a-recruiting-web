@@ -14,7 +14,7 @@ import { 压成头像 } from '../组件/头像处理';
 
 export default function 添加头像() {
   const { 返回, 进初始化 } = use导航();
-  const { 状态: 全局, 派发 } = use应用状态();
+  const { 状态: 全局, 派发, 数据源模式, 操作 } = use应用状态();
   const 文件框 = useRef<HTMLInputElement>(null);
   const 头像 = 全局.求职头像;
 
@@ -23,6 +23,10 @@ export default function 添加头像() {
   const 开启 = () => {
     派发({ 型: '切Tab', Tab: '职位' });
     派发({ 型: '切子视图', 子视图: '在谈' });
+    // 注册完成（设计 §9 / Task 7）：作废候选 onboarding 预填轮与恢复元数据
+    //（内存建议 + session 存储一起清），完成注册后旧建议绝不再残留。预填域
+    // Backend-only，Mock 会话零预填操作。清完再走既有初始化导航。
+    if (数据源模式 === 'backend') 操作.清候选Onboarding预填();
     进初始化();
   };
 

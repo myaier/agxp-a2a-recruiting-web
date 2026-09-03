@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BFF主体样本 } from './测试/BFF样本';
 import { 初始状态 } from './状态/初始状态';
 import { 路径 } from './路由/路径表';
+import { 创建空候选预填状态, type 候选预填状态 } from './状态/后端/类型';
 import type { 后端状态 } from './状态/后端/类型';
 import { 创建空P4发现状态 } from './状态/后端/发现推荐操作';
 import { 创建空P5MatchCase状态 } from './状态/后端/MatchCase操作';
@@ -37,6 +38,21 @@ vi.mock('./屏幕/企业实名认证', () => 屏幕桩('企业实名认证'));
 vi.mock('./屏幕/企业组织申请', () => 屏幕桩('企业组织申请'));
 vi.mock('./屏幕/企业邀请加入', () => 屏幕桩('企业邀请加入'));
 vi.mock('./屏幕/账号安全', () => 屏幕桩('账号安全'));
+// Task 7：候选 onboarding 消费页与注册流经过页换成同款桩 —— 本组用例只钉
+// 边界接线与位置清理决策，各屏自身行为由各自的测试覆盖。
+vi.mock('./屏幕/基本信息', () => 屏幕桩('基本信息'));
+vi.mock('./屏幕/工作经历', () => 屏幕桩('工作经历'));
+vi.mock('./屏幕/引导问答', () => 屏幕桩('引导问答'));
+vi.mock('./屏幕/求职状态', () => 屏幕桩('求职状态'));
+vi.mock('./屏幕/最高学历', () => 屏幕桩('最高学历'));
+vi.mock('./屏幕/毕业院校', () => 屏幕桩('毕业院校'));
+vi.mock('./屏幕/选专业', () => 屏幕桩('选专业'));
+vi.mock('./屏幕/就读时间段', () => 屏幕桩('就读时间段'));
+vi.mock('./屏幕/添加头像', () => 屏幕桩('添加头像'));
+vi.mock('./屏幕/披露说明', () => 屏幕桩('披露说明'));
+vi.mock('./屏幕/选工作城市', () => 屏幕桩('选工作城市'));
+vi.mock('./屏幕/选期望职位', () => 屏幕桩('选期望职位'));
+vi.mock('./屏幕/设置', () => 屏幕桩('设置'));
 // 岗位管理桩保留它的「发布新岗位」入口：恢复面接管时这个按钮必须整个不存在
 vi.mock('./屏幕/岗位管理', () => ({
   default: () => (
@@ -70,7 +86,7 @@ function 建后端状态(覆盖: Partial<后端状态> = {}): 后端状态 {
 
 /**
  * Backend 模式的上下文值。屏幕已全部换成桩，应用 自身只消费
- * 操作.重新水合招聘方数据；两个招聘方恢复方法都显式给出，用例可整体替换 操作。
+ * 操作.重新水合招聘方数据 与 Task 7 的候选预填恢复/清理；方法都显式给出，用例可整体替换 操作。
  */
 function 后端应用值(后端覆盖: Partial<后端状态> = {}) {
   return {
@@ -81,9 +97,49 @@ function 后端应用值(后端覆盖: Partial<后端状态> = {}) {
     操作: {
       重新水合招聘方组织: vi.fn(async () => undefined),
       重新水合招聘方数据: vi.fn(async () => undefined),
+      恢复候选Onboarding预填: vi.fn(async () => undefined),
+      清候选Onboarding预填: vi.fn(),
     },
     目录查询: null,
   };
+}
+
+/** Task 7 用：候选 onboarding 会话的上下文值（已登录 candidate + 已水合附件库）。 */
+const 候选主体 = { ...BFF主体样本, last_used_role: 'candidate' as const };
+const 附件limits = {
+  max_files: 3,
+  max_file_bytes: 2 * 1024 * 1024,
+  accepted_media_types: ['application/pdf'] as ['application/pdf'],
+};
+
+function 候选后端应用值(覆盖: Partial<后端状态> = {}) {
+  return 后端应用值({
+    初始化: '完成',
+    已登录: true,
+    主体: 候选主体,
+    附件简历库: { items: [], limits: 附件limits },
+    ...覆盖,
+  });
+}
+
+/** Task 7 用：已绑定 source 的 ready 内存轮（非 pristine，边界零恢复调用）。 */
+function ready预填轮(): 候选预填状态 {
+  return {
+    ...创建空候选预填状态(2),
+    phase: 'ready',
+    source: { file_id: 'rf_0123456789abcdef0123456789abcdef', version_id: 'rfv_0123456789abcdef0123456789abcdef', parse_id: 'rp_0123456789abcdef0123456789abcdef' },
+  };
+}
+
+/** 标准 deferred helper：手动控制一次恢复的结算时机。 */
+function 可控Promise<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((ok, fail) => {
+    resolve = ok;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
 }
 
 function 位置探针() {
@@ -322,5 +378,119 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
     rerender(树());
     await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe(路径.主壳));
     expect(路径记录.mock.calls.filter(([值]) => 值 === 路径.主壳)).toHaveLength(1);
+  });
+});
+
+describe('应用路由：候选 onboarding 预填恢复与退出清理（Task 7）', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+  });
+
+  it('消费页在恢复在途时只渲染既有 路由加载中，结算后再挂表单屏', async () => {
+    const 门 = 可控Promise<void>();
+    const 恢复 = vi.fn().mockReturnValue(门.promise);
+    const 值 = 候选后端应用值();
+    mock应用状态.mockReturnValue({
+      ...值,
+      操作: { ...值.操作, 恢复候选Onboarding预填: 恢复 },
+    });
+    render(
+      <MemoryRouter initialEntries={[路径.基本信息]}><应用 /></MemoryRouter>,
+    );
+    // 懒加载屏幕经 Suspense 落定、边界挂载后恢复才发起；此后加载屏必须一直占位
+    await waitFor(() => expect(恢复).toHaveBeenCalledWith({ 允许等待解析: false }));
+    expect(screen.getByText('正在加载…')).toBeTruthy();
+    expect(screen.queryByTestId('屏幕:基本信息')).toBeNull();
+    门.resolve();
+    await waitFor(() => expect(screen.getByTestId('屏幕:基本信息')).toBeTruthy());
+  });
+
+  it('内存 ready 轮的消费页直接挂载：零恢复调用', async () => {
+    const 值 = 候选后端应用值({ 候选预填状态: ready预填轮() });
+    mock应用状态.mockReturnValue(值);
+    render(
+      <MemoryRouter initialEntries={[路径.基本信息]}><应用 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:基本信息')).toBeTruthy());
+    expect(值.操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
+    expect(值.操作.清候选Onboarding预填).not.toHaveBeenCalled();
+  });
+
+  it('进入主壳时清理候选预填轮，同屏重渲染不重复清', async () => {
+    const 值 = 候选后端应用值({ 候选预填状态: ready预填轮() });
+    mock应用状态.mockReturnValue(值);
+    const 树 = () => (
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /></MemoryRouter>
+    );
+    const { rerender } = render(树());
+    await waitFor(() => expect(screen.getByTestId('屏幕:主壳')).toBeTruthy());
+    await waitFor(() => expect(值.操作.清候选Onboarding预填).toHaveBeenCalledTimes(1));
+    rerender(树());
+    expect(值.操作.清候选Onboarding预填).toHaveBeenCalledTimes(1);
+  });
+
+  it('进入其它产品路由同样清理（离开注册会话即作废旧轮）', async () => {
+    const 值 = 候选后端应用值({ 候选预填状态: ready预填轮() });
+    mock应用状态.mockReturnValue(值);
+    render(
+      <MemoryRouter initialEntries={[路径.设置]}><应用 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:设置')).toBeTruthy());
+    await waitFor(() => expect(值.操作.清候选Onboarding预填).toHaveBeenCalledTimes(1));
+  });
+
+  it.each([
+    ['薪资段', 路径.引导问答薪资段, '屏幕:引导问答'],
+    ['求职状态', 路径.求职状态, '屏幕:求职状态'],
+    ['披露说明', 路径.披露说明, '屏幕:披露说明'],
+    ['城市子页', 路径.选工作城市, '屏幕:选工作城市'],
+    ['职位子页', 路径.选期望职位, '屏幕:选期望职位'],
+    ['头像页', 路径.添加头像, '屏幕:添加头像'],
+  ] as const)('注册流经过 %s只保状态：零恢复、零清理', async (_名, 站, testid) => {
+    const 值 = 候选后端应用值({ 候选预填状态: ready预填轮() });
+    mock应用状态.mockReturnValue(值);
+    render(
+      <MemoryRouter initialEntries={[站]}><应用 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId(testid)).toBeTruthy());
+    expect(值.操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
+    expect(值.操作.清候选Onboarding预填).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [路径.基本信息, '屏幕:基本信息'],
+    [路径.工作经历, '屏幕:工作经历'],
+    [路径.引导问答, '屏幕:引导问答'],
+    [路径.引导问答薪资段, '屏幕:引导问答'],
+    [路径.最高学历, '屏幕:最高学历'],
+    [路径.毕业院校, '屏幕:毕业院校'],
+    [路径.选专业, '屏幕:选专业'],
+    [路径.就读时间段, '屏幕:就读时间段'],
+    [路径.添加头像, '屏幕:添加头像'],
+  ] as const)('路由表映射与顺序未变：%s 仍落在原屏', async (站, testid) => {
+    mock应用状态.mockReturnValue(候选后端应用值({ 候选预填状态: ready预填轮() }));
+    render(
+      <MemoryRouter initialEntries={[站]}><应用 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId(testid)).toBeTruthy());
+  });
+
+  it('边界不引入任何包裹 DOM：屏幕节点直接挂在容器下', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值({ 候选预填状态: ready预填轮() }));
+    const { container } = render(
+      <MemoryRouter initialEntries={[路径.基本信息]}><应用 /></MemoryRouter>,
+    );
+    const 屏幕 = await waitFor(() => screen.getByTestId('屏幕:基本信息'));
+    expect(屏幕.parentElement).toBe(container);
+  });
+
+  it('未登录或非候选会话不触发位置清理（等水合，不烧恢复元数据）', async () => {
+    const 值 = 后端应用值({ 初始化: '完成', 已登录: true, 主体: 招聘主体 });
+    mock应用状态.mockReturnValue(值);
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:主壳')).toBeTruthy());
+    expect(值.操作.清候选Onboarding预填).not.toHaveBeenCalled();
   });
 });
