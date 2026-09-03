@@ -334,8 +334,9 @@ POST 尚未取得 import ID 且发生 `network_error`、HTTP 503、`operation_ou
 | uploading | `正在上传 JD`；动作 guard 为 no-op |
 | pending/processing | `正在识别 JD`；允许重新上传开始新轮 |
 | succeeded | `已识别，请检查建议` / `重新上传 ›` |
-| create/read 可重试失败 | 安全文案 / `重试 ›` |
-| terminal failed | `识别失败，可重新上传或手动填写` / `重新上传 ›` |
+| create/read 可重试失败 | 第 9.2 节对应安全文案 / `重试 ›` |
+| create/read 不可重试错误（`retry:'none'` 且 `error` 非空） | 第 9.2 节对应安全文案 / `重新上传 ›` |
+| 后端 terminal failed | `failure_code` 对应的第 9.2 节安全文案 / `重新上传 ›` |
 
 表单在所有状态下都可编辑；不新增全屏 loading、进度条、状态卡或结果面板。
 

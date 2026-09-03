@@ -568,7 +568,7 @@ Add these complete behavioral cases:
 7. selecting a new valid PDF invalidates old POST success, old POST error, old GET success, and old GET error.
 8. a stale result with an old import ID but same mounted page cannot change the new round.
 9. POST retry reuses object-identical `File` and equal idempotency key; GET retry calls only `读取JD导入` with the same import ID.
-10. terminal failed offers re-upload/manual only and never retries POST/GET.
+10. Every returned terminal `failure_code` shows its exact `JD失败码文案`, offers re-upload/manual only, and never retries POST/GET.
 11. uploading action is a no-op; pending/processing permits choosing a new file.
 12. edit mode contains no import banner behavior and no JD calls.
 
@@ -633,12 +633,11 @@ function 取JD错误文案(error: unknown): string {
     invalid_response: '服务返回异常，请稍后重试',
   };
   if (known[error.code]) return known[error.code];
-  if (error.status === 503 || error.code === 'network_error') return unavailable;
   return unavailable;
 }
 ```
 
-Never surface `error.message`.
+Never surface `error.message`. HTTP 503 and `network_error` differ from unknown errors only in the retry predicates below; their displayed fallback is intentionally identical.
 
 In Step 1, add a table-driven test containing every row of Spec §9.2 plus a non-`BFF错误` and an unknown backend code. Assert the exact text above and assert raw `message`, request ID, provider, and model output never appear.
 
@@ -691,9 +690,9 @@ const 安排JD读取 = (generation: number, importId: string) => {
 };
 ```
 
-`读取本轮JD` must set `JD读取中.current=true`, await exactly one GET, then reset in `finally`. It handles `'已换代'` silently; pending/processing updates phase and schedules only after the current GET completes; succeeded/failed clear timers and enter terminal state. A current GET error preserves `importId` and never calls POST, but sets `retry:'read'` only for `network_error`, HTTP 503, or `storage_unavailable`; `job_draft_import_not_found`, `invalid_response`, and every other deterministic error set `retry:'none'`.
+`读取本轮JD` must set `JD读取中.current=true`, await exactly one GET, then reset in `finally`. It handles `'已换代'` silently; pending/processing updates phase and schedules only after the current GET completes; succeeded clears timers and enters succeeded. A returned `status:'failed'` clears timers, sets `phase:'failed'`, `retry:'none'`, and `error:JD失败码文案[result.failure_code]`. A current GET exception preserves `importId` and stores `取JD错误文案(error)`; it never calls POST, and sets `retry:'read'` only for `network_error`, HTTP 503, or `storage_unavailable`. `job_draft_import_not_found`, `invalid_response`, and every other deterministic error set `retry:'none'` while retaining their mapped safe text.
 
-`提交待确认JD` must guard `phase === 'uploading'`, save the selected `{file,key}`, set uploading, and call POST. A current POST error preserves `file + key` and has `importId:null`, but sets `retry:'create'` only for `network_error`, HTTP 503, `operation_outcome_unknown`, `storage_unavailable`, `upload_in_progress`, or `idempotency_in_progress`. `invalid_pdf`, `document_too_complex`, `processing_consent_required`, `idempotency_conflict`, and every other deterministic error set `retry:'none'`. A successful pending/processing result stores the returned import ID before scheduling. A direct succeeded/failed result is terminal and schedules no timer.
+`提交待确认JD` must guard `phase === 'uploading'`, save the selected `{file,key}`, set uploading, and call POST. A current POST exception preserves `file + key`, has `importId:null`, and stores `取JD错误文案(error)`, but sets `retry:'create'` only for `network_error`, HTTP 503, `operation_outcome_unknown`, `storage_unavailable`, `upload_in_progress`, or `idempotency_in_progress`. `invalid_pdf`, `document_too_complex`, `processing_consent_required`, `idempotency_conflict`, and every other deterministic error set `retry:'none'` while retaining their mapped safe text. A successful pending/processing result stores the returned import ID before scheduling. A direct `status:'failed'` stores `JD失败码文案[result.failure_code]`, uses `retry:'none'`, and schedules no timer; a direct succeeded result is likewise terminal without a timer.
 
 Implement those allowlists as two small page-local predicates (`JD创建错误可重试` and `JD读取错误可重试`) and add Step 1 table cases proving each allowed code offers `重试 ›` while `invalid_pdf`, `idempotency_conflict`, `job_draft_import_not_found`, and `invalid_response` offer only re-upload/manual action.
 
@@ -737,7 +736,7 @@ interface JD横幅属性 {
 }
 ```
 
-Pass those four values to the existing `代理横幅` in its current node. Use the Spec table for exact status text; uploading action is a no-op, retry state action invokes `重试JD`, all other actionable states open the existing file input. Do not add DOM nodes.
+Pass those four values to the existing `代理横幅` in its current node. Use the Spec table for exact status text. Every failed state must project `JD状态.error` into the existing banner text: retriable failures use action `重试JD`; non-retriable exceptions and returned backend `status:'failed'` use action “重新上传” and open the existing file input. Task 3 tests must assert both exact text and action for at least `job_draft_import_too_large`, `idempotency_conflict`, `job_draft_import_not_found`, `invalid_response`, and every returned parser `failure_code`. Uploading action is a no-op. Do not add DOM nodes.
 
 On the already-existing `.发布壳` node add only:
 
