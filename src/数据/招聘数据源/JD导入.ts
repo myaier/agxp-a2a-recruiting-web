@@ -54,16 +54,35 @@ function 要求可空枚举<T extends string>(value: unknown, values: readonly T
 /** 发布的 import_id grammar（handoff 冻结 pattern）：jdi_ 前缀 + 32 位小写十六进制。 */
 const 导入ID = /^jdi_[0-9a-f]{32}$/;
 
-/** RFC3339 时间：YYYY-MM-DDTHH:MM:SS(.frac)?(Z|±HH:MM)，且必须是真实日历时刻。 */
-const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+/** RFC3339 形状：YYYY-MM-DDTHH:MM:SS(.frac)?(Z|±HH:MM)。 */
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
 
 function 要求导入ID(value: unknown): string {
   if (typeof value !== 'string' || !导入ID.test(value)) throw 契约错误();
   return value;
 }
 
+/** 月份天数（下标 0 = 一月）；闰年由 要求时间 按年份现场计算。 */
+const 平年月天数 = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
+
+/**
+ * RFC3339 时间必须逐分量合法：Date.parse 会把 2026-02-30、24:00:00 这类畸形值
+ * 静默归一化成合法时刻，靠它把关会把非合同时间放进页面 —— 这里显式校验
+ * 月份/日（含闰年二月）/时分秒与偏移量，畸形即契约漂移 fail closed。
+ */
 function 要求时间(value: unknown): string {
-  if (typeof value !== 'string' || !RFC3339.test(value) || Number.isNaN(Date.parse(value))) throw 契约错误();
+  if (typeof value !== 'string') throw 契约错误();
+  const 命中 = RFC3339.exec(value);
+  if (命中 === null) throw 契约错误();
+  const [, 年, 月, 日, 时, 分, 秒, 偏移号, 偏移时, 偏移分] = 命中;
+  const 年数 = Number(年);
+  const 月数 = Number(月);
+  const 日数 = Number(日);
+  const 闰 = (年数 % 4 === 0 && 年数 % 100 !== 0) || 年数 % 400 === 0;
+  const 月天数 = 月数 === 2 && 闰 ? 29 : 平年月天数[月数 - 1];
+  if (月数 < 1 || 月数 > 12 || Number.isNaN(月天数) || 日数 < 1 || 日数 > 月天数) throw 契约错误();
+  if (Number(时) > 23 || Number(分) > 59 || Number(秒) > 59) throw 契约错误();
+  if (偏移号 !== undefined && (Number(偏移时) > 23 || Number(偏移分) > 59)) throw 契约错误();
   return value;
 }
 
@@ -159,7 +178,11 @@ export function 创建JD导入数据源(请求: 请求函数): JD导入数据源
         不缓存: true,
         严格信封: true,
       });
-      return 解码JD导入(response.result);
+      const 导入 = 解码JD导入(response.result);
+      // 回显 import_id 必须与请求逐字相等（同 简历预填 的回显栅栏）：防止中继/合同
+      // 漂移把另一个任务的建议当成当前轮次的结果。
+      if (导入.import_id !== importId) throw 契约错误();
+      return 导入;
     },
   };
 }

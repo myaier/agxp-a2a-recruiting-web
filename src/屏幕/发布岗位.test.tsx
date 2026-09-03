@@ -97,6 +97,8 @@ function 置Backend应用状态(
       创建JD导入: mock创建JD导入, 读取JD导入: mock读取JD导入,
     },
     数据源模式: 'backend',
+    // JD 导入入口按当前角色守卫：缺省给 recruiter 主体，用例可按需改写
+    后端状态: { 主体: { subject_id: 'sub_1', roles: [], last_used_role: 'recruiter' } },
     目录查询: {
       查询Taxonomy,
       查询Location,
@@ -779,6 +781,25 @@ describe('发布岗位页 JD 导入生命周期', () => {
   afterEach(() => {
     vi.useRealTimers();
     Reflect.deleteProperty(document, 'hidden');
+  });
+
+  it('候选人角色打开发岗页：合法 PDF 只提示可手填，零确认零请求', async () => {
+    mock应用状态.后端状态.主体.last_used_role = 'candidate';
+    render发布岗位();
+    选择JD(JDPDF());
+    expect(轻提示文案们()).toContain('已选择，可继续手动填写');
+    expect(screen.queryByText('允许 AI 识别这份职位描述？')).toBeNull();
+    expect(mock创建JD导入).not.toHaveBeenCalled();
+  });
+
+  it('操作层栅栏换代（已换代）时当前轮收口回 idle，不卡 uploading', async () => {
+    mock创建JD导入.mockResolvedValue('已换代');
+    render发布岗位();
+    选择并确认JD(JDPDF());
+    await 微任务结算();
+    expect(横幅文字()).toBe('把 JD 给我，这张表我来填');
+    expect(动作文字()).toBe('上传 JD ›');
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 
   it('合法 PDF 先确认，consent 前零 POST，取消仍零 POST', async () => {

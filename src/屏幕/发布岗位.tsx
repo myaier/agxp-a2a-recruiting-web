@@ -284,8 +284,10 @@ export default function 发布岗位() {
   // 注册流的招聘名片跳过来时在 history.state 上做了标记(刷新不丢);
   // 应用内入口(岗位管理/在谈/推荐的 ＋)没有标记 → 发布后不再播初始化页
   const 从注册流 = Boolean((useLocation().state as { 从注册流?: boolean } | null)?.从注册流);
-  const { 状态, 派发, 操作, 数据源模式, 目录查询 } = use应用状态();
+  const { 状态, 派发, 操作, 数据源模式, 目录查询, 后端状态 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
+  // JD 导入只服务 Backend + recruiter（plan 全局约束）：候选人角色直开本页时不接线
+  const 是招聘方 = 是后端 && (后端状态?.主体?.last_used_role === 'recruiter');
   // 提交/删除并发锁：await 操作.* 期间拒绝重复点击，不改变按钮样式
   const 提交锁 = useRef(false);
 
@@ -399,7 +401,13 @@ export default function 发布岗位() {
     JD读取中.current = true;
     try {
       const result = await 操作.读取JD导入(importId);
-      if (!本轮仍有效(generation, importId) || result === '已换代') return;
+      if (!本轮仍有效(generation, importId)) return;
+      if (result === '已换代') {
+        // 操作层栅栏已换代（如角色翻转）但页面仍是本轮：收口回 idle，不卡在途状态
+        清JD定时器();
+        更新JD状态({ ...JD状态引用.current, phase: 'idle', importId: null, retry: 'none' });
+        return;
+      }
       if (result.status === 'succeeded') {
         清JD定时器();
         应用JD建议(generation, result.suggestion);
@@ -430,7 +438,12 @@ export default function 发布岗位() {
   const 创建本轮JD = async (generation: number, file: File, key: string): Promise<void> => {
     try {
       const result = await 操作.创建JD导入(file, key);
-      if (!本轮仍有效(generation) || result === '已换代') return;
+      if (!本轮仍有效(generation)) return;
+      if (result === '已换代') {
+        // 操作层栅栏已换代（如角色翻转）但页面仍是本轮：收口回 idle，解除 aria-busy
+        更新JD状态({ ...JD状态引用.current, phase: 'idle', importId: null, retry: 'none' });
+        return;
+      }
       if (result.status === 'succeeded') {
         清JD定时器();
         应用JD建议(generation, result.suggestion);
@@ -496,7 +509,8 @@ export default function 发布岗位() {
       轻提示(问题);
       return;
     }
-    if (!是后端) {
+    if (!是招聘方) {
+      // Mock 演示回执与候选人角色同一口径：不弹会声称真实处理的 consent、零请求
       轻提示('已选择，可继续手动填写');
       return;
     }

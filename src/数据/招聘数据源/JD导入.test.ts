@@ -178,8 +178,29 @@ describe('JD 导入数据源', () => {
     ['created_at 空格分隔', (导入: BFFJD导入) => { 结构视图(导入).created_at = '2026-09-03 01:02:03Z'; }],
     ['updated_at 非时间文本', (导入: BFFJD导入) => { 结构视图(导入).updated_at = 'yesterday'; }],
     ['时间形状合法但日历非法', (导入: BFFJD导入) => { 结构视图(导入).updated_at = '2026-13-45T99:99:99Z'; }],
+    ['created_at 二月三十日（Date.parse 会归一化）', (导入: BFFJD导入) => { 结构视图(导入).created_at = '2026-02-30T01:02:03Z'; }],
+    ['updated_at 四月三十一日', (导入: BFFJD导入) => { 结构视图(导入).updated_at = '2026-04-31T01:02:03Z'; }],
+    ['created_at 24 点', (导入: BFFJD导入) => { 结构视图(导入).created_at = '2026-09-03T24:00:00Z'; }],
+    ['updated_at 60 分', (导入: BFFJD导入) => { 结构视图(导入).updated_at = '2026-09-03T01:60:00Z'; }],
   ])('ID/时间漂移 fail closed：%s', async (_场景, 改写) => {
     await 按契约漂移拒绝(契约变体(改写));
+  });
+
+  it('闰日与月末的合法 RFC3339 分量可解码', async () => {
+    const 结果 = {
+      import_id: 合法ID, status: 'pending',
+      created_at: '2024-02-29T23:59:59Z',
+      updated_at: '2026-01-31T00:00:00+08:00',
+    };
+    const 请求 = vi.fn().mockResolvedValue({ result: 结果, etag: null, requestId: 'req' });
+    await expect(创建JD导入数据源(请求).创建JD导入(PDF文件(), key)).resolves.toEqual(结果);
+  });
+
+  it('GET 回显 import_id 与请求不符时 fail closed（防中继/合同漂移串任务）', async () => {
+    const 错位 = { ...succeeded, import_id: 'jdi_fedcba9876543210fedcba9876543210' };
+    const 请求 = vi.fn().mockResolvedValue({ result: 错位, etag: null, requestId: 'req-3' });
+    await expect(创建JD导入数据源(请求).读取JD导入(合法ID))
+      .rejects.toMatchObject({ status: 200, code: 'invalid_response' });
   });
 
   // ── 闭合枚举：status、failure_code 与四个建议枚举 ──
