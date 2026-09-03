@@ -158,6 +158,8 @@ describe('候选预填恢复存储', () => {
       JSON.stringify({ ...元数据(), eligibility: { ...元数据().eligibility, extra: true } }),
       JSON.stringify({ ...元数据(), eligibility: { ...元数据().eligibility, skills: 'yes' } }),
       JSON.stringify({ ...元数据(), eligibility: { profile: { real_name: 1, work_start_year: true, gender: true, birth_year: true, birth_month: true }, summary: true, skills: true, experiences: true, educations: true, certificates: true } }),
+      // codex review-r2：current_education 键存在但非布尔（缺布尔循环校验时会被错误接受）
+      JSON.stringify({ ...元数据(), eligibility: { profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: 'true' }, summary: true, skills: true, experiences: true, educations: true, certificates: true } }),
       JSON.stringify({ ...元数据(), confirmed: { basic: true, degree: false, institution: false, major: false, education_period: false, work: false } }),
       JSON.stringify({ ...元数据(), confirmed: { ...元数据().confirmed, extra: false } }),
       JSON.stringify({ ...元数据(), confirmed: { ...元数据().confirmed, basic: 'yes' } }),

@@ -75,7 +75,7 @@ function 是有效Eligibility(值: unknown): 值 is 候选预填Eligibility {
     return false;
   }
   const 档 = 值.profile as Record<string, unknown>;
-  for (const 键 of ['real_name', 'work_start_year', 'gender', 'birth_year', 'birth_month'] as const) {
+  for (const 键 of ['real_name', 'work_start_year', 'gender', 'birth_year', 'birth_month', 'current_education'] as const) {
     if (!是布尔(档[键])) return false;
   }
   return 是布尔(值.summary) && 是布尔(值.skills) && 是布尔(值.experiences)

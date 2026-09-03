@@ -723,6 +723,18 @@ describe('创建简历预填操作 · 404/409 一次性刷新', () => {
     expect(场景.后端.读取简历预填).toHaveBeenCalledTimes(1);
   });
 
+  // codex review-r2：404/409 刷新落地空库（读取途中附件被整库删除）—— 不能停在
+  // loading 等一个不会来的附件：收口终局 failed（source/eligibility 保留，可重试/手填）。
+  it('404 刷新得到空附件库：终局 failed，不停在 loading', async () => {
+    const 场景 = 创建预填场景({ parse: 'succeeded', 元数据: 恢复元数据() });
+    场景.后端.读取简历预填.mockRejectedValueOnce(new BFF错误(404, 'not_found', 'gone'));
+    场景.后端.读取附件简历库.mockResolvedValueOnce({ items: [], limits });
+    await 场景.操作.同步候选Onboarding解析();
+    expect(预填(场景).phase).toBe('failed');
+    expect(预填(场景).source).toEqual({ file_id: 文件ID, version_id: 版本ID, parse_id: 解析ID });
+    expect(场景.后端.读取简历预填).toHaveBeenCalledTimes(1); // 不循环请求
+  });
+
   // review Issue 3：404/409 的一次性刷新途中 401 不能落成可重试 failed —— 当前栅栏
   // 401 与读路径同口径走统一 清账号状态；栅栏已失配的迟到 401 仍是静默丢弃。
   it('刷新附件库遇当前栅栏 401：统一 清账号状态，不落 failed', async () => {

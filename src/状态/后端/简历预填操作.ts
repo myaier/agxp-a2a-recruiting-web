@@ -281,12 +281,18 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
     // 真实 Provider 的 setState 到下次渲染才落引用，同步续行只会看到旧附件（旧 tuple），
     // 而旧 tuple 的单飞正是当前 Promise：await 自己 = 永久 loading。
     const 附件 = 库.items[0] ?? null;
-    const 解析 = 附件?.current_version.parse ?? null;
+    // codex review-r2：权威库已无当前附件（读取途中被整库删除）——收口为终局 failed
+    //（source/eligibility 保留，可显式重试或继续手填），不能停在 loading 等一个
+    // 永远不会来的附件。
+    if (附件 === null) {
+      落失败(原错误);
+      return;
+    }
+    const 解析 = 附件.current_version.parse;
     // 同 tuple 终局 = 同 file/version 且 parse 仍 succeeded 于原 parse_id（仍不可读才 failed）。
     // 解析已换代（pending/processing/not_started/failed）时旧 parse_id 不再代表权威状态：
     // 走重派，按新 parse 状态进 waiting_parse / failed（设计 §10）。
-    const 同元组 = 附件 !== null
-      && 附件.file_id === fence.fileId
+    const 同元组 = 附件.file_id === fence.fileId
       && 附件.current_version.version_id === fence.versionId
       && 解析?.status === 'succeeded'
       && 解析.parse_id === fence.parseId;

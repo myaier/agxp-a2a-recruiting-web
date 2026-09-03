@@ -48,6 +48,7 @@ export function 创建隐私操作(deps: 后端操作依赖): 隐私操作 {
   const 账号清理依赖 = {
     派发: deps.派发, 设后端状态, 后端, 主体标识引用, 会话代际,
     P4范围代际: deps.P4范围代际, P4幂等意图: deps.P4幂等意图, P4可见范围: deps.P4可见范围,
+    候选预填代际: deps.候选预填代际, 候选预填读取锁: deps.候选预填读取锁, 候选预填恢复: deps.候选预填恢复,
   };
 
   /** 当前 CAS 基线 revision：读 Provider 的渲染镜像 ref（水合成功后必非 null）。 */
