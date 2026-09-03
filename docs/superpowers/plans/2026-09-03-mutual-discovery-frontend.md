@@ -28,7 +28,6 @@
 
 - Modify: `src/数据/BFF契约.ts`
 - Modify: `src/测试/BFF样本.ts`
-- Modify: `src/数据/后端映射.ts`
 - Modify: `src/数据/招聘数据源/岗位.ts`
 - Modify: `src/数据/招聘数据源/岗位.test.ts`
 - Modify: `src/数据/招聘数据源/发现推荐.ts`
@@ -62,9 +61,7 @@ export type BFF学历要求 =
   | 'none' | 'associate' | 'bachelor' | 'master' | 'doctorate';
 ```
 
-Change `BFFOwnerJob.experience_requirement`/`education_requirement` and `BFF岗位创建.experience_requirement`/`education_requirement` to these same two unions, then add required `structured_requirements_confirmed: boolean` to Owner Job. `BFFCandidateJob` inherits that required field. Add `structured_requirements_confirmed: true` to `BFF岗位创建`; because `BFF岗位补丁` is partial, its field remains optional but can only be literal `true`. This gives both read and write mappings compile-time protection against new or mistyped enum codes.
-
-In `后端映射.ts`, import `BFF经验要求` as a type and change `映射经验要求(页值: string | undefined): string` to return `BFF经验要求`. Its existing closed lookup and throw behavior stays unchanged. The education map is already `as const` and needs no widening fix.
+Change `BFFOwnerJob.experience_requirement`/`education_requirement` to these unions and add required `structured_requirements_confirmed: boolean`. `BFFCandidateJob` inherits all three required read fields. Leave `BFF岗位创建` and the write mapper unchanged in this task; Task 2 changes their types, confirmation guard, and output atomically so no intermediate commit can serialize an unearned `true`.
 
 In `岗位.ts`, extend the existing pre-mapping check with three direct checks: boolean confirmation, membership in the five experience codes, and membership in the five education codes. Keep the check local to Owner Job reads; throw a `BFF错误(200, 'invalid_response', '服务返回了不符合契约的岗位数据')` on drift.
 
@@ -107,7 +104,7 @@ export interface BFF发现批次 {
 
 The snippets show the changed members; keep every currently declared sibling member unchanged.
 
-In `发现推荐.ts`, add `structured_requirements_confirmed` to both card exact-key lists and decode it with the existing required-boolean helper. Add it to the Candidate Job exact-key list and decode it there too. Replace the open-string requirement decoding with membership checks against the exact unions. Change the ranking decoder to accept only the two full literals. Do not add defaults or `as` casts that bypass runtime checks.
+In `发现推荐.ts`, add `structured_requirements_confirmed` to both card exact-key lists and decode it with the existing required-boolean helper. Add it to the Candidate Job exact-key list and decode it there too. Define `经验要求全表`/`学历要求全表` with `as const satisfies readonly BFF经验要求[]` / `readonly BFF学历要求[]`, then decode both Candidate Job fields through the existing generic `要求枚举`; this returns the new closed types and keeps Task 1 typecheck green. Change the ranking decoder to use an equivalent two-member `as const` table. Do not add defaults or casts that bypass runtime checks.
 
 Update discovery fixtures explicitly; do not derive card basis from `job.structured_requirements_confirmed` in fixture builders.
 
@@ -126,7 +123,7 @@ Expected: all pass.
 Commit:
 
 ```bash
-git add src/数据/BFF契约.ts src/测试/BFF样本.ts src/数据/后端映射.ts src/数据/招聘数据源/岗位.ts src/数据/招聘数据源/岗位.test.ts src/数据/招聘数据源/发现推荐.ts src/数据/招聘数据源/发现推荐.test.ts
+git add src/数据/BFF契约.ts src/测试/BFF样本.ts src/数据/招聘数据源/岗位.ts src/数据/招聘数据源/岗位.test.ts src/数据/招聘数据源/发现推荐.ts src/数据/招聘数据源/发现推荐.test.ts
 git commit -m "feat: decode mutual discovery job truth"
 ```
 
@@ -136,6 +133,7 @@ git commit -m "feat: decode mutual discovery job truth"
 
 **Files:**
 
+- Modify: `src/数据/BFF契约.ts`
 - Modify: `src/数据/类型.ts`
 - Modify: `src/数据/后端映射.ts`
 - Modify: `src/数据/后端映射.test.ts`
@@ -186,6 +184,8 @@ Expected: create does not require confirmation and patch currently returns a nea
 
 - [ ] **Step 3: Add the page fact and map Owner Job truth**
 
+In `BFF契约.ts`, change `BFF岗位创建.experience_requirement` and `education_requirement` to the `BFF经验要求`/`BFF学历要求` aliases introduced in Task 1, and add required `structured_requirements_confirmed: true`. Because `BFF岗位补丁 = Partial<BFF岗位创建>`, its confirmation field becomes optional literal `true`. In `后端映射.ts`, import `BFF经验要求` as a type and change `映射经验要求(页值: string | undefined): string` to return `BFF经验要求`; keep its existing closed lookup and throw behavior. The education lookup is already inferred as a closed union.
+
 In `类型.ts`, add to `在招岗位`:
 
 ```ts
@@ -195,7 +195,7 @@ In `类型.ts`, add to `在招岗位`:
 
 In `从BFF岗位`, copy `dto.structured_requirements_confirmed` verbatim. Do not add the field to Mock fixtures.
 
-At the top of `转岗位创建`, require `页面岗位.结构化要求已确认 === true`; otherwise throw the exact Chinese validation message. Add literal `structured_requirements_confirmed: true` to the body. `none` remains a valid enum and does not bypass the confirmation check.
+At the top of `转岗位创建`, require `页面岗位.结构化要求已确认 === true`; otherwise throw the exact Chinese validation message. Add literal `structured_requirements_confirmed: true` to the body in the same change. `none` remains a valid enum and does not bypass the confirmation check. The failing Task 2 create tests therefore turn green without an intermediate state that sends `true` before checking user intent.
 
 - [ ] **Step 4: Replace the near-full patch with local sparse comparison**
 
@@ -256,7 +256,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/数据/类型.ts src/数据/后端映射.ts src/数据/后端映射.test.ts src/数据/招聘数据源/岗位.test.ts
+git add src/数据/BFF契约.ts src/数据/类型.ts src/数据/后端映射.ts src/数据/后端映射.test.ts src/数据/招聘数据源/岗位.test.ts
 git commit -m "feat: require confirmed sparse job writes"
 ```
 
