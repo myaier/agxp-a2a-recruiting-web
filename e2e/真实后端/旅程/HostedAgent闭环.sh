@@ -92,6 +92,37 @@ has_button_exact(){
   ab find role button text --name "$1" --exact >/dev/null 2>&1
 }
 
+advance_candidate_s0(){
+  local tries=0 body t
+  while [ "$tries" -lt 240 ]; do
+    body="$(ab get text body 2>/dev/null || printf '')"
+    case "$body" in
+      *'招聘方 AI 正在初筛已提交简历'*|*'等待招聘方决定'*) return 0 ;;
+      *'已结束'*|*'需注意'*)
+        echo 'S0 进入公开结束或注意终态' >&2
+        return 1 ;;
+    esac
+    if has_button_exact '提交回答'; then
+      find_retry label '回答问题' fill '我有 React 与 TypeScript 的真实项目经验，可以接受混合办公。' >/dev/null
+      click_button_exact '提交回答'
+      t=0
+      while [ "$t" -lt 60 ] && has_button_exact '提交回答'; do
+        t=$((t + 1)); sleep 1
+      done
+    elif has_button_exact '继续初筛'; then
+      click_button_exact '继续初筛'
+      t=0
+      while [ "$t" -lt 60 ] && has_button_exact '继续初筛'; do
+        t=$((t + 1)); sleep 1
+      done
+    fi
+    tries=$((tries + 1))
+    sleep 1
+  done
+  echo '等待 S0 候选侧推进或进入 S1 超时' >&2
+  return 1
+}
+
 advance_case_for_current_role(){
   local tries=0
   while [ "$tries" -lt 120 ]; do
@@ -227,15 +258,9 @@ case "$CANDIDATE_CASE_URL" in
   *) echo '查看进展没有进入 candidate Case 深链' >&2; exit 1 ;;
 esac
 
-# Candidate 侧完成当前公开动作；补问存在时回答，否则按 S0 可用动作继续。
+# Candidate 侧推进 S0：处理可多轮补问与人工继续决定；S0 可不经人工决定 fit 直通进 S1。
 MILESTONE='candidate target 完成'
-wait_one_of '继续初筛' '提交回答'
-if has_button_exact '提交回答'; then
-  find_retry label '回答问题' fill '我有 React 与 TypeScript 的真实项目经验，可以接受混合办公。' >/dev/null
-  click_button_exact '提交回答'
-fi
-wait_one_of '继续初筛' '提交回答'
-if has_button_exact '继续初筛'; then click_button_exact '继续初筛'; fi
+advance_candidate_s0
 
 # Recruiter 读取同一 Case；screen_resume 是 recruiter-target Hosted Agent task。
 MILESTONE='招聘方读取同一 Case'
