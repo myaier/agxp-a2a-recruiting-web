@@ -1168,10 +1168,11 @@ describe('委托候选岗位', () => {
       .mockResolvedValueOnce([{ ...BFF候选委托回执样本, delegation_id: 'd2', state: 'accepted', case_id: 'case_x' }])
       .mockResolvedValueOnce([{ ...BFF候选委托回执样本, delegation_id: 'd3', state: 'refused', refusal_code: null, failure_code: null }])
       // 交叉错槽（brief 迁移清单第 2 条：交叉 code 组合归 operation 非法合同用例）：
-      // failed 只许带 failure_code，needs_user 双码皆空 —— 旧「错槽也忽略」语义已不合法
+      // refused/failed 只许带各自码槽的码，其余状态双码皆空 —— 旧「错槽也忽略」语义已不合法
       .mockResolvedValueOnce([{ ...BFF候选委托回执样本, delegation_id: 'd4', state: 'failed', failure_code: 'delegation_failed', refusal_code: 'delegation_cooldown' }])
-      .mockResolvedValueOnce([{ ...BFF候选委托回执样本, delegation_id: 'd5', state: 'needs_user', refusal_code: 'delegation_cooldown', failure_code: null }]);
-    for (const 编号 of ['d1', 'd2', 'd3', 'd4', 'd5']) {
+      .mockResolvedValueOnce([{ ...BFF候选委托回执样本, delegation_id: 'd5', state: 'needs_user', refusal_code: 'delegation_cooldown', failure_code: null }])
+      .mockResolvedValueOnce([{ ...BFF候选委托回执样本, delegation_id: 'd6', state: 'refused', refusal_code: 'delegation_cooldown', failure_code: 'delegation_failed' }]);
+    for (const 编号 of ['d1', 'd2', 'd3', 'd4', 'd5', 'd6']) {
       await expect(env.操作.委托候选岗位(候选委托输入)).rejects.toMatchObject({ code: 'invalid_response' });
       expect(env.最新状态().P4委托回执[编号]).toBeUndefined();
     }
