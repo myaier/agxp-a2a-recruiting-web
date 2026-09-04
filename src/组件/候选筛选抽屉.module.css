@@ -16,6 +16,10 @@
   left: 0;
   right: 0;
   bottom: 0;
+  /* <dialog> 的 UA 默认是 width: fit-content + margin: auto，只写 left/right 撑不满
+     （2026-09-03 实测只有 294px 宽）；与 在谈筛选层 一样显式给满宽 */
+  width: 100%;
+  margin: 0;
   z-index: 61;
   max-height: 86%;
   display: flex;
