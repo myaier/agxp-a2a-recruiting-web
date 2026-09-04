@@ -88,9 +88,10 @@ export function 折算工作年限(
   return currentYear - 年;
 }
 
-/** 求职端:JD 的硬性要求 × 我的简历。硬字段行恒在前,必须项按 JD 原顺序,不做重排 */
+/** 求职端:JD 的硬性要求 × 我的简历。硬字段行恒在前,必须项按 JD 原顺序,不做重排。
+ *  经验/学历约束为 null（P4 none = 无约束）时该行不生成 —— 没有要求就没有核对行。 */
 export function 求职侧对齐行(
-  源: { 编号?: string; 经验要求?: string; 学历要求?: string; 技能要求?: string[] },
+  源: { 编号?: string; 经验要求?: string | null; 学历要求?: string | null; 技能要求?: string[] },
   简历: { 经历: 简历经历段[]; 教育: 简历教育段[]; 技能: string[] },
   /** Backend 权威路径的核对事实;缺省(Mock/直聊会话调用方)走原演示口径 */
   核对?: 求职侧核对

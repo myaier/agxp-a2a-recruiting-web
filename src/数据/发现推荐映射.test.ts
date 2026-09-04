@@ -153,16 +153,23 @@ describe('从P4候选岗位 / 从P4CandidateJob', () => {
     expect(view.岗位事实.年薪月数).toBe(months);
   });
 
-  it('unknown structured requirement codes remain visible instead of becoming undefined', () => {
-    // P4 互认闭合经验/学历枚举后，未知码已过不了 decoder，类型上不复存在；
-    // 这里的断言探针只验证映射层 `??` 兜底仍原样透传，绝不让展示层拿到 undefined。
+  it.each([
+    ['none', 'none', null, null],
+    ['none', 'bachelor', null, '本科'],
+    ['three_to_five_years', 'none', '3-5 年', null],
+    ['three_to_five_years', 'bachelor', '3-5 年', '本科'],
+  ] as const)('经验=%s 学历=%s 投影 nullable 事实（卡片仍显示闭合文案）', (experience, education, expText, eduText) => {
+    // strict enum 边界：未知码过不了 decoder，类型上不复存在；
+    // none = 无约束 → 岗位事实 null（对齐链不生成行），市场卡仍显示「不限」
     const view = 从P4CandidateJob({
       ...BFFCandidateJob样本,
-      experience_requirement: 'backend_specific_experience' as BFFCandidateJob['experience_requirement'],
-      education_requirement: 'backend_specific_education' as BFFCandidateJob['education_requirement'],
+      experience_requirement: experience,
+      education_requirement: education,
     });
-    expect(view.岗位事实.经验要求).toBe('backend_specific_experience');
-    expect(view.岗位事实.学历要求).toBe('backend_specific_education');
+    expect(view.岗位事实.经验要求).toBe(expText);
+    expect(view.岗位事实.学历要求).toBe(eduText);
+    expect(view.卡.经验要求).toBe(experience === 'none' ? '不限' : '3-5 年');
+    expect(view.卡.学历要求).toBe(education === 'none' ? '不限' : '本科');
   });
 
   it('allowlist 顶层键逐一对齐：岗位事实在册，DTO 注入键带不出去', () => {

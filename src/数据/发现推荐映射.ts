@@ -81,8 +81,8 @@ function 建卡(job: BFFCandidateJob, 适配分: number, 意向: string, 理由:
     ],
     办公方式: 办公方式文案[job.workplace_mode],
     城市: job.location.display_name,
-    经验要求: 经验要求文案[job.experience_requirement as keyof typeof 经验要求文案] ?? job.experience_requirement,
-    学历要求: 学历要求文案[job.education_requirement as keyof typeof 学历要求文案] ?? job.education_requirement,
+    经验要求: 经验要求文案[job.experience_requirement],
+    学历要求: 学历要求文案[job.education_requirement],
     对得上: 理由,
     发布于: job.published_at.slice(0, 10),
     发布人首字: 发布人 ? 首字(发布人.public_name) : '',
@@ -106,15 +106,15 @@ function 建候选岗位视图(
   },
 ): P4候选岗位页面 {
   // 岗位事实只取已解码 BFFCandidateJob 字段；办公地点 blank（含纯空白）→ null。
-  // 经验/学历 BFF 字段是开放字符串而非闭合枚举：未知码原样透传服务端值（不推断不解析），
-  // 绝不让展示层拿到 undefined。
+  // 经验/学历是 BFF strict enum（未知码过不了 decoder）：none = 无约束 → null，
+  // 对齐链据此跳过该行；市场卡另行用闭合表把 none 显示为「不限」。
   const 办公地点 = job.office_location.trim();
-  const 经验要求 = 经验要求文案[
-    job.experience_requirement as keyof typeof 经验要求文案
-  ] ?? job.experience_requirement;
-  const 学历要求 = 学历要求文案[
-    job.education_requirement as keyof typeof 学历要求文案
-  ] ?? job.education_requirement;
+  const 经验要求 = job.experience_requirement === 'none'
+    ? null
+    : 经验要求文案[job.experience_requirement];
+  const 学历要求 = job.education_requirement === 'none'
+    ? null
+    : 学历要求文案[job.education_requirement];
 
   return {
     recommendationId: 建议.recommendationId,

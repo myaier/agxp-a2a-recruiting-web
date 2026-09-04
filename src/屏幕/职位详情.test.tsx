@@ -425,6 +425,26 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
   });
 
+  it('Backend 推荐态 none/none 约束：无「不限」误导行、无「简历未提及」、事实区省略 null 项', () => {
+    渲染Backend状态({
+      候选岗位推荐: 快照With({
+        ...推荐卡样本,
+        job: { ...BFFCandidateJob样本, education_requirement: 'none' },
+      }),
+      简历: { 简历教育: [真实教育段] },
+    });
+    渲染('job_1');
+    // none = 无约束：对齐链不生成经验/学历行，也不生成缺失说明
+    expect(screen.queryByText('经验 不限')).toBeNull();
+    expect(screen.queryByText('学历 不限')).toBeNull();
+    expect(screen.queryByText('简历未提及')).toBeNull();
+    // 事实区省略 null 项，不把无约束描述成简历缺失
+    expect(screen.queryByText(/^结构化经验要求：/)).toBeNull();
+    expect(screen.queryByText(/^结构化学历要求：/)).toBeNull();
+    // 市场卡口径仍显示「不限」（由 发现推荐映射.test.ts 的 view.卡 断言冻结；
+    // 职位详情的标签行 2026-08-31 已删，卡面文案不进本页 DOM）
+  });
+
   it('历史 basis 未确认 + 嵌入 Job 当前已确认：保留后端分，确定性核对行与生成分析整组不出，改显中性句', () => {
     渲染Backend状态({
       候选岗位推荐: 快照With({

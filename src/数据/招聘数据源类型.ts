@@ -144,16 +144,16 @@ export interface 后端会话快照 {
 /**
  * P4 候选岗位事实：只从已解码 BFFCandidateJob 字段投影的硬事实（城市/办公方式/
  * 办公地点/年薪月数/经验要求/学历要求），不编造。办公地点 blank → null；
- * 年薪月数 wire 是 null 就 null；经验/学历 BFF 字段是开放字符串而非闭合枚举，
- * 未知码原样透传服务端值，不推断不解析。
+ * 年薪月数 wire 是 null 就 null；经验/学历是 BFF strict enum，none = 无约束 → null
+ * （对齐链不生成缺失/不满足行，市场卡另行显示「不限」）。
  */
 export interface P4岗位事实 {
   城市: string;
   办公方式: '现场' | '混合' | '全远程';
   办公地点: string | null;
   年薪月数: number | null;
-  经验要求: string;
-  学历要求: string;
+  经验要求: string | null;
+  学历要求: string | null;
   /** 当前 CandidateJob 的结构化要求确认现状；与推荐卡的历史 basis 是两回事 */
   结构化要求已确认: boolean;
 }
