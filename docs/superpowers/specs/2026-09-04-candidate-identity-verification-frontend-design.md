@@ -408,14 +408,17 @@ src/状态/后端/候选实名操作.ts
 src/状态/后端/候选实名操作.test.ts
 src/屏幕/候选实名认证.tsx
 src/屏幕/候选实名认证.test.tsx
+src/屏幕/候选实名认证.module.css
 ```
 
 窄改：
 
 ```text
 src/数据/HTTP招聘数据源.ts
+src/数据/HTTP招聘数据源.test.ts
 src/状态/后端/类型.ts
 src/状态/应用状态.tsx
+src/状态/应用状态.test.ts
 src/状态/后端/会话操作.ts
 src/状态/后端/会话操作.test.ts
 src/屏幕/设置.tsx
