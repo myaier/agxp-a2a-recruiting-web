@@ -426,7 +426,7 @@ function 失败摘要(
 
 - [ ] **Step 4: 实现唯一 summary 读核与已载刷新**
 
-在 `运行列表读` 后、mutation 核前加入：
+先把 `MatchCase操作.ts` 文件头的 mutation 刷新说明改为“确认成功后权威重读 detail、刷新已载列表/历史，并刷新已载同角色 summary；summary 失败不 reject mutation”。随后在 `运行列表读` 后、mutation 核前加入：
 
 ```ts
 async function 运行摘要读(role: P5角色): Promise<void> {
@@ -467,10 +467,6 @@ async function 刷新已载摘要(role: P5角色): Promise<void> {
   if (旧 === undefined || 旧.ownerSubjectId !== 主体标识引用.current) return;
   await 运行摘要读(role);
 }
-
-async function 刷新已载资源(role: P5角色): Promise<void> {
-  await Promise.allSettled([刷新已载列表(role), 刷新已载摘要(role)]);
-}
 ```
 
 在返回的 operation object 的 `设置P5范围` 后加入：
@@ -481,10 +477,11 @@ async function 刷新已载资源(role: P5角色): Promise<void> {
 },
 ```
 
-把 mutation 对账确认后的 `await 刷新已载列表(input.role)` 改为：
+把 mutation 对账确认后的 `await 刷新已载列表(input.role)` 扩展为两条同形、串行且各自不抛的刷新：
 
 ```ts
-await 刷新已载资源(input.role);
+await 刷新已载列表(input.role);
+await 刷新已载摘要(input.role);
 ```
 
 保留 `权威重读详情` 的现有非 401 catch `return`、现有 `栅栏仍当前(fence)` 和现有列表刷新，避免改变 detail/list 失败语义。在明确 POST 成功分支中，让 summary 刷新独立发生在权威 detail 重读之后：
@@ -494,7 +491,7 @@ await 权威重读详情(input.role, input.caseId);
 await 刷新已载摘要(input.role);
 ```
 
-`运行摘要读` 自己吞掉并结算非 401 错误；若 detail 重读触发当前 401，P5 已被清空，后续 `刷新已载摘要` 会零请求返回。结果不确定但权威对账确认成功的分支继续使用 `刷新已载资源(input.role)`，同时刷新既有列表与已载 summary。
+`刷新已载列表` 自身通过 `Promise.allSettled` 隔离列表错误，`运行摘要读` 自己吞掉并结算 summary 非 401 错误；因此不增加只调用一次的组合 helper。若 detail 重读触发当前 401，P5 已被清空，后续 `刷新已载摘要` 会零请求返回。结果不确定但权威对账确认成功的分支按同样两行刷新既有列表与已载 summary。
 
 - [ ] **Step 5: 运行 GREEN、相关回归与提交**
 
@@ -531,7 +528,7 @@ Expected：测试 PASS；既有 mutation/list/detail/401 测试不回归。
 
 - [ ] **Step 1: 把 selector 测试改为精确 summary 合同**
 
-在 `MatchCase统计.test.ts` 保留 `行`、`成功(items,nextCursor)` 和末条 `候选横幅保持既有四态且 owner 不匹配视为未载入` 测试；只删除当前 describe 内前四条 open 统计 `it`（`完整成功窗口…`、`未尽分页…`、`非成功快照为中性值`、`owner 不匹配…`），再加入以下 fixture 与三条精确 summary 测试：
+在 `MatchCase统计.test.ts` 保留 `行`、`成功(items,nextCursor)` 和末条 `候选横幅保持既有四态且 owner 不匹配视为未载入` 测试；只删除当前 describe 内前四条 open 统计 `it`（`完整成功窗口…`、`未尽分页…`、`非成功快照为中性值`、`owner 不匹配…`），把现有 describe 改名为 `describe('MatchCase 统计 selector', () => {`，再把以下 fixture 放在 describe 之前、把三条新 `it` 直接加入这个已改名 describe。不得创建第二个 describe：
 
 ```ts
 import type { P5列表快照, P5摘要快照 } from './类型';
@@ -552,8 +549,7 @@ function 成功摘要(覆盖: Partial<P5摘要快照> = {}): P5摘要快照 {
   };
 }
 
-describe('取P5Open统计', () => {
-  it('成功 summary 返回跨页精确数字和两个终局投影', () => {
+it('成功 summary 返回跨页精确数字和两个终局投影', () => {
     expect(取P5Open统计(成功摘要(), 'sub_1')).toEqual({
       open: '51', anonymousScreening: '17', needsAction: '9', archived: '7', completed: '3',
     });
@@ -586,12 +582,11 @@ describe('取P5Open统计', () => {
       open: '—', anonymousScreening: '—', needsAction: '—', archived: '—', completed: '—',
     });
   });
-});
 ```
 
 - [ ] **Step 2: 把候选“我的”测试桩改为 summary 并冻结文案**
 
-在 `我的.test.tsx` 删除 `P5列表项`、`P5列表快照`、`行` 和 `成功P5快照`，import `P5摘要快照`。稳定 operation spy 改为：
+在 `我的.test.tsx` 把文件头的 Backend MatchCase 说明改为“当前 candidate owner 的 summary 精确统计、挂载刷新、Mock 零 summary operation”；不得再声称读取 unfiltered open 快照。删除 `P5列表项`、`P5列表快照`、`行` 和 `成功P5快照`，import `P5摘要快照`。稳定 operation spy 改为：
 
 ```ts
 const 设置P5范围 = vi.fn();
@@ -696,7 +691,7 @@ it('Backend 规则水合成功后显示当前 MatchCase 与已水合规则数', 
 
 - [ ] **Step 3: 把招聘“我的”测试桩改为 summary 并冻结不新增 MatchCase 文案**
 
-在 `企业我的.test.tsx` 删除 P5 list fixture/import；import `P5摘要快照`，把 `mock加载工作区` 改名为 `mock加载摘要`。让 `置Backend应用状态` 的第三参数为 `P5摘要?: P5摘要快照`，operation 写 `{ 设置P5范围: mock设置P5范围, 加载摘要: mock加载摘要 }`，后端字段写：
+在 `企业我的.test.tsx` 把文件头的 Backend MatchCase 说明改为“当前 recruiter owner 的 summary 精确统计、挂载刷新、在招岗位仍来自 Job、Mock 零 summary operation”；不得再声称读取 unfiltered open 快照或意向达成固定 `—`。删除 P5 list fixture/import；import `P5摘要快照`，把 `mock加载工作区` 改名为 `mock加载摘要`。让 `置Backend应用状态` 的第三参数为 `P5摘要?: P5摘要快照`，operation 写 `{ 设置P5范围: mock设置P5范围, 加载摘要: mock加载摘要 }`，后端字段写：
 
 ```ts
 P5摘要: P5摘要 === undefined ? {} : { recruiter: P5摘要 },
@@ -767,7 +762,15 @@ it('企业候选列表不进入 Backend 展示：旧 owner summary 显示 —', 
 });
 ```
 
-把文件 `beforeEach` 与所有 Mock 零调用断言中的 `mock加载工作区` 全部改为 `mock加载摘要`；改完后 `rg -n 'P5快照|成功P5快照|mock加载工作区|招聘行|P5列表项|P5列表快照' src/屏幕/企业我的.test.tsx` 必须零匹配。现有统计卡点击动作与 Mock 行为保持不变。
+把文件 `beforeEach` 与所有 Mock 零调用断言中的 `mock加载工作区` 全部改为 `mock加载摘要`。现有统计卡点击动作与 Mock 行为保持不变。
+
+`置Mock应用状态` 是独立测试桩；它的 `后端状态` 也必须把旧字段逐字替换为：
+
+```ts
+P5摘要: {},
+```
+
+最终门禁扩展为：`rg -n 'P5快照|成功P5快照|mock加载工作区|招聘行|P5列表项|P5列表快照|P5工作区' src/屏幕/企业我的.test.tsx`，必须零匹配。
 
 - [ ] **Step 4: 运行 RED**
 
@@ -779,7 +782,15 @@ Expected：FAIL，selector 仍要求 `P5列表快照`，页面仍注册 open sco
 
 - [ ] **Step 5: 实现 summary selector**
 
-在 `MatchCase统计.ts` 保留 `P5候选横幅状态`、`取P5候选横幅状态` 与 `P5列表快照` import；加入 `P5摘要快照` 并替换统计部分：
+把 `MatchCase统计.ts` 文件头改为：
+
+```ts
+// Backend MatchCase 精确统计：四个页面共用 summary 投影；只认当前 owner 的成功快照，
+// loading/refresh/error/owner mismatch 一律给 —，成功零明确给 0，绝不回退分页 N/N+。
+// 候选 P5 横幅仍由 open 列表快照驱动，保留既有分页与四态语义。
+```
+
+把 `MatchCase统计.test.ts` 文件头同步改成“summary 精确统计 + open 列表横幅”口径，不得再声称 open 统计来自分页。随后在 `MatchCase统计.ts` 保留 `P5候选横幅状态`、`取P5候选横幅状态` 与 `P5列表快照` import；加入 `P5摘要快照` 并替换统计部分：
 
 ```ts
 export interface P5Open统计 {
@@ -815,9 +826,11 @@ export function 取P5Open统计(
 
 - [ ] **Step 6: 接线两个“我的”页**
 
-在 `我的.tsx` 把 open scope/列表读取块替换为：
+在 `我的.tsx` 把 Backend MatchCase 紧邻注释与 open scope/列表读取块一并替换为：
 
 ```ts
+// Backend MatchCase 真相源：四项统计与候选代理卡数字只读当前 candidate/owner 的
+// 权威 summary。首次加载、每次挂载刷新、失败或 owner 不匹配都显示 —；不回退分页或 Mock。
 const P5Scope = P5范围键.summary('candidate');
 const 当前SubjectId = 后端状态.主体?.last_used_role === 'candidate'
   ? 后端状态.主体.subject_id
@@ -846,9 +859,11 @@ useEffect(() => {
   : '在线 · 正在跟进 ' + 状态.在谈列表.length + ' 个机会'}
 ```
 
-在 `企业我的.tsx` 做同形替换：
+在 `企业我的.tsx` 把 Backend MatchCase 紧邻注释与读取块一并替换为：
 
 ```ts
+// Backend MatchCase 真相源：在谈/待拍板/意向达成只读当前 recruiter/owner 的权威
+// summary；在招岗位继续读 Job。每次挂载刷新，失败时显示 —，不回退分页或 Mock。
 const P5Scope = P5范围键.summary('recruiter');
 const 当前SubjectId = 后端状态.主体?.last_used_role === 'recruiter'
   ? 后端状态.主体.subject_id
@@ -898,7 +913,7 @@ Expected：测试 PASS；页面精确显示大于单页上限的数字且没有 
 
 - [ ] **Step 8: 把两个详情页测试 fixture 改为 summary**
 
-在两个测试文件删除 `P5范围键`、`P5列表项`、`P5列表快照` 和行 fixture，import `P5摘要快照`。候选 fixture：
+把 `代理详情.test.tsx` 与 `企业代理详情.test.tsx` 文件头改为“正在代谈只消费当前 owner 的已载 summary，直达无快照显示 —，Mock 保持 legacy 且零 summary operation”；不得再声称读取 unfiltered open 快照。在两个测试文件删除 `P5范围键`、`P5列表项`、`P5列表快照` 和行 fixture，import `P5摘要快照`。候选 fixture：
 
 ```ts
 function 成功候选摘要(ownerSubjectId = 'sub_1'): P5摘要快照 {
@@ -961,6 +976,29 @@ it('已有 summary 时显示精确 open_total，且详情页不注册、不请�
 
 招聘镜像用例断言 `52` 与现有“正在代谈”。两端保留直达无快照/owner mismatch=`—` 和 Mock legacy 长度测试，并把零 operation 断言改为 `加载摘要`。
 
+`企业代理详情.test.tsx` 的 owner mismatch 用例逐字替换为：
+
+```ts
+it('企业候选列表不进入 Backend 展示：无快照或 owner 不匹配显示 —', () => {
+  置应用状态({
+    模式: 'backend',
+    企业候选列表: [{ 编号: 'A-01' }, { 编号: 'A-02' }, { 编号: 'A-03' }],
+    P5摘要: 成功招聘摘要('sub_old'),
+    主体: { ...BFF主体样本, subject_id: 'sub_new', last_used_role: 'recruiter' },
+  });
+  render(<MemoryRouter><企业代理详情 /></MemoryRouter>);
+  expect(screen.getByText('—')).toBeTruthy();
+  expect(screen.queryByText('3')).toBeNull();
+  expect(screen.queryByText('52')).toBeNull();
+});
+```
+
+完成两个测试桩迁移后执行以下静态门禁，必须零匹配：
+
+```bash
+rg -n 'P5快照|成功P5快照|加载工作区|招聘行|function 行|P5列表项|P5列表快照|P5范围键' src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx
+```
+
 - [ ] **Step 9: 运行代理详情 RED**
 
 ```bash
@@ -971,16 +1009,20 @@ Expected：FAIL，生产页仍从 `P5工作区[P5范围键.open(...)]` 取值。
 
 - [ ] **Step 10: 实现最小消费者迁移**
 
-在 `代理详情.tsx` 删除 `P5范围键` import，只替换 selector 调用：
+在 `代理详情.tsx` 删除 `P5范围键` import，把紧邻 Backend MatchCase 注释与 selector 调用一并替换为：
 
 ```ts
+// Backend MatchCase 真相源：“正在代谈”只消费当前 candidate/owner 已载的权威 summary；
+// 本详情页不注册、不请求，直达无快照或 owner 不匹配显示 —，Mock 保持 legacy 长度。
 const Backend统计 = 取P5Open统计(后端状态.P5摘要.candidate, 当前SubjectId);
 const 在谈数 = 是后端 ? Backend统计.open : 状态.在谈列表.length;
 ```
 
-在 `企业代理详情.tsx` 删除 `P5范围键` import，只替换 selector 调用：
+在 `企业代理详情.tsx` 删除 `P5范围键` import，把紧邻 Backend MatchCase 注释与 selector 调用一并替换为：
 
 ```ts
+// Backend MatchCase 真相源：“正在代谈”只消费当前 recruiter/owner 已载的权威 summary；
+// 本详情页不注册、不请求，直达无快照或 owner 不匹配显示 —，Mock 保持 legacy 长度。
 const Backend统计 = 取P5Open统计(后端状态.P5摘要.recruiter, 当前SubjectId);
 const 在谈数 = 是后端 ? Backend统计.open : 状态.企业候选列表.length;
 ```
