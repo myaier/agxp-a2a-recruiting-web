@@ -31,6 +31,7 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
 import type { 联系方式型 } from '../数据/类型';
+import { 压成头像 } from '../组件/头像处理';
 
 /** 手机号打码:前三后二,中间六星(138 0217 6021 → 138******21) */
 function 打码手机(号: string): string {
@@ -45,35 +46,14 @@ function 打码微信(号: string): string {
   return `${号.slice(0, 3)}***${号.slice(-2)}`;
 }
 
-/** 把用户选的照片压成 256×256 居中裁切的 JPEG dataURL(与 添加头像/招聘名片 同一压法) */
-function 压成头像(文件: File): Promise<string> {
-  return new Promise((成, 败) => {
-    const 读 = new FileReader();
-    读.onerror = () => 败(new Error('读取失败'));
-    读.onload = () => {
-      const 图 = new Image();
-      图.onerror = () => 败(new Error('不是可用的图片'));
-      图.onload = () => {
-        const 边 = 256;
-        const 画布 = document.createElement('canvas');
-        画布.width = 边;
-        画布.height = 边;
-        const 笔 = 画布.getContext('2d')!;
-        const 源边 = Math.min(图.width, 图.height);
-        笔.drawImage(图, (图.width - 源边) / 2, (图.height - 源边) / 2, 源边, 源边, 0, 0, 边, 边);
-        成(画布.toDataURL('image/jpeg', 0.85));
-      };
-      图.src = String(读.result);
-    };
-    读.readAsDataURL(文件);
-  });
-}
+const 头像字节上限 = 10 * 1024 * 1024;
 
 export default function 个人信息() {
   const { 返回, 跳转 } = use导航();
   const { 状态, 派发, 操作, 数据源模式, 后端状态 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
   const 文件框 = useRef<HTMLInputElement>(null);
+  const [头像保存中, 设头像保存中] = useState(false);
   const 真名 = 状态.基本信息.真名;
 
   // Backend 进屏按需读取凭证一次（设置页同款：零会话请求、零账号范围登记；
@@ -99,11 +79,36 @@ export default function 个人信息() {
     const 文件 = 事件.target.files?.[0];
     事件.target.value = '';
     if (!文件) return;
+    if (文件.type !== 'image/png' && 文件.type !== 'image/jpeg') {
+      轻提示('请选择 JPG 或 PNG 图片');
+      return;
+    }
+    if (文件.size > 头像字节上限) {
+      轻提示('图片不超过 10 MiB');
+      return;
+    }
+    设头像保存中(true);
     try {
-      派发({ 型: '存求职头像', 图: await 压成头像(文件) });
+      if (是后端) await 操作.保存候选头像(文件);
+      else 派发({ 型: '存求职头像', 图: await 压成头像(文件) });
       轻提示('头像已更新');
-    } catch {
-      轻提示('这张图片读不出来，换一张试试');
+    } catch (错误) {
+      轻提示(是后端 ? 取后端错误文案(错误) : '这张图片读不出来，换一张试试');
+    } finally {
+      设头像保存中(false);
+    }
+  }
+
+  async function 移除头像() {
+    if (!是后端 || 头像保存中) return;
+    设头像保存中(true);
+    try {
+      await 操作.删除候选头像();
+      轻提示('头像已移除');
+    } catch (错误) {
+      轻提示(取后端错误文案(错误));
+    } finally {
+      设头像保存中(false);
     }
   }
 
@@ -138,10 +143,10 @@ export default function 个人信息() {
 
       <滚动区 样式覆盖={{ padding: '6px 22px 0' }}>
         {/* ── 头像行:标签在左,预览圆在右,整行可点换头像 ── */}
-        <button className={`${样式.头像条目} 可点`} onClick={() => 文件框.current?.click()}>
+        <button className={`${样式.头像条目} 可点`} onClick={() => 文件框.current?.click()} disabled={头像保存中}>
           <span className={样式.条目标签}>头像</span>
           <span className={样式.头像位}>
-            {状态.求职头像?.startsWith('data:image/') ? (
+            {状态.求职头像 ? (
               <img className={样式.头像图} src={状态.求职头像} alt="" />
             ) : (
               <span className={样式.头像字}>{真名.charAt(0) || '头'}</span>
@@ -158,6 +163,11 @@ export default function 个人信息() {
           style={{ display: 'none' }}
           onChange={选了照片}
         />
+        {是后端 && 状态.求职头像 ? (
+          <button className={`${样式.移除头像} 可点`} onClick={移除头像} disabled={头像保存中}>
+            移除头像
+          </button>
+        ) : null}
 
         <裸行编辑 标签="姓名" 值={真名} 收笔={存姓名} />
 

@@ -29,6 +29,8 @@ import type {
   BFF附件简历库,
   BFF简历预填建议,
   BFFJD导入,
+  BFFAgent设置,
+  BFFAgent设置补丁,
 } from '../../数据/BFF契约';
 import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
@@ -76,6 +78,8 @@ export interface 后端状态 extends P4发现状态, P5MatchCase状态, P7会�
    * 进行中 只允许从 未开始|失败 推进，已 成功 的域在刷新期间不得降级（设计 §6）。
    */
   Agent规则水合: Record<BFF角色, Agent规则角色水合状态>;
+  /** 双端「哪些事先问你」权威快照；可选只为兼容旧测试桩。 */
+  Agent设置?: Record<BFF角色, Agent设置快照>;
   // ── P2：候选人附件简历库的权威快照（0–3 行 + limits）；未登录 / 已清理时为 null。 ──
   附件简历库: BFF附件简历库 | null;
   // ── P0 修复 Task 1：招聘方 onboarding 的两个闭合运行时阶段 ──
@@ -125,6 +129,17 @@ export type Agent规则水合阶段 = '未开始' | '进行中' | '成功' | '�
 export interface Agent规则角色水合状态 {
   rules: Agent规则水合阶段;
   proposals: Agent规则水合阶段;
+}
+
+export interface Agent设置快照 {
+  阶段: '未开始' | '进行中' | '成功' | '失败';
+  设置: BFFAgent设置 | null;
+  错误: string | null;
+}
+
+export function 创建空Agent设置状态(): Record<BFF角色, Agent设置快照> {
+  const empty = (): Agent设置快照 => ({ 阶段: '未开始', 设置: null, 错误: null });
+  return { candidate: empty(), recruiter: empty() };
 }
 
 // ── P4：发现推荐域的 raw scope 快照（仅 Backend；Mock 发现页继续走 归约发现推荐，不触达这里）──
@@ -550,6 +565,9 @@ export interface 会话操作 {
 }
 
 export interface 候选操作 {
+  加载候选账号档案(): Promise<void>;
+  保存候选头像(file: File): Promise<void>;
+  删除候选头像(): Promise<void>;
   保存简历(next: 页面简历写入): Promise<void>;
   保存个人优势(text: string): Promise<void>;
   保存意向(draft: 意向草稿型): Promise<void>;
@@ -638,6 +656,10 @@ export interface 发现推荐操作 {
 }
 
 export interface Agent规则操作 {
+  /** 按当前登录角色读取权威 Agent 设置；成功后水合页面双选值。 */
+  加载Agent设置(force?: boolean): Promise<void>;
+  /** 服务端先行 + If-Match；冲突只重读权威值，绝不自动重放修改。 */
+  保存Agent设置(patch: BFFAgent设置补丁): Promise<void>;
   /** 对当前角色重跑完整 水合Agent规则角色数据（Rules + interpreting + ready，更新两个阶段）。 */
   刷新Agent规则(): Promise<void>;
   /** candidate 必填 作用域；返回服务端 proposal_id。Mock 模式派发现有同步动作并返回合成空串。 */

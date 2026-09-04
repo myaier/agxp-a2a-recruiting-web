@@ -5,6 +5,7 @@
 import { BFF错误 } from '../../数据/HTTP客户端';
 import { 从BFF简历 } from '../../数据/后端映射';
 import type { 页面简历快照 } from '../../数据/招聘数据源类型';
+import type { BFF候选账号档案 } from '../../数据/招聘数据源/候选账号';
 import type { 后端操作依赖, 候选操作 } from './类型';
 import { 清账号状态 } from './会话操作';
 
@@ -30,6 +31,17 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
     P4范围代际: deps.P4范围代际, P4幂等意图: deps.P4幂等意图, P4可见范围: deps.P4可见范围,
     候选预填代际: deps.候选预填代际, 候选预填读取锁: deps.候选预填读取锁, 候选预填恢复: deps.候选预填恢复,
   };
+
+  const 提交候选账号档案 = (档案: BFF候选账号档案) => {
+    const 图 = 档案.avatar_url === null ? null : `${档案.avatar_url}?v=${档案.revision}`;
+    派发({ 型: '存求职头像', 图 });
+  };
+
+  async function 重读候选账号档案(): Promise<BFF候选账号档案> {
+    const 档案 = await 后端!.读取候选账号档案();
+    提交候选账号档案(档案);
+    return 档案;
+  }
 
   /** 统一处理写操作错误：401 清会话；409 用错误携带的权威简历水合；其余原样抛出。 */
   function 处理写入错误(错误: unknown): never {
@@ -80,6 +92,83 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
   }
 
   return {
+    async 加载候选账号档案() {
+      if (!是后端 || !后端) return;
+      if (锁.current.has('候选账号档案读取')) return;
+      锁.current.add('候选账号档案读取');
+      const 主体 = 主体标识引用.current;
+      const 代际 = 会话代际.current;
+      try {
+        const 档案 = await 后端.读取候选账号档案();
+        if (主体标识引用.current !== 主体 || 会话代际.current !== 代际) return;
+        提交候选账号档案(档案);
+      } catch (错误) {
+        if (错误 instanceof BFF错误 && 错误.status === 401 &&
+            主体标识引用.current === 主体 && 会话代际.current === 代际) {
+          清账号状态(账号清理依赖);
+        }
+        throw 错误;
+      } finally {
+        锁.current.delete('候选账号档案读取');
+      }
+    },
+    async 保存候选头像(file) {
+      if (!是后端 || !后端) return;
+      if (锁.current.has('候选头像写入')) return;
+      锁.current.add('候选头像写入');
+      let before: BFF候选账号档案 | null = null;
+      try {
+        before = await 重读候选账号档案();
+        const after = await 后端.替换候选头像(file, before.revision);
+        提交候选账号档案(after);
+      } catch (错误) {
+        if (错误 instanceof BFF错误 && 错误.status === 401) {
+          清账号状态(账号清理依赖);
+        } else if (错误 instanceof BFF错误 &&
+          ((错误.status === 409 && 错误.code === 'version_conflict') ||
+           (错误.status === 503 && 错误.code === 'operation_outcome_unknown'))) {
+          try {
+            const current = await 重读候选账号档案();
+            if (错误.status === 503 && before !== null &&
+                current.revision > before.revision && current.avatar_url !== null) return;
+          } catch {
+            // 重读失败时保留原始写错误，避免用次生错误误导用户。
+          }
+        }
+        throw 错误;
+      } finally {
+        锁.current.delete('候选头像写入');
+      }
+    },
+    async 删除候选头像() {
+      if (!是后端 || !后端) return;
+      if (锁.current.has('候选头像写入')) return;
+      锁.current.add('候选头像写入');
+      let before: BFF候选账号档案 | null = null;
+      try {
+        before = await 重读候选账号档案();
+        if (before.avatar_url === null) return;
+        const after = await 后端.删除候选头像(before.revision);
+        提交候选账号档案(after);
+      } catch (错误) {
+        if (错误 instanceof BFF错误 && 错误.status === 401) {
+          清账号状态(账号清理依赖);
+        } else if (错误 instanceof BFF错误 &&
+          ((错误.status === 409 && 错误.code === 'version_conflict') ||
+           (错误.status === 503 && 错误.code === 'operation_outcome_unknown'))) {
+          try {
+            const current = await 重读候选账号档案();
+            if (错误.status === 503 && before !== null &&
+                current.revision > before.revision && current.avatar_url === null) return;
+          } catch {
+            // 同上传：权威重读失败时仍抛原始写错误。
+          }
+        }
+        throw 错误;
+      } finally {
+        锁.current.delete('候选头像写入');
+      }
+    },
     async 保存简历(next) {
       if (!是后端 || !后端) {
         派发({

@@ -457,6 +457,7 @@ interface P4CandidateJob形 {
   onsite_days_per_week: number | null;
   experience_requirement: string;
   education_requirement: string;
+  structured_requirements_confirmed: boolean;
   hard_requirements: {
     alternate_weekend_work: 'required' | 'not_required' | 'unknown';
     outsourcing_only: 'required' | 'not_required' | 'unknown';
@@ -674,6 +675,7 @@ function P4CandidateJob(覆盖: Partial<P4CandidateJob形> = {}): P4CandidateJob
     onsite_days_per_week: null,
     experience_requirement: 'three_to_five_years',
     education_requirement: 'bachelor',
+    structured_requirements_confirmed: true,
     hard_requirements: {
       alternate_weekend_work: 'unknown',
       outsourcing_only: 'unknown',
@@ -975,6 +977,7 @@ interface P1C岗位形 {
   onsite_days_per_week: number | null;
   experience_requirement: string;
   education_requirement: string;
+  structured_requirements_confirmed: boolean;
   description: string;
   requirements: string;
   keywords: string[];
@@ -1089,6 +1092,7 @@ function P1C岗位(覆盖: Partial<P1C岗位形> = {}): P1C岗位形 {
     onsite_days_per_week: 4,
     experience_requirement: 'none',
     education_requirement: 'none',
+    structured_requirements_confirmed: true,
     description: 'Fixture 岗位描述',
     requirements: 'Fixture 岗位要求',
     keywords: [],
@@ -3673,6 +3677,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         onsite_days_per_week: number | null;
         experience_requirement: string;
         education_requirement: string;
+        structured_requirements_confirmed: boolean;
         description: string;
         requirements: string;
         keywords: string[];
@@ -3708,6 +3713,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         onsite_days_per_week: 换.onsite_days_per_week,
         experience_requirement: 换.experience_requirement,
         education_requirement: 换.education_requirement,
+        structured_requirements_confirmed: 换.structured_requirements_confirmed,
         description: 换.description,
         requirements: 换.requirements,
         keywords: 换.keywords,
@@ -3754,6 +3760,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         onsite_days_per_week: number | null;
         experience_requirement: string;
         education_requirement: string;
+        structured_requirements_confirmed: boolean;
         hard_requirements?: P3硬性条件形;
         description: string;
         requirements: string;
@@ -3771,6 +3778,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       存量.onsite_days_per_week = 补丁.onsite_days_per_week;
       存量.experience_requirement = 补丁.experience_requirement;
       存量.education_requirement = 补丁.education_requirement;
+      存量.structured_requirements_confirmed = 补丁.structured_requirements_confirmed;
       存量.hard_requirements = { ...P3全未知硬性条件(), ...补丁.hard_requirements };
       存量.description = 补丁.description;
       存量.requirements = 补丁.requirements;
@@ -9435,6 +9443,7 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
     await page.getByLabel('薪资上限').fill('65');
     await page.getByRole('button', { name: /年薪月数/ }).click();
     await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ }).check();
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
     await expect(page.getByText('请从候选城市中选择')).toBeVisible();
     expect(fixture.mutations.find((项) => 项.path === '/api/v1/recruiter/jobs')).toBeUndefined();

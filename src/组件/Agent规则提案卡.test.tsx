@@ -64,7 +64,7 @@ describe('Agent规则提案卡', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('failed 显示固定失败文案，关闭走 关闭失败', async () => {
+  it('failed 按公开失败码显示可理解文案，关闭走 关闭失败', async () => {
     const user = userEvent.setup();
     const 关闭失败 = vi.fn();
     render(

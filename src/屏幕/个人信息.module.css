@@ -49,6 +49,16 @@
   align-items: center;
   justify-content: center;
 }
+.移除头像 {
+  margin: 8px 0 2px auto;
+  display: block;
+  color: var(--意向);
+  font-size: 13px;
+}
+.头像条目:disabled,
+.移除头像:disabled {
+  opacity: 0.55;
+}
 
 /* ── 纯展示行:上标签下值,无尖括号 ── */
 .展示条目 {

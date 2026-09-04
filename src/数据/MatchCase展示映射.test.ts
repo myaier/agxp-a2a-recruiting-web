@@ -318,6 +318,18 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
       : null);
   });
 
+  it('attention_required 展示安全失败文案，不给未开放的重试入口', () => {
+    const 视图 = 断言正常(映射P5详情(造详情({
+      state: 造状态({
+        status: 'attention_required',
+        step: 'candidate_evaluation',
+        agentAttention: { code: 'agent_result_invalid', retryable: false },
+      }),
+    })));
+    expect(视图.注意说明).toBe('本次 AI 结果无法安全用于推进 Case');
+    expect(视图.actions).toEqual([]);
+  });
+
   it('completed handoff is preparation-only', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
       state: 造行状态('completed', 'intent_confirmation', 'passed', 'handoff_pending'),

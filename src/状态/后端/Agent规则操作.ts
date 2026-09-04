@@ -17,7 +17,14 @@
 // （Mock 页面立即关闭，从不轮询提案卡），accept/dismiss 在 Mock 下是 no-op。
 
 import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
-import type { BFFAgent规则, BFFAgent规则提案, BFFAgent规则作用域, BFF角色 } from '../../数据/BFF契约';
+import type {
+  BFFAgent规则,
+  BFFAgent规则提案,
+  BFFAgent规则作用域,
+  BFFAgent设置,
+  BFFAgent设置补丁,
+  BFF角色,
+} from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { 映射候选Agent规则, 映射招聘Agent规则 } from '../../数据/Agent规则映射';
 import type { 后端状态, 后端操作依赖, 可变引用, Agent规则操作, Agent规则水合阶段, Agent规则角色水合状态 } from './类型';
@@ -833,7 +840,116 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     }
   }
 
+  function 提交Agent设置(role: BFF角色, 设置: BFFAgent设置): void {
+    设后端状态((旧) => ({
+      ...旧,
+      Agent设置: {
+        ...(旧.Agent设置 ?? {}),
+        [role]: { 阶段: '成功', 设置, 错误: null },
+      } as NonNullable<后端状态['Agent设置']>,
+    }));
+    const 超授权让步 = 设置.out_of_authority_concession === 'ask_first' ? '先问我' : '直接回绝';
+    if (role === 'candidate' && 'material_submission' in 设置) {
+      派发({
+        型: '设先问偏好',
+        端: '求职',
+        偏好: {
+          递交材料: 设置.material_submission === 'ask_first' ? '先问我' : '自动发送',
+          超授权让步,
+        },
+      });
+    } else if (role === 'recruiter') {
+      派发({ 型: '设先问偏好', 端: '企业', 偏好: { 超授权让步 } });
+    }
+  }
+
+  function 设置栅栏仍有效(role: BFF角色, subjectId: string, generation: number): boolean {
+    return 仍是当前会话(deps, subjectId, generation) && 当前角色(后端状态引用.current) === role;
+  }
+
+  async function 读并提交Agent设置(
+    role: BFF角色,
+    subjectId: string,
+    generation: number,
+  ): Promise<BFFAgent设置 | null> {
+    const 权威 = await 后端!.读取Agent设置(role);
+    if (!设置栅栏仍有效(role, subjectId, generation)) return null;
+    提交Agent设置(role, 权威);
+    return 权威;
+  }
+
+  async function 加载Agent设置(force = false): Promise<void> {
+    if (!是后端 || !后端) return;
+    const role = 当前角色(后端状态引用.current);
+    const subjectId = 主体标识引用.current;
+    if (!role || !subjectId) return;
+    const 当前 = 后端状态引用.current.Agent设置?.[role];
+    if (!force && (当前?.阶段 === '进行中' || 当前?.阶段 === '成功')) return;
+    const key = `Agent设置:读:${role}`;
+    if (锁.current.has(key)) return;
+    锁.current.add(key);
+    const generation = 会话代际.current;
+    设后端状态((旧) => ({
+      ...旧,
+      Agent设置: {
+        ...(旧.Agent设置 ?? {}),
+        [role]: { 阶段: '进行中', 设置: 旧.Agent设置?.[role]?.设置 ?? null, 错误: null },
+      } as NonNullable<后端状态['Agent设置']>,
+    }));
+    try {
+      await 读并提交Agent设置(role, subjectId, generation);
+    } catch (error) {
+      if (!设置栅栏仍有效(role, subjectId, generation)) return;
+      if (是401原因(error)) 清账号状态(账号清理依赖);
+      else {
+        设后端状态((旧) => ({
+          ...旧,
+          Agent设置: {
+            ...(旧.Agent设置 ?? {}),
+            [role]: {
+              阶段: '失败',
+              设置: 旧.Agent设置?.[role]?.设置 ?? null,
+              错误: 取后端错误文案(error),
+            },
+          } as NonNullable<后端状态['Agent设置']>,
+        }));
+      }
+    } finally {
+      锁.current.delete(key);
+    }
+  }
+
+  async function 保存Agent设置(patch: BFFAgent设置补丁): Promise<void> {
+    if (!是后端 || !后端) return;
+    const role = 当前角色(后端状态引用.current);
+    const subjectId = 主体标识引用.current;
+    const 快照 = role ? 后端状态引用.current.Agent设置?.[role]?.设置 : null;
+    if (!role || !subjectId || !快照) throw new BFF错误(0, 'settings_not_loaded', '设置尚未加载');
+    const key = `Agent设置:写:${role}`;
+    if (锁.current.has(key)) return;
+    锁.current.add(key);
+    const generation = 会话代际.current;
+    try {
+      const 更新 = await 后端.修改Agent设置(role, patch, 快照.revision);
+      if (设置栅栏仍有效(role, subjectId, generation)) 提交Agent设置(role, 更新);
+    } catch (error) {
+      if (设置栅栏仍有效(role, subjectId, generation) && 是401原因(error)) {
+        清账号状态(账号清理依赖);
+      } else if (
+        设置栅栏仍有效(role, subjectId, generation) &&
+        error instanceof BFF错误 && error.status === 409
+      ) {
+        try { await 读并提交Agent设置(role, subjectId, generation); } catch { /* 原始冲突优先 */ }
+      }
+      throw error;
+    } finally {
+      锁.current.delete(key);
+    }
+  }
+
   return {
+    加载Agent设置,
+    保存Agent设置,
     刷新Agent规则,
     创建Agent规则提案,
     创建Agent规则替换提案,

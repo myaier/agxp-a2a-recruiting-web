@@ -583,7 +583,15 @@ describe('企业代理设置 · Backend 招聘方页', () => {
 });
 
 describe('企业代理设置 · Mock 原型分支', () => {
-  it('Mock mode shows choice rows without switches and adds through the same composer', async () => {
+  it('空规则时提交键不可用', async () => {
+    const user = userEvent.setup();
+    renderRecruiterRules({ mode: 'mock' });
+    await 挂载到稳定();
+    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    expect((screen.getByRole('button', { name: '提交给AI代理理解' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('Mock mode shows choice rows without switches and confirms before adding', async () => {
     const user = userEvent.setup();
     const 视图 = renderRecruiterRules({ mode: 'mock' });
     // 2026-08-31 定稿：Mock 规则不渲染开关（规则来自叮嘱与选择，不是要维护的配置）
@@ -600,8 +608,12 @@ describe('企业代理设置 · Mock 原型分支', () => {
     expect(screen.queryByLabelText('规则范围')).toBeNull();
     await user.type(screen.getByPlaceholderText(/到岗超过/), '只招上海本地的候选');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
-    expect(视图.操作.创建Agent规则提案).toHaveBeenCalledTimes(1);
+    expect(视图.操作.创建Agent规则提案).not.toHaveBeenCalled();
     expect(screen.getByText('只招上海本地的候选')).toBeTruthy();
-    expect(screen.queryByText('AI代理正在理解这条规则…')).toBeNull();
+    expect(screen.getByRole('button', { name: '确认规则' })).toBeTruthy();
+    expect(screen.getByText('3 条生效')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '确认规则' }));
+    expect(screen.queryByRole('button', { name: '确认规则' })).toBeNull();
+    expect(screen.getByText('4 条生效')).toBeTruthy();
   });
 });

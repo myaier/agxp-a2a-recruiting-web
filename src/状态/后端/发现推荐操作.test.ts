@@ -1023,6 +1023,9 @@ describe('P4 闭合错误文案', () => {
       .toBe('本次评估未完成，不代表候选或岗位不合适');
     expect(P4委托回执文案(回执({ state: 'needs_user', refusal_code: null, failure_code: null })))
       .toBe('需要你处理，请查看当前可用入口');
+    expect(P4委托回执文案(回执({
+      state: 'failed', refusal_code: null, failure_code: 'delegation_agent_unavailable',
+    }))).toBe('AI 服务暂时不可用，本次没有创建 Case');
   });
 });
 

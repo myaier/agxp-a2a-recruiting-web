@@ -5,7 +5,7 @@
 //
 // 数据流分两条：
 // · Mock：读全局状态里的 全局规则 / 意向级规则（不能本地 useState，「往来记录 → 记成规则」
-//   新增的那条要真的出现在这里）；手动添加经 操作 的 Mock 分支派发既有同步动作，保存即关闭。
+//   新增的那条要真的出现在这里）；手动新增/编辑先生成本地确认卡，明确确认后才派发长期规则。
 // · Backend（P6）：一切展示先过角色水合门控 ——
 //   rules 成功前不显示任何规则行/计数；proposals 也成功后才给 创建/编辑/确认/放弃 控件与提案卡；
 //   任一域 失败 出「规则加载失败，重试」（重试跑完整 刷新Agent规则 水合）；
@@ -15,7 +15,7 @@
 //
 // 结构：提示条 →（加载壳/重试）→ 提案卡组 → 全局规则分组卡 → 意向分组卡 → 手动添加 → 尾注。
 
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import 样式 from './规则库.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { 先问选择行 } from '../组件/先问选择行';
@@ -31,6 +31,11 @@ import type { Agent规则角色水合状态 } from '../状态/后端/类型';
 import type { 规则 } from '../数据/类型';
 
 const 未水合: Agent规则角色水合状态 = { rules: '未开始', proposals: '未开始' };
+
+type Mock候选提案 = {
+  dto: BFFAgent规则提案;
+  动作: { 型: '新增'; 文本: string } | { 型: '替换'; 编号: string; 文本: string };
+};
 
 /** actionable 提案展示序：created_at 早的在前，缺席的排最后，同刻按 proposal_id 稳定排序。 */
 function 提案展示序(提案们: BFFAgent规则提案[]): BFFAgent规则提案[] {
@@ -67,6 +72,28 @@ export default function 规则库() {
     roleHydration.proposals === '未开始' || roleHydration.proposals === '进行中'
   );
   const 是Backend = 数据源模式 === 'backend';
+  const Agent设置快照 = role === null ? null : 后端状态.Agent设置?.[role] ?? null;
+  const Agent设置已就绪 = !是Backend || Agent设置快照?.阶段 === '成功';
+  const [Agent设置保存中, 设Agent设置保存中] = useState(false);
+
+  useEffect(() => {
+    if (是Backend && role === 'candidate') void 操作.加载Agent设置();
+  }, [是Backend, role, 操作]);
+
+  const 保存候选Agent设置 = async (
+    patch: { material_submission?: 'ask_first' | 'auto_send'; out_of_authority_concession?: 'ask_first' | 'reject' },
+  ) => {
+    if (!是Backend) return;
+    设Agent设置保存中(true);
+    try {
+      await 操作.保存Agent设置(patch);
+      轻提示('设置已保存');
+    } catch {
+      轻提示('设置没有保存成功，请重试');
+    } finally {
+      设Agent设置保存中(false);
+    }
+  };
 
   // 手动添加：折叠态是一条虚线按钮，点开后原地变成输入行（不另开弹层，减少一次跳转）
   const [添加中, 设添加中] = useState(false);
@@ -81,6 +108,8 @@ export default function 规则库() {
   const [删除中, 设删除中] = useState(false);
   // 提案卡的忙：只圈住正在接受/放弃的那一张卡（failed 卡的关闭永远可用）
   const [卡忙编号, 设卡忙编号] = useState<string | null>(null);
+  const [Mock提案们, 设Mock提案们] = useState<Mock候选提案[]>([]);
+  const Mock提案序 = useRef(0);
   // failed 卡的本地关闭：提案表里仍是 failed，页面先收起，原草稿保留给用户再次明确提交
   const [已关失败卡, 设已关失败卡] = useState<string[]>([]);
   // §7.3：公开的 Proposal DTO 不带正文/范围 —— 创建成功后把原草稿寄存进 sessionStorage
@@ -107,9 +136,11 @@ export default function 规则库() {
   const 全部规则 = [...状态.全局规则, ...状态.意向级规则];
   const 条数 = 全部规则.filter((条) => 条.生效).length;
 
-  // actionable 提案：Backend 按角色读 raw 字典；Mock 没有提案卡
+  // actionable 提案：Backend 按角色读 raw 字典；Mock 用同一确认卡模拟“理解后确认”。
   const 可见提案 = 提案展示序(
-    role === null ? [] : Object.values(role === 'candidate' ? 后端状态.候选规则提案 : 后端状态.招聘规则提案),
+    是Backend
+      ? (role === null ? [] : Object.values(role === 'candidate' ? 后端状态.候选规则提案 : 后端状态.招聘规则提案))
+      : Mock提案们.map((条) => 条.dto),
   ).filter((提案) => !(提案.state === 'failed' && 已关失败卡.includes(提案.proposal_id)));
 
   // 页面挂载且提案水合就绪才轮询 interpreting（节拍/单飞/卸载清理都归钩子）
@@ -126,12 +157,28 @@ export default function 规则库() {
   // 提交手动添加：candidate 必须点名范围（默认 global）；失败保留草稿与范围供再次明确提交
   const 提交新规则 = async () => {
     const 内容 = 新规则文本.trim();
-    if (!内容 || 提交中) return;
+    if (!内容) {
+      轻提示('请先写下希望AI代理遵守的规则');
+      return;
+    }
+    if (提交中) return;
     const 作用域: BFFAgent规则作用域 = 选范围 === ''
       ? { type: 'global' }
       : { type: 'intention', intention_id: 选范围 };
     设提交中(true);
     try {
+      if (!是Backend) {
+        Mock提案序.current += 1;
+        const proposal_id = `mock-candidate-${Mock提案序.current}`;
+        设Mock提案们((旧) => [...旧, {
+          dto: { proposal_id, state: 'ready', normalized_text: 内容, consequence: 'advisory' },
+          动作: { 型: '新增', 文本: 内容 },
+        }]);
+        设新规则文本('');
+        设选范围('');
+        设添加中(false);
+        return;
+      }
       const 回执编号 = await 操作.创建Agent规则提案({ 文本: 内容, 作用域 });
       // 成功才寄存草稿并收起输入行；idempotency_conflict 等失败一律保留现场，不伪造成功
       if (回执编号) {
@@ -171,6 +218,16 @@ export default function 规则库() {
     if (!内容) return;
     设提交编辑中(true);
     try {
+      if (!是Backend) {
+        Mock提案序.current += 1;
+        const proposal_id = `mock-candidate-${Mock提案序.current}`;
+        设Mock提案们((旧) => [...旧, {
+          dto: { proposal_id, state: 'ready', normalized_text: 内容, consequence: 'advisory' },
+          动作: { 型: '替换', 编号: 编辑中编号, 文本: 内容 },
+        }]);
+        设编辑中编号(null);
+        return;
+      }
       await 操作.创建Agent规则替换提案(编辑中编号, 内容);
       设编辑中编号(null);
     } catch (错误) {
@@ -200,6 +257,16 @@ export default function 规则库() {
   const 处理接受 = async (编号: string) => {
     设卡忙编号(编号);
     try {
+      if (!是Backend) {
+        const 提案 = Mock提案们.find((条) => 条.dto.proposal_id === 编号);
+        if (提案?.动作.型 === '新增') {
+          派发({ 型: '新增规则', 内容: 提案.动作.文本, 来源: '你手动添加 · 刚刚' });
+        } else if (提案?.动作.型 === '替换') {
+          派发({ 型: '改规则', 编号: 提案.动作.编号, 内容: 提案.动作.文本 });
+        }
+        设Mock提案们((旧) => 旧.filter((条) => 条.dto.proposal_id !== 编号));
+        return;
+      }
       await 操作.接受Agent规则提案(编号);
       删Agent规则草稿(编号);
     } catch (错误) {
@@ -211,6 +278,10 @@ export default function 规则库() {
   const 处理放弃 = async (编号: string) => {
     设卡忙编号(编号);
     try {
+      if (!是Backend) {
+        设Mock提案们((旧) => 旧.filter((条) => 条.dto.proposal_id !== 编号));
+        return;
+      }
       await 操作.放弃Agent规则提案(编号);
       删Agent规则草稿(编号);
     } catch (错误) {
@@ -234,19 +305,32 @@ export default function 规则库() {
         <div className={样式.授权组}>
           <div className={样式.分组标}>哪 些 事 先 问 你</div>
           <div className={样式.授权卡}>
+            {是Backend && Agent设置快照?.阶段 !== '成功' ? (
+              Agent设置快照?.阶段 === '失败'
+                ? <button className={`${样式.重试键} 可点`} onClick={() => { void 操作.加载Agent设置(true); }}>设置加载失败，重试</button>
+                : <div className={样式.加载壳} role="status">AI代理设置加载中</div>
+            ) : null}
             <先问选择行
               标题="发送正式简历"
               注="带姓名与联系方式的 PDF 原件"
               值={状态.求职先问偏好.递交材料}
               选项={['先问我', '自动发送'] as const}
-              选择={(值) => 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 递交材料: 值 } })}
+              选择={(值) => {
+                if (!是Backend) 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 递交材料: 值 } });
+                else void 保存候选Agent设置({ material_submission: 值 === '先问我' ? 'ask_first' : 'auto_send' });
+              }}
+              禁用={!Agent设置已就绪 || Agent设置保存中}
             />
             <先问选择行
               标题="对方要的让步超出授权"
               注="比如作息折中、提前到岗"
               值={状态.求职先问偏好.超授权让步}
               选项={['先问我', '直接回绝'] as const}
-              选择={(值) => 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 超授权让步: 值 } })}
+              选择={(值) => {
+                if (!是Backend) 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 超授权让步: 值 } });
+                else void 保存候选Agent设置({ out_of_authority_concession: 值 === '先问我' ? 'ask_first' : 'reject' });
+              }}
+              禁用={!Agent设置已就绪 || Agent设置保存中}
               末行
             />
           </div>
@@ -413,7 +497,7 @@ export default function 规则库() {
                   >
                     取消
                   </button>
-                  <button className={`${样式.确认添加} 可点`} disabled={提交中} onClick={() => { void 提交新规则(); }}>
+                  <button className={`${样式.确认添加} 可点`} disabled={提交中 || 新规则文本.trim() === ''} onClick={() => { void 提交新规则(); }}>
                     提交给AI代理理解
                   </button>
                 </div>

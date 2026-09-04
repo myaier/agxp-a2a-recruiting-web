@@ -14,6 +14,9 @@ function 创建场景() {
   const 后端 = {
     读取简历: vi.fn(),
     保存简历: vi.fn(),
+    读取候选账号档案: vi.fn(),
+    替换候选头像: vi.fn(),
+    删除候选头像: vi.fn(),
     清空目录缓存: vi.fn(),
   };
   const 后端状态引用 = { current: {
@@ -50,7 +53,10 @@ function 创建场景() {
     候选预填恢复,
   };
   const 操作: 候选操作 = 创建候选操作(deps as unknown as 后端操作依赖);
-  return { 后端, 操作, 后端状态引用, 候选预填代际, 候选预填读取锁, 候选预填恢复存储 };
+  return {
+    后端, 操作, 派发: deps.派发, 后端状态引用,
+    候选预填代际, 候选预填读取锁, 候选预填恢复存储,
+  };
 }
 
 describe('创建候选操作 · 401 统一清理随行候选预填引用', () => {
@@ -72,5 +78,46 @@ describe('创建候选操作 · 401 统一清理随行候选预填引用', () =>
     await expect(场景.操作.保存个人优势('x')).rejects.toBeInstanceOf(BFF错误);
     expect(场景.候选预填代际.current).toBe(6);
     expect(场景.候选预填恢复存储.删除).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('创建候选操作 · 候选头像权威写入', () => {
+  const 有头像 = {
+    avatar_url: '/api/v1/me/avatar/content' as const,
+    revision: 2,
+    updated_at: '2026-09-03T19:00:00Z',
+  };
+
+  it('上传前读取 revision，成功后用 revision 破缓存地址水合', async () => {
+    const 场景 = 创建场景();
+    场景.后端.读取候选账号档案.mockResolvedValue({ avatar_url: null, revision: 1, updated_at: null });
+    场景.后端.替换候选头像.mockResolvedValue(有头像);
+    const 文件 = new File(['a'], 'a.png', { type: 'image/png' });
+    await 场景.操作.保存候选头像(文件);
+    expect(场景.后端.替换候选头像).toHaveBeenCalledWith(文件, 1);
+    expect(场景.派发).toHaveBeenLastCalledWith({
+      型: '存求职头像', 图: '/api/v1/me/avatar/content?v=2',
+    });
+  });
+
+  it('上传 503 后仅在权威 revision 前进且头像存在时确认成功', async () => {
+    const 场景 = 创建场景();
+    场景.后端.读取候选账号档案
+      .mockResolvedValueOnce({ avatar_url: null, revision: 1, updated_at: null })
+      .mockResolvedValueOnce(有头像);
+    场景.后端.替换候选头像.mockRejectedValue(
+      new BFF错误(503, 'operation_outcome_unknown', 'unknown'),
+    );
+    await expect(场景.操作.保存候选头像(new File(['a'], 'a.png'))).resolves.toBeUndefined();
+    expect(场景.后端.替换候选头像).toHaveBeenCalledTimes(1);
+  });
+
+  it('删除先读 revision；权威响应为空头像后清本地展示', async () => {
+    const 场景 = 创建场景();
+    场景.后端.读取候选账号档案.mockResolvedValue(有头像);
+    场景.后端.删除候选头像.mockResolvedValue({ avatar_url: null, revision: 3, updated_at: null });
+    await 场景.操作.删除候选头像();
+    expect(场景.后端.删除候选头像).toHaveBeenCalledWith(2);
+    expect(场景.派发).toHaveBeenLastCalledWith({ 型: '存求职头像', 图: null });
   });
 });
