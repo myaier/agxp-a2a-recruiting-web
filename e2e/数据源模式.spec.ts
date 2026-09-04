@@ -2263,6 +2263,61 @@ interface BFF路由选项 {
    *  在场时接管 me / resume / intentions 的候选端路由并严格闭合校验每个写入 body；
    *  缺席时既有静态 fixture简历 路由与兜底行为一字不动。 */
   候选OnboardingFixture?: 候选OnboardingFixture;
+  /** FE-IV-01：候选实名域可变 fixture（summary GET / multipart create / revision CAS cancel）。
+   *  缺席时这些路由走兜底空信封 → strict decode 拒绝（Mock 内容不顶替 HTTP 的既有边界）。 */
+  候选实名域?: 候选实名FixtureState;
+}
+
+// ── FE-IV-01：候选实名域 fixture（@backend）。可变 summary 归每次 安装BFF路由 所有，
+//    页面写入只影响本测试；creates/cancels 只记录 part 名、metadata JSON、headers，
+//    绝不记录文件 bytes 或文件名 ──
+
+interface 候选实名请求投影 {
+  request_id: string;
+  status: 'pending' | 'verified' | 'rejected' | 'cancelled';
+  revision: number;
+  submitted_at: string;
+  rejection_reason: string | null;
+}
+
+interface 候选实名FixtureState {
+  /** 当前权威 wire summary（unverified 起步；create → pending；cancel → unverified + cancelled） */
+  summary: {
+    status: 'unverified' | 'pending' | 'verified' | 'rejected';
+    verified_name: string | null;
+    current_request: 候选实名请求投影 | null;
+    revision: number;
+    updated_at: string;
+  };
+  /** create 投影：幂等键 + part 名顺序 + metadata JSON + evidence 数（无 bytes/文件名） */
+  creates: { key: string; parts: string[]; metadata: unknown; evidence数: number }[];
+  /** cancel 投影：requestId 与收到的 quoted If-Match */
+  cancels: { requestId: string; ifMatch: string }[];
+  /** summary GET 计数 */
+  gets: number;
+  /** 幂等键 → 输入指纹（同键同输入重放，异输入 409） */
+  键值: Map<string, string>;
+}
+
+function 创建候选实名fixture(): 候选实名FixtureState {
+  return {
+    summary: {
+      status: 'unverified',
+      verified_name: null,
+      current_request: null,
+      revision: 1,
+      updated_at: '2026-09-05T00:00:00Z',
+    },
+    creates: [],
+    cancels: [],
+    gets: 0,
+    键值: new Map(),
+  };
+}
+
+/** 实名 fixture 的契约 fail closed（与 P2要求 同款）。 */
+function IV要求(condition: unknown): asserts condition {
+  if (!condition) throw new Error('候选实名 fixture 契约失败');
 }
 
 /** 请求拦截收到的请求投影；multipart 的 metadata 只在测试进程内比对 */
@@ -2703,6 +2758,96 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       // 服务端语义：记录偏好后，后续 GET /me 返回新值（刷新恢复用例依赖这一点）
       if (主体 !== fixture主体) 主体.last_used_role = (body as { role?: 'recruiter' | null })?.role ?? null;
       await route.fulfill({ status: 200, json: 信封(主体) });
+      return;
+    }
+
+    // ── FE-IV-01：候选实名域 fixture —— GET 回当前严格摘要信封（no-store + ETag）；
+    //    create 校验 Idempotency-Key（16–128 可见 ASCII）与 multipart 形状（恰一个
+    //    metadata + 一至两个 evidence，metadata 恰两键），同键同输入重放同 summary、
+    //    异输入 409 idempotency_conflict，202 不伪造 ETag；cancel 校验 body {} 与
+    //    等于当前顶层 revision 的 quoted If-Match，错 revision 409，成功回 cancelled ──
+    const IV域 = 选项.候选实名域 ?? null;
+    if (IV域 && path === '/api/v1/me/identity-verification' && method === 'GET') {
+      IV域.gets += 1;
+      await route.fulfill({
+        status: 200,
+        json: 信封(P4深克隆(IV域.summary)),
+        headers: { 'cache-control': 'no-store', etag: `"${IV域.summary.revision}"` },
+      });
+      return;
+    }
+    if (IV域 && path === '/api/v1/me/identity-verification-requests' && method === 'POST') {
+      const key = 请求.headers()['idempotency-key'] ?? '';
+      IV要求(/^[!-~]{16,128}$/.test(key));
+      const parts = 部件们?.map((件) => 件.name) ?? [];
+      const evidence数 = parts.filter((名) => 名 === 'evidence').length;
+      IV要求(parts.length === evidence数 + 1 && parts[0] === 'metadata' &&
+        (evidence数 === 1 || evidence数 === 2));
+      const metadataPart = 部件们?.find((件) => 件.name === 'metadata');
+      IV要求(metadataPart !== undefined && metadataPart.contentType === 'application/json');
+      const metadata = metadataPart ? 解metadata部件(metadataPart.bytes) : undefined;
+      IV要求(metadata !== null && typeof metadata === 'object' &&
+        Object.keys(metadata as Record<string, unknown>).sort().join(',') === 'document_type,legal_name');
+      const 指纹 = `${JSON.stringify(metadata)}|${evidence数}`;
+      const 已有指纹 = IV域.键值.get(key);
+      if (已有指纹 !== undefined && 已有指纹 !== 指纹) {
+        await route.fulfill({
+          status: 409,
+          json: { error: { type: 'idempotency_conflict', message: '同幂等键提交了不同输入' } },
+        });
+        return;
+      }
+      IV域.键值.set(key, 指纹);
+      IV域.creates.push({ key, parts, metadata, evidence数 });
+      if (IV域.summary.status === 'unverified') {
+        IV域.summary = {
+          status: 'pending',
+          verified_name: null,
+          current_request: {
+            request_id: 'ivq-fixture-0001',
+            status: 'pending',
+            revision: 1,
+            submitted_at: '2026-09-05T00:00:00Z',
+            rejection_reason: null,
+          },
+          revision: 2,
+          updated_at: '2026-09-05T00:00:01Z',
+        };
+      }
+      await route.fulfill({
+        status: 202,
+        json: 信封(P4深克隆(IV域.summary)),
+        headers: { 'cache-control': 'no-store' },
+      });
+      return;
+    }
+    const IV取消 = /^\/api\/v1\/me\/identity-verification-requests\/([^/]+)\/cancel$/.exec(path);
+    if (IV域 && IV取消 && method === 'POST') {
+      IV要求(body !== null && typeof body === 'object' && Object.keys(body as object).length === 0);
+      const ifMatch = 请求.headers()['if-match'] ?? '';
+      IV域.cancels.push({ requestId: IV取消[1]!, ifMatch });
+      if (ifMatch !== `"${IV域.summary.revision}"`) {
+        await route.fulfill({
+          status: 409,
+          json: { error: { type: 'version_conflict', message: 'revision 已变化' } },
+        });
+        return;
+      }
+      const 当前 = IV域.summary.current_request;
+      if (当前 !== null && 当前.status === 'pending') {
+        IV域.summary = {
+          status: 'unverified',
+          verified_name: null,
+          current_request: { ...当前, status: 'cancelled', revision: 当前.revision + 1 },
+          revision: IV域.summary.revision + 1,
+          updated_at: '2026-09-05T00:00:02Z',
+        };
+      }
+      await route.fulfill({
+        status: 200,
+        json: 信封(P4深克隆(IV域.summary)),
+        headers: { 'cache-control': 'no-store', etag: `"${IV域.summary.revision}"` },
+      });
       return;
     }
 
@@ -8072,6 +8217,19 @@ async function 装P7候选(
   return fixture;
 }
 
+/** FE-IV-01 候选实名安装：candidate 会话 + 隐私 fixture + 实名域可变 fixture。 */
+async function 装候选实名(page: Page): Promise<候选实名FixtureState> {
+  const fixture = 创建候选实名fixture();
+  await 安装BFF路由(page, {
+    登录尝试id: 'att-iv-candidate',
+    记录目录请求: () => undefined,
+    主体初始角色: 'candidate',
+    隐私fixture: P3隐私fixture(),
+    候选实名域: fixture,
+  });
+  return fixture;
+}
+
 /** P7 招聘端安装：recruiter 会话（组织 fixture）+ P7 fixture + 事件桩。 */
 async function 装P7招聘(
   page: Page,
@@ -9286,6 +9444,95 @@ test.describe('招聘方 onboarding Backend fixture @backend', () => {
       .toBeGreaterThanOrEqual(2);
     expect(profileReadStatuses).toContain(200);
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FE-IV-01 候选实名域 fixture @backend + Mock 隔离（2026-09-05）。
+// 拦截式验证浏览器到 HTTP 的边界与用户旅程：设置页实名行由 summary 驱动 → 独立页
+// 提交（multipart 恰一个 metadata JSON + 一至两个 evidence、16–128 可见 ASCII 幂等键）
+// → reload 后仍从后端读到 pending（草稿/文件名不出现）→ 取消带顶层 revision 的
+// quoted If-Match → 回 unverified + cancelled。fixture 只记录 part 名、metadata JSON、
+// headers 与请求计数，不把文件 bytes/文件名写进任何断言或快照；verified/rejected
+// 已由组件 fixture 覆盖，本路由不实现 reviewer 终审。这条 E2E 只证明前端接线
+// （route fixture），不声称启动或验证真实 BFF。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('候选实名 Backend fixture @backend', () => {
+  test('候选实名提交刷新取消闭环 @backend', async ({ page }) => {
+    test.setTimeout(150_000);
+    const fixture = await 装候选实名(page);
+
+    // 1. 设置页：Backend 实名行由 summary 驱动，初始 unverified
+    await page.goto('/#/settings');
+    await expect(page.getByRole('button', { name: /实名认证/ })).toContainText('未认证', { timeout: 20_000 });
+
+    // 2. 进入独立实名页
+    await page.getByRole('button', { name: /实名认证/ }).click();
+    await expect(page).toHaveURL(/#\/settings\/identity-verification$/, { timeout: 10_000 });
+
+    // 3. 填合成姓名、选护照、上传合成 PNG、提交
+    await page.getByRole('textbox', { name: '证件姓名' }).fill('Fixture Candidate IV');
+    await page.getByRole('combobox', { name: '证件类型' }).selectOption('passport');
+    await page.setInputFiles('input[type="file"]', {
+      name: '材料.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from('89 50 4e 47 0d 0a 1a 0a-fixture-png-bytes', 'latin1'),
+    });
+    await page.getByRole('button', { name: '提交材料' }).click();
+
+    // 4. 页面进入审核中；fixture 记录 metadata 只有两键、一个 evidence、稳定幂等键
+    await expect(page.getByText('审核中')).toBeVisible({ timeout: 15_000 });
+    expect(fixture.creates).toHaveLength(1);
+    expect(fixture.creates[0]!.metadata).toEqual({ legal_name: 'Fixture Candidate IV', document_type: 'passport' });
+    expect(fixture.creates[0]!.evidence数).toBe(1);
+    expect(fixture.creates[0]!.parts).toEqual(['metadata', 'evidence']);
+    expect(fixture.creates[0]!.key).toMatch(/^[!-~]{16,128}$/);
+
+    // 5. reload：页面仍从后端读到 pending；草稿与文件名不出现
+    await page.reload();
+    await expect(page.getByText('审核中')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('Fixture Candidate IV')).toHaveCount(0);
+    await expect(page.getByText('材料.png')).toHaveCount(0);
+
+    // 6. 取消：确认层 → If-Match 用顶层 revision → 页面回未认证表单
+    await page.getByRole('button', { name: '取消申请' }).click();
+    await expect(page.getByText('取消实名认证申请？')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: '取消申请' }).click();
+    await expect(page.getByRole('textbox', { name: '证件姓名' })).toBeVisible({ timeout: 15_000 });
+    expect(fixture.cancels).toHaveLength(1);
+    expect(fixture.cancels[0]!.requestId).toBe('ivq-fixture-0001');
+    expect(fixture.cancels[0]!.ifMatch).toBe('"2"'); // create 后的顶层 revision
+
+    // 7. 返回设置页显示 未认证；fixture 当前 summary 为 unverified + cancelled
+    await page.goto('/#/settings');
+    await expect(page.getByRole('button', { name: /实名认证/ })).toContainText('未认证', { timeout: 20_000 });
+    expect(fixture.summary.status).toBe('unverified');
+    expect(fixture.summary.current_request?.status).toBe('cancelled');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mock 隔离：设置页保持原型「已认证」演示与点击提示；直达实名路由被页面 replace 回
+// 候选设置页；整个会话零 identity-verification 请求。
+// ─────────────────────────────────────────────────────────────────────────────
+test('Mock 候选实名保持原型且零实名请求 @mock', async ({ page }) => {
+  test.setTimeout(90_000);
+  const 实名请求: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.includes('identity-verification')) {
+      实名请求.push(new URL(request.url()).pathname);
+    }
+  });
+
+  await page.goto('/#/settings');
+  const 实名行 = page.getByRole('button', { name: /实名认证.*已认证/ });
+  await expect(实名行).toBeVisible({ timeout: 10_000 });
+  await 实名行.click();
+  await expect(page.getByText('实名认证 · 已通过，无需重复认证')).toBeVisible();
+
+  // 直达实名路由：Mock 由页面自身 replace 回候选设置页
+  await page.goto('/#/settings/identity-verification');
+  await expect(page.getByRole('button', { name: /实名认证.*已认证/ })).toBeVisible({ timeout: 10_000 });
+  expect(实名请求).toEqual([]);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
