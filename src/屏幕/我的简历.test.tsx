@@ -9,9 +9,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { BFF附件简历, BFF附件解析失败码, BFF附件解析状态 } from '../数据/BFF契约';
 import { BFF错误 } from '../数据/HTTP客户端';
+import type { 简历经历段, 简历教育段, 简历证书 } from '../数据/类型';
 import type { 附件变更结果 } from '../状态/后端/类型';
 import 样式 from './我的简历.module.css';
-import 我的简历 from './我的简历';
+import 我的简历, { 检查资料完整度 } from './我的简历';
 
 /** 共享实例：断言按 brief 原样写 userEvent.click(...) */
 const userEvent = userEventApi.setup();
@@ -106,12 +107,15 @@ function render我的简历(选项: {
   library?: { items: BFF附件简历[]; limits: typeof limits } | null;
   /** 覆盖简历基本信息切片（工作年限事实用例只换 身份 / 开始工作年） */
   基本信息?: { 真名?: string; 开始工作年?: string; 身份?: '在校' | '在职' | '离职' };
+  /** 覆盖其余简历切片（完整度矩阵用例换 经历/教育/技能/证书） */
+  状态覆盖?: Partial<typeof 简历fixture>;
 }) {
   const 是后端 = 选项.mode === 'backend';
   mock应用状态 = {
     数据源模式: 选项.mode,
     状态: {
       ...简历fixture,
+      ...选项.状态覆盖,
       ...(选项.基本信息
         ? { 基本信息: { ...简历fixture.基本信息, ...选项.基本信息 } }
         : {}),
@@ -395,6 +399,157 @@ describe('我的简历 · 工作年限事实（未填不伪造）', () => {
   it('在校身份保持学生文案，不看开始工作年', () => {
     render我的简历({ mode: 'backend', 基本信息: { 身份: '在校', 开始工作年: '' } });
     expect(screen.getByText('应届 · 在校')).toBeTruthy();
+  });
+});
+
+// ── 资料完整度（Plan 5 Task 2）：待补全 vs 可提升 的纯函数矩阵 + Backend 页面投影 ──
+
+const 教育样本: 简历教育段 = {
+  编号: 'edu_1', 学校: '示例大学', 学历: '本科', 专业: '计算机',
+  开始: '2016-09', 结束: '2020-06',
+};
+
+function 造经历(count: number): 简历经历段[] {
+  return Array.from({ length: count }, (_, index) => ({
+    编号: `exp_${index}`, 公司: '示例公司', 行业: '软件', 职位: '工程师',
+    开始: '2020-01', 结束: '2022-01', 内容: '负责平台开发', 隐藏: false,
+    项目: [{ 编号: `project_${index}`, 名称: '平台', 角色: '开发', 结果: '按期上线' }],
+  }));
+}
+
+function 造证书(count: number): 简历证书[] {
+  return Array.from({ length: count }, (_, index) => ({
+    编号: `cert_${index}`, 名称: '示例证书', 年份: '2024',
+  }));
+}
+
+describe('检查资料完整度 · 身份 × 经历 × 证书矩阵', () => {
+  it.each([
+    ['在校', 0, 0, 0],
+    ['在职', 0, 0, 1],
+    ['离职', 1, 0, 0],
+  ] as const)('%s + %i 段经历 + %i 证书', (身份, 经历数, 证书数, 工作缺口数) => {
+    const result = 检查资料完整度({
+      基本信息: { 真名: '张三', 开始工作年: 身份 === '在校' ? '' : '2020', 身份 },
+      经历: 造经历(经历数),
+      教育: [教育样本],
+      技能: ['TypeScript'],
+      证书: 造证书(证书数),
+    });
+    expect(result.待补全.filter((项) => /工作/.test(项.文案))).toHaveLength(工作缺口数);
+    expect(result.待补全.some((项) => /证书/.test(项.文案))).toBe(false);
+    expect(result.可提升.some((项) => /证书/.test(项.文案))).toBe(证书数 === 0);
+  });
+
+  it('已有经历但内容为空 → 待补全', () => {
+    const result = 检查资料完整度({
+      基本信息: { 真名: '张三', 开始工作年: '2020', 身份: '在职' },
+      经历: [{ ...造经历(1)[0], 内容: '' }],
+      教育: [教育样本],
+      技能: ['TypeScript'],
+      证书: 造证书(1),
+    });
+    expect(result.待补全.some((项) => /工作内容/.test(项.文案))).toBe(true);
+    expect(result.可提升.some((项) => /工作内容/.test(项.文案))).toBe(false);
+  });
+
+  it('至少一段经历且所有项目为空 → 可提升，不进待补全', () => {
+    const result = 检查资料完整度({
+      基本信息: { 真名: '张三', 开始工作年: '2020', 身份: '离职' },
+      经历: 造经历(2).map((段) => ({ ...段, 项目: [] })),
+      教育: [教育样本],
+      技能: ['TypeScript'],
+      证书: 造证书(1),
+    });
+    expect(result.可提升.some((项) => /关键项目/.test(项.文案))).toBe(true);
+    expect(result.待补全.some((项) => /关键项目/.test(项.文案))).toBe(false);
+  });
+
+  it('技能 0 → 待补全；技能 1/4/5 都不因数量产生提示', () => {
+    const 完整输入 = (技能: string[]) => ({
+      基本信息: { 真名: '张三', 开始工作年: '2020', 身份: '在职' },
+      经历: 造经历(1),
+      教育: [教育样本],
+      技能,
+      证书: 造证书(1),
+    });
+    for (const 技能 of [['TypeScript'], ['一', '二', '三', '四'], ['一', '二', '三', '四', '五']]) {
+      expect(检查资料完整度(完整输入(技能)).待补全.some((项) => /专业技能/.test(项.文案))).toBe(false);
+    }
+    expect(检查资料完整度(完整输入([])).待补全.some((项) => /专业技能还没填写/.test(项.文案))).toBe(true);
+  });
+
+  it('证书永不增加待补全计数（0/1/3 份都只有可提升建议）', () => {
+    for (const 证书数 of [0, 1, 3]) {
+      const result = 检查资料完整度({
+        基本信息: { 真名: '张三', 开始工作年: '2020', 身份: '在职' },
+        经历: 造经历(1),
+        教育: [教育样本],
+        技能: ['TypeScript'],
+        证书: 造证书(证书数),
+      });
+      expect(result.待补全.filter((项) => /证书/.test(项.文案))).toHaveLength(0);
+    }
+  });
+
+  it('学生豁免只认 身份 === 在校：在职空开始工作年仍进待补全', () => {
+    const 在职 = 检查资料完整度({
+      基本信息: { 真名: '张三', 开始工作年: '', 身份: '在职' },
+      经历: 造经历(1),
+      教育: [教育样本],
+      技能: ['TypeScript'],
+      证书: 造证书(1),
+    });
+    expect(在职.待补全.some((项) => /开始工作年/.test(项.文案))).toBe(true);
+    const 在校 = 检查资料完整度({
+      基本信息: { 真名: '张三', 开始工作年: '', 身份: '在校' },
+      经历: [],
+      教育: [教育样本],
+      技能: ['TypeScript'],
+      证书: 造证书(1),
+    });
+    expect(在校.待补全.some((项) => /开始工作年|工作经历/.test(项.文案))).toBe(false);
+  });
+});
+
+describe('我的简历 · Backend 资料完整度检查', () => {
+  it('零待补全 + 零证书：标题「资料已补全」、摘要标可提升、按钮「看建议」', async () => {
+    render我的简历({
+      mode: 'backend',
+      状态覆盖: { 简历经历: 造经历(1), 简历教育: [教育样本], 简历技能: ['TypeScript'], 简历证书: [] },
+    });
+    expect(screen.getByText('◈ 资料完整度检查 · 资料已补全')).toBeTruthy();
+    // Backend 标题不出现「AI代理诊断」
+    expect(screen.queryByText(/AI代理诊断/)).toBeNull();
+    expect(screen.getByText('可提升 · 如有资格证书，可以补充（选填）')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '看建议' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '看建议' }));
+    // 摘要与列表行同文案：展开后各一处
+    expect(screen.getAllByText('可提升 · 如有资格证书，可以补充（选填）')).toHaveLength(2);
+    expect(screen.getByText('去完善 ›')).toBeTruthy();
+    // DOM 中不出现无类别前缀的裸建议
+    expect(screen.queryByText('如有资格证书，可以补充（选填）')).toBeNull();
+  });
+
+  it('有待补全：标题计数只读待补全，展开行带类别前缀与「去补 ›」', async () => {
+    render我的简历({ mode: 'backend' });
+    // 缺省简历：经历/教育/技能全空 → 3 处待补全；证书 0 → 1 条可提升
+    expect(screen.getByText('◈ 资料完整度检查 · 3 处待补全')).toBeTruthy();
+    expect(screen.getByText('待补全 · 工作经历还没填写')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '去补全' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '去补全' }));
+    expect(screen.getByText('待补全 · 专业技能还没填写')).toBeTruthy();
+    expect(screen.getByText('待补全 · 教育经历还没填写')).toBeTruthy();
+    expect(screen.getByText('可提升 · 如有资格证书，可以补充（选填）')).toBeTruthy();
+    // 三行待补全各带一个「去补 ›」，可提升行带唯一的「去完善 ›」
+    expect(screen.getAllByText('去补 ›')).toHaveLength(3);
+    expect(screen.getByText('去完善 ›')).toBeTruthy();
+  });
+
+  it('Mock 保留 AI代理诊断 原型标题与口径', () => {
+    render我的简历({ mode: 'mock' });
+    expect(screen.getByText(/AI代理诊断/)).toBeTruthy();
+    expect(screen.queryByText(/资料完整度检查/)).toBeNull();
   });
 });
 
