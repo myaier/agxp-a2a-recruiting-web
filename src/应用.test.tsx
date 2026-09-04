@@ -797,3 +797,35 @@ describe('应用路由：角色边界下的组织恢复、未知路由与 Mock �
     );
   });
 });
+
+describe('应用路由：Backend 原型消息/往来/初筛深链（工作包 B）', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+    屏幕挂载次数.clear();
+  });
+
+  // 五类原型深链在角色路由边界落地后仍按正确角色可达：路由表不删这些路径
+  //（Mock 会回归），页面自身在 Backend 的中性退场由本 Plan 的页面测试覆盖。
+  // 这里挂的是真实屏幕（未桩化）， Suspense 落定后路径保持原样即证明可达。
+  it.each([
+    ['candidate', '/chat/direct'],
+    ['candidate', '/chat/direct/M-01'],
+    ['candidate', '/thread/mc_real'],
+    ['recruiter', '/hr/thread/mc_real'],
+    ['recruiter', '/hr/screening-log'],
+    ['recruiter', '/hr/screening-log/S-01'],
+  ] as const)('%s 可以进入已注册的 %s 安全页面', async (role, url) => {
+    const 当前主体 = role === 'candidate'
+      ? 主体('candidate', 'active', null)
+      : 主体('recruiter', null, 'active');
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成', 已登录: true, 主体: 当前主体,
+      招聘方组织水合: { 阶段: '成功', 错误: null },
+      招聘方档案水合阶段: '成功',
+    }));
+    render(
+      <MemoryRouter initialEntries={[url]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(url));
+  });
+});
