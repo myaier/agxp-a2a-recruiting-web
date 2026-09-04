@@ -246,6 +246,8 @@ subject_id + last_used_role=candidate + session generation
 - cancel `404` 或 `version_conflict`：立即强制 GET；若原 pending 已改变，提交快照并返回 `状态已更新`，否则保留原错误；
 - cancel `operation_outcome_unknown`：不重放 cancel，先强制 GET；若原 pending 已改变则返回 `状态已更新`，仍为原 pending 时保留安全错误并允许用户再次操作；
 - create `operation_outcome_unknown` 或没有确定响应的网络失败：保留同一 key 和页面文件，提示使用原材料重试或刷新状态；
+- mutation 对账如果撞上更早起飞的 summary GET，先等待该读取结算并重新检查会话栅栏，再另发一笔新的强制 GET；不得把 mutation 前起飞的结果直接当作对账证据，也不得让旧 GET 在新 GET 后反向覆盖快照；
+- 取消执行时若已无成功摘要或当前申请已不是 pending，零 mutation 请求并返回 `状态已更新`；
 - 权威重读失败时不宣称 mutation 成功。
 
 ## 7. 页面与交互
@@ -272,7 +274,7 @@ Mock 分支逐意图保留现有按钮、`已认证` 和点击提示，不触发
 /settings/identity-verification
 ```
 
-直接进入该路由时，如果没有成功摘要则加载；从设置页进入时复用同一 single-flight/成功快照。Mock、未登录或 recruiter 访问不展示伪状态、不发请求，并安全返回对应设置入口。
+直接进入该路由时，如果没有成功摘要则加载；从设置页进入时复用同一 single-flight/成功快照。该路径必须逐项登记进现有候选角色路由表：recruiter 和未登录访问由应用现有角色/会话守卫分别处理，页面不会挂载；Mock 因全局守卫刻意跳过而由页面自身 replace 回候选设置页。三种非法访问都不展示伪状态、不发实名请求。
 
 页面按 summary 状态渲染：
 
@@ -288,7 +290,7 @@ Mock 分支逐意图保留现有按钮、`已认证` 和点击提示，不触发
 
 - 展示“审核中”和服务端 `submitted_at`；
 - 不展示姓名、document type、文件名或任何内部审核信息；
-- 提供“刷新状态”；
+- 提供“刷新状态”，点击必须调用 `加载候选实名(true)` 发起权威重读；
 - 提供“取消申请”，点击后先进入现有可访问确认层；
 - pending 时不渲染第二份提交表单。
 
@@ -366,7 +368,7 @@ Mock 分支逐意图保留现有按钮、`已认证` 和点击提示，不触发
 - `invalid_request_body`：提交内容不完整，请检查后重试；
 - `media_invalid`：材料格式或内容无法识别，请更换文件；
 - `request_too_large`：材料超过服务端允许的大小；
-- `validation_failed`：只映射已知 `legal_name | document_type | evidence` 及闭合 reason；
+- `validation_failed`：不区分 field path，统一显示“提交内容不完整，请检查后重试”；
 - `version_conflict`：状态已变化，权威重读后按新状态展示；
 - `idempotency_conflict`：本次提交状态冲突，请重新选择材料后重试；
 - `identity_verification_unavailable`：实名认证暂时不可用，请稍后再试；
@@ -392,10 +394,9 @@ Mock 分支逐意图保留现有按钮、`已认证` 和点击提示，不触发
 - 当前会话 401；
 - candidate A → candidate B；
 - candidate → recruiter；
-- 新登录 session generation；
-- Provider 卸载。
+- 新登录 session generation。
 
-清理内容包括 summary 快照、GET single-flight、mutation 锁和只含 key 的待定 idempotency intent。过时 401 不得登出新会话。切回 candidate 后重新读取，不复用 recruiter 可见期或旧 generation 的数据。
+清理内容包括 summary 快照、GET single-flight、mutation 锁和只含 key 的待定 idempotency intent。过时 401 不得登出新会话。切回 candidate 后重新读取，不复用 recruiter 可见期或旧 generation 的数据。Provider 卸载后这些 ref 自然不可达，不额外增加不可观测的 cleanup effect。
 
 ## 11. 预计文件范围
 

@@ -24,7 +24,7 @@
 
 ## Prerequisites and completion
 
-- 五个任务串行执行：Task 1 产出 data source；Task 2 消费它并产出状态/operation；Task 3 接入设置入口与路径常量；Task 4 原子注册路由并实现页面；Task 5 补 data-source E2E 并跑最终门。
+- 四个任务串行执行：Task 1 产出 data source；Task 2 消费它并产出状态/operation；Task 3 原子接入设置入口、路由与页面；Task 4 补 data-source E2E 并跑最终门。
 - Task 2 的 `后端状态.候选实名?` 可选只用于兼容聚焦其它域的测试桩；Provider 必须始终显式播种，所有运行时读取必须走同一个 `取候选实名快照()` 回退，不得形成两个默认值。
 - 完成标准：严格 decoder、multipart、幂等键、CAS、单飞、并发锁、冲突重读、当前/迟到 401、登出/换主体/切角色清理、设置页五状态、四状态页面、文件校验、Mock 隔离、路由 guard 都有自动测试；全量门通过且工作树干净。
 - **计划本身复杂度：中。** 新增一个窄域并接现有 data source → operation → Provider → 页面链路，不增加基础设施。
@@ -150,16 +150,22 @@ for (const file of input.evidence) formData.append('evidence', file);
 
 data source 不负责页面文件组合校验，也不复制 `File`。取消路径必须 `encodeURIComponent(requestId)`，`If-Match` 必须使用传入的 summary revision。
 
-- [ ] **Step 4: 组合根 facade 并写组合测试**
+- [ ] **Step 4: 用 RED 组合测试接入根 facade**
 
-在 `HTTP招聘数据源.ts`：
+先在 `HTTP招聘数据源.test.ts` 的最小 client/facade 能力表中加入三个方法名，并断言既有 FE-MC `读取P5摘要` 仍在。运行：
 
-- 注释增加第十七个域；
+```bash
+npx vitest run src/数据/HTTP招聘数据源.test.ts
+```
+
+Expected：FAIL，根 facade 尚未暴露候选实名三方法。
+
+再在 `HTTP招聘数据源.ts`：
+
+- 文件头追加一行说明候选实名域，不写容易漂移的域序号；
 - import `候选实名数据源` / `创建候选实名数据源`；
 - 把 `候选实名数据源` 加入 `HTTP招聘数据源` 交集；
 - 在 factory 返回值末尾 spread `...创建候选实名数据源(请求)`。
-
-在 `HTTP招聘数据源.test.ts` 的最小 client/facade 能力表中加入三个方法名，并断言既有 FE-MC `读取P5摘要` 仍在，避免 spread 组合时覆盖。
 
 - [ ] **Step 5: 运行 GREEN 与提交**
 
@@ -243,6 +249,8 @@ operation 工厂入口必须逐项判空并抛接线缺陷，生产 Provider 则
 8. create 的 `operation_outcome_unknown` 或 `network_error` 保留 key 并原样抛；不做额外 create。
 9. 请求在飞时换 subject、换 role 或递增会话代际：迟到成功和失败都返回 `已换代`，不写状态、不提示。当前 401 统一清账号；迟到 401 不清新会话。
 10. `清候选实名引用()` 清 GET 锁、两把 mutation 锁和 key；状态 helper 回干净底座。
+11. mutation 对账撞上更早起飞的 GET 时，等待旧读结算但不采用其结果，再发一笔新 GET；旧读不能在对账结果后反向覆盖状态。
+12. 无成功摘要或 `currentRequest?.status !== 'pending'` 时取消零 HTTP 并返回 `状态已更新`。
 
 - [ ] **Step 2: 运行 RED**
 
@@ -257,7 +265,7 @@ Expected：FAIL，新模块、类型和导出尚不存在。
 在 `候选实名操作.ts` 导出：
 
 ```ts
-export function 清候选实名引用(deps: Partial<Pick<后端操作依赖,
+export function 清候选实名引用(deps: Pick<后端操作依赖,
   '候选实名读取锁' | '候选实名变更锁' | '候选实名提交意图'>>): void {
   if (deps.候选实名读取锁) deps.候选实名读取锁.current = null;
   deps.候选实名变更锁?.current.clear();
@@ -277,13 +285,21 @@ function 取实名操作错误文案(error: unknown): string {
 }
 ```
 
-GET 的 `finally` 只在引用仍指向本次 Promise 时释放锁，防止旧请求释放新锁。强制重读要返回内部 `{ committed: boolean; summary: 候选实名摘要 | null }` 结果供 mutation 对账；公开 `加载候选实名()` 只返回 `void`。
+GET 的 `finally` 只在引用仍指向本次 Promise 时释放锁，防止旧请求释放新锁。强制重读要返回内部 `{ committed: boolean; summary: 候选实名摘要 | null }` 结果供 mutation 对账；公开 `加载候选实名()` 只返回 `void`。mutation 对账不得直接清空锁并并发第二笔读取，因为旧响应可能晚于新响应提交；若已有 GET 在飞，必须先 await 它、重新检查 mutation fence，再另发一笔新 GET，且不把旧读结果当作对账证据。
 
-判断 cancel 原 pending 是否变化必须同时比较 `currentRequest.requestId`、`currentRequest.status === 'pending'` 和顶层 `revision`；不能只比较 status。create 对账仅当新摘要是 `pending | verified` 时返回 `状态已更新`，`unverified | rejected` 仍抛原冲突。
+判断 cancel 原 pending 是否变化必须同时比较 `currentRequest.requestId`、`currentRequest.status === 'pending'` 和顶层 `revision`；不能只比较 status。create 对账仅当新摘要是 `pending | verified` 时返回 `状态已更新`，`unverified | rejected` 仍抛原冲突。取消起飞前若 `取候选实名快照()` 没有成功摘要或 `currentRequest?.status !== 'pending'`，零 HTTP 并返回 `状态已更新`。
 
-- [ ] **Step 4: 接入 Provider 种子、引用与操作组合**
+- [ ] **Step 4: 用根状态 RED 断言接入 Provider**
 
-在 `应用状态.tsx`：
+先在 `应用状态.test.ts` 增加根操作形状和初始快照断言，明确 `加载摘要` 与 `加载候选实名` 同时存在；运行：
+
+```bash
+npx vitest run src/状态/应用状态.test.ts
+```
+
+Expected：FAIL，Provider 尚未播种候选实名状态和操作。
+
+再在 `应用状态.tsx`：
 
 1. 初始 `后端状态` spread/字段中加入 `候选实名: 创建空候选实名快照()`。
 2. 在其它域引用旁创建：
@@ -296,13 +312,18 @@ const 候选实名提交意图 = useRef<string | null>(null);
 
 3. 三引用放进 `后端操作依赖`。
 4. `操作` 组合加入 `...创建候选实名操作(deps)`，保持 FE-MC 的 `...创建MatchCase操作(deps)` 原样。
-5. Provider 卸载的 effect cleanup 调用 `清候选实名引用(...)`；不要在普通页面卸载时清全局 summary。
 
-在 `应用状态.test.ts` 增加根操作形状和初始快照断言，明确 `加载摘要` 与 `加载候选实名` 同时存在。
+- [ ] **Step 5: 用会话 RED 断言接入所有清理口**
 
-- [ ] **Step 5: 把实名状态和引用接入所有会话清理口**
+先在 `会话操作.test.ts` 为登出、当前 401、candidate A → B、candidate → recruiter 各加断言：快照等于 `创建空候选实名快照()`，读锁/变更锁/key 清空；迟到 401 用例继续证明新会话不被清。运行：
 
-在 `会话操作.ts` 按现有注释锚点逐处窄改：
+```bash
+npx vitest run src/状态/后端/会话操作.test.ts
+```
+
+Expected：FAIL，会话边界尚未清理候选实名状态和引用。
+
+再在 `会话操作.ts` 按现有注释锚点逐处窄改：
 
 - `清账号状态` 的依赖 Pick 加三引用；状态更新加入 `候选实名: 创建空候选实名快照()`；末尾调用 `清候选实名引用(deps)`。
 - `创建会话操作` 解构、`账号清理依赖` 和 `角色水合依赖` 都透传三引用。
@@ -310,8 +331,6 @@ const 候选实名提交意图 = useRef<string | null>(null);
 - 新会话建立前把快照回底座并清引用，保证同 subject 重登也不继承未知 create intent。
 - `切身份` 离开 candidate 时清快照和引用；切回 candidate 从空态按需 GET。
 - mount 水合当前 401 走 `清账号状态` 时透传三引用。
-
-在 `会话操作.test.ts` 为登出、当前 401、candidate A → B、candidate → recruiter 各加断言：快照等于 `创建空候选实名快照()`，读锁/变更锁/key 清空；迟到 401 用例继续证明新会话不被清。
 
 - [ ] **Step 6: 运行 GREEN、类型检查与提交**
 
@@ -327,17 +346,21 @@ Expected：定向测试和 typecheck PASS；无 FE-MC 测试桩机械改动。
 
 ---
 
-### Task 3: 接入设置页权威状态与候选路由
+### Task 3: 原子接入设置页、候选路由与四状态页面
 
 **Files:**
 - Modify: `src/屏幕/设置.tsx`
 - Modify: `src/屏幕/设置.test.tsx`
 - Modify: `src/路由/路径表.ts`
+- Create: `src/屏幕/候选实名认证.tsx`
+- Create: `src/屏幕/候选实名认证.test.tsx`
+- Create: `src/屏幕/候选实名认证.module.css`
+- Modify: `src/应用.tsx`
+- Modify: `src/应用.test.tsx`
 
 **Self-contained brief:**
 - 消费 Task 2 的 `后端状态.候选实名` 和 `操作.加载候选实名()`。
-- 产出冻结路由 `/settings/identity-verification` 和设置页入口。
-- 本 Task 只完成路径常量和设置页入口；Task 4 原子创建页面并注册 `<Route>`。设置页测试只断言导航意图，不假装路由已经可渲染。
+- 产出冻结路由 `/settings/identity-verification`、设置页入口和单页四状态 UI；入口、Route 和页面同一提交落地，不留下可导航但未注册的中间态。
 
 **Frozen setting mapping:**
 
@@ -383,32 +406,20 @@ Expected：FAIL，路径与加载操作尚未接线。
 - 用 `取候选实名快照(后端状态)` 读取统一默认值。
 - Backend 行改为 button、显示 `实名行值`、保留尖括号并导航；Mock 分支逐字保留。
 
-- [ ] **Step 4: 运行 Task-scope GREEN 与提交**
+- [ ] **Step 4: 运行设置入口中间 GREEN，保持未提交**
 
 ```bash
 npx vitest run src/屏幕/设置.test.tsx
 npm run typecheck
 git diff --check
-git add src/屏幕/设置.tsx src/屏幕/设置.test.tsx src/路由/路径表.ts
-git commit -m "feat: link candidate identity verification settings"
 ```
 
-Expected：设置页测试和 typecheck PASS；完整 Route 在下一 Task 原子落地，不存在不可导入模块。
+Expected：设置页测试和 typecheck PASS；继续完成本 Task 的页面与 Route，尚不提交。
 
----
+#### Part B：独立页面、表单与文件生命周期
 
-### Task 4: 实现四状态独立页面、表单与文件生命周期
-
-**Files:**
-- Create: `src/屏幕/候选实名认证.tsx`
-- Create: `src/屏幕/候选实名认证.test.tsx`
-- Create: `src/屏幕/候选实名认证.module.css`
-- Modify: `src/应用.tsx`
-- Modify: `src/应用.test.tsx`
-
-**Self-contained brief:**
-- 消费 Task 2 四操作、Task 3 路径和 `确认层` / `轻提示` / 通用页面外壳。
-- 产出单页四状态 UI。草稿和文件仅为组件 state；页面卸载调用 `重置候选实名提交意图()`，DOM 卸载即释放 input/File 引用。
+- 消费 Task 2 四操作、本 Task 路径和 `确认层` / `轻提示` / 通用页面外壳。
+- 草稿和文件仅为组件 state；页面卸载调用 `重置候选实名提交意图()`，DOM 卸载即释放 input/File 引用。
 - 页面不得显示 cancelled 历史、submitted legal name、document type、文件名以外的材料信息、reviewer note 或未知服务端字段。
 
 **Frozen UI vocabulary:**
@@ -423,6 +434,15 @@ export const 候选实名拒绝文案: Record<候选实名拒绝原因, string> 
 };
 ```
 
+表单标签与选项冻结为：证件姓名、证件类型、证件材料；`national_id → 居民身份证`、`passport → 护照`、`other_government_id → 其他政府签发证件`。文件前置校验只返回下列闭合文案：
+
+- 零文件：`请上传证件材料`
+- 超过两个文件：`最多上传两张图片，或一份 PDF`
+- 不支持的扩展名：`仅支持 PDF、PNG、JPG 或 JPEG`
+- 空或不支持的声明 MIME：`文件类型无法识别，请选择 PDF、PNG 或 JPEG`
+- 扩展名与声明 MIME 矛盾：`文件扩展名与类型不一致，请重新选择`
+- 两份 PDF 或 PDF 混选图片：`PDF 只能单独上传一份`
+
 页面错误映射冻结为：
 
 - `invalid_request_body` → `提交内容不完整，请检查后重试`
@@ -431,10 +451,10 @@ export const 候选实名拒绝文案: Record<候选实名拒绝原因, string> 
 - `identity_verification_unavailable` → `实名认证暂时不可用，请稍后再试`
 - `operation_outcome_unknown` / create `network_error` → `提交结果暂未确认，请保留原材料后重试或刷新状态`
 - `idempotency_conflict` → `本次提交状态冲突，请重新选择材料后重试`
-- `validation_failed` 只读取 `legal_name | document_type | evidence` 的 field path；未知 path/reason 统一 `提交内容不完整，请检查后重试`
+- `validation_failed`（不区分 field path/reason）→ `提交内容不完整，请检查后重试`
 - 其它 → `请求失败，请稍后再试`
 
-- [ ] **Step 1: 写纯校验、四状态、交互和路由 RED 测试**
+- [ ] **Step 5: 写纯校验、四状态、交互和路由 RED 测试**
 
 从页面模块导出纯函数 `校验候选实名文件(files)` 和 `候选实名码点数(value)` 供测试。覆盖：
 
@@ -446,7 +466,7 @@ export const 候选实名拒绝文案: Record<候选实名拒绝原因, string> 
 6. pending 显示“审核中”和格式化 `submittedAt`，有刷新和取消；没有提交表单。
 7. verified 只显示 `verifiedName`，没有提交或取消。
 8. rejected 五个 reason 逐项显示固定文案，下面是全新空表单。
-9. direct route 的 Mock/recruiter/未登录 guard 不调用实名 API并替换到对应设置/身份入口。
+9. direct route 的 Mock 访问 replace 到 `路径.设置`；recruiter/未登录分别由既有角色/会话守卫处理，页面不挂载；三者都零实名 API。
 10. 任一字段/文件变化和卸载都会 reset intent；提交在飞时控件全部 disabled，重复点击零第二请求。
 11. 读取文件后 input value 清空；移除后同名文件能再次加入；文件名只在当前页面显示，卸载后重挂为空。
 12. create success 清草稿并切 pending；outcome unknown/network 保留草稿；idempotency conflict 后编辑文件触发新意图。
@@ -455,7 +475,7 @@ export const 候选实名拒绝文案: Record<候选实名拒绝原因, string> 
 
 同时在 `应用.test.tsx` 写真实路由 RED 断言：candidate 直达页面；recruiter 在页面 effect 前被角色守卫拦截且实名读取零调用；未登录按现有保护逻辑去登录；未知路径 fallback 不变。
 
-- [ ] **Step 2: 运行 RED**
+- [ ] **Step 6: 运行页面与路由 RED**
 
 ```bash
 npx vitest run src/屏幕/候选实名认证.test.tsx src/应用.test.tsx
@@ -463,7 +483,7 @@ npx vitest run src/屏幕/候选实名认证.test.tsx src/应用.test.tsx
 
 Expected：FAIL，页面模块不存在。
 
-- [ ] **Step 3: 实现表单、状态 UI 和敏感文件清理**
+- [ ] **Step 7: 实现表单、状态 UI 和敏感文件清理**
 
 页面挂载行为：
 
@@ -474,6 +494,15 @@ useEffect(() => {
   return () => 操作.重置候选实名提交意图();
 }, [可访问, 操作]);
 ```
+
+`可访问` 必须精确定义为：
+
+```ts
+const 可访问 = 数据源模式 === 'backend' && 后端状态.已登录 &&
+  后端状态.主体?.last_used_role === 'candidate';
+```
+
+Mock 分支直接 `<Navigate to={路径.设置} replace />`；recruiter 和未登录不在页面内另造第二套路由规则，交给应用现有同步守卫。
 
 所有 `legalName`、`documentType`、文件新增/移除 handler 先更新本地 state，再调用 `重置候选实名提交意图()`。文件 input 必须 `multiple`，有可见 label，`accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"`；读取 `event.currentTarget.files` 后立即把 `event.currentTarget.value = ''`，使同文件可重新选择。
 
@@ -487,9 +516,11 @@ useEffect(() => {
 
 取消时先开现有 `确认层`，文案固定：标题 `取消实名认证申请？`，正文 `取消后本次审核会终止，如需认证必须重新提交材料。`，执行文 `取消申请`。确认后立即关层并设置 `取消中=true`；主页面取消/刷新键都禁用。失败保留 pending 页面并显示安全错误。
 
+pending 的“刷新状态”和初次读取失败的“重试”必须调用 `加载候选实名(true)`；刷新在飞时刷新键与取消键都 disabled，取消在飞时两键同样 disabled，不让页面主动制造读写交叠。operation 仍按 Task 2 覆盖外部并发和竞态，不能只依赖 UI 禁用。
+
 页面私有 CSS 只定义状态块、表单行、文件列表、错误块、按钮行和 busy/disabled；外壳、返回栏、确认层和基础行视觉复用现有组件/令牌。不得复制 `确认层.module.css` 或创建通用上传组件。
 
-- [ ] **Step 4: 注册 lazy Route 并完成 guard 测试**
+- [ ] **Step 8: 注册 lazy Route 并完成 guard 测试**
 
 在 `应用.tsx` 加：
 
@@ -503,24 +534,24 @@ const 候选实名认证 = lazy(() => import('./屏幕/候选实名认证'));
 <Route path={路径.候选实名认证} element={<候选实名认证 />} />
 ```
 
-让 Step 1 的 `应用.test.tsx` RED 用例转绿；不得把该路径加入 `招聘方恢复路径`。
+同时把 `路径.候选实名认证` 逐项追加到 `候选路由模式`。让 Step 5 的 `应用.test.tsx` RED 用例转绿：recruiter 主体按现有 active roles 规则去 `路径.选身份` 或对应切身份路径，且页面 effect 不挂载；不得把该路径加入 `招聘方恢复路径`。
 
-- [ ] **Step 5: 运行完整页面交互 GREEN**
+- [ ] **Step 9: 运行完整页面交互 GREEN**
 
 ```bash
 npx vitest run src/屏幕/候选实名认证.test.tsx src/应用.test.tsx
 ```
 
-Expected：Step 1 的纯函数、状态、交互、敏感文件生命周期和路由 guard 用例全部 PASS；所有错误使用 `role="alert"` 或现有可读状态机制。
+Expected：Step 5 的纯函数、状态、交互、敏感文件生命周期和路由 guard 用例全部 PASS；所有错误使用 `role="alert"` 或现有可读状态机制。
 
-- [ ] **Step 6: 运行 GREEN、路由回归与提交**
+- [ ] **Step 10: 运行 Task 全量 GREEN、路由回归与提交**
 
 ```bash
 npx vitest run src/屏幕/候选实名认证.test.tsx src/屏幕/设置.test.tsx src/应用.test.tsx
 npm run typecheck
 npm run lint
 git diff --check
-git add src/屏幕/候选实名认证.tsx src/屏幕/候选实名认证.test.tsx src/屏幕/候选实名认证.module.css src/应用.tsx src/应用.test.tsx
+git add src/屏幕/设置.tsx src/屏幕/设置.test.tsx src/路由/路径表.ts src/屏幕/候选实名认证.tsx src/屏幕/候选实名认证.test.tsx src/屏幕/候选实名认证.module.css src/应用.tsx src/应用.test.tsx
 git commit -m "feat: add candidate identity verification flow"
 ```
 
@@ -528,7 +559,7 @@ Expected：页面、设置和路由测试 PASS；typecheck/lint PASS。
 
 ---
 
-### Task 5: 补 data-source E2E、全量验证与交付记录
+### Task 4: 补 data-source E2E、全量验证与交付记录
 
 **Files:**
 - Modify: `e2e/数据源模式.spec.ts`
@@ -537,20 +568,19 @@ Expected：页面、设置和路由测试 PASS；typecheck/lint PASS。
 **Self-contained brief:**
 - Playwright fixture 只证明前端 HTTP 边界和用户旅程，不声称启动或验证真实 BFF。
 - 使用合成姓名 `Fixture Candidate IV` 和测试进程内合成 PNG/PDF bytes；fixture 只记录 part 名、metadata JSON、headers 和请求次数，不把文件 bytes/文件名写进 handoff 或 snapshot。
-- fixture 状态从 `unverified` 开始，create 后变 `pending`，cancel 后变 `unverified + cancelled current_request`。不实现 reviewer approve/reject 后端路由；verified/rejected 已由 Task 4 组件 fixture 覆盖。
+- fixture 状态从 `unverified` 开始，create 后变 `pending`，cancel 后变 `unverified + cancelled current_request`。不实现 reviewer approve/reject 后端路由；verified/rejected 已由 Task 3 组件 fixture 覆盖。
 
-- [ ] **Step 1: 扩展可变 fixture 与 Mock 请求分类**
+- [ ] **Step 1: 写 Backend 旅程与 fixture 契约 RED 测试**
 
-在现有 `安装BFF路由` 选项增加可选 `候选实名域`。路由行为冻结：
+新增用例标题必须逐字包含 `候选实名`，并沿用现有标签：Mock 用例标题 `Mock 候选实名保持原型且零实名请求 @mock`，Backend 用例标题 `候选实名提交刷新取消闭环 @backend`。
 
-- `GET /api/v1/me/identity-verification` 返回当前 strict summary 信封。
-- `POST /api/v1/me/identity-verification-requests` 校验 `Idempotency-Key` 在 16–128 可见 ASCII、multipart part 名恰为一个 metadata + 1–2 evidence；metadata 恰两键。首次写 pending，相同 key 同输入重放同 summary；异输入回 409 `idempotency_conflict`。
-- `POST .../{request_id}/cancel` 校验 body `{}` 和 `If-Match` 等于当前顶层 revision，随后返回 cancelled summary；错 revision 回 409。
-- 所有成功应答使用现有 `信封()` 并加 no-store；GET/cancel 带 ETag，create 不伪造 ETag。
+测试先按下述冻结契约调用尚未实现的 `候选实名域` fixture 选项，并完成 Backend 流程断言；Mock 测试监听所有 pathname 包含 `identity-verification` 的请求，确认设置页仍是原型 `已认证` 且请求列表为空。运行：
 
-Mock 测试监听所有 pathname 包含 `identity-verification` 的请求，确认设置页仍是原型 `已认证` 且请求列表为空。
+```bash
+npm run test:e2e:data-source -- --grep "候选实名"
+```
 
-- [ ] **Step 2: 写 Backend 用户旅程 RED 测试**
+Expected：FAIL，fixture 尚不接受 `候选实名域`，对应 route handler 也不存在。
 
 Backend 流程：
 
@@ -562,10 +592,21 @@ Backend 流程：
 6. 点取消、确认，断言 `If-Match` 使用顶层 revision；页面回 `未认证`。
 7. 返回设置页显示 `未认证`；fixture 当前 summary 为 `unverified + cancelled`。
 
+- [ ] **Step 2: 实现最小可变 fixture 与 Mock 请求分类**
+
+在现有 `安装BFF路由` 选项增加可选 `候选实名域`。路由行为冻结：
+
+- `GET /api/v1/me/identity-verification` 返回当前 strict summary 信封。
+- `POST /api/v1/me/identity-verification-requests` 校验 `Idempotency-Key` 在 16–128 可见 ASCII、multipart part 名恰为一个 metadata + 1–2 evidence；metadata 恰两键。首次写 pending，相同 key 同输入重放同 summary；异输入回 409 `idempotency_conflict`。
+- `POST .../{request_id}/cancel` 校验 body `{}` 和 `If-Match` 等于当前顶层 revision，随后返回 cancelled summary；错 revision 回 409。
+- 所有成功应答使用现有 `信封()` 并加 no-store；GET/cancel 带 ETag，create 不伪造 ETag。
+
+Mock 测试监听所有 pathname 包含 `identity-verification` 的请求，确认设置页仍是原型 `已认证` 且请求列表为空。
+
 - [ ] **Step 3: 运行 E2E GREEN**
 
 ```bash
-npm run test:e2e:data-source -- --grep "candidate identity verification|Mock identity verification isolation"
+npm run test:e2e:data-source -- --grep "候选实名"
 ```
 
 Expected：两个新旅程 PASS；报告明确它们是 route fixture，不是真实后端。
