@@ -18,7 +18,7 @@ import {
   P5终局摘要Wire,
   P5工作区职位Wire,
 } from '../../测试/BFF样本';
-import { 创建MatchCase数据源, 解P5详情, type MatchCase数据源 } from './MatchCase';
+import { 创建MatchCase数据源, 解MatchCaseSummary, 解P5详情, type MatchCase数据源 } from './MatchCase';
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 type 二进制函数 = Pick<BFF客户端, '请求二进制'>['请求二进制'];
@@ -50,6 +50,67 @@ describe('MatchCase数据源', () => {
       请求: 请求Mock as 请求函数,
       请求二进制: 二进制Mock as unknown as 二进制函数,
     });
+  });
+
+  // ── summary 读取 ──
+
+  const 合法摘要Wire = {
+    open_total: 51,
+    open_anonymous_screening_total: 17,
+    open_needs_action_total: 9,
+    ended_total: 4,
+    completed_total: 3,
+  };
+
+  it('双端 summary 走角色 endpoint、no-store，并返回精确归一化值', async () => {
+    请求Mock
+      .mockResolvedValueOnce(响应(合法摘要Wire))
+      .mockResolvedValueOnce(响应({
+        open_total: 0,
+        open_anonymous_screening_total: 0,
+        open_needs_action_total: 0,
+        ended_total: 0,
+        completed_total: 0,
+      }));
+    await expect(source.读取P5摘要('candidate')).resolves.toEqual({
+      openTotal: 51,
+      openAnonymousScreeningTotal: 17,
+      openNeedsActionTotal: 9,
+      endedTotal: 4,
+      completedTotal: 3,
+    });
+    await expect(source.读取P5摘要('recruiter')).resolves.toEqual({
+      openTotal: 0,
+      openAnonymousScreeningTotal: 0,
+      openNeedsActionTotal: 0,
+      endedTotal: 0,
+      completedTotal: 0,
+    });
+    expect(请求Mock.mock.calls.map(([选项]) => 选项)).toEqual([
+      { path: '/api/v1/me/match-cases/summary', 不缓存: true },
+      { path: '/api/v1/recruiter/match-cases/summary', 不缓存: true },
+    ]);
+  });
+
+  it.each([
+    { open_total: 1, open_anonymous_screening_total: 0, open_needs_action_total: 0, ended_total: 0 },
+    { ...合法摘要Wire, unknown_total: 1 },
+    { ...合法摘要Wire, open_total: '51' },
+    { ...合法摘要Wire, open_total: 1.5 },
+    { ...合法摘要Wire, open_total: -1 },
+    { ...合法摘要Wire, open_total: Number.NaN },
+    { ...合法摘要Wire, open_total: Number.POSITIVE_INFINITY },
+    { ...合法摘要Wire, open_total: Number.MAX_SAFE_INTEGER + 1 },
+  ])('summary 拒绝缺键、多键与坏整数：%j', (wire) => {
+    expect(() => 解MatchCaseSummary(wire)).toThrow(契约漂移);
+  });
+
+  it('ended 与 completed 的和不是安全整数时整包拒绝', () => {
+    expect(() => 解MatchCaseSummary({
+      ...合法摘要Wire,
+      ended_total: Number.MAX_SAFE_INTEGER,
+      completed_total: 1,
+    })).toThrow(契约漂移);
   });
 
   // ── 列表 / 历史读取 ──

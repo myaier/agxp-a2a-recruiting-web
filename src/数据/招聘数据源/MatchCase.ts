@@ -330,6 +330,15 @@ export interface P5列表页 {
   nextCursor: string | null;
 }
 
+/** MatchCaseSummary：双端同形的五个工作区精确计数（wire 键逐字段归一化）。 */
+export interface MatchCaseSummary {
+  openTotal: number;
+  openAnonymousScreeningTotal: number;
+  openNeedsActionTotal: number;
+  endedTotal: number;
+  completedTotal: number;
+}
+
 // ── 具体 decoder：逐字段过 guard，不做 `as` 直转 ──
 
 /**
@@ -664,6 +673,31 @@ function 解P5列表页(input: unknown, role: P5角色, 架子: 'open' | P5历�
   };
 }
 
+/**
+ * 解MatchCaseSummary：双端 summary 的闭合五键整数合同；缺键、多键、数字字符串、
+ * 小数、负数、非 finite/非 safe 数字以及 ended+completed 之和溢出都整包 fail closed。
+ */
+export function 解MatchCaseSummary(input: unknown): MatchCaseSummary {
+  const raw = 要求闭合对象(input, [
+    'open_total',
+    'open_anonymous_screening_total',
+    'open_needs_action_total',
+    'ended_total',
+    'completed_total',
+  ]);
+  const endedTotal = 要求范围整数(raw.ended_total, 0, Number.MAX_SAFE_INTEGER);
+  const completedTotal = 要求范围整数(raw.completed_total, 0, Number.MAX_SAFE_INTEGER);
+  if (!Number.isSafeInteger(endedTotal + completedTotal)) throw 契约错误();
+  return {
+    openTotal: 要求范围整数(raw.open_total, 0, Number.MAX_SAFE_INTEGER),
+    openAnonymousScreeningTotal: 要求范围整数(
+      raw.open_anonymous_screening_total, 0, Number.MAX_SAFE_INTEGER),
+    openNeedsActionTotal: 要求范围整数(raw.open_needs_action_total, 0, Number.MAX_SAFE_INTEGER),
+    endedTotal,
+    completedTotal,
+  };
+}
+
 /** 响应 cursor 恰为 string | null：缺键、坏类型、空、超 4096 或坏形状都是契约漂移。 */
 function 解下一游标(值: unknown): string | null {
   if (值 === null) return null;
@@ -716,6 +750,7 @@ function 历史查询(
 }
 
 export interface MatchCase数据源 {
+  读取P5摘要(role: P5角色): Promise<MatchCaseSummary>;
   读取P5Open列表(role: P5角色, filterRef: string | null, cursor: string | null): Promise<P5列表页>;
   读取P5历史(role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null, cursor: string | null): Promise<P5列表页>;
   读取P5详情(role: P5角色, caseId: string): Promise<P5详情>;
@@ -731,6 +766,14 @@ export interface MatchCase数据源 {
 
 export function 创建MatchCase数据源(client: Pick<BFF客户端, '请求' | '请求二进制'>): MatchCase数据源 {
   const 请求 = client.请求;
+
+  async function 读取P5摘要(role: P5角色): Promise<MatchCaseSummary> {
+    const { result } = await 请求<unknown>({
+      path: P5路径(role, '/match-cases/summary'),
+      不缓存: true,
+    });
+    return 解MatchCaseSummary(result);
+  }
 
   async function 读取P5Open列表(
     role: P5角色,
@@ -876,6 +919,7 @@ export function 创建MatchCase数据源(client: Pick<BFF客户端, '请求' | '
   }
 
   return {
+    读取P5摘要,
     读取P5Open列表,
     读取P5历史,
     读取P5详情,
