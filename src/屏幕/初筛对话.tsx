@@ -11,6 +11,7 @@ import 样式 from './初筛对话.module.css';
 import 阶段对话流, { type 分段项 } from '../组件/阶段对话流';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
+import { use应用状态 } from '../状态/应用状态';
 import { 本周初筛记录, 初筛对话表, type 初筛记录 } from '../数据/企业端模拟数据';
 
 export default function 初筛对话() {
@@ -18,11 +19,24 @@ export default function 初筛对话() {
   // 所以取 id，落到本屏语义上是初筛记录的编号
   const { id: 编号 = '' } = useParams<{ id: string }>();
   const { 返回 } = use导航();
+  const { 数据源模式 } = use应用状态();
 
-  const 记录 = 本周初筛记录.find((条) => 条.编号 === 编号);
+  // 工作包 B：Backend 没有权威数据源 —— fixture 查找整条不执行，
+  // 真实 ID 与无效 ID 都只显示同一个安全不可用状态
+  const 记录 = 数据源模式 === 'backend'
+    ? undefined
+    : 本周初筛记录.find((条) => 条.编号 === 编号);
 
   // 直接敲 URL 进来、编号却不在记录里：不白屏也不抛错，留返回栏 + 一行空态，
   // 用户还能退回上一屏
+  if (数据源模式 === 'backend') {
+    return (
+      <次级页外壳>
+        <返回栏 返回={返回} 标题="本周初筛记录" />
+        <div className={样式.空态}>该原型日志没有权威数据源</div>
+      </次级页外壳>
+    );
+  }
   if (!记录) {
     return (
       <次级页外壳>

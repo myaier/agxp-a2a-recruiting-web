@@ -10,6 +10,7 @@
 import 样式 from './初筛记录.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
+import { use应用状态 } from '../状态/应用状态';
 import {
   在招岗位列表,
   本周初筛记录,
@@ -60,7 +61,10 @@ function 按岗位分组(记录们: 初筛记录条[]): 岗位分组[] {
 
 export default function 初筛记录() {
   const { 跳转, 返回 } = use导航();
-  const 分组们 = 按岗位分组(本周初筛记录);
+  const { 数据源模式 } = use应用状态();
+  // 工作包 B：这份日志是纯原型剧本，Backend 没有权威数据源 ——
+  // 分组查找整条不执行，列表容器只留中性说明
+  const 分组们 = 数据源模式 === 'backend' ? [] : 按岗位分组(本周初筛记录);
 
   return (
     <次级页外壳>
@@ -68,7 +72,9 @@ export default function 初筛记录() {
 
       <滚动区>
         <div className={样式.列表}>
-          {分组们.length === 0 ? (
+          {数据源模式 === 'backend' ? (
+            <div className={样式.空态}>该原型日志没有权威数据源</div>
+          ) : 分组们.length === 0 ? (
             <div className={样式.空态}>本周还没有初筛记录</div>
           ) : (
             分组们.map((组) => (
