@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BFF主体样本 } from './测试/BFF样本';
+import type { BFF主体 } from './数据/BFF契约';
 import { 初始状态 } from './状态/初始状态';
 import { 路径 } from './路由/路径表';
 import { 创建空候选预填状态, type 候选预填状态 } from './状态/后端/类型';
@@ -29,6 +30,19 @@ vi.mock('./状态/应用状态', () => ({ use应用状态: mock应用状态 }));
 /** 路由落点桩：只证明「路由到了这一屏」，不带屏自身的数据依赖。 */
 function 屏幕桩(名: string) {
   return { default: () => <div data-testid={`屏幕:${名}`}>{名}</div> };
+}
+
+/** 角色路由矩阵用挂载计数：被拒路由的防闪挂断言读它，不只看最终 URL。 */
+const 屏幕挂载次数 = new Map<string, number>();
+
+/** 可计数屏幕桩：落点断言之外还记录挂载次数。 */
+function 可计数屏幕桩(名: string) {
+  return {
+    default: () => {
+      屏幕挂载次数.set(名, (屏幕挂载次数.get(名) ?? 0) + 1);
+      return <div data-testid={`屏幕:${名}`}>{名}</div>;
+    },
+  };
 }
 vi.mock('./屏幕/登录', () => 屏幕桩('登录'));
 vi.mock('./屏幕/选身份', () => 屏幕桩('选身份'));
@@ -54,16 +68,42 @@ vi.mock('./屏幕/披露说明', () => 屏幕桩('披露说明'));
 vi.mock('./屏幕/选工作城市', () => 屏幕桩('选工作城市'));
 vi.mock('./屏幕/选期望职位', () => 屏幕桩('选期望职位'));
 vi.mock('./屏幕/设置', () => 屏幕桩('设置'));
-// 岗位管理桩保留它的「发布新岗位」入口：恢复面接管时这个按钮必须整个不存在
+// 岗位管理桩保留它的「发布新岗位」入口：恢复面接管时这个按钮必须整个不存在；
+// 同时计入挂载次数，供角色路由的防闪挂断言使用
 vi.mock('./屏幕/岗位管理', () => ({
-  default: () => (
-    <div data-testid="屏幕:岗位管理">
-      <button type="button">发布新岗位</button>
-    </div>
-  ),
+  default: () => {
+    屏幕挂载次数.set('岗位管理', (屏幕挂载次数.get('岗位管理') ?? 0) + 1);
+    return (
+      <div data-testid="屏幕:岗位管理">
+        <button type="button">发布新岗位</button>
+      </div>
+    );
+  },
 }));
+// 角色路由矩阵需要的其余落点桩（含 shared 路由与候选端 我的简历）
+vi.mock('./屏幕/我的简历', () => 可计数屏幕桩('我的简历'));
+vi.mock('./屏幕/企业详情', () => 可计数屏幕桩('企业详情'));
+vi.mock('./屏幕/帮助与客服', () => 可计数屏幕桩('帮助与客服'));
+vi.mock('./屏幕/反馈', () => 可计数屏幕桩('反馈'));
+vi.mock('./屏幕/用户协议', () => 可计数屏幕桩('用户协议'));
 
 const 招聘主体 = { ...BFF主体样本, last_used_role: 'recruiter' as const };
+
+/** 角色路由矩阵用主体工厂：last_used_role 与两侧角色状态独立拼装。 */
+function 主体(
+  lastUsedRole: 'candidate' | 'recruiter' | null,
+  candidate: 'active' | 'suspended' | null,
+  recruiter: 'active' | 'suspended' | null,
+): BFF主体 {
+  return {
+    ...BFF主体样本,
+    last_used_role: lastUsedRole,
+    roles: [
+      ...(candidate === null ? [] : [{ role: 'candidate' as const, status: candidate }]),
+      ...(recruiter === null ? [] : [{ role: 'recruiter' as const, status: recruiter }]),
+    ],
+  };
+}
 
 function 建后端状态(覆盖: Partial<后端状态> = {}): 后端状态 {
   return {
@@ -101,6 +141,8 @@ function 后端应用值(后端覆盖: Partial<后端状态> = {}) {
       重新水合招聘方数据: vi.fn(async () => undefined),
       恢复候选Onboarding预填: vi.fn(async () => undefined),
       清候选Onboarding预填: vi.fn(),
+      // 角色路由矩阵只证明守卫不调用它（访问 URL 绝不静默切身份）
+      切身份: vi.fn(async () => undefined),
     },
     目录查询: null,
   };
@@ -146,7 +188,12 @@ function 可控Promise<T>() {
 
 function 位置探针() {
   const 位置 = useLocation();
-  return <span data-testid="pathname">{位置.pathname}</span>;
+  return (
+    <>
+      <span data-testid="pathname">{位置.pathname}</span>
+      <span data-testid="search">{位置.search}</span>
+    </>
+  );
 }
 
 function 位置与状态探针() {
@@ -525,5 +572,136 @@ describe('应用路由：候选 onboarding 预填恢复与退出清理（Task 7�
     );
     await waitFor(() => expect(screen.getByTestId('屏幕:主壳')).toBeTruthy());
     expect(值.操作.清候选Onboarding预填).not.toHaveBeenCalled();
+  });
+});
+
+describe('应用路由：Backend 角色路由边界', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+    屏幕挂载次数.clear();
+  });
+
+  // 拒绝矩阵：错误角色业务屏在 Backend 初始化完成后同步被拒 —— 单角色/目标 suspended/
+  // last_used_role 缺失都回身份选择；双 active 只走显式切身份路径，绝不静默调 切身份。
+  it.each([
+    ['candidate 单角色进招聘页', 主体('candidate', 'active', null), '/hr/jobs', '/identity', ''],
+    ['recruiter 单角色进候选页', 主体('recruiter', null, 'active'), '/resume', '/identity', ''],
+    ['双 active candidate 进招聘页', 主体('candidate', 'active', 'active'), '/hr/jobs', '/identity', '?switch=1&from=app'],
+    ['双 active recruiter 进候选页', 主体('recruiter', 'active', 'active'), '/resume', '/identity', '?switch=1&from=hr'],
+    ['目标 candidate suspended', 主体('recruiter', 'suspended', 'active'), '/resume', '/identity', ''],
+    ['目标 recruiter suspended', 主体('candidate', 'active', 'suspended'), '/hr/jobs', '/identity', ''],
+    ['last_used_role 缺失', 主体(null, 'active', 'active'), '/resume', '/identity', ''],
+  ] as const)('%s', async (_名, 当前主体, 初始路径, 期望路径, 期望搜索) => {
+    const 当前值 = 后端应用值({
+      初始化: '完成',
+      已登录: true,
+      主体: 当前主体,
+      招聘方组织水合: { 阶段: '成功', 错误: null },
+      招聘方档案水合阶段: '成功',
+    });
+    mock应用状态.mockReturnValue(当前值);
+    render(
+      <MemoryRouter initialEntries={[初始路径]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(期望路径));
+    expect(screen.getByTestId('search').textContent).toBe(期望搜索);
+    expect(当前值.操作.切身份).not.toHaveBeenCalled();
+  });
+
+  // shared 路由不受角色守卫改写：账号安全/反馈/用户协议/帮助/企业详情对任意主体开放，
+  // /identity 始终可达（身份选择是 suspended/未知角色的恢复出口）。
+  it.each([
+    ['candidate 单角色', 主体('candidate', 'active', null)],
+    ['recruiter 单角色', 主体('recruiter', null, 'active')],
+    ['双 active', 主体('candidate', 'active', 'active')],
+    ['双 suspended', 主体('candidate', 'suspended', 'suspended')],
+    ['角色未知', 主体(null, null, null)],
+  ] as const)('%s 访问 shared 路由不被角色守卫改写', async (_名, 当前主体) => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成',
+      已登录: true,
+      主体: 当前主体,
+    }));
+    const 探针 = () => {
+      const 导航 = useNavigate();
+      return (
+        <>
+          <button type="button" onClick={() => 导航('/account')}>探针-去账号安全</button>
+          <button type="button" onClick={() => 导航('/feedback')}>探针-去反馈</button>
+          <button type="button" onClick={() => 导航('/terms')}>探针-去用户协议</button>
+          <button type="button" onClick={() => 导航('/help')}>探针-去帮助与客服</button>
+          <button type="button" onClick={() => 导航('/company/org_1')}>探针-去企业详情</button>
+          <button type="button" onClick={() => 导航('/identity')}>探针-去选身份</button>
+        </>
+      );
+    };
+    render(
+      <MemoryRouter initialEntries={['/account']}><应用 /><位置探针 /><探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:账号安全')).toBeTruthy());
+    expect(当前路径()).toBe('/account');
+    for (const [路径值, testid, 按钮] of [
+      ['/feedback', '屏幕:反馈', '探针-去反馈'],
+      ['/terms', '屏幕:用户协议', '探针-去用户协议'],
+      ['/help', '屏幕:帮助与客服', '探针-去帮助与客服'],
+      ['/company/org_1', '屏幕:企业详情', '探针-去企业详情'],
+      ['/identity', '屏幕:选身份', '探针-去选身份'],
+    ] as const) {
+      await userEvent.click(screen.getByRole('button', { name: 按钮 }));
+      await waitFor(() => expect(screen.getByTestId(testid)).toBeTruthy());
+      expect(当前路径()).toBe(路径值);
+    }
+  });
+
+  // 防闪挂：深链/刷新直达错误角色 URL，对侧业务屏（含其 effect）一次都不能挂载。
+  it.each([
+    ['candidate 深链招聘页', 主体('candidate', 'active', null), '/hr/jobs'],
+    ['recruiter 深链候选页', 主体('recruiter', null, 'active'), '/resume'],
+  ] as const)('%s被拒：对侧屏幕 mount 次数为 0', async (_名, 当前主体, 初始路径) => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成',
+      已登录: true,
+      主体: 当前主体,
+    }));
+    render(
+      <MemoryRouter initialEntries={[初始路径]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe('/identity'));
+    expect(屏幕挂载次数.get('岗位管理') ?? 0).toBe(0);
+    expect(屏幕挂载次数.get('我的简历') ?? 0).toBe(0);
+  });
+
+  // 后退行为：被拒路由是 replace，浏览器后退只回到允许页，错误屏 mount 仍为 0。
+  it.each([
+    ['recruiter 误入候选页', 主体('recruiter', null, 'active'), '/hr/jobs', '/resume', '屏幕:岗位管理'],
+    ['candidate 误入招聘页', 主体('candidate', 'active', null), '/resume', '/hr/jobs', '屏幕:我的简历'],
+  ] as const)('%s：replace 后退只回允许页', async (_名, 当前主体, 允许路径, 错误路径, testid) => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成',
+      已登录: true,
+      主体: 当前主体,
+    }));
+    const 探针 = () => {
+      const 导航 = useNavigate();
+      return (
+        <>
+          <button type="button" onClick={() => 导航(错误路径)}>探针-去错误页</button>
+          <button type="button" onClick={() => 导航(-1)}>探针-后退</button>
+        </>
+      );
+    };
+    render(
+      <MemoryRouter initialEntries={[允许路径]}><应用 /><位置探针 /><探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId(testid)).toBeTruthy());
+    // 允许页自身挂载过一次；此后误入、被拒、后退全程不得再新增任何一侧挂载
+    const 基线岗位管理 = 屏幕挂载次数.get('岗位管理') ?? 0;
+    const 基线我的简历 = 屏幕挂载次数.get('我的简历') ?? 0;
+    await userEvent.click(screen.getByRole('button', { name: '探针-去错误页' }));
+    await waitFor(() => expect(当前路径()).toBe('/identity'));
+    await userEvent.click(screen.getByRole('button', { name: '探针-后退' }));
+    await waitFor(() => expect(当前路径()).toBe(允许路径));
+    expect(屏幕挂载次数.get('岗位管理') ?? 0).toBe(基线岗位管理);
+    expect(屏幕挂载次数.get('我的简历') ?? 0).toBe(基线我的简历);
   });
 });
