@@ -21,6 +21,7 @@ import { 附件错误文案, 附件状态文案, 校验附件PDF } from '../流�
 import { use附件简历刷新 } from '../流程/附件简历刷新';
 import { use附件PDF预览 } from '../流程/附件简历预览';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
+import { 折算工作年限 } from '../数据/匹配对齐';
 import type { BFF附件简历 } from '../数据/BFF契约';
 import type { 基本信息 as 基本信息类型 } from '../数据/类型';
 import type { 附件变更结果 } from '../状态/后端/类型';
@@ -224,8 +225,8 @@ export default function 我的简历() {
     return 动作;
   }
 
-  const 当前年 = new Date().getFullYear();
-  const 折算年限 = Math.max(0, 当前年 - (Number(基本.开始工作年) || 当前年));
+  // 工作年限是派生值：空/非法/未来年份一律「未填写」，绝不用当前年补文本伪造起始年
+  const 折算年限 = 折算工作年限(基本.开始工作年);
 
   return (
     <次级页外壳>
@@ -289,7 +290,9 @@ export default function 我的简历() {
                 值={
                   基本.身份 === '在校'
                     ? '应届 · 在校'
-                    : `${折算年限} 年 · 自 ${基本.开始工作年 || 当前年} 年起`
+                    : 折算年限 === null
+                      ? '未填写'
+                      : `${折算年限} 年 · 自 ${基本.开始工作年} 年起`
                 }
                 按下={() => 跳转(路径.基本信息)}
               />

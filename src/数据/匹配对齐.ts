@@ -76,11 +76,16 @@ export interface 求职侧核对 {
   工作年限: number | null;
 }
 
-/** 开始工作年 → 折算工作年限;空/非法一律 null（核不动,绝不当 0 或演示常量用） */
-export function 折算工作年限(开始工作年: string): number | null {
+/** 开始工作年 → 折算工作年限;空/非有限数/非整数/非正数/未来年份一律 null
+ * （核不动,绝不当 0 或演示常量用）。currentYear 供确定性测试注入,生产缺省取当前年。 */
+export function 折算工作年限(
+  开始工作年: string,
+  currentYear = new Date().getFullYear(),
+): number | null {
   const 年 = Number(开始工作年);
-  if (!开始工作年 || !Number.isFinite(年) || 年 <= 0) return null;
-  return Math.max(0, new Date().getFullYear() - 年);
+  if (!开始工作年 || !Number.isFinite(年) || !Number.isInteger(年) ||
+      年 <= 0 || 年 > currentYear) return null;
+  return currentYear - 年;
 }
 
 /** 求职端:JD 的硬性要求 × 我的简历。硬字段行恒在前,必须项按 JD 原顺序,不做重排 */

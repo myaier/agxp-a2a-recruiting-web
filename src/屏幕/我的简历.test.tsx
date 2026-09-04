@@ -104,11 +104,18 @@ const 简历fixture = {
 function render我的简历(选项: {
   mode: 'mock' | 'backend';
   library?: { items: BFF附件简历[]; limits: typeof limits } | null;
+  /** 覆盖简历基本信息切片（工作年限事实用例只换 身份 / 开始工作年） */
+  基本信息?: { 真名?: string; 开始工作年?: string; 身份?: '在校' | '在职' | '离职' };
 }) {
   const 是后端 = 选项.mode === 'backend';
   mock应用状态 = {
     数据源模式: 选项.mode,
-    状态: { ...简历fixture },
+    状态: {
+      ...简历fixture,
+      ...(选项.基本信息
+        ? { 基本信息: { ...简历fixture.基本信息, ...选项.基本信息 } }
+        : {}),
+    },
     后端状态: {
       已登录: 是后端,
       主体: 是后端 ? { subject_id: 'sub_1', last_used_role: 'candidate' } : null,
@@ -358,6 +365,36 @@ describe('我的简历 · Backend 附件简历库（P2 Task 6）', () => {
     const className = screen.getByTestId('附件简历标题').className;
     expect(className).toContain(样式.卡标题);
     expect(className).toContain(样式.附件标题行);
+  });
+});
+
+describe('我的简历 · 工作年限事实（未填不伪造）', () => {
+  const 当前年 = new Date().getFullYear();
+
+  it.each([
+    ['', '未填写'],
+    ['abc', '未填写'],
+    ['0', '未填写'],
+    ['2024.5', '未填写'],
+    [String(当前年 + 1), '未填写'],
+  ] as const)('非学生开始工作年 %s → %s（不用当前年补文本）', (开始工作年, 期望) => {
+    render我的简历({ mode: 'backend', 基本信息: { 开始工作年 } });
+    expect(screen.getByText(期望)).toBeTruthy();
+  });
+
+  it('非学生当前年开始工作 → 0 年 · 自当前年起', () => {
+    render我的简历({ mode: 'backend', 基本信息: { 开始工作年: String(当前年) } });
+    expect(screen.getByText(`0 年 · 自 ${当前年} 年起`)).toBeTruthy();
+  });
+
+  it('非学生正常过去年份 → 真实年限与起始年', () => {
+    render我的简历({ mode: 'backend', 基本信息: { 开始工作年: String(当前年 - 8) } });
+    expect(screen.getByText(`8 年 · 自 ${当前年 - 8} 年起`)).toBeTruthy();
+  });
+
+  it('在校身份保持学生文案，不看开始工作年', () => {
+    render我的简历({ mode: 'backend', 基本信息: { 身份: '在校', 开始工作年: '' } });
+    expect(screen.getByText('应届 · 在校')).toBeTruthy();
   });
 });
 
