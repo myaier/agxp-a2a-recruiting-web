@@ -489,6 +489,10 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
   async function 刷新已载摘要(role: P5角色): Promise<void> {
     const 旧 = 后端状态引用.current.P5摘要[role];
     if (旧 === undefined || 旧.ownerSubjectId !== 主体标识引用.current) return;
+    // 先作废同 scope 在飞的旧 summary 读：mutation 已确认，旧 GET 可能早于 POST 生效，
+    // 迟到回包不得覆盖本次权威刷新（与 权威重读详情 的读换代同款纪律）。
+    const 读键 = 读代际键(P5范围键.summary(role));
+    P5范围代际.current.set(读键, (P5范围代际.current.get(读键) ?? 0) + 1);
     await 运行摘要读(role);
   }
 

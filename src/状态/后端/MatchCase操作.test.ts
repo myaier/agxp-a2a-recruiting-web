@@ -594,6 +594,28 @@ describe('P5 summary 读取与刷新', () => {
     expect(未载.数据源.读取P5摘要).not.toHaveBeenCalled();
   });
 
+  it('并发 mutation：后确认的刷新作废在飞旧 summary 读，不提交陈旧计数', async () => {
+    await env.操作.加载摘要('candidate');
+    env.操作.设置P5范围('candidate', P5范围键.detail('candidate', 'mc_1'));
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
+    // 甲的 summary GET（第 2 次）挂起：出发早于乙的 POST 生效，回包将是陈旧计数
+    const 旧读 = deferred<MatchCaseSummary>();
+    let 摘要读数 = 1;
+    vi.mocked(env.数据源.读取P5摘要).mockImplementation(async () => {
+      摘要读数 += 1;
+      return 摘要读数 === 2 ? 旧读.promise : 更新摘要;
+    });
+    const 甲 = env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '回答');
+    await vi.waitFor(() => expect(env.数据源.读取P5摘要).toHaveBeenCalledTimes(2));
+    // 乙（不同 prompt）随后确认成功：其刷新必须作废甲的在飞读并重发，不得被单飞让路
+    const 乙 = env.操作.回答事实('candidate', 'mc_1', 'prompt_2', '回答');
+    await vi.waitFor(() => expect(env.数据源.读取P5摘要).toHaveBeenCalledTimes(3));
+    旧读.resolve(初始摘要); // 甲的陈旧回包迟到：整包丢弃
+    await Promise.all([甲, 乙]);
+    expect(env.最新状态().P5摘要.candidate?.summary).toEqual(更新摘要);
+  });
+
   it('Mock 模式加载 summary 零请求', async () => {
     const mockEnv = 创建P5操作测试环境(false);
     mockEnv.操作.设置P5范围('candidate', P5范围键.summary('candidate'));
