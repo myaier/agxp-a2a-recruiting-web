@@ -19,7 +19,8 @@
 //     currentCoordination 且本端必需且未决；S3 要本端意向词为空；S1 重试要阶段区 typed
 //     附件（已绑定 file/version 对）；缺坐标一律零控件零请求（fail closed）。
 //   · 动作词 → 操作层路线（与 wire 唯一准许路线一一对应）：respond_fact→回答事实；
-//     end_screening（候选）/decline_resume_invitation→决定S0(continue|end)；accept_resume_
+//     end_screening（候选）→决定S0(end)（卡上无 continue：继续不是前端授权动作）；
+//     decline_resume_invitation→决定S0(end)；accept_resume_
 //     invitation/retry_resume_readiness/replace_resume→提交简历(file,version,字面 true)
 //     （resume-submission 路线）；decide_resume_screening→决定S1(continue|not_fit)；
 //     decide_coordination→决定S2(issueId,accept|reject)；confirm_intent/decline_intent→
@@ -750,15 +751,11 @@ function 阶段动作区({
           </>
         );
       case 'end_screening':
-        // decisions 路线只有候选端 /me 臂：招聘端结束卡无本端准许路线，零控件
+        // decisions 路线只有候选端 /me 臂：招聘端结束卡无本端准许路线，零控件。
+        // 候选端也只保留「结束初筛」一条准许路线 —— end_screening 卡绝不发 continue
+        //（继续是 AI/预算侧自动推进，不是前端可点的授权动作，spec §10.1）。
         return role !== 'candidate' ? null : (
           <div style={键行样式}>
-            <button
-              type="button" className="可点" style={动作主键样式} disabled={写中}
-              onClick={() => void 发命令(() => 操作.决定S0(caseId, 'continue'))}
-            >
-              继续初筛
-            </button>
             <button
               type="button" className="可点" style={动作次键样式} disabled={写中}
               onClick={确认结束初筛}

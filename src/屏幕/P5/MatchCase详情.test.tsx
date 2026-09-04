@@ -954,23 +954,31 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     expect(mock回答事实).not.toHaveBeenCalled();
   });
 
-  it('end_screening（候选）：继续/结束两条 S0 决定的精确调用，结束过二次确认', async () => {
+  it('respond_fact + end_screening 只有补充事实与结束动作，没有继续初筛', async () => {
     const user = userEvent.setup();
-    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: 候选详情DTO({ availableActions: ['respond_fact', 'end_screening'] }),
+      }),
+    });
     渲染详情('candidate', 'mc_direct');
-    await user.click(screen.getByRole('button', { name: '继续初筛' }));
-    expect(mock决定S0).toHaveBeenCalledTimes(1);
-    expect(mock决定S0).toHaveBeenCalledWith('mc_direct', 'continue');
 
+    // 「继续初筛」是前端自造的未授权动作：任何形态都不出现（spec §10.1）
+    expect(screen.queryByRole('button', { name: '继续初筛' })).toBeNull();
+    expect(screen.getByRole('textbox', { name: '回答问题' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '结束初筛' }));
+    expect(mock决定S0).not.toHaveBeenCalled();
     const 确认框 = screen.getByRole('dialog');
     expect(within(确认框).getByText('结束后这一单立即终止，无法恢复。')).toBeTruthy();
     await user.click(within(确认框).getByRole('button', { name: '暂不结束' })); // 取消零请求
-    expect(mock决定S0).toHaveBeenCalledTimes(1);
+    expect(mock决定S0).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: '结束初筛' }));
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '结束初筛' }));
-    expect(mock决定S0).toHaveBeenCalledTimes(2);
-    expect(mock决定S0).toHaveBeenLastCalledWith('mc_direct', 'end');
+    expect(mock决定S0).toHaveBeenCalledTimes(1);
+    expect(mock决定S0).toHaveBeenCalledWith('mc_direct', 'end');
+    // 全程零 continue 命令：end_screening 卡只有结束一条准许路线
+    expect(mock决定S0.mock.calls.every((调) => 调[1] === 'end')).toBe(true);
   });
 
   it('end_screening（招聘）：wire 缺 recruiter decisions 臂 → 零控件零请求（fail closed，后端缺口观察）', async () => {
