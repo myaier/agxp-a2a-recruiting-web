@@ -445,6 +445,17 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     // 职位详情的标签行 2026-08-31 已删，卡面文案不进本页 DOM）
   });
 
+  it('Backend 分析缺证据只说「简历未提及」，不出现不存在的下方 Agent 操作', () => {
+    // basis 已确认 + 学历真实约束 + 简历无教育 → 学历行记未提及，分析灰句必须保持事实性
+    渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
+    渲染('job_1');
+    expect(screen.getByText(/按岗位设置的结构化要求核对/)).toBeTruthy();
+    expect(screen.getByText('学历 本科简历未提及。')).toBeTruthy();
+    expect(screen.queryByText(/在下方告诉代理/)).toBeNull();
+    expect(screen.queryByText(/告诉代理/)).toBeNull();
+    expect(screen.queryByText(/下方/)).toBeNull();
+  });
+
   it('历史 basis 未确认 + 嵌入 Job 当前已确认：保留后端分，确定性核对行与生成分析整组不出，改显中性句', () => {
     渲染Backend状态({
       候选岗位推荐: 快照With({

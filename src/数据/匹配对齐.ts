@@ -169,7 +169,8 @@ export function 求职匹配分析(
 
   const 灰段们: string[] = [];
   if (不满足们.length) 灰段们.push(`${不满足们.join('、')}未达到岗位要求`);
-  if (未提及们.length) 灰段们.push(`${未提及们.join('、')}简历未提及——在下方告诉代理即可补上`);
+  // 未提及只陈述事实（简历没写），不暗示任何输入入口 —— 下方没有代理可填
+  if (未提及们.length) 灰段们.push(`${未提及们.join('、')}简历未提及`);
   const 灰句 = 灰段们.length ? `${灰段们.join('；')}。` : '';
 
   if (!墨句 && !灰句) return null;
