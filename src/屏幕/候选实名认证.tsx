@@ -197,6 +197,8 @@ export default function 候选实名认证() {
 
   async function 刷新状态() {
     if (刷新在飞 || 取消中) return;
+    // 刷新开始清旧的取消错误：后续刷新失败（快照.错误）不被先前文案遮蔽
+    设页面错误(null);
     设刷新在飞(true);
     try {
       await 操作.加载候选实名(true);

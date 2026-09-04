@@ -555,6 +555,27 @@ describe('候选实名认证 · pending 刷新与取消', () => {
     expect((screen.getByRole('button', { name: '刷新状态' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  // review-r2 Minor：先发生的取消错误不得遮蔽后续刷新失败 —— 开始刷新时清页面错误
+  it('pending 取消失败后再刷新：刷新开始清旧页面错误，刷新失败可见', async () => {
+    const 用户 = userEvent.setup();
+    喂后端(成功快照(待审摘要));
+    mock应用状态.操作 = 操作桩({
+      取消候选实名: vi.fn(async (): Promise<'已取消'> => {
+        throw new BFF错误(503, 'identity_verification_unavailable', '');
+      }),
+    });
+    渲染页();
+    await 用户.click(screen.getByRole('button', { name: '取消申请' }));
+    const 执行键 = screen.getAllByRole('button', { name: '取消申请' })
+      .find((键) => !(键 as HTMLButtonElement).disabled)!;
+    await 用户.click(执行键);
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('实名认证暂时不可用，请稍后再试'));
+    // 随后刷新失败写入快照错误：刷新开始清掉旧页面错误，本次失败可见
+    mock应用状态.后端状态.候选实名 = { ...成功快照(待审摘要), 错误: '请求失败，请稍后再试' };
+    await 用户.click(screen.getByRole('button', { name: '刷新状态' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('请求失败，请稍后再试'));
+  });
+
   it('取消失败保留 pending 页面并显示安全错误', async () => {
     const 用户 = userEvent.setup();
     喂后端(成功快照(待审摘要));
