@@ -241,6 +241,10 @@ export function MatchCase详情(props: { role: P5角色 }) {
   };
   const 可输入 = 正常 !== null && !终局 && caseId !== '';
 
+  // 回答在飞锁表（review-r2）：归本页所有 —— 阶段动作区会随「当前单无动作/动作在别段」
+  // 整体卸载，锁表若随动作区丢，回原单时重挂载的是空表，会错误放行第二段草稿。
+  const 回答在飞表 = useRef<Map<string, Promise<void>>>(new Map());
+
   const 重读 = () => void 操作.读取详情(role, caseId, true).catch(() => undefined);
 
   return (
@@ -304,6 +308,7 @@ export function MatchCase详情(props: { role: P5角色 }) {
             快照={快照}
             当前节点引用={当前节点引用}
             重读={重读}
+            回答在飞表={回答在飞表}
           />
         )}
       </滚动区>
@@ -326,6 +331,7 @@ function 详情主体({
   快照,
   当前节点引用,
   重读,
+  回答在飞表,
 }: {
   视图: P5详情正常视图;
   role: P5角色;
@@ -334,6 +340,7 @@ function 详情主体({
   快照: P5详情快照 | undefined;
   当前节点引用: RefObject<HTMLDivElement | null>;
   重读: () => void;
+  回答在飞表: RefObject<Map<string, Promise<void>>>;
 }): ReactNode {
   const { 跳转 } = use导航();
   // P7 Task 6：narrowing 到局部 const —— ready 分支的 conversationId 才能进回调
@@ -397,7 +404,7 @@ function 详情主体({
       // 有动作卡的段保持展开（passed 段也能一眼看到等你的决定）
       默认展开: 是动作段 ? true : undefined,
       尾部: 是动作段
-        ? <阶段动作区 role={role} caseId={caseId} 视图={视图} 详情={详情} 操作={操作} />
+        ? <阶段动作区 role={role} caseId={caseId} 视图={视图} 详情={详情} 操作={操作} 回答在飞表={回答在飞表} />
         : undefined,
     };
   });
@@ -574,22 +581,24 @@ function 阶段动作区({
   视图,
   详情,
   操作,
+  回答在飞表,
 }: {
   role: P5角色;
   caseId: string;
   视图: P5详情正常视图;
   详情: P5详情;
   操作: 动作操作;
+  回答在飞表: RefObject<Map<string, Promise<void>>>;
 }): ReactNode {
   const { 跳转 } = use导航();
 
   const [回答草稿, 设回答草稿] = useState('');
   // 回答提交的可见 in-flight（spec §10.3）：独立于 S1/S2/S3 的 写中 —— 只锁回答区，
   // 不牵连其它动作卡；state 只负责渲染。
-  // 锁按 case_id 记账（跨换单导航持续）：操作层同 (role,case,action,prompt) 单飞会复用
+  // 锁表由页面级 MatchCase详情 持有（review-r2：动作区会整体卸载，锁不能随它丢）；
+  // 按 case_id 记账（跨换单导航持续）：操作层同 (role,case,action,prompt) 单飞会复用
   // 在飞 POST —— 回原单时若已放锁，新草稿会绑上旧承诺被静默吞掉（review-r1）。
   // 表里存的是已收口的承诺链（catch 已吞错，恒 resolve），回原单的续锁观察者靠它收口解锁。
-  const 回答在飞表 = useRef<Map<string, Promise<void>>>(new Map());
   const [回答提交中, 设回答提交中] = useState(false);
   // S1 提交三态：权威库单选 → Case 专属披露确认 → POST（字面 true）；任一结束即清
   const [待选择, 设待选择] = useState<{ 文件们: readonly BFF附件简历[] } | null>(null);
@@ -619,6 +628,7 @@ function 阶段动作区({
         if (准备代际.current === 本轮) 设回答提交中(false);
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 回答在飞表是页面持有的稳定 ref，身份恒定
   }, [caseId]);
 
   const 报错 = (错误: unknown) => 轻提示(取后端错误文案(错误));

@@ -1063,6 +1063,64 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     expect(mock回答事实).toHaveBeenLastCalledWith('candidate', 'mc_a', 'prompt_1', '第二段回答');
   });
 
+  it('经无动作单往返：在飞锁随页面存活，回原单续锁（动作区重挂载不丢锁）', async () => {
+    const user = userEvent.setup();
+    const deferred = 可控Promise<void>();
+    mock回答事实.mockReturnValueOnce(deferred.promise);
+    置详情状态({
+      role: 'candidate', caseId: 'mc_a',
+      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }),
+    });
+    render(
+      <MemoryRouter initialEntries={['/deal/mc_a']}>
+        <测试换Case钮 目标="/deal/mc_b" 文案="切到无动作单" />
+        <测试换Case钮 目标="/deal/mc_a" 文案="切回旧单" />
+        <Routes>
+          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const inputA = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
+    await user.type(inputA, '第一段回答');
+    await user.click(screen.getByRole('button', { name: '提交回答' }));
+    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
+
+    // 切到无动作单（running 行 + 空动作表）：阶段动作区整体卸载
+    置详情状态({
+      role: 'candidate', caseId: 'mc_b',
+      快照: 详情快照({
+        detail: 候选详情DTO({
+          state: 状态({ caseId: 'mc_b', status: 'running', step: 'policy_check', needsUser: false, round: 0 }),
+          needsAction: false,
+          availableActions: [],
+        }),
+      }),
+    });
+    await user.click(screen.getByRole('button', { name: '切到无动作单' }));
+    expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull(); // 动作区已卸载
+
+    // 回原单：新动作区重挂载，仍续锁到旧请求收口
+    置详情状态({
+      role: 'candidate', caseId: 'mc_a',
+      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }),
+    });
+    await user.click(screen.getByRole('button', { name: '切回旧单' }));
+    const inputA2 = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
+    expect(inputA2.value).toBe('');
+    expect(inputA2.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
+
+    deferred.resolve();
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false));
+    expect(mock回答事实).toHaveBeenCalledTimes(1); // 往返全程只发过一次 POST
+    await user.type(inputA2, '第二段回答');
+    await user.click(screen.getByRole('button', { name: '提交回答' }));
+    expect(mock回答事实).toHaveBeenCalledTimes(2);
+    expect(mock回答事实).toHaveBeenLastCalledWith('candidate', 'mc_a', 'prompt_1', '第二段回答');
+  });
+
   it('多条/零条补充问题：整页契约错误，无回答控件，零请求', async () => {
     const user = userEvent.setup();
     const 双问阶段 = 阶段区组({
