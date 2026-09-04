@@ -1,0 +1,130 @@
+<style>
+  :root {
+    --荧光绿: #ccf24f;
+    --深绿: #3f7a1f;
+    --橄榄: #7fa317;
+    --墨: #1a1a1a;
+    --页面底: #f2f2e9;
+    --次要: #6f7268;
+    --最弱: #c3c6bd;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 60px;
+    background: var(--页面底);
+    font-family: -apple-system, 'PingFang SC', sans-serif;
+    color: var(--墨);
+  }
+  h1 { font-size: 20px; font-weight: 800; margin: 0 0 6px; }
+  .引言 { font-size: 13px; line-height: 1.75; color: var(--次要); margin: 0 0 26px; max-width: 660px; }
+  .网格 { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; max-width: 1000px; }
+  .卡 { background: #fff; border: 1px solid #eeefe9; border-radius: 18px; padding: 18px; }
+  .头 { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .序 { font-size: 11px; font-weight: 800; letter-spacing: .1em; color: var(--深绿); background: #eef6d6; padding: 3px 8px; border-radius: 6px; }
+  .名 { font-size: 15px; font-weight: 800; }
+  .为什么 { font-size: 12px; line-height: 1.8; color: var(--次要); margin: 0 0 14px; }
+  .为什么 b { color: var(--墨); }
+  /* 两种底：浅色页面 + 深色手机桌面，玻璃质感在两种底上表现不同 */
+  .底组 { display: flex; gap: 10px; }
+  .底 { flex: 1; padding: 14px 10px; border-radius: 12px; display: flex; align-items: flex-end; justify-content: center; gap: 14px; }
+  .浅底 { background: var(--页面底); }
+  .深底 { background: #14161a; }
+  .格 { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .标注 { font-size: 9px; color: var(--最弱); }
+  .深底 .标注 { color: #5f6763; }
+</style>
+
+<h1>图标方向 · 毛玻璃 + 动物</h1>
+<p class="引言">
+  参考 DeepSeek 鲸鱼 / 飞书那类做法：吉祥物赢在<b>有角色、好记</b>，不负责「一眼看出功能」。<br>
+  玻璃质感沿用 App 里已有的语言（底部导航、代理横幅都是毛玻璃）。<br>
+  每个方案给 <b>64 / 32 / 20</b> 三档，并放在<b>浅色页面</b>与<b>深色桌面</b>两种底上 —— 玻璃在深底上更明显。
+</p>
+
+<div class="网格">
+
+  <!-- ══ 01 猫头鹰 · 毛玻璃 ══ -->
+  <div class="卡">
+    <div class="头"><span class="序">01</span><span class="名">猫头鹰 · 毛玻璃</span></div>
+    <p class="为什么">
+      <b>为什么是它</b>：夜里替你干活。产品文案本来就写着「昨夜新上 46 个岗，替你挡掉 3 个低于底线的」——
+      猫头鹰正是那个你睡着时仍在看市场的角色。安静、不张扬、看得清，和「代理替你把关」完全同一性格。
+      两只大眼在 20px 下依然是最好认的形。
+    </p>
+    <div class="底组">
+      <div class="底 浅底">
+        <div class="格"><svg width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e4fa8f"/><stop offset="1" stop-color="#7fa317"/></linearGradient><linearGradient id="s1" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".55" stop-color="#fff" stop-opacity=".06"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><rect x="1" y="1" width="62" height="62" rx="16" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.4"/><path d="M15 24c0-1.6 1.4-2.6 2.8-2l6 2.6zM49 24c0-1.6-1.4-2.6-2.8-2l-6 2.6z" fill="var(--墨)"/><rect x="13" y="20" width="38" height="32" rx="16" fill="var(--墨)"/><circle cx="24" cy="34" r="7.4" fill="#f4ffd0"/><circle cx="40" cy="34" r="7.4" fill="#f4ffd0"/><circle cx="24" cy="34" r="3.4" fill="var(--墨)"/><circle cx="40" cy="34" r="3.4" fill="var(--墨)"/><path d="M32 39.5l3.2 4.2h-6.4z" fill="var(--荧光绿)"/></svg><span class="标注">64</span></div>
+        <div class="格"><svg width="32" height="32" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><path d="M15 24c0-1.6 1.4-2.6 2.8-2l6 2.6zM49 24c0-1.6-1.4-2.6-2.8-2l-6 2.6z" fill="var(--墨)"/><rect x="13" y="20" width="38" height="32" rx="16" fill="var(--墨)"/><circle cx="24" cy="34" r="7.4" fill="#f4ffd0"/><circle cx="40" cy="34" r="7.4" fill="#f4ffd0"/><circle cx="24" cy="34" r="3.4" fill="var(--墨)"/><circle cx="40" cy="34" r="3.4" fill="var(--墨)"/><path d="M32 39.5l3.2 4.2h-6.4z" fill="var(--荧光绿)"/></svg><span class="标注">32</span></div>
+        <div class="格"><svg width="20" height="20" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><path d="M15 24c0-1.6 1.4-2.6 2.8-2l6 2.6zM49 24c0-1.6-1.4-2.6-2.8-2l-6 2.6z" fill="var(--墨)"/><rect x="13" y="20" width="38" height="32" rx="16" fill="var(--墨)"/><circle cx="24" cy="34" r="7.4" fill="#f4ffd0"/><circle cx="40" cy="34" r="7.4" fill="#f4ffd0"/><circle cx="24" cy="34" r="3.4" fill="var(--墨)"/><circle cx="40" cy="34" r="3.4" fill="var(--墨)"/><path d="M32 39.5l3.2 4.2h-6.4z" fill="var(--荧光绿)"/></svg><span class="标注">20</span></div>
+      </div>
+      <div class="底 深底">
+        <div class="格"><svg width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><rect x="1" y="1" width="62" height="62" rx="16" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.4"/><path d="M15 24c0-1.6 1.4-2.6 2.8-2l6 2.6zM49 24c0-1.6-1.4-2.6-2.8-2l-6 2.6z" fill="var(--墨)"/><rect x="13" y="20" width="38" height="32" rx="16" fill="var(--墨)"/><circle cx="24" cy="34" r="7.4" fill="#f4ffd0"/><circle cx="40" cy="34" r="7.4" fill="#f4ffd0"/><circle cx="24" cy="34" r="3.4" fill="var(--墨)"/><circle cx="40" cy="34" r="3.4" fill="var(--墨)"/><path d="M32 39.5l3.2 4.2h-6.4z" fill="var(--荧光绿)"/></svg><span class="标注">64</span></div>
+        <div class="格"><svg width="20" height="20" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><path d="M15 24c0-1.6 1.4-2.6 2.8-2l6 2.6zM49 24c0-1.6-1.4-2.6-2.8-2l-6 2.6z" fill="var(--墨)"/><rect x="13" y="20" width="38" height="32" rx="16" fill="var(--墨)"/><circle cx="24" cy="34" r="7.4" fill="#f4ffd0"/><circle cx="40" cy="34" r="7.4" fill="#f4ffd0"/><circle cx="24" cy="34" r="3.4" fill="var(--墨)"/><circle cx="40" cy="34" r="3.4" fill="var(--墨)"/><path d="M32 39.5l3.2 4.2h-6.4z" fill="var(--荧光绿)"/></svg><span class="标注">20</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 02 信鸽 · 毛玻璃 ══ -->
+  <div class="卡">
+    <div class="头"><span class="序">02</span><span class="名">信鸽 · 毛玻璃</span></div>
+    <p class="为什么">
+      <b>为什么是它</b>：只带话，不带身份。信鸽把你的条件送到对面，却不暴露你是谁 ——
+      这正是双盲池的机制。同时鸽子＝谈判与和解的通用符号，天然贴「谈成」。
+      风险：鸟类侧影在 20px 下容易糊成一团。
+    </p>
+    <div class="底组">
+      <div class="底 浅底">
+        <div class="格"><svg width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><rect x="1" y="1" width="62" height="62" rx="16" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.4"/><path d="M11 47c1-11 9-19 20-21 4-1 7-3 9-6l3 7 8 1-7 5c1 11-8 20-19 20-7 0-13-2-14-6Z" fill="var(--墨)"/><path d="M22 42c1-11 9-18 19-18-1 12-9 20-19 18Z" fill="var(--荧光绿)"/><circle cx="43" cy="24" r="2.2" fill="#f4ffd0"/><path d="M11 47l-6 3 4-7z" fill="var(--墨)"/></svg><span class="标注">64</span></div>
+        <div class="格"><svg width="32" height="32" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><path d="M11 47c1-11 9-19 20-21 4-1 7-3 9-6l3 7 8 1-7 5c1 11-8 20-19 20-7 0-13-2-14-6Z" fill="var(--墨)"/><path d="M22 42c1-11 9-18 19-18-1 12-9 20-19 18Z" fill="var(--荧光绿)"/><circle cx="43" cy="24" r="2.2" fill="#f4ffd0"/><path d="M11 47l-6 3 4-7z" fill="var(--墨)"/></svg><span class="标注">32</span></div>
+        <div class="格"><svg width="20" height="20" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><path d="M11 47c1-11 9-19 20-21 4-1 7-3 9-6l3 7 8 1-7 5c1 11-8 20-19 20-7 0-13-2-14-6Z" fill="var(--墨)"/><path d="M22 42c1-11 9-18 19-18-1 12-9 20-19 18Z" fill="var(--荧光绿)"/><circle cx="43" cy="24" r="2.2" fill="#f4ffd0"/><path d="M11 47l-6 3 4-7z" fill="var(--墨)"/></svg><span class="标注">20</span></div>
+      </div>
+      <div class="底 深底">
+        <div class="格"><svg width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><rect x="1" y="1" width="62" height="62" rx="16" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.4"/><path d="M11 47c1-11 9-19 20-21 4-1 7-3 9-6l3 7 8 1-7 5c1 11-8 20-19 20-7 0-13-2-14-6Z" fill="var(--墨)"/><path d="M22 42c1-11 9-18 19-18-1 12-9 20-19 18Z" fill="var(--荧光绿)"/><circle cx="43" cy="24" r="2.2" fill="#f4ffd0"/><path d="M11 47l-6 3 4-7z" fill="var(--墨)"/></svg><span class="标注">64</span></div>
+        <div class="格"><svg width="20" height="20" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><path d="M11 47c1-11 9-19 20-21 4-1 7-3 9-6l3 7 8 1-7 5c1 11-8 20-19 20-7 0-13-2-14-6Z" fill="var(--墨)"/><path d="M22 42c1-11 9-18 19-18-1 12-9 20-19 18Z" fill="var(--荧光绿)"/><circle cx="43" cy="24" r="2.2" fill="#f4ffd0"/><path d="M11 47l-6 3 4-7z" fill="var(--墨)"/></svg><span class="标注">20</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 03 柴犬 · 毛玻璃 ══ -->
+  <div class="卡">
+    <div class="头"><span class="序">03</span><span class="名">柴犬 · 毛玻璃</span></div>
+    <p class="为什么">
+      <b>为什么是它</b>：忠诚。代理和你的关系本质是「只替你一个人办事、不倒戈」——
+      狗是这层关系最强的符号，也最容易让人喜欢（亲和力这条上它赢过猫头鹰）。
+      风险：容易联想到「猎犬 / 猎头」，而我们刚把猎头端删了；也偏可爱，撑不撑得起谈判的严肃感要你判断。（第一版尖耳读成了猫，已改成下垂圆耳。）
+    </p>
+    <div class="底组">
+      <div class="底 浅底">
+        <div class="格"><svg width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><rect x="1" y="1" width="62" height="62" rx="16" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.4"/><rect x="10" y="20" width="11" height="21" rx="5.5" fill="var(--墨)"/><rect x="43" y="20" width="11" height="21" rx="5.5" fill="var(--墨)"/><rect x="16" y="19" width="32" height="29" rx="13" fill="var(--墨)"/><circle cx="26" cy="31" r="2.8" fill="#f4ffd0"/><circle cx="38" cy="31" r="2.8" fill="#f4ffd0"/><rect x="24" y="36" width="16" height="11" rx="5.5" fill="var(--荧光绿)"/><circle cx="32" cy="40" r="2.4" fill="var(--墨)"/></svg><span class="标注">64</span></div>
+        <div class="格"><svg width="32" height="32" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><rect x="10" y="20" width="11" height="21" rx="5.5" fill="var(--墨)"/><rect x="43" y="20" width="11" height="21" rx="5.5" fill="var(--墨)"/><rect x="16" y="19" width="32" height="29" rx="13" fill="var(--墨)"/><circle cx="26" cy="31" r="2.8" fill="#f4ffd0"/><circle cx="38" cy="31" r="2.8" fill="#f4ffd0"/><rect x="24" y="36" width="16" height="11" rx="5.5" fill="var(--荧光绿)"/><circle cx="32" cy="40" r="2.4" fill="var(--墨)"/></svg><span class="标注">32</span></div>
+        <div class="格"><svg width="20" height="20" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><rect x="10" y="20" width="11" height="21" rx="5.5" fill="var(--墨)"/><rect x="43" y="20" width="11" height="21" rx="5.5" fill="var(--墨)"/><rect x="16" y="19" width="32" height="29" rx="13" fill="var(--墨)"/><circle cx="26" cy="31" r="2.8" fill="#f4ffd0"/><circle cx="38" cy="31" r="2.8" fill="#f4ffd0"/><rect x="24" y="36" width="16" height="11" rx="5.5" fill="var(--荧光绿)"/><circle cx="32" cy="40" r="2.4" fill="var(--墨)"/></svg><span class="标注">20</span></div>
+      </div>
+      <div class="底 深底">
+        <div class="格"><svg width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><rect x="1" y="1" width="62" height="62" rx="16" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.4"/><rect x="10" y="20" width="11" height="21" rx="5.5" fill="var(--墨)"/><rect x="43" y="20" width="11" height="21" rx="5.5" fill="var(--墨)"/><rect x="16" y="19" width="32" height="29" rx="13" fill="var(--墨)"/><circle cx="26" cy="31" r="2.8" fill="#f4ffd0"/><circle cx="38" cy="31" r="2.8" fill="#f4ffd0"/><rect x="24" y="36" width="16" height="11" rx="5.5" fill="var(--荧光绿)"/><circle cx="32" cy="40" r="2.4" fill="var(--墨)"/></svg><span class="标注">64</span></div>
+        <div class="格"><svg width="20" height="20" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="url(#g1)"/><rect width="64" height="64" rx="17" fill="url(#s1)"/><rect x="10" y="20" width="11" height="21" rx="5.5" fill="var(--墨)"/><rect x="43" y="20" width="11" height="21" rx="5.5" fill="var(--墨)"/><rect x="16" y="19" width="32" height="29" rx="13" fill="var(--墨)"/><circle cx="26" cy="31" r="2.8" fill="#f4ffd0"/><circle cx="38" cy="31" r="2.8" fill="#f4ffd0"/><rect x="24" y="36" width="16" height="11" rx="5.5" fill="var(--荧光绿)"/><circle cx="32" cy="40" r="2.4" fill="var(--墨)"/></svg><span class="标注">20</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 04 猫头鹰 · 扁平（对照组）══ -->
+  <div class="卡">
+    <div class="头"><span class="序">04</span><span class="名">猫头鹰 · 扁平（对照）</span></div>
+    <p class="为什么">
+      <b>做什么用</b>：同一只鹰、去掉玻璃，用来判断玻璃到底加了什么。
+      扁平的好处是在 20px 和印刷物上永远不糊、单色可用；玻璃的好处是有质感、和 App 内的毛玻璃呼应。
+      先选动物，再回来定这一条。
+    </p>
+    <div class="底组">
+      <div class="底 浅底">
+        <div class="格"><svg width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="var(--荧光绿)"/><path d="M15 24c0-1.6 1.4-2.6 2.8-2l6 2.6zM49 24c0-1.6-1.4-2.6-2.8-2l-6 2.6z" fill="var(--墨)"/><rect x="13" y="20" width="38" height="32" rx="16" fill="var(--墨)"/><circle cx="24" cy="34" r="7.4" fill="var(--荧光绿)"/><circle cx="40" cy="34" r="7.4" fill="var(--荧光绿)"/><circle cx="24" cy="34" r="3.4" fill="var(--墨)"/><circle cx="40" cy="34" r="3.4" fill="var(--墨)"/><path d="M32 39.5l3.2 4.2h-6.4z" fill="var(--荧光绿)"/></svg><span class="标注">64</span></div>
+        <div class="格"><svg width="32" height="32" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="var(--荧光绿)"/><path d="M15 24c0-1.6 1.4-2.6 2.8-2l6 2.6zM49 24c0-1.6-1.4-2.6-2.8-2l-6 2.6z" fill="var(--墨)"/><rect x="13" y="20" width="38" height="32" rx="16" fill="var(--墨)"/><circle cx="24" cy="34" r="7.4" fill="var(--荧光绿)"/><circle cx="40" cy="34" r="7.4" fill="var(--荧光绿)"/><circle cx="24" cy="34" r="3.4" fill="var(--墨)"/><circle cx="40" cy="34" r="3.4" fill="var(--墨)"/><path d="M32 39.5l3.2 4.2h-6.4z" fill="var(--荧光绿)"/></svg><span class="标注">32</span></div>
+        <div class="格"><svg width="20" height="20" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="var(--荧光绿)"/><path d="M15 24c0-1.6 1.4-2.6 2.8-2l6 2.6zM49 24c0-1.6-1.4-2.6-2.8-2l-6 2.6z" fill="var(--墨)"/><rect x="13" y="20" width="38" height="32" rx="16" fill="var(--墨)"/><circle cx="24" cy="34" r="7.4" fill="var(--荧光绿)"/><circle cx="40" cy="34" r="7.4" fill="var(--荧光绿)"/><circle cx="24" cy="34" r="3.4" fill="var(--墨)"/><circle cx="40" cy="34" r="3.4" fill="var(--墨)"/><path d="M32 39.5l3.2 4.2h-6.4z" fill="var(--荧光绿)"/></svg><span class="标注">20</span></div>
+      </div>
+      <div class="底 深底">
+        <div class="格"><svg width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="var(--荧光绿)"/><path d="M15 24c0-1.6 1.4-2.6 2.8-2l6 2.6zM49 24c0-1.6-1.4-2.6-2.8-2l-6 2.6z" fill="var(--墨)"/><rect x="13" y="20" width="38" height="32" rx="16" fill="var(--墨)"/><circle cx="24" cy="34" r="7.4" fill="var(--荧光绿)"/><circle cx="40" cy="34" r="7.4" fill="var(--荧光绿)"/><circle cx="24" cy="34" r="3.4" fill="var(--墨)"/><circle cx="40" cy="34" r="3.4" fill="var(--墨)"/><path d="M32 39.5l3.2 4.2h-6.4z" fill="var(--荧光绿)"/></svg><span class="标注">64</span></div>
+        <div class="格"><svg width="20" height="20" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="var(--荧光绿)"/><path d="M15 24c0-1.6 1.4-2.6 2.8-2l6 2.6zM49 24c0-1.6-1.4-2.6-2.8-2l-6 2.6z" fill="var(--墨)"/><rect x="13" y="20" width="38" height="32" rx="16" fill="var(--墨)"/><circle cx="24" cy="34" r="7.4" fill="var(--荧光绿)"/><circle cx="40" cy="34" r="7.4" fill="var(--荧光绿)"/><circle cx="24" cy="34" r="3.4" fill="var(--墨)"/><circle cx="40" cy="34" r="3.4" fill="var(--墨)"/><path d="M32 39.5l3.2 4.2h-6.4z" fill="var(--荧光绿)"/></svg><span class="标注">20</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
