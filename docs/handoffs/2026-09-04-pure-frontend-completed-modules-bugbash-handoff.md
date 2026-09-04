@@ -2,6 +2,14 @@
 
 > 本文可直接交给另一台机器上的前端 Coding Agent。接收者不需要此前聊天记录、测试账号、截图、浏览器会话、本机目录或其它 Handoff。所有路径均为前端仓库相对路径。
 
+> **状态复核（2026-09-05 05:37 +08:00）：部分已完成并合入。** 昨日“进行中分支尚未合入”的判断已经失效：`review-frontend-handoff@b4d28ac2` 已成为前端 `origin/main@280f83ef` 的祖先。后文历史问题与验收说明继续保留，执行范围以下表为准。
+
+| 状态 | 工作包 | 判定依据 |
+| --- | --- | --- |
+| **已完成并合入** | A（不含 A1）、B（含 B1）、C1、C2、C3 主问题、C4、C5、C6、D1、D2、E1、E2、F1–F4、G | 角色路由 `d5770e8a`/`7a154036`；原型面隔离 `b74b53a8`–`0c97d426`；设置/加载/时间/错误 `246957d2`–`fced2c9c`；简历/岗位事实 `7f2d4368`–`9075c640`；MatchCase 展示与提交锁 `a2f9dad5`–`a06a754a`。这些提交均位于 `origin/main@280f83ef`。 |
+| **进行中** | D3、D4、E0、J、L、M、N、R、S（不含 S1） | `2026-09-05 07:41 +08:00` 已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md`；当前仅表示实施范围已冻结并进入计划，不表示代码已完成。 |
+| **仍待解决** | A1、C3b、C3c、C7、D5、D6、E3、H、I、K、O、P、Q、S1、T | `26d80923..280f83ef` 的产品代码差异未覆盖这些工作包指定的页面/能力，且未纳入本轮纯前端数据污染/错误深链计划；对应问题仍可从原文领取。 |
+
 ## 1. 目标、基线与硬边界
 
 - 仓库：`myaier/agxp-a2a-recruiting-web`
@@ -16,7 +24,7 @@
 
 - JD 上传入口、JD 解析和岗位预填；
 - Hosted Agent failure contracts / Hosted failure wiring；
-- 候选实名认证、精确 MatchCase summary、完整 A2A transcript、Agent 自由聊天、英文补充问题的服务端本地化；这些需要后端合同或运行时能力；
+- 候选实名认证、精确 MatchCase summary、完整 A2A transcript、Agent 自由聊天、英文补充问题的服务端本地化；其中 MatchCase summary 已由后续 `FE-MC-01@280f83ef` 完成，候选实名正在 `fe-iv-01-frontend-fixes` 实施，其余仍不属于本批；
 - 简历 PDF 解析质量、“至今”解析、真实 LLM provider 或 Hub 工具调用问题；
 - 候选联系方式披露合同；
 - CSS、颜色、组件重画、布局、信息层级、协议/法务正式文案、客服运营配置及空态视觉设计；
@@ -27,7 +35,7 @@
 不要重复实施以下已独立归属的事项：
 
 - `2026-09-03-frontend-data-truthfulness-handoff.md`：MatchCase “我的”页统计、contact-events 数据源接线、`remote` 办公方式 round-trip、候选实名认证的诚实占位；
-- `2026-09-03-frontend-verification-matchcase-summary-handoff.md`：候选实名流程与精确 MatchCase summary（等待后端）；
+- `2026-09-03-frontend-verification-matchcase-summary-handoff.md`：精确 MatchCase summary 已完成；候选实名流程正在独立分支实施；
 - Hosted failure 前后端 Handoff：Agent 的失败码、失败 CTA、重试/恢复语义；
 - PM/Claude Design Handoff：样式、组件和正式运营/法务文案。
 
@@ -43,6 +51,8 @@
 6. 先为每个工作包补充/改正测试，再改实现。不要只用浏览器手测作为验收。
 
 ## 3. 工作包 A：按真实角色限制路由
+
+> **状态：已完成，原问题已失效。** 判定时间：`2026-09-05 05:37 +08:00`。依据：当前前端 `main@fc006281` 已包含 `d5770e8a` / `7a154036`；`src/应用.tsx` 已用集中式候选/招聘角色边界阻止对侧业务屏挂载，`src/应用.test.tsx` 已覆盖角色深链与恢复。保留下文作为历史问题和回归验收依据，不再重复领取实现。
 
 ### 问题与根因
 
@@ -97,6 +107,8 @@
 
 ## 4. 工作包 B：Backend 模式彻底隔离原型消息与初筛记录
 
+> **状态：已完成，原问题已失效。** 判定时间：`2026-09-05 05:37 +08:00`。依据：当前前端 `main@fc006281` 已包含 `b74b53a8`–`0c97d426`；Backend 分支的直聊、往来记录、企业往来记录和初筛记录/对话均已 fail closed，不再读取或展示 Mock 对话，也不开放本地假发送。保留下文作为历史问题和回归验收依据，不再重复领取实现。
+
 ### 问题与根因
 
 以下深链在 Backend 模式仍完整读取 Mock fixture，并允许浏览器本地“发送”造成假成功；刷新后消息消失：
@@ -131,6 +143,8 @@
 建议新增：`src/屏幕/往来记录.test.tsx`、`src/屏幕/企业往来记录.test.tsx`、`src/屏幕/初筛记录.test.tsx`、`src/屏幕/初筛对话.test.tsx`；更新 `src/屏幕/直聊会话.test.tsx`、`src/应用.test.tsx`。
 
 ### B1. 参数化真人会话在详情失败时必须彻底关闭写入面
+
+> **状态：已完成，原问题已失效。** 判定时间：`2026-09-05 05:37 +08:00`。依据：当前 `src/屏幕/P7/Backend真人会话.tsx` 只有在权威详情存在时才开放发送、举报和上下文动作；终局不可访问与首次详情失败均关闭写入面，相关组件/状态测试已覆盖。保留下文作为回归验收依据。
 
 **问题与根因：**
 
@@ -292,6 +306,8 @@
 
 ### D2. 不把 5xx 或未审核 4xx 的原始英文展示给终端用户
 
+> **状态：已完成，原问题已失效。** 判定时间：`2026-09-05 05:37 +08:00`。依据：当前前端 `main@fc006281` 已包含该批安全错误映射与 P5 无效详情收口；`src/数据/HTTP客户端.ts` 不再把未审核原始服务端文案直接交给终端页面，P5 缺失/无权访问详情按终局不可用处理且不开放无意义重试。保留下文作为历史问题和回归验收依据。
+
 **现象：** 某些页面将后端原始英文 message 直接展示。例如历史 MatchCase 页的 500；招聘端打开不存在的 MatchCase 深链时，页面虽有“这一单暂时打不开”，正文仍显示服务端英文 `The match case does not exist.`，且把终局 404 当作可无限“重试”的暂时失败。
 
 **根因：** `src/数据/HTTP客户端.ts` 的 `取后端错误文案()` 已处理 502/503/504 与部分 closed code，但 500、`internal_error` 和未在闭合表中的 4xx 最终都落到 `error.message`。`src/状态/后端/MatchCase操作.ts` 的失败快照直接使用该函数，`src/屏幕/P5/MatchCase详情.tsx` 又把快照 error 原样渲染并无差别放出“重试”。
@@ -307,6 +323,8 @@
 **测试：** 500、502、503、504、`internal_error` 都不输出英文/原始文本；P5 missing/foreign case 的 404 是中文不可用页且无 retry；可恢复 P5 503 仍可 retry；validation、version conflict、network、invalid response 维持已有映射；未知 BFF 4xx 也不泄漏未审核 message。
 
 ### D3. 招聘岗位详情不得把无效深链静默替换为第一条岗位
+
+> **状态：进行中。** 更新时间：`2026-09-05 07:41 +08:00`。依据：本项已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md` Task 1；状态表示计划已冻结，尚未宣称实现完成。
 
 **现象：** Backend 招聘账号拥有多个岗位时，打开一个不存在、拼错或已删除的 `/hr/job/:id`，页面不是显示“岗位不可用”，而是完整显示列表第一条真实岗位；页面上的“编辑”“关闭职位/重新开放”都指向这条错误岗位。用户在深链、刷新或旧浏览记录中可能看见并操作了并非 URL 指向的岗位。
 
@@ -328,6 +346,8 @@
 **测试：** Backend 有至少两条岗位时：真实 ID 显示对应岗位；随机 ID、已删除 ID 和上一个账号的 job ID 均只显示安全不可用页且 DOM 不含任一其它岗位标题/编辑/关闭 CTA；在不可用页点击返回不触发岗位 mutation；Mock 原型直链回归；刷新/角色或会话切换不会从旧列表取第一条。
 
 ### D4. 招聘岗位编辑深链不得把不存在的岗位静默变成“发布新岗位”
+
+> **状态：进行中。** 更新时间：`2026-09-05 07:41 +08:00`。依据：本项已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md` Task 2；同 Task 还覆盖同组件 A→B 时旧表单 state 污染新岗位的补充 Case。
 
 **现象：** Backend 直接访问无效、已删除或跨账号的 `/hr/post-job/:id` 时，页面去掉“编辑岗位”语义，显示空白的“岗位基础信息”与“下一步/发布岗位”流程。旧编辑链接因而可无提示地进入新建流程；用户按常规编辑动作填写并提交后可能重复发出一条新岗位。
 
@@ -376,6 +396,8 @@
 ## 7. 工作包 E：候选简历页面的事实与完整度
 
 ### E0. 候选意向编辑深链必须精确命中已有意向
+
+> **状态：进行中。** 更新时间：`2026-09-05 07:41 +08:00`。依据：本项已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md` Task 3；状态表示计划已冻结，尚未宣称实现完成。
 
 **现象：** Backend 直接打开一个不存在、已删除或属于另一账号的 `/intentions/:id`，页面显示“编辑求职期望”，但表单全部为空，仍有“保存”和“删除”按钮。用户补齐字段后点保存，页面实际会创建一条新意向，而不是报告原编辑对象不可用。
 
@@ -569,6 +591,8 @@ Backend 招聘账号选择有候选推荐的岗位时，候选卡和“查看候
 
 ## 12. 工作包 J：匿名候选画像深链必须携带岗位坐标
 
+> **状态：进行中。** 更新时间：`2026-09-05 07:41 +08:00`。依据：本项已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md` Task 8；目标是把 `(job_id, recommendation_id)` 固化为 URL 的完整权威坐标。
+
 ### 问题与复现
 
 招聘方在某一岗位的“推荐”列表进入匿名候选画像，页面可以正常加载并完成收藏；随后刷新**同一 URL**，页面却显示“这位候选暂时看不了 / 该推荐可能已不可用，或已不在当前岗位的推荐范围内”。重新从原岗位的推荐列表进入，同一候选立即又能正常加载，且刚才的收藏状态仍存在。
@@ -626,6 +650,8 @@ Backend 匿名候选画像底部固定写着“这份简历由候选人的AI代�
 
 ## 14. 工作包 L：Onboarding 空生日不得默认写成 1998 年 6 月
 
+> **状态：进行中。** 更新时间：`2026-09-05 07:41 +08:00`。依据：本项已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md` Task 6；状态表示计划已冻结，尚未宣称实现完成。
+
 ### 问题与复现
 
 新候选账号没有在线简历、也没有可用的简历解析建议时，候选 onboarding 的 `/basic` 页面把“出生年月”滚轮直接选中为 `1998 年 / 6 月`。用户只填写姓名、不选择生日或性别后点“下一步”，页面仍会保存简历，并把这两个默认值写入后端。
@@ -663,6 +689,8 @@ const [出生月] = useState(() => 基本预填.出生月 ?? (Number(基本.出�
 
 ## 15. 工作包 M：Onboarding 未选求职状态不得被保存为“在职”
 
+> **状态：进行中。** 更新时间：`2026-09-05 07:41 +08:00`。依据：本项已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md` Task 5；状态表示计划已冻结，尚未宣称实现完成。
+
 ### 问题与复现
 
 新候选的后端简历 profile 初始 `status` 是空字符串，代表尚未填写。前端却把它映射为“在职”作为 UI 兜底。随后用户在 `/basic` 只填写姓名并保存时，页面把整个 `基本信息` 草稿提交，因而将这项 UI 兜底写成服务端 `status: "employed"`。进入 `/onboard/status` 后，“在职 · 考虑机会”又已被预选，用户可以不作任何状态选择继续完成 onboarding。
@@ -694,6 +722,8 @@ const [出生月] = useState(() => 基本预填.出生月 ?? (Number(基本.出�
 建议涉及：`src/数据/后端映射.ts`、`src/数据/类型.ts`（或等价的 read-model 状态定义）、`src/屏幕/基本信息.tsx`、`src/屏幕/求职状态.tsx` 及各自测试、后端映射测试。
 
 ## 16. 工作包 N：Onboarding 空学历不得预选“本科”
+
+> **状态：进行中。** 更新时间：`2026-09-05 07:41 +08:00`。依据：本项已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md` Task 7；状态表示计划已冻结，尚未宣称实现完成。
 
 ### 问题与复现
 
@@ -845,6 +875,8 @@ navigator.clipboard?.writeText('agxp agent connect --me');
 
 ## 20. 工作包 R：Onboarding 空就读时间不得默认写入 2021–2025
 
+> **状态：进行中。** 更新时间：`2026-09-05 07:41 +08:00`。依据：本项已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md` Task 7；状态表示计划已冻结，尚未宣称实现完成。
+
 ### 问题与复现
 
 没有已有教育起止月、也没有 eligible 的简历解析建议的新候选打开 `/onboard/eduyears` 时，入学年已选中 `2021`、毕业年已选中 `2025`，“下一步”无需任何操作即可点击。该动作将它们写成教育首段的 `start_month: "2021-09"`、`end_month: "2025-06"`；学生路径还会写入 `graduation_year: "2025"`。这两项不是用户选择、后端事实或解析结果。
@@ -876,6 +908,8 @@ navigator.clipboard?.writeText('agxp agent connect --me');
 建议更新：`src/屏幕/就读时间段.tsx`、`src/流程/候选Onboarding简历预填.ts` 及上述两组测试。
 
 ## 21. 工作包 S：候选 onboarding 个人优势不能由 Mock “重新提取”覆盖
+
+> **状态：进行中（不含 S1）。** 更新时间：`2026-09-05 07:41 +08:00`。依据：本项主体已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md` Task 4；S1“屏蔽公司假成功”仍在待解决队列，未被本状态覆盖。
 
 ### 问题与根因
 
