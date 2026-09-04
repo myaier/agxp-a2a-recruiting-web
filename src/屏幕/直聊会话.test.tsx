@@ -5,7 +5,7 @@
 // Mock：原型行为原样 —— 「⋯」打开共用举报层，本地拉黑 + 固定 toast + 关层，
 // 零 P8 操作。举报层 的可选 target 扩展对本屏 Mock 调用点零影响。
 
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -73,8 +73,6 @@ describe('直聊会话 · Backend 无权威举报目标', () => {
     expect(screen.queryByRole('button', { name: '举报' })).toBeNull();
     expect(screen.queryByRole('dialog', { name: '举报' })).toBeNull();
     expect(screen.queryByText('提交举报')).toBeNull();
-    // 消息流本体照常渲染（隐藏的只是举报入口，不是整屏）
-    expect(screen.getByText(对方.消息[1]!.内容)).toBeTruthy();
     expect(mock提交P8举报).not.toHaveBeenCalled();
     expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '拉黑' }));
   });
@@ -83,6 +81,38 @@ describe('直聊会话 · Backend 无权威举报目标', () => {
     渲染('backend', '/chat/direct/M-01');
     expect(screen.queryByRole('button', { name: '举报' })).toBeNull();
     expect(mock提交P8举报).not.toHaveBeenCalled();
+  });
+
+  // 工作包 B：Backend 直聊整条原型面退场 —— 无参和带岗位 ID 的深链都不读 fixture，
+  // 不建本地消息/输入，也不留任何写入口
+  it.each(['/chat/direct', '/chat/direct/M-01'])(
+    'Backend %s 不展示原型消息或写入口',
+    (url) => {
+      渲染('backend', url);
+      expect(screen.getByText('当前暂不提供直接聊天')).toBeTruthy();
+      expect(screen.queryByText(对方.姓名)).toBeNull();
+      expect(screen.queryByText(对方.岗位公司)).toBeNull();
+      expect(screen.queryByRole('textbox')).toBeNull();
+      expect(screen.queryByRole('button', { name: /发送/ })).toBeNull();
+      expect(mock派发).not.toHaveBeenCalled();
+      expect(mock提交P8举报).not.toHaveBeenCalled();
+    },
+  );
+
+  it('Backend 渲染后推进 fake timers 不产生延迟回执或弹层', () => {
+    vi.useFakeTimers();
+    try {
+      渲染('backend');
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(screen.queryByText(/已交换/)).toBeNull();
+      expect(mock派发).not.toHaveBeenCalled();
+      expect(mock提交P8举报).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('源码合同：举报按钮与举报层都按 数据源模式 门控（不是只藏按钮留死层）', () => {
@@ -103,5 +133,16 @@ describe('直聊会话 · Mock 原型行为原样', () => {
     expect(mock派发).toHaveBeenCalledWith({ 型: '拉黑', 名称: 对方.岗位公司 });
     expect(mock提交P8举报).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog', { name: '举报' })).toBeNull();
+  });
+
+  it('原型消息流与本地发送行为保持', async () => {
+    const 用户 = userEvent.setup();
+    渲染('mock');
+    expect(screen.getByText(对方.姓名)).toBeTruthy();
+    expect(screen.getByText(对方.消息[1]!.内容)).toBeTruthy();
+    await 用户.type(screen.getByRole('textbox'), '今天下午方便电话');
+    await 用户.click(screen.getByRole('button', { name: '发送' }));
+    expect(screen.getByText('今天下午方便电话')).toBeTruthy();
+    expect(mock派发).not.toHaveBeenCalled();
   });
 });
