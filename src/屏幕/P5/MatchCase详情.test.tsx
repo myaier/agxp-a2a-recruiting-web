@@ -15,7 +15,7 @@
 
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatchCase详情 } from './MatchCase详情';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
@@ -267,6 +267,24 @@ function 渲染详情(role: P5角色, caseId: string) {
       </Routes>
     </MemoryRouter>,
   );
+}
+
+/** 测试外置可控 promise：手动决定 settle 时机（回答 in-flight 夹具用）。 */
+function 可控Promise<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((ok, fail) => {
+    resolve = ok;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+/** 测试本地导航钮：同一 Route 内推入新路径 —— MatchCase详情 保持挂载、caseId 切换，
+ *  对应生产里从一单详情直切另一单（不重挂载，恰是 准备代际 栅栏要挡的场景）。 */
+function 测试换Case钮({ 目标 }: { 目标: string }) {
+  const 导航 = useNavigate();
+  return <button type="button" onClick={() => 导航(目标)}>切到新单</button>;
 }
 
 describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
@@ -906,6 +924,85 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     await user.click(键); // 在飞：屏层单发，重放语义由操作层的稳定意图键承担
     expect(mock回答事实).toHaveBeenCalledTimes(1);
     送达();
+  });
+
+  it('回答 pending：输入与按钮禁用、显示「提交中…」、重复点击零额外请求', async () => {
+    const user = userEvent.setup();
+    const deferred = 可控Promise<void>();
+    mock回答事实.mockReturnValueOnce(deferred.promise);
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    const input = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
+    await user.type(input, '每周可以到岗 3 天');
+    await user.click(screen.getByRole('button', { name: '提交回答' }));
+    // 可见 pending：textarea 与按钮双双锁定，按钮文案切「提交中…」
+    expect(input.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByRole('button', { name: '提交中…' })); // 禁用键：零额外请求
+    expect(mock回答事实).toHaveBeenCalledTimes(1);
+    deferred.resolve();
+    await waitFor(() => expect(input.value).toBe('')); // 成功才清草稿
+    await waitFor(() => expect(input.disabled).toBe(false)); // 落定后恢复可输入
+  });
+
+  it('回答失败：恢复输入与按钮，草稿原样保留', async () => {
+    const user = userEvent.setup();
+    mock回答事实.mockRejectedValueOnce(new Error('failed'));
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    const input = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
+    await user.type(input, '保留这段回答');
+    await user.click(screen.getByRole('button', { name: '提交回答' }));
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false));
+    expect(input.disabled).toBe(false);
+    expect(input.value).toBe('保留这段回答'); // 失败绝不清空
+  });
+
+  it('跨 Case deferred：旧单迟到的成败不改动新单的草稿与 pending 状态', async () => {
+    const user = userEvent.setup();
+    const deferred = 可控Promise<void>();
+    mock回答事实.mockReturnValueOnce(deferred.promise);
+    置详情状态({
+      role: 'candidate', caseId: 'mc_a',
+      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }),
+    });
+    render(
+      <MemoryRouter initialEntries={['/deal/mc_a']}>
+        <测试换Case钮 目标="/deal/mc_b" />
+        <Routes>
+          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const inputA = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
+    await user.type(inputA, '旧单的回答');
+    await user.click(screen.getByRole('button', { name: '提交回答' }));
+    expect(mock回答事实).toHaveBeenCalledWith('candidate', 'mc_a', 'prompt_1', '旧单的回答');
+    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
+
+    // 预置新单快照，同一 Route 内切 case：草稿清空、pending 解除（代际递增）
+    置详情状态({
+      role: 'candidate', caseId: 'mc_b',
+      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }),
+    });
+    await user.click(screen.getByRole('button', { name: '切到新单' }));
+    const inputB = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
+    expect(inputB.value).toBe('');
+    expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false);
+    await user.type(inputB, '新单草稿');
+
+    // 旧单请求此刻才落定：代际栅栏作废其迟到回调，新单草稿与 pending 分毫不动
+    await act(async () => {
+      deferred.resolve();
+    });
+    expect(inputB.value).toBe('新单草稿');
+    expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false);
+
+    // 新单照常可发：新代际的锁与清空只作用于新草稿
+    await user.click(screen.getByRole('button', { name: '提交回答' }));
+    expect(mock回答事实).toHaveBeenCalledTimes(2);
+    expect(mock回答事实).toHaveBeenLastCalledWith('candidate', 'mc_b', 'prompt_1', '新单草稿');
   });
 
   it('多条/零条补充问题：整页契约错误，无回答控件，零请求', async () => {
