@@ -348,3 +348,37 @@ describe('设置 · 反馈入口按模式命名', () => {
     expect(导航.跳转).toHaveBeenCalledWith(路径.反馈);
   });
 });
+
+// Backend 没有权威版本号来源：不渲染「当前版本」整行与 0.9.0（原型）断言，
+// 也不渲染占位运营页脚（热线/许可证/资质证照）；Mock 原文保持。
+describe('设置 · Backend 删除无合同版本与运营断言', () => {
+  it('Backend 不渲染当前版本行与占位运营页脚', () => {
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: { 设置雇主隐私: vi.fn(), ...P8操作桩() },
+      数据源模式: 'backend',
+      后端状态: 后端底座(),
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    expect(screen.queryByText('当前版本')).toBeNull();
+    expect(screen.queryByText('0.9.0（原型）')).toBeNull();
+    for (const text of ['400-000-0000', '人力资源服务许可证', '资质证照']) {
+      expect(screen.queryByText(new RegExp(text))).toBeNull();
+    }
+  });
+
+  it('Mock 保留当前版本行与页脚原文', () => {
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: { 设置雇主隐私: vi.fn(), ...P8操作桩() },
+      数据源模式: 'mock',
+      后端状态: 后端底座(),
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    expect(screen.getByText('当前版本')).toBeTruthy();
+    expect(screen.getByText('0.9.0（原型）')).toBeTruthy();
+    expect(screen.getByText(/人力资源服务许可证/)).toBeTruthy();
+  });
+});

@@ -258,3 +258,23 @@ describe('企业设置 · 反馈入口按模式命名', () => {
     expect(导航.跳转).toHaveBeenCalledWith(路径.反馈);
   });
 });
+
+// Backend 没有权威版本号来源：不渲染「当前版本」整行与 0.9.0（原型）断言；
+// Mock 原文保持。
+describe('企业设置 · Backend 删除无合同版本断言', () => {
+  it('Backend 不渲染当前版本行', () => {
+    const 操作 = 操作桩();
+    置Backend(操作);
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    expect(screen.queryByText('当前版本')).toBeNull();
+    expect(screen.queryByText('0.9.0（原型）')).toBeNull();
+  });
+
+  it('Mock 保留当前版本行原文', () => {
+    const 操作 = 操作桩();
+    置Mock(操作);
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    expect(screen.getByText('当前版本')).toBeTruthy();
+    expect(screen.getByText('0.9.0（原型）')).toBeTruthy();
+  });
+});

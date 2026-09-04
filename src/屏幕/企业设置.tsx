@@ -132,12 +132,15 @@ export default function 企业设置() {
             </span>
             <span className={样式.尖括号}>›</span>
           </button>
-          <div className={样式.行}>
-            <span className={样式.行文字组}>
-              <span className={样式.行标题}>当前版本</span>
-            </span>
-            <span className={样式.行值}>0.9.0（原型）</span>
-          </div>
+          {/* Backend 没有权威版本号来源：不渲染「当前版本」整行（不用另一版本号充数） */}
+          {!是后端 ? (
+            <div className={样式.行}>
+              <span className={样式.行文字组}>
+                <span className={样式.行标题}>当前版本</span>
+              </span>
+              <span className={样式.行值}>0.9.0（原型）</span>
+            </div>
+          ) : null}
         </div>
 
         <button className={`${样式.危险键} 可点`} onClick={() => 设待退出(true)}>

@@ -256,6 +256,43 @@ describe('企业我的 · Backend 权威 MatchCase 统计', () => {
   });
 });
 
+// Backend 没有 runtime presence/status 合同：代理卡不说「在线 · 并行寻访」，只说
+// 权威「N 个在招岗位」；占位运营页脚只在 Mock 渲染。指向同一 /hr/jobs 的
+// 「归档岗位」宫格从两种模式删除，「岗位管理」入口唯一。
+describe('企业我的 · Backend 代理卡事实与归档入口去重', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+  });
+
+  it('Backend 代理卡显示在招岗位事实，无在线断言与占位运营页脚', () => {
+    置Backend应用状态({
+      岗位列表: [{ 编号: 'J-1', 名称: 'AI 产品实习生', 状态: '在招', 薪资带: '300-500 元/天' }],
+    });
+    render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect(screen.getByText('1 个在招岗位')).toBeTruthy();
+    for (const text of ['在线', '并行寻访', '400-000-0000', '人力资源服务许可证', '资质证照']) {
+      expect(screen.queryByText(new RegExp(text))).toBeNull();
+    }
+  });
+
+  it('岗位管理入口唯一：归档岗位重复宫格已删除', () => {
+    置Backend应用状态();
+    render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect(screen.getAllByText('岗位管理')).toHaveLength(1);
+    expect(screen.queryByText('归档岗位')).toBeNull();
+  });
+
+  it('Mock 保留原型在线文案与页脚，归档岗位同样不出现', () => {
+    置Mock应用状态();
+    render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect(screen.getByText(/在线 · 正为 \d+ 个岗位并行寻访/)).toBeTruthy();
+    expect(screen.getByText(/服务热线 400-000-0000/)).toBeTruthy();
+    expect(screen.getAllByText('岗位管理')).toHaveLength(1);
+    expect(screen.queryByText('归档岗位')).toBeNull();
+  });
+});
+
 describe('企业我的 · 代理卡规则计数的水合门控（P6 Task 7）', () => {
   beforeEach(() => {
     mock派发.mockClear();

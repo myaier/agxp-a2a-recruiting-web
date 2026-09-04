@@ -4,10 +4,14 @@
 // 「未填写求职状态」（不用表单默认「在职」充数）；头像首字只取权威姓名。
 // Mock 分支逐字保留原型文案（防视觉漂移回归）。
 //
-// Backend MatchCase 真相源修复追加：四个统计数与代理卡的「正在跟进 N 个机会」
+// Backend MatchCase 真相源修复追加：四个统计数与代理卡的 MatchCase 计数
 // 只读当前 candidate 主体的 unfiltered P5 open 快照（注册 scope + 权威统计），
 // owner 不匹配一律 —，绝不回退 legacy 在谈列表 的 fixture 数字；Mock 保留原型统计
 // 且零 P5 operation 调用。
+//
+// 真实性修复追加：Backend 代理卡没有 runtime presence/status 合同 —— 在线绿点与
+// 「在线 · 正在跟进」断言删除，只说「当前 MatchCase：N」；占位运营页脚（热线/许可
+// 证/资质证照）只在 Mock 渲染。规则数继续服从既有水合 gate。
 //
 // 注意：这里 mock 了 ../状态/应用状态（整模块被工厂替换），所以 初始状态 要从
 // 它的原始定义处 ../状态/初始状态 引入，不能走 应用状态 的转发导出。
@@ -33,7 +37,7 @@ interface 我的测试上下文 {
   操作: { 设置P5范围: typeof 设置P5范围; 加载工作区: typeof 加载工作区 };
   后端状态: {
     Agent规则水合: {
-      candidate: { rules: '未开始'; proposals: '未开始' };
+      candidate: { rules: '未开始' | '成功'; proposals: '未开始' };
       recruiter: { rules: '未开始'; proposals: '未开始' };
     };
     简历快照: BFF简历 | null;
@@ -89,6 +93,7 @@ function 布置(
     服务端状态?: BFF简历['profile']['status'];
     主体?: BFF主体;
     P5快照?: P5列表快照;
+    规则水合?: '未开始' | '成功';
   } = {},
 ) {
   mock上下文.当前 = {
@@ -105,7 +110,7 @@ function 布置(
     操作: { 设置P5范围, 加载工作区 },
     后端状态: {
       Agent规则水合: {
-        candidate: { rules: '未开始', proposals: '未开始' },
+        candidate: { rules: 选项.规则水合 ?? '未开始', proposals: '未开始' },
         recruiter: { rules: '未开始', proposals: '未开始' },
       },
       简历快照: 选项.服务端状态 === undefined
@@ -169,7 +174,7 @@ it('Backend 注册 candidate unfiltered scope 并只显示权威统计', async (
   expect(screen.getByText('2')).toBeTruthy();
   expect(screen.getAllByText('1')).toHaveLength(2);
   expect(screen.getByText('—')).toBeTruthy();
-  expect(screen.getByText(/正在跟进 2 个机会/)).toBeTruthy();
+  expect(screen.getByText(/当前 MatchCase：2/)).toBeTruthy();
   await waitFor(() => expect(设置P5范围).toHaveBeenCalledWith('candidate', scope));
   expect(加载工作区).toHaveBeenCalledWith('candidate', null);
   unmount();
@@ -191,4 +196,37 @@ it('Mock 保留原统计且不调用 P5 operation', () => {
   expect(加载工作区).not.toHaveBeenCalled();
   expect(设置P5范围).not.toHaveBeenCalled();
   expect(screen.getByText(String(初始状态.在谈列表.length))).toBeTruthy();
+});
+
+// Backend 没有 runtime presence/status 合同：代理卡不说「在线」，只说 MatchCase 事实；
+// 占位运营页脚（热线/许可证/资质证照）只在 Mock 渲染。规则数服从既有水合 gate。
+it('Backend 代理卡只说 MatchCase 事实，无在线断言与占位运营页脚', () => {
+  const { unmount } = 布置('backend', {
+    主体: { ...BFF主体样本, subject_id: 'sub_candidate', last_used_role: 'candidate' },
+    P5快照: 成功P5快照([行('mc_1', 'anonymous_screening', true)], null),
+  });
+  expect(screen.getByText(/当前 MatchCase：1/)).toBeTruthy();
+  for (const text of ['在线', '并行寻访', '400-000-0000', '人力资源服务许可证', '资质证照']) {
+    expect(screen.queryByText(new RegExp(text))).toBeNull();
+  }
+  // 规则未水合：不出规则计数
+  expect(screen.queryByText(/规则 \d+ 条生效/)).toBeNull();
+  unmount();
+});
+
+it('Backend 规则水合成功后显示当前 MatchCase 与已水合规则数', () => {
+  布置('backend', {
+    规则水合: '成功',
+    主体: { ...BFF主体样本, subject_id: 'sub_candidate', last_used_role: 'candidate' },
+    P5快照: 成功P5快照([行('mc_1', 'anonymous_screening', true)], null),
+  });
+  expect(screen.getByText(/当前 MatchCase：1/)).toBeTruthy();
+  expect(screen.getByText(/规则 \d+ 条生效/)).toBeTruthy();
+});
+
+it('Mock 保留原型在线文案与页脚', () => {
+  布置('mock');
+  expect(screen.getByText(/在线 · 正在跟进 \d+ 个机会/)).toBeTruthy();
+  expect(screen.getByText(/服务热线 400-000-0000/)).toBeTruthy();
+  expect(screen.getByText(/人力资源服务许可证/)).toBeTruthy();
 });
