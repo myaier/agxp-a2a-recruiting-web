@@ -422,6 +422,9 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(screen.getByText('学历 本科')).toBeTruthy();
     expect(screen.getByText('同济大学 · 硕士')).toBeTruthy();
     expect(screen.getByText(/按岗位设置的结构化要求核对/)).toBeTruthy();
+    // 经验 none（无约束）→ 无经验行：墨句只声明学历维度，不宣称「经验与学历」都满足
+    expect(screen.getByText('按岗位设置的结构化要求核对。学历满足岗位要求。')).toBeTruthy();
+    expect(screen.queryByText(/经验与学历满足岗位要求/)).toBeNull();
     expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
   });
 
