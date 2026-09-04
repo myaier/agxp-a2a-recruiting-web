@@ -15,8 +15,8 @@
 //     保留键；409/503/500/0/结果未知码 先做一次权威 detail GET 对账 —— 动作已不在
 //     （或问题已解）按已确认成功收口，仍在则原样抛、重试沿用同一键；明确拒绝
 //     （其余 4xx）释放键，下一次是全新意图。401 统一 清账号状态 + 清 P5 引用。
-//   · mutation 一律服务端先行且响应为 void：成功（或确认重放）后必做权威 detail 重读
-//     并刷新该角色全部已载工作区/历史 scope（mutation 响应绝不替换详情快照）；
+//   · mutation 一律服务端先行且响应为 void：成功（或确认重放）后权威重读 detail、
+//     刷新已载列表/历史，并刷新已载同角色 summary；summary 失败不 reject mutation。
 //     POST 已成功后的重读失败绝不 reject（那会诱导换键重发）—— 详情快照落重试错误。
 //   · 同一 (role, case, action, target) 单飞共享在飞 POST；跨 Case / 跨目标并行。
 //   · 详情直读只认 URL case_id + 已认证角色，绝不读列表记忆填上下文；契约错误按
@@ -29,6 +29,7 @@ import type { BFF二进制响应 } from '../../数据/HTTP客户端';
 import type { BFF角色 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type {
+  MatchCaseSummary,
   P5列表项,
   P5列表页,
   P5详情,
@@ -40,6 +41,7 @@ import { 取当前补充问题 } from '../../数据/MatchCase基础';
 import { 清账号状态 } from './会话操作';
 import type {
   P5列表快照,
+  P5摘要快照,
   P5详情快照,
   P5运行时引用,
   P5MatchCase状态,
@@ -57,6 +59,7 @@ function 段(值: string): string {
 
 /** scope 键的冻结表：role + 角色专属过滤（candidate=意向 / recruiter=岗位）+ 架子/详情坐标。 */
 export const P5范围键 = {
+  summary: (role: P5角色): string => `p5:summary:${role}`,
   open: (role: P5角色, filterRef: string | null): string =>
     `p5:open:${role}:${filterRef === null ? '*' : 段(filterRef)}`,
   history: (role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null): string =>
@@ -81,7 +84,28 @@ function idempotencyKeyFor(引用: P5运行时引用, intent: string): string {
 
 /** P5 MatchCase 的可复用初始化/重置底座：Provider 首帧与会话转移口共用同一形状。 */
 export function 创建空P5MatchCase状态(): P5MatchCase状态 {
-  return { P5工作区: {}, P5历史: {}, P5详情: {} };
+  return { P5摘要: {}, P5工作区: {}, P5历史: {}, P5详情: {} };
+}
+
+// ── summary 快照的纯构造器：起步/成功/失败（进行中/失败一律 summary:null，不保留旧值）──
+
+function 起步摘要(ownerSubjectId: string | null, generation: number): P5摘要快照 {
+  return { ownerSubjectId, 阶段: '进行中', 刷新中: true, summary: null, error: null, generation };
+}
+
+function 成功摘要(
+  ownerSubjectId: string | null, summary: MatchCaseSummary, generation: number,
+): P5摘要快照 {
+  return { ownerSubjectId, 阶段: '成功', 刷新中: false, summary, error: null, generation };
+}
+
+function 失败摘要(
+  ownerSubjectId: string | null, 错误: unknown, generation: number,
+): P5摘要快照 {
+  return {
+    ownerSubjectId, 阶段: '失败', 刷新中: false,
+    summary: null, error: 取后端错误文案(错误), generation,
+  };
 }
 
 /**
@@ -423,6 +447,51 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     }
   }
 
+  /**
+   * summary 读取统一核（公共加载与 mutation 后刷新共用）：每次调用都是权威 no-store
+   * 读取，起步即清旧 summary；同 scope 单飞；迟到成败按栅栏整包丢弃；当前 401 走
+   * 统一清账号，非 401 只结算 summary 错误态，绝不牵连列表/历史/详情。
+   */
+  async function 运行摘要读(role: P5角色): Promise<void> {
+    if (!是后端 || !后端) return;
+    if (后端状态引用.current.主体?.last_used_role !== role) return;
+    const scopeKey = P5范围键.summary(role);
+    const 取得 = 获取读锁(scopeKey);
+    if (!取得) return;
+    const fence = 取得.fence;
+    try {
+      设后端状态((旧态) => ({
+        ...旧态,
+        P5摘要: { ...旧态.P5摘要, [role]: 起步摘要(fence.subjectId, fence.scopeGeneration) },
+      }));
+      const summary = await 后端.读取P5摘要(role);
+      if (!栅栏仍当前(fence)) return;
+      设后端状态((旧态) => ({
+        ...旧态,
+        P5摘要: { ...旧态.P5摘要, [role]: 成功摘要(fence.subjectId, summary, fence.scopeGeneration) },
+      }));
+    } catch (错误) {
+      if (!栅栏仍当前(fence)) return;
+      if (是401(错误)) {
+        清账号与P5();
+        return;
+      }
+      设后端状态((旧态) => ({
+        ...旧态,
+        P5摘要: { ...旧态.P5摘要, [role]: 失败摘要(fence.subjectId, 错误, fence.scopeGeneration) },
+      }));
+    } finally {
+      释放读锁(取得);
+    }
+  }
+
+  /** mutation 后的已载 summary 刷新：只刷该角色已加载过且 owner 仍是当前主体的槽位。 */
+  async function 刷新已载摘要(role: P5角色): Promise<void> {
+    const 旧 = 后端状态引用.current.P5摘要[role];
+    if (旧 === undefined || 旧.ownerSubjectId !== 主体标识引用.current) return;
+    await 运行摘要读(role);
+  }
+
   // ── 命令（mutation）统一核 ──
 
   /** 命令在飞表：同 (role, case, action, target) 的并发调用共享同一次 POST。 */
@@ -567,12 +636,14 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       if (!input.已生效(详情)) throw 错误; // 动作仍在：原样抛，同键重放由下一次调用完成
       删意图键(intent, 键); // 对账确认：按已生效收口
       await 刷新已载列表(input.role);
+      await 刷新已载摘要(input.role);
       return;
     }
     // POST 明确成功：键即刻释放（只删自己那把）；权威态全部由下面的 detail 重读提供（响应本体是 void）。
     删意图键(intent, 键);
     if (!会话栅栏仍当前(fence)) return; // 迟到成功只不落本地
     await 权威重读详情(input.role, input.caseId);
+    await 刷新已载摘要(input.role);
   }
 
   /** 命令包装：同目标单飞 + 命令核。 */
@@ -619,6 +690,10 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
         P5范围代际.current.set(范围键, (P5范围代际.current.get(范围键) ?? 0) + 1);
       }
       P5可见范围.current = { ...P5可见范围.current, [role]: 范围键 };
+    },
+
+    加载摘要(role) {
+      return 运行摘要读(role);
     },
 
     async 加载工作区(role, filterRef, force) {

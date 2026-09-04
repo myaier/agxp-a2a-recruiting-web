@@ -34,7 +34,7 @@ import type {
 } from '../../数据/BFF契约';
 import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
-import type { P5列表项, P5详情 } from '../../数据/招聘数据源/MatchCase';
+import type { P5列表项, P5详情, MatchCaseSummary } from '../../数据/招聘数据源/MatchCase';
 import type { 接触事件 } from '../../数据/招聘数据源/接触记录';
 import type { P7角色, P7会话项, P7消息 } from '../../数据/招聘数据源/真人会话';
 import type {
@@ -267,7 +267,22 @@ export interface P5详情快照 {
   generation: number;
 }
 
+/**
+ * 角色隔离的 summary 快照：key 是 role（P5范围键.summary(role)）。进行中/失败一律
+ * summary:null —— 刷新中与失败都不继续展示旧 summary；ownerSubjectId 只在内存标记
+ * 归属主体，同角色换主体后旧快照按不存在处理（与 P5列表快照 同一纪律）。
+ */
+export interface P5摘要快照 {
+  ownerSubjectId: string | null;
+  阶段: P5加载阶段;
+  刷新中: boolean;
+  summary: MatchCaseSummary | null;
+  error: string | null;
+  generation: number;
+}
+
 export interface P5MatchCase状态 {
+  P5摘要: Partial<Record<P5角色, P5摘要快照>>;
   P5工作区: Record<string, P5列表快照>;
   P5历史: Record<string, P5列表快照>;
   P5详情: Record<string, P5详情快照>;
@@ -710,6 +725,8 @@ export type 附件变更结果 = '已提交' | '已换代';
 export interface MatchCase操作 {
   /** 屏幕注册当前可见 P5 scope（列表键 / 详情键 / null 卸载）；换键递增旧新 scope 代际。 */
   设置P5范围(role: P5角色, 范围键: string | null): void;
+  /** 每次调用都发起当前角色的权威 no-store summary 读取；并发同 scope 单飞。 */
+  加载摘要(role: P5角色): Promise<void>;
   加载工作区(role: P5角色, filterRef: string | null, force?: boolean): Promise<void>;
   /** 已载窗口向后追加一页（透传快照里的 next_cursor）；游标已尽时零请求。 */
   追加工作区(role: P5角色, filterRef: string | null): Promise<void>;

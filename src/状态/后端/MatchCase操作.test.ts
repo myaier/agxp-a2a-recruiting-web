@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF主体 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type {
+  MatchCaseSummary,
   P5列表项,
   P5列表页,
   P5详情,
@@ -45,6 +46,22 @@ const 招聘主体: BFF主体 = { ...BFF主体样本, last_used_role: 'recruiter
 
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
 const 职位ID = 'job_0123456789abcdef0123456789abcdef';
+
+const 初始摘要: MatchCaseSummary = {
+  openTotal: 51,
+  openAnonymousScreeningTotal: 17,
+  openNeedsActionTotal: 9,
+  endedTotal: 4,
+  completedTotal: 3,
+};
+
+const 更新摘要: MatchCaseSummary = {
+  openTotal: 50,
+  openAnonymousScreeningTotal: 16,
+  openNeedsActionTotal: 8,
+  endedTotal: 5,
+  completedTotal: 4,
+};
 
 // ── DTO 样本：在 facade 边界直接给已 decode 的归一化 P5 DTO（decode 归 Task 1）──
 
@@ -117,6 +134,7 @@ const PDF响应: BFF二进制响应 = {
 /** 本文件内的数据源桩：桩 P5 facade 全部方法 + 清空目录缓存，默认全成功，逐测试覆盖替换。 */
 function 创建P5数据源(覆盖: Record<string, unknown> = {}): HTTP招聘数据源 {
   return {
+    读取P5摘要: vi.fn(async (): Promise<MatchCaseSummary> => 初始摘要),
     读取P5Open列表: vi.fn(async (): Promise<P5列表页> => 候选页([], null)),
     读取P5历史: vi.fn(async (): Promise<P5列表页> => 候选页([], null)),
     读取P5详情: vi.fn(async (): Promise<P5详情> => 权威候选详情),
@@ -242,6 +260,8 @@ describe('P5范围键 与 设置P5范围', () => {
     expect(P5范围键.history('candidate', 'ended', null)).toBe('p5:history:candidate:ended:*');
     expect(P5范围键.history('recruiter', 'completed', 职位ID)).toBe(`p5:history:recruiter:completed:${职位ID}`);
     expect(P5范围键.detail('candidate', 'mc_1')).toBe('p5:detail:candidate:mc_1');
+    expect(P5范围键.summary('candidate')).toBe('p5:summary:candidate');
+    expect(P5范围键.summary('recruiter')).toBe('p5:summary:recruiter');
   });
 
   it('含分隔符的 id 逐段转义，绝不撞键', () => {
@@ -465,6 +485,120 @@ describe('详情读取', () => {
       阶段: '失败', detail: null,
     });
     expect(env.最新状态().P5详情['p5:detail:recruiter:mc_x']?.error).not.toBeNull();
+  });
+});
+
+describe('P5 summary 读取与刷新', () => {
+  beforeEach(() => {
+    env.操作.设置P5范围('candidate', P5范围键.summary('candidate'));
+  });
+
+  it('首载成功写当前 owner；刷新立即清旧值，失败保持 null，重试恢复', async () => {
+    await env.操作.加载摘要('candidate');
+    expect(env.最新状态().P5摘要.candidate).toMatchObject({
+      ownerSubjectId: 'sub_1', 阶段: '成功', 刷新中: false, summary: 初始摘要, error: null,
+    });
+
+    const 刷新 = deferred<MatchCaseSummary>();
+    vi.mocked(env.数据源.读取P5摘要).mockReturnValueOnce(刷新.promise);
+    const 在飞 = env.操作.加载摘要('candidate');
+    expect(env.最新状态().P5摘要.candidate).toMatchObject({
+      ownerSubjectId: 'sub_1', 阶段: '进行中', 刷新中: true, summary: null, error: null,
+    });
+    刷新.reject(new BFF错误(500, 'server_error', '失败'));
+    await 在飞;
+    expect(env.最新状态().P5摘要.candidate).toMatchObject({
+      阶段: '失败', 刷新中: false, summary: null,
+    });
+
+    vi.mocked(env.数据源.读取P5摘要).mockResolvedValueOnce(更新摘要);
+    await env.操作.加载摘要('candidate');
+    expect(env.最新状态().P5摘要.candidate?.summary).toEqual(更新摘要);
+  });
+
+  it('同 role/owner 单飞，candidate 与 recruiter 使用独立槽', async () => {
+    const 读取 = deferred<MatchCaseSummary>();
+    vi.mocked(env.数据源.读取P5摘要).mockReturnValueOnce(读取.promise);
+    const 甲 = env.操作.加载摘要('candidate');
+    const 乙 = env.操作.加载摘要('candidate');
+    expect(env.数据源.读取P5摘要).toHaveBeenCalledTimes(1);
+    读取.resolve(初始摘要);
+    await Promise.all([甲, 乙]);
+
+    设主体角色(招聘主体);
+    env.操作.设置P5范围('recruiter', P5范围键.summary('recruiter'));
+    vi.mocked(env.数据源.读取P5摘要).mockResolvedValueOnce(更新摘要);
+    await env.操作.加载摘要('recruiter');
+    expect(env.最新状态().P5摘要.candidate?.summary).toEqual(初始摘要);
+    expect(env.最新状态().P5摘要.recruiter?.summary).toEqual(更新摘要);
+  });
+
+  it('同角色换主体后迟到 success 不污染新主体', async () => {
+    const 旧读 = deferred<MatchCaseSummary>();
+    vi.mocked(env.数据源.读取P5摘要).mockReturnValueOnce(旧读.promise);
+    const 在飞 = env.操作.加载摘要('candidate');
+    env.deps.主体标识引用.current = 'sub_2';
+    env.deps.会话代际.current += 1;
+    env.deps.后端状态引用.current = {
+      ...env.deps.后端状态引用.current,
+      主体: { ...候选主体, subject_id: 'sub_2' },
+    };
+    env.操作.设置P5范围('candidate', null);
+    env.操作.设置P5范围('candidate', P5范围键.summary('candidate'));
+    旧读.resolve(初始摘要);
+    await 在飞;
+    expect(env.最新状态().P5摘要.candidate?.summary).not.toEqual(初始摘要);
+  });
+
+  it('当前 401 清空账号和 P5 summary；迟到 401 不清新会话', async () => {
+    vi.mocked(env.数据源.读取P5摘要)
+      .mockRejectedValueOnce(new BFF错误(401, 'unauthorized', '当前会话'));
+    await env.操作.加载摘要('candidate');
+    expect(env.最新状态().已登录).toBe(false);
+    expect(env.最新状态().P5摘要).toEqual({});
+
+    env = 创建P5操作测试环境();
+    env.操作.设置P5范围('candidate', P5范围键.summary('candidate'));
+    const 旧401 = deferred<MatchCaseSummary>();
+    vi.mocked(env.数据源.读取P5摘要).mockReturnValueOnce(旧401.promise);
+    const 在飞 = env.操作.加载摘要('candidate');
+    env.deps.会话代际.current += 1;
+    旧401.reject(new BFF错误(401, 'unauthorized', '旧会话'));
+    await 在飞;
+    expect(env.最新状态().已登录).toBe(true);
+  });
+
+  it('mutation 只刷新已载同角色 summary，刷新失败不改变 mutation 成功', async () => {
+    await env.操作.加载摘要('candidate');
+    env.操作.设置P5范围('candidate', P5范围键.open('candidate', null));
+    vi.mocked(env.数据源.读取P5Open列表).mockResolvedValue(候选页([候选行('mc_1')], null));
+    await env.操作.加载工作区('candidate', null);
+    env.操作.设置P5范围('candidate', P5范围键.detail('candidate', 'mc_1'));
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(权威候选详情);
+    await env.操作.读取详情('candidate', 'mc_1');
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.读取P5摘要)
+      .mockRejectedValueOnce(new BFF错误(500, 'server_error', 'summary refresh failed'));
+    await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '回答')).resolves.toBeUndefined();
+    expect(env.数据源.回答P5事实).toHaveBeenCalledTimes(1);
+    expect(env.数据源.读取P5摘要).toHaveBeenCalledTimes(2);
+    expect(env.最新状态().P5摘要.candidate?.summary).toBeNull();
+    expect(env.最新状态().P5工作区[P5范围键.open('candidate', null)]?.阶段).toBe('成功');
+    expect(env.最新状态().P5详情[P5范围键.detail('candidate', 'mc_1')]?.detail)
+      .toEqual(已解事实详情);
+
+    const 未载 = 创建P5操作测试环境();
+    未载.操作.设置P5范围('candidate', P5范围键.detail('candidate', 'mc_1'));
+    vi.mocked(未载.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    await 未载.操作.回答事实('candidate', 'mc_1', 'prompt_1', '回答');
+    expect(未载.数据源.读取P5摘要).not.toHaveBeenCalled();
+  });
+
+  it('Mock 模式加载 summary 零请求', async () => {
+    const mockEnv = 创建P5操作测试环境(false);
+    mockEnv.操作.设置P5范围('candidate', P5范围键.summary('candidate'));
+    await mockEnv.操作.加载摘要('candidate');
+    expect(mockEnv.数据源.读取P5摘要).not.toHaveBeenCalled();
   });
 });
 
