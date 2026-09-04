@@ -82,21 +82,20 @@ export default function 企业我的() {
   const 显示公司 = 是后端
     ? (身份.currentAffiliation?.organizationName ?? 状态.未认证公司声明)
     : 状态.企业认证.公司;
-  // Backend MatchCase 真相源：在谈/待拍板 只读当前 recruiter 主体的 unfiltered P5 open
-  // 快照，意向达成本批固定 —（不请求 history）；owner 不匹配、未载或分页未尽时 selector
-  // 诚实给出 —/N+，企业候选列表（legacy fixture）不再进入 Backend 展示。
-  const P5Scope = P5范围键.open('recruiter', null);
+  // Backend MatchCase 真相源：在谈/待拍板/意向达成只读当前 recruiter/owner 的权威
+  // summary；在招岗位继续读 Job。每次挂载刷新，失败时显示 —，不回退分页或 Mock。
+  const P5Scope = P5范围键.summary('recruiter');
   const 当前SubjectId = 后端状态.主体?.last_used_role === 'recruiter'
     ? 后端状态.主体.subject_id
     : null;
-  const Backend统计 = 取P5Open统计(后端状态.P5工作区[P5Scope], 当前SubjectId);
+  const Backend统计 = 取P5Open统计(后端状态.P5摘要.recruiter, 当前SubjectId);
 
-  // 进屏 / 换主体：先注册可见范围再懒加载 unfiltered scope（与 P5 列表同款栅栏）；
+  // 进屏 / 换主体：注册 summary 可见范围并权威刷新（与 P5 列表同款栅栏）；
   // 离开本屏清回 null。Mock 分支不注册、零 P5 请求。
   useEffect(() => {
     if (!是后端 || 当前SubjectId === null) return;
     操作.设置P5范围('recruiter', P5Scope);
-    void 操作.加载工作区('recruiter', null).catch(() => undefined);
+    void 操作.加载摘要('recruiter').catch(() => undefined);
     return () => 操作.设置P5范围('recruiter', null);
   }, [是后端, 当前SubjectId, P5Scope, 操作]);
 
@@ -137,7 +136,7 @@ export default function 企业我的() {
       按下: () => 派发({ 型: '企业看全部在谈', 档: '待我拍板' }),
     },
     {
-      数值: '—',
+      数值: Backend统计.completed,
       名称: '意向达成',
       色: '次要',
     },

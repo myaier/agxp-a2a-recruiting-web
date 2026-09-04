@@ -19,7 +19,6 @@ import 接入二维码 from '../组件/接入二维码';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
-import { P5范围键 } from '../状态/后端/MatchCase操作';
 import { 取P5Open统计 } from '../状态/后端/MatchCase统计';
 
 
@@ -44,15 +43,13 @@ export default function 企业代理详情() {
   const 生效规则数 = 可显示招聘规则数
     ? 状态.企业规则.filter((条) => 条.生效).length
     : null;
-  // Backend MatchCase 真相源：「正在代谈」只读当前 recruiter 主体的 unfiltered P5 open
-  // 统计（相邻展示页只消费内存快照，不注册、不请求）；直达无快照/owner 不匹配诚实
-  // 显示 —，企业候选列表（legacy fixture）不再进入 Backend 展示。Mock 保持 legacy 长度。
+  // Backend MatchCase 真相源：“正在代谈”只消费当前 recruiter/owner 已载的权威 summary；
+  // 本详情页不注册、不请求，直达无快照或 owner 不匹配显示 —，Mock 保持 legacy 长度。
   const 是后端 = 数据源模式 === 'backend';
   const 当前SubjectId = 后端状态.主体?.last_used_role === 'recruiter'
     ? 后端状态.主体.subject_id
     : null;
-  const Backend统计 = 取P5Open统计(
-    后端状态.P5工作区?.[P5范围键.open('recruiter', null)], 当前SubjectId);
+  const Backend统计 = 取P5Open统计(后端状态.P5摘要.recruiter, 当前SubjectId);
   const 在谈数 = 是后端 ? Backend统计.open : 状态.企业候选列表.length;
 
   return (

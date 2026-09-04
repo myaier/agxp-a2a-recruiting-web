@@ -83,21 +83,20 @@ export default function 我的() {
     状态.全局规则.filter((条) => 条.生效).length +
     状态.意向级规则.filter((条) => 条.生效).length;
 
-  // Backend MatchCase 真相源：四个统计数只读当前 candidate 主体的 unfiltered P5 open
-  // 快照（在谈/初筛中/待你拍），已归档本批固定 —（不请求 history）；owner 不匹配、
-  // 未载或分页未尽时 selector 诚实给出 —/N+，绝不回退 legacy 在谈列表 的 fixture 数字。
-  const P5Scope = P5范围键.open('candidate', null);
+  // Backend MatchCase 真相源：四项统计与候选代理卡数字只读当前 candidate/owner 的
+  // 权威 summary。首次加载、每次挂载刷新、失败或 owner 不匹配都显示 —；不回退分页或 Mock。
+  const P5Scope = P5范围键.summary('candidate');
   const 当前SubjectId = 后端状态.主体?.last_used_role === 'candidate'
     ? 后端状态.主体.subject_id
     : null;
-  const Backend统计 = 取P5Open统计(后端状态.P5工作区[P5Scope], 当前SubjectId);
+  const Backend统计 = 取P5Open统计(后端状态.P5摘要.candidate, 当前SubjectId);
 
-  // 进屏 / 换主体：先注册可见范围再懒加载 unfiltered scope（与 P5 列表同款栅栏）；
+  // 进屏 / 换主体：注册 summary 可见范围并权威刷新（与 P5 列表同款栅栏）；
   // 离开本屏清回 null。Mock 分支不注册、零 P5 请求。
   useEffect(() => {
     if (!是后端 || 当前SubjectId === null) return;
     操作.设置P5范围('candidate', P5Scope);
-    void 操作.加载工作区('candidate', null).catch(() => undefined);
+    void 操作.加载摘要('candidate').catch(() => undefined);
     return () => 操作.设置P5范围('candidate', null);
   }, [是后端, 当前SubjectId, P5Scope, 操作]);
 
@@ -145,7 +144,7 @@ export default function 我的() {
       色: '深绿',
       按下: () => 派发({ 型: '看全部在谈', 档: '待我拍板' }),
     },
-    { 数值: '—', 名称: '已归档', 色: '次要' },
+    { 数值: Backend统计.archived, 名称: '已归档', 色: '次要' },
   ] : 原Mock统计;
 
   // 尚未实现的入口（屏蔽名单 / 帮助与客服 / 右上三枚工具图标）点了弹一条浮层提示，
