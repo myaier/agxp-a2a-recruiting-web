@@ -638,6 +638,8 @@ describe('HTTP 招聘数据源', () => {
       '读取Agent设置', '修改Agent设置',
       // 候选账号头像域
       '读取候选账号档案', '替换候选头像', '删除候选头像',
+      // 候选实名域（identity-verification summary / create / cancel）
+      '读取候选实名', '创建候选实名申请', '取消候选实名申请',
     ].sort());
     // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
     expect(Object.keys(source)).not.toContain('读取公开岗位');
