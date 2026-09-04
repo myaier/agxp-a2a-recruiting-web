@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './企业往来记录.module.css';
-import { 次级页外壳, 返回栏, 真输入条 } from '../组件/通用';
+import { 次级页外壳, 返回栏, 真输入条, 主按钮 } from '../组件/通用';
 import 拿不准弹层 from './拿不准弹层';
 import { 企业往来记录 as 初始记录, 在谈候选列表 } from '../数据/企业端模拟数据';
 import type { 往来条目 } from '../数据/类型';
@@ -20,16 +20,23 @@ import { 轻提示 } from '../组件/轻提示';
 
 export default function 企业往来记录() {
   const { 派发, 数据源模式 } = use应用状态();
-  const { id: 编号 } = useParams<{ id: string }>();
+  const { id: 编号 = '' } = useParams<{ id: string }>();
   const { 返回, 跳转 } = use导航();
+
+  // 工作包 B（求职端 往来记录 的镜像）：Backend 没有完整 A2A transcript 合同 ——
+  // :id 只当 opaque Case ID 用，fixture 查找整条不执行、不回退首条候选；
+  // 唯一动作是带同一 case_id 进招聘 MatchCase 详情
+  const 是后端 = 数据源模式 === 'backend';
 
   // 标题只用该候选的代号 / 画像。从全局状态里找：候选终止会把他移出在谈列表，
   // 那时兜底取第一个，本屏不至于空掉（原型剧本里不会真走到这条路径）。
   // 读静态列表（与求职端同构源一致）：候选被终止后回看往来，标题仍是这一位，
-  // 也杜绝全部终止时 [0] 为 undefined 的白屏
-  const 该候选 = 在谈候选列表.find((条) => 条.编号 === 编号) ?? 在谈候选列表[0];
+  // 也杜绝全部终止时 [0] 为 undefined 的白屏（兜底仅 Mock）
+  const 该候选 = 是后端 ? null : (
+    在谈候选列表.find((条) => 条.编号 === 编号) ?? 在谈候选列表[0]
+  );
 
-  const [记录, 设记录] = useState<往来条目[]>(初始记录);
+  const [记录, 设记录] = useState<往来条目[]>(() => (是后端 ? [] : 初始记录));
   const [草稿, 设草稿] = useState('');
   const [弹层可见, 设弹层可见] = useState(false);
   const [最近叮嘱, 设最近叮嘱] = useState('');
@@ -37,11 +44,29 @@ export default function 企业往来记录() {
   const 滚动引用 = useRef<HTMLDivElement>(null);
   const 计时器引用 = useRef<number | null>(null);
 
+  // 模式/参数变化时重置：Backend 清成中性空态并清掉未触发的弹层计时器；
+  // Mock 重置为既有 fixture
+  useEffect(() => {
+    if (是后端) {
+      if (计时器引用.current !== null) window.clearTimeout(计时器引用.current);
+      设记录([]);
+      设草稿('');
+      设弹层可见(false);
+      设最近叮嘱('');
+      return;
+    }
+    设记录(初始记录);
+    设草稿('');
+    设弹层可见(false);
+    设最近叮嘱('');
+  }, [是后端, 编号]);
+
   // 新消息进来自动滚到底；首次挂载也会跑一次，所以进屏就停在最新一条上
   useEffect(() => {
+    if (是后端) return;
     const 容器 = 滚动引用.current;
     if (容器) 容器.scrollTop = 容器.scrollHeight;
-  }, [记录]);
+  }, [记录, 是后端]);
 
   // 组件卸载时清掉未触发的弹层计时器，避免在已卸载的屏上改状态
   useEffect(() => {
@@ -52,6 +77,7 @@ export default function 企业往来记录() {
 
   /** 发一条叮嘱：追加「你介入叮嘱」+ 我方代理回执，再延迟升起拿不准弹层 */
   const 发送叮嘱 = () => {
+    if (是后端) return;
     const 内容 = 草稿.trim();
     if (!内容) return;
 
@@ -78,6 +104,7 @@ export default function 企业往来记录() {
    *  P6 模式边界：写规则归 企业代理设置（canonical）。Mock 保留原型动作；Backend 不在本屏
    *  落规则、也不跳设置页冒充已生效，只给一条中性提示，确认与添加一律回AI代理设置做。 */
   const 记成规则 = (规则内容: string) => {
+    if (该候选 === null) return;
     if (数据源模式 === 'mock') {
       派发({ 型: '企业新增规则', 内容: 规则内容, 来源: `来自「${该候选.代号}」单的叮嘱 · 刚刚` });
       跳转(路径.企业代理设置);
@@ -91,34 +118,61 @@ export default function 企业往来记录() {
       <返回栏
         返回={返回}
         标题="完整往来记录"
-        副标题={`${该候选.代号} · ${该候选.画像}`}
-        右侧={<span className={`${样式.条数} 等宽数字`}>{记录.length} 条</span>}
+        副标题={该候选 === null ? undefined : `${该候选.代号} · ${该候选.画像}`}
+        右侧={
+          该候选 === null ? undefined : (
+            <span className={`${样式.条数} 等宽数字`}>{记录.length} 条</span>
+          )
+        }
       />
 
-      {/* 消息流：屏内唯一的滚动容器，需要拿 ref 手动滚到底，所以直接用 div.滚动区 */}
+      {/* 消息流：屏内唯一的滚动容器，需要拿 ref 手动滚到底，所以直接用 div.滚动区。
+          Backend 没有权威 transcript —— 同一槽位换成中性说明 + 进详情的既有主按钮，
+          不展示任何 fixture 对话，也不留本地输入。 */}
       <div className="滚动区" style={{ flex: 1, minHeight: 0 }} ref={滚动引用}>
         <div className={样式.消息流}>
-          {记录.map((条) => (
-            <记录条 key={条.编号} 条={条} />
-          ))}
+          {是后端 ? (
+            <>
+              <div className={样式.居中}>
+                <span className={样式.日期文字}>完整 A2A 往来暂未提供查看器</span>
+              </div>
+              <div className={样式.居中}>
+                <span className={样式.日期文字}>
+                  双方 AI 代理的往来过程暂不开放回看；阶段进展请进入这一单的详情查看。
+                </span>
+              </div>
+              <主按钮
+                文字="查看阶段进展"
+                按下={() => 跳转(路径.候选详情(编号))}
+              />
+            </>
+          ) : (
+            记录.map((条) => (
+              <记录条 key={条.编号} 条={条} />
+            ))
+          )}
         </div>
       </div>
 
-      <真输入条
-        占位="对进展有疑问？告诉你的AI代理…"
-        值={草稿}
-        改变={设草稿}
-        发送={发送叮嘱}
-      />
+      {!是后端 ? (
+        <真输入条
+          占位="对进展有疑问？告诉你的AI代理…"
+          值={草稿}
+          改变={设草稿}
+          发送={发送叮嘱}
+        />
+      ) : null}
 
-      <拿不准弹层
-        可见={弹层可见}
-        关闭={() => 设弹层可见(false)}
-        决策类型="退出"
-        记成规则={记成规则}
-        决定文案={`你在「${该候选.代号}」这一单里叮嘱了：${最近叮嘱}`}
-        规则草案={最近叮嘱}
-      />
+      {!是后端 && 该候选 !== null ? (
+        <拿不准弹层
+          可见={弹层可见}
+          关闭={() => 设弹层可见(false)}
+          决策类型="退出"
+          记成规则={记成规则}
+          决定文案={`你在「${该候选.代号}」这一单里叮嘱了：${最近叮嘱}`}
+          规则草案={最近叮嘱}
+        />
+      ) : null}
     </次级页外壳>
   );
 }

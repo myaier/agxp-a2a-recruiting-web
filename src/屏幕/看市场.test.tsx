@@ -254,7 +254,9 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
     expect(mock轻提示).toHaveBeenCalledWith('已记成规则');
   });
 
-  it('往来记录：Backend 记成规则不派发 新增规则，只提示去规则库', async () => {
+  it('往来记录：Backend 无输入无弹层，叮嘱/记成规则路径整体退场', async () => {
+    // 工作包 B：Backend 没有权威 transcript —— 旧「借 Mock 剧本发叮嘱、只拦规则写入」
+    // 的妥协面退场；页面只剩中性说明 + 进 MatchCase 详情（专项断言见 往来记录.test.tsx）
     置应用状态({ 模式: 'backend', 状态: { 在谈列表: [] } });
     render(
       <MemoryRouter initialEntries={['/thread/J-02']}>
@@ -263,18 +265,12 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
         </Routes>
       </MemoryRouter>,
     );
-    await userEvent.type(
-      screen.getByPlaceholderText('对进展有疑问？告诉你的AI代理…'),
-      '只要双休',
-    );
-    await userEvent.click(screen.getByRole('button', { name: '发送' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: '记成规则' })).toBeTruthy(),
-    );
-    await userEvent.click(screen.getByRole('button', { name: '记成规则' }));
+    expect(screen.getByText('完整 A2A 往来暂未提供查看器')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('对进展有疑问？告诉你的AI代理…')).toBeNull();
+    expect(screen.queryByRole('button', { name: '记成规则' })).toBeNull();
     expect(mock派发).not.toHaveBeenCalled();
     expect(mock跳转).not.toHaveBeenCalled();
-    expect(mock轻提示).toHaveBeenCalledWith('请到规则库确认并添加长期规则');
+    expect(mock轻提示).not.toHaveBeenCalled();
   });
 
   it('往来记录：Mock 记成规则派发 新增规则 后留在本页并轻提示', async () => {
