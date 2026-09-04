@@ -33,7 +33,9 @@ export default function 初筛对话() {
     return (
       <次级页外壳>
         <返回栏 返回={返回} 标题="本周初筛记录" />
-        <div className={样式.空态}>该原型日志没有权威数据源</div>
+        <滚动区>
+          <div className={样式.空态}>该原型日志没有权威数据源</div>
+        </滚动区>
       </次级页外壳>
     );
   }

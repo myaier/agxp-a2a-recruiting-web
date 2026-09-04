@@ -89,7 +89,8 @@ describe('直聊会话 · Backend 无权威举报目标', () => {
     'Backend %s 不展示原型消息或写入口',
     (url) => {
       渲染('backend', url);
-      expect(screen.getByText('当前暂不提供直接聊天')).toBeTruthy();
+      // 完整句在同一个 旁听文字 槽位内（review-r1：不拆成两个 flex 列），用正则锚首句
+      expect(screen.getByText(/当前暂不提供直接聊天/)).toBeTruthy();
       expect(screen.queryByText(对方.姓名)).toBeNull();
       expect(screen.queryByText(对方.岗位公司)).toBeNull();
       expect(screen.queryByRole('textbox')).toBeNull();

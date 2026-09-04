@@ -132,16 +132,11 @@ export default function 直聊会话() {
         <span className={样式.小盾牌}>
           <代理标 尺寸={13} 带点={false} />
         </span>
-        {是后端 ? (
-          <>
-            <span className={样式.旁听文字}>当前暂不提供直接聊天</span>
-            <span className={样式.旁听文字}>请从已建立的 MatchCase 进入真人会话</span>
-          </>
-        ) : (
-          <span className={样式.旁听文字}>
-            你选择了自己聊，AI代理在旁听：只提醒、不插话
-          </span>
-        )}
+        <span className={样式.旁听文字}>
+          {是后端
+            ? '当前暂不提供直接聊天。请从已建立的 MatchCase 进入真人会话。'
+            : '你选择了自己聊，AI代理在旁听：只提醒、不插话'}
+        </span>
         <button
           className={`${样式.交回} 可点`}
           onClick={() => 跳转(是后端 ? 路径.主壳 : 路径.问AI代理)}
