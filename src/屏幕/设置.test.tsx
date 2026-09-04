@@ -315,3 +315,36 @@ describe('设置 · 实名状态真相源', () => {
     expect(导航.跳转).toHaveBeenCalledWith(路径.账号安全);
   });
 });
+
+// Backend 只收三项闭合产品反馈，入口名如实叫「产品反馈」；Mock 保留「反馈与举报」
+// （那里举报两类仍是可用的原型分类）。跳转目标都是现有 /feedback 屏。
+describe('设置 · 反馈入口按模式命名', () => {
+  it('Backend 关于组入口叫 产品反馈，不出现 反馈与举报', async () => {
+    const 用户 = userEvent.setup();
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: { 设置雇主隐私: vi.fn(), ...P8操作桩() },
+      数据源模式: 'backend',
+      后端状态: 后端底座(),
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    expect(screen.queryByText('反馈与举报')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: /产品反馈/ }));
+    expect(导航.跳转).toHaveBeenCalledWith(路径.反馈);
+  });
+
+  it('Mock 关于组入口仍叫 反馈与举报', async () => {
+    const 用户 = userEvent.setup();
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: { 设置雇主隐私: vi.fn(), ...P8操作桩() },
+      数据源模式: 'mock',
+      后端状态: 后端底座(),
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    await 用户.click(screen.getByRole('button', { name: /反馈与举报/ }));
+    expect(导航.跳转).toHaveBeenCalledWith(路径.反馈);
+  });
+});

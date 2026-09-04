@@ -235,3 +235,26 @@ describe('企业设置 · 申请读取失败不掩盖本地权威的 已认证',
     expect(screen.queryByText('已解除')).toBeNull();
   });
 });
+
+// Backend 只收三项闭合产品反馈，入口名如实叫「产品反馈」；Mock 保留「反馈与举报」。
+// 跳转目标都是现有 /feedback 屏。
+describe('企业设置 · 反馈入口按模式命名', () => {
+  it('Backend 关于组入口叫 产品反馈，不出现 反馈与举报', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = 操作桩();
+    置Backend(操作);
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    expect(screen.queryByText('反馈与举报')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: /产品反馈/ }));
+    expect(导航.跳转).toHaveBeenCalledWith(路径.反馈);
+  });
+
+  it('Mock 关于组入口仍叫 反馈与举报', async () => {
+    const 用户 = userEvent.setup();
+    const 操作 = 操作桩();
+    置Mock(操作);
+    render(<MemoryRouter><企业设置 /></MemoryRouter>);
+    await 用户.click(screen.getByRole('button', { name: /反馈与举报/ }));
+    expect(导航.跳转).toHaveBeenCalledWith(路径.反馈);
+  });
+});

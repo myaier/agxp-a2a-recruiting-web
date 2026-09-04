@@ -121,7 +121,8 @@ export default function 企业设置() {
           </button>
           <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.反馈)}>
             <span className={样式.行文字组}>
-              <span className={样式.行标题}>反馈与举报</span>
+              {/* Backend 只收三项闭合产品反馈，入口名如实；Mock 保留举报原型 */}
+              <span className={样式.行标题}>{是后端 ? '产品反馈' : '反馈与举报'}</span>
             </span>
             <span className={样式.尖括号}>›</span>
           </button>

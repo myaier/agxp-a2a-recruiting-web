@@ -1,13 +1,14 @@
-// Task 6：反馈屏双模式行为线测试。
+// 反馈屏双模式行为线测试。
 //
-// Backend：产品三分类（功能异常 / 体验建议 / 其他）按 UI→线协议精确映射走
-// 操作.提交P8反馈（调用方不带幂等键，键归操作层）；提交期间锁分类片、正文与提交键；
+// Backend：整屏只保留三项闭合产品分类（功能异常 / 体验建议 / 其他），首帧即默认
+// 「功能异常」可直接提交；举报两类在这里没有可核实的对象 —— 根本不出现，表单底部
+// 既有说明槽位持久显示入口指引「举报要从具体的岗位、谈判或真人会话里发起」。提交按
+// UI→线协议精确映射走 操作.提交P8反馈（键归操作层）；提交期间锁分类片、正文与提交键；
 // 失败 / 结果未知保留输入与所选分类并给既有错误文案映射的固定中文，绝不进致谢态；
-// 成功沿用既有致谢壳，工单号来自回执 ticketId，文案是「我们会尽快核查」——
-// 原型时代的「24 小时」承诺在后端模式绝不再出现（后端不发布这个时限）。
-// 「举报虚假岗位 / 举报骚扰行为」保留既有分类片 / 输入区 / 提交键视觉，但提交只给
-// 「从具体岗位、谈判或真人会话发起」的入口指引，既不调反馈也无可调的举报操作。
-// Mock：字节级行为不变 —— 本地成功、固定原型工单号、既有分类文案，零 P8 操作。
+// 成功沿用既有致谢壳，工单号来自回执 ticketId，文案是「我们会尽快核查」。返回栏与
+// 设置入口都叫「产品反馈」。
+// Mock：字节级行为不变 —— 五分类（含举报两类）、本地成功、固定原型工单号与原文说明，
+// 零 P8 操作。
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -58,6 +59,25 @@ beforeEach(() => {
 });
 
 describe('反馈 · Backend 产品反馈', () => {
+  it('Backend 初始即为可提交产品分类且不出现举报', async () => {
+    const 用户 = userEvent.setup();
+    const { 视图, 操作 } = 挂载('backend');
+    // 返回栏按模式命名：Backend 叫「产品反馈」
+    expect(screen.getByText('产品反馈')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '功能异常' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '体验建议' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '其他' })).toBeTruthy();
+    expect(screen.queryByText('举报虚假岗位')).toBeNull();
+    expect(screen.queryByText('举报骚扰行为')).toBeNull();
+    // 举报指引复用表单底部既有说明槽位，持久可见
+    expect(screen.getByText('举报要从具体的岗位、谈判或真人会话里发起；这里只收集产品反馈。')).toBeTruthy();
+    await 用户.type(screen.getByRole('textbox'), '页面无法打开');
+    await 用户.click(screen.getByRole('button', { name: '提交' }));
+    expect(操作.提交P8反馈).toHaveBeenCalledWith('bug', '页面无法打开');
+    expect(操作.提交P8举报).not.toHaveBeenCalled();
+    视图.unmount();
+  });
+
   it('三分类按 UI→线协议精确映射：功能异常→bug、体验建议→suggestion、其他→other', async () => {
     const 用户 = userEvent.setup();
     const 映射: Array<[string, P8FeedbackCategory]> = [
@@ -86,7 +106,7 @@ describe('反馈 · Backend 产品反馈', () => {
     expect(操作.提交P8反馈).toHaveBeenCalledWith('suggestion', '希望增加状态说明');
     expect((screen.getByRole('button', { name: '提交' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).disabled).toBe(true);
-    for (const 分类 of ['举报虚假岗位', '举报骚扰行为', '功能异常', '体验建议', '其他']) {
+    for (const 分类 of ['功能异常', '体验建议', '其他']) {
       expect((screen.getByRole('button', { name: 分类 }) as HTMLButtonElement).disabled).toBe(true);
     }
     放行(反馈回执);
@@ -131,22 +151,6 @@ describe('反馈 · Backend 产品反馈', () => {
     视图.unmount();
   });
 
-  it('举报类分类提交只给入口指引：举报操作在场也不调（举报只从具体对象入口发起）', async () => {
-    const 用户 = userEvent.setup();
-    for (const 分类 of ['举报虚假岗位', '举报骚扰行为']) {
-      const { 视图, 操作 } = 挂载('backend');
-      expect('提交P8举报' in 操作).toBe(true); // Task 7 起公开操作面已含举报
-      await 填写并提交(用户, 分类, 'JD 与代理转述不一致');
-      // 轻提示是纯 DOM toast（1.8s 后才移除）：上一轮分类的指引还在 body 里，用复数查询
-      expect((await screen.findAllByText(/岗位、谈判或真人会话/)).length).toBeGreaterThan(0);
-      expect(操作.提交P8反馈).not.toHaveBeenCalled();
-      expect(操作.提交P8举报).not.toHaveBeenCalled();
-      expect(screen.queryByText(/已收到，谢谢你/)).toBeNull();
-      expect(screen.queryByText(/TICKET-P8-001/)).toBeNull();
-      视图.unmount();
-    }
-  });
-
   it('源码合同：分类表原序保留、既有两份 CSS 不变', () => {
     expect(反馈源码).toContain(
       "const 分类表 = ['举报虚假岗位', '举报骚扰行为', '功能异常', '体验建议', '其他'];",
@@ -156,6 +160,18 @@ describe('反馈 · Backend 产品反馈', () => {
 });
 
 describe('反馈 · Mock 字节级不变', () => {
+  it('返回栏仍叫 反馈与举报，五分类与底部原文说明保持', () => {
+    const { 视图 } = 挂载('mock');
+    expect(screen.getByText('反馈与举报')).toBeTruthy();
+    for (const 分类 of ['举报虚假岗位', '举报骚扰行为', '功能异常', '体验建议', '其他']) {
+      expect(screen.getByRole('button', { name: 分类 })).toBeTruthy();
+    }
+    // 底部说明是两行原文（<br/> 分隔），用正则做子串断言
+    expect(screen.getByText(/提交内容会附带你的账号与当前版本号，便于定位问题。/)).toBeTruthy();
+    expect(screen.queryByText('举报要从具体的岗位、谈判或真人会话里发起；这里只收集产品反馈。')).toBeNull();
+    视图.unmount();
+  });
+
   it('产品分类本地成功：固定原型工单号与既有文案，零 P8 操作', async () => {
     const 用户 = userEvent.setup();
     const { 视图, 操作 } = 挂载('mock');

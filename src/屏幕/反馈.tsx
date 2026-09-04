@@ -37,27 +37,44 @@ const 占位表: Record<string, string> = {
 
 const 字数上限 = 500;
 
-/** 产品反馈的 UI→线协议映射（举报两类不在此表：后端只收带具体对象的举报）。 */
-const 反馈分类到线协议: Record<string, P8FeedbackCategory | undefined> = {
-  功能异常: 'bug',
-  体验建议: 'suggestion',
-  其他: 'other',
-};
+/**
+ * Backend 可见的闭合产品分类：可见按钮、placeholder 与 wire enum 都从这一张表派生。
+ * 举报两类在这里没有可核实的对象，本屏根本不出现 —— 它们只能从具体的岗位、谈判或
+ * 真人会话入口发起。
+ */
+const Backend反馈分类 = [
+  { 名称: '功能异常', placeholder: '在哪一屏、做了什么、期望看到什么？', wire: 'bug' },
+  { 名称: '体验建议', placeholder: '你希望它变成什么样？', wire: 'suggestion' },
+  { 名称: '其他', placeholder: '想说的都可以写在这里。', wire: 'other' },
+] as const satisfies readonly {
+  名称: string;
+  placeholder: string;
+  wire: P8FeedbackCategory;
+}[];
 
-/** Backend 举报两类的提交指引：入口在具体对象那一侧，本屏绝不代发无目标举报。 */
+/** Backend 举报两类的入口指引：入口在具体对象那一侧，本屏绝不代发无目标举报。 */
 const 举报入口指引 = '举报要从具体的岗位、谈判或真人会话里发起；这里只收集产品反馈。';
 
 export default function 反馈() {
   const { 返回 } = use导航();
   const { 操作, 数据源模式 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
-  const [分类, 设分类] = useState(分类表[0]);
+  const [已选分类, 设已选分类] = useState<string>(分类表[0]);
   const [正文, 设正文] = useState('');
   const [已提交, 设已提交] = useState(false);
   // Backend 提交在飞：锁分类片/正文/提交键（单飞由操作层保证，这里只收口视觉）
   const [提交中, 设提交中] = useState(false);
   // Backend 成功回执的工单号；Mock 恒用原型固定工单号
   const [工单号, 设工单号] = useState<string | null>(null);
+
+  // 派生的有效分类：切源后若旧选择不在当前可见表里，回落到表首项，
+  // 保证 Backend 首帧就是可提交的产品分类，不会短暂保留另一模式的举报类别。
+  const 可见分类 = 是后端 ? Backend反馈分类 : 分类表;
+  const 有效分类 = 可见分类.some((项) => (typeof 项 === 'string' ? 项 : 项.名称) === 已选分类)
+    ? 已选分类
+    : (typeof 可见分类[0] === 'string' ? 可见分类[0] : 可见分类[0].名称);
+  const 当前项 = 可见分类.find((项) => (typeof 项 === 'string' ? 项 : 项.名称) === 有效分类);
+  const 占位 = typeof 当前项 === 'string' ? 占位表[当前项] : 当前项?.placeholder;
 
   const 可提交 = 正文.trim().length >= 5;
 
@@ -66,11 +83,9 @@ export default function 反馈() {
       设已提交(true); // Mock：本地成功照旧，零 P8 操作
       return;
     }
-    const 线分类 = 反馈分类到线协议[分类];
-    if (线分类 === undefined) {
-      轻提示(举报入口指引);
-      return;
-    }
+    // wire 只从闭合表取得；表外分类不透传 undefined，直接不提交
+    const 线分类 = Backend反馈分类.find((项) => 项.名称 === 有效分类)?.wire;
+    if (线分类 === undefined) return;
     void (async () => {
       设提交中(true);
       try {
@@ -88,15 +103,16 @@ export default function 反馈() {
 
   const 致谢正文 = 是后端
     ? '我们会尽快核查。每一条反馈都有人读。'
-    : 分类.startsWith('举报')
+    : 已选分类.startsWith('举报')
       ? '我们会在 24 小时内核查。核查过程中不会向对方透露是谁提交的。'
       : '每一条都有人读。被采纳的建议会在版本更新说明里出现。';
   const 致谢工单号 = 是后端 && 工单号 !== null ? `工单号 ${工单号}` : '工单号 FB-2026-0818-041';
+  const 屏标题 = 是后端 ? '产品反馈' : '反馈与举报';
 
   if (已提交) {
     return (
       <次级页外壳>
-        <返回栏 返回={返回} 标题="反馈与举报" />
+        <返回栏 返回={返回} 标题={屏标题} />
         <滚动区 样式覆盖={{ padding: '0 18px 24px' }}>
           <div className={本屏样式.致谢区}>
             <div className={本屏样式.对勾圈}>✓</div>
@@ -114,26 +130,29 @@ export default function 反馈() {
 
   return (
     <次级页外壳>
-      <返回栏 返回={返回} 标题="反馈与举报" />
+      <返回栏 返回={返回} 标题={屏标题} />
 
       <滚动区 样式覆盖={{ padding: '14px 18px 24px' }}>
         <div className={样式.分类行}>
-          {分类表.map((项) => (
-            <button
-              key={项}
-              className={`${样式.分类片} ${分类 === 项 ? 样式.分类片选中 : ''} 可点`}
-              disabled={提交中}
-              onClick={() => 设分类(项)}
-            >
-              {项}
-            </button>
-          ))}
+          {可见分类.map((项) => {
+            const 名称 = typeof 项 === 'string' ? 项 : 项.名称;
+            return (
+              <button
+                key={名称}
+                className={`${样式.分类片} ${有效分类 === 名称 ? 样式.分类片选中 : ''} 可点`}
+                disabled={提交中}
+                onClick={() => 设已选分类(名称)}
+              >
+                {名称}
+              </button>
+            );
+          })}
         </div>
 
         <div className={本屏样式.输入区}>
           <textarea
             className={本屏样式.文本框}
-            placeholder={占位表[分类]}
+            placeholder={占位}
             value={正文}
             maxLength={字数上限}
             disabled={提交中}
@@ -155,9 +174,15 @@ export default function 反馈() {
         </button>
 
         <div className={样式.版本}>
-          提交内容会附带你的账号与当前版本号，便于定位问题。
-          <br />
-          举报时无需提供对方身份，平台侧按代谈编号即可追溯。
+          {是后端 ? (
+            举报入口指引
+          ) : (
+            <>
+              提交内容会附带你的账号与当前版本号，便于定位问题。
+              <br />
+              举报时无需提供对方身份，平台侧按代谈编号即可追溯。
+            </>
+          )}
         </div>
       </滚动区>
     </次级页外壳>
