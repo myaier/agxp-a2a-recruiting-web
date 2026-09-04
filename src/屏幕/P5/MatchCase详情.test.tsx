@@ -971,6 +971,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
       <MemoryRouter initialEntries={['/deal/mc_a']}>
         <测试换Case钮 目标="/deal/mc_b" />
         <Routes>
+          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
           <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
         </Routes>
       </MemoryRouter>,
@@ -1074,8 +1075,6 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '结束初筛' }));
     expect(mock决定S0).toHaveBeenCalledTimes(1);
     expect(mock决定S0).toHaveBeenCalledWith('mc_direct', 'end');
-    // 全程零 continue 命令：end_screening 卡只有结束一条准许路线
-    expect(mock决定S0.mock.calls.every((调) => 调[1] === 'end')).toBe(true);
   });
 
   it('end_screening（招聘）：wire 缺 recruiter decisions 臂 → 零控件零请求（fail closed，后端缺口观察）', async () => {
