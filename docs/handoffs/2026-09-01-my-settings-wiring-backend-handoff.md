@@ -2,6 +2,8 @@
 
 > 本文可直接发送给另一台机器上的后端 Coding Agent。接收者不需要原测试账号、测试材料、浏览器会话、截图、前端本地文件或此前聊天记录。所有代码路径均为仓库相对路径，不包含任何本机绝对路径。
 
+> **2026-09-03 执行范围更新：**本文中的 contact-events、credential/avatar 与 agent-settings 能力已进入当前 release 基线，不应再次领取；候选实名认证已迁移到 `docs/handoffs/2026-09-03-backend-resume-agent-verification-matchcase-summary-handoff.md` 的 `BE-IV-01`。因此本文只作为历史设计记录，不再包含可执行工作范围。
+
 ## 仓库与目标
 
 - 后端仓库：`myaier/agxp-monorepo`
