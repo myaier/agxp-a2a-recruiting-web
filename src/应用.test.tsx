@@ -156,6 +156,23 @@ function 后端应用值(后端覆盖: Partial<后端状态> = {}) {
 
 /** Task 7 用：候选 onboarding 会话的上下文值（已登录 candidate + 已水合附件库）。 */
 const 候选主体 = { ...BFF主体样本, last_used_role: 'candidate' as const };
+/** 角色边界回归用：Mock 模式的上下文值 —— 角色守卫完全跳过，无主体 roles 也直接挂目标屏。 */
+function Mock应用值() {
+  return {
+    状态: 初始状态,
+    派发: vi.fn(),
+    数据源模式: 'mock' as const,
+    后端状态: 建后端状态({ 初始化: '跳过' }),
+    操作: {
+      重新水合招聘方组织: vi.fn(async () => undefined),
+      重新水合招聘方数据: vi.fn(async () => undefined),
+      恢复候选Onboarding预填: vi.fn(async () => undefined),
+      清候选Onboarding预填: vi.fn(),
+      切身份: vi.fn(async () => undefined),
+    },
+    目录查询: null,
+  };
+}
 const 附件limits = {
   max_files: 3,
   max_file_bytes: 2 * 1024 * 1024,
@@ -709,5 +726,74 @@ describe('应用路由：Backend 角色路由边界', () => {
     await userEvent.click(screen.getByRole('button', { name: '探针-后退' }));
     await waitFor(() => expect(当前路径()).toBe(允许路径));
     expect(屏幕挂载次数.get(错误屏) ?? 0).toBe(0);
+  });
+});
+
+describe('应用路由：角色边界下的组织恢复、未知路由与 Mock 回归', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+    屏幕挂载次数.clear();
+  });
+
+  // 未知路径不进角色分类器（不用 startsWith('/hr') 之类宽匹配猜角色）：
+  // 仍交给现有 * fallback 落登录页，再由既有登录落点 effect 把 candidate 送进主壳。
+  it.each(['/hr/not-a-real-screen', '/not-a-real-screen'])(
+    '未知路径 %s 交给 * fallback，不被角色守卫拦截',
+    async (路径值) => {
+      mock应用状态.mockReturnValue(后端应用值({
+        初始化: '完成',
+        已登录: true,
+        主体: 主体('candidate', 'active', null),
+      }));
+      render(
+        <MemoryRouter initialEntries={[路径值]}><应用 /><位置探针 /></MemoryRouter>,
+      );
+      await waitFor(() => expect(当前路径()).toBe(路径.主壳));
+    },
+  );
+
+  // 主体快照缺失（已登录但主体未落地）fail closed：角色业务屏不挂载，回身份选择
+  it('Backend 已登录但主体快照缺失时不挂载角色业务屏', async () => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成',
+      已登录: true,
+      主体: null,
+    }));
+    render(
+      <MemoryRouter initialEntries={['/resume']}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe('/identity'));
+    expect(屏幕挂载次数.get('我的简历') ?? 0).toBe(0);
+  });
+
+  // 恢复与退出招聘路径对 recruiter 放行（既有 describe 已钉组织失败/档案缺失行为），
+  // 这里钉它们对 candidate 是 recruiter-only：不挂载、replace 回身份选择
+  it.each([
+    [路径.招聘名片, '屏幕:招聘名片'],
+    [路径.企业实名认证, '屏幕:企业实名认证'],
+    [路径.企业组织申请, '屏幕:企业组织申请'],
+    [路径.企业邀请加入, '屏幕:企业邀请加入'],
+  ] as const)('恢复/退出招聘路径 %s 仍 recruiter-only', async (路径值, testid) => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成',
+      已登录: true,
+      主体: 主体('candidate', 'active', null),
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径值]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe('/identity'));
+    expect(screen.queryByTestId(testid)).toBeNull();
+  });
+
+  // Mock 完全跳过角色守卫：无主体 roles 也直接挂目标屏，原型路由行为保持
+  it.each(['/resume', '/hr/jobs'])('Mock 不应用主体角色守卫：%s', async (path) => {
+    mock应用状态.mockReturnValue(Mock应用值());
+    render(
+      <MemoryRouter initialEntries={[path]}><应用 /></MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId(path === '/resume' ? '屏幕:我的简历' : '屏幕:岗位管理')).toBeTruthy(),
+    );
   });
 });
