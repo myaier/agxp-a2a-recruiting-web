@@ -87,7 +87,13 @@ vi.mock('./屏幕/帮助与客服', () => 可计数屏幕桩('帮助与客服'))
 vi.mock('./屏幕/反馈', () => 可计数屏幕桩('反馈'));
 vi.mock('./屏幕/用户协议', () => 可计数屏幕桩('用户协议'));
 
-const 招聘主体 = { ...BFF主体样本, last_used_role: 'recruiter' as const };
+// 角色路由边界落地后，recruiter 会话必须真实拥有 active 的 recruiter 角色
+//（只改 last_used_role 的旧 fixture 会被守卫正确地拒之门外）
+const 招聘主体 = {
+  ...BFF主体样本,
+  roles: [{ role: 'recruiter' as const, status: 'active' as const }],
+  last_used_role: 'recruiter' as const,
+};
 
 /** 角色路由矩阵用主体工厂：last_used_role 与两侧角色状态独立拼装。 */
 function 主体(
@@ -565,12 +571,14 @@ describe('应用路由：候选 onboarding 预填恢复与退出清理（Task 7�
   });
 
   it('未登录或非候选会话不触发位置清理（等水合，不烧恢复元数据）', async () => {
+    // 非候选会话用 recruiter 的允许路径（企业主壳）表达：角色路由边界落地后，
+    // recruiter 深链候选主壳会被守卫同步拒绝，主壳屏对 recruiter 不再可达
     const 值 = 后端应用值({ 初始化: '完成', 已登录: true, 主体: 招聘主体 });
     mock应用状态.mockReturnValue(值);
     render(
-      <MemoryRouter initialEntries={[路径.主壳]}><应用 /></MemoryRouter>,
+      <MemoryRouter initialEntries={[路径.企业主壳]}><应用 /></MemoryRouter>,
     );
-    await waitFor(() => expect(screen.getByTestId('屏幕:主壳')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('屏幕:企业主壳')).toBeTruthy());
     expect(值.操作.清候选Onboarding预填).not.toHaveBeenCalled();
   });
 });
@@ -671,11 +679,12 @@ describe('应用路由：Backend 角色路由边界', () => {
     expect(屏幕挂载次数.get('我的简历') ?? 0).toBe(0);
   });
 
-  // 后退行为：被拒路由是 replace，浏览器后退只回到允许页，错误屏 mount 仍为 0。
+  // 后退行为：被拒路由是 replace，浏览器后退只回到允许页；错误屏从未挂载
+  //（允许屏在后退回来时会合法地重新挂载，不计入断言）。
   it.each([
-    ['recruiter 误入候选页', 主体('recruiter', null, 'active'), '/hr/jobs', '/resume', '屏幕:岗位管理'],
-    ['candidate 误入招聘页', 主体('candidate', 'active', null), '/resume', '/hr/jobs', '屏幕:我的简历'],
-  ] as const)('%s：replace 后退只回允许页', async (_名, 当前主体, 允许路径, 错误路径, testid) => {
+    ['recruiter 误入候选页', 主体('recruiter', null, 'active'), '/hr/jobs', '/resume', '屏幕:岗位管理', '我的简历'],
+    ['candidate 误入招聘页', 主体('candidate', 'active', null), '/resume', '/hr/jobs', '屏幕:我的简历', '岗位管理'],
+  ] as const)('%s：replace 后退只回允许页', async (_名, 当前主体, 允许路径, 错误路径, testid, 错误屏) => {
     mock应用状态.mockReturnValue(后端应用值({
       初始化: '完成',
       已登录: true,
@@ -694,14 +703,11 @@ describe('应用路由：Backend 角色路由边界', () => {
       <MemoryRouter initialEntries={[允许路径]}><应用 /><位置探针 /><探针 /></MemoryRouter>,
     );
     await waitFor(() => expect(screen.getByTestId(testid)).toBeTruthy());
-    // 允许页自身挂载过一次；此后误入、被拒、后退全程不得再新增任何一侧挂载
-    const 基线岗位管理 = 屏幕挂载次数.get('岗位管理') ?? 0;
-    const 基线我的简历 = 屏幕挂载次数.get('我的简历') ?? 0;
+    // 允许页自身挂载过一次；误入对侧、被拒、后退全程对侧错误屏 mount 必须仍为 0
     await userEvent.click(screen.getByRole('button', { name: '探针-去错误页' }));
     await waitFor(() => expect(当前路径()).toBe('/identity'));
     await userEvent.click(screen.getByRole('button', { name: '探针-后退' }));
     await waitFor(() => expect(当前路径()).toBe(允许路径));
-    expect(屏幕挂载次数.get('岗位管理') ?? 0).toBe(基线岗位管理);
-    expect(屏幕挂载次数.get('我的简历') ?? 0).toBe(基线我的简历);
+    expect(屏幕挂载次数.get(错误屏) ?? 0).toBe(0);
   });
 });

@@ -2,11 +2,12 @@
 // 新增屏幕只需在 屏幕/ 下建文件并在这里挂一行，不改动其它任何地方。
 
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { 路径 } from './路由/路径表';
 import { 候选Onboarding预填边界, 是活跃Onboarding位置 } from './流程/候选Onboarding预填边界';
 import { 主按钮 } from './组件/通用';
 import 登录 from './屏幕/登录';
+import type { BFF主体, BFF角色 } from './数据/BFF契约';
 import { use应用状态 } from './状态/应用状态';
 
 // 手机端首屏只加载当前路由。此前所有屏幕同步 import，登录页也会把求职端、企业端
@@ -102,6 +103,58 @@ const 招聘方恢复路径 = new Set<string>([
   路径.企业组织申请,
   路径.企业邀请加入,
 ]);
+
+// ── Backend 角色路由边界（前端真实性修复 Plan 1）──────────────────
+// 候选/招聘两组精确路由模式，shared 路由（登录/选身份/账号安全/反馈/用户协议/
+// 帮助/企业详情）不入表。逐项列出已注册路由，未知路径仍交给 * fallback，
+// 不用 startsWith 之类的宽匹配去猜角色。
+const 候选路由模式 = [
+  路径.学生分流, 路径.基本信息, 路径.工作经历, 路径.引导问答,
+  路径.披露说明, 路径.选工作城市, 路径.选期望职位, 路径.求职状态,
+  路径.最高学历, 路径.毕业院校, 路径.选专业, 路径.就读时间段,
+  路径.添加头像, 路径.初始化, 路径.主壳, 路径.在谈详情模板,
+  路径.往来记录模板, 路径.问AI代理, 路径.代理详情, 路径.职位详情模板,
+  路径.直聊会话, 路径.直聊会话岗位模板, 路径.真人会话, 路径.真人会话模板,
+  路径.求职意向管理, 路径.添加意向, 路径.选择城市, 路径.选期望行业,
+  路径.编辑意向模板, 路径.规则库, 路径.我的简历, 路径.个人信息,
+  路径.设置, 路径.屏蔽名单, 路径.披露偏好, 路径.归档谈判, 路径.接触记录,
+] as const;
+
+const 招聘路由模式 = [
+  路径.企业实名认证, 路径.招聘名片, 路径.企业组织申请, 路径.企业邀请加入,
+  路径.发布岗位, 路径.编辑岗位模板, 路径.公司档案编辑, 路径.公司档案分区模板,
+  路径.企业初始化, 路径.企业主壳, 路径.候选详情模板, 路径.企业往来记录模板,
+  路径.企业问AI代理, 路径.企业真人会话, 路径.企业真人会话模板,
+  路径.岗位管理, 路径.岗位详情模板, 路径.企业代理详情, 路径.企业代理设置,
+  路径.匿名在线简历模板, 路径.企业设置, 路径.企业披露策略, 路径.企业归档,
+  路径.已筛候选, 路径.初筛记录, 路径.初筛对话模板,
+] as const;
+
+function 匹配任一路由(pathname: string, patterns: readonly string[]): boolean {
+  return patterns.some((pattern) => matchPath({ path: pattern, end: true }, pathname) !== null);
+}
+
+/**
+ * 只读角色路由判定：目标角色路由要求 last_used_role 是该角色且该角色 active。
+ * 双 active 但当前身份在对侧 → 显式切身份路径；其余不满足 → 身份选择。
+ * 绝不调用 操作.切身份，也不写 last_used_role —— 访问 URL 不是身份切换。
+ */
+function 角色路由重定向(pathname: string, subject: BFF主体 | null): string | null {
+  const 目标角色: BFF角色 | null = 匹配任一路由(pathname, 候选路由模式)
+    ? 'candidate'
+    : 匹配任一路由(pathname, 招聘路由模式) ? 'recruiter' : null;
+  if (目标角色 === null) return null;
+  if (subject === null) return 路径.选身份;
+  const active = (role: BFF角色) =>
+    subject.roles.some((项) => 项.role === role && 项.status === 'active');
+  if (active(目标角色) && subject.last_used_role === 目标角色) return null;
+  if (!active('candidate') || !active('recruiter') || subject.last_used_role === null) {
+    return 路径.选身份;
+  }
+  return subject.last_used_role === 'candidate'
+    ? 路径.切换身份自求职端
+    : 路径.切换身份自企业端;
+}
 
 /** 受保护的招聘业务路径：登录页（恢复落点）与 /hr 主壳及其子路径，去掉恢复/退出路径。 */
 function 是受保护招聘路径(pathname: string): boolean {
@@ -237,6 +290,17 @@ export default function 应用() {
     // 操作 由 Provider 的 useMemo 保持稳定；后端状态刻意不进依赖（清理写状态会回环）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [预填清理就绪, 位置.pathname, 操作]);
+
+  // ── Backend 角色路由边界（前端真实性修复 Plan 1）──────────────────
+  // 初始化完成且已登录后，在 <Routes> 挂载前同步判角色：错误角色的业务组件
+  // （含其 effect）一次都不能挂载。被拒路由 replace，浏览器后退不会落回旧格。
+  // 守卫在组织恢复面之前执行：只有通过 recruiter 角色守卫的请求才进入
+  // 档案缺失/组织失败/恢复白名单判定。Mock 完全跳过（守卫仅 Backend 生效）。
+  const 角色重定向 = 数据源模式 === 'backend' &&
+    后端状态.初始化 === '完成' && 后端状态.已登录
+    ? 角色路由重定向(位置.pathname, 后端状态.主体)
+    : null;
+  if (角色重定向 !== null) return <Navigate to={角色重定向} replace />;
 
   // 组织链失败：受保护路径上换成恢复面（真实错误 + 重试 + 切换身份），
   // 恢复/退出路径（名片、实名认证、组织申请、邀请加入、账号安全、身份选择）照常渲染。
