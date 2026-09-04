@@ -46,11 +46,13 @@ const 状态文案表 = {
   waiting: '等待中',
 } as const satisfies Record<P5状态, string>;
 
-/** 17 个 step 闭词的逐词解释文案（步骤说明须与阶段无关：awaiting_recruiter_decision 同时落在 S1 与 S2）。 */
+/** 17 个 step 闭词的逐词解释文案（步骤说明须与阶段无关：awaiting_recruiter_decision 同时落在 S1 与 S2）。
+ *  兼任阶段区 summary 的展示 allowlist：summary 是阶段最后一个 step word（同 17 闭词），
+ *  未知词不得原样进 DOM。candidate_question 是 AI 侧生成动作，不是候选人的人工待办。 */
 const 步骤说明表 = {
   policy_check: '系统正在核对投递政策',
   candidate_evaluation: '候选方 AI 正在评估岗位',
-  candidate_question: '等待候选人补充事实',
+  candidate_question: '候选方 AI 正在生成补充问题',
   recruiter_answer: '等待招聘方 AI 回答补充问题',
   candidate_reevaluation: '系统正在复评候选信息',
   human_decision: '等待人工决定是否继续',
@@ -88,6 +90,18 @@ const 阶段区状态文案表 = {
   passed: '已通过',
   ended: '已结束',
 } as const satisfies Record<P5阶段区['state'], string>;
+
+/** 8 个 checklist label 闭词的固定中文（后端确认词表，spec §2.4）；未知 label 整项省略。 */
+const 清单文案表 = {
+  anonymous_screening_passed: '匿名初筛已通过',
+  resume_bound: '简历已绑定',
+  resume_parse_ready: '简历已解析',
+  resume_disclosed: '简历已披露',
+  resume_screened: '简历初筛已完成',
+  differences_resolved: '分歧已核对',
+  candidate_confirmed: '候选人已确认',
+  recruiter_confirmed: '招聘方已确认',
+} as const satisfies Record<string, string>;
 
 /**
  * Hosted Agent 失败合同（owner-safe）：两个 code 的安全说明 —— 只描述事实（AI 服务
@@ -382,6 +396,29 @@ function 映射Agent注意(state: P5状态视图): string | null {
     : Agent注意文案表[state.agentAttention.code];
 }
 
+function 已有键<T extends object>(表: T, key: PropertyKey): key is keyof T {
+  return Object.prototype.hasOwnProperty.call(表, key);
+}
+
+/**
+ * 阶段区 summary 的纯展示 allowlist：公开 OpenAPI 仍是 string（decoder 不收紧），
+ * 已知 step word 复用步骤说明表；空串用阶段状态中性文案；未知非空词显示安全兜底，
+ * 原样 token 绝不进视图/DOM。不参与任何状态/动作判定。
+ */
+function 映射阶段摘要(summary: string, state: P5阶段区['state']): string {
+  if (summary === '') return 阶段区状态文案表[state];
+  return 已有键(步骤说明表, summary) ? 步骤说明表[summary] : '阶段信息待更新';
+}
+
+/** checklist label 的纯展示 allowlist：未知 label 整项省略（避免多条不可区分的伪清单）。 */
+function 映射清单(checklist: P5阶段区['checklist']) {
+  return checklist.flatMap((项) =>
+    已有键(清单文案表, 项.label)
+      ? [{ 文本: 清单文案表[项.label], 完成: 项.done }]
+      : [],
+  );
+}
+
 function 映射阶段区(区: P5阶段区): P5阶段区块视图 {
   return {
     stage: 区.stage,
@@ -389,8 +426,8 @@ function 映射阶段区(区: P5阶段区): P5阶段区块视图 {
     状态: 区.state,
     状态文案: 阶段区状态文案表[区.state],
     发生于: 区.occurredAt,
-    摘要: 区.summary,
-    清单: 区.checklist.map((项) => ({ 文本: 项.label, 完成: 项.done })),
+    摘要: 映射阶段摘要(区.summary, 区.state),
+    清单: 映射清单(区.checklist),
     时间线: 区.transcript,
     叮嘱: 区.instructionReceipts,
     附件: 区.attachment,

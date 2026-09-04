@@ -103,13 +103,15 @@ function 状态(覆盖: Partial<P5列表项['state']> = {}): P5列表项['state'
   };
 }
 
-/** 四阶段区固定 S0→S3；S0 带 checklist/待答问题/双端叮嘱回执，其余 pending。 */
+/** 四阶段区固定 S0→S3；S0 带 checklist/待答问题/双端叮嘱回执，其余 pending。
+ *  summary/checklabel 用真实 wire 闭词（spec §2.4）：summary 是阶段最后一个 step word，
+ *  未开始阶段为空串（展示映射负责闭词→中文，未知词不进 DOM）。 */
 function 阶段区组(覆盖: Partial<Record<P5阶段区['stage'], Partial<P5阶段区>>> = {}): P5阶段区[] {
   const 基础: P5阶段区[] = [
     {
       stage: 'anonymous_screening', state: 'active', occurredAt: '2026-08-29T01:10:00Z',
-      summary: '已核对城市与年限，薪资带交集待核对',
-      checklist: [{ label: '基础事实已答', done: true }, { label: '薪资带交集待核对', done: false }],
+      summary: 'candidate_reevaluation',
+      checklist: [{ label: 'anonymous_screening_passed', done: true }, { label: 'resume_bound', done: false }],
       transcript: [
         {
           eventId: 'evt_q1', stage: 'anonymous_screening', kind: 'supplementary_question',
@@ -133,9 +135,9 @@ function 阶段区组(覆盖: Partial<Record<P5阶段区['stage'], Partial<P5阶
       ],
       attachment: null,
     },
-    { stage: 'resume_submission', state: 'pending', occurredAt: null, summary: '简历提交未开始', checklist: [], transcript: [], instructionReceipts: [], attachment: null },
-    { stage: 'needs_coordination', state: 'pending', occurredAt: null, summary: '差异协同未开始', checklist: [], transcript: [], instructionReceipts: [], attachment: null },
-    { stage: 'intent_confirmation', state: 'pending', occurredAt: null, summary: '意向确认未开始', checklist: [], transcript: [], instructionReceipts: [], attachment: null },
+    { stage: 'resume_submission', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null },
+    { stage: 'needs_coordination', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null },
+    { stage: 'intent_confirmation', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null },
   ];
   return 基础.map((区) => ({ ...区, ...覆盖[区.stage] }));
 }
@@ -193,7 +195,7 @@ function 已终止详情DTO(): P5详情 {
     }),
     needsAction: false,
     availableActions: [],
-    stages: 阶段区组({ anonymous_screening: { state: 'ended', summary: '匿名初筛已结束' } }),
+    stages: 阶段区组({ anonymous_screening: { state: 'ended', summary: 'complete' } }),
     terminalSummary: {
       stage: 'anonymous_screening', outcome: 'user_ended', reasonSummary: 'user_ended',
       finalizedAt: '2026-08-29T03:00:00Z',
@@ -345,15 +347,60 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
   it('checklist / 时间线 / 叮嘱回执按类型渲染为展示文本', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    // S0 是当前段（默认展开）：核对清单、待答问题文本、双方叮嘱回执全部在场
-    expect(await screen.findByText('基础事实已答')).toBeTruthy();
-    expect(screen.getByText('薪资带交集待核对')).toBeTruthy(); // 未完成项标「核对中」
+    // S0 是当前段（默认展开）：核对清单（闭词→固定中文）、待答问题文本、双方叮嘱回执全部在场
+    expect(await screen.findByText('匿名初筛已通过')).toBeTruthy();
+    expect(screen.getByText('简历已绑定')).toBeTruthy(); // 未完成项标「核对中」
     expect(screen.getByText('每周可以到岗几天？')).toBeTruthy(); // 时间线文本原样展示
     expect(screen.getByText('工作日 10:00-19:00 联系')).toBeTruthy(); // 本端叮嘱回执
     expect(screen.getByText('流程预计两周内走完')).toBeTruthy(); // 对端叮嘱回执
     expect(screen.getByText('待处理')).toBeTruthy(); // 状态文案胶囊（六闭词表）
     expect(screen.getByText('等待人工决定是否继续')).toBeTruthy(); // 步骤说明（17 词闭表）
     expect(screen.getByText('轮次 1/3')).toBeTruthy();
+  });
+
+  it('阶段 summary/checklist 闭词走固定中文，未知 token 不进 DOM（安全兜底）', async () => {
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: 候选详情DTO({
+          stages: 阶段区组({
+            anonymous_screening: {
+              summary: 'secret_internal_step',
+              checklist: [
+                { label: 'anonymous_screening_passed', done: true },
+                { label: 'secret_internal_check', done: false },
+              ],
+            },
+          }),
+        }),
+      }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    // 已知闭词 → 固定中文；未知 summary → 安全兜底文案；未知 checklist 整项省略
+    expect(await screen.findByText('阶段信息待更新')).toBeTruthy();
+    expect(screen.getByText('匿名初筛已通过')).toBeTruthy();
+    // 原始 token 一个都不进 DOM
+    expect(screen.queryByText('secret_internal_step')).toBeNull();
+    expect(screen.queryByText('secret_internal_check')).toBeNull();
+  });
+
+  it('candidate_question 步骤说明是 AI 侧生成动作，不是候选人的人工待办', async () => {
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: 候选详情DTO({
+          state: 状态({ status: 'running', step: 'candidate_question', needsUser: false, round: 0 }),
+          needsAction: false,
+          availableActions: [],
+        }),
+      }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    expect((await screen.findAllByText('候选方 AI 正在生成补充问题')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('等待候选人补充事实')).toBeNull(); // 旧文案（人工待办口径）退役
+    // AI 生成中：无任何人工回答控件
+    expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
   });
 
   it('时间线只作展示：running 行零动作卡、零回答输入（绝不从文本推状态/按钮）', async () => {

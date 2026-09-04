@@ -38,7 +38,8 @@ const 期望状态文案 = {
 const 期望步骤说明 = {
   policy_check: '系统正在核对投递政策',
   candidate_evaluation: '候选方 AI 正在评估岗位',
-  candidate_question: '等待候选人补充事实',
+  // candidate_question 是 AI 侧生成动作，不是候选人的人工待办（spec §10.2）
+  candidate_question: '候选方 AI 正在生成补充问题',
   recruiter_answer: '等待招聘方 AI 回答补充问题',
   candidate_reevaluation: '系统正在复评候选信息',
   human_decision: '等待人工决定是否继续',
@@ -100,6 +101,18 @@ const 期望可出动作: Record<string, readonly P5动作[]> = {
 
 const 期望错误提示 = '该 Case 数据不符合契约，已停用全部操作';
 const 期望移交文案 = '双方已确认，正在创建会话';
+
+/** 8 个 checklist label 闭词的固定中文（后端确认词表，spec §2.4）。 */
+const 期望清单文案 = {
+  anonymous_screening_passed: '匿名初筛已通过',
+  resume_bound: '简历已绑定',
+  resume_parse_ready: '简历已解析',
+  resume_disclosed: '简历已披露',
+  resume_screened: '简历初筛已完成',
+  differences_resolved: '分歧已核对',
+  candidate_confirmed: '候选人已确认',
+  recruiter_confirmed: '招聘方已确认',
+} as const;
 
 // ── 样本构造（直接构造 Task 1 归一化 DTO；非法样本用 cast 越过类型）──
 
@@ -173,8 +186,11 @@ function 造阶段区组(时间线: 各阶段时间线): P5阶段区[] {
     stage,
     state: (下标 === 0 ? 'active' : 'pending') as 'active' | 'pending',
     occurredAt: 下标 === 0 ? '2026-08-29T01:10:00Z' : null,
-    summary: `${stage} 摘要`,
-    checklist: [{ label: '清单条目', done: true }],
+    // 真实 wire token：summary 是阶段最后一个 step word，未开始阶段为空串（spec §2.4）
+    summary: 下标 === 0 ? 'candidate_reevaluation' : '',
+    checklist: 下标 === 0
+      ? [{ label: 'resume_bound', done: true }, { label: 'differences_resolved', done: false }]
+      : [],
     transcript: 时间线[stage],
     instructionReceipts: [],
     attachment: null,
@@ -575,11 +591,64 @@ describe('映射P5详情：别名与键纪律', () => {
     ]);
     expect(视图.阶段区块[0].状态文案).toBe('进行中');
     expect(视图.阶段区块[1].状态文案).toBe('未开始');
-    expect(视图.阶段区块[0].清单).toEqual([{ 文本: '清单条目', 完成: true }]);
+    expect(视图.阶段区块[0].清单).toEqual([
+      { 文本: 期望清单文案.resume_bound, 完成: true },
+      { 文本: 期望清单文案.differences_resolved, 完成: false },
+    ]);
     expect(视图.阶段区块[0].时间线).toBe(组[0].transcript);
     expect(视图.阶段区块[0].叮嘱).toBe(叮嘱);
     expect(视图.阶段区块[1].附件).toBe(附件);
     expect(视图.阶段区块[0].附件).toBe(null);
+  });
+});
+
+// ── 阶段区 summary/checklist 闭词展示 allowlist（spec §10.2：未知词不进视图/DOM）──
+
+describe('映射P5详情：阶段区 summary 与 checklist 闭词展示', () => {
+  /** 只改 S0 阶段区的 summary/checklist，其余用默认四阶段组（合法详情形态）。 */
+  function 造单区详情(summary: string, checklist: { label: string; done: boolean }[]): P5详情 {
+    const 组 = 造阶段区组(默认时间线('candidate'));
+    const 区 = 组[0];
+    if (区 === undefined) throw new Error('阶段区组为空');
+    区.summary = summary;
+    区.checklist = checklist;
+    return 造详情({ 阶段区组: 组 });
+  }
+
+  it.each(Object.entries(期望步骤说明))('summary token「%s」→ 固定中文且原 token 不进视图', (token, 文案) => {
+    const 视图 = 断言正常(映射P5详情(造单区详情(token, [])));
+    expect(视图.阶段区块[0].摘要).toBe(文案);
+    expect(JSON.stringify(视图.阶段区块[0])).not.toContain(token);
+  });
+
+  it.each(Object.entries(期望清单文案))('checklist token「%s」→ 固定中文且保留完成位', (token, 文案) => {
+    const 视图 = 断言正常(映射P5详情(造单区详情('human_decision', [{ label: token, done: false }])));
+    expect(视图.阶段区块[0].清单).toEqual([{ 文本: 文案, 完成: false }]);
+    expect(JSON.stringify(视图.阶段区块[0])).not.toContain(token);
+  });
+
+  it('未知 summary 显示安全兜底文案，未知 checklist 整项省略；state 与 available_actions 与输入完全相同', () => {
+    const 详情 = 造单区详情('secret_internal_step', [{ label: 'secret_internal_check', done: true }]);
+    const 视图 = 断言正常(映射P5详情(详情));
+    expect(视图.阶段区块[0].摘要).toBe('阶段信息待更新');
+    expect(视图.阶段区块[0].清单).toEqual([]);
+    expect(JSON.stringify(视图.阶段区块)).not.toMatch(/secret_internal_step|secret_internal_check/);
+    // 展示映射不反向参与状态/动作判定：权威字段与输入逐字一致
+    expect(详情.state).toEqual(造状态());
+    expect(详情.availableActions).toEqual([]);
+    expect(视图.caseId).toBe('mc_1');
+    expect(视图.状态文案).toBe(期望状态文案.running);
+    expect(视图.步骤说明).toBe(期望步骤说明.policy_check);
+    expect(视图.actions).toEqual([]);
+  });
+
+  it('空 summary 使用阶段状态中性文案（active→进行中、pending→未开始）', () => {
+    const 组 = 造阶段区组(默认时间线('candidate'));
+    组[0].summary = '';
+    组[1].summary = '';
+    const 视图 = 断言正常(映射P5详情(造详情({ 阶段区组: 组 })));
+    expect(视图.阶段区块[0].摘要).toBe('进行中');
+    expect(视图.阶段区块[1].摘要).toBe('未开始');
   });
 });
 
