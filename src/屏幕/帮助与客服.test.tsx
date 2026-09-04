@@ -69,11 +69,14 @@ describe('帮助与客服 · Backend 角色 FAQ 隔离', () => {
     expect(screen.queryByText('企业什么时候能看到我的资料？')).toBeNull();
   });
 
-  it('Backend 未知角色不猜测：FAQ 为空', () => {
+  it('Backend 未知角色不猜测：FAQ 为空，也不提供 Agent 功能入口', () => {
     渲染Backend(null);
     expect(screen.queryByText('企业什么时候能看到我的资料？')).toBeNull();
     expect(screen.queryByText('怎样发布和管理岗位？')).toBeNull();
     expect(screen.queryByText('对方能看到我的薪资期望吗？')).toBeNull();
+    // Agent CTA 不猜目标：未知角色下不渲染入口（角色守卫会把 /agent、/hr/agent 深链弹回 /identity）
+    expect(screen.queryByRole('button', { name: '查看 AI 代理功能' })).toBeNull();
+    expect(screen.getByText('人工客服暂未开放')).toBeTruthy();
   });
 
   it.each(['400-000-0000', '8:00–22:00', '人力资源服务许可证', '资质证照'])(

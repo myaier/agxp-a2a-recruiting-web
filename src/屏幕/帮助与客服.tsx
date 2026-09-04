@@ -105,12 +105,16 @@ export default function 帮助与客服() {
               : '先问你的 AI 代理 —— 它知道你每一单的上下文，能直接告诉你这一单卡在哪。涉及账号、认证、投诉的问题再转人工。'}
           </div>
           <div className={样式.客服键行}>
-            <button
-              className={`${样式.客服主键} 可点`}
-              onClick={() => 跳转(是Backend && 当前角色 === 'recruiter' ? 路径.企业问AI代理 : 路径.问AI代理)}
-            >
-              {是Backend ? '查看 AI 代理功能' : '问我的 AI 代理'}
-            </button>
+            {/* 未知角色不猜目标：/agent、/hr/agent 深链会被角色守卫弹回 /identity，
+                误导性入口不渲染（Mock 无角色守卫，保持原型入口） */}
+            {是Backend && 当前角色 === null ? null : (
+              <button
+                className={`${样式.客服主键} 可点`}
+                onClick={() => 跳转(是Backend && 当前角色 === 'recruiter' ? 路径.企业问AI代理 : 路径.问AI代理)}
+              >
+                {是Backend ? '查看 AI 代理功能' : '问我的 AI 代理'}
+              </button>
+            )}
             {是Backend ? (
               // 没有客服合同：同一键位槽显示不可点击说明，不伪造入口
               <span className={样式.客服次键}>人工客服暂未开放</span>
