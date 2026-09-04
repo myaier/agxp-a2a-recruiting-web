@@ -18,6 +18,7 @@
 - 不改 CSS、法律条款、正式运营文案或 `用户协议.tsx`。
 - Backend 规则数继续服从现有水合 gate；MatchCase 数字继续服从现有 `取P5Open统计`，不得回退 fixture。
 - Mock 的五类反馈、客服演示和求职状态轮转保持；仅“归档岗位”重复入口按已批准设计从两种模式删除。
+- PM 视觉冻结：不改 CSS、className、内联布局、DOM 布局骨架或区块顺序，不新增 React 组件/组件文件；只在现有行、卡、页脚和内容槽位内切换文字、可见性、禁用态与数据。
 - 每个 Task 严格执行 red → green → commit。
 
 ---
@@ -378,3 +379,4 @@ Expected: 无未提交文件；未修改 `用户协议.tsx`、CSS、后端合同
 - [ ] candidate/recruiter FAQ 不串角色且无占位客服事实。
 - [ ] Backend 双端“我的”无在线断言；招聘在招数与规则 gate 正确。
 - [ ] “归档岗位”重复入口消失，岗位 CRUD 不回归。
+- [ ] 实现范围的 `git diff --name-only` 不含 CSS/产品组件新文件；非测试产品代码的 diff 不含 className、内联布局或页面骨架改动，也没有新增 React 组件声明。

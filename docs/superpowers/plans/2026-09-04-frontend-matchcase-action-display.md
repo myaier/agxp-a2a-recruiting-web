@@ -19,6 +19,7 @@
 - 招聘端不得借用候选 `决定S0` 路径。
 - 回答成功才清草稿；失败保留；页面不得本地推进 Case。
 - 不修改 Hosted Agent failure contract、P5 operation、轮询、session/subject/role fence 或 CSS。
+- PM 视觉冻结：不改 CSS、className、内联布局、DOM 布局骨架或区块顺序，不新增 React 组件/组件文件；仅修改现有文案映射、按钮可见性和现有回答区状态。
 - 每个 Task 严格执行 red → green → commit。
 
 ---
@@ -380,3 +381,4 @@ Expected: 无未提交文件。
 - [ ] `candidate_question` 与 human decision/`respond_fact` 人类待办明确区分。
 - [ ] `end_screening` 不再产生 continue 命令，招聘端不借用候选路线。
 - [ ] 回答 pending 可见且锁输入；失败保留草稿，成功才清空，重复点击零额外请求。
+- [ ] 实现范围的 `git diff --name-only` 不含 CSS/产品组件新文件；非测试产品代码的 diff 不含 className、内联布局或页面骨架改动，也没有新增 React 组件声明。

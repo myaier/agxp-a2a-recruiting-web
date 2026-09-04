@@ -135,7 +135,20 @@ recruiter_confirmed
 5. 简历完整度、工作年限和岗位对齐不制造不存在的事实、要求或操作入口；
 6. MatchCase 每个可见按钮都对应当前角色、状态和 `available_actions` 的合法交集；阶段闭词不会泄漏到 DOM；
 7. 5xx、`internal_error` 和未知 BFF 4xx 不泄漏原始 message；
-8. Mock 路由、fixture 和原型交互保持原样。
+8. Mock 路由、fixture 和原型交互保持原样；
+9. 实现不修改 CSS、布局骨架或 className，不新增 React 组件/组件文件。
+
+### 3.1 PM 视觉冻结硬约束
+
+本批是数据真实性与行为修复，不是视觉迭代。所有实现必须同时满足：
+
+- 不修改任何 `.css` / `.module.css` 文件、CSS 变量、className 组合或内联布局样式；
+- 不改变现有页面的布局骨架、区块顺序、导航结构或信息层级；
+- 不新增 React 组件、组件文件或通用 UI 抽象；
+- 只允许在现有组件与现有布局槽位内，按 Backend/Mock 条件切换文案、数据、可见性、禁用态和已有动作；
+- 真实性要求必须隐藏原型内容时，保留页面既有壳和内容容器，用最小中性文本替换原槽位内容，不另造卡片、弹层、空态组件或 CTA 样式。
+
+测试除业务断言外，应冻结关键既有容器/导航仍存在，并检查实际 diff 不含样式文件或新增组件文件。若某项修复确实需要新布局或组件，停止该项并转交 PM 设计，不得在本批自行决定。
 
 ## 4. 设计原则与最小架构
 
@@ -147,19 +160,19 @@ recruiter_confirmed
 
 不在每个页面增加 effect，不从路径推导并写入 `last_used_role`，不把角色守卫下沉到数据源。
 
-### 4.2 外层模式分流，Mock 交互留在子组件
+### 4.2 单组件内的模式 gate
 
-会读取 fixture、创建消息 state 或启动 timer 的页面采用：
+不得通过新增 Backend/Mock 子组件完成分流。会读取 fixture、创建消息 state 或启动 timer 的现有页面采用：
 
 ```text
-外层页面
-├─ Backend：最小不可用说明
-└─ Mock 子组件：原有 fixture/state/timer/交互
+现有页面组件（hooks 顺序不变）
+├─ Backend：fixture 变量为 null、局部集合为空、effect/timer 立即退出
+└─ Mock：按现有 fixture 初始化并保留原交互
 ```
 
-这样即使数据源模式切换，也不会违反 React hooks 顺序；Backend 分支不会先执行 Mock 初始化再提前 return。
+所有 hooks 仍无条件、同顺序调用；fixture 查找必须受 `数据源模式 === 'mock'` 的同步条件保护，`useState` 的 lazy initializer 在 Backend 只产生 `null`/空集合，不能复制 fixture。effect 开头以 Backend gate 退出并负责清理既有 timer。完成 hooks 后，在现有 JSX 骨架内选择 Backend 中性内容或 Mock 原内容。模式切换测试必须证明旧 Mock state 不进入 Backend DOM，并在切回 Mock 时按既有 fixture 重新初始化。
 
-每个页面先使用自身现有壳和样式。暂不抽取跨页“不可用页”组件；只有后续出现第二批相同视觉和行为要求时再考虑。
+每个页面复用自身现有壳、内容容器和样式，不新增组件或 class，不改变现有布局层级；不抽取跨页“不可用页”组件。
 
 ### 4.3 权威快照 gate 与纯展示映射
 
@@ -176,7 +189,7 @@ recruiter_confirmed
 
 ### 4.4 不新增基础设施
 
-本批不新增 Context、缓存、持久化、通用路由 registry、日期库、客服系统、日志管道、API client 层或 CSS。错误对象中已有原始 message 可继续供开发者在调试器中检查；本批只阻止它进入用户文案，不另建“诊断通道”。
+本批不新增 Context、React 组件、组件文件、缓存、持久化、通用路由 registry、日期库、客服系统、日志管道、API client 层或 CSS；不调整 DOM 布局骨架、区块顺序、className 或内联布局样式。错误对象中已有原始 message 可继续供开发者在调试器中检查；本批只阻止它进入用户文案，不另建“诊断通道”。
 
 ## 5. 工作包 A：真实角色路由边界
 
@@ -239,7 +252,7 @@ Backend 分支规则：
 
 双端往来记录的 `:id` 是 Case ID，可以分别导航到候选或招聘 MatchCase 详情，但页面仍不展示完整 transcript。初筛日志只说明原型日志没有权威数据源。
 
-Mock 子组件保留当前 fixture 查找、无效 ID 兜底、输入和 timer 行为。
+Mock 分支保留当前 fixture 查找、无效 ID 兜底、输入和 timer 行为；不得为分流新增 Mock/Backend 子组件。
 
 ## 7. 工作包 C：设置、账户与“我的”真实性
 
@@ -472,7 +485,7 @@ available_actions / 闭合 UI 分类
 
 ### 12.3 数据源模式切换
 
-模式切换后不能沿用另一模式的局部选择、消息或成功态。对含大量 hooks 的页面使用外层分流；简单只读投影可在同一组件内按模式派生。测试应覆盖 rerender 切换，防止 Backend 短暂出现 Mock 内容。
+模式切换后不能沿用另一模式的局部选择、消息或成功态。所有页面都在现有组件内保持 hooks 顺序，以条件化 lazy initializer、effect gate 和派生视图实现；不得新增外层、Backend 或 Mock 子组件。测试应覆盖 rerender 切换，防止 Backend 短暂出现 Mock 内容。
 
 ## 13. 测试设计
 
@@ -603,14 +616,14 @@ Mock 回归同时确认 fixture、五类反馈、原型客服和消息交互未�
 - 精确 MatchCase rich summary、完整 A2A transcript 或 Agent 自由聊天；
 - 联系方式披露合同；
 - 简历 PDF 解析质量、经历“至今”解析或真实 provider 调整；
-- 客服系统、运营配置、许可证/法务文案、CSS 或视觉重画；
+- 客服系统、运营配置、许可证/法务文案、CSS、布局或视觉重画；
 - 公司福利与作息空卡的产品取舍；
 - 通用路由、时间、错误、不可用页或诊断基础设施。
 
 只有出现以下证据才重新考虑延后能力：
 
 - 后端 summary/identity 合同正式合入并产生独立前端接入 Handoff；
-- 第二批页面需要完全相同的不可用视图与行为，证明值得抽共享组件；
+- PM 明确批准新组件/布局，且第二批页面需要完全相同的不可用视图与行为，才重新考虑共享组件；
 - 产品明确保留“一键只看归档岗位”且有独立使用价值，才增加 query/route state；
 - 后端将 stage summary/checklist 正式收成 OpenAPI enum，才收紧 decoder 类型；
 - 至少第二个页面需要同一可配置时间格式 API，才抽共享时间模块。
@@ -624,4 +637,4 @@ Mock 回归同时确认 fixture、五类反馈、原型客服和消息交互未�
 5. Mock 行为保持；
 6. 后端三 Plan 的 summary、candidate verification 和 Hosted Agent 边界未被提前接入或重定义；
 7. typecheck、lint、定向 Vitest 和 build 全部通过；
-8. 实际 diff 不包含 API、迁移、CSS、无关重构或新增基础设施。
+8. 实际 diff 不包含 API、迁移、CSS、className/内联布局改动、无关重构、新增 React 组件/组件文件或其它基础设施。

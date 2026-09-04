@@ -18,6 +18,7 @@
 - 日期生产环境默认浏览器本地时区，测试才传固定 `timeZone`；不引入日期库或跨页面工具模块。
 - 原始 BFF message 不得进入全局 UI fallback；本地已审核校验文案继续可见。
 - 不接入后端未合入的 MatchCase summary、candidate verification 或 Hosted Agent 合同。
+- PM 视觉冻结：不改 CSS、className、内联布局、DOM 布局骨架或区块顺序，不新增 React 组件/组件文件；loading/error 只占用页面已有内容容器与动作槽位。
 - 每个 Task 严格执行 red → green → commit。
 
 ---
@@ -363,3 +364,4 @@ Expected: 无未提交变更；未修改接触记录 operation/data source 和 P
 - [ ] 接触记录 loading、首载失败、成功空、成功非空和 refresh error 可区分。
 - [ ] 账户会话与导出时间使用同一本地 formatter。
 - [ ] 5xx、`internal_error` 和未知 BFF 4xx 不含原始 message。
+- [ ] 实现范围的 `git diff --name-only` 不含 CSS/产品组件新文件；非测试产品代码的 diff 不含 className、内联布局或页面骨架改动，也没有新增 React 组件声明。

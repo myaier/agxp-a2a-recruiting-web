@@ -18,6 +18,7 @@
 - 不从自由文本 JD 推断条件，不修改 wire DTO、适配分来源或 `structured_requirements_confirmed` gate。
 - Backend 不得出现“AI代理诊断”或“在下方告诉代理即可补上”；Mock 手工旗舰分析可保持。
 - 不修改简历写入、附件或 parser 合同。
+- PM 视觉冻结：不改 CSS、className、内联布局、DOM 布局骨架或区块顺序，不新增 React 组件/组件文件；完整度两类结果复用现有诊断区域和列表行。
 - 每个 Task 严格执行 red → green → commit。
 
 ---
@@ -399,3 +400,4 @@ Expected: 无未提交文件；未修改 BFF decoder、自由文本 JD、简历�
 - [ ] 证书只计可提升，少量技能不再触发阈值结论。
 - [ ] 岗位 `none` 不生成经验/学历对齐行，卡片仍显示“不限”。
 - [ ] Backend missing copy 无不存在的 Agent 操作，适配分与三态不变。
+- [ ] 实现范围的 `git diff --name-only` 不含 CSS/产品组件新文件；非测试产品代码的 diff 不含 className、内联布局或页面骨架改动，也没有新增 React 组件声明。

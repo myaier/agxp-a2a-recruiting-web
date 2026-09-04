@@ -17,6 +17,7 @@
 - Backend 初始化完成前沿用现有加载屏；Mock 完全跳过角色守卫。
 - 只读 `BFF主体.roles` 与 `last_used_role`；访问 URL 绝不调用 `操作.切身份` 或静默写角色。
 - 不新增 Context、路由 registry 文件、数据源、API、CSS 或通用基础设施。
+- PM 视觉冻结：不改 CSS、className、内联布局、DOM 布局骨架或区块顺序，不新增 React 组件/组件文件；只在现有 `应用` 组件中增加纯路由判定和条件导航。
 - 本 Plan 先于 `2026-09-04-backend-prototype-surface-isolation.md` 执行；两者都会修改 `src/应用.test.tsx`。
 - 每个 Task 严格执行 red → green → commit；不得捎入其它 Plan。
 
@@ -271,3 +272,4 @@ git commit -m "test: preserve route recovery boundaries"
 - [ ] 单角色错误深链和刷新从未挂载对侧屏幕。
 - [ ] 双 active 只进入显式切换路径，`操作.切身份` 调用次数为 0。
 - [ ] shared、Mock、招聘档案缺失和组织失败测试全部通过。
+- [ ] 实现范围的 `git diff --name-only` 不含 CSS/产品组件新文件；非测试产品代码的 diff 不含 className、内联布局或页面骨架改动，也没有新增 React 组件声明。
