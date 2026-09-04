@@ -36,6 +36,7 @@ import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
 import type { P5列表项, P5详情, MatchCaseSummary } from '../../数据/招聘数据源/MatchCase';
 import type { 接触事件 } from '../../数据/招聘数据源/接触记录';
+import type { 创建候选实名输入, 候选实名摘要 } from '../../数据/招聘数据源/候选实名';
 import type { P7角色, P7会话项, P7消息 } from '../../数据/招聘数据源/真人会话';
 import type {
   P8Credential,
@@ -93,6 +94,8 @@ export interface 后端状态 extends P4发现状态, P5MatchCase状态, P7会�
    * 字段缺席一律视为 pristine inactive，读取方用 后端状态.候选预填状态 ?? 创建空候选预填状态() 收口。
    */
   候选预填状态?: 候选预填状态;
+  /** 候选实名 summary 快照（Backend-only）；可选只为兼容聚焦其它域的测试桩，Provider 恒播种。 */
+  候选实名?: 候选实名快照;
 }
 
 /**
@@ -340,6 +343,21 @@ export interface 接触记录状态 {
   接触记录: 接触记录快照;
 }
 
+// ── 候选实名：候选 me/identity-verification 的 owner summary 内存态快照（仅 Backend；绝不进 资料持久化 / 浏览器存储）──
+
+/**
+ * 候选主体的实名认证 summary 快照（单主体单份）。摘要 只有成功 GET/mutation 响应
+ * 才写入；已有成功摘要的 force 刷新途中保持 阶段=成功、刷新中=true，不清空摘要。
+ * 字段可选只为兼容聚焦其它域的既有测试桩：Provider 恒播种，运行时读取一律走
+ * 候选实名操作 的 取候选实名快照() 统一回退，不存在第二种默认形状。
+ */
+export interface 候选实名快照 {
+  阶段: '未开始' | '进行中' | '成功' | '失败';
+  摘要: 候选实名摘要 | null;
+  刷新中: boolean;
+  错误: string | null;
+}
+
 // ── 候选 onboarding 简历预填（Backend-only 的独立建议状态，不进根 Resume reducer）──
 // 状态只描述「本轮预填轮次」：来源三元组、source 绑定时的服务端空白快照、内存里的
 // 建议本体与逐分区确认。suggestion 绝不落浏览器存储（恢复元数据只存控制面五元组，
@@ -509,6 +527,25 @@ export interface 后端操作依赖 {
   接触记录代际?: 可变引用<number>;
   接触记录读取锁?: 可变引用<Promise<void> | null>;
   接触记录已消费游标?: 可变引用<Set<string>>;
+  /**
+   * 候选实名运行时引用 —— summary GET 单飞读锁 / create+cancel 各自的 mutation 锁 /
+   * 只含幂等 key 的待定提交意图。与其它域同一纪律：Provider 恒一次性注入；可选成员
+   * 只为既有 测试依赖桩 与 清账号状态 子集调用方的编译兼容，候选实名操作 在工厂
+   * 入口显式收窄，缺引用即接线缺陷。
+   */
+  候选实名读取锁?: 可变引用<Promise<void> | null>;
+  候选实名变更锁?: 可变引用<Set<'create' | 'cancel'>>;
+  候选实名提交意图?: 可变引用<string | null>;
+}
+
+/** 候选实名的三个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
+export interface 候选实名运行时引用 {
+  /** summary GET 同域单飞读锁（持有本次 Promise 身份，finally 只释放自己那把）。 */
+  候选实名读取锁: 可变引用<Promise<void> | null>;
+  /** create / cancel 各自的 mutation 单飞锁：重复点击不产生第二笔请求。 */
+  候选实名变更锁: 可变引用<Set<'create' | 'cancel'>>;
+  /** 只含幂等 key 的待定提交意图；页面编辑/卸载显式重置，绝不保存姓名/证件类型/File。 */
+  候选实名提交意图: 可变引用<string | null>;
 }
 
 /** P7 真人会话的五个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -870,10 +907,31 @@ export interface 接触记录操作 {
   追加接触记录(): Promise<void>;
 }
 
+/**
+ * 候选实名认证的操作方法表（页面不得直接调用数据源）。
+ * Backend + 已登录 candidate 才动作：Mock / 无后端 / 非 candidate 一律零实名请求，
+ * mutation 返回 已换代。铁律：调用方不携带幂等键 —— 域内为 create 持有一把
+ * crypto.randomUUID 待定 key（未编辑表单的失败重试复用，任一字段/文件变化由页面
+ * 显式 重置候选实名提交意图 换新键）；create/cancel 各自单飞，服务端先行，
+ * 冲突 / 未知结果先权威 GET 对账（不采用在飞旧读的结果），绝不重放 mutation；
+ * 请求前捕获 subject + candidate 角色 + 会话代际栅栏，迟到成败整包丢弃，
+ * 当前栅栏 401 统一 清账号状态。全局只保存 owner-safe summary，姓名草稿与 File
+ * 归页面所有。
+ */
+export interface 候选实名操作 {
+  /** 首载 / 权威重读：非 force 且已有成功摘要时零请求；并发同域单飞。 */
+  加载候选实名(force?: boolean): Promise<void>;
+  提交候选实名(input: 创建候选实名输入): Promise<'已提交' | '状态已更新' | '已换代'>;
+  取消候选实名(): Promise<'已取消' | '状态已更新' | '已换代'>;
+  /** 任一表单字段/文件集合变化或页面卸载时显式清待定 key；下一次创建铸新键。 */
+  重置候选实名提交意图(): void;
+}
+
 /** Task 6+7 公开面：合规两法齐备（反馈 + 举报）+ JD 导入两法。 */
 export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 &
   发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 &
-  P8账号控制面操作 & P8合规操作 & 简历预填操作 & JD导入操作 & 接触记录操作;
+  P8账号控制面操作 & P8合规操作 & 简历预填操作 & JD导入操作 & 接触记录操作 &
+  候选实名操作;
 
 /**
  * 候选 onboarding 简历预填操作方法表（页面不得直接调用数据源）。

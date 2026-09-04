@@ -32,6 +32,7 @@ import { P5范围键 } from './后端/MatchCase操作';
 import type { P7会话项, P7会话页, P7消息, P7消息页 } from '../数据/招聘数据源/真人会话';
 import type { P8AccountDeletion, P8Credential, P8DataExport, P8Session } from '../数据/招聘数据源/P8控制面';
 import type { 接触事件, 接触事件页 } from '../数据/招聘数据源/接触记录';
+import type { 候选实名摘要 } from '../数据/招聘数据源/候选实名';
 import { P5候选详情Wire } from '../测试/BFF样本';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
@@ -594,8 +595,29 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     })),
     // 接触记录域 facade（默认空页成功；逐用例覆盖）
     读取接触事件: vi.fn(async (): Promise<接触事件页> => ({ items: [], nextCursor: null })),
+    // 候选实名域 facade（默认待审摘要成功；逐用例覆盖）
+    读取候选实名: vi.fn(async (): Promise<候选实名摘要> => 待审实名摘要),
+    创建候选实名申请: vi.fn(async (): Promise<候选实名摘要> => 待审实名摘要),
+    取消候选实名申请: vi.fn(async (): Promise<候选实名摘要> => 取消后实名摘要),
   };
 }
+
+/** 候选实名域 fixture：待审 / 取消后的 owner summary（页面域命名，data source 已解码形状）。 */
+const 待审实名摘要: 候选实名摘要 = {
+  status: 'pending',
+  verifiedName: null,
+  currentRequest: { requestId: 'ivq_1', status: 'pending', revision: 3, submittedAt: '2026-09-04T08:00:00Z', rejectionReason: null },
+  revision: 7,
+  updatedAt: '2026-09-04T08:00:01Z',
+};
+
+const 取消后实名摘要: 候选实名摘要 = {
+  status: 'unverified',
+  verifiedName: null,
+  currentRequest: { requestId: 'ivq_1', status: 'cancelled', revision: 5, submittedAt: '2026-09-04T08:00:00Z', rejectionReason: null },
+  revision: 8,
+  updatedAt: '2026-09-04T09:30:00Z',
+};
 
 /** P7 Task 5：受控假 WebSocket —— jsdom 无实现，Provider 的同源事件连接用桩。 */
 class 假WebSocket {
@@ -808,6 +830,8 @@ describe('应用状态提供者 后端会话', () => {
       '创建JD导入', '读取JD导入',
       // 接触记录域方法（接触记录操作）：候选「谁接触过我」首载/刷新与分页追加
       '加载接触记录', '追加接触记录',
+      // 候选实名域方法（候选实名操作）：summary 读取、材料提交、取消与待定意图重置
+      '加载候选实名', '提交候选实名', '取消候选实名', '重置候选实名提交意图',
     ].sort().join('|'))).toBeTruthy();
   });
 
@@ -845,6 +869,43 @@ describe('应用状态提供者 后端会话', () => {
     await act(async () => {
       await 模拟当前.操作.加载接触记录();
       await 模拟当前.操作.追加接触记录();
+    });
+    expect(取数).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  // 候选实名：Backend candidate Provider 必须播种空快照并真正 spread 四个方法，
+  // FE-MC 的 加载摘要 与 加载候选实名 同时存在；Mock 零实名请求。
+  it('Backend candidate Provider 播种候选实名快照并暴露四方法，Mock 零实名请求', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.候选实名).toEqual({ 阶段: '未开始', 摘要: null, 刷新中: false, 错误: null });
+    expect(typeof 当前.操作.加载摘要).toBe('function');
+    expect(typeof 当前.操作.加载候选实名).toBe('function');
+    expect(typeof 当前.操作.提交候选实名).toBe('function');
+    expect(typeof 当前.操作.取消候选实名).toBe('function');
+    expect(typeof 当前.操作.重置候选实名提交意图).toBe('function');
+    await act(async () => { await 当前.操作.加载候选实名(); });
+    expect(后端.读取候选实名).toHaveBeenCalledTimes(1);
+
+    const 取数 = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', 取数);
+    let 模拟当前!: ReturnType<typeof use应用状态>;
+    function 模拟探针() { 模拟当前 = use应用状态(); return null; }
+    render(createElement(应用状态提供者, null, createElement(模拟探针)));
+    await act(async () => {
+      await 模拟当前.操作.加载候选实名();
+      await expect(模拟当前.操作.提交候选实名({
+        legalName: 'Fixture Candidate',
+        documentType: 'passport',
+        evidence: [new File([new Uint8Array([1])], 'front.png', { type: 'image/png' })],
+      })).resolves.toBe('已换代');
+      await expect(模拟当前.操作.取消候选实名()).resolves.toBe('已换代');
+      模拟当前.操作.重置候选实名提交意图();
     });
     expect(取数).not.toHaveBeenCalled();
     vi.unstubAllGlobals();

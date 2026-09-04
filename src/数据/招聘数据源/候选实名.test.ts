@@ -7,7 +7,7 @@
 // 路径。任何漂移统一 status=200 的 invalid_response，接口失败绝不回退 Mock。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BFF错误, type BFF请求选项, type BFF响应 } from '../HTTP客户端';
+import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
 import { 创建候选实名数据源 } from './候选实名';
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;

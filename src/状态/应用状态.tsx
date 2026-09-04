@@ -71,6 +71,7 @@ import { 创建P8账号安全操作, 创建空P8控制面状态, 清P8控制面�
 import { 创建简历预填操作 } from './后端/简历预填操作';
 import { 创建JD导入操作 } from './后端/JD导入操作';
 import { 创建接触记录操作, 创建空接触记录状态, 清接触记录引用 } from './后端/接触记录操作';
+import { 创建候选实名操作, 创建空候选实名快照 } from './后端/候选实名操作';
 import { use真人会话事件 } from './后端/use真人会话事件';
 import { 创建招聘事件源 } from '../数据/招聘事件源';
 import { 创建候选操作 } from './后端/候选操作';
@@ -515,6 +516,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     ...创建空招聘方组织水合状态(),
     // 候选 onboarding 预填状态从 pristine inactive 起跑（Backend-only；Mock 不触达）
     候选预填状态: 创建空候选预填状态(),
+    // 候选实名 summary 快照空底座起步（Backend-only；Mock 不触达；绝不进 资料持久化）
+    候选实名: 创建空候选实名快照(),
   }));
 
   // 让异步操作读到最新的 后端状态 / 状态（useMemo 闭包只捕获首次值）
@@ -571,6 +574,11 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const 接触记录代际 = useRef(0);
   const 接触记录读取锁 = useRef<Promise<void> | null>(null);
   const 接触记录已消费游标 = useRef(new Set<string>());
+  // 候选实名运行时引用 —— summary GET 单飞读锁 / create+cancel mutation 锁 / 只含
+  // 幂等 key 的待定提交意图。一次性初始化；会话转移由 会话操作 的清理口统一复位。
+  const 候选实名读取锁 = useRef<Promise<void> | null>(null);
+  const 候选实名变更锁 = useRef(new Set<'create' | 'cancel'>());
+  const 候选实名提交意图 = useRef<string | null>(null);
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
   // Task 4：候选 onboarding 草稿只认 candidate 角色 + 当前 subject 的双重范围；
   // recruiter / 未登录 / Mock 一律 null，绝不给持久层授权任何候选草稿读写。
@@ -681,6 +689,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         P7范围代际, P7待定意图, P7可见收件箱, P7可见会话, P7已读位置,
         P8范围代际, P8账号可见, P8读取锁, P8待定意图,
         候选预填代际, 候选预填读取锁, 候选预填恢复,
+        候选实名读取锁, 候选实名变更锁, 候选实名提交意图,
       }, 主体, false, 本次代际);
       if (已取消) return;
       if (会话失效) {
@@ -831,6 +840,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         接触记录代际,
         接触记录读取锁,
         接触记录已消费游标,
+        候选实名读取锁,
+        候选实名变更锁,
+        候选实名提交意图,
       };
       return {
         ...创建会话操作(deps),
@@ -861,6 +873,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         ...创建JD导入操作(deps),
         // 接触记录操作（候选「谁接触过我」首载/刷新/分页追加，栅栏化单飞），同一把 deps
         ...创建接触记录操作(deps),
+        // 候选实名操作（owner summary 单飞读取 + 意图键化提交/取消 + 冲突权威重读对账），
+        // 同一把 deps；姓名草稿与 File 归页面所有，全局只保存 owner-safe summary
+        ...创建候选实名操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定

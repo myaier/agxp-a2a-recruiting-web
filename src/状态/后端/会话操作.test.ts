@@ -36,6 +36,8 @@ import { 创建空候选预填状态 } from './类型';
 import { 创建会话操作, 清账号状态, 水合角色数据 } from './会话操作';
 import { 创建空P8控制面状态 } from './P8控制面操作';
 import { 创建空接触记录状态 } from './接触记录操作';
+import { 创建空候选实名快照 } from './候选实名操作';
+import type { 候选实名摘要 } from '../../数据/招聘数据源/候选实名';
 
 /** 本测试文件内的 后端状态 底座：用例按 覆盖 换掉自己要钉的字段（如招聘方水合阶段）。 */
 function 创建测试后端状态(覆盖: Partial<后端状态> = {}): 后端状态 {
@@ -440,6 +442,10 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
     候选预填代际: { current: 3 },
     候选预填读取锁: { current: new Map<string, Promise<void>>() },
     候选预填恢复: { current: null as 候选预填恢复存储 | null },
+    // 候选实名运行时引用（summary GET 单飞读锁 / mutation 锁 / 只含 key 的待定意图）
+    候选实名读取锁: { current: null as Promise<void> | null },
+    候选实名变更锁: { current: new Set<'create' | 'cancel'>() },
+    候选实名提交意图: { current: null as string | null },
   };
   return {
     deps: deps as unknown as 后端操作依赖 & P4运行时引用 & P7运行时引用 & P8运行时引用 &
@@ -785,6 +791,8 @@ describe('水合会话栅栏', () => {
     const { deps } = 创建P6会话依赖(后端);
     deps.主体标识引用.current = candidate主体.subject_id;
     deps.会话代际.current = 7;
+    // 新会话的实名待定意图：迟到 401 绝不能把它清掉
+    deps.候选实名提交意图!.current = 'iv-create-new-session-key';
 
     const 运行 = 水合角色数据(deps, candidate主体, false, 7);
     deps.主体标识引用.current = 'sub_new';
@@ -796,6 +804,7 @@ describe('水合会话栅栏', () => {
     expect(deps.会话代际.current).toBe(8);
     expect(deps.后端状态引用.current.已登录).toBe(true);
     expect(轻提示条数()).toBe(0);
+    expect(deps.候选实名提交意图?.current).toBe('iv-create-new-session-key');
   });
 
   it('candidate 当前轮水合 401 清 P7 与 P8 运行时引用', async () => {
@@ -1419,6 +1428,96 @@ describe('P8 控制面会话清理', () => {
     expect(deps.P8导出恢复?.current).toBe(恢复适配器);
     expect(恢复适配器.写入).not.toHaveBeenCalled();
     expect(恢复适配器.删除).not.toHaveBeenCalled();
+  });
+});
+
+// ── 候选实名：会话边界清理 ──────────────────────────────────────────
+// 登出 / 当前轮 401 / 换主体 / 切离 candidate 四个转移口都要：owner summary 快照回
+// 空底座 + GET 单飞读锁复位 + create/cancel 两把 mutation 锁清空 + 待定幂等 key
+// 删除；同 subject 重登同样回底座（不继承未知 create intents）。
+
+describe('候选实名会话清理', () => {
+  const 残留摘要: 候选实名摘要 = {
+    status: 'pending',
+    verifiedName: null,
+    currentRequest: { requestId: 'ivq_1', status: 'pending', revision: 3, submittedAt: '2026-09-04T08:00:00Z', rejectionReason: null },
+    revision: 7,
+    updatedAt: '2026-09-04T08:00:01Z',
+  };
+
+  /** 在 后端状态 与三个实名引用里播上上个候选会话的 pending 与在飞痕迹。 */
+  function 播实名残留(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
+    deps.设后端状态((旧) => ({
+      ...旧,
+      候选实名: { 阶段: '成功', 摘要: 残留摘要, 刷新中: false, 错误: null },
+    }));
+    deps.候选实名读取锁!.current = Promise.resolve();
+    deps.候选实名变更锁!.current.add('create');
+    deps.候选实名变更锁!.current.add('cancel');
+    deps.候选实名提交意图!.current = 'iv-create-0123456789abcdef';
+  }
+
+  function 断言实名已清空(deps: ReturnType<typeof 创建P6会话依赖>['deps']): void {
+    expect(deps.后端状态引用.current.候选实名).toEqual(创建空候选实名快照());
+    expect(deps.候选实名读取锁?.current).toBeNull();
+    expect(deps.候选实名变更锁?.current.size).toBe(0);
+    expect(deps.候选实名提交意图?.current).toBeNull();
+  }
+
+  it('清账号状态 清空实名快照并复位三引用', () => {
+    const { deps } = 创建P6会话依赖(创建P6数据源桩());
+    播实名残留(deps);
+    清账号状态(deps);
+    断言实名已清空(deps);
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(deps.会话代际.current).toBe(1);
+  });
+
+  it('退出登录 清空候选实名残留', async () => {
+    const { deps } = 创建P6会话依赖(创建P6数据源桩());
+    const 操作 = 创建会话操作(deps);
+    播实名残留(deps);
+    await 操作.退出登录();
+    断言实名已清空(deps);
+    expect(deps.后端状态引用.current.已登录).toBe(false);
+  });
+
+  it('完成手机登录 换主体时清候选实名残留', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_a' })
+      .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_b' });
+    const { deps } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    await 操作.完成手机登录('1111');
+    播实名残留(deps);
+    await 操作.完成手机登录('2222');
+    断言实名已清空(deps);
+    expect(deps.主体标识引用.current).toBe('sub_b');
+  });
+
+  it('同 subject 重登也在新会话建立前回底座，不继承未知 create intents', async () => {
+    const 后端 = 创建P6数据源桩();
+    vi.mocked(后端.读取主体)
+      .mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_1' });
+    const { deps } = 创建P6会话依赖(后端);
+    const 操作 = 创建会话操作(deps);
+    await 操作.完成手机登录('1111');
+    播实名残留(deps);
+    await 操作.完成手机登录('2222');
+    断言实名已清空(deps);
+    expect(deps.主体标识引用.current).toBe('sub_1');
+  });
+
+  it('切身份 离开 candidate 时清实名残留后才水合目标角色', async () => {
+    const { deps, 动作流 } = 创建P6会话依赖(创建P6数据源桩());
+    const 操作 = 创建会话操作(deps);
+    deps.主体标识引用.current = 'sub_1';
+    await 操作.完成手机登录('1111');
+    播实名残留(deps);
+    await 操作.切身份('招聘方');
+    断言实名已清空(deps);
+    expect(动作流).toContainEqual({ 型: '切身份', 到: '招聘方' });
   });
 });
 
