@@ -546,6 +546,15 @@ describe('候选实名认证 · pending 刷新与取消', () => {
     await waitFor(() => expect(mock应用状态.操作.取消候选实名).toHaveBeenCalledTimes(1));
   });
 
+  it('pending 刷新失败显示安全错误并保留重试入口（spec §6.1）', () => {
+    喂后端({ ...成功快照(待审摘要), 错误: '请求失败，请稍后再试' });
+    渲染页();
+    // 旧权威数据保留（审核中 + 刷新/取消仍在），同时显示刷新失败
+    expect(screen.getByText('审核中')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toBe('请求失败，请稍后再试');
+    expect((screen.getByRole('button', { name: '刷新状态' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('取消失败保留 pending 页面并显示安全错误', async () => {
     const 用户 = userEvent.setup();
     喂后端(成功快照(待审摘要));

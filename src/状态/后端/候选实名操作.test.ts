@@ -523,4 +523,34 @@ describe('候选实名操作', () => {
     await expect(env.操作.取消候选实名()).resolves.toBe('状态已更新');
     expect(vi.mocked(env.数据源.取消候选实名申请)).not.toHaveBeenCalled();
   });
+
+  // review-r1 P2：对账在飞期间换会话 —— 对账完成后必须复查栅栏，
+  // 过时的冲突/未知错误不得抛进新会话页面（spec §6.2：影响页面前都重新检查 fence）
+  it('create 409 对账期间换会话：对账完成后返回 已换代，不抛旧冲突', async () => {
+    const env = 创建环境();
+    vi.mocked(env.数据源.创建候选实名申请).mockRejectedValueOnce(new BFF错误(409, 'version_conflict', ''));
+    const 对账gate = deferred<候选实名摘要>();
+    vi.mocked(env.数据源.读取候选实名).mockReturnValueOnce(对账gate.promise);
+    const p = env.操作.提交候选实名(输入);
+    await vi.waitFor(() => expect(vi.mocked(env.数据源.读取候选实名)).toHaveBeenCalledTimes(1));
+    换主体(env, { ...BFF主体样本, subject_id: 'sub_2', last_used_role: 'candidate' });
+    env.deps.会话代际.current += 1;
+    对账gate.resolve(待审摘要);
+    await expect(p).resolves.toBe('已换代');
+  });
+
+  it('cancel 503 对账期间换会话：对账完成后返回 已换代，不抛旧错误', async () => {
+    const env = 创建环境();
+    vi.mocked(env.数据源.读取候选实名).mockResolvedValueOnce(待审摘要);
+    await env.操作.加载候选实名();
+    vi.mocked(env.数据源.取消候选实名申请).mockRejectedValueOnce(new BFF错误(503, 'operation_outcome_unknown', ''));
+    const 对账gate = deferred<候选实名摘要>();
+    vi.mocked(env.数据源.读取候选实名).mockReturnValueOnce(对账gate.promise);
+    const p = env.操作.取消候选实名();
+    await vi.waitFor(() => expect(vi.mocked(env.数据源.取消候选实名申请)).toHaveBeenCalledTimes(1));
+    换主体(env, { ...BFF主体样本, subject_id: 'sub_2', last_used_role: 'candidate' });
+    env.deps.会话代际.current += 1;
+    对账gate.resolve(取消后摘要);
+    await expect(p).resolves.toBe('已换代');
+  });
 });

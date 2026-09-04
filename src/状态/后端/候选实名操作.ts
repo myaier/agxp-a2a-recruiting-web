@@ -222,6 +222,7 @@ export function 创建候选实名操作(deps: 后端操作依赖): 候选实名
         if (错误 instanceof BFF错误 && 错误.code === 'version_conflict') {
           // create 409：权威重读后仅在不可再提交（pending/verified）时按新状态收口
           const 对账 = await 对账重读(fence);
+          if (!栅栏仍当前(fence)) return '已换代'; // 对账途中换会话：旧冲突不得抛进新页面
           if (对账.committed && 对账.summary !== null &&
             (对账.summary.status === 'pending' || 对账.summary.status === 'verified')) {
             return '状态已更新';
@@ -264,6 +265,7 @@ export function 创建候选实名操作(deps: 后端操作依赖): 候选实名
           // 404 / 409 / 503：权威重读对账 —— 原 pending 是否变化要同时比较
           // requestId、status==='pending' 与顶层 revision，不能只看 status
           const 对账 = await 对账重读(fence);
+          if (!栅栏仍当前(fence)) return '已换代'; // 对账途中换会话：旧错误不得抛进新页面
           const 新 = 对账.committed ? 对账.summary : null;
           const 仍是原pending = 新 !== null &&
             新.currentRequest !== null &&

@@ -398,6 +398,9 @@ export default function 候选实名认证() {
         {页面错误 ? (
           <div className={本屏样式.错误块} role="alert">{页面错误}</div>
         ) : null}
+        {快照.错误 !== null && 页面错误 === null ? (
+          <div className={本屏样式.错误块} role="alert">{快照.错误}</div>
+        ) : null}
       </>
     );
   } else {
