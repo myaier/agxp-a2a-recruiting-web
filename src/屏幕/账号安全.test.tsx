@@ -12,7 +12,11 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import 账号安全 from './账号安全';
+// 页面生产调用不传 timeZone：固定测试环境时区（早于一切 import 生效），断言才有确定输出
+vi.hoisted(() => {
+  process.env.TZ = 'Asia/Shanghai';
+});
+import 账号安全, { 格式化账户时间 } from './账号安全';
 // 走仓库既有的 ?raw 源码合同模式（应用 tsconfig 只挂 vite/client 类型，不用 node:fs）
 import 账号安全源码 from './账号安全.tsx?raw';
 import { 短信验证码位数 } from '../数据/验证码规则';
@@ -335,7 +339,9 @@ describe('账号安全 · Backend 接线', () => {
         <账号安全 />
       </MemoryRouter>,
     );
-    expect(screen.getByText('创建 2026-08-30 00:00 · 失效 2026-09-05 00:00')).toBeTruthy();
+    expect(screen.getByText('创建 2026-08-30 08:00 · 失效 2026-09-05 08:00')).toBeTruthy();
+    // 账户时间按本地时区格式化：不再出现 UTC 定长截取文本
+    expect(screen.queryByText('创建 2026-08-30 00:00 · 失效 2026-09-05 00:00')).toBeNull();
     expect(screen.getByText('其他设备 2 台 · 不影响本机，也不影响代理在后台继续谈')).toBeTruthy();
     expect(screen.queryByText(/iPhone|上海|IP|UA/)).toBeNull();
     expect((screen.getByRole('button', { name: /退出其他设备/ }) as HTMLButtonElement).disabled).toBe(false);
@@ -598,7 +604,7 @@ describe('账号安全 · Backend 数据导出与注销', () => {
     const 点击桩 = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     渲染();
     await 用户.click(screen.getByRole('button', { name: /^导出我的数据/ }));
-    expect(screen.getByText(/2026-09-05 12:30 前可下载/)).toBeTruthy();
+    expect(screen.getByText(/2026-09-05 20:30 前可下载/)).toBeTruthy();
     await 用户.click(screen.getByRole('button', { name: '下载数据导出' }));
     expect(操作.刷新P8数据导出).toHaveBeenCalled(); // 预检在前
     expect(操作.取P8数据导出下载地址).toHaveBeenCalled();
@@ -807,5 +813,18 @@ describe('账号安全 · Backend 数据导出与注销', () => {
     expect(await screen.findByText('已有导出正在生成或等待下载，请稍后重试')).toBeTruthy();
     expect(screen.getByRole('button', { name: '确认注销' })).toBeTruthy(); // 两层流程不收口
     expect(导航.替换跳转).not.toHaveBeenCalled(); // 不本地登出、不伪装成功
+  });
+});
+
+describe('账号安全 · 格式化账户时间', () => {
+  it('按指定时区输出 YYYY-MM-DD HH:mm：UTC+8 跨日与美东夏令时', () => {
+    expect(格式化账户时间('2026-09-03T16:30:00Z', 'Asia/Shanghai'))
+      .toBe('2026-09-04 00:30');
+    expect(格式化账户时间('2026-03-08T07:30:00Z', 'America/New_York'))
+      .toBe('2026-03-08 03:30');
+  });
+
+  it('非法时间返回中性占位 —', () => {
+    expect(格式化账户时间('not-a-time', 'Asia/Shanghai')).toBe('—');
   });
 });

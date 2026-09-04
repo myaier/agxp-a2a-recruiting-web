@@ -36,9 +36,22 @@ import { useP8导出轮询 } from '../状态/后端/useP8导出轮询';
 
 type 换绑步骤 = null | '填手机号' | '填验证码';
 
-/** RFC3339 → 「YYYY-MM-DD HH:mm」（UTC 定长截取，纯展示格式化；不引入时区换算）。 */
-function 取展示时间(iso: string): string {
-  return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+/** RFC3339 → 「YYYY-MM-DD HH:mm」（浏览器本地时区，纯展示格式化；不引入日期库）。
+ *  生产不传 timeZone；测试可显式传固定时区获得确定输出。非法值返回中性占位。 */
+export function 格式化账户时间(iso: string, timeZone?: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return value('year') && value('month') && value('day') && value('hour') && value('minute')
+    ? value('year') + '-' + value('month') + '-' + value('day') + ' ' + value('hour') + ':' + value('minute')
+    : '—';
 }
 
 /** 快照未成功时的中性占位（与设置页账号行同款）。 */
@@ -103,7 +116,7 @@ export default function 账号安全() {
   const 手机号显示 = 是后端 ? (凭证已权威 ? 手机凭证?.display ?? '未绑定' : 中性占位) : 当前手机号;
   const 当前设备说明 = 是后端
     ? 当前会话 !== null
-      ? `创建 ${取展示时间(当前会话.createdAt)} · 失效 ${取展示时间(当前会话.expiresAt)}`
+      ? `创建 ${格式化账户时间(当前会话.createdAt)} · 失效 ${格式化账户时间(当前会话.expiresAt)}`
       : 中性占位
     : 'iPhone · 上海 · 今天 09:12';
   const 退出其他说明 = 是后端 && 其他会话数 !== null
@@ -151,7 +164,7 @@ export default function 账号安全() {
     导出抽屉说明 = '正在生成导出文件，完成后可以在这里下载。你可以先去忙别的，生成不会中断。';
   } else if (导出数据.status === 'ready') {
     导出抽屉说明 = 导出数据.downloadReady
-      ? `导出已生成${导出数据.expiresAt ? `，${取展示时间(导出数据.expiresAt)} 前可下载` : ''}。点击下载前会再确认一次状态。`
+      ? `导出已生成${导出数据.expiresAt ? `，${格式化账户时间(导出数据.expiresAt)} 前可下载` : ''}。点击下载前会再确认一次状态。`
       : '导出已生成，下载正在准备中，稍后再试。';
     导出主键文案 = '下载数据导出';
     导出主键动作 = '下载';
