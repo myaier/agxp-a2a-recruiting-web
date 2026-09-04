@@ -1051,7 +1051,7 @@ Expected：全部测试与 typecheck PASS；selector 和四个消费者在同一
 
 **Self-contained brief:**
 - Global Constraints 全量适用。
-- Predecessor artifacts：Task 1–3 的三个提交、干净工作树，以及执行提示词提供的仓库外绝对 manifest、Plan Handoff、admission sidecar、ledger、result 路径；开始前必须验证 manifest 为 `handoff_version: 5`、`execution_revision: 1` 且 Plan SHA-256 与当前文件一致。任一路径缺失或 metadata 不一致时停止，不得猜路径。
+- Predecessor artifacts：Task 1–3 的三个提交、干净工作树，以及执行提示词提供的仓库外绝对 manifest 与其中预分配的 Plan Handoff、admission sidecar、ledger、result 路径；开始前必须验证 manifest 为 `handoff_version: 5`、`execution_revision: 1` 且 Plan SHA-256 与当前文件一致。Spec、Plan、manifest 缺失或 metadata 不一致时停止，不得猜路径；四个运行期输出文件允许尚不存在，由本 Plan execution owner 在规定阶段首次创建。
 - 本批次只有一个 Plan；当前 execution owner 在同一 branch/worktree 中成为唯一 integration owner。`integration_requirement: none`，L3 selection 是空集并记录 N/A，不得扩大为 all-L3。
 
 **Runtime file contracts:**
