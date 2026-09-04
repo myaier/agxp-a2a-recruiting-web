@@ -249,7 +249,7 @@ operation 工厂入口必须逐项判空并抛接线缺陷，生产 Provider 则
 8. create 的 `operation_outcome_unknown` 或 `network_error` 保留 key 并原样抛；不做额外 create。
 9. 请求在飞时换 subject、换 role 或递增会话代际：迟到成功和失败都返回 `已换代`，不写状态、不提示。当前 401 统一清账号；迟到 401 不清新会话。
 10. `清候选实名引用()` 清 GET 锁、两把 mutation 锁和 key；状态 helper 回干净底座。
-11. mutation 对账撞上更早起飞的 GET 时，等待旧读结算但不采用其结果，再发一笔新 GET；旧读不能在对账结果后反向覆盖状态。
+11. mutation 对账撞上更早起飞的 GET 时，分别覆盖旧读 resolve 与 reject：两者都等待结算但不采用结果，reject 必须被吞掉；随后再发一笔新 GET，旧读不能改写 mutation 返回值/原错误，也不能在对账结果后反向覆盖状态。
 12. 无成功摘要或 `currentRequest?.status !== 'pending'` 时取消零 HTTP 并返回 `状态已更新`。
 
 - [ ] **Step 2: 运行 RED**
@@ -266,26 +266,16 @@ Expected：FAIL，新模块、类型和导出尚不存在。
 
 ```ts
 export function 清候选实名引用(deps: Pick<后端操作依赖,
-  '候选实名读取锁' | '候选实名变更锁' | '候选实名提交意图'>>): void {
+  '候选实名读取锁' | '候选实名变更锁' | '候选实名提交意图'>): void {
   if (deps.候选实名读取锁) deps.候选实名读取锁.current = null;
   deps.候选实名变更锁?.current.clear();
   if (deps.候选实名提交意图) deps.候选实名提交意图.current = null;
 }
 ```
 
-错误状态只写安全文案；operation 可以使用本域函数：
+GET 失败写入 `快照.错误` 时统一使用安全文案 `请求失败，请稍后再试`。该快照错误只承载 GET 失败；mutation 失败文案一律由页面按 Part B 的冻结映射渲染，不写进全局快照。
 
-```ts
-function 取实名操作错误文案(error: unknown): string {
-  if (error instanceof BFF错误) {
-    if (error.code === 'identity_verification_unavailable') return '实名认证暂时不可用，请稍后再试';
-    if (error.code === 'operation_outcome_unknown') return '暂时无法确认操作结果，请刷新状态或重试';
-  }
-  return '请求失败，请稍后再试';
-}
-```
-
-GET 的 `finally` 只在引用仍指向本次 Promise 时释放锁，防止旧请求释放新锁。强制重读要返回内部 `{ committed: boolean; summary: 候选实名摘要 | null }` 结果供 mutation 对账；公开 `加载候选实名()` 只返回 `void`。mutation 对账不得直接清空锁并并发第二笔读取，因为旧响应可能晚于新响应提交；若已有 GET 在飞，必须先 await 它、重新检查 mutation fence，再另发一笔新 GET，且不把旧读结果当作对账证据。
+GET 的 `finally` 只在引用仍指向本次 Promise 时释放锁，防止旧请求释放新锁。强制重读要返回内部 `{ committed: boolean; summary: 候选实名摘要 | null }` 结果供 mutation 对账；公开 `加载候选实名()` 只返回 `void`。mutation 对账不得直接清空锁并并发第二笔读取，因为旧响应可能晚于新响应提交；若已有 GET 在飞，必须用 `await 旧读.catch(() => undefined)` 等它结算、重新检查 mutation fence，再另发一笔新 GET。旧读的成功与失败都不作为对账证据，不得改写 mutation 的返回值或原错误。
 
 判断 cancel 原 pending 是否变化必须同时比较 `currentRequest.requestId`、`currentRequest.status === 'pending'` 和顶层 `revision`；不能只比较 status。create 对账仅当新摘要是 `pending | verified` 时返回 `状态已更新`，`unverified | rejected` 仍抛原冲突。取消起飞前若 `取候选实名快照()` 没有成功摘要或 `currentRequest?.status !== 'pending'`，零 HTTP 并返回 `状态已更新`。
 
@@ -434,12 +424,12 @@ export const 候选实名拒绝文案: Record<候选实名拒绝原因, string> 
 };
 ```
 
-表单标签与选项冻结为：证件姓名、证件类型、证件材料；`national_id → 居民身份证`、`passport → 护照`、`other_government_id → 其他政府签发证件`。文件前置校验只返回下列闭合文案：
+表单标签与选项冻结为：证件姓名、证件类型、证件材料；`national_id → 居民身份证`、`passport → 护照`、`other_government_id → 其他政府签发证件`。文件前置校验按“数量 → 扩展名 → 非空声明 MIME → 扩展名/MIME 一致性 → PDF 组合”的固定优先级返回第一条错误，且只返回下列闭合文案：
 
 - 零文件：`请上传证件材料`
 - 超过两个文件：`最多上传两张图片，或一份 PDF`
 - 不支持的扩展名：`仅支持 PDF、PNG、JPG 或 JPEG`
-- 空或不支持的声明 MIME：`文件类型无法识别，请选择 PDF、PNG 或 JPEG`
+- 非空且不支持的声明 MIME：`文件类型无法识别，请选择 PDF、PNG 或 JPEG`
 - 扩展名与声明 MIME 矛盾：`文件扩展名与类型不一致，请重新选择`
 - 两份 PDF 或 PDF 混选图片：`PDF 只能单独上传一份`
 
@@ -460,7 +450,7 @@ export const 候选实名拒绝文案: Record<候选实名拒绝原因, string> 
 
 1. 姓名 trim 后空、201 个 Unicode code point 拒绝；200 个含 surrogate pair 的 code point 通过。
 2. 单 PDF、单 PNG、单 JPEG、双 PNG/JPEG 通过。
-3. 0/3 文件、双 PDF、PDF+图片、`.gif`、扩展名/MIME 矛盾、空 MIME 全部给固定可行动文案；不检查 `file.size`。
+3. 0/3 文件、双 PDF、PDF+图片、`.gif`、非空且不支持的 MIME、扩展名/MIME 矛盾全部按固定优先级给可行动文案；合法 `.pdf/.png/.jpg/.jpeg` 的空 MIME 通过；不检查 `file.size`。
 4. 初始/失败显示中性读取态与“重试”；成功快照 force 刷新时保留旧状态并显示刷新中。
 5. unverified 是空姓名、空证件类型、空文件表单；cancelled request 不渲染历史。
 6. pending 显示“审核中”和格式化 `submittedAt`，有刷新和取消；没有提交表单。

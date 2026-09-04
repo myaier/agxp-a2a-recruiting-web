@@ -246,7 +246,7 @@ subject_id + last_used_role=candidate + session generation
 - cancel `404` 或 `version_conflict`：立即强制 GET；若原 pending 已改变，提交快照并返回 `状态已更新`，否则保留原错误；
 - cancel `operation_outcome_unknown`：不重放 cancel，先强制 GET；若原 pending 已改变则返回 `状态已更新`，仍为原 pending 时保留安全错误并允许用户再次操作；
 - create `operation_outcome_unknown` 或没有确定响应的网络失败：保留同一 key 和页面文件，提示使用原材料重试或刷新状态；
-- mutation 对账如果撞上更早起飞的 summary GET，先等待该读取结算并重新检查会话栅栏，再另发一笔新的强制 GET；不得把 mutation 前起飞的结果直接当作对账证据，也不得让旧 GET 在新 GET 后反向覆盖快照；
+- mutation 对账如果撞上更早起飞的 summary GET，先等待该读取结算并重新检查会话栅栏，再另发一笔新的强制 GET；等待时必须吞掉旧读 rejection，旧读的成功与失败都不参与对账、也不改写 mutation 的返回值或原错误；不得让旧 GET 在新 GET 后反向覆盖快照；
 - 取消执行时若已无成功摘要或当前申请已不是 pending，零 mutation 请求并返回 `状态已更新`；
 - 权威重读失败时不宣称 mutation 成功。
 
@@ -342,8 +342,10 @@ Mock 分支逐意图保留现有按钮、`已认证` 和点击提示，不触发
 - PDF 与任何其它文件混选；
 - 两份 PDF；
 - 扩展名不在 `.pdf | .png | .jpg | .jpeg`；
-- 声明 MIME 不在 `application/pdf | image/png | image/jpeg`；
-- 扩展名与声明 MIME 明显矛盾。
+- 非空声明 MIME 不在 `application/pdf | image/png | image/jpeg`；
+- 非空声明 MIME 与扩展名明显矛盾。
+
+部分平台会为合法文件提供空 `File.type`；此时前端按扩展名继续校验，不因空 MIME 拒绝，真实 bytes 仍由服务端嗅探。
 
 客户端检查只提供早期反馈。后端继续对真实 bytes 做嗅探、恶意内容扫描和大小裁决。
 
