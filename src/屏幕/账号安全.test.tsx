@@ -13,8 +13,10 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 // 页面生产调用不传 timeZone：固定测试环境时区（早于一切 import 生效），断言才有确定输出
+// tsconfig 只挂 vite/client 类型，process 经 globalThis 缺省形状访问
 vi.hoisted(() => {
-  process.env.TZ = 'Asia/Shanghai';
+  const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env;
+  if (env) env.TZ = 'Asia/Shanghai';
 });
 import 账号安全, { 格式化账户时间 } from './账号安全';
 // 走仓库既有的 ?raw 源码合同模式（应用 tsconfig 只挂 vite/client 类型，不用 node:fs）
