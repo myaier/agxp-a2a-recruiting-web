@@ -17,6 +17,7 @@ import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 设置行 } fro
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
+import type { BFF简历资料 } from '../数据/BFF契约';
 
 /** 求职意向配额上限：产品规则限定一个账号最多 5 个意向 */
 const 意向配额上限 = 5;
@@ -24,12 +25,30 @@ const 意向配额上限 = 5;
 /** 可循环切换的求职状态。点「求职状态」行就在这几档里轮转，不另开选择页。 */
 const 求职状态档位 = ['在职 · 看好机会', '在职 · 随便看看', '离职 · 尽快到岗'];
 
-export default function 求职意向管理() {
-  const { 状态 } = use应用状态();
-  const { 跳转, 返回 } = use导航();
+/** Backend 权威身份 → 展示文案。空串由调用方先排除，这里只接已填写的 wire 值。 */
+export function 求职状态文案(status: Exclude<BFF简历资料['status'], ''>): string {
+  return {
+    student: '在校 · 看机会',
+    employed: '在职 · 保密求职中',
+    unemployed: '离职 · 随时到岗',
+  }[status];
+}
 
-  // 求职状态只是本屏的展示态，没有跨屏联动需求，用本地 state 即可
+export default function 求职意向管理() {
+  const { 状态, 数据源模式, 后端状态 } = use应用状态();
+  const { 跳转, 返回 } = use导航();
+  const 是后端 = 数据源模式 === 'backend';
+
+  // 求职状态只是本屏的展示态，没有跨屏联动需求，用本地 state 即可（仅 Mock 使用）
   const [求职状态下标, 设求职状态下标] = useState(0);
+  // Backend 只读权威简历快照的 wire 身份；快照缺失或未填写显示中性值，
+  // 不读取为注册流准备的页面态默认「在职」。
+  const wire状态 = 后端状态.简历快照?.profile.status ?? '';
+  const 状态值 = 是后端
+    ? wire状态 === ''
+      ? '—'
+      : 求职状态文案(wire状态)
+    : 求职状态档位[求职状态下标];
   return (
     <次级页外壳>
       <返回栏 返回={返回} />
@@ -82,8 +101,8 @@ export default function 求职意向管理() {
           <div className={`${样式.卡} ${样式.设置卡}`}>
             <设置行
               标题="求职状态"
-              值={求职状态档位[求职状态下标]}
-              按下={() => 设求职状态下标((旧) => (旧 + 1) % 求职状态档位.length)}
+              值={状态值}
+              按下={是后端 ? undefined : () => 设求职状态下标((旧) => (旧 + 1) % 求职状态档位.length)}
               无分隔线
             />
           </div>
