@@ -107,6 +107,36 @@ describe('BFF HTTP 客户端', () => {
     expect(取后端错误文案(error)).toBe('填写内容未通过校验');
   });
 
+  // 真实性修复 D：任意 5xx 与 internal_error（无论 status）都落安全通用文案，
+  // 原始后端 message 绝不进全局 UI fallback。
+  it.each([
+    [500, 'internal_error'],
+    [502, 'downstream_unavailable'],
+    [503, 'downstream_unavailable'],
+    [504, 'gateway_timeout'],
+    [400, 'internal_error'],
+  ])('%i/%s 不泄漏原始 message', (status, code) => {
+    const text = 取后端错误文案(new BFF错误(status, code, 'database password leaked'));
+    expect(text).toBe('后端服务暂时不可用，请稍后重试');
+    expect(text).not.toContain('database');
+  });
+
+  it('未知 BFF 4xx 不泄漏未审核 message', () => {
+    expect(取后端错误文案(new BFF错误(418, 'unknown_business_code', 'raw english')))
+      .toBe('请求失败，请稍后再试');
+  });
+
+  it('闭合 code 映射保持：session / origin / conflict / validation', () => {
+    expect(取后端错误文案(new BFF错误(401, 'invalid_session', 'expired')))
+      .toBe('登录已失效，请重新登录');
+    expect(取后端错误文案(new BFF错误(400, 'invalid_origin', 'bad origin')))
+      .toBe('当前后端环境配置不正确');
+    expect(取后端错误文案(new BFF错误(409, 'version_conflict', 'stale')))
+      .toBe('数据已在其他地方更新，请重试');
+    expect(取后端错误文案(new BFF错误(422, 'validation_failed', 'bad')))
+      .toBe('填写内容未通过校验');
+  });
+
   it('FormData 原样发送且不手写 Content-Type', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => new Response(
       JSON.stringify({ result: { ok: true }, meta: { request_id: 'r1', api_version: 'v1' } }),

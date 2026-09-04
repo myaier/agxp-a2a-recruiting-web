@@ -352,7 +352,10 @@ export function P4错误文案(error: unknown): string {
     operation_outcome_unknown: '操作结果暂未确认，请稍后重试',
     organization_verification_required: '匿名候选推荐需要已验证的用人组织',
   };
-  const 文案 = copy[error.code] ?? 取后端错误文案(error);
+  const 文案 = copy[error.code]
+    // 全局兜底已不再透传原始 message（§8.2），但 status-200 的 BFF错误 只能由本模块
+    // 自铸（HTTP 200 不产错误）：委托/拒绝回执的已闭合中文文案按原样暴露。
+    ?? (error.status === 200 && error.message ? error.message : 取后端错误文案(error));
   return 文案 === error.message && error.status !== 200
     ? '请求失败，请稍后再试'
     : 文案;

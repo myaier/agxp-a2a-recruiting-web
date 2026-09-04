@@ -448,7 +448,8 @@ describe('公司档案分区编辑 · Backend 媒体两步协议（页面侧）'
     const 用户 = userEvent.setup();
     渲染分区('album');
     await 用户.upload(screen.getByLabelText('上传公司照片'), pngFile);
-    expect(await screen.findByText('上传失败')).toBeTruthy();
+    // 真实性修复 D：5xx 原始 message 不上屏，落安全通用文案
+    expect(await screen.findByText('后端服务暂时不可用，请稍后重试')).toBeTruthy();
     await waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:album-fail'));
     expect(screen.queryByRole('button', { name: '放弃未发布的照片' })).toBeNull();
     expect(mock移除媒体).not.toHaveBeenCalled();

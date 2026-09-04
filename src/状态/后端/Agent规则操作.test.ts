@@ -1344,7 +1344,8 @@ describe('取Agent规则错误文案 · 七码冻结 + 兜底', () => {
   it('未知 BFF 错误回落 取后端错误文案', () => {
     const 未知 = new BFF错误(418, 'totally_unknown', '奇葩错误原文');
     expect(取Agent规则错误文案(未知)).toBe(取后端错误文案(未知));
-    expect(取Agent规则错误文案(未知)).toBe('奇葩错误原文');
+    // 真实性修复 D：全局兜底不再透传原始 message，未知码落安全通用句。
+    expect(取Agent规则错误文案(未知)).toBe('请求失败，请稍后再试');
   });
 
   // P0 修复 Task 6：非 BFF 错误不是传输故障 —— 回落通用请求失败文案，不冒充网络。

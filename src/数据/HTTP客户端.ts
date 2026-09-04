@@ -382,12 +382,21 @@ export function 取后端错误文案(error: unknown): string {
   // status 0 还覆盖所有客户端自铸错误（本地校验、契约解码、入参拦截），
   // 旧的 `status === 0 ||` 会把它们统统说成「网络连不上」，把用户支去查 wifi。
   if (error.code === 'network_error') return '无法连接后端服务，请检查网络或稍后重试';
-  if (error.status === 502 || error.status === 503 || error.status === 504) return '后端服务暂时不可用，请稍后重试';
+  // 真实性修复 D：任意 5xx 与 internal_error（无论 status）都收口为安全通用文案，
+  // 原始 BFF message 不再进入全局 UI fallback。
+  if (error.status >= 500 || error.code === 'internal_error') {
+    return '后端服务暂时不可用，请稍后重试';
+  }
   if (error.code === 'invalid_response') return '服务返回异常，请稍后重试';
   if (error.code === 'invalid_session') return '登录已失效，请重新登录';
   if (error.code === 'invalid_origin') return '当前后端环境配置不正确';
   if (error.code === 'version_conflict') return '数据已在其他地方更新，请重试';
   // Task 6：fieldErrors 仍完整保留给调用方按字段本地化；通用文案不展示机器 reason。
   if (error.code === 'validation_failed') return '填写内容未通过校验';
-  return error.message || '请求失败，请稍后再试';
+  // 只有 status 0 的本地自铸 invalid_request 沿用其可行动文案；
+  // 其余未知远端 4xx 不透传未审核 message。
+  if (error.status === 0 && error.code === 'invalid_request' && error.message) {
+    return error.message;
+  }
+  return '请求失败，请稍后再试';
 }

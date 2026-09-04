@@ -996,8 +996,8 @@ describe('P4 闭合错误文案', () => {
     expect(P4错误文案(new BFF错误(200, 'refused', '本次未能继续，请查看页面状态')))
       .toBe('本次未能继续，请查看页面状态');
     // 闭合表之外、且 取后端错误文案 只能回落原始英文 message 的非 200 错误：
-    // 页面不直接显示后端英文（§8），收敛为通用句
-    expect(P4错误文案(new BFF错误(500, 'unexpected_code', 'boom'))).toBe('请求失败，请稍后再试');
+    // 页面不直接显示后端英文（§8）；5xx 按全局安全收口为不可用文案
+    expect(P4错误文案(new BFF错误(500, 'unexpected_code', 'boom'))).toBe('后端服务暂时不可用，请稍后重试');
     // P0 修复 Task 6：运行时错误回落通用请求失败文案，不冒充网络故障。
     expect(P4错误文案(new TypeError('x'))).toBe('请求失败，请稍后再试');
   });

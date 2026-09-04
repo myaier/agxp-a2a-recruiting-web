@@ -118,6 +118,8 @@ describe('附件错误文案', () => {
     expect(附件错误文案(new Error('任意失败'), limits)).toBe('请求失败，请稍后再试');
     expect(附件错误文案(new BFF错误(0, 'network_error', 'fetch failed'), limits))
       .toBe('无法连接后端服务，请检查网络或稍后重试');
-    expect(附件错误文案(new BFF错误(400, '未登记的新错误码', '神秘失败'), limits)).toBe('神秘失败');
+    // 真实性修复 D：闭合表外的未审核 code 不再透传原始 message，落安全通用句。
+    expect(附件错误文案(new BFF错误(400, '未登记的新错误码', '神秘失败'), limits))
+      .toBe('请求失败，请稍后再试');
   });
 });

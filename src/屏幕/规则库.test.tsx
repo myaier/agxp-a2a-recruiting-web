@@ -746,7 +746,8 @@ describe('规则库 · Backend 候选页', () => {
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     视图.操作.创建Agent规则提案.mockRejectedValue(new BFF错误(500, 'internal_error', 'boom'));
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
-    await waitFor(() => expect(screen.getByText('boom')).toBeTruthy());
+    // 真实性修复 D：5xx 原始 message 不上屏，落安全通用文案
+    await waitFor(() => expect(screen.getByText('后端服务暂时不可用，请稍后重试')).toBeTruthy());
     expect((screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤') as HTMLInputElement).value).toBe('只接受双休');
     expect(screen.getByRole('button', { name: '提交给AI代理理解' })).toBeTruthy();
   });
