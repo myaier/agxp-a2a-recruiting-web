@@ -88,6 +88,8 @@ export const 路径 = {
 
   // ── 「我的」下属功能页 ──
   设置: '/settings',
+  /** 候选实名认证独立页：设置页实名行的落点（Backend summary 真相源；Mock 由页面回设置页） */
+  候选实名认证: '/settings/identity-verification',
   屏蔽名单: '/blocklist',
   披露偏好: '/disclosure-prefs',
   归档谈判: '/archived',

@@ -10,6 +10,7 @@ import { 次级页外壳, 返回栏, 滚动区, 开关 } from '../组件/通用'
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
+import { 取候选实名快照 } from '../状态/后端/候选实名操作';
 import 弹层框架 from '../组件/弹层框架';
 import { 轻提示 } from '../组件/轻提示';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
@@ -30,10 +31,25 @@ export default function 设置() {
 
   // P8 Task 4：Backend 账号行只按需读取凭证（设置页零会话请求、零账号范围登记）；
   // Mock 不发任何 P8 调用。非 force 且已成功时操作层零请求。
+  // FE-IV-01：Backend 挂载同时触发一次实名 summary 刷新，与 credentials 读取
+  // 互不阻塞（两个 Promise 各自吞掉 rejection，任一失败不阻断另一项）。
   useEffect(() => {
     if (!是后端) return;
     void 操作.加载P8凭证().catch(() => undefined);
+    void 操作.加载候选实名().catch(() => undefined);
   }, [是后端, 操作]);
+
+  // FE-IV-01：实名行只读权威 summary —— 无成功摘要（加载中/失败/未开始）一律中性 —，
+  // 绝不从 phone_otp、简历姓名或本地表单推导认证结果。
+  const 候选实名 = 取候选实名快照(后端状态);
+  const 实名行值 = 候选实名.阶段 !== '成功' || 候选实名.摘要 === null
+    ? '—'
+    : ({
+        unverified: '未认证',
+        pending: '审核中',
+        verified: '已认证',
+        rejected: '未通过',
+      } as const)[候选实名.摘要.status];
 
   // P8：唯一 phone_otp 行的服务端 display 原样上屏（无客户端重掩码）；未成功快照
   // （含读取失败）落中性占位，绝不回退硬编码手机号。
@@ -100,15 +116,17 @@ export default function 设置() {
             </span>
             <span className={样式.行值}>{手机号显示}</span>
           </div>
-          {/* Backend 没有实名合同：phone_otp 只证明登录凭据已验证，简历姓名也不是实名，
-              不得伪称「已认证」。该行回中性「—」且不可交互；Mock 保留原型演示按钮。 */}
+          {/* FE-IV-01：Backend 实名行完全由 identity-verification summary 驱动 ——
+              行尾按权威状态映射（无成功摘要中性 —），整行导航进独立实名页；
+              Mock 保留原型演示按钮与点击提示。 */}
           {是后端 ? (
-            <div className={样式.行}>
+            <button className={`${样式.行} 可点`} onClick={() => 跳转(路径.候选实名认证)}>
               <span className={样式.行文字组}>
                 <span className={样式.行标题}>实名认证</span>
               </span>
-              <span className={样式.行值}>—</span>
-            </div>
+              <span className={样式.行值}>{实名行值}</span>
+              <span className={样式.尖括号}>›</span>
+            </button>
           ) : (
             <button
               className={`${样式.行} 可点`}

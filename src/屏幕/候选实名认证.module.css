@@ -1,0 +1,138 @@
+/* 候选实名认证 —— 状态块/表单行/文件列表/错误块/按钮行为本页专有，
+   只复用既有设计令牌；外壳、返回栏、确认层与基础行视觉复用现有组件。 */
+
+.状态块 {
+  margin-bottom: 14px;
+  padding: 16px 16px 15px;
+  background: var(--浅灰底2);
+  border-radius: 13px;
+}
+
+.状态标题 {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.状态说明 {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--次要);
+}
+
+/* pending 的提交时间 / verified 的认证姓名 */
+.状态事实 {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--次要);
+}
+
+.按钮行 {
+  margin-top: 13px;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+}
+
+.次级键 {
+  flex: 1;
+  font-size: 13px;
+  color: var(--墨);
+  padding: 9px 0;
+  border-radius: 999px;
+  background: var(--白);
+  border: 1px solid var(--描边深);
+}
+
+.警示键 {
+  flex: 1;
+  font-size: 13px;
+  color: var(--警示, #c0392b);
+  padding: 9px 0;
+  border-radius: 999px;
+  background: var(--白);
+  border: 1px solid var(--描边深);
+}
+
+.编辑条目 {
+  padding: 13px 0 11px;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.条目标签 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+  margin-bottom: 7px;
+}
+
+.条目输入 {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+  background: transparent;
+}
+
+.条目输入::placeholder {
+  color: var(--最弱);
+  font-weight: 400;
+}
+
+.条目选择 {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--墨);
+  background: transparent;
+  appearance: none;
+}
+
+.文件输入 {
+  font-size: 12px;
+  color: var(--次要);
+}
+
+.文件行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--次要);
+}
+
+.文件名 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.移除键 {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--次要);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--白);
+  border: 1px solid var(--描边深);
+}
+
+/* 页面级错误块（提交/取消失败的闭合安全文案） */
+.错误块 {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--浅警示底, rgba(192, 57, 43, 0.07));
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--警示, #c0392b);
+}

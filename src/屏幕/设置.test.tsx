@@ -16,7 +16,9 @@ import { BFF隐私快照样本 } from '../测试/BFF样本';
 import { BFF错误 } from '../数据/HTTP客户端';
 import { 路径 } from '../路由/路径表';
 import type { P8Credential, P8Session } from '../数据/招聘数据源/P8控制面';
-import type { P8资源快照 } from '../状态/后端/类型';
+import type { P8资源快照, 候选实名快照 } from '../状态/后端/类型';
+import { 创建空候选实名快照 } from '../状态/后端/候选实名操作';
+import type { 候选实名摘要 } from '../数据/招聘数据源/候选实名';
 
 const 导航 = vi.hoisted(() => ({ 返回: vi.fn(), 跳转: vi.fn(), 替换跳转: vi.fn() }));
 vi.mock('../路由/导航钩子', () => ({ use导航: () => 导航 }));
@@ -51,16 +53,23 @@ function P8操作桩(覆盖: Record<string, unknown> = {}) {
     完成P8手机号换绑: vi.fn(),
     退出P8其他设备: vi.fn(),
     退出登录: vi.fn(async () => undefined),
+    加载候选实名: vi.fn(async () => undefined),
+    重置候选实名提交意图: vi.fn(),
     ...覆盖,
   };
 }
 
 /** Backend 测试的 后端状态 底座：隐私快照按测试覆盖，P8 快照恒给全形状。 */
-function 后端底座(覆盖: { 隐私快照?: typeof BFF隐私快照样本 | null; 凭证?: P8资源快照<P8Credential[]> } = {}) {
+function 后端底座(覆盖: {
+  隐私快照?: typeof BFF隐私快照样本 | null;
+  凭证?: P8资源快照<P8Credential[]>;
+  候选实名?: 候选实名快照;
+} = {}) {
   return {
     隐私快照: 覆盖.隐私快照 !== undefined ? 覆盖.隐私快照 : BFF隐私快照样本,
     credentials: 覆盖.凭证 ?? 空快照<P8Credential[]>(),
     sessions: 空快照<P8Session[]>(),
+    候选实名: 覆盖.候选实名 ?? 创建空候选实名快照(),
   };
 }
 
@@ -254,11 +263,22 @@ describe('设置 · 账号行（P8 Task 4）', () => {
   });
 });
 
-// Backend 没有实名合同：phone_otp 只证明登录凭据已验证，简历姓名也不是实名。
-// 实名行必须回到中性「—」且不可点击，不得伪造「已认证/已通过」或点击反馈；
-// Mock 保留原型演示按钮与提示。
+// FE-IV-01：Backend 实名行完全由新 summary API 驱动 —— 挂载触发一次 加载候选实名，
+// 无成功摘要（加载中/失败/未开始）一律中性「—」，四种成功摘要映射
+// 未认证/审核中/已认证/未通过；整行是进入独立实名页的 button。Mock 保留原型演示。
 describe('设置 · 实名状态真相源', () => {
-  it('仅有 phone_otp 的 Backend 候选不声称已实名且整行不可点击', async () => {
+  function 成功实名摘要(覆盖: Partial<候选实名摘要>): 候选实名摘要 {
+    return {
+      status: 'unverified',
+      verifiedName: null,
+      currentRequest: null,
+      revision: 1,
+      updatedAt: '2026-09-04T08:00:00Z',
+      ...覆盖,
+    };
+  }
+
+  it('Backend 挂载恰读一次实名 summary；无成功摘要显示中性 — 且可进入独立页', async () => {
     const 用户 = userEvent.setup();
     const 操作 = P8操作桩();
     mock应用状态 = {
@@ -270,18 +290,67 @@ describe('设置 · 实名状态真相源', () => {
     };
 
     render(<MemoryRouter><设置 /></MemoryRouter>);
-    expect(screen.getByText('实名认证').closest('button')).toBeNull();
+    await waitFor(() => expect(操作.加载候选实名).toHaveBeenCalledTimes(1));
+    // 实名行是 button（始终可进入独立页），行尾中性 —
+    const 实名行 = screen.getByRole('button', { name: /实名认证/ });
+    expect(实名行.textContent).toContain('—');
     expect(screen.queryByText('已认证')).toBeNull();
-    expect(screen.queryByText(/已通过/)).toBeNull();
-    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
-
-    await 用户.click(screen.getByText('实名认证'));
-    expect(screen.queryByText(/实名认证 · 已通过/)).toBeNull();
+    await 用户.click(实名行);
+    expect(导航.跳转).toHaveBeenCalledWith(路径.候选实名认证);
+    // 与 P8 credentials 读取互不阻塞：两条线都恰发起一次
     await waitFor(() => expect(操作.加载P8凭证).toHaveBeenCalledTimes(1));
     expect(screen.getByText(手机凭证.display)).toBeTruthy();
   });
 
-  it('Mock 保留演示已认证与原点击提示，且不读 credentials', async () => {
+  it.each([
+    ['进行中', { 阶段: '进行中', 摘要: null, 刷新中: true, 错误: null }],
+    ['失败', { 阶段: '失败', 摘要: null, 刷新中: false, 错误: '请求失败，请稍后再试' }],
+  ] as const)('读取%s时行尾保持中性 —', (名, 快照覆盖) => {
+    void 名;
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: { 设置雇主隐私: vi.fn(), ...P8操作桩() },
+      数据源模式: 'backend',
+      后端状态: 后端底座({ 候选实名: { ...创建空候选实名快照(), ...快照覆盖 } }),
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    expect(screen.getByRole('button', { name: /实名认证/ }).textContent).toContain('—');
+  });
+
+  it.each([
+    ['unverified', '未认证', 成功实名摘要({ status: 'unverified' })],
+    ['pending', '审核中', 成功实名摘要({
+      status: 'pending',
+      currentRequest: { requestId: 'ivq_1', status: 'pending', revision: 3, submittedAt: '2026-09-04T08:00:00Z', rejectionReason: null },
+      revision: 7,
+    })],
+    ['verified', '已认证', 成功实名摘要({
+      status: 'verified',
+      verifiedName: '张三',
+      currentRequest: { requestId: 'ivq_1', status: 'verified', revision: 6, submittedAt: '2026-09-04T08:00:00Z', rejectionReason: null },
+      revision: 10,
+    })],
+    ['rejected', '未通过', 成功实名摘要({
+      status: 'rejected',
+      currentRequest: { requestId: 'ivq_1', status: 'rejected', revision: 4, submittedAt: '2026-09-04T08:00:00Z', rejectionReason: 'other' },
+      revision: 9,
+    })],
+  ] as const)('成功摘要 %s 行尾显示 %s', (_状态, 文案, 摘要) => {
+    mock应用状态 = {
+      状态: { 设置开关: { ...初始状态.设置开关 } },
+      派发: vi.fn(),
+      操作: { 设置雇主隐私: vi.fn(), ...P8操作桩() },
+      数据源模式: 'backend',
+      后端状态: 后端底座({
+        候选实名: { 阶段: '成功', 摘要, 刷新中: false, 错误: null },
+      }),
+    };
+    render(<MemoryRouter><设置 /></MemoryRouter>);
+    expect(screen.getByRole('button', { name: /实名认证/ }).textContent).toContain(文案);
+  });
+
+  it('Mock 保留演示已认证与原点击提示，且零实名请求', async () => {
     const 用户 = userEvent.setup();
     const 操作 = P8操作桩();
     mock应用状态 = {
@@ -297,6 +366,7 @@ describe('设置 · 实名状态真相源', () => {
     await 用户.click(screen.getByRole('button', { name: /实名认证.*已认证/ }));
     expect(screen.getByText('实名认证 · 已通过，无需重复认证')).toBeTruthy();
     expect(操作.加载P8凭证).not.toHaveBeenCalled();
+    expect(操作.加载候选实名).not.toHaveBeenCalled();
   });
 
   it('Backend 账号与安全入口保持真接线', async () => {

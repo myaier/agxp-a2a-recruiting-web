@@ -82,6 +82,8 @@ vi.mock('./屏幕/岗位管理', () => ({
 }));
 // 角色路由矩阵需要的其余落点桩（含 shared 路由与候选端 我的简历）
 vi.mock('./屏幕/我的简历', () => 可计数屏幕桩('我的简历'));
+// FE-IV-01：候选实名认证页换成可计数桩 —— recruiter 深链的防闪挂断言读它
+vi.mock('./屏幕/候选实名认证', () => 可计数屏幕桩('候选实名认证'));
 vi.mock('./屏幕/企业详情', () => 可计数屏幕桩('企业详情'));
 vi.mock('./屏幕/帮助与客服', () => 可计数屏幕桩('帮助与客服'));
 vi.mock('./屏幕/反馈', () => 可计数屏幕桩('反馈'));
@@ -149,6 +151,7 @@ function 后端应用值(后端覆盖: Partial<后端状态> = {}) {
       清候选Onboarding预填: vi.fn(),
       // 角色路由矩阵只证明守卫不调用它（访问 URL 绝不静默切身份）
       切身份: vi.fn(async () => undefined),
+      加载候选实名: vi.fn(async () => undefined),
     },
     目录查询: null,
   };
@@ -726,6 +729,53 @@ describe('应用路由：Backend 角色路由边界', () => {
     await userEvent.click(screen.getByRole('button', { name: '探针-后退' }));
     await waitFor(() => expect(当前路径()).toBe(允许路径));
     expect(屏幕挂载次数.get(错误屏) ?? 0).toBe(0);
+  });
+
+  // ── FE-IV-01：候选实名认证路由逐项登记进候选路由表 ──
+  // candidate 直达挂载；recruiter 深链在页面 effect 前被角色守卫同步拦截
+  //（含 effect 的屏幕一次都不能挂载、零实名读取）；未登录按现有保护逻辑去登录。
+  it('candidate 直达实名认证页挂载', async () => {
+    const 当前值 = 后端应用值({
+      初始化: '完成',
+      已登录: true,
+      主体: 主体('candidate', 'active', null),
+    });
+    mock应用状态.mockReturnValue(当前值);
+    render(
+      <MemoryRouter initialEntries={[路径.候选实名认证]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:候选实名认证')).toBeTruthy());
+    expect(当前路径()).toBe(路径.候选实名认证);
+  });
+
+  it('recruiter 深链实名认证页被角色守卫拦截：页面零挂载、实名读取零调用', async () => {
+    const 当前值 = 后端应用值({
+      初始化: '完成',
+      已登录: true,
+      主体: 主体('recruiter', null, 'active'),
+    });
+    mock应用状态.mockReturnValue(当前值);
+    render(
+      <MemoryRouter initialEntries={[路径.候选实名认证]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe('/identity'));
+    expect(屏幕挂载次数.get('候选实名认证') ?? 0).toBe(0);
+    expect(当前值.操作.加载候选实名).not.toHaveBeenCalled();
+  });
+
+  it('未登录直达实名认证页按现有保护逻辑去登录', async () => {
+    const 当前值 = 后端应用值({
+      初始化: '完成',
+      已登录: false,
+      主体: null,
+    });
+    mock应用状态.mockReturnValue(当前值);
+    render(
+      <MemoryRouter initialEntries={[路径.候选实名认证]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.登录));
+    expect(屏幕挂载次数.get('候选实名认证') ?? 0).toBe(0);
+    expect(当前值.操作.加载候选实名).not.toHaveBeenCalled();
   });
 });
 

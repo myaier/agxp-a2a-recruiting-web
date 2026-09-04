@@ -75,6 +75,7 @@ const 账号安全 = lazy(() => import('./屏幕/账号安全'));
 const 反馈 = lazy(() => import('./屏幕/反馈'));
 const 用户协议 = lazy(() => import('./屏幕/用户协议'));
 const 接触记录 = lazy(() => import('./屏幕/接触记录'));
+const 候选实名认证 = lazy(() => import('./屏幕/候选实名认证'));
 
 export function 路由加载中() {
   return (
@@ -118,6 +119,7 @@ const 候选路由模式 = [
   路径.求职意向管理, 路径.添加意向, 路径.选择城市, 路径.选期望行业,
   路径.编辑意向模板, 路径.规则库, 路径.我的简历, 路径.个人信息,
   路径.设置, 路径.屏蔽名单, 路径.披露偏好, 路径.归档谈判, 路径.接触记录,
+  路径.候选实名认证,
 ] as const;
 
 const 招聘路由模式 = [
@@ -395,6 +397,9 @@ export default function 应用() {
 
       {/* 「我的」下属功能页 */}
       <Route path={路径.设置} element={<设置 />} />
+      {/* FE-IV-01：候选实名认证独立页（设置页实名行的落点；候选路由表已登记，
+          recruiter/未登录由应用角色/会话守卫处理，Mock 由页面 replace 回设置页） */}
+      <Route path={路径.候选实名认证} element={<候选实名认证 />} />
       <Route path={路径.屏蔽名单} element={<屏蔽名单 />} />
       <Route path={路径.披露偏好} element={<披露偏好 />} />
       <Route path={路径.归档谈判} element={<归档谈判 />} />
