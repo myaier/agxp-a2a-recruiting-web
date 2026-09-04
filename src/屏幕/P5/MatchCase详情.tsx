@@ -584,9 +584,12 @@ function 阶段动作区({
   const { 跳转 } = use导航();
 
   const [回答草稿, 设回答草稿] = useState('');
-  const 回答在飞 = useRef(false);
   // 回答提交的可见 in-flight（spec §10.3）：独立于 S1/S2/S3 的 写中 —— 只锁回答区，
-  // 不牵连其它动作卡；ref 仍作同步重入锁，state 只负责渲染。
+  // 不牵连其它动作卡；state 只负责渲染。
+  // 锁按 case_id 记账（跨换单导航持续）：操作层同 (role,case,action,prompt) 单飞会复用
+  // 在飞 POST —— 回原单时若已放锁，新草稿会绑上旧承诺被静默吞掉（review-r1）。
+  // 表里存的是已收口的承诺链（catch 已吞错，恒 resolve），回原单的续锁观察者靠它收口解锁。
+  const 回答在飞表 = useRef<Map<string, Promise<void>>>(new Map());
   const [回答提交中, 设回答提交中] = useState(false);
   // S1 提交三态：权威库单选 → Case 专属披露确认 → POST（字面 true）；任一结束即清
   const [待选择, 设待选择] = useState<{ 文件们: readonly BFF附件简历[] } | null>(null);
@@ -602,13 +605,20 @@ function 阶段动作区({
   }, []);
   useEffect(() => {
     准备代际.current += 1;
+    const 本轮 = 准备代际.current;
     设待选择(null);
     设待披露(null);
     设待确认终局(null);
     设回答草稿('');
-    // 旧 Case 的在飞回答连同其可见 pending 一并作废：新 Case 从干净的回答区起步
-    回答在飞.current = false;
-    设回答提交中(false);
+    // 离开又回到同一单且回答仍在飞：续锁到旧请求收口（同键单飞复用旧 POST，不能放锁）；
+    // 他单在飞或无在飞：本单回答区干净起步。
+    const 在飞 = 回答在飞表.current.get(caseId);
+    设回答提交中(在飞 !== undefined);
+    if (在飞 !== undefined) {
+      void 在飞.finally(() => {
+        if (准备代际.current === 本轮) 设回答提交中(false);
+      });
+    }
   }, [caseId]);
 
   const 报错 = (错误: unknown) => 轻提示(取后端错误文案(错误));
@@ -630,11 +640,9 @@ function 阶段动作区({
   const 发回答 = () => {
     const 内容 = 回答草稿.trim();
     const 问题 = 视图.补充问题;
-    if (内容 === '' || 问题 === null || caseId === '' || 回答在飞.current) return;
-    const 本轮 = 准备代际.current; // 换 case/卸载后迟到的成败对不上代际即整包作废
-    回答在飞.current = true;
-    设回答提交中(true);
-    操作.回答事实(role, caseId, 问题.promptId, 内容)
+    if (内容 === '' || 问题 === null || caseId === '' || 回答在飞表.current.has(caseId)) return;
+    const 本轮 = 准备代际.current; // 换单/卸载后迟到的成败对不上代际即整包作废
+    const promise = 操作.回答事实(role, caseId, 问题.promptId, 内容)
       .then(() => {
         if (准备代际.current === 本轮) 设回答草稿(''); // 仅成功清空；卡随操作层重读消失
       })
@@ -642,11 +650,11 @@ function 阶段动作区({
         if (准备代际.current === 本轮) 报错(错误);
       })
       .finally(() => {
-        if (准备代际.current === 本轮) {
-          回答在飞.current = false;
-          设回答提交中(false);
-        }
+        回答在飞表.current.delete(caseId);
+        if (准备代际.current === 本轮) 设回答提交中(false);
       });
+    回答在飞表.current.set(caseId, promise);
+    设回答提交中(true);
   };
 
   // S1 接受/更换：先拿权威附件库（每次尝试都重跑），再多份单选、单份直达披露确认
