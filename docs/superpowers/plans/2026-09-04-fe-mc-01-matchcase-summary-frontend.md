@@ -25,8 +25,8 @@
 
 ## Prerequisites and completion
 
-- 前序 Plan：无。四个实现 Task 在同一 branch/worktree 串行执行，顺序为 Task 1 → Task 2 → Task 3 → Task 4；不得并行改共享类型、操作或测试桩。
-- Task 1 产出 `MatchCaseSummary` 与 `读取P5摘要`；Task 2 消费它们并产出 `P5摘要快照`、`P5摘要` 状态和 `加载摘要`；Task 3 消费这些产物改 selector 与“我的”页；Task 4 只迁移两个既有代理详情消费者。
+- 前序 Plan：无。三个实现 Task 在同一 branch/worktree 串行执行，顺序为 Task 1 → Task 2 → Task 3；不得并行改共享类型、操作或测试桩。
+- Task 1 产出 `MatchCaseSummary` 与 `读取P5摘要`；Task 2 消费它们并产出 `P5摘要快照`、`P5摘要` 状态和 `加载摘要`；Task 3 原子修改 selector 及其全部四个现有消费者，避免提交暂时不可 typecheck 的中间状态。
 - 完成标准：严格 decoder、双端 endpoint、加载/失败/重试/单飞/会话栅栏/401、mutation revalidation、双端页面映射、代理详情、Mock 零请求均有自动测试；`npm test`、typecheck、lint、build 通过；Backend local dogfood 有真实运行记录；工作树干净。
 - 本 Plan 计划本身复杂度：中；零上下文漂移风险：中；执行模型只按零上下文漂移风险选择，使用当前可用的行业 Top 5–10 中高性价比模型。
 - 零上下文漂移风险为中：P5 operation 是共享状态机，且执行前需同步 `origin/main`；本 Plan 已冻结 wire schema、状态归属、失败语义、消费者和测试门，避免由模型档位补偿缺失设计。
@@ -317,7 +317,12 @@ describe('P5 summary 读取与刷新', () => {
 
   it('mutation 只刷新已载同角色 summary，刷新失败不改变 mutation 成功', async () => {
     await env.操作.加载摘要('candidate');
+    env.操作.设置P5范围('candidate', P5范围键.open('candidate', null));
+    vi.mocked(env.数据源.读取P5Open列表).mockResolvedValue(候选页([候选行('mc_1')], null));
+    await env.操作.加载工作区('candidate', null);
     env.操作.设置P5范围('candidate', P5范围键.detail('candidate', 'mc_1'));
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(权威候选详情);
+    await env.操作.读取详情('candidate', 'mc_1');
     vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
     vi.mocked(env.数据源.读取P5摘要)
       .mockRejectedValueOnce(new BFF错误(500, 'server_error', 'summary refresh failed'));
@@ -325,6 +330,9 @@ describe('P5 summary 读取与刷新', () => {
     expect(env.数据源.回答P5事实).toHaveBeenCalledTimes(1);
     expect(env.数据源.读取P5摘要).toHaveBeenCalledTimes(2);
     expect(env.最新状态().P5摘要.candidate?.summary).toBeNull();
+    expect(env.最新状态().P5工作区[P5范围键.open('candidate', null)]?.阶段).toBe('成功');
+    expect(env.最新状态().P5详情[P5范围键.detail('candidate', 'mc_1')]?.detail)
+      .toEqual(已解事实详情);
 
     const 未载 = 创建P5操作测试环境();
     未载.操作.设置P5范围('candidate', P5范围键.detail('candidate', 'mc_1'));
@@ -479,14 +487,14 @@ async function 刷新已载资源(role: P5角色): Promise<void> {
 await 刷新已载资源(input.role);
 ```
 
-在 `权威重读详情` 中删除非 401 catch 末尾的 `return`，并把函数结尾改为：
+保留 `权威重读详情` 的现有非 401 catch `return`、现有 `栅栏仍当前(fence)` 和现有列表刷新，避免改变 detail/list 失败语义。在明确 POST 成功分支中，让 summary 刷新独立发生在权威 detail 重读之后：
 
 ```ts
-if (!会话栅栏仍当前(fence)) return;
-await 刷新已载资源(role);
+await 权威重读详情(input.role, input.caseId);
+await 刷新已载摘要(input.role);
 ```
 
-当前 401 分支仍立即清理并 `return`。这里使用会话 fence，summary/list 自己再用各自完整 read fence；summary 失败由 `Promise.allSettled` 隔离。
+`运行摘要读` 自己吞掉并结算非 401 错误；若 detail 重读触发当前 401，P5 已被清空，后续 `刷新已载摘要` 会零请求返回。结果不确定但权威对账确认成功的分支继续使用 `刷新已载资源(input.role)`，同时刷新既有列表与已载 summary。
 
 - [ ] **Step 5: 运行 GREEN、相关回归与提交**
 
@@ -500,7 +508,7 @@ Expected：测试 PASS；既有 mutation/list/detail/401 测试不回归。
 
 ---
 
-### Task 3: 用 summary selector 驱动双端“我的”页精确统计
+### Task 3: 原子迁移 summary selector 的全部四个页面消费者
 
 **Files:**
 - Modify: `src/状态/后端/MatchCase统计.ts`
@@ -509,16 +517,21 @@ Expected：测试 PASS；既有 mutation/list/detail/401 测试不回归。
 - Modify: `src/屏幕/我的.test.tsx`
 - Modify: `src/屏幕/企业我的.tsx`
 - Modify: `src/屏幕/企业我的.test.tsx`
+- Modify: `src/屏幕/代理详情.tsx`
+- Modify: `src/屏幕/代理详情.test.tsx`
+- Modify: `src/屏幕/企业代理详情.tsx`
+- Modify: `src/屏幕/企业代理详情.test.tsx`
 
 **Self-contained brief:**
 - Global Constraints 全量适用。
 - Predecessor artifacts：Task 2 已提交并产出 `P5摘要快照`、`后端状态.P5摘要`、`P5范围键.summary(role)` 与 `操作.加载摘要(role)`。
-- Produces：`P5Open统计` 的精确 `open/anonymousScreening/needsAction/archived/completed` 字符串；两个“我的”页进入时注册 summary scope 并权威读取。
+- Produces：`P5Open统计` 的精确 `open/anonymousScreening/needsAction/archived/completed` 字符串；两个“我的”页进入时注册 summary scope 并权威读取；两个代理详情页只消费已载内存 summary。
 - `取P5候选横幅状态` 继续读取 `P5列表快照`，不得迁移或改变其四态文案。
+- Selector 的签名与四个消费者必须在同一 Task、同一 commit 原子切换；Step 8 前不提交，避免留下不能 typecheck 的中间状态。
 
 - [ ] **Step 1: 把 selector 测试改为精确 summary 合同**
 
-在 `MatchCase统计.test.ts` 保留 `行`、`成功(items,nextCursor)` 和完整 `取P5候选横幅状态` 测试；把 `取P5Open统计` 的 fixture/describe 替换为：
+在 `MatchCase统计.test.ts` 保留 `行`、`成功(items,nextCursor)` 和末条 `候选横幅保持既有四态且 owner 不匹配视为未载入` 测试；只删除当前 describe 内前四条 open 统计 `it`（`完整成功窗口…`、`未尽分页…`、`非成功快照为中性值`、`owner 不匹配…`），再加入以下 fixture 与三条精确 summary 测试：
 
 ```ts
 import type { P5列表快照, P5摘要快照 } from './类型';
@@ -652,6 +665,35 @@ it('刷新中或旧 owner 显示 —；Mock 保留原数字且零 summary operat
 });
 ```
 
+删除原 `Backend 注册 candidate unfiltered scope 并只显示权威统计`、`Backend 旧 owner 显示 —` 两例；它们已由上面两例完整替代。把仍引用旧 fixture 的两个代理卡用例逐字替换为：
+
+```ts
+it('Backend 代理卡只说 MatchCase 事实，无在线断言与占位运营页脚', () => {
+  const { unmount } = 布置('backend', {
+    主体: { ...BFF主体样本, subject_id: 'sub_candidate', last_used_role: 'candidate' },
+    P5摘要: 成功摘要(),
+  });
+  expect(screen.getByText(/当前 MatchCase：51/)).toBeTruthy();
+  for (const text of ['在线', '并行寻访', '400-000-0000', '人力资源服务许可证', '资质证照']) {
+    expect(screen.queryByText(new RegExp(text))).toBeNull();
+  }
+  expect(screen.queryByText(/规则 \d+ 条生效/)).toBeNull();
+  unmount();
+});
+
+it('Backend 规则水合成功后显示当前 MatchCase 与已水合规则数', () => {
+  布置('backend', {
+    规则水合: '成功',
+    主体: { ...BFF主体样本, subject_id: 'sub_candidate', last_used_role: 'candidate' },
+    P5摘要: 成功摘要(),
+  });
+  expect(screen.getByText(/当前 MatchCase：51/)).toBeTruthy();
+  expect(screen.getByText(/规则 \d+ 条生效/)).toBeTruthy();
+});
+```
+
+把文件 `beforeEach` 与所有 Mock 零调用断言中的 `加载工作区` 全部改为 `加载摘要`；改完后 `rg -n 'P5快照|成功P5快照|加载工作区|P5列表项|P5列表快照' src/屏幕/我的.test.tsx` 必须零匹配。
+
 - [ ] **Step 3: 把招聘“我的”测试桩改为 summary 并冻结不新增 MatchCase 文案**
 
 在 `企业我的.test.tsx` 删除 P5 list fixture/import；import `P5摘要快照`，把 `mock加载工作区` 改名为 `mock加载摘要`。让 `置Backend应用状态` 的第三参数为 `P5摘要?: P5摘要快照`，operation 写 `{ 设置P5范围: mock设置P5范围, 加载摘要: mock加载摘要 }`，后端字段写：
@@ -702,7 +744,30 @@ it('在招岗位仍读 Job；其余三项读 recruiter summary；代理卡不追
 });
 ```
 
-保留两页现有点击动作断言；测试中的 `加载工作区` 断言全部改为 `加载摘要`。
+删除原 `注册 recruiter unfiltered scope…` 用例；它已由上面的精确 summary 用例替代。把仍引用旧 list fixture 的点击与旧 owner 用例逐字替换为：
+
+```ts
+it('点击待拍板仍派发 企业看全部在谈/待我拍板', async () => {
+  const user = (await import('@testing-library/user-event')).default.setup();
+  置Backend应用状态({}, '未开始', 成功招聘摘要());
+  render(<MemoryRouter><企业我的 /></MemoryRouter>);
+  await user.click(screen.getByRole('button', { name: /待拍板/ }));
+  expect(mock派发).toHaveBeenCalledWith({ 型: '企业看全部在谈', 档: '待我拍板' });
+});
+
+it('企业候选列表不进入 Backend 展示：旧 owner summary 显示 —', () => {
+  置Backend应用状态(
+    { 企业候选列表: [{ 编号: 'A-01' }, { 编号: 'A-02' }] },
+    '未开始',
+    成功招聘摘要('sub_old'),
+  );
+  render(<MemoryRouter><企业我的 /></MemoryRouter>);
+  expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(3);
+  expect(mock派发).not.toHaveBeenCalled();
+});
+```
+
+把文件 `beforeEach` 与所有 Mock 零调用断言中的 `mock加载工作区` 全部改为 `mock加载摘要`；改完后 `rg -n 'P5快照|成功P5快照|mock加载工作区|招聘行|P5列表项|P5列表快照' src/屏幕/企业我的.test.tsx` 必须零匹配。现有统计卡点击动作与 Mock 行为保持不变。
 
 - [ ] **Step 4: 运行 RED**
 
@@ -810,19 +875,15 @@ useEffect(() => {
 
 招聘代理卡 JSX 不得修改；尤其不得加 `Backend统计.open` 或 `MatchCase` 文本。
 
-- [ ] **Step 7: 运行 GREEN 与提交**
+- [ ] **Step 7: 运行“我的”页 GREEN，但暂不提交**
 
 ```bash
 npx vitest run src/状态/后端/MatchCase统计.test.ts src/屏幕/我的.test.tsx src/屏幕/企业我的.test.tsx
-git add src/状态/后端/MatchCase统计.ts src/状态/后端/MatchCase统计.test.ts src/屏幕/我的.tsx src/屏幕/我的.test.tsx src/屏幕/企业我的.tsx src/屏幕/企业我的.test.tsx
-git commit -m "feat: show exact matchcase summaries"
 ```
 
-Expected：测试 PASS；页面精确显示大于单页上限的数字且没有 `+`。
+Expected：测试 PASS；页面精确显示大于单页上限的数字且没有 `+`。此时 selector 的两个代理详情消费者尚未迁移，禁止提交、禁止运行 typecheck，继续执行 Step 8–11 后原子提交。
 
----
-
-### Task 4: 迁移两个代理详情页的既有“正在代谈”消费者
+#### Task 3 continuation: 迁移两个代理详情页的既有“正在代谈”消费者
 
 **Files:**
 - Modify: `src/屏幕/代理详情.tsx`
@@ -832,10 +893,10 @@ Expected：测试 PASS；页面精确显示大于单页上限的数字且没有 
 
 **Self-contained brief:**
 - Global Constraints 全量适用。
-- Predecessor artifacts：Task 3 已提交；`取P5Open统计` 接受 `P5摘要快照`，`后端状态.P5摘要.candidate/recruiter` 已存在。
+- Predecessor artifacts：Task 3 Step 1–7 的同一未提交工作树；`取P5Open统计` 接受 `P5摘要快照`，`后端状态.P5摘要.candidate/recruiter` 已存在。
 - Produces：两个详情页继续显示现有“正在代谈”标题，只把数字来源改为当前角色已载 summary；详情页绝不注册 scope、绝不调用 `加载摘要`。
 
-- [ ] **Step 1: 把两个详情页测试 fixture 改为 summary**
+- [ ] **Step 8: 把两个详情页测试 fixture 改为 summary**
 
 在两个测试文件删除 `P5范围键`、`P5列表项`、`P5列表快照` 和行 fixture，import `P5摘要快照`。候选 fixture：
 
@@ -856,7 +917,26 @@ function 成功候选摘要(ownerSubjectId = 'sub_1'): P5摘要快照 {
 }
 ```
 
-招聘 fixture 同形但 `openTotal: 52`。测试上下文把 `加载工作区` spy 改为 `加载摘要`，分别写：
+招聘 fixture 使用以下完整代码：
+
+```ts
+function 成功招聘摘要(ownerSubjectId = 'sub_r'): P5摘要快照 {
+  return {
+    ownerSubjectId, 阶段: '成功', 刷新中: false,
+    summary: {
+      openTotal: 52,
+      openAnonymousScreeningTotal: 18,
+      openNeedsActionTotal: 8,
+      endedTotal: 6,
+      completedTotal: 5,
+    },
+    error: null,
+    generation: 1,
+  };
+}
+```
+
+测试上下文把 `加载工作区` spy 改为 `加载摘要`，并把选项字段定义为 `P5摘要?: P5摘要快照`；候选与招聘的后端状态分别写：
 
 ```ts
 P5摘要: 选项.P5摘要 === undefined ? {} : { candidate: 选项.P5摘要 },
@@ -881,7 +961,7 @@ it('已有 summary 时显示精确 open_total，且详情页不注册、不请�
 
 招聘镜像用例断言 `52` 与现有“正在代谈”。两端保留直达无快照/owner mismatch=`—` 和 Mock legacy 长度测试，并把零 operation 断言改为 `加载摘要`。
 
-- [ ] **Step 2: 运行 RED**
+- [ ] **Step 9: 运行代理详情 RED**
 
 ```bash
 npx vitest run src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx
@@ -889,7 +969,7 @@ npx vitest run src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.te
 
 Expected：FAIL，生产页仍从 `P5工作区[P5范围键.open(...)]` 取值。
 
-- [ ] **Step 3: 实现最小消费者迁移**
+- [ ] **Step 10: 实现最小消费者迁移**
 
 在 `代理详情.tsx` 删除 `P5范围键` import，只替换 selector 调用：
 
@@ -907,15 +987,16 @@ const 在谈数 = 是后端 ? Backend统计.open : 状态.企业候选列表.len
 
 不得改两个页面的 `正在代谈`、代理标题、在线文案、规则数字或其它 JSX。
 
-- [ ] **Step 4: 运行 GREEN、全量相关回归与提交**
+- [ ] **Step 11: 运行 GREEN、typecheck 与原子提交**
 
 ```bash
 npx vitest run src/数据/招聘数据源/MatchCase.test.ts src/状态/后端/MatchCase操作.test.ts src/状态/后端/MatchCase统计.test.ts src/屏幕/我的.test.tsx src/屏幕/企业我的.test.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.test.tsx
-git add src/屏幕/代理详情.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.tsx src/屏幕/企业代理详情.test.tsx
-git commit -m "fix: use summary in agent detail counts"
+npm run typecheck
+git add src/状态/后端/MatchCase统计.ts src/状态/后端/MatchCase统计.test.ts src/屏幕/我的.tsx src/屏幕/我的.test.tsx src/屏幕/企业我的.tsx src/屏幕/企业我的.test.tsx src/屏幕/代理详情.tsx src/屏幕/代理详情.test.tsx src/屏幕/企业代理详情.tsx src/屏幕/企业代理详情.test.tsx
+git commit -m "feat: show exact matchcase summaries"
 ```
 
-Expected：全部 PASS，提交成功。
+Expected：全部测试与 typecheck PASS；selector 和四个消费者在同一提交中切换，不留下不可编译中间提交。
 
 ---
 
@@ -927,8 +1008,68 @@ Expected：全部 PASS，提交成功。
 
 **Self-contained brief:**
 - Global Constraints 全量适用。
-- Predecessor artifacts：Task 1–4 的四个提交、干净工作树、manifest 中 execution revision/Plan SHA 与本 Plan 一致。
+- Predecessor artifacts：Task 1–3 的三个提交、干净工作树，以及执行提示词提供的仓库外绝对 manifest、Plan Handoff、admission sidecar、ledger、result 路径；开始前必须验证 manifest 为 `handoff_version: 5`、`execution_revision: 1` 且 Plan SHA-256 与当前文件一致。任一路径缺失或 metadata 不一致时停止，不得猜路径。
 - 本批次只有一个 Plan；当前 execution owner 在同一 branch/worktree 中成为唯一 integration owner。`integration_requirement: none`，L3 selection 是空集并记录 N/A，不得扩大为 all-L3。
+
+**Runtime file contracts:**
+
+唯一 Plan Handoff 必须逐字包含以下字段；尖括号值由执行时事实替换，不保留占位符：
+
+```yaml
+handoff_version: 5
+plan_id: fe-mc-01
+plan_path: docs/superpowers/plans/2026-09-04-fe-mc-01-matchcase-summary-frontend.md
+execution_revision: 1
+plan_sha256: <manifest 中的精确 SHA-256>
+calibrated_against: none
+implementation_status: READY | NOT_READY
+implementation_gap: none | <精确缺口>
+plan_scope_validation:
+  status: PASS | TEST_DEFECT | ENV_BLOCKED | FLAKY | PRODUCT_FAILURE | UNKNOWN
+  evidence: <Task、L0-L2、dogfood 的命令与 receipt>
+branch: implement-fe-mc-01
+commit: <可解析 commit SHA>
+worktree: <执行提示词指定的绝对路径>
+worktree_status: clean | dirty
+base: origin/main@<同步时 SHA>
+tests_run:
+  diagnostic_or_inner_loop: <命令、结果与 receipt>
+  authoritative_plan_scope: <npm test 的结果与 receipt>
+performance_observations: []
+review_summary: <reviewer、轮次、findings 与处理>
+integration_requirement: none
+selection_ssot: none
+selection_gap: none
+l3_selection: []
+release_handoff:
+  required: false
+  owner: none
+  required_mode: none
+  nightly_only_mode: none
+  status: none
+  reason: no formal L3 or release responsibility for this frontend wiring
+merge_notes: <实现与同步说明>
+dependency_drift: none | requires_replan
+affected_downstream_plans: none
+dependency_drift_summary: none | <变化合同与影响>
+replan_handoff: none | <upstream commit、事实、受影响假设与校准接受条件>
+```
+
+单 Plan admission sidecar 固定为：
+
+```yaml
+admission_version: 1
+plan_id: fe-mc-01
+upstream_commit: <Plan Handoff 的 commit>
+status: BLOCKED
+validation_status: PASS | TEST_DEFECT | ENV_BLOCKED | FLAKY | PRODUCT_FAILURE | UNKNOWN
+known_gaps: []
+allowed_downstream: []
+release_effect: none
+updated_at: <RFC3339 timestamp>
+```
+
+`integration-ledger.md` 至少按 candidate generation 追加 `candidate_generation`、HEAD、input commits、repair commits、每条命令/evidence/receipt、PASS 复用或失效原因、admission N/A、performance observations。`integration-result.md` 至少包含 `integration_status: PENDING | RUNNING | TEST_REPAIR | ENV_BLOCKED | FLAKY | PRODUCT_BLOCKED | PASS`、`release_verdict: PENDING`、target base、最终 generation/HEAD、input/repair commits、L0–L3 evidence、admission N/A、push 命令与结果；未 push 不得写 PASS。
 
 - [ ] **Step 1: 做异构代码 review 并处理 findings**
 
@@ -985,4 +1126,14 @@ git push origin HEAD:main
 
 第一次 fetch 后记录 target SHA；第二次 fetch 后必须确认 `origin/main` 未移动。若移动或 push 被拒绝，不自动追赶、不 force push，重新展示 final gate 并等待批准。只有 push 成功后才能在 `integration-result.md` 写 `integration_status: PASS`；`release_verdict` 固定为 `PENDING`。
 
-最终聊天只返回 manifest 执行模板要求的七项简短 verdict，所有详细证据留在固定运行期文件。
+最终聊天只返回以下七项简短 verdict，所有详细证据留在固定运行期文件：
+
+```text
+1. Implementation readiness：READY | NOT_READY
+2. Plan scope validation：PASS | TEST_DEFECT | ENV_BLOCKED | FLAKY | PRODUCT_FAILURE | UNKNOWN
+3. 后续 Plan 依赖漂移：无 | 需要校准（PLAN_IDS）
+4. Handoff 写入：PASS | FAIL
+5. 运行期文件：admission sidecar、integration-ledger.md、integration-result.md 各自 PASS | FAIL
+6. L3 selection 写回：N/A（integration_requirement: none）
+7. 集成结果：integration_status: PASS | 非 PASS 分类，与 target push SHA | 未 push
+```
