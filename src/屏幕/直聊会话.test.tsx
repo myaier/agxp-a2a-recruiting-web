@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 直聊会话 from './直聊会话';
+import 样式 from './直聊会话.module.css';
 // 仓库既有的 ?raw 源码合同模式（Backend 隐藏分支必须在源里真实存在）
 import 直聊会话tsx源码 from './直聊会话.tsx?raw';
 import { 取直聊对象 } from '../数据/模拟数据';
@@ -88,9 +89,12 @@ describe('直聊会话 · Backend 无权威举报目标', () => {
   it.each(['/chat/direct', '/chat/direct/M-01'])(
     'Backend %s 不展示原型消息或写入口',
     (url) => {
-      渲染('backend', url);
-      // 完整句在同一个 旁听文字 槽位内（review-r1：不拆成两个 flex 列），用正则锚首句
-      expect(screen.getByText(/当前暂不提供直接聊天/)).toBeTruthy();
+      const { container } = 渲染('backend', url);
+      // review-r2：完整句子精确落在唯一的 旁听文字 槽位 —— 不拆成两个 flex 列
+      expect(
+        screen.getByText('当前暂不提供直接聊天。请从已建立的 MatchCase 进入真人会话。'),
+      ).toBeTruthy();
+      expect(container.querySelectorAll(`.${样式.旁听文字}`)).toHaveLength(1);
       expect(screen.queryByText(对方.姓名)).toBeNull();
       expect(screen.queryByText(对方.岗位公司)).toBeNull();
       expect(screen.queryByRole('textbox')).toBeNull();
