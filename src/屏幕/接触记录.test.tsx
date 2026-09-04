@@ -5,6 +5,7 @@
 // 纯映射（动作语义 / 本地化绝对时间 / 公司首字）由导出的纯函数直接穷举。
 
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 接触记录, { 接触事件到展示, 格式化接触时间 } from './接触记录';
@@ -105,14 +106,56 @@ describe('接触记录 · Backend 权威快照', () => {
   it.each([
     ['未开始', { 阶段: '未开始' as const }],
     ['进行中', { 阶段: '进行中' as const }],
-    ['失败', { 阶段: '失败' as const, error: '后端服务暂时不可用，请稍后重试' }],
-    ['owner 不匹配', { ownerSubjectId: 'sub_2', 阶段: '成功' as const, items: [事件A] }],
-  ])('%s 时渲染零业务行，不显示 Mock 公司，不冒充权威空结果', (_名, patch) => {
+  ])('%s 显示中性加载态', (_名, patch) => {
     渲染Backend(patch);
-    expect(screen.queryByText(接触记录列表[0].公司)).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('正在读取接触记录');
+    // loading 复用既有空态容器，不新增 class 或空态结构
+    expect(screen.getByRole('status').className).toContain('空态');
+    expect(screen.queryByText('Acme')).toBeNull();
+    expect(screen.queryByText('最近还没有企业接触过你')).toBeNull();
+  });
+
+  it('当前 owner 进行中显示中性加载态', () => {
+    渲染Backend({ 阶段: '进行中', ownerSubjectId: 'sub_1' });
+    expect(screen.getByRole('status').textContent).toContain('正在读取接触记录');
+  });
+
+  it('首载失败显示安全错误和 force retry', async () => {
+    const user = userEvent.setup();
+    渲染Backend({
+      阶段: '失败',
+      ownerSubjectId: 'sub_1',
+      error: '后端服务暂时不可用，请稍后重试',
+    });
+    expect(screen.getByRole('alert').textContent).toContain('后端服务暂时不可用');
+    // 首载失败同样复用既有空态容器
+    expect(screen.getByRole('alert').className).toContain('空态');
+    expect(screen.queryByText('最近还没有企业接触过你')).toBeNull();
+    await user.click(screen.getByRole('button', { name: '重试' }));
+    expect(加载接触记录).toHaveBeenLastCalledWith(true);
+  });
+
+  it('成功旧窗口刷新失败时保留列表并提供重试', () => {
+    渲染Backend({
+      阶段: '成功',
+      ownerSubjectId: 'sub_1',
+      items: [事件A],
+      error: '服务返回异常，请稍后重试',
+    });
+    expect(screen.getByText('Acme')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('服务返回异常');
+    // refresh error 落在页面底部既有「版本」说明槽位内，并提供同款重试
+    expect(screen.getByRole('alert').parentElement?.className).toContain('版本');
+    expect(screen.getByRole('button', { name: '重试' })).toBeTruthy();
+    expect(screen.getByRole('alert').parentElement?.textContent).toContain('记录保留 90 天');
+  });
+
+  it('owner 不匹配时无旧业务行与权威空态，只有中性等待', () => {
+    渲染Backend({ ownerSubjectId: 'sub_2', 阶段: '成功', items: [事件A] });
     expect(screen.queryByText('Acme')).toBeNull();
     // 中性状态：未知不是零 —— 空态文案只在当前 owner 的成功空快照下出现
     expect(screen.queryByText('最近还没有企业接触过你')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('正在读取接触记录');
   });
 
   it('仍有 nextCursor 时只显示已载窗口，不出现「加载更多」或全量承诺', () => {

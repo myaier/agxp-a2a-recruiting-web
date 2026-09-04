@@ -6,8 +6,10 @@
 // 那会把浏览这个动作变成社交压力。同理也不显示对方看了多久、看了哪几段。
 //
 // Backend：只渲染当前 candidate 主体 成功 快照的 items（空页复用下方空态容器）；
-// 未开始/进行中/失败/owner 不匹配一律零业务行，绝不混入 Mock 公司。挂载触发一次
-// 加载接触记录；接口失败不回退 Mock。Mock：继续读 接触记录列表，零 contact 请求。
+// 未开始/进行中/owner 不匹配复用空态容器显示中性加载态，首载失败显示安全错误与
+// 重试，刷新失败在底部版本槽位提示且不降级旧成功列表 —— 绝不混入 Mock 公司。
+// 挂载触发一次 加载接触记录；接口失败不回退 Mock。Mock：继续读 接触记录列表，
+// 零 contact 请求。
 
 import { useEffect } from 'react';
 import 样式 from './我的功能页.module.css';
@@ -62,17 +64,22 @@ export default function 接触记录() {
   const subjectId = 后端状态.主体?.last_used_role === 'candidate'
     ? 后端状态.主体.subject_id
     : null;
-  // 渲染 gate：只有当前 owner 的成功快照可见；未开始/进行中/失败/owner 不匹配
-  // 一律零业务行，也不显示空态 —— 未知不是权威零（spec §B 中性状态）
-  const 快照可见 = 是后端 &&
-    后端状态.接触记录.阶段 === '成功' &&
+  // 渲染 gate：只有当前 owner 的成功快照可见；未开始/进行中/owner 不匹配走中性
+  // 加载态，首载失败走安全错误加重试 —— 未知不是权威零（spec §B 中性状态）
+  const 当前Owner = subjectId !== null &&
     后端状态.接触记录.ownerSubjectId === subjectId;
+  const 权威成功 = 是后端 && 当前Owner && 后端状态.接触记录.阶段 === '成功';
+  const 首载中 = 是后端 && subjectId !== null &&
+    (!当前Owner || 后端状态.接触记录.阶段 === '未开始' ||
+     后端状态.接触记录.阶段 === '进行中');
+  const 首载失败 = 是后端 && 当前Owner && 后端状态.接触记录.阶段 === '失败';
+  const 错误 = 当前Owner ? 后端状态.接触记录.error : null;
   const 页面记录 = !是后端
     ? 接触记录列表
-    : 快照可见 ? 后端状态.接触记录.items.map(接触事件到展示) : [];
+    : 权威成功 ? 后端状态.接触记录.items.map(接触事件到展示) : [];
   // 空态文案只属于「当前 owner 的成功空快照」（或 Mock 的既有空列表）
   const 显示空态 = 页面记录.length === 0 &&
-    (!是后端 || 快照可见);
+    (!是后端 || 权威成功);
 
   useEffect(() => {
     if (!是后端 || subjectId === null) return;
@@ -91,7 +98,28 @@ export default function 接触记录() {
           你只需要知道是哪家公司、在什么时候做了什么。
         </div>
 
-        {显示空态 ? (
+        {首载中 ? (
+          <div className={样式.空态} role="status">
+            <div className={样式.空态图}>◎</div>
+            <div className={样式.空态标题}>正在读取接触记录</div>
+            <div className={样式.空态说明}>
+              代理替你盯着企业的接触动作，稍等片刻。
+            </div>
+          </div>
+        ) : 首载失败 ? (
+          <div className={样式.空态} role="alert">
+            <div className={样式.空态图}>◎</div>
+            <div className={样式.空态标题}>接触记录暂时加载不了</div>
+            <div className={样式.空态说明}>{错误}</div>
+            <button
+              type="button"
+              className={`${样式.次要键} 可点`}
+              onClick={() => { void 操作.加载接触记录(true).catch(() => undefined); }}
+            >
+              重试
+            </button>
+          </div>
+        ) : 显示空态 ? (
           <div className={样式.空态}>
             <div className={样式.空态图}>◎</div>
             <div className={样式.空态标题}>最近还没有企业接触过你</div>
@@ -119,6 +147,19 @@ export default function 接触记录() {
         )}
 
         <div className={样式.版本}>
+          {权威成功 && 错误 !== null ? (
+            <>
+              <span role="alert">{错误}</span>
+              <button
+                type="button"
+                className={`${样式.次要键} 可点`}
+                onClick={() => { void 操作.加载接触记录(true).catch(() => undefined); }}
+              >
+                重试
+              </button>
+              <br />
+            </>
+          ) : null}
           屏蔽名单里的公司不会出现在这里，它们也看不到你。
           <br />
           记录保留 90 天。
