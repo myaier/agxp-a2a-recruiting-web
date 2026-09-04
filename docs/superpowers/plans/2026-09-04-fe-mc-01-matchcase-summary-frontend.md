@@ -28,8 +28,9 @@
 - 前序 Plan：无。三个实现 Task 在同一 branch/worktree 串行执行，顺序为 Task 1 → Task 2 → Task 3；不得并行改共享类型、操作或测试桩。
 - Task 1 产出 `MatchCaseSummary` 与 `读取P5摘要`；Task 2 消费它们并产出 `P5摘要快照`、`P5摘要` 状态和 `加载摘要`；Task 3 原子修改 selector 及其全部四个现有消费者，避免提交暂时不可 typecheck 的中间状态。
 - 完成标准：严格 decoder、双端 endpoint、加载/失败/重试/单飞/会话栅栏/401、mutation revalidation、双端页面映射、代理详情、Mock 零请求均有自动测试；`npm test`、typecheck、lint、build 通过；Backend local dogfood 有真实运行记录；工作树干净。
-- 本 Plan 计划本身复杂度：中；零上下文漂移风险：中；执行模型只按零上下文漂移风险选择，使用当前可用的行业 Top 5–10 中高性价比模型。
-- 零上下文漂移风险为中：P5 operation 是共享状态机，且执行前需同步 `origin/main`；本 Plan 已冻结 wire schema、状态归属、失败语义、消费者和测试门，避免由模型档位补偿缺失设计。
+- **计划本身复杂度：中。** 原因：接入严格 wire 合同并修改共享 P5 operation 与四个消费者，但不改变现有列表、详情或页面架构。
+- **零上下文漂移风险：中。** 原因：执行前需同步 `origin/main`，P5 类型、operation 与测试桩可能有现场漂移；本 Plan 已冻结 schema、状态归属、失败语义、消费者和测试门。
+- 执行模型档位：当前可用的行业 Top 5–10 中高性价比模型；模型档位只由零上下文漂移风险决定，不用于补偿 Plan 缺失。
 - Integration metadata：`integration_requirement: none`、`selection_ssot: none`、`selection_gap: none`、`l3_selection: []`；仓库没有本变更对应的正式 L3 Case catalog/selection SSOT。Backend local dogfood 属 Plan 的 L0–L2/等价隔离验收，不得伪装为 L3。
 
 ---
