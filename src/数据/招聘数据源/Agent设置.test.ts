@@ -60,4 +60,31 @@ describe('Agent设置数据源', () => {
     await expect(source.读取Agent设置('candidate')).rejects.toMatchObject({ code: 'invalid_response' });
     await expect(source.修改Agent设置('candidate', {}, 1)).rejects.toMatchObject({ code: 'validation_failed' });
   });
+
+  it.each(['candidate', 'recruiter'] as const)('%s 接受初始 nullable 时间', async (role) => {
+    const result = role === 'candidate'
+      ? { material_submission: 'ask_first', out_of_authority_concession: 'reject', revision: 0, updated_at: null }
+      : { out_of_authority_concession: 'ask_first', revision: 0, updated_at: null };
+    请求.mockResolvedValue({ result });
+    await expect(创建Agent设置数据源(请求 as 请求函数).读取Agent设置(role))
+      .resolves.toEqual(result);
+  });
+
+  it('非 null 时间仍须是逐分量合法 RFC3339（带偏移合法）', async () => {
+    请求.mockResolvedValueOnce({ result: { ...候选设置, updated_at: '2026-09-03T19:00:00+08:00' } });
+    await expect(创建Agent设置数据源(请求 as 请求函数).读取Agent设置('candidate'))
+      .resolves.toMatchObject({ updated_at: '2026-09-03T19:00:00+08:00' });
+  });
+
+  it.each([
+    42,
+    '',
+    '2026-02-30T00:00:00Z',
+    '2026-09-03 19:00:00',
+    '2026-09-03T24:00:00Z',
+  ])('拒绝非法 updated_at %j', async (updated_at) => {
+    请求.mockResolvedValue({ result: { ...候选设置, updated_at } });
+    await expect(创建Agent设置数据源(请求 as 请求函数).读取Agent设置('candidate'))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+  });
 });

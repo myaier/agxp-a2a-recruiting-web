@@ -195,6 +195,20 @@ function 创建后端桩() {
     接受Agent规则提案: vi.fn(async () => BFFAgent规则样本),
     放弃Agent规则提案: vi.fn(async () => ({ ...BFFAgent规则就绪提案样本, state: 'dismissed' as const })),
     创建Agent规则替换提案: vi.fn(async () => BFFAgent规则解释中提案样本),
+    // C1：Agent 设置 facade —— 初始快照是后端合成默认视图 revision=0, updated_at=null
+    读取Agent设置: vi.fn(async () => ({
+      material_submission: 'ask_first' as const,
+      out_of_authority_concession: 'reject' as const,
+      revision: 0,
+      updated_at: null,
+    })),
+    修改Agent设置: vi.fn(async (_角色: BFF角色, patch: Record<string, unknown>) => ({
+      material_submission: 'ask_first' as const,
+      out_of_authority_concession: 'reject' as const,
+      revision: 1,
+      updated_at: '2026-09-04T01:00:00Z',
+      ...patch,
+    })),
     // P2 Task 3 起候选水合并行读第四个支持域（附件库）：默认空库成功
     读取附件简历库: vi.fn(async () => ({
       items: [],
@@ -891,6 +905,20 @@ describe('规则库 · Backend 候选页', () => {
     });
     expect(screen.getByRole('status', { name: '规则加载中' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '规则加载失败，重试' })).toBeNull();
+  });
+
+  it('初始快照 revision=0/updated_at=null：设置控件可用、保存带 revision 0、无加载失败', async () => {
+    const user = userEvent.setup();
+    const 视图 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
+    await 挂载到稳定();
+    // 页面 mount effect 与真实主体水合赛跑会早退一次：主体落地后经操作缝补一发权威加载
+    await act(async () => { await 视图.操作.加载Agent设置(); });
+    expect(screen.queryByText('设置加载失败，重试')).toBeNull();
+    const 自动发送 = within(screen.getByRole('group', { name: '发送正式简历' }))
+      .getByRole('button', { name: '自动发送' });
+    await waitFor(() => expect((自动发送 as HTMLButtonElement).disabled).toBe(false));
+    await user.click(自动发送);
+    expect(视图.后端.修改Agent设置).toHaveBeenCalledWith('candidate', { material_submission: 'auto_send' }, 0);
   });
 });
 

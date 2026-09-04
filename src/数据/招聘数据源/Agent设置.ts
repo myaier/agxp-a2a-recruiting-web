@@ -43,9 +43,25 @@ function 要求修订(value: unknown): number {
   return value;
 }
 
+// 严格 RFC3339：偏移分量逐项核对，杜绝 Date.parse 宽松接受的空间分隔、越界日历和 24 点。
+const RFC3339模式 = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/;
+
 function 要求时间(value: unknown): string {
-  if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) throw 契约错误();
+  if (typeof value !== 'string') throw 契约错误();
+  const 组 = RFC3339模式.exec(value);
+  if (组 === null || Number.isNaN(Date.parse(value))) throw 契约错误();
+  const [, 年文, 月文, 日文, 时文, 分文, 秒文] = 组;
+  const 年 = Number(年文), 月 = Number(月文), 日 = Number(日文);
+  const 时 = Number(时文), 分 = Number(分文), 秒 = Number(秒文);
+  const 月末 = new Date(Date.UTC(年, 月, 0)).getUTCDate();
+  if (月 < 1 || 月 > 12 || 日 < 1 || 日 > 月末 || 时 > 23 || 分 > 59 || 秒 > 59) {
+    throw 契约错误();
+  }
   return value;
+}
+
+function 要求可空时间(value: unknown): string | null {
+  return value === null ? null : 要求时间(value);
 }
 
 function 解设置(input: unknown, role: BFF角色): BFFAgent设置 {
@@ -54,7 +70,7 @@ function 解设置(input: unknown, role: BFF角色): BFFAgent设置 {
   const base = {
     out_of_authority_concession: 要求枚举(raw.out_of_authority_concession, ['ask_first', 'reject']),
     revision: 要求修订(raw.revision),
-    updated_at: 要求时间(raw.updated_at),
+    updated_at: 要求可空时间(raw.updated_at),
   };
   if (role === 'recruiter') return base satisfies BFF招聘Agent设置;
   return {

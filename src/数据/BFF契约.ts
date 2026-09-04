@@ -513,13 +513,13 @@ export interface BFF候选Agent设置 {
   material_submission: BFF材料发送偏好;
   out_of_authority_concession: BFF超授权让步偏好;
   revision: number;
-  updated_at: string;
+  updated_at: string | null;
 }
 
 export interface BFF招聘Agent设置 {
   out_of_authority_concession: BFF超授权让步偏好;
   revision: number;
-  updated_at: string;
+  updated_at: string | null;
 }
 
 export type BFFAgent设置 = BFF候选Agent设置 | BFF招聘Agent设置;
