@@ -181,13 +181,23 @@ const 首载失败 = 是后端 && 当前Owner && 后端状态.接触记录.阶�
 const 错误 = 当前Owner ? 后端状态.接触记录.error : null;
 ```
 
-在说明条之后按顺序渲染 loading `role="status"`、failure `role="alert"` + 重试、成功列表/空态。`权威成功 && error !== null` 时列表仍在并额外显示可重试错误。重试精确调用：
+在说明条之后复用现有空态槽位：loading 与首载 failure 都使用同一个 `样式.空态` 外层和既有 `样式.空态标题` / `样式.空态说明` 子节点，只切换文字与 `role="status"` / `role="alert"`；不得增加新 class 或空态结构。failure 的重试按钮复用同一 CSS module 已有的 `样式.次要键`：
 
 ```tsx
-<button type="button" onClick={() => { void 操作.加载接触记录(true).catch(() => undefined); }}>
-  重试
-</button>
+<div className={样式.空态} role="alert">
+  <div className={样式.空态标题}>接触记录暂时加载不了</div>
+  <div className={样式.空态说明}>{错误}</div>
+  <button
+    type="button"
+    className={`${样式.次要键} 可点`}
+    onClick={() => { void 操作.加载接触记录(true).catch(() => undefined); }}
+  >
+    重试
+  </button>
+</div>
 ```
+
+`权威成功 && error !== null` 时列表仍在；复用页面底部现有 `样式.版本` 说明槽位显示 refresh error 与同款 `样式.次要键` 重试按钮，再保留原有 90 天说明。不得插入新的卡片、横幅或布局容器。测试除文字/动作外，断言 loading/failure 外层 class 仍为现有 `空态`，refresh error 仍位于现有 `版本` 节点。
 
 - [ ] **Step 4: 运行并提交**
 

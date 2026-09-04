@@ -275,32 +275,38 @@ Expected: 请求虽由 ref 单飞，但 textarea/按钮没有可见 pending 状�
 ```tsx
 const [回答提交中, 设回答提交中] = useState(false);
 const 回答在飞 = useRef(false);
-const 回答代际 = useRef(0);
 
+// 保留现有其它 state 后，复用既有 scope 代际和两个 effect：
+const 准备代际 = useRef(0);
+useEffect(() => () => {
+  准备代际.current += 1;
+}, []);
 useEffect(() => {
-  回答代际.current += 1;
+  准备代际.current += 1;
+  设待选择(null);
+  设待披露(null);
+  设待确认终局(null);
+  设回答草稿('');
   回答在飞.current = false;
   设回答提交中(false);
-  设回答草稿('');
-  return () => { 回答代际.current += 1; };
 }, [caseId]);
 
 const 发回答 = () => {
   const 内容 = 回答草稿.trim();
   const 问题 = 视图.补充问题;
   if (内容 === '' || 问题 === null || caseId === '' || 回答在飞.current) return;
-  const 本轮 = 回答代际.current;
+  const 本轮 = 准备代际.current;
   回答在飞.current = true;
   设回答提交中(true);
   操作.回答事实(role, caseId, 问题.promptId, 内容)
     .then(() => {
-      if (回答代际.current === 本轮) 设回答草稿('');
+      if (准备代际.current === 本轮) 设回答草稿('');
     })
     .catch((错误: unknown) => {
-      if (回答代际.current === 本轮) 报错(错误);
+      if (准备代际.current === 本轮) 报错(错误);
     })
     .finally(() => {
-      if (回答代际.current === 本轮) {
+      if (准备代际.current === 本轮) {
         回答在飞.current = false;
         设回答提交中(false);
       }
@@ -313,16 +319,25 @@ const 发回答 = () => {
 ```tsx
 <textarea
   aria-label="回答问题"
+  style={回答框样式}
   value={回答草稿}
   disabled={回答提交中}
   onChange={(事件) => 设回答草稿(事件.target.value)}
 />
-<button type="button" disabled={回答提交中} onClick={发回答}>
-  {回答提交中 ? '提交中…' : '提交回答'}
-</button>
+<div style={键行样式}>
+  <button
+    type="button"
+    className="可点"
+    style={动作主键样式}
+    disabled={回答提交中}
+    onClick={发回答}
+  >
+    {回答提交中 ? '提交中…' : '提交回答'}
+  </button>
+</div>
 ```
 
-新增一条切换 Case 的 deferred 测试：旧请求完成后，新 Case 的草稿与 pending 状态不变。不要复用 `写中`，不要本地重建详情。
+新增一条切换 Case 的 deferred 测试：旧请求完成后，新 Case 的草稿与 pending 状态不变。复用 `准备代际` 只用于 scope 作废，不复用 `写中`，不要本地重建详情；textarea、按钮和既有 `键行` 包裹的 className/style/层级必须逐字保留。
 
 - [ ] **Step 4: 运行并提交**
 

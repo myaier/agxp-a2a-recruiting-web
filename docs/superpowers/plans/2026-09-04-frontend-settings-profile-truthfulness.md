@@ -30,8 +30,8 @@
 - Modify: `src/屏幕/求职意向管理.tsx`
 
 **Interfaces:**
-- Consumes: `数据源模式`、`后端状态.简历快照`、`状态.基本信息.身份`。
-- Produces: `求职状态文案(身份): string`；Backend 行无本地 mutation。
+- Consumes: `数据源模式`、`后端状态.简历快照?.profile.status`。
+- Produces: `求职状态文案(status): string`；Backend 行无本地 mutation，也不读取页面态的默认身份。
 
 - [ ] **Step 1: 创建身份矩阵失败测试**
 
@@ -39,17 +39,17 @@ mock `use应用状态` 和 `use导航`，用同一 harness 覆盖：
 
 ```tsx
 it.each([
-  ['在校', '在校 · 看机会'],
-  ['在职', '在职 · 保密求职中'],
-  ['离职', '离职 · 随时到岗'],
-] as const)('Backend %s 显示 %s', (身份, 文案) => {
-  渲染Backend({ 身份, 已水合: true });
+  ['student', '在校 · 看机会'],
+  ['employed', '在职 · 保密求职中'],
+  ['unemployed', '离职 · 随时到岗'],
+] as const)('Backend wire status %s 显示 %s', (status, 文案) => {
+  渲染Backend({ status });
   expect(screen.getByText(文案)).toBeTruthy();
 });
 
-it('Backend 未水合显示中性值且点击不轮转', async () => {
+it.each([null, ''] as const)('Backend 快照/status 为 %j 时显示中性值且点击不轮转', async (status) => {
   const user = userEvent.setup();
-  渲染Backend({ 身份: '在职', 已水合: false });
+  渲染Backend({ status, 页面身份: '在职' });
   const 行 = screen.getByText('求职状态').closest('button');
   expect(screen.getByText('—')).toBeTruthy();
   if (行) await user.click(行);
@@ -70,12 +70,14 @@ Expected: 当前 Backend 固定本地第一档且可点击，身份矩阵 FAIL�
 - [ ] **Step 3: 实现模式分支**
 
 ```ts
-export function 求职状态文案(身份: '在校' | '在职' | '离职'): string {
+type 已填写求职状态 = Exclude<BFF简历资料['status'], ''>;
+
+export function 求职状态文案(status: 已填写求职状态): string {
   return {
-    在校: '在校 · 看机会',
-    在职: '在职 · 保密求职中',
-    离职: '离职 · 随时到岗',
-  }[身份];
+    student: '在校 · 看机会',
+    employed: '在职 · 保密求职中',
+    unemployed: '离职 · 随时到岗',
+  }[status];
 }
 ```
 
@@ -84,8 +86,9 @@ export function 求职状态文案(身份: '在校' | '在职' | '离职'): stri
 ```tsx
 const { 状态, 数据源模式, 后端状态 } = use应用状态();
 const 是后端 = 数据源模式 === 'backend';
+const wire状态 = 后端状态.简历快照?.profile.status ?? '';
 const 状态值 = 是后端
-  ? 后端状态.简历快照 === null ? '—' : 求职状态文案(状态.基本信息.身份)
+  ? wire状态 === '' ? '—' : 求职状态文案(wire状态)
   : 求职状态档位[求职状态下标];
 
 <设置行
@@ -132,7 +135,7 @@ it('Backend 初始即为可提交产品分类且不出现举报', async () => {
   expect(screen.getByRole('button', { name: '功能异常' })).toBeTruthy();
   expect(screen.queryByText('举报虚假岗位')).toBeNull();
   expect(screen.queryByText('举报骚扰行为')).toBeNull();
-  expect(screen.getByText(举报入口指引)).toBeTruthy();
+  expect(screen.getByText('举报要从具体的岗位、谈判或真人会话里发起；这里只收集产品反馈。')).toBeTruthy();
   await userEvent.type(screen.getByRole('textbox'), '页面无法打开');
   await userEvent.click(screen.getByRole('button', { name: '提交' }));
   expect(mock提交P8反馈).toHaveBeenCalledWith('bug', '页面无法打开');
@@ -174,7 +177,9 @@ const 有效分类 = 可见分类.some((项) =>
   : (typeof 可见分类[0] === 'string' ? 可见分类[0] : 可见分类[0].名称);
 ```
 
-类别按钮、placeholder、可提交条件和 payload 全部读取 `有效分类`；点击类别才更新 `已选分类`。Backend 提交只能从 `Backend反馈分类.find` 取得 wire；找不到时直接不提交并显示持久说明，不能透传 `undefined`。说明精确为“举报需从具体岗位、谈判或真人会话发起”。
+类别按钮、placeholder、可提交条件和 payload 全部读取 `有效分类`；点击类别才更新 `已选分类`。Backend 提交只能从 `Backend反馈分类.find` 取得 wire；找不到时直接不提交，不能透传 `undefined`。
+
+持久指引沿用现有常量字面量“举报要从具体的岗位、谈判或真人会话里发起；这里只收集产品反馈。”，并复用表单底部既有 `样式.版本` 说明块：Backend 用该句替换当前两行原型说明，Mock 原文保持。不得新增说明节点、class 或布局槽位。测试直接断言上述字面量，不以导入同一常量的方式自证。
 
 设置和企业设置入口按模式显示：
 
