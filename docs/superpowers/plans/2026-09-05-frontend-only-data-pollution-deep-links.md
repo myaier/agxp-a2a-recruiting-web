@@ -363,7 +363,7 @@ git add src/流程/候选Onboarding简历预填.ts src/流程/候选Onboarding�
 git commit -m "fix: isolate mock resume summary from backend"
 ```
 
-### Task 5A: 保留空身份并只在 profile 真变化时拦写（P1 / M）
+### Task 5A: 保留空身份并隔离未提交 profile（P1 / M）
 
 **Files:**
 - Modify: `src/数据/类型.ts:453-469`
@@ -374,18 +374,22 @@ git commit -m "fix: isolate mock resume summary from backend"
 - Modify: `src/状态/初始状态.ts:254-287`
 - Modify: `src/状态/后端/会话操作.ts:26-54`
 - Modify: `src/状态/后端/会话操作.test.ts`
+- Modify: `src/状态/后端/候选操作.ts:172-205`
+- Modify: `src/状态/后端/候选操作.test.ts`
 - Modify: `src/屏幕/基本信息.tsx:50-95,160-190`
 - Modify: `src/屏幕/基本信息.test.tsx`
 - Create: `src/屏幕/求职状态.test.tsx`
 - Modify: `src/屏幕/求职状态.tsx:39-80`
 - Modify: `src/屏幕/工作经历.test.tsx`
+- Modify: `src/屏幕/个人信息.tsx:100-135`
+- Modify: `src/屏幕/个人信息.test.tsx`
 - Modify: `src/屏幕/我的简历.tsx:35-72,365-400`
 - Modify: `src/屏幕/我的简历.test.tsx`
 
 **Interfaces:**
 - Produces: `export type 候选身份 = '' | '在校' | '在职' | '离职'`。
 - Consumes: BFF read status `'' | student | employed | unemployed`；BFF `ProfileWrite.status` 仍只允许非空三态。
-- Write boundary: `保存简历` 先比较页面 profile；profile 未变化时不调用会拒绝空身份的 mapper，技能/经历等独立分区仍可写。非学生在 `/basic` 且身份仍为 `''` 时只更新 Context 草稿；`/onboard/status` 得到明确选择后一次性保存 profile。
+- Write boundary: 身份为空时，数据源不构造 profile PATCH，但 summary/skills/experiences/educations/certificates 仍独立 diff；真正修改 profile 的页面先显式引导到 `/onboard/status`。非学生在 `/basic` 且身份仍为 `''` 时只更新 Context 草稿；状态页得到明确选择后一次性保存 profile。
 
 - [ ] **Step 1: 写映射和分区写入失败测试**
 
@@ -403,7 +407,7 @@ try {
 在 `招聘数据源/简历.test.ts` 增加三组：
 
 1. previous/next 的 `基本信息.身份` 均为 `''` 且 profile 其余字段相同、只改技能：不抛错、不发 profile PATCH，只发 skills PATCH；
-2. 身份仍为 `''` 但姓名变化：在任何 mutation 前抛 `客户端校验错误`；
+2. previous 为空 profile，next 仍空身份但带 `/basic` 本地姓名/生日，同时改技能或经历：跳过 profile，非 profile mutation 照常发送；operation 水合服务端回执后重新落回这份本地 profile 草稿；
 3. previous status 为 `''`、next 身份为“离职”：发一次 profile PATCH，body status 为 `unemployed`。
 
 - [ ] **Step 2: 写页面边界失败测试**
@@ -412,12 +416,12 @@ Backend 非学生、`身份:''` 在 `/basic` 修改姓名后点下一步：派�
 
 新建 `求职状态.test.tsx`：未选时点下一步不保存、不确认、不导航；选择“离职 · 随时到岗”写 `身份:'离职'`，选择“在职 · 考虑机会”写 `身份:'在职'`。从空身份进入时，只有保存成功后才确认 `basic`；保存失败不确认、不派发到岗、不导航。
 
-在 `工作经历.test.tsx` 增加空身份但 profile 未变化的完整经历保存用例，断言页面仍把非 profile 修改交给 `操作.保存简历`，没有自行改成“在职”。在 `我的简历.test.tsx` 钉住空身份显示“未填写”且完整度包含“当前状态”。
+在 `候选操作.test.ts` 让后端返回不含本地姓名的权威快照，断言操作先派发 `水合后端简历`，再派发一次 `存简历`：基本信息取 next 的空身份草稿，其余简历切片取回执，避免成功写技能后清掉待提交姓名。在 `工作经历.test.tsx` 增加“空身份 + `/basic` 本地姓名草稿”的完整经历保存用例，断言页面仍把非 profile 修改交给 `操作.保存简历`，没有自行改成“在职”。在 `我的简历.test.tsx` 钉住空身份显示“未填写”且完整度包含“当前状态”；尝试改名时提示“请先选择求职状态”并跳 `路径.求职状态`，零保存。`个人信息.test.tsx` 对姓名保存增加同一空身份门，联系方式的现有独立保存不受影响。
 
 - [ ] **Step 3: 运行测试确认 red**
 
 ```bash
-npx vitest run src/数据/后端映射.test.ts src/数据/招聘数据源/简历.test.ts src/状态/后端/会话操作.test.ts src/屏幕/基本信息.test.tsx src/屏幕/求职状态.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/我的简历.test.tsx
+npx vitest run src/数据/后端映射.test.ts src/数据/招聘数据源/简历.test.ts src/状态/后端/会话操作.test.ts src/状态/后端/候选操作.test.ts src/屏幕/基本信息.test.tsx src/屏幕/求职状态.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/个人信息.test.tsx src/屏幕/我的简历.test.tsx
 ```
 
 - [ ] **Step 4: 扩展页面身份类型和 Backend 空种子**
@@ -441,12 +445,13 @@ if (基本.身份 === '') {
 
 `初始状态.ts` 的 Backend 种子和 `会话操作.ts` 的 `空简历快照` 都改为 `{ 真名:'', 开始工作年:'', 身份:'' }`；Mock 种子保持“在职”。
 
-- [ ] **Step 5: 只在 profile 真变化时调用写 mapper**
+- [ ] **Step 5: 空身份时跳过 profile 分区**
 
-将 `招聘数据源/简历.ts` 的 profile 分区改为先比较页面模型，再构造 body：
+将 `招聘数据源/简历.ts` 的 profile 分区改为先检查非空身份，再比较页面模型和构造 body：
 
 ```ts
-if (JSON.stringify(next.基本信息) !== JSON.stringify(旧页面.基本信息)) {
+if (next.基本信息.身份 !== ''
+  && JSON.stringify(next.基本信息) !== JSON.stringify(旧页面.基本信息)) {
   const body = 转资料写入(next.基本信息);
   写入步骤们.push(() => 请求<BFF简历>({
     path: '/api/v1/me/resume/profile', method: 'PATCH', body,
@@ -455,7 +460,9 @@ if (JSON.stringify(next.基本信息) !== JSON.stringify(旧页面.基本信息)
 }
 ```
 
-profile 相同时完全不调用 `转资料写入`，所以空身份不会阻断 summary/skills/experiences/educations/certificates；profile 有变化时仍在构造第一个 mutation 前拒绝空身份。
+身份为空时完全不调用 `转资料写入`，即使 Context 中已有 `/basic` 未提交的姓名/生日草稿，也不会阻断其它五个分区；身份非空且 profile 有变化时才 PATCH。`转资料写入` 本身继续拒绝空身份，防止其它调用方直接铸出非法 wire body。
+
+`候选操作.ts` 的 `保存简历` 收到成功快照后仍先派发 `水合后端简历`；若 `next.基本信息.身份 === ''`，紧接着派发 `存简历`，其中 `基本信息` 取 `next.基本信息`，经历/教育/技能/证书取成功快照，保住尚未提交的 profile 草稿而不把服务端未接受的值伪装成权威。`后端状态.简历快照` 仍只保存服务端快照。
 
 - [ ] **Step 6: `/basic` 延迟空身份 profile，并在状态页收口**
 
@@ -467,12 +474,14 @@ profile 相同时完全不调用 `转资料写入`，所以空身份不会阻断
 
 在 `我的简历.tsx` 的 `状态文案` 增加 `'' : '未填写'`，完整度必填项把空身份计为“当前状态”未填写；不把空状态算成在职。`我的.tsx` 已以服务端 raw status 显示“未填写求职状态”，保持不变。
 
+`我的简历.tsx` 的 `保存姓名` 和 `个人信息.tsx` 的姓名保存入口在身份为空时先 `轻提示('请先选择求职状态')`、`跳转(路径.求职状态)` 并 return，不调用 `操作.保存简历`。这两个入口不得靠数据源“跳过 profile”假装保存成功；联系方式继续走自己的 operation，不加状态门。
+
 - [ ] **Step 8: 运行目标测试并提交**
 
 ```bash
 npm run typecheck
-npx vitest run src/数据/后端映射.test.ts src/数据/招聘数据源/简历.test.ts src/状态/后端/会话操作.test.ts src/屏幕/基本信息.test.tsx src/屏幕/求职状态.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/我的简历.test.tsx
-git add src/数据/类型.ts src/数据/后端映射.ts src/数据/后端映射.test.ts src/数据/招聘数据源/简历.ts src/数据/招聘数据源/简历.test.ts src/状态/初始状态.ts src/状态/后端/会话操作.ts src/状态/后端/会话操作.test.ts src/屏幕/基本信息.tsx src/屏幕/基本信息.test.tsx src/屏幕/求职状态.tsx src/屏幕/求职状态.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/我的简历.tsx src/屏幕/我的简历.test.tsx
+npx vitest run src/数据/后端映射.test.ts src/数据/招聘数据源/简历.test.ts src/状态/后端/会话操作.test.ts src/状态/后端/候选操作.test.ts src/屏幕/基本信息.test.tsx src/屏幕/求职状态.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/个人信息.test.tsx src/屏幕/我的简历.test.tsx
+git add src/数据/类型.ts src/数据/后端映射.ts src/数据/后端映射.test.ts src/数据/招聘数据源/简历.ts src/数据/招聘数据源/简历.test.ts src/状态/初始状态.ts src/状态/后端/会话操作.ts src/状态/后端/会话操作.test.ts src/状态/后端/候选操作.ts src/状态/后端/候选操作.test.ts src/屏幕/基本信息.tsx src/屏幕/基本信息.test.tsx src/屏幕/求职状态.tsx src/屏幕/求职状态.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/个人信息.tsx src/屏幕/个人信息.test.tsx src/屏幕/我的简历.tsx src/屏幕/我的简历.test.tsx
 git commit -m "fix: preserve unset candidate status"
 ```
 
@@ -784,6 +793,8 @@ npx vitest run \
   src/屏幕/引导问答.test.tsx \
   src/屏幕/基本信息.test.tsx \
   src/屏幕/求职状态.test.tsx \
+  src/屏幕/工作经历.test.tsx \
+  src/屏幕/个人信息.test.tsx \
   src/屏幕/最高学历.test.tsx \
   src/屏幕/就读时间段.test.tsx \
   src/屏幕/学生分流.test.tsx \
@@ -795,6 +806,7 @@ npx vitest run \
   src/流程/候选Onboarding简历预填.test.ts \
   src/流程/onboarding配置.test.ts \
   src/状态/后端/会话操作.test.ts \
+  src/状态/后端/候选操作.test.ts \
   src/状态/应用状态.test.ts \
   src/屏幕/我的简历.test.tsx \
   src/应用.test.tsx
@@ -841,9 +853,9 @@ test_delta:
   impact_keys: []
   fixture_key: none
   resource_class: none
-  expected_duration_delta_seconds: 10，预计不越过单 suite 60 秒目标。
-  authoritative_suite: 各页面现有 Vitest 文件；新增 src/屏幕/求职状态.test.tsx 只拥有求职状态显式选择责任。
-  duplicate_coverage: src/应用.test.tsx 只拥有 route registration；各页面测试拥有资源和写入边界，二者不重复。
+  expected_duration_delta_seconds: 300（主要来自完整数据源模式 Playwright；实施后记录实测）。
+  authoritative_suite: e2e/数据源模式.spec.ts 拥有 Backend canonical 深链的真实浏览器旅程；各页面 Vitest 拥有组件、资源与零 mutation 边界；新增 src/屏幕/求职状态.test.tsx 只拥有求职状态显式选择责任。
+  duplicate_coverage: src/应用.test.tsx 只拥有 route registration；页面 Vitest 证明参数与动作边界；数据源模式 E2E 只证明列表进入、刷新/直达与最终 URL，三层责任不重复。
   timing_receipts: []
 ```
 
