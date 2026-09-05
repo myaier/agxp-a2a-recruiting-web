@@ -69,7 +69,7 @@ beforeEach(() => {
 
 describe('求职状态 · 显式选择（M）', () => {
   it('未选时点下一步：只提示，不保存、不派发到岗、不导航', async () => {
-    const { } = 渲染({ 身份: '' });
+    渲染({ 身份: '' });
     const 用户 = userEvent.setup();
     // 所有档位 aria-pressed = false
     for (const 键 of ['离职 · 随时到岗', '在职 · 月内到岗', '在职 · 考虑机会', '在职 · 暂不考虑']) {

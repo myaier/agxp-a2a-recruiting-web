@@ -95,7 +95,7 @@ const 完整预填 = {
 function render学生分流(选项: {
   数据源: 'backend' | 'mock';
   引导预填?: unknown;
-  基本信息?: { 身份: '在校' | '在职' };
+  基本信息?: { 身份: '在校' | '在职' | '' };
   附件库?: { items: BFF附件简历[]; limits: typeof limits } | null;
   候选预填?: 候选预填状态;
 }) {
@@ -130,6 +130,7 @@ function render学生分流(选项: {
   );
   return {
     派发,
+    视图,
     /** 直改 mock应用状态.后端状态 后强制重渲染（模拟操作层提交新快照后的渲染） */
     重渲染: () =>
       视图.rerender(
@@ -165,16 +166,18 @@ describe('学生分流 Backend onboarding（R2-I-1）', () => {
     expect(screen.getByText('选择工作城市')).toBeTruthy();
   });
 
-  it('Backend 引导预填=null 时下一步按钮禁用，不派发启程引导', async () => {
+  it('Backend 引导预填=null 时点下一步给出提示，不派发启程引导', async () => {
     const { 派发 } = render学生分流({ 数据源: 'backend' });
     const 用户 = userEvent.setup();
     const 下一步 = screen.getByRole('button', { name: '下一步' });
-    expect(禁用(下一步)).toBe(true);
+    // Task 5B：主按钮不再置灰，缺失改为按序可见提示（默认在职种子 → 偏好层提示）
+    expect(禁用(下一步)).toBe(false);
     await 用户.click(下一步);
-    expect(派发).not.toHaveBeenCalled();
+    expect(mock轻提示).toHaveBeenCalledWith('请补充：求职类型、办公方式');
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '启程引导' }));
   });
 
-  it('Backend 选了职位但没选城市时下一步仍禁用（城市引用们为空）', () => {
+  it('Backend 选了职位但没选城市时下一步提示城市缺失（城市引用们为空）', async () => {
     const { 派发 } = render学生分流({
       数据源: 'backend',
       引导预填: {
@@ -186,8 +189,10 @@ describe('学生分流 Backend onboarding（R2-I-1）', () => {
       },
     });
     const 下一步 = screen.getByRole('button', { name: '下一步' });
-    expect(禁用(下一步)).toBe(true);
-    expect(派发).not.toHaveBeenCalled();
+    expect(禁用(下一步)).toBe(false);
+    await userEvent.click(下一步);
+    expect(mock轻提示).toHaveBeenCalledWith('请先选择工作城市与期望职位');
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '启程引导' }));
   });
 
   it('Backend 城市与职位引用齐备时下一步可点且派发携带引用的启程引导', async () => {
@@ -682,5 +687,106 @@ describe('学生分流 候选 onboarding 简历预填（Spec §7 上传页接线
     expect(mock操作.继续手填候选Onboarding).not.toHaveBeenCalled();
     expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
     expect(mock操作.清候选Onboarding预填).not.toHaveBeenCalled();
+  });
+});
+// ── 首屏默认（Task 5B）：Backend 空 profile + 引导预填:null —— 身份/类型/办公方式
+//    全部未选择；草稿动作自带基底（无 ['上海'] 兜底）；下一步依次给出可见提示 ──
+describe('学生分流 · 首屏零默认（Task 5B）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('Backend 空 profile + 无预填：身份/求职类型/办公方式按钮全为未选', () => {
+    render学生分流({ 数据源: 'backend', 基本信息: { 身份: '' } });
+    expect(screen.getByRole('button', { name: '在校' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: '已毕业' }).getAttribute('aria-pressed')).toBe('false');
+    for (const 类型 of ['社招全职', '校园招聘', '实习生', '兼职']) {
+      expect(screen.getByRole('button', { name: 类型 }).getAttribute('aria-pressed')).toBe('false');
+    }
+    for (const 方式 of ['现场', '混合', '全远程']) {
+      expect(screen.getByRole('button', { name: 方式 }).getAttribute('aria-pressed')).toBe('false');
+    }
+  });
+
+  it('先点偏好尚未点身份：派发动作的城市基底为空数组，不出现上海', async () => {
+    const { 派发 } = render学生分流({ 数据源: 'backend', 基本信息: { 身份: '' } });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '社招全职' }));
+    const 存偏好 = 派发.mock.calls.find(([动作]) => (动作 as { 型: string }).型 === '存求职筛选偏好');
+    expect(存偏好).toBeTruthy();
+    expect((存偏好![0] as { 城市们: string[] }).城市们).toEqual([]);
+    // 状态与 sessionStorage 都不能出现「上海」——页面桩不写存储，这里以派发基底为准
+    expect(JSON.stringify(派发.mock.calls)).not.toContain('上海');
+  });
+
+  it('点下一步依次提示身份、求职类型、办公方式缺失，且不派发启程引导', async () => {
+    // 第 1 层：空状态 → 提示身份（派发 mock 不回写状态，各层用前置状态分开验证）
+    const 用户 = userEvent.setup();
+    const 首层 = render学生分流({ 数据源: 'backend', 基本信息: { 身份: '' } });
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请选择是否在校');
+    expect(首层.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '启程引导' }));
+    首层.视图.unmount();
+
+    // 第 2 层：身份已选（在校选择:false）、偏好为空 → 提示求职类型（与办公方式同批）
+    mock轻提示.mockClear();
+    const 二层 = render学生分流({
+      数据源: 'backend',
+      基本信息: { 身份: '' },
+      引导预填: { 城市们: [], 职位: [], 在校选择: false },
+    });
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请补充：求职类型、办公方式');
+
+    // 第 3 层：类型已选、办公方式为空 → 提示办公方式
+    二层.视图.unmount();
+    mock轻提示.mockClear();
+    const 三层 = render学生分流({
+      数据源: 'backend',
+      基本信息: { 身份: '' },
+      引导预填: { 城市们: [], 职位: [], 在校选择: false, 筛选偏好: { 求职类型: ['社招全职'], 办公方式: [] } },
+    });
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请补充：办公方式');
+
+    // 第 4 层：偏好齐但无城市/职位引用 → 提示城市/职位（Backend 无 refs）
+    三层.视图.unmount();
+    mock轻提示.mockClear();
+    const 末层 = render学生分流({
+      数据源: 'backend',
+      基本信息: { 身份: '' },
+      引导预填: { 城市们: [], 职位: [], 在校选择: false, 筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] } },
+    });
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请先选择工作城市与期望职位');
+    expect(末层.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '启程引导' }));
+  });
+
+  it('选择「在校」写身份在校；选择「已毕业」从在校回到空身份', async () => {
+    const { 派发 } = render学生分流({ 数据源: 'backend', 基本信息: { 身份: '' } });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '在校' }));
+    const 存在校 = 派发.mock.calls.find(([动作]) => (动作 as { 型: string }).型 === '存简历');
+    expect((存在校![0] as { 基本信息: { 身份: string } }).基本信息.身份).toBe('在校');
+    const 存选择 = 派发.mock.calls.find(([动作]) => (动作 as { 型: string }).型 === '存求职筛选偏好');
+    expect((存选择![0] as { 在校选择?: boolean }).在校选择).toBe(true);
+  });
+
+  // Mock 对照：初始筛选与城市仍用默认；先点偏好再点身份不丢 Mock 城市
+  it('Mock 对照：默认偏好与上海城市保留，先点偏好再点身份不丢城市', async () => {
+    const { 派发 } = render学生分流({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    // 默认偏好（在职种子 → 社招全职）与默认城市已选
+    expect(screen.getByRole('button', { name: '社招全职' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('上海')).toBeTruthy();
+    // 先改偏好（兼职），再点身份「在校」：派发基底仍带上海
+    await 用户.click(screen.getByRole('button', { name: '兼职' }));
+    await 用户.click(screen.getByRole('button', { name: '在校' }));
+    const 存选择 = 派发.mock.calls.filter(([动作]) => (动作 as { 型: string }).型 === '存求职筛选偏好');
+    const 最后 = 存选择[存选择.length - 1][0] as { 城市们: string[]; 偏好: { 求职类型: string[] } };
+    expect(最后.城市们).toEqual(['上海']);
+    expect(最后.偏好.求职类型).toEqual(['实习生']);
   });
 });

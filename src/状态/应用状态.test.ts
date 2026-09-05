@@ -422,6 +422,34 @@ describe('应用状态 reducer', () => {
     expect(全部写入).not.toContain('当前企业关系编号');
     expect(全部写入).not.toContain('aff_local');
   });
+
+  // ── 首屏默认（Task 5B）：三个草稿动作自带基底，reducer 不再兜底 ['上海'] ──
+  it('引导预填:null 时派发三类草稿动作带空基底，城市保持空数组', () => {
+    const 空基底 = { 城市们: [], 职位: [], 城市引用们: [], 职位引用们: [] };
+    const 存偏好 = 归约(初始状态, {
+      型: '存求职筛选偏好', 偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] }, ...空基底,
+    });
+    expect(存偏好.引导预填?.城市们).toEqual([]);
+    const 存薪资 = 归约(初始状态, {
+      型: '存薪资预填', 下限: 20, 上限: 30, 单位: '月薪K', ...空基底,
+    });
+    expect(存薪资.引导预填?.城市们).toEqual([]);
+    const 存到岗 = 归约(初始状态, { 型: '存到岗预填', 到岗: '在职 · 考虑机会', ...空基底 });
+    expect(存到岗.引导预填?.城市们).toEqual([]);
+  });
+
+  it('动作携带 Mock 当前城市时结果保留，且 在校选择 只在显式传入时写', () => {
+    const 上海基底 = { 城市们: ['上海'], 职位: [], 城市引用们: [], 职位引用们: [] };
+    const 存偏好 = 归约(初始状态, {
+      型: '存求职筛选偏好', 偏好: { 求职类型: ['实习生'], 办公方式: [] }, ...上海基底,
+    });
+    expect(存偏好.引导预填?.城市们).toEqual(['上海']);
+    expect(存偏好.引导预填).not.toHaveProperty('在校选择');
+    const 存身份 = 归约(存偏好, {
+      型: '存求职筛选偏好', 偏好: { 求职类型: [], 办公方式: [] }, 在校选择: true, ...上海基底,
+    });
+    expect(存身份.引导预填?.在校选择).toBe(true);
+  });
 });
 
 // ── Provider 会话 / 角色水合 / 401 ───────────────────────────────
@@ -2906,7 +2934,7 @@ describe('应用状态提供者 候选引导草稿持久化', () => {
     // 空存储：没有任何恢复，也没有键被创建
     expect(当前.状态.引导预填).toBe(null);
     expect(globalThis.sessionStorage.getItem(键('sub_1'))).toBe(null);
-    当前.派发({ 型: '存薪资预填', 下限: 30, 上限: 40, 单位: '月薪K' });
+    当前.派发({ 型: '存薪资预填', 下限: 30, 上限: 40, 单位: '月薪K', 城市们: [], 职位: [], 城市引用们: [], 职位引用们: [] });
     await waitFor(() => expect(当前.状态.引导预填?.薪资).toEqual({ 下限: 30, 上限: 40, 单位: '月薪K' }));
     await waitFor(() => expect(globalThis.sessionStorage.getItem(键('sub_1'))).toContain('"下限":30'));
     unmount();
@@ -3029,7 +3057,7 @@ describe('应用状态提供者 候选引导草稿持久化', () => {
     const 后端源 = 后端 as unknown as HTTP招聘数据源;
     render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
     await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
-    当前.派发({ 型: '存薪资预填', 下限: 30, 上限: 40, 单位: '月薪K' });
+    当前.派发({ 型: '存薪资预填', 下限: 30, 上限: 40, 单位: '月薪K', 城市们: [], 职位: [], 城市引用们: [], 职位引用们: [] });
     await waitFor(() => expect(globalThis.sessionStorage.getItem(键('sub_1'))).toContain('"下限":30'));
     // 保存首次意向成功的权威落点：水合后端意向（快照含唯一 active 意向）
     当前.派发({
@@ -3067,7 +3095,7 @@ describe('应用状态提供者 候选引导草稿持久化', () => {
     const 后端源 = 后端 as unknown as HTTP招聘数据源;
     render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
     await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
-    当前.派发({ 型: '存薪资预填', 下限: 30, 上限: 40, 单位: '月薪K' });
+    当前.派发({ 型: '存薪资预填', 下限: 30, 上限: 40, 单位: '月薪K', 城市们: [], 职位: [], 城市引用们: [], 职位引用们: [] });
     await waitFor(() => expect(globalThis.sessionStorage.getItem(键('sub_1'))).toContain('"下限":30'));
     const 活跃快照 = { 列表: [{ 编号: 'int_1', 标题: '[上海] 后端工程师', 说明: '30-40K' }], 服务端: { int_1: BFF意向样本 } };
     当前.派发({ 型: '水合后端意向', 快照: 活跃快照 });
@@ -3077,7 +3105,7 @@ describe('应用状态提供者 候选引导草稿持久化', () => {
     await waitFor(() => expect(当前.状态.引导预填).toBe(null));
     expect(globalThis.sessionStorage.getItem(键('sub_1'))).toBe(null);
     // 重新起草（新意向流程）不受影响：新答案照常落草稿
-    当前.派发({ 型: '存薪资预填', 下限: 50, 上限: 60, 单位: '月薪K' });
+    当前.派发({ 型: '存薪资预填', 下限: 50, 上限: 60, 单位: '月薪K', 城市们: [], 职位: [], 城市引用们: [], 职位引用们: [] });
     await waitFor(() => expect(globalThis.sessionStorage.getItem(键('sub_1'))).toContain('"下限":50'));
   });
 

@@ -219,6 +219,8 @@ export interface 候选引导草稿快照 {
   筛选偏好?: 求职初筛偏好;
   薪资?: { 下限: number; 上限: number; 单位?: '月薪K' | '元/天' };
   到岗?: string;
+  /** 首屏默认（Task 5B）：学生分流「是否在校」的显式选择；缺省 = 未选择 */
+  在校选择?: boolean;
 }
 
 export const 候选引导草稿分类 = '候选引导草稿v1';
@@ -226,7 +228,7 @@ export const 候选引导草稿分类 = '候选引导草稿v1';
 /** 候选 onboarding 草稿的 sessionStorage 键：与 账号存储键 同口径（模式 + 环境 + 账号）。 */
 export const 候选引导草稿键 = (范围: 资料缓存范围): string => 账号存储键(候选引导草稿分类, 范围);
 
-const 候选草稿根键们: readonly string[] = ['城市们', '职位', '城市引用们', '职位引用们', '筛选偏好', '薪资', '到岗'];
+const 候选草稿根键们: readonly string[] = ['城市们', '职位', '城市引用们', '职位引用们', '筛选偏好', '薪资', '到岗', '在校选择'];
 const 筛选偏好键们: readonly string[] = ['求职类型', '办公方式', '毕业时间', '实习月数', '每周到岗天数'];
 const 求职类型们: readonly 求职类型[] = ['社招全职', '校园招聘', '实习生', '兼职'];
 const 办公方式们: readonly 办公偏好[] = ['现场', '混合', '全远程'];
@@ -299,6 +301,7 @@ function 是候选引导草稿快照(值: unknown): 值 is 候选引导草稿快
   if (候选.筛选偏好 !== undefined && !是草稿筛选偏好(候选.筛选偏好)) return false;
   if (候选.薪资 !== undefined && !是草稿薪资(候选.薪资)) return false;
   if (候选.到岗 !== undefined && typeof 候选.到岗 !== 'string') return false;
+  if (候选.在校选择 !== undefined && typeof 候选.在校选择 !== 'boolean') return false;
   return true;
 }
 
@@ -363,6 +366,7 @@ export function 写候选引导草稿(存储: 资料缓存存储 | null, 范围:
     快照.薪资 = 薪资;
   }
   if (草稿.到岗 !== undefined) 快照.到岗 = 草稿.到岗;
+  if (草稿.在校选择 !== undefined) 快照.在校选择 = 草稿.在校选择;
   try {
     存储.setItem(候选引导草稿键(范围), JSON.stringify(快照));
     return true;

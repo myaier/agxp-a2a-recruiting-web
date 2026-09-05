@@ -233,3 +233,35 @@ describe('候选引导草稿 sessionStorage 编解码', () => {
     expect(存储.getItem(候选引导草稿键(范围A))).toBe(null);
   });
 });
+
+// ── 首屏默认（Task 5B）：可选 在校选择 的严格编解码 ──
+describe('候选引导草稿 在校选择 编解码（Task 5B）', () => {
+  const 范围 = { 模式: 'backend' as const, 环境: 'stg' as const, 账号: 'sub_A' };
+
+  it('在校选择 true/false round-trip；缺省不落键', () => {
+    const 存储 = 内存存储();
+    写候选引导草稿(存储, 范围, { 城市们: [], 职位: [], 在校选择: true });
+    expect(读候选引导草稿(存储, 范围)?.在校选择).toBe(true);
+    写候选引导草稿(存储, 范围, { 城市们: [], 职位: [], 在校选择: false });
+    expect(读候选引导草稿(存储, 范围)?.在校选择).toBe(false);
+    写候选引导草稿(存储, 范围, { 城市们: [], 职位: [] });
+    expect(读候选引导草稿(存储, 范围)).not.toHaveProperty('在校选择');
+  });
+
+  it('非 boolean 的 在校选择 整条拒绝并删除', () => {
+    const 存储 = 内存存储();
+    存储.setItem(候选引导草稿键(范围), JSON.stringify({ 城市们: [], 职位: [], 在校选择: 'yes' }));
+    expect(读候选引导草稿(存储, 范围)).toBe(null);
+    expect(存储.getItem(候选引导草稿键(范围))).toBe(null);
+  });
+
+  it('旧 v1 记录无该键仍可读', () => {
+    const 存储 = 内存存储();
+    存储.setItem(候选引导草稿键(范围), JSON.stringify({
+      城市们: ['上海'], 职位: ['后端工程师'], 到岗: '在职 · 考虑机会',
+    }));
+    const 读出 = 读候选引导草稿(存储, 范围);
+    expect(读出?.城市们).toEqual(['上海']);
+    expect(读出).not.toHaveProperty('在校选择');
+  });
+});

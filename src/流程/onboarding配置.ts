@@ -220,6 +220,12 @@ export function 默认求职初筛偏好(是学生: boolean): 求职初筛偏好
     : { 求职类型: ['社招全职'], 办公方式: ['现场', '混合', '全远程'] };
 }
 
+/** 首屏默认（Task 5B）：Backend 初次进入的空偏好 —— 不虚构类型/办公方式/实习参数，
+ *  用户明确选择后才进入草稿。Mock 演示仍用 默认求职初筛偏好。 */
+export function 空求职初筛偏好(): 求职初筛偏好 {
+  return { 求职类型: [], 办公方式: [] };
+}
+
 export function 求职初筛缺失项(偏好: 求职初筛偏好, 基准: Date | string = new Date()): string[] {
   const 缺失: string[] = [];
   if (偏好.求职类型.length === 0) 缺失.push('求职类型');
