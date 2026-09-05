@@ -18,7 +18,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 JOURNEY='hosted-agent'
 MILESTONE='启动'
-RULE_TEXT='优先考虑支持混合办公并且周末双休的岗位'
+# 硬约束表达（与输入框 placeholder 例文同款语义）：真实 Agent 必须把它解释成
+# executable 规则才能被「确认规则」沉淀为 active rule —— advisory（偏好排序）或
+# unsupported 的 ready 提案按公开合同只能放弃，accept 会 409 not_actionable。
+RULE_TEXT='不接受大小周的岗位，直接过滤不要推荐'
 RESUME_NAME='浏览器验收临时简历.pdf'
 TEMP_PDF_DIR="$(dirname "$PRIVATE_JOURNAL")"
 

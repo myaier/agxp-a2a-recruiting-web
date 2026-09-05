@@ -67,7 +67,7 @@ FRAGMENT_WRITTEN=0
 JOURNEY_BLOCKED=0
 JOURNEY_BLOCKED_REASON=''
 
-RULE_TEXT='优先考虑支持混合办公并且周末双休的岗位'
+RULE_TEXT='不接受大小周的岗位，直接过滤不要推荐'
 RESUME_NAME='浏览器验收临时简历.pdf'
 CASE_URL='http://localhost:5173/#/deal/mc_fake'
 
