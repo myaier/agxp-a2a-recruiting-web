@@ -442,6 +442,8 @@ Hosted wrapper 只在上一轮 cleanup PASS 后开始下一轮。`happy-2` 本�
 
 ### 12.5 门与真实 E2E
 
+真实门复用拥有 Recruitment `.local-dev`、且与持久 Docker volume 配对的后端 checkout；一次性 detached worktree 会丢失这份状态真相，因此禁止用于本验收。开始前只读确认该 checkout 的 HEAD 等于文档冻结 SHA，且 `apps/recruitment`、`apps/recruitment-bff` 没有 tracked 修改；不满足就以 dependency drift 停止，不在验收流程中 checkout、rebase、reset、clean、复制 `.local-dev` 或重置 volume。后端基线变更后必须先重新审查并冻结精确 SHA。
+
 前端定向和 broad gate：
 
 ```sh

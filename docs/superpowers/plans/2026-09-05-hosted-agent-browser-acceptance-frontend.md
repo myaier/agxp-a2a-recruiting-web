@@ -234,7 +234,7 @@ assert_missing 'cleanup 后无二次 converge/verify' 'fixture converge --scene 
 
 增加 receipt drift 表格：wrong schema、contract version、run、scene、phase、extra key、missing key、mode 0644、symlink；每例零 browser journey，有 receipt 时使用同 ledger cleanup。
 
-再把既有 SIGINT case 拆成两条，证明重写的 `on_exit` 不会漏掉 lease cleanup：
+保留既有 SIGINT case 的会话、Vite 与栈 ownership 断言，并扩展成两条，证明重写的 `on_exit` 既不会漏掉 lease cleanup，也不会回归原收尾边界：
 
 ```bash
 testcase 'SIGINT + cleanup PASS：同一 ledger 只清一次，receipt 由后端退休，仍退出 75'
@@ -242,6 +242,13 @@ reset_case; setup_baseline
 export FAKE_JOURNEY_SIGINT='recruiter-load'
 run_runner
 assert_eq '信号分类保持 75' "$RC" 75
+assert_contains '记下了中断信号' '收到 INT 信号' "$OUT"
+assert_eq '候选会话被关一次' "$(grep -c 'closed backend-local-candidate' "$CALLS")" '1'
+assert_eq '招聘会话被关一次' "$(grep -c 'closed backend-local-recruiter' "$CALLS")" '1'
+assert_eq '没有第三个会话' "$(grep -c '^closed ' "$CALLS")" '2'
+assert_missing '没有 close --all' 'FAKE agent-browser 禁止 --all' "$CALLS"
+assert_missing '预先存在的栈没被停' 'dev-local down' "$CALLS"
+assert_true '假 Vite 已经退出' "vite_dead"
 assert_eq 'cleanup 恰好一次' "$(grep -c 'fixture cleanup --ledger' "$CALLS")" 1
 assert_eq '三步使用同一 run id' "$(fixture_runs | sort -u | wc -l | tr -d ' ')" 1
 assert_false 'receipt 已退休' "find '$MONO/apps/recruitment/.local-dev/browser-fixtures' -type f 2>/dev/null | grep -q ."
@@ -251,6 +258,13 @@ reset_case; setup_baseline
 export FAKE_JOURNEY_SIGINT='recruiter-load' FAKE_CLEANUP_SEQ='1'
 run_runner
 assert_eq '信号分类仍为 75' "$RC" 75
+assert_contains '记下了中断信号' '收到 INT 信号' "$OUT"
+assert_eq '候选会话被关一次' "$(grep -c 'closed backend-local-candidate' "$CALLS")" '1'
+assert_eq '招聘会话被关一次' "$(grep -c 'closed backend-local-recruiter' "$CALLS")" '1'
+assert_eq '没有第三个会话' "$(grep -c '^closed ' "$CALLS")" '2'
+assert_missing '没有 close --all' 'FAKE agent-browser 禁止 --all' "$CALLS"
+assert_missing '预先存在的栈没被停' 'dev-local down' "$CALLS"
+assert_true '假 Vite 已经退出' "vite_dead"
 assert_eq 'cleanup 恰好一次' "$(grep -c 'fixture cleanup --ledger' "$CALLS")" 1
 receipt_path=$(find "$MONO/apps/recruitment/.local-dev/browser-fixtures" -type f | head -1)
 assert_true 'receipt 保留' "[ -n '$receipt_path' ] && [ -f '$receipt_path' ]"
@@ -790,18 +804,19 @@ Expected: 全部 exit 0。串行运行，不复用旧 PASS。
 
 - [ ] **Step 3: 核对后端并运行真实 CRUD dependency probe**
 
+真实门必须复用拥有当前 Recruitment `.local-dev`、且与持久 Docker volume 配对的后端 checkout；不得创建一次性 worktree，因为删除该 worktree 会丢掉本地状态真相、留下无法安全复用的 volume。先做只读冻结校验：
+
 ```bash
-git -C /Users/visionclaw/agxp-monorepo fetch origin release/0.2.5
-BACKEND_E2E_SHA="$(git -C /Users/visionclaw/agxp-monorepo rev-parse origin/release/0.2.5)"
+BACKEND_E2E_DIR="${AGXP_MONOREPO_DIR:-/Users/visionclaw/agxp-monorepo}"
+BACKEND_E2E_SHA="$(git -C "$BACKEND_E2E_DIR" rev-parse HEAD)"
 [ "$BACKEND_E2E_SHA" = 'c4d99e2db5d8e9ba3b5387fb66ac07d80584b25e' ] \
   || { echo 'dependency_drift: requires_replan' >&2; exit 1; }
-BACKEND_E2E_PARENT="$(mktemp -d /tmp/agxp-backend-e2e.XXXXXXXX)"
-BACKEND_E2E_DIR="$BACKEND_E2E_PARENT/backend"
-git -C /Users/visionclaw/agxp-monorepo worktree add --detach "$BACKEND_E2E_DIR" "$BACKEND_E2E_SHA"
+[ -z "$(git -C "$BACKEND_E2E_DIR" status --porcelain --untracked-files=no -- apps/recruitment apps/recruitment-bff)" ] \
+  || { echo 'dependency_drift: tracked_backend_changes' >&2; exit 1; }
 AGXP_MONOREPO_DIR="$BACKEND_E2E_DIR" npm run test:agent-browser:backend-local
 ```
 
-不得清理或修改原 backend dirty checkout。当前冻结 SHA 的 Expected 固定为 exit 75：五条普通 journey blocked、fixture converge 为 `BLOCKED(BLOCKED_BY_BACKEND_BASELINE_FIXTURE)`、零 Vite/browser/receipt。记录 `BACKEND_E2E_SHA` 和 `BACKEND_E2E_DIR`，Step 4 必须复用同一目录。未来 baseline commit 合入后，先把本 Plan 的后端基线重新冻结到已审查的精确 SHA；这只更新集成输入，不需要修改前端代码。
+这里允许 checkout 中存在其它路径的无关 untracked 文件，但 Recruitment/BFF tracked tree 必须干净。不得为通过校验而 checkout、rebase、reset、clean、复制 `.local-dev` 或重置 Docker volume；不满足时停止并请用户提供匹配冻结 SHA 的 state-owning checkout。当前冻结 SHA 的 Expected 固定为 exit 75：五条普通 journey blocked、fixture converge 为 `BLOCKED(BLOCKED_BY_BACKEND_BASELINE_FIXTURE)`、零 Vite/browser/receipt。记录 `BACKEND_E2E_SHA` 和 `BACKEND_E2E_DIR`，Step 4 必须复用同一目录。未来 baseline commit 合入后，先把本 Plan 的后端基线重新冻结到已审查的精确 SHA；这只更新集成输入，不需要修改前端代码。
 
 - [ ] **Step 4: 运行真实 Hosted 五轮 suite**
 
@@ -813,21 +828,15 @@ AGXP_MONOREPO_DIR="$BACKEND_E2E_DIR" npm run test:agent-browser:hosted-agent
 
 Expected: `happy, happy, p4, p5, p6`；每轮独立 report，fixture 都是 `converge=PASS verify=PASS cleanup=PASS`。任一轮失败就保留 receipt/evidence，使用 `superpowers:systematic-debugging`；不得继续后续轮或写 PASS。
 
-只有 CRUD/Hosted 两次运行都没有遗留 receipt、wrapper 已安全 down 自己的 stack 时，才执行：
+CRUD/Hosted 两次运行后必须确认没有遗留 receipt，且 wrapper 已安全 down 自己的 stack：
 
 ```bash
-case "$BACKEND_E2E_DIR" in
-  /tmp/agxp-backend-e2e.*/backend) : ;;
-  *) echo '拒绝移除未验证的 backend worktree 路径' >&2; exit 1 ;;
-esac
 [ ! -e "$BACKEND_E2E_DIR/apps/recruitment/.local-dev/browser-fixtures" ] \
   || [ -z "$(find "$BACKEND_E2E_DIR/apps/recruitment/.local-dev/browser-fixtures" -type f -print -quit 2>/dev/null)" ] \
-  || { echo 'backend receipt 尚未退休，保留 worktree' >&2; exit 1; }
-git -C /Users/visionclaw/agxp-monorepo worktree remove --force "$BACKEND_E2E_DIR"
-rmdir "$BACKEND_E2E_PARENT"
+  || { echo 'backend receipt 尚未退休，保留 state-owning checkout 与 receipt 供恢复' >&2; exit 1; }
 ```
 
-`--force` 只用于上面刚由 `mktemp` 创建、路径和 receipt 都已验证的 disposable detached worktree，以清掉 `dev-local` 生成的 ignored material；cleanup 未完成时保留 worktree 和 receipt，交接中报告路径，不得强制 remove。
+不得移除 state-owning checkout、删除 `.local-dev` 或重置持久 volume。cleanup 未完成时保留 checkout 和 receipt，交接中只报告受限路径。
 
 - [ ] **Step 5: 检查 evidence hygiene 与工作树**
 
