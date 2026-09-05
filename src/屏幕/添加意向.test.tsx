@@ -13,9 +13,11 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { 意向草稿型 } from '../数据/招聘数据源类型';
+import { BFF意向样本 } from '../测试/BFF样本';
 import 添加意向 from './添加意向';
 
 const mock返回 = vi.fn();
+const mock跳转 = vi.fn();
 const mock保存意向 = vi.fn();
 const mock删除意向 = vi.fn();
 const mock派发 = vi.fn();
@@ -42,13 +44,17 @@ const 基础草稿: 意向草稿型 = {
 };
 
 let 当前草稿: 意向草稿型 = { ...基础草稿, 办公方式: [...基础草稿.办公方式] };
+// E0：Backend route gate 需要的可变桩（数据源模式 + 后端意向字典）；Mock 用例保持缺席
+let mock数据源模式: 'backend' | undefined;
+let mock状态扩展: Record<string, unknown> = {};
 
-vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: vi.fn(), 返回: mock返回 }) }));
+vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回 }) }));
 vi.mock('../状态/应用状态', () => ({
   use应用状态: () => ({
-    状态: { 意向草稿: 当前草稿 },
+    状态: { 意向草稿: 当前草稿, ...mock状态扩展 },
     派发: mock派发,
     操作: { 保存意向: mock保存意向, 删除意向: mock删除意向 },
+    数据源模式: mock数据源模式,
   }),
 }));
 
@@ -74,6 +80,57 @@ function 渲染意向(path: string) {
   );
 }
 
+// ── E0：Backend 无效意向编辑不能变成新增 ──
+describe('添加意向页 Backend 无效编辑坐标', () => {
+  beforeEach(() => {
+    当前草稿 = { ...基础草稿, 办公方式: [...基础草稿.办公方式] };
+    mock返回.mockClear();
+    mock跳转.mockClear();
+    mock保存意向.mockClear();
+    mock删除意向.mockClear();
+    mock派发.mockClear();
+    mock轻提示.mockClear();
+    mock数据源模式 = 'backend';
+    // 字典里只有 active 的 int_1；archived / missing / other_subject 一律未命中
+    mock状态扩展 = {
+      后端意向服务端: {
+        int_1: BFF意向样本,
+        int_archived: { ...BFF意向样本, intention_id: 'int_archived', status: 'archived' as const },
+      },
+      求职意向表: [],
+    };
+  });
+
+  it.each(['missing', 'archived', 'other_subject'])(
+    'Backend 无效意向 %s 不打开空草稿',
+    (id) => {
+      渲染意向(`/intentions/${id}`);
+      expect(screen.getByText('这条求职意向不存在或已不可编辑')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: '保存' })).toBeNull();
+      expect(mock保存意向).not.toHaveBeenCalled();
+      expect(mock派发).not.toHaveBeenCalledWith(
+        expect.objectContaining({ 型: '开意向草稿' }),
+      );
+    },
+  );
+
+  it('有效 active ID 正常打开编辑表单并可保存', async () => {
+    mock保存意向.mockResolvedValue(undefined);
+    渲染意向('/intentions/int_1');
+    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
+  });
+
+  it('/intentions/new 不受 Backend gate 影响，仍可新建保存', async () => {
+    mock保存意向.mockResolvedValue(undefined);
+    渲染意向('/intentions/new');
+    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
+  });
+});
+
 describe('添加意向页 Backend 提交', () => {
   beforeEach(() => {
     当前草稿 = { ...基础草稿, 办公方式: [...基础草稿.办公方式] };
@@ -82,6 +139,8 @@ describe('添加意向页 Backend 提交', () => {
     mock删除意向.mockClear();
     mock派发.mockClear();
     mock轻提示.mockClear();
+    mock数据源模式 = undefined;
+    mock状态扩展 = {};
   });
 
   it('保存 Backend 意向成功后才返回，失败复用轻提示', async () => {
@@ -103,6 +162,8 @@ describe('添加意向页 办公方式必填校验', () => {
     mock删除意向.mockClear();
     mock派发.mockClear();
     mock轻提示.mockClear();
+    mock数据源模式 = undefined;
+    mock状态扩展 = {};
   });
 
   it.each([

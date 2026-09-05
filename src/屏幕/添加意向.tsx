@@ -66,8 +66,37 @@ function 期望行({
   );
 }
 
+/**
+ * E0：路由 wrapper —— 只解析 ID、读取 Context 并判定编辑目标，不承载表单 hooks。
+ * Backend 下有路由 ID 但 后端意向服务端 里不是 active（旧链接/已归档/跨主体）时
+ * 终局退场：不派发 开意向草稿（reducer 未命中会返回空草稿、保存就走 create），
+ * 新建只来自 /intentions/new。表单 hooks 全在 keyed 子组件 意向编辑表单 里。
+ */
 export default function 添加意向() {
   const { id: 路由编号 } = useParams<{ id: string }>();
+  const { 状态, 数据源模式 } = use应用状态();
+  const { 跳转 } = use导航();
+
+  const 有后端目标 = 路由编号 !== undefined
+    && 状态.后端意向服务端?.[路由编号]?.status === 'active';
+  const 无效后端编辑 = 数据源模式 === 'backend' && 路由编号 !== undefined && !有后端目标;
+
+  if (无效后端编辑) return <意向不可编辑 返回管理={() => 跳转(路径.求职意向管理)} />;
+  return <意向编辑表单 key={路由编号 ?? 'new'} 路由编号={路由编号} />;
+}
+
+/** E0：Backend 无效编辑坐标的终局退场页 —— 纯展示，不调用 hooks */
+function 意向不可编辑({ 返回管理 }: { 返回管理: () => void }) {
+  return (
+    <次级页外壳 白底>
+      <返回栏 返回={返回管理} />
+      <页面大标题 标题="编辑求职期望" 说明="这条求职意向不存在或已不可编辑" />
+      <主按钮 文字="返回求职意向管理" 按下={返回管理} 禁用={false} />
+    </次级页外壳>
+  );
+}
+
+function 意向编辑表单({ 路由编号 }: { 路由编号?: string }) {
   const { 跳转, 返回 } = use导航();
   const { 状态: 全局, 派发, 操作 } = use应用状态();
   const 导航类型 = useNavigationType();
