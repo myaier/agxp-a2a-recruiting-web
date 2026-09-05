@@ -483,18 +483,20 @@ describe('匿名在线简历 · canonical 坐标（J）', () => {
         委托招聘候选: mock委托招聘候选,
       },
     });
-    // 状态.当前岗位编号 故意设成 job_b（J 的核心症状）；详情缓存键对齐 URL 的 rec_1
+    // 状态.当前岗位编号 故意设成 job_b（J 的核心症状）；URL/缓存用样本卡自己的 job_1
+    // （review-r1 起缓存卡 job_id 必须与 URL 岗位一致才渲染）
     mock应用状态.状态.当前岗位编号 = 'job_b';
     mock应用状态.后端状态.招聘候选详情 = { rec_1: BFF招聘候选推荐样本 };
-    渲染URL('/hr/jobs/job_a/recommendations/rec_1');
-    await waitFor(() => expect(mock读取招聘候选详情).toHaveBeenCalledWith('job_a', 'rec_1', true));
-    expect(mock设置发现推荐范围).toHaveBeenCalledWith('recruiter', 'recruiter:detail:job_a:rec_1');
+    const URL岗位 = BFF招聘候选推荐样本.job_id;
+    渲染URL(`/hr/jobs/${URL岗位}/recommendations/rec_1`);
+    await waitFor(() => expect(mock读取招聘候选详情).toHaveBeenCalledWith(URL岗位, 'rec_1', true));
+    expect(mock设置发现推荐范围).toHaveBeenCalledWith('recruiter', `recruiter:detail:${URL岗位}:rec_1`);
     const 收藏键 = await screen.findByRole('button', { name: /收藏/ });
     await userEvent.click(收藏键);
-    await waitFor(() => expect(mock设置候选收藏).toHaveBeenCalledWith('job_a', 'rec_1', expect.any(Boolean)));
+    await waitFor(() => expect(mock设置候选收藏).toHaveBeenCalledWith(URL岗位, 'rec_1', expect.any(Boolean)));
     const 委托键 = screen.getByRole('button', { name: /让AI代理去谈/ });
     await userEvent.click(委托键);
-    await waitFor(() => expect(mock委托招聘候选).toHaveBeenCalledWith('job_a', 'rec_1'));
+    await waitFor(() => expect(mock委托招聘候选).toHaveBeenCalledWith(URL岗位, 'rec_1'));
   });
 
   it('随机 recommendation 仍收口为安全不可用页', () => {
@@ -526,5 +528,34 @@ describe('匿名在线简历 · canonical 坐标（J）', () => {
     渲染URL('/hr/resume/A-01');
     // Mock 原型分支照常渲染静态简历表
     expect(screen.queryByText('链接已失效，请从对应岗位推荐列表重新打开')).toBeNull();
+  });
+});
+
+// ── review-r1 F1：缓存键只有推荐 ID —— 跨岗位坐标下旧岗位缓存不得顶上 ──
+describe('匿名在线简历 · 跨岗位缓存隔离（review-r1）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+    mock读取招聘候选详情.mockClear();
+  });
+
+  it('缓存卡属于其它岗位时按无卡处理：加载态、零画像、零控件', async () => {
+    // 缓存里的 rec_r1 来自 URL 岗位之外的 job（BFF招聘候选推荐样本.job_id = job_1）
+    置P4详情状态({
+      详情: BFF招聘候选推荐样本,
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 读取招聘候选详情: mock读取招聘候选详情 },
+    });
+    render(
+      <MemoryRouter initialEntries={['/hr/jobs/job_other/recommendations/rec_r1']}>
+        <Routes>
+          <Route path="/hr/jobs/:jobId/recommendations/:recommendationId" element={<匿名在线简历 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('正在加载候选简历…')).toBeTruthy();
+    expect(screen.queryByText('候选人甲')).toBeNull();
+    expect(screen.queryByRole('button', { name: /收藏/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /让AI代理去谈/ })).toBeNull();
   });
 });

@@ -911,3 +911,24 @@ describe('应用路由 · 后端匿名在线简历模板（J）', () => {
     await waitFor(() => expect(screen.getByText(/正在加载候选简历|链接已失效|这位候选/)).toBeTruthy());
   });
 });
+
+// ── review-r1 F2：canonical 招聘详情 URL 必须落在招聘角色边界内 ──
+describe('应用路由 · canonical 招聘详情角色边界（review-r1）', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+  });
+
+  it('candidate 打开 canonical 招聘详情 URL 被挡回身份选择（同旧 /hr/resume/:id）', async () => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成',
+      已登录: true,
+      主体: 主体('candidate', 'active', null),
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.后端匿名在线简历('job_1', 'rec_1')]}>
+        <应用 /><位置探针 />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe('/identity'));
+  });
+});
