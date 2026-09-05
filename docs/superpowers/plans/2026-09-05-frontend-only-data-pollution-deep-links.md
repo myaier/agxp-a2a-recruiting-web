@@ -16,6 +16,7 @@
 - 工作模式：问题只存在于或重点约束 `VITE_DATA_SOURCE=backend`；除明确写出的 Mock 回归外，不改变 Mock 演示行为。
 - 页面不得直接 `fetch`；继续使用 `use应用状态()` 暴露的 `状态`、`后端状态`、`操作` 与现有 data source。
 - Backend 无效 ID、跨主体 ID、已删除 ID 和旧 URL 一律 fail closed：不显示别的资源、不挂载写控件、不发 mutation、不回退 Mock。
+- `应用.tsx` 在 Backend `后端状态.初始化 === '进行中'` 时只渲染全局 `路由加载中`，业务路由不会挂载；因此 Task 1–3 收到的空 owner 列表已是初始化完成后的权威空态，不在页面内再造第二套“等待水合”状态。
 - 空值不得通过显示默认进入业务 payload。滚轮因组件限制必须显示落点时，用“显示值 + 已确认布尔值”分离；只有已有权威值、真实预填建议或用户操作才能把布尔值设为 true。
 - 后端 strict decoder、session/subject/role/scope generation fence、single-flight、CAS、幂等键和 401 清理逻辑保持不变。
 - 不修改 CSS、DOM 区块顺序或 PM 文案体系；安全退场复用 `次级页外壳`、`返回栏`、`主按钮`、`轻提示` 和既有返回路由。
@@ -249,8 +250,7 @@ default export 只解析 ID、读取 Context 并做判定；有效态返回 keye
 
 ```tsx
 const 有后端目标 = 路由编号 !== undefined
-  && 状态.后端意向服务端[路由编号]?.status === 'active'
-  && 状态.求职意向表.some((项) => 项.编号 === 路由编号);
+  && 状态.后端意向服务端[路由编号]?.status === 'active';
 const 无效后端编辑 = 数据源模式 === 'backend' && 路由编号 !== undefined && !有后端目标;
 
 if (无效后端编辑) return <意向不可编辑 返回管理={() => 跳转(路径.求职意向管理)} />;
@@ -276,7 +276,7 @@ git commit -m "fix: reject invalid intention edit targets"
 - Modify: `src/流程/候选Onboarding简历预填.ts:367-375`
 
 **Interfaces:**
-- Produces: `取可恢复个人优势建议(state, stage): string | null`；`优势题` 新增 `恢复文案` 与 `恢复`；删除本屏对 `个人优势文本` 的 import。
+- Produces: `取可恢复个人优势建议(state, stage): string | null`；`优势题` 新增 `恢复文案` 与 `恢复`；Backend 分支不再把 `个人优势文本` 作为恢复来源。
 - Consumes: 真实 `取个人优势预填(...)` 结果与用户 textarea 输入。
 
 - [ ] **Step 1: 写模式隔离失败测试**
@@ -299,7 +299,7 @@ it('Backend 无可用建议时无恢复动作，手工文本仍可保存', async
 });
 ```
 
-Mock 对照给 `全局.个人优势='Mock 初始优势'`，编辑后点击按钮，断言 textarea 恢复为 `Mock 初始优势`。
+Mock 对照先编辑 textarea，再点击按钮，断言 textarea 恢复为 `个人优势文本`。
 
 - [ ] **Step 2: 运行测试确认 red**
 
@@ -327,9 +327,8 @@ export function 取可恢复个人优势建议(state: 候选预填状态, stage:
 
 ```tsx
 const 预填状态 = 后端状态?.候选预填状态 ?? 创建空候选预填状态();
-const [Mock恢复文本] = useState<string | null>(() => 是后端 ? null : 全局.个人优势);
 const 可恢复真实建议 = 取可恢复个人优势建议(预填状态, 段);
-const 恢复文本 = 是后端 ? 可恢复真实建议 : Mock恢复文本;
+const 恢复文本 = 是后端 ? 可恢复真实建议 : 个人优势文本;
 
 <优势题
   文本={自我介绍}
@@ -354,7 +353,7 @@ function 优势题({ 文本, 设文本, 恢复文案, 恢复 }: {
 ) : null}
 ```
 
-删除 `import { 个人优势文本 } from '../数据/模拟数据'`。第一段的 `预填状态` 同时替换 `自我介绍` 初值里内联构造的预填状态；其余部分替换 `优势题` 的调用和参数签名。第二段 JSX 精确替换当前 `优势工具行` 区块。大标题、textarea、计数区不动。真实 prefill 初值仍由 `取个人优势预填` 提供；Backend 的恢复动作只更新页面 state，仍由“保存并继续”统一 mutation/confirm。
+保留 `个人优势文本` import，但它只出现在 `是后端 ? 可恢复真实建议 : 个人优势文本` 的 Mock 分支。第一段的 `预填状态` 同时替换 `自我介绍` 初值里内联构造的预填状态；其余部分替换 `优势题` 的调用和参数签名。第二段 JSX 精确替换当前 `优势工具行` 区块。大标题、textarea、计数区不动。真实 prefill 初值仍由 `取个人优势预填` 提供；Backend 的恢复动作只更新页面 state，仍由“保存并继续”统一 mutation/confirm。
 
 - [ ] **Step 5: 运行测试确认 green 并提交**
 
@@ -364,7 +363,7 @@ git add src/流程/候选Onboarding简历预填.ts src/流程/候选Onboarding�
 git commit -m "fix: isolate mock resume summary from backend"
 ```
 
-### Task 5: 建立“身份未选择”和空首屏偏好（P1 / M、首屏默认）
+### Task 5A: 保留空身份并只在 profile 真变化时拦写（P1 / M）
 
 **Files:**
 - Modify: `src/数据/类型.ts:453-469`
@@ -372,30 +371,23 @@ git commit -m "fix: isolate mock resume summary from backend"
 - Modify: `src/数据/后端映射.test.ts`
 - Modify: `src/数据/招聘数据源/简历.ts:64-90`
 - Modify: `src/数据/招聘数据源/简历.test.ts`
-- Modify: `src/流程/onboarding配置.ts:8-23,217-242`
-- Modify: `src/流程/onboarding配置.test.ts`
 - Modify: `src/状态/初始状态.ts:254-287`
 - Modify: `src/状态/后端/会话操作.ts:26-54`
 - Modify: `src/状态/后端/会话操作.test.ts`
-- Modify: `src/状态/领域/候选资料.ts:19-80,209-239`
-- Modify: `src/状态/应用状态.test.ts`
-- Modify: `src/数据/资料缓存.ts:211-367`
-- Modify: `src/数据/资料缓存.test.ts`
-- Modify: `src/屏幕/学生分流.tsx:98-146,201-272,330-470`
-- Modify: `src/屏幕/学生分流.test.tsx`
 - Modify: `src/屏幕/基本信息.tsx:50-95,160-190`
 - Modify: `src/屏幕/基本信息.test.tsx`
 - Create: `src/屏幕/求职状态.test.tsx`
 - Modify: `src/屏幕/求职状态.tsx:39-80`
+- Modify: `src/屏幕/工作经历.test.tsx`
 - Modify: `src/屏幕/我的简历.tsx:35-72,365-400`
 - Modify: `src/屏幕/我的简历.test.tsx`
 
 **Interfaces:**
-- Produces: `export type 候选身份 = '' | '在校' | '在职' | '离职'`；`空求职初筛偏好(): 求职初筛偏好`；`引导预填.在校选择?: boolean`；动作 `存身份分流`。
-- Consumes: BFF read status `'' | student | employed | unemployed`；BFF write status 仍只允许非空三态。
-- Write boundary: 非学生在 `/basic` 且身份仍为 `''` 时只更新 Context 草稿并进入状态页，不调用 Resume API；`/onboard/status` 得到用户明确选择后一次性保存完整 profile。这样不修改后端 `ProfileWrite.status` 必填合同，也不把空值猜成 employed。
+- Produces: `export type 候选身份 = '' | '在校' | '在职' | '离职'`。
+- Consumes: BFF read status `'' | student | employed | unemployed`；BFF `ProfileWrite.status` 仍只允许非空三态。
+- Write boundary: `保存简历` 先比较页面 profile；profile 未变化时不调用会拒绝空身份的 mapper，技能/经历等独立分区仍可写。非学生在 `/basic` 且身份仍为 `''` 时只更新 Context 草稿；`/onboard/status` 得到明确选择后一次性保存 profile。
 
-- [ ] **Step 1: 写 read/write 映射和数据源边界失败测试**
+- [ ] **Step 1: 写映射和分区写入失败测试**
 
 ```ts
 expect(从BFF简历(空Profile).基本信息.身份).toBe('');
@@ -406,50 +398,29 @@ try {
 } catch (错误) {
   expect(错误).toMatchObject({ field: 'resume.profile.status' });
 }
-expect(空求职初筛偏好()).toEqual({ 求职类型: [], 办公方式: [] });
 ```
 
-在 `招聘数据源/简历.test.ts` 增加旧快照 `profile.status:''`、next 为 `身份:'离职'` 的用例，断言成功发出一次 profile PATCH 且 body status 为 `unemployed`。另测 next 仍为空时在任何 mutation 前抛 `客户端校验错误`。现有 `默认求职初筛偏好()` 保留且只服务 Mock；不要改其旧断言。
+在 `招聘数据源/简历.test.ts` 增加三组：
 
-- [ ] **Step 2: 写首屏零默认失败测试**
+1. previous/next 的 `基本信息.身份` 均为 `''` 且 profile 其余字段相同、只改技能：不抛错、不发 profile PATCH，只发 skills PATCH；
+2. 身份仍为 `''` 但姓名变化：在任何 mutation 前抛 `客户端校验错误`；
+3. previous status 为 `''`、next 身份为“离职”：发一次 profile PATCH，body status 为 `unemployed`。
 
-Backend 空 profile + `引导预填:null`：
+- [ ] **Step 2: 写页面边界失败测试**
 
-```tsx
-expect(screen.getByRole('button', { name: '在校' }).getAttribute('aria-pressed')).toBe('false');
-expect(screen.getByRole('button', { name: '已毕业' }).getAttribute('aria-pressed')).toBe('false');
-for (const name of ['社招全职', '校园招聘', '实习生', '兼职', '现场', '混合', '全远程']) {
-  expect(screen.getByRole('button', { name }).getAttribute('aria-pressed')).toBe('false');
-}
-expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '存求职筛选偏好' }));
-```
+Backend 非学生、`身份:''` 在 `/basic` 修改姓名后点下一步：派发 `存简历` 保存页面草稿，`操作.保存简历` 零调用，导航到 `/onboard/status`，且不确认 `basic` 预填分区。Backend 学生 `身份:'在校'` 与已有 social 身份仍走既有 operation，成功后仍在本页确认 `basic`。
 
-点击“下一步”应提示身份、求职类型或办公方式缺失，且不派发 `启程引导`。
+新建 `求职状态.test.tsx`：未选时点下一步不保存、不确认、不导航；选择“离职 · 随时到岗”写 `身份:'离职'`，选择“在职 · 考虑机会”写 `身份:'在职'`。从空身份进入时，只有保存成功后才确认 `basic`；保存失败不确认、不派发到岗、不导航。
 
-- [ ] **Step 3: 写 `/basic` 延迟 profile 写入与状态页显式选择失败测试**
+在 `工作经历.test.tsx` 增加空身份但 profile 未变化的完整经历保存用例，断言页面仍把非 profile 修改交给 `操作.保存简历`，没有自行改成“在职”。在 `我的简历.test.tsx` 钉住空身份显示“未填写”且完整度包含“当前状态”。
 
-Backend 非学生、`身份:''` 在 `/basic` 修改姓名后点下一步：断言派发 `存简历` 保存页面草稿，`操作.保存简历` 零调用，导航到 `/onboard/status`。Backend 学生 `身份:'在校'` 与已有 social 身份仍走既有 `操作.保存简历`，防止扩大延迟写入范围。
-
-新测试 harness mock `use应用状态` 和 `use导航`：
-
-```tsx
-it('未选择到岗状态时不保存身份', async () => {
-  render求职状态({ 身份: '' });
-  await 用户.click(screen.getByRole('button', { name: '下一步' }));
-  expect(mock保存简历).not.toHaveBeenCalled();
-  expect(mock跳转).not.toHaveBeenCalled();
-});
-```
-
-再测试选择“离职 · 随时到岗”写 `身份:'离职'`，选择“在职 · 考虑机会”写 `身份:'在职'`。
-
-- [ ] **Step 4: 运行测试确认 red**
+- [ ] **Step 3: 运行测试确认 red**
 
 ```bash
-npx vitest run src/数据/后端映射.test.ts src/数据/招聘数据源/简历.test.ts src/流程/onboarding配置.test.ts src/数据/资料缓存.test.ts src/状态/应用状态.test.ts src/状态/后端/会话操作.test.ts src/屏幕/学生分流.test.tsx src/屏幕/基本信息.test.tsx src/屏幕/求职状态.test.tsx src/屏幕/我的简历.test.tsx
+npx vitest run src/数据/后端映射.test.ts src/数据/招聘数据源/简历.test.ts src/状态/后端/会话操作.test.ts src/屏幕/基本信息.test.tsx src/屏幕/求职状态.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/我的简历.test.tsx
 ```
 
-- [ ] **Step 5: 扩展页面身份类型并封住 wire 写入**
+- [ ] **Step 4: 扩展页面身份类型和 Backend 空种子**
 
 ```ts
 export type 候选身份 = '' | '在校' | '在职' | '离职';
@@ -468,33 +439,110 @@ if (基本.身份 === '') {
 }
 ```
 
-`招聘数据源/简历.ts` 不得对旧空 status 调 `转资料写入`：先算 `const 旧资料写入 = previous.profile.status === '' ? null : 转资料写入(旧页面.基本信息)`，再用它与 next body 比较。next 非空时仍可从旧空状态创建第一版 profile；next 为空则由 `转资料写入(next.基本信息)` 在构造任何 mutation 前拒绝。`初始状态.ts` 的 Backend 种子和 `会话操作.ts` 的 `空简历快照` 都改为 `{ 真名:'', 开始工作年:'', 身份:'' }`；Mock 种子保持原值。
+`初始状态.ts` 的 Backend 种子和 `会话操作.ts` 的 `空简历快照` 都改为 `{ 真名:'', 开始工作年:'', 身份:'' }`；Mock 种子保持“在职”。
 
-- [ ] **Step 6: 新增空偏好、在校选择与严格缓存字段**
+- [ ] **Step 5: 只在 profile 真变化时调用写 mapper**
+
+将 `招聘数据源/简历.ts` 的 profile 分区改为先比较页面模型，再构造 body：
+
+```ts
+if (JSON.stringify(next.基本信息) !== JSON.stringify(旧页面.基本信息)) {
+  const body = 转资料写入(next.基本信息);
+  写入步骤们.push(() => 请求<BFF简历>({
+    path: '/api/v1/me/resume/profile', method: 'PATCH', body,
+    ifMatch: 修订etag(previous.profile_revision),
+  }).then((r) => r.result));
+}
+```
+
+profile 相同时完全不调用 `转资料写入`，所以空身份不会阻断 summary/skills/experiences/educations/certificates；profile 有变化时仍在构造第一个 mutation 前拒绝空身份。
+
+- [ ] **Step 6: `/basic` 延迟空身份 profile，并在状态页收口**
+
+`基本信息.tsx` 继续组装完整 `待存简历`。当 `数据源模式 === 'backend' && 基本.身份 === ''` 时，派发既有 `存简历`，不调用 `操作.保存简历`、不调用 `确认候选Onboarding预填分区('basic')`，随后跳转 `路径.求职状态`。其它身份和 Mock 仍调用既有 operation，成功后照旧确认。页面刷新导致这段未提交 profile 草稿丢失是本批明确非目标，不新增第二套 profile session cache。
+
+`求职状态.tsx` 的 `当前` 改为 `string | null`，只取已有 `引导预填?.到岗 ?? null`。未选时 `轻提示('请选择当前求职状态')` 后 return。选择后算出非空 `新身份`：学生保持“在校”，社会人按选项前缀取“在职/离职”；调用 `操作.保存简历` 保存此前累积的 Context 草稿。若进入页面时身份为空，则保存成功后调用 `确认候选Onboarding预填分区('basic')`；随后才派发到岗并导航。失败时三者都不发生。
+
+- [ ] **Step 7: 给空身份稳定展示**
+
+在 `我的简历.tsx` 的 `状态文案` 增加 `'' : '未填写'`，完整度必填项把空身份计为“当前状态”未填写；不把空状态算成在职。`我的.tsx` 已以服务端 raw status 显示“未填写求职状态”，保持不变。
+
+- [ ] **Step 8: 运行目标测试并提交**
+
+```bash
+npm run typecheck
+npx vitest run src/数据/后端映射.test.ts src/数据/招聘数据源/简历.test.ts src/状态/后端/会话操作.test.ts src/屏幕/基本信息.test.tsx src/屏幕/求职状态.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/我的简历.test.tsx
+git add src/数据/类型.ts src/数据/后端映射.ts src/数据/后端映射.test.ts src/数据/招聘数据源/简历.ts src/数据/招聘数据源/简历.test.ts src/状态/初始状态.ts src/状态/后端/会话操作.ts src/状态/后端/会话操作.test.ts src/屏幕/基本信息.tsx src/屏幕/基本信息.test.tsx src/屏幕/求职状态.tsx src/屏幕/求职状态.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/我的简历.tsx src/屏幕/我的简历.test.tsx
+git commit -m "fix: preserve unset candidate status"
+```
+
+### Task 5B: 首屏默认与草稿缓存不再虚构候选选择（P1 / 首屏默认）
+
+**Files:**
+- Modify: `src/流程/onboarding配置.ts:217-242`
+- Modify: `src/流程/onboarding配置.test.ts`
+- Modify: `src/状态/领域/候选资料.ts:19-80,209-251`
+- Modify: `src/状态/应用状态.test.ts`
+- Modify: `src/数据/资料缓存.ts:211-367`
+- Modify: `src/数据/资料缓存.test.ts`
+- Modify: `src/屏幕/学生分流.tsx:98-146,201-272,330-500`
+- Modify: `src/屏幕/学生分流.test.tsx`
+- Modify: `src/屏幕/引导问答.tsx:115-135`
+- Modify: `src/屏幕/引导问答.test.tsx`
+- Modify: `src/屏幕/求职状态.tsx:50-80`
+- Modify: `src/屏幕/求职状态.test.tsx`
+
+**Interfaces:**
+- Produces: `空求职初筛偏好(): 求职初筛偏好`、`引导预填.在校选择?: boolean`。
+- Changes: `存求职筛选偏好`、`存薪资预填`、`存到岗预填` 三个动作都携带当前 `城市们/职位/城市引用们/职位引用们`，reducer 不再有 `['上海']` fallback。
+
+- [ ] **Step 1: 写 helper、reducer 和缓存失败测试**
+
+```ts
+expect(空求职初筛偏好()).toEqual({ 求职类型: [], 办公方式: [] });
+```
+
+分别从 `引导预填:null` 派发三类动作并传空城市/职位，断言结果城市仍为 `[]`；再传 Mock 当前城市 `['上海']`，断言结果保留 `['上海']`。缓存测试覆盖 `在校选择:true/false` round-trip、非 boolean 整条拒绝、旧 v1 记录无该键仍可读。
+
+- [ ] **Step 2: 写首屏零默认与交互顺序失败测试**
+
+Backend 空 profile + `引导预填:null`：在校/已毕业、四种求职类型和三种办公方式按钮的 `aria-pressed` 全为 false。先点“社招全职”或“全远程”、尚未点身份时，派发动作的 `城市们` 必须是 `[]`，状态与 sessionStorage 都不能出现“上海”。点下一步依次提示身份、求职类型、办公方式或城市/职位引用缺失，且不派发 `启程引导`。
+
+Mock 对照：初始筛选与城市仍使用 `默认求职初筛偏好(...)` 和 `['上海']`；先点偏好再点身份不丢 Mock 城市。
+
+- [ ] **Step 3: 运行测试确认 red**
+
+```bash
+npx vitest run src/流程/onboarding配置.test.ts src/状态/应用状态.test.ts src/数据/资料缓存.test.ts src/屏幕/学生分流.test.tsx src/屏幕/引导问答.test.tsx src/屏幕/求职状态.test.tsx
+```
+
+- [ ] **Step 4: 新增空偏好并让三个动作自带草稿基底**
 
 ```ts
 export function 空求职初筛偏好(): 求职初筛偏好 {
   return { 求职类型: [], 办公方式: [] };
 }
+
+interface 引导草稿基底动作 {
+  城市们: string[];
+  职位: string[];
+  城市引用们: 目录选择值[];
+  职位引用们: 目录选择值[];
+}
+
+type 引导草稿动作 =
+  | ({ 型: '存求职筛选偏好'; 偏好: 求职初筛偏好; 在校选择?: boolean } & 引导草稿基底动作)
+  | ({ 型: '存薪资预填'; 下限: number; 上限: number; 单位: 求职薪资单位 } & 引导草稿基底动作)
+  | ({ 型: '存到岗预填'; 到岗: string } & 引导草稿基底动作);
 ```
 
-在 `候选资料状态['引导预填']`、`候选引导草稿快照` 和 `候选草稿根键们` 增加 `在校选择?: boolean`；decoder 只接受 boolean，encoder 仅在 defined 时复制。旧 v1 无此键仍兼容，不改缓存分类。增加动作：
+把 `引导草稿动作` 的三员并入现有 `候选资料动作` union。三个 reducer case 都用动作里的四项基底覆盖对应字段，再写自己的偏好/薪资/到岗；只有 `在校选择 !== undefined` 时写它。删除三处 `旧.引导预填 ?? { 城市们:['上海'], 职位:[] }`。修改三个调用点：学生分流传页面当前选择，向导传本地城市/职位和目录引用，求职状态传全局草稿值（缺席则各用空数组）。
 
-```ts
-| {
-    型: '存身份分流';
-    在校选择: boolean;
-    筛选偏好: 求职初筛偏好;
-    城市们: string[];
-    职位: string[];
-    城市引用们: 目录选择值[];
-    职位引用们: 目录选择值[];
-  }
-```
+- [ ] **Step 5: 严格缓存接受可选在校选择**
 
-reducer 用动作携带的六项数据构造完整 `引导预填`，同一次归约写入 `在校选择` 与 `筛选偏好`；不使用 `['上海']` fallback。补 reducer 测试和缓存的合法 boolean、非 boolean 整条拒绝、旧记录无该键仍可读三组测试。
+在 `候选资料状态['引导预填']`、`候选引导草稿快照` 和 `候选草稿根键们` 增加 `在校选择?: boolean`；decoder 只接受 boolean，encoder 仅在 defined 时复制。旧 v1 无此键仍兼容，不改缓存分类。
 
-- [ ] **Step 7: 改首屏为三态身份与 Backend 空偏好**
+- [ ] **Step 6: 首屏改为三态身份与 Backend 空偏好**
 
 ```tsx
 const 在校选择 = 全局.引导预填?.在校选择
@@ -505,33 +553,17 @@ const 筛选偏好 = 全局.引导预填?.筛选偏好
   ?? (是后端 ? 空求职初筛偏好() : 默认求职初筛偏好(是学生));
 ```
 
-身份按钮的 `aria-pressed` 分别用 `在校选择 === true/false`。`选身份` 的重复点击守卫改为 `在校选择 === 选了是`；`选身份(true)` 写 `身份:'在校'`，`选身份(false)` 若旧值为“在校”则写 `身份:''`，否则保留已有在职/离职/空值。随后派发一次 `存身份分流`，携带当前城市、职位、引用与模式专属新偏好：Backend 用空偏好，Mock 用 `默认求职初筛偏好(选了是)`。
+身份按钮的 `aria-pressed` 分别用 `在校选择 === true/false`；重复点击守卫用 `在校选择 === 选了是`。选择“在校”写身份“在校”，选择“已毕业”若旧值为“在校”则写空身份，否则保留已有值。随后派发 `存求职筛选偏好`，携带 `在校选择`、当前四项草稿基底和模式专属偏好：Backend 空偏好，Mock 原默认。
 
-删除毕业时间 mount effect；只有预计毕业时间弹层“完成”才写值。移除 `主按钮` 的 `禁用` 表达式，让 `下一步()` 依次检查 `在校选择 === null`、`求职初筛缺失项`、Backend 城市/职位引用，并用既有 `轻提示` 给出原因；任一失败均不派发 `启程引导`。
+删除毕业时间 mount effect；只有弹层“完成”才写值。移除 `主按钮` 的 `禁用` 表达式，让 `下一步()` 依次检查身份、偏好、Backend 城市/职位引用并用 `轻提示` 给出原因；任一失败均不派发 `启程引导`。
 
-- [ ] **Step 8: `/basic` 对未知身份只存本地草稿**
-
-`基本信息.tsx` 继续组装完整 `待存简历`。当 `数据源模式 === 'backend' && 基本.身份 === ''` 时，派发既有 `存简历`（只更新 Context），不调用 `操作.保存简历`，随后跳转 `路径.求职状态`。其它身份和 Mock 仍调用既有 operation；不能把“延迟 profile 写入”扩展到身份已明确的分支。页面刷新导致尚未提交的基本信息丢失是本批明确非目标，不新增第二套 profile session cache。
-
-- [ ] **Step 9: 求职状态不再自选默认项，并完成第一次 profile 写入**
-
-`当前` 改为 `string | null`，初值只取已有 `引导预填?.到岗 ?? null`。未选择时 `下一步` 调 `轻提示('请选择当前求职状态')` 后 return；按钮点击才设具体项。选择后先算出非空 `新身份`：学生保持 `在校`，社会人按选项前缀取 `在职/离职`；调用 `操作.保存简历` 保存全局 Context 中此前累积的 profile/简历切片，成功后才派发 `存到岗预填` 并导航。保存失败不派发到岗、不导航。
-
-- [ ] **Step 10: 给空身份稳定展示和完整度语义**
-
-在 `我的简历.tsx` 的 `状态文案` 增加 `'' : '未填写'`，并在完整度必填项中把空身份计为“当前状态”未填写；不把空状态算成在职。`我的.tsx` 已以服务端 raw status 显示“未填写求职状态”，保持不变。运行：
+- [ ] **Step 7: 运行目标测试并提交**
 
 ```bash
 npm run typecheck
-npx vitest run src/屏幕/我的简历.test.tsx src/屏幕/基本信息.test.tsx src/屏幕/求职状态.test.tsx
-```
-
-- [ ] **Step 11: 运行目标测试并提交**
-
-```bash
-npx vitest run src/数据/后端映射.test.ts src/数据/招聘数据源/简历.test.ts src/流程/onboarding配置.test.ts src/数据/资料缓存.test.ts src/状态/应用状态.test.ts src/状态/后端/会话操作.test.ts src/屏幕/学生分流.test.tsx src/屏幕/基本信息.test.tsx src/屏幕/求职状态.test.tsx src/屏幕/我的简历.test.tsx
-git add src/数据/类型.ts src/数据/后端映射.ts src/数据/后端映射.test.ts src/数据/招聘数据源/简历.ts src/数据/招聘数据源/简历.test.ts src/数据/资料缓存.ts src/数据/资料缓存.test.ts src/流程/onboarding配置.ts src/流程/onboarding配置.test.ts src/状态/初始状态.ts src/状态/后端/会话操作.ts src/状态/后端/会话操作.test.ts src/状态/领域/候选资料.ts src/状态/应用状态.test.ts src/屏幕/学生分流.tsx src/屏幕/学生分流.test.tsx src/屏幕/基本信息.tsx src/屏幕/基本信息.test.tsx src/屏幕/求职状态.tsx src/屏幕/求职状态.test.tsx src/屏幕/我的简历.tsx src/屏幕/我的简历.test.tsx
-git commit -m "fix: require explicit candidate onboarding choices"
+npx vitest run src/流程/onboarding配置.test.ts src/状态/应用状态.test.ts src/数据/资料缓存.test.ts src/屏幕/学生分流.test.tsx src/屏幕/引导问答.test.tsx src/屏幕/求职状态.test.tsx
+git add src/流程/onboarding配置.ts src/流程/onboarding配置.test.ts src/状态/领域/候选资料.ts src/状态/应用状态.test.ts src/数据/资料缓存.ts src/数据/资料缓存.test.ts src/屏幕/学生分流.tsx src/屏幕/学生分流.test.tsx src/屏幕/引导问答.tsx src/屏幕/引导问答.test.tsx src/屏幕/求职状态.tsx src/屏幕/求职状态.test.tsx
+git commit -m "fix: remove candidate onboarding defaults"
 ```
 
 ### Task 6: 空生日不保存显示落点（P1 / L）
@@ -584,7 +616,7 @@ if (出生年月已确认) {
 }
 ```
 
-将当前 `操作.保存简历` 或 Task 5 的本地 `存简历` payload 中 `基本信息` 替换为 `待存基本`；个人优势、技能、经历、教育、证书仍传当前全局切片。不要因为 1998/6 仍是滚轮视觉落点就把它写入。
+将当前 `操作.保存简历` 或 Task 5A 的本地 `存简历` payload 中 `基本信息` 替换为 `待存基本`；个人优势、技能、经历、教育、证书仍传当前全局切片。不要因为 1998/6 仍是滚轮视觉落点就把它写入。
 
 - [ ] **Step 4: 运行测试确认 green 并提交**
 
@@ -678,6 +710,7 @@ git commit -m "fix: require explicit education facts"
 - Modify: `src/屏幕/匿名在线简历.test.tsx`
 - Modify: `src/屏幕/匿名在线简历.tsx:321-423`
 - Modify: `src/应用.test.tsx`
+- Modify: `e2e/数据源模式.spec.ts:7068,7234`
 
 **Interfaces:**
 - Produces: 保留 Mock 的 `路径.匿名在线简历(id)` → `/hr/resume/{id}`；新增 `路径.后端匿名在线简历(jobId, recommendationId)` → `/hr/jobs/{job}/recommendations/{recommendation}` 及模板 `/hr/jobs/:jobId/recommendations/:recommendationId`。
@@ -694,7 +727,7 @@ expect(路径.后端匿名在线简历('job/a', 'rec/b'))
 
 - [ ] **Step 2: 写刷新与跨岗位失败测试**
 
-以 Backend URL `/hr/jobs/job_a/recommendations/rec_1` 渲染详情，同时把 `状态.当前岗位编号` 故意设成 `job_b`；断言读取、收藏和委托都使用 `job_a, rec_1`。随机 recommendation 显示不可用；Backend 旧 `/hr/resume/rec_1` 显示“链接已失效，请从对应岗位推荐列表重新打开”且不请求 API。另用 Mock 渲染旧 `/hr/resume/A-01`，断言原型详情仍可用。
+以 Backend URL `/hr/jobs/job_a/recommendations/rec_1` 渲染详情，同时把 `状态.当前岗位编号` 故意设成 `job_b`；断言读取、收藏和委托都使用 `job_a, rec_1`。随机 recommendation 显示不可用；Backend 旧 `/hr/resume/rec_1` 显示“链接已失效，请从对应岗位推荐列表重新打开”且不请求 API。另用 Mock 渲染旧 `/hr/resume/A-01`，断言原型详情仍可用。同步修改 `e2e/数据源模式.spec.ts` 两条 `@backend`：列表点卡后的 URL 期望改为 canonical 双坐标；旧 URL 直达用例改断言失效提示和零详情 GET。
 
 - [ ] **Step 3: 运行测试确认 red**
 
@@ -727,7 +760,8 @@ const 推荐编号 = 是后端 ? (recommendationId ?? '') : (Mock编号 ?? '');
 
 ```bash
 npx vitest run src/屏幕/匿名在线简历.test.tsx src/屏幕/候选推荐.test.tsx src/应用.test.tsx
-git add src/路由/路径表.ts src/应用.tsx src/应用.test.tsx src/屏幕/候选推荐.tsx src/屏幕/候选推荐.test.tsx src/屏幕/匿名在线简历.tsx src/屏幕/匿名在线简历.test.tsx
+npx playwright test --config=playwright.数据源模式.config.ts e2e/数据源模式.spec.ts --grep "招聘端列表与详情渲染匿名别名|招聘端简历详情 404"
+git add src/路由/路径表.ts src/应用.tsx src/应用.test.tsx src/屏幕/候选推荐.tsx src/屏幕/候选推荐.test.tsx src/屏幕/匿名在线简历.tsx src/屏幕/匿名在线简历.test.tsx e2e/数据源模式.spec.ts
 git commit -m "fix: make recommendation links carry job scope"
 ```
 
@@ -780,7 +814,13 @@ git diff --check
 npm test -- --run
 ```
 
-- [ ] **Step 4: 扫描已禁止模式**
+- [ ] **Step 4: 运行数据源模式 E2E**
+
+```bash
+npm run test:e2e:data-source
+```
+
+- [ ] **Step 5: 扫描已禁止模式**
 
 ```bash
 rg -n "find\(.*路由岗位编号.*\).*\?\?.*岗位列表\[0\]|资料\.status === '' \? '在职'|设文本\(个人优势文本\)|路径\.匿名在线简历\(视图\.recommendationId\)" src --glob '!*.test.*'
@@ -788,7 +828,7 @@ rg -n "find\(.*路由岗位编号.*\).*\?\?.*岗位列表\[0\]|资料\.status ==
 
 Expected: 零命中。随后人工确认旧 `/hr/resume/:id` 只服务 Mock 或 Backend 失效提示，`默认求职初筛偏好` 的生产调用只位于 Mock 分支。
 
-- [ ] **Step 5: 记录结果并修复归属明确的回归**
+- [ ] **Step 6: 记录结果并修复归属明确的回归**
 
 如果完整 suite 暴露由本批类型扩展造成的真实回归，回到引入该行为的 Task，修正该 Task 已列明的生产文件或测试并重跑失败 suite；不得删除断言、放宽 strict decoder 或顺手修改本计划外功能。每一修正追加到对应 Task 的提交，不另建范围不明的“测试修正”提交。
 

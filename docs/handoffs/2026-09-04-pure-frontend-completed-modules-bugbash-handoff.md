@@ -689,7 +689,7 @@ const [出生月] = useState(() => 基本预填.出生月 ?? (Number(基本.出�
 
 ## 15. 工作包 M：Onboarding 未选求职状态不得被保存为“在职”
 
-> **状态：进行中。** 更新时间：`2026-09-05 07:41 +08:00`。依据：本项已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md` Task 5；状态表示计划已冻结，尚未宣称实现完成。
+> **状态：进行中。** 更新时间：`2026-09-05 07:41 +08:00`。依据：本项已纳入 `docs/superpowers/plans/2026-09-05-frontend-only-data-pollution-deep-links.md` Task 5A；状态表示计划已冻结，尚未宣称实现完成。
 
 ### 问题与复现
 
