@@ -228,7 +228,8 @@ browser-fixture.sh converge --scene baseline
 
 - Hub expected fault sequence 为空；
 - consumed fault step 数为 0；
-- 不 arm 或注入 Hosted Agent task failure；
+- 仍按现有 v2 lifecycle acquire、bind 并 arm 空 fault sequence，receipt 保持 `scene_driver.armed=true`；
+- 不注入或消费 Hosted Agent task failure；
 - 不创建、等待或消费 `application_id=recruitment` 的 Hosted Agent task；
 - candidate/recruiter proposal delta 为 0；
 - accepted/active rule delta 为 0；
