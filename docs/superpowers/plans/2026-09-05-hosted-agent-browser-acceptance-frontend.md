@@ -14,7 +14,7 @@
 
 - 开始实现前完整阅读 `CLAUDE.md`、`AGENTS.md`、Spec 与本 Plan；在隔离 worktree 中使用 `superpowers:using-git-worktrees`，以包含本 Plan 的 commit 为执行起点。若先同步 `origin/main`，只普通 merge，不 rebase、不 force push。
 - 规划基线是前端 `origin/main@6c0c497ddf29915c82821ec96994d9ca131c61e5`、后端 `origin/release/0.2.5@c4d99e2db5d8e9ba3b5387fb66ac07d80584b25e`。执行时先 fetch 并只读核对；若 fixture CLI、receipt exact keys、scene contract version、终止行或页面公开文案已漂移，停止并记录 `dependency_drift: requires_replan`，不得现场放宽。
-- 不修改后端 tracked 代码。当前后端只支持 `happy|p4|p5|p6`；本 Plan 只在前端预接 `baseline`，真实 CRUD 在后端支持前必须保持 `BLOCKED_BY_BACKEND_BASELINE_FIXTURE`。真实门必须使用从冻结 remote commit 创建的独立 detached backend worktree，不能直接消费 `/Users/visionclaw/agxp-monorepo` 当前旧且 dirty 的 checkout。
+- 不修改后端 tracked 代码。当前后端只支持 `happy|p4|p5|p6`；本 Plan 只在前端预接 `baseline`，真实 CRUD 在后端支持前必须保持 `BLOCKED_BY_BACKEND_BASELINE_FIXTURE`。真实门必须复用拥有 Recruitment `.local-dev` 与配对持久 volume 的 state-owning backend checkout，HEAD 必须等于冻结 SHA，否则以 `dependency_drift` 停止。
 - Hosted 与 CRUD 都只能使用 `dev-local.sh prepare|up|health --acceptance`；`bootstrap` 和 `down` 按后端 CLI 不带 selector。检测到健康 default stack 时阻塞，不擅自 down、切 profile 或删除 volume。
 - 同一轮只使用一个 `BROWSER_FIXTURE_RUN_ID` 和 `<run-id>.json` receipt。禁止 per-call ID、`-1` receipt、cleanup 后二次 converge/verify、前端删除 receipt。
 - receipt 必须是普通文件且不是 symlink、mode `0600`、schema 2、`scene_contract_version=hosted-agent-browser.v1`、`phase=prepared`、run/scene 精确匹配，top-level exact key set 为 `baseline_fingerprints|cleanup|created_at|lease|phase|pre_state|run_id|scene|scene_contract_version|scene_driver|schema_version|validated_graph`。
@@ -445,7 +445,7 @@ fi
 bash e2e/真实后端/运行整栈验收.test.sh
 ```
 
-Expected: hermetic suite PASS；four-scene fake 精确阻塞，five-scene fake 进入完整 CRUD journey。真实后端 probe 统一留到 Task 6 的 detached backend worktree，不能消费本机旧且 dirty 的 checkout。
+Expected: hermetic suite PASS；four-scene fake 精确阻塞，five-scene fake 进入完整 CRUD journey。真实后端 probe 统一留到 Task 6 的 state-owning backend checkout，并受冻结 HEAD 与源码目录 clean gate 约束。
 
 ```bash
 git diff --check
@@ -811,12 +811,12 @@ BACKEND_E2E_DIR="${AGXP_MONOREPO_DIR:-/Users/visionclaw/agxp-monorepo}"
 BACKEND_E2E_SHA="$(git -C "$BACKEND_E2E_DIR" rev-parse HEAD)"
 [ "$BACKEND_E2E_SHA" = 'c4d99e2db5d8e9ba3b5387fb66ac07d80584b25e' ] \
   || { echo 'dependency_drift: requires_replan' >&2; exit 1; }
-[ -z "$(git -C "$BACKEND_E2E_DIR" status --porcelain --untracked-files=no -- apps/recruitment apps/recruitment-bff)" ] \
-  || { echo 'dependency_drift: tracked_backend_changes' >&2; exit 1; }
+[ -z "$(git -C "$BACKEND_E2E_DIR" status --porcelain -- apps/recruitment apps/recruitment-bff)" ] \
+  || { echo 'dependency_drift: backend_source_changes' >&2; exit 1; }
 AGXP_MONOREPO_DIR="$BACKEND_E2E_DIR" npm run test:agent-browser:backend-local
 ```
 
-这里允许 checkout 中存在其它路径的无关 untracked 文件，但 Recruitment/BFF tracked tree 必须干净。不得为通过校验而 checkout、rebase、reset、clean、复制 `.local-dev` 或重置 Docker volume；不满足时停止并请用户提供匹配冻结 SHA 的 state-owning checkout。当前冻结 SHA 的 Expected 固定为 exit 75：五条普通 journey blocked、fixture converge 为 `BLOCKED(BLOCKED_BY_BACKEND_BASELINE_FIXTURE)`、零 Vite/browser/receipt。记录 `BACKEND_E2E_SHA` 和 `BACKEND_E2E_DIR`，Step 4 必须复用同一目录。未来 baseline commit 合入后，先把本 Plan 的后端基线重新冻结到已审查的精确 SHA；这只更新集成输入，不需要修改前端代码。
+pathspec 之外的无关文件不影响本门，但 `apps/recruitment` 与 `apps/recruitment-bff` 必须既无 tracked 修改也无 untracked 文件；gitignored `.local-dev` 不参与源码冻结检查。不得为通过校验而 checkout、rebase、reset、clean、复制 `.local-dev` 或重置 Docker volume；不满足时停止并请用户提供匹配冻结 SHA 的 state-owning checkout。当前冻结 SHA 的 Expected 固定为 exit 75：五条普通 journey blocked、fixture converge 为 `BLOCKED(BLOCKED_BY_BACKEND_BASELINE_FIXTURE)`、零 Vite/browser/receipt。记录 `BACKEND_E2E_SHA` 和 `BACKEND_E2E_DIR`，Step 4 必须复用同一目录。未来 baseline commit 合入后，先把本 Plan 的后端基线重新冻结到已审查的精确 SHA；这只更新集成输入，不需要修改前端代码。
 
 - [ ] **Step 4: 运行真实 Hosted 五轮 suite**
 
