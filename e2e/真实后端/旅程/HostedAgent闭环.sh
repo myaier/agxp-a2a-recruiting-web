@@ -402,7 +402,7 @@ run_happy(){
   wait_rule_proposal_ready
   assert_text '确认规则'
   click_button_exact '确认规则'
-  wait_candidate_rule_count "$((count_before + 1))"
+  # 权威重读：accept 后页面计数不自动刷新，先硬刷新再读 active rule 数。
   ab reload >/dev/null
   wait_candidate_rule_count "$((count_before + 1))"
 
