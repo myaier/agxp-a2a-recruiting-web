@@ -2,6 +2,8 @@
 
 > 本文自包含。不要要求访问原测试机器、原 PDF、浏览器认证状态、截图、录屏或之前的聊天记录。
 
+> **状态复核（2026-09-05 05:37 +08:00）：部分已完成，部分旧归因已失效，剩余合同仍待办。** 后端 `origin/release/0.2.5` 仍为 `21e34ff04`。证书年份 nullable、parser failure 分类/安全诊断与合成中文 PDF 证据矩阵已由 `6e27240ed`、`d4c656fca`、`a46b82df2`、`48e292660`、`05f87254c` 等提交落地。原文基于单次“两页中文 PDF”的 `parser_invalid_output` 观测，不能再作为“页数或中文 PDF 导致 parser 缺陷”的当前结论；当前 local runtime 已区分显式 stub 与 real provider。候选披露联系方式合同仍未完成，现由 `2026-09-04-report-remainder-backend-handoff.md` 工作包 1 负责；不要把登录 credential/avatar 的已完成能力误判为该合同已经存在。
+
 ## 目标与边界
 
 主任务：定位并修复“可正常下载/预览的两页中文 PDF，异步解析最终进入 `failed/parser_invalid_output`”。

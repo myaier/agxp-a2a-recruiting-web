@@ -1,5 +1,7 @@
 # 后端 Handoff：Candidate Resume Suggestion API
 
+> **状态复核（2026-09-04 18:44 +08:00）：已完成。** owner-only 简历建议读取、版本/主体/lifecycle fence、BFF 投影与公开合同由 `f2d7af565` 完成，并已确认进入后端 `origin/release/0.2.5@21e34ff04`。后文未勾选框仅保留原始交付标准，不再代表待领取任务。
+
 > 本文可直接发送给另一台机器上的后端 Coding Agent，用于从零上下文编写 Spec/Plan 并实施。文中只使用仓库相对路径，不依赖聊天记录、测试账号、浏览器会话、截图或本机路径。
 
 ## 1. 目标与基线

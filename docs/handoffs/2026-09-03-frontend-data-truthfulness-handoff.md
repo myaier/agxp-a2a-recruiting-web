@@ -2,6 +2,8 @@
 
 > 本文可以直接交给另一台机器上的前端 Coding Agent。接收者不需要此前聊天、测试账号、截图、浏览器会话、本机路径或其它 Handoff。开始前请先 fetch 最新主干并以最新前端 HEAD 实施；本文只依赖已经存在的 HTTP 合同，不要求后端新增字段、路由或迁移。
 
+> **状态复核（2026-09-04 18:44 +08:00）：已完成。** 交付 A–D 分别由 MatchCase 权威统计 `2bb799a4`/`6871dc44`、contact-events 接线 `06d24914`–`6bc13a5c`、remote round-trip `7e493525`、停止伪称候选实名 `e63003ff` 落地；上述提交均已确认进入前端 `origin/main@26d80923`。后文“本批明确不修”中的迁移项不随本文关闭。
+
 ## 1. 目标、基线与边界
 
 - 前端仓库：`myaier/agxp-a2a-recruiting-web`
@@ -180,13 +182,13 @@ needs_action    // 列表 viewer 的权威待办布尔值
 
 | 项 | 原因 | 去向 |
 | --- | --- | --- |
-| JD 上传 | 独立实现分支正在进行 | 独立前端分支 |
+| JD 上传 | **已完成（2026-09-04 复核）**；原“独立实现分支正在进行”状态已失效，依据前端 `ef88edff` 已进入 `origin/main@26d80923` | 独立前端 Handoff（已归档） |
 | 屏蔽组织无命中时的空态说明 | 稳定 ID 行为正确，剩余是 UI/空态设计 | PM/Claude Design Handoff |
 | 招聘方“我的”卡是否展示姓名/职位 | 后端资料已保存，剩余是信息层级设计 | PM/Claude Design Handoff |
 | 企业披露策略禁用控件与页脚语义 | 当前是固定产品机制，剩余是 UI/copy 设计 | PM/Claude Design Handoff |
 | 对比度、样式与组件布局 | 非数据接线问题 | PM/Claude Design Handoff |
-| “至今”被解析为结束月 | 后端解析 prompt/schema 语义 | 后端 Handoff |
-| AI 规则委托 `invalid_agent_control_proposal` | Hub 模型/工具调用 schema 兼容性 | 后端/运行时 Handoff |
+| “至今”被解析为结束月 | **已完成（2026-09-04 复核）**；依据后端集成 `c6c87d39f` | 后端 Handoff（已归档） |
+| AI 规则委托 `invalid_agent_control_proposal` | **已完成（2026-09-04 复核）**；依据后端集成 `21e34ff04` | 后端/运行时 Handoff（已归档） |
 
 ## 9. 完成定义
 

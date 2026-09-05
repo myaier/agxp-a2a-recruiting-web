@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status review (2026-09-04 18:44 +08:00): COMPLETED.** Tasks 1–8 landed through the candidate-onboarding repair series ending at `b174d760`, with follow-up draft/prefill cleanup on `09f447f7` and `f7dd9a27`; all cited commits are ancestors of frontend `origin/main@26d80923`. The unchecked boxes below are retained as historical implementation and acceptance context, not as open work.
+
 **Goal:** Make real-backend candidate onboarding persist one experience, one skill, one certificate and one active intention; preserve draft answers across navigation/reload; show authoritative phone data; and keep development tooling from blocking business controls.
 
 **Architecture:** Keep `/me/resume` and `/me/intentions` service-authoritative. Use local state only for unsubmitted edits, with an account/environment-scoped `sessionStorage` draft for reload recovery. Preflight the complete resume payload before starting partitioned mutations, then preserve the existing final authoritative GET and conflict recovery behavior.

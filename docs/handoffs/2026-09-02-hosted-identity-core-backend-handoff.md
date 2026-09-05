@@ -2,6 +2,8 @@
 
 > 本文可直接发送给另一台机器上的后端 Coding Agent，用于从零上下文编写 Spec/Plan 并实施。文中只使用仓库相对路径，不依赖此前聊天、浏览器会话、测试账号、截图或本机路径。
 
+> **状态复核（2026-09-04 18:44 +08:00）：已完成。** Hosted Agent 的 canonical global identity 解析与相关 task target 收敛已由 `68844cab3` 并经 `0a435a931` 集成，且已确认进入后端 `origin/release/0.2.5@21e34ff04`。后文未勾选框仅作历史实施记录。
+
 ## 1. 目标、基线与唯一职责
 
 - 目标仓库：包含 Recruitment 与 Hub 的后端仓库。

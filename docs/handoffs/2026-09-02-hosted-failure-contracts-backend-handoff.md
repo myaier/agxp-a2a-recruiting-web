@@ -2,6 +2,8 @@
 
 > 本文可直接发送给另一台机器上的后端 Coding Agent，用于从零上下文编写 Spec/Plan 并实施。文中只使用仓库相对路径，不依赖此前聊天、测试账号、浏览器会话、截图或本机路径。
 
+> **状态复核（2026-09-04 18:44 +08:00）：已完成。** delegation terminal reason、P4/P5/P6 owner-safe failure/attention 投影及 BFF 严格合同已在 `f69fcec26` 收尾，并已确认进入后端 `origin/release/0.2.5@21e34ff04`。后文仅保留为历史设计、实现和验收依据。
+
 ## 1. 目标、基线与前置依赖
 
 - 目标仓库：Recruitment 后端仓库，包含 Mobile API、BFF 与 OpenAPI。

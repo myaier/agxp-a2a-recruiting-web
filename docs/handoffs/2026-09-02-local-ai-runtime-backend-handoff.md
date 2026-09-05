@@ -2,6 +2,8 @@
 
 > 本文可直接发送给另一台机器上的 Coding Agent，用于从零上下文编写 Spec/Plan 并实施。文中只使用仓库相对路径，不依赖此前聊天、测试账号、浏览器会话、截图、本机 secrets 或本机路径。
 
+> **状态复核（2026-09-04 18:44 +08:00）：已完成。** Recruitment parser/JD 的 real provider 模式与 local 配置由 `401ec9284` 等提交落地，formal Hub runtime 校验由 `0e5779a71` 落地；两者均已确认进入后端 `origin/release/0.2.5@21e34ff04`。后文未勾选框仅作历史验收记录。
+
 ## 1. 目标、基线与唯一职责
 
 - 目标仓库：包含 Recruitment、Hub 与 local development tooling 的后端仓库。

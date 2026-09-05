@@ -2,6 +2,8 @@
 
 > **给 Coding Agent：** REQUIRED SUB-SKILL：使用 `superpowers:test-driven-development`；执行本计划前完整阅读仓库根 `AGENTS.md`、`CLAUDE.md`、`docs/testing/WORKTREE_TEST_HANDOFF.md` 和 `docs/testing/GLOBAL_TEST_CASES.md`。本文自包含，不要索要原测试机器、职位材料、浏览器状态或之前的聊天记录。
 
+> **状态复核（2026-09-04 18:44 +08:00）：已完成。** remote 空办公地址、JD 建议稿导入领域/API/worker 与集成测试已随 `45f7323e` 集成进入后端发布线，其中 JD 公开合同最终提交为 `7f1200a5b`；两者均已确认是后端 `origin/release/0.2.5@21e34ff04` 的祖先。文中“profile 404、公司声明、requirements 属于前端归因”的结论仍有效；后文未勾选框仅作历史实施记录。
+
 **仓库：** `myaier/agxp-monorepo`
 
 **目标：** 只修改确实属于后端的两条能力：让 remote 岗位合法携带空 `office_location`；为招聘方提供安全、异步、只生成可编辑建议稿的 JD PDF 导入 API。不要修改已正确工作的 recruiter profile 首写、岗位公司声明和 `requirements` 合同。

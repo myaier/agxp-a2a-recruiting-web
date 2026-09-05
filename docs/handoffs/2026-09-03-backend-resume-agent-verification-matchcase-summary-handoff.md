@@ -2,6 +2,8 @@
 
 > 本文可以直接发送给另一台机器上的后端 Coding Agent。接收者不需要此前聊天、测试账号、测试材料、浏览器会话、本机路径或其它 Handoff 才能理解需求。开始前必须 fetch 远端并以最新 `release/0.2.5` 为基线核对代码；文中的路径均为仓库相对路径。
 
+> **状态复核（更新至 2026-09-05 05:37 +08:00）：四个后端工作包均已完成。** `BE-RD-01` 与 `BE-MC-01` 由 `c6c87d39f` 集成，`BE-IV-01` 由 `aa150811d` 集成，`BE-AG-01` 由 `21e34ff04` 集成；三次集成均位于当前后端 `origin/release/0.2.5@21e34ff04`。下游 `FE-MC-01` 已于前端 `280f83ef` 完成，`FE-IV-01` 则仍在 `fe-iv-01-frontend-fixes@d4f6e152` 实施且尚未合入。
+
 ## 1. 目标与拆分原则
 
 目标仓库：包含 `apps/recruitment`、`apps/recruitment-bff` 与 `apps/hub` 的后端 monorepo。

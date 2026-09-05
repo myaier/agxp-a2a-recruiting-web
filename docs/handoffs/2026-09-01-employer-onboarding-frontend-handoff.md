@@ -2,6 +2,8 @@
 
 > **给 Coding Agent：** REQUIRED SUB-SKILL：使用 `superpowers:test-driven-development` 逐任务实现；任务较多时使用 `superpowers:subagent-driven-development` 或 `superpowers:executing-plans`。本文自包含，不要索要原测试机器、职位材料、浏览器状态、截图或之前的聊天记录。
 
+> **状态复核（2026-09-04 18:44 +08:00）：已完成。** P0 onboarding 修复已由 `68935537` 集成；独立的 JD PDF 前端接线由 `fd3a98fb` 至 `ef88edff` 完成。上述提交均已确认是前端 `origin/main@26d80923` 的祖先，因此 Task 1–8 不再是可领取工作；后文未勾选框保留为历史实现与验收说明。
+
 **目标：** 让真实后端模式下的新招聘方能够创建招聘名片、填写公司声明、发布一条合同合法的岗位，并在刷新后看到权威资料；同时修正无企业关系空态、认证状态、错误文案、导出文案和页面缩放。
 
 **架构选择：** 保持服务端 profile/jobs/affiliations 为权威事实。把 recruiter profile 的 404 建模成合法“缺失”水合态；首次 profile 写入复用现有 PATCH CAS 的 revision 0。岗位发布前在页面层预检用户可修正字段，不削弱 BFF 合同。JD 导入作为后端 API 就绪后的独立建议稿能力接入，不与手工发岗 P0 混合。

@@ -2,6 +2,8 @@
 
 > 本文可以直接发送给另一台机器上的前端 Coding Agent。接收者不需要此前聊天、测试账号、测试材料、浏览器会话、本机路径或其它 Handoff。开始前必须 fetch 最新主干，并拿到后端已合并的 OpenAPI 与精确 commit；文中的路径均为仓库相对路径。
 
+> **状态复核（2026-09-05 05:37 +08:00）：`FE-MC-01` 已完成，`FE-IV-01` 进行中。** 双端 MatchCase summary 的 data source、状态/operation、精确页面统计与 mutation 后刷新已由 `17c445e4`、`71b0d13b`、`a977dba4`、`280f83ef` 合入前端 `origin/main@280f83ef`，因此 `FE-MC-01` 不再是待办。候选实名前端分支 `fe-iv-01-frontend-fixes@d4f6e152` 已完成 Task 1 data source，但尚未实现状态/operation、页面、路由与 E2E，也尚未合入 `main`；`FE-IV-01` 仍不能关闭。后端两个合同仍位于 `origin/release/0.2.5@21e34ff04`。
+
 ## 1. 目标、依赖与实施拆分
 
 目标仓库：前端招聘应用。
@@ -63,6 +65,8 @@ GET /api/v1/recruiter/match-cases/summary
 7. 只做数据接线和最小既有组件组合；视觉方案留给 PM/Claude Design。
 
 ## 4. FE-IV-01：候选实名认证接入
+
+> **当前状态（2026-09-05 05:37 +08:00）：进行中，未合入。** 分支 `fe-iv-01-frontend-fixes@d4f6e152` 只完成实施计划 Task 1；不要把 data source 存在等同于完整用户流程已经交付。
 
 ### 4.1 数据模型与建议代码范围
 
@@ -133,6 +137,8 @@ other
 
 ## 5. FE-MC-01：双端精确统计接入
 
+> **当前状态（2026-09-05 05:37 +08:00）：已完成并合入。** 完成提交为 `17c445e4`、`71b0d13b`、`a977dba4`、`280f83ef`；当前 `origin/main` 即 `280f83ef`。
+
 ### 5.1 合同与映射
 
 两个 summary endpoint 返回同形闭合结果：
@@ -201,7 +207,7 @@ src/屏幕/企业我的.tsx
 
 1. 分别记录 `FE-IV-01`、`FE-MC-01` 对应的后端 release commit 和 OpenAPI version。
 2. 先合并正在执行的纯前端数据真实性分支，解决冲突后保留其 Mock 清理与诚实过渡状态。
-3. 后端 verification 发布后实现 `FE-IV-01`；后端 summary 发布后实现 `FE-MC-01`。两项互不等待。
+3. **状态更新：** `FE-MC-01` 已由 `280f83ef` 完成并合入；`FE-IV-01` 正在独立分支实施。两项互不等待。
 4. Backend mode 完成自动测试和浏览器 dogfood；Mock mode 做回归。
 5. summary E2E 通过后删除 `N+` 过渡计算；不要提前删除失败/未加载的中性显示。
 

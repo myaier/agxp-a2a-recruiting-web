@@ -4,6 +4,8 @@
 
 > **2026-09-03 执行范围更新：**本文中的 contact-events、credential/avatar 与 agent-settings 能力已进入当前 release 基线，不应再次领取；候选实名认证已迁移到 `docs/handoffs/2026-09-03-backend-resume-agent-verification-matchcase-summary-handoff.md` 的 `BE-IV-01`。因此本文只作为历史设计记录，不再包含可执行工作范围。
 
+> **状态复核（2026-09-04 18:44 +08:00）：已完成且已归档。** 本文原范围由后端集成提交 `5673fb335` 落地，候选实名认证的迁移范围随后由 `aa150811d` 落地；二者均已确认是后端 `origin/release/0.2.5@21e34ff04` 的祖先。本文全部内容仅供追溯，不再包含待执行项目。
+
 ## 仓库与目标
 
 - 后端仓库：`myaier/agxp-monorepo`

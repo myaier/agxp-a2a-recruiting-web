@@ -2,6 +2,8 @@
 
 > 可直接交给前后端协作的 Coding Agent。本文仅定义跨层接口与接线，不依赖任何本机路径、账号或截图。
 
+> **状态复核（2026-09-05 05:37 +08:00）：两个工作包仍未完成。** 后端 `origin/release/0.2.5@21e34ff04` 仍无 candidate contact-profile 与 onboarding-state 合同，前端 `origin/main@280f83ef` 因而也没有对应 decoder/operation/UI/route guard。当前候选实名与 MatchCase summary 工作不提供这两类资源，不能据此关闭本文。
+
 ## 目标
 
 在候选披露联系方式与 onboarding 状态合同上线后，前端把当前诚实的“未接入”占位和无边界深链替换为权威交互；在合同未上线前不得提交本地假成功。

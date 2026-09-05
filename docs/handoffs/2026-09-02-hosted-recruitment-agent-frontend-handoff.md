@@ -2,6 +2,8 @@
 
 > 本文可直接发送给另一台机器上的前端 Coding Agent，但只能在 Hosted Agent 后端身份、任务收敛和公开错误合同合并后规划实施。接收者不需要此前聊天、测试账号、浏览器会话、截图、其它 Handoff 或任何本机路径。本文已删除基于当前 release 可独立实施的纯前端工作。
 
+> **状态复核（2026-09-04 18:44 +08:00）：已完成。** 前端 strict failure receipt、P5 attention、P6 failed proposal 呈现及双角色 hosted journey 已由 `1950f860` 至 `4ba7c525` 完成并合入；`4ba7c525` 已确认是前端 `origin/main@26d80923` 的祖先，对应后端合同也已进入 `origin/release/0.2.5@21e34ff04`。后文未勾选框不再代表待领取任务。
+
 ## 1. 仓库、冻结基线与目标
 
 - 前端仓库：`myaier/agxp-a2a-recruiting-web`

@@ -2,6 +2,8 @@
 
 > 可直接交给另一台机器上的后端 Coding Agent。本文不依赖前端仓库路径、测试账号或本地运行目录。
 
+> **状态复核（2026-09-05 05:37 +08:00）：三个工作包仍未完成。** 后端 `origin/release/0.2.5` 仍为 `21e34ff04`；在 `apps/recruitment` 与 `apps/recruitment-bff` 中仍没有 candidate contact-profile 或 onboarding-state 路由/领域。`runtime_export_composition_test.go` 仍明确要求 Conversation 与 AccountLifecycle 同时装配才挂载 export pass，而 local compose 仍刻意不装配 Conversation。因此本文没有可关闭或失效的工作包；当天新增的 hosted-agent browser acceptance 分支不覆盖这些产品合同。
+
 ## 工作包 1：候选披露联系方式合同
 
 候选个人信息页可安全展示登录凭证手机号，但候选向招聘方披露的手机号、微信号与邮箱没有独立读写合同。前端目前正确显示“未接入”，不能把登录凭证或浏览器本地值冒充披露联系方式。
