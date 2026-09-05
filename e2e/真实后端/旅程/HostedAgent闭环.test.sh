@@ -17,7 +17,9 @@
 set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+# 本测试在 e2e/真实后端/旅程/ 三层深：仓库根要退三层，沙盒才落在
+# 顶层被 gitignore 的 agent-browser-backend-output/ 里。
+REPO_ROOT="$(cd "$ROOT_DIR/../../.." && pwd)"
 REAL_SCRIPT="$ROOT_DIR/HostedAgent闭环.sh"
 
 FAILURES=0
