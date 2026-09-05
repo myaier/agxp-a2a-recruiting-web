@@ -334,52 +334,64 @@ describe('取学校预填 / 取专业预填', () => {
   });
 });
 
+// ── R（Task 7）：currentStart/currentEnd 与返回值都是 number | null ——
+//    缺失就是 null，不再以 2021/2025 常量顶替；只有 eligible、未确认的真实建议
+//    命中 2000..2030 时覆盖对应一侧。
 describe('取就读年份预填', () => {
-  it('从 education[0] 起止月取年份（wire fixture 2017-09 / 2021-06）', () => {
+  it('完整建议覆盖两侧（wire fixture 2017-09 / 2021-06）', () => {
     const state = readyState(wire建议(), { educations: true });
-    expect(取就读年份预填(state, 2021, 2025, false)).toEqual({ start: 2017, end: 2021 });
+    expect(取就读年份预填(state, null, null, false)).toEqual({ start: 2017, end: 2021 });
   });
 
-  it('年份超出 2000..2030 时保留页面现值', () => {
+  it('无建议时透传传入值（含 null）', () => {
+    expect(取就读年份预填(创建空候选预填状态(), 2019, 2023, false)).toEqual({ start: 2019, end: 2023 });
+    expect(取就读年份预填(创建空候选预填状态(), null, null, false)).toEqual({ start: null, end: null });
+  });
+
+  it('建议超界或缺失的一侧保持 null（不补常量）', () => {
     const 起点超界 = readyState(映射变体((建议) => {
       建议.draft.educations[0].start_month = { value: '1999-09', confidence: 'high' };
     }), { educations: true });
-    expect(取就读年份预填(起点超界, 2021, 2025, false)).toEqual({ start: 2021, end: 2021 });
+    expect(取就读年份预填(起点超界, null, null, false)).toEqual({ start: null, end: 2021 });
 
     const 止点超界 = readyState(映射变体((建议) => {
       建议.draft.educations[0].end_month = { value: '2031-06', confidence: 'high' };
     }), { educations: true });
-    expect(取就读年份预填(止点超界, 2021, 2025, false)).toEqual({ start: 2017, end: 2025 });
-  });
+    expect(取就读年份预填(止点超界, null, null, false)).toEqual({ start: 2017, end: null });
 
-  it('起点缺失保留页面现值', () => {
-    const state = readyState(映射变体((建议) => {
+    const 起点缺失 = readyState(映射变体((建议) => {
       建议.draft.educations[0].start_month = { value: null, confidence: null };
     }), { educations: true });
-    expect(取就读年份预填(state, 2021, 2025, false)).toEqual({ start: 2021, end: 2021 });
+    expect(取就读年份预填(起点缺失, null, null, false)).toEqual({ start: null, end: 2021 });
   });
 
-  it('学生 end month 缺失时可用 profile.graduation_year（仍须 2000..2030）', () => {
+  it('单边已有值与单边建议互不干扰', () => {
+    const state = readyState(wire建议(), { educations: true });
+    // 传入已有 2019（建议只覆盖命中的两侧时也以建议为准——同 fixture 完整建议）
+    expect(取就读年份预填(state, 2019, null, false)).toEqual({ start: 2017, end: 2021 });
+  });
+
+  it('学生 graduation_year 合法回退（仍须 2000..2030）', () => {
     const 无止月 = readyState(映射变体((建议) => {
       建议.draft.educations[0].end_month = { value: null, confidence: null };
     }), { educations: true });
-    expect(取就读年份预填(无止月, 2021, 2025, true)).toEqual({ start: 2017, end: 2021 });
-    expect(取就读年份预填(无止月, 2021, 2025, false)).toEqual({ start: 2017, end: 2025 });
+    expect(取就读年份预填(无止月, null, null, true)).toEqual({ start: 2017, end: 2021 });
+    expect(取就读年份预填(无止月, null, null, false)).toEqual({ start: 2017, end: null });
 
     const 毕业超界 = readyState(映射变体((建议) => {
       建议.draft.educations[0].end_month = { value: null, confidence: null };
       建议.draft.profile.graduation_year = { value: 1999, confidence: 'high' };
     }), { educations: true });
-    expect(取就读年份预填(毕业超界, 2021, 2025, true)).toEqual({ start: 2017, end: 2025 });
+    expect(取就读年份预填(毕业超界, null, null, true)).toEqual({ start: 2017, end: null });
   });
 
-  it('educations 非空或分区已确认时保留页面现值', () => {
+  it('educations 非空或分区已确认时透传传入值', () => {
     const 非空 = readyState(wire建议(), { educations: false });
-    expect(取就读年份预填(非空, 2021, 2025, false)).toEqual({ start: 2021, end: 2025 });
+    expect(取就读年份预填(非空, null, null, false)).toEqual({ start: null, end: null });
 
     const 已确认 = readyState(wire建议(), { educations: true });
     已确认.confirmed.education_period = true;
-    expect(取就读年份预填(已确认, 2021, 2025, false)).toEqual({ start: 2021, end: 2025 });
+    expect(取就读年份预填(已确认, 2019, 2023, false)).toEqual({ start: 2019, end: 2023 });
   });
 });
 

@@ -140,11 +140,11 @@ describe('最高学历 预填预选', () => {
     expect(档位('博士').getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('不支持的学历词汇（Bachelor）保留既有默认选择', () => {
+  it('不支持的学历词汇（Bachelor）不猜档：Backend 空教育保持未选', () => {
     render最高学历({ 身份: '在校', 候选预填: readyState(构造映射变体基底()) });
-    expect(档位('本科在读').getAttribute('aria-pressed')).toBe('true');
+    expect(档位('本科在读').getAttribute('aria-pressed')).toBe('false');
     render最高学历({ 身份: '在职', 候选预填: readyState(构造映射变体基底()) });
-    expect(档位('本科').getAttribute('aria-pressed')).toBe('true');
+    expect(档位('本科').getAttribute('aria-pressed')).toBe('false');
   });
 
   it.each([
@@ -153,11 +153,11 @@ describe('最高学历 预填预选', () => {
     ['educations 非空（服务端已有教育）', (状态: 候选预填状态) => {
       状态.eligibility = { ...全可预填, educations: false };
     }],
-  ])('%s 保留旧初始化', (_名, 改) => {
+  ])('%s 保留旧初始化（Backend 空教育 → 未选）', (_名, 改) => {
     const 轮 = readyState(硕士学历建议());
     改(轮);
     render最高学历({ 身份: '在校', 候选预填: 轮 });
-    expect(档位('本科在读').getAttribute('aria-pressed')).toBe('true');
+    expect(档位('本科在读').getAttribute('aria-pressed')).toBe('false');
   });
 });
 
@@ -198,5 +198,61 @@ describe('最高学历 分区确认时序', () => {
       基本信息: expect.objectContaining({ 在读学历: '硕士在读' }),
       教育: [expect.objectContaining({ 学历: '硕士' })],
     }));
+  });
+});
+
+// ── N（Task 7）：空学历不预选、不创建教育记录，下一步给可见校验 ──
+describe('最高学历 · 空学历显式确认（N）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockClear();
+  });
+
+  it('Backend 无教育、无建议：所有学历按钮未选；下一步提示且零保存零导航', async () => {
+    render最高学历({ 身份: '在职' });
+    const 用户 = userEvent.setup();
+    for (const 档 of ['初中及以下', '中专/中技', '高中', '大专', '本科', '硕士', '博士']) {
+      expect(档位(档).getAttribute('aria-pressed')).toBe('false');
+    }
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请选择最高学历');
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('Backend 学生空教育：在读档未选，下一步提示在读学历', async () => {
+    render最高学历({ 身份: '在校' });
+    const 用户 = userEvent.setup();
+    for (const 档 of ['大专在读', '本科在读', '硕士在读', '博士在读']) {
+      expect(档位(档).getAttribute('aria-pressed')).toBe('false');
+    }
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请选择在读学历');
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+  });
+
+  it('已有教育仍预选并可保存', async () => {
+    render最高学历({ 身份: '在职', 简历教育: [{ 编号: 'edu1', 学校: '', 学历: '硕士', 专业: '', 开始: '', 结束: '' }] });
+    const 用户 = userEvent.setup();
+    expect(档位('硕士').getAttribute('aria-pressed')).toBe('true');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock跳转).toHaveBeenCalledWith(路径.毕业院校);
+  });
+
+  it('Mock 空教育保留「本科」演示默认', async () => {
+    mock应用状态 = {
+      ...建状态({ 身份: '在职' }),
+      数据源模式: 'mock',
+    };
+    render(
+      <MemoryRouter>
+        <最高学历 />
+      </MemoryRouter>,
+    );
+    expect(档位('本科').getAttribute('aria-pressed')).toBe('true');
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
   });
 });

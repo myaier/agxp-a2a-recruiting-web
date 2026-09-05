@@ -189,3 +189,78 @@ describe('就读时间段 分区确认时序', () => {
     }));
   });
 });
+
+// ── R（Task 7）：空就读时间不保存显示落点 —— 显示值与确认态分离 ──
+describe('就读时间段 · 空时间显式确认（R）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockClear();
+  });
+
+  it('Backend 教育段起止为空且无建议：下一步提示且零保存', async () => {
+    render就读时间段({ 身份: '在校', 简历教育: 空白首段() });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请选择入学时间和毕业时间');
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('只有一侧已有（开始 2017-09、结束空）：仍不保存', async () => {
+    render就读时间段({
+      身份: '在校',
+      简历教育: [{ ...空白首段()[0], 开始: '2017-09', 结束: '' }],
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请选择入学时间和毕业时间');
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+  });
+
+  it('已有完整年月原样保存', async () => {
+    render就读时间段({
+      身份: '在校',
+      简历教育: [{ ...空白首段()[0], 开始: '2017-09', 结束: '2021-06' }],
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      教育: [expect.objectContaining({ 开始: '2017-09', 结束: '2021-06' })],
+    }));
+  });
+
+  it('用户滚动缺失轮后保存对应双值（2017-09 / 2024-06）', async () => {
+    render就读时间段({
+      身份: '在校',
+      简历教育: [{ ...空白首段()[0], 开始: '2017-09', 结束: '' }],
+    });
+    const 用户 = userEvent.setup();
+    // 毕业年缺失（显示占位 2025）：滚到 2024 —— 交互即确认
+    const 毕业列 = screen.getByRole('listbox', { name: '毕业年' });
+    await 用户.click(within(毕业列).getByRole('option', { name: '2024' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      教育: [expect.objectContaining({ 开始: '2017-09', 结束: '2024-06' })],
+    }));
+  });
+
+  it('Mock 空时间保持 2021/2025 演示默认', async () => {
+    mock应用状态 = {
+      ...建状态({ 身份: '在校', 简历教育: 空白首段() }),
+      数据源模式: 'mock',
+    };
+    render(
+      <MemoryRouter>
+        <就读时间段 />
+      </MemoryRouter>,
+    );
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      教育: [expect.objectContaining({ 开始: '2021-09', 结束: '2025-06' })],
+    }));
+  });
+});

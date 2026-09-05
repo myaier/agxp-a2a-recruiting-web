@@ -180,14 +180,15 @@ export function 取专业预填(
 /**
  * 从 educations[0].start_month/end_month 取年份，仅 2000..2030 才预选；
  * 学生 end month 缺失时可回退 profile.graduation_year（仍须在控件范围）。
- * 无建议/超界/缺席时返回传入的当前值（页面既有默认）。
+ * R（Task 7）：currentStart/currentEnd 与两侧返回值都是 number | null ——
+ * 缺失就是 null，无建议/超界/缺席/ ineligible/已确认都不补常量。
  */
 export function 取就读年份预填(
   state: 候选预填状态,
-  currentStart: number,
-  currentEnd: number,
+  currentStart: number | null,
+  currentEnd: number | null,
   isStudent: boolean,
-): { start: number; end: number } {
+): { start: number | null; end: number | null } {
   const 结果 = { start: currentStart, end: currentEnd };
   const 建议 = 可用建议(state, 'education_period');
   if (建议 === null || state.eligibility?.educations !== true) return 结果;
