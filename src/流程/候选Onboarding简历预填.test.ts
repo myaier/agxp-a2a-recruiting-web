@@ -24,6 +24,7 @@ import {
   取就读年份预填,
   取工作页预填,
   取个人优势预填,
+  取可恢复个人优势建议,
   数未完成项,
   type 候选工作页当前值,
 } from './候选Onboarding简历预填';
@@ -669,5 +670,41 @@ describe('取个人优势预填', () => {
     const 已确认 = readyState(wire建议());
     已确认.confirmed.summary = true;
     expect(取个人优势预填(已确认, '偏好段' as 向导段, '')).toBe('');
+  });
+});
+
+// ── S：Backend 个人优势的「恢复建议」来源 —— 只认当前轮 ready/eligible/未确认的真实
+//    summary 文本，其余（含 Mock 种子）一律 null，页面据此不渲染恢复按钮 ──
+describe('取可恢复个人优势建议', () => {
+  it('ready + eligible + 未确认 + 非空 → 返回当前轮真实建议', () => {
+    expect(取可恢复个人优势建议(readyState(wire建议()), '偏好段' as 向导段))
+      .toBe('Builds reliable synthetic systems.');
+  });
+
+  it('非偏好段 → null（社招首次薪资段不恢复）', () => {
+    expect(取可恢复个人优势建议(readyState(wire建议()), '薪资段' as 向导段)).toBeNull();
+  });
+
+  it.each(['manual', 'loading', 'failed', 'inactive'] as const)('%s 轮 → null', (阶段) => {
+    const state = readyState(wire建议());
+    state.phase = 阶段;
+    expect(取可恢复个人优势建议(state, '偏好段' as 向导段)).toBeNull();
+  });
+
+  it('summary 已确认 → null', () => {
+    const state = readyState(wire建议());
+    state.confirmed.summary = true;
+    expect(取可恢复个人优势建议(state, '偏好段' as 向导段)).toBeNull();
+  });
+
+  it('eligibility.summary 关闭 → null', () => {
+    expect(取可恢复个人优势建议(readyState(wire建议(), { summary: false }), '偏好段' as 向导段)).toBeNull();
+  });
+
+  it('空建议文本 → null', () => {
+    const 空白 = readyState(映射变体((建议) => {
+      建议.draft.summary = { value: '   ', confidence: 'medium' };
+    }));
+    expect(取可恢复个人优势建议(空白, '偏好段' as 向导段)).toBeNull();
   });
 });

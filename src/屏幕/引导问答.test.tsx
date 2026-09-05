@@ -13,6 +13,7 @@ import 引导问答 from './引导问答';
 import { 路径 } from '../路由/路径表';
 import type { 向导段 } from '../流程/onboarding配置';
 import { 构造映射变体基底 } from '../数据/招聘数据源/简历预填.fixture';
+import { 个人优势文本 } from '../数据/模拟数据';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
 
 const mock跳转 = vi.fn();
@@ -659,5 +660,62 @@ describe('引导问答 个人优势预填（Spec §8 偏好段）', () => {
     await 提交到个人优势题();
     await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.披露说明));
     expect(mock操作.确认候选Onboarding预填分区).toHaveBeenCalledTimes(1);
+  });
+
+  // ── S：Backend 不再用 Mock 种子 个人优势文本 充当恢复来源 ──
+
+  it('Backend ready summary 只恢复当前轮真实建议', async () => {
+    const 轮 = readySummary();
+    轮.suggestion!.draft.summary.value = '当前轮真实建议';
+    render引导问答({ 段: '偏好段', 预填: 轮, 个人优势: '用户改写' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(优势框().value).toBe('用户改写');
+    // Mock 种子文本（9 年高并发交易系统…）不出现在屏上
+    expect(screen.queryByText(/9 年高并发交易系统/)).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: /恢复简历识别建议/ }));
+    expect(优势框().value).toBe('当前轮真实建议');
+    // 恢复只改页面草稿，仍由「保存并继续」统一 mutation
+    expect(mock操作.保存个人优势).not.toHaveBeenCalled();
+  });
+
+  it('Backend 无可用建议时无恢复动作，手工文本仍可保存', async () => {
+    const 轮 = readySummary();
+    轮.phase = 'manual';
+    render引导问答({ 段: '偏好段', 预填: 轮, 个人优势: '' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(screen.queryByRole('button', { name: /恢复简历识别建议|重新从简历提取/ })).toBeNull();
+    await 用户.type(优势框(), '用户本人填写');
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('用户本人填写'));
+  });
+
+  it('Mock 保留原型恢复：重新从简历提取写回种子文本', async () => {
+    mock应用状态 = {
+      数据源模式: 'mock',
+      目录查询: null,
+      状态: {
+        引导预填: 已采前两题,
+        个人优势: '',
+        简历作品集链接: '',
+        简历经历: [],
+        // 非在校：偏好段题序 = 硬性排除 → 个人优势
+        基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '离职' as const },
+      },
+      派发: vi.fn(),
+      操作: mock操作,
+    };
+    render(
+      <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
+        <引导问答 />
+      </MemoryRouter>,
+    );
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.clear(优势框());
+    await 用户.type(优势框(), '我改过的内容');
+    await 用户.click(screen.getByRole('button', { name: /重新从简历提取/ }));
+    expect(优势框().value).toBe(个人优势文本);
   });
 });

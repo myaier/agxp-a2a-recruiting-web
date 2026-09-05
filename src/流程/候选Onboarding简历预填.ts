@@ -363,12 +363,24 @@ export function 取工作页预填(state: 候选预填状态, current: 候选工
 // ── 引导问答的个人优势（/wizard 偏好段）──
 
 /**
+ * S：当前轮真实 summary 建议的只读出口。偏好段「个人优势」题的「恢复」动作
+ * 只认 ready + eligible + 未确认 + 非空的服务端建议文本；其余（manual/loading/
+ * failed/inactive/已确认/不可填/空白）一律 null —— 页面据此不渲染恢复按钮，
+ * Mock 种子文本不进入 Backend 分支。
+ */
+export function 取可恢复个人优势建议(state: 候选预填状态, stage: 向导段): string | null {
+  if (stage !== '偏好段') return null;
+  const 建议 = 可用建议(state, 'summary');
+  if (建议 === null || state.eligibility?.summary !== true) return null;
+  const 文本 = 建议.draft.summary.value?.trim();
+  return 文本 ? 建议.draft.summary.value : null;
+}
+
+/**
  * draft.summary 只在偏好段的「个人优势」题作为初值（社招首次薪资段不应用）；
  * 当前已有个人优势或 summary 缺席/不可填时原样返回 current。
  */
 export function 取个人优势预填(state: 候选预填状态, stage: 向导段, current: string): string {
   if (stage !== '偏好段' || current.trim() !== '') return current;
-  const 建议 = 可用建议(state, 'summary');
-  if (建议 === null || state.eligibility?.summary !== true) return current;
-  return 建议.draft.summary.value ?? current;
+  return 取可恢复个人优势建议(state, stage) ?? current;
 }
