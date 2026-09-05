@@ -662,6 +662,20 @@ fixture_gate(){
   esac
 }
 
+# 当前四-scene 后端缺第五个 `baseline` scene 的精确依赖探测：只比较本次 converge
+# 已捕获的输出，不做任何额外的 version/source probe。四个条件（非 Hosted 路径、
+# 实际请求 baseline、rc 64、输出逐字等于冻结 SHA 的三行 usage）全部成立才认定；
+# 其它任何 rc 64 仍然是 runner usage error。
+baseline_missing_from_backend(){
+  local expected
+  [ "$JOURNEY_ARG" != 'hosted-agent' ] || return 1
+  [ "$FIXTURE_SCENE" = 'baseline' ] || return 1
+  [ "$FIXTURE_RC" = '64' ] || return 1
+  expected="$(printf 'usage: %s converge --scene happy|p4|p5|p6\n       %s verify --ledger ABSOLUTE_PATH\n       %s cleanup --ledger ABSOLUTE_PATH' \
+    "$FIXTURE" "$FIXTURE" "$FIXTURE")"
+  [ "$FIXTURE_OUT" = "$expected" ]
+}
+
 fixture_step converge --scene "$FIXTURE_SCENE"
 if expect_fixture_line "BROWSER_FIXTURE_CONVERGE PASS scene=$FIXTURE_SCENE phase=prepared receipt=$RECEIPT"; then
   if [ ! -e "$RECEIPT" ] && [ ! -L "$RECEIPT" ]; then
@@ -681,6 +695,11 @@ if expect_fixture_line "BROWSER_FIXTURE_CONVERGE PASS scene=$FIXTURE_SCENE phase
   fi
 else
   FIXTURE_CONVERGE_STATUS="FAILED(rc=$FIXTURE_RC)"
+  # 先看是不是「后端还没实现 baseline scene」这条精确依赖，再落通用分层。
+  if baseline_missing_from_backend; then
+    FIXTURE_CONVERGE_STATUS='BLOCKED(BLOCKED_BY_BACKEND_BASELINE_FIXTURE)'
+    blocked 'BLOCKED_BY_BACKEND_BASELINE_FIXTURE'
+  fi
   fixture_gate converge
   # rc=0 却没打出精确终止行：算子的输出合同坏了，这是报告层面的问题。
   USAGE_FAILED=1

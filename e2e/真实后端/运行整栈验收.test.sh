@@ -359,6 +359,19 @@ case "${1:-}" in
     { [ "$#" -eq 3 ] && [ "${2:-}" = '--scene' ]; } || usage64
     scene="$3"
     case "$scene" in happy|p4|p5|p6|baseline) : ;; *) usage64 ;; esac
+    # 四-scene 旧后端：请求 baseline 时在任何 fixture mutation 之前逐字吐出当前三行
+    # usage 并 exit 64（冻结 SHA c4d99e2d 的真实行为，前端靠逐字比对识别这条依赖）。
+    if [ "${FAKE_FOUR_SCENE_ONLY:-0}" = '1' ] && [ "$scene" = 'baseline' ]; then
+      printf 'usage: %s converge --scene happy|p4|p5|p6\n' "$0" >&2
+      printf '       %s verify --ledger ABSOLUTE_PATH\n' "$0" >&2
+      printf '       %s cleanup --ledger ABSOLUTE_PATH\n' "$0" >&2
+      exit 64
+    fi
+    # 变体 usage：同样是 rc 64，但内容不是四-scene 那三行 —— 不得冒充 baseline blocker。
+    if [ "${FAKE_USAGE_VARIANT:-0}" = '1' ]; then
+      printf 'usage: %s converge|verify|cleanup [--ledger ABSOLUTE_PATH]\n' "$0" >&2
+      exit 64
+    fi
     case "$(seq_rc converge "${FAKE_CONVERGE_SEQ:-0}")" in
       0) : ;;
       75) echo 'BLOCKED: 本地栈没起来'; exit 75 ;;
@@ -481,6 +494,7 @@ reset_case(){
   export FAKE_LOCALE='zh-CN' FAKE_TZ='Asia/Shanghai'
   export FAKE_SCENE_PNG="$RED_PNG"
   export FAKE_RECEIPT_MODE=600 FAKE_RECEIPT_MISSING=0 FAKE_RECEIPT_DRIFT=none FAKE_LEAK=0
+  export FAKE_FOUR_SCENE_ONLY=0 FAKE_USAGE_VARIANT=0
   export UI_VISUAL_GATE='report'
   # 相邻算子调用的错峰秒数（mock SMS 同手机号 begin 限流是一分钟一个窗）。
   # 默认值在运行器里是 70；合同测试用 1 秒，快，且足以证明节奏机制在跑。
@@ -912,6 +926,37 @@ assert_missing '不跑旅程' 'journey ' "$CALLS"
 assert_missing '绝不把 symlink 传给 cleanup' 'fixture cleanup' "$CALLS"
 symlink_entry="$(find "$MONO/apps/recruitment/.local-dev/browser-fixtures" -maxdepth 1 -name '*.json' 2>/dev/null | head -1)"
 assert_true 'receipt 以 symlink 形式原样保留' "[ -L '$symlink_entry' ]"
+
+# 当前四-scene 后端缺第五个 baseline scene：CRUD/default 路径必须把「converge 请求
+# baseline、算子逐字回三行四-scene usage、rc 64」精确识别为依赖阻塞，在启动
+# Vite/browser 之前就停下 —— 其它任何 usage 64 仍然是 runner usage error。
+testcase '四-scene 后端缺 baseline：浏览器前精确依赖阻塞'
+reset_case; setup_baseline
+export FAKE_FOUR_SCENE_ONLY=1
+run_runner
+assert_eq '退出 75' "$RC" 75
+assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)")" INFRA_BLOCKED
+assert_contains '稳定 blocker' 'BLOCKED_BY_BACKEND_BASELINE_FIXTURE' "$OUT"
+assert_contains 'report 也带 blocker' 'BLOCKED_BY_BACKEND_BASELINE_FIXTURE' "$(report_json)"
+assert_missing '不起 Vite' 'npm run dev' "$CALLS"
+assert_missing '不开浏览器' 'agent-browser --session' "$CALLS"
+assert_missing '不 cleanup' 'fixture cleanup' "$CALLS"
+assert_false '没有 receipt' "find '$MONO/apps/recruitment/.local-dev/browser-fixtures' -type f 2>/dev/null | grep -q ."
+
+testcase '其它 usage 64 不得冒充 baseline blocker'
+reset_case; setup_baseline
+export FAKE_USAGE_VARIANT=1
+run_runner
+assert_eq '退出 2' "$RC" 2
+assert_missing '没有 backend blocker' 'BLOCKED_BY_BACKEND_BASELINE_FIXTURE' "$OUT"
+
+testcase '五-scene 后端直接进入 CRUD browser 与 cleanup'
+reset_case; setup_baseline
+run_runner
+assert_eq '退出 0' "$RC" 0
+assert_contains 'baseline verify' 'fixture verify --ledger' "$CALLS"
+assert_eq '五条普通 journey PASS' \
+  "$(jq -r '[.journeys[]|select(.status=="pass")]|length' "$(report_json)")" 5
 
 testcase '--headed 通过环境交给 agent-browser，默认不带'
 reset_case; setup_baseline
