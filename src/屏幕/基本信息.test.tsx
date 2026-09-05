@@ -346,3 +346,93 @@ describe('基本信息 · 空身份延迟 profile（M）', () => {
     expect(mock跳转).toHaveBeenCalledWith(路径.最高学历);
   });
 });
+
+// ── L：空生日不保存显示落点 —— 滚轮显示值与确认态分离 ──
+// 未确认时保存 null 语义（不向草稿加入出生年月）；已有值/真实建议/用户滚动才落双值。
+describe('基本信息 · 空生日确认分离（L）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear();
+    mock操作.确认候选Onboarding预填分区.mockClear();
+  });
+
+  it('空生日直接下一步不写 1998-06', async () => {
+    render基本信息({ 基本信息: { 身份: '在职' } });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '沈');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.not.objectContaining({ 出生年: '1998', 出生月: '6' }),
+    }));
+  });
+
+  it('已有完整 2000/9 保存对应双值', async () => {
+    render基本信息({ 基本信息: { 身份: '在职', 出生年: '2000', 出生月: '9' } });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '沈');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 出生年: '2000', 出生月: '9' }),
+    }));
+  });
+
+  it('完整真实预填建议保存建议双值（1995/9）', async () => {
+    render基本信息({ 基本信息: { 身份: '在职' }, 候选预填: readyState(正向基本建议(1995, 9)) });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '沈');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 出生年: '1995', 出生月: '9' }),
+    }));
+  });
+
+  it('只有单边已有年份时不保存两项', async () => {
+    render基本信息({ 基本信息: { 身份: '在职', 出生年: '2000' } });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '沈');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.not.objectContaining({ 出生年: expect.anything(), 出生月: expect.anything() }),
+    }));
+  });
+
+  it('Backend 用户滚动任一轮后保存当前双值', async () => {
+    render基本信息({ 基本信息: { 身份: '在职' } });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '沈');
+    // 滚动出生年轮：确认态置位
+    const 年轮 = screen.getByRole('listbox', { name: '出生年' });
+    await 用户.click(within(年轮).getByRole('option', { name: '2001' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 出生年: '2001', 出生月: '6' }),
+    }));
+  });
+});
+
+describe('基本信息 · Mock 空资料生日演示默认（L 对照）', () => {
+  it('Mock 空资料仍保存既有 1998/6 演示默认', async () => {
+    mock操作.保存简历.mockClear();
+    mock应用状态 = {
+      数据源模式: 'mock',
+      状态: {
+        基本信息: { 真名: '沈', 开始工作年: '', 身份: '在职' as const },
+        简历经历: [], 简历教育: [], 简历技能: [], 简历证书: [], 个人优势: '',
+      },
+      后端状态: { 候选预填状态: 创建空候选预填状态() },
+      操作: mock操作,
+      派发: vi.fn(),
+    };
+    render(<宿主 />);
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 出生年: '1998', 出生月: '6' }),
+    }));
+  });
+});
