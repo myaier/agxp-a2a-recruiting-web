@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './岗位详情.module.css';
-import { 次级页外壳, 滚动区, 返回栏 } from '../组件/通用';
+import { 次级页外壳, 滚动区, 返回栏, 主按钮 } from '../组件/通用';
 import { 公司区块 } from '../组件/公司区块';
 import { 轻提示 } from '../组件/轻提示';
 import 弹层框架 from '../组件/弹层框架';
@@ -44,9 +44,10 @@ export default function 岗位详情() {
   // 关闭/重开 并发锁：await 操作.* 期间拒绝重复点击，不改变按钮样式
   const 操作锁 = useRef(false);
 
-  // 找不到（如刚被删掉、或直接手输 URL）就退回第一个岗位，保证这屏永远点得开、不白屏
-  const 岗: 在招岗位 | undefined =
-    状态.岗位列表.find((条) => 条.编号 === 路由岗位编号) ?? 状态.岗位列表[0];
+  // Backend：路由 ID 是唯一权威坐标，未命中即 fail closed（不回退首项、零 mutation）。
+  // Mock：找不到（如直接手输 URL）仍退回第一个岗位，保证原型这屏永远点得开、不白屏
+  const 精确岗位 = 状态.岗位列表.find((条) => 条.编号 === 路由岗位编号);
+  const 岗: 在招岗位 | undefined = 是后端 ? 精确岗位 : (精确岗位 ?? 状态.岗位列表[0]);
 
   const 描述文本 = 岗?.职位描述?.trim() ?? '';
   const 要求文本 = 岗?.职位要求?.trim() ?? '';
@@ -63,10 +64,17 @@ export default function 岗位详情() {
   }, [描述文本, 要求文本]);
 
   if (!岗) {
-    // 岗位被删光的极端情况：给一个能返回的空屏，不给死页
+    // Backend 无效深链（手输/过期 URL、岗位已删）的终局不可用页：
+    // 不显示别的岗位、不挂编辑/关闭/重开控件、零 mutation，只能回岗位管理
     return (
       <次级页外壳>
         <返回栏 返回={返回} 标题="岗位详情" />
+        <div className={样式.内容}>
+          <div className={样式.卡}>
+            <div className={样式.节标}>岗位不存在或已不可用</div>
+          </div>
+        </div>
+        <主按钮 文字="返回岗位管理" 按下={() => 跳转(路径.岗位管理)} />
       </次级页外壳>
     );
   }

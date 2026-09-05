@@ -11,9 +11,11 @@ import 岗位详情, { 岗位发布方区 } from './岗位详情';
 import { 从BFF岗位发布方, 从BFF招聘身份 } from '../数据/组织映射';
 import type { BFFOwnerJob } from '../数据/BFF契约';
 import { BFF岗位样本, BFF招聘方档案样本, 页面岗位样本 } from '../测试/BFF样本';
+import type { 在招岗位 } from '../数据/类型';
 
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
+const mock更新岗位 = vi.fn(async () => undefined);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -238,6 +240,61 @@ describe('岗位详情 · Backend owner snapshot', () => {
     渲染岗位详情();
     expect(mock取公司档案).not.toHaveBeenCalled();
     expect(mock跳转).not.toHaveBeenCalledWith('/company/yunqu');
+  });
+});
+
+// ── D3：Backend 无效深链 fail closed —— 不回退首项、零 mutation ──
+
+const 岗位A: 在招岗位 = { ...页面岗位样本, 编号: 'job_a', 名称: '岗位 A' };
+const 岗位B: 在招岗位 = { ...页面岗位样本, 编号: 'job_b', 名称: '岗位 B' };
+
+describe('岗位详情 · Backend 无效深链', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock更新岗位.mockClear();
+    mock应用状态 = {
+      状态: {
+        岗位列表: [岗位A, 岗位B],
+        当前岗位编号: 'job_a',
+        企业候选列表: [],
+        推荐列表: [],
+        公司自述: null,
+        公司LOGO: null,
+        不可用公开企业编号: [],
+      },
+      派发: vi.fn(),
+      操作: {
+        归档岗位: vi.fn(async () => undefined),
+        重开岗位: vi.fn(async () => undefined),
+        更新岗位: mock更新岗位,
+      },
+      数据源模式: 'backend',
+      后端状态: { 岗位快照: {} },
+    };
+  });
+
+  it.each(['missing', 'deleted_from_previous_snapshot'])(
+    'Backend 无效岗位 %s 不回退首项',
+    (id) => {
+      渲染岗位详情(id);
+      expect(screen.getByText('岗位不存在或已不可用')).toBeTruthy();
+      expect(screen.queryByText('岗位 A')).toBeNull();
+      expect(screen.queryByText('岗位 B')).toBeNull();
+      expect(screen.queryByRole('button', { name: /编辑|关闭职位|重新开放/ })).toBeNull();
+      expect(mock更新岗位).not.toHaveBeenCalled();
+    },
+  );
+
+  it('Mock 随机 ID 仍显示原型首项', () => {
+    // Mock 分支：数据源模式缺席 → 是后端 为 false，随机 ID 仍回退列表首项
+    mock应用状态 = {
+      ...mock应用状态,
+      数据源模式: undefined,
+      后端状态: undefined,
+    };
+    渲染岗位详情('missing');
+    expect(screen.getByText('岗位 A')).toBeTruthy();
   });
 });
 
