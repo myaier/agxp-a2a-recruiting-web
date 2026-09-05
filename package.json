@@ -17,8 +17,9 @@
     "ui:capture": "playwright test --config=playwright.视觉回归.config.ts",
     "ui:check": "node 脚本/UI回归.mjs",
     "test:agent-browser:backend-local": "bash e2e/真实后端/运行整栈验收.sh",
+    "test:agent-browser:hosted-agent": "bash e2e/真实后端/运行HostedAgent验收.sh",
     "test:agent-browser:unit": "vitest run e2e/真实后端/报告.test.ts e2e/真实后端/视觉/比较.test.ts",
-    "test:agent-browser:shell": "bash e2e/真实后端/公共步骤.test.sh && bash e2e/真实后端/运行整栈验收.test.sh",
+    "test:agent-browser:shell": "bash e2e/真实后端/公共步骤.test.sh && bash e2e/真实后端/运行整栈验收.test.sh && bash e2e/真实后端/运行HostedAgent验收.test.sh",
     "typecheck": "tsc -b --noEmit",
     "deploy": "node 脚本/发布到Pages.mjs"
   },
