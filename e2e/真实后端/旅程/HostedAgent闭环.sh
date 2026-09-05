@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
+# Hosted Agent 闭环旅程 · 四个后端 acceptance scene 的真实页面行为。
+#
+# HOSTED_AGENT_SCENE（由 运行整栈验收.sh 通过受控环境传入，闭合为四值）：
+#   happy  完整闭环：规则 ready/accept、PDF、delegation、candidate target、
+#         recruiter screen_resume、双方 coordination/confirmation、公开终结、深链复读
+#   p4     delegation 后 Agent 服务不可用：零 Case、无「查看进展」、刷新复读
+#   p5     recruiter target attention：双 viewer 同一安全说明、零 Agent retry
+#   p6     规则解释失败：零 active rule、草稿保留、失败卡关闭恢复
+#
+# 终态推进只通过页面当前公开允许的动作（接受 / 确认意向），不从页面外猜 action、
+# 不调用 internal hook —— 后端 owner-safe cleanup 的 terminalization 依赖 Case 的
+# 公开终态。safe-failure 文案出现在 happy 路径上就是失败，绝不冒充通过。
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$ROOT_DIR/公共步骤.sh"
 
 JOURNEY='hosted-agent'
-MILESTONE='候选登录'
+MILESTONE='启动'
 RULE_TEXT='优先考虑支持混合办公并且周末双休的岗位'
 RESUME_NAME='浏览器验收临时简历.pdf'
 TEMP_PDF_DIR="$(dirname "$PRIVATE_JOURNAL")"
@@ -92,6 +104,8 @@ has_button_exact(){
   ab find role button text --name "$1" --exact >/dev/null 2>&1
 }
 
+# S0 候选侧推进：可多轮事实补问；S0 可 fit 直通进 S1。人工停点后端只认补答事实或
+# 结束（continue 恒被拒），脚本不点击决策卡。
 advance_candidate_s0(){
   local tries=0 body t only_decision=0
   while [ "$tries" -lt 240 ]; do
@@ -125,43 +139,6 @@ advance_candidate_s0(){
     sleep 1
   done
   echo '等待 S0 候选侧推进或进入 S1 超时' >&2
-  return 1
-}
-
-advance_case_for_current_role(){
-  local tries=0
-  while [ "$tries" -lt 120 ]; do
-    if has_button_exact '接受'; then
-      click_button_exact '接受'
-      return 0
-    fi
-    if has_button_exact '确认意向'; then
-      click_button_exact '确认意向'
-      return 0
-    fi
-    tries=$((tries + 1))
-    sleep 1
-  done
-  echo '当前角色未出现可执行的协同或意向决定' >&2
-  return 1
-}
-
-capture_case_authority_marker(){
-  local tries=0 body
-  while [ "$tries" -lt 60 ]; do
-    body="$(ab get text body 2>/dev/null || printf '')"
-    case "$body" in
-      *'等待招聘方确认意向'*) CASE_AUTHORITY_MARKER='等待招聘方确认意向'; return 0 ;;
-      *'等待候选人确认意向'*) CASE_AUTHORITY_MARKER='等待候选人确认意向'; return 0 ;;
-      *'等待双方确认意向'*) CASE_AUTHORITY_MARKER='等待双方确认意向'; return 0 ;;
-      *'真人会话已建立'*) CASE_AUTHORITY_MARKER='真人会话已建立'; return 0 ;;
-      *'等待招聘方决定'*) CASE_AUTHORITY_MARKER='等待招聘方决定'; return 0 ;;
-      *'等待候选人确认协同事项'*) CASE_AUTHORITY_MARKER='等待候选人确认协同事项'; return 0 ;;
-    esac
-    tries=$((tries + 1))
-    sleep 1
-  done
-  echo '当前 Case 未出现可用于深链复核的权威步骤文案' >&2
   return 1
 }
 
@@ -199,110 +176,321 @@ wait_delegation_case_started(){
   return 1
 }
 
-# P6：candidate natural-language proposal -> ready -> accept -> authoritative active rule.
-export AGENT_BROWSER_SESSION="$CANDIDATE_SESSION"
-login_candidate
-MILESTONE='P6 提交规则'
-click_after_hydrate '我'
-click_after_hydrate 'AI代理规则库'
-RULE_COUNT_BEFORE="$(candidate_rule_count)"
-RULE_COUNT_AFTER=$((RULE_COUNT_BEFORE + 1))
-click_button '手动添加规则'
-find_retry placeholder '例：不接受大小周的岗位直接过滤' fill "$RULE_TEXT" >/dev/null
-click_button_exact '提交给AI代理理解'
-assert_text 'AI代理正在理解这条规则…'
-MILESTONE='P6 等待就绪'
-wait_rule_proposal_ready
-assert_text '确认规则'
-click_button_exact '确认规则'
-wait_candidate_rule_count "$RULE_COUNT_AFTER"
-ab reload >/dev/null
-wait_candidate_rule_count "$RULE_COUNT_AFTER"
+# P4 专属：只接受「AI 服务暂时不可用，本次没有创建 Case」；evaluation failure、
+# policy、quota、cooldown 之类的其它公开拒绝都必须让本 scene 失败。
+wait_p4_unavailable(){
+  local tries=0 body
+  while [ "$tries" -lt 180 ]; do
+    body="$(ab get text body 2>/dev/null || printf '')"
+    case "$body" in
+      *'AI 服务暂时不可用，本次没有创建 Case'*) return 0 ;;
+      *'本次评估未完成，不代表候选或岗位不合适'*|*'当前政策或资格不允许发起这次委托'*|*'当前在谈已达到上限'*|*'近期已联系过对方'*) return 1 ;;
+    esac
+    tries=$((tries + 1)); sleep 1
+  done
+  return 1
+}
 
-# Candidate PDF：上传 consented PDF，等待真实 parse succeeded 的公开文案。
-MILESTONE='上传并解析 PDF'
-click_back
-click_after_hydrate '我'
-click_after_hydrate '我的简历'
-cp "$ROOT_DIR/资源/简历-v1.pdf" "$TEMP_PDF_DIR/$RESUME_NAME"
-click_button_exact '添加附件简历'
-ab upload 'input[type="file"]' "$TEMP_PDF_DIR/$RESUME_NAME" >/dev/null
-assert_text '允许 AI 识别这份简历？'
-click_button_exact '同意并继续'
-record_cleanup_marker candidate_resume_file_names "$RESUME_NAME"
-wait_pdf_parse
-assert_text '识别完成'
+# P5 专属：recruiter / candidate 双 viewer 看到的同一 attention 安全说明。
+wait_p5_attention(){
+  local tries=0 body
+  while [ "$tries" -lt 420 ]; do
+    body="$(ab get text body 2>/dev/null || printf '')"
+    case "$body" in
+      *'AI 服务暂时不可用，本 Case 尚未继续'*) return 0 ;;
+    esac
+    tries=$((tries + 1)); sleep 1
+  done
+  echo '等待 P5 attention 公开终态超时' >&2
+  return 1
+}
 
-# P4：candidate market delegation -> server case_started -> open real MatchCase.
-MILESTONE='P4 发起 candidate delegation'
-click_back
-click_after_hydrate '职位'
-click_button_exact '市场'
-wait_one_of '让AI代理去谈' '让AI代理帮我搜'
-if on_screen '让AI代理帮我搜'; then
-  click_button_exact '让AI代理帮我搜'
-  wait_text '让AI代理去谈'
-fi
-click_button '让AI代理去谈'
-wait_one_of '选择这次提交的简历' '确认委托AI代理？'
-if on_screen '选择这次提交的简历'; then
-  find_retry role radio click --name "$RESUME_NAME" >/dev/null
-  click_button_exact '确认并委托'
-else
-  assert_text '确认委托AI代理？'
-  click_button_exact '确认委托'
-fi
-MILESTONE='P4 等待开案'
-wait_delegation_case_started
-assert_text '查看进展'
-click_button_exact '查看进展'
-assert_text '匿名初筛'
-CANDIDATE_CASE_URL="$(ab get url)"
-case "$CANDIDATE_CASE_URL" in
-  *'#/deal/'*) : ;;
-  *) echo '查看进展没有进入 candidate Case 深链' >&2; exit 1 ;;
+# happy 专属：从当前 viewer 的公开动作把 Case 推向终态。
+#   0 ＝ 已在公开终态；1 ＝ 已发送一个公开动作，需 reload/轮转后继续；2 ＝ 无法合法推进。
+advance_to_terminal_for_role(){
+  local session="$1" url="$2" body
+  export AGENT_BROWSER_SESSION="$session"
+  ab open "$url" >/dev/null
+  body="$(ab get text body 2>/dev/null || printf '')"
+  case "$body" in
+    *'双方已确认，正在创建会话'*|*'真人会话已建立'*|*'已结束'*) return 0 ;;
+  esac
+  if has_button_exact '接受'; then click_button_exact '接受'; return 1; fi
+  if has_button_exact '确认意向'; then click_button_exact '确认意向'; return 1; fi
+  echo 'Case 尚未终结且当前 viewer 没有合法推进动作' >&2
+  return 2
+}
+
+# ── 共享页面步骤（只提取真实重复的步骤，不建通用 DSL）──────────────
+
+open_candidate_rules(){
+  export AGENT_BROWSER_SESSION="$CANDIDATE_SESSION"
+  login_candidate
+  click_after_hydrate '我'
+  click_after_hydrate 'AI代理规则库'
+}
+
+prepare_candidate_pdf(){
+  click_after_hydrate '我'
+  click_after_hydrate '我的简历'
+  cp "$ROOT_DIR/资源/简历-v1.pdf" "$TEMP_PDF_DIR/$RESUME_NAME"
+  click_button_exact '添加附件简历'
+  ab upload 'input[type="file"]' "$TEMP_PDF_DIR/$RESUME_NAME" >/dev/null
+  assert_text '允许 AI 识别这份简历？'
+  click_button_exact '同意并继续'
+  record_cleanup_marker candidate_resume_file_names "$RESUME_NAME"
+  wait_pdf_parse
+}
+
+delegate_candidate(){
+  click_after_hydrate '职位'
+  click_button_exact '市场'
+  wait_one_of '让AI代理去谈' '让AI代理帮我搜'
+  if on_screen '让AI代理帮我搜'; then
+    click_button_exact '让AI代理帮我搜'
+    wait_text '让AI代理去谈'
+  fi
+  click_button '让AI代理去谈'
+  wait_one_of '选择这次提交的简历' '确认委托AI代理？'
+  if on_screen '选择这次提交的简历'; then
+    find_retry role radio click --name "$RESUME_NAME" >/dev/null
+    click_button_exact '确认并委托'
+  else
+    click_button_exact '确认委托'
+  fi
+}
+
+# ── scene：p6 规则解释公开失败 ──────────────────────────────────────
+
+run_p6(){
+  local count_before draft
+  MILESTONE='P6 提交规则'
+  open_candidate_rules
+  count_before="$(candidate_rule_count)"
+  click_button '手动添加规则'
+  find_retry placeholder '例：不接受大小周的岗位直接过滤' fill "$RULE_TEXT" >/dev/null
+  click_button_exact '提交给AI代理理解'
+  assert_text 'AI代理正在理解这条规则…'
+  MILESTONE='P6 等待公开失败终态'
+  wait_p6_rule_failed
+  assert_text 'AI 暂时不可用，本次规则没有生效'
+  if has_button_exact '确认规则'; then
+    echo 'P6 失败终态上不应出现确认规则入口' >&2
+    return 1
+  fi
+  ab reload >/dev/null
+  MILESTONE='P6 复读零 active rule'
+  if [ "$(candidate_rule_count)" != "$count_before" ]; then
+    echo 'P6 reload 后 active rule 计数发生了变化' >&2
+    return 1
+  fi
+  MILESTONE='P6 关闭失败卡恢复草稿'
+  click_button_exact '关闭'
+  draft="$(ab get value 'textarea[placeholder="例：不接受大小周的岗位直接过滤"]')"
+  if [ "$draft" != "$RULE_TEXT" ]; then
+    echo 'P6 关闭失败卡后草稿没有恢复为提交前文本' >&2
+    return 1
+  fi
+  ab reload >/dev/null
+  if [ "$(candidate_rule_count)" != "$count_before" ]; then
+    echo 'P6 草稿恢复后 reload 仍不应产生 active rule' >&2
+    return 1
+  fi
+}
+
+wait_p6_rule_failed(){
+  local tries=0 body
+  while [ "$tries" -lt 180 ]; do
+    body="$(ab get text body 2>/dev/null || printf '')"
+    case "$body" in
+      *'AI 暂时不可用，本次规则没有生效'*) return 0 ;;
+      *'确认规则'*)
+        echo 'P6 期待公开失败，规则解释却就绪了' >&2
+        return 1 ;;
+    esac
+    tries=$((tries + 1)); sleep 1
+  done
+  return 1
+}
+
+# ── scene：p4 delegation 公开失败 ────────────────────────────────────
+
+run_p4(){
+  MILESTONE='P4 准备简历'
+  export AGENT_BROWSER_SESSION="$CANDIDATE_SESSION"
+  login_candidate
+  prepare_candidate_pdf
+  MILESTONE='P4 发起 delegation'
+  delegate_candidate
+  MILESTONE='P4 等待公开失败终态'
+  wait_p4_unavailable
+  assert_text 'AI 服务暂时不可用，本次没有创建 Case'
+  if has_button_exact '查看进展'; then
+    echo 'P4 不应出现查看进展入口（本 scene 没有创建 Case）' >&2
+    return 1
+  fi
+  MILESTONE='P4 刷新复读同一失败原因'
+  ab reload >/dev/null
+  assert_text 'AI 服务暂时不可用，本次没有创建 Case'
+  if has_button_exact '查看进展'; then
+    echo 'P4 reload 后仍不应出现查看进展入口' >&2
+    return 1
+  fi
+}
+
+# ── scene：p5 双 viewer attention ────────────────────────────────────
+
+run_p5(){
+  local case_url
+  MILESTONE='P5 准备并发起委托'
+  export AGENT_BROWSER_SESSION="$CANDIDATE_SESSION"
+  login_candidate
+  prepare_candidate_pdf
+  delegate_candidate
+  MILESTONE='P5 等待开案'
+  wait_delegation_case_started
+  click_button_exact '查看进展'
+  assert_text '匿名初筛'
+  case_url="$(ab get url)"
+  case "$case_url" in
+    *'#/deal/'*) : ;;
+    *) echo '查看进展没有进入 candidate Case 深链' >&2; return 1 ;;
+  esac
+  MILESTONE='P5 candidate target 完成'
+  advance_candidate_s0
+  MILESTONE='P5 recruiter 侧 attention'
+  export AGENT_BROWSER_SESSION="$RECRUITER_SESSION"
+  login_recruiter
+  click_after_hydrate '人才'
+  click_button_exact '在谈'
+  wait_text '简历提交'
+  click_button '简历提交'
+  wait_p5_attention
+  assert_text 'AI 服务暂时不可用，本 Case 尚未继续'
+  assert_text '需注意'
+  if has_button_exact '重试校验'; then
+    echo 'P5 recruiter 侧不应出现 Agent retry（重试校验是 readiness 通道，不是 Agent retry）' >&2
+    return 1
+  fi
+  MILESTONE='P5 recruiter 刷新复读'
+  ab reload >/dev/null
+  assert_text 'AI 服务暂时不可用，本 Case 尚未继续'
+  MILESTONE='P5 candidate 深链复读同一说明'
+  export AGENT_BROWSER_SESSION="$CANDIDATE_SESSION"
+  ab open "$case_url" >/dev/null
+  assert_text 'AI 服务暂时不可用，本 Case 尚未继续'
+  if has_button_exact '重试校验'; then
+    echo 'P5 candidate 侧同样不应出现 Agent retry' >&2
+    return 1
+  fi
+}
+
+# ── scene：happy 完整闭环 ────────────────────────────────────────────
+
+run_happy(){
+  local count_before candidate_case_url recruiter_case_url
+  MILESTONE='happy 提交并确认规则'
+  open_candidate_rules
+  count_before="$(candidate_rule_count)"
+  click_button '手动添加规则'
+  find_retry placeholder '例：不接受大小周的岗位直接过滤' fill "$RULE_TEXT" >/dev/null
+  click_button_exact '提交给AI代理理解'
+  assert_text 'AI代理正在理解这条规则…'
+  wait_rule_proposal_ready
+  assert_text '确认规则'
+  click_button_exact '确认规则'
+  wait_candidate_rule_count "$((count_before + 1))"
+  ab reload >/dev/null
+  wait_candidate_rule_count "$((count_before + 1))"
+
+  MILESTONE='happy 上传并解析 PDF'
+  click_back
+  prepare_candidate_pdf
+  assert_text '识别完成'
+
+  MILESTONE='happy 发起 delegation'
+  delegate_candidate
+  wait_delegation_case_started
+  click_button_exact '查看进展'
+  assert_text '匿名初筛'
+  candidate_case_url="$(ab get url)"
+  case "$candidate_case_url" in
+    *'#/deal/'*) : ;;
+    *) echo '查看进展没有进入 candidate Case 深链' >&2; return 1 ;;
+  esac
+
+  MILESTONE='happy candidate target 完成'
+  advance_candidate_s0
+
+  MILESTONE='happy recruiter 读取同一 Case'
+  export AGENT_BROWSER_SESSION="$RECRUITER_SESSION"
+  login_recruiter
+  click_after_hydrate '人才'
+  click_button_exact '在谈'
+  wait_text '简历提交'
+  click_button '简历提交'
+  MILESTONE='happy recruiter target screen_resume 完成'
+  wait_one_of '通过初筛' '需注意' 420
+  assert_text '通过初筛'
+  recruiter_case_url="$(ab get url)"
+  click_button_exact '通过初筛'
+
+  MILESTONE='happy 双方推进协调'
+  local cand_terminal=0 rec_terminal=0 round=0 rc
+  while [ "$round" -lt 6 ]; do
+    if [ "$rec_terminal" = '0' ]; then
+      rc=0
+      advance_to_terminal_for_role "$RECRUITER_SESSION" "$recruiter_case_url" || rc=$?
+      case "$rc" in
+        0) rec_terminal=1 ;;
+        1) ;;
+        *) echo 'recruiter Case 无法合法推进到终态' >&2; return 1 ;;
+      esac
+    fi
+    if [ "$cand_terminal" = '0' ]; then
+      rc=0
+      advance_to_terminal_for_role "$CANDIDATE_SESSION" "$candidate_case_url" || rc=$?
+      case "$rc" in
+        0) cand_terminal=1 ;;
+        1) ;;
+        *) echo 'candidate Case 无法合法推进到终态' >&2; return 1 ;;
+      esac
+    fi
+    if [ "$cand_terminal" = '1' ] && [ "$rec_terminal" = '1' ]; then
+      break
+    fi
+    round=$((round + 1))
+  done
+  if [ "$cand_terminal" != '1' ] || [ "$rec_terminal" != '1' ]; then
+    echo 'happy Case 未在 6 轮内到达公开终态' >&2
+    return 1
+  fi
+
+  MILESTONE='happy 深链复读终态'
+  local pair_session pair_url
+  for pair_session in "$CANDIDATE_SESSION|$candidate_case_url" "$RECRUITER_SESSION|$recruiter_case_url"; do
+    pair_url="${pair_session#*|}"
+    pair_session="${pair_session%%|*}"
+    export AGENT_BROWSER_SESSION="$pair_session"
+    ab open "$pair_url" >/dev/null
+    assert_text '双方已确认，正在创建会话'
+    if has_button_exact '接受' || has_button_exact '确认意向' || has_button_exact '婉拒意向'; then
+      echo '终态上不应再出现任何推进动作按钮' >&2
+      return 1
+    fi
+    assert_no_mock_data
+  done
+}
+
+# ── 闭合分发（任何登录之前）────────────────────────────────────────
+
+case "${HOSTED_AGENT_SCENE:-}" in
+  happy) run_happy ;;
+  p4) run_p4 ;;
+  p5) run_p5 ;;
+  p6) run_p6 ;;
+  *) printf 'HOSTED_AGENT_SCENE 必须是 happy|p4|p5|p6\n' >&2; exit 2 ;;
 esac
-
-# Candidate 侧推进 S0：补答可多轮事实补问；S0 可 fit 直通进 S1。人工停点后端只认补答事实或结束（continue 恒被拒），脚本不点击决策卡。
-MILESTONE='candidate target 完成'
-advance_candidate_s0
-
-# Recruiter 读取同一 Case；screen_resume 是 recruiter-target Hosted Agent task。
-MILESTONE='招聘方读取同一 Case'
-export AGENT_BROWSER_SESSION="$RECRUITER_SESSION"
-login_recruiter
-click_after_hydrate '人才'
-click_button_exact '在谈'
-wait_text '简历提交'
-click_button '简历提交'
-
-MILESTONE='recruiter target screen_resume 完成'
-wait_one_of '通过初筛' '需注意' 420
-assert_text '通过初筛'
-click_button_exact '通过初筛'
-
-# 至少一轮 coordination/confirmation；两端各完成公开可用动作，随后硬刷新确认权威状态。
-MILESTONE='双方推进协调'
-advance_case_for_current_role
-settle
-ab reload >/dev/null
-assert_no_mock_data
-
-export AGENT_BROWSER_SESSION="$CANDIDATE_SESSION"
-ab reload >/dev/null
-advance_case_for_current_role
-settle
-ab reload >/dev/null
-assert_no_mock_data
-CASE_AUTHORITY_MARKER=''
-capture_case_authority_marker
-
-# 直接打开先前保存的公开 Case URL，不依赖列表内存；深链重进后须恢复刚才捕获的当前步骤。
-MILESTONE='candidate Case 深链重进'
-ab open "$CANDIDATE_CASE_URL" >/dev/null
-wait_text "$CASE_AUTHORITY_MARKER"
-assert_text "$CASE_AUTHORITY_MARKER"
-assert_no_mock_data
 
 MILESTONE='完成'
 write_journey_result "$JOURNEY" pass "$MILESTONE"
