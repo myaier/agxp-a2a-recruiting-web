@@ -6,7 +6,7 @@
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 发布岗位, { 取岗位提交错误文案 } from './发布岗位';
 import { 页面岗位样本 } from '../测试/BFF样本';
@@ -1951,5 +1951,104 @@ describe('发布岗位页 全远程地址与 Catalog 门禁', () => {
     render发布岗位('/hr/post-job/job_1');
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+  });
+});
+
+// ── D4/D4a：Backend 无效编辑坐标 fail closed；A→B 路由切换销毁旧草稿 ──
+describe('发布岗位页 Backend 无效编辑坐标与 A→B 生命周期', () => {
+  // 社招全职：薪资是带 label 的数字框（实习岗是滚轮按钮，getByLabelText 取不到）
+  const 岗位A = {
+    ...页面岗位样本,
+    编号: 'job_a',
+    名称: '岗位 A',
+    招聘类型: '社招全职' as const,
+    年薪月数: 12,
+    类别引用: { id: 'tax_product', display_name: '产品经理' },
+    地点引用: { id: 'loc_shanghai', display_name: '上海' },
+  };
+  const 岗位B = {
+    ...页面岗位样本,
+    编号: 'job_b',
+    名称: '岗位 B',
+    招聘类型: '社招全职' as const,
+    年薪月数: 12,
+    类别引用: { id: 'tax_product', display_name: '产品经理' },
+    地点引用: { id: 'loc_shanghai', display_name: '上海' },
+  };
+
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock进企业主壳.mockClear();
+    mock替换跳转.mockClear();
+    mock跳转.mockClear();
+    mock更新岗位.mockClear();
+    mock发布岗位.mockClear();
+    mock删除岗位.mockClear();
+    清空轻提示();
+    mock更新岗位.mockResolvedValue(undefined);
+    置Backend应用状态(
+      vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+      vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+    );
+    mock应用状态.状态.岗位列表 = [岗位A, 岗位B];
+  });
+
+  function render发布岗位(路由 = '/hr/post-job') {
+    return render(
+      <MemoryRouter initialEntries={[路由]}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it('Backend 有路由 ID 但 owner 列表未命中时不进入新建', () => {
+    render发布岗位('/hr/post-job/missing');
+    expect(screen.getByText('岗位不存在或已不可编辑')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '发布岗位并开始寻访' })).toBeNull();
+    expect(screen.queryByText(/上传 JD/)).toBeNull();
+    expect(mock发布岗位).not.toHaveBeenCalled();
+    expect(mock更新岗位).not.toHaveBeenCalled();
+  });
+
+  it('A→B 路由切换销毁 A 的草稿再以 B 初始化', async () => {
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job/job_a']}>
+        {/* 测试导航按钮：A→B 路由切换必须销毁 A 的全部草稿（D4a） */}
+        <Link to="/hr/post-job/job_b">前往岗位 B</Link>
+        <Routes>
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    // 编辑态岗位名称 readOnly（发布后不可改）：A 的草稿用描述与薪资承载；
+    // 编辑态三步是分段切换按钮，不走「下一步」
+    await 用户.click(screen.getByRole('button', { name: '职位描述' }));
+    const 描述框 = screen.getByLabelText('职位描述');
+    await 用户.clear(描述框);
+    await 用户.type(描述框, '被修改的岗位 A');
+    await 用户.click(screen.getByRole('button', { name: '职位要求' }));
+    const 薪资框 = screen.getByLabelText('薪资下限');
+    await 用户.clear(薪资框);
+    await 用户.type(薪资框, '99');
+    // 由测试导航按钮进入 job_b：以 B 重新初始化（回到基础信息步）
+    await 用户.click(screen.getByText('前往岗位 B'));
+    expect(screen.getByDisplayValue('岗位 B')).toBeTruthy();
+    expect(screen.queryByDisplayValue('被修改的岗位 A')).toBeNull();
+    // 再进职位要求步：B 的预填在场，A 会话的 99 与描述草稿已销毁
+    await 用户.click(screen.getByRole('button', { name: '职位要求' }));
+    expect((screen.getByLabelText('薪资下限') as HTMLInputElement).value).toBe('300');
+    await 用户.click(screen.getByRole('button', { name: '职位描述' }));
+    expect((screen.getByLabelText('职位描述') as HTMLTextAreaElement).value).toBe('参与产品工作');
+    // 编辑态底部保存键：提交的是 B 的当前值，不是 A 的残留草稿
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位).toHaveBeenCalledWith(
+      expect.objectContaining({ 编号: 'job_b', 名称: '岗位 B' }),
+    );
+    expect(mock发布岗位).not.toHaveBeenCalled();
   });
 });
