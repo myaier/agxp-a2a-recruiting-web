@@ -69,6 +69,7 @@ function render工作经历(选项: {
   教育?: 简历教育段[];
   技能?: string[];
   证书?: 简历证书[];
+  基本信息?: { 真名: string; 开始工作年: string; 身份: '在校' | '在职' | '离职' | '' };
 }) {
   const 数据源 = 选项.数据源 ?? 'backend';
   mock应用状态 = {
@@ -88,7 +89,7 @@ function render工作经历(选项: {
       简历证书: 选项.证书 ?? [],
       个人优势: '',
       简历作品集链接: '',
-      基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
+      基本信息: 选项.基本信息 ?? { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
     },
     后端状态: { 候选预填状态: 选项.预填 ?? 创建空候选预填状态() },
     派发: vi.fn((动作: { 型?: string; 经历?: 简历经历段[]; 教育?: 简历教育段[]; 技能?: string[]; 证书?: 简历证书[] }) => {
@@ -792,5 +793,30 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     expect(screen.queryByText('Example Systems')).toBeNull();
     expect(screen.queryByText('Go')).toBeNull();
     expect(派发).not.toHaveBeenCalled();
+  });
+});
+// ── M：空身份 + /basic 本地姓名草稿 —— 完整经历保存仍交给 操作.保存简历，
+//    页面不自行把身份补成「在职」（profile 分区由数据源跳过，身份在状态页收口） ──
+describe('工作经历 · 空身份经历保存（M）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('空身份 + 本地姓名草稿：保存简历 携带空身份原样，不虚构在职', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({
+      数据源: 'backend',
+      保存简历,
+      基本信息: { 真名: '沈', 开始工作年: '', 身份: '' },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 真名: '沈', 身份: '' }),
+      经历: [expect.objectContaining({ 编号: 'e1', 公司: '字节跳动' })],
+    }));
   });
 });

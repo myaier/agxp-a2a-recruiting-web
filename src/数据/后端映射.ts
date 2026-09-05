@@ -81,8 +81,9 @@ function 转基本(资料: BFF简历资料): 基本信息 {
   const 基本: 基本信息 = {
     真名: 资料.real_name,
     开始工作年: 资料.work_start_year !== null ? String(资料.work_start_year) : '',
-    // 从未写入过的 profile（status === ''）按注册流默认「在职」展示；用户保存前仍走身份选择页
-    身份: 资料.status === '' ? '在职' : 后端到身份[资料.status],
+    // 从未写入过的 profile（status === ''）是真实的「未选择」空态，
+    // 不再借「在职」当注册流默认（M）；用户明确选择后才落三态
+    身份: 资料.status === '' ? '' : 后端到身份[资料.status],
   };
   if (资料.current_education !== null) 基本.在读学历 = 资料.current_education;
   if (资料.graduation_year !== null) 基本.毕业年 = String(资料.graduation_year);
@@ -169,8 +170,13 @@ export function 从BFF简历(dto: BFF简历): 页面简历快照 {
  * 页面 基本信息 → 后端资料写入 body。
  * 页面空字符串 → 后端 null（可选字段）；工作开始年 字符串 → 数字；
  * 页面 身份 反映射为后端 status（必为 student/employed/unemployed，不含空串）。
+ * M：身份为 ''（未选择）直接抛客户端校验错 —— wire 合同不收空 status，
+ * profile 分区的跳过判断在数据源层（身份为空时整个分区不发）。
  */
 export function 转资料写入(基本: 基本信息): BFF资料写入 {
+  if (基本.身份 === '') {
+    throw new 客户端校验错误('resume.profile.status', '请选择求职状态');
+  }
   return {
     real_name: 基本.真名,
     work_start_year: 基本.开始工作年 !== '' ? Number(基本.开始工作年) : null,

@@ -74,8 +74,11 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
 
     const 写入步骤们: 写入步骤[] = [];
 
-    // profile
-    if (JSON.stringify(转资料写入(next.基本信息)) !== JSON.stringify(转资料写入(旧页面.基本信息))) {
+    // profile。M：身份为 ''（未选择）时整个分区跳过 —— 转资料写入 会拒绝空身份，
+    // Context 里 /basic 未提交的姓名/生日草稿不该阻断其余五个分区，也不许借默认档铸 body；
+    // 身份非空且 profile 真有变化时才 PATCH。
+    if (next.基本信息.身份 !== ''
+      && JSON.stringify(next.基本信息) !== JSON.stringify(旧页面.基本信息)) {
       const body = 转资料写入(next.基本信息);
       写入步骤们.push(() => 请求<BFF简历>({ path: '/api/v1/me/resume/profile', method: 'PATCH', body, ifMatch: 修订etag(previous.profile_revision) }).then((r) => r.result));
     }

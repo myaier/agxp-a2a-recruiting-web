@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { 从BFF简历, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿, 转证书写入, 转证书, 岗位办公方式到Wire, Wire到岗位办公方式 } from './后端映射';
-import { BFF意向样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
+import { BFF意向样本, BFF岗位样本, BFF简历样本, 页面岗位样本 } from '../测试/BFF样本';
 import type { 意向草稿型, 岗位创建上下文 } from './招聘数据源类型';
-import type { BFF证书, BFFOwnerJob } from './BFF契约';
+import type { BFF证书, BFFOwnerJob, BFF简历 } from './BFF契约';
 import { 取后端错误文案 } from './HTTP客户端';
 
 /** 构造空草稿（含 Task 6 新增的 办公方式 字段），测试用展开覆盖个别字段 */
@@ -745,5 +745,26 @@ describe('候选人后端映射', () => {
       expect(() => 转岗位补丁({ ...页面, 结构化要求已确认: false, 最低学历: '大专' }, previous))
         .toThrow('请确认经验和学历将作为自动匹配依据');
     });
+  });
+});
+
+// ── M：空身份 —— BFF 空 status 映射为页面 ''，转资料写入 拒绝空身份 ──
+describe('空身份映射与写入校验（M）', () => {
+  it('从BFF简历 对空 status 保持 身份:""（不再显示默认「在职」）', () => {
+    const 空Profile: BFF简历 = {
+      ...BFF简历样本,
+      profile: { ...BFF简历样本.profile, status: '' },
+    };
+    expect(从BFF简历(空Profile).基本信息.身份).toBe('');
+  });
+
+  it('转资料写入 对空身份抛「请选择求职状态」并带字段名', () => {
+    expect(() => 转资料写入({ 真名: '沈', 开始工作年: '', 身份: '' }))
+      .toThrow('请选择求职状态');
+    try {
+      转资料写入({ 真名: '沈', 开始工作年: '', 身份: '' });
+    } catch (错误) {
+      expect(错误).toMatchObject({ field: 'resume.profile.status' });
+    }
   });
 });

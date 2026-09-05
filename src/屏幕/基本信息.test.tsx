@@ -306,3 +306,43 @@ describe('基本信息 根草稿保持（离开再回来）', () => {
     expect(姓名框().value).toBe('');
   });
 });
+
+// ── M：空身份 —— /basic 延迟 profile 写入，状态页收口 ──
+describe('基本信息 · 空身份延迟 profile（M）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear();
+    mock操作.确认候选Onboarding预填分区.mockClear();
+  });
+
+  it('Backend 非学生空身份：下一步只存页面草稿、零保存、跳求职状态、不确认 basic', async () => {
+    const { 派发 } = render基本信息({ 基本信息: { 身份: '' } });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '沈');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '存简历',
+      基本信息: expect.objectContaining({ 真名: '沈', 身份: '' }),
+    }));
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    expect(mock跳转).toHaveBeenCalledWith(路径.求职状态);
+  });
+
+  it('Backend 已有身份（在职）仍走既有 operation，成功后确认 basic', async () => {
+    render基本信息({ 基本信息: { 真名: '沈', 身份: '在职' } });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.确认候选Onboarding预填分区).toHaveBeenCalledWith('basic');
+    expect(mock跳转).toHaveBeenCalledWith(路径.求职状态);
+  });
+
+  it('Backend 学生 在校 仍走既有 operation 并跳最高学历', async () => {
+    render基本信息({ 基本信息: { 真名: '沈', 身份: '在校' } });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.确认候选Onboarding预填分区).toHaveBeenCalledWith('basic');
+    expect(mock跳转).toHaveBeenCalledWith(路径.最高学历);
+  });
+});

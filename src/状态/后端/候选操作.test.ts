@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误 } from '../../数据/HTTP客户端';
 import { 初始状态 } from '../初始状态';
+import { BFF简历样本 } from '../../测试/BFF样本';
 import type { 后端操作依赖, 后端状态, 候选操作, 候选预填恢复存储 } from './类型';
 import { 创建候选操作 } from './候选操作';
 
@@ -54,7 +55,7 @@ function 创建场景() {
   };
   const 操作: 候选操作 = 创建候选操作(deps as unknown as 后端操作依赖);
   return {
-    后端, 操作, 派发: deps.派发, 后端状态引用,
+    后端, 操作, 派发: deps.派发, 后端状态引用, 状态引用: deps.状态引用,
     候选预填代际, 候选预填读取锁, 候选预填恢复存储,
   };
 }
@@ -119,5 +120,86 @@ describe('创建候选操作 · 候选头像权威写入', () => {
     await 场景.操作.删除候选头像();
     expect(场景.后端.删除候选头像).toHaveBeenCalledWith(2);
     expect(场景.派发).toHaveBeenLastCalledWith({ 型: '存求职头像', 图: null });
+  });
+});
+
+// ── M：空身份草稿保留 —— 权威水合不得擦掉 /basic 未提交的空身份 profile 草稿。
+//    三条水合路径（保存简历 成功 / 保存个人优势 成功 / 带 权威简历 的写失败）都先派发
+//    水合后端简历、再派发 存简历：基本信息取调用前草稿，其余切片取权威快照；
+//    身份已明确时不补派发。
+describe('创建候选操作 · 空身份草稿保留（M）', () => {
+  const 权威快照 = () => ({
+    基本信息: { 真名: '权威姓名', 开始工作年: '2021', 身份: '在职' as const },
+    个人优势: '权威优势',
+    技能: ['TypeScript'],
+    经历: [{ 编号: 'exp_1', 公司: '云衢', 行业: '互联网', 职位: '工程师', 开始: '2021-01', 结束: null, 内容: '平台', 隐藏: false }],
+    教育: [],
+    证书: [],
+    服务端快照: BFF简历样本,
+  });
+
+  function 空草稿状态() {
+    return {
+      ...初始状态,
+      基本信息: { 真名: '本地草稿名', 开始工作年: '', 身份: '' as const },
+    };
+  }
+
+  it('保存简历 成功：先 水合后端简历 再 存简历，基本信息取调用前空身份草稿', async () => {
+    const 场景 = 创建场景();
+    场景.状态引用.current = 空草稿状态() as never;
+    场景.后端.读取简历.mockResolvedValue(权威快照());
+    场景.后端.保存简历.mockResolvedValue(权威快照());
+    await 场景.操作.保存简历({
+      基本信息: { 真名: '本地草稿名', 开始工作年: '', 身份: '' },
+      个人优势: '', 技能: [], 经历: [], 教育: [], 证书: [],
+    } as never);
+    const 动作们 = (场景.派发.mock.calls as { 型: string }[][]).map(([a]) => a.型);
+    const 水合序 = 动作们.indexOf('水合后端简历');
+    const 存序 = 动作们.indexOf('存简历');
+    expect(水合序).toBeGreaterThanOrEqual(0);
+    expect(存序).toBeGreaterThan(水合序);
+    const 存 = (场景.派发.mock.calls as { 型: string; 基本信息?: unknown; 经历?: unknown }[][])
+      .map(([a]) => a).find((a) => a.型 === '存简历')!;
+    expect(存.基本信息).toMatchObject({ 真名: '本地草稿名', 身份: '' });
+    expect(存.经历).toEqual(权威快照().经历);
+  });
+
+  it('保存个人优势 成功：同口径补回空身份草稿', async () => {
+    const 场景 = 创建场景();
+    场景.状态引用.current = 空草稿状态() as never;
+    场景.后端.读取简历.mockResolvedValue(权威快照());
+    场景.后端.保存简历.mockResolvedValue(权威快照());
+    await 场景.操作.保存个人优势('新优势');
+    const 存 = (场景.派发.mock.calls as { 型: string; 基本信息?: unknown }[][])
+      .map(([a]) => a).find((a) => a.型 === '存简历');
+    expect(存?.基本信息).toMatchObject({ 真名: '本地草稿名', 身份: '' });
+  });
+
+  it('写失败带 权威简历：409 水合后同样补回空身份草稿', async () => {
+    const 场景 = 创建场景();
+    场景.状态引用.current = 空草稿状态() as never;
+    const 错误 = new BFF错误(409, 'version_conflict', 'conflict');
+    (错误 as { 权威简历?: unknown }).权威简历 = 权威快照();
+    场景.后端.读取简历.mockResolvedValue(权威快照());
+    场景.后端.保存简历.mockRejectedValue(错误);
+    await expect(场景.操作.保存个人优势('x')).rejects.toBeInstanceOf(BFF错误);
+    const 动作们 = (场景.派发.mock.calls as { 型: string }[][]).map(([a]) => a.型);
+    expect(动作们).toContain('水合后端简历');
+    expect(动作们).toContain('存简历');
+  });
+
+  it('身份已明确时不补派发 存简历（权威水合即终局）', async () => {
+    const 场景 = 创建场景();
+    场景.状态引用.current = {
+      ...初始状态,
+      基本信息: { 真名: '权威姓名', 开始工作年: '2021', 身份: '在职' as const },
+    } as never;
+    场景.后端.读取简历.mockResolvedValue(权威快照());
+    场景.后端.保存简历.mockResolvedValue(权威快照());
+    await 场景.操作.保存个人优势('新优势');
+    const 动作们 = (场景.派发.mock.calls as { 型: string }[][]).map(([a]) => a.型);
+    expect(动作们).toContain('水合后端简历');
+    expect(动作们).not.toContain('存简历');
   });
 });

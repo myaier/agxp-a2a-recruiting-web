@@ -7,6 +7,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEventApi from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import { 路径 } from '../路由/路径表';
 import type { BFF附件简历, BFF附件解析失败码, BFF附件解析状态 } from '../数据/BFF契约';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { 基本信息 as 基本信息类型, 简历经历段, 简历教育段, 简历证书 } from '../数据/类型';
@@ -27,6 +28,7 @@ const mock操作 = {
   替换附件简历: vi.fn().mockResolvedValue('已提交'),
   删除附件简历: vi.fn().mockResolvedValue('已提交'),
   请求附件解析: vi.fn().mockResolvedValue('已提交'),
+  保存简历: vi.fn().mockResolvedValue(undefined),
   // 候选 onboarding 预填操作探针（Task 8 回归）：本页属日常简历域，
   // 七个预填操作一个都不该被碰 —— 挂上探针只为了让越界调用立刻红
   恢复候选Onboarding预填: vi.fn().mockResolvedValue(undefined),
@@ -105,8 +107,8 @@ const 简历fixture = {
 function render我的简历(选项: {
   mode: 'mock' | 'backend';
   library?: { items: BFF附件简历[]; limits: typeof limits } | null;
-  /** 覆盖简历基本信息切片（工作年限事实用例只换 身份 / 开始工作年） */
-  基本信息?: { 真名?: string; 开始工作年?: string; 身份?: '在校' | '在职' | '离职' };
+  /** 覆盖简历基本信息切片（工作年限事实用例只换 身份 / 开始工作年；身份 '' 为 M 空态） */
+  基本信息?: { 真名?: string; 开始工作年?: string; 身份?: '在校' | '在职' | '离职' | '' };
   /** 覆盖其余简历切片（完整度矩阵用例换 经历/教育/技能/证书） */
   状态覆盖?: Partial<typeof 简历fixture>;
 }) {
@@ -600,5 +602,33 @@ describe('我的简历 · 候选 onboarding 预填边界（Task 8 日常域隔�
     // 日常域隔离：七个预填操作零调用 + 恢复元数据存储键零残留
     零预填操作();
     expect(Object.keys(sessionStorage).filter((键) => 键.startsWith('AGXP候选预填恢复v1:'))).toEqual([]);
+  });
+});
+
+// ── M：空身份稳定展示 —— 不把空状态算成在职；姓名是 profile 写路径，身份未定时先收口 ──
+describe('我的简历 · 空身份展示与姓名门（M）', () => {
+  it('空身份：当前状态行显示「未填写」，完整度把当前状态计为缺口', () => {
+    render我的简历({ mode: 'backend', 基本信息: { 身份: '' } });
+    const 状态行 = screen.getByText('当前状态').closest('button');
+    expect(状态行?.textContent).toContain('未填写');
+    const result = 检查资料完整度({
+      基本信息: { 真名: '张三', 开始工作年: '', 身份: '' },
+      经历: 造经历(1),
+      教育: [教育样本],
+      技能: ['TypeScript'],
+      证书: 造证书(1),
+    });
+    expect(result.待补全.some((项) => /当前状态/.test(项.文案))).toBe(true);
+  });
+
+  it('空身份尝试改名：提示「请先选择求职状态」并跳求职状态，零保存', async () => {
+    render我的简历({ mode: 'backend', 基本信息: { 身份: '' } });
+    await userEvent.click(screen.getByRole('button', { name: /姓名（递交简历后披露）/ }));
+    const 输入 = screen.getByLabelText('姓名（递交简历后披露）');
+    await userEvent.clear(输入);
+    await userEvent.type(输入, '新名字');
+    await userEvent.tab(); // blur → 保存姓名
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    expect(mock跳转).toHaveBeenCalledWith(路径.求职状态);
   });
 });

@@ -8,7 +8,7 @@
 // 不读 Mock 联系方式切片、零「存联系方式」派发、零虚构 API；账号手机号绝不回填这三行。
 // Mock 模式逐字节保留既有可编辑手机/邮箱/微信行为与本地派发，零 P8 读取。
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -52,7 +52,11 @@ function 成功快照<T>(data: T): P8资源快照<T> {
 }
 
 /** 组装 mock应用状态、渲染屏幕并返回操作/派发桩（断言用）。 */
-function 环境(input: { 模式?: 'mock' | 'backend'; 凭证?: P8资源快照<P8Credential[]> } = {}) {
+function 环境(input: {
+  模式?: 'mock' | 'backend';
+  凭证?: P8资源快照<P8Credential[]>;
+  基本信息?: { 真名: string; 开始工作年: string; 身份: '在校' | '在职' | '离职' | '' };
+} = {}) {
   const 操作 = {
     加载P8凭证: vi.fn(async () => undefined),
     保存简历: vi.fn(async () => undefined),
@@ -61,7 +65,7 @@ function 环境(input: { 模式?: 'mock' | 'backend'; 凭证?: P8资源快照<P8
   };
   const 派发 = vi.fn();
   mock应用状态 = {
-    状态: 初始状态,
+    状态: { ...初始状态, ...(input.基本信息 ? { 基本信息: input.基本信息 } : {}) },
     派发,
     操作,
     数据源模式: input.模式 ?? 'backend',
@@ -188,5 +192,33 @@ describe('个人信息 · Mock 行为冻结', () => {
 
     // 微信号打码行照旧
     expect(screen.getByRole('button', { name: '编辑微信号' })).toBeTruthy();
+  });
+});
+
+// ── M：空身份姓名门 —— 姓名是 profile 分区的真名写路径，身份未定时先收口；
+//    联系方式的独立保存不受影响 ──
+describe('个人信息 · 空身份姓名门（M）', () => {
+  it('Backend 空身份改名：提示「请先选择求职状态」并跳求职状态，零保存', async () => {
+    const { 操作 } = 环境({ 基本信息: { 真名: '沈', 开始工作年: '', 身份: '' } });
+    const 用户 = userEvent.setup();
+    const 姓名输入 = screen.getByLabelText('姓名');
+    await 用户.clear(姓名输入);
+    await 用户.type(姓名输入, '沈亦舟');
+    await 用户.tab(); // blur 收笔
+    expect(操作.保存简历).not.toHaveBeenCalled();
+    expect(导航.跳转).toHaveBeenCalledWith(路径.求职状态);
+  });
+
+  it('Backend 已有身份（在职）改名仍走 保存简历', async () => {
+    const { 操作 } = 环境({ 基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在职' } });
+    const 用户 = userEvent.setup();
+    const 姓名输入 = screen.getByLabelText('姓名');
+    await 用户.clear(姓名输入);
+    await 用户.type(姓名输入, '沈亦舟');
+    await 用户.tab();
+    await waitFor(() => expect(操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 真名: '沈亦舟', 身份: '在职' }),
+    }));
   });
 });
