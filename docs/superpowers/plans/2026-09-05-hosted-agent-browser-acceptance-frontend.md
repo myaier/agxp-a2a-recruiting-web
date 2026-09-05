@@ -34,7 +34,7 @@
 - Modify `e2e/真实后端/旅程/HostedAgent闭环.sh`：四 scene 的真实页面行为和 happy Case 公开终结。
 - Create `e2e/真实后端/旅程/HostedAgent闭环.test.sh`：用最小 fake 公共步骤验证 scene 闭合分发、关键正/负断言和双角色终结动作。
 - Modify `package.json`：增加 Hosted suite script，并把新增 shell tests 纳入已有 shell gate。
-- Do not modify by default `e2e/真实后端/类型.ts`、`报告.ts`、`报告.test.ts`：稳定 blocker 写进既有 blocked journey failure，`hostedScene` 只进入 run manifest；如果 RED test 证明现有类型无法表达 Spec，停止并重规划，不在执行中自行扩 schema。
+- Do not modify by default `e2e/真实后端/类型.ts`、`报告.ts`、`报告.test.ts`：稳定 blocker 写进既有 blocked journey failure，`fixtureScene` 只进入 run manifest；如果 RED test 证明现有类型无法表达 Spec，停止并重规划，不在执行中自行扩 schema。
 
 ---
 
@@ -171,10 +171,10 @@ fi
 
 - [ ] **Step 5: 把 scene 写进现有 manifest**
 
-只给 `run-manifest.json.environment` 增加：
+只给 `run-manifest.json.environment` 增加实际传给 fixture 的 scene：
 
 ```json
-{"fixtureScene":"<FIXTURE_SCENE>","hostedScene":"<HOSTED_SCENE or null>"}
+{"fixtureScene":"<FIXTURE_SCENE>"}
 ```
 
 使用现有 `jq --arg` 生成，禁止手拼 JSON；不修改最终 report schema。
@@ -195,7 +195,7 @@ Expected: shell suite PASS；default 只选择 baseline，Hosted scene 闭合，
 ### Task 2: 迁移到 receipt schema v2 的单生命周期
 
 **Files:**
-- Modify: `e2e/真实后端/运行整栈验收.test.sh:304-394,414-720,970-983`
+- Modify: `e2e/真实后端/运行整栈验收.test.sh:304-394,414-720,831-842,970-983`
 - Modify: `e2e/真实后端/运行整栈验收.sh:17-31,117-293,429-540,654-703`
 
 **Interfaces:**
@@ -233,6 +233,30 @@ assert_missing 'cleanup 后无二次 converge/verify' 'fixture converge --scene 
 ```
 
 增加 receipt drift 表格：wrong schema、contract version、run、scene、phase、extra key、missing key、mode 0644、symlink；每例零 browser journey，有 receipt 时使用同 ledger cleanup。
+
+再把既有 SIGINT case 拆成两条，证明重写的 `on_exit` 不会漏掉 lease cleanup：
+
+```bash
+testcase 'SIGINT + cleanup PASS：同一 ledger 只清一次，receipt 由后端退休，仍退出 75'
+reset_case; setup_baseline
+export FAKE_JOURNEY_SIGINT='recruiter-load'
+run_runner
+assert_eq '信号分类保持 75' "$RC" 75
+assert_eq 'cleanup 恰好一次' "$(grep -c 'fixture cleanup --ledger' "$CALLS")" 1
+assert_eq '三步使用同一 run id' "$(fixture_runs | sort -u | wc -l | tr -d ' ')" 1
+assert_false 'receipt 已退休' "find '$MONO/apps/recruitment/.local-dev/browser-fixtures' -type f 2>/dev/null | grep -q ."
+
+testcase 'SIGINT + cleanup FAIL：同一 ledger 只清一次，receipt 0600 保留，仍退出 75'
+reset_case; setup_baseline
+export FAKE_JOURNEY_SIGINT='recruiter-load' FAKE_CLEANUP_SEQ='1'
+run_runner
+assert_eq '信号分类仍为 75' "$RC" 75
+assert_eq 'cleanup 恰好一次' "$(grep -c 'fixture cleanup --ledger' "$CALLS")" 1
+receipt_path=$(find "$MONO/apps/recruitment/.local-dev/browser-fixtures" -type f | head -1)
+assert_true 'receipt 保留' "[ -n '$receipt_path' ] && [ -f '$receipt_path' ]"
+assert_eq 'receipt mode 0600' "$(stat -f '%Lp' "$receipt_path" 2>/dev/null || stat -c '%a' "$receipt_path")" 600
+assert_contains 'cleanup 状态如实失败' 'FAILED(rc=1)' "$(report_json)"
+```
 
 - [ ] **Step 2: 运行 RED**
 
@@ -683,6 +707,18 @@ advance_to_terminal_for_role(){
 
 调用方分别推进两端并 reload，直到两端都看到 terminal marker；`2` 立即失败，`1` 表示已发送一个公开动作后继续。最终两端都断言没有 `接受`、`确认意向`、`婉拒意向`。深链只使用从页面取得的 server URL。
 
+由于宿主脚本启用 `set -e`，调用点必须在条件上下文中捕获返回码，不能裸调用：
+
+```bash
+rc=0
+advance_to_terminal_for_role "$session" "$url" || rc=$?
+case "$rc" in
+  0) terminal=1 ;;
+  1) terminal=0 ;;
+  *) echo "${session} Case 无法合法推进到终态" >&2; return 1 ;;
+esac
+```
+
 - [ ] **Step 7: 加入闭合 dispatcher**
 
 所有函数定义之后、任何登录之前：
@@ -757,13 +793,15 @@ Expected: 全部 exit 0。串行运行，不复用旧 PASS。
 ```bash
 git -C /Users/visionclaw/agxp-monorepo fetch origin release/0.2.5
 BACKEND_E2E_SHA="$(git -C /Users/visionclaw/agxp-monorepo rev-parse origin/release/0.2.5)"
+[ "$BACKEND_E2E_SHA" = 'c4d99e2db5d8e9ba3b5387fb66ac07d80584b25e' ] \
+  || { echo 'dependency_drift: requires_replan' >&2; exit 1; }
 BACKEND_E2E_PARENT="$(mktemp -d /tmp/agxp-backend-e2e.XXXXXXXX)"
 BACKEND_E2E_DIR="$BACKEND_E2E_PARENT/backend"
 git -C /Users/visionclaw/agxp-monorepo worktree add --detach "$BACKEND_E2E_DIR" "$BACKEND_E2E_SHA"
 AGXP_MONOREPO_DIR="$BACKEND_E2E_DIR" npm run test:agent-browser:backend-local
 ```
 
-不得清理或修改原 backend dirty checkout。后端仍是四 scene 时，Expected: exit 75；五条普通 journey blocked、fixture converge 为 `BLOCKED(BLOCKED_BY_BACKEND_BASELINE_FIXTURE)`、零 Vite/browser/receipt。后端已支持 baseline 时，Expected: 五条普通 journey、视觉 report 和 cleanup 全 PASS。记录 `BACKEND_E2E_SHA` 和 `BACKEND_E2E_DIR`，Step 4 必须复用同一目录。
+不得清理或修改原 backend dirty checkout。当前冻结 SHA 的 Expected 固定为 exit 75：五条普通 journey blocked、fixture converge 为 `BLOCKED(BLOCKED_BY_BACKEND_BASELINE_FIXTURE)`、零 Vite/browser/receipt。记录 `BACKEND_E2E_SHA` 和 `BACKEND_E2E_DIR`，Step 4 必须复用同一目录。未来 baseline commit 合入后，先把本 Plan 的后端基线重新冻结到已审查的精确 SHA；这只更新集成输入，不需要修改前端代码。
 
 - [ ] **Step 4: 运行真实 Hosted 五轮 suite**
 
@@ -778,11 +816,18 @@ Expected: `happy, happy, p4, p5, p6`；每轮独立 report，fixture 都是 `con
 只有 CRUD/Hosted 两次运行都没有遗留 receipt、wrapper 已安全 down 自己的 stack 时，才执行：
 
 ```bash
-git -C /Users/visionclaw/agxp-monorepo worktree remove "$BACKEND_E2E_DIR"
+case "$BACKEND_E2E_DIR" in
+  /tmp/agxp-backend-e2e.*/backend) : ;;
+  *) echo '拒绝移除未验证的 backend worktree 路径' >&2; exit 1 ;;
+esac
+[ ! -e "$BACKEND_E2E_DIR/apps/recruitment/.local-dev/browser-fixtures" ] \
+  || [ -z "$(find "$BACKEND_E2E_DIR/apps/recruitment/.local-dev/browser-fixtures" -type f -print -quit 2>/dev/null)" ] \
+  || { echo 'backend receipt 尚未退休，保留 worktree' >&2; exit 1; }
+git -C /Users/visionclaw/agxp-monorepo worktree remove --force "$BACKEND_E2E_DIR"
 rmdir "$BACKEND_E2E_PARENT"
 ```
 
-cleanup 未完成时保留 detached worktree 和 receipt，交接中报告路径，不得强制 remove。
+`--force` 只用于上面刚由 `mktemp` 创建、路径和 receipt 都已验证的 disposable detached worktree，以清掉 `dev-local` 生成的 ignored material；cleanup 未完成时保留 worktree 和 receipt，交接中报告路径，不得强制 remove。
 
 - [ ] **Step 5: 检查 evidence hygiene 与工作树**
 

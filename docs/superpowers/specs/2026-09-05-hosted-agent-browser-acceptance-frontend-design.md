@@ -372,7 +372,7 @@ session-isolation
 
 ### 11.1 报告与证据
 
-每次单-scene 运行继续生成现有 manifest、journey 分片、`report.json`、`report.md`、失败快照和受限 private journal。manifest 只在必要时增加 `hostedScene`；fixture 报告继续记录 converge/verify/cleanup 三态。
+每次单-scene 运行继续生成现有 manifest、journey 分片、`report.json`、`report.md`、失败快照和受限 private journal。manifest 只增加实际传给 fixture 的 `fixtureScene`；Hosted scene 可由该字段直接读取，不再保存一份可推导的 `hostedScene`。fixture 报告继续记录 converge/verify/cleanup 三态。
 
 不把四个 Hosted scene 扩成新的 product journey ID，也不增加 Hosted 视觉基线。suite wrapper 只输出每轮 scene、round、退出码和运行目录，不复制 report 内容，不生成第二套 verdict schema。
 
@@ -408,7 +408,7 @@ Hosted wrapper 只在上一轮 cleanup PASS 后开始下一轮。`happy-2` 本�
 - receipt exact key set、schema/version/scene/run/phase/mode/symlink 校验 fail closed；
 - 三条成功终止行逐字匹配，只有前缀相同不能通过；
 - cleanup 后零二次 converge/verify、零前端 unlink；
-- cleanup failure 与信号路径保留 receipt，并维持现有退出分类。
+- 信号路径仍执行 cleanup：cleanup PASS 时由后端退休 receipt；cleanup 失败时保留 receipt 并把 cleanup 状态记为失败。两种情况都保持既有信号分类 `INFRA_BLOCKED`/75；“cleanup 高于 journey failure”不覆盖信号这一基础设施分类。
 
 ### 12.2 当前后端依赖阻塞
 
@@ -435,7 +435,7 @@ Hosted wrapper 只在上一轮 cleanup PASS 后开始下一轮。`happy-2` 本�
 - `p5` 断言双端 attention、安全文案与零 Agent retry；
 - `p6` 断言 failed 文案、草稿保留、零 accept 与零 active rule；
 - wrapper 顺序精确为 `happy happy p4 p5 p6`；
-- 五轮共享 acceptance stack但各用不同 run ID/receipt；
+- 五轮共享 acceptance stack；每个子 runner 独立生成自己的 run ID/receipt，wrapper 不传入、复用或解释这些标识；
 - 任一轮失败不启动后续轮；
 - wrapper 只 down 自己启动的 stack；
 - Hosted suite 不运行普通 CRUD journey，不更新视觉基线。
@@ -483,7 +483,7 @@ e2e/真实后端/报告.ts
 e2e/真实后端/报告.test.ts
 ```
 
-若稳定 blocker 和 `hostedScene` 能写入现有日志/manifest 而不改变最终 report 类型，则不得机械修改 TypeScript 报告文件。Plan 应按测试证明的真实缺口进一步缩窄。
+若稳定 blocker 和 `fixtureScene` 能写入现有日志/manifest 而不改变最终 report 类型，则不得机械修改 TypeScript 报告文件。Plan 应按测试证明的真实缺口进一步缩窄。
 
 ## 14. 非目标与延后条件
 
