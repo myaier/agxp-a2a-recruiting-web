@@ -39,7 +39,7 @@ DEFAULT_JOURNEYS='candidate-load candidate-crud recruiter-load recruiter-crud se
 
 usage_error(){
   printf '%s\n' "usage: $1" >&2
-  printf '%s\n' 'usage: 运行整栈验收.sh [--journey candidate-load|candidate-crud|recruiter-load|recruiter-crud|hosted-agent|all] [--headed] [--update-baseline]' >&2
+  printf '%s\n' 'usage: 运行整栈验收.sh [--journey candidate-load|candidate-crud|recruiter-load|recruiter-crud|hosted-agent|all] [--hosted-scene happy|p4|p5|p6] [--headed] [--update-baseline]' >&2
   exit 2
 }
 
@@ -48,12 +48,18 @@ usage_error(){
 JOURNEY_ARG='all'
 HEADED=0
 UPDATE_BASELINE=0
+HOSTED_SCENE=''
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --journey)
       [ $# -ge 2 ] || usage_error '--journey 缺少取值'
       JOURNEY_ARG="$2"
+      shift 2
+      ;;
+    --hosted-scene)
+      [ $# -ge 2 ] || usage_error '--hosted-scene 缺少取值'
+      HOSTED_SCENE="$2"
       shift 2
       ;;
     --headed) HEADED=1; shift ;;
@@ -66,6 +72,21 @@ case "$JOURNEY_ARG" in
   candidate-load|candidate-crud|recruiter-load|recruiter-crud|hosted-agent|all) : ;;
   *) usage_error "未知旅程：$JOURNEY_ARG" ;;
 esac
+
+# fixture scene 的选择在动任何环境之前定下来（写进 run manifest）：
+#   · hosted-agent 必须显式带一个合法 --hosted-scene，漏带、带未知值、或把它配给
+#     别的 journey，都是用法错误，零外部调用退出 2；
+#   · 普通 CRUD journey 与默认 all 固定 baseline（零 Hosted Agent 图），不新增用户参数。
+if [ "$JOURNEY_ARG" = 'hosted-agent' ]; then
+  case "$HOSTED_SCENE" in
+    happy|p4|p5|p6) : ;;
+    *) usage_error 'hosted-agent 必须提供 --hosted-scene happy|p4|p5|p6' ;;
+  esac
+  FIXTURE_SCENE="$HOSTED_SCENE"
+else
+  [ -z "$HOSTED_SCENE" ] || usage_error '--hosted-scene 只能与 --journey hosted-agent 同用'
+  FIXTURE_SCENE='baseline'
+fi
 
 # 已提交的基线是七个场景的原子集合：只跑一条旅程时最多能拍出其中两三张，
 # 拿它去更新基线必然写出半套。所以这个组合在动任何环境之前就拒绝。
@@ -614,42 +635,30 @@ port_probe=0
 curl -sS -o /dev/null --max-time 2 "$FRONTEND_ORIGIN/" >/dev/null 2>&1 || port_probe=$?
 [ "$port_probe" = '7' ] || blocked "localhost:5173 已被占用（curl rc=${port_probe}），本验收不换端口"
 
-# ── 本地栈归属 ──────────────────────────────────────────────────────
+# ── 本地栈归属（只接受显式 acceptance profile）─────────────────────
+#
+# Hosted 与 CRUD 两类验收都只认 acceptance 栈：
+#   · acceptance health 通过 → 复用，本轮不 down；
+#   · acceptance health 不过、但 default 栈健康 → profile 不匹配，是环境阻塞，
+#     绝不擅自 down 别人的栈、不切 profile、不动 volume；
+#   · 没有健康栈 → 本轮自己 prepare/up acceptance profile 并记下 ownership，
+#     收尾只 down 自己起的这一份（不带 --volumes）。
+# bootstrap 与 down 按后端 CLI 不带 selector。
 
-if "$DEV" health >/dev/null 2>&1; then
+if "$DEV" health --acceptance >/dev/null 2>&1; then
   BACKEND_PREEXISTING=1
   STACK_HEALTHY=1
-  printf '本地栈已健康，复用它（本轮不会 down）\n'
+  printf 'acceptance 本地栈已健康，复用它（本轮不会 down）\n'
+elif "$DEV" health >/dev/null 2>&1; then
+  blocked '当前运行的是 default stack；请先由其 owner 执行 down，再运行 acceptance 验收'
 else
   BACKEND_OWNED=1
-  "$DEV" prepare >/dev/null 2>&1 || blocked 'dev-local.sh prepare 失败'
-  "$DEV" up >/dev/null 2>&1 || blocked 'dev-local.sh up 失败'
-  "$DEV" health >/dev/null 2>&1 || blocked 'dev-local.sh health 失败'
+  "$DEV" prepare --acceptance >/dev/null 2>&1 || blocked 'dev-local.sh prepare --acceptance 失败'
+  "$DEV" up --acceptance >/dev/null 2>&1 || blocked 'dev-local.sh up --acceptance 失败'
+  "$DEV" health --acceptance >/dev/null 2>&1 || blocked 'dev-local.sh health --acceptance 失败'
   STACK_HEALTHY=1
 fi
-# 后端已知缺陷（0.2.5）：.local-dev/browser-fixtures 目录不在 dev-local validate_material
-# 白名单里；validate_material 会拒绝 .local-dev 下**任何**白名单外条目——所以改名成同级
-# 的 .lockbak 也没用，必须把整个目录挪出 .local-dev（放本轮 run 目录里）。绕法：挪出 →
-# bootstrap → **无论成败**都原样挪回；挪不回来就把 receipt 滞留的事实报成阻塞，绝不静默
-# 丢收条。
-bootstrap_stack(){
-  if "$DEV" bootstrap >/dev/null 2>&1; then return 0; fi
-  if [ ! -d "$FIXTURE_RECEIPT_DIR" ]; then
-    blocked 'dev-local.sh bootstrap 失败'
-    return 0
-  fi
-  local moved="$RUN_DIR/browser-fixtures.lockbak"
-  mv "$FIXTURE_RECEIPT_DIR" "$moved" || blocked 'dev-local.sh bootstrap 失败（回执目录挪出失败）'
-  if "$DEV" bootstrap >/dev/null 2>&1; then
-    if mv "$moved" "$FIXTURE_RECEIPT_DIR" 2>/dev/null; then
-      return 0
-    fi
-    blocked "bootstrap 成功，但回执目录没能归回原位：$moved（请手工挪回 $FIXTURE_RECEIPT_DIR）"
-  fi
-  mv "$moved" "$FIXTURE_RECEIPT_DIR" 2>/dev/null || true
-  blocked 'dev-local.sh bootstrap 失败（挪走回执目录后仍然失败）'
-}
-bootstrap_stack
+"$DEV" bootstrap >/dev/null 2>&1 || blocked 'dev-local.sh bootstrap 失败'
 
 # ── fixture 收敛 ────────────────────────────────────────────────────
 
@@ -671,7 +680,7 @@ fixture_gate(){
   esac
 }
 
-fixture_step converge
+fixture_step converge --scene "$FIXTURE_SCENE"
 case "$FIXTURE_OUT" in
   *'BROWSER_FIXTURE_CONVERGE PASS'*) FIXTURE_CONVERGE_STATUS='PASS' ;;
   *) FIXTURE_CONVERGE_STATUS="FAILED(rc=$FIXTURE_RC)" ;;
@@ -772,14 +781,14 @@ BACKEND_COMMIT="$(git -C "$AGXP_MONOREPO_DIR" rev-parse --short HEAD 2>/dev/null
 
 jq -n --arg runId "$RUN_ID" --arg front "$FRONTEND_COMMIT" --arg back "$BACKEND_COMMIT" \
   --arg ab "$AB_VERSION" --arg chrome "$CHROME_BUILD" --arg origin "$FRONTEND_ORIGIN" \
-  --arg gate "$GATE" --arg journey "$JOURNEY_ARG" \
+  --arg gate "$GATE" --arg journey "$JOURNEY_ARG" --arg fixtureScene "$FIXTURE_SCENE" \
   --argjson headed "$([ "$HEADED" = '1' ] && echo true || echo false)" \
   --argjson preexisting "$([ "$BACKEND_PREEXISTING" = '1' ] && echo true || echo false)" \
   '{schemaVersion:1,runId:$runId,frontendCommit:$front,backendCommit:$back,
     agentBrowserVersion:$ab,chromeBuild:$chrome,
     viewport:{width:390,height:844},locale:"zh-CN",timezone:"Asia/Shanghai",colorScheme:"light",deviceScaleFactor:1,
     environment:{origin:$origin,dataSource:"backend",backendEnv:"local",gate:$gate,journey:$journey,
-                 headed:$headed,backendPreexisting:$preexisting}}' \
+                 fixtureScene:$fixtureScene,headed:$headed,backendPreexisting:$preexisting}}' \
   >"$RUN_DIR/run-manifest.json"
 
 # ── 旅程调度 ────────────────────────────────────────────────────────
@@ -823,7 +832,11 @@ run_journey(){
   # 反映了最近一次旅程的登录（#run16：cleanup 的 begin 撞上旅程刚发过的 begin）。
   pace_before_login
   set +e
-  FRAGMENT_DIR="$dir" bash "$script"
+  if [ "$id" = 'hosted-agent' ]; then
+    HOSTED_AGENT_SCENE="$HOSTED_SCENE" FRAGMENT_DIR="$dir" bash "$script"
+  else
+    FRAGMENT_DIR="$dir" bash "$script"
+  fi
   rc=$?
   set -e
   record_journey_rc "$id" "$rc"

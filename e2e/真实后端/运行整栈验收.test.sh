@@ -115,6 +115,13 @@ case "$(basename "$0")" in
   *) echo "FAKE journey 未知脚本名 $0" >>"$CALLS"; exit 1 ;;
 esac
 printf 'journey %s fragmentdir=%s\n' "$J" "${FRAGMENT_DIR:-unset}" >>"$CALLS"
+# Hosted scene 只进 Hosted journey 子进程：编排层把它泄漏给 CRUD 旅程就是合同违规。
+if [ "$J" = 'hosted-agent' ]; then
+  printf 'journey hosted-agent scene=%s\n' "${HOSTED_AGENT_SCENE:-unset}" >>"$CALLS"
+else
+  [ -z "${HOSTED_AGENT_SCENE:-}" ] \
+    || { printf 'FAKE journey %s 不应继承 HOSTED_AGENT_SCENE\n' "$J" >>"$CALLS"; exit 1; }
+fi
 
 # DENY：编排层必须把这些环境交到旅程手上，少一个就红
 for v in RUN_DIR FRAGMENT_DIR PRIVATE_JOURNAL AGXP_MONOREPO_DIR FRONTEND_ORIGIN BROWSER_FIXTURE_RUN_ID AGENT_BROWSER_NAMESPACE AGENT_BROWSER_ARGS; do
@@ -264,37 +271,38 @@ FAKE
 chmod +x "$BIN/docker"
 
 # ── 假后端入口 ──────────────────────────────────────────────────────
+# acceptance 与 default 是两个显式 profile：health 分开记账（FAKE_ACCEPTANCE_HEALTH_SEQ /
+# FAKE_DEFAULT_HEALTH_RC），prepare|up 只认 exact `--acceptance`，bootstrap|down 不带 selector。
+# runner 侧漏一个 selector、或把 default 栈当 acceptance 栈用，这里都按 usage 处理。
 cat >"$MONO/apps/recruitment/scripts/dev-local.sh" <<'FAKE'
 #!/usr/bin/env bash
 set -u
 printf 'dev-local %s\n' "$*" >>"$CALLS"
 case "${1:-}" in
   health)
-    n=$(cat "$STATE/health-calls" 2>/dev/null || printf '0'); n=$((n + 1)); printf '%s' "$n" >"$STATE/health-calls"
-    rc="$(printf '%s\n' ${FAKE_HEALTH_SEQ:-0} | tr ' ' '\n' | sed -n "${n}p")"
-    [ -n "$rc" ] || rc="$(printf '%s\n' ${FAKE_HEALTH_SEQ:-0} | tr ' ' '\n' | tail -1)"
-    exit "$rc" ;;
-  prepare) exit "${FAKE_PREPARE_RC:-0}" ;;
-  up) exit "${FAKE_UP_RC:-0}" ;;
+    shift
+    case "$#:${1:-}" in
+      1:--acceptance)
+        n=$(cat "$STATE/acceptance-health-calls" 2>/dev/null || printf 0)
+        n=$((n + 1)); printf '%s' "$n" >"$STATE/acceptance-health-calls"
+        rc=$(printf '%s\n' ${FAKE_ACCEPTANCE_HEALTH_SEQ:-0} | tr ' ' '\n' | sed -n "${n}p")
+        [ -n "$rc" ] || rc=$(printf '%s\n' ${FAKE_ACCEPTANCE_HEALTH_SEQ:-0} | tr ' ' '\n' | tail -1)
+        exit "$rc" ;;
+      0:) exit "${FAKE_DEFAULT_HEALTH_RC:-1}" ;;
+      *) printf 'FAKE dev-local health 参数错误\n' >>"$CALLS"; exit 64 ;;
+    esac ;;
+  prepare|up)
+    command="$1"; shift
+    [ "$#" -eq 1 ] && [ "$1" = '--acceptance' ] \
+      || { printf 'FAKE dev-local %s 缺少 exact --acceptance\n' "$command" >>"$CALLS"; exit 64; }
+    if [ "$command" = 'prepare' ]; then exit "${FAKE_PREPARE_RC:-0}"; fi
+    exit "${FAKE_UP_RC:-0}" ;;
   bootstrap)
-    # 复刻后端已知缺陷：validate_material 拒绝 .local-dev 下任何白名单外条目——
-    # browser-fixtures（或它的任何同级残留，比如 browser-fixtures.lockbak-*）存在时
-    # bootstrap BLOCKED。1=只在存在残留时 blocked，2=无论怎样都 blocked
-    # （用来验证挪出绕法失败时目录被原样归回）。
-    case "${FAKE_BOOTSTRAP_BLOCK_DIR:-}" in
-      2) exit 75 ;;
-      1)
-        for entry in "$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev"/browser-fixtures*; do
-          if [ -e "$entry" ]; then
-            printf 'BLOCKED: existing Recruitment local material is invalid\n' >&2
-            exit 75
-          fi
-        done
-        ;;
-    esac
+    [ "$#" -eq 1 ] || { printf 'FAKE dev-local bootstrap 不接受参数\n' >>"$CALLS"; exit 64; }
     exit "${FAKE_BOOTSTRAP_RC:-0}" ;;
   down)
     case "$*" in *--volumes*) printf 'FAKE dev-local down 带了 --volumes\n' >>"$CALLS"; exit 1 ;; esac
+    [ "$#" -eq 1 ] || { printf 'FAKE dev-local down 不接受参数\n' >>"$CALLS"; exit 64; }
     exit 0 ;;
   *) printf 'FAKE dev-local 未预期子命令：%s\n' "$*" >>"$CALLS"; exit 64 ;;
 esac
@@ -416,11 +424,11 @@ reset_case(){
   rm -rf "$OUT_ROOT" "$BASELINE_DIR" "$MONO/apps/recruitment/.local-dev/browser-fixtures"
   rm -f "$BASELINE_MANIFEST"
   : >"$CALLS"
-  rm -f "$STATE/health-calls" "$STATE/vite-up" "$STATE/stale-temp-object"
+  rm -f "$STATE/acceptance-health-calls" "$STATE/vite-up" "$STATE/stale-temp-object"
   rm -f "$STATE/converge-calls" "$STATE/verify-calls" "$STATE/cleanup-calls"
   export AGXP_MONOREPO_DIR="$MONO"
-  export FAKE_HEALTH_SEQ='0' FAKE_PREPARE_RC=0 FAKE_UP_RC=0 FAKE_BOOTSTRAP_RC=0
-  unset FAKE_BOOTSTRAP_BLOCK_DIR FAKE_DAEMON_TZ 2>/dev/null || true
+  export FAKE_ACCEPTANCE_HEALTH_SEQ='0' FAKE_DEFAULT_HEALTH_RC=1 FAKE_PREPARE_RC=0 FAKE_UP_RC=0 FAKE_BOOTSTRAP_RC=0
+  unset FAKE_DAEMON_TZ 2>/dev/null || true
   export FAKE_CONVERGE_SEQ='0' FAKE_VERIFY_SEQ='0' FAKE_CLEANUP_SEQ='0' FAKE_INTERRUPTED=0
   export FAKE_JOURNEY_FAIL='' FAKE_JOURNEY_BLOCK='' FAKE_JOURNEY_SIGINT='' FAKE_ISOLATION_RC=0
   export FAKE_PORT_BUSY=0 FAKE_DOCKER_RC=0 FAKE_DOCTOR_RC=0 FAKE_VITE_START_RC=0 FAKE_LOGOUT_RC=0
@@ -515,9 +523,9 @@ assert_eq '招聘会话被关一次' "$(grep -c 'closed backend-local-recruiter'
 assert_eq '一共只关了两个会话' "$(grep -c '^closed ' "$CALLS")" '2'
 assert_true '假 Vite 进程已经被终止' "vite_dead"
 
-testcase '不健康的本地栈：prepare/up/health/bootstrap，收尾 down'
+testcase '不健康的本地栈：prepare/up/health --acceptance/bootstrap，收尾 down'
 reset_case; setup_baseline
-export FAKE_HEALTH_SEQ='1 0'
+export FAKE_ACCEPTANCE_HEALTH_SEQ='1 0'
 run_runner
 assert_eq '退出码 0' "$RC" 0
 assert_contains 'prepare' 'dev-local prepare' "$CALLS"
@@ -530,7 +538,7 @@ assert_true 'prepare 在 up 之前' "[ \$(grep -n 'dev-local prepare' '$CALLS' |
 
 testcase 'health 起不来：不碰 fixture、不起 Vite、不开浏览器，退出 75，仍然出报告'
 reset_case; setup_baseline
-export FAKE_HEALTH_SEQ='1 1 1'
+export FAKE_ACCEPTANCE_HEALTH_SEQ='1 1 1'
 run_runner
 assert_eq '退出码 75' "$RC" 75
 assert_missing '没有 fixture' 'fixture ' "$CALLS"
@@ -651,36 +659,6 @@ assert_eq '后端运行回执保留（主 converge 一份 + 收尾重新收敛�
 assert_contains '打印了私密目录的绝对路径' "$(run_dir)/private" "$OUT"
 assert_contains '打印了回执路径' "$MONO/apps/recruitment/.local-dev/browser-fixtures" "$OUT"
 assert_contains '把 journal 里的固定保留名称念给人听（它唯一的读者）' '本轮 journal 记下的里程碑' "$OUT"
-
-# 后端已知缺陷（0.2.5）：.local-dev/browser-fixtures 目录不在 dev-local validate_material
-# 白名单里，目录还在（receipt 还没退休）时 bootstrap 必 BLOCKED。绕法是改名目录 →
-# bootstrap → 无论成败都改回。改回失败＝receipt 滞留在 .lockbak 里，阻塞而不是丢。
-testcase 'bootstrap 撞上回执目录：改名重试成功，目录与 receipt 原样归位'
-reset_case; setup_baseline
-FIXDIR="$MONO/apps/recruitment/.local-dev/browser-fixtures"
-mkdir -p "$FIXDIR"
-printf '%s' '{"schema_version":1,run_id:"preexisting"}' >"$FIXDIR/preexisting.json"
-export FAKE_BOOTSTRAP_BLOCK_DIR=1
-run_runner
-assert_eq '退出码 0' "$RC" 0
-assert_true 'bootstrap 尝试了不止一次' "[ \$(grep -c 'dev-local bootstrap' '$CALLS') -ge 2 ]"
-assert_true '目录归位，没有滞留在 run 目录里的副本' \
-  "[ -d '$FIXDIR' ] && [ ! -e '$(run_dir)/browser-fixtures.lockbak' ]"
-assert_true '原有的 receipt 原样还在' "[ -f '$FIXDIR/preexisting.json' ]"
-assert_missing '假件没有报告任何未预期调用' 'FAKE ' "$CALLS"
-
-testcase '改名之后 bootstrap 仍失败：退出 75，回执目录被原样改回'
-reset_case; setup_baseline
-FIXDIR="$MONO/apps/recruitment/.local-dev/browser-fixtures"
-mkdir -p "$FIXDIR"
-printf '%s' '{"schema_version":1,run_id:"preexisting"}' >"$FIXDIR/preexisting.json"
-export FAKE_BOOTSTRAP_BLOCK_DIR=2
-run_runner
-assert_eq '退出码 75' "$RC" 75
-assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'INFRA_BLOCKED'
-assert_true '目录被改回原位' "[ -d '$FIXDIR' ]"
-assert_true '回执没有滞留在改名目录里' "[ -f '$FIXDIR/preexisting.json' ]"
-assert_missing '没有 fixture 被调用' 'fixture ' "$CALLS"
 
 # 后端 cleanup 判 BLOCKED 是「拆台过程中栈不健康」，不是「临时对象没清掉」。
 # 报成 CLEANUP_FAILED 会让人去翻残留数据，而真正坏的是本地栈。
@@ -887,14 +865,52 @@ assert_true '前置旅程的真实分片另存一处' "[ -f '$(run_dir)/precondi
 
 testcase '显式 hosted-agent 只运行 Hosted Agent 旅程'
 reset_case; setup_baseline
-run_runner --journey hosted-agent
+run_runner --journey hosted-agent --hosted-scene happy
 assert_eq 'hosted-agent 退出码' "$RC" '0'
-assert_contains '运行 Hosted Agent 旅程' 'journey hosted-agent' "$CALLS"
+assert_contains '运行 Hosted Agent 旅程' 'journey hosted-agent scene=happy' "$CALLS"
+assert_contains 'fixture 收到 happy' 'fixture converge --scene happy' "$CALLS"
 assert_missing '不运行 candidate CRUD' 'journey candidate-crud' "$CALLS"
 assert_eq 'hosted-agent 记 pass' \
   "$(jq -r '.journeys[]|select(.journey=="hosted-agent")|.status' "$(report_json)" 2>/dev/null)" 'pass'
 assert_eq '原五条均 skipped' \
   "$(jq -r '[.journeys[]|select(.status=="skipped")]|length' "$(report_json)" 2>/dev/null)" '5'
+
+testcase '默认 CRUD 固定选择 baseline，并使用 acceptance profile'
+reset_case; setup_baseline
+run_runner
+assert_eq '退出码 0' "$RC" 0
+assert_contains 'acceptance health' 'dev-local health --acceptance' "$CALLS"
+assert_contains 'baseline converge' 'fixture converge --scene baseline' "$CALLS"
+assert_missing 'bootstrap 不带 selector' 'dev-local bootstrap --acceptance' "$CALLS"
+assert_contains 'run manifest 记了 fixtureScene' '"fixtureScene": "baseline"' "$(run_dir)/run-manifest.json"
+
+testcase 'Hosted scene 参数在任何外部动作前闭合校验'
+for args in '--journey hosted-agent' '--journey hosted-agent --hosted-scene future' \
+  '--journey candidate-crud --hosted-scene happy' '--hosted-scene happy'; do
+  reset_case; setup_baseline
+  # shellcheck disable=SC2086
+  run_runner $args
+  assert_eq "非法组合 $args 退出 2" "$RC" 2
+  assert_eq '零外部调用' "$(wc -l <"$CALLS" | tr -d ' ')" 0
+done
+
+testcase 'Hosted p5 只把 p5 交给 fixture 与 journey'
+reset_case; setup_baseline
+run_runner --journey hosted-agent --hosted-scene p5
+assert_eq '退出码 0' "$RC" 0
+assert_contains 'fixture scene' 'fixture converge --scene p5' "$CALLS"
+assert_contains 'journey scene' 'journey hosted-agent scene=p5' "$CALLS"
+assert_missing '不跑 CRUD' 'journey candidate-crud' "$CALLS"
+assert_contains 'run manifest 记了 fixtureScene' '"fixtureScene": "p5"' "$(run_dir)/run-manifest.json"
+
+testcase '健康 default stack 不被切换成 acceptance'
+reset_case; setup_baseline
+export FAKE_ACCEPTANCE_HEALTH_SEQ='75' FAKE_DEFAULT_HEALTH_RC=0
+run_runner
+assert_eq '退出 75' "$RC" 75
+assert_missing '不 prepare' 'dev-local prepare' "$CALLS"
+assert_missing '不 down' 'dev-local down' "$CALLS"
+assert_missing '不碰 fixture' 'fixture ' "$CALLS"
 
 testcase '默认 all 保持原五条，不隐式运行真实 Provider 旅程'
 reset_case; setup_baseline
