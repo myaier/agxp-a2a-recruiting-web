@@ -16,11 +16,10 @@
 #   3. 只关 backend-local-candidate 与 backend-local-recruiter 两个具名会话，绝不 close --all。
 #
 # 两份记录，不要混：
-#   · **run receipt**（后端写在 apps/recruitment/.local-dev/browser-fixtures/<run id>.json）
-#     是 `browser-fixture.sh cleanup --ledger` 唯一合法的实参。它带 candidate / recruiter
-#     两段收敛后 owner-list，是设计稿 §8.5 差集清理的全部依据。本文件里**每一次**算子
-#     调用（converge/verify/cleanup 都算）都发一个全新 RUN_ID，所以这份 ledger 特指
-#     旅程开始前那一次 converge 写下的收条（2026-08-31 重校准，见计划文档）。
+#   · **run receipt**（后端写在 apps/recruitment/.local-dev/browser-fixtures/<run id>.json，
+#     receipt schema v2）是 `browser-fixture.sh cleanup --ledger` 唯一合法的实参。一轮只用
+#     一个 RUN_ID：converge → verify → cleanup 三次算子调用共用它，cleanup 是这份收条的
+#     唯一退休者（退休后禁止任何二次 converge/verify，前端绝不 unlink）。
 #   · **私密 journal**（$PRIVATE_JOURNAL，$RUN_DIR/private/run-journal.json）是本仓库自己的
 #     人读证据：旅程按里程碑往里记固定保留名称，清理失败时由 print_private_journal 念出来。
 #     它**永远不是**后端算子的输入 —— 把它当 --ledger 传过去会让差集清理整段空转。
@@ -149,8 +148,6 @@ RUN_DIR=''
 RECEIPT=''
 CHROME_BUILD=''
 AB_VERSION=''
-FIXTURE_CALLS=0
-FIXTURE_RECEIPTS=''
 LAST_LOGIN_EPOCH=0
 FRONTEND_COMMIT='unknown'
 BACKEND_COMMIT='unknown'
@@ -262,18 +259,15 @@ on_signal(){
   exit 75
 }
 
-# 2026-08-31 重校准：后端 0.2.5 实测两件硬事实改写了算子的调用姿势。
-#   1. 同一 RUN_ID 的第二次算子调用，登录命中 24h 幂等键，重放出已 logout 的死
-#      token，首个 catalog 请求必 401（后端已实锤并在交接里确认）——所以每一次
-#      算子调用都发全新 RUN_ID，绝不复用。
-#   2. mock SMS 的 begin 接收桶是「同手机号一分钟一次」；换新 ID 紧接着调用就会
-#      429。所以每次调用前都对齐到距上一次登录锚点 ≥ PACE_SECS 秒（锚点＝相邻
-#      的算子调用起点与隔离门结束时刻；旅程之间复用会话不重登，不另设锚）。
+# 2026-09-05 receipt v2 重校准：一轮只用一个 RUN_ID（converge/verify/cleanup 共用），
+# lease 由后端 receipt v2 跨命令持有，收尾只做 cleanup。相邻两次算子登录仍要错峰：
+# mock SMS 的 begin 接收桶是「同手机号一分钟一次」（锚点＝相邻的算子调用起点与
+# 隔离门结束时刻；旅程之间复用会话不重登，不另设锚）。
 PACE_SECS="${FIXTURE_LOGIN_PACE:-70}"
 
 pace_before_login(){
   local now remain
-  # 锚点跨进程持久化：上一轮的**收尾** verify 就在退出前一刻登录过，新进程若不读
+  # 锚点跨进程持久化：上一轮的收尾 cleanup 就在退出前一刻登录过，新进程若不读
   # 持久锚点，第一次 converge 必撞 429（#run11 实测间隔 44s）。mtime 即窗口时刻。
   local anchor_file="$OUT_ROOT/.fixture-pace-anchor"
   if [ "$LAST_LOGIN_EPOCH" = '0' ] && [ -f "$anchor_file" ]; then
@@ -295,8 +289,7 @@ pace_before_login(){
 
 fixture_step(){
   local rc=0
-  FIXTURE_CALLS=$((FIXTURE_CALLS + 1))
-  export BROWSER_FIXTURE_RUN_ID="$RUN_ID-$FIXTURE_CALLS"
+  export BROWSER_FIXTURE_RUN_ID="$RUN_ID"
   pace_before_login
   set +e
   FIXTURE_OUT="$("$FIXTURE" "$@" 2>&1)"
@@ -304,12 +297,6 @@ fixture_step(){
   set -e
   FIXTURE_RC="$rc"
   printf '%s\n' "$FIXTURE_OUT" >>"$RUN_DIR/fixture.log"
-  # 每一次 converge 都会在 STATE 目录落一份 run receipt。收尾成功时它们全部退休；
-  # 失败时全部按 0600 留给人手工处置 —— 所以每一次调用后都把「确实落了盘」的
-  # 那份记进名单。
-  if [ -f "$FIXTURE_RECEIPT_DIR/$BROWSER_FIXTURE_RUN_ID.json" ]; then
-    FIXTURE_RECEIPTS="$FIXTURE_RECEIPTS $FIXTURE_RECEIPT_DIR/$BROWSER_FIXTURE_RUN_ID.json"
-  fi
   return 0
 }
 
@@ -453,61 +440,48 @@ on_exit(){
   TEARDOWN_DONE=1
   trap - EXIT INT TERM
 
-  # 1. 后端 fixture：先清掉本轮临时对象，再收敛回基准并 verify。
-  #
-  #    `--ledger` 收的是**后端自己写的 run receipt**（converge 在交出控制权之前落盘的
-  #    收敛后 pre-state），不是本前端的私密 journal —— 只有 receipt 里有 candidate /
-  #    recruiter 两段 owner-list，delta 清理（设计稿 §8.5）才有权判定哪一行是临时对象。
-  #    传 journal 会让 receipt_has_role 恒假、owned=0，两条 reconcile 手臂全部空转：
-  #    正常路径看不出来（UI 已经删干净了），中断过的那一轮却会在 cleanup 的 converge 里
-  #    撞上「没有任何 run receipt 能解释这条意向」而 BLOCKED，孤儿留在账号里。
-  #    没有 receipt（converge 还没写就失败了）＝后端根本没记录过 pre-state，
-  #    也就没有任何差集可清；这时跳过 cleanup，仍然照常收敛回基准并 verify。
+  # 1. 后端 fixture：cleanup 是本轮 receipt 的唯一退休者。converge 留下普通文件
+  #    receipt 时用同一 ledger 清理；symlink 不是后端写下的收条，不得传给 cleanup，
+  #    原样保留待人工处置。cleanup PASS 之后不再调用任何 fixture 命令（没有二次
+  #    converge/verify），前端也绝不删除 receipt。
   if [ "$FIXTURE_TOUCHED" = '1' ]; then
-    if [ -n "$RECEIPT" ] && [ -f "$RECEIPT" ]; then
+    if [ -n "$RECEIPT" ] && [ -f "$RECEIPT" ] && [ ! -L "$RECEIPT" ]; then
       fixture_step cleanup --ledger "$RECEIPT"
-      case "$FIXTURE_OUT" in
-        *'BROWSER_FIXTURE_CLEANUP PASS'*) FIXTURE_CLEANUP_STATUS='PASS' ;;
-        *) FIXTURE_CLEANUP_STATUS="FAILED(rc=$FIXTURE_RC)"; FIXTURE_CLEANUP_OK=0 ;;
-      esac
-      # 后端把 75 和 1 分得很清楚，收尾这一侧也必须照分：栈在拆台过程中变不健康是
-      # 环境阻塞（75），残留对象清不掉才是 CLEANUP_FAILED（1），参数错是 usage（2）。
-      case "$(classify_fixture_failure "$FIXTURE_RC")" in
-        ok) : ;;
-        usage)
-          FIXTURE_CLEANUP_STATUS="USAGE(rc=$FIXTURE_RC)"
+      if expect_fixture_line "BROWSER_FIXTURE_CLEANUP PASS scene=$FIXTURE_SCENE next_admission=ready receipt=retired"; then
+        if [ -e "$RECEIPT" ] || [ -L "$RECEIPT" ]; then
+          FIXTURE_CLEANUP_STATUS='FAILED(receipt-not-retired)'
           FIXTURE_CLEANUP_OK=0
-          USAGE_FAILED=1
-          ;;
-        infra)
-          FIXTURE_CLEANUP_STATUS="BLOCKED(rc=$FIXTURE_RC)"
-          # 环境阻塞不是清理失败：清理压根没能开始，报成 CLEANUP_FAILED 会把人
-          # 引去翻残留数据，而真正坏掉的是本地栈。
-          [ -n "$BLOCKED_REASON" ] || BLOCKED_REASON='收尾清理期间本地栈不健康（后端算子 BLOCKED）'
-          ;;
-        *)
-          FIXTURE_CLEANUP_STATUS="FAILED(rc=$FIXTURE_RC)"
-          FIXTURE_CLEANUP_OK=0
-          ;;
-      esac
+        else
+          FIXTURE_CLEANUP_STATUS='PASS'
+        fi
+      else
+        FIXTURE_CLEANUP_OK=0
+        # 后端把 75 和 1 分得很清楚：栈在拆台过程中变不健康是环境阻塞（75），
+        # 残留对象清不掉才是 CLEANUP_FAILED（1），参数错是 usage（2）。
+        case "$(classify_fixture_failure "$FIXTURE_RC")" in
+          ok) FIXTURE_CLEANUP_STATUS="FAILED(rc=$FIXTURE_RC)" ;;
+          usage)
+            FIXTURE_CLEANUP_STATUS="USAGE(rc=$FIXTURE_RC)"
+            USAGE_FAILED=1
+            ;;
+          infra)
+            FIXTURE_CLEANUP_STATUS="BLOCKED(rc=$FIXTURE_RC)"
+            # 环境阻塞不是清理失败：清理压根没能开始，报成 CLEANUP_FAILED 会把人
+            # 引去翻残留数据，而真正坏掉的是本地栈。
+            [ -n "$BLOCKED_REASON" ] || BLOCKED_REASON='收尾清理期间本地栈不健康（后端算子 BLOCKED）'
+            ;;
+          *)
+            FIXTURE_CLEANUP_STATUS="FAILED(rc=$FIXTURE_RC)"
+            ;;
+        esac
+      fi
+    elif [ -n "$RECEIPT" ] && [ -L "$RECEIPT" ]; then
+      FIXTURE_CLEANUP_STATUS='SKIPPED(receipt-is-symlink)'
+      printf '后端运行回执是 symlink，不传给 cleanup，按原样保留：%s\n' "$RECEIPT" >&2
     else
       FIXTURE_CLEANUP_STATUS='SKIPPED(无运行回执)'
-      printf '收尾提示：后端没有留下本轮 run receipt，没有可清理的差集，直接收敛回基准\n'
+      printf '收尾提示：后端没有留下本轮 run receipt，没有可清理的差集\n'
     fi
-    fixture_step converge
-    case "$(classify_fixture_failure "$FIXTURE_RC")" in
-      ok) : ;;
-      usage) USAGE_FAILED=1; FIXTURE_CLEANUP_OK=0 ;;
-      infra) [ -n "$BLOCKED_REASON" ] || BLOCKED_REASON='收尾收敛期间本地栈不健康（后端算子 BLOCKED）' ;;
-      *) FIXTURE_CLEANUP_OK=0 ;;
-    esac
-    fixture_step verify
-    case "$(classify_fixture_failure "$FIXTURE_RC")" in
-      ok) : ;;
-      usage) USAGE_FAILED=1; FIXTURE_CLEANUP_OK=0 ;;
-      infra) [ -n "$BLOCKED_REASON" ] || BLOCKED_REASON='收尾复验期间本地栈不健康（后端算子 BLOCKED）' ;;
-      *) FIXTURE_CLEANUP_OK=0 ;;
-    esac
   fi
 
   # 2. 浏览器：招聘方退出登录，然后只关这两个具名会话
@@ -534,30 +508,19 @@ on_exit(){
     "$DEV" down >/dev/null 2>&1 || printf '收尾提示：dev-local.sh down 返回非零\n'
   fi
 
-  # 5. 清理成功就删私密目录与后端运行回执；失败就按 0600 留着并只打印受限路径
+  # 5. 清理成功就删私密目录；receipt 只由后端 cleanup 退休，前端绝不 unlink
   if [ "$FIXTURE_CLEANUP_OK" = '1' ]; then
     rm -rf "$RUN_DIR/private"
-    # 清理成功：本轮全部 run receipt 退休（主 converge 一份、收尾重新收敛一份）。
-    if [ -n "$FIXTURE_RECEIPTS" ]; then
-      for receipts_path in $FIXTURE_RECEIPTS; do rm -f "$receipts_path"; done
-    fi
-    if [ -n "$RECEIPT" ]; then rm -f "$RECEIPT"; fi
   else
     chmod 700 "$RUN_DIR/private" 2>/dev/null || true
     chmod 600 "$PRIVATE_JOURNAL" 2>/dev/null || true
     printf '清理未完成，以下两处按 0600 保留待人工处置：\n'
     printf '  本轮私密 journal（只读证据，不是后端算子的输入）：%s\n' "$PRIVATE_JOURNAL"
     print_private_journal
-    if [ -n "$RECEIPT" ] && [ -f "$RECEIPT" ]; then
+    if [ -n "$RECEIPT" ] && [ -f "$RECEIPT" ] && [ ! -L "$RECEIPT" ]; then
       chmod 600 "$RECEIPT" 2>/dev/null || true
       printf '  后端运行回执：%s\n' "$RECEIPT"
     fi
-    for receipts_path in $FIXTURE_RECEIPTS; do
-      case "$receipts_path" in "$RECEIPT") continue ;; esac
-      [ -f "$receipts_path" ] || continue
-      chmod 600 "$receipts_path" 2>/dev/null || true
-      printf '  后端算子其他回执（本轮重新 converge 落下的，同样待人工处置）：%s\n' "$receipts_path"
-    done
   fi
 
   # 6. 定稿前扫敏感字面量并删掉命中文件（只扫 JSON / Markdown / 日志，绝不把 PNG 当文本读）。
@@ -660,14 +623,33 @@ else
 fi
 "$DEV" bootstrap >/dev/null 2>&1 || blocked 'dev-local.sh bootstrap 失败'
 
-# ── fixture 收敛 ────────────────────────────────────────────────────
+# ── fixture 收敛（receipt v2 单生命周期）────────────────────────────
 
-# 后端运行回执的路径是纯派生量（STATE 目录 + converge 那一次的 RUN_ID，见
-# fixture_step 的发号规则：第一次算子调用是 <run id>-1），在第一次 converge **之前**
-# 就定下来：收尾阶段的 delta 清理要拿它当 --ledger，而 converge 可能半路失败，
+# 本轮 receipt 是纯派生量（STATE 目录 + 唯一的 RUN_ID），在第一次 converge **之前**
+# 就定下来：converge/verify/cleanup 三次算子调用共用它；converge 可能半路失败，
 # 那时也必须知道该去哪里找这一轮的回执。
-RECEIPT="$FIXTURE_RECEIPT_DIR/$RUN_ID-1.json"
+RECEIPT="$FIXTURE_RECEIPT_DIR/$RUN_ID.json"
 FIXTURE_TOUCHED=1
+
+# receipt v2 的 exact top-level key set，与后端 browser-fixture.sh 的 RECEIPT_KEYS 一致
+RECEIPT_KEYS='["baseline_fingerprints","cleanup","created_at","lease","phase","pre_state","run_id","scene","scene_contract_version","scene_driver","schema_version","validated_graph"]'
+
+# 终止行逐字校验：只有前缀相同不能通过；rc 非 0 直接 false。
+expect_fixture_line(){
+  [ "$FIXTURE_RC" = '0' ] && printf '%s\n' "$FIXTURE_OUT" | grep -Fxq -- "$1"
+}
+
+validate_receipt_v2(){
+  local path="$1" mode
+  [ -f "$path" ] && [ ! -L "$path" ] || return 1
+  mode="$(stat -f '%Lp' "$path" 2>/dev/null || stat -c '%a' "$path" 2>/dev/null || printf unknown)"
+  [ "$mode" = '600' ] || return 1
+  jq -e --arg run "$RUN_ID" --arg scene "$FIXTURE_SCENE" --argjson keys "$RECEIPT_KEYS" '
+    .schema_version==2 and .scene_contract_version=="hosted-agent-browser.v1" and
+    .run_id==$run and .scene==$scene and .phase=="prepared" and
+    .scene_driver.armed==true and .scene_driver.consumed_steps==0 and
+    ((keys|sort)==$keys)' "$path" >/dev/null 2>&1
+}
 
 # 后端算子失败时按它自己的分层给结论：75 环境阻塞 / 1 功能失败 / 64 用法。
 # $1 步骤名（写进消息）
@@ -681,35 +663,40 @@ fixture_gate(){
 }
 
 fixture_step converge --scene "$FIXTURE_SCENE"
-case "$FIXTURE_OUT" in
-  *'BROWSER_FIXTURE_CONVERGE PASS'*) FIXTURE_CONVERGE_STATUS='PASS' ;;
-  *) FIXTURE_CONVERGE_STATUS="FAILED(rc=$FIXTURE_RC)" ;;
-esac
-if [ "$FIXTURE_RC" != '0' ] || [ "$FIXTURE_CONVERGE_STATUS" != 'PASS' ]; then
+if expect_fixture_line "BROWSER_FIXTURE_CONVERGE PASS scene=$FIXTURE_SCENE phase=prepared receipt=$RECEIPT"; then
+  if [ ! -e "$RECEIPT" ] && [ ! -L "$RECEIPT" ]; then
+    # converge 没留下收条＝后端根本没为这一轮记录 pre-state，没有差集可清，
+    # 也不猜 cleanup target。
+    FIXTURE_CONVERGE_STATUS='FAILED(no-receipt)'
+    blocked "后端运行回执缺失：$RECEIPT"
+  fi
+  if validate_receipt_v2 "$RECEIPT"; then
+    FIXTURE_CONVERGE_STATUS='PASS'
+  else
+    # 终止行精确但收条 drift：后端没按 v2 合同交出本轮数据，fail closed。
+    FIXTURE_CONVERGE_STATUS='FAILED(receipt-drift)'
+    printf '后端运行回执不符合 receipt v2 合同，保留待人工处置：%s\n' "$RECEIPT" >&2
+    USAGE_FAILED=1
+    exit 2
+  fi
+else
+  FIXTURE_CONVERGE_STATUS="FAILED(rc=$FIXTURE_RC)"
   fixture_gate converge
-  # rc=0 却没打出终止行：算子的输出合同坏了，这是报告层面的问题。
+  # rc=0 却没打出精确终止行：算子的输出合同坏了，这是报告层面的问题。
   USAGE_FAILED=1
   exit 2
 fi
 
-fixture_step verify
-case "$FIXTURE_OUT" in
-  *'BROWSER_FIXTURE_VERIFY PASS'*) FIXTURE_VERIFY_STATUS='PASS' ;;
-  *) FIXTURE_VERIFY_STATUS="FAILED(rc=$FIXTURE_RC)" ;;
-esac
-if [ "$FIXTURE_RC" != '0' ] || [ "$FIXTURE_VERIFY_STATUS" != 'PASS' ]; then
+fixture_step verify --ledger "$RECEIPT"
+if expect_fixture_line "BROWSER_FIXTURE_VERIFY PASS scene=$FIXTURE_SCENE admission=ready"; then
+  FIXTURE_VERIFY_STATUS='PASS'
+else
+  FIXTURE_VERIFY_STATUS="FAILED(rc=$FIXTURE_RC)"
   fixture_gate verify
   USAGE_FAILED=1
   exit 2
 fi
 FIXTURE_VERIFIED=1
-
-# 回执门：converge 在把控制权交给浏览器之前写下它。没有它、权限不对、
-# 或者不是本轮的 run id，就说明后端根本没为这一轮准备好数据，不能开始旅程。
-[ -f "$RECEIPT" ] || blocked "后端运行回执缺失：$RECEIPT"
-receipt_mode="$(stat -f '%Lp' "$RECEIPT" 2>/dev/null || stat -c '%a' "$RECEIPT" 2>/dev/null || printf 'unknown')"
-[ "$receipt_mode" = '600' ] || blocked "后端运行回执权限不是 0600（实到 ${receipt_mode}）"
-grep -Fq "$RUN_ID-1" "$RECEIPT" || blocked '后端运行回执里没有本轮 run id'
 
 # ── 起 Vite ─────────────────────────────────────────────────────────
 

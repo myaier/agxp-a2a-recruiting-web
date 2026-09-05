@@ -309,20 +309,32 @@ esac
 FAKE
 chmod +x "$MONO/apps/recruitment/scripts/dev-local.sh"
 
-# 假 browser-fixture.sh。除了记调用，它还复刻真算子的两条关键语义：
-#   · 退出码分层：64 usage / 75 BLOCKED（环境）/ 1 FAIL（功能）；
-#   · `--ledger` 只认**本轮的 run receipt**（带 candidate / recruiter 两段 owner-list）。
-#     传别的文件（比如前端自己的私密 journal）时，两条 reconcile 手臂全部空转，
-#     于是本轮留下的临时对象没人清，下一次 converge 就撞上「没有 receipt 能解释它」。
-#     这里把这条因果关系原样做出来，正常路径看不出差别、中断路径立刻见红。
+# 假 browser-fixture.sh（receipt v2 合同）。除了记调用，它还复刻真算子的关键语义：
+#   · converge --scene <happy|p4|p5|p6|baseline> 五值闭合，缺参/未知值是 usage 64；
+#   · verify/cleanup 只认 absolute --ledger，且必须是本轮 RUN_ID 的那份 receipt；
+#   · 三次调用共用同一个 BROWSER_FIXTURE_RUN_ID（换 ID＝编排层违规，记 FAKE）；
+#   · cleanup 是 receipt 的唯一退休者：先删文件再打 PASS 终止行；退休之后收到的
+#     任何调用都记到 after-cleanup-calls，合同测试用它断言「cleanup 后零二次调用」。
+#   · 退出码分层与 v1 相同：64 usage / 75 BLOCKED（环境）/ 1 FAIL（功能）。
+#   · FAKE_RECEIPT_DRIFT 在 converge 写下收条后做受控变形（schema/contract/run/scene/
+#     phase/extra/missing/symlink），供 drift 表格用例证明 runner fail closed。
 cat >"$MONO/apps/recruitment/scripts/browser-fixture.sh" <<'FAKE'
 #!/usr/bin/env bash
 set -u
-# 每次调用都带毫秒时间戳与本轮 RUN_ID 落账：合同测试靠它断言「每一次算子调用都是
-# 全新 RUN_ID」以及「相邻两次登录错峰 ≥ FIXTURE_LOGIN_PACE 秒」（后端 0.2.5 实测缺陷）。
+usage64(){
+  printf 'usage: %s converge --scene happy|p4|p5|p6|baseline\n' "$0" >&2
+  printf '       %s verify --ledger ABSOLUTE_PATH\n' "$0" >&2
+  printf '       %s cleanup --ledger ABSOLUTE_PATH\n' "$0" >&2
+  exit 64
+}
+if [ -f "$STATE/after-cleanup-marker" ]; then
+  LOG="$STATE/after-cleanup-calls"
+else
+  LOG="$CALLS"
+fi
 printf 'fixture %s run=%s t=%s\n' "$*" "$BROWSER_FIXTURE_RUN_ID" \
-  "$(node -e 'process.stdout.write(String(Date.now()))' 2>/dev/null || date +%s)" >>"$CALLS"
-if [ -z "${BROWSER_FIXTURE_RUN_ID:-}" ]; then echo 'usage: 缺少 BROWSER_FIXTURE_RUN_ID' >&2; exit 64; fi
+  "$(node -e 'process.stdout.write(String(Date.now()))' 2>/dev/null || date +%s)" >>"$LOG"
+[ -n "${BROWSER_FIXTURE_RUN_ID:-}" ] || { echo 'usage: 缺少 BROWSER_FIXTURE_RUN_ID' >&2; exit 64; }
 receipt_dir="$AGXP_MONOREPO_DIR/apps/recruitment/.local-dev/browser-fixtures"
 receipt="$receipt_dir/$BROWSER_FIXTURE_RUN_ID.json"
 stale="$STATE/stale-temp-object"
@@ -337,8 +349,16 @@ seq_rc(){
   printf '%s' "$rc"
 }
 
+# 受控变形：正常收条写好后再按 FAKE_RECEIPT_DRIFT 改一刀，mode 仍归 chmod 管
+drift_jq(){
+  jq "$1" "$receipt" >"$receipt.tmp" && mv "$receipt.tmp" "$receipt"
+}
+
 case "${1:-}" in
   converge)
+    { [ "$#" -eq 3 ] && [ "${2:-}" = '--scene' ]; } || usage64
+    scene="$3"
+    case "$scene" in happy|p4|p5|p6|baseline) : ;; *) usage64 ;; esac
     case "$(seq_rc converge "${FAKE_CONVERGE_SEQ:-0}")" in
       0) : ;;
       75) echo 'BLOCKED: 本地栈没起来'; exit 75 ;;
@@ -350,53 +370,74 @@ case "${1:-}" in
       exit 75
     fi
     mkdir -p "$receipt_dir"
-    ( umask 077; jq -nc --arg run "$BROWSER_FIXTURE_RUN_ID" \
-        '{schema_version:1,run_id:$run,
-          candidate:{started_at:"2026-08-30T00:00:00Z",intention_ids:[],file_ids:[]},
-          recruiter:{started_at:"2026-08-30T00:00:00Z",job_ids:[]}}' >"$receipt" )
-    chmod "${FAKE_RECEIPT_MODE:-600}" "$receipt"
+    ( umask 077; jq -n --arg run "$BROWSER_FIXTURE_RUN_ID" --arg scene "$scene" '{
+      schema_version:2,scene_contract_version:"hosted-agent-browser.v1",run_id:$run,scene:$scene,
+      phase:"prepared",created_at:"2026-09-05T00:00:00Z",
+      lease:{generation:1,proof:"fake-proof"},scene_driver:{armed:true,consumed_steps:0},
+      pre_state:{candidate:{intention_ids:[],resume_file_ids:[]},recruiter:{job_ids:[]}},
+      baseline_fingerprints:{},validated_graph:null,
+      cleanup:{public_terminalized:false,graph_retired:false,final_read_passed:false,
+        hub_begin_release:false,recruitment_begin_release:false,hub_released:false,
+        recruitment_released:false,lease_released:false}
+    }' >"$receipt" )
+    case "${FAKE_RECEIPT_DRIFT:-none}" in
+      schema)   drift_jq '.schema_version = 3' ;;
+      contract) drift_jq '.scene_contract_version = "other.v9"' ;;
+      run)      drift_jq '.run_id = "drifted-run"' ;;
+      scene)    drift_jq '.scene = "drifted"' ;;
+      phase)    drift_jq '.phase = "converged"' ;;
+      extra)    drift_jq '.extra = true' ;;
+      missing)  drift_jq 'del(.validated_graph)' ;;
+      symlink)
+        mv "$receipt" "$receipt.real"
+        ln -s "$receipt.real" "$receipt" ;;
+    esac
+    [ "${FAKE_RECEIPT_DRIFT:-none}" = 'symlink' ] || chmod "${FAKE_RECEIPT_MODE:-600}" "$receipt"
     [ "${FAKE_RECEIPT_MISSING:-0}" = '1' ] && rm -f "$receipt"
-    # 「本轮被中断」：浏览器没来得及自己删掉临时对象。只在**第一次** converge 时造，
-    # 收尾那一次代表「清理之后重新收敛」，再造一个就模拟不出自愈了。
-    if [ "${FAKE_INTERRUPTED:-0}" = '1' ] && [ "$(cat "$STATE/converge-calls" 2>/dev/null)" = '1' ]; then
+    # 「本轮被中断」：浏览器没来得及自己删掉临时对象，收尾 cleanup 按 receipt 差集清。
+    if [ "${FAKE_INTERRUPTED:-0}" = '1' ]; then
       : >"$stale"
     fi
-    echo 'BROWSER_FIXTURE_CONVERGE PASS' ;;
+    printf 'BROWSER_FIXTURE_CONVERGE PASS scene=%s phase=prepared receipt=%s\n' "$scene" "$receipt" ;;
   verify)
+    { [ "$#" -eq 3 ] && [ "${2:-}" = '--ledger' ]; } || usage64
+    ledger="$3"
+    case "$ledger" in /*) : ;; *) usage64 ;; esac
+    [ "$ledger" = "$receipt" ] \
+      || printf 'FAKE fixture verify --ledger 不是本轮 receipt：%s\n' "$ledger" >>"$CALLS"
+    [ -f "$ledger" ] || { echo 'FAIL: 台账文件不存在'; exit 1; }
+    scene="$(jq -r '.scene' "$ledger" 2>/dev/null || printf 'unknown')"
     case "$(seq_rc verify "${FAKE_VERIFY_SEQ:-0}")" in
       0) : ;;
       75) echo 'BLOCKED: verify 期间栈不健康'; exit 75 ;;
       *) echo 'FAIL: the candidate resume baseline is not in place'; exit 1 ;;
     esac
-    echo 'BROWSER_FIXTURE_VERIFY PASS' ;;
+    printf 'BROWSER_FIXTURE_VERIFY PASS scene=%s admission=ready\n' "$scene" ;;
   cleanup)
-    shift
-    [ "${1:-}" = '--ledger' ] || { echo 'usage: cleanup 必须带 --ledger'; exit 64; }
-    ledger="${2:-}"
-    case "$ledger" in /*) : ;; *) echo 'usage: --ledger 必须是绝对路径'; exit 64 ;; esac
+    { [ "$#" -eq 3 ] && [ "${2:-}" = '--ledger' ]; } || usage64
+    ledger="$3"
+    case "$ledger" in /*) : ;; *) usage64 ;; esac
+    [ "$ledger" = "$receipt" ] \
+      || printf 'FAKE fixture cleanup --ledger 不是本轮 receipt：%s\n' "$ledger" >>"$CALLS"
     [ -f "$ledger" ] || { echo 'FAIL: 台账文件不存在'; exit 1; }
-    # DENY：--ledger 必须是本轮 converge 写下的那份 run receipt——
-    # 0.2.5 实测缺陷：cleanup 自己用全新 RUN_ID 调进来，ledger 是**另一次** converge
-    # 的收条，所以 ledger 的 run_id 必须与本次调用的 RUN_ID 不同；相等＝编排层根本
-    # 没有按「每次调用全新 RUN_ID」发号。路径与形状都要对得上。
-    [ "$ledger" != "$receipt" ] \
-      || printf 'FAKE fixture cleanup --ledger 不该是本次调用自己的回执路径：%s\n' "$ledger" >>"$CALLS"
+    # v2 语义：三次调用共用同一 RUN_ID，--ledger 必须就是本轮 converge 写下的收条。
     jq -e --arg own "$BROWSER_FIXTURE_RUN_ID" \
-      '(.run_id != "") and (.run_id != $own) and has("candidate") and has("recruiter")' "$ledger" >/dev/null 2>&1 \
-      || printf 'FAKE fixture cleanup --ledger 的形状不是本轮 converge 的 run receipt：%s\n' "$ledger" >>"$CALLS"
+      '.run_id == $own and .phase == "prepared"' "$ledger" >/dev/null 2>&1 \
+      || { echo 'FAIL: ledger is not this run receipt'; exit 1; }
+    scene="$(jq -r '.scene' "$ledger" 2>/dev/null || printf 'unknown')"
     case "$(seq_rc cleanup "${FAKE_CLEANUP_SEQ:-0}")" in
       0) : ;;
       75) echo 'BLOCKED: 拆台过程中本地栈不健康'; exit 75 ;;
       *) echo 'FAIL: cleanup 失败'; exit 1 ;;
     esac
-    removed=0
-    # 只有 receipt 里真的有这个 role 的段，才有权判定差集并删除。
-    if jq -e 'has("candidate")' "$ledger" >/dev/null 2>&1 && [ -f "$stale" ]; then
-      rm -f "$stale"; removed=1
+    # 只有 receipt 里真的有这个 role 的 pre-state 段，才有权判定差集并删除。
+    if jq -e '(.pre_state // {}) | has("candidate")' "$ledger" >/dev/null 2>&1 && [ -f "$stale" ]; then
+      rm -f "$stale"
     fi
-    printf 'BROWSER_FIXTURE_CLEANUP PASS removed_intentions=%s removed_files=%s removed_jobs=%s\n' \
-      "$removed" "$removed" "$removed" ;;
-  *) echo 'usage: 未知子命令'; exit 64 ;;
+    rm -f -- "$ledger"
+    : >"$STATE/after-cleanup-marker"
+    printf 'BROWSER_FIXTURE_CLEANUP PASS scene=%s next_admission=ready receipt=retired\n' "$scene" ;;
+  *) usage64 ;;
 esac
 FAKE
 chmod +x "$MONO/apps/recruitment/scripts/browser-fixture.sh"
@@ -426,6 +467,7 @@ reset_case(){
   : >"$CALLS"
   rm -f "$STATE/acceptance-health-calls" "$STATE/vite-up" "$STATE/stale-temp-object"
   rm -f "$STATE/converge-calls" "$STATE/verify-calls" "$STATE/cleanup-calls"
+  rm -f "$STATE/after-cleanup-marker" "$STATE/after-cleanup-calls"
   export AGXP_MONOREPO_DIR="$MONO"
   export FAKE_ACCEPTANCE_HEALTH_SEQ='0' FAKE_DEFAULT_HEALTH_RC=1 FAKE_PREPARE_RC=0 FAKE_UP_RC=0 FAKE_BOOTSTRAP_RC=0
   unset FAKE_DAEMON_TZ 2>/dev/null || true
@@ -438,7 +480,7 @@ reset_case(){
   # 假旅程另行硬门 AGENT_BROWSER_ARGS 必须带 Chromium 的 accept-lang 开关。
   export FAKE_LOCALE='zh-CN' FAKE_TZ='Asia/Shanghai'
   export FAKE_SCENE_PNG="$RED_PNG"
-  export FAKE_RECEIPT_MODE=600 FAKE_RECEIPT_MISSING=0 FAKE_LEAK=0
+  export FAKE_RECEIPT_MODE=600 FAKE_RECEIPT_MISSING=0 FAKE_RECEIPT_DRIFT=none FAKE_LEAK=0
   export UI_VISUAL_GATE='report'
   # 相邻算子调用的错峰秒数（mock SMS 同手机号 begin 限流是一分钟一个窗）。
   # 默认值在运行器里是 70；合同测试用 1 秒，快，且足以证明节奏机制在跑。
@@ -502,14 +544,18 @@ assert_true '清理成功后私密目录被删除' "[ ! -d '$(run_dir)/private' 
 assert_eq '清理成功后后端运行回执被删除' "$(ls "$MONO/apps/recruitment/.local-dev/browser-fixtures" 2>/dev/null | wc -l | tr -d ' ')" '0'
 assert_contains '运行 manifest 记了 Chrome 构建' 'Chrome/141.0.7390.55' "$(run_dir)/run-manifest.json"
 
-# 0.2.5 实测缺陷的两条编排合同：每一次算子调用都要全新 RUN_ID（同 id 二次调用
-# 会重放出已 logout 的死 token，首个 catalog 请求必 401）；相邻两次登录要错峰
-# ≥ FIXTURE_LOGIN_PACE 秒（mock SMS 同手机号 begin 限流一分钟一个窗）。
+# receipt v2 的三条编排合同：converge/verify/cleanup 三次算子调用共用同一 RUN_ID
+# （对应同一份 receipt 的单生命周期）；相邻两次登录仍要错峰 ≥ FIXTURE_LOGIN_PACE 秒
+# （mock SMS 同手机号 begin 限流一分钟一个窗）；cleanup 是 receipt 的唯一退休者，
+# 退休之后不允许再出现任何二次 converge/verify。
 fixture_runs(){
   grep -o ' run=[^ ]*' "$CALLS" | sed 's/^ run=//'
 }
-assert_eq '五次算子调用（converge/verify/cleanup/converge/verify）' "$(fixture_runs | wc -l | tr -d ' ')" '5'
-assert_eq '每一次算子调用的 RUN_ID 都是全新的' "$(fixture_runs | sort -u | wc -l | tr -d ' ')" '5'
+assert_eq '三次算子调用（converge/verify/cleanup）' "$(fixture_runs | wc -l | tr -d ' ')" '3'
+assert_eq '三次共用同一 RUN_ID' "$(fixture_runs | sort -u | wc -l | tr -d ' ')" '1'
+assert_eq 'receipt 由 cleanup 退休' \
+  "$(find "$MONO/apps/recruitment/.local-dev/browser-fixtures" -type f 2>/dev/null | wc -l | tr -d ' ')" '0'
+assert_missing 'cleanup 后无二次 converge/verify' 'fixture converge --scene baseline run=' "$STATE/after-cleanup-calls"
 assert_true '相邻算子调用错峰 ≥ PACE' \
   "T1=\$(grep 'fixture converge' '$CALLS' | head -1 | grep -o ' t=[0-9]*' | cut -c4-); \
    T2=\$(grep 'fixture verify' '$CALLS' | head -1 | grep -o ' t=[0-9]*' | cut -c4-); \
@@ -599,8 +645,7 @@ assert_eq '分类 FUNCTIONAL_FAILED' "$(jq -r .classification "$(report_json)" 2
 assert_eq '五条旅程如实记 failed' \
   "$(jq -r '[.journeys[]|select(.status=="failed")]|length' "$(report_json)" 2>/dev/null)" '5'
 assert_missing '没有 run receipt 时不去调 cleanup' 'fixture cleanup' "$CALLS"
-assert_contains '仍然收敛回基准' 'fixture converge' "$CALLS"
-assert_contains '仍然收尾 verify' 'fixture verify' "$CALLS"
+assert_eq '算子只被调用了一次（converge 即失败，收尾无二次调用）' "$(fixture_runs | wc -l | tr -d ' ')" '1'
 
 testcase 'fixture verify 判 FAIL（rc 1）：退出 1，不报环境阻塞'
 reset_case; setup_baseline
@@ -624,12 +669,14 @@ run_runner
 assert_eq '退出码 75' "$RC" 75
 assert_missing '没有跑旅程' 'journey ' "$CALLS"
 
-testcase '后端运行回执权限不是 0600：拒绝开始旅程'
+testcase '后端运行回执权限不是 0600：receipt drift，浏览器前 exit 2'
 reset_case; setup_baseline
 export FAKE_RECEIPT_MODE=644
 run_runner
-assert_eq '退出码 75' "$RC" 75
+assert_eq '退出码 2（fixture contract error）' "$RC" 2
 assert_missing '没有跑旅程' 'journey ' "$CALLS"
+assert_missing '不起 Vite' 'npm run dev' "$CALLS"
+assert_contains '有 receipt，同 ledger 尝试 cleanup' 'fixture cleanup --ledger' "$CALLS"
 
 testcase '一条旅程失败：不依赖它的后续旅程照跑，清理与 verify 照做，退出 1'
 reset_case; setup_baseline
@@ -640,8 +687,8 @@ assert_contains '招聘数据加载照跑' 'journey recruiter-load' "$CALLS"
 assert_contains '招聘 CRUD 照跑' 'journey recruiter-crud' "$CALLS"
 assert_missing '依赖候选写入状态的隔离门不跑' 'isolation session=' "$CALLS"
 assert_contains '收尾清理' 'fixture cleanup --ledger' "$CALLS"
-assert_contains '清理后重新收敛' 'fixture converge' "$CALLS"
-assert_contains '收尾 verify' 'fixture verify' "$CALLS"
+assert_eq 'converge 恰好一次（收尾不再二次 converge）' "$(grep -c 'fixture converge --scene' "$CALLS")" 1
+assert_eq '算子恰好三次（converge/verify/cleanup）' "$(fixture_runs | wc -l | tr -d ' ')" '3'
 assert_eq '分类 FUNCTIONAL_FAILED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'FUNCTIONAL_FAILED'
 assert_eq '失败旅程记 failed' "$(jq -r '.journeys[]|select(.journey=="candidate-crud")|.status' "$(report_json)" 2>/dev/null)" 'failed'
 assert_eq '招聘 CRUD 仍记 pass' "$(jq -r '.journeys[]|select(.journey=="recruiter-crud")|.status' "$(report_json)" 2>/dev/null)" 'pass'
@@ -654,8 +701,8 @@ assert_eq '退出码 1' "$RC" 1
 assert_eq '分类 CLEANUP_FAILED' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'CLEANUP_FAILED'
 assert_true '私密目录保留' "[ -d '$(run_dir)/private' ]"
 assert_eq '台账仍是 0600' "$(stat -f '%Lp' "$(run_dir)/private/run-journal.json" 2>/dev/null)" '600'
-assert_eq '后端运行回执保留（主 converge 一份 + 收尾重新收敛一份）' \
-  "$(ls "$MONO/apps/recruitment/.local-dev/browser-fixtures" 2>/dev/null | wc -l | tr -d ' ')" '2'
+assert_eq '后端运行回执保留（只有主 converge 一份）' \
+  "$(ls "$MONO/apps/recruitment/.local-dev/browser-fixtures" 2>/dev/null | wc -l | tr -d ' ')" '1'
 assert_contains '打印了私密目录的绝对路径' "$(run_dir)/private" "$OUT"
 assert_contains '打印了回执路径' "$MONO/apps/recruitment/.local-dev/browser-fixtures" "$OUT"
 assert_contains '把 journal 里的固定保留名称念给人听（它唯一的读者）' '本轮 journal 记下的里程碑' "$OUT"
@@ -687,9 +734,10 @@ testcase '中断过的运行：收尾按 receipt 差集清掉临时对象，而�
 reset_case; setup_baseline
 export FAKE_INTERRUPTED=1
 run_runner
-assert_eq '退出码 0（临时对象被差集清掉，收敛与复验都过）' "$RC" 0
+assert_eq '退出码 0（临时对象被差集清掉，清理与退休都过）' "$RC" 0
 assert_eq '分类 PASS' "$(jq -r .classification "$(report_json)" 2>/dev/null)" 'PASS'
-assert_contains '清理真的按差集删了东西' 'removed_intentions=1' "$(run_dir)/fixture.log"
+assert_contains 'cleanup 逐字成功终止行' \
+  'BROWSER_FIXTURE_CLEANUP PASS scene=baseline next_admission=ready receipt=retired' "$(run_dir)/fixture.log"
 assert_missing '没有撞上「没有回执能解释这条意向」' 'no run receipt accounts for' "$(run_dir)/fixture.log"
 assert_true '临时对象已经不在了' "[ ! -f '$STATE/stale-temp-object' ]"
 
@@ -806,11 +854,11 @@ assert_eq '分类 INFRA_BLOCKED' "$(jq -r .classification "$(report_json)" 2>/de
 assert_eq '五条旅程都记 blocked' \
   "$(jq -r '[.journeys[]|select(.status=="blocked")]|length' "$(report_json)" 2>/dev/null)" '5'
 
-testcase 'SIGINT：只关两个具名会话与自己起的 Vite，别人的栈原样保留'
+testcase 'SIGINT + cleanup PASS：同一 ledger 只清一次，receipt 由后端退休，仍退出 75'
 reset_case; setup_baseline
 export FAKE_JOURNEY_SIGINT='recruiter-load'
 run_runner
-assert_eq '按环境阻塞退出 75' "$RC" 75
+assert_eq '信号分类保持 75' "$RC" 75
 assert_contains '记下了中断信号' '收到 INT 信号' "$OUT"
 assert_eq '候选会话被关一次' "$(grep -c 'closed backend-local-candidate' "$CALLS")" '1'
 assert_eq '招聘会话被关一次' "$(grep -c 'closed backend-local-recruiter' "$CALLS")" '1'
@@ -818,6 +866,52 @@ assert_eq '没有第三个会话' "$(grep -c '^closed ' "$CALLS")" '2'
 assert_missing '没有 close --all' 'FAKE agent-browser 禁止 --all' "$CALLS"
 assert_missing '预先存在的栈没被停' 'dev-local down' "$CALLS"
 assert_true '假 Vite 已经退出' "vite_dead"
+assert_eq 'cleanup 恰好一次' "$(grep -c 'fixture cleanup --ledger' "$CALLS")" 1
+assert_eq '三步使用同一 run id' "$(fixture_runs | sort -u | wc -l | tr -d ' ')" 1
+assert_false 'receipt 已退休' "find '$MONO/apps/recruitment/.local-dev/browser-fixtures' -type f 2>/dev/null | grep -q ."
+
+testcase 'SIGINT + cleanup FAIL：同一 ledger 只清一次，receipt 0600 保留，仍退出 75'
+reset_case; setup_baseline
+export FAKE_JOURNEY_SIGINT='recruiter-load' FAKE_CLEANUP_SEQ='1'
+run_runner
+assert_eq '信号分类仍为 75' "$RC" 75
+assert_contains '记下了中断信号' '收到 INT 信号' "$OUT"
+assert_eq '候选会话被关一次' "$(grep -c 'closed backend-local-candidate' "$CALLS")" '1'
+assert_eq '招聘会话被关一次' "$(grep -c 'closed backend-local-recruiter' "$CALLS")" '1'
+assert_eq '没有第三个会话' "$(grep -c '^closed ' "$CALLS")" '2'
+assert_missing '没有 close --all' 'FAKE agent-browser 禁止 --all' "$CALLS"
+assert_missing '预先存在的栈没被停' 'dev-local down' "$CALLS"
+assert_true '假 Vite 已经退出' "vite_dead"
+assert_eq 'cleanup 恰好一次' "$(grep -c 'fixture cleanup --ledger' "$CALLS")" 1
+receipt_path=$(find "$MONO/apps/recruitment/.local-dev/browser-fixtures" -type f | head -1)
+assert_true 'receipt 保留' "[ -n '$receipt_path' ] && [ -f '$receipt_path' ]"
+assert_eq 'receipt mode 0600' "$(stat -f '%Lp' "$receipt_path" 2>/dev/null || stat -c '%a' "$receipt_path")" 600
+assert_contains 'cleanup 状态如实失败' 'FAILED(rc=1)' "$(report_json)"
+
+# receipt drift 表格：schema/contract/run/scene/phase/extra/missing 任一字段漂移，
+# 都必须在启动浏览器前判 fixture contract error（exit 2、零 journey），收尾用同一
+# ledger 尝试 cleanup —— 不能靠放宽校验把门变绿。
+testcase 'receipt drift：浏览器前 fixture contract error，同 ledger 尝试 cleanup'
+for drift in schema contract run scene phase extra missing; do
+  reset_case; setup_baseline
+  export FAKE_RECEIPT_DRIFT="$drift"
+  run_runner
+  assert_eq "$drift 退出 2" "$RC" 2
+  assert_missing "$drift 不起 Vite" 'npm run dev' "$CALLS"
+  assert_missing "$drift 不跑旅程" 'journey ' "$CALLS"
+  assert_contains "$drift 同 ledger cleanup" 'fixture cleanup --ledger' "$CALLS"
+done
+
+testcase 'receipt 是 symlink：不传给 cleanup，原样保留，退出 2'
+reset_case; setup_baseline
+export FAKE_RECEIPT_DRIFT=symlink
+run_runner
+assert_eq '退出 2（fixture contract error）' "$RC" 2
+assert_missing '不起 Vite' 'npm run dev' "$CALLS"
+assert_missing '不跑旅程' 'journey ' "$CALLS"
+assert_missing '绝不把 symlink 传给 cleanup' 'fixture cleanup' "$CALLS"
+symlink_entry="$(find "$MONO/apps/recruitment/.local-dev/browser-fixtures" -maxdepth 1 -name '*.json' 2>/dev/null | head -1)"
+assert_true 'receipt 以 symlink 形式原样保留' "[ -L '$symlink_entry' ]"
 
 testcase '--headed 通过环境交给 agent-browser，默认不带'
 reset_case; setup_baseline
