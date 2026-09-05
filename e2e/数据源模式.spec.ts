@@ -7029,8 +7029,9 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     expect(请求序.some((项) => 项 === `GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations?limit=50`)).toBe(true);
 
     // 详情：强制重读权威详情后渲染同一张卡的画像
+    // J（Task 8）：点卡落 canonical 双坐标 URL（岗位 + 推荐都来自卡片坐标）
     await page.getByRole('button', { name: '查看候选画像' }).first().click();
-    await expect(page).toHaveURL(new RegExp(`#/hr/resume/${P4编号.recruiterRecommendation}$`));
+    await expect(page).toHaveURL(new RegExp(`#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4编号.recruiterRecommendation}$`));
     // 先等列表卸载（hash 已换而 React 未换树的瞬态窗里，列表摘要仍会在 DOM）
     await expect(page.getByText('你的AI代理从人才库筛出')).toHaveCount(0, { timeout: 15_000 });
     await expect(page.getByText(P4标记.candidateSummary)).toBeVisible({ timeout: 15_000 });
@@ -7193,11 +7194,16 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
   });
 
   test('招聘端简历详情 404 收口安全不可用页 @backend', async ({ page }) => {
-    await 装P4招聘(page);
+    const 请求序: string[] = [];
+    await 装P4招聘(page, {
+      请求拦截: ({ path, method, query }) => 请求序.push(`${method} ${path}${query ?? ''}`),
+    });
     await page.goto('/');
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    // J（Task 8）：旧 /hr/resume/:id 深链显示失效提示，零详情 GET
     await page.goto(`/#/hr/resume/${P4补充编号.未知推荐}`);
-    await expect(page.getByText('这位候选暂时看不了')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('链接已失效，请从对应岗位推荐列表重新打开')).toBeVisible({ timeout: 15_000 });
+    expect(请求序.some((项) => 项.includes(`/candidate-recommendations/${P4补充编号.未知推荐}`))).toBe(false);
     await expect(page.getByText(P4标记.candidateAlias)).toHaveCount(0);
     await expect(page.getByText('江叙白')).toHaveCount(0);
   });

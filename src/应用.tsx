@@ -437,6 +437,9 @@ export default function 应用() {
       <Route path={路径.企业代理详情} element={<企业代理详情 />} />
       <Route path={路径.企业代理设置} element={<企业代理设置 />} />
       <Route path={路径.匿名在线简历模板} element={<匿名在线简历 />} />
+      {/* J（Task 8）：Backend canonical 双坐标；旧 /hr/resume/:id 仍注册（Mock 原型 + Backend 失效提示），
+          模式分流留在 匿名在线简历 页内，不能让应用 wildcard 把 Mock 旧路由吃掉 */}
+      <Route path={路径.后端匿名在线简历模板} element={<匿名在线简历 />} />
       <Route path={路径.企业设置} element={<企业设置 />} />
       <Route path={路径.企业披露策略} element={<企业披露策略 />} />
       <Route path={路径.企业归档} element={<企业归档 />} />

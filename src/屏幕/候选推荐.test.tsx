@@ -828,3 +828,28 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     expect(screen.queryByRole('switch', { name: '只看收藏' })).toBeNull();
   });
 });
+
+// ── J（Task 8）：Backend 卡片导航走 canonical 双坐标，Mock 保留旧路由 ──
+describe('候选推荐 · 详情导航坐标（J）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('Backend 点击卡片导航 后端匿名在线简历(活跃岗位, 推荐ID)', async () => {
+    置P4状态({});
+    render(<候选推荐 />);
+    const 卡 = await screen.findByRole('button', { name: /查看候选画像/ });
+    await act(async () => { fireEvent.click(卡); });
+    expect(mock跳转).toHaveBeenCalledWith(路径.后端匿名在线简历(岗位编号, 'rec_r1'));
+  });
+
+  it('Mock 点击卡片仍导航 匿名在线简历(编号)', async () => {
+    置Mock状态();
+    render(<候选推荐 />);
+    const 卡 = await screen.findAllByRole('button', { name: /查看候选画像/ });
+    await act(async () => { fireEvent.click(卡[0]); });
+    expect(mock跳转).toHaveBeenCalledWith(路径.匿名在线简历('R-11'));
+  });
+});

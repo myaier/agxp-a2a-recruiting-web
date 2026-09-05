@@ -495,7 +495,11 @@ function Backend候选推荐() {
                           反馈中={反馈中}
                           切收藏={() => void 切收藏(视图)}
                           委托={() => void 委托候选(视图)}
-                          按下={() => 跳转(路径.匿名在线简历(视图.recommendationId))}
+                          // J（Task 8）：Backend 走 canonical 双坐标 —— 岗位取这张卡
+                          // 自己的 jobId（与推荐同源），Mock 保留旧路由（原型卡片无 job 概念）
+                          按下={() => 跳转(是后端
+                            ? 路径.后端匿名在线简历(视图.jobId, 视图.recommendationId)
+                            : 路径.匿名在线简历(视图.recommendationId))}
                         />
                       </滑动行>
                     </div>

@@ -75,9 +75,11 @@ function 置P4详情状态(选项: {
 }
 
 function 渲染详情() {
+  // J（Task 8）：Backend canonical 双坐标 —— 岗位与推荐都来自 URL
   return render(
-    <MemoryRouter initialEntries={['/hr/resume/rec_r1']}>
+    <MemoryRouter initialEntries={[`/hr/jobs/${岗位编号}/recommendations/rec_r1`]}>
       <Routes>
+        <Route path="/hr/jobs/:jobId/recommendations/:recommendationId" element={<匿名在线简历 />} />
         <Route path="/hr/resume/:id" element={<匿名在线简历 />} />
       </Routes>
     </MemoryRouter>,
@@ -253,8 +255,9 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
       操作: { 设置候选收藏: mock设置候选收藏 },
     });
     页.rerender(
-      <MemoryRouter initialEntries={['/hr/resume/rec_r1']}>
+      <MemoryRouter initialEntries={[`/hr/jobs/${岗位编号}/recommendations/rec_r1`]}>
         <Routes>
+          <Route path="/hr/jobs/:jobId/recommendations/:recommendationId" element={<匿名在线简历 />} />
           <Route path="/hr/resume/:id" element={<匿名在线简历 />} />
         </Routes>
       </MemoryRouter>,
@@ -283,8 +286,9 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
       操作: { 委托招聘候选: mock委托招聘候选 },
     });
     页.rerender(
-      <MemoryRouter initialEntries={['/hr/resume/rec_r1']}>
+      <MemoryRouter initialEntries={[`/hr/jobs/${岗位编号}/recommendations/rec_r1`]}>
         <Routes>
+          <Route path="/hr/jobs/:jobId/recommendations/:recommendationId" element={<匿名在线简历 />} />
           <Route path="/hr/resume/:id" element={<匿名在线简历 />} />
         </Routes>
       </MemoryRouter>,
@@ -375,8 +379,9 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
       操作: { 刷新委托: mock刷新委托 },
     });
     render(
-      <MemoryRouter initialEntries={['/hr/resume/rec_r1']}>
+      <MemoryRouter initialEntries={[`/hr/jobs/${岗位编号}/recommendations/rec_r1`]}>
         <Routes>
+          <Route path="/hr/jobs/:jobId/recommendations/:recommendationId" element={<匿名在线简历 />} />
           <Route path="/hr/resume/:id" element={<匿名在线简历 />} />
         </Routes>
       </MemoryRouter>,
@@ -416,8 +421,9 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     await waitFor(() => expect(mock刷新委托).toHaveBeenCalledTimes(1));
     expect(mock刷新委托).toHaveBeenCalledWith('recruiter', 'del_terminal');
     页.rerender(
-      <MemoryRouter initialEntries={['/hr/resume/rec_r1']}>
+      <MemoryRouter initialEntries={[`/hr/jobs/${岗位编号}/recommendations/rec_r1`]}>
         <Routes>
+          <Route path="/hr/jobs/:jobId/recommendations/:recommendationId" element={<匿名在线简历 />} />
           <Route path="/hr/resume/:id" element={<匿名在线简历 />} />
         </Routes>
       </MemoryRouter>,
@@ -441,5 +447,84 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     渲染详情();
     await act(async () => {});
     expect(mock刷新委托).not.toHaveBeenCalled();
+  });
+});
+// ── J（Task 8）：canonical 双坐标 —— 所有读写与 scope 只取 URL ──
+describe('匿名在线简历 · canonical 坐标（J）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+    mock设置发现推荐范围.mockClear();
+    mock读取招聘候选详情.mockClear();
+    mock设置候选收藏.mockClear();
+    mock委托招聘候选.mockClear();
+    mock刷新委托.mockClear();
+  });
+
+  function 渲染URL(路径值: string) {
+    return render(
+      <MemoryRouter initialEntries={[路径值]}>
+        <Routes>
+          <Route path="/hr/jobs/:jobId/recommendations/:recommendationId" element={<匿名在线简历 />} />
+          <Route path="/hr/resume/:id" element={<匿名在线简历 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it('刷新后所有 scope 只读 URL：当前岗位编号被干扰成 job_b 也用 URL 的 job_a', async () => {
+    置P4详情状态({
+      详情: BFF招聘候选推荐样本,
+      操作: {
+        设置发现推荐范围: mock设置发现推荐范围,
+        读取招聘候选详情: mock读取招聘候选详情,
+        设置候选收藏: mock设置候选收藏,
+        委托招聘候选: mock委托招聘候选,
+      },
+    });
+    // 状态.当前岗位编号 故意设成 job_b（J 的核心症状）；详情缓存键对齐 URL 的 rec_1
+    mock应用状态.状态.当前岗位编号 = 'job_b';
+    mock应用状态.后端状态.招聘候选详情 = { rec_1: BFF招聘候选推荐样本 };
+    渲染URL('/hr/jobs/job_a/recommendations/rec_1');
+    await waitFor(() => expect(mock读取招聘候选详情).toHaveBeenCalledWith('job_a', 'rec_1', true));
+    expect(mock设置发现推荐范围).toHaveBeenCalledWith('recruiter', 'recruiter:detail:job_a:rec_1');
+    const 收藏键 = await screen.findByRole('button', { name: /收藏/ });
+    await userEvent.click(收藏键);
+    await waitFor(() => expect(mock设置候选收藏).toHaveBeenCalledWith('job_a', 'rec_1', expect.any(Boolean)));
+    const 委托键 = screen.getByRole('button', { name: /让AI代理去谈/ });
+    await userEvent.click(委托键);
+    await waitFor(() => expect(mock委托招聘候选).toHaveBeenCalledWith('job_a', 'rec_1'));
+  });
+
+  it('随机 recommendation 仍收口为安全不可用页', () => {
+    置P4详情状态({ 详情: null, 不可用: ['rec_random'] });
+    渲染URL(`/hr/jobs/${岗位编号}/recommendations/rec_random`);
+    expect(screen.getByText('这位候选暂时看不了')).toBeTruthy();
+  });
+
+  it('Backend 旧 /hr/resume/:id 显示失效提示且零详情请求', async () => {
+    置P4详情状态({
+      详情: BFF招聘候选推荐样本,
+      操作: { 读取招聘候选详情: mock读取招聘候选详情, 设置发现推荐范围: mock设置发现推荐范围 },
+    });
+    渲染URL('/hr/resume/rec_1');
+    expect(screen.getByText('链接已失效，请从对应岗位推荐列表重新打开')).toBeTruthy();
+    // effect、scope 与读取全部零调用
+    await act(async () => { await Promise.resolve(); });
+    expect(mock读取招聘候选详情).not.toHaveBeenCalled();
+    expect(mock设置发现推荐范围).not.toHaveBeenCalled();
+    expect(screen.queryByText('候选人甲')).toBeNull();
+  });
+
+  it('Mock 旧 /hr/resume/:id 原型详情仍可用', () => {
+    mock应用状态 = {
+      数据源模式: 'mock', 派发: mock派发,
+      状态: { 岗位列表: [], 收藏候选: [], 不合适候选: {}, 已接触推荐: [], 企业候选列表: [] },
+      操作: {},
+    };
+    渲染URL('/hr/resume/A-01');
+    // Mock 原型分支照常渲染静态简历表
+    expect(screen.queryByText('链接已失效，请从对应岗位推荐列表重新打开')).toBeNull();
   });
 });

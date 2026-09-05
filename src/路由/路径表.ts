@@ -141,6 +141,12 @@ export const 路径 = {
   企业代理设置: '/hr/agent-settings',
   匿名在线简历: (编号: string) => `/hr/resume/${编号}`,
   匿名在线简历模板: '/hr/resume/:id',
+  /** J（Task 8）：Backend canonical 双坐标 —— 岗位与推荐都来自 URL，
+   *  详情读写与 scope 不再依赖 状态.当前岗位编号；旧 /hr/resume/:id 只服务 Mock
+   *  与 Backend 失效提示。 */
+  后端匿名在线简历: (jobId: string, recommendationId: string) =>
+    `/hr/jobs/${encodeURIComponent(jobId)}/recommendations/${encodeURIComponent(recommendationId)}`,
+  后端匿名在线简历模板: '/hr/jobs/:jobId/recommendations/:recommendationId',
   企业设置: '/hr/settings',
   企业披露策略: '/hr/disclosure',
   /** 企业历史代谈：被终止的候选归档在这里，镜像求职端的 /archived */

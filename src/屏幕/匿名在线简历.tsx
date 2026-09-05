@@ -198,7 +198,29 @@ export function 简历正文({
 
 export default function 匿名在线简历() {
   const { 数据源模式 } = use应用状态();
-  return 数据源模式 === 'backend' ? <Backend匿名简历 /> : <Mock匿名简历 />;
+  return 数据源模式 === 'backend' ? <Backend路由分流 /> : <Mock匿名简历 />;
+}
+
+/**
+ * J（Task 8）：Backend 路由分流 —— canonical 双坐标在 URL，缺失（旧 /hr/resume/:id
+ * 深链）时直接渲染失效页，不挂载 Backend匿名简历（effect、scope 与 action 均零调用）。
+ */
+function Backend路由分流() {
+  const { 返回 } = use导航();
+  const { jobId, recommendationId } = useParams<{ jobId?: string; recommendationId?: string }>();
+  if (!jobId || !recommendationId) {
+    return (
+      <次级页外壳>
+        <返回栏 返回={返回} />
+        <滚动区>
+          <div className={样式.缺档}>
+            <div>链接已失效，请从对应岗位推荐列表重新打开</div>
+          </div>
+        </滚动区>
+      </次级页外壳>
+    );
+  }
+  return <Backend匿名简历 key={`${jobId}:${recommendationId}`} 岗位编号={jobId} 推荐编号={recommendationId} />;
 }
 
 /** Mock 原型分支：静态简历表 + 全局归约，行为与接线前逐字一致。 */
@@ -319,29 +341,27 @@ function Mock匿名简历() {
 }
 
 /** Backend 分支（P4）：只吃这条推荐的权威详情，渲染匿名 allowlist 画像。
+ *  J（Task 8）：资源坐标只来自 canonical URL props —— effect、重试、收藏、委托与
+ *  P4范围键 全部只用 props，状态.当前岗位编号 只服务列表/Mock 原型，不再进入详情坐标。
  *  每次进屏都强制重读（screens always force）：权威卡可能在上一次停留后被收藏/淘汰/
  *  委托过，缓存不可信。404 已由操作层收口成不可用标记（不抛），其余错误给文案与重试。 */
-function Backend匿名简历() {
-  const { id: 推荐编号 = '' } = useParams<{ id: string }>();
-  const { 数据源模式, 状态, 后端状态, 操作 } = use应用状态();
+function Backend匿名简历({ 岗位编号, 推荐编号 }: { 岗位编号: string; 推荐编号: string }) {
+  const { 后端状态, 操作 } = use应用状态();
   const { 返回, 跳转 } = use导航();
   // 详情读取的非 404 错误文案（404 走统一不可用页，不进这里）
   const [读取错误, 设读取错误] = useState<string | null>(null);
   // 反馈/委托写进行中：并发写会被操作层单飞丢弃，动作键统一禁用防静默丢点击
   const [反馈中, 设反馈中] = useState(false);
 
-  const 是后端 = 数据源模式 === 'backend';
-  const 当前岗位编号 = 状态.当前岗位编号;
-
   // 进屏先注册可见范围（操作层栅栏要靠它对上）再强制重读，离开即清，别让别的屏背上旧范围
   useEffect(() => {
-    if (!是后端 || !当前岗位编号 || !推荐编号) return;
+    if (!岗位编号 || !推荐编号) return;
     设读取错误(null);
-    操作.设置发现推荐范围('recruiter', P4范围键.招聘详情(当前岗位编号, 推荐编号));
-    void 操作.读取招聘候选详情(当前岗位编号, 推荐编号, true)
+    操作.设置发现推荐范围('recruiter', P4范围键.招聘详情(岗位编号, 推荐编号));
+    void 操作.读取招聘候选详情(岗位编号, 推荐编号, true)
       .catch((错误: unknown) => 设读取错误(P4错误文案(错误)));
     return () => 操作.设置发现推荐范围('recruiter', null);
-  }, [是后端, 当前岗位编号, 推荐编号, 操作]);
+  }, [岗位编号, 推荐编号, 操作]);
 
   // 权威卡与不可用标记都来自操作层提交的缓存；不可用永远赢过缓存卡（fail closed）：
   // 重读 404 已经删缓存，这里再兜一层，绝不让旧画像带着收藏/委托键继续活着
@@ -350,18 +370,18 @@ function Backend匿名简历() {
   const 视图 = useMemo(() => (卡 === null ? null : 从P4招聘候选(卡)), [卡]);
 
   const 重试读取 = () => {
-    if (!当前岗位编号 || !推荐编号) return;
+    if (!岗位编号 || !推荐编号) return;
     设读取错误(null);
-    void 操作.读取招聘候选详情(当前岗位编号, 推荐编号, true)
+    void 操作.读取招聘候选详情(岗位编号, 推荐编号, true)
       .catch((错误: unknown) => 设读取错误(P4错误文案(错误)));
   };
 
   // 收藏：服务端先行，成功后权威快照回改；失败原地提示不翻转
   const 切收藏 = async () => {
-    if (反馈中 || !当前岗位编号 || !推荐编号) return;
+    if (反馈中 || !岗位编号 || !推荐编号) return;
     设反馈中(true);
     try {
-      await 操作.设置候选收藏(当前岗位编号, 推荐编号, !(视图?.收藏 ?? false));
+      await 操作.设置候选收藏(岗位编号, 推荐编号, !(视图?.收藏 ?? false));
     } catch (错误) {
       轻提示(P4错误文案(错误));
     } finally {
@@ -372,10 +392,10 @@ function Backend匿名简历() {
   // 委托：无确认层（招聘侧没有披露确认动作），点了就发起；终态/拒绝回执由操作层抛成
   // 带文案的错误，catch 呈现即可。提交后不导航 —— 原地切成闭合六态的权威状态条。
   const 委托候选 = async () => {
-    if (反馈中 || !当前岗位编号 || !推荐编号) return;
+    if (反馈中 || !岗位编号 || !推荐编号) return;
     设反馈中(true);
     try {
-      await 操作.委托招聘候选(当前岗位编号, 推荐编号);
+      await 操作.委托招聘候选(岗位编号, 推荐编号);
     } catch (错误) {
       轻提示(P4错误文案(错误));
     } finally {
@@ -415,12 +435,13 @@ function Backend匿名简历() {
     }];
   }, [委托摘要, 委托回执]);
   const 进度未知 = use发现推荐委托轮询({
-    开启: 是后端,
+    // Backend路由分流 只在本分支挂载，轮询恒开启
+    开启: true,
     委托: 进行中委托,
     待恢复终态,
     刷新: 操作.刷新委托,
     // scope 变化即结束本轮询周期：换岗位/换推荐不带走上一条的连续失败计数（§8.3）
-    范围键: 当前岗位编号 && 推荐编号 ? P4范围键.招聘详情(当前岗位编号, 推荐编号) : null,
+    范围键: P4范围键.招聘详情(岗位编号, 推荐编号),
   });
   // 轮询连败的委托：状态文案覆盖成中性「进度未知」，绝不伪造终态回执
   const 委托进度未知 = 委托展示?.inProgress === true && 委托摘要 !== null

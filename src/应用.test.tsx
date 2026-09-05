@@ -152,6 +152,9 @@ function 后端应用值(后端覆盖: Partial<后端状态> = {}) {
       // 角色路由矩阵只证明守卫不调用它（访问 URL 绝不静默切身份）
       切身份: vi.fn(async () => undefined),
       加载候选实名: vi.fn(async () => undefined),
+      // J（Task 8）：canonical 详情挂载即注册范围并强制读取
+      设置发现推荐范围: vi.fn(),
+      读取招聘候选详情: vi.fn(async () => undefined),
     },
     目录查询: null,
   };
@@ -877,5 +880,34 @@ describe('应用路由：Backend 原型消息/往来/初筛深链（工作包 B�
       <MemoryRouter initialEntries={[url]}><应用 /><位置探针 /></MemoryRouter>,
     );
     await waitFor(() => expect(当前路径()).toBe(url));
+  });
+});
+
+// ── J（Task 8）：canonical 双坐标路由 ──
+describe('应用路由 · 后端匿名在线简历模板（J）', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+  });
+
+  it('builder 编码两段坐标', () => {
+    expect(路径.后端匿名在线简历('job/a', 'rec/b')).toBe('/hr/jobs/job%2Fa/recommendations/rec%2Fb');
+    expect(路径.后端匿名在线简历模板).toBe('/hr/jobs/:jobId/recommendations/:recommendationId');
+    // Mock 旧 builder 保留
+    expect(路径.匿名在线简历('A-01')).toBe('/hr/resume/A-01');
+  });
+
+  it('canonical URL 注册到 匿名在线简历 页（旧模板仍注册）', async () => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成',
+      已登录: true,
+      主体: 招聘主体,
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.后端匿名在线简历('job_1', 'rec_r1')]}>
+        <应用 />
+      </MemoryRouter>,
+    );
+    // Backend canonical 详情挂载：进入加载态（不再是 404 兜底路由）
+    await waitFor(() => expect(screen.getByText(/正在加载候选简历|链接已失效|这位候选/)).toBeTruthy());
   });
 });
