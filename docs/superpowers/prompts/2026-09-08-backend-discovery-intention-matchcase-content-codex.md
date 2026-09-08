@@ -20,4 +20,3 @@
 用户已明确批准上述 Spec revision；文档 review 为 Claude Opus/high 三轮，R1 两条 required 已修复，R2 NO FINDINGS，R3 对测试路径文字修正复核为 NO FINDINGS。记录见 docs/handoffs/2026-09-08-backend-discovery-intention-matchcase-content-planning-handoff.md。规划文档 review 不能代替实施代码 review。实施 reviewer 技能：/Users/visionclaw/coding-harness/skills/claude-review-loop/SKILL.md；共用守约规则：/Users/visionclaw/coding-harness/skills/_shared/review-contract.md。
 开工先核对 Spec／Plan 的 git blob 与上述版本一致；有非本任务改动时保留并检查冲突，不自动覆盖。用 git show 指定 revision 的文档读取批准合同，不能把最新未批准 Spec 当作授权。当前计划分支是 fix/recruit-card-intention-alignment；规划记录的 main 为 968a51f40083b276d9c7cf0bf32f8f403212450f，正式 gate 必须重新观察并冻结实际 target。
 这是新实施会话的执行交付，不回到规划、重新生成 Plan 或自动开第二会话。使用 executing-plans 连续执行；不自行委派产品实现。人工 final gate 确认前完成实现、定向验证、异构代码 review 和具体合入方案；确认后在批准范围内自主修复和补验证，只有产品契约／范围变化、target race 或无法取得的外部资源才停止。
-
