@@ -125,6 +125,35 @@ describe('账号资料缓存', () => {
     });
   });
 
+  it('候选当前意向编号 round trip：非空字符串与 null 都合法', () => {
+    const 存储 = 内存存储();
+    const 范围 = { 模式: 'backend' as const, 环境: 'stg' as const, 账号: 'sub_1' };
+    写资料缓存(存储, 范围, { 当前意向编号: 'int_bj' });
+    expect(读资料缓存(存储, 范围)).toEqual({ 当前意向编号: 'int_bj' });
+    写资料缓存(存储, 范围, { 当前意向编号: null });
+    expect(读资料缓存(存储, 范围)).toEqual({ 当前意向编号: null });
+  });
+
+  it('旧缓存没有 当前意向编号 仍合法：其余字段照常读出，不补造该键', () => {
+    const 存储 = {
+      getItem: vi.fn(() => JSON.stringify({ 当前企业关系编号: 'aff_1', 求职头像: null })),
+      setItem: vi.fn(), removeItem: vi.fn(),
+    };
+    const 快照 = 读资料缓存(存储, { 模式: 'backend', 环境: 'local', 账号: 'sub_1' });
+    expect(快照).toEqual({ 当前企业关系编号: 'aff_1', 求职头像: null });
+    expect('当前意向编号' in 快照).toBe(false);
+  });
+
+  it('损坏的候选意向编号被丢弃：空串、数字、对象都不进应用状态', () => {
+    for (const 坏值 of ['', 3, {}, [], true]) {
+      const 存储 = {
+        getItem: vi.fn(() => JSON.stringify({ 当前意向编号: 坏值 })),
+        setItem: vi.fn(), removeItem: vi.fn(),
+      };
+      expect(读资料缓存(存储, { 模式: 'backend', 环境: 'local', 账号: 'sub_1' })).toEqual({});
+    }
+  });
+
   it('损坏的 Backend 选择字段被逐键丢弃', () => {
     const 存储 = {
       getItem: vi.fn(() => JSON.stringify({ 当前企业关系编号: 3, 未认证公司声明: [] })),

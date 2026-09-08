@@ -505,10 +505,16 @@ function 置求职屏状态(选项: {
   不预置快照?: boolean;
   意向表编号?: string[];
   当前意向?: string;
+  /** 当前档的业务坐标；缺省取意向表第一条。给表外编号即模拟「当前意向已被删」。 */
+  当前意向编号?: string | null;
 }) {
   const 意向表 = (选项.意向表编号 ?? [意向ID]).map((编号, 序) => ({
     编号, 标题: `意向${序}`, 说明: '',
   }));
+  // 有效当前 ID 要求服务端字典里同一条是 active（生产口径），测试逐条播种
+  const 后端意向服务端 = Object.fromEntries(
+    意向表.map((条) => [条.编号, { intention_id: 条.编号, status: 'active' }]),
+  );
   mock应用状态 = {
     数据源模式: 'backend',
     派发: mock派发,
@@ -517,6 +523,8 @@ function 置求职屏状态(选项: {
       在谈范围: 选项.范围 ?? '当前',
       求职意向表: 意向表,
       当前意向: 选项.当前意向 ?? '意向0',
+      当前意向编号: 选项.当前意向编号 === undefined ? (意向表[0]?.编号 ?? null) : 选项.当前意向编号,
+      后端意向服务端,
       子视图: '在谈',
       在谈列表: [],
     },
@@ -591,10 +599,10 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     expect(mock加载工作区).toHaveBeenLastCalledWith('candidate', null);
   });
 
-  it('求职端：当前意向不在意向表内（镜像 Mock 护栏）→ 空态且零 P5 请求', () => {
+  it('求职端：当前意向编号不在意向表内（镜像 Mock 护栏）→ 空态且零 P5 请求', () => {
     置求职屏状态({
-      filterRef: 意向ID, // 表里有意向、但 当前意向 已不在表内
-      当前意向: '已被删掉的意向',
+      filterRef: 意向ID, // 表里有意向、但选中的编号已不在表内
+      当前意向编号: 'int_已被删掉的意向',
     });
     render(<在谈首页 />);
     expect(screen.getByText('这个意向下暂时没有在谈职位。')).toBeTruthy();
@@ -783,12 +791,57 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
       操作: P5操作表(),
     };
     render(<企业在谈候选 />);
-    // A-01 的 S1 已递交原件：真名非空显示真名（沈亦舟），与 Mock 行为一致
-    expect(await screen.findByText('沈亦舟')).toBeTruthy();
+    // 去名改版（2026-09-08）：在谈卡全匿名 —— A-01 已披露的真名（沈亦舟）与代号（陈屿）都不上卡；
+    // Mock 体渲染完成以头行性别图标为准（详见 企业在谈候选.test.tsx）
+    expect((await screen.findAllByRole('img', { name: '男' })).length).toBeGreaterThan(0);
+    expect(screen.queryByText('沈亦舟')).toBeNull();
+    expect(screen.queryByText('陈屿')).toBeNull();
 
     expect(mock设置P5范围).not.toHaveBeenCalled();
     expect(mock加载工作区).not.toHaveBeenCalled();
     expect(mock追加工作区).not.toHaveBeenCalled();
     expect(mock刷新工作区).not.toHaveBeenCalled();
+  });
+});
+
+// ── Task 5：已有成功空缓存后刷新失败，也必须给错误与重试 ──────────────────────
+// 旧实现用 视图们.length > 0 把错误行挡掉：用户只看到一个正常空态，完全不知道这次没读到。
+describe('MatchCase列表 · 刷新失败的错误与重试', () => {
+  beforeEach(() => {
+    mock加载工作区.mockClear();
+    mock刷新工作区.mockClear();
+  });
+
+  it('成功空缓存 + 刷新失败：出错误行与重试，不下「没有在谈」的定论', async () => {
+    const user = userEvent.setup();
+    置求职屏状态({
+      快照: { ...快照({ items: [] }), error: '在谈暂时加载不了', 刷新中: false },
+    });
+    render(<在谈首页 />);
+    expect(screen.getByText('在谈暂时加载不了')).toBeTruthy();
+    expect(screen.queryByText('暂时没有在谈职位。')).toBeNull();
+    await user.click(screen.getByRole('button', { name: '重试' }));
+    expect(mock刷新工作区).toHaveBeenCalledWith('candidate', 意向ID);
+  });
+
+  it('有旧条目 + 刷新失败：旧卡保留只读，错误行照常在', () => {
+    置求职屏状态({
+      快照: {
+        ...快照({ items: [候选行({ caseId: 'mc_1' })] }),
+        error: '在谈暂时加载不了', 刷新中: false,
+      },
+    });
+    render(<在谈首页 />);
+    expect(screen.getByText('在谈暂时加载不了')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重试' })).toBeTruthy();
+    expect(screen.getByText('需要你')).toBeTruthy();
+  });
+
+  it('刷新中不出错误行：正在重试时不摆一个已经过期的错误', () => {
+    置求职屏状态({
+      快照: { ...快照({ items: [] }), error: '在谈暂时加载不了', 刷新中: true },
+    });
+    render(<在谈首页 />);
+    expect(screen.queryByText('在谈暂时加载不了')).toBeNull();
   });
 });

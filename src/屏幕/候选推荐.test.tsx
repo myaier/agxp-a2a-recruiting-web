@@ -6,10 +6,10 @@
 // 测试宿主：mock 应用状态 / 导航钩子（同 看市场.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import 候选推荐 from './候选推荐';
+import 候选推荐, { 求职状态文案 } from './候选推荐';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFFOwnerJob, BFF招聘候选推荐, BFF委托摘要, BFF委托回执 } from '../数据/BFF契约';
 import { BFF招聘候选推荐样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
@@ -33,7 +33,7 @@ const mock加载招聘候选 = vi.fn(async () => undefined);
 const mock刷新招聘候选 = vi.fn(async () => undefined);
 const mock设置候选收藏 = vi.fn(async () => undefined);
 const mock淘汰候选 = vi.fn(async () => undefined);
-const mock委托招聘候选 = vi.fn(async () => undefined);
+const mock委托招聘候选 = vi.fn(async (_jobId: string, _recommendationId: string) => undefined);
 const mock刷新委托 = vi.fn(async () => undefined);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -52,11 +52,14 @@ const 岗位编号 = BFF岗位样本.job_id;
 function 换卡(选项: {
   推荐ID: string; 别名: string; 收藏?: boolean;
   委托?: BFF委托摘要 | null; 原因?: BFF招聘候选推荐['rejection_reason'];
+  /** 去名改版后卡上没有别名，两张卡靠头行年限区分（样本 4 年） */
+  经验年?: number;
 }): BFF招聘候选推荐 {
   return {
     ...BFF招聘候选推荐样本,
     recommendation_id: 选项.推荐ID,
     candidate_alias: 选项.别名,
+    experience_years: 选项.经验年 ?? BFF招聘候选推荐样本.experience_years,
     favorite: 选项.收藏 ?? false,
     rejection_reason: 选项.原因 ?? null,
     delegation: 选项.委托 ?? null,
@@ -154,6 +157,23 @@ async function 左滑露不合适() {
   await waitFor(() => expect(screen.getByRole('button', { name: '不合适' })).toBeTruthy());
 }
 
+/** 头行文本表（定稿 2026-09-08：原 基本行 升为头行，类名沿用 .基本行；一张卡一行） */
+function 读头行文本(): string[] {
+  return Array.from(document.querySelectorAll('[class*="基本行"]')).map((行) => 行.textContent ?? '');
+}
+
+/** 性别图标所在的头行（定稿：图标跟在头行最前） */
+function 取头行(图标: Element): HTMLElement {
+  const 行 = 图标.closest('[class*="基本行"]');
+  if (!(行 instanceof HTMLElement)) throw new Error('性别图标不在头行（.基本行）内');
+  return 行;
+}
+
+/** Backend 样本卡（rec_r1）仍在屏上：去名后以右列适配环为在场信号 */
+function 期望样本卡在场() {
+  expect(screen.getByRole('img', { name: '适配 87 分' })).toBeTruthy();
+}
+
 describe('候选推荐 · P4 招聘发现（Backend）', () => {
   beforeEach(() => {
     mock派发.mockClear();
@@ -191,15 +211,17 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
       操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载招聘候选: mock加载招聘候选 },
     });
     const { rerender } = render(<候选推荐 />);
-    expect(screen.getByText('候选人甲')).toBeTruthy();
+    // 去名改版（2026-09-08）：卡上不再有别名，甲 / 乙 以头行年限区分（样本 4 年 vs 乙 9 年）
+    expect(screen.queryByText('候选人甲')).toBeNull();
+    expect(读头行文本()).toEqual([expect.stringContaining('4 年')]);
     置P4状态({
       岗位编号: 'job_2',
-      快照: P4快照({ 阶段: '成功', items: [换卡({ 推荐ID: 'rec_r2', 别名: '候选人乙' })] }),
+      快照: P4快照({ 阶段: '成功', items: [换卡({ 推荐ID: 'rec_r2', 别名: '候选人乙', 经验年: 9 })] }),
       操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载招聘候选: mock加载招聘候选 },
     });
     rerender(<候选推荐 />);
-    expect(screen.queryByText('候选人甲')).toBeNull();
-    expect(screen.getByText('候选人乙')).toBeTruthy();
+    expect(screen.queryByText('候选人乙')).toBeNull();
+    expect(读头行文本()).toEqual([expect.stringContaining('9 年')]);
     expect(mock设置发现推荐范围.mock.calls).toEqual([
       ['recruiter', `recruiter:list:${岗位编号}`],
       ['recruiter', null],
@@ -270,7 +292,7 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
       }),
     });
     render(<候选推荐 />);
-    expect(screen.getByText('候选人甲')).toBeTruthy();
+    期望样本卡在场();
     expect(screen.getByText('已发起新一轮，结果暂未刷新')).toBeTruthy();
   });
 
@@ -286,12 +308,18 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     expect(mock加载招聘候选).toHaveBeenCalledWith(岗位编号, true);
   });
 
-  it('basis 已确认（控制组）：匹配分与亮点整组照常渲染', () => {
-    置P4状态({ 快照: P4快照({ 阶段: '成功', items: [BFF招聘候选推荐样本] }) });
+  it('basis 已确认（控制组）：匹配分与亮点整组照常渲染，亮点显示中文', () => {
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [{ ...BFF招聘候选推荐样本, highlights: ['category_matched'] }],
+      }),
+    });
     render(<候选推荐 />);
-    expect(screen.getByText('候选人甲')).toBeTruthy();
+    expect(screen.queryByText('候选人甲')).toBeNull(); // 去名改版：别名不上卡
     expect(screen.getByRole('img', { name: '适配 87 分' })).toBeTruthy();
-    expect(screen.getByText('full_stack')).toBeTruthy();
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    expect(screen.queryByText('category_matched')).toBeNull();
     expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
   });
 
@@ -302,7 +330,7 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
         items: [{
           ...BFF招聘候选推荐样本,
           structured_requirements_confirmed: false,
-          highlights: ['full_stack', 'react_depth'],
+          highlights: ['category_matched', 'location_matched'],
         }],
       }),
     });
@@ -311,8 +339,8 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     expect(screen.getByRole('img', { name: '适配 87 分' })).toBeTruthy();
     expect(screen.getByText('经验与学历尚未核对')).toBeTruthy();
     // 整组收起：亮点一条不留，不做选择性过滤
-    expect(screen.queryByText('full_stack')).toBeNull();
-    expect(screen.queryByText('react_depth')).toBeNull();
+    expect(screen.queryByText('职位方向匹配')).toBeNull();
+    expect(screen.queryByText('工作地点匹配')).toBeNull();
   });
 
   it('淘汰四原因可回看可撤销；年限不足映射 experience_insufficient', async () => {
@@ -363,7 +391,7 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     await user.click(screen.getByRole('button', { name: '不合适' }));
     await user.click(screen.getByRole('button', { name: /年限不足/ }));
     await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('这条推荐当前已不可用，请刷新后查看'));
-    expect(screen.getByText('候选人甲')).toBeTruthy();
+    期望样本卡在场();
   });
 
   it('收藏写在飞时淘汰按钮禁用：不发请求，也绝不弹撤销成功提示', async () => {
@@ -435,7 +463,8 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
   const 状态文案 = [
     ['accepted', '已提交给 AI，等待处理'],
     ['evaluating', 'AI 正在评估'],
-    ['case_started', '已创建真实在谈'],
+    // case_started 但 case_id 缺席 = 坐标未确认：安全文案，不声称已开案
+    ['case_started', '暂时无法确认进度，请稍后刷新'],
     ['needs_user', '需要你处理'],
     ['refused', '本次未能继续'],
     ['failed', '本次处理未完成'],
@@ -454,25 +483,126 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     render(<候选推荐 />);
     expect(screen.getByText(文案)).toBeTruthy();
     expect(screen.queryByRole('button', { name: '让AI代理去聊' })).toBeNull();
-    // 已退役的自创文案绝不在 Backend 卡上复活
+    // 未开案（含缺 case_id 的 case_started）绝不显示成功文案，也绝不复活退役自创文案
+    expect(screen.queryByText('AI代理已接触')).toBeNull();
     expect(screen.queryByText('AI代理已接手')).toBeNull();
     expect(screen.queryByText('已开始沟通')).toBeNull();
+    // 成功槽不再有「查看进展」，任何委托态都不绑定 Case 导航
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
   });
 
-  it('recruiter case_started navigates only by server case_id', async () => {
+  // Task 5：开案成功 = case_started + 非空 case_id。本次进屏点过的那张卡暂留原位显示
+  // 「AI代理已接触」状态标，不导航、不出现「查看进展」、也不再声称「已创建真实在谈」。
+  const 成功卡 = (推荐ID = 'rec_r1') => ({
+    ...BFF招聘候选推荐样本,
+    recommendation_id: 推荐ID,
+    delegation: { delegation_id: `del_${推荐ID}`, state: 'case_started' as const, case_id: `case_${推荐ID}` },
+  });
+
+  it('本次进屏点过的卡在权威成功后暂留原位，显示「AI代理已接触」，零导航', async () => {
+    const user = userEvent.setup();
+    置P4状态({ 操作: { 委托招聘候选: mock委托招聘候选 } });
+    const { rerender, container } = render(<候选推荐 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去聊' }));
+    await waitFor(() => expect(mock委托招聘候选).toHaveBeenCalledWith(岗位编号, 'rec_r1'));
+    // 权威投影确认开案：卡仍在原位，状态槽换成本页的成功标
+    置P4状态({
+      快照: P4快照({ 阶段: '成功', items: [成功卡()] }),
+      操作: { 委托招聘候选: mock委托招聘候选 },
+    });
+    rerender(<候选推荐 />);
+    expect(screen.getByText('AI代理已接触')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    expect(screen.queryByText('已创建真实在谈')).toBeNull();
+    expect(container.textContent).not.toContain('case_rec_r1');
+    // 卡上的资料入口仍是资料：点 › 进候选画像，不是 Case
+    await user.click(screen.getByRole('button', { name: '查看候选画像' }));
+    expect(mock跳转).toHaveBeenCalledTimes(1);
+    expect(String(mock跳转.mock.lastCall![0])).not.toContain('case_rec_r1');
+  });
+
+  it('进屏首载读到的历史成功从待选流过滤，不冒充本次点击暂留', () => {
+    置P4状态({ 快照: P4快照({ 阶段: '成功', items: [成功卡()] }) });
+    render(<候选推荐 />);
+    expect(screen.queryByText('AI代理已接触')).toBeNull();
+    expect(screen.queryByText('候选人甲')).toBeNull();
+    expect(screen.getByText('这个岗位还没有推荐候选，让代理再找一批试试。')).toBeTruthy();
+  });
+
+  it('非成功状态不被过滤：accepted / refused 的卡照常留在待选流', () => {
     置P4状态({
       快照: P4快照({
         阶段: '成功',
-        items: [{
-          ...BFF招聘候选推荐样本,
-          delegation: { delegation_id: 'del_r1', state: 'case_started', case_id: 'case_server_r1' },
-        }],
+        items: [
+          { ...BFF招聘候选推荐样本, recommendation_id: 'rec_a', delegation: { delegation_id: 'del_a', state: 'accepted', case_id: null } },
+          { ...BFF招聘候选推荐样本, recommendation_id: 'rec_b', delegation: { delegation_id: 'del_b', state: 'refused', case_id: null } },
+        ],
       }),
     });
     render(<候选推荐 />);
-    await userEvent.click(screen.getByRole('button', { name: '查看进展' }));
-    expect(mock跳转).toHaveBeenCalledTimes(1);
-    expect(mock跳转).toHaveBeenCalledWith(路径.候选详情('case_server_r1'));
+    expect(screen.getByText('已提交给 AI，等待处理')).toBeTruthy();
+    expect(screen.getByText('本次未能继续')).toBeTruthy();
+  });
+
+  it('离开列表再进入结束暂留周期：上次点过的成功卡这次被过滤掉', async () => {
+    const user = userEvent.setup();
+    置P4状态({ 操作: { 委托招聘候选: mock委托招聘候选 } });
+    const 页 = render(<候选推荐 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去聊' }));
+    await waitFor(() => expect(mock委托招聘候选).toHaveBeenCalled());
+    页.unmount();
+    cleanup();
+    置P4状态({ 快照: P4快照({ 阶段: '成功', items: [成功卡()] }) });
+    render(<候选推荐 />);
+    expect(screen.queryByText('AI代理已接触')).toBeNull();
+    expect(screen.queryByText('候选人甲')).toBeNull();
+  });
+
+  it('切岗位往返（A→B→A）也是新周期：旧 scope 的暂留不恢复', async () => {
+    const user = userEvent.setup();
+    置P4状态({ 操作: { 委托招聘候选: mock委托招聘候选 } });
+    const { rerender } = render(<候选推荐 />);
+    await user.click(screen.getByRole('button', { name: '让AI代理去聊' }));
+    await waitFor(() => expect(mock委托招聘候选).toHaveBeenCalled());
+    // A→B
+    置P4状态({ 岗位编号: 'job_other', 快照: P4快照({ 阶段: '成功', items: [] }) });
+    rerender(<候选推荐 />);
+    // B→A：回到旧 scope，成功卡按历史成功过滤，不恢复上一周期的暂留
+    置P4状态({ 快照: P4快照({ 阶段: '成功', items: [成功卡()] }) });
+    rerender(<候选推荐 />);
+    expect(screen.queryByText('AI代理已接触')).toBeNull();
+    expect(screen.queryByText('候选人甲')).toBeNull();
+  });
+
+  it('单卡忙态：A 的委托在飞时 A 连点只发一次，B 仍可委托与收藏', async () => {
+    const user = userEvent.setup();
+    let 放行!: () => void;
+    const 甲门 = new Promise<void>((ok) => { 放行 = ok; });
+    mock委托招聘候选.mockImplementation(async (_job: string, rec: string) => {
+      if (rec === 'rec_a') await 甲门;
+    });
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [
+          { ...BFF招聘候选推荐样本, recommendation_id: 'rec_a', candidate_alias: '候选甲' },
+          { ...BFF招聘候选推荐样本, recommendation_id: 'rec_b', candidate_alias: '候选乙' },
+        ],
+      }),
+      操作: { 委托招聘候选: mock委托招聘候选, 设置候选收藏: mock设置候选收藏 },
+    });
+    render(<候选推荐 />);
+    const 去聊键们 = screen.getAllByRole('button', { name: '让AI代理去聊' });
+    await user.click(去聊键们[0]!);
+    await user.click(去聊键们[0]!); // 同一张卡连点
+    expect(mock委托招聘候选.mock.calls.filter(([, rec]) => rec === 'rec_a')).toHaveLength(1);
+    // A 在飞时 B 照样能委托、能收藏
+    await user.click(去聊键们[1]!);
+    expect(mock委托招聘候选).toHaveBeenCalledWith(岗位编号, 'rec_b');
+    await user.click(screen.getAllByRole('button', { name: '收藏' })[0]!);
+    expect(mock设置候选收藏).toHaveBeenCalled();
+    放行();
+    await waitFor(() => expect(mock委托招聘候选).toHaveBeenCalledTimes(2));
   });
 
   it('case_started 无服务端 case_id 时只给禁用状态标，绝不拿 job/recommendation/delegation ID 或别名充当 Case', () => {
@@ -486,7 +616,9 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
       }),
     });
     render(<候选推荐 />);
-    expect(screen.getByText('已创建真实在谈')).toBeTruthy();
+    expect(screen.getByText('暂时无法确认进度，请稍后刷新')).toBeTruthy();
+    expect(screen.queryByText('AI代理已接触')).toBeNull();
+    expect(screen.queryByText('已创建真实在谈')).toBeNull();
     expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
     expect(mock跳转).not.toHaveBeenCalled();
   });
@@ -622,8 +754,9 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     });
     render(<候选推荐 />);
     expect(screen.getByText('还没有在招的岗位')).toBeTruthy();
-    // 归档岗的快照哪怕还在后端状态里，也不许渲染出来
-    expect(screen.queryByText('候选人甲')).toBeNull();
+    // 归档岗的快照哪怕还在后端状态里，也不许渲染出来（去名后以适配环 / 头行为在场信号）
+    expect(screen.queryByRole('img', { name: '适配 87 分' })).toBeNull();
+    expect(读头行文本()).toEqual([]);
     expect(mock设置发现推荐范围).not.toHaveBeenCalled();
     expect(mock加载招聘候选).not.toHaveBeenCalled();
   });
@@ -816,7 +949,9 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     const user = userEvent.setup();
     置Mock状态();
     render(<候选推荐 />);
-    expect(screen.getByText('江叙白')).toBeTruthy();
+    // 去名改版（2026-09-08）：匿名态推荐卡不出代号，Mock 体渲染完成以头行性别图标为准
+    expect(screen.queryByText('江叙白')).toBeNull();
+    expect(screen.getAllByRole('img', { name: '男' }).length).toBeGreaterThan(0);
     expect(mock设置发现推荐范围).not.toHaveBeenCalled();
     expect(mock加载招聘候选).not.toHaveBeenCalled();
     const 去聊键 = screen.getAllByRole('button', { name: '让AI代理去聊' });
@@ -851,5 +986,109 @@ describe('候选推荐 · 详情导航坐标（J）', () => {
     const 卡 = await screen.findAllByRole('button', { name: /查看候选画像/ });
     await act(async () => { fireEvent.click(卡[0]); });
     expect(mock跳转).toHaveBeenCalledWith(路径.匿名在线简历('R-11'));
+  });
+});
+
+// ── 去名改版（定稿 2026-09-08）：推荐卡无名字、无代号、无标题行，原 基本行 升为头行 ──
+//   头行 = 性别图标（role=img，name 男/女）+ 经验年 年｜学历｜求职状态文案；「薪资带有交集」及其
+//   计算链整体删除。Backend 视图 BFF 合同没给性别 / 求职状态：只显示 年限｜学历、无图标、不报错。
+//   信息行 ×2 / 标签行 / 底行（☆ / › / 让AI代理去聊）/ 左滑 一个像素不动。
+describe('候选推荐 · 去名改版头行（定稿 2026-09-08）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+  });
+
+  it('验收2 · Mock 卡：无代号；头行 = 性别图标 + 经验年 年｜学历｜求职状态文案；不含薪资带', () => {
+    置Mock状态();
+    render(<候选推荐 />);
+    for (const 代号 of ['江叙白', '周砚秋', '许临风']) {
+      expect(screen.queryByText(代号)).toBeNull();
+    }
+    expect(document.body.textContent).not.toMatch(/薪资带/);
+
+    const 男图标 = screen.getAllByRole('img', { name: '男' });
+    const 女图标 = screen.getAllByRole('img', { name: '女' });
+    expect(男图标).toHaveLength(2); // R-11 江叙白、R-13 许临风
+    expect(女图标).toHaveLength(1); // R-12 周砚秋
+
+    // 列表按 fixture 顺序 R-11 / R-12 / R-13：求职状态 在职 → 在职看机会、离职 → 离职可到岗
+    const 期望: [图标: Element, 片段: string[]][] = [
+      [男图标[0]!, ['7 年', '本科', '在职看机会']],
+      [女图标[0]!, ['9 年', '硕士', '在职看机会']],
+      [男图标[1]!, ['6 年', '本科', '离职可到岗']],
+    ];
+    for (const [图标, 片段] of 期望) {
+      const 头行 = 取头行(图标);
+      for (const 段 of 片段) expect(头行.textContent).toContain(段);
+      expect(头行.textContent).not.toMatch(/薪资/);
+      expect(头行.firstElementChild?.contains(图标)).toBe(true); // 图标跟在头行最前
+    }
+    // 枚举原词不得直出（在职 / 离职 必须走映射）
+    expect(screen.queryByText('在职')).toBeNull();
+    expect(screen.queryByText('离职')).toBeNull();
+
+    // 标签行 / 底行 一个像素不动：亮点标签、☆、›、去聊键 三张卡各一份
+    expect(screen.getByText('交易域直接对口')).toBeTruthy();
+    expect(screen.getByText('低延迟系统')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '收藏' })).toHaveLength(3);
+    expect(screen.getAllByRole('button', { name: '查看候选画像' })).toHaveLength(3);
+    expect(screen.getAllByRole('button', { name: '让AI代理去聊' })).toHaveLength(3);
+  });
+
+  it('验收2 · Mock 底行仍可点：☆ 派发 切收藏候选、› 跳匿名在线简历、去聊键派发 接触推荐候选', async () => {
+    const user = userEvent.setup();
+    置Mock状态();
+    render(<候选推荐 />);
+    await user.click(screen.getAllByRole('button', { name: '收藏' })[0]!);
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切收藏候选', 编号: 'R-11' });
+    await user.click(screen.getAllByRole('button', { name: '查看候选画像' })[0]!);
+    expect(mock跳转).toHaveBeenCalledWith(路径.匿名在线简历('R-11'));
+    await user.click(screen.getAllByRole('button', { name: '让AI代理去聊' })[0]!);
+    expect(mock派发).toHaveBeenCalledWith({ 型: '接触推荐候选', 编号: 'R-11' });
+  });
+
+  it('验收2 · Mock 卡：性别 缺省不渲染图标，头行其余不变', () => {
+    置Mock状态();
+    mock应用状态.状态.推荐列表 = [{ ...推荐列表[0]!, 性别: undefined }];
+    render(<候选推荐 />);
+    expect(screen.queryByRole('img', { name: '男' })).toBeNull();
+    expect(screen.queryByRole('img', { name: '女' })).toBeNull();
+    const 头行 = 读头行文本();
+    expect(头行).toHaveLength(1);
+    expect(头行[0]).toContain('7 年');
+    expect(头行[0]).toContain('本科');
+    expect(头行[0]).toContain('在职看机会');
+    expect(screen.queryByText('江叙白')).toBeNull();
+  });
+
+  it('验收3 · Backend 卡：无代号；头行只 年限｜学历；无性别图标不报错；标签行 / 底行仍在', () => {
+    置P4状态({});
+    render(<候选推荐 />);
+    expect(screen.queryByText('候选人甲')).toBeNull();
+    const 头行 = 读头行文本();
+    expect(头行).toHaveLength(1);
+    expect(头行[0]).toContain('4 年'); // BFF 样本 experience_years 4
+    expect(头行[0]).toContain('本科'); // educations[0].degree
+    expect(头行[0]).not.toMatch(/薪资/);
+    expect(document.body.textContent).not.toMatch(/薪资带/);
+    // BFF 合同未给性别 / 求职状态：不渲染图标、不渲染状态词，页面照常
+    expect(screen.queryByRole('img', { name: '男' })).toBeNull();
+    expect(screen.queryByRole('img', { name: '女' })).toBeNull();
+    expect(头行[0]).not.toMatch(/在职看机会|离职可到岗|在校/);
+    期望样本卡在场();
+    // 标签行：样本 highlights 为 full_stack，不在 发现推荐映射.ts 的 亮点文案 闭合表内，
+    // 26eca35 起未知代码整组不渲染——此处不断言标签文字；标签行结构由 Mock 版验收 2 覆盖
+    expect(screen.getByRole('button', { name: '收藏' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '查看候选画像' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '让AI代理去聊' })).toBeTruthy();
+  });
+
+  it.each([
+    ['在职', '在职看机会'],
+    ['离职', '离职可到岗'],
+    ['在校', '在校'],
+  ] as const)('验收4 · 求职状态文案(%s) === %s', (状态, 文案) => {
+    expect(求职状态文案(状态)).toBe(文案);
   });
 });

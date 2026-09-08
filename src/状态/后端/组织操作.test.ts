@@ -109,6 +109,7 @@ function 创建组织测试依赖(input: {
     后端: input.后端, 派发: input.派发, 设后端状态: vi.fn(),
     主体标识引用: { current: input.subject as string | null }, 会话代际: { current: input.generation },
     读取恢复企业关系编号: vi.fn(() => null),
+    提交候选意向快照: vi.fn(),
     状态引用: { current: 初始状态 },
     后端状态引用: { current: 创建测试后端状态() },
     锁: { current: new Set<string>() }, 尝试引用: { current: null }, 是后端: true,

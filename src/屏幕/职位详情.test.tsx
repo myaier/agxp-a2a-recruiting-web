@@ -807,7 +807,8 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
   const 状态文案 = [
     ['accepted', '已提交给 AI，等待处理'],
     ['evaluating', 'AI 正在评估'],
-    ['case_started', '已创建真实在谈'],
+    // case_started 但 case_id 缺席 = 坐标未确认：安全文案，不声称已开案
+    ['case_started', '暂时无法确认进度，请稍后刷新'],
     ['needs_user', '需要你处理'],
     ['refused', '本次未能继续'],
     ['failed', '本次处理未完成'],
@@ -831,9 +832,11 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(screen.queryByRole('button', { name: '让AI代理去谈' })).toBeNull();
     expect(screen.queryByText('AI代理已接手')).toBeNull();
     expect(screen.queryByText('已开始沟通')).toBeNull();
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
   });
 
-  it('candidate case_started navigates only by server case_id', async () => {
+  // Task 5：开案成功 = case_started + 非空 case_id，复用 Mock 的 disabled 主键，零导航
+  it('case_started 带服务端 case_id：主键是禁用的「AI代理已接手」，零导航', async () => {
     渲染Backend状态({
       候选岗位推荐: 快照With({
         ...推荐卡样本,
@@ -841,10 +844,14 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
         delegation: { delegation_id: 'del_c1', state: 'case_started', case_id: 'case_server_c1' },
       }),
     });
-    render(路由元素('job_1'));
-    await userEvent.click(screen.getByRole('button', { name: '查看进展' }));
-    expect(mock跳转).toHaveBeenCalledTimes(1);
-    expect(mock跳转).toHaveBeenCalledWith(路径.在谈详情('case_server_c1'));
+    const { container } = render(路由元素('job_1'));
+    const 主键 = screen.getByRole('button', { name: 'AI代理已接手' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    expect(screen.queryByText('已创建真实在谈')).toBeNull();
+    expect(container.textContent).not.toContain('case_server_c1');
+    await userEvent.click(主键);
+    expect(mock跳转).not.toHaveBeenCalled();
   });
 
   it('case_started 无服务端 case_id 时主键只是禁用状态，绝不拿任何本地 ID 充当 Case', async () => {
@@ -856,8 +863,10 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
       }),
     });
     render(路由元素('job_1'));
-    const 主键 = screen.getByRole('button', { name: '已创建真实在谈' }) as HTMLButtonElement;
+    const 主键 = screen.getByRole('button', { name: '暂时无法确认进度，请稍后刷新' }) as HTMLButtonElement;
     expect(主键.disabled).toBe(true);
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
+    expect(screen.queryByText('已创建真实在谈')).toBeNull();
     expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
     await userEvent.click(主键);
     expect(mock跳转).not.toHaveBeenCalled();

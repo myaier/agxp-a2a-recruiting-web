@@ -23,7 +23,7 @@ import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
 import { 初始状态 } from '../初始状态';
 import { 归约, type 动作 } from '../应用状态';
 import type { 页面意向快照 } from '../../数据/招聘数据源类型';
-import type { 后端操作依赖, 后端状态 } from './类型';
+import type { 后端操作依赖, 后端状态, 提交候选意向快照输入 } from './类型';
 import { 创建空P4发现状态 } from './发现推荐操作';
 import { 创建Agent规则操作, 取Agent规则错误文案, 水合Agent规则角色数据 } from './Agent规则操作';
 
@@ -111,6 +111,13 @@ function 创建测试依赖(input: {
     主体标识引用: { current: 'sub_1' as string | null },
     会话代际: { current: 7 },
     读取恢复企业关系编号: vi.fn(() => null),
+    // Provider 回调的测试替身：同样先过捕获栅栏，再派发 + 同步权威意向快照
+    提交候选意向快照: vi.fn((input2: 提交候选意向快照输入) => {
+      if (deps.主体标识引用.current !== input2.subjectId) return;
+      if (deps.会话代际.current !== input2.sessionGeneration) return;
+      deps.派发({ 型: '水合后端意向', 快照: input2.快照, 恢复编号: null });
+      后端值 = { ...后端值, 意向快照: input2.快照.服务端 };
+    }),
   };
   return {
     deps: deps as unknown as 后端操作依赖,

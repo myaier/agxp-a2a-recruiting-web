@@ -48,7 +48,7 @@ export type 在谈范围档 = '当前' | '全部';
  */
 import type { 意向草稿型 } from '../数据/招聘数据源类型';
 export type { 意向草稿型 };
-import type { BFF主体, BFF角色, P5角色, P7角色 } from '../数据/BFF契约';
+import type { BFF主体, BFF角色, BFFOwnerIntention, P5角色, P7角色 } from '../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
@@ -59,8 +59,8 @@ import { 创建候选预填恢复存储 } from '../数据/候选Onboarding预填
 import type { PDF对象租约 } from '../数据/PDF对象租约';
 import { 轻提示 } from '../组件/轻提示';
 import type {
-  应用操作, 后端状态, 后端操作依赖, 候选预填恢复存储, P7待定意图, P7已读位置记录,
-  P8待定意图,
+  应用操作, 后端状态, 后端操作依赖, 候选预填恢复存储, 提交候选意向快照输入,
+  P7待定意图, P7已读位置记录, P8待定意图,
 } from './后端/类型';
 import { 创建空Agent设置状态, 创建空招聘方组织水合状态, 创建空候选预填状态 } from './后端/类型';
 import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
@@ -337,8 +337,14 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
 
     // P1C：快照里的 当前企业关系编号 未经最新 affiliations 校验，必须丢弃；
     // 该编号只能经 水合企业关系 或 可用企业关系() 校验后的 选择当前企业关系 写入。
+    // 当前意向编号 同理：缓存里的候选选择只是待验证偏好，必须等权威意向水合校验后
+    // 由 水合后端意向 的 恢复编号 落地，绝不在这里直接写成可请求的当前 ID。
     case '水合账号资料': {
-      const { 当前企业关系编号: _未校验编号, ...已校验账号资料 } = 动作.快照;
+      const {
+        当前企业关系编号: _未校验编号,
+        当前意向编号: _未校验意向编号,
+        ...已校验账号资料
+      } = 动作.快照;
       return { ...旧, ...已校验账号资料, 资料缓存范围键: 动作.范围键 };
     }
     case '清账号资料':
@@ -579,6 +585,14 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const 候选实名读取锁 = useRef<Promise<void> | null>(null);
   const 候选实名变更锁 = useRef(new Set<'create' | 'cancel'>());
   const 候选实名提交意图 = useRef<string | null>(null);
+  // Task 2：候选意向持久化写屏障 —— Provider 最近一次接纳的权威快照的
+  // { 主体, 会话代际, 服务端对象引用 }。只是「成功水合已进入 React commit」的标记，
+  // 不持久化、不是业务模型；use资料持久化 靠它区分权威空列表与尚未水合的初始空字典。
+  const 已接纳候选意向 = useRef<{
+    subjectId: string;
+    sessionGeneration: number;
+    服务端: Record<string, BFFOwnerIntention>;
+  } | null>(null);
   const 当前主体标识 = 后端状态.主体?.subject_id ?? null;
   // Task 4：候选 onboarding 草稿只认 candidate 角色 + 当前 subject 的双重范围；
   // recruiter / 未登录 / Mock 一律 null，绝不给持久层授权任何候选草稿读写。
@@ -609,7 +623,10 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       范围: { 模式: 'backend', 环境, 账号: 当前候选主体标识 },
     })
     : null;
-  use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识, 当前候选主体标识 });
+  use资料持久化({
+    状态, 派发, 是后端, 环境, 当前主体标识, 当前候选主体标识,
+    已接纳候选意向, 会话代际,
+  });
 
   // P7 Task 5：同源事件源只建一次（无 token/query/header；帧只触发 no-store 重拉）。
   // 钩子输入全部由 Provider 注入（与 useMatchCase轮询 同一纪律，不读 Context）；
@@ -620,9 +637,31 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   // 只作为 选择当前企业关系(affiliations, restoredId) 的输入；读取本身不派发选择 action，
   // revoked ID 只会在最新 Affiliations 校验后被丢弃。
   const 读取恢复企业关系编号 = (subjectId: string): string | null => {
-    const 快照 = 读资料缓存(安全取存储('session'), { 模式: 'backend', 环境, 账号: subjectId });
+    const 快照 = 读资料缓存(安全取存储('session'), { 模式: 'backend', 账号: subjectId, 环境 });
     const 值 = 快照.当前企业关系编号;
     return typeof 值 === 'string' ? 值 : null;
+  };
+
+  // 候选权威意向快照的统一提交口（Task 2）。三件事一次做完：
+  //   1. 过捕获栅栏 —— 主体或会话代际已变的迟到结果整包丢弃，不派发也不开写屏障；
+  //   2. 首次角色水合才读 subject-scoped sessionStorage 的选择偏好当 恢复编号，
+  //      它只是待验证输入，是否落地由 水合后端意向 按最新 active 列表决定；
+  //   3. 记下本次接纳的 { 主体, 代际, 服务端对象引用 } 作为持久化写屏障 ——
+  //      use资料持久化 只有在 reducer 里的 后端意向服务端 已经是这个对象时才写选择 ID，
+  //      避免把初始化空字典或水合前的 null 当成权威空列表覆盖缓存。
+  const 提交候选意向快照 = (input: 提交候选意向快照输入): void => {
+    if (主体标识引用.current !== input.subjectId) return;
+    if (会话代际.current !== input.sessionGeneration) return;
+    const 恢复编号 = input.恢复选择 === true
+      ? 读资料缓存(安全取存储('session'), { 模式: 'backend', 账号: input.subjectId, 环境 }).当前意向编号 ?? null
+      : null;
+    派发({ 型: '水合后端意向', 快照: input.快照, 恢复编号 });
+    设后端状态((旧) => ({ ...旧, 意向快照: input.快照.服务端 }));
+    已接纳候选意向.current = {
+      subjectId: input.subjectId,
+      sessionGeneration: input.sessionGeneration,
+      服务端: input.快照.服务端,
+    };
   };
 
   // ── Backend 初始化：mount 时恢复会话一次；401 视为未登录，其他错误轻提示；均不回退 Mock ──
@@ -685,6 +724,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       // 四个 P8 引用与三个候选预填引用。
       const 会话失效 = await 水合角色数据({
         后端, 派发, 设后端状态, 主体标识引用, 会话代际, 读取恢复企业关系编号,
+        提交候选意向快照,
         P4范围代际, P4幂等意图, P4可见范围,
         P7范围代际, P7待定意图, P7可见收件箱, P7可见会话, P7已读位置,
         P8范围代际, P8账号可见, P8读取锁, P8待定意图,
@@ -817,6 +857,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         主体标识引用,
         会话代际,
         读取恢复企业关系编号,
+        提交候选意向快照,
         P4范围代际,
         P4幂等意图,
         P4可见范围,

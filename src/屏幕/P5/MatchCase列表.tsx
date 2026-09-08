@@ -196,8 +196,10 @@ export function MatchCase列表(props: { role: P5角色; filterRef: string | nul
         </div>
       ) : (
         <>
-          {/* 刷新/轮询失败：旧条目原样保留只读，错误单独一行交代 + 重试 */}
-          {快照?.error && 视图们.length > 0 && !快照.刷新中 ? (
+          {/* 刷新/轮询失败：旧条目原样保留只读，错误单独一行交代 + 重试。
+              Task 5：已有成功空缓存后刷新失败同样要出这一行 —— 旧实现用 视图们.length > 0
+              把它挡掉，用户只看到一个正常空态，完全不知道这次没读到。 */}
+          {快照?.error && !快照.刷新中 ? (
             <div className={样式.错误行}>
               {快照.error}
               <button className={`${样式.重试键} 可点`} onClick={重读窗口}>
@@ -207,7 +209,8 @@ export function MatchCase列表(props: { role: P5角色; filterRef: string | nul
           ) : null}
 
           {过滤后.length === 0 ? (
-            <div className={样式.空态}>{空文案}</div>
+            // 错误在场时不下「没有在谈」的定论：那不是事实，只是这次没读到
+            快照?.error && !快照.刷新中 ? null : <div className={样式.空态}>{空文案}</div>
           ) : (
             过滤后.map((视图, 下标) =>
               视图.kind === '契约错误' ? (

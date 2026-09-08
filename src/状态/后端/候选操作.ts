@@ -4,7 +4,7 @@
 
 import { BFF错误 } from '../../数据/HTTP客户端';
 import { 从BFF简历 } from '../../数据/后端映射';
-import type { 页面简历快照 } from '../../数据/招聘数据源类型';
+import type { 页面简历快照, 页面意向快照 } from '../../数据/招聘数据源类型';
 import type { BFF候选账号档案 } from '../../数据/招聘数据源/候选账号';
 import type { 后端操作依赖, 候选操作 } from './类型';
 import { 清账号状态 } from './会话操作';
@@ -23,6 +23,17 @@ function 意向说明(draft: import('../../数据/招聘数据源类型').意向
 
 export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
   const { 是后端, 后端, 派发, 设后端状态, 后端状态引用, 状态引用, 锁, 主体标识引用, 会话代际 } = deps;
+  // Provider 恒注入：意向权威快照统一经它提交（栅栏 + 持久化写屏障）；缺席即接线缺陷。
+  if (deps.提交候选意向快照 === undefined) {
+    throw new Error('提交候选意向快照 未初始化（Provider 必须一次性注入）');
+  }
+  // 显式非可选标注：hoisted function 声明里也读得到收窄后的类型
+  const 提交候选意向快照: NonNullable<后端操作依赖['提交候选意向快照']> = deps.提交候选意向快照;
+  /** 意向写操作统一的快照提交：捕获栅栏取发起时刻的主体/代际，不在结算时重取。 */
+  const 提交意向快照 = (快照: 页面意向快照, subjectId: string | null, sessionGeneration: number) => {
+    if (subjectId === null) return;
+    提交候选意向快照({ 快照, subjectId, sessionGeneration });
+  };
   // P4 Task 3 fix：三个 P4 引用随行 —— 简历/意向 401 的统一清理同样清 discovery 双 Map 与可见范围
   // codex review-r1 P2：候选预填引用同样随行 —— 否则本域 401 只摊平内存轮，outgoing subject
   // 的恢复元数据无人删，登出解绑适配器后旧 session key 跨登出残留（同账号重登复活旧轮）。
@@ -96,7 +107,11 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
    * 简历写操作仍走 处理写入错误（用 错误.权威简历 水合），此处不接管简历路径。
    * 不派发 Mock 意向 action（新增意向/改意向），不播种预置意向。
    */
-  async function 处理意向写入错误(错误: unknown): Promise<never> {
+  async function 处理意向写入错误(
+    错误: unknown,
+    subjectId: string | null,
+    sessionGeneration: number,
+  ): Promise<never> {
     if (错误 instanceof BFF错误) {
       if (错误.status === 401) {
         // review-r3 R3-I-2：意向 401 收口到 清账号状态，三个支持域 + 草稿一起清
@@ -106,8 +121,7 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
       }
       if (错误.status === 409 || 错误.status === 503) {
         const 快照 = await 后端!.读取意向();
-        派发({ 型: '水合后端意向', 快照 });
-        设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
+        提交意向快照(快照, subjectId, sessionGeneration);
       }
     }
     throw 错误;
@@ -255,6 +269,9 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
       const 键 = draft.编辑编号 ? `意向:${draft.编辑编号}` : '意向:new';
       if (锁.current.has(键)) return;
       锁.current.add(键);
+      // 发起时刻捕获主体与代际：结算时重取当前主体会让迟到结果冒充新主体的 owner
+      const 本次主体 = 主体标识引用.current;
+      const 本次代际 = 会话代际.current;
       try {
         // Task 6：目录引用直接落在草稿里（Tasks 3-4），不再按需取目录；
         // 办公方式 从草稿.办公方式 读（必填草稿字段），不再硬编码 ['onsite']。
@@ -263,10 +280,9 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
         const 快照 = draft.编辑编号
           ? await 后端.更新意向(draft.编辑编号, draft, 上下文)
           : await 后端.创建意向(draft, 上下文);
-        派发({ 型: '水合后端意向', 快照 });
-        设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
+        提交意向快照(快照, 本次主体, 本次代际);
       } catch (错误) {
-        await 处理意向写入错误(错误);
+        await 处理意向写入错误(错误, 本次主体, 本次代际);
       } finally {
         锁.current.delete(键);
       }
@@ -281,14 +297,16 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
       const 键 = '意向:new';
       if (锁.current.has(键)) return;
       锁.current.add(键);
+      // 发起时刻捕获主体与代际：结算时重取当前主体会让迟到结果冒充新主体的 owner
+      const 本次主体 = 主体标识引用.current;
+      const 本次代际 = 会话代际.current;
       try {
         // Task 6：目录引用直接落在 input 里（引导问答 Backend 分支选中时原子保存），
         // 不再按需取目录；办公方式 从 input.筛选偏好.办公方式 读（向导答案）。
         const 快照 = await 后端.创建首次意向(input);
-        派发({ 型: '水合后端意向', 快照 });
-        设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
+        提交意向快照(快照, 本次主体, 本次代际);
       } catch (错误) {
-        await 处理意向写入错误(错误);
+        await 处理意向写入错误(错误, 本次主体, 本次代际);
       } finally {
         锁.current.delete(键);
       }
@@ -301,14 +319,16 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
       const 键 = `意向:${id}`;
       if (锁.current.has(键)) return;
       锁.current.add(键);
+      // 发起时刻捕获主体与代际：结算时重取当前主体会让迟到结果冒充新主体的 owner
+      const 本次主体 = 主体标识引用.current;
+      const 本次代际 = 会话代际.current;
       try {
         const 原始 = 后端状态引用.current.意向快照[id];
         if (!原始) return;
         const 快照 = await 后端.删除意向(id, 原始.revision);
-        派发({ 型: '水合后端意向', 快照 });
-        设后端状态((旧) => ({ ...旧, 意向快照: 快照.服务端 }));
+        提交意向快照(快照, 本次主体, 本次代际);
       } catch (错误) {
-        await 处理意向写入错误(错误);
+        await 处理意向写入错误(错误, 本次主体, 本次代际);
       } finally {
         锁.current.delete(键);
       }

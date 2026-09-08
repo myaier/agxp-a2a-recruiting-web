@@ -32,13 +32,15 @@
 //     与冻结职位名，说清递交即披露）；确认/取消都即刻清层，下一次绝不复用；
 //     disclosure_confirmed 只由这一次确认传字面 true。委托准备读有代际栅栏：换 case/
 //     卸载后迟到成败整包作废（StrictMode 安全）。
-//   · 招聘端 PDF 入口只由阶段区 typed 附件（后端披露后才下发）授权；点击只调
-//     读取简历PDF(role, caseId)（Case 专属 role 路径），拿回的 Plan 1 租约只活在弹层
-//     生命周期：关闭/卸载即 revoke，不缓存不持久化，绝不读 blob 文本/字节提身份。
+//   · PDF 入口只由阶段区 typed 附件（后端披露后才下发）授权，两端同口径：候选端看的
+//     是本 Case 已下发的本人简历，招聘端行为不变。角色可见性由服务端投影 + decoder 的
+//     S1 披露栅栏（招聘端匿名初筛区永不带附件）决定，组件不再额外按角色过滤。
+//     点击只调 读取简历PDF(role, caseId)（Case 专属 role 路径），拿回的 Plan 1 租约
+//     只活在弹层生命周期：关闭/换 Case/换角色/卸载即 revoke，不缓存不持久化，绝不读
+//     blob 文本/字节提身份；局部读代际保证迟到的成功租约立即回收、不开旧 Case 的弹层。
 //     弹层正文用 <iframe src=租约地址> 直接呈现真实 PDF（选 iframe 而非 <object>：
 //     无插件回退怪癖、字节留在嵌套浏览上下文、title 即无障碍名）；顶栏只有 PDF 徽标
-//     + 文件名 + 关闭，无任何解释文字，弹层里不存在姓名/联系方式渲染路径。候选端
-//     本任务不建 PDF 入口。
+//     + 文件名 + 关闭，无任何解释文字，弹层里不存在姓名/联系方式渲染路径。
 //   · 未知契约（矩阵外四元组等）按展示映射 fail closed：只给契约错误提示 + 重试（重新
 //     GET），隐藏全部 mutation 控件。终局（ended/completed）只读：停 3 秒详情节拍、隐藏
 //     叮嘱输入。
@@ -118,7 +120,6 @@ const 状态行样式: CSSProperties = {
   display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '12px 16px 4px',
 };
 const 步骤说明样式: CSSProperties = { flex: 1, minWidth: 0, fontSize: 12, color: 'var(--弱化)' };
-const 意向样式: CSSProperties = { flex: 'none', fontSize: 11, color: 'var(--最弱)' };
 const 轮次样式: CSSProperties = { flex: 'none', fontSize: 11, color: 'var(--最弱)' };
 const 终局卡样式: CSSProperties = {
   margin: '0 16px 10px', padding: '13px 15px', borderRadius: 14, background: 'var(--浅灰底)',
@@ -350,7 +351,7 @@ function 详情主体({
   const 当前阶段 = 详情?.state.stage ?? null;
   const 有动作 = 视图.actions.length > 0;
 
-  // 授权原始 PDF（招聘端）：租约只活在弹层生命周期 —— 关闭/卸载即 revoke，
+  // 授权原始 PDF（两端）：租约只活在弹层生命周期 —— 关闭/换 Case/换角色/卸载即 revoke，
   // 绝不缓存；在飞单发防连点双租约。弹层正文直接以租约地址呈现真实 PDF 字节。
   const [PDF预览, 设PDF预览] = useState<{ 文件名: string; 地址: string } | null>(null);
   const PDF租约引用 = useRef<PDF对象租约 | null>(null);
@@ -359,20 +360,38 @@ function 详情主体({
     PDF租约引用.current?.revoke();
     PDF租约引用.current = null;
   };
-  useEffect(() => 回收租约, []);
+  // 本次读取的局部代际：换 Case / 换角色 / 卸载都让它 +1（不建全局租约系统）。
+  // 迟到的成功租约立刻 revoke 且不 setState —— 绝不在新 Case 上打开旧 Case 的弹层；
+  // 迟到的失败也不在新 Case 上弹提示。
+  const 读代际 = useRef(0);
+  useEffect(() => () => {
+    读代际.current += 1;
+    回收租约();
+    设PDF预览(null);
+    // 换代即释放在飞标志：新 Case 的第一次点击不该被上一 Case 的在飞锁挡住
+    PDF在飞.current = false;
+  }, [role, caseId]);
   const 开PDF = async (文件名: string) => {
     if (PDF在飞.current || PDF预览 !== null || caseId === '') return;
     PDF在飞.current = true;
+    const 本次代际 = 读代际.current;
     try {
       // 只走 Case 专属 role 路径；操作层已建租约并在会话边界登记回收
       const 租约 = await 操作.读取简历PDF(role, caseId);
+      if (读代际.current !== 本次代际) {
+        // 迟到成功：本次租约立即回收（幂等 revoke），不开弹层、不写 state
+        租约.revoke();
+        return;
+      }
       回收租约(); // 防御：上一张（理论上不存在）先回收再挂新的
       PDF租约引用.current = 租约;
       设PDF预览({ 文件名, 地址: 租约.url });
     } catch (错误) {
+      if (读代际.current !== 本次代际) return;
       轻提示(取后端错误文案(错误));
     } finally {
-      PDF在飞.current = false;
+      // 只有当前那次读取的 finally 能释放自己的在飞标志，不给新请求解锁
+      if (读代际.current === 本次代际) PDF在飞.current = false;
     }
   };
 
@@ -396,11 +415,13 @@ function 详情主体({
       // 未到达段的一行说明用服务端自己的阶段摘要（typed 块，不是时间线文本）
       待推进说明: 态 === '未到达' && 区.摘要 !== '' ? 区.摘要 : undefined,
       空说明: 态 === '当前' ? 视图.步骤说明 : undefined,
-      // 招聘端才有 PDF 入口（候选端本任务不建）；附件行只是入口，点击才发请求。
+      // 当前角色的阶段投影带 typed 附件就是入口 —— 两端同口径（候选端看的是 Case 已
+      // 下发的本人简历）。角色可见性由服务端投影和 decoder 的 S1 披露栅栏决定，
+      // 组件不再额外按 recruiter 过滤。附件行只是入口，点击才发请求。
       // 附件常驻（评审终审修复）：入口独立于段内对话 —— 叮嘱回执/时间线文本落进
       // S1 段也绝不压掉这个唯一 PDF 入口（Mock 屏不传该旗，行为不变）。
-      附件: role === 'recruiter' && 区.附件 !== null ? { 文件名: 区.附件.displayName } : null,
-      附件常驻: role === 'recruiter' && 区.附件 !== null ? true : undefined,
+      附件: 区.附件 !== null ? { 文件名: 区.附件.displayName } : null,
+      附件常驻: 区.附件 !== null ? true : undefined,
       // 有动作卡的段保持展开（passed 段也能一眼看到等你的决定）
       默认展开: 是动作段 ? true : undefined,
       尾部: 是动作段
@@ -422,15 +443,11 @@ function 详情主体({
       ) : null}
 
       {/* 状态行：闭词状态文案 + 步骤说明 + 轮次（权威 state.*，无服务端下一步字段）。
-          候选端另带自己的意向坐标（不透明 ID 原样，对端字段进不了视图） */}
+          Task 4：内部 intentionId 不再进可见内容 —— 它仍留在详情模型里供路由/归属/动作
+          使用，业务上下文由冻结职位名、城市与薪资带承载。 */}
       <div style={状态行样式}>
         <span className={列表样式.阶段标}>{视图.状态文案}</span>
         <span style={步骤说明样式}>{视图.步骤说明}</span>
-        {role === 'candidate' && 视图.intentionId !== null ? (
-          <span className="等宽数字" style={意向样式}>
-            意向 {视图.intentionId}
-          </span>
-        ) : null}
         <span className="等宽数字" style={轮次样式}>
           轮次 {视图.轮次.当前}/{视图.轮次.预算}
         </span>
@@ -478,11 +495,11 @@ function 详情主体({
       ) : null}
 
       {/* 四阶段对话流：类型化分段的渲染器（时间线/回执只是展示文本）。
-          动作卡在 分段项.尾部、招聘端 PDF 入口在 附件 槽（点附件 只走 Case 专属 role 路径）。 */}
+          动作卡在 分段项.尾部、两端 PDF 入口在 附件 槽（点附件 只走 Case 专属 role 路径）。 */}
       <阶段对话流
         分段们={分段们}
         当前段引用={当前节点引用}
-        点附件={role === 'recruiter' ? (文件名) => void 开PDF(文件名) : undefined}
+        点附件={(文件名) => void 开PDF(文件名)}
       />
 
       {/* 原始 PDF 弹层：顶栏只有 PDF 徽标 + 文件名 + 关闭（无解释文字）；正文以

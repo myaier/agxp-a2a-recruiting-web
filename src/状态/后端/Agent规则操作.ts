@@ -211,6 +211,12 @@ export function 水合Agent规则角色数据(
 
 export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则操作 {
   const { 是后端, 后端, 派发, 设后端状态, 后端状态引用, 状态引用, 锁, 主体标识引用, 会话代际 } = deps;
+  // Provider 恒注入：scope_denied 的权威意向重读也必须经统一提交口（栅栏 + 持久化写屏障）
+  if (deps.提交候选意向快照 === undefined) {
+    throw new Error('提交候选意向快照 未初始化（Provider 必须一次性注入）');
+  }
+  // 显式非可选标注：hoisted function 声明里也读得到收窄后的类型
+  const 提交候选意向快照: NonNullable<后端操作依赖['提交候选意向快照']> = deps.提交候选意向快照;
   // P4 Task 3 fix：三个 P4 引用随行 —— 规则域 401 的统一清理同样清 discovery 双 Map 与可见范围
   const 账号清理依赖 = {
     派发, 设后端状态, 后端, 主体标识引用, 会话代际,
@@ -433,8 +439,8 @@ export function 创建Agent规则操作(deps: 后端操作依赖): Agent规则�
     if (错误.code === 'agent_rule_scope_denied' && role === 'candidate') {
       const intentions = await 后端!.读取意向();
       if (!仍是当前会话(deps, subjectId, generation)) throw 错误;
-      派发({ 型: '水合后端意向', 快照: intentions });
-      设后端状态((旧) => ({ ...旧, 意向快照: intentions.服务端 }));
+      // 权威重读同样经统一提交口：外层已过捕获栅栏，这里传发起时刻的主体/代际
+      提交候选意向快照({ 快照: intentions, subjectId, sessionGeneration: generation });
     }
     if (错误.code === 'idempotency_conflict') {
       if (proposalId !== undefined) await 刷新Agent规则提案(proposalId);

@@ -9,6 +9,7 @@
 
 import 样式 from './顶部意向栏.module.css';
 import { 放大镜图标 } from '../组件/图标';
+import type { 求职意向 } from '../数据/类型';
 import { use应用状态, 取意向名 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -26,6 +27,46 @@ export function 取走市场工具请求(): '搜索' | '筛选' | null {
   const 值 = 市场待打开;
   市场待打开 = null;
   return 值;
+}
+
+/** 标题 `[城市] 职位` 里的城市段；无中括号或纯空白 → ''（缺城市就不加这一节） */
+function 取城市(标题: string): string {
+  return /^\[([^\]]*)\]/.exec(标题)?.[1]?.trim() ?? '';
+}
+
+/** 说明 `薪资｜行业` 的薪资段；纯空白 → ''（不猜、不补） */
+function 取薪资说明(说明: string): string {
+  return 说明.split('｜')[0]?.trim() ?? '';
+}
+
+/** 只给仍然重名的那一组加后缀；后缀为空的条目保持原文字 */
+function 消歧一轮(标签们: string[], 取后缀: (序: number) => string): string[] {
+  const 计数 = new Map<string, number>();
+  for (const 文字 of 标签们) 计数.set(文字, (计数.get(文字) ?? 0) + 1);
+  return 标签们.map((文字, 序) => {
+    if ((计数.get(文字) ?? 0) < 2) return 文字;
+    const 后缀 = 取后缀(序);
+    return 后缀 === '' ? 文字 : `${文字} · ${后缀}`;
+  });
+}
+
+/**
+ * Backend 胶囊的区分文字（Spec §4.2）：职位名不重复就只用职位名；重名依次加标题里
+ * 已有的城市、说明里已有的薪资；最终仍相同的加同组序号。序号只是列表位置提示，
+ * 不是业务坐标、不持久化。绝不展示 int_ 内部编号，也不猜城市／薪资。
+ */
+export function 造意向胶囊文字(表: 求职意向[]): string[] {
+  const 带城市 = 消歧一轮(表.map((条) => 取意向名(条.标题)), (序) => 取城市(表[序].标题));
+  const 带薪资 = 消歧一轮(带城市, (序) => 取薪资说明(表[序].说明));
+  const 终计数 = new Map<string, number>();
+  for (const 文字 of 带薪资) 终计数.set(文字, (终计数.get(文字) ?? 0) + 1);
+  const 组内序 = new Map<string, number>();
+  return 带薪资.map((文字) => {
+    if ((终计数.get(文字) ?? 0) < 2) return 文字;
+    const 序 = (组内序.get(文字) ?? 0) + 1;
+    组内序.set(文字, 序);
+    return `${文字}（${序}）`;
+  });
 }
 
 interface 属性 {
@@ -49,6 +90,9 @@ export default function 顶部意向栏({ 打开搜索, 打开筛选, 筛选生�
   const { 状态, 派发, 数据源模式 } = use应用状态();
   const { 跳转 } = use导航();
 
+  // 区分文字只在 Backend 生成（同名意向是 Backend 才有的真实情况）；Mock 保持意向名。
+  const 胶囊文字们 = 数据源模式 === 'backend' ? 造意向胶囊文字(状态.求职意向表) : null;
+
   /** 打开市场工具：在看市场就直接开，不在就先记下再切过去 */
   const 开市场工具 = (工具: '搜索' | '筛选', 直接开?: () => void) => {
     if (直接开) {
@@ -70,10 +114,14 @@ export default function 顶部意向栏({ 打开搜索, 打开筛选, 筛选生�
             布局与「不截断」的取舍都在 .胶囊条 / .胶囊 里（原来那段行内样式已挪进 CSS），
             企业端顶栏 composes 的就是这两个类 —— 两端同一套，改一处两边一起动。 */}
         <div className={样式.胶囊条}>
-          {状态.求职意向表.map((条) => {
+          {状态.求职意向表.map((条, 序) => {
             // 胶囊上显示的是意向名（标题里的职位部分），它同时是在谈/看市场列表过滤的键
             const 意向名 = 取意向名(条.标题);
-            const 选中 = !跨意向 && 意向名 === 状态.当前意向;
+            // Backend 的选中判断只认 ID（意向名不唯一，同名两条会一起点亮）；
+            // Mock 没有真实编号，仍按名称比较，行为原样。
+            const 选中 = !跨意向 && (
+              数据源模式 === 'backend' ? 条.编号 === 状态.当前意向编号 : 意向名 === 状态.当前意向
+            );
             return (
               <button
                 key={条.编号}
@@ -89,7 +137,7 @@ export default function 顶部意向栏({ 打开搜索, 打开筛选, 筛选生�
                   )
                 }
               >
-                {意向名}
+                {胶囊文字们 === null ? 意向名 : 胶囊文字们[序]}
               </button>
             );
           })}

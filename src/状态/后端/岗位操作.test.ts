@@ -282,3 +282,67 @@ describe('创建岗位操作 · 四问硬性事实边界', () => {
     expect(设后端状态).toHaveBeenCalled();
   });
 });
+
+// ── Task 6：发布返回真实创建 ID + 发起时刻的栅栏 ────────────────────────────
+describe('创建岗位操作 · 发布返回服务端创建的 job_id', () => {
+  const 创建结果 = (job_id: string) => ({
+    列表: [页面岗位草稿],
+    服务端: { [job_id]: { ...BFFOwnerJob样本, job_id } },
+    创建岗位编号: job_id,
+  });
+
+  it('Backend 成功：返回精确的服务端 job_id，并水合权威岗位', async () => {
+    const 创建岗位 = vi.fn(async () => 创建结果('job_new_9'));
+    const deps = 创建岗位测试依赖({
+      数据源: { 创建岗位 } as unknown as HTTP招聘数据源, 未认证公司声明: '示例客户公司',
+    });
+    await expect(创建岗位操作(deps).发布岗位(页面岗位草稿)).resolves.toBe('job_new_9');
+    expect(deps.派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '水合后端岗位' }));
+  });
+
+  it('Mock 模式：派发原 Mock 动作并返回 null（调用方不能当 Backend 成功）', async () => {
+    const deps = { ...创建岗位测试依赖({ 数据源: {} as HTTP招聘数据源 }), 是后端: false, 后端: null };
+    await expect(创建岗位操作(deps).发布岗位(页面岗位草稿)).resolves.toBeNull();
+    expect(deps.派发).toHaveBeenCalledWith({ 型: '发布岗位', 岗: 页面岗位草稿 });
+  });
+
+  it('同一发布已在飞：第二次调用没执行，返回 null 而不是成功', async () => {
+    const deps = 创建岗位测试依赖({
+      数据源: { 创建岗位: vi.fn() } as unknown as HTTP招聘数据源, 未认证公司声明: '示例客户公司',
+    });
+    deps.锁.current.add('岗位:new');
+    await expect(创建岗位操作(deps).发布岗位(页面岗位草稿)).resolves.toBeNull();
+  });
+
+  it('在飞期间换主体：迟到成功返回 null，且不水合新主体的岗位状态', async () => {
+    let 放行!: () => void;
+    const 创建岗位 = vi.fn(() => new Promise((ok) => {
+      放行 = () => ok(创建结果('job_new_9'));
+    }));
+    const deps = 创建岗位测试依赖({
+      数据源: { 创建岗位 } as unknown as HTTP招聘数据源, 未认证公司声明: '示例客户公司',
+    });
+    const 写 = 创建岗位操作(deps).发布岗位(页面岗位草稿);
+    deps.主体标识引用.current = 'sub_2';
+    放行();
+    await expect(写).resolves.toBeNull();
+    expect(deps.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '水合后端岗位' }));
+  });
+
+  it('在飞期间换会话代际：迟到的 409 权威重读不落进新会话', async () => {
+    let 放行!: () => void;
+    const 创建岗位 = vi.fn(() => new Promise((_ok, fail) => {
+      放行 = () => fail(new BFF错误(409, 'version_conflict', 'conflict'));
+    }));
+    const 读取岗位 = vi.fn();
+    const deps = 创建岗位测试依赖({
+      数据源: { 创建岗位, 读取岗位 } as unknown as HTTP招聘数据源, 未认证公司声明: '示例客户公司',
+    });
+    const 写 = 创建岗位操作(deps).发布岗位(页面岗位草稿);
+    deps.会话代际.current = 9;
+    放行();
+    await expect(写).rejects.toBeInstanceOf(BFF错误);
+    expect(读取岗位).not.toHaveBeenCalled();
+    expect(deps.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '水合后端岗位' }));
+  });
+});

@@ -380,9 +380,38 @@ function 映射职位(job: P5工作区职位): P5职位视图 | null {
   };
 }
 
+/** 终局时间的展示格式化器（只服务本 mapper 的 定格于，不是通用日期能力）。 */
+const 终局时间格式 = new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+/**
+ * RFC3339 → `YYYY-MM-DD HH:mm`（用户运行环境本地时区，不设固定产品时区、
+ * 不硬编码加八小时）。用 formatToParts 自己拼分隔符，locale 的排版差异影响不到形状。
+ * 异常值（绕过 decoder 抵达这里的）给「时间待确认」——不抛破页面的异常，也不回原文。
+ */
+function 格式化终局时间(原文: string): string {
+  // 非字符串同样会绕过 decoder（与 映射终局摘要 的 typeof 守卫同口径）：
+  // new Date(null) / new Date(0) 是合法的 1970 时间，直接格式化等于编造终局时刻。
+  if (typeof 原文 !== 'string') return '时间待确认';
+  const 时刻 = new Date(原文);
+  if (Number.isNaN(时刻.getTime())) return '时间待确认';
+  const 段 = 终局时间格式.formatToParts(时刻);
+  const 取 = (类型: Intl.DateTimeFormatPartTypes) => 段.find((条) => 条.type === 类型)?.value ?? '';
+  const 年 = 取('year');
+  const 月 = 取('month');
+  const 日 = 取('day');
+  const 时 = 取('hour');
+  const 分 = 取('minute');
+  if ([年, 月, 日, 时, 分].some((值) => 值 === '')) return '时间待确认';
+  return `${年}-${月}-${日} ${时}:${分}`;
+}
+
 function 映射终局摘要(摘要: P5终局摘要 | null): P5终局摘要视图 | null {
   if (摘要 === null || typeof 摘要 !== 'object') return null;
-  return { 结束语: 摘要.outcome, 原因: 摘要.reasonSummary, 定格于: 摘要.finalizedAt };
+  // 内部 DTO 仍保留原始 RFC3339；只有这个展示槽换成本地可读值
+  return { 结束语: 摘要.outcome, 原因: 摘要.reasonSummary, 定格于: 格式化终局时间(摘要.finalizedAt) };
 }
 
 /**

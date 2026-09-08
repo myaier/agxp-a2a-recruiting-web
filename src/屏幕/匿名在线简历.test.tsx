@@ -15,7 +15,6 @@ import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF招聘候选推荐, BFF委托回执 } from '../数据/BFF契约';
 import { BFF招聘候选推荐样本, BFF岗位样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
-import { 路径 } from '../路由/路径表';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -160,7 +159,9 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     expect(screen.getByText('匿名')).toBeTruthy();
     expect(screen.getByText('87')).toBeTruthy(); // 返回栏 匹配 N
     expect(screen.getByText('4 年')).toBeTruthy();
-    expect(screen.getByText('employed')).toBeTruthy();
+    // 求职状态按闭合表中文化：employed → 在职，屏上不出现原 token
+    expect(screen.getByText('在职')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('employed');
     expect(screen.getByText('四年全栈经验')).toBeTruthy();
     expect(screen.getByText('TypeScript')).toBeTruthy();
     expect(screen.getByText('复旦大学 · 计算机科学 · 本科')).toBeTruthy();
@@ -168,10 +169,13 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     expect(screen.getByText('本科')).toBeTruthy();
   });
 
-  it('basis 已确认（控制组）：匹配分与推荐亮点整组照常渲染', () => {
-    置P4详情状态({ 详情: BFF招聘候选推荐样本 });
+  it('basis 已确认（控制组）：匹配分与推荐亮点整组照常渲染，亮点显示中文', () => {
+    置P4详情状态({
+      详情: { ...BFF招聘候选推荐样本, highlights: ['category_matched'] },
+    });
     渲染详情();
-    expect(screen.getByText('full_stack')).toBeTruthy();
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('category_matched');
     expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
   });
 
@@ -180,7 +184,7 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
       详情: {
         ...BFF招聘候选推荐样本,
         structured_requirements_confirmed: false,
-        highlights: ['full_stack', 'react_depth'],
+        highlights: ['category_matched', 'location_matched'],
       },
     });
     渲染详情();
@@ -188,9 +192,9 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     expect(await screen.findByText('87')).toBeTruthy();
     expect(screen.getByText('经验与学历尚未核对')).toBeTruthy();
     // 整组收起：文档任何位置都不残留亮点文案，不做选择性过滤
-    expect(screen.queryByText('full_stack')).toBeNull();
-    expect(screen.queryByText('react_depth')).toBeNull();
-    expect(document.body.textContent).not.toContain('full_stack');
+    expect(screen.queryByText('职位方向匹配')).toBeNull();
+    expect(screen.queryByText('工作地点匹配')).toBeNull();
+    expect(document.body.textContent).not.toContain('category_matched');
   });
 
   it('身份与薪资 Canary：无真名/无直接聊/无工作经历段/无年龄性别/无 Mock 简历兜底', () => {
@@ -300,17 +304,20 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     expect(screen.queryByText('已开始沟通')).toBeNull();
   });
 
-  it('recruiter case_started navigates only by server case_id', async () => {
+  // Task 5：开案成功 = case_started + 非空 case_id，复用 Mock 的不可点状态条，零导航
+  it('case_started 带服务端 case_id：显示「AI代理已接手」状态条，零导航', async () => {
     置P4详情状态({
       详情: {
         ...BFF招聘候选推荐样本,
         delegation: { delegation_id: 'del_r1', state: 'case_started', case_id: 'case_server_r1' },
       },
     });
-    渲染详情();
-    await waitFor(() => expect(screen.getByRole('button', { name: '查看进展' })).toBeTruthy());
-    await userEvent.click(screen.getByRole('button', { name: '查看进展' }));
-    expect(mock跳转).toHaveBeenCalledWith(路径.候选详情('case_server_r1'));
+    const { container } = 渲染详情();
+    await waitFor(() => expect(screen.getByText('AI代理已接手')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    expect(screen.queryByText('已创建真实在谈')).toBeNull();
+    expect(container.textContent).not.toContain('case_server_r1');
+    expect(mock跳转).not.toHaveBeenCalled();
   });
 
   it('case_started 无服务端 case_id 时只给不可点状态条，绝不拿 job/recommendation/delegation ID 或别名充当 Case', () => {
@@ -321,7 +328,9 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
       },
     });
     渲染详情();
-    expect(screen.getByText('已创建真实在谈')).toBeTruthy();
+    expect(screen.getByText('暂时无法确认进度，请稍后刷新')).toBeTruthy();
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
+    expect(screen.queryByText('已创建真实在谈')).toBeNull();
     expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
     expect(mock跳转).not.toHaveBeenCalled();
   });
@@ -330,7 +339,8 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
   const 状态文案 = [
     ['accepted', '已提交给 AI，等待处理'],
     ['evaluating', 'AI 正在评估'],
-    ['case_started', '已创建真实在谈'],
+    // case_started 但 case_id 缺席 = 坐标未确认：安全文案，不声称已开案
+    ['case_started', '暂时无法确认进度，请稍后刷新'],
     ['needs_user', '需要你处理'],
     ['refused', '本次未能继续'],
     ['failed', '本次处理未完成'],
