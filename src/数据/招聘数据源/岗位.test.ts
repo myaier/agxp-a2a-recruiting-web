@@ -150,7 +150,10 @@ describe('岗位数据源 hard_requirements 校验', () => {
     expect(Object.keys(结果.服务端)).toHaveLength(3);
   });
 
-  it('权威重读没包含这个新岗：仍原样返回创建 ID，不静默换成别的岗位', async () => {
+  // review-r1 [1]：Spec §8 要求选中新岗时「其对应的服务端岗位已经水合」。权威重读
+  // 没有这条可用岗位时整条发布返回链并未观察到完成 —— 走错误恢复，绝不静默选中一个
+  // 不存在／已归档的坐标（切当前岗位 reducer 不校验编号，落进去就是死当前岗）。
+  it('权威重读没包含这个新岗：按错误恢复拒绝，不返回创建结果也不换别的岗位', async () => {
     请求Mock.mockImplementation(async (options: { method?: string }) => {
       if (options.method === 'POST') {
         return { result: { ...BFF岗位样本, job_id: 'job_new_9' }, etag: null, requestId: 'r-create' };
@@ -160,9 +163,39 @@ describe('岗位数据源 hard_requirements 校验', () => {
         etag: null, requestId: 'r-jobs',
       };
     });
+    await expect(数据源.创建岗位(新岗输入, 声明))
+      .rejects.toMatchObject({ status: 200, code: 'invalid_response' });
+  });
+
+  it('权威重读里这条岗位不是在招（archived）：同样按错误恢复拒绝', async () => {
+    请求Mock.mockImplementation(async (options: { method?: string }) => {
+      if (options.method === 'POST') {
+        return { result: { ...BFF岗位样本, job_id: 'job_new_9' }, etag: null, requestId: 'r-create' };
+      }
+      return {
+        result: {
+          jobs: [{ ...BFF岗位样本, job_id: 'job_new_9', status: 'archived' }],
+          next_cursor: null,
+        },
+        etag: null, requestId: 'r-jobs',
+      };
+    });
+    await expect(数据源.创建岗位(新岗输入, 声明))
+      .rejects.toMatchObject({ status: 200, code: 'invalid_response' });
+  });
+
+  it('opaque job_id 原样比对：只 trim 空白判定，不改写 ID 本身', async () => {
+    请求Mock.mockImplementation(async (options: { method?: string }) => {
+      if (options.method === 'POST') {
+        return { result: { ...BFF岗位样本, job_id: 'job:New/9+id' }, etag: null, requestId: 'r-create' };
+      }
+      return {
+        result: { jobs: [{ ...BFF岗位样本, job_id: 'job:New/9+id' }], next_cursor: null },
+        etag: null, requestId: 'r-jobs',
+      };
+    });
     const 结果 = await 数据源.创建岗位(新岗输入, 声明);
-    expect(结果.创建岗位编号).toBe('job_new_9');
-    expect(结果.服务端.job_new_9).toBeUndefined();
+    expect(结果.创建岗位编号).toBe('job:New/9+id');
   });
 
   it('job_id 空白 / 缺失 / 非字符串都是 invalid_response，且校验先于写附属', async () => {

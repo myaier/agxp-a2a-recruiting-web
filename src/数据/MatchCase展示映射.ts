@@ -392,6 +392,9 @@ const 终局时间格式 = new Intl.DateTimeFormat('zh-CN', {
  * 异常值（绕过 decoder 抵达这里的）给「时间待确认」——不抛破页面的异常，也不回原文。
  */
 function 格式化终局时间(原文: string): string {
+  // 非字符串同样会绕过 decoder（与 映射终局摘要 的 typeof 守卫同口径）：
+  // new Date(null) / new Date(0) 是合法的 1970 时间，直接格式化等于编造终局时刻。
+  if (typeof 原文 !== 'string') return '时间待确认';
   const 时刻 = new Date(原文);
   if (Number.isNaN(时刻.getTime())) return '时间待确认';
   const 段 = 终局时间格式.formatToParts(时刻);
