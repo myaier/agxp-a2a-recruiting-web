@@ -65,7 +65,7 @@
 
 **文件：** 修改 `src/屏幕/顶部意向栏.tsx`、`src/屏幕/在谈首页.tsx`、`src/屏幕/看市场.tsx`、`src/状态/领域/候选资料.ts`、`src/状态/应用状态.tsx`、`src/状态/资料持久化.ts`、`src/数据/资料缓存.ts`、`src/状态/后端/类型.ts`、`src/状态/后端/会话操作.ts`、`src/状态/后端/候选操作.ts`、`src/状态/后端/Agent规则操作.ts`。最后两处仅接入已存在的权威意向水合和本任务的会话保护，不改 Agent 规则／简历业务。
 
-**测试：** 修改 `src/数据/资料缓存.test.ts`、`src/状态/应用状态.test.ts`、`src/状态/后端/会话操作.test.ts`、`src/状态/后端/Agent规则操作.test.ts`、`src/屏幕/看市场.test.tsx`、`src/屏幕/P5/MatchCase列表.test.tsx`；新增 `src/屏幕/顶部意向栏.test.tsx`，如需隔离候选 CRUD 接线用例，新增 `src/状态/后端/候选操作.test.ts`（新增的是测试）。
+**测试：** 修改 `src/数据/资料缓存.test.ts`、`src/状态/应用状态.test.ts`、`src/状态/后端/会话操作.test.ts`、`src/状态/后端/Agent规则操作.test.ts`、`src/屏幕/看市场.test.tsx`、`src/屏幕/P5/MatchCase列表.test.tsx`、`src/状态/后端/候选操作.test.ts`；新增 `src/屏幕/顶部意向栏.test.tsx`（新增的是测试）。
 
 **内部契约与数据归属：**
 
@@ -82,7 +82,7 @@
 - [ ] Backend 顶部按 ID 选中，标签按 Spec §4.2 的职位→城市→已有薪资→同组序号依次消歧；只对碰撞组加长。点击后端仍带名称与 ID，Mock 分支原样。在谈和市场横幅直接以有效当前 ID 构造 P5 key；无效“当前”scope 零请求，显式全部档继续 null。P4 已用 ID 的路径保留并测一致性。
 - [ ] Provider 测试 seed sessionStorage 为 `int_bj`，完整卸载重建；控制服务端 Promise，断言水合前零 P4／当前 P5 请求、缓存仍为 `int_bj`；水合后首次请求即 `int_bj`。补失败重试、失效 ID 回退、权威空列表清空、存储损坏／抛错、环境／主体／角色隔离和迟到水合。
 - [ ] 组件测试点击第二胶囊，断言第二选中、P4/P5 请求实参和横幅对应 `int_bj`，不是第一条；全部档不高亮，无效当前不会查询全部。直接断言胶囊容器及首页用户可见 `textContent` 不含 `int_sh`／`int_bj` 或 `int_` 前缀内部编号；同城市、同薪资与最终同组序号也覆盖该负断言。旧名称-only Backend fixture 补有效 ID，不能保留反查兼容。
-- [ ] 运行 `npm test -- src/数据/资料缓存.test.ts src/状态/应用状态.test.ts src/状态/后端/会话操作.test.ts src/状态/后端/候选操作.test.ts src/状态/后端/Agent规则操作.test.ts src/屏幕/顶部意向栏.test.tsx src/屏幕/看市场.test.tsx src/屏幕/P5/MatchCase列表.test.tsx`。若未新建候选操作测试文件，移除该参数并将相同 CRUD 用例落应用状态测试；不得以没有文件为由跳过断言。运行 `npm run typecheck`，提交 `fix: keep backend intention selection scoped by id`。
+- [ ] 运行 `npm test -- src/数据/资料缓存.test.ts src/状态/应用状态.test.ts src/状态/后端/会话操作.test.ts src/状态/后端/候选操作.test.ts src/状态/后端/Agent规则操作.test.ts src/屏幕/顶部意向栏.test.tsx src/屏幕/看市场.test.tsx src/屏幕/P5/MatchCase列表.test.tsx`。候选 CRUD 用例复用已有候选操作测试和应用状态测试，不删除该测试参数。运行 `npm run typecheck`，提交 `fix: keep backend intention selection scoped by id`。
 
 完成条件：Spec §4 所有请求／显示／刷新一致，Mock 未动。回退必须覆盖恢复接线、缓存字段与页面消费者，旧缓存多一个可选字段不会破坏旧版。若发现需要持久化业务快照或重构 Mock，拒绝该扩展。
 
