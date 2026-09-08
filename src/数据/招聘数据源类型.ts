@@ -115,6 +115,16 @@ export interface 页面岗位快照 {
   服务端: Record<string, BFFOwnerJob>;
 }
 
+/**
+ * 创建岗位的返回：权威岗位快照 + POST 响应里的真实 job_id。
+ * 只有创建返回它（列表／更新／归档／重开／删除仍返回 页面岗位快照）——
+ * 发布页要靠这个精确 ID 选中新岗，不能从数组位置、名称或前后差集猜。
+ * 纯前端内部结果类型，不是新的 wire 字段。
+ */
+export interface 页面岗位创建结果 extends 页面岗位快照 {
+  创建岗位编号: string;
+}
+
 // ── P2：候选人附件简历库 —— wire 形状原样作为页面别名，Task 3 映射层与 Task 4 数据源消费 ──
 export type 页面附件简历库 = BFF附件简历库;
 

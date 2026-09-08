@@ -7,7 +7,7 @@ import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
 import type { BFFOwnerJob, BFF学历要求, BFF经验要求, BFF硬性条件 } from '../BFF契约';
 import type { 后端环境 } from '../../配置/运行配置';
 import type { 岗位附属存储 } from '../前端附属数据';
-import type { 页面岗位快照, 岗位创建上下文 } from '../招聘数据源类型';
+import type { 页面岗位快照, 页面岗位创建结果, 岗位创建上下文 } from '../招聘数据源类型';
 import type { 在招岗位 } from '../类型';
 import { 从BFF岗位, 转岗位创建, 转岗位补丁 } from '../后端映射';
 
@@ -64,7 +64,7 @@ function 校验硬性条件(值: unknown): void {
 export interface 岗位数据源 {
   读取岗位(): Promise<页面岗位快照>;
   /** P1C Task 5：创建只吃显式 claim（direct + 声明）；refs/verification status 服务端推导。 */
-  创建岗位(job: 在招岗位, context: 岗位创建上下文): Promise<页面岗位快照>;
+  创建岗位(job: 在招岗位, context: 岗位创建上下文): Promise<页面岗位创建结果>;
   /** P1C Task 5：更新不接公司 context —— 补丁沿用 previous 的 mode 与 claim。 */
   更新岗位(job: 在招岗位, previous: BFFOwnerJob): Promise<页面岗位快照>;
   归档岗位(id: string, revision: number): Promise<页面岗位快照>;
@@ -116,8 +116,14 @@ export function 创建岗位数据源(
         body: 转岗位创建(job, context),
         幂等: true,
       });
-      写入岗位附属(result.job_id, job);
-      return 读取岗位();
+      // 真实 job_id 是本次创建的唯一坐标：先验证再写附属，绝不拿空白 ID 当键，
+      // 也不用重读列表的位置/名称反推是哪一条。
+      const 创建岗位编号 = typeof result.job_id === 'string' ? result.job_id.trim() : '';
+      if (创建岗位编号 === '') {
+        throw new BFF错误(200, 'invalid_response', '服务返回了不符合契约的岗位数据');
+      }
+      写入岗位附属(创建岗位编号, job);
+      return { ...(await 读取岗位()), 创建岗位编号 };
     },
     async 更新岗位(job, previous) {
       await 请求<BFFOwnerJob>({

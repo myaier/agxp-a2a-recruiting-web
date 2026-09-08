@@ -331,7 +331,7 @@ describe('发布岗位页 Backend 选择器', () => {
     选项: { 职位描述?: string | null; 职位要求?: string | null; 勾选确认?: boolean } = {},
   ) {
     const 用户 = userEvent.setup();
-    render(
+    const 视图 = render(
       <MemoryRouter initialEntries={['/hr/post-job']}>
         <Routes>
           <Route path="/hr/post-job" element={<发布岗位 />} />
@@ -393,7 +393,7 @@ describe('发布岗位页 Backend 选择器', () => {
     if (选项.勾选确认 !== false) {
       await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
     }
-    return { 用户 };
+    return { 用户, 视图, unmount: 视图.unmount };
   }
 
   /** P4 互认 Task 3：打开 Backend 编辑态并切到第三步（勾选框所在步）。
@@ -425,6 +425,83 @@ describe('发布岗位页 Backend 选择器', () => {
     const 传入 = mock发布岗位.mock.calls[0][0];
     expect(传入.类别引用).toEqual({ id: 'job_be', display_name: '后端开发' });
     expect(传入.地点引用).toEqual({ id: 'loc_shanghai', display_name: '上海' });
+  });
+
+  // ── Task 6：发布成功后按服务端返回的真实 job_id 选中新岗 ────────────────────
+  it('Backend 发布成功：用响应的真实 job_id 派发 切当前岗位，再走既有导航', async () => {
+    mock发布岗位.mockResolvedValueOnce('job_new_9');
+    const { 用户 } = await 填到发布前(true);
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mock应用状态.派发)
+      .toHaveBeenCalledWith({ 型: '切当前岗位', 编号: 'job_new_9' }));
+    // 选中先于导航：进主壳时当前岗已经是新岗
+    const 切岗序 = mock应用状态.派发.mock.calls
+      .findIndex((调用: unknown[]) => (调用[0] as { 型: string }).型 === '切当前岗位');
+    const 切Tab序 = mock应用状态.派发.mock.calls
+      .findIndex((调用: unknown[]) => (调用[0] as { 型: string }).型 === '企业切Tab');
+    expect(切岗序).toBeGreaterThanOrEqual(0);
+    expect(切岗序).toBeLessThan(切Tab序);
+    expect(mock进企业主壳).toHaveBeenCalledTimes(1);
+    // 页面组装的 P-xx 占位绝不进选择
+    expect(mock应用状态.派发).not.toHaveBeenCalledWith(
+      expect.objectContaining({ 型: '切当前岗位', 编号: expect.stringMatching(/^P-/) }));
+  });
+
+  it('Backend 返回 null（未执行／已过时）：不选中、不提示成功、不导航', async () => {
+    mock发布岗位.mockResolvedValueOnce(null);
+    const { 用户 } = await 填到发布前(true);
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    expect(mock应用状态.派发).not.toHaveBeenCalledWith(
+      expect.objectContaining({ 型: '切当前岗位' }));
+    expect(mock进企业主壳).not.toHaveBeenCalled();
+    expect(screen.queryByText('岗位已发布')).toBeNull();
+  });
+
+  it('发布失败：保留旧选择，不导航，只给错误文案', async () => {
+    mock发布岗位.mockRejectedValueOnce(new Error('boom'));
+    const { 用户 } = await 填到发布前(true);
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    // 具体文案由 取后端错误文案 给；这里只钉「不宣称发布成功」
+    expect(screen.queryByText('岗位已发布')).toBeNull();
+    expect(mock应用状态.派发).not.toHaveBeenCalledWith(
+      expect.objectContaining({ 型: '切当前岗位' }));
+    expect(mock进企业主壳).not.toHaveBeenCalled();
+  });
+
+  it('响应回来前已卸载：迟到成功不抢选、不导航', async () => {
+    let 放行!: (值: string) => void;
+    mock发布岗位.mockReturnValueOnce(new Promise((ok) => { 放行 = ok; }));
+    const { 用户, unmount } = await 填到发布前(true);
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    unmount();
+    await act(async () => { 放行('job_new_9'); await Promise.resolve(); });
+    expect(mock应用状态.派发).not.toHaveBeenCalledWith(
+      expect.objectContaining({ 型: '切当前岗位' }));
+    expect(mock进企业主壳).not.toHaveBeenCalled();
+  });
+
+  it('响应回来前主体/角色已换：迟到成功不抢选、不导航', async () => {
+    let 放行!: (值: string) => void;
+    mock发布岗位.mockReturnValueOnce(new Promise((ok) => { 放行 = ok; }));
+    const { 用户, 视图 } = await 填到发布前(true);
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    mock应用状态.后端状态 = {
+      主体: { subject_id: 'sub_2', roles: [], last_used_role: 'recruiter' },
+    };
+    视图.rerender(
+      <MemoryRouter initialEntries={['/hr/post-job']}>
+        <Routes><Route path="/hr/post-job" element={<发布岗位 />} /></Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => { 放行('job_new_9'); await Promise.resolve(); });
+    expect(mock应用状态.派发).not.toHaveBeenCalledWith(
+      expect.objectContaining({ 型: '切当前岗位' }));
+    expect(mock进企业主壳).not.toHaveBeenCalled();
   });
 
   it('手输城市不选候选 → 发布被拦（操作.发布岗位 不调用）', async () => {

@@ -50,18 +50,24 @@ export function 创建岗位操作(deps: 后端操作依赖): 岗位操作 {
    *   其余原样抛出。
    * 不派发 Mock 岗位 action（发布岗位/停止招聘/重开岗位/删除岗位），不播种起步候选。
    */
-  async function 处理岗位写入错误(错误: unknown): Promise<never> {
+  /**
+   * @param 仍有效 发起时捕获的栅栏（发布路径传入）：过时的 401 不清新会话，
+   *   过时的 409/503 权威重读也不落进新主体的状态。其余调用方不传即恒有效（行为原样）。
+   */
+  async function 处理岗位写入错误(错误: unknown, 仍有效: () => boolean = () => true): Promise<never> {
     if (错误 instanceof BFF错误) {
       if (错误.status === 401) {
         // review-r3 R3-I-2：岗位 401 收口到 清账号状态，三个支持域 + 草稿一起清
         // （旧实现只清岗位，把简历/意向快照与意向草稿留给下一个登录）
-        清账号状态(账号清理依赖);
+        if (仍有效()) 清账号状态(账号清理依赖);
         throw 错误;
       }
-      if (错误.status === 409 || 错误.status === 503) {
+      if ((错误.status === 409 || 错误.status === 503) && 仍有效()) {
         const 快照 = await 后端!.读取岗位();
-        派发({ 型: '水合后端岗位', 快照 });
-        设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        if (仍有效()) {
+          派发({ 型: '水合后端岗位', 快照 });
+          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        }
       }
     }
     throw 错误;
@@ -71,21 +77,33 @@ export function 创建岗位操作(deps: 后端操作依赖): 岗位操作 {
     async 发布岗位(job) {
       if (!是后端 || !后端) {
         派发({ 型: '发布岗位', 岗: job });
-        return;
+        return null; // Mock 没有服务端 ID：调用方据此走原有 Mock 导航
       }
       const 键 = '岗位:new';
-      if (锁.current.has(键)) return;
+      if (锁.current.has(键)) return null; // 同操作已在飞：本次没执行，不是成功
       锁.current.add(键);
+      // 发起时刻捕获主体／角色／会话代际：结算时重新取当前值会让迟到成功冒充新主体
+      const 本次主体 = 主体标识引用.current;
+      const 本次角色 = 后端状态引用.current.主体?.last_used_role ?? null;
+      const 本次代际 = 会话代际.current;
+      const 仍有效 = () => 主体标识引用.current === 本次主体
+        && (后端状态引用.current.主体?.last_used_role ?? null) === 本次角色
+        && 会话代际.current === 本次代际;
       try {
         // Task 7：create 直接用 类别引用/地点引用 取 ID，不再按需取目录。
         // P1C Task 5：claim 只由 取发岗声明 从 Organization 权威事实推导，
         // 不再读 企业认证.公司 自由文本；附属数据（加分关键词/实习转正）由数据层
         // 用响应里的真实 job_id 写入；水合只派发服务端岗位列表，不派发 Mock 发布岗位。
         const 快照 = await 后端.创建岗位(job, 取发岗声明(状态引用.current));
+        // 迟到成功不污染新主体：只有捕获栅栏仍有效才水合并把真实 ID 交给页面
+        if (!仍有效()) return null;
         派发({ 型: '水合后端岗位', 快照 });
         设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
+        return 快照.创建岗位编号;
       } catch (错误) {
-        await 处理岗位写入错误(错误);
+        // 处理岗位写入错误 的返回类型是 never（恒抛）：这里显式 return 只为满足
+        // try/catch/finally 的控制流推导，运行时到不了。
+        return await 处理岗位写入错误(错误, 仍有效);
       } finally {
         锁.current.delete(键);
       }

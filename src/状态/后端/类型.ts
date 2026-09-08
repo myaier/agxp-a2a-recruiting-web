@@ -647,7 +647,12 @@ export interface 候选操作 {
 }
 
 export interface 岗位操作 {
-  发布岗位(job: 在招岗位): Promise<void>;
+  /**
+   * 发布岗位。Backend 成功且发起时捕获的主体／角色／会话代际仍有效时返回服务端
+   * 创建的真实 job_id；Mock 保持原派发并返回 null；因同一操作已在飞而没执行、
+   * 或结果已过时同样返回 null。失败原样抛出 —— 调用方绝不能把 null 当 Backend 成功。
+   */
+  发布岗位(job: 在招岗位): Promise<string | null>;
   更新岗位(job: 在招岗位): Promise<void>;
   归档岗位(id: string): Promise<void>;
   重开岗位(id: string): Promise<void>;

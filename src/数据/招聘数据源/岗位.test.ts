@@ -111,6 +111,86 @@ describe('岗位数据源 hard_requirements 校验', () => {
     expect(body.requirements).not.toBe(body.description);
   });
 
+  // ── Task 6：创建返回真实 job_id ────────────────────────────────────────────
+  const 新岗输入 = {
+    ...页面岗位样本,
+    编号: 'P-09', // 页面组装的占位编号：绝不能被当成创建结果
+    类别引用: { id: 'tax_product', display_name: '产品经理' },
+    地点引用: { id: 'loc_shanghai', display_name: '上海' },
+    职位描述: '负责真实后端整栈验收',
+    职位要求: '有分布式系统经验',
+    结构化要求已确认: true,
+  };
+  const 声明 = {
+    publisherMode: 'direct' as const,
+    hiringOrganizationClaim: { display_name: '星河科技', legal_name: null },
+  };
+
+  it('创建结果带 POST 响应的真实 job_id：与页面 P-xx 无关，也与重读数组位置无关', async () => {
+    // 重读列表里三个同名岗，新建那条排在中间：位置/名称都不能用来反推是哪一条
+    请求Mock.mockImplementation(async (options: { method?: string }) => {
+      if (options.method === 'POST') {
+        return { result: { ...BFF岗位样本, job_id: 'job_new_9' }, etag: null, requestId: 'r-create' };
+      }
+      return {
+        result: {
+          jobs: [
+            { ...BFF岗位样本, job_id: 'job_old_1' },
+            { ...BFF岗位样本, job_id: 'job_new_9' },
+            { ...BFF岗位样本, job_id: 'job_old_2' },
+          ],
+          next_cursor: null,
+        },
+        etag: null, requestId: 'r-jobs',
+      };
+    });
+    const 结果 = await 数据源.创建岗位(新岗输入, 声明);
+    expect(结果.创建岗位编号).toBe('job_new_9');
+    expect(结果.创建岗位编号).not.toBe('P-09');
+    expect(Object.keys(结果.服务端)).toHaveLength(3);
+  });
+
+  it('权威重读没包含这个新岗：仍原样返回创建 ID，不静默换成别的岗位', async () => {
+    请求Mock.mockImplementation(async (options: { method?: string }) => {
+      if (options.method === 'POST') {
+        return { result: { ...BFF岗位样本, job_id: 'job_new_9' }, etag: null, requestId: 'r-create' };
+      }
+      return {
+        result: { jobs: [{ ...BFF岗位样本, job_id: 'job_old_1' }], next_cursor: null },
+        etag: null, requestId: 'r-jobs',
+      };
+    });
+    const 结果 = await 数据源.创建岗位(新岗输入, 声明);
+    expect(结果.创建岗位编号).toBe('job_new_9');
+    expect(结果.服务端.job_new_9).toBeUndefined();
+  });
+
+  it('job_id 空白 / 缺失 / 非字符串都是 invalid_response，且校验先于写附属', async () => {
+    for (const 坏值 of ['', '   ', undefined, 42]) {
+      请求Mock.mockReset();
+      请求Mock.mockImplementation(async (options: { method?: string }) => {
+        if (options.method === 'POST') {
+          return { result: { ...BFF岗位样本, job_id: 坏值 }, etag: null, requestId: 'r-create' };
+        }
+        return { result: { jobs: [], next_cursor: null }, etag: null, requestId: 'r-jobs' };
+      });
+      await expect(数据源.创建岗位(新岗输入, 声明))
+        .rejects.toMatchObject({ status: 200, code: 'invalid_response' });
+      // 校验先于写附属与重读：POST 之后不再发任何请求
+      expect(请求Mock.mock.calls.filter((调用) => 调用[0].method !== 'POST')).toHaveLength(0);
+    }
+  });
+
+  it('POST 成功但权威重读失败：错误原样抛出，不合成任何创建结果', async () => {
+    请求Mock.mockImplementation(async (options: { method?: string }) => {
+      if (options.method === 'POST') {
+        return { result: { ...BFF岗位样本, job_id: 'job_new_9' }, etag: null, requestId: 'r-create' };
+      }
+      throw new Error('列表读失败');
+    });
+    await expect(数据源.创建岗位(新岗输入, 声明)).rejects.toThrow('列表读失败');
+  });
+
   it('职位要求为空白时 创建岗位 在发请求前就拒绝', async () => {
     请求Mock.mockImplementation(async () => {
       throw new Error('不应该发出任何请求');
