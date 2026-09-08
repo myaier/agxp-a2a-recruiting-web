@@ -50,4 +50,11 @@
 - 第 2 轮（候选 `459c714`）：reviewer 独立复核（`git grep` 排除冻结历史文档 0 命中、本地报告 0 命中、修复无夹带、证据链无损失），两条修复成立、无新事实、无重开项。reviewer 报告以「无发现」实质收尾（形式与字面 `NO FINDINGS` 的差异由接收方记录并采纳，不影响实质结论）。
 - 无未解决的 required finding；review 循环结束（2/3 轮）。
 
-**Final gate 方案**（详见与用户的确认记录；未获确认前未 fetch/merge/push）。
+**Final gate（已获用户确认并执行）**
+
+- 获批方案：合并 `origin/main` + 合并结果上增量重算 V1–V4 + 确认 target 未变 + 普通 fast-forward push。
+- `final_target_base = 39be46fef7e8fe3a56078f1117089fb72c3a139f`（fetch 实测两次一致，无 target race）。
+- 合并 `7c9bae9`：merge-tree 预检与实际合并均 0 冲突（main 领先 23 个产品提交，与本次改动文件交集为零）。
+- 合并结果增量验证：V1 静态核对 PASS；V2 build PASS（43.4s）；V3 3 文件 11 用例 PASS；V4a/b/c = 10/100/18，与规划基线一致（main 未新增 Playwright 用例，无数字漂移需解释）。
+- 合入：`39be46f..7c9bae9 HEAD -> main`，普通 fast-forward push 成功，未 force。
+- 未完成责任（随合入移交）：B02/H01×2/H04 真实演练 BLOCKED 于 Hub acceptance 腿的 rootless 结构性冲突，三候选方案待后端 owner 裁决后从 converge 步骤续跑；monorepo 内 7 个文件的兼容修改未提交，待 owner 审阅合入。
