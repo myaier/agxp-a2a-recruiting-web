@@ -44,4 +44,10 @@
 
 ## Peer review 与 final gate
 
-见本文档末尾追记（review 轮次、finding 裁决、final gate 方案与用户确认后补记）。
+**Peer review（Claude reviewer，只读，2 轮结束）**
+
+- 第 1 轮（候选 `f2dcbbe`）：F1 `契约违反`/Minor/required——实施记录把一次登录 OTP 字面量与 fixture 手机号写入受版本控制文件，违反 Spec §7 无条件证据卫生规则（该值为固定 mock 码、仅作用公开测试号，无实际泄露）。裁决：接受；提交 `459c714` 删除字面量并同步清理本地 report.md（不重写历史）。F2 `真实缺陷`/Minor/optional——模板 §11 摘要命名固定「-migration」后缀，泛化为 `<主题>`。裁决：接受，同提交修复。
+- 第 2 轮（候选 `459c714`）：reviewer 独立复核（`git grep` 排除冻结历史文档 0 命中、本地报告 0 命中、修复无夹带、证据链无损失），两条修复成立、无新事实、无重开项。reviewer 报告以「无发现」实质收尾（形式与字面 `NO FINDINGS` 的差异由接收方记录并采纳，不影响实质结论）。
+- 无未解决的 required finding；review 循环结束（2/3 轮）。
+
+**Final gate 方案**（详见与用户的确认记录；未获确认前未 fetch/merge/push）。
