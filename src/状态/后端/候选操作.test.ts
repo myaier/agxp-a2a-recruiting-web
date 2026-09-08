@@ -8,7 +8,9 @@ import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误 } from '../../数据/HTTP客户端';
 import { 初始状态 } from '../初始状态';
 import { BFF简历样本 } from '../../测试/BFF样本';
-import type { 后端操作依赖, 后端状态, 候选操作, 候选预填恢复存储 } from './类型';
+import type {
+  后端操作依赖, 后端状态, 候选操作, 候选预填恢复存储, 提交候选意向快照输入,
+} from './类型';
 import { 创建候选操作 } from './候选操作';
 
 function 创建场景() {
@@ -16,6 +18,10 @@ function 创建场景() {
     读取简历: vi.fn(),
     保存简历: vi.fn(),
     读取候选账号档案: vi.fn(),
+    读取意向: vi.fn(),
+    创建意向: vi.fn(),
+    更新意向: vi.fn(),
+    删除意向: vi.fn(),
     替换候选头像: vi.fn(),
     删除候选头像: vi.fn(),
     清空目录缓存: vi.fn(),
@@ -49,6 +55,13 @@ function 创建场景() {
     主体标识引用: { current: 'sub_1' as string | null },
     会话代际: { current: 1 },
     读取恢复企业关系编号: vi.fn(() => null),
+    // Provider 回调的测试替身：同样先过捕获栅栏，再派发 + 同步权威意向快照。
+    提交候选意向快照: vi.fn((input: 提交候选意向快照输入) => {
+      if (deps.主体标识引用.current !== input.subjectId) return;
+      if (deps.会话代际.current !== input.sessionGeneration) return;
+      deps.派发({ 型: '水合后端意向', 快照: input.快照, 恢复编号: null });
+      设后端状态((旧) => ({ ...旧, 意向快照: input.快照.服务端 }));
+    }),
     候选预填代际,
     候选预填读取锁,
     候选预填恢复,
@@ -57,6 +70,7 @@ function 创建场景() {
   return {
     后端, 操作, 派发: deps.派发, 后端状态引用, 状态引用: deps.状态引用,
     候选预填代际, 候选预填读取锁, 候选预填恢复存储,
+    deps, 提交候选意向快照: deps.提交候选意向快照,
   };
 }
 
@@ -201,5 +215,76 @@ describe('创建候选操作 · 空身份草稿保留（M）', () => {
     const 动作们 = (场景.派发.mock.calls as { 型: string }[][]).map(([a]) => a.型);
     expect(动作们).toContain('水合后端简历');
     expect(动作们).not.toContain('存简历');
+  });
+});
+
+// ── Task 2：意向写操作的权威快照必须经统一提交口，并带发起时刻捕获的主体/代际 ──
+// 直接 派发 水合后端意向 会绕过持久化写屏障（选择改了却写不进会话缓存），
+// 结算时重新取当前主体则会让迟到结果冒充新主体的 owner。
+describe('创建候选操作 · 意向写经 提交候选意向快照', () => {
+  const 意向快照 = (编号们: string[]) => ({
+    列表: 编号们.map((编号) => ({ 编号, 标题: '[上海] 产品经理', 说明: '' })),
+    服务端: Object.fromEntries(
+      编号们.map((编号) => [编号, { intention_id: 编号, status: 'active' }]),
+    ),
+  });
+
+  const 草稿 = { 编辑编号: null } as unknown as Parameters<候选操作['保存意向']>[0];
+
+  it('创建意向成功：经提交口传入权威快照与捕获的主体/代际，不直接派发', async () => {
+    const 场景 = 创建场景();
+    const 快照 = 意向快照(['int_sh', 'int_bj']);
+    场景.后端.创建意向.mockResolvedValue(快照);
+    await 场景.操作.保存意向(草稿);
+    expect(场景.提交候选意向快照).toHaveBeenCalledWith({
+      快照, subjectId: 'sub_1', sessionGeneration: 1,
+    });
+    // 写操作重读绝不带恢复偏好：恢复只属于首次角色水合
+    expect(场景.提交候选意向快照.mock.calls[0][0].恢复选择).toBeUndefined();
+  });
+
+  it('删除意向成功同样经提交口', async () => {
+    const 场景 = 创建场景();
+    场景.后端状态引用.current = {
+      ...场景.后端状态引用.current,
+      意向快照: { int_bj: { intention_id: 'int_bj', revision: 3 } },
+    } as never;
+    const 快照 = 意向快照(['int_sh']);
+    场景.后端.删除意向.mockResolvedValue(快照);
+    await 场景.操作.删除意向('int_bj');
+    expect(场景.提交候选意向快照).toHaveBeenCalledWith({
+      快照, subjectId: 'sub_1', sessionGeneration: 1,
+    });
+  });
+
+  it('409 版本冲突的权威重读也经提交口，主体/代际仍取发起时刻的值', async () => {
+    const 场景 = 创建场景();
+    const 快照 = 意向快照(['int_sh']);
+    场景.后端.创建意向.mockRejectedValue(new BFF错误(409, 'version_conflict', 'conflict'));
+    场景.后端.读取意向.mockResolvedValue(快照);
+    await expect(场景.操作.保存意向(草稿)).rejects.toBeInstanceOf(BFF错误);
+    expect(场景.提交候选意向快照).toHaveBeenCalledWith({
+      快照, subjectId: 'sub_1', sessionGeneration: 1,
+    });
+  });
+
+  it('写在途换主体：迟到的成功快照被提交口的栅栏丢弃，不落进新主体', async () => {
+    const 场景 = 创建场景();
+    const 快照 = 意向快照(['int_sh']);
+    let 放行!: () => void;
+    场景.后端.创建意向.mockReturnValue(new Promise((ok) => {
+      放行 = () => ok(快照);
+    }));
+    const 写 = 场景.操作.保存意向(草稿);
+    // 请求在途时用户换了账号
+    场景.deps.主体标识引用.current = 'sub_2';
+    放行();
+    await 写;
+    // 提交口仍被调用（带旧主体），但栅栏拦下：新主体的意向状态不被污染
+    expect(场景.提交候选意向快照).toHaveBeenCalledWith({
+      快照, subjectId: 'sub_1', sessionGeneration: 1,
+    });
+    const 动作们 = (场景.派发.mock.calls as { 型: string }[][]).map(([a]) => a.型);
+    expect(动作们).not.toContain('水合后端意向');
   });
 });

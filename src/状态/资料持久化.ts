@@ -1,8 +1,9 @@
 // Provider 的浏览器存储副作用。
 // 快照如何验证/命名归数据层，这里只把 React 状态与当前账号仓同步。
 
-import { useEffect, useMemo, useRef, useState, type Dispatch } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type RefObject } from 'react';
 import type { 后端环境 } from '../配置/运行配置';
+import type { BFFOwnerIntention } from '../数据/BFF契约';
 import {
   账号存储键,
   写资料缓存,
@@ -26,9 +27,18 @@ interface 资料持久化参数 {
   当前主体标识: string | null;
   /** Task 4：candidate 角色下的 subject_id；recruiter / 未登录 / Mock 恒 null。 */
   当前候选主体标识: string | null;
+  /** Task 2：Provider 记录的候选意向写屏障（最近一次被接纳的权威快照的主体/代际/对象引用）。 */
+  已接纳候选意向: RefObject<{
+    subjectId: string;
+    sessionGeneration: number;
+    服务端: Record<string, BFFOwnerIntention>;
+  } | null>;
+  会话代际: RefObject<number>;
 }
 
-export function use资料持久化({ 状态, 派发, 是后端, 环境, 当前主体标识, 当前候选主体标识 }: 资料持久化参数): void {
+export function use资料持久化({
+  状态, 派发, 是后端, 环境, 当前主体标识, 当前候选主体标识, 已接纳候选意向, 会话代际,
+}: 资料持久化参数): void {
   const 本地存储 = 安全取存储('local');
   const 会话存储 = 安全取存储('session');
   const Mock范围 = useMemo(() => 演示范围(环境), [环境]);
@@ -99,6 +109,17 @@ export function use资料持久化({ 状态, 派发, 是后端, 环境, 当前�
     // P1C 白名单：Backend 只持久化 服务端尚未接管 的键（含可恢复的组织选择）；
     // 企业认证/招聘头像/公司LOGO/公司自述 已被服务端事实取代，只允许 Mock 路径读写。
     // profile、affiliation 列表、Organization DTO、申请材料、public cache、token 一律不落盘。
+    // 候选选择写屏障：只有当前 candidate 主体、会话代际一致，且 reducer 里的
+    // 后端意向服务端 已经是 Provider 接纳的那个对象时，状态.当前意向编号 才是权威结论。
+    // 屏障关闭时保留缓存里已有的字段 —— 整份重写不能把 recruiter / 未就绪阶段的
+    // 候选选择顺手抹掉，也不能拿初始 null 冒充「服务端返回空列表」。
+    const 屏障 = 已接纳候选意向.current;
+    const 可写候选选择 = 是后端
+      && 当前候选主体标识 !== null
+      && 屏障 !== null
+      && 屏障.subjectId === 当前候选主体标识
+      && 屏障.sessionGeneration === 会话代际.current
+      && 屏障.服务端 === 状态.后端意向服务端;
     const 快照: Partial<资料缓存快照> = 是后端
       ? {
           当前企业关系编号: 状态.当前企业关系编号,
@@ -106,6 +127,9 @@ export function use资料持久化({ 状态, 派发, 是后端, 环境, 当前�
           求职头像: 状态.求职头像,
           飞书已接入: 状态.飞书已接入,
           企业飞书已接入: 状态.企业飞书已接入,
+          当前意向编号: 可写候选选择
+            ? 状态.当前意向编号
+            : 读资料缓存(会话存储, 范围).当前意向编号,
         }
       : {
           公司自述: 状态.公司自述, 企业认证: 状态.企业认证, 招聘头像: 状态.招聘头像,
@@ -137,6 +161,11 @@ export function use资料持久化({ 状态, 派发, 是后端, 环境, 当前�
     状态.全局规则,
     状态.意向级规则,
     状态.企业规则,
+    当前候选主体标识,
+    已接纳候选意向,
+    会话代际,
+    状态.当前意向编号,
+    状态.后端意向服务端,
   ]);
 
   // ── Task 4：候选 onboarding 草稿（Backend + candidate + subject 三重范围的 sessionStorage）──

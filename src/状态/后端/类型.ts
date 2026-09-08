@@ -32,7 +32,7 @@ import type {
   BFFAgent设置,
   BFFAgent设置补丁,
 } from '../../数据/BFF契约';
-import type { 页面简历写入, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
+import type { 页面简历写入, 页面意向快照, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
 import type { P5列表项, P5详情, MatchCaseSummary } from '../../数据/招聘数据源/MatchCase';
 import type { 接触事件 } from '../../数据/招聘数据源/接触记录';
@@ -457,6 +457,17 @@ export function 创建空候选预填状态(generation = 0): 候选预填状态 
 
 export type 可变引用<T> = { current: T };
 
+/** 候选权威意向快照的提交输入（Provider 实现回调，各域按捕获栅栏调用）。 */
+export interface 提交候选意向快照输入 {
+  快照: 页面意向快照;
+  /** 请求发起时捕获的主体，不能在结算时重新取当前主体冒充 owner */
+  subjectId: string;
+  /** 请求发起时捕获的会话代际 */
+  sessionGeneration: number;
+  /** 只有候选首次角色水合为 true：允许会话缓存里的选择偏好参与本次选择 */
+  恢复选择?: boolean;
+}
+
 export interface 后端操作依赖 {
   是后端: boolean;
   后端: HTTP招聘数据源 | null;
@@ -473,6 +484,14 @@ export interface 后端操作依赖 {
    * 只作为 选择当前企业关系(affiliations, restoredId) 的输入；读取本身不派发选择 action。
    */
   读取恢复企业关系编号: (subjectId: string) => string | null;
+  /**
+   * 候选权威意向快照的统一提交口：Provider 校验捕获主体／会话代际仍有效后，
+   * 派发 水合后端意向 并同步 后端状态.意向快照，同时记录持久化写屏障。
+   * 首次角色水合传 恢复选择: true，才允许 subject-scoped sessionStorage 里的
+   * 选择偏好参与选择；写操作重读一律不传。可选只为既有测试依赖桩的编译兼容，
+   * 消费方在工厂／水合入口显式收窄，缺回调即接线缺陷。
+   */
+  提交候选意向快照?: (input: 提交候选意向快照输入) => void;
   /**
    * P4 Task 3：discovery 运行时引用 —— scope 代际 / pending 幂等意图 / 双端可见范围。
    * Provider 恒一次性初始化并传入；可选成员只为既有 测试依赖桩 与 清账号状态 子集调用方的

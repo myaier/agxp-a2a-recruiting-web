@@ -42,7 +42,8 @@ import 适配环 from '../组件/适配环';
 import 确认层 from '../组件/确认层';
 import 附件简历选择层, { 从附件行取选择值, type 附件简历选择值 } from '../组件/附件简历选择层';
 import { 谈判图标, 放大镜图标 } from '../组件/图标';
-import { use应用状态, 取意向名 } from '../状态/应用状态';
+import { use应用状态 } from '../状态/应用状态';
+import { 取有效当前意向编号 } from '../状态/领域/候选资料';
 import { use适配分 } from '../状态/use适配分';
 import { use导航, 标记看市场来路 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -91,10 +92,8 @@ export default function 看市场() {
   // Backend 的 scope 坐标 = 当前意向编号 载体（水合后端意向 / Backend 切意向 写入的
   // intention_id）；当前意向 本身仍是意向名（Mock 语义不动，名字不唯一不可反查）。
   // 只有服务端 active 的编号才 admits 进市场流，否则不发任何 P4 请求（宁空勿错）。
-  const 意向编号 = 状态.当前意向编号 ?? null;
-  const 活跃意向 = 是后端 && 意向编号 !== null &&
-      状态.后端意向服务端?.[意向编号]?.status === 'active'
-    ? 意向编号
+  const 活跃意向 = 是后端
+    ? 取有效当前意向编号(状态.当前意向编号, 状态.求职意向表, 状态.后端意向服务端)
     : null;
   // 只选当前意向自己的快照：键按意向隔离，切换时旧 scope 的数据天然进不来
   const 后端快照 = 活跃意向 !== null ? 后端状态.候选岗位推荐?.[活跃意向] : undefined;
@@ -316,10 +315,10 @@ export default function 看市场() {
   // （与「在谈」子视图逐字同口径）。看市场只消费已在内存的快照：不注册 P5 scope、
   // 不发任何 P5 请求 —— 直达没有快照时与在谈首载同口径显示「正在读入在谈职位…」，
   // 绝不拿 legacy 在谈列表 冒充待办数。
+  // 横幅 scope 与 P4 列表、在谈首页共用同一个有效当前 ID（不按意向名反查）
   const 在谈范围档 = 状态.在谈范围;
-  const 横幅意向条 = 状态.求职意向表.find((条) => 取意向名(条.标题) === 状态.当前意向);
-  const 横幅filterRef = 在谈范围档 === '全部' ? null : (横幅意向条?.编号 ?? null);
-  const 有横幅scope = 横幅意向条 !== undefined || 在谈范围档 === '全部';
+  const 横幅filterRef = 在谈范围档 === '全部' ? null : 活跃意向;
+  const 有横幅scope = 活跃意向 !== null || 在谈范围档 === '全部';
   const 横幅快照 = 有横幅scope
     ? 后端状态.P5工作区?.[P5范围键.open('candidate', 横幅filterRef)]
     : undefined;

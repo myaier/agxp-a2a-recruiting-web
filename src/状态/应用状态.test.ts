@@ -38,7 +38,7 @@ import type { HTTP招聘数据源 } from '../数据/HTTP招聘数据源';
 import type { 页面简历快照, 页面简历写入, 页面意向快照, 页面岗位快照 } from '../数据/招聘数据源类型';
 import type { 规则 } from '../数据/类型';
 import { 从BFF简历 } from '../数据/后端映射';
-import { 候选引导草稿键, 写候选引导草稿, type 候选引导草稿快照 } from '../数据/资料缓存';
+import { 候选引导草稿键, 写候选引导草稿, 资料缓存键, type 候选引导草稿快照 } from '../数据/资料缓存';
 
 beforeEach(() => {
   try {
@@ -2326,6 +2326,85 @@ describe('当前意向编号 · Backend 意向编号载体', () => {
     expect(点第二条.当前意向编号).toBe('int_2');
   });
 
+  it('恢复编号 只在没有仍有效的旧选择时参与：旧选择优先，恢复值不抢占', () => {
+    const 快照 = 列表与快照([
+      { 编号: 'int_sh', active: true },
+      { 编号: 'int_bj', active: true },
+    ]);
+    const 已选第一条 = 归约(
+      归约(初始状态, { 型: '水合后端意向', 快照 }),
+      { 型: '切意向', 意向: '产品经理', 编号: 'int_sh' },
+    );
+    const 重水合 = 归约(已选第一条, { 型: '水合后端意向', 快照, 恢复编号: 'int_bj' });
+    expect(重水合.当前意向编号).toBe('int_sh');
+  });
+
+  it('首次水合带恢复编号：校验通过就落它，不落列表第一条', () => {
+    const 快照 = 列表与快照([
+      { 编号: 'int_sh', active: true },
+      { 编号: 'int_bj', active: true },
+    ]);
+    const 水合后 = 归约(初始状态, { 型: '水合后端意向', 快照, 恢复编号: 'int_bj' });
+    expect(水合后.当前意向编号).toBe('int_bj');
+  });
+
+  it('恢复编号 已归档 / 不在列表 / 为 null 时回退第一条 active；空表清空', () => {
+    const 快照 = 列表与快照([
+      { 编号: 'int_sh', active: true },
+      { 编号: 'int_bj', active: false },
+    ]);
+    expect(归约(初始状态, { 型: '水合后端意向', 快照, 恢复编号: 'int_bj' }).当前意向编号)
+      .toBe('int_sh');
+    expect(归约(初始状态, { 型: '水合后端意向', 快照, 恢复编号: 'int_别人的' }).当前意向编号)
+      .toBe('int_sh');
+    expect(归约(初始状态, { 型: '水合后端意向', 快照, 恢复编号: null }).当前意向编号)
+      .toBe('int_sh');
+    const 空表 = 归约(初始状态, {
+      型: '水合后端意向', 快照: { 列表: [], 服务端: {} }, 恢复编号: 'int_bj',
+    });
+    expect(空表.当前意向编号).toBeNull();
+    expect(空表.当前意向).toBe('');
+  });
+
+  it('服务端字典有 active 但页面列表里没有那条时该编号无效，不当当前坐标', () => {
+    const 服务端 = {
+      int_sh: { ...BFF意向样本, intention_id: 'int_sh', status: 'active' as const },
+      int_幽灵: { ...BFF意向样本, intention_id: 'int_幽灵', status: 'active' as const },
+    };
+    const 快照 = { 列表: [{ 编号: 'int_sh', 标题: '[上海] 产品经理', 说明: '' }], 服务端 };
+    // 恢复偏好指向一条服务端有、页面列表没有的意向：不能被当成有效选择
+    expect(归约(初始状态, { 型: '水合后端意向', 快照, 恢复编号: 'int_幽灵' }).当前意向编号)
+      .toBe('int_sh');
+  });
+
+  it('没有任何 active 时展示名一并归空，绝不留名称兜底', () => {
+    const 先有 = 归约(初始状态, {
+      型: '水合后端意向',
+      快照: 列表与快照([{ 编号: 'int_sh', active: true }]),
+    });
+    expect(先有.当前意向).toBe('产品经理');
+    const 全归档 = 归约(先有, {
+      型: '水合后端意向',
+      快照: 列表与快照([{ 编号: 'int_sh', active: false }]),
+    });
+    expect(全归档.当前意向编号).toBeNull();
+    // 旧实现会用 选新当前意向 把名字留在表头，与 null 载体不同源
+    expect(全归档.当前意向).toBe('');
+  });
+
+  it('水合账号资料 丢弃缓存里的候选选择：只能经权威水合的 恢复编号 落地', () => {
+    const 已选 = 归约(
+      归约(初始状态, { 型: '水合后端意向', 快照: 列表与快照([{ 编号: 'int_sh', active: true }]) }),
+      { 型: '切意向', 意向: '产品经理', 编号: 'int_sh' },
+    );
+    const 水合后 = 归约(已选, {
+      型: '水合账号资料',
+      范围键: 'k',
+      快照: { 当前意向编号: 'int_缓存里的', 求职头像: null },
+    });
+    expect(水合后.当前意向编号).toBe('int_sh');
+  });
+
   it('Mock 路径不带编号：切意向后载体归 null，Mock 行为原样', () => {
     const 先水合 = 归约(初始状态, {
       型: '水合后端意向',
@@ -2336,6 +2415,147 @@ describe('当前意向编号 · Backend 意向编号载体', () => {
     const 切回 = 归约(先水合, { 型: '切意向', 意向: '产品经理' });
     expect(切回.当前意向).toBe('产品经理');
     expect(切回.当前意向编号).toBeNull();
+  });
+});
+
+// ── Task 2：候选当前意向选择的会话恢复（sessionStorage → 权威校验 → 落状态）──
+// 这里测的是「同一标签页 Provider 完整卸载重建」的刷新口径，不是内存里再水合一次。
+describe('应用状态提供者 候选当前意向的会话恢复', () => {
+  const 两条同名 = {
+    列表: [
+      { 编号: 'int_sh', 标题: '[上海] 产品经理', 说明: '20-35K' },
+      { 编号: 'int_bj', 标题: '[北京] 产品经理', 说明: '25-40K' },
+    ],
+    服务端: {
+      int_sh: { ...BFF意向样本, intention_id: 'int_sh', status: 'active' as const },
+      int_bj: { ...BFF意向样本, intention_id: 'int_bj', status: 'active' as const },
+    },
+  };
+
+  const 资料键 = (账号: string, 环境: 'stg' | 'local' = 'stg') =>
+    资料缓存键({ 模式: 'backend', 环境, 账号 });
+
+  const 种缓存 = (账号: string, 编号: string | null, 环境: 'stg' | 'local' = 'stg') => {
+    globalThis.sessionStorage.setItem(资料键(账号, 环境), JSON.stringify({ 当前意向编号: 编号 }));
+  };
+
+  const 读缓存意向 = (账号: string, 环境: 'stg' | 'local' = 'stg') => {
+    const 原文 = globalThis.sessionStorage.getItem(资料键(账号, 环境));
+    return 原文 === null ? undefined : (JSON.parse(原文) as { 当前意向编号?: string | null }).当前意向编号;
+  };
+
+  function 挂载(后端: ReturnType<typeof 创建后端桩>, 环境: 'stg' | 'local' = 'stg') {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 探针() { 当前 = use应用状态(); return null; }
+    const 视图 = render(createElement(
+      应用状态提供者,
+      { 数据源: { 模式: 'backend', 后端环境: 环境, 后端: 后端 as unknown as HTTP招聘数据源 } },
+      createElement(探针),
+    ));
+    return { 视图, 取当前: () => 当前 };
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null), setItem: vi.fn(), removeItem: vi.fn(), clear: vi.fn(),
+    });
+  });
+
+  it('权威水合前不落任何当前 ID（零 scope 请求），缓存里的 int_bj 也不被覆盖', async () => {
+    种缓存(BFF主体样本.subject_id, 'int_bj');
+    const 后端 = 创建后端桩('candidate');
+    const 门 = deferred<页面意向快照>();
+    vi.mocked(后端.读取意向).mockReturnValue(门.promise);
+    const { 取当前 } = 挂载(后端);
+    await waitFor(() => expect(后端.读取意向).toHaveBeenCalled());
+    // 水合尚未结算：当前 ID 仍是 null —— 页面据此零 P4 / 零「当前」P5 请求
+    expect(取当前().状态.当前意向编号).toBeNull();
+    // 初始 null 不得被当成权威空列表写回缓存
+    expect(读缓存意向(BFF主体样本.subject_id)).toBe('int_bj');
+    await act(async () => { 门.resolve(两条同名); await 门.promise; });
+    await waitFor(() => expect(取当前().状态.当前意向编号).toBe('int_bj'));
+    expect(取当前().状态.当前意向).toBe('产品经理');
+  });
+
+  it('完整卸载重建后仍是第二条：选择经缓存 → 权威校验落回同一条', async () => {
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取意向).mockResolvedValue(两条同名);
+    const 首次 = 挂载(后端);
+    await waitFor(() => expect(首次.取当前().后端状态.初始化).toBe('完成'));
+    // 首载没有偏好 → 落列表第一条
+    expect(首次.取当前().状态.当前意向编号).toBe('int_sh');
+    act(() => { 首次.取当前().派发({ 型: '切意向', 意向: '产品经理', 编号: 'int_bj' }); });
+    await waitFor(() => expect(读缓存意向(BFF主体样本.subject_id)).toBe('int_bj'));
+    首次.视图.unmount();
+
+    const 重建 = 挂载(后端);
+    await waitFor(() => expect(重建.取当前().状态.当前意向编号).toBe('int_bj'));
+  });
+
+  it('恢复 ID 已归档：回退首个有效项并把偏好更新成回退结果', async () => {
+    种缓存(BFF主体样本.subject_id, 'int_bj');
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取意向).mockResolvedValue({
+      列表: 两条同名.列表,
+      服务端: {
+        int_sh: 两条同名.服务端.int_sh,
+        int_bj: { ...两条同名.服务端.int_bj, status: 'archived' as const },
+      },
+    });
+    const { 取当前 } = 挂载(后端);
+    await waitFor(() => expect(取当前().状态.当前意向编号).toBe('int_sh'));
+    await waitFor(() => expect(读缓存意向(BFF主体样本.subject_id)).toBe('int_sh'));
+  });
+
+  it('权威空列表：清空选择并把 null 写回缓存', async () => {
+    种缓存(BFF主体样本.subject_id, 'int_bj');
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取意向).mockResolvedValue({ 列表: [], 服务端: {} });
+    const { 取当前 } = 挂载(后端);
+    await waitFor(() => expect(取当前().后端状态.初始化).toBe('完成'));
+    expect(取当前().状态.当前意向编号).toBeNull();
+    await waitFor(() => expect(读缓存意向(BFF主体样本.subject_id)).toBeNull());
+  });
+
+  it('水合失败：不落任何当前 ID，也不把缓存偏好当成服务端成功结果抹掉', async () => {
+    种缓存(BFF主体样本.subject_id, 'int_bj');
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取意向).mockRejectedValue(new Error('network'));
+    const { 取当前 } = 挂载(后端);
+    await waitFor(() => expect(取当前().后端状态.初始化).toBe('完成'));
+    expect(取当前().状态.当前意向编号).toBeNull();
+    expect(读缓存意向(BFF主体样本.subject_id)).toBe('int_bj');
+  });
+
+  it('recruiter 角色不读也不写候选选择：别人的偏好原样留在自己的键里', async () => {
+    种缓存(BFF主体样本.subject_id, 'int_bj');
+    const 后端 = 创建后端桩('recruiter');
+    const { 取当前 } = 挂载(后端);
+    await waitFor(() => expect(取当前().后端状态.初始化).toBe('完成'));
+    expect(取当前().状态.当前意向编号).toBeNull();
+    expect(读缓存意向(BFF主体样本.subject_id)).toBe('int_bj');
+    expect(后端.读取意向).not.toHaveBeenCalled();
+  });
+
+  it('主体与环境隔离：别的 subject / 别的环境的偏好不会被读进来', async () => {
+    种缓存('sub_别人', 'int_bj');
+    种缓存(BFF主体样本.subject_id, 'int_bj', 'local');
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取意向).mockResolvedValue(两条同名);
+    const { 取当前 } = 挂载(后端, 'stg');
+    await waitFor(() => expect(取当前().后端状态.初始化).toBe('完成'));
+    // 本主体 stg 键里没有偏好 → 落第一条，绝不借用别人的 int_bj
+    expect(取当前().状态.当前意向编号).toBe('int_sh');
+    expect(读缓存意向('sub_别人')).toBe('int_bj');
+    expect(读缓存意向(BFF主体样本.subject_id, 'local')).toBe('int_bj');
+  });
+
+  it('存储损坏不中断页面：按服务端有效选择工作，刷新记忆能力降级', async () => {
+    globalThis.sessionStorage.setItem(资料键(BFF主体样本.subject_id), '{不是 JSON');
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取意向).mockResolvedValue(两条同名);
+    const { 取当前 } = 挂载(后端);
+    await waitFor(() => expect(取当前().状态.当前意向编号).toBe('int_sh'));
   });
 });
 

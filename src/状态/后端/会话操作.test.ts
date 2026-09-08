@@ -30,7 +30,7 @@ import { 归约 } from '../应用状态';
 import { 创建空P4发现状态 } from './发现推荐操作';
 import type {
   后端操作依赖, 后端状态, 候选预填恢复存储, 候选预填状态, 候选预填运行时引用,
-  P4运行时引用, P7运行时引用, P8运行时引用,
+  提交候选意向快照输入, P4运行时引用, P7运行时引用, P8运行时引用,
 } from './类型';
 import { 创建空候选预填状态 } from './类型';
 import { 创建会话操作, 清账号状态, 水合角色数据 } from './会话操作';
@@ -88,6 +88,19 @@ function 创建会话测试依赖(后端: HTTP招聘数据源) {
     主体标识引用: { current: null as string | null },
     会话代际: { current: 0 },
     读取恢复企业关系编号: vi.fn(() => null),
+    // Provider 回调的测试替身：同样先过捕获栅栏，再派发 + 同步权威意向快照。
+    // 恢复编号 由本桩按 恢复选择 从注入的 恢复候选意向编号 取（默认无偏好）。
+    恢复候选意向编号: null as string | null,
+    提交候选意向快照: (input: 提交候选意向快照输入) => {
+      if (deps.主体标识引用.current !== input.subjectId) return;
+      if (deps.会话代际.current !== input.sessionGeneration) return;
+      派发({
+        型: '水合后端意向',
+        快照: input.快照,
+        恢复编号: input.恢复选择 === true ? deps.恢复候选意向编号 : null,
+      });
+      deps.设后端状态((旧: 后端状态) => ({ ...旧, 意向快照: input.快照.服务端 }));
+    },
   };
   return { deps, 动作流 };
 }
@@ -216,6 +229,42 @@ describe('P3 候选隐私水合与清理', () => {
     await expect(水合角色数据(deps, candidate主体, false, 1)).resolves.toBe(false);
     expect(deps.派发).toHaveBeenCalledWith({ 型: '水合后端隐私', 快照: 隐私页面样本2 });
     expect(deps.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '水合后端简历' }));
+  });
+
+  // Task 2：候选首次角色水合是唯一允许「会话缓存里的选择偏好参与选择」的时机；
+  // 意向读取失败时不得打开该口子（缓存偏好不是服务端成功结果）。
+  it('候选角色水合经统一提交口提交意向快照，并带 恢复选择: true', async () => {
+    const 快照 = {
+      列表: [
+        { 编号: 'int_sh', 标题: '[上海] 产品经理', 说明: '' },
+        { 编号: 'int_bj', 标题: '[北京] 产品经理', 说明: '' },
+      ],
+      服务端: {
+        int_sh: { intention_id: 'int_sh', status: 'active' },
+        int_bj: { intention_id: 'int_bj', status: 'active' },
+      },
+    };
+    const 后端 = 简历意向隐私数据源({ 读取意向: vi.fn(async () => 快照) });
+    const { deps, 动作流 } = 创建会话测试依赖(后端);
+    deps.主体标识引用.current = 'sub_1';
+    deps.会话代际.current = 3;
+    // 桩把「会话缓存里的偏好」注入成 int_bj：只有 恢复选择 时才会被取用
+    deps.恢复候选意向编号 = 'int_bj';
+    await 水合角色数据(deps, 主体('sub_1'), false, 3);
+    expect(动作流).toContainEqual({ 型: '水合后端意向', 快照, 恢复编号: 'int_bj' });
+    // 恢复偏好经权威列表校验后才落成当前坐标（不是列表第一条 int_sh）
+    expect(deps.状态引用.current.当前意向编号).toBe('int_bj');
+  });
+
+  it('意向读取失败：不提交任何意向快照，缓存偏好不被当成成功结果', async () => {
+    const 后端 = 简历意向隐私数据源({
+      读取意向: vi.fn().mockRejectedValue(new Error('intention unavailable')),
+    });
+    const { deps, 动作流 } = 创建会话测试依赖(后端);
+    deps.主体标识引用.current = 'sub_1';
+    deps.恢复候选意向编号 = 'int_bj';
+    await 水合角色数据(deps, 主体('sub_1'), false, 0);
+    expect(动作流).not.toContainEqual(expect.objectContaining({ 型: '水合后端意向' }));
   });
 
   it('候选任一读取 401 走统一清理时也派发 清后端隐私', async () => {
@@ -425,6 +474,17 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
     主体标识引用: { current: null as string | null },
     会话代际: { current: 0 },
     读取恢复企业关系编号: vi.fn(() => null),
+    恢复候选意向编号: null as string | null,
+    提交候选意向快照: (input: 提交候选意向快照输入) => {
+      if (deps.主体标识引用.current !== input.subjectId) return;
+      if (deps.会话代际.current !== input.sessionGeneration) return;
+      派发({
+        型: '水合后端意向',
+        快照: input.快照,
+        恢复编号: input.恢复选择 === true ? deps.恢复候选意向编号 : null,
+      });
+      后端值 = { ...后端值, 意向快照: input.快照.服务端 };
+    },
     P4范围代际: { current: new Map<string, number>() },
     P4幂等意图: { current: new Map<string, string>() },
     P4可见范围: { current: { candidate: null, recruiter: null } },
@@ -449,7 +509,8 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
   };
   return {
     deps: deps as unknown as 后端操作依赖 & P4运行时引用 & P7运行时引用 & P8运行时引用 &
-      候选预填运行时引用 & { 后端: HTTP招聘数据源 },
+      候选预填运行时引用 & { 后端: HTTP招聘数据源 } &
+      { 提交候选意向快照: NonNullable<后端操作依赖['提交候选意向快照']> },
     动作流,
     状态引用,
     最新后端状态: () => 后端值,

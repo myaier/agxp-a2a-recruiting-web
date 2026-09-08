@@ -107,7 +107,9 @@ function 置P4候选状态(items: BFF候选岗位推荐[], 操作补丁: Record<
     状态: {
       子视图: '看市场', 当前意向: P4意向名, 当前意向编号: BFF意向样本.intention_id,
       后端意向服务端: { [BFF意向样本.intention_id]: BFF意向样本 },
-      求职意向表: [], 在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+      // 有效当前 ID 必须在页面列表里同时在场（生产口径：水合把 DTO 落成这一行）
+      求职意向表: [{ 编号: BFF意向样本.intention_id, 标题: `[上海] ${P4意向名}`, 说明: '' }],
+      在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
       全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
     },
     后端状态: {
@@ -138,7 +140,8 @@ function 置P4候选意向(选项: {
     状态: {
       子视图: '看市场', 当前意向: P4意向名, 当前意向编号: 选项.意向ID,
       后端意向服务端: { [选项.意向ID]: 意向 },
-      求职意向表: [], 在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+      求职意向表: [{ 编号: 选项.意向ID, 标题: `[上海] ${P4意向名}`, 说明: '' }],
+      在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
       全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
     },
     后端状态: {
@@ -389,7 +392,9 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
 const P4状态底座 = (覆盖: Record<string, unknown> = {}) => ({
   子视图: '看市场', 当前意向: P4意向名, 当前意向编号: BFF意向样本.intention_id,
   后端意向服务端: { [BFF意向样本.intention_id]: BFF意向样本 },
-  求职意向表: [], 在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+  // 有效当前 ID 必须在页面列表里同时在场（生产口径：水合把 DTO 落成这一行）
+  求职意向表: [{ 编号: BFF意向样本.intention_id, 标题: `[上海] ${P4意向名}`, 说明: '' }],
+  在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
   全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
   ...覆盖,
 });
@@ -536,6 +541,52 @@ describe('看市场 · P4 候选发现（Backend）', () => {
       mock加载候选岗位.mock.invocationCallOrder[0]);
     页.unmount();
     expect(mock设置发现推荐范围).toHaveBeenCalledWith('candidate', null);
+  });
+
+  // Task 2：同名两条意向下，P4 请求 / P5 横幅快照键 / 顶栏选中必须同指一个编号载体。
+  // 旧实现的横幅按意向名反查会落到列表第一条 —— 两处坐标不一致却都「看起来对」。
+  it('同名两条意向选第二条：P4 请求、P5 横幅快照键与顶栏选中同指 int_bj，DOM 无 int_', () => {
+    const 同名两条 = [
+      { 编号: 'int_sh', 标题: '[上海] 产品经理', 说明: '20-35K' },
+      { 编号: 'int_bj', 标题: '[北京] 产品经理', 说明: '25-40K' },
+    ];
+    置应用状态({
+      模式: 'backend', 候选规则阶段: '成功',
+      状态: {
+        子视图: '看市场', 当前意向: '产品经理', 当前意向编号: 'int_bj',
+        在谈范围: '当前',
+        求职意向表: 同名两条,
+        后端意向服务端: {
+          int_sh: { ...BFF意向样本, intention_id: 'int_sh', status: 'active' },
+          int_bj: { ...BFF意向样本, intention_id: 'int_bj', status: 'active' },
+        },
+        在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+        全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
+      },
+      后端状态: {
+        主体: { ...BFF主体样本, subject_id: 'sub_1', last_used_role: 'candidate' },
+        候选岗位推荐: {
+          int_bj: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 },
+        },
+        // 只给第二条意向的 P5 快照：横幅若按名字反查到 int_sh 就读不到它
+        P5工作区: {
+          [P5范围键.open('candidate', 'int_bj')]: {
+            阶段: '成功', 刷新中: false, items: [], nextCursor: null, 已加载页数: 1,
+            error: null, generation: 1, ownerSubjectId: 'sub_1',
+          },
+        },
+      },
+      操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载候选岗位: mock加载候选岗位 },
+    });
+    const { container } = render(<看市场 />);
+    expect(mock设置发现推荐范围).toHaveBeenCalledWith('candidate', 'candidate:list:int_bj');
+    expect(mock加载候选岗位).toHaveBeenCalledWith('int_bj');
+    expect(mock加载候选岗位).not.toHaveBeenCalledWith('int_sh');
+    // 横幅读到了 int_bj 的成功空快照 → 给出定论文案，而不是「正在读入」
+    expect(screen.getByText('暂时没有需要你介入的')).toBeTruthy();
+    // 顶栏胶囊按 ID 选中第二条，且用户可见文本里没有内部编号
+    expect(screen.getByRole('button', { name: '产品经理 · 北京' })).toBeTruthy();
+    expect(container.textContent).not.toContain('int_');
   });
 
   it('切意向即换 scope：旧范围先清、新范围后注册，旧数据不闪进新列表', () => {
@@ -960,6 +1011,7 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     const user = userEvent.setup();
     const 顶栏状态 = {
       子视图: '看市场', 当前意向: P4意向名, 当前意向编号: BFF意向样本.intention_id,
+      后端意向服务端: { [BFF意向样本.intention_id]: BFF意向样本 },
       求职意向表: [{ 编号: BFF意向样本.intention_id, 标题: '[上海] 产品经理', 说明: '' }],
       在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
       全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
@@ -1278,24 +1330,27 @@ describe('看市场 · P5 横幅共用（Backend）', () => {
     };
   }
 
-  /** Backend 横幅底座：当前意向编号恒 null（零 P4 请求），legacy 在谈列表 故意带 5 条。 */
+  /** Backend 横幅底座：横幅 scope 与 P4 列表共用同一个有效当前 ID（不再按意向名反查）；
+   *  当前意向在表内: false 模拟当前意向已删 —— 编号无效，当前档整片无 scope。
+   *  legacy 在谈列表 故意带 5 条，Backend 分支绝不数它们。 */
   function 置P5横幅状态(选项: {
     范围: '当前' | '全部';
     快照?: P5列表快照;
     当前意向在表内?: boolean;
     主体?: { subject_id: string; last_used_role: string };
   }) {
-    const 意向表 = 选项.当前意向在表内 === false
-      ? []
-      : [{ 编号: 意向ID, 标题: '意向0', 说明: '' }];
-    const filterRef = 选项.范围 === '全部' ? null : 意向ID;
+    const 在表内 = 选项.当前意向在表内 !== false;
+    const 意向表 = 在表内 ? [{ 编号: 意向ID, 标题: '意向0', 说明: '' }] : [];
+    const filterRef = 选项.范围 === '全部' ? null : (在表内 ? 意向ID : null);
     置应用状态({
       模式: 'backend',
       状态: {
-        子视图: '看市场', 当前意向: '意向0', 当前意向编号: null,
+        子视图: '看市场', 当前意向: '意向0', 当前意向编号: 在表内 ? 意向ID : null,
         在谈范围: 选项.范围,
         求职意向表: 意向表,
-        后端意向服务端: {},
+        后端意向服务端: 在表内
+          ? { [意向ID]: { ...BFF意向样本, intention_id: 意向ID } }
+          : {},
         // legacy 数组故意带 5 条：Backend 分支绝不数它们
         在谈列表: [1, 2, 3, 4, 5].map((序) => ({ 编号: `J-${序}`, 需要你: true })),
         屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
