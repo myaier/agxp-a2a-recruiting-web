@@ -2,7 +2,7 @@
 
 日期：2026-09-08
 
-状态：六个实现 Task 已完成并定向验证；异构代码 review 与 final gate 尚未执行。本文件不是完成报告。
+状态：六个实现 Task 完成，Codex 三轮 review 收敛，final gate 四项权威验收 PASS，已 fast-forward 合入 `origin/main`。浏览器与双端真实栈仍未验证（见 §6、§7）。
 
 ## 1. 绑定的批准合同
 
@@ -93,10 +93,13 @@
 - `npm run typecheck` 在每个 Task 收尾处 PASS（最后一次在 `f3c85bd8`）。
 - 范围审核：`git diff --name-only origin/main...HEAD` 未出现任何 `.css`、视觉基线、E2E/CI 脚本、Mock reducer 语义或 wire 契约变更；`src/状态/领域/候选资料.ts` 只改 Backend 的 `水合后端意向` 分支并新增一个导出 selector，Mock 的 `改意向/删意向/新增意向/选新当前意向` 逐字未动。
 
+- 异构代码 review（Codex）三轮收敛，见 §8。
+- Final gate 四项权威验收在最终候选上跑完并全部 PASS，见 §9。
+- 已 fast-forward 合入 `origin/main`，见 §9。
+
 未完成 / 未运行：
-- 异构代码 review（Codex）已完成三轮并干净收敛，见 §8。
-- **Final gate 的四项权威非浏览器验收**（`npm test`、`npm run typecheck`、`npm run lint`、`npm run build` 在最终候选上跑一次）—— 未执行，等待用户明确确认。`npm run lint` 与 `npm run build` 本会话一次都没跑过。
-- **合入 target** —— 未 merge、未 push。
+- 浏览器 L3 / 视觉验证 —— 一项未跑（用户显式豁免），见 §6。
+- 双端真实栈走查 —— 待联合验收，见 §7。
 
 ## 6. 浏览器与真实栈：明确未运行
 
@@ -161,3 +164,30 @@ artifacts：`/tmp/codex-review-loop/session-Fyb2aH9d`，thread `01a07ff7-a146-7e
 ### 结论
 
 无未解决的 required finding。唯一未采纳项是第 1 轮 [2] 的 try/catch 建议，理由与两轮追问结果已记录在上。
+
+## 9. Final gate 与合入事实
+
+用户于本会话明确确认 final gate 方案后执行。
+
+| 项 | 值 |
+| --- | --- |
+| 确认前候选 | `654a1f4a` |
+| `final_target_base`（确认后 fetch 观察） | `da7059c7cd220787326eb7d9972aff1e8b1f632c` |
+| 同步动作 | `git merge --no-edit origin/main` —— 无冲突，target 只带入 2 个与本任务无关的文件（工作经历样式、引导问答） |
+| 最终候选 | `b6ef8c83c0be8b7cc29c9bc8224a9b4ec22b5a9d` |
+
+可复用证据：**无**。四项 gate 此前要么从未在本会话跑过（`npm test` 全量、`lint`、`build`），
+要么对应的是 review 修复之前的代码（`typecheck`）；且 merge 改变了候选，证据必须在最终候选上重算。
+因此四项全部在 `b6ef8c83` 上实际执行：
+
+| 命令 | 结果 |
+| --- | --- |
+| `npm test` | PASS —— 167 文件 / 3566 用例，28.17s |
+| `npm run typecheck` | PASS（`tsc -b --noEmit`，exit 0） |
+| `npm run lint` | PASS（`oxlint`，exit 0，无输出） |
+| `npm run build` | PASS（`tsc -b && vite build`，exit 0，built in 600ms） |
+
+合入：push 前再次 `git fetch origin main`，确认 `origin/main` 仍等于 `final_target_base`；
+`git merge-base --is-ancestor origin/main HEAD` 为真后执行 `git push origin HEAD:main`，
+普通 fast-forward `da7059c7..b6ef8c83`，**未使用 force push**。
+push 后再次 fetch 确认 `origin/main == b6ef8c83`，合入属实。
