@@ -117,9 +117,10 @@ export function 创建岗位数据源(
         幂等: true,
       });
       // 真实 job_id 是本次创建的唯一坐标：先验证再写附属，绝不拿空白 ID 当键，
-      // 也不用重读列表的位置/名称反推是哪一条。
-      const 创建岗位编号 = typeof result.job_id === 'string' ? result.job_id.trim() : '';
-      if (创建岗位编号 === '') {
+      // 也不用重读列表的位置/名称反推是哪一条。job_id 是 opaque 值 —— trim 只用来判空，
+      // 附属键、权威列表匹配与回传一律用原始值（改写会让附属写错键、匹配误判漂移）。
+      const 创建岗位编号 = result.job_id;
+      if (typeof 创建岗位编号 !== 'string' || 创建岗位编号.trim() === '') {
         throw new BFF错误(200, 'invalid_response', '服务返回了不符合契约的岗位数据');
       }
       写入岗位附属(创建岗位编号, job);

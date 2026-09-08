@@ -184,18 +184,26 @@ describe('岗位数据源 hard_requirements 校验', () => {
       .rejects.toMatchObject({ status: 200, code: 'invalid_response' });
   });
 
-  it('opaque job_id 原样比对：只 trim 空白判定，不改写 ID 本身', async () => {
+  // review-r2：job_id 是 opaque 值 —— trim 只用来判空，绝不能拿改写后的值当键。
+  // 改写会让附属写在 trim 后的键上（读取按原始 dto.job_id，附属丢失），
+  // 也会让权威列表逐字匹配失败而误抛 invalid_response。
+  it.each([
+    ['特殊字符', 'job:New/9+id'],
+    ['首尾空白但非空', '  job_pad_9  '],
+  ])('opaque job_id（%s）逐字回传并逐字匹配权威列表', async (_名, 原始ID) => {
+    请求Mock.mockReset();
     请求Mock.mockImplementation(async (options: { method?: string }) => {
       if (options.method === 'POST') {
-        return { result: { ...BFF岗位样本, job_id: 'job:New/9+id' }, etag: null, requestId: 'r-create' };
+        return { result: { ...BFF岗位样本, job_id: 原始ID }, etag: null, requestId: 'r-create' };
       }
       return {
-        result: { jobs: [{ ...BFF岗位样本, job_id: 'job:New/9+id' }], next_cursor: null },
+        result: { jobs: [{ ...BFF岗位样本, job_id: 原始ID }], next_cursor: null },
         etag: null, requestId: 'r-jobs',
       };
     });
     const 结果 = await 数据源.创建岗位(新岗输入, 声明);
-    expect(结果.创建岗位编号).toBe('job:New/9+id');
+    expect(结果.创建岗位编号).toBe(原始ID);
+    expect(结果.服务端[原始ID]).toBeDefined();
   });
 
   it('job_id 空白 / 缺失 / 非字符串都是 invalid_response，且校验先于写附属', async () => {
