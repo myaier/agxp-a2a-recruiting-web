@@ -31,7 +31,7 @@
 
 - Server（4 服务）、Hub（标准栈 9 服务）、Recruitment **acceptance** 栈（6 服务，real 模式）全部 healthy；五账号 bootstrap 完成；BFF :8097 健康。
 - 前端按指南命令起 5173（200）；agent-browser 0.27.0 托管 Chrome headless 打开登录页。
-- **真实 UI 登录链路 PASS**（截图留本地报告）：手机号 → mock-sms 下发 OTP → 3141 → 协议 → 进入 → 角色选择页。首次 401 系执行者误把 `+86` 前缀一并输入（应用侧要求 11 位裸号），修正后成功，已如实记录。
+- **真实 UI 登录链路 PASS**（截图留本地报告）：fixture 候选账号（号码见后端 allowlist，不入库）→ mock-sms 下发 OTP（值只从本地材料读取输入浏览器，不入库）→ 协议 → 进入 → 角色选择页。首次 401 系执行者误把 `+86` 前缀一并输入（应用侧要求 11 位裸号），修正后成功，已如实记录。
 - `converge --scene baseline` FAILED `acceptance_unavailable`：Hub acceptance 腿在 rootless 下的结构性冲突（合同要求 Core 以宿主 uid 运行 + bind 挂载 mode-0600 密钥；userns 映射使「宿主可读」与「容器内 uid 可读」不可同时成立）。**B02 业务节点、H01 两次、H04 因此 BLOCKED**；receipt 为半路空壳、无差集，cleanup 不涉及。
 - 三候选修复方案（阶段拷贝副本 / root 运行 / daemon 去 userns-remap）已记录于本地报告第 9 节，交后端 owner 裁决；裁决后演练可从 converge 直接续跑（环境与账号保持就绪）。
 
