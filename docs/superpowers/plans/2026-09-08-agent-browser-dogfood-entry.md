@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-08-agent-browser-dogfood-entry-design.md`，r2；批准 revision `082aa94b6851c596e9c17856a4eee769b7e6ef51`，blob `8e8f40b4ffcc938069b9b1a58a75cd13d51ad1d4`。用户在该版本交付后回复“可以，然后写0上下文Plan吧”，批准内容以此 Git 对象为准；Spec 文件中的待批准状态是批准前的历史文字，不要求改写已批准对象。
 
-**Plan revision:** r1。最终内容 blob 由文档审查记录和执行提示词冻结，正文不嵌入自身 hash。
+**Plan revision:** r2。最终内容 blob 由文档审查记录和执行提示词冻结，正文不嵌入自身 hash。
 
 ## Global Constraints
 
@@ -72,7 +72,7 @@ git rev-parse 082aa94b6851c596e9c17856a4eee769b7e6ef51:docs/superpowers/specs/20
 - 新增 `docs/dogfood/真实后端行为验收.md`、`docs/dogfood/真实后端报告模板.md`。
 - 迁移 `e2e/真实后端/资源/简历-v1.pdf`、`简历-v2.pdf` 到 `docs/dogfood/resources/`，然后删除整个 `e2e/真实后端/`。
 - 删除 `tsconfig.e2e.json`；修改 `package.json`、`tsconfig.json`、`playwright.config.ts`、`README.md`、`docs/AgentBrowser真实后端验收.md`、`docs/dogfood/backend-local-onboarding.md`、`CLAUDE.md`。
-- `.gitignore` 仅在需要解释历史产物保留时改注释，不能取消 `/dogfood-output/` 或 `/agent-browser-backend-output/` 忽略。
+- `.gitignore` 仅在需要解释历史产物保留时改注释，不能取消 `dogfood-output/` 或 `/agent-browser-backend-output/` 忽略。
 - 历史文档默认不改；若确需退役标记，仅在已被活动入口引用的旧 Spec/Plan/handoff 顶部增加日期和新链接，先登记确切路径，不批量替换历史命令。
 
 **Interfaces：** 消费 Spec §3–8，产出以指南链接、Case ID 和 Markdown 节点记录为人工/Agent 合同；没有新公共函数、HTTP API、schema、数据库或事务。浏览器登录/业务资源属于本轮专用账号与 receipt，环境资源按启动者归属。
@@ -84,11 +84,11 @@ git rev-parse 082aa94b6851c596e9c17856a4eee769b7e6ef51:docs/superpowers/specs/20
 | 入口与选择 | 输入目标 URL、后端工作区、账号/登录材料安全来源、全部/基础/Hosted/单 Case 范围；9 项都在报告，未选 NOT_RUN。仅选一项可以执行必要前置，但不把前置冒称其他组合 Case 已通过 |
 | 准备与工具 | `agent-browser --version`、`agent-browser doctor`、`agent-browser skills get core --full`、`agent-browser skills get dogfood`；现场 CLI 输出为真相。Docker 与 backend health，两个独立具名浏览器会话，记录视口 |
 | 环境 | 读取目标后端仓库规则、现有 dev-local/browser-fixture 文档及帮助，确认 `health --acceptance`、必要的 `prepare --acceptance`/`up --acceptance`；记录前后端 commit、profile 与栈归属。前端独占服务用 `VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=local npm run dev -- --host localhost --port 5173 --strictPort`，复用前核对配置 |
-| 数据与 receipt | 基础基准包含简历/意向/披露/附件槽位、招聘名片/公司介绍、在招/归档岗位。当前后端无 baseline 时不拿 happy 冒充；只有等价专用基准和安全恢复能力才执行，否则 BLOCKED。Hosted happy/p4/p5/p6 必须真实 acceptance fixture；一轮一个 run ID，准确 receipt 供 verify/cleanup，verify 成功再测，退休后不复用 |
+| 数据与 receipt | 基础基准包含简历/意向/披露/附件槽位、招聘名片/公司介绍、在招/归档岗位。当前后端无 baseline 时不拿 happy 冒充；只有等价专用基准和安全恢复能力才执行，否则 BLOCKED。Hosted happy/p4/p5/p6 必须真实 acceptance fixture；一轮一个 run ID，准确 receipt 供 verify/cleanup，verify 成功再测，退休后不复用。遵守后端实际登录限流，OTP 与 fixture 调用不得成为无界重试手段；旧指南 `FIXTURE_LOGIN_PACE` 知识只在已核实运行中后端 cooldown 配置时适用，不照搬失去消费者的前端参数 |
 | 操作方式 | snapshot/截图 → 当前语义或 refs 操作 → 重观察 → 结果与刷新证据；不固定长文案/坐标/点击大脚本。业务写走 UI，同角色只读补充，异步响应未知先回读避免重复写。工具 ref 恢复不等于产品失败，绕过产品缺陷仍保留 FAIL |
 | 场景卡 | 下方覆盖表中每个 ID 都写目标、基准/scene、组合节点、刷新/重开、证据和恢复；不复制旧退出码或像素基线合同 |
 | 证据与结论 | PASS/FAIL/BLOCKED/NOT_RUN，节点先于组合 Case；已有 FAIL 不被后续阻塞或绕行抹去。启动前记录节点等待预算或环境公开约定，到期记录最后状态和原因待定位，不无限延长，不变成新 SLA |
-| 清理与恢复 | 正常/失败都清理；记录准确 receipt/对象/原值/自己的 PID/会话；后端工具 cleanup 或 UI 还原自行准备数据。只关自己的服务与会话，不删卷、不按端口 kill、不 close all；清理失败停止使用同资源的下一轮，记录恢复，不新增 trap/watchdog 保证 |
+| 清理与恢复 | 正常/失败都清理；中断或换会话后先核对真实服务与 receipt 状态，再决定继续或清理，不默认重开同一场景；记录准确 receipt/对象/原值/自己的 PID/会话；后端工具 cleanup 或 UI 还原自行准备数据。只关自己的服务与会话，不删卷、不按端口 kill、不 close all；清理失败停止使用同资源的下一轮，记录恢复，不新增 trap/watchdog 保证 |
 
 指南必须展开的业务节点如下，顺序是节点依赖，不是固定跨 Case 脚本：
 
@@ -181,7 +181,7 @@ PY
 
 | ID | 命令 | 必须断言 |
 | --- | --- | --- |
-| V1 | Task 1 静态核对命令、链接/九 Case 与节点人工逐条核对 | 四键精确删除，PDF 同字节，无活动悬空引用，受保护路径没改，模板覆盖完整 |
+| V1 | Task 1 静态核对命令、链接/九 Case 与节点、中断恢复及登录限流规则人工逐条核对 | 四键精确删除，PDF 同字节，无活动悬空引用，受保护路径没改，模板覆盖完整 |
 | V2 | `npm run build` | tsc project references 和 Vite build 成功；已包含 `tsc -b`，无需再机械跑一遍 typecheck |
 | V3 | `npm test -- e2e/视觉回归/比较器.test.ts e2e/视觉回归/场景.test.ts 脚本/UI回归核心.test.mjs` | 现有 Mock 比较/报告、场景与编排单测全通过；这是 Vitest，不能用 node --test 跑该 mjs |
 | V4a | `npm run test:e2e -- --list` | 基线发现 10 例：onboarding 8、无闪屏 2，无真实后端/Vitest 误收 |
