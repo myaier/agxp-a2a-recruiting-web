@@ -35,7 +35,7 @@ playwright-report
 # UI 回归编排输出（参考/候选采集与报告）
 ui-regression-output/
 
-# agent-browser 真实后端整栈验收的运行产物（候选截图、diff、报告、日志）
+# 旧 agent-browser 整栈验收的历史运行产物（已退役入口，保留历史记录不提交）
 /agent-browser-backend-output/
 
 # Agent dogfood 临时证据（截图、视频、HAR、Chrome profile、会话状态与原材料副本）

@@ -147,27 +147,20 @@ npm run test:e2e:data-source -- --grep '@backend'  # 只跑 Backend fixture
 完成一次真实登录 / 资源读取 smoke。若目标环境或 OTP 前置未就绪，记录外部 blocker，
 不能用 route fixture 冒充真实联调通过。
 
-### 真实后端整栈验收（agent-browser）
+### 真实后端行为验收（Agent Dogfood）
 
-一条命令起或复用本地后端栈、收敛两个专用 fixture 账号、在 `http://localhost:5173`
-跑四条业务旅程 + 双会话隔离门，比七个视觉场景，最后出一份 `report.json` / `report.md`。
-它是**本地、显式、慢速**入口，不进普通 `npm test`，也不进 CI。
+真实后端业务验收由 Agent 使用 `agent-browser` 按文档执行：环境与数据用现有后端工具准备，
+Agent 观察页面完成九类行为（基础 B01–B05、Hosted H01–H04），按关键节点与刷新/重开
+证据判 PASS/FAIL/BLOCKED/NOT_RUN。它是**本地、显式、慢速**入口，不进普通 `npm test`，
+也不进 CI；没有对应 npm 命令，从指南启动：
 
-```bash
-AGXP_MONOREPO_DIR=/path/to/agxp-monorepo npm run test:agent-browser:backend-local
-npm run test:agent-browser:backend-local -- --journey candidate-crud
-npm run test:agent-browser:backend-local -- --headed
-npm run test:agent-browser:backend-local -- --update-baseline   # 只产候选基线，人工审阅后再安装
+- 执行指南：[docs/dogfood/真实后端行为验收.md](docs/dogfood/真实后端行为验收.md)
+- 报告模板：[docs/dogfood/真实后端报告模板.md](docs/dogfood/真实后端报告模板.md)
+- 全新账号注册走查：[docs/dogfood/backend-local-onboarding.md](docs/dogfood/backend-local-onboarding.md)
 
-npm run test:agent-browser:unit    # 报告与视觉比较的 Vitest（无需后端）
-npm run test:agent-browser:shell   # 公共步骤库 + 整栈运行器的 bash 合同测试（无需后端）
-```
-
-退出码固定：`0` 通过 / `1` 功能、清理或 enforce 视觉失败 / `2` 用法或报告错误 / `75` 环境阻塞。
-`test:agent-browser:shell` 里的冻结业务字面量比对在设置了 `AGXP_MONOREPO_DIR` 时才跑，
-没设置就干净跳过。设计与失败分类见
-`docs/superpowers/specs/2026-08-29-agent-browser-real-backend-e2e-design.md`；完整的前置条件、报告门、
-基线审阅和清理恢复步骤见 [Agent-Browser 真实后端整栈验收](docs/AgentBrowser真实后端验收.md)。
+> 2026-09-08 起四个旧入口 `test:agent-browser:backend-local` / `hosted-agent` / `unit` /
+> `shell` 及 `e2e/真实后端/` 整栈运行器已退役删除；历史设计见
+> `docs/superpowers/specs/2026-08-29-agent-browser-real-backend-e2e-design.md`（仅存档）。
 
 ### 未接线演示域与前端附属字段
 

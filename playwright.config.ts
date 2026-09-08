@@ -10,8 +10,7 @@ export default defineConfig({
   //     playwright.视觉回归.config.ts 单独驱动；默认 config 跑它会因缺端口/环境变量报错。
   //   - *.test.ts 是 Vitest 单测（@vitest-environment node + 从 'vitest' 导入），
   //     Playwright 收走会因找不到 vitest suite 直接崩。整个目录在这里排除。
-  // *.test.ts 是 Vitest 单测（e2e/真实后端/ 下有两份）：Playwright 收走会因找不到
-  // vitest suite 直接崩，连带整个 testDir 加载失败。
+  // e2e/ 下其余 *.test.ts 同理是 Vitest 单测，由 '**/*.test.ts' 统一排除。
   testIgnore: ['**/数据源模式.spec.ts', '**/视觉回归/**', '**/*.test.ts'],
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
