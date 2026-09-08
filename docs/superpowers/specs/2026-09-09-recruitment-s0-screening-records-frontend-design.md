@@ -140,8 +140,9 @@ GET /api/v1/recruiter/match-cases/{encodeURIComponent(case_id)}?include=screenin
 - 不因为 `state.version` 相同就跳过展示更新，问题、回答或复评可在其它状态字段不变时出现；
 - 保留现有 single-flight、scope／subject／role／session generation 栅栏和迟到 success／failure 保护；
 - 轮询从 question 变为 question＋answer 时，替换快照而不是 append，稳定 ID 用于渲染身份；
-- 当前同一主体、同一 Case 的刷新失败可以沿用现有规则保留只读旧详情并展示错误；
-- 切换账号／角色、404、删除保留态和会话清理不得跨主体保留旧记录；
+- 当前同一主体、同一 Case 的网络错误、500、503 或坏合同刷新失败，可以沿用现有规则保留只读旧详情并展示错误；
+- 详情刷新返回 404 时，无论原因是 Case 不存在还是当前用户已不再是参与方，都立即清空整份旧详情并保留错误提示；不能继续展示旧 S0 记录；
+- 切换账号／角色、删除保留态和会话清理不得跨主体保留旧记录；
 - 坏合同、500、503 等沿用现有错误处理，不转换为正常空态。
 
 本设计不新增 polling cadence、缓存层、持久化存储或通用资源框架。
@@ -209,7 +210,7 @@ S0 Agent Q/A 位于匿名初筛阶段的对话区域，先于既有 transcript�
 
 ### 7.3 时间格式
 
-S0 气泡时间使用用户运行环境本地时区，显示两位 24 小时制 `HH:mm`。实现应复用或加入任务内聚的小型 formatter，以 `Intl.DateTimeFormat` 的 parts 组成稳定结果；不改变 DTO 原始时间，不引入全局日期框架。测试固定 UTC 与 Asia/Shanghai，证明同一 UTC 时间按本地时区正确显示。
+S0 气泡时间使用用户运行环境本地时区，显示两位 24 小时制 `HH:mm`。实现应加入只服务 S0 新消息的任务内聚 formatter，以 `Intl.DateTimeFormat` 的 parts 组成稳定结果；不改变 DTO 原始时间，不引入全局日期框架。旧 transcript／instruction receipt 的既有时间格式不在本任务中改变，避免借 S0 接线扩大其它阶段显示行为。测试固定 UTC 与 Asia/Shanghai，证明同一 S0 UTC 时间按本地时区正确显示，并证明旧时间线仍保持现状。
 
 ## 8. 人工补充问题保持独立
 
