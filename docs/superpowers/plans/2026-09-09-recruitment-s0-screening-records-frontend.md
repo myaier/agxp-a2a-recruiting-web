@@ -24,6 +24,7 @@
 - 新记录只用于展示，不参与状态、动作、`respond_fact`、附件、协调或意向确认判定；screening record ID 永不作为 mutation 坐标。
 - 不修改 CSS、Mock 数据／文案／状态机，不跨其它 API 拼固定检查项，不增加请求框架、轮询系统、缓存模式、独立存储或通用 include 注册器。
 - 实施复用当前 Paseo 工作区 `/Users/visionclaw/.paseo/worktrees/09eyc7i7/military-jaguar`，不新建第二工作区，不 stash/reset/clean 用户内容。
+- Final gate 人工确认前只运行各 Task 的定向反馈与异构代码 review；不得合入 target、运行完整 `npm test`／typecheck／lint／build、正式 dogfood 或 push。
 
 ## 前置条件、文件边界与停止条件
 
@@ -497,7 +498,7 @@ git commit -m "feat: render S0 screening records in case timeline"
 
 提交前确认 staged 列表不含 CSS 或 Mock 产品数据；`src/测试/BFF样本.ts` 是 Backend 合同样本，不属于 Mock 产品数据。
 
-### Task 4: 范围审计、异构代码 Review 与最终非浏览器门禁
+### Task 4: 范围审计、异构代码 Review 与 final gate 方案
 
 **Files:**
 - Review only: Task 1–3 的固定候选 diff
@@ -538,9 +539,34 @@ Expected: PASS。记录命令、commit、结果与耗时；失败时使用 `supe
 
 逐条核实 finding，按仓库规则记录 `必要性` 与 `复杂度影响`。只修复成立的 required；optional 不阻塞，增加复杂度且无现实故障证据的建议拒绝。每轮修复单独 commit，只重跑被改动失效的定向测试，直至无未解决有效 required 或达到 review-loop 上限。上限后仍有 required 时停止，不进入 final gate。
 
-- [ ] **Step 4: 运行一次最终权威非浏览器 gate**
+- [ ] **Step 4: 展示 final gate 方案并等待明确确认**
 
-Code review 收敛后，在最终候选 commit 上依次运行：
+Code review 收敛后，允许只读 `git fetch origin` 更新远端跟踪事实。记录候选 commit、`origin/main` 的已观察 SHA、现有定向测试与 review 证据，并向用户展示获批后将执行的精确方案：
+
+- 以获批后重新 fetch 得到的实际 `origin/main` 作为 `final_target_base`，执行 `git merge --no-edit origin/main`；不 rebase。
+- 在最终实际 diff 上重算测试责任；当前仓库没有独立 affected selector，因此缺失的权威非浏览器证据为 `npm test`、`npm run typecheck`、`npm run lint`、`npm run build`。
+- Development L3 正式责任为 `none`；Task 5 的真实双端 agent-browser dogfood 是批准 Spec 的产品验收，因部署／账号／数据缺失可精确记 `BLOCKED`，但不能伪装成 PASS。
+- 验证和 dogfood 后写 handoff；证据完整且无产品 FAIL／required finding 时，二次 fetch 确认 target 未移动，再普通 fast-forward push `HEAD:refs/heads/main`，不 force push。
+- 自主恢复边界：确认后由同一执行者对批准范围内的失败做根因分类、最小修复、受影响代码复审和增量补证；只有产品契约／范围变化、target race 或无法取得的外部权限／资源才停止。
+
+明确提醒用户不要同时批准另一个针对同一 target 的 final gate，然后停止并等待确认。规划批准、执行 prompt 被复制或实施完成都不代替这次确认；未确认不得进入 Task 5。
+
+### Task 5: 获批后的目标同步、权威验证、dogfood、Handoff 与合入
+
+**Files:**
+- Create locally, ignored: `dogfood-output/$DOGFOOD_RUN_ID/report.md`
+- Create locally, ignored: `dogfood-output/$DOGFOOD_RUN_ID/screenshots/`
+- Create: `docs/superpowers/handoffs/2026-09-09-recruitment-s0-screening-records-frontend.md`
+
+**Interfaces:**
+- Consumes: 用户明确批准的 Task 4 final gate 方案、冻结候选、`origin/main`、`docs/dogfood/真实后端行为验收.md`、报告模板、后端展开合同与双角色账号。
+- Produces: 与实际 target 合并后的权威非浏览器证据、真实页面 PASS／FAIL／BLOCKED 证据、脱敏 handoff，以及成功的普通 fast-forward push 或精确停止原因。
+
+- [ ] **Step 1: 同步 target 并完成权威非浏览器 gate**
+
+确认后完整读取 `/Users/visionclaw/coding-harness/skills/development-workflow/references/final-integration.md` 及其 operative contract。运行 `git fetch origin`，把实际 `origin/main` SHA 记录为 `final_target_base`，再执行 `git merge --no-edit origin/main`；不得 rebase。冲突只做可证明的机械解决，涉及产品语义／接口时停止。
+
+按最终实际 diff 重算责任。当前计划没有可复用的确认后 broad PASS，因此依次运行：
 
 ```bash
 npm test
@@ -549,20 +575,9 @@ npm run lint
 npm run build
 ```
 
-Expected: 四项全部 exit 0。长命令超过单次等待窗口时继续追踪同一进程，不重新启动。保存每项 source commit、命令、结果和耗时；review 修复若使某项证据失效，只补失效项，不机械重复仍有效的 broad gate。
+Expected: 四项全部 exit 0。长命令超过单次等待窗口时继续追踪同一进程，不重新启动。保存每项 source commit、命令、结果和耗时；后续修复只补因依赖、选择、运行时、fixture、外部前置或清理变化而失效的证据，不能把定向测试重标为 broad PASS。任一失败按 final integration contract 自主恢复，最后必须形成覆盖最终候选的权威 PASS 才能继续。
 
-### Task 5: 真实双端 dogfood、证据边界与实施 Handoff
-
-**Files:**
-- Create locally, ignored: `dogfood-output/$DOGFOOD_RUN_ID/report.md`
-- Create locally, ignored: `dogfood-output/$DOGFOOD_RUN_ID/screenshots/`
-- Create: `docs/superpowers/handoffs/2026-09-09-recruitment-s0-screening-records-frontend.md`
-
-**Interfaces:**
-- Consumes: Task 4 最终候选、`docs/dogfood/真实后端行为验收.md`、报告模板、后端展开合同与双角色账号。
-- Produces: 真实页面 PASS／FAIL／BLOCKED 证据，以及脱敏、可提交的完成／阻塞 handoff。
-
-- [ ] **Step 1: 使用 agent-browser 技能准备并核对环境**
+- [ ] **Step 2: 使用 agent-browser 技能准备并核对环境**
 
 实施会话先完整读取 `agent-browser` skill 和两份 dogfood 文档。取得指南要求的目标 URL、后端工作区和安全账号材料来源；缺项时完成可做的只读核对，相关浏览器结论记 `BLOCKED`，不能用 fixture 单测补成 PASS。
 
@@ -580,7 +595,7 @@ git -C "$AGXP_MONOREPO_DIR" rev-parse HEAD
 
 确认 BFF 与 Recruitment 的运行版本都包含 `s0-screening-records.v1`，再以 Backend local 环境启动或复用前端。记录栈归属、前端／BFF／Recruitment SHA、视口、locale 与时区。不得把“release 已合入”记成“环境已部署”。
 
-- [ ] **Step 2: 用两个独立会话验证同一个真实 Case**
+- [ ] **Step 3: 用两个独立会话验证同一个真实 Case**
 
 按指南建立 candidate 与 recruiter 两个独立具名浏览器会话，生成唯一 `DOGFOOD_RUN_ID`。优先使用后端现有授权 `happy` scene 或等价真实 Case，所有业务写入走 UI。
 
@@ -599,13 +614,13 @@ git -C "$AGXP_MONOREPO_DIR" rev-parse HEAD
 
 真实模型零轮结束是合法结果，不能伪造对话。若没有自然产生多轮、未回答或轮次空档，标为“fixture 合同／组件 PASS，真实模型 NOT_RUN”，不得冒充真实证据。环境未部署、scene 不支持、账号或数据不足写精确 `BLOCKED`。
 
-- [ ] **Step 3: 清理资源并完成本地报告**
+- [ ] **Step 4: 清理资源并完成本地报告**
 
 按 receipt 生命周期 verify／cleanup；只关闭本轮自己启动的前端、栈和浏览器会话，不用 `close --all`、不按端口批量 kill、不删卷。清理失败单列并保留准确 receipt 与恢复步骤。
 
 在本地 report 写每个节点状态、运行 SHA、请求路径观察、截图路径、before vs after、真实／fixture 边界及清理状态。OTP、Cookie、Authorization、手机号与完整联系方式不得进入文件名、报告或提交。
 
-- [ ] **Step 4: 写脱敏实施 handoff**
+- [ ] **Step 5: 写脱敏实施 handoff**
 
 创建 `docs/superpowers/handoffs/2026-09-09-recruitment-s0-screening-records-frontend.md`，填写以下 schema；不能提交空栏：
 
@@ -614,6 +629,7 @@ git -C "$AGXP_MONOREPO_DIR" rev-parse HEAD
 
 ## 版本
 - Implementation base commit: execution prompt 给出的精确 SHA
+- Final target base commit: final gate 获批后实际 fetch 的精确 SHA
 - Frontend source commit: 精确 SHA
 - BFF runtime commit: 精确 SHA 或 BLOCKED 原因
 - Recruitment runtime commit: 精确 SHA 或 BLOCKED 原因
@@ -643,7 +659,7 @@ git -C "$AGXP_MONOREPO_DIR" rev-parse HEAD
 
 真实 dogfood 若 BLOCKED，自动化 PASS 可如实交付，但不得宣称完整 E2E 完成；若观察到产品 FAIL，先完成安全清理并回到相应实现 Task 修复和复验，不能提交“已完成”handoff。
 
-- [ ] **Step 5: 提交 handoff 并完成前核验**
+- [ ] **Step 6: 提交 handoff、核验证据并普通 fast-forward push**
 
 ```bash
 git add docs/superpowers/handoffs/2026-09-09-recruitment-s0-screening-records-frontend.md
@@ -654,12 +670,26 @@ git log --oneline -5
 
 Expected: 工作树没有本任务未提交文件，`dogfood-output/` 不在 staged files。使用 `superpowers:verification-before-completion` 对 handoff 中每条 PASS 回查原始命令和报告证据后再声明结果。
 
+按 final integration contract 汇总最终候选的非浏览器 gate、Development L3=`none` 和 dogfood 实际状态。Dogfood 为产品 FAIL 时不得 push；环境／账号／数据造成的 `BLOCKED` 可按批准 Spec 如实保留为未完成 E2E 责任，不得写成 PASS。
+
+再次 `git fetch origin`；只有 `origin/main` 仍等于 `final_target_base` 时才运行普通 fast-forward push：
+
+```bash
+test "$(git rev-parse origin/main)" = "$final_target_base" || {
+  echo "target 已移动，需要新的 final gate" >&2
+  exit 1
+}
+git push origin HEAD:refs/heads/main
+```
+
+Push 成功后才能报告已合入，并用 `task_intents.py update --status completed --result <handoff 路径>` 完成改动预告。Target 移动或 fast-forward 被拒绝时不强推、不自动追赶；保留有效证据，展示新旧 SHA 与失效范围，等待新的 final gate。
+
 ## 测试选择五问
 
 1. **要防的失败与边界：** 漏／重复 include、decoder 漏校验、招聘私有总结泄露、轮询 append 重复或同 state 不更新、主体迟到污染、技术字段或错误时间进入 DOM、Agent question 被误接成人工 `respond_fact`、新内容遮挡附件／动作，以及 Mock 共享组件回归。
 2. **开发反馈的最小合法命令：** 合同用 `npm test -- src/数据/招聘数据源/MatchCase.test.ts`；快照用 `npm test -- src/状态/后端/MatchCase操作.test.ts`；mapper 用 `npm test -- src/数据/MatchCase展示映射.test.ts`；UI 用 UTC 与 Asia/Shanghai 两个进程运行 `阶段对话流.test.tsx` 和 `MatchCase详情.test.tsx`。
-3. **需提前验证的真实边界：** 浏览器到 BFF 的 query、双角色权限、轮询增量和历史回看不能由 jsdom 证明；code review 与非浏览器 gate 收敛后立即 dogfood。多轮／未回答依赖自然输出，无法触发时与 fixture 分栏。
-4. **最终权威验收与发布责任：** 实施者负责一次最终 `npm test`、typecheck、lint、build，以及真实双端 agent-browser dogfood或精确 BLOCKED；发布顺序是 Recruitment → BFF → frontend，回滚先停 frontend 消费。正式部署／合入由发布 owner 决定。
+3. **需提前验证的真实边界：** 浏览器到 BFF 的 query、双角色权限、轮询增量和历史回看不能由 jsdom 证明；final gate 获批并同步 target、完成非浏览器 gate 后立即 dogfood。多轮／未回答依赖自然输出，无法触发时与 fixture 分栏。
+4. **最终权威验收与发布责任：** final gate 获批后，实施者同步 `origin/main`，负责最终 `npm test`、typecheck、lint、build，以及真实双端 agent-browser dogfood或精确 BLOCKED；Development L3 正式责任为 `none`。后端部署仍由发布 owner 决定；前端证据满足且 target 未移动时由同一实施者普通 fast-forward push，回滚先停 frontend 消费。
 5. **已有证据与预计成本：** 规划阶段只有源码、后端合同和 fixture 的只读核对，没有本任务测试或浏览器 PASS。定向、完整 gate 与 dogfood 耗时均未知，不能缩短观察或用 fixture 冒充真实来“提速”。
 
 ## 计划分级与执行模型
@@ -672,10 +702,11 @@ Expected: 工作树没有本任务未提交文件，`dogfood-output/` 不在 sta
 
 - Task 1–3 定向测试通过，三个实现切片可独立回退。
 - Claude 异构代码 review 无未解决有效 required finding。
-- 最终 `npm test`、typecheck、lint、build 在最终候选 commit 上有效。
+- Final gate 已获用户明确确认；最终 `npm test`、typecheck、lint、build 在合入实际 target 后的最终候选 commit 上有效。
 - 真实双端 dogfood 全部要求节点通过，或 handoff 精确记录环境／数据 BLOCKED。
 - 招聘 summaries 泄露、跨主体陈旧记录、screening ID mutation、include fallback 等反例被测试或现场证据否定。
 - 实际前后端运行 SHA、截图、before vs after、真实／fixture 边界与范围限制已记录。
 - 没有扩展丰富固定检查项、S1–S3、CSS／Mock 或其它独立问题。
+- 二次 fetch 后 target 未移动且普通 fast-forward push 成功；否则明确停在新的 final gate，而不是宣称已合入。
 
 回退按提交逆序：先撤 Task 3 UI 消费，再撤 Task 2 mapper，最后撤 Task 1 include 与 decoder；后端合同可继续向后兼容存在。不能只撤 decoder 而保留 include，也不能先回退后端而让生产前端继续请求展开字段。
