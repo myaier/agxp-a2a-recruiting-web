@@ -16,7 +16,7 @@
 | 工作区 | `/Users/visionclaw/.paseo/worktrees/09eyc7i7/ignorant-cheetah`（复用宿主工作区，未创建第二个） |
 | 分支 | `fix/recruit-card-intention-alignment` |
 | 实施起点 | `68a701f1d50e51edb12986161edfd99135a178a7` |
-| 当前候选 | `f3c85bd873dd2af5126caad767f37a83388b5c73` |
+| 当前候选 | `19c724a5171968fe54ecb7b3f9ff8c1e8dbd5a99`（含两轮 review 修复） |
 | 规划记录的 target | `968a51f40083b276d9c7cf0bf32f8f403212450f`（仅为规划基线） |
 | 开工时观察到的 `origin/main` | `da7059c7cd220787326eb7d9972aff1e8b1f632c`（final gate 时必须重新观察并冻结） |
 | task intent | `50335db1-e7cc-465c-a6d0-ff20bde52686` |
@@ -94,7 +94,7 @@
 - 范围审核：`git diff --name-only origin/main...HEAD` 未出现任何 `.css`、视觉基线、E2E/CI 脚本、Mock reducer 语义或 wire 契约变更；`src/状态/领域/候选资料.ts` 只改 Backend 的 `水合后端意向` 分支并新增一个导出 selector，Mock 的 `改意向/删意向/新增意向/选新当前意向` 逐字未动。
 
 未完成 / 未运行：
-- **异构代码 review（Codex，最多三轮）** —— 尚未执行。
+- 异构代码 review（Codex）已完成三轮并干净收敛，见 §8。
 - **Final gate 的四项权威非浏览器验收**（`npm test`、`npm run typecheck`、`npm run lint`、`npm run build` 在最终候选上跑一次）—— 未执行，等待用户明确确认。`npm run lint` 与 `npm run build` 本会话一次都没跑过。
 - **合入 target** —— 未 merge、未 push。
 
@@ -110,6 +110,54 @@
 - 前置：先记录已部署后端修复的精确版本，再验证链路。不改前端空关键词业务输入、不吞 500、不补假列表。
 - 本轮所有前端接口测试 PASS 一律标记为「待联合验收」，不作为真实栈结论。
 
-## 8. Review 裁决记录
+## 8. 异构代码 review 裁决记录
 
-异构代码 review 尚未执行；本节在 review 收敛后补写（逐条 finding 的 `必要性` / `复杂度影响` / 采纳或拒绝理由）。规划阶段的三轮 Claude 文档 review（记录在 planning handoff）不能替代它。
+reviewer：Codex（`codex-cli 0.153.4`，`gpt-5.6-sol`，`model_reasoning_effort=high`，`-s read-only`）。
+共用守约规则：`/Users/visionclaw/coding-harness/skills/_shared/review-contract.md`。
+冻结范围：`git diff 68a701f1...<该轮 HEAD>`（仅实施代码；规划文档已在规划阶段单独完成三轮 Claude review，不重复审）。
+绑定合同：Spec `e6f4af66` / blob `f5839c41`，Plan `7ca3f00d` / blob `bdbf4508`。
+reviewer 未跑任何测试（合同要求）。每轮结束都先跑 post-round guard，三轮均确认工作树状态与 HEAD 未被 reviewer 改动。
+artifacts：`/tmp/codex-review-loop/session-Fyb2aH9d`，thread `01a07ff7-a146-7ec0-b29f-dbd98a5cd1de`。
+
+### 第 1 轮（候选 `b5830eb9`）——2 条 finding，均 required
+
+**[1] 权威重读未包含新岗位时仍被当作发布成功** — 必要性 required，复杂度影响 不变 → **采纳并修复**
+
+- 核实：`切当前岗位` reducer 不校验编号；`候选推荐` 的 `活跃岗位` 要求岗位在 `岗位列表` 且 `状态 === '在招'`；
+  Spec §8 明确「同时保证其对应的服务端岗位已经水合」。失败场景成立：重读没带回新岗时用户看到
+  「岗位已发布」并进入当前岗指向幽灵坐标的主壳（胶囊不高亮、P4 无 scope）。
+  原实现漏了这一条，且原新增测试把该错误行为固定成了预期。
+- 修复：`src/数据/招聘数据源/岗位.ts` 的 `创建岗位` 在权威重读后要求列表中存在该编号且状态为在招，
+  否则抛 `BFF错误(200, 'invalid_response')` 走既有错误恢复。测试改为断言拒绝，另加 archived 用例。
+
+**[2] 绕过 decoder 的非字符串终局时间没有安全降级** — 必要性 required，复杂度影响 不变 → **采纳（部分保留）**
+
+- 核实：`new Date(null)` / `new Date(0)` 是合法的 1970 时间，null 或数字的 `finalizedAt` 会渲染成
+  `1970-01-01 08:00` 而不是「时间待确认」，属编造终局时刻。Spec §6.2 明确要求异常值兜底。成立。
+- 修复：`格式化终局时间` 在构造 `Date` 前加 `typeof 原文 !== 'string'` 守卫；补 mapper 反例注入
+  `null` / `0` / 大数字 / 对象 / 数组。
+- **拒绝的部分**：Codex 另建议给 `Intl.formatToParts` 包 try/catch。排除 NaN 日期后未识别出会真实抛错的
+  输入，`CLAUDE.md` 禁止为理论完备性增加防御代码。已在第 2、3 轮提示中请其给出会抛错的具体输入，
+  两轮均未给出，故维持拒绝。
+
+修复 commit：`a4f01870`。受影响范围复验 476/476 PASS，typecheck PASS。
+
+### 第 2 轮（候选 `a4f01870`）——1 条 finding，required
+
+**[1] `job_id` 仍被 `trim()` 改写，未满足精确回传契约** — 必要性 required，复杂度影响 不变 → **采纳并修复**
+
+- 核实：这条抓的正是第 1 轮修复自身的不一致 —— 裁决记录写「逐字比对，只用 trim 判空」，
+  代码却是 `创建岗位编号 = result.job_id.trim()`，并拿改写值当附属存储键、权威列表匹配键与回传值。
+  首尾带空白的 opaque ID 会把附属写在 trim 后的键上（读取路径按原始 `dto.job_id` 查，附属丢失），
+  随后逐字匹配失败并误抛 `invalid_response`。成立。
+- 修复：`创建岗位编号` 直接取 `result.job_id` 原始值，`trim()` 只用于判空；补首尾空白 ID 的逐字用例。
+
+修复 commit：`19c724a5`。定向复验 150/150 PASS，typecheck PASS。
+
+### 第 3 轮（候选 `19c724a5`）
+
+**`NO FINDINGS`** —— 干净收敛，未触及 3 轮上限。
+
+### 结论
+
+无未解决的 required finding。唯一未采纳项是第 1 轮 [2] 的 try/catch 建议，理由与两轮追问结果已记录在上。
