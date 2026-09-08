@@ -73,6 +73,20 @@ let mock应用状态: any;
 vi.mock('../../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
 vi.mock('../../路由/导航钩子', () => ({ use导航: () => ({ 返回: mock返回, 跳转: mock跳转 }) }));
 
+/** 动态取轻提示条数：轻提示 是 body 上的单例容器，每次断言都重查（捕获引用会过期）。 */
+function 轻提示条数(): number {
+  return (Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined)?.childElementCount ?? 0;
+}
+
+function 清空轻提示(): void {
+  const 容器 = Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined;
+  if (容器) 容器.innerHTML = '';
+}
+
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
 const 职位ID = 'job_0123456789abcdef0123456789abcdef';
 const 别名 = 'candidate-0123456789ab';
@@ -1626,6 +1640,9 @@ describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
   beforeEach(() => {
     mock读取详情.mockClear();
     mock读取简历PDF.mockClear();
+    mock读取简历PDF.mockResolvedValue({ url: 'blob:p5-resume', revoke: () => undefined });
+    mock跳转.mockClear();
+    清空轻提示();
   });
 
   afterEach(() => {
@@ -1707,12 +1724,126 @@ describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
     expect(租约.revoke).toHaveBeenCalledTimes(1); // 卸载即回收
   });
 
-  it('候选端无任何 PDF UI（本任务不建候选侧入口）', async () => {
+  // Task 3：候选端也能看本 Case 已下发的本人 PDF —— 入口只由阶段投影的 typed 附件授权。
+  it('候选端 typed 附件在场：点击走 candidate 路径一次，弹层以租约地址呈现真实 PDF', async () => {
+    const user = userEvent.setup();
+    const 租约 = { url: 'blob:p5-own-resume', revoke: vi.fn() };
+    mock读取简历PDF.mockResolvedValue(租约);
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1等待详情(true) }) });
     渲染详情('candidate', 'mc_direct');
     expect(await screen.findByText('重试简历校验')).toBeTruthy();
-    expect(screen.queryByText('查看 ›')).toBeNull(); // 自己的绑定附件不出查看入口
+    await user.click(screen.getByRole('button', { name: /后端工程师_简历_v1\.pdf/ }));
+    expect(mock读取简历PDF).toHaveBeenCalledTimes(1);
+    // 角色路径严格：候选端只走 candidate 臂，不复用 recruiter 路径
+    expect(mock读取简历PDF).toHaveBeenCalledWith('candidate', 'mc_direct');
+    const 弹层 = await screen.findByRole('dialog', { name: '简历原件' });
+    expect(
+      (within(弹层).getByTitle('简历 PDF') as HTMLIFrameElement).getAttribute('src'),
+    ).toBe('blob:p5-own-resume');
+    await user.click(within(弹层).getByRole('button', { name: '关闭' }));
+    expect(租约.revoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('候选端无附件：零入口零请求，不从附件库猜文件', async () => {
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1等待详情(false) }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(await screen.findByText('重试简历校验')).toBeTruthy();
+    expect(screen.queryByText('查看 ›')).toBeNull();
+    expect(screen.queryByText('后端工程师_简历_v1.pdf')).toBeNull();
     expect(mock读取简历PDF).not.toHaveBeenCalled();
+  });
+
+  it('候选端连点只发一次请求（在飞单飞）', async () => {
+    const user = userEvent.setup();
+    const 门 = 可控Promise<{ url: string; revoke: () => undefined }>();
+    mock读取简历PDF.mockReturnValue(门.promise);
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1等待详情(true) }) });
+    渲染详情('candidate', 'mc_direct');
+    const 入口 = screen.getByRole('button', { name: /后端工程师_简历_v1\.pdf/ });
+    await user.click(入口);
+    await user.click(入口);
+    await user.click(入口);
+    expect(mock读取简历PDF).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      门.resolve({ url: 'blob:once', revoke: vi.fn(() => undefined) });
+      await 门.promise;
+    });
+    expect(await screen.findByRole('dialog', { name: '简历原件' })).toBeTruthy();
+  });
+
+  it('读取在途卸载：迟到成功的租约立即回收，不打开弹层', async () => {
+    const user = userEvent.setup();
+    const 门 = 可控Promise<{ url: string; revoke: () => undefined }>();
+    const 租约 = { url: 'blob:late', revoke: vi.fn(() => undefined) };
+    mock读取简历PDF.mockReturnValue(门.promise);
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1等待详情(true) }) });
+    const 页 = 渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /后端工程师_简历_v1\.pdf/ }));
+    页.unmount();
+    await act(async () => {
+      门.resolve(租约);
+      await 门.promise;
+    });
+    expect(租约.revoke).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog', { name: '简历原件' })).toBeNull();
+  });
+
+  it('读取在途换 Case：迟到租约回收，且新 Case 的第一次点击不被旧在飞锁挡住', async () => {
+    const user = userEvent.setup();
+    const 旧门 = 可控Promise<{ url: string; revoke: () => undefined }>();
+    const 旧租约 = { url: 'blob:old-case', revoke: vi.fn(() => undefined) };
+    const 新租约 = { url: 'blob:new-case', revoke: vi.fn(() => undefined) };
+    mock读取简历PDF.mockReturnValueOnce(旧门.promise).mockResolvedValue(新租约);
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1等待详情(true) }) });
+    const 页 = 渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /后端工程师_简历_v1\.pdf/ }));
+    页.unmount();
+    cleanup();
+
+    置详情状态({ role: 'candidate', caseId: 'mc_other', 快照: 详情快照({ detail: S1等待详情(true) }) });
+    渲染详情('candidate', 'mc_other');
+    await user.click(await screen.findByRole('button', { name: /后端工程师_简历_v1\.pdf/ }));
+    expect(mock读取简历PDF).toHaveBeenLastCalledWith('candidate', 'mc_other');
+    const 弹层 = await screen.findByRole('dialog', { name: '简历原件' });
+    expect(
+      (within(弹层).getByTitle('简历 PDF') as HTMLIFrameElement).getAttribute('src'),
+    ).toBe('blob:new-case');
+    // 旧 Case 的迟到成功只回收，不改新 Case 的弹层
+    await act(async () => {
+      旧门.resolve(旧租约);
+      await 旧门.promise;
+    });
+    expect(旧租约.revoke).toHaveBeenCalledTimes(1);
+    expect(
+      (within(await screen.findByRole('dialog', { name: '简历原件' }))
+        .getByTitle('简历 PDF') as HTMLIFrameElement).getAttribute('src'),
+    ).toBe('blob:new-case');
+  });
+
+  it('读取失败只在当前页轻提示：不跳转、不生成模拟文件；迟到失败不提示', async () => {
+    const user = userEvent.setup();
+    mock读取简历PDF.mockRejectedValueOnce(new Error('读取失败'));
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1等待详情(true) }) });
+    渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /后端工程师_简历_v1\.pdf/ }));
+    await waitFor(() => expect(轻提示条数()).toBe(1));
+    expect(screen.queryByRole('dialog', { name: '简历原件' })).toBeNull();
+    expect(mock跳转).not.toHaveBeenCalled();
+
+    // 卸载后到达的失败不再提示
+    清空轻提示();
+    const 门 = 可控Promise<{ url: string; revoke: () => undefined }>();
+    mock读取简历PDF.mockReturnValue(门.promise);
+    cleanup();
+    置详情状态({ role: 'candidate', caseId: 'mc_late', 快照: 详情快照({ detail: S1等待详情(true) }) });
+    const 页 = 渲染详情('candidate', 'mc_late');
+    await user.click(await screen.findByRole('button', { name: /后端工程师_简历_v1\.pdf/ }));
+    页.unmount();
+    await act(async () => {
+      门.reject(new Error('迟到失败'));
+      await 门.promise.catch(() => undefined);
+    });
+    expect(轻提示条数()).toBe(0);
   });
 });
 
