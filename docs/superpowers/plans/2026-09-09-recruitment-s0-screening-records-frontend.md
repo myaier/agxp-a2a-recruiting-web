@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript、React 19、Vitest、Testing Library、Vite、现有 BFF HTTP client 与 P5 状态操作层、agent-browser dogfood。
 
-**Spec:** `docs/superpowers/specs/2026-09-09-recruitment-s0-screening-records-frontend-design.md`，用户批准澄清版本 commit `3b89b728f602bdf91b651dd7e56f791e19f68951`，blob `0da4fd7581618c7893aba37f8e162fe0f41bfd9c`。
+**Spec:** `docs/superpowers/specs/2026-09-09-recruitment-s0-screening-records-frontend-design.md`，用户批准澄清版本 commit `307fbe003d1bcfc5ca5215b6d6ce2e6a4f6439bd`，blob `9f2ed2dde17860cff269f33ed3ebdc9b140082fc`。
 
 ## Global Constraints
 
@@ -27,15 +27,17 @@
 
 ## 前置条件、文件边界与停止条件
 
-执行 prompt 会给出本 Plan 最终所在的精确 target revision。执行前完整阅读 `CLAUDE.md`、`AGENTS.md`、批准 Spec 和本 Plan，并运行：
+执行 prompt 会以 40 位字面量给出本 Plan 最终所在的精确 target revision，并要求实施父会话将该字面量导出为 `IMPLEMENTATION_BASE_SHA`。每个新 shell／子任务都必须重新传入同一个字面量，不能从已经产生实现提交的当前 HEAD 重新计算。执行前完整阅读 `CLAUDE.md`、`AGENTS.md`、批准 Spec 和本 Plan，并运行：
 
 ```bash
+: "${IMPLEMENTATION_BASE_SHA:?execution prompt 必须提供精确 target revision}"
+test "$(git rev-parse HEAD)" = "$IMPLEMENTATION_BASE_SHA"
 git status --short
 git rev-parse HEAD
 git merge-base HEAD origin/main
 ```
 
-HEAD 必须等于 execution prompt 的 target revision；把这个值记录为 `IMPLEMENTATION_BASE_SHA`，Task 4 的代码 review 与范围审计始终使用它，不把规划文档提交混进代码候选 diff。若相关文件已有未说明改动，保留用户改动并先核对冲突，不能覆盖。核对后端权威 fixture `apps/recruitment-bff/internal/recruitmentclient/testdata/s0_screening_records.json` 的 release 版本；若冻结字段、角色或顺序已变化，停止实施并回到 Spec 评审，不能自行兼容新合同。
+上述 `test` 必须 PASS；空变量或 HEAD 不一致都立即停止。父会话还须把该字面量写入最终 handoff 的 `Implementation base commit`，Task 4 的代码 review 与范围审计始终使用它，不把规划文档提交混进代码候选 diff。若相关文件已有未说明改动，保留用户改动并先核对冲突，不能覆盖。核对后端权威 fixture `apps/recruitment-bff/internal/recruitmentclient/testdata/s0_screening_records.json` 的 release 版本；若冻结字段、角色或顺序已变化，停止实施并回到 Spec 评审，不能自行兼容新合同。
 
 预计生产文件：
 
@@ -460,6 +462,8 @@ Expected: FAIL；页面尚未合并新消息，也没有 S0 专用本地 formatt
 
 保留现有 `取短时间(iso)` 给旧 transcript／instruction receipt 使用；不要替换它。另加只服务 `Agent消息` 的 S0 formatter，使用 `Intl.DateTimeFormat('zh-CN', { hour:'2-digit', minute:'2-digit', hourCycle:'h23' })` 和 `formatToParts` 拼两位 `HH:mm`；非法值防御性显示 `时间待确认`。不固定产品时区、不硬编码加八小时、不改 DTO。
 
+已知兼容结果是：同一 S0 阶段内，新 Agent 消息显示本地 `HH:mm`，旧 transcript／instruction receipt 仍显示既有字符串切片时间。不要在本任务中顺手统一；Task 5 要观察并记录这是否造成实际误读，作为未来是否另立时间统一任务的证据。
+
 `段内对话` 顺序固定：
 
 1. `区.Agent消息`：编号 `s0:${item.id}`，方位由 `item.role === viewer` 决定，正文用 mapper `内容`，`occurredAt` 只走 S0 本地 formatter。
@@ -504,8 +508,9 @@ git commit -m "feat: render S0 screening records in case timeline"
 
 ```bash
 git status --short
-git diff --check "$IMPLEMENTATION_BASE_SHA"..HEAD
-git diff --name-status "$IMPLEMENTATION_BASE_SHA"..HEAD
+: "${IMPLEMENTATION_BASE_SHA:?必须重新导出 execution prompt 给出的精确 target revision}"
+git diff --check "${IMPLEMENTATION_BASE_SHA}"..HEAD
+git diff --name-status "${IMPLEMENTATION_BASE_SHA}"..HEAD
 rg -n "include=screening_records|screeningRecords|Agent消息|Agent总结|已拒绝回答|暂无法确认|暂无可用信息" src
 rg -n "dangerouslySetInnerHTML|screening.*fact|fact.*screening" src/屏幕/P5 src/组件 src/数据
 ```
@@ -526,7 +531,7 @@ Expected: PASS。记录命令、commit、结果与耗时；失败时使用 `supe
 
 - [ ] **Step 3: 按父工作流执行 Claude 异构代码 review**
 
-使用当前可用的 Claude review-loop，模式为 implementation code review，base 固定为执行开始时记录的 `IMPLEMENTATION_BASE_SHA`，head 固定为本轮 review 前的 `IMPLEMENTATION_HEAD_SHA=$(git rev-parse HEAD)`；scope 是二者间 Task 1–3 的产品和测试 diff。传入批准 Spec commit/blob、本 Plan 最终 commit/blob、用户目标／非目标和定向测试证据。Reviewer 只读、不运行测试、不扩大到整个 branch 或无关文档。
+使用当前可用的 Claude review-loop，模式为 implementation code review；先以 `: "${IMPLEMENTATION_BASE_SHA:?}"` 再次强制校验 execution prompt 的字面量 base，head 固定为本轮 review 前的 `IMPLEMENTATION_HEAD_SHA=$(git rev-parse HEAD)`，并把这两个精确 SHA 同时写入 review 输入。Scope 只允许二者间 Task 1–3 的产品和测试 diff。传入批准 Spec commit/blob、本 Plan 最终 commit/blob、用户目标／非目标和定向测试证据。Reviewer 只读、不运行测试、不扩大到整个 branch 或无关文档。
 
 逐条核实 finding，按仓库规则记录 `必要性` 与 `复杂度影响`。只修复成立的 required；optional 不阻塞，增加复杂度且无现实故障证据的建议拒绝。每轮修复单独 commit，只重跑被改动失效的定向测试，直至无未解决有效 required 或达到 review-loop 上限。上限后仍有 required 时停止，不进入 final gate。
 
@@ -585,6 +590,7 @@ git -C "$AGXP_MONOREPO_DIR" rev-parse HEAD
 5. 进入 S1 后仍能回看 S0；ended／completed Case 从历史重开仍显示。
 6. 刷新、失败重试和角色切换不重复、不串 Case／主体。
 7. 简历附件、叮嘱、协调与意向动作按权威状态保持。
+8. 同一 S0 阶段中新 Agent 消息的本地时间与旧记录的既有切片时间并存时，记录是否造成实际误读；这项观察不改变本期实现，只有明确证据才进入后续时间统一任务。
 
 保存关键截图，并写固定 before vs after：`Before：Backend 详情只有阶段状态／旧小结；After：匿名初筛阶段内显示真实 Agent Q/A，候选端另显示初评与逐轮复评。`
 
@@ -604,10 +610,11 @@ git -C "$AGXP_MONOREPO_DIR" rev-parse HEAD
 # S0 匿名初筛记录前端接入实施 Handoff
 
 ## 版本
+- Implementation base commit: execution prompt 给出的精确 SHA
 - Frontend source commit: 精确 SHA
 - BFF runtime commit: 精确 SHA 或 BLOCKED 原因
 - Recruitment runtime commit: 精确 SHA 或 BLOCKED 原因
-- Approved Spec: commit 3b89b728f602bdf91b651dd7e56f791e19f68951 / blob 0da4fd7581618c7893aba37f8e162fe0f41bfd9c
+- Approved Spec: commit 307fbe003d1bcfc5ca5215b6d6ce2e6a4f6439bd / blob 9f2ed2dde17860cff269f33ed3ebdc9b140082fc
 - Implementation Plan: 最终 commit / blob
 
 ## 实施范围
