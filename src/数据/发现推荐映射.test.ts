@@ -268,10 +268,11 @@ describe('从P4招聘候选', () => {
       代号: '候选人甲',
       头像字: '候',
       匹配分: 87,
-      亮点: ['full_stack'],
+      // 样本 highlights 是表外码 full_stack：过滤掉，绝不把原 token 带进页面
+      亮点: [],
       匹配依据已确认: true,
       经验: '4 年',
-      求职状态: 'employed',
+      求职状态: '在职',
       摘要: '四年全栈经验',
       技能: ['TypeScript', 'React'],
       教育: [{ 学校: '复旦大学', 专业: '计算机科学', 学历: '本科', 起止: '2017.09—2021.06' }],
@@ -283,13 +284,62 @@ describe('从P4招聘候选', () => {
     });
   });
 
-  it('招聘卡匹配依据只认卡顶层 basis，匹配分与亮点原样带出', () => {
+  it('招聘卡匹配依据只认卡顶层 basis，匹配分原样带出，亮点按闭合表投影', () => {
     for (const basis of [true, false]) {
-      const view = 从P4招聘候选({ ...BFF招聘候选推荐样本, structured_requirements_confirmed: basis });
+      const view = 从P4招聘候选({
+        ...BFF招聘候选推荐样本,
+        highlights: ['category_matched'],
+        structured_requirements_confirmed: basis,
+      });
       expect(view.匹配依据已确认).toBe(basis);
       expect(view.匹配分).toBe(BFF招聘候选推荐样本.match_score);
-      expect(view.亮点).toEqual(BFF招聘候选推荐样本.highlights);
+      expect(view.亮点).toEqual(['职位方向匹配']);
     }
+  });
+
+  it('四个已知 highlight 码逐一中文化', () => {
+    const 表 = {
+      category_matched: '职位方向匹配',
+      experience_met: '经验要求匹配',
+      location_matched: '工作地点匹配',
+      workplace_mode_matched: '办公方式匹配',
+    } as const;
+    for (const [码, 文案] of Object.entries(表)) {
+      expect(从P4招聘候选({ ...BFF招聘候选推荐样本, highlights: [码] }).亮点).toEqual([文案]);
+    }
+  });
+
+  it('未知 highlight 过滤，已知项保持原顺序与重复数量，空数组仍为空', () => {
+    expect(从P4招聘候选({
+      ...BFF招聘候选推荐样本,
+      highlights: ['category_matched', 'unknown', 'location_matched'],
+    }).亮点).toEqual(['职位方向匹配', '工作地点匹配']);
+    expect(从P4招聘候选({
+      ...BFF招聘候选推荐样本,
+      highlights: ['location_matched', 'experience_met', 'location_matched'],
+    }).亮点).toEqual(['工作地点匹配', '经验要求匹配', '工作地点匹配']);
+    expect(从P4招聘候选({ ...BFF招聘候选推荐样本, highlights: [] }).亮点).toEqual([]);
+    expect(从P4招聘候选({ ...BFF招聘候选推荐样本, highlights: ['', '  '] }).亮点).toEqual([]);
+  });
+
+  it('原型属性名不命中文案表：constructor / toString 不产生亮点，也不当求职状态', () => {
+    expect(从P4招聘候选({
+      ...BFF招聘候选推荐样本,
+      highlights: ['constructor', 'toString', '__proto__', 'hasOwnProperty'],
+    }).亮点).toEqual([]);
+    for (const 码 of ['constructor', 'toString', '__proto__']) {
+      expect(从P4招聘候选({ ...BFF招聘候选推荐样本, job_status: 码 }).求职状态).toBe('求职状态待确认');
+    }
+  });
+
+  it('employed 显示 在职；未知与空 job_status 显示 求职状态待确认，绝不透出原 token', () => {
+    expect(从P4招聘候选({ ...BFF招聘候选推荐样本, job_status: 'employed' }).求职状态).toBe('在职');
+    for (const 码 of ['', '   ', 'open_to_work', 'EMPLOYED', '在职中']) {
+      const view = 从P4招聘候选({ ...BFF招聘候选推荐样本, job_status: 码 });
+      expect(view.求职状态).toBe('求职状态待确认');
+    }
+    expect(从P4招聘候选({ ...BFF招聘候选推荐样本, job_status: 'open_to_work' }).求职状态)
+      .not.toContain('open_to_work');
   });
 
   it('四种薪资关系按闭合文案表投影', () => {

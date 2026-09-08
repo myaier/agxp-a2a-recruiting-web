@@ -38,6 +38,22 @@ const 经验要求文案 = {
 } as const;
 const 学历要求文案 = { none: '不限', associate: '大专', bachelor: '本科', master: '硕士', doctorate: '博士' } as const;
 
+// 招聘卡的 job_status / highlights 在 wire 上是 open string（decoder 不收紧）：
+// 只有本表内的码有中文展示，表外码一律不出现在页面上 —— 未知/空状态给中性文案，
+// 未知亮点直接丢弃，绝不透出原 token、拆下划线或猜含义。
+const 求职状态文案 = { employed: '在职' } as const;
+const 亮点文案 = {
+  category_matched: '职位方向匹配',
+  experience_met: '经验要求匹配',
+  location_matched: '工作地点匹配',
+  workplace_mode_matched: '办公方式匹配',
+} as const;
+
+/** 闭合表查表只认自有键：'constructor'、'toString' 这类原型属性名不能命中 */
+function 已有键<T extends object>(表: T, 键: PropertyKey): 键 is keyof T {
+  return Object.prototype.hasOwnProperty.call(表, 键);
+}
+
 /** 市场卡 发布人头像 必填配色；wire 不带颜色，统一中性底，不按身份派生 */
 const 发布人配色 = { 底色: '#5b7a9a', 字色: '#fff' } as const;
 
@@ -192,13 +208,14 @@ export function 从P4招聘候选(card: BFF招聘候选推荐): P4招聘候选�
     代号,
     头像字: 首字(代号),
     匹配分: card.match_score,
-    亮点: card.highlights,
+    // 已知码按原顺序、原重复数量中文化；表外码过滤掉
+    亮点: card.highlights.flatMap((码) => (已有键(亮点文案, 码) ? [亮点文案[码]] : [])),
     // 卡顶层的历史 basis：决定亮点整组显示还是收起，不从分/亮点文字推断
     匹配依据已确认: card.structured_requirements_confirmed,
     // wire 给多少年就显示多少年；null → 空串，不折算不编造
     经验: card.experience_years !== null ? `${card.experience_years} 年` : '',
-    // job_status 是 open string，原样透传，不猜中文标签
-    求职状态: card.job_status,
+    // job_status 是 open string：只有闭合表内的码有展示文案，其余（含空串）给中性文案
+    求职状态: 已有键(求职状态文案, card.job_status) ? 求职状态文案[card.job_status] : '求职状态待确认',
     摘要: card.summary,
     技能: card.skills,
     教育: card.educations.map((段) => ({
