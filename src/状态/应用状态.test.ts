@@ -7,6 +7,7 @@ import { 创建初始状态, 空账号资料 } from './初始状态';
 import { 空岗位硬性事实 } from '../数据/类型';
 import {
   BFF主体样本,
+  BFFCandidateJob样本,
   BFF简历样本,
   BFF岗位样本,
   BFF意向样本,
@@ -3340,5 +3341,117 @@ describe('应用状态提供者 候选引导草稿持久化', () => {
     // 候选草稿只认 Backend：Mock 模式绝不创建候选会话键
     const 会话键们 = Object.keys(globalThis.sessionStorage);
     expect(会话键们.some((名) => 名.includes('候选引导草稿'))).toBe(false);
+  });
+});
+
+// ── Task 5：P4 开案 → P5 工作区失效的 Provider 接线（生产操作工厂 + 受控 facade）──
+// 只验证接线是真的（Provider 注入的 P5 引用被用上了）：开案成功后，已缓存的对应与
+// 全部 open scope 再调 加载工作区 会真实 GET；别的 scope 仍缓存；本方案没有立即 GET。
+describe('应用状态提供者 P4 开案后的 P5 工作区失效', () => {
+  const 候选推荐卡 = {
+    recommendation_id: 'rec_c1',
+    batch_id: 'bat_c1',
+    intention_id: 'int_1',
+    rank: 1,
+    match_score: 80,
+    match_reasons: [],
+    state: 'available' as const,
+    structured_requirements_confirmed: true,
+    delegation: null,
+    job: BFFCandidateJob样本,
+  };
+
+  const 空页 = (): P5列表页 => ({ role: 'candidate', items: [], nextCursor: null });
+
+  function 建后端() {
+    const 后端 = 创建后端桩('candidate');
+    return Object.assign(后端, {
+      读取候选岗位推荐: vi.fn(async () => [候选推荐卡]),
+      创建候选岗位委托: vi.fn(async () => [{
+        delegation_id: 'del_1', recommendation_id: null, state: 'case_started' as const,
+        evaluation_id: null, case_id: 'case_new', refusal_code: null, failure_code: null,
+      }]),
+      读取候选岗位委托: vi.fn(),
+    });
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null), setItem: vi.fn(), removeItem: vi.fn(), clear: vi.fn(),
+    });
+  });
+
+  it('POST case_started 后：对应与全部 scope 真实重读，别的 scope 仍命中缓存', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 建后端();
+    vi.mocked(后端.读取P5Open列表).mockResolvedValue(空页());
+    render(createElement(
+      应用状态提供者,
+      { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端 as unknown as HTTP招聘数据源 } },
+      createElement(探针),
+    ));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+
+    // 三个 scope 都先读成功缓存：int_1（本档）、*（全部）、int_2（别的意向）
+    await act(async () => {
+      当前.操作.设置发现推荐范围('candidate', 'candidate:list:int_1');
+      await 当前.操作.加载工作区('candidate', 'int_1');
+      await 当前.操作.加载工作区('candidate', null);
+      await 当前.操作.加载工作区('candidate', 'int_2');
+    });
+    const 首载次数 = vi.mocked(后端.读取P5Open列表).mock.calls.length;
+    expect(首载次数).toBe(3);
+    // 缓存命中：再读不发请求
+    await act(async () => { await 当前.操作.加载工作区('candidate', 'int_1'); });
+    expect(vi.mocked(后端.读取P5Open列表).mock.calls.length).toBe(首载次数);
+
+    await act(async () => {
+      await 当前.操作.加载候选岗位('int_1');
+      await 当前.操作.委托候选岗位({
+        intentionId: 'int_1', recommendationId: 'rec_c1', jobId: BFFCandidateJob样本.job_id,
+        resumeFileId: 'rf_1', resumeFileVersionId: 'rfv_1', disclosureAcknowledged: true,
+      });
+    });
+    // 失效本身不发 GET
+    expect(vi.mocked(后端.读取P5Open列表).mock.calls.length).toBe(首载次数);
+
+    // 本档与全部档不再命中缓存 → 各真实 GET 一次；别的意向仍缓存
+    await act(async () => {
+      await 当前.操作.加载工作区('candidate', 'int_1');
+      await 当前.操作.加载工作区('candidate', null);
+      await 当前.操作.加载工作区('candidate', 'int_2');
+    });
+    expect(vi.mocked(后端.读取P5Open列表).mock.calls.length).toBe(首载次数 + 2);
+  });
+
+  it('失效前发出的旧 GET 迟到返回，不把空列表重新落成成功缓存', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 建后端();
+    const 门 = deferred<P5列表页>();
+    vi.mocked(后端.读取P5Open列表).mockReturnValueOnce(门.promise).mockResolvedValue(空页());
+    render(createElement(
+      应用状态提供者,
+      { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端 as unknown as HTTP招聘数据源 } },
+      createElement(探针),
+    ));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    当前.操作.设置发现推荐范围('candidate', 'candidate:list:int_1');
+    // 在飞的旧读还没回来
+    const 在飞 = 当前.操作.加载工作区('candidate', 'int_1');
+    await act(async () => {
+      await 当前.操作.加载候选岗位('int_1');
+      await 当前.操作.委托候选岗位({
+        intentionId: 'int_1', recommendationId: 'rec_c1', jobId: BFFCandidateJob样本.job_id,
+        resumeFileId: 'rf_1', resumeFileVersionId: 'rfv_1', disclosureAcknowledged: true,
+      });
+    });
+    await act(async () => { 门.resolve(空页()); await 在飞; });
+    // 迟到读被读代际作废：这个 scope 没有成功缓存，下一次加载仍真实 GET
+    expect(当前.后端状态.P5工作区['p5:open:candidate:int_1']?.阶段).not.toBe('成功');
+    const 失效后次数 = vi.mocked(后端.读取P5Open列表).mock.calls.length;
+    await act(async () => { await 当前.操作.加载工作区('candidate', 'int_1'); });
+    expect(vi.mocked(后端.读取P5Open列表).mock.calls.length).toBe(失效后次数 + 1);
   });
 });

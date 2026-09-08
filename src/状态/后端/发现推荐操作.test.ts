@@ -152,6 +152,12 @@ function 创建P4操作测试环境(): P4操作测试环境 {
     P4范围代际: { current: new Map<string, number>() },
     P4幂等意图: { current: new Map<string, string>() },
     P4可见范围: { current: { candidate: null, recruiter: null } },
+    // Task 5：开案成功要经 失效P5开案工作区 触达 P5 open 缓存 —— 生产 Provider 恒注入
+    // 这三个引用，桩同样给全，缺引用时该函数抛接线错误而不是静默不失效。
+    P5范围代际: { current: new Map<string, number>() },
+    P5幂等意图: { current: new Map<string, string>() },
+    P5可见范围: { current: { candidate: null, recruiter: null } },
+    P5对象租约: { current: new Set() },
   };
   return {
     数据源,
@@ -1840,5 +1846,149 @@ describe('组织认证竞态对账（一次 Owner Jobs 重读）', () => {
 
     expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(env.数据源.读取岗位)).not.toHaveBeenCalled();
+  });
+});
+
+// ── Task 5：开案成功 → P5 open 工作区失效 ────────────────────────────────────
+// 只失效、不立刻 GET：移除匹配 owner 的 open 工作区槽 + 读代际 +1（旧在飞读因此过期，
+// 不会把旧空列表重新落成成功缓存）。accepted/evaluating/缺 case_id 一律不触发。
+describe('创建发现推荐操作 · 开案成功让 P5 open 工作区失效', () => {
+  const 候选委托输入 = {
+    intentionId: 'int_1',
+    recommendationId: 'rec_c1',
+    jobId: 'job_1',
+    resumeFileId: 'rf_1',
+    resumeFileVersionId: 'rfv_7',
+    disclosureAcknowledged: true as const,
+  };
+
+  async function 种候选卡(): Promise<void> {
+    vi.mocked(env.数据源.读取候选岗位推荐).mockResolvedValue([BFF候选岗位推荐样本]);
+    await env.操作.加载候选岗位('int_1');
+  }
+
+  async function 种招聘卡(): Promise<void> {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValue([BFF招聘候选推荐样本]);
+    await env.操作.加载招聘候选('job_1');
+  }
+
+  async function 种在途候选委托(): Promise<void> {
+    vi.mocked(env.数据源.读取候选岗位推荐).mockResolvedValue([
+      {
+        ...BFF候选岗位推荐样本,
+        state: 'delegating',
+        delegation: { delegation_id: 'del_p1', state: 'accepted', case_id: null },
+      },
+    ]);
+    await env.操作.加载候选岗位('int_1');
+  }
+
+  const 成功空工作区 = (ownerSubjectId: string | null) => ({
+    ownerSubjectId, 阶段: '成功' as const, 刷新中: false,
+    items: [], nextCursor: null, 已加载页数: 1, error: null, generation: 1,
+  });
+
+  const 种P5工作区 = (表: Record<string, ReturnType<typeof 成功空工作区>>) => {
+    env.deps.设后端状态((旧) => ({ ...旧, P5工作区: { ...旧.P5工作区, ...表 } }));
+  };
+
+  const 读代际 = (键: string) => env.deps.P5范围代际!.current.get(`${键}#读`);
+
+  it('候选创建直接成功：失效本意向档与全部档，别的意向仍缓存', async () => {
+    await 种候选卡();
+    const 本档 = 'p5:open:candidate:int_1';
+    const 全部 = 'p5:open:candidate:*';
+    const 别档 = 'p5:open:candidate:int_2';
+    种P5工作区({
+      [本档]: 成功空工作区('sub_1'), [全部]: 成功空工作区('sub_1'), [别档]: 成功空工作区('sub_1'),
+    });
+    vi.mocked(env.数据源.创建候选岗位委托).mockResolvedValue([
+      { ...BFF候选委托回执样本, delegation_id: 'del_ok', state: 'case_started', case_id: 'case_ok' },
+    ]);
+    await env.操作.委托候选岗位(候选委托输入);
+    expect(env.最新状态().P5工作区[本档]).toBeUndefined();
+    expect(env.最新状态().P5工作区[全部]).toBeUndefined();
+    expect(env.最新状态().P5工作区[别档]).toBeDefined();
+    expect(读代际(本档)).toBe(1);
+    expect(读代际(全部)).toBe(1);
+  });
+
+  it('招聘创建直接成功：失效本岗档与全部档', async () => {
+    设主体角色(招聘主体);
+    await 种招聘卡();
+    const 本档 = 'p5:open:recruiter:job_1';
+    const 全部 = 'p5:open:recruiter:*';
+    种P5工作区({ [本档]: 成功空工作区('sub_1'), [全部]: 成功空工作区('sub_1') });
+    vi.mocked(env.数据源.创建招聘候选委托).mockResolvedValue([
+      { ...BFF招聘委托回执样本, delegation_id: 'del_rok', state: 'case_started', case_id: 'case_rok' },
+    ]);
+    await env.操作.委托招聘候选('job_1', 'rec_r1');
+    expect(env.最新状态().P5工作区[本档]).toBeUndefined();
+    expect(env.最新状态().P5工作区[全部]).toBeUndefined();
+  });
+
+  it('accepted / evaluating / 缺 case_id 都不失效任何 P5 缓存', async () => {
+    const 本档 = 'p5:open:candidate:int_1';
+    const 全部 = 'p5:open:candidate:*';
+    for (const 回执 of [
+      { delegation_id: 'del_a', state: 'accepted' as const, case_id: null },
+      { delegation_id: 'del_e', state: 'evaluating' as const, case_id: null },
+    ]) {
+      env = 创建P4操作测试环境();
+      env.操作.设置发现推荐范围('candidate', P4范围键.候选列表('int_1'));
+      await 种候选卡();
+      种P5工作区({ [本档]: 成功空工作区('sub_1'), [全部]: 成功空工作区('sub_1') });
+      vi.mocked(env.数据源.创建候选岗位委托).mockResolvedValue([
+        { ...BFF候选委托回执样本, ...回执 },
+      ]);
+      await env.操作.委托候选岗位(候选委托输入);
+      expect(env.最新状态().P5工作区[本档]).toBeDefined();
+      expect(env.最新状态().P5工作区[全部]).toBeDefined();
+    }
+  });
+
+  it('轮询到 case_started：按旧卡的 delegation_id 反查关联意向档并失效', async () => {
+    await 种在途候选委托();
+    const 本档 = 'p5:open:candidate:int_1';
+    const 全部 = 'p5:open:candidate:*';
+    种P5工作区({ [本档]: 成功空工作区('sub_1'), [全部]: 成功空工作区('sub_1') });
+    vi.mocked(env.数据源.读取候选岗位委托).mockResolvedValue(
+      { ...BFF候选委托回执样本, delegation_id: 'del_p1', state: 'case_started', case_id: 'case_77' });
+    await env.操作.刷新委托('candidate', 'del_p1');
+    expect(env.最新状态().P5工作区[本档]).toBeUndefined();
+    expect(env.最新状态().P5工作区[全部]).toBeUndefined();
+  });
+
+  it('同一 delegation + case_id 的重复成功回执不再触发失效（无刷新风暴）', async () => {
+    await 种在途候选委托();
+    const 全部 = 'p5:open:candidate:*';
+    种P5工作区({ [全部]: 成功空工作区('sub_1') });
+    vi.mocked(env.数据源.读取候选岗位委托).mockResolvedValue(
+      { ...BFF候选委托回执样本, delegation_id: 'del_p1', state: 'case_started', case_id: 'case_77' });
+    await env.操作.刷新委托('candidate', 'del_p1');
+    const 第一次代际 = 读代际(全部);
+    // 缓存重新落成后再收到同一条回执：读代际不再变化
+    种P5工作区({ [全部]: 成功空工作区('sub_1') });
+    await env.操作.刷新委托('candidate', 'del_p1');
+    expect(读代际(全部)).toBe(第一次代际);
+    expect(env.最新状态().P5工作区[全部]).toBeDefined();
+  });
+
+  it('主体在飞期间已换：陈旧成功回执不失效新主体的工作区', async () => {
+    await 种候选卡();
+    const 全部 = 'p5:open:candidate:*';
+    种P5工作区({ [全部]: 成功空工作区('sub_1') });
+    let 放行!: (值: unknown) => void;
+    vi.mocked(env.数据源.创建候选岗位委托).mockReturnValue(new Promise((ok) => {
+      放行 = () => ok([{
+        ...BFF候选委托回执样本, delegation_id: 'del_late', state: 'case_started', case_id: 'case_late',
+      }]);
+    }) as never);
+    const 写 = env.操作.委托候选岗位(候选委托输入);
+    env.deps.主体标识引用.current = 'sub_2';
+    放行(undefined);
+    await 写.catch(() => undefined);
+    expect(env.最新状态().P5工作区[全部]).toBeDefined();
   });
 });

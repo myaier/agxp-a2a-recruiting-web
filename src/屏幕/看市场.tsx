@@ -50,7 +50,7 @@ import { 路径 } from '../路由/路径表';
 import { 市场列表 } from '../数据/模拟数据';
 import type { 市场职位 } from '../数据/类型';
 import type { BFF附件简历 } from '../数据/BFF契约';
-import { 从P4候选岗位, 映射P4委托展示 } from '../数据/发现推荐映射';
+import { 从P4候选岗位, P4已开案, 映射P4委托展示 } from '../数据/发现推荐映射';
 import type { P4候选岗位页面 } from '../数据/招聘数据源类型';
 import { P4错误文案, P4范围键 } from '../状态/后端/发现推荐操作';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
@@ -65,6 +65,9 @@ function 命中搜索(岗: 市场职位, 关键词: string): boolean {
     文本.toLowerCase().includes(关键词)
   );
 }
+
+/** 候选端委托的业务 pair 键：意向 + 岗位（本次周期集合与按卡忙态共用同一把键）。 */
+const 委托键 = (intentionId: string, jobId: string) => `${intentionId}|${jobId}`;
 
 export default function 看市场() {
   const { 状态, 派发, 数据源模式, 后端状态, 操作 } = use应用状态();
@@ -86,8 +89,14 @@ export default function 看市场() {
   const [待确认委托, 设待确认委托] = useState<{ 视图: P4候选岗位页面; 选择: 附件简历选择值 } | null>(null);
   // 多份附件走 附件简历选择层：捕获待选的卡与权威库行，取消 / 确认即清
   const [待选择委托, 设待选择委托] = useState<{ 视图: P4候选岗位页面; 文件们: readonly BFF附件简历[] } | null>(null);
-  // 反馈/委托写进行中：并发写会被操作层单飞丢弃，禁用动作键防静默丢点击
-  const [反馈中, 设反馈中] = useState(false);
+  // Task 5：委托忙态按业务 pair（intentionId|jobId）隔离 —— 等一张卡的 POST 时，
+  // 其他卡照样能浏览和发起委托；同一张卡连点仍只产生一次请求（操作层另有单飞）。
+  const [委托中, 设委托中] = useState<ReadonlySet<string>>(() => new Set());
+  // 本次进屏发起过委托的业务 pair。周期 = 主体 + 角色 + scope + 本次挂载：
+  // 离屏、切意向（含 A→B→A）、换主体都结束旧周期并清空 —— 切回旧 scope 是新周期，
+  // 不恢复它的暂留；刷新后自然为空，由权威推荐摘要恢复成功过滤。
+  const 本次委托 = useRef<Set<string>>(new Set());
+  const 周期引用 = useRef(0);
 
   // Backend 的 scope 坐标 = 当前意向编号 载体（水合后端意向 / Backend 切意向 写入的
   // intention_id）；当前意向 本身仍是意向名（Mock 语义不动，名字不唯一不可反查）。
@@ -104,12 +113,23 @@ export default function 看市场() {
   // 代际只在 effect 里动：StrictMode 的 setup→cleanup→setup 不会把它永久关死。
   const 准备代际引用 = useRef(0);
   useEffect(() => () => { 准备代际引用.current += 1; }, []);
+  const 当前候选主体 = 后端状态.主体?.last_used_role === 'candidate'
+    ? 后端状态.主体.subject_id
+    : null;
   useEffect(() => {
     准备代际引用.current += 1;
     // scope 变化即作废已捕获的委托层状态：旧意向的确认层绝不在新意向下出现
     设待确认委托(null);
     设待选择委托(null);
-  }, [活跃意向]);
+    // 同一下也结束本次进屏的委托周期：暂留集合与按卡忙态一起归零
+    周期引用.current += 1;
+    本次委托.current = new Set();
+    设委托中(new Set());
+    return () => {
+      周期引用.current += 1;
+      本次委托.current = new Set();
+    };
+  }, [活跃意向, 当前候选主体]);
 
   const 后端卡们 = useMemo(
     () => (后端快照 ? 后端快照.items.map((卡) => {
@@ -204,8 +224,13 @@ export default function 看市场() {
   // 都要求下一次点击重新过确认，上一次的披露授权绝不复用。
   const 执行候选委托 = async (视图: P4候选岗位页面, 选择: 附件简历选择值) => {
     if (!视图.recommendationId || !视图.intentionId) return;
+    const 键 = 委托键(视图.intentionId, 视图.jobId);
+    if (委托中.has(键)) return;
     设待确认委托(null);
-    设反馈中(true);
+    // 记录只表示「这一下是我点的」，不授权成功；显示成功仍要过权威成功谓词
+    本次委托.current.add(键);
+    设委托中((旧) => new Set(旧).add(键));
+    const 起始周期 = 周期引用.current;
     try {
       await 操作.委托候选岗位({
         intentionId: 视图.intentionId,
@@ -216,9 +241,17 @@ export default function 看市场() {
         disclosureAcknowledged: true,
       });
     } catch (错误) {
-      轻提示(P4错误文案(错误));
+      // 迟到栅栏：换意向/主体/离屏后的失败不再打扰新周期
+      if (周期引用.current === 起始周期) 轻提示(P4错误文案(错误));
     } finally {
-      设反馈中(false);
+      // 换过周期就不动新周期的忙态（旧 finally 绝不给新请求解锁）
+      if (周期引用.current === 起始周期) {
+        设委托中((旧) => {
+          const 新 = new Set(旧);
+          新.delete(键);
+          return 新;
+        });
+      }
     }
   };
 
@@ -281,9 +314,18 @@ export default function 看市场() {
     () => 本意向市场.filter((岗) => 命中搜索(岗, 关键词)),
     [本意向市场, 关键词]
   );
+  // Task 5：待选流 = 权威快照减去「进屏前就已开案」的卡（它已经是一张在谈单）；
+  // 本次进屏点过、随后被权威投影确认成功的那张先留在原位显示状态标，顺序不变。
+  // 只是渲染投影：不动 P4 原始缓存、不删详情坐标、不结束任何 Case。
+  const 后端待选 = useMemo(
+    () => 后端卡们.filter(({ 视图, 展示 }) => !P4已开案(展示)
+      || 本次委托.current.has(委托键(视图.intentionId ?? '', 视图.jobId))),
+    [后端卡们]
+  );
+  // 用户主动的本地搜索照常生效：暂留不绕过用户自己的筛选
   const 后端显示 = useMemo(
-    () => 后端卡们.filter(({ 视图 }) => 命中搜索(视图.卡, 关键词)),
-    [后端卡们, 关键词]
+    () => 后端待选.filter(({ 视图 }) => 命中搜索(视图.卡, 关键词)),
+    [后端待选, 关键词]
   );
 
   // Backend 列表态：无活跃意向 / 首载进行中 / 首载失败（给明确重试）；
@@ -420,22 +462,22 @@ export default function 看市场() {
                   // 才给「查看进展」、终态给禁用的权威文案（附上服务端拒绝原因，如有）
                   const 委托进度未知 = 展示?.inProgress === true && 卡.delegation !== null
                     && 进度未知.has(卡.delegation.delegation_id);
-                  const 委托文字 = 委托进度未知
-                    ? P4委托进度未知文案
-                    : 展示 === null
-                      ? '让AI代理去谈'
-                      : `${展示.copy}${展示.reason === null ? '' : `：${展示.reason}`}`;
+                  // 开案成功（case_started + 非空 case_id）用本页 Mock 已有的成功文案，
+                  // 不再显示「已创建真实在谈」，也不给 Case 导航（Spec §7.1）
+                  const 委托文字 = P4已开案(展示)
+                    ? 'AI代理已接手'
+                    : 委托进度未知
+                      ? P4委托进度未知文案
+                      : 展示 === null
+                        ? '让AI代理去谈'
+                        : `${展示.copy}${展示.reason === null ? '' : `：${展示.reason}`}`;
                   return (
                     <市场卡
                       key={卡.recommendation_id}
                       岗={视图.卡}
                       已委托={展示 !== null}
                       已委托文字={委托文字}
-                      进展Case={展示?.state === 'case_started' ? 展示.caseId : null}
-                      进展按下={() => {
-                        if (展示?.caseId) 跳转(路径.在谈详情(展示.caseId));
-                      }}
-                      委托禁用={反馈中}
+                      委托禁用={委托中.has(委托键(视图.intentionId ?? '', 视图.jobId))}
                       委托={() => void 开始委托(视图)}
                       // 带上有限来源标记 + 会话内来路证据：详情页据此走安全返回
                       //（直链/无标记/刷新残留标记则摆好主壳状态再替换进主壳）
@@ -683,8 +725,6 @@ function 市场卡({
   按下,
   已委托文字 = 'AI代理已接手',
   委托禁用 = false,
-  进展Case = null,
-  进展按下,
 }: {
   岗: 市场职位;
   已委托: boolean;
@@ -694,9 +734,6 @@ function 市场卡({
   已委托文字?: string;
   /** Backend 反馈/委托写进行中时禁用去谈键（并发写会被操作层单飞丢弃） */
   委托禁用?: boolean;
-  /** Backend 已开案且回执带非空服务端 case_id 时，状态槽换成「查看进展」；null 恒为禁用状态标 */
-  进展Case?: string | null;
-  进展按下?: () => void;
 }) {
   // 分从行来(2026-08-31):卡上的环与职位详情的环同一份计算分
   const 计算适配分 = use适配分(岗);
@@ -748,18 +785,11 @@ function 市场卡({
         </button>
 
         {已委托 ? (
-          // 已开案且回执带服务端 case_id：状态槽换成「查看进展」（唯一导航凭据就是它）；
-          // 其余委托态都是不可点的状态标（不需要再点第二次）
-          进展Case !== null && 进展按下 ? (
-            <button className={`${样式.去谈键} 可点`} onClick={进展按下}>
-              <谈判图标 />
-              <span className={样式.去谈文字}>查看进展</span>
-            </button>
-          ) : (
-            <span className={样式.已委托}>
-              <span className={样式.已委托文字}>{已委托文字}</span>
-            </span>
-          )
+          // 一切委托态（含开案成功）都是不可点的状态标 —— 成功槽不再是「查看进展」，
+          // 也不绑定任何 Case 导航；看职位详情仍走卡上原来的 › 入口（Spec §7.1）
+          <span className={样式.已委托}>
+            <span className={样式.已委托文字}>{已委托文字}</span>
+          </span>
         ) : (
           <button
             className={`${样式.去谈键} 可点`}

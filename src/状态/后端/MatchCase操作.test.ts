@@ -24,6 +24,7 @@ import {
   P5范围键,
   创建MatchCase操作,
   创建空P5MatchCase状态,
+  失效P5开案工作区,
   清P5MatchCase引用,
 } from './MatchCase操作';
 import { 创建空P7会话状态 } from './真人会话操作';
@@ -1142,5 +1143,119 @@ describe('读取简历PDF 与对象租约', () => {
     expect(回收).toHaveBeenCalledWith('blob:p5-mock');
     expect(env.deps.P5对象租约!.current.size).toBe(0);
     租约.revoke(); // 二次回收安全
+  });
+});
+
+// ── Task 5：P4 开案成功后的 P5 open 工作区失效 ────────────────────────────────
+// 失效 = 读代际 +1（作废在飞的旧读，防止旧空列表随后重新落成成功缓存）+ 移除匹配 owner
+// 的工作区槽（下一次 加载工作区 不命中缓存而真实 GET）。只碰 open 工作区。
+describe('失效P5开案工作区', () => {
+  const 成功空工作区 = (ownerSubjectId: string | null) => ({
+    ownerSubjectId, 阶段: '成功' as const, 刷新中: false,
+    items: [], nextCursor: null, 已加载页数: 1, error: null, generation: 1,
+  });
+
+  function 场景(工作区: Record<string, ReturnType<typeof 成功空工作区>>) {
+    const 环境 = 创建P5操作测试环境();
+    环境.deps.后端状态引用.current = {
+      ...环境.deps.后端状态引用.current,
+      P5工作区: 工作区,
+    };
+    环境.deps.设后端状态((旧) => ({ ...旧, P5工作区: 工作区 }));
+    return 环境;
+  }
+
+  it('对应 scope 与「全部」档一起失效：两个槽都被移除，读代际各 +1', () => {
+    const 对应 = P5范围键.open('candidate', 'int_1');
+    const 全部 = P5范围键.open('candidate', null);
+    const 别的 = P5范围键.open('candidate', 'int_2');
+    const 环境 = 场景({
+      [对应]: 成功空工作区('sub_1'),
+      [全部]: 成功空工作区('sub_1'),
+      [别的]: 成功空工作区('sub_1'),
+    });
+    失效P5开案工作区(环境.deps, {
+      role: 'candidate', subjectId: 'sub_1', sessionGeneration: 1, filterRefs: ['int_1'],
+    });
+    expect(环境.最新状态().P5工作区[对应]).toBeUndefined();
+    expect(环境.最新状态().P5工作区[全部]).toBeUndefined();
+    // 别的 scope 仍缓存：失效只针对关联到的范围与全部档
+    expect(环境.最新状态().P5工作区[别的]).toBeDefined();
+    expect(环境.deps.P5范围代际!.current.get(`${对应}#读`)).toBe(1);
+    expect(环境.deps.P5范围代际!.current.get(`${全部}#读`)).toBe(1);
+    expect(环境.deps.P5范围代际!.current.get(`${别的}#读`)).toBeUndefined();
+  });
+
+  it('只失效匹配 owner 的槽：别的主体留下的窗口不动', () => {
+    const 对应 = P5范围键.open('recruiter', 'job_1');
+    const 环境 = 场景({ [对应]: 成功空工作区('sub_别人') });
+    失效P5开案工作区(环境.deps, {
+      role: 'recruiter', subjectId: 'sub_1', sessionGeneration: 1, filterRefs: ['job_1'],
+    });
+    expect(环境.最新状态().P5工作区[对应]).toBeDefined();
+  });
+
+  it('不动另一角色的工作区、历史架子与 Case 详情', () => {
+    const 候选档 = P5范围键.open('candidate', null);
+    const 招聘档 = P5范围键.open('recruiter', null);
+    const 环境 = 场景({ [候选档]: 成功空工作区('sub_1'), [招聘档]: 成功空工作区('sub_1') });
+    环境.deps.设后端状态((旧) => ({
+      ...旧,
+      P5历史: { [P5范围键.history('candidate', 'ended', null)]: 成功空工作区('sub_1') },
+    }));
+    失效P5开案工作区(环境.deps, {
+      role: 'candidate', subjectId: 'sub_1', sessionGeneration: 1, filterRefs: [],
+    });
+    expect(环境.最新状态().P5工作区[候选档]).toBeUndefined();
+    expect(环境.最新状态().P5工作区[招聘档]).toBeDefined();
+    expect(Object.keys(环境.最新状态().P5历史)).toHaveLength(1);
+  });
+
+  it('捕获的主体或会话代际已变：一个槽都不动（陈旧回执不失效新 scope）', () => {
+    const 对应 = P5范围键.open('candidate', 'int_1');
+    const 换主体 = 场景({ [对应]: 成功空工作区('sub_1') });
+    换主体.deps.主体标识引用.current = 'sub_2';
+    失效P5开案工作区(换主体.deps, {
+      role: 'candidate', subjectId: 'sub_1', sessionGeneration: 1, filterRefs: ['int_1'],
+    });
+    expect(换主体.最新状态().P5工作区[对应]).toBeDefined();
+
+    const 换代际 = 场景({ [对应]: 成功空工作区('sub_1') });
+    换代际.deps.会话代际.current = 9;
+    失效P5开案工作区(换代际.deps, {
+      role: 'candidate', subjectId: 'sub_1', sessionGeneration: 1, filterRefs: ['int_1'],
+    });
+    expect(换代际.最新状态().P5工作区[对应]).toBeDefined();
+  });
+
+  it('重复 filterRef 去重：同一 scope 的读代际只 +1', () => {
+    const 对应 = P5范围键.open('candidate', 'int_1');
+    const 环境 = 场景({ [对应]: 成功空工作区('sub_1') });
+    失效P5开案工作区(环境.deps, {
+      role: 'candidate', subjectId: 'sub_1', sessionGeneration: 1,
+      filterRefs: ['int_1', 'int_1'],
+    });
+    expect(环境.deps.P5范围代际!.current.get(`${对应}#读`)).toBe(1);
+  });
+
+  it('缺 P5 运行时引用即抛接线错误，绝不静默宣称已失效', () => {
+    const 环境 = 创建P5操作测试环境();
+    const 缺引用 = { ...环境.deps, P5范围代际: undefined };
+    expect(() => 失效P5开案工作区(缺引用 as never, {
+      role: 'candidate', subjectId: 'sub_1', sessionGeneration: 1, filterRefs: ['int_1'],
+    })).toThrow(/P5/);
+  });
+
+  it('失效后 加载工作区 不再命中成功缓存，真实 GET', async () => {
+    const 对应 = P5范围键.open('candidate', 'int_1');
+    const 环境 = 场景({ [对应]: 成功空工作区('sub_1') });
+    // 命中缓存：不发请求
+    await 环境.操作.加载工作区('candidate', 'int_1');
+    const 失效前次数 = vi.mocked(环境.数据源.读取P5Open列表).mock.calls.length;
+    失效P5开案工作区(环境.deps, {
+      role: 'candidate', subjectId: 'sub_1', sessionGeneration: 1, filterRefs: ['int_1'],
+    });
+    await 环境.操作.加载工作区('candidate', 'int_1');
+    expect(vi.mocked(环境.数据源.读取P5Open列表).mock.calls.length).toBe(失效前次数 + 1);
   });
 });

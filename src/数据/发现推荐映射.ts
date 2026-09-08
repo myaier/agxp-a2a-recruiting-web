@@ -274,11 +274,23 @@ export interface P4委托展示 {
 const P4委托状态文案表 = {
   accepted: '已提交给 AI，等待处理',
   evaluating: 'AI 正在评估',
-  case_started: '已创建真实在谈',
+  // case_started 分两种：拿到服务端 case_id 才是开案成功，各页用自己的成功文案
+  // （招聘列表「AI代理已接触」，其余三处「AI代理已接手」）；缺 case_id 时 Case 坐标
+  // 未确认，只能给这句安全文案 —— 绝不声称「已创建真实在谈」。
+  case_started: '暂时无法确认进度，请稍后刷新',
   needs_user: '需要你处理',
   refused: '本次未能继续',
   failed: '本次处理未完成',
 } as const satisfies Record<BFF委托摘要['state'], string>;
+
+/**
+ * 开案成功的唯一判据：服务端投影确认 state === 'case_started' 且回执带非空合法 case_id。
+ * POST 发出、HTTP 成功、accepted、evaluating 都不是成功；也绝不从 job_id /
+ * recommendation_id / delegation_id 推导 Case 坐标。四个委托入口共用这一个谓词。
+ */
+export function P4已开案(展示: P4委托展示 | null): boolean {
+  return 展示 !== null && 展示.state === 'case_started' && 展示.caseId !== null;
+}
 
 export function P4委托状态文案(state: BFF委托摘要['state']): string {
   return P4委托状态文案表[state];

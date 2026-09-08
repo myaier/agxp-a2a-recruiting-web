@@ -800,3 +800,45 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     expect(mock刷新工作区).not.toHaveBeenCalled();
   });
 });
+
+// ── Task 5：已有成功空缓存后刷新失败，也必须给错误与重试 ──────────────────────
+// 旧实现用 视图们.length > 0 把错误行挡掉：用户只看到一个正常空态，完全不知道这次没读到。
+describe('MatchCase列表 · 刷新失败的错误与重试', () => {
+  beforeEach(() => {
+    mock加载工作区.mockClear();
+    mock刷新工作区.mockClear();
+  });
+
+  it('成功空缓存 + 刷新失败：出错误行与重试，不下「没有在谈」的定论', async () => {
+    const user = userEvent.setup();
+    置求职屏状态({
+      快照: { ...快照({ items: [] }), error: '在谈暂时加载不了', 刷新中: false },
+    });
+    render(<在谈首页 />);
+    expect(screen.getByText('在谈暂时加载不了')).toBeTruthy();
+    expect(screen.queryByText('暂时没有在谈职位。')).toBeNull();
+    await user.click(screen.getByRole('button', { name: '重试' }));
+    expect(mock刷新工作区).toHaveBeenCalledWith('candidate', 意向ID);
+  });
+
+  it('有旧条目 + 刷新失败：旧卡保留只读，错误行照常在', () => {
+    置求职屏状态({
+      快照: {
+        ...快照({ items: [候选行({ caseId: 'mc_1' })] }),
+        error: '在谈暂时加载不了', 刷新中: false,
+      },
+    });
+    render(<在谈首页 />);
+    expect(screen.getByText('在谈暂时加载不了')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重试' })).toBeTruthy();
+    expect(screen.getByText('需要你')).toBeTruthy();
+  });
+
+  it('刷新中不出错误行：正在重试时不摆一个已经过期的错误', () => {
+    置求职屏状态({
+      快照: { ...快照({ items: [] }), error: '在谈暂时加载不了', 刷新中: true },
+    });
+    render(<在谈首页 />);
+    expect(screen.queryByText('在谈暂时加载不了')).toBeNull();
+  });
+});

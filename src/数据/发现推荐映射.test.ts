@@ -22,6 +22,7 @@ import {
   从P4候选岗位,
   从P4招聘候选,
   映射P4委托展示,
+  P4已开案,
 } from './发现推荐映射';
 
 describe('从P4候选岗位 / 从P4CandidateJob', () => {
@@ -445,7 +446,9 @@ describe('映射P4委托展示', () => {
   it.each([
     ['accepted', '已提交给 AI，等待处理', true, null],
     ['evaluating', 'AI 正在评估', true, null],
-    ['case_started', '已创建真实在谈', false, 'case_server_1'],
+    // case_started 的 copy 是「坐标未确认」的安全文案：拿到 case_id 才是成功，
+    // 而成功文案由各页自己给（招聘列表「AI代理已接触」，其余三处「AI代理已接手」）
+    ['case_started', '暂时无法确认进度，请稍后刷新', false, 'case_server_1'],
     ['needs_user', '需要你处理', false, null],
     ['refused', '本次未能继续', false, null],
     ['failed', '本次处理未完成', false, null],
@@ -461,6 +464,38 @@ describe('映射P4委托展示', () => {
     expect(映射P4委托展示({
       delegation_id: 'del_1', state: 'case_started', case_id: '   ',
     }, null)?.caseId).toBeNull();
+  });
+
+  // Task 5：开案成功的唯一判据 —— 只有 case_started + 非空 case_id 才算成功
+  it.each([
+    ['accepted', 'case_server_1'],
+    ['evaluating', null],
+    ['needs_user', null],
+    ['refused', null],
+    ['failed', null],
+  ] as const)('P4已开案 对 %s 恒 false', (state, case_id) => {
+    expect(P4已开案(映射P4委托展示({ delegation_id: 'del_1', state, case_id }, null))).toBe(false);
+  });
+
+  it('P4已开案：case_started 带非空 case_id 才 true；缺失/空白/null 都 false', () => {
+    const 展示 = (case_id: string | null) => 映射P4委托展示(
+      { delegation_id: 'del_1', state: 'case_started', case_id }, null,
+    );
+    expect(P4已开案(展示('case_server_1'))).toBe(true);
+    expect(P4已开案(展示(''))).toBe(false);
+    expect(P4已开案(展示('   '))).toBe(false);
+    expect(P4已开案(展示(null))).toBe(false);
+    // 无委托摘要（未委托）同样不是成功
+    expect(P4已开案(null)).toBe(false);
+  });
+
+  it('case_started 缺 case_id 时 copy 不声称已开案', () => {
+    const 展示 = 映射P4委托展示(
+      { delegation_id: 'del_1', state: 'case_started', case_id: null }, null,
+    );
+    expect(展示?.copy).toBe('暂时无法确认进度，请稍后刷新');
+    expect(展示?.copy).not.toContain('已创建');
+    expect(展示?.copy).not.toContain('已接手');
   });
 
   it('null summary stays null', () => {

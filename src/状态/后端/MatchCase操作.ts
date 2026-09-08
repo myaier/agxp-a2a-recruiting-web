@@ -237,6 +237,52 @@ function 失败详情(旧: P5详情快照 | undefined, 错误: unknown, generati
   return { 阶段: '失败', 刷新中: false, detail: 旧?.detail ?? null, error, generation };
 }
 
+/**
+ * Task 5：P4 开案成功后让 P5 的 open 工作区失效（本文件唯一对外的局部接口）。
+ *
+ * 入口先过 取P5引用 —— 复用它「缺引用即抛接线错误」的守卫，绝不 optional chain 或
+ * 静默 return（否则测试会在没有失效的情况下宣称失效成功）。随后：
+ *   · 捕获主体／会话代际仍有效才动手 —— 用户换 scope／换主体后的陈旧回执不失效新 scope；
+ *   · 对去重后的 [...filterRefs, null] 逐个算 P5范围键.open(role, ref)：新 Case 同时属于
+ *     它自己那档和「全部意向/岗位」档；
+ *   · 读代际在调用栈内 +1（不放进 React updater）：已在飞的列表读／追加因此过期，
+ *     旧空列表不会随后重新落成成功缓存，新的加载能接管读锁；
+ *   · 移除匹配 owner 的工作区槽，使下一次 加载工作区 不命中成功缓存而真实 GET。
+ * 只碰 open 工作区：不清 P5 动作幂等意图、不动 Case 详情、历史或其它角色的快照，
+ * 也不额外导航、不立刻后台重读。
+ */
+export function 失效P5开案工作区(
+  deps: 后端操作依赖,
+  input: {
+    role: P5角色;
+    subjectId: string;
+    sessionGeneration: number;
+    filterRefs: readonly string[];
+  },
+): void {
+  const 引用 = 取P5引用(deps);
+  if (deps.主体标识引用.current !== input.subjectId) return;
+  if (deps.会话代际.current !== input.sessionGeneration) return;
+  const 范围们: (string | null)[] = [...new Set(input.filterRefs), null];
+  const 键们 = 范围们.map((ref) => P5范围键.open(input.role, ref));
+  for (const scopeKey of 键们) {
+    const 读键 = 读代际键(scopeKey);
+    引用.P5范围代际.current.set(读键, (引用.P5范围代际.current.get(读键) ?? 0) + 1);
+  }
+  deps.设后端状态((旧态) => {
+    let 变了 = false;
+    const 下表 = { ...旧态.P5工作区 };
+    for (const scopeKey of 键们) {
+      const 快照 = 下表[scopeKey];
+      if (快照 !== undefined && 快照.ownerSubjectId === input.subjectId) {
+        delete 下表[scopeKey];
+        变了 = true;
+      }
+    }
+    return 变了 ? { ...旧态, P5工作区: 下表 } : 旧态;
+  });
+}
+
 export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作 {
   const { 是后端, 后端, 设后端状态, 后端状态引用, 主体标识引用, 会话代际 } = deps;
   const 引用 = 取P5引用(deps);

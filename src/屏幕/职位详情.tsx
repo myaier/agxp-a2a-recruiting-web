@@ -39,7 +39,7 @@ import { 公司区块 } from '../组件/公司区块';
 import { 匹配分析块 } from '../组件/匹配分析块';
 import 适配环 from '../组件/适配环';
 import { 折算工作年限, 求职侧对齐行, 算适配分, 求职匹配分析 } from '../数据/匹配对齐';
-import { 从P4候选岗位, 从P4CandidateJob, 映射P4委托展示 } from '../数据/发现推荐映射';
+import { 从P4候选岗位, 从P4CandidateJob, P4已开案, 映射P4委托展示 } from '../数据/发现推荐映射';
 import type { P4候选岗位页面 } from '../数据/招聘数据源类型';
 import type { BFF附件简历 } from '../数据/BFF契约';
 import { P4错误文案, P4范围键 } from '../状态/后端/发现推荐操作';
@@ -292,9 +292,6 @@ function Backend职位详情() {
     ? null
     : 后端状态.P4委托回执?.[委托摘要.delegation_id] ?? null;
   const 委托展示 = 映射P4委托展示(委托摘要, 委托回执);
-  // 已开案且回执带非空服务端 case_id 才有「查看进展」；job_id / recommendation_id /
-  // delegation_id 一律不作 Case 凭据，也绝不拿 P4真实Case引用 兜底
-  const 进展Case编号 = 委托展示?.state === 'case_started' ? 委托展示.caseId : null;
 
   // 本页唯一可见的进行中委托（accepted/evaluating，即 inProgress === true 的那两个状态）
   const 进行中委托 = useMemo(() => (委托展示?.inProgress === true && 委托摘要 !== null
@@ -437,11 +434,15 @@ function Backend职位详情() {
   const 恢复中 = 推荐卡 === null && 当前意向编号 !== null &&
     (当前意向快照 === undefined || 当前意向快照.阶段 === '未开始' || 当前意向快照.阶段 === '进行中');
   // 委托态的权威文案 = 闭合六态 copy（refused 附服务端拒绝原因）；轮询连败被「进度未知」覆盖
-  const 委托文字 = 委托进度未知
-    ? P4委托进度未知文案
-    : 委托展示 === null
-      ? '让AI代理去谈'
-      : `${委托展示.copy}${委托展示.reason === null ? '' : `：${委托展示.reason}`}`;
+  // 开案成功（case_started + 非空 case_id）复用 Mock 的成功文案与 disabled 主键，
+  // 不再显示「已创建真实在谈」，也不给 Case 导航（Spec §7.1）
+  const 委托文字 = P4已开案(委托展示)
+    ? 'AI代理已接手'
+    : 委托进度未知
+      ? P4委托进度未知文案
+      : 委托展示 === null
+        ? '让AI代理去谈'
+        : `${委托展示.copy}${委托展示.reason === null ? '' : `：${委托展示.reason}`}`;
   const 主键文字 = 已委托
     ? 委托文字
     : 推荐卡 !== null
@@ -488,24 +489,16 @@ function Backend职位详情() {
         >
           <禁止图标 尺寸={18} 色="var(--次要)" />
         </button>
-        {进展Case编号 !== null ? (
-          // 已开案且回执带服务端 case_id：主键换成「查看进展」（唯一导航凭据就是它）
-          <button
-            className={`${样式.主按钮} 可点`}
-            onClick={() => 跳转(路径.在谈详情(进展Case编号))}
-          >
-            <span className={样式.主按钮文字}>查看进展</span>
-          </button>
-        ) : (
-          <button
-            className={`${样式.主按钮} ${已委托 ? 样式.已委托态 : 动作可用 ? '可点' : ''}`}
-            disabled={!推荐卡 || 已委托 || 写中}
-            onClick={() => void 开始委托(视图)}
-          >
-            <谈判图标 尺寸={15} 色={已委托 ? 'var(--深绿)' : undefined} />
-            <span className={样式.主按钮文字}>{主键文字}</span>
-          </button>
-        )}
+        {/* 一切委托态（含开案成功）都保持 Mock 的 disabled 主键形态 —— 成功槽不再是
+            「查看进展」，也不绑定任何 Case 导航（Spec §7.1） */}
+        <button
+          className={`${样式.主按钮} ${已委托 ? 样式.已委托态 : 动作可用 ? '可点' : ''}`}
+          disabled={!推荐卡 || 已委托 || 写中}
+          onClick={() => void 开始委托(视图)}
+        >
+          <谈判图标 尺寸={15} 色={已委托 ? 'var(--深绿)' : undefined} />
+          <span className={样式.主按钮文字}>{主键文字}</span>
+        </button>
       </div>
 
       {/* 「⋯」更多操作抽屉：不感兴趣与浮动条同一动作（服务端先行，成功才回列表）；

@@ -9,7 +9,7 @@
 // 测试宿主：mock 应用状态 / 导航钩子（同 企业我的.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -780,7 +780,8 @@ describe('看市场 · P4 候选发现（Backend）', () => {
   const 状态文案 = [
     ['accepted', '已提交给 AI，等待处理'],
     ['evaluating', 'AI 正在评估'],
-    ['case_started', '已创建真实在谈'],
+    // case_started 但 case_id 缺席 = 坐标未确认：安全文案，不声称已开案
+    ['case_started', '暂时无法确认进度，请稍后刷新'],
     ['needs_user', '需要你处理'],
     ['refused', '本次未能继续'],
     ['failed', '本次处理未完成'],
@@ -799,21 +800,102 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     render(<看市场 />);
     expect(screen.getByText(文案)).toBeTruthy();
     expect(screen.queryByRole('button', { name: '让AI代理去谈' })).toBeNull();
-    // 已退役的自创文案绝不在 Backend 卡上复活
+    // 未开案（含缺 case_id 的 case_started）绝不显示成功文案，也不复活退役自创文案
     expect(screen.queryByText('AI代理已接手')).toBeNull();
     expect(screen.queryByText('已开始沟通')).toBeNull();
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
   });
 
-  it('candidate case_started navigates only by server case_id', async () => {
-    置P4候选状态([{
-      ...BFF候选岗位推荐样本,
-      state: 'delegated',
-      delegation: { delegation_id: 'del_c1', state: 'case_started', case_id: 'case_server_c1' },
-    }]);
-    render(<看市场 />);
-    await userEvent.click(screen.getByRole('button', { name: '查看进展' }));
+  // Task 5：开案成功 = case_started + 非空 case_id。本次进屏点过的卡暂留原位显示
+  // Mock 已有的状态标；进屏前就成功的卡从待选流过滤。
+  const 成功卡 = () => ({
+    ...BFF候选岗位推荐样本,
+    state: 'delegated' as const,
+    delegation: { delegation_id: 'del_c1', state: 'case_started' as const, case_id: 'case_server_c1' },
+  });
+
+  /** 走完披露确认，发起一次本次进屏的委托 */
+  const 委托一次 = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole('button', { name: '让AI代理去谈' }));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: '确认委托AI代理？' })).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: '确认委托' }));
+    await waitFor(() => expect(mock委托候选岗位).toHaveBeenCalledTimes(1));
+  };
+
+  it('本次进屏点过的卡在权威成功后暂留原位，显示「AI代理已接手」，零导航', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([BFF候选岗位推荐样本]);
+    const { rerender, container } = render(<看市场 />);
+    await 委托一次(user);
+    // 权威投影确认开案：卡仍在原位，状态槽换成本页的成功标
+    置P4候选状态([成功卡()]);
+    rerender(<看市场 />);
+    expect(screen.getByText('AI代理已接手')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    expect(screen.queryByText('已创建真实在谈')).toBeNull();
+    expect(container.textContent).not.toContain('case_server_c1');
+    // 卡上的资料入口仍是资料：点 › 进职位详情，不是 Case
+    await user.click(screen.getByRole('button', { name: '查看职位详情' }));
     expect(mock跳转).toHaveBeenCalledTimes(1);
-    expect(mock跳转).toHaveBeenCalledWith(路径.在谈详情('case_server_c1'));
+    expect(String(mock跳转.mock.lastCall![0])).not.toContain('case_server_c1');
+  });
+
+  it('进屏首载读到的历史成功从待选流过滤，不冒充本次点击暂留', () => {
+    置P4候选状态([成功卡()]);
+    render(<看市场 />);
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
+    expect(screen.getByText('这个意向下暂时没有新职位')).toBeTruthy();
+  });
+
+  it('非成功状态不被过滤：accepted / refused 的卡照常留在待选流', () => {
+    置P4候选状态([
+      { ...BFF候选岗位推荐样本, recommendation_id: 'rec_a', state: 'delegating',
+        delegation: { delegation_id: 'del_a', state: 'accepted', case_id: null } },
+      { ...BFF候选岗位推荐样本, recommendation_id: 'rec_b', state: 'available',
+        delegation: { delegation_id: 'del_b', state: 'refused', case_id: null } },
+    ]);
+    render(<看市场 />);
+    expect(screen.getByText('已提交给 AI，等待处理')).toBeTruthy();
+    expect(screen.getByText('本次未能继续')).toBeTruthy();
+  });
+
+  it('离开列表再进入结束暂留周期：上次点过的成功卡这次被过滤掉', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([BFF候选岗位推荐样本]);
+    const 页 = render(<看市场 />);
+    await 委托一次(user);
+    页.unmount();
+    cleanup();
+    置P4候选状态([成功卡()]);
+    render(<看市场 />);
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
+    expect(screen.getByText('这个意向下暂时没有新职位')).toBeTruthy();
+  });
+
+  it('意向往返（A→B→A）也是新周期：旧 scope 的暂留不恢复', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([BFF候选岗位推荐样本]);
+    const { rerender } = render(<看市场 />);
+    await 委托一次(user);
+    置P4候选意向({ 意向ID: 'int_other', 阶段: '成功', items: [] });
+    rerender(<看市场 />);
+    置P4候选状态([成功卡()]);
+    rerender(<看市场 />);
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
+  });
+
+  it('暂留不绕过用户自己的搜索筛选', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([BFF候选岗位推荐样本]);
+    const { rerender } = render(<看市场 />);
+    await 委托一次(user);
+    置P4候选状态([成功卡()]);
+    rerender(<看市场 />);
+    expect(screen.getByText('AI代理已接手')).toBeTruthy();
+    // 搜一个必然不命中的词：本次成功卡同样被用户自己的筛选滤掉
+    await user.click(screen.getByRole('button', { name: '搜索职位' }));
+    await user.type(screen.getByRole('textbox'), '不可能命中的词');
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
   });
 
   it('case_started 无服务端 case_id 时只给禁用状态标，绝不拿任何本地 ID 充当 Case', () => {
@@ -823,7 +905,9 @@ describe('看市场 · P4 候选发现（Backend）', () => {
       delegation: { delegation_id: 'del_c2', state: 'case_started', case_id: null },
     }]);
     render(<看市场 />);
-    expect(screen.getByText('已创建真实在谈')).toBeTruthy();
+    expect(screen.getByText('暂时无法确认进度，请稍后刷新')).toBeTruthy();
+    expect(screen.queryByText('AI代理已接手')).toBeNull();
+    expect(screen.queryByText('已创建真实在谈')).toBeNull();
     expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
     // job_id / recommendation_id / delegation_id 一个都不进导航
     expect(mock跳转).not.toHaveBeenCalled();

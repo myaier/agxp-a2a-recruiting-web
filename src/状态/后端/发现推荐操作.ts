@@ -46,6 +46,7 @@ import type {
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 页面岗位快照 } from '../../数据/招聘数据源类型';
 import { 清账号状态 } from './会话操作';
+import { 失效P5开案工作区 } from './MatchCase操作';
 import type {
   后端操作依赖,
   后端状态,
@@ -480,6 +481,31 @@ function 提交委托回执(旧: 后端状态, 回执: BFF委托回执): 后端�
   };
 }
 
+/**
+ * Task 5：按旧卡的 delegation_id 反查这次开案实际关联的 P5 filterRef
+ * （候选 = 意向 scope 键；招聘 = 岗位 scope 键 + 详情缓存里的 job_id）。
+ * 关联到多个就逐个失效；一个都没有时调用方按「同角色全部范围」兜底，绝不猜一个。
+ */
+function 关联开案范围们(旧: 后端状态, role: BFF角色, delegationId: string): string[] {
+  const 命中 = (卡: { delegation: BFF委托摘要 | null }) => 卡.delegation?.delegation_id === delegationId;
+  const refs = new Set<string>();
+  if (role === 'candidate') {
+    for (const [键, 快照] of Object.entries(旧.候选岗位推荐)) {
+      if (快照.items.some(命中)) refs.add(键);
+    }
+    return [...refs];
+  }
+  for (const 表 of [旧.招聘可用候选, 旧.招聘已筛候选]) {
+    for (const [键, 快照] of Object.entries(表)) {
+      if (快照.items.some(命中)) refs.add(键);
+    }
+  }
+  for (const 卡 of Object.values(旧.招聘候选详情)) {
+    if (命中(卡)) refs.add(卡.job_id);
+  }
+  return [...refs];
+}
+
 /** 候选创建落位：只修所选 intention scope 里选中推荐的那一张卡（操作输入坐标，§8.2）。 */
 function 落候选委托(
   旧: 后端状态, intentionId: string, recommendationId: string, 回执: BFF委托回执,
@@ -840,6 +866,32 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
   }
 
   /**
+   * 同一 delegation + case_id 的重复成功回执不反复触发刷新（不另建持久去重表：
+   * 直接看已有的 P4真实Case引用）。必须在提交回执之前调用 —— 提交会写这张表。
+   */
+  function 是新开案(回执: BFF委托回执): boolean {
+    if (回执.state !== 'case_started') return false;
+    const caseId = 回执.case_id;
+    if (caseId === null || caseId.trim() === '') return false;
+    return 后端状态引用.current.P4真实Case引用[回执.delegation_id] !== caseId;
+  }
+
+  /**
+   * 开案成功 → 让同角色对应 scope 与「全部」档的 P5 open 工作区失效，使下一次进在谈
+   * 真实 GET。本方案只有失效、没有立即 GET，也不导航、不在市场注册 P5 scope。
+   * 主体/会话代际取本次请求捕获的栅栏值：用户换主体后的陈旧回执不失效新主体的工作区。
+   */
+  function 失效开案工作区(role: BFF角色, filterRefs: readonly string[], fence: { subjectId: string | null; sessionGeneration: number }): void {
+    if (fence.subjectId === null) return;
+    失效P5开案工作区(deps, {
+      role,
+      subjectId: fence.subjectId,
+      sessionGeneration: fence.sessionGeneration,
+      filterRefs,
+    });
+  }
+
+  /**
    * 委托创建统一核：捕获栅栏 → 发起 POST（一次用户意图一把显式幂等键）→ 恰好一条回执 →
    * 跨字段/坐标校验 → 权威回执在手释放意图键（明确成功与明确拒绝都是完成）→ 栅栏内才落
    * 本地状态。transport/conflict/401 一律保留意图键（结果不确定 / 冲突绝不换键强发，§9.3）；
@@ -852,6 +904,9 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     发起: (源: HTTP招聘数据源, 幂等键: string) => Promise<BFF委托回执[]>;
     校验: (回执: BFF委托回执) => void;
     提交: (回执: BFF委托回执) => void;
+    /** 权威开案成功时要失效的 P5 filterRef（创建路径直接用操作输入的坐标） */
+    开案范围: readonly string[];
+    role: BFF角色;
   }): Promise<BFF委托回执> {
     if (!后端) throw new Error('委托只在 Backend 数据源下可用'); // 与各域同一守卫：调用方已早退，这里兜底
     const fence = 捕获栅栏(引用, input.scopeKey);
@@ -872,7 +927,10 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     input.校验(回执);
     P4幂等意图.current.delete(intent);
     if (!fenceStillCurrent(引用, fence)) return 回执; // 迟到成功只不落本地
+    // 判重要在提交之前取值：提交会把本次 case_id 写进 P4真实Case引用
+    const 新开案 = 是新开案(回执);
     input.提交(回执);
+    if (新开案) 失效开案工作区(input.role, input.开案范围, fence);
     if (回执.state === 'accepted' || 回执.state === 'evaluating' || 回执.state === 'case_started') {
       return 回执;
     }
@@ -1307,6 +1365,9 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
           校验: (回执) => 校验委托回执(回执),
           提交: (回执) =>
             设后端状态((旧) => 落候选委托(旧, intentionId, recommendationId, 回执)),
+          // 创建路径直接用操作输入的意向坐标，不猜 scope
+          开案范围: [intentionId],
+          role: 'candidate',
         }));
     },
 
@@ -1320,6 +1381,9 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
           发起: (源, 幂等键) => 源.创建招聘候选委托({ jobId, recommendationId, idempotencyKey: 幂等键 }),
           校验: (回执) => 校验委托回执(回执, recommendationId),
           提交: (回执) => 设后端状态((旧) => 落招聘委托(旧, jobId, recommendationId, 回执)),
+          // 创建路径直接用操作输入的岗位坐标，不猜 scope
+          开案范围: [jobId],
+          role: 'recruiter',
         }));
     },
 
@@ -1340,7 +1404,15 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
         校验委托回执(回执);
         if (回执.delegation_id !== delegationId) throw 委托契约漂移();
         if (!fenceStillCurrent(引用, fence)) return; // 迟到回执只丢弃（§9.1）
+        // 轮询成功同样触发 P5 失效：scope 从「还带着这条 delegation 的旧卡/详情」反查，
+        // 不用用户已切到的新 scope 也不猜；判重与提交顺序同创建路径。
+        const 新开案 = 是新开案(回执);
+        const 开案范围 = 新开案
+          ? 关联开案范围们(后端状态引用.current, role, delegationId)
+          : [];
         设后端状态((旧) => 按委托编号改摘要(旧, role, delegationId, 回执摘要(回执), 回执));
+        // 一个关联都没有时仍失效同角色全部范围（失效函数恒带上 null 档）
+        if (新开案) 失效开案工作区(role, 开案范围, fence);
       } catch (错误) {
         if (!fenceStillCurrent(引用, fence)) return;
         if (是401(错误)) {
