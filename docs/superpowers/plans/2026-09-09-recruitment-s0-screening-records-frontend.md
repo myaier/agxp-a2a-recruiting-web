@@ -31,7 +31,10 @@
 
 ```bash
 : "${IMPLEMENTATION_BASE_SHA:?execution prompt 必须提供精确 target revision}"
-test "$(git rev-parse HEAD)" = "$IMPLEMENTATION_BASE_SHA"
+test "$(git rev-parse HEAD)" = "$IMPLEMENTATION_BASE_SHA" || {
+  echo "HEAD 与 IMPLEMENTATION_BASE_SHA 不一致，停止实施" >&2
+  exit 1
+}
 git status --short
 git rev-parse HEAD
 git merge-base HEAD origin/main
