@@ -77,11 +77,11 @@
 - 会话角色水合、候选创建／更新／删除及 409／503 重读、Agent scope_denied 重读，都经该回调提交真实成功快照；传入各请求开始时的主体／代际，不能在完成时重新取新主体冒充请求 owner。清账号／切角色的空种子仍走清理原动作，不标为一次成功读取。水合失败不触发回调；重试成功才打开写屏障。
 - 正常缓存写入需保留未就绪或 recruiter 阶段的候选选择字段，避免既有“重写整个资料缓存”把它丢掉；不能把 A 字段并入 B。成功空列表允许写 null，退出／角色切换使旧写屏障失效。存储失败不影响页面。
 
-- [ ] 在现有 active DTO fixture 构造同名上海／北京两项，明确 ID 为 `int_sh`／`int_bj`；补水合、编辑另一同名项、删当前／最后项及重排反例。确认正常水合保留 `int_bj`，无有效 ID 不使用标题兜底。
+- [ ] 在现有 active DTO fixture 构造同名上海／北京两项，明确 ID 为 `int_sh`／`int_bj`；补水合、编辑另一同名项／当前项、新增不抢占有效选择、删非当前项、删当前／最后项、归档回退及重排反例。确认正常水合保留 `int_bj`，无有效 ID 不使用标题兜底。
 - [ ] 实现上述最小内部接线与缓存兼容；检查所有 `水合后端意向` 生产调用方，清理调用不能误标为服务端成功。会话依赖手工组装处及测试桩同步传入新回调，不静默缺省成无恢复能力。
 - [ ] Backend 顶部按 ID 选中，标签按 Spec §4.2 的职位→城市→已有薪资→同组序号依次消歧；只对碰撞组加长。点击后端仍带名称与 ID，Mock 分支原样。在谈和市场横幅直接以有效当前 ID 构造 P5 key；无效“当前”scope 零请求，显式全部档继续 null。P4 已用 ID 的路径保留并测一致性。
 - [ ] Provider 测试 seed sessionStorage 为 `int_bj`，完整卸载重建；控制服务端 Promise，断言水合前零 P4／当前 P5 请求、缓存仍为 `int_bj`；水合后首次请求即 `int_bj`。补失败重试、失效 ID 回退、权威空列表清空、存储损坏／抛错、环境／主体／角色隔离和迟到水合。
-- [ ] 组件测试点击第二胶囊，断言第二选中、P4/P5 请求实参和横幅对应 `int_bj`，不是第一条；全部档不高亮，无效当前不会查询全部。旧名称-only Backend fixture 补有效 ID，不能保留反查兼容。
+- [ ] 组件测试点击第二胶囊，断言第二选中、P4/P5 请求实参和横幅对应 `int_bj`，不是第一条；全部档不高亮，无效当前不会查询全部。直接断言胶囊容器及首页用户可见 `textContent` 不含 `int_sh`／`int_bj` 或 `int_` 前缀内部编号；同城市、同薪资与最终同组序号也覆盖该负断言。旧名称-only Backend fixture 补有效 ID，不能保留反查兼容。
 - [ ] 运行 `npm test -- src/数据/资料缓存.test.ts src/状态/应用状态.test.ts src/状态/后端/会话操作.test.ts src/状态/后端/候选操作.test.ts src/状态/后端/Agent规则操作.test.ts src/屏幕/顶部意向栏.test.tsx src/屏幕/看市场.test.tsx src/屏幕/P5/MatchCase列表.test.tsx`。若未新建候选操作测试文件，移除该参数并将相同 CRUD 用例落应用状态测试；不得以没有文件为由跳过断言。运行 `npm run typecheck`，提交 `fix: keep backend intention selection scoped by id`。
 
 完成条件：Spec §4 所有请求／显示／刷新一致，Mock 未动。回退必须覆盖恢复接线、缓存字段与页面消费者，旧缓存多一个可选字段不会破坏旧版。若发现需要持久化业务快照或重构 Mock，拒绝该扩展。
@@ -131,7 +131,7 @@
 
 **接口冻结：** `映射P4委托展示(summary, receipt)` 保留 `state/copy/reason/inProgress/caseId` 形状；成功统一由 `state === 'case_started' && caseId !== null` 判断。mapper 可使无 caseId 的 case_started copy 为已有进度未知文案。各页成功文案在页面固定，不把 recruiter 两处不同成功词强行统一进 mapper。
 
-**P5 局部接口：** 在 `MatchCase操作.ts` 导出 `失效P5开案工作区(deps: Pick<后端操作依赖, '设后端状态' | '主体标识引用' | '会话代际' | 'P5范围代际'>, input: { role: P5角色; subjectId: string; sessionGeneration: number; filterRefs: readonly string[] }): void`，供 P4 开案提交调用。沿用既有 deps，不新增 Provider 全局事件层。生产必须有 P5范围代际，测试桩同步提供，缺失不能静默跳过失效。
+**P5 局部接口：** 在 `MatchCase操作.ts` 导出 `失效P5开案工作区(deps: 后端操作依赖, input: { role: P5角色; subjectId: string; sessionGeneration: number; filterRefs: readonly string[] }): void`，供 P4 开案提交调用。函数入口先调用本文件既有 `取P5引用(deps)`，复用其缺引用即抛接线错误的守卫并取得必需的 P5范围代际；不能 optional chain 或缺失时静默 return。沿用既有 deps，不新增 Provider 全局事件层。生产和手工测试依赖桩同步提供原有完整 P5运行时引用；测试缺引用时明确报接线错误，不得仍宣称失效成功。
 
 - [ ] 先补六态＋坏 Case ID mapper／页面失败用例。四页主操作文案按 Spec §7.1；招聘列表为“AI代理已接触”，其他三页“AI代理已接手”；匿名在线简历未委托为 Mock 的“让AI代理去谈”。成功无“查看进展”、无导航，原资料入口地址不变。职位详情复用 disabled 主键，其余复用已有 span／状态条；不新增样式。
 - [ ] 两个列表建立当前页面周期本次发起集合，key 为 candidate intention＋job 或 recruiter job＋recommendation，关联 delegation_id 后才能匹配轮询。记录点击只表示本次操作；显示成功／暂留始终还要通过权威成功谓词。POST 直接成功和轮询到成功都保留原排序。进屏首载的历史成功不加入集合，历史 accepted 本轮变成功也不当本轮点击暂留。
