@@ -283,6 +283,17 @@ function 渲染详情(role: P5角色, caseId: string) {
   );
 }
 
+/**
+ * 终局时间的期望值：用 Date 的本地 getter 独立推出 `YYYY-MM-DD HH:mm`，
+ * 与 mapper 的 Intl 路径各算各的（生产跟随用户环境时区，测试按进程 TZ 取期望）。
+ */
+function 本地终局期望(原文: string): string {
+  const 时刻 = new Date(原文);
+  const 补 = (数: number) => String(数).padStart(2, '0');
+  return `${时刻.getFullYear()}-${补(时刻.getMonth() + 1)}-${补(时刻.getDate())}`
+    + ` ${补(时刻.getHours())}:${补(时刻.getMinutes())}`;
+}
+
 /** 测试外置可控 promise：手动决定 settle 时机（回答 in-flight 夹具用）。 */
 function 可控Promise<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -326,7 +337,8 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(mock设置P5范围.mock.invocationCallOrder[0]).toBeLessThan(
       mock读取详情.mock.invocationCallOrder[0]);
     expect(await screen.findByText('平台工程师')).toBeTruthy(); // 冻结职位名
-    expect(screen.getByText(`意向 ${意向ID}`)).toBeTruthy(); // 候选端自己的意向坐标原样
+    // Task 4：内部意向 ID 不再出现在可见内容里（业务上下文靠冻结职位/城市/薪资承载）
+    expect(document.body.textContent).not.toContain(意向ID);
     expect(screen.getByText('上海 · 25-40K·16薪')).toBeTruthy(); // 城市 · 薪资带
     // 列表记忆零读取：不碰任何工作区/列表操作
     expect(mock加载工作区).not.toHaveBeenCalled();
@@ -350,8 +362,7 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(screen.getByText('平台工程师 · 上海 · 25-40K·16薪')).toBeTruthy();
     // 姓名与结构化身份是 P5.1 依赖：一个都不渲染
     expect(screen.queryByText('沈亦舟')).toBeNull();
-    expect(screen.queryByText(`意向 ${意向ID}`)).toBeNull(); // 对端（候选端）字段进不了视图
-    expect(screen.queryByText(意向ID)).toBeNull();
+    expect(document.body.textContent).not.toContain(意向ID); // 对端（候选端）字段进不了视图
     expect(screen.queryByText('匹配度分析')).toBeNull();
     expect(screen.queryByText('适配')).toBeNull();
 
@@ -360,7 +371,7 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
     expect(await screen.findByText('平台工程师')).toBeTruthy();
-    expect(screen.getByText(`意向 ${意向ID}`)).toBeTruthy();
+    expect(document.body.textContent).not.toContain(意向ID);
     expect(screen.queryByText(别名)).toBeNull();
   });
 
@@ -517,7 +528,7 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(screen.queryByText('需要你')).toBeNull();
   });
 
-  it('终局详情停 3 秒轮询、隐藏输入，终局摘要原样展示', async () => {
+  it('终局详情停 3 秒轮询、隐藏输入，终局摘要给本地时间而非原始 RFC3339', async () => {
     vi.useFakeTimers();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已终止详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
@@ -525,9 +536,14 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     await act(() => vi.advanceTimersByTimeAsync(7000));
     expect(mock读取详情).toHaveBeenCalledTimes(1); // terminal detail 停止 polling（§10.3）
     expect(screen.queryByPlaceholderText(叮嘱占位)).toBeNull(); // 终局隐藏叮嘱输入
-    // 终局摘要 wire 原样（不翻译不改写）
+    // 结束语/原因仍是 wire 原样（不翻译不改写）
     expect(screen.getAllByText('user_ended').length).toBeGreaterThan(0);
-    expect(screen.getByText('2026-08-29T03:00:00Z')).toBeTruthy();
+    // 定格于换成本地展示值：原始 RFC3339 与任何 ISO 形状都不得出现在屏上
+    expect(document.body.textContent).not.toContain('2026-08-29T03:00:00Z');
+    expect(document.body.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/);
+    expect(screen.getByText(本地终局期望('2026-08-29T03:00:00Z'))).toBeTruthy();
+    // 内部 ID 同样不在可见内容里
+    expect(document.body.textContent).not.toContain(意向ID);
   });
 
   it('会话/角色不匹配关轮询（已登录=false 或 last_used_role 非本端）', async () => {

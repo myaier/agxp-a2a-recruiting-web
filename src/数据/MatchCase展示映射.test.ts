@@ -255,6 +255,17 @@ function 造列表项(选项: {
 type 正常视图 = { kind: '正常' };
 type 契约错误视图 = { kind: '契约错误'; 错误提示: string };
 
+/**
+ * 终局时间的期望值：用 Date 的本地 getter 独立推出 `YYYY-MM-DD HH:mm`，
+ * 不复用被测的 Intl 路径 —— 期望和实现各算各的才算得上断言。
+ */
+function 本地终局期望(原文: string): string {
+  const 时刻 = new Date(原文);
+  const 补 = (数: number) => String(数).padStart(2, '0');
+  return `${时刻.getFullYear()}-${补(时刻.getMonth() + 1)}-${补(时刻.getDate())}`
+    + ` ${补(时刻.getHours())}:${补(时刻.getMinutes())}`;
+}
+
 function 断言正常<T extends 正常视图 | 契约错误视图>(视图: T): Exclude<T, 契约错误视图> {
   if (视图.kind !== '正常') throw new Error(`期望正常视图，得到 ${视图.kind}`);
   return 视图 as Exclude<T, 契约错误视图>;
@@ -543,7 +554,7 @@ describe('映射P5详情：别名与键纪律', () => {
     expect(序列化).not.toMatch(/匹配分|评分|推荐理由|亮点|公司简介|公司档案|在线简历|score|highlights|match_reasons/);
   });
 
-  it('职位快照四事实原样投影；终局摘要原样带出不改写', () => {
+  it('职位快照四事实原样投影；终局摘要 定格于 换成本地展示值', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
       state: 造行状态('ended', 'anonymous_screening', 'ended', 'complete'),
       terminalSummary: {
@@ -560,9 +571,59 @@ describe('映射P5详情：别名与键纪律', () => {
       薪资带: '300-500 元/天',
       技能: ['Python', 'SQL'],
     });
-    expect(视图.终局摘要).toEqual({ 结束语: 'user_ended', 原因: 'user_ended', 定格于: '2026-08-29T03:00:00Z' });
+    // 定格于 是展示值：按运行环境本地时区格式化，绝不把原始 RFC3339 摊到屏上
+    expect(视图.终局摘要?.结束语).toBe('user_ended');
+    expect(视图.终局摘要?.原因).toBe('user_ended');
+    expect(视图.终局摘要?.定格于).toBe(本地终局期望('2026-08-29T03:00:00Z'));
+    expect(视图.终局摘要?.定格于).not.toContain('T');
+    expect(视图.终局摘要?.定格于).not.toContain('Z');
     expect(视图.轮次).toEqual({ 当前: 1, 预算: 3 });
     expect(视图.更新于).toBe('2026-08-29T02:00:00Z');
+  });
+
+  // Task 4：终局时间用运行环境本地时区显示，不设固定产品时区、不硬编码加八小时。
+  // 期望值按当前进程时区现算（CI 与本地都按同一规则），Asia/Shanghai 下
+  // '2026-08-29T03:00:00Z' 就是 '2026-08-29 11:00'。
+  describe('终局 定格于 的本地格式化', () => {
+    const 定格 = (finalizedAt: string) => 断言正常(映射P5详情(造详情({
+      state: 造行状态('ended', 'anonymous_screening', 'ended', 'complete'),
+      terminalSummary: {
+        stage: 'anonymous_screening', outcome: 'user_ended',
+        reasonSummary: 'user_ended', finalizedAt,
+      },
+    })))?.终局摘要?.定格于;
+
+    it('形状恒为 YYYY-MM-DD HH:mm，且与运行环境本地时区一致', () => {
+      for (const 原文 of ['2026-08-29T03:00:00Z', '2026-01-01T23:30:00Z', '2026-12-31T16:00:00Z']) {
+        const 显示 = 定格(原文);
+        expect(显示).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+        expect(显示).toBe(本地终局期望(原文));
+      }
+    });
+
+    it('跨日与午夜：24 小时制，午夜是 00 不是 24', () => {
+      // 本地午夜整点（用当前时区反推一个必然落在 00:00 的 UTC 时刻）
+      const 本地午夜 = new Date('2026-08-29T00:00:00Z');
+      本地午夜.setHours(0, 0, 0, 0);
+      const 显示 = 定格(本地午夜.toISOString());
+      expect(显示?.slice(11)).toBe('00:00');
+      expect(显示).toBe(本地终局期望(本地午夜.toISOString()));
+    });
+
+    it('两个固定执行时区的具体快照：Asia/Shanghai 是 11:00，UTC 是 03:00', () => {
+      const 显示 = 定格('2026-08-29T03:00:00Z');
+      const 时区 = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      // 生产不设 timeZone（跟随用户环境）；这里按测试进程实际的 TZ 给期望
+      if (时区 === 'Asia/Shanghai') expect(显示).toBe('2026-08-29 11:00');
+      else if (时区 === 'UTC') expect(显示).toBe('2026-08-29 03:00');
+      else expect(显示).toBe(本地终局期望('2026-08-29T03:00:00Z'));
+    });
+
+    it('异常值绕过 decoder 抵达 mapper：显示 时间待确认，不抛错也不回原文', () => {
+      for (const 坏值 of ['', 'not-a-date', '2026-13-45T99:99:99Z']) {
+        expect(定格(坏值)).toBe('时间待确认');
+      }
+    });
   });
 
   it('四个阶段区块按 S0→S3 投影，时间线/叮嘱/附件原样透传且仅作展示', () => {

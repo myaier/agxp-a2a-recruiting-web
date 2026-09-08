@@ -120,7 +120,6 @@ const 状态行样式: CSSProperties = {
   display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '12px 16px 4px',
 };
 const 步骤说明样式: CSSProperties = { flex: 1, minWidth: 0, fontSize: 12, color: 'var(--弱化)' };
-const 意向样式: CSSProperties = { flex: 'none', fontSize: 11, color: 'var(--最弱)' };
 const 轮次样式: CSSProperties = { flex: 'none', fontSize: 11, color: 'var(--最弱)' };
 const 终局卡样式: CSSProperties = {
   margin: '0 16px 10px', padding: '13px 15px', borderRadius: 14, background: 'var(--浅灰底)',
@@ -444,15 +443,11 @@ function 详情主体({
       ) : null}
 
       {/* 状态行：闭词状态文案 + 步骤说明 + 轮次（权威 state.*，无服务端下一步字段）。
-          候选端另带自己的意向坐标（不透明 ID 原样，对端字段进不了视图） */}
+          Task 4：内部 intentionId 不再进可见内容 —— 它仍留在详情模型里供路由/归属/动作
+          使用，业务上下文由冻结职位名、城市与薪资带承载。 */}
       <div style={状态行样式}>
         <span className={列表样式.阶段标}>{视图.状态文案}</span>
         <span style={步骤说明样式}>{视图.步骤说明}</span>
-        {role === 'candidate' && 视图.intentionId !== null ? (
-          <span className="等宽数字" style={意向样式}>
-            意向 {视图.intentionId}
-          </span>
-        ) : null}
         <span className="等宽数字" style={轮次样式}>
           轮次 {视图.轮次.当前}/{视图.轮次.预算}
         </span>
