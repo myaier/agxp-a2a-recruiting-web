@@ -405,6 +405,10 @@ const P4标记 = {
   publisher: 'P4 Fixture 招聘负责人',
   candidateAlias: 'P4候选甲',
   candidateSummary: 'P4 fixture 匿名候选摘要，只来自 HTTP',
+  // 去名改版（2026-09-08）：推荐列表卡不再显示别名，列表上按右列适配环可及名定位
+  // （甲 match_score 88；乙 见 P4发现fixture 里的 match_score 76）。别名只在详情 / 已筛页仍可见
+  candidateRing: '适配 88 分',
+  candidateBRing: '适配 76 分',
 } as const;
 
 /** 用例自用的补充编号：固定表之外的第二张卡 / 归档岗位 / 未知坐标（同样只存在于 fixture） */
@@ -6800,8 +6804,10 @@ async function 下拉刷新手势(page: Page) {
 
 /** 触屏左滑候选卡露出「不合适」。走 CDP touch 而不是鼠标拖拽：真实触屏手势在大幅移动后
  *  浏览器不会合成 click，行面的「打开态点击即收起」不会被拖拽尾随的 click 误触。 */
-async function 左滑候选卡(page: Page, 别名: string) {
-  const 行面 = page.locator('[role="group"][aria-expanded="false"]').filter({ hasText: 别名 }).first();
+async function 左滑候选卡(page: Page, 适配环名: string) {
+  // 去名改版后卡上没有别名，按卡内适配环的可及名（如「适配 76 分」）定位那一张
+  const 行面 = page.locator('[role="group"][aria-expanded="false"]')
+    .filter({ has: page.getByRole('img', { name: 适配环名 }) }).first();
   const 框 = (await 行面.boundingBox())!;
   const 纵 = 框.y + 框.height / 2;
   const 起 = 框.x + 框.width - 30;
@@ -7024,7 +7030,7 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await page.getByRole('button', { name: '推荐', exact: true }).click();
 
     // 列表：别名/摘要逐字来自 fixture；请求按当前岗位 scope 发出
-    await expect(page.getByText(P4标记.candidateAlias).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(P4标记.candidateSummary).first()).toBeVisible();
     expect(请求序.some((项) => 项 === `GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations?limit=50`)).toBe(true);
 
@@ -7063,7 +7069,7 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await page.goto('/');
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
     await page.getByRole('button', { name: '推荐', exact: true }).click();
-    await expect(page.getByText(P4标记.candidateAlias).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible({ timeout: 15_000 });
 
     // 收藏：服务端先行 PUT（无 If-Match / 无 Idempotency-Key），权威回执改快照后星标点亮
     await page.getByRole('button', { name: '收藏', exact: true }).first().click();
@@ -7080,20 +7086,20 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await expect(收藏开关).toBeVisible();
     const 过滤前请求数 = 请求序.length;
     await 收藏开关.click();
-    await expect(page.getByText(P4标记.candidateAlias).first()).toBeVisible();
-    await expect(page.getByText('P4候选乙')).toHaveCount(0);
+    await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible();
+    await expect(page.getByRole('img', { name: P4标记.candidateBRing })).toHaveCount(0);
     expect(请求序.length).toBe(过滤前请求数);
     await 收藏开关.click();
-    await expect(page.getByText('P4候选乙')).toBeVisible();
+    await expect(page.getByRole('img', { name: P4标记.candidateBRing })).toBeVisible();
     expect(请求序.length).toBe(过滤前请求数);
     await page.getByRole('button', { name: '完成' }).click();
 
     // 淘汰：左滑 → 原因 → PUT reason → 权威详情重读后卡才从可用流消失
-    await 左滑候选卡(page, 'P4候选乙');
+    await 左滑候选卡(page, P4标记.candidateBRing);
     await page.getByRole('button', { name: '不合适' }).click();
     await page.getByRole('button', { name: /年限不足/ }).click();
     await expect(page.getByText('已标记「年限不足」')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('P4候选乙')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByRole('img', { name: P4标记.candidateBRing })).toHaveCount(0, { timeout: 10_000 });
     const 淘汰写 = fixture.变更请求.find((项) => 项.path.endsWith('/rejection') && 项.method === 'PUT');
     expect(淘汰写!.body).toEqual({ reason: 'experience_insufficient' });
 
@@ -7118,10 +7124,10 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     // 持久证明：撤销后权威 available 腿把乙放回 —— 下拉强制重读（GET）才见回来
     await page.goto('/#/hr');
     await page.getByRole('button', { name: '推荐', exact: true }).click();
-    await expect(page.getByText(P4标记.candidateAlias).first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('P4候选乙')).toHaveCount(0); // 撤销不回塞当前批次快照
+    await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('img', { name: P4标记.candidateBRing })).toHaveCount(0); // 撤销不回塞当前批次快照
     await 下拉刷新手势(page);
-    await expect(page.getByText('P4候选乙')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('img', { name: P4标记.candidateBRing })).toBeVisible({ timeout: 15_000 });
   });
 
   test('招聘端委托无确认层：POST 选择坐标 recommendation_id，绝不制造 Mock 候选 Case @backend', async ({ page }) => {
@@ -7135,7 +7141,7 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await page.goto('/');
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
     await page.getByRole('button', { name: '推荐', exact: true }).click();
-    await expect(page.getByText(P4标记.candidateAlias).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible({ timeout: 15_000 });
 
     // 无确认层：点击立即发起，页面全程没有弹层；卡原地长出「AI代理已接触」
     // （滑动行整行 role=button 的可及名含全卡文字，去聊键按真实 <button> 定位）
@@ -7329,7 +7335,9 @@ test.describe('P4 Mock 数据源隔离 @mock', () => {
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
     await page.goto('/#/hr');
     await page.getByRole('button', { name: '推荐', exact: true }).click();
-    await expect(page.getByText('江叙白')).toBeVisible({ timeout: 10_000 });
+    // 去名改版（2026-09-08）：推荐卡不出代号，列表就绪以头行性别图标为准；代号只在匿名在线简历页
+    await expect(page.getByRole('img', { name: '男' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('江叙白')).toHaveCount(0);
 
     // 详情：匿名在线简历（Mock 分支）
     await page.getByRole('button', { name: '查看候选画像' }).first().click();
@@ -7340,7 +7348,7 @@ test.describe('P4 Mock 数据源隔离 @mock', () => {
     // 淘汰放最后：卡片移除会让列表位移，紧随其后的点击会跟重渲染抢布局
     await page.goto('/#/hr');
     await page.getByRole('button', { name: '推荐', exact: true }).click();
-    await expect(page.getByText('江叙白')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('img', { name: '男' }).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: '收藏', exact: true }).first().click();
     await expect(page.getByRole('button', { name: '取消收藏' }).first()).toBeVisible({ timeout: 10_000 });
 
@@ -7349,10 +7357,10 @@ test.describe('P4 Mock 数据源隔离 @mock', () => {
     await page.locator('button:has-text("让AI代理去聊")').first().click();
     await expect(page.getByText('AI代理已接触').first()).toBeVisible({ timeout: 10_000 });
 
-    await 左滑候选卡(page, '周砚秋');
+    await 左滑候选卡(page, '适配 86 分'); // R-12 周砚秋：去名后按适配环定位
     await page.getByRole('button', { name: '不合适' }).click();
     await page.getByRole('button', { name: /年限不足/ }).click();
-    await expect(page.getByText('周砚秋')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByRole('img', { name: '适配 86 分' })).toHaveCount(0, { timeout: 10_000 });
 
     // P4 域在 Mock 下零请求（任务书原文断言），整段会话也没有任何 /api/v1
     const isP4 = (url: string) => /\/(job-recommendation|candidate-recommendation|job-delegation|candidate-delegation)/.test(url);
@@ -8131,7 +8139,9 @@ test.describe('P5 Mock 数据源隔离 @mock', () => {
     await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
     await page.goto('/#/hr');
-    await expect(page.getByText('沈亦舟').first()).toBeVisible({ timeout: 10_000 });
+    // 去名改版（2026-09-08）：在谈卡全匿名，列表就绪以头行性别图标为准；真名只在候选详情页
+    await expect(page.getByRole('img', { name: '男' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('沈亦舟')).toHaveCount(0);
     await page.goto('/#/hr/archived');
     await expect(page.getByText('历史代谈').first()).toBeVisible({ timeout: 10_000 });
     await page.goto('/#/hr/candidate/A-01');

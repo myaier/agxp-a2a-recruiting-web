@@ -324,12 +324,16 @@ describe('候选筛选抽屉 · 只看收藏本地开关（P4）', () => {
 
   it('Backend favorite filter is local and feedback is server-first', async () => {
     const user = userEvent.setup();
+    // 去名改版（2026-09-08 产品负责人定稿）：推荐卡不再显示别名，两张卡靠右列适配环的可及名区分
+    // （样本 87 分 / 乙 76 分）
     置P4招聘状态([{ ...BFF招聘候选推荐样本, favorite: true }, { ...BFF招聘候选推荐样本,
-      recommendation_id: 'rec_other', candidate_alias: '匿名乙', favorite: false }]);
+      recommendation_id: 'rec_other', candidate_alias: '匿名乙', match_score: 76, favorite: false }]);
     render(<候选推荐 />);
     await user.click(screen.getByRole('button', { name: /筛选.*▾/ }));
     await user.click(screen.getByRole('switch', { name: '只看收藏' }));
-    expect(screen.getByText(BFF招聘候选推荐样本.candidate_alias)).toBeTruthy();
+    expect(screen.getByRole('img', { name: '适配 87 分' })).toBeTruthy();
+    expect(screen.queryByRole('img', { name: '适配 76 分' })).toBeNull();
+    expect(screen.queryByText(BFF招聘候选推荐样本.candidate_alias)).toBeNull();
     expect(screen.queryByText('匿名乙')).toBeNull();
     expect(mock加载招聘候选).toHaveBeenCalledTimes(1);
     expect(mock设置候选收藏).not.toHaveBeenCalled();

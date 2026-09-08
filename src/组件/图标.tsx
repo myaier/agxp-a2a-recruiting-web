@@ -462,3 +462,43 @@ export function 学帽图标({ 尺寸 = 14, 色 = '#a7aa9f' }: 图标属性) {
     </svg>
   );
 }
+
+/** 候选卡头行的性别裸符号：♂ / ♀ 线描（2026-09-08 产品负责人定稿「性别图标 = 裸符号」，
+ *  去名改版后卡上没有名字，性别是头行第一个可读信息）。
+ *  规格：viewBox 16×16、无底色、stroke currentColor / 1.7 / 圆头圆角，渲染 16px；
+ *  颜色走 --性别男 / --性别女 令牌（设计令牌.css），不在这里写死色值。
+ *  可及性：role=img + aria-label 男/女，读屏与测试都按名字找。
+ *  性别 缺省（数据没给）直接不渲染，不留空壳。 */
+export function 性别图标({ 性别, 尺寸 = 16 }: { 性别?: '男' | '女'; 尺寸?: number }) {
+  if (!性别) return null;
+  const 是女 = 性别 === '女';
+  return (
+    <svg
+      width={尺寸}
+      height={尺寸}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      role="img"
+      aria-label={性别}
+      style={{ color: 是女 ? 'var(--性别女)' : 'var(--性别男)' }}
+    >
+      {是女 ? (
+        <>
+          {/* ♀：圆 + 下方十字 */}
+          <circle cx="8" cy="5.9" r="3.9" />
+          <path d="M8 9.8V14.4M5.4 12.3h5.2" />
+        </>
+      ) : (
+        <>
+          {/* ♂：圆 + 右上箭头 */}
+          <circle cx="6.4" cy="9.6" r="3.9" />
+          <path d="M9.2 6.8L13.6 2.4M9.6 2.4h4v4" />
+        </>
+      )}
+    </svg>
+  );
+}

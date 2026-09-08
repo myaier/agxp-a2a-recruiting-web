@@ -791,8 +791,11 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
       操作: P5操作表(),
     };
     render(<企业在谈候选 />);
-    // A-01 的 S1 已递交原件：真名非空显示真名（沈亦舟），与 Mock 行为一致
-    expect(await screen.findByText('沈亦舟')).toBeTruthy();
+    // 去名改版（2026-09-08）：在谈卡全匿名 —— A-01 已披露的真名（沈亦舟）与代号（陈屿）都不上卡；
+    // Mock 体渲染完成以头行性别图标为准（详见 企业在谈候选.test.tsx）
+    expect((await screen.findAllByRole('img', { name: '男' })).length).toBeGreaterThan(0);
+    expect(screen.queryByText('沈亦舟')).toBeNull();
+    expect(screen.queryByText('陈屿')).toBeNull();
 
     expect(mock设置P5范围).not.toHaveBeenCalled();
     expect(mock加载工作区).not.toHaveBeenCalled();
