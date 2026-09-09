@@ -121,9 +121,9 @@ export function 从Mock在谈到阶段(v: Pick<在谈单, '阶段' | '需要你'
 export function 从P5到阶段(v: P5列表正常视图): 在谈阶段信息;
 ```
 
-上述函数只转换数据，不插入占位文本。招聘摘要缺省统一传 null；Mock 标签回查由 Mock 连接层完成后作为参数传入。P5 到阶段的色系闭表：匿名初筛→匿名初筛、简历提交→递交简历、差异协同→需要协调、意向确认→意向确认；标题保留 P5 原文。输入必须是现有合法映射的正常分支，不以兜底色遮掩契约错误。
+上述函数只转换数据，不插入占位文本。招聘摘要缺省统一传 null；Mock 标签回查由 Mock 连接层完成后作为参数传入。P5 到阶段的色系闭表：匿名初筛→匿名初筛、简历提交→递交简历、差异协同→需要协调、意向确认→意向确认；标题保留 P5 原文。`从P5到阶段` 的 `待办` 恒为 false：Backend 只保留原徽标，不新增呼吸点；`从Mock在谈到阶段` 的 `待办` 取原 `需要你`，保留 Mock 呼吸点。输入必须是现有合法映射的正常分支，不以兜底色遮掩契约错误。
 
-占位精确遵守 Spec §4：经验未知、学历未知、求职状态未知、工作经历未知、教育经历未知、亮点信息未知、公司信息未知、公司简介未知、标签信息未知；性别 `?` 16px，分数位 40px 内 `—` 与「分数未知」，可访问名「匹配分未知」，公司图位 34px/10px 圆角空块，可访问名「公司图片未知」。标签 trim 后无有效展示项按空处理；非空项不去重、不排序。
+占位精确遵守 Spec §4：经验未知、学历未知、求职状态未知、工作经历未知、教育经历未知、亮点信息未知、公司信息未知、公司简介未知、标签信息未知；性别 `?` 16px，可访问名与 title 均为「性别未知」，分数位 40px 内 `—` 与「分数未知」，可访问名「匹配分未知」，公司图位 34px/10px 圆角空块，可访问名「公司图片未知」。标签 trim 后无有效展示项按空处理；非空项不去重、不排序。占位文本沿用现有次要文字色，不使用错误红色；Task 4 浏览器观察一并核对。
 
 `候选头行` 用可选 `未知性别占位?: boolean`（默认 false）支持 16px 问号；卡片主体预格式化三段未知文本传入现有年限/学历/求职状态 props，用 `类名` 仅在卡片调用处允许最多两行；非目标消费者保持默认隐藏空项及原布局。无需让整个头行知道模式。
 
@@ -151,14 +151,14 @@ npm test -- src/组件/列表卡片 src/数据/列表卡片映射.test.ts src/�
 
 文件：Create `src/组件/列表卡片/类型.ts`、`候选信息主体.tsx/.module.css`、`卡片分数.tsx/.module.css`、`招聘推荐卡.tsx/.module.css`、对应 `.test.tsx`；Create `src/数据/列表卡片映射.ts/.test.ts`；Modify `src/组件/候选头行.tsx`、`src/屏幕/候选推荐.tsx`、`候选推荐.module.css`、`候选推荐.test.tsx`。公用阶段和其他卡类型按公共契约声明即可，不预写后续组件。
 
-生产：公共契约中的 `候选卡信息`、推荐组件、分数位、候选主体、前三个映射函数。消费：既有 `推荐候选` 和 `招聘候选摘要视图`，不得修改其业务含义。
+生产：公共契约中的 `候选卡信息`、推荐组件、分数位、候选主体、前两个映射函数。消费：既有 `推荐候选` 和 `招聘候选摘要视图`，不得修改其业务含义。
 
 - [ ] 核对 Spec revision/blob、产品基线可达，读本 Task 文件和相邻测试。登记 task intent，安装锁定依赖；共享头行的所有消费者用 `rg` 核对。
-- [ ] 在新组件测试建立无 Provider 宿主；先写候选字段 null 的占位、分数 0/null、部分工作已知、重复标签与有值→null rerender。推荐操作分别验证 callback 次数、滑开零动作、禁用零动作、回执不渲染委托按钮。
+- [ ] 在新组件测试建立无 Provider 宿主；先写候选字段 null 的占位（含 `getByLabelText('性别未知')` 及 title）、分数 0/null、部分工作已知、重复标签与有值→null rerender。推荐操作分别验证 callback 次数、滑开零动作、禁用零动作、回执不渲染委托按钮。
 - [ ] 执行 `npm test -- src/组件/列表卡片 src/数据/列表卡片映射.test.ts src/屏幕/候选推荐.test.tsx`，确认新行为断言失败；不能把缺依赖/测试未收集当 red。
 - [ ] 按上述 props 实现主体和分数位，搬移 Mock 推荐卡样式，给候选头行加默认 false 的未知性别参数。保留已知分的现有适配环，未知只走中性分数位。
 - [ ] 映射 Mock 画像拆分/工作教育与原标签；Backend 摘要只从当前快照来。原页面用 `操作状态={展示 === null ? {kind:'可委托',提交中:委托中} : {kind:'回执',文案:委托文字}}`，让状态回执无额外业务推断。
-- [ ] 删除原两份推荐卡 JSX，两个 map 都调用共享组件；外层滑动行与收藏/淘汰/委托锁及异步闭包原样保留。只删除不再被引用的旧卡面 CSS，不动顶栏/弹层样式。
+- [ ] 来源为两模式现有固定文案「你的AI代理从人才库筛出」，连同原图标随 Mock 卡面搬移，不新增来源 prop；组件测试断言来源保留。删除原两份推荐卡 JSX，两个 map 都调用共享组件；外层滑动行与收藏/淘汰/委托锁及异步闭包原样保留。只删除不再被引用的旧卡面 CSS，不动顶栏/弹层样式。
 - [ ] 更新原「摘要 null 收行」断言，保留已有六态、API 零调用/真实 ID、失败与切岗断言；执行上述命令加 `npm test -- src/屏幕/候选详情.test.tsx src/屏幕/匿名在线简历.test.tsx`，检查默认头行未变。
 - [ ] 定向测试通过后提交本 Task 文件：`git commit -m 'refactor: share recruiter recommendation card rendering'`；角色 review 按宿主要求，不能拿此 Task review 替代最终异构 review。
 
@@ -184,10 +184,10 @@ expect(screen.queryByRole('button', {name:'让AI代理去聊'})).toBeNull();
 
 文件：Create `src/组件/列表卡片/招聘在谈卡.tsx/.module.css/.test.tsx`、`在谈阶段区.tsx/.module.css/.test.tsx`；Modify `src/数据/列表卡片映射.ts/.test.ts`、`src/屏幕/企业在谈候选.tsx/.module.css/.test.tsx`、`src/屏幕/P5/MatchCase列表.tsx/.module.css/.test.tsx`。不改业务 `MatchCase展示映射.ts` 和 DTO。
 
-生产：`招聘在谈卡(招聘在谈卡属性)`、`在谈阶段区({信息})`、`从Mock在谈到阶段`、`从P5到阶段`，签名见公共契约。阶段区按四种真实语义色系显示标题，不根据 arbitrary 文本猜状态。
+生产：`招聘在谈卡(招聘在谈卡属性)`、`在谈阶段区({信息})`、`从Mock候选到卡信息`、`从Mock在谈到阶段`、`从P5到阶段`，签名见公共契约。阶段区按四种真实语义色系显示标题，不根据 arbitrary 文本猜状态。
 
 - [ ] 读取基线招聘 Mock 候选卡、P5 正常/错误视图及阶段颜色，记录现有 DOM/CSS 位置，确认 P5 历史是否引用同一 CSS 后再删样式。
-- [ ] 写失败测试：完整/空摘要都保留工作教育标签；P5 匹配分未知；需要你/需注意/代理处理中出现在阶段区，attention 说明存在；Mock 阶段文字与下一步保留且徽标 null。
+- [ ] 写失败测试：完整/空摘要都保留工作教育标签；P5 匹配分未知；需要你/需注意/代理处理中出现在阶段区，attention 说明存在；Mock 阶段文字与下一步保留且徽标 null；Mock 需要你时有呼吸点，Backend 需要你时仅有徽标、无呼吸点。
 - [ ] 执行 `npm test -- src/组件/列表卡片 src/数据/列表卡片映射.test.ts src/屏幕/企业在谈候选.test.tsx src/屏幕/P5/MatchCase列表.test.tsx` 验证 red。
 - [ ] 按 Mock CSS 实现招聘在谈卡布局，复用候选主体与分数位。阶段区使用自己的小展示组件与 `阶段配色`；不改变通用 `阶段标签` 默认实现。原 P5 徽标显示文案优先级保留，只从头行搬到底部阶段区。
 - [ ] Mock 层继续回查推荐标签并传给 `从Mock候选到卡信息`；Backend 只用合法 `P5列表正常视图.候选摘要`，传 `匹配分={null}`。卡内不读 fixture。两边打开回调保持各自 Case/原型 ID。
@@ -255,14 +255,25 @@ expect(screen.queryByRole('button', {name:'让AI代理去聊'})).toBeNull();
 |§1–3 范围/纯展示边界|Global Constraints，Task 1–3|
 |§4 文本/图位/性别/分数/空因|公共契约，Task 1/3 的边界测试|
 |§5 三类布局与阶段状态|Task 1 推荐、Task 2 招聘在谈/阶段、Task 3 求职在谈|
-|§6 窄屏与默认共享组件|Task 1 默认头行保护、Task 4 浏览器|
+|§6 占位配色、布局稳定、窄屏与默认共享组件|公共占位契约、Task 1 默认头行保护、Task 4 浏览器|
 |§7 字段缺口|固定现有映射，不扩 API；Task 4 核实|
 |§8 行为与验证|每 Task 测试、Task 4 完整验证、Task 5 真实 local|
 |§9–10 交付/批准|本 Plan、后续双宿主 bundle，Spec 批准 pin|
 
 ## 文档 review 记录
 
-规划 owner：Codex。范围仅本 Plan 与对应 Spec；Claude opus/high 以 WORKFLOW_DOCUMENT_REVIEW 只读审查。批准契约固定上述 Spec revision/blob，候选版本每轮以 Git SHA 和文件 blob 记录；reviewer 禁止测试，逐条由 planner 自主裁决，最多 3 轮。当前尚未发起，完成后在本节记录结果，不另建 review report。
+规划 owner：Codex。范围仅本 Plan 与对应 Spec；Claude opus/high 以 WORKFLOW_DOCUMENT_REVIEW 只读审查。批准契约固定上述 Spec revision/blob，候选版本每轮以 Git SHA 和文件 blob 记录；reviewer 禁止测试，逐条由 planner 自主裁决，最多 3 轮。第一轮候选 `5f5b9bd9e42673ff7b33f7e0836fe727b3bd4c2a`，Plan blob `149ad042`（完整值见该候选 Git 对象），Spec 批准 pin 不变。只读 guard（status、HEAD、文件指纹）通过；未运行产品测试。
+
+第一轮裁决：
+
+- R1-1 required / Important / 契约违反 / 复杂度不变：接受，固定 Backend 待办 false，Mock 取需要你，并补差异断言；不改 Spec。
+- R1-2 required / Minor / 契约违反 / 复杂度不变：接受，补次要文字色、浏览器观察与 §6 覆盖；不改 Spec。
+- R1-3 required / Minor / 契约违反 / 复杂度不变：接受，补性别可访问名/title 与断言；不改 Spec。
+- R1-4 required / Minor / 契约违反 / 复杂度不变：接受明确来源。已核对候选推荐.tsx 两卡均为「你的AI代理从人才库筛出」，固定搬移，无新 prop；不改 Spec。
+- R1-5 optional / Minor / 可选增强 / 复杂度降低：接受，将从Mock候选到卡信息的实现移到 Task 2，与实际消费者同时交付。
+- R1-6 optional / Minor / 可选增强 / 复杂度降低：拒绝。用户明确启动 development-workflow，其 planning/execution contract 要求 task intent 与 final-integration 规则；这是既有工作流责任，不是本任务新增产品基础设施。维持这些约束。
+
+四项 required 已修订；待同一 reviewer session 复审修复及新增问题。
 
 ## 实施记录
 
