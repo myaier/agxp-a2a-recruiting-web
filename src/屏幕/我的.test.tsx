@@ -17,6 +17,7 @@
 // 它的原始定义处 ../状态/初始状态 引入，不能走 应用状态 的转发导出。
 
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { BFF简历, BFF主体 } from '../数据/BFF契约';
 import { BFF简历样本, BFF主体样本 } from '../测试/BFF样本';
@@ -202,4 +203,13 @@ it('Mock 保留原型在线文案与页脚', () => {
   expect(screen.getByText(/在线 · 正在跟进 \d+ 个机会/)).toBeTruthy();
   expect(screen.getByText(/服务热线 400-000-0000/)).toBeTruthy();
   expect(screen.getByText(/人力资源服务许可证/)).toBeTruthy();
+});
+
+// 第二批（2026-09-09 定稿）删筛选后：「待你拍」仍是可点统计，派发 看全部在谈/待我拍板 落到在谈页
+// （落地后列表显示全部、待拍板排最前 —— 见 在谈首页.test.tsx 验收 5）。
+it('Mock「待你拍」点击仍派发 看全部在谈/待我拍板（第二批 验收5）', async () => {
+  const user = userEvent.setup();
+  布置('mock');
+  await user.click(screen.getByRole('button', { name: /待你拍/ }));
+  expect(mock上下文.当前!.派发).toHaveBeenCalledWith({ 型: '看全部在谈', 档: '待我拍板' });
 });

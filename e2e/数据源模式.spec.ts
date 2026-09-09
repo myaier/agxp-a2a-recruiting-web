@@ -107,9 +107,12 @@ test.describe('Mock 数据源回归 @mock', () => {
     expect(apiRequests).toEqual([]);
   });
 
-  test('Mock 规则页与双端筛选抽屉全程零 API 请求 @mock', async ({ page }) => {
-    // P6（Task 8）：双端规则页（/rules、/hr/agent-settings）+ 双端筛选抽屉（看市场 / 候选推荐）
-    // 在 Mock 下全部走本地状态；本地新增/展示/编辑各走一次，断言 P6 的 agent-rule 请求恒为零。
+  test('Mock 双端规则页全程零 API 请求，双端顶栏无筛选入口 @mock', async ({ page }) => {
+    // P6（Task 8）：双端规则页（/rules、/hr/agent-settings）在 Mock 下全部走本地状态，
+    // 断言 P6 的 agent-rule 请求恒为零。
+    // 第二批（2026-09-09）：双端筛选抽屉（看市场 / 候选推荐 顶栏「筛选 ▾」）已整体删除，
+    // 原本经抽屉本地新增 / 改写规则的两段随之删去，改为断言顶栏没有「筛选」入口；
+    // 规则的 canonical 入口只剩这两页。
     test.setTimeout(120_000);
     const apiRequests: string[] = [];
     page.on('request', (request) => {
@@ -129,19 +132,12 @@ test.describe('Mock 数据源回归 @mock', () => {
     await expect(page.getByText('双休是底线；隔周六可谈，大小周不谈')).toBeVisible();
     await expect(page.getByText('4 条')).toBeVisible();
 
-    // ── 候选端市场筛选抽屉：本地新增一条规则（失焦即落库，不发请求）──
+    // ── 候选端市场：顶栏没有「筛选」入口（放大镜「搜索职位」仍在）──
     await page.goto('/#/app');
     await page.getByRole('button', { name: '市场', exact: true }).click();
-    // 筛选键带生效条数（规则 > 0 时是「筛选 · N ▾」）
-    await page.getByRole('button', { name: /筛选.*▾/ }).click();
-    await expect(page.getByText('告诉AI代理你的硬性要求')).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: '＋ 添加规则' }).click();
-    // 新增行自动聚焦且排在既有行之后；回车即失焦落库，回规则库核对真的进了清单
-    const 候选新行 = page.getByRole('dialog').getByRole('textbox').last();
-    await 候选新行.fill('只投双休岗位');
-    await 候选新行.press('Enter');
-    await page.goto('/#/rules');
-    await expect(page.getByRole('button', { name: /只投双休岗位/ })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '搜索职位' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /筛选/ })).toHaveCount(0);
+    await expect(page.getByText('告诉AI代理你的硬性要求')).toHaveCount(0);
 
     // ── 切到招聘端：Mock 定稿规则只展示，不提供维护型开关 ──
     await page.goto('/#/identity?switch=1&from=app');
@@ -152,18 +148,12 @@ test.describe('Mock 数据源回归 @mock', () => {
     await expect(page.getByRole('switch')).toHaveCount(0);
     await expect(page.getByText('3 条生效')).toBeVisible();
 
-    // ── 招聘端候选筛选抽屉（推荐子视图）：本地改一条规则 ──
+    // ── 招聘端推荐子视图：企业顶栏没有「筛选」入口 ──
     await page.goto('/#/hr');
     await page.getByRole('button', { name: '推荐', exact: true }).click();
-    await page.getByRole('button', { name: /筛选.*▾/ }).click();
-    await expect(page.getByText('告诉AI代理你的硬性要求')).toBeVisible({ timeout: 10_000 });
-    // 企业规则种子首行是「不透露 HC 剩余数量与紧迫度」，就地改写后回车落库，去 canonical 页核对
-    const 招聘规则行 = page.getByRole('dialog').getByRole('textbox').first();
-    await expect(招聘规则行).toHaveValue('不透露 HC 剩余数量与紧迫度');
-    await 招聘规则行.fill('不透露 HC 剩余数量与紧迫度（改）');
-    await 招聘规则行.press('Enter');
-    await page.goto('/#/hr/agent-settings');
-    await expect(page.getByText('不透露 HC 剩余数量与紧迫度（改）')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '让AI代理去聊' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /筛选/ })).toHaveCount(0);
+    await expect(page.getByText('告诉AI代理你的硬性要求')).toHaveCount(0);
 
     // P6 域在 Mock 下零请求：agent-rule 一个都没有，整个会话也没有任何 /api/v1
     expect(apiRequests.filter((url) => url.includes('agent-rule'))).toEqual([]);
@@ -7080,19 +7070,10 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     expect(收藏写!.ifMatch).toBeNull();
     expect(收藏写!.idempotencyKey).toBeNull();
 
-    // 「只看收藏」是本地过滤：开关全程零新请求，只留收藏的甲
-    await page.getByRole('button', { name: /筛选.*▾/ }).click();
-    const 收藏开关 = page.getByRole('switch', { name: '只看收藏' });
-    await expect(收藏开关).toBeVisible();
-    const 过滤前请求数 = 请求序.length;
-    await 收藏开关.click();
-    await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible();
-    await expect(page.getByRole('img', { name: P4标记.candidateBRing })).toHaveCount(0);
-    expect(请求序.length).toBe(过滤前请求数);
-    await 收藏开关.click();
+    // 第二批（2026-09-09）：候选筛选抽屉与其中的「只看收藏」本地开关已删除 —— 顶栏没有「筛选」入口，
+    // 两张卡都在；收藏后不再有本地过滤可验
+    await expect(page.getByRole('button', { name: /筛选/ })).toHaveCount(0);
     await expect(page.getByRole('img', { name: P4标记.candidateBRing })).toBeVisible();
-    expect(请求序.length).toBe(过滤前请求数);
-    await page.getByRole('button', { name: '完成' }).click();
 
     // 淘汰：左滑 → 原因 → PUT reason → 权威详情重读后卡才从可用流消失
     await 左滑候选卡(page, P4标记.candidateBRing);

@@ -3,7 +3,7 @@
 //     AI代理设置），不挂载 fixture 简报/漏斗/对话/快捷问句/真输入条，也不排定时回复；
 //   · Mock 原型（今日简报、人才漏斗、快捷问句、输入、关键词回复）原样保留；
 //   · Mock 排队的 550ms 模拟回复定时器在切到 Backend / 卸载时必须取消，不允许泄漏。
-// 宿主：mock 应用状态 / 导航钩子（同 候选筛选抽屉.test.tsx 惯例）；可变模式变量供
+// 宿主：mock 应用状态 / 导航钩子（同 候选推荐.test.tsx 惯例）；可变模式变量供
 // rerender 前改写，模拟同页数据源切换。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 

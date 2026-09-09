@@ -6,8 +6,10 @@
 //     Mock 在谈单/候选 对象、绝不 import Mock。
 //   · 服务端 viewer-specific 顺序（needs_action DESC, updated_at DESC, case_id DESC）
 //     原样保留 —— 本组件不做任何客户端重排（Mock 屏的「需要你置顶」不搬过来）。
-//   · 状态档（待我拍板/进行中）是纯视图过滤，只滤「当前已载窗口」里各行的
-//     viewer 专属 needs_action；游标未尽时不下「没有」的结论、不声称全量总数。
+//   · 状态档（在谈看什么 / 企业在谈看什么：全部/待我拍板/进行中）本组件不读、不过滤
+//     —— 2026-09-09 产品负责人：删筛选层，在谈只显示全部。列表恒为范围内全部行；
+//     「我」页「待你拍」派发后档位落成 待我拍板 也照样显示全部，需要你的行靠服务端
+//     needs_action DESC 已排在前，本组件原样保留。
 //   · 键与导航唯一归属 case_id；candidate_alias 只留在视图字段里供日志/测试，
 //     招聘卡卡面不再显示（2026-09-09 摘要接线：卡面只渲染 candidate_summary 摘要）。
 //   · 候选卡只渲染 Case 冻结的工作区职位四事实（职位名/城市/薪资带/技能）；
@@ -24,7 +26,6 @@ import 样式 from './MatchCase列表.module.css';
 import { 白卡, 骨架卡组 } from '../../组件/通用';
 import { 公文包图标, 学帽图标, 性别图标 } from '../../组件/图标';
 import { use应用状态 } from '../../状态/应用状态';
-import type { 看什么档 } from '../../状态/应用状态';
 import { use导航 } from '../../路由/导航钩子';
 import { 路径 } from '../../路由/路径表';
 import { 映射P5列表项, P5契约错误提示 } from '../../数据/MatchCase展示映射';
@@ -163,11 +164,11 @@ function 契约错误行({ 重试 }: { 重试: () => void }) {
 
 export function MatchCase列表(props: { role: P5角色; filterRef: string | null }) {
   const { role, filterRef } = props;
-  const { 状态, 数据源模式, 后端状态, 操作 } = use应用状态();
+  const { 数据源模式, 后端状态, 操作 } = use应用状态();
   const { 跳转 } = use导航();
   const 是后端 = 数据源模式 === 'backend';
-  // 状态档是全局纯视图态：双端各认各的档（在谈看什么 / 企业在谈看什么）
-  const 看什么: 看什么档 = role === 'candidate' ? 状态.在谈看什么 : 状态.企业在谈看什么;
+  // 2026-09-09 产品负责人：删筛选层，在谈只显示全部 —— 状态里的 在谈看什么 / 企业在谈看什么
+  // 本组件不再读（字段与归约在状态层保留，「我」页「待你拍」仍会派发成 待我拍板，但这里不认档）。
 
   // 只选当前 role+过滤 自己的快照：键按 scope 隔离，切换时旧 scope 数据天然进不来；
   // owner 与当前主体不匹配（同角色换主体的过渡帧）时按不存在处理，绝不渲染旧主体 items
@@ -198,25 +199,19 @@ export function MatchCase列表(props: { role: P5角色; filterRef: string | nul
 
   // 展示映射逐行独立：契约错误行整行停用；服务端顺序原样保留（不重排）
   const 视图们 = useMemo(() => (快照?.items ?? []).map(映射P5列表项), [快照?.items]);
-  // 状态档只滤已载条目的 needs_action；契约错误行不受档过滤影响（失败必须可见）
-  const 过滤后 = 看什么 === '全部'
-    ? 视图们
-    : 视图们.filter((视图) =>
-        视图.kind === '契约错误' ? true : 看什么 === '待我拍板' ? 视图.待办 : !视图.待办);
+  // 2026-09-09 产品负责人：删筛选层，在谈只显示全部 —— 原按 看什么 档滤 needs_action 的
+  // 过滤已删，渲染的就是 视图们 本身（范围内全部行；服务端 needs_action DESC 的置顶原样保留）。
 
   const 载入中 = 快照 === undefined ||
     (快照.items.length === 0 && (快照.阶段 === '未开始' || 快照.阶段 === '进行中'));
   const 首载失败 = 快照 !== undefined && 快照.items.length === 0 && 快照.阶段 === '失败';
   const 游标未尽 = 快照 !== undefined && 快照.nextCursor !== null;
 
-  const 名词 = role === 'candidate' ? '职位' : '候选';
-  const 空文案 = 看什么 !== '全部'
-    ? 游标未尽
-      ? `已读入的里没有${看什么}的${名词}，加载更多后再看。`
-      : `没有${看什么}的${名词}`
-    : role === 'candidate'
-      ? '暂时没有在谈职位。'
-      : '暂无在谈候选，去推荐里让AI代理接触几个';
+  // 2026-09-09 产品负责人：删筛选层，在谈只显示全部 —— 「没有待我拍板的职位」这类按档写的
+  // 空文案随之删除；档不再区分，空态只剩双端各一句通用文案（列表真空才出现）。
+  const 空文案 = role === 'candidate'
+    ? '暂时没有在谈职位。'
+    : '暂无在谈候选，去推荐里让AI代理接触几个';
 
   const 重试首载 = () => void 操作.加载工作区(role, filterRef, true).catch(() => undefined);
   const 重读窗口 = () => void 操作.刷新工作区(role, filterRef).catch(() => undefined);
@@ -248,11 +243,11 @@ export function MatchCase列表(props: { role: P5角色; filterRef: string | nul
             </div>
           ) : null}
 
-          {过滤后.length === 0 ? (
+          {视图们.length === 0 ? (
             // 错误在场时不下「没有在谈」的定论：那不是事实，只是这次没读到
             快照?.error && !快照.刷新中 ? null : <div className={样式.空态}>{空文案}</div>
           ) : (
-            过滤后.map((视图, 下标) =>
+            视图们.map((视图, 下标) =>
               视图.kind === '契约错误' ? (
                 <契约错误行 key={`契约错误_${下标}`} 重试={重读窗口} />
               ) : role === 'candidate' ? (

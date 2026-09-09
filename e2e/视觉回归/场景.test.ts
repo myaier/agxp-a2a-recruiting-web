@@ -12,7 +12,6 @@ const 预期ID = [
   'candidate-negotiations',
   'candidate-negotiation-detail',
   'candidate-messages',
-  'candidate-me-overlay',
   'candidate-profile',
   'recruiter-card',
   'recruiter-post-job-1',
@@ -25,9 +24,10 @@ const 预期ID = [
 ];
 
 describe('视觉场景清单', () => {
-  it('包含 18 个稳定且唯一的场景 ID', () => {
+  // 第二批（2026-09-09）：candidate-me-overlay（在谈筛选层）随筛选层删除，18 → 17
+  it('包含 17 个稳定且唯一的场景 ID', () => {
     expect(视觉场景们.map((场景) => 场景.id)).toEqual(预期ID);
-    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(18);
+    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(17);
   });
 
   it('发布岗位第三步使用跨版本稳定的提交按钮作为关键元素', () => {

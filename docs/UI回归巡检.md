@@ -111,7 +111,7 @@ agent-browser --session ui-regression set viewport 390 844
 
 ### 每个场景的固定动作
 
-按 `docs/superpowers/specs/2026-08-26-ui-regression-baseline-design.md` 第 9 节顺序走 16 个场景：
+按 `docs/superpowers/specs/2026-08-26-ui-regression-baseline-design.md` 第 9 节顺序走 15 个场景（`candidate-me-overlay` 已于 2026-09-09 随「删筛选」移除：在谈筛选层不存在了，「我」→「待你拍」的连通改由 `我.test.tsx` / `在谈首页.test.tsx` 覆盖）：
 
 1. `entry-login-default` `/#/`
 2. `entry-identity` `/#/identity`
@@ -122,19 +122,18 @@ agent-browser --session ui-regression set viewport 390 844
 7. `candidate-negotiations` `/#/app`（默认即在谈首页）
 8. `candidate-negotiation-detail` `/#/deal/J-01`（→点「职位详情」Tab）
 9. `candidate-messages` `/#/app`（→点「消息」导航）
-10. `candidate-me-overlay` `/#/app`（→「我」→「待你拍」→「筛选」）
-11. `candidate-profile` `/#/profile`
-12. `recruiter-card` `/#/hr/card`
-13. `recruiter-post-job-1` `/#/hr/post-job`
-14. `recruiter-post-job-2` 从 `/#/hr/post-job` 完成第一步
-15. `recruiter-post-job-3` 从 `/#/hr/post-job` 完成第一、二步
-16. `recruiter-home-candidate` `/#/hr`（→「推荐」→「查看候选画像」）
+10. `candidate-profile` `/#/profile`
+11. `recruiter-card` `/#/hr/card`
+12. `recruiter-post-job-1` `/#/hr/post-job`
+13. `recruiter-post-job-2` 从 `/#/hr/post-job` 完成第一步
+14. `recruiter-post-job-3` 从 `/#/hr/post-job` 完成第一、二步
+15. `recruiter-home-candidate` `/#/hr`（→「推荐」→「查看候选画像」）
 
 到达每个场景前先按状态种子准备 `localStorage`（与 `e2e/视觉回归/稳定页面.ts` 一致）：
 
 - `未登录`（场景 1–2）：清空 `localStorage`/`sessionStorage`。
-- `求职端已注册`（场景 3–11）：清空后写入 legacy 种子 `AGXP简历v2` 与 `AGXP求职筛选v1`（JSON 字符串，见 `稳定页面.ts`），应用迁移逻辑会把它迁到账号隔离键。
-- `招聘端已注册`（场景 12–16）：只清空，用应用内 Mock 招聘数据。
+- `求职端已注册`（场景 3–10）：清空后写入 legacy 种子 `AGXP简历v2` 与 `AGXP求职筛选v1`（JSON 字符串，见 `稳定页面.ts`），应用迁移逻辑会把它迁到账号隔离键。
+- `招聘端已注册`（场景 11–15）：只清空，用应用内 Mock 招聘数据。
 
 因为 `agent-browser` 没有先于导航的 `addInitScript`，做法是：先 `open http://127.0.0.1:4176/#/` 建立 origin，再用 `eval` 清空并按需写入 `localStorage`，最后 `open` 到目标 `/#/path` 重新加载。
 

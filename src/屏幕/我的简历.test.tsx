@@ -3,6 +3,10 @@
 // Backend 分支渲染权威 0–3 行：状态动作矩阵、删除确认、解析/上传授权层（文案与
 // 完善资料 Task 5 逐字相同）、真实 PDF 预览、busy 防双击、已换代静默、单行展开。
 
+// 第二批验收要读源文件 / 查文件是否存在：tsconfig.app 没挂 node 类型，这里按文件引用（@types/node 已装）
+/// <reference types="node" />
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEventApi from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -630,5 +634,44 @@ describe('我的简历 · 空身份展示与姓名门（M）', () => {
     await userEvent.tab(); // blur → 保存姓名
     expect(mock操作.保存简历).not.toHaveBeenCalled();
     expect(mock跳转).toHaveBeenCalledWith(路径.求职状态);
+  });
+});
+
+// ── 第二批（2026-09-09 定稿）：「我的简历」三个区块纯去框 —— .卡 删 `border: 1px solid var(--描边)`，
+//    不加投影；顶部 AI 代理诊断条的淡绿描边不动。jsdom 会把带 var() 的 border 整条丢弃（进不了
+//    computed style），所以描边断言直接读 module.css 源文本里的规则块；DOM 侧只证三个区块与诊断条
+//    仍按原类名渲染、标题 / 条目原样。
+const 我的简历样式路径 = path.resolve(process.cwd(), 'src/屏幕/我的简历.module.css');
+
+/** 取 module.css 里某个顶层选择器的声明块（花括号内文本）；选择器前的注释一并剥掉 */
+function 取规则块(原文: string, 选择器: string): string {
+  const 规则们 = 原文.match(/[^{}]+\{[^}]*\}/g) ?? [];
+  const 块 = 规则们.find((规则) =>
+    规则.slice(0, 规则.indexOf('{')).replace(/\/\*[\s\S]*?\*\//g, '').trim() === 选择器);
+  if (!块) throw new Error(`我的简历.module.css 里没有 ${选择器} 规则`);
+  return 块.slice(块.indexOf('{'));
+}
+
+describe('我的简历 · 区块纯去框（第二批 验收1）', () => {
+  it('.卡 不再声明任何 border（纯去框），也不加投影', () => {
+    expect(existsSync(我的简历样式路径)).toBe(true);
+    const 卡块 = 取规则块(readFileSync(我的简历样式路径, 'utf8'), '.卡');
+    // border-radius 不算描边；border / border-top|right|bottom|left 一个都不能有
+    expect(卡块).not.toMatch(/(^|[^-\w])border(-top|-right|-bottom|-left)?\s*:/);
+    expect(卡块).not.toMatch(/box-shadow\s*:/);
+  });
+
+  it('顶部 AI 代理诊断条的淡绿描边不动', () => {
+    const 诊断条块 = 取规则块(readFileSync(我的简历样式路径, 'utf8'), '.诊断条');
+    expect(诊断条块).toMatch(/border\s*:\s*1px solid var\(--淡绿描边\)/);
+  });
+
+  it('Mock 页三个区块与诊断条仍按原类名渲染，标题 / 条目原样', () => {
+    render我的简历({ mode: 'mock' });
+    expect(document.getElementsByClassName(样式.卡).length).toBeGreaterThanOrEqual(3);
+    expect(document.getElementsByClassName(样式.诊断条)).toHaveLength(1);
+    expect(screen.getByText(/AI代理诊断/)).toBeTruthy();
+    // Mock 演示条目原样（附件简历区块的硬编码演示行）
+    expect(screen.getByText('沈亦舟_简历_2026.pdf')).toBeTruthy();
   });
 });

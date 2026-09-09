@@ -1,6 +1,6 @@
 // P6 Task 7：非规范规则入口隔离（候选端）。
-// 看市场筛选层：Backend 只读（无输入 / 无删除、管理规则 › 跳 规则库）；筛选角标只认
-// 已水合的权威规则（未水合不出 Mock 数字，水合后只数 生效:true）；Mock 原样可编辑。
+// （看市场筛选层与顶栏「筛选 ▾」已在第二批 2026-09-09 整体删除，见下方「筛选入口与筛选层已删」一组；
+//   规则的 canonical 入口只剩 规则库 页。）
 // 候选端演示页（问AI代理 / 往来记录 / 在谈详情）：记成规则 只在 Mock 派发 新增规则，
 // Backend 只给中性提示，不落规则、不冒充已生效。
 // P4 Task 6：候选看市场接上发现推荐 —— Backend 列表只来自当前活跃意向的候选岗位
@@ -165,11 +165,10 @@ function 换卡卡(选项: { 推荐ID: string; 岗位ID: string; 职位: string 
   };
 }
 
-/** 渲染看市场并点开筛选层（与真实入口一致：顶栏「筛选 ▾」升起底部层） */
-async function renderMarketFilter(选项: { mode: 'mock' | 'backend'; rulesStage: string }) {
+/** Mock 底座：当前意向 后端工程师、规则种子两条（生效 1 条）—— 角标若还在，会数出「筛选 · 1」 */
+function 置Mock看市场状态() {
   置应用状态({
-    模式: 选项.mode,
-    候选规则阶段: 选项.rulesStage,
+    模式: 'mock',
     状态: {
       子视图: '看市场',
       当前意向: '后端工程师',
@@ -182,11 +181,11 @@ async function renderMarketFilter(选项: { mode: 'mock' | 'backend'; rulesStage
       意向级规则: [],
     },
   });
-  render(<看市场 />);
-  await userEvent.click(screen.getByRole('button', { name: /筛选/ }));
 }
 
-describe('看市场 · Backend 筛选层只读与角标门控', () => {
+// ── 第二批（2026-09-09 定稿）：删筛选 —— 顶栏「筛选 ▾」按钮、页内 岗位筛选规则 筛选层、筛选角标
+//    （生效规则数）整体删除；放大镜「搜索职位」保留；规则的 canonical 入口只剩 规则库 页。
+describe('看市场 · 筛选入口与筛选层已删（第二批 验收2/3）', () => {
   beforeEach(() => {
     mock派发.mockClear();
     mock跳转.mockClear();
@@ -198,31 +197,27 @@ describe('看市场 · Backend 筛选层只读与角标门控', () => {
     mock刷新委托.mockClear();
   });
 
-  it('Backend candidate filter layer is read-only and navigates to canonical rules', async () => {
-    const user = userEvent.setup();
-    await renderMarketFilter({ mode: 'backend', rulesStage: '成功' });
-    expect(screen.queryByRole('textbox')).toBeNull();
-    expect(screen.queryByRole('button', { name: /删除规则/ })).toBeNull();
-    await user.click(screen.getByRole('button', { name: '管理规则 ›' }));
-    expect(mock跳转).toHaveBeenCalledWith(路径.规则库);
+  it('Mock：顶栏无「筛选」文字按钮与角标，页内无 岗位筛选规则 弹层；放大镜「搜索职位」仍在', () => {
+    置Mock看市场状态();
+    render(<看市场 />);
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
+    expect(screen.queryByText(/筛选 · \d+/)).toBeNull();
+    expect(screen.queryByText(/岗位筛选规则/)).toBeNull();
+    expect(screen.queryByText('告诉AI代理你的硬性要求')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('button', { name: '管理规则 ›' })).toBeNull();
+    expect(screen.getByRole('button', { name: '搜索职位' })).toBeTruthy();
   });
 
-  it('Backend rules 未水合时角标不出 Mock 数字', async () => {
-    await renderMarketFilter({ mode: 'backend', rulesStage: '未开始' });
-    expect(screen.queryByText(/筛选 · /)).toBeNull();
-    expect(screen.getByRole('button', { name: '筛选 ▾' })).toBeTruthy();
-  });
-
-  it('Backend rules 水合成功后角标只数 生效:true 的规则', async () => {
-    await renderMarketFilter({ mode: 'backend', rulesStage: '成功' });
-    expect(screen.getByRole('button', { name: '筛选 · 1 ▾' })).toBeTruthy();
-  });
-
-  it('Mock 角标计数与可编辑筛选层保持原样', async () => {
-    await renderMarketFilter({ mode: 'mock', rulesStage: '未开始' });
-    expect(screen.getByRole('button', { name: '筛选 · 1 ▾' })).toBeTruthy();
-    expect(screen.getAllByRole('textbox').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: '管理规则 ›' })).toBeTruthy();
+  it('Backend（规则已水合）：同样无「筛选」入口与角标，列表照常', () => {
+    置P4候选状态([BFF候选岗位推荐样本]);
+    render(<看市场 />);
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
+    expect(screen.queryByText(/筛选 · \d+/)).toBeNull();
+    expect(screen.queryByText(/岗位筛选规则/)).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('button', { name: '搜索职位' })).toBeTruthy();
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
   });
 });
 

@@ -1,6 +1,8 @@
 // 匿名在线简历 · 身份显示规则契约（spec §3.2 / review-r3）：
-// 招聘方视图只消费真名事实——真名非空即显示真名、还原公司实名，不等到 S3；
+// 招聘方视图只消费真名事实——真名非空即还原公司实名，不等到 S3；
 // 已确认（S3）只承担意向确认文案，不兼任披露权限。
+// 第二批（2026-09-09 定稿）：头区去名 —— 删 大代号 与 人像占位，`已披露 ? 真名 : 代号` 分支删除，
+// 头区改放与列表卡同一套头行（性别图标 + 年限｜学历｜状态）；真名 / 代号 / 别名都不再上屏。
 // P4 Task 7：Backend 分支只吃权威详情（每次进屏强制重读），只渲染映射后的
 // 匿名 allowlist 画像（别名/匹配分/经验/求职状态/小结/技能/教育/薪资关系），
 // 绝不回退 Mock 简历档，也没有直聊/年龄/性别/候选薪资任何入口。
@@ -85,22 +87,39 @@ function 渲染详情() {
   );
 }
 
-describe('简历正文 · 身份显示规则（spec §3.2）', () => {
-  it('真名非空（S1）即显示真名与「已披露身份」，不等到 S3', () => {
+/** 从性别图标向上找到同时装着学历的那一层 = 头行；头行里不该有任何名字 */
+function 找头行(图标: Element, 学历: string): HTMLElement {
+  let 节: Element | null = 图标;
+  while (节 && !(节.textContent ?? '').includes(学历)) 节 = 节.parentElement;
+  if (!(节 instanceof HTMLElement)) throw new Error(`性别图标所在的头行里没有「${学历}」`);
+  return 节;
+}
+
+describe('简历正文 · 身份显示规则（spec §3.2 / 第二批头区去名）', () => {
+  it('真名非空（S1）：头区也不显示真名 / 代号（卡面不显示真名，头区同理）；性别图标 + 年限｜学历', () => {
     const 档 = 匿名简历表['A-01'];
     render(<简历正文 档={档} 真名="沈亦舟" 已确认={false} />);
-    expect(screen.getByText('沈亦舟')).toBeTruthy();
-    // 代号不应再作为大代号出现
+    expect(screen.queryByText('沈亦舟')).toBeNull();
     expect(screen.queryByText(档.代号)).toBeNull();
+    expect(document.querySelector('[class*="大代号"]')).toBeNull();
+    expect(document.querySelector('[class*="人像占位"]')).toBeNull();
+    const 头行 = 找头行(screen.getByRole('img', { name: '男' }), '硕士');
+    expect(头行.textContent).toMatch(/9 年/);
+    expect(头行.textContent).not.toMatch(/沈亦舟|陈屿/);
     // 2026-09-01 定稿:披露胶囊删除,真名本身即披露状态
     expect(screen.queryByText('已披露身份')).toBeNull();
   });
 
-  it('真名为空（S0）仍显示代号与「匿名」', () => {
+  it('真名为空（S0）同构：无代号、无「匿名」；性别图标 + 年限｜学历', () => {
     const 档 = 匿名简历表['A-07'];
     render(<简历正文 档={档} />);
-    expect(screen.getByText(档.代号)).toBeTruthy();
+    expect(screen.queryByText(档.代号)).toBeNull();
     expect(screen.queryByText('匿名')).toBeNull();
+    expect(document.querySelector('[class*="大代号"]')).toBeNull();
+    expect(document.querySelector('[class*="人像占位"]')).toBeNull();
+    const 头行 = 找头行(screen.getByRole('img', { name: '女' }), '硕士');
+    expect(头行.textContent).toMatch(/10 年/);
+    expect(头行.textContent).not.toContain('苏含章');
   });
 
   it('S3 完成时页尾注说双方已确认意向，S1 已披露但未到 S3 时提示意向确认后进入真人沟通', () => {
@@ -152,21 +171,21 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     await waitFor(() => expect(mock读取招聘候选详情).toHaveBeenCalledTimes(2));
   });
 
-  it('只渲染映射后的匿名画像：别名/匹配分/经验/求职状态/小结/技能/教育/薪资关系', () => {
+  it('只渲染映射后的匿名画像：匹配分/经验/求职状态/小结/技能/教育/薪资关系（第二批：别名不再上屏）', () => {
     置P4详情状态({ 详情: BFF招聘候选推荐样本 });
     渲染详情();
-    expect(screen.getByText('候选人甲')).toBeTruthy();
-    expect(screen.getByText('匿名')).toBeTruthy();
+    expect(screen.queryByText('候选人甲')).toBeNull(); // 第二批：大代号删除，别名不上屏
     expect(screen.getByText('87')).toBeTruthy(); // 返回栏 匹配 N
-    expect(screen.getByText('4 年')).toBeTruthy();
+    // 头区改成头行后 年限 / 学历 / 状态 可能与竖分同节点：按子串找
+    expect(screen.getAllByText(/4 年/).length).toBeGreaterThan(0);
     // 求职状态按闭合表中文化：employed → 在职，屏上不出现原 token
-    expect(screen.getByText('在职')).toBeTruthy();
+    expect(screen.getAllByText(/在职/).length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toContain('employed');
     expect(screen.getByText('四年全栈经验')).toBeTruthy();
     expect(screen.getByText('TypeScript')).toBeTruthy();
     expect(screen.getByText('复旦大学 · 计算机科学 · 本科')).toBeTruthy();
     expect(screen.getByText('薪资带有交集')).toBeTruthy();
-    expect(screen.getByText('本科')).toBeTruthy();
+    expect(screen.getAllByText(/本科/).length).toBeGreaterThan(0);
   });
 
   it('basis 已确认（控制组）：匹配分与推荐亮点整组照常渲染，亮点显示中文', () => {
@@ -567,5 +586,57 @@ describe('匿名在线简历 · 跨岗位缓存隔离（review-r1）', () => {
     expect(screen.queryByText('候选人甲')).toBeNull();
     expect(screen.queryByRole('button', { name: /收藏/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /让AI代理去谈/ })).toBeNull();
+  });
+});
+
+// ── 第二批（2026-09-09 定稿）：匿名在线简历头区去名 —— 删 大代号 与 人像占位，头区改放与列表卡
+//    同一套头行（性别图标 + 年限｜学历｜状态）；`已披露 ? 真名 : 代号` 分支删除。
+//    Backend 的 BFF 合同没给性别：只显示 年限｜学历｜状态、无图标、不报错（同 候选推荐 Backend 卡）。
+describe('匿名在线简历 · 头区去名（第二批 验收8）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock读取招聘候选详情.mockClear();
+  });
+
+  it('Mock /hr/resume/A-01：无大代号、无人像占位、无真名；性别图标 + 年限｜学历；正文原样', () => {
+    mock应用状态 = {
+      数据源模式: 'mock', 派发: mock派发,
+      状态: { 岗位列表: [], 收藏候选: [], 不合适候选: {}, 已接触推荐: [], 企业候选列表: [] },
+      操作: {},
+    };
+    render(
+      <MemoryRouter initialEntries={['/hr/resume/A-01']}>
+        <Routes>
+          <Route path="/hr/resume/:id" element={<匿名在线简历 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText('陈屿')).toBeNull();
+    expect(screen.queryByText('沈亦舟')).toBeNull();
+    expect(document.querySelector('[class*="大代号"]')).toBeNull();
+    expect(document.querySelector('[class*="人像占位"]')).toBeNull();
+    const 头行 = 找头行(screen.getByRole('img', { name: '男' }), '硕士');
+    expect(头行.textContent).toMatch(/9 年/);
+    expect(头行.textContent).not.toMatch(/陈屿|沈亦舟/);
+    // 正文（自述 / 经历）不在本轮范围
+    expect(screen.getByText(/主导交易网关重建与峰值稳定性治理/)).toBeTruthy();
+    expect(screen.getByText('字节跳动')).toBeTruthy();
+  });
+
+  it('Backend rec_r1：无大代号（别名不上屏）、无人像占位；BFF 未给性别 → 无图标不报错；年限｜学历｜状态仍在', () => {
+    置P4详情状态({ 详情: BFF招聘候选推荐样本 });
+    渲染详情();
+    expect(screen.queryByText('候选人甲')).toBeNull();
+    expect(document.querySelector('[class*="大代号"]')).toBeNull();
+    expect(document.querySelector('[class*="人像占位"]')).toBeNull();
+    expect(screen.queryByRole('img', { name: '男' })).toBeNull();
+    expect(screen.queryByRole('img', { name: '女' })).toBeNull();
+    expect(document.body.textContent).toMatch(/4 年/);
+    expect(document.body.textContent).toMatch(/本科/);
+    expect(document.body.textContent).toMatch(/在职/);
+    expect(document.body.textContent).not.toContain('employed');
+    expect(screen.getByText('87')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '让AI代理去谈' })).toBeTruthy();
   });
 });

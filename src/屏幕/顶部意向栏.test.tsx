@@ -7,8 +7,8 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import 顶部意向栏, { 造意向胶囊文字 } from './顶部意向栏';
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import 顶部意向栏, { 取走市场工具请求, 请求打开市场工具, 造意向胶囊文字 } from './顶部意向栏';
 import { BFF意向样本 } from '../测试/BFF样本';
 
 const mock派发 = vi.fn();
@@ -184,5 +184,47 @@ describe('顶部意向栏 · Mock 分支逐字保持名称语义', () => {
     expect(选中胶囊文字()).toEqual(['AI 产品经理']);
     await user.click(screen.getByRole('button', { name: '数据分析' }));
     expect(mock派发).toHaveBeenCalledWith({ 型: '切意向', 意向: '数据分析' });
+  });
+});
+
+// ── 第二批（2026-09-09 定稿）：顶栏「筛选 ▾」入口整个删掉 —— 组件不再收 打开筛选 / 筛选生效数 /
+//    打开在谈筛选 / 在谈生效 四个 props，市场工具信号只剩「搜索」；放大镜「搜索职位」（市场页）保留。
+describe('顶部意向栏 · 筛选入口已删（第二批 验收2）', () => {
+  /** 旧的四个筛选 props 以无类型对象塞进去：删前它们会把「筛选 ▾」渲染出来（本组用例 RED），
+   *  删后组件类型里没有这四个字段、传了也应当被无视（用例 GREEN）—— 两种状态下都能编译 */
+  const 旧筛选属性 = {
+    打开筛选: vi.fn(), 筛选生效数: 2, 打开在谈筛选: vi.fn(), 在谈生效: true,
+  } as object;
+
+  it.each(['在谈', '看市场'] as const)('%s 子视图：没有任何「筛选」文字按钮，也不出「筛选 · N」角标', (子视图) => {
+    置状态({
+      模式: 'mock',
+      求职意向表: [{ 编号: 'I-01', 标题: '[上海] 后端工程师', 说明: '' }],
+      当前意向: '后端工程师', 当前意向编号: null, 子视图,
+    });
+    const { container } = render(<顶部意向栏 打开搜索={vi.fn()} {...旧筛选属性} />);
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
+    expect(container.textContent).not.toMatch(/筛选/);
+    expect(screen.getByRole('button', { name: '后端工程师' })).toBeTruthy();
+  });
+
+  it('市场页放大镜「搜索职位」仍在', () => {
+    置状态({
+      模式: 'mock',
+      求职意向表: [{ 编号: 'I-01', 标题: '[上海] 后端工程师', 说明: '' }],
+      当前意向: '后端工程师', 当前意向编号: null, 子视图: '看市场',
+    });
+    render(<顶部意向栏 打开搜索={vi.fn()} {...旧筛选属性} />);
+    expect(screen.getByRole('button', { name: '搜索职位' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
+  });
+
+  it('市场工具信号只剩「搜索」：请求后可取走一次，再取为 null', () => {
+    请求打开市场工具('搜索');
+    expect(取走市场工具请求()).toBe('搜索');
+    expect(取走市场工具请求()).toBeNull();
+    // 类型层：'筛选' 分支已从签名里删除（tsc 层的 RED/GREEN，vitest 运行时是空操作）
+    expectTypeOf<Parameters<typeof 请求打开市场工具>[0]>().toEqualTypeOf<'搜索'>();
+    expectTypeOf<ReturnType<typeof 取走市场工具请求>>().toEqualTypeOf<'搜索' | null>();
   });
 });

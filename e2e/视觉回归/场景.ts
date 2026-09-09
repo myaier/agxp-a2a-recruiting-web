@@ -122,8 +122,8 @@ const 简历场景 = 构造场景({
 });
 
 // candidate-market：看市场子视图，求职端已注册。
-// 注：计划字面 ready 含 text「告诉AI代理你的硬性要求」，该文案只出现在看市场筛选层弹层内，
-// 默认看市场态不可见。按 carry-forward 规则改用默认可见的代理横幅文案作关键元素，不改产品代码。
+// 注：计划字面 ready 含 text「告诉AI代理你的硬性要求」，该文案原只出现在看市场筛选层弹层内
+// （筛选层已在第二批 2026-09-09 删除）。按 carry-forward 规则改用默认可见的代理横幅文案作关键元素。
 const 市场场景: 视觉场景 = {
   id: 'candidate-market',
   状态: '求职端已注册',
@@ -219,33 +219,8 @@ const 消息场景: 视觉场景 = {
   },
 };
 
-// candidate-me-overlay：我入口 → 待你拍 → 在谈筛选层，求职端已注册。
-// 证明「我」入口与在谈筛选层连通：最终截图是筛选层打开态，关键元素同时含底部「我」导航与筛选层标题。
-const 我筛选层场景: 视觉场景 = {
-  id: 'candidate-me-overlay',
-  状态: '求职端已注册',
-  async 到达(page: Page): Promise<void> {
-    await 打开稳定页面(page, '/#/app', '求职端已注册');
-    await 注入候选突变(page);
-    // 底部「我」导航可达名正好是「我」，但默认子串匹配会同时命中代理横幅里的「我已谈完」，
-    // 故用 exact 精确到导航按钮本身。
-    await page.getByRole('button', { name: '我', exact: true }).click();
-    await expect(page.getByText('我的求职AI代理', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: /待你拍/ }).click();
-    await page.getByRole('button', { name: /筛选/ }).click();
-  },
-  async 就绪(page: Page): Promise<void> {
-    await expect(page.getByText('看哪几单', { exact: true })).toBeVisible();
-  },
-  关键元素(page: Page): 关键元素描述[] {
-    return [
-      { 名称: '筛选层标题 看哪几单', 定位: page.getByText('看哪几单', { exact: true }) },
-      { 名称: '范围档 全部意向', 定位: page.getByText('全部意向', { exact: true }) },
-      { 名称: '按钮 完成', 定位: page.getByRole('button', { name: '完成' }) },
-      { 名称: '底部导航 我', 定位: page.getByRole('button', { name: '我', exact: true }) },
-    ];
-  },
-};
+// （原 candidate-me-overlay：我入口 → 待你拍 → 在谈筛选层。在谈筛选层与顶栏「筛选 ▾」已在第二批
+//   2026-09-09 整体删除，该场景随之移除；「我」入口与「待你拍」跳转由 我.test.tsx / 在谈首页.test.tsx 覆盖。）
 
 // candidate-profile：个人信息页，求职端已注册。
 const 个人信息场景: 视觉场景 = {
@@ -442,7 +417,6 @@ export const 视觉场景们: 视觉场景[] = [
   在谈首页场景,
   在谈详情场景,
   消息场景,
-  我筛选层场景,
   个人信息场景,
   招聘名片场景,
   发岗一场景,

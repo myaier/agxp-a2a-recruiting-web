@@ -49,12 +49,16 @@ export function 次级页外壳({
 export function 返回栏({
   返回,
   标题,
+  标题节点,
   副标题,
   右侧,
   居中标题 = false,
 }: {
   返回: () => void;
   标题?: string;
+  /** 标题位放一个节点而不是一行字：候选详情顶栏去名后放「性别图标 + 年限｜学历｜状态」头行
+   *  （2026-09-09 产品负责人定稿）。给了 标题节点 就以它为准；现有 标题: string 调用方不受影响 */
+  标题节点?: ReactNode;
   副标题?: string;
   右侧?: ReactNode;
   居中标题?: boolean;
@@ -64,9 +68,9 @@ export function 返回栏({
       <button className={`${样式.返回键} 可点`} onClick={返回} aria-label="返回">
         ‹
       </button>
-      {标题 ? (
+      {标题 || 标题节点 ? (
         <div className={`${样式.返回栏标题组} ${居中标题 ? 样式.居中 : ''}`}>
-          <div className={`${样式.返回栏标题} 单行`}>{标题}</div>
+          <div className={`${样式.返回栏标题} 单行`}>{标题节点 ?? 标题}</div>
           {副标题 ? <div className={`${样式.返回栏副标题} 单行`}>{副标题}</div> : null}
         </div>
       ) : (

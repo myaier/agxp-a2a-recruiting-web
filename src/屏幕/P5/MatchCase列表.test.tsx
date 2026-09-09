@@ -1,7 +1,7 @@
 // P5 Task 4：双端 open 工作区列表（MatchCase列表 + 在谈首页/企业在谈候选 的 Backend
 // 分支）的行为测试。覆盖：viewer 专属 needs_action 文案（绝不读 state.needs_user）、
 // candidate/recruiter 当前/全部 scope 的过滤坐标、服务端顺序保留（不客户端重排）、
-// 状态档只滤已载条目且读尽前不声称全量、首载失败/重试、刷新失败旧条目保留 + 重试、
+// 状态档不过滤（2026-09-09 产品负责人：删筛选层，在谈只显示全部）、首载失败/重试、刷新失败旧条目保留 + 重试、
 // 不透明游标加载更多与读尽即藏、case_id 导航与 React 键、招聘卡摘要卡面 + 无代号无头像
 // 通用头像、未知契约行 fail closed、可见 5 秒轮询接线、Mock 分支零 P5 请求。
 // 测试宿主：mock 应用状态 / 导航钩子（同 候选推荐.test.tsx 惯例）。
@@ -146,7 +146,8 @@ function 列表元素(role: 'candidate' | 'recruiter', filterRef: string | null)
   return <MatchCase列表 role={role} filterRef={filterRef} />;
 }
 
-/** 组件级状态底座：只喂 MatchCase列表 会读的字段（角色分档读 在谈看什么/企业在谈看什么）。 */
+/** 组件级状态底座：只喂 MatchCase列表 会读的字段。在谈看什么 / 企业在谈看什么 仍按角色喂进去，
+ *  但组件不认档（2026-09-09 产品负责人：删筛选层，在谈只显示全部）—— 喂进去是为了证明它被忽略。 */
 function 置P5状态(选项: {
   role: 'candidate' | 'recruiter';
   filterRef: string | null;
@@ -282,27 +283,31 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
       .toEqual(['代理处理中', '需要你']);
   });
 
-  it('状态档只过滤已载条目：待我拍板=needs_action、进行中=!needs_action（双端各认各的档）', () => {
+  it('派发 待我拍板 后列表仍显示全部、需要你的在前（双端都不认 看什么 档）', () => {
+    // 2026-09-09 产品负责人：删筛选层，在谈只显示全部 —— 「我」页「待你拍」派发后
+    // 在谈看什么='待我拍板'，Backend 列表也不能只剩待办行（删层后没有 UI 切回全部）。
+    // 行序按服务端 needs_action DESC 喂入：需要你的在前，组件原样保留、不重排。
     const items = [候选行({ caseId: 'mc_a', 待办: true }), 候选行({ caseId: 'mc_b', 待办: false })];
     置P5状态({ role: 'candidate', filterRef: 意向ID, 快照: 快照({ items }), 看什么: '待我拍板' });
     const { rerender } = render(列表元素('candidate', 意向ID));
-    expect(screen.getByText('需要你')).toBeTruthy();
-    expect(screen.queryByText('代理处理中')).toBeNull();
+    expect(screen.getAllByText(/^(需要你|代理处理中)$/).map((元) => 元.textContent))
+      .toEqual(['需要你', '代理处理中']);
+    // 进行中 档同样不过滤：两行都在、顺序不变
     置P5状态({ role: 'candidate', filterRef: 意向ID, 快照: 快照({ items }), 看什么: '进行中' });
     rerender(列表元素('candidate', 意向ID));
-    expect(screen.queryByText('需要你')).toBeNull();
-    expect(screen.getByText('代理处理中')).toBeTruthy();
+    expect(screen.getAllByText(/^(需要你|代理处理中)$/).map((元) => 元.textContent))
+      .toEqual(['需要你', '代理处理中']);
     cleanup();
 
-    // 招聘端读 企业在谈看什么（不是 在谈看什么）
+    // 招聘端：企业在谈看什么='待我拍板'（企业「我」页「待拍板」派发落地态）同样显示全部
     置P5状态({
       role: 'recruiter', filterRef: 职位ID,
-      快照: 快照({ items: [招聘行({ caseId: 'mc_a', 待办: false }), 招聘行({ caseId: 'mc_b', 待办: true })] }),
+      快照: 快照({ items: [招聘行({ caseId: 'mc_a', 待办: true }), 招聘行({ caseId: 'mc_b', 待办: false })] }),
       看什么: '待我拍板',
     });
     render(列表元素('recruiter', 职位ID));
-    expect(screen.getByText('需要你')).toBeTruthy();
-    expect(screen.queryByText('代理处理中')).toBeNull();
+    expect(screen.getAllByText(/^(需要你|代理处理中)$/).map((元) => 元.textContent))
+      .toEqual(['需要你', '代理处理中']);
   });
 
   it('可见 5 秒节拍刷新已载窗口；隐藏标签页当拍跳过', async () => {
@@ -366,27 +371,42 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
   });
 
-  it('空窗口读尽给空态；状态档滤空在读尽前不声称「没有」', () => {
+  it('空窗口读尽给通用空态；档位不再产生「没有待我拍板的」空文案', () => {
     置P5状态({ role: 'candidate', filterRef: 意向ID, 快照: 快照({ items: [], nextCursor: null }) });
     const { rerender } = render(列表元素('candidate', 意向ID));
     expect(screen.getByText('暂时没有在谈职位。')).toBeTruthy();
-    // 游标未尽：已载 1 条非待办 + 待我拍板档 —— 不能说「没有待我拍板的职位」
+    // 2026-09-09 产品负责人：删筛选层，在谈只显示全部 —— 待我拍板 档下已载 1 条非待办行，
+    // 列表照样显示这一行，绝不再出「已读入的里没有待我拍板的职位」/「没有待我拍板的职位」
     置P5状态({
       role: 'candidate', filterRef: 意向ID,
       快照: 快照({ items: [候选行({ caseId: 'mc_1', 待办: false })], nextCursor: 'b2x' }),
       看什么: '待我拍板',
     });
     rerender(列表元素('candidate', 意向ID));
-    expect(screen.queryByText('没有待我拍板的职位')).toBeNull();
-    expect(screen.getByText('已读入的里没有待我拍板的职位，加载更多后再看。')).toBeTruthy();
-    // 游标读尽后才是可以下的结论
+    expect(screen.getByText('代理处理中')).toBeTruthy();
+    expect(screen.queryByText(/没有待我拍板的职位/)).toBeNull();
+    expect(screen.queryByText('暂时没有在谈职位。')).toBeNull();
+    // 读尽后同样：有行就显示行，没有档位空文案
     置P5状态({
       role: 'candidate', filterRef: 意向ID,
       快照: 快照({ items: [候选行({ caseId: 'mc_1', 待办: false })], nextCursor: null }),
       看什么: '待我拍板',
     });
     rerender(列表元素('candidate', 意向ID));
-    expect(screen.getByText('没有待我拍板的职位')).toBeTruthy();
+    expect(screen.getByText('代理处理中')).toBeTruthy();
+    expect(screen.queryByText(/没有待我拍板的职位/)).toBeNull();
+    // 待我拍板 档 + 真空窗口：空态也只剩那句通用文案
+    置P5状态({ role: 'candidate', filterRef: 意向ID, 快照: 快照({ items: [], nextCursor: null }), 看什么: '待我拍板' });
+    rerender(列表元素('candidate', 意向ID));
+    expect(screen.getByText('暂时没有在谈职位。')).toBeTruthy();
+    expect(screen.queryByText(/没有待我拍板的/)).toBeNull();
+    cleanup();
+
+    // 招聘端真空窗口 + 待我拍板 档：同样只剩招聘端那句通用空文案
+    置P5状态({ role: 'recruiter', filterRef: 职位ID, 快照: 快照({ items: [], nextCursor: null }), 看什么: '待我拍板' });
+    render(列表元素('recruiter', 职位ID));
+    expect(screen.getByText('暂无在谈候选，去推荐里让AI代理接触几个')).toBeTruthy();
+    expect(screen.queryByText(/没有待我拍板的/)).toBeNull();
   });
 
   it('点卡按 case_id 导航：求职端→在谈详情、招聘端→候选详情（别名/意向不做坐标）', async () => {
@@ -701,14 +721,28 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     expect(mock加载工作区).not.toHaveBeenCalled();
   });
 
-  it('求职端：状态档经全局状态传进 P5 列表（待我拍板只留 needs_action）', () => {
+  it('「待你拍」派发后（看什么=待我拍板）两屏的 P5 列表仍显示全部、需要你的在前', () => {
+    // 2026-09-09 产品负责人：删筛选层，在谈只显示全部 —— 状态档经全局状态进屏也不过滤；
+    // 服务端 needs_action DESC 已把需要你的排在前，屏与列表都不重排；顶栏也没有筛选入口可切档。
     置求职屏状态({
       filterRef: 意向ID, 看什么: '待我拍板',
       快照: 快照({ items: [候选行({ caseId: 'mc_a', 待办: true }), 候选行({ caseId: 'mc_b', 待办: false })] }),
     });
     render(<在谈首页 />);
-    expect(screen.getByText('需要你')).toBeTruthy();
-    expect(screen.queryByText('代理处理中')).toBeNull();
+    expect(screen.getAllByText(/^(需要你|代理处理中)$/).map((元) => 元.textContent))
+      .toEqual(['需要你', '代理处理中']);
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
+    cleanup();
+
+    // 招聘端：企业「我」页「待拍板」派发落地态（企业在谈看什么=待我拍板）同样显示全部
+    置招聘屏状态({
+      filterRef: 职位ID, 看什么: '待我拍板',
+      快照: 快照({ items: [招聘行({ caseId: 'mc_a', 待办: true }), 招聘行({ caseId: 'mc_b', 待办: false })] }),
+    });
+    render(<企业在谈候选 />);
+    expect(screen.getAllByText(/^(需要你|代理处理中)$/).map((元) => 元.textContent))
+      .toEqual(['需要你', '代理处理中']);
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
   });
 
   it('求职端：游标未尽时横幅不声称全量总数，读尽后才给数字', () => {
@@ -812,17 +846,8 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     expect(screen.getByText('暂时没有需要你拍板的')).toBeTruthy();
   });
 
-  it('求职端筛选层待办数只在成功读尽后给数', async () => {
-    const user = userEvent.setup();
-    置求职屏状态({
-      filterRef: 意向ID,
-      快照: 快照({ items: [候选行({ caseId: 'mc_1', 待办: true })], nextCursor: null }),
-    });
-    render(<在谈首页 />);
-    await user.click(screen.getByRole('button', { name: '筛选 ▾' }));
-    // 待我拍板 档右侧的数字：成功 + 读尽（1 条待办）才出现
-    expect(screen.getByText('1')).toBeTruthy();
-  });
+  // （原「求职端筛选层待办数只在成功读尽后给数」用例随 在谈筛选层 在第二批 2026-09-09 删除：
+  //   顶栏没有「筛选 ▾」入口，也没有待办数角标可看。）
 
   it('招聘端：当前档按在招 job_id 过滤，全部档不带过滤；归档岗绝不拿来当 scope', () => {
     置招聘屏状态({ filterRef: 职位ID });

@@ -1,0 +1,25 @@
+/* 候选头行：与 企业在谈候选.module.css 的 .基本行 / .性别符 / .竖分 同一套定稿值
+   （2026-09-08 去名改版），详情页顶栏与匿名在线简历头区共用（2026-09-09 第二批）。 */
+
+.头行 {
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--墨);
+  white-space: nowrap;
+}
+
+/* 头行最前的性别裸符号：不参与伸缩、右距 5px（定稿） */
+.性别符 {
+  display: inline-flex;
+  flex: none;
+  margin-right: 5px;
+}
+
+.竖分 {
+  margin: 0 2px;
+  color: var(--最弱);
+  font-size: 10px;
+}

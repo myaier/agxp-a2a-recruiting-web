@@ -5,6 +5,10 @@
 // 测试宿主：mock 应用状态 / 导航钩子（同 候选推荐.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
+// 第二批验收要读源文件 / 查文件是否存在：tsconfig.app 没挂 node 类型，这里按文件引用（@types/node 已装）
+/// <reference types="node" />
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 企业在谈候选 from './企业在谈候选';
@@ -131,5 +135,76 @@ describe('企业在谈候选 · 去名改版卡面（定稿 2026-09-08）', () =
     expect(头行).not.toMatch(/｜\s*$/); // 缺省词不留悬空竖分
     expect(screen.queryByText('陈屿')).toBeNull();
     expect(screen.queryByText('沈亦舟')).toBeNull();
+  });
+});
+
+// ── 第二批（2026-09-09 定稿）：删筛选 —— 企业顶栏「筛选 ▾」、候选筛选抽屉（规则清单）、在谈筛选层
+//    （看哪几单）整体删除；状态层 企业在谈看什么 / 企业在谈范围 字段与 reducer 保留，但列表固定按
+//    「全部」渲染（待拍板的本来就排最前，产品负责人 8/25 认可该排序）。
+describe('企业在谈候选 · 删筛选（第二批 验收2/3/4/5）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+  });
+
+  /** 四张 P-01 卡的头行文本，按今天「全部」档的 DOM 顺序：需要你 的 A-01 / A-03 在前，A-02 / A-07 在后 */
+  const P01头行顺序 = [
+    '9 年｜硕士｜在职看机会',  // A-01 需要你
+    '8 年｜硕士｜离职可到岗',  // A-03 需要你
+    '11 年｜本科｜在职看机会', // A-02
+    '10 年｜本科｜在职看机会', // A-07
+  ];
+  const 读头行 = () =>
+    Array.from(document.querySelectorAll('[class*="基本行"]')).map((行) => 行.textContent ?? '');
+
+  it('验收2 · 顶栏无「筛选」文字按钮，也无「看哪几单」面板；在谈 / 推荐 子视图键仍在', async () => {
+    置Mock状态();
+    render(<企业在谈候选 />);
+    await screen.findAllByRole('img', { name: '男' });
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
+    expect(screen.queryByText('看哪几单')).toBeNull();
+    expect(screen.queryByText('告诉AI代理你的硬性要求')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('button', { name: '在谈' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '推荐' })).toBeTruthy();
+  });
+
+  it('验收3 · 候选筛选抽屉 / 在谈筛选层 模块已不存在（import 即报错），三件套文件一并删除', async () => {
+    for (const 名 of ['候选筛选抽屉', '在谈筛选层']) {
+      // 非字面量路径 + @vite-ignore：让解析发生在运行时，模块删掉后 import 才会拒绝
+      await expect(import(/* @vite-ignore */ `../组件/${名}`)).rejects.toThrow();
+    }
+    for (const 文件 of [
+      '候选筛选抽屉.tsx', '候选筛选抽屉.module.css', '候选筛选抽屉.test.tsx',
+      '在谈筛选层.tsx', '在谈筛选层.module.css',
+    ]) {
+      expect(existsSync(path.resolve(process.cwd(), 'src/组件', 文件))).toBe(false);
+    }
+  });
+
+  it.each(['待我拍板', '进行中'] as const)(
+    '验收4 · 企业在谈看什么=%s 时列表仍显示全部单（含需要你 / 不需要你），排序不变',
+    async (档) => {
+      置Mock状态();
+      mock应用状态.状态.企业在谈看什么 = 档;
+      render(<企业在谈候选 />);
+      await screen.findAllByRole('img', { name: '男' });
+      expect(screen.getAllByRole('img', { name: '男' })).toHaveLength(2); // A-01、A-03
+      expect(screen.getAllByRole('img', { name: '女' })).toHaveLength(2); // A-02、A-07（都不需要你）
+      expect(读头行()).toEqual(P01头行顺序);
+    },
+  );
+
+  it('验收5 · 「待拍板」落地态（企业在谈范围=全部 + 待我拍板）照常渲染不报错，P-01 四张卡按原序在场', async () => {
+    置Mock状态();
+    mock应用状态.状态.企业在谈看什么 = '待我拍板';
+    mock应用状态.状态.企业在谈范围 = '全部';
+    render(<企业在谈候选 />);
+    await screen.findAllByRole('img', { name: '男' });
+    const 头行 = 读头行();
+    const 位置 = P01头行顺序.map((文) => 头行.indexOf(文));
+    expect(位置.every((序) => 序 >= 0)).toBe(true);
+    expect([...位置].sort((甲, 乙) => 甲 - 乙)).toEqual(位置);
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
   });
 });

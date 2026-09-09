@@ -55,15 +55,6 @@
   composes: 子视图未选 from './顶部意向栏.module.css';
 }
 
-.筛选 {
-  composes: 筛选 from './顶部意向栏.module.css';
-}
-
-/* 有条件生效时顶栏那一行要看得出来，否则用户会忘了自己筛过 */
-.筛选生效 {
-  composes: 筛选生效 from './顶部意向栏.module.css';
-}
-
 /* ── 候选卡列表（镜像在谈首页）── */
 .列表 {
   padding: 0 8px 130px;

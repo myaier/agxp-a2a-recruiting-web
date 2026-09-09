@@ -48,61 +48,20 @@
 }
 
 /* ── 头区 ── */
+/* 头区（2026-09-09 第二批去名）：头行（组件/候选头行：性别图标 + 年限｜学历｜状态）在上，
+   职位行在下。原 .头文 / .代号行 / .大代号 / .匿名标 / .人像占位 随 大代号 + 灰人像占位 一起删除。 */
 .头区 {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 14px;
   padding: 8px 0 14px;
   border-bottom: 1px solid var(--分隔线);
-}
-
-.头文 {
-  flex: 1;
-  min-width: 0;
-}
-
-.代号行 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 9px;
-}
-
-/* 代号 = 这一屏的页面大标题：本屏返回栏不带标题，进来第一眼看的就是这个人是谁。
-   19px 是自成一档的散值；收进页面大标题档后，与求职端「在线简历」屏的
-   页面大标题等大 —— 两端看的本来就是同一份简历。 */
-.大代号 {
-  font-size: var(--字号-页面大标题);
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: var(--墨);
-}
-
-.匿名标 {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--次要);
-  border: 1px solid var(--描边深);
-  border-radius: 6px;
-  padding: 2px 8px;
 }
 
 .职位行 {
   font-size: 13px;
   color: var(--正文);
   margin-top: 6px;
-}
-
-.人像占位 {
-  flex: none;
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  background: var(--浅灰底);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 /* ── 状态行 + 活跃度 ── */

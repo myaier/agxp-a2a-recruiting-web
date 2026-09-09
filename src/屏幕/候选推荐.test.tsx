@@ -988,8 +988,8 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     await user.click(去聊键[0]!);
     expect(mock派发).toHaveBeenCalledWith({ 型: '接触推荐候选', 编号: 'R-11' });
     expect(mock委托招聘候选).not.toHaveBeenCalled();
-    // Mock 抽屉没有「只看收藏」开关
-    await user.click(screen.getByRole('button', { name: /筛选.*▾/ }));
+    // 第二批（2026-09-09）：企业顶栏的「筛选 ▾」与候选筛选抽屉整体删除，「只看收藏」开关随之不存在
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
     expect(screen.queryByRole('switch', { name: '只看收藏' })).toBeNull();
   });
 });
@@ -1155,5 +1155,37 @@ describe('候选推荐 · 去名改版头行（定稿 2026-09-08）', () => {
     ['在校', '在校'],
   ] as const)('验收4 · 求职状态文案(%s) === %s', (状态, 文案) => {
     expect(求职状态文案(状态)).toBe(文案);
+  });
+});
+
+// ── 第二批（2026-09-09 定稿）：企业顶栏（招聘端在谈 / 推荐共用）的「筛选 ▾」按钮与 候选筛选抽屉
+//    整体删除。顶栏只剩岗位胶囊 + 在谈 / 推荐 两个子视图键；「只看收藏」是抽屉里的本地开关，
+//    随抽屉一起消失；规则数不再进顶栏（canonical 入口只剩 企业代理设置）。
+describe('候选推荐 · 企业顶栏筛选入口已删（第二批 验收2）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+  });
+
+  it('Mock：顶栏无「筛选」文字按钮、无 只看收藏 开关；在谈 / 推荐 子视图键仍在', () => {
+    置Mock状态();
+    render(<候选推荐 />);
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
+    expect(screen.queryByRole('switch', { name: '只看收藏' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('button', { name: '在谈' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '推荐' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '让AI代理去聊' }).length).toBeGreaterThan(0);
+  });
+
+  it('Backend：顶栏同样无「筛选」，已水合的规则数不再以角标出现', () => {
+    置P4状态({});
+    render(<候选推荐 />);
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
+    expect(screen.queryByText(/筛选 · \d+/)).toBeNull();
+    expect(screen.queryByRole('switch', { name: '只看收藏' })).toBeNull();
+    expect(screen.getByRole('button', { name: '在谈' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '推荐' })).toBeTruthy();
+    期望样本卡在场();
   });
 });
