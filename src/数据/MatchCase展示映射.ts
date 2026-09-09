@@ -20,6 +20,8 @@ import type {
   P5终局摘要,
   P5工作区职位,
   P5Agent注意码,
+  P5S0筛选消息,
+  P5S0筛选总结,
 } from './招聘数据源/MatchCase';
 
 export type { P5角色, P5动作, P5步骤 } from './招聘数据源/MatchCase';
@@ -90,6 +92,13 @@ const 阶段区状态文案表 = {
   passed: '已通过',
   ended: '已结束',
 } as const satisfies Record<P5阶段区['state'], string>;
+
+/** S0 未回答 answer 的固定文案（不编造正文）；只有这三个 answer_status 不带 text。 */
+const 未回答文案表 = {
+  declined: '已拒绝回答',
+  unknown: '暂无法确认',
+  not_available: '暂无可用信息',
+} as const;
 
 /** 8 个 checklist label 闭词的固定中文（后端确认词表，spec §2.4）；未知 label 整项省略。 */
 const 清单文案表 = {
@@ -244,6 +253,27 @@ export interface P5终局摘要视图 {
   定格于: string;
 }
 
+/** S0 展开块的单条 Agent 问答视图：技术字段原样保留，正文按 answer_status 投影。 */
+export interface P5S0消息视图 {
+  id: string;
+  kind: 'question' | 'answer';
+  role: P5角色;
+  round: number;
+  answerStatus: 'answered' | 'declined' | 'unknown' | 'not_available' | null;
+  occurredAt: string;
+  内容: string;
+}
+
+/** S0 候选私有总结视图：initial 无轮次；标签固定 初评／第 N 轮复评。 */
+export interface P5S0总结视图 {
+  id: string;
+  phase: 'initial' | 'reevaluation';
+  round: number | null;
+  occurredAt: string;
+  标签: string;
+  内容: string;
+}
+
 export interface P5阶段区块视图 {
   stage: P5阶段;
   标题: string;
@@ -256,6 +286,9 @@ export interface P5阶段区块视图 {
   时间线: readonly P5时间线项[];
   叮嘱: readonly P5叮嘱回执[];
   附件: P5简历附件 | null;
+  /** S0 展开块的 Agent 问答与候选私有总结：仅展示，永不参与状态/动作判定（S1–S3 恒空）。 */
+  Agent消息: readonly P5S0消息视图[];
+  Agent总结: readonly P5S0总结视图[];
 }
 
 export interface P5详情正常视图 {
@@ -448,18 +481,69 @@ function 映射清单(checklist: P5阶段区['checklist']) {
   );
 }
 
-function 映射阶段区(区: P5阶段区): P5阶段区块视图 {
+/** S0 单条问答的投影：question／answered answer 取原 text，未回答查文案表，不编造正文。 */
+function 映射S0消息(消息: P5S0筛选消息): P5S0消息视图 {
+  return {
+    id: 消息.id,
+    kind: 消息.kind,
+    role: 消息.role,
+    round: 消息.round,
+    answerStatus: 消息.kind === 'answer' ? 消息.answerStatus : null,
+    occurredAt: 消息.occurredAt,
+    内容: 消息.kind === 'question'
+      ? 消息.text
+      : 消息.answerStatus === 'answered' ? 消息.text : 未回答文案表[消息.answerStatus],
+  };
+}
+
+/** S0 单条总结的投影：原文照搬，标签只由 phase/round 推出，不显示总结时间。 */
+function 映射S0总结(总结: P5S0筛选总结): P5S0总结视图 {
+  return {
+    id: 总结.id,
+    phase: 总结.phase,
+    round: 总结.phase === 'initial' ? null : 总结.round,
+    occurredAt: 总结.occurredAt,
+    标签: 总结.phase === 'initial' ? '初评' : `第 ${总结.round} 轮复评`,
+    内容: 总结.summary,
+  };
+}
+
+/**
+ * 阶段区状态文案：默认走 阶段区状态文案表；唯一例外是 S0 终局 —— Case 在 S0 ended 且
+ * top-level outcome 是两个适配性否定词之一时显示 不匹配，user_ended／party_account_deleted
+ * 等其它终局保持中性 已结束。只读权威 outcome，不读阶段区 summary，也不是通用 outcome 翻译器。
+ */
+function 映射阶段区状态(区: P5阶段区, state: P5状态视图): string {
+  if (区.stage === 'anonymous_screening' && 区.state === 'ended'
+    && state.lifecycle === 'ended' && state.stage === 'anonymous_screening'
+    && (state.outcome === 'policy_rejected' || state.outcome === 'semantic_not_fit')) {
+    return '不匹配';
+  }
+  return 阶段区状态文案表[区.state];
+}
+
+/**
+ * 阶段区 → 区块视图。S0 展开块只属于 S0、且招聘端总结必空（decoder 已挡，映射层再守一道），
+ * 漂移时返回 null 交由调用方 fail closed，绝不静默过滤。Agent 记录只作展示，不写入旧 摘要，
+ * 旧 清单/时间线/叮嘱/附件 语义不变。
+ */
+function 映射阶段区(区: P5阶段区, state: P5状态视图, viewer: P5角色): P5阶段区块视图 | null {
+  const 记录 = 区.screeningRecords;
+  if (区.stage !== 'anonymous_screening' && 记录 !== null) return null;
+  if (viewer === 'recruiter' && (记录?.summaries.length ?? 0) > 0) return null;
   return {
     stage: 区.stage,
     标题: 阶段标题表[区.stage],
     状态: 区.state,
-    状态文案: 阶段区状态文案表[区.state],
+    状态文案: 映射阶段区状态(区, state),
     发生于: 区.occurredAt,
     摘要: 映射阶段摘要(区.summary, 区.state),
     清单: 映射清单(区.checklist),
     时间线: 区.transcript,
     叮嘱: 区.instructionReceipts,
     附件: 区.attachment,
+    Agent消息: 记录 === null ? [] : 记录.messages.map(映射S0消息),
+    Agent总结: 记录 === null ? [] : 记录.summaries.map(映射S0总结),
   };
 }
 
@@ -560,6 +644,14 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
   const 职位 = 映射职位(detail.context.job);
   if (职位 === null) return 契约错误详情();
 
+  // 阶段区块：S0 展开块归属漂移（S1–S3 非空 records / 招聘端非空总结）fail closed。
+  const 区块: P5阶段区块视图[] = [];
+  for (const 区 of 区组) {
+    const 区块视图 = 映射阶段区(区, state, detail.role);
+    if (区块视图 === null) return 契约错误详情();
+    区块.push(区块视图);
+  }
+
   // 按钮可见性 = 行白名单 ∩ available_actions（交集，绝不加、绝不 infer）。
   const 动作卡 = 渲染动作卡(offered, 行);
 
@@ -605,7 +697,7 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
     handoff,
     actions: 动作卡,
     补充问题,
-    阶段区块: 区组.map(映射阶段区),
+    阶段区块: 区块,
     终局摘要: 映射终局摘要(detail.terminalSummary),
     注意说明: 映射Agent注意(state),
   };

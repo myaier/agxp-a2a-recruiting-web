@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { 映射P5列表项, 映射P5详情, P5展示矩阵行数, P5展示状态矩阵 } from './MatchCase展示映射';
 import type { P5详情视图, P5列表视图, P5阶段, P5状态 } from './MatchCase展示映射';
 import type {
+  P5S0筛选记录,
   P5动作,
   P5详情,
   P5列表项,
@@ -180,7 +181,8 @@ function 默认时间线(viewer: P5角色): 各阶段时间线 {
   };
 }
 
-function 造阶段区组(时间线: 各阶段时间线): P5阶段区[] {
+/** S0 展开块可注入（Task 2 投影测试）；缺省为合法空块，S1–S3 恒为 null。 */
+function 造阶段区组(时间线: 各阶段时间线, S0记录: P5S0筛选记录 | null = { messages: [], summaries: [] }): P5阶段区[] {
   const 阶段顺序 = ['anonymous_screening', 'resume_submission', 'needs_coordination', 'intent_confirmation'] as const;
   return 阶段顺序.map((stage, 下标) => ({
     stage,
@@ -195,7 +197,7 @@ function 造阶段区组(时间线: 各阶段时间线): P5阶段区[] {
     instructionReceipts: [],
     attachment: null,
     // S0 展开块归一化形状：仅 S0 可为对象，其余段一律 null
-    screeningRecords: 下标 === 0 ? { messages: [], summaries: [] } : null,
+    screeningRecords: 下标 === 0 ? S0记录 : null,
   }));
 }
 
@@ -210,6 +212,8 @@ function 造详情(选项: {
   terminalSummary?: P5详情['terminalSummary'];
   /** P7 Task 6：completed + complete 的已发布会话坐标。 */
   conversationRef?: string | null;
+  /** Task 2：注入 S0 展开块的归一化记录（缺省为合法空块）。 */
+  S0记录?: P5S0筛选记录 | null;
 } = {}): P5详情 {
   const role = 选项.role ?? 'candidate';
   const state = 选项.state ?? 造状态();
@@ -218,7 +222,7 @@ function 造详情(选项: {
     state,
     needsAction: state.lifecycle === 'open' && availableActions.length > 0,
     availableActions,
-    stages: 选项.阶段区组 ?? 造阶段区组(选项.时间线 ?? 默认时间线(role)),
+    stages: 选项.阶段区组 ?? 造阶段区组(选项.时间线 ?? 默认时间线(role), 选项.S0记录),
     currentCoordination: null,
     intentConfirmations: { candidate: '', recruiter: '' } as { candidate: ''; recruiter: '' },
     terminalSummary: 选项.terminalSummary ?? null,
@@ -931,5 +935,167 @@ describe('映射P5列表项', () => {
   ])('%s → 契约错误视图', (_名, 样本) => {
     const 视图 = 映射P5列表项(样本());
     expect(断言契约错误(视图)).toBe(期望错误提示);
+  });
+});
+
+// ── S0 展开块投影与结果语义（Task 2）：新记录只作展示，不参与状态/动作判定 ──
+
+/** 与 src/测试/S0筛选记录样本.ts 的 S0候选完整记录Wire 同源（Task 1 decode 后的归一化形状）。 */
+const S0候选完整记录: P5S0筛选记录 = {
+  messages: [
+    { id: 's0q_1', kind: 'question', role: 'candidate', round: 1,
+      text: '这个岗位是否需要固定晚班？', occurredAt: '2026-08-23T10:01:00Z' },
+    { id: 's0a_1', kind: 'answer', role: 'recruiter', round: 1,
+      text: '没有固定晚班。', answerStatus: 'answered', occurredAt: '2026-08-23T10:02:00Z' },
+  ],
+  summaries: [
+    { id: 's0s_0', phase: 'initial', summary: '需要确认岗位的值班安排。',
+      occurredAt: '2026-08-23T10:00:30Z' },
+    { id: 's0s_1', phase: 'reevaluation', round: 1,
+      summary: '已确认没有固定晚班，仍需了解其它工作安排。', occurredAt: '2026-08-23T10:03:00Z' },
+  ],
+};
+
+describe('映射P5详情：S0 展开块投影', () => {
+  it('Agent 问答与候选总结按原文投影：技术字段保留、顺序不重排、不截断', () => {
+    const 视图 = 断言正常(映射P5详情(造详情({ S0记录: S0候选完整记录 })));
+    expect(视图.阶段区块[0].Agent消息).toEqual([
+      { id: 's0q_1', kind: 'question', role: 'candidate', round: 1,
+        answerStatus: null, occurredAt: '2026-08-23T10:01:00Z',
+        内容: '这个岗位是否需要固定晚班？' },
+      { id: 's0a_1', kind: 'answer', role: 'recruiter', round: 1,
+        answerStatus: 'answered', occurredAt: '2026-08-23T10:02:00Z',
+        内容: '没有固定晚班。' },
+    ]);
+    expect(视图.阶段区块[0].Agent总结).toEqual([
+      { id: 's0s_0', phase: 'initial', round: null,
+        occurredAt: '2026-08-23T10:00:30Z', 标签: '初评', 内容: '需要确认岗位的值班安排。' },
+      { id: 's0s_1', phase: 'reevaluation', round: 1,
+        occurredAt: '2026-08-23T10:03:00Z', 标签: '第 1 轮复评',
+        内容: '已确认没有固定晚班，仍需了解其它工作安排。' },
+    ]);
+    // S1–S3 不带展开块
+    expect(视图.阶段区块.slice(1).every((区) => 区.Agent消息.length === 0 && 区.Agent总结.length === 0)).toBe(true);
+  });
+
+  it.each([
+    ['declined', '已拒绝回答'],
+    ['unknown', '暂无法确认'],
+    ['not_available', '暂无可用信息'],
+  ] as const)('未回答 answer_status「%s」→ 固定文案「%s」，不编造正文', (answerStatus, 文案) => {
+    const 记录: P5S0筛选记录 = {
+      messages: [
+        { id: 's0q_1', kind: 'question', role: 'candidate', round: 1,
+          text: '这个岗位是否需要固定晚班？', occurredAt: '2026-08-23T10:01:00Z' },
+        { id: 's0a_2', kind: 'answer', role: 'recruiter', round: 1,
+          answerStatus, occurredAt: '2026-08-23T10:02:00Z' },
+      ],
+      summaries: [],
+    };
+    const 视图 = 断言正常(映射P5详情(造详情({ S0记录: 记录 })));
+    expect(视图.阶段区块[0].Agent消息).toEqual([
+      { id: 's0q_1', kind: 'question', role: 'candidate', round: 1,
+        answerStatus: null, occurredAt: '2026-08-23T10:01:00Z', 内容: '这个岗位是否需要固定晚班？' },
+      { id: 's0a_2', kind: 'answer', role: 'recruiter', round: 1,
+        answerStatus, occurredAt: '2026-08-23T10:02:00Z', 内容: 文案 },
+    ]);
+  });
+
+  it('招聘端正常输入展示相同问答且 Agent总结=[]，无失败或权限占位', () => {
+    const 视图 = 断言正常(映射P5详情(造详情({
+      role: 'recruiter',
+      S0记录: { messages: S0候选完整记录.messages, summaries: [] },
+    })));
+    expect(视图.阶段区块[0].Agent消息).toHaveLength(2);
+    expect(视图.阶段区块[0].Agent总结).toEqual([]);
+  });
+
+  it('Agent 记录只作展示：不覆盖旧 摘要，清单/时间线/叮嘱/附件语义不变', () => {
+    const 组 = 造阶段区组(默认时间线('candidate'), S0候选完整记录);
+    const 视图 = 断言正常(映射P5详情(造详情({ 阶段区组: 组 })));
+    const S0区 = 视图.阶段区块[0];
+    // 旧 摘要 仍是阶段 summary 的步骤码投影，不被 Agent 总结正文替换
+    expect(S0区.摘要).toBe(期望步骤说明.candidate_reevaluation);
+    expect(JSON.stringify(S0区.Agent总结)).toContain('需要确认岗位的值班安排。');
+    expect(S0区.清单).toEqual([
+      { 文本: 期望清单文案.resume_bound, 完成: true },
+      { 文本: 期望清单文案.differences_resolved, 完成: false },
+    ]);
+    expect(S0区.时间线).toBe(组[0].transcript);
+    expect(S0区.叮嘱).toEqual([]);
+    expect(S0区.附件).toBe(null);
+  });
+
+  it.each([
+    ['S1 简历提交', 1],
+    ['S2 差异协同', 2],
+    ['S3 意向确认', 3],
+  ] as const)('绕过 decoder 注入 %s 非 null records → 契约错误，不静默过滤', (_名, 下标) => {
+    const 组 = 造阶段区组(默认时间线('candidate'));
+    组[下标].screeningRecords = { messages: [], summaries: [] };
+    expect(断言契约错误(映射P5详情(造详情({ 阶段区组: 组 })))).toBe(期望错误提示);
+  });
+
+  it('绕过 decoder 注入 recruiter 非空总结 → 契约错误，不静默过滤', () => {
+    expect(断言契约错误(映射P5详情(造详情({ role: 'recruiter', S0记录: S0候选完整记录 }))))
+      .toBe(期望错误提示);
+  });
+});
+
+describe('映射P5详情：S0 结果语义', () => {
+  /**
+   * 旧 summary 一律给终局真实词 complete（本阶段已完成）：它与 不匹配／已结束 语义相反或无关，
+   * 证明结果文案只读权威 outcome，不读阶段区 summary。
+   */
+  function 造S0语义详情(区状态: P5阶段区['state'], 区摘要: string, 根: P5状态视图, 提供: P5动作[]): P5详情 {
+    const 组 = 造阶段区组(默认时间线('candidate'));
+    const 区 = 组[0];
+    if (区 === undefined) throw new Error('阶段区组为空');
+    区.state = 区状态;
+    区.summary = 区摘要;
+    return 造详情({ 阶段区组: 组, state: 根, availableActions: 提供 });
+  }
+
+  /** ended at S0：lifecycle/stage/status/step 落在 ended S0 行，outcome 按用例注入。 */
+  const 造S0终局根 = (outcome: string): P5状态视图 => 造状态({
+    lifecycle: 'ended', stage: 'anonymous_screening', status: 'ended', step: 'complete',
+    needsUser: false, outcome, outcomeCode: outcome, finalizedAt: '2026-08-29T03:00:00Z',
+  });
+
+  const S0结果用例: {
+    名: string;
+    区状态: P5阶段区['state'];
+    区摘要: string;
+    根: P5状态视图;
+    提供: P5动作[];
+    期望动作: P5动作[];
+    期望问题: { promptId: string; text: string } | null;
+    期望文案: string;
+  }[] = [
+    { 名: 'S0 active → 进行中', 区状态: 'active', 区摘要: 'candidate_reevaluation',
+      根: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
+      提供: ['respond_fact'], 期望动作: ['respond_fact'],
+      期望问题: { promptId: 'prompt_1', text: '每周可以到岗几天？' }, 期望文案: '进行中' },
+    { 名: 'S0 passed 且 top-level outcome=null → 已通过', 区状态: 'passed', 区摘要: 'complete',
+      根: 造行状态('open', 'anonymous_screening', 'passed', 'complete'),
+      提供: ['accept_resume_invitation'], 期望动作: ['accept_resume_invitation'],
+      期望问题: null, 期望文案: '已通过' },
+    { 名: 'ended at S0 + policy_rejected → 不匹配', 区状态: 'ended', 区摘要: 'complete',
+      根: 造S0终局根('policy_rejected'), 提供: [], 期望动作: [], 期望问题: null, 期望文案: '不匹配' },
+    { 名: 'ended at S0 + semantic_not_fit → 不匹配', 区状态: 'ended', 区摘要: 'complete',
+      根: 造S0终局根('semantic_not_fit'), 提供: [], 期望动作: [], 期望问题: null, 期望文案: '不匹配' },
+    { 名: 'ended at S0 + user_ended → 已结束', 区状态: 'ended', 区摘要: 'complete',
+      根: 造S0终局根('user_ended'), 提供: [], 期望动作: [], 期望问题: null, 期望文案: '已结束' },
+    { 名: 'ended at S0 + party_account_deleted → 已结束', 区状态: 'ended', 区摘要: 'complete',
+      根: 造S0终局根('party_account_deleted'), 提供: [], 期望动作: [], 期望问题: null, 期望文案: '已结束' },
+  ];
+
+  // vitest 的 $字段 插值只认 ASCII 词，这里用 [名, 用例] 元组 + %s 保持用例名可读
+  it.each(S0结果用例.map((用例) => [用例.名, 用例] as const))('%s', (_名, 用例) => {
+    const 视图 = 断言正常(映射P5详情(造S0语义详情(用例.区状态, 用例.区摘要, 用例.根, 用例.提供)));
+    expect(视图.阶段区块[0].状态文案).toBe(用例.期望文案);
+    // 结果文案分支不改变动作与补充问题的原合同结果
+    expect(视图.actions.map((卡) => 卡.action)).toEqual(用例.期望动作);
+    expect(视图.补充问题).toEqual(用例.期望问题);
   });
 });
