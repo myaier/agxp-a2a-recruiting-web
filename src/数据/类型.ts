@@ -110,7 +110,8 @@ export type 往来条目 =
  * 到岗、远程天数、带队时间这类非薪资条件可以明说。
  */
 export interface 对话条 {
-  编号: number;
+  /** Mock 旧数据是本地序号（数字）；Backend 段是稳定键（s0:/evt:/aci: 前缀字符串）。 */
+  编号: number | string;
   方: '对方' | '我方';
   时间: string;
   内容: string;

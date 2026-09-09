@@ -24,6 +24,7 @@ import type { P5详情快照 } from '../../状态/后端/类型';
 import type { P5列表项 } from '../../数据/招聘数据源/MatchCase';
 import type { P5详情 } from '../../数据/招聘数据源/MatchCase';
 import type { P5阶段区 } from '../../数据/招聘数据源/MatchCase';
+import type { P5S0筛选记录 } from '../../数据/招聘数据源/MatchCase';
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import { P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import type { BFF主体, BFF附件简历库 } from '../../数据/BFF契约';
@@ -168,6 +169,8 @@ interface 详情选项 {
   intentConfirmations?: P5详情['intentConfirmations'];
   /** P7 Task 6：completed + complete 的已发布会话坐标。 */
   conversationRef?: P5详情['conversationRef'];
+  /** Task 3：招聘端别名可换（S0 禁词断言按整页 body 文本算，别名不得含 candidate 字样）。 */
+  别名?: string;
 }
 
 function 候选详情DTO(选项: 详情选项 = {}): P5详情 {
@@ -188,7 +191,7 @@ function 候选详情DTO(选项: 详情选项 = {}): P5详情 {
 function 招聘详情DTO(选项: 详情选项 = {}): P5详情 {
   return {
     role: 'recruiter',
-    context: { candidateAlias: 别名, job: 冻结职位 },
+    context: { candidateAlias: 选项.别名 ?? 别名, job: 冻结职位 },
     state: 选项.state ?? 状态({
       status: 'running', step: 'policy_check', needsUser: false, round: 0,
     }),
@@ -2090,5 +2093,296 @@ describe('MatchCase详情 · owner-safe agent_attention', () => {
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认递交' }));
     expect(mock提交简历).toHaveBeenCalledTimes(1);
     expect(mock提交简历).toHaveBeenCalledWith('mc_direct', 绑定附件.fileId, 绑定附件.fileVersionId, true);
+  });
+});
+
+// ══ Task 3 夹具：S0 screening records 完整记录（问答 + 初评/复评总结）══
+
+/** S0 详情的招聘端别名刻意不含 candidate/recruiter 字样：禁词断言按整页 body 文本算。 */
+const S0别名 = 'hr-0123456789ab';
+
+/**
+ * S0 完整记录样本：轮次 1–4，三种未回答状态齐备（同轮问答各最多一条、答必命中同轮问）。
+ * question 时间故意横跨旧时间线两侧（旧 transcript 是 2026-08-29T01:10Z）——
+ * 段内顺序固定，若实现按时间混排就会把 08-30 的问答插到旧时间线后面。
+ */
+function S0记录样本(): P5S0筛选记录 {
+  return {
+    messages: [
+      { id: 's0q_1', kind: 'question', role: 'candidate', round: 1, text: '需要确认岗位的值班安排。', occurredAt: '2026-08-23T10:01:00Z' },
+      { id: 's0a_1', kind: 'answer', role: 'recruiter', round: 1, answerStatus: 'answered', text: '没有固定晚班，周末偶尔需要支援。', occurredAt: '2026-08-23T10:05:00Z' },
+      { id: 's0q_2', kind: 'question', role: 'candidate', round: 2, text: '还需要了解团队规模。', occurredAt: '2026-08-30T09:00:00Z' },
+      { id: 's0a_2', kind: 'answer', role: 'recruiter', round: 2, answerStatus: 'declined', occurredAt: '2026-08-30T09:02:00Z' },
+      { id: 's0q_3', kind: 'question', role: 'candidate', round: 3, text: '平时出差频率如何？', occurredAt: '2026-08-30T09:10:00Z' },
+      { id: 's0a_3', kind: 'answer', role: 'recruiter', round: 3, answerStatus: 'unknown', occurredAt: '2026-08-30T09:12:00Z' },
+      { id: 's0q_4', kind: 'question', role: 'candidate', round: 4, text: '带团队的人数规模？', occurredAt: '2026-08-30T09:20:00Z' },
+      { id: 's0a_4', kind: 'answer', role: 'recruiter', round: 4, answerStatus: 'not_available', occurredAt: '2026-08-30T09:22:00Z' },
+    ],
+    summaries: [
+      { id: 's0sum_1', phase: 'initial', summary: '初评已确认岗位在浦东园区，值班安排仍待确认。', occurredAt: '2026-08-23T10:06:00Z' },
+      { id: 's0sum_2', phase: 'reevaluation', round: 1, summary: '已确认没有固定晚班，团队规模仍待确认。', occurredAt: '2026-08-30T09:30:00Z' },
+      { id: 's0sum_3', phase: 'reevaluation', round: 2, summary: '团队规模初步确认为 6 人。', occurredAt: '2026-08-30T09:40:00Z' },
+    ],
+  };
+}
+
+/**
+ * S0 完整记录详情：candidate 端带初评+复评总结；recruiter 端同批 messages、恒空总结
+ * （合同口径：候选端小结绝不下发招聘端）。其余字段用基线夹具（含 typed 附件），
+ * 钉住「新记录不挤掉旧要素」。
+ */
+function S0完整记录详情(role: P5角色, 选项: 详情选项 = {}): P5详情 {
+  const 记录 = S0记录样本();
+  const stages = 阶段区组({
+    anonymous_screening: {
+      attachment: 绑定附件,
+      screeningRecords: role === 'candidate'
+        ? 记录
+        : { messages: 记录.messages, summaries: [] },
+    },
+  });
+  return role === 'candidate'
+    ? 候选详情DTO({ ...选项, stages })
+    : 招聘详情DTO({ ...选项, stages, 别名: S0别名 });
+}
+
+/** S0 消息时间的期望值：用 Date 本地 getter 独立推出 HH:mm（与页面 Intl formatter 各算各的）。 */
+function 本地时分期望(原文: string): string {
+  const 时刻 = new Date(原文);
+  const 补 = (数: number) => String(数).padStart(2, '0');
+  return `${补(时刻.getHours())}:${补(时刻.getMinutes())}`;
+}
+
+/** 双端路由树（可复用元素引用：轮询式 rerender 用同一棵树喂新快照）。 */
+function S0详情树(role: P5角色, caseId: string) {
+  const 地址 = role === 'candidate' ? `/deal/${caseId}` : `/hr/candidate/${caseId}`;
+  const 模板 = role === 'candidate' ? '/deal/:id' : '/hr/candidate/:id';
+  return (
+    <MemoryRouter initialEntries={[地址]}>
+      <Routes>
+        {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+        <Route path={模板} element={<MatchCase详情 role={role} />} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
+describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
+  beforeEach(() => {
+    mock读取详情.mockClear();
+    mock回答事实.mockClear();
+    mock决定S0.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** 气泡行：正文 span → 气泡 div → 行 div；我方行里有代理标 svg，对方行没有（既有 DOM 结构）。 */
+  function 气泡行(文本: string): HTMLElement {
+    const 气泡 = screen.getByText(文本).closest('div');
+    if (气泡 === null) throw new Error(`找不到气泡：${文本}`);
+    return 气泡.parentElement as HTMLElement;
+  }
+  const 是我方行 = (行: HTMLElement) => 行.querySelector('svg') !== null;
+
+  it.each(['candidate', 'recruiter'] as const)(
+    '同一批 S0 问答按 viewer 分方位；只出现正文/状态与时间，无技术字段（%s）',
+    (role) => {
+      const caseId = role === 'candidate' ? 'mc_direct' : 'mc_hr';
+      置详情状态({ role, caseId, 快照: 详情快照({ detail: S0完整记录详情(role) }) });
+      渲染详情(role, caseId);
+      // question 是候选方、answer 是招聘方：candidate 下 question 我方；recruiter 下左右相反
+      expect(是我方行(气泡行('需要确认岗位的值班安排。'))).toBe(role === 'candidate');
+      expect(是我方行(气泡行('没有固定晚班，周末偶尔需要支援。'))).toBe(role === 'recruiter');
+      // 只出现正文/状态/时间：kind、role、round、ID 与技术标题一概不进 DOM
+      const 文本 = document.body.textContent ?? '';
+      ['question', 'answer', 'candidate', 'recruiter', 'round 1', 's0q_1', 'Agent问答'].forEach(
+        (词) => expect(文本).not.toContain(词),
+      );
+    },
+  );
+
+  it('candidate：初评与全部复评都进托盘且无总结时间；recruiter：无总结正文也无空托盘', () => {
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.getByText('初评：初评已确认岗位在浦东园区，值班安排仍待确认。')).toBeTruthy();
+    // 逐轮复评全部出现，标签只由 phase/round 给定
+    expect(screen.getByText('第 1 轮复评：已确认没有固定晚班，团队规模仍待确认。')).toBeTruthy();
+    expect(screen.getByText('第 2 轮复评：团队规模初步确认为 6 人。')).toBeTruthy();
+    // 总结不显示时间：屏上没有任何 RFC3339 原文
+    expect(document.body.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+
+    cleanup();
+    置详情状态({
+      role: 'recruiter', caseId: 'mc_hr',
+      快照: 详情快照({ detail: S0完整记录详情('recruiter') }),
+    });
+    渲染详情('recruiter', 'mc_hr');
+    // 招聘方没有总结区域，也没有空托盘或失败占位：托盘只有阶段区自己的旧小结
+    expect(screen.queryByText(/初评：/)).toBeNull();
+    expect(screen.queryByText(/第 \d+ 轮复评/)).toBeNull();
+    expect(screen.getAllByText('代 理 小 结').length).toBe(1);
+    const 托盘 = screen.getByText('代 理 小 结').parentElement as HTMLElement;
+    expect(托盘.textContent).not.toContain('值班安排仍待确认');
+  });
+
+  it('三种未回答只显示固定文案：无伪造正文，也没有新增输入框', () => {
+    const 记录 = S0记录样本();
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: 候选详情DTO({
+          state: 状态({
+            status: 'running', step: 'policy_check', needsUser: false, round: 0, roundBudget: 5,
+          }),
+          needsAction: false,
+          availableActions: [],
+          stages: 阶段区组({
+            anonymous_screening: { screeningRecords: { messages: 记录.messages.filter((条) => 条.round >= 2), summaries: [] } },
+          }),
+        }),
+      }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    // 三条未回答的气泡正文就是固定文案本身（getByText 精确匹配：拼了别的字就找不到）
+    expect(screen.getByText('已拒绝回答')).toBeTruthy();
+    expect(screen.getByText('暂无法确认')).toBeTruthy();
+    expect(screen.getByText('暂无可用信息')).toBeTruthy();
+    // 段内气泡 9 个不多不少：轮 2–4 的 6 条 S0 问答 + 旧 transcript 1 条 + 旧叮嘱回执 2 条
+    const 列 = 气泡行('还需要了解团队规模。').parentElement as HTMLElement;
+    expect(列.childElementCount).toBe(9);
+    // 没有新增输入框：只剩底部 Case 叮嘱一条
+    expect(screen.getAllByRole('textbox').length).toBe(1);
+  });
+
+  it('S0 记录固定在旧 transcript 与叮嘱回执之前：不按时间混排', () => {
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
+    渲染详情('candidate', 'mc_direct');
+    const 序 = [
+      '需要确认岗位的值班安排。', // s0q_1（2026-08-23，早于旧时间线）
+      '没有固定晚班，周末偶尔需要支援。',
+      '带团队的人数规模？', // s0q_4（2026-08-30，晚于旧时间线）
+      '暂无可用信息', // s0a_4
+      '每周可以到岗几天？', // 旧 transcript
+      '工作日 10:00-19:00 联系', // 旧叮嘱回执
+      '流程预计两周内走完',
+    ].map((文本) => screen.getByText(文本));
+    for (let 下标 = 0; 下标 < 序.length - 1; 下标 += 1) {
+      const 前 = 序[下标] as Element;
+      const 后 = 序[下标 + 1] as Element;
+      expect(前.compareDocumentPosition(后) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
+  it('question-only、空 messages、轮次空档都合法；轮询式重读同批记录不重复', () => {
+    const 记录 = S0记录样本();
+    // 仅问（question-only）
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: 候选详情DTO({
+          stages: 阶段区组({
+            anonymous_screening: { screeningRecords: { messages: [记录.messages[0]!], summaries: [] } },
+          }),
+        }),
+      }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.getAllByText('需要确认岗位的值班安排。').length).toBe(1);
+    expect(screen.queryByText(/初评：/)).toBeNull();
+
+    // 空 messages + 仅 initial 总结：零问答气泡，托盘只有总结
+    cleanup();
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: 候选详情DTO({
+          stages: 阶段区组({
+            anonymous_screening: {
+              screeningRecords: {
+                messages: [],
+                summaries: [{ id: 's0sum_1', phase: 'initial', summary: '初评确认岗位在浦东园区。', occurredAt: '2026-08-23T10:06:00Z' }],
+              },
+            },
+          }),
+        }),
+      }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.queryByText('需要确认岗位的值班安排。')).toBeNull();
+    expect(screen.getByText('初评：初评确认岗位在浦东园区。')).toBeTruthy();
+
+    // 轮次空档（round 1 → 3）：原样渲染，不补位不重排
+    cleanup();
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: 候选详情DTO({
+          stages: 阶段区组({
+            anonymous_screening: {
+              screeningRecords: { messages: [记录.messages[0]!, 记录.messages[4]!], summaries: [] },
+            },
+          }),
+        }),
+      }),
+    });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.getAllByText('需要确认岗位的值班安排。').length).toBe(1);
+    expect(screen.getAllByText('平时出差频率如何？').length).toBe(1);
+
+    // 轮询式重读：同批记录以新快照整包再来一遍，气泡与总结都不重复
+    cleanup();
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
+    const 树 = S0详情树('candidate', 'mc_direct');
+    const 页 = render(树);
+    expect(screen.getAllByText('需要确认岗位的值班安排。').length).toBe(1);
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
+    页.rerender(树);
+    expect(screen.getAllByText('需要确认岗位的值班安排。').length).toBe(1);
+    expect(screen.getAllByText('初评：初评已确认岗位在浦东园区，值班安排仍待确认。').length).toBe(1);
+  });
+
+  it('旧摘要/清单/附件/叮嘱与 respond_fact、结束卡仍在：fact response 仍提交 transcript ref prompt_1', async () => {
+    const user = userEvent.setup();
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(await screen.findByText('系统正在复评候选信息')).toBeTruthy(); // 旧步骤摘要头行
+    expect(screen.getByText('匿名初筛已通过')).toBeTruthy(); // 清单
+    expect(screen.getByText('简历已绑定')).toBeTruthy();
+    expect(screen.getByText('工作日 10:00-19:00 联系')).toBeTruthy(); // 叮嘱回执
+    expect(screen.getByRole('button', { name: /后端工程师_简历_v1\.pdf/ })).toBeTruthy(); // 附件入口
+    expect(screen.getByText('补充事实')).toBeTruthy(); // respond_fact 卡
+    expect(screen.getByRole('button', { name: '结束初筛' })).toBeTruthy(); // 终结卡仍在
+    await user.type(screen.getByRole('textbox', { name: '回答问题' }), '每周可以到岗 3 天');
+    await user.click(screen.getByRole('button', { name: '提交回答' }));
+    // mutation 坐标仍是 transcript ref：screening record ID 永不作坐标
+    expect(mock回答事实).toHaveBeenCalledTimes(1);
+    expect(mock回答事实).toHaveBeenCalledWith('candidate', 'mc_direct', 'prompt_1', '每周可以到岗 3 天');
+  });
+
+  it('S0 新消息走本地 HH:mm 且不读 Date.now()；旧时间线仍是既有 UTC 字符串切片', () => {
+    vi.useFakeTimers();
+    // 期望值独立用本地 getter 推出：UTC 进程 = 10:01，Asia/Shanghai 进程 = 18:01
+    const 期望 = 本地时分期望('2026-08-23T10:01:00Z');
+    const 错位 = 期望 === '10:01' ? '18:01' : '10:01';
+
+    vi.setSystemTime(new Date('2020-01-01T00:00:00Z'));
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.getByText(期望)).toBeTruthy();
+    expect(screen.queryByText(错位)).toBeNull(); // 显示跟进程时区走，不写死
+    // 旧 transcript／叮嘱回执保持既有字符串切片结果（本任务不统一时间线）
+    expect(screen.getByText('01:10')).toBeTruthy();
+    expect(screen.getByText('01:05')).toBeTruthy();
+    expect(screen.getByText('01:06')).toBeTruthy();
+
+    // 换一个 fake 当前时间：显示不变（不读 Date.now()）
+    cleanup();
+    vi.setSystemTime(new Date('2030-06-01T18:30:00Z'));
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(screen.getByText(期望)).toBeTruthy();
+    expect(screen.getByText('01:10')).toBeTruthy();
   });
 });

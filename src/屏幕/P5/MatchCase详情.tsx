@@ -99,19 +99,43 @@ function 取短时间(iso: string): string {
 }
 
 /**
- * 阶段区 typed 段 → 展示气泡：时间线与叮嘱回执都只是展示文本（原样带出，按归属分列），
- * 绝不参与状态或动作判定；无文本的事件（纯 reason_code 的系统事件）无可展示，跳过。
+ * S0 Agent 消息的本地时分（用户运行环境时区，两位 24 小时制 HH:mm）。只服务新 screening
+ * records 的展示，绝不参与状态或动作判定；不固定产品时区、不硬编码加八小时。旧
+ * transcript／instruction receipt 仍走 取短时间 的字符串切片 —— 同一 S0 阶段内两种时间
+ * 口径并存是本任务的刻意兼容边界（Task 5 观察后再决定是否另立统一任务）。
+ */
+const S0时刻格式 = new Intl.DateTimeFormat('zh-CN', {
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+function 取本地时分(原文: string): string {
+  if (typeof 原文 !== 'string') return '时间待确认';
+  const 时刻 = new Date(原文);
+  if (Number.isNaN(时刻.getTime())) return '时间待确认';
+  const 段 = S0时刻格式.formatToParts(时刻);
+  const 时 = 段.find((条) => 条.type === 'hour')?.value ?? '';
+  const 分 = 段.find((条) => 条.type === 'minute')?.value ?? '';
+  return 时 === '' || 分 === '' ? '时间待确认' : `${时}:${分}`;
+}
+
+/**
+ * 阶段区 typed 段 → 展示气泡：顺序固定 S0 Agent 记录 → 旧 transcript → 旧叮嘱回执
+ * （不按时间混排）；时间线与叮嘱回执都只是展示文本（原样带出，按归属分列），绝不参与
+ * 状态或动作判定；无文本的事件（纯 reason_code 的系统事件）无可展示，跳过。
+ * key 用带前缀的稳定业务 ID，轮询重读整包刷新时 React 不会误配对。
  */
 function 段内对话(区: P5阶段区块视图, role: P5角色): 对话条[] {
   const 条们: 对话条[] = [];
-  let 序 = 0;
-  const 推 = (内容: string | undefined, 我方: boolean, 时间: string) => {
+  const 推 = (编号: 对话条['编号'], 内容: string | undefined, 我方: boolean, 时间: string) => {
     if (内容 === undefined || 内容.trim() === '') return;
-    序 += 1;
-    条们.push({ 编号: 序, 方: 我方 ? '我方' : '对方', 时间: 取短时间(时间), 内容 });
+    条们.push({ 编号, 方: 我方 ? '我方' : '对方', 时间, 内容 });
   };
-  区.时间线.forEach((项) => 推(项.text, 项.role === role, 项.occurredAt));
-  区.叮嘱.forEach((条) => 推(条.expression, 条.owner === role, 条.occurredAt));
+  区.Agent消息.forEach((条) =>
+    推(`s0:${条.id}`, 条.内容, 条.role === role, 取本地时分(条.occurredAt)));
+  区.时间线.forEach((项) =>
+    推(`evt:${项.eventId}`, 项.text, 项.role === role, 取短时间(项.occurredAt)));
+  区.叮嘱.forEach((条) =>
+    推(`aci:${条.instructionId}`, 条.expression, 条.owner === role, 取短时间(条.occurredAt)));
   return 条们;
 }
 
@@ -412,6 +436,10 @@ function 详情主体({
         ? 区.清单.map((项) => ({ 项: 项.文本, 结果: 项.完成 ? ('通过' as const) : ('核对中' as const) }))
         : undefined,
       对话: 段内对话(区, role),
+      // S0 候选总结原样适配进小结托盘（标签/内容由 mapper 给定）；招聘方自然得到空数组
+      Agent总结: 区.Agent总结.length > 0
+        ? 区.Agent总结.map((总) => ({ 编号: 总.id, 标签: 总.标签, 内容: 总.内容 }))
+        : undefined,
       // 未到达段的一行说明用服务端自己的阶段摘要（typed 块，不是时间线文本）
       待推进说明: 态 === '未到达' && 区.摘要 !== '' ? 区.摘要 : undefined,
       空说明: 态 === '当前' ? 视图.步骤说明 : undefined,
