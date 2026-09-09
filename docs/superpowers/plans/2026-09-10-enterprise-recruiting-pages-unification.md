@@ -223,3 +223,5 @@ expect(d.条款?.every(x => !x.已核 && x.说明 === null)).toBe(true);
 
 - F1（Important / required / 复杂度不变，规模行应改三可空槽）：拒绝类型变更。源码 `src/屏幕/企业详情.module.css` 的规模行已整行 `var(--次要浅)`，Spec §3.3 不要求未知与已知片段异色；逐字段替换明确未知文案再拼接可满足契约，且不需要拆解 Mock 原有整行。补充渲染规则和注释消除歧义，保留 string。
 - F2（Important / required / 复杂度不变，缺 IME 测试任务）：接受并修复。已确认原页面有 isComposing 防护而现有测试无此用例；Task 2 明确加入合成中/非合成 Enter 的焦点、收笔次数和零保存断言。
+
+第二轮文档 review：同一 Claude opus/high 会话复审 `cae1a42a`；确认 F1 拒绝成立、F2 修复到位，最终 `NO FINDINGS`，无未解决 required。工作区、HEAD、两文件指纹守卫再次通过；两轮均未运行产品测试。此后仅记录本段审查结果，不改变已审设计/接口/任务。
