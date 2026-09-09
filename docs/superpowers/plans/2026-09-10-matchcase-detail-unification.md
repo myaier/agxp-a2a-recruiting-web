@@ -58,7 +58,7 @@ Codex execution: superpowers:executing-plans
 - `职位资料.tsx/.module.css`：匹配分析、JD、要求、公司、对接人；`在线简历正文.tsx`：从原简历正文提取的纯渲染，沿用原 CSS，旧导出继续兼容。
 - `类型.ts`：以下局部展示类型；不输出全局业务 DTO。
 - `src/数据/详情展示映射.ts/.test.ts`：数据投影，无 I/O。现有 `MatchCase展示映射.ts` 不改协议语义。
-- `use后端详情动作.ts`、`useCasePDF预览.ts`、`use后端详情控制.ts`：由原 P5 屏搬来的业务控制。hook 拆分按已存在生命周期，不再新增 facade/状态库。
+- `use后端详情动作.ts`、`useCasePDF预览.ts`、`use后端详情控制.ts`、`后端正常详情.tsx`：由原 P5 屏搬来的业务控制。hook 拆分按已存在生命周期，不再新增 facade/状态库。
 - 原 `在谈详情.tsx`、`候选详情.tsx`、`P5/MatchCase详情.tsx` 保留路由/来源连接角色；Mock 原控制可留本文件，不为对称再拆两个巨型 controller。
 
 ### A. 页面与字段展示
@@ -124,7 +124,7 @@ Mock 分段继续用现有映射算法（同角色消息、种子小结和归约
 
 ```ts
 // 类型.ts，资料区自己的输入；只为本页当前字段服务。
-import type { 对齐行 } from '../../数据/匹配对齐';
+// 对齐行：type import，来源 src/数据/匹配对齐.ts；实施时相对本文件解析模块路径。
 export interface 职位资料信息 {
   摘要: { 职位: string; 城市: string; 薪资: string; 技能: readonly string[] } | null;
   分析: { 分: number | null; 行们: 对齐行[] | null; 文案: { 墨句: string; 灰句: string } | null };
@@ -150,13 +150,29 @@ export interface 职位资料信息 {
 
 `use后端详情动作` 的输入为 `{role: P5角色; caseId: string; 视图: P5详情正常视图; 详情: P5详情; 操作: Pick<应用操作,'回答事实'|'决定S0'|'决定S1'|'决定S2'|'决定S3'|'提交简历'|'准备候选委托简历'>; 回答在飞表: RefObject<Map<string,Promise<void>>>}`。返回 `{卡片们: readonly 详情动作卡信息[]; 事实问题: 事实问题属性 | null; 简历选择: 简历选择属性 | null; 披露确认: 确认属性 | null; 终结确认: 确认属性 | null}`。
 
-`确认属性` 使用 `React.ComponentProps<typeof 确认层>` 的类型别名（组件来源 `src/组件/确认层.tsx`），控制模块可 type import；确认层只接收已有 props。`简历选择属性` 定义为 `{职位名:string; 文件们: readonly {键:string; 文件名:string; 状态文:string; 禁用说明:string|null}[]; 选中键:string|null; 选择:(key:string)=>void; 取消:()=>void; 确认:详情按钮}`，展示不持 BFF 文件。控制层维护键到原 `{file_id,file_version_id,displayName}` 选择的映射，使用既有 `从附件行取选择值`，不得以文件名作身份。
+`简历选择属性` 与 `确认属性` 均定义并导出于 `src/组件/在谈详情/类型.ts`（Task 5 交付，即便当时 S1 值仍为 null 也先声明完整合同），控制 hook 与展示组件从该文件 type import，展示不得反向 import 控制模块。`确认属性` 使用 `React.ComponentProps<typeof 确认层>` 的类型别名（组件来源 `src/组件/确认层.tsx`），控制模块可 type import；确认层只接收已有 props。`简历选择属性` 定义为 `{职位名:string; 文件们: readonly {键:string; 文件名:string; 状态文:string; 禁用说明:string|null}[]; 选中键:string|null; 选择:(key:string)=>void; 取消:()=>void; 确认:详情按钮}`，展示不持 BFF 文件。控制层维护键到原 `{file_id,file_version_id,displayName}` 选择的映射，使用既有 `从附件行取选择值`，不得以文件名作身份。
 
 `useCasePDF预览({role,caseId,读取}: {role:P5角色; caseId:string; 读取:应用操作['读取简历PDF']})` 返回 `{预览:{文件名:string;地址:string}|null; 打开:(文件名:string)=>Promise<void>; 关闭:()=>void}`。只 Backend 使用此 hook；Mock 使用原仿真文件预览控制。共用阶段流和预览层的外壳/关闭呈现，真实 PDF 字节与 Mock 仿真纸身仍使用不同内容 renderer，不能把两种内容混为同一数据能力。
 
-`use后端详情控制({role,caseId}: {role:P5角色;caseId:string})` 返回明确联合：`{kind:'不可用'; 状态:'加载'|'失败'|'契约错误'; 说明:string; 重试:(()=>void)|null}` 或 `{kind:'正常'; 顶栏:顶栏信息; 状态:状态区信息; 分段们:分段项[]; 职位资料:职位资料信息; 底栏:详情底栏信息; 终局:终局区信息; 刷新错误:string|null; 重试:()=>void; 当前段引用:RefObject<HTMLDivElement|null>; 附件点击:(name:string)=>void; 动作:ReturnType<typeof use后端详情动作>; PDF:ReturnType<typeof useCasePDF预览>}`。正常联合不带 raw 快照/操作总表；hook 内原映射/请求状态保持，禁用与迟到隔离责任不能转给 JSX。
+`use后端详情控制({role,caseId}: {role:P5角色;caseId:string})` 始终挂载，只负责读取/轮询/叮嘱/映射和稳定回答在飞表，不调用 `use后端详情动作` 或 `useCasePDF预览`。返回明确联合：`{kind:'不可用'; 状态:'加载'|'失败'|'契约错误'; 说明:string; 重试:(()=>void)|null}` 或 `后端正常资源`。控制模块导出以下内部资源类型（不放展示目录），只供正常控制组件消费：
 
-为遵守 hooks 规则，在外层 route/context 中读 role 和主体，构造有主体代际含义的实例边界；不能让某次正常/失败切换改变 hook 调用顺序。具体做法：读取/轮询 hook 始终挂载，只有合法正常内容进入 keyed 正常控制子组件；同一会话跨 Case 的回答在飞表由稳定的 route 控制实例持有，不按 Case key 重建。主体变更必须销毁该会话实例并回收资源；normal 子组件的 Case key 可清除其独立草稿和弹层，不能清除外层在飞表。
+```ts
+// 既有类型与组件接口的源文件见 A/B/C；类型导入在实际文件内解析。
+export interface 后端正常资源 {
+  kind: '正常';
+  顶栏: 顶栏信息; 状态: 状态区信息; 分段们: 分段项[];
+  职位资料: 职位资料信息; 底栏: 详情底栏信息; 终局: 终局区信息;
+  刷新错误: string | null; 重试: () => void;
+  当前段引用: RefObject<HTMLDivElement | null>;
+  动作输入: Parameters<typeof use后端详情动作>[0];
+  PDF输入: Parameters<typeof useCasePDF预览>[0];
+}
+```
+
+`src/屏幕/详情控制/后端正常详情.tsx` 导出 `后端正常详情({资源}: {资源: 后端正常资源})`，只在正常联合成立时挂载；内部无条件调用动作与 PDF hooks，组装其结果为 A/B 纯展示 props、动作卡和弹层，不把 raw `动作输入` 交给展示层。这只是搬移原 `详情主体/阶段动作区` 的连接职责，不新增 facade。
+
+生命周期固定：主体会话范围的 route 实例持有 `use后端详情控制`；正常控制子组件按 role/case key 重挂载，自己持 Tab/选项/弹层 UI。`回答在飞表` 只在父读取控制 hook 内创建，通过 `动作输入` 传入，因此同会话跨 Case 或正常→错误→正常不会重建。主体/会话换代时整个父实例重置并回收下层资源，不能只用 caseId 作为账号边界。正常子组件内动作/PDF hook 顺序固定；初次加载绝不以假非空视图调用动作 hook，render 也不回写父状态。Task 5/7 先在原正常控制子组件内调用，Task 9 再把该组件移入上述文件，禁止改成条件调用 hooks。
+
 
 ## 测试选择与最终责任
 
@@ -206,7 +222,7 @@ L3 集成责任：required，`docs/dogfood/真实后端行为验收.md` 的 H01 
 文件：Create `src/组件/在谈详情/职位资料.tsx/.module.css/.test.tsx`；Modify `src/数据/详情展示映射.ts/.test.ts`、`src/屏幕/在谈详情.tsx/.test.tsx`、`src/屏幕/P5/MatchCase详情.tsx/.test.tsx`。默认不改 `公司区块` 和 `匹配分析块`；只以显式资料/props 复用。需搬移原 `在谈详情.module.css` 的资料样式时仅删无人消费规则。
 
 - [ ] 读取 `职位详情Tab`、`取在谈岗位详情`、`公司区块` 和匹配分析输入。Mock 所有静态查询移到连接层；新组件无运行时模拟数据 import。
-- [ ] 写 red：P5 缺资料时匹配分析/JD/要求/公司五元行/标签/对接人全部有标题或标签及缺失；0 分有效，部分公司字段保留已知部分；空数组与 null 文案不同；无资料不发公司导航。
+- [ ] 写 red：P5 缺资料时匹配分析/JD/要求/公司五元行/标签/对接人全部有标题或标签及缺失；0 分有效，部分公司字段保留已知部分；空数组与 null 文案不同；无资料不发公司导航。同一已挂载组件 rerender 公司/对接人有值→合法空值时，文字/图位变缺失、导航禁用且旧回调不再执行；空值→有值再次可显示新值。
 - [ ] 运行 `npm test -- src/组件/在谈详情/职位资料.test.tsx src/数据/详情展示映射.test.ts`。
 - [ ] 实现 B，缺分或证据时在同一分析区给缺失说明，不传伪造数给旧分析组件。公司显式 `资料` 和中性自定义 `标志`，避免静态 fallback；公司入口禁用与原因在本页展示，不改变其他消费者。
 - [ ] Backend 只投影冻结摘要和合法缺失，Mock 投影现有正文/公司/对接人；共用 `职位资料` 替换旧 Tab。请求监控断言 Tab 切换零新增组织/推荐/岗位请求。
@@ -232,11 +248,11 @@ L3 集成责任：required，`docs/dogfood/真实后端行为验收.md` 的 H01 
 
 目标：开始从 P5 阶段动作区移出控制，S0 卡真正纯展示。依赖 1–4；生产 A 动作卡/事实问题、C 动作 hook 的 S0 部分。非目标：改动作允许矩阵。
 
-文件：Create `src/组件/在谈详情/详情动作卡.tsx/.module.css/.test.tsx`、`事实问题卡.tsx/.test.tsx`、`src/屏幕/详情控制/use后端详情动作.ts/.test.tsx`；Modify `src/屏幕/P5/MatchCase详情.tsx/.test.tsx`。hook 在后续 Task 补入 S1/S2/S3，同一返回合同不变；未迁移卡继续由旧控制暂时提供，禁止同一 action 双挂载。
+文件：Modify `src/组件/在谈详情/类型.ts`（补齐 C 的两个导出类型）；Create `src/组件/在谈详情/详情动作卡.tsx/.module.css/.test.tsx`、`事实问题卡.tsx/.test.tsx`、`src/屏幕/详情控制/use后端详情动作.ts/.test.tsx`；Modify `src/屏幕/P5/MatchCase详情.tsx/.test.tsx`。hook 在后续 Task 补入 S1/S2/S3，同一返回合同不变；未迁移卡继续由旧控制暂时提供，禁止同一 action 双挂载。
 
 - [ ] 阅读原 `respond_fact/end_screening`、回答在飞表和准备代际。写纯卡禁用/回调测试及控制测试：空回答零请求，promptId 原值、503 保留草稿、成功才清、结束需确认、同 Case 回来时仍在飞不能重发。
 - [ ] 执行 `npm test -- src/组件/在谈详情/详情动作卡.test.tsx src/组件/在谈详情/事实问题卡.test.tsx src/屏幕/详情控制/use后端详情动作.test.tsx` 得 red。
-- [ ] 使用 C 输入完成 S0 分支搬移。稳定路由控制持有回答在飞表，传入动作 hook；动作 UI 重挂载不重建表。命令调用参数与旧实现逐项对照，回调不能捕获已经换掉的 Case 继续更改新草稿。
+- [ ] 使用 C 输入完成 S0 分支搬移。动作 hook 仅在原正常详情子组件无条件调用（Task 9 迁为 `后端正常详情`）；稳定父路由/读取控制持有回答在飞表，传入动作 hook；动作 UI 重挂载不重建表。命令调用参数与旧实现逐项对照，回调不能捕获已经换掉的 Case 继续更改新草稿。
 - [ ] 已提供但本次禁止的动作使用 null 回调/禁用说明；未知动作/非法状态继续由原 decoder 拒绝，不画所有未来动作。保留动作标题/说明和原确认语义。
 - [ ] 前述测试 green 后运行 `npm test -- src/屏幕/P5/MatchCase详情.test.tsx src/状态/后端/MatchCase操作.test.ts`、typecheck；提交 `refactor: separate screening action control`。
 
@@ -265,7 +281,7 @@ L3 集成责任：required，`docs/dogfood/真实后端行为验收.md` 的 H01 
 - [ ] 从 `详情主体` 搬移租约/ref/代际逻辑前写 red：连点单请求，S1 有时间线时附件入口仍在，双角色读各自 role/case；关闭/卸载/换 Case 回收，迟到成功立刻回收，迟到失败不向新页提示。
 - [ ] 执行 `npm test -- src/屏幕/详情控制/useCasePDF预览.test.tsx src/屏幕/P5/MatchCase详情.test.tsx`。
 - [ ] 实现 C 的 PDF hook，revoke 幂等且只处理自己租约，caseId/role 变化立即清预览和在飞引用。租约不能写全局缓存。Mock 留在原文件预览控制，Backend 不导入 Mock 原件。
-- [ ] 正常详情用 hook 状态渲染现有 `原始PDF层`，关闭回调直接回收。Tab 切换不能卸载 hook 或让在飞租约无人回收；无 typed 附件时不从本人附件库猜文件，也不出现真实下载入口。
+- [ ] PDF hook 仅在正常详情子组件无条件调用，Task 9 迁入 `后端正常详情`，不从始终挂载的读取 hook 条件调用。正常详情用 hook 状态渲染现有 `原始PDF层`，关闭回调直接回收。Tab 切换不能卸载 hook 或让在飞租约无人回收；无 typed 附件时不从本人附件库猜文件，也不出现真实下载入口。
 - [ ] 前述测试 green 后 typecheck；提交 `refactor: isolate case pdf preview lifecycle`。
 
 完成：现有 P5 PDF 全部回归通过，生产模块无额外 content 请求；停止：任何需要扩大 PDF 授权范围的方案不属于本任务。
@@ -288,11 +304,11 @@ L3 集成责任：required，`docs/dogfood/真实后端行为验收.md` 的 H01 
 
 目标：所有 Backend 接线从展示移出，正常/不可用联合完整，Mock 终局也只读。依赖 1–8；生产 A 底栏/终局区、C 后端详情控制。非目标：新增会话坐标或更改轮询节拍。
 
-文件：Create `src/组件/在谈详情/详情底栏.tsx/.test.tsx`、`终局区.tsx/.test.tsx`、`src/屏幕/详情控制/use后端详情控制.ts/.test.tsx`；Modify 三详情 `.tsx/.test.tsx`、详情映射和自有 CSS。共享 `真输入条` 可用现有 props时直接使用；若需禁用则本页外层使用只读区域，不全站修改默认行为。
+文件：Create `src/组件/在谈详情/详情底栏.tsx/.test.tsx`、`终局区.tsx/.test.tsx`、`src/屏幕/详情控制/use后端详情控制.ts/.test.tsx`、`src/屏幕/详情控制/后端正常详情.tsx/.test.tsx`；Modify 三详情 `.tsx/.test.tsx`、详情映射和自有 CSS。共享 `真输入条` 可用现有 props时直接使用；若需禁用则本页外层使用只读区域，不全站修改默认行为。
 
-- [ ] 写 red：正常 Case 叮嘱失败不伪造回执；终局显示只读底栏且无可执行发送；pending 私聊禁用且继续轮询，ready 只使用合法 conversation_ref；Tab 不改变发送 Case；角色/账号变更销毁弹层与原草稿。
-- [ ] 执行 `npm test -- src/组件/在谈详情/详情底栏.test.tsx src/组件/在谈详情/终局区.test.tsx src/屏幕/详情控制/use后端详情控制.test.tsx`。
-- [ ] 搬移既有 scope 登记/退出、读取、轮询、叮嘱与错误处理到控制 hook；正常联合内组成 A/B/C，外层 route 只按 kind 选择错误/加载或共享壳，不把错误变成正常缺失。稳定在飞表不能随正常区卸载而丢失；按 C 的生命周期边界组织。
+- [ ] 写 red：正常 Case 叮嘱失败不伪造回执；终局显示只读底栏且无可执行发送；pending 私聊禁用且继续轮询，ready 只使用合法 conversation_ref；Tab 不改变发送 Case；角色/账号变更销毁弹层与原草稿。同一 Case 刷新合法可空字段由有值→null/空数组后显示新缺失态，不残留旧附件入口或旧执行回调；仅采用 decoder 接受的输入，不给 P5 添加公司字段造样本。公司/对接人刷新过渡由 Task 3 无 Provider rerender 覆盖。
+- [ ] 执行 `npm test -- src/组件/在谈详情/详情底栏.test.tsx src/组件/在谈详情/终局区.test.tsx src/屏幕/详情控制/use后端详情控制.test.tsx src/屏幕/详情控制/后端正常详情.test.tsx`。
+- [ ] 搬移既有 scope 登记/退出、读取、轮询、叮嘱与错误处理到控制 hook；读取 hook 正常分支返回 C 的 `后端正常资源`，外层 route 只按 kind 选择错误/加载或 keyed `后端正常详情`；后者无条件调用动作/PDF hooks 再组装 A/B/C 纯展示，不把错误变成正常缺失。稳定在飞表不能随正常区卸载而丢失；按 C 的生命周期边界组织。
 - [ ] 非终局禁用由已有刷新/动作保护表达；terminal 为只读，正常摘要字段不丢；Mock 只读判断消费其已有完成/归档事实，不把“进入意向确认阶段”当作已完成。
 - [ ] 全仓核对详情新展示 import，禁止 use应用状态/BFF raw/fixture/路由。允许受控组件内部 Tab/折叠状态；清除重复 CSS/模式分支、遗留不可达 Backend 判断和未使用 import，仅限本范围。
 - [ ] green 后运行 `npm test -- src/屏幕/P5/MatchCase详情.test.tsx src/屏幕/在谈详情.test.tsx src/屏幕/候选详情.test.tsx src/屏幕/P5/MatchCase历史.test.tsx src/状态/后端/MatchCase操作.test.ts`、typecheck；提交 `refactor: complete shared detail control boundary`。
@@ -306,7 +322,7 @@ L3 集成责任：required，`docs/dogfood/真实后端行为验收.md` 的 H01 
 文件：Modify `e2e/数据源模式.spec.ts`（在现有 P5 fixture/装P5候选/装P5招聘作用域中新增独立 describe，不复制庞大 fixture）；必要时 `e2e/视觉回归/场景.ts`、对应 `.test.ts` 的详情锚点；Create `e2e/详情布局.test.ts`（如需纯几何断言 helper 的单测才创建）。不为拆测试文件先提取全局 fixture 框架。与列表 task intent 预告此公共文件交集，保留另一分支用例。
 
 - [ ] 写 `在谈详情完整布局 @mock/@backend` 定向旅程，390/320px 各端覆盖两个 Tab。Backend 用现有 HTTP fixture 加正常全缺、合法部分空、长正文/状态、终局等样本；缺 P5 不支持的字段不用额外 wire 键塞入。完整/等价数据的共有展示通过同一纯组件在已有浏览器测试工具可达的渲染路径比对；不得因此添加生产调试路由。仅测试服务端真实支持的事实，相同 DOM/CSS 的等价输入另由无 Provider 组件测试钉住。
-- [ ] 先运行 `npm run test:e2e:data-source -- --grep '在谈详情完整布局'`，核对两个项目实际选择到用例；每页截图、区块顺序、Tab 切换、scrollWidth≤clientWidth、可点/禁用原因、缺失区仍在。截图存 test-results 或 ui-regression-output，禁止只用组件测试宣布布局通过。
+- [ ] 增加同 Case 可空字段由有值刷新为空的合法 HTTP 样本，断言 UI 占位和入口清理，不放宽 decoder。先运行 `npm run test:e2e:data-source -- --grep '在谈详情完整布局'`，核对两个项目实际选择到用例；每页截图、区块顺序、Tab 切换、scrollWidth≤clientWidth、可点/禁用原因、缺失区仍在。截图存 test-results 或 ui-regression-output，禁止只用组件测试宣布布局通过。
 - [ ] 新增/改动旧测试对终局“无输入”断言时改成“只读区域、零发送”，对缺失内容保留位置断言，不删除原零请求、隐私和坐标断言。用现有 P5 HTTP 旅程回归 S0–S3、PDF/移交、列表/历史打开详情；定位器用语义，不锁定旧 CSS 名。
 - [ ] 按测试选择节运行确认前完整权威命令并修复范围内失败；更新 Spec 字段缺口表仅限已证实事实。规划/审计文档不算业务测试 PASS；未执行的真实 local 明确 NOT_RUN。核实真实目标 URL/后端工作区/账号来源，缺失时提前询问但继续可完成的本地工作。
 - [ ] 调用本宿主异构代码 review-loop：Codex→Claude，Claude→Codex；固定实施 base/head、批准 Spec 版本、用户 Task 数覆盖和有效测试 evidence；reviewer 只读不跑测试。逐项核实 required/optional，最多三轮；拒绝无当前依据的泛化建议。修复只补失效证据，review 记录写本 Plan。
@@ -335,7 +351,15 @@ L3 集成责任：required，`docs/dogfood/真实后端行为验收.md` 的 H01 
 
 ## 文档 review 记录
 
-当前状态：待 Claude 异构文档 review。审查范围仅本 Plan 与批准 Spec，记录逐轮候选版本、finding 裁决及收敛结果于本节。未完成审查不生成执行提示词。
+首轮：Claude（opus/high，plan 权限），候选 revision `8dceb3cc`，Spec blob `22245cf802b92f867990d9da646b792029822a67`、Plan blob `c9077e52` 前缀；完整指纹存在本轮工具记录。批准契约与 Task 数覆盖见本 Plan header。结果 3 条 required（Important 1、Minor 2），全部核实接受，均不改变批准 Spec：
+
+1. 生命周期返回接口矛盾：接受并修复。读取 hook 不再返回动作/PDF hook 的结果，由正常控制子组件调用；稳定回答在飞表仍归父读取控制，不让正常/错误切换清锁。复杂度影响：降低。
+2. 刷新有值→空缺少明确测试分配：接受并修复。Task 3 资料组件 rerender 钉文字/图片/旧回调清理，Task 9/10 钉合法 P5 可空字段的刷新过渡，不造公司 wire 字段。复杂度影响：不变。
+3. 两个共享属性类型归属缺失：接受并修复。明确 Task 5 修改展示 `类型.ts`，导出 `简历选择属性`、`确认属性`，禁止展示反向依赖控制模块。复杂度影响：不变。
+
+另由 planner 自检修正文档代码示例的相对 import 写法，改为仓库相对类型来源说明，以通过 prompt 可迁移路径校验。
+
+守约记录：首轮 HEAD/status/受审文件指纹均未改变，未运行测试；但 reviewer 额外读取源码，超出本轮指定的文档及规则范围。该偏差不作为扩大产品范围的授权，三条 finding 均可直接由 Plan/Spec 内容核实；复审明确禁止继续读取源码，仅查两文档及必要规则。当前等待同一 reviewer session 复审修复，不提前交付执行 prompt。
 
 ## 实施记录
 
