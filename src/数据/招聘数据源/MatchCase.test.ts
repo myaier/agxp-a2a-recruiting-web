@@ -6,6 +6,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF客户端, BFF请求选项, BFF响应 } from '../HTTP客户端';
+import type { BFF候选MatchCase详情, BFF招聘MatchCase详情 } from '../BFF契约';
 import {
   P5候选工作区项Wire,
   P5招聘工作区项Wire,
@@ -19,6 +20,12 @@ import {
   P5工作区职位Wire,
 } from '../../测试/BFF样本';
 import { 创建MatchCase数据源, 解MatchCaseSummary, 解P5详情, type MatchCase数据源 } from './MatchCase';
+import {
+  S0候选完整记录Wire,
+  S0招聘完整记录Wire,
+  S0仅问题记录Wire,
+  S0未知回答记录Wire,
+} from '../../测试/S0筛选记录样本';
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 type 二进制函数 = Pick<BFF客户端, '请求二进制'>['请求二进制'];
@@ -37,6 +44,60 @@ const 候选过滤Open路径 = `/api/v1/me/match-cases?intention_id=${意向ID}&
 const 招聘过滤Open路径 = `/api/v1/recruiter/match-cases?job_id=${职位ID}&limit=50`;
 const 候选已终止历史路径 = '/api/v1/me/match-cases/history?lifecycle=ended&limit=50';
 const 招聘已完成历史路径 = `/api/v1/recruiter/match-cases/history?lifecycle=completed&job_id=${职位ID}&limit=50`;
+
+// ── S0 展开块样本构造（include=screening_records）：共享块以对象展开放进唯一 S0，state.round=1 ──
+
+/** S0 轮次基态：round 1、预算 3（P5状态视图Wire），让展开块的轮次约束有真实预算可比。 */
+const S0基态Wire = { ...P5状态视图Wire, round: 1 };
+
+/** 把给定块放进唯一 S0（其余三段不带键），其余 wire 原样；块类型放宽以便构造非法 wire。 */
+function 带S0记录(
+  详情: BFF候选MatchCase详情 | BFF招聘MatchCase详情,
+  块: unknown,
+): Record<string, unknown> {
+  return {
+    ...详情,
+    state: S0基态Wire,
+    stages: P5阶段区组Wire.map((区, 下标): Record<string, unknown> =>
+      (下标 === 0
+        ? { ...(区 as unknown as Record<string, unknown>), screening_records: 块 }
+        : (区 as unknown as Record<string, unknown>))),
+  };
+}
+
+function 造S0消息(覆盖: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 's0q_x', kind: 'question', role: 'candidate', round: 1,
+    text: '每周可以到岗几天？', occurred_at: '2026-08-29T01:10:00Z', ...覆盖,
+  };
+}
+
+function 造S0回答(覆盖: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 's0a_x', kind: 'answer', role: 'recruiter', round: 1,
+    text: '每周三天。', answer_status: 'answered', occurred_at: '2026-08-29T01:11:00Z', ...覆盖,
+  };
+}
+
+function 造S0小结(覆盖: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 's0s_x', phase: 'initial', summary: '需要确认值班安排。',
+    occurred_at: '2026-08-29T01:09:00Z', ...覆盖,
+  };
+}
+
+function S0块(覆盖: { messages?: unknown; summaries?: unknown } = {}): Record<string, unknown> {
+  return {
+    messages: 覆盖.messages === undefined ? [造S0消息()] : 覆盖.messages,
+    summaries: 覆盖.summaries === undefined ? [] : 覆盖.summaries,
+  };
+}
+
+/** 真实缺键（键不在场，而不是 undefined 值）。 */
+function 略S0键(值: Record<string, unknown>, 键: string): Record<string, unknown> {
+  const { [键]: _略, ...其余 } = 值;
+  return 其余;
+}
 
 describe('MatchCase数据源', () => {
   let 请求Mock: ReturnType<typeof vi.fn>;
@@ -554,9 +615,228 @@ describe('MatchCase数据源', () => {
     expect(() => 解P5详情({ ...P5候选详情Wire, stages: 显式null附件区 }, 'candidate')).toThrow(契约漂移);
   });
 
+  // ── S0 筛选记录：include=screening_records 的整包运输与严格解码 ──
+
+  it('候选完整记录与招聘空总结按角色严格解码', () => {
+    const 候选 = 解P5详情(带S0记录(P5候选详情Wire, S0候选完整记录Wire), 'candidate');
+    const 招聘 = 解P5详情(带S0记录(P5招聘详情Wire, S0招聘完整记录Wire), 'recruiter');
+    expect(候选.stages[0].screeningRecords?.messages).toEqual([
+      { id: 's0q_1', kind: 'question', role: 'candidate', round: 1,
+        text: '这个岗位是否需要固定晚班？', occurredAt: '2026-08-23T10:01:00Z' },
+      { id: 's0a_1', kind: 'answer', role: 'recruiter', round: 1,
+        text: '没有固定晚班。', answerStatus: 'answered', occurredAt: '2026-08-23T10:02:00Z' },
+    ]);
+    expect(候选.stages[0].screeningRecords?.summaries).toEqual([
+      { id: 's0s_0', phase: 'initial', summary: '需要确认岗位的值班安排。',
+        occurredAt: '2026-08-23T10:00:30Z' },
+      { id: 's0s_1', phase: 'reevaluation', round: 1,
+        summary: '已确认没有固定晚班，仍需了解其它工作安排。', occurredAt: '2026-08-23T10:03:00Z' },
+    ]);
+    expect(招聘.stages[0].screeningRecords?.summaries).toEqual([]);
+  });
+
+  it('双角色解出同一批 messages（招聘端恒无小结）', () => {
+    const 候选 = 解P5详情(带S0记录(P5候选详情Wire, S0候选完整记录Wire), 'candidate');
+    const 招聘 = 解P5详情(带S0记录(P5招聘详情Wire, S0招聘完整记录Wire), 'recruiter');
+    expect(招聘.stages[0].screeningRecords?.messages).toEqual(候选.stages[0].screeningRecords?.messages);
+    expect(招聘.stages[0].screeningRecords?.summaries).toEqual([]);
+  });
+
+  it('only-question、unknown／declined／not_available、空 messages＋initial、两数组空与轮次空档都按原样解码', () => {
+    const 仅问题 = 解P5详情(带S0记录(P5候选详情Wire, S0仅问题记录Wire), 'candidate');
+    expect(仅问题.stages[0].screeningRecords?.messages).toEqual([
+      { id: 's0q_1', kind: 'question', role: 'candidate', round: 1,
+        text: '这个岗位是否需要固定晚班？', occurredAt: '2026-08-23T10:01:00Z' },
+    ]);
+    expect(仅问题.stages[0].screeningRecords?.summaries).toEqual([]);
+    // 未回答分支不带正文（unknown fixture 已省略 text）
+    const 未知 = 解P5详情(带S0记录(P5候选详情Wire, S0未知回答记录Wire), 'candidate');
+    expect(未知.stages[0].screeningRecords?.messages[1]).toEqual({
+      id: 's0a_1', kind: 'answer', role: 'recruiter', round: 1,
+      answerStatus: 'unknown', occurredAt: '2026-08-23T10:02:00Z',
+    });
+    // declined 与 not_available 只从 unknown fixture 替换 answer_status，不添加 text
+    for (const 回答状态 of ['declined', 'not_available'] as const) {
+      const 块 = {
+        messages: [
+          S0未知回答记录Wire.messages[0],
+          { ...S0未知回答记录Wire.messages[1], answer_status: 回答状态 },
+        ],
+        summaries: [],
+      };
+      const 详情 = 解P5详情(带S0记录(P5候选详情Wire, 块), 'candidate');
+      expect(详情.stages[0].screeningRecords?.messages[1]).toEqual({
+        id: 's0a_1', kind: 'answer', role: 'recruiter', round: 1,
+        answerStatus: 回答状态, occurredAt: '2026-08-23T10:02:00Z',
+      });
+    }
+    // 空 messages + initial 小结
+    const 仅小结 = 解P5详情(
+      带S0记录(P5候选详情Wire, S0块({ messages: [], summaries: [造S0小结()] })), 'candidate',
+    );
+    expect(仅小结.stages[0].screeningRecords?.messages).toEqual([]);
+    expect(仅小结.stages[0].screeningRecords?.summaries).toEqual([
+      { id: 's0s_x', phase: 'initial', summary: '需要确认值班安排。', occurredAt: '2026-08-29T01:09:00Z' },
+    ]);
+    // 两数组全空（共享样本的默认块）
+    expect(解P5详情(P5候选详情Wire, 'candidate').stages[0].screeningRecords)
+      .toEqual({ messages: [], summaries: [] });
+    // 轮次 1→3 空档：缺口保留、绝不重编号
+    const 空档 = 解P5详情(带S0记录(P5候选详情Wire, S0块({
+      messages: [
+        造S0消息(), 造S0回答(),
+        造S0消息({ id: 's0q_3', round: 3 }), 造S0回答({ id: 's0a_3', round: 3 }),
+      ],
+    })), 'candidate');
+    expect(空档.stages[0].screeningRecords?.messages.map((消息) => 消息.round)).toEqual([1, 1, 3, 3]);
+  });
+
+  it('详情路径编码 case ID 且 include 精确一次并保持 no-store', async () => {
+    请求Mock.mockResolvedValueOnce(响应(带S0记录(P5候选详情Wire, S0候选完整记录Wire)));
+    await source.读取P5详情('candidate', 'mc/一?');
+    expect(请求Mock).toHaveBeenCalledWith({
+      path: '/api/v1/me/match-cases/mc%2F%E4%B8%80%3F?include=screening_records',
+      不缓存: true,
+    });
+  });
+
+  it('S0 块缺失／null、messages 或 summaries 为 null、S1–S3 错带块都漂移', () => {
+    const { screening_records: _略, ...缺块区 } = P5阶段区组Wire[0];
+    expect(() => 解P5详情({
+      ...P5候选详情Wire,
+      state: S0基态Wire,
+      stages: [缺块区, ...P5阶段区组Wire.slice(1)],
+    }, 'candidate')).toThrow(契约漂移);
+    expect(() => 解P5详情(带S0记录(P5候选详情Wire, null), 'candidate')).toThrow(契约漂移);
+    expect(() => 解P5详情(带S0记录(P5候选详情Wire, S0块({ messages: null })), 'candidate')).toThrow(契约漂移);
+    expect(() => 解P5详情(带S0记录(P5候选详情Wire, S0块({ summaries: null })), 'candidate')).toThrow(契约漂移);
+    for (const 错位 of [1, 2, 3]) {
+      const 错位区组 = P5阶段区组Wire.map((区, 下标): Record<string, unknown> =>
+        (下标 === 错位
+          ? { ...(区 as unknown as Record<string, unknown>), screening_records: S0块() }
+          : (区 as unknown as Record<string, unknown>)));
+      expect(() => 解P5详情({ ...P5候选详情Wire, state: S0基态Wire, stages: 错位区组 }, 'candidate'))
+        .toThrow(契约漂移);
+    }
+  });
+
+  it('消息／小结的缺键、未知键与空或跨数组重复 ID 都漂移', () => {
+    for (const 块 of [
+      S0块({ messages: [略S0键(造S0消息(), 'text')] }),
+      S0块({ messages: [{ ...造S0消息(), extra: 1 }] }),
+      S0块({ messages: [造S0消息({ id: '' })] }),
+      S0块({ messages: [造S0消息({ kind: 'note' })] }),
+      S0块({ summaries: [略S0键(造S0小结(), 'summary')] }),
+      S0块({ summaries: [{ ...造S0小结(), extra: 1 }] }),
+      S0块({ summaries: [造S0小结({ id: '' })] }),
+      S0块({ summaries: [造S0小结({ phase: 'final' })] }),
+      // 小结 ID 与消息 ID 跨两数组撞车
+      S0块({ summaries: [造S0小结({ id: 's0q_x' })] }),
+    ]) {
+      expect(() => 解P5详情(带S0记录(P5候选详情Wire, 块), 'candidate')).toThrow(契约漂移);
+    }
+  });
+
+  it('question 错 role 或带 answer_status、answered 缺 text、未回答带 text／text:null 都漂移', () => {
+    for (const 块 of [
+      S0块({ messages: [造S0消息({ role: 'recruiter' })] }),
+      S0块({ messages: [造S0回答({ role: 'candidate' })] }),
+      S0块({ messages: [造S0消息({ answer_status: 'answered' })] }),
+      S0块({ messages: [造S0消息(), 略S0键(造S0回答(), 'text')] }),
+      S0块({ messages: [造S0消息(), 造S0回答({ answer_status: 'unknown', text: '迟到的正文' })] }),
+      S0块({ messages: [造S0消息(), 造S0回答({ answer_status: 'declined', text: null })] }),
+      S0块({ messages: [造S0消息(), 造S0回答({ answer_status: 'not_available', text: null })] }),
+    ]) {
+      expect(() => 解P5详情(带S0记录(P5候选详情Wire, 块), 'candidate')).toThrow(契约漂移);
+    }
+  });
+
+  it('text／summary 空白或有首尾空白、initial 带 round、reevaluation 缺 round 都漂移', () => {
+    for (const 块 of [
+      S0块({ messages: [造S0消息({ text: '   ' })] }),
+      S0块({ messages: [造S0消息({ text: ' 每周几天 ' })] }),
+      S0块({ messages: [造S0消息(), 造S0回答({ text: ' 三天 ' })] }),
+      S0块({ summaries: [造S0小结({ summary: ' ' })] }),
+      S0块({ summaries: [造S0小结({ summary: ' 小结 ' })] }),
+      S0块({ summaries: [造S0小结({ round: 1 })] }),
+      S0块({ summaries: [造S0小结({ phase: 'reevaluation' })] }),
+    ]) {
+      expect(() => 解P5详情(带S0记录(P5候选详情Wire, 块), 'candidate')).toThrow(契约漂移);
+    }
+  });
+
+  it('round 为 0／超预算／数字字符串／小数、同轮重复、孤立 answer 与顺序漂移都拒绝', () => {
+    for (const 块 of [
+      S0块({ messages: [造S0消息({ round: 0 })] }),
+      S0块({ messages: [造S0消息({ round: 4 })] }),
+      S0块({ messages: [造S0消息({ round: '1' })] }),
+      S0块({ messages: [造S0消息({ round: 1.5 })] }),
+      // 同轮各最多一条问／答
+      S0块({ messages: [造S0消息(), 造S0消息({ id: 's0q_y' })] }),
+      S0块({ messages: [造S0消息(), 造S0回答(), 造S0回答({ id: 's0a_y' })] }),
+      // 孤立 answer 与 answer 在同轮 question 之前
+      S0块({ messages: [造S0回答()] }),
+      S0块({ messages: [造S0回答(), 造S0消息()] }),
+      // messages 轮次倒序
+      S0块({
+        messages: [
+          造S0消息({ id: 's0q_2', round: 2 }), 造S0回答({ id: 's0a_2', round: 2 }),
+          造S0消息({ id: 's0q_1', round: 1 }),
+        ],
+      }),
+      // 复评小结轮次倒序／同轮重复
+      S0块({
+        summaries: [
+          造S0小结({ id: 'r2', phase: 'reevaluation', round: 2 }),
+          造S0小结({ id: 'r1', phase: 'reevaluation', round: 1 }),
+        ],
+      }),
+      S0块({
+        summaries: [
+          造S0小结({ id: 'a', phase: 'reevaluation', round: 1 }),
+          造S0小结({ id: 'b', phase: 'reevaluation', round: 1 }),
+        ],
+      }),
+      // initial 晚于复评
+      S0块({
+        summaries: [造S0小结({ id: 'r1', phase: 'reevaluation', round: 1 }), 造S0小结()],
+      }),
+    ]) {
+      expect(() => 解P5详情(带S0记录(P5候选详情Wire, 块), 'candidate')).toThrow(契约漂移);
+    }
+  });
+
+  it('occurred_at 只收 Z 结尾的 RFC3339：小写 z、时区偏移、缺 Z 与无效日期都漂移', () => {
+    for (const 坏时间 of [
+      '2026-08-29T01:10:00z',
+      '2026-08-29T01:10:00+00:00',
+      '2026-08-29T01:10:00',
+      '2026-08-29T25:10:00Z',
+    ]) {
+      expect(() => 解P5详情(
+        带S0记录(P5候选详情Wire, S0块({ messages: [造S0消息({ occurred_at: 坏时间 })] })), 'candidate',
+      )).toThrow(契约漂移);
+      expect(() => 解P5详情(
+        带S0记录(P5候选详情Wire, S0块({ summaries: [造S0小结({ occurred_at: 坏时间 })] })), 'candidate',
+      )).toThrow(契约漂移);
+    }
+  });
+
+  it('招聘端展开详情带非空 summaries 即漂移（候选端小结绝不下发招聘端）', () => {
+    expect(() => 解P5详情(带S0记录(P5招聘详情Wire, S0候选完整记录Wire), 'recruiter')).toThrow(契约漂移);
+    expect(解P5详情(带S0记录(P5招聘详情Wire, S0招聘完整记录Wire), 'recruiter')
+      .stages[0].screeningRecords?.summaries).toEqual([]);
+  });
+
+  it('解码不 trim、不修改输入 wire', () => {
+    const 块 = S0块({ messages: [造S0消息({ text: ' 需要空白的问题 ' })] });
+    expect(() => 解P5详情(带S0记录(P5候选详情Wire, 块), 'candidate')).toThrow(契约漂移);
+    expect((块.messages as Record<string, unknown>[])[0].text).toBe(' 需要空白的问题 ');
+  });
+
   // ── 请求路径 / body ──
 
-  it('详情 GET 走角色前缀的 case 路径并解码 role 详情', async () => {
+  it('详情 GET 走角色前缀的 case 路径、恒带唯一 include 并解码 role 详情', async () => {
     请求Mock
       .mockResolvedValueOnce(响应(P5候选详情Wire))
       .mockResolvedValueOnce(响应(P5招聘详情Wire));
@@ -565,8 +845,8 @@ describe('MatchCase数据源', () => {
     await expect(source.读取P5详情('recruiter', 'mc_2'))
       .resolves.toMatchObject({ role: 'recruiter', state: { caseId: 'mc_1' } });
     expect(请求Mock.mock.calls.map(([选项]) => 选项)).toEqual([
-      { path: '/api/v1/me/match-cases/mc_1', 不缓存: true },
-      { path: '/api/v1/recruiter/match-cases/mc_2', 不缓存: true },
+      { path: '/api/v1/me/match-cases/mc_1?include=screening_records', 不缓存: true },
+      { path: '/api/v1/recruiter/match-cases/mc_2?include=screening_records', 不缓存: true },
     ]);
   });
 

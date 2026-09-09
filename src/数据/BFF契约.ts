@@ -795,6 +795,26 @@ export interface BFFMatchCase简历附件 {
   file_version_id: string;
   display_name: string;
 }
+/**
+ * S0 匿名初筛的展开块（include=screening_records 的详情专属）：双数组恒在场且非 null。
+ * 问答两方同读；初评/复评小结只下发候选端，招聘端恒 summaries=[]。
+ */
+export interface BFFS0筛选记录 {
+  messages: BFFS0筛选消息[];
+  summaries: BFFS0筛选小结[];
+}
+
+/** 问答消息三分支：kind↔role 与 text↔answer_status 的联合不变式由 MatchCase decoder 闭合。 */
+export type BFFS0筛选消息 =
+  | { id: string; kind: 'question'; role: 'candidate'; round: number; text: string; occurred_at: string }
+  | { id: string; kind: 'answer'; role: 'recruiter'; round: number; text: string; answer_status: 'answered'; occurred_at: string }
+  | { id: string; kind: 'answer'; role: 'recruiter'; round: number; answer_status: 'declined' | 'unknown' | 'not_available'; occurred_at: string };
+
+/** 初评（无轮次）与复评（绑定真实轮次）小结；轮次在 state.round_budget 内由 decoder 校验。 */
+export type BFFS0筛选小结 =
+  | { id: string; phase: 'initial'; summary: string; occurred_at: string }
+  | { id: string; phase: 'reevaluation'; round: number; summary: string; occurred_at: string };
+
 export interface BFFMatchCase阶段区 {
   stage: P5阶段;
   state: 'pending' | 'active' | 'passed' | 'ended';
@@ -804,6 +824,8 @@ export interface BFFMatchCase阶段区 {
   transcript: BFFMatchCase时间线项[];
   instruction_receipts: BFFMatchCase叮嘱回执[];
   attachment?: BFFMatchCase简历附件;
+  /** 只落在 anonymous_screening 且只在 include=screening_records 的读取上；其余阶段必缺席。 */
+  screening_records?: BFFS0筛选记录;
 }
 
 export interface BFFMatchCase协同 {

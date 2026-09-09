@@ -194,6 +194,8 @@ function 造阶段区组(时间线: 各阶段时间线): P5阶段区[] {
     transcript: 时间线[stage],
     instructionReceipts: [],
     attachment: null,
+    // S0 展开块归一化形状：仅 S0 可为对象，其余段一律 null
+    screeningRecords: 下标 === 0 ? { messages: [], summaries: [] } : null,
   }));
 }
 

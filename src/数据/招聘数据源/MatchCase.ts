@@ -3,7 +3,8 @@
 // 原始简历 PDF。第十一个域 facade：协议代码（path / method / body / 调用方幂等键 /
 // GET 不缓存）按已准入 P5 冻结契约实现。每个响应先 strict decode（exact key set、
 // 闭合 enum、17 行 lifecycle+stage+status→step 状态矩阵、viewer 专属 available_actions、
-// 四阶段区固定 S0→S3、条件可空块只接受缺席），不 `as` 直转；接口失败绝不回退 Mock。
+// 四阶段区固定 S0→S3、条件可空块只接受缺席、S0 展开块只随 include=screening_records
+// 整包运输且招聘端永无小结），不 `as` 直转；接口失败绝不回退 Mock。
 // 本模块不 import React 或 Mock。mutation 一律 void：权威态由调用方的 detail 重读提供。
 
 import { BFF错误 } from '../HTTP客户端';
@@ -120,6 +121,22 @@ function 要求可空RFC3339(值: unknown): string | null {
   return 要求RFC3339(值);
 }
 
+/** S0 记录时间戳比通用时间更严：只收 Z 结尾的 RFC3339 UTC（小写 z／时区偏移／缺 Z 都是漂移）。 */
+const RFC3339UTCZ模式 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+
+function 要求S0时间(值: unknown): string {
+  const 字符串 = 要求字符串(值);
+  if (!RFC3339UTCZ模式.test(字符串) || Number.isNaN(Date.parse(字符串))) throw 契约错误();
+  return 字符串;
+}
+
+/** S0 原文（问题／回答／小结正文）：非空且无首尾空白，原样返回、绝不 trim。 */
+function 要求S0原文(值: unknown): string {
+  const 字符串 = 要求字符串(值);
+  if (字符串.length === 0 || 字符串.trim() !== 字符串) throw 契约错误();
+  return 字符串;
+}
+
 // ── 闭合 vocabulary（与 mobile-v1 OpenAPI 一一对应）──
 
 const 生命周期全表 = ['open', 'ended', 'completed'] as const satisfies readonly P5生命周期[];
@@ -145,6 +162,11 @@ const 动作全表 = [
 const 阶段区状态全表 = ['pending', 'active', 'passed', 'ended'] as const;
 const 时间线角色全表 = ['', 'candidate', 'recruiter'] as const;
 const 叮嘱主人全表 = ['candidate', 'recruiter'] as const satisfies readonly P5角色[];
+const S0消息类别全表 = ['question', 'answer'] as const;
+const S0回答状态全表 = [
+  'answered', 'declined', 'unknown', 'not_available',
+] as const satisfies readonly P5S0回答状态[];
+const S0小结阶段全表 = ['initial', 'reevaluation'] as const;
 const 协同类目全表 = [
   'work_mode', 'work_schedule', 'travel', 'team_and_reporting', 'technical_direction',
 ] as const;
@@ -264,6 +286,35 @@ export interface P5简历附件 {
   displayName: string;
 }
 
+/** S0 回答的闭合状态词：answered 必带原文，其余三分支绝不携带正文。 */
+export type P5S0回答状态 = 'answered' | 'declined' | 'unknown' | 'not_available';
+
+/** S0 展开块里的单条问答：question 只带原文，answer 按 answer_status 带或不带原文。 */
+export interface P5S0筛选消息 {
+  id: string;
+  kind: 'question' | 'answer';
+  role: P5角色;
+  round: number;
+  text?: string;
+  answerStatus?: P5S0回答状态;
+  occurredAt: string;
+}
+
+/** S0 小结：initial 无轮次，reevaluation 绑定真实轮次。 */
+export interface P5S0筛选小结 {
+  id: string;
+  phase: 'initial' | 'reevaluation';
+  round?: number;
+  summary: string;
+  occurredAt: string;
+}
+
+/** S0 匿名初筛展开块：问答双方同读；候选端小结绝不下发招聘端（招聘端恒空）。 */
+export interface P5S0筛选记录 {
+  messages: P5S0筛选消息[];
+  summaries: P5S0筛选小结[];
+}
+
 export interface P5阶段区 {
   stage: P5阶段;
   state: 'pending' | 'active' | 'passed' | 'ended';
@@ -273,6 +324,8 @@ export interface P5阶段区 {
   transcript: P5时间线项[];
   instructionReceipts: P5叮嘱回执[];
   attachment: P5简历附件 | null;
+  /** 只属于 S0 且只来自展开读取；S1–S3 一律 null。 */
+  screeningRecords: P5S0筛选记录 | null;
 }
 
 export interface P5协同 {
@@ -464,12 +517,101 @@ function 解简历附件(input: unknown): P5简历附件 {
   };
 }
 
+/** S0 问答消息：kind↔role、text↔answer_status 的三分支 wire 形状逐一闭合。 */
+function 解S0消息(input: unknown): P5S0筛选消息 {
+  if (!是记录(input)) throw 契约错误();
+  const kind = 要求枚举(input.kind, S0消息类别全表);
+  const raw = kind === 'question'
+    ? 要求闭合对象(input, ['id', 'kind', 'role', 'round', 'text', 'occurred_at'])
+    : 要求闭合对象(input, ['id', 'kind', 'role', 'round', 'answer_status', 'occurred_at'], ['text']);
+  const 消息: P5S0筛选消息 = {
+    id: 要求非空字符串(raw.id),
+    kind,
+    role: 要求枚举(raw.role, 叮嘱主人全表),
+    round: 要求整数(raw.round),
+    occurredAt: 要求S0时间(raw.occurred_at),
+  };
+  // 问答两分支的角色是闭合常量：question 只属于候选端，answer 只属于招聘端。
+  if (消息.role !== (kind === 'question' ? 'candidate' : 'recruiter')) throw 契约错误();
+  if (kind === 'question') {
+    消息.text = 要求S0原文(raw.text);
+    return 消息;
+  }
+  消息.answerStatus = 要求枚举(raw.answer_status, S0回答状态全表);
+  if (消息.answerStatus === 'answered') {
+    消息.text = 要求S0原文(raw.text);
+  } else if (raw.text !== undefined) {
+    throw 契约错误(); // 未回答不携带正文（显式 null 同样拒绝，绝不读成空回答）
+  }
+  return 消息;
+}
+
+/** S0 小结：initial 无 round（携带即漂移），reevaluation 必带 round。 */
+function 解S0小结(input: unknown): P5S0筛选小结 {
+  if (!是记录(input)) throw 契约错误();
+  const phase = 要求枚举(input.phase, S0小结阶段全表);
+  const raw = phase === 'initial'
+    ? 要求闭合对象(input, ['id', 'phase', 'summary', 'occurred_at'])
+    : 要求闭合对象(input, ['id', 'phase', 'round', 'summary', 'occurred_at']);
+  const 小结: P5S0筛选小结 = {
+    id: 要求非空字符串(raw.id),
+    phase,
+    summary: 要求S0原文(raw.summary),
+    occurredAt: 要求S0时间(raw.occurred_at),
+  };
+  if (phase === 'reevaluation') 小结.round = 要求整数(raw.round);
+  return 小结;
+}
+
+/**
+ * S0 展开块整包校验：ID 跨两数组唯一；messages 按轮不降、同轮问／答各最多一条且答必命中
+ * 同轮已登记的问；summaries 的 initial 最多一条且先于全部 reevaluation，复评轮次预算内严格
+ * 递增。原数组顺序原样返回（不 sort、不重编号，未答轮次的缺口保留）。
+ */
+function 解S0筛选记录(input: unknown, roundBudget: number): P5S0筛选记录 {
+  const raw = 要求闭合对象(input, ['messages', 'summaries']);
+  const messages = 要求数组(raw.messages).map(解S0消息);
+  const summaries = 要求数组(raw.summaries).map(解S0小结);
+  const 已见ID = new Set<string>();
+  const 同轮问题 = new Set<number>();
+  const 同轮回答 = new Set<number>();
+  let 前一轮 = 0;
+  for (const 消息 of messages) {
+    if (消息.round < 1 || 消息.round > roundBudget || 消息.round < 前一轮) throw 契约错误();
+    前一轮 = 消息.round;
+    if (已见ID.has(消息.id)) throw 契约错误();
+    已见ID.add(消息.id);
+    if (消息.kind === 'question') {
+      if (同轮问题.has(消息.round)) throw 契约错误();
+      同轮问题.add(消息.round);
+    } else if (同轮回答.has(消息.round) || !同轮问题.has(消息.round)) {
+      throw 契约错误();
+    } else {
+      同轮回答.add(消息.round);
+    }
+  }
+  let 前一复评轮 = 0;
+  let 见过复评 = false;
+  for (const 小结 of summaries) {
+    if (已见ID.has(小结.id)) throw 契约错误();
+    已见ID.add(小结.id);
+    if (小结.phase === 'initial') {
+      if (见过复评) throw 契约错误();
+      continue;
+    }
+    见过复评 = true;
+    if (小结.round === undefined || 小结.round <= 前一复评轮 || 小结.round > roundBudget) throw 契约错误();
+    前一复评轮 = 小结.round;
+  }
+  return { messages, summaries };
+}
+
 /** 阶段区：三个必在数组不接受 null；attachment 坐标闭合，招聘端的匿名初筛区不得携带。 */
-function 解P5阶段区(input: unknown, viewer: P5角色): P5阶段区 {
+function 解P5阶段区(input: unknown, viewer: P5角色, roundBudget: number): P5阶段区 {
   const raw = 要求闭合对象(
     input,
     ['stage', 'state', 'summary', 'checklist', 'transcript', 'instruction_receipts'],
-    ['occurred_at', 'attachment'],
+    ['occurred_at', 'attachment', 'screening_records'],
   );
   const stage = 要求枚举(raw.stage, 阶段全表);
   const 区: P5阶段区 = {
@@ -481,11 +623,21 @@ function 解P5阶段区(input: unknown, viewer: P5角色): P5阶段区 {
     transcript: 要求数组(raw.transcript).map((项) => 解时间线项(项, stage)),
     instructionReceipts: 要求数组(raw.instruction_receipts).map(解叮嘱回执),
     attachment: null,
+    screeningRecords: null,
   };
   if (raw.attachment !== undefined) {
     // S1 披露栅栏：招聘端在匿名初筛区永远看不到简历附件（严格客户端同款）。
     if (viewer === 'recruiter' && stage === 'anonymous_screening') throw 契约错误();
     区.attachment = 解简历附件(raw.attachment);
+  }
+  // S0 展开块（include=screening_records）必在且必为对象；其余阶段多键即漂移。
+  if (stage === 'anonymous_screening') {
+    if (raw.screening_records === undefined) throw 契约错误();
+    区.screeningRecords = 解S0筛选记录(raw.screening_records, roundBudget);
+    // 隐私栅栏：候选端小结绝不下发招聘端 —— 招聘端展开详情恒同批 messages 且 summaries=[]。
+    if (viewer === 'recruiter' && 区.screeningRecords.summaries.length > 0) throw 契约错误();
+  } else if (raw.screening_records !== undefined) {
+    throw 契约错误();
   }
   return 区;
 }
@@ -587,7 +739,7 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
   const state = 解P5状态视图(raw.state);
   const needsAction = 要求布尔(raw.needs_action);
   const availableActions = 解可用动作(raw.available_actions, role, state, needsAction);
-  const stages = 要求数组(raw.stages).map((区) => 解P5阶段区(区, role));
+  const stages = 要求数组(raw.stages).map((区) => 解P5阶段区(区, role, state.roundBudget));
   if (stages.length !== 4) throw 契约错误();
   阶段顺序.forEach((stage, 下标) => {
     if (stages[下标].stage !== stage) throw 契约错误();
@@ -804,7 +956,7 @@ export function 创建MatchCase数据源(client: Pick<BFF客户端, '请求' | '
 
   async function 读取P5详情(role: P5角色, caseId: string): Promise<P5详情> {
     const { result } = await 请求<unknown>({
-      path: P5路径(role, `/match-cases/${encodeURIComponent(caseId)}`),
+      path: P5路径(role, `/match-cases/${encodeURIComponent(caseId)}?include=screening_records`),
       不缓存: true,
     });
     return 解P5详情(result, role);

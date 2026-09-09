@@ -139,6 +139,14 @@ function 是401(错误: unknown): boolean {
 }
 
 /**
+ * 详情 404 隐私清理判据：Case 已不可见（如对端撤回）时，含 S0 records 的旧详情绝不能
+ * 以只读形态继续展示 —— 与普通刷新失败「保留旧只读详情」相反，这里必须整包清除。
+ */
+function 是详情404(错误: unknown): boolean {
+  return 错误 instanceof BFF错误 && 错误.status === 404;
+}
+
+/**
  * 结果不确定判据（spec §12）：这些失败无法区分「已生效 / 未生效」——
  * 409/500/503/transport(0) 与闭合的结果未知码。普通网络异常（非 BFF错误）同判。
  */
@@ -617,6 +625,18 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
         清账号与P5();
         return;
       }
+      // POST 已成功但权威重读 404：Case 已不可见 —— 旧 detail（含 S0 records）整包清除，
+      // mutation 仍 resolve（响应本体是 void，权威快照如实反映「已不可见 + 可重试」）。
+      if (是详情404(错误)) {
+        设后端状态((旧态) => ({
+          ...旧态,
+          P5详情: {
+            ...旧态.P5详情,
+            [scopeKey]: 失败详情(undefined, 错误, fence.scopeGeneration),
+          },
+        }));
+        return;
+      }
       // POST 已成功：这里绝不能 reject（会诱导换键重发）；旧 detail 保留 + 重试错误。
       设后端状态((旧态) => ({
         ...旧态,
@@ -815,6 +835,18 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
         if (!栅栏仍当前(fence)) return;
         if (是401(错误)) {
           清账号与P5();
+          return;
+        }
+        // 详情 404 是隐私清理例外：Case 已不可见，含 S0 records 的旧 detail 绝不能以
+        // 只读形态继续展示 —— 落无旧 detail 的失败快照，下次读取即可恢复。
+        if (是详情404(错误)) {
+          设后端状态((旧态) => ({
+            ...旧态,
+            P5详情: {
+              ...旧态.P5详情,
+              [scopeKey]: 失败详情(undefined, 错误, fence.scopeGeneration),
+            },
+          }));
           return;
         }
         // 契约错误 / 服务错误一律落重试错误态（facade 已 fail closed，本层不再 decode）。

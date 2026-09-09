@@ -17,7 +17,9 @@ import type {
 import { 解P5详情 } from '../../数据/招聘数据源/MatchCase';
 import type { BFF二进制响应 } from '../../数据/HTTP客户端';
 import { BFF错误 } from '../../数据/HTTP客户端';
-import { BFF主体样本, P5候选详情Wire } from '../../测试/BFF样本';
+import { BFF主体样本, P5候选详情Wire, P5招聘详情Wire } from '../../测试/BFF样本';
+import type { BFFS0筛选记录 } from '../../数据/BFF契约';
+import { S0候选完整记录Wire, S0招聘完整记录Wire, S0仅问题记录Wire } from '../../测试/S0筛选记录样本';
 import { 初始状态 } from '../初始状态';
 import type { 动作 } from '../应用状态';
 import {
@@ -124,6 +126,30 @@ const 已解事实详情: P5详情 = 解P5详情({
   })),
   state: { ...P5候选详情Wire.state, updated_at: '2026-08-29T03:00:00Z' },
 }, 'candidate');
+
+/** 把 S0 展开块放进唯一 S0 的候选 wire 详情；round／updated_at 可调（证明同帧整包替换）。 */
+function 带S0记录Wire(块: BFFS0筛选记录, 选项: { round?: number; updated_at?: string } = {}) {
+  return {
+    ...P5候选详情Wire,
+    state: {
+      ...P5候选详情Wire.state,
+      round: 选项.round ?? 1,
+      updated_at: 选项.updated_at ?? P5候选详情Wire.state.updated_at,
+    },
+    stages: P5候选详情Wire.stages.map((区, 下标) =>
+      (下标 === 0 ? { ...区, screening_records: 块 } : 区)),
+  };
+}
+
+/** 招聘端展开 wire：同批 messages、恒空 summaries（候选端小结绝不下发招聘端）。 */
+function 招聘带S0记录Wire(块: BFFS0筛选记录) {
+  return {
+    ...P5招聘详情Wire,
+    state: { ...P5招聘详情Wire.state, round: 1 },
+    stages: P5招聘详情Wire.stages.map((区, 下标) =>
+      (下标 === 0 ? { ...区, screening_records: 块 } : 区)),
+  };
+}
 
 const PDF响应: BFF二进制响应 = {
   blob: { type: 'application/pdf' } as Blob,
@@ -486,6 +512,119 @@ describe('详情读取', () => {
       阶段: '失败', detail: null,
     });
     expect(env.最新状态().P5详情['p5:detail:recruiter:mc_x']?.error).not.toBeNull();
+  });
+
+  // ── S0 筛选记录的权威快照运输：整包替换、只读保留与隐私栅栏 ──
+
+  it('同 updatedAt／round 的两次 force read：detail 引用与 messages 整包替换为后者', async () => {
+    const 仅问题 = 解P5详情(带S0记录Wire(S0仅问题记录Wire), 'candidate');
+    const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
+    expect(仅问题.state.updatedAt).toBe(有回答.state.updatedAt);
+    expect(仅问题.state.round).toBe(有回答.state.round);
+    vi.mocked(env.数据源.读取P5详情)
+      .mockResolvedValueOnce(仅问题)
+      .mockResolvedValueOnce(有回答);
+    await env.操作.读取详情('candidate', 'mc_1', true);
+    await env.操作.读取详情('candidate', 'mc_1', true);
+    const 快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
+    expect(快照?.detail).toBe(有回答); // 成功详情 恒以新引用整包替换，绝不原地拼接
+    expect(快照?.detail).not.toBe(仅问题);
+    expect(快照?.detail?.stages[0].screeningRecords?.messages)
+      .toEqual(有回答.stages[0].screeningRecords?.messages);
+    expect(快照?.detail?.stages[0].screeningRecords?.messages).toHaveLength(2);
+  });
+
+  it('mutation 后的权威重读整包替换 records；迟到的旧轮询读不能把旧 records 写回', async () => {
+    const 仅问题 = 解P5详情(带S0记录Wire(S0仅问题记录Wire), 'candidate');
+    const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire, { updated_at: '2026-08-29T03:00:00Z' }), 'candidate');
+    const 旧读门 = deferred<P5详情>();
+    vi.mocked(env.数据源.读取P5详情)
+      .mockReturnValueOnce(旧读门.promise) // 轮询读 A：在飞，服务端尚未应用 mutation
+      .mockResolvedValueOnce(有回答); // mutation 成功后的权威重读
+    vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
+    void env.操作.读取详情('candidate', 'mc_1');
+    await env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toBe(有回答);
+    旧读门.resolve(仅问题); // A 迟到返回旧 records：整包丢弃
+    await new Promise((完成) => setTimeout(完成, 0));
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toBe(有回答);
+  });
+
+  it('同 scope 的网络／500／503 刷新失败只读保留旧 records，落重试错误', async () => {
+    const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(有回答);
+    await env.操作.读取详情('candidate', 'mc_1');
+    for (const 错误 of [
+      new BFF错误(0, 'network_error', '网络中断'),
+      new BFF错误(500, 'server_error', '服务错误'),
+      new BFF错误(503, 'downstream_unavailable', '下游不可用'),
+    ]) {
+      vi.mocked(env.数据源.读取P5详情).mockRejectedValueOnce(错误);
+      await env.操作.读取详情('candidate', 'mc_1', true);
+      const 快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
+      expect(快照?.detail).toBe(有回答); // 旧只读 records 保留，不闪退
+      expect(快照?.detail?.stages[0].screeningRecords?.messages).toHaveLength(2);
+      expect(快照?.error).not.toBeNull();
+    }
+  });
+
+  it('详情 404 是隐私清理例外：detail 清空为 null 且可重试，旧 records 不再展示', async () => {
+    const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(有回答);
+    await env.操作.读取详情('candidate', 'mc_1');
+    vi.mocked(env.数据源.读取P5详情)
+      .mockRejectedValueOnce(new BFF错误(404, 'case_not_found', 'Case 不可见'));
+    await env.操作.读取详情('candidate', 'mc_1', true);
+    const 快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
+    expect(快照).toMatchObject({ 阶段: '失败', detail: null, 刷新中: false });
+    expect(快照?.error).not.toBeNull();
+    // 失败快照不再命中成功短路：下一次读取真实 GET 并恢复
+    const 仅问题 = 解P5详情(带S0记录Wire(S0仅问题记录Wire), 'candidate');
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(仅问题);
+    await env.操作.读取详情('candidate', 'mc_1');
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toBe(仅问题);
+  });
+
+  it('mutation 成功后的权威重读 404：清掉旧 detail，mutation 仍 resolve', async () => {
+    const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(有回答);
+    await env.操作.读取详情('candidate', 'mc_1');
+    vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
+    vi.mocked(env.数据源.读取P5详情)
+      .mockRejectedValue(new BFF错误(404, 'case_not_found', 'Case 不可见'));
+    await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天')).resolves.toBeUndefined();
+    const 快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
+    expect(快照).toMatchObject({ 阶段: '失败', detail: null, 刷新中: false });
+    expect(快照?.error).not.toBeNull();
+    expect(env.数据源.回答P5事实).toHaveBeenCalledTimes(1); // POST 已成功，不因重读失败重发
+  });
+
+  it('401 清理后旧 records 绝不残留（换主体／换会话都看不到）', async () => {
+    const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
+    vi.mocked(env.数据源.读取P5详情)
+      .mockResolvedValueOnce(有回答)
+      .mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
+    await env.操作.读取详情('candidate', 'mc_1');
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail?.stages[0].screeningRecords?.messages)
+      .toHaveLength(2);
+    await env.操作.读取详情('candidate', 'mc_1', true); // 401：统一清理
+    expect(env.最新状态().已登录).toBe(false);
+    expect(env.最新状态().P5详情).toEqual({});
+  });
+
+  it('records 不跨 role 存在：recruiter 详情 scope 只见自己的展开块（恒无小结）', async () => {
+    const 候选有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(候选有回答);
+    await env.操作.读取详情('candidate', 'mc_1');
+    设主体角色(招聘主体);
+    const 招聘同批 = 解P5详情(招聘带S0记录Wire(S0招聘完整记录Wire), 'recruiter');
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(招聘同批);
+    await env.操作.读取详情('recruiter', 'mc_1');
+    const 详情表 = env.最新状态().P5详情;
+    expect(详情表['p5:detail:candidate:mc_1']?.detail?.stages[0].screeningRecords?.summaries).toHaveLength(2);
+    const 招聘记录 = 详情表['p5:detail:recruiter:mc_1']?.detail?.stages[0].screeningRecords;
+    expect(招聘记录?.messages).toHaveLength(2);
+    expect(招聘记录?.summaries).toEqual([]);
   });
 });
 

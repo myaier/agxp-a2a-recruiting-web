@@ -148,10 +148,12 @@ function 阶段区组(覆盖: Partial<Record<P5阶段区['stage'], Partial<P5阶
         },
       ],
       attachment: null,
+      // S0 展开块归一化形状：仅 S0 可为对象，其余段一律 null
+      screeningRecords: { messages: [], summaries: [] },
     },
-    { stage: 'resume_submission', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null },
-    { stage: 'needs_coordination', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null },
-    { stage: 'intent_confirmation', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null },
+    { stage: 'resume_submission', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
+    { stage: 'needs_coordination', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
+    { stage: 'intent_confirmation', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
   ];
   return 基础.map((区) => ({ ...区, ...覆盖[区.stage] }));
 }
