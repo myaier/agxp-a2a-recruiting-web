@@ -136,8 +136,9 @@ function 招聘在谈卡({ 视图, 按下 }: { 视图: P5列表正常视图; 按
       ) : null}
       {摘要 !== null && 摘要.个人亮点.length > 0 ? (
         <div className={样式.标签行}>
-          {摘要.个人亮点.map((亮点) => (
-            <span key={亮点} className={样式.标签}>
+          {摘要.个人亮点.map((亮点, 序) => (
+            // 契约不要求元素唯一：key 带下标，重复亮点也不产生 duplicate key
+            <span key={`${序}-${亮点}`} className={样式.标签}>
               {亮点}
             </span>
           ))}

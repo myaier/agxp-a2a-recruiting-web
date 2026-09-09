@@ -708,8 +708,9 @@ function 后端推荐卡({
             空数组整行收起，不回退旧 highlights、不显示批次匹配理由或代理小结。 */}
         {摘要 !== null && 摘要.个人亮点.length > 0 ? (
           <div className={样式.标签行}>
-            {摘要.个人亮点.map((亮点) => (
-              <span key={亮点} className={样式.标签}>
+            {摘要.个人亮点.map((亮点, 序) => (
+              // 契约不要求元素唯一：key 带下标，重复亮点也不产生 duplicate key
+              <span key={`${序}-${亮点}`} className={样式.标签}>
                 {亮点}
               </span>
             ))}

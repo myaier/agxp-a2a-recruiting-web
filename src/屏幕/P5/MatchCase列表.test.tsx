@@ -472,6 +472,26 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
   });
 
+  it('合法重复亮点按响应顺序逐条渲染，无重复 key 告警（契约不要求元素唯一）', () => {
+    const 键警告 = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      置P5状态({
+        role: 'recruiter', filterRef: 职位ID,
+        快照: 快照({ items: [招聘行({
+          caseId: 'mc_1',
+          摘要: { ...招聘候选摘要样本, personal_highlights: ['稳定性', '稳定性'] },
+        })] }),
+      });
+      render(列表元素('recruiter', 职位ID));
+      // 重复条目不丢失：两条按序渲染
+      expect(screen.getAllByText('稳定性')).toHaveLength(2);
+      // React 不得报告 duplicate key
+      expect(键警告.mock.calls.some((参) => String(参[0]).includes('key'))).toBe(false);
+    } finally {
+      键警告.mockRestore();
+    }
+  });
+
   it('招聘卡摘要变 null/空亮点：旧信息消失，Case 阶段与可打开保留', () => {
     置P5状态({
       role: 'recruiter', filterRef: 职位ID,

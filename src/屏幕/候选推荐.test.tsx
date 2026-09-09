@@ -333,6 +333,28 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
   });
 
+  it('合法重复亮点按响应顺序逐条渲染，无重复 key 告警（契约不要求元素唯一）', () => {
+    const 键警告 = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      置P4状态({
+        快照: P4快照({
+          阶段: '成功',
+          items: [{
+            ...换卡({ 推荐ID: 'rec_r1', 别名: '候选人甲' }),
+            candidate_summary: { ...招聘候选摘要样本, personal_highlights: ['稳定性', '稳定性'] },
+          }],
+        }),
+      });
+      render(<候选推荐 />);
+      // 重复条目不丢失：两条按序渲染
+      expect(screen.getAllByText('稳定性')).toHaveLength(2);
+      // React 不得报告 duplicate key
+      expect(键警告.mock.calls.some((参) => String(参[0]).includes('key'))).toBe(false);
+    } finally {
+      键警告.mockRestore();
+    }
+  });
+
   it('个人亮点空数组整行收起，不回退旧 highlights；旧代理小结文案不上卡', () => {
     置P4状态({
       快照: P4快照({
