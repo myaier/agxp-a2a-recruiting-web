@@ -36,7 +36,7 @@
 
 后端权威检出 `/Users/visionclaw/.paseo/worktrees/0yeqiujx/unknown-gecko`，候选提交 `96bb69de7`；OpenAPI `apps/recruitment-bff/openapi/mobile-v1.yaml` blob `a27aa125cdaf7e8e9096845a1d2f0caff49a9bf8`。需要对照时用 git show 读取该版本，不假设现场 HEAD 是同一合同；未部署该接口就记录运行时前置缺口，不去掉 include 或弱化 decoder 绕过。
 
-新增类型与函数的公共签名如下；内部 guard 组织不复制成另一套实现正文。
+新增类型与函数的公共签名如下。`候选摘要.ts` 按仓库既有 domain-local 惯例内置自己的小 guard；不得导出或上提 `发现推荐.ts`/`MatchCase.ts` 的私有 guard，也不新建公共 guard 模块。Plan 只冻结公共契约，函数内部实现留到实施阶段。
 
 ```ts
 // src/数据/BFF契约.ts
@@ -72,7 +72,7 @@ decoder 输入 null 原样输出 null；对象只允许且必须包含七字段�
 
 BFF招聘候选推荐 与 BFF招聘工作区项 增加 `candidate_summary?: BFF招聘候选摘要 | null`，可选只表示这些共用类型同时服务默认入口；展开 decoder 必须把键作为 required。P4招聘候选页面、P5列表正常视图 增加 `候选摘要?: 招聘候选摘要视图 | null`；P5列表项 的 recruiter 分支增加 `candidateSummary?: BFF招聘候选摘要 | null`。未请求的字段保持缺席，不映射成已请求的 null。不能对默认详情、历史或 candidate 类型开放新 wire 键。
 
-格式化固定遵循 Spec §4：0「不满 1 年」、n>0「n 年」、null 隐藏；employed「在职看机会」、unemployed「离职可到岗」、student「在校」。degree 原展示名 trim；工作=company/title 非空部分 join(' · ')，教育=institution/major 同理；无部分则 null。亮点按 wire 顺序和原字符串保留，不混合旧 highlights、不受 basis 开关控制。null 视图或全部头行信息缺失时，卡片显示「候选信息暂未披露」。头行只有性别时不增加中性文字。
+格式化固定遵循 Spec §4：0「不满 1 年」、n>0「n 年」、null 隐藏；employed「在职看机会」、unemployed「离职可到岗」、student「在校」。degree 原展示名 trim；工作=company/title 非空部分 join(' · ')，教育=institution/major 同理；无部分则 null。亮点按 wire 顺序和原字符串保留，不混合旧 highlights、不受 basis 开关控制。null 视图或全部头行信息缺失时，卡片显示「候选信息暂未披露」。头行只有性别时不增加中性文字。中性文案只占头行位置；工作、教育、标签行仍按各自空值规则独立渲染。摘要整体为 null 时主体仅剩该文案，在谈阶段和待办不受影响。
 
 ## Task 1：共用摘要契约与映射
 
@@ -80,7 +80,7 @@ BFF招聘候选推荐 与 BFF招聘工作区项 增加 `candidate_summary?: BFF�
 - Modify: `src/数据/BFF契约.ts`（新增摘要类型；消费者可选成员分别在 Task 2/3 加入）。
 - Create: `src/数据/招聘数据源/候选摘要.ts`、`src/数据/招聘数据源/候选摘要.test.ts`。
 - Create: `src/数据/招聘候选摘要映射.ts`、`src/数据/招聘候选摘要映射.test.ts`。
-- Create: `src/测试/招聘候选摘要样本.ts`，仅合成数据，导出 `招聘候选摘要样本`，不修改默认 BFF 样本语义。
+- Modify: `src/测试/BFF样本.ts`，新增合成数据导出 `招聘候选摘要样本`，不修改默认推荐/工作区样本语义。
 
 **Consumes:** Spec §3–4 的七字段合同。**Produces:** 上述冻结签名与下方固定样本；两个数据源共用解码，两个页面映射共用格式化。
 
@@ -117,7 +117,7 @@ npm run typecheck
 **Files**
 - Modify: `src/数据/BFF契约.ts`、`src/数据/招聘数据源类型.ts`、`src/数据/招聘数据源/发现推荐.ts`、`src/数据/发现推荐映射.ts`。
 - Modify: `src/屏幕/候选推荐.tsx`、`src/屏幕/候选推荐.module.css`（按需复用已有类）。
-- Test/Modify: `src/数据/招聘数据源/发现推荐.test.ts`、`src/数据/发现推荐映射.test.ts`、`src/屏幕/候选推荐.test.tsx`、`src/状态/后端/发现推荐操作.test.ts`、`src/状态/后端/use发现推荐委托轮询.test.tsx`、`src/屏幕/匿名在线简历.test.tsx`、`src/屏幕/已筛候选.test.tsx`。
+- Test/Modify: `src/数据/招聘数据源/发现推荐.test.ts`、`src/数据/发现推荐映射.test.ts`、`src/屏幕/候选推荐.test.tsx`、`src/状态/后端/发现推荐操作.test.ts`、`src/状态/后端/use发现推荐委托轮询.test.tsx`、`src/屏幕/匿名在线简历.test.tsx`、`src/屏幕/已筛候选.test.tsx`、`src/组件/候选筛选抽屉.test.tsx`。
 - Conditional Modify: `src/状态/后端/发现推荐操作.ts`，只有下面的状态回归证明摘要丢失或污染时修改；不重构整个操作层。
 - Shared fixture: `src/测试/BFF样本.ts` 保留 `BFF招聘候选推荐样本` 为默认形状；新增展开变体或在列表测试显式 spread 新样本，不能全局给详情样本加键。
 
@@ -129,11 +129,12 @@ npm run typecheck
 - [ ] 屏幕测试使用展开样本，确认头行女图标、5 年｜本科｜在职看机会，工作/教育/亮点位置与 Spec 一致。将旧的“Backend 无性别”“显示批次亮点/代理摘要”的断言按已批准新卡面调整，Mock 断言保留。basis=false 仍显示 personal_highlights，空数组不回退旧 highlights；旧 summary 文案不上卡。
 - [ ] 修改后端推荐卡 JSX：复用 Mock 的性别符、基本行、信息行、标签类和 `性别图标`。头行仅实际项 join 分隔；空工作/教育/标签整行不渲染。推荐真实匹配分与底部按钮、滑动手势不变；不让卡片交互事件重复触发。
 - [ ] 状态回归：刷新完整→null/[] 后旧信息消失；收藏更新只改 favorite 保留本次摘要；委托轮询后权威列表仍展开；淘汰重读默认详情后移出 available 并保持既有 rejected 行功能。匿名详情单独缓存不覆盖 available；如发现实际覆盖，使用已有读取招聘候选刷新收敛，不复制旧摘要到默认详情。
+- [ ] 在 `候选筛选抽屉.test.tsx` 用展开样本验证「只看收藏」筛选后留下卡片的摘要仍正确；开关继续只筛本地集合、不新增请求；无收藏卡不冒出其他候选摘要。
 - [ ] 运行最小反馈和兼容组，确认通过后提交。
 
 ```bash
 npm test -- src/数据/招聘数据源/发现推荐.test.ts src/数据/发现推荐映射.test.ts src/屏幕/候选推荐.test.tsx
-npm test -- src/状态/后端/发现推荐操作.test.ts src/状态/后端/use发现推荐委托轮询.test.tsx src/屏幕/匿名在线简历.test.tsx src/屏幕/已筛候选.test.tsx
+npm test -- src/状态/后端/发现推荐操作.test.ts src/状态/后端/use发现推荐委托轮询.test.tsx src/屏幕/匿名在线简历.test.tsx src/屏幕/已筛候选.test.tsx src/组件/候选筛选抽屉.test.tsx
 npm run typecheck
 ```
 
@@ -189,5 +190,5 @@ npm run lint
 - same executor 使用 executing-plans；先登记本机 task intent，再修改代码。先用 CLI --help 获取 task_intents 的真实参数，不猜 schema。
 - 定向验证收敛后，以 Claude 宿主→Codex reviewer / Codex 宿主→Claude reviewer 做一次固定候选的多轮实施 review，输入批准 Spec blob、本 Plan 最终 blob、固定 base/head 与已有证据；reviewer 不运行测试；逐条裁决，最多三轮，optional 不阻塞。
 - 展示候选 SHA、已观察 target SHA、合并和测试责任的具体方案后等待用户 final gate 确认；此前不同步 target、不 merge、不执行最终 broad gate/正式 L3/push。
-- 获批后完整读取执行 prompt 指向的 final-integration reference，在当前宿主工作区同步 origin/main、重算 final_target_base 责任，复用有效证据并补缺口，最后普通 fast-forward push 到 main，不 force push。push 前目标前移则按合同重新同步和增量核对，不覆盖他人提交。
+- 获批后完整读取 `/Users/visionclaw/coding-harness/skills/development-workflow/references/final-integration.md` 及其 operative contract `/Users/visionclaw/coding-harness/skills/development-workflow/assets/final-integration-contract.md`，在当前宿主工作区同步 origin/main、重算 final_target_base 责任，复用有效证据并补缺口，最后普通 fast-forward push 到 main，不 force push。push 前目标前移或 push 因竞态被拒绝时，保留证据，报告新旧 target 与变化，更新具体 final gate 方案并重新取得用户确认后才同步和补验；不自动追赶、不覆盖他人提交。
 - 回退边界是 Task 1–3 的前端改动；不 down migration。任何新增产品行为或后端协议变化超出本 Plan，先修订并重新批准契约。
