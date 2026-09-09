@@ -1,0 +1,75 @@
+/* 在谈阶段区：两类在谈卡共用的卡底阶段区（Spec §5.4）。
+   胶囊 / 圆点 / 呼吸动画 composes 自 通用.module.css 的 阶段标签 —— 与 Mock 各卡、详情页
+   阶段节点是同一份视觉来源，这里不改它的默认实现，只按 阶段配色 内联文字与描边色；
+   行布局与徽标样式自 原 企业在谈候选.module.css / P5 MatchCase列表.module.css 一比一搬移
+   （取 Mock 基准数值，Spec §6：完整 Mock 数据保持原信息位置、字号与边距）。 */
+
+/* 阶段区：卡底收尾（分隔线 + 上距，Mock 候选卡同一数值） */
+.阶段区 {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--描边);
+}
+
+.阶段头 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.阶段标 {
+  composes: 阶段标签 from '../通用.module.css';
+}
+
+.阶段点 {
+  composes: 阶段点 from '../通用.module.css';
+}
+
+.阶段点呼吸 {
+  composes: 阶段点呼吸 from '../通用.module.css';
+}
+
+/* 归属徽标（原 P5 头行徽标搬进阶段区，两档底色不变） */
+.徽标 {
+  flex: none;
+  border-radius: 999px;
+  padding: 2.5px 9px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.徽标待办 {
+  background: var(--意向底);
+  color: var(--意向);
+}
+
+.徽标代理 {
+  background: var(--浅灰底);
+  color: var(--次要浅);
+}
+
+/* 下一步 / 状态文本：与 Mock 候选卡 .下一步 同规格（11.5/400），与阶段标签并排不抢戏 */
+.文本 {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--正文);
+}
+
+/* attention 安全说明（Hosted Agent 失败合同）：纯文本，零操作 */
+.注意说明 {
+  margin-top: 8px;
+  color: var(--次要);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
