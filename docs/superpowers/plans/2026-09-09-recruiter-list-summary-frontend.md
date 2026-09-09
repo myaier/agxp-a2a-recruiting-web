@@ -72,7 +72,7 @@ decoder 输入 null 原样输出 null；对象只允许且必须包含七字段�
 
 BFF招聘候选推荐 与 BFF招聘工作区项 增加 `candidate_summary?: BFF招聘候选摘要 | null`，可选只表示这些共用类型同时服务默认入口；展开 decoder 必须把键作为 required。P4招聘候选页面、P5列表正常视图 增加 `候选摘要?: 招聘候选摘要视图 | null`；P5列表项 的 recruiter 分支增加 `candidateSummary?: BFF招聘候选摘要 | null`。未请求的字段保持缺席，不映射成已请求的 null。不能对默认详情、历史或 candidate 类型开放新 wire 键。
 
-格式化固定遵循 Spec §4：0「不满 1 年」、n>0「n 年」、null 隐藏；employed「在职看机会」、unemployed「离职可到岗」、student「在校」。degree 原展示名 trim；工作=company/title 非空部分 join(' · ')，教育=institution/major 同理；无部分则 null。亮点按 wire 顺序和原字符串保留，不混合旧 highlights、不受 basis 开关控制。null 视图或全部头行信息缺失时，卡片显示「候选信息暂未披露」。头行只有性别时不增加中性文字。中性文案只占头行位置；工作、教育、标签行仍按各自空值规则独立渲染。摘要整体为 null 时主体仅剩该文案，在谈阶段和待办不受影响。
+格式化固定遵循 Spec §4：0「不满 1 年」、n>0「n 年」、null 隐藏；employed「在职看机会」、unemployed「离职可到岗」、student「在校」。degree 原展示名 trim；工作=company/title 非空部分 join(' · ')，教育=institution/major 同理；无部分则 null。亮点按 wire 顺序和原字符串保留，不混合旧 highlights、不受 basis 开关控制。null 视图或全部头行信息缺失时，卡片显示「候选信息暂未披露」。头行只有性别时不增加中性文字。中性文案只占头行位置；工作、教育、标签行仍按各自空值规则独立渲染。摘要整体为 null 时摘要信息区域仅剩该文案；在谈阶段和待办、推荐卡真实匹配环及收藏/淘汰/委托操作和状态均不受影响。
 
 ## Task 1：共用摘要契约与映射
 
