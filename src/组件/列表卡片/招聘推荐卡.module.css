@@ -1,0 +1,119 @@
+/* 招聘推荐卡卡面：自 原 候选推荐.module.css 原样搬移的 Mock 推荐卡样式（视觉基准，
+   Spec §5.1/§6：完整 Mock 数据保持原信息位置、字号、padding、边距与按钮位置）。
+   页面级样式（顶栏/列表/弹层/补给键）仍留在 候选推荐.module.css。 */
+
+/* 卡根：右列绝对定位的锚点。原来这个锚点是外层滑动行，这里收进卡自己，
+   卡单独渲染（组件测试、后续复用）时位置也成立。 */
+.根 {
+  position: relative;
+}
+
+.卡 {
+  padding: 11px 15px 9px;
+}
+
+/* 卡主体是个 button，需要抹掉浏览器默认的居中对齐和宽度收缩 */
+.卡主体 {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+/* 右列：匹配环，绝对定位挂卡右上（与求职端右列一比一） */
+.右列 {
+  position: absolute;
+  top: 13px;
+  right: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+/* ── 底行：分隔线之下的 AI代理来源标 + 去聊按钮（镜像市场卡底行） ── */
+.底行 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--描边);
+}
+
+/* AI代理来源小圆标：荧光绿底 + 盾牌，同消息列表的代理头像语汇 */
+.代理小圆 {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--荧光绿);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.来源 {
+  flex: 1;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+/* ★ 收藏：未收藏是空心 + 最弱灰，收藏后实心 + 协调橙。
+   荧光绿留给「让AI代理去聊」这个主操作，收藏不抢它 */
+.收藏键 {
+  flex: none;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--最弱);
+  padding: 2px;
+}
+
+.已收藏 {
+  color: var(--协调);
+}
+
+.尖括号 {
+  flex: none;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--最弱);
+  /* 行 gap 8 + 4 = 设计稿里 › 与绿键的 12 间距（同市场卡） */
+  margin-right: 4px;
+}
+
+/* 「让AI代理去聊」荧光绿胶囊键（同市场卡去谈键） */
+.去聊键 {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 15px;
+  background: var(--荧光绿);
+  box-shadow: 0 1px 4px var(--主按钮投影);
+}
+
+.去聊文字 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+/* 回执态：淡绿底 + 深绿字，同尺寸替换，避免点完后底行高度跳动 */
+.已接触 {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 15px;
+  background: var(--淡绿底);
+}
+
+.已接触文字 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--深绿);
+}

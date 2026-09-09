@@ -23,3 +23,17 @@
   color: var(--最弱);
   font-size: 10px;
 }
+
+/* 未知性别占位（列表卡用，Spec §4.3）：原图标位的 16×16 灰色 ?，不造男女图标。
+   只有调用方显式传 未知性别占位 才渲染，详情 / 匿名简历的默认行为不变。 */
+.未知性别 {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--次要浅);
+}

@@ -20,6 +20,10 @@ interface 候选头行属性 {
   求职状态?: string | null;
   /** 调用方附加的类名（如返回栏标题位需要更紧的字号时） */
   类名?: string;
+  /** 列表卡未知占位（Spec §4.3）：数据没给性别时在原图标位出 16px 灰色 ?，
+   *  可访问名与 title 均为「性别未知」。默认 false —— 详情/匿名简历等既有消费者仍是
+   *  「没给性别就不渲染」，默认行为一字不变。 */
+  未知性别占位?: boolean;
 }
 
 /** 画像「年限 · 方向 · 现职」拆成 首段年限 与 其余（详情页副标题 = 画像去掉年限段） */
@@ -28,7 +32,9 @@ export function 拆画像(画像: string): { 年限: string; 其余: string } {
   return { 年限, 其余: 其余.join(' · ') };
 }
 
-export default function 候选头行({ 性别, 年限, 学历, 求职状态, 类名 }: 候选头行属性) {
+export default function 候选头行({
+  性别, 年限, 学历, 求职状态, 类名, 未知性别占位 = false,
+}: 候选头行属性) {
   // 只留非空段；分隔竖线只出现在两段之间
   const 段们 = [年限, 学历, 求职状态].filter((段): 段 is string => !!段 && 段.trim() !== '');
   return (
@@ -36,6 +42,11 @@ export default function 候选头行({ 性别, 年限, 学历, 求职状态, 类
       {性别 ? (
         <span className={样式.性别符}>
           <性别图标 性别={性别} />
+        </span>
+      ) : 未知性别占位 ? (
+        // 未知占位：不造男女图标，16×16 灰色 ?，读屏与 title 都说「性别未知」
+        <span className={样式.性别符} role="img" aria-label="性别未知" title="性别未知">
+          <span className={样式.未知性别}>?</span>
         </span>
       ) : null}
       {段们.map((段, 序) => (
