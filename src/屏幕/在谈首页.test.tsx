@@ -21,6 +21,18 @@ if (!HTMLElement.prototype.scrollTo) {
 
 const mock派发 = vi.fn();
 
+// 记录并透传：钉住「分数在 Mock 连接组件里算出后传入共享卡」（Task 3），Backend 不走这里
+const { mock适配分 } = vi.hoisted(() => ({ mock适配分: vi.fn() }));
+vi.mock('../状态/use适配分', async (importOriginal) => {
+  const 真模块 = await importOriginal<typeof import('../状态/use适配分')>();
+  return {
+    use适配分: (源: Parameters<typeof 真模块.use适配分>[0]) => {
+      mock适配分(源);
+      return 真模块.use适配分(源);
+    },
+  };
+});
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
@@ -103,5 +115,37 @@ describe('在谈首页 · 删筛选（第二批 验收2/4/5）', () => {
       expect(screen.getByText(职位)).toBeTruthy();
     }
     expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull();
+  });
+});
+
+describe('在谈首页 · Mock 卡统一（Task 3：卡面迁到共享求职在谈卡）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+  });
+
+  it('在谈单照常上卡：公司三件套 / 职位 / 薪资 / 标签 / 阶段不丢，Mock 字标（含真 logo）照旧', async () => {
+    置Mock状态();
+    const 页 = render(<在谈首页 />);
+    expect(await screen.findByText('资深后端工程师 · 交易网关')).toBeTruthy();
+    expect(screen.getAllByText('抖音').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('未上市 · 10000 人以上').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('50–65K').length).toBeGreaterThan(0); // 原展示破折号行为
+    expect(screen.getByText('上海 · 浦东')).toBeTruthy();
+    expect(screen.getByText('意向确认')).toBeTruthy();
+    expect(screen.getByText('见面条件已一致，是否确认意向')).toBeTruthy();
+    // Mock 已有公司字标照旧：命中静态公司标的卡仍渲染 logo img
+    expect(页.container.querySelectorAll('img').length).toBeGreaterThan(0);
+    // Mock 有算得出的分：没有未知占位
+    expect(screen.queryByLabelText('匹配分未知')).toBeNull();
+  });
+
+  it('分数在连接组件里用 use适配分 算出后传入共享卡：每张卡一次，卡上环就是那份分', async () => {
+    置Mock状态();
+    render(<在谈首页 />);
+    expect(await screen.findByText('资深后端工程师 · 交易网关')).toBeTruthy();
+    // 当前意向（后端工程师）五单 → 连接组件逐单调 hook（不是在映射函数里偷偷算）
+    expect(mock适配分).toHaveBeenCalledTimes(5);
+    expect(mock适配分).toHaveBeenCalledWith(在谈列表.find((单) => 单.编号 === 'J-01'));
+    expect(screen.getAllByRole('img', { name: /适配 \d+ 分/ }).length).toBeGreaterThan(0);
   });
 });

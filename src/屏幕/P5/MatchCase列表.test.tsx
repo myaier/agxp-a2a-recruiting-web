@@ -55,6 +55,18 @@ vi.mock('../../状态/应用状态', async (importOriginal) => ({
 }));
 vi.mock('../../路由/导航钩子', () => ({ use导航: () => ({ 返回: vi.fn(), 跳转: mock跳转 }) }));
 
+// 记录并透传：Backend 候选在谈卡绝不触发 use适配分 的 Mock 演示简历计算路径（Task 3）
+const { mock适配分 } = vi.hoisted(() => ({ mock适配分: vi.fn() }));
+vi.mock('../../状态/use适配分', async (importOriginal) => {
+  const 真模块 = await importOriginal<typeof import('../../状态/use适配分')>();
+  return {
+    use适配分: (源: Parameters<typeof 真模块.use适配分>[0]) => {
+      mock适配分(源);
+      return 真模块.use适配分(源);
+    },
+  };
+});
+
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
 const 职位ID = 'job_0123456789abcdef0123456789abcdef';
 const 别名 = 'candidate-0123456789ab';
@@ -181,6 +193,7 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     mock加载工作区.mockClear();
     mock追加工作区.mockClear();
     mock刷新工作区.mockClear();
+    mock适配分.mockClear();
   });
 
   afterEach(() => {
@@ -595,6 +608,50 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     expect(screen.queryByText('AI 产品实习生')).toBeNull(); // 不渲染冻结职位等部分数据
     await user.click(screen.getByRole('button', { name: '重试' }));
     expect(mock刷新工作区).toHaveBeenCalledWith('candidate', 意向ID);
+  });
+
+  // Task 3 卡片统一：候选在谈行改用共享 求职在谈卡 —— P5 当前不提供公司名/简介/图与匹配分，
+  // 全部给未知占位；冻结的职位/薪资/城市/技能保留（城市在前、技能随后），不向组织/推荐/
+  // 静态公司标补数据，也不触发 use适配分 的 Mock 演示简历计算路径。
+  it('候选卡：公司三件套与匹配分全占位，冻结职位/薪资/城市技能不丢（城市在前技能随后）', () => {
+    置P5状态({
+      role: 'candidate', filterRef: 意向ID,
+      快照: 快照({ items: [候选行({ caseId: 'mc_c', 待办: true })] }),
+    });
+    const 宿主 = render(列表元素('candidate', 意向ID));
+    const 卡 = screen.getByTestId('求职在谈卡');
+    // 公司信息未知/公司简介未知/空白图块（可访问名「公司图片未知」）
+    expect(screen.getByText('公司信息未知')).toBeTruthy();
+    expect(screen.getByText('公司简介未知')).toBeTruthy();
+    expect(screen.getByLabelText('公司图片未知')).toBeTruthy();
+    // 不命中静态公司标、不发空 URL / 外部占位图请求
+    expect(宿主.container.querySelector('[class*="公司字标"]')).toBeNull();
+    expect(卡.querySelectorAll('img')).toHaveLength(0);
+    // P5 open 无匹配分：右列给未知占位，不画环、不补 0
+    expect(screen.getByLabelText('匹配分未知')).toBeTruthy();
+    expect(宿主.container.querySelector('[class*="适配环"]')).toBeNull();
+    // 冻结职位快照照旧：职位名 + 右列薪资带（原 城市·薪资 事实行退场）
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
+    expect(screen.getByText('300–500 元/天')).toBeTruthy();
+    expect(screen.queryByText('上海 · 300-500 元/天')).toBeNull();
+    // 标签区 = 城市在前、技能随后
+    const 标签顺序 = Array.from(卡.querySelector('[data-card-region="tags"]')?.children ?? [])
+      .map((元) => 元.textContent);
+    expect(标签顺序).toEqual(['上海', 'Python']);
+    // 阶段区：P5 阶段标题原文 + 既有状态文案 + 待办徽标（不是「下一步未知」）
+    const 阶段区 = 卡.querySelector('[data-card-region="stage"]');
+    expect(阶段区?.textContent).toContain('匿名初筛');
+    expect(阶段区?.textContent).toContain('进行中');
+    expect(阶段区?.textContent).toContain('需要你');
+    expect(阶段区?.textContent).not.toContain('下一步未知');
+    // 区域顺序固定：company → score → salary → title → tags → stage
+    const 区域顺序 = Array.from(卡.querySelectorAll('[data-card-region]'))
+      .map((元) => 元.getAttribute('data-card-region'));
+    expect(区域顺序).toEqual(['company', 'score', 'salary', 'title', 'tags', 'stage']);
+    // 缺公司不引发额外读取：只有进屏那一次 P5 open 读，零业务派发、零 Mock 计算分
+    expect(mock加载工作区).toHaveBeenCalledTimes(1);
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(mock适配分).not.toHaveBeenCalled();
   });
 
   // Hosted Agent 失败合同：attention 行只给 owner-safe 说明；徽标按 viewer 待办优先，
