@@ -262,7 +262,7 @@ expect(screen.queryByRole('button', {name:'让AI代理去聊'})).toBeNull();
 
 ## 文档 review 记录
 
-规划 owner：Codex。范围仅本 Plan 与对应 Spec；Claude opus/high 以 WORKFLOW_DOCUMENT_REVIEW 只读审查。批准契约固定上述 Spec revision/blob，候选版本每轮以 Git SHA 和文件 blob 记录；reviewer 禁止测试，逐条由 planner 自主裁决，最多 3 轮。第一轮候选 `5f5b9bd9e42673ff7b33f7e0836fe727b3bd4c2a`，Plan blob `149ad042`（完整值见该候选 Git 对象），Spec 批准 pin 不变。只读 guard（status、HEAD、文件指纹）通过；未运行产品测试。
+规划 owner：Codex。范围仅本 Plan 与对应 Spec；Claude opus/high 以 WORKFLOW_DOCUMENT_REVIEW 只读审查。批准契约固定上述 Spec revision/blob，候选版本每轮以 Git SHA 和文件 blob 记录；reviewer 禁止测试，逐条由 planner 自主裁决，最多 3 轮。第一轮候选 `5f5b9bd9e42673ff7b33f7e0836fe727b3bd4c2a`，Plan blob `149ad042da2686c23e3576b86e9455309190cabd`，Spec 批准 pin 不变。只读 guard（status、HEAD、文件指纹）通过；未运行产品测试。
 
 第一轮裁决：
 
@@ -273,7 +273,7 @@ expect(screen.queryByRole('button', {name:'让AI代理去聊'})).toBeNull();
 - R1-5 optional / Minor / 可选增强 / 复杂度降低：接受，将从Mock候选到卡信息的实现移到 Task 2，与实际消费者同时交付。
 - R1-6 optional / Minor / 可选增强 / 复杂度降低：拒绝。用户明确启动 development-workflow，其 planning/execution contract 要求 task intent 与 final-integration 规则；这是既有工作流责任，不是本任务新增产品基础设施。维持这些约束。
 
-四项 required 已修订；待同一 reviewer session 复审修复及新增问题。
+第二轮候选 `b70b2d2e9679dd69c2b4599fb742ec0571956f98`，Plan blob `950ce6f2c22957e5049a0f32531315753f34530f`；同一 Claude opus/high session 复审返回 `NO FINDINGS`，四项 required 和已采纳 optional 均核实解决，拒绝项无新证据未重开。两轮 status、HEAD、文件指纹 guard 均通过。无未解决有效 required。最终本节仅补审查结果与完整版本，产品契约、接口和实施步骤不再变化。
 
 ## 实施记录
 
