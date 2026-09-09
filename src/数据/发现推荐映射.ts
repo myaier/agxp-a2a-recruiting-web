@@ -1,7 +1,8 @@
 // 发现推荐映射：P4 Discovery* wire DTO → 页面视图（P4候选岗位页面 / P4招聘候选页面）的纯函数投影。
 // 视图是 allowlist：只挑展示字段重建，wire 上多余的键（哪怕被污染进 DTO）一律带不出去 ——
 // 不带 Mock 查找键（公司 slug 等），不带招聘端禁见字段（candidate subject、真名、联系方式、
-// 性别、出生数据、候选薪资数字），也不编造 wire 上不存在的事实（发布人缺席 → null）。
+// 顶层性别、出生数据、候选薪资数字；唯一的性别例外是 candidate_summary 摘要白名单内的
+// 性别图标事实），也不编造 wire 上不存在的事实（发布人缺席 → null）。
 // 公开公司路由 ID 只认 hiring_organization_ref，公司名只认 hiring_organization_claim。
 
 import type {
@@ -17,6 +18,7 @@ import type {
 } from './BFF契约';
 import type { 市场职位 } from './类型';
 import type { P4候选岗位页面, P4招聘候选页面 } from './招聘数据源类型';
+import { 映射招聘候选摘要 } from './招聘候选摘要映射';
 
 // ── 闭合文案表：契约内枚举 → 展示文案，无表外键、无默认兜底 ──
 const 薪资关系文案 = {
@@ -231,6 +233,8 @@ export function 从P4招聘候选(card: BFF招聘候选推荐): P4招聘候选�
     // 保留 wire 码；中文文案经 P4淘汰原因文案 换取，展示层不自己猜
     淘汰原因: card.rejection_reason,
     委托: card.delegation,
+    // 摘要只在展开请求的卡上有键：默认详情/历史没有该键，视图不得伪造出 候选摘要: null
+    ...(card.candidate_summary === undefined ? {} : { 候选摘要: 映射招聘候选摘要(card.candidate_summary) }),
   };
 }
 

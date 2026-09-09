@@ -8,6 +8,7 @@
 import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 在招岗位, 求职意向, 披露项, 屏蔽项, 市场职位 } from './类型';
 import type { 求职初筛偏好, 求职薪资单位 } from '../流程/onboarding配置';
 import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF隐私快照, BFF委托摘要, BFF淘汰原因, BFF附件简历库 } from './BFF契约';
+import type { 招聘候选摘要视图 } from './招聘候选摘要映射';
 
 // ── 分页目录查询（Task 1）：页面层只拿已选目录项的引用，不再全量预取 ──
 // 目录选择值 仍是 BFF目录引用，写入 body 里只带 id；页面层不感知后端返回的额外字段。
@@ -216,4 +217,6 @@ export interface P4招聘候选页面 {
   已淘汰: boolean;
   淘汰原因: BFF淘汰原因 | null;
   委托: BFF委托摘要 | null;
+  /** include=candidate_summary 展开时出现：摘要视图或显式 null；默认详情没有该键 */
+  候选摘要?: 招聘候选摘要视图 | null;
 }

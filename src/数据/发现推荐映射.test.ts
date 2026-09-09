@@ -10,6 +10,7 @@ import {
   BFF委托失败回执样本,
   BFF招聘候选推荐样本,
   BFF招聘委托回执样本,
+  招聘候选摘要样本,
 } from '../测试/BFF样本';
 import type { BFFCandidateJob, BFF候选岗位推荐, BFF招聘候选推荐 } from './BFF契约';
 import {
@@ -248,6 +249,29 @@ describe('从P4候选岗位 / 从P4CandidateJob', () => {
 });
 
 describe('从P4招聘候选', () => {
+  it('仅有 candidate_summary 时新增候选摘要视图；缺键与 null 各自区分', () => {
+    // 展开卡：摘要映射成视图；键缺席（默认详情）不得伪造出 候选摘要
+    expect(从P4招聘候选({ ...BFF招聘候选推荐样本, candidate_summary: 招聘候选摘要样本 }).候选摘要).toEqual({
+      性别: '女', 年限: '5 年', 学历: '本科', 求职状态: '在职看机会',
+      工作: '示例公司 · 软件工程师', 教育: '示例大学 · 计算机科学',
+      个人亮点: ['带领5人团队交付'],
+    });
+    expect('候选摘要' in 从P4招聘候选(BFF招聘候选推荐样本)).toBe(false);
+    expect(从P4招聘候选({ ...BFF招聘候选推荐样本, candidate_summary: null }).候选摘要).toBeNull();
+  });
+
+  it('旧字段仍在视图里供详情/已筛使用，冲突时卡片只取摘要', () => {
+    const view = 从P4招聘候选({
+      ...BFF招聘候选推荐样本,
+      experience_years: 4, job_status: 'employed',
+      candidate_summary: { ...招聘候选摘要样本, experience_years: 5 },
+    });
+    expect(view.经验).toBe('4 年');
+    expect(view.求职状态).toBe('在职');
+    expect(view.候选摘要?.年限).toBe('5 年');
+    expect(view.候选摘要?.求职状态).toBe('在职看机会');
+  });
+
   it('recruiter projection emits only allowlisted anonymous facts and relationship copy', () => {
     const poisoned = {
       ...BFF招聘候选推荐样本,

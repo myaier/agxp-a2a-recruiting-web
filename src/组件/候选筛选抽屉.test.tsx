@@ -20,7 +20,7 @@ import { 路径 } from '../路由/路径表';
 import { 企业日报, 在谈候选列表 } from '../数据/企业端模拟数据';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
 import type { BFF招聘候选推荐 } from '../数据/BFF契约';
-import { BFF招聘候选推荐样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
+import { BFF招聘候选推荐样本, BFF岗位样本, 招聘候选摘要样本, 页面岗位样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
@@ -337,5 +337,24 @@ describe('候选筛选抽屉 · 只看收藏本地开关（P4）', () => {
     expect(screen.queryByText('匿名乙')).toBeNull();
     expect(mock加载招聘候选).toHaveBeenCalledTimes(1);
     expect(mock设置候选收藏).not.toHaveBeenCalled();
+  });
+
+  it('只看收藏筛选后留下卡片的摘要仍正确；无收藏卡不冒出其他候选摘要', async () => {
+    const user = userEvent.setup();
+    // 收藏卡带展开摘要；未收藏卡摘要不同：筛掉后它的摘要信息不得出现在屏上
+    置P4招聘状态([
+      { ...BFF招聘候选推荐样本, favorite: true, candidate_summary: 招聘候选摘要样本 },
+      { ...BFF招聘候选推荐样本, recommendation_id: 'rec_other', candidate_alias: '匿名乙',
+        match_score: 76, favorite: false, candidate_summary: null },
+    ]);
+    render(<候选推荐 />);
+    expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /筛选.*▾/ }));
+    await user.click(screen.getByRole('switch', { name: '只看收藏' }));
+    // 留下卡片的摘要不受筛选影响；开关只筛本地集合（无新请求）
+    expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
+    expect(mock加载招聘候选).toHaveBeenCalledTimes(1);
+    // 无摘要卡被滤掉：中性文案不应因另一张卡冒出第二份摘要信息
+    expect(screen.queryByText('候选信息暂未披露')).toBeNull();
   });
 });

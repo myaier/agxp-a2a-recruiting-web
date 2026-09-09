@@ -27,6 +27,7 @@ import type {
   BFF招聘候选推荐,
   BFF招聘候选教育,
 } from '../BFF契约';
+import { 解招聘候选摘要 } from './候选摘要';
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 
@@ -339,14 +340,22 @@ function 解候选岗位推荐(input: unknown): BFF候选岗位推荐 {
   };
 }
 
-function 解招聘候选推荐(input: unknown): BFF招聘候选推荐 {
-  const raw = 要求闭合对象(input, [
-    'recommendation_id', 'batch_id', 'job_id', 'rank', 'match_score', 'highlights',
-    'compensation_relationship', 'candidate_alias', 'experience_years', 'job_status',
-    'summary', 'skills', 'educations', 'favorite', 'rejected', 'rejection_reason',
-    'state', 'structured_requirements_confirmed', 'delegation',
-  ]);
-  return {
+/** include=candidate_summary 展开页才要求摘要键；默认详情响应出现该键仍按契约漂移拒绝。 */
+function 解招聘候选推荐(input: unknown, 展开 = false): BFF招聘候选推荐 {
+  const raw = 要求闭合对象(input, 展开
+    ? [
+        'recommendation_id', 'batch_id', 'job_id', 'rank', 'match_score', 'highlights',
+        'compensation_relationship', 'candidate_alias', 'experience_years', 'job_status',
+        'summary', 'skills', 'educations', 'favorite', 'rejected', 'rejection_reason',
+        'state', 'structured_requirements_confirmed', 'delegation', 'candidate_summary',
+      ]
+    : [
+        'recommendation_id', 'batch_id', 'job_id', 'rank', 'match_score', 'highlights',
+        'compensation_relationship', 'candidate_alias', 'experience_years', 'job_status',
+        'summary', 'skills', 'educations', 'favorite', 'rejected', 'rejection_reason',
+        'state', 'structured_requirements_confirmed', 'delegation',
+      ]);
+  const 卡: BFF招聘候选推荐 = {
     recommendation_id: 要求非空字符串(raw.recommendation_id),
     batch_id: 要求非空字符串(raw.batch_id),
     job_id: 要求非空字符串(raw.job_id),
@@ -367,6 +376,8 @@ function 解招聘候选推荐(input: unknown): BFF招聘候选推荐 {
     structured_requirements_confirmed: 要求布尔(raw.structured_requirements_confirmed),
     delegation: raw.delegation === null ? null : 解委托摘要(raw.delegation),
   };
+  if (展开) 卡.candidate_summary = 解招聘候选摘要(raw.candidate_summary, 契约错误);
+  return 卡;
 }
 
 /** 发现域时间戳只按「非空字符串」校验（OpenAPI 未声明更细粒度格式）。 */
@@ -404,7 +415,8 @@ function 解候选页(input: unknown): { items: BFF候选岗位推荐[]; nextCur
 
 function 解招聘页(input: unknown): { items: BFF招聘候选推荐[]; nextCursor: unknown } {
   const raw = 要求闭合对象(input, ['recommendations', 'next_cursor']);
-  return { items: 要求数组(raw.recommendations).map(解招聘候选推荐), nextCursor: raw.next_cursor };
+  // lambda 而非 .map(解招聘候选推荐)：数组 index 不得冒充展开模式参数
+  return { items: 要求数组(raw.recommendations).map((item) => 解招聘候选推荐(item, true)), nextCursor: raw.next_cursor };
 }
 
 /** cursor 是服务端的不透明 unpadded base64url 串（≤4096 字节）；客户端只编码不解读。 */
@@ -426,7 +438,7 @@ const candidatePath = (intentionId: string, cursor: string | null) =>
 const recruiterPath = (jobId: string, state: 'available' | 'rejected', cursor: string | null) =>
   `/api/v1/recruiter/jobs/${encodeURIComponent(jobId)}/candidate-recommendations?${
     state === 'rejected' ? 'state=rejected&' : ''
-  }limit=50${cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`}` as `/api/v1/${string}`;
+  }limit=50&include=candidate_summary${cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`}` as `/api/v1/${string}`;
 
 export interface 发现推荐数据源 {
   读取候选岗位推荐(intentionId: string): Promise<BFF候选岗位推荐[]>;

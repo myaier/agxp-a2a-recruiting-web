@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 候选推荐, { 求职状态文案 } from './候选推荐';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFFOwnerJob, BFF招聘候选推荐, BFF委托摘要, BFF委托回执 } from '../数据/BFF契约';
-import { BFF招聘候选推荐样本, BFF岗位样本, 页面岗位样本 } from '../测试/BFF样本';
+import { BFF招聘候选推荐样本, BFF岗位样本, 招聘候选摘要样本, 页面岗位样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 import { 路径 } from '../路由/路径表';
 import { 推荐列表 } from '../数据/企业端模拟数据';
@@ -48,21 +48,24 @@ vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 
 const 岗位编号 = BFF岗位样本.job_id;
 
-/** 便捷卡：换 ID/别名/收藏/委托的招聘候选卡 */
+/** 便捷卡：换 ID/别名/收藏/委托的招聘候选卡（带展开摘要；头行年限随 经验年 联动） */
 function 换卡(选项: {
   推荐ID: string; 别名: string; 收藏?: boolean;
   委托?: BFF委托摘要 | null; 原因?: BFF招聘候选推荐['rejection_reason'];
-  /** 去名改版后卡上没有别名，两张卡靠头行年限区分（样本 4 年） */
+  /** 去名改版后卡上没有别名，两张卡靠头行年限区分（样本摘要 5 年） */
   经验年?: number;
 }): BFF招聘候选推荐 {
+  const 经验年 = 选项.经验年 ?? BFF招聘候选推荐样本.experience_years;
   return {
     ...BFF招聘候选推荐样本,
     recommendation_id: 选项.推荐ID,
     candidate_alias: 选项.别名,
-    experience_years: 选项.经验年 ?? BFF招聘候选推荐样本.experience_years,
+    experience_years: 经验年,
     favorite: 选项.收藏 ?? false,
     rejection_reason: 选项.原因 ?? null,
     delegation: 选项.委托 ?? null,
+    // 2026-09-09 摘要接线后卡面只读 candidate_summary；旧字段仅详情/已筛保留
+    candidate_summary: { ...招聘候选摘要样本, experience_years: 经验年 },
   };
 }
 
@@ -208,6 +211,7 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
 
   it('切岗位即换 scope：旧范围先清、新范围后注册，旧数据不闪进新列表', () => {
     置P4状态({
+      快照: P4快照({ 阶段: '成功', items: [换卡({ 推荐ID: 'rec_r1', 别名: '候选人甲' })] }),
       操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载招聘候选: mock加载招聘候选 },
     });
     const { rerender } = render(<候选推荐 />);
@@ -308,39 +312,43 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     expect(mock加载招聘候选).toHaveBeenCalledWith(岗位编号, true);
   });
 
-  it('basis 已确认（控制组）：匹配分与亮点整组照常渲染，亮点显示中文', () => {
-    置P4状态({
-      快照: P4快照({
-        阶段: '成功',
-        items: [{ ...BFF招聘候选推荐样本, highlights: ['category_matched'] }],
-      }),
-    });
-    render(<候选推荐 />);
-    expect(screen.queryByText('候选人甲')).toBeNull(); // 去名改版：别名不上卡
-    expect(screen.getByRole('img', { name: '适配 87 分' })).toBeTruthy();
-    expect(screen.getByText('职位方向匹配')).toBeTruthy();
-    expect(screen.queryByText('category_matched')).toBeNull();
-    expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
-  });
-
-  it('basis 未确认的招聘卡：匹配分保留，亮点整组收起，改显中性句', () => {
+  it('卡面标签行只取个人亮点：批次匹配理由与 basis 开关都不再上卡（basis=false 仍展示）', () => {
     置P4状态({
       快照: P4快照({
         阶段: '成功',
         items: [{
-          ...BFF招聘候选推荐样本,
-          structured_requirements_confirmed: false,
+          ...换卡({ 推荐ID: 'rec_r1', 别名: '候选人甲' }),
           highlights: ['category_matched', 'location_matched'],
+          structured_requirements_confirmed: false,
         }],
       }),
     });
     render(<候选推荐 />);
-    // 后端历史分保留，不因 basis 未确认而隐藏或改写
+    // 后端历史分保留：匹配环不受摘要接线影响
     expect(screen.getByRole('img', { name: '适配 87 分' })).toBeTruthy();
-    expect(screen.getByText('经验与学历尚未核对')).toBeTruthy();
-    // 整组收起：亮点一条不留，不做选择性过滤
+    // 个人亮点按 wire 顺序展示；批次匹配理由不合并不兜底，不因 basis=false 收起
+    expect(screen.getByText('带领5人团队交付')).toBeTruthy();
     expect(screen.queryByText('职位方向匹配')).toBeNull();
     expect(screen.queryByText('工作地点匹配')).toBeNull();
+    expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
+  });
+
+  it('个人亮点空数组整行收起，不回退旧 highlights；旧代理小结文案不上卡', () => {
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [{
+          ...换卡({ 推荐ID: 'rec_r1', 别名: '候选人甲' }),
+          summary: '四年全栈经验',
+          highlights: ['category_matched'],
+          candidate_summary: { ...招聘候选摘要样本, personal_highlights: [] },
+        }],
+      }),
+    });
+    render(<候选推荐 />);
+    expect(screen.queryByText('带领5人团队交付')).toBeNull();
+    expect(screen.queryByText('职位方向匹配')).toBeNull();
+    expect(screen.queryByText('四年全栈经验')).toBeNull();
   });
 
   it('淘汰四原因可回看可撤销；年限不足映射 experience_insufficient', async () => {
@@ -1062,26 +1070,61 @@ describe('候选推荐 · 去名改版头行（定稿 2026-09-08）', () => {
     expect(screen.queryByText('江叙白')).toBeNull();
   });
 
-  it('验收3 · Backend 卡：无代号；头行只 年限｜学历；无性别图标不报错；标签行 / 底行仍在', () => {
+  it('验收3 · Backend 卡：无代号；摘要缺失显示中性头行；信息行/标签行收起、底行仍在', () => {
     置P4状态({});
     render(<候选推荐 />);
     expect(screen.queryByText('候选人甲')).toBeNull();
     const 头行 = 读头行文本();
     expect(头行).toHaveLength(1);
-    expect(头行[0]).toContain('4 年'); // BFF 样本 experience_years 4
-    expect(头行[0]).toContain('本科'); // educations[0].degree
+    // 默认样本无 candidate_summary：头行只有中性文案，无分隔符、无图标
+    expect(头行[0]).toContain('候选信息暂未披露');
+    expect(头行[0]).not.toContain('｜');
     expect(头行[0]).not.toMatch(/薪资/);
     expect(document.body.textContent).not.toMatch(/薪资带/);
-    // BFF 合同未给性别 / 求职状态：不渲染图标、不渲染状态词，页面照常
     expect(screen.queryByRole('img', { name: '男' })).toBeNull();
     expect(screen.queryByRole('img', { name: '女' })).toBeNull();
-    expect(头行[0]).not.toMatch(/在职看机会|离职可到岗|在校/);
     期望样本卡在场();
-    // 标签行：样本 highlights 为 full_stack，不在 发现推荐映射.ts 的 亮点文案 闭合表内，
-    // 26eca35 起未知代码整组不渲染——此处不断言标签文字；标签行结构由 Mock 版验收 2 覆盖
+    // 无摘要时工作/教育/标签行整体收起；收藏/›/去聊键照常
+    expect(screen.queryByText('四年全栈经验')).toBeNull();
     expect(screen.getByRole('button', { name: '收藏' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '查看候选画像' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '让AI代理去聊' })).toBeTruthy();
+  });
+
+  it('验收5 · Backend 摘要卡：头行女图标 + 5 年｜本科｜在职看机会；工作/教育/亮点落位', () => {
+    置P4状态({
+      快照: P4快照({ 阶段: '成功', items: [换卡({ 推荐ID: 'rec_r1', 别名: '候选人甲', 经验年: 5 })] }),
+    });
+    render(<候选推荐 />);
+    const 女图标 = screen.getAllByRole('img', { name: '女' });
+    expect(女图标).toHaveLength(1);
+    const 头行 = 取头行(女图标[0]!);
+    for (const 段 of ['5 年', '本科', '在职看机会']) expect(头行.textContent).toContain(段);
+    expect(头行.textContent).not.toContain('候选信息暂未披露');
+    expect(头行.textContent).not.toMatch(/薪资/);
+    expect(头行.firstElementChild?.contains(女图标[0]!)).toBe(true); // 图标跟在头行最前
+    // 工作行（公文包图标）与教育行（学帽图标）按 Spec §4 位置展示
+    expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
+    expect(screen.getByText('示例大学 · 计算机科学')).toBeTruthy();
+    expect(screen.getByText('带领5人团队交付')).toBeTruthy();
+    // 旧字段不上卡：顶层 experience_years 4 / job_status 不出现在头行外
+    expect(头行.textContent).not.toContain('4 年');
+  });
+
+  it('验收5 · Backend 摘要变 null：旧摘要信息消失，头行回到中性文案', () => {
+    置P4状态({
+      快照: P4快照({ 阶段: '成功', items: [换卡({ 推荐ID: 'rec_r1', 别名: '候选人甲' })] }),
+    });
+    const 页 = render(<候选推荐 />);
+    expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
+    // 权威刷新把摘要改为 null：旧信息不得残留
+    置P4状态({
+      快照: P4快照({ 阶段: '成功', items: [{ ...换卡({ 推荐ID: 'rec_r1', 别名: '候选人甲' }), candidate_summary: null }] }),
+    });
+    页.rerender(<候选推荐 />);
+    expect(screen.queryByText('示例公司 · 软件工程师')).toBeNull();
+    expect(screen.queryByText('带领5人团队交付')).toBeNull();
+    expect(读头行文本()).toEqual([expect.stringContaining('候选信息暂未披露')]);
   });
 
   it.each([

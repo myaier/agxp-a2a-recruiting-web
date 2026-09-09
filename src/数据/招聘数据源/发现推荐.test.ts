@@ -6,13 +6,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 创建BFF客户端 } from '../HTTP客户端';
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
-import type { BFF淘汰原因, BFF发现偏好 } from '../BFF契约';
+import type { BFF淘汰原因, BFF发现偏好, BFF招聘候选推荐 } from '../BFF契约';
 import {
   BFF意向样本,
   BFF岗位样本,
   BFFCandidateJob样本,
   BFF候选岗位推荐样本,
   BFF招聘候选推荐样本,
+  招聘候选摘要样本,
   BFF发现批次样本,
   BFF招聘发现批次样本,
   BFF候选委托回执样本,
@@ -20,6 +21,11 @@ import {
   BFF发现偏好样本,
 } from '../../测试/BFF样本';
 import { 创建发现推荐数据源, type 发现推荐数据源 } from './发现推荐';
+
+/** 列表页展开样本：招聘列表 GET 携带 include=candidate_summary，每个 item 必带摘要键。 */
+const 招聘展开样本: BFF招聘候选推荐 = { ...BFF招聘候选推荐样本, candidate_summary: 招聘候选摘要样本 };
+/** 招聘列表页 wrapper：条目统一用展开样本（默认详情样本保持无摘要键）。 */
+const 招聘列表页 = (items: unknown, nextCursor: unknown = null) => ({ recommendations: items, next_cursor: nextCursor });
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 
@@ -30,8 +36,8 @@ function 响应<T>(result: T): BFF响应<T> {
 const 招聘淘汰路径 = `/api/v1/recruiter/jobs/${BFF岗位样本.job_id}/candidate-recommendations/${BFF招聘候选推荐样本.recommendation_id}/rejection`;
 const 收藏路径 = `/api/v1/recruiter/jobs/${BFF岗位样本.job_id}/candidate-recommendations/${BFF招聘候选推荐样本.recommendation_id}/favorite`;
 const 候选列表路径 = `/api/v1/me/job-recommendations?intention_id=${BFF意向样本.intention_id}&limit=50`;
-const 招聘列表路径 = `/api/v1/recruiter/jobs/${BFF岗位样本.job_id}/candidate-recommendations?limit=50`;
-const 招聘已筛路径 = `/api/v1/recruiter/jobs/${BFF岗位样本.job_id}/candidate-recommendations?state=rejected&limit=50`;
+const 招聘列表路径 = `/api/v1/recruiter/jobs/${BFF岗位样本.job_id}/candidate-recommendations?limit=50&include=candidate_summary`;
+const 招聘已筛路径 = `/api/v1/recruiter/jobs/${BFF岗位样本.job_id}/candidate-recommendations?state=rejected&limit=50&include=candidate_summary`;
 
 // Task 5：招聘 refresh 的路由级错误合同（与 发现推荐.ts 的 招聘刷新错误合同 逐行对照冻结）。
 const 招聘刷新错误合同 = [
@@ -298,10 +304,10 @@ expect(fetcher).toHaveBeenCalledTimes(1);
   it('双端列表首页固定 limit=50，rejected 视图显式发送 state=rejected', async () => {
     请求Mock
       .mockResolvedValueOnce(响应({ recommendations: [BFF候选岗位推荐样本], next_cursor: null }))
-      .mockResolvedValueOnce(响应({ recommendations: [BFF招聘候选推荐样本], next_cursor: null }))
+      .mockResolvedValueOnce(响应(招聘列表页([招聘展开样本])))
       .mockResolvedValueOnce(响应({ recommendations: [], next_cursor: null }));
     await expect(source.读取候选岗位推荐(BFF意向样本.intention_id)).resolves.toEqual([BFF候选岗位推荐样本]);
-    await expect(source.读取招聘候选(BFF岗位样本.job_id)).resolves.toEqual([BFF招聘候选推荐样本]);
+    await expect(source.读取招聘候选(BFF岗位样本.job_id)).resolves.toEqual([招聘展开样本]);
     await expect(source.读取招聘候选(BFF岗位样本.job_id, 'rejected')).resolves.toEqual([]);
     expect(请求Mock.mock.calls.map(([选项]) => 选项)).toEqual([
       { path: 候选列表路径 },
@@ -314,16 +320,47 @@ expect(fetcher).toHaveBeenCalledTimes(1);
     请求Mock
       .mockResolvedValueOnce(响应({ recommendations: [BFF候选岗位推荐样本], next_cursor: 'Pg2_-1' }))
       .mockResolvedValueOnce(响应({ recommendations: [], next_cursor: null }))
-      .mockResolvedValueOnce(响应({ recommendations: [BFF招聘候选推荐样本], next_cursor: 'eHl6Xzkw' }))
+      .mockResolvedValueOnce(响应(招聘列表页([招聘展开样本], 'eHl6Xzkw')))
       .mockResolvedValueOnce(响应({ recommendations: [], next_cursor: null }));
     await expect(source.读取候选岗位推荐(BFF意向样本.intention_id)).resolves.toEqual([BFF候选岗位推荐样本]);
-    await expect(source.读取招聘候选(BFF岗位样本.job_id, 'rejected')).resolves.toEqual([BFF招聘候选推荐样本]);
+    await expect(source.读取招聘候选(BFF岗位样本.job_id, 'rejected')).resolves.toEqual([招聘展开样本]);
     expect(请求Mock.mock.calls.map(([选项]) => 选项.path)).toEqual([
       候选列表路径,
       `${候选列表路径}&cursor=${encodeURIComponent('Pg2_-1')}`,
       招聘已筛路径,
       `${招聘已筛路径}&cursor=${encodeURIComponent('eHl6Xzkw')}`,
     ]);
+  });
+
+  it('招聘列表 include 恰好一次（首页与后续页同串），详情路径不带 include', async () => {
+    请求Mock
+      .mockResolvedValueOnce(响应(招聘列表页([], 'Pg2_-1')))
+      .mockResolvedValueOnce(响应(招聘列表页([], null)))
+      .mockResolvedValueOnce(响应(BFF招聘候选推荐样本));
+    await source.读取招聘候选(BFF岗位样本.job_id);
+    await source.读取招聘候选详情(BFF岗位样本.job_id, BFF招聘候选推荐样本.recommendation_id);
+    const 招聘路径们 = 请求Mock.mock.calls.map(([选项]) => 选项.path as string)
+      .filter((路径) => 路径.includes('candidate-recommendations'));
+    for (const 路径 of 招聘路径们.slice(0, 2)) {
+      expect(路径.match(/include=candidate_summary/g)).toHaveLength(1);
+    }
+    expect(招聘路径们[2]).not.toContain('include=');
+  });
+
+  it('招聘列表展开：每项缺 candidate_summary 拒绝，显式 null 合法', async () => {
+    const { candidate_summary: _缺摘要, ...缺摘要 } = 招聘展开样本;
+    请求Mock.mockResolvedValueOnce(响应(招聘列表页([缺摘要])));
+    await expect(source.读取招聘候选(BFF岗位样本.job_id)).rejects.toMatchObject({ code: 'invalid_response' });
+
+    请求Mock.mockResolvedValueOnce(响应(招聘列表页([{ ...招聘展开样本, candidate_summary: null }])));
+    await expect(source.读取招聘候选(BFF岗位样本.job_id))
+      .resolves.toEqual([{ ...招聘展开样本, candidate_summary: null }]);
+  });
+
+  it('默认单条详情未请求 include：响应携带 candidate_summary 键仍拒绝', async () => {
+    请求Mock.mockResolvedValueOnce(响应(招聘展开样本));
+    await expect(source.读取招聘候选详情(BFF岗位样本.job_id, BFF招聘候选推荐样本.recommendation_id))
+      .rejects.toMatchObject({ code: 'invalid_response' });
   });
 
   it('恰好 4096 字节的 cursor 是合法下一页', async () => {
@@ -376,7 +413,7 @@ expect(fetcher).toHaveBeenCalledTimes(1);
     请求Mock.mockResolvedValueOnce(响应({ recommendations: [缺键招聘卡], next_cursor: null }));
     await expect(source.读取招聘候选(BFF岗位样本.job_id)).rejects.toMatchObject({ code: 'invalid_response' });
 
-    请求Mock.mockResolvedValueOnce(响应({ recommendations: [{ ...BFF招聘候选推荐样本, candidate_subject: 'sub_9' }], next_cursor: null }));
+    请求Mock.mockResolvedValueOnce(响应({ recommendations: [{ ...招聘展开样本, candidate_subject: 'sub_9' }], next_cursor: null }));
     await expect(source.读取招聘候选(BFF岗位样本.job_id)).rejects.toMatchObject({ code: 'invalid_response' });
   });
 
@@ -410,14 +447,14 @@ expect(fetcher).toHaveBeenCalledTimes(1);
       await expect(source.读取候选岗位推荐(BFF意向样本.intention_id)).rejects.toMatchObject({ code: 'invalid_response' });
     }
     const 招聘变体们: Record<string, unknown>[] = [
-      { ...BFF招聘候选推荐样本, rank: 0 },
-      { ...BFF招聘候选推荐样本, match_score: 101 },
-      { ...BFF招聘候选推荐样本, compensation_relationship: 'equal' },
-      { ...BFF招聘候选推荐样本, rejection_reason: 'too_junior' },
-      { ...BFF招聘候选推荐样本, state: 'screened' },
-      { ...BFF招聘候选推荐样本, experience_years: 'four' },
-      { ...BFF招聘候选推荐样本, favorite: 'yes' },
-      { ...BFF招聘候选推荐样本, educations: [{ ...BFF招聘候选推荐样本.educations[0], degree: 4 }] },
+      { ...招聘展开样本, rank: 0 },
+      { ...招聘展开样本, match_score: 101 },
+      { ...招聘展开样本, compensation_relationship: 'equal' },
+      { ...招聘展开样本, rejection_reason: 'too_junior' },
+      { ...招聘展开样本, state: 'screened' },
+      { ...招聘展开样本, experience_years: 'four' },
+      { ...招聘展开样本, favorite: 'yes' },
+      { ...招聘展开样本, educations: [{ ...BFF招聘候选推荐样本.educations[0], degree: 4 }] },
     ];
     for (const 变体 of 招聘变体们) {
       请求Mock.mockResolvedValueOnce(响应({ recommendations: [变体], next_cursor: null }));
@@ -431,9 +468,9 @@ expect(fetcher).toHaveBeenCalledTimes(1);
       { ...BFF候选岗位推荐样本, recommendation_id: '' },
       { ...BFF候选岗位推荐样本, batch_id: '' },
       { ...BFF候选岗位推荐样本, intention_id: '' },
-      { ...BFF招聘候选推荐样本, recommendation_id: '' },
-      { ...BFF招聘候选推荐样本, job_id: '' },
-      { ...BFF招聘候选推荐样本, candidate_alias: '' },
+      { ...招聘展开样本, recommendation_id: '' },
+      { ...招聘展开样本, job_id: '' },
+      { ...招聘展开样本, candidate_alias: '' },
     ];
     for (const 变体 of 列表变体们) {
       请求Mock.mockResolvedValueOnce(响应({ recommendations: [变体], next_cursor: null }));
@@ -696,7 +733,7 @@ expect(fetcher).toHaveBeenCalledTimes(1);
       { organization_block: { organization_id: 'org_1' } },
     ];
     for (const 金丝雀 of 金丝雀们) {
-      请求Mock.mockResolvedValueOnce(响应({ recommendations: [{ ...BFF招聘候选推荐样本, ...金丝雀 }], next_cursor: null }));
+      请求Mock.mockResolvedValueOnce(响应(招聘列表页([{ ...招聘展开样本, ...金丝雀 }])));
       await expect(source.读取招聘候选(BFF岗位样本.job_id)).rejects.toMatchObject({ code: 'invalid_response' });
     }
     expect(请求Mock).toHaveBeenCalledTimes(金丝雀们.length);
@@ -725,7 +762,7 @@ expect(fetcher).toHaveBeenCalledTimes(1);
     for (const basis of [true, false]) {
       请求Mock.mockResolvedValueOnce(响应({ recommendations: [{ ...BFF候选岗位推荐样本, structured_requirements_confirmed: basis }], next_cursor: null }));
       await expect(source.读取候选岗位推荐(BFF意向样本.intention_id)).resolves.toMatchObject([{ structured_requirements_confirmed: basis }]);
-      请求Mock.mockResolvedValueOnce(响应({ recommendations: [{ ...BFF招聘候选推荐样本, structured_requirements_confirmed: basis }], next_cursor: null }));
+      请求Mock.mockResolvedValueOnce(响应(招聘列表页([{ ...招聘展开样本, structured_requirements_confirmed: basis }])));
       await expect(source.读取招聘候选(BFF岗位样本.job_id)).resolves.toMatchObject([{ structured_requirements_confirmed: basis }]);
     }
     const { structured_requirements_confirmed: _候选确认, ...缺候选basis } = BFF候选岗位推荐样本;
@@ -737,8 +774,8 @@ expect(fetcher).toHaveBeenCalledTimes(1);
     ];
     const 招聘破损们: unknown[] = [
       { recommendations: [缺招聘basis], next_cursor: null },
-      { recommendations: [{ ...BFF招聘候选推荐样本, structured_requirements_confirmed: 1 }], next_cursor: null },
-      { recommendations: [{ ...BFF招聘候选推荐样本, structured_requirements_confirmed: false, weight: 2 }], next_cursor: null },
+      { recommendations: [{ ...招聘展开样本, structured_requirements_confirmed: 1 }], next_cursor: null },
+      { recommendations: [{ ...招聘展开样本, structured_requirements_confirmed: false, weight: 2 }], next_cursor: null },
     ];
     for (const 破损 of 候选破损们) {
       请求Mock.mockResolvedValueOnce(响应(破损));

@@ -598,6 +598,8 @@ export interface BFF招聘候选推荐 {
   // P4 互认：同 BFF候选岗位推荐.structured_requirements_confirmed。
   structured_requirements_confirmed: boolean;
   delegation: BFF委托摘要 | null;
+  /** include=candidate_summary 展开时出现（闭合对象或显式 null）；默认详情响应没有该键。 */
+  candidate_summary?: BFF招聘候选摘要 | null;
 }
 
 export interface BFF发现偏好 {

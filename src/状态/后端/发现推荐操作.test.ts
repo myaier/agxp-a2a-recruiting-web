@@ -32,6 +32,7 @@ import {
   BFF招聘发现批次样本,
   BFF招聘候选推荐样本,
   BFF招聘委托回执样本,
+  招聘候选摘要样本,
 } from '../../测试/BFF样本';
 import type { 页面岗位快照 } from '../../数据/招聘数据源类型';
 import { 初始状态 } from '../初始状态';
@@ -341,6 +342,36 @@ describe('招聘可用候选读取', () => {
     expect(env.最新状态().招聘可用候选.job_1).toMatchObject({
       阶段: '成功', items: [BFF招聘候选推荐样本], 刷新中: false, error: null,
     });
+  });
+
+  it('刷新整组替换 items：新快照摘要为 null 后旧摘要不得残留', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValueOnce([
+      { ...BFF招聘候选推荐样本, candidate_summary: 招聘候选摘要样本 },
+    ]);
+    await env.操作.加载招聘候选('job_1');
+    expect(env.最新状态().招聘可用候选.job_1?.items[0]?.candidate_summary).toEqual(招聘候选摘要样本);
+
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValueOnce([
+      { ...BFF招聘候选推荐样本, candidate_summary: null },
+    ]);
+    await env.操作.加载招聘候选('job_1', true);
+    expect(env.最新状态().招聘可用候选.job_1?.items[0]?.candidate_summary).toBeNull();
+  });
+
+  it('收藏更新只改 favorite，每处出现的摘要原样保留', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValue([
+      { ...BFF招聘候选推荐样本, candidate_summary: 招聘候选摘要样本 },
+    ]);
+    await env.操作.加载招聘候选('job_1');
+    vi.mocked(env.数据源.设置招聘候选收藏).mockResolvedValue({
+      ...BFF发现偏好样本, favorite: true, rejected: false, rejection_reason: null,
+    });
+    await env.操作.设置候选收藏('job_1', 'rec_r1', true);
+    const 卡 = env.最新状态().招聘可用候选.job_1?.items[0];
+    expect(卡?.favorite).toBe(true);
+    expect(卡?.candidate_summary).toEqual(招聘候选摘要样本);
   });
 });
 
