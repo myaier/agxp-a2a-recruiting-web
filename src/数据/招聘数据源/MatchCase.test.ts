@@ -826,6 +826,31 @@ describe('MatchCase数据源', () => {
     }
   });
 
+  it('occurred_at 拒绝 RFC3339 不允许的 24 时与不存在的日历日，真闰日与秒内精度仍合法', () => {
+    // Date.parse 会把这些滚动到下一天／下一个月，必须在字段域上拒绝
+    for (const 坏时间 of [
+      '2026-08-23T24:00:00Z',
+      '2026-02-30T10:00:00Z',
+      '2023-02-29T10:00:00Z', // 非闰年
+      '2026-04-31T10:00:00Z',
+    ]) {
+      expect(() => 解P5详情(
+        带S0记录(P5候选详情Wire, S0块({ messages: [造S0消息({ occurred_at: 坏时间 })] })), 'candidate',
+      )).toThrow(契约漂移);
+      expect(() => 解P5详情(
+        带S0记录(P5候选详情Wire, S0块({ summaries: [造S0小结({ occurred_at: 坏时间 })] })), 'candidate',
+      )).toThrow(契约漂移);
+    }
+    const 闰日 = '2024-02-29T10:00:00Z';
+    expect(解P5详情(
+      带S0记录(P5候选详情Wire, S0块({ messages: [造S0消息({ occurred_at: 闰日 })] })), 'candidate',
+    ).stages[0].screeningRecords?.messages[0]?.occurredAt).toBe(闰日);
+    const 带毫秒 = '2026-08-23T10:01:00.123Z';
+    expect(解P5详情(
+      带S0记录(P5候选详情Wire, S0块({ summaries: [造S0小结({ occurred_at: 带毫秒 })] })), 'candidate',
+    ).stages[0].screeningRecords?.summaries[0]?.occurredAt).toBe(带毫秒);
+  });
+
   it('招聘端展开详情带非空 summaries 即漂移（候选端小结绝不下发招聘端）', () => {
     expect(() => 解P5详情(带S0记录(P5招聘详情Wire, S0候选完整记录Wire), 'recruiter')).toThrow(契约漂移);
     expect(解P5详情(带S0记录(P5招聘详情Wire, S0招聘完整记录Wire), 'recruiter')

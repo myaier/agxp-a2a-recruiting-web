@@ -122,11 +122,28 @@ function 要求可空RFC3339(值: unknown): string | null {
 }
 
 /** S0 记录时间戳比通用时间更严：只收 Z 结尾的 RFC3339 UTC（小写 z／时区偏移／缺 Z 都是漂移）。 */
-const RFC3339UTCZ模式 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+const RFC3339UTCZ模式 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?Z$/;
 
+/** 平年每月天数（下标 0 = 1 月）；闰年规则：4 年一闰、百年不闰、四百年再闰。 */
+const 平年月天数表 = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function 当月天数(年份: number, 月份: number): number {
+  if (月份 !== 2) return 平年月天数表[月份 - 1] ?? 0;
+  const 闰年 = (年份 % 4 === 0 && 年份 % 100 !== 0) || 年份 % 400 === 0;
+  return 闰年 ? 29 : 28;
+}
+
+/**
+ * S0 时间在形状／可解析性之上还校验字段域：RFC3339 不允许 24 时，也不允许不存在的日历日
+ * （Date.parse 会把 24:00 与 2/30、非闰年 2/29 滚动到下一天，必须在此拒绝）；原样返回字符串。
+ */
 function 要求S0时间(值: unknown): string {
   const 字符串 = 要求字符串(值);
-  if (!RFC3339UTCZ模式.test(字符串) || Number.isNaN(Date.parse(字符串))) throw 契约错误();
+  const 匹配 = RFC3339UTCZ模式.exec(字符串);
+  if (匹配 === null || Number.isNaN(Date.parse(字符串))) throw 契约错误();
+  const [年份, 月份, 日期, 小时, 分钟, 秒] = 匹配.slice(1).map(Number);
+  if (小时 > 23 || 分钟 > 59 || 秒 > 59) throw 契约错误();
+  if (月份 < 1 || 月份 > 12 || 日期 < 1 || 日期 > 当月天数(年份, 月份)) throw 契约错误();
   return 字符串;
 }
 

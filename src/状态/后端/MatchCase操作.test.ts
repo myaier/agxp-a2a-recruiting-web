@@ -980,6 +980,49 @@ describe('S0–S3 命令与幂等意图', () => {
     expect(env.数据源.清空目录缓存).toHaveBeenCalled();
   });
 
+  it('对账 GET 404：旧详情（含 S0 records）整包清除，仍按原不确定错误收口且同键保留', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(UUID键('recon-404'));
+    const 有记录详情 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(有记录详情);
+    await env.操作.读取详情('candidate', 'mc_1');
+    vi.mocked(env.数据源.回答P5事实)
+      .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
+    vi.mocked(env.数据源.读取P5详情)
+      .mockRejectedValueOnce(new BFF错误(404, 'case_not_found', 'Case 不可见'));
+    await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天'))
+      .rejects.toMatchObject({ status: 503 });
+    const 快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
+    expect(快照).toMatchObject({ 阶段: '失败', detail: null, 刷新中: false });
+    expect(快照?.error).not.toBeNull();
+    // 结果仍不确定：键保留，重试沿用同一把键
+    expect(env.deps.P5幂等意图!.current.get('p5:意图:candidate:mc_1:respond_fact:prompt_1'))
+      .toBe(UUID键('recon-404'));
+    randomUUID.mockRestore();
+  });
+
+  it('对账 404 迟到（读代际已被更新的成功重读换代）：不清掉更新的成功详情，仍按原错误收口', async () => {
+    const 有记录详情 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(有记录详情);
+    await env.操作.读取详情('candidate', 'mc_1');
+    // 甲：POST 结果不确定 → 对账 GET 挂起
+    vi.mocked(env.数据源.回答P5事实)
+      .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const 对账门 = deferred<P5详情>();
+    vi.mocked(env.数据源.读取P5详情).mockReturnValueOnce(对账门.promise);
+    const 甲 = env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
+    await vi.waitFor(() => expect(vi.mocked(env.数据源.读取P5详情)).toHaveBeenCalledTimes(2));
+    // 乙：另一命令成功，其权威重读换代并落库更新的成功详情
+    vi.mocked(env.数据源.回答P5事实).mockResolvedValueOnce(undefined);
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(已解事实详情);
+    await env.操作.回答事实('candidate', 'mc_1', 'prompt_2', '三天');
+    const 更新快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
+    expect(更新快照).toMatchObject({ 阶段: '成功', detail: 已解事实详情, error: null });
+    // 甲的对账 404 迟到：绝不清掉乙的成功详情，但不确定性仍要可见（同键可重放）
+    对账门.reject(new BFF错误(404, 'case_not_found', 'Case 不可见'));
+    await expect(甲).rejects.toMatchObject({ status: 503 });
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']).toBe(更新快照);
+  });
+
   it('命令单飞按会话代际隔离：旧会话在飞的承诺不吞新会话的同名命令', async () => {
     const 甲门 = deferred<void>();
     vi.mocked(env.数据源.回答P5事实).mockReturnValue(甲门.promise);
