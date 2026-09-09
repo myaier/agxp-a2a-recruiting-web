@@ -591,12 +591,15 @@ function 解S0筛选记录(input: unknown, roundBudget: number): P5S0筛选记�
     }
   }
   let 前一复评轮 = 0;
+  let 见过initial = false;
   let 见过复评 = false;
   for (const 小结 of summaries) {
     if (已见ID.has(小结.id)) throw 契约错误();
     已见ID.add(小结.id);
     if (小结.phase === 'initial') {
-      if (见过复评) throw 契约错误();
+      // initial 最多一条且先于全部 reevaluation：重复 initial 或晚于复评都是漂移。
+      if (见过initial || 见过复评) throw 契约错误();
+      见过initial = true;
       continue;
     }
     见过复评 = true;

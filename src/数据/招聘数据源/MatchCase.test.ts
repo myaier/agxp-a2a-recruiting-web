@@ -732,6 +732,8 @@ describe('MatchCase数据源', () => {
       S0块({ summaries: [造S0小结({ phase: 'final' })] }),
       // 小结 ID 与消息 ID 跨两数组撞车
       S0块({ summaries: [造S0小结({ id: 's0q_x' })] }),
+      // messages 内部同 ID 异轮重复
+      S0块({ messages: [造S0消息(), 造S0消息({ round: 2 })] }),
     ]) {
       expect(() => 解P5详情(带S0记录(P5候选详情Wire, 块), 'candidate')).toThrow(契约漂移);
     }
@@ -801,6 +803,8 @@ describe('MatchCase数据源', () => {
       S0块({
         summaries: [造S0小结({ id: 'r1', phase: 'reevaluation', round: 1 }), 造S0小结()],
       }),
+      // initial 最多一条：两条不同 ID 的 initial 即使都在复评之前也漂移
+      S0块({ summaries: [造S0小结(), 造S0小结({ id: 's0s_y' })] }),
     ]) {
       expect(() => 解P5详情(带S0记录(P5候选详情Wire, 块), 'candidate')).toThrow(契约漂移);
     }
