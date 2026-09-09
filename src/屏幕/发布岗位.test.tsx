@@ -10,6 +10,7 @@ import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 发布岗位, { 取岗位提交错误文案 } from './发布岗位';
 import { 页面岗位样本 } from '../测试/BFF样本';
+import { 在招岗位列表 } from '../数据/企业端模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFFJD导入, BFFJD导入失败码, BFFJD建议 } from '../数据/BFF契约';
 
@@ -170,9 +171,10 @@ describe('发布岗位页 Backend 提交', () => {
       </MemoryRouter>,
     );
     await userEvent.click(screen.getByRole('button', { name: '职位要求' }));
-    // 四问钮 2026-08-26 随录入 UI 删除;存量手动条仍展示,三态值不经 UI 原样回环
-    expect(screen.getByText('硬性条件')).toBeTruthy();
-    expect(screen.getByText('本科及以上')).toBeTruthy();
+    // 四问钮 2026-08-26 随录入 UI 删除；第三批 2026-09-09 连「硬性条件」只读展示区块也删：
+    // 存量手动条不再上屏（无标题、无胶囊），三态值与 legacy 数组仍不经 UI 原样回环
+    expect(screen.queryByText('硬性条件')).toBeNull();
+    expect(screen.queryByText('本科及以上')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
     expect(mock更新岗位.mock.calls[0][0].硬性事实).toEqual({
@@ -2127,5 +2129,100 @@ describe('发布岗位页 Backend 无效编辑坐标与 A→B 生命周期', () 
       expect.objectContaining({ 编号: 'job_b', 名称: '岗位 B' }),
     );
     expect(mock发布岗位).not.toHaveBeenCalled();
+  });
+});
+
+// ── 第三批（2026-09-09）：「编辑岗位 › 职位要求」删「硬性条件」只读展示区块 ──
+// 产品负责人原话：「把这个硬性要求的部分删掉，下面的这个补充加分偏好实际上是加到了 AI 代理的规则里，这个保留一下」。
+// 删的只是展示：岗位.硬性条件 合同（学历档 / 经验档 / 存量手动条写回，代理匿名初筛靠它）
+// 与「补充加分偏好（可选）」（筛选要求 状态及其保存）都不动。
+describe('发布岗位页 第三批：职位要求 Tab 删「硬性条件」展示', () => {
+  /** Mock P-01：带存量手动条「Go 主栈 / 常驻上海 / 可混合办公」的社招岗，编辑它最能暴露展示区块 */
+  const P01 = 在招岗位列表.find((岗) => 岗.编号 === 'P-01');
+  if (!P01) throw new Error('Mock 在招岗位列表 缺 P-01，第三批用例以它为底');
+  /** 改前（删展示之前）Mock P-01 不改任何内容直接保存时，合同组装写回的 硬性条件：
+   *  学历档（最低学历 本科 → 本科及以上）+ 经验档（经验要求 5 年以上 → 5 年以上经验）+ 存量手动条原样。
+   *  删展示后这条必须一字不差 —— 合同没丢。 */
+  const P01改前合同 = ['本科及以上', '5 年以上经验', 'Go 主栈', '常驻上海', '可混合办公'];
+  /** 存量手动条：删展示后不得以胶囊上屏（'5 年以上' 与经验档选项同文，不拿它当胶囊信号） */
+  const P01存量手动条 = ['Go 主栈', '常驻上海', '可混合办公'];
+  const 预填偏好 = '有交易系统经验优先';
+  const 追加偏好 = '，有大促峰值经验加分';
+
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock进企业主壳.mockClear();
+    mock更新岗位.mockClear();
+    mock发布岗位.mockClear();
+    清空轻提示();
+    置Mock应用状态();
+    mock更新岗位.mockResolvedValue(undefined);
+    mock应用状态.状态.岗位列表 = [{ ...P01, 筛选要求: 预填偏好 }];
+  });
+
+  /** 以编辑态进 Mock P-01 */
+  function 渲染编辑P01() {
+    return render(
+      <MemoryRouter initialEntries={['/hr/post-job/P-01']}>
+        <Routes><Route path="/hr/post-job/:id" element={<发布岗位 />} /></Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  // 验收 1：职位要求 Tab 上无「硬性条件」标题、无对应胶囊
+  it('编辑 Mock P-01：职位要求 Tab 无「硬性条件」标题、无存量手动条胶囊', async () => {
+    const 用户 = userEvent.setup();
+    渲染编辑P01();
+    await 用户.click(screen.getByRole('button', { name: '职位要求' }));
+    expect(screen.queryByText('硬性条件')).toBeNull();
+    for (const 手动条 of P01存量手动条) {
+      expect(screen.queryByText(手动条)).toBeNull();
+    }
+  });
+
+  // 验收 2：「补充加分偏好（可选）」输入区仍在，可编辑可保存
+  it('编辑 Mock P-01：「补充加分偏好（可选）」仍在、可编辑、随保存写入 筛选要求', async () => {
+    const 用户 = userEvent.setup();
+    渲染编辑P01();
+    await 用户.click(screen.getByRole('button', { name: '职位要求' }));
+    expect(screen.getByText('补充加分偏好（可选）')).toBeTruthy();
+    // 输入框以岗位.筛选要求 预填，证明它就是「补充加分偏好」的承载
+    const 偏好框 = screen.getByDisplayValue(预填偏好);
+    expect(偏好框.tagName).toBe('TEXTAREA');
+    await 用户.type(偏好框, 追加偏好);
+    expect((偏好框 as HTMLTextAreaElement).value).toBe(`${预填偏好}${追加偏好}`);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({
+      编号: 'P-01',
+      筛选要求: `${预填偏好}${追加偏好}`,
+    });
+  });
+
+  // 验收 3 + 5：不改任何内容直接保存，合同组装（学历档 / 经验档 / 存量手动条写回）原样保留
+  it('编辑 Mock P-01：不改任何内容直接保存，硬性条件 合同与改前一致', async () => {
+    const 用户 = userEvent.setup();
+    渲染编辑P01();
+    await 用户.click(screen.getByRole('button', { name: '职位要求' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0].硬性条件).toEqual(P01改前合同);
+  });
+
+  // 验收 1 + 3 同一会话：展示删了、数据没删 —— 屏上无胶囊，保存仍把存量手动条原样写回
+  it('编辑 Mock P-01：展示删除后同一会话保存，存量手动条仍随合同提交', async () => {
+    const 用户 = userEvent.setup();
+    渲染编辑P01();
+    await 用户.click(screen.getByRole('button', { name: '职位要求' }));
+    for (const 手动条 of P01存量手动条) {
+      expect(screen.queryByText(手动条)).toBeNull();
+    }
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    const 提交的合同: string[] = mock更新岗位.mock.calls[0][0].硬性条件;
+    for (const 手动条 of P01存量手动条) {
+      expect(提交的合同).toContain(手动条);
+    }
+    expect(提交的合同).toEqual(P01改前合同);
   });
 });

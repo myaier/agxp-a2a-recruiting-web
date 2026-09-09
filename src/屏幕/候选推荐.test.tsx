@@ -201,6 +201,8 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
       操作: { 设置发现推荐范围: mock设置发现推荐范围, 加载招聘候选: mock加载招聘候选 },
     });
     const 页 = render(<候选推荐 />);
+    // 第三批 2026-09-09：发布岗位删「硬性条件」展示只删展示，推荐页横幅仍按合同文案上屏
+    expect(screen.getByText(/按这个岗位的硬性条件筛出/)).toBeTruthy();
     expect(mock设置发现推荐范围).toHaveBeenCalledWith('recruiter', `recruiter:list:${岗位编号}`);
     expect(mock加载招聘候选).toHaveBeenCalledWith(岗位编号);
     expect(mock设置发现推荐范围.mock.invocationCallOrder[0]).toBeLessThan(

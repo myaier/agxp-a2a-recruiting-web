@@ -296,14 +296,8 @@
   color: var(--次要浅);
 }
 
+/* 2026-09-09 产品负责人：.已选片行（胶囊行容器）随「硬性条件」展示区块一并删除 */
 /* 已写进合同的条件：选中态片 + 右侧 ✕，点整片即删 */
-.已选片行 {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 10px;
-}
 .已选片 {
   display: flex;
   flex-direction: row;
@@ -434,16 +428,7 @@
   color: var(--最弱);
 }
 
-/* 存量手动条只读展示：已选片同款淡绿胶囊，但没有删除叉、不是按钮 */
-.存量片 {
-  padding: 6px 12px;
-  border-radius: var(--圆角-胶囊);
-  background: var(--淡绿底2);
-  border: 1px solid var(--淡绿描边2);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--深绿文字);
-}
+/* 2026-09-09 产品负责人：.存量片（存量手动条只读胶囊）随「硬性条件」展示区块一并删除 */
 
 /* ── BOSS 对照补齐（2026-08-19）：红线提示 / 不可改注 / 锁标 / 档位片 / 同意行 ── */
 
