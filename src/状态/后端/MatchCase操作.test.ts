@@ -17,7 +17,7 @@ import type {
 import { 解P5详情 } from '../../数据/招聘数据源/MatchCase';
 import type { BFF二进制响应 } from '../../数据/HTTP客户端';
 import { BFF错误 } from '../../数据/HTTP客户端';
-import { BFF主体样本, P5候选详情Wire, P5招聘详情Wire } from '../../测试/BFF样本';
+import { BFF主体样本, P5候选详情Wire, P5招聘详情Wire, 招聘候选摘要样本 } from '../../测试/BFF样本';
 import type { BFFS0筛选记录 } from '../../数据/BFF契约';
 import { S0候选完整记录Wire, S0招聘完整记录Wire, S0仅问题记录Wire } from '../../测试/S0筛选记录样本';
 import { 初始状态 } from '../初始状态';
@@ -779,6 +779,26 @@ describe('scope 隔离与迟到完成', () => {
     expect(工作区[`p5:open:recruiter:${职位ID}`]?.items.map((行) => 行.state.caseId)).toEqual(['mc_r']);
     // candidate_alias 只是展示文本：快照键与坐标全部以 case_id / role+过滤 为准
     expect(工作区[`p5:open:recruiter:${职位ID}`]?.items[0]).toHaveProperty('candidateAlias', 'candidate-0123456789ab');
+  });
+
+  it('既有刷新入口整组替换 items：新页摘要变 null 后旧摘要不得残留（2026-09-09 接线）', async () => {
+    const 招聘R行 = 招聘行('mc_r') as Extract<P5列表项, { role: 'recruiter' }>;
+    设主体角色(招聘主体);
+    env.操作.设置P5范围('recruiter', P5范围键.open('recruiter', 职位ID));
+    vi.mocked(env.数据源.读取P5Open列表).mockResolvedValueOnce({
+      role: 'recruiter', items: [{ ...招聘R行, candidateSummary: 招聘候选摘要样本 }], nextCursor: null,
+    });
+    await env.操作.加载工作区('recruiter', 职位ID);
+    expect((env.最新状态().P5工作区[P5范围键.open('recruiter', 职位ID)]?.items?.[0] as
+      { candidateSummary: unknown } | undefined)?.candidateSummary).toEqual(招聘候选摘要样本);
+
+    // 权威刷新把摘要改为 null：旧摘要不得残留；迟到旧响应也不得混入
+    vi.mocked(env.数据源.读取P5Open列表).mockResolvedValueOnce({
+      role: 'recruiter', items: [{ ...招聘R行, candidateSummary: null }], nextCursor: null,
+    });
+    await env.操作.刷新工作区('recruiter', 职位ID);
+    expect((env.最新状态().P5工作区[P5范围键.open('recruiter', 职位ID)]?.items?.[0] as
+      { candidateSummary: unknown } | undefined)?.candidateSummary).toBeNull();
   });
 
   it('scope 变化后的迟到完成只释放锁不写状态', async () => {

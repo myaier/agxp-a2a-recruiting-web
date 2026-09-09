@@ -9,6 +9,8 @@
 import { 取当前补充问题 } from './MatchCase基础';
 import type { P5问题阶段输入 } from './MatchCase基础';
 import type { P5生命周期, P5阶段, P5状态 } from './BFF契约';
+import { 映射招聘候选摘要 } from './招聘候选摘要映射';
+import type { 招聘候选摘要视图 } from './招聘候选摘要映射';
 import type {
   P5列表项,
   P5详情,
@@ -351,6 +353,8 @@ export interface P5列表正常视图 {
   更新于: string;
   /** 同 P5详情正常视图.注意说明：attention_required 行的安全说明，其余恒 null。 */
   注意说明: string | null;
+  /** 仅已展开 recruiter open 行出现（摘要视图或显式 null）；candidate 行与历史行必缺席。 */
+  候选摘要?: 招聘候选摘要视图 | null;
 }
 
 export interface P5列表契约错误视图 {
@@ -579,12 +583,15 @@ export function 映射P5列表项(item: P5列表项): P5列表视图 {
   if (职位 === null) return 契约错误列表();
   let intentionId: string | null = null;
   let candidateAlias: string | null = null;
+  let 候选摘要: 招聘候选摘要视图 | null | undefined;
   if (item.role === 'candidate') {
     if (typeof item.intentionId !== 'string' || item.intentionId === '') return 契约错误列表();
     intentionId = item.intentionId;
   } else if (item.role === 'recruiter') {
     if (typeof item.candidateAlias !== 'string') return 契约错误列表();
     candidateAlias = item.candidateAlias;
+    // 仅已展开 recruiter open 行有键：视图区分「未请求」与「请求后显式 null」
+    候选摘要 = item.candidateSummary === undefined ? undefined : 映射招聘候选摘要(item.candidateSummary);
   } else {
     return 契约错误列表();
   }
@@ -601,6 +608,7 @@ export function 映射P5列表项(item: P5列表项): P5列表视图 {
     终局: 生命周期终局表[行.lifecycle],
     更新于: state.updatedAt,
     注意说明: 映射Agent注意(state),
+    ...(候选摘要 === undefined ? {} : { 候选摘要 }),
   };
 }
 

@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { 映射P5列表项, 映射P5详情, P5展示矩阵行数, P5展示状态矩阵 } from './MatchCase展示映射';
 import type { P5详情视图, P5列表视图, P5阶段, P5状态 } from './MatchCase展示映射';
+import { 招聘候选摘要样本 } from '../测试/BFF样本';
 import type {
   P5S0筛选记录,
   P5动作,
@@ -935,6 +936,26 @@ describe('映射P5列表项', () => {
   ])('%s → 契约错误视图', (_名, 样本) => {
     const 视图 = 映射P5列表项(样本());
     expect(断言契约错误(视图)).toBe(期望错误提示);
+  });
+
+  it('已展开 recruiter 行把 candidateSummary 映为候选摘要视图；其余事实原样保留', () => {
+    const 行 = 造列表项({ role: 'recruiter' }) as Extract<P5列表项, { role: 'recruiter' }>;
+    const 视图 = 断言正常(映射P5列表项({ ...行, candidateSummary: 招聘候选摘要样本 }));
+    expect(视图.候选摘要).toEqual({
+      性别: '女', 年限: '5 年', 学历: '本科', 求职状态: '在职看机会',
+      工作: '示例公司 · 软件工程师', 教育: '示例大学 · 计算机科学',
+      个人亮点: ['带领5人团队交付'],
+    });
+    expect(视图.待办).toBe(false);
+    expect(视图.阶段标题).toBe('匿名初筛');
+    expect(视图.状态文案).toBe('进行中');
+  });
+
+  it('摘要 null 与键缺席在视图上区分；默认 history 行不凭空加字段', () => {
+    const 行 = 造列表项({ role: 'recruiter' }) as Extract<P5列表项, { role: 'recruiter' }>;
+    expect('候选摘要' in (映射P5列表项(行) as unknown as Record<string, unknown>)).toBe(false);
+    expect('候选摘要' in (映射P5列表项({ ...行, candidateSummary: null }) as unknown as Record<string, unknown>)).toBe(true);
+    expect((映射P5列表项({ ...行, candidateSummary: null }) as unknown as { 候选摘要: unknown }).候选摘要).toBeNull();
   });
 });
 

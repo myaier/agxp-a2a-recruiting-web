@@ -10,6 +10,7 @@
 import { BFF错误 } from '../HTTP客户端';
 import type { BFF二进制响应, BFF客户端 } from '../HTTP客户端';
 import type {
+  BFF招聘候选摘要,
   P5动作,
   P5历史生命周期,
   P5生命周期,
@@ -18,6 +19,7 @@ import type {
   P5角色,
   P5步骤,
 } from '../BFF契约';
+import { 解招聘候选摘要 } from './候选摘要';
 
 export type { P5角色, P5历史生命周期, P5步骤, P5动作 } from '../BFF契约';
 
@@ -378,7 +380,12 @@ interface P5列表项主体 {
 
 export type P5列表项 =
   | (P5列表项主体 & { role: 'candidate'; intentionId: string })
-  | (P5列表项主体 & { role: 'recruiter'; candidateAlias: string });
+  | (P5列表项主体 & {
+      role: 'recruiter';
+      candidateAlias: string;
+      /** 仅 recruiter open 展开读取（include=candidate_summary）时出现；历史行必缺席。 */
+      candidateSummary?: BFF招聘候选摘要 | null;
+    });
 
 export interface P5列表页 {
   role: P5角色;
@@ -800,10 +807,14 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
 
 // ── 列表页 decoder：工作区与历史刻意共用 role item/page 形状，架子规则在 decode 内闭合 ──
 
+/** 仅 recruiter open 展开读取才要求 candidate_summary；candidate open / 历史 / 详情按原白名单。 */
 function 解P5列表项(input: unknown, role: P5角色, 架子: 'open' | P5历史生命周期): P5列表项 {
+  const 展开 = role === 'recruiter' && 架子 === 'open';
   const raw = role === 'candidate'
     ? 要求闭合对象(input, ['state', 'needs_action', 'intention_id', 'job'])
-    : 要求闭合对象(input, ['state', 'needs_action', 'job', 'candidate_alias']);
+    : 要求闭合对象(input, 展开
+      ? ['state', 'needs_action', 'job', 'candidate_alias', 'candidate_summary']
+      : ['state', 'needs_action', 'job', 'candidate_alias']);
   const state = 解P5状态视图(raw.state);
   const needsAction = 要求布尔(raw.needs_action);
   // 架子规则：open 列表只装 open 行、历史只装对应终态行，终态行永无 viewer 待办；
@@ -826,6 +837,7 @@ function 解P5列表项(input: unknown, role: P5角色, 架子: 'open' | P5历�
     needsAction,
     candidateAlias: 要求模式串(raw.candidate_alias, 候选别名模式),
     job,
+    ...(展开 ? { candidateSummary: 解招聘候选摘要(raw.candidate_summary, 契约错误) } : {}),
   };
 }
 
@@ -894,6 +906,8 @@ function 工作区查询(role: P5角色, filterRef: string | null, cursor: strin
   const 片段 = [
     ...(filterRef === null ? [] : [`${角色过滤键[role]}=${encodeURIComponent(filterRef)}`]),
     `limit=${P5页上限}`,
+    // 2026-09-09 摘要接线：仅 recruiter open 展开候选摘要；candidate open 与历史不携带。
+    ...(role === 'recruiter' ? ['include=candidate_summary'] : []),
     ...(cursor === null ? [] : [`cursor=${encodeURIComponent(cursor)}`]),
   ];
   return P5路径(role, `/match-cases?${片段.join('&')}`);

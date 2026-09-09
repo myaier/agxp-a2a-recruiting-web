@@ -2,7 +2,7 @@
 // 分支）的行为测试。覆盖：viewer 专属 needs_action 文案（绝不读 state.needs_user）、
 // candidate/recruiter 当前/全部 scope 的过滤坐标、服务端顺序保留（不客户端重排）、
 // 状态档只滤已载条目且读尽前不声称全量、首载失败/重试、刷新失败旧条目保留 + 重试、
-// 不透明游标加载更多与读尽即藏、case_id 导航与 React 键、别名原样 + 与别名无关的
+// 不透明游标加载更多与读尽即藏、case_id 导航与 React 键、招聘卡摘要卡面 + 无代号无头像
 // 通用头像、未知契约行 fail closed、可见 5 秒轮询接线、Mock 分支零 P5 请求。
 // 测试宿主：mock 应用状态 / 导航钩子（同 候选推荐.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null
@@ -17,10 +17,11 @@ import 企业在谈候选 from '../企业在谈候选';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import type { P5列表快照 } from '../../状态/后端/类型';
 import type { P5列表项 } from '../../数据/招聘数据源/MatchCase';
+import type { BFF招聘候选摘要 } from '../../数据/BFF契约';
 import { P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import { 路径 } from '../../路由/路径表';
 import { 在谈列表, 在招岗位列表, 在谈候选列表 } from '../../测试/P5Mock边界种子';
-import { BFF主体样本 } from '../../测试/BFF样本';
+import { BFF主体样本, 招聘候选摘要样本 } from '../../测试/BFF样本';
 
 // jsdom 不实现 scrollIntoView / scrollTo
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -82,7 +83,7 @@ function 候选行(选项: { caseId: string; 待办?: boolean; 更新于?: strin
   };
 }
 
-function 招聘行(选项: { caseId: string; 待办?: boolean; 别名?: string }): P5列表项 {
+function 招聘行(选项: { caseId: string; 待办?: boolean; 别名?: string; 摘要?: BFF招聘候选摘要 | null }): P5列表项 {
   return {
     role: 'recruiter',
     state: {
@@ -91,6 +92,7 @@ function 招聘行(选项: { caseId: string; 待办?: boolean; 别名?: string }
     needsAction: 选项.待办 ?? false,
     candidateAlias: 选项.别名 ?? 别名,
     job: 候选行({ caseId: 选项.caseId }).job,
+    ...(选项.摘要 === undefined ? {} : { candidateSummary: 选项.摘要 }),
   };
 }
 
@@ -403,11 +405,12 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
       快照: 快照({ items: [招聘行({ caseId: 'mc_9' })] }),
     });
     render(列表元素('recruiter', 职位ID));
-    await user.click(screen.getByText(别名));
+    // 2026-09-09 摘要接线：别名不再上卡，点摘要头行（无摘要 → 中性文案）仍按 case_id 导航
+    await user.click(screen.getByText('候选信息暂未披露'));
     expect(mock跳转).toHaveBeenCalledWith(路径.候选详情('mc_9'));
   });
 
-  it('招聘端别名原样展示，头像是与别名无关的通用匿名头像；同别名两行靠 case_id 区分', () => {
+  it('招聘卡无候选代号/通用匿名头像/招聘职位与城市薪资/岗位技能；摘要缺失只给中性头行；同别名两行靠 case_id 区分', () => {
     const 键警告 = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
       置P5状态({
@@ -415,18 +418,84 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
         快照: 快照({ items: [招聘行({ caseId: 'mc_1', 别名 }), 招聘行({ caseId: 'mc_2', 别名 })] }),
       });
       const 宿主 = render(列表元素('recruiter', 职位ID));
-      // 别名逐字原样（不截断、不派生）
-      expect(screen.getAllByText(别名).length).toBe(2);
-      // 通用头像：svg 与别名零关联（无派生首字/散列），两行同一副
-      const 头像们 = 宿主.container.querySelectorAll('svg[aria-hidden="true"]');
-      expect(头像们.length).toBe(2);
-      头像们.forEach((头像) => expect(头像.textContent).toBe(''));
-      expect(头像们[0]!.outerHTML).toBe(头像们[1]!.outerHTML);
+      // 摘要接线后卡面不再出现别名与通用匿名头像
+      expect(screen.queryByText(别名)).toBeNull();
+      expect(宿主.container.querySelector('[class*="匿名头像"]')).toBeNull();
+      // 冻结职位事实段退场：职位名/城市·薪资带/技能标签都不上招聘卡
+      for (const 文案 of ['AI 产品实习生', '上海 · 300-500 元/天', 'Python']) {
+        expect(screen.queryByText(文案)).toBeNull();
+      }
+      // 无摘要：头行只有中性文案，无分隔符
+      const 头行们 = Array.from(宿主.container.querySelectorAll('[class*="摘要基本行"]'));
+      expect(头行们).toHaveLength(2);
+      for (const 头行 of 头行们) {
+        expect(头行.textContent).toBe('候选信息暂未披露');
+        expect(头行.textContent).not.toContain('｜');
+      }
       // React 键不是别名：同别名两行并存且无重复键告警
       expect(键警告.mock.calls.some((参) => String(参[0]).includes('key'))).toBe(false);
     } finally {
       键警告.mockRestore();
     }
+  });
+
+  it('招聘卡摘要按 Spec §4 落位：女图标 + 5 年｜本科｜在职看机会；工作/教育/亮点行；0 年如实显示', () => {
+    置P5状态({
+      role: 'recruiter', filterRef: 职位ID,
+      快照: 快照({ items: [招聘行({ caseId: 'mc_1', 摘要: 招聘候选摘要样本 })] }),
+    });
+    const 宿主 = render(列表元素('recruiter', 职位ID));
+    const 女图标 = screen.getAllByRole('img', { name: '女' });
+    expect(女图标).toHaveLength(1);
+    const 头行 = 女图标[0]!.closest('[class*="摘要基本行"]') as HTMLElement;
+    for (const 段 of ['5 年', '本科', '在职看机会']) expect(头行.textContent).toContain(段);
+    expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
+    expect(screen.getByText('示例大学 · 计算机科学')).toBeTruthy();
+    expect(screen.getByText('带领5人团队交付')).toBeTruthy();
+    expect(宿主.container.querySelector('[class*="适配环"], [class*="匹配"]')).toBeNull(); // 无匹配环
+    // 阶段与待办能力保留
+    expect(screen.getByText('匿名初筛')).toBeTruthy();
+    cleanup();
+
+    // 0 年如实显示「不满 1 年」；性别 null 不渲染图标
+    置P5状态({
+      role: 'recruiter', filterRef: 职位ID,
+      快照: 快照({ items: [招聘行({
+        caseId: 'mc_2',
+        摘要: { ...招聘候选摘要样本, gender: null, experience_years: 0, job_status: null },
+      })] }),
+    });
+    const 二页 = render(列表元素('recruiter', 职位ID));
+    expect(screen.queryByRole('img', { name: '女' })).toBeNull();
+    const 头行们 = 二页.container.querySelectorAll('[class*="摘要基本行"]');
+    expect(头行们[0]?.textContent).toContain('不满 1 年');
+    expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
+  });
+
+  it('招聘卡摘要变 null/空亮点：旧信息消失，Case 阶段与可打开保留', () => {
+    置P5状态({
+      role: 'recruiter', filterRef: 职位ID,
+      快照: 快照({ items: [招聘行({ caseId: 'mc_1', 摘要: 招聘候选摘要样本 })] }),
+    });
+    const 页 = render(列表元素('recruiter', 职位ID));
+    expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
+    置P5状态({
+      role: 'recruiter', filterRef: 职位ID,
+      快照: 快照({ items: [招聘行({ caseId: 'mc_1', 摘要: { ...招聘候选摘要样本, personal_highlights: [] } })] }),
+    });
+    页.rerender(列表元素('recruiter', 职位ID));
+    // 空亮点收起整行，不摆空容器；摘要头行与阶段段保留
+    expect(screen.queryByText('带领5人团队交付')).toBeNull();
+    expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
+    置P5状态({
+      role: 'recruiter', filterRef: 职位ID,
+      快照: 快照({ items: [招聘行({ caseId: 'mc_1', 摘要: null })] }),
+    });
+    页.rerender(列表元素('recruiter', 职位ID));
+    expect(screen.queryByText('示例公司 · 软件工程师')).toBeNull();
+    expect(screen.queryByText('带领5人团队交付')).toBeNull();
+    expect(screen.getByText('候选信息暂未披露')).toBeTruthy();
+    expect(screen.getByText('匿名初筛')).toBeTruthy(); // 阶段与 Case 仍在
   });
 
   it('未知契约行 fail closed：契约错误卡 + 重试，不渲染该行的部分数据', async () => {
@@ -739,7 +808,7 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     置招聘屏状态({ filterRef: 职位ID });
     const { rerender } = render(<企业在谈候选 />);
     expect(mock加载工作区).toHaveBeenCalledWith('recruiter', 职位ID);
-    expect(screen.getByText(别名)).toBeTruthy();
+    expect(screen.getByText('候选信息暂未披露')).toBeTruthy();
     置招聘屏状态({ 范围: '全部', filterRef: null });
     rerender(<企业在谈候选 />);
     expect(mock加载工作区).toHaveBeenLastCalledWith('recruiter', null);

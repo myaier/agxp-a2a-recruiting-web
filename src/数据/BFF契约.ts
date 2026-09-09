@@ -780,6 +780,8 @@ export interface BFF招聘工作区项 {
   needs_action: boolean;
   job: BFFMatchCase工作区职位;
   candidate_alias: string;
+  /** include=candidate_summary 展开时出现（闭合对象或显式 null）；历史行没有该键。 */
+  candidate_summary?: BFF招聘候选摘要 | null;
 }
 export interface BFF候选工作区页 { items: BFF候选工作区项[]; next_cursor: string | null }
 export interface BFF招聘工作区页 { items: BFF招聘工作区项[]; next_cursor: string | null }
