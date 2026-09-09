@@ -566,6 +566,17 @@ export interface BFF招聘候选教育 {
   end_month: string | null;
 }
 
+/** include=candidate_summary 展开时的闭合摘要对象：七键必返；默认响应没有该键。 */
+export interface BFF招聘候选摘要 {
+  gender: 'male' | 'female' | null;
+  experience_years: number | null;
+  job_status: 'student' | 'employed' | 'unemployed' | null;
+  degree: string | null;
+  latest_experience: { company: string | null; title: string | null } | null;
+  latest_education: { institution: string | null; major: string | null } | null;
+  personal_highlights: string[];
+}
+
 export interface BFF招聘候选推荐 {
   recommendation_id: string;
   batch_id: string;

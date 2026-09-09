@@ -26,6 +26,7 @@ import type {
   BFF发现偏好,
   BFF候选岗位推荐,
   BFF招聘候选推荐,
+  BFF招聘候选摘要,
   BFFMatchCase视图,
   BFFMatchCase工作区职位,
   BFFMatchCase阶段区,
@@ -605,4 +606,14 @@ export const P5招聘工作区项Wire: BFF招聘工作区项 = {
   needs_action: false,
   job: P5工作区职位Wire,
   candidate_alias: 'candidate-0123456789ab',
+};
+
+export const 招聘候选摘要样本: BFF招聘候选摘要 = {
+  gender: 'female',
+  experience_years: 5,
+  job_status: 'employed',
+  degree: '本科',
+  latest_experience: { company: '示例公司', title: '软件工程师' },
+  latest_education: { institution: '示例大学', major: '计算机科学' },
+  personal_highlights: ['带领5人团队交付'],
 };
