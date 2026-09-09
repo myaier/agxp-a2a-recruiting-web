@@ -1,0 +1,83 @@
+/* 在谈详情共用外壳：顶栏右侧（分数/薪资）、岗位上下文行、招聘端画像行与 Tab 行。
+   尺寸取自 Mock 定稿值（组件/通用.module.css 的返回栏 + 在谈详情.module.css 的 Tab 行），
+   两模式（Mock / Backend）同用这一份，页面框架与滚动容器仍走 通用 的 次级页外壳 / 滚动区。 */
+
+/* ── 顶栏右侧：适配（求职端）/ 匹配（招聘端）分，值由 顶栏信息.右侧 给定 ── */
+.分数组 {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.分数标 {
+  font-size: 10.5px;
+  color: var(--灰白);
+}
+
+.分数值 {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--深绿);
+}
+
+/* 真实分数低于 80 转协调橙（Mock 既有规则）；缺失只给「—」，不画警示 */
+.分数警示 {
+  color: var(--协调);
+}
+
+/* 顶栏右侧薪资（Mock 意向确认态的原位置，字号/字重由全局 薪资体 承担） */
+.薪资 {
+  flex: none;
+  color: var(--深绿);
+}
+
+/* 岗位上下文行：招聘端顶栏让位给画像后，冻结职位 · 城市 · 薪资带仍要单独可读 */
+.岗位上下文 {
+  flex: none;
+  padding: 0 18px 6px;
+  font-size: 11px;
+  color: var(--次要浅);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 招聘端画像行：复用 候选头行，性别未知时在本文件留一个同尺寸的中性标记 ── */
+.画像行 {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.未知性别符 {
+  display: inline-flex;
+  flex: none;
+  margin-right: 5px;
+  color: var(--最弱);
+}
+
+/* ── 两个 Tab ── */
+.Tab行 {
+  flex: none;
+  display: flex;
+  gap: 20px;
+  align-items: baseline;
+  /* 标注 2026-08-20 13:12：文字贴框边太近，上挪并给足下留白 */
+  padding: 8px 20px 10px;
+}
+
+.Tab {
+  font-size: 15px;
+}
+
+.Tab选中 {
+  font-weight: 700;
+  color: var(--墨);
+  letter-spacing: -0.01em;
+}
+
+.Tab未选 {
+  font-weight: 600;
+  color: var(--次要浅);
+}

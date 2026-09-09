@@ -165,6 +165,9 @@ describe('在谈详情 · Mock 公司卡仍按原 slug 导航', () => {
   it('公司卡可点，跳 公司路由键 生成的原 slug', async () => {
     渲染职位Tab();
     断言匹配卡在条件段与公司之前();
+    // ?tab=job 落在共用外壳的 资料 槽（职位详情 Tab），进度/资料 两个 Tab 由外壳给出
+    expect(screen.getByRole('button', { name: '进度' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '资料' })).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: new RegExp(本单.公司) }));
     expect(mock公司路由键).toHaveBeenCalledWith(本单.公司);
     expect(mock跳转).toHaveBeenCalledWith(`/company/slug-${本单.公司}`);

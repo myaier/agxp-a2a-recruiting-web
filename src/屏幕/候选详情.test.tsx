@@ -78,14 +78,16 @@ describe('候选详情 · Backend 分支渲染共享 P5 详情（recruiter）', 
     };
   });
 
-  it('按 URL case_id 强制读 recruiter 详情；Mock 候选（真名/代号/在线简历 Tab）不进视图', () => {
+  it('按 URL case_id 强制读 recruiter 详情；Mock 候选（真名/代号/资料 Tab）不进视图', () => {
     渲染候选详情页('mc_hr');
     expect(mock设置P5范围).toHaveBeenCalledWith('recruiter', P5范围键.detail('recruiter', 'mc_hr'));
     expect(mock读取详情).toHaveBeenCalledWith('recruiter', 'mc_hr', true);
     // Mock 候选对象一个字段都不渲染（列表记忆零读取）
     expect(screen.queryByText('沈亦舟')).toBeNull();
     expect(screen.queryByText('陈屿')).toBeNull();
-    expect(screen.queryByRole('button', { name: '在线简历' })).toBeNull();
+    // 读入中不进共用外壳：两个共享 Tab 都不出现（正常 Backend 详情才有两 Tab）
+    expect(screen.queryByRole('button', { name: '进度' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '资料' })).toBeNull();
     expect(screen.getByText('正在读入这一单…')).toBeTruthy();
   });
 });
@@ -112,9 +114,9 @@ describe('候选详情 · Mock 分支原行为且零 P5 请求', () => {
     };
   });
 
-  it('A-01 原样渲染（在线简历 Tab 在场；顶栏已去名），零 P5 请求', async () => {
+  it('A-01 原样渲染（资料 Tab 在场；顶栏已去名），零 P5 请求', async () => {
     渲染候选详情页('A-01');
-    expect(await screen.findByRole('button', { name: '在线简历' })).toBeTruthy(); // Mock 的 Tab 仍在
+    expect(await screen.findByRole('button', { name: '资料' })).toBeTruthy(); // Mock 的资料 Tab 仍在（共用外壳的两个 Tab：进度/资料）
     // 第二批（2026-09-09）：招聘端全匿名 —— 顶栏不再显示 S1 已披露的真名（沈亦舟）与代号（陈屿）
     expect(screen.queryByText('沈亦舟')).toBeNull();
     expect(screen.queryByText('陈屿')).toBeNull();
@@ -157,7 +159,7 @@ describe('候选详情 · 顶栏去名（第二批 验收7/9）', () => {
 
   it('验收7 · A-01（S1 已披露真名）：顶栏无真名 / 代号；有 role=img 性别图标；含年限、学历、状态；副标题不含年限段', async () => {
     渲染候选详情页('A-01');
-    await screen.findByRole('button', { name: '在线简历' });
+    await screen.findByRole('button', { name: '资料' });
     const 栏 = 取返回栏();
     expect(within(栏).getByRole('img', { name: '男' })).toBeTruthy();
     const 栏文 = 栏.textContent ?? '';
@@ -174,12 +176,12 @@ describe('候选详情 · 顶栏去名（第二批 验收7/9）', () => {
     expect(screen.queryByText('9 年 · Go / 高并发交易 · 字节跳动')).toBeNull();
     // 右侧 匹配 N 与 Tab 不动
     expect(栏文).toContain('94');
-    expect(screen.getByRole('button', { name: '代谈进度' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '进度' })).toBeTruthy();
   });
 
   it('验收7 · A-07（S0 匿名初筛，真名 null）：顶栏同构，代号不上顶栏', async () => {
     渲染候选详情页('A-07');
-    await screen.findByRole('button', { name: '在线简历' });
+    await screen.findByRole('button', { name: '资料' });
     const 栏 = 取返回栏();
     expect(within(栏).getByRole('img', { name: '女' })).toBeTruthy();
     expect(栏.textContent).toContain('10 年');

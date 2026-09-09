@@ -15,7 +15,7 @@
 
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatchCase详情 } from './MatchCase详情';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
@@ -317,6 +317,12 @@ function 测试换Case钮({ 目标, 文案 }: { 目标: string; 文案: string }
   return <button type="button" onClick={() => 导航(目标)}>{文案}</button>;
 }
 
+/** 测试本地地址行：把当前路由地址印进 DOM，钉住「切 Tab 不改 URL」（外壳 Tab 是页内状态）。 */
+function 测试地址行() {
+  const 位置 = useLocation();
+  return <div>{位置.pathname + 位置.search}</div>;
+}
+
 describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
   beforeEach(() => {
     mock派发.mockClear();
@@ -356,20 +362,26 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(mock设置P5范围).toHaveBeenLastCalledWith('candidate', null);
   });
 
-  it('招聘端直达刷新：candidate_alias 逐字原样 + 冻结职位；无姓名/联系方式/对端意向字段', async () => {
+  it('招聘端直达刷新：candidate_alias 不进顶栏（去名裁定）+ 画像缺段占位 + 岗位上下文；无姓名/对端字段', async () => {
     置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 招聘详情DTO() }) });
     渲染详情('recruiter', 'mc_hr');
     expect(mock读取详情).toHaveBeenCalledWith('recruiter', 'mc_hr', true);
     // scope 坐标是 case_id（不是别名）
     expect(mock设置P5范围).toHaveBeenCalledWith('recruiter', P5范围键.detail('recruiter', 'mc_hr'));
-    expect(await screen.findByText(别名)).toBeTruthy(); // 别名逐字原样，不截断不派生
-    // 冻结职位随副标题在场（职位名 · 城市 · 薪资带）
+    // 去名裁定（2026-09-09）：alias 是不透明展示文本，不解析、不渲染，也不以「缺少姓名」恢复姓名区
+    expect(await screen.findByTitle('匹配分缺失')).toBeTruthy();
+    expect(document.body.textContent).not.toContain(别名);
+    // 画像位置全保留，缺失说缺失；性别位给中性未知标记，不猜性别
+    expect(screen.getByText('经验缺失')).toBeTruthy();
+    expect(screen.getByText('学历缺失')).toBeTruthy();
+    expect(screen.getByText('求职状态缺失')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '性别未知' })).toBeTruthy();
+    // 冻结职位随岗位上下文行在场（职位名 · 城市 · 薪资带）
     expect(screen.getByText('平台工程师 · 上海 · 25-40K·16薪')).toBeTruthy();
     // 姓名与结构化身份是 P5.1 依赖：一个都不渲染
     expect(screen.queryByText('沈亦舟')).toBeNull();
     expect(document.body.textContent).not.toContain(意向ID); // 对端（候选端）字段进不了视图
     expect(screen.queryByText('匹配度分析')).toBeNull();
-    expect(screen.queryByText('适配')).toBeNull();
 
     // 候选端镜像：别名/对端字段同样不出现（双向不漏）
     cleanup();
@@ -378,6 +390,44 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(await screen.findByText('平台工程师')).toBeTruthy();
     expect(document.body.textContent).not.toContain(意向ID);
     expect(screen.queryByText(别名)).toBeNull();
+  });
+
+  it('正常 Backend 详情用共用外壳：进度/资料两 Tab 在场，切 Tab 不改 URL，换单 Tab 回进度', async () => {
+    const user = userEvent.setup();
+    置详情状态({
+      role: 'candidate', caseId: 'mc_a',
+      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }),
+    });
+    const 页 = render(
+      <MemoryRouter initialEntries={['/deal/mc_a']}>
+        <测试地址行 />
+        <测试换Case钮 目标="/deal/mc_b" 文案="切到新单" />
+        <Routes>
+          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('平台工程师')).toBeTruthy();
+    expect(screen.getByText('/deal/mc_a')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '进度' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '资料' })).toBeTruthy();
+
+    // 切到资料：槽位换成缺口说明（当前 P5 detail 不提供资料区字段），地址不变
+    await user.click(screen.getByRole('button', { name: '资料' }));
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy();
+    expect(screen.queryByText('轮次 1/3')).toBeNull(); // 进度 槽已卸载（唯一挂载）
+    expect(screen.getByText('/deal/mc_a')).toBeTruthy();
+
+    // 换单：Tab 重置回进度，不把上一单的视图带给下一单
+    置详情状态({
+      role: 'candidate', caseId: 'mc_b',
+      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }),
+    });
+    await user.click(screen.getByRole('button', { name: '切到新单' }));
+    expect(await screen.findByText('轮次 1/3')).toBeTruthy();
+    expect(screen.getByText('/deal/mc_b')).toBeTruthy();
+    页.unmount();
   });
 
   it('四阶段固定 S0→S3 顺序（mapper 交付顺序，无客户端重排）', async () => {
@@ -572,15 +622,17 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(mock读取详情).toHaveBeenCalledTimes(1);
   });
 
-  it('缺 P5.1 段不渲染：无 Tab、无匹配度分析、无适配分、无占位', async () => {
+  it('缺 P5.1 段不渲染：无 Mock Tab 名、无匹配度分析、匹配分位显示缺失、无公司块', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
     expect(await screen.findByText('平台工程师')).toBeTruthy();
-    expect(screen.queryByText('代谈进度')).toBeNull(); // 无 Mock 的 Tab 行
-    expect(screen.queryByText('职位详情')).toBeNull();
+    expect(screen.queryByText('代谈进度')).toBeNull(); // Mock 的 Tab 名不出现（共用外壳是 进度/资料）
     expect(screen.queryByText('在线简历')).toBeNull();
+    expect(screen.queryByText('职位详情')).toBeNull();
     expect(screen.queryByText('匹配度分析')).toBeNull();
-    expect(screen.queryByText('适配')).toBeNull();
+    // Backend 详情没有匹配分：右侧分数位显示缺失（— + 可访问说明），不传 0、不画假分
+    const 分数位 = screen.getByTitle('匹配分缺失');
+    expect(分数位.textContent).toBe('—');
     expect(screen.queryByText('公司')).toBeNull(); // 无公司块（P5.1 依赖）
   });
 });
@@ -1674,7 +1726,7 @@ describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
     // 解析中（S1 waiting）：后端保持附件闭合
     置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1解析中详情() }) });
     渲染详情('recruiter', 'mc_hr');
-    expect(await screen.findByText(别名)).toBeTruthy();
+    expect(await screen.findByText('正在解析简历')).toBeTruthy(); // 详情已渲染（S1 段摘要）
     expect(screen.queryByText('后端工程师_简历_v2.pdf')).toBeNull(); // 无 PDF 入口
     expect(screen.queryByText('查看 ›')).toBeNull();
     // 无姓名/联系方式/结构化身份（P5.1 缺席即不渲染）
