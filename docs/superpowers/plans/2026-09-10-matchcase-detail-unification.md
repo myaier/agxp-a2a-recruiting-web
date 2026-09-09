@@ -359,7 +359,9 @@ L3 集成责任：required，`docs/dogfood/真实后端行为验收.md` 的 H01 
 
 另由 planner 自检修正文档代码示例的相对 import 写法，改为仓库相对类型来源说明，以通过 prompt 可迁移路径校验。
 
-守约记录：首轮 HEAD/status/受审文件指纹均未改变，未运行测试；但 reviewer 额外读取源码，超出本轮指定的文档及规则范围。该偏差不作为扩大产品范围的授权，三条 finding 均可直接由 Plan/Spec 内容核实；复审明确禁止继续读取源码，仅查两文档及必要规则。当前等待同一 reviewer session 复审修复，不提前交付执行 prompt。
+守约记录：首轮 HEAD/status/受审文件指纹均未改变，未运行测试；但 reviewer 额外读取源码，超出本轮指定的文档及规则范围。该偏差不作为扩大产品范围的授权，三条 finding 均可直接由 Plan/Spec 内容核实；复审明确禁止继续读取源码，仅查两文档及必要规则。第二轮已在同一 reviewer session 复审修复，结果如下。
+
+第二轮：Claude（opus/high，plan 权限），候选 revision `1696db60`、Plan blob `8b3726a5e87fb8e1cd326872734ce7e10461b5f7`，Spec/批准版本不变。报告为 `NO FINDINGS`，3 条 required 全部解除，无新增 finding；复审仅读取冻结文档/diff与合同，未再次越界读源码，未跑测试、未改文件。HEAD/status/文件指纹保护检查通过。文档 review 共 2 轮已收敛；本段仅追加结果，不改变受审实施合同。首轮3条接受修复，0条拒绝，0条 optional 延后，0条未解决 required。
 
 ## 实施记录
 
