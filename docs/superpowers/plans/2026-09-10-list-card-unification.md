@@ -52,7 +52,7 @@ Claude Code 每 Task 的 spec/code-quality 角色不替代最终 Codex 异构代
 新建 `src/组件/列表卡片/`，公共类型放 `类型.ts`。展示数据是内存 props，不是 BFF schema，不持久化。以下签名固定；内部 helper 组织可等价调整。
 
 ```ts
-import type { 阶段 } from '../../数据/类型';
+// 类型来源：阶段 — src/数据/类型.ts；实施时使用文件间 type-only import。
 export interface 候选卡信息 {
   性别: '男' | '女' | null;
   年限: string | null;
@@ -113,7 +113,7 @@ export interface 求职在谈卡属性 {
 import type { 推荐候选, 候选, 在谈单 } from './类型';
 import type { 招聘候选摘要视图 } from './招聘候选摘要映射';
 import type { P5列表正常视图 } from './MatchCase展示映射';
-import type { 候选卡信息, 在谈阶段信息 } from '../组件/列表卡片/类型';
+// 类型来源：候选卡信息、在谈阶段信息 — src/组件/列表卡片/类型.ts（type-only）。
 export function 从招聘摘要到卡信息(v: 招聘候选摘要视图 | null): 候选卡信息;
 export function 从Mock推荐到卡信息(v: 推荐候选): 候选卡信息;
 export function 从Mock候选到卡信息(v: 候选, 标签: readonly string[]): 候选卡信息;
@@ -273,7 +273,7 @@ expect(screen.queryByRole('button', {name:'让AI代理去聊'})).toBeNull();
 - R1-5 optional / Minor / 可选增强 / 复杂度降低：接受，将从Mock候选到卡信息的实现移到 Task 2，与实际消费者同时交付。
 - R1-6 optional / Minor / 可选增强 / 复杂度降低：拒绝。用户明确启动 development-workflow，其 planning/execution contract 要求 task intent 与 final-integration 规则；这是既有工作流责任，不是本任务新增产品基础设施。维持这些约束。
 
-第二轮候选 `b70b2d2e9679dd69c2b4599fb742ec0571956f98`，Plan blob `950ce6f2c22957e5049a0f32531315753f34530f`；同一 Claude opus/high session 复审返回 `NO FINDINGS`，四项 required 和已采纳 optional 均核实解决，拒绝项无新证据未重开。两轮 status、HEAD、文件指纹 guard 均通过。无未解决有效 required。最终本节仅补审查结果与完整版本，产品契约、接口和实施步骤不再变化。
+第二轮候选 `b70b2d2e9679dd69c2b4599fb742ec0571956f98`，Plan blob `950ce6f2c22957e5049a0f32531315753f34530f`；同一 Claude opus/high session 复审返回 `NO FINDINGS`，四项 required 和已采纳 optional 均核实解决，拒绝项无新证据未重开。两轮 status、HEAD、文件指纹 guard 均通过。无未解决有效 required。最终本节仅补审查结果与完整版本，产品契约、接口和实施步骤不再变化。交付校验将两处示例 type import 的相对上级路径改写为仓库相对的类型来源注释，避免可迁移路径校验误报；类型与签名未变。
 
 ## 实施记录
 
