@@ -20,6 +20,12 @@ function 有效标签们(标签们: readonly string[]): string[] {
   return 标签们.filter((标签) => 标签.trim() !== '');
 }
 
+/** 展示文本 trim 后为空按缺失处理（Spec §4.1）：合法 null 与空白字符串同归「未知」，
+ *  空白不得冒充已知值；非空原样保留，不改既有显示。 */
+function 已知文(值: string | null): string | null {
+  return 值 !== null && 值.trim() !== '' ? 值 : null;
+}
+
 export default function 求职在谈卡({
   公司,
   公司简介,
@@ -32,6 +38,8 @@ export default function 求职在谈卡({
   打开,
 }: 求职在谈卡属性) {
   const 标签们 = 有效标签们(标签);
+  const 公司名 = 已知文(公司);
+  const 公司简介文 = 已知文(公司简介);
   return (
     <div className={样式.根} data-testid="求职在谈卡">
       <白卡 按下={打开} 类名={样式.卡}>
@@ -44,8 +52,12 @@ export default function 求职在谈卡({
             <span className={样式.字标空位} role="img" aria-label="公司图片未知" />
           )}
           <div className={样式.公司文}>
-            <div className={`${样式.公司名} 单行`}>{公司 ?? '公司信息未知'}</div>
-            <div className={`${样式.公司简介} 单行`}>{公司简介 ?? '公司简介未知'}</div>
+            {/* 公司名占位换次要文字色（Spec §6）：真实公司名仍是 --墨/700；类名串保持
+                已知分支一字不差。简介占位沿用 .公司简介 的 --弱化，不再另加类。 */}
+            <div className={`${样式.公司名}${公司名 === null ? ` ${样式.未知文}` : ''} 单行`}>
+              {公司名 ?? '公司信息未知'}
+            </div>
+            <div className={`${样式.公司简介} 单行`}>{公司简介文 ?? '公司简介未知'}</div>
           </div>
           <div className={样式.右列} data-card-region="score">
             <卡片分数 分={匹配分} />

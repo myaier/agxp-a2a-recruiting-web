@@ -120,6 +120,25 @@ describe('求职在谈卡 · 卡面与占位（Spec §5.3 / §4）', () => {
     expect(顺序).toEqual(['上海', 'Python', 'Python']);
   });
 
+  it('纯空白公司字段按缺失处理：公司名/简介给占位，公司名占位带次要色类（Spec §4.1/§6）', () => {
+    render(<求职在谈卡
+      公司=""
+      公司简介="  "
+      公司字标={{ 首字: '云', 公司名: '云帆科技' }}
+      匹配分={94}
+      薪资="20-40K·14薪"
+      职位="资深后端工程师 · 交易网关"
+      标签={['上海 · 浦东']}
+      阶段={阶段()}
+      打开={vi.fn()}
+    />);
+    expect(screen.getByText('公司信息未知')).toBeTruthy();
+    expect(screen.getByText('公司简介未知')).toBeTruthy();
+    // jsdom 不解析 CSS var：公司名占位断次要色类；简介占位沿用 .公司简介 的 --弱化，不另加类
+    expect((screen.getByText('公司信息未知').getAttribute('class') ?? '').includes('未知文')).toBe(true);
+    expect((screen.getByText('公司简介未知').getAttribute('class') ?? '').includes('未知文')).toBe(false);
+  });
+
   it('阶段区复用在谈阶段区：徽标与注意说明都落在阶段区里', () => {
     render(<求职在谈卡
       公司={null}

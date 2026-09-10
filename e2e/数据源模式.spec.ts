@@ -10048,6 +10048,10 @@ function 断言头行最多两行(观察: 卡观察) {
 /** Mock 源（@mock describe 的 baseURL；Backend 用例跨源比较时显式传 4181 绝对地址） */
 const Mock源 = 'http://127.0.0.1:4181';
 
+/** 占位次要色（Spec §6）：--次要浅 = #7d8276。只有真实浏览器才解析 CSS var，
+ *  单测里只能断类名，这里断计算值。 */
+const 次要浅色 = 'rgb(125, 130, 118)';
+
 /** Mock 登录到求职端在谈单（零 API）。page.goto 的相对路径按项目 baseURL 解析，
  *  跨源比较必须传绝对地址，否则会回到 Backend origin。 */
 async function Mock登录求职(page: Page, 源: string = Mock源) {
@@ -10332,7 +10336,7 @@ test.describe('卡片统一 Backend @backend', () => {
         P4招聘卡({
           recommendation_id: 'rec_e2e_card_unified_zero',
           match_score: 0,
-          candidate_summary: P4摘要({ experience_years: 0, personal_highlights: [] }),
+          candidate_summary: P4摘要({ experience_years: 0, personal_highlights: [], degree: ' ' }),
         }),
       ],
     };
@@ -10362,11 +10366,13 @@ test.describe('卡片统一 Backend @backend', () => {
     断言分数位让位(长观察);
     断言头行最多两行(长观察);
 
-    // 零值：真实 0 分仍是 0 分环（不是未知占位）；0 年 = 「不满 1 年」；亮点空 → 占位
+    // 零值：真实 0 分仍是 0 分环（不是未知占位）；0 年 = 「不满 1 年」；亮点空 → 占位；
+    // 纯空白学历（wire 上 degree: ' '）不冒充已知值 → 「学历未知」占位
     const 零卡 = 卡们.nth(2);
     await expect(零卡.getByRole('img', { name: '适配 0 分' })).toBeVisible();
     await expect(零卡.getByRole('img', { name: '匹配分未知' })).toHaveCount(0);
     await expect(零卡.getByText('不满 1 年')).toBeVisible();
+    await expect(零卡.getByText('学历未知')).toBeVisible();
     await expect(零卡.getByText('亮点信息未知')).toBeVisible();
     await 断言卡在视口内(page, 零卡);
     await page.screenshot({ path: 'test-results/卡片统一/backend-推荐变体-390.png' });
@@ -10396,6 +10402,8 @@ test.describe('卡片统一 Backend @backend', () => {
     await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
     const 长职位卡 = page.getByTestId('求职在谈卡').first();
     await expect(长职位卡.getByText(/超长在谈岗位名称/)).toBeVisible({ timeout: 15_000 });
+    // 公司名占位 = 次要文字色（Spec §6）：P5 不给公司名，占位不再与真实公司名同色
+    expect(await 长职位卡.getByText('公司信息未知').evaluate((元) => getComputedStyle(元).color)).toBe(次要浅色);
     await 断言卡在视口内(page, 长职位卡);
     const 长职位观察 = await 采集卡观察(page, 长职位卡);
     expect(长职位观察.区域.title!.h, '职位名单行高').toBeLessThanOrEqual(30);
@@ -10424,6 +10432,8 @@ test.describe('卡片统一 Backend @backend', () => {
     for (const 占位 of ['经验未知', '学历未知', '求职状态未知', '工作经历未知', '教育经历未知', '亮点信息未知']) {
       await expect(全空在谈卡.getByText(占位)).toBeVisible();
     }
+    // 头行占位段也走次要文字色（Spec §6）：头行三段占位不再继承头行的 --墨
+    expect(await 全空在谈卡.getByText('经验未知').evaluate((元) => getComputedStyle(元).color)).toBe(次要浅色);
     await 断言卡在视口内(page, 全空在谈卡);
     断言分数位让位(await 采集卡观察(page, 全空在谈卡));
     await page.screenshot({ path: 'test-results/卡片统一/backend-在谈招聘端全空-390.png' });

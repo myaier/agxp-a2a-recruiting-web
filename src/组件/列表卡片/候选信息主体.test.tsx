@@ -86,6 +86,31 @@ describe('候选信息主体', () => {
     expect(container.querySelector('[data-card-region="tags"]')?.textContent).toBe('亮点信息未知');
   });
 
+  it('纯空白字符串按缺失处理：头行三段/工作/教育给占位，占位段带次要色类（Spec §4.1/§6）', () => {
+    render(<候选信息主体 信息={{
+      ...全未知,
+      年限: '',
+      学历: '  ',
+      求职状态: '',
+      工作: '',
+      教育: ' ',
+    }} />);
+    for (const 文案 of ['经验未知', '学历未知', '求职状态未知', '工作经历未知', '教育经历未知']) {
+      expect(screen.getByText(文案)).toBeTruthy();
+    }
+    // jsdom 不解析 CSS var：占位次要色只断类。头行三段占位由 候选头行 的「未知段」类上色，
+    // 工作/教育占位沿用主体自己的「未知文」类 —— 空白值不得伪装成正常深色数据
+    for (const 文案 of ['经验未知', '学历未知', '求职状态未知']) {
+      expect((screen.getByText(文案).getAttribute('class') ?? '').includes('未知段')).toBe(true);
+    }
+    for (const 文案 of ['工作经历未知', '教育经历未知']) {
+      expect((screen.getByText(文案).getAttribute('class') ?? '').includes('未知文')).toBe(true);
+    }
+    // 空白行照旧不收行、图标仍在（未知不让行上移）
+    expect(区域('work')?.querySelector('svg')).toBeTruthy();
+    expect(区域('education')?.querySelector('svg')).toBeTruthy();
+  });
+
   it('有值 → null rerender：旧信息不得残留，回到逐字段占位', () => {
     const 页 = render(<候选信息主体 信息={有值} />);
     expect(screen.getByText('华泰证券 · Go / 交易网关')).toBeTruthy();
