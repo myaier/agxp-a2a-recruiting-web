@@ -40,3 +40,6 @@ ui-regression-output/
 
 # Agent dogfood 临时证据（截图、视频、HAR、Chrome profile、会话状态与原材料副本）
 dogfood-output/
+
+# SDD plan workspace (implementation records are written into the Plan document)
+.superpowers/

@@ -341,7 +341,7 @@ describe('企业代理设置 · Backend 招聘方页', () => {
     await 挂载到稳定();
     await user.click(screen.getByRole('switch', { name: `规则：${BFFAgent规则样本.display_text}` }));
     expect(视图.操作.切换Agent规则).toHaveBeenCalledWith(BFFAgent规则样本.rule_id, 'pause');
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText(/到岗超过/), '竞对在职候选人不接触');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
     expect(视图.操作.创建Agent规则提案).toHaveBeenCalledWith({ 文本: '竞对在职候选人不接触' });
@@ -360,12 +360,12 @@ describe('企业代理设置 · Backend 招聘方页', () => {
     await 挂载到稳定();
     const 开关 = screen.getByRole('switch', { name: '规则：全现场岗位先不聊' });
     expect(开关.getAttribute('aria-checked')).toBe('false');
-    expect(screen.getByText('0 条生效')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
     await user.click(开关);
     expect(视图.操作.切换Agent规则).toHaveBeenCalledWith(暂停规则.rule_id, 'resume');
     // 真实操作层用响应 Rule 收口：行回到生效，计数跟着走
     await waitFor(() => expect(screen.getByRole('switch', { name: '规则：全现场岗位先不聊' }).getAttribute('aria-checked')).toBe('true'));
-    expect(screen.getByText('1 条生效')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
   });
 
   it('count only reflects active Rules', () => {
@@ -373,19 +373,21 @@ describe('企业代理设置 · Backend 招聘方页', () => {
       rulesStage: '成功', proposalsStage: '成功', initialized: true,
       规则: [BFFAgent规则样本, 暂停规则],
     });
-    expect(screen.getByText('1 条生效')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
     expect(screen.getByText('全现场岗位先不聊')).toBeTruthy();
     expect(screen.getByText('大小周不谈')).toBeTruthy();
   });
 
-  it('keeps pause/resume only: no edit or delete UI on the recruiter page', async () => {
+  it('招聘端支持原地编辑且取消不写入', async () => {
     const user = userEvent.setup();
     renderRecruiterRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
     expect(screen.queryByRole('button', { name: '删除' })).toBeNull();
-    expect(screen.queryByRole('button', { name: '提交修改' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '完成' })).toBeNull();
     // 规则行不是可编辑入口：点行不出现编辑框
     await user.click(screen.getByText('大小周不谈'));
+    expect(screen.getByDisplayValue('大小周不谈')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '取消' }));
     expect(screen.queryByDisplayValue('大小周不谈')).toBeNull();
   });
 
@@ -423,14 +425,14 @@ describe('企业代理设置 · Backend 招聘方页', () => {
     expect(视图.操作.放弃Agent规则提案).toHaveBeenCalledWith(BFFAgent规则就绪提案样本.proposal_id);
     await waitFor(() => expect(screen.queryByText('双休岗位可推进，大小周岗位拦下')).toBeNull());
     // dismiss 不创建 Rule：计数仍是原有的 1 条
-    expect(screen.getByText('1 条生效')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
   });
 
   it('closing a failed card restores the submitted draft text', async () => {
     const user = userEvent.setup();
     const 视图 = renderRecruiterRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText(/到岗超过/), '竞对在职候选人不接触');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
     // 创建成功即收起输入行：草稿先寄存在页面，等提案终态裁决
@@ -466,7 +468,7 @@ describe('企业代理设置 · Backend 招聘方页', () => {
     const user = userEvent.setup();
     const 第一屏 = renderRecruiterRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText(/到岗超过/), '竞对在职候选人不接触');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
     await waitFor(() => expect(screen.queryByPlaceholderText(/到岗超过/)).toBeNull());
@@ -496,7 +498,7 @@ describe('企业代理设置 · Backend 招聘方页', () => {
       },
     });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText(/到岗超过/), '竞对在职候选人不接触');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
     await waitFor(() => expect(screen.queryByPlaceholderText(/到岗超过/)).toBeNull());
@@ -542,7 +544,7 @@ describe('企业代理设置 · Backend 招聘方页', () => {
     const user = userEvent.setup();
     const 视图 = renderRecruiterRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText(/到岗超过/), '竞对在职候选人不接触');
     for (const [code, 文案] of 冻结文案们) {
       视图.操作.创建Agent规则提案.mockRejectedValue(new BFF错误(400, code, 'rejected'));
@@ -558,15 +560,16 @@ describe('企业代理设置 · Backend 招聘方页', () => {
     expect(screen.getByRole('status', { name: '规则加载中' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '规则加载失败，重试' })).toBeNull();
     expect(screen.queryByRole('switch')).toBeNull();
-    expect(screen.queryByRole('button', { name: /手动添加规则/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /添加规则/ })).toBeNull();
   });
 
   it('shows the retry affordance and keeps hydrated rows when a sibling domain failed', () => {
     renderRecruiterRules({ rulesStage: '成功', proposalsStage: '失败', initialized: true });
     expect(screen.getByRole('button', { name: '规则加载失败，重试' })).toBeTruthy();
     // rules 已成功的域保持可见，但不给任何 mutation 控件
-    expect(screen.getByRole('switch', { name: `规则：${BFFAgent规则样本.display_text}` })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /手动添加规则/ })).toBeNull();
+    expect(screen.getByText(BFFAgent规则样本.display_text)).toBeTruthy();
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(screen.queryByRole('button', { name: /添加规则/ })).toBeNull();
   });
 
   it('replaces the auto-deposit copy with explicit confirmation wording', () => {
@@ -578,7 +581,7 @@ describe('企业代理设置 · Backend 招聘方页', () => {
   it('renders a safe shell when the session is not initialized', () => {
     renderRecruiterRules({ rulesStage: '成功', proposalsStage: '成功', initialized: false });
     expect(screen.queryByRole('switch')).toBeNull();
-    expect(screen.queryByRole('button', { name: /手动添加规则/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /添加规则/ })).toBeNull();
     expect(screen.queryByRole('status', { name: '规则加载中' })).toBeNull();
     expect(screen.queryByRole('button', { name: '规则加载失败，重试' })).toBeNull();
   });
@@ -587,23 +590,19 @@ describe('企业代理设置 · Backend 招聘方页', () => {
     // candidate 会话直访 /hr/agent-settings：不出任何规则行/开关/控件，也不索引别角色的水合
     renderRecruiterRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true, 主体角色: 'candidate' });
     expect(screen.queryByRole('switch', { name: `规则：${BFFAgent规则样本.display_text}` })).toBeNull();
-    expect(screen.queryByRole('button', { name: /手动添加规则/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /添加规则/ })).toBeNull();
     expect(screen.queryByRole('status', { name: '规则加载中' })).toBeNull();
     expect(screen.queryByRole('button', { name: '规则加载失败，重试' })).toBeNull();
     expect(screen.queryByText('1 条生效')).toBeNull();
   });
 
-  it('初始快照 revision=0/updated_at=null：让步控件可用、保存带 revision 0、无加载失败', async () => {
-    const user = userEvent.setup();
+  it('移除让步界面不改后台安全默认，也不假装支持 JD 授权', async () => {
     const 视图 = renderRecruiterRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    // 页面 mount effect 与真实主体水合赛跑会早退一次：主体落地后经操作缝补一发权威加载
-    await act(async () => { await 视图.操作.加载Agent设置(); });
-    expect(screen.queryByText('设置加载失败，重试')).toBeNull();
-    const 直接回绝 = screen.getByRole('button', { name: '直接回绝' });
-    await waitFor(() => expect((直接回绝 as HTMLButtonElement).disabled).toBe(false));
-    await user.click(直接回绝);
-    expect(视图.后端.修改Agent设置).toHaveBeenCalledWith('recruiter', { out_of_authority_concession: 'reject' }, 0);
+    expect(screen.queryByText('对方要的让步超出授权')).toBeNull();
+    expect(screen.queryByRole('button', { name: '直接回绝' })).toBeNull();
+    expect(screen.getByText('内部版 JD 发送授权暂不支持在此设置。')).toBeTruthy();
+    expect(视图.后端.修改Agent设置).not.toHaveBeenCalled();
   });
 });
 
@@ -612,7 +611,7 @@ describe('企业代理设置 · Mock 原型分支', () => {
     const user = userEvent.setup();
     renderRecruiterRules({ mode: 'mock' });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
     expect((screen.getByRole('button', { name: '提交给AI代理理解' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -621,24 +620,26 @@ describe('企业代理设置 · Mock 原型分支', () => {
     const 视图 = renderRecruiterRules({ mode: 'mock' });
     // 2026-08-31 定稿：Mock 规则不渲染开关（规则来自叮嘱与选择，不是要维护的配置）
     expect(screen.getByText('不透露 HC 剩余数量与紧迫度')).toBeTruthy();
-    expect(screen.queryByRole('switch')).toBeNull();
-    expect(screen.getByText('3 条生效')).toBeTruthy();
+    expect(screen.getAllByRole('switch').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
     await 挂载到稳定();
     // 「哪些事先问你」：真选项，点击即改选中态
-    const 回绝 = screen.getByRole('button', { name: '直接回绝' });
-    expect(回绝.getAttribute('aria-pressed')).toBe('false');
-    await user.click(回绝);
-    expect(screen.getByRole('button', { name: '直接回绝' }).getAttribute('aria-pressed')).toBe('true');
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(screen.getByRole('button', { name: /发送内部版 JD，/ }));
+    const 自动发送 = screen.getByRole('button', { name: '自动发送' });
+    expect(自动发送.getAttribute('aria-pressed')).toBe('false');
+    await user.click(自动发送);
+    expect(自动发送.getAttribute('aria-pressed')).toBe('true');
+    await user.click(screen.getByRole('button', { name: '关闭' }));
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
     expect(screen.queryByLabelText('规则范围')).toBeNull();
     await user.type(screen.getByPlaceholderText(/到岗超过/), '只招上海本地的候选');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
     expect(视图.操作.创建Agent规则提案).not.toHaveBeenCalled();
     expect(screen.getByText('只招上海本地的候选')).toBeTruthy();
     expect(screen.getByRole('button', { name: '确认规则' })).toBeTruthy();
-    expect(screen.getByText('3 条生效')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
     await user.click(screen.getByRole('button', { name: '确认规则' }));
     expect(screen.queryByRole('button', { name: '确认规则' })).toBeNull();
-    expect(screen.getByText('4 条生效')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
   });
 });

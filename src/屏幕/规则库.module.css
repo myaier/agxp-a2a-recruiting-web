@@ -303,3 +303,16 @@
   color: var(--最弱);
   font-size: 13px;
 }
+
+/* 已批准规则设置稿：三分区黑标题、轻添加入口；页面仍随父容器自适应。 */
+.列表 { padding:16px 20px 32px; gap:0; }
+.分区 + .分区, .授权组 { margin:28px 0 0; }
+.分组标 { font-size:17px; font-weight:700; color:#000; letter-spacing:normal; line-height:25.5px; margin:0 0 8px; }
+.卡, .授权卡 { padding:0; }
+.授权组 { gap:0; }
+.手动添加 { min-height:46px; padding:10px 0; justify-content:flex-start; gap:7px; }
+.添加圆 { width:16px; height:20px; border-radius:0; background:none; color:var(--深绿文字); font-size:21px; font-weight:400; }
+.添加输入行 { border:0; border-radius:8px; background:var(--分隔线); padding:8px 10px; margin:4px 0; }
+.确认添加 { background:none; color:var(--深绿文字); padding:8px 0; border-radius:0; }
+.提案组 { margin-bottom:20px; }
+.边界说明 { font-size:12px; line-height:1.6; color:var(--次要浅); margin:8px 0; }

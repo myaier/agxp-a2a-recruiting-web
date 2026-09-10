@@ -1,0 +1,218 @@
+/* 在谈详情第二 Tab（资料）的共用正文：岗位摘要 / 匹配分析 / 职位详情 / 职位要求 /
+   公司 / 对接人（spec §3.3 阅读顺序）。尺寸沿用 Mock 定稿值（自 屏幕/在谈详情.module.css
+   的职位详情 Tab 收编；原文件里仍被 真人会话「看职位」层消费的规则留在原处不删）。
+   两模式（Mock / Backend）同用这一份。缺失一律走既有次要文字色，不用错误红/通过绿。 */
+
+/* ── 列容器：白纸平铺（2026-08-24 全站去框），区块之间一道发丝线 ── */
+.资料列 {
+  padding: 10px 18px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.区块 {
+  padding: 13px 2px;
+}
+
+.区块 + .区块 {
+  border-top: 1px solid var(--分隔线);
+}
+
+.区块标题 {
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
+  margin-bottom: 8px;
+}
+
+/* 接口缺口说明：一行中性说明交代本页缺口（当前在谈详情数据未提供），不做警示色 */
+.缺口说明 {
+  padding: 10px 2px 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--次要浅);
+}
+
+/* 区块级缺失（JD / 要求 / 公司介绍…）：位置保留，缺失说缺失 */
+.区块缺失 {
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--次要浅);
+}
+
+.正文 {
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--正文);
+}
+
+/* 「暂无…」：来源提供了但一条没有 —— 与缺失文案刻意不同 */
+.暂无 {
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--次要浅);
+}
+
+/* ── 摘要 / 公司元信息共用的标签值行 ── */
+.元表 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+
+.元行 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.元标 {
+  flex: none;
+  width: 58px;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.元值 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--正文);
+}
+
+/* ── 标签区（岗位摘要技能 / 公司标签）── */
+.标签行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.标签 {
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: var(--浅灰底);
+  font-size: 10.5px;
+  color: var(--正文);
+}
+
+/* ── 公司区：头行即导航入口，无合法坐标时真实 disabled（说明由调用方给）── */
+.公司头行 {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.公司头行:disabled {
+  cursor: default;
+}
+
+.标志 {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: var(--墨);
+  color: var(--橄榄);
+  font-size: 17px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 未知标志：同尺寸中性占位（本地中性底，不生成字母、不加载外部占位图） */
+.标志空 {
+  background: var(--浅灰底);
+}
+
+.公司名 {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--墨);
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+.入口说明 {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--最弱);
+}
+
+.介绍段 {
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--正文);
+  margin-top: 11px;
+}
+
+/* ── 对接人 ── */
+.对接人行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 11px;
+}
+
+.头像 {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  /* 对接人头像紫：全局设计令牌（设计令牌.css），与 真人会话 的对接人头像同一来源 */
+  background: var(--对接人紫);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.头像空 {
+  background: var(--浅灰底);
+}
+
+.头像字 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--白);
+}
+
+.对接人文本 {
+  flex: 1;
+  min-width: 0;
+}
+
+.对接人名 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.对接人职务 {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--次要浅);
+}
+
+/* ── 缺值占位（「—」）：放最后，同权下压过值类的正文色 ── */
+.缺失值 {
+  color: var(--次要浅);
+}

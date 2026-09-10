@@ -308,7 +308,9 @@
 }
 
 .身份大卡 {
-  border: 1px solid var(--描边);
+  /* 极淡描边与窄阴影只补轻层次，保留原卡片尺寸和上下布局。 */
+  border: 1px solid rgba(26, 26, 26, 0.055);
+  box-shadow: 0 2px 6px rgba(26, 26, 26, 0.035);
   border-radius: 20px;
   background: var(--白);
   padding: 20px 20px 18px;
