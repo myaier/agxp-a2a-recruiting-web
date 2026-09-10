@@ -189,6 +189,9 @@ describe('消息列表展示 · 状态区', () => {
     expect(空态们[0].textContent).toContain('后端服务暂时不可用，请稍后重试');
     expect(空态们[1].textContent).toContain('没有匹配的会话。');
     expect(空态们[1].textContent).toContain('换个关键词，或者切到「全部」看看。');
+    // 错误块保留原 `{错误文案}<br/><button>重试</button>` 结构：重试按钮独占一行
+    expect(空态们[0].lastElementChild!.tagName).toBe('BUTTON');
+    expect(空态们[0].lastElementChild!.previousElementSibling!.tagName).toBe('BR');
     await userEvent.click(screen.getByRole('button', { name: '重试' }));
     expect(重试).toHaveBeenCalledTimes(1);
   });

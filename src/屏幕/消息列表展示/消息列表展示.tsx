@@ -91,7 +91,8 @@ export function 消息列表展示({
   );
 }
 
-/** 状态提示（错误/加载/空态/搜索无命中）：行数不定，多行用分隔线；操作（如重试）跟在行后 */
+/** 状态提示（错误/加载/空态/搜索无命中）：行数不定，行与行、行与操作之间用分隔线（原错误块
+ *  `{错误文案}<br/><button>重试</button>` 的按钮独占一行结构保留） */
 function 列表提示行({ 提示 }: { 提示: 列表提示 }): ReactElement {
   return (
     <div className={样式.空态}>
@@ -103,7 +104,10 @@ function 列表提示行({ 提示 }: { 提示: 列表提示 }): ReactElement {
         </Fragment>
       ))}
       {提示.操作 ? (
-        <button className="可点" onClick={提示.操作.按下}>{提示.操作.文案}</button>
+        <>
+          <br />
+          <button className="可点" onClick={提示.操作.按下}>{提示.操作.文案}</button>
+        </>
       ) : null}
     </div>
   );
