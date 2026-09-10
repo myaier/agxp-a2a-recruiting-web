@@ -13,7 +13,7 @@
 // 测试宿主：mock 应用状态 / 导航钩子（同 MatchCase列表.test.tsx 惯例）；仓库未装
 // @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -430,10 +430,65 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     页.unmount();
   });
 
-  it('四阶段固定 S0→S3 顺序（mapper 交付顺序，无客户端重排）', async () => {
+  it('从资料 Tab 切回进度：当前段回到 DOM 且重新定位（不因条件挂载丢失节点定位）', async () => {
+    vi.useFakeTimers();
+    const 滚动 = vi.fn();
+    const 原生 = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = 滚动;
+    try {
+      置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+      渲染详情('candidate', 'mc_direct');
+      await act(() => vi.advanceTimersByTimeAsync(300));
+      expect(滚动.mock.calls.length).toBeGreaterThan(0); // 进入详情定位当前阶段
+      const 首次 = 滚动.mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: '资料' }));
+      expect(screen.queryByText('匿名初筛')).toBeNull(); // 进度槽互斥挂载，切走即卸载
+      fireEvent.click(screen.getByRole('button', { name: '进度' }));
+      // 当前段回到 DOM（默认展开），不是只有状态区
+      expect(screen.getByText('匿名初筛')).toBeTruthy();
+      expect(screen.getByText('每周可以到岗几天？')).toBeTruthy();
+      await act(() => vi.advanceTimersByTimeAsync(300));
+      expect(滚动.mock.calls.length).toBeGreaterThan(首次); // 切回进度重新定位当前段
+    } finally {
+      HTMLElement.prototype.scrollIntoView = 原生;
+      vi.useRealTimers();
+    }
+  });
+
+  it('正常换 Case 不沿用折叠状态：上一单手动收起的当前段，在新单恢复默认展开', async () => {
+    const user = userEvent.setup();
+    置详情状态({
+      role: 'candidate', caseId: 'mc_a',
+      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }),
+    });
+    const 页 = render(
+      <MemoryRouter initialEntries={['/deal/mc_a']}>
+        <测试换Case钮 目标="/deal/mc_b" 文案="切到新单" />
+        <Routes>
+          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    // S0 是当前段，默认展开：段内对话在场
+    expect(await screen.findByText('每周可以到岗几天？')).toBeTruthy();
+    await user.click(screen.getByText('匿名初筛').closest('button')!);
+    expect(screen.queryByText('每周可以到岗几天？')).toBeNull(); // 手动收起
+
+    置详情状态({
+      role: 'candidate', caseId: 'mc_b',
+      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }),
+    });
+    await user.click(screen.getByRole('button', { name: '切到新单' }));
+    expect(await screen.findByText('每周可以到岗几天？')).toBeTruthy(); // 新单回到默认展开
+    页.unmount();
+  });
+
+  it('四阶段固定 S0→S3 顺序（mapper 交付顺序，无客户端重排）；分节条显示 P5 自己的阶段标题', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    const 名序 = ['匿名初筛', '递交简历', '需要协调', '意向确认'];
+    // 展示标题 = P5 区.标题（服务端阶段标题闭词投影）；颜色/排序/折叠键仍是共用四阶段名
+    const 名序 = ['匿名初筛', '简历提交', '差异协同', '意向确认'];
     await screen.findByText('平台工程师');
     名序.forEach((名) => expect(screen.getAllByText(名).length).toBe(1));
     const [s0, s1, s2, s3] = 名序.map((名) => screen.getAllByText(名)[0]!);

@@ -58,8 +58,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
-import 列表样式 from './MatchCase列表.module.css';
-import 阶段对话流, { type 分段项 } from '../../组件/阶段对话流';
+import 阶段对话流 from '../../组件/阶段对话流';
 import { 从附件行取选择值, type 附件简历选择值 } from '../../组件/附件简历选择层';
 import 弹层框架 from '../../组件/弹层框架';
 import 确认层 from '../../组件/确认层';
@@ -70,14 +69,17 @@ import 选择样式 from '../../组件/附件简历选择层.module.css';
 import 原始PDF层 from '../../组件/原始PDF层';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../../组件/通用';
 import { 详情外壳 } from '../../组件/在谈详情/详情外壳';
+import { 详情状态区 } from '../../组件/在谈详情/详情状态区';
 import type { 详情Tab } from '../../组件/在谈详情/类型';
-import { 从P5到详情顶栏 } from '../../数据/详情展示映射';
+// 详情自己的样式：状态区/徽标/空态/错误/契约错误都已迁入共用外壳的 CSS（列表文件不回写）
+import 样式 from '../../组件/在谈详情/详情外壳.module.css';
+import { 从P5到详情分段, 从P5到详情状态, 从P5到详情顶栏 } from '../../数据/详情展示映射';
 import { 轻提示 } from '../../组件/轻提示';
 import { use应用状态 } from '../../状态/应用状态';
 import { use导航 } from '../../路由/导航钩子';
 import { 路径 } from '../../路由/路径表';
 import { 映射P5详情, P5契约错误提示 } from '../../数据/MatchCase展示映射';
-import type { P5角色, P5阶段, P5动作, P5动作卡, P5详情正常视图, P5阶段区块视图 } from '../../数据/MatchCase展示映射';
+import type { P5角色, P5动作, P5动作卡, P5详情正常视图 } from '../../数据/MatchCase展示映射';
 import { 取后端错误文案 } from '../../数据/HTTP客户端';
 import type { BFF附件简历 } from '../../数据/BFF契约';
 import type { PDF对象租约 } from '../../数据/PDF对象租约';
@@ -85,74 +87,13 @@ import type { P5详情, P5简历附件 } from '../../数据/招聘数据源/Matc
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { useMatchCase轮询 } from '../../状态/后端/useMatchCase轮询';
 import type { P5详情快照, 应用操作 } from '../../状态/后端/类型';
-import type { 对话条, 阶段 } from '../../数据/类型';
 import type { RefObject } from 'react';
-
-/** P5阶段 → 既有四阶段中文名（与 阶段顺序 同一闭集；顺序仍以 mapper 交付为准）。 */
-const 阶段名表: Record<P5阶段, 阶段> = {
-  anonymous_screening: '匿名初筛',
-  resume_submission: '递交简历',
-  needs_coordination: '需要协调',
-  intent_confirmation: '意向确认',
-};
 
 const 叮嘱占位 = '有想法就告诉你的AI代理';
 const 读入中文案 = '正在读入这一单…';
 const 失败标题 = '这一单暂时打不开';
 const 叮嘱失败提示 = '叮嘱没有发出去，请重试';
 
-/** RFC3339 → 「HH:mm」（UTC 定长截取，纯展示格式化，绝不参与状态判定）。 */
-function 取短时间(iso: string): string {
-  return iso.slice(11, 16);
-}
-
-/**
- * S0 Agent 消息的本地时分（用户运行环境时区，两位 24 小时制 HH:mm）。只服务新 screening
- * records 的展示，绝不参与状态或动作判定；不固定产品时区、不硬编码加八小时。旧
- * transcript／instruction receipt 仍走 取短时间 的字符串切片 —— 同一 S0 阶段内两种时间
- * 口径并存是本任务的刻意兼容边界（Task 5 观察后再决定是否另立统一任务）。
- */
-const S0时刻格式 = new Intl.DateTimeFormat('zh-CN', {
-  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-});
-
-function 取本地时分(原文: string): string {
-  if (typeof 原文 !== 'string') return '时间待确认';
-  const 时刻 = new Date(原文);
-  if (Number.isNaN(时刻.getTime())) return '时间待确认';
-  const 段 = S0时刻格式.formatToParts(时刻);
-  const 时 = 段.find((条) => 条.type === 'hour')?.value ?? '';
-  const 分 = 段.find((条) => 条.type === 'minute')?.value ?? '';
-  return 时 === '' || 分 === '' ? '时间待确认' : `${时}:${分}`;
-}
-
-/**
- * 阶段区 typed 段 → 展示气泡：顺序固定 S0 Agent 记录 → 旧 transcript → 旧叮嘱回执
- * （不按时间混排）；时间线与叮嘱回执都只是展示文本（原样带出，按归属分列），绝不参与
- * 状态或动作判定；无文本的事件（纯 reason_code 的系统事件）无可展示，跳过。
- * key 用带前缀的稳定业务 ID，轮询重读整包刷新时 React 不会误配对。
- */
-function 段内对话(区: P5阶段区块视图, role: P5角色): 对话条[] {
-  const 条们: 对话条[] = [];
-  const 推 = (编号: 对话条['编号'], 内容: string | undefined, 我方: boolean, 时间: string) => {
-    if (内容 === undefined || 内容.trim() === '') return;
-    条们.push({ 编号, 方: 我方 ? '我方' : '对方', 时间, 内容 });
-  };
-  区.Agent消息.forEach((条) =>
-    推(`s0:${条.id}`, 条.内容, 条.role === role, 取本地时分(条.occurredAt)));
-  区.时间线.forEach((项) =>
-    推(`evt:${项.eventId}`, 项.text, 项.role === role, 取短时间(项.occurredAt)));
-  区.叮嘱.forEach((条) =>
-    推(`aci:${条.instructionId}`, 条.expression, 条.owner === role, 取短时间(条.occurredAt)));
-  return 条们;
-}
-
-// 版式沿用列表卡的既有类与设计令牌，只补几条行内布局（不另建 CSS 文件）
-const 状态行样式: CSSProperties = {
-  display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '12px 16px 4px',
-};
-const 步骤说明样式: CSSProperties = { flex: 1, minWidth: 0, fontSize: 12, color: 'var(--弱化)' };
-const 轮次样式: CSSProperties = { flex: 'none', fontSize: 11, color: 'var(--最弱)' };
 const 终局卡样式: CSSProperties = {
   margin: '0 16px 10px', padding: '13px 15px', borderRadius: 14, background: 'var(--浅灰底)',
   display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, lineHeight: 1.6,
@@ -250,14 +191,16 @@ export function MatchCase详情(props: { role: P5角色 }) {
     刷新详情: (范围) => 操作.读取详情(范围.role, 范围.caseId, true),
   });
 
-  // 进入页面自动定位到当前阶段段（与两端 Mock 详情屏同构），不用手动划过整条流
+  // 进入页面（以及换 Case、从资料 Tab 切回进度）自动定位到当前阶段段（与两端 Mock 详情屏
+  // 同构），不用手动划过整条流。两个 Tab 的内容互斥挂载，切走即卸载 —— 依赖里带上当前 Tab
+  // 才能在切回进度时重新定位当前段，不因条件挂载丢失节点定位。
   const 当前节点引用 = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const 定时 = window.setTimeout(() => {
       当前节点引用.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }, 120);
     return () => window.clearTimeout(定时);
-  }, []);
+  }, [当前Tab, caseId]);
 
   // Case 叮嘱：等服务器回话再清输入（仅成功清空），绝不造乐观气泡 —— 展示永远以
   // 下一次权威 detail 重读为准（Task 3 操作层在成功后已重读并刷新已载 scope）。
@@ -295,23 +238,23 @@ export function MatchCase详情(props: { role: P5角色 }) {
         <滚动区>
           {契约错误 ? (
             // fail closed：契约错误视图动作表恒空，只给提示与重试，部分数据一概不渲染
-            <div className={列表样式.契约错误行}>
+            <div className={样式.契约错误行}>
               <div>{P5契约错误提示}</div>
-              <button className={`${列表样式.重试键} 可点`} onClick={重读}>
+              <button className={`${样式.重试键} 可点`} onClick={重读}>
                 重试
               </button>
             </div>
           ) : (
             快照 !== undefined && 快照.阶段 === '失败' && 快照.detail === null ? (
-              <div className={列表样式.空态}>
-                <div className={列表样式.空态标题}>{失败标题}</div>
-                <div className={列表样式.空态说明}>{快照.error}</div>
-                <button className={`${列表样式.重试键} 可点`} onClick={重读}>
+              <div className={样式.空态}>
+                <div className={样式.空态标题}>{失败标题}</div>
+                <div className={样式.空态说明}>{快照.error}</div>
+                <button className={`${样式.重试键} 可点`} onClick={重读}>
                   重试
                 </button>
               </div>
             ) : (
-              <div className={列表样式.空态}>{读入中文案}</div>
+              <div className={样式.空态}>{读入中文案}</div>
             )
           )}
         </滚动区>
@@ -341,7 +284,7 @@ export function MatchCase详情(props: { role: P5角色 }) {
       资料={
         // 第二 Tab 保留：当前 P5 detail 不提供资料区字段（Task 3/4 迁移），先给缺口说明，
         // 不隐藏 Tab、也不拿 Mock 数据或另一来源的查询来补
-        <div className={列表样式.空态}>当前在谈详情数据未提供</div>
+        <div className={样式.空态}>当前在谈详情数据未提供</div>
       }
       底栏={
         // 底部 Case 叮嘱（双端同款）：终局不出现
@@ -379,8 +322,6 @@ function 详情主体({
   const 移交 = 视图.handoff;
   // 归一化 DTO（协同块/意向词不在展示视图里，typed 判定从这里取；正常视图必然由它映射）
   const 详情 = 快照?.detail ?? null;
-  const 当前阶段 = 详情?.state.stage ?? null;
-  const 有动作 = 视图.actions.length > 0;
 
   // 授权原始 PDF（两端）：租约只活在弹层生命周期 —— 关闭/换 Case/换角色/卸载即 revoke，
   // 绝不缓存；在飞单发防连点双租约。弹层正文直接以租约地址呈现真实 PDF 字节。
@@ -426,83 +367,45 @@ function 详情主体({
     }
   };
 
-  // 分段态来自阶段区自身的 state（pending/active/passed/ended），不是从文本推的；
-  // 顺序按 mapper 交付的 S0→S3 原样，本组件不重排。动作区挂「Case 当前阶段」那一段的
-  // 尾部（S0 passed 行该段已 passed：默认展开钉住，卡不随分节条折没）；招聘端的
-  // typed 附件（后端披露后才下发）是该段唯一的 PDF 入口。
-  const 分段们: 分段项[] = 视图.阶段区块.map((区) => {
-    const 态: 分段项['态'] =
-      区.状态 === 'pending' ? '未到达' : 区.状态 === 'active' ? '当前' : '已完成';
-    const 是动作段 = 有动作 && 区.stage === 当前阶段 && 详情 !== null;
-    return {
-      阶段: 阶段名表[区.stage],
-      态,
-      状态文: 态 === '未到达' ? null : 区.状态文案,
-      小结: 态 === '未到达' || 区.摘要 === '' ? null : 区.摘要,
-      核对清单: 区.清单.length > 0
-        ? 区.清单.map((项) => ({ 项: 项.文本, 结果: 项.完成 ? ('通过' as const) : ('核对中' as const) }))
-        : undefined,
-      对话: 段内对话(区, role),
-      // S0 候选总结原样适配进小结托盘（标签/内容由 mapper 给定）；招聘方自然得到空数组
-      Agent总结: 区.Agent总结.length > 0
-        ? 区.Agent总结.map((总) => ({ 编号: 总.id, 标签: 总.标签, 内容: 总.内容 }))
-        : undefined,
-      // 未到达段的一行说明用服务端自己的阶段摘要（typed 块，不是时间线文本）
-      待推进说明: 态 === '未到达' && 区.摘要 !== '' ? 区.摘要 : undefined,
-      空说明: 态 === '当前' ? 视图.步骤说明 : undefined,
-      // 当前角色的阶段投影带 typed 附件就是入口 —— 两端同口径（候选端看的是 Case 已
-      // 下发的本人简历）。角色可见性由服务端投影和 decoder 的 S1 披露栅栏决定，
-      // 组件不再额外按 recruiter 过滤。附件行只是入口，点击才发请求。
-      // 附件常驻（评审终审修复）：入口独立于段内对话 —— 叮嘱回执/时间线文本落进
-      // S1 段也绝不压掉这个唯一 PDF 入口（Mock 屏不传该旗，行为不变）。
-      附件: 区.附件 !== null ? { 文件名: 区.附件.displayName } : null,
-      附件常驻: 区.附件 !== null ? true : undefined,
-      // 有动作卡的段保持展开（passed 段也能一眼看到等你的决定）
-      默认展开: 是动作段 ? true : undefined,
-      尾部: 是动作段
-        ? <阶段动作区 role={role} caseId={caseId} 视图={视图} 详情={详情} 操作={操作} 回答在飞表={回答在飞表} />
-        : undefined,
-    };
-  });
+  // 所有 hook 之后才收窄详情：正常视图只能来自快照里已 decode 的详情（见上：detail 为空
+  // 不映射），这里收窄一次让分段投影拿到 raw stage、动作区拿到 typed 块，绝不从展示文案反推。
+  if (详情 === null) return null;
+  const 当前阶段 = 详情.state.stage;
+
+  // 分段投影（详情统一 Task 2）：段态/顺序/标题/清单/对话/附件全由 数据/详情展示映射 的
+  // 纯 mapper 交付，本组件不再各画各的。mapper 已把「有动作的合法当前段」标成 默认展开
+  // （S0 passed 行该段已 passed：钉住展开，卡不随分节条折没）；控制端只把动作卡挂到那一段
+  // —— 纯投影不含命令，PDF 回调也只在 点附件 这一条缝上接。
+  const 分段们 = 从P5到详情分段(视图, 当前阶段).map((段) =>
+    段.默认展开 === true
+      ? {
+          ...段,
+          尾部: <阶段动作区 role={role} caseId={caseId} 视图={视图} 详情={详情} 操作={操作} 回答在飞表={回答在飞表} />,
+        }
+      : 段,
+  );
 
   return (
     <>
       {/* 刷新/轮询失败：旧详情原样保留只读，错误单独一行交代 + 重试（§10.3） */}
       {快照?.error && !快照.刷新中 ? (
-        <div className={列表样式.错误行}>
+        <div className={样式.错误行}>
           {快照.error}
-          <button className={`${列表样式.重试键} 可点`} onClick={重读}>
+          <button className={`${样式.重试键} 可点`} onClick={重读}>
             重试
           </button>
         </div>
       ) : null}
 
-      {/* 状态行：viewer 待办徽标 + 闭词状态文案 + 步骤说明 + 轮次（权威 state.*）。
+      {/* 状态区（详情统一 Task 2 收进共用展示）：viewer 待办徽标 + 闭词状态文案 +
+          步骤说明 + 轮次 + 注意说明，全部由 从P5到详情状态 投影（权威 state.*）。
           徽标原在顶栏右侧；共用外壳的顶栏右侧只放分数/薪资，徽标归 进度 状态区
           （spec §3.1：不占用或替代匹配分位置），终局（ended/completed）只读态不挂
           —— 那是进行中的语义；attention 行非待办时给「需注意」（owner-safe），
           绝不显示「代理处理中」。
           Task 4：内部 intentionId 不再进可见内容 —— 它仍留在详情模型里供路由/归属/动作
           使用，业务上下文由冻结职位名、城市与薪资带承载。 */}
-      <div style={状态行样式}>
-        {!视图.终局 ? (
-          <span
-            className={`${列表样式.徽标} ${视图.待办 || 视图.注意说明 !== null ? 列表样式.徽标待办 : 列表样式.徽标代理}`}
-          >
-            {视图.待办 ? '需要你' : 视图.注意说明 !== null ? '需注意' : '代理处理中'}
-          </span>
-        ) : null}
-        <span className={列表样式.阶段标}>{视图.状态文案}</span>
-        <span style={步骤说明样式}>{视图.步骤说明}</span>
-        <span className="等宽数字" style={轮次样式}>
-          轮次 {视图.轮次.当前}/{视图.轮次.预算}
-        </span>
-      </div>
-
-      {/* Hosted Agent 失败合同：attention 行的 owner-safe 说明（状态行之后，纯文本零操作） */}
-      {视图.注意说明 !== null ? (
-        <div className={列表样式.注意说明}>{视图.注意说明}</div>
-      ) : null}
+      <详情状态区 信息={从P5到详情状态(视图)} />
 
       {/* 终局摘要（wire outcome/reason 原样，不翻译不改写） */}
       {视图.终局摘要 !== null ? (
@@ -540,9 +443,11 @@ function 详情主体({
         </div>
       ) : null}
 
-      {/* 四阶段对话流：类型化分段的渲染器（时间线/回执只是展示文本）。
-          动作卡在 分段项.尾部、两端 PDF 入口在 附件 槽（点附件 只走 Case 专属 role 路径）。 */}
+      {/* 四阶段对话流：类型化分段的渲染器（时间线/回执只是展示文本），三详情共用同一条渲染链。
+          动作卡在 分段项.尾部、两端 PDF 入口在 附件 槽（点附件 只走 Case 专属 role 路径）。
+          key = caseId：同路由换单不重挂整页，但折叠/展开的本地 UI 状态不沿用上一单（spec §3.1）。 */}
       <阶段对话流
+        key={caseId}
         分段们={分段们}
         当前段引用={当前节点引用}
         点附件={(文件名) => void 开PDF(文件名)}

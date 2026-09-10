@@ -5,6 +5,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import 阶段对话流, { type 分段项 } from './阶段对话流';
+import { 阶段配色 } from './通用';
 
 afterEach(() => {
   cleanup();
@@ -110,5 +111,32 @@ describe('阶段对话流 · S0 记录渲染缝（Task 3）', () => {
       .parentElement as HTMLElement;
     expect(气泡列.textContent).not.toContain('值班安排已确认');
     expect(within(托盘()).getByText('初评：值班安排已确认，团队规模待确认。')).toBeTruthy();
+  });
+});
+
+describe('阶段对话流 · 展示标题（详情统一 Task 2）', () => {
+  /** 阶段对话流.tsx 里同一个 展示标题 兼容缝的渲染端：默认仍是原 阶段。 */
+  it('传了 展示标题：分节条（含未到达灰条）显示它；颜色胶囊仍用原 阶段 的配色', () => {
+    render(
+      <阶段对话流
+        分段们={[
+          { 阶段: '递交简历', 展示标题: '简历提交', 态: '当前', 状态文: '进行中', 对话: [{ 编号: 1, 方: '我方', 时间: '10:00', 内容: '你好' }] },
+          { 阶段: '需要协调', 展示标题: '差异协同', 态: '未到达', 待推进说明: '前一阶段通过后 AI 代理自动推进' },
+        ]}
+      />,
+    );
+    // 展示标题覆盖分节条文案，原阶段名不再出现（两段都换）
+    expect(screen.getByText('简历提交')).toBeTruthy();
+    expect(screen.getByText('差异协同')).toBeTruthy();
+    expect(screen.queryByText('递交简历')).toBeNull();
+    expect(screen.queryByText('需要协调')).toBeNull();
+    // 颜色/排序仍按原 阶段 查配色表：分节名与胶囊用的是 递交简历 的文字色
+    const 分节名 = screen.getByText('简历提交');
+    expect((分节名 as HTMLElement).style.color).toBe(阶段配色['递交简历'].文字);
+  });
+
+  it('不传 展示标题：旧调用方行为完全不变，分节条仍是阶段名', () => {
+    render(<阶段对话流 分段们={[旧Mock分段()]} />);
+    expect(screen.getByText('匿名初筛')).toBeTruthy();
   });
 });
