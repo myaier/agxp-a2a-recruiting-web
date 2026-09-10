@@ -2782,6 +2782,71 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
     页.unmount();
   });
 
+  // ── 回答在飞锁表按主体换代（review-r2 F-r2-1）：父 hook 常驻路由实例、不随主体重挂载，
+  //    锁表必须随账号整表替换 —— 新主体不继承旧账号的在飞锁；旧单迟到的收口只作用于
+  //    发回答闭包捕获的旧表，删不到新表里的在飞项，也不在换代后弹旧单的提示。──
+  it('同路由换账号：B 不继承 A 的回答在飞锁；A 迟到落定不清 B 草稿、不放 B 锁、不提示', async () => {
+    const user = userEvent.setup();
+    const 门A = 可控Promise<void>();
+    const 门B = 可控Promise<void>();
+    mock回答事实.mockReturnValueOnce(门A.promise).mockReturnValueOnce(门B.promise);
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
+    // rerender 需要新元素实例（同一元素引用会让 React 直接跳过重渲染）
+    const 树 = () => (
+      <MemoryRouter initialEntries={['/deal/mc_direct']}>
+        <Routes>
+          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const 页 = render(树());
+    const 框A = (await screen.findByRole('textbox', { name: '回答问题' })) as HTMLTextAreaElement;
+    await user.type(框A, 'A 的回答');
+    await user.click(screen.getByRole('button', { name: '提交回答' }));
+    expect(mock回答事实).toHaveBeenCalledTimes(1);
+    expect(mock回答事实).toHaveBeenCalledWith('candidate', 'mc_direct', 'prompt_1', 'A 的回答');
+    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
+    清空轻提示();
+
+    // 同一 URL 同一单，主体换代（切换账号）：正常区按 key 整建重置，父 hook 不重挂载
+    mock应用状态 = {
+      ...mock应用状态,
+      后端状态: {
+        ...mock应用状态.后端状态,
+        主体: { ...mock应用状态.后端状态.主体, subject_id: 'sub_2' },
+      },
+    };
+    页.rerender(树());
+
+    // B 初始不继承 A 的在飞锁：回答区干净可输入、可发起自己的请求
+    const 框B = (await screen.findByRole('textbox', { name: '回答问题' })) as HTMLTextAreaElement;
+    expect(框B.value).toBe('');
+    expect(框B.disabled).toBe(false);
+    expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false);
+    await user.type(框B, 'B 的回答');
+    await user.click(screen.getByRole('button', { name: '提交回答' }));
+    expect(mock回答事实).toHaveBeenCalledTimes(2);
+    expect(mock回答事实).toHaveBeenLastCalledWith('candidate', 'mc_direct', 'prompt_1', 'B 的回答');
+
+    // A 此刻才失败落定：迟到的收口只作用于被捕获的旧表 —— B 草稿不动、锁不放、旧单失败不提示
+    await act(async () => {
+      门A.reject(new Error('A 单迟到的失败'));
+    });
+    expect(轻提示条数()).toBe(0);
+    expect((screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement).value).toBe('B 的回答');
+    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true); // B 仍在飞
+
+    // B 自己落定：草稿清空、锁释放（A 的迟到收口没有污染 B 的承诺链）
+    await act(async () => {
+      门B.resolve();
+    });
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false));
+    expect((screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement).value).toBe('');
+    页.unmount();
+  });
+
   it('正常→失败→正常交替不违反 hooks 顺序：错误页与正常页各自完整，恢复即整页回来', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     // rerender 需要新元素实例（同一元素引用会让 React 直接跳过重渲染）

@@ -142,6 +142,9 @@ export function use后端详情动作({
     const 问题 = 视图.补充问题;
     if (内容 === '' || 问题 === null || caseId === '' || 回答在飞表.current.has(caseId)) return;
     const 本轮 = 代际.current; // 换单/卸载后迟到的成败对不上代际即整包作废
+    // 主体换代时父 hook 整表替换（review-r2 F-r2-1）：锁表按提交当时的 Map 实例记账 ——
+    // 旧单迟到的 delete 只清被闭包捕获的旧表，绝不动新主体新表里的在飞项。
+    const 锁表 = 回答在飞表.current;
     const promise = 操作.回答事实(role, caseId, 问题.promptId, 内容)
       .then(() => {
         if (代际.current === 本轮) 设回答草稿(''); // 仅成功清空；卡随操作层重读消失
@@ -150,10 +153,10 @@ export function use后端详情动作({
         if (代际.current === 本轮) 报错(错误);
       })
       .finally(() => {
-        回答在飞表.current.delete(caseId);
+        锁表.delete(caseId);
         if (代际.current === 本轮) 设回答提交中(false);
       });
-    回答在飞表.current.set(caseId, promise);
+    锁表.set(caseId, promise);
     设回答提交中(true);
   };
 

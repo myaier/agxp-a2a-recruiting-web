@@ -135,6 +135,17 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
   // 回答在飞锁表（review-r2）：归本 hook 所有 —— 正常控制子组件按 role/case 重挂载、
   // 动作区随「当前单无动作」整体卸载都不丢锁，回原单时续锁观察者靠表里的承诺链收口。
   const 回答在飞表 = useRef<Map<string, Promise<void>>>(new Map());
+  // 主体换代整表替换（review-r2 F-r2-1，plan 生命周期「主体/会话换代时整个父实例重置」）：
+  // RefObject 与契约 C 类型不变，但 .current 换成全新 Map —— 新主体不继承旧账号的在飞锁，
+  // 旧单迟到的 delete 作用于 发回答 闭包捕获的旧表（use后端详情动作），删不到新表；
+  // 换单/同主体重渲不换表（回原单续锁语义保持）。必须在渲染期完成替换：effects 自子向父
+  // 触发，新主体子 hook 的换单续锁效果先于本 hook 的 passive effect 读表 —— effect 里换表
+  // 会让新主体误继承旧账号的在飞锁（屏级测试钉住）。
+  const 上轮主体ID = useRef<string | null>(主体ID);
+  if (上轮主体ID.current !== 主体ID) {
+    上轮主体ID.current = 主体ID;
+    回答在飞表.current = new Map();
+  }
 
   // 当前阶段段的定位引用（子组件渲染 阶段对话流 时挂到「当前」段并自动滚过去）
   const 当前段引用 = useRef<HTMLDivElement>(null);

@@ -529,6 +529,52 @@ describe('use后端详情动作 · 回答在飞表生命周期', () => {
     expect(回答事实).toHaveBeenCalledTimes(1); // 往返全程只发过一次 POST
   });
 
+  it('主体换代整表替换：新主体重挂载不继承旧锁；旧单迟到收口只清被捕获的旧表（review-r2 F-r2-1）', async () => {
+    const 门A = 可控Promise<void>();
+    const 门B = 可控Promise<void>();
+    const 回答事实 = vi.fn().mockReturnValueOnce(门A.promise).mockReturnValueOnce(门B.promise);
+    const 表 = { current: new Map<string, Promise<void>>() };
+    const 一号 = 挂动作(动作输入({ 详情: S0详情DTO(), 回答在飞表: 表, 回答事实 }));
+    await act(async () => {
+      取事实问题(一号.result).改草稿('A 的回答');
+    });
+    await act(async () => {
+      取事实问题(一号.result).提交.执行?.();
+    });
+    const 旧表 = 表.current;
+    expect(旧表.has('mc_a')).toBe(true);
+
+    // 主体换代：父 hook 整表替换（RefObject 不变），子 hook 随新主体重挂载
+    表.current = new Map();
+    一号.unmount(); // 旧主体的动作区销毁：迟到成败过旧实例的代际栅栏
+    const 二号 = 挂动作(动作输入({ 详情: S0详情DTO(), 回答在飞表: 表, 回答事实 }));
+    expect(取事实问题(二号.result).提交.执行).not.toBeNull(); // B 初始不继承 A 的在飞锁
+    await act(async () => {
+      取事实问题(二号.result).改草稿('B 的回答');
+    });
+    await act(async () => {
+      取事实问题(二号.result).提交.执行?.();
+    });
+    expect(回答事实).toHaveBeenCalledTimes(2);
+    expect(回答事实).toHaveBeenLastCalledWith('candidate', 'mc_a', 'prompt_1', 'B 的回答');
+    expect(表.current.has('mc_a')).toBe(true); // B 的请求记在新表
+
+    // A 此刻才落定：迟到的 delete 只作用于被闭包捕获的旧表，B 的在飞项分毫不动
+    await act(async () => {
+      门A.resolve();
+    });
+    expect(旧表.has('mc_a')).toBe(false);
+    expect(表.current.has('mc_a')).toBe(true);
+    expect(取事实问题(二号.result).提交.执行).toBeNull(); // B 仍在飞（提交中…）
+
+    // B 自己落定：正常清表收口
+    await act(async () => {
+      门B.resolve();
+    });
+    await waitFor(() => expect(表.current.has('mc_a')).toBe(false));
+    await waitFor(() => expect(取事实问题(二号.result).提交.执行).not.toBeNull());
+  });
+
   it('换 Case：旧单迟到的成功不改动新单草稿（代际栅栏），他单在飞不锁本单', async () => {
     const deferred = 可控Promise<void>();
     const 回答事实 = vi.fn(() => deferred.promise);

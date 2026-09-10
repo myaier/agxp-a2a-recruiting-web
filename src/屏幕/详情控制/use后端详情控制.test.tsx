@@ -501,6 +501,46 @@ describe('use后端详情控制 · 叮嘱 scope 栅栏', () => {
   });
 });
 
+// ── 回答在飞锁表按主体换代（review-r2 F-r2-1）：父 hook 常驻路由实例，主体换代时
+//    整表替换（RefObject 不变）；换单/同主体重渲不换表（回原单续锁语义保持）。──
+
+describe('use后端详情控制 · 回答在飞表按主体换代', () => {
+  it('主体换代整表替换：RefObject 不变、新表干净；换单与同主体重渲仍同一张表', async () => {
+    置详情状态({ caseId: 'mc_a', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }) });
+    const 视 = renderHook(
+      ({ role, caseId }) => use后端详情控制({ role, caseId }),
+      { initialProps: { role: 'candidate' as P5角色, caseId: 'mc_a' } },
+    );
+    const 表引用 = 取正常(视.result.current).动作输入.回答在飞表;
+    表引用.current.set('mc_a', Promise.resolve());
+    const 首表 = 表引用.current;
+
+    // 换单：同一张表（回原单续锁语义不变）
+    置详情状态({ caseId: 'mc_b', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }) });
+    await act(async () => {
+      视.rerender({ role: 'candidate', caseId: 'mc_b' });
+    });
+    expect(取正常(视.result.current).动作输入.回答在飞表).toBe(表引用);
+    expect(表引用.current).toBe(首表);
+
+    // 同一 URL 同一单，主体换代（切换账号）：.current 换成全新空表
+    mock应用状态 = {
+      ...mock应用状态,
+      后端状态: {
+        ...mock应用状态.后端状态,
+        主体: { ...mock应用状态.后端状态.主体, subject_id: 'sub_2' },
+      },
+    };
+    await act(async () => {
+      视.rerender({ role: 'candidate', caseId: 'mc_b' });
+    });
+    expect(取正常(视.result.current).动作输入.回答在飞表).toBe(表引用); // RefObject 不变（契约 C）
+    expect(表引用.current).not.toBe(首表); // 表实例换代：新主体不继承旧账号的在飞锁
+    expect(表引用.current.size).toBe(0);
+    视.unmount();
+  });
+});
+
 describe('use后端详情控制 · 终局与移交', () => {
   it('ended 终局：底栏只读且无发送回调、终局摘要齐备、3 秒节拍停', async () => {
     vi.useFakeTimers();

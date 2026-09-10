@@ -100,3 +100,45 @@ e2e 2：`e2e/数据源模式.spec.ts`、`e2e/视觉回归/场景.ts`
 - 视觉回归基线：Tab 行文案像素将随 F1 变化，`candidate-negotiation-detail` 场景的几何锚点
   已收紧为精确名，正式跑 视觉回归 时按流程重采基线即可（本次未跑，任务清单只要求
   data-source grep）。
+
+---
+
+# Review R2 修复记录（追加，2026-09-10）
+
+Codex round 2 确认 F1–F6 已解决、F2 维持关闭；新接收一条 required finding。
+
+## F-r2-1（required）回答在飞表按主体隔离
+
+**问题**：账号 A 在 caseId=X 的 respond_fact 在飞期间，同一路由切到账号 B：父 hook
+（use后端详情控制）不随主体重挂载，回答在飞表仍含 A 的条目 → B 的回答区被判提交中直至
+A 落定；且 A 的迟到 `回答在飞表.current.delete(caseId)` 会误删 B 的同单在飞项。
+
+**改动**
+- `src/屏幕/详情控制/use后端详情控制.ts:135-153`：检测 `主体.subject_id` 变化时把
+  `回答在飞表.current` 整表替换为全新 Map —— RefObject 与契约 C 类型不变（子 hook 经同一
+  RefObject 读到新表）；换单/同主体重渲不换表（回原单续锁语义保持）。**替换必须在渲染期
+  完成**：React 的 effects 自子向父触发，新主体子 hook（keyed 重挂载）的换单续锁效果先于
+  父 hook 的 passive effect 读表 —— effect 里换表会让 B 误继承 A 的锁（屏级测试先红后绿，
+  实证钉住该顺序）。刻意不用「清空同一个 ref」：A 迟到的 delete 会删到 B 在同一 Map 里的
+  新条目。
+- `src/屏幕/详情控制/use后端详情动作.ts:139-161`：`发回答` 提交时把当时
+  `回答在飞表.current` 的 Map 实例捕获进闭包（`锁表`），`finally` 的 delete 与记账 set 都
+  作用于被捕获的表 —— A 的迟到清理只作用于 A 的旧表，绝不动 B 的新表。续锁观察者本就
+  只读承诺链 + 代际栅栏收口，无需改动。
+
+**测试**
+- `src/屏幕/详情控制/use后端详情控制.test.tsx:415-450`（hook 级）：主体换代
+  `.current` 换全新空表、RefObject 不变；换单与同主体重渲仍同一张表。
+- `src/屏幕/详情控制/use后端详情动作.test.tsx:535-585`（hook 级）：A 提交在飞 → 换主体
+  （模拟父 hook 整表替换 + 子 hook 重挂载）→ B 不继承锁、能发起自己的请求（新表记账）→
+  A 迟到落定只清被捕获的旧表、B 的在飞项不动、B 仍在飞 → B 自己落定正常收口。
+- `src/屏幕/P5/MatchCase详情.test.tsx:2786-2848`（屏级全链路，Codex 验证场景）：
+  A 回答 pending → 同路由同 caseId 换账号 → B 初始不继承锁（输入/提交键可用）并发起自己的
+  请求 → A 迟到失败落定：不清 B 草稿、不放 B 锁、轻提示 0（A 的失败不弹）→ B 自己落定后
+  草稿清空、锁释放。
+
+**验证**：`npm test` 184 文件 / 3836 用例全过（含上述 3 条新测试）；`npm run typecheck`
+exit 0；`npm run lint` exit 0；
+`npm run test:e2e:data-source -- --grep '在谈详情完整布局'` 7 passed（不受影响）。
+
+提交：`fix(review-r2): isolate answer in-flight table by subject`（本文件随同提交）。
