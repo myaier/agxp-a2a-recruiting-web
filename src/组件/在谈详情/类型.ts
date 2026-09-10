@@ -3,12 +3,15 @@
 // 只描述本页实际需要的展示输入：text/null 的语义由每个区块的明确文案决定，
 // 不建立通用 reason 枚举；ReactNode 槽只用于组合本页的共享子组件，
 // 禁止传入旧 Mock/Backend 整页 JSX 逃避复用。不输出全局业务 DTO。
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 // 职位资料信息 的对齐行只借用既有类型（契约 B：type import，来源 src/数据/匹配对齐.ts）；
 // 在线简历正文属性 的 档 同样只 type import（来源 src/数据/企业端模拟数据.ts，
 // 不导入 Mock 简历表或任何值，也不重建第二种完整简历模型）
 import type { 对齐行 } from '../../数据/匹配对齐';
 import type { 匿名简历档 } from '../../数据/企业端模拟数据';
+// 确认属性（契约 C）只是既有 确认层 组件 props 的类型别名 —— 只 type import 组件
+// 本体，展示与控制两侧都不因此产生第二种确认层实现。
+import type 确认层 from '../确认层';
 
 export type 详情Tab = '进度' | '资料';
 
@@ -53,6 +56,22 @@ export interface 详情动作卡信息 {
 export interface 事实问题属性 {
   问题: string; 草稿: string; 改草稿: (value: string) => void;
   提交: 详情按钮;
+}
+
+/** 确认属性（契约 C）：不可逆动作二次确认的展示合同 —— 类型即既有 确认层 的 props
+ *  （组件来源 src/组件/确认层.tsx），控制 hook 组装，确认层只接收已有 props。 */
+export type 确认属性 = ComponentProps<typeof 确认层>;
+
+/** 简历选择属性（契约 C）：S1 递交单选的展示合同。展示不持 BFF 文件 —— 只认控制层发的
+ *  键；控制层维护 键→原 {file_id,file_version_id,displayName} 选择的映射（用既有
+ *  从附件行取选择值），不得以文件名作身份。Task 5 只声明合同（值恒 null），Task 6 交付。 */
+export interface 简历选择属性 {
+  职位名: string;
+  文件们: readonly { 键: string; 文件名: string; 状态文: string; 禁用说明: string | null }[];
+  选中键: string | null;
+  选择: (key: string) => void;
+  取消: () => void;
+  确认: 详情按钮;
 }
 
 export type 详情底栏信息 =

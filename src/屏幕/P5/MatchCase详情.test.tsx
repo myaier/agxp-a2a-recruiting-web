@@ -1449,6 +1449,20 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     expect(mock回答事实).not.toHaveBeenCalled();
   });
 
+  it('S0 迁移后单挂载：两卡只经 详情动作卡/事实问题卡 渲染一次，问题与回答框同卡', () => {
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    // 同一 action 只有一个来源（hook 卡唯一挂载，旧 switch 不再出 S0 两卡）
+    expect(screen.getAllByText('补充事实')).toHaveLength(1);
+    expect(screen.getAllByRole('textbox', { name: '回答问题' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: '提交回答' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: '结束初筛' })).toHaveLength(1);
+    // 事实问题卡在 respond_fact 卡正文槽内：当前问题 + 动作标题/说明保留
+    expect(screen.getByText('问：每周可以到岗几天？')).toBeTruthy();
+    expect(screen.getByText('回答当前阶段待补充的问题')).toBeTruthy();
+    expect(screen.getByText('结束本次匿名初筛')).toBeTruthy();
+  });
+
   it('respond_fact + end_screening 只有补充事实与结束动作，没有继续初筛', async () => {
     const user = userEvent.setup();
     置详情状态({

@@ -7,6 +7,10 @@
 // 冻结职位 · 城市 · 薪资带改走 岗位上下文 行；viewer 待办徽标从顶栏右侧移进 进度 槽的状态行。
 // 错误路径（契约错误 / 首载失败 / 读入中）保持原样：不进外壳、不调 mapper、不摆 Tab。
 //
+// 详情统一（2026-09-10 Task 5）：S0 动作（respond_fact / end_screening）的控制与展示分离 ——
+// 控制在 屏幕/详情控制/use后端详情动作（阶段动作区 无条件调用，Task 9 迁 后端正常详情），
+// 展示在 组件/在谈详情 的 详情动作卡 + 事实问题卡；S1–S3 暂留本文件旧控制（Task 6/8 迁）。
+//
 // 模式边界（spec §5/§6/§8/§10.3 与 P5 冻结契约）：
 //   · 详情只凭 URL case_id + 已认证角色强制 GET（读取详情 恒 force=true —— 非 force 在
 //     成功快照上短路，会静默吞掉 3 秒轮询与直达刷新），绝不读列表快照补 context：
@@ -70,9 +74,12 @@ import 原始PDF层 from '../../组件/原始PDF层';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../../组件/通用';
 import { 详情外壳 } from '../../组件/在谈详情/详情外壳';
 import { 详情状态区 } from '../../组件/在谈详情/详情状态区';
+import { 详情动作卡 } from '../../组件/在谈详情/详情动作卡';
+import { 事实问题卡 } from '../../组件/在谈详情/事实问题卡';
 import { 职位资料 } from '../../组件/在谈详情/职位资料';
 import { 在线简历正文 } from '../../组件/在谈详情/在线简历正文';
 import type { 详情Tab } from '../../组件/在谈详情/类型';
+import { use后端详情动作 } from '../详情控制/use后端详情动作';
 // 详情自己的样式：状态区/徽标/空态/错误/契约错误都已迁入共用外壳的 CSS（列表文件不回写）
 import 样式 from '../../组件/在谈详情/详情外壳.module.css';
 import { 从P5到详情分段, 从P5到详情状态, 从P5到详情顶栏, 从P5到职位资料 } from '../../数据/详情展示映射';
@@ -141,11 +148,6 @@ const 动作主键样式: CSSProperties = {
 const 动作次键样式: CSSProperties = {
   flex: 'none', padding: '7px 15px', borderRadius: 999,
   background: 'transparent', border: '1px solid var(--描边深)', color: 'var(--正文)', fontSize: 12.5,
-};
-const 回答框样式: CSSProperties = {
-  width: '100%', boxSizing: 'border-box', minHeight: 64, padding: '9px 11px', resize: 'vertical',
-  borderRadius: 10, border: '1px solid var(--描边深)', background: '#fff',
-  fontSize: 13, lineHeight: 1.6, color: 'var(--正文)',
 };
 
 export function MatchCase详情(props: { role: P5角色 }) {
@@ -552,12 +554,17 @@ function S1简历选择层({
 }
 
 // ── S0–S3 动作区：只渲染映射交集里的卡，控件再过 typed 坐标栅栏 ────────────────
+//
+// 详情统一（2026-09-10 Task 5）：S0 两卡（respond_fact 补充事实 / end_screening 结束初筛）
+// 的控制已搬入 屏幕/详情控制/use后端详情动作，展示走共用的 详情动作卡 + 事实问题卡；
+// 本组件无条件调用该 hook（Task 9 迁入 后端正常详情），返回合同恒定 —— S1–S3 仍由下方
+// 旧控制暂留（Task 6/8 迁入），同一 action 绝不双挂载。
 
 /** 动作区会调用的操作面（测试桩同形）。 */
 type 动作操作 = Pick<应用操作,
   '回答事实' | '决定S0' | '决定S1' | '决定S2' | '决定S3' | '提交简历' | '准备候选委托简历'>;
 
-/** 终结类动作（结束初筛/婉拒邀请/判不合适）的二次确认载荷。 */
+/** 终结类动作（婉拒邀请/判不合适；结束初筛已迁入 use后端详情动作）的二次确认载荷。 */
 interface 终结确认 {
   标题: string;
   正文: string;
@@ -583,14 +590,12 @@ function 阶段动作区({
 }): ReactNode {
   const { 跳转 } = use导航();
 
-  const [回答草稿, 设回答草稿] = useState('');
-  // 回答提交的可见 in-flight（spec §10.3）：独立于 S1/S2/S3 的 写中 —— 只锁回答区，
-  // 不牵连其它动作卡；state 只负责渲染。
-  // 锁表由页面级 MatchCase详情 持有（review-r2：动作区会整体卸载，锁不能随它丢）；
-  // 按 case_id 记账（跨换单导航持续）：操作层同 (role,case,action,prompt) 单飞会复用
-  // 在飞 POST —— 回原单时若已放锁，新草稿会绑上旧承诺被静默吞掉（review-r1）。
-  // 表里存的是已收口的承诺链（catch 已吞错，恒 resolve），回原单的续锁观察者靠它收口解锁。
-  const [回答提交中, 设回答提交中] = useState(false);
+  // S0 动作控制（respond_fact / end_screening）：卡片与回答区 props 全由 hook 交付，
+  // 回答在飞表仍由页面级 MatchCase详情 持有并传入（动作区卸载不丢锁）。
+  const { 卡片们, 事实问题, 终结确认 } = use后端详情动作({
+    role, caseId, 视图, 详情, 操作, 回答在飞表,
+  });
+
   // S1 提交三态：权威库单选 → Case 专属披露确认 → POST（字面 true）；任一结束即清
   const [待选择, 设待选择] = useState<{ 文件们: readonly BFF附件简历[] } | null>(null);
   const [待披露, 设待披露] = useState<{ 选择: 附件简历选择值 } | null>(null);
@@ -605,21 +610,9 @@ function 阶段动作区({
   }, []);
   useEffect(() => {
     准备代际.current += 1;
-    const 本轮 = 准备代际.current;
     设待选择(null);
     设待披露(null);
     设待确认终局(null);
-    设回答草稿('');
-    // 离开又回到同一单且回答仍在飞：续锁到旧请求收口（同键单飞复用旧 POST，不能放锁）；
-    // 他单在飞或无在飞：本单回答区干净起步。
-    const 在飞 = 回答在飞表.current.get(caseId);
-    设回答提交中(在飞 !== undefined);
-    if (在飞 !== undefined) {
-      void 在飞.finally(() => {
-        if (准备代际.current === 本轮) 设回答提交中(false);
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 回答在飞表是页面持有的稳定 ref，身份恒定
   }, [caseId]);
 
   const 报错 = (错误: unknown) => 轻提示(取后端错误文案(错误));
@@ -635,27 +628,6 @@ function 阶段动作区({
     } finally {
       设写中(false);
     }
-  };
-
-  // respond_fact：typed promptId 来自映射层的唯一匹配（零/多条整页契约错误，到不了这里）
-  const 发回答 = () => {
-    const 内容 = 回答草稿.trim();
-    const 问题 = 视图.补充问题;
-    if (内容 === '' || 问题 === null || caseId === '' || 回答在飞表.current.has(caseId)) return;
-    const 本轮 = 准备代际.current; // 换单/卸载后迟到的成败对不上代际即整包作废
-    const promise = 操作.回答事实(role, caseId, 问题.promptId, 内容)
-      .then(() => {
-        if (准备代际.current === 本轮) 设回答草稿(''); // 仅成功清空；卡随操作层重读消失
-      })
-      .catch((错误: unknown) => {
-        if (准备代际.current === 本轮) 报错(错误);
-      })
-      .finally(() => {
-        回答在飞表.current.delete(caseId);
-        if (准备代际.current === 本轮) 设回答提交中(false);
-      });
-    回答在飞表.current.set(caseId, promise);
-    设回答提交中(true);
   };
 
   // S1 接受/更换：先拿权威附件库（每次尝试都重跑），再多份单选、单份直达披露确认
@@ -708,18 +680,7 @@ function 阶段动作区({
     void 发命令(() => 操作.提交简历(caseId, 选择.fileId, 选择.fileVersionId, true));
   };
 
-  // 终结类确认（不可逆）：正文把后果讲清，确认才发命令
-  const 确认结束初筛 = () =>
-    设待确认终局({
-      标题: '结束本次匿名初筛？',
-      正文: '结束后这一单立即终止，无法恢复。',
-      执行文: '结束初筛',
-      取消文: '暂不结束',
-      执行: () => {
-        设待确认终局(null);
-        void 发命令(() => 操作.决定S0(caseId, 'end'));
-      },
-    });
+  // 终结类确认（不可逆）：正文把后果讲清，确认才发命令（结束初筛的确认已迁 hook）
   // 婉拒简历邀请 = decisions 路线的 end（wire 无 decline 专臂；e2e J2 同款语义）
   const 确认婉拒邀请 = () =>
     设待确认终局({
@@ -752,43 +713,10 @@ function 阶段动作区({
 
   if (视图.actions.length === 0) return null;
 
-  /** 每个动作词的控件；无 typed 坐标/无本端准许路线 → null（零控件零请求）。 */
+  /** 未迁移动作词（S1–S3）的控件；无 typed 坐标/无本端准许路线 → null（零控件零请求）。
+   *  respond_fact / end_screening 已迁 use后端详情动作，渲染层不会把这两个词送到这里。 */
   const 控件 = (动作: P5动作): ReactNode => {
     switch (动作) {
-      case 'respond_fact':
-        // 零/多条匹配已在映射层 fail closed；这里再挡一层（缺问题即无提交控件）
-        return 视图.补充问题 === null ? null : (
-          <>
-            <textarea
-              aria-label="回答问题"
-              style={回答框样式}
-              value={回答草稿}
-              disabled={回答提交中}
-              onChange={(事件) => 设回答草稿(事件.target.value)}
-            />
-            <div style={键行样式}>
-              <button
-                type="button" className="可点" style={动作主键样式} disabled={回答提交中} onClick={发回答}
-              >
-                {回答提交中 ? '提交中…' : '提交回答'}
-              </button>
-            </div>
-          </>
-        );
-      case 'end_screening':
-        // decisions 路线只有候选端 /me 臂：招聘端结束卡无本端准许路线，零控件。
-        // 候选端也只保留「结束初筛」一条准许路线 —— end_screening 卡绝不发 continue
-        //（继续是 AI/预算侧自动推进，不是前端可点的授权动作，spec §10.1）。
-        return role !== 'candidate' ? null : (
-          <div style={键行样式}>
-            <button
-              type="button" className="可点" style={动作次键样式} disabled={写中}
-              onClick={确认结束初筛}
-            >
-              结束初筛
-            </button>
-          </div>
-        );
       case 'accept_resume_invitation':
         return (
           <div style={键行样式}>
@@ -889,16 +817,33 @@ function 阶段动作区({
     }
   };
 
+  // S0 两卡只经 hook 输出渲染（键 = 动作词），其余动作仍走本组件旧渲染 —— 按映射交集
+  // 给定的顺序遍历，同一 action 只有一个来源，绝不双挂载。
+  const 迁卡 = new Map(卡片们.map((卡) => [卡.键, 卡]));
+
   return (
     <>
       <div style={动作区样式}>
-        {视图.actions.map((卡: P5动作卡) => (
-          <div key={卡.action} style={动作卡样式}>
-            <div style={动作卡题样式}>{卡.标题}</div>
-            <div style={动作卡说明样式}>{卡.说明}</div>
-            {控件(卡.action)}
-          </div>
-        ))}
+        {视图.actions.map((卡: P5动作卡) => {
+          const 迁 = 迁卡.get(卡.action);
+          if (迁 !== undefined) {
+            return (
+              <详情动作卡
+                key={迁.键}
+                信息={迁.键 === 'respond_fact' && 事实问题 !== null
+                  ? { ...迁, 正文: <事实问题卡 {...事实问题} /> }
+                  : 迁}
+              />
+            );
+          }
+          return (
+            <div key={卡.action} style={动作卡样式}>
+              <div style={动作卡题样式}>{卡.标题}</div>
+              <div style={动作卡说明样式}>{卡.说明}</div>
+              {控件(卡.action)}
+            </div>
+          );
+        })}
       </div>
 
       {待选择 !== null ? (
@@ -939,6 +884,9 @@ function 阶段动作区({
           执行={待确认终局.执行}
         />
       ) : null}
+
+      {/* S0 结束初筛的二次确认（use后端详情动作 交付的 确认属性，逐字段透传） */}
+      {终结确认 !== null ? <确认层 {...终结确认} /> : null}
     </>
   );
 }
