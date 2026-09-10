@@ -314,4 +314,5 @@ session /tmp/codex-review-loop/session-Ue8P68yE，thread 01a0894b…，model gpt
   - 全量 data-source：**102 passed / 11 failed**——11 个 ⊆ 已知 13 个 base 即红清单（P1C、新招聘方 onboarding 本次环境性转绿，无新增失败；对方新增 8 条企业名片统一用例全过）。
   - ui:check `--base b93436e`：exit 1 = pass 15 / warning 2 / blocked 1，逐项对账：`enterprise-public` blocked+2.53% 与 `recruiter-card` 0.65% 为并行任务在其 gate 已批准记录的 §7 差异（该 plan 实施记录载明）；`candidate-negotiations` 1.89% 为本分支批准的统一阶段区间距（用户本轮裁定可接受）。new=0 removed=0 infrastructure=0，无未解释差异。
 - development L3（真实 local 验收，required）：**NOT_RUN（用户裁定延后）**——待用户 STG 栈就绪后按 docs/dogfood/真实后端行为验收.md 补测（候选推荐→委托→在谈、双端在谈读取、390px+窄屏截图）。
-- 实际合入 SHA 与 push 结果见下。
+- 实际合入：`git push origin HEAD:main` 普通 fast-forward 成功，`0eef7351..a7c1eea6`；合入后 `origin/main = a7c1eea666c4fa221181ea656641518df5c9c5b2`（含 merge commit 16beb309 与本记录提交）。二次 fetch 已核对 push 前 target 未推进（等于 final_target_base）。
+- 补测欠账：development L3（真实 local 验收）按用户裁定延后，待真实 STG 栈就绪后按 docs/dogfood/真实后端行为验收.md 执行候选推荐→委托→在谈与双端在谈读取观察；在此之前不得将本 Plan 的验收层次 5 记为通过。
