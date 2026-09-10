@@ -61,3 +61,11 @@ describe('薪资区间层 确认合同', () => {
     expect(确认).toHaveBeenCalledWith(21, 30);
   });
 });
+
+it.each([['day', 300, 500], ['month', 250.5, 300], ['hour', 120, 180]] as const)('历史%s薪资打开直接确认无截断', async (周期, 下限, 上限) => {
+  const 确认 = vi.fn();
+  render(<薪资区间层 周期={周期} 下限={下限} 上限={上限} 确认={确认} 取消={vi.fn()} />);
+  expect(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: String(下限) }).getAttribute('aria-selected')).toBe('true');
+  await userEvent.click(screen.getByRole('button', { name: '确定' }));
+  expect(确认).toHaveBeenCalledWith(下限, 上限);
+});

@@ -130,7 +130,18 @@ describe('应用状态 reducer', () => {
     const 开草稿后 = 归约(水合后, { 型: '开意向草稿', 编号: 'int_1' });
     expect(开草稿后.意向草稿).toEqual({
       编辑编号: 'int_1',
-      求职类型: '全职',
+      求职类型: '实习生',
+      毕业时间: null,
+      实习月数: 3,
+      每周到岗天数: 4,
+      薪资周期: 'day',
+      排除项: {
+        alternate_weekend_work: 'unspecified',
+        outsourcing_only: 'unspecified',
+        onsite_only: 'unspecified',
+        frequent_travel: 'unspecified',
+      },
+      私有偏好: '',
       工作城市: '上海',
       工作城市引用: { id: 'loc_sh', display_name: '上海' },
       期望职位: '产品经理',

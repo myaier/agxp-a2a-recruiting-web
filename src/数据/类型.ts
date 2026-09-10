@@ -149,6 +149,8 @@ export interface 规则 {
 
 /** 求职意向 */
 export interface 求职意向 {
+  /** 模拟意向保留完整表单；旧演示记录仍可按标题拆回。 */
+  完整草稿?: import('./招聘数据源类型').意向草稿型;
   编号: string;
   标题: string;
   说明: string;

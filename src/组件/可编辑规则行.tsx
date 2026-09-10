@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { 规则 } from '../数据/类型';
 import 确认层 from './确认层';
@@ -18,6 +18,25 @@ export default function 可编辑规则行({ 条, 可编辑 = true, 保存, 删�
   const [展开, 设展开] = useState(false);
   const [确认删除, 设确认删除] = useState(false);
   const [忙, 设忙] = useState(false);
+  const 编辑输入 = useRef<HTMLTextAreaElement>(null);
+  // 保留原生输入法与选区行为；正文换行时随内容、可用宽度调整高度。
+  useLayoutEffect(() => {
+    const 输入 = 编辑输入.current;
+    if (!编辑中 || !输入) return;
+    const 调整高度 = () => {
+      输入.style.height = '0px';
+      输入.style.height = `${输入.scrollHeight}px`;
+    };
+    调整高度();
+    let 上次宽度 = 输入.clientWidth;
+    const 观察器 = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+      if (输入.clientWidth === 上次宽度) return;
+      上次宽度 = 输入.clientWidth;
+      调整高度();
+    });
+    观察器?.observe(输入);
+    return () => 观察器?.disconnect();
+  }, [编辑中, 草稿]);
   const 锁 = useRef(false);
   const 组合中 = useRef(false);
   const 起点 = useRef<{ x: number; y: number } | null>(null);
@@ -47,7 +66,8 @@ export default function 可编辑规则行({ 条, 可编辑 = true, 保存, 删�
         }}
         onClickCapture={事件 => { if (滑过.current) { 事件.preventDefault(); 事件.stopPropagation(); 滑过.current = false; } }}>
         {编辑中 && 可编辑 ? <>
-          <input aria-label={`编辑规则：${条.内容}`} className={样式.输入} value={草稿} autoFocus disabled={忙} enterKeyHint="done"
+          <div className={样式.编辑正文}>
+          <textarea ref={编辑输入} rows={1} aria-label={`编辑规则：${条.内容}`} className={样式.输入} value={草稿} autoFocus disabled={忙} enterKeyHint="done"
             onChange={事件 => 设草稿(事件.target.value)}
             onCompositionStart={() => { 组合中.current = true; }} onCompositionEnd={() => { 组合中.current = false; }}
             onKeyDown={事件 => {
@@ -55,6 +75,7 @@ export default function 可编辑规则行({ 条, 可编辑 = true, 保存, 删�
               if (事件.key === 'Enter') { 事件.preventDefault(); 提交(); }
               if (事件.key === 'Escape') 取消();
             }} />
+          </div>
           <button className={样式.文字键} disabled={忙} onClick={取消}>取消</button>
           <button className={样式.文字键} disabled={忙 || !草稿.trim()} onClick={提交}>完成</button>
         </> : <>

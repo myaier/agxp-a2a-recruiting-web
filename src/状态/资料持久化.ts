@@ -45,6 +45,16 @@ export function use资料持久化({
   const Mock简历键 = 账号存储键('简历v3', Mock范围);
   const Mock筛选键 = 账号存储键('求职筛选v2', Mock范围);
 
+  // 完整模拟意向只写演示账号命名空间，不写后端权威缓存。
+  useEffect(() => {
+    if (是后端) return;
+    try {
+      本地存储?.setItem(账号存储键('求职意向v1', Mock范围), JSON.stringify(状态.求职意向表));
+    } catch {
+      // 浏览器禁存或空间不足时保留内存编辑，与现有模拟简历一致。
+    }
+  }, [是后端, Mock范围, 本地存储, 状态.求职意向表]);
+
   // 简历/引导只在 Mock 持久化；Backend 已接域只认服务端权威。
   useEffect(() => {
     if (是后端) return;

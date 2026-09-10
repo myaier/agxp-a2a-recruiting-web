@@ -6,7 +6,7 @@
 //
 // 与 数字滚轮层 的区别：那是单列，这里要同时定下限和上限两个数。
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import 样式 from './薪资区间层.module.css';
 import 弹层框架 from './弹层框架';
 import 内嵌双滚轮 from './内嵌双滚轮';
@@ -20,6 +20,7 @@ const 默认上限 = 11;
 
 interface 属性 {
   /** 已选下限，千元；null = 还没选过 */
+  周期?: 'month' | 'day' | 'hour';
   下限: number | null;
   /** 已选上限，千元；null = 还没选过 */
   上限: number | null;
@@ -27,17 +28,17 @@ interface 属性 {
   取消: () => void;
 }
 
-/** 把外部传进来的值夹进档表范围，防止历史脏数据（如 0 或 200）让滚轮定位不到档 */
-function 夹到档内(值: number | null, 兜底: number): number {
-  if (值 === null) return 兜底;
-  return Math.min(Math.max(值, 档位表[0]), 档位表[档位表.length - 1]);
-}
-
-const 标题文案 = '薪资要求(月薪，单位:千元)';
-
-export default function 薪资区间层({ 下限, 上限, 确认, 取消 }: 属性) {
-  const [下限值, 设下限值] = useState(() => 夹到档内(下限, 默认下限));
-  const [上限值, 设上限值] = useState(() => 夹到档内(上限, 默认上限));
+/** 历史数值补入可选档，打开确认不再将大额或小数薪资截断。 */
+export default function 薪资区间层({ 下限, 上限, 确认, 取消, 周期 = 'month' }: 属性) {
+  const 日薪 = 周期 === 'day';
+  const 单位 = 日薪 ? '元/天' : 周期 === 'hour' ? '元/时' : 'K';
+  const 标题文案 = 日薪 ? '薪资要求(日薪，单位:元)' : 周期 === 'hour' ? '薪资要求(时薪，单位:元)' : '薪资要求(月薪，单位:千元)';
+  const 当前档位 = useMemo(() => [...new Set([
+    ...(日薪 ? Array.from({ length: 44 }, (_, 序) => (序 + 1) * 50) : 档位表),
+    ...[下限, 上限].filter((值): 值 is number => 值 !== null && Number.isFinite(值)),
+  ])].sort((甲, 乙) => 甲 - 乙), [日薪, 下限, 上限]);
+  const [下限值, 设下限值] = useState(下限 ?? (日薪 ? 150 : 默认下限));
+  const [上限值, 设上限值] = useState(上限 ?? (日薪 ? 200 : 默认上限));
 
   // 两列各滚各的，中途允许出现上限 < 下限的中间态（否则一列会把另一列顶着跑，手感很差）；
   // 只在点「确定」这一刻把上限抬到等于下限，既不报错也不把用户的选择静默丢掉。
@@ -60,16 +61,16 @@ export default function 薪资区间层({ 下限, 上限, 确认, 取消 }: 属�
 
       <div className={样式.轮区}>
         <内嵌双滚轮
-          左档={档位表}
-          右档={档位表}
+          左档={当前档位}
+          右档={当前档位}
           左值={下限值}
           右值={上限值}
           设左值={设下限值}
           设右值={设上限值}
           左名="薪资下限"
           右名="薪资上限"
-          左单位="K"
-          右单位="K"
+          左单位={单位}
+          右单位={单位}
         />
       </div>
     </弹层框架>
