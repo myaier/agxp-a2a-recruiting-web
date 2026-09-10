@@ -1,0 +1,683 @@
+/* 企业公开页共用展示（Mock 与 Backend 一份 JSX）。
+   视觉语言迁移自 屏幕/企业详情.module.css：米色页底改白卡细描边 + 淡绿渐变头，
+   荧光绿只留给底部主操作，状态色复用四阶段配色，不新造颜色。
+   合法缺失用 .未知：既有次要文字色 + 中性背景，不用认证/成功/警告色冒充事实。 */
+
+/* ── 淡绿渐变头（同 A15「我的」的顶部处理，不用深色 hero）── */
+.头区 {
+  /* 2026-08-24 全站去框（产品负责人批）：页底改纯白，渐变尾随之收到白，避免米色接缝 */
+  background: linear-gradient(180deg, var(--淡绿底) 0%, var(--白) 100%);
+  padding: 14px 18px 18px;
+}
+
+.头行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 13px;
+}
+
+.头文字 {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 企业 LOGO：固定 50×50、圆角 16（Spec §3.3，两种来源同规格） */
+.企业头图 {
+  flex: none;
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+  object-fit: cover;
+  display: block;
+  border: 1px solid var(--描边);
+}
+
+/* 无 LOGO 的空白图位：中性底 + 可访问说明，不用姓名首字/企业字标冒充 */
+.头图占位 {
+  flex: none;
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+  background: var(--浅灰底);
+  border: 1px solid var(--描边);
+}
+
+/* 渐变头里的公司名 = 这一屏的页面大标题，24px 是全站独一份的散值 */
+.公司名 {
+  margin: 0;
+  font-size: var(--字号-页面大标题);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--墨);
+  line-height: 1.25;
+}
+
+.规模行 {
+  font-size: 12px;
+  color: var(--次要浅);
+  margin-top: 5px;
+}
+
+/* ── 正文区 ── */
+.正文区 {
+  padding: 0 18px 18px;
+}
+
+.卡 {
+  /* 2026-08-24 全站去框（产品负责人批）：分区卡拆壳，白底平铺，分区之间靠发丝线 */
+  background: transparent;
+  padding: 14px 2px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.卡头 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+/* 公司自述 / 公司相册 / 作息与条款 / 办公地 / 在职者反馈 / 工商与企业身份：
+   一张白卡领一段内容，就是「教育经历」那一层 */
+.卡标题 {
+  /* 2026-08-24 全站去框（产品负责人批）：区块标题降为小节灰标，随平铺版式 */
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
+}
+
+/* 卡头右侧的可信度注记：「已核验」/「未经核实」*/
+.卡头注 {
+  font-size: 10.5px;
+  color: var(--次要浅);
+  background: var(--浅灰底);
+  padding: 2px 8px;
+  border-radius: 5px;
+}
+
+.卡正文 {
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--正文);
+}
+
+.文字键 {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* ── 公司自述 ── */
+.段Tab行 {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  margin-bottom: 11px;
+}
+
+.段Tab {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--浅灰底);
+  font-size: 12.5px;
+  color: var(--次要);
+}
+
+/* 选中态用墨底白字，而不是荧光绿 —— 荧光绿在本项目只留给主操作 */
+.段Tab选中 {
+  background: var(--墨);
+  font-weight: 600;
+  color: #fff;
+}
+
+.截断3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 主营业务标签：同一张卡下方，缺字段也保留标签 */
+.业务标 {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
+  margin-top: 12px;
+}
+
+.业务行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.业务片 {
+  padding: 5px 11px;
+  border-radius: 6px;
+  background: var(--浅灰底);
+  font-size: 11.5px;
+  color: var(--正文);
+}
+
+/* ── 合法缺失占位：次要文字色 + 中性背景，字段含义明确的文案 ── */
+.未知 {
+  display: inline-block;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
+  background: var(--浅灰底);
+  padding: 2px 8px;
+  border-radius: 5px;
+}
+
+/* ── 公司相册：一行横滑；无图保留一格等尺寸空白图位 ── */
+.相册行 {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  overflow-x: auto;
+  margin-top: 10px;
+  padding-bottom: 2px;
+}
+
+.相册图 {
+  flex: none;
+  width: 148px;
+  height: 100px;
+  border-radius: var(--圆角-小托盘);
+  object-fit: cover;
+  display: block;
+  border: 1px solid var(--描边深);
+}
+
+.相册占位 {
+  flex: none;
+  width: 148px;
+  height: 100px;
+  border-radius: var(--圆角-小托盘);
+  background: var(--浅灰底);
+  border: 1px solid var(--描边深);
+}
+
+/* ── 作息与条款（整卡可点）── */
+.条款卡 {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+}
+
+.作息文 {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--墨);
+}
+
+.条款计 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+  margin-top: 8px;
+}
+
+.条款已核 {
+  color: var(--深绿文字);
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+/* ── 办公地 ── */
+.地址 {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--墨);
+}
+
+.地址补充 {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
+  margin-top: 6px;
+}
+
+/* ── 在职者反馈：横条比例图，不用胶囊堆 ── */
+.感受列 {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.感受行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.感受标 {
+  flex: none;
+  width: 96px;
+  font-size: 12.5px;
+  color: var(--正文);
+}
+
+.感受条轨 {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--浅灰底);
+  overflow: hidden;
+}
+
+.感受条 {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--橄榄);
+}
+
+.感受数 {
+  flex: none;
+  width: 26px;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+/* ── 工商与企业身份：两组事实各带各的来源说明，badge 不互相覆盖 ── */
+.组头 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.组头间隔 {
+  margin-top: 16px;
+}
+
+.组标 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--次要);
+}
+
+.工商行 {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  padding: 7px 0;
+}
+
+.工商项 {
+  flex: none;
+  width: 74px;
+  font-size: 12.5px;
+  color: var(--次要浅);
+}
+
+.工商值 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--墨);
+}
+
+.页脚 {
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--最弱);
+  text-align: center;
+  margin-top: 14px;
+}
+
+/* ── 底部固定主操作：Mock 可打开岗位层；能力不可用只剩事实与说明，不给假按钮 ── */
+.底栏 {
+  flex: none;
+  padding: 10px 18px calc(var(--安全区下) + 10px);
+  /* 2026-08-24 全站去框（产品负责人批）：随页底改白，分隔靠发丝线（同 匿名在线简历 底栏） */
+  background: var(--白);
+  border-top: 1px solid var(--分隔线);
+}
+
+.底主键 {
+  width: 100%;
+  padding: 14px 0;
+  border-radius: var(--圆角-按钮);
+  background: var(--荧光绿);
+  box-shadow: var(--主按钮投影);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+  text-align: center;
+}
+
+.底栏说明 {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 0;
+  font-size: 13.5px;
+  color: var(--墨);
+  text-align: center;
+}
+
+/* ── 子层 ── */
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  display: flex;
+  align-items: flex-end;
+  z-index: 60;
+  animation: 遮罩淡入 0.18s ease both;
+}
+
+.层 {
+  width: 100%;
+  max-height: 86%;
+  background: var(--白);
+  border-radius: 18px 18px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: 抽屉升起 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.层顶 {
+  flex: none;
+  padding: 10px 18px 12px;
+  border-bottom: 1px solid var(--描边);
+}
+
+.层抓手 {
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  margin: 0 auto 12px;
+}
+
+.层顶行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 抽屉标题（公司自述全文 / 作息与条款全文），原本就是 17px，只换成变量 */
+.层标题 {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--字号-区块标题);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--墨);
+}
+
+.层关闭 {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--浅灰底);
+  color: var(--次要);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.层体 {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 18px calc(var(--安全区下) + 20px);
+}
+
+.层免责 {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--次要浅);
+  background: var(--浅灰底2);
+  border-radius: 10px;
+  padding: 9px 11px;
+  margin-bottom: 16px;
+}
+
+/* 抽屉正文里的分节：公司简介 / 企业文化 / 发展历程 / 产品介绍 / 团队介绍。
+   这就是「教育经历」那一层，只不过铺在抽屉里；14px 是四档外的散值。 */
+.层节标 {
+  font-size: var(--字号-区块标题);
+  font-weight: 800;
+  color: var(--墨);
+  margin-bottom: 9px;
+}
+
+.层节标间距 {
+  margin-top: 22px;
+}
+
+.层正文 {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--正文);
+}
+
+.层脚 {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--次要浅);
+  background: var(--浅灰底2);
+  border-radius: 11px;
+  padding: 11px 12px;
+  margin-top: 16px;
+}
+
+/* 发展历程：年份 + 轴 + 事件 */
+.历程列 {
+  display: flex;
+  flex-direction: column;
+}
+
+.历程行 {
+  display: flex;
+  flex-direction: row;
+  gap: 11px;
+  padding-bottom: 15px;
+}
+
+.历程年 {
+  flex: none;
+  width: 36px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--深绿);
+  padding-top: 1px;
+}
+
+.历程轴 {
+  flex: none;
+  width: 1px;
+  background: var(--淡绿描边);
+  position: relative;
+}
+
+.历程轴::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--荧光绿);
+  border: 1px solid var(--橄榄);
+}
+
+.历程事 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--正文);
+}
+
+/* 条款条：已核给淡绿勾，自述给灰点 —— 不用 emoji */
+.条款条 {
+  display: flex;
+  flex-direction: row;
+  gap: 11px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.条款条:last-of-type {
+  border-bottom: none;
+}
+
+.条款记 {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--浅灰底);
+  color: var(--最弱);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  margin-top: 1px;
+}
+
+.条款记已核 {
+  background: var(--递简历底);
+  color: var(--递简历);
+}
+
+.条款文 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.条款名 {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.条款说明 {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
+}
+
+/* 在招岗位条 */
+.岗位条 {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+  text-align: left;
+}
+
+.岗位文 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.岗位名 {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.岗位注 {
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.岗位薪 {
+  flex: none;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--深绿);
+}
+
+/* ── 自述全文层里的团队介绍：姓名 · 职务 + 一句话 ── */
+.成员行 {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 13px;
+}
+
+.成员头衔 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.成员名 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.成员职 {
+  font-size: 12px;
+  color: var(--次要浅);
+}
+
+.成员简介 {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--正文);
+}
+
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes 抽屉升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
