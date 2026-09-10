@@ -1,0 +1,2 @@
+function e(e){return new Promise((t,n)=>{let r=new FileReader;r.onerror=()=>n(Error(`读取失败`)),r.onload=()=>{let e=new Image;e.onerror=()=>n(Error(`不是可用的图片`)),e.onload=()=>{let n=document.createElement(`canvas`);n.width=256,n.height=256;let r=n.getContext(`2d`),i=Math.min(e.width,e.height);r.drawImage(e,(e.width-i)/2,(e.height-i)/2,i,i,0,0,256,256),t(n.toDataURL(`image/jpeg`,.85))},e.src=String(r.result)},r.readAsDataURL(e)})}export{e as t};
+//# sourceMappingURL=头像处理-CbVtZKAZ.js.map
