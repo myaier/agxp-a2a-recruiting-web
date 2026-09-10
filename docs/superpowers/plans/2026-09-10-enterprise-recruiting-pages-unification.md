@@ -264,3 +264,28 @@ ui:check 差异逐条对账（证据：`ui-regression-output/enterprise-recruiti
 浏览器验收（agent-browser，Mock 栈 `127.0.0.1:4188` 自起自停；320×690 与 390×844；证据 `ui-regression-output/browser-320/`、`browser-390/`）：企业主屏/三个层、真实/空照片（Mock 静态档无图 → 空白图位）、长字段（公司全称、地址、历程行）、名片输入/空态/收笔/保存前后与重载回读；横向溢出 0（两页 `scrollWidth == clientWidth`）、底栏不遮挡页脚与末行（实测 `footer.bottom 590 < 底栏 top 620`）、弹层滚动与返回/关闭见上段缺陷记录；Mock 名片改值→保存→重载回读一致。名片「实名只读/关系待选」的浏览器观察依赖 Backend 会话，归入下段 BLOCKED（同名行为已由 @backend E2E 在 iPhone 13 视口覆盖）。
 
 真实后端验收：**BLOCKED（不作为产品结论，其余 Case NOT_RUN）**。B03 招聘基准加载、名片保存→重新进入/重载→权威内容与头像持久、从真实企业 ID 进入公开页核对来源页脚与「岗位列表暂不可用」均未执行。缺的环境项：① Recruitment acceptance 栈未运行 —— `dev-local.sh health --acceptance` FAIL（service closure drift）、`status --acceptance` 无容器，且 recorded acceptance mode=1 使默认模式健康检查要求先 `down`（该记录非本轮所有）；② 上游共享 `agxp-server` 栈 app unhealthy、worker 反复重启，Hub acceptance 未挂载 —— 均属他人会话资源，按约束不 down、不重启、不抢占；③ 账号与 OTP 安全来源依赖该栈的 `browser-fixture.sh converge`（固定本地账号 + 栈内 OTP 材料），栈不可用即无法取得。注册流按 `backend-local-onboarding.md` 亦无合法现场账号路径，同记 BLOCKED。已按指南只做只读健康核对，未启动/关闭任何共享服务，未产生 receipt。
+
+### Task 4：异构代码 review、pre-gate 证据与 final gate（2026-09-10）
+
+实现提交：290ee452（Task 1 企业公开页）、3e0f6209（Task 2 招聘名片）、f38353ba（Task 3 验证，见上）。候选经 review 修复后推进到 `dc9d6c08`。`pre_gate_target_base = b93436e956dcd133ca909c06939e3416f2f3ad24`（origin/main，只读 fetch；未推进且为候选祖先，预期 merge no-op）。
+
+异构代码 review-loop（宿主 Claude Code → reviewer Codex `gpt-5.6-sol`/high，read-only，FEATURE_BRANCH_REVIEW，base `b93436e9`，共用守约 `coding-harness/skills/_shared/review-contract.md`，reviewer 全程未跑测试、每轮前后 guard 通过）：
+
+- Round 1 唯一 finding **F1（Important/required）**：移动端长弹层无法关闭——`弹层框架` 底部面板内联 `maxHeight:'none'` 压过本页 `.层{max-height:86%}`，窄视口层顶 ✕ 顶出视口、遮罩被全宽面板覆盖，触摸设备无退出路径（即上文「实际缺陷」段所记问题）。裁决：**接受**。上段「修复需动 弹层框架、超出非目标、建议单独立项」的判断不成立——最小修复只在本页 module CSS 即可恢复上限生效，且 `.层` 上限本就是 Task 1 迁入本计划新文件的意图（从未生效），Spec §7 明确验收 320/390 弹层无遮挡，属本计划责任；仍不改公共组件 `弹层框架`。
+- 修复 commit `dc9d6c08`：`.层` 改 `max-height:86% !important`（压回内联样式，附注释）、`.层体` 补 `overflow-y:auto`（上限生效后长内容需滚动）、`e2e/数据源模式.spec.ts` 过时注释更正（Escape 用法保留）。浏览器复验 320×690 与 390×844：全文层/条款层 ✕ 完整在视口内（y≈138.6–164.6 / 160.2–186.2，面板高恰为视口 86%）、层体可滚至末节、Escape 与 ✕ 均可关闭、岗位层抽查通过；截图已更新 `browser-320|390/`（旧 `*-cut.png` 删除）。覆盖测试 `企业公开页展示.test.tsx + 企业详情.test.tsx + 场景.test.ts` 36/36 PASS。
+- Round 2（同线程 resume，审修复 delta）：**NO FINDINGS**。Loop 干净结束（2 轮，上限 3）。
+
+确认前权威证据（全部针对候选 `dc9d6c08`，日志在 `ui-regression-output/enterprise-recruiting-pages/logs/`）：
+
+| 项 | 结果 | 证据 |
+| --- | --- | --- |
+| npm test 全量 | 173 files / 3699 PASS，exit 0 | `auth-test-post-r1.log`（修复后重跑） |
+| typecheck + lint + build | 全部 exit 0（`✓ built in 637ms`） | `auth-post-r1.log`（修复后重跑） |
+| data-source E2E `--grep 'P1C\|企业名片统一'` | 17/17 PASS（9 既有含 3 条必备 P1C + 6 @backend + 2 @mock），exit 0 | `ds-final5-post-r1.log`（修复后重跑；修复前提交态 `ds-final4-committed.log` 同 17/17） |
+| ui:check `--base b93436e9` | exit 1 = pass 16 / warning 1 / structural blocked 1；逐差异人工对账见上表，全部为 §7 批准变化，无未解释差异；不声称 runner PASS | `uicheck-task3.log`（f38353ba 时采集；`dc9d6c08` 仅改弹层 CSS 与注释，wrapper 场景不采集弹层，证据不受影响） |
+| 浏览器 320/390 | 修复后刷新：✕ 可达可关、层体滚到底、横向溢出 0、底栏不遮挡 | `browser-320/`、`browser-390/` |
+| 真实后端 dogfood | **BLOCKED**（同上段，未变化） | 无 receipt（如实） |
+| 正式 development L3 | N/A（仓库无正式 L3 套件；plan 测试责任段「L3 静态责任：none」，条件未触发） | — |
+
+Final gate 待用户确认后执行：`git fetch origin` → 记 `final_target_base` → `git merge --no-edit origin/main`（当前预期 no-op；若并行任务先合入共享 e2e 文件冲突则机械解决并按增量证据补验）→ 复用上表仍有效证据、只补缺口 → 再次 fetch 核对 target 未推进 → `git push origin HEAD:main`（普通 fast-forward，绝不 force push）。自主恢复边界：获批后同一执行者对范围内失败自主最小修复、复用有效证据、只补失效项并刷新受影响 review；仅契约/范围变更、target race 或外部资源不可得才停下报告。
+
