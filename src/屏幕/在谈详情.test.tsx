@@ -131,12 +131,12 @@ describe('在谈详情 · Backend 分支渲染共享 P5 详情', () => {
     渲染详情页();
     expect(mock设置P5范围).toHaveBeenCalledWith('candidate', P5范围键.detail('candidate', 'J-01'));
     expect(mock读取详情).toHaveBeenCalledWith('candidate', 'J-01', true);
-    // 旧 Backend 公司槽/匹配对齐卡/职位详情 Tab（P5.1 依赖）不再渲染，也不再请求
+    // 旧 Backend 公司档案/匹配对齐卡（P5.1 依赖）不再渲染，也不再请求
     expect(mock取公司档案).not.toHaveBeenCalled();
     expect(mock公司路由键).not.toHaveBeenCalled();
     expect(mock跳转.mock.calls.every(([目标]) => !String(目标).startsWith('/company/'))).toBe(true);
     expect(screen.queryByText('匹配度分析')).toBeNull();
-    expect(screen.queryByRole('button', { name: '职位详情' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '职位详情' })).toBeNull(); // 读入中不进共用外壳，无任何 Tab
     expect(screen.queryByText(本单.公司)).toBeNull(); // Mock 在谈单不进 Backend 视图
     expect(screen.getByText('正在读入这一单…')).toBeTruthy();
   });
@@ -167,9 +167,9 @@ describe('在谈详情 · Mock 公司卡仍按原 slug 导航', () => {
   it('公司卡可点，跳 公司路由键 生成的原 slug', async () => {
     渲染职位Tab();
     断言匹配卡在条件段与公司之前();
-    // ?tab=job 落在共用外壳的 资料 槽（职位详情 Tab），进度/资料 两个 Tab 由外壳给出
-    expect(screen.getByRole('button', { name: '进度' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '资料' })).toBeTruthy();
+    // ?tab=job 落在共用外壳的 资料 槽（职位详情 Tab），两个 Tab 由外壳按端给出产品名
+    expect(screen.getByRole('button', { name: '代谈进度' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '职位详情' })).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: new RegExp(本单.公司) }));
     expect(mock公司路由键).toHaveBeenCalledWith(本单.公司);
     expect(mock跳转).toHaveBeenCalledWith(`/company/slug-${本单.公司}`);

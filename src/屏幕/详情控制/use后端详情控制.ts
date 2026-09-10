@@ -102,19 +102,33 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
   // （发送中 ref）归本控制层，不靠 disabled DOM。
   const [叮嘱草稿, 设叮嘱草稿] = useState('');
   const 发送中 = useRef(false);
+  // 叮嘱代际（review-r1 F4，spec §3.1「切换 Case 或角色后重置」+ §5 迟到结果丢弃）：
+  // 本 hook 常驻路由实例，scope（角色/单/主体）换代或卸载都递增；换代即清草稿并放
+  // 在飞锁（锁归新 scope 干净起步），旧单迟到的清空/收口对不上代际整包作废。
+  const 叮嘱代际 = useRef(0);
+  const 主体ID = 后端状态.主体?.subject_id ?? null;
+  useEffect(() => () => {
+    叮嘱代际.current += 1;
+  }, []);
+  useEffect(() => {
+    叮嘱代际.current += 1;
+    发送中.current = false;
+    设叮嘱草稿('');
+  }, [role, caseId, 主体ID]);
   const 发叮嘱 = () => {
     const 内容 = 叮嘱草稿.trim();
     if (内容 === '' || caseId === '' || 发送中.current) return;
+    const 本轮 = 叮嘱代际.current;
     发送中.current = true;
     操作.新增叮嘱(role, caseId, 内容)
       .then(() => {
-        设叮嘱草稿('');
+        if (叮嘱代际.current === 本轮) 设叮嘱草稿('');
       })
       .catch(() => {
-        轻提示(叮嘱失败提示);
+        if (叮嘱代际.current === 本轮) 轻提示(叮嘱失败提示);
       })
       .finally(() => {
-        发送中.current = false;
+        if (叮嘱代际.current === 本轮) 发送中.current = false;
       });
   };
 

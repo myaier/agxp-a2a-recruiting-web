@@ -7658,13 +7658,15 @@ async function 装P5双角色(
 }
 
 /** 纵序断言：各标记文本按给定顺序自上而下（服务端顺序原样保留，无客户端重排） */
-async function 断言纵序(page: Page, 文本们: readonly string[]) {
+async function 断言纵序(page: Page, 项们: readonly (string | Locator)[]) {
   const 纵们: number[] = [];
-  for (const 文本 of 文本们) {
-    const 定位 = page.getByText(文本).first();
+  for (const 项 of 项们) {
+    // string = 文本锚点（.first()）；Locator = 同词多元素时的显式定位（如「职位详情」
+    // 既是 Tab 按钮名又是区块标题，取内容侧的 .last()）
+    const 定位 = typeof 项 === 'string' ? page.getByText(项).first() : 项;
     await 定位.waitFor({ state: 'visible', timeout: 10_000 });
     const 框 = await 定位.boundingBox();
-    if (!框) throw new Error(`P5 标记不可见：${文本}`);
+    if (!框) throw new Error(`P5 标记不可见：${项}`);
     纵们.push(框.y);
   }
   for (let 序 = 1; 序 < 纵们.length; 序 += 1) {
@@ -8184,8 +8186,8 @@ test.describe('在谈详情完整布局', () => {
       // J-01 顺利态（意向确认，需要你点头）：顶栏职位名 + 两个 Tab
       await page.goto('/#/deal/J-01');
       await expect(page.getByText('资深后端工程师 · 交易网关').first()).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByRole('button', { name: '进度', exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: '资料', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '代谈进度', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '职位详情', exact: true })).toBeVisible();
 
       // 进度 Tab：四阶段分节自上而下 + 意向确认动作卡（共用详情动作卡）
       await 断言纵序(page, ['匿名初筛', '递交简历', '需要协调', '意向确认']);
@@ -8195,8 +8197,8 @@ test.describe('在谈详情完整布局', () => {
       await page.screenshot({ path: 'test-results/详情布局/mock-求职-进度-390.png', fullPage: true });
 
       // 资料 Tab：匹配分析 → 职位详情 → 职位要求 → 公司信息 → 对接人（spec §3.3 顺序）
-      await page.getByRole('button', { name: '资料', exact: true }).click();
-      await 断言纵序(page, ['匹配度分析', '职位详情', '职位要求', '公司信息', '对接人']);
+      await page.getByRole('button', { name: '职位详情', exact: true }).click();
+      await 断言纵序(page, ['匹配度分析', page.getByText('职位详情', { exact: true }).last(), '职位要求', '公司信息', '对接人']);
       await expect(page.getByText('抖音').first()).toBeVisible(); // 公司档案真实值，非占位
       await 断言无横向溢出(page);
       await page.screenshot({ path: 'test-results/详情布局/mock-求职-资料-390.png', fullPage: true });
@@ -8206,7 +8208,7 @@ test.describe('在谈详情完整布局', () => {
       await expect(page.getByText('对接人', { exact: true })).toBeVisible();
       await 断言无横向溢出(page);
       await page.screenshot({ path: 'test-results/详情布局/mock-求职-资料-320.png', fullPage: true });
-      await page.getByRole('button', { name: '进度', exact: true }).click();
+      await page.getByRole('button', { name: '代谈进度', exact: true }).click();
       await expect(page.getByRole('button', { name: '开始私聊 ›' })).toBeVisible();
       await 断言无横向溢出(page);
       await page.screenshot({ path: 'test-results/详情布局/mock-求职-进度-320.png', fullPage: true });
@@ -8230,8 +8232,8 @@ test.describe('在谈详情完整布局', () => {
       await expect(page.getByText('9 年', { exact: true })).toBeVisible();
       await expect(page.getByText('硕士')).toBeVisible();
       await expect(page.getByText('在职看机会')).toBeVisible();
-      await expect(page.getByRole('button', { name: '进度', exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: '资料', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '代谈进度', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '在线简历', exact: true })).toBeVisible();
 
       // 进度 Tab：四阶段 + 卡点决策动作卡（接受 / 不接受）
       await 断言纵序(page, ['匿名初筛', '递交简历', '需要协调', '意向确认']);
@@ -8242,7 +8244,7 @@ test.describe('在谈详情完整布局', () => {
       await page.screenshot({ path: 'test-results/详情布局/mock-招聘-进度-390.png', fullPage: true });
 
       // 资料 Tab：在线简历正文九个信息区（spec §3.4 顺序；头区画像行在最上）
-      await page.getByRole('button', { name: '资料', exact: true }).click();
+      await page.getByRole('button', { name: '在线简历', exact: true }).click();
       await 断言纵序(page, ['匹配度分析', '个人优势', '求职期望', '工作经历', '项目经历', '教育经历', '专业技能']);
       await 断言无横向溢出(page);
       await page.screenshot({ path: 'test-results/详情布局/mock-招聘-资料-390.png', fullPage: true });
@@ -8251,7 +8253,7 @@ test.describe('在谈详情完整布局', () => {
       await expect(page.getByText('专业技能', { exact: true })).toBeVisible();
       await 断言无横向溢出(page);
       await page.screenshot({ path: 'test-results/详情布局/mock-招聘-资料-320.png', fullPage: true });
-      await page.getByRole('button', { name: '进度', exact: true }).click();
+      await page.getByRole('button', { name: '代谈进度', exact: true }).click();
       await expect(page.getByRole('button', { name: '接受', exact: true })).toBeVisible();
       await 断言无横向溢出(page);
       await page.screenshot({ path: 'test-results/详情布局/mock-招聘-进度-320.png', fullPage: true });
@@ -8272,8 +8274,8 @@ test.describe('在谈详情完整布局', () => {
       await expect(page.getByText(P5标记.乙职位名).first()).toBeVisible({ timeout: 20_000 });
       await expect(page.getByText(`${P5标记.城市} · ${P5标记.薪资带}`).first()).toBeVisible();
       await expect(page.getByTitle('匹配分缺失')).toBeVisible();
-      await expect(page.getByRole('button', { name: '进度', exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: '资料', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '代谈进度', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '职位详情', exact: true })).toBeVisible();
 
       // 进度 Tab：状态区（待办徽标/步骤说明/轮次）+ 四阶段（P5 阶段标题）+ S0 动作卡
       await expect(page.getByText('需要你', { exact: true }).first()).toBeVisible();
@@ -8285,9 +8287,16 @@ test.describe('在谈详情完整布局', () => {
       await page.screenshot({ path: 'test-results/详情布局/bk-求职-进度-390.png', fullPage: true });
 
       // 资料 Tab：区块级缺口说明 + 全部约定区块原位缺失（spec §3.3/§4）
-      await page.getByRole('button', { name: '资料', exact: true }).click();
+      await page.getByRole('button', { name: '职位详情', exact: true }).click();
       await expect(page.getByText('当前在谈详情数据未提供').first()).toBeVisible();
-      await 断言纵序(page, ['匹配度分析', '职位详情', '职位要求', '公司信息', '对接人']);
+      await 断言纵序(page, [
+        '匹配度分析',
+        page.getByText('职位详情', { exact: true }).last(),
+        '职位要求',
+        // 顶栏标题含「公司信息缺失」（F3 公司槽缺失占位），substring 锚点会命中顶栏 —— 用精确锚点取区块标题
+        page.getByText('公司信息', { exact: true }),
+        '对接人',
+      ]);
       await expect(page.getByText('匹配分析缺失')).toBeVisible();
       // 冻结摘要四事实如实展示（不因其他字段缺失而隐藏）
       await expect(page.getByText(P5标记.乙职位名).first()).toBeVisible();
@@ -8310,7 +8319,7 @@ test.describe('在谈详情完整布局', () => {
       await expect(page.getByRole('img', { name: '对接人头像缺失' })).toBeVisible();
       await 断言无横向溢出(page);
       await page.screenshot({ path: 'test-results/详情布局/bk-求职-资料-320.png', fullPage: true });
-      await page.getByRole('button', { name: '进度', exact: true }).click();
+      await page.getByRole('button', { name: '代谈进度', exact: true }).click();
       await expect(page.getByRole('button', { name: '提交回答' })).toBeVisible();
       await 断言无横向溢出(page);
       await page.screenshot({ path: 'test-results/详情布局/bk-求职-进度-320.png', fullPage: true });
@@ -8367,7 +8376,7 @@ test.describe('在谈详情完整布局', () => {
 
       // 资料 Tab（甲）：档 null 的完整缺失布局 —— 九个信息区逐区缺失 + 页尾披露说明
       await page.goto(`/#/hr/candidate/${P5编号.甲}`);
-      await page.getByRole('button', { name: '资料', exact: true }).click();
+      await page.getByRole('button', { name: '在线简历', exact: true }).click();
       await expect(page.getByText('当前在谈详情数据未提供').first()).toBeVisible({ timeout: 20_000 });
       await 断言纵序(page, ['匹配度分析', '个人优势', '求职期望', '工作经历', '项目经历', '教育经历', '专业技能']);
       for (const 缺 of ['匿名画像缺失', '职位信息缺失', '匹配分析缺失', '个人优势缺失', '求职期望缺失', '工作经历缺失', '项目经历缺失', '教育经历缺失', '专业技能缺失']) {
@@ -8383,7 +8392,7 @@ test.describe('在谈详情完整布局', () => {
       await page.screenshot({ path: 'test-results/详情布局/bk-招聘-资料-320.png', fullPage: true });
 
       // 320px 回切进度 Tab：长正文样本在最窄视口仍完整可读、不横向溢出（与其余三侧同构）
-      await page.getByRole('button', { name: '进度', exact: true }).click();
+      await page.getByRole('button', { name: '代谈进度', exact: true }).click();
       await expect(page.getByText(长文)).toBeVisible();
       await expect(page.getByText(`${长前缀}回执`)).toBeVisible();
       await expect(page.getByRole('button', { name: '通过初筛' })).toBeVisible();

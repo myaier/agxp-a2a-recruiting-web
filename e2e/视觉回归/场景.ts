@@ -171,12 +171,12 @@ const 在谈首页场景: 视觉场景 = {
   },
 };
 
-// candidate-negotiation-detail：在谈详情的资料 Tab（原「职位详情」Tab），求职端已注册。
-// 详情统一（2026-09-10）：两个 Tab 改叫 进度/资料，旧 Tab 名「职位详情」不再存在。
-// 到达方式改用两端都认识的深链 ?tab=job（旧页直开 职位详情 Tab、新外壳直开 资料 Tab），
-// 不点击 Tab 按钮 —— 关键元素里再用跨版本定位器（资料|职位详情）钉住 Tab 行本身。
-// 「职位详情」在旧页同时是 Tab 按钮名与内容标题，旧锚点本就因 strict mode 改用过按钮定位；
-// 新页的资料内容标题含「职位详情」区块标题，跨版本统一用 exact Tab 按钮锚点。
+// candidate-negotiation-detail：在谈详情的第二 Tab「职位详情」（资料槽），求职端已注册。
+// 详情统一（2026-09-10）曾把两个 Tab 改叫 进度/资料；review-r1（同日）按 spec §1/§3.1
+// 恢复产品名（第一 Tab 代谈进度、求职端第二 Tab 职位详情）—— 基线与当前同名，
+// 锚点收回精确 Tab 按钮名，不再需要跨版本 alternation。到达方式仍用深链 ?tab=job
+//（旧页直开 职位详情 Tab、新外壳直开 资料 槽，两端同落点）。「职位详情」同时是 Tab
+// 按钮名与内容区块标题，继续用 role=button 锚点避开 strict mode 歧义。
 const 在谈详情场景: 视觉场景 = {
   id: 'candidate-negotiation-detail',
   状态: '求职端已注册',
@@ -190,7 +190,7 @@ const 在谈详情场景: 视觉场景 = {
   关键元素(page: Page): 关键元素描述[] {
     return [
       { 名称: '文本 匹配度分析', 定位: page.getByText('匹配度分析', { exact: true }) },
-      { 名称: '资料 Tab 按钮', 定位: page.getByRole('button', { name: /^(资料|职位详情)$/ }) },
+      { 名称: '职位详情 Tab 按钮', 定位: page.getByRole('button', { name: '职位详情', exact: true }) },
       { 名称: '返回按钮', 定位: page.getByRole('button', { name: '返回' }) },
     ];
   },

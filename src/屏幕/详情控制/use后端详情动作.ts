@@ -97,6 +97,7 @@ export function use后端详情动作({
     代际.current += 1;
     const 本轮 = 代际.current;
     设回答草稿('');
+    设写中(false); // 旧单写中在飞也放行新 scope（迟到 finally 过代际栅栏不再收口）
     设待终结确认(null);
     设待选择(null);
     设选中键(null);
@@ -115,16 +116,23 @@ export function use后端详情动作({
 
   const 报错 = (错误: unknown) => 轻提示(取后端错误文案(错误));
 
-  /** 命令包装：服务端先行，失败原地提示；权威重读归操作层（本 hook 绝不本地重建）。 */
+  /** 写中（spec §5「正在提交…保留该动作位置并禁用解释」）统一禁用说明：写中期间
+   * 每个被锁按钮就地给出可见/可访问解释，落定后恢复 null。 */
+  const 写中说明 = '正在提交，请稍候';
+
+  /** 命令包装：服务端先行，失败原地提示；权威重读归操作层（本 hook 绝不本地重建）。
+   *  迟到栅栏（review-r1 F5，spec §5）：catch/finally 只在本轮代际上收口 —— 换单/卸载
+   *  后迟到的失败提示与写中解锁对不上代际即整包作废，绝不落在新单的页面上。 */
   const 发命令 = async (运行: () => Promise<void>) => {
     if (写中 || caseId === '') return;
+    const 本轮 = 代际.current;
     设写中(true);
     try {
       await 运行();
     } catch (错误) {
-      报错(错误);
+      if (代际.current === 本轮) 报错(错误);
     } finally {
-      设写中(false);
+      if (代际.current === 本轮) 设写中(false);
     }
   };
 
@@ -280,7 +288,7 @@ export function use后端详情动作({
                 键: 'end_screening',
                 文案: '结束初筛',
                 外观: '次要',
-                禁用说明: null,
+                禁用说明: 写中 ? 写中说明 : null,
                 执行: 写中 ? null : 确认结束初筛,
               },
             ]
@@ -296,7 +304,7 @@ export function use后端详情动作({
             键: 卡.action,
             文案: 卡.action === 'accept_resume_invitation' ? '接受邀请' : '更换简历',
             外观: '主要',
-            禁用说明: null,
+            禁用说明: 写中 ? 写中说明 : null,
             执行: 写中 ? null : () => void 开始选择(),
           },
         ],
@@ -311,7 +319,7 @@ export function use后端详情动作({
             键: 卡.action,
             文案: '婉拒邀请',
             外观: '次要',
-            禁用说明: null,
+            禁用说明: 写中 ? 写中说明 : null,
             执行: 写中 ? null : 确认婉拒邀请,
           },
         ],
@@ -329,7 +337,7 @@ export function use后端详情动作({
                 键: 卡.action,
                 文案: '重试校验',
                 外观: '主要',
-                禁用说明: null,
+                禁用说明: 写中 ? 写中说明 : null,
                 执行: 写中 ? null : 开始重试,
               },
             ],
@@ -344,14 +352,14 @@ export function use后端详情动作({
             键: 'decide_resume_screening_continue',
             文案: '通过初筛',
             外观: '主要',
-            禁用说明: null,
+            禁用说明: 写中 ? 写中说明 : null,
             执行: 写中 ? null : () => void 发命令(() => 操作.决定S1(caseId, 'continue')),
           },
           {
             键: 'decide_resume_screening_not_fit',
             文案: '不合适',
             外观: '次要',
-            禁用说明: null,
+            禁用说明: 写中 ? 写中说明 : null,
             执行: 写中 ? null : 确认不合适,
           },
         ],
@@ -369,7 +377,7 @@ export function use后端详情动作({
                 键: 'decide_coordination_accept',
                 文案: '接受',
                 外观: '主要',
-                禁用说明: null,
+                禁用说明: 写中 ? 写中说明 : null,
                 执行: 写中 ? null
                   : () => void 发命令(() => 操作.决定S2(role, caseId, 协同块.issueId, 'accept')),
               },
@@ -377,7 +385,7 @@ export function use后端详情动作({
                 键: 'decide_coordination_reject',
                 文案: '拒绝',
                 外观: '次要',
-                禁用说明: null,
+                禁用说明: 写中 ? 写中说明 : null,
                 执行: 写中 ? null
                   : () => void 发命令(() => 操作.决定S2(role, caseId, 协同块.issueId, 'reject')),
               },
@@ -396,7 +404,7 @@ export function use后端详情动作({
                 键: 'confirm_intent',
                 文案: '确认意向',
                 外观: '主要',
-                禁用说明: null,
+                禁用说明: 写中 ? 写中说明 : null,
                 执行: 写中 ? null : () => void 发命令(() => 操作.决定S3(role, caseId, 'confirm')),
               },
             ]
@@ -413,7 +421,7 @@ export function use后端详情动作({
                 键: 'decline_intent',
                 文案: '婉拒意向',
                 外观: '次要',
-                禁用说明: null,
+                禁用说明: 写中 ? 写中说明 : null,
                 执行: 写中 ? null : () => void 发命令(() => 操作.决定S3(role, caseId, 'decline')),
               },
             ]

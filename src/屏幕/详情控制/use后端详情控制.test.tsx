@@ -301,7 +301,7 @@ describe('use后端详情控制 · 正常资源与映射', () => {
     置详情状态({ 快照: 详情快照({ detail: 候选详情DTO() }) });
     const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
     const 资源 = 取正常(result.current);
-    expect(资源.顶栏.标题).toBe('平台工程师');
+    expect(资源.顶栏.标题).toBe('平台工程师 · 公司信息缺失'); // 公司槽原位保留（review-r1 F3）
     expect(资源.状态.徽标).toBe('需要你');
     expect(资源.分段们.length).toBe(4); // S0–S3 一段不缺
     expect(资源.职位资料.摘要?.职位).toBe('平台工程师');
@@ -328,7 +328,7 @@ describe('use后端详情控制 · 正常资源与映射', () => {
     const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
     const 资源 = 取正常(result.current);
     expect(资源.刷新错误).toBe('服务暂时不可用，请稍后再试');
-    expect(资源.顶栏.标题).toBe('平台工程师'); // 旧详情原样保留
+    expect(资源.顶栏.标题).toBe('平台工程师 · 公司信息缺失'); // 公司槽原位保留（review-r1 F3） // 旧详情原样保留
     act(() => 资源.重试());
     expect(mock读取详情).toHaveBeenLastCalledWith('candidate', 'mc_direct', true);
   });
@@ -408,6 +408,96 @@ describe('use后端详情控制 · Case 叮嘱', () => {
     expect(mock新增叮嘱).toHaveBeenCalledTimes(1);
     送达();
     await waitFor(() => expect(mock新增叮嘱).toHaveBeenCalledTimes(1));
+  });
+});
+
+// ── 叮嘱 scope 栅栏（review-r1 F4）：本 hook 常驻路由实例，草稿与在飞锁不得跨
+//    scope（角色/单/主体）沿用；旧单迟到的清空/收口对不上代际整包作废（spec §3.1/§5）。──
+
+/** 测试外置可控 promise：手动决定 settle 时机（在飞叮嘱夹具用）。 */
+function 可控Promise<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((ok) => { resolve = ok; });
+  return { promise, resolve };
+}
+
+function 取输入栏(结果: 后端详情控制结果): { 值: string; 改变: (值: string) => void; 发送: (() => void) | null } {
+  const 底栏 = 取正常(结果).底栏;
+  if (底栏.kind !== '输入') throw new Error('进行中单底栏应是输入态');
+  return 底栏;
+}
+
+describe('use后端详情控制 · 叮嘱 scope 栅栏', () => {
+  it('换单清草稿零误发：A 的草稿不带到 B，B 发送只带 B 的 case_id', async () => {
+    置详情状态({ caseId: 'mc_a', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }) });
+    const 视 = renderHook(
+      ({ role, caseId }) => use后端详情控制({ role, caseId }),
+      { initialProps: { role: 'candidate' as P5角色, caseId: 'mc_a' } },
+    );
+    act(() => 取输入栏(视.result.current).改变('A 单的草稿'));
+    expect(取输入栏(视.result.current).值).toBe('A 单的草稿');
+
+    置详情状态({ caseId: 'mc_b', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }) });
+    await act(async () => {
+      视.rerender({ role: 'candidate', caseId: 'mc_b' });
+    });
+    expect(取输入栏(视.result.current).值).toBe(''); // 切换单即清空，不沿用上一单
+    act(() => 取输入栏(视.result.current).改变('B 单草稿'));
+    act(() => 取输入栏(视.result.current).发送!());
+    expect(mock新增叮嘱).toHaveBeenCalledTimes(1);
+    expect(mock新增叮嘱).toHaveBeenCalledWith('candidate', 'mc_b', 'B 单草稿'); // 零误发：A 单从未发送
+    视.unmount();
+  });
+
+  it('A 在飞迟到落定不清 B 的草稿：清空/收口都过代际栅栏，B 照常可发（锁不被旧单卡死）', async () => {
+    const 门 = 可控Promise<void>();
+    mock新增叮嘱.mockImplementationOnce(() => 门.promise);
+    置详情状态({ caseId: 'mc_a', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }) });
+    const 视 = renderHook(
+      ({ role, caseId }) => use后端详情控制({ role, caseId }),
+      { initialProps: { role: 'candidate' as P5角色, caseId: 'mc_a' } },
+    );
+    act(() => 取输入栏(视.result.current).改变('A 单在飞的草稿'));
+    act(() => 取输入栏(视.result.current).发送!());
+    expect(mock新增叮嘱).toHaveBeenCalledWith('candidate', 'mc_a', 'A 单在飞的草稿');
+
+    置详情状态({ caseId: 'mc_b', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }) });
+    await act(async () => {
+      视.rerender({ role: 'candidate', caseId: 'mc_b' });
+    });
+    act(() => 取输入栏(视.result.current).改变('B 单草稿'));
+    await act(async () => {
+      门.resolve(); // A 的成功此刻才落定
+    });
+    expect(取输入栏(视.result.current).值).toBe('B 单草稿'); // 迟到清空对不上代际，整包作废
+
+    act(() => 取输入栏(视.result.current).发送!()); // B 单照常可发（在飞锁已随换代放行）
+    expect(mock新增叮嘱).toHaveBeenCalledTimes(2);
+    expect(mock新增叮嘱).toHaveBeenLastCalledWith('candidate', 'mc_b', 'B 单草稿');
+    视.unmount();
+  });
+
+  it('同一 URL 主体换代同样清草稿（scope 含 主体.subject_id，key 重挂载之外父 hook 也重置）', async () => {
+    置详情状态({ 快照: 详情快照({ detail: 候选详情DTO() }) });
+    const 视 = renderHook(
+      ({ role, caseId }) => use后端详情控制({ role, caseId }),
+      { initialProps: { role: 'candidate' as P5角色, caseId: 'mc_direct' } },
+    );
+    act(() => 取输入栏(视.result.current).改变('切换账号前的草稿'));
+    expect(取输入栏(视.result.current).值).toBe('切换账号前的草稿');
+
+    mock应用状态 = {
+      ...mock应用状态,
+      后端状态: {
+        ...mock应用状态.后端状态,
+        主体: { ...mock应用状态.后端状态.主体, subject_id: 'sub_2' },
+      },
+    };
+    await act(async () => {
+      视.rerender({ role: 'candidate', caseId: 'mc_direct' }); // 同 URL 同单，只换账号
+    });
+    expect(取输入栏(视.result.current).值).toBe(''); // 不能沿用上一个人的内容
+    视.unmount();
   });
 });
 

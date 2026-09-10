@@ -960,10 +960,73 @@ describe('use后端详情动作 · S1 婉拒邀请与初筛结论', () => {
     await act(async () => {
       卡().按钮们.find((键) => 键.文案 === '通过初筛')?.执行?.();
     });
-    // 在飞：双键执行均为 null（真实 disabled 由 详情动作卡 落实）
+    // 在飞：双键执行均为 null（真实 disabled 由 详情动作卡 落实），且每键带写中禁用说明
+    // （review-r1 F6：说明经 aria-describedby 就地解释，落定恢复 null）
     expect(卡().按钮们.every((键) => 键.执行 === null)).toBe(true);
+    expect(卡().按钮们.every((键) => 键.禁用说明 === '正在提交，请稍候')).toBe(true);
     deferred.resolve();
     await waitFor(() => expect(卡().按钮们.every((键) => 键.执行 !== null)).toBe(true));
+    expect(卡().按钮们.every((键) => 键.禁用说明 === null)).toBe(true);
+  });
+});
+
+// ── 发命令迟到栅栏（review-r1 F5，spec §5 迟到结果丢弃）：换单后迟到的失败提示与
+//    写中收口对不上代际即整包作废，不落在新单的页面上；新 scope 干净起步可再发。──
+
+describe('use后端详情动作 · 发命令迟到失败栅栏', () => {
+  /** 轻提示 是 body 上的单例容器：断言前清空，避免前序测试的残留干扰计数。 */
+  function 轻提示数(): number {
+    const 容器 = Array.from(document.body.children).find(
+      (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+    ) as HTMLElement | undefined;
+    return 容器?.childElementCount ?? 0;
+  }
+  function 清空轻提示(): void {
+    const 容器 = Array.from(document.body.children).find(
+      (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+    ) as HTMLElement | undefined;
+    if (容器) 容器.innerHTML = '';
+  }
+
+  it('换单后迟到的失败不提示、不收口新单写中锁；新单照常可发', async () => {
+    let 打回!: () => void;
+    const 迟到失败 = new Promise<void>((_, fail) => { 打回 = fail; });
+    const 决定S1 = vi.fn(() => 迟到失败);
+    const 单A = S1初筛详情DTO('mc_a');
+    const 单B = S1初筛详情DTO('mc_b');
+    const { result, rerender } = 挂动作(动作输入({ 详情: 单A, 回答在飞表: { current: new Map<string, Promise<void>>() }, 决定S1 }));
+    await act(async () => {
+      取卡片(result, 'decide_resume_screening').按钮们.find((键) => 键.文案 === '通过初筛')?.执行?.();
+    });
+    expect(决定S1).toHaveBeenCalledWith('mc_a', 'continue');
+    清空轻提示();
+
+    // 换单（hook 复用、caseId 换）：写中锁随 scope 重置放行，不沿用旧单在飞
+    rerender(动作输入({ 详情: 单B, 回答在飞表: { current: new Map<string, Promise<void>>() }, 决定S1 }));
+    const 新卡 = 取卡片(result, 'decide_resume_screening');
+    expect(新卡.按钮们.find((键) => 键.文案 === '通过初筛')?.执行).not.toBeNull();
+
+    // 旧单此刻才失败：迟到提示对不上代际整包作废
+    await act(async () => {
+      打回();
+      await 迟到失败.catch(() => undefined);
+    });
+    expect(轻提示数()).toBe(0); // 不在新单的页面上弹旧单的失败
+    expect(取卡片(result, 'decide_resume_screening').按钮们.find((键) => 键.文案 === '通过初筛')?.执行).not.toBeNull();
+
+    // 新单照常可发：新代际的失败正常提示、正常收口
+    const 失败 = vi.fn(async (): Promise<void> => { throw new Error('503'); });
+    rerender(动作输入({ 详情: 单B, 回答在飞表: { current: new Map<string, Promise<void>>() }, 决定S1: 失败 }));
+    await act(async () => {
+      取卡片(result, 'decide_resume_screening').按钮们.find((键) => 键.文案 === '不合适')?.执行?.();
+    });
+    await act(async () => {
+      取终结确认(result).执行(); // 判不合适过二次确认后发命令
+    });
+    await waitFor(() => expect(轻提示数()).toBe(1)); // 本单失败正常原地提示
+    await waitFor(() =>
+      expect(取卡片(result, 'decide_resume_screening').按钮们.find((键) => 键.文案 === '不合适')?.执行).not.toBeNull(),
+    );
   });
 });
 
@@ -1080,12 +1143,14 @@ describe('use后端详情动作 · S2 协同决定（decide_coordination）', ()
     await act(async () => {
       卡().按钮们.find((键) => 键.文案 === '接受')?.执行?.();
     });
-    const 决定键们 = 卡().按钮们.filter((键) => 键.文案 === '接受' || 键.文案 === '拒绝');
-    expect(决定键们.every((键) => 键.执行 === null)).toBe(true);
+    const 决定键们 = () => 卡().按钮们.filter((键) => 键.文案 === '接受' || 键.文案 === '拒绝');
+    expect(决定键们().every((键) => 键.执行 === null)).toBe(true);
+    expect(决定键们().every((键) => 键.禁用说明 === '正在提交，请稍候')).toBe(true);
     deferred.resolve();
     await waitFor(() =>
       expect(卡().按钮们.find((键) => 键.文案 === '接受')?.执行).not.toBeNull(),
     );
+    expect(决定键们().every((键) => 键.禁用说明 === null)).toBe(true); // 落定后说明退场
   });
 
   it('相同区域保留规则入口：Backend 记成规则在场但禁用，原因「暂不支持记成规则」，零执行', () => {

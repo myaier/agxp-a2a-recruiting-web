@@ -1,6 +1,8 @@
 // 详情外壳 · 无 Provider 展示测试：外壳只吃 顶栏信息 + 槽位（不读 Context/fixture、
 // 不走路由、不派发业务动作）。钉住本 Task 的共用版式契约：
-//   · 两端各两个 Tab（进度 / 资料），点击只回调 切Tab，进度/资料 槽唯一挂载；
+//   · 两端各两个 Tab（第一 Tab 恒「代谈进度」，第二 Tab 求职端「职位详情」/招聘端
+//     「在线简历」—— spec §1/§3.1 产品名，Tab 键仍 进度/资料），点击只回调 切Tab，
+//     进度/资料 槽唯一挂载；
 //   · 招聘端顶栏不显示 alias/姓名，画像缺段仍占位、性别位给中性未知标记；
 //   · 真实分数 0 保留、缺失显示「—」并带可访问的缺失说明，右侧永不出现 NaN；
 //   · 真实低分沿用既有警示色，缺失不画警示。
@@ -66,8 +68,8 @@ describe('详情外壳 · 两个 Tab 与槽位', () => {
     expect(screen.getByText('豆瓣 · 全栈 · 大厂')).toBeTruthy();
     expect(screen.getByText('适配')).toBeTruthy();
     expect(screen.getByText('87')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '进度' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '资料' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '代谈进度' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '职位详情' })).toBeTruthy();
     expect(screen.getByText('进度内容标记')).toBeTruthy();
     expect(screen.queryByText('资料内容标记')).toBeNull();
     expect(screen.getByText('底栏标记')).toBeTruthy();
@@ -86,13 +88,16 @@ describe('详情外壳 · 两个 Tab 与槽位', () => {
     expect(screen.getByRole('img', { name: '性别未知' })).toBeTruthy();
     expect(screen.getByText('匹配')).toBeTruthy();
     expect(screen.getByText('平台工程师 · 上海 · 25-40K·16薪')).toBeTruthy();
+    // 第二 Tab 按端投影：招聘端给「在线简历」
+    expect(screen.getByRole('button', { name: '代谈进度' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '在线简历' })).toBeTruthy();
   });
 
   it('点 Tab 只回调 切Tab（返回零调用、零路由），切到资料后进度槽卸载（唯一挂载）', async () => {
     const user = userEvent.setup();
     const 切Tab = vi.fn();
     const 页 = render(外壳节点(求职顶栏, '进度', 切Tab));
-    await user.click(screen.getByRole('button', { name: '资料' }));
+    await user.click(screen.getByRole('button', { name: '职位详情' }));
     expect(切Tab).toHaveBeenCalledTimes(1);
     expect(切Tab).toHaveBeenCalledWith('资料');
     // 受控组件：当前Tab 未变时槽位不动

@@ -87,8 +87,8 @@ describe('候选详情 · Backend 分支渲染共享 P5 详情（recruiter）', 
     expect(screen.queryByText('沈亦舟')).toBeNull();
     expect(screen.queryByText('陈屿')).toBeNull();
     // 读入中不进共用外壳：两个共享 Tab 都不出现（正常 Backend 详情才有两 Tab）
-    expect(screen.queryByRole('button', { name: '进度' })).toBeNull();
-    expect(screen.queryByRole('button', { name: '资料' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '代谈进度' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '在线简历' })).toBeNull();
     expect(screen.getByText('正在读入这一单…')).toBeTruthy();
   });
 });
@@ -117,7 +117,7 @@ describe('候选详情 · Mock 分支原行为且零 P5 请求', () => {
 
   it('A-01 原样渲染（资料 Tab 在场；顶栏已去名），零 P5 请求', async () => {
     渲染候选详情页('A-01');
-    expect(await screen.findByRole('button', { name: '资料' })).toBeTruthy(); // Mock 的资料 Tab 仍在（共用外壳的两个 Tab：进度/资料）
+    expect(await screen.findByRole('button', { name: '在线简历' })).toBeTruthy(); // Mock 的资料 Tab 仍在（共用外壳第二 Tab 按端投影：招聘端 在线简历）
     // 第二批（2026-09-09）：招聘端全匿名 —— 顶栏不再显示 S1 已披露的真名（沈亦舟）与代号（陈屿）
     expect(screen.queryByText('沈亦舟')).toBeNull();
     expect(screen.queryByText('陈屿')).toBeNull();
@@ -152,7 +152,7 @@ describe('候选详情 · Mock 资料 Tab 共用在线简历正文（Task 4）',
   it('A-01：完整布局信息区一个不缺（画像/个人优势/期望/工作/项目/教育/技能/页尾），正文来自共用组件', async () => {
     const user = userEvent.setup();
     渲染候选详情页('A-01');
-    await user.click(await screen.findByRole('button', { name: '资料' }));
+    await user.click(await screen.findByRole('button', { name: '在线简历' }));
     expect(screen.getByText('交易中台研发专家 · 现任字节跳动')).toBeTruthy();
     expect(screen.getByText('个人优势')).toBeTruthy();
     expect(screen.getByText('求职期望')).toBeTruthy();
@@ -167,7 +167,7 @@ describe('候选详情 · Mock 资料 Tab 共用在线简历正文（Task 4）',
   it('B-02 无简历档：同一正文里逐区显示缺失，不另起一页、不出假薪资一致性', async () => {
     const user = userEvent.setup();
     渲染候选详情页('B-02');
-    await user.click(await screen.findByRole('button', { name: '资料' }));
+    await user.click(await screen.findByRole('button', { name: '在线简历' }));
     expect(screen.getByText('匿名画像缺失')).toBeTruthy();
     expect(screen.getByText('个人优势缺失')).toBeTruthy();
     expect(screen.getByText('工作经历缺失')).toBeTruthy();
@@ -209,7 +209,7 @@ describe('候选详情 · 顶栏去名（第二批 验收7/9）', () => {
 
   it('验收7 · A-01（S1 已披露真名）：顶栏无真名 / 代号；有 role=img 性别图标；含年限、学历、状态；副标题不含年限段', async () => {
     渲染候选详情页('A-01');
-    await screen.findByRole('button', { name: '资料' });
+    await screen.findByRole('button', { name: '在线简历' });
     const 栏 = 取返回栏();
     expect(within(栏).getByRole('img', { name: '男' })).toBeTruthy();
     const 栏文 = 栏.textContent ?? '';
@@ -226,12 +226,12 @@ describe('候选详情 · 顶栏去名（第二批 验收7/9）', () => {
     expect(screen.queryByText('9 年 · Go / 高并发交易 · 字节跳动')).toBeNull();
     // 右侧 匹配 N 与 Tab 不动
     expect(栏文).toContain('94');
-    expect(screen.getByRole('button', { name: '进度' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '代谈进度' })).toBeTruthy();
   });
 
   it('验收7 · A-07（S0 匿名初筛，真名 null）：顶栏同构，代号不上顶栏', async () => {
     渲染候选详情页('A-07');
-    await screen.findByRole('button', { name: '资料' });
+    await screen.findByRole('button', { name: '在线简历' });
     const 栏 = 取返回栏();
     expect(within(栏).getByRole('img', { name: '女' })).toBeTruthy();
     expect(栏.textContent).toContain('10 年');
