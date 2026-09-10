@@ -314,3 +314,11 @@ interface 消息列表展示属性 {
 - 全量：`npm test -- src/屏幕/消息列表展示/ src/屏幕/消息列表.test.tsx src/屏幕/企业消息.test.tsx src/屏幕/P7/Backend会话列表.test.tsx` exit 0，38 passed（5 文件：19 新增 + 19 既有）；`npm run typecheck` exit 0；`npx oxlint`（新目录 + 3 连接层 + 3 测试）无输出；`npm test` 全量 186 文件 / 3828 用例全过（exit 0）。
 - 视觉回归：`P1_CAPTURE_DIR=ui-regression-output/p1/task4 npm run test:e2e:data-source -- e2e/P1展示统一.spec.ts --project=mock-stg --grep 'P1 Mock视觉' --workers=1` 退出码 0，28 passed（43.2s）；`tsx e2e/视觉回归/比较命令.ts --candidate ui-regression-output/p1/task4 --reference ui-regression-output/p1/reference --output /tmp/p1-task4-report` → pass=28 / warning=0 / blocked=0 / new=0 / removed=0 / 退出码 0；另逐场景比对 28 个 scene JSON 的 `elements` 几何：0 差异 —— 求职端消息 8 场景（all/notice/search/longtitle × 320/390）、招聘端消息 8 场景（S3 推进后 all/notice/search/longtitle × 320/390）与 Task 1 基准逐元素一致（本任务改造对象），职位/直聊场景零变化。
 - 禁改核对：`git status` 仅 3 连接层 + 3 测试修改、`企业消息.module.css` 删除、新目录 `消息列表展示/` 5 文件；`e2e/数据源模式.spec.ts`、`e2e/视觉回归/场景.ts`、`e2e/P1展示统一.spec.ts`（只运行）、双端真人会话未触碰；`git diff --check` 干净。未运行 `scripts/task_intents.py`（不在本仓库，登记属主控会话）。
+
+### Task 6（2026-09-10）：实施异构 review 与 final gate
+
+#### Codex review-loop Round 1（候选 d99f5d91）
+
+- Reviewer：Codex（gpt-5.6-sol，read-only，未运行任何测试）；绑定批准 Spec revision 33824d07/blob 98601116、Plan af1954f8/blob 4b4e6201、固定 base 55c7024f / head d99f5d91；共享守约 `/Users/visionclaw/coding-harness/skills/_shared/review-contract.md`。前后 guard 通过（HEAD/工作树/受审指纹未变）。
+- C-1（契约违反/Important/required/复杂度不变）：在场 Backend 发布人 blank 姓名/公司未按 §3.2 换「发布人姓名未知」「企业信息未知」（职务有 trim，姓名/公司直接透传）。**接受并修复**：TDD 先加 2 条失败断言（RED 2 failed，指向占位缺失），`准备职位正文.ts` 在场分支对 姓名/公司 补 trim 缺失判断；修复 commit `02a0f9b8`。
+- 失效证据补验：定向 5 文件 124 passed（122+2 新增）；`npm test` 全量 3830/3830 exit 0（28.0s）；`npm run typecheck`、`npm run lint` exit 0；backend-stg `P1 Backend展示` 18/18 exit 0（24.1s）。Mock 路径（准备Mock职位正文/CSS/JSX）零改动，mock-stg 视觉对照与 ui:compare/ui:check 证据保持有效。
