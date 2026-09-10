@@ -524,3 +524,40 @@
   font-size: 11.5px;
   color: var(--次要);
 }
+
+/* ── 缺失占位（P1 展示统一 §3.2，2026-09-10）──
+   只作用于缺失节点：完整状态的既有声明值一概不动。 */
+
+/* 无推荐分的说明分支：保留 44×44 分数位尺寸的中性占位，显示「—」+「匹配分未知」，
+   不绘制进度环、不传 0/NaN */
+.未知分数位 {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--浅灰底2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--次要浅);
+}
+
+/* 公司图位：wire 无真实图源时的中性空白占位（40×40 圆角 14，同 公司字标 缺省尺寸），
+   可访问名「公司图片未知」；Mock 已知字标不走这里 */
+.公司图位 {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: var(--浅灰底2);
+  display: block;
+}
+
+/* 发布人图位：与 发布人头像 同尺寸（38px 圆形）同用，靠后声明覆盖成中性灰，
+   可访问名「发布人图片未知」；Mock 已知字标头像不走这里 */
+.发布人图位 {
+  background: var(--浅灰底2);
+  color: var(--次要浅);
+}
