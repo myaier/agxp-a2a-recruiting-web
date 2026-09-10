@@ -13,6 +13,9 @@
 // 详情统一（2026-09-10 Task 6）：S1 五动作（accept/decline/retry/replace/
 // decide_resume_screening，含单选 + 披露确认 + 终结确认）同样迁入 use后端详情动作，
 // 展示走共用的 简历选择层 + 确认层；S2/S3 暂留本文件旧控制（Task 8 迁）。
+// 详情统一（2026-09-10 Task 7）：授权原始 PDF 的租约/在飞/代际控制迁
+// 屏幕/详情控制/useCasePDF预览（详情主体 无条件调用，Task 9 迁 后端正常详情），
+// 弹层仍用本文件的 原始PDF层 呈现（Mock 仿真预览控制不在此通道）。
 //
 // 模式边界（spec §5/§6/§8/§10.3 与 P5 冻结契约）：
 //   · 详情只凭 URL case_id + 已认证角色强制 GET（读取详情 恒 force=true —— 非 force 在
@@ -82,6 +85,7 @@ import { 在线简历正文 } from '../../组件/在谈详情/在线简历正文
 import { 简历选择层 } from '../../组件/在谈详情/简历选择层';
 import type { 详情Tab } from '../../组件/在谈详情/类型';
 import { use后端详情动作 } from '../详情控制/use后端详情动作';
+import { useCasePDF预览 } from '../详情控制/useCasePDF预览';
 // 详情自己的样式：状态区/徽标/空态/错误/契约错误都已迁入共用外壳的 CSS（列表文件不回写）
 import 样式 from '../../组件/在谈详情/详情外壳.module.css';
 import { 从P5到详情分段, 从P5到详情状态, 从P5到详情顶栏, 从P5到职位资料 } from '../../数据/详情展示映射';
@@ -92,7 +96,6 @@ import { 路径 } from '../../路由/路径表';
 import { 映射P5详情, P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import type { P5角色, P5动作, P5动作卡, P5详情正常视图 } from '../../数据/MatchCase展示映射';
 import { 取后端错误文案 } from '../../数据/HTTP客户端';
-import type { PDF对象租约 } from '../../数据/PDF对象租约';
 import type { P5详情 } from '../../数据/招聘数据源/MatchCase';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { useMatchCase轮询 } from '../../状态/后端/useMatchCase轮询';
@@ -349,49 +352,15 @@ function 详情主体({
   // 归一化 DTO（协同块/意向词不在展示视图里，typed 判定从这里取；正常视图必然由它映射）
   const 详情 = 快照?.detail ?? null;
 
-  // 授权原始 PDF（两端）：租约只活在弹层生命周期 —— 关闭/换 Case/换角色/卸载即 revoke，
-  // 绝不缓存；在飞单发防连点双租约。弹层正文直接以租约地址呈现真实 PDF 字节。
-  const [PDF预览, 设PDF预览] = useState<{ 文件名: string; 地址: string } | null>(null);
-  const PDF租约引用 = useRef<PDF对象租约 | null>(null);
-  const PDF在飞 = useRef(false);
-  const 回收租约 = () => {
-    PDF租约引用.current?.revoke();
-    PDF租约引用.current = null;
-  };
-  // 本次读取的局部代际：换 Case / 换角色 / 卸载都让它 +1（不建全局租约系统）。
-  // 迟到的成功租约立刻 revoke 且不 setState —— 绝不在新 Case 上打开旧 Case 的弹层；
-  // 迟到的失败也不在新 Case 上弹提示。
-  const 读代际 = useRef(0);
-  useEffect(() => () => {
-    读代际.current += 1;
-    回收租约();
-    设PDF预览(null);
-    // 换代即释放在飞标志：新 Case 的第一次点击不该被上一 Case 的在飞锁挡住
-    PDF在飞.current = false;
-  }, [role, caseId]);
-  const 开PDF = async (文件名: string) => {
-    if (PDF在飞.current || PDF预览 !== null || caseId === '') return;
-    PDF在飞.current = true;
-    const 本次代际 = 读代际.current;
-    try {
-      // 只走 Case 专属 role 路径；操作层已建租约并在会话边界登记回收
-      const 租约 = await 操作.读取简历PDF(role, caseId);
-      if (读代际.current !== 本次代际) {
-        // 迟到成功：本次租约立即回收（幂等 revoke），不开弹层、不写 state
-        租约.revoke();
-        return;
-      }
-      回收租约(); // 防御：上一张（理论上不存在）先回收再挂新的
-      PDF租约引用.current = 租约;
-      设PDF预览({ 文件名, 地址: 租约.url });
-    } catch (错误) {
-      if (读代际.current !== 本次代际) return;
-      轻提示(取后端错误文案(错误));
-    } finally {
-      // 只有当前那次读取的 finally 能释放自己的在飞标志，不给新请求解锁
-      if (读代际.current === 本次代际) PDF在飞.current = false;
-    }
-  };
+  // 授权原始 PDF（两端）：控制已搬 屏幕/详情控制/useCasePDF预览（详情统一 Task 7），
+  // 本组件无条件调用（Task 9 迁 后端正常详情）—— 租约只活在弹层生命周期（关闭/换 Case/
+  // 换角色/卸载即 revoke，绝不缓存），在飞单发防连点，迟到成败过代际栅栏。弹层正文直接以
+  // 租约地址呈现真实 PDF 字节。
+  const { 预览: PDF预览, 打开: 开PDF, 关闭: 关PDF } = useCasePDF预览({
+    role,
+    caseId,
+    读取: 操作.读取简历PDF,
+  });
 
   // 所有 hook 之后才收窄详情：正常视图只能来自快照里已 decode 的详情（见上：detail 为空
   // 不映射），这里收窄一次让分段投影拿到 raw stage、动作区拿到 typed 块，绝不从展示文案反推。
@@ -480,16 +449,10 @@ function 详情主体({
       />
 
       {/* 原始 PDF 弹层：顶栏只有 PDF 徽标 + 文件名 + 关闭（无解释文字）；正文以
-          租约地址呈现真实字节；关闭即回收租约。弹层里不存在姓名/联系方式渲染路径。 */}
+          租约地址呈现真实字节；关闭（hook 交付）即回收租约。弹层里不存在姓名/联系方式
+          渲染路径。 */}
       {PDF预览 !== null ? (
-        <原始PDF层
-          文件名={PDF预览.文件名}
-          地址={PDF预览.地址}
-          关闭={() => {
-            回收租约();
-            设PDF预览(null);
-          }}
-        />
+        <原始PDF层 文件名={PDF预览.文件名} 地址={PDF预览.地址} 关闭={关PDF} />
       ) : null}
     </>
   );
