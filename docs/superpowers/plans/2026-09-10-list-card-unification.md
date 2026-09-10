@@ -277,4 +277,32 @@ expect(screen.queryByRole('button', {name:'让AI代理去聊'})).toBeNull();
 
 ## 实施记录
 
-当前未实施，未运行产品测试或真实 local 验收。新实施 session 在这里记录各 Task 提交、命令与 receipt、实施 peer review 裁决、final gate 批准及最终合入事实；不得将规划文档检查写成产品 PASS。
+执行方式：Claude Code 实际调用 superpowers:subagent-driven-development（Task count 5 > 3），Task 1–4 各经 implementer + spec reviewer + code-quality reviewer 三角色（档位取角色表：T1–T3 三角色 sonnet，T4 code-quality opus），Task 5 由同一执行者主控。task intent 5bf9a4de-8a39-4be8-9d44-e4e02ea9cf76（target origin/main@b93436e）。
+
+### Task 提交与验证
+
+| Task | Commit | 验证 |
+| --- | --- | --- |
+| 1 招聘推荐卡/候选主体/分数位 | 74e29b28 `refactor: share recruiter recommendation card rendering` | 定向 Vitest（组件/映射/页面 93 + 详情/匿名简历回归 40）+ 全量 3677 + lint/tsc/build 0；TDD RED 先行 |
+| 2 招聘在谈卡/阶段区 | 79c03636 `refactor: share recruiter open case cards` | 定向 91/91 + MatchCase历史 11/11 + 全量定向 290 + lint/tsc/build 0；RED 35 条先行 |
+| 3 求职在谈卡/公司占位 | b30e24de `refactor: share candidate open case cards` | 定向 320 + 全量 3710 + lint/build 0；RED 6 例先行 |
+| 4 跨模式验证/完整本地验证 | 7a540fd0 `test: verify shared list card layouts across data sources` + 48341b4b `test: restore no-snapshot premise for direct job fetch e2e` | 五项：lint 0 / build 0 / 完整定向 Vitest 298 / 全量 data-source 92 passed+13 failed / ui:check 0（16 pass+1 warning）；新增 5 个「卡片统一」Playwright 用例（390/320×完整/全空/部分空/长文本/零值、跨模式固定区 ≤1px、真实交互）；唯一布局修复：320px 长薪资带压公司名（.公司头行 118→178px） |
+
+### 实施 peer review 裁决（摘要）
+
+- T1 分数位 DOM 在候选主体之前：裁定合规（§5.1 头行+右侧匹配分为第一阅读单元），视觉落点经 T4 浏览器核实（两模式 score 区 x/y 差 0px）。
+- T3 共享阶段区 10/9px vs 求职 Mock 8/8px（~3px/卡）：§5.4「同一在谈阶段区」优先，浏览器核可读；ui:check `candidate-negotiations` 1.89% warning 即此间距差（两态复跑证明与 T4 修复无关），Mock 完整场景基线重钉决策待用户。
+- T4 controller base 对照（b93436e 临时只读检出全量 data-source，base 35 failed/65 passed，按标题集合比对）：原报告「15 个全部 base 即红」修正为 13 base 即红 + 2 分支归因（fixture 补 `structured_requirements_confirmed` 使推荐列表可解码、快照含直取 job，破坏「直取无坐标」前提）→ 2 用例 per-test 置空推荐清单恢复前提。13 个 base 即红（7 身份切换/注册流导航停滞——trace 指向 ws 代理 recruitment-stg.agxp.ai DNS 不可达；6 疑似锚点/文案漂移）为 main 既有债，保留证据未修。
+- 320px 求职在谈公司文本盒实测 ≈52px：「公司信息未知」(82px)/「公司简介未知」(67px)/Mock 四字公司名均省略号截断约 3 字——「不重叠」与「文本完整」的取舍，320 版式裁定属产品，随 final gate 呈报。
+- deferred minors（无新证据不重开）：`.两行` 压 `.头行` 的 CSS 注入顺序依赖（注释+浏览器核对兜底）；两屏改动前已死 CSS；aria-label 措辞不一；P5 四标题双表手工副本（it.each 钉住）；e2e/ 不在 tsc include（仓库既有缺口）。
+
+### 异构代码 review-loop（Codex，development-workflow 绑定）
+
+session /tmp/codex-review-loop/session-Ue8P68yE，thread 01a0894b…，model gpt-5.6-sol/high，read-only，共用守约 ~/coding-harness/skills/_shared/review-contract.md，冻结范围 b93436e…候选，两轮 guard（status/HEAD）均 PASS。
+
+- R1 finding（required / Minor / 契约违反 / 复杂度不变）：文本占位未完整执行空白归一化（§4.1：`??` 对 `''` 不触发占位、候选头行 filter 隐藏空段）与次要文字色（§6：「经验未知」等占位继承 `--墨`/700、「公司信息未知」同）→ 裁决接受（逐点核实成立），修复 commit 6b56fea2 `fix(review-r1): normalize blank list-card fields to unknown placeholders`：两组件局部「已知文」谓词（null 或 trim 空）、候选头行默认关闭 `未知段们`（不传 DOM 逐字节不变）、占位段 `var(--次要浅)`；修复后五项验证全绿（定向 Vitest 213 / lint 0 / build 0 / data-source 92+13 同清单 / ui:check 0 同 warning），e2e 真实浏览器计算色断言 rgb(125,130,118)=--次要浅。
+- R2（resume 同线程）：`NO FINDINGS`。无未解决 required。
+
+### Final gate（待用户确认）
+
+pre_gate_target_base、候选 SHA、证据清单与 L3 方案见会话呈报；本节在合入后补记 final_target_base、development L3（真实 local 验收）结果与实际合入 SHA。规划批准不等于最终合入批准。
