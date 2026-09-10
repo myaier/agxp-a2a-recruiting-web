@@ -40,6 +40,7 @@ const 编号 = {
   职位完整: 'job_00112233445566778899aabbccddee01',
   职位零分: 'job_00112233445566778899aabbccddee02',
   职位缺失: 'job_00112233445566778899aabbccddee03',
+  职位部分空: 'job_00112233445566778899aabbccddee06',
   职位长文: 'job_00112233445566778899aabbccddee04',
   职位错误: 'job_00112233445566778899aabbccddee05',
   会话甲: '3001',
@@ -382,8 +383,18 @@ function 场景fixture(场景: P1场景名): P1场景fixture {
       description: '   ',
       requirements: '',
     });
+    // 部分空：JD 描述有值、职位要求合法空 —— 锁定「一节保留原文、另一节给未知占位」的分支
+    const 部分空岗位 = P1岗位(编号.职位部分空, {
+      title: 标记.专有职位,
+      hiring_organization_claim: { display_name: 标记.专有公司, legal_name: null },
+      publisher_profile: undefined,
+      publisher_organization_ref: undefined,
+      hiring_organization_ref: undefined,
+      description: 'P1FIX 部分空岗位：JD 描述这节有值，职位要求这节合法空。',
+      requirements: '',
+    });
     return {
-      岗位: { [编号.职位缺失]: 缺失岗位 },
+      岗位: { [编号.职位缺失]: 缺失岗位, [编号.职位部分空]: 部分空岗位 },
       推荐卡: [],
       会话页: () => ({
         items: [

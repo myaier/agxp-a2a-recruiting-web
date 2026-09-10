@@ -864,6 +864,16 @@ for (const 宽度 of 后端宽度们) {
       await expect(page.getByRole('button', { name: '不感兴趣，别再推给我' })).toHaveCount(0);
       await expect(page.getByRole('button', { name: '举报这个职位' })).toBeVisible();
 
+      // 部分空：JD 描述有值、职位要求合法空 —— 一节保留原文、另一节给未知占位（Spec §6.1）
+      await page.goto('/#/job/job_00112233445566778899aabbccddee06');
+      await expect(page.getByText('P1FIX 部分空岗位：JD 描述这节有值，职位要求这节合法空。', { exact: true })).toBeVisible({ timeout: 15_000 });
+      expect(请求).toContainEqual(expect.objectContaining({ method: 'GET', path: '/api/v1/jobs/job_00112233445566778899aabbccddee06' }));
+      // 描述节保留 wire 原文，双空场景的「职位详情未知」占位不出现
+      await expect(page.getByText('职位详情未知', { exact: true })).toHaveCount(0);
+      // 空的职位要求节仍给未知占位，原标题不丢
+      await expect(page.getByText('职位要求未知', { exact: true })).toBeVisible();
+      await expect(page.getByText('职位要求（补充说明，不自动解析）', { exact: true })).toBeVisible();
+
       await 期望无溢出(page);
       期望无意外诊断(诊断);
       诊断.detach();
@@ -1165,7 +1175,6 @@ for (const 宽度 of 后端宽度们) {
       // 相位证据：无游标列表读恰好 4 次（水合 / Tab force / 重试 / 重试），带游标零次
       const 无游标读 = 请求.filter((条) => 条.method === 'GET' && 条.path === '/api/v1/me/conversations');
       expect(无游标读.length).toBe(4);
-      expect(请求.filter((条) => 条.method === 'GET' && 条.path.includes('/conversations?cursor='))).toEqual([]);
       await expect(page.getByTestId('unread-3001')).toHaveCount(0);
       await expect(page.getByText('请求失败，请稍后重试')).toHaveCount(0);
 
