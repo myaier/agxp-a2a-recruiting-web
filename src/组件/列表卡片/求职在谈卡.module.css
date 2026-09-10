@@ -1,0 +1,114 @@
+/* 求职在谈卡卡面：自 原 在谈首页.module.css 的 Mock 在谈卡样式一比一搬移（视觉基准，
+   Spec §5.3/§6：完整 Mock 数据保持原信息位置、字号、padding 与边距）。
+   阶段区的样式在 在谈阶段区.module.css（两类在谈卡共用），这里只留卡层自己的：
+   外层锚点、卡 padding、公司头行、右列分数+薪资位、职位名、标签行与公司字标空位。 */
+
+/* 卡根：收进独立根节点，组件单独渲染（测试、复用）时位置也成立（同 招聘在谈卡） */
+.根 {
+  position: relative;
+}
+
+.卡 {
+  position: relative; /* 右列绝对定位的基准 */
+  padding: 13px 15px 10px; /* 标注 22:46：整卡收小一号 */
+}
+
+/* 公司头行：字标 + 公司名 / 简介 + 右列 */
+.公司头行 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* 右列让位按最宽右列算：环 40 + 间距 8 + 最长薪资带文本 126 ≈ 174，取 178。
+     原 118 只够 Mock 短薪资带（『50-65K』右列 ≈ 109）；P5 候选在谈行的薪资带
+     『P5 30-45K·15薪』右列 ≈ 174，320px 宽下公司名会压进薪资字形（Task 4 浏览器实测）。
+     390px 宽的 Mock 卡文字都到不了旧让位宽，渲染逐像素不变（ui:check 基线核对）。 */
+  padding-right: 178px;
+}
+
+/* 公司名/简介那半行（原 Mock 卡的内联 flex:1 + minWidth:0，收进类里） */
+.公司文 {
+  flex: 1;
+  min-width: 0;
+}
+
+.公司名 {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+.公司简介 {
+  font-size: 11px;
+  color: var(--弱化);
+  margin-top: 2px;
+}
+
+/* 公司名占位（Spec §6）：公司名 null / trim 空时的「公司信息未知」与真实公司名同字号
+   同字重同位，只换现有次要文字色；须排在 .公司名 之后才压得过 --墨。
+   简介占位沿用 .公司简介 的 --弱化（已是次要色），不再叠加。 */
+.未知文 {
+  color: var(--次要浅);
+}
+
+/* 公司字标空位：Backend 当前无公司图片/字标依据时的中性空白块（Spec §4.3）。
+   尺寸/圆角与 公司字标 同规格（34×34、10px）；只画一块浅灰，不放首字、不描边成图标，
+   可访问名「公司图片未知」在组件里。不加载图片，也不按未知名称命中静态公司标。 */
+.字标空位 {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--浅灰底2);
+}
+
+/* 右列：分数在上游、薪资同行，绝对定位挂卡右上 —— 不参与文档流，
+   否则它比左侧公司行高一截，会把职位名往下顶出一条大缝（标注 16:52） */
+.右列 {
+  /* 标注 00:06：薪资放到匹配环左边，横排 */
+  position: absolute;
+  top: 12px;
+  right: 15px;
+  display: flex;
+  flex-direction: row-reverse; /* 标记里环在前，反向后环靠右、薪资在左 */
+  align-items: center;
+  gap: 8px;
+}
+
+.薪资 {
+  /* 数字本身就是价格标，够大才立得住；字号/字重走全局 薪资体（17/500 Display 档） */
+  color: var(--深绿);
+}
+
+/* 职位名（标注 22:46：17 太大导致卡片占位，收到 15.5）*/
+.职位名 {
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-top: 9px;
+  color: var(--墨);
+}
+
+/* 标签行 */
+.标签行 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.标签 {
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--浅灰底2);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--正文);
+}
+
+/* 标签区占位：没有可展示的标签（城市/技能/岗位属性都缺）时才出现，
+   现有次要文字色，不用错误红，也不补其他域数据（Spec §4.2） */
+.未知标签 {
+  color: var(--次要浅);
+  font-size: 10.5px;
+}

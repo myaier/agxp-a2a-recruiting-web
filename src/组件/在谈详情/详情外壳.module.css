@@ -43,18 +43,11 @@
   text-overflow: ellipsis;
 }
 
-/* ── 招聘端画像行：复用 候选头行，性别未知时在本文件留一个同尺寸的中性标记 ── */
+/* ── 招聘端画像行：复用 候选头行（性别未知占位也走其共享参数，Spec §9 合入收敛）── */
 .画像行 {
   display: flex;
   align-items: center;
   min-width: 0;
-}
-
-.未知性别符 {
-  display: inline-flex;
-  flex: none;
-  margin-right: 5px;
-  color: var(--最弱);
 }
 
 /* ── 两个 Tab ── */

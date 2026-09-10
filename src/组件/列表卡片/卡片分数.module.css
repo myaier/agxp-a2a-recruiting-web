@@ -1,0 +1,25 @@
+/* 卡片分数：未知分占位（已知分直接复用 适配环.module.css，这里不重复一份环）。
+   Spec §4.3：与已知环同一 40×40 容器，说明文字放在容器内部，不把右列其他内容往下推；
+   颜色用现有次要文字色，不用错误红，也不用低分/成功色。Task 4 浏览器核对可读性。 */
+.未知 {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  color: var(--次要浅);
+}
+
+.未知杠 {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.未知文 {
+  font-size: 9px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}

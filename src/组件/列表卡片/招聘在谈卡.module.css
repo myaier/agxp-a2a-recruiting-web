@@ -1,0 +1,25 @@
+/* 招聘在谈卡卡面：自 原 企业在谈候选.module.css 的 Mock 候选卡样式搬移（视觉基准，
+   Spec §5.2/§6：完整 Mock 数据保持原信息位置、字号、padding 与边距）。
+   卡体区（头行/工作/教育/标签）与阶段区的样式分别在 候选信息主体.module.css 与
+   在谈阶段区.module.css，这里只留卡层自己的：外层锚点、卡 padding、右列分数位。 */
+
+/* 卡根：右列绝对定位的锚点。原来这个锚点是 .卡 自身，收进卡根后卡单独渲染
+   （组件测试、后续复用）时位置也成立（同 招聘推荐卡）。 */
+.根 {
+  position: relative;
+}
+
+.卡 {
+  padding: 14px 16px 11px;
+}
+
+/* 右列：匹配分位，绝对定位挂卡右上（Mock 候选卡同一落点；Backend 未知分占同一位置） */
+.右列 {
+  position: absolute;
+  top: 13px;
+  right: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}

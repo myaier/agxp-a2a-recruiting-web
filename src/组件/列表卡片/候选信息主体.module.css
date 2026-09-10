@@ -1,0 +1,57 @@
+/* 候选信息主体：招聘两卡共用的卡体区（视觉基准 = 原 候选推荐.module.css 的 Mock 推荐卡，
+   数值一比一搬移，两模式共用这一份，不按数据源分卡面 —— Plan Global Constraints）。 */
+
+/* 头区：让出右列 76px —— 分数位由具体卡绝对定位在这里（Spec §5.1 阅读顺序：
+   性别/经验/学历/求职状态 + 右侧匹配分）。类名刻意不叫「头行」，避免测试里
+   [class*="头行"] 把这一层也捞进去。 */
+.头区 {
+  padding-right: 76px;
+}
+
+/* 两行位：头行占位串过长时最多两行，右列 40px 分数位不被挤出或遮住（Spec §6）。
+   必须压过 候选头行.module.css .头行 的 nowrap（同为单类选择器，靠本文件先 import
+   候选头行、再 import 本样式的注入顺序胜出）；正常内容仍是一行。 */
+.两行 {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 工作/教育图标行（BOSS 的图标行槽位；原 .信息行 5px 上距照搬） */
+.信息行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+}
+
+.信息文 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--墨);
+}
+
+/* 占位文本：现有次要文字色，不用错误红（Spec §4） */
+.未知文 {
+  color: var(--次要浅);
+}
+
+/* 亮点标签行（同市场卡标签） */
+.标签行 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.标签 {
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: var(--浅灰底);
+  font-size: 11px;
+  color: var(--次要);
+}

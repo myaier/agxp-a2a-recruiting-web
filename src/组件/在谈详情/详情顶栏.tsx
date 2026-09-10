@@ -20,37 +20,14 @@ const 画像缺失占位 = {
   求职状态: '求职状态缺失',
 } as const;
 
-/** 性别未知时的中性标记：与 性别图标 同一 16px 槽位、同一线描语言，但不猜性别。
- *  （共享 候选头行 的未知性别参数尚未进入实施基线，先在详情本地留位，合入后再收敛。） */
-function 未知性别标记() {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.7}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      role="img"
-      aria-label="性别未知"
-    >
-      <circle cx="8" cy="8" r="3.9" />
-    </svg>
-  );
-}
-
+/** 性别未知时的中性占位归共享 候选头行（Spec §9 合入收敛）：显式传 未知性别占位，
+ *  16px 灰色 ?、读屏与 title 均为「性别未知」，不猜性别，也不在详情留第三份标记。 */
 function 画像行(画像: NonNullable<顶栏信息['画像']>) {
   return (
     <div className={样式.画像行}>
-      {画像.性别 === null ? (
-        <span className={样式.未知性别符}>
-          <未知性别标记 />
-        </span>
-      ) : null}
       <候选头行
         性别={画像.性别 ?? undefined}
+        未知性别占位={画像.性别 === null}
         年限={画像.年限 ?? 画像缺失占位.年限}
         学历={画像.学历 ?? 画像缺失占位.学历}
         求职状态={画像.求职状态 ?? 画像缺失占位.求职状态}

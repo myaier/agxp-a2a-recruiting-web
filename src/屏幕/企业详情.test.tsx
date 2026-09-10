@@ -1,15 +1,16 @@
-// 企业详情 · P1C Task 5：Backend canonical public company page 测试。
-// route param 仅当 opaque organization_id：进入调 操作.读取公开企业(id)，
-// 缓存 DTO 经 从BFF公开企业() 渲染（legal/display identity、verified_at、
-// Profile 七个已批准分区、public media、active verified job count）。
-// 不调 公司路由键()/取公司档案()；404/suspended/网络错误都进诚实空态，无 Mock 回退、
-// 无 unhandled rejection。Mock 分支继续按原 slug 渲染静态档。
+// 企业详情：Backend canonical public company page 与 Mock 静态档共用的连接层测试。
+// route param 仅当 opaque organization_id：进入调 操作.读取公开企业(id)，缓存 DTO 经
+// 从BFF公开企业() 投影后交给共用的 企业公开页展示 渲染。不调 公司路由键()/取公司档案()；
+// 404/suspended/网络错误都进诚实空态，无 Mock 回退、无 unhandled rejection。
+// Mock 分支继续按原 slug 渲染静态档 + 自述覆盖，两条成功路径 return 同一个展示。
 
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 企业详情 from './企业详情';
-import { BFF公开企业样本 } from '../测试/BFF样本';
+import { BFF公开企业样本, BFF企业档案样本 } from '../测试/BFF样本';
+import type { BFF公开企业 } from '../数据/BFF契约';
 
 const mock返回 = vi.fn();
 const mock跳转 = vi.fn();
@@ -51,6 +52,28 @@ vi.mock('../数据/公司档案', () => ({
   公司路由键: mock公司路由键,
   取公司档案: mock取公司档案,
 }));
+
+/** 合法「全空」公开档案：closed 枚举含 ''，列表允许空 —— 缺字段不是读取失败 */
+const 空公开企业样本: BFF公开企业 = {
+  ...BFF公开企业样本,
+  active_verified_job_count: 0,
+  profile: {
+    ...BFF企业档案样本,
+    industry: null,
+    company_size: '',
+    funding_stage: '',
+    office_address: '',
+    benefit_codes: [],
+    work_schedule: '',
+    company_intro: '',
+    business_items: [],
+    product_intro: '',
+    team_members: [],
+    logo: null,
+    office_media: [],
+    company_media: [],
+  },
+};
 
 function 渲染(键 = 'org_9') {
   return render(
@@ -96,34 +119,66 @@ describe('企业详情 · Backend 公共企业页', () => {
     expect(mock取公司档案).not.toHaveBeenCalled();
   });
 
-  it('缓存 DTO 经 从BFF公开企业 渲染：身份/七分区/公开媒体/在招数', async () => {
+  it('缓存 DTO 经 从BFF公开企业 渲染：身份/公开媒体/在招数，契约没有的分区显示未知占位', async () => {
     置Backend({ org_9: BFF公开企业样本 });
     const { container } = 渲染();
     await waitFor(() => expect(screen.getByText('做可靠的技术产品')).toBeTruthy());
-    // legal/display identity 与 verified_at
+    // legal/display identity 与 verified_at：必需身份字段原样，不用占位掩盖
     expect(screen.getByText('上海云衢科技有限公司')).toBeTruthy();
     expect(screen.getAllByText('云衢科技').length).toBeGreaterThan(0);
     expect(screen.getByText('2026-08-24')).toBeTruthy();
-    // Profile 七个已批准分区
-    expect(screen.getByText('公司简介')).toBeTruthy();
-    expect(screen.getByText('主营业务')).toBeTruthy();
-    expect(screen.getByText('智能招聘平台')).toBeTruthy();
+    // 公开契约没有的分区：出现明确占位，而不是整块消失或拿静态档补
+    expect(screen.getByText('在职者反馈未知')).toBeTruthy();
+    expect(screen.getByText('工商资料未知')).toBeTruthy();
+    // public media 与 active verified job count（身份区 + 底部不可用说明各一次）
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/org_1/media_1.png"]'),
+    ).not.toBeNull();
+    expect(screen.getAllByText('2 个已核验在招岗位').length).toBe(2);
+    expect(screen.getByText('岗位列表暂不可用')).toBeTruthy();
+    // 没有岗位列表能力：不提供可点开的假入口
+    expect(screen.queryByRole('button', { name: /看这家在招的/ })).toBeNull();
+    expect(mock取公司档案).not.toHaveBeenCalled();
+  });
+
+  it('产品/团队在全文层完整可达，福利标签在条款层且不带已核标记', async () => {
+    置Backend({ org_9: BFF公开企业样本 });
+    const 用户 = userEvent.setup();
+    渲染();
+    await waitFor(() => expect(screen.getByText('做可靠的技术产品')).toBeTruthy());
+    await 用户.click(screen.getByRole('button', { name: '读全文 ›' }));
+    // 文化/历程在全文层里也有明确占位（公开契约没有这两段），产品/团队完整可达
+    expect(screen.getByText('企业文化未知')).toBeTruthy();
+    expect(screen.getByText('发展历程未知')).toBeTruthy();
     expect(screen.getByText('产品介绍')).toBeTruthy();
     expect(screen.getByText('AI 简历助手')).toBeTruthy();
     expect(screen.getByText('团队介绍')).toBeTruthy();
     expect(screen.getByText('林澈')).toBeTruthy();
     expect(screen.getByText('招聘负责人')).toBeTruthy();
-    expect(screen.getByText('上海市张江路 1 号')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '关闭' }));
+    await 用户.click(screen.getByText('作息与条款'));
     expect(screen.getByText('五险一金')).toBeTruthy();
-    expect(screen.getByText('双休')).toBeTruthy();
-    // public media（logo/办公实景）与 active verified job count
-    expect(container.querySelector('img[src="https://cdn.example.com/org_1/media_1.png"]')).not.toBeNull();
-    expect(screen.getByText('2 个已核验在招岗位')).toBeTruthy();
-    // 线上无来源的 Mock 分区不出现
-    expect(screen.queryByText('企业文化')).toBeNull();
-    expect(screen.queryByText('发展历程')).toBeNull();
-    expect(screen.queryByText('在职者反馈')).toBeNull();
-    expect(mock取公司档案).not.toHaveBeenCalled();
+    expect(screen.getByText('股票期权')).toBeTruthy();
+    // 接口没有代理核对结果：显示未知，不写 0 条已核来宣称已完成检查
+    expect(screen.getByText('代理核对信息未知')).toBeTruthy();
+    expect(screen.queryByText(/条已由代理核对/)).toBeNull();
+  });
+
+  it('合法空档案不是请求失败：渲染成功占位页，真实 0 保留，不落诚实空态', async () => {
+    置Backend({ org_9: 空公开企业样本 });
+    渲染();
+    await waitFor(() => expect(screen.getByText('公司简介未知')).toBeTruthy());
+    expect(screen.queryByText('这家企业暂时打不开')).toBeNull();
+    expect(screen.getByText('融资阶段未知 · 公司规模未知 · 行业未知')).toBeTruthy();
+    expect(screen.getByText('主营业务未知')).toBeTruthy();
+    expect(screen.getByText('公司相册未知')).toBeTruthy();
+    expect(screen.getByText('福利信息未知')).toBeTruthy();
+    expect(screen.getByText('作息信息未知')).toBeTruthy();
+    expect(screen.getByText('办公地址未知')).toBeTruthy();
+    expect(screen.getAllByText('0 个已核验在招岗位').length).toBe(2);
+    // 必需身份字段不因其他分区缺失而消失
+    expect(screen.getByText('上海云衢科技有限公司')).toBeTruthy();
+    expect(screen.getByText('2026-08-24')).toBeTruthy();
   });
 
   it('404 → 诚实空态，无 Mock 回退，无 unhandled rejection', async () => {
@@ -205,6 +260,8 @@ describe('企业详情 · Mock 分支保持原 slug 渲染', () => {
     expect(mock取公司档案).toHaveBeenCalledWith('pingcap');
     expect(screen.getByText('公司自述')).toBeTruthy();
     expect(screen.getByText('做可靠的技术产品')).toBeTruthy();
+    expect(screen.getByText('法定名称未知')).toBeTruthy();
+    expect(screen.getByText('看这家在招的 3 个岗位')).toBeTruthy();
     expect(mock读取公开企业).not.toHaveBeenCalled();
   });
 });
