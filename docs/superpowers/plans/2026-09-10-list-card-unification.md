@@ -303,6 +303,15 @@ session /tmp/codex-review-loop/session-Ue8P68yE，thread 01a0894b…，model gpt
 - R1 finding（required / Minor / 契约违反 / 复杂度不变）：文本占位未完整执行空白归一化（§4.1：`??` 对 `''` 不触发占位、候选头行 filter 隐藏空段）与次要文字色（§6：「经验未知」等占位继承 `--墨`/700、「公司信息未知」同）→ 裁决接受（逐点核实成立），修复 commit 6b56fea2 `fix(review-r1): normalize blank list-card fields to unknown placeholders`：两组件局部「已知文」谓词（null 或 trim 空）、候选头行默认关闭 `未知段们`（不传 DOM 逐字节不变）、占位段 `var(--次要浅)`；修复后五项验证全绿（定向 Vitest 213 / lint 0 / build 0 / data-source 92+13 同清单 / ui:check 0 同 warning），e2e 真实浏览器计算色断言 rgb(125,130,118)=--次要浅。
 - R2（resume 同线程）：`NO FINDINGS`。无未解决 required。
 
-### Final gate（待用户确认）
+### Final gate 记录
 
-pre_gate_target_base、候选 SHA、证据清单与 L3 方案见会话呈报；本节在合入后补记 final_target_base、development L3（真实 local 验收）结果与实际合入 SHA。规划批准不等于最终合入批准。
+用户于 2026-09-10 批准本轮 final gate，裁定：L3（真实 local 验收）延后——用户正在构建真实 STG 栈，之后一起补测；`candidate-negotiations` 1.89% 视觉 warning 可接受（不重钉基线）；320px 公司名截断与 13 个 base 即红 e2e 按呈报口径随记录接受。
+
+- pre_gate_target_base：`0eef73518fa0c4868bab13a3349c2c741491300c`（origin/main 已自规划基线 b93436e 推进——并行任务「企业公开页/招聘名片统一」合入）。
+- 合并：`git merge --no-edit origin/main` → `16beb309`，e2e/数据源模式.spec.ts 自动合并无冲突。
+- 合并后完整重验（INCREMENTAL_EVIDENCE，日志 `.superpowers/sdd/2026-09-10-list-card-unification/logs-postmerge/`）：
+  - lint 0；build（含 tsc -b）0；完整定向 Vitest 0。
+  - 全量 data-source：**102 passed / 11 failed**——11 个 ⊆ 已知 13 个 base 即红清单（P1C、新招聘方 onboarding 本次环境性转绿，无新增失败；对方新增 8 条企业名片统一用例全过）。
+  - ui:check `--base b93436e`：exit 1 = pass 15 / warning 2 / blocked 1，逐项对账：`enterprise-public` blocked+2.53% 与 `recruiter-card` 0.65% 为并行任务在其 gate 已批准记录的 §7 差异（该 plan 实施记录载明）；`candidate-negotiations` 1.89% 为本分支批准的统一阶段区间距（用户本轮裁定可接受）。new=0 removed=0 infrastructure=0，无未解释差异。
+- development L3（真实 local 验收，required）：**NOT_RUN（用户裁定延后）**——待用户 STG 栈就绪后按 docs/dogfood/真实后端行为验收.md 补测（候选推荐→委托→在谈、双端在谈读取、390px+窄屏截图）。
+- 实际合入 SHA 与 push 结果见下。
