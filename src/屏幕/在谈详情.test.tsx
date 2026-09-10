@@ -293,3 +293,96 @@ describe('在谈详情 · Mock 决策卡共用详情动作卡（Task 8）', () =
     expect(mock派发).not.toHaveBeenCalled();
   });
 });
+
+// ── 详情统一 Task 9：Mock 终局只读（spec §5「Mock 同类终局也只读」）──
+// 判断只消费本屏已有的完成/归档事实：归档 = 已移出在谈列表（本屏靠快照单回看），
+// 完成 = 意向已确认（需要你 false）；「进入意向确认阶段」不是完成。
+describe('在谈详情 · Mock 终局只读（Task 9）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock派发.mockClear();
+    mock应用状态 = {
+      数据源模式: 'mock',
+      状态: {
+        在谈列表,
+        决策: {},
+        决策快照: {},
+        叮嘱表: {},
+        简历文件名: '',
+        简历经历: [],
+        简历教育: [],
+        简历技能: [],
+      },
+      派发: mock派发,
+      操作: {
+        设置P5范围: mock设置P5范围,
+        读取详情: mock读取详情,
+        新增叮嘱: mock新增叮嘱,
+      },
+    };
+  });
+
+  /** 渲染在指定单的详情路由（Mock 分支） */
+  function 渲染Mock详情(编号: string) {
+    return render(
+      <MemoryRouter initialEntries={[`/deal/${编号}`]}>
+        <Routes>
+          <Route path="/deal/:id" element={<在谈详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it('进行中（已进入意向确认但未点头）：底部输入仍在 —— 不把「进入意向确认阶段」当完成', async () => {
+    渲染Mock详情('J-01'); // J-01 在意向确认、需要你=true（对方已确认，等你点头）
+    expect(await screen.findByText('对方已确认意向，等你点头。')).toBeTruthy();
+    expect(screen.getByPlaceholderText('有想法就告诉你的AI代理')).toBeTruthy();
+    expect(screen.queryByText('当前在谈已结束，仅可查看')).toBeNull();
+  });
+
+  it('意向已确认（需要你 false）：底部只读条、无输入无发送，零派发', async () => {
+    mock应用状态 = {
+      ...mock应用状态,
+      状态: {
+        ...mock应用状态.状态,
+        在谈列表: 在谈列表.map((单): 在谈单 =>
+          单.编号 === 'J-01' ? { ...单, 需要你: false } : 单,
+        ),
+      },
+    };
+    渲染Mock详情('J-01');
+    expect(await screen.findByText('当前在谈已结束，仅可查看')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('有想法就告诉你的AI代理')).toBeNull();
+    expect(screen.queryByRole('button', { name: '发送' })).toBeNull();
+    // 移交入口（Mock 原型的开始私聊）不受影响，只是底部叮嘱只读
+    expect(screen.getByRole('button', { name: '开始私聊 ›' })).toBeTruthy();
+    expect(mock派发).not.toHaveBeenCalled();
+  });
+
+  it('退出归档后（快照单回看决策回执）：底部同样只读', async () => {
+    const 页 = 渲染Mock详情('J-02');
+    // J-02 在需要协调等你拍板：输入在场（占位走协调分支）
+    expect(screen.getByPlaceholderText('你的条件是什么？直接告诉代理')).toBeTruthy();
+    // 退出谈判把单移出在谈列表（reducer 落归档表）；本屏留快照单回看
+    mock应用状态 = {
+      ...mock应用状态,
+      状态: {
+        ...mock应用状态.状态,
+        在谈列表: 在谈列表.filter((条) => 条.编号 !== 'J-02'),
+        决策: { 'J-02': '退出' },
+      },
+    };
+    页.rerender(
+      <MemoryRouter initialEntries={['/deal/J-02']}>
+        <Routes>
+          <Route path="/deal/:id" element={<在谈详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('当前在谈已结束，仅可查看')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('有想法就告诉你的AI代理')).toBeNull();
+    expect(screen.getByText('已告知AI代理：终止这一单，不再消耗你的匿名额度。')).toBeTruthy(); // 回执仍可回看
+    页.unmount();
+  });
+});

@@ -204,3 +204,90 @@
 .空态 .重试键 {
   margin-top: 18px;
 }
+
+/* ── 详情底栏（详情统一 Task 9）：输入态直接复用 通用.真输入条（自带 .输入条区），
+   只读态（终局）在同一位置给一条弱化说明条 —— 输入控件一概不渲染（spec §5：
+   终局保留底部区域、输入禁用且无发送回调）。 */
+.只读底栏 {
+  flex: none;
+  padding: 13px 18px calc(var(--安全区下) + 13px);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--次要浅);
+}
+
+/* ── 终局区（详情统一 Task 9）：终局摘要卡 + completed 移交行。原 屏幕/P5/MatchCase详情
+   的 inline 样式收编为共用类，设计令牌逐值不变。 */
+.终局卡 {
+  margin: 0 16px 10px;
+  padding: 13px 15px;
+  border-radius: 14px;
+  background: var(--浅灰底);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--正文);
+}
+
+.终局题 {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--次要浅);
+  letter-spacing: 0.04em;
+}
+
+.终局弱 {
+  font-size: 11px;
+  color: var(--最弱);
+}
+
+.移交区 {
+  margin: 0 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.移交行 {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--意向底);
+  color: var(--意向);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+/* 移交态的「开始私聊」pending 档：在场但不可点（准备中，会话标识属 P7）—— 弱化观感，
+   禁用说明就地解释 */
+.移交键禁用 {
+  align-self: flex-start;
+  padding: 7px 15px;
+  border-radius: 999px;
+  border: 1px solid var(--描边);
+  background: var(--浅灰底);
+  color: var(--最弱);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* 已发布移交的主键观感（与各动作卡主键同一设计令牌） */
+.移交就绪键 {
+  align-self: flex-start;
+  padding: 7px 15px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--荧光绿);
+  color: var(--墨);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.移交禁用说明 {
+  font-size: 11px;
+  color: var(--最弱);
+  line-height: 1.5;
+}

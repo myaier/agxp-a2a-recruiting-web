@@ -1,76 +1,16 @@
 /* D5·C 谈判进度 + D11·A 在线简历批注版 —— 尺寸同构镜像 在谈详情.module.css 定稿值。
    2026-08-20：谈判进度从四阶段时间线改成按阶段分段的对话流，
-   分节条 / 气泡 / 核对清单 / 附件行的样式统一搬进 组件/阶段对话流.module.css，
-   本文件只留「决策卡内部」与「在线简历 Tab」两块。 */
-
-/* ── 返回栏右侧：匹配分（企业侧不显示薪资，薪资只属于岗位的带）── */
-.匹配组 {
-  flex: none;
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-}
-
-.匹配标 {
-  font-size: 10.5px;
-  color: var(--灰白);
-}
-
-.匹配分 {
-  font-size: 16px;
-  font-weight: 800;
-  color: var(--深绿);
-}
-
-/* 匹配分低于 80 转协调橙，提醒这位候选本身就不算严丝合缝 */
-.匹配分警示 {
-  color: var(--协调);
-}
-
-/* ── 两个 Tab ── */
-.Tab行 {
-  flex: none;
-  display: flex;
-  gap: 20px;
-  align-items: baseline;
-  /* 标注 2026-08-20 13:12：文字贴框边太近，上挪并给足下留白 */
-  padding: 8px 20px 10px;
-}
-
-.Tab {
-  font-size: 15px;
-}
-
-.Tab选中 {
-  font-weight: 700;
-  color: var(--墨);
-  letter-spacing: -0.01em;
-}
-
-.Tab未选 {
-  font-weight: 600;
-  color: var(--次要浅);
-}
-
-.简历列 {
-  padding: 10px 18px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+   分节条 / 气泡 / 核对清单 / 附件行的样式统一搬进 组件/阶段对话流.module.css；
+   2026-09-10 详情统一逐步收编：Task 1 返回栏右侧与 Tab 行 → 组件/在谈详情/详情外壳.module.css
+   （匹配分随顶栏走），Task 4 在线简历正文 → 组件/在谈详情/在线简历正文（匿名在线简历 CSS），
+   Task 8 协调/意向卡按钮区 → 组件/在谈详情/详情动作卡.module.css。
+   Task 9 清掉上述迁移后零引用的死规则后，本文件只剩「决策卡内部」（事实块）。 */
 
 /* ── 决策卡内部 ── */
 .节点说明 {
   font-size: 12.5px;
   color: var(--正文);
   margin-bottom: 8px;
-}
-
-/* ── 小结托盘内部 ── */
-.小结正文 {
-  font-size: 12px;
-  line-height: 1.65;
-  color: var(--正文);
 }
 
 /* ── 卡点态数字对比：岗位条件 / 差值 / 候选条件 ── */
@@ -120,51 +60,6 @@
   color: var(--协调);
 }
 
-/* ── 决策按钮区 ── */
-.决策行 {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  margin-top: 11px;
-}
-
-.次按钮 {
-  flex: 1;
-  padding: 11px 0;
-  border-radius: 16px;
-  background: var(--白);
-  border: 1px solid var(--描边深);
-  text-align: center;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--次要);
-}
-
-.主小按钮 {
-  padding: 11px 0;
-  border-radius: 16px;
-  background: var(--荧光绿);
-  box-shadow: 0 1px 4px var(--主按钮投影);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--墨);
-}
-
-/* 双按钮时主按钮占 1.4 份，比「不合适」宽一截（视觉上主次分明）*/
-.决策行 .主小按钮 {
-  flex: 1.4;
-}
-
-/* 单按钮（意向确认）撑满整行 */
-.整宽 {
-  width: 100%;
-  margin-top: 11px;
-}
-
 .决策回执 {
   font-size: 11.5px;
   line-height: 18px;
@@ -178,271 +73,6 @@
   color: var(--灰白);
   text-align: center;
   margin-top: 8px;
-}
-
-/* ── 意向确认「确认后会发生什么」/ AI 代理批注 共用的要点行 ── */
-
-
-
-
-/* ── D11·A 在线简历 Tab ── */
-.简历卡 {
-  background: var(--白);
-  border: 1px solid var(--描边);
-  border-radius: var(--圆角-中卡);
-  padding: 13px 15px;
-}
-
-/* 匿名头卡：头像字 + 灰绿底（双盲 —— 不用真人姓氏做头像）*/
-.头卡 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 11px;
-  padding: 11px 15px;
-}
-
-.候选头像 {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: var(--初筛);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-}
-
-.头像字 {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--白);
-}
-
-.头卡文本 {
-  flex: 1;
-  min-width: 0;
-}
-
-.头卡代号 {
-  font-size: 14.5px;
-  font-weight: 800;
-  color: var(--墨);
-}
-
-.头卡画像 {
-  font-size: 11px;
-  color: var(--次要浅);
-  margin-top: 2px;
-}
-
-.简历卡标题 {
-  font-size: 14.5px;
-  font-weight: 800;
-  color: var(--墨);
-  margin-bottom: 8px;
-}
-
-/* 四维评估：维度名 + 分数 + 分数条 + 批注小字 */
-.评估项 {
-  margin-bottom: 12px;
-}
-
-.评估项:last-child {
-  margin-bottom: 0;
-}
-
-.评估头 {
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-}
-
-.评估名 {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--墨);
-}
-
-.评估分 {
-  margin-left: auto;
-  font-size: 12.5px;
-  font-weight: 800;
-  color: var(--深绿);
-}
-
-/* 分数条：宽度 = 分%，底浅灰、上层橄榄 */
-.分数条 {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--浅灰底);
-  overflow: hidden;
-  margin-top: 6px;
-  display: flex;
-  flex-direction: row;
-}
-
-.分数条填充 {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-  background: var(--橄榄);
-}
-
-.评估批注 {
-  font-size: 10.5px;
-  color: var(--次要浅);
-  margin-top: 5px;
-}
-
-/* 双盲尾注：意向确认前简历已隐去姓名与联系方式 */
-.简历尾注 {
-  font-size: 10.5px;
-  color: var(--灰白);
-  text-align: center;
-  padding: 4px 0 6px;
-}
-
-/* ── 兜底：这位候选已归档（终止后刷新页面 / 直接进 URL）── */
-.已归档区 {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 0 32px 60px;
-  text-align: center;
-  font-size: 13px;
-  line-height: 1.8;
-  color: var(--次要浅);
-}
-
-/* ── 在线简历 Tab 扩充（2026-08-18 BOSS 结构版）── */
-.状态行 {
-  font-size: 10.5px;
-  color: var(--深绿文字);
-  background: var(--淡绿底);
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: 5px;
-  margin-top: 5px;
-}
-
-.经历段 {
-  padding: 11px 0;
-  border-bottom: 1px solid var(--分隔线);
-}
-
-.经历段:last-child {
-  border-bottom: none;
-  padding-bottom: 2px;
-}
-
-.经历头行 {
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.经历公司 {
-  flex: 1;
-  min-width: 0;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--墨);
-}
-
-.经历起止 {
-  flex: none;
-  font-size: 10.5px;
-  color: var(--次要浅);
-}
-
-.经历职位 {
-  font-size: 12px;
-  color: var(--正文);
-  margin: 3px 0 6px;
-}
-
-.作品行 {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--分隔线);
-}
-
-.作品行:last-child {
-  border-bottom: none;
-  padding-bottom: 2px;
-}
-
-.作品名 {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--深绿文字);
-}
-
-.作品说明 {
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: var(--次要浅);
-  margin-top: 3px;
-}
-
-/* 按披露偏好隐去的段落：灰底占位条，说明何时可见 */
-.隐去条 {
-  background: var(--浅灰底2);
-  border-radius: 10px;
-  padding: 12px 13px;
-  font-size: 12px;
-  line-height: 1.65;
-  color: var(--次要浅);
-}
-
-.技能行 {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.技能片 {
-  padding: 5px 11px;
-  border-radius: 8px;
-  background: var(--浅灰底);
-  font-size: 12px;
-  color: var(--正文);
-}
-
-/* ── 推荐候选详情：底部接触栏 ── */
-.接触底栏 {
-  flex: none;
-  padding: 10px 18px calc(var(--安全区下) + 12px);
-  background: var(--页面底);
-  border-top: 1px solid var(--描边);
-}
-
-.接触主键 {
-  width: 100%;
-  padding: 14px 0;
-  border-radius: var(--圆角-按钮);
-  background: var(--荧光绿);
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--墨);
-  text-align: center;
-}
-
-.已接触条 {
-  display: block;
-  width: 100%;
-  padding: 14px 0;
-  border-radius: var(--圆角-按钮);
-  background: var(--淡绿底);
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--深绿文字);
-  text-align: center;
 }
 
 /* 方案条（标注 00:12）：条款放上面，按钮只留动作 */
@@ -471,7 +101,6 @@
   color: var(--墨);
 }
 
-
 /* 卡点说明（用户 2026-08-20 17:46）：决策卡自己的一行说明，不用小结托盘的灰底，
    免得被读成「这个阶段已经有小结了」 */
 .卡点说明 {
@@ -491,39 +120,17 @@
   color: var(--次要浅);
 }
 
-/* ── 意向小结（标注 2026-08-24：确认节点一目了然的小结）── */
-.确认小结卡 {
-  /* 2026-08-24 全站去框（产品负责人批）：意向小结卡卡壳拆掉（白底/描边/圆角撤），
-     与上方节点说明之间改用发丝线分隔；左右 padding 收到 2px。 */
-  background: transparent;
-  border-top: 1px solid var(--分隔线);
-  padding: 8px 2px;
-  margin-bottom: 12px;
-}
-.确认小结行 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3.5px 0;
-}
-.确认小结勾 {
-  color: var(--递简历);
-  font-weight: 700;
-  font-size: 12px;
-}
-.确认小结名 {
-  font-size: 12px;
-  color: var(--次要浅);
-  width: 58px;
-  flex: none;
-}
-.确认小结值 {
-  font-size: 12.5px;
-  color: var(--墨);
-  font-weight: 600;
+/* ── 兜底：这位候选已归档（终止后刷新页面 / 直接进 URL）── */
+.已归档区 {
   flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 32px 60px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--次要浅);
 }

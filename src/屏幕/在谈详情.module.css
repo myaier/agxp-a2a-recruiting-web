@@ -2,8 +2,10 @@
    2026-08-20：谈判进度从四阶段时间线改成按阶段分段的对话流，
    分节条 / 气泡 / 核对清单 / 附件行的样式统一搬进 组件/阶段对话流.module.css；
    2026-09-10 详情统一 Task 1/2：返回栏右侧与 Tab 行收进 组件/在谈详情/详情外壳.module.css，
-   Task 3：资料 Tab 正文（JD / 公司 / 对接人）收进 组件/在谈详情/职位资料.module.css。
-   本文件只留「决策卡内部」，以及仍被 真人会话「看职位」层消费的职位详情块样式。 */
+   Task 3：资料 Tab 正文（JD / 公司 / 对接人）收进 组件/在谈详情/职位资料.module.css，
+   Task 8：协调/意向卡改用共用 详情动作卡（决策按钮区随之退场），
+   Task 9：清掉上述迁移后零引用的死规则（决策按钮区/小结正文/意向小结）。
+   本文件只留「决策卡内部」（事实块），以及仍被 真人会话「看职位」层消费的职位详情块样式。 */
 
 /* ── 职位详情块的滚动区内边距（真人会话「看职位」层同用）── */
 .详情列 {
@@ -34,12 +36,6 @@
   font-size: 12.5px;
   color: var(--正文);
   margin-bottom: 8px;
-}
-
-.小结正文 {
-  font-size: 12px;
-  line-height: 1.65;
-  color: var(--正文);
 }
 
 /* ── 卡点态数字对比：你的条件 / 差值 / 对方条件 ── */
@@ -116,53 +112,7 @@
   color: var(--墨);
 }
 
-/* ── 决策按钮区 ── */
-.决策行 {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  margin-top: 11px;
-}
-
-.次按钮 {
-  flex: 1;
-  padding: 11px 0;
-  border-radius: 16px;
-  background: var(--白);
-  border: 1px solid var(--描边深);
-  text-align: center;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--次要);
-}
-
-.主小按钮 {
-  /* 荧光绿按钮的投影：设计令牌里只有实色，没有带透明度的投影色，
-     所以在本屏声明一次（橄榄 #7fa317 的 30%），不在各处散落写死 */
-  --主按钮投影: rgba(127, 163, 23, 0.3);
-  padding: 11px 0;
-  border-radius: 16px;
-  background: var(--荧光绿);
-  box-shadow: 0 1px 4px var(--主按钮投影);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--墨);
-}
-
-/* 双按钮时主按钮占 1.4 份，比「不接受」宽一截（视觉上主次分明）*/
-.决策行 .主小按钮 {
-  flex: 1.4;
-}
-
-/* 单按钮（意向确认）撑满整行 */
-.整宽 {
-  width: 100%;
-  margin-top: 11px;
-}
+/* ── 决策按钮区（Task 8 起按钮归共用 详情动作卡.module.css，本区规则已删）── */
 
 .决策回执 {
   font-size: 11.5px;
@@ -309,44 +259,4 @@
   font-size: 12px;
   line-height: 1.5;
   color: var(--次要浅);
-}
-
-/* ── 意向小结（标注 2026-08-24：确认节点一目了然的小结）── */
-.确认小结卡 {
-  /* 2026-08-24 全站去框（产品负责人批）：意向小结托盘拆卡壳 ——
-     白底描边框拆掉，改成行间发丝线的平铺清单，左右 padding 收到 2px */
-  padding: 2px 2px;
-  margin-bottom: 12px;
-}
-.确认小结行 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  /* 2026-08-24 全站去框（产品负责人批）：行距随发丝线放宽，免得线贴字 */
-  padding: 6px 0;
-}
-/* 2026-08-24 全站去框（产品负责人批）：行之间一道发丝线，首行前不画 */
-.确认小结行 + .确认小结行 {
-  border-top: 1px solid var(--分隔线);
-}
-.确认小结勾 {
-  color: var(--递简历);
-  font-weight: 700;
-  font-size: 12px;
-}
-.确认小结名 {
-  font-size: 12px;
-  color: var(--次要浅);
-  width: 58px;
-  flex: none;
-}
-.确认小结值 {
-  font-size: 12.5px;
-  color: var(--墨);
-  font-weight: 600;
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }

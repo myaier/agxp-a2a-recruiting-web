@@ -367,3 +367,52 @@ describe('候选详情 · Mock 决策卡共用详情动作卡（Task 8）', () =
     expect(mock派发).not.toHaveBeenCalled();
   });
 });
+
+// ── 详情统一 Task 9：Mock 终局只读（spec §5「Mock 同类终局也只读」）──
+// 判断只消费本屏已有的完成/归档事实：完成 = 意向已确认（辅助文案「去消息页私聊」），
+// 归档 = 已移出企业候选列表；「进入意向确认阶段」不是完成。
+describe('候选详情 · Mock 终局只读（Task 9）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock派发.mockClear();
+    mock应用状态 = {
+      数据源模式: 'mock',
+      状态: {
+        企业候选列表: 在谈候选列表,
+        候选决策: {},
+        候选决策快照: {},
+        决策: {},
+        决策快照: {},
+        叮嘱表: {},
+      },
+      派发: mock派发,
+    };
+  });
+
+  it('进行中（需要协调等你拍板）：底部输入在场，不是只读', async () => {
+    渲染候选详情页('A-01');
+    expect(await screen.findByText('卡点决策')).toBeTruthy();
+    expect(screen.getByPlaceholderText('你的条件是什么？直接告诉代理')).toBeTruthy();
+    expect(screen.queryByText('当前在谈已结束，仅可查看')).toBeNull();
+  });
+
+  it('意向已确认（意向确认 + 去消息页私聊）：底部只读条、无输入无发送，零派发', async () => {
+    mock应用状态 = {
+      ...mock应用状态,
+      状态: {
+        ...mock应用状态.状态,
+        企业候选列表: 在谈候选列表.map((候) =>
+          候.编号 === 'A-01' ? { ...候, 阶段: '意向确认' as const, 辅助文案: '去消息页私聊' } : 候,
+        ),
+      },
+    };
+    渲染候选详情页('A-01');
+    expect(await screen.findByText('当前在谈已结束，仅可查看')).toBeTruthy();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: '发送' })).toBeNull();
+    // 移交入口（Mock 原型的开始私聊）不受影响，只是底部叮嘱只读
+    expect(screen.getByRole('button', { name: '开始私聊 ›' })).toBeTruthy();
+    expect(mock派发).not.toHaveBeenCalled();
+  });
+});
