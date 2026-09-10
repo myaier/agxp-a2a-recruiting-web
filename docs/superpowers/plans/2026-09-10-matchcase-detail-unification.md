@@ -366,3 +366,31 @@ L3 集成责任：required，`docs/dogfood/真实后端行为验收.md` 的 H01 
 ## 实施记录
 
 当前尚未实施，产品测试、截图、真实 local 均未执行。新实施 session 在本节按 Task 追加 commit、验证、peer review 和 final gate 事实，不把未执行项写成 PASS。
+
+### 2026-09-10 · Task 1–10 实施与验收（宿主 Claude Code）
+
+分支 `survey-frequent-pages-component-reuse`（基线 `b93436e9`，即本 Plan 实现基线；target `origin/main`）。每 Task 三角色（implementer / spec reviewer / code-quality reviewer）按本文件角色表执行，两 reviewer 全部通过（0 open Critical/Important）后进入下一 Task；Task 3、Task 10 各有一轮 fix loop 后复核通过。
+
+**Task 提交**（base `6a7fa58b` 为本 Plan 文档 HEAD）：
+
+| Task | Commit | 交付 |
+|---|---|---|
+| 1 共用外壳、顶栏与 Tab | `2f0e979e` | 详情外壳/详情顶栏/类型.ts/顶栏 mapper，三入口接线 |
+| 2 共用阶段投影、状态区与详情 CSS | `3f8d05a6` | 状态/分段 mapper、详情状态区、详情样式脱离列表 CSS |
+| 3 共用职位资料 Tab 与完整缺失区 | `0e1fca34`（含 r1 修复） | 职位资料五区块完整缺失布局 |
+| 4 共用在线简历正文及缺失区 | `2808cddc` | 在线简历正文唯一化 + 兼容包装 + 九区缺失 |
+| 5 S0 事实问题、结束初筛与动作展示边界 | `a851b295` | 详情动作卡/事实问题卡/use后端详情动作（S0） |
+| 6 S1 选择、披露确认与递交控制 | `38fd6b25` | 简历选择层、键→文件版本映射、字面 true 仅确认发出 |
+| 7 Case PDF 预览控制与资源回收 | `70ef9420` | useCasePDF预览（租约字节级等价搬移） |
+| 8 S2/S3 共用决策卡与 Mock 剧情连接 | `b90456dd` | 三屏单一 renderer、Mock 原型派发零 P5、Backend 规则入口禁用 |
+| 9 叮嘱、终局、移交与正常控制收口 | `9fe1505a` | use后端详情控制/后端正常详情/详情底栏/终局区；keyed 重挂载；硬清理（死 CSS/过时注释） |
+| 10 跨模式布局、完整回归与实施 peer review | `2ddc02f4` | e2e「在谈详情完整布局」7 旅程（390/320px 双端双 Tab，23 截图）；修复 13 条基线既有 P5 e2e fixture 缺解码键失败（b93436e9 对照证据）；终局断言改造 |
+
+**确认前证据**（Task 10）：`npm run typecheck`/`lint`/`build` exit 0；`npm test` 全量绿（3826）；`test:e2e` 4 条与 `test:e2e:data-source` 22 条失败均他域基线既有（final-only=0，逐条对照证据）；`ui:check` exit 1 = 详情场景 Tab 改名的有意结构差（对基线归因运行），基线重采列入 final gate。真实 local（H01 详情节点 + H03 p5）**NOT_RUN**，等用户提供目标 URL/后端工作区/双角色账号与 OTP 来源。
+
+**实施 peer review（异构 Codex review-loop，2026-09-10）**：read-only 三轮，冻结范围 `b93436e9...2ddc02f4`，共用守约 `coding-harness/skills/_shared/review-contract.md`，绑定批准 Spec/Plan 版本（见本文件头部），reviewer 未跑测试。
+- Round 1（6 findings）：F1 Tab 可见名称漂移（接受，`76f15cb5` 修复——按端投影 代谈进度/职位详情/在线简历，键 进度/资料 不变）；F2 Mock 无共用状态区（**拒绝**——批准 Plan 契约 B 与第 62/123 行把 Mock 分段留连接层，Task 2 双 review 已就同一问题记录裁定，无新证据）；F3 Backend 求职顶栏公司槽缺失（接受，标题 `职位名 · 公司信息缺失`）；F4 叮嘱草稿不随 Case/账号隔离（接受，主体/角色/单变化代际栅栏）；F5 普通命令迟到失败泄漏（接受，发命令过代际栅栏）；F6 写中禁用无解释（接受，全部带「正在提交，请稍候」）。
+- Round 2（1 finding）：回答在飞表仅按 caseId 键、换账号继承锁（接受，`7e1186ae` 修复——主体变化时渲染期替换全新 Map + 提交闭包捕获旧 Map，迟到清理不触新账号表；3 个新测试含 reviewer 精确场景）。
+- Round 3：**NO FINDINGS**。修复波验证：npm test 3836 绿、typecheck/lint exit 0、详情布局 e2e 7 passed。
+
+**遗留与 final gate 责任**：origin/main 已领先（列表任务已合入）——final gate 按 final-integration-contract 同步 target、增量重算责任、`候选头行` 未知性别占位 参数收敛本页局部标记；`.superpowers` 工作区部分报告文件曾被提交进分支，final gate cleanup 时 untrack + gitignore；L3 真实 local 验收与合入等用户确认后执行。
