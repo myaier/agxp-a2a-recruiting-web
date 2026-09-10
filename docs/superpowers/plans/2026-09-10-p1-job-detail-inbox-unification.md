@@ -154,7 +154,7 @@ interface 消息列表展示属性 {
 - [ ] 核对冻结 Spec blob、工作区/依赖/并行预告。记录 `git rev-parse HEAD` 为本次 `visual_source_candidate`，产品基线变化先说明实际 diff；不合入 target。`node_modules` 缺失才 `npm ci`，不改 lockfile。
 - [ ] 源码检查所有现有市场 fixture 的公司/发布人可空字段及已知 fallback，确认 Spec §2.1 与 §3.2 不冲突；发现实际 Mock 视觉冲突在该字段实施前停止，不改 fixture 隐藏差异。
 - [ ] 新增带 `P1 Mock视觉 @mock` 标签的 320×844、390×844 场景。使用 `打开稳定页面(page, path, 状态)` 建立原有种子：`/#/job/M-13`、候选 `/#/app` 后点消息、招聘 `/#/hr` 后点消息、`/#/chat/direct/M-13` 后点看职位；招聘真人行通过原 Mock 用户动作推进到 S3，再进消息，不用姓名存在假作完成。
-- [ ] 冻结 locale zh-CN、timezone Asia/Shanghai、reducedMotion reduce；等待 fonts.ready 和页面就绪，不用固定长 sleep。截图覆盖职位顶部、公司/发布人滚动段、更多层，消息全部/通知/搜索，直聊覆盖层。每种滚动状态独立 sceneId，基准和候选相同导航/滚动步骤。
+- [ ] 冻结 locale zh-CN、timezone Asia/Shanghai、reducedMotion reduce；等待 fonts.ready 和页面就绪，不用固定长 sleep。截图覆盖职位顶部、公司/发布人滚动段、更多层，消息全部/通知/搜索，直聊覆盖层。另记消息极长标题的隔离布局样本：在测试页面将同一会话标题文本替换为固定 80 个汉字，基准/候选执行完全相同的测试端 DOM 文本替换，记录标题/时间/行框及 computed flex、white-space、overflow；不改 class/style 或产品 fixture。此样本仅证明布局不退化，不作为 HTTP 接线证据。每种滚动状态独立 sceneId，基准和候选相同导航/滚动步骤。
 - [ ] 每个场景输出关键元素几何、PNG、console/page/API 诊断。关键元素至少为分数位、JD/公司/发布人卡、浮动按钮、消息标题/页签/搜索/首行/未读。普通 Mock 零新增 API；失败必须写 failed JSON 并抛错。sceneId 包含视口宽度，禁止覆盖另一宽度的证据。
 - [ ] 执行：`P1_CAPTURE_DIR=ui-regression-output/p1/reference npm run test:e2e:data-source -- e2e/P1展示统一.spec.ts --project=mock-stg --grep 'P1 Mock视觉' --workers=1`。预期全部场景成功，目录有基准截图/JSON；缺截图不能记 PASS。保留 source commit 与工具链信息，未发生产品修改前提交测试文件。
 
@@ -222,7 +222,7 @@ interface 消息列表展示属性 {
 **接口/依赖：** Tasks 2–4 完成；使用既有数据源配置的 mock-stg/backend-stg 项目，不改公共 E2E 文件或配置。新 fixture 导出 `安装P1路由(page: Page, options: { role: 'candidate' | 'recruiter'; 场景: '完整' | '缺失' | '长文' | '错误带缓存' }): Promise<{ 请求: { method: string; path: string; body: unknown }[] }>`，仅测试使用。
 
 - [ ] 从既有 `e2e/数据源模式.spec.ts` 的 P4/P7 场景只读核对当前合法 wire 合同/会话恢复种子，新增小型 path+method 白名单 fixture，覆盖应用启动必要会话/角色/资料/列表读取，以及本任务岗位/推荐/会话读取；未知 API 必须记录并返回受控错误，不放行真实网络，不泛化所有 GET 成功。复用现有 fixture 值语义，不复制其全域状态机或导出带 test 注册的文件。
-- [ ] 新增 `P1 Backend展示 @backend` 测试：职位推荐缓存路径、详情直取缺分/缺发布人、真实分 0、合法空/部分空/长文、失败不正常占位；消息双角色/无上下文/无 lastMessage/未读0和正数/错误带缓存/分页/超长标题、副标题及摘要/同一会话刷新为空。每个数据场景在 320 和 390 宽检查卡片/按钮不溢出、无旧值残留；消息副标题和摘要保留既有单行截断，标题沿用原换行规则，时间不被挤出或遮住，刷新为空后无旧文本或旧未读标记。
+- [ ] 新增 `P1 Backend展示 @backend` 测试：职位推荐缓存路径、详情直取缺分/缺发布人、真实分 0、合法空/部分空/长文、失败不正常占位；消息双角色/无上下文/无 lastMessage/未读0和正数/错误带缓存/分页/超长标题、副标题及摘要/同一会话刷新为空。每个数据场景在 320 和 390 宽检查无旧值残留；职位及普通消息场景检查卡片/按钮不溢出。消息长副标题/摘要场景保持正常长度标题，验证既有单行截断、时间不被挤出或遮住。极长标题属于既有非收缩且不换行的限制，仅按 Task 1 同文本隔离布局样本检查 class、computed style 和标题/时间/行几何不退化；记录旧有溢出/裁切为已知限制，不新增“时间必须可见”或零溢出的绝对门禁，不将其写为已修复。HTTP 长标题场景仍验证字段如实上屏，不能用测试端 DOM 替换冒充数据接线。刷新为空后无旧文本或旧未读标记。
 - [ ] 交互核验职位更多/举报入口、无推荐坐标禁用、公司有 ref/无 ref；Mock 原一次点击委托与既有 E2E P4/P7 回归共同保护动作。消息搜索聚焦、页签、点击参数路由，点击前不产生读消息请求；到真人页后的正常 read-through 属于原页面行为，不误判为列表违规。
 - [ ] 使用相同可展示文本/能力的两栈场景对照各区域几何，位置误差 ≤1px；无法构造等价业务态的分支分别验证，不对不同内容硬比全页。完整 Backend 字段之外的未知区单独与缺失场景断言，不期待假数据补成 Mock。
 - [ ] 运行 `npm run test:e2e:data-source -- e2e/P1展示统一.spec.ts --project=backend-stg --grep 'P1 Backend展示' --workers=1`；所有 API 请求被 route fixture 捕获，零真实栈访问。
@@ -267,6 +267,7 @@ interface 消息列表展示属性 {
 - R1-2 Important，可选增强，optional，复杂度降低：拒绝可选的 Mock `资料=undefined` 方案。批准 Spec §3.1 明确将 Mock 公司档读取移到连接侧并向展示传显式资料，建议会保留展示子树静态兜底，不符合本次冻结契约。保留必要的本页投影、不改通用接口；Task 2 补已补全/未补全、不足两段、成立/地址分支的输出对照，覆盖 reviewer 提到的现实漂移风险。
 - R1-3 Minor，可选增强，optional，复杂度降低：接受。删除仅正常页面消费、恒 true 的 `更多可用` prop；更多按钮无条件保留，加载/错误页仍由连接层负责。
 - planner 自检：Task 标题统一为校验器要求的 `### Task N:`，不改变任务数量或范围。产品/Spec 正文未变。
+- R2 reviewer：同一 Claude Opus/high 会话；候选 `5ddf068aaf8a8c81d71e40a8a2208663433db13c`、Plan blob `8bb707073ad12c1c68d6593af0859fa0a9f20f09`。前后 guard 通过、未运行测试。确认 R1 修复与拒绝理由成立；新增 1 条 Important 契约违反/required/复杂度不变：极长标题的绝对零溢出要求与保留原 flex:none/nowrap 冲突。接受，Task 5 改成极长标题相对基准不退化、普通标题下长副标题/摘要继续绝对截断验收；Task 1 补同文本隔离布局样本，并明确其不证明 HTTP 接线。按用户 Mockup 优先约束澄清验收，不改 Spec 或 CSS。
 
 ## 实施证据记录
 
