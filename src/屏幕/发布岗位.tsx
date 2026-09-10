@@ -1541,7 +1541,7 @@ function 基础信息步({
         {/* 招聘类型宫格：放最前（BOSS 同位），选中项决定后面表单长什么样 */}
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>
-            招聘类型{编辑态 ? <span className={样式.锁标}>发布后不可改</span> : null}
+            招聘类型
           </div>
           <div className={样式.类型宫格}>
             {招聘类型选项.map((项) => (
@@ -1623,7 +1623,7 @@ function 基础信息步({
           onClick={() => (编辑态 ? 提示不可改() : 开类别层())}
         >
           <span className={样式.条目标签}>
-            职位类别{编辑态 ? <span className={样式.锁标}>发布后不可改</span> : null}
+            职位类别
           </span>
           <span className={样式.选择条目值行}>
             <span className={样式.条目值}>
@@ -1635,7 +1635,7 @@ function 基础信息步({
 
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>
-            岗位名称{编辑态 ? <span className={样式.锁标}>发布后不可改</span> : null}
+            岗位名称
           </div>
           <input
             className={样式.条目输入}
@@ -1918,7 +1918,7 @@ function 职位要求步({
 
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>
-            工作城市{编辑态 ? <span className={样式.锁标}>发布后不可改</span> : null}
+            工作城市
             {/* Task 7：Backend 城市必须从候选选；已选时在标签右侧标一个轻提示 */}
             {是后端 && !编辑态 && 地点引用 ? <span className={样式.锁标}>已选</span> : null}
           </div>
