@@ -394,3 +394,11 @@ L3 集成责任：required，`docs/dogfood/真实后端行为验收.md` 的 H01 
 - Round 3：**NO FINDINGS**。修复波验证：npm test 3836 绿、typecheck/lint exit 0、详情布局 e2e 7 passed。
 
 **遗留与 final gate 责任**：origin/main 已领先（列表任务已合入）——final gate 按 final-integration-contract 同步 target、增量重算责任、`候选头行` 未知性别占位 参数收敛本页局部标记；`.superpowers` 工作区部分报告文件曾被提交进分支，final gate cleanup 时 untrack + gitignore；L3 真实 local 验收与合入等用户确认后执行。
+
+### 2026-09-10 · Final gate（用户确认后执行；L3 按用户指示跳过）
+
+用户确认 final gate 方案并明确**暂不做 L3 真实 local 测试**。执行事实：
+
+- `final_target_base = 55c7024f`（origin/main，含列表任务合入），`git merge --no-edit origin/main` → 合并提交 `bfce24d3`。冲突 6 处全在 `e2e/数据源模式.spec.ts`：列表卡断言（2 处）按属主取列表任务侧（现职摘要锚点）；`P5列表项wire` 取对方侧（真实摘要值、lifecycle 判别）并去掉本侧架子参；详情深链与 Mock 候选详情顶栏两处组合两侧语义（意向编号计 0 + 轮次锚点 + 问题 .first()；画像行 + 副标题 + 卡点决策卡）。随合并做 Spec §9 收敛：`详情顶栏` 删除本地未知性别标记，改用已在基线的共享 `候选头行 未知性别占位` 参数；`.superpowers` 工作区误提交文件 untrack + `.gitignore` 补 `.superpowers/`。
+- 合并后权威命令（`bfce24d3`）：`typecheck`/`lint` PASS；`npm test` 195 文件/3952 全绿；`build` PASS；`test:e2e:data-source` 112 passed / 8 failed——8 条 ⊆ Task 10 记录的 22 条基线既有失败（P4×11、P1C×1、Mock P4 隔离×1、onboarding×1 已被列表任务合入修复），final-only=0；`test:e2e` 5 passed / 4 failed——与记录基线（onboarding×3 + 换壳无闪屏×1）逐条同名，final-only=0，另 1 条 did-not-run 为列表任务新增用例的条件跳过；`ui:check` exit 0（pass=17 / warning=1 / blocked=0）——candidate-negotiation-detail 的 1.26% 像素差异为本任务经双 review + 异构 review 验收的有意产品变更（参考侧动态采集自 origin/main，push 后自愈，无存储基线需重采）。
+- 正式 L3 真实 local（H01 详情节点 + H03 p5）：**NOT_RUN**——按用户指示暂缓，缺目标 URL/后端工作区/双角色账号与 OTP 来源（用户此前未提供）。后续执行时按 `docs/dogfood/真实后端行为验收.md` 进入，只记录实际完成节点。
