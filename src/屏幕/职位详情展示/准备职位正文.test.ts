@@ -218,6 +218,36 @@ describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
     });
     expect(准备Backend职位正文(视图, 真实简历).发布人.职务).toBe('职务未知');
   });
+
+  it('发布人 blank 姓名按缺失换未知，已知公司/职务照常展示（§3.2 部分字段已知就展示已知部分）', () => {
+    const 视图 = 从P4CandidateJob({
+      ...BFFCandidateJob样本,
+      publisher_profile: {
+        public_name: '   ',
+        title: '招聘负责人',
+        personal_verification_status: 'verified',
+      },
+    });
+    const 发布人 = 准备Backend职位正文(视图, 真实简历).发布人;
+    expect(发布人.姓名).toBe('发布人姓名未知');
+    expect(发布人.公司).toBe('云衢科技');
+    expect(发布人.职务).toBe('招聘负责人');
+  });
+
+  it('发布人在场但公司声明为空白：公司槽按缺失换 企业信息未知，已知姓名照常', () => {
+    const 视图 = 从P4CandidateJob({
+      ...BFFCandidateJob样本,
+      hiring_organization_claim: { display_name: '   ', legal_name: null },
+      publisher_profile: {
+        public_name: '李四',
+        title: '招聘负责人',
+        personal_verification_status: 'verified',
+      },
+    });
+    const 发布人 = 准备Backend职位正文(视图, 真实简历).发布人;
+    expect(发布人.姓名).toBe('李四');
+    expect(发布人.公司).toBe('企业信息未知');
+  });
 });
 
 describe('准备Mock职位正文 · 原映射原样', () => {
