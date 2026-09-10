@@ -27,6 +27,35 @@ describe('详情动作卡 · 结构', () => {
     expect(screen.getByText('正文槽位')).toBeTruthy();
   });
 
+  it('正文槽组合事实块 + 按钮们同卡一套 renderer（Mock 协调卡的接法）：不传整份旧卡', () => {
+    render(
+      <详情动作卡
+        信息={{
+          键: '协调决策',
+          标题: '卡点决策',
+          说明: null,
+          正文: (
+            <>
+              <div>卡点说明事实块</div>
+              <div>数字对比事实块</div>
+            </>
+          ),
+          按钮们: [
+            键({ 键: '退出', 文案: '不接受', 外观: '次要' }),
+            键({ 键: '接受', 文案: '接受', 外观: '主要' }),
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText('卡点决策')).toBeTruthy();
+    expect(screen.getByText('卡点说明事实块')).toBeTruthy();
+    expect(screen.getByText('数字对比事实块')).toBeTruthy();
+    // 同语义按钮只有这一套 renderer：次键在前主键在后，均为可触发键
+    const 按钮们 = screen.getAllByRole('button') as HTMLButtonElement[];
+    expect(按钮们.map((按钮) => 按钮.textContent)).toEqual(['不接受', '接受']);
+    expect(按钮们.every((按钮) => !按钮.disabled)).toBe(true);
+  });
+
   it('说明 null：说明行退场，卡本体仍在（不编造说明）', () => {
     render(<详情动作卡 信息={卡信息({ 说明: null })} />);
     expect(screen.queryByText('结束本次匿名初筛')).toBeNull();

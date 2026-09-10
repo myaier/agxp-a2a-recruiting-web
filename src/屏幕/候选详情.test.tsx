@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 候选详情 from './候选详情';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
 import { 在谈候选列表 } from '../数据/企业端模拟数据';
+import { 路径 } from '../路由/路径表';
 
 // jsdom 不实现 scrollIntoView，本屏挂载后自动定位会调用它
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -273,5 +274,96 @@ describe('候选详情 · 顶栏去名（第二批 验收7/9）', () => {
     expect(within(栏).getByRole('img', { name: '女' })).toBeTruthy();
     expect(栏.textContent).toContain('11 年');
     expect(栏.textContent).toContain('本科');
+  });
+});
+
+// ── 详情统一 Task 8：Mock 协调/意向卡接共用 详情动作卡（事实块进正文槽，控制留连接层）──
+// 接受/终止/确认仍派发原全局动作与规则入口，零 P5 请求；同一语义按钮只有一套 renderer。
+describe('候选详情 · Mock 决策卡共用详情动作卡（Task 8）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock派发.mockClear();
+    mock设置P5范围.mockClear();
+    mock读取详情.mockClear();
+    mock新增叮嘱.mockClear();
+    mock应用状态 = {
+      数据源模式: 'mock',
+      状态: {
+        企业候选列表: 在谈候选列表,
+        候选决策: {},
+        候选决策快照: {},
+        决策: {},
+        决策快照: {},
+        叮嘱表: {},
+      },
+      派发: mock派发,
+      操作: {
+        设置P5范围: mock设置P5范围,
+        读取详情: mock读取详情,
+        新增叮嘱: mock新增叮嘱,
+      },
+    };
+  });
+
+  it('A-01 协调卡走共用卡：卡点决策标题与岗位/候选对比在场；零 P5 请求', async () => {
+    渲染候选详情页('A-01');
+    expect(await screen.findByText('卡点决策')).toBeTruthy(); // 共用卡的标题（详情动作卡）
+    expect(screen.getByText('岗位条件')).toBeTruthy(); // 分歧对比事实块进正文槽
+    expect(screen.getByText('对方要每周 2 天远程')).toBeTruthy();
+    // Mock 剧情连接层绝不经 P5 通道
+    expect(mock设置P5范围).not.toHaveBeenCalled();
+    expect(mock读取详情).not.toHaveBeenCalled();
+  });
+
+  it('A-01 接受/终止：不接受 → 确认层 → 候选终止；接受 → 候选接受方案 + 记成规则（企业新增规则）', async () => {
+    const user = userEvent.setup();
+    渲染候选详情页('A-01');
+    await user.click(await screen.findByRole('button', { name: '不接受' }));
+    await user.click(screen.getByRole('button', { name: '终止' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '候选终止', 编号: 'A-01' });
+
+    await user.click(screen.getByRole('button', { name: '接受' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '候选接受方案', 编号: 'A-01' });
+    await user.click(await screen.findByRole('button', { name: '记成规则' }));
+    expect(mock派发).toHaveBeenCalledWith(
+      expect.objectContaining({ 型: '企业新增规则', 来源: '来自「陈屿」单的决策' }),
+    );
+  });
+
+  it('意向卡走共用卡：确认 → 原型派发 候选确认意向 + 直达企业真人会话', async () => {
+    const user = userEvent.setup();
+    mock应用状态 = {
+      ...mock应用状态,
+      状态: {
+        ...mock应用状态.状态,
+        企业候选列表: 在谈候选列表.map((候) =>
+          候.编号 === 'A-01' ? { ...候, 阶段: '意向确认' as const } : 候,
+        ),
+      },
+    };
+    渲染候选详情页('A-01');
+    expect(screen.getByText('条件已回报一致，等你先确认意向。')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '开始私聊 ›' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '候选确认意向', 编号: 'A-01' });
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业真人会话);
+  });
+
+  it('已确认（辅助文案「去消息页私聊」）：真名行在场，按钮只去私聊、零派发', async () => {
+    const user = userEvent.setup();
+    mock应用状态 = {
+      ...mock应用状态,
+      状态: {
+        ...mock应用状态.状态,
+        企业候选列表: 在谈候选列表.map((候) =>
+          候.编号 === 'A-01' ? { ...候, 阶段: '意向确认' as const, 辅助文案: '去消息页私聊' } : 候,
+        ),
+      },
+    };
+    渲染候选详情页('A-01');
+    expect(screen.getByText('候选人是 沈亦舟')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '开始私聊 ›' }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业真人会话);
+    expect(mock派发).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,9 @@
 // use后端详情动作 —— Backend 详情动作控制 hook（契约 C，Task 5 交付 S0 分支，
-// Task 6 迁入 S1 五动作：accept/decline/retry/replace/decide_resume_screening）。
+// Task 6 迁入 S1 五动作：accept/decline/retry/replace/decide_resume_screening，
+// Task 8 迁入 S2/S3：decide_coordination / confirm_intent / decline_intent）。
 // 业务控制自 屏幕/P5/MatchCase详情 的 阶段动作区 原样搬入，命令参数、锁与生命周期
-// 逐项对照旧实现；S2/S3（decide_coordination/confirm_intent/decline_intent）仍由
-// 原屏控制暂留（Task 8 迁入），同一 action 绝不双挂载。
+// 逐项对照旧实现；S2/S3 的 typed 栅栏（当前协同块必需且本端未决 / 本端意向词为空）
+// 只吃 raw 详情 —— 协同块与意向词不在展示视图里，判定与后端 projector 同判据。
 //
 // 生命周期（plan 固定）：回答在飞表归父读取控制（当前为路由实例 MatchCase详情 持有，
 // Task 9 迁入 use后端详情控制）并经 回答在飞表 传入 —— 动作卡随段折叠/换单整体卸载也
@@ -21,7 +22,7 @@ import { 轻提示 } from '../../组件/轻提示';
 import { 取后端错误文案 } from '../../数据/HTTP客户端';
 import { 从附件行取选择值, type 附件简历选择值 } from '../../组件/附件简历选择层';
 import { 附件状态文案 } from '../../流程/附件简历交互';
-import type { 详情动作卡信息, 事实问题属性, 简历选择属性, 确认属性 } from '../../组件/在谈详情/类型';
+import type { 详情动作卡信息, 详情按钮, 事实问题属性, 简历选择属性, 确认属性 } from '../../组件/在谈详情/类型';
 import type { P5详情正常视图, P5角色 } from '../../数据/MatchCase展示映射';
 import type { P5详情, P5简历附件 } from '../../数据/招聘数据源/MatchCase';
 import type { BFF附件简历 } from '../../数据/BFF契约';
@@ -63,6 +64,7 @@ export function use后端详情动作({
   role,
   caseId,
   视图,
+  详情,
   操作,
   回答在飞表,
 }: 后端详情动作输入): 后端详情动作结果 {
@@ -243,9 +245,26 @@ export function use后端详情动作({
       },
     });
 
-  // 动作卡：只从 视图.actions 的映射交集出卡，标题/说明原样保留；S2/S3 仍由原屏渲染。
+  // 动作卡：只从 视图.actions 的映射交集出卡，标题/说明原样保留。
   // 招聘端结束卡零控件零请求（wire 缺 recruiter decisions 臂，fail closed）；候选端结束
   // 键只保留 end 一条准许路线。respond_fact 的提交控件归 事实问题，不双挂载。
+  // S2/S3（Task 8 迁入）：typed 栅栏 —— 当前协同块在场、本端必需且未决才给决定键
+  // （issueId 只取当前块）；本端意向词为空才给确认/婉拒键。缺坐标一律零控件零请求。
+  const 协同块 = 详情.currentCoordination;
+  const 本端协同未决 = 协同块 !== null && 协同块.requiredRoles.includes(role) &&
+    (role === 'candidate' ? !协同块.candidateDecided : !协同块.recruiterDecided);
+  const 本端意向未决 = 详情.intentConfirmations[role] === '';
+
+  /** 相同区域（协同卡）保留的规则入口（Mock 端同区域走原型 拿不准/记成规则 弹层）：
+   *  Backend 暂无 rules mutation —— 在场但不可用，禁用原因就地解释（spec §5）。 */
+  const 记成规则入口: 详情按钮 = {
+    键: 'decide_coordination_rule',
+    文案: '记成规则',
+    外观: '次要',
+    禁用说明: '暂不支持记成规则',
+    执行: null,
+  };
+
   const 卡片们: 详情动作卡信息[] = [];
   for (const 卡 of 视图.actions) {
     if (卡.action === 'respond_fact') {
@@ -336,6 +355,69 @@ export function use后端详情动作({
             执行: 写中 ? null : 确认不合适,
           },
         ],
+      });
+    } else if (卡.action === 'decide_coordination') {
+      卡片们.push({
+        键: 卡.action,
+        标题: 卡.标题,
+        说明: 卡.说明,
+        // issueId 只取当前 typed 协同块（服务端权威重读换代即换坐标）；无本端准许
+        // 路线（非必需/已决/缺协同块）→ 零决定键，连规则入口也不提前挂。
+        按钮们: 本端协同未决 && 协同块 !== null
+          ? [
+              {
+                键: 'decide_coordination_accept',
+                文案: '接受',
+                外观: '主要',
+                禁用说明: null,
+                执行: 写中 ? null
+                  : () => void 发命令(() => 操作.决定S2(role, caseId, 协同块.issueId, 'accept')),
+              },
+              {
+                键: 'decide_coordination_reject',
+                文案: '拒绝',
+                外观: '次要',
+                禁用说明: null,
+                执行: 写中 ? null
+                  : () => void 发命令(() => 操作.决定S2(role, caseId, 协同块.issueId, 'reject')),
+              },
+              记成规则入口,
+            ]
+          : [],
+      });
+    } else if (卡.action === 'confirm_intent') {
+      卡片们.push({
+        键: 卡.action,
+        标题: 卡.标题,
+        说明: 卡.说明,
+        按钮们: 本端意向未决
+          ? [
+              {
+                键: 'confirm_intent',
+                文案: '确认意向',
+                外观: '主要',
+                禁用说明: null,
+                执行: 写中 ? null : () => void 发命令(() => 操作.决定S3(role, caseId, 'confirm')),
+              },
+            ]
+          : [],
+      });
+    } else if (卡.action === 'decline_intent') {
+      卡片们.push({
+        键: 卡.action,
+        标题: 卡.标题,
+        说明: 卡.说明,
+        按钮们: 本端意向未决
+          ? [
+              {
+                键: 'decline_intent',
+                文案: '婉拒意向',
+                外观: '次要',
+                禁用说明: null,
+                执行: 写中 ? null : () => void 发命令(() => 操作.决定S3(role, caseId, 'decline')),
+              },
+            ]
+          : [],
       });
     }
   }

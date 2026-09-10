@@ -260,6 +260,94 @@ function S1初筛详情DTO(caseId = 'mc_hr'): P5详情 {
   };
 }
 
+// ── S2/S3 夹具（Task 8 迁入）：typed 协同块 / 本端意向词是这两个阶段唯一的坐标，
+//    展示视图不带这两个字段，判定只能吃 raw 详情。──
+
+const 协同问题ID = 'iss_0123456789abcdef0123456789abcdef';
+type 协同块形 = NonNullable<P5详情['currentCoordination']>;
+
+function 协同块(覆盖: Partial<协同块形> = {}): 协同块形 {
+  return {
+    issueId: 协同问题ID,
+    kind: 'work_mode',
+    requiredRoles: ['candidate', 'recruiter'],
+    candidateDecided: false,
+    recruiterDecided: false,
+    ...覆盖,
+  };
+}
+
+/** S2 needs_user 行（双端）：协同卡；S0/S1 passed、needs_coordination active。 */
+function S2详情DTO(角色: P5角色, 协同: P5详情['currentCoordination'], caseId = 'mc_a'): P5详情 {
+  const 阶段们: P5阶段区[] = [
+    { stage: 'anonymous_screening', state: 'passed', occurredAt: '2026-09-10T01:10:00Z', summary: '匿名初筛已通过', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
+    { stage: 'resume_submission', state: 'passed', occurredAt: '2026-09-10T01:30:00Z', summary: '简历初筛已通过', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
+    { stage: 'needs_coordination', state: 'active', occurredAt: '2026-09-10T02:00:00Z', summary: 'coordinating', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
+    { stage: 'intent_confirmation', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
+  ];
+  return 角色 === 'candidate'
+    ? {
+        role: 'candidate',
+        context: { intentionId: 'int_0123456789abcdef0123456789abcdef', job: 冻结职位 },
+        state: 状态({ caseId, stage: 'needs_coordination', status: 'needs_user', step: 'coordinating' }),
+        needsAction: true,
+        availableActions: ['decide_coordination'],
+        stages: 阶段们,
+        currentCoordination: 协同,
+        intentConfirmations: { candidate: '', recruiter: '' },
+        terminalSummary: null,
+        conversationRef: null,
+      }
+    : {
+        role: 'recruiter',
+        context: { candidateAlias: 'candidate-0123456789ab', job: 冻结职位 },
+        state: 状态({ caseId, stage: 'needs_coordination', status: 'needs_user', step: 'coordinating' }),
+        needsAction: true,
+        availableActions: ['decide_coordination'],
+        stages: 阶段们,
+        currentCoordination: 协同,
+        intentConfirmations: { candidate: '', recruiter: '' },
+        terminalSummary: null,
+        conversationRef: null,
+      };
+}
+
+/** S3 needs_user 行（双端）：意向二卡；S0/S1/协同 passed、意向 active。 */
+function S3详情DTO(
+  角色: P5角色,
+  意向: P5详情['intentConfirmations'],
+  caseId = 'mc_a',
+): P5详情 {
+  const 阶段们: P5阶段区[] = [
+    { stage: 'anonymous_screening', state: 'passed', occurredAt: '2026-09-10T01:10:00Z', summary: '匿名初筛已通过', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
+    { stage: 'resume_submission', state: 'passed', occurredAt: '2026-09-10T01:30:00Z', summary: '简历初筛已通过', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
+    { stage: 'needs_coordination', state: 'passed', occurredAt: '2026-09-10T02:00:00Z', summary: '差异事项已确认', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
+    { stage: 'intent_confirmation', state: 'active', occurredAt: '2026-09-10T03:00:00Z', summary: 'awaiting_confirmations', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
+  ];
+  const 公共 = {
+    needsAction: true,
+    availableActions: ['confirm_intent', 'decline_intent'] as P5动作[],
+    stages: 阶段们,
+    currentCoordination: null,
+    intentConfirmations: 意向,
+    terminalSummary: null,
+    conversationRef: null,
+  };
+  return 角色 === 'candidate'
+    ? {
+        role: 'candidate',
+        context: { intentionId: 'int_0123456789abcdef0123456789abcdef', job: 冻结职位 },
+        state: 状态({ caseId, stage: 'intent_confirmation', status: 'needs_user', step: 'awaiting_confirmations' }),
+        ...公共,
+      }
+    : {
+        role: 'recruiter',
+        context: { candidateAlias: 'candidate-0123456789ab', job: 冻结职位 },
+        state: 状态({ caseId, stage: 'intent_confirmation', status: 'needs_user', step: 'awaiting_confirmations' }),
+        ...公共,
+      };
+}
+
 function 取卡片(result: { current: 动作结果 }, 键: string): 详情动作卡信息 {
   const 卡 = result.current.卡片们.find((条) => 条.键 === 键);
   if (卡 === undefined) throw new Error(`夹具必须提供 ${键} 卡`);
@@ -316,6 +404,8 @@ function 挂动作(输入: 后端详情动作输入) {
 type 回答事实桩 = (role: P5角色, caseId: string, promptId: string, response: string) => Promise<void>;
 type 决定S0桩 = (caseId: string, action: 'continue' | 'end') => Promise<void>;
 type 决定S1桩 = (caseId: string, action: 'continue' | 'not_fit') => Promise<void>;
+type 决定S2桩 = (role: P5角色, caseId: string, issueId: string, action: 'accept' | 'reject') => Promise<void>;
+type 决定S3桩 = (role: P5角色, caseId: string, action: 'confirm' | 'decline') => Promise<void>;
 type 提交简历桩 = (caseId: string, fileId: string, fileVersionId: string, disclosureConfirmed: true) => Promise<void>;
 type 准备委托桩 = () => Promise<BFF附件简历库 | null>;
 
@@ -325,6 +415,8 @@ function 动作输入(选项: {
   回答事实?: 回答事实桩;
   决定S0?: 决定S0桩;
   决定S1?: 决定S1桩;
+  决定S2?: 决定S2桩;
+  决定S3?: 决定S3桩;
   提交简历?: 提交简历桩;
   准备候选委托简历?: 准备委托桩;
 }): 后端详情动作输入 {
@@ -337,8 +429,8 @@ function 动作输入(选项: {
       回答事实: 选项.回答事实 ?? vi.fn(async (): Promise<void> => undefined),
       决定S0: 选项.决定S0 ?? vi.fn(async (): Promise<void> => undefined),
       决定S1: 选项.决定S1 ?? vi.fn(async (): Promise<void> => undefined),
-      决定S2: vi.fn(async (): Promise<void> => undefined),
-      决定S3: vi.fn(async (): Promise<void> => undefined),
+      决定S2: 选项.决定S2 ?? vi.fn(async (): Promise<void> => undefined),
+      决定S3: 选项.决定S3 ?? vi.fn(async (): Promise<void> => undefined),
       提交简历: 选项.提交简历 ?? vi.fn(async (): Promise<void> => undefined),
       准备候选委托简历: 选项.准备候选委托简历 ?? vi.fn(async (): Promise<null> => null),
     },
@@ -872,5 +964,171 @@ describe('use后端详情动作 · S1 婉拒邀请与初筛结论', () => {
     expect(卡().按钮们.every((键) => 键.执行 === null)).toBe(true);
     deferred.resolve();
     await waitFor(() => expect(卡().按钮们.every((键) => 键.执行 !== null)).toBe(true));
+  });
+});
+
+// ── S2/S3（Task 8 迁入）：typed 协同块 / 本端意向词栅栏，成功依赖权威重读 ──────────
+
+describe('use后端详情动作 · S2 协同决定（decide_coordination）', () => {
+  it('本端必需且未决才提供决定：接受/拒绝带当前协同块的精确 issueId（role/caseId 逐项对照）', async () => {
+    const 决定S2 = vi.fn(async (): Promise<void> => undefined);
+    const { result } = 挂动作(动作输入({
+      详情: S2详情DTO('candidate', 协同块()),
+      回答在飞表: { current: new Map<string, Promise<void>>() },
+      决定S2,
+    }));
+    const 卡 = 取卡片(result, 'decide_coordination');
+    expect(卡.标题).toBe('回应协同事项'); // 映射交集给的标题/说明原样保留
+    expect(卡.说明).toBe('对当前协同事项作出接受或拒绝');
+    const 接受 = 卡.按钮们.find((键) => 键.文案 === '接受');
+    const 拒绝 = 卡.按钮们.find((键) => 键.文案 === '拒绝');
+    if (接受 === undefined || 拒绝 === undefined) throw new Error('S2 卡必须有接受/拒绝双键');
+
+    await act(async () => {
+      接受.执行?.();
+    });
+    expect(决定S2).toHaveBeenCalledTimes(1);
+    expect(决定S2).toHaveBeenCalledWith('candidate', 'mc_a', 协同问题ID, 'accept');
+    await act(async () => {
+      拒绝.执行?.();
+    });
+    expect(决定S2).toHaveBeenLastCalledWith('candidate', 'mc_a', 协同问题ID, 'reject');
+  });
+
+  it('协同块换代后只用当前块的 issueId（不缓存上一次坐标）', async () => {
+    const 决定S2 = vi.fn(async (): Promise<void> => undefined);
+    const { result, rerender } = 挂动作(动作输入({
+      详情: S2详情DTO('recruiter', 协同块()),
+      回答在飞表: { current: new Map<string, Promise<void>>() },
+      决定S2,
+    }));
+    const 新块 = 协同块({ issueId: 'iss_ffffffffffffffffffffffffffffffff', kind: 'travel' });
+    rerender(动作输入({
+      详情: S2详情DTO('recruiter', 新块),
+      回答在飞表: { current: new Map<string, Promise<void>>() },
+      决定S2,
+    }));
+    await act(async () => {
+      取卡片(result, 'decide_coordination').按钮们.find((键) => 键.文案 === '接受')?.执行?.();
+    });
+    expect(决定S2).toHaveBeenCalledWith('recruiter', 'mc_a', 'iss_ffffffffffffffffffffffffffffffff', 'accept');
+  });
+
+  it('非必需角色 / 本端已决 / currentCoordination 缺席 → 零控件零请求（fail closed）', () => {
+    const 决定S2 = vi.fn(async (): Promise<void> => undefined);
+    const 表 = { current: new Map<string, Promise<void>>() };
+    const 非必需 = 挂动作(动作输入({
+      详情: S2详情DTO('candidate', 协同块({ requiredRoles: ['recruiter'] })),
+      回答在飞表: 表,
+      决定S2,
+    }));
+    expect(取卡片(非必需.result, 'decide_coordination').按钮们).toHaveLength(0);
+
+    const 本端已决 = 挂动作(动作输入({
+      详情: S2详情DTO('candidate', 协同块({ candidateDecided: true })),
+      回答在飞表: 表,
+      决定S2,
+    }));
+    expect(取卡片(本端已决.result, 'decide_coordination').按钮们).toHaveLength(0);
+
+    const 无协同块 = 挂动作(动作输入({
+      详情: S2详情DTO('candidate', null),
+      回答在飞表: 表,
+      决定S2,
+    }));
+    expect(取卡片(无协同块.result, 'decide_coordination').按钮们).toHaveLength(0);
+    expect(决定S2).not.toHaveBeenCalled();
+  });
+
+  it('成功无本地推进（权威重读归操作层）；失败原地提示且写中收口，不锁死', async () => {
+    const 决定S2 = vi.fn(async (): Promise<void> => undefined);
+    const { result } = 挂动作(动作输入({
+      详情: S2详情DTO('candidate', 协同块()),
+      回答在飞表: { current: new Map<string, Promise<void>>() },
+      决定S2,
+    }));
+    await act(async () => {
+      取卡片(result, 'decide_coordination').按钮们.find((键) => 键.文案 === '接受')?.执行?.();
+    });
+    // 命令收口后本 hook 绝不本地重建视图：卡片与控件仍按原视图（推进只来自下一次权威重读）
+    const 卡 = 取卡片(result, 'decide_coordination');
+    expect(卡.按钮们.find((键) => 键.文案 === '接受')?.执行).not.toBeNull();
+
+    const 失败 = 挂动作(动作输入({
+      详情: S2详情DTO('candidate', 协同块()),
+      回答在飞表: { current: new Map<string, Promise<void>>() },
+      决定S2: vi.fn(async (): Promise<void> => {
+        throw new Error('503');
+      }),
+    }));
+    await act(async () => {
+      取卡片(失败.result, 'decide_coordination').按钮们.find((键) => 键.文案 === '拒绝')?.执行?.();
+    });
+    expect(document.body.textContent).toContain('请求失败，请稍后再试'); // 失败原地提示
+    // 失败无本地推进：卡片还在、按钮恢复可点（可再次尝试）
+    expect(取卡片(失败.result, 'decide_coordination').按钮们.find((键) => 键.文案 === '拒绝')?.执行).not.toBeNull();
+  });
+
+  it('写中锁：决定S2 在飞期间接受/拒绝都不可再点，收口后恢复', async () => {
+    const deferred = 可控Promise<void>();
+    const { result } = 挂动作(动作输入({
+      详情: S2详情DTO('candidate', 协同块()),
+      回答在飞表: { current: new Map<string, Promise<void>>() },
+      决定S2: vi.fn(() => deferred.promise),
+    }));
+    const 卡 = () => 取卡片(result, 'decide_coordination');
+    await act(async () => {
+      卡().按钮们.find((键) => 键.文案 === '接受')?.执行?.();
+    });
+    const 决定键们 = 卡().按钮们.filter((键) => 键.文案 === '接受' || 键.文案 === '拒绝');
+    expect(决定键们.every((键) => 键.执行 === null)).toBe(true);
+    deferred.resolve();
+    await waitFor(() =>
+      expect(卡().按钮们.find((键) => 键.文案 === '接受')?.执行).not.toBeNull(),
+    );
+  });
+
+  it('相同区域保留规则入口：Backend 记成规则在场但禁用，原因「暂不支持记成规则」，零执行', () => {
+    const { result } = 挂动作(动作输入({
+      详情: S2详情DTO('candidate', 协同块()),
+      回答在飞表: { current: new Map<string, Promise<void>>() },
+    }));
+    const 规则键 = 取卡片(result, 'decide_coordination').按钮们.find((键) => 键.文案 === '记成规则');
+    if (规则键 === undefined) throw new Error('Backend 协同卡必须保留记成规则入口');
+    expect(规则键.执行).toBeNull(); // 无 rules mutation：在场但不可用
+    expect(规则键.禁用说明).toBe('暂不支持记成规则'); // 已提供但不可用的按钮能解释
+  });
+});
+
+describe('use后端详情动作 · S3 意向确认/婉拒（confirm_intent / decline_intent）', () => {
+  it('本端意向词为空：确认意向/婉拒意向分别发 决定S3(role, caseId, confirm|decline)', async () => {
+    const 决定S3 = vi.fn(async (): Promise<void> => undefined);
+    const { result } = 挂动作(动作输入({
+      详情: S3详情DTO('candidate', { candidate: '', recruiter: 'confirm' }),
+      回答在飞表: { current: new Map<string, Promise<void>>() },
+      决定S3,
+    }));
+    expect(result.current.卡片们.map((卡) => 卡.键)).toEqual(['confirm_intent', 'decline_intent']);
+    await act(async () => {
+      取卡片(result, 'confirm_intent').按钮们[0]?.执行?.();
+    });
+    expect(决定S3).toHaveBeenCalledTimes(1);
+    expect(决定S3).toHaveBeenCalledWith('candidate', 'mc_a', 'confirm');
+    await act(async () => {
+      取卡片(result, 'decline_intent').按钮们[0]?.执行?.();
+    });
+    expect(决定S3).toHaveBeenLastCalledWith('candidate', 'mc_a', 'decline');
+  });
+
+  it('本端已决 → 意向二卡零控件零请求（等待态来自服务端行，不凭 stage 提前挂按钮）', () => {
+    const 决定S3 = vi.fn(async (): Promise<void> => undefined);
+    const { result } = 挂动作(动作输入({
+      详情: S3详情DTO('recruiter', { candidate: 'confirm', recruiter: 'confirm' }),
+      回答在飞表: { current: new Map<string, Promise<void>>() },
+      决定S3,
+    }));
+    expect(取卡片(result, 'confirm_intent').按钮们).toHaveLength(0);
+    expect(取卡片(result, 'decline_intent').按钮们).toHaveLength(0);
+    expect(决定S3).not.toHaveBeenCalled();
   });
 });

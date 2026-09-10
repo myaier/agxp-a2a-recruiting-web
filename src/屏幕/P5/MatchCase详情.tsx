@@ -12,7 +12,11 @@
 // 展示在 组件/在谈详情 的 详情动作卡 + 事实问题卡。
 // 详情统一（2026-09-10 Task 6）：S1 五动作（accept/decline/retry/replace/
 // decide_resume_screening，含单选 + 披露确认 + 终结确认）同样迁入 use后端详情动作，
-// 展示走共用的 简历选择层 + 确认层；S2/S3 暂留本文件旧控制（Task 8 迁）。
+// 展示走共用的 简历选择层 + 确认层。
+// 详情统一（2026-09-10 Task 8）：S2/S3（decide_coordination / confirm_intent /
+// decline_intent，typed 协同块/意向词栅栏）迁入 use后端详情动作；协调卡的规则入口
+// 在场但禁用（「暂不支持记成规则」，无 rules mutation），原型 拿不准/记成规则 弹层
+// 只留在两 Mock 详情屏。
 // 详情统一（2026-09-10 Task 7）：授权原始 PDF 的租约/在飞/代际控制迁
 // 屏幕/详情控制/useCasePDF预览（详情主体 无条件调用，Task 9 迁 后端正常详情），
 // 弹层仍用本文件的 原始PDF层 呈现（Mock 仿真预览控制不在此通道）。
@@ -42,7 +46,7 @@
 //     决定S3(confirm|decline)。已知后端缺口：投影器会给招聘端 needs_user 属主发
 //     end_screening，但冻结 wire 的 decisions 路线只有候选端 /me 臂 —— 招聘端结束卡
 //     fail closed（零控件零请求），待后端补 recruiter 臂。
-//     S0+S1 的控制/展示都在 屏幕/详情控制/use后端详情动作 + 组件/在谈详情（Task 5/6 迁）；
+//     S0–S3 的控制/展示都在 屏幕/详情控制/use后端详情动作 + 组件/在谈详情（Task 5/6/8 迁）；
 //     S1 每次提交/更换/重试都当场重跑显式单选（准备候选委托简历 的权威库；null
 //     = 会话/角色换代，静默返回，绝不当空库）+ 一次 Case 专属披露确认（点名所选 PDF
 //     与冻结职位名，说清递交即披露）；确认/取消都即刻清层，下一次绝不复用；
@@ -94,8 +98,7 @@ import { use应用状态 } from '../../状态/应用状态';
 import { use导航 } from '../../路由/导航钩子';
 import { 路径 } from '../../路由/路径表';
 import { 映射P5详情, P5契约错误提示 } from '../../数据/MatchCase展示映射';
-import type { P5角色, P5动作, P5动作卡, P5详情正常视图 } from '../../数据/MatchCase展示映射';
-import { 取后端错误文案 } from '../../数据/HTTP客户端';
+import type { P5角色, P5详情正常视图 } from '../../数据/MatchCase展示映射';
 import type { P5详情 } from '../../数据/招聘数据源/MatchCase';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { useMatchCase轮询 } from '../../状态/后端/useMatchCase轮询';
@@ -135,24 +138,9 @@ const 移交就绪键样式: CSSProperties = {
   border: 0, background: 'var(--荧光绿)', color: 'var(--墨)',
 };
 
-// ── Task 6：动作卡与回答框的行内版式（沿用设计令牌，不另建 CSS 文件）──────────
+// ── 动作区的行间排布（卡片本体/按钮的样式归 组件/在谈详情/详情动作卡.module.css）──
 
 const 动作区样式: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10 };
-const 动作卡样式: CSSProperties = {
-  display: 'flex', flexDirection: 'column', gap: 7,
-  padding: '12px 14px', borderRadius: 14, background: 'var(--浅灰底)',
-};
-const 动作卡题样式: CSSProperties = { fontSize: 13, fontWeight: 700, color: 'var(--正文)' };
-const 动作卡说明样式: CSSProperties = { fontSize: 11.5, color: 'var(--最弱)', lineHeight: 1.5 };
-const 键行样式: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 8 };
-const 动作主键样式: CSSProperties = {
-  flex: 'none', padding: '7px 15px', borderRadius: 999, border: 0,
-  background: 'var(--荧光绿)', color: 'var(--墨)', fontSize: 12.5, fontWeight: 700,
-};
-const 动作次键样式: CSSProperties = {
-  flex: 'none', padding: '7px 15px', borderRadius: 999,
-  background: 'transparent', border: '1px solid var(--描边深)', color: 'var(--正文)', fontSize: 12.5,
-};
 
 export function MatchCase详情(props: { role: P5角色 }) {
   const { role } = props;
@@ -458,13 +446,13 @@ function 详情主体({
   );
 }
 
-// ── S2/S3 动作区：只渲染映射交集里的卡，控件再过 typed 坐标栅栏 ────────────────
+// ── 阶段动作区：只渲染映射交集里的卡，控件再过 typed 坐标栅栏 ────────────────
 //
-// 详情统一（2026-09-10 Task 5/6）：S0 两卡（respond_fact 补充事实 / end_screening 结束
-// 初筛）与 S1 五动作（邀请二卡 / 重试 / 更换 / 初筛结论，含单选 + 披露确认 + 终结确认）
-// 的控制已搬入 屏幕/详情控制/use后端详情动作，展示走共用的 详情动作卡 / 事实问题卡 /
+// 详情统一（2026-09-10 Task 5/6/8）：S0–S3 全部动作（respond_fact / end_screening /
+// S1 五词 / decide_coordination / confirm_intent / decline_intent）的控制与卡片投影都在
+// 屏幕/详情控制/use后端详情动作，展示走共用的 详情动作卡 / 事实问题卡 /
 // 简历选择层 / 确认层；本组件无条件调用该 hook（Task 9 迁入 后端正常详情），返回合同
-// 恒定 —— S2/S3 仍由下方旧控制暂留（Task 8 迁入），同一 action 绝不双挂载。
+// 恒定 —— 同一 action 只有一个来源（hook 输出），本区不再持任何写中/命令状态。
 
 /** 动作区会调用的操作面（测试桩同形）。 */
 type 动作操作 = Pick<应用操作,
@@ -485,111 +473,25 @@ function 阶段动作区({
   操作: 动作操作;
   回答在飞表: RefObject<Map<string, Promise<void>>>;
 }): ReactNode {
-  // S0+S1 动作控制：卡片、回答区、单选/披露/终结确认的 props 全由 hook 交付；
+  // S0–S3 动作控制：卡片、回答区、单选/披露/终结确认的 props 全由 hook 交付；
   // 回答在飞表仍由页面级 MatchCase详情 持有并传入（动作区卸载不丢锁）。
   const { 卡片们, 事实问题, 简历选择, 披露确认, 终结确认 } = use后端详情动作({
     role, caseId, 视图, 详情, 操作, 回答在飞表,
   });
 
-  // S2/S3 的写中锁（原 阶段动作区 的 写中 收缩为只服务未迁移动作；Task 8 随迁删除）
-  const [写中, 设写中] = useState(false);
-
-  const 报错 = (错误: unknown) => 轻提示(取后端错误文案(错误));
-
-  /** 命令包装：服务端先行，失败原地提示；权威重读归操作层（本组件绝不本地重建）。 */
-  const 发命令 = async (运行: () => Promise<void>) => {
-    if (写中 || caseId === '') return;
-    设写中(true);
-    try {
-      await 运行();
-    } catch (错误) {
-      报错(错误);
-    } finally {
-      设写中(false);
-    }
-  };
-
-  // S2/S3 typed 栅栏：必需且未决 / 本端意向词为空（与后端 projector 同判据，防御性收口）
-  const 协同块 = 详情.currentCoordination;
-  const 本端协同未决 = 协同块 !== null && 协同块.requiredRoles.includes(role) &&
-    (role === 'candidate' ? !协同块.candidateDecided : !协同块.recruiterDecided);
-  const 本端意向未决 = 详情.intentConfirmations[role] === '';
-
   if (视图.actions.length === 0) return null;
-
-  /** 未迁移动作词（S2/S3）的控件；无 typed 坐标/无本端准许路线 → null（零控件零请求）。
-   *  respond_fact / end_screening / S1 五词已迁 use后端详情动作，渲染层不会把它们送到这里。 */
-  const 控件 = (动作: P5动作): ReactNode => {
-    switch (动作) {
-      case 'decide_coordination':
-        return 本端协同未决 && 协同块 !== null ? (
-          <div style={键行样式}>
-            <button
-              type="button" className="可点" style={动作主键样式} disabled={写中}
-              onClick={() => void 发命令(() => 操作.决定S2(role, caseId, 协同块.issueId, 'accept'))}
-            >
-              接受
-            </button>
-            <button
-              type="button" className="可点" style={动作次键样式} disabled={写中}
-              onClick={() => void 发命令(() => 操作.决定S2(role, caseId, 协同块.issueId, 'reject'))}
-            >
-              拒绝
-            </button>
-          </div>
-        ) : null;
-      case 'confirm_intent':
-        return 本端意向未决 ? (
-          <div style={键行样式}>
-            <button
-              type="button" className="可点" style={动作主键样式} disabled={写中}
-              onClick={() => void 发命令(() => 操作.决定S3(role, caseId, 'confirm'))}
-            >
-              确认意向
-            </button>
-          </div>
-        ) : null;
-      case 'decline_intent':
-        return 本端意向未决 ? (
-          <div style={键行样式}>
-            <button
-              type="button" className="可点" style={动作次键样式} disabled={写中}
-              onClick={() => void 发命令(() => 操作.决定S3(role, caseId, 'decline'))}
-            >
-              婉拒意向
-            </button>
-          </div>
-        ) : null;
-    }
-  };
-
-  // 已迁卡（S0+S1，键 = 动作词）只经 hook 输出渲染，其余动作（S2/S3）仍走本组件旧渲染
-  // —— 按映射交集给定的顺序遍历，同一 action 只有一个来源，绝不双挂载。
-  const 迁卡 = new Map(卡片们.map((卡) => [卡.键, 卡]));
 
   return (
     <>
       <div style={动作区样式}>
-        {视图.actions.map((卡: P5动作卡) => {
-          const 迁 = 迁卡.get(卡.action);
-          if (迁 !== undefined) {
-            return (
-              <详情动作卡
-                key={迁.键}
-                信息={迁.键 === 'respond_fact' && 事实问题 !== null
-                  ? { ...迁, 正文: <事实问题卡 {...事实问题} /> }
-                  : 迁}
-              />
-            );
-          }
-          return (
-            <div key={卡.action} style={动作卡样式}>
-              <div style={动作卡题样式}>{卡.标题}</div>
-              <div style={动作卡说明样式}>{卡.说明}</div>
-              {控件(卡.action)}
-            </div>
-          );
-        })}
+        {卡片们.map((卡) => (
+          <详情动作卡
+            key={卡.键}
+            信息={卡.键 === 'respond_fact' && 事实问题 !== null
+              ? { ...卡, 正文: <事实问题卡 {...事实问题} /> }
+              : 卡}
+          />
+        ))}
       </div>
 
       {/* S1 多份附件的当场单选（use后端详情动作 交付的 简历选择属性）；取消/遮罩/Esc
