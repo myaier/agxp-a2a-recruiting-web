@@ -341,3 +341,17 @@ interface 消息列表展示属性 {
 - CSS 对账：删除 `企业消息.module.css`（rg 全库消费者清零后删除）；`消息列表.module.css` 零改动沿用；`职位详情.module.css` 仅追加 3 个缺失占位类，无既有声明改动/删除。
 - 已知限制（如实记录，非缺陷）：极长标题非收缩+时间被挤出视口属既有行为（基准/候选一致不退化，未设绝对门禁）；全量 npm test 曾出现 1 条未复现失败（两次复跑+定向+review 修复后全量稳定通过）。
 - 合入方案（待用户确认后执行）：`git fetch` 复核 → `git merge --no-edit origin/main`（预演 0 冲突）→ 按最终 diff 重算完整 L0–L2：**因 target 侧大量产品变更（70 文件）且公共 e2e spec 改动，合并影响面无法证明只限本任务文件，按 fallback 在合并树上全量重跑正式套件**（`npm test`、typecheck、lint、build、mock-stg `P1 Mock视觉` 采集+ui:compare 对照 reference、backend-stg `P1 Backend展示`、`P4|P7` 回归、ui:check --base final_target_base 并记录基线更新理由）→ 再 fetch 复核 target 未推进 → `git push origin HEAD:main`（普通 fast-forward，不 force、不 rebase 已 review 提交）。若 P1 Mock 场景在合并树出现与本任务文件无关的视觉差异，属 target 侧已获其自身 gate 接受的变更，将如实归因并报告，不以改基线接受，不静默合入。
+
+#### Final gate 执行记录（2026-09-10，用户批准后）
+
+- 用户对上述方案明确回复「批准」。`final_target_base`：`e82de34fa5c48b77609e722b4e4c83270e658263`（第二次 fetch 前后一致，target 未推进）。
+- `git merge --no-edit origin/main`：干净合并，0 冲突，merged candidate `46e5fab99ee6a7843bfd046b2232d670337a4fa8`。
+- 合并树完整 L0–L2 重算（fallback：target 侧 70 文件产品变更 + 公共 e2e spec 被改，影响面无法证明只限本任务文件，全部正式套件在合并树重跑，全部 exit 0）：
+  - `npm test` 全量 4023/4023（29.3s，含 target 侧新增用例）；`npm run typecheck`；`npm run lint`；`npm run build`（402ms）。
+  - mock-stg `P1 Mock视觉` 采集 28 passed → `ui:compare`（enforce）对照 Task 1 reference：pass=28 / warning=0 / blocked=0 / new=0 / removed=0 / infrastructure=0 —— 目标推进未影响本任务 28 场景。
+  - backend-stg `P1 Backend展示` 18/18（19.4s）。
+  - `P4|P7` HTTP fixture 回归 25 passed（1.0m，针对 target 合入后的新 `e2e/数据源模式.spec.ts`）。
+  - `ui:check --base e82de34f`（基线更新理由：按 Plan 授权以实测 final_target_base 为基线）：pass=18 / warning=0 / new=0 / removed=0 / infrastructure=0 —— 本任务 diff 对全站既有 Mock 消费者零视觉漂移。
+- cleanup/修复影响对账：merge 后仅机械合并、无冲突解决产生的新修复；全部套件在最终树上执行，无旧失败被旧 PASS 覆盖。L3 始终 `none（用户显式排除）`/N/A，未启动真实栈。
+- 第二次 `git fetch` 确认 target 仍为 `e82de34f` → `git push origin HEAD:main`：`e82de34f..46e5fab9` fast-forward 成功，push 退出码 0。origin/main = `46e5fab9`。
+- 结论：P1 职位详情与双端消息列表展示统一已合入 main。真实栈集成未验证（用户显式排除，环境就绪后另行安排）。
