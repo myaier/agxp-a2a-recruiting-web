@@ -1530,7 +1530,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     // 单选层：多份附件必须当场单选一份（S1 递交口径的文案）
     const 选择框 = await screen.findByRole('dialog');
     expect(within(选择框).getByText(/本次 Case 是「平台工程师」/)).toBeTruthy();
-    await user.click(within(选择框).getByRole('radio', { name: '简历_v2.pdf' }));
+    await user.click(within(选择框).getByRole('radio', { name: /简历_v2\.pdf/ }));
     await user.click(within(选择框).getByRole('button', { name: '选定这份' }));
     // 披露确认：正文点名冻结职位（Case 上下文）与这次递交哪份 PDF，说清递交即披露
     const 披露框 = screen.getByRole('dialog');
@@ -1541,7 +1541,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     // 再来一次：选择与披露都重新走，不复用上一次的授权
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     const 再选 = await screen.findByRole('dialog');
-    await user.click(within(再选).getByRole('radio', { name: '简历_v1.pdf' }));
+    await user.click(within(再选).getByRole('radio', { name: /简历_v1\.pdf/ }));
     await user.click(within(再选).getByRole('button', { name: '选定这份' }));
     const 再披露 = screen.getByRole('dialog');
     expect(within(再披露).getByText(/简历_v1\.pdf/)).toBeTruthy(); // 点名的是这次选的
@@ -1560,7 +1560,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     const 披露框 = await screen.findByRole('dialog');
     expect(within(披露框).getByText(/「平台工程师」这一 Case 递交「简历_v1\.pdf」/)).toBeTruthy();
-    expect(screen.queryByRole('radio', { name: '简历_v1.pdf' })).toBeNull(); // 单份不再过单选层
+    expect(screen.queryByRole('radio', { name: /简历_v1\.pdf/ })).toBeNull(); // 单份不再过单选层
     await user.click(within(披露框).getByRole('button', { name: '确认递交' }));
     expect(mock提交简历).toHaveBeenCalledWith('mc_direct', `rf_${填充十六(1)}`, `rfv_${填充十六(1)}`, true);
   });
@@ -1632,14 +1632,14 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     // 第一次：选 v2 后在披露层取消
     await user.click(screen.getByRole('button', { name: '更换简历' }));
     const 选择框 = await screen.findByRole('dialog');
-    await user.click(within(选择框).getByRole('radio', { name: '简历_v2.pdf' }));
+    await user.click(within(选择框).getByRole('radio', { name: /简历_v2\.pdf/ }));
     await user.click(within(选择框).getByRole('button', { name: '选定这份' }));
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '暂不递交' }));
     expect(mock提交简历).not.toHaveBeenCalled();
     // 第二次：改选 v1，确认递交 —— 发出去的恰是这次选的对
     await user.click(screen.getByRole('button', { name: '更换简历' }));
     const 再选 = await screen.findByRole('dialog');
-    await user.click(within(再选).getByRole('radio', { name: '简历_v1.pdf' }));
+    await user.click(within(再选).getByRole('radio', { name: /简历_v1\.pdf/ }));
     await user.click(within(再选).getByRole('button', { name: '选定这份' }));
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认递交' }));
     expect(mock提交简历).toHaveBeenCalledTimes(1);

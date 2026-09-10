@@ -9,7 +9,10 @@
 //
 // 详情统一（2026-09-10 Task 5）：S0 动作（respond_fact / end_screening）的控制与展示分离 ——
 // 控制在 屏幕/详情控制/use后端详情动作（阶段动作区 无条件调用，Task 9 迁 后端正常详情），
-// 展示在 组件/在谈详情 的 详情动作卡 + 事实问题卡；S1–S3 暂留本文件旧控制（Task 6/8 迁）。
+// 展示在 组件/在谈详情 的 详情动作卡 + 事实问题卡。
+// 详情统一（2026-09-10 Task 6）：S1 五动作（accept/decline/retry/replace/
+// decide_resume_screening，含单选 + 披露确认 + 终结确认）同样迁入 use后端详情动作，
+// 展示走共用的 简历选择层 + 确认层；S2/S3 暂留本文件旧控制（Task 8 迁）。
 //
 // 模式边界（spec §5/§6/§8/§10.3 与 P5 冻结契约）：
 //   · 详情只凭 URL case_id + 已认证角色强制 GET（读取详情 恒 force=true —— 非 force 在
@@ -36,7 +39,8 @@
 //     决定S3(confirm|decline)。已知后端缺口：投影器会给招聘端 needs_user 属主发
 //     end_screening，但冻结 wire 的 decisions 路线只有候选端 /me 臂 —— 招聘端结束卡
 //     fail closed（零控件零请求），待后端补 recruiter 臂。
-//   · S1 每次提交/更换/重试都当场重跑显式单选（准备候选委托简历 的权威库；null
+//     S0+S1 的控制/展示都在 屏幕/详情控制/use后端详情动作 + 组件/在谈详情（Task 5/6 迁）；
+//     S1 每次提交/更换/重试都当场重跑显式单选（准备候选委托简历 的权威库；null
 //     = 会话/角色换代，静默返回，绝不当空库）+ 一次 Case 专属披露确认（点名所选 PDF
 //     与冻结职位名，说清递交即披露）；确认/取消都即刻清层，下一次绝不复用；
 //     disclosure_confirmed 只由这一次确认传字面 true。委托准备读有代际栅栏：换 case/
@@ -63,13 +67,10 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import 阶段对话流 from '../../组件/阶段对话流';
-import { 从附件行取选择值, type 附件简历选择值 } from '../../组件/附件简历选择层';
-import 弹层框架 from '../../组件/弹层框架';
 import 确认层 from '../../组件/确认层';
-// P5 专属弹层只借两份既有 module 的壳（抽屉顶栏 / 单选面板的类），文案由本文件给：
-// Plan 1 的 简历原件层 渲染的是 Mock 仿真纸身（无 blob/url 通道），附件简历选择层 的
-// 确认键文案是「委托」口径 —— 评审 R1 裁定：这两处 P5 各建最小 UI，不硬套错口径的层。
-import 选择样式 from '../../组件/附件简历选择层.module.css';
+// 原始 PDF 弹层只借既有 module 的壳，文案由本文件给：Plan 1 的 简历原件层 渲染的是
+// Mock 仿真纸身（无 blob/url 通道）—— 评审 R1 裁定 P5 自建最小 UI，不硬套错口径的层。
+// S1 递交单选（Task 6）改走共用 组件/在谈详情/简历选择层（复用 附件简历选择层 的面板类）。
 import 原始PDF层 from '../../组件/原始PDF层';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../../组件/通用';
 import { 详情外壳 } from '../../组件/在谈详情/详情外壳';
@@ -78,6 +79,7 @@ import { 详情动作卡 } from '../../组件/在谈详情/详情动作卡';
 import { 事实问题卡 } from '../../组件/在谈详情/事实问题卡';
 import { 职位资料 } from '../../组件/在谈详情/职位资料';
 import { 在线简历正文 } from '../../组件/在谈详情/在线简历正文';
+import { 简历选择层 } from '../../组件/在谈详情/简历选择层';
 import type { 详情Tab } from '../../组件/在谈详情/类型';
 import { use后端详情动作 } from '../详情控制/use后端详情动作';
 // 详情自己的样式：状态区/徽标/空态/错误/契约错误都已迁入共用外壳的 CSS（列表文件不回写）
@@ -90,9 +92,8 @@ import { 路径 } from '../../路由/路径表';
 import { 映射P5详情, P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import type { P5角色, P5动作, P5动作卡, P5详情正常视图 } from '../../数据/MatchCase展示映射';
 import { 取后端错误文案 } from '../../数据/HTTP客户端';
-import type { BFF附件简历 } from '../../数据/BFF契约';
 import type { PDF对象租约 } from '../../数据/PDF对象租约';
-import type { P5详情, P5简历附件 } from '../../数据/招聘数据源/MatchCase';
+import type { P5详情 } from '../../数据/招聘数据源/MatchCase';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { useMatchCase轮询 } from '../../状态/后端/useMatchCase轮询';
 import type { P5详情快照, 应用操作 } from '../../状态/后端/类型';
@@ -494,84 +495,17 @@ function 详情主体({
   );
 }
 
-// ── P5 专属弹层（评审 R1）：真实 PDF 抽屉与 S1 递交单选，借既有壳、P5 文案 ──────
-
-/**
- * S1 递交的单选层：面板类复用 附件简历选择层.module.css（单选清单同一版式），
- * 文案是 P5 递交口径（评审 R1：Plan 1 层的「确认并委托」是委托话术，不表达
- * S1 简历递交）。单选草稿只在层开着时存在，取消/确认/卸载即消失，绝不记默认。
- */
-function S1简历选择层({
-  文件们,
-  职位名,
-  取消,
-  确认,
-}: {
-  文件们: readonly BFF附件简历[];
-  职位名: string;
-  取消: () => void;
-  确认: (选择: 附件简历选择值) => void;
-}) {
-  const [选中编号, 设选中编号] = useState<string | null>(null);
-  const 选中文件 = 文件们.find((条) => 条.file_id === 选中编号) ?? null;
-  return (
-    <弹层框架 标签="选择递交简历" 遮罩类名={选择样式.遮罩} 面板类名={选择样式.面板} 关闭={取消}>
-      <div className={选择样式.标题}>选择这次递交的简历</div>
-      <div className={选择样式.说明}>
-        本次 Case 是「{职位名}」；所选 PDF 与披露授权仅对这一次递交生效，不会记住为默认。
-      </div>
-      <div className={`${选择样式.清单} 滚动区`} role="radiogroup" aria-label="选择简历">
-        {文件们.map((条) => (
-          <label key={条.file_id} className={选择样式.行}>
-            <input
-              type="radio"
-              name="递交简历"
-              className={选择样式.单选钮}
-              checked={选中编号 === 条.file_id}
-              onChange={() => 设选中编号(条.file_id)}
-            />
-            <span className={`${选择样式.文件名} 单行`}>{条.display_name}</span>
-          </label>
-        ))}
-      </div>
-      <div className={选择样式.键行}>
-        <button type="button" className={`${选择样式.取消键} 可点`} onClick={取消}>
-          暂不递交
-        </button>
-        <button
-          type="button"
-          className={`${选择样式.确认键} 可点`}
-          disabled={选中文件 === null}
-          onClick={() => {
-            if (选中文件 !== null) 确认(从附件行取选择值(选中文件));
-          }}
-        >
-          选定这份
-        </button>
-      </div>
-    </弹层框架>
-  );
-}
-
-// ── S0–S3 动作区：只渲染映射交集里的卡，控件再过 typed 坐标栅栏 ────────────────
+// ── S2/S3 动作区：只渲染映射交集里的卡，控件再过 typed 坐标栅栏 ────────────────
 //
-// 详情统一（2026-09-10 Task 5）：S0 两卡（respond_fact 补充事实 / end_screening 结束初筛）
-// 的控制已搬入 屏幕/详情控制/use后端详情动作，展示走共用的 详情动作卡 + 事实问题卡；
-// 本组件无条件调用该 hook（Task 9 迁入 后端正常详情），返回合同恒定 —— S1–S3 仍由下方
-// 旧控制暂留（Task 6/8 迁入），同一 action 绝不双挂载。
+// 详情统一（2026-09-10 Task 5/6）：S0 两卡（respond_fact 补充事实 / end_screening 结束
+// 初筛）与 S1 五动作（邀请二卡 / 重试 / 更换 / 初筛结论，含单选 + 披露确认 + 终结确认）
+// 的控制已搬入 屏幕/详情控制/use后端详情动作，展示走共用的 详情动作卡 / 事实问题卡 /
+// 简历选择层 / 确认层；本组件无条件调用该 hook（Task 9 迁入 后端正常详情），返回合同
+// 恒定 —— S2/S3 仍由下方旧控制暂留（Task 8 迁入），同一 action 绝不双挂载。
 
 /** 动作区会调用的操作面（测试桩同形）。 */
 type 动作操作 = Pick<应用操作,
   '回答事实' | '决定S0' | '决定S1' | '决定S2' | '决定S3' | '提交简历' | '准备候选委托简历'>;
-
-/** 终结类动作（婉拒邀请/判不合适；结束初筛已迁入 use后端详情动作）的二次确认载荷。 */
-interface 终结确认 {
-  标题: string;
-  正文: string;
-  执行文: string;
-  取消文: string;
-  执行: () => void;
-}
 
 function 阶段动作区({
   role,
@@ -588,32 +522,14 @@ function 阶段动作区({
   操作: 动作操作;
   回答在飞表: RefObject<Map<string, Promise<void>>>;
 }): ReactNode {
-  const { 跳转 } = use导航();
-
-  // S0 动作控制（respond_fact / end_screening）：卡片与回答区 props 全由 hook 交付，
+  // S0+S1 动作控制：卡片、回答区、单选/披露/终结确认的 props 全由 hook 交付；
   // 回答在飞表仍由页面级 MatchCase详情 持有并传入（动作区卸载不丢锁）。
-  const { 卡片们, 事实问题, 终结确认 } = use后端详情动作({
+  const { 卡片们, 事实问题, 简历选择, 披露确认, 终结确认 } = use后端详情动作({
     role, caseId, 视图, 详情, 操作, 回答在飞表,
   });
 
-  // S1 提交三态：权威库单选 → Case 专属披露确认 → POST（字面 true）；任一结束即清
-  const [待选择, 设待选择] = useState<{ 文件们: readonly BFF附件简历[] } | null>(null);
-  const [待披露, 设待披露] = useState<{ 选择: 附件简历选择值 } | null>(null);
-  const [待确认终局, 设待确认终局] = useState<终结确认 | null>(null);
+  // S2/S3 的写中锁（原 阶段动作区 的 写中 收缩为只服务未迁移动作；Task 8 随迁删除）
   const [写中, 设写中] = useState(false);
-
-  // 委托准备栅栏（与 P4 委托同款）：代际 token，卸载与换 case 都递增；迟到的
-  // 权威库结果（含拒绝）对不上代际就整包静默作废，绝不跨 case 弹层/提示/跳转。
-  const 准备代际 = useRef(0);
-  useEffect(() => () => {
-    准备代际.current += 1;
-  }, []);
-  useEffect(() => {
-    准备代际.current += 1;
-    设待选择(null);
-    设待披露(null);
-    设待确认终局(null);
-  }, [caseId]);
 
   const 报错 = (错误: unknown) => 轻提示(取后端错误文案(错误));
 
@@ -630,81 +546,6 @@ function 阶段动作区({
     }
   };
 
-  // S1 接受/更换：先拿权威附件库（每次尝试都重跑），再多份单选、单份直达披露确认
-  const 开始选择 = async () => {
-    if (写中 || caseId === '') return;
-    const 起始代际 = 准备代际.current;
-    try {
-      const 库 = await 操作.准备候选委托简历();
-      if (准备代际.current !== 起始代际) return; // 迟到：scope 已变/已卸载，整包作废
-      if (库 === null) return; // 会话/角色换代：静默返回，null 不是空库
-      if (库.items.length === 0) {
-        轻提示('请先上传一份 PDF 简历');
-        跳转(路径.我的简历);
-        return;
-      }
-      if (库.items.length === 1) {
-        const 唯一 = 库.items[0];
-        if (唯一 !== undefined) 设待披露({ 选择: 从附件行取选择值(唯一) });
-        return;
-      }
-      设待选择({ 文件们: 库.items });
-    } catch (错误) {
-      if (准备代际.current !== 起始代际) return; // 拒绝路径同样过栅栏
-      报错(错误);
-    }
-  };
-
-  // S1 重试：坐标只取阶段区 typed 附件（Case 当前绑定的 file/version 对），绝不猜
-  let 绑定附件: P5简历附件 | null = null;
-  for (const 区 of 视图.阶段区块) {
-    if (区.附件 !== null) {
-      绑定附件 = 区.附件;
-      break;
-    }
-  }
-  const 开始重试 = () => {
-    if (绑定附件 === null || 写中) return; // 无 typed 坐标：零控件（渲染层已挡）
-    设待披露({
-      选择: {
-        fileId: 绑定附件.fileId,
-        fileVersionId: 绑定附件.fileVersionId,
-        displayName: 绑定附件.displayName,
-      },
-    });
-  };
-
-  /** 披露确认的唯一出口：先收层再发，字面 true 只由这一次确认传入；失败要求重新确认。 */
-  const 执行披露提交 = (选择: 附件简历选择值) => {
-    设待披露(null);
-    void 发命令(() => 操作.提交简历(caseId, 选择.fileId, 选择.fileVersionId, true));
-  };
-
-  // 终结类确认（不可逆）：正文把后果讲清，确认才发命令（结束初筛的确认已迁 hook）
-  // 婉拒简历邀请 = decisions 路线的 end（wire 无 decline 专臂；e2e J2 同款语义）
-  const 确认婉拒邀请 = () =>
-    设待确认终局({
-      标题: '婉拒这次简历邀请？',
-      正文: '婉拒后这一单将结束，不会向该招聘方披露你的简历。',
-      执行文: '婉拒邀请',
-      取消文: '暂不婉拒',
-      执行: () => {
-        设待确认终局(null);
-        void 发命令(() => 操作.决定S0(caseId, 'end'));
-      },
-    });
-  const 确认不合适 = () =>
-    设待确认终局({
-      标题: '判定简历不合适？',
-      正文: '判定后这一单将结束，无法恢复。',
-      执行文: '确认不合适',
-      取消文: '再想想',
-      执行: () => {
-        设待确认终局(null);
-        void 发命令(() => 操作.决定S1(caseId, 'not_fit'));
-      },
-    });
-
   // S2/S3 typed 栅栏：必需且未决 / 本端意向词为空（与后端 projector 同判据，防御性收口）
   const 协同块 = 详情.currentCoordination;
   const 本端协同未决 = 协同块 !== null && 协同块.requiredRoles.includes(role) &&
@@ -713,68 +554,10 @@ function 阶段动作区({
 
   if (视图.actions.length === 0) return null;
 
-  /** 未迁移动作词（S1–S3）的控件；无 typed 坐标/无本端准许路线 → null（零控件零请求）。
-   *  respond_fact / end_screening 已迁 use后端详情动作，渲染层不会把这两个词送到这里。 */
+  /** 未迁移动作词（S2/S3）的控件；无 typed 坐标/无本端准许路线 → null（零控件零请求）。
+   *  respond_fact / end_screening / S1 五词已迁 use后端详情动作，渲染层不会把它们送到这里。 */
   const 控件 = (动作: P5动作): ReactNode => {
     switch (动作) {
-      case 'accept_resume_invitation':
-        return (
-          <div style={键行样式}>
-            <button
-              type="button" className="可点" style={动作主键样式} disabled={写中}
-              onClick={() => void 开始选择()}
-            >
-              接受邀请
-            </button>
-          </div>
-        );
-      case 'decline_resume_invitation':
-        return (
-          <div style={键行样式}>
-            <button
-              type="button" className="可点" style={动作次键样式} disabled={写中}
-              onClick={确认婉拒邀请}
-            >
-              婉拒邀请
-            </button>
-          </div>
-        );
-      case 'retry_resume_readiness':
-        return 绑定附件 === null ? null : (
-          <div style={键行样式}>
-            <button type="button" className="可点" style={动作主键样式} disabled={写中} onClick={开始重试}>
-              重试校验
-            </button>
-          </div>
-        );
-      case 'replace_resume':
-        return (
-          <div style={键行样式}>
-            <button
-              type="button" className="可点" style={动作主键样式} disabled={写中}
-              onClick={() => void 开始选择()}
-            >
-              更换简历
-            </button>
-          </div>
-        );
-      case 'decide_resume_screening':
-        return (
-          <div style={键行样式}>
-            <button
-              type="button" className="可点" style={动作主键样式} disabled={写中}
-              onClick={() => void 发命令(() => 操作.决定S1(caseId, 'continue'))}
-            >
-              通过初筛
-            </button>
-            <button
-              type="button" className="可点" style={动作次键样式} disabled={写中}
-              onClick={确认不合适}
-            >
-              不合适
-            </button>
-          </div>
-        );
       case 'decide_coordination':
         return 本端协同未决 && 协同块 !== null ? (
           <div style={键行样式}>
@@ -817,8 +600,8 @@ function 阶段动作区({
     }
   };
 
-  // S0 两卡只经 hook 输出渲染（键 = 动作词），其余动作仍走本组件旧渲染 —— 按映射交集
-  // 给定的顺序遍历，同一 action 只有一个来源，绝不双挂载。
+  // 已迁卡（S0+S1，键 = 动作词）只经 hook 输出渲染，其余动作（S2/S3）仍走本组件旧渲染
+  // —— 按映射交集给定的顺序遍历，同一 action 只有一个来源，绝不双挂载。
   const 迁卡 = new Map(卡片们.map((卡) => [卡.键, 卡]));
 
   return (
@@ -846,46 +629,15 @@ function 阶段动作区({
         })}
       </div>
 
-      {待选择 !== null ? (
-        // 多份附件：当场单选一份（P5 递交口径的单选层）；取消/遮罩/Esc 零请求，
-        // 确认进披露确认
-        <S1简历选择层
-          文件们={待选择.文件们}
-          职位名={视图.职位.职位名}
-          取消={() => 设待选择(null)}
-          确认={(选择) => {
-            设待选择(null);
-            设待披露({ 选择 });
-          }}
-        />
-      ) : null}
+      {/* S1 多份附件的当场单选（use后端详情动作 交付的 简历选择属性）；取消/遮罩/Esc
+          只走 取消（零请求），确认进披露确认 —— 展示归共用 简历选择层 */}
+      {简历选择 !== null ? <简历选择层 {...简历选择} /> : null}
 
-      {待披露 !== null ? (
-        // Case 专属披露确认：正文点名冻结职位（Case 上下文，无别名）与这次递交
-        // 哪份 PDF，说清递交即披露；仅对这一次递交生效。确认/取消都即刻清层 ——
-        // 上一次的授权绝不复用（spec §8.1）。
-        <确认层
-          标题="确认递交这份简历？"
-          正文={`本次将向「${视图.职位.职位名}」这一 Case 递交「${待披露.选择.displayName}」，递交后本份简历与你的姓名、联系方式即向该招聘方披露。授权仅对这一次递交生效。`}
-          执行文="确认递交"
-          取消文="暂不递交"
-          取消={() => 设待披露(null)}
-          执行={() => 执行披露提交(待披露.选择)}
-        />
-      ) : null}
+      {/* S1 Case 专属披露确认（hook 交付的 确认属性，逐字段透传）：正文点名冻结职位
+          与这次递交哪份 PDF；确认/取消都即刻清层，上一次的授权绝不复用 */}
+      {披露确认 !== null ? <确认层 {...披露确认} /> : null}
 
-      {待确认终局 !== null ? (
-        <确认层
-          标题={待确认终局.标题}
-          正文={待确认终局.正文}
-          执行文={待确认终局.执行文}
-          取消文={待确认终局.取消文}
-          取消={() => 设待确认终局(null)}
-          执行={待确认终局.执行}
-        />
-      ) : null}
-
-      {/* S0 结束初筛的二次确认（use后端详情动作 交付的 确认属性，逐字段透传） */}
+      {/* 终结类二次确认（结束初筛/婉拒邀请/判不合适，hook 交付，逐字段透传） */}
       {终结确认 !== null ? <确认层 {...终结确认} /> : null}
     </>
   );
