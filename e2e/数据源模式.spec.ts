@@ -6940,7 +6940,12 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
 
   test('P4 详情直取走 canonical job GET，同一批 HTTP 标记上屏 @backend', async ({ page }) => {
     const 请求序: string[] = [];
-    await 装P4候选(page, { 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
+    // 用例前提「无任何快照 → canonical job GET」：推荐清单显式置空（合法空页）。
+    // 2026-09-10 修复 fixture 缺 structured_requirements_confirmed 后默认清单可解码，
+    // 若保留默认快照，详情会拿到推荐坐标、不感兴趣不再禁用 —— 那是另一条链路。
+    const 空推荐fixture = P4发现fixture();
+    空推荐fixture.候选推荐 = {};
+    await 装P4候选(page, { fixture: 空推荐fixture, 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
 
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
@@ -7786,12 +7791,18 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     // 卡片统一（2026-09-10）后招聘端在谈卡面 = 候选摘要 + 阶段区：Case 职位名/别名退场，
     // 行锚点改用 candidate_summary 投影的现职标记（逐单不同，逐字来自 HTTP fixture）
     await expect(page.getByText(P5标记.现职.甲)).toBeVisible({ timeout: 20_000 });
-    // 甲：候选端「代理处理中」→ 招聘端「需要你」（backend J5b 同款分歧）
-    await expect(page.getByText('需要你', { exact: true })).toBeVisible();
+    // 甲：候选端「代理处理中」→ 招聘端「需要你」（backend J5b 同款分歧）。
+    // 卡片统一后徽标统一走 从P5到阶段：needs_action → 需要你，否则 代理处理中（候选端同映射）。
+    // 首页唯甲：需要你 ×1、代理处理中 ×0
+    await expect(page.getByText('需要你', { exact: true })).toHaveCount(1);
+    await expect(page.getByText('代理处理中', { exact: true })).toHaveCount(0);
     expect(请求序).toContain(`GET /api/v1/recruiter/match-cases?job_id=${P5编号.job}&limit=50&include=candidate_summary`);
     await page.getByRole('button', { name: '加载更多' }).click();
     await expect(page.getByText(P5标记.现职.丁)).toBeVisible({ timeout: 10_000 });
     await 断言纵序(page, [P5标记.现职.甲, P5标记.现职.丁, P5标记.现职.乙, P5标记.现职.丙一, P5标记.现职.丙二]);
+    // 读尽后：甲/丁 needs_action → 需要你 ×2；乙/丙一/丙二 waiting → 代理处理中 ×3
+    await expect(page.getByText('需要你', { exact: true })).toHaveCount(2);
+    await expect(page.getByText('代理处理中', { exact: true })).toHaveCount(3);
     expect(请求序).toContain(`GET /api/v1/recruiter/match-cases?job_id=${P5编号.job}&limit=50&include=candidate_summary&cursor=p5pg2`);
 
     // 候选端专属上下文（intention_id）绝不上招聘端的屏
@@ -8928,7 +8939,10 @@ test.describe('P8 控制面 fixture @backend', () => {
 
   test('P8 职位举报（详情直取）：target=job_id 隐私安全 body @backend', async ({ page }, 测试信息) => {
     const 隐私 = P3隐私fixture();
-    const fixture = await 装P8候选(page, { 发现fixture: P4发现fixture(), 隐私fixture: 隐私 });
+    // 直取前提 = 无推荐快照（抽屉只给举报、无不感兴趣）：推荐清单显式置空（合法空页）
+    const 空推荐fixture = P4发现fixture();
+    空推荐fixture.候选推荐 = {};
+    const fixture = await 装P8候选(page, { 发现fixture: 空推荐fixture, 隐私fixture: 隐私 });
     fixture.举报屏蔽组织[`job:${P4编号.job}`] = {
       organization_id: P8标记.屏蔽组织编号,
       organization_display_name: P8标记.屏蔽组织名,
@@ -10220,6 +10234,27 @@ test.describe('卡片统一 Backend @backend', () => {
     await page.setViewportSize({ width: 320, height: 844 });
     await 断言卡在视口内(page, 后端在谈卡);
     断言分数位让位(await 采集卡观察(page, 后端在谈卡));
+    // 320 公司列截断实测（记录行为，版式裁定属产品）：卡内容宽 274 − 右列让位 178
+    // − 字标 34 − 间距 10 ≈ 52px 文本盒，两行占位文本在 .单行 下都会省略号截断
+    const 公司截断 = await 后端在谈卡.evaluate((根) => {
+      const 列 = 根.querySelector('[data-card-region="company"] > div:not([data-card-region])');
+      if (!列) return [];
+      return Array.from(列.children).map((行) => {
+        const 元素 = 行 as HTMLElement;
+        const 范围 = document.createRange();
+        范围.selectNodeContents(元素);
+        return {
+          文本: (元素.textContent ?? '').slice(0, 6),
+          盒宽: Math.round(元素.clientWidth * 100) / 100,
+          内容宽: 元素.scrollWidth,
+        };
+      });
+    });
+    expect(公司截断).toHaveLength(2);
+    for (const 行 of 公司截断) {
+      expect(行.盒宽, '320 公司文本盒 ≈52px（274−178−34−10）').toBeLessThan(60);
+      expect(行.内容宽, `「${行.文本}…」在 320 宽被省略号截断`).toBeGreaterThan(行.盒宽);
+    }
     await page.screenshot({ path: 'test-results/卡片统一/backend-在谈候选端-320.png' });
     await page.setViewportSize({ width: 390, height: 844 });
 
@@ -10335,6 +10370,15 @@ test.describe('卡片统一 Backend @backend', () => {
     await expect(零卡.getByText('亮点信息未知')).toBeVisible();
     await 断言卡在视口内(page, 零卡);
     await page.screenshot({ path: 'test-results/卡片统一/backend-推荐变体-390.png' });
+
+    // 320 收窄（Spec §8.3：390 与 320 都看长文状态）：长文本卡仍不溢出、
+    // 头行最多两行、分数位不被挤
+    await page.setViewportSize({ width: 320, height: 844 });
+    await 断言卡在视口内(page, 长卡);
+    const 长观察320 = await 采集卡观察(page, 长卡);
+    断言头行最多两行(长观察320);
+    断言分数位让位(长观察320);
+    await page.screenshot({ path: 'test-results/卡片统一/backend-推荐变体-320.png' });
   });
 
   test('卡片统一 在谈卡超长职位名与全空摘要变体 390/320：占位齐、行不收 @backend', async ({ page }) => {
@@ -10360,6 +10404,16 @@ test.describe('卡片统一 Backend @backend', () => {
       '标签行仍贴在职位名下方一行的距离内',
     ).toBeLessThanOrEqual(长职位观察.区域.title!.y + 长职位观察.区域.title!.h + 20);
     await page.screenshot({ path: 'test-results/卡片统一/backend-在谈变体-390.png' });
+
+    // 320 收窄（Spec §8.3：长文状态两档宽都看）：超长职位名仍单行收尾、
+    // 标签行不被挤走、右列分数位不被遮
+    await page.setViewportSize({ width: 320, height: 844 });
+    await 断言卡在视口内(page, 长职位卡);
+    const 长职位观察320 = await 采集卡观察(page, 长职位卡);
+    expect(长职位观察320.区域.title!.h, '职位名单行高(320)').toBeLessThanOrEqual(30);
+    断言分数位让位(长职位观察320);
+    await page.screenshot({ path: 'test-results/卡片统一/backend-在谈变体-320.png' });
+    await page.setViewportSize({ width: 390, height: 844 });
 
     // ── 招聘端：摘要显式 null = 全未知占位，行与图标一个不少 ──
     await page.goto('/#/identity?switch=1&from=app');
