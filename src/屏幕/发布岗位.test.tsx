@@ -9,7 +9,8 @@ import userEvent from '@testing-library/user-event';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 发布岗位, { 取岗位提交错误文案 } from './发布岗位';
-import { 页面岗位样本 } from '../测试/BFF样本';
+import { 页面岗位样本, BFF岗位样本 } from '../测试/BFF样本';
+import { 转岗位创建, 转岗位补丁 } from '../数据/后端映射';
 import { 在招岗位列表 } from '../数据/企业端模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFFJD导入, BFFJD导入失败码, BFFJD建议 } from '../数据/BFF契约';
@@ -110,6 +111,22 @@ function 置Backend应用状态(
       查询Institution: vi.fn(),
     },
   };
+}
+
+/** 通过现有 JD 导入入口设置公开要求；第三步只允许编辑私有偏好。 */
+async function 导入公开要求(要求: string) {
+  mock创建JD导入.mockResolvedValue({
+    import_id: 'jdi_0123456789abcdef0123456789abcdef', status: 'succeeded',
+    created_at: '2026-09-03T01:02:03Z', updated_at: '2026-09-03T01:02:06Z',
+    suggestion: {
+      title: null, recruitment_type: null, workplace_mode: null, office_location: null,
+      description: null, requirements: 要求, education_requirement: null,
+      experience_requirement: null, category_source_name: null, location_source_name: null, keywords: [],
+    },
+  });
+  const 用户 = userEvent.setup();
+  await 用户.upload(screen.getByLabelText('上传 JD 文件'), new File(['%PDF-1.7'], 'role.pdf', { type: 'application/pdf' }));
+  await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
 }
 
 describe('发布岗位页 Backend 提交', () => {
@@ -326,7 +343,7 @@ describe('发布岗位页 Backend 选择器', () => {
 
   /** 把三步向导填到「只差点发布」的状态，返回候选城市按钮（已出现但未点）。
    *  选城市=false 时只输入不选；选城市=true 时点候选，落 地点引用。
-   *  P0 修复 Task 4：第三步恢复了独立的「职位要求」输入 —— 默认填一句与描述不同的话；
+   *  P0 修复 Task 4：公开要求从既有 JD 导入取得，默认与描述不同；
    *  职位要求=null 时故意留空，用来验前置校验。 */
   async function 填到发布前(
     选城市: boolean,
@@ -342,6 +359,8 @@ describe('发布岗位页 Backend 选择器', () => {
       </MemoryRouter>,
     );
 
+    const 职位要求文本 = 选项.职位要求 === undefined ? '有分布式系统与撮合引擎经验' : 选项.职位要求;
+    if (职位要求文本 !== null) await 导入公开要求(职位要求文本);
     // ── 第一步：基础信息 ──
     await 用户.type(
       screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关'),
@@ -376,11 +395,6 @@ describe('发布岗位页 Backend 选择器', () => {
       screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'),
       '张江路 1 号',
     );
-    // 职位要求：与职位描述各自独立的一段文本
-    const 职位要求文本 = 选项.职位要求 === undefined ? '有分布式系统与撮合引擎经验' : 选项.职位要求;
-    if (职位要求文本 !== null) {
-      await 用户.type(screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }), 职位要求文本);
-    }
     // 工作城市：输入触发 250ms debounce 候选查询
     await 用户.type(
       screen.getByPlaceholderText('搜索城市名，从下方候选选择'),
@@ -516,25 +530,27 @@ describe('发布岗位页 Backend 选择器', () => {
 
   // ── P0 修复 Task 4：JobCreate 的三条独立必填文本 ──
 
-  it('第三步显示独立的职位要求 textarea', async () => {
-    const { 用户 } = await 填到发布前(true, { 职位要求: null });
-    const 要求框 = screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }) as HTMLTextAreaElement;
-    expect(要求框.disabled).toBe(false);
-    expect(要求框.readOnly).toBe(false);
-    // 第二步填过的职位描述没有渗进来：这是一个独立的空输入
-    expect(要求框.value).toBe('');
-    await 用户.type(要求框, '要求正文');
-    expect((screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }) as HTMLTextAreaElement).value)
-      .toBe('要求正文');
+  it('第三步只显示私有多行输入，公开要求没有可见输入', async () => {
+    await 填到发布前(true, { 职位要求: null });
+    expect(screen.queryByRole('textbox', { name: /给候选人看的职位要求/ })).toBeNull();
+    const 偏好框 = screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' });
+    expect(偏好框.getAttribute('placeholder')).toBe('');
+    expect(document.querySelectorAll('textarea')).toHaveLength(1);
+    expect(screen.getByText('选填')).toBeTruthy();
+    expect(screen.getByText('写下你的要求和偏好，AI 代理会据此筛选候选人。')).toBeTruthy();
+    expect(screen.getByText('薪资仅判断双方区间是否匹配，不询问或协商具体金额。')).toBeTruthy();
   });
 
-  it('职位要求为空时回到第三步、显示可行动文案且零 mutation', async () => {
+  it('页面提交空公开要求，真实后端映射仍按现有契约拒绝空值', async () => {
     const { 用户 } = await 填到发布前(true, { 职位要求: null });
+    await 用户.type(screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }), '只给代理');
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
-    expect(await screen.findByText('请填写职位要求')).toBeTruthy();
-    expect(mock发布岗位).not.toHaveBeenCalled();
-    // 留在第三步：要求输入框仍在屏上，用户看得见该改哪儿
-    expect(screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' })).toBeTruthy();
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    const 岗位 = mock发布岗位.mock.calls[0][0];
+    expect(岗位).toMatchObject({ 职位要求: '', 筛选要求: '只给代理' });
+    expect(() => 转岗位创建(岗位, {
+      publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null },
+    })).toThrow('请填写职位要求');
   });
 
   // 校验失败必须把用户带回出问题的那一步 —— 只弹 toast 不切步，用户当前屏上根本
@@ -604,24 +620,19 @@ describe('发布岗位页 Backend 选择器', () => {
 
   // Task 4（frontend truthfulness）：结构化档位（自动匹配读取）与补充文字（不自动解析）
   // 的文案边界 —— 只改可见/可访问文案，不改 payload：用户选的结构化值原样、手打补充文字原样。
-  it('结构化经验学历与补充文字使用精确说明且不改 payload', async () => {
-    const { 用户 } = await 填到发布前(true);
-    expect(screen.getByText('经验要求（自动匹配读取）')).toBeTruthy();
-    expect(screen.getByText('最低学历（自动匹配读取）')).toBeTruthy();
-    const 要求框 = screen.getByRole('textbox', {
-      name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）',
-    });
-    await 用户.clear(要求框);
-    await 用户.type(要求框, '至少 3 年经验，本科优先');
-    // P4 互认 Task 3：改结构化的要求文本会撤掉默认勾选；本例只验 payload 文案边界，重新勾上再发
-    await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
+  it('新建保留导入公开要求，私有输入不流入公开字段', async () => {
+    const { 用户 } = await 填到发布前(true, { 职位要求: '至少 3 年经验，本科优先' });
+    await 用户.type(screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }), '交易系统经验优先');
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
     expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
-      职位要求: '至少 3 年经验，本科优先',
-      经验要求: '不限',
-      最低学历: '不限',
+      职位要求: '至少 3 年经验，本科优先', 筛选要求: '交易系统经验优先',
+      经验要求: '不限', 最低学历: '不限', 年薪月数: 12,
     });
+    const 请求体 = 转岗位创建(mock发布岗位.mock.calls[0][0], {
+      publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null },
+    });
+    expect(请求体).toMatchObject({ requirements: '至少 3 年经验，本科优先', private_screening_preferences: '交易系统经验优先', annual_salary_months: 12 });
   });
 
   // Task 5：新岗四问全部从未说明起步；没点过的三问也必须以 未说明 随完整对象提交，
@@ -686,11 +697,8 @@ describe('发布岗位页 Backend 选择器', () => {
     });
   });
 
-  it('勾选后改经验、学历或职位要求任一项立即取消勾选', async () => {
+  it('勾选后改经验学历取消勾选，改私有偏好不取消', async () => {
     const { 用户 } = await 填到发布前(true, { 勾选确认: false });
-    const 要求框 = screen.getByRole('textbox', {
-      name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）',
-    });
 
     await 用户.click(勾选框());
     await 用户.click(screen.getByRole('button', { name: '1-3 年' }));
@@ -701,8 +709,8 @@ describe('发布岗位页 Backend 选择器', () => {
     expect(勾选框().checked).toBe(false);
 
     await 用户.click(勾选框());
-    await 用户.type(要求框, '。');
-    expect(勾选框().checked).toBe(false);
+    await 用户.type(screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }), '私有偏好');
+    expect(勾选框().checked).toBe(true);
   });
 
   it('改薪资、办公地点、筛选偏好、年薪月数或描述不取消勾选', async () => {
@@ -716,7 +724,7 @@ describe('发布岗位页 Backend 选择器', () => {
       '（改）',
     );
     await 用户.type(
-      screen.getByPlaceholderText('例如：985/211 或指定院校优先、有大厂或创业公司经历、重点看系统设计能力'),
+      screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }),
       '重点看系统设计',
     );
     // 年薪月数滚轮也是无关控件
@@ -729,6 +737,21 @@ describe('发布岗位页 Backend 选择器', () => {
     await 用户.type(screen.getByRole('textbox', { name: '职位描述' }), '（改）');
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     expect(勾选框().checked).toBe(true);
+  });
+
+  it('后端编辑私有偏好保留历史公开要求，补丁不重写公开字段', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    const { 用户 } = await 打开编辑第三步({ 职位要求: BFF岗位样本.requirements });
+    const 输入 = screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' });
+    await 用户.clear(输入);
+    await 用户.type(输入, '私有偏好只给代理');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    const 岗位 = mock更新岗位.mock.calls[0][0];
+    expect(岗位.职位要求).toBe(BFF岗位样本.requirements);
+    const 补丁 = 转岗位补丁(岗位, BFF岗位样本);
+    expect(补丁.private_screening_preferences).toBe('私有偏好只给代理');
+    expect(补丁).not.toHaveProperty('requirements');
   });
 
   it('legacy-false 编辑只改无关字段时不勾选也能保存', async () => {
@@ -762,7 +785,7 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
     mock发布岗位.mockResolvedValue(undefined);
   });
 
-  it('Mock 发岗不读取 Backend 专属未认证公司声明', async () => {
+  it('Mock 手工新建可发布空公开要求，私有偏好不能替代', async () => {
     // Backend 专属的 未认证公司声明 为空，Mock 仍按 企业认证.公司 走原有发布流程
     置Mock应用状态({ 未认证公司声明: '', 企业认证: { 姓名: '林澈', 公司: 'Mock 公司' } });
     const 用户 = userEvent.setup();
@@ -791,7 +814,7 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
 
     // 第三步：职位要求 + 薪资 + 城市 + 办公地
-    await 用户.type(screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }), '要求正文');
+    await 用户.type(screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }), '私有偏好');
     await 用户.type(screen.getByLabelText('薪资下限'), '20');
     await 用户.type(screen.getByLabelText('薪资上限'), '30');
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
@@ -806,10 +829,9 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
 
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    expect(mock发布岗位.mock.calls[0][0]).toMatchObject({ 职位要求: '', 筛选要求: '私有偏好', 年薪月数: 12 });
+    expect(screen.queryByText('请填写职位要求')).toBeNull();
     expect(screen.queryByText('请先在招聘名片填写公司名称')).toBeNull();
-    expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
-      职位描述: '描述正文', 职位要求: '要求正文',
-    });
   });
 });
 
@@ -1472,7 +1494,6 @@ describe('发布岗位页 JD 建议合并', () => {
 
   const 标题框 = () => screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关') as HTMLInputElement;
   const 描述框 = () => screen.getByLabelText('职位描述') as HTMLTextAreaElement;
-  const 要求框 = () => screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }) as HTMLTextAreaElement;
   const 城市框 = () => screen.getByPlaceholderText('搜索城市名，从下方候选选择') as HTMLInputElement;
   const 办公地框 = () => screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层') as HTMLInputElement;
   /** 招聘类型块的 accessible name 含副标文案，统一按前缀匹配取按钮。 */
@@ -1590,7 +1611,7 @@ describe('发布岗位页 JD 建议合并', () => {
       keywords: ['Go', 'PostgreSQL'],
     })));
     await 微任务结算();
-    expect(要求框().value).toBe('五年以上后端经验。');
+    expect(screen.queryByRole('textbox', { name: /给候选人看的职位要求/ })).toBeNull();
     expect(按下片(/最低学历/, '本科')).toBe('true');
     expect(按下片(/经验要求/, '5 年以上')).toBe('true');
     expect(screen.queryByText('Go')).toBeNull();
@@ -1626,7 +1647,7 @@ describe('发布岗位页 JD 建议合并', () => {
     下一步();
     POST门.resolve(成功(JD建议({})));
     await 微任务结算();
-    expect(要求框().value).toBe('');
+    expect(screen.queryByRole('textbox', { name: /给候选人看的职位要求/ })).toBeNull();
     expect(按下片(/最低学历/, '不限')).toBe('true');
     expect(城市框().value).toBe('');
     返回();
@@ -1928,6 +1949,7 @@ describe('发布岗位页 全远程地址与 Catalog 门禁', () => {
   /** 三步填到发布前；办公方式与办公地可覆盖（全远程用例不填地址）。 */
   async function 填到发布前(用户: ReturnType<typeof userEvent.setup>, 选项: { 办公方式?: '现场' | '混合' | '全远程'; 办公地?: string | null; JD建议地点?: string | null } = {}) {
     const { 办公方式 = '现场', 办公地 = '张江路 1 号', JD建议地点 = null } = 选项;
+    await 导入公开要求('有分布式系统经验');
     await 用户.type(screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关'), '资深后端');
     fireEvent.click(screen.getByRole('button', { name: 办公方式 }));
     fireEvent.click(screen.getByRole('button', { name: /职位类别/ }));
@@ -1957,7 +1979,6 @@ describe('发布岗位页 全远程地址与 Catalog 门禁', () => {
     if (办公地 !== null) {
       await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), 办公地);
     }
-    await 用户.type(screen.getByRole('textbox', { name: '给候选人看的职位要求（补充文字，不自动解析为硬门槛）' }), '有分布式系统经验');
     // 工作城市：JD 建议填了搜索文本的用例外，手输并点候选
     if (JD建议地点 === null) {
       await 用户.type(screen.getByPlaceholderText('搜索城市名，从下方候选选择'), '上海');
@@ -2185,7 +2206,7 @@ describe('发布岗位页 第三批：职位要求 Tab 删「硬性条件」展�
     const 用户 = userEvent.setup();
     渲染编辑P01();
     await 用户.click(screen.getByRole('button', { name: '职位要求' }));
-    expect(screen.getByText('补充加分偏好（可选）')).toBeTruthy();
+    expect(screen.getByText('给 AI 代理的筛选要求')).toBeTruthy();
     // 输入框以岗位.筛选要求 预填，证明它就是「补充加分偏好」的承载
     const 偏好框 = screen.getByDisplayValue(预填偏好);
     expect(偏好框.tagName).toBe('TEXTAREA');
@@ -2196,6 +2217,8 @@ describe('发布岗位页 第三批：职位要求 Tab 删「硬性条件」展�
     expect(mock更新岗位.mock.calls[0][0]).toMatchObject({
       编号: 'P-01',
       筛选要求: `${预填偏好}${追加偏好}`,
+      职位要求: P01.职位要求,
+      年薪月数: P01.年薪月数,
     });
   });
 
