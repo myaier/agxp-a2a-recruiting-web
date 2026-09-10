@@ -237,8 +237,7 @@ test.describe('Mock 数据源回归 @mock', () => {
     await expect(page.getByText('46 个在招岗位')).toBeVisible();
 
     // 全文层固定五部分：静态档没有产品/团队 → 占位出现（Spec §7「缺字段区块出现占位」）。
-    // 层用 Escape 关闭：小视口下全文/条款层内容高过视口，右上 ✕ 会被顶出视口
-    // （弹层框架 底部面板内联 maxHeight:'none' 压过 .层 的 max-height，既有机制，见 Plan 验证记录）
+    // 层体自滚、面板封在视口 86% 内，右上 ✕ 始终在视口里；这里仍用 Escape 走键盘关闭路径
     await page.getByRole('button', { name: '读全文 ›' }).click();
     await expect(page.getByText('以下内容由企业自行提供，平台未逐条核实。')).toBeVisible();
     await expect(page.getByText('产品介绍未知')).toBeVisible();
