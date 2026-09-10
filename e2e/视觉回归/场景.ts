@@ -171,18 +171,18 @@ const 在谈首页场景: 视觉场景 = {
   },
 };
 
-// candidate-negotiation-detail：在谈详情的职位详情 Tab，求职端已注册。
-// 注：计划步骤只写「打开 /#/deal/J-01」，但该页默认 Tab 是「代谈进度」，ready 中的
-// 「匹配度分析」「职位详情」文案在「职位详情」Tab 内。按 carry-forward 规则在到达步骤里
-// 点一次「职位详情」Tab 切到该视图，不改产品代码。另：「职位详情」文案同时是 Tab 按钮名与
-// 内容标题，getByText 解析到 2 个节点触发 strict mode，故关键元素改用 Tab 按钮定位。
+// candidate-negotiation-detail：在谈详情的资料 Tab（原「职位详情」Tab），求职端已注册。
+// 详情统一（2026-09-10）：两个 Tab 改叫 进度/资料，旧 Tab 名「职位详情」不再存在。
+// 到达方式改用两端都认识的深链 ?tab=job（旧页直开 职位详情 Tab、新外壳直开 资料 Tab），
+// 不点击 Tab 按钮 —— 关键元素里再用跨版本定位器（资料|职位详情）钉住 Tab 行本身。
+// 「职位详情」在旧页同时是 Tab 按钮名与内容标题，旧锚点本就因 strict mode 改用过按钮定位；
+// 新页的资料内容标题含「职位详情」区块标题，跨版本统一用 exact Tab 按钮锚点。
 const 在谈详情场景: 视觉场景 = {
   id: 'candidate-negotiation-detail',
   状态: '求职端已注册',
   async 到达(page: Page): Promise<void> {
-    await 打开稳定页面(page, '/#/deal/J-01', '求职端已注册');
+    await 打开稳定页面(page, '/#/deal/J-01?tab=job', '求职端已注册');
     await 注入候选突变(page);
-    await page.getByRole('button', { name: '职位详情' }).click();
   },
   async 就绪(page: Page): Promise<void> {
     await expect(page.getByText('匹配度分析', { exact: true })).toBeVisible();
@@ -190,7 +190,7 @@ const 在谈详情场景: 视觉场景 = {
   关键元素(page: Page): 关键元素描述[] {
     return [
       { 名称: '文本 匹配度分析', 定位: page.getByText('匹配度分析', { exact: true }) },
-      { 名称: '职位详情 Tab 按钮', 定位: page.getByRole('button', { name: '职位详情', exact: true }) },
+      { 名称: '资料 Tab 按钮', 定位: page.getByRole('button', { name: /^(资料|职位详情)$/ }) },
       { 名称: '返回按钮', 定位: page.getByRole('button', { name: '返回' }) },
     ];
   },
