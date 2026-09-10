@@ -322,3 +322,22 @@ interface 消息列表展示属性 {
 - Reviewer：Codex（gpt-5.6-sol，read-only，未运行任何测试）；绑定批准 Spec revision 33824d07/blob 98601116、Plan af1954f8/blob 4b4e6201、固定 base 55c7024f / head d99f5d91；共享守约 `/Users/visionclaw/coding-harness/skills/_shared/review-contract.md`。前后 guard 通过（HEAD/工作树/受审指纹未变）。
 - C-1（契约违反/Important/required/复杂度不变）：在场 Backend 发布人 blank 姓名/公司未按 §3.2 换「发布人姓名未知」「企业信息未知」（职务有 trim，姓名/公司直接透传）。**接受并修复**：TDD 先加 2 条失败断言（RED 2 failed，指向占位缺失），`准备职位正文.ts` 在场分支对 姓名/公司 补 trim 缺失判断；修复 commit `02a0f9b8`。
 - 失效证据补验：定向 5 文件 124 passed（122+2 新增）；`npm test` 全量 3830/3830 exit 0（28.0s）；`npm run typecheck`、`npm run lint` exit 0；backend-stg `P1 Backend展示` 18/18 exit 0（24.1s）。Mock 路径（准备Mock职位正文/CSS/JSX）零改动，mock-stg 视觉对照与 ui:compare/ui:check 证据保持有效。
+
+#### Codex review-loop Round 2（候选 887127fd）
+
+- 同线程 resume（thread 01a08a66-987f-7270-b590-bd029b30b23c），read-only，未运行测试；前后 guard 通过。
+- 报告：`## Findings` / `NO FINDINGS` — review loop 于第 2 轮干净收敛（共 2 轮，1 条 required 已修复并经 reviewer 复核）。
+
+#### Pre-gate 事实（2026-09-10，等待用户 final gate 确认）
+
+- `candidate_commit`：本 Plan 证据追加提交（Codex review 修复 `02a0f9b8` + 裁决记录之后的 HEAD，见下条提交）。
+- `pre_gate_target_base`：`e82de34fa5c48b77609e722b4e4c83270e658263`（`git fetch origin` 后 `origin/main` 实测值）。**目标已自规划基线 `55c7024f` 推进**：双端在谈详情展示统一（survey-frequent-pages-component-reuse）与身份选择视觉/代理规则编辑两任务合入 main（70 文件，+10084/−2987）。与本任务登记路径零文件名重叠；`git merge-tree` 预演 0 文本冲突（merge-base = 55c7024f）。并行任务同时改并合入了 `e2e/数据源模式.spec.ts` 与 `e2e/视觉回归/场景.ts`（本任务未触碰）。
+- 完整 L0–L2 责任（source candidate d99f5d91 → review 修复后候选 02a0f9b8，全部 exit 0）：
+  - `npm test` 全量 3830/3830（28.0s；新增 2 条 review 修复断言）；`npm run typecheck`；`npm run lint`；`npm run build`（d99f5d91 时执行，review 修复仅改 `准备职位正文.ts` 映射与测试，不触构建面，02a0f9b8 后 typecheck/lint 复验通过）。
+  - backend-stg `P1 Backend展示` 18/18（24.1s，02a0f9b8 后重跑）；mock-stg `P1 Mock视觉` 28/28 与 reference 比较 pass=28/warning=0/new=0/removed=0；`UI_VISUAL_GATE=enforce UI_CHANGE_APPROVED=false npm run ui:compare` exit 0；ui:check --base 55c7024f pass=18（均在 c105ff5a/d99f5d91 执行；Mock 路径/CSS 在 review 修复中零改动，证据保持有效）。
+  - `P4|P7` HTTP fixture 回归 25 passed（d99f5d91 执行）。
+  - 两栈几何对照 40 项 ≤1px（几乎全 0px）。
+- L3 责任：`none（用户显式排除）`，N/A。未启动真实栈，不声称真实集成 PASS；HTTP fixture 是浏览器拦截验证，不是真实栈。
+- CSS 对账：删除 `企业消息.module.css`（rg 全库消费者清零后删除）；`消息列表.module.css` 零改动沿用；`职位详情.module.css` 仅追加 3 个缺失占位类，无既有声明改动/删除。
+- 已知限制（如实记录，非缺陷）：极长标题非收缩+时间被挤出视口属既有行为（基准/候选一致不退化，未设绝对门禁）；全量 npm test 曾出现 1 条未复现失败（两次复跑+定向+review 修复后全量稳定通过）。
+- 合入方案（待用户确认后执行）：`git fetch` 复核 → `git merge --no-edit origin/main`（预演 0 冲突）→ 按最终 diff 重算完整 L0–L2：**因 target 侧大量产品变更（70 文件）且公共 e2e spec 改动，合并影响面无法证明只限本任务文件，按 fallback 在合并树上全量重跑正式套件**（`npm test`、typecheck、lint、build、mock-stg `P1 Mock视觉` 采集+ui:compare 对照 reference、backend-stg `P1 Backend展示`、`P4|P7` 回归、ui:check --base final_target_base 并记录基线更新理由）→ 再 fetch 复核 target 未推进 → `git push origin HEAD:main`（普通 fast-forward，不 force、不 rebase 已 review 提交）。若 P1 Mock 场景在合并树出现与本任务文件无关的视觉差异，属 target 侧已获其自身 gate 接受的变更，将如实归因并报告，不以改基线接受，不静默合入。
