@@ -692,6 +692,69 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
   });
 });
 
+// ── 详情统一 Task 3：第二 Tab 用共用 职位资料 渲染完整缺失区（spec §3.3）─────────
+
+describe('MatchCase详情 · 资料 Tab 与完整缺失区（Task 3）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock返回.mockClear();
+    mock设置P5范围.mockClear();
+    mock读取详情.mockClear();
+    mock新增叮嘱.mockClear();
+    mock加载工作区.mockClear();
+    mock刷新工作区.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('缺资料：分析/JD/要求/公司五元行/标签/对接人都有标题或标签及缺失；冻结摘要与缺口说明在场', async () => {
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(await screen.findByText('平台工程师')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '资料' }));
+    // 阅读顺序（spec §3.3）五个区块各有标题，位置一个不缺
+    for (const 标题 of ['匹配度分析', '职位详情', '职位要求', '公司信息', '对接人']) {
+      expect(screen.getByText(标题)).toBeTruthy();
+    }
+    expect(screen.getByText('匹配分析缺失')).toBeTruthy();
+    expect(screen.getByText('职位详情缺失')).toBeTruthy();
+    expect(screen.getByText('职位要求缺失')).toBeTruthy();
+    expect(screen.getByText('公司介绍缺失')).toBeTruthy();
+    expect(screen.getByText('公司标签缺失')).toBeTruthy();
+    // 公司五元行位置恒在，缺值显示「—」+ 可访问缺失说明
+    for (const 标签 of ['融资阶段', '规模', '行业', '成立', '地址']) {
+      expect(screen.getByText(标签)).toBeTruthy();
+      expect(screen.getByTitle(`${标签}缺失`).textContent).toBe('—');
+    }
+    expect(screen.getByTitle('对接人姓名缺失').textContent).toBe('—');
+    expect(screen.getByTitle('对接人职务缺失').textContent).toBe('—');
+    expect(screen.getByRole('img', { name: '对接人头像缺失' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: '公司标志缺失' })).toBeTruthy();
+    // 冻结四事实不丢（岗位摘要位如实展示），缺口说明用约定句
+    expect(screen.getByText('上海')).toBeTruthy();
+    expect(screen.getByText('Kubernetes')).toBeTruthy();
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy();
+    // 缺失不走错误红/通过绿的语义色：这里没有通过/失败图标
+    expect(screen.queryByRole('img', { name: /通过/ })).toBeNull();
+  });
+
+  it('Tab 切换零新增请求：组织/推荐/岗位等所有操作在切换前后调用数不变', async () => {
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(await screen.findByText('平台工程师')).toBeTruthy();
+    const 操作调用数 = () => Object.values(mock操作).map((fn) => fn.mock.calls.length);
+    const 切换前 = 操作调用数();
+    fireEvent.click(screen.getByRole('button', { name: '资料' }));
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy();
+    expect(操作调用数()).toEqual(切换前);
+    fireEvent.click(screen.getByRole('button', { name: '进度' }));
+    expect(screen.getByText('匿名初筛')).toBeTruthy();
+    expect(操作调用数()).toEqual(切换前);
+  });
+});
+
 describe('MatchCase详情 · Case 叮嘱输入', () => {
   beforeEach(() => {
     mock派发.mockClear();

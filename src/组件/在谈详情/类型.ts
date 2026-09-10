@@ -4,6 +4,8 @@
 // 不建立通用 reason 枚举；ReactNode 槽只用于组合本页的共享子组件，
 // 禁止传入旧 Mock/Backend 整页 JSX 逃避复用。不输出全局业务 DTO。
 import type { ReactNode } from 'react';
+// 职位资料信息 的对齐行只借用既有类型（契约 B：type import，来源 src/数据/匹配对齐.ts）
+import type { 对齐行 } from '../../数据/匹配对齐';
 
 export type 详情Tab = '进度' | '资料';
 
@@ -57,4 +59,20 @@ export type 详情底栏信息 =
 export interface 终局区信息 {
   摘要: { 结束语: string; 原因: string; 定格于: string } | null;
   移交: { 说明: string; 开始私聊: 详情按钮 } | null;
+}
+
+/** 第二 Tab（资料）自己的输入（契约 B）：只为本页当前字段服务，不输出全局业务 DTO。
+ *  null = 数据源未提供（缺失）；空数组 = 提供了但一条没有（「暂无…」）。 */
+export interface 职位资料信息 {
+  摘要: { 职位: string; 城市: string; 薪资: string; 技能: readonly string[] } | null;
+  分析: { 分: number | null; 行们: 对齐行[] | null; 文案: { 墨句: string; 灰句: string } | null };
+  职位详情: readonly string[] | null;
+  职位要求: readonly string[] | null;
+  公司: {
+    名称: string | null; 字标: string | null; 简介: string | null;
+    元行: readonly { 标签: '融资阶段' | '规模' | '行业' | '成立' | '地址'; 值: string | null }[];
+    标签: readonly string[] | null;
+  };
+  对接人: { 姓名: string | null; 职务: string | null; 字标: string | null };
+  接口缺口说明: string | null;
 }

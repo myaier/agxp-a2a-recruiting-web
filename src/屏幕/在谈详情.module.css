@@ -1,63 +1,11 @@
-/* A6·C 顺利态 / A6a 卡点态 / A6a·J 职位详情 Tab —— 尺寸取自 storyboard 定稿值。
+/* A6·C 顺利态 / A6a 卡点态 —— 尺寸取自 storyboard 定稿值。
    2026-08-20：谈判进度从四阶段时间线改成按阶段分段的对话流，
-   分节条 / 气泡 / 核对清单 / 附件行的样式统一搬进 组件/阶段对话流.module.css，
-   本文件只留「决策卡内部」与「职位详情 Tab」两块。 */
+   分节条 / 气泡 / 核对清单 / 附件行的样式统一搬进 组件/阶段对话流.module.css；
+   2026-09-10 详情统一 Task 1/2：返回栏右侧与 Tab 行收进 组件/在谈详情/详情外壳.module.css，
+   Task 3：资料 Tab 正文（JD / 公司 / 对接人）收进 组件/在谈详情/职位资料.module.css。
+   本文件只留「决策卡内部」，以及仍被 真人会话「看职位」层消费的职位详情块样式。 */
 
-/* ── 返回栏右侧：意向确认态给薪资，其余给适配分 ── */
-.顶部薪资 {
-  flex: none;
-  color: var(--深绿);
-}
-
-.适配组 {
-  flex: none;
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-}
-
-.适配标 {
-  font-size: 10.5px;
-  color: var(--灰白);
-}
-
-.适配分 {
-  font-size: 16px;
-  font-weight: 800;
-  color: var(--深绿);
-}
-
-/* 适配分低于 80 转协调橙，提醒这单本身就不算严丝合缝 */
-.适配分警示 {
-  color: var(--协调);
-}
-
-/* ── 两个 Tab ── */
-.Tab行 {
-  flex: none;
-  display: flex;
-  gap: 20px;
-  align-items: baseline;
-  /* 标注 2026-08-20 13:12：文字贴框边太近，上挪并给足下留白 */
-  padding: 8px 20px 10px;
-}
-
-.Tab {
-  font-size: 15px;
-}
-
-.Tab选中 {
-  font-weight: 700;
-  color: var(--墨);
-  letter-spacing: -0.01em;
-}
-
-.Tab未选 {
-  font-weight: 600;
-  color: var(--次要浅);
-}
-
-/* ── 职位详情 Tab 的滚动区内边距 ── */
+/* ── 职位详情块的滚动区内边距（真人会话「看职位」层同用）── */
 .详情列 {
   padding: 10px 18px 20px;
   display: flex;
@@ -65,7 +13,7 @@
   gap: 2px;
 }
 
-/* 职位详情 Tab 去框（标注 2026-08-24「这个框特别的多余」，产品负责人选定
+/* 职位详情块去框（标注 2026-08-24「这个框特别的多余」，产品负责人选定
    方案乙·白纸化）：页底改白、卡壳全拆、段间一道发丝线。
    用 > * 通配直接子块 —— 这一列里既有本文件的 .详情卡 也有 职位详情.module.css
    的 .卡，跨模块拿不到彼此的类名，通配是唯一不复制样式的写法。
@@ -223,12 +171,8 @@
   margin-top: 10px;
 }
 
-/* ── 意向确认「确认后会发生什么」要点 ── */
-
-
-
-
-/* ── A6a·J 职位详情 Tab ── */
+/* ── 职位详情块（真人会话「看职位」层消费；在谈详情的资料 Tab 已改用
+   组件/在谈详情/职位资料.module.css 的同档样式）── */
 .详情卡 {
   /* 2026-08-24 全站去框（产品负责人批）：卡壳拆掉。上面 .详情列 的通配
      已把直接子块压成白纸平铺，这里把类自身的白底/描边/圆角也删掉 ——
@@ -266,16 +210,7 @@
   color: var(--正文);
 }
 
-/* 岗位运作备注：原来挂在对接人卡里的那行（汇报线 + 作息）。
-   2026-08-23 对接人挪到列顶后，这一行按「它是岗位信息不是人的信息」归进职位详情卡，
-   接在职位要求末条之后。字号与颜色沿用它在对接人卡里的档位，只补一条与正文的分隔间距 */
-.岗位运作备注 {
-  font-size: 10.5px;
-  color: var(--次要浅);
-  margin-top: 8px;
-}
-
-/* 对接人卡（2026-08-23 起位于职位详情 Tab 的最上方，见 在谈详情.tsx 同名注释）*/
+/* 对接人卡（2026-08-26 起位于公司区块之下，见 在谈详情.tsx 同名注释）*/
 .对接人卡 {
   display: flex;
   flex-direction: row;
@@ -322,54 +257,9 @@
   color: var(--次要浅);
 }
 
-/* .对接人备注 已删除：那行备注 2026-08-23 归进了职位详情卡，改用上面的 .岗位运作备注。
+/* .对接人备注 已删除：那行备注 2026-08-23 归进了职位详情卡。
    对接人卡现在只剩单行（姓名 · 公司 · 职务），没有第二行要排 */
 
-/* 公司卡 */
-.公司头行 {
-  /* 整行是 button（进公司主页），要显式复位宽度与对齐 */
-  width: 100%;
-  text-align: left;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
-}
-
-.公司文本 {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.公司名 {
-  font-size: 14.5px;
-  font-weight: 800;
-  color: var(--墨);
-}
-
-.公司简介 {
-  font-size: 11px;
-  color: var(--次要浅);
-}
-
-.尖括号 {
-  flex: none;
-  color: var(--最弱);
-  font-size: 16px;
-  font-weight: 300;
-}
-
-.公司正文 {
-  font-size: 12px;
-  line-height: 1.75;
-  color: var(--正文);
-  margin-top: 11px;
-  padding-top: 11px;
-  border-top: 1px solid var(--分隔线);
-}
 
 .公司标签行 {
   display: flex;

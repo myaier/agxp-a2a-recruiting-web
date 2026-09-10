@@ -172,4 +172,25 @@ describe('在谈详情 · Mock 公司卡仍按原 slug 导航', () => {
     expect(mock公司路由键).toHaveBeenCalledWith(本单.公司);
     expect(mock跳转).toHaveBeenCalledWith(`/company/slug-${本单.公司}`);
   });
+
+  it('资料 Tab 用共用 职位资料 渲染连接层投影：摘要/JD/要求/公司五元行/标签/对接人齐备', () => {
+    渲染职位Tab();
+    // 岗位摘要如实展示冻结事实；在谈单没有独立城市字段，位置取卡片位置标签原文
+    // （J-01 在意向确认态，顶栏标题同文案，所以职位用 getAllByText）
+    expect(screen.getAllByText(本单.职位).length).toBeGreaterThan(0);
+    expect(screen.getByText('上海 · 浦东')).toBeTruthy();
+    // 技能标签来自证据源的 JD 技能要求：同一词在 岗位摘要标签区 与 匹配分析要求行 各出现一次
+    expect(screen.getAllByText('稳定性治理').length).toBe(2);
+    // JD 正文/要求来自 取在谈岗位详情（连接层已把静态查询做掉）
+    expect(screen.getByText('1、负责电商交易链路的网关与清结算服务，支撑大促峰值下的下单与退款；')).toBeTruthy();
+    // 公司五元行由公司档案投影（档案规模行认段 + 工商信息成立 + 地址），公司标签区保留
+    expect(screen.getByText('未上市')).toBeTruthy();
+    expect(screen.getByText('10000 人以上')).toBeTruthy();
+    expect(screen.getByText('2016 年')).toBeTruthy();
+    expect(screen.getByText('北京市海淀区北三环西路甲 18 号')).toBeTruthy();
+    expect(screen.getByText('混合 3+2')).toBeTruthy();
+    // 对接人原位渲染（不再按取不到就整卡隐藏）
+    expect(screen.getByText('林筱')).toBeTruthy();
+    expect(screen.getByText('招聘顾问')).toBeTruthy();
+  });
 });
