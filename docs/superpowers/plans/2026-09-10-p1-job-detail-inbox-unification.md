@@ -153,7 +153,7 @@ interface 消息列表展示属性 {
 
 - [ ] 核对冻结 Spec blob、工作区/依赖/并行预告。记录 `git rev-parse HEAD` 为本次 `visual_source_candidate`，产品基线变化先说明实际 diff；不合入 target。`node_modules` 缺失才 `npm ci`，不改 lockfile。
 - [ ] 源码检查所有现有市场 fixture 的公司/发布人可空字段及已知 fallback，确认 Spec §2.1 与 §3.2 不冲突；发现实际 Mock 视觉冲突在该字段实施前停止，不改 fixture 隐藏差异。
-- [ ] 新增带 `P1 Mock视觉 @mock` 标签的 320×844、390×844 场景。使用 `打开稳定页面(page, path, 状态)` 建立原有种子：`/#/job/M-13`、候选 `/#/app` 后点消息、招聘 `/#/hr` 后点消息、`/#/chat/direct/M-13` 后点看职位；招聘真人行通过原 Mock 用户动作推进到 S3，再进消息，不用姓名存在假作完成。
+- [ ] 新增带 `P1 Mock视觉 @mock` 标签的 320×844、390×844 场景。使用 `打开稳定页面(page, path, 状态)` 建立原有种子：通过 `路径.职位详情('M-13')` 构造 hash URL、候选 `/#/app` 后点消息、招聘 `/#/hr` 后点消息、通过 `路径.直聊会话岗位('M-13')` 构造 hash URL 后点看职位；招聘真人行通过原 Mock 用户动作推进到 S3，再进消息，不用姓名存在假作完成。
 - [ ] 冻结 locale zh-CN、timezone Asia/Shanghai、reducedMotion reduce；等待 fonts.ready 和页面就绪，不用固定长 sleep。截图覆盖职位顶部、公司/发布人滚动段、更多层，消息全部/通知/搜索，直聊覆盖层。另记消息极长标题的隔离布局样本：在测试页面将同一会话标题文本替换为固定 80 个汉字，基准/候选执行完全相同的测试端 DOM 文本替换，记录标题/时间/行框几何；不改 class/style 或产品 fixture。此样本仅证明布局不退化，不作为 HTTP 接线证据。每种滚动状态独立 sceneId，基准和候选相同导航/滚动步骤。
 - [ ] 每个场景输出关键元素几何、PNG、console/page/API 诊断。关键元素至少为分数位、JD/公司/发布人卡、浮动按钮、消息标题/页签/搜索/首行/未读。普通 Mock 零新增 API；失败必须写 failed JSON 并抛错。sceneId 包含视口宽度，禁止覆盖另一宽度的证据。
 - [ ] 执行：`P1_CAPTURE_DIR=ui-regression-output/p1/reference npm run test:e2e:data-source -- e2e/P1展示统一.spec.ts --project=mock-stg --grep 'P1 Mock视觉' --workers=1`。预期全部场景成功，目录有基准截图/JSON；缺截图不能记 PASS。保留 source commit 与工具链信息，未发生产品修改前提交测试文件。
@@ -271,6 +271,8 @@ interface 消息列表展示属性 {
 
 - R3 reviewer：同一 Claude Opus/high 会话；候选 `109ede27b7b812087091eac7a32e9f9811bf9f68`。前后工作树/HEAD/文档指纹 guard 通过，未运行测试；确认 R2 修复成立、R1 裁决保持，无未解决 required。新增 1 条 Minor 可选增强/optional/复杂度降低：既有视觉 schema 和比较器不消费 computed style。接受最小方案，删除 computed style 的额外采集/比较要求，保留标题/时间/行几何及截图；不扩展 schema 或比较器。此纯删除经 planner 核对，不启动超出上限的第四轮。
 - 汇总：共 3 轮，2 条 required 均修复并复审核实；3 条 optional 中 2 条接受、1 条拒绝且理由获复审核实。产品测试未运行（规划阶段），文档只读审查不替代实施代码 review。
+
+提示词校验说明：路由示例使用既有路径 builder 加 hash URL，避免可迁移路径校验器将 URL 内路径误判为本机绝对文件路径；导航目标和产品契约不变。
 
 ## 实施证据记录
 
