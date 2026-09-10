@@ -1,22 +1,8 @@
-// A10·B AI代理规则库 · 清单版（P6 接权威规则域）
-//
-// 产品含义（P6 定稿）：规则不再由叮嘱自动沉淀 —— 用户在提案确认卡上明确「确认规则」后，
-// 才会成为长期规则约束 AI 代理。提示条与数据流都改成显式确认口径。
-//
-// 数据流分两条：
-// · Mock：读全局状态里的 全局规则 / 意向级规则（不能本地 useState，「往来记录 → 记成规则」
-//   新增的那条要真的出现在这里）；手动新增/编辑先生成本地确认卡，明确确认后才派发长期规则。
-// · Backend（P6）：一切展示先过角色水合门控 ——
-//   rules 成功前不显示任何规则行/计数；proposals 也成功后才给 创建/编辑/确认/放弃 控件与提案卡；
-//   任一域 失败 出「规则加载失败，重试」（重试跑完整 刷新Agent规则 水合）；
-//   进行中出 role="status" 加载壳，已成功的域保持在屏（刷新不得降级，行不闪退）。
-//   编辑=替换提案（旧 Rule 在确认前保留），删除=当前版本 If-Match；
-//   所有动作 await 操作层，失败 轻提示(取Agent规则错误文案) 并保留本地草稿/范围。
-//
-// 结构：提示条 →（加载壳/重试）→ 提案卡组 → 全局规则分组卡 → 意向分组卡 → 手动添加 → 尾注。
-
-import { Fragment, useEffect, useRef, useState } from 'react';
+// 已批准的 AI代理设置：保留角色水合、权威提案确认与原账号缓存边界。
+import { useEffect, useRef, useState } from 'react';
 import 样式 from './规则库.module.css';
+import 可编辑规则行 from '../组件/可编辑规则行';
+import 排除规则分区 from '../组件/排除规则分区';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { 先问选择行 } from '../组件/先问选择行';
 import Agent规则提案卡 from '../组件/Agent规则提案卡';
@@ -98,14 +84,10 @@ export default function 规则库() {
   // 手动添加：折叠态是一条虚线按钮，点开后原地变成输入行（不另开弹层，减少一次跳转）
   const [添加中, 设添加中] = useState(false);
   const [新规则文本, 设新规则文本] = useState('');
+  const 添加组合中 = useRef(false);
   // P6 范围选择：默认全局，可点名某条权威意向（Mock 无权威意向，不出这个选择器）
   const [选范围, 设选范围] = useState('');
   const [提交中, 设提交中] = useState(false);
-  // 编辑制（标注 10:16）：点行进入编辑，改完 提交修改（Backend=替换提案）或删除
-  const [编辑中编号, 设编辑中编号] = useState<string | null>(null);
-  const [编辑草稿, 设编辑草稿] = useState('');
-  const [提交编辑中, 设提交编辑中] = useState(false);
-  const [删除中, 设删除中] = useState(false);
   // 提案卡的忙：只圈住正在接受/放弃的那一张卡（failed 卡的关闭永远可用）
   const [卡忙编号, 设卡忙编号] = useState<string | null>(null);
   const [Mock提案们, 设Mock提案们] = useState<Mock候选提案[]>([]);
@@ -115,26 +97,6 @@ export default function 规则库() {
   // §7.3：公开的 Proposal DTO 不带正文/范围 —— 创建成功后把原草稿寄存进 sessionStorage
   //（Agent规则草稿寄存），跨导航存活；提案翻 failed 且用户关闭失败卡时原样还原，
   // 提案收口（接受/放弃）时清掉寄存。
-
-  // 权威意向候选 = 求职意向表 ∩ 后端意向快照（archived 排除）；孤儿意向规则由映射层整条省略，
-  // 绝不并入全局，也不出现在范围选择里
-  const 范围选项 = 状态.求职意向表.filter((条) => {
-    const dto = 后端状态.意向快照[条.编号];
-    return dto !== undefined && dto.status !== 'archived';
-  });
-  const 意向分组 = 范围选项
-    .map((条) => ({
-      编号: 条.编号,
-      标题: 条.标题,
-      规则: 状态.意向级规则.filter(
-        (规) => 规.作用域?.类型 === '意向' && 规.作用域.意向编号 === 条.编号,
-      ),
-    }))
-    .filter((组) => 组.规则.length > 0);
-
-  // 行数据源：Mock 用既有数组；Backend 等 rules 成功后同一数组已被权威投影整组替换
-  const 全部规则 = [...状态.全局规则, ...状态.意向级规则];
-  const 条数 = 全部规则.filter((条) => 条.生效).length;
 
   // actionable 提案：Backend 按角色读 raw 字典；Mock 用同一确认卡模拟“理解后确认”。
   const 可见提案 = 提案展示序(
@@ -156,12 +118,13 @@ export default function 规则库() {
 
   // 提交手动添加：candidate 必须点名范围（默认 global）；失败保留草稿与范围供再次明确提交
   const 提交新规则 = async () => {
+    if (添加组合中.current) return;
     const 内容 = 新规则文本.trim();
     if (!内容) {
       轻提示('请先写下希望AI代理遵守的规则');
       return;
     }
-    if (提交中) return;
+    if (提交中 || 选范围 !== '') return;
     const 作用域: BFFAgent规则作用域 = 选范围 === ''
       ? { type: 'global' }
       : { type: 'intention', intention_id: 选范围 };
@@ -180,6 +143,7 @@ export default function 规则库() {
         return;
       }
       const 回执编号 = await 操作.创建Agent规则提案({ 文本: 内容, 作用域 });
+      if (!回执编号) throw new Error('规则尚未提交，请重试');
       // 成功才寄存草稿并收起输入行；idempotency_conflict 等失败一律保留现场，不伪造成功
       if (回执编号) {
         写Agent规则草稿(回执编号, {
@@ -211,45 +175,19 @@ export default function 规则库() {
     设已关失败卡((旧) => [...旧, 编号]);
   };
 
-  // 编辑保存 = 替换提案：旧 Rule 在用户「确认规则」前继续显示
-  const 保存编辑 = async () => {
-    if (编辑中编号 === null || 提交编辑中) return;
-    const 内容 = 编辑草稿.trim();
-    if (!内容) return;
-    设提交编辑中(true);
-    try {
-      if (!是Backend) {
-        Mock提案序.current += 1;
-        const proposal_id = `mock-candidate-${Mock提案序.current}`;
-        设Mock提案们((旧) => [...旧, {
-          dto: { proposal_id, state: 'ready', normalized_text: 内容, consequence: 'advisory' },
-          动作: { 型: '替换', 编号: 编辑中编号, 文本: 内容 },
-        }]);
-        设编辑中编号(null);
-        return;
-      }
-      await 操作.创建Agent规则替换提案(编辑中编号, 内容);
-      设编辑中编号(null);
-    } catch (错误) {
-      // 保留编辑草稿，不伪造成功
-      轻提示(取Agent规则错误文案(错误));
-    } finally {
-      设提交编辑中(false);
+  // 修改仍走权威替换提案，确认前不替换旧规则。
+  const 保存编辑 = async (条: 规则, 内容: string) => {
+    if (!是Backend) {
+      Mock提案序.current += 1;
+      const proposal_id = `mock-candidate-${Mock提案序.current}`;
+      设Mock提案们(旧 => [...旧, {
+        dto: { proposal_id, state: 'ready', normalized_text: 内容, consequence: 'advisory' },
+        动作: { 型: '替换', 编号: 条.编号, 文本: 内容 },
+      }]);
+      return;
     }
-  };
-
-  // 删除 = 当前版本 If-Match；失败保留编辑态；删除在飞时按钮禁用，杜绝双击打出 not_found
-  const 删除规则 = async () => {
-    if (编辑中编号 === null || 删除中) return;
-    设删除中(true);
-    try {
-      await 操作.删除Agent规则(编辑中编号);
-      设编辑中编号(null);
-    } catch (错误) {
-      轻提示(取Agent规则错误文案(错误));
-    } finally {
-      设删除中(false);
-    }
+    const 编号 = await 操作.创建Agent规则替换提案(条.编号, 内容);
+    if (!编号) throw new Error('修改尚未提交，请重试');
   };
 
   // 接受/放弃：await 操作层，失败由 P6 文案收口；操作层负责恢复与权威刷新。
@@ -295,47 +233,11 @@ export default function 规则库() {
     <次级页外壳 白底>
       <返回栏
         返回={返回}
-        标题="AI代理规则库"
-        右侧={显示清单 ? <span className={`${样式.生效数} 等宽数字`}>{条数} 条</span> : null}
+        标题="AI代理设置"
       />
 
       {/* ── 哪些事先问你(2026-08-31 定稿):页面只放真选项,铁律不渲染成设置。
             Backend 角色不符时随安全壳一起收起 ── */}
-      {!是Backend || role !== null ? (
-        <div className={样式.授权组}>
-          <div className={样式.分组标}>哪 些 事 先 问 你</div>
-          <div className={样式.授权卡}>
-            {是Backend && Agent设置快照?.阶段 !== '成功' ? (
-              Agent设置快照?.阶段 === '失败'
-                ? <button className={`${样式.重试键} 可点`} onClick={() => { void 操作.加载Agent设置(true); }}>设置加载失败，重试</button>
-                : <div className={样式.加载壳} role="status">AI代理设置加载中</div>
-            ) : null}
-            <先问选择行
-              标题="发送正式简历"
-              注="带姓名与联系方式的 PDF 原件"
-              值={状态.求职先问偏好.递交材料}
-              选项={['先问我', '自动发送'] as const}
-              选择={(值) => {
-                if (!是Backend) 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 递交材料: 值 } });
-                else void 保存候选Agent设置({ material_submission: 值 === '先问我' ? 'ask_first' : 'auto_send' });
-              }}
-              禁用={!Agent设置已就绪 || Agent设置保存中}
-            />
-            <先问选择行
-              标题="对方要的让步超出授权"
-              注="比如作息折中、提前到岗"
-              值={状态.求职先问偏好.超授权让步}
-              选项={['先问我', '直接回绝'] as const}
-              选择={(值) => {
-                if (!是Backend) 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 超授权让步: 值 } });
-                else void 保存候选Agent设置({ out_of_authority_concession: 值 === '先问我' ? 'ask_first' : 'reject' });
-              }}
-              禁用={!Agent设置已就绪 || Agent设置保存中}
-              末行
-            />
-          </div>
-        </div>
-      ) : null}
 
       {是Backend ? (
         <div className={样式.提示条}>
@@ -381,114 +283,38 @@ export default function 规则库() {
 
           {显示清单 ? (
             <>
-              <div className={样式.分组标}>你 教 它 的 规 则</div>
+              <排除规则分区 />
+              <section className={样式.分区} aria-label="你教它的规则">
+              <h2 className={样式.分组标}>你教它的规则</h2>
               <div className={样式.卡}>
-                {状态.全局规则.map((条, 序) => (
-                  <规则行
-                    key={条.编号}
-                    条={条}
-                    可编辑={显示控件}
-                    编辑中={编辑中编号 === 条.编号}
-                    草稿={编辑草稿}
-                    改草稿={设编辑草稿}
-                    开始编辑={() => {
-                      设编辑中编号(条.编号);
-                      设编辑草稿(条.内容);
-                    }}
-                    保存={保存编辑}
-                    删除={删除规则}
-                    编辑提交中={提交编辑中}
-                    编辑删除中={删除中}
-                    末条={序 === 状态.全局规则.length - 1}
-                  />
-                ))}
+                {状态.全局规则.map(条 => <可编辑规则行 key={条.编号} 条={条} 可编辑={显示控件}
+                  保存={内容 => 保存编辑(条, 内容)}
+                  删除={async () => { if (!是Backend) 派发({ 型: '删规则', 编号: 条.编号 }); else await 操作.删除Agent规则(条.编号); }}
+                  切换={async () => { if (!是Backend) 派发({ 型: '切规则开关', 编号: 条.编号 }); else await 操作.切换Agent规则(条.编号, 条.生效 ? 'pause' : 'resume'); }} />)}
               </div>
-
-              {是Backend ? (
-                // Backend：按真实 intention_id 分组，标题用权威求职意向名（Mock 分组保持原型）
-                意向分组.map((组) => (
-                  <Fragment key={组.编号}>
-                    <div className={样式.分组标}>意向规则 · {组.标题}</div>
-                    <div className={样式.卡}>
-                      {组.规则.map((条, 序) => (
-                        <规则行
-                          key={条.编号}
-                          条={条}
-                          可编辑={显示控件}
-                          编辑中={编辑中编号 === 条.编号}
-                          草稿={编辑草稿}
-                          改草稿={设编辑草稿}
-                          开始编辑={() => {
-                            设编辑中编号(条.编号);
-                            设编辑草稿(条.内容);
-                          }}
-                          保存={保存编辑}
-                          删除={删除规则}
-                          编辑提交中={提交编辑中}
-                          编辑删除中={删除中}
-                          末条={序 === 组.规则.length - 1}
-                        />
-                      ))}
-                    </div>
-                  </Fragment>
-                ))
-              ) : (
-                <>
-                  <div className={样式.分组标}>意向级 · 仅「AI 产品经理」</div>
-                  <div className={样式.卡}>
-                    {状态.意向级规则.map((条, 序) => (
-                      <规则行
-                        key={条.编号}
-                        条={条}
-                        可编辑={显示控件}
-                        编辑中={编辑中编号 === 条.编号}
-                        草稿={编辑草稿}
-                        改草稿={设编辑草稿}
-                        开始编辑={() => {
-                          设编辑中编号(条.编号);
-                          设编辑草稿(条.内容);
-                        }}
-                        保存={保存编辑}
-                        删除={删除规则}
-                        编辑提交中={提交编辑中}
-                        编辑删除中={删除中}
-                        末条={序 === 状态.意向级规则.length - 1}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
 
               {添加中 ? (
                 <div className={样式.添加输入行}>
-                  {是Backend && 范围选项.length > 0 ? (
-                    <select
-                      className={样式.范围选择}
-                      aria-label="规则范围"
-                      value={选范围}
-                      onChange={(事件) => 设选范围(事件.target.value)}
-                    >
-                      <option value="">全局 · 所有谈判生效</option>
-                      {范围选项.map((条) => (
-                        <option key={条.编号} value={条.编号}>{条.标题}</option>
-                      ))}
-                    </select>
-                  ) : null}
+                  {选范围 !== '' ? <p className={样式.边界说明}>这是历史意向规则草稿，此页不再提交意向规则。请取消后重新添加全局规则。</p> : null}
                   <input
                     className={样式.添加输入框}
                     placeholder="例：不接受大小周的岗位直接过滤"
                     value={新规则文本}
+                    disabled={提交中}
+                    onCompositionStart={() => { 添加组合中.current = true; }}
+                    onCompositionEnd={() => { 添加组合中.current = false; }}
                     onChange={(事件) => 设新规则文本(事件.target.value)}
                     onKeyDown={(事件) => {
                       // 中文输入法组合期（拼音候选词上屏那一下回车）不算提交，与企业代理设置屏一致
-                      if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) void 提交新规则();
-                      if (事件.key === 'Escape') 设添加中(false);
+                      if (事件.key === 'Enter' && !添加组合中.current && !事件.nativeEvent.isComposing && 事件.keyCode !== 229) void 提交新规则();
+                      if (事件.key === 'Escape' && !事件.nativeEvent.isComposing) { 设添加中(false); 设新规则文本(''); 设选范围(''); }
                     }}
                     enterKeyHint="done"
                     autoFocus
                   />
                   <button
                     className={`${样式.取消添加} 可点`}
+                    disabled={提交中}
                     onClick={() => {
                       设新规则文本('');
                       设选范围('');
@@ -497,112 +323,49 @@ export default function 规则库() {
                   >
                     取消
                   </button>
-                  <button className={`${样式.确认添加} 可点`} disabled={提交中 || 新规则文本.trim() === ''} onClick={() => { void 提交新规则(); }}>
+                  <button className={`${样式.确认添加} 可点`} disabled={提交中 || 选范围 !== '' || 新规则文本.trim() === ''} onClick={() => { void 提交新规则(); }}>
                     提交给AI代理理解
                   </button>
                 </div>
               ) : 显示控件 ? (
                 <button className={`${样式.手动添加} 可点`} onClick={() => 设添加中(true)}>
                   <span className={样式.添加圆}>＋</span>
-                  <span className={样式.添加文字}>手动添加规则</span>
+                  <span className={样式.添加文字}>添加规则</span>
                 </button>
               ) : null}
 
-              {显示控件 ? (
-                <div className={样式.尾注}>
-                  {是Backend
-                    ? '点任意规则可提交修改或删除；修改要经你确认后才会替换原规则。'
-                    : '点任意规则可编辑或删除。'}
-                </div>
-              ) : null}
+              </section>
+
             </>
           ) : null}
+      {!是Backend || role !== null ? (
+        <div className={样式.授权组}>
+          <div className={样式.分组标}>哪些事先问你</div>
+          <div className={样式.授权卡}>
+            {是Backend && Agent设置快照?.阶段 !== '成功' ? (
+              Agent设置快照?.阶段 === '失败'
+                ? <button className={`${样式.重试键} 可点`} onClick={() => { void 操作.加载Agent设置(true); }}>设置加载失败，重试</button>
+                : <div className={样式.加载壳} role="status">AI代理设置加载中</div>
+            ) : null}
+            <先问选择行
+              末行
+              标题="发送正式简历"
+              注="带姓名与联系方式的 PDF 原件"
+              值={状态.求职先问偏好.递交材料}
+              选项={['先问我', '自动发送'] as const}
+              选择={(值) => {
+                if (!是Backend) 派发({ 型: '设先问偏好', 端: '求职', 偏好: { 递交材料: 值 } });
+                else void 保存候选Agent设置({ material_submission: 值 === '先问我' ? 'ask_first' : 'auto_send' });
+              }}
+              禁用={!Agent设置已就绪 || Agent设置保存中}
+            />
+
+          </div>
+        </div>
+      ) : null}
+
         </div>
       </滚动区>
     </次级页外壳>
-  );
-}
-
-// ── 单条规则：点行进入编辑（输入框 + 提交修改/删除）；未就绪时是纯展示行 ──
-function 规则行({
-  条,
-  可编辑,
-  编辑中,
-  草稿,
-  改草稿,
-  开始编辑,
-  保存,
-  删除,
-  编辑提交中,
-  编辑删除中,
-  末条,
-}: {
-  条: 规则;
-  /** proposals 未就绪时没有编辑/删除控件：行退化为纯展示（P6 门控） */
-  可编辑: boolean;
-  编辑中: boolean;
-  草稿: string;
-  改草稿: (值: string) => void;
-  开始编辑: () => void;
-  保存: () => void;
-  删除: () => void;
-  /** 替换提案在飞：提交修改 禁用 */
-  编辑提交中: boolean;
-  /** 删除在飞：删除 禁用（双击会打出 agent_rule_not_found） */
-  编辑删除中: boolean;
-  末条: boolean;
-}) {
-  if (编辑中) {
-    return (
-      <div className={`${样式.规则行} ${末条 ? 样式.末条 : ''}`}>
-        <div className={样式.规则主体}>
-          <div className={样式.规则头}>
-            <input
-              className={样式.规则编辑框}
-              value={草稿}
-              autoFocus
-              onChange={(事件) => 改草稿(事件.target.value)}
-              onKeyDown={(事件) => {
-                if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 保存();
-              }}
-              enterKeyHint="done"
-            />
-          </div>
-          <div className={样式.编辑键行}>
-            <button className={`${样式.删除键} 可点`} disabled={编辑删除中} onClick={删除}>
-              删除
-            </button>
-            <button className={`${样式.保存键} 可点`} disabled={编辑提交中} onClick={保存}>
-              提交修改
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!可编辑) {
-    return (
-      <div className={`${样式.规则行} ${末条 ? 样式.末条 : ''}`}>
-        <div className={样式.规则主体}>
-          <div className={样式.规则头}>
-            <span className={样式.规则内容}>{条.内容}</span>
-          </div>
-          <div className={样式.规则来源}>{条.来源}</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <button className={`${样式.规则行} ${末条 ? 样式.末条 : ''} 可点`} onClick={开始编辑}>
-      <div className={样式.规则主体}>
-        <div className={样式.规则头}>
-          <span className={样式.规则内容}>{条.内容}</span>
-        </div>
-        <div className={样式.规则来源}>{条.来源}</div>
-      </div>
-      <span className={样式.规则改}>✎</span>
-    </button>
   );
 }

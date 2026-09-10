@@ -376,15 +376,14 @@ describe('规则库 · Backend 候选页', () => {
   it('Backend candidate groups by authoritative intention and creates an intention-scoped Proposal', async () => {
     const user = userEvent.setup();
     const 视图 = renderCandidateRules({ mode: 'backend', rulesStage: '成功', proposalsStage: '成功', initialized: true });
-    expect(screen.getByText('意向规则 · AI 产品经理')).toBeTruthy();
+    expect(screen.queryByText('意向规则 · AI 产品经理')).toBeNull();
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
-    await user.selectOptions(screen.getByLabelText('规则范围'), 'int_0123456789abcdef0123456789abcdef');
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
     expect(视图.操作.创建Agent规则提案).toHaveBeenCalledWith({
       文本: '只接受双休',
-      作用域: { type: 'intention', intention_id: 'int_0123456789abcdef0123456789abcdef' },
+      作用域: { type: 'global' },
     });
     expect(screen.queryByText('只接受双休')).toBeNull();
   });
@@ -393,11 +392,9 @@ describe('规则库 · Backend 候选页', () => {
     const user = userEvent.setup();
     const 视图 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     // 范围选择只有「全局 + 权威意向」，绝不提供自由文本 ID 项
-    expect(within(screen.getByLabelText('规则范围')).getAllByRole('option')
-      .map((选项) => (选项 as HTMLOptionElement).value))
-      .toEqual(['', 意向编号]);
+    expect(screen.queryByLabelText('规则范围')).toBeNull();
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
     expect(视图.操作.创建Agent规则提案).toHaveBeenCalledWith({
@@ -414,14 +411,14 @@ describe('规则库 · Backend 候选页', () => {
     const 编辑框 = screen.getByDisplayValue('大小周不谈');
     await user.clear(编辑框);
     await user.type(编辑框, '双休是底线；隔周六可谈');
-    await user.click(screen.getByRole('button', { name: '提交修改' }));
+    await user.click(screen.getByRole('button', { name: '完成' }));
     expect(视图.操作.创建Agent规则替换提案).toHaveBeenCalledWith(
       BFFAgent规则样本.rule_id,
       '双休是底线；隔周六可谈',
     );
     // 旧 Rule 在用户「确认规则」前保持原样显示，也没有临时行或计数变化
     expect(screen.getByText('大小周不谈')).toBeTruthy();
-    expect(screen.getByText('2 条')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
   });
 
   it('archive deletes by the current Rule ID, guards double-clicks, and refreshes authoritatively', async () => {
@@ -439,15 +436,16 @@ describe('规则库 · Backend 候选页', () => {
       },
     });
     await 挂载到稳定();
-    await user.click(screen.getByText('大小周不谈'));
-    await user.click(screen.getByRole('button', { name: '删除' }));
-    expect(screen.getByRole('button', { name: '删除' }).hasAttribute('disabled')).toBe(true);
-    // 同一张编辑卡上只有删除在飞：提交修改不受牵连
-    expect(screen.getByRole('button', { name: '提交修改' }).hasAttribute('disabled')).toBe(false);
+    await user.click(screen.getByRole('button', { name: '显示删除：大小周不谈' }));
+    await user.click(screen.getByRole('button', { name: '删除规则：大小周不谈' }));
+    const 确认 = screen.getByRole('dialog', { name: '删除这条规则？' });
+    const 删除键 = within(确认).getByRole('button', { name: '删除' });
+    await user.dblClick(删除键);
+    expect(视图.操作.删除Agent规则).toHaveBeenCalledTimes(1);
     删除完成.resolve();
     await waitFor(() => expect(screen.queryByText('大小周不谈')).toBeNull());
     expect(视图.操作.删除Agent规则).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('0 条')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
   });
 
   it('renders interpreting, ready, and failed Proposal cards with the frozen copies', () => {
@@ -488,15 +486,14 @@ describe('规则库 · Backend 候选页', () => {
     expect(screen.queryByText('本次规则没有生效')).toBeNull();
     // ready 卡与页面控件不受牵连
     expect(screen.getByRole('button', { name: '确认规则' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /手动添加规则/ })).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ })).toBeTruthy();
   });
 
   it('closing a failed card restores the submitted draft and scope for resubmission', async () => {
     const user = userEvent.setup();
     const 视图 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
-    await user.selectOptions(screen.getByLabelText('规则范围'), 意向编号);
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
     // 创建成功即收起输入行：草稿先寄存在页面，等提案终态裁决
@@ -522,7 +519,7 @@ describe('规则库 · Backend 候选页', () => {
     await user.click(screen.getByRole('button', { name: '关闭' }));
     // §7.3：关闭后原草稿（含范围）回到输入行，供再次明确提交
     expect((screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤') as HTMLInputElement).value).toBe('只接受双休');
-    expect((screen.getByLabelText('规则范围') as HTMLSelectElement).value).toBe(意向编号);
+    expect(screen.queryByLabelText('规则范围')).toBeNull();
     expect(screen.queryByText('内容无法可靠转换为规则，可编辑后重新提交')).toBeNull();
     // 关闭恢复草稿后也没有第二次 create：重发必须由用户显式点击
     expect(视图.操作.创建Agent规则提案).toHaveBeenCalledTimes(1);
@@ -533,8 +530,7 @@ describe('规则库 · Backend 候选页', () => {
     const user = userEvent.setup();
     const 第一屏 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
-    await user.selectOptions(screen.getByLabelText('规则范围'), 意向编号);
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
     await waitFor(() => expect(screen.queryByPlaceholderText('例：不接受大小周的岗位直接过滤')).toBeNull());
@@ -548,7 +544,7 @@ describe('规则库 · Backend 候选页', () => {
     await user.click(screen.getByRole('button', { name: '关闭' }));
     // 原草稿（含范围）回到输入行，供再次明确提交
     expect((screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤') as HTMLInputElement).value).toBe('只接受双休');
-    expect((screen.getByLabelText('规则范围') as HTMLSelectElement).value).toBe(意向编号);
+    expect(screen.queryByLabelText('规则范围')).toBeNull();
     expect(screen.queryByText('本次规则没有生效')).toBeNull();
   });
 
@@ -567,9 +563,8 @@ describe('规则库 · Backend 候选页', () => {
     try {
       第一屏 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
       await 挂载到稳定();
-      await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
-      await user.selectOptions(screen.getByLabelText('规则范围'), 意向编号);
-      await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
+      await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
+        await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
       await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
       await waitFor(() => expect(screen.queryByPlaceholderText('例：不接受大小周的岗位直接过滤')).toBeNull());
       // storage 层确实没写进去
@@ -588,7 +583,7 @@ describe('规则库 · Backend 候选页', () => {
       await user.click(screen.getByRole('button', { name: '关闭' }));
       // 记忆层兜底：同页关闭失败卡照样还原原草稿与范围
       expect((screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤') as HTMLInputElement).value).toBe('只接受双休');
-      expect((screen.getByLabelText('规则范围') as HTMLSelectElement).value).toBe(意向编号);
+      expect(screen.queryByLabelText('规则范围')).toBeNull();
     } finally {
       写入抛错.mockRestore();
     }
@@ -633,7 +628,7 @@ describe('规则库 · Backend 候选页', () => {
       },
     });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
     await waitFor(() => expect(screen.queryByPlaceholderText('例：不接受大小周的岗位直接过滤')).toBeNull());
@@ -683,7 +678,7 @@ describe('规则库 · Backend 候选页', () => {
         { ...BFFAgent规则样本, rule_id: 'rul_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', state: 'paused', display_text: '全现场岗位先不聊' },
       ],
     });
-    expect(screen.getByText('1 条')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
     expect(screen.getByText('全现场岗位先不聊')).toBeTruthy();
   });
 
@@ -692,7 +687,7 @@ describe('规则库 · Backend 候选页', () => {
     expect(screen.getByRole('button', { name: '规则加载失败，重试' })).toBeTruthy();
     expect(screen.queryByRole('status', { name: '规则加载中' })).toBeNull();
     expect(screen.queryByText('大小周不谈')).toBeNull();
-    expect(screen.queryByRole('button', { name: /手动添加规则/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /添加规则/ })).toBeNull();
   });
 
   it('hides Mock rows and count before Rule hydration succeeds', () => {
@@ -704,7 +699,7 @@ describe('规则库 · Backend 候选页', () => {
     });
     expect(screen.queryByText('模拟残留的Mock规则')).toBeNull();
     expect(screen.queryByText('0 条')).toBeNull();
-    expect(screen.queryByRole('button', { name: /手动添加规则/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /添加规则/ })).toBeNull();
   });
 
   it('orphan intention Rules stay absent and never join the scope options', async () => {
@@ -718,15 +713,13 @@ describe('规则库 · Backend 候选页', () => {
     });
     expect(screen.queryByText('孤儿意向的规则')).toBeNull();
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
-    expect(within(screen.getByLabelText('规则范围')).getAllByRole('option')
-      .map((选项) => (选项 as HTMLOptionElement).value))
-      .toEqual(['', 意向编号]);
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
+    expect(screen.queryByLabelText('规则范围')).toBeNull();
   });
 
   it('renders a safe shell when the active role is not the candidate', () => {
     renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true, 主体角色: 'recruiter' });
-    expect(screen.queryByRole('button', { name: /手动添加规则/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /添加规则/ })).toBeNull();
     expect(screen.queryByText('大小周不谈')).toBeNull();
     expect(screen.queryByRole('status', { name: '规则加载中' })).toBeNull();
     expect(screen.queryByRole('button', { name: '规则加载失败，重试' })).toBeNull();
@@ -734,7 +727,7 @@ describe('规则库 · Backend 候选页', () => {
 
   it('renders a safe shell while the session is not initialized', () => {
     renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: false });
-    expect(screen.queryByRole('button', { name: /手动添加规则/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /添加规则/ })).toBeNull();
     expect(screen.queryByRole('status', { name: '规则加载中' })).toBeNull();
   });
 
@@ -742,7 +735,7 @@ describe('规则库 · Backend 候选页', () => {
     const user = userEvent.setup();
     const 视图 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     视图.操作.创建Agent规则提案.mockRejectedValue(new BFF错误(500, 'internal_error', 'boom'));
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
@@ -756,7 +749,7 @@ describe('规则库 · Backend 候选页', () => {
     const user = userEvent.setup();
     renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     const 提交 = screen.getByRole('button', { name: '提交给AI代理理解' }) as HTMLButtonElement;
     expect(提交.disabled).toBe(true);
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
@@ -767,7 +760,7 @@ describe('规则库 · Backend 候选页', () => {
     const user = userEvent.setup();
     const 视图 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     for (const [code, 文案] of 冻结文案们) {
       视图.操作.创建Agent规则提案.mockRejectedValue(new BFF错误(400, code, 'rejected'));
@@ -782,14 +775,13 @@ describe('规则库 · Backend 候选页', () => {
     const user = userEvent.setup();
     const 视图 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
-    await user.selectOptions(screen.getByLabelText('规则范围'), 意向编号);
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     视图.操作.创建Agent规则提案.mockRejectedValue(new BFF错误(403, 'agent_rule_scope_denied', 'denied'));
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
     await waitFor(() => expect(screen.getByText('这个意向已不可用，请重新选择规则范围')).toBeTruthy());
     // 不静默改成 global：范围与文本都原样保留
-    expect((screen.getByLabelText('规则范围') as HTMLSelectElement).value).toBe(意向编号);
+    expect(screen.queryByLabelText('规则范围')).toBeNull();
     expect((screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤') as HTMLInputElement).value).toBe('只接受双休');
   });
 
@@ -800,7 +792,7 @@ describe('规则库 · Backend 候选页', () => {
       提案: [BFFAgent规则就绪提案样本],
     });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     视图.操作.接受Agent规则提案.mockRejectedValue(new BFF错误(409, 'idempotency_conflict', 'conflict'));
     await user.click(screen.getByRole('button', { name: '确认规则' }));
@@ -808,7 +800,7 @@ describe('规则库 · Backend 候选页', () => {
     // 卡片与草稿都在，且没有任何成功迹象（计数不变、没有新行）
     expect(screen.getByText('双休岗位可推进，大小周岗位拦下')).toBeTruthy();
     expect((screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤') as HTMLInputElement).value).toBe('只接受双休');
-    expect(screen.getByText('2 条')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
   });
 
   it('not_actionable keeps the card and shows no success copy', async () => {
@@ -822,14 +814,14 @@ describe('规则库 · Backend 候选页', () => {
     await user.click(screen.getByRole('button', { name: '确认规则' }));
     await waitFor(() => expect(screen.getByText('这条内容暂时不能成为长期规则，请放弃或换一种说法')).toBeTruthy());
     expect(screen.getByText('双休岗位可推进，大小周岗位拦下')).toBeTruthy();
-    expect(screen.getByText('2 条')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
   });
 
   it('composing Enter only picks the candidate word; plain Enter submits', async () => {
     const user = userEvent.setup();
     const 视图 = renderCandidateRules({ rulesStage: '成功', proposalsStage: '成功', initialized: true });
     await 挂载到稳定();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     const 输入框 = screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤');
     await user.type(输入框, '只接受双休');
     // 中文输入法组合期的回车是选字：直接在原生 KeyboardEvent 上置 isComposing 再派发
@@ -846,20 +838,20 @@ describe('规则库 · Backend 候选页', () => {
     const user = userEvent.setup();
     const 视图 = renderCandidateRules({ mode: 'mock' });
     expect(screen.getByText('不主动披露并行接触数量')).toBeTruthy();
-    expect(screen.getByText('意向级 · 仅「AI 产品经理」')).toBeTruthy();
+    expect(screen.queryByText('意向级 · 仅「AI 产品经理」')).toBeNull();
     // 2026-08-31 定稿：Mock 页去掉提示条，顶部换成「哪些事先问你」真选项
     expect(screen.queryByText('你确认过的规则才会沉淀到这里，长期约束你的AI代理。')).toBeNull();
     expect(screen.getByText('发送正式简历')).toBeTruthy();
     expect(screen.queryByText('在任何一单的代谈进度里发给代理的话，都会自动沉淀到这里，长期约束你的AI代理。')).toBeNull();
     // Mock 头部计数与 Backend 同口径：只数 生效 行（种子 5 行里 R-03 暂停 → 4 条，E2E 同款）
-    expect(screen.getByText('4 条')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
     // 暂停一条生效行：计数 -1，行本身保留在清单上（生效-only，不是行数）
     act(() => {
       视图.派发({ 型: '切规则开关', 编号: 'R-01' });
     });
-    expect(screen.getByText('3 条')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
     expect(screen.getByText('不主动披露并行接触数量')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: /手动添加规则/ }));
+    await user.click(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ }));
     expect(screen.queryByLabelText('规则范围')).toBeNull();
     await user.type(screen.getByPlaceholderText('例：不接受大小周的岗位直接过滤'), '只接受双休');
     await user.click(screen.getByRole('button', { name: '提交给AI代理理解' }));
@@ -867,10 +859,10 @@ describe('规则库 · Backend 候选页', () => {
     // 提交只生成确认卡，不立即增加长期规则或计数。
     expect(screen.getByText('只接受双休')).toBeTruthy();
     expect(screen.getByRole('button', { name: '确认规则' })).toBeTruthy();
-    expect(screen.getByText('3 条')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
     await user.click(screen.getByRole('button', { name: '确认规则' }));
     expect(screen.queryByRole('button', { name: '确认规则' })).toBeNull();
-    expect(screen.getByText('4 条')).toBeTruthy();
+    expect(screen.queryByText(/^\d+ 条(?:生效)?$/)).toBeNull();
   });
 
   it('shows loaded Rules and a retry affordance when Proposal hydration failed', async () => {
@@ -885,7 +877,7 @@ describe('规则库 · Backend 候选页', () => {
       视图.setHydration({ rules: '成功', proposals: '成功' });
     });
     expect(screen.getByText(BFFAgent规则样本.display_text)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /手动添加规则/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /添加规则/ })).toBeNull();
     await user.click(screen.getByRole('button', { name: '规则加载失败，重试' }));
     expect(视图.操作.刷新Agent规则).toHaveBeenCalledTimes(1);
     await waitFor(() => {
@@ -895,7 +887,7 @@ describe('规则库 · Backend 候选页', () => {
     expect(screen.getByText(BFFAgent规则样本.display_text)).toBeTruthy();
     retry.resolve();
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /手动添加规则/ })).toBeTruthy();
+      expect(within(screen.getByRole('region', { name: '你教它的规则' })).getByRole('button', { name: /添加规则/ })).toBeTruthy();
     });
     expect(screen.queryByRole('button', { name: '规则加载失败，重试' })).toBeNull();
   });
@@ -915,6 +907,7 @@ describe('规则库 · Backend 候选页', () => {
     // 页面 mount effect 与真实主体水合赛跑会早退一次：主体落地后经操作缝补一发权威加载
     await act(async () => { await 视图.操作.加载Agent设置(); });
     expect(screen.queryByText('设置加载失败，重试')).toBeNull();
+    await user.click(screen.getByRole('button', { name: /发送正式简历，/ }));
     const 自动发送 = within(screen.getByRole('group', { name: '发送正式简历' }))
       .getByRole('button', { name: '自动发送' });
     await waitFor(() => expect((自动发送 as HTMLButtonElement).disabled).toBe(false));

@@ -8,6 +8,7 @@ import type { 先问偏好, 规则 } from '../../数据/类型';
 import type { 状态 } from '../应用状态';
 
 export interface Agent规则状态 {
+  排除规则?: 规则[];
   全局规则: 规则[];
   意向级规则: 规则[];
   企业规则: 规则[];
@@ -17,6 +18,7 @@ export interface Agent规则状态 {
 }
 
 export type Agent规则动作 =
+  | { 型: '设排除规则'; 规则: 规则[] }
   | { 型: '新增规则'; 内容: string; 来源: string }
   | { 型: '改规则'; 编号: string; 内容: string }
   | { 型: '删规则'; 编号: string }
@@ -47,6 +49,8 @@ function 造规则编号(已有: 规则[]): string {
 
 export const 归约Agent规则: Agent规则归约 = (旧, 动作) => {
   switch (动作.型) {
+    case '设排除规则':
+      return { ...旧, 排除规则: 动作.规则 };
     case '新增规则': {
       const 新编号 = 造规则编号([...旧.全局规则, ...旧.意向级规则]);
       return {
