@@ -289,3 +289,7 @@ ui:check 差异逐条对账（证据：`ui-regression-output/enterprise-recruiti
 
 Final gate 待用户确认后执行：`git fetch origin` → 记 `final_target_base` → `git merge --no-edit origin/main`（当前预期 no-op；若并行任务先合入共享 e2e 文件冲突则机械解决并按增量证据补验）→ 复用上表仍有效证据、只补缺口 → 再次 fetch 核对 target 未推进 → `git push origin HEAD:main`（普通 fast-forward，绝不 force push）。自主恢复边界：获批后同一执行者对范围内失败自主最小修复、复用有效证据、只补失效项并刷新受影响 review；仅契约/范围变更、target race 或外部资源不可得才停下报告。
 
+### 合入事实（2026-09-10）
+
+用户在 final gate 明确选择「带 BLOCKED 记录合入」（真实后端 dogfood 保持 BLOCKED，不合入冒充已验证）。执行记录：`final_target_base = b93436e956dcd133ca909c06939e3416f2f3ad24`（两次 fetch 均未推进、与展示 gate 一致）；`git merge --no-edit origin/main` no-op（Already up to date，候选 `6689d454` 未变、工作树干净）→ UNCHANGED_CANDIDATE_REUSE 成立，零 L0–L2 runner 复跑（`final_evidence_mode: PASS_REUSED`，L3 N/A）；二次 fetch 核对 target 未推进后普通 fast-forward push 成功：`origin/main b93436e9..6689d454`（无 force）。合并提交无（fast-forward 直推）。本段与上述记录随同一 push 合入；真实后端 B03、名片保存持久化、真实企业 ID 公开页验收留待验收栈可用后按 `docs/dogfood/真实后端行为验收.md` 补做。
+
