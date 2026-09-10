@@ -225,3 +225,42 @@ expect(d.条款?.every(x => !x.已核 && x.说明 === null)).toBe(true);
 - F2（Important / required / 复杂度不变，缺 IME 测试任务）：接受并修复。已确认原页面有 isComposing 防护而现有测试无此用例；Task 2 明确加入合成中/非合成 Enter 的焦点、收笔次数和零保存断言。
 
 第二轮文档 review：同一 Claude opus/high 会话复审 `cae1a42a`；确认 F1 拒绝成立、F2 修复到位，最终 `NO FINDINGS`，无未解决 required。工作区、HEAD、两文件指纹守卫再次通过；两轮均未运行产品测试。此后仅记录本段审查结果，不改变已审设计/接口/任务。
+
+### Task 3 跨模式与浏览器验收记录（2026-09-10）
+
+开工核对：本工作树干净（HEAD `3e0f6209`），两共享 e2e 文件无人改动。intent 注册表：本计划 `2bfc7646`（expected_paths 已含两文件）；并行 active `5bf9a4de`（audit-frontend-data-wiring）也预告这两文件，其改动在自身 worktree（nervous-fireant）且未提交，与本轮无共享工作树。本轮对既有用例零改写，仅追加。
+
+新增测试：`e2e/数据源模式.spec.ts` 8 条 `企业名片统一` 用例（2 `@mock` + 6 `@backend`，全部用既有 HTTP fixture / Mock 静态档，覆盖企业三 Tab/全文五部分/未知占位/真实 0、岗位与导航能力差异、读取失败诚实空态、名片空值/只读/保存失败重试）；`e2e/视觉回归/场景.ts` 新增 `enterprise-public`（`/#/company/yunqu`，求职端已注册），5 个关键元素均取新旧两版共有的稳定锚点，未把新增占位设为基线关键元素；`场景.test.ts` 清单 17 → 18。
+
+既有 fixture helper 的唯一改动：`走完后端发岗向导` 补勾选「我已确认经验和学历设置将作为自动匹配依据…」确认项。该必选项在 `b93436e9` 与当前 `发布岗位.tsx` 中逐字相同（L2012），而 helper 缺这一步 → 该既有 P1C 用例在本分支与规划基线上同样失败（已用 detached base worktree 复核到端口冲突前一步，且 `e2e/数据源模式.spec.ts`、`发布岗位.tsx`、`package.json` 在 `b93436e9`↔HEAD 零 diff）。属「仅因 UI fixture 构造必须才修改既有 fixture helper」，未放宽任何断言。
+
+命令与结果（候选 `3e0f6209` + 本测试改动）：
+
+| 命令 | 输入 / 选择 | 退出码 | 结果 |
+| --- | --- | --- | --- |
+| `npm test -- e2e/视觉回归/场景.test.ts` | 场景清单验证 | 0 | 2 passed |
+| `npm run test:e2e:data-source -- --grep 'P1C\|企业名片统一'` | 17 条（9 既有 P1C + 6 新增 @backend + 2 新增 @mock） | 0 | 17 passed，0 failed；三条必备 P1C（canonical ref 公司卡 / Organization 读取失败 / 名片 multipart 保存）在内且 PASS |
+| `npm run ui:check -- --base b93436e9 --output ui-regression-output/enterprise-recruiting-pages` | 18 场景，mode=compare，gate=report，approved=false | 1 | pass 16 / warning 1 / structure blocked 1 / infrastructure 0（原始退出码即 1，未以批准差异改写为 PASS） |
+| `npm test`（完整） | 全仓 | 0 | 173 files / 3699 tests passed |
+| `npm run typecheck` / `npm run lint` / `npm run build` | 全仓 | 0 / 0 / 0 | 通过 |
+
+期间 data-source 两次以退出码 1 失败，原因是端口被并行会话的 dev server 占用（`reuseExistingServer:false` + `--strictPort` 的环境冲突）；按约束未抢占，待其退出后重跑得上述 exit 0（该次与最终提交代码仅差一条注释措辞；提交态的重复运行因并行会话再次占用端口未做成，最终门禁会覆盖）。
+
+ui:check 差异逐条对账（证据：`ui-regression-output/enterprise-recruiting-pages/`，两侧 18 场景均 0 console error、0 `/api/v1` 请求、0 横向溢出）：
+
+| 差异 | 实测 | Spec §7/§6 归属 |
+| --- | --- | --- |
+| enterprise-public 像素 2.53% | 头部「云」字标 → 空白 LOGO 图位 | §7「缺图字标改为空白图位」、§3.3、§6 行2 —— 批准 |
+| 同上 | 「主营业务」标签新增于同卡下方 | §4.1.2、§7「主营业务加标签」—— 批准 |
+| 同上 | 「公司相册」空态卡出现（一格等尺寸空白图位 + 公司相册未知） | §4.1.3、§6「空列表 → 一格空白照片及公司相册未知」、§7「原先隐藏的缺字段区块出现占位」—— 批准 |
+| enterprise-public 结构阻断 | 卡标题「办公地」y 478.59 → 648.59（+170px），尺寸不变；公司标题/公司自述/读全文/岗位入口四元素 x/y/w/h 全等 | 上述两块新增区块高度的算术后果，非重排 —— 批准差异的连带位移，非缺陷 |
+| recruiter-card warning 0.65% | 差异像素仅集中在头像区：「邵」字标 → 中性空白占位 + 相机角标 | §3.3、§5.1、§7「缺图字标改为空白图位」—— 批准 |
+| 其余 16 场景 | pass | 无差异 |
+
+无 §7 之外的换行、按钮位置或尺寸回归；未提升容差、未加遮罩。`--base b93436e9` 只是规划 base，最终对照 base 由 Task 4 按当时 target 重算。
+
+实际缺陷（既有机制，非本计划引入，未在本 Plan 修复）：企业公开页全文层/条款层内容高过视口时，层顶（抓手/标题/右上 ✕）被顶出视口，指针路径不可关层。机制是 `弹层框架` 底部面板内联 `maxHeight:'none'`（`b93436e9` 已如此）覆盖各屏 `.层{max-height:86%}`；统一展示「全文固定五部分」这一批准的内容变化使其必现：320×690 全文层面板高 1066、top −376、✕ y=−334；390×844 全文层高 885、✕ y=1 可见；条款层 390×844 高 948、✕ y=−62。新增 E2E 因此统一用 Escape 关层（`弹层框架` 原生支持）。证据：`ui-regression-output/browser-320/enterprise-intro-layer-cut.png`、`enterprise-terms-layer.png`、`browser-390/enterprise-intro-layer.png`。修复需动 `弹层框架`（各屏共用的公共组件），超出本 Plan 非目标，建议单独立项。
+
+浏览器验收（agent-browser，Mock 栈 `127.0.0.1:4188` 自起自停；320×690 与 390×844；证据 `ui-regression-output/browser-320/`、`browser-390/`）：企业主屏/三个层、真实/空照片（Mock 静态档无图 → 空白图位）、长字段（公司全称、地址、历程行）、名片输入/空态/收笔/保存前后与重载回读；横向溢出 0（两页 `scrollWidth == clientWidth`）、底栏不遮挡页脚与末行（实测 `footer.bottom 590 < 底栏 top 620`）、弹层滚动与返回/关闭见上段缺陷记录；Mock 名片改值→保存→重载回读一致。名片「实名只读/关系待选」的浏览器观察依赖 Backend 会话，归入下段 BLOCKED（同名行为已由 @backend E2E 在 iPhone 13 视口覆盖）。
+
+真实后端验收：**BLOCKED（不作为产品结论，其余 Case NOT_RUN）**。B03 招聘基准加载、名片保存→重新进入/重载→权威内容与头像持久、从真实企业 ID 进入公开页核对来源页脚与「岗位列表暂不可用」均未执行。缺的环境项：① Recruitment acceptance 栈未运行 —— `dev-local.sh health --acceptance` FAIL（service closure drift）、`status --acceptance` 无容器，且 recorded acceptance mode=1 使默认模式健康检查要求先 `down`（该记录非本轮所有）；② 上游共享 `agxp-server` 栈 app unhealthy、worker 反复重启，Hub acceptance 未挂载 —— 均属他人会话资源，按约束不 down、不重启、不抢占；③ 账号与 OTP 安全来源依赖该栈的 `browser-fixture.sh converge`（固定本地账号 + 栈内 OTP 材料），栈不可用即无法取得。注册流按 `backend-local-onboarding.md` 亦无合法现场账号路径，同记 BLOCKED。已按指南只做只读健康核对，未启动/关闭任何共享服务，未产生 receipt。

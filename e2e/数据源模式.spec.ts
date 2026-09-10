@@ -189,6 +189,114 @@ test.describe('Mock 数据源回归 @mock', () => {
     expect(apiRequests.filter((url) => new URL(url).pathname.startsWith('/api/v1/me/resume-files'))).toEqual([]);
     expect(apiRequests).toEqual([]);
   });
+
+  // ── 企业名片统一（Task 3）：统一展示后 Mock 侧事实/能力不退化。
+  //    占位文案按 Spec §3/§4/§6；Mock 独有能力（三 Tab 内容、岗位层跳转、收笔落全局）保留。
+  //    两栈数据量不同，不做截图相等断言；视觉对照由 ui:check 场景 enterprise-public 负责。──
+
+  test('企业名片统一 Mock 企业公开页三 Tab/全文/未知占位与条款层 @mock', async ({ page }) => {
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await page.goto('/#/company/yunqu');
+    await expect(page.getByRole('heading', { name: '云衢科技' })).toBeVisible({ timeout: 10_000 });
+
+    // 三 Tab 切换只换正文；历程有年份/事件时用时间线文案，不另造年份
+    await expect(page.getByText(/做券商与银行的交易中台与清结算基础设施/)).toBeVisible();
+    await page.getByRole('button', { name: '企业文化' }).click();
+    await expect(page.getByText(/把复杂留给系统，把确定性交给客户/)).toBeVisible();
+    await page.getByRole('button', { name: '发展历程' }).click();
+    await expect(page.getByText(/2025 C 轮，启动交易网关多活与海外通道/)).toBeVisible();
+    await page.getByRole('button', { name: '公司简介' }).click();
+
+    // 主营业务有明确标签；相册无照片 → 一格空白图位 + 未知说明（不整卡消失）
+    await expect(page.getByText('主营业务', { exact: true })).toBeVisible();
+    await expect(page.getByText('交易中台', { exact: true })).toBeVisible();
+    await expect(page.getByRole('img', { name: '公司相册未知' })).toBeVisible();
+
+    // 作息与条款摘要：Mock 代理核对已知 → 「已提供 N 条」+ 真实已核计数
+    const 条款卡 = page.getByRole('button', { name: /作息与条款/ });
+    await expect(条款卡).toContainText('已提供 9 条条款');
+    await expect(条款卡).toContainText('3 条已由代理核对');
+
+    // 办公地：地址、补充与原型导航键都在
+    await expect(page.getByText('上海市浦东新区世纪大道 1568 号中建大厦 28 层')).toBeVisible();
+    await expect(page.getByRole('button', { name: '导航 ›' })).toBeVisible();
+
+    // 在职者反馈有 fixture 数据 → 才有统计卡与真实计数
+    await expect(page.getByText('技术氛围好', { exact: true })).toBeVisible();
+    await expect(page.getByText('晋升看产出', { exact: true })).toBeVisible();
+
+    // 工商与企业身份：Mock 工商条目保留；身份无 Mock 事实 → 明确未知，不拿展示名/首字顶替
+    await expect(page.getByText('上海云衢信息科技有限公司')).toBeVisible();
+    await expect(page.getByText('法定名称未知')).toBeVisible();
+    await expect(page.getByText('核验时间未知')).toBeVisible();
+    await expect(page.getByText('46 个在招岗位')).toBeVisible();
+
+    // 全文层固定五部分：静态档没有产品/团队 → 占位出现（Spec §7「缺字段区块出现占位」）。
+    // 层用 Escape 关闭：小视口下全文/条款层内容高过视口，右上 ✕ 会被顶出视口
+    // （弹层框架 底部面板内联 maxHeight:'none' 压过 .层 的 max-height，既有机制，见 Plan 验证记录）
+    await page.getByRole('button', { name: '读全文 ›' }).click();
+    await expect(page.getByText('以下内容由企业自行提供，平台未逐条核实。')).toBeVisible();
+    await expect(page.getByText('产品介绍未知')).toBeVisible();
+    await expect(page.getByText('团队介绍未知')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByText('产品介绍未知')).toHaveCount(0);
+
+    // 条款层：已核/自述两组与 Mock 业务说明都还在
+    await 条款卡.click();
+    await expect(page.getByText('代理已核对', { exact: true })).toBeVisible();
+    await expect(page.getByText('公司自述，尚未核对', { exact: true })).toBeVisible();
+    await expect(page.getByText(/想让代理去核某一条/)).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // 底部岗位层：Mock 能力保留 —— 可打开，零匹配条目时给过滤说明，不编造岗位
+    await page.getByRole('button', { name: '看这家在招的 46 个岗位' }).click();
+    await expect(page.getByText(/其余 46 个岗位不匹配你当前的求职意向/)).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // Mock 全程零 /api/v1
+    expect(apiRequests).toEqual([]);
+  });
+
+  test('企业名片统一 Mock 岗位层在谈/市场入口与名片收笔语义保留 @mock', async ({ page }) => {
+    test.setTimeout(120_000);
+
+    // MiniMax：静态档 + 本地在谈 J-21 / 市场 M-01 → 岗位层两条真实入口
+    await page.goto('/#/company/minimax');
+    await expect(page.getByRole('heading', { name: 'MiniMax' })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: /看这家在招的/ }).click();
+    const 在谈条 = page.getByRole('button', { name: /你已在谈这一岗/ }).first();
+    await expect(在谈条).toBeVisible();
+    await expect(page.getByText('可让代理去谈').first()).toBeVisible();
+    await 在谈条.click();
+    await expect(page).toHaveURL(/#\/deal\/J-21$/, { timeout: 10_000 });
+
+    // 名片：收笔落全局；空白收笔不覆盖旧值；职务默认值保留
+    await page.goto('/#/hr/card');
+    await expect(page.getByRole('heading', { name: '招聘名片' })).toBeVisible({ timeout: 10_000 });
+    const 姓名 = page.getByLabel('姓名', { exact: true });
+    await expect(姓名).toHaveValue('邵铭');
+    await expect(page.getByLabel('职务')).toHaveValue('技术 VP');
+    await expect(page.getByPlaceholder('请填写姓名')).toBeVisible();
+
+    // 空白收笔视作没改：预览行直接读全局，仍旧值 —— 不把字段清成空串落全局
+    await 姓名.fill('');
+    await 姓名.blur();
+    await expect(page.getByText('邵铭', { exact: true })).toBeVisible();
+
+    // 回车收笔同一条落全局路径：预览立刻是新值
+    await 姓名.fill('测试名片收笔');
+    await 姓名.press('Enter');
+    await expect(page.getByText('测试名片收笔', { exact: true })).toBeVisible();
+
+    // 保存把当前全局值一并钉住并推进发岗（Mock 名片保存即跳发岗）
+    await page.getByRole('button', { name: '保存 · 去发岗位' }).click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/, { timeout: 10_000 });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4825,6 +4933,10 @@ async function 走完后端发岗向导(page: Page) {
   await page.getByPlaceholder('搜索城市名，从下方候选选择').fill('fixture');
   await page.getByRole('button', { name: 标记.城市display, exact: true }).click();
   await page.getByPlaceholder(/浦东新区世纪大道/).fill('Fixture 市 Fixture 路 1 号');
+  // 产品当前要求：改过硬性条件（学历/薪资）后必须勾选确认项才能发布（缺这步只弹
+  // 「请先勾选上面的确认项」，发布键不生效）。这是既有 fixture helper 补当前 UI 必需步骤，
+  // 不放宽任何断言。
+  await page.getByLabel(/我已确认经验和学历设置将作为自动匹配依据/).check();
   await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
 }
 
@@ -5546,6 +5658,303 @@ test.describe('P1C 招聘组织 fixture @backend', () => {
     // Mock 分支的静态公司页内容不出现（不回退静态档）
     await expect(page.getByText('公司自述')).toHaveCount(0);
     await expect(page.getByText('作息与条款')).toHaveCount(0);
+  });
+
+  // ── 企业名片统一（Task 3）：两栈消费同一份 企业公开页展示/招聘名片展示。
+  //    Backend 侧验证「合法缺字段是占位、契约错误/失败不是成功占位页」与能力差异，
+  //    不复写上方三条 P1C 既有回归，只新增统一展示的跨模式断言。──
+
+  test('企业名片统一 Backend 公开页真实字段上屏、缺字段占位、岗位/导航能力不可执行 @backend', async ({ page }) => {
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-org-full',
+      记录目录请求: () => undefined,
+      // 无企业关系：公开页只经 URL 按 opaque ID 直读，不经过名片当前关系
+      招聘组织Fixture: 带企业关系(P1C招聘组织Fixture, [], { [P1C标记.组织甲编号]: P1C组织甲() }),
+      主体初始角色: 'recruiter',
+    });
+
+    await page.goto(`/#/company/${P1C标记.组织甲编号}`);
+    await expect(page.getByText(P1C标记.组织甲法定名)).toBeVisible({ timeout: 10_000 });
+
+    // 身份行来自 HTTP：法定名/展示名/核验时间（slice(0,10)）；岗位数是真实已核验在招数
+    await expect(page.getByText('2026-08-25', { exact: true })).toBeVisible();
+    await expect(page.getByText('天使轮 · 20-99 人 · Fixture 行业')).toBeVisible();
+    // 同一岗位数文案出现在「企业身份」行与底部固定区两处
+    await expect(page.getByText('1 个已核验在招岗位')).toHaveCount(2);
+
+    // 能力不可执行：无岗位层入口、无导航键，只给事实与不可点说明，绝不给假按钮
+    await expect(page.getByRole('button', { name: /看这家在招的/ })).toHaveCount(0);
+    await expect(page.getByText('岗位列表暂不可用')).toBeVisible();
+    await expect(page.getByRole('button', { name: '导航 ›' })).toHaveCount(0);
+    await expect(page.getByText('导航暂不可用')).toBeVisible();
+
+    // 统一展示下两栈同结构：接口没有的字段是明确占位，不是整卡消失。
+    // 文化/历程占位在对应 Tab 正文里：切 Tab 只换正文，不改事实来源
+    await expect(page.getByText(P1C标记.公司介绍)).toBeVisible();
+    await page.getByRole('button', { name: '企业文化' }).click();
+    await expect(page.getByText('企业文化未知')).toBeVisible();
+    await page.getByRole('button', { name: '发展历程' }).click();
+    await expect(page.getByText('发展历程未知')).toBeVisible();
+    await page.getByRole('button', { name: '公司简介' }).click();
+    await expect(page.getByText('主营业务', { exact: true })).toBeVisible();
+    await expect(page.getByText('Fixture 主营业务一')).toBeVisible();
+    await expect(page.getByRole('img', { name: '公司相册未知' })).toBeVisible();
+    await expect(page.getByRole('img', { name: '企业 LOGO 未知' })).toBeVisible();
+    await expect(page.getByText('在职者反馈未知')).toBeVisible();
+    await expect(page.getByText('工商资料未知')).toBeVisible();
+    // 反馈未知就不画统计条，也不出现匿名评价来源说明
+    await expect(page.getByText('来自平台内匿名评价')).toHaveCount(0);
+
+    // 条款：福利标签是企业自述 → 「已提供 N 条条款」，没有代理核对结果就没有已核计数
+    const 条款卡 = page.getByRole('button', { name: /作息与条款/ });
+    await expect(条款卡).toContainText('已提供 1 条条款');
+    await expect(条款卡).not.toContainText('条已由代理核对');
+    await expect(条款卡).toContainText('双休');
+
+    // 全文层：产品/团队在固定五部分里完整可达（Backend 不再有独立产品/团队卡）
+    await page.getByRole('button', { name: '读全文 ›' }).click();
+    await expect(page.getByText('Fixture 产品介绍')).toBeVisible();
+    await expect(page.getByText('Fixture 成员简介')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // 条款层：接口没有代理核对结果 → 「代理核对信息未知」，不写「0 条已核」冒充已检查
+    await 条款卡.click();
+    await expect(page.getByText('代理核对信息未知')).toBeVisible();
+    await expect(page.getByText(/已核对 0 条条款/)).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    // 来源页脚：公开信息来源与身份核验说明
+    await expect(page.getByText('公开信息由企业主页提供 · 企业身份经平台核验')).toBeVisible();
+  });
+
+  test('企业名片统一 Backend 合法空公开档案逐字段占位且真实 0 不是未知 @backend', async ({ page }) => {
+    // 全空但合法的公开档案：每个字段都转成对应「未知」，0 岗位照常显示 0（真实 0 ≠ 未知），
+    // 整页仍是一张成功页，不是「打不开」的诚实空态。
+    const 空档案: P1C企业档案形 = {
+      ...P1C企业档案(),
+      brand_name: '',
+      industry: null,
+      company_size: '',
+      funding_stage: '',
+      office_address: '',
+      benefit_codes: [],
+      work_schedule: '',
+      company_intro: '',
+      business_items: [],
+      product_intro: '',
+      team_members: [],
+      logo: null,
+      office_media: [],
+      company_media: [],
+    };
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-org-empty',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: 带企业关系(P1C招聘组织Fixture, [], {
+        [P1C标记.组织甲编号]: {
+          legal_name: P1C标记.组织甲法定名,
+          display_name: P1C标记.组织甲名,
+          profile: 空档案,
+        },
+      }),
+      主体初始角色: 'recruiter',
+      // 内置公开企业路由的 active_verified_job_count 固定为 1；本用例经覆盖给出合法 0
+      覆盖: {
+        [`GET /api/v1/organizations/${P1C标记.组织甲编号}`]: () => ({
+          status: 200,
+          响应: 信封({
+            organization_id: P1C标记.组织甲编号,
+            legal_name: P1C标记.组织甲法定名,
+            display_name: P1C标记.组织甲名,
+            verified_at: '2026-08-25T00:00:00Z',
+            profile: 空档案,
+            active_verified_job_count: 0,
+          }),
+        }),
+      },
+    });
+
+    await page.goto(`/#/company/${P1C标记.组织甲编号}`);
+    await expect(page.getByText(P1C标记.组织甲法定名)).toBeVisible({ timeout: 10_000 });
+
+    // 规模行逐字段补未知后拼接；必需身份字段仍来自 HTTP，不用占位掩盖契约
+    await expect(page.getByText('融资阶段未知 · 公司规模未知 · 行业未知')).toBeVisible();
+    await expect(page.getByText('2026-08-25', { exact: true })).toBeVisible();
+
+    // 逐字段占位：每个缺失块保留区块与标签（文化/历程占位在各自 Tab 正文里）
+    await expect(page.getByText('公司简介未知')).toBeVisible();
+    await page.getByRole('button', { name: '企业文化' }).click();
+    await expect(page.getByText('企业文化未知')).toBeVisible();
+    await page.getByRole('button', { name: '发展历程' }).click();
+    await expect(page.getByText('发展历程未知')).toBeVisible();
+    await page.getByRole('button', { name: '公司简介' }).click();
+    await expect(page.getByText('主营业务未知')).toBeVisible();
+    await expect(page.getByRole('img', { name: '公司相册未知' })).toBeVisible();
+    await expect(page.getByText('作息信息未知')).toBeVisible();
+    await expect(page.getByText('福利信息未知')).toBeVisible();
+    await expect(page.getByText('办公地址未知')).toBeVisible();
+    await expect(page.getByText('地址补充未知')).toBeVisible();
+    await expect(page.getByText('在职者反馈未知')).toBeVisible();
+    await expect(page.getByText('工商资料未知')).toBeVisible();
+
+    // 全文层五部分里产品/团队同样占位
+    await page.getByRole('button', { name: '读全文 ›' }).click();
+    await expect(page.getByText('产品介绍未知')).toBeVisible();
+    await expect(page.getByText('团队介绍未知')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // 真实 0 照常展示（身份行 + 底栏两处），岗位列表仍不可用
+    await expect(page.getByText('0 个已核验在招岗位')).toHaveCount(2);
+    await expect(page.getByText('岗位列表暂不可用')).toBeVisible();
+    // 合法空档案 ≠ 请求失败：不出现诚实空态
+    await expect(page.getByText('这家企业暂时打不开')).toHaveCount(0);
+  });
+
+  test('企业名片统一 Organization 读取失败只见诚实空态不见成功占位区 @backend', async ({ page }) => {
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-org-fail',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: 带企业关系(P1C招聘组织Fixture, [P1C管理员关系], { [P1C标记.组织甲编号]: P1C组织甲() }),
+      主体初始角色: 'recruiter',
+      覆盖: {
+        'GET /api/v1/organizations/org-fixture-gone': () => ({
+          status: 404,
+          响应: { error: { type: 'organization_not_found', message: '企业不存在' } },
+        }),
+      },
+    });
+
+    await page.goto('/#/company/org-fixture-gone');
+    await expect(page.getByText('这家企业暂时打不开')).toBeVisible({ timeout: 10_000 });
+    // 失败页不出现成功页的任何占位/结构：占位只属于「成功取得资料后的合法缺失」
+    await expect(page.getByText('企业名称未知')).toHaveCount(0);
+    await expect(page.getByText('公司简介未知')).toHaveCount(0);
+    await expect(page.getByText('主营业务未知')).toHaveCount(0);
+    await expect(page.getByText('工商资料未知')).toHaveCount(0);
+    await expect(page.getByText('岗位列表暂不可用')).toHaveCount(0);
+    await expect(page.getByText('公司自述')).toHaveCount(0);
+    await expect(page.getByText('作息与条款')).toHaveCount(0);
+    await expect(page.getByText(P1C标记.公司介绍)).toHaveCount(0);
+  });
+
+  test('企业名片统一 名片空公开档案预览占位且未知不进输入与提交 @backend', async ({ page }) => {
+    // 全新招聘方 onboarding fixture：档案首读 404（合法的「还没有」）→ 名片空值态
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-card-empty',
+      记录目录请求: () => undefined,
+      招聘方OnboardingFixture: 创建招聘方OnboardingFixture(),
+    });
+
+    await 以招聘方进入名片(page);
+    await expect(page.getByRole('heading', { name: '招聘名片' })).toBeVisible({ timeout: 10_000 });
+
+    // 预览三段占位 + 无图的中性空白头像位（不用姓名首字/企业字标冒充照片）
+    await expect(page.getByText('姓名未知')).toBeVisible();
+    await expect(page.getByText('职务未知')).toBeVisible();
+    await expect(page.getByText('企业信息未知')).toBeVisible();
+    await expect(page.getByRole('img', { name: '头像未知' })).toBeVisible();
+
+    // 「未知」只进展示：输入框的值是空串，占位符是可行动提示
+    await expect(page.getByLabel('姓名')).toHaveValue('');
+    await expect(page.getByLabel('职务')).toHaveValue('');
+    await expect(page.getByLabel('公司')).toHaveValue('');
+    await expect(page.getByPlaceholder('请填写姓名')).toBeVisible();
+    await expect(page.getByPlaceholder('请填写职务')).toBeVisible();
+    await expect(page.getByPlaceholder('请填写公司名称')).toBeVisible();
+
+    // 空值保存：本地校验拦截，一个请求都不发，也不把占位文案写进任何提交
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page.getByText('请填写姓名')).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/#\/hr\/card$/);
+  });
+
+  test('企业名片统一 实名只读姓名保留公开名且认证标记按事实 @backend', async ({ page }) => {
+    const 写入们: { path: string; method: string; body: unknown }[] = [];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-card-verified',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: {
+        ...P1C招聘组织Fixture,
+        profile: {
+          ...P1C招聘组织Fixture.profile,
+          personal_verification_status: 'verified',
+          verified_name: '沈实名',
+          public_name: '公开马甲名',
+        },
+      },
+      主体初始角色: 'recruiter',
+      请求拦截: ({ path, method, body }) => {
+        if (method !== 'GET') 写入们.push({ path, method, body });
+      },
+    });
+
+    // 应用内普通编辑入口（非注册流）→ 主按钮是「保存」
+    await page.goto('/#/hr/card');
+    await expect(page.getByText('姓名（已实名，不可修改）')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+
+    // 只读姓名在预览与只读行各出现一次；公开名不上屏
+    await expect(page.getByText('沈实名')).toHaveCount(2);
+    await expect(page.getByLabel('姓名')).toHaveCount(0);
+    await expect(page.getByText('公开马甲名')).toHaveCount(0);
+    await expect(page.getByText('已认证', { exact: true })).toBeVisible();
+
+    // 保存仍提交原公开名：实名只读不把 public_name 擅自替换成实名姓名
+    await page.getByLabel('公司').fill('实名客户公司');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByText('保存成功')).toBeVisible({ timeout: 10_000 });
+    const 档案写 = 写入们.find((项) => 项.path === '/api/v1/recruiter/profile' && 项.method === 'PATCH');
+    expect(档案写).toBeDefined();
+    expect(档案写!.body).toEqual({ public_name: '公开马甲名', title: P1C标记.招聘方职务 });
+  });
+
+  test('企业名片统一 名片保存失败保留输入与暂存头像并可重试 @backend', async ({ page }) => {
+    const 写入们: { path: string; method: string }[] = [];
+    let 档案写数 = 0;
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-card-retry',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: P1C招聘组织Fixture,
+      请求拦截: ({ path, method }) => {
+        if (method !== 'GET') 写入们.push({ path, method });
+      },
+      覆盖: {
+        'PATCH /api/v1/recruiter/profile': () => {
+          档案写数 += 1;
+          if (档案写数 === 1) {
+            return { status: 500, 响应: { error: { type: 'internal_error', message: 'fixture 故障' } } };
+          }
+          return undefined; // 重试这一次放行给内置 fixture
+        },
+      },
+    });
+
+    await 以招聘方进入名片(page);
+    await expect(page.getByLabel('姓名')).toHaveValue(P1C标记.招聘方公开名);
+    await page.getByLabel('姓名').fill('重试招聘方');
+    await page.getByLabel('职务').fill('资深招聘');
+    await page.getByLabel('公司').fill('重试客户公司');
+    await page.setInputFiles('input[aria-label="更换头像"]', {
+      name: '重试头像.png', mimeType: 'image/png', buffer: 一像素PNG,
+    });
+    // 暂存预览：服务端成功前只是内存预览，不落权威档案
+    await expect(page.getByRole('img', { name: '头像预览' })).toBeVisible();
+
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page.getByText('后端服务暂时不可用，请稍后重试')).toBeVisible({ timeout: 10_000 });
+    // 失败保留输入、文件与预览，不离开本屏，按钮也不再是保存中
+    await expect(page).toHaveURL(/#\/hr\/card$/);
+    await expect(page.getByLabel('姓名')).toHaveValue('重试招聘方');
+    await expect(page.getByLabel('职务')).toHaveValue('资深招聘');
+    await expect(page.getByLabel('公司')).toHaveValue('重试客户公司');
+    await expect(page.getByRole('img', { name: '头像预览' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '保存中…' })).toHaveCount(0);
+
+    // 同一个保存键重试：PATCH 与头像 POST 各放行一次，随后按注册流推进发岗
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/, { timeout: 20_000 });
+    expect(写入们.filter((项) => 项.path === '/api/v1/recruiter/profile' && 项.method === 'PATCH')).toHaveLength(2);
+    expect(写入们.some((项) => 项.path === '/api/v1/recruiter/avatar' && 项.method === 'POST')).toBe(true);
   });
 });
 
