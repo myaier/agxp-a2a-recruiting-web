@@ -277,3 +277,12 @@ interface 消息列表展示属性 {
 ## 实施证据记录
 
 当前未实施、未运行产品测试。新实施 session 在此记录 Task 完成提交、视觉基准 source SHA、正式命令/receipt、CSS 消费者删除依据、review 裁决、pre_gate_target_base、final_target_base、最终候选和 push 结果。日志及截图放既有忽略目录，不把测试替身记成真实栈验收。
+
+### Task 1（2026-09-10）：Mockup 采集基线冻结
+
+- `visual_source_candidate`：`d6a1fd8c37ca04e956b46fcf3b96ed542a4b42aa`（`git rev-parse HEAD`，产品代码零改动；相对规划基线 `55c7024f` 的差异为本计划与并行 review 的 docs/test 提交，不含 `src/` 产品改动）。工具链：Playwright + `playwright.数据源模式.config.ts` mock-stg project（Chrome channel，mock Vite dev server 4181），node_modules 由 `npm ci`（lockfile 未改）。
+- 采集 spec：`e2e/P1展示统一.spec.ts`（新建；零产品代码改动）。基准命令与 receipt：
+  `P1_CAPTURE_DIR=ui-regression-output/p1/reference npm run test:e2e:data-source -- e2e/P1展示统一.spec.ts --project=mock-stg --grep 'P1 Mock视觉' --workers=1`，退出码 0，28 passed（37.1s）。
+- 基准目录：`ui-regression-output/p1/reference/`（git 忽略），`scenes/` 28 个 JSON + `screenshots/` 28 张 PNG，全部 `status: captured`；诊断全零（apiRequests / consoleErrors / pageErrors / failedRequests = 0，horizontalOverflow = 0，两视口共 14 场景：p1-job-top、p1-job-company-publisher、p1-job-more-drawer、p1-candidate-msg-{all,notice,search,longtitle}、p1-chat-{default,job-overlay,job-overlay-company}、p1-hr-msg-{all,notice,search,longtitle} × 320/390）。
+- 可重复性 receipt：同命令第二遍采到 `/tmp/p1-repeat`（git 外临时目录），`tsx e2e/视觉回归/比较命令.ts --candidate /tmp/p1-repeat --reference ui-regression-output/p1/reference --output /tmp/p1-repeat-report` → pass=28 / warning=0 / blocked=0 / 退出码 0：几何与像素逐场景完全一致，基线可重复采集。
+- fixture 核对（Spec §2.1 vs §3.2）：`市场职位` 的 公司/公司首字/公司简介/发布人首字/发布人底色/发布人字色/发布人 为必填，`市场列表` 全部 8 条非空 → 现有 Mock 市场场景不存在缺失公司/发布人槽位，§3.2 缺失规则不会改变任何既有 Mock 截图，无冲突。已知 Mock fallback（保持原样，非 §3.2 占位）：① `取市场岗位详情` 对无 `市场职位详情表` 条目的岗（M-02…M-05）合成「职位详情/职位要求待补充」，发布人 职务/备注 空串 → 卡上不渲染职务与备注节点；② `取公司档案` 对无档案公司（阶跃星辰、商汤、蚂蚁、美团、PingCAP）合成兜底档 → 公司卡无介绍段、元行按一行简介拆 融资/规模/行业，无 成立/地址 行。M-13 自身 JD/公司/发布人 fixture 齐全，全部 captured 场景无缺失槽。
