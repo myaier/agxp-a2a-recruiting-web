@@ -9,6 +9,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { P7会话项 } from '../../数据/招聘数据源/真人会话';
 import type { P7分页快照 } from '../../状态/后端/类型';
+import 样式 from '../消息列表.module.css';
 import Backend会话列表 from './Backend会话列表';
 
 const 导航 = vi.hoisted(() => ({ 跳转: vi.fn() }));
@@ -168,5 +169,27 @@ describe('Backend会话列表', () => {
     expect(mock应用状态.操作.加载会话列表).toHaveBeenCalledWith('candidate', true);
     unmount();
     expect(mock应用状态.操作.设置P7收件箱范围).toHaveBeenCalledWith('candidate', false);
+  });
+
+  it('行真实消费共享展示：原 46px 字标头像「会」+ 共享行/页签 class（P1 Task 4）', async () => {
+    环境('candidate', [会话项({ unreadCount: 2 })]);
+    render(<Backend会话列表 角色="candidate" />);
+    const 行 = screen.getByRole('button', { name: /后端工程师/ });
+    expect(行.className).toContain(样式.会话行);
+    // 头像继续是中性「会」字标（不从姓名或 Mock fixture 派生），落在共享 46px 容器
+    expect(行.querySelector(`.${样式.头像}`)!.textContent).toBe('会');
+    expect(行.querySelector(`.${样式.未读徽标}`)!.textContent).toBe('2');
+    expect(行.querySelector(`.${样式.代理头像}`)).toBeNull();
+    // 页签行/标题行都来自共享外壳
+    const 全部签 = screen.getByRole('button', { name: '全部' });
+    expect(全部签.className).toContain(样式.页签选中);
+    expect(screen.getByText('消息')).toBeTruthy();
+    // 错误与缓存行共存：错误提示在前、会话行在后
+    环境('candidate', [会话项()], { error: '后端服务暂时不可用，请稍后重试' });
+    const 错误视图 = render(<Backend会话列表 角色="candidate" />);
+    expect(错误视图.container.textContent).toContain('后端服务暂时不可用，请稍后重试');
+    expect(错误视图.container.textContent).toContain('后端工程师');
+    await userEvent.click(screen.getByRole('button', { name: '重试' }));
+    expect(mock应用状态.操作.加载会话列表).toHaveBeenCalledWith('candidate', true);
   });
 });
