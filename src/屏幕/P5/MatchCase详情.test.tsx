@@ -755,6 +755,83 @@ describe('MatchCase详情 · 资料 Tab 与完整缺失区（Task 3）', () => {
   });
 });
 
+// ── 详情统一 Task 4：招聘端第二 Tab = 共用 在线简历正文（完整布局、档 null）──────
+//    Backend P5 detail 不提供结构化在线简历：九区逐区缺失，不以一句「简历尚未同步」
+//    替代整页；求职期望未知不给「已进入初筛/一致」承诺。求职端第二 Tab 仍是 职位资料。
+describe('MatchCase详情 · 招聘端在线简历 Tab（Task 4）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock返回.mockClear();
+    mock设置P5范围.mockClear();
+    mock读取详情.mockClear();
+    mock新增叮嘱.mockClear();
+    mock加载工作区.mockClear();
+    mock刷新工作区.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('recruiter 资料 Tab：九区标题原位保留并逐区缺失，缺口说明与页尾说明在场', async () => {
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 招聘详情DTO() }) });
+    渲染详情('recruiter', 'mc_hr');
+    expect(await screen.findByText('平台工程师 · 上海 · 25-40K·16薪')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '资料' }));
+    const 标题们 = [
+      '匹配度分析', '个人优势', '求职期望', '工作经历', '项目经历', '教育经历', '专业技能',
+    ] as const;
+    for (const 标题 of 标题们) expect(screen.getByText(标题)).toBeTruthy();
+    const 缺失们 = [
+      '匿名画像缺失', '职位信息缺失', '匹配分析缺失', '个人优势缺失', '求职期望缺失',
+      '工作经历缺失', '项目经历缺失', '教育经历缺失', '专业技能缺失',
+    ] as const;
+    for (const 缺失 of 缺失们) expect(screen.getByText(缺失)).toBeTruthy();
+    // 区块级缺口说明用与求职端资料区同一句约定文案
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy();
+    expect(screen.getByText(/在线简历缺失 · 内容不可转发/)).toBeTruthy();
+  });
+
+  it('recruiter 资料 Tab 不给无依据承诺与身份信息：无假薪资结论、无一致性 ✓、别名不上屏', async () => {
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 招聘详情DTO() }) });
+    渲染详情('recruiter', 'mc_hr');
+    await screen.findByText('平台工程师 · 上海 · 25-40K·16薪');
+    fireEvent.click(screen.getByRole('button', { name: '资料' }));
+    expect(screen.queryByText('薪资带已进入初筛')).toBeNull();
+    expect(screen.queryByText('✓')).toBeNull();
+    expect(document.body.textContent).not.toContain(别名);
+    expect(document.body.textContent).not.toContain('适配分');
+    // 招聘端第二 Tab 不是 职位资料（那是求职端的资料区）
+    expect(screen.queryByText('公司信息')).toBeNull();
+    expect(screen.queryByText('对接人')).toBeNull();
+  });
+
+  it('candidate 资料 Tab 仍是职位资料（完整缺失区），不出现在线简历缺失占位', async () => {
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    渲染详情('candidate', 'mc_direct');
+    expect(await screen.findByText('平台工程师')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '资料' }));
+    expect(screen.getByText('公司信息')).toBeTruthy();
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy();
+    expect(screen.queryByText('匿名画像缺失')).toBeNull();
+    expect(screen.queryByText('工作经历缺失')).toBeNull();
+  });
+
+  it('招聘端切 Tab 零新增请求：所有操作在切换前后调用数不变', async () => {
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 招聘详情DTO() }) });
+    渲染详情('recruiter', 'mc_hr');
+    await screen.findByText('平台工程师 · 上海 · 25-40K·16薪');
+    const 操作调用数 = () => Object.values(mock操作).map((fn) => fn.mock.calls.length);
+    const 切换前 = 操作调用数();
+    fireEvent.click(screen.getByRole('button', { name: '资料' }));
+    expect(screen.getByText('个人优势缺失')).toBeTruthy();
+    expect(操作调用数()).toEqual(切换前);
+    fireEvent.click(screen.getByRole('button', { name: '进度' }));
+    expect(screen.getByText('匿名初筛')).toBeTruthy();
+    expect(操作调用数()).toEqual(切换前);
+  });
+});
+
 describe('MatchCase详情 · Case 叮嘱输入', () => {
   beforeEach(() => {
     mock派发.mockClear();

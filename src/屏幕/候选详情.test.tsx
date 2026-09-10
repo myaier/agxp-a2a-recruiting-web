@@ -126,8 +126,57 @@ describe('候选详情 · Mock 分支原行为且零 P5 请求', () => {
   });
 });
 
-// ── 第二批（2026-09-09 定稿）：候选详情顶栏去名 —— 标题位换成与列表卡同一套头行
-//    （性别图标 + 年限｜学历｜求职状态：年限取 画像 首段、学历取 候.学历、状态取 在找「·」后半段），
+// ── 详情统一 Task 4：资料 Tab 走共用 在线简历正文（完整布局），旧独立屏正文包装保留 ──
+describe('候选详情 · Mock 资料 Tab 共用在线简历正文（Task 4）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock派发.mockClear();
+    mock应用状态 = {
+      数据源模式: 'mock',
+      状态: {
+        企业候选列表: 在谈候选列表,
+        候选决策: {},
+        候选决策快照: {},
+        决策: {},
+        决策快照: {},
+        叮嘱表: {},
+        // 资料 Tab 的匹配对齐按岗位硬性条件算（连接层职责）；给一条让对齐卡有行可渲染
+        岗位列表: [{ 编号: 'P-01', 名称: '资深后端工程师', 状态: '在招', 硬性条件: ['Go 主栈'] }],
+      },
+      派发: mock派发,
+    };
+  });
+
+  it('A-01：完整布局信息区一个不缺（画像/个人优势/期望/工作/项目/教育/技能/页尾），正文来自共用组件', async () => {
+    const user = userEvent.setup();
+    渲染候选详情页('A-01');
+    await user.click(await screen.findByRole('button', { name: '资料' }));
+    expect(screen.getByText('交易中台研发专家 · 现任字节跳动')).toBeTruthy();
+    expect(screen.getByText('个人优势')).toBeTruthy();
+    expect(screen.getByText('求职期望')).toBeTruthy();
+    expect(screen.getByText('工作经历')).toBeTruthy();
+    expect(screen.getByText('项目经历')).toBeTruthy();
+    expect(screen.getByText('教育经历')).toBeTruthy();
+    expect(screen.getByText('专业技能')).toBeTruthy();
+    // A-01 是 S1 已披露真名的候选：页尾注走「已随 S1 原件披露」分支（身份契约与独立屏一致）
+    expect(screen.getByText(/候选人身份已随 S1 原件披露 · 意向确认后进入真人沟通 · 内容不可转发/)).toBeTruthy();
+  });
+
+  it('B-02 无简历档：同一正文里逐区显示缺失，不另起一页、不出假薪资一致性', async () => {
+    const user = userEvent.setup();
+    渲染候选详情页('B-02');
+    await user.click(await screen.findByRole('button', { name: '资料' }));
+    expect(screen.getByText('匿名画像缺失')).toBeTruthy();
+    expect(screen.getByText('个人优势缺失')).toBeTruthy();
+    expect(screen.getByText('工作经历缺失')).toBeTruthy();
+    expect(screen.getByText(/内容不可转发/)).toBeTruthy();
+    expect(screen.queryByText('薪资带已进入初筛')).toBeNull();
+    expect(screen.queryByText('当前在谈详情数据未提供')).toBeNull(); // 接口缺口说明只归 Backend
+  });
+});
+
+// ── 第二批（2026-09-09 定稿）：候选详情顶栏去名 —— 标题位换成与列表卡同一套头行//    （性别图标 + 年限｜学历｜求职状态：年限取 画像 首段、学历取 候.学历、状态取 在找「·」后半段），
 //    副标题 = 画像 去掉首段年限；真名 / 代号都不上顶栏。
 //    句子里的称呼（决定文案 / 终止弹层 / 附件文件名 / 规则来源）本轮不动 —— 验收 9 防误删。
 describe('候选详情 · 顶栏去名（第二批 验收7/9）', () => {
