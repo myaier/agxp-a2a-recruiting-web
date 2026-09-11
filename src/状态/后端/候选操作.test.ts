@@ -428,6 +428,31 @@ describe('创建候选操作 · 建档跟踪保存（J-PILOT-02 Task 3）', () =
     expect(草稿.待写入).toBeUndefined();
   });
 
+  it('非简历域 received 槽（回执在手）同样拦下简历命令：回执不被覆盖、零 mutation', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    // 意向域槽由 Task 6 结算，简历域不认识它：结算单槽 跳过 → 必须由 发送前 守卫拦住
+    const 意向槽 = {
+      种类: 'first-intention-create' as const,
+      请求体: { position_id: 'pos_1' },
+      幂等键: 'idem-intent-1',
+      阶段: 'received' as const,
+      回执: { id: 'intent_srv_1', revision: 3 },
+    };
+    const 建档: 候选引导建档草稿 = { 资料: { 教育: [教育段('edu_local_1')] }, 待写入: 意向槽 };
+    const 请求Mock = 只读请求桩([previous]);
+    const 场景 = 创建场景({
+      建档,
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    const next = { ...从BFF简历(previous), 教育: [教育段('edu_local_1')] };
+    await expect(场景.操作.保存简历(next as never)).rejects.toThrow('上一条写入结果未确认');
+    const 请求们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    expect(请求们.filter((o) => (o.method ?? 'GET') !== 'GET')).toHaveLength(0);
+    // 槽原样保留：回执（意向 ID）没有被 education-create 命令悄悄顶掉
+    expect(场景.deps.建档草稿引用!.current!.待写入).toEqual(意向槽);
+  });
+
   it('prepared 创建槽先按原 body/key 重放结算，再按最新草稿算下一步（同本地条目仍一条资源）', async () => {
     const previous: BFF简历 = { ...BFF简历样本, educations: [] };
     const 权威后 = { ...BFF简历样本, educations: [教育DTO('edu_srv_9', 2)] };
