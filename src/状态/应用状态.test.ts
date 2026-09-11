@@ -35,6 +35,7 @@ import type {
   NegotiationPage,
 } from '../数据/招聘数据源/连续代谈';
 import { P5范围键, 清P5MatchCase引用 } from './后端/MatchCase操作';
+import { 委托待核对键 } from './后端/委托待核对';
 
 // J-PILOT-01 Task 2 fix 探针：主体基串 effect 对 清P5MatchCase引用 的组合参数（是否
 // 带上 alias 对照）无法经后端状态观察 —— 用透传 delegation 桩记录调用参数，行为保持原实现。
@@ -635,6 +636,12 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
       record_id: recordId,
       case_detail: recordId.startsWith('mc_') ? P5候选详情DTO : null,
     })),
+    // J-PILOT-01 Task 3：委托创建与失败初评动作 facade（默认受理成功，逐用例覆盖）
+    创建候选岗位委托: vi.fn(async (): Promise<unknown[]> => []),
+    重试候选连续记录: vi.fn(async (): Promise<{ record_id: string; retry_generation: number }> =>
+      ({ record_id: 连续记录A, retry_generation: 0 })),
+    归档候选连续记录: vi.fn(async (): Promise<{ record_id: string; archived_at: string }> =>
+      ({ record_id: 连续记录A, archived_at: '2026-08-29T03:00:00Z' })),
     // P7 Task 2：真人会话域 facade（默认空页/空详情成功，mutation 默认成功；逐用例覆盖）
     读取会话列表: vi.fn(async (): Promise<P7会话页> => ({ items: [], nextCursor: null })),
     读取会话: vi.fn(async (): Promise<P7会话项> => ({
@@ -916,6 +923,8 @@ describe('应用状态提供者 后端会话', () => {
       '刷新候选岗位', '标记岗位不感兴趣', '刷新招聘候选',
       '设置候选收藏', '淘汰候选', '撤销淘汰候选',
       '委托候选岗位', '委托招聘候选', '刷新委托',
+      // J-PILOT-01 Task 3：待核对投影与原命令核对口（发现推荐操作）
+      '取候选待核对命令', '核对候选委托',
       // P2 附件简历域方法（附件简历操作）；P5 追加委托前的权威库准备
       '刷新附件简历', '创建附件简历', '替换附件简历', '删除附件简历', '请求附件解析', '下载附件简历',
       '准备候选委托简历',
@@ -927,6 +936,8 @@ describe('应用状态提供者 后端会话', () => {
       '新增叮嘱', '读取简历PDF',
       // J-PILOT-01 Task 2：候选连续集合读取（MatchCase操作）
       '加载连续列表', '追加连续列表', '刷新连续列表', '读取连续详情',
+      // J-PILOT-01 Task 3：失败初评动作（MatchCase操作）
+      '重试连续记录', '归档连续记录',
       // P7 真人会话域方法（真人会话操作）：收件箱/会话可见范围注册、列表/详情/消息
       // 读取与分页、发送对账、显式放弃、forward-only 已读与失效通知
       '设置P7收件箱范围', '设置P7会话范围', '加载会话列表', '追加会话列表',
@@ -3042,6 +3053,81 @@ describe('应用状态提供者 P5 MatchCase 运行时状态', () => {
 // ── P8 Task 3：Provider 的账号安全运行时状态 —— 空底座种子、按需读取、会话边界清理 ──
 // P8 的 Provider 清理键只认主体（不带角色）：同主体切角色保留已确认的共享账号快照，
 // 只递增 P8 范围代际并清待定意图；登出 / 401 / 换主体 / 卸载则三块快照整域摊平。
+
+// ── J-PILOT-01 Task 3：委托待核对运行时接线 —— 方法暴露、owner 存储落键与会话边界清理 ──
+// pending 内存表与 owner 存储会话由 Provider 一次性初始化并传给发现推荐/MatchCase 两域；
+// 退出/切身份由 会话操作 的清理口清内存并删 outgoing owner 的 sessionStorage 恢复记录。
+
+describe('应用状态提供者 J-PILOT-01 Task 3：委托待核对运行时接线', () => {
+  const 候选委托输入 = {
+    intentionId: 'int_1', recommendationId: 'rec_c1', jobId: 'job_1',
+    resumeFileId: 'rf_1', resumeFileVersionId: 'rfv_7', disclosureAcknowledged: true as const,
+  };
+  const 恢复键 = () => 委托待核对键({
+    environment: 'stg', subjectId: BFF主体样本.subject_id, role: 'candidate',
+  });
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null), setItem: vi.fn(), removeItem: vi.fn(), clear: vi.fn(),
+    });
+  });
+
+  it('Provider 暴露取候选待核对命令/核对候选委托/重试连续记录/归档连续记录；Mock 模式零请求', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    render(createElement(应用状态提供者, null, createElement(上下文探针)));
+    expect(当前.数据源模式).toBe('mock');
+    expect(当前.操作.取候选待核对命令('int_1', 'job_1')).toBeNull();
+    await expect(当前.操作.核对候选委托('int_1', 'job_1')).resolves.toBeUndefined();
+    await expect(当前.操作.重试连续记录('dlg_1')).resolves.toBeUndefined();
+    await expect(当前.操作.归档连续记录('dlg_1')).resolves.toBeUndefined();
+  });
+
+  it('委托网络失败冻结 pending 并落 owner 存储；退出登录清内存与恢复记录', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.创建候选岗位委托)
+      .mockRejectedValueOnce(new BFF错误(0, 'network_error', 'unknown'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+
+    await expect(当前.操作.委托候选岗位(候选委托输入)).rejects.toMatchObject({ code: 'network_error' });
+    // 发送前冻结：内存投影与 owner 存储键都在场（普通页面 scope 卸载不清它）
+    const 待核对 = 当前.操作.取候选待核对命令('int_1', 'job_1');
+    expect(待核对).toMatchObject({
+      operation: 'create', intention_id: 'int_1',
+      resume_file_id: 'rf_1', resume_file_version_id: 'rfv_7',
+    });
+    expect(globalThis.sessionStorage.getItem(恢复键())).not.toBeNull();
+
+    // 退出登录：内存表与 outgoing owner 的恢复记录一并清空（401 走同一 清账号状态 收口）
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(globalThis.sessionStorage.getItem(恢复键())).toBeNull();
+    expect(当前.操作.取候选待核对命令('int_1', 'job_1')).toBeNull();
+  });
+
+  it('切身份（切离 candidate）清内存并删当前主体的恢复记录', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.创建候选岗位委托)
+      .mockRejectedValueOnce(new BFF错误(0, 'network_error', 'unknown'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await expect(当前.操作.委托候选岗位(候选委托输入)).rejects.toMatchObject({ code: 'network_error' });
+    expect(globalThis.sessionStorage.getItem(恢复键())).not.toBeNull();
+
+    await 当前.操作.切身份('招聘方');
+    await waitFor(() => expect(当前.后端状态.主体?.last_used_role).toBe('recruiter'));
+    expect(globalThis.sessionStorage.getItem(恢复键())).toBeNull();
+    expect(当前.操作.取候选待核对命令('int_1', 'job_1')).toBeNull();
+  });
+});
 
 describe('应用状态提供者 P8 控制面运行时状态', () => {
   beforeEach(() => {

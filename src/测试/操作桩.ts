@@ -10,6 +10,7 @@
 
 import { vi } from 'vitest';
 import type { 发现推荐操作 } from '../状态/后端/类型';
+import type { 待核对命令 } from '../状态/后端/委托待核对';
 import { BFF候选委托回执样本, BFF招聘委托回执样本 } from './BFF样本';
 
 /** 完整 发现推荐操作 桩；覆盖项按名替换（用例自己的 spy 优先）。 */
@@ -30,6 +31,9 @@ export function 发现推荐操作桩(覆盖: Record<string, unknown> = {}): 发
     委托候选岗位: vi.fn(async () => BFF候选委托回执样本),
     委托招聘候选: vi.fn(async () => BFF招聘委托回执样本),
     刷新委托: vi.fn(async () => undefined),
+    // J-PILOT-01 Task 3：岗位页主按钮的待核对投影与核对口（默认无未决命令）
+    取候选待核对命令: vi.fn((): 待核对命令 | null => null),
+    核对候选委托: vi.fn(async () => undefined),
   };
   return { ...全表, ...覆盖 } as 发现推荐操作;
 }

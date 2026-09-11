@@ -64,6 +64,7 @@ import type {
   应用操作, 后端状态, 后端操作依赖, 候选预填恢复存储, 提交候选意向快照输入,
   P7待定意图, P7已读位置记录, P8待定意图,
 } from './后端/类型';
+import type { 委托待核对会话, 待核对命令 } from './后端/委托待核对';
 import { 创建空Agent设置状态, 创建空招聘方组织水合状态, 创建空候选预填状态 } from './后端/类型';
 import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
 import { 创建发现推荐操作, 创建空P4发现状态 } from './后端/发现推荐操作';
@@ -592,6 +593,12 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const 候选实名读取锁 = useRef<Promise<void> | null>(null);
   const 候选实名变更锁 = useRef(new Set<'create' | 'cancel'>());
   const 候选实名提交意图 = useRef<string | null>(null);
+  // J-PILOT-01 Task 3：委托待核对运行时引用 —— 未决 create/retry 命令的内存表
+  // （Map，键为 委托待核对目标键；同一目标未决只留一份，普通页面 scope 卸载不清）
+  // 与 owner 绑定的 sessionStorage 会话适配。一次性初始化；退出/401/换主体/切离
+  // candidate 由 会话操作 的清理口统一清空内存并删除 outgoing owner 的恢复记录。
+  const 委托待核对内存 = useRef(new Map<string, 待核对命令>());
+  const 委托待核对存储 = useRef<委托待核对会话 | null>(null);
   // Task 2：候选意向持久化写屏障 —— Provider 最近一次接纳的权威快照的
   // { 主体, 会话代际, 服务端对象引用 }。只是「成功水合已进入 React commit」的标记，
   // 不持久化、不是业务模型；use资料持久化 靠它区分权威空列表与尚未水合的初始空字典。
@@ -629,6 +636,13 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       storage: 安全取存储('session') as Storage | null,
       范围: { 模式: 'backend', 环境, 账号: 当前候选主体标识 },
     })
+    : null;
+  // J-PILOT-01 Task 3：委托待核对存储会话按 Backend + candidate 主体在渲染期换绑（同
+  // P8导出恢复/候选预填恢复 纪律）：操作方法在调用时解引用 .current 一定看到新会话
+  //（或 null）。Mock / 招聘端 / 未登录恒 null、零存储触碰；退出/401/切主体的清理由
+  // 会话操作 的清理口在换绑前执行（适配器此刻仍绑着 outgoing subject）。
+  委托待核对存储.current = 是后端 && 当前候选主体标识 !== null
+    ? { storage: 安全取存储('session'), owner: { environment: 环境, subjectId: 当前候选主体标识, role: 'candidate' } }
     : null;
   use资料持久化({
     状态, 派发, 是后端, 环境, 当前主体标识, 当前候选主体标识,
@@ -737,6 +751,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         P8范围代际, P8账号可见, P8读取锁, P8待定意图,
         候选预填代际, 候选预填读取锁, 候选预填恢复,
         候选实名读取锁, 候选实名变更锁, 候选实名提交意图,
+        委托待核对内存, 委托待核对存储,
       }, 主体, false, 本次代际);
       if (已取消) return;
       if (会话失效) {
@@ -892,6 +907,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         候选实名读取锁,
         候选实名变更锁,
         候选实名提交意图,
+        委托待核对内存,
+        委托待核对存储,
       };
       return {
         ...创建会话操作(deps),

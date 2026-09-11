@@ -28,6 +28,13 @@
 //     alias→canonical 对照只在当前主体内存中存在并随 清P5MatchCase引用 一并清空，
 //     绝不进 资料持久化。聚合 case_detail 投影回旧 P5详情 槽（封闭时清空不留镜像），
 //     不另镜第二份候选权威快照；不能用 job_id 猜归属，不同委托即使同岗位也不合并。
+//   · J-PILOT-01 Task 3：失败初评的 retry/archive 走既有命令核（服务端先行 + 不确定
+//     对账 + 成功后权威聚合重读）。retry 发送前冻结未决命令（原 key/record/generation，
+//     内存 + owner sessionStorage，Spec §8），202 仅受理、随后 GET；存在未决 retry 时
+//     只核对原命令，不以最新动作或 generation 改写；409 三类只回读权威状态，保留原
+//     key/generation、不自动再次 POST。archive body 严格 {} 无 key（facade 冻结），
+//     未决命令集只覆盖 create/retry。普通 scope 卸载不清未决命令；会话转移由
+//     会话操作 的清理口清内存并删 outgoing owner 的存储记录。
 
 import { BFF错误, 取后端错误文案 } from '../../数据/HTTP客户端';
 import type { BFF二进制响应 } from '../../数据/HTTP客户端';
@@ -49,6 +56,14 @@ import type {
 } from '../../数据/招聘数据源/连续代谈';
 import { 创建PDF对象租约 } from '../../数据/PDF对象租约';
 import { 取当前补充问题 } from '../../数据/MatchCase基础';
+import {
+  保存待核对,
+  委托待核对目标键,
+  委托重试目标键,
+  读取待核对,
+  type 委托待核对会话,
+  type 待核对命令,
+} from './委托待核对';
 import { 清账号状态 } from './会话操作';
 import type {
   P5列表快照,
@@ -419,6 +434,41 @@ export function 失效P5开案工作区(
   });
 }
 
+/**
+ * J-PILOT-01 Task 3：候选 create 回执/核对回读到持久记录后，让该主体已载的 continuous
+ * active/history 列表快照失效（P4→P5 seam，与 失效P5开案工作区 同款纪律）：
+ *   · 主体/会话代际仍有效才动手 —— 换主体后的陈旧回执不失效新主体的快照；
+ *   · 两个 shelf 的读代际 +1：还在飞的旧列表读整包作废，迟到旧 GET 不回写；
+ *   · 移除 owner 匹配的快照槽：下一次 加载连续列表/刷新连续列表 重新真实 GET
+ *    （首屏失效重读，spec §4），不立刻后台重读、不触碰连续详情/摘要/历史 Case 域。
+ */
+export function 失效P5连续列表(
+  deps: 后端操作依赖,
+  input: { subjectId: string; sessionGeneration: number },
+): void {
+  const 引用 = 取P5引用(deps);
+  if (deps.主体标识引用.current !== input.subjectId) return;
+  if (deps.会话代际.current !== input.sessionGeneration) return;
+  const 架子们 = ['active', 'history'] as const;
+  for (const shelf of 架子们) {
+    const 读键 = 读代际键(P5范围键.negotiations(shelf));
+    引用.P5范围代际.current.set(读键, (引用.P5范围代际.current.get(读键) ?? 0) + 1);
+  }
+  deps.设后端状态((旧态) => {
+    let 变了 = false;
+    const 下表 = { ...旧态.P5连续列表 };
+    for (const shelf of 架子们) {
+      const 键 = P5范围键.negotiations(shelf);
+      const 快照 = 下表[键];
+      if (快照 !== undefined && 快照.ownerSubjectId === input.subjectId) {
+        delete 下表[键];
+        变了 = true;
+      }
+    }
+    return 变了 ? { ...旧态, P5连续列表: 下表 } : 旧态;
+  });
+}
+
 export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作 {
   const { 是后端, 后端, 设后端状态, 后端状态引用, 主体标识引用, 会话代际 } = deps;
   const 引用 = 取P5引用(deps);
@@ -434,6 +484,8 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     派发: deps.派发, 设后端状态, 后端, 主体标识引用, 会话代际,
     P4范围代际: deps.P4范围代际, P4幂等意图: deps.P4幂等意图, P4可见范围: deps.P4可见范围,
     候选预填代际: deps.候选预填代际, 候选预填读取锁: deps.候选预填读取锁, 候选预填恢复: deps.候选预填恢复,
+    // J-PILOT-01 Task 3：当前轮 401 的统一清理同时清未决 create/retry 命令与恢复记录
+    委托待核对内存: deps.委托待核对内存, 委托待核对存储: deps.委托待核对存储,
   };
 
   /** 401 的统一收口：清账号状态（含 P4 状态/引用）+ P5 状态摊平与引用级清理（意图/代际/租约）。 */
@@ -1194,6 +1246,199 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       和 + 区.instructionReceipts.filter((回执) => 回执.owner === role && 回执.expression === text).length, 0);
   }
 
+  // ── J-PILOT-01 Task 3：连续详情直读核（公开方法与 retry 权威读共用）──
+
+  async function 运行连续详情读(recordId: string, force?: boolean): Promise<void> {
+    if (!是后端 || !后端) return;
+    if (后端状态引用.current.主体?.last_used_role !== 'candidate') return;
+    // alias→canonical 对照：入口经短对照找 canonical 槽，找不到才按输入坐标起读
+    const canonical = P5别名对照.current.get(recordId) ?? recordId;
+    const scopeKey = P5范围键.negotiation(canonical);
+    if (force !== true) {
+      const 快照 = 后端状态引用.current.P5连续详情[scopeKey];
+      if (快照?.阶段 === '成功' && 快照.detail !== null &&
+        快照.ownerSubjectId === 主体标识引用.current) return;
+    }
+    const 取得 = 获取读锁(scopeKey);
+    if (!取得) return;
+    const fence = 取得.fence;
+    try {
+      if (!后端) return;
+      设后端状态((旧态) => ({
+        ...旧态,
+        P5连续详情: {
+          ...旧态.P5连续详情,
+          [scopeKey]: 起步连续详情(旧态.P5连续详情[scopeKey], fence.scopeGeneration, fence.subjectId),
+        },
+      }));
+      // GET 恒用原始输入坐标（后端 alias 归一 mc_/dlg_ 记录坐标），落位只认返回 ID
+      const 详情 = await 后端.读取候选连续详情(recordId);
+      if (!栅栏仍当前(fence)) return;
+      保存候选聚合快照({
+        输入坐标: recordId, 起步键: scopeKey,
+        详情, generation: fence.scopeGeneration, ownerSubjectId: fence.subjectId,
+      });
+    } catch (错误) {
+      if (!栅栏仍当前(fence)) return;
+      if (是401(错误)) {
+        清账号与P5();
+        return;
+      }
+      // 403/404：记录对当前主体不可见 —— 连续槽清旧敏感内容（不冒充写入未受理）
+      if (是候选详情不可见(错误)) {
+        清候选连续详情(recordId, 错误, fence.scopeGeneration, fence.subjectId);
+        return;
+      }
+      // 网络/503/坏合同：保留同主体只读旧快照，只落重试错误（facade 已 fail closed）
+      设后端状态((旧态) => ({
+        ...旧态,
+        P5连续详情: {
+          ...旧态.P5连续详情,
+          [scopeKey]: 失败连续详情(
+            旧态.P5连续详情[scopeKey], 错误, fence.scopeGeneration, fence.subjectId),
+        },
+      }));
+    } finally {
+      释放读锁(取得);
+    }
+  }
+
+  // ── J-PILOT-01 Task 3：委托待核对（retry 半边）── 未决命令的内存表 + owner 存储 ──
+  // 与 发现推荐操作 共用 Provider 注入的同一对引用：内存表是全部未决 create/retry 命令
+  // 的唯一底座（键为 委托待核对目标键），存储按 owner 隔离整批读写；引用缺席（旧测试桩）
+  // 时该域零存储读写、恢复退化为无记忆，retry 本身照常工作。
+
+  type 待核对重试命令 = 待核对命令 & { operation: 'retry' };
+
+  function 取待核对会话(): 委托待核对会话 | null {
+    return deps.委托待核对存储?.current ?? null;
+  }
+
+  /** 整批持久化内存表；返回 false = 存储不可用（调用方保留内存兜底，不因此重发）。 */
+  function 持久化待核对(): boolean {
+    const 内存 = deps.委托待核对内存?.current;
+    if (内存 === undefined) return false;
+    const 会话 = 取待核对会话();
+    return 保存待核对(会话?.storage ?? null, 会话?.owner ?? null, [...内存.values()]);
+  }
+
+  /** 写入/替换内存未决命令并尽力持久化；同一目标只留一份（未决时不另起命令）。 */
+  function 写待核对(命令: 待核对命令): void {
+    const 内存 = deps.委托待核对内存?.current;
+    if (内存 === undefined) return;
+    内存.set(委托待核对目标键(命令), 命令);
+    持久化待核对();
+  }
+
+  /** 读该 record 的未决 retry：内存优先，落 owner 存储兜底（硬刷新后内存为空）。 */
+  function 读重试待核对(recordId: string): 待核对重试命令 | null {
+    const 内存 = deps.委托待核对内存?.current;
+    const 键 = 委托重试目标键(recordId);
+    const 内存命中 = 内存?.get(键);
+    if (内存命中 !== undefined) return 内存命中.operation === 'retry' ? 内存命中 : null;
+    const 会话 = 取待核对会话();
+    if (会话 === null) return null;
+    const { 命令 } = 读取待核对(会话.storage, 会话.owner);
+    return 命令.find((条): 条 is 待核对重试命令 =>
+      条.operation === 'retry' && 条.record_id === recordId) ?? null;
+  }
+
+  /** 只改在场的那条（绝不插入）：202 受理后补 已确认回执；重放不以此改写原命令。 */
+  function 改重试待核对(recordId: string, 修补: (现: 待核对重试命令) => 待核对重试命令): void {
+    const 内存 = deps.委托待核对内存?.current;
+    if (内存 === undefined) return;
+    const 键 = 委托重试目标键(recordId);
+    const 现 = 内存.get(键);
+    if (现 === undefined || 现.operation !== 'retry') return;
+    内存.set(键, 修补(现));
+    持久化待核对();
+  }
+
+  function 删重试待核对(recordId: string): void {
+    const 内存 = deps.委托待核对内存?.current;
+    if (内存 === undefined) return;
+    if (内存.delete(委托重试目标键(recordId))) 持久化待核对();
+  }
+
+  /**
+   * 权威快照在手且已越过原命令目标（actions.retry 不再提供，或 generation 已不是原
+   * expected_retry_generation）时原命令已无未决意义 —— 只按回读事实判，绝不把 409
+   * 冲突本身当成已受理/未受理的证明；快照不在场/失败/换主体一律保持待核对。
+   */
+  function 重试待核对已越原命令(recordId: string, 命令: 待核对重试命令): boolean {
+    const canonical = P5别名对照.current.get(recordId) ?? recordId;
+    const 快照 = 后端状态引用.current.P5连续详情[P5范围键.negotiation(canonical)];
+    if (快照?.阶段 !== '成功' || 快照.detail === null) return false;
+    if (快照.ownerSubjectId !== 主体标识引用.current) return false;
+    return 快照.detail.actions.retry !== true ||
+      快照.detail.retry_generation !== 命令.expected_retry_generation;
+  }
+
+  /** 400/403/404 等明确拒绝：命令已被权威裁定拒绝，无未决可核对（401/不确定错误不在此列）。 */
+  function 是明确拒绝(错误: unknown): boolean {
+    return 错误 instanceof BFF错误 && 错误.status !== 401 && !是结果不确定(错误);
+  }
+
+  /**
+   * 原命令的重放核：种回原键（硬刷新后 P5幂等意图 已清空，键只活在待核对命令里）后
+   * 走既有命令核 —— 原 record_id + 原 expected_retry_generation + 原键恰一次 POST，
+   * 202 仅受理（写侧只补 已确认回执），随后由命令核权威回读；409 三类与 503/网络
+   * 只触发命令核的一次对账回读，保留原键、不自动换 generation、不再次 POST。
+   */
+  async function 运行重试命令(命令: 待核对重试命令): Promise<void> {
+    const intent = 意图键('candidate', 命令.record_id, 'retry', String(命令.expected_retry_generation));
+    引用.P5幂等意图.current.set(intent, 命令.key);
+    const 目标代 = String(命令.expected_retry_generation);
+    await 单飞命令(['P5写', 'candidate', 段(命令.record_id), 'retry', 段(目标代)].join(':'), () =>
+      运行命令({
+        role: 'candidate', caseId: 命令.record_id, 动作: 'retry', 目标: 目标代,
+        写: async (源, 键) => {
+          await 源.重试候选连续记录(命令.record_id, 命令.expected_retry_generation, 键);
+          // 202 = 受理：只补 已确认回执（GET 失败后不再重发已确认 write）
+          改重试待核对(命令.record_id, (现) => ({ ...现, 已确认回执: true }));
+        },
+        // retry 是失败初评（pre-Case）动作：对账读到 case_detail=null 时命令核按原
+        // 不确定错误收口（键保留同键可重放），谓词只在非空详情的兜底分支取真。
+        已生效: () => true,
+      }));
+  }
+
+  /** 存在未决 retry 时的核对口：已确认只回读；未确认原 key/原 generation 恰重放一次。 */
+  async function 核对重试待核对(命令: 待核对重试命令): Promise<void> {
+    if (命令.已确认回执 === true) {
+      // write 已确认：只回读持久记录（force 聚合读），不重发已确认 write
+      await 运行连续详情读(命令.record_id, true);
+      if (重试待核对已越原命令(命令.record_id, 命令)) 删重试待核对(命令.record_id);
+      return;
+    }
+    try {
+      await 运行重试命令(命令);
+    } catch (错误) {
+      // 明确拒绝收掉未决命令；权威回读已越过原命令（如 generation 已被消费）同样收掉
+      if (是明确拒绝(错误) || 重试待核对已越原命令(命令.record_id, 命令)) {
+        删重试待核对(命令.record_id);
+      }
+      throw 错误;
+    }
+    if (重试待核对已越原命令(命令.record_id, 命令)) 删重试待核对(命令.record_id);
+  }
+
+  /** 新意图的权威详情：当前主体成功快照优先，缺位/过期先 force 聚合读一次；读不到返回 null。 */
+  async function 权威连续详情或空(recordId: string): Promise<NegotiationDetail | null> {
+    const 取 = (): NegotiationDetail | null => {
+      const canonical = P5别名对照.current.get(recordId) ?? recordId;
+      const 快照 = 后端状态引用.current.P5连续详情[P5范围键.negotiation(canonical)];
+      return 快照?.阶段 === '成功' && 快照.detail !== null &&
+        快照.ownerSubjectId === 主体标识引用.current
+        ? 快照.detail
+        : null;
+    };
+    const 现有 = 取();
+    if (现有 !== null) return 现有;
+    await 运行连续详情读(recordId, true);
+    return 取();
+  }
+
   return {
     设置P5范围(role, 范围键) {
       const 旧 = P5可见范围.current[role];
@@ -1375,58 +1620,63 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     },
 
     async 读取连续详情(recordId, force) {
+      return 运行连续详情读(recordId, force);
+    },
+
+    /**
+     * J-PILOT-01 Task 3（Spec §8）：失败初评的重试。新意图取当前权威允许动作与
+     * retry_generation（快照缺位先 force 聚合读一次；权威不允许/读不到时零 POST）；
+     * 发送前冻结 retry 未决命令（内存 + owner 存储），202 仅受理、随后命令核权威回读。
+     * 存在未决 retry 时不另起命令：本次调用转为核对原命令（原 key/generation 恰重放
+     * 一次或已确认回执只回读），不以最新动作或 generation 改写原命令。
+     */
+    async 重试连续记录(recordId) {
       if (!是后端 || !后端) return;
       if (后端状态引用.current.主体?.last_used_role !== 'candidate') return;
-      // alias→canonical 对照：入口经短对照找 canonical 槽，找不到才按输入坐标起读
-      const canonical = P5别名对照.current.get(recordId) ?? recordId;
-      const scopeKey = P5范围键.negotiation(canonical);
-      if (force !== true) {
-        const 快照 = 后端状态引用.current.P5连续详情[scopeKey];
-        if (快照?.阶段 === '成功' && 快照.detail !== null &&
-          快照.ownerSubjectId === 主体标识引用.current) return;
+      const 既有 = 读重试待核对(recordId);
+      if (既有 !== null) {
+        await 核对重试待核对(既有);
+        return;
       }
-      const 取得 = 获取读锁(scopeKey);
-      if (!取得) return;
-      const fence = 取得.fence;
+      const 权威 = await 权威连续详情或空(recordId);
+      if (权威 === null || 权威.actions.retry !== true) return;
+      const intent = 意图键('candidate', recordId, 'retry', String(权威.retry_generation));
+      // 发送前冻结：原 key、原 record_id、原 expected_retry_generation（内存 + 存储）
+      const 命令: 待核对重试命令 = {
+        operation: 'retry', key: idempotencyKeyFor(引用, intent),
+        record_id: recordId, expected_retry_generation: 权威.retry_generation,
+      };
+      写待核对(命令);
       try {
-        if (!后端) return;
-        设后端状态((旧态) => ({
-          ...旧态,
-          P5连续详情: {
-            ...旧态.P5连续详情,
-            [scopeKey]: 起步连续详情(旧态.P5连续详情[scopeKey], fence.scopeGeneration, fence.subjectId),
-          },
-        }));
-        // GET 恒用原始输入坐标（后端 alias 归一 mc_/dlg_ 记录坐标），落位只认返回 ID
-        const 详情 = await 后端.读取候选连续详情(recordId);
-        if (!栅栏仍当前(fence)) return;
-        保存候选聚合快照({
-          输入坐标: recordId, 起步键: scopeKey,
-          详情, generation: fence.scopeGeneration, ownerSubjectId: fence.subjectId,
-        });
+        await 运行重试命令(命令);
       } catch (错误) {
-        if (!栅栏仍当前(fence)) return;
-        if (是401(错误)) {
-          清账号与P5();
-          return;
-        }
-        // 403/404：记录对当前主体不可见 —— 连续槽清旧敏感内容（不冒充写入未受理）
-        if (是候选详情不可见(错误)) {
-          清候选连续详情(recordId, 错误, fence.scopeGeneration, fence.subjectId);
-          return;
-        }
-        // 网络/503/坏合同：保留同主体只读旧快照，只落重试错误（facade 已 fail closed）
-        设后端状态((旧态) => ({
-          ...旧态,
-          P5连续详情: {
-            ...旧态.P5连续详情,
-            [scopeKey]: 失败连续详情(
-              旧态.P5连续详情[scopeKey], 错误, fence.scopeGeneration, fence.subjectId),
-          },
-        }));
-      } finally {
-        释放读锁(取得);
+        // 明确拒绝收掉未决命令；权威回读已越过原命令（如 generation 已被消费）同样收掉
+        if (是明确拒绝(错误) || 重试待核对已越原命令(recordId, 命令)) 删重试待核对(recordId);
+        throw 错误;
       }
+      if (重试待核对已越原命令(recordId, 命令)) 删重试待核对(recordId);
+    },
+
+    /**
+     * J-PILOT-01 Task 3（Spec §8）：归档失败初评卡。body 严格 {}、无 Idempotency-Key
+     * （facade 已冻结，意图键只作单飞/复用坐标，绝不进请求）；成功（或对账确认）后
+     * 命令核权威回读实际 shelf；归档天然幂等 —— 未决命令集只覆盖 create/retry，archive
+     * 的结果不确定由同键重放的既有语义兜底，不另设恢复记录。
+     */
+    async 归档连续记录(recordId) {
+      if (!是后端 || !后端) return;
+      if (后端状态引用.current.主体?.last_used_role !== 'candidate') return;
+      await 单飞命令(['P5写', 'candidate', 段(recordId), 'archive', 'archive'].join(':'), () =>
+        运行命令({
+          role: 'candidate', caseId: recordId, 动作: 'archive', 目标: 'archive',
+          写: async (源) => {
+            // 200 回执只证明归档受理：权威 shelf 由命令核的聚合重读提供
+            await 源.归档候选连续记录(recordId);
+          },
+          // 归档是失败初评（pre-Case）动作：对账读到 case_detail=null 时按原不确定
+          // 错误收口（同键可重放），谓词只在非空详情的兜底分支取真。
+          已生效: () => true,
+        }));
     },
 
     回答事实(role, caseId, promptId, response) {

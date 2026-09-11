@@ -25,6 +25,13 @@ import type {
   NegotiationDetail,
   NegotiationPage,
 } from '../../数据/招聘数据源/连续代谈';
+import {
+  委托重试目标键,
+  读取待核对,
+  type 委托待核对owner,
+  type 委托待核对存储接口,
+  type 待核对命令,
+} from './委托待核对';
 import { 初始状态 } from '../初始状态';
 import type { 动作 } from '../应用状态';
 import {
@@ -239,6 +246,11 @@ function 创建P5数据源(覆盖: Record<string, unknown> = {}): HTTP招聘数�
     读取候选连续列表: vi.fn(async (): Promise<NegotiationPage> => 连续页([], null)),
     读取候选连续详情: vi.fn(async (recordId: string): Promise<NegotiationDetail> =>
       连续聚合(recordId, 权威候选详情)),
+    // J-PILOT-01 Task 3：失败初评动作 facade（默认受理成功 / 归档成功，逐用例覆盖）
+    重试候选连续记录: vi.fn(async (recordId: string): Promise<{ record_id: string; retry_generation: number }> =>
+      ({ record_id: recordId, retry_generation: 0 })),
+    归档候选连续记录: vi.fn(async (recordId: string): Promise<{ record_id: string; archived_at: string }> =>
+      ({ record_id: recordId, archived_at: '2026-08-29T03:00:00Z' })),
     清空目录缓存: vi.fn(),
     ...覆盖,
   } as unknown as HTTP招聘数据源;
@@ -250,9 +262,33 @@ interface P5操作测试环境 {
   派发: ReturnType<typeof vi.fn>;
   操作: MatchCase操作;
   最新状态(): 后端状态;
+  /** J-PILOT-01 Task 3：本环境的委托待核对内存表与 owner 存储（硬刷新用例跨 env 共享存储） */
+  委托待核对内存: { current: Map<string, 待核对命令> };
+  委托待核对存储: { current: { storage: 委托待核对存储接口 | null; owner: 委托待核对owner } | null };
 }
 
-function 创建P5操作测试环境(是后端 = true, 源 = 创建P5数据源()): P5操作测试环境 {
+/** J-PILOT-01 Task 3：受控内存 storage 桩（恰好 Pick<Storage,'getItem'|'setItem'|'removeItem'>）。 */
+function 创建内存存储(): 委托待核对存储接口 & { 表: Map<string, string> } {
+  const 表 = new Map<string, string>();
+  return {
+    表,
+    getItem: (键: string) => 表.get(键) ?? null,
+    setItem: (键: string, 值: string) => {
+      表.set(键, 值);
+    },
+    removeItem: (键: string) => {
+      表.delete(键);
+    },
+  };
+}
+
+const 待核对owner: 委托待核对owner = { environment: 'stg', subjectId: 'sub_1', role: 'candidate' };
+
+function 创建P5操作测试环境(
+  是后端 = true,
+  源 = 创建P5数据源(),
+  选项: { 待核对存储?: 委托待核对存储接口 | null } = {},
+): P5操作测试环境 {
   const 状态引用 = { current: 初始状态 };
   const 派发 = vi.fn<(动作: 动作) => void>();
   let 后端值: 后端状态 = {
@@ -313,6 +349,15 @@ function 创建P5操作测试环境(是后端 = true, 源 = 创建P5数据源())
     P5可见范围: { current: { candidate: null, recruiter: null } },
     P5对象租约: { current: new Set() },
     P5别名对照: { current: new Map<string, string>() },
+    // J-PILOT-01 Task 3：委托待核对运行时引用 —— 内存表 + owner 存储会话
+    //（待核对存储 跨 env 可共享：硬刷新 = 新内存表 + 同一 owner 存储）
+    委托待核对内存: { current: new Map<string, 待核对命令>() },
+    委托待核对存储: {
+      current: {
+        storage: 选项.待核对存储 === undefined ? 创建内存存储() : 选项.待核对存储,
+        owner: 待核对owner,
+      },
+    },
   };
   return {
     数据源: 源,
@@ -320,6 +365,8 @@ function 创建P5操作测试环境(是后端 = true, 源 = 创建P5数据源())
     派发,
     操作: 创建MatchCase操作(deps),
     最新状态: () => 后端值,
+    委托待核对内存: deps.委托待核对内存 as { current: Map<string, 待核对命令> },
+    委托待核对存储: deps.委托待核对存储 as P5操作测试环境['委托待核对存储'],
   };
 }
 
@@ -1918,5 +1965,276 @@ describe('失效P5开案工作区', () => {
     });
     await 环境.操作.加载工作区('candidate', 'int_1');
     expect(vi.mocked(环境.数据源.读取P5Open列表).mock.calls.length).toBe(失效前次数 + 1);
+  });
+});
+
+// ── J-PILOT-01 Task 3（Spec §8）：失败初评 retry / archive 的原命令冻结、核对与 409 只回读 ──
+
+describe('J-PILOT-01 Task 3：连续失败动作 retry/archive', () => {
+  /** 可重试的失败初评卡：pre-Case 技术失败，actions 允许 retry/archive，generation 1。 */
+  const 可重试聚合 = 连续聚合(连续记录A, null, {
+    phase: 'evaluation_failed',
+    failure: { code: 'delegation_agent_unavailable', retryable: true },
+    actions: { retry: true, archive: true, open_case: false },
+    retry_generation: 1,
+  });
+  /** 已恢复的聚合：generation 已被消费（越过原命令），不再提供 retry。 */
+  const 已恢复聚合 = 连续聚合(连续记录A, null, {
+    phase: 'evaluating',
+    failure: null,
+    actions: { retry: false, archive: false, open_case: false },
+    retry_generation: 2,
+  });
+  /** 已归档聚合：shelf=history，回读事实呈现竞争结果。 */
+  const 已归档聚合 = 连续聚合(连续记录A, null, {
+    shelf: 'history',
+    needs_action: false,
+    archived_at: '2026-08-29T03:00:00Z',
+    actions: { retry: false, archive: false, open_case: false },
+  });
+
+  it('新意图取权威允许动作与 generation：202 仅受理，随后聚合回读，权威越过原 generation 后删 pending', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('retry-key-0001'));
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(可重试聚合) // 权威读（快照缺位 force GET）
+      .mockResolvedValueOnce(已恢复聚合); // 202 后命令核的聚合回读
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockResolvedValueOnce({ record_id: 连续记录A, retry_generation: 2 });
+    await env.操作.重试连续记录(连续记录A);
+    // POST body 严格 {expected_retry_generation: 权威 generation}＋原键（完整 body 比较）
+    expect(vi.mocked(env.数据源.重试候选连续记录).mock.calls).toEqual([[连续记录A, 1, 'retry-key-0001']]);
+    // 202 之后必须权威回读（受理 ≠ 恢复成功）
+    expect(vi.mocked(env.数据源.读取候选连续详情).mock.calls).toHaveLength(2);
+    expect(env.委托待核对内存.current.has(委托重试目标键(连续记录A))).toBe(false);
+    expect(读取待核对(env.委托待核对存储.current!.storage, 待核对owner).命令).toEqual([]);
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]?.detail?.retry_generation).toBe(2);
+    randomUUID.mockRestore();
+  });
+
+  it('发送前冻结 retry 未决命令：POST 门未放行时内存与 owner 存储已持有原 key/generation', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('freeze-key-0001'));
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(可重试聚合);
+    let 放行!: (值: { record_id: string; retry_generation: number }) => void;
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockReturnValueOnce(new Promise((ok) => { 放行 = ok; }));
+    const 写 = env.操作.重试连续记录(连续记录A);
+    await new Promise((完成) => setTimeout(完成, 0)); // 权威读完成、POST 门未放行：冻结必须已完成
+    const 期望命令: 待核对命令 = {
+      operation: 'retry', key: 'freeze-key-0001',
+      record_id: 连续记录A, expected_retry_generation: 1,
+    };
+    expect(env.委托待核对内存.current.get(委托重试目标键(连续记录A))).toEqual(期望命令);
+    expect(读取待核对(env.委托待核对存储.current!.storage, 待核对owner).命令).toEqual([期望命令]);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(已恢复聚合);
+    放行({ record_id: 连续记录A, retry_generation: 2 });
+    await 写;
+    randomUUID.mockRestore();
+  });
+
+  it('权威不允许 retry 时零 POST 零 pending；快照在场直接取 generation，不再补 GET', async () => {
+    const 不允许 = 连续聚合(连续记录A, null, {
+      phase: 'refused', refusal_code: 'delegation_cooldown',
+      actions: { retry: false, archive: false, open_case: false },
+    });
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(不允许);
+    await env.操作.重试连续记录(连续记录A);
+    expect(env.数据源.重试候选连续记录).not.toHaveBeenCalled();
+    expect(env.委托待核对内存.current.size).toBe(0);
+
+    // 快照在场：先权威读落 canonical 快照，再重试 —— 新意图直接取快照 actions/generation
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(可重试聚合) // 落快照的权威读
+      .mockResolvedValueOnce(已恢复聚合); // POST 202 后命令核的聚合回读（唯一后续 GET）
+    await env.操作.读取连续详情(连续记录A, true); // force：覆盖上一段落的不可重试快照
+    const 权威读数 = vi.mocked(env.数据源.读取候选连续详情).mock.calls.length;
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockResolvedValueOnce({ record_id: 连续记录A, retry_generation: 2 });
+    await env.操作.重试连续记录(连续记录A);
+    expect(env.数据源.重试候选连续记录).toHaveBeenCalledWith(连续记录A, 1, expect.any(String));
+    expect(vi.mocked(env.数据源.读取候选连续详情).mock.calls.length).toBe(权威读数 + 1); // 无意图前的补读
+  });
+
+  it('POST 无响应→硬刷新→原 record/generation/key 完整重放：新环境零新键、逐字段比较完整 body', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('orig-retry-key-1'))
+      .mockReturnValue(UUID键('never-key-0002'));
+    // 权威读与不确定结局的对账回读都仍是原 pre-Case 可重试卡（case_detail=null：对账不确认）
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(可重试聚合);
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockRejectedValueOnce(new BFF错误(0, 'network_error', 'unknown'));
+    await expect(env.操作.重试连续记录(连续记录A)).rejects.toMatchObject({ code: 'network_error' });
+    // 未决命令在内存与存储都在场（普通 scope 清理不删它）
+    expect(env.委托待核对内存.current.get(委托重试目标键(连续记录A))).toMatchObject({
+      operation: 'retry', key: 'orig-retry-key-1',
+      record_id: 连续记录A, expected_retry_generation: 1,
+    });
+    const 共享存储 = env.委托待核对存储.current!.storage!;
+
+    // 硬刷新 = 同一 owner 存储、全新内存表 + 全新幂等意图表
+    const env2 = 创建P5操作测试环境(true, 创建P5数据源(), { 待核对存储: 共享存储 });
+    vi.mocked(env2.数据源.读取候选连续详情).mockResolvedValue(已恢复聚合);
+    vi.mocked(env2.数据源.重试候选连续记录)
+      .mockResolvedValueOnce({ record_id: 连续记录A, retry_generation: 2 });
+    await env2.操作.重试连续记录(连续记录A);
+    // 完整 body 逐字段一致（不只同 key）：原 record_id + 原 generation + 原键恰重放一次
+    expect(vi.mocked(env2.数据源.重试候选连续记录).mock.calls).toEqual([[连续记录A, 1, 'orig-retry-key-1']]);
+    expect(env2.委托待核对内存.current.has(委托重试目标键(连续记录A))).toBe(false);
+    expect(randomUUID).toHaveBeenCalledTimes(1); // 硬刷新后零新键
+    randomUUID.mockRestore();
+  });
+
+  it('存在 pending retry 时不自动发下一代：权威已是 generation 2，重放仍是原 generation 1', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValue(UUID键('gen-key-0001'));
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(可重试聚合); // 对账不确认（pre-Case）
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockRejectedValueOnce(new BFF错误(0, 'network_error', 'unknown'));
+    await expect(env.操作.重试连续记录(连续记录A)).rejects.toMatchObject({ code: 'network_error' });
+    // 权威已推进到 generation 2 且仍可重试：下一次调用必须核对原命令（重放原 1），不发下一代
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce({ ...可重试聚合, retry_generation: 2 }); // 重放的权威回读
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockRejectedValueOnce(new BFF错误(409, 'negotiation_retry_conflict', 'conflict'));
+    await expect(env.操作.重试连续记录(连续记录A)).rejects.toMatchObject({ status: 409 });
+    expect(vi.mocked(env.数据源.重试候选连续记录).mock.calls.map((调用) => 调用[1]))
+      .toEqual([1, 1]);
+    // 权威回读已越过原 generation（2 ≠ 1）：原命令已无未决意义，收掉 pending
+    expect(env.委托待核对内存.current.has(委托重试目标键(连续记录A))).toBe(false);
+    randomUUID.mockRestore();
+  });
+
+  it('409 generation 冲突只回读：原错误上抛、原键保留、权威未越过时 pending 保留，再次核对重放原 generation 一次', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValue(UUID键('conflict-retry-key'));
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(可重试聚合); // 对账回读仍是原 generation 1
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockRejectedValue(new BFF错误(409, 'negotiation_retry_conflict', 'conflict'));
+    await expect(env.操作.重试连续记录(连续记录A)).rejects.toMatchObject({ status: 409 });
+    const 冲突后读数 = vi.mocked(env.数据源.读取候选连续详情).mock.calls.length;
+    expect(冲突后读数).toBeGreaterThanOrEqual(2); // 已回读权威（不是把冲突当证明）
+    // 权威未越过（generation 仍 1 + 仍可重试）：pending 与原键保留，绝不自动换键/再 POST
+    expect(env.委托待核对内存.current.get(委托重试目标键(连续记录A))).toMatchObject({
+      key: 'conflict-retry-key', expected_retry_generation: 1,
+    });
+    await expect(env.操作.重试连续记录(连续记录A)).rejects.toMatchObject({ status: 409 });
+    const 调用 = vi.mocked(env.数据源.重试候选连续记录).mock.calls;
+    expect(调用).toHaveLength(2); // 每次核对恰一次 POST（无循环重试）
+    expect(new Set(调用.map((项) => 项[2]))).toEqual(new Set(['conflict-retry-key']));
+    expect(调用.map((项) => 项[1])).toEqual([1, 1]); // 不自动取最新 generation
+    randomUUID.mockRestore();
+  });
+
+  it('409 idempotency_conflict 只回读不自动另起命令：原键原样保留，权威未越过时 pending 保留', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValue(UUID键('idem-retry-key'));
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(可重试聚合);
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockRejectedValueOnce(new BFF错误(409, 'idempotency_conflict', 'conflict'));
+    await expect(env.操作.重试连续记录(连续记录A)).rejects.toMatchObject({ code: 'idempotency_conflict' });
+    expect(env.数据源.重试候选连续记录).toHaveBeenCalledTimes(1); // 不自动再次 POST
+    expect(env.委托待核对内存.current.get(委托重试目标键(连续记录A))).toMatchObject({
+      key: 'idem-retry-key', expected_retry_generation: 1,
+    });
+    randomUUID.mockRestore();
+  });
+
+  it('409 业务门（not_retryable）回读后权威已不允许：pending 收口，下一次是新意图新键', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('gate-key-0001'))
+      .mockReturnValueOnce(UUID键('gate-key-0002'));
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(可重试聚合) // 权威读
+      .mockResolvedValueOnce(连续聚合(连续记录A, null, { // 409 后的对账回读：已不可重试
+        phase: 'evaluating',
+        failure: null,
+        actions: { retry: false, archive: false, open_case: false },
+        retry_generation: 1,
+      }));
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockRejectedValueOnce(new BFF错误(409, 'negotiation_not_retryable', 'gate'));
+    await expect(env.操作.重试连续记录(连续记录A)).rejects.toMatchObject({ code: 'negotiation_not_retryable' });
+    expect(env.委托待核对内存.current.has(委托重试目标键(连续记录A))).toBe(false);
+    randomUUID.mockRestore();
+  });
+
+  it('202 已受理但权威回读未越过原 generation：pending 保留已确认回执，核对只回读零重发', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('accepted-key-0001'));
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(可重试聚合); // 回读仍是 generation 1
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockResolvedValueOnce({ record_id: 连续记录A, retry_generation: 1 });
+    await env.操作.重试连续记录(连续记录A);
+    expect(env.委托待核对内存.current.get(委托重试目标键(连续记录A))).toMatchObject({
+      key: 'accepted-key-0001', expected_retry_generation: 1, 已确认回执: true,
+    });
+    // 再核对：write 已确认 → 只回读（force GET），绝不重发已确认 write
+    const POST数 = vi.mocked(env.数据源.重试候选连续记录).mock.calls.length;
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(已恢复聚合);
+    await env.操作.重试连续记录(连续记录A);
+    expect(env.数据源.重试候选连续记录).toHaveBeenCalledTimes(POST数); // 零 POST
+    // 回读越过原 generation（2 ≠ 1）后收口
+    expect(env.委托待核对内存.current.has(委托重试目标键(连续记录A))).toBe(false);
+    randomUUID.mockRestore();
+  });
+
+  it('明确拒绝（403）收口未决命令；GET 404 不证明原写未受理：不确定结局的对账 404 保留 pending', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValue(UUID键('refuse-key-0001'));
+    // 403：命令被权威裁定拒绝 → pending 收口
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(可重试聚合);
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockRejectedValueOnce(new BFF错误(403, 'mutation_forbidden', 'forbidden'));
+    await expect(env.操作.重试连续记录(连续记录A)).rejects.toMatchObject({ status: 403 });
+    expect(env.委托待核对内存.current.has(委托重试目标键(连续记录A))).toBe(false);
+
+    // 503 + 对账 GET 404：404 只说明此刻读不到，不证明原写未受理 —— pending 保留
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(可重试聚合) // 权威读
+      .mockRejectedValueOnce(new BFF错误(404, 'negotiation_not_found', 'missing')); // 对账回读
+    vi.mocked(env.数据源.重试候选连续记录)
+      .mockRejectedValueOnce(new BFF错误(503, 'recruitment_service_unavailable', 'down'));
+    await expect(env.操作.重试连续记录(连续记录A)).rejects.toMatchObject({ status: 503 });
+    expect(env.委托待核对内存.current.get(委托重试目标键(连续记录A))).toMatchObject({
+      key: 'refuse-key-0001', expected_retry_generation: 1,
+    });
+    randomUUID.mockRestore();
+  });
+
+  it('archive：body 严格 {} 无 key（facade 单参调用），成功后聚合回读实际 shelf', async () => {
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(已归档聚合); // 成功后的聚合回读（archive 不预读权威）
+    vi.mocked(env.数据源.归档候选连续记录)
+      .mockResolvedValueOnce({ record_id: 连续记录A, archived_at: '2026-08-29T03:00:00Z' });
+    await env.操作.归档连续记录(连续记录A);
+    // facade 冻结：恰一个 recordId 参数，无幂等键
+    expect(vi.mocked(env.数据源.归档候选连续记录).mock.calls).toEqual([[连续记录A]]);
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]?.detail?.shelf).toBe('history');
+    // 归档是失败初评动作：未决命令集只覆盖 create/retry，archive 无 pending
+    expect(env.委托待核对内存.current.size).toBe(0);
+  });
+
+  it('archive 409 业务门只回读：竞争下回读实际 shelf（已归档即历史），原错误上抛不自动重发', async () => {
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(已归档聚合); // 对账回读
+    vi.mocked(env.数据源.归档候选连续记录)
+      .mockRejectedValueOnce(new BFF错误(409, 'negotiation_not_archivable', 'gate'));
+    await expect(env.操作.归档连续记录(连续记录A)).rejects.toMatchObject({ code: 'negotiation_not_archivable' });
+    expect(env.数据源.归档候选连续记录).toHaveBeenCalledTimes(1); // 不自动再次 POST
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]?.detail?.shelf).toBe('history');
+  });
+
+  it('非 candidate 会话与 Mock 模式零请求（retry/archive 均为候选专属动作）', async () => {
+    设主体角色(招聘主体);
+    await env.操作.重试连续记录(连续记录A);
+    await env.操作.归档连续记录(连续记录A);
+    expect(env.数据源.重试候选连续记录).not.toHaveBeenCalled();
+    expect(env.数据源.归档候选连续记录).not.toHaveBeenCalled();
+    expect(env.数据源.读取候选连续详情).not.toHaveBeenCalled();
+
+    const mockEnv = 创建P5操作测试环境(false);
+    await mockEnv.操作.重试连续记录(连续记录A);
+    await mockEnv.操作.归档连续记录(连续记录A);
+    expect(mockEnv.数据源.读取候选连续详情).not.toHaveBeenCalled();
   });
 });

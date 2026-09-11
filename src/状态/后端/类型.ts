@@ -52,6 +52,7 @@ import type {
   P8ReportTarget,
 } from '../../数据/招聘数据源/P8控制面';
 import type { P8导出恢复存储 } from '../../数据/P8导出恢复';
+import type { 委托待核对会话, 待核对命令 } from './委托待核对';
 import type { PDF对象租约 } from '../../数据/PDF对象租约';
 import type { 在招岗位, 披露档, 屏蔽来源, 屏蔽项 } from '../../数据/类型';
 import type { 资料形 } from '../../数据/公司主页资料';
@@ -603,6 +604,16 @@ export interface 后端操作依赖 {
   候选实名读取锁?: 可变引用<Promise<void> | null>;
   候选实名变更锁?: 可变引用<Set<'create' | 'cancel'>>;
   候选实名提交意图?: 可变引用<string | null>;
+  /**
+   * J-PILOT-01 Task 3：委托待核对运行时引用 —— 未决 create/retry 命令的内存表
+   * （Map，键为 委托待核对目标键；同一目标的未决命令只留一份）与 owner 绑定的
+   * sessionStorage 会话适配。与 P4–P8 同一纪律：Provider 一次性初始化内存表并在
+   * 渲染期按 Backend + candidate 主体换绑存储会话；可选成员只为既有测试依赖桩与
+   * 清账号状态 子集调用方的编译兼容，发现推荐操作 / MatchCase操作 在工厂入口
+   * 收窄，缺引用时该域零存储读写（内存兜底仍可用）。
+   */
+  委托待核对内存?: 可变引用<Map<string, 待核对命令>>;
+  委托待核对存储?: 可变引用<委托待核对会话 | null>;
 }
 
 /** 候选实名的三个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -775,9 +786,27 @@ export interface 发现推荐操作 {
   设置候选收藏(jobId: string, recommendationId: string, favorite: boolean): Promise<void>;
   淘汰候选(jobId: string, recommendationId: string, reason: BFF淘汰原因): Promise<void>;
   撤销淘汰候选(jobId: string, recommendationId: string): Promise<void>;
-  委托候选岗位(input: 候选P4委托输入): Promise<BFF委托回执>;
+  /**
+   * J-PILOT-01 Task 3：同一 intention/job 已有未决 create 命令时本次点击转为核对原命令，
+   * 该防御分支可能没有新回执（void）；fresh 创建路径仍返回权威回执。屏层不消费返回值。
+   */
+  委托候选岗位(input: 候选P4委托输入): Promise<BFF委托回执 | void>;
   委托招聘候选(jobId: string, recommendationId: string): Promise<BFF委托回执>;
   刷新委托(role: BFF角色, delegationId: string): Promise<void>;
+  /**
+   * J-PILOT-01 Task 3：岗位页主按钮的同步待核对投影 —— 当前 owner 在该 intention-job
+   * 上是否有未决 create 命令（内存优先，落 owner 存储兜底；无主体/无存储只读内存）。
+   * 只读快照，绝不发请求；页面据此给出「核对提交结果」（无可靠 ID）或「查看进展」
+   * （已确认回执 + 已知 ID）。
+   */
+  取候选待核对命令(intentionId: string, jobId: string): 待核对命令 | null;
+  /**
+   * J-PILOT-01 Task 3（Spec §8）：该 intention-job 未决 create 命令的核对口。
+   * 已确认回执 → 只回读（委托回执 GET + canonical 记录读），不重发已确认 write；
+   * write 未确认且原 key/body 完整 → 原 key＋原 body 恰重放一次，随后回读。
+   * 无未决命令时静默返回（屏层只在有待核对时给该按钮）。每次调用最多一次 POST。
+   */
+  核对候选委托(intentionId: string, jobId: string): Promise<void>;
 }
 
 export interface Agent规则操作 {
@@ -864,6 +893,21 @@ export interface MatchCase操作 {
    * canonical record_id 保存一份权威快照，alias→canonical 对照只在当前主体内存中存在。
    */
   读取连续详情(recordId: string, force?: boolean): Promise<void>;
+  /**
+   * J-PILOT-01 Task 3（Spec §8）：失败初评的重试。新意图取当前权威允许动作与
+   * retry_generation（快照缺位先权威 GET 一次）；发送前冻结 retry 未决命令（原 key、
+   * 原 record_id、原 expected_retry_generation），202 仅受理、随后权威回读。存在未决
+   * retry 时不另起命令：本次调用转为核对原命令（原 key/generation 恰重放一次或已确认
+   * 回执只回读），不以最新动作或 generation 改写。409 三类（幂等冲突 / generation
+   * 冲突 / 业务门）只回读权威状态，保留原 key/generation、不自动换键或再次 POST。
+   */
+  重试连续记录(recordId: string): Promise<void>;
+  /**
+   * J-PILOT-01 Task 3（Spec §8）：归档失败初评卡。body 严格 {}、无 Idempotency-Key
+   * （facade 已冻结），成功后权威回读实际 shelf；归档/retry 竞争按回读事实呈现，
+   * 409 业务门同样只回读不自动重发。
+   */
+  归档连续记录(recordId: string): Promise<void>;
   回答事实(role: P5角色, caseId: string, promptId: string, response: string): Promise<void>;
   /**
    * 候选端 S1 简历提交：disclosureConfirmed 是字面 true —— 只有屏层每次提交前新做的
