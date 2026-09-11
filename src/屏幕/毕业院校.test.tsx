@@ -464,6 +464,7 @@ describe('毕业院校 · 建档草稿接线（Task 4）', () => {
       数据源: 'backend',
       查询Institution,
       简历教育: [{ 编号: 'edu1', 学校: '', 学历: '硕士', 专业: '', 开始: '', 结束: '' }],
+      建档: {},
     });
     const 用户 = userEvent.setup();
     await 用户.type(screen.getByRole('textbox'), '复旦');

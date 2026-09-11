@@ -881,7 +881,7 @@ describe('工作经历 · Task 4 资料接线', () => {
 
   it('作品集链接单独改动：写进草稿并随保存带上规范化后的字符串', async () => {
     const 保存简历 = vi.fn(async () => {});
-    render工作经历({ 经历: [], 教育: [完整教育], 保存简历 });
+    render工作经历({ 经历: [], 教育: [完整教育], 保存简历, 建档: {} });
     const 用户 = userEvent.setup();
     await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
     await 用户.tab();
@@ -897,7 +897,7 @@ describe('工作经历 · Task 4 资料接线', () => {
   it('清空已有作品集链接：保存带 null（明确清空，不是省略）', async () => {
     const 保存简历 = vi.fn(async (_写入: Record<string, unknown>) => {});
     render工作经历({
-      经历: [], 教育: [完整教育], 保存简历, 作品集链接: 'https://github.com/shen',
+      经历: [], 教育: [完整教育], 保存简历, 作品集链接: 'https://github.com/shen', 建档: {},
     });
     const 用户 = userEvent.setup();
     await 用户.clear(screen.getByLabelText('作品集或项目链接'));
@@ -906,12 +906,47 @@ describe('工作经历 · Task 4 资料接线', () => {
     expect(保存简历.mock.calls[0][0]).toEqual(expect.objectContaining({ 作品集链接: null }));
   });
 
-  it('日常编辑（无建档草稿）不受教育门槛影响：结束为空是「至今在读」，照常保存', async () => {
+  it('日常编辑（无旅程标记）不受教育门槛影响：结束为空是「至今在读」，照常保存', async () => {
     const 保存简历 = vi.fn(async () => {});
     render工作经历({ 教育: [{ ...完整教育, 结束: '' }], 保存简历 });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+  });
+
+  // review-r1 关键反例：日常编辑走的是真实次序 —— 先进编辑层敲字（编辑层的 effect
+  // 每次输入都会试图写 编辑中），再回列表保存。判据只要一落到「有没有草稿」上，
+  // 这一串就会自己把草稿造出来，然后 简历域保存 改走单槽 + 缺项保护那条路。
+  it('日常编辑真实次序：进经历编辑页敲字→回列表→保存，不生草稿、教育门槛不误伤「至今在读」', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({ 教育: [{ ...完整教育, 结束: '' }], 保存简历 });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.type(screen.getAllByPlaceholderText('必填')[0], '改');
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(mock更新草稿).not.toHaveBeenCalled();
+    expect(mock轻提示).not.toHaveBeenCalledWith(expect.stringContaining('教育经历还缺'));
+    expect(mock跳转).toHaveBeenCalled();
+  });
+
+  it('日常编辑删除一段经历：不登记明确删除条目、不生草稿，保存照原样发空经历列表', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({
+      经历: [{ ...简历经历初始[0], 编号: 'exp_server' }],
+      教育: [完整教育],
+      保存简历,
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByRole('button', { name: '删除这段经历' }));
+    expect(mock更新草稿).not.toHaveBeenCalled();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    // 没有草稿 → 简历域保存 走「非 onboarding 原路径」，删除按原 diff 生效，
+    // 不经 准备写入 的缺项保护被带回来
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({ 经历: [] }));
   });
 
   it('只是聚焦再离开作品集输入框：不算修改，保存仍不带该属性', async () => {
