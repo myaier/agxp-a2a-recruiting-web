@@ -286,8 +286,8 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 |PM 改前布局基准|已记录（2026-09-11，Task 1 开工前，源码 commit `19e5fd72`）|fixture：`装P5双角色`/`安装BFF路由`（登录尝试 `att-p5-dual`），Case `乙`（`mccase_p5_0000000000000000000000a2`）相位 `open/anonymous_screening/needs_user/human_decision`；视口 390×664（项目默认 iPhone 13 viewport）与 320×568；坐标 `getBoundingClientRect` 视口相对，全量 API 拦截保持，未触达真实服务。数值见下两行。|
 |改前基准·候选端 S0（`/#deal/乙`）|已记录|390×664：输入 textarea x=35,y=610,w=283,h=38；发送键 x=328,y=612,w=36,h=36；底栏容器 x=0,y=594,w=390,h=70；Tab「代谈进度」y=60,h=21；「匿名初筛」y=95,h=20；根溢出 0。320×568：输入 x=35,y=514,w=213,h=38；发送键 x=258,y=516,w=36,h=36；容器 y=498,h=70；Tab y=60；「匿名初筛」y=95；根溢出 0（1 处刻意 ellipsis 截断行）。两端改前 disabled=false，placeholder「有想法就告诉你的AI代理」。|
 |改前基准·招聘端 S0（`/#/hr/candidate/乙`，同 Case）|已记录|390×664：输入 x=35,y=610,w=283,h=38；发送键 x=328,y=612,w=36,h=36；容器 y=594,h=70；Tab「代谈进度」y=70,h=21；「匿名初筛」y=152,h=20；根溢出 0。320×568：输入 x=35,y=514,w=213,h=38；发送键 x=258,y=516,w=36,h=36；容器 y=498,h=70；Tab y=70；「匿名初筛」y=163,h=20；根溢出 0（3 处刻意截断行）。底栏容器与 Tab 固定于滚动区外；滚动区内元素（如「匿名初筛」）比较时需 `rect.y + scrollTop` 还原内容坐标或对齐同 scrollTop。Task 7 断言可用以上数值为常量。|
-|Task 1–7 本地检查|未执行（规划阶段）|实施者追加候选 commit、命令、结果和复用依据|
-|最终 typecheck/lint/build 与受影响用例并集|未执行（规划阶段）|不重复已有效覆盖|
+|Task 1–7 本地检查|已执行（2026-09-11，Task 7，候选 commit 见 task-7-report）|Task 7（e2e fixture + 3 场景）：`npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --project=backend-stg --grep 'J-PILOT-01' --workers=1` → 3 passed（场景一/二/三）；既有 fixture 消费者修正后：`--grep 'P5 MatchCase\|在谈详情完整布局\|卡片统一 (双端在谈卡\|在谈卡超长职位名)' --project=backend-stg --workers=1` → 18 passed（P5 生命周期 11 + 详情布局 Backend 5 + 卡片统一 2）；P4 发现推荐域 14 passed（委托臂卡面摘要改动回归钉）；P1 Backend展示 18 passed —— Task 4 候选首页新发 `me/negotiations` 读取曾落 P1 fixture 白名单外受控 503，已在其白名单补合法空页（消费者修正，见 task-7-report「全量旁证与 P1 回归修复」）。全部 `https://app.invalid/api/v1/**` 由本地 route 拦截，未触达真实服务。场景三几何断言：底栏输入/发送/容器/Tab 四端×两视口与改前基准逐常量相等；「匿名初筛」内容坐标 = 基准 +26px（Task 6 新增「旧版状态待核实」行，Δ来源已在用例注释与本报告记录）。复用依据：任务报告 task-7-report.md。|
+|最终 typecheck/lint/build 与受影响用例并集|typecheck/lint 已过（Task 7 内）；build 与全量并集留给收尾节|不重复已有效覆盖（收尾节执行一次 typecheck/lint/build 并按 diff 人工核算并集）|
 |L3/真实旅程/STG/初始化/测试框架|用户明确延后，本次不安排|不能记录 PASS，不作为当前 final gate 必过项|
 
 ## Spec 覆盖与最小性自检

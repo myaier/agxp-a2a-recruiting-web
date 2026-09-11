@@ -548,6 +548,10 @@ export async function 安装P1路由(
       if (path === '/api/v1/me/account-profile' && method === 'GET') { await 答(200, 信封(账号档案)); return; }
       if (path === '/api/v1/me/match-cases/summary' && method === 'GET') { await 答(200, 信封(MatchCase摘要零)); return; }
       if (path === '/api/v1/me/match-cases' && method === 'GET') { await 答(200, 信封({ items: [], next_cursor: null })); return; }
+      // J-PILOT-01（Task 4 起）：候选首页在谈主列表改读连续集合（me/negotiations，恒省略
+      // intention_id）。P1 展示场景无在谈内容 —— 合法空页入白名单，避免该 GET 落进
+      // 白名单外受控 503（console 会记资源错误，破坏「零意外诊断」断言）。
+      if (path === '/api/v1/me/negotiations' && method === 'GET') { await 答(200, 信封({ items: [], next_cursor: null })); return; }
 
       // 本任务岗位 / 推荐：列表按意向 scope 一页 + canonical job GET（错误带缓存场景一律 500）
       if (path === '/api/v1/me/job-recommendations' && method === 'GET') {
