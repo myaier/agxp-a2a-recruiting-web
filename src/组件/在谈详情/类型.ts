@@ -53,11 +53,6 @@ export interface 详情动作卡信息 {
   正文?: ReactNode; 按钮们: readonly 详情按钮[];
 }
 
-export interface 事实问题属性 {
-  问题: string; 草稿: string; 改草稿: (value: string) => void;
-  提交: 详情按钮;
-}
-
 /** 确认属性（契约 C）：不可逆动作二次确认的展示合同 —— 类型即既有 确认层 的 props
  *  （组件来源 src/组件/确认层.tsx），控制 hook 组装，确认层只接收已有 props。 */
 export type 确认属性 = ComponentProps<typeof 确认层>;
