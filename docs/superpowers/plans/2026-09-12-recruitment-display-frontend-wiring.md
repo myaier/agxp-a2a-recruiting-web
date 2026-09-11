@@ -17,7 +17,7 @@
 - 前端已无冲突 rebase 的基线：`origin/main@5f6aabbdda0eb0f07550da5acc461aa4340dd3bd`。先读 `CLAUDE.md`、`AGENTS.md`、冻结 Spec、Plan Global Constraints/Task index/角色表和当前 Task，不依赖规划聊天。
 - 后端合同已进入 `release/0.2.5@886e06837512bd8b08c4f10e010533baf89649dc`；路径相对外部 `agxp-monorepo`：`apps/recruitment-bff/openapi/mobile-v1.yaml`、`apps/recruitment/openapi/mobile-resources-v1.yaml`。本地位置通过环境 `AGXP_MONOREPO_DIR` 或用户提供的现有 checkout 发现，不硬编码规划机器路径。核对该 Git 对象中的合同；缺少冻结对象先获取，不能用更新的未核对合同替代。生产者已实施，不再提交后端字段需求或修改后端。
 - 开工以 `git status --short`、`git rev-parse HEAD`、`git show 24223e382ddb57f6c578104ae65b9070c4856400:docs/superpowers/specs/2026-09-11-recruitment-display-api-requirements-design.md` 核对状态及批准内容；按逻辑 `development-workflow` 的 `scripts/task_intents.py start`（先读其帮助）登记范围，读取 active/paused intents。扩大路径前更新 intent 并检查冲突。不要创建旧批次 manifest/handoff。
-- Task 之间串行提交和验证；共享类型与解码先闭环，再接消费者。各 Task 独立可测试，但不要求分批发布合同的两半。执行时若基线已有同等实现，核对接口与证据后跳过已满足步骤，不能重复实现。
+- 在任何产品改动前，提前执行 Task7 的同Mock输入截图基线采集步骤并记录截图环境；这是Task7的前置证据准备，不新增Task。Task 之间串行提交和验证；共享类型与解码先闭环，再接消费者。各 Task 独立可测试，但不要求分批发布合同的两半。执行时若基线已有同等实现，核对接口与证据后跳过已满足步骤，不能重复实现。
 
 ### 不可变行为
 
@@ -35,7 +35,7 @@
 
 | 类型/响应 | 精确形状与语义 |
 | --- | --- |
-| BFF公司摘要 / JobOrganizationSummary | 六键全 required：organization_id、display_name、company_size、funding_stage 为 string或null；industry 为 CatalogReference或null；logo 为既有 OrganizationMediaBody或null。媒体使用 BFF URL，不自拼对象存储 URL。 |
+| BFF公司摘要 / JobOrganizationSummary | 六键全 required：organization_id、display_name、company_size、funding_stage 为 string或null；industry 为 BFF目录引用 / CatalogReference或null；logo 为既有 BFF企业媒体 / OrganizationMediaBody或null。媒体使用 BFF URL，不自拼对象存储 URL。冻结YAML明确 company_size/funding_stage 是开放string或null，不套用另一企业档案schema的闭集decoder；展示仅映射已知码，表外码不展示、不强转枚举。 |
 | BFF安全职位资料 / SafeJobDetail | 25 个 required 键：title、description、requirements、recruitment_type、category、location、office_location、workplace_mode、salary_lower、salary_upper、salary_period、annual_salary_months、campus_cohort、internship_months、onsite_days_per_week、experience_requirement、education_requirement、hard_requirements、structured_requirements_confirmed、keywords、organization、company_intro、office_address、benefit_codes、publisher_profile；每成员允许 null。枚举沿 CandidateJob；整数不能接受小数，布尔 false保留，keywords/benefit_codes 为 string[]或null；Catalog/硬条件/公司/发布人复用精确嵌套合同。 |
 | BFF候选在线简历 / RecruiterCandidateResume | 七键 required：summary 为 RecruiterCandidateSummary或null；self_description 为 string或null；skills 为 string[]或null；experiences/educations 为对应条目数组或null；expectation 为下述对象或null；compensation_relationship 非空闭集 overlap/near_miss/disjoint/unknown。 |
 | Experience / Project / Education | 工作八键 required：company、industry、title、start_month、end_month、description 为 string或null，internship 为 boolean或null，projects 为非空类型的数组（允许[]）。项目三键 name/role/result 均 string或null，无 ID/日期；教育五键 institution/major/degree/start_month/end_month 均 string或null。按源顺序多条显示。 |
@@ -82,16 +82,16 @@ Codex execution: superpowers:executing-plans
 
 预期编辑文件：
 - 新增：`src/数据/招聘数据源/展示资料.ts`、`src/数据/招聘数据源/展示资料.test.ts`、`src/测试/展示资料样本.ts`。
-- 修改：`src/数据/BFF契约.ts`、`src/数据/招聘数据源类型.ts`、`src/数据/招聘数据源/岗位.ts`、`src/数据/招聘数据源/岗位.test.ts`、`src/数据/招聘数据源/发现推荐.ts`、`src/数据/招聘数据源/发现推荐.test.ts`、`src/数据/招聘数据源/候选摘要.ts`、`src/测试/BFF样本.ts`、`src/状态/后端/类型.ts`、`src/状态/后端/发现推荐操作.ts`、`src/状态/后端/发现推荐操作.test.ts`。
+- 修改：`src/数据/BFF契约.ts`、`src/数据/招聘数据源类型.ts`、`src/数据/发现推荐映射.ts`、`src/数据/发现推荐映射.test.ts`、`src/数据/招聘数据源/岗位.ts`、`src/数据/招聘数据源/岗位.test.ts`、`src/数据/招聘数据源/发现推荐.ts`、`src/数据/招聘数据源/发现推荐.test.ts`、`src/数据/招聘数据源/候选摘要.ts`、`src/测试/BFF样本.ts`、`src/状态/后端/类型.ts`、`src/状态/后端/发现推荐操作.ts`、`src/状态/后端/发现推荐操作.test.ts`。
 - 删除：无。
 
-输入/输出：落实 Global Constraints 的四个导出与 BFF 类型；现有 `创建岗位数据源`、`创建发现推荐数据源` 方法名不变，推荐详情返回新 `BFF招聘推荐详情`；P4招聘候选页面显式承载 `candidateResume: BFF候选在线简历 | null`，列表来源该值为null、详情取真实值。保留既有列表 summary；详情页面 summary 来源改取 candidate_resume.summary，不再依赖详情的 candidate_summary。
+输入/输出：落实 Global Constraints 的四个导出与 BFF 类型；现有 `创建岗位数据源`、`创建发现推荐数据源` 方法名不变，推荐详情返回新 `BFF招聘推荐详情`；P4招聘候选页面显式承载 `candidateResume: BFF候选在线简历 | null`，列表来源该值为null、详情取真实值。保留既有列表 summary；详情页面 summary 来源改取 candidate_resume.summary，不再依赖详情的 candidate_summary。现有 `从P4招聘候选(card: BFF招聘候选推荐 | BFF招聘推荐详情): P4招聘候选页面` 同步扩展，以 `candidate_resume` 键区分详情，列表candidateResume显式null，详情按DTO保留；既有操作只修补favorite/rejected/delegation等自己的字段，不能将列表浅对象写进详情缓存覆盖正文。Task1仅落实数据贯通，Task3/5再接视觉槽。
 
 - [ ] 核对冻结 YAML 的新增 schema 及引用；新增样本工厂完整 required 值，不把缺键默认化。先补缺键/非法嵌套/anonymous夹带身份/合法空值测试并运行观察正确失败。
 - [ ] 实现具体解码，复用候选摘要解码必要导出。CandidateJob 在岗位列表/详情/推荐/refresh 所有入口接 organization。推荐列表与详情分别精确检查允许键，详情不带 include=candidate_summary。
 - [ ] 状态缓存保留推荐坐标和完整正文，不让较浅列表覆盖已读取详情；主体/岗位/账号切换沿现有 generation/范围键围栏。刷新明确返回null时不得合并残留旧正文。仅修改相关类型和赋值，不重写 Provider。
 - [ ] 更新共享工厂及本 Task 定向 fixture：新合同正常样本补显式null；故意缺键的负例保留。对工厂的其余消费者用 `rg -n 'BFF样本|CandidateJob|candidate_summary' src/状态 src/屏幕 e2e` 记录受影响选择，不通过宽松生产解码让旧样本通过。
-- [ ] 运行 `npm test -- src/数据/招聘数据源/展示资料.test.ts src/数据/招聘数据源/岗位.test.ts src/数据/招聘数据源/发现推荐.test.ts src/状态/后端/发现推荐操作.test.ts`；运行 `npm run typecheck`。预期：所有新旧调用形状有明确结果，非法值仍协议失败，列表无正文要求。
+- [ ] 运行 `npm test -- src/数据/招聘数据源/展示资料.test.ts src/数据/招聘数据源/岗位.test.ts src/数据/招聘数据源/发现推荐.test.ts src/状态/后端/发现推荐操作.test.ts src/数据/发现推荐映射.test.ts`；运行 `npm run typecheck`。预期：所有新旧调用形状有明确结果，非法值仍协议失败，列表无正文要求。
 - [ ] 宿主要求的 Task review 完成后提交本 Task；记录命令与实际结果。
 
 反例/停止条件：详情被错误当列表、null被转换空数组、匿名身份夹带姓名被接受均不完成。冻结后端对象缺失或出现实质合同差异时停在该接口核对，不能发明兼容层；额外路径仅为同合同 fixture修复时先登记，实质范围变化回 Spec。
@@ -124,13 +124,13 @@ Codex execution: superpowers:executing-plans
 - 修改：`src/数据/发现推荐映射.ts`、`src/数据/发现推荐映射.test.ts`、`src/数据/列表卡片映射.ts`、`src/数据/列表卡片映射.test.ts`、`src/数据/连续代谈展示映射.ts`、`src/数据/连续代谈展示映射.test.ts`、`src/数据/MatchCase展示映射.ts`、`src/数据/MatchCase展示映射.test.ts`、`src/组件/列表卡片/类型.ts`、`src/组件/列表卡片/求职在谈卡.tsx`、`src/组件/列表卡片/求职在谈卡.test.tsx`、`src/组件/列表卡片/招聘在谈卡.test.tsx`、`src/组件/列表卡片/招聘推荐卡.test.tsx`、`src/屏幕/看市场.tsx`、`src/屏幕/看市场.test.tsx`、`src/屏幕/候选推荐.tsx`、`src/屏幕/P5/MatchCase列表.tsx`。
 - 删除：无。
 
-依赖验收：Task 1/2 新DTO及回读测试已通过。生产者保留 `从P4候选岗位`、`从P4CandidateJob`、`映射连续列表项`、既有 P5列表映射名称；扩展对应页面视图，不从组件读取raw DTO。现有图位类型增加 `型:'图片'; url:string` 分支或等价现有字段扩展，保留原 Mock 字标分支；失败回既有中性图位，换 URL 清除之前失败状态。
+依赖验收：Task 1/2 新DTO及回读测试已通过。同步核对既有消费者 `src/屏幕/在谈首页.tsx`、`src/屏幕/企业在谈候选.tsx`、`src/屏幕/P5/MatchCase历史.tsx`；图位只加可选图片输入，保留原公司字标分支，不迫使未改布局的调用方重写。生产者保留 `从P4候选岗位`、`从P4CandidateJob`、`映射连续列表项`、既有 P5列表映射名称；扩展对应页面视图，不从组件读取raw DTO。现有图位类型加可选 `公司图片URL?: string | null` 输入，保留原 Mock 字标分支；失败回既有中性图位，换 URL 清除之前失败状态。
 
 - [ ] 先补映射测试：organization.display_name优先、缺名只可回同job公开claim；industry.display_name/规模/融资经现有码表拼短行；无组织坐标不造坐标；match_score=0/null、required_skills、模式、薪资月数、招聘类型落位。
 - [ ] 求职在谈、市场原有公司/发布人图位接 BFF URL，图片事件用现有组件实践；不按公司名查Mock图片，不新造下载服务，不改变尺寸/CSS。
 - [ ] 招聘两卡仍用candidate_summary，个人标签仅 personal_highlights；identity不进入头像/姓名props。列表无权威信息的槽保持未知，有后端字段但无Mock槽则不显示。
 - [ ] 页面仍调现有数据源/操作；不加每卡effect/详情GET，保留原点击、收藏、委托、分页和空/错误态。
-- [ ] 运行 `npm test -- src/数据/发现推荐映射.test.ts src/数据/列表卡片映射.test.ts src/数据/连续代谈展示映射.test.ts src/数据/MatchCase展示映射.test.ts src/组件/列表卡片/求职在谈卡.test.tsx src/组件/列表卡片/招聘在谈卡.test.tsx src/组件/列表卡片/招聘推荐卡.test.tsx src/屏幕/看市场.test.tsx`。预期原Mock卡面分支不变，真0可见，身份不显示；图片失败/URL切换断言通过。
+- [ ] 运行 `npm test -- src/数据/发现推荐映射.test.ts src/数据/列表卡片映射.test.ts src/数据/连续代谈展示映射.test.ts src/数据/MatchCase展示映射.test.ts src/组件/列表卡片/求职在谈卡.test.tsx src/组件/列表卡片/招聘在谈卡.test.tsx src/组件/列表卡片/招聘推荐卡.test.tsx src/屏幕/看市场.test.tsx`。另运行 `npm test -- src/屏幕/在谈首页.test.tsx src/屏幕/企业在谈候选.test.tsx src/屏幕/P5/MatchCase历史.test.tsx` 和 `npm run typecheck`。预期原Mock卡面分支不变，真0可见，身份不显示；图片失败/URL切换断言通过。
 - [ ] 完成本 Task 宿主 review 并提交。
 
 停止条件：若现有槽无法容纳新的语义，留数据不加区域；业务字段不得用Mock或静态公司表“补齐”。
@@ -168,7 +168,7 @@ Codex execution: superpowers:executing-plans
 - [ ] 先写映射/组件测试：完整、仅部分区、整份null、每个区null与[]、多教育/多项目/重复日期、false实习、HTML样式文本以文本显示。期待null不是“已读无记录”，[]不是“未提供”；保留当前空态风格。
 - [ ] summary画像只进原头行，self_description进个人优势；skills进技能；expectation按招聘类型/类别/地点/办公模式填期望原槽。personal_highlights无正文新槽就只留数据/列表，industry无原槽不加元信息行。
 - [ ] 工作公司为空显示中性缺失，不借industry伪装公司名；项目按嵌套源序平铺到原项目区，name/role/result原位，不借工作起止充项目日期。教育从旧单条适配为多条复用原样式；React key用源位置组合，不能仅日期/学校，防止重复值丢条。
-- [ ] compensation_relationship只驱动已有薪资关系文案：overlap“薪资区间重叠”、near_miss“薪资区间接近”、disjoint“薪资区间不重叠”、unknown不作结论；不显示候选薪资数字，不把岗位薪资当候选期望。没有后端综合一致性证据就不画绿色勾选/一致条，Mock旧逻辑保持。匹配分析无证据不生成行。
+- [ ] compensation_relationship只驱动已有薪资关系文案：overlap“薪资带有交集”、near_miss“薪资带接近”、disjoint“薪资带无交集”、unknown不作结论；不显示候选薪资数字，不把岗位薪资当候选期望。没有后端综合一致性证据就不画绿色勾选/一致条，Mock旧逻辑保持。匹配分析无证据不生成行。
 - [ ] Backend独立页删除重复正文，传共享资料；外层真实推荐收藏/委托/返回/分数/附件选择保留。`真名` 不传，末尾中性状态说明不能宣称AI已核验或资料缺失即未披露。
 - [ ] 运行 `npm test -- src/数据/在线简历展示映射.test.ts src/组件/在谈详情/在线简历正文.test.tsx src/屏幕/匿名在线简历.test.tsx src/数据/发现推荐映射.test.ts`、`npm run typecheck`。预期完整Mock布局语义原样，Backend全空/部分空正确，刷新有值→null清除旧内容。
 - [ ] 完成本 Task 宿主 review并提交。
@@ -240,5 +240,11 @@ Codex execution: superpowers:executing-plans
 ## 文档审查与规划验证记录
 
 - 2026-09-12：用户批准 Spec 并要求零上下文Plan、Claude review、执行提示词。文档审查限定本Spec与本Plan，不审业务代码、不跑产品测试。
-- Claude审查：待按固定候选提交执行；最终裁决与修复记录在此，不另建review报告。
+- Claude实际审查1轮：`claude -p --model opus --effort high --permission-mode plan --agent reviewer`；session `935ebf87-2205-4921-b787-be612ed19ae5`，候选revision `d1fccbbd`，Spec blob `278548c1a44f38d7bd7142e62d55edf0755b765c`，Plan blob `3e1b954cc5f3b683dc0c2f2fa13f030821f4696a`。进程exit 0/is_error=false；驱动方核对审查前后HEAD/status/两文档指纹一致。未跑产品测试/未修改业务代码。审查输入只允许两文档及规则；报告实际额外引用了部分源码符号/脚本作为核对证据，超出请求的文档阅读边界，此处如实记录；未扩大为全分支代码review。
+- R1-F1（Important / 契约违反 / required / 复杂度不变）：**拒绝**把公司规模/融资阶段强制闭集。驱动方从冻结BE revision `886e06837512bd8b08c4f10e010533baf89649dc` 的BFF YAML核实，JobOrganizationSummary这两个字段确为string或null，无enum；既有企业档案的闭集不能覆盖新摘要合同。补充开放码只展示已知值的说明，不改批准Spec。
+- R1-F2（Minor / 真实缺陷 / required / 复杂度不变）：**接受并修复**新造薪资措辞，改复用 `发现推荐映射.ts` 已有“薪资带有交集/接近/无交集”，unknown不作结论。reviewer称near_miss无既有文案不成立：该文件已有“薪资带接近”，所以不新增PM问题、不降为未知。
+- R1-F3（Minor / 可选增强 / optional / 复杂度降低）：**接受并修复**表格补现有 BFF企业媒体、BFF目录引用名称，避免重复类型。
+- R1-F4（Minor / 可选增强 / optional / 复杂度不变）：**接受并修复**点名首页/企业在谈/历史消费者、加法式图片prop及定向页面测试/typecheck。
+- 驱动方补齐：Task1在新增必填candidateResume页面字段的同一Task扩展现有映射与测试，防止Task1类型检查依赖Task3才可过；Mock前图采集明确为所有产品改动之前的前置步骤。均是原合同内依赖/验证澄清。
+- 停止裁决：4条中接受修复3条，拒绝1条；无未解决有效required、无延后项。按review-loop结束条件在第1轮裁决后结束，未声称修订版获第二轮NO FINDINGS；修订由驱动方核实，批准产品合同未变。
 - 规划验证：待审查闭环后生成双宿主prompt并运行 `development-workflow` 的 `scripts/validate_prompt_grading.py --plan docs/superpowers/plans/2026-09-12-recruitment-display-frontend-wiring.md --prompt docs/superpowers/prompts/2026-09-12-recruitment-display-frontend-wiring.md`。
