@@ -1223,3 +1223,68 @@ describe('引导问答 末题作品集控制读建档草稿（Task 7）', () => 
     );
   });
 });
+
+// ── J-PILOT-02 Task 9：题目级恢复 —— 游标从草稿 位置.题序 恢复，推进/回退回写 ──
+// Spec §6「恢复中断页面、向导段和题目」：偏好段题序 = 硬性排除 → 个人优势
+//（render引导问答 的非在校 + 已采前两题），题序 1 即 个人优势。
+describe('引导问答 题目级恢复（Task 9）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
+    mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockReset();
+    mock操作.更新候选建档草稿.mockReset();
+  });
+
+  it('挂载游标按草稿 位置.题序 恢复到中断的那道题（偏好段第 2 题 = 个人优势）', async () => {
+    render引导问答({
+      段: '偏好段',
+      建档: { 位置: { pathname: '/onboard/wizard', search: '?stage=preference', 题序: 1 } },
+    });
+    // 个人优势题：按钮是「保存并继续」；不在首题（下一步按钮不存在）
+    expect(screen.getByRole('button', { name: '保存并继续' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: '下一步' })).toBeNull();
+  });
+
+  it('位置.题序 越界（跨段旧下标/损坏值）安全回退到本段首题', () => {
+    render引导问答({
+      段: '偏好段',
+      建档: { 位置: { pathname: '/onboard/wizard', search: '?stage=preference', 题序: 5 } },
+    });
+    // 首题硬性排除：按钮是「下一步」，不取 undefined 题白屏
+    expect(screen.getByRole('button', { name: '下一步' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: '保存并继续' })).toBeNull();
+  });
+
+  it('硬性排除推进：答案与题目下标同一次草稿写（位置.题序=1，不另发第二次写）', async () => {
+    render引导问答({ 段: '偏好段' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '大小周' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存并继续' })).toBeDefined());
+    // 离开硬性排除的那一次写同时带 排除项 与 位置（含题序 1）；不再有第二次只写位置的草稿写
+    expect(mock操作.更新候选建档草稿).toHaveBeenCalledTimes(1);
+    expect(mock操作.更新候选建档草稿).toHaveBeenCalledWith(
+      expect.objectContaining({
+        排除项: ['大小周'],
+        位置: { pathname: '/onboard/wizard', search: '?stage=preference', 题序: 1 },
+      }),
+    );
+  });
+
+  it('个人优势回退到硬性排除：游标下标单独回写（位置.题序=0）', async () => {
+    render引导问答({
+      段: '偏好段',
+      建档: { 位置: { pathname: '/onboard/wizard', search: '?stage=preference', 题序: 1 } },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '下一步' })).toBeDefined());
+    expect(mock操作.更新候选建档草稿).toHaveBeenCalledWith(
+      expect.objectContaining({
+        位置: { pathname: '/onboard/wizard', search: '?stage=preference', 题序: 0 },
+      }),
+    );
+  });
+});
