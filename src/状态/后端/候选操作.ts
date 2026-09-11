@@ -9,10 +9,10 @@
 // 主体+会话代际栅栏。无草稿时原路径行为不变。
 
 import { BFF错误 } from '../../数据/HTTP客户端';
-import { 从BFF简历 } from '../../数据/后端映射';
-import type { BFF简历 } from '../../数据/BFF契约';
+import { 从BFF简历, 从BFF意向草稿, 去重引用, 招聘类型到页面, 转意向写入, 转首次意向写入 } from '../../数据/后端映射';
+import type { BFF简历, BFFOwnerIntention } from '../../数据/BFF契约';
 import type {
-  页面简历快照, 页面意向快照, 页面简历写入,
+  页面简历快照, 页面意向快照, 页面简历写入, 意向草稿型, 首次意向输入,
   建档待写入, 建档写入跟踪, 建档写入回执, 建档待写入种类,
 } from '../../数据/招聘数据源类型';
 import type { 候选引导建档草稿, 建档已存条目 } from '../../数据/资料缓存';
@@ -101,6 +101,15 @@ function 是确定拒绝(错误: unknown): boolean {
 /** 把回执身份落进草稿：条目写 已存条目（项目带父编号）并替换 资料 同编号条目；单例写 已存分区。 */
 function 落已存身份(建档: 候选引导建档草稿, 命令: 建档待写入, 回执: 建档写入回执): 候选引导建档草稿 {
   const 下一步: 候选引导建档草稿 = { ...建档 };
+  // Task 7：首次意向的身份是 本轮意向 ID/revision（不是简历分区 revision）——
+  // 创建回执给 ID，CAS 回执只更新同一 ID 的 revision，绝不换 key 另起一条。
+  if (命令.种类 === 'first-intention-create' || 命令.种类 === 'first-intention-update') {
+    const id = 回执.id ?? 命令.资源编号 ?? 建档.首次意向?.id;
+    if (id !== undefined) {
+      下一步.首次意向 = { id, revision: 回执.revision ?? 建档.首次意向?.revision ?? 0 };
+    }
+    return 下一步;
+  }
   const 条目种类 = 命令条目种类(命令.种类);
   if (条目种类 === null) {
     // 单例分区：profile/summary/skills 的 revision 写 已存分区
@@ -323,6 +332,48 @@ function 从槽重建页面(基底: 页面简历写入, 槽: 建档待写入): �
   }
 }
 
+/**
+ * Task 7：返回重新确认时提交给同一条资源的草稿 —— 权威快照做基底，只覆盖本轮向导
+ * 实际表达的输入（职位 / 城市 / 薪资 / 办公方式 / 私有诉求，以及真的换了的招聘类型）。
+ * 其余字段（exclusions、行业、annual_salary_months、薪资周期）原样沿用权威：
+ * 私有诉求不写硬排除，复用历史资源也不清除它既有的排除规则（Spec §5.1 / §5.3）。
+ * 本轮文案与身份校验一律复用 转首次意向写入，与创建路径同一份真相。
+ */
+function 本轮首次意向草稿(
+  基底: 意向草稿型,
+  权威: BFFOwnerIntention,
+  input: 首次意向输入,
+): 意向草稿型 {
+  const 本轮 = 转首次意向写入(input);
+  const 城市们 = 去重引用(input.城市引用们 ?? []);
+  const 类型已改 = 本轮.recruitment_type !== undefined && 本轮.recruitment_type !== 权威.recruitment_type;
+  return {
+    ...基底,
+    // 招聘类型没变时连带保留权威的类型专属条件（毕业时间/实习月数/到岗天数）——
+    // 向导本轮没问它们，不能用缺省 null 把服务端已有值抹掉。
+    ...(类型已改
+      ? {
+          求职类型: 招聘类型到页面[本轮.recruitment_type],
+          后端招聘类型: 本轮.recruitment_type,
+          求职类型已改: true,
+          毕业时间: 本轮.graduation_month,
+          实习月数: 本轮.internship_months,
+          每周到岗天数: 本轮.onsite_days_per_week,
+        }
+      : {}),
+    期望职位: input.职位引用?.display_name ?? 基底.期望职位,
+    职位引用: input.职位引用,
+    工作城市: 城市们[0].display_name,
+    工作城市引用: 城市们[0],
+    感兴趣城市们: 城市们.slice(1).map((条) => 条.display_name),
+    感兴趣城市引用们: 城市们.slice(1),
+    薪资下限: input.薪资.下限,
+    薪资上限: input.薪资.上限,
+    办公方式: input.筛选偏好.办公方式,
+    私有偏好: 本轮.private_preferences,
+  };
+}
+
 export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
   const { 是后端, 后端, 派发, 设后端状态, 后端状态引用, 状态引用, 锁, 主体标识引用, 会话代际 } = deps;
   // Provider 恒注入：意向权威快照统一经它提交（栅栏 + 持久化写屏障）；缺席即接线缺陷。
@@ -419,6 +470,25 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
   const 取消槽 = (建档: 候选引导建档草稿): 候选引导建档草稿 => {
     const { 待写入: _已清, ...无槽 } = 建档;
     return 无槽;
+  };
+
+  /**
+   * Task 7：按权威快照结算本轮首次意向身份（只读核对通路）——
+   * 写下这一条的 ID/revision，并清掉已被权威证实生效（或本轮无改动）的首次意向槽。
+   * CAS 没有幂等合同：结算只能来自这次 GET 的权威事实，绝不换 revision 盲重试。
+   */
+  const 结算首次意向身份 = (权威: BFFOwnerIntention, 本次主体: string | null, 本次代际: number): void => {
+    if (主体标识引用.current !== 本次主体 || 会话代际.current !== 本次代际) return;
+    const 现有 = deps.建档草稿引用?.current ?? null;
+    if (现有 === null) return;
+    const 下一步: 候选引导建档草稿 = {
+      ...现有,
+      首次意向: { id: 权威.intention_id, revision: 权威.revision },
+    };
+    const 槽 = 现有.待写入;
+    const 是本域槽 = 槽 !== undefined
+      && (槽.种类 === 'first-intention-create' || 槽.种类 === 'first-intention-update');
+    写建档草稿(是本域槽 ? 取消槽(下一步) : 下一步);
   };
 
   /**
@@ -866,20 +936,53 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
         // Mock 模式 no-op：保持当前预置意向不增加，防止重复走向导制造重复数据
         return;
       }
-      // Backend 仅在当前真实意向列表为空时创建一条，已有意向时 no-op
-      if (状态引用.current.求职意向表.length > 0) return;
+      const 建档 = deps.建档草稿引用?.current ?? null;
+      // 日常编辑语境（本屏在注册旅程外也可达）没有建档草稿：保持原路径 ——
+      // 已有意向时 no-op，不接本轮身份/跟踪逻辑（Global 8：普通意向 CRUD 不变）。
+      if (建档 === null && 状态引用.current.求职意向表.length > 0) return;
       const 键 = '意向:new';
       if (锁.current.has(键)) return;
       锁.current.add(键);
       // 发起时刻捕获主体与代际：结算时重取当前主体会让迟到结果冒充新主体的 owner
       const 本次主体 = 主体标识引用.current;
       const 本次代际 = 会话代际.current;
+      const { 跟踪, 取本槽命令 } = 构造跟踪(本次主体, 本次代际);
       try {
         // Task 6：目录引用直接落在 input 里（引导问答 Backend 分支选中时原子保存），
         // 不再按需取目录；办公方式 从 input.筛选偏好.办公方式 读（向导答案）。
-        const 快照 = await 后端.创建首次意向(input);
-        提交意向快照(快照, 本次主体, 本次代际);
+        if (建档 === null) {
+          提交意向快照(await 后端.创建首次意向(input), 本次主体, 本次代际);
+          return;
+        }
+        const 已知 = 建档.首次意向;
+        if (已知 === undefined) {
+          // 本轮还没有明确身份：创建（未结算的同一 create 命令由 发送前 复用原幂等键重放）。
+          // 绝不以「列表非空」代替本次成功 —— 别人的 active 意向不是本轮回执。
+          提交意向快照(await 后端.创建首次意向(input, 跟踪), 本次主体, 本次代际);
+          return;
+        }
+        // 有本轮明确 ID：只 GET exact ID 核实这一条（Spec §5.3），不拉列表猜。
+        const 权威 = await 后端.读取指定意向(已知.id);
+        const 基底 = 从BFF意向草稿(权威);
+        const 上下文 = { 原始: 权威 };
+        const 目标 = 本轮首次意向草稿(基底, 权威, input);
+        if (JSON.stringify(转意向写入(目标, 上下文)) === JSON.stringify(转意向写入(基底, 上下文))) {
+          // 未改动，或上一次 CAS 其实已生效：按权威只读结算（含清掉本域未结算槽），不重复写
+          结算首次意向身份(权威, 本次主体, 本次代际);
+          提交意向快照(await 后端.读取意向(), 本次主体, 本次代际);
+          return;
+        }
+        // 用户返回重新确认了变化：更新同一条资源，CAS 用本次权威快照的 revision
+        提交意向快照(await 后端.更新意向(已知.id, 目标, 上下文, 跟踪), 本次主体, 本次代际);
       } catch (错误) {
+        // 与简历域同一口径：服务端确定拒绝时清掉本次未结算槽（输入仍在页面上），
+        // 否则一条永远写不成的命令会把本旅程唯一的单槽锁死；409/503/未知一律保留待核对。
+        const 槽 = deps.建档草稿引用?.current?.待写入;
+        const 本槽 = 取本槽命令();
+        if (槽 !== undefined && 本槽 !== null && 同一命令(槽, 本槽) && 是确定拒绝(错误)) {
+          const 现有 = deps.建档草稿引用?.current;
+          if (现有 !== null && 现有 !== undefined) 写建档草稿(取消槽(现有));
+        }
         await 处理意向写入错误(错误, 本次主体, 本次代际);
       } finally {
         锁.current.delete(键);

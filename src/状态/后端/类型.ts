@@ -662,6 +662,13 @@ export interface 候选操作 {
    */
   保存个人优势(text: string): Promise<void>;
   保存意向(draft: 意向草稿型): Promise<void>;
+  /**
+   * J-PILOT-02 Task 7：签名不变。当前 active 建档草稿在场时按本轮身份走（Spec §5.3）——
+   * 无本轮 ID 就创建（POST 的 id/revision 先落草稿再 GET，未知创建按原 key 重放，
+   * 绝不以「列表非空」冒充本次成功）；有本轮 ID 只 GET exact ID 核对：未改只读，
+   * 用户返回重新确认了变化才用权威快照作 context.原始 更新同一条资源（保留其既有
+   * exclusions），409 保留输入等用户重审。无草稿的日常语境保持原路径（已有意向 no-op）。
+   */
   保存首次意向(input: 首次意向输入): Promise<void>;
   删除意向(id: string): Promise<void>;
 }

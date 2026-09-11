@@ -5,7 +5,7 @@
 //   (b) 点远程候选后字符串+refs 原子写入 —— 存引导预填 带 职位引用们 含 ID；
 //   (c) 同名职位不同 ID：选中 tax_selected 后 保存首次意向 body 用 tax_selected。
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +22,7 @@ const mock操作 = vi.hoisted(() => ({
   保存个人优势: vi.fn(async () => {}),
   保存首次意向: vi.fn(async () => {}),
   确认候选Onboarding预填分区: vi.fn(),
+  更新候选建档草稿: vi.fn(),
 }));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -64,6 +65,7 @@ function render引导问答Mock(引导预填: object | null = null) {
       个人优势: '',
       简历作品集链接: '',
       简历经历: [],
+      屏蔽名单: [],
       基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
     },
     派发,
@@ -208,6 +210,7 @@ function render引导问答后端(选项: {
       个人优势: '',
       简历作品集链接: '',
       简历经历: [],
+      屏蔽名单: [],
       基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在校' as const },
     },
     派发,
@@ -298,6 +301,7 @@ describe('引导问答 Backend 分支', () => {
         个人优势: '',
         简历作品集链接: '',
         简历经历: [],
+        屏蔽名单: [],
         // 非在校 + preference 段 → 题序 = 期望职位 → 工作城市 → 硬性排除 → 个人优势
         基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '离职' as const },
       },
@@ -579,6 +583,7 @@ function render引导问答(选项: { 段: 向导段; 预填?: 候选预填状�
       个人优势: 选项.个人优势 ?? '',
       简历作品集链接: '',
       简历经历: [],
+      屏蔽名单: [],
       // 非在校：偏好段题序 = 硬性排除 → 个人优势
       基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '离职' as const },
     },
@@ -884,5 +889,240 @@ describe('引导问答 Backend 城市题 接原 Mock 定位/热门/行政区分�
     // 真实项仍可选
     await 用户.click(screen.getAllByText('广州市')[0]);
     expect(screen.getByRole('button', { name: '广州市 ✕' })).toBeTruthy();
+  });
+});
+
+// ── J-PILOT-02 Task 7：私有诉求与权威屏蔽状态 ──
+// 固定卡进 排除项、用户原文进 自定义诉求（映射层据此拼私有诉求）；
+// 屏蔽只回显权威确认快照，不能因社招简历公司名默认已屏蔽或自动写入。
+
+const 权威屏蔽项 = {
+  编号: 'B-01',
+  名称: '云衢科技',
+  首字: '云',
+  理由: '你手动加入 · 双向不可见',
+  时间: '刚刚',
+  组织编号: 'org_yq',
+  来源: '手动添加' as const,
+  组织状态: '有效' as const,
+};
+
+function render排除题(选项: {
+  屏蔽名单?: (typeof 权威屏蔽项)[];
+  简历经历?: { 公司: string }[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  解除组织屏蔽?: any;
+  身份?: '在校' | '离职';
+} = {}) {
+  const 解除组织屏蔽 = 选项.解除组织屏蔽 ?? vi.fn(async () => {});
+  const 添加组织屏蔽 = vi.fn(async () => {});
+  mock应用状态 = {
+    数据源模式: 'backend',
+    目录查询: {
+      查询Taxonomy: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+      查询Location: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+      查询Institution: vi.fn(),
+    },
+    状态: {
+      引导预填: 已采前两题,
+      个人优势: '',
+      简历作品集链接: '',
+      简历经历: 选项.简历经历 ?? [],
+      屏蔽名单: 选项.屏蔽名单 ?? [],
+      基本信息: { 真名: '沈', 开始工作年: '2017', 身份: 选项.身份 ?? '离职' },
+    },
+    后端状态: { 候选预填状态: 创建空候选预填状态() },
+    派发: vi.fn(),
+    操作: { ...mock操作, 解除组织屏蔽, 添加组织屏蔽 },
+  };
+  render(
+    <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
+      <引导问答 />
+    </MemoryRouter>,
+  );
+  return { 解除组织屏蔽, 添加组织屏蔽 };
+}
+
+describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
+    mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockReset();
+    mock操作.更新候选建档草稿.mockReset();
+  });
+
+  it('固定卡进 排除项、用户自定义原文进 自定义诉求（不再混进排除项被丢弃）', async () => {
+    render引导问答({ 段: '偏好段' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '大小周' }));
+    await 用户.click(screen.getByRole('button', { name: '频繁出差' }));
+    await 用户.type(screen.getByPlaceholderText('用你自己的话写'), '不接受夜班');
+    await 用户.click(screen.getByRole('button', { name: '添加' }));
+    await 用户.type(screen.getByPlaceholderText('用你自己的话写'), '大小周也能接受');
+    await 用户.click(screen.getByRole('button', { name: '添加' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const 传入 = (mock操作.保存首次意向.mock.calls[0] as any[])[0];
+    expect(传入.排除项).toEqual(['大小周', '频繁出差']);
+    expect(传入.自定义诉求).toEqual(['不接受夜班', '大小周也能接受']);
+  });
+
+  it('取消一枚自定义 chip 只动 自定义诉求，不影响固定卡', async () => {
+    render引导问答({ 段: '偏好段' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '全现场办公' }));
+    await 用户.type(screen.getByPlaceholderText('用你自己的话写'), '不接受夜班');
+    await 用户.click(screen.getByRole('button', { name: '添加' }));
+    await 用户.click(screen.getByRole('button', { name: '不接受夜班' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const 传入 = (mock操作.保存首次意向.mock.calls[0] as any[])[0];
+    expect(传入.排除项).toEqual(['全现场办公']);
+    expect(传入.自定义诉求).toEqual([]);
+  });
+
+  it('Backend 社招：简历公司名不默认已屏蔽，一键开关不自动写任何组织', async () => {
+    const { 添加组织屏蔽 } = render排除题({ 简历经历: [{ 公司: '云衢科技' }] });
+    const 用户 = userEvent.setup();
+    // 简历里的公司名不是组织身份：既不显示成已屏蔽 chip，开关也默认关
+    expect(screen.queryByRole('button', { name: /云衢科技/ })).toBeNull();
+    const 开关 = screen.getByRole('switch', { name: '一键屏蔽简历中的公司' });
+    expect(开关.getAttribute('aria-checked')).toBe('false');
+    await 用户.click(开关);
+    expect(添加组织屏蔽).not.toHaveBeenCalled();
+    expect(开关.getAttribute('aria-checked')).toBe('false');
+    expect(screen.queryByRole('button', { name: /云衢科技/ })).toBeNull();
+    await waitFor(() => expect(document.body.textContent).toContain('无法确认具体公司'));
+  });
+
+  it('Backend 手输公司名不产生成功 chip（真实组织选择仍缺口）', async () => {
+    const { 添加组织屏蔽 } = render排除题();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /再加一家/ }));
+    await 用户.type(screen.getByPlaceholderText('公司名，可只写关键词'), '云衢科技');
+    await 用户.click(screen.getAllByRole('button', { name: '添加' })[1]);
+    expect(添加组织屏蔽).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /云衢科技 ✕/ })).toBeNull();
+    await waitFor(() => expect(document.body.textContent).toContain('无法确认具体公司'));
+  });
+
+  it('Backend chip 来自权威屏蔽快照；解除失败保留 chip，不做本地假成功', async () => {
+    const 解除组织屏蔽 = vi.fn(async () => { throw new Error('offline'); });
+    render排除题({ 屏蔽名单: [权威屏蔽项], 解除组织屏蔽 });
+    const 用户 = userEvent.setup();
+    const chip = screen.getByRole('button', { name: /云衢科技 ✕/ });
+    await 用户.click(chip);
+    await waitFor(() => expect(解除组织屏蔽).toHaveBeenCalledWith(expect.objectContaining({ 组织编号: 'org_yq' })));
+    // 权威快照没变：chip 仍在，并给出错误提示
+    expect(screen.getByRole('button', { name: /云衢科技 ✕/ })).toBeDefined();
+    await waitFor(() => expect(document.body.textContent).toContain('请求失败，请稍后再试'));
+  });
+
+  it('Backend 解除成功后 chip 随权威快照消失（不由本地开关宣布）', async () => {
+    const { 解除组织屏蔽 } = render排除题({ 屏蔽名单: [权威屏蔽项] });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /云衢科技 ✕/ }));
+    await waitFor(() => expect(解除组织屏蔽).toHaveBeenCalledTimes(1));
+    // 权威快照更新后重渲染：chip 不再出现
+    cleanup();
+    mock应用状态.状态 = { ...mock应用状态.状态, 屏蔽名单: [] };
+    render(
+      <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
+        <引导问答 />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('button', { name: /云衢科技 ✕/ })).toBeNull();
+  });
+
+  it('Mock 分支的本地屏蔽演示行为不变（简历公司随开关并入本地列表）', async () => {
+    const 派发 = vi.fn();
+    mock应用状态 = {
+      数据源模式: 'mock',
+      目录查询: null,
+      状态: {
+        引导预填: 已采前两题,
+        个人优势: '',
+        简历作品集链接: '',
+        简历经历: [{ 公司: '云衢科技' }],
+        屏蔽名单: [],
+        基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '离职' as const },
+      },
+      派发,
+      操作: mock操作,
+    };
+    render(
+      <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
+        <引导问答 />
+      </MemoryRouter>,
+    );
+    // 非在校：一键开关默认开，简历公司进本地列表
+    expect(screen.getByRole('switch', { name: '一键屏蔽简历中的公司' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('button', { name: /云衢科技 ✕/ })).toBeDefined();
+  });
+});
+
+// ── Task 7：末题的作品集校验/规范化读同一份草稿值（不恢复已被 PM 移除的输入行）──
+
+describe('引导问答 末题作品集控制读建档草稿（Task 7）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
+    mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockReset();
+    mock操作.更新候选建档草稿.mockReset();
+  });
+
+  /** 草稿里带一个用户已修改但非法的 URL：末题校验必须读它（而不是权威空值） */
+  function render带草稿URL(作品集链接: string | null) {
+    mock应用状态 = {
+      数据源模式: 'backend',
+      目录查询: {
+        查询Taxonomy: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+        查询Location: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+        查询Institution: vi.fn(),
+      },
+      状态: {
+        引导预填: { ...已采前两题, 建档: { 资料: { 作品集链接 } } },
+        个人优势: '',
+        简历作品集链接: '',
+        简历经历: [],
+        屏蔽名单: [],
+        基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '离职' as const },
+      },
+      后端状态: { 候选预填状态: 创建空候选预填状态() },
+      派发: vi.fn(),
+      操作: mock操作,
+    };
+    render(
+      <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
+        <引导问答 />
+      </MemoryRouter>,
+    );
+  }
+
+  it('草稿里的非法 URL 让末题保存按钮禁用（读同一值与修改状态）', async () => {
+    render带草稿URL('不是链接 有空格');
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(screen.getByRole('button', { name: '保存并继续' }).hasAttribute('disabled')).toBe(true);
+    // 不恢复已移除的 URL 输入行
+    expect(screen.queryByPlaceholderText(/github/i)).toBeNull();
+  });
+
+  it('草稿里的合法 URL 规范化后写回同一草稿字段', async () => {
+    render带草稿URL('example.com/me');
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
+    expect(mock操作.更新候选建档草稿).toHaveBeenCalledWith(
+      expect.objectContaining({ 资料: expect.objectContaining({ 作品集链接: 'https://example.com/me' }) }),
+    );
   });
 });

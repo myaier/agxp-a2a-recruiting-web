@@ -6,12 +6,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案, type BFF请求选项, type BFF响应 } from '../../数据/HTTP客户端';
-import type { BFF简历, BFF教育 } from '../../数据/BFF契约';
+import type { BFF简历, BFF教育, BFFOwnerIntention } from '../../数据/BFF契约';
 import type { 简历经历段, 简历教育段 } from '../../数据/类型';
 import { 初始状态 } from '../初始状态';
-import { BFF简历样本 } from '../../测试/BFF样本';
+import { BFF意向样本, BFF简历样本 } from '../../测试/BFF样本';
 import { 从BFF简历 } from '../../数据/后端映射';
 import { 创建简历数据源 } from '../../数据/招聘数据源/简历';
+import { 创建意向数据源 } from '../../数据/招聘数据源/意向';
 import type { 候选引导建档草稿, 候选建档草稿存储 } from '../../数据/资料缓存';
 import type {
   后端操作依赖, 后端状态, 候选操作, 候选预填恢复存储, 提交候选意向快照输入,
@@ -42,7 +43,9 @@ function 创建场景(选项: {
     保存简历: vi.fn(),
     读取候选账号档案: vi.fn(),
     读取意向: vi.fn(),
+    读取指定意向: vi.fn(),
     创建意向: vi.fn(),
+    创建首次意向: vi.fn(),
     更新意向: vi.fn(),
     删除意向: vi.fn(),
     替换候选头像: vi.fn(),
@@ -797,5 +800,230 @@ describe('创建候选操作 · 建档跟踪保存（J-PILOT-02 Task 3）', () =
     expect(草稿.资料?.作品集链接).toBe('https://draft.example.com'); // 草稿 URL 不被覆盖
     expect(草稿.资料?.技能).toEqual(['Draft']); // 其他未提交字段不被吞
     expect(草稿.已存分区).toEqual({ summary: 1 });
+  });
+});
+
+// ── J-PILOT-02 Task 7：首次意向身份与恢复（Spec §5.3）──
+// 已 receipt 的意向只 GET exact ID；列表另有 active 意向不冒充本次成功；
+// 未知创建按原 key 重放；返回修改走同一资源的 CAS 且保留权威 exclusions。
+
+describe('创建候选操作 · 首次意向身份（J-PILOT-02 Task 7）', () => {
+  const 首次输入 = {
+    职位们: ['产品经理'],
+    城市们: ['上海市'],
+    薪资: { 下限: 10, 上限: 20, 单位: '月薪K' as const },
+    筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['混合'] },
+    排除项: [] as string[],
+    职位引用: { id: 'tax_pm', display_name: '产品经理' },
+    城市引用们: [{ id: 'loc_sh', display_name: '上海市' }],
+  } as unknown as Parameters<候选操作['保存首次意向']>[0];
+
+  /** 与 首次输入 逐字对应的权威 DTO（本轮未改动时 GET 回来就是它）。 */
+  const 权威意向 = (覆盖: Partial<BFFOwnerIntention> = {}): BFFOwnerIntention => ({
+    ...BFF意向样本,
+    intention_id: 'int_7',
+    recruitment_type: 'social_full_time',
+    job_category: { id: 'tax_pm', display_name: '产品经理' },
+    primary_location: { id: 'loc_sh', display_name: '上海市' },
+    alternate_locations: [],
+    industries: [],
+    workplace_modes: ['hybrid'],
+    compensation: { mode: 'range', lower: 10, upper: 20, annual_salary_months: null },
+    salary_period: 'month',
+    graduation_month: null,
+    internship_months: null,
+    onsite_days_per_week: null,
+    private_preferences: '',
+    revision: 3,
+    ...覆盖,
+  });
+
+  /** 意向域真实数据源：按 method+path 分派，未预期请求直接抛错。 */
+  function 意向场景(选项: {
+    建档?: 候选引导建档草稿 | null;
+    处理: (选项: BFF请求选项) => unknown;
+  }) {
+    const 请求Mock = vi.fn(async (请求选项: BFF请求选项): Promise<BFF响应<unknown>> => ({
+      result: await 选项.处理(请求选项), etag: null, requestId: 'r',
+    }));
+    const 场景 = 创建场景({
+      建档: 选项.建档 === undefined ? {} : 选项.建档,
+      后端覆盖: 创建意向数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    const 请求们 = () => 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    return { ...场景, 请求Mock, 请求们 };
+  }
+
+  it('POST 201 后列表 GET 失败：ID/revision 已落草稿、槽已清，不再重复创建', async () => {
+    let POST数 = 0;
+    const 场景 = 意向场景({
+      处理: (o) => {
+        if (o.method === 'POST') {
+          POST数 += 1;
+          return { ...权威意向(), intention_id: 'int_new', revision: 1 };
+        }
+        throw new BFF错误(503, 'storage_unavailable', '稍后再试');
+      },
+    });
+    await expect(场景.操作.保存首次意向(首次输入)).rejects.toBeInstanceOf(BFF错误);
+    expect(POST数).toBe(1);
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.首次意向).toEqual({ id: 'int_new', revision: 1 });
+    expect(草稿.待写入).toBeUndefined();
+  });
+
+  it('刷新后有本轮 ID：只 GET exact ID 核对，未改就不重复写', async () => {
+    const 场景 = 意向场景({
+      建档: { 首次意向: { id: 'int_7', revision: 3 } },
+      处理: (o) => {
+        if (o.path === '/api/v1/me/intentions/int_7') return 权威意向();
+        if (o.path.startsWith('/api/v1/me/intentions?')) return { intentions: [权威意向()] };
+        throw new Error(`未预期的请求 ${o.method ?? 'GET'} ${o.path}`);
+      },
+    });
+    await expect(场景.操作.保存首次意向(首次输入)).resolves.toBeUndefined();
+    const 请求们 = 场景.请求们();
+    expect(请求们.filter((o) => (o.method ?? 'GET') !== 'GET')).toHaveLength(0);
+    expect(请求们[0].path).toBe('/api/v1/me/intentions/int_7');
+  });
+
+  it('503 结果未知：保留 prepared 槽与原幂等键，重试复用同一把键不铸新键', async () => {
+    const POST键们: (string | undefined)[] = [];
+    let 失败一次 = true;
+    const 场景 = 意向场景({
+      处理: (o) => {
+        if (o.method === 'POST') {
+          POST键们.push(o.幂等键);
+          if (失败一次) {
+            失败一次 = false;
+            throw new BFF错误(503, 'operation_outcome_unknown', '结果未知');
+          }
+          return { ...权威意向(), intention_id: 'int_new', revision: 1 };
+        }
+        return { intentions: [] };
+      },
+    });
+    await expect(场景.操作.保存首次意向(首次输入)).rejects.toBeInstanceOf(BFF错误);
+    const 槽 = 场景.deps.建档草稿引用!.current!.待写入!;
+    expect(槽).toMatchObject({ 种类: 'first-intention-create', 阶段: 'prepared' });
+    expect(typeof 槽.幂等键).toBe('string');
+    // 用户再点一次保存：同一逻辑命令复用原 key 重放，不产生第二个键
+    await expect(场景.操作.保存首次意向(首次输入)).resolves.toBeUndefined();
+    expect(POST键们).toHaveLength(2);
+    expect(POST键们[0]).toBe(槽.幂等键);
+    expect(POST键们[1]).toBe(槽.幂等键);
+    expect(场景.deps.建档草稿引用!.current!.首次意向).toEqual({ id: 'int_new', revision: 1 });
+  });
+
+  it('列表另有 active 意向不算本次成功：本轮无回执仍照常创建', async () => {
+    let POST数 = 0;
+    const 场景 = 意向场景({
+      处理: (o) => {
+        if (o.method === 'POST') { POST数 += 1; return { ...权威意向(), intention_id: 'int_new', revision: 1 }; }
+        return { intentions: [权威意向({ intention_id: 'int_other' })] };
+      },
+    });
+    场景.状态引用.current = {
+      ...场景.状态引用.current,
+      求职意向表: [{ 编号: 'int_other', 标题: '[北京] 后端', 说明: '' }],
+    } as never;
+    await expect(场景.操作.保存首次意向(首次输入)).resolves.toBeUndefined();
+    expect(POST数).toBe(1);
+  });
+
+  it('快速双击：第二次在途调用不产生第二笔 POST', async () => {
+    let POST数 = 0;
+    let 放行!: () => void;
+    const 闸门 = new Promise<void>((ok) => { 放行 = ok; });
+    const 场景 = 意向场景({
+      处理: async (o) => {
+        if (o.method === 'POST') {
+          POST数 += 1;
+          await 闸门;
+          return { ...权威意向(), intention_id: 'int_new', revision: 1 };
+        }
+        return { intentions: [] };
+      },
+    });
+    const 第一次 = 场景.操作.保存首次意向(首次输入);
+    const 第二次 = 场景.操作.保存首次意向(首次输入);
+    放行();
+    await Promise.all([第一次, 第二次]);
+    expect(POST数).toBe(1);
+  });
+
+  it('返回重新确认修改：PATCH 同一 id、用权威 revision 作 If-Match，并保留已有 exclusions', async () => {
+    const 权威 = 权威意向({
+      revision: 5, // 草稿记的是 3：CAS 必须用本次 GET 的权威 revision
+      exclusions: {
+        alternate_weekend_work: 'excluded',
+        outsourcing_only: 'unspecified',
+        onsite_only: 'unspecified',
+        frequent_travel: 'excluded',
+      },
+      private_preferences: '上一轮写的诉求',
+    });
+    const 场景 = 意向场景({
+      建档: { 首次意向: { id: 'int_7', revision: 3 } },
+      处理: (o) => {
+        if (o.method === 'PATCH') return { ...权威, revision: 6 };
+        if (o.path === '/api/v1/me/intentions/int_7') return 权威;
+        return { intentions: [{ ...权威, revision: 6 }] };
+      },
+    });
+    await expect(场景.操作.保存首次意向({
+      ...首次输入,
+      薪资: { 下限: 30, 上限: 50, 单位: '月薪K' },
+      排除项: ['大小周'],
+      自定义诉求: ['不接受夜班'],
+    } as never)).resolves.toBeUndefined();
+    const patch = 场景.请求们().find((o) => o.method === 'PATCH');
+    expect(patch?.path).toBe('/api/v1/me/intentions/int_7');
+    expect(patch?.ifMatch).toBe('"5"');
+    expect(场景.请求们().filter((o) => o.method === 'POST')).toHaveLength(0);
+    const body = patch?.body as Record<string, unknown>;
+    // 历史硬排除原样保留（私有诉求不写硬排除，也不清洗既有规则）
+    expect(body.exclusions).toEqual(权威.exclusions);
+    expect(body.private_preferences).toBe('不接受大小周\n不接受夜班');
+    expect(body.compensation).toMatchObject({ mode: 'range', lower: 30, upper: 50 });
+    expect(场景.deps.建档草稿引用!.current!.首次意向).toEqual({ id: 'int_7', revision: 6 });
+    expect(场景.deps.建档草稿引用!.current!.待写入).toBeUndefined();
+  });
+
+  it('修改遇 409：保留输入与本轮 ID，重读权威后原样抛错，不盲覆盖', async () => {
+    const 权威 = 权威意向({ revision: 5 });
+    const 场景 = 意向场景({
+      建档: { 首次意向: { id: 'int_7', revision: 3 } },
+      处理: (o) => {
+        if (o.method === 'PATCH') throw new BFF错误(409, 'version_conflict', '数据已在其他地方更新，请重试');
+        if (o.path === '/api/v1/me/intentions/int_7') return 权威;
+        return { intentions: [权威] };
+      },
+    });
+    await expect(场景.操作.保存首次意向({ ...首次输入, 薪资: { 下限: 30, 上限: 50, 单位: '月薪K' } } as never))
+      .rejects.toMatchObject({ code: 'version_conflict' });
+    expect(场景.deps.建档草稿引用!.current!.首次意向).toEqual({ id: 'int_7', revision: 3 });
+  });
+
+  it('确定拒绝（422）清本次未结算槽并保留输入：不把单槽永久锁死', async () => {
+    const 场景 = 意向场景({
+      处理: (o) => {
+        if (o.method === 'POST') throw new BFF错误(422, 'validation_failed', '请检查填写内容');
+        return { intentions: [] };
+      },
+    });
+    await expect(场景.操作.保存首次意向(首次输入)).rejects.toMatchObject({ status: 422 });
+    expect(场景.deps.建档草稿引用!.current!.待写入).toBeUndefined();
+    expect(场景.deps.建档草稿引用!.current!.首次意向).toBeUndefined();
+  });
+
+  it('无建档草稿（日常语境）：不接跟踪，也不因本轮逻辑重复创建已有意向', async () => {
+    const 场景 = 创建场景();
+    场景.状态引用.current = {
+      ...场景.状态引用.current,
+      求职意向表: [{ 编号: 'int_other', 标题: '[北京] 后端', 说明: '' }],
+    } as never;
+    await 场景.操作.保存首次意向(首次输入);
+    expect(场景.后端.创建首次意向).not.toHaveBeenCalled();
   });
 });

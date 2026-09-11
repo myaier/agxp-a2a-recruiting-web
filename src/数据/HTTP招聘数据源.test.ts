@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BFF简历样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本, BFF发现批次样本 } from '../测试/BFF样本';
+import { BFF简历样本, BFF意向样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本, BFF发现批次样本 } from '../测试/BFF样本';
 import { BFF错误, 客户端校验错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
-import { 从BFF简历 } from './后端映射';
+import { 从BFF简历, 从BFF意向草稿 } from './后端映射';
+import type { 建档待写入, 建档写入回执 } from './招聘数据源类型';
 import { 创建岗位附属存储 } from './前端附属数据';
 import { 创建HTTP招聘数据源 } from './HTTP招聘数据源';
 import { 简历预填成功信封 } from './招聘数据源/简历预填.fixture';
@@ -562,6 +563,88 @@ describe('HTTP 招聘数据源', () => {
     expect(目录请求).toBeUndefined();
   });
 
+  // ── J-PILOT-02 Task 7：首次意向身份（Spec §5.3）──
+
+  const 首次输入 = {
+    职位们: ['产品经理'],
+    城市们: ['上海市'],
+    薪资: { 下限: 10, 上限: 20, 单位: '月薪K' as const },
+    筛选偏好: { 求职类型: ['社招全职'] as ['社招全职'], 办公方式: ['混合'] as ['混合'] },
+    排除项: [] as string[],
+    职位引用: { id: 'tax_pm', display_name: '产品经理' },
+    城市引用们: [{ id: 'loc_sh', display_name: '上海市' }],
+  };
+
+  // 已 receipt 的意向只 GET exact ID（同源根路径，发送时带前导斜杠），不再拉列表猜。
+  it('读取指定意向 只 GET exact ID 路径', async () => {
+    请求Mock.mockResolvedValue({ result: { ...BFF意向样本, intention_id: 'int_7' }, etag: '"3"', requestId: 'r1' });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.读取指定意向('int_7')).resolves.toMatchObject({ intention_id: 'int_7' });
+    expect(请求Mock.mock.calls.map(([o]) => (o as BFF请求选项).path)).toEqual(['/api/v1/me/intentions/int_7']);
+  });
+
+  // 201 的 intention_id/revision 必须在任何后续 GET 之前交给跟踪；列表 GET 失败不得吞掉回执。
+  it('创建首次意向 跟踪：POST 回执先于列表 GET 交付，列表失败仍不丢 ID', async () => {
+    const 顺序: string[] = [];
+    请求Mock.mockImplementation(async (o: BFF请求选项) => {
+      if (o.method === 'POST') {
+        顺序.push('POST');
+        return { result: { ...BFF意向样本, intention_id: 'int_new', revision: 1 }, etag: null, requestId: 'r1' };
+      }
+      顺序.push('GET列表');
+      throw new BFF错误(503, 'storage_unavailable', '稍后再试');
+    });
+    const 跟踪 = {
+      发送前: vi.fn((命令: 建档待写入) => ({ ...命令, 幂等键: 'idem-first-intention-0001' })),
+      已确认: vi.fn((_命令: 建档待写入, _回执: 建档写入回执) => { 顺序.push('已确认'); }),
+    };
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.创建首次意向(首次输入, 跟踪)).rejects.toBeInstanceOf(BFF错误);
+    expect(顺序).toEqual(['POST', '已确认', 'GET列表']);
+    expect(跟踪.发送前.mock.calls[0][0]).toMatchObject({ 种类: 'first-intention-create', 阶段: 'prepared' });
+    expect(跟踪.已确认.mock.calls[0][1]).toEqual({ id: 'int_new', revision: 1 });
+    const post = 请求Mock.mock.calls.map(([o]) => o as BFF请求选项).find((o) => o.method === 'POST');
+    expect(post?.幂等键).toBe('idem-first-intention-0001');
+  });
+
+  // 返回修改走同一条资源的 CAS：命令是 first-intention-update，If-Match 用权威 revision。
+  it('更新意向 带跟踪：命令为 first-intention-update 并带权威 revision 的 If-Match', async () => {
+    请求Mock.mockImplementation(async (o: BFF请求选项) => (
+      o.method === 'PATCH'
+        ? { result: { ...BFF意向样本, intention_id: 'int_7', revision: 5 }, etag: null, requestId: 'r2' }
+        : { result: { intentions: [] }, etag: null, requestId: 'r1' }
+    ));
+    const 跟踪 = {
+      发送前: vi.fn((命令: 建档待写入) => 命令),
+      已确认: vi.fn((_命令: 建档待写入, _回执: 建档写入回执) => {}),
+    };
+    const source = 创建HTTP招聘数据源(依赖());
+    const 原始 = { ...BFF意向样本, intention_id: 'int_7', revision: 4 };
+    await source.更新意向('int_7', 从BFF意向草稿(原始), { 原始 }, 跟踪);
+    const patch = 请求Mock.mock.calls.map(([o]) => o as BFF请求选项).find((o) => o.method === 'PATCH');
+    expect(patch?.path).toBe('/api/v1/me/intentions/int_7');
+    expect(patch?.ifMatch).toBe('"4"');
+    expect(跟踪.发送前.mock.calls[0][0]).toMatchObject({
+      种类: 'first-intention-update', 资源编号: 'int_7', ifMatch: 4, 阶段: 'prepared',
+    });
+    expect(跟踪.已确认.mock.calls[0][1]).toEqual({ id: 'int_7', revision: 5 });
+  });
+
+  // 普通调用省略跟踪：日常意向 CRUD 不接本轮草稿逻辑，请求形状逐字不变。
+  it('普通 更新意向 省略跟踪时请求形状不变', async () => {
+    请求Mock.mockImplementation(async (o: BFF请求选项) => (
+      o.method === 'PATCH'
+        ? { result: { ...BFF意向样本, intention_id: 'int_7', revision: 5 }, etag: null, requestId: 'r2' }
+        : { result: { intentions: [] }, etag: null, requestId: 'r1' }
+    ));
+    const source = 创建HTTP招聘数据源(依赖());
+    const 原始 = { ...BFF意向样本, intention_id: 'int_7', revision: 4 };
+    await source.更新意向('int_7', 从BFF意向草稿(原始), { 原始 });
+    const patch = 请求Mock.mock.calls.map(([o]) => o as BFF请求选项).find((o) => o.method === 'PATCH');
+    expect(patch?.幂等键).toBeUndefined();
+    expect(patch?.ifMatch).toBe('"4"');
+  });
+
   // Task 7：创建岗位 body 用 类别引用/地点引用 的 ID，不再按显示名反查目录（无 /catalog/ 请求）。
   // P1C Task 5：上下文改为显式 岗位创建上下文（direct + claim）。
   it('创建岗位 body 用引用 ID，不请求 /catalog/', async () => {
@@ -649,7 +732,7 @@ describe('HTTP 招聘数据源', () => {
       '删除岗位', '删除意向', '删除企业媒体', '开始微信登录', '开始手机登录', '归档岗位',
       '恢复会话', '更新岗位', '更新意向', '上传企业媒体', '查询Institution', '查询Location',
       '查询Taxonomy', '清空目录缓存', '确保角色', '取消企业管理员申请', '读取主体', '读取岗位',
-      '读取意向', '读取简历', '读取招聘方档案', '读取我的企业关系', '读取公开企业', '读取企业档案',
+      '读取意向', '读取指定意向', '读取简历', '读取招聘方档案', '读取我的企业关系', '读取公开企业', '读取企业档案',
       '读取企业管理员申请', '记录当前角色', '接受企业邀请', '替换招聘方头像', '替换企业档案',
       '退出登录', '完成手机登录', '重开岗位',
       // P3：隐私域 + 组织搜索
