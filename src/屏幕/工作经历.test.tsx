@@ -19,11 +19,13 @@ import type { BFF简历预填建议 } from '../数据/BFF契约';
 import { 构造映射变体基底, 多条教育变体 } from '../数据/招聘数据源/简历预填.fixture';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
 import type { 简历经历段, 简历教育段, 简历证书 } from '../数据/类型';
+import type { 候选引导建档草稿 } from '../数据/资料缓存';
 
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
 const mock轻提示 = vi.hoisted(() => vi.fn());
 const mock确认分区 = vi.hoisted(() => vi.fn());
+const mock更新草稿 = vi.hoisted(() => vi.fn());
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
@@ -70,6 +72,9 @@ function render工作经历(选项: {
   技能?: string[];
   证书?: 简历证书[];
   基本信息?: { 真名: string; 开始工作年: string; 身份: '在校' | '在职' | '离职' | '' };
+  作品集链接?: string;
+  /** J-PILOT-02 Task 4：会话恢复出的建档草稿（更新回写同一对象并重渲染，贴近 Provider）*/
+  建档?: 候选引导建档草稿;
 }) {
   const 数据源 = 选项.数据源 ?? 'backend';
   mock应用状态 = {
@@ -88,8 +93,9 @@ function render工作经历(选项: {
       简历技能: 选项.技能 ?? [],
       简历证书: 选项.证书 ?? [],
       个人优势: '',
-      简历作品集链接: '',
+      简历作品集链接: 选项.作品集链接 ?? '',
       基本信息: 选项.基本信息 ?? { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
+      引导预填: 选项.建档 === undefined ? null : { 城市们: [], 职位: [], 建档: 选项.建档 },
     },
     后端状态: { 候选预填状态: 选项.预填 ?? 创建空候选预填状态() },
     派发: vi.fn((动作: { 型?: string; 经历?: 简历经历段[]; 教育?: 简历教育段[]; 技能?: string[]; 证书?: 简历证书[] }) => {
@@ -104,6 +110,10 @@ function render工作经历(选项: {
     操作: {
       保存简历: 选项.保存简历 ?? vi.fn(async () => {}),
       确认候选Onboarding预填分区: mock确认分区,
+      更新候选建档草稿: mock更新草稿.mockImplementation((建档: 候选引导建档草稿) => {
+        mock应用状态.状态.引导预填 = { 城市们: [], 职位: [], 建档 };
+        触发重渲染?.();
+      }),
     },
   };
   render(<宿主 />);
@@ -818,5 +828,160 @@ describe('工作经历 · 空身份经历保存（M）', () => {
       基本信息: expect.objectContaining({ 真名: '沈', 身份: '' }),
       经历: [expect.objectContaining({ 编号: 'e1', 公司: '字节跳动' })],
     }));
+  });
+});
+
+// ── J-PILOT-02 Task 4：资料页最后一屏的接线 ──────────────────────
+// 反例覆盖：社招无工作经历可前进、不完整教育不得靠保存跳过门槛、作品集链接三态、
+// 未完成编辑层刷新恢复与取消丢弃、删除已存条目登记明确删除。
+const 完整教育: 简历教育段 = {
+  编号: 'edu1', 学校: '复旦大学', 学历: '硕士', 专业: '计算机', 开始: '2019-09', 结束: '2023-06',
+};
+
+describe('工作经历 · Task 4 资料接线', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+    mock确认分区.mockClear();
+    mock更新草稿.mockClear();
+  });
+
+  it('社招零工作经历也能保存并前进（工作经历可空）', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({ 经历: [], 教育: [完整教育], 保存简历 });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({ 经历: [] }));
+    expect(mock轻提示).not.toHaveBeenCalledWith('至少填一段工作经历');
+    expect(mock跳转).toHaveBeenCalledWith(路径.引导问答);
+  });
+
+  it('教育缺毕业时间：保存被拦，不发写入、不确认分区、不跳转', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    // 经历非空：这条反例针对的是教育门槛本身，不借「至少一段工作经历」的旧拦截
+    render工作经历({ 教育: [{ ...完整教育, 结束: '' }], 保存简历, 建档: {} });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(保存简历).not.toHaveBeenCalled();
+    expect(mock确认分区).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock轻提示).toHaveBeenCalled();
+  });
+
+  it('作品集链接未改：保存不带该属性（不拿旧 GET 顺带覆盖）', async () => {
+    const 保存简历 = vi.fn(async (_写入: Record<string, unknown>) => {});
+    render工作经历({ 经历: [], 教育: [完整教育], 保存简历 });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect('作品集链接' in 保存简历.mock.calls[0][0]).toBe(false);
+  });
+
+  it('作品集链接单独改动：写进草稿并随保存带上规范化后的字符串', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({ 经历: [], 教育: [完整教育], 保存简历 });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    await 用户.tab();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      作品集链接: 'https://github.com/shen',
+      // 链接单独变化也要保留 profile 其余字段
+      基本信息: expect.objectContaining({ 真名: '沈' }),
+    }));
+  });
+
+  it('清空已有作品集链接：保存带 null（明确清空，不是省略）', async () => {
+    const 保存简历 = vi.fn(async (_写入: Record<string, unknown>) => {});
+    render工作经历({
+      经历: [], 教育: [完整教育], 保存简历, 作品集链接: 'https://github.com/shen',
+    });
+    const 用户 = userEvent.setup();
+    await 用户.clear(screen.getByLabelText('作品集或项目链接'));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历.mock.calls[0][0]).toEqual(expect.objectContaining({ 作品集链接: null }));
+  });
+
+  it('日常编辑（无建档草稿）不受教育门槛影响：结束为空是「至今在读」，照常保存', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({ 教育: [{ ...完整教育, 结束: '' }], 保存简历 });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+  });
+
+  it('只是聚焦再离开作品集输入框：不算修改，保存仍不带该属性', async () => {
+    const 保存简历 = vi.fn(async (_写入: Record<string, unknown>) => {});
+    render工作经历({ 经历: [], 教育: [完整教育], 保存简历, 作品集链接: 'https://github.com/shen' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByLabelText('作品集或项目链接'));
+    await 用户.tab();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect('作品集链接' in 保存简历.mock.calls[0][0]).toBe(false);
+  });
+
+  it('刷新恢复未完成的教育编辑层：挂载即回到编辑页并带回已填字段', async () => {
+    render工作经历({
+      经历: [], 教育: [],
+      建档: {
+        编辑中: { 种类: 'education', 本地编号: 'edu新', 字段: { 学校: '复旦大学', 专业: '计算机' } },
+      },
+    });
+    expect((screen.getByDisplayValue('复旦大学') as HTMLInputElement)).toBeTruthy();
+    expect((screen.getByDisplayValue('计算机') as HTMLInputElement)).toBeTruthy();
+  });
+
+  it('取消编辑层明确丢弃 编辑中（回带其余草稿字段）', async () => {
+    render工作经历({
+      经历: [], 教育: [],
+      建档: {
+        资料: { 技能: ['Go'] },
+        编辑中: { 种类: 'education', 本地编号: 'edu新', 字段: { 学校: '复旦大学' } },
+      },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    const 末次 = mock更新草稿.mock.calls.at(-1)![0];
+    expect('编辑中' in 末次).toBe(false);
+    expect(末次.资料.技能).toEqual(['Go']);
+    // 丢弃是明确的：同一条再打开也不能把刚丢掉的输入翻出来
+    await 用户.click(screen.getByRole('button', { name: /添加教育经历/ }));
+    expect(screen.queryByDisplayValue('复旦大学')).toBeNull();
+  });
+
+  it('经历编辑页输入即写 编辑中（不带 项目，回带未结算写入槽）', async () => {
+    const 槽 = { 种类: 'profile' as const, 幂等键: 'k1', 阶段: 'prepared' as const };
+    render工作经历({ 经历: [], 教育: [完整教育], 建档: { 待写入: 槽 } });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /添加工作经历/ }));
+    // 公司名称 / 职位名称 共用「必填」占位：第一个是公司名称
+    await 用户.type(screen.getAllByPlaceholderText('必填')[0], '字节');
+    const 末次 = mock更新草稿.mock.calls.at(-1)![0];
+    expect(末次.编辑中.种类).toBe('experience');
+    expect(末次.编辑中.字段.公司).toBe('字节');
+    expect('项目' in 末次.编辑中.字段).toBe(false);
+    expect(末次.待写入).toEqual(槽);
+  });
+
+  it('删除已存条目：登记 明确删除条目，保存时不会被缺项保护带回', async () => {
+    render工作经历({
+      经历: [{ ...简历经历初始[0], 编号: 'exp_server' }],
+      教育: [完整教育],
+      建档: {
+        已存条目: [{ 本地编号: 'e1', 种类: 'experience', 资源编号: 'exp_server', revision: 2 }],
+      },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByRole('button', { name: '删除这段经历' }));
+    const 末次 = mock更新草稿.mock.calls.at(-1)![0];
+    expect(末次.明确删除条目).toEqual([
+      { 种类: 'experience', 资源编号: 'exp_server', revision: 2 },
+    ]);
   });
 });

@@ -9,6 +9,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 路径 } from '../路由/路径表';
 import type { 基本信息 as 基本信息类型 } from '../数据/类型';
+import type { 候选引导建档草稿 } from '../数据/资料缓存';
 import 求职状态 from './求职状态';
 
 const mock跳转 = vi.fn();
@@ -17,6 +18,7 @@ const mock轻提示 = vi.hoisted(() => vi.fn());
 const mock操作 = vi.hoisted(() => ({
   保存简历: vi.fn(async () => {}),
   确认候选Onboarding预填分区: vi.fn(),
+  更新候选建档草稿: vi.fn(),
 }));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -28,6 +30,8 @@ vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 interface 建状态选项 {
   身份?: 基本信息类型['身份'];
   到岗?: string;
+  /** J-PILOT-02 Task 4：会话恢复出的建档草稿 */
+  建档?: 候选引导建档草稿;
 }
 
 function 置状态(选项: 建状态选项 = {}) {
@@ -43,7 +47,9 @@ function 置状态(选项: 建状态选项 = {}) {
       简历教育: [],
       简历技能: [],
       简历证书: [],
-      引导预填: 选项.到岗 === undefined ? null : { 到岗: 选项.到岗 },
+      引导预填: 选项.到岗 === undefined && 选项.建档 === undefined
+        ? null
+        : { 城市们: [], 职位: [], 到岗: 选项.到岗, 建档: 选项.建档 },
     },
     派发: vi.fn(),
     操作: mock操作,
@@ -65,6 +71,7 @@ beforeEach(() => {
   mock轻提示.mockClear();
   mock操作.保存简历.mockClear().mockResolvedValue(undefined);
   mock操作.确认候选Onboarding预填分区.mockClear();
+  mock操作.更新候选建档草稿.mockClear();
 });
 
 describe('求职状态 · 显式选择（M）', () => {
@@ -139,5 +146,33 @@ describe('求职状态 · 显式选择（M）', () => {
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     await waitFor(() => expect(mock跳转).toHaveBeenCalled());
     expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+  });
+});
+
+// ── J-PILOT-02 Task 4：身份收口读草稿（/basic 的姓名只在草稿里时不能写空 profile）──
+describe('求职状态 · 建档草稿接线（Task 4）', () => {
+  it('刷新后 Context 姓名为空：保存携带草稿姓名与本次身份，不发空名 profile', async () => {
+    渲染({ 身份: '', 建档: { 资料: { 基本信息: { 真名: '沈星', 出生年: '2000', 出生月: '9' } } } });
+    // 渲染() 内部按选项重建状态：这里直接把 Context 姓名清空
+    mock应用状态.状态.基本信息.真名 = '';
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /离职 · 随时到岗/ }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 真名: '沈星', 出生年: '2000', 身份: '离职' }),
+    }));
+  });
+
+  it('本次身份写回草稿并回带未结算写入槽', async () => {
+    const 槽 = { 种类: 'profile' as const, 幂等键: 'k1', 阶段: 'prepared' as const };
+    渲染({ 身份: '', 建档: { 待写入: 槽, 资料: { 基本信息: { 真名: '沈星' } } } });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /在职 · 考虑机会/ }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    const 末次 = mock操作.更新候选建档草稿.mock.calls.at(-1)![0];
+    expect(末次.资料.基本信息).toEqual(expect.objectContaining({ 真名: '沈星', 身份: '在职' }));
+    expect(末次.待写入).toEqual(槽);
   });
 });

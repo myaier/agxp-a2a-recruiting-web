@@ -12,6 +12,7 @@ import { 构造映射变体基底, 受支持学历变体 } from '../数据/招�
 import { 路径 } from '../路由/路径表';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
 import type { 简历教育段 } from '../数据/类型';
+import type { 候选引导建档草稿 } from '../数据/资料缓存';
 import 最高学历 from './最高学历';
 
 const mock跳转 = vi.fn();
@@ -20,6 +21,7 @@ const mock轻提示 = vi.hoisted(() => vi.fn());
 const mock操作 = {
   保存简历: vi.fn().mockResolvedValue(undefined),
   确认候选Onboarding预填分区: vi.fn(),
+  更新候选建档草稿: vi.fn(),
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -61,6 +63,8 @@ interface 建状态参数 {
   在读学历?: string;
   简历教育?: 简历教育段[];
   候选预填?: 候选预填状态;
+  /** J-PILOT-02 Task 4：会话恢复出的建档草稿 */
+  建档?: 候选引导建档草稿;
 }
 
 function 建状态(选项: 建状态参数 = {}) {
@@ -75,6 +79,7 @@ function 建状态(选项: 建状态参数 = {}) {
       简历经历: [],
       简历证书: [],
       个人优势: '',
+      引导预填: 选项.建档 === undefined ? null : { 城市们: [], 职位: [], 建档: 选项.建档 },
     },
     后端状态: { 候选预填状态: 选项.候选预填 ?? 创建空候选预填状态() },
     操作: mock操作,
@@ -254,5 +259,34 @@ describe('最高学历 · 空学历显式确认（N）', () => {
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+  });
+});
+
+// ── J-PILOT-02 Task 4：学历落建档草稿的教育段（服务端会跳过不完整教育，Context 留不住）──
+describe('最高学历 · 建档草稿接线（Task 4）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear();
+    mock操作.更新候选建档草稿.mockClear();
+  });
+
+  it('草稿里已有教育段时在其上落学历（不另建一条），并回带未结算写入槽', async () => {
+    const 槽 = { 种类: 'education-create' as const, 本地编号: 'edu草稿', 幂等键: 'k1', 阶段: 'prepared' as const };
+    render最高学历({
+      简历教育: [],
+      建档: {
+        待写入: 槽,
+        资料: { 教育: [{ 编号: 'edu草稿', 学校: '复旦大学', 学历: '', 专业: '', 开始: '', 结束: '' }] },
+      },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(档位('硕士'));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      教育: [expect.objectContaining({ 编号: 'edu草稿', 学校: '复旦大学', 学历: '硕士' })],
+    }));
+    const 末次 = mock操作.更新候选建档草稿.mock.calls.at(-1)![0];
+    expect(末次.资料.教育[0]).toEqual(expect.objectContaining({ 编号: 'edu草稿', 学历: '硕士' }));
+    expect(末次.待写入).toEqual(槽);
   });
 });

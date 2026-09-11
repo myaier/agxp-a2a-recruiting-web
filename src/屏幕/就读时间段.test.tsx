@@ -12,6 +12,7 @@ import { 构造映射变体基底 } from '../数据/招聘数据源/简历预填
 import { 路径 } from '../路由/路径表';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
 import type { 简历教育段 } from '../数据/类型';
+import type { 候选引导建档草稿 } from '../数据/资料缓存';
 import 就读时间段 from './就读时间段';
 
 const mock跳转 = vi.fn();
@@ -20,6 +21,7 @@ const mock轻提示 = vi.hoisted(() => vi.fn());
 const mock操作 = {
   保存简历: vi.fn().mockResolvedValue(undefined),
   确认候选Onboarding预填分区: vi.fn(),
+  更新候选建档草稿: vi.fn(),
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -64,6 +66,8 @@ interface 建状态参数 {
   身份?: '在校' | '在职';
   简历教育?: 简历教育段[];
   候选预填?: 候选预填状态;
+  /** J-PILOT-02 Task 4：会话恢复出的建档草稿 */
+  建档?: 候选引导建档草稿;
 }
 
 function 建状态(选项: 建状态参数 = {}) {
@@ -76,6 +80,7 @@ function 建状态(选项: 建状态参数 = {}) {
       简历经历: [],
       简历证书: [],
       个人优势: '',
+      引导预填: 选项.建档 === undefined ? null : { 城市们: [], 职位: [], 建档: 选项.建档 },
     },
     后端状态: { 候选预填状态: 选项.候选预填 ?? 创建空候选预填状态() },
     操作: mock操作,
@@ -261,6 +266,68 @@ describe('就读时间段 · 空时间显式确认（R）', () => {
     await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
     expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
       教育: [expect.objectContaining({ 开始: '2021-09', 结束: '2025-06' })],
+    }));
+  });
+});
+
+// ── J-PILOT-02 Task 4：就读时间落草稿的同一条教育段；学生的毕业时间是「预计毕业」──
+describe('就读时间段 · 建档草稿接线（Task 4）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear().mockResolvedValue(undefined);
+    mock操作.更新候选建档草稿.mockClear();
+  });
+
+  it('学生预计毕业（毕业年在未来）照常保存：教育来自草稿段，毕业年入基本信息', async () => {
+    const 未来年 = String(new Date().getFullYear() + 3);
+    render就读时间段({
+      身份: '在校',
+      简历教育: [],
+      建档: {
+        资料: {
+          教育: [{ 编号: 'edu草稿', 学校: '复旦大学', 学历: '硕士', 专业: '计算机', 开始: '', 结束: '' }],
+        },
+      },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(within(screen.getByRole('listbox', { name: '入学年' })).getByRole('option', { name: '2023' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '毕业年' })).getByRole('option', { name: 未来年 }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 毕业年: 未来年 }),
+      教育: [expect.objectContaining({
+        编号: 'edu草稿', 学校: '复旦大学', 专业: '计算机', 开始: '2023-09', 结束: `${未来年}-06`,
+      })],
+    }));
+  });
+
+  it('滚轮确认当场写草稿：刷新后（草稿有起止）不再要求重滚', async () => {
+    render就读时间段({
+      身份: '在校',
+      简历教育: [],
+      建档: { 资料: { 教育: [{ 编号: 'edu草稿', 学校: '复旦大学', 学历: '硕士', 专业: '计算机', 开始: '', 结束: '' }] } },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(within(screen.getByRole('listbox', { name: '入学年' })).getByRole('option', { name: '2023' }));
+    const 末次 = mock操作.更新候选建档草稿.mock.calls.at(-1)![0];
+    expect(末次.资料.教育[0].开始).toBe('2023-09');
+  });
+
+  it('草稿里已有起止：进屏即算已确认，直接下一步就保存', async () => {
+    render就读时间段({
+      身份: '在校',
+      简历教育: [],
+      建档: {
+        资料: {
+          教育: [{ 编号: 'edu草稿', 学校: '复旦大学', 学历: '硕士', 专业: '计算机', 开始: '2019-09', 结束: '2023-06' }],
+        },
+      },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      教育: [expect.objectContaining({ 开始: '2019-09', 结束: '2023-06' })],
     }));
   });
 });

@@ -16,6 +16,7 @@ import { 目录精确命中变体, 构造映射变体基底 } from '../数据/�
 import { 路径 } from '../路由/路径表';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
 import type { 简历教育段 } from '../数据/类型';
+import type { 候选引导建档草稿 } from '../数据/资料缓存';
 import 毕业院校 from './毕业院校';
 
 /** deferred promise：测试可控制异步 resolve 的时机（用于模拟慢响应到达） */
@@ -44,6 +45,7 @@ const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
 const mock轻提示 = vi.hoisted(() => vi.fn());
 const mock确认分区 = vi.fn();
+const mock更新草稿 = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
@@ -82,6 +84,8 @@ function render毕业院校(选项: {
   保存简历?: ReturnType<typeof vi.fn>;
   预填?: 候选预填状态;
   简历教育?: 简历教育段[];
+  /** J-PILOT-02 Task 4：会话恢复出的建档草稿 */
+  建档?: 候选引导建档草稿;
 }) {
   const 保存简历 = 选项.保存简历 ?? vi.fn(async () => {});
   mock应用状态 = {
@@ -101,9 +105,10 @@ function render毕业院校(选项: {
       简历技能: [],
       简历经历: [],
       简历证书: [],
+      引导预填: 选项.建档 === undefined ? null : { 城市们: [], 职位: [], 建档: 选项.建档 },
     },
     后端状态: { 候选预填状态: 选项.预填 ?? 创建空候选预填状态() },
-    操作: { 保存简历, 确认候选Onboarding预填分区: mock确认分区 },
+    操作: { 保存简历, 确认候选Onboarding预填分区: mock确认分区, 更新候选建档草稿: mock更新草稿 },
   };
   render(
     <MemoryRouter>
@@ -423,5 +428,52 @@ describe('毕业院校 候选 onboarding 预填（Spec §8）', () => {
     await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
     expect(mock确认分区).not.toHaveBeenCalled();
     expect(mock跳转).not.toHaveBeenCalled();
+  });
+});
+// ── J-PILOT-02 Task 4：学校落建档草稿（BFF 跳过不完整教育，Context 不留这一步的输入）──
+describe('毕业院校 · 建档草稿接线（Task 4）', () => {
+  beforeEach(() => {
+    mock更新草稿.mockClear();
+  });
+
+  it('刷新后 Context 空：草稿里的学校与引用回到输入框，下一步直接可继续', async () => {
+    const { 保存简历 } = render毕业院校({
+      数据源: 'backend',
+      简历教育: [],
+      建档: {
+        资料: {
+          教育: [{
+            编号: 'edu草稿', 学校: '复旦大学', 学历: '硕士', 专业: '', 开始: '', 结束: '',
+            学校引用: { id: 'ins_fudan', display_name: '复旦大学' },
+          }],
+        },
+      },
+    });
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('复旦大学');
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      教育: [expect.objectContaining({ 编号: 'edu草稿', 学校: '复旦大学', 学校引用: { id: 'ins_fudan', display_name: '复旦大学' } })],
+    }));
+  });
+
+  it('点候选写草稿引用；继续改文字把草稿里的旧引用一并作废', async () => {
+    const 查询Institution = vi.fn(async () => 复旦结果页());
+    render毕业院校({
+      数据源: 'backend',
+      查询Institution,
+      简历教育: [{ 编号: 'edu1', 学校: '', 学历: '硕士', 专业: '', 开始: '', 结束: '' }],
+    });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByRole('textbox'), '复旦');
+    await 用户.click(await screen.findByText('复旦大学'));
+    const 选后 = mock更新草稿.mock.calls.at(-1)![0];
+    expect(选后.资料.教育[0]).toEqual(expect.objectContaining({
+      学校: '复旦大学', 学校引用: { id: 'ins_fudan', display_name: '复旦大学' },
+    }));
+    await 用户.type(screen.getByRole('textbox'), '大');
+    const 改后 = mock更新草稿.mock.calls.at(-1)![0];
+    expect(改后.资料.教育[0].学校引用).toBeUndefined();
   });
 });

@@ -15,6 +15,7 @@ import { 性别已填变体 } from '../数据/招聘数据源/简历预填.fixtu
 import { 路径 } from '../路由/路径表';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
 import type { 基本信息 as 基本信息类型 } from '../数据/类型';
+import type { 候选引导建档草稿 } from '../数据/资料缓存';
 import 基本信息 from './基本信息';
 
 const mock跳转 = vi.fn();
@@ -23,6 +24,7 @@ const mock轻提示 = vi.hoisted(() => vi.fn());
 const mock操作 = {
   保存简历: vi.fn().mockResolvedValue(undefined),
   确认候选Onboarding预填分区: vi.fn(),
+  更新候选建档草稿: vi.fn(),
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -69,6 +71,8 @@ function 超界生日建议(): BFF简历预填建议 {
 interface 建状态参数 {
   基本信息?: Partial<基本信息类型>;
   候选预填?: 候选预填状态;
+  /** J-PILOT-02 Task 4：会话里恢复出来的建档草稿（刷新后 Context 是空的，草稿不是）*/
+  建档?: 候选引导建档草稿;
 }
 
 /**
@@ -109,6 +113,7 @@ function 建状态(选项: 建状态参数 = {}) {
       简历技能: [],
       简历证书: [],
       个人优势: '',
+      引导预填: 选项.建档 === undefined ? null : { 城市们: [], 职位: [], 建档: 选项.建档 },
     },
     后端状态: { 候选预填状态: 选项.候选预填 ?? 创建空候选预填状态() },
     操作: mock操作,
@@ -434,5 +439,54 @@ describe('基本信息 · Mock 空资料生日演示默认（L 对照）', () =>
     expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
       基本信息: expect.objectContaining({ 出生年: '1998', 出生月: '6' }),
     }));
+  });
+});
+
+// ── J-PILOT-02 Task 4：建档草稿接线（刷新不丢输入 / 回带未结算写入槽）──
+describe('基本信息 · 建档草稿接线（Task 4）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear();
+    mock操作.确认候选Onboarding预填分区.mockClear();
+    mock操作.更新候选建档草稿.mockClear();
+  });
+
+  it('输入真名写进建档草稿，并原样回带未结算的 待写入 槽', async () => {
+    const 槽 = { 种类: 'profile' as const, 幂等键: 'k1', 阶段: 'prepared' as const };
+    render基本信息({ 基本信息: { 身份: '在职' }, 建档: { 待写入: 槽 } });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '沈');
+    const 末次 = mock操作.更新候选建档草稿.mock.calls.at(-1)![0];
+    expect(末次.资料.基本信息.真名).toBe('沈');
+    // 省略 待写入 = 清槽：接线漏带就会把在飞命令丢掉，刷新后重复 POST
+    expect(末次.待写入).toEqual(槽);
+  });
+
+  it('刷新后 Context 为空：草稿里的真名/性别/出生年月回到表单并随保存落盘', async () => {
+    render基本信息({
+      基本信息: { 真名: '', 身份: '在职' },
+      建档: { 资料: { 基本信息: { 真名: '沈星', 性别: '女', 出生年: '2000', 出生月: '9' } } },
+    });
+    expect(姓名框().value).toBe('沈星');
+    expect(screen.getByRole('button', { name: '女' }).getAttribute('aria-pressed')).toBe('true');
+    选中档('出生年', '2000');
+    选中档('出生月', '9');
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 真名: '沈星', 性别: '女', 出生年: '2000', 出生月: '9' }),
+    }));
+  });
+
+  it('空身份不保存的那一步也把姓名/生日写进草稿（刷新后由求职状态收口）', async () => {
+    render基本信息({ 基本信息: { 身份: '' } });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '沈');
+    const 年轮 = screen.getByRole('listbox', { name: '出生年' });
+    await 用户.click(within(年轮).getByRole('option', { name: '2001' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    const 末次 = mock操作.更新候选建档草稿.mock.calls.at(-1)![0];
+    expect(末次.资料.基本信息).toEqual(expect.objectContaining({ 真名: '沈', 出生年: '2001', 出生月: '6' }));
   });
 });

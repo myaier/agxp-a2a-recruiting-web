@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { 路径 } from '../路由/路径表';
+import type { 候选引导建档草稿 } from '../数据/资料缓存';
+import type { 简历教育段 } from '../数据/类型';
 import {
   Onboarding流程,
   初筛字段矩阵,
@@ -7,6 +9,8 @@ import {
   向导出口,
   向导段参数名,
   向导题序,
+  并入建档草稿,
+  教育段缺项,
   读向导段,
   规范化作品集链接,
   校验作品集链接,
@@ -227,5 +231,51 @@ describe('作品集链接写入校验（J-PILOT-02 合同 1）', () => {
   it('javascript 协议拒绝', () => {
     expect(校验作品集链接('javascript:alert(1)')).toBe('请输入有效的作品集或项目链接');
     expect(校验作品集链接('javascript://evil.com/x')).toBe('请输入有效的作品集或项目链接');
+  });
+});
+
+// ── J-PILOT-02 Task 4：建档草稿的局部合并与教育完整门槛 ──────────────
+describe('并入建档草稿（Task 4 接线）', () => {
+  it('回带未结算的 待写入 槽与其余字段：省略槽即清槽，接线绝不能丢命令身份', () => {
+    const 建档: 候选引导建档草稿 = {
+      待写入: { 种类: 'education-create', 本地编号: 'edu1', 幂等键: 'k1', 阶段: 'prepared' },
+      已存分区: { profile: 3 },
+      资料: { 基本信息: { 真名: '沈' } },
+    };
+    const 下一步 = 并入建档草稿(建档, { 资料: { 教育: [] } });
+    expect(下一步.待写入).toEqual(建档.待写入);
+    expect(下一步.已存分区).toEqual({ profile: 3 });
+    // 资料按键浅合并：本次没改的 基本信息 原样留下
+    expect(下一步.资料).toEqual({ 基本信息: { 真名: '沈' }, 教育: [] });
+  });
+
+  it('缺省草稿也能起手；显式 undefined 丢弃该层（取消编辑）', () => {
+    const 起手 = 并入建档草稿(undefined, { 资料: { 作品集链接: null } });
+    expect(起手).toEqual({ 资料: { 作品集链接: null } });
+    const 有编辑层 = 并入建档草稿(起手, {
+      编辑中: { 种类: 'education', 本地编号: 'edu1', 字段: { 学校: '清华' } },
+    });
+    expect(有编辑层.编辑中).toBeDefined();
+    const 已取消 = 并入建档草稿(有编辑层, { 编辑中: undefined });
+    expect('编辑中' in 已取消).toBe(false);
+    // 作品集链接 null 是「用户清空」，不是缺省，不能被顺手删掉
+    expect(已取消.资料).toEqual({ 作品集链接: null });
+  });
+});
+
+describe('教育段缺项（完成前的最后门槛）', () => {
+  const 完整: 简历教育段 = {
+    编号: 'edu1', 学校: '清华大学', 学历: '本科', 专业: '软件工程', 开始: '2023-09', 结束: '2027-06',
+  };
+
+  it('学生的预计毕业时间在未来仍算完整（毕业时间不是「必须是过去」）', () => {
+    const 明年 = new Date().getFullYear() + 1;
+    expect(教育段缺项({ ...完整, 结束: `${明年}-06` })).toBe(false);
+  });
+
+  it('缺毕业时间 / 缺专业 / 缺学校都算缺项', () => {
+    expect(教育段缺项({ ...完整, 结束: '' })).toBe(true);
+    expect(教育段缺项({ ...完整, 专业: '   ' })).toBe(true);
+    expect(教育段缺项({ ...完整, 学校: '' })).toBe(true);
   });
 });
