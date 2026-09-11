@@ -27,6 +27,7 @@ import { 附件错误文案, 校验附件PDF } from '../流程/附件简历交�
 import { BFF错误 } from '../数据/HTTP客户端';
 import { use附件简历刷新 } from '../流程/附件简历刷新';
 import { 创建空候选预填状态 } from '../状态/后端/类型';
+import type { 候选预填绑定来源 } from '../状态/后端/类型';
 import {
   默认求职初筛偏好,
   空求职初筛偏好,
@@ -45,10 +46,9 @@ export default function 学生分流() {
   const 是后端 = 数据源模式 === 'backend';
   const 文件选择框 = useRef<HTMLInputElement>(null);
 
-  // P2 Task 5：附件简历（Backend）—— 权威快照只读 items[0] 一行；空库创建、非空替换。
-  // 待确认文件是「授权层背后的那一份」：选中只预检不发送，同意后才真正上传。
+  // P2 Task 5：附件简历（Backend）—— 待确认文件是「授权层背后的那一份」：
+  // 选中只预检不发送，同意后才真正上传。
   const 附件库 = 是后端 ? 后端状态.附件简历库 : null;
-  const 最近附件 = 附件库?.items[0] ?? null;
   const [待确认文件, 设待确认文件] = useState<File | null>(null);
   const [附件提交中, 设附件提交中] = useState(false);
   // Backend 页面可见期轮询附件解析状态（钩子内部自判 Mock / 未登录 / 角色，静默）
@@ -59,12 +59,22 @@ export default function 学生分流() {
   // 盯权威附件解析坐标交操作层推进、离页决策门（再等等 / 继续手填）。
   // 建议读取、单飞、栅栏、恢复分支全在操作层；本页零直接 BFF/预填请求。
   const 预填 = 后端状态.候选预填状态 ?? 创建空候选预填状态();
+  // J-PILOT-02 Task 6（设计 §4.2）：本屏的「那一份简历」只能是
+  //   ① 本轮 exact source 指向的行（上传回执给的 file_id），或
+  //   ② 库里恰好只有一行时那唯一可准确识别的文件。
+  // 旅程外有多份 active 文件时没有可认领的行 —— 不按 items[0] 回显，也不覆盖任何一份：
+  // 本次明确上传走 create，已有附件保持不变（不新增多附件选择器）。
+  const 本轮来源 = 预填.source;
+  const 本轮附件 = 本轮来源 === null
+    ? null
+    : 附件库?.items.find((条) => 条.file_id === 本轮来源.file_id) ?? null;
+  const 最近附件 = 本轮附件 ?? (附件库?.items.length === 1 ? 附件库.items[0] : null);
   const [离页确认, 设离页确认] = useState(false);
   const 已恢复引用 = useRef(false);
   const 上一预填阶段 = useRef(预填.phase);
   const 候选会话就绪 = 是后端 && 后端状态.主体?.last_used_role === 'candidate';
   const 附件已水合 = 附件库 !== null;
-  // 解析真相源只有权威附件 items[0]：file/version/parse 状态（与 parse_id）四元组坐标
+  // 解析真相源只有本轮那一行附件：file/version/parse 状态（与 parse_id）四元组坐标
   const 最近解析 = 最近附件?.current_version.parse ?? null;
   const 解析坐标 = 最近附件 === null || 最近解析 === null
     ? ''
@@ -182,7 +192,7 @@ export default function 学生分流() {
     轻提示('已选择简历，可识别的信息将用于预填');
   }
 
-  /** 授权层「同意并继续」：空库创建 / 非空替换 items[0]，consent 字面量 true。
+  /** 授权层「同意并继续」：有可认领的那一行就替换它，否则创建，consent 字面量 true。
       已换代（会话已转移）静默；失败用 附件错误文案 的闭合表，行上保留权威展示名。
       附件提交中 + aria-busy 防重复提交，上传不阻塞「下一步」。 */
   async function 同意处理附件() {
@@ -191,15 +201,16 @@ export default function 学生分流() {
     const target = 最近附件;
     设附件提交中(true);
     try {
+      // 本次上传回执的 exact source 一到手就开新一轮（严格晚于上传调用、早于权威
+      // 重读）：回执是本轮来源的唯一证据，权威 GET 再失败也不会丢掉 file/version；
+      // 解析推进仍交给 同步候选Onboarding解析 按这一行的权威 parse 状态完成
+      const 绑定本轮来源 = (来源: 候选预填绑定来源) => 操作.激活候选Onboarding预填(来源);
       const result = target
-        ? await 操作.替换附件简历(target.file_id, file, true)
-        : await 操作.创建附件简历(file, true);
+        ? await 操作.替换附件简历(target.file_id, file, true, 绑定本轮来源)
+        : await 操作.创建附件简历(file, true, 绑定本轮来源);
       设待确认文件(null);
       if (result === '已换代') return;
       轻提示('简历已上传，正在识别');
-      // 上传页显式新一轮：权威上传/替换 resolves '已提交' 之后才激活（严格晚于
-      // 上传调用）；source 绑定与解析推进交给 同步候选Onboarding解析 按权威附件完成
-      操作.激活候选Onboarding预填();
     } catch (error) {
       // 401 时操作层已清账号状态（Spec §10.1：snapshot、timer 与待处理文件一起失效），
       // 保留授权层只会对着死会话重发注定失败的 mutation —— 关层，仍按闭合表提示
@@ -309,7 +320,7 @@ export default function 学生分流() {
 
       <滚动区 样式覆盖={{ padding: '4px 18px 10px' }}>
         {/* ── 上传简历：一键读取入口（观感同 工作经历 顶部上传行）──
-            Backend：空库占位「确认后开始识别」，非空回显权威行 items[0] 的展示名；
+            Backend：无可认领的行时占位「确认后开始识别」，否则回显本轮那一行的展示名；
             Mock：沿用原 已选简历名 回显与原文案（逐字保留，防视觉漂移）。
             提交中外层 aria-busy + .附件忙碌（pointer-events:none），不新增 spinner */}
         {/* 上传简历入口改成主页同款代理横幅(用户 2026-09-02:与发岗端「上传 JD」同构)。

@@ -11,10 +11,12 @@
 //     仍是 auto（manual/inactive/failed 不消费迟到建议）且当前附件仍指向同一
 //     succeeded parse。单飞键 = fileId|versionId|parseId，finally 释放，同 tuple 并发
 //     调用并入同一 Promise。
-//   · 权威附件（附件简历库 items[0] 的 parse 状态）是解析真相源：succeeded 先把真实
+//   · 权威附件（按本轮 exact source 的 file_id 在附件库里取到的那一行，Task 6 起绝不
+//     退回 items[0]）的 parse 状态是解析真相源：succeeded 先把真实
 //     parse_id 写进内存 source 与恢复元数据（先于读取起飞，读取途中刷新仍可恢复），
 //     再进入 loading 读取；pending/processing 零预填读取停在 waiting_parse；parse
-//     failed 进入 failed 不请求建议；source 换新（替换上传）重绑并把尚未确认分区清零。
+//     failed 进入 failed 不请求建议；同一文件被替换出新版本时重绑并把尚未确认分区清零；
+//     本轮文件已不在权威库则明确失败，绝不改绑另一份文件。
 //   · 错误分派（设计 §10）：401 → 统一 清账号状态（预填内存/锁/元数据随行清理）；
 //     404/409 → 一次权威附件库刷新后按新 current source 重派，同 tuple 仍不可读即
 //     终局 failed 绝不循环；400/403/invalid_response 终局 failed（在线简历数据不动，
@@ -151,9 +153,14 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
     return 是后端 === true && 后端 !== null && 后端状态引用.current.主体?.last_used_role === 'candidate';
   }
 
-  /** 权威附件 = 附件简历库 items[0]（onboarding 上传绑定的那一行）。 */
-  function 当前附件(): BFF附件简历 | null {
-    return 后端状态引用.current.附件简历库?.items[0] ?? null;
+  /**
+   * 本轮附件 = 权威库里 file_id 与本轮 exact source 相同的那一行（J-PILOT-02 Task 6）。
+   * 绝不退回 items[0]：旅程外可能还有别的 active 文件，数组位置不是本轮来源的证据
+   * （Global 6「解析 source 必须精确，不从 items[0] 推断」）。
+   */
+  function 按编号取附件(fileId: string, 库?: BFF附件简历库 | null): BFF附件简历 | null {
+    const 权威 = 库 ?? 后端状态引用.current.附件简历库;
+    return 权威?.items.find((条) => 条.file_id === fileId) ?? null;
   }
 
   /** 控制面五元组落盘（suggestion 绝不落盘）；适配器缺席（Mock/非候选/未绑定）零触碰。 */
@@ -172,6 +179,19 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
   /** 失败落位：本轮 source/eligibility/confirmed 全保留（可显式重试或继续手填）。 */
   function 落失败(错误: unknown): void {
     设预填状态({ ...当前预填状态(), phase: 'failed', suggestion: null, error: 取后端错误文案(错误) });
+  }
+
+  /**
+   * 来源失效落位（Task 6）：本轮绑定的文件已不在权威库里 —— 明确失败并保留本轮坐标，
+   * 用户可以重新上传或继续手填。绝不静默改绑另一份文件的 file/parse。
+   */
+  function 落来源失效(): void {
+    设预填状态({
+      ...当前预填状态(),
+      phase: 'failed',
+      suggestion: null,
+      error: '这份简历已不在附件列表里，可重新上传或继续手填',
+    });
   }
 
   // ── 栅栏 ──
@@ -202,12 +222,11 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
       && 状态.source.parse_id === fence.parseId;
   }
 
-  /** 读路径全量判定：再加当前附件仍指向同一 file/version 且 parse succeeded 同 parse_id。 */
+  /** 读路径全量判定：再加本轮附件仍是同一 file/version 且 parse succeeded 同 parse_id。 */
   function 栅栏仍当前(fence: 预填栅栏): boolean {
     if (!会话预填栅栏仍当前(fence)) return false;
-    const 附件 = 当前附件();
+    const 附件 = 按编号取附件(fence.fileId);
     if (附件 === null
-      || 附件.file_id !== fence.fileId
       || 附件.current_version.version_id !== fence.versionId) return false;
     const 解析 = 附件.current_version.parse;
     return 解析.status === 'succeeded' && 解析.parse_id === fence.parseId;
@@ -280,10 +299,11 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
     // codex review-r1 P1/P2：重派必须消费本次刷新结果（库），不能回读 后端状态引用 ——
     // 真实 Provider 的 setState 到下次渲染才落引用，同步续行只会看到旧附件（旧 tuple），
     // 而旧 tuple 的单飞正是当前 Promise：await 自己 = 永久 loading。
-    const 附件 = 库.items[0] ?? null;
-    // codex review-r2：权威库已无当前附件（读取途中被整库删除）——收口为终局 failed
-    //（source/eligibility 保留，可显式重试或继续手填），不能停在 loading 等一个
-    // 永远不会来的附件。
+    // Task 6：按本轮 exact file_id 找自己那一行（不是 items[0]）
+    const 附件 = 按编号取附件(fence.fileId, 库);
+    // codex review-r2：权威库已无本轮附件（读取途中被删除 / 被换成另一份文件）——
+    // 收口为终局 failed（source/eligibility 保留，可显式重试或继续手填），不能停在
+    // loading 等一个永远不会来的附件，更不能改绑别人的 file/parse。
     if (附件 === null) {
       落失败(原错误);
       return;
@@ -292,8 +312,7 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
     // 同 tuple 终局 = 同 file/version 且 parse 仍 succeeded 于原 parse_id（仍不可读才 failed）。
     // 解析已换代（pending/processing/not_started/failed）时旧 parse_id 不再代表权威状态：
     // 走重派，按新 parse 状态进 waiting_parse / failed（设计 §10）。
-    const 同元组 = 附件.file_id === fence.fileId
-      && 附件.current_version.version_id === fence.versionId
+    const 同元组 = 附件.current_version.version_id === fence.versionId
       && 解析?.status === 'succeeded'
       && 解析.parse_id === fence.parseId;
     if (!同元组) {
@@ -304,22 +323,30 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
   }
 
   /**
-   * 权威解析推进核（同步候选Onboarding解析 与 404/409 重派共用）：当前附件 items[0]
-   * 的 parse 状态是唯一真相源。succeeded 先把真实 parse_id 写进内存 source 与恢复
+   * 权威解析推进核（同步候选Onboarding解析 与 404/409 重派共用）：本轮 exact source
+   * 那一行附件的 parse 状态是唯一真相源。succeeded 先把真实 parse_id 写进内存 source 与恢复
    * 元数据（先于读取起飞），再以完整 tuple 单飞读取；pending/processing/not_started
-   * 停在 waiting_parse 零预填读取；parse failed 进入 failed 不请求建议。source 换新
-   * （arming 首绑 / 替换上传 / 防御性漂移）重绑并把尚未确认分区与旧建议清零。
+   * 停在 waiting_parse 零预填读取；parse failed 进入 failed 不请求建议。同一文件被替换出
+   * 新版本时重绑并把尚未确认分区与旧建议清零；本轮文件已不在权威库则明确失败。
    * 库 参数：重派路径传入本次权威刷新的结果 —— setState 的引用提交要等下次渲染，
    * 回读 后端状态引用 只会看到旧附件（codex review-r1 P1 单飞死锁）；缺席时才读引用。
    */
   async function 按权威附件推进(库?: BFF附件简历库): Promise<void> {
     const 状态 = 当前预填状态();
     if (状态.phase === 'inactive' || 状态.phase === 'manual' || 状态.phase === 'failed') return;
-    const 附件 = (库 ?? 后端状态引用.current.附件简历库)?.items[0] ?? null;
-    if (附件 === null) return; // 附件未水合：零动作，等权威库在场
-    const 换绑 = 状态.source === null
-      || 状态.source.file_id !== 附件.file_id
-      || 状态.source.version_id !== 附件.current_version.version_id;
+    // Task 6：没有本轮来源的 arming 只等本次上传回执（激活时带进来的 exact source）——
+    // 权威库里已有的行不是本轮的证据，绝不认领 items[0]。
+    const 本轮来源 = 状态.source;
+    if (本轮来源 === null) return;
+    const 权威库 = 库 ?? 后端状态引用.current.附件简历库;
+    if (!权威库) return; // 附件未水合：零动作，等权威库在场
+    const 附件 = 按编号取附件(本轮来源.file_id, 权威库);
+    if (附件 === null) {
+      落来源失效(); // 本轮文件已不在库：明确失败，不改绑另一份文件
+      return;
+    }
+    // 同一份文件被替换出新版本才算换绑（旧版本的建议不可回填）
+    const 换绑 = 本轮来源.version_id !== 附件.current_version.version_id;
     const 基底: 候选预填状态 = 换绑
       ? {
         ...创建空候选预填状态(候选预填代际.current),
@@ -363,11 +390,13 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
       if (元数据 === null) return; // 无记录：保持 inactive
       // 等 candidate / 附件水合：主体不在场或库未落地就静默等下一次调用（绝不删记录）
       if (后端状态引用.current.附件简历库 === null) return;
-      const 附件 = 当前附件();
+      // Task 6：按记录里的 exact file_id 找自己那一行（多份 active 文件时 items[0]
+      // 可能是别人的行）；找不到或版本已被换掉都按「来源不可用」处理 ——
+      // 删除记录、保持 inactive 让用户继续手填，绝不静默改绑另一份文件。
+      const 附件 = 按编号取附件(元数据.source.file_id);
       if (附件 === null
-        || 元数据.source.file_id !== 附件.file_id
         || 元数据.source.version_id !== 附件.current_version.version_id) {
-        存储.删除(); // 失配记录（文件/版本已被换掉）：删除并保持 inactive
+        存储.删除();
         return;
       }
       const 起底 = (phase: 候选预填状态['phase'], source: 候选预填绑定来源): 候选预填状态 => ({
@@ -422,16 +451,22 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
       存储.删除();
     },
 
-    激活候选Onboarding预填() {
+    激活候选Onboarding预填(source) {
       if (!是候选会话()) return;
       候选预填代际.current += 1; // 旧轮在飞读取按旧代整包作废，旧建议立即不可提交
-      候选预填恢复.current?.删除(); // 旧轮恢复元数据随之作废（新元数据由绑定后落盘）
+      候选预填恢复.current?.删除(); // 旧轮恢复元数据随之作废（新元数据随本次来源落盘）
       const 代际 = 候选预填代际.current;
-      设预填状态({
+      const 下一: 候选预填状态 = {
         ...创建空候选预填状态(代际),
         phase: 'arming',
+        // Task 6：本次上传回执的 exact source 立刻绑定；没有回执的 arming 保持 null，
+        // 由后续回执唤起绑定 —— 权威库里已有的行绝不被认领
+        source: source ?? null,
         eligibility: 取预填Eligibility(后端状态引用.current.简历快照),
-      });
+      };
+      设预填状态(下一);
+      // 来源在手就先落盘：紧接着的权威 GET 失败或刷新都还能按 exact tuple 续上本轮
+      if (source !== undefined) 持久化恢复元数据(下一);
     },
 
     async 同步候选Onboarding解析() {

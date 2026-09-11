@@ -11,6 +11,8 @@ import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误 } from '../../数据/HTTP客户端';
 import { 初始状态 } from '../初始状态';
 import type { 后端操作依赖, 后端状态, 候选预填恢复存储 } from './类型';
+import type { 候选引导建档草稿, 候选建档草稿存储 } from '../../数据/资料缓存';
+import type { 建档写入跟踪 } from '../../数据/招聘数据源类型';
 import { 创建附件简历操作 } from './附件简历操作';
 
 const limits: BFF附件简历库['limits'] = {
@@ -95,6 +97,14 @@ function 创建附件测试依赖(后端: HTTP招聘数据源, 是后端 = true)
       删除: vi.fn(),
     } as 候选预填恢复存储,
   };
+  // J-PILOT-02 Task 6：建档草稿运行时引用（onboarding 上传的单槽登记落点）。
+  // 缺省 null = 没有 active 建档草稿（日常 我的简历 上传），操作层必须零草稿写、零跟踪。
+  const 建档草稿引用 = { current: null as 候选引导建档草稿 | null };
+  const 草稿写入 = vi.fn((建档: 候选引导建档草稿) => {
+    建档草稿引用.current = 建档;
+    return true;
+  });
+  const 候选建档草稿 = { current: { 读取: () => 建档草稿引用.current, 写入: 草稿写入 } as 候选建档草稿存储 };
   const deps = {
     是后端,
     后端,
@@ -110,11 +120,14 @@ function 创建附件测试依赖(后端: HTTP招聘数据源, 是后端 = true)
     候选预填代际,
     候选预填读取锁,
     候选预填恢复,
+    建档草稿引用,
+    候选建档草稿,
   } satisfies 后端操作依赖;
   return {
     deps, 设后端状态, 后端状态引用,
     会话代际: deps.会话代际, 主体标识引用: deps.主体标识引用,
     候选预填代际, 候选预填读取锁, 候选预填恢复,
+    建档草稿引用, 草稿写入, 派发: deps.派发,
   };
 }
 
@@ -128,9 +141,13 @@ function 创建场景() {
     下载附件简历: vi.fn(),
     清空目录缓存: vi.fn(),
   };
-  const { deps, 设后端状态, 后端状态引用, 会话代际, 主体标识引用, 候选预填代际, 候选预填读取锁, 候选预填恢复 } = 创建附件测试依赖(后端 as unknown as HTTP招聘数据源);
+  const { deps, 设后端状态, 后端状态引用, 会话代际, 主体标识引用, 候选预填代际, 候选预填读取锁, 候选预填恢复,
+    建档草稿引用, 草稿写入, 派发 } = 创建附件测试依赖(后端 as unknown as HTTP招聘数据源);
   const 操作 = 创建附件简历操作(deps);
-  return { 后端, 操作, 设后端状态, 后端状态引用, 会话代际, 主体标识引用, 候选预填代际, 候选预填读取锁, 候选预填恢复 };
+  return {
+    后端, 操作, 设后端状态, 后端状态引用, 会话代际, 主体标识引用,
+    候选预填代际, 候选预填读取锁, 候选预填恢复, 建档草稿引用, 草稿写入, 派发,
+  };
 }
 
 describe('创建附件简历操作 · 成功路径（mutation 后只信权威 GET）', () => {
@@ -746,5 +763,256 @@ describe('创建附件简历操作 · 委托前的权威库准备', () => {
     const 操作 = 创建附件简历操作(deps);
     await expect(操作.准备候选委托简历()).resolves.toBeNull();
     expect(后端.读取附件简历库).not.toHaveBeenCalled();
+  });
+});
+
+// ── J-PILOT-02 Task 6：onboarding 单槽跟踪与 exact source 回执 ──────────
+// 铁律（Global 4/5/6 + 设计 §4.2）：文件命令只登记坐标与核对元数据（name/type/size/
+// lastModified/SHA-256），PDF 字节与解析正文绝不进 请求体/文件核对；本次上传回执的
+// exact source 立刻交给调用方（权威 GET 失败也不丢 file/version/parse）；一个槽未结算
+// 时另一份字节的 mutation 零发送；同字节重放沿用原幂等键/原 ifMatch，绝不自动重传。
+
+/**
+ * 数据源桩：按真实 附件简历数据源 的同序行为驱动跟踪 —— 发送前固定命令 → 发请求 →
+ * 成功后立刻 已确认 交回执（失败则只固定过命令）。操作层的单槽/回执语义必须在这条
+ * 真实次序下成立，而不是靠桩额外配合。
+ */
+function 创建桩(文件: BFF附件简历, 抛出?: unknown) {
+  return async (_file: File, _consent: true, 跟踪?: 建档写入跟踪) => {
+    const 定 = 跟踪?.发送前({ 种类: 'resume-file-create', 阶段: 'prepared' });
+    if (抛出 !== undefined) throw 抛出;
+    if (跟踪 && 定) {
+      跟踪.已确认(定, {
+        id: 文件.file_id,
+        revision: 文件.revision,
+        source: { file_id: 文件.file_id, version_id: 文件.current_version.version_id, parse_id: null },
+      });
+    }
+    return 文件;
+  };
+}
+
+function 替换桩(文件: BFF附件简历, 抛出?: unknown) {
+  return async (fileId: string, revision: number, _file: File, _consent: true, 跟踪?: 建档写入跟踪) => {
+    const 定 = 跟踪?.发送前({ 种类: 'resume-file-replace', 资源编号: fileId, ifMatch: revision, 阶段: 'prepared' });
+    if (抛出 !== undefined) throw 抛出;
+    if (跟踪 && 定) {
+      跟踪.已确认(定, {
+        id: 文件.file_id,
+        revision: 文件.revision,
+        source: { file_id: 文件.file_id, version_id: 文件.current_version.version_id, parse_id: null },
+      });
+    }
+    return 文件;
+  };
+}
+
+function 解析桩(状态: BFF附件简历['current_version']['parse']) {
+  return async (fileId: string, versionId: string, consent: true, 跟踪?: 建档写入跟踪) => {
+    const 定 = 跟踪?.发送前({
+      种类: 'resume-file-parse',
+      资源编号: fileId,
+      请求体: { version_id: versionId, processing_consent_confirmed: consent },
+      阶段: 'prepared',
+    });
+    if (跟踪 && 定) {
+      跟踪.已确认(定, {
+        source: {
+          file_id: fileId,
+          version_id: versionId,
+          parse_id: 状态.status === 'succeeded' ? 状态.parse_id : null,
+        },
+      });
+    }
+    return 状态;
+  };
+}
+
+/** 与生产同口径的十六进制 SHA-256（测试侧独立实现，用来钉死落盘的核对元数据）。 */
+async function 摘要(file: File): Promise<string> {
+  const 缓冲 = await file.arrayBuffer();
+  const 摘 = await globalThis.crypto.subtle.digest('SHA-256', 缓冲);
+  return [...new Uint8Array(摘)].map((字节) => 字节.toString(16).padStart(2, '0')).join('');
+}
+
+describe('创建附件简历操作 · onboarding 建档跟踪与 exact source（Task 6）', () => {
+  /** 有 active 建档草稿的场景（onboarding 上传页）。 */
+  function 建档场景() {
+    const 场景 = 创建场景();
+    场景.建档草稿引用.current = { 资料: { 个人优势: '已写了一半' } };
+    return 场景;
+  }
+
+  it('create：槽只登记坐标与文件核对（零字节、零请求体），成功后清槽并交出 exact source', async () => {
+    const 场景 = 建档场景();
+    const created = { ...文件A, file_id: 'rf_created' };
+    场景.后端.创建附件简历.mockImplementation(创建桩(created));
+    场景.后端.读取附件简历库.mockResolvedValue({ items: [created], limits });
+    const 绑定来源 = vi.fn();
+    const 结果 = await 场景.操作.创建附件简历(pdf, true, 绑定来源);
+    expect(结果).toBe('已提交');
+    // 数据源收到跟踪（第三参）
+    expect(场景.后端.创建附件简历.mock.calls[0][2]).toBeTruthy();
+    // 发送前落过一条 prepared 槽：五键文件核对、无请求体
+    const 落过的槽 = 场景.草稿写入.mock.calls
+      .map(([建档]) => 建档.待写入)
+      .filter((槽): 槽 is NonNullable<typeof 槽> => 槽 !== undefined);
+    expect(落过的槽).toHaveLength(1);
+    expect(落过的槽[0].种类).toBe('resume-file-create');
+    expect(落过的槽[0].阶段).toBe('prepared');
+    expect(落过的槽[0].请求体).toBeUndefined();
+    expect(typeof 落过的槽[0].幂等键).toBe('string');
+    expect(Object.keys(落过的槽[0].文件核对!).sort())
+      .toEqual(['lastModified', 'name', 'sha256', 'size', 'type']);
+    expect(落过的槽[0].文件核对).toEqual({
+      name: pdf.name, type: pdf.type, size: pdf.size, lastModified: pdf.lastModified,
+      sha256: await 摘要(pdf),
+    });
+    // 已确认：槽清空（received 槽绝不留给后续 resume 域命令）
+    expect(场景.建档草稿引用.current?.待写入).toBeUndefined();
+    expect(场景.建档草稿引用.current?.资料).toEqual({ 个人优势: '已写了一半' });
+    // exact source 交给调用方（parse 尚未开始 → parse_id null）
+    expect(绑定来源).toHaveBeenCalledTimes(1);
+    expect(绑定来源).toHaveBeenCalledWith({
+      file_id: 'rf_created', version_id: created.current_version.version_id, parse_id: null,
+    });
+  });
+
+  it('receipt 之后权威 GET 失败：exact source 已交出、槽已结算，错误原样抛给调用方', async () => {
+    const 场景 = 建档场景();
+    const created = { ...文件A, file_id: 'rf_created' };
+    场景.后端.创建附件简历.mockImplementation(创建桩(created));
+    场景.后端.读取附件简历库.mockRejectedValue(new BFF错误(503, 'downstream_unavailable', 'down'));
+    const 绑定来源 = vi.fn();
+    await expect(场景.操作.创建附件简历(pdf, true, 绑定来源)).rejects.toMatchObject({ status: 503 });
+    expect(绑定来源).toHaveBeenCalledWith({
+      file_id: 'rf_created', version_id: created.current_version.version_id, parse_id: null,
+    });
+    expect(场景.建档草稿引用.current?.待写入).toBeUndefined();
+  });
+
+  it('槽未结算 + 另一份字节：零 mutation，提示按原步骤重选同一份文件', async () => {
+    const 场景 = 建档场景();
+    场景.建档草稿引用.current = {
+      待写入: {
+        种类: 'resume-file-create', 阶段: 'prepared', 幂等键: 'key-of-the-first-upload',
+        文件核对: { name: '第一份.pdf', type: 'application/pdf', size: 8, lastModified: 1, sha256: 'f'.repeat(64) },
+      },
+    };
+    场景.后端.创建附件简历.mockImplementation(创建桩({ ...文件A, file_id: 'rf_created' }));
+    await expect(场景.操作.创建附件简历(pdf, true, vi.fn())).rejects.toMatchObject({
+      message: '上一条写入结果未确认，请先重试或核对原步骤',
+    });
+    expect(场景.后端.读取附件简历库).not.toHaveBeenCalled(); // 本地拦截不是结果未知，不做歧义恢复
+    expect(场景.建档草稿引用.current?.待写入?.幂等键).toBe('key-of-the-first-upload');
+  });
+
+  it('槽未结算 + 重选同一份字节：沿用原幂等键重放，绝不铸新键', async () => {
+    const 场景 = 建档场景();
+    const 原键 = 'key-of-the-first-upload';
+    场景.建档草稿引用.current = {
+      待写入: {
+        种类: 'resume-file-create', 阶段: 'prepared', 幂等键: 原键,
+        文件核对: {
+          name: pdf.name, type: pdf.type, size: pdf.size, lastModified: pdf.lastModified,
+          sha256: await 摘要(pdf),
+        },
+      },
+    };
+    const created = { ...文件A, file_id: 'rf_created' };
+    场景.后端.创建附件简历.mockImplementation(创建桩(created));
+    场景.后端.读取附件简历库.mockResolvedValue({ items: [created], limits });
+    const 跟踪收口 = vi.fn();
+    await expect(场景.操作.创建附件简历(pdf, true, 跟踪收口)).resolves.toBe('已提交');
+    const 跟踪 = 场景.后端.创建附件简历.mock.calls[0][2] as { 发送前: (命令: unknown) => { 幂等键?: string } };
+    expect(跟踪).toBeTruthy();
+    expect(场景.建档草稿引用.current?.待写入).toBeUndefined();
+    const 重放槽 = 场景.草稿写入.mock.calls
+      .map(([建档]) => 建档.待写入)
+      .filter((槽): 槽 is NonNullable<typeof 槽> => 槽 !== undefined);
+    expect(重放槽.every((槽) => 槽.幂等键 === 原键)).toBe(true);
+  });
+
+  it('服务端确定拒绝（400）：清槽，不把后续上传永久锁死', async () => {
+    const 场景 = 建档场景();
+    场景.后端.创建附件简历.mockImplementation(创建桩(文件A, new BFF错误(400, 'invalid_pdf', 'bad pdf')));
+    await expect(场景.操作.创建附件简历(pdf, true, vi.fn())).rejects.toMatchObject({ code: 'invalid_pdf' });
+    expect(场景.建档草稿引用.current?.待写入).toBeUndefined();
+  });
+
+  it('结果未知（503 operation_outcome_unknown）：槽保留待核对，绝不自动重传 multipart', async () => {
+    const 场景 = 建档场景();
+    场景.后端.创建附件简历.mockImplementation(创建桩(文件A, new BFF错误(503, 'operation_outcome_unknown', 'unknown')));
+    场景.后端.读取附件简历库.mockResolvedValue({ items: [], limits });
+    await expect(场景.操作.创建附件简历(pdf, true, vi.fn())).rejects.toMatchObject({ status: 503 });
+    expect(场景.建档草稿引用.current?.待写入?.种类).toBe('resume-file-create');
+    expect(场景.建档草稿引用.current?.待写入?.阶段).toBe('prepared');
+    expect(场景.后端.创建附件简历).toHaveBeenCalledTimes(1); // 只发过一次
+  });
+
+  it('replace：槽带资源编号与原 revision 的 ifMatch，回执交出新版本坐标', async () => {
+    const 场景 = 建档场景();
+    场景.后端状态引用.current.附件简历库 = { items: [文件A], limits };
+    const 新版本 = { ...文件A, revision: 3, current_version: { ...文件A.current_version, version_id: 'rfv_2' } };
+    场景.后端.替换附件简历.mockImplementation(替换桩(新版本));
+    场景.后端.读取附件简历库.mockResolvedValue({ items: [新版本], limits });
+    const 绑定来源 = vi.fn();
+    await expect(场景.操作.替换附件简历('rf_1', pdf, true, 绑定来源)).resolves.toBe('已提交');
+    const 槽 = 场景.草稿写入.mock.calls.map(([建档]) => 建档.待写入).find((项) => 项 !== undefined)!;
+    expect(槽.种类).toBe('resume-file-replace');
+    expect(槽.资源编号).toBe('rf_1');
+    expect(槽.ifMatch).toBe(文件A.revision);
+    expect(槽.请求体).toBeUndefined();
+    expect(绑定来源).toHaveBeenCalledWith({ file_id: 'rf_1', version_id: 'rfv_2', parse_id: null });
+  });
+
+  it('parse：槽的请求体恰为 wire 两键，回执按真实解析状态交 parse_id', async () => {
+    const 场景 = 建档场景();
+    场景.后端状态引用.current.附件简历库 = { items: [文件A], limits };
+    场景.后端.请求附件解析.mockImplementation(解析桩(文件已完成.current_version.parse));
+    场景.后端.读取附件简历库.mockResolvedValue({ items: [文件已完成], limits });
+    const 绑定来源 = vi.fn();
+    await expect(场景.操作.请求附件解析('rf_1', true, 绑定来源)).resolves.toBe('已提交');
+    const 槽 = 场景.草稿写入.mock.calls.map(([建档]) => 建档.待写入).find((项) => 项 !== undefined)!;
+    expect(槽.种类).toBe('resume-file-parse');
+    expect(槽.请求体).toEqual({ version_id: 'rfv_1', processing_consent_confirmed: true });
+    expect(槽.文件核对).toBeUndefined();
+    expect(绑定来源).toHaveBeenCalledWith({ file_id: 'rf_1', version_id: 'rfv_1', parse_id: 'ps_1' });
+  });
+
+  it('日常上传（无 onboarding 绑定）：数据源不收跟踪、草稿零写入', async () => {
+    const 场景 = 建档场景();
+    const created = { ...文件A, file_id: 'rf_created' };
+    场景.后端.创建附件简历.mockImplementation(创建桩(created));
+    场景.后端.读取附件简历库.mockResolvedValue({ items: [created], limits });
+    await expect(场景.操作.创建附件简历(pdf, true)).resolves.toBe('已提交');
+    expect(场景.后端.创建附件简历).toHaveBeenCalledWith(pdf, true);
+    expect(场景.草稿写入).not.toHaveBeenCalled();
+  });
+
+  it('没有 active 建档草稿时即使带绑定也零草稿写入，来源照常交出', async () => {
+    const 场景 = 创建场景(); // 建档草稿引用.current === null
+    const created = { ...文件A, file_id: 'rf_created' };
+    场景.后端.创建附件简历.mockImplementation(创建桩(created));
+    场景.后端.读取附件简历库.mockResolvedValue({ items: [created], limits });
+    const 绑定来源 = vi.fn();
+    await expect(场景.操作.创建附件简历(pdf, true, 绑定来源)).resolves.toBe('已提交');
+    expect(场景.草稿写入).not.toHaveBeenCalled();
+    expect(绑定来源).toHaveBeenCalledWith({
+      file_id: 'rf_created', version_id: created.current_version.version_id, parse_id: null,
+    });
+  });
+
+  it('会话换代后到达的回执不交来源、不写草稿（迟到整包丢弃）', async () => {
+    const 场景 = 建档场景();
+    const 门 = 可控Promise<BFF附件简历>();
+    场景.后端.创建附件简历.mockImplementation(() => 门.promise);
+    场景.后端.读取附件简历库.mockResolvedValue({ items: [], limits });
+    const 绑定来源 = vi.fn();
+    const 在飞 = 场景.操作.创建附件简历(pdf, true, 绑定来源);
+    场景.会话代际.current += 1;
+    门.resolve({ ...文件A, file_id: 'rf_created' });
+    await expect(在飞).resolves.toBe('已换代');
+    expect(绑定来源).not.toHaveBeenCalled();
   });
 });

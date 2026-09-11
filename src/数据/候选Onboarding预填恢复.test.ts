@@ -133,6 +133,25 @@ describe('候选预填恢复存储', () => {
     expect((解析.eligibility as { summary: unknown }).summary).toBe(false);
   });
 
+  // J-PILOT-02 Task 6：解析处理中刷新后用户选择「继续手填」—— 落盘只把 mode 换成
+  // manual，source 三元组 / eligibility / confirmed / generation 必须逐字保持本轮坐标。
+  // 手填不是换源：记录里的 exact source 是本轮唯一持久化真相，绝不被改写成别的文件。
+  it('处理中轮转手填：只有 mode 变化，exact source 与其余控制面坐标逐字不变', () => {
+    const 存储 = 内存存储();
+    const 甲 = 创建候选预填恢复存储({ storage: 存储.storage, 范围: 范围甲 });
+    const 自动 = 元数据({ source: { file_id: `rf_${'a'.repeat(32)}`, version_id: `rfv_${'b'.repeat(32)}`, parse_id: null } });
+    expect(甲.写入(自动)).toBe(true);
+    const 手填 = { ...自动, mode: 'manual' as const };
+    expect(甲.写入(手填)).toBe(true);
+    const 读回 = 甲.读取()!;
+    expect(读回.mode).toBe('manual');
+    expect(读回.source).toEqual(自动.source);
+    expect(读回.eligibility).toEqual(自动.eligibility);
+    expect(读回.confirmed).toEqual(自动.confirmed);
+    expect(读回.generation).toBe(自动.generation);
+    expect(存储.键列表()).toEqual([键]);
+  });
+
   it('写入构造全新白名单对象：写入后改输入不影响已存值', () => {
     const 存储 = 内存存储();
     const 甲 = 创建候选预填恢复存储({ storage: 存储.storage, 范围: 范围甲 });

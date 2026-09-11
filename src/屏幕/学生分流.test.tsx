@@ -31,6 +31,8 @@ const mock操作 = {
   刷新附件简历: vi.fn().mockResolvedValue(undefined),
   创建附件简历: vi.fn().mockResolvedValue('已提交'),
   替换附件简历: vi.fn().mockResolvedValue('已提交'),
+  删除附件简历: vi.fn().mockResolvedValue('已提交'),
+  请求附件解析: vi.fn().mockResolvedValue('已提交'),
   恢复候选Onboarding预填: vi.fn().mockResolvedValue(undefined),
   激活候选Onboarding预填: vi.fn(),
   同步候选Onboarding解析: vi.fn().mockResolvedValue(undefined),
@@ -282,20 +284,56 @@ describe('学生分流 附件简历上传（P2 Task 5）', () => {
     expect(screen.getByText('允许 AI 识别这份简历？')).toBeTruthy();
     expect(mock操作.创建附件简历).not.toHaveBeenCalled();
     await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
-    expect(mock操作.创建附件简历).toHaveBeenCalledWith(pdf, true);
+    expect(mock操作.创建附件简历).toHaveBeenCalledWith(pdf, true, expect.any(Function));
     expect(mock操作.替换附件简历).not.toHaveBeenCalled();
   });
 
-  it('Backend nonempty library replaces items[0], keeps display name, and does not block Next', async () => {
+  it('Backend 唯一可准确识别的文件被替换，展示名保留，且不阻塞「下一步」', async () => {
     const 用户 = userEvent.setup();
-    render学生分流({ 数据源: 'backend', 附件库: { items: [文件A, 文件B], limits }, 引导预填: 完整预填 });
+    render学生分流({ 数据源: 'backend', 附件库: { items: [文件A], limits }, 引导预填: 完整预填 });
     expect(screen.getByText(文件A.display_name)).toBeTruthy();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const pdf = new File(['%PDF'], 'different.pdf', { type: 'application/pdf' });
     await 用户.upload(input, pdf);
     await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
-    expect(mock操作.替换附件简历).toHaveBeenCalledWith(文件A.file_id, pdf, true);
+    expect(mock操作.替换附件简历).toHaveBeenCalledWith(文件A.file_id, pdf, true, expect.any(Function));
     expect(screen.getByRole('button', { name: '下一步' })).not.toHaveProperty('disabled', true);
+  });
+
+  // J-PILOT-02 Task 6（设计 §4.2）：旅程外有多份 active 文件时，没有「本轮已上传/可准确
+  // 识别的唯一文件」—— 不得按 items[0] 随意展示或覆盖；本次明确上传走 create，已有附件不变。
+  it('Backend 多份 active 文件：不认领 items[0]，既不回显它也不替换它', async () => {
+    const 用户 = userEvent.setup();
+    render学生分流({ 数据源: 'backend', 附件库: { items: [文件A, 文件B], limits }, 引导预填: 完整预填 });
+    expect(screen.queryByText(文件A.display_name)).toBeNull();
+    expect(screen.queryByText(文件B.display_name)).toBeNull();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const pdf = new File(['%PDF'], 'different.pdf', { type: 'application/pdf' });
+    await 用户.upload(input, pdf);
+    await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
+    expect(mock操作.替换附件简历).not.toHaveBeenCalled();
+    expect(mock操作.创建附件简历).toHaveBeenCalledWith(pdf, true, expect.any(Function));
+  });
+
+  // 多文件里本轮已上传的那一份（exact source 在内存轮上）：按 file_id 精确回显与替换它
+  it('本轮 exact source 指向的文件即使不是 items[0] 也被精确回显与替换', async () => {
+    const 用户 = userEvent.setup();
+    render学生分流({
+      数据源: 'backend',
+      附件库: { items: [文件A, 文件B], limits },
+      引导预填: 完整预填,
+      候选预填: 预填轮({
+        phase: 'manual', // 手填轮：横幅回到「已收到 <展示名>」行，正好钉住回显的是哪一行
+        source: { file_id: 文件B.file_id, version_id: `v_${文件B.file_id}`, parse_id: 'p_rf_b' },
+      }),
+    });
+    expect(screen.getByText(文件B.display_name)).toBeTruthy();
+    expect(screen.queryByText(文件A.display_name)).toBeNull();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const pdf = new File(['%PDF'], 'again.pdf', { type: 'application/pdf' });
+    await 用户.upload(input, pdf);
+    await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
+    expect(mock操作.替换附件简历).toHaveBeenCalledWith(文件B.file_id, pdf, true, expect.any(Function));
   });
 
   it('cancel consent performs no mutation and clears the input for choosing the same file again', async () => {
@@ -306,6 +344,11 @@ describe('学生分流 附件简历上传（P2 Task 5）', () => {
     await 用户.upload(input, pdf);
     await 用户.click(screen.getByRole('button', { name: '取消' }));
     expect(mock操作.创建附件简历).not.toHaveBeenCalled();
+    // Task 6：未授权 = 零上传零解析，且取消未发送的选择绝不删除已有附件
+    expect(mock操作.替换附件简历).not.toHaveBeenCalled();
+    expect(mock操作.请求附件解析).not.toHaveBeenCalled();
+    expect(mock操作.删除附件简历).not.toHaveBeenCalled();
+    expect(mock操作.激活候选Onboarding预填).not.toHaveBeenCalled();
     expect(input.value).toBe('');
   });
 
@@ -368,7 +411,8 @@ describe('学生分流 附件简历上传（P2 Task 5）', () => {
   it('keeps the slot display name in the row echo and uses 附件错误文案 when the mutation rejects', async () => {
     const 用户 = userEvent.setup();
     mock操作.替换附件简历.mockRejectedValueOnce(new BFF错误(503, 'storage_unavailable', 'sha256=… 内部细节'));
-    render学生分流({ 数据源: 'backend', 附件库: { items: [文件A, 文件B], limits }, 引导预填: 完整预填 });
+    // 唯一可准确识别的文件（多文件时本屏不认领任何一行，见上面的 Task 6 用例）
+    render学生分流({ 数据源: 'backend', 附件库: { items: [文件A], limits }, 引导预填: 完整预填 });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     await 用户.upload(input, new File(['%PDF'], 'different.pdf', { type: 'application/pdf' }));
     await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
@@ -412,7 +456,7 @@ describe('学生分流 附件简历上传（P2 Task 5）', () => {
     // 本地无 limits 可查，不做大小拦截，交由服务端裁决
     expect(screen.getByText('允许 AI 识别这份简历？')).toBeTruthy();
     await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
-    await waitFor(() => expect(mock操作.创建附件简历).toHaveBeenCalledWith(大文件, true));
+    await waitFor(() => expect(mock操作.创建附件简历).toHaveBeenCalledWith(大文件, true, expect.any(Function)));
   });
 });
 
@@ -421,6 +465,10 @@ describe('学生分流 候选 onboarding 简历预填（Spec §7 上传页接线
     mock跳转.mockClear();
     mock返回.mockClear();
     mock轻提示.mockClear();
+    // 本组用例按需给上传桩装实现（回执回调 / 回执后 GET 失败）：每例前复位成默认成功，
+    // 免得上一例的实现漏进下一例（vitest 的 clearMocks 只清调用记录，不清实现）
+    mock操作.创建附件简历.mockReset().mockResolvedValue('已提交');
+    mock操作.替换附件简历.mockReset().mockResolvedValue('已提交');
   });
 
   it('entering with an old succeeded attachment and no recovery metadata never activates or reads prefill', async () => {
@@ -450,22 +498,49 @@ describe('学生分流 候选 onboarding 简历预填（Spec §7 上传页接线
     expect(mock操作.恢复候选Onboarding预填).toHaveBeenCalledTimes(1);
   });
 
-  it('activates only after the authoritative upload flow resolves', async () => {
-    mock操作.创建附件简历.mockResolvedValue('已提交');
+  // Task 6：激活严格晚于上传调用，且只认本次上传回执交回来的 exact source（不猜 items[0]）
+  it('activates only after the authoritative upload receipt, bound to that exact source', async () => {
+    const 新来源 = { file_id: 'rf_new', version_id: 'rfv_new', parse_id: null };
+    mock操作.创建附件简历.mockImplementation(async (_文件, _同意, 绑定来源) => {
+      绑定来源?.(新来源);
+      return '已提交';
+    });
     render学生分流({ 数据源: 'backend', 附件库: { items: [], limits } });
     await 选择并同意PDF('resume.pdf');
     await waitFor(() => expect(mock操作.激活候选Onboarding预填).toHaveBeenCalledTimes(1));
+    expect(mock操作.激活候选Onboarding预填).toHaveBeenCalledWith(新来源);
     expect(mock操作.创建附件简历.mock.invocationCallOrder[0]!)
       .toBeLessThan(mock操作.激活候选Onboarding预填.mock.invocationCallOrder[0]!);
   });
 
   it('activates exactly once after an authoritative replace resolves 已提交', async () => {
+    const 新来源 = { file_id: 文件A.file_id, version_id: 'rfv_next', parse_id: null };
+    mock操作.替换附件简历.mockImplementation(async (_编号, _文件, _同意, 绑定来源) => {
+      绑定来源?.(新来源);
+      return '已提交';
+    });
     render学生分流({ 数据源: 'backend', 附件库: { items: [文件A], limits } });
     await 选择并同意PDF('replacement.pdf');
     await waitFor(() => expect(mock操作.替换附件简历).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(mock操作.激活候选Onboarding预填).toHaveBeenCalledTimes(1));
+    expect(mock操作.激活候选Onboarding预填).toHaveBeenCalledWith(新来源);
     expect(mock操作.替换附件简历.mock.invocationCallOrder[0]!)
       .toBeLessThan(mock操作.激活候选Onboarding预填.mock.invocationCallOrder[0]!);
+  });
+
+  // Task 6：回执已在手、随后的权威 GET 失败 —— file/version 已绑定的本轮绝不被丢掉，
+  // 页面只按既有闭合表提示错误，不再退回「没上传过」的状态。
+  it('keeps this round bound when the authoritative reread fails after the receipt', async () => {
+    const 新来源 = { file_id: 'rf_new', version_id: 'rfv_new', parse_id: null };
+    mock操作.创建附件简历.mockImplementation(async (_文件, _同意, 绑定来源) => {
+      绑定来源?.(新来源);
+      throw new BFF错误(503, 'downstream_unavailable', 'down');
+    });
+    render学生分流({ 数据源: 'backend', 附件库: { items: [], limits } });
+    mock轻提示.mockClear();
+    await 选择并同意PDF('resume.pdf');
+    await waitFor(() => expect(mock操作.激活候选Onboarding预填).toHaveBeenCalledWith(新来源));
+    expect(mock轻提示).toHaveBeenCalledWith('后端服务暂时不可用，请稍后重试');
   });
 
   it('已换代 neither activates nor shows success feedback', async () => {

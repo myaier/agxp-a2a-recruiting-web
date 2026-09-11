@@ -3,6 +3,9 @@
 // 每个响应先 strict decode（exact key set、闭合 parse 状态与 Spec 四失败码、media type 精确
 // application/pdf、limits max_files 1..3 且 items.length <= max_files），不 `as` 直转；
 // 接口失败绝不回退 Mock。本模块不 import React 或 Mock。
+// J-PILOT-02 Task 6：create / replace / parse 在原参数之后追加可选 建档写入跟踪 ——
+// 发送前固定命令（复用调用方回带的原幂等键 / 原 ifMatch），成功后立刻交 exact 回执；
+// 文件命令不带请求体（PDF 字节绝不进草稿），跟踪缺省时行为与原实现逐字一致。
 
 import { BFF错误 } from '../HTTP客户端';
 import type { BFF客户端 } from '../HTTP客户端';
@@ -14,6 +17,7 @@ import type {
   BFF附件简历库,
   BFF删除回执,
 } from '../BFF契约';
+import type { 建档待写入, 建档写入回执, 建档写入跟踪 } from '../招聘数据源类型';
 
 // ── 本域小 guard：闭合纪律与 组织.ts / Agent规则.ts 同一基调；本域统一 status=200 的 invalid_response ──
 
@@ -175,11 +179,43 @@ function 解码删除回执(input: unknown): BFF删除回执 {
 
 export interface 附件简历数据源 {
   读取附件简历库(): Promise<BFF附件简历库>;
-  创建附件简历(file: File, consent: true): Promise<BFF附件简历>;
-  替换附件简历(fileId: string, revision: number, file: File, consent: true): Promise<BFF附件简历>;
+  创建附件简历(file: File, consent: true, 跟踪?: 建档写入跟踪): Promise<BFF附件简历>;
+  替换附件简历(fileId: string, revision: number, file: File, consent: true, 跟踪?: 建档写入跟踪): Promise<BFF附件简历>;
   删除附件简历(fileId: string, revision: number): Promise<BFF删除回执>;
-  请求附件解析(fileId: string, versionId: string, consent: true): Promise<BFF附件解析状态>;
+  请求附件解析(fileId: string, versionId: string, consent: true, 跟踪?: 建档写入跟踪): Promise<BFF附件解析状态>;
   下载附件简历(fileId: string): Promise<Blob>;
+}
+
+// ── J-PILOT-02 Task 6：候选 onboarding 的建档写入跟踪（Global 5）──
+// 三个写口在原参数之后追加可选 跟踪：发送前固定本条命令（调用方回带原幂等键 /
+// 原 ifMatch，未知结果只按原输入重放），成功后立刻交回执（exact file/version/parse 坐标）。
+// 文件命令绝不携带请求体 —— PDF 字节与解析正文都不进草稿；跟踪缺省时逐字保持原请求。
+
+/** 跟踪在场时：固定命令并把原幂等键 / 原 ifMatch 落进本次请求选项。 */
+function 固定命令(
+  跟踪: 建档写入跟踪 | undefined,
+  命令: 建档待写入,
+): { 定: 建档待写入 | null; 幂等键?: string; ifMatch?: number } {
+  if (跟踪 === undefined) return { 定: null };
+  const 定 = 跟踪.发送前(命令);
+  return { 定, 幂等键: 定.幂等键, ifMatch: 定.ifMatch };
+}
+
+function 交回执(跟踪: 建档写入跟踪 | undefined, 定: 建档待写入 | null, 回执: 建档写入回执): void {
+  if (跟踪 !== undefined && 定 !== null) 跟踪.已确认(定, 回执);
+}
+
+/** 上传/替换的回执：本次写入落地的 exact file/version（parse 尚未开始 → parse_id null）。 */
+function 文件回执(文件: BFF附件简历): 建档写入回执 {
+  return {
+    id: 文件.file_id,
+    revision: 文件.revision,
+    source: {
+      file_id: 文件.file_id,
+      version_id: 文件.current_version.version_id,
+      parse_id: null,
+    },
+  };
 }
 
 type 附件请求 = Pick<BFF客户端, '请求' | '请求二进制'>;
@@ -190,25 +226,36 @@ export function 创建附件简历数据源(client: 附件请求): 附件简历�
       const { result } = await client.请求<unknown>({ path: '/api/v1/me/resume-files' });
       return 解码附件简历库(result);
     },
-    async 创建附件简历(file, consent) {
+    async 创建附件简历(file, consent, 跟踪) {
       const formData = new FormData();
       formData.append('display_name', file.name);
       formData.append('file', file);
       formData.append('processing_consent_confirmed', String(consent));
+      // 发送前固定命令（抛出即本地拦截：请求一次都不发）
+      const { 定, 幂等键 } = 固定命令(跟踪, { 种类: 'resume-file-create', 阶段: 'prepared' });
       const { result } = await client.请求<unknown>({
         path: '/api/v1/me/resume-files', method: 'POST', formData, 幂等: true,
+        ...(幂等键 !== undefined ? { 幂等键 } : {}),
       });
-      return 解码附件简历(result);
+      const 文件 = 解码附件简历(result);
+      交回执(跟踪, 定, 文件回执(文件));
+      return 文件;
     },
-    async 替换附件简历(fileId, revision, file, consent) {
+    async 替换附件简历(fileId, revision, file, consent, 跟踪) {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('processing_consent_confirmed', String(consent));
+      const { 定, 幂等键, ifMatch } = 固定命令(跟踪, {
+        种类: 'resume-file-replace', 资源编号: fileId, ifMatch: revision, 阶段: 'prepared',
+      });
       const { result } = await client.请求<unknown>({
         path: `/api/v1/me/resume-files/${encodeURIComponent(fileId)}/content`,
-        method: 'PUT', formData, ifMatch: `"${revision}"`, 幂等: true,
+        method: 'PUT', formData, ifMatch: `"${ifMatch ?? revision}"`, 幂等: true,
+        ...(幂等键 !== undefined ? { 幂等键 } : {}),
       });
-      return 解码附件简历(result);
+      const 文件 = 解码附件简历(result);
+      交回执(跟踪, 定, 文件回执(文件));
+      return 文件;
     },
     async 删除附件简历(fileId, revision) {
       const { result } = await client.请求<unknown>({
@@ -217,13 +264,27 @@ export function 创建附件简历数据源(client: 附件请求): 附件简历�
       });
       return 解码删除回执(result);
     },
-    async 请求附件解析(fileId, versionId, consent) {
+    async 请求附件解析(fileId, versionId, consent, 跟踪) {
+      const body = { version_id: versionId, processing_consent_confirmed: consent };
+      const { 定, 幂等键 } = 固定命令(跟踪, {
+        种类: 'resume-file-parse', 资源编号: fileId, 请求体: { ...body }, 阶段: 'prepared',
+      });
       const { result } = await client.请求<unknown>({
         path: `/api/v1/me/resume-files/${encodeURIComponent(fileId)}/parse`,
         method: 'POST', 幂等: true,
-        body: { version_id: versionId, processing_consent_confirmed: consent },
+        ...(幂等键 !== undefined ? { 幂等键 } : {}),
+        body,
       });
-      return 解码附件解析状态(result);
+      const 状态 = 解码附件解析状态(result);
+      // 解析回执只记 exact 三元组：真实 succeeded 才带 parse_id，其余阶段一律 null
+      交回执(跟踪, 定, {
+        source: {
+          file_id: fileId,
+          version_id: versionId,
+          parse_id: 状态.status === 'succeeded' ? 状态.parse_id : null,
+        },
+      });
+      return 状态;
     },
     async 下载附件简历(fileId) {
       const result = await client.请求二进制(`/api/v1/me/resume-files/${encodeURIComponent(fileId)}/content`);

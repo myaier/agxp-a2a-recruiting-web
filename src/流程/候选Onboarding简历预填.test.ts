@@ -224,7 +224,7 @@ describe('取基本信息预填', () => {
 describe('取最高学历预填', () => {
   it('学生：current_education 精确命中四档基词时给「X在读」（本地正向变体）', () => {
     const state = readyState(受支持学历变体());
-    expect(取最高学历预填(state, true, '大专在读')).toBe('本科在读');
+    expect(取最高学历预填(state, true, '')).toBe('本科在读');
   });
 
   it('与页面当前选择一致的命中返回 null（无需重设，页面保留 current）', () => {
@@ -237,13 +237,13 @@ describe('取最高学历预填', () => {
       建议.draft.profile.current_education = { value: null, confidence: null };
     }));
     // wire fixture 的 degree 是 'Bachelor'：仍未命中 → null（不翻译）
-    expect(取最高学历预填(state, true, '本科在读')).toBeNull();
+    expect(取最高学历预填(state, true, '')).toBeNull();
 
     const 硕士档 = readyState(映射变体((建议) => {
       建议.draft.profile.current_education = { value: null, confidence: null };
       建议.draft.educations[0].degree = { value: '硕士', confidence: 'high' };
     }));
-    expect(取最高学历预填(硕士档, true, '本科在读')).toBe('硕士在读');
+    expect(取最高学历预填(硕士档, true, '')).toBe('硕士在读');
   });
 
   // codex review-r1 P1：学生服务端在读学历（profile.current_education）可以非空而
@@ -256,15 +256,15 @@ describe('取最高学历预填', () => {
       ...readyState(受支持学历变体()),
       eligibility: { ...全可预填, profile: { ...全可预填.profile, current_education: false } },
     };
-    expect(取最高学历预填(state, true, '大专在读')).toBeNull(); // 建议「本科在读」不同也不给
+    expect(取最高学历预填(state, true, '')).toBeNull(); // 建议「本科在读」不同也不给
   });
 
   it('非学生：只接受 education[0].degree 精确命中七档', () => {
     const 支持 = readyState(受支持学历变体());
-    expect(取最高学历预填(支持, false, '大专')).toBe('本科');
+    expect(取最高学历预填(支持, false, '')).toBe('本科');
 
     const 不支持 = readyState(wire建议());
-    expect(取最高学历预填(不支持, false, '本科')).toBeNull();
+    expect(取最高学历预填(不支持, false, '')).toBeNull();
   });
 
   it('非学生忽略 current_education；不支持的词表不翻译不猜档', () => {
@@ -272,16 +272,26 @@ describe('取最高学历预填', () => {
       建议.draft.profile.current_education = { value: '博士', confidence: 'high' };
       建议.draft.educations[0].degree = { value: '大专', confidence: 'high' };
     }));
-    expect(取最高学历预填(state, false, '本科')).toBe('大专');
+    expect(取最高学历预填(state, false, '')).toBe('大专');
   });
 
   it('educations 非空（服务端已有教育）或 degree 已确认时不建议', () => {
     const 非空 = readyState(受支持学历变体(), { educations: false });
-    expect(取最高学历预填(非空, false, '大专')).toBeNull();
+    expect(取最高学历预填(非空, false, '')).toBeNull();
 
     const 已确认 = readyState(受支持学历变体());
     已确认.confirmed.degree = true;
-    expect(取最高学历预填(已确认, true, '大专在读')).toBeNull();
+    expect(取最高学历预填(已确认, true, '')).toBeNull();
+  });
+
+  // J-PILOT-02 Task 6（Spec §4.2「建议只在本人已保存值与本轮手填值均未占用的字段上提供初值」）：
+  // 本页的 current 由页面按真实既有值（已保存教育段 / 在读学历，或本轮建档草稿里的手填选择）
+  // 计算，未占用时才是空串 —— 非空即已占用，建议不得把用户手改的档位换掉。
+  it('页面当前档位非空（已保存或本轮手填）时零建议：用户手改不被自动替换', () => {
+    const 学生 = readyState(受支持学历变体());
+    expect(取最高学历预填(学生, true, '硕士在读')).toBeNull();
+    const 非学生 = readyState(受支持学历变体());
+    expect(取最高学历预填(非学生, false, '硕士')).toBeNull();
   });
 });
 

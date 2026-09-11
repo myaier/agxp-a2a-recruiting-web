@@ -788,10 +788,16 @@ export interface 附件简历操作 {
    */
   准备候选委托简历(): Promise<BFF附件简历库 | null>;
   刷新附件简历(): Promise<void>;
-  创建附件简历(file: File, consent: true): Promise<附件变更结果>;
-  替换附件简历(fileId: string, file: File, consent: true): Promise<附件变更结果>;
+  /**
+   * J-PILOT-02 Task 6：三个写口在原参数后追加可选 绑定来源 —— 候选 onboarding 的
+   * 调用方用它接住本次写入回执的 exact source（file/version/parse），并据此激活本轮预填。
+   * 传了它才登记建档单槽与建档写入跟踪；日常调用（我的简历）省略即逐字保持原行为。
+   * 回调在回执到手、权威 GET 之前调用：随后的重读失败也不会丢掉已知的本轮来源。
+   */
+  创建附件简历(file: File, consent: true, 绑定来源?: (来源: 候选预填绑定来源) => void): Promise<附件变更结果>;
+  替换附件简历(fileId: string, file: File, consent: true, 绑定来源?: (来源: 候选预填绑定来源) => void): Promise<附件变更结果>;
   删除附件简历(fileId: string): Promise<附件变更结果>;
-  请求附件解析(fileId: string, consent: true): Promise<附件变更结果>;
+  请求附件解析(fileId: string, consent: true, 绑定来源?: (来源: 候选预填绑定来源) => void): Promise<附件变更结果>;
   下载附件简历(fileId: string): Promise<Blob>;
 }
 
@@ -1006,10 +1012,12 @@ export interface 简历预填操作 {
   恢复候选Onboarding预填(options: { 允许等待解析: boolean }): Promise<void>;
   /**
    * 上传页一次明确上传/替换的开始口：递增预填代际（旧轮建议立即不可提交）并进入
-   * arming，按权威简历快照记录 eligibility，删除旧轮恢复元数据；来源绑定与解析推进
-   * 由权威附件落地后的 同步候选Onboarding解析 完成。
+   * arming，按权威简历快照记录 eligibility，删除旧轮恢复元数据。
+   * J-PILOT-02 Task 6：source 是本次上传回执交回来的 exact 三元组 —— 传了就立刻绑定
+   * 并落盘恢复元数据（刷新可按 exact tuple 续上）；不传的 arming 只等本次回执，
+   * 绝不认领权威库里已有的行（items[0] 不是本轮来源）。
    */
-  激活候选Onboarding预填(): void;
+  激活候选Onboarding预填(source?: 候选预填绑定来源): void;
   /**
    * 权威解析推进：当前附件 items[0] 的 parse 状态是唯一真相源。succeeded 先把
    * parse_id 写进内存 source 与恢复元数据（先于读取起飞），再以完整 tuple 单飞读取；

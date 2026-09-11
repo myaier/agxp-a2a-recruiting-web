@@ -79,6 +79,97 @@ describe('附件简历数据源', () => {
     await expect(source.读取附件简历库()).rejects.toMatchObject({ code: 'invalid_response', status: 200 });
   });
 
+  // ── J-PILOT-02 Task 6：建档写入跟踪（Global 5）──
+  // 文件命令只登记坐标与核对元数据：create/replace 绝不带请求体（PDF 字节不落草稿），
+  // parse 的请求体恰好是 wire body 两键；发送前返回的幂等键 / ifMatch 就是实际发出的那把
+  // （未知结果恢复要沿原输入重放），成功后立刻交回执（exact file/version/parse 坐标）。
+  it('create 带跟踪：固定 resume-file-create 命令、复用发送前的幂等键、回执交精确来源', async () => {
+    const 请求 = vi.fn().mockResolvedValue({ result: 正常文件, etag: null, requestId: 'req' });
+    const 发送前 = vi.fn((命令) => ({ ...命令, 幂等键: 'onboarding-create-key-0001' }));
+    const 已确认 = vi.fn();
+    const source = 创建附件简历数据源({ 请求, 请求二进制: vi.fn() });
+    const file = new File(['%PDF'], 'resume.pdf', { type: 'application/pdf' });
+    await source.创建附件简历(file, true, { 发送前, 已确认 });
+    expect(发送前).toHaveBeenCalledWith({ 种类: 'resume-file-create', 阶段: 'prepared' });
+    expect(请求.mock.calls[0][0].幂等键).toBe('onboarding-create-key-0001');
+    expect(已确认).toHaveBeenCalledWith(
+      { 种类: 'resume-file-create', 阶段: 'prepared', 幂等键: 'onboarding-create-key-0001' },
+      {
+        id: 'rf_1',
+        revision: 2,
+        source: { file_id: 'rf_1', version_id: 'rfv_2', parse_id: null },
+      },
+    );
+  });
+
+  it('replace 带跟踪：命令带资源编号与原 ifMatch，发送前的 ifMatch 就是实际 If-Match', async () => {
+    const 请求 = vi.fn().mockResolvedValue({ result: 正常文件, etag: '"3"', requestId: 'req' });
+    // 未知结果恢复：槽里记着原 revision 1，调用方按新快照传 2 —— 实际必须发原输入
+    const 发送前 = vi.fn((命令) => ({ ...命令, 幂等键: 'onboarding-replace-key-01', ifMatch: 1 }));
+    const 已确认 = vi.fn();
+    const source = 创建附件简历数据源({ 请求, 请求二进制: vi.fn() });
+    const file = new File(['%PDF'], 'new-name.pdf', { type: 'application/pdf' });
+    await source.替换附件简历('rf_1', 2, file, true, { 发送前, 已确认 });
+    expect(发送前).toHaveBeenCalledWith({
+      种类: 'resume-file-replace', 资源编号: 'rf_1', ifMatch: 2, 阶段: 'prepared',
+    });
+    const options = 请求.mock.calls[0][0];
+    expect(options.ifMatch).toBe('"1"');
+    expect(options.幂等键).toBe('onboarding-replace-key-01');
+    expect(options.body).toBeUndefined();
+    expect(已确认.mock.calls[0][1]).toEqual({
+      id: 'rf_1', revision: 2, source: { file_id: 'rf_1', version_id: 'rfv_2', parse_id: null },
+    });
+  });
+
+  it('parse 带跟踪：请求体恰为 wire 两键，回执按真实解析状态带 parse_id', async () => {
+    const 请求 = vi.fn().mockResolvedValue({
+      result: { status: 'succeeded', parse_id: 'rp_9', updated_at: '2026-08-28T01:00:00Z' },
+      etag: null, requestId: 'p',
+    });
+    const 发送前 = vi.fn((命令) => 命令);
+    const 已确认 = vi.fn();
+    const source = 创建附件简历数据源({ 请求, 请求二进制: vi.fn() });
+    await source.请求附件解析('rf_1', 'rfv_2', true, { 发送前, 已确认 });
+    expect(发送前).toHaveBeenCalledWith({
+      种类: 'resume-file-parse',
+      资源编号: 'rf_1',
+      请求体: { version_id: 'rfv_2', processing_consent_confirmed: true },
+      阶段: 'prepared',
+    });
+    expect(已确认.mock.calls[0][1]).toEqual({
+      source: { file_id: 'rf_1', version_id: 'rfv_2', parse_id: 'rp_9' },
+    });
+  });
+
+  it('发送前 抛出（上一条写入结果未确认）时零请求、零回执', async () => {
+    const 请求 = vi.fn();
+    const 已确认 = vi.fn();
+    const 跟踪 = {
+      发送前: vi.fn(() => { throw new Error('上一条写入结果未确认，请先重试或核对原步骤'); }),
+      已确认,
+    };
+    const source = 创建附件简历数据源({ 请求, 请求二进制: vi.fn() });
+    const file = new File(['%PDF'], 'resume.pdf', { type: 'application/pdf' });
+    await expect(source.创建附件简历(file, true, 跟踪)).rejects.toThrow('上一条写入结果未确认，请先重试或核对原步骤');
+    expect(请求).not.toHaveBeenCalled();
+    expect(已确认).not.toHaveBeenCalled();
+  });
+
+  it('缺省跟踪时三个写口逐字保持原请求形状（普通调用零跟踪副作用）', async () => {
+    const 请求 = vi.fn()
+      .mockResolvedValueOnce({ result: 正常文件, etag: null, requestId: 'c' })
+      .mockResolvedValueOnce({ result: 正常文件, etag: null, requestId: 'r' })
+      .mockResolvedValueOnce({ result: { status: 'pending', updated_at: 't' }, etag: null, requestId: 'p' });
+    const source = 创建附件简历数据源({ 请求, 请求二进制: vi.fn() });
+    const file = new File(['%PDF'], 'resume.pdf', { type: 'application/pdf' });
+    await source.创建附件简历(file, true);
+    await source.替换附件简历('rf_1', 2, file, true);
+    await source.请求附件解析('rf_1', 'rfv_2', true);
+    expect(请求.mock.calls.every(([选项]) => 选项.幂等键 === undefined)).toBe(true);
+    expect(请求.mock.calls[1][0].ifMatch).toBe('"2"');
+  });
+
   it('download rejects a successful non-PDF response', async () => {
     const source = 创建附件简历数据源({
       请求: vi.fn(),

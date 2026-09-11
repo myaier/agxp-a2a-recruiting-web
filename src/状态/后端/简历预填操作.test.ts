@@ -369,6 +369,65 @@ describe('创建简历预填操作 · 激活（显式新一轮）', () => {
     });
   });
 
+  // J-PILOT-02 Task 6（Global 6「解析 source 必须精确，不从 items[0] 推断」）：
+  // 一次明确上传的回执才是本轮来源 —— 激活带 source 时立刻绑定并落盘控制面元数据，
+  // 不带 source 的 arming 只等本次上传回执，权威库里已有的行绝不被认领。
+  it('激活带本次上传回执来源：立刻绑定 exact source 并落盘元数据', () => {
+    const 场景 = 创建预填场景({ parse: 'succeeded', 预填: 创建空候选预填状态(2) });
+    场景.操作.激活候选Onboarding预填({ file_id: 新文件ID, version_id: 新版本ID, parse_id: null });
+    const 状态 = 预填(场景);
+    expect(状态.phase).toBe('arming');
+    expect(状态.source).toEqual({ file_id: 新文件ID, version_id: 新版本ID, parse_id: null });
+    expect(场景.候选预填代际.current).toBe(3);
+    expect(场景.恢复存储.取值()).toEqual({
+      mode: 'auto',
+      source: { file_id: 新文件ID, version_id: 新版本ID, parse_id: null },
+      eligibility: 全可填Eligibility,
+      confirmed: 创建空候选预填状态().confirmed,
+      generation: 3,
+    });
+  });
+
+  it('无 source 的 arming 只等本次回执：同步绝不认领权威库里已有的文件', async () => {
+    const 场景 = 创建预填场景({
+      parse: 'succeeded',
+      预填: { ...创建空候选预填状态(2), phase: 'arming' },
+    });
+    await 场景.操作.同步候选Onboarding解析();
+    const 状态 = 预填(场景);
+    expect(状态.phase).toBe('arming');
+    expect(状态.source).toBeNull();
+    expect(场景.后端.读取简历预填).not.toHaveBeenCalled();
+    expect(场景.恢复存储.写入).not.toHaveBeenCalled();
+  });
+
+  it('多文件库：只按本轮 exact file_id 推进，items[0] 的另一份文件不参与', async () => {
+    const 场景 = 创建预填场景({
+      预填: 绑定轮(null, 'arming'),
+      附件库: {
+        items: [附件(解析状态('succeeded', 新解析ID), 新文件ID, 新版本ID), 附件(解析状态('pending'))],
+        limits,
+      },
+    });
+    await 场景.操作.同步候选Onboarding解析();
+    const 状态 = 预填(场景);
+    expect(状态.phase).toBe('waiting_parse'); // 本轮文件仍在解析，不被 items[0] 的 succeeded 冒名顶替
+    expect(状态.source).toEqual({ file_id: 文件ID, version_id: 版本ID, parse_id: null });
+    expect(场景.后端.读取简历预填).not.toHaveBeenCalled();
+  });
+
+  it('本轮文件已不在权威库：终局 failed，绝不改绑另一份文件', async () => {
+    const 场景 = 创建预填场景({
+      预填: 绑定轮(null, 'arming'),
+      附件库: { items: [附件(解析状态('succeeded', 新解析ID), 新文件ID, 新版本ID)], limits },
+    });
+    await 场景.操作.同步候选Onboarding解析();
+    const 状态 = 预填(场景);
+    expect(状态.phase).toBe('failed');
+    expect(状态.source).toEqual({ file_id: 文件ID, version_id: 版本ID, parse_id: null });
+    expect(场景.后端.读取简历预填).not.toHaveBeenCalled();
+  });
+
   it('无附件库时激活仍进入 arming，随后的同步零读取（绑定等权威附件在场）', async () => {
     const 场景 = 创建预填场景({ 附件库: null, 预填: 创建空候选预填状态(2) });
     场景.操作.激活候选Onboarding预填();
@@ -382,8 +441,8 @@ describe('创建简历预填操作 · 激活（显式新一轮）', () => {
 // ── 同步：权威解析推进 ──────────────────────────────────────────
 
 describe('创建简历预填操作 · 同步（权威解析推进）', () => {
-  it('pending 附件：arming 轮绑定来源进入 waiting_parse，零次预填读取，元数据落盘', async () => {
-    const 场景 = 创建预填场景({ parse: 'pending', 预填: { ...创建空候选预填状态(2), phase: 'arming' } });
+  it('pending 附件：已绑定本次回执来源的 arming 轮进入 waiting_parse，零次预填读取，元数据落盘', async () => {
+    const 场景 = 创建预填场景({ parse: 'pending', 预填: 绑定轮(null, 'arming') });
     await 场景.操作.同步候选Onboarding解析();
     const 状态 = 预填(场景);
     expect(状态.phase).toBe('waiting_parse');
@@ -394,7 +453,7 @@ describe('创建简历预填操作 · 同步（权威解析推进）', () => {
   });
 
   it('succeeded 附件：先把真实 parse_id 写进内存与元数据，再单飞读取并提交 ready', async () => {
-    const 场景 = 创建预填场景({ parse: 'succeeded', 预填: { ...创建空候选预填状态(2), phase: 'arming' } });
+    const 场景 = 创建预填场景({ parse: 'succeeded', 预填: 绑定轮(null, 'arming') });
     const 门 = 可控Promise<BFF简历预填建议>();
     场景.后端.读取简历预填.mockReturnValue(门.promise);
     const 同步中 = 场景.操作.同步候选Onboarding解析();
@@ -441,7 +500,7 @@ describe('创建简历预填操作 · 同步（权威解析推进）', () => {
   });
 
   it('权威 parse failed：进入 failed、零预填读取（不请求建议）', async () => {
-    const 场景 = 创建预填场景({ parse: 'failed', 预填: { ...创建空候选预填状态(2), phase: 'arming' } });
+    const 场景 = 创建预填场景({ parse: 'failed', 预填: 绑定轮(null, 'arming') });
     await 场景.操作.同步候选Onboarding解析();
     expect(预填(场景).phase).toBe('failed');
     expect(场景.后端.读取简历预填).not.toHaveBeenCalled();
@@ -637,34 +696,50 @@ describe('创建简历预填操作 · 404/409 一次性刷新', () => {
     expect(场景.后端状态引用.current.附件简历库?.items[0]?.file_id).toBe(文件ID);
   });
 
-  it('404 后 source 已变且新 parse pending：重绑新 current source 进入 waiting_parse', async () => {
+  it('404 后同一文件被替换出新版本且新 parse pending：重绑同一 file 的新版本进入 waiting_parse', async () => {
     const 场景 = 创建预填场景({ parse: 'succeeded' });
     场景.后端.读取简历预填.mockRejectedValueOnce(new BFF错误(404, 'not_found', 'gone'));
     场景.后端.读取附件简历库.mockResolvedValueOnce({
-      items: [附件(解析状态('pending'), 新文件ID, 新版本ID)],
+      items: [附件(解析状态('pending'), 文件ID, 新版本ID)],
       limits,
     });
     await 场景.操作.同步候选Onboarding解析();
     expect(场景.后端.读取简历预填).toHaveBeenCalledTimes(1);
     const 状态 = 预填(场景);
     expect(状态.phase).toBe('waiting_parse');
-    expect(状态.source).toEqual({ file_id: 新文件ID, version_id: 新版本ID, parse_id: null });
-    expect(场景.恢复存储.取值()?.source).toEqual({ file_id: 新文件ID, version_id: 新版本ID, parse_id: null });
+    expect(状态.source).toEqual({ file_id: 文件ID, version_id: 新版本ID, parse_id: null });
+    expect(场景.恢复存储.取值()?.source).toEqual({ file_id: 文件ID, version_id: 新版本ID, parse_id: null });
   });
 
-  it('409 后 source 已变且新 parse succeeded：重绑并按新 tuple 读取', async () => {
+  // Task 6：刷新后权威库里已是另一份文件（本轮 file_id 不在场）—— 这是「来源失效」，
+  // 不是「本轮换了新版本」：终局 failed，绝不静默改绑别人的 file/parse，也不读它的 tuple。
+  it('404 刷新后本轮文件已不在库：终局 failed，不改绑另一份文件、不读新 tuple', async () => {
     const 场景 = 创建预填场景({ parse: 'succeeded' });
-    场景.后端.读取简历预填
-      .mockRejectedValueOnce(new BFF错误(409, 'resume_parse_stale', 'stale'))
-      .mockResolvedValueOnce(构造映射变体基底());
+    场景.后端.读取简历预填.mockRejectedValueOnce(new BFF错误(404, 'not_found', 'gone'));
     场景.后端.读取附件简历库.mockResolvedValueOnce({
       items: [附件(解析状态('succeeded', 新解析ID), 新文件ID, 新版本ID)],
       limits,
     });
     await 场景.操作.同步候选Onboarding解析();
+    expect(场景.后端.读取简历预填).toHaveBeenCalledTimes(1);
+    const 状态 = 预填(场景);
+    expect(状态.phase).toBe('failed');
+    expect(状态.source).toEqual({ file_id: 文件ID, version_id: 版本ID, parse_id: 解析ID });
+  });
+
+  it('409 后同一文件的新版本已 succeeded：重绑并按新 tuple 读取', async () => {
+    const 场景 = 创建预填场景({ parse: 'succeeded' });
+    场景.后端.读取简历预填
+      .mockRejectedValueOnce(new BFF错误(409, 'resume_parse_stale', 'stale'))
+      .mockResolvedValueOnce(构造映射变体基底());
+    场景.后端.读取附件简历库.mockResolvedValueOnce({
+      items: [附件(解析状态('succeeded', 新解析ID), 文件ID, 新版本ID)],
+      limits,
+    });
+    await 场景.操作.同步候选Onboarding解析();
     expect(场景.后端.读取简历预填).toHaveBeenCalledTimes(2);
     expect(场景.后端.读取简历预填).toHaveBeenLastCalledWith({
-      file_id: 新文件ID, version_id: 新版本ID, parse_id: 新解析ID,
+      file_id: 文件ID, version_id: 新版本ID, parse_id: 新解析ID,
     });
     expect(预填(场景).phase).toBe('ready');
   });
@@ -684,13 +759,13 @@ describe('创建简历预填操作 · 404/409 一次性刷新', () => {
       .mockRejectedValueOnce(new BFF错误(404, 'not_found', 'gone'))
       .mockResolvedValueOnce(构造映射变体基底());
     场景.后端.读取附件简历库.mockResolvedValueOnce({
-      items: [附件(解析状态('succeeded', 新解析ID), 新文件ID, 新版本ID)],
+      items: [附件(解析状态('succeeded', 新解析ID), 文件ID, 新版本ID)],
       limits,
     });
     const 同步 = 场景.操作.同步候选Onboarding解析();
     await vi.waitFor(() => expect(场景.后端.读取简历预填).toHaveBeenCalledTimes(2));
     expect(场景.后端.读取简历预填).toHaveBeenLastCalledWith({
-      file_id: 新文件ID, version_id: 新版本ID, parse_id: 新解析ID,
+      file_id: 文件ID, version_id: 新版本ID, parse_id: 新解析ID,
     });
     await 同步; // 修复后整链可结算；死锁写法在上方 waitFor 就已超时
     expect(预填(场景).phase).toBe('ready');
@@ -952,6 +1027,40 @@ describe('创建简历预填操作 · 恢复候选Onboarding预填', () => {
     expect(场景.恢复存储.删除).toHaveBeenCalledTimes(1);
     expect(预填(场景).phase).toBe('inactive');
     expect(场景.后端.读取简历预填).not.toHaveBeenCalled();
+  });
+
+  // Task 6：exact source 恢复不看数组位置 —— 旅程外还有别的 active 文件时，
+  // 本轮记录仍必须按 file_id 精确命中自己那一行（items[0] 不是真相源）。
+  it('多文件库：按 exact file_id 命中本轮那一行恢复，items[0] 的另一份文件不干扰', async () => {
+    const 场景 = 创建预填场景({
+      预填: 创建空候选预填状态(2),
+      元数据: 恢复元数据(),
+      附件库: {
+        items: [附件(解析状态('succeeded', 新解析ID), 新文件ID, 新版本ID), 附件(解析状态('succeeded'))],
+        limits,
+      },
+    });
+    场景.后端.读取简历预填.mockResolvedValue(构造映射变体基底());
+    await 场景.操作.恢复候选Onboarding预填({ 允许等待解析: true });
+    expect(场景.后端.读取简历预填).toHaveBeenCalledTimes(1);
+    expect(场景.后端.读取简历预填).toHaveBeenCalledWith({
+      file_id: 文件ID, version_id: 版本ID, parse_id: 解析ID,
+    });
+    expect(预填(场景).phase).toBe('ready');
+  });
+
+  // Task 6（设计 §4.2「建议原始正文不进浏览器持久化」）：一整轮 succeeded→ready 下来，
+  // 落盘的每一笔都只有控制面五元组，suggestion / draft 正文一个字都不进 session。
+  it('建议正文绝不进 session：整轮落盘只有控制面五元组', async () => {
+    const 场景 = 创建预填场景({ 预填: 创建空候选预填状态(2), 元数据: 恢复元数据() });
+    场景.后端.读取简历预填.mockResolvedValue(构造映射变体基底());
+    await 场景.操作.恢复候选Onboarding预填({ 允许等待解析: true });
+    expect(预填(场景).suggestion).not.toBeNull(); // 建议只在内存
+    expect(场景.恢复存储.写入.mock.calls.length).toBeGreaterThan(0);
+    for (const [记录] of 场景.恢复存储.写入.mock.calls) {
+      expect(Object.keys(记录).sort()).toEqual(['confirmed', 'eligibility', 'generation', 'mode', 'source']);
+      expect(JSON.stringify(记录)).not.toContain('Synthetic');
+    }
   });
 
   it('权威 parse failed：记录无法被当前附件满足 → 删除并保持 inactive', async () => {

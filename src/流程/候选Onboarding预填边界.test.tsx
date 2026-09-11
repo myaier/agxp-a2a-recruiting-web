@@ -332,6 +332,49 @@ describe('候选Onboarding预填边界：消费页刷新恢复', () => {
     expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
   });
 
+  // J-PILOT-02 Task 6：边界自己绝不挑来源 —— 只传 允许等待解析，file/version/parse
+  // 的精确匹配全在操作层按已落盘的 exact source 做；多份 active 文件也不改变这一点。
+  it('边界只传等待策略、从不指定来源：多份 active 文件也不自选源', async () => {
+    mock操作.恢复候选Onboarding预填.mockImplementation(async () => {
+      mock应用状态.后端状态.候选预填状态 = 预填轮({
+        phase: 'manual',
+        source: { file_id: 文件ID, version_id: 版本ID, parse_id: null },
+      });
+    });
+    const { 重渲染 } = renderBoundary(路径.基本信息, activeRecoveryMetadata());
+    // 旅程外还有另一份 active 文件：边界不因此改变调用形状，也不自己去挑那一行
+    mock应用状态.后端状态.附件简历库 = {
+      items: [
+        { ...权威附件(版本ID, 'succeeded'), file_id: 'rf_ffffffffffffffffffffffffffffffff' },
+        权威附件(版本ID, 'succeeded'),
+      ],
+      limits,
+    };
+    重渲染();
+    await waitFor(() => expect(screen.getByTestId('consumer-form')).toBeTruthy());
+    expect(mock操作.恢复候选Onboarding预填).toHaveBeenCalledTimes(1);
+    expect(mock操作.恢复候选Onboarding预填.mock.calls[0][0]).toEqual({ 允许等待解析: false });
+    expect(mock操作.恢复候选Onboarding预填.mock.calls[0]).toHaveLength(1);
+  });
+
+  // 继续手填后迟到的 ready 建议不改变本轮落点：边界按内存轮渲染，绝不因迟到结果
+  // 再次发起恢复或重新挂载出「重试」入口（本轮 opt-out 的事实由操作层持有）。
+  it('继续手填后迟到的 ready 不触发二次恢复，也不再出确认层', async () => {
+    mock操作.恢复候选Onboarding预填.mockImplementation(async () => {
+      mock应用状态.后端状态.候选预填状态 = 预填轮({
+        phase: 'manual',
+        source: { file_id: 文件ID, version_id: 版本ID, parse_id: 解析ID },
+      });
+    });
+    const { 重渲染 } = renderBoundary(路径.基本信息, activeRecoveryMetadata());
+    await waitFor(() => expect(screen.getByTestId('consumer-form')).toBeTruthy());
+    // 迟到的读取即便结算，也只能停在 manual（操作层栅栏）：这里模拟渲染再来一轮
+    重渲染();
+    expect(screen.getByTestId('consumer-form')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
+    expect(mock操作.恢复候选Onboarding预填).toHaveBeenCalledTimes(1);
+  });
+
   it('内存 manual 轮绕过恢复：直接挂载且零操作调用', () => {
     renderBoundary(路径.基本信息, activeRecoveryMetadata(), {
       预填: 预填轮({

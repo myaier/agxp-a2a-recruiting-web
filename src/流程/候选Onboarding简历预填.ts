@@ -117,8 +117,12 @@ function 学生学历档(值: string | null): string | null {
 /**
  * 学生优先 current_education，回退 educations[0].degree；非学生只认 educations[0].degree
  * 精确命中七档。未命中 UI 词表不翻译、不猜档，返回 null 由页面保留 current。
+ * J-PILOT-02 Task 6（Spec §4.2）：current 非空 = 该档位已被「本人已保存值或本轮手填值」
+ * 占用（页面只在有真实既有选择时才传非空值，未选择传空串）—— 建议只在未占用时提供初值，
+ * 绝不把用户手改的档位换掉。
  */
 export function 取最高学历预填(state: 候选预填状态, isStudent: boolean, current: string): string | null {
+  if (current.trim() !== '') return null;
   const 建议 = 可用建议(state, 'degree');
   if (建议 === null || state.eligibility?.educations !== true) return null;
   const 档 = 建议.draft.educations[0]?.degree.value ?? null;
@@ -134,8 +138,8 @@ export function 取最高学历预填(state: 候选预填状态, isStudent: bool
     // 非学生只接受 education[0].degree；current_education 不参与
     命中 = 档 !== null && 非学生学历选项.includes(档) ? 档 : null;
   }
-  // 与页面当前选择一致时无需重设：null 表示保留 current
-  return 命中 !== null && 命中 !== current ? 命中 : null;
+  // 未占用（current 为空）时才走到这里：命中即初值，null 表示保留 current
+  return 命中;
 }
 
 // ── 毕业院校 / 选专业（/onboard/school、/onboard/major）──
