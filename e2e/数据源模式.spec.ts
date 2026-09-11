@@ -11646,14 +11646,6 @@ test.describe('卡片统一 Backend @backend', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // J-PILOT-01 连续委托接线 @backend（Task 7）：既有本地浏览器 fixture 的跨页面消费与
-// 局部布局验证。三个场景都复用 装P4候选/P2 附件库/装P5双角色 与 P5 fixture 的
-// negotiation 回答臂 —— 相位转换由用例对 fixture 字段的最小显式推进表达，不建编排器。
-// 全部 https://app.invalid/api/v1/** 请求由本地 route 拦截（未声明坐标固定 404），
-// 未触达真实后端；这是本地非 L3 证据，不是真实跨端旅程验收（Spec §11 用户 L3 延后）。
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────────────────
-// J-PILOT-01 连续委托接线 @backend（Task 7）：既有本地浏览器 fixture 的跨页面消费与
 // 局部布局验证。场景一/二复用 装P4候选（P4 发现域 + P2 附件库 + 本 P5 fixture 的
 // negotiation 回答臂）；场景三复用 装P5双角色 与 Plan 已记录的改前几何数值（常量）。
 // 相位转换由用例对 fixture 字段的最小显式推进表达，不建编排器。全部
@@ -11768,7 +11760,6 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     // ── S1：Case 推进到递交简历（原绑定对 typed 附件直接呈现）──
     乙.stage = 'resume_submission';
     乙.status = 'needs_user';
-    乙.status = 'needs_user';
     乙.step = 'awaiting_recruiter_decision';
     乙.updatedAt = '2026-08-29T04:30:00Z';
     乙.候选 = { needsAction: false, actions: [] };
@@ -11878,7 +11869,8 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     await expect(page.getByText(P4标记.jobTitle)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('本次评估未完成', { exact: true })).toBeVisible();
 
-    // retry/archive 竞争不造重复记录：全程零 Case GET，连续读取只服务这一条记录
+    // retry/archive 竞争不造重复记录：全程零 Case GET；连续详情读取至少发生一次
+    // （单飞/栅栏下同一坐标可多次回读，重复不判漂移 —— 在谈/历史恰一张卡已单独断言）
     expect(请求序.filter((项) => 项.includes('/api/v1/me/match-cases'))).toEqual([]);
     const 连续坐标 = p5.连续读取.filter((项) => 项.startsWith('GET /api/v1/me/negotiations/'));
     expect(连续坐标.length).toBeGreaterThanOrEqual(1);
@@ -11941,8 +11933,8 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     expect(候选390.Tab行_代谈进度.height, '候选390 Tab 高').toBe(21);
     expect(
       候选390.四阶段首标题_匿名初筛.y + (候选390.滚动区?.scrollTop ?? 0),
-      '候选390 匿名初筛内容坐标（rect.y+scrollTop 还原；改前基准 142 + Task 6 新增'
-        + '「旧版状态待核实」行 26px = 168，Δ26 已在报告记录）',
+      '候选390 匿名初筛内容坐标（Plan 改前基准·候选端：视口 y=95 + 捕获时 scrollTop 47'
+        + ' = 内容坐标 142；Task 6 新增「旧版状态待核实」行 26px → 168，Δ 见 Plan 验证表）',
     ).toBe(168);
     expect(候选390.根溢出, '候选390 根横向溢出 0').toBe(0);
     await page.screenshot({ path: 'test-results/J-PILOT-01/s3-候选-S0-390.png', fullPage: true });
@@ -11961,7 +11953,7 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     expect(候选320.容器.y).toBe(498);
     expect(候选320.容器.height).toBe(70);
     expect(候选320.Tab行_代谈进度.y).toBe(60);
-    expect(候选320.四阶段首标题_匿名初筛.y + (候选320.滚动区?.scrollTop ?? 0)).toBe(179);
+    expect(候选320.四阶段首标题_匿名初筛.y + (候选320.滚动区?.scrollTop ?? 0), '候选320 内容坐标：基准 y=95+scrollTop 58=153，+26 同上').toBe(179);
     expect(候选320.根溢出).toBe(0);
     await page.screenshot({ path: 'test-results/J-PILOT-01/s3-候选-S0-320.png', fullPage: true });
 
