@@ -12,8 +12,9 @@
 //     全部成功后才做唯一一次 设后端状态 原子提交；任一腿失败绝不落半份聚合。
 //   · 详情 404 按统一不可用收口（标记 + 不抛）；其余非 401 错误原样抛给屏。
 //   · 一次刷新/委托用户意图持有唯一显式幂等键：受控重试与结果不确定后的重试沿用同一键，
-//     idempotency_conflict 绝不换新键强发；权威回执在手（成功或明确拒绝）才释放（create 的
-//     409 先权威回读：回读唯一辨认出该 pair 的记录等同回执，收口并释放键，review-r1 F2）。
+//     idempotency_conflict 绝不换新键强发；权威回执在手（成功或明确拒绝）才释放。create 的
+//     409 先权威回读（review-r1 F2 / r2）：回读只刷新权威状态，同岗位记录不证明原写归属，
+//     pending 与原键一律保留，收口只认原 key/body 重放后的真实回执。
 //     POST 成功 + follow-up GET 失败不清旧列表，只落「已发起新一轮」文案。
 //   · 反馈（收藏/淘汰/撤销/不感兴趣）服务端先行：失败绝不移动卡片；成功后经权威重读或
 //     回执同步 available/rejected/detail 每一处出现；同推荐写单飞、跨推荐并行。
@@ -951,37 +952,14 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
       if (内存.delete(目标键)) 持久化待核对();
       return;
     }
-    await 回读收口已确认命令(目标, fence, { delegationId: 回执.delegation_id, recordId: null }, 回执.delegation_id);
-  }
-
-  /**
-   * 已确认命令的回读收口底座（fresh 回执与 review-r1 的 409 权威回读命中共用）：
-   * 补 delegation_id/record_id 与 已确认回执（write 已确认；GET 失败后不再重发已确认
-   * write）→ 读 canonical（按传入坐标，回执路径即 delegation_id）→ 栅栏仍当前时成功回读
-   * → 删 pending 并失效 candidate 已载 continuous 首屏；GET 失败保留未决命令。
-   */
-  async function 回读收口已确认命令(
-    目标: 待核对目标,
-    fence: P4Fence,
-    补: { delegationId: string | null; recordId: string | null },
-    canonical坐标: string,
-  ): Promise<void> {
-    const 内存 = deps.委托待核对内存?.current;
-    if (内存 === undefined) return;
-    const 目标键 = 委托创建目标键(目标.intentionId, 目标.jobId);
     const 现 = 内存.get(目标键);
     if (现 === undefined || 现.operation !== 'create') return; // 会话已换/无未决：迟到回执绝不插新
-    const 已确认: 待核对创建命令 = {
-      ...现,
-      ...(补.delegationId !== null ? { delegation_id: 补.delegationId } : {}),
-      ...(补.recordId !== null ? { record_id: 补.recordId } : {}),
-      已确认回执: true,
-    };
+    const 已确认: 待核对创建命令 = { ...现, delegation_id: 回执.delegation_id, 已确认回执: true };
     内存.set(目标键, 已确认);
     持久化待核对();
     if (!fenceStillCurrent(引用, fence)) return; // 迟到回执不落本地；未决命令随会话边界清理
     try {
-      await 后端!.读取候选连续详情(canonical坐标);
+      await 后端!.读取候选连续详情(回执.delegation_id);
     } catch {
       // GET 失败不撤销已受理事实：未决命令保留（已确认回执 + ID），不重发已确认 write
       return;
@@ -997,50 +975,43 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
   }
 
   /**
-   * review-r1 F2（Spec §8「恢复顺序：有 ID 先 GET；无 ID 可用原 intention 的推荐／receipt
-   * 和 active/history 辅助核对」）：409 / 重放前的权威辅助回读 —— 刷新原意向的候选推荐
-   * 列表（既有读取）＋读 active 连续首屏，按 intention-job 精确 pair 找委托/记录坐标
-   *（同 job 不等于原命令，别的意向的记录绝不算命中）。两腿各收集 0..n 个坐标：合计
-   * 恰一个坐标才唯一辨认；0 个或多个不同坐标都返回 null（不猜一条）。单腿读失败按该腿
-   * 无信息处理（不阻断另一腿，也绝不据此证明原写未受理）。
+   * review-r1 F2 / review-r2（Spec §8「409 …回读真实状态」「无 ID 可用原 intention 的
+   * 推荐／receipt 和 active/history 辅助核对」）：409 / 重放前的权威辅助回读 —— 刷新
+   * 原意向的候选推荐列表（既有读取）＋读 active 连续首屏。r2 起**只回读权威状态**：
+   * 「GET 不是按幂等 key 查命令，找不到、404、503 或存在同岗位记录都不能证明原写未受理
+   * 或某次 retry 成功」——存在同 intention-job 的记录不能建立与未决命令的归属，绝不据此
+   * 关闭/标记/提交 pending；写入归属只由完整原命令重放的**真实回执**确认（Plan 协议 B）。
+   * 单腿非认证失败（网络/5xx）按「该腿无信息」继续另一腿，也绝不据此证明原写未受理；
+   * 栅栏内 401 走统一 清账号状态（Spec §10：登出/清旧 owner pending/清敏感视图）并立即
+   * 终止恢复流程（抛出，不再走后续腿、不重放、不提交）；迟到的 401 只丢弃、同样止步。
    */
-  async function 辅助核对回读(
-    intentionId: string,
-    jobId: string,
-  ): Promise<{ delegationId: string | null; recordId: string } | null> {
-    const 坐标表 = new Map<string, { delegationId: string | null; recordId: string }>();
-    try {
-      for (const 卡 of await 后端!.读取候选岗位推荐(intentionId)) {
-        const 摘要 = 卡.delegation;
-        if (卡.job.job_id === jobId && 摘要 !== null && 摘要.delegation_id !== '') {
-          坐标表.set(摘要.delegation_id, { delegationId: 摘要.delegation_id, recordId: 摘要.delegation_id });
+  async function 权威辅助回读(intentionId: string, fence: P4Fence): Promise<void> {
+    const 腿们: Array<() => Promise<unknown>> = [
+      () => 后端!.读取候选岗位推荐(intentionId),
+      () => 后端!.读取候选连续列表('active', null),
+    ];
+    for (const 读 of 腿们) {
+      try {
+        await 读();
+      } catch (错误) {
+        if (!是401(错误)) continue; // 网络类/5xx：该腿无信息，继续另一腿
+        if (fenceStillCurrent(引用, fence)) {
+          清账号状态(账号清理依赖); // 当前主体 401 → 统一清理（含旧 owner pending）
+          throw 错误; // 立即终止恢复流程：零后续腿、零重放、零提交
         }
+        return; // 迟到的 401 只丢弃（绝不登出新会话），同样不再走后续腿
       }
-    } catch {
-      // 该腿失败只代表无信息
     }
-    try {
-      const 页 = await 后端!.读取候选连续列表('active', null);
-      for (const 卡 of 页.items) {
-        if (卡.intention_id === intentionId && 卡.job.job_id === jobId) {
-          坐标表.set(卡.record_id, { delegationId: 卡.delegation_id, recordId: 卡.record_id });
-        }
-      }
-    } catch {
-      // 同上
-    }
-    if (坐标表.size !== 1) return null;
-    return [...坐标表.values()][0] ?? null;
   }
 
   /**
    * 未决 create 的核对口：已确认回执只回读（GET-only，不重发已确认 write）；write 未确认
-   * 且原 key/body 完整时先做辅助核对回读（review-r1 F2，Spec §8「无 ID 先查原意向的推荐/
-   * active 列表」）——回读唯一辨认出该 pair 的记录即按已确认收口（零重放），仍未知才种回
-   * 原键（硬刷新后 P4幂等意图 已清空）经 运行委托创建 原样重放一次（每次恢复最多一次）——
-   * 从固定命令生成请求，不再次读取 PDF latest/推荐 top，回执收口与 fresh 创建共用。
-   * 恢复重放没有操作输入的推荐坐标：同一 intention 已载快照里按 job 找同岗卡补摘要，
-   * 找不到也先提交回执表，绝不用别的意向/别的岗位坐标猜。
+   * 且原 key/body 完整时先做权威辅助回读（review-r1 F2 / r2，Spec §8「无 ID 先查原意向的
+   * 推荐/active 列表」）——回读只刷新权威状态，同岗位记录不证明归属、不抢先收口（r2），
+   * 随后种回原键（硬刷新后 P4幂等意图 已清空）经 运行委托创建 原样重放一次（每次恢复最多
+   * 一次），归属由真实回执确认——从固定命令生成请求，不再次读取 PDF latest/推荐 top，
+   * 回执收口与 fresh 创建共用。恢复重放没有操作输入的推荐坐标：同一 intention 已载快照里
+   * 按 job 找同岗卡补摘要，找不到也先提交回执表，绝不用别的意向/别的岗位坐标猜。
    */
   async function 核对候选委托实现(命令: 待核对创建命令, intentionId: string, jobId: string): Promise<BFF委托回执 | void> {
     if (命令.已确认回执 === true) {
@@ -1066,14 +1037,9 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     }
     const scopeKey = P4范围键.候选列表(intentionId);
     const 种键栅栏 = 捕获栅栏(引用, scopeKey);
-    // review-r1 F2（Spec §8 恢复顺序）：重放前先辅助核对——权威回读唯一辨认出该 pair 的
-    // 记录即按已确认收口（零重放）；仍未知才走原 key+body 重放一次。
-    const 命中 = await 辅助核对回读(intentionId, jobId);
-    if (命中 !== null) {
-      await 回读收口已确认命令(
-        { intentionId, jobId, 命令体: () => 命令 }, 种键栅栏, 命中, 命中.recordId);
-      return;
-    }
+    // review-r1 F2 / r2（Spec §8 恢复顺序）：重放前先权威回读（只刷新权威状态，401 走统一
+    // 清理并终止）；归属确认只走下面的原 key+body 重放一次 → 真实回执。
+    await 权威辅助回读(intentionId, 种键栅栏);
     const intent = delegationKey(种键栅栏.visibleScope ?? scopeKey, jobId);
     引用.P4幂等意图.current.set(intent, 命令.key);
     return 运行委托创建({
@@ -1149,10 +1115,10 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
    * 委托创建统一核：捕获栅栏 → 发起 POST（一次用户意图一把显式幂等键）→ 恰好一条回执 →
    * 跨字段/坐标校验 → 权威回执在手释放意图键（明确成功与明确拒绝都是完成）→ 栅栏内才落
    * 本地状态。transport/401 一律保留意图键（结果不确定 / 冲突绝不换键强发，§9.3）；409
-   * 冲突先权威回读——回读唯一辨认出该 pair 的记录时按已确认收口并释放键，否则保留原命令
-   * 与原键（review-r1 F2，见 catch 分支）；栅栏内的 401 走统一 清账号状态。终态/拒绝回执
-   * 先提交再按 §8.2 文案抛 BFF错误 —— 屏的 catch(P4错误文案) 恰好原样呈现；迟到成功只不
-   * 落本地、照常返回回执。
+   * 冲突先权威回读（只刷新权威状态，同岗位记录不证明归属，pending 与原键一律保留——
+   * review-r1 F2 / r2，见 catch 分支）；栅栏内的 401（含回读腿）走统一 清账号状态。
+   * 终态/拒绝回执先提交再按 §8.2 文案抛 BFF错误 —— 屏的 catch(P4错误文案) 恰好原样
+   * 呈现；迟到成功只不落本地、照常返回回执。
    */
   async function 运行委托创建(input: {
     scopeKey: string;
@@ -1185,23 +1151,17 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
       if (是401(错误)) {
         清账号状态(账号清理依赖);
       }
-      // review-r1 F2（Spec §8「409 按 code 区分幂等冲突…回读真实状态，不绕过门槛」）：
-      // 候选 create 的 409（冻结合同该端点唯一 code 为 idempotency_conflict）先做权威回读
-      // ——刷新原意向的候选推荐列表＋读 active 连续列表辅助核对（辅助核对回读）。回读唯一
-      // 辨认出该 intention-job 的委托/记录 → 按 收口待核对回执 同款收口（补 delegation_id/
-      // record_id、读 canonical、删 pending、失效 active 首屏），权威记录在手等同回执，
-      // 意图键一并释放（下一次同 pair 委托是全新意图新键，绝不拿旧键配新 body 强发）；
-      // 回读仍无法唯一辨认 → 保留完整原命令（原 key/body）待用户显式核对。409 本身在两种
-      // 结局下都不是受理/未受理证明，照原样抛给屏。
+      // review-r1 F2 / review-r2（Spec §8「409 按 code 区分幂等冲突…回读真实状态，不绕过
+      // 门槛」）：候选 create 的 409（冻结合同该端点唯一 code 为 idempotency_conflict）先做
+      // 权威回读——刷新原意向的候选推荐列表＋读 active 连续列表（权威辅助回读）。r2 起回读
+      // **只刷新权威状态**：存在同 intention-job 的记录不能证明原写归属（「GET 不是按幂等
+      // key 查命令…存在同岗位记录都不能证明原写未受理或某次 retry 成功」），绝不据此关闭/
+      // 标记 pending 或释放意图键；完整原命令（原 key/body）一律保留，归属确认只走「用户
+      // 显式核对 → 原 key/body 重放一次 → 真实回执」路径。409 本身也不是受理/未受理证明，
+      // 照原样抛给屏；回读腿的 401 由 权威辅助回读 走统一清理并向上抛出终止。
       if (input.待核对目标 && 错误 instanceof BFF错误 && !是401(错误) &&
         错误.status === 409 && 错误.code === 'idempotency_conflict') {
-        const 命中 = await 辅助核对回读(input.待核对目标.intentionId, input.待核对目标.jobId);
-        if (命中 !== null) {
-          if (引用.P4幂等意图.current.get(intent) === 幂等键) {
-            引用.P4幂等意图.current.delete(intent);
-          }
-          await 回读收口已确认命令(input.待核对目标, fence, 命中, 命中.recordId);
-        }
+        await 权威辅助回读(input.待核对目标.intentionId, fence);
       }
       // J-PILOT-01 Task 3：明确拒绝（非 401、非结果不确定）= 命令已被权威裁定，无未决
       // 可核对；未决命令与意图键一并收口，下一次委托是全新意图新键。不确定结局

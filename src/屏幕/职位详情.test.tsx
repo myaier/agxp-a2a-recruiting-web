@@ -918,6 +918,9 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     const 主键 = screen.getByRole('button', { name: '核对提交结果' }) as HTMLButtonElement;
     expect(主键.disabled).toBe(false);
     expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    // review-r2：pending 在场（409 回读后亦然）→ 不出现可发新 key 的「让AI代理去谈」，
+    // 新命令被同目标未决规则挡住，只能核对原命令
+    expect(screen.queryByRole('button', { name: '让AI代理去谈' })).toBeNull();
     await 用户.click(主键);
     expect(mock核对候选委托).toHaveBeenCalledWith('int_1', 'job_1');
     // 绝不重新选 PDF：零附件库准备、零新委托 POST、零弹层
