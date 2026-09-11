@@ -156,7 +156,27 @@ export default function 工作经历() {
   };
   // 技能 / 证书的行内录入草稿
   const [技能草稿, 设技能草稿] = useState('');
-  const [证书名草稿, 设证书名草稿] = useState('');
+  // review-cx F4：证书行内输入是旅程里唯一的证书编辑控件，接 Global 7 的
+  // `编辑中.certificate` 变体 —— 刷新后回填输入框原位；本地编号跨刷新保持
+  //（「添加」用它落列表，同一条输入不换编号）。
+  const [证书名草稿, 设证书名草稿] = useState(() =>
+    恢复编辑?.种类 === 'certificate' ? (恢复编辑.字段.名称 ?? '') : '');
+  const 证书编号引用 = useRef<string | null>(
+    恢复编辑?.种类 === 'certificate' ? 恢复编辑.本地编号 : null);
+  /** 输入即写草稿；清空输入是该控件唯一的明确放弃入口 —— 丢弃该层（编辑中 省略）。 */
+  const 写证书名 = (值: string) => {
+    设证书名草稿(值);
+    if (!旅程中) return;
+    if (值 === '') {
+      证书编号引用.current = null;
+      操作.更新候选建档草稿(并入建档草稿(建档, { 编辑中: undefined }));
+      return;
+    }
+    if (证书编号引用.current === null) 证书编号引用.current = `c${Date.now()}`;
+    操作.更新候选建档草稿(并入建档草稿(建档, {
+      编辑中: { 种类: 'certificate', 本地编号: 证书编号引用.current, 字段: { 名称: 值 } },
+    }));
+  };
   // 保存 single-flight：保存中再点不重发；成功后才提示并跳转，失败提示错误且按钮恢复
   const [保存中, 设保存中] = useState(false);
 
@@ -209,9 +229,14 @@ export default function 工作经历() {
       return;
     }
     // 年份录入框按标注 14:31 删掉，新加的证书年份留空（列表里年份为空即不渲染）
-    存({
-      证书: [...证书列表, { 编号: `c${Date.now()}`, 名称: 名, 年份: '' }],
-    });
+    // review-cx F4：提交以草稿本地编号落列表（跨刷新同一身份），并显式清掉该编辑层
+    存(
+      {
+        证书: [...证书列表, { 编号: 证书编号引用.current ?? `c${Date.now()}`, 名称: 名, 年份: '' }],
+      },
+      { 编辑中: undefined },
+    );
+    证书编号引用.current = null;
     设证书名草稿('');
   };
 
@@ -532,7 +557,7 @@ export default function 工作经历() {
             className={样式.录入框}
             value={证书名草稿}
             placeholder="证书或语言，如 CPA、雅思 7.0"
-            onChange={(事件) => 设证书名草稿(事件.target.value)}
+            onChange={(事件) => 写证书名(事件.target.value)}
             onKeyDown={(事件) => {
               if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) 加证书();
             }}
@@ -965,6 +990,9 @@ function 经历编辑页({
   });
   // 同 教育编辑页：草稿变化后统一写回建档草稿。项目（工作业绩）不在 Global 7 的
   // 经历编辑白名单里，带上会让整条草稿被解码拒绝 —— 在飞的业绩编辑不跨刷新保留。
+  // review-cx F4 裁定保持现状：业绩子表单嵌在本编辑页内、无独立编辑态，单槽 编辑中
+  // 要么存 experience（丢业绩输入）要么存 project（丢经历本层在飞字段），任一分配都
+  // 必然丢一边；扩白名单属冻结合同变更，已记 PM 缺口待裁定，不在本波擅自改。
   const 变更引用 = useRef(变更);
   变更引用.current = 变更;
   useEffect(() => {

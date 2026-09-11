@@ -1020,3 +1020,70 @@ describe('工作经历 · Task 4 资料接线', () => {
     ]);
   });
 });
+
+// ── review-cx F4：证书行内录入接 编辑中.certificate（冻结合同 7 的证书编辑器变体）──
+// 列表视图「证书与语言」的行内输入是旅程里唯一的证书编辑控件：输入即写草稿
+// （certificate 变体：本地编号 + 名称），刷新后回填输入框原位；「添加」是它的
+// 提交口 —— 以草稿本地编号落列表并清空该层；清空输入是该控件唯一的明确放弃
+// 入口，丢弃草稿。单槽设计与教育/经历层互斥：编辑层打开时槽被那一层接管。
+describe('工作经历 · 证书行内输入接线（review-cx F4）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+    mock确认分区.mockClear();
+    mock更新草稿.mockClear();
+  });
+
+  it('刷新恢复：草稿 certificate 编辑中 回填证书名输入框（列表视图原位）', () => {
+    render工作经历({
+      经历: [], 教育: [完整教育],
+      建档: {
+        编辑中: { 种类: 'certificate', 本地编号: 'c_draft', 字段: { 名称: 'CPA' } },
+      },
+    });
+    // 列表视图在场（不是教育/经历编辑层），输入框带回半填的名称
+    expect(screen.getByText('证书与语言')).toBeTruthy();
+    expect(screen.getByDisplayValue('CPA')).toBeTruthy();
+    expect((screen.getByPlaceholderText('证书或语言，如 CPA、雅思 7.0') as HTMLInputElement).value).toBe('CPA');
+  });
+
+  it('输入即写草稿：certificate 变体带名称与本地编号', async () => {
+    render工作经历({ 经历: [], 教育: [完整教育], 建档: {} });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('证书或语言，如 CPA、雅思 7.0'), 'CPA');
+    const 末次 = mock更新草稿.mock.calls.at(-1)![0];
+    expect(末次.编辑中.种类).toBe('certificate');
+    expect(末次.编辑中.字段.名称).toBe('CPA');
+    expect(typeof 末次.编辑中.本地编号).toBe('string');
+    expect(末次.编辑中.本地编号).not.toBe('');
+  });
+
+  it('添加证书（提交）：以草稿本地编号落列表并清空 编辑中，输入框复位', async () => {
+    render工作经历({ 经历: [], 教育: [完整教育], 建档: {} });
+    const 用户 = userEvent.setup();
+    const 输入 = screen.getByPlaceholderText('证书或语言，如 CPA、雅思 7.0');
+    await 用户.type(输入, 'CPA');
+    const 本地编号 = mock更新草稿.mock.calls.at(-1)![0].编辑中.本地编号;
+    await 用户.click(输入.parentElement!.querySelector('button')!);
+    const 末次 = mock更新草稿.mock.calls.at(-1)![0];
+    expect('编辑中' in 末次).toBe(false);
+    expect(末次.资料.证书).toEqual([{ 编号: 本地编号, 名称: 'CPA', 年份: '' }]);
+    expect((输入 as HTMLInputElement).value).toBe('');
+  });
+
+  it('清空输入即丢弃该层草稿（明确放弃），再刷新不回填', async () => {
+    render工作经历({
+      经历: [], 教育: [完整教育],
+      建档: {
+        编辑中: { 种类: 'certificate', 本地编号: 'c_draft', 字段: { 名称: 'CPA' } },
+      },
+    });
+    const 用户 = userEvent.setup();
+    const 输入 = screen.getByPlaceholderText('证书或语言，如 CPA、雅思 7.0');
+    await 用户.clear(输入);
+    const 末次 = mock更新草稿.mock.calls.at(-1)![0];
+    expect('编辑中' in 末次).toBe(false);
+    expect((输入 as HTMLInputElement).value).toBe('');
+  });
+});
