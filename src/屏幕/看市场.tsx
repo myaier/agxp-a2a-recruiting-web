@@ -341,21 +341,17 @@ export default function 看市场() {
   // 免得同一句话在两个子视图里给出不同数字。
   const 待协调数 = 状态.在谈列表.filter((单) => 单.需要你).length;
 
-  // Backend MatchCase 真相源：横幅复用在谈首页同一 在谈范围 的 P5 快照投影
-  // （与「在谈」子视图逐字同口径）。看市场只消费已在内存的快照：不注册 P5 scope、
-  // 不发任何 P5 请求 —— 直达没有快照时与在谈首载同口径显示「正在读入在谈职位…」，
-  // 绝不拿 legacy 在谈列表 冒充待办数。
-  // 横幅 scope 与 P4 列表、在谈首页共用同一个有效当前 ID（不按意向名反查）
-  const 在谈范围档 = 状态.在谈范围;
-  const 横幅filterRef = 在谈范围档 === '全部' ? null : 活跃意向;
-  const 有横幅scope = 活跃意向 !== null || 在谈范围档 === '全部';
-  const 横幅快照 = 有横幅scope
-    ? 后端状态.P5工作区?.[P5范围键.open('candidate', 横幅filterRef)]
-    : undefined;
+  // J-PILOT-01 Task 4：横幅改读与候选首页同一全意向连续 active 快照（逐字同口径，
+  // 文案「需要你处理」）。看市场只消费已在内存的快照：不注册 scope、不发任何 P5 请求
+  // —— 直达没有快照时与在谈首载同口径显示「正在读入在谈职位…」，绝不拿 legacy
+  // 在谈列表 冒充待办数。
   const 当前SubjectId = 后端状态.主体?.last_used_role === 'candidate'
     ? 后端状态.主体.subject_id
     : null;
-  const 横幅状态 = 取P5候选横幅状态(横幅快照, 当前SubjectId, 有横幅scope);
+  const 横幅状态 = 取P5候选横幅状态(
+    是后端 ? 后端状态.P5连续列表?.[P5范围键.negotiations('active')] : undefined,
+    当前SubjectId,
+  );
   const 横幅强调 = 是后端
     ? 横幅状态.强调
     : (待协调数 > 0 ? `${待协调数} 个职位需要你协调` : '暂时没有需要你介入的');
@@ -398,7 +394,8 @@ export default function 看市场() {
       ) : (
         // 搜索时把代理横幅让出去：这一刻用户是自己在找岗，屏幕该留给结果
         <代理横幅
-          前文="初筛与前几轮我已谈完，"
+          // J-PILOT-01 Task 4：Backend 移除无条件「已谈完」断言；Mock 原文保持
+          前文={是后端 ? '代谈进度持续更新，' : '初筛与前几轮我已谈完，'}
           强调={横幅强调}
           // 交付 G：Backend 的代理页是导航说明而非自由对话，入口文案不许承诺「问AI代理」；
           // Mock 保持默认「问AI代理 ›」

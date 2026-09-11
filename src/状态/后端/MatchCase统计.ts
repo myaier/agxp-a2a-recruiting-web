@@ -1,8 +1,10 @@
 // Backend MatchCase 精确统计：四个页面共用 summary 投影；只认当前 owner 的成功快照，
 // loading/refresh/error/owner mismatch 一律给 —，成功零明确给 0，绝不回退分页 N/N+。
-// 候选 P5 横幅仍由 open 列表快照驱动，保留既有分页与四态语义。
+// J-PILOT-01 Task 4（Spec §5）：候选待办横幅改读同一全意向连续 active 快照
+//（me/negotiations shelf=active，candidate 首页与看市场共用），文案「需要你处理」；
+// 首载/失败/未读尽不伪精确计数，待办数只读权威 needs_action。
 
-import type { P5列表快照, P5摘要快照 } from './类型';
+import type { P5连续列表快照, P5摘要快照 } from './类型';
 
 export interface P5Open统计 {
   open: string;
@@ -40,20 +42,23 @@ export function 取P5Open统计(
   };
 }
 
+/**
+ * 候选待办横幅四态投影：输入是全意向连续 active 快照（P5范围键.negotiations('active')）。
+ * 待办数只读权威 needs_action（history 恒无待办，active 的待办与 phase/case_state 无关）；
+ * 读尽才给精确计数，未读尽/首载失败只给非定论文案（不伪精确、不下「暂时没有」的定论）。
+ */
 export function 取P5候选横幅状态(
-  snapshot: P5列表快照 | undefined,
+  snapshot: P5连续列表快照 | undefined,
   subjectId: string | null,
-  hasScope: boolean,
 ): P5候选横幅状态 {
-  if (!hasScope) return { 强调: '暂时没有需要你介入的', 已载待办数: 0, 读尽: false };
   const current = subjectId !== null && snapshot?.ownerSubjectId === subjectId ? snapshot : undefined;
   if (current === undefined || current.阶段 === '未开始' || current.阶段 === '进行中') {
     return { 强调: '正在读入在谈职位…', 已载待办数: 0, 读尽: false };
   }
-  const 已载待办数 = current.items.filter((item) => item.needsAction).length;
+  const 已载待办数 = current.items.filter((卡) => 卡.needs_action).length;
   const 读尽 = current.阶段 === '成功' && current.nextCursor === null;
   const 强调 = 已载待办数 > 0
-    ? (读尽 ? `${已载待办数} 个职位需要你协调` : '有职位需要你协调')
-    : (读尽 ? '暂时没有需要你介入的' : '已读入的里暂时没有需要你介入的');
+    ? (读尽 ? `${已载待办数} 个职位需要你处理` : '有职位需要你处理')
+    : (读尽 ? '暂时没有需要你处理的' : '已读入的里暂时没有需要你处理的');
   return { 强调, 已载待办数, 读尽 };
 }

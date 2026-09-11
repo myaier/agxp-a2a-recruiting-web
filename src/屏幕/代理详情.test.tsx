@@ -68,11 +68,12 @@ describe('代理详情 · Backend 权威 MatchCase 统计', () => {
     加载摘要.mockClear();
   });
 
-  it('已有 summary 时显示精确 open_total，且详情页不注册、不请求', () => {
+  it('已有 summary 时显示精确 open_total（已开案口径注明），且详情页不注册、不请求', () => {
     置应用状态({ 模式: 'backend', P5摘要: 成功候选摘要() });
     render(<MemoryRouter><代理详情 /></MemoryRouter>);
     expect(screen.getByText('51')).toBeTruthy();
-    expect(screen.getByText('正在代谈')).toBeTruthy();
+    // J-PILOT-01 Task 4：数值仍是 /match-cases 的 Case 口径，注明已开案
+    expect(screen.getByText('正在代谈（已开案）')).toBeTruthy();
     expect(设置P5范围).not.toHaveBeenCalled();
     expect(加载摘要).not.toHaveBeenCalled();
   });

@@ -783,8 +783,10 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
           fence.scopeGeneration, fence.subjectId));
         return;
       }
-      // 窗口深度：刷新按已载页数重建（轮询不得降成只读首屏）；加载/force 由调用方显式给 1
-      const 目标页数 = input.目标页数 ?? Math.max(1, 旧?.已加载页数 ?? 1);
+      // 窗口深度：刷新按已载页数重建（轮询不得降成只读首屏）；加载/force 由调用方显式给 1。
+      // 异主旧快照只有占位深度（不泄数据），这里顺手收紧：换主体一律按首屏一页重建。
+      const 目标页数 = input.目标页数 ??
+        Math.max(1, (旧?.ownerSubjectId === fence.subjectId ? 旧.已加载页数 : undefined) ?? 1);
       const 重建 = await 窗口连续读({ fence, shelf: input.shelf, 目标页数 });
       if (重建.作废 || !栅栏仍当前(fence)) return;
       落连续列表(scopeKey, () => 成功连续列表(

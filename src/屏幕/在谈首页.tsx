@@ -8,10 +8,10 @@
 //   · 等你行动的卡置顶；紧急感只由红色阶段标 + 「需要你」徽标表达（用户否了卡级红标记）
 //   · 卡上不放决策按钮，决策一律进详情页做
 //
-// P5 模式边界：Backend 的在谈列表只来自 P5 open 工作区快照（当前意向 =
-// 意向表内的 intention_id / 全部意向 = 无过滤），经 屏幕/P5/MatchCase列表 渲染；
-// 不读 在谈列表、不水合 Mock 在谈单。Mock 分支（Mock在谈首页）行为与接线前逐字一致、
-// 零 P5 请求。
+// P5 模式边界（J-PILOT-01 Task 4 修订）：Backend 的在谈列表 = 全意向连续 active 快照
+//（me/negotiations shelf=active，恒省略 intention_id），经 屏幕/P5/MatchCase列表 渲染；
+// 不读 Case open 工作区、不读 在谈列表、不水合 Mock 在谈单。Mock 分支（Mock在谈首页）
+// 行为与接线前逐字一致、零 P5 请求。
 //
 // 第二批（2026-09-09 产品负责人「把这个筛选的功能都删了」）：顶栏「筛选 ▾」与 在谈筛选层
 // （看哪几单 / 当前意向·全部意向）整体删除。状态层的 在谈看什么 / 在谈范围 字段与归约保留
@@ -25,7 +25,6 @@ import 顶部意向栏 from './顶部意向栏';
 import { 主页外壳, 代理横幅, 滚动区, use模拟加载, 骨架卡组 } from '../组件/通用';
 import 求职在谈卡 from '../组件/列表卡片/求职在谈卡';
 import { use应用状态, 取意向名 } from '../状态/应用状态';
-import { 取有效当前意向编号 } from '../状态/领域/候选资料';
 import { use适配分 } from '../状态/use适配分';
 import { 从Mock在谈到阶段 } from '../数据/列表卡片映射';
 import { use导航 } from '../路由/导航钩子';
@@ -57,46 +56,38 @@ export default function 在谈首页() {
   return 数据源模式 === 'backend' ? <Backend在谈首页 /> : <Mock在谈首页 />;
 }
 
-/** Backend 分支（P5）：open 工作区快照 + MatchCase列表；Mock 的在谈单对象一概不读。 */
+/** Backend 分支（J-PILOT-01 Task 4）：主列表 = 全意向连续 active 快照 + MatchCase列表；
+ *  Mock 的在谈单对象一概不读。主列表恒省略 intention_id、覆盖全部意向 —— 不依赖当前
+ *  意向有效才展示旧记录；顶部意向选择器仍服务市场，这里不读它的已选值、也不改写。 */
 function Backend在谈首页() {
   const { 状态, 后端状态, 操作 } = use应用状态();
   const { 跳转 } = use导航();
 
-  // 范围档只读：看全部在谈 置「全部」、切意向 收回「当前」（切换面板已删，2026-09-09）
+  // 顶栏范围档只读（切换面板已删，2026-09-09）：仍只喂 顶部意向栏 的 跨意向 展示。
   const 范围 = 状态.在谈范围;
 
-  // 当前档的过滤坐标 = 当前意向编号 载体本身（顶栏胶囊、市场 P4 同一来源）。
-  // 绝不按意向名反查 —— 名字不唯一，同名两条会反查到第一条。
-  // 护栏：当前编号无效（不在表内 / 服务端不是 active）时这一档整片空掉，
-  // 绝不拿别的坐标顶上、也不偷偷放宽成全部。
-  const 当前编号 = 取有效当前意向编号(状态.当前意向编号, 状态.求职意向表, 状态.后端意向服务端);
-  const filterRef = 范围 === '全部' ? null : 当前编号;
-  const 当前意向仍在表内 = 当前编号 !== null;
-
-  const 有scope = 当前意向仍在表内 || 范围 === '全部';
-  const 快照 = 有scope
-    ? 后端状态.P5工作区?.[P5范围键.open('candidate', filterRef)]
-    : undefined;
-  // 横幅四态投影复用共享纯 selector（与「看市场」同一在谈范围同一口径）：
-  // owner 不匹配（同角色换主体的过渡帧）按未载入处理，绝不显示旧主体的待办数
+  // 横幅四态投影复用共享纯 selector（与「看市场」同一全意向连续 active 快照逐字同口径）：
+  // owner 不匹配（同角色换主体的过渡帧）按未载入处理，绝不显示旧主体的待办数。
   const 当前SubjectId = 后端状态.主体?.last_used_role === 'candidate'
     ? 后端状态.主体.subject_id
     : null;
-  const 横幅状态 = 取P5候选横幅状态(快照, 当前SubjectId, 有scope);
+  const 横幅状态 = 取P5候选横幅状态(
+    后端状态.P5连续列表?.[P5范围键.negotiations('active')],
+    当前SubjectId,
+  );
   const 横幅强调 = 横幅状态.强调;
 
-  // 下拉只重读当前 scope（GET）；错误文案由快照 error 承载，列表上方错误行呈现
-  const 重读当前范围 = () =>
-    有scope
-      ? 操作.刷新工作区('candidate', filterRef).catch(() => undefined)
-      : undefined;
+  // 下拉 = 手动刷新：force 首屏（丢旧游标，Spec §5 刷新/动作后清游标重读首屏）；
+  // 错误文案由快照 error 承载，列表上方错误行呈现
+  const 重读当前范围 = () => 操作.加载连续列表('active', true).catch(() => undefined);
 
   return (
     <主页外壳>
       <顶部意向栏 跨意向={范围 === '全部'} />
 
       <代理横幅
-        前文="初筛与前几轮我已谈完，"
+        // J-PILOT-01 Task 4：移除无条件「已谈完」断言，换成持续更新的口径
+        前文="代谈进度持续更新，"
         强调={横幅强调}
         // 交付 G：Backend 的代理页是导航说明而非自由对话，入口文案不许承诺「问AI代理」
         动作文="查看代理功能 ›"
@@ -107,12 +98,10 @@ function Backend在谈首页() {
 
       <下拉刷新 刷新={重读当前范围}>
       <滚动区>
-        {范围 === '当前' && !当前意向仍在表内 ? (
-          <div className={样式.空态}>这个意向下暂时没有在谈职位。</div>
-        ) : (
-          // eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role
-          <MatchCase列表 role="candidate" filterRef={filterRef} />
-        )}
+        {/* 主列表恒为全意向：无「当前意向」档，原「当前编号无效整片空掉」的护栏空态退役
+            —— 连续集合覆盖全部意向，未选意向也照常显示（Spec §5） */}
+        {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+        <MatchCase列表 role="candidate" filterRef={null} />
       </滚动区>
       </下拉刷新>
     </主页外壳>
