@@ -836,7 +836,18 @@ async function 摘要(file: File): Promise<string> {
 }
 
 describe('创建附件简历操作 · onboarding 建档跟踪与 exact source（Task 6）', () => {
-  /** 有 active 建档草稿的场景（onboarding 上传页）。 */
+  /**
+   * 「旅程中返回上传页」场景：建档草稿已经存在，于是这一次上传会登记单槽。
+   *
+   * 这是生产上真实可达的状态，不是为测试捏造的（review r1 #5 的可达性核对）：
+   * 学生分流.启程并跳转() 派发 启程引导 建出 引导预填 后 跳转(基本信息)（push，不清栈）；
+   * 基本信息.存基本信息 在 旅程中 时调 更新候选建档草稿(并入建档草稿(...))，于是
+   * 引导预填.建档 出现；应用状态.tsx 每次渲染把 建档草稿引用.current 绑成
+   * 状态.引导预填?.建档 ?? null；基本信息 的 返回栏 走 前往(-1) 退回 学生分流 ——
+   * 此时再上传/替换，草稿在场、单槽登记生效。
+   * 反过来，**首次**上传时 引导预填.建档 还不存在（启程引导 不种 建档），
+   * 走的是 要登记单槽()=false 的零登记路径 —— 下面「没有 active 建档草稿」用例钉住它。
+   */
   function 建档场景() {
     const 场景 = 创建场景();
     场景.建档草稿引用.current = { 资料: { 个人优势: '已写了一半' } };
@@ -931,6 +942,45 @@ describe('创建附件简历操作 · onboarding 建档跟踪与 exact source（
       .map(([建档]) => 建档.待写入)
       .filter((槽): 槽 is NonNullable<typeof 槽> => 槽 !== undefined);
     expect(重放槽.every((槽) => 槽.幂等键 === 原键)).toBe(true);
+  });
+
+  // review r1 #3：清槽与「结果未知」必须出自同一处分类。503 storage_unavailable /
+  // downstream_unavailable 都会走歧义恢复重读 —— 结果不确定，槽与原幂等键必须留着；
+  // 丢掉它等于丢掉幂等键，用户再试会铸新键，造出重复的附件简历。
+  it('503 storage_unavailable：保留槽与原幂等键（不铸新键造重复文件）', async () => {
+    const 场景 = 建档场景();
+    场景.后端.创建附件简历.mockImplementation(创建桩(文件A, new BFF错误(503, 'storage_unavailable', 'down')));
+    场景.后端.读取附件简历库.mockResolvedValue({ items: [], limits }); // 库集合未变：无从判定已达成
+    await expect(场景.操作.创建附件简历(pdf, true, vi.fn())).rejects.toMatchObject({ code: 'storage_unavailable' });
+    const 槽 = 场景.建档草稿引用.current?.待写入;
+    expect(槽?.种类).toBe('resume-file-create');
+    expect(槽?.阶段).toBe('prepared');
+    const 登记时的键 = 场景.草稿写入.mock.calls[0][0].待写入?.幂等键;
+    expect(槽?.幂等键).toBe(登记时的键);
+    expect(场景.后端.创建附件简历).toHaveBeenCalledTimes(1); // 绝不自动重传
+  });
+
+  // review r1 #2：摘要拿不到就不能登记 —— 没有 文件核对 的两条 create 会被判成同一条，
+  // 把原幂等键用到另一份字节上（Global 6 明令禁止）。上传本身照常进行。
+  it('SHA-256 不可用：本次不登记单槽（也就不会拿原幂等键配另一份字节），上传照常', async () => {
+    const 场景 = 建档场景();
+    const 摘要桩 = vi.spyOn(globalThis.crypto.subtle, 'digest')
+      .mockRejectedValue(new Error('SubtleCrypto unavailable'));
+    try {
+      const created = { ...文件A, file_id: 'rf_created' };
+      场景.后端.创建附件简历.mockImplementation(创建桩(created));
+      场景.后端.读取附件简历库.mockResolvedValue({ items: [created], limits });
+      const 绑定来源 = vi.fn();
+      await expect(场景.操作.创建附件简历(pdf, true, 绑定来源)).resolves.toBe('已提交');
+      expect(场景.草稿写入).not.toHaveBeenCalled();
+      expect(场景.建档草稿引用.current?.待写入).toBeUndefined();
+      expect(场景.后端.创建附件简历.mock.calls[0][2]).toBeUndefined(); // 数据源没拿到跟踪
+      expect(绑定来源).toHaveBeenCalledWith({
+        file_id: 'rf_created', version_id: created.current_version.version_id, parse_id: null,
+      });
+    } finally {
+      摘要桩.mockRestore();
+    }
   });
 
   it('服务端确定拒绝（400）：清槽，不把后续上传永久锁死', async () => {

@@ -227,11 +227,6 @@ describe('取最高学历预填', () => {
     expect(取最高学历预填(state, true, '')).toBe('本科在读');
   });
 
-  it('与页面当前选择一致的命中返回 null（无需重设，页面保留 current）', () => {
-    const state = readyState(受支持学历变体());
-    expect(取最高学历预填(state, true, '本科在读')).toBeNull();
-  });
-
   it('学生：current_education 未命中时回退 education[0].degree 基词', () => {
     const state = readyState(映射变体((建议) => {
       建议.draft.profile.current_education = { value: null, confidence: null };

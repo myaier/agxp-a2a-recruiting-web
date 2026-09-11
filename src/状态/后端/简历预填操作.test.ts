@@ -38,6 +38,7 @@ import type {
 } from './类型';
 import { 创建空候选预填状态 } from './类型';
 import { 创建简历预填操作 } from './简历预填操作';
+import type { 候选引导建档草稿, 候选建档草稿存储 } from '../../数据/资料缓存';
 
 // ── 坐标与样本（与 简历预填成功信封 的 source 三元组逐字一致）──
 
@@ -190,6 +191,8 @@ interface 预填场景选项 {
   元数据?: 候选预填恢复元数据 | null;
   简历快照?: BFF简历 | null;
   附件库?: BFF附件简历库 | null;
+  /** 旅程中的建档草稿（含可能未结算的文件单槽）；缺省 null = 没有 active 草稿。 */
+  建档草稿?: 候选引导建档草稿 | null;
 }
 
 function 创建预填场景(选项: 预填场景选项 = {}) {
@@ -240,6 +243,12 @@ function 创建预填场景(选项: 预填场景选项 = {}) {
     后端状态引用.current = 更新(后端状态引用.current);
   });
   const 候选预填代际 = { current: 2 };
+  // J-PILOT-02 Task 6 裁决 B：继续手填要释放未结算的文件单槽，落点就是建档草稿引用
+  const 建档草稿引用 = { current: 选项.建档草稿 ?? null };
+  const 草稿写入 = vi.fn((建档: 候选引导建档草稿) => {
+    建档草稿引用.current = 建档;
+    return true;
+  });
   const 依赖 = {
     是后端,
     后端: 后端 as unknown as HTTP招聘数据源,
@@ -255,6 +264,8 @@ function 创建预填场景(选项: 预填场景选项 = {}) {
     候选预填代际,
     候选预填读取锁: { current: new Map<string, Promise<void>>() },
     候选预填恢复: { current: 恢复存储 },
+    建档草稿引用,
+    候选建档草稿: { current: { 读取: () => 建档草稿引用.current, 写入: 草稿写入 } as 候选建档草稿存储 },
   } satisfies 后端操作依赖 & 候选预填运行时引用;
   const 操作 = 创建简历预填操作(依赖);
   return {
@@ -268,6 +279,8 @@ function 创建预填场景(选项: 预填场景选项 = {}) {
     候选预填代际,
     候选预填读取锁: 依赖.候选预填读取锁,
     恢复存储,
+    建档草稿引用,
+    草稿写入,
   };
 }
 
@@ -414,6 +427,30 @@ describe('创建简历预填操作 · 激活（显式新一轮）', () => {
     expect(状态.phase).toBe('waiting_parse'); // 本轮文件仍在解析，不被 items[0] 的 succeeded 冒名顶替
     expect(状态.source).toEqual({ file_id: 文件ID, version_id: 版本ID, parse_id: null });
     expect(场景.后端.读取简历预填).not.toHaveBeenCalled();
+  });
+
+  // review r1 F1：上传回执已把本轮绑到 vNew，而权威 GET 还没落地（503 重读失败时这个
+  // 窗口必然持续）—— 快照里仍是本轮的前一个版本 vOld，且 vOld 的解析早已 succeeded。
+  // 反向重绑会把上一份 PDF 的建议当本轮结果回填，并把唯一持久化真相（恢复元数据）
+  // 改写成 vOld（刷新即失配删记录，本轮凭空消失）。
+  it('回执绑定 vNew 但快照仍是 vOld：零读取、零落盘，绝不反向重绑回前一个版本', async () => {
+    const 场景 = 创建预填场景({
+      // 权威库仍停在旧版本，且旧版本解析已成功
+      附件库: { items: [附件(解析状态('succeeded'), 文件ID, 版本ID)], limits },
+      预填: {
+        ...创建空候选预填状态(2),
+        phase: 'arming',
+        source: { file_id: 文件ID, version_id: 新版本ID, parse_id: null }, // 本次替换回执
+        eligibility: 全可填Eligibility,
+      },
+    });
+    await 场景.操作.同步候选Onboarding解析();
+    const 状态 = 预填(场景);
+    expect(场景.后端.读取简历预填).not.toHaveBeenCalled();
+    expect(状态.phase).toBe('arming');
+    expect(状态.source).toEqual({ file_id: 文件ID, version_id: 新版本ID, parse_id: null });
+    expect(场景.恢复存储.写入).not.toHaveBeenCalled();
+    expect(场景.恢复存储.取值()).toBeNull();
   });
 
   it('本轮文件已不在权威库：终局 failed，绝不改绑另一份文件', async () => {
@@ -904,6 +941,51 @@ describe('创建简历预填操作 · 手填与分区确认', () => {
     expect(状态.suggestion).toBeNull();
     expect(状态.source).toEqual({ file_id: 文件ID, version_id: 版本ID, parse_id: null });
     expect(场景.恢复存储.取值()?.mode).toBe('manual');
+  });
+
+  // review r1 裁决 B（Spec §5.2）：继续手填 = 明确放弃这条未结算的可选上传 ——
+  // 释放建档单槽，后续建档保存不再被一条永远不会自证的文件命令挡住。
+  it('继续手填释放未结算的文件单槽：零请求、不删文件、不声称上传失败或解析被取消', () => {
+    const 文件槽 = {
+      种类: 'resume-file-create' as const,
+      阶段: 'prepared' as const,
+      幂等键: 'key-of-the-unsettled-upload',
+      文件核对: { name: 'a.pdf', type: 'application/pdf', size: 8, lastModified: 1, sha256: 'f'.repeat(64) },
+    };
+    const 场景 = 创建预填场景({
+      预填: 绑定轮(null, 'waiting_parse'),
+      建档草稿: { 资料: { 个人优势: '写了一半' }, 待写入: 文件槽 },
+    });
+    场景.操作.继续手填候选Onboarding();
+    expect(场景.建档草稿引用.current?.待写入).toBeUndefined();
+    expect(场景.建档草稿引用.current?.资料).toEqual({ 个人优势: '写了一半' }); // 其它输入原样
+    expect(预填(场景).phase).toBe('manual');
+    expect(场景.后端.读取附件简历库).not.toHaveBeenCalled(); // 零请求：不删文件、不碰后台解析
+  });
+
+  it('无轮（inactive）时继续手填仍释放未结算文件槽，但不写状态也不落盘', () => {
+    const 场景 = 创建预填场景({
+      预填: 创建空候选预填状态(2),
+      建档草稿: {
+        待写入: { 种类: 'resume-file-replace', 资源编号: 文件ID, ifMatch: 1, 阶段: 'prepared', 幂等键: 'k'.repeat(20) },
+      },
+    });
+    场景.操作.继续手填候选Onboarding();
+    expect(场景.建档草稿引用.current?.待写入).toBeUndefined();
+    expect(预填(场景).phase).toBe('inactive');
+    expect(场景.恢复存储.写入).not.toHaveBeenCalled();
+  });
+
+  it('继续手填不动别的域的未结算槽（只释放 resume-file-*）', () => {
+    const 教育槽 = {
+      种类: 'education-create' as const, 本地编号: 'edu_local_1', 阶段: 'prepared' as const, 幂等键: 'e'.repeat(20),
+    };
+    const 场景 = 创建预填场景({
+      预填: 绑定轮(null, 'waiting_parse'),
+      建档草稿: { 待写入: 教育槽 },
+    });
+    场景.操作.继续手填候选Onboarding();
+    expect(场景.建档草稿引用.current?.待写入).toEqual(教育槽);
   });
 
   it('确认分区：内存与元数据同步标记该分区，其余分区不动', () => {

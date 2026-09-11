@@ -315,6 +315,41 @@ describe('学生分流 附件简历上传（P2 Task 5）', () => {
     expect(mock操作.创建附件简历).toHaveBeenCalledWith(pdf, true, expect.any(Function));
   });
 
+  // review r1：本轮已绑定的文件从权威库消失后，「库里只有一行」的兜底不得接管 ——
+  // 否则替换会落到一份与本轮无关的简历上。此时本屏没有可替换目标，明确上传走 create。
+  it('本轮来源指向的文件已消失：不回退到「唯一一行」，不替换无关简历', async () => {
+    const 用户 = userEvent.setup();
+    render学生分流({
+      数据源: 'backend',
+      附件库: { items: [文件A], limits }, // 库里只剩另一份无关简历
+      引导预填: 完整预填,
+      候选预填: 预填轮({
+        phase: 'manual',
+        source: { file_id: 'rf_gone', version_id: 'v_gone', parse_id: null },
+      }),
+    });
+    expect(screen.queryByText(文件A.display_name)).toBeNull();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const pdf = new File(['%PDF'], 'again.pdf', { type: 'application/pdf' });
+    await 用户.upload(input, pdf);
+    await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
+    expect(mock操作.替换附件简历).not.toHaveBeenCalled();
+    expect(mock操作.创建附件简历).toHaveBeenCalledWith(pdf, true, expect.any(Function));
+  });
+
+  // review r1 裁决 B 配套：单槽被合法保留（上一条结果未知）时，守卫文案必须真的上屏 ——
+  // 用户得知道要「按原步骤重选同一份文件」，而不是看到一句通用的「请求失败」。
+  it('保留中的单槽挡下另一份字节时，守卫文案经既有轻提示上屏', async () => {
+    mock操作.创建附件简历.mockRejectedValueOnce(
+      new BFF错误(0, 'invalid_request', '上一条写入结果未确认，请先重试或核对原步骤'),
+    );
+    render学生分流({ 数据源: 'backend', 附件库: { items: [], limits } });
+    mock轻提示.mockClear();
+    await 选择并同意PDF('another.pdf');
+    await waitFor(() => expect(mock轻提示)
+      .toHaveBeenCalledWith('上一条写入结果未确认，请先重试或核对原步骤'));
+  });
+
   // 多文件里本轮已上传的那一份（exact source 在内存轮上）：按 file_id 精确回显与替换它
   it('本轮 exact source 指向的文件即使不是 items[0] 也被精确回显与替换', async () => {
     const 用户 = userEvent.setup();
@@ -738,6 +773,41 @@ describe('学生分流 候选 onboarding 简历预填（Spec §7 上传页接线
     expect(screen.getByText('已识别，')).toBeTruthy();
     expect(screen.getByText('将填写空白项')).toBeTruthy();
     expect(screen.getByText('重新上传 ›')).toBeTruthy();
+  });
+
+  // review r1 裁决 B：无自动预填轮时离开本屏 = 明确放弃那条未结算的可选上传 ——
+  // 同一个「继续手填」动作在无轮时只释放建档单槽（操作层语义），页面不额外声称任何结果。
+  it('无轮时点下一步用既有的继续手填动作释放未结算单槽；ready 轮绝不调用它', async () => {
+    const 用户 = userEvent.setup();
+    const { 视图 } = render学生分流({ 数据源: 'backend', 引导预填: 完整预填, 附件库: { items: [], limits } });
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock操作.继续手填候选Onboarding).toHaveBeenCalledTimes(1);
+    expect(mock跳转).toHaveBeenCalled();
+    视图.unmount();
+
+    mock操作.继续手填候选Onboarding.mockClear();
+    mock跳转.mockClear();
+    render学生分流({
+      数据源: 'backend',
+      引导预填: 完整预填,
+      附件库: { items: [文件A], limits },
+      候选预填: 预填轮({
+        phase: 'ready',
+        source: { file_id: 文件A.file_id, version_id: `v_${文件A.file_id}`, parse_id: 'p_rf_a' },
+      }),
+    });
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock操作.继续手填候选Onboarding).not.toHaveBeenCalled(); // 不能把已到手的建议改掉
+    expect(mock跳转).toHaveBeenCalled();
+  });
+
+  // review r1 #5：本屏自己从不种 建档 草稿 —— 首次上传时草稿不在场是设计如此，
+  // 单槽登记只在「旅程中返回本屏」（其它资料页已写过草稿）时生效。
+  it('本屏从不自行种建档草稿：上传全程零 更新候选建档草稿 派发', async () => {
+    const { 派发 } = render学生分流({ 数据源: 'backend', 附件库: { items: [], limits } });
+    await 选择并同意PDF('first.pdf');
+    await waitFor(() => expect(mock操作.创建附件简历).toHaveBeenCalledTimes(1));
+    expect(派发.mock.calls.some(([动作]) => 动作.型 === '更新候选建档草稿')).toBe(false);
   });
 
   it('Mock mode makes zero prefill operations and keeps legacy copy', () => {

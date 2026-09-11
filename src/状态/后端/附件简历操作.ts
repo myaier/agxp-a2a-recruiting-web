@@ -91,13 +91,38 @@ function 解析已成功(库: BFF附件简历库, fileId: string, versionId: str
     文件.current_version.parse.status === 'succeeded';
 }
 
-/** 服务端确定拒绝：本地/远端已确定失败。409 冲突、503 未知、网络断开一律保留槽待核对。 */
-function 是确定拒绝(错误: unknown): boolean {
-  return 错误 instanceof BFF错误
-    && 错误.status !== 401
-    && 错误.status !== 409
-    && !(错误.status === 503 && 错误.code === 'operation_outcome_unknown')
-    && 错误.code !== 'network_error';
+// ── 建档单槽的同步写入（与 候选操作 的建档草稿同序：内存 ref → session → 派发）──
+
+type 建档草稿依赖 = Pick<后端操作依赖, '建档草稿引用' | '候选建档草稿' | '派发'>;
+
+/** 同步固定内存 ref → 尝试写 subject-scoped session（失败仅轻提示刷新风险）→ 派发。 */
+function 写建档草稿(deps: 建档草稿依赖, 建档: 候选引导建档草稿): void {
+  if (deps.建档草稿引用) deps.建档草稿引用.current = 建档;
+  const 存储 = deps.候选建档草稿?.current ?? null;
+  if (存储 !== null && !存储.写入(建档)) {
+    轻提示('本次无法保存恢复进度，刷新可能丢失');
+  }
+  deps.派发({ 型: '更新候选建档草稿', 建档 });
+}
+
+function 取消槽(建档: 候选引导建档草稿): 候选引导建档草稿 {
+  const { 待写入: _已清, ...无槽 } = 建档;
+  return 无槽;
+}
+
+/**
+ * 明确放弃这条未结算的可选上传（review r1 裁决 B，Spec §5.2「失败保留选择并允许合法
+ * 重试，或用户明确放弃未成功的可选动作继续」；PDF 按 Global 是可选项）：
+ * 只释放 resume-file-* 槽 —— 不发任何请求、不删除已上传文件、不声称上传失败、
+ * 也不声称后台解析被取消。安全的原因是文件域的持久化真相是预填 exact source 元数据，
+ * 槽里只有「重选同字节」的恢复坐标：释放它不丢任何身份，权威库仍可随时核对。
+ * 由「继续手填」这一既有动作调用（简历预填操作），不新增控件、不新增出口。
+ */
+export function 释放建档文件槽(deps: 建档草稿依赖): void {
+  const 现有 = deps.建档草稿引用?.current ?? null;
+  const 槽 = 现有?.待写入;
+  if (现有 === null || 槽 === undefined || !槽.种类.startsWith('resume-file-')) return;
+  写建档草稿(deps, 取消槽(现有));
 }
 
 /**
@@ -230,7 +255,10 @@ export function 创建附件简历操作(deps: 后端操作依赖): 附件简历
     错误: unknown,
     fence: ReturnType<typeof 捕获栅栏>,
     效果: 变更效果,
+    本槽命令: 建档待写入 | null = null,
   ): Promise<附件变更结果> {
+    // 结果未知一律保留槽与原幂等键（非 BFF 错误无从判断，同样保留）：
+    // 丢掉槽就等于丢掉原幂等键，用户再试会铸新键 —— 正是单槽要防的重复写入。
     if (!(错误 instanceof BFF错误)) throw 错误;
     if (错误.status === 401) {
       // 过会话 fence：mutation 在飞期间已换代（登出/重登/切身份，转移路径自己清过账号）时，
@@ -239,8 +267,13 @@ export function 创建附件简历操作(deps: 后端操作依赖): 附件简历
       throw 错误;
     }
     // Task 6：status 0 的本地拦截（单槽守卫、幂等键入参拦截）代表请求一次都没发出 ——
-    // 它不是「结果未知」，不做任何歧义恢复 GET，原样抛给调用方的闭合文案。
-    if (错误.status === 0 && 错误.code === 'invalid_request') throw 错误;
+    // 它不是「结果未知」，不做任何歧义恢复 GET，原样抛给调用方的闭合文案；
+    // 本条命令既然没发出，就清掉它自己刚登记的槽（守卫拦下的那次 本槽命令 为 null，
+    // 清不到别人的槽）。
+    if (错误.status === 0 && 错误.code === 'invalid_request') {
+      清本命令槽(fence, 本槽命令);
+      throw 错误;
+    }
     if (权威重读码.has(错误.code)) {
       const 重读 = await 恢复重读(fence);
       if (重读.kind === '换代') return '已换代';
@@ -286,6 +319,11 @@ export function 创建附件简历操作(deps: 后端操作依赖): 附件简历
       if (效果.kind === 'parse' && 解析已成功(重读.库, 效果.fileId, 效果.versionId)) return '已提交';
       throw 错误;
     }
+    // 走到这里 = 上面没有任何歧义分支接手它（review r1 #3：清槽与「结果未知」的判据
+    // 必须出自同一处分类，不能各写一份谓词各自漂移）。4xx 是服务端确定拒绝、本条命令
+    // 没写成：清掉自己的槽，别把后续上传永久锁死；5xx / 网络 / 未知码结果不确定，
+    // 槽与原幂等键必须留着等用户按原字节核对。
+    if (错误.status >= 400 && 错误.status < 500) 清本命令槽(fence, 本槽命令);
     throw 错误;
   }
 
@@ -294,22 +332,7 @@ export function 创建附件简历操作(deps: 后端操作依赖): 附件简历
     return 后端状态引用.current.附件简历库?.items.find((条) => 条.file_id === fileId);
   }
 
-  // ── J-PILOT-02 Task 6：onboarding 单槽跟踪（与 候选操作 的建档草稿同序写入）──
-
-  /** 同步固定内存 ref → 尝试写 subject-scoped session（失败仅轻提示刷新风险）→ 派发。 */
-  function 写建档草稿(建档: 候选引导建档草稿): void {
-    if (deps.建档草稿引用) deps.建档草稿引用.current = 建档;
-    const 存储 = deps.候选建档草稿?.current ?? null;
-    if (存储 !== null && !存储.写入(建档)) {
-      轻提示('本次无法保存恢复进度，刷新可能丢失');
-    }
-    派发({ 型: '更新候选建档草稿', 建档 });
-  }
-
-  function 取消槽(建档: 候选引导建档草稿): 候选引导建档草稿 {
-    const { 待写入: _已清, ...无槽 } = 建档;
-    return 无槽;
-  }
+  // ── J-PILOT-02 Task 6：onboarding 单槽跟踪（写入走模块级 写建档草稿，与 候选操作 同序）──
 
   interface 跟踪包 {
     跟踪?: 建档写入跟踪;
@@ -324,19 +347,31 @@ export function 创建附件简历操作(deps: 后端操作依赖): 附件简历
    * 沿用槽里的原幂等键与原 ifMatch 重放；已确认 —— 收到回执立刻清槽（文件域的持久化
    * 真相是预填 exact source 元数据，槽只承担「结果未知时按原字节重选」的恢复坐标）。
    */
+  /**
+   * 是否要为本次写口登记单槽：只有 onboarding 调用方（传了 绑定来源）且当前有 active
+   * 建档草稿时才登记。日常「我的简历」与首次上传（旅程标记尚未落 建档）都走这里返回
+   * false —— 连整份 SHA-256 都不算，请求保持与原实现同一拍发出。
+   */
+  function 要登记单槽(绑定来源: ((来源: 候选预填绑定来源) => void) | undefined): boolean {
+    return 绑定来源 !== undefined && (deps.建档草稿引用?.current ?? null) !== null;
+  }
+
   function 构造跟踪(
     fence: ReturnType<typeof 捕获栅栏>,
     绑定来源: ((来源: 候选预填绑定来源) => void) | undefined,
-    文件核对: 建档文件核对 | null,
+    文件核对: 建档文件核对 | null | undefined,
   ): 跟踪包 {
-    if (绑定来源 === undefined) return 无跟踪; // 日常调用：零跟踪、零草稿写入
-    if ((deps.建档草稿引用?.current ?? null) === null) return 无跟踪; // 无 active 建档草稿
+    if (!要登记单槽(绑定来源)) return 无跟踪;
+    // review r1 #2：摘要不可用（非安全上下文）就不登记 —— 没有 文件核对 的两条 create
+    // 会被 同一文件命令 判成同一条，进而把原幂等键用在另一份字节上（Global 6 明令禁止）。
+    // undefined = 本种类本来就没有文件字节（parse 按 请求体 认同一条命令）。
+    if (文件核对 === null) return 无跟踪;
     let 本槽命令: 建档待写入 | null = null;
     const 跟踪: 建档写入跟踪 = {
       发送前(命令) {
         const 现有 = deps.建档草稿引用?.current ?? null;
         if (!仍有效(deps, fence) || 现有 === null) return 命令; // 栅栏破防/草稿已不在场：不落盘
-        const 定基: 建档待写入 = 文件核对 === null ? 命令 : { ...命令, 文件核对 };
+        const 定基: 建档待写入 = 文件核对 === undefined ? 命令 : { ...命令, 文件核对 };
         const 槽 = 现有.待写入;
         if (槽 !== undefined && !同一文件命令(槽, 定基)) {
           // Global 6：一个槽未结算时禁止另一 mutation 覆盖 —— 请求一次都不发，
@@ -349,7 +384,7 @@ export function 创建附件简历操作(deps: 后端操作依赖): 附件简历
           ...(槽?.ifMatch !== undefined ? { ifMatch: 槽.ifMatch } : {}),
           阶段: 'prepared',
         };
-        写建档草稿({ ...现有, 待写入: 定 });
+        写建档草稿(deps, { ...现有, 待写入: 定 });
         本槽命令 = 定;
         return 定;
       },
@@ -358,18 +393,18 @@ export function 创建附件简历操作(deps: 后端操作依赖): 附件简历
         const 现有 = deps.建档草稿引用?.current ?? null;
         if (现有 === null || 现有.待写入 === undefined) return;
         if (!同一文件命令(现有.待写入, 命令)) return;
-        写建档草稿(取消槽(现有));
+        写建档草稿(deps, 取消槽(现有));
       },
     };
     return { 跟踪, 取本槽命令: () => 本槽命令 };
   }
 
-  /** 服务端确定拒绝：本条命令没写成，清掉自己的槽，别把后续上传永久锁死。 */
-  function 清确定拒绝的槽(错误: unknown, fence: ReturnType<typeof 捕获栅栏>, 命令: 建档待写入 | null): void {
-    if (命令 === null || !是确定拒绝(错误) || !仍有效(deps, fence)) return;
+  /** 清掉本条命令自己的槽（只在 收口变更错误 判定「没写成」时调用；认不出就不动）。 */
+  function 清本命令槽(fence: ReturnType<typeof 捕获栅栏>, 命令: 建档待写入 | null): void {
+    if (命令 === null || !仍有效(deps, fence)) return;
     const 现有 = deps.建档草稿引用?.current ?? null;
     if (现有?.待写入 === undefined || !同一文件命令(现有.待写入, 命令)) return;
-    写建档草稿(取消槽(现有));
+    写建档草稿(deps, 取消槽(现有));
   }
 
   /** 本次写入回执的 exact source：先于权威 GET 交出，GET 失败也不丢 file/version/parse。 */
@@ -423,15 +458,16 @@ export function 创建附件简历操作(deps: 后端操作依赖): 附件简历
       const fence = 捕获栅栏(deps);
       try {
         const 动作前 = 后端状态引用.current.附件简历库;
-        const 包 = 构造跟踪(fence, 绑定来源, 绑定来源 === undefined ? null : await 算文件核对(file));
+        const 包 = 要登记单槽(绑定来源)
+          ? 构造跟踪(fence, 绑定来源, await 算文件核对(file))
+          : 无跟踪;
         let 文件: BFF附件简历;
         try {
           文件 = 包.跟踪
             ? await 后端.创建附件简历(file, consent, 包.跟踪)
             : await 后端.创建附件简历(file, consent);
         } catch (错误) {
-          清确定拒绝的槽(错误, fence, 包.取本槽命令());
-          return await 收口变更错误(错误, fence, { kind: 'create', 动作前 });
+          return await 收口变更错误(错误, fence, { kind: 'create', 动作前 }, 包.取本槽命令());
         }
         交出来源(fence, 绑定来源, {
           file_id: 文件.file_id, version_id: 文件.current_version.version_id, parse_id: null,
@@ -459,15 +495,16 @@ export function 创建附件简历操作(deps: 后端操作依赖): 附件简历
           throw new BFF错误(409, 'resume_file_selection_stale', '附件状态已更新，请重新选择');
         }
         const 动作前 = 后端状态引用.current.附件简历库;
-        const 包 = 构造跟踪(fence, 绑定来源, 绑定来源 === undefined ? null : await 算文件核对(file));
+        const 包 = 要登记单槽(绑定来源)
+          ? 构造跟踪(fence, 绑定来源, await 算文件核对(file))
+          : 无跟踪;
         let 文件: BFF附件简历;
         try {
           文件 = 包.跟踪
             ? await 后端.替换附件简历(fileId, 目标.revision, file, consent, 包.跟踪)
             : await 后端.替换附件简历(fileId, 目标.revision, file, consent);
         } catch (错误) {
-          清确定拒绝的槽(错误, fence, 包.取本槽命令());
-          return await 收口变更错误(错误, fence, { kind: 'replace', 动作前 });
+          return await 收口变更错误(错误, fence, { kind: 'replace', 动作前 }, 包.取本槽命令());
         }
         交出来源(fence, 绑定来源, {
           file_id: 文件.file_id, version_id: 文件.current_version.version_id, parse_id: null,
@@ -523,15 +560,17 @@ export function 创建附件简历操作(deps: 后端操作依赖): 附件简历
         // terminal updated_at 的发送前基线：not_started 没有 updated_at
         const 发送前解析 = 目标.current_version.parse;
         const 发送前更新时间 = 'updated_at' in 发送前解析 ? 发送前解析.updated_at : null;
-        const 包 = 构造跟踪(fence, 绑定来源, null); // 解析命令没有文件字节，也就没有文件核对
+        // 解析命令没有文件字节，也就没有文件核对（它按 请求体 认同一条命令）
+        const 包 = 构造跟踪(fence, 绑定来源, undefined);
         let 状态: BFF附件解析状态;
         try {
           状态 = 包.跟踪
             ? await 后端.请求附件解析(fileId, versionId, consent, 包.跟踪)
             : await 后端.请求附件解析(fileId, versionId, consent);
         } catch (错误) {
-          清确定拒绝的槽(错误, fence, 包.取本槽命令());
-          return await 收口变更错误(错误, fence, { kind: 'parse', fileId, versionId, 发送前更新时间 });
+          return await 收口变更错误(
+            错误, fence, { kind: 'parse', fileId, versionId, 发送前更新时间 }, 包.取本槽命令(),
+          );
         }
         // 解析只针对本次 receipt 的版本：parse_id 只在服务端真的 succeeded 时才有
         交出来源(fence, 绑定来源, {

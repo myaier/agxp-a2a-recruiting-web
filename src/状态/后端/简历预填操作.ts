@@ -34,6 +34,7 @@ import type {
   BFF简历预填来源,
 } from '../../数据/BFF契约';
 import { 清账号状态 } from './会话操作';
+import { 释放建档文件槽 } from './附件简历操作';
 import type {
   候选预填Eligibility,
   候选预填绑定来源,
@@ -345,6 +346,13 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
       落来源失效(); // 本轮文件已不在库：明确失败，不改绑另一份文件
       return;
     }
+    // review r1 F1：回执已交出、权威 GET 还没落地的窗口里，快照仍停在本轮的**前一个版本**
+    //（上传失败重读 503 时这个窗口必然持续）。此时绝不能反向重绑回去 —— 否则上一份 PDF 的
+    // succeeded 解析会被当成本轮结果回填，恢复元数据也会被旧 version 盖掉（刷新即失配丢轮）。
+    // 判据：本轮刚由回执绑定（arming 且 parse_id 尚未升级）而快照版本与回执不符 = 快照是前身，
+    // 零动作等权威库收敛（poller / 下一次权威 GET 会带来本轮版本）。
+    if (状态.phase === 'arming' && 本轮来源.parse_id === null
+      && 附件.current_version.version_id !== 本轮来源.version_id) return;
     // 同一份文件被替换出新版本才算换绑（旧版本的建议不可回填）
     const 换绑 = 本轮来源.version_id !== 附件.current_version.version_id;
     const 基底: 候选预填状态 = 换绑
@@ -494,6 +502,10 @@ export function 创建简历预填操作(deps: 后端操作依赖): 简历预填
 
     继续手填候选Onboarding() {
       if (!是候选会话()) return;
+      // review r1 裁决 B：继续手填 = 明确放弃那条还没结算的可选上传 —— 先释放建档单槽，
+      // 后续建档保存不再被一条永远不会自证的文件命令挡住。零请求、不删文件、
+      // 不声称上传失败、也不声称后台解析被取消（本轮的 exact source 元数据仍在）。
+      释放建档文件槽(引用);
       const 状态 = 当前预填状态();
       if (状态.phase === 'inactive' || 状态.phase === 'manual') return;
       const 手填 = { ...状态, phase: 'manual' as const, suggestion: null };

@@ -64,11 +64,12 @@ export default function 学生分流() {
   //   ② 库里恰好只有一行时那唯一可准确识别的文件。
   // 旅程外有多份 active 文件时没有可认领的行 —— 不按 items[0] 回显，也不覆盖任何一份：
   // 本次明确上传走 create，已有附件保持不变（不新增多附件选择器）。
+  // 本轮已绑定来源时**只认**那一行：它若已从权威库消失，本屏就没有可替换的目标
+  //（review r1：否则「唯一一行」兜底会让替换落到一份与本轮无关的简历上）。
   const 本轮来源 = 预填.source;
-  const 本轮附件 = 本轮来源 === null
-    ? null
-    : 附件库?.items.find((条) => 条.file_id === 本轮来源.file_id) ?? null;
-  const 最近附件 = 本轮附件 ?? (附件库?.items.length === 1 ? 附件库.items[0] : null);
+  const 最近附件 = 本轮来源 !== null
+    ? 附件库?.items.find((条) => 条.file_id === 本轮来源.file_id) ?? null
+    : (附件库?.items.length === 1 ? 附件库.items[0] : null);
   const [离页确认, 设离页确认] = useState(false);
   const 已恢复引用 = useRef(false);
   const 上一预填阶段 = useRef(预填.phase);
@@ -308,6 +309,11 @@ export default function 学生分流() {
         启程并跳转();
         return;
       }
+      // 本轮没有自动预填轮（从未上传，或上传结果未知所以没拿到回执）：离开本屏就是
+      // 明确放弃那条可选上传（review r1 裁决 B）—— 同一个「继续手填」动作在无轮时
+      // 只释放未结算的文件单槽，不写状态、不提示、不声称上传失败或解析被取消。
+      // ready / manual 轮不走这里：那会把已到手的建议或已有的手填落点改掉。
+      if (预填.phase === 'inactive') 操作.继续手填候选Onboarding();
     }
     启程并跳转();
   };
