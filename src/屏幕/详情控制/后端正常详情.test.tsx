@@ -319,8 +319,9 @@ describe('后端正常详情 · 组装（A/B 纯展示 props + 动作卡 + 弹�
     expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
     expect(screen.getByText('旧版状态待核实，请交负责人处理')).toBeTruthy();
-    // end_screening 卡经同一 renderer（详情动作卡）在场（保留允许的既有 end 路径）
-    expect(screen.getByRole('button', { name: '结束初筛' })).toBeTruthy();
+    // review-r1（Spec §7「停止该卡交互」）：旧 S0 needs_user 行的 end_screening 卡不再出
+    //（旧响应仍携带时被行白名单摘除挡下）；既有 end/邀请路径见 S0 passed 行用例
+    expect(screen.queryByRole('button', { name: '结束初筛' })).toBeNull();
     // 底栏：原 textarea 保留但真实禁用，placeholder 为 S0 文案（不是只读 div）
     const 框 = screen.getByPlaceholderText('双方 AI 代理正在确认条件') as HTMLTextAreaElement;
     expect(框.disabled).toBe(true);

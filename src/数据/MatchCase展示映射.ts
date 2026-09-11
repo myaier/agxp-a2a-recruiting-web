@@ -167,9 +167,11 @@ export interface P5展示状态行 {
  * 可出动作列 = 已准入投影器 matchcase/lifecycle.go lifecycleViewerActions 在该行三元组下
  * 一切事实组合所能出卡的角色无关并集（over-narrow 会藏掉后端真给的卡，一律取并集；
  * over-broad 在交集规则下惰性）。逐行依据：终态恒空；J-PILOT-01（Spec §7）双端 S0 不再
- * 提供人工补事实 —— needs_user 行不再出 respond_fact（旧后端若仍返回该动作由交集惰性
- * 挡下，人工待核实说明走 注意说明），只剩 end_screening 与 passed 行的邀请二卡
- * （ResumeInvitationPending ⇔ step=awaiting_candidate_resume_invitation，仅此行），
+ * 提供人工补事实 —— needs_user 行不再出 respond_fact，review-r1 起也不再出 end_screening
+ *（Spec §7 明文「若遇旧 S0 needs_user/human_decision 卡，不自动结束或伪装新终局，明确标为
+ * 旧状态待核实、停止该卡交互并交负责人处理」——end_screening 是该卡上的交互，必须停；
+ * 旧后端若仍返回这两个动作由交集惰性挡下，人工待核实说明走 注意说明），只剩 passed 行的
+ * 邀请二卡（ResumeInvitationPending ⇔ step=awaiting_candidate_resume_invitation，仅此行），
  * running/waiting/attention_required 行落空；S1 waiting 行候选端可出
  * retry_resume_readiness（披露前解析等待），needs_user 行并集候选端 retry/replace 与
  * 招聘端 decide_resume_screening，attention_required 行落空；S2 协同块不绑 status，
@@ -181,7 +183,9 @@ const 矩阵元组表 = [
     ['policy_check', 'candidate_evaluation', 'candidate_question', 'recruiter_answer', 'candidate_reevaluation'],
     []],
   ['open', 'anonymous_screening', 'waiting', ['candidate_reevaluation'], []],
-  ['open', 'anonymous_screening', 'needs_user', ['human_decision'], ['end_screening']],
+  // review-r1（Spec §7 停止该卡交互）：旧 S0 needs_user/human_decision 行可出动作清空 ——
+  // end_screening 不再出卡，待核实说明与禁用输入之外的交互全部停止。
+  ['open', 'anonymous_screening', 'needs_user', ['human_decision'], []],
   ['open', 'anonymous_screening', 'passed',
     ['complete', 'awaiting_candidate_resume_invitation', 'awaiting_resume_parse'],
     ['accept_resume_invitation', 'decline_resume_invitation']],
@@ -683,8 +687,9 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
   }
 
   // 按钮可见性 = 行白名单 ∩ available_actions（交集，绝不加、绝不 infer）。
-  // J-PILOT-01（Spec §7）：S0 行白名单已不再含 respond_fact —— 双端零人工补事实输入，
-  // 旧后端若仍返回该动作由交集惰性挡下；人工待核实说明走 注意说明。
+  // J-PILOT-01（Spec §7）：S0 行白名单已不再含 respond_fact；review-r1 起旧 S0 needs_user
+  // 行也不含 end_screening（停止该卡交互）—— 双端零人工补事实输入，旧后端若仍返回这些
+  // 动作由交集惰性挡下；人工待核实说明走 注意说明。
   const 动作卡 = 渲染动作卡(offered, 行);
 
   // P7 Task 6：completed 行两步移交 —— handoff_pending（无 ref）pending；

@@ -1137,10 +1137,16 @@ describe('MatchCase数据源', () => {
     expect(详情).toMatchObject({ needsAction: false, availableActions: [] });
   });
 
-  it('新终局约束：outcome 必须与 outcome_code 同词，混入其它终局词、非匿名初筛行或坏时间都漂移', () => {
+  it('新终局约束：outcome 必须与 outcome_code 同词（双向），混入其它终局词、非匿名初筛行或坏时间都漂移', () => {
     for (const 变体 of [
       { ...信息不足状态Wire, outcome: 'semantic_not_fit' },
       { ...信息不足状态Wire, outcome: 'user_ended' },
+      // 反向漂移：outcome 已是 semantic_uncertain_stop 而 outcome_code 是其它终局词。
+      // 冻结契约的 outcome 是 oneOf [string,null]（无枚举），只有 outcome_code→outcome
+      // 单向 allOf —— 成对要求（Spec §7）必须在此双向钉死，否则展示层按 outcome 映射
+      // 「信息不足」会掩盖真实 code 不一致。
+      { ...信息不足状态Wire, outcome_code: 'semantic_not_fit' },
+      { ...信息不足状态Wire, outcome_code: 'user_ended' },
       { ...信息不足状态Wire, stage: 'resume_submission' },
       { ...信息不足状态Wire, step: 'human_decision' },
       { ...信息不足状态Wire, status: 'waiting' },
@@ -1151,5 +1157,27 @@ describe('MatchCase数据源', () => {
     }
     // 旧合法其它终局仍可读（语义未定的新约束不追溯）
     expect(解P5状态视图(P5已终止状态Wire).outcomeCode).toBe('user_ended');
+  });
+
+  it('反向不配对的完整 ended 详情变体同样拒绝：成对校验不得被终局摘要的对齐绕过', () => {
+    // 终局摘要逐字段与 state 对齐（outcome/outcome_code 各自复述），只靠摘要对齐无法暴露
+    // 反向漂移 —— decoder 必须在 state 层成对拒绝
+    expect(() => 解P5详情({
+      ...P5候选详情Wire,
+      state: { ...信息不足状态Wire, outcome_code: 'semantic_not_fit' },
+      needs_action: false,
+      available_actions: [],
+      terminal_summary: {
+        stage: 'anonymous_screening',
+        outcome: 'semantic_uncertain_stop',
+        reason_summary: 'semantic_not_fit',
+        finalized_at: '2026-09-10T03:00:00Z',
+      },
+    }, 'candidate')).toThrow(契约漂移);
+    // 合法成对对照仍通过（冻结文案映射由 展示映射 测试钉死）
+    expect(解P5状态视图(信息不足状态Wire)).toMatchObject({
+      outcome: 'semantic_uncertain_stop',
+      outcomeCode: 'semantic_uncertain_stop',
+    });
   });
 });

@@ -2361,6 +2361,159 @@ describe('J-PILOT-01 Task 3：委托待核对命令（create）', () => {
     randomUUID.mockRestore();
   });
 
+  // ── review-r1 F2（Spec §8「409 按 code 区分…回读真实状态，不绕过门槛」+ 恢复顺序）：
+  //    create 的 409 先权威回读（原意向推荐列表 + active 连续列表辅助核对），回读唯一辨认出
+  //    该 intention-job 的记录才收口，绝不把 409 当受理/未受理证明，也不立即二次 POST。──
+
+  /** active 连续列表行的最小桩：辅助核对只读 intention/job/record/delegation 坐标。 */
+  function 连续列表行桩(覆盖: {
+    recordId: string;
+    intentionId?: string;
+    jobId?: string;
+    delegationId?: string | null;
+  }) {
+    const 基座 = 连续聚合桩(覆盖.recordId);
+    return {
+      ...基座,
+      intention_id: 覆盖.intentionId ?? 'int_1',
+      job: { ...基座.job, job_id: 覆盖.jobId ?? 'job_1' },
+      delegation_id: 覆盖.delegationId === undefined ? 覆盖.recordId : 覆盖.delegationId,
+    };
+  }
+
+  /** 种一份当前主体的 active 连续首屏：收口失效的可观察证据（同 2200 用例口径）。 */
+  function 种active连续首屏() {
+    env.deps.设后端状态((旧) => ({
+      ...旧,
+      P5连续列表: {
+        'p5:negotiations:candidate:active': {
+          ownerSubjectId: 'sub_1', 阶段: '成功', 刷新中: false, items: [],
+          nextCursor: null, 已加载页数: 1, error: null, generation: 0,
+        },
+      },
+    }));
+  }
+
+  it('create 409 先权威回读：POST 之后是推荐列表+active 连续列表（无立即二次 POST），未命中保留原命令', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('r1-409-key-0001'));
+    vi.mocked(env.数据源.创建候选岗位委托)
+      .mockRejectedValueOnce(new BFF错误(409, 'idempotency_conflict', 'conflict'));
+    await expect(env.操作.委托候选岗位(候选委托输入))
+      .rejects.toMatchObject({ code: 'idempotency_conflict' });
+    // 顺序：POST → 权威回读（原意向推荐列表、active 连续列表首屏），零第二次 POST
+    expect(env.数据源.创建候选岗位委托).toHaveBeenCalledTimes(1);
+    const POST序 = vi.mocked(env.数据源.创建候选岗位委托).mock.invocationCallOrder[0];
+    const 推荐读序 = vi.mocked(env.数据源.读取候选岗位推荐).mock.invocationCallOrder.at(-1);
+    const 连续读序 = vi.mocked(env.数据源.读取候选连续列表).mock.invocationCallOrder.at(-1);
+    expect(推荐读序).toBeGreaterThan(POST序!);
+    expect(连续读序).toBeGreaterThan(POST序!);
+    expect(vi.mocked(env.数据源.读取候选岗位推荐)).toHaveBeenCalledWith('int_1');
+    expect(vi.mocked(env.数据源.读取候选连续列表)).toHaveBeenCalledWith('active', null);
+    // 回读未命中（两腿都空）：原命令完整保留（原 key/body）待用户显式核对，零 canonical 收口
+    expect(env.数据源.读取候选连续详情).not.toHaveBeenCalled();
+    expect(env.操作.取候选待核对命令('int_1', 'job_1')).toMatchObject({ key: 'r1-409-key-0001' });
+    randomUUID.mockRestore();
+  });
+
+  it('409 回读唯一命中该 intention-job 的记录：补 ID 收口、读 canonical、删 pending、失效 active 首屏、零重放', async () => {
+    种active连续首屏();
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('r1-hit-key-0001'))
+      .mockReturnValue(UUID键('r1-hit-fresh-0002'));
+    vi.mocked(env.数据源.创建候选岗位委托)
+      .mockRejectedValueOnce(new BFF错误(409, 'idempotency_conflict', 'conflict'));
+    vi.mocked(env.数据源.读取候选连续列表).mockResolvedValueOnce({
+      items: [连续列表行桩({ recordId: 'dlg_r1_hit' })], next_cursor: null,
+    } as never);
+    await expect(env.操作.委托候选岗位(候选委托输入))
+      .rejects.toMatchObject({ code: 'idempotency_conflict' }); // 409 本身照抛，不当受理证明
+    // 零重放：409 收口绝不再次 POST
+    expect(env.数据源.创建候选岗位委托).toHaveBeenCalledTimes(1);
+    // 按 收口待核对回执 同款收口：补 ID（已确认）、读 canonical、删 pending、失效 active 首屏
+    expect(env.数据源.读取候选连续详情).toHaveBeenCalledWith('dlg_r1_hit');
+    expect(env.操作.取候选待核对命令('int_1', 'job_1')).toBeNull();
+    expect(env.最新状态().P5连续列表['p5:negotiations:candidate:active']).toBeUndefined();
+    // 权威记录在手释放意图键：下一次同 pair 委托是新意图新键
+    expect(randomUUID).toHaveBeenCalledTimes(1);
+    vi.mocked(env.数据源.创建候选岗位委托)
+      .mockResolvedValueOnce([{ ...BFF候选委托回执样本, delegation_id: 'del_after_hit' }]);
+    await env.操作.委托候选岗位(候选委托输入);
+    expect(vi.mocked(env.数据源.创建候选岗位委托).mock.calls[1][0]).toMatchObject({
+      idempotencyKey: 'r1-hit-fresh-0002',
+    });
+    randomUUID.mockRestore();
+  });
+
+  it('409 回读出现多个不同坐标（同 pair 两条记录）：无法唯一辨认 → 不收口、保留原命令', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('r1-amb-key-0001'));
+    vi.mocked(env.数据源.创建候选岗位委托)
+      .mockRejectedValueOnce(new BFF错误(409, 'idempotency_conflict', 'conflict'));
+    vi.mocked(env.数据源.读取候选连续列表).mockResolvedValueOnce({
+      items: [
+        连续列表行桩({ recordId: 'dlg_r1_a' }),
+        连续列表行桩({ recordId: 'dlg_r1_b' }),
+      ], next_cursor: null,
+    } as never);
+    await expect(env.操作.委托候选岗位(候选委托输入))
+      .rejects.toMatchObject({ code: 'idempotency_conflict' });
+    expect(env.数据源.读取候选连续详情).not.toHaveBeenCalled(); // 零 canonical 收口（不猜一条）
+    expect(env.操作.取候选待核对命令('int_1', 'job_1')).toMatchObject({ key: 'r1-amb-key-0001' });
+    expect(env.数据源.创建候选岗位委托).toHaveBeenCalledTimes(1);
+    randomUUID.mockRestore();
+  });
+
+  it('409 回读只认精确 pair：另一意向的同岗位记录不算命中，原命令保留（同 job ≠ 原命令）', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('r1-cross-key-0001'));
+    vi.mocked(env.数据源.创建候选岗位委托)
+      .mockRejectedValueOnce(new BFF错误(409, 'idempotency_conflict', 'conflict'));
+    vi.mocked(env.数据源.读取候选连续列表).mockResolvedValueOnce({
+      items: [连续列表行桩({ recordId: 'dlg_r1_int2', intentionId: 'int_2' })], next_cursor: null,
+    } as never);
+    await expect(env.操作.委托候选岗位(候选委托输入))
+      .rejects.toMatchObject({ code: 'idempotency_conflict' });
+    expect(env.数据源.读取候选连续详情).not.toHaveBeenCalled();
+    expect(env.操作.取候选待核对命令('int_1', 'job_1')).toMatchObject({ key: 'r1-cross-key-0001' });
+    randomUUID.mockRestore();
+  });
+
+  it('核对未确认命令先辅助核对：回读命中 → 零重放、按已确认收口；未命中 → 原 key+body 恰重放一次', async () => {
+    // 命中：硬刷新后存储里只有未确认 create，active 列表已有该 pair 的唯一记录
+    const 共享存储 = 创建内存存储();
+    const 未确认命令: 待核对命令 = {
+      operation: 'create', key: 'r1-verify-key', intention_id: 'int_1',
+      selection: { items: [{ job_id: 'job_1' }] },
+      resume_file_id: 'rf_1', resume_file_version_id: 'rfv_7',
+      disclosure_acknowledged: true,
+    };
+    保存待核对(共享存储, 待核对owner, [未确认命令]);
+    const env2 = 创建P4操作测试环境({ 待核对存储: 共享存储 });
+    vi.mocked(env2.数据源.读取候选连续列表).mockResolvedValueOnce({
+      items: [连续列表行桩({ recordId: 'dlg_r1_verify' })], next_cursor: null,
+    } as never);
+    await env2.操作.核对候选委托('int_1', 'job_1');
+    expect(env2.数据源.创建候选岗位委托).not.toHaveBeenCalled(); // 重放前辅助核对命中：零 POST
+    expect(env2.数据源.读取候选连续详情).toHaveBeenCalledWith('dlg_r1_verify');
+    expect(env2.操作.取候选待核对命令('int_1', 'job_1')).toBeNull();
+    expect(读取待核对(共享存储, 待核对owner).命令).toEqual([]);
+
+    // 未命中：显式核对仍只原 key+body 重放一次（随后回读收口走 fresh 同款路径）
+    const env3 = 创建P4操作测试环境({ 待核对存储: 共享存储 });
+    保存待核对(共享存储, 待核对owner, [未确认命令]);
+    vi.mocked(env3.数据源.创建候选岗位委托)
+      .mockResolvedValueOnce([{ ...BFF候选委托回执样本, delegation_id: 'del_r1_replay' }]);
+    await env3.操作.核对候选委托('int_1', 'job_1');
+    expect(env3.数据源.创建候选岗位委托).toHaveBeenCalledTimes(1); // 每次恢复最多一次重放
+    expect(vi.mocked(env3.数据源.创建候选岗位委托).mock.calls[0][0]).toEqual({
+      intentionId: 'int_1', jobId: 'job_1',
+      resumeFileId: 'rf_1', resumeFileVersionId: 'rfv_7',
+      idempotencyKey: 'r1-verify-key', disclosureAcknowledged: true,
+    });
+    expect(env3.操作.取候选待核对命令('int_1', 'job_1')).toBeNull();
+  });
+
   it('明确拒绝（400）收口未决命令：下一次委托是新意图新键', async () => {
     const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
       .mockReturnValueOnce(UUID键('reject-key-0001'))

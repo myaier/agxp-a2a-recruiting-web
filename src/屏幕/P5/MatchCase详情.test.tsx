@@ -1307,13 +1307,14 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
   it('S0 respond_fact 零输入（路由级）：无回答框/提交键，零人工补事实请求；待核实说明在场', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    // J-PILOT-01（Spec §7）：S0 不再提供 respond_fact 输入/提交 —— 白名单摘除后零回答区，
-    // 旧 S0 needs_user/human_decision 行只剩 待核实说明 与允许的 end 路径
+    // J-PILOT-01（Spec §7）：S0 不再提供 respond_fact 输入/提交 —— 白名单摘除后零回答区；
+    // review-r1 起旧 S0 needs_user/human_decision 行的 end_screening 也停（停止该卡交互），
+    // 只剩 待核实说明 与禁用输入
     expect(await screen.findByText('旧版状态待核实，请交负责人处理')).toBeTruthy();
     expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
     expect(screen.queryByText('补充事实')).toBeNull();
-    expect(screen.getAllByRole('button', { name: '结束初筛' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: '结束初筛' })).toBeNull();
     expect(mock回答事实).not.toHaveBeenCalled(); // 双端 S0 零人工补事实请求
   });
 
@@ -1345,21 +1346,20 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     expect(mock回答事实).not.toHaveBeenCalled();
   });
 
-  it('S0 respond_fact 零输入：无补充事实卡/回答框，只剩结束卡；旧 S0 行给待核实说明', () => {
+  it('S0 respond_fact 零输入：无补充事实卡/回答框，旧 S0 行给待核实说明', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
     // J-PILOT-01（Spec §7）：S0 不再提供 respond_fact 输入/提交 —— 白名单摘除后无卡
     expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
     expect(screen.queryByText('补充事实')).toBeNull();
-    // 待核实说明（注意说明）+ 允许的既有 end 路径仍在
+    // 待核实说明（注意说明）在场；review-r1 起该行的 end_screening 卡也停（停止该卡交互）
     expect(screen.getByText('旧版状态待核实，请交负责人处理')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: '结束初筛' })).toHaveLength(1);
-    expect(screen.getByText('结束本次匿名初筛')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '结束初筛' })).toBeNull();
+    expect(screen.queryByText('结束本次匿名初筛')).toBeNull();
   });
 
-  it('S0 只有结束动作（respond_fact 白名单摘除），没有继续初筛', async () => {
-    const user = userEvent.setup();
+  it('旧 S0 needs_user 行携带 respond_fact/end_screening：无任何动作卡，零请求（Spec §7 停止该卡交互）', async () => {
     置详情状态({
       role: 'candidate',
       快照: 详情快照({
@@ -1369,19 +1369,14 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     渲染详情('candidate', 'mc_direct');
 
     // 「继续初筛」是前端自造的未授权动作：任何形态都不出现（spec §10.1）；
-    // respond_fact 也不再出任何输入控件（J-PILOT-01，Spec §7）
+    // respond_fact 也不再出任何输入控件（J-PILOT-01，Spec §7）；
+    // review-r1：end_screening 随旧 S0 行停止交互一并摘除 —— 决定S0 在该行零调用
+    //（既有 end 路径由 S0 passed 行的婉拒邀请承接）
     expect(screen.queryByRole('button', { name: '继续初筛' })).toBeNull();
     expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
-    await user.click(screen.getByRole('button', { name: '结束初筛' }));
+    expect(screen.queryByRole('button', { name: '结束初筛' })).toBeNull();
     expect(mock决定S0).not.toHaveBeenCalled();
-    const 确认框 = screen.getByRole('dialog');
-    expect(within(确认框).getByText('结束后这一单立即终止，无法恢复。')).toBeTruthy();
-    await user.click(within(确认框).getByRole('button', { name: '暂不结束' })); // 取消零请求
-    expect(mock决定S0).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: '结束初筛' }));
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '结束初筛' }));
-    expect(mock决定S0).toHaveBeenCalledTimes(1);
-    expect(mock决定S0).toHaveBeenCalledWith('mc_direct', 'end');
+    expect(mock回答事实).not.toHaveBeenCalled();
   });
 
   it('end_screening（招聘）：wire 缺 recruiter decisions 臂 → 零控件零请求（fail closed，后端缺口观察）', async () => {
@@ -2531,7 +2526,7 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     expect(screen.getAllByText('初评：初评已确认岗位在浦东园区，值班安排仍待确认。').length).toBe(1);
   });
 
-  it('旧摘要/清单/附件/叮嘱与允许的 end 卡仍在；S0 respond_fact 零输入零请求', async () => {
+  it('旧摘要/清单/附件/叮嘱仍在；S0 respond_fact 零输入零请求（review-r1：end 卡也停）', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
     渲染详情('candidate', 'mc_direct');
     expect(await screen.findByText('系统正在复评候选信息')).toBeTruthy(); // 旧步骤摘要头行
@@ -2539,10 +2534,11 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     expect(screen.getByText('简历已绑定')).toBeTruthy();
     expect(screen.getByText('工作日 10:00-19:00 联系')).toBeTruthy(); // 叮嘱回执
     expect(screen.getByRole('button', { name: /后端工程师_简历_v1\.pdf/ })).toBeTruthy(); // 附件入口
-    // J-PILOT-01（Spec §7）：无 respond_fact 卡/回答框，零人工补事实请求
+    // J-PILOT-01（Spec §7）：无 respond_fact 卡/回答框，零人工补事实请求；
+    // review-r1：旧 S0 needs_user 行的 end_screening 卡也停（停止该卡交互）
     expect(screen.queryByText('补充事实')).toBeNull();
     expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
-    expect(screen.getByRole('button', { name: '结束初筛' })).toBeTruthy(); // 终结卡仍在
+    expect(screen.queryByRole('button', { name: '结束初筛' })).toBeNull();
     expect(mock回答事实).not.toHaveBeenCalled();
   });
 

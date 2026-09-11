@@ -214,6 +214,8 @@ export function use后端详情动作({
   // 动作卡：只从 视图.actions 的映射交集出卡，标题/说明原样保留。
   // 招聘端结束卡零控件零请求（wire 缺 recruiter decisions 臂，fail closed）；候选端结束
   // 键只保留 end 一条准许路线。S0 respond_fact 不再出卡（映射白名单摘除，Spec §7）。
+  // review-r1（Spec §7 停止该卡交互）：旧 S0 needs_user 行白名单已移除 end_screening，
+  // 该卡经映射不再可达；下方 end_screening handler 仅为既有接口保留（不清全站旧接口）。
   // S2/S3（Task 8 迁入）：typed 栅栏 —— 当前协同块在场、本端必需且未决才给决定键
   // （issueId 只取当前块）；本端意向词为空才给确认/婉拒键。缺坐标一律零控件零请求。
   const 协同块 = 详情.currentCoordination;

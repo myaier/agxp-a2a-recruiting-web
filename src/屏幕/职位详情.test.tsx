@@ -36,8 +36,9 @@ const mock标记岗位不感兴趣 = vi.fn(async () => undefined);
 const mock委托候选岗位 = vi.fn();
 const mock设置发现推荐范围 = vi.fn();
 const mock刷新委托 = vi.fn(async () => undefined);
-// J-PILOT-01 Task 3：待核对投影与核对口（默认无未决命令）
-const mock取候选待核对命令 = vi.fn((): import('../状态/后端/委托待核对').待核对命令 | null => null);
+// J-PILOT-01 Task 3：待核对投影与核对口（默认无未决命令；签名与真实操作方法同形）
+const mock取候选待核对命令 = vi.fn(
+  (_intentionId: string, _jobId: string): import('../状态/后端/委托待核对').待核对命令 | null => null);
 const mock核对候选委托 = vi.fn(async () => undefined);
 // P5 Task 3：委托前的权威附件库准备（附件简历操作 域的桩）
 const mock准备候选委托简历 = vi.fn();
@@ -964,6 +965,85 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(screen.queryByRole('button', { name: '核对提交结果' })).toBeNull();
     await 用户.click(主键);
     expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock核对候选委托).not.toHaveBeenCalled();
+  });
+
+  // ── review-r1 F3（Spec §8「离开岗位页、切意向不能丢弃」「无 ID 可用原意向的推荐…辅助核对」）：
+  //    未知 create 后刷新出的推荐已不含该岗位（或快照重建中该卡缺席）时，sessionStorage 里的
+  //    原命令仍要能核对 —— pending 查询/核对回调不得依赖推荐卡在场。──
+
+  /** 该 intention-job 的未决 create 命令（坐标随 pending 自身冻结）。 */
+  const 待核对创建命令 = (intentionId: string, jobId: string): import('../状态/后端/委托待核对').待核对命令 => ({
+    operation: 'create',
+    key: 'idem-card-absent-1',
+    intention_id: intentionId,
+    selection: { items: [{ job_id: jobId }] },
+    resume_file_id: 'rf_1',
+    resume_file_version_id: 'rfv_7',
+    disclosure_acknowledged: true,
+  });
+
+  it('硬刷新后原意向 pending 在场、快照成功但岗位卡缺席：仍出现「核对提交结果」并核对原命令', async () => {
+    const 用户 = userEvent.setup();
+    渲染Backend状态({
+      当前意向编号: 'int_1',
+      // 快照成功但 items 里没有 job_1 这张卡（未知 create 后推荐已不含该岗位）
+      候选岗位推荐: { int_1: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 } },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+      待核对命令: 待核对创建命令('int_1', 'job_1'),
+    });
+    render(路由元素('job_1'));
+    // 不是「当前求职意向暂无这条推荐」的只读空态：pending 在场即给核对入口
+    const 主键 = screen.getByRole('button', { name: '核对提交结果' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(false);
+    await 用户.click(主键);
+    // 查询与核对都用 pending 自身冻结的 intention/job 坐标（沿用原 body/key 的核对归操作层）
+    expect(mock取候选待核对命令).toHaveBeenCalledWith('int_1', 'job_1');
+    expect(mock核对候选委托).toHaveBeenCalledWith('int_1', 'job_1');
+  });
+
+  it('岗位卡缺席但 pending 已确认回执带已知 ID：主键「查看进展」按持久记录坐标导航', async () => {
+    const 用户 = userEvent.setup();
+    渲染Backend状态({
+      当前意向编号: 'int_1',
+      候选岗位推荐: { int_1: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 } },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+      待核对命令: {
+        operation: 'create',
+        key: 'idem-card-absent-1',
+        intention_id: 'int_1',
+        selection: { items: [{ job_id: 'job_1' }] },
+        resume_file_id: 'rf_1',
+        resume_file_version_id: 'rfv_7',
+        disclosure_acknowledged: true,
+        delegation_id: 'del_absent_1',
+        已确认回执: true,
+      },
+    });
+    render(路由元素('job_1'));
+    const 主键 = screen.getByRole('button', { name: '查看进展' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(false);
+    await 用户.click(主键);
+    expect(mock跳转).toHaveBeenCalledWith('/deal/del_absent_1');
+    expect(mock核对候选委托).not.toHaveBeenCalled();
+  });
+
+  it('另一意向的同岗位 pending 不被误取：查询按 当前意向+岗位 精确 pair', async () => {
+    const 用户 = userEvent.setup();
+    // 只有 int_2 的 pending 存在；当前意向是 int_1 → 不得借坐标
+    mock取候选待核对命令.mockImplementation((intentionId: string, jobId: string) =>
+      intentionId === 'int_2' && jobId === 'job_1' ? 待核对创建命令('int_2', 'job_1') : null);
+    渲染Backend状态({
+      当前意向编号: 'int_1',
+      候选岗位推荐: { int_1: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 } },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
+    render(路由元素('job_1'));
+    expect(mock取候选待核对命令).toHaveBeenCalledWith('int_1', 'job_1');
+    expect(screen.queryByRole('button', { name: '核对提交结果' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    const 主键 = screen.getByRole('button', { name: '当前求职意向暂无这条推荐' }) as HTMLButtonElement;
+    await 用户.click(主键);
     expect(mock核对候选委托).not.toHaveBeenCalled();
   });
 });

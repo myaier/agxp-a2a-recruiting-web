@@ -451,11 +451,16 @@ export function 解P5状态视图(input: unknown): P5状态视图 {
   if (lifecycle === 'completed' && (outcome !== null || outcomeCode !== null || finalizedAt === null)) {
     throw 契约错误();
   }
-  // J-PILOT-01 C1：S0 信息不足终局（semantic_uncertain_stop）成对且行位固定 —— outcome 与
-  // outcome_code 必须同为该词，且只能落在 ended/anonymous_screening/ended/complete 的合法
-  // 终局行（needs_user 已被矩阵与镜像规则约束为 false）；旧合法其它终局不受此约束追溯。
-  if (outcomeCode === 'semantic_uncertain_stop') {
-    if (outcome !== 'semantic_uncertain_stop' || lifecycle !== 'ended' ||
+  // J-PILOT-01 C1（review-r1 双向成对）：S0 信息不足终局（semantic_uncertain_stop）成对且行位
+  // 固定 —— 冻结契约的 outcome 是 oneOf [string,null]（无枚举），只有 outcome_code→outcome
+  // 单向 allOf；Spec §7「严格解码并映射 outcome=outcome_code=semantic_uncertain_stop」要求
+  // 任一字段命中都双向成对（反向 outcome 命中而 code 是其它终局词同样漂移，否则展示层按
+  // outcome 映射「信息不足」会掩盖真实 code 不一致），且只能落在
+  // ended/anonymous_screening/ended/complete 的合法终局行（needs_user 已被矩阵与镜像规则
+  // 约束为 false）；旧合法其它终局不受此约束追溯。
+  if (outcome === 'semantic_uncertain_stop' || outcomeCode === 'semantic_uncertain_stop') {
+    if (outcome !== 'semantic_uncertain_stop' || outcomeCode !== 'semantic_uncertain_stop' ||
+      lifecycle !== 'ended' ||
       stage !== 'anonymous_screening' || status !== 'ended' || step !== 'complete' ||
       finalizedAt === null) {
       throw 契约错误();

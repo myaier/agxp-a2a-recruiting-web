@@ -497,14 +497,17 @@ describe('连续代谈数据源', () => {
   });
 
   it('agent_summary 与条件确认：双半可空、latest_summary 可空、S0 小结复用既有 decoder', () => {
-    expect(解NegotiationDetail(连续详情Wire({
+    // 聚合携带条件确认必须先有外层 Case 坐标（见 聚合身份一致 用例），故用开案详情底座
+    expect(解NegotiationDetail({
+      ...开案详情Wire,
       agent_summary: {
         public_evaluation: null,
         condition_confirmation: { ...条件确认Wire, latest_summary: null, summaries: [] },
       },
-    })).agent_summary.condition_confirmation).toMatchObject({ latest_summary: null, summaries: [] });
+    }).agent_summary.condition_confirmation).toMatchObject({ latest_summary: null, summaries: [] });
     // 复评小结轮次必须 ≥1（MatchCaseScreeningSummary 的 minimum:1）
-    expect(() => 解NegotiationDetail(连续详情Wire({
+    expect(() => 解NegotiationDetail({
+      ...开案详情Wire,
       agent_summary: {
         public_evaluation: null,
         condition_confirmation: {
@@ -512,7 +515,7 @@ describe('连续代谈数据源', () => {
           summaries: [{ id: 's0s_1', phase: 'reevaluation', round: 0, summary: '复评。', occurred_at: '2026-09-10T01:10:00Z' }],
         },
       },
-    }))).toThrow();
+    })).toThrow();
   });
 
   it('agent_summary / 失败史反例：缺键、坏枚举与非法事件', () => {
@@ -622,6 +625,32 @@ describe('连续代谈数据源', () => {
     expect(() => 解NegotiationCard(连续卡片Wire({
       job: { ...P5工作区职位Wire, availability: undefined } as unknown as Record<string, unknown>,
     }))).toThrow();
+  });
+
+  it('聚合身份一致：外层无 Case 时内层 Case 块必缺席；外层有 Case 时在场内层坐标必与之一致', () => {
+    // 外层 case_id=null（pre-Case）而任一内层 Case 块在场 → 跨记录聚合，整包拒绝
+    for (const 破损 of [
+      连续详情Wire({ case_state: P5状态视图Wire }),
+      连续详情Wire({ case_detail: P5候选详情Wire }),
+      连续详情Wire({ agent_summary: { public_evaluation: null, condition_confirmation: 条件确认Wire } }),
+      { ...开案详情Wire, case_id: null },
+    ]) {
+      expect(() => 解NegotiationDetail(破损)).toThrow();
+    }
+    // 外层 mc_1 而任一内层块来自另一 Case（mc_2）→ 各字段单独合法但归属不一致，拒绝
+    for (const 破损 of [
+      { ...开案详情Wire, case_state: { ...P5状态视图Wire, case_id: 'mc_2' } },
+      { ...开案详情Wire, case_detail: { ...P5候选详情Wire, state: { ...P5状态视图Wire, case_id: 'mc_2' } } },
+      {
+        ...开案详情Wire,
+        agent_summary: { public_evaluation: null, condition_confirmation: { ...条件确认Wire, case_id: 'mc_2' } },
+      },
+    ]) {
+      expect(() => 解NegotiationDetail(破损)).toThrow();
+    }
+    // 合法对照：开案详情全部内层坐标同为 mc_1，pre-Case 详情三块全空，均可读
+    expect(() => 解NegotiationDetail(开案详情Wire)).not.toThrow();
+    expect(() => 解NegotiationDetail(连续详情Wire())).not.toThrow();
   });
 
   // ── 回执解码 ──

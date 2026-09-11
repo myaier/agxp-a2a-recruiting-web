@@ -383,12 +383,6 @@ function 可控Promise<T>() {
 
 type 动作结果 = ReturnType<typeof use后端详情动作>;
 
-function 取卡(result: { current: 动作结果 }, 键: string) {
-  const 卡 = result.current.卡片们.find((条) => 条.键 === 键);
-  if (卡 === undefined) throw new Error(`S0 夹具必须提供 ${键} 卡`);
-  return 卡;
-}
-
 /** 挂 hook 的统一入口。 */
 function 挂动作(输入: 后端详情动作输入) {
   return renderHook((props: 后端详情动作输入) => use后端详情动作(props), { initialProps: 输入 });
@@ -430,68 +424,41 @@ function 动作输入(选项: {
 // ── J-PILOT-01（Spec §7）：S0 respond_fact 不再出输入/提交 ──
 
 describe('use后端详情动作 · S0 respond_fact 零输入（J-PILOT-01）', () => {
-  it('旧 S0 needs_user 行：不出 respond_fact 卡、无事实问题，只剩 end_screening；零请求', async () => {
+  it('旧 S0 needs_user 行：不出 respond_fact 卡、无事实问题；零请求', async () => {
     const 决定S0 = vi.fn(async (): Promise<void> => undefined);
     const { result } = 挂动作(动作输入({ 详情: S0详情DTO(), 决定S0 }));
-    expect(result.current.卡片们.map((卡) => 卡.键)).toEqual(['end_screening']);
+    expect(result.current.卡片们.map((卡) => 卡.键)).toEqual([]);
     expect(JSON.stringify(result.current)).not.toContain('prompt_1'); // 无补充问题视图/提交控件
     expect(决定S0).not.toHaveBeenCalled(); // 确认前零请求；S0 无任何人工补事实路径
   });
 
   it('招聘端同一行同样零输入：respond_fact 双端都不出卡', () => {
     const { result } = 挂动作(动作输入({ 详情: S0详情DTO({ role: 'recruiter' }) }));
-    expect(result.current.卡片们.map((卡) => 卡.键)).toEqual(['end_screening']);
+    expect(result.current.卡片们.map((卡) => 卡.键)).toEqual([]);
   });
 });
 
 describe('use后端详情动作 · end_screening（结束初筛）', () => {
-  it('保留原确认语义：确认前零请求，确认后 决定S0(caseId, end)，取消零请求', async () => {
+  // review-r1（Spec §7「停止该卡交互」）：旧 S0 needs_user/human_decision 行白名单已移除
+  // end_screening —— 旧响应仍携带该动作时双端零卡零请求。use后端详情动作 的 end_screening
+  // handler 仅为既有接口保留（不清全站旧接口），经真实映射不再可达。
+
+  it('旧 S0 needs_user 行携带 end_screening：候选端不出结束卡、零确认零请求', async () => {
     const 决定S0 = vi.fn(async (): Promise<void> => undefined);
     const { result } = 挂动作(动作输入({ 详情: S0详情DTO(), 决定S0 }));
-    const 卡 = 取卡(result, 'end_screening');
-    expect(卡.标题).toBe('结束初筛'); // 动作标题/说明保留
-    expect(卡.说明).toBe('结束本次匿名初筛');
-    const 键 = 卡.按钮们[0];
-    if (键 === undefined) throw new Error('候选端结束卡必须有一个结束键');
-
-    await act(async () => {
-      键.执行?.();
-    });
-    expect(决定S0).not.toHaveBeenCalled(); // 未确认零请求
-    const 确认 = result.current.终结确认;
-    if (确认 === null) throw new Error('结束初筛必须先过二次确认');
-    expect(确认.标题).toBe('结束本次匿名初筛？');
-    expect(确认.正文).toBe('结束后这一单立即终止，无法恢复。');
-    expect(确认.取消文).toBe('暂不结束');
-    await act(async () => {
-      确认.取消();
-    });
+    expect(result.current.卡片们.map((卡) => 卡.键)).toEqual([]);
     expect(result.current.终结确认).toBeNull();
     expect(决定S0).not.toHaveBeenCalled();
-
-    await act(async () => {
-      取卡(result, 'end_screening').按钮们[0]?.执行?.();
-    });
-    const 确认2 = result.current.终结确认;
-    if (确认2 === null) throw new Error('二次确认应在场');
-    await act(async () => {
-      确认2.执行();
-    });
-    expect(决定S0).toHaveBeenCalledTimes(1);
-    expect(决定S0).toHaveBeenCalledWith('mc_a', 'end');
-    expect(result.current.终结确认).toBeNull(); // 确认即收层
   });
 
-  it('招聘端结束卡零控件零请求（wire 缺 recruiter decisions 臂，fail closed）；回答卡双端仍可用', () => {
+  it('招聘端同一行同样不出结束卡：双端零控件零请求', () => {
     const 决定S0 = vi.fn(async (): Promise<void> => undefined);
     const { result } = 挂动作(
       动作输入({ 详情: S0详情DTO({ role: 'recruiter', 问题ref: 'prompt_hr' }), 决定S0 }),
     );
-    expect(取卡(result, 'end_screening').按钮们).toHaveLength(0); // 零控件
+    expect(result.current.卡片们.map((卡) => 卡.键)).toEqual([]);
     expect(result.current.终结确认).toBeNull();
     expect(决定S0).not.toHaveBeenCalled();
-    // J-PILOT-01：招聘端 S0 同样无 respond_fact 回答区（双端零人工补事实输入）
-    expect(result.current.卡片们.map((卡) => 卡.键)).toEqual(['end_screening']);
   });
 });
 
@@ -500,8 +467,8 @@ describe('use后端详情动作 · 返回合同', () => {
     const { result } = 挂动作(动作输入({ 详情: S0详情DTO() }));
     expect(result.current.简历选择).toBeNull();
     expect(result.current.披露确认).toBeNull();
-    // S0 respond_fact 白名单摘除：动作卡只剩 end_screening（零输入，Spec §7）
-    expect(result.current.卡片们.map((卡) => 卡.键)).toEqual(['end_screening']);
+    // S0 respond_fact/end_screening 白名单摘除：零动作卡（零输入，Spec §7）
+    expect(result.current.卡片们.map((卡) => 卡.键)).toEqual([]);
   });
 });
 

@@ -487,13 +487,37 @@ function 解NegotiationAgentSummary(input: unknown): NegotiationAgentSummary {
 
 export function 解NegotiationDetail(input: unknown): NegotiationDetail {
   const raw = 要求闭合对象(input, [...卡片必需键, ...详情附加键]);
+  const 卡片 = 解卡片字段(raw);
+  const evaluation = raw.evaluation === null ? null : 解JobEvaluationView(raw.evaluation);
+  // 聚合嵌套详情按候选角色解码：招聘端 Case 详情（含其专属动作/别名）不能充当候选聚合。
+  const case_detail = raw.case_detail === null ? null : 解P5详情(raw.case_detail, 'candidate');
+  const failure_history = 要求数组(raw.failure_history).map(解NegotiationFailureEvent);
+  const agent_summary = 解NegotiationAgentSummary(raw.agent_summary);
+  // J-PILOT-01 review-r1（Spec §4/§6「Case mutation 使用真实 case_id，negotiation 读取及恢复
+  // 使用真实 record_id」/「阶段与动作来自同一 case_detail」）：聚合是单条记录的单一投影，
+  // 外层 case_id 与内层 Case 块（case_state / case_detail / condition_confirmation）必须同属
+  // 一个 Case。DTO 三块各自可空，故取严格口径：外层 case_id=null（pre-Case）时三块必须全部
+  // 缺席；外层非空时在场各块的 Case 坐标必须与之相等（retention 封闭 = case_id 在场而块缺席，
+  // 合法）。混入另一 Case 的块按契约漂移整包拒绝，绝不部分展示/跨记录操作。
+  if (卡片.case_id === null) {
+    if (卡片.case_state !== null || case_detail !== null ||
+      agent_summary.condition_confirmation !== null) {
+      throw 契约错误();
+    }
+  } else {
+    if (卡片.case_state !== null && 卡片.case_state.caseId !== 卡片.case_id) throw 契约错误();
+    if (case_detail !== null && case_detail.state.caseId !== 卡片.case_id) throw 契约错误();
+    if (agent_summary.condition_confirmation !== null &&
+      agent_summary.condition_confirmation.case_id !== 卡片.case_id) {
+      throw 契约错误();
+    }
+  }
   return {
-    ...解卡片字段(raw),
-    evaluation: raw.evaluation === null ? null : 解JobEvaluationView(raw.evaluation),
-    // 聚合嵌套详情按候选角色解码：招聘端 Case 详情（含其专属动作/别名）不能充当候选聚合。
-    case_detail: raw.case_detail === null ? null : 解P5详情(raw.case_detail, 'candidate'),
-    failure_history: 要求数组(raw.failure_history).map(解NegotiationFailureEvent),
-    agent_summary: 解NegotiationAgentSummary(raw.agent_summary),
+    ...卡片,
+    evaluation,
+    case_detail,
+    failure_history,
+    agent_summary,
   };
 }
 

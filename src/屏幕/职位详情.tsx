@@ -391,8 +391,12 @@ function Backend职位详情() {
   //   · 记录尚待核对且无可靠 ID ＝「核对提交结果」：点击核对该 intention-job 的原命令
   //     （绝不重新选 PDF、不猜同岗位记录）；
   //   · create-time 空 delegation_id 的明确业务拒绝保持既有安全错误文案（disabled）。
-  const 待核对命令 = 推荐卡 !== null && 编号 !== undefined
-    ? 操作.取候选待核对命令(推荐卡.intention_id, 编号)
+  // review-r1 F3（Spec §8「离开岗位页、切意向不能丢弃…无 ID 可用原意向的推荐…辅助核对」）：
+  // pending 查询按 当前意向+路由编号 精确 pair，不依赖推荐卡在场 —— 未知 create 后刷新出的
+  // 推荐已不含该岗位（或快照重建中该卡缺席）时，sessionStorage 里的原命令仍可核对；
+  // 精确 pair 天然保证不同意向下的同岗位 pending 不被误取。
+  const 待核对命令 = 当前意向编号 !== null && 编号 !== undefined
+    ? 操作.取候选待核对命令(当前意向编号, 编号)
     : null;
   const 待核对已知编号 = 待核对命令 !== null && 待核对命令.已确认回执 === true
     && 待核对命令.operation === 'create'
@@ -422,12 +426,14 @@ function Backend职位详情() {
               ? (当前意向快照.error ?? '服务暂时不可用，请稍后再试')
               : '当前求职意向暂无这条推荐';
 
-  // 核对提交结果：点「核对提交结果」核对该 intention-job 的原命令；失败原地提示不移动
+  // 核对提交结果：点「核对提交结果」核对该 intention-job 的原命令；失败原地提示不移动。
+  // review-r1 F3：坐标取 pending 自身冻结的 intention/job（Spec §8 恢复用原命令坐标），
+  // 推荐卡缺席时同样可核对，绝不重新选 PDF、不猜同岗位记录。
   const 核对提交结果 = async () => {
-    if (推荐卡 === null || 编号 === undefined) return;
+    if (待核对命令 === null || 待核对命令.operation !== 'create') return;
     设写中(true);
     try {
-      await 操作.核对候选委托(推荐卡.intention_id, 编号);
+      await 操作.核对候选委托(待核对命令.intention_id, 待核对命令.selection.items[0].job_id);
     } catch (错误) {
       轻提示(P4错误文案(错误));
     } finally {

@@ -77,14 +77,15 @@ const 动作全表 = Object.keys(期望动作卡文案) as P5动作[];
 /**
  * 每行可出的动作卡（按钮可见性 = 行侧白名单 ∩ available_actions）；顺序即 wire 枚举顺序。
  * 每格 = 已准入投影器 lifecycleViewerActions 在该行一切事实组合下的角色无关并集
- * （J-PILOT-01：S0 needs_user 白名单已摘除 respond_fact，仅剩 end_screening；邀请二卡
- * 只在 S0 passed；S1 waiting 仅 retry_resume_readiness、needs_user 三卡
+ * （J-PILOT-01 review-r1：S0 needs_user 白名单已摘除 respond_fact 与 end_screening ——
+ * 旧 S0 needs_user/human_decision 卡按 Spec §7 停止交互（待核实交负责人）；
+ * 邀请二卡只在 S0 passed；S1 waiting 仅 retry_resume_readiness、needs_user 三卡
  * 并集、attention_required 落空；S2 三行皆 decide_coordination；S3 意向二卡；终态恒空）。
  */
 const 期望可出动作: Record<string, readonly P5动作[]> = {
   'open|anonymous_screening|running': [],
   'open|anonymous_screening|waiting': [],
-  'open|anonymous_screening|needs_user': ['end_screening'],
+  'open|anonymous_screening|needs_user': [],
   'open|anonymous_screening|passed': ['accept_resume_invitation', 'decline_resume_invitation'],
   'open|anonymous_screening|attention_required': [],
   'open|resume_submission|waiting': ['retry_resume_readiness'],
@@ -414,8 +415,9 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
     })));
     expect(视图.candidateAlias).toBe('candidate-0123456789ab');
     expect(视图.intentionId).toBe(null);
-    // J-PILOT-01：双端 S0 均不再出 respond_fact（白名单摘除后交集只剩 end_screening）
-    expect(视图.actions.map((卡) => 卡.action)).toEqual(['end_screening']);
+    // J-PILOT-01 review-r1：双端 S0 均不再出 respond_fact，旧 needs_user 行的
+    // end_screening 也已摘除（Spec §7 停止该卡交互）
+    expect(视图.actions.map((卡) => 卡.action)).toEqual([]);
   });
 
   // Task 5：S1 三态语义钉死 —— 解析中/AI 初筛中/人工初筛决定三条文案互不混用，
@@ -446,8 +448,7 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
 });
 
 describe('映射P5详情：动作卡', () => {
-  const 动作可行行: Record<Exclude<P5动作, 'respond_fact'>, Parameters<typeof 造行状态>> = {
-    end_screening: ['open', 'anonymous_screening', 'needs_user', 'human_decision'],
+  const 动作可行行: Record<Exclude<P5动作, 'respond_fact' | 'end_screening'>, Parameters<typeof 造行状态>> = {
     accept_resume_invitation: ['open', 'anonymous_screening', 'passed', 'awaiting_candidate_resume_invitation'],
     decline_resume_invitation: ['open', 'anonymous_screening', 'passed', 'awaiting_candidate_resume_invitation'],
     retry_resume_readiness: ['open', 'resume_submission', 'waiting', 'awaiting_resume_parse'],
@@ -458,9 +459,11 @@ describe('映射P5详情：动作卡', () => {
     decline_intent: ['open', 'intent_confirmation', 'needs_user', 'awaiting_confirmations'],
   };
 
-  it('除 respond_fact 外的九个动作闭词全部有卡：标题与说明文案齐全', () => {
+  it('除 respond_fact / end_screening 外的八个动作闭词全部有卡：标题与说明文案齐全', () => {
     for (const 动作 of 动作全表) {
-      if (动作 === 'respond_fact') continue; // J-PILOT-01：S0 白名单已摘除，见下方零输入用例
+      // J-PILOT-01 review-r1：S0 needs_user 行白名单已摘除 respond_fact 与 end_screening
+      //（后者随旧 S0 行停止交互一并摘除，见下方旧响应双端零动作用例）
+      if (动作 === 'respond_fact' || 动作 === 'end_screening') continue;
       const 视图 = 断言正常(映射P5详情(造详情({
         state: 造行状态(...动作可行行[动作]),
         availableActions: [动作],
@@ -469,12 +472,14 @@ describe('映射P5详情：动作卡', () => {
     }
   });
 
-  it('动作卡按 wire 枚举顺序渲染，不按 available_actions 顺序（S0 白名单摘除 respond_fact）', () => {
+  it('动作卡按 wire 枚举顺序渲染，不按 available_actions 顺序', () => {
+    // S0 passed 行邀请二卡（wire 枚举序 accept < decline）倒序提供，渲染仍按枚举序
     const 视图 = 断言正常(映射P5详情(造详情({
-      state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
-      availableActions: ['end_screening', 'respond_fact'],
+      state: 造行状态('open', 'anonymous_screening', 'passed', 'awaiting_candidate_resume_invitation'),
+      availableActions: ['decline_resume_invitation', 'accept_resume_invitation'],
     })));
-    expect(视图.actions.map((卡) => 卡.action)).toEqual(['end_screening']);
+    expect(视图.actions.map((卡) => 卡.action))
+      .toEqual(['accept_resume_invitation', 'decline_resume_invitation']);
   });
 
   it('时间线文本、对方决定与 needs_user 永不 infer 出动作：未提供的动作不出卡', () => {
@@ -732,13 +737,15 @@ describe('映射P5详情：阶段区 summary 与 checklist 闭词展示', () => 
 describe('映射P5详情：S0 respond_fact 零输入（J-PILOT-01）', () => {
   // 白名单摘除后，旧后端若仍返回 respond_fact 也被交集惰性挡下：任何 S0 行都不出卡、
   // 不出补充问题视图，人工待核实说明走 注意说明（见 旧 S0 needs_user 待核实提示）。
+  // review-r1：旧 S0 needs_user 行同时携带 end_screening 时同样双端零动作卡
+  //（Spec §7「停止该卡交互」——end_screening 是该卡上的交互，必须停）。
 
-  it('旧 S0 needs_user 行提供 respond_fact：不出卡、零输入，只剩 end_screening；待核实说明在场', () => {
+  it('旧 S0 needs_user 行同时提供 respond_fact/end_screening：双端零动作卡、零输入；待核实说明在场', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
       state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
       availableActions: ['respond_fact', 'end_screening'],
     })));
-    expect(视图.actions.map((卡) => 卡.action)).toEqual(['end_screening']);
+    expect(视图.actions.map((卡) => 卡.action)).toEqual([]);
     expect(JSON.stringify(视图)).not.toContain('promptId'); // 无补充问题视图（零提交控件）
     expect(视图.注意说明).toBe('旧版状态待核实，请交负责人处理'); // 旧状态待核实，交负责人处理
   });
@@ -1097,9 +1104,9 @@ describe('映射P5详情：S0 结果语义', () => {
     期望动作: P5动作[];
     期望文案: string;
   }[] = [
-    { 名: 'S0 needs_user（遗留行）→ 待处理；respond_fact 不再出卡', 区状态: 'active', 区摘要: 'candidate_reevaluation',
+    { 名: 'S0 needs_user（遗留行）→ 待处理；respond_fact/end_screening 都不再出卡', 区状态: 'active', 区摘要: 'candidate_reevaluation',
       根: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
-      提供: ['respond_fact', 'end_screening'], 期望动作: ['end_screening'], 期望文案: '进行中' },
+      提供: ['respond_fact', 'end_screening'], 期望动作: [], 期望文案: '进行中' },
     { 名: 'S0 passed 且 top-level outcome=null → 已通过', 区状态: 'passed', 区摘要: 'complete',
       根: 造行状态('open', 'anonymous_screening', 'passed', 'complete'),
       提供: ['accept_resume_invitation'], 期望动作: ['accept_resume_invitation'], 期望文案: '已通过' },
