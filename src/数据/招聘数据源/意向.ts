@@ -66,7 +66,7 @@ export function 创建意向数据源(请求: 请求函数): 意向数据源 {
       const body = 转首次意向写入(input);
       const 命令: 建档待写入 = {
         种类: 'first-intention-create',
-        请求体: { ...body } as unknown as Record<string, unknown>,
+        请求体: { ...body } as Record<string, unknown>,
         阶段: 'prepared',
       };
       const 定 = 跟踪?.发送前(命令) ?? 命令;
@@ -87,7 +87,7 @@ export function 创建意向数据源(请求: 请求函数): 意向数据源 {
       const 命令: 建档待写入 = {
         种类: 'first-intention-update',
         资源编号: id,
-        请求体: { ...body } as unknown as Record<string, unknown>,
+        请求体: { ...body } as Record<string, unknown>,
         ifMatch: context.原始.revision,
         阶段: 'prepared',
       };
@@ -96,7 +96,7 @@ export function 创建意向数据源(请求: 请求函数): 意向数据源 {
         path: `/api/v1/me/intentions/${id}`,
         method: 'PATCH',
         body,
-        ifMatch: 修订etag(定.ifMatch ?? context.原始.revision),
+        ifMatch: 修订etag(context.原始.revision),
       });
       跟踪?.已确认(定, { id: result.intention_id, revision: result.revision });
       return 读取意向();

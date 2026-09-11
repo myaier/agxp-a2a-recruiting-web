@@ -15,6 +15,7 @@ import type { 向导段 } from '../流程/onboarding配置';
 import { 构造映射变体基底 } from '../数据/招聘数据源/简历预填.fixture';
 import { 个人优势文本 } from '../数据/模拟数据';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
+import type { 屏蔽项 } from '../数据/类型';
 
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
@@ -570,7 +571,13 @@ const 已采前两题 = {
   筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] },
 };
 
-function render引导问答(选项: { 段: 向导段; 预填?: 候选预填状态; 个人优势?: string }) {
+function render引导问答(选项: {
+  段: 向导段;
+  预填?: 候选预填状态;
+  个人优势?: string;
+  /** 建档草稿增量（Task 7：排除项/自定义诉求 的恢复侧） */
+  建档?: object;
+}) {
   mock应用状态 = {
     数据源模式: 'backend',
     目录查询: {
@@ -579,7 +586,7 @@ function render引导问答(选项: { 段: 向导段; 预填?: 候选预填状�
       查询Institution: vi.fn(),
     },
     状态: {
-      引导预填: 已采前两题,
+      引导预填: 选项.建档 === undefined ? 已采前两题 : { ...已采前两题, 建档: 选项.建档 },
       个人优势: 选项.个人优势 ?? '',
       简历作品集链接: '',
       简历经历: [],
@@ -896,19 +903,19 @@ describe('引导问答 Backend 城市题 接原 Mock 定位/热门/行政区分�
 // 固定卡进 排除项、用户原文进 自定义诉求（映射层据此拼私有诉求）；
 // 屏蔽只回显权威确认快照，不能因社招简历公司名默认已屏蔽或自动写入。
 
-const 权威屏蔽项 = {
+const 权威屏蔽项: 屏蔽项 = {
   编号: 'B-01',
   名称: '云衢科技',
   首字: '云',
   理由: '你手动加入 · 双向不可见',
   时间: '刚刚',
   组织编号: 'org_yq',
-  来源: '手动添加' as const,
-  组织状态: '有效' as const,
+  来源: '手动添加',
+  组织状态: '有效',
 };
 
 function render排除题(选项: {
-  屏蔽名单?: (typeof 权威屏蔽项)[];
+  屏蔽名单?: 屏蔽项[];
   简历经历?: { 公司: string }[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   解除组织屏蔽?: any;
@@ -969,6 +976,57 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
     const 传入 = (mock操作.保存首次意向.mock.calls[0] as any[])[0];
     expect(传入.排除项).toEqual(['大小周', '频繁出差']);
     expect(传入.自定义诉求).toEqual(['不接受夜班', '大小周也能接受']);
+    // 离开该题时两个载体都落进建档草稿（刷新/返回不丢）
+    expect(mock操作.更新候选建档草稿).toHaveBeenCalledWith(
+      expect.objectContaining({
+        排除项: ['大小周', '频繁出差'],
+        自定义诉求: ['不接受夜班', '大小周也能接受'],
+      }),
+    );
+  });
+
+  // review r1 #1：行内输入写的是「用户自己的话」，与卡片同名也不例外 ——
+  // 走 排除项 就会被映射改写成「不接受大小周」，那是 Spec §5.1 明令禁止的改写用户原话。
+  it('自定义输入里逐字打出卡片同名文字，仍进 自定义诉求（不被当卡片改写）', async () => {
+    render引导问答({ 段: '偏好段' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('用你自己的话写'), '大小周');
+    await 用户.click(screen.getByRole('button', { name: '添加' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const 传入 = (mock操作.保存首次意向.mock.calls[0] as any[])[0];
+    expect(传入.排除项).toEqual([]);
+    expect(传入.自定义诉求).toEqual(['大小周']);
+  });
+
+  // review r1 #1 第二面：草稿恢复出来的同名自定义原话必须能被点掉，
+  // 且点它不能反而往 排除项 里塞一张卡（否则会多出一条「不接受大小周」且删不掉）。
+  it('草稿恢复的同名自定义原话可点掉，且点击不会变成勾选固定卡', async () => {
+    render引导问答({ 段: '偏好段', 建档: { 排除项: ['频繁出差'], 自定义诉求: ['大小周'] } });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '大小周' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const 传入 = (mock操作.保存首次意向.mock.calls[0] as any[])[0];
+    expect(传入.自定义诉求).toEqual([]);
+    expect(传入.排除项).toEqual(['频繁出差']);
+  });
+
+  // review r1 #5：草稿恢复这一侧同样要有断言 —— 刷新回来两个载体都在原位
+  it('建档草稿里的 排除项/自定义诉求 恢复成本题答案并原样提交', async () => {
+    render引导问答({ 段: '偏好段', 建档: { 排除项: ['全现场办公'], 自定义诉求: ['不接受夜班'] } });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const 传入 = (mock操作.保存首次意向.mock.calls[0] as any[])[0];
+    expect(传入.排除项).toEqual(['全现场办公']);
+    expect(传入.自定义诉求).toEqual(['不接受夜班']);
   });
 
   it('取消一枚自定义 chip 只动 自定义诉求，不影响固定卡', async () => {
@@ -1022,6 +1080,25 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
     // 权威快照没变：chip 仍在，并给出错误提示
     expect(screen.getByRole('button', { name: /云衢科技 ✕/ })).toBeDefined();
     await waitFor(() => expect(document.body.textContent).toContain('请求失败，请稍后再试'));
+  });
+
+  // review r1 #3：非 手动添加 的屏蔽（当前雇主 / 关联公司）解除需要风险确认，
+  // 本屏没有确认层，一次误点就会把现雇主的屏蔽摘掉、暴露求职动作 —— 不许单击直解。
+  it('Backend 非手动来源的 chip 单击不解除，只说明须到屏蔽名单页处理', async () => {
+    const 当前雇主项: 屏蔽项 = {
+      ...权威屏蔽项,
+      编号: 'B-02',
+      名称: '现雇主科技',
+      组织编号: 'org_now',
+      来源: '当前雇主',
+      理由: '建档时自动加入 · 双向不可见',
+    };
+    const { 解除组织屏蔽 } = render排除题({ 屏蔽名单: [当前雇主项] });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /现雇主科技 ✕/ }));
+    expect(解除组织屏蔽).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /现雇主科技 ✕/ })).toBeDefined();
+    await waitFor(() => expect(document.body.textContent).toContain('需要风险确认'));
   });
 
   it('Backend 解除成功后 chip 随权威快照消失（不由本地开关宣布）', async () => {
@@ -1079,7 +1156,8 @@ describe('引导问答 末题作品集控制读建档草稿（Task 7）', () => 
   });
 
   /** 草稿里带一个用户已修改但非法的 URL：末题校验必须读它（而不是权威空值） */
-  function render带草稿URL(作品集链接: string | null) {
+  /** 作品集链接 传 undefined = 草稿里没有该属性（用户没改过，回显权威值） */
+  function render带草稿URL(作品集链接: string | null | undefined) {
     mock应用状态 = {
       数据源模式: 'backend',
       目录查询: {
@@ -1088,7 +1166,10 @@ describe('引导问答 末题作品集控制读建档草稿（Task 7）', () => 
         查询Institution: vi.fn(),
       },
       状态: {
-        引导预填: { ...已采前两题, 建档: { 资料: { 作品集链接 } } },
+        引导预填: {
+          ...已采前两题,
+          建档: { 资料: 作品集链接 === undefined ? {} : { 作品集链接 } },
+        },
         个人优势: '',
         简历作品集链接: '',
         简历经历: [],
@@ -1113,6 +1194,22 @@ describe('引导问答 末题作品集控制读建档草稿（Task 7）', () => 
     expect(screen.getByRole('button', { name: '保存并继续' }).hasAttribute('disabled')).toBe(true);
     // 不恢复已移除的 URL 输入行
     expect(screen.queryByPlaceholderText(/github/i)).toBeNull();
+  });
+
+  // review r1 #2：本屏没有 URL 输入行，末题的规范化不能把「没改过」变成「用户改过」——
+  // 简历还没水合/水合失败时权威值是空串，无条件回写会往草稿里盖一个 null，
+  // 完成时就把服务端已有的 URL 清掉了。
+  it('未改过的 URL 不因末题规范化被写成已修改（不制造 dirty）', async () => {
+    render带草稿URL(undefined);
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
+    const 写过链接 = mock操作.更新候选建档草稿.mock.calls.some(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ([建档]: any[]) => 建档?.资料 !== undefined && '作品集链接' in 建档.资料,
+    );
+    expect(写过链接).toBe(false);
   });
 
   it('草稿里的合法 URL 规范化后写回同一草稿字段', async () => {

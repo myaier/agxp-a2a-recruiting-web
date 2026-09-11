@@ -1002,7 +1002,51 @@ describe('创建候选操作 · 首次意向身份（J-PILOT-02 Task 7）', () =
     });
     await expect(场景.操作.保存首次意向({ ...首次输入, 薪资: { 下限: 30, 上限: 50, 单位: '月薪K' } } as never))
       .rejects.toMatchObject({ code: 'version_conflict' });
-    expect(场景.deps.建档草稿引用!.current!.首次意向).toEqual({ id: 'int_7', revision: 3 });
+    // 仍是同一条资源：ID 不变；revision 跟着本次权威 GET 走（结算只认权威事实，不是盲改）
+    expect(场景.deps.建档草稿引用!.current!.首次意向).toEqual({ id: 'int_7', revision: 5 });
+    // 冲突不是确定拒绝：本次 CAS 槽保留待用户重审，不清不重放
+    expect(场景.deps.建档草稿引用!.current!.待写入).toMatchObject({
+      种类: 'first-intention-update', 资源编号: 'int_7', ifMatch: 5, 阶段: 'prepared',
+    });
+  });
+
+  // review r1 #4：上一次 PATCH 结果未知（503/断网）后用户改成了另一个值 ——
+  // 权威 GET 是这条无幂等合同的 CAS 的终局判据，必须无条件结算旧槽，
+  // 否则 发送前 会拿「ifMatch/body 都不同」拦下新提交，且因为它抛在 本槽命令 落定之前，
+  // catch 也清不掉 —— 整条旅程（summary/profile/文件）的写入会被一起锁死。
+  it('上次 PATCH 结果未知后改成新值：权威 GET 先结算旧槽，新改动照常 PATCH', async () => {
+    const 旧命令体 = { primary_location_id: 'loc_sh', compensation: { mode: 'range', lower: 30, upper: 50 } };
+    const 权威 = 权威意向({
+      revision: 6, // 上一次 PATCH 其实生效了（30–50 已在服务端，revision 前进）
+      compensation: { mode: 'range', lower: 30, upper: 50, annual_salary_months: null },
+    });
+    const 场景 = 意向场景({
+      建档: {
+        首次意向: { id: 'int_7', revision: 5 },
+        待写入: {
+          种类: 'first-intention-update',
+          资源编号: 'int_7',
+          请求体: 旧命令体,
+          ifMatch: 5,
+          阶段: 'prepared',
+        },
+      },
+      处理: (o) => {
+        if (o.method === 'PATCH') return { ...权威, revision: 7 };
+        if (o.path === '/api/v1/me/intentions/int_7') return 权威;
+        return { intentions: [{ ...权威, revision: 7 }] };
+      },
+    });
+    await expect(场景.操作.保存首次意向({
+      ...首次输入,
+      薪资: { 下限: 40, 上限: 60, 单位: '月薪K' },
+    } as never)).resolves.toBeUndefined();
+    const patch = 场景.请求们().find((o) => o.method === 'PATCH');
+    expect(patch?.ifMatch).toBe('"6"'); // 用权威 revision，不是草稿里那个 5
+    const 新body = patch?.body as Record<string, unknown> | undefined;
+    expect(新body?.compensation).toMatchObject({ mode: 'range', lower: 40, upper: 60 });
+    expect(场景.deps.建档草稿引用!.current!.首次意向).toEqual({ id: 'int_7', revision: 7 });
+    expect(场景.deps.建档草稿引用!.current!.待写入).toBeUndefined();
   });
 
   it('确定拒绝（422）清本次未结算槽并保留输入：不把单槽永久锁死', async () => {

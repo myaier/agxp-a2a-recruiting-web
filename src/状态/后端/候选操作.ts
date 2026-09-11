@@ -102,11 +102,11 @@ function 是确定拒绝(错误: unknown): boolean {
 function 落已存身份(建档: 候选引导建档草稿, 命令: 建档待写入, 回执: 建档写入回执): 候选引导建档草稿 {
   const 下一步: 候选引导建档草稿 = { ...建档 };
   // Task 7：首次意向的身份是 本轮意向 ID/revision（不是简历分区 revision）——
-  // 创建回执给 ID，CAS 回执只更新同一 ID 的 revision，绝不换 key 另起一条。
+  // 创建与 CAS 的回执都由意向数据源按 OwnerIntention 响应给全（id + revision），
+  // 给不全就是契约漂移：宁可不动草稿，也不拿兜底值冒充身份让后续 CAS 发错 If-Match。
   if (命令.种类 === 'first-intention-create' || 命令.种类 === 'first-intention-update') {
-    const id = 回执.id ?? 命令.资源编号 ?? 建档.首次意向?.id;
-    if (id !== undefined) {
-      下一步.首次意向 = { id, revision: 回执.revision ?? 建档.首次意向?.revision ?? 0 };
+    if (回执.id !== undefined && 回执.revision !== undefined) {
+      下一步.首次意向 = { id: 回执.id, revision: 回执.revision };
     }
     return 下一步;
   }
@@ -963,12 +963,16 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
         }
         // 有本轮明确 ID：只 GET exact ID 核实这一条（Spec §5.3），不拉列表猜。
         const 权威 = await 后端.读取指定意向(已知.id);
+        // 这次 GET 就是这条无幂等合同的 CAS 的终局判据：无条件按权威结算本域旧槽
+        // （上一次 PATCH 到底生没生效，权威说了算），之后新改动才能开一个干净的新槽 ——
+        // 只在「未改动」分支结算的话，改成另一个值时 发送前 会拦下新命令，
+        // 而且它抛在本槽命令落定之前，catch 也清不掉，整条旅程的写入会被锁死。
+        结算首次意向身份(权威, 本次主体, 本次代际);
         const 基底 = 从BFF意向草稿(权威);
         const 上下文 = { 原始: 权威 };
         const 目标 = 本轮首次意向草稿(基底, 权威, input);
         if (JSON.stringify(转意向写入(目标, 上下文)) === JSON.stringify(转意向写入(基底, 上下文))) {
-          // 未改动，或上一次 CAS 其实已生效：按权威只读结算（含清掉本域未结算槽），不重复写
-          结算首次意向身份(权威, 本次主体, 本次代际);
+          // 未改动，或上一次 CAS 其实已生效：只读核对到此为止，不重复写
           提交意向快照(await 后端.读取意向(), 本次主体, 本次代际);
           return;
         }
