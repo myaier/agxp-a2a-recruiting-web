@@ -64,6 +64,8 @@ Codex execution: superpowers:executing-plans
 
 ## 任务共用协议（供每 Task 单独消费）
 
+以下 `https://app.invalid` 仅为可移植的 URL 示例域名，执行时始终取当前前端 origin，仅使用所示 pathname；不新增 host 配置、不请求该示例域名。
+
 ### A. facade 与状态接口
 
 新增 `src/数据/招聘数据源/连续代谈.ts`；公开 DTO 用 YAML 原字段名，避免再维护一套逐字段 camelCase 对照。嵌套 `case_detail` 解为既有 `P5详情`，其余按下列 schema 导出同名 TypeScript 类型：NegotiationCard/Detail/Page/RetryReceipt/ArchiveReceipt、NegotiationAgentSummary、JobEvaluationView（仅已有 schema 的本地闭合类型，不新增 evaluation API）。所有 referenced schema 读冻结 YAML，不以 `Record<string, unknown>` 或 `any` 放行 evaluation/evidence。
@@ -79,7 +81,7 @@ interface 连续代谈数据源 {
 }
 ```
 
-`创建连续代谈数据源(请求)` 采用发现推荐 facade 的请求依赖类型，混入 HTTP招聘数据源。本次没有按意向过滤的连续列表消费者，facade/状态范围键不提供该可选维度；有明确产品入口后再考虑。列表 limit=50、恒省略 intention_id、cursor 为 null 时省略，详情不带 include；retry body `{expected_retry_generation:generation}`＋Idempotency-Key，archive body `{}` 无 key；API 路径固定 `/api/v1/me/negotiations` 及 `/{encodedID}`、`/retry`、`/archive`。
+`创建连续代谈数据源(请求)` 采用发现推荐 facade 的请求依赖类型，混入 HTTP招聘数据源。本次没有按意向过滤的连续列表消费者，facade/状态范围键不提供该可选维度；有明确产品入口后再考虑。列表 limit=50、恒省略 intention_id、cursor 为 null 时省略，详情不带 include；retry body `{expected_retry_generation:generation}`＋Idempotency-Key，archive body `{}` 无 key；API 路径固定 `https://app.invalid/api/v1/me/negotiations` 及 `/{encodedID}`、`/retry`、`/archive`。
 
 扩展 `P5MatchCase状态`：`P5连续列表: Record<string, 连续列表快照>` 与 `P5连续详情: Record<string, 连续详情快照>`；快照复用现有阶段/刷新/error/generation 形状，分别持有 NegotiationCard[]／NegotiationDetail|null，并带 ownerSubjectId。范围键 `P5范围键.negotiations(shelf)` 与 `P5范围键.negotiation(recordId)`，保留 candidate 角色标识；复用 P5范围代际、P5幂等意图、P5可见范围，不新增全站锁管理器。
 
@@ -116,7 +118,7 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 
 ### C. 页面与复用约束
 
-候选主列表全意向，history 一个服务端顺序集合；招聘继续旧 Case 列表。现有卡片类型/白卡/阶段区用于新记录，不新建 CSS。候选 URL `/deal/:id` 可为 dlg 或 mc，招聘仍 Case；先判断模式/角色，再选数据源，Mock 不调用 negotiation。
+候选主列表全意向，history 一个服务端顺序集合；招聘继续旧 Case 列表。现有卡片类型/白卡/阶段区用于新记录，不新建 CSS。候选 URL `https://app.invalid/deal/:id` 可为 dlg 或 mc，招聘仍 Case；先判断模式/角色，再选数据源，Mock 不调用 negotiation。
 
 有 case_detail 才调用既有 P5 mapper/动作控制；pre-Case 不构造假的 P5详情。复用 `详情外壳`、`详情顶栏`、`详情状态区`、`阶段对话流`、`详情动作卡`、`职位资料`、`详情底栏`，初评放现有总结槽，失败操作放现有动作区。必要纯投影/控制分支可以新增，不能新造可视组件。所有 S0 总结只显示一次，公开初评不冒充条件确认。retention 清旧资料，不通过独立 GET 绕过。
 
@@ -177,7 +179,7 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 - [ ] 有回执后补 ID、读 canonical 并失效 active 首屏；只在确认命令结果和持久记录后删 pending。业务拒绝无 ID 不造卡。存储失败保留本次内存并提示不能保证刷新恢复。
 - [ ] 身份完成后读取 owner pending，先读已知 ID，原 key/body 完整且 write 未确认时每次恢复最多重放一次。仍未知就待核对；用户点原按钮再次核对。本次不新增委托回执列表 facade：无 ID 时仅用已接推荐/continuous 列表辅助核对，写入归属仍由完整原命令重放的回执确认；原命令丢失且无法唯一识别就待核对。Spec 的 receipt 辅助路径是可选能力，不为它新增接线。
 - [ ] 实现 retry：新意图取当前权威允许动作与 generation；未决重放不以最新动作或 generation 改写。202 仅受理，随后 GET；archive 严格 `{}` 无 key，归档/retry 竞争回读实际 shelf。存在 pending retry 时允许核对原命令，不自动发下一代。create/retry/archive 的 409 按冻结合同 code 区分幂等冲突、generation 冲突和业务门，回读权威状态；保留原 key/body/generation，不自动换 key、取最新 generation 或再次 POST，不把冲突本身当成已受理或未受理的证明。
-- [ ] 岗位详情只改既有主按钮文案/禁用/回调：受理后“查看进展”不跳页，点击导航 `/deal/<knownID>`；无 ID 的未知命令“核对提交结果”，不重新选 PDF。初次委托的 0/1/多 PDF 及确认层布局保持。
+- [ ] 岗位详情只改既有主按钮文案/禁用/回调：受理后“查看进展”不跳页，点击导航 `https://app.invalid/deal/{knownID}`；无 ID 的未知命令“核对提交结果”，不重新选 PDF。初次委托的 0/1/多 PDF 及确认层布局保持。
 - [ ] 执行 `npm test -- src/状态/后端/委托待核对.test.ts src/状态/后端/发现推荐操作.test.ts src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts src/屏幕/职位详情.test.tsx`，再 `npm run typecheck`。包括取消零 POST、同 job 不等于原命令、GET 404 不证明未受理、storage 失败不自动新 key、三类 409 均只回读不自动另起命令。
 - [ ] 提交 `feat: preserve delegation commands and recovery actions`。
 
@@ -205,7 +207,7 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 
 ### Task 5: 复用同一详情承接初评与 Case
 
-**目标/非目标：** 让 `/deal/:id` 的受理、开案、历史和封闭态可直达；不加可视组件/第二详情页，不补公司/JD/在线简历接口。
+**目标/非目标：** 让 `https://app.invalid/deal/:id` 的受理、开案、历史和封闭态可直达；不加可视组件/第二详情页，不补公司/JD/在线简历接口。
 **依赖：** Task 1–4；Spec §4/6/10，协议 A/C。
 **预期编辑文件：**
 - 新增：无。
@@ -253,7 +255,7 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 - 删除：无。
 **消费/产出：** 复用该文件 `装P5双角色`、P5 fixture 路由和已存在 P4 委托场景，只添加 negotiation 回答臂及本旅程最小状态转换；不抽取通用模拟服务。产出 3 个局部场景，命名统一包含 `J-PILOT-01` 和 `@backend`。
 
-- [ ] 修正现有候选 P5 fixture 的请求契约以满足新读取；保留招聘原 Case 端点。所有 `/api/v1/**` 请求由本地 route 处理，未声明请求记错并拒绝，不能穿透到真实后端。`backend-stg` 是现有配置项目名，不代表访问 STG。
+- [ ] 修正现有候选 P5 fixture 的请求契约以满足新读取；保留招聘原 Case 端点。所有 `https://app.invalid/api/v1/**` 请求由本地 route 处理，未声明请求记错并拒绝，不能穿透到真实后端。`backend-stg` 是现有配置项目名，不代表访问 STG。
 - [ ] 场景一：UI 选择 PDF/确认→POST accepted→仍在岗位页→原按钮查看进展→在谈同卡→初评→S0→S1；断言原 PDF pair、来源区分、无第二张卡/第二个候选 Case GET。
 - [ ] 场景二：写响应丢失→同标签页 reload→原命令核对→失败→retry 原 generation→归档竞争回读；只用本场景需要的 fixture 相位，不建设可配置编排器。原命令缺失时待核对、无新 key 的反例由 Task 3 操作测试覆盖。
 - [ ] 场景三：320/390 两个视口的双端 S0，原输入和发送 DOM 存在禁用、Tab/阶段/附件位置保持、长 placeholder 不溢出；几何基准在 Task 1 开工前用既有本地 fixture 捕获，Task 7 比较同视口同内容区；不以改完后的界面作为自己的基准。关键几何比较本 Plan 已记录的改前数值（实施时可抄为此用例断言常量），截图仅作当轮辅助证据存既有测试输出目录，不批量接受无关基准。招聘屏无候选私有总结/初评。
