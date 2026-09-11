@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
+import type { 建档待写入, 建档写入跟踪 } from '../招聘数据源类型';
 import { 创建候选账号数据源 } from './候选账号';
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
@@ -28,6 +29,51 @@ describe('候选账号数据源', () => {
     expect(options).toMatchObject({ path: '/api/v1/me/avatar', method: 'POST', ifMatch: '"2"', 幂等: true });
     expect([...options.formData!.keys()]).toEqual(['media']);
     expect(options.formData!.get('media')).toBe(file);
+  });
+
+  // ── J-PILOT-02 Task 8：onboarding 头像命令的建档跟踪（与 附件简历.ts 文件命令同一模式）──
+
+  it('带跟踪：发送前固定 avatar 命令（五键文件核对 + 原 revision 的 ifMatch），请求沿用跟踪回带的原幂等键/原 ifMatch，成功后立刻交 account revision 回执', async () => {
+    请求Mock.mockResolvedValueOnce({
+      result: { avatar_url: '/api/v1/me/avatar/content', revision: 8, updated_at: '2026-09-03T19:02:00Z' },
+    });
+    const file = new File(['a'], 'a.png', { type: 'image/png' });
+    const 已确认 = vi.fn();
+    const 发送前 = vi.fn((命令: 建档待写入): 建档待写入 =>
+      ({ ...命令, 幂等键: 'idem-avatar-original-1', ifMatch: 3 }));
+    await 数据源.替换候选头像(file, 7, { 发送前, 已确认 } as 建档写入跟踪);
+    // 命令：avatar 种类、本次 GET 回的 revision 作 ifMatch、prepared、五键文件核对（绝不存字节）
+    const 命令 = 发送前.mock.calls[0][0];
+    expect(命令.种类).toBe('avatar');
+    expect(命令.ifMatch).toBe(7);
+    expect(命令.阶段).toBe('prepared');
+    expect(Object.keys(命令.文件核对!).sort()).toEqual(['lastModified', 'name', 'sha256', 'size', 'type']);
+    // 请求沿用跟踪回带的原键与原 ifMatch —— revision 也是幂等身份，不用新快照的 7 冒充原命令
+    const options = 请求Mock.mock.calls[0][0] as BFF请求选项;
+    expect(options.幂等键).toBe('idem-avatar-original-1');
+    expect(options.ifMatch).toBe('"3"');
+    // 成功后立刻交回执（只带 account revision，不存完整响应）
+    expect(已确认).toHaveBeenCalledWith(
+      expect.objectContaining({ 种类: 'avatar', 幂等键: 'idem-avatar-original-1', ifMatch: 3 }),
+      { revision: 8 },
+    );
+  });
+
+  it('SHA-256 不可用：命令不带文件核对（认不出字节的命令由调用方不登记），请求照常发出', async () => {
+    const 摘要桩 = vi.spyOn(globalThis.crypto.subtle, 'digest')
+      .mockRejectedValue(new Error('SubtleCrypto unavailable'));
+    try {
+      请求Mock.mockResolvedValueOnce({ result: { avatar_url: null, revision: 2, updated_at: null } });
+      const file = new File(['a'], 'a.png', { type: 'image/png' });
+      const 已确认 = vi.fn();
+      const 发送前 = vi.fn((命令: 建档待写入): 建档待写入 => 命令);
+      await 数据源.替换候选头像(file, 1, { 发送前, 已确认 } as 建档写入跟踪);
+      expect(发送前.mock.calls[0][0].文件核对).toBeUndefined();
+      expect(请求Mock).toHaveBeenCalledTimes(1); // 上传本身照常
+      expect(已确认).toHaveBeenCalledTimes(1);
+    } finally {
+      摘要桩.mockRestore();
+    }
   });
 
   it('删除头像带 If-Match 与幂等且没有请求体', async () => {

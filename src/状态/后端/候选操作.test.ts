@@ -13,6 +13,7 @@ import { BFF意向样本, BFF简历样本 } from '../../测试/BFF样本';
 import { 从BFF简历 } from '../../数据/后端映射';
 import { 创建简历数据源 } from '../../数据/招聘数据源/简历';
 import { 创建意向数据源 } from '../../数据/招聘数据源/意向';
+import { 创建候选账号数据源 } from '../../数据/招聘数据源/候选账号';
 import type { 候选引导建档草稿, 候选建档草稿存储 } from '../../数据/资料缓存';
 import type {
   后端操作依赖, 后端状态, 候选操作, 候选预填恢复存储, 提交候选意向快照输入,
@@ -150,7 +151,7 @@ describe('创建候选操作 · 候选头像权威写入', () => {
     });
   });
 
-  it('上传 503 后仅在权威 revision 前进且头像存在时确认成功', async () => {
+  it('上传 503 后 account revision 前进且头像在场仍不能证明本文件成功（Task 8）', async () => {
     const 场景 = 创建场景();
     场景.后端.读取候选账号档案
       .mockResolvedValueOnce({ avatar_url: null, revision: 1, updated_at: null })
@@ -158,7 +159,10 @@ describe('创建候选操作 · 候选头像权威写入', () => {
     场景.后端.替换候选头像.mockRejectedValue(
       new BFF错误(503, 'operation_outcome_unknown', 'unknown'),
     );
-    await expect(场景.操作.保存候选头像(new File(['a'], 'a.png'))).resolves.toBeUndefined();
+    // Task 8：读 account 仅为权威回显 —— 成功只能来自已确认回执或原 key 重放，
+    // revision 前进 + avatar_url 非空不是本文件的内容哈希，原错误必须抛出。
+    await expect(场景.操作.保存候选头像(new File(['a'], 'a.png')))
+      .rejects.toMatchObject({ status: 503, code: 'operation_outcome_unknown' });
     expect(场景.后端.替换候选头像).toHaveBeenCalledTimes(1);
   });
 
@@ -1069,5 +1073,257 @@ describe('创建候选操作 · 首次意向身份（J-PILOT-02 Task 7）', () =
     } as never;
     await 场景.操作.保存首次意向(首次输入);
     expect(场景.后端.创建首次意向).not.toHaveBeenCalled();
+  });
+});
+
+// ── J-PILOT-02 Task 8：头像写入身份 —— 单槽登记、未知结果不伪成功、原 key/If-Match 重放 ──
+// 头像命令是文件类命令（Task 6 同款纪律）：槽里只有 name/type/size/lastModified/SHA-256
+// 文件核对，绝不存字节；未知结果保留槽与原幂等键/原 If-Match（revision 也是幂等身份）。
+
+describe('创建候选操作 · 建档头像写入（J-PILOT-02 Task 8）', () => {
+  async function 摘要(file: File): Promise<string> {
+    const 摘 = await globalThis.crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    return [...new Uint8Array(摘)].map((字节) => 字节.toString(16).padStart(2, '0')).join('');
+  }
+
+  const 档案 = (revision: number, 有头像: boolean) => ({
+    avatar_url: 有头像 ? ('/api/v1/me/avatar/content' as const) : null,
+    revision,
+    updated_at: null,
+  });
+
+  /** 头像域真实数据源链路 + 捕获每次草稿写入（观察登记过的槽）。 */
+  function 头像场景(选项: {
+    建档?: 候选引导建档草稿 | null;
+    处理: (o: BFF请求选项) => unknown;
+  }) {
+    const 草稿写入们: 候选引导建档草稿[] = [];
+    const 存储: 候选建档草稿存储 = {
+      读取: vi.fn(() => null),
+      写入: vi.fn((建档: 候选引导建档草稿) => {
+        草稿写入们.push(建档);
+        return true;
+      }),
+    };
+    const 请求Mock = vi.fn(async (请求选项: BFF请求选项): Promise<BFF响应<unknown>> => ({
+      result: await 选项.处理(请求选项), etag: null, requestId: 'r',
+    }));
+    const 场景 = 创建场景({
+      建档: 选项.建档 === undefined ? {} : 选项.建档,
+      存储,
+      后端覆盖: 创建候选账号数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    const 请求们 = () => 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    const POST们 = () => 请求们().filter((o) => o.method === 'POST' && o.path === '/api/v1/me/avatar');
+    return { ...场景, 请求们, POST们, 草稿写入们 };
+  }
+
+  const 同一张图片 = () => new File(['avatar-bytes'], 'avatar.png', {
+    type: 'image/png', lastModified: 123,
+  });
+
+  it('成功：发送前登记 avatar 槽（五键文件核对 + 原 revision 的 ifMatch + 幂等键），回执后清槽并记 头像状态 已保存', async () => {
+    const 图片 = 同一张图片();
+    const 场景 = 头像场景({
+      处理: (o) => {
+        if ((o.method ?? 'GET') === 'GET' && o.path === '/api/v1/me/account-profile') return 档案(5, false);
+        if (o.method === 'POST' && o.path === '/api/v1/me/avatar') return 档案(6, true);
+        throw new Error(`未预期的请求 ${o.method} ${o.path}`);
+      },
+    });
+    await expect(场景.操作.保存候选头像(图片)).resolves.toBeUndefined();
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.待写入).toBeUndefined(); // 已确认后清槽
+    expect(草稿.头像状态).toBe('已保存');
+    expect(场景.POST们()).toHaveLength(1);
+    expect(场景.POST们()[0].ifMatch).toBe('"5"'); // 上传前权威读取的 revision
+    expect(typeof 场景.POST们()[0].幂等键).toBe('string');
+    // 登记过的槽：五键文件核对（绝不存字节）、原 revision 的 ifMatch、prepared
+    const 槽 = 场景.草稿写入们.map((b) => b.待写入).find((项) => 项 !== undefined)!;
+    expect(槽.种类).toBe('avatar');
+    expect(槽.阶段).toBe('prepared');
+    expect(槽.ifMatch).toBe(5);
+    expect(槽.请求体).toBeUndefined();
+    expect(槽.文件核对).toEqual({
+      name: 'avatar.png', type: 'image/png', size: 图片.size, lastModified: 123,
+      sha256: await 摘要(图片),
+    });
+    // 成功回执路径上的权威水合照常（破缓存地址带 revision）
+    expect(场景.派发).toHaveBeenCalledWith({
+      型: '存求职头像', 图: '/api/v1/me/avatar/content?v=6',
+    });
+  });
+
+  it('503 结果未知：槽与原幂等键保留、头像状态 待核对，绝不自动重传', async () => {
+    const 图片 = 同一张图片();
+    const 场景 = 头像场景({
+      处理: (o) => {
+        if ((o.method ?? 'GET') === 'GET' && o.path === '/api/v1/me/account-profile') return 档案(5, false);
+        if (o.method === 'POST' && o.path === '/api/v1/me/avatar') {
+          throw new BFF错误(503, 'operation_outcome_unknown', '结果未知');
+        }
+        throw new Error(`未预期的请求 ${o.method} ${o.path}`);
+      },
+    });
+    await expect(场景.操作.保存候选头像(图片)).rejects.toMatchObject({ status: 503 });
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.待写入).toMatchObject({ 种类: 'avatar', 阶段: 'prepared', ifMatch: 5 });
+    expect(草稿.头像状态).toBe('待核对');
+    expect(草稿.待写入!.幂等键).toBe(场景.POST们()[0].幂等键); // 原键留在槽里
+    expect(场景.POST们()).toHaveLength(1); // 只发过一次
+  });
+
+  it('503 后重选同一张图片：沿用槽内原幂等键与原 If-Match 重放（revision 也是幂等身份，不拿新快照冒充）', async () => {
+    let POST数 = 0;
+    let GET数 = 0;
+    const 场景 = 头像场景({
+      处理: (o) => {
+        if ((o.method ?? 'GET') === 'GET' && o.path === '/api/v1/me/account-profile') {
+          GET数 += 1;
+          // 第一次发送前 revision 5；失败后权威账号已被别处推进到 9（且头像在场）
+          return GET数 === 1 ? 档案(5, false) : 档案(9, true);
+        }
+        if (o.method === 'POST' && o.path === '/api/v1/me/avatar') {
+          POST数 += 1;
+          if (POST数 === 1) throw new BFF错误(503, 'operation_outcome_unknown', '结果未知');
+          return 档案(10, true);
+        }
+        throw new Error(`未预期的请求 ${o.method} ${o.path}`);
+      },
+    });
+    await expect(场景.操作.保存候选头像(同一张图片())).rejects.toMatchObject({ status: 503 });
+    const 原键 = 场景.deps.建档草稿引用!.current!.待写入!.幂等键!;
+    // 用户重选同一张图片（新的 File 实例、同字节）再保存
+    await expect(场景.操作.保存候选头像(同一张图片())).resolves.toBeUndefined();
+    expect(POST数).toBe(2);
+    expect(场景.POST们()[1].幂等键).toBe(原键); // 复用原 key，不铸新键
+    expect(场景.POST们()[1].ifMatch).toBe('"5"'); // 原 If-Match，不是新快照的 9
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.待写入).toBeUndefined();
+    expect(草稿.头像状态).toBe('已保存');
+  });
+
+  it('槽未结算 + 不同比特：零发送、可上屏的闭合文案，槽原样保留', async () => {
+    const 场景 = 头像场景({
+      建档: {
+        待写入: {
+          种类: 'avatar', ifMatch: 5, 幂等键: 'idem-avatar-first-01', 阶段: 'prepared',
+          文件核对: { name: 'first.png', type: 'image/png', size: 3, lastModified: 1, sha256: 'f'.repeat(64) },
+        },
+        头像状态: '待核对',
+      },
+      处理: (o) => {
+        if ((o.method ?? 'GET') === 'GET' && o.path === '/api/v1/me/account-profile') return 档案(9, true);
+        throw new Error(`未预期的请求 ${o.method} ${o.path}`);
+      },
+    });
+    const 另一张 = new File(['different-bits'], 'second.png', { type: 'image/png', lastModified: 456 });
+    const 错误 = await 场景.操作.保存候选头像(另一张).then(() => null, (e: unknown) => e);
+    expect(错误).toBeInstanceOf(BFF错误);
+    // 用户真正看到的那句话必须是可行动的原文（不是通用「请求失败」）
+    expect(取后端错误文案(错误)).toBe('上一条写入结果未确认，请先重试或核对原步骤');
+    expect(场景.POST们()).toHaveLength(0); // 本地拦截：一次都不发
+    expect(场景.deps.建档草稿引用!.current!.待写入?.幂等键).toBe('idem-avatar-first-01'); // 槽原样
+  });
+
+  it('409 冲突同样保留槽（未知结算约定），重读仅为权威回显', async () => {
+    const 图片 = 同一张图片();
+    const 场景 = 头像场景({
+      处理: (o) => {
+        if ((o.method ?? 'GET') === 'GET' && o.path === '/api/v1/me/account-profile') return 档案(5, false);
+        if (o.method === 'POST' && o.path === '/api/v1/me/avatar') {
+          throw new BFF错误(409, 'version_conflict', '数据已在其他地方更新，请重试');
+        }
+        throw new Error(`未预期的请求 ${o.method} ${o.path}`);
+      },
+    });
+    await expect(场景.操作.保存候选头像(图片)).rejects.toMatchObject({ code: 'version_conflict' });
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.待写入).toMatchObject({ 种类: 'avatar', 阶段: 'prepared' }); // 待核对
+    expect(草稿.头像状态).toBe('待核对');
+  });
+
+  it('确定拒绝（422）：清本次头像槽并恢复登记前的头像状态，不把单槽永久锁死', async () => {
+    const 场景 = 头像场景({
+      建档: { 头像状态: '已保存' }, // 本轮已成功传过一张：这次换图被服务端确定拒绝
+      处理: (o) => {
+        if ((o.method ?? 'GET') === 'GET' && o.path === '/api/v1/me/account-profile') return 档案(6, true);
+        if (o.method === 'POST' && o.path === '/api/v1/me/avatar') {
+          throw new BFF错误(422, 'validation_failed', '图片无法处理');
+        }
+        throw new Error(`未预期的请求 ${o.method} ${o.path}`);
+      },
+    });
+    await expect(场景.操作.保存候选头像(new File(['bad'], 'bad.png', { type: 'image/png' })))
+      .rejects.toMatchObject({ status: 422 });
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.待写入).toBeUndefined(); // 确定拒绝清槽
+    expect(草稿.头像状态).toBe('已保存'); // 恢复登记前的值，不误报 未选
+  });
+
+  it('写在途切账号：迟到成功不水合新主体、不写新主体草稿', async () => {
+    let 放行!: (值: unknown) => void;
+    const 场景 = 头像场景({
+      处理: (o) => {
+        if ((o.method ?? 'GET') === 'GET' && o.path === '/api/v1/me/account-profile') return 档案(5, false);
+        if (o.method === 'POST' && o.path === '/api/v1/me/avatar') {
+          return new Promise((ok) => { 放行 = ok; });
+        }
+        throw new Error(`未预期的请求 ${o.method} ${o.path}`);
+      },
+    });
+    const 写 = 场景.操作.保存候选头像(同一张图片());
+    await new Promise((完成) => setTimeout(完成, 0)); // 等 POST 真正挂起（发送前已登记槽）
+    场景.deps.主体标识引用.current = 'sub_2'; // 请求在途时用户换了账号
+    场景.deps.建档草稿引用!.current = null; // Provider 换主体时同步清草稿
+    const 切换时写入数 = 场景.草稿写入们.length;
+    放行(档案(6, true));
+    await expect(写).resolves.toBeUndefined();
+    const 动作们 = (场景.派发.mock.calls as { 型: string }[][]).map(([a]) => a.型);
+    // 切换前的那次权威读取水合是合法的；迟到的上传成功不得再水合新主体（恰一次）
+    expect(动作们.filter((型) => 型 === '存求职头像')).toHaveLength(1);
+    expect(场景.deps.建档草稿引用!.current).toBeNull(); // 不向新主体写草稿
+    expect(场景.草稿写入们).toHaveLength(切换时写入数); // 迟到回执被栅栏拦下：不再新增草稿写入
+  });
+
+  it('无建档草稿（日常语境）：数据源不收跟踪、草稿零写入、成功水合照常', async () => {
+    const 图片 = 同一张图片();
+    const 场景 = 头像场景({
+      建档: null,
+      处理: (o) => {
+        if ((o.method ?? 'GET') === 'GET' && o.path === '/api/v1/me/account-profile') return 档案(5, false);
+        if (o.method === 'POST' && o.path === '/api/v1/me/avatar') return 档案(6, true);
+        throw new Error(`未预期的请求 ${o.method} ${o.path}`);
+      },
+    });
+    await expect(场景.操作.保存候选头像(图片)).resolves.toBeUndefined();
+    expect(场景.POST们()).toHaveLength(1);
+    expect(场景.POST们()[0].幂等键).toBeUndefined(); // 无跟踪：键由 HTTP 层自理
+    expect(场景.草稿写入们).toHaveLength(0); // 草稿零写入
+    expect(场景.派发).toHaveBeenCalledWith({
+      型: '存求职头像', 图: '/api/v1/me/avatar/content?v=6',
+    });
+  });
+
+  it('SHA-256 不可用：本次不登记单槽（也就不会拿原幂等键配另一份字节），上传照常', async () => {
+    const 摘要桩 = vi.spyOn(globalThis.crypto.subtle, 'digest')
+      .mockRejectedValue(new Error('SubtleCrypto unavailable'));
+    try {
+      const 图片 = 同一张图片();
+      const 场景 = 头像场景({
+        处理: (o) => {
+          if ((o.method ?? 'GET') === 'GET' && o.path === '/api/v1/me/account-profile') return 档案(5, false);
+          if (o.method === 'POST' && o.path === '/api/v1/me/avatar') return 档案(6, true);
+          throw new Error(`未预期的请求 ${o.method} ${o.path}`);
+        },
+      });
+      await expect(场景.操作.保存候选头像(图片)).resolves.toBeUndefined();
+      expect(场景.POST们()).toHaveLength(1); // 上传照常
+      const 草稿 = 场景.deps.建档草稿引用!.current!;
+      expect(草稿.待写入).toBeUndefined(); // 没有核对坐标就不登记
+      expect(草稿.头像状态).toBeUndefined(); // 不产生头像状态事实
+    } finally {
+      摘要桩.mockRestore();
+    }
   });
 });

@@ -98,6 +98,16 @@ function 是确定拒绝(错误: unknown): boolean {
   return 错误.status >= 400 && 错误.status < 500;
 }
 
+/**
+ * J-PILOT-02 Task 8：同一条头像命令 —— 文件核对（字节 SHA-256）一致即同一条。
+ * ifMatch / 幂等键 不参与比较：未知结果恢复要沿槽里的原 If-Match 与原幂等键重放
+ *（revision 也是幂等身份，Spec §6），不能拿新快照的 revision 冒充原命令。
+ */
+function 同一头像命令(a: 建档待写入, b: 建档待写入): boolean {
+  return a.种类 === b.种类
+    && JSON.stringify(a.文件核对 ?? null) === JSON.stringify(b.文件核对 ?? null);
+}
+
 /** 把回执身份落进草稿：条目写 已存条目（项目带父编号）并替换 资料 同编号条目；单例写 已存分区。 */
 function 落已存身份(建档: 候选引导建档草稿, 命令: 建档待写入, 回执: 建档写入回执): 候选引导建档草稿 {
   const 下一步: 候选引导建档草稿 = { ...建档 };
@@ -401,10 +411,66 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
     派发({ 型: '存求职头像', 图 });
   };
 
-  async function 重读候选账号档案(): Promise<BFF候选账号档案> {
+  /**
+   * 权威重读候选账号档案：读 account 仅为权威回显（Task 8）—— 栅栏破防（迟到旧会话）
+   * 时结果照返但不派发，不把旧主体的头像水合进新主体。缺省栅栏恒立（删除路径保持原行为）。
+   */
+  async function 重读候选账号档案(栅栏仍立: () => boolean = () => true): Promise<BFF候选账号档案> {
     const 档案 = await 后端!.读取候选账号档案();
-    提交候选账号档案(档案);
+    if (栅栏仍立()) 提交候选账号档案(档案);
     return 档案;
+  }
+
+  // ── J-PILOT-02 Task 8：头像命令的建档单槽跟踪（文件类命令，与 Task 6 文件域同一纪律）──
+
+  /**
+   * 头像命令的跟踪实现：
+   * - 发送前：单槽守卫（任何未结算槽 —— 含其他域 —— 只要不是同一条头像命令就本地拦下，
+   *   抛可上屏的闭合错误）；同一条命令沿用槽里的原幂等键与原 ifMatch 重放。
+   *   命令缺 文件核对（SHA-256 不可用，由数据源标注）时不登记 —— 认不出字节的命令
+   *   不能拿原幂等键配另一份字节，请求照发（无跟踪语义）。
+   * - 已确认：收到回执（account revision）立刻清槽并记 头像状态 已保存。
+   * 头像状态 随槽推进：登记时 待核对；确定拒绝恢复登记前的值（分类只在 是确定拒绝 一处）。
+   */
+  function 构造头像跟踪(栅栏仍立: () => boolean): {
+    跟踪: 建档写入跟踪;
+    取本槽命令: () => 建档待写入 | null;
+    取之前头像状态: () => 候选引导建档草稿['头像状态'];
+  } {
+    let 本槽命令: 建档待写入 | null = null;
+    let 之前头像状态: 候选引导建档草稿['头像状态'] = '未选';
+    const 跟踪: 建档写入跟踪 = {
+      发送前(命令) {
+        const 现有 = deps.建档草稿引用?.current ?? null;
+        if (!栅栏仍立() || 现有 === null) {
+          // 栅栏破防（迟到写）或草稿已不在场（登出清理）：不落盘，请求由数据源照发
+          return 命令;
+        }
+        if (命令.文件核对 === undefined) return 命令; // 认不出字节：本次不登记
+        之前头像状态 = 现有.头像状态 ?? '未选';
+        const 槽 = 现有.待写入;
+        if (槽 !== undefined && !同一头像命令(槽, 命令)) {
+          // Global 6：一个槽未结算时禁止另一 mutation 覆盖 —— 请求一次都不发
+          throw new BFF错误(0, 'invalid_request', '上一条写入结果未确认，请先重试或核对原步骤');
+        }
+        const 定: 建档待写入 = {
+          ...命令,
+          幂等键: 槽?.幂等键 ?? 命令.幂等键 ?? globalThis.crypto.randomUUID(),
+          ...(槽?.ifMatch !== undefined ? { ifMatch: 槽.ifMatch } : {}),
+          阶段: 'prepared',
+        };
+        写建档草稿({ ...现有, 待写入: 定, 头像状态: '待核对' });
+        本槽命令 = 定;
+        return 定;
+      },
+      已确认(命令) {
+        if (!栅栏仍立()) return;
+        const 现有 = deps.建档草稿引用?.current ?? null;
+        if (现有 === null || 现有.待写入 === undefined || !同一头像命令(现有.待写入, 命令)) return;
+        写建档草稿({ ...取消槽(现有), 头像状态: '已保存' });
+      },
+    };
+    return { 跟踪, 取本槽命令: () => 本槽命令, 取之前头像状态: () => 之前头像状态 };
   }
 
   /**
@@ -796,21 +862,43 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
       if (!是后端 || !后端) return;
       if (锁.current.has('候选头像写入')) return;
       锁.current.add('候选头像写入');
-      let before: BFF候选账号档案 | null = null;
+      // Task 8：发起时刻捕获主体/会话代际 —— 响应、水合、错误重读都过栅栏，
+      // 迟到结果不水合新主体。当前 active 建档草稿在场时头像命令登记唯一单槽。
+      const 本次主体 = 主体标识引用.current;
+      const 本次代际 = 会话代际.current;
+      const 栅栏仍立 = () => 主体标识引用.current === 本次主体 && 会话代际.current === 本次代际;
+      const 头像跟踪 = (deps.建档草稿引用?.current ?? null) !== null
+        ? 构造头像跟踪(栅栏仍立)
+        : null;
       try {
-        before = await 重读候选账号档案();
-        const after = await 后端.替换候选头像(file, before.revision);
-        提交候选账号档案(after);
+        const before = await 重读候选账号档案(栅栏仍立);
+        // 无草稿的日常调用省略跟踪参数（与原实现逐字一致）；建档在场才把跟踪交给数据源
+        const after = 头像跟踪 !== null
+          ? await 后端.替换候选头像(file, before.revision, 头像跟踪.跟踪)
+          : await 后端.替换候选头像(file, before.revision);
+        if (栅栏仍立()) 提交候选账号档案(after);
       } catch (错误) {
+        // Task 8：确定拒绝（含请求从未发出的本地拦截）清本次头像槽并恢复登记前的
+        // 头像状态；409/5xx/网络等结果未知保留槽与原幂等键 —— 分类只在 是确定拒绝 一处。
+        const 槽 = deps.建档草稿引用?.current?.待写入;
+        const 本槽 = 头像跟踪?.取本槽命令() ?? null;
+        if (槽 !== undefined && 头像跟踪 !== null && 本槽 !== null
+            && 同一头像命令(槽, 本槽) && 是确定拒绝(错误)) {
+          const 现有 = deps.建档草稿引用?.current;
+          if (现有 !== null && 现有 !== undefined) {
+            写建档草稿({ ...取消槽(现有), 头像状态: 头像跟踪.取之前头像状态() });
+          }
+        }
         if (错误 instanceof BFF错误 && 错误.status === 401) {
-          清账号状态(账号清理依赖);
-        } else if (错误 instanceof BFF错误 &&
+          if (栅栏仍立()) 清账号状态(账号清理依赖);
+        } else if (错误 instanceof BFF错误 && 栅栏仍立() &&
           ((错误.status === 409 && 错误.code === 'version_conflict') ||
            (错误.status === 503 && 错误.code === 'operation_outcome_unknown'))) {
+          // Task 8：读 account 仅为权威回显 —— revision 前进且 avatar_url 非空不能证明
+          // 本文件成功（稳定头像 URL 不是内容哈希）；成功只能来自已确认回执或原 key 重放。
+          // 这里只把服务端当前事实刷上屏，原错误仍照抛。
           try {
-            const current = await 重读候选账号档案();
-            if (错误.status === 503 && before !== null &&
-                current.revision > before.revision && current.avatar_url !== null) return;
+            await 重读候选账号档案(栅栏仍立);
           } catch {
             // 重读失败时保留原始写错误，避免用次生错误误导用户。
           }

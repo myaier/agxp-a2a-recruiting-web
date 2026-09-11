@@ -646,6 +646,15 @@ export interface 会话操作 {
 
 export interface 候选操作 {
   加载候选账号档案(): Promise<void>;
+  /**
+   * J-PILOT-02 Task 8：签名不变。当前 active 建档草稿在场时接 建档写入跟踪 ——
+   * 发送前登记唯一单槽（avatar 种类 + 五键文件核对，绝不存字节），未知结果保留槽
+   * 与原幂等键/原 If-Match（revision 也是幂等身份，重放不拿新快照 revision 冒充
+   * 原命令，Spec §6）；已确认回执清槽并记 头像状态 已保存；确定拒绝清槽并恢复
+   * 登记前的头像状态。503 后 revision 前进且 avatar_url 非空不能证明本文件成功 ——
+   * 读 account 仅为权威回显，原错误照抛。响应/水合/错误重读都过发起时刻的
+   * 主体/会话代际栅栏。无草稿的日常语境逐字保持原路径。
+   */
   保存候选头像(file: File): Promise<void>;
   删除候选头像(): Promise<void>;
   /**
