@@ -1,6 +1,8 @@
-// J-PILOT-01 Task 4：候选连续列表卡的展示投影（Spec §5）。纯函数：把已 decode 的
-// NegotiationCard（连续代谈.ts fail-closed）投影成现有 候选在谈卡/白卡/在谈阶段区 接受的
-// 展示数据 —— 不强制转成 P5列表项，也由此不产生第二层契约错误分支（decode 已挡漂移）。
+// J-PILOT-01 Task 4：候选连续列表卡的展示投影（Spec §5）；Task 5 追加详情页 pre-Case /
+// retention 封闭的展示投影（Spec §6/§7/§8，消费 NegotiationDetail）。纯函数：把已 decode 的
+// NegotiationCard / NegotiationDetail（连续代谈.ts fail-closed）投影成现有 详情外壳/详情状态区/
+// 阶段对话流/详情动作卡/详情底栏 接受的展示数据 —— 不强制转成 P5 视图，也由此不产生第二层
+// 契约错误分支（decode 已挡漂移）。
 //
 // 阶段权威：服务端 phase + needs_action + case_state + failure/refusal_code。展示词：
 //   · pre-Case 阶段标题为本域闭表；状态文案复用 P4委托状态文案（同一协议的既有权威文案）；
@@ -13,8 +15,16 @@
 
 import type { P5阶段, P5状态 } from './BFF契约';
 import type { P5Agent注意码, P5状态视图 } from './招聘数据源/MatchCase';
-import type { NegotiationCard } from './招聘数据源/连续代谈';
+import type { NegotiationCard, NegotiationDetail } from './招聘数据源/连续代谈';
 import { P4委托状态文案, P4失败原因文案, P4拒绝原因文案 } from './发现推荐映射';
+import { 从职位摘要到资料 } from './详情展示映射';
+import type { 分段项 } from '../组件/阶段对话流';
+import type {
+  详情底栏信息,
+  顶栏信息,
+  状态区信息,
+  职位资料信息,
+} from '../组件/在谈详情/类型';
 
 /** 连续列表卡视图：在谈卡（求职在谈卡）与历史白卡共用的最小展示数据。 */
 export interface 连续列表视图 {
@@ -148,4 +158,142 @@ function 非空段(段: string | null): string | null {
   if (段 === null) return null;
   const 值 = 段.trim();
   return 值 === '' ? null : 值;
+}
+
+// ── J-PILOT-01 Task 5：详情页 pre-Case / retention 封闭的展示投影（Spec §6/§7/§8）──
+// pre-Case 状态与四个未到达阶段只作展示数据（不构造假 P5 详情、不提交为业务 state）；
+// 文案/禁用标记在本模块闭表产出（plan review-r1 裁定），Task 6 的原控件禁用能力就绪后
+// 联合验证，数据形状不变。
+
+/** Spec §6 冻结：尚未开案时状态区据实显示的两句（与列表短文案不同词，别混用）。 */
+const 连续详情状态文案表 = {
+  accepted: '已接手，等待开始',
+  evaluating: '正在进行公开信息初评',
+} as const;
+
+/** Spec §7 输入框表第一行：初评运行中的占位与禁用说明同句。 */
+export const 公开初评运行文案 = 'AI 代理正在进行公开信息初评';
+/** pre-Case 失败/拒绝后的真实文案：不冒充初评仍在运行（Spec §7「区分」要求）。 */
+const 初评未完成文案 = '公开信息初评未完成';
+const 已拒绝文案 = '本次未能继续';
+/** retention 封闭（case_started 且 case_detail=null）复用终局只读口径（终局只读说明 同句重申）。 */
+const 封闭只读说明 = '当前在谈已结束，仅可查看';
+
+/** pre-Case 详情状态区：列表短词 + Task 5 冻结文案；轮次恒 null（无轮次不造 0/3）。 */
+export function 从连续到详情状态(detail: NegotiationDetail): 状态区信息 {
+  const 卡视图 = 映射连续列表项(detail);
+  return {
+    阶段: 卡视图.阶段标题,
+    状态: detail.phase === 'accepted' || detail.phase === 'evaluating'
+      ? 连续详情状态文案表[detail.phase]
+      : 卡视图.状态文案,
+    步骤: null,
+    轮次: null,
+    徽标: 卡视图.徽标,
+    注意说明: 卡视图.注意说明,
+  };
+}
+
+/** pre-Case 详情顶栏：求职端同款槽位；negotiation.job 可空段缺失给占位，不猜公司。 */
+export function 从连续到详情顶栏(detail: NegotiationDetail): 顶栏信息 {
+  return {
+    端: '求职',
+    标题: `${非空段(detail.job.title) ?? '职位信息未知'} · 公司信息缺失`,
+    副标题: `${非空段(detail.job.location) ?? '城市未知'} · ${非空段(detail.job.public_salary_range) ?? '薪资未知'}`,
+    画像: null,
+    右侧: { kind: '分数', 值: null },
+    岗位上下文: null,
+  };
+}
+
+/** pre-Case 第二 Tab 职位资料：negotiation.job 只给实际字段，其余沿用全缺失底座。 */
+export function 从连续到职位资料(detail: NegotiationDetail): 职位资料信息 {
+  return 从职位摘要到资料({
+    职位: 非空段(detail.job.title) ?? '职位信息未知',
+    城市: 非空段(detail.job.location) ?? '城市未知',
+    薪资: 非空段(detail.job.public_salary_range) ?? '薪资未知',
+    技能: [], // NegotiationJob 不提供技能段，恒空（不跨 API 拼资料）
+  });
+}
+
+/** 四阶段均未到达（Spec §6）：共用阶段名一段不缺，不造轮次/Q/A/清单/默认展开。 */
+export function 从连续到详情分段(): 分段项[] {
+  return (['匿名初筛', '递交简历', '需要协调', '意向确认'] as const).map(
+    (阶段) => ({ 阶段, 展示标题: 阶段, 态: '未到达' as const }),
+  );
+}
+
+/** pre-Case 底栏（Spec §7 输入框表）：占位与禁用说明成对产出，发送恒 null（无 Case 叮嘱请求）；
+ *  Task 6 把只读 div 换成真禁用控件时数据形状不变。 */
+export function 映射连续底栏(detail: NegotiationDetail): 详情底栏信息 {
+  if (detail.phase === 'case_started') {
+    // case_detail=null 的 case_started = retention 封闭（开案中的分支归 Case 渲染）
+    return { kind: '只读', 说明: 封闭只读说明 };
+  }
+  const 禁用说明 = detail.phase === 'accepted' || detail.phase === 'evaluating'
+    ? 公开初评运行文案
+    : detail.phase === 'evaluation_failed' ? 初评未完成文案 : 已拒绝文案;
+  return { kind: '输入', 占位: 禁用说明, 值: '', 改变: () => undefined, 发送: null, 禁用说明 };
+}
+
+/** 公开信息初评的总结托盘数据（Spec §6）：决定/内容/证据以源数据呈现，不生成评分或条件裁决。 */
+export interface 公开初评托盘视图 {
+  /** 稳定 key：evaluation_id（轮询整包替换时 React 不误配对）。 */
+  编号: string;
+  /** wire 原词（fit/not_fit/uncertain）：只是建议，不翻译成前端裁决。 */
+  决定: string;
+  /** 代理写的公开初评原文。 */
+  内容: string;
+  /** evidence 源数据行：`匹配/冲突/待确认｜dimension｜code｜source`。 */
+  证据行们: readonly string[];
+}
+
+export function 映射公开初评(detail: NegotiationDetail): 公开初评托盘视图 | null {
+  const 评 = detail.agent_summary.public_evaluation;
+  if (评 === null) return null;
+  const 行 = (组: string, 项: { dimension: string; code: string; source: string }) =>
+    `${组}｜${项.dimension}｜${项.code}｜${项.source}`;
+  return {
+    编号: 评.evaluation_id,
+    决定: 评.decision,
+    内容: 评.summary,
+    证据行们: [
+      ...评.evidence.matches.map((项) => 行('匹配', 项)),
+      ...评.evidence.conflicts.map((项) => 行('冲突', 项)),
+      ...评.evidence.unknowns.map((项) => 行('待确认', 项)),
+    ],
+  };
+}
+
+/** 失败初评的动作卡展示数据（Spec §8）：只有权威 actions 允许时给出对应按钮文案；
+ *  执行回调归控制层接（操作.重试连续记录/归档连续记录），本模块不发请求。 */
+export interface 连续失败动作视图 {
+  卡: { 键: string; 标题: string; 说明: string | null };
+  /** actions.retry 允许才有；否则 null（不出按钮）。 */
+  重试文案: string | null;
+  /** actions.archive 允许才有；否则 null。 */
+  归档文案: string | null;
+  /** 归档二次确认（现有确认层）：描述「移入历史，不是取消」。 */
+  归档确认: { 标题: string; 正文: string; 执行文: string; 取消文: string };
+}
+
+export function 映射连续失败动作(detail: NegotiationDetail): 连续失败动作视图 | null {
+  // 只有失败初评出恢复动作：refused/Case 阶段不出 Agent 重跑、pre-Case 归档或保证可结束按钮
+  if (detail.phase !== 'evaluation_failed') return null;
+  if (!detail.actions.retry && !detail.actions.archive) return null;
+  return {
+    卡: {
+      键: '连续失败动作',
+      标题: 初评未完成文案,
+      说明: detail.failure === null ? null : P4失败原因文案(detail.failure.code),
+    },
+    重试文案: detail.actions.retry ? '重试初评' : null,
+    归档文案: detail.actions.archive ? '归档' : null,
+    归档确认: {
+      标题: '归档这条记录？',
+      正文: '移入历史，不是取消',
+      执行文: '归档',
+      取消文: '取消',
+    },
+  };
 }

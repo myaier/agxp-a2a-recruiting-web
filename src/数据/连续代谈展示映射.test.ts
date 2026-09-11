@@ -10,8 +10,17 @@
 
 import { describe, expect, it } from 'vitest';
 import type { P5状态视图 } from './招聘数据源/MatchCase';
-import type { NegotiationCard } from './招聘数据源/连续代谈';
-import { 映射连续列表项 } from './连续代谈展示映射';
+import type { NegotiationCard, NegotiationDetail, NegotiationPublicEvaluation } from './招聘数据源/连续代谈';
+import {
+  从连续到详情分段,
+  从连续到详情顶栏,
+  从连续到详情状态,
+  从连续到职位资料,
+  映射公开初评,
+  映射连续失败动作,
+  映射连续底栏,
+  映射连续列表项,
+} from './连续代谈展示映射';
 import { 从连续到阶段 } from './列表卡片映射';
 
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
@@ -69,6 +78,46 @@ function 案例状态(覆盖: Partial<P5状态视图> = {}): P5状态视图 {
     createdAt: '2026-09-01T08:00:00Z', updatedAt: '2026-09-01T09:00:00Z',
     finalizedAt: null, agentAttention: null,
     ...覆盖,
+  };
+}
+
+/** 已 decode 的 NegotiationDetail 样本（J-PILOT-01 Task 5：详情页 pre-Case/retention 投影用）。 */
+function 连续详情(选项: {
+  recordId?: string;
+  phase?: NegotiationCard['phase'];
+  needsAction?: boolean;
+  shelf?: NegotiationCard['shelf'];
+  caseState?: P5状态视图 | null;
+  failure?: NegotiationCard['failure'];
+  refusalCode?: NegotiationCard['refusal_code'];
+  actions?: Partial<NegotiationCard['actions']>;
+  caseDetail?: NegotiationDetail['case_detail'];
+  publicEvaluation?: NegotiationPublicEvaluation | null;
+  职位名?: string | null;
+  城市?: string | null;
+  薪资?: string | null;
+} = {}): NegotiationDetail {
+  return {
+    ...连续卡({
+      recordId: 选项.recordId ?? 'dlg_0123456789abcdef0123456789abcdef',
+      phase: 选项.phase ?? 'accepted',
+      needsAction: 选项.needsAction,
+      shelf: 选项.shelf,
+      caseState: 选项.caseState,
+      failure: 选项.failure,
+      refusalCode: 选项.refusalCode,
+      actions: 选项.actions,
+      职位名: 选项.职位名,
+      城市: 选项.城市,
+      薪资: 选项.薪资,
+    }),
+    evaluation: null,
+    case_detail: 选项.caseDetail ?? null,
+    failure_history: [],
+    agent_summary: {
+      public_evaluation: 选项.publicEvaluation === undefined ? null : 选项.publicEvaluation,
+      condition_confirmation: null,
+    },
   };
 }
 
@@ -230,5 +279,194 @@ describe('从连续到阶段 · 阶段区信息', () => {
     })));
     expect(待办失败.徽标).toBe('需要你');
     expect(待办失败.注意说明).toBe('本次委托未完成');
+  });
+});
+// ── J-PILOT-01 Task 5：详情页 pre-Case / retention 封闭的展示投影（Spec §6/§7/§8）──
+// pre-Case 状态与四个未到达阶段是展示数据（不构造假 P5 详情）；公开初评只进现有总结托盘，
+// 来源标签「公开信息初评」；底栏 placeholder 与禁用标记成对产出（Task 6 换真控件时零改数据）。
+
+describe('Task 5 · 从连续到详情状态（pre-Case 状态区）', () => {
+  it('accepted / evaluating：Spec §6 冻结文案（已接手，等待开始 / 正在进行公开信息初评），轮次恒 null（无轮次不造 0/3）', () => {
+    expect(从连续到详情状态(连续详情({ phase: 'accepted' }))).toEqual({
+      阶段: '已受理',
+      状态: '已接手，等待开始',
+      步骤: null,
+      轮次: null,
+      徽标: '代理处理中',
+      注意说明: null,
+    });
+    const 评估中 = 从连续到详情状态(连续详情({ phase: 'evaluating' }));
+    expect(评估中.状态).toBe('正在进行公开信息初评');
+    expect(评估中.阶段).toBe('初评中');
+    expect(评估中.轮次).toBeNull();
+    expect(评估中.步骤).toBeNull();
+  });
+
+  it('evaluation_failed：短状态 + 失败原因进注意说明；needs_action 决定徽标', () => {
+    const 待办 = 从连续到详情状态(连续详情({
+      phase: 'evaluation_failed', needsAction: true,
+      failure: { code: 'delegation_agent_unavailable', retryable: true },
+    }));
+    expect(待办.状态).toBe('本次评估未完成');
+    expect(待办.注意说明).toBe('AI 服务暂时不可用，本次没有创建 Case');
+    expect(待办.徽标).toBe('需要你');
+    const 非待办 = 从连续到详情状态(连续详情({
+      phase: 'evaluation_failed',
+      failure: { code: 'delegation_failed', retryable: true },
+    }));
+    expect(非待办.徽标).toBe('需注意');
+  });
+
+  it('refused：拒绝原因照列表口径；case_started 封闭（case_detail=null）沿用安全进度文案', () => {
+    const 拒绝 = 从连续到详情状态(连续详情({ phase: 'refused', refusalCode: 'recommendation_stale' }));
+    expect(拒绝.状态).toBe('这条推荐已过期，请刷新后查看');
+    expect(拒绝.徽标).toBeNull();
+    const 封闭 = 从连续到详情状态(连续详情({ phase: 'case_started', caseState: null }));
+    expect(封闭.状态).toBe('暂时无法确认进度，请稍后刷新');
+    expect(封闭.轮次).toBeNull();
+  });
+});
+
+describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => {
+  it('顶栏：标题带公司缺失槽，副标题 = 城市 · 薪资带；可空段缺失给占位，不猜公司', () => {
+    expect(从连续到详情顶栏(连续详情({ phase: 'accepted' }))).toEqual({
+      端: '求职',
+      标题: 'AI 产品实习生 · 公司信息缺失',
+      副标题: '上海 · 300-500 元/天',
+      画像: null,
+      右侧: { kind: '分数', 值: null },
+      岗位上下文: null,
+    });
+    const 缺失 = 从连续到详情顶栏(连续详情({ phase: 'accepted', 职位名: null, 城市: null, 薪资: null }));
+    expect(缺失.标题).toBe('职位信息未知 · 公司信息缺失');
+    expect(缺失.副标题).toBe('城市未知 · 薪资未知');
+  });
+
+  it('职位资料：negotiation.job 只给实际字段，其余全缺失，缺口说明沿用约定句；技能段恒空', () => {
+    const 资料 = 从连续到职位资料(连续详情({ phase: 'accepted' }));
+    expect(资料.摘要).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300-500 元/天', 技能: [] });
+    expect(资料.职位详情).toBeNull();
+    expect(资料.公司.元行.map((行) => 行.标签)).toEqual(['融资阶段', '规模', '行业', '成立', '地址']);
+    expect(资料.接口缺口说明).toBe('当前在谈详情数据未提供');
+  });
+});
+
+describe('Task 5 · 从连续到详情分段（四阶段均未到达）', () => {
+  it('四段一段不缺、全未到达、共用阶段名；不造轮次/对话/清单（不给 pre-Case 伪造阶段数据）', () => {
+    const 分段 = 从连续到详情分段();
+    expect(分段).toHaveLength(4);
+    expect(分段.map((段) => 段.阶段)).toEqual(['匿名初筛', '递交简历', '需要协调', '意向确认']);
+    expect(分段.every((段) => 段.态 === '未到达')).toBe(true);
+    expect(分段.every((段) => 段.默认展开 === undefined)).toBe(true);
+    expect(分段.every((段) => 段.对话 === undefined && 段.核对清单 === undefined)).toBe(true);
+  });
+});
+
+describe('Task 5 · 映射连续底栏（Spec §7 输入框表）', () => {
+  it('初评运行中：占位与禁用说明都是「AI 代理正在进行公开信息初评」，发送恒 null（无 Case 叮嘱）', () => {
+    const 底栏 = 映射连续底栏(连续详情({ phase: 'evaluating' }));
+    expect(底栏).toEqual({
+      kind: '输入',
+      占位: 'AI 代理正在进行公开信息初评',
+      值: '',
+      改变: expect.any(Function),
+      发送: null,
+      禁用说明: 'AI 代理正在进行公开信息初评',
+    });
+  });
+
+  it('失败/拒绝后的真实文案：不冒充初评仍在运行', () => {
+    const 失败 = 映射连续底栏(连续详情({
+      phase: 'evaluation_failed',
+      failure: { code: 'delegation_failed', retryable: true },
+    }));
+    expect(失败.kind).toBe('输入');
+    if (失败.kind !== '输入') throw new Error('unreachable');
+    expect(失败.占位).not.toBe('AI 代理正在进行公开信息初评');
+    expect(失败.发送).toBeNull();
+    expect(失败.禁用说明).toBeTruthy();
+
+    const 拒绝 = 映射连续底栏(连续详情({ phase: 'refused', refusalCode: 'delegation_not_allowed' }));
+    expect(拒绝.kind).toBe('输入');
+    if (拒绝.kind !== '输入') throw new Error('unreachable');
+    expect(拒绝.禁用说明).not.toBe('AI 代理正在进行公开信息初评');
+  });
+
+  it('retention 封闭（case_started 且 case_detail=null）：只读口径，不承诺可输入', () => {
+    expect(映射连续底栏(连续详情({ phase: 'case_started', caseState: null }))).toEqual({
+      kind: '只读',
+      说明: '当前在谈已结束，仅可查看',
+    });
+  });
+});
+
+describe('Task 5 · 映射公开初评（现有总结托盘数据）', () => {
+  const 公开初评: NegotiationPublicEvaluation = {
+    evaluation_id: 'ev_pub_1',
+    decision: 'fit',
+    summary: '公开信息看，经验方向与岗位大体相符。',
+    coverage: 'public_job_and_candidate_data',
+    evidence: {
+      matches: [{ dimension: 'city', code: 'city_match', source: 'structured_precheck' }],
+      conflicts: [{ dimension: 'salary', code: 'below_expectation', source: 'candidate_agent' }],
+      unknowns: [{ dimension: 'education', code: 'not_disclosed', source: 'candidate_agent' }],
+    },
+    next_action: 'promote_to_a2a',
+    completed_at: '2026-09-01T09:00:00Z',
+  };
+
+  it('缺席给 null；在场给标签数据：决定/内容/证据行全以源数据呈现，不生成评分或条件裁决', () => {
+    expect(映射公开初评(连续详情({ phase: 'evaluating' }))).toBeNull();
+    const 视图 = 映射公开初评(连续详情({ phase: 'case_started', publicEvaluation: 公开初评 }));
+    expect(视图).toEqual({
+      编号: 'ev_pub_1',
+      决定: 'fit',
+      内容: '公开信息看，经验方向与岗位大体相符。',
+      证据行们: [
+        '匹配｜city｜city_match｜structured_precheck',
+        '冲突｜salary｜below_expectation｜candidate_agent',
+        '待确认｜education｜not_disclosed｜candidate_agent',
+      ],
+    });
+  });
+});
+
+describe('Task 5 · 映射连续失败动作（Spec §8：只有 actions 允许时出按钮）', () => {
+  it('非失败 phase 或权威不允许时给 null：refused/Case 阶段不出 Agent 重跑或归档', () => {
+    expect(映射连续失败动作(连续详情({ phase: 'accepted' }))).toBeNull();
+    expect(映射连续失败动作(连续详情({ phase: 'refused', refusalCode: 'delegation_not_allowed' }))).toBeNull();
+    expect(映射连续失败动作(连续详情({ phase: 'case_started', caseState: null }))).toBeNull();
+    expect(映射连续失败动作(连续详情({
+      phase: 'evaluation_failed',
+      failure: { code: 'delegation_failed', retryable: true },
+    }))).toBeNull(); // actions.retry/archive 均不允许
+  });
+
+  it('失败卡：说明 = 失败原因闭表文案；重试/归档文案只在权威允许时在场；归档确认描述「移入历史，不是取消」', () => {
+    const 视图 = 映射连续失败动作(连续详情({
+      phase: 'evaluation_failed', needsAction: true,
+      failure: { code: 'delegation_agent_unavailable', retryable: true },
+      actions: { retry: true, archive: true },
+    }));
+    expect(视图).not.toBeNull();
+    expect(视图!.卡.标题).toBe('公开信息初评未完成');
+    expect(视图!.卡.说明).toBe('AI 服务暂时不可用，本次没有创建 Case');
+    expect(视图!.重试文案).toBe('重试初评');
+    expect(视图!.归档文案).toBe('归档');
+    expect(视图!.归档确认).toEqual({
+      标题: '归档这条记录？',
+      正文: '移入历史，不是取消',
+      执行文: '归档',
+      取消文: '取消',
+    });
+
+    // 只允许重试：归档文案缺席
+    const 仅重试 = 映射连续失败动作(连续详情({
+      phase: 'evaluation_failed',
+      failure: { code: 'delegation_failed', retryable: true },
+      actions: { retry: true },
+    }));
+    expect(仅重试!.重试文案).toBe('重试初评');
+    expect(仅重试!.归档文案).toBeNull();
   });
 });

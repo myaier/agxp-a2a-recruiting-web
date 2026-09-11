@@ -20,7 +20,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatchCase详情 } from './MatchCase详情';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { 路径 } from '../../路由/路径表';
-import type { P5详情快照 } from '../../状态/后端/类型';
+import type { P5详情快照, P5连续详情快照 } from '../../状态/后端/类型';
+import type { NegotiationDetail } from '../../数据/招聘数据源/连续代谈';
 import type { P5列表项 } from '../../数据/招聘数据源/MatchCase';
 import type { P5详情 } from '../../数据/招聘数据源/MatchCase';
 import type { P5阶段区 } from '../../数据/招聘数据源/MatchCase';
@@ -37,8 +38,12 @@ if (!HTMLElement.prototype.scrollIntoView) {
 const mock派发 = vi.fn();
 const mock返回 = vi.fn();
 const mock跳转 = vi.fn();
+const mock替换跳转 = vi.fn();
 const mock设置P5范围 = vi.fn();
 const mock读取详情 = vi.fn(async () => undefined);
+const mock读取连续详情 = vi.fn(async () => undefined);
+const mock重试连续记录 = vi.fn(async (): Promise<void> => undefined);
+const mock归档连续记录 = vi.fn(async (): Promise<void> => undefined);
 const mock新增叮嘱 = vi.fn(async (): Promise<void> => undefined);
 const mock加载工作区 = vi.fn(async () => undefined);
 const mock刷新工作区 = vi.fn(async () => undefined);
@@ -55,6 +60,9 @@ const mock准备候选委托简历 = vi.fn(async (): Promise<BFF附件简历库 
 const mock操作 = {
   设置P5范围: mock设置P5范围,
   读取详情: mock读取详情,
+  读取连续详情: mock读取连续详情,
+  重试连续记录: mock重试连续记录,
+  归档连续记录: mock归档连续记录,
   新增叮嘱: mock新增叮嘱,
   加载工作区: mock加载工作区,
   刷新工作区: mock刷新工作区,
@@ -72,7 +80,9 @@ const mock操作 = {
 let mock应用状态: any;
 
 vi.mock('../../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
-vi.mock('../../路由/导航钩子', () => ({ use导航: () => ({ 返回: mock返回, 跳转: mock跳转 }) }));
+vi.mock('../../路由/导航钩子', () => ({
+  use导航: () => ({ 返回: mock返回, 跳转: mock跳转, 替换跳转: mock替换跳转 }),
+}));
 
 /** 动态取轻提示条数：轻提示 是 body 上的单例容器，每次断言都重查（捕获引用会过期）。 */
 function 轻提示条数(): number {
@@ -243,17 +253,101 @@ function 详情快照(选项: {
   };
 }
 
+// ── J-PILOT-01 Task 5：候选聚合夹具（NegotiationDetail 已 decode 形状）──
+// 候选分支只读 continuous detail：置详情状态 把 快照.detail 包装进 P5连续详情 槽
+// （canonical 键落位，同状态层 保存候选聚合快照）；pre-Case/alias 用 连续快照 显式覆盖。
+
+function 连续详情DTO(选项: {
+  recordId?: string;
+  caseId?: string | null;
+  phase?: NegotiationDetail['phase'];
+  needsAction?: boolean;
+  shelf?: NegotiationDetail['shelf'];
+  failure?: NegotiationDetail['failure'];
+  refusalCode?: NegotiationDetail['refusal_code'];
+  actions?: Partial<NegotiationDetail['actions']>;
+  caseDetail?: NegotiationDetail['case_detail'];
+  publicEvaluation?: NegotiationDetail['agent_summary']['public_evaluation'];
+} = {}): NegotiationDetail {
+  const recordId = 选项.recordId ?? 'mc_direct';
+  const recordKind = recordId.startsWith('dlg_') ? ('delegation' as const) : ('case' as const);
+  const caseDetail = 选项.caseDetail ?? null;
+  const phase = 选项.phase ?? (caseDetail !== null ? 'case_started' : 'accepted');
+  return {
+    needs_action: 选项.needsAction ?? true,
+    record_id: recordId,
+    record_kind: recordKind,
+    intention_id: 意向ID,
+    job: {
+      job_id: 职位ID,
+      title: '平台工程师',
+      location: '上海',
+      public_salary_range: '25-40K·16薪',
+      availability: 'available',
+    },
+    delegation_id: recordKind === 'delegation' ? 'dlg_rcpt_01' : null,
+    evaluation_id: phase === 'accepted' || phase === 'evaluating' ? 'ev_01' : null,
+    case_id: 选项.caseId !== undefined
+      ? 选项.caseId
+      : caseDetail !== null ? caseDetail.state.caseId : null,
+    shelf: 选项.shelf ?? 'active',
+    phase,
+    case_state: caseDetail !== null ? caseDetail.state : null,
+    failure: 选项.failure ?? null,
+    refusal_code: 选项.refusalCode ?? null,
+    actions: { retry: false, archive: false, open_case: false, ...选项.actions },
+    retry_generation: 0,
+    created_at: '2026-09-01T08:00:00Z',
+    updated_at: '2026-09-01T09:00:00Z',
+    archived_at: null,
+    evaluation: null,
+    case_detail: caseDetail,
+    failure_history: [],
+    agent_summary: {
+      public_evaluation: 选项.publicEvaluation === undefined ? null : 选项.publicEvaluation,
+      condition_confirmation: null,
+    },
+  };
+}
+
+function 连续详情快照(选项: {
+  聚合?: NegotiationDetail | null;
+  阶段?: P5连续详情快照['阶段'];
+  error?: string | null;
+  刷新中?: boolean;
+} = {}): P5连续详情快照 {
+  return {
+    ownerSubjectId: 'sub_1',
+    阶段: 选项.阶段 ?? '成功',
+    刷新中: 选项.刷新中 ?? false,
+    detail: 选项.聚合 === undefined ? 连续详情DTO() : 选项.聚合,
+    error: 选项.error ?? null,
+    generation: 1,
+  };
+}
+
 /** 组件级状态底座：只喂 MatchCase详情 会读的字段（列表记忆刻意缺席 —— 直达刷新不读它）。 */
 function 置详情状态(选项: {
   role: P5角色;
   caseId?: string;
+  /** Case 内容载体：candidate 由它包装聚合 case_detail；recruiter 是 P5详情 槽本体。 */
   快照?: P5详情快照;
+  /** candidate 显式覆盖连续槽（pre-Case/alias/retention 专用）；缺省按 快照 包装。 */
+  连续快照?: P5连续详情快照;
   不预置快照?: boolean;
   /** 轮询栅栏用：后端主体当前角色（缺省与组件角色一致 = 会话有效） */
   登录角色?: BFF主体['last_used_role'];
   已登录?: boolean;
 }) {
   const caseId = 选项.caseId ?? 'mc_direct';
+  const 包装连续快照 = 选项.快照 === undefined
+    ? 连续详情快照()
+    : 连续详情快照({
+      阶段: 选项.快照.阶段,
+      刷新中: 选项.快照.刷新中,
+      error: 选项.快照.error,
+      聚合: 选项.快照.detail === null ? null : 连续详情DTO({ caseDetail: 选项.快照.detail }),
+    });
   mock应用状态 = {
     数据源模式: 'backend',
     派发: mock派发,
@@ -265,9 +359,15 @@ function 置详情状态(选项: {
         roles: [{ role: 选项.role, status: 'active' }],
         last_used_role: 选项.登录角色 === undefined ? 选项.role : 选项.登录角色,
       },
-      P5详情: 选项.不预置快照 === true ? {} : {
+      P5详情: 选项.不预置快照 === true ? {} : 选项.role === 'recruiter' ? {
         [P5范围键.detail(选项.role, caseId)]: 选项.快照 ?? 详情快照(),
-      },
+      } : {},
+      // 候选连续槽只按 canonical record_id 落位；显式 连续快照 用其聚合 record_id 作键
+      P5连续详情: 选项.role === 'candidate' && 选项.不预置快照 !== true
+        ? 选项.连续快照 !== undefined
+          ? { [P5范围键.negotiation(选项.连续快照.detail?.record_id ?? caseId)]: 选项.连续快照 }
+          : { [P5范围键.negotiation(caseId)]: 包装连续快照 }
+        : {},
     },
     操作: mock操作,
   };
@@ -338,15 +438,17 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     vi.useRealTimers();
   });
 
-  // brief 片段：direct URL refresh —— 只凭 URL case_id + 已认证角色，不读任何列表快照
+  // brief 片段：direct URL refresh —— 只凭 URL 坐标 + 已认证角色，不读任何列表快照
   it('direct URL refresh renders context without list memory', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    expect(mock设置P5范围).toHaveBeenCalledWith('candidate', P5范围键.detail('candidate', 'mc_direct'));
-    expect(mock读取详情).toHaveBeenCalledWith('candidate', 'mc_direct', true);
+    expect(mock设置P5范围).toHaveBeenCalledWith('candidate', P5范围键.negotiation('mc_direct'));
+    expect(mock读取连续详情).toHaveBeenCalledWith('mc_direct', true);
+    // 候选只走聚合读：不并行调用旧候选 Case GET（Spec §4）
+    expect(mock读取详情).not.toHaveBeenCalled();
     // 先注册可见范围再读（操作层栅栏靠注册的可见范围对上）
     expect(mock设置P5范围.mock.invocationCallOrder[0]).toBeLessThan(
-      mock读取详情.mock.invocationCallOrder[0]);
+      mock读取连续详情.mock.invocationCallOrder[0]);
     expect(await screen.findByText('平台工程师 · 公司信息缺失')).toBeTruthy(); // 冻结职位名 · 公司槽缺失占位（F3）
     // Task 4：内部意向 ID 不再出现在可见内容里（业务上下文靠冻结职位/城市/薪资承载）
     expect(document.body.textContent).not.toContain(意向ID);
@@ -585,8 +687,8 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(screen.queryByText('平台工程师')).toBeNull(); // 部分数据一概不渲染
     expect(screen.queryByPlaceholderText(叮嘱占位)).toBeNull(); // 叮嘱输入隐藏
     await user.click(screen.getByRole('button', { name: '重试' }));
-    expect(mock读取详情).toHaveBeenCalledTimes(2);
-    expect(mock读取详情).toHaveBeenLastCalledWith('candidate', 'mc_direct', true);
+    expect(mock读取连续详情).toHaveBeenCalledTimes(2);
+    expect(mock读取连续详情).toHaveBeenLastCalledWith('mc_direct', true);
   });
 
   it('首载失败给失败态与重试（force 重读）；无输入', async () => {
@@ -600,8 +702,8 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(screen.getByText('服务暂时不可用，请稍后再试')).toBeTruthy();
     expect(screen.queryByPlaceholderText(叮嘱占位)).toBeNull();
     await user.click(screen.getByRole('button', { name: '重试' }));
-    expect(mock读取详情).toHaveBeenCalledTimes(2);
-    expect(mock读取详情).toHaveBeenLastCalledWith('candidate', 'mc_direct', true);
+    expect(mock读取连续详情).toHaveBeenCalledTimes(2);
+    expect(mock读取连续详情).toHaveBeenLastCalledWith('mc_direct', true);
   });
 
   it('刷新失败保留旧详情只读 + 单独错误行交代 + 重试走刷新', async () => {
@@ -614,20 +716,20 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(screen.getByText('平台工程师 · 公司信息缺失')).toBeTruthy(); // 旧详情原样保留，不降级成空白
     expect(screen.getByText('服务暂时不可用，请稍后再试')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '重试' }));
-    expect(mock读取详情).toHaveBeenCalledTimes(2);
-    expect(mock读取详情).toHaveBeenLastCalledWith('candidate', 'mc_direct', true);
+    expect(mock读取连续详情).toHaveBeenCalledTimes(2);
+    expect(mock读取连续详情).toHaveBeenLastCalledWith('mc_direct', true);
   });
 
   it('可见 3 秒节拍权威重读（恒 force=true）', async () => {
     vi.useFakeTimers();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    expect(mock读取详情).toHaveBeenCalledTimes(1); // 挂载直达读那一次
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1); // 挂载直达读那一次
     await act(() => vi.advanceTimersByTimeAsync(3000));
-    expect(mock读取详情).toHaveBeenCalledTimes(2);
-    expect(mock读取详情).toHaveBeenLastCalledWith('candidate', 'mc_direct', true);
+    expect(mock读取连续详情).toHaveBeenCalledTimes(2);
+    expect(mock读取连续详情).toHaveBeenLastCalledWith('mc_direct', true);
     await act(() => vi.advanceTimersByTimeAsync(3000));
-    expect(mock读取详情).toHaveBeenCalledTimes(3);
+    expect(mock读取连续详情).toHaveBeenCalledTimes(3);
   });
 
   it('终局详情不显示「代理处理中」徽标（只读终局，不是在处理）', async () => {
@@ -642,9 +744,9 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     vi.useFakeTimers();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已终止详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    expect(mock读取详情).toHaveBeenCalledTimes(1);
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1);
     await act(() => vi.advanceTimersByTimeAsync(7000));
-    expect(mock读取详情).toHaveBeenCalledTimes(1); // terminal detail 停止 polling（§10.3）
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1); // terminal detail 停止 polling（§10.3）
     expect(screen.queryByPlaceholderText(叮嘱占位)).toBeNull(); // 终局隐藏叮嘱输入
     // 结束语/原因仍是 wire 原样（不翻译不改写）
     expect(screen.getAllByText('user_ended').length).toBeGreaterThan(0);
@@ -665,16 +767,16 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     });
     渲染详情('candidate', 'mc_direct');
     await act(() => vi.advanceTimersByTimeAsync(7000));
-    expect(mock读取详情).toHaveBeenCalledTimes(1); // 只有挂载直达读，无节拍
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1); // 只有挂载直达读，无节拍
     cleanup();
-    mock读取详情.mockClear(); // 两条腿分开计数
+    mock读取连续详情.mockClear(); // 两条腿分开计数
     置详情状态({
       role: 'candidate', 已登录: false,
       快照: 详情快照({ detail: 候选详情DTO() }),
     });
     渲染详情('candidate', 'mc_direct');
     await act(() => vi.advanceTimersByTimeAsync(7000));
-    expect(mock读取详情).toHaveBeenCalledTimes(1);
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1);
   });
 
   it('缺 P5.1 段不渲染：无 Mock Tab 名、无匹配度分析、匹配分位显示缺失、无公司块', async () => {
@@ -868,10 +970,10 @@ describe('MatchCase详情 · Case 叮嘱输入', () => {
     expect(框.value).toBe('周五也可以到岗');
     expect(screen.getAllByText('周五也可以到岗').every((元) => 元.tagName === 'TEXTAREA')).toBe(true);
     expect(mock派发).not.toHaveBeenCalled();
-    expect(mock读取详情).toHaveBeenCalledTimes(1); // 仍是挂载那次：不自己重读
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1); // 仍是挂载那次：不自己重读
     送达();
     await waitFor(() => expect(框.value).toBe('')); // 仅成功清空
-    expect(mock读取详情).toHaveBeenCalledTimes(1); // 权威重读归 Task 3 操作层
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1); // 权威重读归 Task 3 操作层
   });
 
   it('招聘端同构：role/case_id 原样透传给 新增叮嘱', async () => {
@@ -1187,11 +1289,11 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     expect(mock回答事实).toHaveBeenCalledTimes(1);
     expect(mock回答事实).toHaveBeenCalledWith('candidate', 'mc_direct', 'prompt_1', '每周可以到岗 3 天');
     expect(mock派发).not.toHaveBeenCalled();
-    expect(mock读取详情).toHaveBeenCalledTimes(1); // 仍是挂载那次：权威重读归 Task 3 操作层
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1); // 仍是挂载那次：权威重读归 Task 3 操作层
     送达();
     const 框 = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
     await waitFor(() => expect(框.value).toBe('')); // 仅成功清空
-    expect(mock读取详情).toHaveBeenCalledTimes(1);
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1);
   });
 
   it('空回答不发送；在飞重复点击只发一次（同键重放归操作层）', async () => {
@@ -1430,7 +1532,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
     await user.click(screen.getByRole('button', { name: '重试' })); // 只允许重新 GET
-    expect(mock读取详情).toHaveBeenCalledTimes(2);
+    expect(mock读取连续详情).toHaveBeenCalledTimes(2);
     expect(mock回答事实).not.toHaveBeenCalled();
 
     cleanup();
@@ -1843,7 +1945,7 @@ describe('MatchCase详情 · S2/S3 动作（Task 6）', () => {
     渲染详情('candidate', 'mc_direct');
     await user.click(screen.getByRole('button', { name: '确认意向' }));
     expect(mock决定S3).toHaveBeenCalledTimes(1);
-    expect(mock读取详情).toHaveBeenCalledTimes(1); // 仍是挂载那次
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1); // 仍是挂载那次
     expect(mock派发).not.toHaveBeenCalled();
 
     // 第二次确认后的权威形态（completed + handoff_pending）：只读移交，零动作控件
@@ -1880,11 +1982,11 @@ describe('MatchCase详情 · P7 移交两步接线', () => {
     expect(screen.getAllByText('双方已确认，正在创建会话').length).toBeGreaterThan(0);
     const 私聊键 = screen.getByRole('button', { name: '开始私聊' }) as HTMLButtonElement;
     expect(私聊键.disabled).toBe(true);
-    const 基线 = mock读取详情.mock.calls.length;
+    const 基线 = mock读取连续详情.mock.calls.length;
     await act(() => vi.advanceTimersByTimeAsync(3000));
     await act(() => vi.advanceTimersByTimeAsync(3000));
     // pending 不是详情终局：多拍后仍在权威重读（same-party 长期 pending 同形态）
-    expect(mock读取详情.mock.calls.length).toBeGreaterThan(基线);
+    expect(mock读取连续详情.mock.calls.length).toBeGreaterThan(基线);
     expect(mock跳转).not.toHaveBeenCalled();
     // 绝不出现内部错误词或前端自造的超时终态
     expect(screen.queryByText(/invalid_actor_identity/)).toBeNull();
@@ -1913,10 +2015,10 @@ describe('MatchCase详情 · P7 移交两步接线', () => {
     vi.useFakeTimers();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已发布移交详情DTO('candidate') }) });
     渲染详情('candidate', 'mc_direct');
-    const 基线 = mock读取详情.mock.calls.length;
+    const 基线 = mock读取连续详情.mock.calls.length;
     await act(() => vi.advanceTimersByTimeAsync(3000));
     await act(() => vi.advanceTimersByTimeAsync(3000));
-    expect(mock读取详情.mock.calls.length).toBe(基线);
+    expect(mock读取连续详情.mock.calls.length).toBe(基线);
   });
 });
 
@@ -2084,7 +2186,19 @@ describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
     页.unmount();
     cleanup();
 
-    置详情状态({ role: 'candidate', caseId: 'mc_other', 快照: 详情快照({ detail: S1等待详情(true) }) });
+    置详情状态({
+      role: 'candidate', caseId: 'mc_other',
+      快照: 详情快照({
+        // 真实换单：新记录自己的 case 坐标（case_detail.state.caseId），不是沿用旧单的
+        detail: {
+          ...S1等待详情(true),
+          state: 状态({
+            caseId: 'mc_other', stage: 'resume_submission', status: 'waiting',
+            step: 'awaiting_resume_parse', needsUser: false,
+          }),
+        },
+      }),
+    });
     渲染详情('candidate', 'mc_other');
     await user.click(await screen.findByRole('button', { name: /后端工程师_简历_v1\.pdf/ }));
     expect(mock读取简历PDF).toHaveBeenLastCalledWith('candidate', 'mc_other');
@@ -2773,6 +2887,15 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
       后端状态: {
         ...mock应用状态.后端状态,
         主体: { ...mock应用状态.后端状态.主体, subject_id: 'sub_2' },
+        // 新主体自己的聚合快照已落位（旧属主快照被隐私栅栏挡下，页面资源不冒充）
+        P5连续详情: {
+          [P5范围键.negotiation('mc_direct')]: {
+            ...连续详情快照({
+              聚合: 连续详情DTO({ caseDetail: S0完整记录详情('candidate') }),
+            }),
+            ownerSubjectId: 'sub_2',
+          },
+        },
       },
     };
     页.rerender(树());
@@ -2815,6 +2938,15 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
       后端状态: {
         ...mock应用状态.后端状态,
         主体: { ...mock应用状态.后端状态.主体, subject_id: 'sub_2' },
+        // 新主体自己的聚合快照已落位（旧属主快照被隐私栅栏挡下，页面资源不冒充）
+        P5连续详情: {
+          [P5范围键.negotiation('mc_direct')]: {
+            ...连续详情快照({
+              聚合: 连续详情DTO({ caseDetail: S0完整记录详情('candidate') }),
+            }),
+            ownerSubjectId: 'sub_2',
+          },
+        },
       },
     };
     页.rerender(树());
@@ -2876,5 +3008,241 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
     expect(await screen.findByText('平台工程师 · 公司信息缺失')).toBeTruthy();
     expect(screen.getByRole('button', { name: '职位详情' })).toBeTruthy();
     页.unmount();
+  });
+});
+
+// ══ J-PILOT-01 Task 5：同一详情承接 pre-Case / Case / 封闭态（Spec §4/§6/§8）══
+// 路由反例：空缓存打开 dlg 与 mc alias 的 canonical 归一替换（保留 tab query）、
+// 同卡 pre-Case→Case 不重置 Tab 不加历史条目、pre-Case 复用外壳与失败动作、
+// retention 清露出且停表、同 version 新消息整包替换、招聘端零 negotiation 读。
+
+describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock返回.mockClear();
+    mock跳转.mockClear();
+    mock替换跳转.mockClear();
+    mock设置P5范围.mockClear();
+    mock读取详情.mockClear();
+    mock读取连续详情.mockClear();
+    mock重试连续记录.mockClear();
+    mock归档连续记录.mockClear();
+    mock新增叮嘱.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** 带地址行的候选路由：钉住 replace 后的地址与 query。 */
+  function 渲染候选(地址: string) {
+    return render(
+      <MemoryRouter initialEntries={[地址]}>
+        <测试地址行 />
+        <Routes>
+          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it('dlg 直链（canonical 与 URL 一致）：照常聚合读，零地址替换（不加历史条目）', async () => {
+    const 记录 = 'dlg_0123456789abcdef0123456789abcdef';
+    置详情状态({
+      role: 'candidate', caseId: 记录,
+      连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 记录, phase: 'evaluating', caseDetail: null }) }),
+    });
+    渲染候选(`/deal/${记录}`);
+    expect(mock读取连续详情).toHaveBeenCalledWith(记录, true);
+    expect(await screen.findByText('正在进行公开信息初评')).toBeTruthy();
+    expect(mock替换跳转).not.toHaveBeenCalled(); // canonical 即 URL：不推新历史格
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('mc 旧深链（URL 是别名）：GET 成功后按 canonical replace 地址，tab query 原样保留', async () => {
+    const canonical = 'dlg_0123456789abcdef0123456789abcdef';
+    // 状态层只按 canonical 落位（别名键槽不残留）：别名经返回 case_id 找到 canonical 内容
+    置详情状态({
+      role: 'candidate', caseId: 'mc_0123456789abcdef0123456789abcdef',
+      连续快照: 连续详情快照({
+        聚合: 连续详情DTO({ recordId: canonical, caseId: 'mc_0123456789abcdef0123456789abcdef', caseDetail: 候选详情DTO() }),
+      }),
+    });
+    渲染候选('/deal/mc_0123456789abcdef0123456789abcdef?tab=job');
+    expect(await screen.findByText('平台工程师 · 公司信息缺失')).toBeTruthy();
+    expect(mock替换跳转).toHaveBeenCalledTimes(1);
+    expect(mock替换跳转).toHaveBeenCalledWith(`/deal/${canonical}?tab=job`); // replace + 保留 query
+    expect(mock跳转).not.toHaveBeenCalled(); // 绝不 push：不追加一次导航历史
+  });
+
+  it('同卡 pre-Case→Case：轮询开案只是联合切换 —— Tab 不跳、零导航、零历史条目', async () => {
+    const user = userEvent.setup();
+    const 记录 = 'dlg_0123456789abcdef0123456789abcdef';
+    置详情状态({
+      role: 'candidate', caseId: 记录,
+      连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 记录, phase: 'evaluating', caseDetail: null }) }),
+    });
+    const 页 = 渲染候选(`/deal/${记录}`);
+    expect(await screen.findByText('正在进行公开信息初评')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '职位详情' }));
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy(); // 切到资料 Tab
+
+    // 同一 canonical 记录开案（phase → case_started，case_detail 到场）：Tab 仍是 资料
+    置详情状态({
+      role: 'candidate', caseId: 记录,
+      连续快照: 连续详情快照({
+        聚合: 连续详情DTO({ recordId: 记录, caseId: 'mc_0123456789abcdef0123456789abcdef', caseDetail: 候选详情DTO() }),
+      }),
+    });
+    页.rerender(
+      <MemoryRouter initialEntries={[`/deal/${记录}`]}>
+        <测试地址行 />
+        <Routes>
+          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy(); // Tab 未被重置回进度
+    expect(mock替换跳转).not.toHaveBeenCalled(); // 同卡开案不推历史
+    expect(mock跳转).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '代谈进度' }));
+    expect(screen.getByText('每周可以到岗几天？')).toBeTruthy(); // Case 四阶段流照常
+    页.unmount();
+  });
+
+  it('pre-Case 失败：重试/归档仅权威允许时经原动作卡出键；归档过现有确认层，取消零请求', async () => {
+    const user = userEvent.setup();
+    const 记录 = 'dlg_0123456789abcdef0123456789abcdef';
+    置详情状态({
+      role: 'candidate', caseId: 记录,
+      连续快照: 连续详情快照({
+        聚合: 连续详情DTO({
+          recordId: 记录, phase: 'evaluation_failed', caseDetail: null,
+          failure: { code: 'delegation_agent_unavailable', retryable: true },
+          actions: { retry: true, archive: true },
+        }),
+      }),
+    });
+    const 页 = 渲染候选(`/deal/${记录}`);
+    // 动作卡标题与底栏禁用条同词（初评未完成）：卡在场即可，不靠唯一匹配
+    expect(await screen.findAllByText('公开信息初评未完成')).toHaveLength(2);
+    // 失败原因闭表文案：状态区注意说明 + 动作卡说明各一处（同词两处，非重复渲染）
+    expect(screen.getAllByText('AI 服务暂时不可用，本次没有创建 Case')).toHaveLength(2);
+    // 底栏禁用条：失败后的真实文案（不冒充初评仍在运行），无发送键
+    expect(screen.queryByText('AI 代理正在进行公开信息初评')).toBeNull();
+    expect(screen.queryByRole('button', { name: '发送' })).toBeNull(); // 无 Case 叮嘱输入
+
+    // 重试：真实受理（控制层只调状态方法，重试受理后的真实状态由权威重读投影）
+    await user.click(screen.getByRole('button', { name: '重试初评' }));
+    expect(mock重试连续记录).toHaveBeenCalledTimes(1);
+    expect(mock重试连续记录).toHaveBeenCalledWith(记录);
+    expect(mock新增叮嘱).not.toHaveBeenCalled(); // pre-Case 零 Case 叮嘱请求
+
+    // 归档：先过现有确认层（移入历史，不是取消），取消零请求、确认才发
+    await user.click(screen.getByRole('button', { name: '归档' }));
+    const 确认 = await screen.findByRole('dialog', { name: '归档这条记录？' });
+    expect(within(确认).getByText('移入历史，不是取消')).toBeTruthy();
+    expect(mock归档连续记录).not.toHaveBeenCalled();
+    await user.click(within(确认).getByRole('button', { name: '取消' }));
+    expect(mock归档连续记录).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '归档' }));
+    await user.click(within(await screen.findByRole('dialog', { name: '归档这条记录？' }))
+      .getByRole('button', { name: '归档' }));
+    expect(mock归档连续记录).toHaveBeenCalledTimes(1);
+    expect(mock归档连续记录).toHaveBeenCalledWith(记录);
+    页.unmount();
+  });
+
+  it('retention 封闭（有 case_id 但 case_detail=null）：清旧 Case 内容、只显示记录状态、停表零补全 GET', async () => {
+    vi.useFakeTimers();
+    const 记录 = 'dlg_0123456789abcdef0123456789abcdef';
+    置详情状态({
+      role: 'candidate', caseId: 记录,
+      连续快照: 连续详情快照({
+        聚合: 连续详情DTO({
+          recordId: 记录, phase: 'case_started',
+          caseId: 'mc_0123456789abcdef0123456789abcdef', caseDetail: null, shelf: 'history',
+        }),
+      }),
+    });
+    const 页 = 渲染候选(`/deal/${记录}`);
+    expect(screen.getByText('暂时无法确认进度，请稍后刷新')).toBeTruthy(); // 合同允许的记录状态
+    expect(screen.getByText('轮次 —')).toBeTruthy(); // 无轮次不造 0/3
+    expect(screen.getByText('当前在谈已结束，仅可查看')).toBeTruthy(); // 底栏只读
+    // 旧 Case 内容清露出：四阶段全部未到达灰条，无对话/动作/附件入口
+    expect(screen.queryByRole('button', { name: '发送' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '重试初评' })).toBeNull(); // retention 不出失败动作
+    ['匿名初筛', '递交简历', '需要协调', '意向确认'].forEach((名) => {
+      expect(screen.getAllByText(名).length).toBeGreaterThan(0);
+    });
+    await act(() => vi.advanceTimersByTimeAsync(7000));
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1); // 封闭无自动推进：停表
+    expect(mock读取详情).not.toHaveBeenCalled(); // 不发补全 GET（不回退独立 Case 读）
+    expect(mock读取简历PDF).not.toHaveBeenCalled(); // 不经附件库找回封闭资料
+    页.unmount();
+  });
+
+  it('同 version 新消息：整包替换后新问答在场且不重复（不 append、不丢新消息）', async () => {
+    const 记录 = 'dlg_0123456789abcdef0123456789abcdef';
+    const 底 = S0完整记录详情('candidate');
+    置详情状态({
+      role: 'candidate', caseId: 记录,
+      连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 记录, caseDetail: 底 }) }),
+    });
+    const 页 = 渲染候选(`/deal/${记录}`);
+    expect(await screen.findByText('每周可以到岗几天？')).toBeTruthy();
+    expect(screen.getAllByText('每周可以到岗几天？').length).toBe(1);
+
+    // 轮询整包替换：同一条记录的 S0 screening records 多了一对新问答 —— 旧的还在、新的出现一次
+    const 底详情 = S0完整记录详情('candidate');
+    const 新 = {
+      ...底详情,
+      stages: 底详情.stages.map((区) =>
+        区.stage === 'anonymous_screening' && 区.screeningRecords !== null
+          ? {
+            ...区,
+            screeningRecords: {
+              messages: [
+                ...区.screeningRecords.messages,
+                {
+                  id: 's0q_5', kind: 'question' as const, role: 'candidate' as const, round: 5,
+                  text: '到岗时间能接受节假日轮班吗？', occurredAt: '2026-08-30T09:50:00Z',
+                },
+              ],
+              summaries: 区.screeningRecords.summaries,
+            },
+          }
+          : 区,
+      ),
+    };
+    置详情状态({
+      role: 'candidate', caseId: 记录,
+      连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 记录, caseDetail: 新 }) }),
+    });
+    页.rerender(
+      <MemoryRouter initialEntries={[`/deal/${记录}`]}>
+        <测试地址行 />
+        <Routes>
+          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('到岗时间能接受节假日轮班吗？')).toBeTruthy(); // 新消息在场
+    expect(screen.getAllByText('每周可以到岗几天？').length).toBe(1); // 旧消息不重复
+    页.unmount();
+  });
+
+  it('招聘端零 negotiation 读：仍走 Case 读取，无公开初评托盘', async () => {
+    置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 招聘详情DTO() }) });
+    渲染详情('recruiter', 'mc_hr');
+    expect(await screen.findByTitle('匹配分缺失')).toBeTruthy();
+    expect(mock读取详情).toHaveBeenCalledWith('recruiter', 'mc_hr', true);
+    expect(mock读取连续详情).not.toHaveBeenCalled(); // 招聘无公开初评请求（零 negotiation）
+    expect(mock重试连续记录).not.toHaveBeenCalled();
+    expect(mock归档连续记录).not.toHaveBeenCalled();
+    expect(screen.queryByText('公开信息初评')).toBeNull(); // 无托盘
   });
 });

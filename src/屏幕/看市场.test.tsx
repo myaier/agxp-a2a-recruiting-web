@@ -52,6 +52,8 @@ const mock准备候选委托简历 = vi.fn();
 // P5 Task 5：在谈详情 Backend 分支改渲染共享 P5 详情 —— 详情域操作桩
 const mock设置P5范围 = vi.fn();
 const mock读取详情 = vi.fn(async () => undefined);
+// J-PILOT-01 Task 5：候选详情改读 continuous detail（Task 2 状态方法）
+const mock读取连续详情 = vi.fn(async () => undefined);
 const mock新增叮嘱 = vi.fn(async () => undefined);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -327,6 +329,7 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
       操作: {
         设置P5范围: mock设置P5范围,
         读取详情: mock读取详情,
+        读取连续详情: mock读取连续详情,
         新增叮嘱: mock新增叮嘱,
       },
     });
@@ -337,7 +340,7 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(mock读取详情).toHaveBeenCalledWith('candidate', 'J-02', true);
+    expect(mock读取连续详情).toHaveBeenCalledWith('J-02', true);
     expect(await screen.findByText('正在读入这一单…')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '接受' })).toBeNull(); // Mock 决策卡不进 Backend 视图
     expect(screen.queryByRole('button', { name: '记成规则' })).toBeNull();

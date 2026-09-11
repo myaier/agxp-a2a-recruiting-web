@@ -15,13 +15,22 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useMemo, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { 后端正常详情 } from './后端正常详情';
-import type { 后端正常资源 } from './use后端详情控制';
+import { 后端详情渲染, 后端正常详情 } from './后端正常详情';
+import type { 后端正常资源, 后端连续资源 } from './use后端详情控制';
 import { 从P5到详情分段, 从P5到详情顶栏, 从P5到详情状态, 从P5到职位资料 } from '../../数据/详情展示映射';
+import {
+  从连续到详情分段,
+  从连续到详情顶栏,
+  从连续到详情状态,
+  从连续到职位资料,
+  映射公开初评,
+  映射连续底栏,
+} from '../../数据/连续代谈展示映射';
 import { 映射P5详情 } from '../../数据/MatchCase展示映射';
 import { 路径 } from '../../路由/路径表';
 import type { P5详情正常视图 } from '../../数据/MatchCase展示映射';
 import type { P5列表项, P5详情, P5阶段区, P5简历附件 } from '../../数据/招聘数据源/MatchCase';
+import type { NegotiationDetail } from '../../数据/招聘数据源/连续代谈';
 
 const mock跳转 = vi.fn();
 vi.mock('../../路由/导航钩子', () => ({
@@ -205,7 +214,15 @@ function 取视图(详情: P5详情): P5详情正常视图 {
 }
 
 /** 底栏走父控制同款接线：草稿在父、发送直发 mock新增叮嘱（组件只透传）。 */
-function 宿主({ 详情, caseId }: { 详情: P5详情; caseId: string }) {
+function 宿主({
+  详情,
+  caseId,
+  公开初评 = null,
+}: {
+  详情: P5详情;
+  caseId: string;
+  公开初评?: 后端正常资源['公开初评'];
+}) {
   const [草稿, 设草稿] = useState('');
   const 回答在飞表 = useMemo(() => ({ current: new Map<string, Promise<void>>() }), []);
   const 资源 = useMemo<后端正常资源>(() => {
@@ -213,6 +230,8 @@ function 宿主({ 详情, caseId }: { 详情: P5详情; caseId: string }) {
     const 移交 = 视图.handoff;
     return {
       kind: '正常',
+      canonical记录ID: null,
+      公开初评,
       顶栏: 从P5到详情顶栏(视图),
       状态: 从P5到详情状态(视图),
       分段们: 从P5到详情分段(视图, 详情.state.stage),
@@ -253,7 +272,7 @@ function 宿主({ 详情, caseId }: { 详情: P5详情; caseId: string }) {
       },
       PDF输入: { role: 详情.role, caseId, 读取: mock读取简历PDF },
     };
-  }, [详情, caseId, 草稿, 回答在飞表]);
+  }, [详情, caseId, 草稿, 回答在飞表, 公开初评]);
   return <后端正常详情 资源={资源} />;
 }
 
@@ -423,3 +442,150 @@ describe('后端正常详情 · 终局只读', () => {
     expect(screen.queryByRole('button', { name: '结束初筛' })).toBeNull(); // 零动作控件
   });
 });
+
+// ── J-PILOT-01 Task 5：公开初评托盘 + 后端详情渲染 的联合切换 ──
+
+/** pre-Case 聚合样本：控制层连续资源的同形产出（映射全走真实 mapper）。 */
+function 连续详情DTO(选项: { phase?: NegotiationDetail['phase'] } = {}): NegotiationDetail {
+  const phase = 选项.phase ?? 'evaluating';
+  return {
+    needs_action: false,
+    record_id: 'dlg_0123456789abcdef0123456789abcdef',
+    record_kind: 'delegation',
+    intention_id: 'int_0123456789abcdef0123456789abcdef',
+    job: {
+      job_id: 'job_0123456789abcdef0123456789abcdef',
+      title: '平台工程师',
+      location: '上海',
+      public_salary_range: '25-40K·16薪',
+      availability: 'available',
+    },
+    delegation_id: 'dlg_rcpt_01',
+    evaluation_id: phase === 'accepted' || phase === 'evaluating' ? 'ev_01' : null,
+    case_id: null,
+    shelf: 'active',
+    phase,
+    case_state: null,
+    failure: null,
+    refusal_code: null,
+    actions: { retry: false, archive: false, open_case: false },
+    retry_generation: 0,
+    created_at: '2026-09-01T08:00:00Z',
+    updated_at: '2026-09-01T09:00:00Z',
+    archived_at: null,
+    evaluation: null,
+    case_detail: null,
+    failure_history: [],
+    agent_summary: {
+      public_evaluation: {
+        evaluation_id: 'ev_pub_1',
+        decision: 'fit',
+        summary: '公开信息看，经验方向与岗位大体相符。',
+        coverage: 'public_job_and_candidate_data',
+        evidence: {
+          matches: [{ dimension: 'city', code: 'city_match', source: 'structured_precheck' }],
+          conflicts: [],
+          unknowns: [],
+        },
+        next_action: 'promote_to_a2a',
+        completed_at: '2026-09-01T09:00:00Z',
+      },
+      condition_confirmation: null,
+    },
+  };
+}
+
+describe('后端正常详情 · 公开信息初评托盘（J-PILOT-01 Task 5）', () => {
+  it('来源标签「公开信息初评」在场：结论/内容/证据以源数据呈现，与 S0 总结独立', async () => {
+    const 聚合 = 连续详情DTO({ phase: 'case_started' });
+    render(
+      <宿主 详情={候选S0详情DTO()} caseId="mc_direct" 公开初评={映射公开初评(聚合)} />,
+    );
+    expect(screen.getByText('公开信息初评')).toBeTruthy(); // 现有托盘的来源标签
+    expect(screen.getByText('结论：fit')).toBeTruthy(); // wire 原词，不生成前端裁决
+    expect(screen.getByText('公开信息看，经验方向与岗位大体相符。')).toBeTruthy();
+    expect(screen.getByText('匹配｜city｜city_match｜structured_precheck')).toBeTruthy();
+    expect(screen.getAllByText('匹配｜city｜city_match｜structured_precheck')).toHaveLength(1);
+  });
+
+  it('公开初评缺席：零托盘标签（不造空总结）', () => {
+    render(<宿主 详情={候选S0详情DTO()} caseId="mc_direct" />);
+    expect(screen.queryByText('公开信息初评')).toBeNull();
+  });
+});
+
+describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5）', () => {
+  /** 与控制层连续分支同形的资源（真实 mapper + 恒空动作卡）。 */
+  function 连续资源(聚合: NegotiationDetail): 后端连续资源 {
+    return {
+      kind: '连续',
+      canonical记录ID: 聚合.record_id,
+      顶栏: 从连续到详情顶栏(聚合),
+      状态: 从连续到详情状态(聚合),
+      公开初评: 映射公开初评(聚合),
+      分段们: 从连续到详情分段(),
+      职位资料: 从连续到职位资料(聚合),
+      失败动作卡: null,
+      归档确认: null,
+      底栏: 映射连续底栏(聚合),
+      刷新错误: null,
+      重试: () => undefined,
+    };
+  }
+
+  it('连续联合：共用外壳两 Tab + pre-Case 状态 + 四未到达阶段 + 禁用底栏（无叮嘱输入）', async () => {
+    render(<后端详情渲染 资源={连续资源(连续详情DTO())} />);
+    expect(screen.getByText('平台工程师 · 公司信息缺失')).toBeTruthy(); // 顶栏同款槽
+    expect(screen.getByRole('button', { name: '代谈进度' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '职位详情' })).toBeTruthy();
+    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // 状态区（Spec §6）
+    expect(screen.getByText('轮次 —')).toBeTruthy(); // 无轮次不造 0/3
+    expect(screen.getByText('AI 代理正在进行公开信息初评')).toBeTruthy(); // 底栏禁用说明
+    expect(screen.queryByRole('button', { name: '发送' })).toBeNull(); // 无 Case 叮嘱
+    expect(screen.getByText('公开信息初评')).toBeTruthy(); // 公开初评托盘同槽
+    // 四阶段灰条在场（未到达不可展开）
+    ['匿名初筛', '递交简历', '需要协调', '意向确认'].forEach((名) => {
+      expect(screen.getAllByText(名).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('同卡 pre-Case→Case：联合切换不重置 Tab（开案时不跳 Tab、不换页）', async () => {
+    const user = userEvent.setup();
+    const 视图 = 取视图(候选S0详情DTO());
+    const Case资源 = 构造正常资源(视图, 'mc_direct');
+    const 页 = render(<后端详情渲染 资源={连续资源(连续详情DTO())} />);
+    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '职位详情' })); // 切到资料 Tab
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy();
+    // 轮询推进：同一张卡开案（连续 → 正常联合），Tab 仍是 资料
+    页.rerender(<后端详情渲染 资源={Case资源} />);
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy(); // 资料 Tab 内容还在
+    expect(screen.queryByText('正在进行公开信息初评')).toBeNull(); // 进度槽互斥卸载
+    await user.click(screen.getByRole('button', { name: '代谈进度' }));
+    expect(screen.getByText('每周可以到岗几天？')).toBeTruthy(); // Case 四阶段流照常
+  });
+});
+
+/** 与父控制正常分支同形的正常资源（真实 mapper；公开初评恒 null）。 */
+function 构造正常资源(视图: P5详情正常视图, caseId: string): 后端正常资源 {
+  const 详情 = 候选S0详情DTO();
+  return {
+    kind: '正常',
+    canonical记录ID: null,
+    公开初评: null,
+    顶栏: 从P5到详情顶栏(视图),
+    状态: 从P5到详情状态(视图),
+    分段们: 从P5到详情分段(视图, 详情.state.stage),
+    职位资料: 从P5到职位资料(视图),
+    底栏: { kind: '输入', 占位: '有想法就告诉你的AI代理', 值: '', 改变: () => undefined, 发送: null, 禁用说明: null },
+    终局: { 摘要: null, 移交: null },
+    刷新错误: null,
+    重试: () => undefined,
+    当前段引用: { current: null },
+    动作输入: {
+      role: 'candidate', caseId, 视图, 详情, 操作: mock操作,
+      回答在飞表: { current: new Map<string, Promise<void>>() },
+    },
+    PDF输入: { role: 'candidate', caseId, 读取: mock读取简历PDF },
+  };
+}

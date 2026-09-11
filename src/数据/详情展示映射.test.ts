@@ -6,7 +6,7 @@
 // 「默认展开」只标有动作的合法当前段（raw stage），分段绝不携带命令。
 
 import { describe, expect, it } from 'vitest';
-import { 从P5到详情分段, 从P5到详情状态, 从P5到详情顶栏, 从P5到职位资料 } from './详情展示映射';
+import { 从P5到详情分段, 从P5到详情状态, 从P5到详情顶栏, 从P5到职位资料, 从职位摘要到资料 } from './详情展示映射';
 import type { P5阶段, P5阶段区块视图, P5详情正常视图 } from './MatchCase展示映射';
 
 const 别名 = 'candidate-0123456789ab';
@@ -183,6 +183,13 @@ describe('从P5到职位资料', () => {
     const 全文 = JSON.stringify(资料);
     expect(全文).not.toContain(别名);
     expect(全文).not.toContain(意向ID);
+  });
+
+  // J-PILOT-01 Task 5：连续 pre-Case 详情（negotiation.job 只有职位三事实）与 Case 详情
+  // 共用同一份「全缺失资料区」底座 —— 抽出的 从职位摘要到资料 是 从P5到职位资料 的唯一实现。
+  it('从职位摘要到资料：同一份职位事实在两条详情路由产出完全相同的资料区', () => {
+    const 职位 = { 职位: '平台工程师', 城市: '上海', 薪资: '25-40K·16薪', 技能: ['Go'] };
+    expect(从职位摘要到资料(职位)).toEqual(从P5到职位资料(正常视图()));
   });
 });
 
