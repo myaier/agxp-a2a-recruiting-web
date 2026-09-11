@@ -40,18 +40,20 @@
 
 同样，城市若现有滚动容器可以接到达底部事件即可增量加载（不加节点）；确无既有分页/滚动承载能力则记录该入口，不添加按钮。已有行可通过同一文字位置表达真实国家/城市消歧；确实不可辨的项禁选并记缺口，不猜选。
 
+URL 入口事实核对：Spec §4.4 的“两个既有输入入口”是对旧状态的描述。当前代码唯一实际 input 在 `src/屏幕/工作经历.tsx:461`；`src/屏幕/引导问答.tsx:1232` 明确注明 GitHub/URL 行已经移除，仅保留末题校验/规范化控制；`学生分流.tsx:453` 也已移除输入。依据用户最高优先级“禁止改布局”，不恢复第二个输入，不新增行；Task 4 接现存 input，Task 7 接现存控制，共享同一值/dirty 状态。这里记录代码事实与执行优先级，不修改批准 Spec、不凭审查意见重建设计。
+
 ### 冻结的局部接线契约
 
 以下是本次函数/类型增量，不是新的架构层。类型放原 `src/数据/招聘数据源类型.ts`、`src/状态/后端/类型.ts` 和 `src/数据/资料缓存.ts`；内部 helper 允许局部实现，但不得产生新 UI 组件。
 
-1. URL：`BFF简历资料.portfolio_url?: string | null`（旧读缺省按 null）；`BFF资料写入.portfolio_url?: string | null`；`页面简历快照.作品集链接: string | null`，`页面简历写入.作品集链接?: string | null`。读取显示空串，写入缺省保留/null 清空/string 设置。普通 profile 编辑不带该字段，不能从旧 GET 顺带覆盖；onboarding 明确编辑才带。profile 其他字段仍按原全量体，不变为局部 PATCH 语义。URL trim、无协议补 https，绝对 http(s)、含点 hostname、禁止空白/BOM、最多 2048 Unicode code points；不抓取 URL。
+1. URL：`BFF简历资料.portfolio_url?: string | null`（旧读缺省按 null）；`BFF资料写入.portfolio_url?: string | null`；`页面简历快照.作品集链接: string | null`，`页面简历写入.作品集链接?: string | null`。读取显示空串，写入缺省保留/null 清空/string 设置。普通 profile 编辑不带该字段，不能从旧 GET 顺带覆盖；onboarding 明确编辑才带。草稿 `资料.作品集链接` 属性缺省即未改，存在（包括 null）即用户修改；输入回显可用权威值，但不得为回显把旧 URL 填成 dirty。profile 其他字段仍按原全量体，不变为局部 PATCH 语义。URL trim、无协议补 https，绝对 http(s)、含点 hostname、禁止空白/BOM、最多 2048 Unicode code points；不抓取 URL。
 2. 目录：`BFFTaxonomyItem.has_children: boolean` 来自当前合同，保留 parent_id/selectable。可导航与可选择独立判断：有 children 可下钻；只有 selectable 才能存引用；原控件不能同时表达“选此节点/继续下钻”时保留导航、不得猜选择，并记录具体选择缺口。不得写死层数。Location 默认查询不发送空 q，按服务端 nextCursor 和 catalogVersion 处理，查询变更丢弃旧游标/迟到结果。
-3. 首次意向输入新增 `自定义诉求?: string[]`；`排除项` 仅四张固定卡的原标签，自定义输入原样另存。`转首次意向写入` 的 `excluded` 三个数组恒为空，private诉求按 Task 7 固定文案换行拼接，无前缀/模型改写；普通 `转意向写入` 不变。
-4. 本旅程只有一个串行未结算写入槽 `待写入`，不是队列。结构只允许 `{种类, 本地编号?, 资源编号?, 父编号?, 请求体?, 幂等键?, ifMatch?, 阶段:'prepared'|'received', 回执?, 文件核对?}`。种类闭合集合：profile、summary、skills、experience/project/education/certificate 的 create/update/delete、first-intention、organization-block/unblock、resume-file-create/replace/parse、avatar。每种请求体使用该域现有 BFF 写 DTO，不接受任意 URL/HTTP 方法；文件操作不存 body 字节，仅 name/type/size/lastModified/SHA-256 供用户重新选文件核对。回执仅存该种类已返回的 ID/revision/aggregate_revision/source tuple，不能存完整响应或解析输出。
-5. 原数据源追加可选参数 `跟踪?: 建档写入跟踪`：`发送前(命令: 建档待写入): 建档待写入` 和 `已确认(命令: 建档待写入, 回执: 建档写入回执): void`。发送前同步把白名单命令持久化成功才允许发请求；返回带原幂等键/ifMatch 的命令。已确认同步保存 receipt、把临时条目编号替换为服务器 ID 后才继续下一步或 GET。跟踪接口仅本旅程调用，不改 HTTP 全局重试；普通调用省略保持兼容。持久化失败抛 `BFF错误` 的本地 invalid_request + 中文消息，零 mutation；请求结果未知保持槽，不伪造确定失败。
-6. 非文件未知创建：恢复后通过同一域原方法以同一 body/key 重放/取得 receipt；已收到 receipt 则只 GET exact ID。CAS 更新/删除没有幂等合同，不换 revision 盲重试：GET 对应资源，目标字段相同/目标已删除才能结算，否则保留冲突让用户在原编辑入口重审。未知文件创建/替换/头像需用户重选同字节后用原 key/ifMatch；没有字节只可读核对，不能自动重传。解析 source 必须精确，不从 items[0] 推断。一个槽未结算时，禁止另一 mutation 覆盖；读与手填输入不受此限制。
-7. 草稿增量挂在现有 `候选引导草稿快照.建档?`：版本 1，`位置:{pathname,search,题序?}`，`资料`（页面简历写入中用户输入字段，不含服务端快照），`编辑中`（现有教育/经历/项目/证书编辑器判别种类、本地编号与原表单字段，允许不完整字符串），`排除项:string[]`、`自定义诉求:string[]`、`首次意向?:{id,revision}`、`待写入?`、`头像状态:'未选'|'待核对'|'已保存'|'已放弃'`。未出现字段兼容旧草稿，字段白名单逐一解码。PDF source/eligibility/confirmed/generation 仍只存原预填恢复元数据，不在这里复制另一份。取消编辑明确丢弃其 `编辑中`；暂时返回/刷新不丢输入。
-8. 状态层增加 `更新候选建档草稿(建档: 候选引导草稿快照['建档']): void`（同步写后派发，写失败抛错）；`完成候选Onboarding(): Promise<void>`（Task 9 冻结语义）。原 `保存简历`、`保存个人优势`、`保存首次意向`、`保存候选头像` 签名面向页面保持兼容，操作层仅在当前 active 建档草稿存在时接跟踪。`创建首次意向(input, 跟踪?)` 保持返回 `Promise<页面意向快照>`，新增 `读取意向(id: string): Promise<BFFOwnerIntention>`；POST receipt 在后续 GET 前交跟踪，不丢 ID。文件/隐私数据源在原参数之后追加可选跟踪，HTTP 使用已有显式幂等键字段。
+3. 首次意向输入新增 `自定义诉求?: string[]`；`排除项` 仅四张固定卡的原标签，自定义输入原样另存。`转首次意向写入` 的 `exclusions` 固定为 `{alternate_weekend_work:"unspecified", outsourcing_only:"unspecified", onsite_only:"unspecified", frequent_travel:"unspecified"}`，private诉求按 Task 7 固定文案换行拼接，无前缀/模型改写；普通 `转意向写入` 不变。
+4. 本旅程只有一个串行未结算写入槽 `待写入`，不是队列。结构只允许 `{种类, 本地编号?, 资源编号?, 父编号?, 请求体?, 幂等键?, ifMatch?, 阶段:'prepared'|'received', 回执?, 文件核对?}`。种类闭合集合：profile、summary、skills、experience/project/education/certificate 的 create/update/delete、first-intention-create/update、organization-block/unblock、resume-file-create/replace/parse、avatar。每种请求体使用该域现有 BFF 写 DTO，不接受任意 URL/HTTP 方法；文件操作不存 body 字节，仅 name/type/size/lastModified/SHA-256 供用户重新选文件核对。回执仅存该种类已返回的 ID/revision/aggregate_revision/source tuple，不能存完整响应或解析输出。
+5. 原数据源追加可选参数 `跟踪?: 建档写入跟踪`：`发送前(命令: 建档待写入): 建档待写入` 和 `已确认(命令: 建档待写入, 回执: 建档写入回执): void`。发送前先在当前 scope 的内存 ref 固定白名单命令并同步尝试写 session；返回带原幂等键/ifMatch 的命令。已确认先同步更新内存和草稿的 `已存条目`（条目 ID/revision）或 `已存分区`（profile/summary/skills revision）、本次意向 ID/对应单例状态，并尝试持久化 receipt 后才继续下一步或 GET。跟踪接口仅本旅程调用，不改 HTTP 全局重试；普通调用省略保持兼容。持久化失败保留同一内存输入、命令及回执，通过既有轻提示说明“本次无法保存恢复进度，刷新可能丢失”；仍允许用户当前明确动作继续，不能使 sessionStorage 成为注册前置。仅内存恢复能力不冒称已持久化；若刷新丢命令，按 Spec §5.3 读取核对而不随机重建。请求结果未知保持槽，不伪造确定失败。
+6. 非文件未知创建：恢复后只在用户明确点击原保存/重试动作时，通过同一域原方法以同一 body/key 重放/取得 receipt；已收到 receipt 则只 GET exact ID。CAS 更新/删除没有幂等合同，不换 revision 盲重试：GET 对应资源，目标字段相同/目标已删除才能结算，否则保留冲突让用户在原编辑入口重审。未知文件创建/替换/头像需用户重选同字节后用原 key/ifMatch；没有字节只可读核对，不能自动重传。解析 source 必须精确，不从 items[0] 推断。一个槽未结算时，禁止另一 mutation 覆盖；读与手填输入不受此限制。
+7. 草稿增量挂在现有 `候选引导草稿快照.建档?`：版本 1，`位置:{pathname,search,题序?}`，`资料`（页面简历写入中用户输入字段，不含服务端快照），`编辑中`（现有教育/经历/项目/证书编辑器判别种类、本地编号与原表单字段，允许不完整字符串），`排除项:string[]`、`自定义诉求:string[]`、`已存条目:{本地编号,种类:"experience"|"project"|"education"|"certificate",资源编号,revision,父编号?}[]`、`已存分区?:{profile?:number,summary?:number,skills?:number}`、`明确删除条目:{种类,资源编号,revision,父编号?}[]`、`公司待选?:{搜索词:string,选择?:{organization_id:string,display_name:string,legal_name:string}}`、`首次意向?:{id,revision}`、`待写入?`、`头像状态:'未选'|'待核对'|'已保存'|'已放弃'`。未出现字段兼容旧草稿，字段白名单逐一解码。PDF source/eligibility/confirmed/generation 仍只存原预填恢复元数据，不在这里复制另一份。取消编辑明确丢弃其 `编辑中`；暂时返回/刷新不丢输入。
+8. 状态层增加 `更新候选建档草稿(建档: 候选引导草稿快照['建档']): void`（同步保留内存并尝试写后派发；写失败经既有轻提示说明刷新风险，不抛掉输入或阻断全部保存）；`完成候选Onboarding(): Promise<void>`（Task 9 冻结语义）。原 `保存简历`、`保存个人优势`、`保存首次意向`、`保存候选头像` 签名面向页面保持兼容，操作层仅在当前 active 建档草稿存在时接跟踪。`创建首次意向(input, 跟踪?)` 保持返回 `Promise<页面意向快照>`，新增 `读取指定意向(id: string): Promise<BFFOwnerIntention>`，原 `读取意向(): Promise<页面意向快照>` 不变；POST receipt 在后续 GET 前交跟踪，不丢 ID。文件/隐私数据源在原参数之后追加可选跟踪，HTTP 使用已有显式幂等键字段。
 
 以上有限记录是为“服务端已写入、刷新后不能重复创建”的现实故障；不扩展到全站所有 mutation，不新增通用执行器。对同一建档未结算命令，原域操作先结算再按最新草稿算下一步；不一次持久化一串未来步骤。
 
@@ -100,7 +102,7 @@ L3 静态责任：**required** 是本前端候选真实浏览器旅程的最终�
 
 预期编辑文件：新增：无。删除：无。修改：`src/数据/BFF契约.ts`、`src/数据/招聘数据源类型.ts`、`src/数据/后端映射.ts`、`src/数据/招聘数据源/目录.ts`、`src/流程/onboarding配置.ts`、`src/数据/后端映射.test.ts`、`src/数据/HTTP招聘数据源.test.ts`、`src/流程/onboarding配置.test.ts`。
 
-接口：生产 Global 契约 1–3，消费现有 `转资料写入`/`从BFF简历`/`转首次意向写入` 和目录页。`转资料写入(基本信息, 作品集链接?: string | null)` 保持原单参数调用合法；URL 有意编辑才由 Task 3 传第二参数。BFF read schema 缺省 URL 兼容；has_children 不从 parent_id 推算。
+接口：生产 Global 契约 1–3，消费现有 `转资料写入`/`从BFF简历`/`转首次意向写入` 和目录页。`转资料写入(基本信息, 作品集链接?: string | null)` 保持原单参数调用合法；URL 有意编辑才由 Task 3 传第二参数。`页面简历写入` 原 Omit 派生必须额外排除读侧必返 URL 再加写侧可选 URL，不能把它意外变成必填写字段。BFF read schema 缺省 URL 兼容；has_children 不从 parent_id 推算。
 
 - [ ] 在原映射/配置测试新增：URL 省略/null/规范化字符串三态、2048/2049 Unicode 字符、空白和 javascript 协议；普通 profile 修改不携带旧 URL；固定四卡+自定义诉求映射准确，日常硬排除不变。
 - [ ] 运行 `npx vitest run src/数据/后端映射.test.ts src/数据/HTTP招聘数据源.test.ts src/流程/onboarding配置.test.ts`，确认新反例因当前行为失败。
@@ -116,7 +118,7 @@ L3 静态责任：**required** 是本前端候选真实浏览器旅程的最终�
 
 预期编辑文件：新增：无。删除：无。修改：`src/数据/资料缓存.ts`、`src/数据/资料缓存.test.ts`、`src/状态/领域/候选资料.ts`、`src/状态/初始状态.ts`、`src/状态/资料持久化.ts`、`src/状态/后端/类型.ts`、`src/状态/后端/会话操作.ts`、`src/状态/应用状态.tsx`、`src/状态/应用状态.test.ts`、`src/状态/后端/会话操作.test.ts`、`src/数据/招聘数据源类型.ts`。
 
-接口：生产 Global 的建档类型和 `更新候选建档草稿`；在原 `引导预填` 里携带可选 `建档`，不复制权威 resume。将与现有预填 storage adapter 同模式的同步草稿读写能力放入 `后端操作依赖`；操作调用写入失败直接抛错，useEffect 仅负责普通输入持久化补齐，不能作为 mutation 前的保障。
+接口：生产 Global 的建档类型和 `更新候选建档草稿`；在原 `引导预填` 里携带可选 `建档`，不复制权威 resume。将与现有预填 storage adapter 同模式的同步草稿读写能力放入 `后端操作依赖`；操作调用先同步固定内存输入和命令；存储失败提示刷新风险后保留当前交互，useEffect 仅补齐普通输入持久化，不能作为 mutation 前固定命令身份的保障。
 
 - [ ] 原缓存测试增加旧 v1 无建档兼容、完整新草稿/不完整编辑字段回读、损坏/未知字段拒绝、PDF/凭据拒绝、存储抛错返回失败；原 Provider 测试增加 active intention 已存在但仍有草稿不被清掉。
 - [ ] 运行 `npx vitest run src/数据/资料缓存.test.ts src/状态/应用状态.test.ts src/状态/后端/会话操作.test.ts` 确认反例。
@@ -125,7 +127,7 @@ L3 静态责任：**required** 是本前端候选真实浏览器旅程的最终�
 - [ ] 测试 A→B 后迟到响应/旧 effect 不写 B、不恢复 A；刷新教育编辑层保留只填了一半的字段；未知命令槽不被第二次请求覆盖。重跑所列测试与 typecheck。
 - [ ] 提交 `feat: retain scoped onboarding drafts`。
 
-完成/停止：同步 write-before-send 可用、旧缓存兼容、隔离通过。若 storage 不可用，不删除内存输入或照发需要恢复保障的 mutation；用既有轻提示告知失败，不能新建缓存降级框架。
+完成/停止：同步发送前固定内存命令、尝试写盘可用，旧缓存兼容、隔离通过。storage 不可用时保留现有内存 ref 的输入/命令/回执，提示无法保证刷新恢复后允许当前明确保存动作继续；不创建新的降级存储。测试覆盖拒绝存储下教育/首次意向仍可保存，刷新后无原身份不自动重建。
 
 ### Task 3: 资料分区部分成功与原命令恢复
 
@@ -133,12 +135,12 @@ L3 静态责任：**required** 是本前端候选真实浏览器旅程的最终�
 
 预期编辑文件：新增：无。删除：无。修改：`src/数据/招聘数据源/简历.ts`、`src/数据/招聘数据源/简历.test.ts`、`src/状态/后端/候选操作.ts`、`src/状态/后端/候选操作.test.ts`、`src/状态/后端/类型.ts`。
 
-接口：`简历数据源.保存简历(next, previous, 跟踪?)` 使用 Global 5；面向页面 `操作.保存简历(next)` 不变。原条目 mutation 的 `entry.kind`、对应 entry.id/revision、aggregate_revision 先交回执，再下一步；profile/summary/skills 的返回按现有 BFF简历提取对应 revision。输入/回执类型在现有类型文件中使用闭合域枚举，不增加随意 path 的恢复方法。
+接口：`简历数据源.保存简历(next, previous, 跟踪?)` 使用 Global 5；面向页面 `操作.保存简历(next)` 不变。原条目 mutation 的 `entry.kind`、对应 entry.id/revision、aggregate_revision 先交回执，再下一步；profile/summary/skills 的返回按现有 BFF简历提取对应 revision。收到服务端确定拒绝（例如本地校验、非未知的403/422）后清该待写入槽，保留表单并提示；409冲突/503未知或网络断开保留待核对，允许只读核对，不能把确定拒绝永远锁在单槽中。输入/回执类型在现有类型文件中使用闭合域枚举，不增加随意 path 的恢复方法。
 
 - [ ] 用原 fake 请求测试“education POST 201→下一条失败→GET 失败→重试”、“experience 成功→project 未知”、“POST 回执后刷新”。断言同本地条目始终一条服务器资源、原 key/body 保持、已收 receipt 不再 POST。
 - [ ] 运行 `npx vitest run src/数据/招聘数据源/简历.test.ts src/状态/后端/候选操作.test.ts` 看到新增反例失败。
-- [ ] 仍在原分区 diff 中先物化/校验全部 body；每个实际请求前走跟踪，成功后立即保留条目映射及 revision，之后才 GET。完整教育参与保存；不完整输入仍是草稿，不用 GET 抹掉；新经历 ID 在项目发出前落存储。
-- [ ] 跟踪存在且槽未结算，原保存方法先按闭合种类结算该步骤；创建复用原 key，CAS 只读核对目标字段，冲突保留用户编辑并报错。禁止本次整体重跑已确认条目，禁止把意外其他资源的 revision 当本命令 receipt。
+- [ ] 仍在原分区 diff 中先物化/校验全部 body；每个实际请求前走跟踪，成功后立即写 `已存条目` 的本地编号→服务器编号/revision（项目同时写父编号），并把 `资料` 相应条目的编号替换为服务器编号；单例分区 revision 写 `已存分区`，之后才 GET。后续请求覆盖单槽不删除这些已知身份，不能用旧 previous 中缺条目判定为新建；先按已存身份 GET/核对再计算剩余 diff。完整教育参与保存；不完整输入仍是草稿，不用 GET 抹掉；新经历 ID 在项目发出前落存储。
+- [ ] 跟踪存在且槽未结算，原保存方法先按闭合种类结算该步骤；创建复用原 key，CAS 只读核对目标字段，冲突保留用户编辑并报错。条目 DELETE 只消费草稿中用户明确删除动作登记的 `明确删除条目`，成功移除对应已存身份；hydrate/恢复缺项不发 DELETE。非 onboarding 保存保留原 diff 删除语义。禁止本次整体重跑已确认条目，禁止把意外其他资源的 revision 当本命令 receipt。
 - [ ] 保留旧非 onboarding 保存调用；原 `简历保存` 锁冲突不能 `return` 假成功，返回明确 busy 错误且页面不推进。补 subject/session fence，Summary 保存不覆盖草稿 URL 或其他未提交字段。
 - [ ] 同命令通过、typecheck 通过；提交 `fix: retain onboarding resume write receipts`。
 
@@ -154,7 +156,7 @@ L3 静态责任：**required** 是本前端候选真实浏览器旅程的最终�
 
 - [ ] 原页面测试补：学生预计毕业、社招无工作经历、未选出生年月不写、缺学校/专业引用阻止提交、选后修改文字取消旧引用、刷新未完成编辑恢复、保存失败不推进。
 - [ ] 运行 `npx vitest run src/屏幕/基本信息.test.tsx src/屏幕/求职状态.test.tsx src/屏幕/最高学历.test.tsx src/屏幕/毕业院校.test.tsx src/屏幕/选专业.test.tsx src/屏幕/就读时间段.test.tsx src/屏幕/工作经历.test.tsx src/流程/onboarding配置.test.ts` 确认新增失败。
-- [ ] 保留已有题序/路由，只替换 state 初始化、onChange、save、next。学校/专业 Backend 搜索结果接原 Mock 行，删 Backend 多出的副行；真实地点通过已有文字位置表达，同名按 ID 选择。无承载能力记具体 PM_BLOCKED，不设计层。
+- [ ] 保留已有题序/路由，只替换 state 初始化、onChange、save、next。`工作经历.tsx` 的既有 input（aria-label="作品集或项目链接"）是当前唯一实际 URL 输入，绑定同一草稿值和 URL 修改状态；链接单独变化也触发保留 profile 其余字段的写入，null 清空与未改省略分别测试。学校/专业 Backend 搜索结果接原 Mock 行，删 Backend 多出的副行；真实地点通过已有文字位置表达，同名按 ID 选择。无承载能力记具体 PM_BLOCKED，不设计层。
 - [ ] 复用 `教育编辑页`、`经历编辑页` 和已有项目/证书字段控制；还原打开层和输入。空工作经历不创建空条目；不完整教育不得靠 next 跳过最后门槛。保存错误经既有轻提示，按钮 busy 不产生成功导航。
 - [ ] 重跑同命令，检查所有修改没有 CSS/Mock 布局变化。普通 `我的简历` 消费若被影响补跑 `npx vitest run src/屏幕/我的简历.test.tsx`，不为通过改其业务规则。
 - [ ] 提交 `feat: wire existing candidate profile forms`。
@@ -201,14 +203,14 @@ L3 静态责任：**required** 是本前端候选真实浏览器旅程的最终�
 
 预期编辑文件：新增：无。删除：无。修改：`src/屏幕/引导问答.tsx`、`src/屏幕/引导问答.test.tsx`、`src/数据/招聘数据源/意向.ts`、`src/数据/HTTP招聘数据源.test.ts`、`src/状态/后端/候选操作.ts`、`src/状态/后端/候选操作.test.ts`、`src/数据/招聘数据源/隐私.ts`、`src/数据/招聘数据源/隐私.test.ts`、`src/状态/后端/隐私操作.ts`、`src/状态/后端/隐私操作.test.ts`、`src/状态/后端/类型.ts`、`src/数据/后端映射.test.ts`。
 
-接口：Global 3、5、8；`读取意向(id)` GET `/api/v1/me/intentions/{id}`，`创建首次意向` 原返回类型不变，但 POST 的 id/revision 必须先写草稿。屏蔽只用稳定 organization_id + source=manual + privacy revision + 原 key，解除沿已有风险确认/来源推导；不把字符串公司名传作 ID。
+接口：Global 3、5、8；`读取指定意向(id)` GET `api/v1/me/intentions/{id}`（同源根路径，发送时带前导斜杠），`创建首次意向` 原返回类型不变，但 POST 的 id/revision 必须先写草稿。屏蔽只用稳定 organization_id + source=manual + privacy revision + 原 key，解除沿已有风险确认/来源推导；不把字符串公司名传作 ID。
 
 固定拼接按卡片顺序：`大小周`→`不接受大小周`；`纯外包 / 乙方`→`不接受纯外包/乙方`；`全现场办公`→`不接受全现场办公`；`频繁出差`→`不接受频繁出差`。已选行随后附用户自定义原文，分隔符 `\n`；不添加“其他排除：”，不拆改用户原文内部换行。自定义全空白段不产生诉求。不得将历史自定义字串按名称误当卡片；不迁移既有历史硬排除。
 
-- [ ] 补测试 POST 201 后 GET 失败、刷新后 exact ID 读取、503 同 key 重试；列表有另一 active 意向不视作本次成功；快速双击不重复创建；Summary 失败不重建意向。
-- [ ] 补四卡顺序+自定义多行逐字对比、excluded 空数组；社招公司名称不默认已屏蔽/不自动写，失败不加成功 chip，解除成功才移除。
+- [ ] 补测试 POST 201 后 GET 失败、刷新后 exact ID 读取、503 同 key 重试；列表有另一 active 意向不视作本次成功；快速双击不重复创建；Summary 失败零首次 POST；返回修改 PATCH 同一 id 且保留已有 exclusions。
+- [ ] 补四卡顺序+自定义多行逐字对比、exclusions 四字段均为 unspecified；社招公司名称不默认已屏蔽/不自动写，失败不加成功 chip，解除成功才移除。
 - [ ] 运行 `npx vitest run src/屏幕/引导问答.test.tsx src/数据/HTTP招聘数据源.test.ts src/状态/后端/候选操作.test.ts src/数据/招聘数据源/隐私.test.ts src/状态/后端/隐私操作.test.ts src/数据/后端映射.test.ts` 确认新增反例。
-- [ ] 原向导 state 接草稿，个人优势/URL 在原输入位置保存。已 receipt 的意向只 GET exact ID，不“列表非空就 return”。unknown 不换 key，普通意向 CRUD 不接本轮草稿逻辑。
+- [ ] 原向导 state 接草稿，个人优势在原输入位置保存；URL 消费 `工作经历.tsx` 同一草稿值，`引导问答.tsx` 原末题校验/规范化控制读取同一值与修改状态，不新增已被 PM 移除的 URL 行。必须保持 Summary 成功后再创建首次意向的原顺序（空 Summary 合法），URL/其他分区失败不得被 Summary 成功吞掉。已 receipt 的意向只 GET exact ID，不“列表非空就 return”。有本轮明确 id 时，未改只读；用户返回重新确认修改则通过现有 `更新意向(id,draft,context)` 更新同一资源，当前原始快照作为 context.原始 并用其 revision。映射保留原 exclusions，只更新本次确认的输入；409 保留输入并提示重审，不盲覆盖。该方法为当前建档追加可选跟踪参数处理 CAS，普通调用省略不变。unknown create 不换 key，不把修改后的 body 塞进旧 key；先由用户动作结算原命令，再提交新修改。普通意向 CRUD 不接本轮草稿逻辑。
 - [ ] `排除题` 原 chip 用真实确认屏蔽快照派生，待提交/错误用现有禁用/提示承载。一键无法明确组织时阻止写并提示须明确选择，禁止自动搜索首命中；新增选择缺口原位记录，不能宣布该部分闭环通过。
 - [ ] 同命令通过，普通消费者追加 `npx vitest run src/屏幕/添加意向.test.tsx src/屏幕/求职意向管理.test.tsx src/屏幕/屏蔽名单.test.tsx` 仅证明共享行为未破坏；提交 `feat: wire first intention without duplicate creation`。
 
@@ -242,7 +244,7 @@ L3 静态责任：**required** 是本前端候选真实浏览器旅程的最终�
 - [ ] `应用` 测试覆盖刷新任一候选页恢复 pathname/search/题序/编辑中；直接访问主壳/初始化且 active 草稿未完成不能绕过；已完成老账号无草稿继续主壳，不因为没有“本次 id”重做 onboarding。
 - [ ] 运行 `npx vitest run src/屏幕/添加头像.test.tsx src/状态/后端/候选操作.test.ts src/应用.test.tsx src/流程/候选Onboarding预填边界.test.tsx` 验证新增失败。
 - [ ] 实现上述完成方法与已有路由恢复边界，水合未结束不先挂空表单又卸载；用现有加载/确认能力。保留学生/社招题序；常规返回/选择子页不清草稿。披露按钮仅接已有披露规则和保存控制，不新增披露项。
-- [ ] 无当前草稿的新候选按必要资源是否完备落既有开始页；已有完整资源无草稿按原主壳。局部保存中的用户只能从明确保存动作继续，不设置客户端“completed”假服务端事实。
+- [ ] 无当前草稿的新候选按必要资源是否完备落既有开始页；已有完整资源无草稿按原主壳。无草稿但部分资源已存在时重走原入口并复用准确可确认资源，不重新造教育/意向；旧请求身份丢失时列表空不能证明未受理，多候选不能唯一归属则待核对，不随机选/删/重建。明确全新无历史未知请求的空账号正常创建。局部保存中的用户只能从明确保存动作继续，不设置客户端“completed”假服务端事实。
 - [ ] 同命令通过并 `npm run typecheck`；确认初始化文件无 diff；提交 `fix: verify candidate resources before onboarding completion`。
 
 完成/停止：只按真实必要资源放行，剩余输入事实明确；不查推荐作为门槛。PM 缺口不能绕过后写“旅程全完成”。
@@ -268,7 +270,7 @@ L3 静态责任：**required** 是本前端候选真实浏览器旅程的最终�
 ## 实施后收尾（不计入 Task count）
 
 1. 完成执行 skill 要求的宿主内全局 review（未要求则不额外添加），退出 Task 循环；以下覆盖其默认 finishing-a-development-branch，不再加合入菜单或整套测试。
-2. 同一主控自动调用异构只读 review-loop（Codex→Claude，Claude Code→Codex），输入固定候选 diff、批准 Spec、本文最终对象和共用 `../_shared/review-contract.md`；reviewer 不跑测试。轮次、裁决、停止依该 skill，轮间仅修复相关单测/静态检查，不运行完整 affected。不得为凑零建议扩大设计。没有未解决有效 required finding 后继续。
+2. 同一主控自动调用异构只读 review-loop（Codex→Claude，Claude Code→Codex），输入固定候选 diff、批准 Spec、本文最终对象和共用合同（先按逻辑 skill 名发现 `claude-review-loop`/`codex-review-loop`，解析真实 skill 根目录，再读取根目录相对的 `../_shared/review-contract.md`；绝不从仓库或 Plan 目录解析）；reviewer 不跑测试。轮次、裁决、停止依该 skill，轮间仅修复相关单测/静态检查，不运行完整 affected。不得为凑零建议扩大设计。没有未解决有效 required finding 后继续。
 3. 计算本次变更与消费者的最小充分 affected，按“验证选择与责任”完成适用 L0–L2，复用有效 Task 证据，不重复 raw/wrapper。修复后只重算失效项，不重新进入 Task/global/review 循环。证据缺口、PM_BLOCKED、真实后端依赖逐项明示，不把缺证据写 ready。
 4. **人工 final gate**：准备具体 candidate SHA、只读 fetch 后目标 SHA、测试 selection/receipt/复用依据、L3 选择/环境/顺序/预期证据、当前 PM/后端阻塞和预计合入动作，再请用户明确确认。为何需此确认：`development-workflow` 的 `assets/execution-contract.md` §7 要求 final gate；只在实施收尾提出，不在写 Plan 时额外审批。确认前不合 target、不正式 L3、不 push。
 5. 获批后按该 skill `references/final-integration.md`：fetch 实际 target，记录 final_target_base，合 target 到候选；按 INCREMENTAL_EVIDENCE 重算完整责任，核对依赖输入/runtime/fixture/cleanup 后复用有效 L0–L2，只补缺失失效子集。入口不支持所需子集时报告限制，不自动整层重跑。
@@ -279,4 +281,14 @@ L3 静态责任：**required** 是本前端候选真实浏览器旅程的最终�
 
 规划自检：本文只有10个编号实施 Task；生产代码/组件新文件为零，不修改 CSS、初始化与视觉基线；新增文件仅本 Plan、后续唯一双宿主 prompt 及实施 Task 10 的测试。已明确组织选择尚未批准，不把待定方案暗写成实施授权。未运行产品测试或浏览器。
 
-异构文档 review：尚未执行；冻结候选后按 development-workflow 自动调用 Claude 只读 review，裁决在本节原位追加，完成后才生成执行 prompt。
+异构文档 review：Claude CLI，opus/high，WORKFLOW_DOCUMENT_REVIEW，第 1 轮；审查候选 revision `927adf336c088693f5f8de8e9365dc4ecaa35c49`、Plan blob `1fdf390b0bf02398dd7f58f3d8ee402dac08a126`，批准 Spec 对象如本文页首。reviewer 只读，不跑测试，前后 status/HEAD/受审文件指纹 guard 通过。
+
+|Finding|核实与裁决|本轮处理|
+|---|---|---|
+|R1 条目回执白名单缺失，required/复杂度不变|接受；单槽不能替代已存条目身份|Global 5/7、Task 3 显式 `已存条目`/分区 revision，槽推进后不丢身份。|
+|R2 存储失败阻断全部 mutation，required/复杂度不变|接受；Spec §7 要保留内存并提示，未授权把 storage 作为注册前置|发送前固定内存命令并尝试写盘；失败用既有轻提示说明刷新风险，当前保存仍可继续；不加第二存储或框架。|
+|R3 四枚举语义缺失，required/复杂度不变|接受；已查现有 BFF意向排除 确为四 enum 而非数组|Global 3 和 Task 7 精确写四字段 unspecified，移除错误数组描述。|
+|R4 第二 URL 入口未点名，required/复杂度不变|部分接受定位/接线遗漏；拒绝其“存在第二实际输入且需补文件”前提|源码已核对只剩工作经历 input；该文件原已在 Task 4。补输入/向导控制位置、单独修改写入与 dirty 共享；不恢复已删除 UI。按用户禁止布局改动和 Spec §3.1 处理旧事实，不扩设计。|
+|R5 review 合同相对路径不清，required/复杂度不变|接受|明确逻辑 skill 发现、真实根目录下解析 `../_shared/review-contract.md`，不从仓库解析。|
+
+额外自检修正：按 ID 读取使用 `读取指定意向`，保留现有无参列表读取；补已知意向返回修改同 id、Summary→首次意向顺序、明确删除才 DELETE、无草稿复用/未知身份待核对；不增加新 UI 或通用机制。文档改动经 diff/路径/枚举/任务计数核对。第1轮所有有效 required finding 已裁决修复，无未解决有效 required；按 review-loop 结束条件结束，不为零建议重跑。上述最后修订由 planner 核实，未声称再次经 Claude 复审。规划未运行产品测试；产品/PM_BLOCKED/真实 provider 仍按本文责任验收。
