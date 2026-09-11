@@ -210,6 +210,7 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
   const [待归档确认, 设待归档确认] = useState(false);
   useEffect(() => () => {
     叮嘱代际.current += 1;
+    连续写代际.current += 1; // 卸载后迟到的 retry/archive catch 也不弹轻提示
   }, []);
   useEffect(() => {
     叮嘱代际.current += 1;

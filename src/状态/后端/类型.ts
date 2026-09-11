@@ -802,7 +802,7 @@ export interface 发现推荐操作 {
   取候选待核对命令(intentionId: string, jobId: string): 待核对命令 | null;
   /**
    * J-PILOT-01 Task 3（Spec §8）：该 intention-job 未决 create 命令的核对口。
-   * 已确认回执 → 只回读（委托回执 GET + canonical 记录读），不重发已确认 write；
+   * 已确认回执 → 只回读 canonical 连续记录（GET-only），不重发已确认 write；
    * write 未确认且原 key/body 完整 → 原 key＋原 body 恰重放一次，随后回读。
    * 无未决命令时静默返回（屏层只在有待核对时给该按钮）。每次调用最多一次 POST。
    */

@@ -1,4 +1,4 @@
-/* 详情动作卡 / 事实问题卡 —— P5 阶段动作区原 inline 样式收编为共用 module（设计令牌
+/* 详情动作卡 —— P5 阶段动作区原 inline 样式收编为共用 module（设计令牌
    逐值不变，两端详情共用）。卡结构：标题 / 说明 / 正文槽 / 键行；按钮三种外观
    （主要 / 次要 / 危险）；禁用说明是可见文本（次要浅色），不靠变灰冒充解释。 */
 
@@ -73,32 +73,4 @@
   font-size: 11px;
   color: var(--最弱);
   line-height: 1.5;
-}
-
-/* ── 事实问题卡（respond_fact 卡的正文槽）：当前问题 + 回答框 ── */
-
-.问题区 {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.问题 {
-  font-size: 12.5px;
-  color: var(--正文);
-  line-height: 1.6;
-}
-
-.回答框 {
-  width: 100%;
-  box-sizing: border-box;
-  min-height: 64px;
-  padding: 9px 11px;
-  resize: vertical;
-  border-radius: 10px;
-  border: 1px solid var(--描边深);
-  background: #fff;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--正文);
 }
