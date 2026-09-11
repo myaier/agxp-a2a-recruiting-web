@@ -20,6 +20,8 @@ export interface 分组查询状态 {
   cursor: string | null;
   /** review-r1 P2-1：多 filter 分组（如直辖市四码）的每 filter 游标，加载更多时各取各的下一页 */
   游标们: (string | null)[];
+  /** review-cx F5：本组第一页的 catalogVersion（冻结合同 2）—— 追加页换版本时整组重开 */
+  版本: string;
   还有: boolean;
   已请求: boolean;
 }
@@ -38,12 +40,16 @@ function 去重(项们: BFFLocationItem[]): BFFLocationItem[] {
 
 /** 默认目录页（Task 5）：不发 q 的默认推荐页。首页条目就是热门区，
  *  滚到底按服务端 nextCursor 追加；返回项按 ID 去重。加载中锁住重入，
- *  失败经既有轻提示说明，用户再滚一次即可重试。 */
+ *  失败经既有轻提示说明，用户再滚一次即可重试。
+ *  review-cx F5（冻结合同 2）：第一页记录 catalogVersion；追加页返回不同版本时不
+ *  跨版本合并 —— 丢弃本查询累计的旧页与游标，从本查询第一页重开（静默一致性
+ *  重同步，不是错误、不提示），恢复到单一版本且继续可翻页的状态。 */
 export function use城市默认页(查询Location: 查询Location方法 | undefined) {
   const [热门项们, 设热门项们] = useState<BFFLocationItem[]>([]);
   const [项们, 设项们] = useState<BFFLocationItem[]>([]);
   const [游标, 设游标] = useState<string | null>(null);
   const [加载中, 设加载中] = useState(false);
+  const 版本引用 = useRef('');
   const 方法引用 = useRef(查询Location);
   方法引用.current = 查询Location;
   const 可查询 = Boolean(查询Location);
@@ -61,6 +67,7 @@ export function use城市默认页(查询Location: 查询Location方法 | undefi
         设热门项们(页.items);
         设项们(页.items);
         设游标(页.nextCursor);
+        版本引用.current = 页.catalogVersion;
       } catch (错误) {
         if (作废) return;
         轻提示(取后端错误文案(错误));
@@ -78,6 +85,15 @@ export function use城市默认页(查询Location: 查询Location方法 | undefi
     设加载中(true);
     try {
       const 页 = await 方法({ cursor: 游标, limit: 默认页大小 });
+      if (页.catalogVersion !== 版本引用.current) {
+        // 目录换代：旧游标已是死页，静默从本查询第一页重开（含热门区）
+        const 重开 = await 方法({ limit: 默认页大小 });
+        设热门项们(重开.items);
+        设项们(重开.items);
+        设游标(重开.nextCursor);
+        版本引用.current = 重开.catalogVersion;
+        return;
+      }
       设项们((旧) => 去重([...旧, ...页.items]));
       设游标(页.nextCursor);
     } catch (错误) {
@@ -119,14 +135,14 @@ export function use城市分组(查询Location: 查询Location方法 | undefined
     if (组.filters.length === 0) {
       设状态表((旧) => ({
         ...旧,
-        [键]: { items: [], 加载中: false, cursor: null, 游标们: [], 还有: false, 已请求: true },
+        [键]: { items: [], 加载中: false, cursor: null, 游标们: [], 版本: '', 还有: false, 已请求: true },
       }));
       return;
     }
     if (!方法) return;
     设状态表((旧) => ({
       ...旧,
-      [键]: { items: [], 加载中: true, cursor: null, 游标们: [], 还有: false, 已请求: true },
+      [键]: { items: [], 加载中: true, cursor: null, 游标们: [], 版本: '', 还有: false, 已请求: true },
     }));
     try {
       const 页们 = await Promise.all(
@@ -140,12 +156,12 @@ export function use城市分组(查询Location: 查询Location方法 | undefined
       const cursor = 游标们.find((c) => c !== null) ?? null;
       设状态表((旧) => ({
         ...旧,
-        [键]: { items: 合并, 加载中: false, cursor, 游标们, 还有, 已请求: true },
+        [键]: { items: 合并, 加载中: false, cursor, 游标们, 版本: 页们[0]?.catalogVersion ?? '', 还有, 已请求: true },
       }));
     } catch {
       设状态表((旧) => ({
         ...旧,
-        [键]: { items: [], 加载中: false, cursor: null, 游标们: [], 还有: false, 已请求: true },
+        [键]: { items: [], 加载中: false, cursor: null, 游标们: [], 版本: '', 还有: false, 已请求: true },
       }));
     }
   };
@@ -174,6 +190,12 @@ export function use城市分组(查询Location: 查询Location方法 | undefined
           return 方法({ countryCode: f.countryCode, admin1Code: f.admin1Code, cursor: c, limit: 默认页大小 });
         }),
       );
+      // review-cx F5：任一追加页换版本 = 目录已换代 —— 不跨版本合并，整组（含各
+      // filter 的累计页与游标）丢弃并从该组第一页重开（请求首页 即既有第一页路径，静默）。
+      if (页们.some((页) => 页.catalogVersion !== '' && 页.catalogVersion !== 状态.版本)) {
+        await 请求首页(组);
+        return;
+      }
       const 新游标们 = 页们.map((页) => 页.nextCursor);
       设状态表((旧) => ({
         ...旧,
@@ -207,6 +229,8 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
   const [加载中, 设加载中] = useState(false);
   const 计时 = useRef(0);
   const 代际 = useRef(0);
+  // review-cx F5：本次搜索第一页的 catalogVersion —— 追加页换版本时结果整组重开
+  const 版本引用 = useRef('');
   const 方法引用 = useRef(查询Location);
   方法引用.current = 查询Location;
 
@@ -219,6 +243,7 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
     设结果([]);
     设下一页游标(null);
     设加载中(false);
+    版本引用.current = '';
     if (!方法 || trimmed === '') {
       设搜索中(false);
       return;
@@ -233,6 +258,7 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
         if (本次 !== 代际.current) return; // stale：已有更新的搜索在跑/已完成
         设结果(页.items);
         设下一页游标(页.nextCursor);
+        版本引用.current = 页.catalogVersion;
       } catch {
         if (本次 !== 代际.current) return;
         设结果([]);
@@ -254,6 +280,15 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
     try {
       const 页 = await 方法({ q: 词.trim(), cursor: 下一页游标 });
       if (本次 !== 代际.current) return;
+      if (页.catalogVersion !== 版本引用.current) {
+        // review-cx F5：目录换代 —— 不跨版本合并，从本查询第一页静默重开
+        const 重开 = await 方法({ q: 词.trim() });
+        if (本次 !== 代际.current) return;
+        设结果(重开.items);
+        设下一页游标(重开.nextCursor);
+        版本引用.current = 重开.catalogVersion;
+        return;
+      }
       设结果((旧) => 去重([...旧, ...页.items]));
       设下一页游标(页.nextCursor);
     } catch {

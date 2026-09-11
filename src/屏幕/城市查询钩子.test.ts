@@ -5,7 +5,7 @@ import { render } from '@testing-library/react';
 import { act } from '@testing-library/react';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { use城市搜索, use城市默认页, type 查询Location方法 } from './城市查询钩子';
+import { use城市搜索, use城市默认页, use城市分组, type 查询Location方法 } from './城市查询钩子';
 import type { BFFLocationItem } from '../数据/BFF契约';
 
 function deferred<T>() {
@@ -165,5 +165,169 @@ describe('use城市搜索 换词后旧页迟到（Task 5）', () => {
       });
     });
     expect(JSON.parse(container.querySelector('output')!.textContent!).结果).toEqual(['loc_b1']);
+  });
+});
+
+// ── review-cx F5：目录分页按 catalogVersion 静默重同步（冻结合同 2）──
+// 同一查询的第一页记录 catalogVersion；追加页返回不同版本时不跨版本合并 ——
+// 丢弃该查询累计的旧页与游标，从本查询第一页重开（既有请求路径/加载态，静默无
+// 提示），恢复到单一版本且继续可翻页的状态。版本归各自的查询，不跨查询共享。
+describe('use城市默认页 catalogVersion 重同步（review-cx F5）', () => {
+  it('追加页换版本：不合并旧页，从第一页静默重开并可继续翻页', async () => {
+    let 加载更多外: (() => void) | null = null;
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 热门项们, 项们, 加载更多 } = use城市默认页(查询);
+      加载更多外 = () => void 加载更多();
+      return createElement('output', null, JSON.stringify({
+        热门: 热门项们.map((项) => 项.id),
+        全部: 项们.map((项) => 项.id),
+      }));
+    }
+
+    let 首页调用 = 0;
+    const 查询 = vi.fn(async (q: { cursor?: string }) => {
+      if (q.cursor === 'cur_1') {
+        // 带旧版本游标的追加页：目录已换代（v3），内容是旧快照的下一页
+        return {
+          items: [{ id: 'loc_old', display_name: '旧页' } as BFFLocationItem],
+          nextCursor: 'dead_cur' as string | null,
+          catalogVersion: 'v3',
+        };
+      }
+      if (q.cursor === 'v3_cur_1') {
+        return {
+          items: [{ id: 'loc_hz_v3', display_name: '杭州市' } as BFFLocationItem],
+          nextCursor: null,
+          catalogVersion: 'v3',
+        };
+      }
+      首页调用 += 1;
+      if (首页调用 === 1) {
+        return {
+          items: [{ id: 'loc_sh', display_name: '上海市' } as BFFLocationItem],
+          nextCursor: 'cur_1' as string | null,
+          catalogVersion: 'v2',
+        };
+      }
+      // 重开的第一页：已是 v3
+      return {
+        items: [{ id: 'loc_sh_v3', display_name: '上海新版' } as BFFLocationItem],
+        nextCursor: 'v3_cur_1' as string | null,
+        catalogVersion: 'v3',
+      };
+    }) as unknown as 查询Location方法;
+
+    const { container } = render(createElement(探针, { 查询 }));
+    await act(async () => { await Promise.resolve(); });
+    let 输出 = JSON.parse(container.querySelector('output')!.textContent!);
+    expect(输出.全部).toEqual(['loc_sh']);
+
+    // 滚到底：追加页返回 v3 → 不跨版本合并（loc_sh / loc_old 都不在），从第一页重开
+    await act(async () => { 加载更多外!(); });
+    输出 = JSON.parse(container.querySelector('output')!.textContent!);
+    expect(输出.全部).toEqual(['loc_sh_v3']);
+    expect(输出.热门).toEqual(['loc_sh_v3']);
+
+    // 重开后仍是单一版本且继续可翻：新游标 v3_cur_1 的追加页正常合并
+    await act(async () => { 加载更多外!(); });
+    输出 = JSON.parse(container.querySelector('output')!.textContent!);
+    expect(输出.全部).toEqual(['loc_sh_v3', 'loc_hz_v3']);
+  });
+});
+
+describe('use城市分组 catalogVersion 重同步（review-cx F5）', () => {
+  it('分组追加页换版本：整组丢弃旧页与游标，从该组第一页重开', async () => {
+    let 切换外: (() => void) | null = null;
+    let 加载更多外: (() => void) | null = null;
+    let 读取状态: (() => { items: string[]; 还有: boolean }) | null = null;
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 状态表, 切换展开, 加载更多 } = use城市分组(查询);
+      const 组 = { 省: '广东', filters: [{ countryCode: 'CN', admin1Code: '44' }] };
+      切换外 = () => 切换展开(组);
+      加载更多外 = () => void 加载更多(组);
+      读取状态 = () => {
+        const 状态 = 状态表['广东'];
+        return { items: (状态?.items ?? []).map((项) => 项.id), 还有: 状态?.还有 ?? false };
+      };
+      return createElement('output', null, '');
+    }
+
+    let 首页调用 = 0;
+    const 查询 = vi.fn(async (q: { admin1Code?: string; cursor?: string }) => {
+      if (q.cursor === 'gd_cur_1') {
+        return {
+          items: [{ id: 'loc_old', display_name: '旧页' } as BFFLocationItem],
+          nextCursor: 'dead' as string | null,
+          catalogVersion: 'v3',
+        };
+      }
+      首页调用 += 1;
+      if (首页调用 === 1) {
+        return {
+          items: [{ id: 'loc_gz', display_name: '广州' } as BFFLocationItem],
+          nextCursor: 'gd_cur_1' as string | null,
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{ id: 'loc_gz_v3', display_name: '广州新版' } as BFFLocationItem],
+        nextCursor: null,
+        catalogVersion: 'v3',
+      };
+    }) as unknown as 查询Location方法;
+
+    render(createElement(探针, { 查询 }));
+    await act(async () => { 切换外!(); });
+    expect(读取状态!()).toEqual({ items: ['loc_gz'], 还有: true });
+
+    // 展开加载更多：追加页 v3 → 整组重开为新版本第一页（旧页与死游标一并丢弃）
+    await act(async () => { 加载更多外!(); });
+    expect(读取状态!()).toEqual({ items: ['loc_gz_v3'], 还有: false });
+  });
+});
+
+describe('use城市搜索 catalogVersion 重同步（review-cx F5）', () => {
+  it('搜索追加页换版本：结果整组替换为新版本第一页', async () => {
+    let 设词外: ((v: string) => void) | null = null;
+    let 加载更多外: (() => void) | null = null;
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 设词, 结果, 加载更多 } = use城市搜索(查询);
+      设词外 = 设词;
+      加载更多外 = () => void 加载更多();
+      return createElement('output', null, JSON.stringify({ 结果: 结果.map((r) => r.id) }));
+    }
+
+    let 首页调用 = 0;
+    const 查询 = vi.fn(async (q: { q?: string; cursor?: string }) => {
+      if (q.cursor === 'a_cur_1') {
+        return {
+          items: [{ id: 'loc_a_old', display_name: 'A旧页' } as BFFLocationItem],
+          nextCursor: 'dead' as string | null,
+          catalogVersion: 'v3',
+        };
+      }
+      首页调用 += 1;
+      if (首页调用 === 1) {
+        return {
+          items: [{ id: 'loc_a1', display_name: 'A城' } as BFFLocationItem],
+          nextCursor: 'a_cur_1' as string | null,
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{ id: 'loc_a1_v3', display_name: 'A城新版' } as BFFLocationItem],
+        nextCursor: null,
+        catalogVersion: 'v3',
+      };
+    }) as unknown as 查询Location方法;
+
+    const { container } = render(createElement(探针, { 查询 }));
+    act(() => 设词外!('A'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    expect(JSON.parse(container.querySelector('output')!.textContent!).结果).toEqual(['loc_a1']);
+
+    // 加载更多：追加页 v3 → 结果整组替换为新版本第一页，不跨版本拼接
+    await act(async () => { 加载更多外!(); });
+    expect(JSON.parse(container.querySelector('output')!.textContent!).结果).toEqual(['loc_a1_v3']);
   });
 });

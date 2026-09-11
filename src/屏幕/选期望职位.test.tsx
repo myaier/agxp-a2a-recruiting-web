@@ -507,6 +507,145 @@ describe('选期望职位 Backend', () => {
   });
 });
 
+// ── review-cx F5：目录分页按 catalogVersion 静默重同步（冻结合同 2）──
+// 同一查询的第一页记录 catalogVersion；追加页返回不同版本时不跨版本合并 ——
+// 丢弃该查询累计的旧页与游标，从本查询第一页重开（既有请求路径，静默无提示），
+// 恢复到单一版本且继续可翻页的状态。root / child / search 版本各自归各自的查询。
+describe('选期望职位 catalogVersion 重同步（review-cx F5）', () => {
+  beforeEach(() => {
+    mock返回.mockClear();
+  });
+
+  it('根追加页换版本：不合并旧根，从根查询第一页重开', async () => {
+    let 根首页调用 = 0;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string }) => {
+      if (query.parentId) return { items: [], nextCursor: null, catalogVersion: 'v2' };
+      if (query.cursor === 'root_cur_1') {
+        // 带旧版本游标的追加页：目录已换代（v3）
+        return {
+          items: [{ id: 'cat_old', display_name: '大类旧页', parent_id: null, selectable: false, has_children: true }],
+          nextCursor: 'dead' as string | null,
+          catalogVersion: 'v3',
+        };
+      }
+      根首页调用 += 1;
+      if (根首页调用 === 1) {
+        return {
+          items: [{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false, has_children: true }],
+          nextCursor: 'root_cur_1' as string | null,
+          catalogVersion: 'v2',
+        };
+      }
+      // 重开的根第一页：v3
+      return {
+        items: [{ id: 'cat_c', display_name: '大类C新版', parent_id: null, selectable: false, has_children: true }],
+        nextCursor: null,
+        catalogVersion: 'v3',
+      };
+    });
+    render选期望职位({ 数据源: 'backend', 查询Taxonomy });
+    await screen.findByText('大类A');
+    // 左栏滚到底：追加页 v3 → 根列表整组替换为新版本第一页（大类A/大类旧页都不在）
+    滚到底(滚动容器(0));
+    await screen.findByText('大类C新版');
+    expect(screen.queryByText('大类A')).toBeNull();
+    expect(screen.queryByText('大类旧页')).toBeNull();
+  });
+
+  it('子项追加页换版本：右栏整组替换为新版本第一页，不带死游标重试', async () => {
+    let 子首页调用 = 0;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string }) => {
+      if (!query.parentId && !query.cursor) {
+        return {
+          items: [{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_a' && query.cursor === 'a_cur_1') {
+        return {
+          items: [{ id: 'job_old', display_name: '岗位旧页', parent_id: 'cat_a', selectable: true, has_children: false }],
+          nextCursor: 'dead' as string | null,
+          catalogVersion: 'v3',
+        };
+      }
+      if (query.parentId === 'cat_a') {
+        子首页调用 += 1;
+        if (子首页调用 === 1) {
+          return {
+            items: [{ id: 'job_a1', display_name: '岗位旧一', parent_id: 'cat_a', selectable: true, has_children: false }],
+            nextCursor: 'a_cur_1' as string | null,
+            catalogVersion: 'v2',
+          };
+        }
+        return {
+          items: [{ id: 'job_a1_v3', display_name: '岗位新一', parent_id: 'cat_a', selectable: true, has_children: false }],
+          nextCursor: null,
+          catalogVersion: 'v3',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render选期望职位({ 数据源: 'backend', 查询Taxonomy });
+    await screen.findByText('岗位旧一');
+    // 右栏滚到底：追加页 v3 → 子项整组替换为新版本第一页
+    滚到底(滚动容器(1));
+    await screen.findByText('岗位新一');
+    expect(screen.queryByText('岗位旧一')).toBeNull();
+    expect(screen.queryByText('岗位旧页')).toBeNull();
+    // 重开后不再带死游标发请求
+    滚到底(滚动容器(1));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    expect(查询Taxonomy.mock.calls.some((调用) => (调用[1] as { cursor?: string }).cursor === 'dead')).toBe(false);
+  });
+
+  it('搜索追加页换版本：搜索结果整组替换为新版本第一页', async () => {
+    let 搜索首页调用 = 0;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
+      if (query.q === 'A' && query.cursor === 's_cur_1') {
+        return {
+          items: [{ id: 'job_s_old', display_name: 'A旧页', parent_id: null, selectable: true, has_children: false }],
+          nextCursor: 'dead' as string | null,
+          catalogVersion: 'v3',
+        };
+      }
+      if (query.q === 'A') {
+        搜索首页调用 += 1;
+        if (搜索首页调用 === 1) {
+          return {
+            items: [{ id: 'job_s1', display_name: 'A结果旧', parent_id: null, selectable: true, has_children: false }],
+            nextCursor: 's_cur_1' as string | null,
+            catalogVersion: 'v2',
+          };
+        }
+        return {
+          items: [{ id: 'job_s1_v3', display_name: 'A结果新', parent_id: null, selectable: true, has_children: false }],
+          nextCursor: null,
+          catalogVersion: 'v3',
+        };
+      }
+      if (!query.parentId && !query.q && !query.cursor) {
+        return {
+          items: [{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render选期望职位({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await screen.findByText('大类A');
+    await 用户.type(screen.getByPlaceholderText('搜索职位'), 'A');
+    await screen.findByText('A结果旧');
+    // 搜索态唯一的滚动容器滚到底：追加页 v3 → 结果整组替换为新版本第一页
+    滚到底(滚动容器(0));
+    await screen.findByText('A结果新');
+    expect(screen.queryByText('A结果旧')).toBeNull();
+    expect(screen.queryByText('A旧页')).toBeNull();
+  });
+});
+
 describe('选期望职位 Mock', () => {
   beforeEach(() => {
     mock返回.mockClear();

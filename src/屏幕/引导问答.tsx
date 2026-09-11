@@ -438,6 +438,12 @@ function 期望职位题({
   const [子项加载中, 设子项加载中] = useState(false);
   const [搜索游标, 设搜索游标] = useState<string | null>(null);
   const [搜索加载中, 设搜索加载中] = useState(false);
+  // review-cx F5（冻结合同 2）：各查询第一页的 catalogVersion —— 追加页返回不同版本时
+  // 不跨版本合并，丢弃该查询累计的旧页与游标并从该查询第一页静默重开（版本归各自查询）。
+  const [根版本, 设根版本] = useState('');
+  const [子项版本, 设子项版本] = useState('');
+  const [搜索版本, 设搜索版本] = useState('');
+  const [细选版本, 设细选版本] = useState('');
   // review-r3 R3-I-6：代际 ref 守 stale response——慢的旧搜索/子项不覆盖新的
   const 搜索代际 = useRef(0);
   const 导航代际 = useRef(0);
@@ -458,6 +464,7 @@ function 期望职位题({
         const 页 = await 方法('job-categories', { limit: 50 });
         设根项(页.items);
         设根游标(页.nextCursor);
+        设根版本(页.catalogVersion);
         if (页.items.length > 0 && !当前根) {
           设当前根(页.items[0]);
           // review-r3 R3-I-6：导航代际守 stale（预载第一枚子项）
@@ -468,6 +475,7 @@ function 期望职位题({
             if (本次 !== 导航代际.current) return;
             设子项(子页.items);
             设子项游标(子页.nextCursor);
+            设子项版本(子页.catalogVersion);
           } catch (错误) {
             if (本次 !== 导航代际.current) return;
             设子项([]);
@@ -496,6 +504,7 @@ function 期望职位题({
     设搜索结果项([]);
     设搜索游标(null);
     设搜索加载中(false);
+    设搜索版本('');
     if (搜词 === '') return;
     window.clearTimeout(计时.current);
     const 本次 = 搜索代际.current;
@@ -505,6 +514,7 @@ function 期望职位题({
         if (本次 !== 搜索代际.current) return;
         设搜索结果项(页.items);
         设搜索游标(页.nextCursor);
+        设搜索版本(页.catalogVersion);
       } catch (错误) {
         if (本次 !== 搜索代际.current) return;
         设搜索结果项([]);
@@ -523,6 +533,14 @@ function 期望职位题({
     设根加载中(true);
     try {
       const 页 = await 方法('job-categories', { cursor: 根游标, limit: 50 });
+      if (页.catalogVersion !== 根版本) {
+        // review-cx F5：目录换代 —— 旧游标是死页，从根查询第一页静默重开
+        const 重开 = await 方法('job-categories', { limit: 50 });
+        设根项(重开.items);
+        设根游标(重开.nextCursor);
+        设根版本(重开.catalogVersion);
+        return;
+      }
       设根项((旧) => 合并目录页(旧, 页.items));
       设根游标(页.nextCursor);
     } catch (错误) {
@@ -544,6 +562,15 @@ function 期望职位题({
     try {
       const 页 = await 方法('job-categories', { parentId: 目标根id, cursor: 子项游标, limit: 50 });
       if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+      if (页.catalogVersion !== 子项版本) {
+        // review-cx F5：目录换代 —— 子项整组替换为新版本第一页（既有 parentId 路径，静默）
+        const 重开 = await 方法('job-categories', { parentId: 目标根id, limit: 50 });
+        if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+        设子项(重开.items);
+        设子项游标(重开.nextCursor);
+        设子项版本(重开.catalogVersion);
+        return;
+      }
       设子项((旧) => 合并目录页(旧, 页.items));
       设子项游标(页.nextCursor);
     } catch (错误) {
@@ -564,6 +591,15 @@ function 期望职位题({
     try {
       const 页 = await 方法('job-categories', { q: 搜词, cursor: 搜索游标, limit: 50 });
       if (本次 !== 搜索代际.current) return;
+      if (页.catalogVersion !== 搜索版本) {
+        // review-cx F5：目录换代 —— 搜索结果整组替换为新版本第一页（静默）
+        const 重开 = await 方法('job-categories', { q: 搜词, limit: 50 });
+        if (本次 !== 搜索代际.current) return;
+        设搜索结果项(重开.items);
+        设搜索游标(重开.nextCursor);
+        设搜索版本(重开.catalogVersion);
+        return;
+      }
       设搜索结果项((旧) => 合并目录页(旧, 页.items));
       设搜索游标(页.nextCursor);
     } catch (错误) {
@@ -579,6 +615,7 @@ function 期望职位题({
     const 方法 = 方法引用.current;
     设细选项们([]);
     设细选游标(null);
+    设细选版本('');
     if (!方法) return;
     const 本次 = ++细选代际.current;
     设细选加载中(true);
@@ -587,6 +624,7 @@ function 期望职位题({
       if (本次 !== 细选代际.current) return;
       设细选项们(页.items);
       设细选游标(页.nextCursor);
+      设细选版本(页.catalogVersion);
     } catch (错误) {
       if (本次 !== 细选代际.current) return;
       设细选项们([]);
@@ -607,6 +645,15 @@ function 期望职位题({
     try {
       const 页 = await 方法('job-categories', { parentId: 节点.id, cursor: 细选游标, limit: 50 });
       if (本次 !== 细选代际.current || 细选节点引用.current?.id !== 节点.id) return;
+      if (页.catalogVersion !== 细选版本) {
+        // review-cx F5：目录换代 —— 细选列表整组替换为新版本第一页（静默）
+        const 重开 = await 方法('job-categories', { parentId: 节点.id, limit: 50 });
+        if (本次 !== 细选代际.current || 细选节点引用.current?.id !== 节点.id) return;
+        设细选项们(重开.items);
+        设细选游标(重开.nextCursor);
+        设细选版本(重开.catalogVersion);
+        return;
+      }
       设细选项们((旧) => 合并目录页(旧, 页.items));
       设细选游标(页.nextCursor);
     } catch (错误) {
@@ -653,6 +700,7 @@ function 期望职位题({
     细选代际.current += 1;
     设细选项们([]);
     设细选游标(null);
+    设细选版本('');
     设细选加载中(false);
     const 顶 = 上一层[上一层.length - 1];
     if (顶) void 载细选(顶);
@@ -663,6 +711,7 @@ function 期望职位题({
     当前根引用.current = 项;
     设子项([]);
     设子项游标(null);
+    设子项版本('');
     const 方法 = 方法引用.current;
     if (!方法) return;
     // review-r3 R3-I-6：导航代际守 stale——快速切大类时慢的旧子项不覆盖新的
@@ -673,6 +722,7 @@ function 期望职位题({
       if (本次 !== 导航代际.current) return;
       设子项(子页.items);
       设子项游标(子页.nextCursor);
+      设子项版本(子页.catalogVersion);
     } catch (错误) {
       if (本次 !== 导航代际.current) return;
       设子项([]);

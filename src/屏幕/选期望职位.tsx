@@ -88,12 +88,17 @@ export default function 选期望职位() {
   当前根引用.current = 当前根;
 
   // review-r2 R2-M-1：分页游标 + 加载中状态（root / child / search）
+  // review-cx F5（冻结合同 2）：各查询第一页的 catalogVersion —— 追加页返回不同版本时
+  // 不跨版本合并，丢弃该查询累计的旧页与游标并从该查询第一页静默重开（版本归各自查询）。
   const [根游标, 设根游标] = useState<string | null>(null);
   const [根加载中, 设根加载中] = useState(false);
   const [子项游标, 设子项游标] = useState<string | null>(null);
   const [子项加载中, 设子项加载中] = useState(false);
   const [搜索游标, 设搜索游标] = useState<string | null>(null);
   const [搜索加载中, 设搜索加载中] = useState(false);
+  const [根版本, 设根版本] = useState('');
+  const [子项版本, 设子项版本] = useState('');
+  const [搜索版本, 设搜索版本] = useState('');
 
   // Backend mount：读 roots
   useEffect(() => {
@@ -105,6 +110,7 @@ export default function 选期望职位() {
         const 页 = await 方法('job-categories', { limit: 50 });
         设根项(页.items);
         设根游标(页.nextCursor);
+        设根版本(页.catalogVersion);
         if (页.items.length > 0 && !当前根) {
           设当前根(页.items[0]);
           // 预载第一枚的子项（R2-M-3：导航代际守 stale）
@@ -115,6 +121,7 @@ export default function 选期望职位() {
             if (本次 !== 导航代际.current) return;
             设子项(子页.items);
             设子项游标(子页.nextCursor);
+            设子项版本(子页.catalogVersion);
           } catch (错误) {
             if (本次 !== 导航代际.current) return;
             设子项([]);
@@ -144,6 +151,7 @@ export default function 选期望职位() {
     设搜索结果项([]);
     设搜索游标(null);
     设搜索加载中(false);
+    设搜索版本('');
     if (搜词 === '') return;
     window.clearTimeout(计时.current);
     const 本次 = 搜索代际.current;
@@ -153,6 +161,7 @@ export default function 选期望职位() {
         if (本次 !== 搜索代际.current) return;
         设搜索结果项(页.items);
         设搜索游标(页.nextCursor);
+        设搜索版本(页.catalogVersion);
       } catch (错误) {
         if (本次 !== 搜索代际.current) return;
         设搜索结果项([]);
@@ -171,6 +180,14 @@ export default function 选期望职位() {
     设根加载中(true);
     try {
       const 页 = await 方法('job-categories', { cursor: 根游标, limit: 50 });
+      if (页.catalogVersion !== 根版本) {
+        // review-cx F5：目录换代 —— 旧游标是死页，从根查询第一页静默重开
+        const 重开 = await 方法('job-categories', { limit: 50 });
+        设根项(重开.items);
+        设根游标(重开.nextCursor);
+        设根版本(重开.catalogVersion);
+        return;
+      }
       设根项((旧) => 合并目录页(旧, 页.items));
       设根游标(页.nextCursor);
     } catch (错误) {
@@ -194,6 +211,15 @@ export default function 选期望职位() {
     try {
       const 页 = await 方法('job-categories', { parentId: 目标根id, cursor: 子项游标, limit: 50 });
       if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+      if (页.catalogVersion !== 子项版本) {
+        // review-cx F5：目录换代 —— 子项整组替换为新版本第一页（既有 parentId 路径，静默）
+        const 重开 = await 方法('job-categories', { parentId: 目标根id, limit: 50 });
+        if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+        设子项(重开.items);
+        设子项游标(重开.nextCursor);
+        设子项版本(重开.catalogVersion);
+        return;
+      }
       设子项((旧) => 合并目录页(旧, 页.items));
       设子项游标(页.nextCursor);
     } catch (错误) {
@@ -214,6 +240,15 @@ export default function 选期望职位() {
     try {
       const 页 = await 方法('job-categories', { q: 搜词, cursor: 搜索游标, limit: 50 });
       if (本次 !== 搜索代际.current) return;
+      if (页.catalogVersion !== 搜索版本) {
+        // review-cx F5：目录换代 —— 搜索结果整组替换为新版本第一页（静默）
+        const 重开 = await 方法('job-categories', { q: 搜词, limit: 50 });
+        if (本次 !== 搜索代际.current) return;
+        设搜索结果项(重开.items);
+        设搜索游标(重开.nextCursor);
+        设搜索版本(重开.catalogVersion);
+        return;
+      }
       设搜索结果项((旧) => 合并目录页(旧, 页.items));
       设搜索游标(页.nextCursor);
     } catch (错误) {
@@ -246,6 +281,7 @@ export default function 选期望职位() {
     当前根引用.current = 项;
     设子项([]);
     设子项游标(null);
+    设子项版本('');
     设关键词('');
     const 方法 = 方法引用.current;
     if (!方法) return;
@@ -256,6 +292,7 @@ export default function 选期望职位() {
       if (本次 !== 导航代际.current) return;
       设子项(子页.items);
       设子项游标(子页.nextCursor);
+      设子项版本(子页.catalogVersion);
     } catch (错误) {
       if (本次 !== 导航代际.current) return;
       设子项([]);

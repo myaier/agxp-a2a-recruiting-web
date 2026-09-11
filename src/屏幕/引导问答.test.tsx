@@ -1288,3 +1288,70 @@ describe('引导问答 题目级恢复（Task 9）', () => {
     );
   });
 });
+
+// ── review-cx F5：细选层分页按 catalogVersion 静默重同步（冻结合同 2）──
+// 细选层是引导问答 期望职位题 自有的 originating query：第一页记录 catalogVersion，
+// 追加页返回不同版本时不跨版本合并 —— 丢弃该层累计旧页与游标，从该层第一页重开。
+describe('引导问答 细选层 catalogVersion 重同步（review-cx F5）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+  });
+
+  it('细选追加页换版本：细选列表整组替换为新版本第一页，不带死游标重试', async () => {
+    let 细选首页调用 = 0;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
+      if (!query.parentId && !query.q && !query.cursor) {
+        return {
+          items: [{ id: 'tax_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'tax_root') {
+        return {
+          items: [{ id: 'tax_mid', display_name: '后端方向', parent_id: 'tax_root', selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'tax_mid' && query.cursor === 'mid_cur_1') {
+        return {
+          items: [{ id: 'dir_stale', display_name: '方向过期页', parent_id: 'tax_mid', selectable: true, has_children: false }],
+          nextCursor: 'dead' as string | null,
+          catalogVersion: 'v3',
+        };
+      }
+      if (query.parentId === 'tax_mid') {
+        细选首页调用 += 1;
+        if (细选首页调用 === 1) {
+          return {
+            items: [{ id: 'dir_old', display_name: '方向旧一', parent_id: 'tax_mid', selectable: true, has_children: false }],
+            nextCursor: 'mid_cur_1' as string | null,
+            catalogVersion: 'v2',
+          };
+        }
+        return {
+          items: [{ id: 'dir_new', display_name: '方向新一', parent_id: 'tax_mid', selectable: true, has_children: false }],
+          nextCursor: null,
+          catalogVersion: 'v3',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render引导问答后端({ 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    // roots → 子项（说明卡）→ 点有下级的「后端方向」进细选层
+    await 用户.click(await screen.findByText('后端方向'));
+    await screen.findByText('方向旧一');
+    // 细选层自己的滚动容器（左栏 0 / 右栏 1 / 细选列表 2）滚到底：追加页 v3 → 整组重开
+    滚到底(滚动容器(2));
+    await screen.findByText('方向新一');
+    expect(screen.queryByText('方向旧一')).toBeNull();
+    expect(screen.queryByText('方向过期页')).toBeNull();
+    // 重开后不再带死游标发请求
+    滚到底(滚动容器(2));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    expect(查询Taxonomy.mock.calls.some((调用) => (调用[1] as { cursor?: string }).cursor === 'dead')).toBe(false);
+  });
+});
