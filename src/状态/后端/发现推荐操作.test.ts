@@ -19,6 +19,7 @@ import { 创建空P8控制面状态 } from './P8控制面操作';
 import { 创建空接触记录状态 } from './接触记录操作';
 import { 创建空P5MatchCase状态 } from './MatchCase操作';
 import {
+  保存待核对,
   读取待核对,
   type 委托待核对owner,
   type 委托待核对存储接口,
@@ -2272,6 +2273,48 @@ describe('J-PILOT-01 Task 3：委托待核对命令（create）', () => {
     expect(env.数据源.创建候选岗位委托).toHaveBeenCalledTimes(1); // 零 POST
     expect(env.数据源.读取候选连续详情).toHaveBeenCalledTimes(2);
     expect(env.操作.取候选待核对命令('int_1', 'job_1')).toBeNull();
+  });
+
+  it('存储兄弟 pending 随整批种回：收口 create 不清掉它们，裸新意图也不覆盖', async () => {
+    const 兄弟retry: 待核对命令 = {
+      operation: 'retry', key: 'sibling-retry-key',
+      record_id: 'dlg_0123456789abcdef0123456789abcdef', expected_retry_generation: 1,
+    };
+    const 已确认create: 待核对命令 = {
+      operation: 'create', key: 'confirmed-create-key', intention_id: 'int_1',
+      selection: { items: [{ job_id: 'job_1' }] },
+      resume_file_id: 'rf_1', resume_file_version_id: 'rfv_7',
+      disclosure_acknowledged: true,
+      delegation_id: 'del_sibling', 已确认回执: true,
+    };
+    const 共享存储 = env.委托待核对存储.current!.storage!;
+    保存待核对(共享存储, 待核对owner, [已确认create, 兄弟retry]);
+
+    // 硬刷新 = 全新内存表 + 同一 owner 存储：收口 create 后 retry 兄弟原样保留
+    const env2 = 创建P4操作测试环境({ 待核对存储: 共享存储 });
+    vi.mocked(env2.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(连续聚合桩('del_sibling') as never);
+    await env2.操作.核对候选委托('int_1', 'job_1');
+    expect(读取待核对(共享存储, 待核对owner).命令).toEqual([兄弟retry]); // 整批覆盖只删命中那条
+    expect(env2.操作.取候选待核对命令('int_1', 'job_1')).toBeNull();
+
+    // 裸新意图（另一岗位的 fresh 委托）：入口先读后冻结（整批种回兜底），兄弟不被覆盖
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('sibling-new-key'));
+    let 放行!: (值: BFF委托回执[]) => void;
+    vi.mocked(env2.数据源.创建候选岗位委托).mockReturnValue(new Promise((ok) => {
+      放行 = ok;
+    }) as never);
+    const 写 = env2.操作.委托候选岗位({ ...候选委托输入, jobId: 'job_2' });
+    await new Promise((完成) => setTimeout(完成, 0));
+    const 在飞 = 读取待核对(共享存储, 待核对owner).命令;
+    expect(在飞).toHaveLength(2); // 发送前冻结不清兄弟：retry 兄弟 + 新 job_2 命令同在
+    expect(在飞.find((条) => 条.operation === 'retry')).toEqual(兄弟retry);
+    放行([{ ...BFF候选委托回执样本, delegation_id: 'del_new' }]);
+    await 写;
+    // 新 create 收口（canonical 默认桩成功）后：只剩 retry 兄弟
+    expect(读取待核对(共享存储, 待核对owner).命令).toEqual([兄弟retry]);
+    randomUUID.mockRestore();
   });
 
   it('硬刷新后已确认 create 只回读并收口存储：零重发已确认 write', async () => {

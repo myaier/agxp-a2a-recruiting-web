@@ -51,6 +51,7 @@ import { 失效P5连续列表, 失效P5开案工作区 } from './MatchCase操作
 import {
   保存待核对,
   委托创建目标键,
+  委托待核对目标键,
   读取待核对,
   type 委托待核对会话,
   type 待核对命令,
@@ -883,9 +884,9 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
 
   /**
    * 读该 intention-job 的未决 create：内存优先，落 owner 存储兜底（硬刷新后内存为空）。
-   * 存储兜底命中即种回内存 —— 后续 删（整批持久化）与 已确认分支的内存定位都依赖
-   * 内存表在场，不种回则存储-only 的命令永远删不掉（pending 滞留、已确认 write 可能
-   * 被再次重放）。
+   * 存储兜底读出时整批种回内存（不只命中那条）—— 持久化待核对 是整批覆盖写，内存表
+   * 必须恢复为存储的真超集，否则后续 改/删/冻结 收口一条 pending 会静默清掉其它
+   * 未种回的兄弟命令（create 与 retry 半边共用同一内存表与同一 owner 存储键）。
    */
   function 读候选待核对(intentionId: string, jobId: string): 待核对创建命令 | null {
     const 内存 = deps.委托待核对内存?.current;
@@ -897,11 +898,12 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     const 会话 = 取待核对会话();
     if (会话 === null) return null;
     const { 命令 } = 读取待核对(会话.storage, 会话.owner);
-    const 命中 = 命令.find((条): 条 is 待核对创建命令 =>
+    if (内存 !== undefined) {
+      for (const 条 of 命令) 内存.set(委托待核对目标键(条), 条);
+    }
+    return 命令.find((条): 条 is 待核对创建命令 =>
       条.operation === 'create' && 条.intention_id === intentionId &&
       条.selection.items[0].job_id === jobId) ?? null;
-    if (命中 !== null && 内存 !== undefined) 内存.set(目标键, 命中);
-    return 命中;
   }
 
   /**

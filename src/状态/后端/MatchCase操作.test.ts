@@ -27,6 +27,7 @@ import type {
 } from '../../数据/招聘数据源/连续代谈';
 import {
   委托重试目标键,
+  保存待核对,
   读取待核对,
   type 委托待核对owner,
   type 委托待核对存储接口,
@@ -2084,6 +2085,28 @@ describe('J-PILOT-01 Task 3：连续失败动作 retry/archive', () => {
     expect(读取待核对(共享存储, 待核对owner).命令).toEqual([]); // 收口落到存储，不只是内存
     expect(randomUUID).toHaveBeenCalledTimes(1); // 硬刷新后零新键
     randomUUID.mockRestore();
+  });
+
+  it('存储兄弟 pending（create 半边）随整批种回：收口 retry 不清掉它们', async () => {
+    const 兄弟create: 待核对命令 = {
+      operation: 'create', key: 'sibling-create-key', intention_id: 'int_9',
+      selection: { items: [{ job_id: 'job_9' }] },
+      resume_file_id: 'rf_9', resume_file_version_id: 'rfv_9',
+      disclosure_acknowledged: true,
+    };
+    const 已确认retry: 待核对命令 = {
+      operation: 'retry', key: 'confirmed-retry-key',
+      record_id: 连续记录A, expected_retry_generation: 1, 已确认回执: true,
+    };
+    const 共享存储 = 创建内存存储();
+    保存待核对(共享存储, 待核对owner, [已确认retry, 兄弟create]);
+
+    // 硬刷新 = 全新内存表 + 同一 owner 存储：收口 retry 后 create 兄弟原样保留
+    const env2 = 创建P5操作测试环境(true, 创建P5数据源(), { 待核对存储: 共享存储 });
+    vi.mocked(env2.数据源.读取候选连续详情).mockResolvedValueOnce(已恢复聚合); // 核对回读已越过原 generation
+    await env2.操作.重试连续记录(连续记录A);
+    expect(env2.数据源.重试候选连续记录).not.toHaveBeenCalled(); // 已确认 write 只回读零重发
+    expect(读取待核对(共享存储, 待核对owner).命令).toEqual([兄弟create]); // 整批覆盖只删命中那条
   });
 
   it('硬刷新后已确认 retry 只回读并收口：存储被清、零重发已确认 write', async () => {
