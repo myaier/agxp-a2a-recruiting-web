@@ -975,17 +975,20 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
   }
 
   /**
-   * review-r1 F2 / review-r2（Spec §8「409 …回读真实状态」「无 ID 可用原 intention 的
-   * 推荐／receipt 和 active/history 辅助核对」）：409 / 重放前的权威辅助回读 —— 刷新
-   * 原意向的候选推荐列表（既有读取）＋读 active 连续首屏。r2 起**只回读权威状态**：
-   * 「GET 不是按幂等 key 查命令，找不到、404、503 或存在同岗位记录都不能证明原写未受理
-   * 或某次 retry 成功」——存在同 intention-job 的记录不能建立与未决命令的归属，绝不据此
-   * 关闭/标记/提交 pending；写入归属只由完整原命令重放的**真实回执**确认（Plan 协议 B）。
-   * 单腿非认证失败（网络/5xx）按「该腿无信息」继续另一腿，也绝不据此证明原写未受理；
-   * 栅栏内 401 走统一 清账号状态（Spec §10：登出/清旧 owner pending/清敏感视图）并立即
-   * 终止恢复流程（抛出，不再走后续腿、不重放、不提交）；迟到的 401 只丢弃、同样止步。
+   * review-r1 F2 / review-r2 / review-r3（Spec §8「409 …回读真实状态」「无 ID 可用原
+   * intention 的推荐／receipt 和 active/history 辅助核对」）：409 / 重放前的权威辅助回读
+   * —— 刷新原意向的候选推荐列表（既有读取）＋读 active 连续首屏。r2 起**只回读权威
+   * 状态**：「GET 不是按幂等 key 查命令，找不到、404、503 或存在同岗位记录都不能证明
+   * 原写未受理或某次 retry 成功」——存在同 intention-job 的记录不能建立与未决命令的
+   * 归属，绝不据此关闭/标记/提交 pending；写入归属只由完整原命令重放的**真实回执**确认
+   *（Plan 协议 B）。单腿非认证失败（网络/5xx）按「该腿无信息」继续另一腿，也绝不据此
+   * 证明原写未受理；栅栏内 401 走统一 清账号状态（Spec §10：登出/清旧 owner pending/
+   * 清敏感视图）并立即终止恢复流程（抛出，不再走后续腿、不重放、不提交）。r3 起返回
+   * 「可继续/已中止」：迟到 401、或任一腿完成后栅栏换代（Spec §8 切主体清旧请求/§10
+   * 阻止旧请求落位——栅栏只拦状态落位、拦不住网络写，旧 intention/PDF 坐标不得以新
+   * 会话 Cookie 提交）都返回 false 中止，调用方据此放弃种键与重放。
    */
-  async function 权威辅助回读(intentionId: string, fence: P4Fence): Promise<void> {
+  async function 权威辅助回读(intentionId: string, fence: P4Fence): Promise<boolean> {
     const 腿们: Array<() => Promise<unknown>> = [
       () => 后端!.读取候选岗位推荐(intentionId),
       () => 后端!.读取候选连续列表('active', null),
@@ -999,9 +1002,11 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
           清账号状态(账号清理依赖); // 当前主体 401 → 统一清理（含旧 owner pending）
           throw 错误; // 立即终止恢复流程：零后续腿、零重放、零提交
         }
-        return; // 迟到的 401 只丢弃（绝不登出新会话），同样不再走后续腿
+        return false; // 迟到的 401 只丢弃（绝不登出新会话）：中止恢复流程
       }
+      if (!fenceStillCurrent(引用, fence)) return false; // 换代即中止：不再发下一条 GET
     }
+    return true; // 两腿完成且栅栏仍当前：可继续
   }
 
   /**
@@ -1039,7 +1044,9 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     const 种键栅栏 = 捕获栅栏(引用, scopeKey);
     // review-r1 F2 / r2（Spec §8 恢复顺序）：重放前先权威回读（只刷新权威状态，401 走统一
     // 清理并终止）；归属确认只走下面的原 key+body 重放一次 → 真实回执。
-    await 权威辅助回读(intentionId, 种键栅栏);
+    // review-r3（Spec §8 切主体清旧请求 / §10 阻止旧请求落位）：回读「已中止」（迟到 401
+    // 或换代）即放弃核对 —— 零种键、零重放（栅栏拦不住网络写，旧命令不得以新会话提交）。
+    if (!(await 权威辅助回读(intentionId, 种键栅栏))) return;
     const intent = delegationKey(种键栅栏.visibleScope ?? scopeKey, jobId);
     引用.P4幂等意图.current.set(intent, 命令.key);
     return 运行委托创建({

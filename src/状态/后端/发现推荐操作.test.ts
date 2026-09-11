@@ -2513,6 +2513,74 @@ describe('J-PILOT-01 Task 3：委托待核对命令（create）', () => {
     expect(读取待核对(共享存储, 待核对owner).命令).toEqual([]);
   });
 
+  // ── review-r3（Spec §8 切主体清旧请求 / §10 阻止旧请求落位）：显式核对在回读腿的迟到
+  //    401 或换代后必须真正中止——栅栏只拦状态落位、拦不住网络写，旧 intention/PDF 坐标
+  //    不得以新会话 Cookie 重放。──
+
+  /** r3 用例通用的存储态未确认 create 命令 + 新环境（模拟硬刷新后显式核对）。 */
+  function 挂核对环境(键: string) {
+    const 共享存储 = 创建内存存储();
+    const 命令: 待核对命令 = {
+      operation: 'create', key: 键, intention_id: 'int_1',
+      selection: { items: [{ job_id: 'job_1' }] },
+      resume_file_id: 'rf_1', resume_file_version_id: 'rfv_7',
+      disclosure_acknowledged: true,
+    };
+    保存待核对(共享存储, 待核对owner, [命令]);
+    const 环境 = 创建P4操作测试环境({ 待核对存储: 共享存储 });
+    return { 环境, 共享存储, 命令 };
+  }
+
+  it('显式核对第一腿迟到 401：中止核对（零第二腿、零种键、零重放 POST），新会话零清理', async () => {
+    const { 环境: env2, 共享存储, 命令 } = 挂核对环境('r3-late401a-key');
+    const 第一腿 = deferred<BFF候选岗位推荐[]>();
+    vi.mocked(env2.数据源.读取候选岗位推荐).mockReturnValue(第一腿.promise);
+    const 核对 = env2.操作.核对候选委托('int_1', 'job_1');
+    env2.deps.主体标识引用.current = 'sub_new'; // 第一腿在飞期间换代：401 属于旧会话
+    第一腿.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await 核对; // 中止：静默收口（无 401 抛给新会话的屏）
+    expect(env2.数据源.读取候选连续列表).not.toHaveBeenCalled(); // 零第二腿
+    expect(env2.数据源.创建候选岗位委托).not.toHaveBeenCalled(); // 零重放 POST
+    expect(env2.deps.P4幂等意图!.current.size).toBe(0); // 零旧键种入
+    // 迟到 401 不登出新主体（既有语义）：零统一清理、登录态原样
+    expect(env2.最新状态().已登录).toBe(true);
+    expect(env2.派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
+    expect(env2.数据源.清空目录缓存).not.toHaveBeenCalled();
+    // 旧命令只在旧 owner 存储里原样保留，不进新会话的任何写入
+    expect(读取待核对(共享存储, 待核对owner).命令).toEqual([命令]);
+  });
+
+  it('显式核对第二腿迟到 401：第一腿已读、同样中止核对（零种键、零重放 POST）', async () => {
+    const { 环境: env2 } = 挂核对环境('r3-late401b-key');
+    const 第二腿 = deferred<{ items: never[]; next_cursor: null }>();
+    vi.mocked(env2.数据源.读取候选连续列表).mockReturnValue(第二腿.promise);
+    const 核对 = env2.操作.核对候选委托('int_1', 'job_1');
+    // 等第一腿完成、第二腿已挂上 await（同 2278 用例的 setTimeout 门），再换代＋迟到 401
+    await new Promise((完成) => setTimeout(完成, 0));
+    env2.deps.主体标识引用.current = 'sub_new';
+    第二腿.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await 核对;
+    expect(vi.mocked(env2.数据源.读取候选岗位推荐)).toHaveBeenCalledWith('int_1'); // 第一腿已读
+    expect(env2.数据源.创建候选岗位委托).not.toHaveBeenCalled(); // 零重放 POST
+    expect(env2.deps.P4幂等意图!.current.size).toBe(0);
+    expect(env2.最新状态().已登录).toBe(true); // 新会话零清理
+  });
+
+  it('换代即中止：第一腿成功返回时栅栏已过期 → 不再发第二腿 GET、零重放、新会话零清理', async () => {
+    const { 环境: env2 } = 挂核对环境('r3-fence-key');
+    const 第一腿 = deferred<BFF候选岗位推荐[]>();
+    vi.mocked(env2.数据源.读取候选岗位推荐).mockReturnValue(第一腿.promise);
+    const 核对 = env2.操作.核对候选委托('int_1', 'job_1');
+    env2.deps.主体标识引用.current = 'sub_new'; // 第一腿在飞期间换代
+    第一腿.resolve([]); // 成功返回但栅栏已过期 → 中止，不再发下一条 GET
+    await 核对;
+    expect(env2.数据源.读取候选连续列表).not.toHaveBeenCalled();
+    expect(env2.数据源.创建候选岗位委托).not.toHaveBeenCalled();
+    expect(env2.deps.P4幂等意图!.current.size).toBe(0);
+    expect(env2.最新状态().已登录).toBe(true);
+    expect(env2.派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
+  });
+
   it('明确拒绝（400）收口未决命令：下一次委托是新意图新键', async () => {
     const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
       .mockReturnValueOnce(UUID键('reject-key-0001'))
