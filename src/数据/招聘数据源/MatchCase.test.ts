@@ -20,7 +20,7 @@ import {
   P5工作区职位Wire,
   招聘候选摘要样本,
 } from '../../测试/BFF样本';
-import { 创建MatchCase数据源, 解MatchCaseSummary, 解P5详情, type MatchCase数据源 } from './MatchCase';
+import { 创建MatchCase数据源, 解MatchCaseSummary, 解P5详情, 解P5状态视图, type MatchCase数据源 } from './MatchCase';
 import {
   S0候选完整记录Wire,
   S0招聘完整记录Wire,
@@ -674,6 +674,19 @@ describe('MatchCase数据源', () => {
     expect(() => 解P5详情({ ...P5候选详情Wire, stages: 显式null附件区 }, 'candidate')).toThrow(契约漂移);
   });
 
+  it('附件双端仅归 S1 递交简历段：候选端 S0/S2 区携带附件也漂移', () => {
+    const 附件 = {
+      file_id: 'rf_0123456789abcdef0123456789abcdef',
+      file_version_id: 'rfv_0123456789abcdef0123456789abcdef',
+      display_name: 'resume.pdf',
+    };
+    for (const 下标 of [0, 2]) {
+      const 错位区组 = P5阶段区组Wire.map((区, i) => (i === 下标 ? { ...区, attachment: 附件 } : 区));
+      expect(() => 解P5详情({ ...P5候选详情Wire, stages: 错位区组 }, 'candidate')).toThrow(契约漂移);
+      expect(() => 解P5详情({ ...P5招聘详情Wire, stages: 错位区组 }, 'recruiter')).toThrow(契约漂移);
+    }
+  });
+
   // ── S0 筛选记录：include=screening_records 的整包运输与严格解码 ──
 
   it('候选完整记录与招聘空总结按角色严格解码', () => {
@@ -1082,5 +1095,61 @@ describe('MatchCase数据源', () => {
       ['/api/v1/recruiter/match-cases/mc_1/resume-submission/content', { 不缓存: true }],
     ]);
     expect(请求Mock).not.toHaveBeenCalled();
+  });
+
+  // ── S0 信息不足终局（semantic_uncertain_stop）的成对条件约束（J-PILOT-01 C1）──
+
+  const 信息不足状态Wire = {
+    ...P5状态视图Wire,
+    lifecycle: 'ended',
+    status: 'ended',
+    step: 'complete',
+    needs_user: false,
+    outcome: 'semantic_uncertain_stop',
+    outcome_code: 'semantic_uncertain_stop',
+    finalized_at: '2026-09-10T03:00:00Z',
+  };
+
+  it('S0 信息不足终局合法可读，且终态详情动作空、零待办', () => {
+    expect(解P5状态视图(信息不足状态Wire)).toMatchObject({
+      lifecycle: 'ended',
+      stage: 'anonymous_screening',
+      status: 'ended',
+      step: 'complete',
+      needsUser: false,
+      outcome: 'semantic_uncertain_stop',
+      outcomeCode: 'semantic_uncertain_stop',
+      finalizedAt: '2026-09-10T03:00:00Z',
+    });
+    // 详情侧：终态行永无 viewer 待办与动作（含 S0 信息不足出口）
+    const 详情 = 解P5详情({
+      ...P5候选详情Wire,
+      state: 信息不足状态Wire,
+      needs_action: false,
+      available_actions: [],
+      terminal_summary: {
+        ...P5终局摘要Wire,
+        finalized_at: '2026-09-10T03:00:00Z',
+        outcome: 'semantic_uncertain_stop',
+        reason_summary: 'semantic_uncertain_stop',
+      },
+    }, 'candidate');
+    expect(详情).toMatchObject({ needsAction: false, availableActions: [] });
+  });
+
+  it('新终局约束：outcome 必须与 outcome_code 同词，混入其它终局词、非匿名初筛行或坏时间都漂移', () => {
+    for (const 变体 of [
+      { ...信息不足状态Wire, outcome: 'semantic_not_fit' },
+      { ...信息不足状态Wire, outcome: 'user_ended' },
+      { ...信息不足状态Wire, stage: 'resume_submission' },
+      { ...信息不足状态Wire, step: 'human_decision' },
+      { ...信息不足状态Wire, status: 'waiting' },
+      { ...信息不足状态Wire, finalized_at: '2026-09-10T03:00:00' },
+      { ...信息不足状态Wire, finalized_at: null },
+    ]) {
+      expect(() => 解P5状态视图(变体)).toThrow(契约漂移);
+    }
+    // 旧合法其它终局仍可读（语义未定的新约束不追溯）
+    expect(解P5状态视图(P5已终止状态Wire).outcomeCode).toBe('user_ended');
   });
 });

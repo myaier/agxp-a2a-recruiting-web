@@ -15,6 +15,7 @@
 // 2026-09-03 JD导入 加入第十五个域 facade：job-draft-imports 建议稿创建与轮询读取。
 // 2026-09-03 接触记录 加入第十六个域 facade：候选 me/contact-events 接触事件分页读取。
 // 2026-09-05 候选实名 加入新域 facade：候选 me/identity-verification 摘要读取、材料创建与取消。
+// 2026-09-11 连续代谈 加入第十七个域 facade：J-PILOT-01 候选 me/negotiations 列表/详情/重试/归档。
 // 根 HTTP招聘数据源 是各域的交集，创建HTTP招聘数据源 只组合现有实现，不给既有域新增空方法，
 // 也不改变 URL、body、DTO 校验、错误映射或幂等行为。各域协议代码原样留在对应域文件里。
 
@@ -40,6 +41,7 @@ import type { 接触记录数据源 } from './招聘数据源/接触记录';
 import type { Agent设置数据源 } from './招聘数据源/Agent设置';
 import type { 候选账号数据源 } from './招聘数据源/候选账号';
 import type { 候选实名数据源 } from './招聘数据源/候选实名';
+import type { 连续代谈数据源 } from './招聘数据源/连续代谈';
 import { 创建会话数据源 } from './招聘数据源/会话';
 import { 创建目录数据源 } from './招聘数据源/目录';
 import { 创建简历数据源 } from './招聘数据源/简历';
@@ -59,6 +61,7 @@ import { 创建接触记录数据源 } from './招聘数据源/接触记录';
 import { 创建Agent设置数据源 } from './招聘数据源/Agent设置';
 import { 创建候选账号数据源 } from './招聘数据源/候选账号';
 import { 创建候选实名数据源 } from './招聘数据源/候选实名';
+import { 创建连续代谈数据源 } from './招聘数据源/连续代谈';
 
 export interface HTTP招聘数据源依赖 {
   client: Pick<BFF客户端, '请求' | '请求二进制'>;
@@ -70,7 +73,7 @@ export type HTTP招聘数据源 = 会话数据源 & 目录数据源 & 简历数�
   意向数据源 & 岗位数据源 & 组织数据源 & 隐私数据源 & Agent规则数据源 &
   发现推荐数据源 & 附件简历数据源 & MatchCase数据源 & 真人会话数据源 & P8控制面数据源 &
   简历预填数据源 & JD导入数据源 & 接触记录数据源 & Agent设置数据源 & 候选账号数据源 &
-  候选实名数据源;
+  候选实名数据源 & 连续代谈数据源;
 
 export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP招聘数据源 {
   const 请求 = deps.client.请求;
@@ -94,5 +97,6 @@ export function 创建HTTP招聘数据源(deps: HTTP招聘数据源依赖): HTTP
     ...创建Agent设置数据源(请求),
     ...创建候选账号数据源(请求),
     ...创建候选实名数据源(请求),
+    ...创建连续代谈数据源(请求),
   };
 }

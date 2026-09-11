@@ -6,6 +6,9 @@
 // 四阶段区固定 S0→S3、条件可空块只接受缺席、S0 展开块只随 include=screening_records
 // 整包运输且招聘端永无小结），不 `as` 直转；接口失败绝不回退 Mock。
 // 本模块不 import React 或 Mock。mutation 一律 void：权威态由调用方的 detail 重读提供。
+// 2026-09-11 J-PILOT-01：补 S0 信息不足终局（semantic_uncertain_stop）的成对条件约束、
+// 附件双端仅归 S1 递交简历段，并导出局部 Case decoder（解P5状态视图/解S0小结/游标 guard）
+// 供连续代谈域复用，不复制实现。
 
 import { BFF错误 } from '../HTTP客户端';
 import type { BFF二进制响应, BFF客户端 } from '../HTTP客户端';
@@ -415,7 +418,7 @@ function 解Agent注意(input: unknown): P5Agent注意 {
 }
 
 /** MatchCaseView：矩阵四元组、needs_user 镜像、round 预算与生命周期↔终局列组合全部闭合。 */
-function 解P5状态视图(input: unknown): P5状态视图 {
+export function 解P5状态视图(input: unknown): P5状态视图 {
   const raw = 要求闭合对象(input, [
     'case_id', 'lifecycle', 'stage', 'status', 'step', 'round', 'round_budget',
     'needs_user', 'outcome', 'outcome_code', 'created_at', 'updated_at',
@@ -447,6 +450,16 @@ function 解P5状态视图(input: unknown): P5状态视图 {
   }
   if (lifecycle === 'completed' && (outcome !== null || outcomeCode !== null || finalizedAt === null)) {
     throw 契约错误();
+  }
+  // J-PILOT-01 C1：S0 信息不足终局（semantic_uncertain_stop）成对且行位固定 —— outcome 与
+  // outcome_code 必须同为该词，且只能落在 ended/anonymous_screening/ended/complete 的合法
+  // 终局行（needs_user 已被矩阵与镜像规则约束为 false）；旧合法其它终局不受此约束追溯。
+  if (outcomeCode === 'semantic_uncertain_stop') {
+    if (outcome !== 'semantic_uncertain_stop' || lifecycle !== 'ended' ||
+      stage !== 'anonymous_screening' || status !== 'ended' || step !== 'complete' ||
+      finalizedAt === null) {
+      throw 契约错误();
+    }
   }
   return {
     caseId: 要求非空字符串(raw.case_id),
@@ -557,7 +570,7 @@ function 解S0消息(input: unknown): P5S0筛选消息 {
 }
 
 /** S0 总结：initial 无 round（携带即漂移），reevaluation 必带 round；按 phase 构造判别联合。 */
-function 解S0小结(input: unknown): P5S0筛选总结 {
+export function 解S0小结(input: unknown): P5S0筛选总结 {
   if (!是记录(input)) throw 契约错误();
   const phase = 要求枚举(input.phase, S0小结阶段全表);
   const raw = phase === 'initial'
@@ -646,8 +659,9 @@ function 解P5阶段区(input: unknown, viewer: P5角色, roundBudget: number): 
     screeningRecords: null,
   };
   if (raw.attachment !== undefined) {
-    // S1 披露栅栏：招聘端在匿名初筛区永远看不到简历附件（严格客户端同款）。
-    if (viewer === 'recruiter' && stage === 'anonymous_screening') throw 契约错误();
+    // 附件双端仅归 S1 递交简历段（冻结条件分支 if attachment then stage=resume_submission）：
+    // S0/S2/S3 区携带附件 —— 含招聘端匿名初筛区 —— 都按契约漂移拒绝。
+    if (stage !== 'resume_submission') throw 契约错误();
     区.attachment = 解简历附件(raw.attachment);
   }
   // S0 展开块（include=screening_records）必在且必为对象；其余阶段多键即漂移。
@@ -876,7 +890,7 @@ export function 解MatchCaseSummary(input: unknown): MatchCaseSummary {
 }
 
 /** 响应 cursor 恰为 string | null：缺键、坏类型、空、超 4096 或坏形状都是契约漂移。 */
-function 解下一游标(值: unknown): string | null {
+export function 解下一游标(值: unknown): string | null {
   if (值 === null) return null;
   if (typeof 值 !== 'string' || 值.length === 0 || 值.length > 4096 || !游标模式.test(值)) {
     throw 契约错误();
@@ -885,7 +899,7 @@ function 解下一游标(值: unknown): string | null {
 }
 
 /** 调用方 cursor 在任何 fetch 前校验：非空 base64url 字符串且 ≤4096，非法即抛、零请求。 */
-function 校验调用方游标(cursor: string): string {
+export function 校验调用方游标(cursor: string): string {
   if (typeof cursor !== 'string' || cursor.length === 0 || cursor.length > 4096 || !游标模式.test(cursor)) {
     throw new BFF错误(0, 'invalid_request', 'cursor 需为非空 base64url 且不超过 4096 字节');
   }
