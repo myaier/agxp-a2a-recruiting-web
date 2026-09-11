@@ -481,6 +481,8 @@ describe('HTTP 招聘数据源', () => {
     const patch = 请求Mock.mock.calls
       .map(([o]) => o as BFF请求选项)
       .find((o) => o.method === 'PATCH' && o.path === '/api/v1/me/resume/profile');
+    // guard：PATCH 必须真实发出，否则下面的 not.toHaveProperty 会空洞通过
+    expect(patch).toBeDefined();
     expect(patch?.body).not.toHaveProperty('portfolio_url');
   });
 
