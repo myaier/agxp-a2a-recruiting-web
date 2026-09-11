@@ -37,7 +37,6 @@ function 正常视图(覆盖: Partial<P5详情正常视图> = {}): P5详情正�
     更新于: '2026-08-29T02:00:00Z',
     handoff: null,
     actions: [],
-    补充问题: null,
     阶段区块: [],
     终局摘要: null,
     注意说明: null,
@@ -88,7 +87,7 @@ function 本地时分(原文: string): string {
 function 区块(stage: P5阶段, 覆盖: Partial<P5阶段区块视图> = {}): P5阶段区块视图 {
   const 基础: P5阶段区块视图 = {
     stage,
-    标题: ({ anonymous_screening: '匿名初筛', resume_submission: '简历提交', needs_coordination: '差异协同', intent_confirmation: '意向确认' } as Record<P5阶段, string>)[stage],
+    标题: ({ anonymous_screening: '匿名初筛', resume_submission: '递交简历', needs_coordination: '差异协同', intent_confirmation: '意向确认' } as Record<P5阶段, string>)[stage],
     状态: stage === 'anonymous_screening' ? 'active' : 'pending',
     状态文案: stage === 'anonymous_screening' ? '进行中' : '未开始',
     发生于: stage === 'anonymous_screening' ? '2026-08-29T01:10:00Z' : null,
@@ -197,14 +196,14 @@ describe('从P5到详情分段', () => {
   it('四阶段不缺段：S0→S3 顺序交付；颜色/排序/折叠键仍是共用阶段名，展示标题用 P5 区.标题', () => {
     const 分段 = 从P5到详情分段(分段视图(), 'anonymous_screening');
     expect(分段.map((段) => 段.阶段)).toEqual(['匿名初筛', '递交简历', '需要协调', '意向确认']);
-    expect(分段.map((段) => 段.展示标题)).toEqual(['匿名初筛', '简历提交', '差异协同', '意向确认']);
+    expect(分段.map((段) => 段.展示标题)).toEqual(['匿名初筛', '递交简历', '差异协同', '意向确认']);
   });
 
-  it('段内顺序沿用既有投影：S0 记录 → 旧时间线 → 叮嘱回执，同角色消息是「我方」，不按时间混排', () => {
+  it('S0 Agent 问答带「候选 Agent／招聘 Agent」标签，左右按 viewer；旧时间线落系统状态行；叮嘱不带标签', () => {
     const 分段 = 从P5到详情分段(分段视图({
       阶段区块: 四段({
         anonymous_screening: {
-          // S0 消息晚于旧时间线也必须排在最前；纯 reason_code 的系统事件（无文本）跳过
+          // 时间线以系统状态行落段（J-PILOT-01，Spec §7 不投成对方气泡）；无文本事件跳过
           时间线: [
             { eventId: 'evt_1', stage: 'anonymous_screening', kind: 'supplementary_question', role: 'candidate', ref: 'prompt_1', text: '每周可以到岗几天？', occurredAt: '2026-08-29T01:10:00Z' },
             { eventId: 'evt_2', stage: 'anonymous_screening', kind: 'stage_note', role: '', reasonCode: 'policy_checked', occurredAt: '2026-08-29T01:20:00Z' },
@@ -221,20 +220,20 @@ describe('从P5到详情分段', () => {
       }),
     }), 'anonymous_screening');
     const 段 = 分段[0]!;
-    expect(段.对话?.map((条) => 条.内容)).toEqual([
-      '需要确认岗位的值班安排。',
-      '没有固定晚班。',
-      '每周可以到岗几天？',
-      '工作日联系',
-      '两周内走完',
+    // S0 记录：角色标签按 wire role 投影（不显示内部 ID/round/记录 ID），左右按 viewer
+    expect(段.Agent对话).toEqual([
+      { 编号: 's0:s0q_1', 角色: '候选 Agent', 方: '我方', 时间: 本地时分('2026-08-23T10:01:00Z'), 内容: '需要确认岗位的值班安排。' },
+      { 编号: 's0:s0a_1', 角色: '招聘 Agent', 方: '对方', 时间: 本地时分('2026-08-23T10:05:00Z'), 内容: '没有固定晚班。' },
     ]);
-    expect(段.对话?.map((条) => 条.方)).toEqual(['我方', '对方', '我方', '我方', '对方']);
-    // S0 记录走本地时分（跟进程时区，各算各的期望），旧时间线／叮嘱回执保持既有 UTC 字符串切片
-    expect(段.对话?.map((条) => 条.时间)).toEqual([
-      本地时分('2026-08-23T10:01:00Z'),
-      本地时分('2026-08-23T10:05:00Z'),
-      '01:10', '01:05', '01:06',
+    // 系统状态行：只带正文的文本事件，不投成对方气泡
+    expect(段.系统消息).toEqual([{ 编号: 'evt:evt_1', 内容: '每周可以到岗几天？' }]);
+    // 叮嘱回执按归属分列、不带角色标签（不伪装 Agent Q/A）
+    expect(段.对话?.map((条) => [条.内容, 条.方])).toEqual([
+      ['工作日联系', '我方'],
+      ['两周内走完', '对方'],
     ]);
+    expect(段.对话?.every((条) => 条.方 !== undefined)).toBe(true);
+    expect(JSON.stringify(段.对话)).not.toContain('候选 Agent');
   });
 
   it('候选私有总结不进招聘端分段；候选端原样进小结托盘数据', () => {

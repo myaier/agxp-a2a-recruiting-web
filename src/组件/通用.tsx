@@ -224,6 +224,7 @@ export function 真输入条({
   发送,
   灰边 = false,
   右侧图标,
+  禁用 = false,
 }: {
   占位: string;
   值: string;
@@ -231,6 +232,9 @@ export function 真输入条({
   发送: () => void;
   灰边?: boolean;
   右侧图标?: ReactNode;
+  /** J-PILOT-01（Spec §7）：双端 S0 保留原控件但禁用输入与发送 —— 真实 disabled
+   *  属性 + 键盘回调先挡，不靠颜色灰化；默认 false，其它消费者行为不变 */
+  禁用?: boolean;
 }) {
   // 标注 2026-08-24：「输入多了要自动换行」—— 单行 input 换自动长高的 textarea，
   // 随内容长到约 5 行（120px）封顶，之后框内滚动
@@ -252,8 +256,11 @@ export function 真输入条({
           placeholder={占位}
           value={值}
           rows={1}
+          disabled={禁用}
           onChange={(事件) => 改变(事件.target.value)}
           onKeyDown={(事件) => {
+            // 禁用（双端 S0）先挡一切键盘路径：Enter 也触发不了发送，不只是灰化
+            if (禁用) return;
             // isComposing 挡住中文输入法「回车上屏候选词」那一下，
             // 否则拼音还没上屏就被当成发送，这是中文 App 的必修项；
             // Shift+Enter 留给换行（桌面习惯），手机上发送走右侧按钮
@@ -265,7 +272,12 @@ export function 真输入条({
           enterKeyHint="send"
         />
         {右侧图标}
-        <button className={`${样式.发送键} 可点`} onClick={发送} aria-label="发送">
+        <button
+          className={`${样式.发送键} ${禁用 ? '' : '可点'}`}
+          onClick={禁用 ? undefined : 发送}
+          aria-label="发送"
+          disabled={禁用}
+        >
           ↑
         </button>
       </div>

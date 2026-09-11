@@ -46,6 +46,20 @@ export interface 分段项 {
   附件常驻?: boolean;
   对话?: 对话条[];
   /**
+   * S0 双方 Agent 问答气泡（J-PILOT-01，Spec §7 D08）：角色标签按 wire role 投影成
+   * 「候选 Agent／招聘 Agent」（不显示内部 ID/task/operation 字样），左右按 viewer；
+   * 只渲染真实 screening records，历史叮嘱/旧时间线绝不进这一槽伪装 Agent 新问答。
+   * 缺省 = 旧调用方行为完全不变。
+   */
+  Agent对话?: readonly {
+    编号: string; 角色: string; 方: '我方' | '对方'; 时间: string; 内容: string;
+  }[];
+  /**
+   * 系统事件行（J-PILOT-01，Spec §7）：以系统状态显示（共用阶段的 Neutral 状态文本
+   * 布局），不投成对方气泡；无正文的纯 reason_code 事件无可展示，由映射层跳过。
+   */
+  系统消息?: readonly { 编号: string; 内容: string }[];
+  /**
    * Agent 总结行（S0 记录接入，Task 3）：每行只带「标签：内容」，编号是稳定 key。
    * 只进小结托盘、不进气泡区、不计入「N 条」；不传 = 旧调用方行为完全不变。
    */
@@ -190,47 +204,22 @@ export default function 阶段对话流({
                   </div>
                 ) : null}
 
-                {段.对话?.length || 段.用户气泡?.length ? (
+                {段.Agent对话?.length || 段.对话?.length || 段.用户气泡?.length || 段.系统消息?.length ? (
                   <div className={样式.对话列}>
-                    {段.对话?.map((条) =>
-                      条.方 === '对方' ? (
-                        <div key={条.编号} className={样式.对方行}>
-                          <div className={样式.对方气泡}>
-                            <span className={样式.气泡体}>
-                              <span className={样式.气泡文}>{条.内容}</span>
-                              {条.附件 ? (
-                                <附件行 附件={条.附件} 点开={点附件} />
-                              ) : null}
-                            </span>
-                          </div>
-                          <span className={`${样式.气泡时间} 等宽数字`}>{条.时间}</span>
-                        </div>
-                      ) : (
-                        <div key={条.编号} className={样式.我方行}>
-                          <div className={样式.我方气泡}>
-                            <span className={样式.气泡体}>
-                              <span className={样式.气泡文}>{条.内容}</span>
-                              {条.附件 ? (
-                                <附件行 附件={条.附件} 点开={点附件} />
-                              ) : null}
-                            </span>
-                            <span className={样式.我方记}>
-                              <代理标
-                                尺寸={16}
-                                脸色="var(--荧光绿)"
-                                眼色="var(--墨)"
-                                描边色="var(--墨)"
-                                描边宽={2.6}
-                                带点={false}
-                              />
-                            </span>
-                          </div>
-                          <span className={`${样式.气泡时间} ${样式.时间右} 等宽数字`}>
-                            {条.时间}
-                          </span>
-                        </div>
-                      )
-                    )}
+                    {/* S0 Agent 问答带角色标签；旧时间线以系统状态行落段（不投成对方气泡）；
+                        叮嘱回执是用户自己的话（不伪装 Agent Q/A，不带角色标签）—— 顺序固定
+                        S0 记录 → 系统事件 → 叮嘱，沿用既有段内顺序不按时间混排 */}
+                    {(段.Agent对话 ?? []).map((条) => (
+                      <代理气泡 key={条.编号} 条={条} 点附件={点附件} />
+                    ))}
+
+                    {(段.系统消息 ?? []).map((行) => (
+                      <div key={行.编号} className={样式.空说明}>{行.内容}</div>
+                    ))}
+
+                    {(段.对话 ?? []).map((条) => (
+                      <代理气泡 key={`${条.编号}`} 条={条} 点附件={点附件} />
+                    ))}
 
                     {/* 你发出的话接在流末尾：荧光绿右气泡 + 紧跟一条代理回执 */}
                     {段.用户气泡?.map((条) => (
@@ -318,6 +307,56 @@ export default function 阶段对话流({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** 一条代理气泡：对方左/我方右的共用渲染（J-PILOT-01 Task 6 抽出）。带 角色 的条
+ *  （S0 Agent 问答）在气泡体首行挂「候选 Agent／招聘 Agent」标签；历史叮嘱不带标签。 */
+function 代理气泡({
+  条,
+  点附件,
+}: {
+  条: { 编号: number | string; 方: '对方' | '我方'; 时间: string; 内容: string; 角色?: string; 附件?: { 文件名: string; 说明?: string } };
+  点附件?: (文件名: string) => void;
+}) {
+  return 条.方 === '对方' ? (
+    <div className={样式.对方行}>
+      <div className={样式.对方气泡}>
+        <span className={样式.气泡体}>
+          {条.角色 ? <span className={样式.气泡时间}>{条.角色}</span> : null}
+          <span className={样式.气泡文}>{条.内容}</span>
+          {条.附件 ? (
+            <附件行 附件={条.附件} 点开={点附件} />
+          ) : null}
+        </span>
+      </div>
+      <span className={`${样式.气泡时间} 等宽数字`}>{条.时间}</span>
+    </div>
+  ) : (
+    <div className={样式.我方行}>
+      <div className={样式.我方气泡}>
+        <span className={样式.气泡体}>
+          {条.角色 ? <span className={样式.气泡时间}>{条.角色}</span> : null}
+          <span className={样式.气泡文}>{条.内容}</span>
+          {条.附件 ? (
+            <附件行 附件={条.附件} 点开={点附件} />
+          ) : null}
+        </span>
+        <span className={样式.我方记}>
+          <代理标
+            尺寸={16}
+            脸色="var(--荧光绿)"
+            眼色="var(--墨)"
+            描边色="var(--墨)"
+            描边宽={2.6}
+            带点={false}
+          />
+        </span>
+      </div>
+      <span className={`${样式.气泡时间} ${样式.时间右} 等宽数字`}>
+        {条.时间}
+      </span>
     </div>
   );
 }

@@ -5,24 +5,27 @@
 // 逐项对照旧实现；S2/S3 的 typed 栅栏（当前协同块必需且本端未决 / 本端意向词为空）
 // 只吃 raw 详情 —— 协同块与意向词不在展示视图里，判定与后端 projector 同判据。
 //
-// 生命周期（plan 固定）：回答在飞表归父读取控制（当前为路由实例 MatchCase详情 持有，
-// Task 9 迁入 use后端详情控制）并经 回答在飞表 传入 —— 动作卡随段折叠/换单整体卸载也
-// 不丢锁；本 hook 自持回答草稿、S1 选择/披露草稿与局部代际（卸载/换 case 递增），旧单
-// 迟到的成败回调对不上代际即整包作废，绝不改动新单草稿。未知动作/非法状态继续由原
-// decoder/映射层拒绝，本 hook 不画任何未提供的动作。
+// J-PILOT-01（Spec §7）：S0 不再提供 respond_fact 输入/提交 —— 展示映射白名单已摘除，
+// 旧 S0 needs_user/human_decision 行只剩 待核实说明（注意说明）与允许的 end 路径，
+// 本 hook 不再携带回答草稿/回答在飞表/事实问题；本 hook 不画任何未提供的动作。
 //
-// S1 披露栅栏（spec §5）：每次提交/更换/重试都当场重跑显式单选（准备候选委托简历 的
+// 生命周期（plan 固定）：本 hook 自持 S1 选择/披露草稿与局部代际（卸载/换 case 递增），
+// 旧单迟到的成败回调对不上代际即整包作废，绝不改动新单草稿。
+//
+// S1 披露栅栏（spec §5 + §9）：接受/更换都当场重跑显式单选（准备候选委托简历 的
 // 权威库；null = 会话/角色换代，静默返回，绝不当空库）+ 一次 Case 专属披露确认（点名
 // 所选 PDF 与冻结职位名）；确认/取消都即刻清层，下一次绝不复用；disclosure_confirmed
-// 只由这一次确认传字面 true。真实 file_id/file_version_id 只在控制层经 键→行 映射
+// 只由这一次确认传字面 true。retry_resume_readiness 是原授权检查：使用阶段中原绑定
+// file/version 对直接提交（字面 true），不重新选文件、不重新要求披露确认，也不是纯刷新
+// 或重跑 Agent。真实 file_id/file_version_id 只在控制层经 键→行 映射
 // （从附件行取选择值 / 阶段区 typed 附件）取得，绝不以文件名作身份。
 
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { 轻提示 } from '../../组件/轻提示';
 import { 取后端错误文案 } from '../../数据/HTTP客户端';
 import { 从附件行取选择值, type 附件简历选择值 } from '../../组件/附件简历选择层';
 import { 附件状态文案 } from '../../流程/附件简历交互';
-import type { 详情动作卡信息, 详情按钮, 事实问题属性, 简历选择属性, 确认属性 } from '../../组件/在谈详情/类型';
+import type { 详情动作卡信息, 详情按钮, 简历选择属性, 确认属性 } from '../../组件/在谈详情/类型';
 import type { P5详情正常视图, P5角色 } from '../../数据/MatchCase展示映射';
 import type { P5详情, P5简历附件 } from '../../数据/招聘数据源/MatchCase';
 import type { BFF附件简历 } from '../../数据/BFF契约';
@@ -38,14 +41,12 @@ export interface 后端详情动作输入 {
   详情: P5详情;
   操作: Pick<
     应用操作,
-    '回答事实' | '决定S0' | '决定S1' | '决定S2' | '决定S3' | '提交简历' | '准备候选委托简历'
+    '决定S0' | '决定S1' | '决定S2' | '决定S3' | '提交简历' | '准备候选委托简历'
   >;
-  回答在飞表: RefObject<Map<string, Promise<void>>>;
 }
 
 export interface 后端详情动作结果 {
   卡片们: readonly 详情动作卡信息[];
-  事实问题: 事实问题属性 | null;
   简历选择: 简历选择属性 | null;
   披露确认: 确认属性 | null;
   终结确认: 确认属性 | null;
@@ -66,17 +67,10 @@ export function use后端详情动作({
   视图,
   详情,
   操作,
-  回答在飞表,
 }: 后端详情动作输入): 后端详情动作结果 {
   // 空附件库跳 我的简历（原 阶段动作区 行为原样保留）
   const { 跳转 } = use导航();
 
-  const [回答草稿, 设回答草稿] = useState('');
-  // 回答提交的可见 in-flight（spec §10.3）：只锁回答区，不牵连其它动作卡；
-  // 锁账按 caseId 记在父级持有的表里（操作层同 (role,case,action,prompt) 单飞会复用
-  // 在飞 POST —— 回原单时若已放锁，新草稿会绑上旧承诺被静默吞掉），表里存的是已收口
-  // 的承诺链（catch 已吞错，恒 resolve），回原单的续锁观察者靠它收口解锁。
-  const [回答提交中, 设回答提交中] = useState(false);
   // 命令（决定S0/决定S1/提交简历）的写中锁（与旧 阶段动作区 的 写中 同语义：POST 期间禁再点）
   const [写中, 设写中] = useState(false);
   // 终结类动作的二次确认（不可逆）：确认前零请求（原 待结束确认 + 待确认终局 合一）
@@ -95,23 +89,11 @@ export function use后端详情动作({
   }, []);
   useEffect(() => {
     代际.current += 1;
-    const 本轮 = 代际.current;
-    设回答草稿('');
     设写中(false); // 旧单写中在飞也放行新 scope（迟到 finally 过代际栅栏不再收口）
     设待终结确认(null);
     设待选择(null);
     设选中键(null);
     设待披露(null);
-    // 离开又回到同一单且回答仍在飞：续锁到旧请求收口（同键单飞复用旧 POST，不能放锁）；
-    // 他单在飞或无在飞：本单回答区干净起步。
-    const 在飞 = 回答在飞表.current.get(caseId);
-    设回答提交中(在飞 !== undefined);
-    if (在飞 !== undefined) {
-      void 在飞.finally(() => {
-        if (代际.current === 本轮) 设回答提交中(false);
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 回答在飞表是父级持有的稳定 ref，身份恒定
   }, [caseId]);
 
   const 报错 = (错误: unknown) => 轻提示(取后端错误文案(错误));
@@ -134,30 +116,6 @@ export function use后端详情动作({
     } finally {
       if (代际.current === 本轮) 设写中(false);
     }
-  };
-
-  // respond_fact：typed promptId 来自映射层的唯一匹配（零/多条整页契约错误，到不了这里）
-  const 发回答 = () => {
-    const 内容 = 回答草稿.trim();
-    const 问题 = 视图.补充问题;
-    if (内容 === '' || 问题 === null || caseId === '' || 回答在飞表.current.has(caseId)) return;
-    const 本轮 = 代际.current; // 换单/卸载后迟到的成败对不上代际即整包作废
-    // 主体换代时父 hook 整表替换（review-r2 F-r2-1）：锁表按提交当时的 Map 实例记账 ——
-    // 旧单迟到的 delete 只清被闭包捕获的旧表，绝不动新主体新表里的在飞项。
-    const 锁表 = 回答在飞表.current;
-    const promise = 操作.回答事实(role, caseId, 问题.promptId, 内容)
-      .then(() => {
-        if (代际.current === 本轮) 设回答草稿(''); // 仅成功清空；卡随操作层重读消失
-      })
-      .catch((错误: unknown) => {
-        if (代际.current === 本轮) 报错(错误);
-      })
-      .finally(() => {
-        锁表.delete(caseId);
-        if (代际.current === 本轮) 设回答提交中(false);
-      });
-    锁表.set(caseId, promise);
-    设回答提交中(true);
   };
 
   // S1 接受/更换：先拿权威附件库（每次尝试都重跑），再多份单选、单份直达披露确认
@@ -186,7 +144,9 @@ export function use后端详情动作({
     }
   };
 
-  // S1 重试：坐标只取阶段区 typed 附件（Case 当前绑定的 file/version 对），绝不猜
+  // S1 重试（retry_resume_readiness，Spec §9）：原授权检查 —— 坐标只取阶段区 typed
+  // 附件（Case 当前绑定的 file/version 对，绝不猜、不重选），用原授权直接执行既有
+  // submitResume（字面 true），不重新展示披露确认；这一写操作不是纯刷新或重跑 Agent。
   let 绑定附件: P5简历附件 | null = null;
   for (const 区 of 视图.阶段区块) {
     if (区.附件 !== null) {
@@ -195,14 +155,9 @@ export function use后端详情动作({
     }
   }
   const 开始重试 = () => {
-    if (绑定附件 === null || 写中) return; // 无 typed 坐标：零控件（渲染层已挡）
-    设待披露({
-      选择: {
-        fileId: 绑定附件.fileId,
-        fileVersionId: 绑定附件.fileVersionId,
-        displayName: 绑定附件.displayName,
-      },
-    });
+    const 坐标 = 绑定附件;
+    if (坐标 === null || 写中 || caseId === '') return; // 无 typed 坐标：零控件（渲染层已挡）
+    void 发命令(() => 操作.提交简历(caseId, 坐标.fileId, 坐标.fileVersionId, true));
   };
 
   /** 单选层的唯一出口：按 键 取回所选行（真实 file/version 只在此映射），进披露确认。 */
@@ -258,7 +213,7 @@ export function use后端详情动作({
 
   // 动作卡：只从 视图.actions 的映射交集出卡，标题/说明原样保留。
   // 招聘端结束卡零控件零请求（wire 缺 recruiter decisions 臂，fail closed）；候选端结束
-  // 键只保留 end 一条准许路线。respond_fact 的提交控件归 事实问题，不双挂载。
+  // 键只保留 end 一条准许路线。S0 respond_fact 不再出卡（映射白名单摘除，Spec §7）。
   // S2/S3（Task 8 迁入）：typed 栅栏 —— 当前协同块在场、本端必需且未决才给决定键
   // （issueId 只取当前块）；本端意向词为空才给确认/婉拒键。缺坐标一律零控件零请求。
   const 协同块 = 详情.currentCoordination;
@@ -278,9 +233,7 @@ export function use后端详情动作({
 
   const 卡片们: 详情动作卡信息[] = [];
   for (const 卡 of 视图.actions) {
-    if (卡.action === 'respond_fact') {
-      卡片们.push({ 键: 'respond_fact', 标题: 卡.标题, 说明: 卡.说明, 按钮们: [] });
-    } else if (卡.action === 'end_screening') {
+    if (卡.action === 'end_screening') {
       卡片们.push({
         键: 'end_screening',
         标题: 卡.标题,
@@ -433,24 +386,6 @@ export function use后端详情动作({
     }
   }
 
-  // respond_fact 的回答区：缺 typed 问题即无提交控件（映射层已挡，防御性收口）
-  const 有回答卡 = 视图.actions.some((卡) => 卡.action === 'respond_fact');
-  const 问题视图 = 视图.补充问题;
-  const 事实问题: 事实问题属性 | null = !有回答卡 || 问题视图 === null
-    ? null
-    : {
-        问题: 问题视图.text,
-        草稿: 回答草稿,
-        改草稿: 设回答草稿,
-        提交: {
-          键: '提交回答',
-          文案: 回答提交中 ? '提交中…' : '提交回答',
-          外观: '主要',
-          禁用说明: null,
-          执行: 回答提交中 ? null : 发回答,
-        },
-      };
-
   // S1 多份附件的单选层：视图只接文件名/状态文/禁用原因；键→真实文件版本映射留在本层
   const 简历选择: 简历选择属性 | null = 待选择 === null
     ? null
@@ -497,7 +432,6 @@ export function use后端详情动作({
 
   return {
     卡片们,
-    事实问题,
     简历选择,
     披露确认,
     终结确认,

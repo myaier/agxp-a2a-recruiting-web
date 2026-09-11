@@ -198,6 +198,26 @@ function 候选详情DTO(选项: 详情选项 = {}): P5详情 {
   };
 }
 
+
+/** S1 open 行（候选，resume_submission waiting）：非 S0 的叮嘱输入态（J-PILOT-01 Spec §7）。 */
+function 候选S1详情DTO(caseId = 'mc_direct'): P5详情 {
+  const 底 = 候选详情DTO();
+  return {
+    ...底,
+    state: 状态({
+      caseId, stage: 'resume_submission', status: 'waiting', step: 'awaiting_resume_parse',
+      needsUser: false,
+    }),
+    needsAction: false,
+    availableActions: [],
+    stages: [
+      { ...阶段区组()[0]!, state: 'passed', summary: 'complete', transcript: [], instructionReceipts: [] },
+      { ...阶段区组()[1]!, state: 'active', occurredAt: '2026-08-29T01:30:00Z', summary: 'awaiting_resume_parse' },
+      ...阶段区组().slice(2),
+    ],
+    terminalSummary: null,
+  };
+}
 function 招聘详情DTO(选项: 详情选项 = {}): P5详情 {
   return {
     role: 'recruiter',
@@ -590,7 +610,7 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
     // 展示标题 = P5 区.标题（服务端阶段标题闭词投影）；颜色/排序/折叠键仍是共用四阶段名
-    const 名序 = ['匿名初筛', '简历提交', '差异协同', '意向确认'];
+    const 名序 = ['匿名初筛', '递交简历', '差异协同', '意向确认']; // J-PILOT-01：S1 阶段标题改「递交简历」
     await screen.findByText('平台工程师 · 公司信息缺失');
     名序.forEach((名) => expect(screen.getAllByText(名).length).toBe(1));
     const [s0, s1, s2, s3] = 名序.map((名) => screen.getAllByText(名)[0]!);
@@ -958,7 +978,7 @@ describe('MatchCase详情 · Case 叮嘱输入', () => {
     let 送达!: () => void;
     mock新增叮嘱.mockImplementation(
       () => new Promise<void>((解决) => { 送达 = 解决; }));
-    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选S1详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
     const 框 = screen.getByPlaceholderText(叮嘱占位) as HTMLTextAreaElement;
     await user.type(框, '周五也可以到岗');
@@ -982,9 +1002,14 @@ describe('MatchCase详情 · Case 叮嘱输入', () => {
       role: 'recruiter', caseId: 'mc_hr',
       快照: 详情快照({
         detail: 招聘详情DTO({
-          state: 状态({ caseId: 'mc_hr', status: 'running', step: 'policy_check', needsUser: false, round: 0 }),
+          state: 状态({ caseId: 'mc_hr', stage: 'resume_submission', status: 'waiting', step: 'awaiting_resume_parse', needsUser: false, round: 0 }),
           needsAction: false,
           availableActions: [],
+          stages: [
+            { ...阶段区组()[0]!, state: 'passed', summary: 'complete', transcript: [], instructionReceipts: [] },
+            { ...阶段区组()[1]!, state: 'active', occurredAt: '2026-08-29T01:30:00Z', summary: 'awaiting_resume_parse' },
+            ...阶段区组().slice(2),
+          ],
         }),
       }),
     });
@@ -1001,7 +1026,7 @@ describe('MatchCase详情 · Case 叮嘱输入', () => {
     mock新增叮嘱.mockImplementation(async () => {
       throw new Error('网络错误');
     });
-    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选S1详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
     const 框 = screen.getByPlaceholderText(叮嘱占位) as HTMLTextAreaElement;
     await user.type(框, '周五也可以到岗');
@@ -1019,13 +1044,15 @@ describe('MatchCase详情 · Case 叮嘱输入', () => {
     expect(mock新增叮嘱).not.toHaveBeenCalled();
   });
 
-  it('终局详情隐藏输入（无任何 mutation 控件）', async () => {
+  it('终局详情隐藏输入（无任何 mutation 控件；J-PILOT-01 S0 终局占位成对产出）', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已终止详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
     // 结束语与原因码都是 wire 原词（user_ended 出现两处属正常）
     expect(await screen.findAllByText('user_ended')).toBeTruthy();
-    expect(screen.queryByPlaceholderText(叮嘱占位)).toBeNull();
-    expect(screen.queryByRole('button', { name: '发送' })).toBeNull();
+    // S0 终局：原输入框保留但禁用，占位为 Spec §7 其它终局文案（发送键真实禁用）
+    const 框 = screen.getByPlaceholderText('本次代谈已结束') as HTMLTextAreaElement;
+    expect(框.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
@@ -1277,238 +1304,20 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     vi.useRealTimers();
   });
 
-  it('回答补充问题：prompt ref + 回答原文的精确调用；重读归操作层，成功才清空', async () => {
-    const user = userEvent.setup();
-    let 送达!: () => void;
-    mock回答事实.mockImplementation(() => new Promise<void>((解决) => { 送达 = 解决; }));
+  it('S0 respond_fact 零输入（路由级）：无回答框/提交键，零人工补事实请求；待核实说明在场', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    await user.type(screen.getByRole('textbox', { name: '回答问题' }), '每周可以到岗 3 天');
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    // brief 片段同形：role、case_id、typed prompt ref、回答原文
-    expect(mock回答事实).toHaveBeenCalledTimes(1);
-    expect(mock回答事实).toHaveBeenCalledWith('candidate', 'mc_direct', 'prompt_1', '每周可以到岗 3 天');
-    expect(mock派发).not.toHaveBeenCalled();
-    expect(mock读取连续详情).toHaveBeenCalledTimes(1); // 仍是挂载那次：权威重读归 Task 3 操作层
-    送达();
-    const 框 = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
-    await waitFor(() => expect(框.value).toBe('')); // 仅成功清空
-    expect(mock读取连续详情).toHaveBeenCalledTimes(1);
+    // J-PILOT-01（Spec §7）：S0 不再提供 respond_fact 输入/提交 —— 白名单摘除后零回答区，
+    // 旧 S0 needs_user/human_decision 行只剩 待核实说明 与允许的 end 路径
+    expect(await screen.findByText('旧版状态待核实，请交负责人处理')).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
+    expect(screen.queryByText('补充事实')).toBeNull();
+    expect(screen.getAllByRole('button', { name: '结束初筛' })).toHaveLength(1);
+    expect(mock回答事实).not.toHaveBeenCalled(); // 双端 S0 零人工补事实请求
   });
 
-  it('空回答不发送；在飞重复点击只发一次（同键重放归操作层）', async () => {
-    const user = userEvent.setup();
-    let 送达!: () => void;
-    mock回答事实.mockImplementation(() => new Promise<void>((解决) => { 送达 = 解决; }));
-    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
-    渲染详情('candidate', 'mc_direct');
-    await user.click(screen.getByRole('button', { name: '提交回答' })); // 空输入
-    expect(mock回答事实).not.toHaveBeenCalled();
-    await user.type(screen.getByRole('textbox', { name: '回答问题' }), '负责交易网关');
-    const 键 = screen.getByRole('button', { name: '提交回答' });
-    await user.click(键);
-    await user.click(键); // 在飞：屏层单发，重放语义由操作层的稳定意图键承担
-    expect(mock回答事实).toHaveBeenCalledTimes(1);
-    送达();
-  });
-
-  it('回答 pending：输入与按钮禁用、显示「提交中…」、重复点击零额外请求', async () => {
-    const user = userEvent.setup();
-    const deferred = 可控Promise<void>();
-    mock回答事实.mockReturnValueOnce(deferred.promise);
-    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
-    渲染详情('candidate', 'mc_direct');
-    const input = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
-    await user.type(input, '每周可以到岗 3 天');
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    // 可见 pending：textarea 与按钮双双锁定，按钮文案切「提交中…」
-    expect(input.disabled).toBe(true);
-    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
-    await user.click(screen.getByRole('button', { name: '提交中…' })); // 禁用键：零额外请求
-    expect(mock回答事实).toHaveBeenCalledTimes(1);
-    deferred.resolve();
-    await waitFor(() => expect(input.value).toBe('')); // 成功才清草稿
-    await waitFor(() => expect(input.disabled).toBe(false)); // 落定后恢复可输入
-  });
-
-  it('回答失败：恢复输入与按钮，草稿原样保留', async () => {
-    const user = userEvent.setup();
-    mock回答事实.mockRejectedValueOnce(new Error('failed'));
-    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
-    渲染详情('candidate', 'mc_direct');
-    const input = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
-    await user.type(input, '保留这段回答');
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    await waitFor(() =>
-      expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false));
-    expect(input.disabled).toBe(false);
-    expect(input.value).toBe('保留这段回答'); // 失败绝不清空
-  });
-
-  it('跨 Case deferred：旧单迟到的成败不改动新单的草稿与 pending 状态', async () => {
-    const user = userEvent.setup();
-    const deferred = 可控Promise<void>();
-    mock回答事实.mockReturnValueOnce(deferred.promise);
-    置详情状态({
-      role: 'candidate', caseId: 'mc_a',
-      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }),
-    });
-    render(
-      <MemoryRouter initialEntries={['/deal/mc_a']}>
-        <测试换Case钮 目标="/deal/mc_b" 文案="切到新单" />
-        <Routes>
-          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
-          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    const inputA = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
-    await user.type(inputA, '旧单的回答');
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    expect(mock回答事实).toHaveBeenCalledWith('candidate', 'mc_a', 'prompt_1', '旧单的回答');
-    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
-
-    // 预置新单快照，同一 Route 内切 case：草稿清空、pending 解除（代际递增）
-    置详情状态({
-      role: 'candidate', caseId: 'mc_b',
-      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }),
-    });
-    await user.click(screen.getByRole('button', { name: '切到新单' }));
-    const inputB = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
-    expect(inputB.value).toBe('');
-    expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false);
-    await user.type(inputB, '新单草稿');
-
-    // 旧单请求此刻才落定：代际栅栏作废其迟到回调，新单草稿与 pending 分毫不动
-    await act(async () => {
-      deferred.resolve();
-    });
-    expect(inputB.value).toBe('新单草稿');
-    expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false);
-
-    // 新单照常可发：新代际的锁与清空只作用于新草稿
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    expect(mock回答事实).toHaveBeenCalledTimes(2);
-    expect(mock回答事实).toHaveBeenLastCalledWith('candidate', 'mc_b', 'prompt_1', '新单草稿');
-  });
-
-  it('回答在飞时离开又回原单：续锁到旧请求收口，不放行第二段草稿（同键单飞防吞稿）', async () => {
-    const user = userEvent.setup();
-    const deferred = 可控Promise<void>();
-    mock回答事实.mockReturnValueOnce(deferred.promise);
-    置详情状态({
-      role: 'candidate', caseId: 'mc_a',
-      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }),
-    });
-    render(
-      <MemoryRouter initialEntries={['/deal/mc_a']}>
-        <测试换Case钮 目标="/deal/mc_b" 文案="切到新单" />
-        <测试换Case钮 目标="/deal/mc_a" 文案="切回旧单" />
-        <Routes>
-          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
-          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    const inputA = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
-    await user.type(inputA, '第一段回答');
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    expect(mock回答事实).toHaveBeenCalledWith('candidate', 'mc_a', 'prompt_1', '第一段回答');
-    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
-
-    // 离开去 B：B 的回答区干净起步（A 单在飞不锁 B）
-    置详情状态({
-      role: 'candidate', caseId: 'mc_b',
-      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }),
-    });
-    await user.click(screen.getByRole('button', { name: '切到新单' }));
-    expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false);
-
-    // 回到 A：旧请求仍在飞 → 回答区续锁，不得放行第二段草稿
-    //（操作层同键单飞会复用旧 POST，放锁会让新草稿绑上旧承诺被静默吞掉）
-    置详情状态({
-      role: 'candidate', caseId: 'mc_a',
-      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }),
-    });
-    await user.click(screen.getByRole('button', { name: '切回旧单' }));
-    const inputA2 = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
-    expect(inputA2.value).toBe('');
-    expect(inputA2.disabled).toBe(true);
-    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
-
-    // 旧请求收口：解锁恢复可输入，且全程只发过一次 POST
-    deferred.resolve();
-    await waitFor(() =>
-      expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false));
-    expect(mock回答事实).toHaveBeenCalledTimes(1);
-
-    // 收口后新草稿照常提交
-    await user.type(inputA2, '第二段回答');
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    expect(mock回答事实).toHaveBeenCalledTimes(2);
-    expect(mock回答事实).toHaveBeenLastCalledWith('candidate', 'mc_a', 'prompt_1', '第二段回答');
-  });
-
-  it('经无动作单往返：在飞锁随页面存活，回原单续锁（动作区重挂载不丢锁）', async () => {
-    const user = userEvent.setup();
-    const deferred = 可控Promise<void>();
-    mock回答事实.mockReturnValueOnce(deferred.promise);
-    置详情状态({
-      role: 'candidate', caseId: 'mc_a',
-      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }),
-    });
-    render(
-      <MemoryRouter initialEntries={['/deal/mc_a']}>
-        <测试换Case钮 目标="/deal/mc_b" 文案="切到无动作单" />
-        <测试换Case钮 目标="/deal/mc_a" 文案="切回旧单" />
-        <Routes>
-          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
-          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    const inputA = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
-    await user.type(inputA, '第一段回答');
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
-
-    // 切到无动作单（running 行 + 空动作表）：阶段动作区整体卸载
-    置详情状态({
-      role: 'candidate', caseId: 'mc_b',
-      快照: 详情快照({
-        detail: 候选详情DTO({
-          state: 状态({ caseId: 'mc_b', status: 'running', step: 'policy_check', needsUser: false, round: 0 }),
-          needsAction: false,
-          availableActions: [],
-        }),
-      }),
-    });
-    await user.click(screen.getByRole('button', { name: '切到无动作单' }));
-    expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull(); // 动作区已卸载
-
-    // 回原单：新动作区重挂载，仍续锁到旧请求收口
-    置详情状态({
-      role: 'candidate', caseId: 'mc_a',
-      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }),
-    });
-    await user.click(screen.getByRole('button', { name: '切回旧单' }));
-    const inputA2 = screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement;
-    expect(inputA2.value).toBe('');
-    expect(inputA2.disabled).toBe(true);
-    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
-
-    deferred.resolve();
-    await waitFor(() =>
-      expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false));
-    expect(mock回答事实).toHaveBeenCalledTimes(1); // 往返全程只发过一次 POST
-    await user.type(inputA2, '第二段回答');
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    expect(mock回答事实).toHaveBeenCalledTimes(2);
-    expect(mock回答事实).toHaveBeenLastCalledWith('candidate', 'mc_a', 'prompt_1', '第二段回答');
-  });
-
-  it('多条/零条补充问题：整页契约错误，无回答控件，零请求', async () => {
-    const user = userEvent.setup();
+  it('多条补充问题（遗留 transcript）不再破坏契约：respond_fact 已不可达，回答控件一概不出', async () => {
     const 双问阶段 = 阶段区组({
       anonymous_screening: {
         transcript: [
@@ -1528,46 +1337,28 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
       快照: 详情快照({ detail: 候选详情DTO({ stages: 双问阶段 }) }),
     });
     渲染详情('candidate', 'mc_direct');
-    expect(screen.getByText(P5契约错误提示)).toBeTruthy(); // 唯一匹配被破坏：整页 fail closed
+    // 补充问题接入已随 respond_fact 移除：多问不再是整页契约错误
+    expect(await screen.findByText('每周可以到岗几天？')).toBeTruthy();
+    expect(screen.queryByText(P5契约错误提示)).toBeNull();
     expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
-    await user.click(screen.getByRole('button', { name: '重试' })); // 只允许重新 GET
-    expect(mock读取连续详情).toHaveBeenCalledTimes(2);
-    expect(mock回答事实).not.toHaveBeenCalled();
-
-    cleanup();
-    const 无问阶段 = 阶段区组({
-      anonymous_screening: {
-        transcript: [{
-          eventId: 'evt_n1', stage: 'anonymous_screening', kind: 'stage_note',
-          role: '', reasonCode: 'policy_checked', occurredAt: '2026-08-29T01:20:00Z',
-        }],
-      },
-    });
-    置详情状态({
-      role: 'candidate',
-      快照: 详情快照({ detail: 候选详情DTO({ stages: 无问阶段 }) }),
-    });
-    渲染详情('candidate', 'mc_direct');
-    expect(screen.getByText(P5契约错误提示)).toBeTruthy();
     expect(mock回答事实).not.toHaveBeenCalled();
   });
 
-  it('S0 迁移后单挂载：两卡只经 详情动作卡/事实问题卡 渲染一次，问题与回答框同卡', () => {
+  it('S0 respond_fact 零输入：无补充事实卡/回答框，只剩结束卡；旧 S0 行给待核实说明', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    // 同一 action 只有一个来源（hook 卡唯一挂载，旧 switch 不再出 S0 两卡）
-    expect(screen.getAllByText('补充事实')).toHaveLength(1);
-    expect(screen.getAllByRole('textbox', { name: '回答问题' })).toHaveLength(1);
-    expect(screen.getAllByRole('button', { name: '提交回答' })).toHaveLength(1);
+    // J-PILOT-01（Spec §7）：S0 不再提供 respond_fact 输入/提交 —— 白名单摘除后无卡
+    expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
+    expect(screen.queryByText('补充事实')).toBeNull();
+    // 待核实说明（注意说明）+ 允许的既有 end 路径仍在
+    expect(screen.getByText('旧版状态待核实，请交负责人处理')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: '结束初筛' })).toHaveLength(1);
-    // 事实问题卡在 respond_fact 卡正文槽内：当前问题 + 动作标题/说明保留
-    expect(screen.getByText('问：每周可以到岗几天？')).toBeTruthy();
-    expect(screen.getByText('回答当前阶段待补充的问题')).toBeTruthy();
     expect(screen.getByText('结束本次匿名初筛')).toBeTruthy();
   });
 
-  it('respond_fact + end_screening 只有补充事实与结束动作，没有继续初筛', async () => {
+  it('S0 只有结束动作（respond_fact 白名单摘除），没有继续初筛', async () => {
     const user = userEvent.setup();
     置详情状态({
       role: 'candidate',
@@ -1577,9 +1368,10 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     });
     渲染详情('candidate', 'mc_direct');
 
-    // 「继续初筛」是前端自造的未授权动作：任何形态都不出现（spec §10.1）
+    // 「继续初筛」是前端自造的未授权动作：任何形态都不出现（spec §10.1）；
+    // respond_fact 也不再出任何输入控件（J-PILOT-01，Spec §7）
     expect(screen.queryByRole('button', { name: '继续初筛' })).toBeNull();
-    expect(screen.getByRole('textbox', { name: '回答问题' })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     await user.click(screen.getByRole('button', { name: '结束初筛' }));
     expect(mock决定S0).not.toHaveBeenCalled();
     const 确认框 = screen.getByRole('dialog');
@@ -1612,8 +1404,8 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
       }),
     });
     渲染详情('recruiter', 'mc_hr');
-    // respond_fact 双端都有准许路线（fact-responses 有 recruiter 臂）
-    expect(screen.getByRole('textbox', { name: '回答问题' })).toBeTruthy();
+    // J-PILOT-01：招聘端 S0 同样无 respond_fact 回答区（双端零人工补事实输入）
+    expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     // 投影器会给 needs_user 属主发 end_screening，但冻结 wire 的 decisions 路线只有
     // 候选端 /me 臂 —— 招聘端结束卡零控件、零请求（fail closed，待后端补 recruiter 臂）
     expect(screen.queryByRole('button', { name: '继续初筛' })).toBeNull();
@@ -1704,17 +1496,13 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     expect(mock提交简历).not.toHaveBeenCalled();
   });
 
-  it('S1 重试：用已绑定的 file/version 对 + 字面 true；每次都过新披露确认；取消零请求', async () => {
+  it('S1 重试（原授权检查）：用阶段中原绑定 file/version 对直接提交字面 true，不重新展示披露确认', async () => {
     const user = userEvent.setup();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1等待详情(true) }) });
     渲染详情('candidate', 'mc_direct');
     await user.click(screen.getByRole('button', { name: '重试校验' }));
-    const 披露框 = screen.getByRole('dialog');
-    expect(within(披露框).getByText(/「平台工程师」这一 Case 递交「后端工程师_简历_v1\.pdf」/)).toBeTruthy();
-    await user.click(within(披露框).getByRole('button', { name: '暂不递交' }));
-    expect(mock提交简历).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: '重试校验' })); // 再来：重新确认
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认递交' }));
+    // J-PILOT-01（Spec §9）：不重新选文件、不重新要求披露确认 —— 原授权直接执行
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(mock提交简历).toHaveBeenCalledTimes(1);
     expect(mock提交简历).toHaveBeenCalledWith(
       'mc_direct', 绑定附件.fileId, 绑定附件.fileVersionId, true);
@@ -2467,7 +2255,8 @@ describe('MatchCase详情 · owner-safe agent_attention', () => {
     渲染详情('candidate', 'mc_direct');
     expect(await screen.findByText('重试简历校验')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '重试校验' }));
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认递交' }));
+    // J-PILOT-01（Spec §9）：原授权检查直接执行 submitResume（字面 true），无披露弹层
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(mock提交简历).toHaveBeenCalledTimes(1);
     expect(mock提交简历).toHaveBeenCalledWith('mc_direct', 绑定附件.fileId, 绑定附件.fileVersionId, true);
   });
@@ -2521,6 +2310,28 @@ function S0完整记录详情(role: P5角色, 选项: 详情选项 = {}): P5详�
   return role === 'candidate'
     ? 候选详情DTO({ ...选项, stages })
     : 招聘详情DTO({ ...选项, stages, 别名: S0别名 });
+}
+
+/**
+ * S1 open 行 + S0 附件/记录在场：非 S0 的叮嘱输入态 + typed 附件弹层（J-PILOT-01，Spec §7
+ * 「进入 S1 后按真实当前阶段恢复既有非 S0 行为」；S0 段历史记录可回看）。
+ */
+function S1完整记录详情(role: P5角色): P5详情 {
+  const 底 = S0完整记录详情(role);
+  return {
+    ...底,
+    state: {
+      ...底.state!,
+      stage: 'resume_submission', status: 'waiting', step: 'awaiting_resume_parse', needsUser: false,
+    },
+    availableActions: [],
+    stages: 底.stages!.map((区) => 区.stage === 'anonymous_screening'
+      ? { ...区, state: 'passed' as const, summary: 'complete' }
+      : 区.stage === 'resume_submission'
+        ? { ...区, state: 'active' as const, occurredAt: '2026-08-29T01:30:00Z', summary: 'awaiting_resume_parse', attachment: 绑定附件 }
+        : 区),
+    terminalSummary: null,
+  };
 }
 
 /** S0 消息时间的期望值：用 Date 本地 getter 独立推出 HH:mm（与页面 Intl formatter 各算各的）。 */
@@ -2720,8 +2531,7 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     expect(screen.getAllByText('初评：初评已确认岗位在浦东园区，值班安排仍待确认。').length).toBe(1);
   });
 
-  it('旧摘要/清单/附件/叮嘱与 respond_fact、结束卡仍在：fact response 仍提交 transcript ref prompt_1', async () => {
-    const user = userEvent.setup();
+  it('旧摘要/清单/附件/叮嘱与允许的 end 卡仍在；S0 respond_fact 零输入零请求', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
     渲染详情('candidate', 'mc_direct');
     expect(await screen.findByText('系统正在复评候选信息')).toBeTruthy(); // 旧步骤摘要头行
@@ -2729,13 +2539,11 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     expect(screen.getByText('简历已绑定')).toBeTruthy();
     expect(screen.getByText('工作日 10:00-19:00 联系')).toBeTruthy(); // 叮嘱回执
     expect(screen.getByRole('button', { name: /后端工程师_简历_v1\.pdf/ })).toBeTruthy(); // 附件入口
-    expect(screen.getByText('补充事实')).toBeTruthy(); // respond_fact 卡
+    // J-PILOT-01（Spec §7）：无 respond_fact 卡/回答框，零人工补事实请求
+    expect(screen.queryByText('补充事实')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     expect(screen.getByRole('button', { name: '结束初筛' })).toBeTruthy(); // 终结卡仍在
-    await user.type(screen.getByRole('textbox', { name: '回答问题' }), '每周可以到岗 3 天');
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    // mutation 坐标仍是 transcript ref：screening record ID 永不作坐标
-    expect(mock回答事实).toHaveBeenCalledTimes(1);
-    expect(mock回答事实).toHaveBeenCalledWith('candidate', 'mc_direct', 'prompt_1', '每周可以到岗 3 天');
+    expect(mock回答事实).not.toHaveBeenCalled();
   });
 
   it('S0 新消息走本地 HH:mm 且不读 Date.now()；旧时间线仍是既有 UTC 字符串切片', () => {
@@ -2749,8 +2557,8 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     渲染详情('candidate', 'mc_direct');
     expect(screen.getByText(期望)).toBeTruthy();
     expect(screen.queryByText(错位)).toBeNull(); // 显示跟进程时区走，不写死
-    // 旧 transcript／叮嘱回执保持既有字符串切片结果（本任务不统一时间线）
-    expect(screen.getByText('01:10')).toBeTruthy();
+    // 叮嘱回执保持既有字符串切片结果（本任务不统一时间线）；旧 transcript 落系统状态行
+    expect(screen.getByText('每周可以到岗几天？')).toBeTruthy(); // 时间线文本原样展示
     expect(screen.getByText('01:05')).toBeTruthy();
     expect(screen.getByText('01:06')).toBeTruthy();
 
@@ -2760,7 +2568,7 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
     渲染详情('candidate', 'mc_direct');
     expect(screen.getByText(期望)).toBeTruthy();
-    expect(screen.getByText('01:10')).toBeTruthy();
+    expect(screen.getByText('01:05')).toBeTruthy(); // 叮嘱回执时间不随当前时间变
   });
 });
 
@@ -2783,7 +2591,7 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
 
   it('Tab 不改变发送 Case：切资料再切回，叮嘱草稿保留、发送仍带当前 case_id', async () => {
     const user = userEvent.setup();
-    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选S1详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
     const 框 = screen.getByPlaceholderText(叮嘱占位) as HTMLTextAreaElement;
     await user.type(框, '周五也可以到岗');
@@ -2800,7 +2608,7 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
     const user = userEvent.setup();
     置详情状态({
       role: 'candidate', caseId: 'mc_a',
-      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }),
+      快照: 详情快照({ detail: 候选S1详情DTO('mc_a') }),
     });
     render(
       <MemoryRouter initialEntries={['/deal/mc_a']}>
@@ -2817,7 +2625,7 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
     // 同一 Route 内换单：父控制 hook 不卸载，叮嘱草稿仍必须随 scope 清空
     置详情状态({
       role: 'candidate', caseId: 'mc_b',
-      快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }),
+      快照: 详情快照({ detail: 候选S1详情DTO('mc_b') }),
     });
     await user.click(screen.getByRole('button', { name: '切到新单' }));
     const 框B = screen.getByPlaceholderText(叮嘱占位) as HTMLTextAreaElement;
@@ -2832,7 +2640,7 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
     const user = userEvent.setup();
     const 租约 = { url: 'blob:p5-resume', revoke: vi.fn() };
     mock读取简历PDF.mockResolvedValue(租约);
-    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1完整记录详情('candidate') }) });
     const 页 = render(
       <MemoryRouter initialEntries={['/deal/mc_direct']}>
         <测试换Case钮 目标="/deal/mc_other" 文案="切到新单" />
@@ -2842,14 +2650,14 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
         </Routes>
       </MemoryRouter>,
     );
-    // 同一单里既有待答问题又有 typed 附件：草稿与弹层同时在场
-    const 回答框 = (await screen.findByRole('textbox', { name: '回答问题' })) as HTMLTextAreaElement;
-    await user.type(回答框, '每周可以到岗 3 天');
+    // S1 输入态 + typed 附件：叮嘱草稿与弹层同时在场
+    const 叮嘱框 = (await screen.findByPlaceholderText(叮嘱占位)) as HTMLTextAreaElement;
+    await user.type(叮嘱框, '每周可以到岗 3 天');
     await user.click(screen.getByRole('button', { name: /后端工程师_简历_v1\.pdf/ }));
     await screen.findByRole('dialog', { name: '简历原件' });
 
     // 换单：正常控制子组件按 key 重挂载 —— 弹层销毁（租约回收）、草稿清空
-    const 新单 = S0完整记录详情('candidate');
+    const 新单 = S1完整记录详情('candidate');
     置详情状态({
       role: 'candidate', caseId: 'mc_other',
       快照: 详情快照({ detail: { ...新单, state: { ...新单.state!, caseId: 'mc_other' } } }),
@@ -2857,7 +2665,7 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
     await user.click(screen.getByRole('button', { name: '切到新单' }));
     await waitFor(() => expect(租约.revoke).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('dialog', { name: '简历原件' })).toBeNull();
-    expect((screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement).value).toBe('');
+    expect((screen.getByPlaceholderText(叮嘱占位) as HTMLTextAreaElement).value).toBe('');
     页.unmount();
   });
 
@@ -2865,7 +2673,7 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
     const user = userEvent.setup();
     const 租约 = { url: 'blob:p5-resume', revoke: vi.fn() };
     mock读取简历PDF.mockResolvedValue(租约);
-    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1完整记录详情('candidate') }) });
     // rerender 需要新元素实例（同一元素引用会让 React 直接跳过重渲染）
     const 树 = () => (
       <MemoryRouter initialEntries={['/deal/mc_direct']}>
@@ -2876,8 +2684,8 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
       </MemoryRouter>
     );
     const 页 = render(树());
-    const 回答框 = (await screen.findByRole('textbox', { name: '回答问题' })) as HTMLTextAreaElement;
-    await user.type(回答框, '每周可以到岗 3 天');
+    const 叮嘱框 = (await screen.findByPlaceholderText(叮嘱占位)) as HTMLTextAreaElement;
+    await user.type(叮嘱框, '每周可以到岗 3 天');
     await user.click(screen.getByRole('button', { name: /后端工程师_简历_v1\.pdf/ }));
     await screen.findByRole('dialog', { name: '简历原件' });
 
@@ -2891,7 +2699,7 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
         P5连续详情: {
           [P5范围键.negotiation('mc_direct')]: {
             ...连续详情快照({
-              聚合: 连续详情DTO({ caseDetail: S0完整记录详情('candidate') }),
+              聚合: 连续详情DTO({ caseDetail: S1完整记录详情('candidate') }),
             }),
             ownerSubjectId: 'sub_2',
           },
@@ -2901,19 +2709,16 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
     页.rerender(树());
     await waitFor(() => expect(租约.revoke).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('dialog', { name: '简历原件' })).toBeNull();
-    expect((screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement).value).toBe('');
+    expect((screen.getByPlaceholderText(叮嘱占位) as HTMLTextAreaElement).value).toBe('');
     页.unmount();
   });
 
-  // ── 回答在飞锁表按主体换代（review-r2 F-r2-1）：父 hook 常驻路由实例、不随主体重挂载，
-  //    锁表必须随账号整表替换 —— 新主体不继承旧账号的在飞锁；旧单迟到的收口只作用于
-  //    发回答闭包捕获的旧表，删不到新表里的在飞项，也不在换代后弹旧单的提示。──
-  it('同路由换账号：B 不继承 A 的回答在飞锁；A 迟到落定不清 B 草稿、不放 B 锁、不提示', async () => {
+  it('同路由换账号：叮嘱在飞锁随 scope 整表换代 —— B 不继承 A 的草稿，旧单迟到失败不提示', async () => {
     const user = userEvent.setup();
-    const 门A = 可控Promise<void>();
-    const 门B = 可控Promise<void>();
-    mock回答事实.mockReturnValueOnce(门A.promise).mockReturnValueOnce(门B.promise);
-    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
+    let 送达!: () => void;
+    mock新增叮嘱.mockImplementation(
+      () => new Promise<void>((解决) => { 送达 = 解决; }));
+    置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S1完整记录详情('candidate') }) });
     // rerender 需要新元素实例（同一元素引用会让 React 直接跳过重渲染）
     const 树 = () => (
       <MemoryRouter initialEntries={['/deal/mc_direct']}>
@@ -2924,12 +2729,10 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
       </MemoryRouter>
     );
     const 页 = render(树());
-    const 框A = (await screen.findByRole('textbox', { name: '回答问题' })) as HTMLTextAreaElement;
-    await user.type(框A, 'A 的回答');
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    expect(mock回答事实).toHaveBeenCalledTimes(1);
-    expect(mock回答事实).toHaveBeenCalledWith('candidate', 'mc_direct', 'prompt_1', 'A 的回答');
-    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true);
+    const 框A = (await screen.findByPlaceholderText(叮嘱占位)) as HTMLTextAreaElement;
+    await user.type(框A, 'A 的叮嘱');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    expect(mock新增叮嘱).toHaveBeenCalledTimes(1);
     清空轻提示();
 
     // 同一 URL 同一单，主体换代（切换账号）：正常区按 key 整建重置，父 hook 不重挂载
@@ -2942,7 +2745,7 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
         P5连续详情: {
           [P5范围键.negotiation('mc_direct')]: {
             ...连续详情快照({
-              聚合: 连续详情DTO({ caseDetail: S0完整记录详情('candidate') }),
+              聚合: 连续详情DTO({ caseDetail: S1完整记录详情('candidate') }),
             }),
             ownerSubjectId: 'sub_2',
           },
@@ -2951,31 +2754,14 @@ describe('MatchCase详情 · 控制收口（Task 9）', () => {
     };
     页.rerender(树());
 
-    // B 初始不继承 A 的在飞锁：回答区干净可输入、可发起自己的请求
-    const 框B = (await screen.findByRole('textbox', { name: '回答问题' })) as HTMLTextAreaElement;
+    // B 初始不继承 A 的草稿：输入区干净可输入、可发起自己的请求
+    const 框B = (await screen.findByPlaceholderText(叮嘱占位)) as HTMLTextAreaElement;
     expect(框B.value).toBe('');
-    expect(框B.disabled).toBe(false);
-    expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false);
-    await user.type(框B, 'B 的回答');
-    await user.click(screen.getByRole('button', { name: '提交回答' }));
-    expect(mock回答事实).toHaveBeenCalledTimes(2);
-    expect(mock回答事实).toHaveBeenLastCalledWith('candidate', 'mc_direct', 'prompt_1', 'B 的回答');
-
-    // A 此刻才失败落定：迟到的收口只作用于被捕获的旧表 —— B 草稿不动、锁不放、旧单失败不提示
-    await act(async () => {
-      门A.reject(new Error('A 单迟到的失败'));
-    });
-    expect(轻提示条数()).toBe(0);
-    expect((screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement).value).toBe('B 的回答');
-    expect((screen.getByRole('button', { name: '提交中…' }) as HTMLButtonElement).disabled).toBe(true); // B 仍在飞
-
-    // B 自己落定：草稿清空、锁释放（A 的迟到收口没有污染 B 的承诺链）
-    await act(async () => {
-      门B.resolve();
-    });
-    await waitFor(() =>
-      expect((screen.getByRole('button', { name: '提交回答' }) as HTMLButtonElement).disabled).toBe(false));
-    expect((screen.getByRole('textbox', { name: '回答问题' }) as HTMLTextAreaElement).value).toBe('');
+    await user.type(框B, 'B 的叮嘱');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    expect(mock新增叮嘱).toHaveBeenCalledTimes(2);
+    expect(mock新增叮嘱).toHaveBeenLastCalledWith('candidate', 'mc_direct', 'B 的叮嘱');
+    送达();
     页.unmount();
   });
 
@@ -3126,13 +2912,14 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
       }),
     });
     const 页 = 渲染候选(`/deal/${记录}`);
-    // 动作卡标题与底栏禁用条同词（初评未完成）：卡在场即可，不靠唯一匹配
-    expect(await screen.findAllByText('公开信息初评未完成')).toHaveLength(2);
+    // 动作卡标题与底栏禁用说明同词（初评未完成）；J-PILOT-01 后禁用条是原控件，文案在 placeholder
+    expect(await screen.findAllByText('公开信息初评未完成')).toHaveLength(1);
+    expect((await screen.findByPlaceholderText('公开信息初评未完成') as HTMLTextAreaElement).disabled).toBe(true);
     // 失败原因闭表文案：状态区注意说明 + 动作卡说明各一处（同词两处，非重复渲染）
     expect(screen.getAllByText('AI 服务暂时不可用，本次没有创建 Case')).toHaveLength(2);
-    // 底栏禁用条：失败后的真实文案（不冒充初评仍在运行），无发送键
+    // 底栏禁用条：不冒充初评仍在运行；发送键真实禁用（零 Case 叮嘱输入）
     expect(screen.queryByText('AI 代理正在进行公开信息初评')).toBeNull();
-    expect(screen.queryByRole('button', { name: '发送' })).toBeNull(); // 无 Case 叮嘱输入
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
 
     // 重试：真实受理（控制层只调状态方法，重试受理后的真实状态由权威重读投影）
     await user.click(screen.getByRole('button', { name: '重试初评' }));

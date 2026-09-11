@@ -6,8 +6,6 @@
 // completed + handoff_pending 一种：只给「正在创建会话」的文案，canChat 恒 false，绝不生成、
 // 缓存或推断任何会话标识。本模块不 import React / Mock / HTTP，不发请求，可被列表与详情共用。
 
-import { 取当前补充问题 } from './MatchCase基础';
-import type { P5问题阶段输入 } from './MatchCase基础';
 import type { P5生命周期, P5阶段, P5状态 } from './BFF契约';
 import { 映射招聘候选摘要 } from './招聘候选摘要映射';
 import type { 招聘候选摘要视图 } from './招聘候选摘要映射';
@@ -32,10 +30,11 @@ import type { P5角色, P5动作, P5步骤 } from './招聘数据源/MatchCase';
 
 // ── 闭合文案表：契约内枚举 → 展示文案，satisfies 双向钉死（缺词与多词都编译失败）──
 
-/** 四阶段中文标题（S0→S3 固定顺序同 阶段顺序表）。 */
+/** 四阶段中文标题（S0→S3 固定顺序同 阶段顺序表）。J-PILOT-01（Spec §9）：
+ *  S1 阶段标题为「递交简历」，列表卡色系闭表（列表卡片映射.P5标题色系表）同键同步。 */
 const 阶段标题表 = {
   anonymous_screening: '匿名初筛',
-  resume_submission: '简历提交',
+  resume_submission: '递交简历',
   needs_coordination: '差异协同',
   intent_confirmation: '意向确认',
 } as const satisfies Record<P5阶段, string>;
@@ -167,10 +166,11 @@ export interface P5展示状态行 {
  * 17 行 lifecycle+stage+status 矩阵的展示侧数据（元组形态）：四元组与 Task 1 decode 矩阵同源；
  * 可出动作列 = 已准入投影器 matchcase/lifecycle.go lifecycleViewerActions 在该行三元组下
  * 一切事实组合所能出卡的角色无关并集（over-narrow 会藏掉后端真给的卡，一律取并集；
- * over-broad 在交集规则下惰性）。逐行依据：终态恒空；S0 只有 needs_user 行可出
- * respond_fact/end_screening（预算内双卡、预算尽只剩 end_screening，并集为双卡）与
- * passed 行的邀请二卡（ResumeInvitationPending ⇔ step=awaiting_candidate_resume_invitation，
- * 仅此行），running/waiting/attention_required 行落空；S1 waiting 行候选端可出
+ * over-broad 在交集规则下惰性）。逐行依据：终态恒空；J-PILOT-01（Spec §7）双端 S0 不再
+ * 提供人工补事实 —— needs_user 行不再出 respond_fact（旧后端若仍返回该动作由交集惰性
+ * 挡下，人工待核实说明走 注意说明），只剩 end_screening 与 passed 行的邀请二卡
+ * （ResumeInvitationPending ⇔ step=awaiting_candidate_resume_invitation，仅此行），
+ * running/waiting/attention_required 行落空；S1 waiting 行候选端可出
  * retry_resume_readiness（披露前解析等待），needs_user 行并集候选端 retry/replace 与
  * 招聘端 decide_resume_screening，attention_required 行落空；S2 协同块不绑 status，
  * 三行皆可出 decide_coordination；S3 只有意向二卡。
@@ -181,7 +181,7 @@ const 矩阵元组表 = [
     ['policy_check', 'candidate_evaluation', 'candidate_question', 'recruiter_answer', 'candidate_reevaluation'],
     []],
   ['open', 'anonymous_screening', 'waiting', ['candidate_reevaluation'], []],
-  ['open', 'anonymous_screening', 'needs_user', ['human_decision'], ['respond_fact', 'end_screening']],
+  ['open', 'anonymous_screening', 'needs_user', ['human_decision'], ['end_screening']],
   ['open', 'anonymous_screening', 'passed',
     ['complete', 'awaiting_candidate_resume_invitation', 'awaiting_resume_parse'],
     ['accept_resume_invitation', 'decline_resume_invitation']],
@@ -234,11 +234,6 @@ export interface P5动作卡 {
   action: P5动作;
   标题: string;
   说明: string;
-}
-
-export interface P5补充问题视图 {
-  promptId: string;
-  text: string;
 }
 
 /** P7 Task 6：completed 行的两步移交 —— pending 只读等会话（canChat 恒 false 语义），
@@ -317,7 +312,6 @@ export interface P5详情正常视图 {
   更新于: string;
   handoff: P5移交视图 | null;
   actions: readonly P5动作卡[];
-  补充问题: P5补充问题视图 | null;
   阶段区块: readonly P5阶段区块视图[];
   终局摘要: P5终局摘要视图 | null;
   /**
@@ -328,13 +322,12 @@ export interface P5详情正常视图 {
   注意说明: string | null;
 }
 
-/** 契约错误视图：动作表恒空、无补充问题、无移交（与正常视图共享字段名以便联合窄化）。 */
+/** 契约错误视图：动作表恒空、无移交（与正常视图共享字段名以便联合窄化）。 */
 export interface P5详情契约错误视图 {
   kind: '契约错误';
   错误提示: string;
   handoff: null;
   actions: readonly P5动作卡[];
-  补充问题: null;
 }
 
 export type P5详情视图 = P5详情正常视图 | P5详情契约错误视图;
@@ -367,7 +360,7 @@ export type P5列表视图 = P5列表正常视图 | P5列表契约错误视图;
 // ── 运行时防线：decode 已挡住的漂移若仍抵达此处，一律 fail closed ──
 
 function 契约错误详情(): P5详情契约错误视图 {
-  return { kind: '契约错误', 错误提示: P5契约错误提示, handoff: null, actions: [], 补充问题: null };
+  return { kind: '契约错误', 错误提示: P5契约错误提示, handoff: null, actions: [] };
 }
 
 function 契约错误列表(): P5列表契约错误视图 {
@@ -448,7 +441,43 @@ function 格式化终局时间(原文: string): string {
 function 映射终局摘要(摘要: P5终局摘要 | null): P5终局摘要视图 | null {
   if (摘要 === null || typeof 摘要 !== 'object') return null;
   // 内部 DTO 仍保留原始 RFC3339；只有这个展示槽换成本地可读值
+  // J-PILOT-01（Spec §7）：新终局 semantic_uncertain_stop 成对映射为冻结文案，
+  // 原始码（outcome 与 reason_summary 同词）不进任何展示槽。
+  if (摘要.outcome === 'semantic_uncertain_stop') {
+    return {
+      结束语: S0信息不足终局文案, 原因: S0信息不足终局文案,
+      定格于: 格式化终局时间(摘要.finalizedAt),
+    };
+  }
   return { 结束语: 摘要.outcome, 原因: 摘要.reasonSummary, 定格于: 格式化终局时间(摘要.finalizedAt) };
+}
+
+// ── J-PILOT-01（Spec §7）：双端 S0 保留原输入框与发送键、禁用，占位随真实阶段/结果 ──
+// 委托前的初评占位（尚未开案）由 连续代谈展示映射 产出；此处只管已开 Case 的 S0 行。
+
+/** S0 信息不足终局的冻结文案（占位与终局摘要成对同句；原始码不露）。 */
+export const S0信息不足终局文案 = '信息不足，未能确认条件';
+
+const S0底栏文案表 = {
+  运行中: '双方 AI 代理正在确认条件',
+  技术故障: '条件确认遇到问题，待排查',
+  不适配: '条件不适配，本次代谈已结束',
+  其它终局: '本次代谈已结束',
+} as const;
+
+/**
+ * S0（匿名初筛）的底栏禁用说明／占位：非 S0 返回 null（其余阶段走既有叮嘱输入或
+ * 终局只读口径）。open 行按状态区分运行中与 AI 技术故障（attention）；ended 行按
+ * 顶格 outcome 区分信息不足／不适配／其它终局（原因在现有结果区显示，不承诺刷新重跑）。
+ */
+export function 映射S0底栏说明(state: P5状态视图): string | null {
+  if (state.stage !== 'anonymous_screening') return null;
+  if (state.lifecycle === 'open') {
+    return state.status === 'attention_required' ? S0底栏文案表.技术故障 : S0底栏文案表.运行中;
+  }
+  if (state.outcome === 'semantic_uncertain_stop') return S0信息不足终局文案;
+  if (state.outcome === 'semantic_not_fit') return S0底栏文案表.不适配;
+  return S0底栏文案表.其它终局;
 }
 
 /**
@@ -460,6 +489,20 @@ function 映射Agent注意(state: P5状态视图): string | null {
   return state.agentAttention === null
     ? '本阶段需要注意'
     : Agent注意文案表[state.agentAttention.code];
+}
+
+/** 旧 S0 needs_user／human_decision 的 owner-safe 待核实说明（Spec §7）：不自动结束、
+ *  不伪装新终局，停止该卡交互并交负责人处理。 */
+const 旧S0待核实说明 = '旧版状态待核实，请交负责人处理';
+
+/** 详情视图的注意说明：旧 S0 needs_user（人工补事实遗留行）固定给待核实提示，
+ *  其余沿 attention 的 owner-safe 口径。 */
+function 映射详情注意说明(state: P5状态视图): string | null {
+  if (state.lifecycle === 'open' && state.stage === 'anonymous_screening'
+    && state.status === 'needs_user') {
+    return 旧S0待核实说明;
+  }
+  return 映射Agent注意(state);
 }
 
 function 已有键<T extends object>(表: T, key: PropertyKey): key is keyof T {
@@ -551,27 +594,6 @@ function 映射阶段区(区: P5阶段区, state: P5状态视图, viewer: P5角�
   };
 }
 
-// ── 补充问题接入：只把已准入的 stage/kind/role/ref/text 五字段适配进 Plan 1 ──
-
-function 取补充问题(detail: P5详情, role: P5角色): P5补充问题视图 | null {
-  const 输入: P5问题阶段输入 = {
-    currentStage: detail.state.stage,
-    availableActions: detail.availableActions,
-    stages: detail.stages.map((区) => ({
-      stage: 区.stage,
-      transcript: 区.transcript.map((项) => ({
-        kind: 项.kind,
-        role: 项.role,
-        ref: 项.ref,
-        text: 项.text,
-      })),
-    })),
-  };
-  const 结果 = 取当前补充问题(输入, role);
-  if (结果.kind !== 'one') return null;
-  return { promptId: 结果.promptId, text: 结果.text };
-}
-
 // ── 对外映射（纯函数）──
 
 /** P5列表项 → 列表行视图：case_id、角色上下文、阶段标题/状态文案、待办与终局标记。 */
@@ -661,15 +683,9 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
   }
 
   // 按钮可见性 = 行白名单 ∩ available_actions（交集，绝不加、绝不 infer）。
+  // J-PILOT-01（Spec §7）：S0 行白名单已不再含 respond_fact —— 双端零人工补事实输入，
+  // 旧后端若仍返回该动作由交集惰性挡下；人工待核实说明走 注意说明。
   const 动作卡 = 渲染动作卡(offered, 行);
-
-  // respond_fact 卡真的会渲染时才接补充问题：Plan 1 唯一匹配放行，其余 fail closed。
-  let 补充问题: P5补充问题视图 | null = null;
-  if (动作卡.some((卡) => 卡.action === 'respond_fact')) {
-    const 问题 = 取补充问题(detail, detail.role);
-    if (问题 === null) return 契约错误详情();
-    补充问题 = 问题;
-  }
 
   // P7 Task 6：completed 行两步移交 —— handoff_pending（无 ref）pending；
   // complete（带 ref）ready；组合漂移（decode 已挡）在映射层再 fail closed 一次。
@@ -704,9 +720,8 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
     更新于: state.updatedAt,
     handoff,
     actions: 动作卡,
-    补充问题,
     阶段区块: 区块,
     终局摘要: 映射终局摘要(detail.terminalSummary),
-    注意说明: 映射Agent注意(state),
+    注意说明: 映射详情注意说明(state),
   };
 }

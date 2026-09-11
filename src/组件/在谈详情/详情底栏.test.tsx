@@ -1,8 +1,10 @@
-// 详情底栏 · 无 Provider 展示测试（契约 A）：底部 Case 叮嘱的输入/只读两态。
+// 详情底栏 · 无 Provider 展示测试（契约 A）：底部 Case 叮嘱的输入/只读/禁用三态。
 //   · 输入可用（发送!==null 且 禁用说明===null）直接复用全站 真输入条（现有 props，
 //     不为本页改它的默认行为）：占位/值/改变/发送原样接线；
-//   · 输入不可用（发送 null 或 禁用说明非空）与 只读 态：输入控件一概不渲染 —— 终局
-//     「保留底部区域且无可执行发送」（spec §5），说明可见；
+//   · 输入不可用（发送 null 或 禁用说明非空，J-PILOT-01 双端 S0）：原 真输入条 控件
+//     保留在 DOM（textarea + 发送键）但真实禁用 —— 不换成只读 div、不靠灰化，键盘/
+//     点击都触发不了发送回调；说明/占位文案在 placeholder 原样可见；
+//   · 只读 态（终局非 S0）：维持既有只读条 —— 终局「保留底部区域且无可执行发送」；
 //   · 已发送的在飞锁归控制层：本组件只透传 发送 回调，不自带禁用 DOM 状态机。
 // 仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
@@ -41,26 +43,34 @@ describe('详情底栏 · 输入态', () => {
     expect((screen.getByPlaceholderText(占位) as HTMLTextAreaElement).value).toBe('周五也可以到岗');
   });
 
-  it('发送 null：无可执行发送 —— 无输入框、无发送键，禁用说明可见', () => {
+  it('发送 null + 禁用说明（双端 S0）：原 textarea 与发送键保留在 DOM 且真实禁用，Enter/点击零回调', async () => {
+    const user = userEvent.setup();
+    const 改变 = vi.fn();
     render(
       <详情底栏
-        信息={{ kind: '输入', 占位, 值: '草稿', 改变: vi.fn(), 发送: null, 禁用说明: '本轮已提交，等服务器回话' }}
+        信息={{ kind: '输入', 占位, 值: '', 改变, 发送: null, 禁用说明: '信息不足，未能确认条件' }}
       />,
     );
-    expect(screen.queryByPlaceholderText(占位)).toBeNull();
-    expect(screen.queryByRole('button', { name: '发送' })).toBeNull();
-    expect(screen.getByText('本轮已提交，等服务器回话')).toBeTruthy();
+    const 框 = screen.getByPlaceholderText(占位) as HTMLTextAreaElement;
+    expect(框.tagName).toBe('TEXTAREA'); // 原控件不是替代只读条
+    expect(框.disabled).toBe(true);
+    const 键 = screen.getByRole('button', { name: '发送' }) as HTMLButtonElement;
+    expect(键.disabled).toBe(true);
+    fireEvent.keyDown(框, { key: 'Enter' });
+    await user.click(键);
+    fireEvent.click(键); // 绕过 pointer-events 的粗粒度断言：仍零回调
+    fireEvent.change(框, { target: { value: '不该写进去' } });
+    expect(改变).not.toHaveBeenCalled(); // 禁用分支不接 改变（值恒清空，不只 CSS 隐藏）
   });
 
-  it('禁用说明非空（发送仍在）：同样不渲染输入控件，说明可见', () => {
+  it('禁用说明非空（发送在场）：同样保留真实禁用控件，不换只读条', () => {
     render(
       <详情底栏
-        信息={{ kind: '输入', 占位, 值: '', 改变: vi.fn(), 发送: vi.fn(), 禁用说明: '本轮已提交，等服务器回话' }}
+        信息={{ kind: '输入', 占位, 值: '', 改变: vi.fn(), 发送: vi.fn(), 禁用说明: '条件确认遇到问题，待排查' }}
       />,
     );
-    expect(screen.queryByRole('textbox')).toBeNull();
-    expect(screen.queryByRole('button', { name: '发送' })).toBeNull();
-    expect(screen.getByText('本轮已提交，等服务器回话')).toBeTruthy();
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

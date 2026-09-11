@@ -61,7 +61,7 @@ const 连续阶段标题表 = {
 
 const P5阶段标题文案表 = {
   anonymous_screening: '匿名初筛',
-  resume_submission: '简历提交',
+  resume_submission: '递交简历',
   needs_coordination: '差异协同',
   intent_confirmation: '意向确认',
 } as const satisfies Record<P5阶段, string>;

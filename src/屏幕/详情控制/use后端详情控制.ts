@@ -1,15 +1,17 @@
 // use后端详情控制 —— Backend 详情路由的读取控制 hook（契约 C，Task 9 自
 // 屏幕/P5/MatchCase详情 的路由实例原样搬入：scope 登记/退出、直达强制读、3 秒可见
-// 节拍、Case 叮嘱、展示映射与稳定回答在飞表；命令参数与生命周期逐项对照旧实现）。
+// 节拍、Case 叮嘱与展示映射；命令参数与生命周期逐项对照旧实现）。
 // J-PILOT-01 Task 5：候选分支只读 continuous detail（读取连续详情）—— pre-Case/retention
 // 封闭交 后端连续资源（不构造假 P5 详情），Case 分支把聚合 case_detail 交既有 后端正常资源；
 // 招聘分支维持 读取详情 的 Case 口径不变。
+// J-PILOT-01 Task 6（Spec §7）：底栏按真实当前阶段判定 —— S0（双端）保留原输入框与
+// 发送键但禁用（占位随阶段/终局成对产出，发送 null 零叮嘱请求），即使展开历史 S0 也按
+// 当前阶段；S1 起恢复既有非 S0 叮嘱输入，终局（非 S0）维持只读条。
 //
 // 生命周期（plan 固定）：本 hook 由主体会话范围的 route 实例（MatchCase详情）始终挂载，
 // 不调用 use后端详情动作 或 useCasePDF预览（那两个归正常控制子组件 后端正常详情 按
-// role/case key 重挂载时无条件调用）。回答在飞表只在本 hook 创建、经 动作输入 传入 ——
-// 同会话跨 Case 或正常→错误→正常不重建，锁不随动作区卸载而丢；主体/会话换代由整个父
-// 实例重置回收。全部 hooks 无条件调用，绝不条件挂 hook。
+// role/case key 重挂载时无条件调用）。主体/会话换代由整个父实例重置回收。
+// 全部 hooks 无条件调用，绝不条件挂 hook。
 //
 // 返回明确联合（不把错误变成正常缺失）：
 //   · {kind:'不可用'; 状态:'加载'|'失败'|'契约错误'; 说明; 重试} —— 路由只按 kind 渲染
@@ -48,7 +50,7 @@ import {
   映射连续底栏,
 } from '../../数据/连续代谈展示映射';
 import type { 公开初评托盘视图 } from '../../数据/连续代谈展示映射';
-import { 映射P5详情, P5契约错误提示 } from '../../数据/MatchCase展示映射';
+import { 映射P5详情, 映射S0底栏说明, P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import type { 分段项 } from '../../组件/阶段对话流';
 import type {
@@ -246,21 +248,6 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
       });
   };
 
-  // 回答在飞锁表（review-r2）：归本 hook 所有 —— 正常控制子组件按 role/case 重挂载、
-  // 动作区随「当前单无动作」整体卸载都不丢锁，回原单时续锁观察者靠表里的承诺链收口。
-  const 回答在飞表 = useRef<Map<string, Promise<void>>>(new Map());
-  // 主体换代整表替换（review-r2 F-r2-1，plan 生命周期「主体/会话换代时整个父实例重置」）：
-  // RefObject 与契约 C 类型不变，但 .current 换成全新 Map —— 新主体不继承旧账号的在飞锁，
-  // 旧单迟到的 delete 作用于 发回答 闭包捕获的旧表（use后端详情动作），删不到新表；
-  // 换单/同主体重渲不换表（回原单续锁语义保持）。必须在渲染期完成替换：effects 自子向父
-  // 触发，新主体子 hook 的换单续锁效果先于本 hook 的 passive effect 读表 —— effect 里换表
-  // 会让新主体误继承旧账号的在飞锁（屏级测试钉住）。
-  const 上轮主体ID = useRef<string | null>(主体ID);
-  if (上轮主体ID.current !== 主体ID) {
-    上轮主体ID.current = 主体ID;
-    回答在飞表.current = new Map();
-  }
-
   // 当前阶段段的定位引用（子组件渲染 阶段对话流 时挂到「当前」段并自动滚过去）
   const 当前段引用 = useRef<HTMLDivElement>(null);
 
@@ -387,11 +374,16 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
     },
   };
 
-  // 底部 Case 叮嘱：终局只读（spec §5），进行中可输入（非终局的禁用由已有刷新/动作
-  // 保护表达，不在底栏加锁）。
-  const 底栏: 详情底栏信息 = 正常.终局
-    ? { kind: '只读', 说明: 终局只读说明 }
-    : { kind: '输入', 占位: 叮嘱占位, 值: 叮嘱草稿, 改变: 设叮嘱草稿, 发送: 发叮嘱, 禁用说明: null };
+  // 底部 Case 叮嘱（J-PILOT-01 Task 6，Spec §7）：S0（双端，即使展开历史 S0 也按当前
+  // 阶段判定）保留原输入框与发送键但禁用 —— 占位=禁用说明成对产出（映射S0底栏说明），
+  // 发送 null 零叮嘱请求、值恒空（清 S0 旧草稿）；非 S0 终局只读（spec §5），S1 起进行中
+  // 可输入（非终局的禁用由已有刷新/动作保护表达，不在底栏加锁）。
+  const S0禁用说明 = 映射S0底栏说明(原文.state);
+  const 底栏: 详情底栏信息 = S0禁用说明 !== null
+    ? { kind: '输入', 占位: S0禁用说明, 值: '', 改变: () => undefined, 发送: null, 禁用说明: S0禁用说明 }
+    : 正常.终局
+      ? { kind: '只读', 说明: 终局只读说明 }
+      : { kind: '输入', 占位: 叮嘱占位, 值: 叮嘱草稿, 改变: 设叮嘱草稿, 发送: 发叮嘱, 禁用说明: null };
 
   return {
     kind: '正常',
@@ -407,7 +399,7 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
     刷新错误: 快照?.error && !快照.刷新中 ? 快照.error : null,
     重试: 重读,
     当前段引用,
-    动作输入: { role, caseId: 命令caseId, 视图: 正常, 详情: 原文, 操作, 回答在飞表 },
+    动作输入: { role, caseId: 命令caseId, 视图: 正常, 详情: 原文, 操作 },
     PDF输入: { role, caseId: 命令caseId, 读取: 操作.读取简历PDF },
   };
 }

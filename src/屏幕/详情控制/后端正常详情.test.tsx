@@ -3,15 +3,15 @@
 // use后端详情动作 与 useCasePDF预览，把结果组装为 A/B 纯展示 props、动作卡与弹层。
 // 覆盖：
 //   · 组装：共用外壳两 Tab、状态区、阶段流（尾部动作卡经 详情动作卡 渲染一次）、
-//     respond_fact 的问题卡嵌在卡正文槽、typed 附件入口走 Case 专属 PDF 路径、
-//     底栏输入态照常可发（Tab 切换不改变发送 Case，草稿不丢）；
+//     typed 附件入口走 Case 专属 PDF 路径、S1 底栏输入态照常可发（Tab 切换不改变发送
+//     Case，草稿不丢）；J-PILOT-01（Spec §7）：S0 respond_fact 零输入、底栏原控件禁用；
 //   · 刷新合法可空字段由有值→null：附件入口消失（旧回调不再可点）、ready 移交退回
 //     pending（旧 conversation_ref 的导航回调不可达）—— 不残留旧入口或旧执行回调；
 //   · 终局：底栏只读且零发送、终局摘要卡在场、无任何动作控件。
 // 夹具走真实 映射P5详情 与 decoder 已接受的 DTO（不给 P5 加字段造样本）。
 // 仓库未装 @testing-library/jest-dom，用 toBeTruthy / disabled 属性断言。
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useMemo, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,7 +26,7 @@ import {
   映射公开初评,
   映射连续底栏,
 } from '../../数据/连续代谈展示映射';
-import { 映射P5详情 } from '../../数据/MatchCase展示映射';
+import { 映射P5详情, 映射S0底栏说明 } from '../../数据/MatchCase展示映射';
 import { 路径 } from '../../路由/路径表';
 import type { P5详情正常视图 } from '../../数据/MatchCase展示映射';
 import type { P5列表项, P5详情, P5阶段区, P5简历附件 } from '../../数据/招聘数据源/MatchCase';
@@ -126,6 +126,24 @@ function 候选S0详情DTO(): P5详情 {
   };
 }
 
+/** S1 open 行（候选，resume_submission waiting）：非 S0 的叮嘱输入态（Spec §7）。 */
+function 候选S1详情DTO(): P5详情 {
+  return {
+    ...候选S0详情DTO(),
+    state: 状态({
+      stage: 'resume_submission', status: 'waiting', step: 'awaiting_resume_parse',
+      needsUser: false,
+    }),
+    needsAction: false,
+    availableActions: [],
+    stages: [
+      { ...S0阶段区组()[0]!, state: 'passed', summary: '匿名初筛已通过' },
+      { ...待段('resume_submission'), state: 'active', occurredAt: '2026-08-29T01:30:00Z', summary: 'awaiting_resume_parse' },
+      待段('needs_coordination'), 待段('intent_confirmation'),
+    ],
+  };
+}
+
 const 已披露附件: P5简历附件 = {
   fileId: 'rf_00000000000000000000000000000007',
   fileVersionId: 'rfv_00000000000000000000000000000007',
@@ -213,7 +231,7 @@ function 取视图(详情: P5详情): P5详情正常视图 {
   return 视图;
 }
 
-/** 底栏走父控制同款接线：草稿在父、发送直发 mock新增叮嘱（组件只透传）。 */
+/** 底栏走父控制同款接线（S0 禁用分支同 映射S0底栏说明；草稿在父、发送直发桩）。 */
 function 宿主({
   详情,
   caseId,
@@ -224,19 +242,15 @@ function 宿主({
   公开初评?: 后端正常资源['公开初评'];
 }) {
   const [草稿, 设草稿] = useState('');
-  const 回答在飞表 = useMemo(() => ({ current: new Map<string, Promise<void>>() }), []);
   const 资源 = useMemo<后端正常资源>(() => {
     const 视图 = 取视图(详情);
     const 移交 = 视图.handoff;
-    return {
-      kind: '正常',
-      canonical记录ID: null,
-      公开初评,
-      顶栏: 从P5到详情顶栏(视图),
-      状态: 从P5到详情状态(视图),
-      分段们: 从P5到详情分段(视图, 详情.state.stage),
-      职位资料: 从P5到职位资料(视图),
-      底栏: 视图.终局
+    // 父控制同款底栏判定：S0（双端）保留原控件但禁用（发送 null 零叮嘱请求），非 S0
+    // 终局只读，S1 起进行中可输入。
+    const S0禁用说明 = 映射S0底栏说明(详情.state);
+    const 底栏: 后端正常资源['底栏'] = S0禁用说明 !== null
+      ? { kind: '输入', 占位: S0禁用说明, 值: '', 改变: () => undefined, 发送: null, 禁用说明: S0禁用说明 }
+      : 视图.终局
         ? { kind: '只读', 说明: '当前在谈已结束，仅可查看' }
         : {
             kind: '输入', 占位: 叮嘱占位, 值: 草稿, 改变: 设草稿,
@@ -246,7 +260,16 @@ function 宿主({
               void mock新增叮嘱(详情.role, caseId, 内容).then(() => 设草稿(''));
             },
             禁用说明: null,
-          },
+          };
+    return {
+      kind: '正常',
+      canonical记录ID: null,
+      公开初评,
+      顶栏: 从P5到详情顶栏(视图),
+      状态: 从P5到详情状态(视图),
+      分段们: 从P5到详情分段(视图, 详情.state.stage),
+      职位资料: 从P5到职位资料(视图),
+      底栏,
       终局: {
         摘要: 视图.终局摘要 !== null ? { ...视图.终局摘要 } : null,
         移交: 移交 !== null
@@ -267,12 +290,10 @@ function 宿主({
       刷新错误: null,
       重试: () => undefined,
       当前段引用: { current: null },
-      动作输入: {
-        role: 详情.role, caseId, 视图, 详情, 操作: mock操作, 回答在飞表,
-      },
+      动作输入: { role: 详情.role, caseId, 视图, 详情, 操作: mock操作 },
       PDF输入: { role: 详情.role, caseId, 读取: mock读取简历PDF },
     };
-  }, [详情, caseId, 草稿, 回答在飞表, 公开初评]);
+  }, [详情, caseId, 草稿, 公开初评]);
   return <后端正常详情 资源={资源} />;
 }
 
@@ -287,25 +308,39 @@ beforeEach(() => {
 });
 
 describe('后端正常详情 · 组装（A/B 纯展示 props + 动作卡 + 弹层）', () => {
-  it('外壳两 Tab + 状态区 + 阶段流：动作卡只经共用卡渲染一次，问题卡嵌在 respond_fact 正文槽', async () => {
+  it('外壳两 Tab + 状态区 + 阶段流：动作卡只经共用卡渲染一次；S0 零输入且底栏原控件禁用', () => {
     render(<宿主 详情={候选S0详情DTO()} caseId="mc_direct" />);
     expect(screen.getByText('平台工程师 · 公司信息缺失')).toBeTruthy(); // 顶栏（mapper 投影，公司槽原位保留）
     expect(screen.getByRole('button', { name: '代谈进度' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '职位详情' })).toBeTruthy();
     expect(screen.getByText('轮次 1/3')).toBeTruthy(); // 状态区
-    expect(screen.getByText('每周可以到岗几天？')).toBeTruthy(); // 阶段流
-    // respond_fact 卡：问题与回答框同卡（事实问题卡 在卡正文槽，不是第二张卡）
-    expect(screen.getByRole('textbox', { name: '回答问题' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '提交回答' })).toBeTruthy();
-    // end_screening 卡经同一 renderer（详情动作卡）在场
+    expect(screen.getByText('每周可以到岗几天？')).toBeTruthy(); // 阶段流（系统状态行）
+    // J-PILOT-01（Spec §7）：S0 respond_fact 零输入 —— 无回答框/提交键，旧 S0 行给待核实说明
+    expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
+    expect(screen.getByText('旧版状态待核实，请交负责人处理')).toBeTruthy();
+    // end_screening 卡经同一 renderer（详情动作卡）在场（保留允许的既有 end 路径）
     expect(screen.getByRole('button', { name: '结束初筛' })).toBeTruthy();
-    // 底栏输入态照常（进行中单）
-    expect(screen.getByPlaceholderText(叮嘱占位)).toBeTruthy();
+    // 底栏：原 textarea 保留但真实禁用，placeholder 为 S0 文案（不是只读 div）
+    const 框 = screen.getByPlaceholderText('双方 AI 代理正在确认条件') as HTMLTextAreaElement;
+    expect(框.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('Tab 不改变发送 Case：切资料再切回，草稿保留、发送仍带原 caseId', async () => {
+  it('S0 双端零人工输入：Enter、点击、状态切换迟到回调零 POST', async () => {
     const user = userEvent.setup();
     render(<宿主 详情={候选S0详情DTO()} caseId="mc_direct" />);
+    const 框 = screen.getByPlaceholderText('双方 AI 代理正在确认条件') as HTMLTextAreaElement;
+    fireEvent.keyDown(框, { key: 'Enter' });
+    await user.click(screen.getByRole('button', { name: '发送' }));
+    fireEvent.change(框, { target: { value: '不该写进去' } });
+    expect(mock新增叮嘱).not.toHaveBeenCalled(); // Enter/点击/程序回调均零 POST
+    expect(mock回答事实).not.toHaveBeenCalled();
+  });
+
+  it('Tab 不改变发送 Case：切资料再切回，草稿保留、发送仍带原 caseId（S1 输入态）', async () => {
+    const user = userEvent.setup();
+    render(<宿主 详情={候选S1详情DTO()} caseId="mc_direct" />);
     const 框 = screen.getByPlaceholderText(叮嘱占位) as HTMLTextAreaElement;
     await user.type(框, '周五也可以到岗');
     await user.click(screen.getByRole('button', { name: '职位详情' }));
@@ -431,12 +466,13 @@ describe('后端正常详情 · 写中禁用解释（review-r1 F6）', () => {
   });
 });
 
-describe('后端正常详情 · 终局只读', () => {
-  it('ended：底栏只读且零发送、终局摘要卡在场、无任何动作控件', () => {
+describe('后端正常详情 · 终局（J-PILOT-01 S0 分行）', () => {
+  it('S0 其它终局：底栏原控件禁用（占位「本次代谈已结束」）、终局摘要卡在场、零动作控件', () => {
     render(<宿主 详情={已终止详情DTO()} caseId="mc_direct" />);
-    expect(screen.getByText('当前在谈已结束，仅可查看')).toBeTruthy(); // 底部区域保留（只读）
-    expect(screen.queryByPlaceholderText(叮嘱占位)).toBeNull();
-    expect(screen.queryByRole('button', { name: '发送' })).toBeNull();
+    const 框 = screen.getByPlaceholderText('本次代谈已结束') as HTMLTextAreaElement;
+    expect(框.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText('当前在谈已结束，仅可查看')).toBeNull(); // S0 用终局分行占位，不是通用只读条
     expect(screen.getByText('终局')).toBeTruthy(); // 终局摘要卡（终局区）
     expect(screen.getAllByText('user_ended').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: '结束初筛' })).toBeNull(); // 零动作控件
@@ -540,8 +576,9 @@ describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5�
     expect(screen.getByRole('button', { name: '职位详情' })).toBeTruthy();
     expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // 状态区（Spec §6）
     expect(screen.getByText('轮次 —')).toBeTruthy(); // 无轮次不造 0/3
-    expect(screen.getByText('AI 代理正在进行公开信息初评')).toBeTruthy(); // 底栏禁用说明
-    expect(screen.queryByRole('button', { name: '发送' })).toBeNull(); // 无 Case 叮嘱
+    // 底栏：原控件保留但真实禁用，文案在 placeholder 原样可见（不是只读 div）
+    expect((screen.getByPlaceholderText('AI 代理正在进行公开信息初评') as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('公开信息初评')).toBeTruthy(); // 公开初评托盘同槽
     // 四阶段灰条在场（未到达不可展开）
     ['匿名初筛', '递交简历', '需要协调', '意向确认'].forEach((名) => {
@@ -582,10 +619,7 @@ function 构造正常资源(视图: P5详情正常视图, caseId: string): 后�
     刷新错误: null,
     重试: () => undefined,
     当前段引用: { current: null },
-    动作输入: {
-      role: 'candidate', caseId, 视图, 详情, 操作: mock操作,
-      回答在飞表: { current: new Map<string, Promise<void>>() },
-    },
+    动作输入: { role: 'candidate', caseId, 视图, 详情, 操作: mock操作 },
     PDF输入: { role: 'candidate', caseId, 读取: mock读取简历PDF },
   };
 }

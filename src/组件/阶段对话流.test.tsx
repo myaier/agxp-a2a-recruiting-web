@@ -140,3 +140,33 @@ describe('阶段对话流 · 展示标题（详情统一 Task 2）', () => {
     expect(screen.getByText('匿名初筛')).toBeTruthy();
   });
 });
+
+describe('阶段对话流 · S0 Agent 问答与系统状态行（J-PILOT-01）', () => {
+  it('Agent对话 带角色标签（己方右/对方左）；系统消息以状态文本落段；对话气泡不带角色标签', () => {
+    render(
+      <阶段对话流
+        分段们={[
+          {
+            阶段: '匿名初筛',
+            态: '当前',
+            Agent对话: [
+              { 编号: 's0:q1', 角色: '候选 Agent', 方: '我方', 时间: '10:01', 内容: '需要确认岗位的值班安排。' },
+              { 编号: 's0:a1', 角色: '招聘 Agent', 方: '对方', 时间: '10:05', 内容: '没有固定晚班。' },
+            ],
+            系统消息: [{ 编号: 'evt:e1', 内容: '系统正在核对投递政策' }],
+            对话: [{ 编号: 'aci:1', 方: '我方', 时间: '01:05', 内容: '工作日联系' }],
+          },
+        ]}
+      />,
+    );
+    // 角色标签在气泡槽内可见（不显示内部 ID/task/operation 字样）
+    expect(screen.getByText('候选 Agent')).toBeTruthy();
+    expect(screen.getByText('招聘 Agent')).toBeTruthy();
+    expect(screen.getByText('需要确认岗位的值班安排。')).toBeTruthy();
+    // 系统事件以系统状态文本显示，不投成对方气泡（无气泡容器包着系统行）
+    const 系统行 = screen.getByText('系统正在核对投递政策');
+    expect(系统行.closest('div')!.className).not.toContain('气泡');
+    // 叮嘱回执不带角色标签（历史叮嘱不伪装 Agent Q/A）
+    expect(screen.getByText('工作日联系').closest('div')!.textContent).not.toContain('候选 Agent');
+  });
+});

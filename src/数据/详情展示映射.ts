@@ -128,24 +128,48 @@ export function 从P5到详情状态(view: P5详情正常视图): 状态区信�
 }
 
 /**
- * 阶段区 typed 段 → 展示气泡：顺序固定 S0 Agent 记录 → 旧 transcript → 旧叮嘱回执
- * （不按时间混排）；时间线与叮嘱回执都只是展示文本（原样带出，按归属分列），绝不参与
- * 状态或动作判定；无文本的事件（纯 reason_code 的系统事件）无可展示，跳过。
- * key 用带前缀的稳定业务 ID，轮询重读整包刷新时 React 不会误配对。
+ * S0 Agent 问答 → 带角色标签的展示气泡（J-PILOT-01，Spec §7 D08）：角色标签按 wire
+ * role 投影成「候选 Agent／招聘 Agent」（不显示内部 ID/task/operation 字样），左右按
+ * viewer（己方 Agent 在右、对方在左）；正文按 answer_status 已由映射层投影（拒答/未知/
+ * 无法回答沿用固定文案）。顺序权威在服务端（真实 round 与 question→answer），不混排。
+ * key 用带前缀的稳定业务 ID，轮询整包替换时 React 不会误配对。
  */
-function 段内对话(区: P5阶段区块视图, role: P5角色): 对话条[] {
-  const 条们: 对话条[] = [];
-  const 推 = (编号: 对话条['编号'], 内容: string | undefined, 我方: boolean, 时间: string) => {
-    if (内容 === undefined || 内容.trim() === '') return;
-    条们.push({ 编号, 方: 我方 ? '我方' : '对方', 时间, 内容 });
-  };
-  区.Agent消息.forEach((条) =>
-    推(`s0:${条.id}`, 条.内容, 条.role === role, 取本地时分(条.occurredAt)));
-  区.时间线.forEach((项) =>
-    推(`evt:${项.eventId}`, 项.text, 项.role === role, 取短时间(项.occurredAt)));
-  区.叮嘱.forEach((条) =>
-    推(`aci:${条.instructionId}`, 条.expression, 条.owner === role, 取短时间(条.occurredAt)));
-  return 条们;
+function 段内Agent对话(区: P5阶段区块视图, role: P5角色): 分段项['Agent对话'] {
+  if (区.Agent消息.length === 0) return undefined;
+  return 区.Agent消息.map((条) => ({
+    编号: `s0:${条.id}`,
+    角色: 条.role === 'candidate' ? '候选 Agent' : '招聘 Agent',
+    方: 条.role === role ? ('我方' as const) : ('对方' as const),
+    时间: 取本地时分(条.occurredAt),
+    内容: 条.内容,
+  }));
+}
+
+/**
+ * 旧 transcript 事件 → 系统状态行（J-PILOT-01，Spec §7）：canonical case 事件以系统
+ * 状态显示，不投成对方气泡；无文本的事件（纯 reason_code）无可展示，跳过。
+ */
+function 段内系统消息(区: P5阶段区块视图): 分段项['系统消息'] {
+  const 行们 = 区.时间线
+    .filter((项) => 项.text !== undefined && 项.text.trim() !== '')
+    .map((项) => ({ 编号: `evt:${项.eventId}`, 内容: 项.text as string }));
+  return 行们.length > 0 ? 行们 : undefined;
+}
+
+/**
+ * 叮嘱回执 → 既有展示气泡（不伪装 Agent Q/A：不带角色标签，按归属分列）。
+ */
+function 段内叮嘱对话(区: P5阶段区块视图, role: P5角色): 对话条[] {
+  return 区.叮嘱.flatMap((条) =>
+    条.expression === undefined || 条.expression.trim() === ''
+      ? []
+      : [{
+          编号: `aci:${条.instructionId}`,
+          方: 条.owner === role ? ('我方' as const) : ('对方' as const),
+          时间: 取短时间(条.occurredAt),
+          内容: 条.expression,
+        }],
+  );
 }
 
 /** RFC3339 → 「HH:mm」（UTC 定长截取，纯展示格式化，绝不参与状态判定）。 */
@@ -200,7 +224,9 @@ export function 从P5到详情分段(view: P5详情正常视图, currentStage: P
       核对清单: 区.清单.length > 0
         ? 区.清单.map((项) => ({ 项: 项.文本, 结果: 项.完成 ? ('通过' as const) : ('核对中' as const) }))
         : undefined,
-      对话: 段内对话(区, view.role),
+      Agent对话: 段内Agent对话(区, view.role),
+      系统消息: 段内系统消息(区),
+      对话: 段内叮嘱对话(区, view.role),
       // S0 候选总结原样适配进小结托盘（标签/内容由 mapper 给定）；招聘方自然得到空数组
       Agent总结: 区.Agent总结.length > 0
         ? 区.Agent总结.map((总) => ({ 编号: 总.id, 标签: 总.标签, 内容: 总.内容 }))

@@ -1,5 +1,5 @@
-// use后端详情控制 · 控制测试（契约 C，Task 9）：详情路由的读取/轮询/叮嘱/映射与稳定
-// 回答在飞表自 屏幕/P5/MatchCase详情 的路由实例原样搬入。覆盖：
+// use后端详情控制 · 控制测试（契约 C）：详情路由的读取/轮询/叮嘱/映射自
+// 屏幕/P5/MatchCase详情 的路由实例原样搬入。覆盖：
 //   · scope 登记/退出：进屏先 设置P5范围(detail) 再强制读（invocationCallOrder），
 //     卸载清回 null；
 //   · 返回联合：加载（无快照）/ 失败（detail null + error）/ 契约错误 各给
@@ -10,7 +10,7 @@
 //   · 终局：底栏只读（「当前在谈已结束，仅可查看」、无发送回调）+ 停 3 秒节拍；
 //     completed+pending 底栏同样只读、私聊键禁用但节拍继续；ready 只用合法
 //     conversation_ref 导航且节拍停；
-//   · 回答在飞表：父 hook 唯一持有，正常→失败→正常不重建（表身份稳定）。
+/** J-PILOT-01（Spec §7）：S0 底栏禁用（发送 null 零叮嘱请求），S1 起恢复叮嘱输入。 */
 // 夹具走真实 映射P5详情 / decoder 已接受的 DTO 形状（不给 P5 加字段造样本）。
 // 仓库未装 @testing-library/jest-dom，断言用调用计数与 toBe。
 
@@ -130,12 +130,54 @@ function 候选详情DTO(覆盖: { state?: P5列表项['state']; availableAction
   };
 }
 
-/** ended 终局（S0 ended、终局摘要齐备、零动作）。 */
-function 已终止详情DTO(): P5详情 {
+/** S1 open 行（resume_submission waiting）：非 S0 的叮嘱输入恢复既有口径（Spec §7）。 */
+function 候选S1详情DTO(选项: { caseId?: string } = {}): P5详情 {
+  const caseId = 选项.caseId ?? 'mc_direct';
+  return {
+    role: 'candidate',
+    context: { intentionId: 意向ID, job: 冻结职位 },
+    state: 状态({
+      caseId, stage: 'resume_submission', status: 'waiting', step: 'awaiting_resume_parse',
+      needsUser: false,
+    }),
+    needsAction: false,
+    availableActions: [],
+    stages: [
+      { ...阶段区组()[0]!, state: 'passed', summary: 'complete', transcript: [] },
+      { ...阶段区组()[1]!, state: 'active', occurredAt: '2026-08-29T01:30:00Z', summary: 'awaiting_resume_parse' },
+      ...阶段区组().slice(2),
+    ],
+    currentCoordination: null,
+    intentConfirmations: { candidate: '', recruiter: '' },
+    terminalSummary: null,
+    conversationRef: null,
+  };
+}
+
+/** S1 ended 终局（非 S0 终局：底栏维持既有只读条，Spec §7「其它阶段只读分支保持」）。 */
+function S1已终止详情DTO(): P5详情 {
+  const 底 = 候选S1详情DTO();
+  return {
+    ...底,
+    state: {
+      ...底.state,
+      lifecycle: 'ended', status: 'ended', step: 'complete', needsUser: false,
+      outcome: 'user_ended', outcomeCode: 'user_ended', finalizedAt: '2026-08-29T03:00:00Z',
+    },
+    availableActions: [],
+    terminalSummary: {
+      stage: 'resume_submission', outcome: 'user_ended', reasonSummary: 'user_ended',
+      finalizedAt: '2026-08-29T03:00:00Z',
+    },
+  };
+}
+
+/** ended 终局（S0 ended、零动作；outcome 可指定用于终局分行用例）。 */
+function 已终止详情DTO(outcome = 'user_ended'): P5详情 {
   return 候选详情DTO({
     state: 状态({
       lifecycle: 'ended', status: 'ended', step: 'complete', needsUser: false,
-      outcome: 'user_ended', outcomeCode: 'user_ended', finalizedAt: '2026-08-29T03:00:00Z',
+      outcome, outcomeCode: outcome, finalizedAt: '2026-08-29T03:00:00Z',
     }),
     availableActions: [],
   });
@@ -428,7 +470,6 @@ describe('use后端详情控制 · 正常资源与映射', () => {
     expect(资源.动作输入.role).toBe('candidate');
     expect(资源.动作输入.caseId).toBe('mc_direct');
     expect(资源.动作输入.视图).toEqual(映射P5详情(候选详情DTO()));
-    expect(资源.动作输入.回答在飞表).toBeTypeOf('object');
     expect(资源.PDF输入).toEqual({
       role: 'candidate', caseId: 'mc_direct', 读取: mock读取简历PDF,
     });
@@ -451,28 +492,11 @@ describe('use后端详情控制 · 正常资源与映射', () => {
     expect(mock读取连续详情).toHaveBeenLastCalledWith('mc_direct', true);
   });
 
-  it('回答在飞表父级唯一持有：正常→失败→正常不重建（表身份稳定）', () => {
-    置详情状态({ 快照: 详情快照({ detail: 候选详情DTO() }) });
-    const 视 = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
-    const 首表 = 取正常(视.result.current).动作输入.回答在飞表;
-    // 同一渲染内两次取值同一张表
-    expect(取正常(视.result.current).动作输入.回答在飞表).toBe(首表);
-    // 刷新失败（detail 变 null）→ 不可用；恢复正常 → 表仍是原来那张
-    置详情状态({
-      快照: 详情快照({ 阶段: '失败', detail: null, error: '服务暂时不可用，请稍后再试' }),
-    });
-    视.rerender();
-    expect(视.result.current.kind).toBe('不可用');
-    置详情状态({ 快照: 详情快照({ detail: 候选详情DTO() }) });
-    视.rerender();
-    expect(取正常(视.result.current).动作输入.回答在飞表).toBe(首表);
-    视.unmount();
-  });
 });
 
-describe('use后端详情控制 · Case 叮嘱', () => {
+describe('use后端详情控制 · Case 叮嘱（S1 起恢复输入）', () => {
   it('进行中单：底栏输入态；发送走真实 POST（role/caseId/trim 后原文），成功才清空', async () => {
-    置详情状态({ 快照: 详情快照({ detail: 候选详情DTO() }) });
+    置详情状态({ 快照: 详情快照({ detail: 候选S1详情DTO() }) });
     const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
     const 底栏 = 取正常(result.current).底栏;
     if (底栏.kind !== '输入') throw new Error('进行中单底栏应是输入态');
@@ -494,7 +518,7 @@ describe('use后端详情控制 · Case 叮嘱', () => {
     mock新增叮嘱.mockImplementation(async () => {
       throw new Error('网络错误');
     });
-    置详情状态({ 快照: 详情快照({ detail: 候选详情DTO() }) });
+    置详情状态({ 快照: 详情快照({ detail: 候选S1详情DTO() }) });
     const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
     const 底栏 = 取正常(result.current).底栏;
     if (底栏.kind !== '输入') throw new Error('unreachable');
@@ -512,7 +536,7 @@ describe('use后端详情控制 · Case 叮嘱', () => {
   it('空输入零请求；在飞期间重复发送单发（锁在控制层）', async () => {
     let 送达!: () => void;
     mock新增叮嘱.mockImplementation(() => new Promise<void>((解决) => { 送达 = 解决; }));
-    置详情状态({ 快照: 详情快照({ detail: 候选详情DTO() }) });
+    置详情状态({ 快照: 详情快照({ detail: 候选S1详情DTO() }) });
     const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
     const 空底栏 = 取正常(result.current).底栏;
     if (空底栏.kind !== '输入') throw new Error('unreachable');
@@ -547,7 +571,7 @@ function 取输入栏(结果: 后端详情控制结果): { 值: string; 改变: 
 
 describe('use后端详情控制 · 叮嘱 scope 栅栏', () => {
   it('换单清草稿零误发：A 的草稿不带到 B，B 发送只带 B 的 case_id', async () => {
-    置详情状态({ caseId: 'mc_a', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }) });
+    置详情状态({ caseId: 'mc_a', 快照: 详情快照({ detail: 候选S1详情DTO({ caseId: 'mc_a' }) }) });
     const 视 = renderHook(
       ({ role, caseId }) => use后端详情控制({ role, caseId }),
       { initialProps: { role: 'candidate' as P5角色, caseId: 'mc_a' } },
@@ -555,7 +579,7 @@ describe('use后端详情控制 · 叮嘱 scope 栅栏', () => {
     act(() => 取输入栏(视.result.current).改变('A 单的草稿'));
     expect(取输入栏(视.result.current).值).toBe('A 单的草稿');
 
-    置详情状态({ caseId: 'mc_b', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }) });
+    置详情状态({ caseId: 'mc_b', 快照: 详情快照({ detail: 候选S1详情DTO({ caseId: 'mc_b' }) }) });
     await act(async () => {
       视.rerender({ role: 'candidate', caseId: 'mc_b' });
     });
@@ -570,7 +594,7 @@ describe('use后端详情控制 · 叮嘱 scope 栅栏', () => {
   it('A 在飞迟到落定不清 B 的草稿：清空/收口都过代际栅栏，B 照常可发（锁不被旧单卡死）', async () => {
     const 门 = 可控Promise<void>();
     mock新增叮嘱.mockImplementationOnce(() => 门.promise);
-    置详情状态({ caseId: 'mc_a', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }) });
+    置详情状态({ caseId: 'mc_a', 快照: 详情快照({ detail: 候选S1详情DTO({ caseId: 'mc_a' }) }) });
     const 视 = renderHook(
       ({ role, caseId }) => use后端详情控制({ role, caseId }),
       { initialProps: { role: 'candidate' as P5角色, caseId: 'mc_a' } },
@@ -579,7 +603,7 @@ describe('use后端详情控制 · 叮嘱 scope 栅栏', () => {
     act(() => 取输入栏(视.result.current).发送!());
     expect(mock新增叮嘱).toHaveBeenCalledWith('candidate', 'mc_a', 'A 单在飞的草稿');
 
-    置详情状态({ caseId: 'mc_b', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }) });
+    置详情状态({ caseId: 'mc_b', 快照: 详情快照({ detail: 候选S1详情DTO({ caseId: 'mc_b' }) }) });
     await act(async () => {
       视.rerender({ role: 'candidate', caseId: 'mc_b' });
     });
@@ -596,7 +620,7 @@ describe('use后端详情控制 · 叮嘱 scope 栅栏', () => {
   });
 
   it('同一 URL 主体换代同样清草稿（scope 含 主体.subject_id，key 重挂载之外父 hook 也重置）', async () => {
-    置详情状态({ 快照: 详情快照({ detail: 候选详情DTO() }) });
+    置详情状态({ 快照: 详情快照({ detail: 候选S1详情DTO() }) });
     const 视 = renderHook(
       ({ role, caseId }) => use后端详情控制({ role, caseId }),
       { initialProps: { role: 'candidate' as P5角色, caseId: 'mc_direct' } },
@@ -612,7 +636,7 @@ describe('use后端详情控制 · 叮嘱 scope 栅栏', () => {
         // 换主体后旧快照属主不匹配（隐私栅栏）：新主体自己的聚合读已落位才回到正常联合
         P5连续详情: {
           [P5范围键.negotiation('mc_direct')]: 连续详情快照({
-            聚合: 连续详情DTO({ caseDetail: 候选详情DTO() }), ownerSubjectId: 'sub_2',
+            聚合: 连续详情DTO({ caseDetail: 候选S1详情DTO() }), ownerSubjectId: 'sub_2',
           }),
         },
       },
@@ -625,61 +649,18 @@ describe('use后端详情控制 · 叮嘱 scope 栅栏', () => {
   });
 });
 
-// ── 回答在飞锁表按主体换代（review-r2 F-r2-1）：父 hook 常驻路由实例，主体换代时
-//    整表替换（RefObject 不变）；换单/同主体重渲不换表（回原单续锁语义保持）。──
-
-describe('use后端详情控制 · 回答在飞表按主体换代', () => {
-  it('主体换代整表替换：RefObject 不变、新表干净；换单与同主体重渲仍同一张表', async () => {
-    置详情状态({ caseId: 'mc_a', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_a' }) }) }) });
-    const 视 = renderHook(
-      ({ role, caseId }) => use后端详情控制({ role, caseId }),
-      { initialProps: { role: 'candidate' as P5角色, caseId: 'mc_a' } },
-    );
-    const 表引用 = 取正常(视.result.current).动作输入.回答在飞表;
-    表引用.current.set('mc_a', Promise.resolve());
-    const 首表 = 表引用.current;
-
-    // 换单：同一张表（回原单续锁语义不变）
-    置详情状态({ caseId: 'mc_b', 快照: 详情快照({ detail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }) });
-    await act(async () => {
-      视.rerender({ role: 'candidate', caseId: 'mc_b' });
-    });
-    expect(取正常(视.result.current).动作输入.回答在飞表).toBe(表引用);
-    expect(表引用.current).toBe(首表);
-
-    // 同一 URL 同一单，主体换代（切换账号）：.current 换成全新空表
-    mock应用状态 = {
-      ...mock应用状态,
-      后端状态: {
-        ...mock应用状态.后端状态,
-        主体: { ...mock应用状态.后端状态.主体, subject_id: 'sub_2' },
-        // 新主体自己的聚合快照已落位（旧属主快照被隐私栅栏挡下，不冒充资源）
-        P5连续详情: {
-          [P5范围键.negotiation('mc_b')]: 连续详情快照({
-            聚合: 连续详情DTO({ caseDetail: 候选详情DTO({ state: 状态({ caseId: 'mc_b' }) }) }),
-            ownerSubjectId: 'sub_2',
-          }),
-        },
-      },
-    };
-    await act(async () => {
-      视.rerender({ role: 'candidate', caseId: 'mc_b' });
-    });
-    expect(取正常(视.result.current).动作输入.回答在飞表).toBe(表引用); // RefObject 不变（契约 C）
-    expect(表引用.current).not.toBe(首表); // 表实例换代：新主体不继承旧账号的在飞锁
-    expect(表引用.current.size).toBe(0);
-    视.unmount();
-  });
-});
-
 describe('use后端详情控制 · 终局与移交', () => {
-  it('ended 终局：底栏只读且无发送回调、终局摘要齐备、3 秒节拍停', async () => {
+  it('S0 其它终局：底栏保留原控件但禁用（占位「本次代谈已结束」、发送 null），摘要与节拍停照旧', async () => {
     vi.useFakeTimers();
     置详情状态({ 快照: 详情快照({ detail: 已终止带摘要DTO() }) });
     const 视 = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
     const 资源 = 取正常(视.result.current);
-    expect(资源.底栏).toEqual({ kind: '只读', 说明: '当前在谈已结束，仅可查看' });
-    // 摘要三字段：结束语/原因是 wire 原词，定格于是 mapper 的本地展示值（非 RFC3339）
+    // J-PILOT-01（Spec §7）：S0 终局底栏禁用（占位随终局成对产出），原因在现有结果区显示
+    expect(资源.底栏).toEqual({
+      kind: '输入', 占位: '本次代谈已结束', 值: '', 改变: expect.any(Function),
+      发送: null, 禁用说明: '本次代谈已结束',
+    });
+    // 摘要三字段：定格于是 mapper 的本地展示值（非 RFC3339）；user_ended 沿用 wire 原词
     expect(资源.终局.摘要?.结束语).toBe('user_ended');
     expect(资源.终局.摘要?.原因).toBe('user_ended');
     expect(资源.终局.摘要?.定格于).toBeTruthy();
@@ -688,6 +669,25 @@ describe('use后端详情控制 · 终局与移交', () => {
     expect(mock读取连续详情).toHaveBeenCalledTimes(1);
     await act(() => vi.advanceTimersByTimeAsync(7000));
     expect(mock读取连续详情).toHaveBeenCalledTimes(1); // 终局停轮询（§10.3）
+    视.unmount();
+  });
+
+  it('S0 信息不足终局：占位「信息不足，未能确认条件」且 semantic_uncertain_stop 原始码不露', async () => {
+    置详情状态({ 快照: 详情快照({ detail: 已终止详情DTO('semantic_uncertain_stop') }) });
+    const 视 = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
+    const 资源 = 取正常(视.result.current);
+    if (资源.底栏.kind !== '输入') throw new Error('unreachable');
+    expect(资源.底栏.占位).toBe('信息不足，未能确认条件');
+    expect(资源.底栏.禁用说明).toBe('信息不足，未能确认条件');
+    expect(资源.底栏.发送).toBeNull();
+    expect(JSON.stringify(资源.终局.摘要)).not.toContain('semantic_uncertain_stop'); // 成对映射
+    视.unmount();
+  });
+
+  it('非 S0 终局维持既有只读条：底栏「当前在谈已结束，仅可查看」', async () => {
+    置详情状态({ 快照: 详情快照({ detail: S1已终止详情DTO() }) });
+    const 视 = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
+    expect(取正常(视.result.current).底栏).toEqual({ kind: '只读', 说明: '当前在谈已结束，仅可查看' });
     视.unmount();
   });
 
