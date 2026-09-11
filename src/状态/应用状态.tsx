@@ -552,11 +552,15 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const P4幂等意图 = useRef(new Map<string, string>());
   const P4可见范围 = useRef<Record<BFF角色, string | null>>({ candidate: null, recruiter: null });
   // P5 Task 3：MatchCase 运行时引用 —— scope 代际 / pending 幂等意图 / 双端可见范围 /
-  // 在途 PDF 对象租约。一次性初始化；会话转移由下方主体基串 effect 统一复位。
+  // 在途 PDF 对象租约 / alias→canonical 对照（J-PILOT-01 Task 2）。一次性初始化；
+  // 会话转移由下方主体基串 effect 统一复位。
   const P5范围代际 = useRef(new Map<string, number>());
   const P5幂等意图 = useRef(new Map<string, string>());
   const P5可见范围 = useRef<Record<P5角色, string | null>>({ candidate: null, recruiter: null });
   const P5对象租约 = useRef(new Set<PDF对象租约>());
+  // J-PILOT-01 Task 2：旧 Case 深链等 alias 坐标 → canonical record_id 的短命对照，
+  // 只在当前主体内存中存在并随 清P5MatchCase引用 一并清空，绝不进任何持久化。
+  const P5别名对照 = useRef(new Map<string, string>());
   // P7 Task 2：真人会话运行时引用 —— scope 代际 / 待定发送意图 / 双端可见收件箱与
   // 可见会话 / 已读位置。一次性初始化；会话转移由下方主体基串 effect 统一复位。
   const P7范围代际 = useRef(new Map<string, number>());
@@ -868,6 +872,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         P5幂等意图,
         P5可见范围,
         P5对象租约,
+        P5别名对照,
         P7范围代际,
         P7待定意图,
         P7可见收件箱,

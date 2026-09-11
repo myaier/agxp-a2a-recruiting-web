@@ -20,6 +20,11 @@ import { BFF错误 } from '../../数据/HTTP客户端';
 import { BFF主体样本, P5候选详情Wire, P5招聘详情Wire, 招聘候选摘要样本 } from '../../测试/BFF样本';
 import type { BFFS0筛选记录 } from '../../数据/BFF契约';
 import { S0候选完整记录Wire, S0招聘完整记录Wire, S0仅问题记录Wire } from '../../测试/S0筛选记录样本';
+import type {
+  NegotiationCard,
+  NegotiationDetail,
+  NegotiationPage,
+} from '../../数据/招聘数据源/连续代谈';
 import { 初始状态 } from '../初始状态';
 import type { 动作 } from '../应用状态';
 import {
@@ -158,6 +163,62 @@ const PDF响应: BFF二进制响应 = {
   requestId: 'fixture',
 };
 
+// ── J-PILOT-01 Task 2：连续代谈 DTO 样本（facade 边界已 decode 的 Card/Detail/Page）──
+
+const 连续记录A = 'dlg_0123456789abcdef0123456789abcdef';
+const 连续记录B = 'dlg_0123456789abcdef0123456789abcdeff';
+const 连续记录C = 'dlg_0123456789abcdef0123456789abcdefff';
+/** 旧 Case 深链坐标（mc_ 形）：作为 alias 输入，后端归一返回 canonical dlg 记录。 */
+const 连续Case坐标 = 'mc_0123456789abcdef0123456789abcdef';
+
+function 连续卡(recordId: string, 覆盖: Partial<NegotiationCard> = {}): NegotiationCard {
+  return {
+    needs_action: true,
+    record_id: recordId,
+    record_kind: recordId.startsWith('dlg_') ? 'delegation' : 'case',
+    intention_id: 意向ID,
+    job: {
+      job_id: 职位ID,
+      title: 'AI 产品实习生',
+      location: '上海',
+      public_salary_range: '300-500 元/天',
+      availability: 'available',
+    },
+    delegation_id: recordId.startsWith('dlg_') ? recordId : null,
+    evaluation_id: null,
+    case_id: recordId.startsWith('mc_') ? recordId : null,
+    shelf: 'active',
+    phase: 'case_started',
+    case_state: null,
+    failure: null,
+    refusal_code: null,
+    actions: { retry: false, archive: false, open_case: false },
+    retry_generation: 0,
+    created_at: '2026-08-29T01:00:00Z',
+    updated_at: '2026-08-29T02:00:00Z',
+    archived_at: null,
+    ...覆盖,
+  };
+}
+
+function 连续页(items: NegotiationCard[], next_cursor: string | null): NegotiationPage {
+  return { items, next_cursor };
+}
+
+/** 聚合详情样本：canonical record_id + 可空 case_detail（null = pre-Case / retention 封闭）。 */
+function 连续聚合(
+  recordId: string, case_detail: P5详情 | null, 覆盖: Partial<NegotiationDetail> = {},
+): NegotiationDetail {
+  return {
+    ...连续卡(recordId),
+    evaluation: null,
+    case_detail,
+    failure_history: [],
+    agent_summary: { public_evaluation: null, condition_confirmation: null },
+    ...覆盖,
+  };
+}
+
 /** 本文件内的数据源桩：桩 P5 facade 全部方法 + 清空目录缓存，默认全成功，逐测试覆盖替换。 */
 function 创建P5数据源(覆盖: Record<string, unknown> = {}): HTTP招聘数据源 {
   return {
@@ -173,6 +234,11 @@ function 创建P5数据源(覆盖: Record<string, unknown> = {}): HTTP招聘数�
     决定P5S3: vi.fn(async (): Promise<void> => undefined),
     新增P5叮嘱: vi.fn(async (): Promise<void> => undefined),
     读取P5简历PDF: vi.fn(async (): Promise<BFF二进制响应> => PDF响应),
+    // J-PILOT-01 Task 2：连续代谈 facade（默认空页成功；详情默认把输入坐标当 canonical
+    // 并带权威候选 case_detail —— 既有命令流在候选端整体改走聚合读，桩须能承载它们）
+    读取候选连续列表: vi.fn(async (): Promise<NegotiationPage> => 连续页([], null)),
+    读取候选连续详情: vi.fn(async (recordId: string): Promise<NegotiationDetail> =>
+      连续聚合(recordId, 权威候选详情)),
     清空目录缓存: vi.fn(),
     ...覆盖,
   } as unknown as HTTP招聘数据源;
@@ -246,6 +312,7 @@ function 创建P5操作测试环境(是后端 = true, 源 = 创建P5数据源())
     P5幂等意图: { current: new Map<string, string>() },
     P5可见范围: { current: { candidate: null, recruiter: null } },
     P5对象租约: { current: new Set() },
+    P5别名对照: { current: new Map<string, string>() },
   };
   return {
     数据源: 源,
@@ -289,12 +356,18 @@ describe('P5范围键 与 设置P5范围', () => {
     expect(P5范围键.detail('candidate', 'mc_1')).toBe('p5:detail:candidate:mc_1');
     expect(P5范围键.summary('candidate')).toBe('p5:summary:candidate');
     expect(P5范围键.summary('recruiter')).toBe('p5:summary:recruiter');
+    // J-PILOT-01 Task 2：连续集合范围键保留 candidate 角色标识（negotiation 是候选专属资源）
+    expect(P5范围键.negotiations('active')).toBe('p5:negotiations:candidate:active');
+    expect(P5范围键.negotiations('history')).toBe('p5:negotiations:candidate:history');
+    expect(P5范围键.negotiation('mc_1')).toBe('p5:negotiation:candidate:mc_1');
   });
 
   it('含分隔符的 id 逐段转义，绝不撞键', () => {
     expect(P5范围键.open('candidate', 'a:b')).not.toBe(P5范围键.open('candidate', 'a') + ':b');
     expect(P5范围键.detail('candidate', 'a:b')).not.toBe(P5范围键.detail('candidate', 'a') + ':b');
     expect(P5范围键.open('candidate', 'a:b')).not.toBe(P5范围键.open('candidate', 'ab'));
+    expect(P5范围键.negotiation('dlg_a:b')).not.toBe(P5范围键.negotiation('dlg_a') + ':b');
+    expect(P5范围键.negotiation('dlg_a:b')).not.toBe(P5范围键.negotiation('dlg_ab'));
   });
 
   it('设置P5范围 只更新指名角色；换键/清键递增代际；同键重复注册不递增', () => {
@@ -475,9 +548,10 @@ describe('历史架子', () => {
 
 describe('详情读取', () => {
   it('直读详情不依赖任何列表记忆：仅 URL case_id + 已认证角色', async () => {
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(权威候选详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 权威候选详情));
     await env.操作.读取详情('candidate', 'mc_1');
-    expect(env.数据源.读取P5详情).toHaveBeenCalledWith('candidate', 'mc_1');
+    expect(env.数据源.读取候选连续详情).toHaveBeenCalledWith('mc_1');
+    expect(env.数据源.读取P5详情).not.toHaveBeenCalled(); // 候选端不再并行第二个 Case GET
     expect(env.数据源.读取P5Open列表).not.toHaveBeenCalled();
     expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']).toEqual({
       阶段: '成功', 刷新中: false, detail: 权威候选详情, error: null, generation: 0,
@@ -485,18 +559,18 @@ describe('详情读取', () => {
   });
 
   it('非 force 命中成功快照不重发；force 恒权威重读', async () => {
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(权威候选详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 权威候选详情));
     await env.操作.读取详情('candidate', 'mc_1');
     await env.操作.读取详情('candidate', 'mc_1');
-    expect(vi.mocked(env.数据源.读取P5详情)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(env.数据源.读取候选连续详情)).toHaveBeenCalledTimes(1);
     await env.操作.读取详情('candidate', 'mc_1', true);
-    expect(vi.mocked(env.数据源.读取P5详情)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(env.数据源.读取候选连续详情)).toHaveBeenCalledTimes(2);
   });
 
   it('详情失败落 失败快照（契约错误走重试错误态），旧成功 detail 保留不闪退', async () => {
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(权威候选详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 权威候选详情));
     await env.操作.读取详情('candidate', 'mc_1');
-    vi.mocked(env.数据源.读取P5详情)
+    vi.mocked(env.数据源.读取候选连续详情)
       .mockRejectedValueOnce(new BFF错误(200, 'invalid_response', '契约漂移'));
     await env.操作.读取详情('candidate', 'mc_1', true);
     const 快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
@@ -521,9 +595,9 @@ describe('详情读取', () => {
     const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
     expect(仅问题.state.updatedAt).toBe(有回答.state.updatedAt);
     expect(仅问题.state.round).toBe(有回答.state.round);
-    vi.mocked(env.数据源.读取P5详情)
-      .mockResolvedValueOnce(仅问题)
-      .mockResolvedValueOnce(有回答);
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(连续聚合('mc_1', 仅问题))
+      .mockResolvedValueOnce(连续聚合('mc_1', 有回答));
     await env.操作.读取详情('candidate', 'mc_1', true);
     await env.操作.读取详情('candidate', 'mc_1', true);
     const 快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
@@ -537,29 +611,29 @@ describe('详情读取', () => {
   it('mutation 后的权威重读整包替换 records；迟到的旧轮询读不能把旧 records 写回', async () => {
     const 仅问题 = 解P5详情(带S0记录Wire(S0仅问题记录Wire), 'candidate');
     const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire, { updated_at: '2026-08-29T03:00:00Z' }), 'candidate');
-    const 旧读门 = deferred<P5详情>();
-    vi.mocked(env.数据源.读取P5详情)
+    const 旧读门 = deferred<NegotiationDetail>();
+    vi.mocked(env.数据源.读取候选连续详情)
       .mockReturnValueOnce(旧读门.promise) // 轮询读 A：在飞，服务端尚未应用 mutation
-      .mockResolvedValueOnce(有回答); // mutation 成功后的权威重读
+      .mockResolvedValueOnce(连续聚合('mc_1', 有回答)); // mutation 成功后的权威重读
     vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
     void env.操作.读取详情('candidate', 'mc_1');
     await env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
     expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toBe(有回答);
-    旧读门.resolve(仅问题); // A 迟到返回旧 records：整包丢弃
+    旧读门.resolve(连续聚合('mc_1', 仅问题)); // A 迟到返回旧 records：整包丢弃
     await new Promise((完成) => setTimeout(完成, 0));
     expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toBe(有回答);
   });
 
   it('同 scope 的网络／500／503 刷新失败只读保留旧 records，落重试错误', async () => {
     const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(有回答);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 有回答));
     await env.操作.读取详情('candidate', 'mc_1');
     for (const 错误 of [
       new BFF错误(0, 'network_error', '网络中断'),
       new BFF错误(500, 'server_error', '服务错误'),
       new BFF错误(503, 'downstream_unavailable', '下游不可用'),
     ]) {
-      vi.mocked(env.数据源.读取P5详情).mockRejectedValueOnce(错误);
+      vi.mocked(env.数据源.读取候选连续详情).mockRejectedValueOnce(错误);
       await env.操作.读取详情('candidate', 'mc_1', true);
       const 快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
       expect(快照?.detail).toBe(有回答); // 旧只读 records 保留，不闪退
@@ -570,9 +644,9 @@ describe('详情读取', () => {
 
   it('详情 404 是隐私清理例外：detail 清空为 null 且可重试，旧 records 不再展示', async () => {
     const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(有回答);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 有回答));
     await env.操作.读取详情('candidate', 'mc_1');
-    vi.mocked(env.数据源.读取P5详情)
+    vi.mocked(env.数据源.读取候选连续详情)
       .mockRejectedValueOnce(new BFF错误(404, 'case_not_found', 'Case 不可见'));
     await env.操作.读取详情('candidate', 'mc_1', true);
     const 快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
@@ -580,17 +654,17 @@ describe('详情读取', () => {
     expect(快照?.error).not.toBeNull();
     // 失败快照不再命中成功短路：下一次读取真实 GET 并恢复
     const 仅问题 = 解P5详情(带S0记录Wire(S0仅问题记录Wire), 'candidate');
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(仅问题);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 仅问题));
     await env.操作.读取详情('candidate', 'mc_1');
     expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toBe(仅问题);
   });
 
   it('mutation 成功后的权威重读 404：清掉旧 detail，mutation 仍 resolve', async () => {
     const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(有回答);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 有回答));
     await env.操作.读取详情('candidate', 'mc_1');
     vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
-    vi.mocked(env.数据源.读取P5详情)
+    vi.mocked(env.数据源.读取候选连续详情)
       .mockRejectedValue(new BFF错误(404, 'case_not_found', 'Case 不可见'));
     await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天')).resolves.toBeUndefined();
     const 快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
@@ -601,8 +675,8 @@ describe('详情读取', () => {
 
   it('401 清理后旧 records 绝不残留（换主体／换会话都看不到）', async () => {
     const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
-    vi.mocked(env.数据源.读取P5详情)
-      .mockResolvedValueOnce(有回答)
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(连续聚合('mc_1', 有回答))
       .mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
     await env.操作.读取详情('candidate', 'mc_1');
     expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail?.stages[0].screeningRecords?.messages)
@@ -610,11 +684,12 @@ describe('详情读取', () => {
     await env.操作.读取详情('candidate', 'mc_1', true); // 401：统一清理
     expect(env.最新状态().已登录).toBe(false);
     expect(env.最新状态().P5详情).toEqual({});
+    expect(env.最新状态().P5连续详情).toEqual({});
   });
 
   it('records 不跨 role 存在：recruiter 详情 scope 只见自己的展开块（恒无小结）', async () => {
     const 候选有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(候选有回答);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 候选有回答));
     await env.操作.读取详情('candidate', 'mc_1');
     设主体角色(招聘主体);
     const 招聘同批 = 解P5详情(招聘带S0记录Wire(S0招聘完整记录Wire), 'recruiter');
@@ -628,7 +703,376 @@ describe('详情读取', () => {
   });
 });
 
+// ── J-PILOT-01 Task 2：连续列表读取 —— 复用 P5 读锁与代际，canonical 去重/upsert ──
+
+describe('连续列表读取', () => {
+  it('首载替换首屏：起步进行中，成功原子提交 items/nextCursor/已加载页数/ownerSubjectId', async () => {
+    const 门 = deferred<NegotiationPage>();
+    vi.mocked(env.数据源.读取候选连续列表).mockReturnValueOnce(门.promise);
+    const 运行 = env.操作.加载连续列表('active');
+    expect(env.最新状态().P5连续列表['p5:negotiations:candidate:active']).toEqual({
+      ownerSubjectId: 'sub_1', 阶段: '进行中', 刷新中: true,
+      items: [], nextCursor: null, 已加载页数: 0, error: null, generation: 0,
+    });
+    门.resolve(连续页([连续卡(连续记录A)], 'cur_2'));
+    await 运行;
+    expect(env.数据源.读取候选连续列表).toHaveBeenCalledWith('active', null);
+    expect(env.最新状态().P5连续列表['p5:negotiations:candidate:active']).toEqual({
+      阶段: '成功', 刷新中: false, items: [连续卡(连续记录A)], nextCursor: 'cur_2',
+      已加载页数: 1, error: null, generation: 0, ownerSubjectId: 'sub_1',
+    });
+  });
+
+  it('非 force 命中同主体成功快照零请求；force 手动刷新丢旧 cursor 只重读首屏', async () => {
+    vi.mocked(env.数据源.读取候选连续列表)
+      .mockResolvedValueOnce(连续页([连续卡(连续记录A)], 'cur_2'))
+      .mockResolvedValueOnce(连续页([连续卡(连续记录B)], null))
+      .mockResolvedValueOnce(连续页([连续卡(连续记录B)], null));
+    await env.操作.加载连续列表('active');
+    await env.操作.追加连续列表('active'); // 已载两页
+    expect(env.最新状态().P5连续列表['p5:negotiations:candidate:active'])
+      .toMatchObject({ 已加载页数: 2, nextCursor: null });
+    await env.操作.加载连续列表('active'); // 非 force：命中成功快照
+    expect(vi.mocked(env.数据源.读取候选连续列表)).toHaveBeenCalledTimes(2);
+    await env.操作.加载连续列表('active', true); // force：丢旧 cursor 只重读首屏
+    expect(vi.mocked(env.数据源.读取候选连续列表)).toHaveBeenLastCalledWith('active', null);
+    expect(vi.mocked(env.数据源.读取候选连续列表)).toHaveBeenCalledTimes(3);
+    expect(env.最新状态().P5连续列表['p5:negotiations:candidate:active']).toMatchObject({
+      阶段: '成功', items: [连续卡(连续记录B)], 已加载页数: 1, nextCursor: null,
+    });
+  });
+
+  it('追加：下一页 canonical 去重/upsert（跨页移动的记录只留一份、内容取最新）；游标已尽零请求', async () => {
+    vi.mocked(env.数据源.读取候选连续列表)
+      .mockResolvedValueOnce(连续页([连续卡(连续记录A), 连续卡(连续记录B)], 'cur_2'))
+      .mockResolvedValueOnce(连续页([
+        // 记录 A 跨页移动到第二页且内容已更新：绝不出第二份，旧位置内容被替换
+        连续卡(连续记录A, { phase: 'evaluation_failed', updated_at: '2026-08-29T03:00:00Z' }),
+        连续卡(连续记录C),
+      ], null));
+    await env.操作.加载连续列表('active');
+    await env.操作.追加连续列表('active');
+    expect(vi.mocked(env.数据源.读取候选连续列表)).toHaveBeenLastCalledWith('active', 'cur_2');
+    const 快照 = env.最新状态().P5连续列表['p5:negotiations:candidate:active'];
+    expect(快照?.items.map((卡) => 卡.record_id)).toEqual([连续记录A, 连续记录B, 连续记录C]);
+    expect(快照?.items[0]).toMatchObject({
+      phase: 'evaluation_failed', updated_at: '2026-08-29T03:00:00Z',
+    });
+    expect(快照).toMatchObject({ 已加载页数: 2, nextCursor: null });
+    const 调用数 = vi.mocked(env.数据源.读取候选连续列表).mock.calls.length;
+    await env.操作.追加连续列表('active'); // 游标已尽：零请求
+    expect(vi.mocked(env.数据源.读取候选连续列表).mock.calls.length).toBe(调用数);
+  });
+
+  it('刷新连续列表从首屏新 cursor 顺序重建已载页数后一次替换：不重用旧页 cursor、不降成只读首屏', async () => {
+    vi.mocked(env.数据源.读取候选连续列表)
+      .mockResolvedValueOnce(连续页([连续卡(连续记录A)], 'cur_旧2'))
+      .mockResolvedValueOnce(连续页([连续卡(连续记录B)], 'cur_旧3'))
+      .mockResolvedValueOnce(连续页([连续卡(连续记录A)], 'cur_新2')) // 刷新第 1 页
+      .mockResolvedValueOnce(连续页([连续卡(连续记录C)], 'cur_新3')); // 刷新第 2 页
+    await env.操作.加载连续列表('active');
+    await env.操作.追加连续列表('active');
+    const 设状态数 = (env.deps.设后端状态 as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
+    await env.操作.刷新连续列表('active');
+    // 从第一页起，只跟进刷新返回的新游标 —— 绝不重用旧页 cursor，绝不只读首屏
+    expect(vi.mocked(env.数据源.读取候选连续列表).mock.calls.slice(2).map((调用) => 调用[1]))
+      .toEqual([null, 'cur_新2']);
+    const 快照 = env.最新状态().P5连续列表['p5:negotiations:candidate:active'];
+    expect(快照?.items.map((卡) => 卡.record_id)).toEqual([连续记录A, 连续记录C]);
+    expect(快照).toMatchObject({ 阶段: '成功', 已加载页数: 2, nextCursor: 'cur_新3' });
+    const 新设状态数 = (env.deps.设后端状态 as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
+    expect(新设状态数 - 设状态数).toBe(2); // 起步 + 唯一一次原子提交
+  });
+
+  it('旧 cursor 400：清 cursor 重读首屏恰恢复一次，恢复成功后窗口从新 cursor 继续', async () => {
+    vi.mocked(env.数据源.读取候选连续列表)
+      .mockResolvedValueOnce(连续页([连续卡(连续记录A)], 'cur_旧'));
+    await env.操作.加载连续列表('active');
+    vi.mocked(env.数据源.读取候选连续列表)
+      .mockRejectedValueOnce(new BFF错误(400, 'invalid_cursor', '游标已失效'))
+      .mockResolvedValueOnce(连续页([连续卡(连续记录A), 连续卡(连续记录B)], 'cur_新'));
+    await env.操作.追加连续列表('active');
+    expect(vi.mocked(env.数据源.读取候选连续列表).mock.calls.map((调用) => 调用[1]))
+      .toEqual([null, 'cur_旧', null]); // 恰一次恢复：旧 cursor 400 后从首屏重读
+    expect(env.最新状态().P5连续列表['p5:negotiations:candidate:active']).toMatchObject({
+      阶段: '成功', items: [连续卡(连续记录A), 连续卡(连续记录B)], nextCursor: 'cur_新', error: null,
+    });
+  });
+
+  it('恢复失败（首屏再 400）显式收口：不发起第二次恢复，旧 items 保留只读、旧 cursor 作废', async () => {
+    vi.mocked(env.数据源.读取候选连续列表)
+      .mockResolvedValueOnce(连续页([连续卡(连续记录A)], 'cur_旧'));
+    await env.操作.加载连续列表('active');
+    vi.mocked(env.数据源.读取候选连续列表)
+      .mockRejectedValueOnce(new BFF错误(400, 'invalid_cursor', '游标已失效'))
+      .mockRejectedValueOnce(new BFF错误(400, 'invalid_cursor', '游标已失效'));
+    await env.操作.追加连续列表('active');
+    expect(vi.mocked(env.数据源.读取候选连续列表)).toHaveBeenCalledTimes(3); // 首载 + 旧 cursor + 恰一次首屏恢复
+    const 快照 = env.最新状态().P5连续列表['p5:negotiations:candidate:active'];
+    expect(快照?.items).toEqual([连续卡(连续记录A)]); // 只读保留，不闪退
+    expect(快照?.error).not.toBeNull();
+    expect(快照?.nextCursor).toBeNull(); // 旧 cursor 已作废：下一次 追加 零请求
+    const 调用数 = vi.mocked(env.数据源.读取候选连续列表).mock.calls.length;
+    await env.操作.追加连续列表('active');
+    expect(vi.mocked(env.数据源.读取候选连续列表).mock.calls.length).toBe(调用数);
+  });
+
+  it('首屏其他 400 显式失败，不做游标恢复', async () => {
+    vi.mocked(env.数据源.读取候选连续列表)
+      .mockRejectedValueOnce(new BFF错误(400, 'invalid_request', '坏请求'));
+    await env.操作.加载连续列表('active');
+    expect(vi.mocked(env.数据源.读取候选连续列表)).toHaveBeenCalledTimes(1);
+    const 快照 = env.最新状态().P5连续列表['p5:negotiations:candidate:active'];
+    expect(快照).toMatchObject({ 阶段: '失败', items: [] });
+    expect(快照?.error).not.toBeNull();
+  });
+
+  it('普通失败（网络/503/坏合同）保留同主体只读旧快照，只落重试错误', async () => {
+    vi.mocked(env.数据源.读取候选连续列表)
+      .mockResolvedValueOnce(连续页([连续卡(连续记录A)], null));
+    await env.操作.加载连续列表('active');
+    for (const 错误 of [
+      new BFF错误(0, 'network_error', '网络中断'),
+      new BFF错误(503, 'downstream_unavailable', '下游不可用'),
+      new BFF错误(200, 'invalid_response', '契约漂移'),
+    ]) {
+      vi.mocked(env.数据源.读取候选连续列表).mockRejectedValueOnce(错误);
+      await env.操作.刷新连续列表('active');
+      const 快照 = env.最新状态().P5连续列表['p5:negotiations:candidate:active'];
+      expect(快照).toMatchObject({ 阶段: '成功', items: [连续卡(连续记录A)], 刷新中: false });
+      expect(快照?.error).not.toBeNull();
+    }
+  });
+
+  it('同 shelf 换主体：追加 owner 不匹配零请求；加载不复用旧主体快照', async () => {
+    vi.mocked(env.数据源.读取候选连续列表)
+      .mockResolvedValueOnce(连续页([连续卡(连续记录A)], 'cur_旧'))
+      .mockResolvedValueOnce(连续页([连续卡(连续记录B)], null));
+    await env.操作.加载连续列表('active');
+    env.deps.主体标识引用.current = 'sub_2';
+    env.deps.会话代际.current += 1;
+    env.deps.后端状态引用.current = {
+      ...env.deps.后端状态引用.current,
+      主体: { ...候选主体, subject_id: 'sub_2' },
+    };
+    const 调用数 = vi.mocked(env.数据源.读取候选连续列表).mock.calls.length;
+    await env.操作.追加连续列表('active'); // owner 不匹配：绝不拼接旧主体窗口
+    expect(vi.mocked(env.数据源.读取候选连续列表).mock.calls.length).toBe(调用数);
+    await env.操作.加载连续列表('active'); // 非 force 也必须重读：旧主体快照按不存在处理
+    expect(env.最新状态().P5连续列表['p5:negotiations:candidate:active']).toMatchObject({
+      ownerSubjectId: 'sub_2', 阶段: '成功', items: [连续卡(连续记录B)],
+    });
+  });
+
+  it('切主体后的迟到 401 只释放锁，不登出新主体', async () => {
+    const 门 = deferred<NegotiationPage>();
+    vi.mocked(env.数据源.读取候选连续列表).mockReturnValueOnce(门.promise);
+    const 运行 = env.操作.加载连续列表('active');
+    env.deps.主体标识引用.current = 'sub_2';
+    env.deps.会话代际.current += 1;
+    门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await 运行;
+    expect(env.deps.主体标识引用.current).toBe('sub_2');
+    expect(env.最新状态().已登录).toBe(true);
+    expect(env.数据源.清空目录缓存).not.toHaveBeenCalled();
+  });
+
+  it('当前主体 401：统一清账号并摊平连续快照与 alias 对照', async () => {
+    env.deps.P5别名对照!.current.set(连续Case坐标, 连续记录A);
+    vi.mocked(env.数据源.读取候选连续列表)
+      .mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
+    await env.操作.加载连续列表('active');
+    expect(env.最新状态().已登录).toBe(false);
+    expect(env.最新状态().P5连续列表).toEqual({});
+    expect(env.最新状态().P5连续详情).toEqual({});
+    expect(env.deps.P5别名对照!.current.size).toBe(0);
+  });
+});
+
+// ── J-PILOT-01 Task 2：连续详情读取 —— alias→canonical 对照、canonical 唯一权威快照 ──
+
+describe('连续详情读取', () => {
+  it('alias 输入只按返回 ID 保存 canonical：别名键槽不残留、对照入表；再读经对照短路零请求', async () => {
+    const 聚合A = 连续聚合(连续记录A, 权威候选详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(聚合A);
+    await env.操作.读取连续详情(连续Case坐标);
+    expect(env.数据源.读取候选连续详情).toHaveBeenCalledWith(连续Case坐标);
+    const 表 = env.最新状态().P5连续详情;
+    expect(Object.keys(表)).toEqual([P5范围键.negotiation(连续记录A)]); // 只保存 canonical
+    expect(表[P5范围键.negotiation(连续记录A)]).toMatchObject({
+      阶段: '成功', 刷新中: false, detail: 聚合A, error: null, ownerSubjectId: 'sub_1',
+    });
+    expect(env.deps.P5别名对照!.current.get(连续Case坐标)).toBe(连续记录A);
+    await env.操作.读取连续详情(连续Case坐标); // 经 alias 对照命中的 canonical 成功快照短路
+    expect(vi.mocked(env.数据源.读取候选连续详情)).toHaveBeenCalledTimes(1);
+  });
+
+  it('同 version 两次 force 读整包替换：新消息不因 version 相同被丢弃', async () => {
+    const 甲 = 连续聚合(连续记录A, 解P5详情(带S0记录Wire(S0仅问题记录Wire), 'candidate'));
+    const 乙 = 连续聚合(连续记录A, 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate'));
+    expect(甲.case_detail?.state.updatedAt).toBe(乙.case_detail?.state.updatedAt);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(甲).mockResolvedValueOnce(乙);
+    await env.操作.读取连续详情(连续记录A, true);
+    await env.操作.读取连续详情(连续记录A, true);
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]?.detail).toBe(乙);
+  });
+
+  it('普通失败保留同主体只读旧快照，只落重试错误', async () => {
+    const 聚合A = 连续聚合(连续记录A, 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate'));
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(聚合A);
+    await env.操作.读取连续详情(连续记录A);
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
+    await env.操作.读取连续详情(连续记录A, true);
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]).toMatchObject({
+      阶段: '成功', detail: 聚合A, 刷新中: false,
+    });
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]?.error).not.toBeNull();
+  });
+
+  it('403/404 清旧敏感内容：连续快照清成无旧 detail 的失败态（404 不冒充写入未受理）', async () => {
+    const 聚合A = 连续聚合(连续记录A, 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate'));
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(聚合A);
+    await env.操作.读取连续详情(连续记录A);
+    for (const 错误 of [
+      new BFF错误(403, 'negotiation_forbidden', '记录不可见'),
+      new BFF错误(404, 'negotiation_not_found', '记录不存在'),
+    ]) {
+      vi.mocked(env.数据源.读取候选连续详情).mockRejectedValueOnce(错误);
+      await env.操作.读取连续详情(连续记录A, true);
+      expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]).toMatchObject({
+        阶段: '失败', detail: null, 刷新中: false,
+      });
+      expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]?.error).not.toBeNull();
+      // 失败快照不再命中成功短路：恢复路径真实重读
+      vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(聚合A);
+      await env.操作.读取连续详情(连续记录A);
+      expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]?.detail).toBe(聚合A);
+    }
+  });
+
+  it('401 统一清账号：连续快照与 alias 对照随 P5 清理摊平', async () => {
+    env.deps.P5别名对照!.current.set(连续Case坐标, 连续记录A);
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
+    await env.操作.读取连续详情(连续记录A);
+    expect(env.最新状态().已登录).toBe(false);
+    expect(env.最新状态().P5连续详情).toEqual({});
+    expect(env.deps.P5别名对照!.current.size).toBe(0);
+  });
+});
+
+// ── J-PILOT-01 Task 2：候选 Case 详情聚合路径 —— 单一候选聚合来源、镜像与生命周期 ──
+
+describe('候选 Case 详情聚合路径', () => {
+  it('读取详情(candidate) 经聚合 alias 读：单次 GET、无并行候选 Case GET、case_detail 投影回旧详情槽', async () => {
+    const 聚合A = 连续聚合(连续Case坐标, 权威候选详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(聚合A);
+    await env.操作.读取详情('candidate', 连续Case坐标);
+    expect(env.数据源.读取候选连续详情).toHaveBeenCalledWith(连续Case坐标);
+    expect(env.数据源.读取P5详情).not.toHaveBeenCalled(); // 没有 candidate 双 GET
+    expect(env.最新状态().P5详情[P5范围键.detail('candidate', 连续Case坐标)]).toEqual({
+      阶段: '成功', 刷新中: false, detail: 权威候选详情, error: null, generation: 0,
+    });
+  });
+
+  it('聚合返回 canonical 与输入不同：canonical 连续快照唯一、详情槽仍按输入 case 坐标投影', async () => {
+    const 聚合Dlg = 连续聚合(连续记录A, 权威候选详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(聚合Dlg);
+    await env.操作.读取详情('candidate', 连续Case坐标);
+    expect(env.deps.P5别名对照!.current.get(连续Case坐标)).toBe(连续记录A);
+    expect(Object.keys(env.最新状态().P5连续详情)).toEqual([P5范围键.negotiation(连续记录A)]);
+    expect(env.最新状态().P5详情[P5范围键.detail('candidate', 连续Case坐标)]?.detail)
+      .toBe(权威候选详情);
+  });
+
+  it('retention 封闭（case_detail null）替换旧 case 内容：旧 P5详情 槽与连续快照都不留镜像', async () => {
+    const 开案聚合 = 连续聚合(连续记录A, 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate'));
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(开案聚合);
+    await env.操作.读取详情('candidate', 连续记录A);
+    expect(env.最新状态().P5详情[P5范围键.detail('candidate', 连续记录A)]?.detail).not.toBeNull();
+    const 封闭聚合 = 连续聚合(连续记录A, null, {
+      case_id: 连续Case坐标, phase: 'refused', record_kind: 'case', needs_action: false,
+    });
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(封闭聚合);
+    await env.操作.读取详情('candidate', 连续记录A, true);
+    expect(env.最新状态().P5详情[P5范围键.detail('candidate', 连续记录A)]).toMatchObject({
+      阶段: '成功', 刷新中: false, detail: null, error: null,
+    });
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]?.detail?.case_detail).toBeNull();
+  });
+
+  it('命令候选路径：POST 成功后权威重读走聚合，已载 continuous 被刷新且不强迫加载未载域', async () => {
+    await env.操作.加载连续列表('active'); // history 未载：刷新时绝不被强迫加载
+    const 聚合已解 = 连续聚合('mc_1', 已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(聚合已解);
+    vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
+    const 连续读数 = vi.mocked(env.数据源.读取候选连续列表).mock.calls.length;
+    await env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
+    expect(env.数据源.回答P5事实).toHaveBeenCalledTimes(1);
+    expect(env.数据源.读取P5详情).not.toHaveBeenCalled();
+    expect(vi.mocked(env.数据源.读取候选连续详情)).toHaveBeenCalledWith('mc_1');
+    expect(env.最新状态().P5详情[P5范围键.detail('candidate', 'mc_1')]?.detail).toBe(已解事实详情);
+    const 新调用 = vi.mocked(env.数据源.读取候选连续列表).mock.calls.slice(连续读数);
+    expect(新调用).toHaveLength(1); // 只刷新已载的 active
+    expect(新调用[0][0]).toBe('active');
+  });
+
+  it('成功 POST 后聚合重读 404：清旧详情与连续敏感内容，mutation 仍 resolve 不重发', async () => {
+    const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(连续聚合('mc_1', 有回答));
+    await env.操作.读取详情('candidate', 'mc_1');
+    vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockRejectedValueOnce(new BFF错误(404, 'negotiation_not_found', '记录不可见'));
+    await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天')).resolves.toBeUndefined();
+    expect(env.数据源.回答P5事实).toHaveBeenCalledTimes(1); // POST 已成功，不因重读失败重发
+    expect(env.最新状态().P5详情[P5范围键.detail('candidate', 'mc_1')]).toMatchObject({
+      阶段: '失败', detail: null, 刷新中: false,
+    });
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation('mc_1')]).toMatchObject({
+      阶段: '失败', detail: null,
+    });
+  });
+
+  it('聚合封闭时不能用空动作表判写成功：按原不确定错误收口、键保留、旧镜像清除', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(UUID键('closed-key'));
+    const 有回答 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 有回答));
+    await env.操作.读取详情('candidate', 'mc_1'); // 发送前已有开案镜像
+    vi.mocked(env.数据源.回答P5事实)
+      .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(连续聚合('mc_1', null)); // 对账时聚合已封闭：绝不能按空动作表判写成功
+    await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天'))
+      .rejects.toMatchObject({ status: 503 });
+    expect(env.deps.P5幂等意图!.current.get('p5:意图:candidate:mc_1:respond_fact:prompt_1'))
+      .toBe(UUID键('closed-key')); // 键保留：同键可重放
+    expect(env.最新状态().P5详情[P5范围键.detail('candidate', 'mc_1')]?.detail).toBeNull(); // 旧镜像清除
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation('mc_1')]?.detail?.case_detail).toBeNull();
+    randomUUID.mockRestore();
+  });
+
+  it('连续详情轮询的迟到旧 GET 被命令的聚合保存作废，不回写旧内容', async () => {
+    const 旧门 = deferred<NegotiationDetail>();
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockReturnValueOnce(旧门.promise) // 轮询读 A：在飞，服务端尚未应用 mutation
+      .mockResolvedValueOnce(连续聚合('mc_1', 已解事实详情)); // 命令成功后的权威聚合读
+    vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
+    void env.操作.读取连续详情('mc_1');
+    await env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation('mc_1')]?.detail?.case_detail)
+      .toBe(已解事实详情);
+    旧门.resolve(连续聚合('mc_1', 权威候选详情)); // A 迟到返回旧态：整包丢弃
+    await new Promise((完成) => setTimeout(完成, 0));
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation('mc_1')]?.detail?.case_detail)
+      .toBe(已解事实详情);
+  });
+});
+
 describe('P5 summary 读取与刷新', () => {
+
   beforeEach(() => {
     env.操作.设置P5范围('candidate', P5范围键.summary('candidate'));
   });
@@ -714,9 +1158,9 @@ describe('P5 summary 读取与刷新', () => {
     vi.mocked(env.数据源.读取P5Open列表).mockResolvedValue(候选页([候选行('mc_1')], null));
     await env.操作.加载工作区('candidate', null);
     env.操作.设置P5范围('candidate', P5范围键.detail('candidate', 'mc_1'));
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(权威候选详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 权威候选详情));
     await env.操作.读取详情('candidate', 'mc_1');
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 已解事实详情));
     vi.mocked(env.数据源.读取P5摘要)
       .mockRejectedValueOnce(new BFF错误(500, 'server_error', 'summary refresh failed'));
     await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '回答')).resolves.toBeUndefined();
@@ -729,7 +1173,7 @@ describe('P5 summary 读取与刷新', () => {
 
     const 未载 = 创建P5操作测试环境();
     未载.操作.设置P5范围('candidate', P5范围键.detail('candidate', 'mc_1'));
-    vi.mocked(未载.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(未载.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 已解事实详情));
     await 未载.操作.回答事实('candidate', 'mc_1', 'prompt_1', '回答');
     expect(未载.数据源.读取P5摘要).not.toHaveBeenCalled();
   });
@@ -737,7 +1181,7 @@ describe('P5 summary 读取与刷新', () => {
   it('并发 mutation：后确认的刷新作废在飞旧 summary 读，不提交陈旧计数', async () => {
     await env.操作.加载摘要('candidate');
     env.操作.设置P5范围('candidate', P5范围键.detail('candidate', 'mc_1'));
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 已解事实详情));
     vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
     // 甲的 summary GET（第 2 次）挂起：出发早于乙的 POST 生效，回包将是陈旧计数
     const 旧读 = deferred<MatchCaseSummary>();
@@ -865,7 +1309,8 @@ describe('scope 隔离与迟到完成', () => {
   it('读取 401 走统一清账号状态并清 P5 快照与全部运行时引用', async () => {
     env.deps.P5幂等意图!.current.set('p5:意图:candidate:mc_1:respond_fact:prompt_1', 'idem_1');
     env.deps.P5范围代际!.current.set('p5:detail:candidate:mc_9', 4);
-    vi.mocked(env.数据源.读取P5详情)
+    env.deps.P5别名对照!.current.set(连续Case坐标, 连续记录A);
+    vi.mocked(env.数据源.读取候选连续详情)
       .mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
     await env.操作.读取详情('candidate', 'mc_1');
     const 最新 = env.最新状态();
@@ -874,8 +1319,11 @@ describe('scope 隔离与迟到完成', () => {
     expect(最新.P5工作区).toEqual({});
     expect(最新.P5历史).toEqual({});
     expect(最新.P5详情).toEqual({});
+    expect(最新.P5连续列表).toEqual({});
+    expect(最新.P5连续详情).toEqual({});
     expect(env.deps.P5幂等意图!.current.size).toBe(0);
     expect(env.deps.P5范围代际!.current.size).toBe(0);
+    expect(env.deps.P5别名对照!.current.size).toBe(0);
     expect(env.deps.P5可见范围!.current).toEqual({ candidate: null, recruiter: null });
     expect(env.deps.主体标识引用.current).toBeNull();
     expect(env.deps.会话代际.current).toBe(2);
@@ -884,8 +1332,8 @@ describe('scope 隔离与迟到完成', () => {
   });
 
   it('迟到 401 不清新会话', async () => {
-    const 门 = deferred<P5详情>();
-    vi.mocked(env.数据源.读取P5详情).mockReturnValue(门.promise);
+    const 门 = deferred<NegotiationDetail>();
+    vi.mocked(env.数据源.读取候选连续详情).mockReturnValue(门.promise);
     const 运行 = env.操作.读取详情('candidate', 'mc_1');
     env.deps.主体标识引用.current = 'sub_new';
     env.deps.会话代际.current += 1;
@@ -897,10 +1345,10 @@ describe('scope 隔离与迟到完成', () => {
   });
 
   it('mutation 后的权威重读作废同 scope 在飞的旧轮询读（迟到旧读不得回写新状态）', async () => {
-    const 旧门 = deferred<P5详情>();
-    vi.mocked(env.数据源.读取P5详情)
+    const 旧门 = deferred<NegotiationDetail>();
+    vi.mocked(env.数据源.读取候选连续详情)
       .mockReturnValueOnce(旧门.promise)
-      .mockResolvedValue(已解事实详情);
+      .mockResolvedValue(连续聚合('mc_1', 已解事实详情));
     vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
     // 轮询读 A 先出发（在飞，服务端尚未应用 mutation）
     void env.操作.读取详情('candidate', 'mc_1');
@@ -908,7 +1356,7 @@ describe('scope 隔离与迟到完成', () => {
     await env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
     expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toEqual(已解事实详情);
     // A 迟到返回旧态：必须被作废，不得把新状态覆盖回旧状态
-    旧门.resolve(权威候选详情);
+    旧门.resolve(连续聚合('mc_1', 权威候选详情));
     await new Promise((完成) => setTimeout(完成, 0));
     expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toEqual(已解事实详情);
   });
@@ -921,9 +1369,15 @@ describe('Mock 模式：零 P5 请求', () => {
     await expect(mock环境.操作.追加工作区('candidate', null)).resolves.toBeUndefined();
     await expect(mock环境.操作.刷新工作区('candidate', null)).resolves.toBeUndefined();
     await expect(mock环境.操作.加载历史('candidate', 'ended', null)).resolves.toBeUndefined();
+    await expect(mock环境.操作.加载连续列表('active')).resolves.toBeUndefined();
+    await expect(mock环境.操作.追加连续列表('active')).resolves.toBeUndefined();
+    await expect(mock环境.操作.刷新连续列表('active')).resolves.toBeUndefined();
+    await expect(mock环境.操作.读取连续详情(连续记录A, true)).resolves.toBeUndefined();
     await expect(mock环境.操作.读取详情('candidate', 'mc_1', true)).resolves.toBeUndefined();
     await expect(mock环境.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天')).resolves.toBeUndefined();
     await expect(mock环境.操作.读取简历PDF('candidate', 'mc_1')).rejects.toMatchObject({ code: 'backend_unavailable' });
+    expect(mock环境.数据源.读取候选连续列表).not.toHaveBeenCalled();
+    expect(mock环境.数据源.读取候选连续详情).not.toHaveBeenCalled();
   });
 });
 
@@ -937,13 +1391,14 @@ describe('S0–S3 命令与幂等意图', () => {
 
   it('成功后强制权威重读：mutation 一律 void，详情/工作区/历史全部重读，响应绝不替换详情', async () => {
     await 种已载范围();
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 已解事实详情));
     const 打开数 = vi.mocked(env.数据源.读取P5Open列表).mock.calls.length;
     const 历史数 = vi.mocked(env.数据源.读取P5历史).mock.calls.length;
     await env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '每周三天');
     expect(env.数据源.回答P5事实).toHaveBeenCalledWith('candidate', 'mc_1', 'prompt_1', '每周三天', expect.any(String));
-    // 详情权威重读：快照来自 GET，且是重读回来的新状态（updated_at 03:00）
-    expect(env.数据源.读取P5详情).toHaveBeenCalledWith('candidate', 'mc_1');
+    // 详情权威重读：候选走聚合 alias 读，快照来自 GET，且是重读回来的新状态（updated_at 03:00）
+    expect(env.数据源.读取候选连续详情).toHaveBeenCalledWith('mc_1');
+    expect(env.数据源.读取P5详情).not.toHaveBeenCalled();
     expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail?.state.updatedAt).toBe('2026-08-29T03:00:00Z');
     // 列表与历史 scope 同步从第一页刷新
     expect(vi.mocked(env.数据源.读取P5Open列表).mock.calls.length).toBe(打开数 + 1);
@@ -957,7 +1412,7 @@ describe('S0–S3 命令与幂等意图', () => {
     vi.mocked(env.数据源.回答P5事实)
       .mockRejectedValueOnce(new Error('网络中断'))
       .mockResolvedValueOnce(undefined);
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 已解事实详情));
     await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天'))
       .rejects.toThrow('网络中断');
     expect(env.deps.P5幂等意图!.current.has('p5:意图:candidate:mc_1:respond_fact:prompt_1')).toBe(true);
@@ -991,7 +1446,7 @@ describe('S0–S3 命令与幂等意图', () => {
   it('对账 GET 401：清账号后原样抛出，绝不解析成「已确认」的假成功', async () => {
     vi.mocked(env.数据源.回答P5事实)
       .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
-    vi.mocked(env.数据源.读取P5详情)
+    vi.mocked(env.数据源.读取候选连续详情)
       .mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
     await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天'))
       .rejects.toMatchObject({ status: 401 });
@@ -1003,11 +1458,11 @@ describe('S0–S3 命令与幂等意图', () => {
   it('对账 GET 404：旧详情（含 S0 records）整包清除，仍按原不确定错误收口且同键保留', async () => {
     const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(UUID键('recon-404'));
     const 有记录详情 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(有记录详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 有记录详情));
     await env.操作.读取详情('candidate', 'mc_1');
     vi.mocked(env.数据源.回答P5事实)
       .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
-    vi.mocked(env.数据源.读取P5详情)
+    vi.mocked(env.数据源.读取候选连续详情)
       .mockRejectedValueOnce(new BFF错误(404, 'case_not_found', 'Case 不可见'));
     await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天'))
       .rejects.toMatchObject({ status: 503 });
@@ -1022,18 +1477,18 @@ describe('S0–S3 命令与幂等意图', () => {
 
   it('对账 404 迟到（读代际已被更新的成功重读换代）：不清掉更新的成功详情，仍按原错误收口', async () => {
     const 有记录详情 = 解P5详情(带S0记录Wire(S0候选完整记录Wire), 'candidate');
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(有记录详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 有记录详情));
     await env.操作.读取详情('candidate', 'mc_1');
     // 甲：POST 结果不确定 → 对账 GET 挂起
     vi.mocked(env.数据源.回答P5事实)
       .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
-    const 对账门 = deferred<P5详情>();
-    vi.mocked(env.数据源.读取P5详情).mockReturnValueOnce(对账门.promise);
+    const 对账门 = deferred<NegotiationDetail>();
+    vi.mocked(env.数据源.读取候选连续详情).mockReturnValueOnce(对账门.promise);
     const 甲 = env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
-    await vi.waitFor(() => expect(vi.mocked(env.数据源.读取P5详情)).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(vi.mocked(env.数据源.读取候选连续详情)).toHaveBeenCalledTimes(2));
     // 乙：另一命令成功，其权威重读换代并落库更新的成功详情
     vi.mocked(env.数据源.回答P5事实).mockResolvedValueOnce(undefined);
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 已解事实详情));
     await env.操作.回答事实('candidate', 'mc_1', 'prompt_2', '三天');
     const 更新快照 = env.最新状态().P5详情['p5:detail:candidate:mc_1'];
     expect(更新快照).toMatchObject({ 阶段: '成功', detail: 已解事实详情, error: null });
@@ -1046,7 +1501,7 @@ describe('S0–S3 命令与幂等意图', () => {
   it('命令单飞按会话代际隔离：旧会话在飞的承诺不吞新会话的同名命令', async () => {
     const 甲门 = deferred<void>();
     vi.mocked(env.数据源.回答P5事实).mockReturnValue(甲门.promise);
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 已解事实详情));
     void env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
     expect(vi.mocked(env.数据源.回答P5事实)).toHaveBeenCalledTimes(1);
     env.deps.会话代际.current += 1; // 登出后换会话
@@ -1061,7 +1516,7 @@ describe('S0–S3 命令与幂等意图', () => {
     vi.mocked(env.数据源.回答P5事实).mockReturnValueOnce(事实门.promise);
     const 叮嘱门 = deferred<void>();
     vi.mocked(env.数据源.新增P5叮嘱).mockReturnValueOnce(叮嘱门.promise);
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 已解事实详情));
     const 事实 = env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
     const 叮嘱 = env.操作.新增叮嘱('candidate', 'mc_1', '工作日全天可联系');
     事实门.resolve(); // 事实先成功 → 权威重读换代落库（作废在飞旧读）
@@ -1102,18 +1557,18 @@ describe('S0–S3 命令与幂等意图', () => {
     const 叮嘱门 = deferred<void>();
     vi.mocked(env.数据源.新增P5叮嘱).mockReturnValueOnce(叮嘱门.promise);
     vi.mocked(env.数据源.回答P5事实).mockResolvedValue(undefined);
-    const 对账门 = deferred<P5详情>();
-    vi.mocked(env.数据源.读取P5详情)
+    const 对账门 = deferred<NegotiationDetail>();
+    vi.mocked(env.数据源.读取候选连续详情)
       .mockReturnValueOnce(对账门.promise)  // 第 1 次 GET：叮嘱的对账（服务端早执行，迟到回包）
-      .mockResolvedValueOnce(已解事实详情); // 第 2 次 GET：事实命令的权威重读（新态）
+      .mockResolvedValueOnce(连续聚合('mc_1', 已解事实详情)); // 第 2 次 GET：事实命令的权威重读（新态）
     const 叮嘱 = env.操作.新增叮嘱('candidate', 'mc_1', '工作日全天可联系');
     await vi.waitFor(() => expect(vi.mocked(env.数据源.新增P5叮嘱)).toHaveBeenCalledTimes(1));
     叮嘱门.reject(new BFF错误(503, 'downstream_unavailable', 'down')); // 未知 → 对账 GET 出发挂起
-    await vi.waitFor(() => expect(vi.mocked(env.数据源.读取P5详情)).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(vi.mocked(env.数据源.读取候选连续详情)).toHaveBeenCalledTimes(1));
     const 事实 = env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天'); // 成功 → 权威重读换代落新态
     await 事实;
     expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toEqual(已解事实详情);
-    对账门.resolve(权威候选详情); // 迟到的旧对账视图
+    对账门.resolve(连续聚合('mc_1', 权威候选详情)); // 迟到的旧对账视图
     await expect(叮嘱).rejects.toMatchObject({ status: 503 }); // 绝不按旧对账确认成功
     expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toEqual(已解事实详情); // 不回写旧详情
   });
@@ -1126,14 +1581,15 @@ describe('S0–S3 命令与幂等意图', () => {
       .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'))
       .mockResolvedValueOnce(undefined);
     // 对账读到的是「问题仍待答」的权威详情（默认桩）
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(权威候选详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 权威候选详情));
     await expect(env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天'))
       .rejects.toMatchObject({ code: 'downstream_unavailable' });
-    expect(env.数据源.读取P5详情).toHaveBeenCalledWith('candidate', 'mc_1'); // 对账 GET 已发生
+    expect(env.数据源.读取候选连续详情).toHaveBeenCalledWith('mc_1'); // 对账 GET 已发生
+    expect(env.数据源.读取P5详情).not.toHaveBeenCalled();
     expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail).toEqual(权威候选详情);
     expect(env.deps.P5幂等意图!.current.get('p5:意图:candidate:mc_1:respond_fact:prompt_1')).toBe('fact-key-503');
     // 重试：同一把键
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 已解事实详情));
     await env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
     expect(vi.mocked(env.数据源.回答P5事实).mock.calls.map((调用) => 调用[4]))
       .toEqual(['fact-key-503', 'fact-key-503']);
@@ -1145,7 +1601,7 @@ describe('S0–S3 命令与幂等意图', () => {
     const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(UUID键('fact-key-409'));
     vi.mocked(env.数据源.回答P5事实)
       .mockRejectedValueOnce(new BFF错误(409, 'idempotency_conflict', 'conflict'));
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 已解事实详情));
     vi.mocked(env.数据源.读取P5Open列表).mockResolvedValue(候选页([候选行('mc_1')], null));
     await env.操作.加载工作区('candidate', null);
     const 打开数 = vi.mocked(env.数据源.读取P5Open列表).mock.calls.length;
@@ -1159,7 +1615,7 @@ describe('S0–S3 命令与幂等意图', () => {
   it('同目标单飞：并发同 (role, case, prompt) 只发一次 POST，两个调用方共享结果', async () => {
     const 门 = deferred<void>();
     vi.mocked(env.数据源.回答P5事实).mockReturnValue(门.promise);
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 已解事实详情));
     const 甲 = env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
     const 乙 = env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
     expect(vi.mocked(env.数据源.回答P5事实)).toHaveBeenCalledTimes(1);
@@ -1174,7 +1630,8 @@ describe('S0–S3 命令与幂等意图', () => {
     vi.mocked(env.数据源.回答P5事实).mockImplementation(async (_r, caseId) => {
       return caseId === 'mc_1' ? 甲门.promise : 乙门.promise;
     });
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(已解事实详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockImplementation(async (recordId: string) =>
+      连续聚合(recordId, 已解事实详情));
     const 甲 = env.操作.回答事实('candidate', 'mc_1', 'prompt_1', '三天');
     const 乙 = env.操作.回答事实('candidate', 'mc_2', 'prompt_2', '五天');
     expect(vi.mocked(env.数据源.回答P5事实)).toHaveBeenCalledTimes(2);
@@ -1201,7 +1658,7 @@ describe('S0–S3 命令与幂等意图', () => {
     vi.mocked(env.数据源.新增P5叮嘱)
       .mockRejectedValueOnce(new BFF错误(400, 'invalid_request', '文本过长'))
       .mockResolvedValueOnce(undefined);
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValue(权威候选详情);
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 权威候选详情));
     await expect(env.操作.新增叮嘱('candidate', 'mc_1', '太长的叮嘱'))
       .rejects.toMatchObject({ code: 'invalid_request' });
     expect(env.deps.P5幂等意图!.current.size).toBe(0);
@@ -1223,6 +1680,8 @@ describe('S0–S3 命令与幂等意图', () => {
 
   it('S0–S3 各命令按 facade 契约透传字面参数与键', async () => {
     const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(UUID键('cmd-key'));
+    // 候选命令（决定S0/提交简历）成功后的权威重读走聚合；招聘命令走原 Case GET
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 权威候选详情));
     vi.mocked(env.数据源.读取P5详情).mockResolvedValue(权威候选详情);
     await env.操作.决定S0('mc_1', 'end');
     expect(env.数据源.决定P5S0).toHaveBeenCalledWith('mc_1', 'end', 'cmd-key');
@@ -1243,16 +1702,16 @@ describe('S0–S3 命令与幂等意图', () => {
   it('新增叮嘱 503 对账：对方叮嘱落了不算本端已生效 —— 不确认、键保留、同键可重放', async () => {
     const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(UUID键('ins-key'));
     // 发送前基线：对方已有 1 条叮嘱，本端 0 条
-    vi.mocked(env.数据源.读取P5详情)
-      .mockResolvedValueOnce(解P5详情(带叮嘱Wire([{ owner: 'recruiter', expression: '对方早期叮嘱' }]), 'candidate'));
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(连续聚合('mc_1', 解P5详情(带叮嘱Wire([{ owner: 'recruiter', expression: '对方早期叮嘱' }]), 'candidate')));
     await env.操作.读取详情('candidate', 'mc_1');
     vi.mocked(env.数据源.新增P5叮嘱)
       .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
     // 对账权威详情：对方又落了 1 条（总数 1→2），本端仍 0 —— 回执总数增长不得冒充本端生效
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(解P5详情(带叮嘱Wire([
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 解P5详情(带叮嘱Wire([
       { owner: 'recruiter', expression: '对方早期叮嘱' },
       { owner: 'recruiter', expression: '对方后来的叮嘱' },
-    ]), 'candidate'));
+    ]), 'candidate')));
     await expect(env.操作.新增叮嘱('candidate', 'mc_1', '工作日全天可联系'))
       .rejects.toMatchObject({ code: 'downstream_unavailable' });
     expect(env.deps.P5幂等意图!.current.size).toBe(1); // 键保留：同键重放仍可发生
@@ -1261,16 +1720,16 @@ describe('S0–S3 命令与幂等意图', () => {
 
   it('新增叮嘱 503 对账：本端同文叮嘱已落才算已生效 —— 确认收口、键释放', async () => {
     const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(UUID键('ins-key-2'));
-    vi.mocked(env.数据源.读取P5详情)
-      .mockResolvedValueOnce(解P5详情(带叮嘱Wire([]), 'candidate'));
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(连续聚合('mc_1', 解P5详情(带叮嘱Wire([]), 'candidate')));
     await env.操作.读取详情('candidate', 'mc_1');
     vi.mocked(env.数据源.新增P5叮嘱)
       .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
     // 对账权威详情：本端同文回执已在（对面那条是干扰项，绝不能单独顶替确认）
-    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(解P5详情(带叮嘱Wire([
+    vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 解P5详情(带叮嘱Wire([
       { owner: 'recruiter', expression: '工作日全天可联系' },
       { owner: 'candidate', expression: '工作日全天可联系' },
-    ]), 'candidate'));
+    ]), 'candidate')));
     await expect(env.操作.新增叮嘱('candidate', 'mc_1', '工作日全天可联系')).resolves.toBeUndefined();
     expect(env.deps.P5幂等意图!.current.size).toBe(0);
     randomUUID.mockRestore();

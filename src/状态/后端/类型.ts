@@ -35,6 +35,7 @@ import type {
 import type { 页面简历写入, 页面意向快照, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
 import type { P5列表项, P5详情, MatchCaseSummary } from '../../数据/招聘数据源/MatchCase';
+import type { NegotiationCard, NegotiationDetail, NegotiationShelf } from '../../数据/招聘数据源/连续代谈';
 import type { 接触事件 } from '../../数据/招聘数据源/接触记录';
 import type { 创建候选实名输入, 候选实名摘要 } from '../../数据/招聘数据源/候选实名';
 import type { P7角色, P7会话项, P7消息 } from '../../数据/招聘数据源/真人会话';
@@ -289,6 +290,46 @@ export interface P5MatchCase状态 {
   P5工作区: Record<string, P5列表快照>;
   P5历史: Record<string, P5列表快照>;
   P5详情: Record<string, P5详情快照>;
+  /**
+   * J-PILOT-01 Task 2：候选连续代谈的列表快照。key 是 P5范围键.negotiations(shelf)
+   * （candidate 专属集合，active/history 各一个 scope）；快照绝不进 资料持久化。
+   */
+  P5连续列表: Record<string, P5连续列表快照>;
+  /**
+   * J-PILOT-01 Task 2：候选连续聚合详情快照。key 是 P5范围键.negotiation(recordId)，
+   * 且只按服务端返回的 canonical record_id 落位（alias 输入经 P5别名对照 解析）；
+   * case_detail 是聚合自带的嵌套内容，绝不另镜一份进 P5详情 槽之外的第二权威。
+   */
+  P5连续详情: Record<string, P5连续详情快照>;
+}
+
+/**
+ * J-PILOT-01 Task 2：连续列表快照 —— 与 P5列表快照 同一「已载窗口」纪律：
+ * 刷新从第一页重建同样深度，追加透传 next_cursor 逐页 +1；ownerSubjectId 只在
+ * 内存标记归属主体（同角色换主体时旧快照按不存在处理），绝不进任何持久化。
+ */
+export interface P5连续列表快照 {
+  ownerSubjectId: string | null;
+  阶段: P5加载阶段;
+  刷新中: boolean;
+  items: NegotiationCard[];
+  nextCursor: string | null;
+  已加载页数: number;
+  error: string | null;
+  generation: number;
+}
+
+/**
+ * J-PILOT-01 Task 2：连续聚合详情快照 —— 与 P5详情快照 同一阶段/刷新/error/generation
+ * 形状并带 ownerSubjectId；detail 只来自权威聚合 GET，alias 输入只按返回 canonical ID 保存。
+ */
+export interface P5连续详情快照 {
+  ownerSubjectId: string | null;
+  阶段: P5加载阶段;
+  刷新中: boolean;
+  detail: NegotiationDetail | null;
+  error: string | null;
+  generation: number;
 }
 
 // ── P8：控制面域的内存态资源快照（仅 Backend；快照绝不进 资料持久化 / 浏览器存储）──
@@ -510,6 +551,13 @@ export interface 后端操作依赖 {
   P5可见范围?: 可变引用<Record<P5角色, string | null>>;
   P5对象租约?: 可变引用<Set<PDF对象租约>>;
   /**
+   * J-PILOT-01 Task 2：alias→canonical record_id 的短命对照（如旧 Case 深链 mc_ 坐标 →
+   * 返回的 dlg canonical）。只在当前主体内存中存在并随 清P5MatchCase引用 一并清空，
+   * 绝不持久化、绝不反推归属。可选成员只为既有测试依赖桩的编译兼容，
+   * MatchCase操作 在工厂入口显式收窄，缺引用即接线缺陷。
+   */
+  P5别名对照?: 可变引用<Map<string, string>>;
+  /**
    * P7 Task 2：真人会话运行时引用 —— scope 代际 / 待定发送意图 / 双端可见范围 /
    * 已读位置。与 P4/P5 同一纪律：Provider 恒一次性注入；可选成员只为既有
    * 测试依赖桩 的编译兼容，真人会话操作 在工厂入口显式收窄。
@@ -576,12 +624,13 @@ export interface P7运行时引用 {
   P7已读位置: 可变引用<Map<string, P7已读位置记录>>;
 }
 
-/** P5 MatchCase 的四个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
+/** P5 MatchCase 的五个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
 export interface P5运行时引用 {
   P5范围代际: 可变引用<Map<string, number>>;
   P5幂等意图: 可变引用<Map<string, string>>;
   P5可见范围: 可变引用<Record<P5角色, string | null>>;
   P5对象租约: 可变引用<Set<PDF对象租约>>;
+  P5别名对照: 可变引用<Map<string, string>>;
 }
 
 /** P8 控制面的五个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -796,8 +845,25 @@ export interface MatchCase操作 {
   加载历史(role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null, force?: boolean): Promise<void>;
   追加历史(role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null): Promise<void>;
   刷新历史(role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null): Promise<void>;
-  /** 直读详情：URL case_id + 已认证角色，绝不读列表记忆填上下文；force=true 恒权威重读。 */
+  /** 直读详情：URL case_id + 已认证角色，绝不读列表记忆填上下文；force=true 恒权威重读。
+   *  J-PILOT-01 Task 2 起候选端同一条记录只经 negotiation 聚合 alias 读（不再并行
+   *  第二个候选 Case GET），case_detail 投影回旧详情槽供既有消费者；招聘端保持原 Case GET。 */
   读取详情(role: P5角色, caseId: string, force?: boolean): Promise<void>;
+  /**
+   * J-PILOT-01 Task 2：候选连续集合读取（negotiation 是候选专属资源，非 candidate 角色零请求）。
+   * 列表复用 P5 读锁与代际：加载/force 只读首屏（丢旧 cursor），追加透传 next_cursor 并按
+   * canonical record_id 去重/upsert，刷新从首屏新 cursor 顺序重建已载页数后一次原子替换。
+   */
+  加载连续列表(shelf: NegotiationShelf, force?: boolean): Promise<void>;
+  /** 已载窗口向后追加一页（透传快照里的 next_cursor）；游标已尽或旧 cursor 400 恰一次首屏恢复。 */
+  追加连续列表(shelf: NegotiationShelf): Promise<void>;
+  /** 从第一页重建已载窗口（同深度），轮询与手动刷新共用；不重用旧页 cursor。 */
+  刷新连续列表(shelf: NegotiationShelf): Promise<void>;
+  /**
+   * 候选聚合详情直读：recordId 可为 dlg_/mc_ 记录坐标（后端 alias 归一）；只按返回
+   * canonical record_id 保存一份权威快照，alias→canonical 对照只在当前主体内存中存在。
+   */
+  读取连续详情(recordId: string, force?: boolean): Promise<void>;
   回答事实(role: P5角色, caseId: string, promptId: string, response: string): Promise<void>;
   /**
    * 候选端 S1 简历提交：disclosureConfirmed 是字面 true —— 只有屏层每次提交前新做的
