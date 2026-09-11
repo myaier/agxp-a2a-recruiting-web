@@ -34,7 +34,14 @@ import type {
   NegotiationDetail,
   NegotiationPage,
 } from '../数据/招聘数据源/连续代谈';
-import { P5范围键 } from './后端/MatchCase操作';
+import { P5范围键, 清P5MatchCase引用 } from './后端/MatchCase操作';
+
+// J-PILOT-01 Task 2 fix 探针：主体基串 effect 对 清P5MatchCase引用 的组合参数（是否
+// 带上 alias 对照）无法经后端状态观察 —— 用透传 delegation 桩记录调用参数，行为保持原实现。
+vi.mock('./后端/MatchCase操作', async (importOriginal) => {
+  const 原 = await importOriginal<typeof import('./后端/MatchCase操作')>();
+  return { ...原, 清P5MatchCase引用: vi.fn(原.清P5MatchCase引用) };
+});
 import type { P7会话项, P7会话页, P7消息, P7消息页 } from '../数据/招聘数据源/真人会话';
 import type { P8AccountDeletion, P8Credential, P8DataExport, P8Session } from '../数据/招聘数据源/P8控制面';
 import type { 接触事件, 接触事件页 } from '../数据/招聘数据源/接触记录';
@@ -2898,6 +2905,37 @@ describe('应用状态提供者 P5 MatchCase 运行时状态', () => {
     expect(当前.后端状态.P5详情).toEqual({});
     expect(当前.后端状态.P5连续列表).toEqual({});
     expect(当前.后端状态.P5连续详情).toEqual({});
+  });
+
+  it('换主体登录把 alias 对照随 P5 引用一并复位（主体基串重置口接线）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    // 旧 Case 深链坐标（mc_）作为 alias 输入：后端归一返回 canonical dlg 记录
+    vi.mocked(后端.读取候选连续详情).mockResolvedValue({
+      ...连续聚合DTO, record_id: 连续记录A, case_id: 连续Case坐标,
+    });
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    // sub_A 经 alias 坐标读聚合：canonical 落位 + alias 对照入表
+    await 当前.操作.读取连续详情(连续Case坐标);
+    await waitFor(() => expect(Object.keys(当前.后端状态.P5连续详情))
+      .toEqual([P5范围键.negotiation(连续记录A)]));
+    await 当前.操作.读取连续详情(连续Case坐标);
+    // 第二次非 force 零请求：只有经 alias 对照命中 canonical 成功快照才短路 —— 证明对照条目在场
+    expect(后端.读取候选连续详情).toHaveBeenCalledTimes(1);
+    // 换主体登录：主体基串变化触发 Provider 反应式清理
+    vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
+    await 当前.操作.完成手机登录('1234');
+    await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
+    // effect 必须把 P5别名对照 随其余 P5 引用一并传入并清空（对照不得跨主体残留）
+    await waitFor(() => {
+      const 调用 = vi.mocked(清P5MatchCase引用).mock.calls.at(-1)?.[0];
+      expect(调用?.P5别名对照).toBeDefined();
+      expect((调用!.P5别名对照 as { current: Map<string, string> }).current.size).toBe(0);
+    });
   });
 
   it('换主体登录清空上个账号的 P5 快照（主体基串变化）', async () => {

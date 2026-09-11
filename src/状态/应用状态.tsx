@@ -789,7 +789,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     const 首个主体到达 = P5会话基.current === '';
     P5会话基.current = 基;
     if (首个主体到达) return;
-    清P5MatchCase引用({ P5范围代际, P5幂等意图, P5可见范围, P5对象租约 });
+    清P5MatchCase引用({ P5范围代际, P5幂等意图, P5可见范围, P5对象租约, P5别名对照 });
     设后端状态((旧) => ({ ...旧, ...创建空P5MatchCase状态() }));
     派发({ 型: '清后端MatchCase演示状态' });
     // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
