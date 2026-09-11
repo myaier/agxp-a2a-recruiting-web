@@ -648,7 +648,18 @@ export interface 候选操作 {
   加载候选账号档案(): Promise<void>;
   保存候选头像(file: File): Promise<void>;
   删除候选头像(): Promise<void>;
+  /**
+   * J-PILOT-02 Task 3：签名不变。同一保存已在途（锁冲突）时抛明确 busy 错误，
+   * 页面不得推进（不再 return 假成功）。当前 active 建档草稿在场时操作层内部接
+   * 建档写入跟踪：先按闭合种类结算未结算单槽，再按已存身份映射后经数据源跟踪写入；
+   * 确定拒绝清槽保留表单，409/503 未知/网络断开保留待核对。无草稿时行为不变。
+   */
   保存简历(next: 页面简历写入): Promise<void>;
+  /**
+   * J-PILOT-02 Task 3：签名不变；锁冲突同样抛 busy 错误。Summary 单独保存不带
+   * 作品集链接 属性（缺省 = 未改），不覆盖草稿 URL 或其他未提交字段；有建档草稿时
+   * summary 分区回执写 已存分区。
+   */
   保存个人优势(text: string): Promise<void>;
   保存意向(draft: 意向草稿型): Promise<void>;
   保存首次意向(input: 首次意向输入): Promise<void>;

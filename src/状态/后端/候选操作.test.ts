@@ -5,15 +5,38 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
-import { BFF错误 } from '../../数据/HTTP客户端';
+import { BFF错误, type BFF请求选项, type BFF响应 } from '../../数据/HTTP客户端';
+import type { BFF简历, BFF教育 } from '../../数据/BFF契约';
+import type { 简历经历段, 简历教育段 } from '../../数据/类型';
 import { 初始状态 } from '../初始状态';
 import { BFF简历样本 } from '../../测试/BFF样本';
+import { 从BFF简历 } from '../../数据/后端映射';
+import { 创建简历数据源 } from '../../数据/招聘数据源/简历';
+import type { 候选引导建档草稿, 候选建档草稿存储 } from '../../数据/资料缓存';
 import type {
   后端操作依赖, 后端状态, 候选操作, 候选预填恢复存储, 提交候选意向快照输入,
 } from './类型';
 import { 创建候选操作 } from './候选操作';
 
-function 创建场景() {
+/** 动态取轻提示条数/清空：与 会话操作.test.ts 同款（toast 单例容器，避免捕获引用逃逸）。 */
+function 轻提示容器(): HTMLElement | undefined {
+  return Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined;
+}
+function 轻提示含(文案: string): boolean {
+  return Array.from(轻提示容器()?.children ?? []).some((条) => 条.textContent === 文案);
+}
+function 清空轻提示(): void {
+  const 容器 = 轻提示容器();
+  if (容器) 容器.innerHTML = '';
+}
+
+function 创建场景(选项: {
+  建档?: 候选引导建档草稿 | null;
+  存储?: 候选建档草稿存储 | null;
+  后端覆盖?: Partial<HTTP招聘数据源>;
+} = {}) {
   const 后端 = {
     读取简历: vi.fn(),
     保存简历: vi.fn(),
@@ -26,6 +49,8 @@ function 创建场景() {
     删除候选头像: vi.fn(),
     清空目录缓存: vi.fn(),
   };
+  // 后端覆盖（真实数据源链路）用 Object.assign 合入：保持各属性的 Mock 静态类型不变
+  Object.assign(后端, 选项.后端覆盖 ?? {});
   const 后端状态引用 = { current: {
     初始化: '完成' as const,
     已登录: true,
@@ -65,6 +90,13 @@ function 创建场景() {
     候选预填代际,
     候选预填读取锁,
     候选预填恢复,
+    // J-PILOT-02 Task 3：仅在测试显式传入 建档 时接线（缺省 = 无建档草稿的原路径）
+    ...(选项.建档 !== undefined
+      ? {
+          建档草稿引用: { current: 选项.建档 },
+          候选建档草稿: { current: 选项.存储 ?? null },
+        }
+      : {}),
   };
   const 操作: 候选操作 = 创建候选操作(deps as unknown as 后端操作依赖);
   return {
@@ -286,5 +318,377 @@ describe('创建候选操作 · 意向写经 提交候选意向快照', () => {
     });
     const 动作们 = (场景.派发.mock.calls as { 型: string }[][]).map(([a]) => a.型);
     expect(动作们).not.toContain('水合后端意向');
+  });
+});
+
+// ── J-PILOT-02 Task 3：建档跟踪保存 —— 结算、已存身份映射、DELETE 门控、busy、栅栏 ──
+
+type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
+
+const 教育DTO = (id: string, revision: number): BFF教育 => ({
+  id,
+  institution: { id: 'inst_1', display_name: '云衢大学' },
+  degree: '本科',
+  major: { id: 'major_1', display_name: '计算机' },
+  start_month: '2020-09',
+  end_month: '2024-06',
+  revision,
+});
+
+const 教育段 = (编号: string): 简历教育段 => ({
+  编号,
+  学校: '云衢大学',
+  学校引用: { id: 'inst_1', display_name: '云衢大学' },
+  学历: '本科',
+  专业: '计算机',
+  专业引用: { id: 'major_1', display_name: '计算机' },
+  开始: '2020-09',
+  结束: '2024-06',
+});
+
+/** 只允许 GET 的权威读桩；任何 mutation 请求都按「未预期」抛错。 */
+function 只读请求桩(简历们: BFF简历[]) {
+  let 序 = 0;
+  const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+    if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+      const 结果 = 简历们[Math.min(序, 简历们.length - 1)];
+      序 += 1;
+      return { result: 结果, etag: null, requestId: 'r' };
+    }
+    throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+  });
+  return 请求Mock;
+}
+
+describe('创建候选操作 · 建档跟踪保存（J-PILOT-02 Task 3）', () => {
+  it('拒绝存储下教育仍可保存：内存保留输入/命令/回执，轻提示刷新风险，保存不失败', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    const 权威后 = { ...BFF简历样本, educations: [教育DTO('edu_srv_1', 1)] };
+    let 教育POST数 = 0;
+    const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+      if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+        return { result: 教育POST数 === 0 ? previous : 权威后, etag: null, requestId: 'r' };
+      }
+      if (选项.method === 'POST' && 选项.path === '/api/v1/me/resume/educations') {
+        教育POST数 += 1;
+        return {
+          result: { entry: { kind: 'education', education: 教育DTO('edu_srv_1', 1) }, aggregate_revision: 7 },
+          etag: null, requestId: 'r',
+        };
+      }
+      throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+    });
+    const 建档: 候选引导建档草稿 = { 资料: { 教育: [教育段('edu_local_1')] } };
+    const 存储: 候选建档草稿存储 = { 读取: () => 建档, 写入: () => false };
+    const 场景 = 创建场景({
+      建档,
+      存储,
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    清空轻提示();
+    const next = { ...从BFF简历(previous), 教育: [教育段('edu_local_1')] };
+    // 存储不可用不阻断当前明确保存动作
+    await expect(场景.操作.保存简历(next as never)).resolves.toBeUndefined();
+    expect(教育POST数).toBe(1);
+    expect(轻提示含('本次无法保存恢复进度，刷新可能丢失')).toBe(true);
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.已存条目).toMatchObject([
+      { 本地编号: 'edu_local_1', 种类: 'education', 资源编号: 'edu_srv_1', revision: 1 },
+    ]);
+    expect(草稿.待写入).toBeUndefined(); // 已确认后清槽
+    // 内存里的 资料 条目编号已替换为服务器编号（刷新后映射不再重复 POST）
+    expect(草稿.资料?.教育?.[0].编号).toBe('edu_srv_1');
+  });
+
+  it('received 槽先按回执落已存身份并清槽，不再重放任何请求', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [教育DTO('edu_srv_1', 1)] };
+    const 建档: 候选引导建档草稿 = {
+      资料: { 教育: [教育段('edu_local_1')] },
+      待写入: {
+        种类: 'education-create',
+        本地编号: 'edu_local_1',
+        请求体: { institution_id: 'inst_1', degree: '本科', major_id: 'major_1', start_month: '2020-09', end_month: '2024-06' },
+        幂等键: 'idem-received-1',
+        阶段: 'received',
+        回执: { id: 'edu_srv_1', revision: 1 },
+      },
+    };
+    const 请求Mock = 只读请求桩([previous]);
+    const 场景 = 创建场景({
+      建档,
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    const next = { ...从BFF简历(previous), 教育: [教育段('edu_local_1')] };
+    await expect(场景.操作.保存简历(next as never)).resolves.toBeUndefined();
+    const 请求们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    expect(请求们.filter((o) => o.method === 'POST' || o.method === 'PATCH' || o.method === 'DELETE')).toHaveLength(0); // 已收 receipt 只按身份核对，不重放
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.已存条目?.[0]).toMatchObject({ 本地编号: 'edu_local_1', 资源编号: 'edu_srv_1' });
+    expect(草稿.待写入).toBeUndefined();
+  });
+
+  it('prepared 创建槽先按原 body/key 重放结算，再按最新草稿算下一步（同本地条目仍一条资源）', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    const 权威后 = { ...BFF简历样本, educations: [教育DTO('edu_srv_9', 2)] };
+    let 教育POST数 = 0;
+    let 教育PATCH数 = 0;
+    const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+      if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+        return { result: 教育POST数 === 0 ? previous : 权威后, etag: null, requestId: 'r' };
+      }
+      if (选项.method === 'POST' && 选项.path === '/api/v1/me/resume/educations') {
+        教育POST数 += 1;
+        return {
+          result: { entry: { kind: 'education', education: 教育DTO('edu_srv_9', 1) }, aggregate_revision: 5 },
+          etag: null, requestId: 'r',
+        };
+      }
+      if (选项.method === 'PATCH' && 选项.path === '/api/v1/me/resume/educations/edu_srv_9') {
+        教育PATCH数 += 1;
+        return { result: 权威后, etag: null, requestId: 'r' };
+      }
+      throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+    });
+    const 建档: 候选引导建档草稿 = {
+      // 用户在未知结果后把学历改成了「硕士」——重放必须用槽里的原 body「本科」
+      资料: { 教育: [{ ...教育段('edu_local_1'), 学历: '硕士' }] },
+      待写入: {
+        种类: 'education-create',
+        本地编号: 'edu_local_1',
+        // 键序沿用 转教育写入 的字面构造序（生产槽都由该映射器产生，重放经同一映射器键序一致）
+        请求体: { institution_id: 'inst_1', major_id: 'major_1', degree: '本科', start_month: '2020-09', end_month: '2024-06' },
+        幂等键: 'idem-fixed-1234567',
+        阶段: 'prepared',
+      },
+    };
+    const 场景 = 创建场景({
+      建档,
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    const next = { ...从BFF简历(previous), 教育: [{ ...教育段('edu_local_1'), 学历: '硕士' }] };
+    await expect(场景.操作.保存简历(next as never)).resolves.toBeUndefined();
+    const POST们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项)
+      .filter((o) => o.method === 'POST');
+    expect(POST们).toHaveLength(1); // 同一本地条目始终一条服务器资源
+    expect(POST们[0].body).toEqual(建档.待写入!.请求体); // 原 body 保持
+    expect(POST们[0].幂等键).toBe('idem-fixed-1234567'); // 创建复用原 key
+    // 结算后才按最新草稿算下一步：同一资源 PATCH 成「硕士」
+    const PATCH们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项)
+      .filter((o) => o.method === 'PATCH');
+    expect(PATCH们).toHaveLength(1);
+    expect(PATCH们[0].path).toBe('/api/v1/me/resume/educations/edu_srv_9');
+    expect((PATCH们[0].body as { degree?: string }).degree).toBe('硕士');
+    expect(教育POST数).toBe(1);
+    expect(教育PATCH数).toBe(1);
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.已存条目?.[0]).toMatchObject({ 本地编号: 'edu_local_1', 资源编号: 'edu_srv_9' });
+    expect(草稿.资料?.教育?.[0].编号).toBe('edu_srv_9');
+    expect(草稿.资料?.教育?.[0].学历).toBe('硕士'); // 冲突前用户编辑保留
+    expect(草稿.待写入).toBeUndefined();
+  });
+
+  it('prepared CAS 槽按权威 GET 只读核对：字段一致即结算；冲突保留草稿并报错', async () => {
+    const 资料 = { ...BFF简历样本.profile };
+    const previous = BFF简历样本;
+    const 一致体 = {
+      real_name: '沈亦舟', work_start_year: 2021, status: 'employed' as const,
+      current_education: null, graduation_year: null, gender: 'male' as const,
+      birth_year: 1998, birth_month: 6,
+    };
+    const 一致场景 = 创建场景({
+      建档: {
+        资料: { 个人优势: '一半' },
+        待写入: { 种类: 'profile', 请求体: { ...一致体 }, ifMatch: 2, 阶段: 'prepared' },
+      },
+      后端覆盖: 创建简历数据源(只读请求桩([previous]) as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    await expect(一致场景.操作.保存简历(从BFF简历(previous) as never)).resolves.toBeUndefined();
+    const 一致草稿 = 一致场景.deps.建档草稿引用!.current!;
+    expect(一致草稿.已存分区).toEqual({ profile: 2 });
+    expect(一致草稿.待写入).toBeUndefined();
+    expect(一致草稿.资料).toEqual({ 个人优势: '一半' });
+
+    // 冲突：目标字段已被别人改走 —— 保留用户编辑并报错，清掉可安全判定为终局的槽
+    const 冲突场景 = 创建场景({
+      建档: {
+        资料: { 个人优势: '一半' },
+        待写入: { 种类: 'profile', 请求体: { ...一致体, real_name: '本地名字' }, ifMatch: 2, 阶段: 'prepared' },
+      },
+      后端覆盖: 创建简历数据源(只读请求桩([previous]) as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    await expect(冲突场景.操作.保存简历(从BFF简历(previous) as never))
+      .rejects.toThrow('数据已在其他地方更新，请重试');
+    const 冲突草稿 = 冲突场景.deps.建档草稿引用!.current!;
+    expect(冲突草稿.资料).toEqual({ 个人优势: '一半' }); // 冲突保留用户编辑
+    expect(冲突草稿.待写入).toBeUndefined();
+    expect(资料.real_name).toBe('沈亦舟');
+  });
+
+  it('确定拒绝（422）清槽保留输入；结果未知（503）保留待核对槽', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    const 拒绝请求桩 = (错误: BFF错误) => {
+      const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+        if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+          return { result: previous, etag: null, requestId: 'r' };
+        }
+        if (选项.method === 'POST' && 选项.path === '/api/v1/me/resume/educations') {
+          throw 错误;
+        }
+        throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+      });
+      return 请求Mock;
+    };
+    const 确定 = new BFF错误(422, 'validation_failed', '填写内容未通过校验');
+    const 确定场景 = 创建场景({
+      建档: { 资料: { 教育: [教育段('edu_local_1')] } },
+      后端覆盖: 创建简历数据源(拒绝请求桩(确定) as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    await expect(确定场景.操作.保存简历({ ...从BFF简历(previous), 教育: [教育段('edu_local_1')] } as never))
+      .rejects.toBe(确定);
+    const 确定草稿 = 确定场景.deps.建档草稿引用!.current!;
+    expect(确定草稿.待写入).toBeUndefined(); // 确定拒绝清槽，不永远锁在单槽
+    expect(确定草稿.资料?.教育).toHaveLength(1); // 表单保留
+
+    const 未知 = new BFF错误(503, 'operation_outcome_unknown', '结果未知');
+    const 未知场景 = 创建场景({
+      建档: { 资料: { 教育: [教育段('edu_local_1')] } },
+      后端覆盖: 创建简历数据源(拒绝请求桩(未知) as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    await expect(未知场景.操作.保存简历({ ...从BFF简历(previous), 教育: [教育段('edu_local_1')] } as never))
+      .rejects.toBe(未知);
+    const 未知草稿 = 未知场景.deps.建档草稿引用!.current!;
+    expect(未知草稿.待写入).toMatchObject({ 种类: 'education-create', 阶段: 'prepared' }); // 待核对
+  });
+
+  it('重复点击：第一条在途时第二条 保存简历 拒绝明确 busy 错误，不 return 假成功', async () => {
+    const 场景 = 创建场景();
+    const 快照 = 从BFF简历(BFF简历样本);
+    let 放行!: () => void;
+    场景.后端.读取简历.mockReturnValue(new Promise((ok) => { 放行 = () => ok(快照); }));
+    场景.后端.保存简历.mockResolvedValue(快照 as never);
+    const 第一 = 场景.操作.保存简历({} as never);
+    await expect(场景.操作.保存简历({} as never)).rejects.toThrow('简历保存进行中');
+    放行();
+    await expect(第一).resolves.toBeUndefined();
+  });
+
+  it('保存在途切账号：迟到成功不水合新主体、不写新主体草稿', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    const 权威后 = { ...BFF简历样本, educations: [教育DTO('edu_srv_1', 1)] };
+    let 放行!: () => void;
+    let 教育POST数 = 0;
+    const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+      if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+        return { result: 教育POST数 === 0 ? previous : 权威后, etag: null, requestId: 'r' };
+      }
+      if (选项.method === 'POST' && 选项.path === '/api/v1/me/resume/educations') {
+        return new Promise((ok) => {
+          放行 = () => {
+            教育POST数 += 1;
+            ok({ result: { entry: { kind: 'education', education: 教育DTO('edu_srv_1', 1) }, aggregate_revision: 7 }, etag: null, requestId: 'r' });
+          };
+        }) as Promise<BFF响应<unknown>>;
+      }
+      throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+    });
+    const 建档: 候选引导建档草稿 = { 资料: { 教育: [教育段('edu_local_1')] } };
+    const 场景 = 创建场景({
+      建档,
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    const 写 = 场景.操作.保存简历({ ...从BFF简历(previous), 教育: [教育段('edu_local_1')] } as never);
+    // 等到 POST 真正发出（挂起的 deferred 已装好 放行）再切账号
+    await new Promise((完成) => setTimeout(完成, 0));
+    场景.deps.主体标识引用.current = 'sub_2';
+    场景.deps.建档草稿引用!.current = null;
+    放行();
+    await expect(写).resolves.toBeUndefined();
+    const 动作们 = (场景.派发.mock.calls as { 型: string }[][]).map(([a]) => a.型);
+    expect(动作们).not.toContain('水合后端简历'); // 迟到成功不水合新主体
+    expect((场景.后端状态引用.current as { 简历快照: unknown }).简历快照).toBeNull();
+    expect(场景.deps.建档草稿引用!.current).toBeNull(); // 不向新主体写草稿
+  });
+
+  it('条目 DELETE 只消费明确删除登记：hydrate 缺项不发 DELETE，登记后按原 revision 删除并移除身份', async () => {
+    const previous = BFF简历样本; // 含 exp_1（revision 4）
+    // 缺项保护：草稿里没有 exp_1（hydrate 缺项），next 也不含 → 不发 DELETE。
+    // 只读桩对任何 mutation 都抛错：保存能 resolve 即证明零 DELETE 零 PATCH。
+    const 保留场景 = 创建场景({
+      建档: { 资料: {} },
+      后端覆盖: 创建简历数据源(只读请求桩([previous]) as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    const 空 = { ...从BFF简历(previous), 经历: [] as 简历经历段[] };
+    await expect(保留场景.操作.保存简历(空 as never)).resolves.toBeUndefined();
+
+    // 明确删除登记后：DELETE 走原 revision，成功后移除登记与已存身份
+    let 删除数 = 0;
+    const 删除请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+      if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+        return { result: 删除数 === 0 ? previous : { ...previous, experiences: [] }, etag: null, requestId: 'r' };
+      }
+      if (选项.method === 'DELETE' && 选项.path === '/api/v1/me/resume/experiences/exp_1') {
+        删除数 += 1;
+        return { result: { ...previous, experiences: [] }, etag: null, requestId: 'r' };
+      }
+      throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+    });
+    const 删除场景 = 创建场景({
+      建档: {
+        资料: {},
+        已存条目: [{ 本地编号: 'exp_1', 种类: 'experience', 资源编号: 'exp_1', revision: 4 }],
+        明确删除条目: [{ 种类: 'experience', 资源编号: 'exp_1', revision: 4 }],
+      },
+      后端覆盖: 创建简历数据源(删除请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    await expect(删除场景.操作.保存简历({ ...从BFF简历(previous), 经历: [] as 简历经历段[] } as never))
+      .resolves.toBeUndefined();
+    const 删除们 = 删除请求Mock.mock.calls.map((c) => c[0] as BFF请求选项)
+      .filter((o) => o.method === 'DELETE');
+    expect(删除们).toHaveLength(1);
+    expect(删除们[0].ifMatch).toBe('"4"'); // 原 revision 删除，不盲换
+    const 删除草稿 = 删除场景.deps.建档草稿引用!.current!;
+    expect(删除草稿.明确删除条目).toHaveLength(0); // 成功移除对应登记
+    expect(删除草稿.已存条目).toHaveLength(0); // 成功移除对应已存身份
+  });
+
+  it('保存个人优势 不携带作品集链接：普通路径不带该键，建档路径不覆盖草稿 URL 与未提交字段', async () => {
+    const previous: BFF简历 = {
+      ...BFF简历样本,
+      profile: { ...BFF简历样本.profile, portfolio_url: 'https://old.example.com' },
+    };
+    // 普通路径：透传给数据源的 写入 不含 作品集链接 键（缺省 = 未改，不从旧 GET 顺带覆盖）
+    const 普通场景 = 创建场景();
+    普通场景.后端.读取简历.mockResolvedValue(从BFF简历(previous) as never);
+    普通场景.后端.保存简历.mockResolvedValue(从BFF简历(previous) as never);
+    await 普通场景.操作.保存个人优势('新优势');
+    const 写入 = 普通场景.后端.保存简历.mock.calls[0][0];
+    expect(Object.prototype.hasOwnProperty.call(写入, '作品集链接')).toBe(false);
+    expect(写入.个人优势).toBe('新优势');
+
+    // 建档路径：summary 分区单独写入，不发 profile PATCH，草稿 URL/未提交字段原样保留
+    let summaryPATCH数 = 0;
+    const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+      if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+        return { result: previous, etag: null, requestId: 'r' };
+      }
+      if (选项.method === 'PATCH' && 选项.path === '/api/v1/me/resume/summary') {
+        summaryPATCH数 += 1;
+        return { result: previous, etag: null, requestId: 'r' };
+      }
+      throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+    });
+    const 场景 = 创建场景({
+      建档: { 资料: { 个人优势: '草稿优势', 作品集链接: 'https://draft.example.com', 技能: ['Draft'] } },
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    await expect(场景.操作.保存个人优势('新优势')).resolves.toBeUndefined();
+    expect(summaryPATCH数).toBe(1);
+    const 请求们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    expect(请求们.filter((o) => o.path === '/api/v1/me/resume/profile')).toHaveLength(0);
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.资料?.作品集链接).toBe('https://draft.example.com'); // 草稿 URL 不被覆盖
+    expect(草稿.资料?.技能).toEqual(['Draft']); // 其他未提交字段不被吞
+    expect(草稿.已存分区).toEqual({ summary: 1 });
   });
 });
