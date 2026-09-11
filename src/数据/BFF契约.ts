@@ -15,6 +15,8 @@ export interface BFF目录引用 {
 export interface BFFTaxonomyItem extends BFF目录引用 {
   parent_id: string | null;
   selectable: boolean;
+  /** J-PILOT-02：合同必返的可下钻事实，原样消费，绝不从 parent_id 推算。 */
+  has_children: boolean;
 }
 export interface BFFLocationItem extends BFF目录引用 {
   country_code: string;
@@ -59,6 +61,9 @@ export interface BFF简历资料 {
   gender: 'male' | 'female' | null;
   birth_year: number | null;
   birth_month: number | null;
+  /** J-PILOT-02：作品集链接。读侧合同必返（未设置即 null）；类型保持可选以兼容
+   *  未带该字段的旧 BFF 响应 —— 读取时缺字段按 null 处理。 */
+  portfolio_url?: string | null;
 }
 
 export interface BFF项目 {
@@ -386,6 +391,11 @@ export interface BFF信封<T> {
 
 // ── 写入类型（属性与 OpenAPI 一一对应）──
 
+/**
+ * J-PILOT-02：继承的 portfolio_url 是三态字段 —— 属性缺省 = 保留服务端已存值，
+ * null = 显式清空，string = 设置。映射层用“有无属性”区分省略与 null，不以 truthy
+ * 判断清空；普通资料编辑不带该字段。
+ */
 export interface BFF资料写入 extends Omit<BFF简历资料, 'status'> {
   status: 'student' | 'employed' | 'unemployed';
 }

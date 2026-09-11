@@ -51,10 +51,10 @@ export default function 选期望职位() {
     if (!是后端) return [];
     if (来自意向) {
       const 引用 = 全局.意向草稿.职位引用;
-      return 引用 ? [{ id: 引用.id, display_name: 引用.display_name, parent_id: null, selectable: true }] : [];
+      return 引用 ? [{ id: 引用.id, display_name: 引用.display_name, parent_id: null, selectable: true, has_children: false }] : [];
     }
     const 引用们 = 全局.引导预填?.职位引用们 ?? [];
-    return 引用们.map((条) => ({ id: 条.id, display_name: 条.display_name, parent_id: null, selectable: true }));
+    return 引用们.map((条) => ({ id: 条.id, display_name: 条.display_name, parent_id: null, selectable: true, has_children: false }));
   });
   // Backend 右栏：当前选中大类的子项（首次取 roots 后默认选第一枚）
   const [根项, 设根项] = useState<BFFTaxonomyItem[]>([]);

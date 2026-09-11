@@ -60,15 +60,15 @@ const { profile: _档案, ...身份样本 } = BFF公开企业样本;
 
 // ── industries taxonomy 桩：根项 / 根的子项 / 搜索结果 三种形态 ──
 const 行业根: BFFTaxonomyItem[] = [
-  { id: 'ind_root', display_name: '互联网', parent_id: null, selectable: false },
-  { id: 'ind_ai', display_name: '人工智能', parent_id: null, selectable: true },
+  { id: 'ind_root', display_name: '互联网', parent_id: null, selectable: false, has_children: true },
+  { id: 'ind_ai', display_name: '人工智能', parent_id: null, selectable: true, has_children: false },
 ];
 const 行业子项: BFFTaxonomyItem[] = [
-  { id: 'ind_web', display_name: '网页', parent_id: 'ind_root', selectable: false },
-  { id: 'ind_ecom', display_name: '电子商务', parent_id: 'ind_root', selectable: true },
+  { id: 'ind_web', display_name: '网页', parent_id: 'ind_root', selectable: false, has_children: false },
+  { id: 'ind_ecom', display_name: '电子商务', parent_id: 'ind_root', selectable: true, has_children: false },
 ];
 const 行业搜索结果: BFFTaxonomyItem[] = [
-  { id: 'ind_fintech', display_name: '金融科技', parent_id: null, selectable: true },
+  { id: 'ind_fintech', display_name: '金融科技', parent_id: null, selectable: true, has_children: false },
 ];
 
 function 目录页Of(items: BFFTaxonomyItem[]) {

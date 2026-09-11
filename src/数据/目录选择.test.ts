@@ -19,8 +19,8 @@ describe('合并目录页', () => {
 
   it('空旧表直接保留新页全部', () => {
     const 新 = [
-      { id: 'a', display_name: 'A', parent_id: null, selectable: false },
-      { id: 'b', display_name: 'B', parent_id: null, selectable: true },
+      { id: 'a', display_name: 'A', parent_id: null, selectable: false, has_children: false },
+      { id: 'b', display_name: 'B', parent_id: null, selectable: true, has_children: false },
     ] satisfies BFFTaxonomyItem[];
     expect(合并目录页([], 新).map((item) => item.id)).toEqual(['a', 'b']);
   });
@@ -28,8 +28,8 @@ describe('合并目录页', () => {
 
 describe('可提交Taxonomy', () => {
   it('selectable=true 才可提交', () => {
-    const 导航: BFFTaxonomyItem = { id: 'root', display_name: '技术', parent_id: null, selectable: false };
-    const 叶: BFFTaxonomyItem = { id: 'leaf', display_name: '后端', parent_id: 'root', selectable: true };
+    const 导航: BFFTaxonomyItem = { id: 'root', display_name: '技术', parent_id: null, selectable: false, has_children: true };
+    const 叶: BFFTaxonomyItem = { id: 'leaf', display_name: '后端', parent_id: 'root', selectable: true, has_children: false };
     expect(可提交Taxonomy(导航)).toBe(false);
     expect(可提交Taxonomy(叶)).toBe(true);
   });

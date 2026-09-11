@@ -83,7 +83,7 @@ export default function 引导问答() {
   );
   // Backend 选中候选的目录引用（与已选字符串同源，落盘时原子写入 引导预填）
   const [已选职位引用, 设已选职位引用] = useState<BFFTaxonomyItem[]>(
-    是后端 ? (全局.引导预填?.职位引用们 ?? []).map((条) => ({ id: 条.id, display_name: 条.display_name, parent_id: null, selectable: true })) : []
+    是后端 ? (全局.引导预填?.职位引用们 ?? []).map((条) => ({ id: 条.id, display_name: 条.display_name, parent_id: null, selectable: true, has_children: false })) : []
   );
   const [已选城市引用, 设已选城市引用] = useState<BFFLocationItem[]>(
     是后端 ? (全局.引导预填?.城市引用们 ?? []).map((条) => ({ id: 条.id, display_name: 条.display_name, country_code: '', country_name: '', admin1_code: '', admin1_name: '', timezone: '', population: 0 })) : []

@@ -32,7 +32,7 @@ import type {
   岗位创建上下文,
   首次意向输入,
 } from './招聘数据源类型';
-import { 迁移主要求职类型 } from '../流程/onboarding配置';
+import { 迁移主要求职类型, 规范化作品集链接, 校验作品集链接 } from '../流程/onboarding配置';
 import { BFF错误, 客户端校验错误 } from './HTTP客户端';
 
 // ── 身份 / 性别 枚举映射（固定）──
@@ -162,6 +162,8 @@ export function 从BFF简历(dto: BFF简历): 页面简历快照 {
     经历: dto.experiences.map(转经历),
     教育: dto.educations.map(转教育),
     证书: dto.certificates.map(转证书),
+    // J-PILOT-02：读侧合同必返 portfolio_url；旧 BFF 响应缺字段按 null
+    作品集链接: dto.profile.portfolio_url ?? null,
     服务端快照: dto,
   };
 }
@@ -172,12 +174,16 @@ export function 从BFF简历(dto: BFF简历): 页面简历快照 {
  * 页面 身份 反映射为后端 status（必为 student/employed/unemployed，不含空串）。
  * M：身份为 ''（未选择）直接抛客户端校验错 —— wire 合同不收空 status，
  * profile 分区的跳过判断在数据源层（身份为空时整个分区不发）。
+ * J-PILOT-02：第二参 作品集链接 是三态 —— 缺省（含 undefined）= 不带属性（服务端
+ * 保留已存 URL，普通资料编辑即此路径），null 或空白串 = 显式 null（清空），
+ * 非空字符串 = 规范化并校验后设置。用“有无属性”区分省略与 null，不以 truthy
+ * 判断清空；后端仍是最终校验者。
  */
-export function 转资料写入(基本: 基本信息): BFF资料写入 {
+export function 转资料写入(基本: 基本信息, 作品集链接?: string | null): BFF资料写入 {
   if (基本.身份 === '') {
     throw new 客户端校验错误('resume.profile.status', '请选择求职状态');
   }
-  return {
+  const body: BFF资料写入 = {
     real_name: 基本.真名,
     work_start_year: 基本.开始工作年 !== '' ? Number(基本.开始工作年) : null,
     status: 身份到后端[基本.身份],
@@ -187,6 +193,22 @@ export function 转资料写入(基本: 基本信息): BFF资料写入 {
     birth_year: 基本.出生年 && 基本.出生年 !== '' ? Number(基本.出生年) : null,
     birth_month: 基本.出生月 && 基本.出生月 !== '' ? Number(基本.出生月) : null,
   };
+  if (作品集链接 !== undefined) {
+    body.portfolio_url = 作品集链接 === null || 作品集链接.trim() === ''
+      ? null
+      : 写作品集链接(作品集链接);
+  }
+  return body;
+}
+
+/** 规范化并校验非空作品集链接：无协议补 https；绝对 http(s)、含点 hostname、
+ *  禁空白/BOM、最多 2048 Unicode code points（onboarding配置 的共用校验），
+ *  非法抛带稳定字段名的客户端校验错。 */
+function 写作品集链接(文本: string): string {
+  const 规范 = 规范化作品集链接(文本);
+  const 错误 = 校验作品集链接(规范);
+  if (错误 !== null) throw new 客户端校验错误('resume.profile.portfolio_url', 错误);
+  return 规范;
 }
 
 /** 页面经历段 → 后端经历写入 body；行业引用.id 直接作 industry_id，不再按显示名反查目录。 */
@@ -378,26 +400,38 @@ export function 转意向写入(草稿: 意向草稿型, 上下文: 意向映射
   };
 }
 
+// J-PILOT-02 合同 3：首次意向的四张固定偏好卡（引导问答.排除题 的原标签）不写硬排除
+// —— 私有诉求不自动写硬排除；勾选卡片换算成固定文案行进 private_preferences。
+// 文案与卡片顺序按批准 Plan Task 7 固定；日常 转意向写入 的硬排除映射保持不变。
+const 首次偏好卡们 = [
+  { 标签: '大小周', 诉求: '不接受大小周' },
+  { 标签: '纯外包 / 乙方', 诉求: '不接受纯外包/乙方' },
+  { 标签: '全现场办公', 诉求: '不接受全现场办公' },
+  { 标签: '频繁出差', 诉求: '不接受频繁出差' },
+] as const;
+
 /** 首次注册向导答案 → BFF意向写入 body。用 迁移主要求职类型 取唯一主类型。
  *  Task 6：目录字段直接读输入里的引用（职位引用/城市引用们），不再按显示名反查目录；
- *  办公方式 从输入.筛选偏好.办公方式 读（向导答案里的中文标签）。 */
+ *  办公方式 从输入.筛选偏好.办公方式 读（向导答案里的中文标签）。
+ *  J-PILOT-02：exclusions 固定四字段 unspecified；固定卡文案 + 自定义原文（原样另存，
+ *  全空白段过滤）按行换行拼接进 private_preferences，无前缀、不改写。 */
 export function 转首次意向写入(输入: 首次意向输入): BFF意向写入 {
   const 主类型偏好 = 迁移主要求职类型(输入.筛选偏好, 输入.薪资.单位);
   const 主要 = 主类型偏好.求职类型[0];
   const recruitment_type = 岗位类型到后端[主要];
   const 是校园 = recruitment_type === 'campus';
   const 是实习 = recruitment_type === 'internship';
-  // 五个内置排除项映射四个 BFF exclusion 为 excluded，未选为 unspecified；自定义文本写进 private_preferences
-  const 排除集 = new Set(输入.排除项);
-  const 内置 = ['大小周', '纯外包', '乙方', '全现场办公', '频繁出差'];
   const exclusions: BFF意向排除 = {
-    alternate_weekend_work: 排除集.has('大小周') ? 'excluded' : 'unspecified',
-    outsourcing_only: 排除集.has('纯外包') || 排除集.has('乙方') ? 'excluded' : 'unspecified',
-    onsite_only: 排除集.has('全现场办公') ? 'excluded' : 'unspecified',
-    frequent_travel: 排除集.has('频繁出差') ? 'excluded' : 'unspecified',
+    alternate_weekend_work: 'unspecified',
+    outsourcing_only: 'unspecified',
+    onsite_only: 'unspecified',
+    frequent_travel: 'unspecified',
   };
-  const 自定义 = 输入.排除项.filter((项) => !内置.includes(项));
-  const private_preferences = 自定义.length > 0 ? `其他排除：${自定义.join('、')}` : '';
+  const 排除集 = new Set(输入.排除项);
+  const 卡片行们 = 首次偏好卡们.filter((卡) => 排除集.has(卡.标签)).map((卡) => 卡.诉求);
+  // 自定义输入原样另存（不拆改原文内部换行）；全空白段不产生诉求行
+  const 自定义行们 = (输入.自定义诉求 ?? []).filter((段) => 段.trim() !== '');
+  const private_preferences = [...卡片行们, ...自定义行们].join('\n');
   const [primary, ...alternate] = 去重引用(输入.城市引用们 ?? []);
   if (!primary) {
     throw new 客户端校验错误('intention.primary_location_id', '请从候选城市中选择');

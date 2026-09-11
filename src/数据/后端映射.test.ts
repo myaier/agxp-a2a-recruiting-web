@@ -751,6 +751,128 @@ describe('候选人后端映射', () => {
   });
 });
 
+// ── J-PILOT-02 Task 1：URL 三态、首次诉求四卡与日常硬排除的合同对齐 ──
+
+describe('作品集链接读写映射（J-PILOT-02 合同 1）', () => {
+  const 基本 = { 真名: '沈亦舟', 开始工作年: '2021', 身份: '在职' as const };
+
+  it('从BFF简历 把 portfolio_url 读成 作品集链接，旧响应缺字段按 null', () => {
+    const 简历 = (portfolio_url: string | null | undefined) => 从BFF简历({
+      ...BFF简历样本,
+      profile: portfolio_url === undefined
+        ? BFF简历样本.profile
+        : { ...BFF简历样本.profile, portfolio_url },
+    });
+    expect(简历('https://github.com/example').作品集链接).toBe('https://github.com/example');
+    expect(简历(null).作品集链接).toBe(null);
+    expect(简历(undefined).作品集链接).toBe(null);
+  });
+
+  it('普通资料修改不带 portfolio_url：单参调用省略属性，不从旧 GET 顺带覆盖', () => {
+    const body = 转资料写入(基本);
+    expect(body).not.toHaveProperty('portfolio_url');
+  });
+
+  it('null 与空白串显式清空（属性存在即用户修改，不以 truthy 判断清空）', () => {
+    expect(转资料写入(基本, null)).toMatchObject({ portfolio_url: null });
+    expect(转资料写入(基本, '')).toMatchObject({ portfolio_url: null });
+    expect(转资料写入(基本, '   ')).toMatchObject({ portfolio_url: null });
+  });
+
+  it('字符串规范化后设置：trim、无协议补 https', () => {
+    expect(转资料写入(基本, '  github.com/example/portfolio  '))
+      .toMatchObject({ portfolio_url: 'https://github.com/example/portfolio' });
+    expect(转资料写入(基本, 'https://example.com/portfolio'))
+      .toMatchObject({ portfolio_url: 'https://example.com/portfolio' });
+  });
+
+  it('2048 个 Unicode code points 接受，2049 个拒绝', () => {
+    const 头 = 'https://github.com/';
+    const 恰好 = 头 + 'a'.repeat(2048 - 头.length);
+    expect([...恰好].length).toBe(2048);
+    expect(转资料写入(基本, 恰好)).toMatchObject({ portfolio_url: 恰好 });
+    expect(() => 转资料写入(基本, `${恰好}a`)).toThrow('作品集或项目链接不能超过 2048 个字符');
+  });
+
+  it('非法 URL 在客户端拒绝并带稳定字段名；后端仍是最终校验者', () => {
+    for (const 非法 of ['javascript:alert(1)', 'javascript://evil.com/x', 'github.com/a b', 'github.com/a\uFEFFb', 'not-a-link', 'http://localhost:8080']) {
+      try {
+        转资料写入(基本, 非法);
+        expect.unreachable(`非法 URL 必须拒绝：${非法}`);
+      } catch (错误) {
+        expect(错误).toMatchObject({ code: 'client_validation', field: 'resume.profile.portfolio_url' });
+      }
+    }
+  });
+});
+
+describe('首次意向诉求映射（J-PILOT-02 合同 3）', () => {
+  const 基础输入 = {
+    职位们: ['产品经理'],
+    城市们: ['上海'],
+    薪资: { 下限: 10, 上限: 20, 单位: '月薪K' as const },
+    筛选偏好: { 求职类型: ['社招全职'] as ['社招全职'], 办公方式: ['混合'] as ['混合'] },
+    排除项: [] as string[],
+    职位引用: ref('tax_product', '产品经理'),
+    城市引用们: [ref('loc_shanghai', '上海')],
+  };
+
+  it('exclusions 固定四字段 unspecified：勾选固定卡不写硬排除', () => {
+    const body = 转首次意向写入({
+      ...基础输入,
+      排除项: ['大小周', '纯外包 / 乙方', '全现场办公', '频繁出差'],
+    });
+    expect(body.exclusions).toEqual({
+      alternate_weekend_work: 'unspecified',
+      outsourcing_only: 'unspecified',
+      onsite_only: 'unspecified',
+      frequent_travel: 'unspecified',
+    });
+  });
+
+  it('四张固定卡按卡片顺序换算固定文案，自定义原文逐字随后，换行拼接、无“其他排除：”前缀', () => {
+    const body = 转首次意向写入({
+      ...基础输入,
+      // 乱序传入也按固定卡序输出；用户自定义原文（含内部换行）不拆改
+      排除项: ['频繁出差', '大小周', '纯外包 / 乙方'],
+      自定义诉求: ['不接受夜班', '要双休\n五险一金'],
+    });
+    expect(body.private_preferences)
+      .toBe('不接受大小周\n不接受纯外包/乙方\n不接受频繁出差\n不接受夜班\n要双休\n五险一金');
+  });
+
+  it('自定义全空白段不产生诉求行；全不选时私有诉求为空串', () => {
+    expect(转首次意向写入({ ...基础输入, 自定义诉求: ['   ', '', '不接受夜班'] }).private_preferences)
+      .toBe('不接受夜班');
+    expect(转首次意向写入(基础输入).private_preferences).toBe('');
+  });
+
+  it('日常 转意向写入 的硬排除映射不变：草稿排除项透传、新建缺省全 unspecified', () => {
+    const 排除 = {
+      alternate_weekend_work: 'excluded',
+      outsourcing_only: 'allowed',
+      onsite_only: 'unspecified',
+      frequent_travel: 'excluded',
+    } as const;
+    const 草稿 = {
+      ...空草稿,
+      工作城市引用: ref('loc_sh', '上海'),
+      职位引用: ref('tax_pm', '产品经理'),
+      办公方式: ['混合'],
+      排除项: 排除,
+    };
+    expect(转意向写入(草稿, { 原始: null }).exclusions).toEqual(排除);
+    const 新建草稿: 意向草稿型 = { ...草稿 };
+    delete 新建草稿.排除项;
+    expect(转意向写入(新建草稿, { 原始: null }).exclusions).toEqual({
+      alternate_weekend_work: 'unspecified',
+      outsourcing_only: 'unspecified',
+      onsite_only: 'unspecified',
+      frequent_travel: 'unspecified',
+    });
+  });
+});
+
 // ── M：空身份 —— BFF 空 status 映射为页面 ''，转资料写入 拒绝空身份 ──
 describe('空身份映射与写入校验（M）', () => {
   it('从BFF简历 对空 status 保持 身份:""（不再显示默认「在职」）', () => {

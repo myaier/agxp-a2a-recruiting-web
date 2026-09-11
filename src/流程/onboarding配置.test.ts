@@ -201,3 +201,31 @@ describe('空求职初筛偏好', () => {
     expect(空求职初筛偏好()).toEqual({ 求职类型: [], 办公方式: [] });
   });
 });
+
+// ── J-PILOT-02 Task 1：作品集链接写入校验对齐冻结合同（2048 码点 / 禁空白与 BOM / http(s)）──
+describe('作品集链接写入校验（J-PILOT-02 合同 1）', () => {
+  it('按 Unicode code points 计数：2048 码点（含增补平面字符）接受，2049 拒绝', () => {
+    const 头 = 'https://github.com/'; // 19 码点
+    // '𝕏' 是增补平面字符（1 码点 = 2 个 UTF-16 单元）：按码点数恰好 2048 必须接受，
+    // 若实现误用 String.length（UTF-16 单元）就会拒绝
+    const 恰好2048 = 头 + '𝕏'.repeat(2048 - [...头].length);
+    expect([...恰好2048].length).toBe(2048);
+    expect(校验作品集链接(恰好2048)).toBeNull();
+    const 超限2049 = 恰好2048 + 'a';
+    expect([...超限2049].length).toBe(2049);
+    expect(校验作品集链接(超限2049)).toBe('作品集或项目链接不能超过 2048 个字符');
+  });
+
+  it('URL 内部空白与 BOM 拒绝（wire pattern ^https?://[^\\s]+$，JS \\s 含 BOM）；首尾空白仍允许', () => {
+    expect(校验作品集链接('github.com/example /project')).toBe('请输入有效的作品集或项目链接');
+    expect(校验作品集链接('https://github.com/a b')).toBe('请输入有效的作品集或项目链接');
+    expect(校验作品集链接('github.com/a\uFEFFb')).toBe('请输入有效的作品集或项目链接');
+    // trim 是规范化的一部分：首尾空白不拦
+    expect(校验作品集链接(' github.com/example ')).toBeNull();
+  });
+
+  it('javascript 协议拒绝', () => {
+    expect(校验作品集链接('javascript:alert(1)')).toBe('请输入有效的作品集或项目链接');
+    expect(校验作品集链接('javascript://evil.com/x')).toBe('请输入有效的作品集或项目链接');
+  });
+});

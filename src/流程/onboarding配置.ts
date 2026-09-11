@@ -81,10 +81,18 @@ export function 规范化作品集链接(值: string): string {
   return /^[a-z][a-z\d+.-]*:\/\//i.test(文本) ? 文本 : `https://${文本}`;
 }
 
+/** 冻结 wire 合同：URL 最多 2048 个 Unicode code points（按码点计数，非 UTF-16 单元）。 */
+const 作品集链接最大码点 = 2048;
+
 export function 校验作品集链接(值: string | undefined): string | null {
   if (!值?.trim()) return null;
+  const 规范 = 规范化作品集链接(值);
+  // 冻结合同 pattern ^https?://[^\s]+$：规范化后的 URL 内不允许任何空白
+  // （JS 的 \s 含 BOM），首尾空白已被上面的 trim 规范化掉
+  if (/\s/u.test(规范)) return '请输入有效的作品集或项目链接';
+  if ([...规范].length > 作品集链接最大码点) return '作品集或项目链接不能超过 2048 个字符';
   try {
-    const 地址 = new URL(规范化作品集链接(值));
+    const 地址 = new URL(规范);
     if (!['http:', 'https:'].includes(地址.protocol) || !地址.hostname.includes('.')) {
       return '请输入有效的作品集或项目链接';
     }

@@ -439,6 +439,51 @@ describe('HTTP 招聘数据源', () => {
     expect(page.items[0].location).toMatchObject({ display_name: '上海市', country_name: '中国' });
   });
 
+  // J-PILOT-02 Task 1：has_children 来自合同必返字段，原样消费（不从 parent_id 推算）；
+  // 可导航（has_children）与可选择（selectable）是两个独立事实，都不能被映射层抹掉。
+  it('Taxonomy 查询原样保留 has_children，可导航与可选择独立', async () => {
+    请求Mock.mockResolvedValueOnce({
+      result: {
+        items: [
+          { id: 'tax_root', display_name: '技术', parent_id: null, selectable: false, has_children: true },
+          { id: 'tax_leaf', display_name: '后端开发', parent_id: 'tax_root', selectable: true, has_children: false },
+        ],
+        next_cursor: null, catalog_version: 'v3',
+      },
+    });
+    const page = await 创建HTTP招聘数据源(依赖()).查询Taxonomy('job-categories', { limit: 20 });
+    expect(page.items[0]).toEqual({ id: 'tax_root', display_name: '技术', parent_id: null, selectable: false, has_children: true });
+    expect(page.items[1]).toEqual({ id: 'tax_leaf', display_name: '后端开发', parent_id: 'tax_root', selectable: true, has_children: false });
+  });
+
+  // J-PILOT-02 Task 1：后端只收非空 q；默认（无搜索词）Location 查询必须整体省略 q 参数。
+  it('默认 Location 查询省略 q，不发空查询参数', async () => {
+    请求Mock.mockResolvedValueOnce({ result: { items: [], next_cursor: null, catalog_version: 'v3' } });
+    await 创建HTTP招聘数据源(依赖()).查询Location({ countryCode: 'CN', admin1Code: '31', limit: 20 });
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/catalog/locations?country_code=CN&admin1_code=31&limit=20',
+    });
+  });
+
+  // J-PILOT-02 Task 1：普通资料修改不带旧 URL —— previous GET 里的 portfolio_url
+  // 不被顺带覆盖（转资料写入 单参调用省略属性），有意编辑才由后续 Task 显式携带。
+  it('普通资料修改的 profile PATCH 不携带 portfolio_url', async () => {
+    const 旧权威: typeof BFF简历样本 = {
+      ...BFF简历样本,
+      profile: { ...BFF简历样本.profile, portfolio_url: 'https://github.com/example' },
+    };
+    const 请求Mock = vi.fn(async (_options: BFF请求选项) => ({ result: 旧权威, etag: '"4"', requestId: 'r1' }));
+    const 请求 = 请求Mock as unknown as 请求函数;
+    const source = 创建HTTP招聘数据源({ client: { 请求, 请求二进制: vi.fn() }, 后端环境: 'stg', 附属存储: 内存附属存储() });
+    const 旧页面 = 从BFF简历(旧权威);
+    const 新页面 = { ...旧页面, 基本信息: { ...旧页面.基本信息, 真名: '新名字' } };
+    await source.保存简历(新页面, 旧权威);
+    const patch = 请求Mock.mock.calls
+      .map(([o]) => o as BFF请求选项)
+      .find((o) => o.method === 'PATCH' && o.path === '/api/v1/me/resume/profile');
+    expect(patch?.body).not.toHaveProperty('portfolio_url');
+  });
+
   // Task 2：读取意向 带 status=active 过滤，只拉活跃意向；创建/更新/删除 后 re-GET 也走同一 path。
   it('读取意向 请求路径带 status=active', async () => {
     请求Mock.mockResolvedValue({ result: { intentions: [] }, etag: null, requestId: 'r1' });
