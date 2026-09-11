@@ -433,10 +433,12 @@ export interface 建档资料草稿 {
   作品集链接?: string | null;
 }
 
-/** 现有教育/经历/项目/证书编辑器的未完成表单：判别种类 + 本地编号 + 原表单字段（允许不完整字符串）。 */
+/** 现有教育/经历/项目/证书编辑器的未完成表单：判别种类 + 本地编号 + 原表单字段（允许不完整字符串）。
+ *  字段键集与解码白名单（教育/经历/项目/证书编辑键们）严格一致：经历层不收 项目 数组
+ *  —— 在建项目走 project 变体，写进经历 字段 会整条拒绝草稿。 */
 export type 建档编辑中草稿 =
   | { 种类: 'education'; 本地编号: string; 字段: Omit<Partial<简历教育段>, '编号'> }
-  | { 种类: 'experience'; 本地编号: string; 字段: Omit<Partial<简历经历段>, '编号'> }
+  | { 种类: 'experience'; 本地编号: string; 字段: Omit<Partial<简历经历段>, '编号' | '项目'> }
   | { 种类: 'project'; 本地编号: string; 父编号?: string; 字段: Omit<Partial<简历项目>, '编号'> }
   | { 种类: 'certificate'; 本地编号: string; 字段: Omit<Partial<简历证书>, '编号'> };
 

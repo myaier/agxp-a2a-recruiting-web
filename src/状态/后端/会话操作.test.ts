@@ -1994,7 +1994,10 @@ describe('更新候选建档草稿（J-PILOT-02 Task 2）', () => {
   }
 
   function 空后端(): HTTP招聘数据源 {
-    return { 清空目录缓存: vi.fn() } as unknown as HTTP招聘数据源;
+    return {
+      清空目录缓存: vi.fn(),
+      退出登录: vi.fn(async () => undefined),
+    } as unknown as HTTP招聘数据源;
   }
 
   const 槽A = {
@@ -2077,11 +2080,17 @@ describe('更新候选建档草稿（J-PILOT-02 Task 2）', () => {
     expect(轻提示条数()).toBe(0);
   });
 
-  it('清账号状态 同步清空 建档草稿引用（内存），不等待 React 下一帧', () => {
-    const { deps } = 创建会话测试依赖(空后端());
-    deps.建档草稿引用.current = { 头像状态: '待核对' };
-    清账号状态(deps);
+  it('退出登录（生产清理路径）同步清空 建档草稿引用（内存），不等待 React 下一帧', async () => {
+    // 走 创建会话操作 的真实 退出登录：清账号状态 收到的是工厂内部组装的
+    // 账号清理依赖，验证生产接线（而非手工拼全 deps）确实带上 建档草稿引用。
+    const { deps, 动作流 } = 创建会话测试依赖(空后端());
+    const 操作 = 创建会话操作(deps);
+    操作.更新候选建档草稿({ 头像状态: '待核对' });
+    expect(deps.建档草稿引用.current).toEqual({ 头像状态: '待核对' });
+    await 操作.退出登录();
+    // 清理在 退出登录 的同步收口里完成，不等 React 下一帧
     expect(deps.建档草稿引用.current).toBe(null);
+    expect(动作流).toContainEqual({ 型: '清后端草稿' });
     expect(deps.状态引用.current.引导预填).toBe(null);
   });
 });
