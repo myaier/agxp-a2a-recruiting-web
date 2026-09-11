@@ -62,6 +62,8 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByRole('heading', { name: '创建在线简历' })).toBeVisible();
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/onboard\/status$/);
+    // 求职状态已无默认档（「不设默认档，未选择就提示」）：先选再走，否则下一步被拦
+    await page.getByRole('button', { name: '在职 · 考虑机会' }).click();
     await page.getByRole('button', { name: '下一步' }).click();
     await 走完学历资料(page);
 
@@ -72,6 +74,19 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByLabel('作品集或项目链接')).toHaveValue(
       'https://github.com/example/kept-project',
     );
+    // 清空是合法三态之一（null 写盘的输入侧表现；wire 层三态由 Backend fixture 用例核对）：
+    // 清完不报错、值为空串，再填回时规范化照旧生效
+    await page.getByLabel('作品集或项目链接').fill('');
+    await page.getByLabel('作品集或项目链接').blur();
+    await expect(page.getByLabel('作品集或项目链接')).toHaveValue('');
+    await page.getByLabel('作品集或项目链接').fill('github.com/example/kept-project');
+    await page.getByLabel('作品集或项目链接').blur();
+    await expect(page.getByLabel('作品集或项目链接')).toHaveValue(
+      'https://github.com/example/kept-project',
+    );
+    // 零工作经历可以下一步：本旅程全程没点过「添加工作经历」，这里钉住页面上确实
+    // 没有任何经历行（删除入口只出现在已建经历的编辑层里），保存照样推进
+    await expect(page.getByText(/删除这段经历/)).toHaveCount(0);
     await page.getByRole('button', { name: '保存' }).click();
 
     await expect(page).toHaveURL(/#\/wizard$/);
@@ -100,6 +115,8 @@ test.describe('multi-role onboarding', () => {
     await 走完学历资料(page);
     await page.getByRole('button', { name: '保存' }).click();
     await expect(page).toHaveURL(/#\/onboard\/status$/);
+    // 学生档同样无默认：先选「在校 ·」档再下一步，否则被「请选择当前求职状态」拦下
+    await page.getByRole('button', { name: '在校 · 考虑机会' }).click();
     await page.getByRole('button', { name: '下一步' }).click();
 
     await expect(page).toHaveURL(/#\/wizard$/);
@@ -189,10 +206,18 @@ test.describe('multi-role onboarding', () => {
 
     await page.goto('/#/student');
 
-    // 2026-08-24 二改：毕业时间平时是字段行（值 ›），点开才弹滚轮层；
-    // 默认「明年 6 月」仍自动落盘
+    // 2026-08-24 二改：毕业时间平时是字段行（值 ›），点开才弹滚轮层。
+    // 「选了校园招聘自动落默认毕业月」的 mount effect 已删（Task 5B：用户未确认的
+    // 滚轮默认值不写入）—— 滚轮默认「明年 6 月」只是显示，确认前不落盘
     await expect(page.getByText('预计毕业时间')).toBeVisible();
     await expect(page.getByRole('button', { name: /\d{4} 年 \d{2} 月/ })).toBeVisible();
+    const 未确认存值 = await page.evaluate(
+      () => JSON.parse(localStorage.getItem('AGXP求职筛选v2:mock:stg:demo') ?? '{}')?.筛选偏好?.毕业时间 ?? '',
+    );
+    expect(未确认存值).toBe('');
+    // 打开滚轮层点「完成」才写值；默认档仍是明年 6 月（毕业季）
+    await page.getByRole('button', { name: /\d{4} 年 \d{2} 月/ }).click();
+    await page.getByRole('dialog', { name: '预计毕业时间' }).getByRole('button', { name: '完成' }).click();
     const 存值 = await page.evaluate(
       () => JSON.parse(localStorage.getItem('AGXP求职筛选v2:mock:stg:demo') ?? '{}')?.筛选偏好?.毕业时间 ?? '',
     );
@@ -245,7 +270,9 @@ test.describe('multi-role onboarding', () => {
     await page.getByPlaceholder('如：上海').fill('上海');
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');
     // 职位要求与职位描述是两条互相独立的必填文本，各填各的
-    await page.getByLabel('职位要求').fill('在校本科及以上，熟悉用户研究方法，能独立推进需求。');
+    //（2026-09-11 起第三步的公开要求输入 label 从「职位要求」改回「岗位要求」，
+    // 与代理私有筛选要求区分 —— 只修选择器，不改布局预期）
+    await page.getByLabel('岗位要求').fill('在校本科及以上，熟悉用户研究方法，能独立推进需求。');
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
 
     await expect(page).toHaveURL(/#\/hr$/);

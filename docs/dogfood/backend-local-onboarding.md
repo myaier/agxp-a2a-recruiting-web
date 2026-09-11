@@ -221,9 +221,15 @@ cp "$DOGFOOD_SKILL_DIR/templates/dogfood-report-template.md" "$OUTPUT_DIR/report
 ### 输入约束
 
 - 使用全新候选测试账号。
-- 上传候选简历 fixture。
-- 在线简历只保留：1 条经历、1 个技能、1 个证书；教育按产品路径至少填写 1 条。
+- 覆盖四个分支（J-PILOT-02 起）：**社招手填（no-PDF）**、**学生手填（no-PDF）**、**社招 + PDF**、**学生 + PDF**。手填分支不上传 PDF（上传横幅保持「确认后开始识别」占位，不得假称已识别）；PDF 分支上传候选简历 fixture。
+- **完成门槛（2026-09-11 起）**：至少一条完整教育（含毕业时间）才可完成。工作经历、技能、证书、Summary、头像、PDF 均可选——**零工作经历也必须能走完整个旅程**。旧断言「在线简历只保留 1 条经历、1 个技能、1 个证书」已废除，不得再把「恰好 1 经历/技能/证书」当完成门槛或成功标准。
+- 学生分支选「在校 + 实习生」：实习月数、每周到岗天数为必选，尾段向导是实习日薪（元/天）。
 - 简历之外的字段使用固定合成值，不临场随机，以便复跑对比。
+
+### 已知 PM_BLOCKED 控件（如实记录，禁止统计为 PASS）
+
+- 排除题「屏蔽公司」的「再加一家」只有自由文本、无真实组织结果选择；一键屏蔽与手输均被阻止并提示「无法确认具体公司，请先明确选择要屏蔽的公司」。已实现并可验收的是权威回显、解除（仅 `manual` 来源可单击直解，其余来源拒绝执行并以轻提示指向既有入口）、拒绝假成功。**屏蔽新增不计 PASS**。
+- 向导城市题所用共享滚动区不暴露 onScroll/ref：该题只有默认首页 + 真实搜索，无增量加载（记录缺口，不算缺陷通过项）。
 
 ### 步骤与断言
 
@@ -232,14 +238,14 @@ cp "$DOGFOOD_SKILL_DIR/templates/dogfood-report-template.md" "$OUTPUT_DIR/report
 | C1 | 打开登录页 | 手机号、协议、验证码流程可访问；console/page error 为空 |
 | C2 | 输入执行时提供的测试手机号和 OTP | 登录成功；密码/OTP 不写入报告或截图标题 |
 | C3 | 选择“我要找工作” | candidate role 激活并进入候选 onboarding，不停在身份页 |
-| C4 | 上传 PDF 并明确同意模型处理 | 文件名/大小/解析状态可见；上传失败有可理解错误和重试路径 |
-| C5 | 检查解析/预填 | 只按 fixture 基线判定；缺失、错误或无预填均记录，不自行脑补 |
+| C4 | （仅 PDF 分支）上传 PDF 并明确同意模型处理 | 文件名/大小/解析状态可见；上传失败有可理解错误和重试路径 |
+| C5 | （仅 PDF 分支）检查解析/预填 | 只按 fixture 基线判定；缺失、错误或无预填均记录，不自行脑补；预填不覆盖用户已手改字段 |
 | C6 | 填写基本信息 | 姓名、身份、学历/工作起始年等可完成；前后导航不静默覆盖已填值 |
-| C7 | 填 1 条教育、1 条经历、1 个技能、1 个证书 | 保存按钮可达且不被浮层遮挡；本地校验能定位到具体字段 |
-| C8 | 填期望职位、城市、薪资、到岗等 | 返回上一页再进入时值仍在；目录项必须实际选中而非只输入文字 |
-| C9 | 完成披露说明和首次意向 | 进入候选主壳；正常路径产生 resume/intention mutations |
-| C10 | 打开“我的简历”“求职意向”“个人信息” | 1 条经历、1 个技能、1 个证书和至少 1 条 active intention 回显；手机号显示服务端掩码 |
-| C11 | 刷新当前页面 | 已保存内容仍在；不回身份选择或空白 onboarding |
+| C7 | 填至少 1 条完整教育；经历/技能/证书按剧本（手填分支可为零） | 保存按钮可达且不被浮层遮挡；本地校验能定位到具体字段；零工作经历时保存仍推进到下一屏 |
+| C8 | 填期望职位、城市、薪资、到岗等 | 返回上一页再进入时值仍在；目录项必须实际选中而非只输入文字；Backend 定位缺失态显示「暂未获取定位」且不可点，不假选上海 |
+| C9 | 完成披露说明和首次意向 | 进入候选主壳；正常路径产生 resume/intention mutations；首次意向恰好一次 POST、一个 id |
+| C10 | 打开“我的简历”“求职意向”“个人信息” | 至少 1 条完整教育、至少 1 条 active intention 回显；经历/技能/证书按实际填写回显（零项合法、不显示占位数据）；手机号显示服务端掩码 |
+| C11 | 刷新当前页面 | 已保存内容仍在；不回身份选择或空白 onboarding；未完成的在途编辑（如教育编辑层半填字段）恢复原题不丢失 |
 | C12 | 退出并重新登录 | 权威资料仍在；路由进入已完成候选体验 |
 
 ### 候选人权威只读回查
@@ -254,24 +260,27 @@ const get = async (path) => {
   try { body = await response.json(); } catch {}
   return { status: response.status, result: body?.result ?? null };
 };
-const [me, resume, intentions, files, credentials] = await Promise.all([
+const [me, resume, intentions, files, credentials, account, privacy] = await Promise.all([
   get('/api/v1/me'),
   get('/api/v1/me/resume'),
   get('/api/v1/me/intentions?status=active'),
   get('/api/v1/me/resume-files'),
   get('/api/v1/me/credentials'),
+  get('/api/v1/me/account-profile'),
+  get('/api/v1/me/privacy'),
 ]);
 ({
   me: { status: me.status, role: me.result?.last_used_role ?? null },
   resume: {
     status: resume.status,
     profilePresent: Boolean(resume.result?.profile),
-    educations: resume.result?.educations?.length ?? null,
+    portfolioUrl: resume.result?.profile?.portfolio_url ?? null,
+    completeEducations: resume.result?.educations?.filter(e => e.institution?.id && e.degree && e.major?.id && e.start_month && e.end_month)?.length ?? null,
     experiences: resume.result?.experiences?.length ?? null,
     skills: resume.result?.skills?.length ?? null,
     certificates: resume.result?.certificates?.length ?? null,
   },
-  intentions: { status: intentions.status, count: intentions.result?.intentions?.length ?? null },
+  intentions: { status: intentions.status, count: intentions.result?.intentions?.length ?? null, ids: intentions.result?.intentions?.map(i => i.intention_id) ?? [] },
   resumeFiles: {
     status: files.status,
     count: files.result?.items?.length ?? null,
@@ -281,11 +290,56 @@ const [me, resume, intentions, files, credentials] = await Promise.all([
     status: credentials.status,
     phoneOtpCount: credentials.result?.credentials?.filter(item => item.provider === 'phone_otp').length ?? null,
   },
+  account: {
+    status: account.status,
+    avatarPresent: account.result?.avatar_url !== null && account.result?.avatar_url !== undefined,
+    revision: account.result?.revision ?? null,
+  },
+  privacy: {
+    status: privacy.status,
+    revision: privacy.result?.revision ?? null,
+    organizationBlocks: privacy.result?.organization_blocks?.length ?? null,
+  },
 });
 EOF
 ```
 
-成功标准：HTTP 状态均为预期 200；role 为 candidate；resume 至少 1 education、恰好 1 experience/skill/certificate；active intention 至少 1；凭证存在。解析失败不能被写成上传失败，两者分开裁定。
+成功标准：HTTP 状态均为预期 200；role 为 candidate；resume 至少 1 条**完整**教育（institution/degree/major/起止齐全）；experiences/skills/certificates 与实际填写一致（手填分支为 0 合法，不得出现占位数据）；active intention 至少 1 且 intention_id 与本次旅程产生的 id 一致（下一步用 exact ID 复读）；凭证存在。解析失败不能被写成上传失败，两者分开裁定。
+
+### 完成门槛与恢复/隔离只读回查（J-PILOT-02 起）
+
+完成后在同一登录 session 内继续以下**只读**核对（全部走 GET 与既有 UI 路径，不补写业务数据）：
+
+1. **exact intention**：用上面记下的本次 intention_id 直接 `GET /api/v1/me/intentions/{id}`，只读回一条且内容与页面一致——「列表非空」从不冒充本次成功。
+2. **URL 三态**：本次旅程未编辑作品集链接 → 权威 `portfolio_url` 保持原值（本轮无写入）；编辑并保存过 → 与最终输入一致；清空过 → null。刷新后输入框回显与权威值一致。
+3. **privacy**：屏蔽名单页（`/#/blocklist`）只显示权威 `organization_blocks` 的回显；「再加一家」走 PM_BLOCKED 分支记录，不计 PASS。
+4. **头像**：未选头像的分支完成后 `account-profile.avatar_url` 为 null；上传过的分支 avatar 在场。头像结果未知的恢复（重选同一张图按原 key 重放 / 明确放弃）只按页面事实记录，不推定成功。
+5. **刷新/重登/换角色隔离**：任一候选 onboarding 页刷新回原题（题序与在途编辑不丢）；退出重登直达已完成体验；同一浏览器切到招聘方再看回候选，不出现上一账号草稿或资料串扰。
+
+### 可见 Chrome 视觉检查（390×844 主视口 + 320 窄屏）
+
+本 Case 的两个手填分支各做一轮，固定视口 390×844 与 320×844（locale zh-CN / Asia/Shanghai），逐屏截图留证：
+
+- **定位缺失态**：Backend 城市选择页「当前定位」为已批准的缺失态（「暂未获取定位」、不可点），不得假选上海或渲染 Mock 定位。
+- **真实长名称**：学校/专业/职位搜索用真实目录里可得到的最长名称候选，检查候选行、已选 chip 与返回栏标题不溢出、不遮挡。
+- **滚动/返回**：教育四连页、在线简历屏、向导各题在 320 宽下滚动到底/返回上一屏，布局结构不变（真实数据导致的自然换行如实记录，不算布局缺陷，也不得以此解释新增结构）。
+- **Mock 基线无布局 diff**：候选 onboarding 共享屏（完善资料、选工作城市、毕业院校等）与 Mock 同名屏使用同一布局组件——用相同展示数据在 Mock 与 Backend 两模式各取一份（`e2e/J-PILOT-02接线.spec.ts` 的布局骨架对比已在拦截边界固化；真实 Backend 侧在此用页面观察复核），出现两套布局即为 FAIL。发现原型自身布局缺陷时取证交 PM，不自行改 CSS。
+- **真实 Backend 单独验可用性**：以上视觉项必须在真实 Backend（非 route fixture）上执行；fixture 侧通过只能证明拦截边界行为，不能抵扣本项。
+- **PM_BLOCKED 控件**：本节截图会覆盖「屏蔽公司」卡与城市题——按上文 PM_BLOCKED 记录，禁止统计为 PASS。
+
+### 真实 PDF 链路结论的记录口径（J-PILOT-02 收尾事实）
+
+- 2026-09-11 本轮执行环境：本地 BFF 未监听、stg 401、测试账号 OTP 源刻意不在仓库——**真实 PDF / provider 链路结论保持 BLOCKED**，未观察到 `parser_invalid_output` 故不记 FAIL。Playwright route fixture 的 PDF/解析用例 PASS 只证明拦截边界，不能抵扣真实链路证据。
+- 固定「扫描 862 个岗位」的初始化表达整改**本轮明确延期**，不算测试通过也不算新发现缺陷。
+
+### Highlights 只读检查（J-PILOT-02）
+
+只读、零写入；无合法招聘场景时整分支记 BLOCKED，不为验证创建岗位或 Case：
+
+- **候选侧**：候选 onboarding 全程与「我的简历」页无任何新增 Highlights 标签；本人页面不出现需要招聘方确认的来源标签。
+- **招聘侧（有既有合法场景才执行）**：既有 reader/projection 的 stable 标签与其来源的 exact file/version/parse 元组一致；Summary 不作为标签来源。
+- **禁止事项**：不发送任何 Highlights 候选编辑 PUT；不创建岗位/Case/会话来制造验证条件。
+- **判定**：观察到真实 `parser_invalid_output` 明确记 FAIL，依赖它的后续步骤记 BLOCKED；缺合法招聘场景记 BLOCKED 并写明缺口，不记 NOT_RUN 充数。
 
 ## 9. Case EMP-ONB-001：招聘方 onboarding
 
