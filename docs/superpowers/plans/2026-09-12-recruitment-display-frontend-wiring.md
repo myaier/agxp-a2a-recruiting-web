@@ -247,4 +247,4 @@ Codex execution: superpowers:executing-plans
 - R1-F4（Minor / 可选增强 / optional / 复杂度不变）：**接受并修复**点名首页/企业在谈/历史消费者、加法式图片prop及定向页面测试/typecheck。
 - 驱动方补齐：Task1在新增必填candidateResume页面字段的同一Task扩展现有映射与测试，防止Task1类型检查依赖Task3才可过；Mock前图采集明确为所有产品改动之前的前置步骤。均是原合同内依赖/验证澄清。
 - 停止裁决：4条中接受修复3条，拒绝1条；无未解决有效required、无延后项。按review-loop结束条件在第1轮裁决后结束，未声称修订版获第二轮NO FINDINGS；修订由驱动方核实，批准产品合同未变。
-- 规划验证：待审查闭环后生成双宿主prompt并运行 `development-workflow` 的 `scripts/validate_prompt_grading.py --plan docs/superpowers/plans/2026-09-12-recruitment-display-frontend-wiring.md --prompt docs/superpowers/prompts/2026-09-12-recruitment-display-frontend-wiring.md`。
+- 规划验证：2026-09-12 已生成单文件双宿主prompt；下列校验返回 exit 0 / `OK: dual-host prompt bundle validated`，7个Task、宿主路由、角色档位、分级句与可迁移路径通过。记录提交后重新固定prompt版本并再次校验；未运行产品测试。命令： `development-workflow` 的 `scripts/validate_prompt_grading.py --plan docs/superpowers/plans/2026-09-12-recruitment-display-frontend-wiring.md --prompt docs/superpowers/prompts/2026-09-12-recruitment-display-frontend-wiring.md`。
