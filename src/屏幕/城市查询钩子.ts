@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { 目录页, Location查询 } from '../数据/招聘数据源类型';
 import type { BFFLocationItem } from '../数据/BFF契约';
 import type { 城市分组配置 } from '../数据/城市与行业';
+import { 轻提示 } from '../组件/轻提示';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 
 const 搜索防抖毫秒 = 250;
 const 默认页大小 = 20;
@@ -32,6 +34,75 @@ function 去重(项们: BFFLocationItem[]): BFFLocationItem[] {
     out.push(项);
   }
   return out;
+}
+
+/** 默认目录页（Task 5）：不发 q 的默认推荐页。首页条目就是热门区，
+ *  滚到底按服务端 nextCursor 追加；返回项按 ID 去重。加载中锁住重入，
+ *  失败经既有轻提示说明，用户再滚一次即可重试。 */
+export function use城市默认页(查询Location: 查询Location方法 | undefined) {
+  const [热门项们, 设热门项们] = useState<BFFLocationItem[]>([]);
+  const [项们, 设项们] = useState<BFFLocationItem[]>([]);
+  const [游标, 设游标] = useState<string | null>(null);
+  const [加载中, 设加载中] = useState(false);
+  const 方法引用 = useRef(查询Location);
+  方法引用.current = 查询Location;
+  const 可查询 = Boolean(查询Location);
+
+  useEffect(() => {
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    let 作废 = false;
+    设加载中(true);
+    void (async () => {
+      try {
+        // 默认查询不带 q（连空串都不发）
+        const 页 = await 方法({ limit: 默认页大小 });
+        if (作废) return;
+        设热门项们(页.items);
+        设项们(页.items);
+        设游标(页.nextCursor);
+      } catch (错误) {
+        if (作废) return;
+        轻提示(取后端错误文案(错误));
+      } finally {
+        if (!作废) 设加载中(false);
+      }
+    })();
+    return () => { 作废 = true; };
+  }, [可查询]);
+
+  const 加载更多 = async () => {
+    if (游标 === null || 加载中) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    设加载中(true);
+    try {
+      const 页 = await 方法({ cursor: 游标, limit: 默认页大小 });
+      设项们((旧) => 去重([...旧, ...页.items]));
+      设游标(页.nextCursor);
+    } catch (错误) {
+      // 游标保持不变，用户再滚一次就是重试
+      轻提示(取后端错误文案(错误));
+    } finally {
+      设加载中(false);
+    }
+  };
+
+  return { 热门项们, 项们, 加载中, 还有: 游标 !== null, 加载更多 };
+}
+
+/** 按返回的行政区/国家字段分组（Task 5）：两个字段都缺的项不编造省份、
+ *  也不落进任何「其他地区」块——它只出现在热门区。顺序按返回顺序。 */
+export function 按行政区分组(项们: BFFLocationItem[]): { 键: string; 城市们: BFFLocationItem[] }[] {
+  const 表 = new Map<string, BFFLocationItem[]>();
+  for (const 项 of 项们) {
+    const 键 = (项.admin1_name ?? '').trim() || (项.country_name ?? '').trim();
+    if (键 === '') continue;
+    const 已有 = 表.get(键);
+    if (已有) 已有.push(项);
+    else 表.set(键, [项]);
+  }
+  return [...表].map(([键, 城市们]) => ({ 键, 城市们 }));
 }
 
 /** 按分组展开查询：初次展开请求第一页，直辖市四码合并后去重。 */

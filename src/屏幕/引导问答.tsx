@@ -15,7 +15,7 @@
 // scroll-snap-type: y mandatory + scroll-snap-align: center —— 吸附交给浏览器，
 // 只需在滚动停下后算一次落点，比 RN 版更省代码且手感一致。
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react';
 import { useLocation } from 'react-router-dom';
 import 样式 from './引导问答.module.css';
 import { 主按钮, 单选点, 开关, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
@@ -26,7 +26,7 @@ import { 轻提示 } from '../组件/轻提示';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
 import { 个人优势文本 } from '../数据/模拟数据';
 import { 城市字典, 热门城市, 行业字典 } from '../数据/城市与行业';
-import { use城市搜索 } from './城市查询钩子';
+import { use城市搜索, use城市默认页, 按行政区分组 } from './城市查询钩子';
 import { use可访问滚轮 } from '../组件/可访问滚轮';
 import type { BFFTaxonomyItem, BFFLocationItem } from '../数据/BFF契约';
 import { 合并目录页 } from '../数据/目录选择';
@@ -112,6 +112,11 @@ export default function 引导问答() {
   const 可恢复真实建议 = 取可恢复个人优势建议(预填状态, 段);
   const 恢复文本 = 是后端 ? 可恢复真实建议 : 个人优势文本;
 
+  // Task 5：Backend 的职位/城市字符串答案一律由选中的目录引用派生 ——
+  // 原来靠按名字 toggle 同步，两条同名目录项会把彼此的字符串抵消掉。
+  const 已选职位名们 = 是后端 ? 已选职位引用.map((条) => 条.display_name) : 已选职位;
+  const 已选城市名们 = 是后端 ? 已选城市引用.map((条) => 条.display_name) : 已选城市;
+
   /** 多选题共用的「有则去掉、无则加上」 */
   const 造切换 = (设值: (更新: (旧: string[]) => string[]) => void) => (项: string) =>
     设值((旧) => (旧.includes(项) ? 旧.filter((条) => 条 !== 项) : [...旧, 项]));
@@ -128,7 +133,7 @@ export default function 引导问答() {
       const 职位引用们 = 是后端
         ? 已选职位引用.map((条) => ({ id: 条.id, display_name: 条.display_name }))
         : [];
-      派发({ 型: '存引导预填', 城市们: 已选城市, 职位: 已选职位, 城市引用们, 职位引用们 });
+      派发({ 型: '存引导预填', 城市们: 已选城市名们, 职位: 已选职位名们, 城市引用们, 职位引用们 });
     }
     if (当前题 === '期望薪资') {
       // Task 5B：草稿动作自带基底 —— 向导传本地城市/职位与目录引用，reducer 不再兜底默认
@@ -137,8 +142,8 @@ export default function 引导问答() {
         下限: 薪资下限,
         上限: 薪资上限,
         单位: 当前薪资单位,
-        城市们: 已选城市,
-        职位: 已选职位,
+        城市们: 已选城市名们,
+        职位: 已选职位名们,
         城市引用们: 已选城市引用.map((条) => ({ id: 条.id, display_name: 条.display_name })),
         职位引用们: 已选职位引用.map((条) => ({ id: 条.id, display_name: 条.display_name })),
       });
@@ -163,8 +168,8 @@ export default function 引导问答() {
           ? 已选城市引用.map((条) => ({ id: 条.id, display_name: 条.display_name }))
           : undefined;
         await 操作.保存首次意向({
-          职位们: 已选职位,
-          城市们: 已选城市,
+          职位们: 已选职位名们,
+          城市们: 已选城市名们,
           薪资: { 下限: 薪资下限, 上限: 薪资上限, 单位: 当前薪资单位 },
           // Task 5B：默认偏好只进 Mock 演示；Backend 缺席的偏好就是空的，
           // 不在首次意向里虚构用户从未选过的类型/办公方式
@@ -199,9 +204,9 @@ export default function 引导问答() {
   // 按钮文案：两道多选题回显已选数量，最后一题是「保存并继续」
   const 按钮文字 =
     当前题 === '工作城市'
-      ? `保存（已选 ${已选城市.length}）`
+      ? `保存（已选 ${已选城市名们.length}）`
       : 当前题 === '期望职位'
-        ? `保存（已选 ${已选职位.length}）`
+        ? `保存（已选 ${已选职位名们.length}）`
         : 当前题 === '个人优势'
           ? '保存并继续'
           : '下一步';
@@ -256,13 +261,49 @@ export default function 引导问答() {
           文字={按钮文字}
           按下={下一题}
           禁用={
-            (当前题 === '工作城市' && 已选城市.length === 0) ||
+            (当前题 === '工作城市' && 已选城市名们.length === 0) ||
             (当前题 === '个人优势' && Boolean(作品集错误))
           }
         />
       </div>
     </次级页外壳>
   );
+}
+
+// ── 两模式共用的展示输入（Task 5）：同样的输入 → 同样的 DOM ──
+/** 距底多少像素算「滚到底」——只用来判定，不改任何布局 */
+const 到底余量 = 64;
+/** 底部已选条的一枚 chip：键是稳定标识（Backend 用目录 ID，同名两条互不误删） */
+interface 已选条目 {
+  键: string;
+  文字: string;
+}
+/** 右栏说明卡 */
+interface 说明卡数据 {
+  键: string;
+  名: string;
+  说明: string;
+  已选计数: number;
+  选中: boolean;
+  /** 既不能下钻也不能选的目录项：保留展示，但不响应点击 */
+  不可操作?: boolean;
+  按下: () => void;
+}
+/** 细选层的一枚方向 */
+interface 细选片 {
+  键: string;
+  文字: string;
+  选中: boolean;
+  不可操作?: boolean;
+  按下: () => void;
+}
+/** 城市片 */
+interface 城市片 {
+  键: string;
+  文字: string;
+  选中: boolean;
+  禁用?: boolean;
+  按下: () => void;
 }
 
 // ── A3b2 期望职位：左侧分类栏 + 右侧行业卡 + 底部已选条 ─────────
@@ -301,15 +342,21 @@ function 期望职位题({
   // 二级细选页：点行业卡后进来选具体方向（标注意见 2026-08-17 21:45）
   const [细选行业, 设细选行业] = useState<string | null>(null);
 
-  // ── Backend：按需 查询Taxonomy('job-categories')，roots → expand by parentId → search by q ──
+  // ── Backend：按需 查询Taxonomy('job-categories')，roots → 按 parentId 下钻 → 按 q 搜索 ──
   const [根项, 设根项] = useState<BFFTaxonomyItem[]>([]);
   const [当前根, 设当前根] = useState<BFFTaxonomyItem | null>(null);
   const [子项, 设子项] = useState<BFFTaxonomyItem[]>([]);
   const [搜索结果项, 设搜索结果项] = useState<BFFTaxonomyItem[]>([]);
+  // Task 5：细选层的下钻路径（层数由 has_children 决定，不写死两层）——
+  // 顶元素就是当前细选节点，返回键弹一层，弹空就关掉细选层。
+  const [细选路径, 设细选路径] = useState<BFFTaxonomyItem[]>([]);
+  const [细选项们, 设细选项们] = useState<BFFTaxonomyItem[]>([]);
+  const [细选游标, 设细选游标] = useState<string | null>(null);
+  const [细选加载中, 设细选加载中] = useState(false);
   const 计时 = useRef(0);
   const 方法引用 = useRef(查询Taxonomy);
   方法引用.current = 查询Taxonomy;
-  // review-r3 R3-I-5：分页游标 + 加载中状态（root / child / search）
+  // review-r3 R3-I-5：分页游标 + 加载中状态（root / child / search / 细选）
   const [根游标, 设根游标] = useState<string | null>(null);
   const [根加载中, 设根加载中] = useState(false);
   const [子项游标, 设子项游标] = useState<string | null>(null);
@@ -319,9 +366,13 @@ function 期望职位题({
   // review-r3 R3-I-6：代际 ref 守 stale response——慢的旧搜索/子项不覆盖新的
   const 搜索代际 = useRef(0);
   const 导航代际 = useRef(0);
+  const 细选代际 = useRef(0);
   // review-r3 R3-I-8：当前根 ref——子项加载更多提交前确认当前根仍是发起请求的那个根
   const 当前根引用 = useRef(当前根);
   当前根引用.current = 当前根;
+  const 细选节点 = 细选路径[细选路径.length - 1] ?? null;
+  const 细选节点引用 = useRef(细选节点);
+  细选节点引用.current = 细选节点;
 
   useEffect(() => {
     if (!是后端) return;
@@ -336,18 +387,26 @@ function 期望职位题({
           设当前根(页.items[0]);
           // review-r3 R3-I-6：导航代际守 stale（预载第一枚子项）
           const 本次 = ++导航代际.current;
+          设子项加载中(true);
           try {
             const 子页 = await 方法('job-categories', { parentId: 页.items[0].id, limit: 50 });
             if (本次 !== 导航代际.current) return;
             设子项(子页.items);
             设子项游标(子页.nextCursor);
-          } catch {
+          } catch (错误) {
             if (本次 !== 导航代际.current) return;
             设子项([]);
             设子项游标(null);
+            轻提示(取后端错误文案(错误));
+          } finally {
+            if (本次 === 导航代际.current) 设子项加载中(false);
           }
         }
-      } catch { 设根项([]); 设根游标(null); }
+      } catch (错误) {
+        设根项([]);
+        设根游标(null);
+        轻提示(取后端错误文案(错误));
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [是后端]);
@@ -371,16 +430,17 @@ function 期望职位题({
         if (本次 !== 搜索代际.current) return;
         设搜索结果项(页.items);
         设搜索游标(页.nextCursor);
-      } catch {
+      } catch (错误) {
         if (本次 !== 搜索代际.current) return;
         设搜索结果项([]);
         设搜索游标(null);
+        轻提示(取后端错误文案(错误));
       }
     }, 250);
     return () => window.clearTimeout(计时.current);
   }, [搜词, 是后端]);
 
-  // review-r3 R3-I-5：根加载更多
+  // review-r3 R3-I-5：根的下一页（滚到底触发）
   const 根加载更多 = async () => {
     if (根游标 === null || 根加载中) return;
     const 方法 = 方法引用.current;
@@ -390,14 +450,15 @@ function 期望职位题({
       const 页 = await 方法('job-categories', { cursor: 根游标, limit: 50 });
       设根项((旧) => 合并目录页(旧, 页.items));
       设根游标(页.nextCursor);
-    } catch {
-      // 失败不动，用户可再点
+    } catch (错误) {
+      // 游标不动，用户再滚一次就是重试
+      轻提示(取后端错误文案(错误));
     } finally {
       设根加载中(false);
     }
   };
 
-  // review-r3 R3-I-5/I-8：子项加载更多——导航代际 + 当前根双重守 stale
+  // review-r3 R3-I-5/I-8：子项的下一页——导航代际 + 当前根双重守 stale
   const 子项加载更多 = async () => {
     if (子项游标 === null || 子项加载中 || !当前根) return;
     const 方法 = 方法引用.current;
@@ -410,14 +471,15 @@ function 期望职位题({
       if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
       设子项((旧) => 合并目录页(旧, 页.items));
       设子项游标(页.nextCursor);
-    } catch {
+    } catch (错误) {
       if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+      轻提示(取后端错误文案(错误));
     } finally {
       if (本次导航 === 导航代际.current && 当前根引用.current?.id === 目标根id) 设子项加载中(false);
     }
   };
 
-  // review-r3 R3-I-5：搜索结果加载更多
+  // review-r3 R3-I-5：搜索结果的下一页
   const 搜索加载更多 = async () => {
     if (搜索游标 === null || 搜索加载中) return;
     const 方法 = 方法引用.current;
@@ -429,10 +491,54 @@ function 期望职位题({
       if (本次 !== 搜索代际.current) return;
       设搜索结果项((旧) => 合并目录页(旧, 页.items));
       设搜索游标(页.nextCursor);
-    } catch {
+    } catch (错误) {
       if (本次 !== 搜索代际.current) return;
+      轻提示(取后端错误文案(错误));
     } finally {
       if (本次 === 搜索代际.current) 设搜索加载中(false);
+    }
+  };
+
+  // Task 5：细选层的一层内容（进入 / 返回上一层都走它），代际守 stale
+  const 载细选 = async (节点: BFFTaxonomyItem) => {
+    const 方法 = 方法引用.current;
+    设细选项们([]);
+    设细选游标(null);
+    if (!方法) return;
+    const 本次 = ++细选代际.current;
+    设细选加载中(true);
+    try {
+      const 页 = await 方法('job-categories', { parentId: 节点.id, limit: 50 });
+      if (本次 !== 细选代际.current) return;
+      设细选项们(页.items);
+      设细选游标(页.nextCursor);
+    } catch (错误) {
+      if (本次 !== 细选代际.current) return;
+      设细选项们([]);
+      设细选游标(null);
+      轻提示(取后端错误文案(错误));
+    } finally {
+      if (本次 === 细选代际.current) 设细选加载中(false);
+    }
+  };
+
+  const 细选加载更多 = async () => {
+    const 节点 = 细选节点;
+    if (细选游标 === null || 细选加载中 || !节点) return;
+    const 方法 = 方法引用.current;
+    if (!方法) return;
+    const 本次 = 细选代际.current;
+    设细选加载中(true);
+    try {
+      const 页 = await 方法('job-categories', { parentId: 节点.id, cursor: 细选游标, limit: 50 });
+      if (本次 !== 细选代际.current || 细选节点引用.current?.id !== 节点.id) return;
+      设细选项们((旧) => 合并目录页(旧, 页.items));
+      设细选游标(页.nextCursor);
+    } catch (错误) {
+      if (本次 !== 细选代际.current || 细选节点引用.current?.id !== 节点.id) return;
+      轻提示(取后端错误文案(错误));
+    } finally {
+      if (本次 === 细选代际.current && 细选节点引用.current?.id === 节点.id) 设细选加载中(false);
     }
   };
 
@@ -449,56 +555,56 @@ function 期望职位题({
     设细选行业(名称);
   };
 
-  // Backend 切换：非 selectable 只展开（按 parentId 取子项），selectable=true 才进已选
-  // selectable 时原子写入 string + ref（两者同步，落盘 / 已选条 chip 才能一致）
-  // review-r3 R3-I-6：导航代际守 stale；R3-I-6 P2-3：搜索模式下点非 selectable 命中时清空搜索词，
-  // 退出搜索模式让子项可见（否则搜索结果区只渲染 搜索结果项，加载到的 子项 看不见）
-  const 切换后端 = (项: BFFTaxonomyItem) => {
-    if (!项.selectable) {
-      设当前根(项);
-      设子项([]);
-      设子项游标(null);
-      // P2-3：搜索模式下点非 selectable 命中 → 清空搜索词退出搜索模式，子项可见
-      if (搜词 !== '') 设关键词('');
-      const 方法 = 方法引用.current;
-      if (方法) {
-        const 本次 = ++导航代际.current;
-        void (async () => {
-          try {
-            const 子页 = await 方法('job-categories', { parentId: 项.id, limit: 50 });
-            if (本次 !== 导航代际.current) return;
-            设子项(子页.items);
-            设子项游标(子页.nextCursor);
-          } catch {
-            if (本次 !== 导航代际.current) return;
-            设子项([]);
-            设子项游标(null);
-          }
-        })();
-      }
+  // Backend 选中：只有 selectable 的节点才能写成引用；已选按 ID 去重，同名两条互不误删
+  const 切换选中 = (项: BFFTaxonomyItem) => {
+    设已选引用((旧) => (旧.some((条) => 条.id === 项.id) ? 旧.filter((条) => 条.id !== 项.id) : [...旧, 项]));
+  };
+
+  // Backend 点目录项：可下钻看 has_children，可写引用看 selectable，两者独立判断。
+  // 两者同真时现有控件表达不了「选此节点 / 继续下钻」，保留导航、不猜选择（PM 缺口见报告）。
+  const 点目录项 = (项: BFFTaxonomyItem, 在细选层: boolean) => {
+    if (项.has_children) {
+      设细选路径((旧) => (在细选层 ? [...旧, 项] : [项]));
+      void 载细选(项);
       return;
     }
-    设已选引用((旧) => 旧.some((条) => 条.id === 项.id) ? 旧.filter((条) => 条.id !== 项.id) : [...旧, 项]);
-    切换(项.display_name);
+    if (!项.selectable) return;
+    切换选中(项);
+  };
+
+  const 细选返回 = () => {
+    const 上一层 = 细选路径.slice(0, -1);
+    设细选路径(上一层);
+    细选代际.current += 1;
+    设细选项们([]);
+    设细选游标(null);
+    设细选加载中(false);
+    const 顶 = 上一层[上一层.length - 1];
+    if (顶) void 载细选(顶);
   };
 
   const 选根 = async (项: BFFTaxonomyItem) => {
     设当前根(项);
+    当前根引用.current = 项;
     设子项([]);
     设子项游标(null);
     const 方法 = 方法引用.current;
     if (!方法) return;
     // review-r3 R3-I-6：导航代际守 stale——快速切大类时慢的旧子项不覆盖新的
     const 本次 = ++导航代际.current;
+    设子项加载中(true);
     try {
       const 子页 = await 方法('job-categories', { parentId: 项.id, limit: 50 });
       if (本次 !== 导航代际.current) return;
       设子项(子页.items);
       设子项游标(子页.nextCursor);
-    } catch {
+    } catch (错误) {
       if (本次 !== 导航代际.current) return;
       设子项([]);
       设子项游标(null);
+      轻提示(取后端错误文案(错误));
+    } finally {
+      if (本次 === 导航代际.current) 设子项加载中(false);
     }
   };
 
@@ -513,94 +619,89 @@ function 期望职位题({
 
   const 当前组 = 行业字典.find((组) => 组.行业 === 细选行业) ?? null;
 
-  if (是后端) {
-    const 小类卡后端 = (项: BFFTaxonomyItem) => (
-      <button
-        key={项.id}
-        className={`${样式.职小类 ?? 样式.行业卡} ${已选引用.some((条) => 条.id === 项.id) ? (样式.职小类选中 ?? 样式.行业卡选中) : ''} 可点`}
-        onClick={() => 切换后端(项)}
-        aria-pressed={已选引用.some((条) => 条.id === 项.id)}
-      >
-        {项.display_name}
-      </button>
-    );
-    return (
-      <div className={样式.题体}>
-        <div className={样式.标题上移4}>
-          <页面大标题 标题="期望职位是" />
-        </div>
-        <搜索条 占位="搜索职位 / 方向" 值={关键词} 改变={设关键词} />
-        {搜词 === '' ? (
-          <div className={样式.两栏}>
-            <div className={`${样式.左栏} 滚动区`}>
-              {根项.map((项) => (
-                <button
-                  key={项.id}
-                  className={`${样式.左栏项} ${当前根?.id === 项.id ? 样式.左栏项选中 : ''} 可点`}
-                  onClick={() => 选根(项)}
-                >
-                  {项.display_name}
-                </button>
-              ))}
-              {/* review-r3 R3-I-5：根分页加载更多 */}
-              {根游标 !== null ? (
-                <button
-                  className="可点"
-                  onClick={根加载更多}
-                  disabled={根加载中}
-                  style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
-                >
-                  {根加载中 ? '加载中…' : '加载更多'}
-                </button>
-              ) : null}
-            </div>
-            <div className={`${样式.右栏} 滚动区`}>
-              {子项.length > 0 ? (
-                <div className={样式.分组块}>
-                  <div className={样式.岗位网}>{子项.map(小类卡后端)}</div>
-                  {/* review-r3 R3-I-5：子项分页加载更多 */}
-                  {子项游标 !== null ? (
-                    <button
-                      className="可点"
-                      onClick={子项加载更多}
-                      disabled={子项加载中}
-                      style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
-                    >
-                      {子项加载中 ? '加载中…' : '加载更多'}
-                    </button>
-                  ) : null}
-                </div>
-              ) : (
-                <div className={样式.搜索无结果}>加载中…</div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className={`${样式.搜索结果区 ?? 样式.右栏} 滚动区`}>
-            {搜索结果项.map(小类卡后端)}
-            {搜索结果项.length === 0 ? (
-              <div className={样式.搜索无结果}>没有匹配的职位，换个词试试。</div>
-            ) : null}
-            {/* review-r3 R3-I-5：搜索结果分页加载更多 */}
-            {搜索游标 !== null ? (
-              <button
-                className="可点"
-                onClick={搜索加载更多}
-                disabled={搜索加载中}
-                style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
-              >
-                {搜索加载中 ? '加载中…' : '加载更多'}
-              </button>
-            ) : null}
-          </div>
-        )}
-        <已选条 已选={已选引用.map((条) => 条.display_name)} 移除={(名) => {
-          const 目标 = 已选引用.find((条) => 条.display_name === 名);
-          if (目标) 切换后端(目标);
-        }} />
-      </div>
-    );
-  }
+  // ── 两模式的展示输入（下面只有一套 JSX）──
+  const 左栏项们: { 键: string; 文字: string; 当前: boolean; 按下: () => void }[] = 是后端
+    ? 根项.map((项) => ({
+        键: 项.id,
+        文字: 项.display_name,
+        当前: 当前根?.id === 项.id,
+        按下: () => void 选根(项),
+      }))
+    : 职位分类.map((项) => ({
+        键: 项,
+        文字: 项,
+        当前: 分类 === 项,
+        按下: () => 设分类(项),
+      }));
+  // 说明卡：Backend 目录没有 Mock 的行业说明，就把真实空值传进原说明位置，不补文案
+  const 说明卡们: 说明卡数据[] = 是后端
+    ? (搜词 === '' ? 子项 : 搜索结果项).map((项) => ({
+        键: 项.id,
+        名: 项.display_name,
+        说明: '',
+        已选计数: 已选引用.filter((条) => 条.parent_id === 项.id).length,
+        选中: 已选引用.some((条) => 条.id === 项.id),
+        不可操作: !项.has_children && !项.selectable,
+        按下: () => 点目录项(项, false),
+      }))
+    : 过滤后行业.map((组) => ({
+        键: 组.行业,
+        名: 组.行业,
+        说明: 组.说明,
+        已选计数: 组.细分.filter((项) => 已选.includes(`${项}（方向）`)).length,
+        选中: 行业 === 组.行业,
+        按下: () => 进细选(组.行业),
+      }));
+  const 已选条目们: 已选条目[] = 是后端
+    ? 已选引用.map((条) => ({ 键: 条.id, 文字: 条.display_name }))
+    : 已选.map((项) => ({ 键: 项, 文字: 项 }));
+  const 移除已选 = (键: string) => {
+    if (!是后端) {
+      切换(键);
+      return;
+    }
+    const 目标 = 已选引用.find((条) => 条.id === 键);
+    if (目标) 切换选中(目标);
+  };
+
+  // Task 5：继续加载只挂在既有滚动容器上，游标归各自的查询
+  const 造滚动加载 = (加载: () => Promise<void>) => (事件: UIEvent<HTMLDivElement>) => {
+    if (!是后端) return;
+    const 元素 = 事件.currentTarget;
+    if (元素.scrollTop + 元素.clientHeight < 元素.scrollHeight - 到底余量) return;
+    void 加载();
+  };
+
+  const 细选内容: { 标题: string; 说明: string; 项们: 细选片[] } | null = 是后端
+    ? 细选节点
+      ? {
+          标题: 细选节点.display_name,
+          // Backend 目录没有 Mock 的行业说明：真实空值进原说明位置
+          说明: '',
+          项们: 细选项们.map((项) => ({
+            键: 项.id,
+            文字: 项.display_name,
+            选中: 已选引用.some((条) => 条.id === 项.id),
+            不可操作: !项.has_children && !项.selectable,
+            按下: () => 点目录项(项, true),
+          })),
+        }
+      : null
+    : 当前组
+      ? {
+          标题: 当前组.行业,
+          说明: 当前组.说明,
+          项们: 当前组.细分.map((项) => {
+            const 标签 = `${项}（方向）`;
+            return {
+              键: 项,
+              文字: 项,
+              选中: 已选.includes(标签),
+              按下: () => 切换(标签),
+            };
+          }),
+        }
+      : null;
 
   return (
     <div className={样式.题体}>
@@ -608,79 +709,90 @@ function 期望职位题({
         <页面大标题 标题="期望职位是" />
       </div>
 
-      <搜索条 占位="搜索行业 / 方向" 值={关键词} 改变={设关键词} />
+      <搜索条 占位={是后端 ? '搜索职位 / 方向' : '搜索行业 / 方向'} 值={关键词} 改变={设关键词} />
 
       <div className={样式.两栏}>
-        <div className={`${样式.左栏} 滚动区`}>
-          {职位分类.map((项) => (
+        <div className={`${样式.左栏} 滚动区`} onScroll={造滚动加载(根加载更多)}>
+          {左栏项们.map((项) => (
             <button
-              key={项}
-              className={`${样式.左栏项} ${分类 === 项 ? 样式.左栏项选中 : ''} 可点`}
-              onClick={() => 设分类(项)}
+              key={项.键}
+              className={`${样式.左栏项} ${项.当前 ? 样式.左栏项选中 : ''} 可点`}
+              onClick={项.按下}
             >
-              {项}
+              {项.文字}
             </button>
           ))}
         </div>
 
-        <div className={`${样式.右栏} 滚动区`}>
-          {过滤后行业.map((组) => {
-            const 选中 = 行业 === 组.行业;
-            // 该行业下已选了几个方向，回显在卡上，用户退出细选页后知道自己选过
-            const 已选方向数 = 组.细分.filter((项) => 已选.includes(`${项}（方向）`)).length;
-            return (
-              <button
-                key={组.行业}
-                className={`${样式.行业卡} ${选中 ? 样式.行业卡选中 : ''} 可点`}
-                onClick={() => 进细选(组.行业)}
-              >
-                <单选点 选中={选中} 尺寸={19} />
-                <span className={样式.行业文字组}>
-                  <span className={样式.行业名}>
-                    {组.行业}
-                    {已选方向数 > 0 ? (
-                      <span className={样式.方向计数}>{已选方向数} 个方向</span>
-                    ) : null}
-                  </span>
-                  <span className={样式.行业说明}>{组.说明}</span>
+        <div
+          className={`${样式.右栏} 滚动区`}
+          onScroll={造滚动加载(搜词 === '' ? 子项加载更多 : 搜索加载更多)}
+        >
+          {说明卡们.map((卡) => (
+            <button
+              key={卡.键}
+              className={`${样式.行业卡} ${卡.选中 ? 样式.行业卡选中 : ''} 可点`}
+              onClick={卡.按下}
+              aria-disabled={卡.不可操作 ? true : undefined}
+            >
+              <单选点 选中={卡.选中} 尺寸={19} />
+              <span className={样式.行业文字组}>
+                <span className={样式.行业名}>
+                  {卡.名}
+                  {卡.已选计数 > 0 ? (
+                    <span className={样式.方向计数}>{卡.已选计数} 个方向</span>
+                  ) : null}
                 </span>
-                <span className={样式.尖括号}>›</span>
-              </button>
-            );
-          })}
-          {过滤后行业.length === 0 ? (
-            <div className={样式.搜索无结果}>没有匹配的方向，换个词试试。</div>
+                <span className={样式.行业说明}>{卡.说明}</span>
+              </span>
+              <span className={样式.尖括号}>›</span>
+            </button>
+          ))}
+          {说明卡们.length === 0 ? (
+            <div className={样式.搜索无结果}>
+              {是后端 && (子项加载中 || 搜索加载中) ? '加载中…' : '没有匹配的方向，换个词试试。'}
+            </div>
           ) : null}
         </div>
       </div>
 
-      <已选条 已选={已选} 移除={切换} />
+      <已选条 条目们={已选条目们} 移除={移除已选} />
 
-      {当前组 ? (
+      {细选内容 ? (
         <方向细选页
-          组={当前组}
-          已选={已选}
-          切换={切换}
-          返回={() => 设细选行业(null)}
+          标题={细选内容.标题}
+          说明={细选内容.说明}
+          项们={细选内容.项们}
+          条目们={已选条目们}
+          移除={移除已选}
+          滚动={是后端 ? 造滚动加载(细选加载更多) : undefined}
+          返回={是后端 ? 细选返回 : () => 设细选行业(null)}
         />
       ) : null}
     </div>
   );
 }
 
-/** 行业二级细选页：盖住整个引导壳（含进度条和主按钮），自带顶栏和已选条 */
+/** 行业二级细选页：盖住整个引导壳（含进度条和主按钮），自带顶栏和已选条。
+ *  Task 5：Backend 用同一层承载真实目录的下一级（层数由 has_children 决定）。*/
 function 方向细选页({
-  组,
-  已选,
-  切换,
+  标题,
+  说明,
+  项们,
+  条目们,
+  移除,
+  滚动,
   返回,
 }: {
-  组: (typeof 行业字典)[number];
-  已选: string[];
-  切换: (项: string) => void;
+  标题: string;
+  说明: string;
+  项们: 细选片[];
+  条目们: 已选条目[];
+  移除: (键: string) => void;
+  滚动?: (事件: UIEvent<HTMLDivElement>) => void;
   返回: () => void;
 }) {
-  const 本行业已选 = 组.细分.filter((项) => 已选.includes(`${项}（方向）`));
+  const 本层已选 = 项们.filter((项) => 项.选中);
 
   return (
     <div className={样式.细选层}>
@@ -688,37 +800,34 @@ function 方向细选页({
         <button className={`${样式.细选返回} 可点`} onClick={返回} aria-label="返回行业列表">
           ‹
         </button>
-        <span className={样式.细选标题}>{组.行业}</span>
+        <span className={样式.细选标题}>{标题}</span>
         <button className={`${样式.细选完成} 可点`} onClick={返回}>
           完成
         </button>
       </div>
 
-      <div className={样式.细选说明}>{组.说明}</div>
+      <div className={样式.细选说明}>{说明}</div>
       <div className={样式.细选提示}>
-        选具体方向，可多选{本行业已选.length > 0 ? ` · 已选 ${本行业已选.length} 个` : ''}
+        选具体方向，可多选{本层已选.length > 0 ? ` · 已选 ${本层已选.length} 个` : ''}
       </div>
 
-      <div className={`${样式.细选列表} 滚动区`}>
+      <div className={`${样式.细选列表} 滚动区`} onScroll={滚动}>
         <div className={样式.细选卡}>
-            {组.细分.map((项) => {
-            const 标签 = `${项}（方向）`;
-            const 选中 = 已选.includes(标签);
-            return (
+            {项们.map((项) => (
               <button
-                key={项}
-                className={`${样式.细选项} ${选中 ? 样式.细选项选中 : ''} 可点`}
-                onClick={() => 切换(标签)}
+                key={项.键}
+                className={`${样式.细选项} ${项.选中 ? 样式.细选项选中 : ''} 可点`}
+                onClick={项.按下}
+                aria-disabled={项.不可操作 ? true : undefined}
               >
-                <span>{项}</span>
-                <span className={样式.细选勾}>{选中 ? '✓' : ''}</span>
+                <span>{项.文字}</span>
+                <span className={样式.细选勾}>{项.选中 ? '✓' : ''}</span>
               </button>
-            );
-          })}
+            ))}
         </div>
       </div>
 
-      <已选条 已选={已选} 移除={切换} />
+      <已选条 条目们={条目们} 移除={移除} />
     </div>
   );
 }
@@ -739,71 +848,72 @@ function 城市题({
   已选引用: BFFLocationItem[];
   设已选引用: (更新: (旧: BFFLocationItem[]) => BFFLocationItem[]) => void;
 }) {
-  const [关键词, 设关键词] = useState('');
-  const 词 = 关键词.trim();
+  // Backend：搜索 250ms debounce；默认目录页（不发 q）供热门区与行政区分组
+  const { 词, 设词, 结果: 搜索结果项, 搜索中 } = use城市搜索(是后端 ? 查询Location : undefined);
+  const { 热门项们, 项们: 默认项们 } = use城市默认页(是后端 ? 查询Location : undefined);
+  const 搜词 = 词.trim();
 
-  // Backend：搜索 250ms debounce；分组初次展开请求第一页
-  const { 词: 后端词, 设词: 设后端词, 结果: 搜索结果项, 搜索中, 下一页游标: 搜索下一页, 加载中: 搜索加载中, 加载更多: 搜索加载更多 } = use城市搜索(是后端 ? 查询Location : undefined);
-
-  // Backend 切换：点击城市项原子写入 string + ref（两者同步，保存按钮才能亮）
+  // Backend 切换：按 ID 去重，同名两条互不误删
   const 切换后端 = (项: BFFLocationItem) => {
-    设已选引用((旧) => {
-      if (旧.some((条) => 条.id === 项.id)) return 旧.filter((条) => 条.id !== 项.id);
-      return [...旧, 项];
-    });
-    切换(项.display_name);
+    设已选引用((旧) =>
+      旧.some((条) => 条.id === 项.id) ? 旧.filter((条) => 条.id !== 项.id) : [...旧, 项],
+    );
   };
 
   // 搜索跨全国匹配，省名也算命中（输「浙」出浙江全省），比只搜热门 15 城实用
   const 搜索结果 =
-    词 === ''
+    搜词 === ''
       ? []
       : 城市字典.flatMap((组) =>
-          组.省.includes(词) ? 组.城市 : 组.城市.filter((城) => 城.includes(词))
+          组.省.includes(搜词) ? 组.城市 : 组.城市.filter((城) => 城.includes(搜词))
         );
 
-  if (是后端) {
-    return (
-      <div className={样式.题体}>
-        <div className={样式.标题上移2}>
-          <页面大标题 标题="你理想的工作城市是" />
-        </div>
-        <搜索条 占位="搜索城市" 值={后端词} 改变={设后端词} />
-        <滚动区 样式覆盖={{ padding: '12px 18px 10px' }}>
-          {后端词.trim() === '' ? (
-            <div className={样式.搜索无结果}>输入城市名搜索，选择后自动保存。</div>
-          ) : (
-            <>
-              <div className={样式.分组标}>搜 索 结 果</div>
-              <div className={样式.城市网格}>
-                {搜索结果项.map((项) => (
-                  <城市键
-                    key={项.id}
-                    城={项.display_name}
-                    选中={已选引用.some((条) => 条.id === 项.id)}
-                    按下={() => 切换后端(项)}
-                  />
-                ))}
-              </div>
-              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
-              {搜索下一页 !== null ? (
-                <button className="可点" onClick={搜索加载更多} disabled={搜索加载中} style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}>
-                  {搜索加载中 ? '加载中…' : '加载更多'}
-                </button>
-              ) : null}
-              {搜索结果项.length === 0 && !搜索中 ? (
-                <div className={样式.搜索无结果}>没有匹配的城市，换个词试试。</div>
-              ) : null}
-            </>
-          )}
-        </滚动区>
-        <已选条 已选={已选引用.map((条) => 条.display_name)} 移除={(名) => {
-          const 目标 = 已选引用.find((条) => 条.display_name === 名);
-          if (目标) 切换后端(目标);
-        }} />
-      </div>
-    );
-  }
+  // ── 两模式的展示输入（下面只有一套 JSX）──
+  const 后端片 = (项: BFFLocationItem, 键?: string): 城市片 => ({
+    键: 键 ?? 项.id,
+    文字: 项.display_name,
+    选中: 已选引用.some((条) => 条.id === 项.id),
+    按下: () => 切换后端(项),
+  });
+  const Mock片 = (城: string, 键?: string): 城市片 => ({
+    键: 键 ?? 城,
+    文字: 城,
+    选中: 已选.includes(城),
+    按下: () => 切换(城),
+  });
+
+  // 当前定位：Backend 用已批准的缺失态，不假选上海
+  const 定位片: 城市片 = 是后端
+    ? { 键: '当前定位', 文字: '暂未获取定位', 选中: false, 禁用: true, 按下: () => {} }
+    : Mock片('上海');
+  const 热门片们: 城市片[] = 是后端
+    ? 热门项们.map((项) => 后端片(项, `热门-${项.id}`))
+    : 热门城市.map((城) => Mock片(城));
+  const 分组们: { 键: string; 标题: string; 片们: 城市片[] }[] = 是后端
+    ? 按行政区分组(默认项们).map((组) => ({
+        键: 组.键,
+        标题: 组.键,
+        片们: 组.城市们.map((项) => 后端片(项, `${组.键}-${项.id}`)),
+      }))
+    : 城市字典.map((组) => ({
+        键: 组.省,
+        标题: 组.省,
+        片们: 组.城市.map((城) => Mock片(城, `${组.省}-${城}`)),
+      }));
+  const 搜索片们: 城市片[] = 是后端
+    ? 搜索结果项.map((项) => 后端片(项))
+    : 搜索结果.map((城) => Mock片(城));
+  const 已选条目们: 已选条目[] = 是后端
+    ? 已选引用.map((条) => ({ 键: 条.id, 文字: 条.display_name }))
+    : 已选.map((城) => ({ 键: 城, 文字: 城 }));
+  const 移除已选 = (键: string) => {
+    if (!是后端) {
+      切换(键);
+      return;
+    }
+    const 目标 = 已选引用.find((条) => 条.id === 键);
+    if (目标) 切换后端(目标);
+  };
 
   return (
     <div className={样式.题体}>
@@ -811,68 +921,51 @@ function 城市题({
         <页面大标题 标题="你理想的工作城市是" />
       </div>
 
-      <搜索条 占位="搜索城市 / 省份" 值={关键词} 改变={设关键词} />
+      <搜索条 占位="搜索城市 / 省份" 值={词} 改变={设词} />
 
       <滚动区 样式覆盖={{ padding: '12px 18px 10px' }}>
-        {词 === '' ? (
+        {搜词 === '' ? (
           <>
             <div className={样式.分组标}>当 前 定 位</div>
-            <div className={样式.城市网格}>
-              <城市键 城="上海" 选中={已选.includes('上海')} 按下={() => 切换('上海')} />
-            </div>
+            <div className={样式.城市网格}>{城市键(定位片)}</div>
 
             <div className={`${样式.分组标} ${样式.分组标间距}`}>热 门 城 市</div>
-            <div className={样式.城市网格}>
-              {热门城市.map((城) => (
-                <城市键 key={城} 城={城} 选中={已选.includes(城)} 按下={() => 切换(城)} />
-              ))}
-            </div>
+            <div className={样式.城市网格}>{热门片们.map(城市键)}</div>
 
             {/* 按省份铺开：一省一组，省名当分组标 */}
-            {城市字典.map((组) => (
-              <div key={组.省}>
-                <div className={`${样式.分组标} ${样式.分组标间距}`}>{组.省}</div>
-                <div className={样式.城市网格}>
-                  {组.城市.map((城) => (
-                    <城市键
-                      key={`${组.省}-${城}`}
-                      城={城}
-                      选中={已选.includes(城)}
-                      按下={() => 切换(城)}
-                    />
-                  ))}
-                </div>
+            {分组们.map((组) => (
+              <div key={组.键}>
+                <div className={`${样式.分组标} ${样式.分组标间距}`}>{组.标题}</div>
+                <div className={样式.城市网格}>{组.片们.map(城市键)}</div>
               </div>
             ))}
           </>
         ) : (
           <>
             <div className={样式.分组标}>搜 索 结 果</div>
-            <div className={样式.城市网格}>
-              {搜索结果.map((城) => (
-                <城市键 key={城} 城={城} 选中={已选.includes(城)} 按下={() => 切换(城)} />
-              ))}
-            </div>
-            {搜索结果.length === 0 ? (
+            <div className={样式.城市网格}>{搜索片们.map(城市键)}</div>
+            {搜索片们.length === 0 && !搜索中 ? (
               <div className={样式.搜索无结果}>没有匹配的城市，换个词试试。</div>
             ) : null}
           </>
         )}
       </滚动区>
 
-      <已选条 已选={已选} 移除={切换} />
+      <已选条 条目们={已选条目们} 移除={移除已选} />
     </div>
   );
 }
 
-function 城市键({ 城, 选中, 按下 }: { 城: string; 选中: boolean; 按下: () => void }) {
+function 城市键(片: 城市片) {
   return (
     <button
-      className={`${样式.城市键} ${选中 ? 样式.城市键选中 : ''} 可点`}
-      onClick={按下}
+      key={片.键}
+      className={`${样式.城市键} ${片.选中 ? 样式.城市键选中 : ''} 可点`}
+      onClick={片.按下}
+      disabled={片.禁用}
     >
       {/* 2026-08-24 全站选择风格统一（C1 定稿）：✓ 改由 CSS ::before 前置渲染，去掉文字尾缀避免双勾 */}
-      {城}
+      {片.文字}
     </button>
   );
 }
@@ -1272,18 +1365,18 @@ function 搜索条({
 }
 
 // ── 底部已选条（点标签 ✕ 移除）───────────────────────────────
-function 已选条({ 已选, 移除 }: { 已选: string[]; 移除: (项: string) => void }) {
+function 已选条({ 条目们, 移除 }: { 条目们: 已选条目[]; 移除: (键: string) => void }) {
   return (
     <div className={样式.已选条}>
       <span className={样式.已选标}>已选</span>
       <div className={样式.已选标签组}>
-        {已选.map((项) => (
+        {条目们.map((条) => (
           <button
-            key={项}
+            key={条.键}
             className={`${样式.已选标签} 可点`}
-            onClick={() => 移除(项)}
+            onClick={() => 移除(条.键)}
           >
-            {项} ✕
+            {条.文字} ✕
           </button>
         ))}
       </div>

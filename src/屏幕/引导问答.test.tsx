@@ -5,7 +5,7 @@
 //   (b) 点远程候选后字符串+refs 原子写入 —— 存引导预填 带 职位引用们 含 ID；
 //   (c) 同名职位不同 ID：选中 tax_selected 后 保存首次意向 body 用 tax_selected。
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,6 +28,21 @@ let mock应用状态: any;
 
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回 }) }));
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
+
+/** 在既有滚动容器上触发一次「已到底」滚动事件——不新增任何节点 */
+function 滚到底(容器: Element) {
+  Object.defineProperty(容器, 'scrollHeight', { value: 1000, configurable: true });
+  Object.defineProperty(容器, 'clientHeight', { value: 400, configurable: true });
+  Object.defineProperty(容器, 'scrollTop', { value: 600, configurable: true, writable: true });
+  fireEvent.scroll(容器);
+}
+
+/** 第 n 个既有滚动容器（0=左分类栏，1=右说明卡栏） */
+function 滚动容器(序: number): Element {
+  const 容器 = document.querySelectorAll('.滚动区')[序];
+  if (!容器) throw new Error(`找不到第 ${序} 个既有滚动容器`);
+  return 容器;
+}
 
 /** deferred promise：测试可控制异步 resolve 的时机（用于模拟慢响应到达） */
 function deferredPromise<T>() {
@@ -155,13 +170,17 @@ describe('引导问答 期望薪资 双滚轮 可访问合同', () => {
 // ── Backend 分支（Task 6）──
 
 /** Backend 期望职位题的 mock：roots 非可选，展开 roots 出两个同名不同 ID 的可选叶子 */
-function 后端查询Taxonomy桩(子项: { id: string; display_name: string; selectable: boolean }[]) {
+function 后端查询Taxonomy桩(子项: { id: string; display_name: string; selectable: boolean; has_children?: boolean }[]) {
   return vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
     if (query.parentId === 'tax_root') {
-      return { items: 子项.map((项) => ({ ...项, parent_id: 'tax_root' })), nextCursor: null, catalogVersion: 'v2' };
+      return {
+        items: 子项.map((项) => ({ has_children: false, ...项, parent_id: 'tax_root' })),
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
     }
     return {
-      items: [{ id: 'tax_root', display_name: '技术', parent_id: null, selectable: false }],
+      items: [{ id: 'tax_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
       nextCursor: null,
       catalogVersion: 'v2',
     };
@@ -235,7 +254,7 @@ describe('引导问答 Backend 分支', () => {
     const 用户 = userEvent.setup();
     // 等待子项加载（两个同名「产品经理」按钮，选第一个 tax_selected）
     const 按钮 = await waitFor(() => {
-      const 所有 = screen.getAllByRole('button', { name: '产品经理' });
+      const 所有 = screen.getAllByRole('button', { name: /产品经理/ });
       expect(所有.length).toBeGreaterThanOrEqual(1);
       return 所有[0];
     });
@@ -293,15 +312,15 @@ describe('引导问答 Backend 分支', () => {
     const 用户 = userEvent.setup();
     // 第一题期望职位：等子项加载，选 tax_selected（第一个产品经理）
     const 职位按钮 = await waitFor(() => {
-      const 所有 = screen.getAllByRole('button', { name: '产品经理' });
+      const 所有 = screen.getAllByRole('button', { name: /产品经理/ });
       expect(所有.length).toBeGreaterThanOrEqual(1);
       return 所有[0];
     });
     await 用户.click(职位按钮);
     await 用户.click(screen.getByRole('button', { name: /保存/ }));
     // 第二题工作城市：搜索 '上海'，等 debounce 后结果出现，点选
-    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市')).toBeDefined());
-    await 用户.type(screen.getByPlaceholderText('搜索城市'), '上海');
+    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
+    await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), '上海');
     // 等待 250ms debounce + 查询结果
     const 城市按钮 = await waitFor(() => {
       const 所有 = screen.getAllByRole('button', { name: '上海市' });
@@ -332,28 +351,28 @@ describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', 
     mock返回.mockClear();
   });
 
-  // review-r3 R3-I-5：roots 返回 nextCursor 时可加载更多，第二页 dedup 合并
-  it('根分页加载更多追加第二页（R3-I-5）', async () => {
+  // review-r3 R3-I-5 / Task 5：roots 返回 nextCursor 时滚到底追加第二页（不新增「加载更多」节点）
+  it('左栏滚到底追加第二页根（R3-I-5 / Task 5）', async () => {
     let 根调用 = 0;
     const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string; q?: string }) => {
       if (!query.parentId && !query.q) {
         根调用 += 1;
         if (根调用 === 1) {
           return {
-            items: [{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false }],
+            items: [{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false, has_children: true }],
             nextCursor: 'root_cur_1',
             catalogVersion: 'v2',
           };
         }
         return {
-          items: [{ id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false }],
+          items: [{ id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false, has_children: true }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
       }
       if (query.parentId === 'cat_a') {
         return {
-          items: [{ id: 'job_a1', display_name: 'A岗位1', parent_id: 'cat_a', selectable: true }],
+          items: [{ id: 'job_a1', display_name: 'A岗位1', parent_id: 'cat_a', selectable: true, has_children: false }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
@@ -361,10 +380,9 @@ describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', 
       return { items: [], nextCursor: null, catalogVersion: 'v2' };
     });
     render引导问答后端({ 查询Taxonomy });
-    const 用户 = userEvent.setup();
     await screen.findByText('大类A');
-    const 加载更多 = await screen.findByRole('button', { name: '加载更多' });
-    await 用户.click(加载更多);
+    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
+    滚到底(滚动容器(0));
     await screen.findByText('大类B');
     expect(screen.getByText('大类A')).toBeTruthy();
   });
@@ -375,14 +393,14 @@ describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', 
     const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
       if (!query.parentId && !query.q && !query.cursor) {
         return {
-          items: [{ id: 'cat_root', display_name: '技术', parent_id: null, selectable: false }],
+          items: [{ id: 'cat_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
       }
       if (query.parentId === 'cat_root') {
         return {
-          items: [{ id: 'job_r1', display_name: '后端', parent_id: 'cat_root', selectable: true }],
+          items: [{ id: 'job_r1', display_name: '后端', parent_id: 'cat_root', selectable: true, has_children: false }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
@@ -392,7 +410,7 @@ describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', 
       }
       if (query.q === 'AB') {
         return {
-          items: [{ id: 'job_ab', display_name: 'AB岗位', parent_id: null, selectable: true }],
+          items: [{ id: 'job_ab', display_name: 'AB岗位', parent_id: null, selectable: true, has_children: false }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
@@ -412,7 +430,7 @@ describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', 
     await screen.findByText('AB岗位');
     // A 的慢响应到达——不应覆盖 AB 的结果
     慢Resolve({
-      items: [{ id: 'job_a', display_name: 'A岗位（过期）', parent_id: null, selectable: true }],
+      items: [{ id: 'job_a', display_name: 'A岗位（过期）', parent_id: null, selectable: true, has_children: false }],
       nextCursor: null,
       catalogVersion: 'v2',
     });
@@ -421,26 +439,26 @@ describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', 
     expect(screen.queryByText('A岗位（过期）')).toBeNull();
   });
 
-  // review-r3 R3-I-6 P2-3：搜索模式下点非 selectable 命中 → 清空搜索词 → 子项可见
-  it('搜索点非 selectable 命中后退出搜索模式显示子项（R3-I-6 P2-3）', async () => {
+  // review-r3 R3-I-6 P2-3 / Task 5：搜索命中一个可下钻节点 → 进原方向细选页看它的子项
+  it('搜索点可下钻命中后在方向细选页看到子项（R3-I-6 P2-3）', async () => {
     const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
       if (!query.parentId && !query.q && !query.cursor) {
         return {
-          items: [{ id: 'cat_tech', display_name: '互联网', parent_id: null, selectable: false }],
+          items: [{ id: 'cat_tech', display_name: '互联网', parent_id: null, selectable: false, has_children: true }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
       }
       if (query.q === '互联') {
         return {
-          items: [{ id: 'cat_tech', display_name: '互联网', parent_id: null, selectable: false }],
+          items: [{ id: 'cat_tech', display_name: '互联网', parent_id: null, selectable: false, has_children: true }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
       }
       if (query.parentId === 'cat_tech') {
         return {
-          items: [{ id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true }],
+          items: [{ id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true, has_children: false }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
@@ -452,9 +470,14 @@ describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', 
     await screen.findByText('互联网');
     await 用户.type(screen.getByPlaceholderText('搜索职位 / 方向'), '互联');
     await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ q: '互联' })));
-    await screen.findByText('互联网');
-    // 点非 selectable 命中 → 退出搜索模式 → 子项「后端开发」出现
-    await 用户.click(screen.getByText('互联网'));
+    // 左栏根 + 右栏搜索命中卡同名：命中卡是 DOM 里靠后的那枚（与 Mock 同一版式）
+    const 命中卡 = await waitFor(() => {
+      const 全部 = screen.getAllByText('互联网');
+      expect(全部.length).toBeGreaterThanOrEqual(2);
+      return 全部[全部.length - 1];
+    });
+    // 点可下钻命中 → 进方向细选页 → 子项「后端开发」出现
+    await 用户.click(命中卡);
     await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ parentId: 'cat_tech' })));
     await screen.findByText('后端开发');
   });
@@ -464,28 +487,28 @@ describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', 
     const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
       if (!query.parentId && !query.q && !query.cursor) {
         return {
-          items: [{ id: 'cat_root', display_name: '技术', parent_id: null, selectable: false }],
+          items: [{ id: 'cat_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
       }
       if (query.parentId === 'cat_root') {
         return {
-          items: [{ id: 'job_r1', display_name: '后端', parent_id: 'cat_root', selectable: true }],
+          items: [{ id: 'job_r1', display_name: '后端', parent_id: 'cat_root', selectable: true, has_children: false }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
       }
       if (query.q === 'A') {
         return {
-          items: [{ id: 'job_a', display_name: 'A岗位', parent_id: null, selectable: true }],
+          items: [{ id: 'job_a', display_name: 'A岗位', parent_id: null, selectable: true, has_children: false }],
           nextCursor: 'a_cur_1',
           catalogVersion: 'v2',
         };
       }
       if (query.q === 'B') {
         return {
-          items: [{ id: 'job_b', display_name: 'B岗位', parent_id: null, selectable: true }],
+          items: [{ id: 'job_b', display_name: 'B岗位', parent_id: null, selectable: true, has_children: false }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
@@ -499,15 +522,16 @@ describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', 
     await 用户.type(screen.getByPlaceholderText('搜索职位 / 方向'), 'A');
     await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ q: 'A' })));
     await screen.findByText('A岗位');
-    expect(screen.getByRole('button', { name: '加载更多' })).toBeTruthy();
     // 清空并搜索 B → A 的结果和游标被重置
     await 用户.clear(screen.getByPlaceholderText('搜索职位 / 方向'));
     await 用户.type(screen.getByPlaceholderText('搜索职位 / 方向'), 'B');
     await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ q: 'B' })), { timeout: 3000 });
     await screen.findByText('B岗位');
     expect(screen.queryByText('A岗位')).toBeNull();
-    // B 无游标 → 不应出现「加载更多」
-    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
+    // B 无游标 → 再滚到底也不会带着 A 的旧游标发请求
+    滚到底(滚动容器(1));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    expect(查询Taxonomy.mock.calls.some((调用) => (调用[1] as { cursor?: string }).cursor === 'a_cur_1')).toBe(false);
   });
 });
 
@@ -717,5 +741,148 @@ describe('引导问答 个人优势预填（Spec §8 偏好段）', () => {
     await 用户.type(优势框(), '我改过的内容');
     await 用户.click(screen.getByRole('button', { name: /重新从简历提取/ }));
     expect(优势框().value).toBe(个人优势文本);
+  });
+});
+// ── Task 5：职位与城市两模式共用各自原 Mock 展示 ──
+
+describe('引导问答 Backend 期望职位题 接原 Mock 说明卡与方向细选页（Task 5）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+  });
+
+  it('真实根→中间说明卡→方向细选页里的可选叶子才写引用', async () => {
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [{ id: 'cat_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_root') {
+        return {
+          items: [{ id: 'cat_mid', display_name: '后端方向', parent_id: 'cat_root', selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_mid') {
+        return {
+          items: [{ id: 'job_leaf', display_name: 'Java 工程师', parent_id: 'cat_mid', selectable: true, has_children: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    const { 派发 } = render引导问答后端({ 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    // 中间节点用原 Mock 说明卡承载：没有行业说明就是真实空值，不补「暂无说明」
+    const 说明卡 = await screen.findByRole('button', { name: /后端方向/ });
+    expect(说明卡.textContent).not.toContain('暂无说明');
+    await 用户.click(说明卡);
+    // 进原方向细选页，叶子在这里才可选
+    await 用户.click(await screen.findByRole('button', { name: /Java 工程师/ }));
+    await 用户.click(await screen.findByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() =>
+      expect(派发).toHaveBeenCalledWith(
+        expect.objectContaining({
+          型: '存引导预填',
+          职位: ['Java 工程师'],
+          职位引用们: [{ id: 'job_leaf', display_name: 'Java 工程师' }],
+        }),
+      ),
+    );
+  });
+
+  it('同名不同 ID 的已选条各自独立移除', async () => {
+    const 查询Taxonomy = 后端查询Taxonomy桩([
+      { id: 'tax_selected', display_name: '产品经理', selectable: true },
+      { id: 'tax_other', display_name: '产品经理', selectable: true },
+    ]);
+    const { 派发 } = render引导问答后端({ 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    const 两枚 = await waitFor(() => {
+      const 全部 = screen.getAllByRole('button', { name: /产品经理/ });
+      expect(全部.length).toBeGreaterThanOrEqual(2);
+      return 全部;
+    });
+    await 用户.click(两枚[0]);
+    await 用户.click(两枚[1]);
+    const chips = screen.getAllByRole('button', { name: '产品经理 ✕' });
+    expect(chips).toHaveLength(2);
+    await 用户.click(chips[0]);
+    expect(screen.getAllByRole('button', { name: '产品经理 ✕' })).toHaveLength(1);
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() =>
+      expect(派发).toHaveBeenCalledWith(
+        expect.objectContaining({
+          型: '存引导预填',
+          职位: ['产品经理'],
+          职位引用们: [{ id: 'tax_other', display_name: '产品经理' }],
+        }),
+      ),
+    );
+  });
+});
+
+describe('引导问答 Backend 城市题 接原 Mock 定位/热门/行政区分组（Task 5）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+  });
+
+  /** 造一条 Location 目录项（字段全部来自后端返回） */
+  function 城(项: { id: string; display_name: string; admin1_name: string | null; country_name?: string }) {
+    return {
+      id: 项.id,
+      display_name: 项.display_name,
+      country_code: 'CN',
+      country_name: 项.country_name ?? '中国',
+      admin1_code: '31',
+      admin1_name: 项.admin1_name,
+      timezone: 'Asia/Shanghai',
+      population: 0,
+    };
+  }
+
+  /** 从第一题（期望职位）推进到工作城市题 */
+  async function 进城市题() {
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
+    return 用户;
+  }
+
+  it('当前定位显示「暂未获取定位」且点不出上海；热门与行政区分组都来自返回字段', async () => {
+    const 查询Location = vi.fn(async (_query: { q?: string; cursor?: string }) => ({
+      items: [
+        城({ id: 'loc_sh', display_name: '上海', admin1_name: '上海市' }),
+        城({ id: 'loc_gz', display_name: '广州市', admin1_name: '广东省' }),
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    render引导问答后端({ 查询Location });
+    const 用户 = await 进城市题();
+    const 定位 = await screen.findByText('暂未获取定位');
+    await 用户.click(定位);
+    // 缺失态点不出任何城市：没有已选 chip，下一步仍禁用
+    expect(screen.queryByRole('button', { name: '上海 ✕' })).toBeNull();
+    expect((screen.getByRole('button', { name: /保存/ }) as HTMLButtonElement).disabled).toBe(true);
+    // 默认查询不发 q
+    const 首次参数 = 查询Location.mock.calls[0][0] as Record<string, unknown>;
+    expect(Object.keys(首次参数)).not.toContain('q');
+    // 热门区来自返回项，行政区分组标题用返回的 admin1_name
+    expect(screen.getAllByText('广州市').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('广东省')).toBeTruthy();
+    // 不编造省份、不造「其他地区」、不显示 Mock 的硬编码省墙
+    expect(screen.queryByText('其他地区')).toBeNull();
+    expect(screen.queryByText('直辖市')).toBeNull();
+    // 真实项仍可选
+    await 用户.click(screen.getAllByText('广州市')[0]);
+    expect(screen.getByRole('button', { name: '广州市 ✕' })).toBeTruthy();
   });
 });

@@ -2,13 +2,16 @@
 // 完善资料屏的城市行点进来，替代旧的底部弹层，升级为全屏 + 多选（上限 10）。
 //
 // 版式：大标题「你理想的工作城市是」+ 右上 N/10 计数 → 搜索框 →
-// 当前定位（上海）/ 热门城市 / 按省铺开 → 底部「已选」chips（点 ✕ 删）+ 保存键。
+// 当前定位 / 热门城市 / 按省铺开 → 底部「已选」chips（点 ✕ 删）+ 保存键。
 // 选好的城市落 全局.引导预填.城市们（职位原样带上），保存后返回完善资料屏回显。
 //
-// Task 3：Backend 分支按需 查询Location（省标题不进入 payload，只发 countryCode/admin1Code），
-// 已选改为 目录选择值[]，ID 去重；搜索 250ms debounce。Mock 分支保持本地 城市字典 不变。
+// Task 3：Backend 分支按需 查询Location，已选改为 目录选择值[]，ID 去重；搜索 250ms debounce。
+// Task 5：删掉 Backend 专属的省份折叠布局，两模式共用上面这一套 Mock JSX ——
+// Backend 的当前定位是已批准的「暂未获取定位」缺失态（不假选上海），热门区是不带 q 的
+// 默认目录页，分组标题只用返回的行政区/国家字段（未知的不编造省份、不造「其他地区」），
+// 继续加载只挂在既有 列表区 滚动容器的滚动事件上，不新增「加载更多」节点。
 
-import { useState } from 'react';
+import { useState, type UIEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import 样式 from './选工作城市.module.css';
 import { 次级页外壳, 返回栏, 主按钮 } from '../组件/通用';
@@ -16,12 +19,23 @@ import { 放大镜图标 } from '../组件/图标';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
-import { 城市字典, 热门城市, 城市分组 } from '../数据/城市与行业';
+import { 城市字典, 热门城市 } from '../数据/城市与行业';
 import type { BFFLocationItem } from '../数据/BFF契约';
-import { use城市搜索, use城市分组 } from './城市查询钩子';
+import { use城市搜索, use城市默认页, 按行政区分组 } from './城市查询钩子';
 
 /** 城市多选上限：与 BOSS 同档 */
 const 城市上限 = 10;
+/** 距底多少像素算「滚到底」——只用来判定，不改任何布局 */
+const 到底余量 = 64;
+
+/** 城市片的展示输入：两模式给同样的输入就有同样的 DOM */
+interface 城市片 {
+  键: string;
+  文字: string;
+  选中: boolean;
+  禁用?: boolean;
+  按下: () => void;
+}
 
 export default function 选工作城市() {
   const { 返回 } = use导航();
@@ -53,12 +67,12 @@ export default function 选工作城市() {
     return 全局.引导预填?.城市们 ?? ['上海'];
   });
 
-  // ── 搜索 / 分组查询（Backend 分支）──
-  const { 词, 设词, 结果: 搜索结果项, 搜索中, 下一页游标: 搜索下一页, 加载中: 搜索加载中, 加载更多: 搜索加载更多 } = use城市搜索(
+  // ── 搜索 / 默认目录页查询（Backend 分支）──
+  const { 词, 设词, 结果: 搜索结果项, 搜索中, 加载更多: 搜索加载更多 } = use城市搜索(
     是后端 ? 目录查询?.查询Location : undefined,
   );
-  // review-r3 R3-I-5：解构 加载更多——分组展开后每省可翻下一页（dedup 合并）
-  const { 状态表, 展开集合, 切换展开, 加载更多: 分组加载更多 } = use城市分组(
+  // Task 5：不带 q 的默认目录页 —— 首页进热门区，全部已加载项按返回字段分行政区
+  const { 热门项们, 项们: 默认项们, 加载更多: 默认加载更多 } = use城市默认页(
     是后端 ? 目录查询?.查询Location : undefined,
   );
 
@@ -139,26 +153,62 @@ export default function 选工作城市() {
           组.省.includes(搜索词) ? 组.城市 : 组.城市.filter((城) => 城.includes(搜索词)),
         );
 
-  // Backend 城市片：按 ID 去重
-  const 城市键后端 = (项: BFFLocationItem, 键?: string) => (
-    <button
-      key={键 ?? 项.id}
-      className={`${样式.城片} ${已选引用.some((条) => 条.id === 项.id) ? 样式.城片选中 : ''} 可点`}
-      onClick={() => 切换后端(项)}
-    >
-      {项.display_name}
-    </button>
-  );
+  // ── 两模式的展示输入（下面只有一套 JSX）──
+  const 后端片 = (项: BFFLocationItem, 键?: string): 城市片 => ({
+    键: 键 ?? 项.id,
+    文字: 项.display_name,
+    选中: 已选引用.some((条) => 条.id === 项.id),
+    按下: () => 切换后端(项),
+  });
+  const Mock片 = (城: string, 键?: string): 城市片 => ({
+    键: 键 ?? 城,
+    文字: 城,
+    选中: 已选名.includes(城),
+    按下: () => 切换(城),
+  });
 
-  // Mock 城市片（保持原逻辑不变）
-  const 城市键 = (城: string, 键?: string) => (
+  // 当前定位：Backend 用已批准的缺失态，不假选上海
+  const 定位片: 城市片 = 是后端
+    ? { 键: '当前定位', 文字: '暂未获取定位', 选中: false, 禁用: true, 按下: () => {} }
+    : Mock片('上海');
+  const 热门片们: 城市片[] = 是后端
+    ? 热门项们.map((项) => 后端片(项, `热门-${项.id}`))
+    : 热门城市.map((城) => Mock片(城));
+  const 分组们: { 键: string; 标题: string; 片们: 城市片[] }[] = 是后端
+    ? 按行政区分组(默认项们).map((组) => ({
+        键: 组.键,
+        标题: 组.键,
+        片们: 组.城市们.map((项) => 后端片(项, `${组.键}-${项.id}`)),
+      }))
+    : 城市字典.map((组) => ({
+        键: 组.省,
+        标题: 组.省,
+        片们: 组.城市.map((城) => Mock片(城, `${组.省}-${城}`)),
+      }));
+  const 搜索片们: 城市片[] = 是后端
+    ? 搜索结果项.map((项) => 后端片(项))
+    : 搜索结果.map((城) => Mock片(城));
+  const 已选片们: { 键: string; 文字: string; 按下: () => void }[] = 是后端
+    ? 已选引用.map((条) => ({ 键: 条.id, 文字: 条.display_name, 按下: () => 切换后端(条) }))
+    : 已选名.map((城) => ({ 键: 城, 文字: 城, 按下: () => 切换(城) }));
+
+  // Task 5：继续加载只挂在既有滚动容器上 —— 游标归各自的查询（搜索态翻搜索页，默认态翻默认页）
+  const 滚动加载 = (事件: UIEvent<HTMLDivElement>) => {
+    if (!是后端) return;
+    const 元素 = 事件.currentTarget;
+    if (元素.scrollTop + 元素.clientHeight < 元素.scrollHeight - 到底余量) return;
+    void (搜索词 === '' ? 默认加载更多() : 搜索加载更多());
+  };
+
+  const 城市键 = (片: 城市片) => (
     <button
-      key={键 ?? 城}
-      className={`${样式.城片} ${已选名.includes(城) ? 样式.城片选中 : ''} 可点`}
-      onClick={() => 切换(城)}
+      key={片.键}
+      className={`${样式.城片} ${片.选中 ? 样式.城片选中 : ''} 可点`}
+      onClick={片.按下}
+      disabled={片.禁用}
     >
       {/* 2026-08-24 全站选择风格统一（C1 定稿）：✓ 改由 CSS ::before 前置渲染，去掉文字尾缀避免双勾 */}
-      {城}
+      {片.文字}
     </button>
   );
 
@@ -188,114 +238,44 @@ export default function 选工作城市() {
         />
       </div>
 
-      <div className={`${样式.列表区} 滚动区`}>
-        {是后端 ? (
-          /* ── Backend 分支：按需 查询Location，省标题不进入 payload ── */
-          词.trim() === '' ? (
-            <>
-              {城市分组.map((组) => (
-                <div key={组.省}>
-                  <button
-                    className={`${样式.组标} ${样式.组标间距} 可点`}
-                    onClick={() => 切换展开(组)}
-                  >
-                    {组.省}
-                  </button>
-                  {展开集合.has(组.省) ? (
-                    <div className={样式.城网}>
-                      {状态表[组.省]?.加载中 && 状态表[组.省]?.items.length === 0 ? (
-                        <div className={样式.无结果}>加载中…</div>
-                      ) : null}
-                      {状态表[组.省]?.items.map((项) => 城市键后端(项, `${组.省}-${项.id}`))}
-                      {/* review-r3 R3-I-5：分组分页加载更多 */}
-                      {状态表[组.省]?.还有 ? (
-                        <button
-                          className="可点"
-                          onClick={() => 分组加载更多(组)}
-                          disabled={状态表[组.省]?.加载中}
-                          style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
-                        >
-                          {状态表[组.省]?.加载中 ? '加载中…' : '加载更多'}
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </>
-          ) : (
-            <>
-              <div className={样式.组标}>搜 索 结 果</div>
-              <div className={样式.城网}>
-                {搜索结果项.map((项) => 城市键后端(项))}
+      <div className={`${样式.列表区} 滚动区`} onScroll={滚动加载}>
+        {搜索词 === '' ? (
+          <>
+            <div className={样式.组标}>当 前 定 位</div>
+            <div className={样式.城网}>{城市键(定位片)}</div>
+
+            <div className={`${样式.组标} ${样式.组标间距}`}>热 门 城 市</div>
+            <div className={样式.城网}>{热门片们.map(城市键)}</div>
+
+            {/* 按省份铺开：一省一组，省名当分组标 */}
+            {分组们.map((组) => (
+              <div key={组.键}>
+                <div className={`${样式.组标} ${样式.组标间距}`}>{组.标题}</div>
+                <div className={样式.城网}>{组.片们.map(城市键)}</div>
               </div>
-              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
-              {搜索下一页 !== null ? (
-                <button className="可点" onClick={搜索加载更多} disabled={搜索加载中} style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}>
-                  {搜索加载中 ? '加载中…' : '加载更多'}
-                </button>
-              ) : null}
-              {搜索结果项.length === 0 && !搜索中 ? (
-                <div className={样式.无结果}>没有匹配的城市，换个词试试。</div>
-              ) : null}
-            </>
-          )
+            ))}
+          </>
         ) : (
-          /* ── Mock 分支：保持原本地城市字典逻辑不变 ── */
-          词.trim() === '' ? (
-            <>
-              <div className={样式.组标}>当 前 定 位</div>
-              <div className={样式.城网}>{城市键('上海')}</div>
-
-              <div className={`${样式.组标} ${样式.组标间距}`}>热 门 城 市</div>
-              <div className={样式.城网}>{热门城市.map((城) => 城市键(城))}</div>
-
-              {/* 按省份铺开：一省一组，省名当分组标 */}
-              {城市字典.map((组) => (
-                <div key={组.省}>
-                  <div className={`${样式.组标} ${样式.组标间距}`}>{组.省}</div>
-                  <div className={样式.城网}>
-                    {组.城市.map((城) => 城市键(城, `${组.省}-${城}`))}
-                  </div>
-                </div>
-              ))}
-            </>
-          ) : (
-            <>
-              <div className={样式.组标}>搜 索 结 果</div>
-              <div className={样式.城网}>{搜索结果.map((城) => 城市键(城))}</div>
-              {搜索结果.length === 0 ? (
-                <div className={样式.无结果}>没有匹配的城市，换个词试试。</div>
-              ) : null}
-            </>
-          )
+          <>
+            <div className={样式.组标}>搜 索 结 果</div>
+            <div className={样式.城网}>{搜索片们.map(城市键)}</div>
+            {搜索片们.length === 0 && !搜索中 ? (
+              <div className={样式.无结果}>没有匹配的城市，换个词试试。</div>
+            ) : null}
+          </>
         )}
       </div>
 
-      {/* 底部已选 chips：点标签 ✕ 删除 */}
+      {/* 底部已选 chips：点标签 ✕ 删除（Backend 按 ID，同名两条互不误删）*/}
       {已选数 > 0 ? (
         <div className={样式.已选条}>
           <span className={样式.已选标}>已选</span>
           <div className={样式.已选标签组}>
-            {是后端
-              ? 已选引用.map((条) => (
-                  <button
-                    key={条.id}
-                    className={`${样式.已选标签} 可点`}
-                    onClick={() => 切换后端(条)}
-                  >
-                    {条.display_name} ✕
-                  </button>
-                ))
-              : 已选名.map((城) => (
-                  <button
-                    key={城}
-                    className={`${样式.已选标签} 可点`}
-                    onClick={() => 切换(城)}
-                  >
-                    {城} ✕
-                  </button>
-                ))}
+            {已选片们.map((条) => (
+              <button key={条.键} className={`${样式.已选标签} 可点`} onClick={条.按下}>
+                {条.文字} ✕
+              </button>
+            ))}
           </div>
         </div>
       ) : null}

@@ -1,9 +1,9 @@
-// 选期望职位 Backend 接入测试（Task 4）：
-// Backend 按需 查询Taxonomy('job-categories')：首次读 roots，展开按 parentId，搜索按 q；
-// selectable=true 的叶子原子保存 {id,display_name}+字符串。
-// Mock 分支保持本地 职业分类树 不变。
+// 选期望职位 Backend 接入测试（Task 4 / Task 5）：
+// Task 5 起 Backend 与 Mock 共用同一套 Mock JSX（左大类栏 + 右分组卡 + 搜索结果区 + 已选条）。
+// 导航依合同的 has_children（可下钻）与 selectable（可写引用）各自独立判断，不写死层数；
+// 同名不同 ID 各自独立；翻页只走既有滚动容器，没有「加载更多」节点。
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,6 +14,22 @@ function deferredPromise<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((ok) => { resolve = ok; });
   return { promise, resolve };
+}
+
+/** 在既有滚动容器上触发一次「已到底」滚动事件——不新增任何节点 */
+function 滚到底(容器: Element) {
+  Object.defineProperty(容器, 'scrollHeight', { value: 1000, configurable: true });
+  Object.defineProperty(容器, 'clientHeight', { value: 400, configurable: true });
+  Object.defineProperty(容器, 'scrollTop', { value: 600, configurable: true, writable: true });
+  fireEvent.scroll(容器);
+}
+
+/** 第 n 个既有滚动容器（0=左大类栏，1=右分组栏；搜索态只有一个） */
+function 滚动容器(序: number): Element {
+  const 全部 = document.querySelectorAll('.滚动区');
+  const 容器 = 全部[序];
+  if (!容器) throw new Error(`找不到第 ${序} 个既有滚动容器`);
+  return 容器;
 }
 
 const mock返回 = vi.fn();
@@ -66,7 +82,7 @@ describe('选期望职位 Backend', () => {
       if (!query.parentId && !query.q) {
         return {
           items: [
-            { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false },
+            { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false, has_children: true },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -75,7 +91,7 @@ describe('选期望职位 Backend', () => {
       if (query.parentId === 'cat_tech') {
         return {
           items: [
-            { id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true },
+            { id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true, has_children: false },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -107,7 +123,7 @@ describe('选期望职位 Backend', () => {
       if (!query.parentId && !query.q) {
         return {
           items: [
-            { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false },
+            { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false, has_children: true },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -116,7 +132,7 @@ describe('选期望职位 Backend', () => {
       if (query.parentId === 'cat_tech') {
         return {
           items: [
-            { id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true },
+            { id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true, has_children: false },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -139,6 +155,130 @@ describe('选期望职位 Backend', () => {
     );
   });
 
+  // Task 5：真实根 → 中间层 → 可选节点，层数由 has_children 决定，不写死两层
+  it('真实根→中间→可选节点逐层下钻后才写引用（Task 5）', async () => {
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [{ id: 'cat_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_root') {
+        return {
+          items: [{ id: 'cat_mid', display_name: '后端方向', parent_id: 'cat_root', selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_mid') {
+        return {
+          items: [{ id: 'job_leaf', display_name: 'Java 工程师', parent_id: 'cat_mid', selectable: true, has_children: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    const { 派发 } = render选期望职位({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    // 中间层出现后点它：只下钻，不能写成引用（保存仍禁用）
+    await 用户.click(await screen.findByText('后端方向'));
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+    // 第三层才是可选节点
+    await 用户.click(await screen.findByText('Java 工程师'));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({
+        型: '存引导预填',
+        职位: ['Java 工程师'],
+        职位引用们: [{ id: 'job_leaf', display_name: 'Java 工程师' }],
+      }),
+    );
+  });
+
+  // Task 5：selectable 与 has_children 相互独立——两者都为真时保留导航，不猜选择
+  it('selectable 且 has_children 的节点只下钻不写引用（Task 5）', async () => {
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [{ id: 'cat_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_root') {
+        return {
+          // 既可选又有下级：现有控件无法同时表达「选此节点 / 继续下钻」→ 保留导航
+          items: [{ id: 'cat_both', display_name: '数据', parent_id: 'cat_root', selectable: true, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_both') {
+        return {
+          items: [{ id: 'job_de', display_name: '数据工程师', parent_id: 'cat_both', selectable: true, has_children: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render选期望职位({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(await screen.findByText('数据'));
+    // 下钻发生
+    await screen.findByText('数据工程师');
+    // 没有被当成选择：没有已选条，保存禁用
+    expect(screen.queryByText('已选')).toBeNull();
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  // Task 5：同名不同 ID 独立存在、独立移除
+  it('同名不同 ID 的已选条各自独立移除（Task 5）', async () => {
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [{ id: 'cat_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'cat_root') {
+        return {
+          items: [
+            { id: 'job_a', display_name: '产品经理', parent_id: 'cat_root', selectable: true, has_children: false },
+            { id: 'job_b', display_name: '产品经理', parent_id: 'cat_root', selectable: true, has_children: false },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    const { 派发 } = render选期望职位({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    const 两枚 = await waitFor(() => {
+      const 全部 = screen.getAllByRole('button', { name: '产品经理' });
+      expect(全部).toHaveLength(2);
+      return 全部;
+    });
+    await 用户.click(两枚[0]);
+    await 用户.click(两枚[1]);
+    const chips = screen.getAllByRole('button', { name: '产品经理 ✕' });
+    expect(chips).toHaveLength(2);
+    await 用户.click(chips[0]);
+    expect(screen.getAllByRole('button', { name: '产品经理 ✕' })).toHaveLength(1);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({
+        型: '存引导预填',
+        职位引用们: [{ id: 'job_b', display_name: '产品经理' }],
+      }),
+    );
+  });
+
   // review-r1 P2-3：搜索模式下点非 selectable 命中 → 清空搜索词退出搜索模式 →
   // 双栏视图显示其子项，子项可选。
   it('搜索点非 selectable 命中后退出搜索模式显示子项（P2-3）', async () => {
@@ -146,7 +286,7 @@ describe('选期望职位 Backend', () => {
       if (!query.parentId && !query.q) {
         return {
           items: [
-            { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false },
+            { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false, has_children: true },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -155,7 +295,7 @@ describe('选期望职位 Backend', () => {
       if (query.q && query.q.includes('互联') && !query.parentId) {
         return {
           items: [
-            { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false },
+            { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false, has_children: true },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -164,7 +304,7 @@ describe('选期望职位 Backend', () => {
       if (query.parentId === 'cat_tech') {
         return {
           items: [
-            { id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true },
+            { id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true, has_children: false },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -195,6 +335,7 @@ describe('选期望职位 Backend', () => {
       }),
     );
   });
+
   // review-r2 R2-M-3：快速切大类时慢的旧子项不覆盖新的（导航代际守 stale）
   it('快速切大类时旧响应不覆盖新子项（R2-M-3）', async () => {
     const { promise: 慢Promise, resolve: 慢Resolve } = deferredPromise<{ items: unknown[]; nextCursor: null; catalogVersion: string }>();
@@ -202,8 +343,8 @@ describe('选期望职位 Backend', () => {
       if (!query.parentId && !query.cursor) {
         return {
           items: [
-            { id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false },
-            { id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false },
+            { id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false, has_children: true },
+            { id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false, has_children: true },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -215,7 +356,7 @@ describe('选期望职位 Backend', () => {
       }
       if (query.parentId === 'cat_b') {
         return {
-          items: [{ id: 'job_b1', display_name: 'B岗位1', parent_id: 'cat_b', selectable: true }],
+          items: [{ id: 'job_b1', display_name: 'B岗位1', parent_id: 'cat_b', selectable: true, has_children: false }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
@@ -232,7 +373,7 @@ describe('选期望职位 Backend', () => {
     await screen.findByText('B岗位1');
     // 现在 A 的慢响应到达——不应覆盖 B 的子项
     慢Resolve({
-      items: [{ id: 'job_a1', display_name: 'A岗位1（过期）', parent_id: 'cat_a', selectable: true }],
+      items: [{ id: 'job_a1', display_name: 'A岗位1（过期）', parent_id: 'cat_a', selectable: true, has_children: false }],
       nextCursor: null,
       catalogVersion: 'v2',
     });
@@ -243,21 +384,21 @@ describe('选期望职位 Backend', () => {
     expect(screen.queryByText('A岗位1（过期）')).toBeNull();
   });
 
-  // review-r2 R2-M-1：根分页——roots 返回 nextCursor 时可加载更多
-  it('根分页返回 nextCursor 时可加载更多（R2-M-1）', async () => {
+  // Task 5：根分页只走既有左栏滚动容器，没有「加载更多」节点
+  it('左栏滚到底追加下一页根（Task 5 取代加载更多按钮）', async () => {
     let 根调用 = 0;
     const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string }) => {
       if (!query.parentId) {
         根调用 += 1;
         if (根调用 === 1) {
           return {
-            items: [{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false }],
+            items: [{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false, has_children: true }],
             nextCursor: 'root_cur_1',
             catalogVersion: 'v2',
           };
         }
         return {
-          items: [{ id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false }],
+          items: [{ id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false, has_children: true }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
@@ -265,11 +406,9 @@ describe('选期望职位 Backend', () => {
       return { items: [], nextCursor: null, catalogVersion: 'v2' };
     });
     render选期望职位({ 数据源: 'backend', 查询Taxonomy });
-    const 用户 = userEvent.setup();
     await screen.findByText('大类A');
-    // 左栏底部有「加载更多」
-    const 加载更多 = await screen.findByRole('button', { name: '加载更多' });
-    await 用户.click(加载更多);
+    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
+    滚到底(滚动容器(0));
     await screen.findByText('大类B');
     expect(screen.getByText('大类A')).toBeTruthy();
     expect(查询Taxonomy).toHaveBeenLastCalledWith('job-categories', expect.objectContaining({ cursor: 'root_cur_1' }));
@@ -281,14 +420,14 @@ describe('选期望职位 Backend', () => {
     const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
       if (!query.parentId && !query.q) {
         return {
-          items: [{ id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false }],
+          items: [{ id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false, has_children: true }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
       }
       if (query.parentId === 'cat_tech') {
         return {
-          items: [{ id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true }],
+          items: [{ id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true, has_children: false }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
@@ -310,25 +449,23 @@ describe('选期望职位 Backend', () => {
     );
   });
 
-  // review-r3 R3-I-8：子项加载更多在飞行中切大类 → 旧大类的第二页不覆盖新大类的子项
-  it('子项加载更多在飞行中切大类时旧页不覆盖新子项（R3-I-8）', async () => {
+  // review-r3 R3-I-8：子项下一页在飞行中切大类 → 旧大类的第二页不覆盖新大类的子项
+  it('子项下一页在飞行中切大类时旧页不覆盖新子项（R3-I-8）', async () => {
     const { promise: 慢Promise, resolve: 慢Resolve } = deferredPromise<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>();
-    let 子项调用 = 0;
     const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string }) => {
       if (!query.parentId && !query.cursor) {
         return {
           items: [
-            { id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false },
-            { id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false },
+            { id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false, has_children: true },
+            { id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false, has_children: true },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
         };
       }
       if (query.parentId === 'cat_a' && !query.cursor) {
-        子项调用 += 1;
         return {
-          items: [{ id: 'job_a1', display_name: 'A岗位1', parent_id: 'cat_a', selectable: true }],
+          items: [{ id: 'job_a1', display_name: 'A岗位1', parent_id: 'cat_a', selectable: true, has_children: false }],
           nextCursor: 'cat_a_cur_1',
           catalogVersion: 'v2',
         };
@@ -339,7 +476,7 @@ describe('选期望职位 Backend', () => {
       }
       if (query.parentId === 'cat_b') {
         return {
-          items: [{ id: 'job_b1', display_name: 'B岗位1', parent_id: 'cat_b', selectable: true }],
+          items: [{ id: 'job_b1', display_name: 'B岗位1', parent_id: 'cat_b', selectable: true, has_children: false }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
@@ -350,16 +487,16 @@ describe('选期望职位 Backend', () => {
     const 用户 = userEvent.setup();
     // 等 roots 加载（mount 预选大类A并预载 A岗位1）
     await screen.findByText('A岗位1');
-    // 点 A 的「加载更多」——慢响应在飞行中
-    const 加载更多按钮 = screen.getAllByRole('button', { name: '加载更多' }).find((b) => b.closest(`.${(b.closest('div')?.className) ?? ''}`) !== null) ?? screen.getAllByRole('button', { name: '加载更多' })[0];
-    await 用户.click(加载更多按钮);
+    // 右栏滚到底——A 的第二页在飞行中
+    滚到底(滚动容器(1));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ cursor: 'cat_a_cur_1' })));
     // 快速切到大类B
     await 用户.click(screen.getByText('大类B'));
     // B 的子项立刻出现
     await screen.findByText('B岗位1');
     // A 的慢响应到达——不应追加到 B 的子项
     慢Resolve({
-      items: [{ id: 'job_a2', display_name: 'A岗位2（过期）', parent_id: 'cat_a', selectable: true }],
+      items: [{ id: 'job_a2', display_name: 'A岗位2（过期）', parent_id: 'cat_a', selectable: true, has_children: false }],
       nextCursor: null,
       catalogVersion: 'v2',
     });
