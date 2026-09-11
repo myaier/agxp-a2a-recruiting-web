@@ -1076,6 +1076,199 @@ describe('创建候选操作 · 首次意向身份（J-PILOT-02 Task 7）', () =
   });
 });
 
+// ── J-PILOT-02 Task 9：完成前资源核对（Spec §6）──
+// 只按服务端权威事实放行：必填 profile、至少一条完整教育（存在性，不是既有条目的
+// 完整性）、本轮 exact ID 的 active 意向与本次确认输入一致、已提交 summary/URL 回读
+// 一致；单槽未结算一律拦下。推荐读取不是该判定的输入（空/失败不阻塞）。
+
+describe('创建候选操作 · 完成资源核对（J-PILOT-02 Task 9）', () => {
+  /** 本轮确认过的向导答案（学生分流/向导落 引导预填 的形状）。 */
+  const 草稿预填 = {
+    城市们: ['上海市'],
+    职位: ['产品经理'],
+    城市引用们: [{ id: 'loc_sh', display_name: '上海市' }],
+    职位引用们: [{ id: 'tax_pm', display_name: '产品经理' }],
+    筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['混合'] },
+    薪资: { 下限: 10, 上限: 20, 单位: '月薪K' as const },
+  };
+
+  /** 与 草稿预填 逐字对应的权威意向（转首次意向写入 的期望结果）。 */
+  const 权威意向 = (覆盖: Partial<BFFOwnerIntention> = {}): BFFOwnerIntention => ({
+    ...BFF意向样本,
+    intention_id: 'int_7',
+    recruitment_type: 'social_full_time',
+    job_category: { id: 'tax_pm', display_name: '产品经理' },
+    primary_location: { id: 'loc_sh', display_name: '上海市' },
+    alternate_locations: [],
+    workplace_modes: ['hybrid'],
+    compensation: { mode: 'range', lower: 10, upper: 20, annual_salary_months: null },
+    private_preferences: '不接受大小周',
+    status: 'active',
+    revision: 3,
+    ...覆盖,
+  });
+
+  /** 与 全绿建档 回读一致的权威简历（summary/URL 逐字对上）。 */
+  const 权威简历 = (覆盖: Partial<BFF简历> = {}): BFF简历 => ({
+    ...BFF简历样本,
+    summary: '五年交易平台后端',
+    ...覆盖,
+    profile: { ...BFF简历样本.profile, portfolio_url: 'https://github.com/works', ...覆盖.profile },
+  });
+
+  /** 全绿旅程的建档草稿：意向有本轮身份、summary/URL 已提交、头像明确放弃。 */
+  const 全绿建档 = (): 候选引导建档草稿 => ({
+    首次意向: { id: 'int_7', revision: 3 },
+    资料: { 个人优势: '五年交易平台后端', 作品集链接: 'github.com/works' },
+    排除项: ['大小周'],
+    头像状态: '已放弃',
+  });
+
+  function 完成场景(选项: {
+    建档?: 候选引导建档草稿 | null;
+    简历?: BFF简历;
+    意向?: BFFOwnerIntention;
+    意向读取?: () => Promise<BFFOwnerIntention>;
+  }) {
+    const 推荐 = vi.fn(async () => {
+      throw new Error('推荐读取不是完成门槛的输入');
+    });
+    const 场景 = 创建场景({
+      建档: 选项.建档 === undefined ? 全绿建档() : 选项.建档,
+      后端覆盖: {
+        读取简历: vi.fn(async () => 从BFF简历(选项.简历 ?? 权威简历())),
+        读取指定意向: 选项.意向读取 ?? vi.fn(async () => 选项.意向 ?? 权威意向()),
+      },
+    });
+    // 任何推荐读取入口：完成核对绝不触碰（空/失败都不阻塞）
+    (场景.后端 as unknown as Record<string, unknown>).加载候选岗位 = 推荐;
+    场景.状态引用.current = {
+      ...场景.状态引用.current,
+      引导预填: 草稿预填,
+    } as never;
+    return { ...场景, 推荐 };
+  }
+
+  it('真实完成：核对通过后同步删建档与预填恢复，零推荐读取', async () => {
+    const 场景 = 完成场景({});
+    await expect(场景.操作.完成候选Onboarding()).resolves.toBeUndefined();
+    // 同步删：内存草稿清空 + 清后端草稿 派发 + 预填代际递增 + 恢复元数据删除
+    expect(场景.deps.建档草稿引用!.current).toBeNull();
+    expect(场景.派发).toHaveBeenCalledWith({ 型: '清后端草稿' });
+    expect(场景.候选预填代际.current).toBe(6);
+    expect(场景.候选预填恢复存储.删除).toHaveBeenCalledTimes(1);
+    expect(场景.推荐).not.toHaveBeenCalled(); // 推荐不是门槛
+  });
+
+  it('active intention 已有但教育不存在（列表空）不能完成：拦下且草稿不清', async () => {
+    const 场景 = 完成场景({ 简历: 权威简历({ educations: [] }) });
+    const 错误 = await 场景.操作.完成候选Onboarding().then(() => null, (e: unknown) => e);
+    expect(取后端错误文案(错误)).toContain('教育');
+    expect(场景.deps.建档草稿引用!.current).not.toBeNull();
+    expect(场景.派发).not.toHaveBeenCalledWith({ 型: '清后端草稿' });
+  });
+
+  it('教育条目在但没有毕业时间（end_month null）不算完整教育：拦下', async () => {
+    const 场景 = 完成场景({
+      简历: 权威简历({ educations: [{ ...BFF简历样本.educations[0]!, end_month: null }] }),
+    });
+    await expect(场景.操作.完成候选Onboarding()).rejects.toMatchObject({ status: 0 });
+    expect(场景.deps.建档草稿引用!.current).not.toBeNull();
+  });
+
+  it('待写入未知（prepared 槽）不能完成：零读取，槽原样保留', async () => {
+    const 场景 = 完成场景({
+      建档: { ...全绿建档(), 待写入: { 种类: 'education-create', 阶段: 'prepared' } },
+    });
+    const 错误 = await 场景.操作.完成候选Onboarding().then(() => null, (e: unknown) => e);
+    expect(取后端错误文案(错误)).toBe('上一条写入结果未确认，请先重试或核对原步骤');
+    expect(场景.后端.读取简历).not.toHaveBeenCalled();
+    expect(场景.deps.建档草稿引用!.current?.待写入).toMatchObject({ 阶段: 'prepared' });
+  });
+
+  it('头像待核对（放弃事实已读在前）不能完成', async () => {
+    const 场景 = 完成场景({ 建档: { ...全绿建档(), 头像状态: '待核对' } });
+    await expect(场景.操作.完成候选Onboarding()).rejects.toMatchObject({ status: 0 });
+    expect(场景.后端.读取简历).not.toHaveBeenCalled();
+  });
+
+  it('Summary 已提交但回读不一致（保存失败）不能完成', async () => {
+    const 场景 = 完成场景({ 简历: 权威简历({ summary: '' }) });
+    const 错误 = await 场景.操作.完成候选Onboarding().then(() => null, (e: unknown) => e);
+    expect(取后端错误文案(错误)).toContain('个人优势');
+    expect(场景.deps.建档草稿引用!.current).not.toBeNull();
+  });
+
+  it('URL 已修改但回读不一致不能完成（规范化后比较）', async () => {
+    const 场景 = 完成场景({
+      简历: 权威简历({ profile: { ...BFF简历样本.profile, portfolio_url: null } }),
+    });
+    await expect(场景.操作.完成候选Onboarding()).rejects.toMatchObject({ status: 0 });
+    expect(场景.deps.建档草稿引用!.current).not.toBeNull();
+  });
+
+  it('必填 profile 缺姓名/求职身份不能完成', async () => {
+    const 场景 = 完成场景({
+      简历: 权威简历({ profile: { ...BFF简历样本.profile, real_name: '', status: '' } }),
+    });
+    await expect(场景.操作.完成候选Onboarding()).rejects.toMatchObject({ status: 0 });
+  });
+
+  it('意向与本次确认的选择不一致（薪资被别处改走）不能完成', async () => {
+    const 场景 = 完成场景({
+      意向: 权威意向({ compensation: { mode: 'range', lower: 30, upper: 50 } }),
+    });
+    const 错误 = await 场景.操作.完成候选Onboarding().then(() => null, (e: unknown) => e);
+    expect(取后端错误文案(错误)).toContain('首次求职意向');
+    expect(场景.deps.建档草稿引用!.current).not.toBeNull();
+  });
+
+  it('意向已非 active 不能完成', async () => {
+    const 场景 = 完成场景({ 意向: 权威意向({ status: 'archived' }) });
+    await expect(场景.操作.完成候选Onboarding()).rejects.toMatchObject({ status: 0 });
+  });
+
+  it('无本轮意向身份（exact ID 缺席）不能完成，不以列表非空冒充', async () => {
+    const 建档 = 全绿建档();
+    delete 建档.首次意向;
+    const 场景 = 完成场景({ 建档 });
+    await expect(场景.操作.完成候选Onboarding()).rejects.toMatchObject({ status: 0 });
+    expect(场景.后端.读取指定意向).not.toHaveBeenCalled();
+  });
+
+  it('推荐空/推荐错误均不阻塞：完成不读推荐，失败照常放行', async () => {
+    const 场景 = 完成场景({});
+    await expect(场景.操作.完成候选Onboarding()).resolves.toBeUndefined();
+    expect(场景.推荐).not.toHaveBeenCalled();
+  });
+
+  it('换账号期间 GET 完成：栅栏破防整包作废，不删草稿不派发', async () => {
+    let 放行!: (值: BFFOwnerIntention) => void;
+    const 场景 = 完成场景({
+      意向读取: () => new Promise<BFFOwnerIntention>((ok) => { 放行 = ok; }),
+    });
+    const 完成 = 场景.操作.完成候选Onboarding();
+    await new Promise((r) => setTimeout(r, 0));
+    场景.deps.主体标识引用.current = 'sub_2'; // 意向 GET 在途时用户换了账号
+    放行(权威意向());
+    await expect(完成).rejects.toMatchObject({ status: 0 });
+    expect(场景.派发).not.toHaveBeenCalledWith({ 型: '清后端草稿' });
+    expect(场景.候选预填恢复存储.删除).not.toHaveBeenCalled();
+  });
+
+  it('核对在途时第二次调用拒绝明确 busy 错误，不产生第二笔读取', async () => {
+    let 放行!: () => void;
+    const 场景 = 完成场景({
+      意向读取: () => new Promise<BFFOwnerIntention>((ok) => { 放行 = () => ok(权威意向()); }),
+    });
+    const 第一 = 场景.操作.完成候选Onboarding();
+    await expect(场景.操作.完成候选Onboarding()).rejects.toThrow('完成核对进行中');
+    expect(场景.后端.读取简历).toHaveBeenCalledTimes(1);
+    放行();
+    await expect(第一).resolves.toBeUndefined();
+  });
+});
+
 // ── J-PILOT-02 Task 8：头像写入身份 —— 单槽登记、未知结果不伪成功、原 key/If-Match 重放 ──
 // 头像命令是文件类命令（Task 6 同款纪律）：槽里只有 name/type/size/lastModified/SHA-256
 // 文件核对，绝不存字节；未知结果保留槽与原幂等键/原 If-Match（revision 也是幂等身份）。
@@ -1273,7 +1466,11 @@ describe('创建候选操作 · 建档头像写入（J-PILOT-02 Task 8）', () =
       },
     });
     const 写 = 场景.操作.保存候选头像(同一张图片());
-    await new Promise((完成) => setTimeout(完成, 0)); // 等 POST 真正挂起（发送前已登记槽）
+    // 等 POST 真正挂起（发送前已登记槽）——SHA-256 摘要与权威读取的微任务链在并行
+    // 测试负载下可能跨多个宏任务，裸 setTimeout(0) 会抢跑（Task 9 补跑四文件时暴露）。
+    await vi.waitFor(() => {
+      if (typeof 放行 !== 'function') throw new Error('avatar POST 尚未发出');
+    });
     场景.deps.主体标识引用.current = 'sub_2'; // 请求在途时用户换了账号
     场景.deps.建档草稿引用!.current = null; // Provider 换主体时同步清草稿
     const 切换时写入数 = 场景.草稿写入们.length;

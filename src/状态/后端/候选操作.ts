@@ -10,7 +10,8 @@
 
 import { BFF错误 } from '../../数据/HTTP客户端';
 import { 从BFF简历, 从BFF意向草稿, 去重引用, 招聘类型到页面, 转意向写入, 转首次意向写入 } from '../../数据/后端映射';
-import type { BFF简历, BFFOwnerIntention } from '../../数据/BFF契约';
+import { 规范化作品集链接 } from '../../流程/onboarding配置';
+import type { BFF简历, BFF意向写入, BFFOwnerIntention } from '../../数据/BFF契约';
 import type {
   页面简历快照, 页面意向快照, 页面简历写入, 意向草稿型, 首次意向输入,
   建档待写入, 建档写入跟踪, 建档写入回执, 建档待写入种类,
@@ -19,7 +20,9 @@ import type { 候选引导建档草稿, 建档已存条目 } from '../../数据/
 import type { 简历经历段, 简历教育段, 简历证书 } from '../../数据/类型';
 import type { BFF候选账号档案 } from '../../数据/招聘数据源/候选账号';
 import type { 后端操作依赖, 候选操作 } from './类型';
+import { 创建空候选预填状态 } from './类型';
 import { 清账号状态 } from './会话操作';
+import { 清候选预填引用 } from './简历预填操作';
 import { 轻提示 } from '../../组件/轻提示';
 
 /** 意向草稿 → 求职意向.说明 文案（Mock 分支用，与 添加意向.tsx 提交 的说明格式保持一致）。 */
@@ -340,6 +343,29 @@ function 从槽重建页面(基底: 页面简历写入, 槽: 建档待写入): �
     default:
       return null;
   }
+}
+
+/**
+ * Task 9：完成核对里的意向比对 —— 权威意向必须是本轮 exact ID 读出的 active，且与
+ * 本轮向导确认输入经 转首次意向写入 重建的期望逐字段一致（本次选择/薪资/初筛/私有
+ * 诉求）。类型专属条件（毕业时间/实习月数/到岗天数）只在期望非 null 时参与：类型没变
+ * 时 复用历史资源 保留权威既有条件是 Task 7 的合法语义，不能反推成漂移。
+ */
+function 意向与本次确认一致(权威: BFFOwnerIntention, 期望: BFF意向写入): boolean {
+  const 序同 = (们: string[]): string => JSON.stringify([...们].sort());
+  return 权威.status === 'active'
+    && 权威.recruitment_type === 期望.recruitment_type
+    && 权威.job_category.id === 期望.job_category_id
+    && 权威.primary_location.id === 期望.primary_location_id
+    && JSON.stringify(权威.alternate_locations.map((条) => 条.id)) === JSON.stringify(期望.alternate_location_ids)
+    && 序同(权威.workplace_modes) === 序同(期望.workplace_modes)
+    && 权威.compensation.mode === 期望.compensation.mode
+    && (权威.compensation.lower ?? null) === (期望.compensation.lower ?? null)
+    && (权威.compensation.upper ?? null) === (期望.compensation.upper ?? null)
+    && (期望.graduation_month === null || 权威.graduation_month === 期望.graduation_month)
+    && (期望.internship_months === null || 权威.internship_months === 期望.internship_months)
+    && (期望.onsite_days_per_week === null || 权威.onsite_days_per_week === 期望.onsite_days_per_week)
+    && 权威.private_preferences === 期望.private_preferences;
 }
 
 /**
@@ -1100,6 +1126,118 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
         await 处理意向写入错误(错误, 本次主体, 本次代际);
       } finally {
         锁.current.delete(键);
+      }
+    },
+    /**
+     * J-PILOT-02 Task 9（Global 8 / Spec §6）：完成注册前的本人资源核对。
+     * 顺序固定：先读草稿里的本地事实（单槽 / 头像状态 / 编辑层 / 首次意向 exact ID ——
+     * 头像的明确放弃由 添加头像 在关屏时先落草稿，这里只消费不清理），再读服务端
+     * 权威事实（resume：必填 profile、至少一条完整教育〔含毕业时间，存在性而非既有
+     * 条目的完整性〕、已提交 summary/URL 回读一致；指定意向：active 且与本次确认的
+     * 选择/薪资/初筛/私有诉求一致）。推荐读取不是该判定的输入 —— 空/失败从不阻塞。
+     * 全部通过且发起时刻的主体/会话代际栅栏仍立，才同步删建档草稿（清后端草稿，
+     * session 键由 资料持久化 随之删除）与预填恢复（代际递增 + 读锁清空 + 元数据删除
+     * + 内存轮摊平），然后 resolve；任一失败原样抛出（status 0 + invalid_request 的
+     * 本地拦截原文经既有轻提示指出缺项），页面留在原地。不设置任何客户端「completed」
+     * 假服务端事实 —— 旅程是否完成只由草稿在与不在表达。
+     */
+    async 完成候选Onboarding() {
+      if (!是后端 || !后端) return;
+      if (锁.current.has('候选Onboarding完成')) throw new Error('完成核对进行中，请稍后再试');
+      锁.current.add('候选Onboarding完成');
+      const 本次主体 = 主体标识引用.current;
+      const 本次代际 = 会话代际.current;
+      const 栅栏仍立 = () => 主体标识引用.current === 本次主体 && 会话代际.current === 本次代际;
+      // status 0 + invalid_request 是既有的「本地拦截、原文直通」通路：缺项说明经
+      // 取后端错误文案 原样上屏（既有轻提示），页面留在原地。
+      const 拦下 = (说明: string) => new BFF错误(0, 'invalid_request', 说明);
+      try {
+        // ① 本地事实（零请求）：草稿不在场 = 没有可核对本轮，直达不能借完成绕过保存
+        const 原始建档 = deps.建档草稿引用?.current ?? null;
+        if (原始建档 === null) throw 拦下('本轮注册还没有可核对的资料，请从完善资料继续');
+        const 建档 = 原始建档;
+        if (建档.待写入 !== undefined) {
+          throw 拦下('上一条写入结果未确认，请先重试或核对原步骤');
+        }
+        if (建档.头像状态 === '待核对') {
+          throw 拦下('头像上传结果未确认：请重新选择同一张图片重试，或点「完成注册」放弃本次上传');
+        }
+        if (建档.编辑中 !== undefined) throw 拦下('还有未保存的编辑内容，请先保存或取消');
+        if (建档.首次意向 === undefined) throw 拦下('首次求职意向还没有保存成功，请回引导问答完成');
+        // ② 权威 resume：GET 失败原样抛出（失败不是空资源），栅栏破防整包作废
+        const 权威 = (await 后端!.读取简历()).服务端快照;
+        if (!栅栏仍立()) throw 拦下('会话已变化，本次完成未生效');
+        if (权威.profile.real_name.trim() === '' || 权威.profile.status === '') {
+          throw 拦下('必填资料还没保存：请回基本信息与求职状态完成');
+        }
+        const 完整教育在场 = 权威.educations.some((条) =>
+          条.institution.id !== '' && 条.degree !== '' && 条.major.id !== ''
+          && 条.start_month !== '' && 条.end_month !== null && 条.end_month !== '');
+        if (!完整教育在场) throw 拦下('至少需要一条完整的教育经历（含毕业时间）');
+        // 已提交的 summary/URL 回读一致：草稿记的是用户明确提交的输入，服务端没对上
+        // 就是那次保存没成（或被别人改走），不能带着假完成往下走
+        if ((建档.资料?.个人优势 ?? '').trim() !== '' && 权威.summary !== 建档.资料?.个人优势) {
+          throw 拦下('个人优势还没有保存成功，请回引导问答重试');
+        }
+        if (建档.资料 !== undefined && '作品集链接' in 建档.资料) {
+          const 草稿链接 = 建档.资料.作品集链接 ?? null;
+          const 期望链接 = 草稿链接 === null || 草稿链接.trim() === ''
+            ? null
+            : 规范化作品集链接(草稿链接);
+          if ((权威.profile.portfolio_url ?? null) !== 期望链接) {
+            throw 拦下('作品集链接还没有保存成功，请回工作经历重试');
+          }
+        }
+        // ③ 权威意向：只认本轮 exact ID（列表非空从不冒充本次成功，Spec §5.3）
+        const 预填 = 状态引用.current.引导预填;
+        if (预填 === null || 预填.薪资 === undefined
+          || (预填.职位引用们 ?? []).length === 0 || (预填.城市引用们 ?? []).length === 0) {
+          throw 拦下('本次确认的选择不完整，请回引导问答重新保存首次意向');
+        }
+        const 薪资 = 预填.薪资;
+        const 职位引用们 = 预填.职位引用们 ?? [];
+        const 城市引用们 = 预填.城市引用们 ?? [];
+        const 输入: 首次意向输入 = {
+          职位们: 预填.职位,
+          城市们: 预填.城市们,
+          薪资: { 下限: 薪资.下限, 上限: 薪资.上限, 单位: 薪资.单位 ?? '月薪K' },
+          筛选偏好: 预填.筛选偏好 ?? { 求职类型: [], 办公方式: [] },
+          排除项: 建档.排除项 ?? [],
+          ...(建档.自定义诉求 !== undefined ? { 自定义诉求: 建档.自定义诉求 } : {}),
+          职位引用: 职位引用们[0],
+          城市引用们,
+        };
+        let 期望写入: BFF意向写入 | null = null;
+        try {
+          期望写入 = 转首次意向写入(输入);
+        } catch {
+          // 缺目录引用/缺类型时映射层抛客户端校验错：与上面同一句缺项说明
+        }
+        if (期望写入 === null) throw 拦下('本次确认的选择不完整，请回引导问答重新保存首次意向');
+        const 本轮意向 = 建档.首次意向;
+        const 意向 = await 后端!.读取指定意向(本轮意向.id);
+        if (!栅栏仍立()) throw 拦下('会话已变化，本次完成未生效');
+        if (!意向与本次确认一致(意向, 期望写入)) {
+          throw 拦下('首次求职意向与本次确认的选择不一致，请回引导问答重新保存');
+        }
+        // ④ 全部通过：栅栏仍立才同步清理 —— 建档草稿（清后端草稿；session 键随
+        // 资料持久化 的 引导预填===null 分支删除）+ 预填恢复元数据与内存轮
+        if (!栅栏仍立()) throw 拦下('会话已变化，本次完成未生效');
+        if (deps.建档草稿引用) deps.建档草稿引用.current = null;
+        清候选预填引用(deps);
+        设后端状态((旧) => ({
+          ...旧,
+          候选预填状态: 创建空候选预填状态(deps.候选预填代际?.current ?? 0),
+        }));
+        派发({ 型: '清后端草稿' });
+      } catch (错误) {
+        // 当前栅栏的 401 走统一清账号；迟到旧会话的 401 原样抛出（不清新会话）
+        if (错误 instanceof BFF错误 && 错误.status === 401 && 栅栏仍立()) {
+          清账号状态(账号清理依赖);
+        }
+        throw 错误;
+      } finally {
+        锁.current.delete('候选Onboarding完成');
       }
     },
   };

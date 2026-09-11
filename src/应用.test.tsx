@@ -46,6 +46,9 @@ function 可计数屏幕桩(名: string) {
 }
 vi.mock('./屏幕/登录', () => 屏幕桩('登录'));
 vi.mock('./屏幕/选身份', () => 屏幕桩('选身份'));
+// J-PILOT-02 Task 9：回访落点测试会真的落到 学生分流（旅程入口），同样换桩 ——
+// 本文件只钉 应用.tsx 自己的守卫与导航决策。
+vi.mock('./屏幕/学生分流', () => 屏幕桩('学生分流'));
 vi.mock('./屏幕/主壳', () => 屏幕桩('主壳'));
 vi.mock('./屏幕/企业主壳', () => 屏幕桩('企业主壳'));
 vi.mock('./屏幕/招聘名片', () => 屏幕桩('招聘名片'));
@@ -149,6 +152,8 @@ function 后端应用值(后端覆盖: Partial<后端状态> = {}) {
       重新水合招聘方数据: vi.fn(async () => undefined),
       恢复候选Onboarding预填: vi.fn(async () => undefined),
       清候选Onboarding预填: vi.fn(),
+      // J-PILOT-02 Task 9：注册会话内的位置记录（应用层写入，测试可断言）
+      更新候选建档草稿: vi.fn(),
       // 角色路由矩阵只证明守卫不调用它（访问 URL 绝不静默切身份）
       切身份: vi.fn(async () => undefined),
       加载候选实名: vi.fn(async () => undefined),
@@ -909,6 +914,109 @@ describe('应用路由 · 后端匿名在线简历模板（J）', () => {
     );
     // Backend canonical 详情挂载：进入加载态（不再是 404 兜底路由）
     await waitFor(() => expect(screen.getByText(/正在加载候选简历|链接已失效|这位候选/)).toBeTruthy());
+  });
+});
+
+// ── J-PILOT-02 Task 9：候选 onboarding 回访落点（Spec §6 回访按事实分流）──
+// 同标签有未完成草稿：刷新任一候选页按草稿恢复（pathname/search/题序/编辑中 随
+// 建档草稿水合回来，页面原位挂载不被弹走）；直接打开主壳/初始化不能借直达跳过
+// 保存，replace 回草稿记录的恢复落点（无位置记录或白名单外位置回旅程入口）；
+// 无草稿的已完成老账号保持原有落点，不因缺「本次 id」重做 onboarding。
+describe('应用路由：候选 onboarding 回访落点（Task 9）', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+  });
+
+  /** 位置与编辑中坐标都在的未完成建档草稿（缺省指向向导薪资段）。 */
+  function 未完成草稿值(位置?: { pathname: string; search: string; 题序?: number }) {
+    const 值 = 候选后端应用值();
+    return {
+      ...值,
+      状态: {
+        ...初始状态,
+        引导预填: {
+          城市们: ['上海市'],
+          职位: ['产品经理'],
+          建档: {
+            资料: { 个人优势: '一半' },
+            位置,
+            编辑中: { 种类: 'education', 本地编号: 'edu_1', 字段: { 学校: '云衢大学' } },
+          },
+        },
+      } as never,
+    };
+  }
+
+  const 薪资段位置 = { pathname: 路径.引导问答, search: '?stage=salary', 题序: 1 };
+
+  it('刷新任一候选页：草稿在场的向导薪资段原位挂载，路径与 query 不被改写', async () => {
+    mock应用状态.mockReturnValue(未完成草稿值(薪资段位置));
+    render(
+      <MemoryRouter initialEntries={[路径.引导问答薪资段]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:引导问答')).toBeTruthy());
+    expect(当前路径()).toBe(路径.引导问答);
+    expect(screen.getByTestId('search').textContent).toBe('?stage=salary');
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+  });
+
+  it('直接访问主壳且草稿未完成：replace 回草稿记录的位置（pathname+search），主壳不挂载', async () => {
+    mock应用状态.mockReturnValue(未完成草稿值(薪资段位置));
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.引导问答));
+    expect(screen.getByTestId('search').textContent).toBe('?stage=salary');
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull(); // 不先挂主壳又被卸载
+  });
+
+  it('直接访问初始化且草稿未完成：同样 replace 回草稿位置，不借直达跳过保存', async () => {
+    mock应用状态.mockReturnValue(未完成草稿值(薪资段位置));
+    render(
+      <MemoryRouter initialEntries={[路径.初始化]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.引导问答));
+    expect(screen.getByTestId('search').textContent).toBe('?stage=salary');
+  });
+
+  it('草稿无位置记录：回旅程入口 学生分流', async () => {
+    mock应用状态.mockReturnValue(未完成草稿值(undefined));
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
+  });
+
+  it('存储位置在白名单外：不拿存储值任意导航，回旅程入口', async () => {
+    mock应用状态.mockReturnValue(未完成草稿值({ pathname: 路径.设置, search: '' }));
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
+  });
+
+  it('已完成老账号无草稿：主壳照常挂载，不因缺「本次 id」重做 onboarding', async () => {
+    const 值 = 候选后端应用值();
+    mock应用状态.mockReturnValue(值);
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:主壳')).toBeTruthy());
+    expect(当前路径()).toBe(路径.主壳);
+    expect(值.操作.更新候选建档草稿).not.toHaveBeenCalled();
+  });
+
+  it('注册会话内到达活跃集合每一站：pathname/search 落进建档草稿位置', async () => {
+    const 值 = 未完成草稿值(undefined);
+    const 写位置 = vi.fn();
+    mock应用状态.mockReturnValue({ ...值, 操作: { ...值.操作, 更新候选建档草稿: 写位置 } });
+    render(
+      <MemoryRouter initialEntries={[路径.学生分流]}><应用 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(写位置).toHaveBeenCalled());
+    expect(写位置).toHaveBeenLastCalledWith(expect.objectContaining({
+      位置: { pathname: 路径.学生分流, search: '' },
+    }));
   });
 });
 

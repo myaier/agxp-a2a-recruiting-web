@@ -4,7 +4,8 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Routes, Route, Navigate, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { 路径 } from './路由/路径表';
-import { 候选Onboarding预填边界, 是活跃Onboarding位置 } from './流程/候选Onboarding预填边界';
+import { 候选Onboarding预填边界, 是活跃Onboarding位置, 恢复落点 } from './流程/候选Onboarding预填边界';
+import { 并入建档草稿 } from './流程/onboarding配置';
 import { 主按钮 } from './组件/通用';
 import 登录 from './屏幕/登录';
 import type { BFF主体, BFF角色 } from './数据/BFF契约';
@@ -234,7 +235,7 @@ function 招聘方恢复失败({
 }
 
 export default function 应用() {
-  const { 数据源模式, 后端状态, 操作 } = use应用状态();
+  const { 数据源模式, 后端状态, 操作, 状态 } = use应用状态();
   const 位置 = useLocation();
   const 前往 = useNavigate();
 
@@ -294,6 +295,30 @@ export default function 应用() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [预填清理就绪, 位置.pathname, 操作]);
 
+  // ── J-PILOT-02 Task 9：候选 onboarding 回访落点（Spec §6 回访按事实分流）──
+  // 旅程未完成的事实只由建档草稿表达（无客户端「completed」假服务端标记）：Backend
+  // 已登录 candidate 且本轮建档草稿在场时，注册会话内每站把 pathname/search 落进草稿
+  //（刷新/重登后恢复落点的唯一坐标；题序/编辑中等输入坐标随草稿本身走）；普通返回
+  // 与选择子页都在活跃集合内，不清草稿。
+  const 建档在场 = 数据源模式 === 'backend'
+    && 后端状态.初始化 === '完成'
+    && 后端状态.已登录
+    && 后端状态.主体?.last_used_role === 'candidate'
+    && 状态.引导预填?.建档 !== undefined;
+  useEffect(() => {
+    if (!建档在场) return;
+    if (!是活跃Onboarding位置(位置.pathname)) return;
+    const 建档 = 状态.引导预填?.建档;
+    const 现有 = 建档?.位置;
+    if (现有?.pathname === 位置.pathname && 现有?.search === 位置.search) return;
+    操作.更新候选建档草稿(
+      并入建档草稿(建档, { 位置: { pathname: 位置.pathname, search: 位置.search } }),
+    );
+    // 操作 由 Provider 的 useMemo 保持稳定；草稿对象只作比较输入（比较守卫防回环），
+    // 刻意不进依赖表。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [建档在场, 位置.pathname, 位置.search, 操作]);
+
   // ── Backend 角色路由边界（前端真实性修复 Plan 1）──────────────────
   // 初始化完成且已登录后，在 <Routes> 挂载前同步判角色：错误角色的业务组件
   // （含其 effect）一次都不能挂载。被拒路由 replace，浏览器后退不会落回旧格。
@@ -337,6 +362,22 @@ export default function 应用() {
   ) {
     return <Navigate to={路径.登录} replace />;
   }
+
+  // ── J-PILOT-02 Task 9：未完成草稿的回访落点（Spec §6 回访分流）──
+  // 同标签有未完成建档草稿时，直接打开完成落点（登录/主壳/初始化）不能借直达跳过
+  // 保存：同步 replace 回草稿记录的恢复落点（白名单外或无位置记录回旅程入口 学生分流），
+  // 目标屏一次都不挂载（不先挂空表单又被卸载）。无草稿的已完成老账号不进此门，
+  // 保持原有落点（登录 → 主壳），不因缺「本次 id」重做 onboarding；水合未结束
+  //（初始化 !== 完成）时上方仍是既有 路由加载中，本守卫不生效。选身份/账号安全等
+  // 恢复出口不在拦截集合内，切换身份与登出的既有路径不受影响。
+  const 回访重定向 = 建档在场
+    && !是活跃Onboarding位置(位置.pathname)
+    && (位置.pathname === 路径.主壳
+      || 位置.pathname === 路径.登录
+      || 位置.pathname === 路径.初始化)
+    ? 恢复落点(状态.引导预填?.建档?.位置)
+    : null;
+  if (回访重定向 !== null) return <Navigate to={回访重定向} replace />;
 
   return (
     <Suspense fallback={<路由加载中 />}>

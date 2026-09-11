@@ -69,6 +69,19 @@ export function 是活跃Onboarding位置(路径串: string): boolean {
   return 活跃Onboarding路径.has(剥问号(路径串));
 }
 
+/**
+ * J-PILOT-02 Task 9（Spec §6 回访分流 / §7 白名单）：未完成建档草稿的恢复落点。
+ * 位置 只信任活跃集合内的 pathname —— 路径恢复接受当前候选流程白名单，不拿存储值
+ * 任意导航；search 原样带回（向导段写在 query 上）；无位置记录或白名单外位置一律
+ * 回旅程入口 学生分流。题序/编辑中等其余恢复坐标随 建档 草稿本身走，不在这里展开。
+ */
+export function 恢复落点(位置?: { pathname: string; search: string; 题序?: number }): string {
+  if (位置 !== undefined && 是活跃Onboarding位置(位置.pathname)) {
+    return `${位置.pathname}${位置.search}`;
+  }
+  return 路径.学生分流;
+}
+
 /** 内存轮是否 pristine inactive（source/suggestion 皆空）——只有它才允许发起恢复。 */
 function 是原始轮(预填: 候选预填状态): boolean {
   return 预填.phase === 'inactive' && 预填.source === null && 预填.suggestion === null;

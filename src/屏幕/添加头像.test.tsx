@@ -3,10 +3,11 @@
 // 一起清），再走既有「初始化页 → 主壳」导航 —— 完成注册后旧建议绝不再残留。
 // 按钮文案 / 位置 / 样式不动（本文件只钉收尾编排）；Mock 模式零预填操作（预填域 Backend-only）。
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BFF错误 } from '../数据/HTTP客户端';
 import 添加头像 from './添加头像';
 
 const mock跳转 = vi.fn();
@@ -16,6 +17,7 @@ const mock操作 = {
   清候选Onboarding预填: vi.fn(),
   保存候选头像: vi.fn(async () => undefined),
   更新候选建档草稿: vi.fn(),
+  完成候选Onboarding: vi.fn(async () => undefined),
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -59,6 +61,7 @@ describe('添加头像：完成注册收尾清理（Task 7）', () => {
     mock操作.清候选Onboarding预填.mockClear();
     mock操作.保存候选头像.mockClear();
     mock操作.更新候选建档草稿.mockClear();
+    mock操作.完成候选Onboarding.mockClear().mockResolvedValue(undefined);
   });
 
   it('cleanup before “完成注册” navigation：先清候选预填轮再进初始化页', async () => {
@@ -128,6 +131,7 @@ describe('添加头像：头像可选与未知结果（J-PILOT-02 Task 8）', ()
     mock操作.清候选Onboarding预填.mockClear();
     mock操作.保存候选头像.mockClear();
     mock操作.更新候选建档草稿.mockClear();
+    mock操作.完成候选Onboarding.mockClear().mockResolvedValue(undefined);
     清空轻提示();
   });
 
@@ -200,5 +204,96 @@ describe('添加头像：头像可选与未知结果（J-PILOT-02 Task 8）', ()
     await 用户.click(screen.getByRole('button', { name: '完成注册' }));
     expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
     expect(mock进初始化).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── J-PILOT-02 Task 9：完成注册先核对本人真实资源（Spec §6）──
+// 「完成注册」先 await 完成候选Onboarding 的资源核对：失败留在本页、经既有轻提示
+// 指出缺项、不进初始化也不清预填；成功才沿原 收尾编排（清预填 → 进初始化）。
+// 头像的明确放弃（释放 avatar 槽 + 记 已放弃）发生在核对读草稿之前 —— 放弃事实
+// 由核对消费，不能被清理顺序吞掉。
+describe('添加头像：完成注册先核对真实资源（J-PILOT-02 Task 9）', () => {
+  function 清空轻提示(): void {
+    const 容器 = Array.from(document.body.children).find(
+      (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+    ) as HTMLElement | undefined;
+    if (容器) 容器.innerHTML = '';
+  }
+
+  function 轻提示含(文案: string): boolean {
+    const 容器 = Array.from(document.body.children).find(
+      (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+    ) as HTMLElement | undefined;
+    return Array.from(容器?.children ?? []).some((条) => 条.textContent === 文案);
+  }
+
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock进初始化.mockClear();
+    mock操作.清候选Onboarding预填.mockClear();
+    mock操作.保存候选头像.mockClear();
+    mock操作.更新候选建档草稿.mockClear();
+    mock操作.完成候选Onboarding.mockClear().mockResolvedValue(undefined);
+    清空轻提示();
+  });
+
+  it('核对失败（教育不完整等缺项）不进初始化：留在本页、轻提示指出缺项、不清预填', async () => {
+    mock操作.完成候选Onboarding.mockRejectedValueOnce(
+      new BFF错误(0, 'invalid_request', '至少需要一条完整的教育经历（含毕业时间）'),
+    );
+    render添加头像('backend', { 资料: {}, 头像状态: '未选' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '完成注册' }));
+    expect(mock操作.完成候选Onboarding).toHaveBeenCalledTimes(1);
+    expect(mock进初始化).not.toHaveBeenCalled();
+    expect(mock操作.清候选Onboarding预填).not.toHaveBeenCalled(); // 失败不清预填
+    expect(轻提示含('至少需要一条完整的教育经历（含毕业时间）')).toBe(true);
+  });
+
+  it('核对成功才走原收尾编排：先核对、再清候选预填轮、最后进初始化', async () => {
+    render添加头像('backend', { 资料: {}, 头像状态: '未选' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '完成注册' }));
+    expect(mock操作.完成候选Onboarding).toHaveBeenCalledTimes(1);
+    expect(mock操作.清候选Onboarding预填).toHaveBeenCalledTimes(1);
+    expect(mock操作.完成候选Onboarding.mock.invocationCallOrder[0]!)
+      .toBeLessThan(mock操作.清候选Onboarding预填.mock.invocationCallOrder[0]!);
+    expect(mock操作.清候选Onboarding预填.mock.invocationCallOrder[0]!)
+      .toBeLessThan(mock进初始化.mock.invocationCallOrder[0]!);
+  });
+
+  it('重复完成只一次导航：核对在途时完成注册按钮禁用，第二次点击不触发', async () => {
+    let 放行!: () => void;
+    mock操作.完成候选Onboarding.mockImplementationOnce(
+      () => new Promise<undefined>((ok) => { 放行 = () => ok(undefined); }),
+    );
+    render添加头像('backend', { 资料: {}, 头像状态: '未选' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '完成注册' }));
+    expect((screen.getByRole('button', { name: '完成注册' }) as HTMLButtonElement).disabled).toBe(true);
+    await 用户.click(screen.getByRole('button', { name: '完成注册' })); // 禁用：不触发
+    放行();
+    await waitFor(() => expect(mock进初始化).toHaveBeenCalledTimes(1));
+    expect(mock操作.完成候选Onboarding).toHaveBeenCalledTimes(1);
+  });
+
+  it('头像放弃事实先于核对读草稿：释放 avatar 槽记 已放弃 发生在完成核对之前', async () => {
+    render添加头像('backend', {
+      资料: { 个人优势: '一半' },
+      头像状态: '待核对',
+      待写入: {
+        种类: 'avatar', 幂等键: 'idem-avatar-unknown-9', ifMatch: 5, 阶段: 'prepared',
+        文件核对: { name: 'avatar.png', type: 'image/png', size: 12, lastModified: 123, sha256: 'f'.repeat(64) },
+      },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '完成注册' }));
+    expect(mock操作.更新候选建档草稿).toHaveBeenCalledWith({
+      资料: { 个人优势: '一半' },
+      头像状态: '已放弃',
+    });
+    expect(mock操作.更新候选建档草稿.mock.invocationCallOrder[0]!)
+      .toBeLessThan(mock操作.完成候选Onboarding.mock.invocationCallOrder[0]!);
   });
 });

@@ -680,6 +680,17 @@ export interface 候选操作 {
    */
   保存首次意向(input: 首次意向输入): Promise<void>;
   删除意向(id: string): Promise<void>;
+  /**
+   * J-PILOT-02 Task 9（Global 8 / Spec §6）：完成注册前的本人资源核对。
+   * 无未结算单槽、头像非 待核对、无未收口编辑层、首次意向有本轮 exact ID 时，
+   * 读 resume 与指定意向验证：必填 profile、至少一条完整教育（含毕业时间，验证
+   * 存在性）、意向 active 且与本次确认的选择/薪资/初筛/私有诉求一致、草稿已提交
+   * 的 summary/URL 回读一致。推荐读取不是输入（空/失败不阻塞）。全部通过且主体/
+   * 会话代际栅栏仍立，才同步删建档草稿与预填恢复并 resolve；任一失败抛 status 0 +
+   * invalid_request 的可上屏缺项说明（或原样抛服务端错误），页面留在原地。
+   * 成功清理即旅程完成的唯一表达，不设置客户端「completed」假服务端事实。
+   */
+  完成候选Onboarding(): Promise<void>;
 }
 
 export interface 岗位操作 {

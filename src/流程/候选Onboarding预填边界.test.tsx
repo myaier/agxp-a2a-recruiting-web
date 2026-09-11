@@ -21,7 +21,7 @@ import {
   type 候选预填状态,
 } from '../状态/后端/类型';
 import { Onboarding流程 } from './onboarding配置';
-import { 候选Onboarding预填边界, 是活跃Onboarding位置, 是预填消费位置 } from './候选Onboarding预填边界';
+import { 候选Onboarding预填边界, 是活跃Onboarding位置, 是预填消费位置, 恢复落点 } from './候选Onboarding预填边界';
 
 const mock操作 = {
   恢复候选Onboarding预填: vi.fn(),
@@ -214,6 +214,26 @@ describe('活跃 Onboarding 集合：以 Onboarding流程 为唯一事实源', (
     for (const 站 of [路径.主壳, 路径.登录, 路径.选身份, 路径.设置, 路径.我的简历, 路径.企业主壳]) {
       expect(是活跃Onboarding位置(站)).toBe(false);
     }
+  });
+});
+
+// ── J-PILOT-02 Task 9：未完成草稿的恢复落点（Spec §6 回访分流 / §7 白名单）──
+describe('恢复落点：只信任活跃集合内的位置，search 原样带回', () => {
+  it('位置在场且在活跃集合内：返回 pathname + search（向导段写在 query 上）', () => {
+    expect(恢复落点({ pathname: 路径.引导问答, search: '?stage=salary', 题序: 1 }))
+      .toBe(`${路径.引导问答}?stage=salary`);
+    expect(恢复落点({ pathname: 路径.基本信息, search: '' })).toBe(路径.基本信息);
+  });
+
+  it('无位置记录：回旅程入口 学生分流', () => {
+    expect(恢复落点(undefined)).toBe(路径.学生分流);
+    expect(恢复落点()).toBe(路径.学生分流);
+  });
+
+  it('存储位置在白名单外（主壳/设置/企业端）：不拿存储值任意导航，回旅程入口', () => {
+    expect(恢复落点({ pathname: 路径.主壳, search: '' })).toBe(路径.学生分流);
+    expect(恢复落点({ pathname: 路径.设置, search: '' })).toBe(路径.学生分流);
+    expect(恢复落点({ pathname: 路径.企业主壳, search: '' })).toBe(路径.学生分流);
   });
 });
 
