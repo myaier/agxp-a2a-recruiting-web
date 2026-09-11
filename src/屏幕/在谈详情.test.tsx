@@ -52,6 +52,8 @@ vi.mock('../数据/公司档案', () => ({
 
 const mock设置P5范围 = vi.fn();
 const mock读取详情 = vi.fn(async () => undefined);
+// J-PILOT-01 Task 5：候选详情改读 continuous detail（Task 2 状态方法）
+const mock读取连续详情 = vi.fn(async () => undefined);
 const mock新增叮嘱 = vi.fn(async () => undefined);
 
 const 本单 = 在谈列表.find((条) => 条.编号 === 'J-01')!;
@@ -122,6 +124,7 @@ describe('在谈详情 · Backend 分支渲染共享 P5 详情', () => {
       操作: {
         设置P5范围: mock设置P5范围,
         读取详情: mock读取详情,
+        读取连续详情: mock读取连续详情,
         新增叮嘱: mock新增叮嘱,
       },
     };
@@ -129,8 +132,8 @@ describe('在谈详情 · Backend 分支渲染共享 P5 详情', () => {
 
   it('按 URL case_id 强制读 P5 详情；不读公司档案、不跳企业详情、P5.1 面整体退场', () => {
     渲染详情页();
-    expect(mock设置P5范围).toHaveBeenCalledWith('candidate', P5范围键.detail('candidate', 'J-01'));
-    expect(mock读取详情).toHaveBeenCalledWith('candidate', 'J-01', true);
+    expect(mock设置P5范围).toHaveBeenCalledWith('candidate', P5范围键.negotiation('J-01'));
+    expect(mock读取连续详情).toHaveBeenCalledWith('J-01', true);
     // 旧 Backend 公司档案/匹配对齐卡（P5.1 依赖）不再渲染，也不再请求
     expect(mock取公司档案).not.toHaveBeenCalled();
     expect(mock公司路由键).not.toHaveBeenCalled();
@@ -223,6 +226,7 @@ describe('在谈详情 · Mock 决策卡共用详情动作卡（Task 8）', () =
       操作: {
         设置P5范围: mock设置P5范围,
         读取详情: mock读取详情,
+        读取连续详情: mock读取连续详情,
         新增叮嘱: mock新增叮嘱,
       },
     };
@@ -318,6 +322,7 @@ describe('在谈详情 · Mock 终局只读（Task 9）', () => {
       操作: {
         设置P5范围: mock设置P5范围,
         读取详情: mock读取详情,
+        读取连续详情: mock读取连续详情,
         新增叮嘱: mock新增叮嘱,
       },
     };

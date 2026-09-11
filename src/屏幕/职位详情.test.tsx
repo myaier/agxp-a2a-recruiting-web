@@ -16,7 +16,6 @@ import { StrictMode } from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 职位详情 from './职位详情';
-import { P4委托进度未知文案 } from '../状态/后端/use发现推荐委托轮询';
 import { 标记看市场来路, 复位看市场来路 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { BFF错误 } from '../数据/HTTP客户端';
@@ -37,6 +36,10 @@ const mock标记岗位不感兴趣 = vi.fn(async () => undefined);
 const mock委托候选岗位 = vi.fn();
 const mock设置发现推荐范围 = vi.fn();
 const mock刷新委托 = vi.fn(async () => undefined);
+// J-PILOT-01 Task 3：待核对投影与核对口（默认无未决命令；签名与真实操作方法同形）
+const mock取候选待核对命令 = vi.fn(
+  (_intentionId: string, _jobId: string): import('../状态/后端/委托待核对').待核对命令 | null => null);
+const mock核对候选委托 = vi.fn(async () => undefined);
 // P5 Task 3：委托前的权威附件库准备（附件简历操作 域的桩）
 const mock准备候选委托简历 = vi.fn();
 // P8 Task 7：上下文举报（P8合规操作 域的桩）
@@ -83,6 +86,8 @@ function 渲染Backend状态(选项: {
   当前意向编号?: string | null;
   /** Backend 初始化阶段：缺省 '完成'（既有用例代表水合后的渲染世界） */
   后端初始化?: '进行中' | '完成' | '跳过';
+  /** J-PILOT-01 Task 3：该岗位的未决 create 命令投影；缺省 null（无未决命令） */
+  待核对命令?: import('../状态/后端/委托待核对').待核对命令 | null;
   /** 真实简历事实（匹配对齐行的 Backend 证据来源）；缺省是空简历 */
   简历?: Record<string, unknown>;
 }) {
@@ -111,10 +116,16 @@ function 渲染Backend状态(选项: {
       委托候选岗位: mock委托候选岗位,
       设置发现推荐范围: mock设置发现推荐范围,
       刷新委托: mock刷新委托,
+      取候选待核对命令: mock取候选待核对命令,
+      核对候选委托: mock核对候选委托,
       准备候选委托简历: mock准备候选委托简历,
       提交P8举报: mock提交P8举报,
     }),
   };
+  // J-PILOT-01 Task 3：本用例的待核对投影（缺省无未决命令）
+  if (选项.待核对命令 !== undefined) {
+    mock取候选待核对命令.mockReturnValue(选项.待核对命令);
+  }
 }
 
 /** 命中 job_1 的候选推荐快照（可换 delegation / state） */
@@ -272,6 +283,10 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     mock委托候选岗位.mockReset();
     mock设置发现推荐范围.mockClear();
     mock刷新委托.mockReset();
+    // J-PILOT-01 Task 3：待核对投影缺省无未决命令，核对口清零
+    mock取候选待核对命令.mockReset();
+    mock取候选待核对命令.mockReturnValue(null);
+    mock核对候选委托.mockReset();
     // 委托前的权威库准备缺省给单文件库：一份文件也必须披露确认点名后才发委托
     mock准备候选委托简历.mockReset();
     mock准备候选委托简历.mockResolvedValue(单文件附件库);
@@ -706,7 +721,7 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(mock标记岗位不感兴趣).not.toHaveBeenCalled();
   });
 
-  it('详情停留期间按节拍轮询 accepted 回执，主键显示进行中状态文案', async () => {
+  it('详情停留期间按节拍轮询 accepted 回执，主键是可点的「查看进展」但不自动跳页', async () => {
     vi.useFakeTimers();
     mock刷新委托.mockResolvedValue(undefined);
     渲染Backend状态({
@@ -717,12 +732,16 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
       }),
     });
     render(路由元素('job_1'));
-    expect(screen.getByText('已提交给 AI，等待处理')).toBeTruthy();
-    expect(screen.queryByText('AI代理已接手')).toBeNull();
-    expect(screen.queryByText('已开始沟通')).toBeNull();
+    const 主键 = screen.getByRole('button', { name: '查看进展' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(false); // 受理后不跳页：点击才导航
+    expect(screen.queryByText('已提交给 AI，等待处理')).toBeNull(); // 进度文案不再上主键
     await act(() => vi.advanceTimersByTimeAsync(2000));
-    expect(mock刷新委托).toHaveBeenCalledWith('candidate', 'del_9');
+    expect(mock刷新委托).toHaveBeenCalledWith('candidate', 'del_9'); // 权威回执照常轮询
     expect(mock替换跳转).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    await act(async () => { 主键.click(); }); // 假时钟下同步 DOM click
+    expect(mock跳转).toHaveBeenCalledWith('/deal/del_9'); // 只导航不再次 POST
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
   });
 
   it('终态回执落位（摘要保留、卡回 available）后停止轮询', async () => {
@@ -748,7 +767,8 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
       }),
     });
     rerender(路由元素('job_1'));
-    expect(screen.getByText('本次未能继续')).toBeTruthy();
+    // 已结束的已知记录同样只导航：主键保持「查看进展」（状态详情在 /deal 详情页）
+    expect(screen.getByRole('button', { name: '查看进展' })).toBeTruthy();
     expect(mock刷新委托).toHaveBeenCalledTimes(2);
     await act(() => vi.advanceTimersByTimeAsync(6000));
     expect(mock刷新委托).toHaveBeenCalledTimes(2); // interval 已停：不再有第三发
@@ -802,7 +822,7 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(mock刷新委托).not.toHaveBeenCalled();
   });
 
-  it('同一委托连续五次轮询失败后，进行中标被中性文案覆盖', async () => {
+  it('同一委托连续五次轮询失败后：轮询暂停计数不变，主键仍是可点的「查看进展」', async () => {
     vi.useFakeTimers();
     mock刷新委托.mockRejectedValue(new Error('网络失败'));
     渲染Backend状态({
@@ -814,29 +834,21 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     });
     render(路由元素('job_1'));
     await act(() => vi.advanceTimersByTimeAsync(10000));
-    expect(mock刷新委托).toHaveBeenCalledTimes(5);
-    expect(screen.getByText(P4委托进度未知文案)).toBeTruthy();
-    expect(screen.queryByText('已提交给 AI，等待处理')).toBeNull();
-    expect(screen.queryByText('AI代理已接手')).toBeNull();
-    expect(screen.queryByText('已开始沟通')).toBeNull();
+    expect(mock刷新委托).toHaveBeenCalledTimes(5); // 连败五次后本周期不再发 GET
+    const 主键 = screen.getByRole('button', { name: '查看进展' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(false); // 已知持久记录的入口不因轮询连败失效
   });
 
-  // 六个闭合委托状态的权威文案（与 发现推荐映射 的 P4委托状态文案表 逐字一致）
-  const 状态文案 = [
-    ['accepted', '已提交给 AI，等待处理'],
-    ['evaluating', 'AI 正在评估'],
-    // case_started 但 case_id 缺席 = 坐标未确认：安全文案，不声称已开案
-    ['case_started', '暂时无法确认进度，请稍后刷新'],
-    ['needs_user', '需要你处理'],
-    ['refused', '本次未能继续'],
-    ['failed', '本次处理未完成'],
-  ] as const;
+  // J-PILOT-01 Task 3（Spec §4）：六个闭合委托状态只要有持久回执（delegation_id 非空）
+  // 都给「查看进展」—— 含正常运行、失败和已结束的已知记录，均只导航不再次 POST。
+  const 委托状态 = ['accepted', 'evaluating', 'case_started', 'needs_user', 'refused', 'failed'] as const;
   const 候选卡态 = {
     accepted: 'delegating', evaluating: 'delegating', case_started: 'delegated',
     needs_user: 'available', refused: 'available', failed: 'available',
   } as const;
 
-  it.each(状态文案)('%s 委托按闭合表在主键显示「%s」且禁用', (state, 文案) => {
+  it.each(委托状态)('%s 委托有持久回执：主键是可点的「查看进展」，点击导航已知记录', async (state) => {
+    const 用户 = userEvent.setup();
     渲染Backend状态({
       候选岗位推荐: 快照With({
         ...推荐卡样本,
@@ -845,16 +857,18 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
       }),
     });
     render(路由元素('job_1'));
-    const 主键 = screen.getByRole('button', { name: 文案 }) as HTMLButtonElement;
-    expect(主键.disabled).toBe(true);
+    const 主键 = screen.getByRole('button', { name: '查看进展' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(false);
     expect(screen.queryByRole('button', { name: '让AI代理去谈' })).toBeNull();
-    expect(screen.queryByText('AI代理已接手')).toBeNull();
-    expect(screen.queryByText('已开始沟通')).toBeNull();
-    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    await 用户.click(主键);
+    expect(mock跳转).toHaveBeenCalledWith(`/deal/del_${state}`); // 只导航不再次 POST
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
   });
 
-  // Task 5：开案成功 = case_started + 非空 case_id，复用 Mock 的 disabled 主键，零导航
-  it('case_started 带服务端 case_id：主键是禁用的「AI代理已接手」，零导航', async () => {
+  // 开案成功 = case_started + 非空 case_id：knownID 用持久回执坐标（dlg 记录），
+  // 绝不把本地 Case ID 冒充导航坐标或塞进页面文本
+  it('case_started 带服务端 case_id：主键「查看进展」导航持久回执坐标，不泄露 case_id', async () => {
+    const 用户 = userEvent.setup();
     渲染Backend状态({
       候选岗位推荐: 快照With({
         ...推荐卡样本,
@@ -863,16 +877,16 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
       }),
     });
     const { container } = render(路由元素('job_1'));
-    const 主键 = screen.getByRole('button', { name: 'AI代理已接手' }) as HTMLButtonElement;
-    expect(主键.disabled).toBe(true);
-    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
-    expect(screen.queryByText('已创建真实在谈')).toBeNull();
+    const 主键 = screen.getByRole('button', { name: '查看进展' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(false);
     expect(container.textContent).not.toContain('case_server_c1');
-    await userEvent.click(主键);
-    expect(mock跳转).not.toHaveBeenCalled();
+    await 用户.click(主键);
+    expect(mock跳转).toHaveBeenCalledWith('/deal/del_c1');
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
   });
 
-  it('case_started 无服务端 case_id 时主键只是禁用状态，绝不拿任何本地 ID 充当 Case', async () => {
+  it('case_started 无服务端 case_id：仍按持久回执坐标导航，绝不拿任何本地 ID 充当 Case', async () => {
+    const 用户 = userEvent.setup();
     渲染Backend状态({
       候选岗位推荐: 快照With({
         ...推荐卡样本,
@@ -881,13 +895,159 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
       }),
     });
     render(路由元素('job_1'));
-    const 主键 = screen.getByRole('button', { name: '暂时无法确认进度，请稍后刷新' }) as HTMLButtonElement;
-    expect(主键.disabled).toBe(true);
-    expect(screen.queryByText('AI代理已接手')).toBeNull();
-    expect(screen.queryByText('已创建真实在谈')).toBeNull();
+    const 主键 = screen.getByRole('button', { name: '查看进展' }) as HTMLButtonElement;
+    await 用户.click(主键);
+    expect(mock跳转).toHaveBeenCalledWith('/deal/del_c2');
+  });
+
+  it('无持久回执但存在未知命令：主键「核对提交结果」，点击核对该岗位的原命令（不重新选 PDF）', async () => {
+    const 用户 = userEvent.setup();
+    渲染Backend状态({
+      候选岗位推荐: 快照With(推荐卡样本),
+      待核对命令: {
+        operation: 'create',
+        key: 'idem-pending-1',
+        intention_id: 'int_1',
+        selection: { items: [{ job_id: 'job_1' }] },
+        resume_file_id: 'rf_1',
+        resume_file_version_id: 'rfv_7',
+        disclosure_acknowledged: true,
+      },
+    });
+    render(路由元素('job_1'));
+    const 主键 = screen.getByRole('button', { name: '核对提交结果' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(false);
     expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
-    await userEvent.click(主键);
+    // review-r2：pending 在场（409 回读后亦然）→ 不出现可发新 key 的「让AI代理去谈」，
+    // 新命令被同目标未决规则挡住，只能核对原命令
+    expect(screen.queryByRole('button', { name: '让AI代理去谈' })).toBeNull();
+    await 用户.click(主键);
+    expect(mock核对候选委托).toHaveBeenCalledWith('int_1', 'job_1');
+    // 绝不重新选 PDF：零附件库准备、零新委托 POST、零弹层
+    expect(mock准备候选委托简历).not.toHaveBeenCalled();
+    expect(mock委托候选岗位).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: '确认委托AI代理？' })).toBeNull();
+  });
+
+  it('未知命令已确认回执且带已知 ID：主键「查看进展」按持久记录坐标导航', async () => {
+    const 用户 = userEvent.setup();
+    渲染Backend状态({
+      候选岗位推荐: 快照With(推荐卡样本),
+      待核对命令: {
+        operation: 'create',
+        key: 'idem-known-1',
+        intention_id: 'int_1',
+        selection: { items: [{ job_id: 'job_1' }] },
+        resume_file_id: 'rf_1',
+        resume_file_version_id: 'rfv_7',
+        disclosure_acknowledged: true,
+        delegation_id: 'del_known_1',
+        已确认回执: true,
+      },
+    });
+    render(路由元素('job_1'));
+    const 主键 = screen.getByRole('button', { name: '查看进展' }) as HTMLButtonElement;
+    await 用户.click(主键);
+    expect(mock跳转).toHaveBeenCalledWith('/deal/del_known_1');
+    expect(mock核对候选委托).not.toHaveBeenCalled(); // 已知 ID 直接导航，核对留给无 ID 命令
+  });
+
+  it('create-time 空 ID 业务拒绝：主键保持既有安全文案并禁用，无假查看进展入口', async () => {
+    const 用户 = userEvent.setup();
+    渲染Backend状态({
+      候选岗位推荐: 快照With({
+        ...推荐卡样本,
+        state: 'available',
+        delegation: { delegation_id: '', state: 'refused', case_id: null },
+      }),
+    });
+    render(路由元素('job_1'));
+    const 主键 = screen.getByRole('button', { name: /本次未能继续/ }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '核对提交结果' })).toBeNull();
+    await 用户.click(主键);
     expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock核对候选委托).not.toHaveBeenCalled();
+  });
+
+  // ── review-r1 F3（Spec §8「离开岗位页、切意向不能丢弃」「无 ID 可用原意向的推荐…辅助核对」）：
+  //    未知 create 后刷新出的推荐已不含该岗位（或快照重建中该卡缺席）时，sessionStorage 里的
+  //    原命令仍要能核对 —— pending 查询/核对回调不得依赖推荐卡在场。──
+
+  /** 该 intention-job 的未决 create 命令（坐标随 pending 自身冻结）。 */
+  const 待核对创建命令 = (intentionId: string, jobId: string): import('../状态/后端/委托待核对').待核对命令 => ({
+    operation: 'create',
+    key: 'idem-card-absent-1',
+    intention_id: intentionId,
+    selection: { items: [{ job_id: jobId }] },
+    resume_file_id: 'rf_1',
+    resume_file_version_id: 'rfv_7',
+    disclosure_acknowledged: true,
+  });
+
+  it('硬刷新后原意向 pending 在场、快照成功但岗位卡缺席：仍出现「核对提交结果」并核对原命令', async () => {
+    const 用户 = userEvent.setup();
+    渲染Backend状态({
+      当前意向编号: 'int_1',
+      // 快照成功但 items 里没有 job_1 这张卡（未知 create 后推荐已不含该岗位）
+      候选岗位推荐: { int_1: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 } },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+      待核对命令: 待核对创建命令('int_1', 'job_1'),
+    });
+    render(路由元素('job_1'));
+    // 不是「当前求职意向暂无这条推荐」的只读空态：pending 在场即给核对入口
+    const 主键 = screen.getByRole('button', { name: '核对提交结果' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(false);
+    await 用户.click(主键);
+    // 查询与核对都用 pending 自身冻结的 intention/job 坐标（沿用原 body/key 的核对归操作层）
+    expect(mock取候选待核对命令).toHaveBeenCalledWith('int_1', 'job_1');
+    expect(mock核对候选委托).toHaveBeenCalledWith('int_1', 'job_1');
+  });
+
+  it('岗位卡缺席但 pending 已确认回执带已知 ID：主键「查看进展」按持久记录坐标导航', async () => {
+    const 用户 = userEvent.setup();
+    渲染Backend状态({
+      当前意向编号: 'int_1',
+      候选岗位推荐: { int_1: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 } },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+      待核对命令: {
+        operation: 'create',
+        key: 'idem-card-absent-1',
+        intention_id: 'int_1',
+        selection: { items: [{ job_id: 'job_1' }] },
+        resume_file_id: 'rf_1',
+        resume_file_version_id: 'rfv_7',
+        disclosure_acknowledged: true,
+        delegation_id: 'del_absent_1',
+        已确认回执: true,
+      },
+    });
+    render(路由元素('job_1'));
+    const 主键 = screen.getByRole('button', { name: '查看进展' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(false);
+    await 用户.click(主键);
+    expect(mock跳转).toHaveBeenCalledWith('/deal/del_absent_1');
+    expect(mock核对候选委托).not.toHaveBeenCalled();
+  });
+
+  it('另一意向的同岗位 pending 不被误取：查询按 当前意向+岗位 精确 pair', async () => {
+    const 用户 = userEvent.setup();
+    // 只有 int_2 的 pending 存在；当前意向是 int_1 → 不得借坐标
+    mock取候选待核对命令.mockImplementation((intentionId: string, jobId: string) =>
+      intentionId === 'int_2' && jobId === 'job_1' ? 待核对创建命令('int_2', 'job_1') : null);
+    渲染Backend状态({
+      当前意向编号: 'int_1',
+      候选岗位推荐: { int_1: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 } },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
+    render(路由元素('job_1'));
+    expect(mock取候选待核对命令).toHaveBeenCalledWith('int_1', 'job_1');
+    expect(screen.queryByRole('button', { name: '核对提交结果' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '查看进展' })).toBeNull();
+    const 主键 = screen.getByRole('button', { name: '当前求职意向暂无这条推荐' }) as HTMLButtonElement;
+    await 用户.click(主键);
+    expect(mock核对候选委托).not.toHaveBeenCalled();
   });
 });
 

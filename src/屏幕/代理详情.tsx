@@ -71,7 +71,9 @@ export default function 代理详情() {
         <div className={样式.数行}>
           <div className={样式.数项}>
             <span className={`${样式.数} 等宽数字`}>{在谈数}</span>
-            <span className={样式.数名}>正在代谈</span>
+            {/* J-PILOT-01 Task 4：Backend 数值是 /match-cases 的 Case 口径，注明已开案；
+                Mock 保持原文 */}
+            <span className={样式.数名}>{是后端 ? '正在代谈（已开案）' : '正在代谈'}</span>
           </div>
           {/* 规则计数未水合时整格不出（Backend），不渲染 0 也不拿 Mock 数充数 */}
           {生效规则数 !== null ? (

@@ -1,10 +1,11 @@
 // MatchCase展示映射 表测：17 行已准入状态矩阵逐行逐 step 钉住 阶段标题/状态文案/步骤说明/
-// 终局/可出动作卡，运行时未知词与矩阵外四元组一律 fail closed 成契约错误视图 + 空动作表；
-// respond_fact 在场时经 Plan 1 取当前补充问题 接入补充问题视图（唯一匹配才放行提交控件）。
-// 文案期望全部用本文件字面量钉死，Tasks 3–7 与 E2E 按此引用。
+// 终局/可出动作卡，运行时未知词与矩阵外四元组一律 fail closed 成契约错误视图 + 空动作表。
+// J-PILOT-01（Spec §7）：S0 不再提供 respond_fact 输入/提交（白名单摘除，旧后端返回由
+// 交集惰性挡下），底栏禁用说明按 映射S0底栏说明 五行闭表；新终局 semantic_uncertain_stop
+// 成对映射为冻结文案，原始码不进视图。文案期望全部用本文件字面量钉死，Tasks 3–7 与 E2E 按此引用。
 
 import { describe, expect, it } from 'vitest';
-import { 映射P5列表项, 映射P5详情, P5展示矩阵行数, P5展示状态矩阵 } from './MatchCase展示映射';
+import { 映射P5详情, 映射P5列表项, 映射S0底栏说明, P5展示矩阵行数, P5展示状态矩阵 } from './MatchCase展示映射';
 import type { P5详情视图, P5列表视图, P5阶段, P5状态 } from './MatchCase展示映射';
 import { 招聘候选摘要样本 } from '../测试/BFF样本';
 import type {
@@ -23,7 +24,7 @@ import type {
 
 const 期望阶段标题 = {
   anonymous_screening: '匿名初筛',
-  resume_submission: '简历提交',
+  resume_submission: '递交简历',
   needs_coordination: '差异协同',
   intent_confirmation: '意向确认',
 } as const satisfies Record<P5阶段, string>;
@@ -76,14 +77,15 @@ const 动作全表 = Object.keys(期望动作卡文案) as P5动作[];
 /**
  * 每行可出的动作卡（按钮可见性 = 行侧白名单 ∩ available_actions）；顺序即 wire 枚举顺序。
  * 每格 = 已准入投影器 lifecycleViewerActions 在该行一切事实组合下的角色无关并集
- * （respond_fact/end_screening 只在 S0 needs_user：预算内双卡、预算尽仅 end_screening，
- * 并集双卡；邀请二卡只在 S0 passed；S1 waiting 仅 retry_resume_readiness、needs_user 三卡
+ * （J-PILOT-01 review-r1：S0 needs_user 白名单已摘除 respond_fact 与 end_screening ——
+ * 旧 S0 needs_user/human_decision 卡按 Spec §7 停止交互（待核实交负责人）；
+ * 邀请二卡只在 S0 passed；S1 waiting 仅 retry_resume_readiness、needs_user 三卡
  * 并集、attention_required 落空；S2 三行皆 decide_coordination；S3 意向二卡；终态恒空）。
  */
 const 期望可出动作: Record<string, readonly P5动作[]> = {
   'open|anonymous_screening|running': [],
   'open|anonymous_screening|waiting': [],
-  'open|anonymous_screening|needs_user': ['respond_fact', 'end_screening'],
+  'open|anonymous_screening|needs_user': [],
   'open|anonymous_screening|passed': ['accept_resume_invitation', 'decline_resume_invitation'],
   'open|anonymous_screening|attention_required': [],
   'open|resume_submission|waiting': ['retry_resume_readiness'],
@@ -347,9 +349,6 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
         ? { state: 'ready', copy: '真人会话已建立', conversationId: '3003' }
         : { state: 'pending', copy: 期望移交文案 })
       : null);
-    expect(视图.补充问题).toEqual(期望可出动作[键].includes('respond_fact')
-      ? { promptId: 'prompt_1', text: '每周可以到岗几天？' }
-      : null);
   });
 
   it('attention_required 展示安全失败文案，不给未开放的重试入口', () => {
@@ -416,8 +415,9 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
     })));
     expect(视图.candidateAlias).toBe('candidate-0123456789ab');
     expect(视图.intentionId).toBe(null);
-    expect(视图.actions.map((卡) => 卡.action)).toEqual(['respond_fact', 'end_screening']);
-    expect(视图.补充问题).toEqual({ promptId: 'prompt_1', text: '每周可以到岗几天？' });
+    // J-PILOT-01 review-r1：双端 S0 均不再出 respond_fact，旧 needs_user 行的
+    // end_screening 也已摘除（Spec §7 停止该卡交互）
+    expect(视图.actions.map((卡) => 卡.action)).toEqual([]);
   });
 
   // Task 5：S1 三态语义钉死 —— 解析中/AI 初筛中/人工初筛决定三条文案互不混用，
@@ -448,9 +448,7 @@ describe('映射P5详情：17 行状态矩阵表测', () => {
 });
 
 describe('映射P5详情：动作卡', () => {
-  const 动作可行行: Record<P5动作, Parameters<typeof 造行状态>> = {
-    respond_fact: ['open', 'anonymous_screening', 'needs_user', 'human_decision'],
-    end_screening: ['open', 'anonymous_screening', 'needs_user', 'human_decision'],
+  const 动作可行行: Record<Exclude<P5动作, 'respond_fact' | 'end_screening'>, Parameters<typeof 造行状态>> = {
     accept_resume_invitation: ['open', 'anonymous_screening', 'passed', 'awaiting_candidate_resume_invitation'],
     decline_resume_invitation: ['open', 'anonymous_screening', 'passed', 'awaiting_candidate_resume_invitation'],
     retry_resume_readiness: ['open', 'resume_submission', 'waiting', 'awaiting_resume_parse'],
@@ -461,8 +459,11 @@ describe('映射P5详情：动作卡', () => {
     decline_intent: ['open', 'intent_confirmation', 'needs_user', 'awaiting_confirmations'],
   };
 
-  it('十个动作闭词全部有卡：标题与说明文案齐全', () => {
+  it('除 respond_fact / end_screening 外的八个动作闭词全部有卡：标题与说明文案齐全', () => {
     for (const 动作 of 动作全表) {
+      // J-PILOT-01 review-r1：S0 needs_user 行白名单已摘除 respond_fact 与 end_screening
+      //（后者随旧 S0 行停止交互一并摘除，见下方旧响应双端零动作用例）
+      if (动作 === 'respond_fact' || 动作 === 'end_screening') continue;
       const 视图 = 断言正常(映射P5详情(造详情({
         state: 造行状态(...动作可行行[动作]),
         availableActions: [动作],
@@ -472,11 +473,13 @@ describe('映射P5详情：动作卡', () => {
   });
 
   it('动作卡按 wire 枚举顺序渲染，不按 available_actions 顺序', () => {
+    // S0 passed 行邀请二卡（wire 枚举序 accept < decline）倒序提供，渲染仍按枚举序
     const 视图 = 断言正常(映射P5详情(造详情({
-      state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
-      availableActions: ['end_screening', 'respond_fact'],
+      state: 造行状态('open', 'anonymous_screening', 'passed', 'awaiting_candidate_resume_invitation'),
+      availableActions: ['decline_resume_invitation', 'accept_resume_invitation'],
     })));
-    expect(视图.actions.map((卡) => 卡.action)).toEqual(['respond_fact', 'end_screening']);
+    expect(视图.actions.map((卡) => 卡.action))
+      .toEqual(['accept_resume_invitation', 'decline_resume_invitation']);
   });
 
   it('时间线文本、对方决定与 needs_user 永不 infer 出动作：未提供的动作不出卡', () => {
@@ -539,7 +542,6 @@ describe('映射P5详情：运行时未知词与矩阵外四元组 fail closed',
     expect(断言契约错误(视图)).toBe(期望错误提示);
     expect(视图.actions).toEqual([]);
     expect(视图.handoff).toBe(null);
-    expect(视图.补充问题).toBe(null);
   });
 });
 
@@ -555,7 +557,7 @@ describe('映射P5详情：别名与键纪律', () => {
     expect(视图.caseId).toBe('mc_42');
     expect(Object.keys(视图).sort()).toEqual([
       'actions', 'caseId', 'candidateAlias', '详情终局', 'handoff', 'intentionId', 'kind', 'role',
-      '补充问题', '状态文案', '终局', '终局摘要', '职位', '轮次', '阶段标题', '阶段区块', '步骤说明', '更新于', '待办', '注意说明',
+      '状态文案', '终局', '终局摘要', '职位', '轮次', '阶段标题', '阶段区块', '步骤说明', '更新于', '待办', '注意说明',
     ].sort());
     const 序列化 = JSON.stringify(视图);
     expect(序列化).not.toMatch(/匹配分|评分|推荐理由|亮点|公司简介|公司档案|在线简历|score|highlights|match_reasons/);
@@ -665,7 +667,7 @@ describe('映射P5详情：别名与键纪律', () => {
       'anonymous_screening', 'resume_submission', 'needs_coordination', 'intent_confirmation',
     ]);
     expect(视图.阶段区块.map((区) => 区.标题)).toEqual([
-      '匿名初筛', '简历提交', '差异协同', '意向确认',
+      '匿名初筛', '递交简历', '差异协同', '意向确认',
     ]);
     expect(视图.阶段区块[0].状态文案).toBe('进行中');
     expect(视图.阶段区块[1].状态文案).toBe('未开始');
@@ -730,109 +732,113 @@ describe('映射P5详情：阶段区 summary 与 checklist 闭词展示', () => 
   });
 });
 
-// ── 补充问题接入（Plan 1 取当前补充问题）──
+// ── J-PILOT-01（Spec §7）：S0 respond_fact 不再出输入/提交 ──
 
-describe('映射P5详情：respond_fact 补充问题接入', () => {
-  // respond_fact 只在 S0 needs_user 行出卡（投影器：预算内双卡），补充问题接入挂在该卡上。
-  const 提问行 = { state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision') };
+describe('映射P5详情：S0 respond_fact 零输入（J-PILOT-01）', () => {
+  // 白名单摘除后，旧后端若仍返回 respond_fact 也被交集惰性挡下：任何 S0 行都不出卡、
+  // 不出补充问题视图，人工待核实说明走 注意说明（见 旧 S0 needs_user 待核实提示）。
+  // review-r1：旧 S0 needs_user 行同时携带 end_screening 时同样双端零动作卡
+  //（Spec §7「停止该卡交互」——end_screening 是该卡上的交互，必须停）。
 
-  it('respond_fact 在场且当前阶段恰好一个有效问题 → 补充问题视图 + 提交卡', () => {
+  it('旧 S0 needs_user 行同时提供 respond_fact/end_screening：双端零动作卡、零输入；待核实说明在场', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
-      ...提问行,
-      availableActions: ['respond_fact'],
-    })));
-    expect(视图.补充问题).toEqual({ promptId: 'prompt_1', text: '每周可以到岗几天？' });
-    expect(视图.actions.map((卡) => 卡.action)).toEqual(['respond_fact']);
-  });
-
-  it('当前阶段零个有效问题 → 契约错误视图，无提交控件', () => {
-    const 视图 = 映射P5详情(造详情({
-      ...提问行,
-      availableActions: ['respond_fact'],
-      时间线: { anonymous_screening: [], resume_submission: [], needs_coordination: [], intent_confirmation: [] },
-    }));
-    expect(断言契约错误(视图)).toBe(期望错误提示);
-    expect(视图.actions).toEqual([]);
-  });
-
-  it('两个有效问题 → 契约错误视图，绝不取第一个', () => {
-    const 视图 = 映射P5详情(造详情({
-      ...提问行,
-      availableActions: ['respond_fact'],
-      时间线: {
-        anonymous_screening: [
-          造时间线项({ ref: 'prompt_1', text: '每周可以到岗几天？' }),
-          造时间线项({ eventId: 'evt_2', ref: 'prompt_2', text: '请补充到岗日期。' }),
-        ],
-        resume_submission: [],
-        needs_coordination: [],
-        intent_confirmation: [],
-      },
-    }));
-    expect(断言契约错误(视图)).toBe(期望错误提示);
-    expect(视图.actions).toEqual([]);
-  });
-
-  it.each([
-    ['text 空白', 造时间线项({ text: '   ' })],
-    ['ref 空白', 造时间线项({ ref: '   ' })],
-    ['kind 不是补充问题', 造时间线项({ kind: 'note' })],
-    ['归属对方的问题', 造时间线项({ role: 'recruiter' })],
-  ])('无效候选（%s）→ 契约错误视图', (_名, 项) => {
-    const 视图 = 映射P5详情(造详情({
-      ...提问行,
-      availableActions: ['respond_fact'],
-      时间线: { anonymous_screening: [项], resume_submission: [], needs_coordination: [], intent_confirmation: [] },
-    }));
-    expect(断言契约错误(视图)).toBe(期望错误提示);
-    expect(视图.actions).toEqual([]);
-  });
-
-  it('问题只出现在非当前阶段 → 契约错误视图', () => {
-    const 视图 = 映射P5详情(造详情({
       state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
-      availableActions: ['respond_fact'],
-      时间线: {
-        anonymous_screening: [],
-        resume_submission: [造时间线项({ stage: 'resume_submission', eventId: 'evt_9' })],
-        needs_coordination: [],
-        intent_confirmation: [],
-      },
-    }));
-    expect(断言契约错误(视图)).toBe(期望错误提示);
-  });
-
-  it('respond_fact 不在场时即便有有效问题也不出补充问题与提交控件', () => {
-    const 视图 = 断言正常(映射P5详情(造详情({
-      ...提问行,
-      availableActions: ['end_screening'],
+      availableActions: ['respond_fact', 'end_screening'],
     })));
-    expect(视图.补充问题).toBe(null);
-    expect(视图.actions.map((卡) => 卡.action)).toEqual(['end_screening']);
+    expect(视图.actions.map((卡) => 卡.action)).toEqual([]);
+    expect(JSON.stringify(视图)).not.toContain('promptId'); // 无补充问题视图（零提交控件）
+    expect(视图.注意说明).toBe('旧版状态待核实，请交负责人处理'); // 旧状态待核实，交负责人处理
   });
 
-  it('respond_fact 被提供但本行不允许 → 交集语义隐藏卡片，不出补充问题，视图保持正常', () => {
+  it('S0 running 行不提供 respond_fact：无动作卡、注意说明恒 null（运行中无人工待办）', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
-      state: 造行状态('open', 'intent_confirmation', 'needs_user', 'awaiting_confirmations'),
+      state: 造行状态('open', 'anonymous_screening', 'running', 'candidate_reevaluation'),
       availableActions: [...动作全表],
     })));
-    expect(视图.actions.map((卡) => 卡.action)).toEqual(['confirm_intent', 'decline_intent']);
-    expect(视图.补充问题).toBe(null);
+    expect(视图.actions).toEqual([]);
+    expect(视图.注意说明).toBeNull();
+  });
+});
+
+// ── J-PILOT-01（Spec §7）：S0 底栏禁用说明五行闭表 + 新终局成对映射 ──
+
+describe('映射S0底栏说明（Spec §7 输入框表）', () => {
+  const S0 = 造行状态('open', 'anonymous_screening', 'running', 'policy_check');
+  const S0等待 = 造行状态('open', 'anonymous_screening', 'waiting', 'candidate_reevaluation');
+  const S0需注意 = 造状态({
+    status: 'attention_required', step: 'candidate_evaluation',
+    agentAttention: { code: 'agent_unavailable', retryable: false },
+  });
+  const S0终局 = (outcome: string): P5状态视图 => 造状态({
+    lifecycle: 'ended', status: 'ended', step: 'complete', needsUser: false,
+    outcome, outcomeCode: outcome, finalizedAt: '2026-08-29T03:00:00Z',
   });
 
-  it('招聘端按 recruiter 归属匹配当前阶段问题', () => {
+  it('S0 open 行：运行中/等待给「双方 AI 代理正在确认条件」', () => {
+    expect(映射S0底栏说明(S0)).toBe('双方 AI 代理正在确认条件');
+    expect(映射S0底栏说明(S0等待)).toBe('双方 AI 代理正在确认条件');
+  });
+
+  it('S0 技术故障（attention）：「条件确认遇到问题，待排查」，不承诺刷新可重跑', () => {
+    expect(映射S0底栏说明(S0需注意)).toBe('条件确认遇到问题，待排查');
+  });
+
+  it('S0 终局按顶格 outcome 分行：信息不足/不适配/其它（user_ended、权限终止、未知词）', () => {
+    expect(映射S0底栏说明(S0终局('semantic_uncertain_stop'))).toBe('信息不足，未能确认条件');
+    expect(映射S0底栏说明(S0终局('semantic_not_fit'))).toBe('条件不适配，本次代谈已结束');
+    expect(映射S0底栏说明(S0终局('user_ended'))).toBe('本次代谈已结束');
+    expect(映射S0底栏说明(S0终局('party_account_deleted'))).toBe('本次代谈已结束');
+    expect(映射S0底栏说明(S0终局('未知词'))).toBe('本次代谈已结束');
+  });
+
+  it('非 S0 阶段返回 null：底栏不落 S0 文案，恢复既有叮嘱/终局只读口径', () => {
+    expect(映射S0底栏说明(造行状态('open', 'resume_submission', 'running', 'awaiting_resume_parse'))).toBeNull();
+    expect(映射S0底栏说明(造行状态('open', 'intent_confirmation', 'needs_user', 'awaiting_confirmations'))).toBeNull();
+  });
+});
+
+describe('映射P5详情：新终局成对映射（semantic_uncertain_stop 不露原始码）', () => {
+  it('终局摘要结束语/原因都是冻结文案，wire 原词不进视图', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
-      role: 'recruiter',
-      state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
-      availableActions: ['respond_fact'],
-      时间线: {
-        anonymous_screening: [造时间线项({ role: 'recruiter', ref: 'prompt_9', text: '请补充面试时间偏好。' })],
-        resume_submission: [],
-        needs_coordination: [],
-        intent_confirmation: [],
+      state: 造状态({
+        lifecycle: 'ended', stage: 'anonymous_screening', status: 'ended', step: 'complete',
+        needsUser: false, outcome: 'semantic_uncertain_stop', outcomeCode: 'semantic_uncertain_stop',
+        finalizedAt: '2026-08-29T03:00:00Z',
+      }),
+      terminalSummary: {
+        stage: 'anonymous_screening', outcome: 'semantic_uncertain_stop',
+        reasonSummary: 'semantic_uncertain_stop', finalizedAt: '2026-08-29T03:00:00Z',
       },
     })));
-    expect(视图.补充问题).toEqual({ promptId: 'prompt_9', text: '请补充面试时间偏好。' });
+    expect(视图.终局摘要?.结束语).toBe('信息不足，未能确认条件');
+    expect(视图.终局摘要?.原因).toBe('信息不足，未能确认条件');
+    expect(JSON.stringify(视图)).not.toContain('semantic_uncertain_stop');
+  });
+
+  it('其它终局沿用 wire 原词（user_ended 等既有口径不变）', () => {
+    const 视图 = 断言正常(映射P5详情(造详情({
+      state: 造行状态('ended', 'intent_confirmation', 'ended', 'complete'),
+      terminalSummary: {
+        stage: 'intent_confirmation', outcome: 'user_ended', reasonSummary: 'user_ended',
+        finalizedAt: '2026-08-29T03:00:00Z',
+      },
+    })));
+    expect(视图.终局摘要?.结束语).toBe('user_ended');
+    expect(视图.终局摘要?.原因).toBe('user_ended');
+  });
+});
+
+// ── 旧 S0 needs_user 待核实说明（Spec §7：不自动结束、不伪装新终局）──
+
+describe('映射P5详情：旧 S0 needs_user 待核实说明', () => {
+  it('S0 needs_user 行给待核实说明，徽标投影随之退「需注意」；其它行不受影响', () => {
+    expect(映射P5详情(造详情({
+      state: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
+    }))).toMatchObject({ 注意说明: '旧版状态待核实，请交负责人处理' });
+    // 非 S0 行不携带该说明
+    expect(映射P5详情(造详情({
+      state: 造行状态('open', 'resume_submission', 'waiting', 'awaiting_resume_parse'),
+    }))).toMatchObject({ 注意说明: null });
   });
 });
 
@@ -867,12 +873,18 @@ describe('映射P5列表项/映射P5详情：attention 投影统一安全说明'
     });
   });
 
-  it('非 attention 状态注意说明恒 null（是否需注意由 注意说明!==null 唯一推导）', () => {
+  it('非 attention 状态：S0 needs_user 给待核实说明，其余行恒 null（需注意由 注意说明!==null 唯一推导）', () => {
     const 行 = 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision');
     // 行侧 status=needs_user 且带 agentAttention 是 decode 已挡的组合：映射层不读该块
     const 带块 = { ...行, agentAttention: { code: 'agent_unavailable', retryable: false } as const };
+    // J-PILOT-01：旧 S0 needs_user 是人工补事实遗留行 —— 详情固定给待核实说明（不读块）
     expect(映射P5列表项(造列表项({ state: 带块 }))).toMatchObject({ kind: '正常', 注意说明: null });
-    expect(映射P5详情(造详情({ state: 带块 }))).toMatchObject({ kind: '正常', 注意说明: null });
+    expect(映射P5详情(造详情({ state: 带块 }))).toMatchObject({
+      kind: '正常', 注意说明: '旧版状态待核实，请交负责人处理',
+    });
+    // S1 非行/非 needs_user 的行侧仍恒 null
+    const 解析中 = 造行状态('open', 'resume_submission', 'waiting', 'awaiting_resume_parse');
+    expect(映射P5详情(造详情({ state: 解析中 }))).toMatchObject({ kind: '正常', 注意说明: null });
   });
 });
 
@@ -1048,7 +1060,7 @@ describe('映射P5详情：S0 展开块投影', () => {
   });
 
   it.each([
-    ['S1 简历提交', 1],
+    ['S1 递交简历', 1],
     ['S2 差异协同', 2],
     ['S3 意向确认', 3],
   ] as const)('绕过 decoder 注入 %s 非 null records → 契约错误，不静默过滤', (_名, 下标) => {
@@ -1090,33 +1102,29 @@ describe('映射P5详情：S0 结果语义', () => {
     根: P5状态视图;
     提供: P5动作[];
     期望动作: P5动作[];
-    期望问题: { promptId: string; text: string } | null;
     期望文案: string;
   }[] = [
-    { 名: 'S0 active → 进行中', 区状态: 'active', 区摘要: 'candidate_reevaluation',
+    { 名: 'S0 needs_user（遗留行）→ 待处理；respond_fact/end_screening 都不再出卡', 区状态: 'active', 区摘要: 'candidate_reevaluation',
       根: 造行状态('open', 'anonymous_screening', 'needs_user', 'human_decision'),
-      提供: ['respond_fact'], 期望动作: ['respond_fact'],
-      期望问题: { promptId: 'prompt_1', text: '每周可以到岗几天？' }, 期望文案: '进行中' },
+      提供: ['respond_fact', 'end_screening'], 期望动作: [], 期望文案: '进行中' },
     { 名: 'S0 passed 且 top-level outcome=null → 已通过', 区状态: 'passed', 区摘要: 'complete',
       根: 造行状态('open', 'anonymous_screening', 'passed', 'complete'),
-      提供: ['accept_resume_invitation'], 期望动作: ['accept_resume_invitation'],
-      期望问题: null, 期望文案: '已通过' },
+      提供: ['accept_resume_invitation'], 期望动作: ['accept_resume_invitation'], 期望文案: '已通过' },
     { 名: 'ended at S0 + policy_rejected → 不匹配', 区状态: 'ended', 区摘要: 'complete',
-      根: 造S0终局根('policy_rejected'), 提供: [], 期望动作: [], 期望问题: null, 期望文案: '不匹配' },
+      根: 造S0终局根('policy_rejected'), 提供: [], 期望动作: [], 期望文案: '不匹配' },
     { 名: 'ended at S0 + semantic_not_fit → 不匹配', 区状态: 'ended', 区摘要: 'complete',
-      根: 造S0终局根('semantic_not_fit'), 提供: [], 期望动作: [], 期望问题: null, 期望文案: '不匹配' },
+      根: 造S0终局根('semantic_not_fit'), 提供: [], 期望动作: [], 期望文案: '不匹配' },
     { 名: 'ended at S0 + user_ended → 已结束', 区状态: 'ended', 区摘要: 'complete',
-      根: 造S0终局根('user_ended'), 提供: [], 期望动作: [], 期望问题: null, 期望文案: '已结束' },
+      根: 造S0终局根('user_ended'), 提供: [], 期望动作: [], 期望文案: '已结束' },
     { 名: 'ended at S0 + party_account_deleted → 已结束', 区状态: 'ended', 区摘要: 'complete',
-      根: 造S0终局根('party_account_deleted'), 提供: [], 期望动作: [], 期望问题: null, 期望文案: '已结束' },
+      根: 造S0终局根('party_account_deleted'), 提供: [], 期望动作: [], 期望文案: '已结束' },
   ];
 
   // vitest 的 $字段 插值只认 ASCII 词，这里用 [名, 用例] 元组 + %s 保持用例名可读
   it.each(S0结果用例.map((用例) => [用例.名, 用例] as const))('%s', (_名, 用例) => {
     const 视图 = 断言正常(映射P5详情(造S0语义详情(用例.区状态, 用例.区摘要, 用例.根, 用例.提供)));
     expect(视图.阶段区块[0].状态文案).toBe(用例.期望文案);
-    // 结果文案分支不改变动作与补充问题的原合同结果
+    // 结果文案分支不改变动作交集的原合同结果
     expect(视图.actions.map((卡) => 卡.action)).toEqual(用例.期望动作);
-    expect(视图.补充问题).toEqual(用例.期望问题);
   });
 });

@@ -141,15 +141,17 @@ it('Mock 保留原型姓名与状态兜底', () => {
   expect(screen.getByText('在职 · 保密求职中')).toBeTruthy();
 });
 
-it('Backend 注册 candidate summary scope，并保留原标题文案显示精确跨页统计', async () => {
+it('Backend 注册 candidate summary scope，并按已开案口径标签显示精确跨页统计', async () => {
   const scope = P5范围键.summary('candidate');
   const { unmount } = 布置('backend', {
     主体: { ...BFF主体样本, subject_id: 'sub_candidate', last_used_role: 'candidate' },
     P5摘要: 成功摘要(),
   });
-  for (const text of ['51', '17', '9', '7', '在谈', '初筛中', '待你拍', '已归档']) {
+  // J-PILOT-01 Task 4：数值仍是 Case summary，候选统计格标签改已开案口径（初筛不变）
+  for (const text of ['51', '17', '9', '7', '已开案', '初筛中', '开案待办', '开案归档']) {
     expect(screen.getByText(text)).toBeTruthy();
   }
+  expect(screen.queryByText(/^在谈$/)).toBeNull();
   expect(screen.getByText(/当前 MatchCase：51/)).toBeTruthy();
   await waitFor(() => expect(设置P5范围).toHaveBeenCalledWith('candidate', scope));
   expect(加载摘要).toHaveBeenCalledWith('candidate');

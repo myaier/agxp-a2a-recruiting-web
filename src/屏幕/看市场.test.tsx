@@ -26,8 +26,8 @@ import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库, BFF委
 import { BFF候选岗位推荐样本, BFF意向样本, BFF主体样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
-import type { P5列表项 } from '../数据/招聘数据源/MatchCase';
-import type { P5列表快照 } from '../状态/后端/类型';
+import type { NegotiationCard } from '../数据/招聘数据源/连续代谈';
+import type { P5连续列表快照 } from '../状态/后端/类型';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -52,6 +52,8 @@ const mock准备候选委托简历 = vi.fn();
 // P5 Task 5：在谈详情 Backend 分支改渲染共享 P5 详情 —— 详情域操作桩
 const mock设置P5范围 = vi.fn();
 const mock读取详情 = vi.fn(async () => undefined);
+// J-PILOT-01 Task 5：候选详情改读 continuous detail（Task 2 状态方法）
+const mock读取连续详情 = vi.fn(async () => undefined);
 const mock新增叮嘱 = vi.fn(async () => undefined);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -327,6 +329,7 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
       操作: {
         设置P5范围: mock设置P5范围,
         读取详情: mock读取详情,
+        读取连续详情: mock读取连续详情,
         新增叮嘱: mock新增叮嘱,
       },
     });
@@ -337,7 +340,7 @@ describe('候选端演示页 · 记成规则的模式边界', () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(mock读取详情).toHaveBeenCalledWith('candidate', 'J-02', true);
+    expect(mock读取连续详情).toHaveBeenCalledWith('J-02', true);
     expect(await screen.findByText('正在读入这一单…')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '接受' })).toBeNull(); // Mock 决策卡不进 Backend 视图
     expect(screen.queryByRole('button', { name: '记成规则' })).toBeNull();
@@ -538,9 +541,10 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     expect(mock设置发现推荐范围).toHaveBeenCalledWith('candidate', null);
   });
 
-  // Task 2：同名两条意向下，P4 请求 / P5 横幅快照键 / 顶栏选中必须同指一个编号载体。
-  // 旧实现的横幅按意向名反查会落到列表第一条 —— 两处坐标不一致却都「看起来对」。
-  it('同名两条意向选第二条：P4 请求、P5 横幅快照键与顶栏选中同指 int_bj，DOM 无 int_', () => {
+  // Task 2：同名两条意向下，P4 请求 / 顶栏选中必须同指一个编号载体（旧实现的横幅按
+  // 意向名反查会落到列表第一条 —— 两处坐标不一致却都「看起来对」）。
+  // J-PILOT-01 Task 4：横幅改读全意向连续快照，不再依赖任何意向坐标（int_bj 只剩 P4/顶栏断言）。
+  it('同名两条意向选第二条：P4 请求与顶栏选中同指 int_bj，DOM 无 int_', () => {
     const 同名两条 = [
       { 编号: 'int_sh', 标题: '[上海] 产品经理', 说明: '20-35K' },
       { 编号: 'int_bj', 标题: '[北京] 产品经理', 说明: '25-40K' },
@@ -563,9 +567,9 @@ describe('看市场 · P4 候选发现（Backend）', () => {
         候选岗位推荐: {
           int_bj: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 },
         },
-        // 只给第二条意向的 P5 快照：横幅若按名字反查到 int_sh 就读不到它
-        P5工作区: {
-          [P5范围键.open('candidate', 'int_bj')]: {
+        // 横幅只读全意向连续快照：读到了已载成功空快照 → 给出定论文案，而不是「正在读入」
+        P5连续列表: {
+          [P5范围键.negotiations('active')]: {
             阶段: '成功', 刷新中: false, items: [], nextCursor: null, 已加载页数: 1,
             error: null, generation: 1, ownerSubjectId: 'sub_1',
           },
@@ -577,8 +581,8 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     expect(mock设置发现推荐范围).toHaveBeenCalledWith('candidate', 'candidate:list:int_bj');
     expect(mock加载候选岗位).toHaveBeenCalledWith('int_bj');
     expect(mock加载候选岗位).not.toHaveBeenCalledWith('int_sh');
-    // 横幅读到了 int_bj 的成功空快照 → 给出定论文案，而不是「正在读入」
-    expect(screen.getByText('暂时没有需要你介入的')).toBeTruthy();
+    // 横幅与意向坐标无关：全意向连续快照已载空且读尽 → 定论文案
+    expect(screen.getByText('暂时没有需要你处理的')).toBeTruthy();
     // 顶栏胶囊按 ID 选中第二条，且用户可见文本里没有内部编号
     expect(screen.getByRole('button', { name: '产品经理 · 北京' })).toBeTruthy();
     expect(container.textContent).not.toContain('int_');
@@ -1360,47 +1364,47 @@ describe('看市场 · 委托前必须显式选定简历坐标（Backend）', ()
   });
 });
 
-// ── Backend MatchCase 真相源修复：看市场复用在谈首页同一 在谈范围 的 P5 横幅投影 ──
+// ── J-PILOT-01 Task 4：看市场横幅改读候选首页同一全意向连续 active 快照 ──
 
 describe('看市场 · P5 横幅共用（Backend）', () => {
   // P5 操作桩：看市场只消费已载快照、绝不注册/请求 P5 —— 两个 spy 存在但必须零调用
   const 不触P5桩 = { 设置P5范围: vi.fn(), 加载工作区: vi.fn(async () => undefined) };
 
   const 意向ID = 'int_0123456789abcdef0123456789abcdef';
+  const 职位ID = 'job_0123456789abcdef0123456789abcdef';
 
-  function 行(
-    caseId: string,
-    stage: P5列表项['state']['stage'],
-    needsAction: boolean,
-  ): P5列表项 {
+  /** 连续卡样本：needs_action 是横幅待办数的唯一权威。 */
+  function 行(recordId: string, phase: NegotiationCard['phase'], needsAction: boolean): NegotiationCard {
     return {
-      role: 'candidate',
-      state: {
-        caseId, lifecycle: 'open', stage, status: 'running',
-        step: 'policy_check', round: 0, roundBudget: 3, needsUser: false,
-        outcome: null, outcomeCode: null,
-        createdAt: '2026-09-01T08:00:00Z', updatedAt: '2026-09-01T09:00:00Z', finalizedAt: null,
-        agentAttention: null,
-      },
-      needsAction,
-      intentionId: 意向ID,
+      needs_action: needsAction,
+      record_id: recordId,
+      record_kind: recordId.startsWith('dlg_') ? 'delegation' : 'case',
+      intention_id: 意向ID,
       job: {
-        jobId: 'job_0123456789abcdef0123456789abcdef',
-        job: { title: '后端工程师', location: '上海', publicSalaryRange: '20-30K', requiredSkills: ['Go'] },
+        job_id: 职位ID, title: '后端工程师', location: '上海',
+        public_salary_range: '20-30K', availability: 'available',
       },
+      delegation_id: null, evaluation_id: null, case_id: null,
+      shelf: 'active',
+      phase,
+      case_state: null,
+      failure: null, refusal_code: null,
+      actions: { retry: false, archive: false, open_case: false },
+      retry_generation: 0,
+      created_at: '2026-09-01T08:00:00Z', updated_at: '2026-09-01T09:00:00Z', archived_at: null,
     };
   }
 
   function 快照(选项: {
-    阶段?: P5列表快照['阶段'];
-    items?: P5列表项[];
+    阶段?: P5连续列表快照['阶段'];
+    items?: NegotiationCard[];
     nextCursor?: string | null;
     ownerSubjectId?: string | null;
-  } = {}): P5列表快照 {
+  } = {}): P5连续列表快照 {
     return {
       ownerSubjectId: 选项.ownerSubjectId ?? 'sub_1',
       阶段: 选项.阶段 ?? '成功',
-      刷新中: false,
+      刷新中: 选项.阶段 === '进行中',
       items: 选项.items ?? [],
       nextCursor: 选项.nextCursor ?? null,
       已加载页数: 1,
@@ -1409,27 +1413,20 @@ describe('看市场 · P5 横幅共用（Backend）', () => {
     };
   }
 
-  /** Backend 横幅底座：横幅 scope 与 P4 列表共用同一个有效当前 ID（不再按意向名反查）；
-   *  当前意向在表内: false 模拟当前意向已删 —— 编号无效，当前档整片无 scope。
+  /** Backend 横幅底座：横幅读全意向连续 active 快照，与意向坐标/范围档无关；
    *  legacy 在谈列表 故意带 5 条，Backend 分支绝不数它们。 */
   function 置P5横幅状态(选项: {
-    范围: '当前' | '全部';
-    快照?: P5列表快照;
-    当前意向在表内?: boolean;
+    范围?: '当前' | '全部';
+    快照?: P5连续列表快照;
     主体?: { subject_id: string; last_used_role: string };
   }) {
-    const 在表内 = 选项.当前意向在表内 !== false;
-    const 意向表 = 在表内 ? [{ 编号: 意向ID, 标题: '意向0', 说明: '' }] : [];
-    const filterRef = 选项.范围 === '全部' ? null : (在表内 ? 意向ID : null);
     置应用状态({
       模式: 'backend',
       状态: {
-        子视图: '看市场', 当前意向: '意向0', 当前意向编号: 在表内 ? 意向ID : null,
-        在谈范围: 选项.范围,
-        求职意向表: 意向表,
-        后端意向服务端: 在表内
-          ? { [意向ID]: { ...BFF意向样本, intention_id: 意向ID } }
-          : {},
+        子视图: '看市场', 当前意向: '意向0', 当前意向编号: 意向ID,
+        在谈范围: 选项.范围 ?? '当前',
+        求职意向表: [{ 编号: 意向ID, 标题: '意向0', 说明: '' }],
+        后端意向服务端: { [意向ID]: { ...BFF意向样本, intention_id: 意向ID } },
         // legacy 数组故意带 5 条：Backend 分支绝不数它们
         在谈列表: [1, 2, 3, 4, 5].map((序) => ({ 编号: `J-${序}`, 需要你: true })),
         屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
@@ -1437,9 +1434,9 @@ describe('看市场 · P5 横幅共用（Backend）', () => {
       },
       后端状态: {
         主体: 选项.主体 ?? { ...BFF主体样本, subject_id: 'sub_1', last_used_role: 'candidate' },
-        P5工作区: 选项.快照 === undefined
+        P5连续列表: 选项.快照 === undefined
           ? {}
-          : { [P5范围键.open('candidate', filterRef)]: 选项.快照 },
+          : { [P5范围键.negotiations('active')]: 选项.快照 },
       },
       操作: 不触P5桩,
     });
@@ -1453,24 +1450,27 @@ describe('看市场 · P5 横幅共用（Backend）', () => {
     不触P5桩.加载工作区.mockClear();
   });
 
-  it('当前档读 open:candidate:<intentionId>，全部档读 open:candidate:*（与在谈首页同一坐标）', () => {
-    置P5横幅状态({ 范围: '当前', 快照: 快照({ items: [行('mc_1', 'anonymous_screening', true)] }) });
+  it('读全意向连续 active 快照（与在谈首页同一键），文案「需要你处理」', () => {
+    置P5横幅状态({ 范围: '当前', 快照: 快照({ items: [行('dlg_1', 'evaluating', true)] }) });
     const { rerender } = render(<看市场 />);
-    expect(screen.getByText('1 个职位需要你协调')).toBeTruthy();
+    expect(screen.getByText('1 个职位需要你处理')).toBeTruthy();
+    // 前文移除无条件「已谈完」断言
+    expect(screen.getByText('代谈进度持续更新，')).toBeTruthy();
     expect(不触P5桩.设置P5范围).not.toHaveBeenCalled();
     expect(不触P5桩.加载工作区).not.toHaveBeenCalled();
 
-    置P5横幅状态({ 范围: '全部', 快照: 快照({ items: [行('mc_1', 'anonymous_screening', true)] }) });
+    // 范围档不影响：同一全意向快照
+    置P5横幅状态({ 范围: '全部', 快照: 快照({ items: [行('dlg_1', 'evaluating', true)] }) });
     rerender(<看市场 />);
-    expect(screen.getByText('1 个职位需要你协调')).toBeTruthy();
+    expect(screen.getByText('1 个职位需要你处理')).toBeTruthy();
   });
 
-  it('无 scope / 首载在飞 / 失败与在谈首页同文案，legacy 5 条绝不冒充待办数', () => {
-    // 无 scope（当前档且当前意向已删）：在谈首页同款定论文案
-    置P5横幅状态({ 范围: '当前', 当前意向在表内: false });
+  it('缺快照 / 首载在飞 / 失败与在谈首页同文案，legacy 5 条绝不冒充待办数', () => {
+    // 无快照（未载入）：在谈首页同款「正在读入」，不下定论
+    置P5横幅状态({ 范围: '当前' });
     const { rerender } = render(<看市场 />);
-    expect(screen.getByText('暂时没有需要你介入的')).toBeTruthy();
-    expect(screen.queryByText('5 个职位需要你协调')).toBeNull();
+    expect(screen.getByText('正在读入在谈职位…')).toBeTruthy();
+    expect(screen.queryByText('5 个职位需要你处理')).toBeNull();
     // 首载在飞：正在读入
     置P5横幅状态({ 范围: '当前', 快照: 快照({ 阶段: '进行中', items: [], nextCursor: null }) });
     rerender(<看市场 />);
@@ -1478,41 +1478,41 @@ describe('看市场 · P5 横幅共用（Backend）', () => {
     // 首载失败：非定论兜底（列表错误态不在本屏，横幅不数失败窗口）
     置P5横幅状态({ 范围: '当前', 快照: 快照({ 阶段: '失败', items: [], nextCursor: null }) });
     rerender(<看市场 />);
-    expect(screen.getByText('已读入的里暂时没有需要你介入的')).toBeTruthy();
+    expect(screen.getByText('已读入的里暂时没有需要你处理的')).toBeTruthy();
     // owner 不匹配：视为未载入
     置P5横幅状态({
       范围: '当前',
-      快照: 快照({ items: [行('mc_1', 'anonymous_screening', true)], ownerSubjectId: 'sub_old' }),
+      快照: 快照({ items: [行('dlg_1', 'evaluating', true)], ownerSubjectId: 'sub_old' }),
       主体: { ...BFF主体样本, subject_id: 'sub_new', last_used_role: 'candidate' },
     });
     rerender(<看市场 />);
     expect(screen.getByText('正在读入在谈职位…')).toBeTruthy();
-    expect(screen.queryByText('1 个职位需要你协调')).toBeNull();
+    expect(screen.queryByText('1 个职位需要你处理')).toBeNull();
   });
 
   it('分页未尽有/无待办、成功读尽与在谈首页同文案', () => {
     // 分页未尽 + 已载待办：不下定论数字
     置P5横幅状态({
       范围: '当前',
-      快照: 快照({ items: [行('mc_1', 'anonymous_screening', true)], nextCursor: 'b2x' }),
+      快照: 快照({ items: [行('dlg_1', 'evaluating', true)], nextCursor: 'b2x' }),
     });
     const { rerender } = render(<看市场 />);
-    expect(screen.getByText('有职位需要你协调')).toBeTruthy();
-    expect(screen.queryByText('1 个职位需要你协调')).toBeNull();
+    expect(screen.getByText('有职位需要你处理')).toBeTruthy();
+    expect(screen.queryByText('1 个职位需要你处理')).toBeNull();
     // 分页未尽 + 已载零待办
     置P5横幅状态({
       范围: '当前',
-      快照: 快照({ items: [行('mc_2', 'needs_coordination', false)], nextCursor: 'b2x' }),
+      快照: 快照({ items: [行('dlg_2', 'accepted', false)], nextCursor: 'b2x' }),
     });
     rerender(<看市场 />);
-    expect(screen.getByText('已读入的里暂时没有需要你介入的')).toBeTruthy();
+    expect(screen.getByText('已读入的里暂时没有需要你处理的')).toBeTruthy();
     // 成功读尽 + 零待办：定论
     置P5横幅状态({
       范围: '当前',
-      快照: 快照({ items: [行('mc_2', 'needs_coordination', false)], nextCursor: null }),
+      快照: 快照({ items: [行('dlg_2', 'accepted', false)], nextCursor: null }),
     });
     rerender(<看市场 />);
-    expect(screen.getByText('暂时没有需要你介入的')).toBeTruthy();
+    expect(screen.getByText('暂时没有需要你处理的')).toBeTruthy();
   });
 
   it('Mock 仍按 legacy 在谈列表 显示横幅', () => {

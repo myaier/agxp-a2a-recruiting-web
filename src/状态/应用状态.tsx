@@ -66,6 +66,7 @@ import type {
   应用操作, 后端状态, 后端操作依赖, 候选预填恢复存储, 提交候选意向快照输入,
   P7待定意图, P7已读位置记录, P8待定意图,
 } from './后端/类型';
+import type { 委托待核对会话, 待核对命令 } from './后端/委托待核对';
 import { 创建空Agent设置状态, 创建空招聘方组织水合状态, 创建空候选预填状态 } from './后端/类型';
 import { 创建会话操作, 水合角色数据, 重置Agent规则后端状态 } from './后端/会话操作';
 import { 创建发现推荐操作, 创建空P4发现状态 } from './后端/发现推荐操作';
@@ -555,11 +556,15 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const P4幂等意图 = useRef(new Map<string, string>());
   const P4可见范围 = useRef<Record<BFF角色, string | null>>({ candidate: null, recruiter: null });
   // P5 Task 3：MatchCase 运行时引用 —— scope 代际 / pending 幂等意图 / 双端可见范围 /
-  // 在途 PDF 对象租约。一次性初始化；会话转移由下方主体基串 effect 统一复位。
+  // 在途 PDF 对象租约 / alias→canonical 对照（J-PILOT-01 Task 2）。一次性初始化；
+  // 会话转移由下方主体基串 effect 统一复位。
   const P5范围代际 = useRef(new Map<string, number>());
   const P5幂等意图 = useRef(new Map<string, string>());
   const P5可见范围 = useRef<Record<P5角色, string | null>>({ candidate: null, recruiter: null });
   const P5对象租约 = useRef(new Set<PDF对象租约>());
+  // J-PILOT-01 Task 2：旧 Case 深链等 alias 坐标 → canonical record_id 的短命对照，
+  // 只在当前主体内存中存在并随 清P5MatchCase引用 一并清空，绝不进任何持久化。
+  const P5别名对照 = useRef(new Map<string, string>());
   // P7 Task 2：真人会话运行时引用 —— scope 代际 / 待定发送意图 / 双端可见收件箱与
   // 可见会话 / 已读位置。一次性初始化；会话转移由下方主体基串 effect 统一复位。
   const P7范围代际 = useRef(new Map<string, number>());
@@ -591,6 +596,12 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   const 候选实名读取锁 = useRef<Promise<void> | null>(null);
   const 候选实名变更锁 = useRef(new Set<'create' | 'cancel'>());
   const 候选实名提交意图 = useRef<string | null>(null);
+  // J-PILOT-01 Task 3：委托待核对运行时引用 —— 未决 create/retry 命令的内存表
+  // （Map，键为 委托待核对目标键；同一目标未决只留一份，普通页面 scope 卸载不清）
+  // 与 owner 绑定的 sessionStorage 会话适配。一次性初始化；退出/401/换主体/切离
+  // candidate 由 会话操作 的清理口统一清空内存并删除 outgoing owner 的恢复记录。
+  const 委托待核对内存 = useRef(new Map<string, 待核对命令>());
+  const 委托待核对存储 = useRef<委托待核对会话 | null>(null);
   // Task 2：候选意向持久化写屏障 —— Provider 最近一次接纳的权威快照的
   // { 主体, 会话代际, 服务端对象引用 }。只是「成功水合已进入 React commit」的标记，
   // 不持久化、不是业务模型；use资料持久化 靠它区分权威空列表与尚未水合的初始空字典。
@@ -641,6 +652,13 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       storage: 安全取存储('session'),
       范围: { 模式: 'backend', 环境, 账号: 当前候选主体标识 },
     })
+    : null;
+  // J-PILOT-01 Task 3：委托待核对存储会话按 Backend + candidate 主体在渲染期换绑（同
+  // P8导出恢复/候选预填恢复 纪律）：操作方法在调用时解引用 .current 一定看到新会话
+  //（或 null）。Mock / 招聘端 / 未登录恒 null、零存储触碰；退出/401/切主体的清理由
+  // 会话操作 的清理口在换绑前执行（适配器此刻仍绑着 outgoing subject）。
+  委托待核对存储.current = 是后端 && 当前候选主体标识 !== null
+    ? { storage: 安全取存储('session'), owner: { environment: 环境, subjectId: 当前候选主体标识, role: 'candidate' } }
     : null;
   use资料持久化({
     状态, 派发, 是后端, 环境, 当前主体标识, 当前候选主体标识,
@@ -750,6 +768,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         候选预填代际, 候选预填读取锁, 候选预填恢复,
         候选实名读取锁, 候选实名变更锁, 候选实名提交意图,
         建档草稿引用,
+        委托待核对内存, 委托待核对存储,
       }, 主体, false, 本次代际);
       if (已取消) return;
       if (会话失效) {
@@ -802,7 +821,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     const 首个主体到达 = P5会话基.current === '';
     P5会话基.current = 基;
     if (首个主体到达) return;
-    清P5MatchCase引用({ P5范围代际, P5幂等意图, P5可见范围, P5对象租约 });
+    清P5MatchCase引用({ P5范围代际, P5幂等意图, P5可见范围, P5对象租约, P5别名对照 });
     设后端状态((旧) => ({ ...旧, ...创建空P5MatchCase状态() }));
     派发({ 型: '清后端MatchCase演示状态' });
     // 主体 每次替换都是新对象；设后端状态 由 React 保证稳定
@@ -885,6 +904,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         P5幂等意图,
         P5可见范围,
         P5对象租约,
+        P5别名对照,
         P7范围代际,
         P7待定意图,
         P7可见收件箱,
@@ -906,6 +926,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         候选实名提交意图,
         建档草稿引用,
         候选建档草稿,
+        委托待核对内存,
+        委托待核对存储,
       };
       return {
         ...创建会话操作(deps),

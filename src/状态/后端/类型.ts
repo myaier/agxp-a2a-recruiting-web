@@ -35,6 +35,7 @@ import type {
 import type { 页面简历写入, 页面意向快照, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
 import type { P5列表项, P5详情, MatchCaseSummary } from '../../数据/招聘数据源/MatchCase';
+import type { NegotiationCard, NegotiationDetail, NegotiationShelf } from '../../数据/招聘数据源/连续代谈';
 import type { 接触事件 } from '../../数据/招聘数据源/接触记录';
 import type { 创建候选实名输入, 候选实名摘要 } from '../../数据/招聘数据源/候选实名';
 import type { P7角色, P7会话项, P7消息 } from '../../数据/招聘数据源/真人会话';
@@ -51,6 +52,7 @@ import type {
   P8ReportTarget,
 } from '../../数据/招聘数据源/P8控制面';
 import type { P8导出恢复存储 } from '../../数据/P8导出恢复';
+import type { 委托待核对会话, 待核对命令 } from './委托待核对';
 import type { PDF对象租约 } from '../../数据/PDF对象租约';
 import type { 在招岗位, 披露档, 屏蔽来源, 屏蔽项 } from '../../数据/类型';
 import type { 候选引导建档草稿, 候选引导草稿快照, 候选建档草稿存储 } from '../../数据/资料缓存';
@@ -290,6 +292,46 @@ export interface P5MatchCase状态 {
   P5工作区: Record<string, P5列表快照>;
   P5历史: Record<string, P5列表快照>;
   P5详情: Record<string, P5详情快照>;
+  /**
+   * J-PILOT-01 Task 2：候选连续代谈的列表快照。key 是 P5范围键.negotiations(shelf)
+   * （candidate 专属集合，active/history 各一个 scope）；快照绝不进 资料持久化。
+   */
+  P5连续列表: Record<string, P5连续列表快照>;
+  /**
+   * J-PILOT-01 Task 2：候选连续聚合详情快照。key 是 P5范围键.negotiation(recordId)，
+   * 且只按服务端返回的 canonical record_id 落位（alias 输入经 P5别名对照 解析）；
+   * case_detail 是聚合自带的嵌套内容，绝不另镜一份进 P5详情 槽之外的第二权威。
+   */
+  P5连续详情: Record<string, P5连续详情快照>;
+}
+
+/**
+ * J-PILOT-01 Task 2：连续列表快照 —— 与 P5列表快照 同一「已载窗口」纪律：
+ * 刷新从第一页重建同样深度，追加透传 next_cursor 逐页 +1；ownerSubjectId 只在
+ * 内存标记归属主体（同角色换主体时旧快照按不存在处理），绝不进任何持久化。
+ */
+export interface P5连续列表快照 {
+  ownerSubjectId: string | null;
+  阶段: P5加载阶段;
+  刷新中: boolean;
+  items: NegotiationCard[];
+  nextCursor: string | null;
+  已加载页数: number;
+  error: string | null;
+  generation: number;
+}
+
+/**
+ * J-PILOT-01 Task 2：连续聚合详情快照 —— 与 P5详情快照 同一阶段/刷新/error/generation
+ * 形状并带 ownerSubjectId；detail 只来自权威聚合 GET，alias 输入只按返回 canonical ID 保存。
+ */
+export interface P5连续详情快照 {
+  ownerSubjectId: string | null;
+  阶段: P5加载阶段;
+  刷新中: boolean;
+  detail: NegotiationDetail | null;
+  error: string | null;
+  generation: number;
 }
 
 // ── P8：控制面域的内存态资源快照（仅 Backend；快照绝不进 资料持久化 / 浏览器存储）──
@@ -511,6 +553,13 @@ export interface 后端操作依赖 {
   P5可见范围?: 可变引用<Record<P5角色, string | null>>;
   P5对象租约?: 可变引用<Set<PDF对象租约>>;
   /**
+   * J-PILOT-01 Task 2：alias→canonical record_id 的短命对照（如旧 Case 深链 mc_ 坐标 →
+   * 返回的 dlg canonical）。只在当前主体内存中存在并随 清P5MatchCase引用 一并清空，
+   * 绝不持久化、绝不反推归属。可选成员只为既有测试依赖桩的编译兼容，
+   * MatchCase操作 在工厂入口显式收窄，缺引用即接线缺陷。
+   */
+  P5别名对照?: 可变引用<Map<string, string>>;
+  /**
    * P7 Task 2：真人会话运行时引用 —— scope 代际 / 待定发送意图 / 双端可见范围 /
    * 已读位置。与 P4/P5 同一纪律：Provider 恒一次性注入；可选成员只为既有
    * 测试依赖桩 的编译兼容，真人会话操作 在工厂入口显式收窄。
@@ -564,6 +613,16 @@ export interface 后端操作依赖 {
    */
   建档草稿引用?: 可变引用<候选引导建档草稿 | null>;
   候选建档草稿?: 可变引用<候选建档草稿存储 | null>;
+  /**
+   * J-PILOT-01 Task 3：委托待核对运行时引用 —— 未决 create/retry 命令的内存表
+   * （Map，键为 委托待核对目标键；同一目标的未决命令只留一份）与 owner 绑定的
+   * sessionStorage 会话适配。与 P4–P8 同一纪律：Provider 一次性初始化内存表并在
+   * 渲染期按 Backend + candidate 主体换绑存储会话；可选成员只为既有测试依赖桩与
+   * 清账号状态 子集调用方的编译兼容，发现推荐操作 / MatchCase操作 在工厂入口
+   * 收窄，缺引用时该域零存储读写（内存兜底仍可用）。
+   */
+  委托待核对内存?: 可变引用<Map<string, 待核对命令>>;
+  委托待核对存储?: 可变引用<委托待核对会话 | null>;
 }
 
 /** 候选实名的三个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -585,12 +644,13 @@ export interface P7运行时引用 {
   P7已读位置: 可变引用<Map<string, P7已读位置记录>>;
 }
 
-/** P5 MatchCase 的四个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
+/** P5 MatchCase 的五个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
 export interface P5运行时引用 {
   P5范围代际: 可变引用<Map<string, number>>;
   P5幂等意图: 可变引用<Map<string, string>>;
   P5可见范围: 可变引用<Record<P5角色, string | null>>;
   P5对象租约: 可变引用<Set<PDF对象租约>>;
+  P5别名对照: 可变引用<Map<string, string>>;
 }
 
 /** P8 控制面的五个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -773,9 +833,27 @@ export interface 发现推荐操作 {
   设置候选收藏(jobId: string, recommendationId: string, favorite: boolean): Promise<void>;
   淘汰候选(jobId: string, recommendationId: string, reason: BFF淘汰原因): Promise<void>;
   撤销淘汰候选(jobId: string, recommendationId: string): Promise<void>;
-  委托候选岗位(input: 候选P4委托输入): Promise<BFF委托回执>;
+  /**
+   * J-PILOT-01 Task 3：同一 intention/job 已有未决 create 命令时本次点击转为核对原命令，
+   * 该防御分支可能没有新回执（void）；fresh 创建路径仍返回权威回执。屏层不消费返回值。
+   */
+  委托候选岗位(input: 候选P4委托输入): Promise<BFF委托回执 | void>;
   委托招聘候选(jobId: string, recommendationId: string): Promise<BFF委托回执>;
   刷新委托(role: BFF角色, delegationId: string): Promise<void>;
+  /**
+   * J-PILOT-01 Task 3：岗位页主按钮的同步待核对投影 —— 当前 owner 在该 intention-job
+   * 上是否有未决 create 命令（内存优先，落 owner 存储兜底；无主体/无存储只读内存）。
+   * 只读快照，绝不发请求；页面据此给出「核对提交结果」（无可靠 ID）或「查看进展」
+   * （已确认回执 + 已知 ID）。
+   */
+  取候选待核对命令(intentionId: string, jobId: string): 待核对命令 | null;
+  /**
+   * J-PILOT-01 Task 3（Spec §8）：该 intention-job 未决 create 命令的核对口。
+   * 已确认回执 → 只回读 canonical 连续记录（GET-only），不重发已确认 write；
+   * write 未确认且原 key/body 完整 → 原 key＋原 body 恰重放一次，随后回读。
+   * 无未决命令时静默返回（屏层只在有待核对时给该按钮）。每次调用最多一次 POST。
+   */
+  核对候选委托(intentionId: string, jobId: string): Promise<void>;
 }
 
 export interface Agent规则操作 {
@@ -849,8 +927,40 @@ export interface MatchCase操作 {
   加载历史(role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null, force?: boolean): Promise<void>;
   追加历史(role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null): Promise<void>;
   刷新历史(role: P5角色, lifecycle: P5历史生命周期, filterRef: string | null): Promise<void>;
-  /** 直读详情：URL case_id + 已认证角色，绝不读列表记忆填上下文；force=true 恒权威重读。 */
+  /** 直读详情：URL case_id + 已认证角色，绝不读列表记忆填上下文；force=true 恒权威重读。
+   *  J-PILOT-01 Task 2 起候选端同一条记录只经 negotiation 聚合 alias 读（不再并行
+   *  第二个候选 Case GET），case_detail 投影回旧详情槽供既有消费者；招聘端保持原 Case GET。 */
   读取详情(role: P5角色, caseId: string, force?: boolean): Promise<void>;
+  /**
+   * J-PILOT-01 Task 2：候选连续集合读取（negotiation 是候选专属资源，非 candidate 角色零请求）。
+   * 列表复用 P5 读锁与代际：加载/force 只读首屏（丢旧 cursor），追加透传 next_cursor 并按
+   * canonical record_id 去重/upsert，刷新从首屏新 cursor 顺序重建已载页数后一次原子替换。
+   */
+  加载连续列表(shelf: NegotiationShelf, force?: boolean): Promise<void>;
+  /** 已载窗口向后追加一页（透传快照里的 next_cursor）；游标已尽或旧 cursor 400 恰一次首屏恢复。 */
+  追加连续列表(shelf: NegotiationShelf): Promise<void>;
+  /** 从第一页重建已载窗口（同深度），轮询与手动刷新共用；不重用旧页 cursor。 */
+  刷新连续列表(shelf: NegotiationShelf): Promise<void>;
+  /**
+   * 候选聚合详情直读：recordId 可为 dlg_/mc_ 记录坐标（后端 alias 归一）；只按返回
+   * canonical record_id 保存一份权威快照，alias→canonical 对照只在当前主体内存中存在。
+   */
+  读取连续详情(recordId: string, force?: boolean): Promise<void>;
+  /**
+   * J-PILOT-01 Task 3（Spec §8）：失败初评的重试。新意图取当前权威允许动作与
+   * retry_generation（快照缺位先权威 GET 一次）；发送前冻结 retry 未决命令（原 key、
+   * 原 record_id、原 expected_retry_generation），202 仅受理、随后权威回读。存在未决
+   * retry 时不另起命令：本次调用转为核对原命令（原 key/generation 恰重放一次或已确认
+   * 回执只回读），不以最新动作或 generation 改写。409 三类（幂等冲突 / generation
+   * 冲突 / 业务门）只回读权威状态，保留原 key/generation、不自动换键或再次 POST。
+   */
+  重试连续记录(recordId: string): Promise<void>;
+  /**
+   * J-PILOT-01 Task 3（Spec §8）：归档失败初评卡。body 严格 {}、无 Idempotency-Key
+   * （facade 已冻结），成功后权威回读实际 shelf；归档/retry 竞争按回读事实呈现，
+   * 409 业务门同样只回读不自动重发。
+   */
+  归档连续记录(recordId: string): Promise<void>;
   回答事实(role: P5角色, caseId: string, promptId: string, response: string): Promise<void>;
   /**
    * 候选端 S1 简历提交：disclosureConfirmed 是字面 true —— 只有屏层每次提交前新做的
