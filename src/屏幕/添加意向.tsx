@@ -17,6 +17,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useNavigationType, useParams } from 'react-router-dom';
+import { 排除选项 } from './引导问答';
+import 通用样式 from '../组件/通用.module.css';
+import 引导样式 from './引导问答.module.css';
+import 弹层框架 from '../组件/弹层框架';
+import 内嵌双滚轮 from '../组件/内嵌双滚轮';
+import 轮层样式 from '../组件/薪资区间层.module.css';
+import { 校验预计毕业时间 } from '../流程/onboarding配置';
 import 样式 from './添加意向.module.css';
 // 2026-08-24 全站选择风格统一（C1 定稿）：求职类型改选钮片后不再用 单选点
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 主按钮 } from '../组件/通用';
@@ -108,6 +115,25 @@ function 意向编辑表单({ 路由编号 }: { 路由编号?: string }) {
 
   // 底线弹层删掉之后，本页只剩薪资一个底部弹层，开关用一个布尔就够，不再需要「弹层名」联合类型
   const [薪资层开, 设薪资层开] = useState(false);
+  const [毕业轮开, 设毕业轮开] = useState(false);
+  const [毕业年, 设毕业年] = useState(new Date().getFullYear() + 1);
+  const [毕业月, 设毕业月] = useState(6);
+  const 薪资周期 = 草稿.薪资周期 ?? (草稿.求职类型 === '实习生' ? 'day' : 'month');
+  const 薪资单位 = 薪资周期 === 'day' ? ' 元/天' : 薪资周期 === 'hour' ? ' 元/时' : 'K';
+  const 排除键 = { 大小周: 'alternate_weekend_work', '纯外包 / 乙方': 'outsourcing_only', 全现场办公: 'onsite_only', 频繁出差: 'frequent_travel' } as const;
+  // 不拆写历史私有文本：按整段保留，自定义新增用独立行追加。
+  const 自定义们 = (草稿.私有偏好 ?? '').split('\n').filter(Boolean);
+  const 已选排除 = [...Object.entries(排除键).filter(([, 键]) => 草稿.排除项?.[键] === 'excluded').map(([名]) => 名), ...自定义们];
+  const 切换排除 = (项: string) => {
+    const 键 = 排除键[项 as keyof typeof 排除键];
+    if (键) {
+      const 原 = 草稿.排除项 ?? { alternate_weekend_work: 'unspecified', outsourcing_only: 'unspecified', onsite_only: 'unspecified', frequent_travel: 'unspecified' };
+      改草稿({ 排除项: { ...原, [键]: 原[键] === 'excluded' ? 'unspecified' : 'excluded' } });
+    } else {
+      const 原文 = 草稿.私有偏好 ?? '';
+      改草稿({ 私有偏好: 自定义们.includes(项) ? 原文.split('\n').filter((行) => 行 !== 项).join('\n') : `${原文}${原文 ? '\n' : ''}${项}` });
+    }
+  };
 
   // 办公方式必填校验的可见状态：只在点保存且没选时点亮（aria-invalid + aria-description），
   // 用户点任一办公方式选钮立即熄灭 —— 错误跟着「最后一次校验」走，不常驻。
@@ -148,8 +174,8 @@ function 意向编辑表单({ 路由编号 }: { 路由编号?: string }) {
     草稿.薪资下限 === null || 草稿.薪资上限 === null
       ? ''
       : 草稿.薪资下限 === 草稿.薪资上限
-        ? `${草稿.薪资下限}K`
-        : `${草稿.薪资下限}-${草稿.薪资上限}K`;
+        ? `${草稿.薪资下限}${薪资单位}`
+        : `${草稿.薪资下限}-${草稿.薪资上限}${薪资单位}`;
   const 感兴趣城市文本 = 草稿.感兴趣城市们.join('、');
   const 期望行业文本 = 草稿.期望行业们.join('、');
 
@@ -174,6 +200,15 @@ function 意向编辑表单({ 路由编号 }: { 路由编号?: string }) {
       组?.scrollIntoView({ block: 'center' });
       组?.querySelector<HTMLButtonElement>('button')?.focus();
       return false;
+    }
+    if (草稿.求职类型 === '校园招聘') {
+      const 错误 = 校验预计毕业时间(草稿.毕业时间 ?? undefined);
+      // 已保存的毕业月自然过期不妨碍无关字段编辑；用户改过则按现有规则校验。
+      const 原月 = 全局.后端意向服务端?.[草稿.编辑编号 ?? '']?.graduation_month;
+      if (错误 && !(编辑态 && 草稿.毕业时间 && 草稿.毕业时间 === 原月)) { 轻提示(错误); return false; }
+    }
+    if (草稿.求职类型 === '实习生' && (!草稿.实习月数 || !草稿.每周到岗天数)) {
+      轻提示('请选择实习月数和每周到岗天数'); return false;
     }
     return true;
   };
@@ -211,20 +246,17 @@ function 意向编辑表单({ 路由编号 }: { 路由编号?: string }) {
   return (
     /* 2026-08-24 全站选择风格统一（C1 定稿）：页底加白底 */
     <次级页外壳 白底>
-      <返回栏 返回={退出} />
-
-      <页面大标题
-        标题={编辑态 ? '编辑求职期望' : '添加求职期望'}
-        说明="求职期望的不同，推荐的职位也会不同"
-      />
-
       <滚动区 样式覆盖={{ padding: '6px 22px 10px' }}>
+        <div className={样式.滚动页首}>
+          <返回栏 返回={退出} />
+          <页面大标题 标题={编辑态 ? '编辑求职期望' : '添加求职期望'} />
+        </div>
         {/* 第 1 行：求职类型 —— 两个选钮片行内右对齐，没有值行也没有 › */}
         {/* 2026-08-24 全站选择风格统一（C1 定稿）：单选圆点改定稿选钮片，选中对勾由 CSS ::before 画 */}
-        <div className={样式.类型行}>
+        <div className={`${样式.类型行} ${样式.求职类型区}`}>
           <span className={样式.类型标}>求职类型</span>
           <div className={样式.类型组}>
-            {(['全职', '兼职'] as const).map((类型) => {
+            {(['全职', '校园招聘', '实习生', '兼职'] as const).map((类型) => {
               const 选中 = 草稿.求职类型 === 类型;
               return (
                 <button
@@ -234,12 +266,27 @@ function 意向编辑表单({ 路由编号 }: { 路由编号?: string }) {
                   onClick={() => 改草稿({ 求职类型: 类型 })}
                   aria-pressed={选中}
                 >
-                  {类型}
+                  {类型 === '全职' ? '社招全职' : 类型}
                 </button>
               );
             })}
           </div>
         </div>
+
+        {草稿.求职类型 === '校园招聘' && <期望行 标签="预计毕业年月" 值={草稿.毕业时间 ?? ''} 占位="请选择毕业年月" 按下={() => {
+          设毕业年(Number(草稿.毕业时间?.slice(0, 4)) || new Date().getFullYear() + 1);
+          设毕业月(Number(草稿.毕业时间?.slice(5, 7)) || 6);
+          设毕业轮开(true);
+        }} />}
+        {草稿.求职类型 === '实习生' && <section className={样式.实习条件}>
+          <h2 className={样式.类型标}>实习可用时间</h2>
+          <div className={样式.条件组} role="group" aria-label="实习持续月数">
+            {[1, 3, 6].map(月数 => <button type="button" key={月数} aria-pressed={草稿.实习月数 === 月数} className={`${样式.类型选项} ${草稿.实习月数 === 月数 ? 样式.类型选项选中 : ''} 可点`} onClick={() => 改草稿({ 实习月数: 月数 })}>至少 {月数} 个月</button>)}
+          </div>
+          <div className={样式.条件组} role="group" aria-label="每周到岗天数">
+            {[2, 3, 4, 5].map(天数 => <button type="button" key={天数} aria-pressed={草稿.每周到岗天数 === 天数} className={`${样式.类型选项} ${草稿.每周到岗天数 === 天数 ? 样式.类型选项选中 : ''} 可点`} onClick={() => 改草稿({ 每周到岗天数: 天数 })}>每周 {天数} 天</button>)}
+          </div>
+        </section>}
 
         {/* 办公方式：复用 求职类型 的选钮片行样式，多选（现场/混合/远程）。
             Task 6 新增必填草稿字段：保存时映射为 BFF wire code，空数组时 映射办公方式 抛错，
@@ -307,7 +354,7 @@ function 意向编辑表单({ 路由编号 }: { 路由编号?: string }) {
 
         {/* 第 5 行开底部弹层，不跳页：薪资是滚轮选数，跳一整屏太重 */}
         <期望行
-          标签="薪资要求"
+          标签={`薪资要求（${薪资周期 === 'day' ? '日薪 · 元/天' : 薪资周期 === 'hour' ? '时薪 · 元/时' : '月薪 · K'}）`}
           值={薪资文本}
           占位="请选择薪资要求"
           按下={() => 设薪资层开(true)}
@@ -319,6 +366,10 @@ function 意向编辑表单({ 路由编号 }: { 路由编号?: string }) {
           占位="不限"
           按下={() => 跳转(路径.选期望行业)}
         />
+        <section className={样式.排除节}>
+          <div className={通用样式.大标题区}><h2 className={通用样式.大标题}>哪些情况直接排除？</h2></div>
+          <div className={引导样式.排除区}><排除选项 已选={已选排除} 切换={切换排除} 自动聚焦={false} /></div>
+        </section>
       </滚动区>
 
       {/* 编辑态底部是「删除 + 保存」两键，新建态只有一个「保存」。
@@ -336,8 +387,17 @@ function 意向编辑表单({ 路由编号 }: { 路由编号?: string }) {
         <主按钮 文字="保存" 按下={提交} 禁用={false} />
       )}
 
+      {毕业轮开 && <弹层框架 标签="预计毕业时间" 遮罩类名={轮层样式.遮罩} 面板类名={轮层样式.层} 关闭={() => 设毕业轮开(false)} 层级={71}>
+        <div className={轮层样式.顶栏}>
+          <button type="button" className={轮层样式.取消键} onClick={() => 设毕业轮开(false)}>取消</button>
+          <span className={轮层样式.标题}>预计毕业时间</span>
+          <button type="button" className={轮层样式.确认键} onClick={() => { 改草稿({ 毕业时间: `${毕业年}-${String(毕业月).padStart(2, '0')}` }); 设毕业轮开(false); }}>完成</button>
+        </div>
+        <div className={轮层样式.轮区}><内嵌双滚轮 左档={[...new Set([毕业年, ...Array.from({ length: 8 }, (_, 序) => new Date().getFullYear() + 序)])].sort((甲, 乙) => 甲 - 乙)} 右档={Array.from({ length: 12 }, (_, 序) => 序 + 1)} 左值={毕业年} 右值={毕业月} 设左值={设毕业年} 设右值={设毕业月} 左名="毕业年" 右名="毕业月" 左单位="年" 右单位="月" /></div>
+      </弹层框架>}
       {薪资层开 ? (
         <薪资区间层
+          周期={薪资周期}
           下限={草稿.薪资下限}
           上限={草稿.薪资上限}
           确认={(下, 上) => {

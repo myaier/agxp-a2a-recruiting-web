@@ -156,3 +156,25 @@
   cursor: default;
   box-shadow: none;
 }
+
+/* 已确认独立预览：页首随内容滚动，上半表单保留原字体与点击高度。 */
+.滚动页首 { margin: -6px -22px 6px; }
+.类型行 { padding: 14px 0; border-bottom: 0; }
+.求职类型区 { display: block; }
+.求职类型区 .类型组 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 8px; margin-top: 10px; }
+.条目 { padding: 12px 0; border-bottom: 0; }
+.条目值行 { border-radius: 12px; }
+.值占位 { color: var(--次要); }
+.实习条件 { padding: 12px 0; }
+.实习条件 h2 { margin: 0 0 12px; }
+.条件组 { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.条件组 .类型选项 { padding: 8px 12px; }
+.排除节 { margin: 0 -22px; }
+.排除标题 { font-size: var(--字号-页面大标题); color: var(--墨); margin: 0 0 20px; }
+
+.求职类型区 .类型选项 { width: 100%; padding: 8px 12px; min-height: 38px; }
+.条件组 { gap: 7px; }
+.条件组 + .条件组 { margin-top: 9px; }
+.条件组 .类型选项 { padding: 8px 10px; min-height: 38px; }
+.条件组[aria-label="每周到岗天数"] { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.条件组[aria-label="每周到岗天数"] .类型选项 { padding: 8px 3px; white-space: nowrap; }

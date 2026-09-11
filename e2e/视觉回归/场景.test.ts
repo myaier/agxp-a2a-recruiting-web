@@ -21,13 +21,15 @@ const 预期ID = [
   // P8（Task 8）：Mock 账号与安全 / 反馈与举报 —— 钉住 Mock 页与基线像素/几何兼容
   'candidate-account-security',
   'candidate-feedback',
+  // 企业名片统一（Task 3）：企业公开页 Mock 场景（统一展示的对照入口）
+  'enterprise-public',
 ];
 
 describe('视觉场景清单', () => {
-  // 第二批（2026-09-09）：candidate-me-overlay（在谈筛选层）随筛选层删除，18 → 17
-  it('包含 17 个稳定且唯一的场景 ID', () => {
+  // 企业名片统一（2026-09-10）：新增 enterprise-public（企业公开页 Mock 静态档），17 → 18
+  it('包含 18 个稳定且唯一的场景 ID', () => {
     expect(视觉场景们.map((场景) => 场景.id)).toEqual(预期ID);
-    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(17);
+    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(18);
   });
 
   it('发布岗位第三步使用跨版本稳定的提交按钮作为关键元素', () => {

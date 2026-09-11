@@ -1,57 +1,16 @@
-/* 先问选择行:无框(2026-08-31 全站设计原则「所有设计不要框」),行间靠发丝线 */
-
-.行 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--分隔线);
-}
-
-.末行 {
-  border-bottom: none;
-}
-
-.文字区 {
-  flex: 1;
-  min-width: 0;
-}
-
-.标题 {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--墨);
-  line-height: 1.5;
-}
-
-.注 {
-  font-size: 11.5px;
-  color: var(--弱化);
-  margin-top: 3px;
-}
-
-/* 双选胶囊:整组一圈描边,选中格荧光绿 —— 全页仅有的控件形状 */
-.选组 {
-  flex: none;
-  display: flex;
-  flex-direction: row;
-  border: 1px solid var(--描边深);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.选项 {
-  padding: 7px 13px;
-  font-size: 12.5px;
-  color: var(--次要浅);
-  background: var(--白);
-  border: none;
-}
-
-.选中 {
-  background: var(--荧光绿);
-  color: var(--深绿文字);
-  font-weight: 700;
-}
+.行 { display:flex; align-items:center; gap:16px; width:100%; min-height:70px; padding:14px 0; text-align:left; border-bottom:1px solid var(--分隔线); }
+.末行 { border-bottom:0; }
+.文字区 { flex:1; min-width:0; display:flex; flex-direction:column; }
+.标题 { font-size:14px; font-weight:600; line-height:1.5; color:var(--墨); }
+.注 { font-size:11.5px; color:var(--次要浅); margin-top:3px; }
+.当前 { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--次要); flex:none; }
+.遮罩 { position:absolute; inset:0; background:rgba(0,0,0,.23); z-index:80; }
+.面板 { width:100%; background:var(--白); border-radius:22px 22px 0 0; padding:10px 20px max(36px,env(safe-area-inset-bottom)); color:var(--墨); }
+.把手 { width:34px; height:4px; border-radius:2px; background:var(--最弱); margin:0 auto 22px; }
+.面板头 { display:flex; justify-content:space-between; align-items:center; }
+.面板头 h2 { font-size:15px; font-weight:700; }
+.面板头 button { width:32px; height:32px; border-radius:50%; background:var(--分隔线); color:var(--次要); font-size:20px; }
+.说明 { font-size:11.5px; color:var(--次要浅); margin:6px 0 20px; }
+.选项 { width:100%; min-height:56px; display:flex; align-items:center; justify-content:space-between; font-size:12.5px; border-bottom:1px solid var(--分隔线); }
+.选项:last-child { border:0; }
+.选项 span { color:var(--深绿); font-size:20px; }

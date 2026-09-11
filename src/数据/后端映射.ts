@@ -240,9 +240,9 @@ export function 转证书写入(段: 简历证书): BFF证书写入 {
 // 用户点过单选则按页面值覆盖（全职→social_full_time，兼职→part_time）。
 
 const 招聘类型到页面 = {
-  social_full_time: '全职', campus: '全职', internship: '全职', part_time: '兼职',
+  social_full_time: '全职', campus: '校园招聘', internship: '实习生', part_time: '兼职',
 } as const;
-const 页面招聘类型到后端 = { 全职: 'social_full_time', 兼职: 'part_time' } as const;
+const 页面招聘类型到后端 = { 全职: 'social_full_time', 校园招聘: 'campus', 实习生: 'internship', 兼职: 'part_time' } as const;
 const 办公方式到后端 = { 现场: 'onsite', 混合: 'hybrid', 远程: 'remote', 全远程: 'remote' } as const;
 export { 招聘类型到页面 };
 
@@ -271,6 +271,12 @@ export function 从BFF意向草稿(dto: BFFOwnerIntention): 意向草稿型 {
   const 是区间 = dto.compensation.mode === 'range';
   return {
     编辑编号: dto.intention_id,
+    毕业时间: dto.graduation_month,
+    实习月数: dto.internship_months,
+    每周到岗天数: dto.onsite_days_per_week,
+    薪资周期: dto.salary_period,
+    排除项: { ...dto.exclusions },
+    私有偏好: dto.private_preferences,
     求职类型: 招聘类型到页面[dto.recruitment_type],
     工作城市: dto.primary_location.display_name,
     工作城市引用: dto.primary_location,
@@ -325,11 +331,18 @@ export function 转意向写入(草稿: 意向草稿型, 上下文: 意向映射
   const recruitment_type = 保留原类型
     ? 原始.recruitment_type
     : 页面招聘类型到后端[草稿.求职类型];
-  const 是校园或实习 = recruitment_type === 'campus' || recruitment_type === 'internship';
-  // 校园/实习 的 graduation/internship/onsite 字段 UI 未表达，更新已有意向时从服务端快照保留；新建或全职/兼职发 null
-  const graduation_month = 是校园或实习 && 原始 !== null ? 原始.graduation_month : null;
-  const internship_months = 是校园或实习 && 原始 !== null ? 原始.internship_months : null;
-  const onsite_days_per_week = 是校园或实习 && 原始 !== null ? 原始.onsite_days_per_week : null;
+  // 未改变实际招聘类型时，当前表单未展示的历史条件从权威快照原样保留。
+  // 只有明确改成另一类型，才清除目标类型不适用的条件；显示中的条件仍取草稿。
+  const 类型未变 = 原始 !== null && recruitment_type === 原始.recruitment_type;
+  const graduation_month = recruitment_type === 'campus'
+    ? (草稿.毕业时间 === undefined ? 原始?.graduation_month ?? null : 草稿.毕业时间)
+    : 类型未变 ? 原始.graduation_month : null;
+  const internship_months = recruitment_type === 'internship'
+    ? (草稿.实习月数 === undefined ? 原始?.internship_months ?? null : 草稿.实习月数)
+    : 类型未变 ? 原始.internship_months : null;
+  const onsite_days_per_week = recruitment_type === 'internship'
+    ? (草稿.每周到岗天数 === undefined ? 原始?.onsite_days_per_week ?? null : 草稿.每周到岗天数)
+    : 类型未变 ? 原始.onsite_days_per_week : null;
   // annual_salary_months：新建时不存在就省略（不填 12）；编辑时从服务端快照保留（#4）。
   // salary_period 是 BFF 根据 recruitment_type 派生的只读字段（不在 IntentionWrite body 里），
   // 保留原 recruitment_type 即保留了 period —— 草稿不能表达 period，但保存不会丢它。
@@ -346,9 +359,9 @@ export function 转意向写入(草稿: 意向草稿型, 上下文: 意向映射
           ...(原始?.compensation.annual_salary_months == null ? {} : { annual_salary_months: 原始.compensation.annual_salary_months }),
         };
   // exclusions：更新沿用服务端快照，新建四个均为 unspecified（草稿不带排除项）
-  const exclusions: BFF意向排除 = 原始 !== null
+  const exclusions: BFF意向排除 = 草稿.排除项 ?? (原始 !== null
     ? 原始.exclusions
-    : { alternate_weekend_work: 'unspecified', outsourcing_only: 'unspecified', onsite_only: 'unspecified', frequent_travel: 'unspecified' };
+    : { alternate_weekend_work: 'unspecified', outsourcing_only: 'unspecified', onsite_only: 'unspecified', frequent_travel: 'unspecified' });
   return {
     recruitment_type,
     job_category_id: 必需引用(草稿.职位引用, '职位', 'intention.job_category_id'),
@@ -361,7 +374,7 @@ export function 转意向写入(草稿: 意向草稿型, 上下文: 意向映射
     internship_months,
     onsite_days_per_week,
     exclusions,
-    private_preferences: 原始 !== null ? 原始.private_preferences : '',
+    private_preferences: 草稿.私有偏好 ?? 原始?.private_preferences ?? '',
   };
 }
 

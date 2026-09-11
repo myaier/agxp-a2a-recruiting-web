@@ -55,6 +55,18 @@ vi.mock('../../状态/应用状态', async (importOriginal) => ({
 }));
 vi.mock('../../路由/导航钩子', () => ({ use导航: () => ({ 返回: vi.fn(), 跳转: mock跳转 }) }));
 
+// 记录并透传：Backend 候选在谈卡绝不触发 use适配分 的 Mock 演示简历计算路径（Task 3）
+const { mock适配分 } = vi.hoisted(() => ({ mock适配分: vi.fn() }));
+vi.mock('../../状态/use适配分', async (importOriginal) => {
+  const 真模块 = await importOriginal<typeof import('../../状态/use适配分')>();
+  return {
+    use适配分: (源: Parameters<typeof 真模块.use适配分>[0]) => {
+      mock适配分(源);
+      return 真模块.use适配分(源);
+    },
+  };
+});
+
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
 const 职位ID = 'job_0123456789abcdef0123456789abcdef';
 const 别名 = 'candidate-0123456789ab';
@@ -181,6 +193,7 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     mock加载工作区.mockClear();
     mock追加工作区.mockClear();
     mock刷新工作区.mockClear();
+    mock适配分.mockClear();
   });
 
   afterEach(() => {
@@ -425,12 +438,13 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
       快照: 快照({ items: [招聘行({ caseId: 'mc_9' })] }),
     });
     render(列表元素('recruiter', 职位ID));
-    // 2026-09-09 摘要接线：别名不再上卡，点摘要头行（无摘要 → 中性文案）仍按 case_id 导航
-    await user.click(screen.getByText('候选信息暂未披露'));
+    // 卡片统一：别名不再上卡，点共享招聘在谈卡整卡（白卡 button）仍按 case_id 导航（不是推荐/别名坐标）
+    const 卡键 = screen.getByTestId('招聘在谈卡').querySelector('button') as HTMLButtonElement;
+    await user.click(卡键);
     expect(mock跳转).toHaveBeenCalledWith(路径.候选详情('mc_9'));
   });
 
-  it('招聘卡无候选代号/通用匿名头像/招聘职位与城市薪资/岗位技能；摘要缺失只给中性头行；同别名两行靠 case_id 区分', () => {
+  it('招聘卡无候选代号/通用匿名头像/招聘职位与城市薪资/岗位技能；摘要缺失给全未知占位；同别名两行靠 case_id 区分', () => {
     const 键警告 = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
       置P5状态({
@@ -445,13 +459,18 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
       for (const 文案 of ['AI 产品实习生', '上海 · 300-500 元/天', 'Python']) {
         expect(screen.queryByText(文案)).toBeNull();
       }
-      // 无摘要：头行只有中性文案，无分隔符
-      const 头行们 = Array.from(宿主.container.querySelectorAll('[class*="摘要基本行"]'));
-      expect(头行们).toHaveLength(2);
-      for (const 头行 of 头行们) {
-        expect(头行.textContent).toBe('候选信息暂未披露');
-        expect(头行.textContent).not.toContain('｜');
+      // 摘要缺失 = 同一套未知占位（Spec §4），不是中性收行：头行 + 工作/教育/标签行全在
+      expect(screen.getAllByLabelText('性别未知')).toHaveLength(2);
+      const 头区们 = Array.from(宿主.container.querySelectorAll('[data-card-region="head"]'));
+      expect(头区们).toHaveLength(2);
+      for (const 头区 of 头区们) {
+        expect(头区.textContent).toContain('经验未知');
+        expect(头区.textContent).toContain('学历未知');
+        expect(头区.textContent).toContain('求职状态未知');
       }
+      expect(screen.getAllByText('工作经历未知')).toHaveLength(2);
+      expect(screen.getAllByText('教育经历未知')).toHaveLength(2);
+      expect(screen.getAllByText('亮点信息未知')).toHaveLength(2);
       // React 键不是别名：同别名两行并存且无重复键告警
       expect(键警告.mock.calls.some((参) => String(参[0]).includes('key'))).toBe(false);
     } finally {
@@ -459,7 +478,7 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     }
   });
 
-  it('招聘卡摘要按 Spec §4 落位：女图标 + 5 年｜本科｜在职看机会；工作/教育/亮点行；0 年如实显示', () => {
+  it('招聘卡摘要按 Spec §4 落位：女图标 + 5 年｜本科｜在职看机会；工作/教育/亮点行；缺分给未知占位；0 年如实显示', () => {
     置P5状态({
       role: 'recruiter', filterRef: 职位ID,
       快照: 快照({ items: [招聘行({ caseId: 'mc_1', 摘要: 招聘候选摘要样本 })] }),
@@ -467,17 +486,20 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     const 宿主 = render(列表元素('recruiter', 职位ID));
     const 女图标 = screen.getAllByRole('img', { name: '女' });
     expect(女图标).toHaveLength(1);
-    const 头行 = 女图标[0]!.closest('[class*="摘要基本行"]') as HTMLElement;
-    for (const 段 of ['5 年', '本科', '在职看机会']) expect(头行.textContent).toContain(段);
+    const 头区 = 女图标[0]!.closest('[data-card-region="head"]') as HTMLElement;
+    for (const 段 of ['5 年', '本科', '在职看机会']) expect(头区.textContent).toContain(段);
     expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
     expect(screen.getByText('示例大学 · 计算机科学')).toBeTruthy();
     expect(screen.getByText('带领5人团队交付')).toBeTruthy();
-    expect(宿主.container.querySelector('[class*="适配环"], [class*="匹配"]')).toBeNull(); // 无匹配环
-    // 阶段与待办能力保留
+    // P5 open 无匹配分：原匹配分位给未知占位，不画环、不补 0
+    expect(screen.getByLabelText('匹配分未知')).toBeTruthy();
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+    expect(宿主.container.querySelector('[class*="适配环"]')).toBeNull();
+    // 阶段标题原文保留
     expect(screen.getByText('匿名初筛')).toBeTruthy();
     cleanup();
 
-    // 0 年如实显示「不满 1 年」；性别 null 不渲染图标
+    // 0 年如实显示「不满 1 年」；性别 null → 「性别未知」占位（不造男女图标）
     置P5状态({
       role: 'recruiter', filterRef: 职位ID,
       快照: 快照({ items: [招聘行({
@@ -487,9 +509,45 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     });
     const 二页 = render(列表元素('recruiter', 职位ID));
     expect(screen.queryByRole('img', { name: '女' })).toBeNull();
-    const 头行们 = 二页.container.querySelectorAll('[class*="摘要基本行"]');
-    expect(头行们[0]?.textContent).toContain('不满 1 年');
+    expect(screen.getByLabelText('性别未知')).toBeTruthy();
+    const 头区们 = 二页.container.querySelectorAll('[data-card-region="head"]');
+    expect(头区们[0]?.textContent).toContain('不满 1 年');
+    expect(头区们[0]?.textContent).toContain('求职状态未知');
     expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
+  });
+
+  it('招聘卡阶段区：P5 阶段标题原文 + 既有状态文案、待办徽标从头行搬入阶段区、Backend 无呼吸点、未知分占位在右列', () => {
+    置P5状态({
+      role: 'recruiter', filterRef: 职位ID,
+      快照: 快照({ items: [招聘行({ caseId: 'mc_stage', 待办: true, 摘要: 招聘候选摘要样本 })] }),
+    });
+    const 宿主 = render(列表元素('recruiter', 职位ID));
+    const 卡 = screen.getByTestId('招聘在谈卡');
+    const 阶段区 = 卡.querySelector('[data-card-region="stage"]');
+    // 标题保留 P5 原文，状态文本是既有 P5 状态文案（不是「下一步未知」）
+    expect(阶段区?.textContent).toContain('匿名初筛');
+    expect(阶段区?.textContent).toContain('进行中');
+    expect(阶段区?.textContent).not.toContain('下一步未知');
+    // 原 P5 头行待办徽标搬进阶段区：头行不再有「需要你」
+    expect(阶段区?.textContent).toContain('需要你');
+    expect(卡.querySelector('[data-card-region="head"]')?.textContent).not.toContain('需要你');
+    // Backend 只保留徽标，不新增 Mock 的待办呼吸点
+    expect(宿主.container.querySelector('[class*="阶段点呼吸"]')).toBeNull();
+    // 右列恒为匹配分位：未知占位（不补 0）
+    expect(卡.querySelector('[data-card-region="score"]')?.textContent).toContain('分数未知');
+    cleanup();
+
+    // 失败反例：needs_action=false 且 attention 非空 → 「需注意」在阶段区 + 注意说明，绝不说「代理处理中」
+    置P5状态({
+      role: 'recruiter', filterRef: 职位ID,
+      快照: 快照({ items: [注意行(招聘行({ caseId: 'mc_att', 待办: false }))] }),
+    });
+    render(列表元素('recruiter', 职位ID));
+    const 注意阶段区 = screen.getByTestId('招聘在谈卡').querySelector('[data-card-region="stage"]');
+    expect(注意阶段区?.textContent).toContain('需注意');
+    expect(注意阶段区?.textContent).toContain('AI 服务暂时不可用，本 Case 尚未继续');
+    expect(screen.queryByText('代理处理中')).toBeNull();
+    expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
   });
 
   it('合法重复亮点按响应顺序逐条渲染，无重复 key 告警（契约不要求元素唯一）', () => {
@@ -512,7 +570,7 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     }
   });
 
-  it('招聘卡摘要变 null/空亮点：旧信息消失，Case 阶段与可打开保留', () => {
+  it('招聘卡摘要变 null/空亮点：旧信息消失、空位给占位，Case 阶段与可打开保留', () => {
     置P5状态({
       role: 'recruiter', filterRef: 职位ID,
       快照: 快照({ items: [招聘行({ caseId: 'mc_1', 摘要: 招聘候选摘要样本 })] }),
@@ -524,8 +582,9 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
       快照: 快照({ items: [招聘行({ caseId: 'mc_1', 摘要: { ...招聘候选摘要样本, personal_highlights: [] } })] }),
     });
     页.rerender(列表元素('recruiter', 职位ID));
-    // 空亮点收起整行，不摆空容器；摘要头行与阶段段保留
+    // 空亮点不是收行：标签区给「亮点信息未知」占位（工作/教育/标签行恒在，Spec §6）
     expect(screen.queryByText('带领5人团队交付')).toBeNull();
+    expect(screen.getByText('亮点信息未知')).toBeTruthy();
     expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
     置P5状态({
       role: 'recruiter', filterRef: 职位ID,
@@ -534,7 +593,7 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     页.rerender(列表元素('recruiter', 职位ID));
     expect(screen.queryByText('示例公司 · 软件工程师')).toBeNull();
     expect(screen.queryByText('带领5人团队交付')).toBeNull();
-    expect(screen.getByText('候选信息暂未披露')).toBeTruthy();
+    expect(screen.getByText('工作经历未知')).toBeTruthy();
     expect(screen.getByText('匿名初筛')).toBeTruthy(); // 阶段与 Case 仍在
   });
 
@@ -549,6 +608,50 @@ describe('MatchCase列表 · P5 open 工作区（Backend）', () => {
     expect(screen.queryByText('AI 产品实习生')).toBeNull(); // 不渲染冻结职位等部分数据
     await user.click(screen.getByRole('button', { name: '重试' }));
     expect(mock刷新工作区).toHaveBeenCalledWith('candidate', 意向ID);
+  });
+
+  // Task 3 卡片统一：候选在谈行改用共享 求职在谈卡 —— P5 当前不提供公司名/简介/图与匹配分，
+  // 全部给未知占位；冻结的职位/薪资/城市/技能保留（城市在前、技能随后），不向组织/推荐/
+  // 静态公司标补数据，也不触发 use适配分 的 Mock 演示简历计算路径。
+  it('候选卡：公司三件套与匹配分全占位，冻结职位/薪资/城市技能不丢（城市在前技能随后）', () => {
+    置P5状态({
+      role: 'candidate', filterRef: 意向ID,
+      快照: 快照({ items: [候选行({ caseId: 'mc_c', 待办: true })] }),
+    });
+    const 宿主 = render(列表元素('candidate', 意向ID));
+    const 卡 = screen.getByTestId('求职在谈卡');
+    // 公司信息未知/公司简介未知/空白图块（可访问名「公司图片未知」）
+    expect(screen.getByText('公司信息未知')).toBeTruthy();
+    expect(screen.getByText('公司简介未知')).toBeTruthy();
+    expect(screen.getByLabelText('公司图片未知')).toBeTruthy();
+    // 不命中静态公司标、不发空 URL / 外部占位图请求
+    expect(宿主.container.querySelector('[class*="公司字标"]')).toBeNull();
+    expect(卡.querySelectorAll('img')).toHaveLength(0);
+    // P5 open 无匹配分：右列给未知占位，不画环、不补 0
+    expect(screen.getByLabelText('匹配分未知')).toBeTruthy();
+    expect(宿主.container.querySelector('[class*="适配环"]')).toBeNull();
+    // 冻结职位快照照旧：职位名 + 右列薪资带（原 城市·薪资 事实行退场）
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
+    expect(screen.getByText('300–500 元/天')).toBeTruthy();
+    expect(screen.queryByText('上海 · 300-500 元/天')).toBeNull();
+    // 标签区 = 城市在前、技能随后
+    const 标签顺序 = Array.from(卡.querySelector('[data-card-region="tags"]')?.children ?? [])
+      .map((元) => 元.textContent);
+    expect(标签顺序).toEqual(['上海', 'Python']);
+    // 阶段区：P5 阶段标题原文 + 既有状态文案 + 待办徽标（不是「下一步未知」）
+    const 阶段区 = 卡.querySelector('[data-card-region="stage"]');
+    expect(阶段区?.textContent).toContain('匿名初筛');
+    expect(阶段区?.textContent).toContain('进行中');
+    expect(阶段区?.textContent).toContain('需要你');
+    expect(阶段区?.textContent).not.toContain('下一步未知');
+    // 区域顺序固定：company → score → salary → title → tags → stage
+    const 区域顺序 = Array.from(卡.querySelectorAll('[data-card-region]'))
+      .map((元) => 元.getAttribute('data-card-region'));
+    expect(区域顺序).toEqual(['company', 'score', 'salary', 'title', 'tags', 'stage']);
+    // 缺公司不引发额外读取：只有进屏那一次 P5 open 读，零业务派发、零 Mock 计算分
+    expect(mock加载工作区).toHaveBeenCalledTimes(1);
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(mock适配分).not.toHaveBeenCalled();
   });
 
   // Hosted Agent 失败合同：attention 行只给 owner-safe 说明；徽标按 viewer 待办优先，
@@ -853,7 +956,7 @@ describe('在谈首页 / 企业在谈候选 · P5 Backend 分支', () => {
     置招聘屏状态({ filterRef: 职位ID });
     const { rerender } = render(<企业在谈候选 />);
     expect(mock加载工作区).toHaveBeenCalledWith('recruiter', 职位ID);
-    expect(screen.getByText('候选信息暂未披露')).toBeTruthy();
+    expect(screen.getByTestId('招聘在谈卡')).toBeTruthy();
     置招聘屏状态({ 范围: '全部', filterRef: null });
     rerender(<企业在谈候选 />);
     expect(mock加载工作区).toHaveBeenLastCalledWith('recruiter', null);

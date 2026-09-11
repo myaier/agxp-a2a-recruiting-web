@@ -197,3 +197,64 @@ describe('添加意向页 办公方式必填校验', () => {
     expect(组.getAttribute('aria-description')).toBeNull();
   });
 });
+
+describe('四类型与原引导排除接入', () => {
+  beforeEach(() => {
+    当前草稿 = { ...基础草稿 };
+    mock数据源模式 = undefined;
+    mock状态扩展 = {};
+    vi.clearAllMocks();
+  });
+  it.each(['社招全职', '校园招聘', '实习生', '兼职'])('展示并接入类型%s', async 名称 => {
+    渲染意向('/intentions/new');
+    await userEvent.click(screen.getByRole('button', { name: 名称 }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 求职类型: 名称 === '社招全职' ? '全职' : 名称 } });
+  });
+  it('校园毕业月必填，完成滚轮才写值', async () => {
+    当前草稿 = { ...基础草稿, 求职类型: '校园招聘' };
+    渲染意向('/intentions/new');
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请填写预计毕业时间');
+    expect(mock保存意向).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: /预计毕业年月/ }));
+    expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 补丁: expect.objectContaining({ 毕业时间: expect.any(String) }) }));
+    await userEvent.click(screen.getByRole('button', { name: '完成' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 毕业时间: `${new Date().getFullYear() + 1}-06` } });
+  });
+  it('实习时间必填并显示日薪；选项分别写草稿', async () => {
+    当前草稿 = { ...基础草稿, 求职类型: '实习生' };
+    渲染意向('/intentions/new');
+    expect(screen.getByText('薪资要求（日薪 · 元/天）')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock保存意向).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: '至少 3 个月' }));
+    await userEvent.click(screen.getByRole('button', { name: '每周 4 天' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 实习月数: 3 } });
+    expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 每周到岗天数: 4 } });
+  });
+  it('兼职保持月薪、无副标题和屏蔽公司；合并外包项正确映射', async () => {
+    当前草稿 = { ...基础草稿, 求职类型: '兼职' };
+    渲染意向('/intentions/new');
+    expect(screen.getByText('薪资要求（月薪 · K）')).toBeTruthy();
+    expect(screen.queryByText('屏蔽公司')).toBeNull();
+    expect(screen.queryByText('求职期望的不同，推荐的职位也会不同')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: '纯外包 / 乙方' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 排除项: { alternate_weekend_work: 'unspecified', outsourcing_only: 'excluded', onsite_only: 'unspecified', frequent_travel: 'unspecified' } } });
+  });
+  it('新增自定义保留历史原文；重复或空白添加均清空输入且不派发修改', async () => {
+    当前草稿 = { ...基础草稿, 私有偏好: '\n历史原文  \n不加班' };
+    渲染意向('/intentions/new');
+    const 输入 = screen.getByPlaceholderText('用你自己的话写') as HTMLInputElement;
+    await userEvent.type(输入, '不加班');
+    await userEvent.click(screen.getByRole('button', { name: '添加' }));
+    expect(输入.value).toBe('');
+    expect(mock派发).not.toHaveBeenCalled();
+    await userEvent.type(输入, '   ');
+    await userEvent.click(screen.getByRole('button', { name: '添加' }));
+    expect(输入.value).toBe('');
+    expect(mock派发).not.toHaveBeenCalled();
+    await userEvent.type(输入, '不出差');
+    await userEvent.click(screen.getByRole('button', { name: '添加' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 私有偏好: '\n历史原文  \n不加班\n不出差' } });
+  });
+});

@@ -345,6 +345,8 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     渲染('job_1');
     断言匹配卡在条件段与公司之前('云衢科技');
     expect(screen.getByRole('img', { name: '适配 92 分' })).toBeTruthy();
+    // 真实 wire 分在环上：绝不是「匹配分未知」占位
+    expect(screen.queryByLabelText('匹配分未知')).toBeNull();
   });
 
   // 绝不编造事实：Backend 的匹配对齐行拿真实 JD 要求核真实简历，
@@ -405,11 +407,26 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(screen.getByText('同济大学 · 硕士')).toBeTruthy();
   });
 
-  it('详情直取路径不渲染匹配分环', () => {
+  // P1 展示统一 §3.2：详情直取 wire 无推荐分 —— 藏环不伪造 0 分，改为保留分数位
+  // 尺寸的中性占位（— + 匹配分未知）；推荐卡带真实分（含真实 0）时仍渲染进度环
+  it('详情直取路径不渲染匹配分环：给中性「匹配分未知」分数位，不伪造 0 分', () => {
     渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
     渲染('job_1');
     expect(screen.getByText('匹配度分析')).toBeTruthy();
     expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+    expect(screen.getByLabelText('匹配分未知')).toBeTruthy();
+    expect(screen.getByText('—')).toBeTruthy();
+  });
+
+  it('发布人缺席（wire 无 publisher_profile）：卡位保留并显示未知占位，不整卡消失也不合成身份', () => {
+    渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
+    渲染('job_1');
+    expect(screen.getByText('发布人姓名未知 · 企业信息未知')).toBeTruthy();
+    expect(screen.getByText('职务未知')).toBeTruthy();
+    expect(screen.getByText('发布人备注未知')).toBeTruthy();
+    expect(screen.getByLabelText('发布人图片未知')).toBeTruthy();
+    // Backend 无直聊坐标：占位卡上同样没有「直接聊」
+    expect(screen.queryByRole('button', { name: '直接聊' })).toBeNull();
   });
 
   it('历史 basis 已确认（控制组）：核对行与生成分析照常渲染', () => {
@@ -492,8 +509,9 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
       });
       渲染('job_1');
       expect(screen.getByText(`结构化设置：${确认 ? '已确认' : '尚未确认'}`)).toBeTruthy();
-      // 无推荐批次：无分、无核对行、无生成分析，也无中性核对句
+      // 无推荐批次：无分（只留中性分数位）、无核对行、无生成分析，也无中性核对句
       expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+      expect(screen.getByLabelText('匹配分未知')).toBeTruthy();
       expect(screen.queryByText('学历 本科')).toBeNull();
       expect(screen.queryByText('同济大学 · 硕士')).toBeNull();
       expect(screen.queryByText(/按岗位设置的结构化要求核对/)).toBeNull();

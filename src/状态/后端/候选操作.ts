@@ -11,12 +11,13 @@ import { 清账号状态 } from './会话操作';
 
 /** 意向草稿 → 求职意向.说明 文案（Mock 分支用，与 添加意向.tsx 提交 的说明格式保持一致）。 */
 function 意向说明(draft: import('../../数据/招聘数据源类型').意向草稿型): string {
+  const 单位 = draft.薪资周期 === 'hour' ? ' 元/时' : draft.薪资周期 === 'day' || draft.求职类型 === '实习生' ? ' 元/天' : 'K';
   const 薪资文本 =
     draft.薪资下限 === null || draft.薪资上限 === null
       ? ''
       : draft.薪资下限 === draft.薪资上限
-        ? `${draft.薪资下限}K`
-        : `${draft.薪资下限}-${draft.薪资上限}K`;
+        ? `${draft.薪资下限}${单位}`
+        : `${draft.薪资下限}-${draft.薪资上限}${单位}`;
   const 期望行业文本 = draft.期望行业们.join('、');
   return 期望行业文本 === '' ? 薪资文本 : `${薪资文本}｜${期望行业文本}`;
 }
@@ -262,8 +263,8 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
       if (!是后端 || !后端) {
         const 标题 = `[${draft.工作城市}] ${draft.期望职位}`;
         const 说明 = 意向说明(draft);
-        if (draft.编辑编号) 派发({ 型: '改意向', 编号: draft.编辑编号, 标题, 说明 });
-        else 派发({ 型: '新增意向', 标题, 说明 });
+        if (draft.编辑编号) 派发({ 型: '改意向', 编号: draft.编辑编号, 标题, 说明, 草稿: draft });
+        else 派发({ 型: '新增意向', 标题, 说明, 草稿: draft });
         return;
       }
       const 键 = draft.编辑编号 ? `意向:${draft.编辑编号}` : '意向:new';

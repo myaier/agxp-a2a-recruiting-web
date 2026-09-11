@@ -3,14 +3,18 @@
 // 顶着一个真名行提前进入 /hr/chat。这里断言门控落在 S3 完成事实上。
 
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import 样式 from './消息列表.module.css';
 import 企业消息 from './企业消息';
+
+const 导航 = vi.hoisted(() => ({ 跳转: vi.fn() }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
-vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: vi.fn() }) }));
+vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: 导航.跳转 }) }));
 // P7 Task 3：Backend 分支只挂招聘端 P7 收件箱（Mock 企业消息 fixture 不进 Backend 分支）
 vi.mock('./P7/Backend会话列表', () => ({
   default: ({ 角色 }: { 角色: string }) => <div data-testid="backend-inbox" data-role={角色} />,
@@ -39,6 +43,9 @@ describe('企业消息 · 模式分支', () => {
 });
 
 describe('企业消息 · 真人会话行门控', () => {
+  beforeEach(() => {
+    导航.跳转.mockClear();
+  });
   it('S2 候选（真名已披露但未确认意向）不出现真人会话行', () => {
     mock应用状态 = { 状态: { 企业候选列表: [候选({ 真名: '沈亦舟', 阶段: '需要协调', 辅助文案: null })], 企业消息未读: {} }, 派发: vi.fn() };
     render(<企业消息 />);
@@ -60,5 +67,36 @@ describe('企业消息 · 真人会话行门控', () => {
     mock应用状态 = { 状态: { 企业候选列表: [], 企业消息未读: {} }, 派发: vi.fn() };
     render(<企业消息 />);
     expect(screen.queryByText('沈亦舟')).toBeNull();
+  });
+
+  it('S3 后真人行走共享展示：未读数字胶囊/共享行 class，点击派发 企业读消息 后导航（P1 Task 4）', async () => {
+    const 派发 = vi.fn();
+    mock应用状态 = {
+      状态: {
+        企业候选列表: [候选({ 真名: '沈亦舟', 阶段: '意向确认', 辅助文案: '去消息页私聊' })],
+        企业消息未读: { 'H-01': 2 },
+      },
+      派发,
+    };
+    const 视图 = render(<企业消息 />);
+    const 沈亦舟行 = screen.getByRole('button', { name: /沈亦舟/ });
+    expect(沈亦舟行.className).toContain(样式.会话行);
+    expect(沈亦舟行.querySelector(`.${样式.头像}`)!.textContent).toBe('沈');
+    expect(沈亦舟行.querySelector(`.${样式.红点}`)).toBeNull();
+    // 招聘端搜索条是业务视角文案，来自共享展示的受控搜索提示
+    expect(screen.getByPlaceholderText('搜索会话 / 候选 / 岗位')).toBeTruthy();
+    // H-01 AI代理动态未读正数 → 数字胶囊（undefined → 无标记的语义由 消息列表.test 覆盖）
+    const AI行 = screen.getByRole('button', { name: /AI代理动态/ });
+    expect(AI行.querySelector(`.${样式.未读徽标}`)!.textContent).toBe('2');
+    expect(AI行.querySelector(`.${样式.代理头像}`)).not.toBeNull();
+    // 点真人行 = 派发 企业读消息 再走既有无参路由
+    await userEvent.click(沈亦舟行);
+    expect(派发).toHaveBeenCalledWith({ 型: '企业读消息', 编号: 'H-02' });
+    expect(导航.跳转).toHaveBeenCalledWith('/hr/chat');
+    // S3 门控的搜索过滤照旧：真人行命中「沈」
+    await userEvent.type(screen.getByPlaceholderText('搜索会话 / 候选 / 岗位'), '沈');
+    expect(screen.queryByText('AI代理动态')).toBeNull();
+    expect(screen.getByText('沈亦舟')).toBeTruthy();
+    expect(视图.container.querySelector(`.${样式.空态}`)).toBeNull();
   });
 });

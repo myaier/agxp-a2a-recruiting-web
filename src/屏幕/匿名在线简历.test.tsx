@@ -589,6 +589,45 @@ describe('匿名在线简历 · 跨岗位缓存隔离（review-r1）', () => {
   });
 });
 
+// ── 详情统一 Task 4：简历正文 提取为共用 在线简历正文 的兼容包装 —— 独立页默认行为不变：
+//    不传 完整布局 就没有新增占位（空项目不留标题、无缺失说明、无「暂无…」行）。 ──
+describe('匿名在线简历 · 独立页默认行为（Task 4 共用正文后）', () => {
+  /** Mock 原型状态底座（岗位列表为空 = 无岗位薪资带/硬性条件可算） */
+  function 置Mock状态() {
+    mock应用状态 = {
+      数据源模式: 'mock', 派发: mock派发,
+      状态: { 岗位列表: [], 收藏候选: [], 不合适候选: {}, 已接触推荐: [], 企业候选列表: [] },
+      操作: {},
+    };
+  }
+
+  it('Mock /hr/resume/A-02（项目为空）：无「项目经历」标题、无「暂无…」与缺失占位，正文原样', () => {
+    置Mock状态();
+    render(
+      <MemoryRouter initialEntries={['/hr/resume/A-02']}>
+        <Routes>
+          <Route path="/hr/resume/:id" element={<匿名在线简历 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText('项目经历')).toBeNull();
+    expect(screen.queryByText('暂无项目经历')).toBeNull();
+    expect(document.body.textContent).not.toContain('缺失');
+    expect(document.body.textContent).not.toContain('当前在谈详情数据未提供');
+    expect(screen.getByText('九坤投资')).toBeTruthy();
+    expect(screen.getByText(/内容真实性经双向核验/)).toBeTruthy();
+  });
+
+  it('简历正文 默认（不传 完整布局）即旧版式：空项目整区不出，传了才保留标题与空状态', () => {
+    置Mock状态();
+    const 页 = render(<简历正文 档={匿名简历表['A-02']} />);
+    expect(screen.queryByText('项目经历')).toBeNull();
+    页.rerender(<简历正文 档={匿名简历表['A-02']} 完整布局 />);
+    expect(screen.getByText('项目经历')).toBeTruthy();
+    expect(screen.getByText('暂无项目经历')).toBeTruthy();
+  });
+});
+
 // ── 第二批（2026-09-09 定稿）：匿名在线简历头区去名 —— 删 大代号 与 人像占位，头区改放与列表卡
 //    同一套头行（性别图标 + 年限｜学历｜状态）；`已披露 ? 真名 : 代号` 分支删除。
 //    Backend 的 BFF 合同没给性别：只显示 年限｜学历｜状态、无图标、不报错（同 候选推荐 Backend 卡）。

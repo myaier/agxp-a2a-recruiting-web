@@ -45,6 +45,14 @@
 // JSON 应答带 no-store、PDF 带 private, no-store（应答头存证）；Mock describe 记录
 // 全部含 /match-cases 的浏览器请求并证明清单为空。
 //
+// 在谈详情完整布局（详情统一 Task 10，2026-09-10）：Spec §8.5 定向旅程 —— 双端 ×
+// Mock/Backend × 390/320px × 两 Tab 的区块完整、完整缺失布局、长正文、终局只读与
+// 可空字段「有值刷新为空」（附件入口清理 / 清单行消失）。P5 fixture 侧补齐三处已由
+// 解码合同要求但 fixture 一直缺失的应答：S0 段 screening_records（88a5948e 起）、
+// 招聘端 open 行 candidate_summary（2026-09-09 摘要接线起）、/me/account-profile 最小
+// 合法档案（交互式切身份的五支持域之一）—— 三处缺口在基线 b93436e9 就使 P5 Backend
+// 旅程整批失败（Task 10 修复，证据见任务报告）。
+//
 // P8（Task 8）：追加控制面域可变 fixture —— 凭证/会话/退出其他设备/手机号换绑、
 // 数据导出（创建幂等 + queued→running→ready 状态机 + application/zip 下载）、
 // 账号注销（body 精确 {}、202 后保护读取一律 401）与合规反馈/上下文举报
@@ -188,6 +196,113 @@ test.describe('Mock 数据源回归 @mock', () => {
 
     expect(apiRequests.filter((url) => new URL(url).pathname.startsWith('/api/v1/me/resume-files'))).toEqual([]);
     expect(apiRequests).toEqual([]);
+  });
+
+  // ── 企业名片统一（Task 3）：统一展示后 Mock 侧事实/能力不退化。
+  //    占位文案按 Spec §3/§4/§6；Mock 独有能力（三 Tab 内容、岗位层跳转、收笔落全局）保留。
+  //    两栈数据量不同，不做截图相等断言；视觉对照由 ui:check 场景 enterprise-public 负责。──
+
+  test('企业名片统一 Mock 企业公开页三 Tab/全文/未知占位与条款层 @mock', async ({ page }) => {
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await page.goto('/#/company/yunqu');
+    await expect(page.getByRole('heading', { name: '云衢科技' })).toBeVisible({ timeout: 10_000 });
+
+    // 三 Tab 切换只换正文；历程有年份/事件时用时间线文案，不另造年份
+    await expect(page.getByText(/做券商与银行的交易中台与清结算基础设施/)).toBeVisible();
+    await page.getByRole('button', { name: '企业文化' }).click();
+    await expect(page.getByText(/把复杂留给系统，把确定性交给客户/)).toBeVisible();
+    await page.getByRole('button', { name: '发展历程' }).click();
+    await expect(page.getByText(/2025 C 轮，启动交易网关多活与海外通道/)).toBeVisible();
+    await page.getByRole('button', { name: '公司简介' }).click();
+
+    // 主营业务有明确标签；相册无照片 → 一格空白图位 + 未知说明（不整卡消失）
+    await expect(page.getByText('主营业务', { exact: true })).toBeVisible();
+    await expect(page.getByText('交易中台', { exact: true })).toBeVisible();
+    await expect(page.getByRole('img', { name: '公司相册未知' })).toBeVisible();
+
+    // 作息与条款摘要：Mock 代理核对已知 → 「已提供 N 条」+ 真实已核计数
+    const 条款卡 = page.getByRole('button', { name: /作息与条款/ });
+    await expect(条款卡).toContainText('已提供 9 条条款');
+    await expect(条款卡).toContainText('3 条已由代理核对');
+
+    // 办公地：地址、补充与原型导航键都在
+    await expect(page.getByText('上海市浦东新区世纪大道 1568 号中建大厦 28 层')).toBeVisible();
+    await expect(page.getByRole('button', { name: '导航 ›' })).toBeVisible();
+
+    // 在职者反馈有 fixture 数据 → 才有统计卡与真实计数
+    await expect(page.getByText('技术氛围好', { exact: true })).toBeVisible();
+    await expect(page.getByText('晋升看产出', { exact: true })).toBeVisible();
+
+    // 工商与企业身份：Mock 工商条目保留；身份无 Mock 事实 → 明确未知，不拿展示名/首字顶替
+    await expect(page.getByText('上海云衢信息科技有限公司')).toBeVisible();
+    await expect(page.getByText('法定名称未知')).toBeVisible();
+    await expect(page.getByText('核验时间未知')).toBeVisible();
+    await expect(page.getByText('46 个在招岗位')).toBeVisible();
+
+    // 全文层固定五部分：静态档没有产品/团队 → 占位出现（Spec §7「缺字段区块出现占位」）。
+    // 层体自滚、面板封在视口 86% 内，右上 ✕ 始终在视口里；这里仍用 Escape 走键盘关闭路径
+    await page.getByRole('button', { name: '读全文 ›' }).click();
+    await expect(page.getByText('以下内容由企业自行提供，平台未逐条核实。')).toBeVisible();
+    await expect(page.getByText('产品介绍未知')).toBeVisible();
+    await expect(page.getByText('团队介绍未知')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByText('产品介绍未知')).toHaveCount(0);
+
+    // 条款层：已核/自述两组与 Mock 业务说明都还在
+    await 条款卡.click();
+    await expect(page.getByText('代理已核对', { exact: true })).toBeVisible();
+    await expect(page.getByText('公司自述，尚未核对', { exact: true })).toBeVisible();
+    await expect(page.getByText(/想让代理去核某一条/)).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // 底部岗位层：Mock 能力保留 —— 可打开，零匹配条目时给过滤说明，不编造岗位
+    await page.getByRole('button', { name: '看这家在招的 46 个岗位' }).click();
+    await expect(page.getByText(/其余 46 个岗位不匹配你当前的求职意向/)).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // Mock 全程零 /api/v1
+    expect(apiRequests).toEqual([]);
+  });
+
+  test('企业名片统一 Mock 岗位层在谈/市场入口与名片收笔语义保留 @mock', async ({ page }) => {
+    test.setTimeout(120_000);
+
+    // MiniMax：静态档 + 本地在谈 J-21 / 市场 M-01 → 岗位层两条真实入口
+    await page.goto('/#/company/minimax');
+    await expect(page.getByRole('heading', { name: 'MiniMax' })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: /看这家在招的/ }).click();
+    const 在谈条 = page.getByRole('button', { name: /你已在谈这一岗/ }).first();
+    await expect(在谈条).toBeVisible();
+    await expect(page.getByText('可让代理去谈').first()).toBeVisible();
+    await 在谈条.click();
+    await expect(page).toHaveURL(/#\/deal\/J-21$/, { timeout: 10_000 });
+
+    // 名片：收笔落全局；空白收笔不覆盖旧值；职务默认值保留
+    await page.goto('/#/hr/card');
+    await expect(page.getByRole('heading', { name: '招聘名片' })).toBeVisible({ timeout: 10_000 });
+    const 姓名 = page.getByLabel('姓名', { exact: true });
+    await expect(姓名).toHaveValue('邵铭');
+    await expect(page.getByLabel('职务')).toHaveValue('技术 VP');
+    await expect(page.getByPlaceholder('请填写姓名')).toBeVisible();
+
+    // 空白收笔视作没改：预览行直接读全局，仍旧值 —— 不把字段清成空串落全局
+    await 姓名.fill('');
+    await 姓名.blur();
+    await expect(page.getByText('邵铭', { exact: true })).toBeVisible();
+
+    // 回车收笔同一条落全局路径：预览立刻是新值
+    await 姓名.fill('测试名片收笔');
+    await 姓名.press('Enter');
+    await expect(page.getByText('测试名片收笔', { exact: true })).toBeVisible();
+
+    // 保存把当前全局值一并钉住并推进发岗（Mock 名片保存即跳发岗）
+    await page.getByRole('button', { name: '保存 · 去发岗位' }).click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/, { timeout: 10_000 });
   });
 });
 
@@ -399,6 +514,8 @@ const P4标记 = {
   // （甲 match_score 88；乙 见 P4发现fixture 里的 match_score 76）。别名只在详情 / 已筛页仍可见
   candidateRing: '适配 88 分',
   candidateBRing: '适配 76 分',
+  // 卡片统一（2026-09-10）：招聘推荐卡卡面的工作行 = candidate_summary 投影的「公司 · 现职」
+  summaryWork: 'P4 Fixture 公司 · P4 Fixture 现职',
 } as const;
 
 /** 用例自用的补充编号：固定表之外的第二张卡 / 归档岗位 / 未知坐标（同样只存在于 fixture） */
@@ -477,6 +594,8 @@ interface P4候选推荐形 {
   match_score: number;
   match_reasons: string[];
   state: 'available' | 'delegating' | 'delegated';
+  /** P4 互认：生成批次时冻结的 Job basis（非岗位当前 revision 值），必返 boolean */
+  structured_requirements_confirmed: boolean;
   job: P4CandidateJob形;
   delegation: P4委托摘要形 | null;
 }
@@ -488,6 +607,33 @@ interface P4招聘教育形 {
   degree: string;
   start_month: string;
   end_month: string | null;
+}
+
+/** P4 wire 招聘候选摘要（与 BFF契约.BFF招聘候选摘要 同构）：include=candidate_summary
+ *  展开行的七键闭合对象（或显式 null）。2026-09-09 摘要接线后招聘端两份展开列表
+ *  （P4 推荐腿 / P5 open 工作区）都必须带这个键，decode 才收。 */
+interface P4摘要形 {
+  gender: 'male' | 'female' | null;
+  experience_years: number | null;
+  job_status: 'student' | 'employed' | 'unemployed' | null;
+  degree: string | null;
+  latest_experience: { company: string | null; title: string | null } | null;
+  latest_education: { institution: string | null; major: string | null } | null;
+  personal_highlights: string[];
+}
+
+/** 摘要样本：fixture 专属标记值（Mock 数据里没有），卡上出现即证明渲染来自 HTTP */
+function P4摘要(覆盖: Partial<P4摘要形> = {}): P4摘要形 {
+  return {
+    gender: 'female',
+    experience_years: 5,
+    job_status: 'employed',
+    degree: 'P4 本科',
+    latest_experience: { company: 'P4 Fixture 公司', title: 'P4 Fixture 现职' },
+    latest_education: { institution: 'P4 Fixture 大学', major: 'P4 Fixture 专业' },
+    personal_highlights: ['P4 Fixture 摘要亮点'],
+    ...覆盖,
+  };
 }
 
 /** P4 wire 招聘候选推荐（与 BFF契约.BFF招聘候选推荐 同构：匿名 allowlist，无真名无薪资数字） */
@@ -509,7 +655,11 @@ interface P4招聘推荐形 {
   rejected: boolean;
   rejection_reason: P4淘汰原因形 | null;
   state: 'available' | 'rejected';
+  /** P4 互认：生成批次时冻结的 Job basis（非岗位当前 revision 值），必返 boolean */
+  structured_requirements_confirmed: boolean;
   delegation: P4委托摘要形 | null;
+  /** include=candidate_summary 展开页才有；单项详情/历史响应绝不携带（闭合白名单） */
+  candidate_summary?: P4摘要形 | null;
 }
 
 /** P4 wire 发现批次（与 BFF契约.BFF发现批次 同构） */
@@ -609,6 +759,26 @@ function P4深克隆<T>(值: T): T {
   return JSON.parse(JSON.stringify(值)) as T;
 }
 
+/** P4 招聘腿展开页：行带 candidate_summary（include=candidate_summary 的展开契约）。
+ *  卡对象上缺省摘要时按「显式 null」下发 —— decode 两种都收，卡面据此出未知占位。 */
+function P4招聘分页(
+  items: P4招聘推荐形[],
+  游标: string | null,
+): { recommendations: unknown[]; next_cursor: string | null } {
+  return P4分页(
+    items.map((卡) => ({ ...卡, candidate_summary: 卡.candidate_summary ?? null })),
+    false,
+    游标,
+  );
+}
+
+/** P4 单项详情是非展开响应：candidate_summary 键一出现就是契约漂移，route 侧剥掉 */
+function P4非展开卡(卡: P4招聘推荐形): P4招聘推荐形 {
+  const 克隆 = P4深克隆(卡);
+  delete 克隆.candidate_summary;
+  return 克隆;
+}
+
 /** P4 页 wrapper：两页翻页（首页 1 条 + cursor / 余下收尾显式 null）；注毒分支在第二页对象上多塞一个键 */
 function P4分页(
   items: unknown[],
@@ -704,6 +874,7 @@ function P4候选卡(覆盖: Partial<P4候选推荐形> = {}): P4候选推荐形
     match_score: 92,
     match_reasons: ['direction_match', 'compensation_overlap'],
     state: 'available',
+    structured_requirements_confirmed: true,
     job: P4CandidateJob(),
     delegation: null,
     ...覆盖,
@@ -731,7 +902,9 @@ function P4招聘卡(覆盖: Partial<P4招聘推荐形> = {}): P4招聘推荐形
     rejected: false,
     rejection_reason: null,
     state: 'available',
+    structured_requirements_confirmed: true,
     delegation: null,
+    candidate_summary: P4摘要(),
     ...覆盖,
   };
 }
@@ -1428,6 +1601,14 @@ const P5标记 = {
   问题: 'P5 Fixture 每周可以到岗几天？',
   回答: 'P5 Fixture 回答：每周可以到岗 3 天',
   叮嘱: 'P5 Fixture 只在工作日 10:00-19:00 联系',
+  // open 工作区 recruiter 展开行的摘要标记（卡上工作行的现职段，逐单不同，可当行锚点）
+  现职: {
+    甲: 'P5 Fixture 现职·甲',
+    乙: 'P5 Fixture 现职·乙',
+    丙一: 'P5 Fixture 现职·丙一',
+    丙二: 'P5 Fixture 现职·丙二',
+    丁: 'P5 Fixture 现职·丁',
+  },
 } as const;
 
 type P5生命周期词 = 'open' | 'ended' | 'completed';
@@ -1447,6 +1628,8 @@ interface P5时间线wire形 {
   occurred_at: string;
 }
 
+interface P5筛选记录wire形 { messages: unknown[]; summaries: unknown[] }
+
 interface P5阶段区wire形 {
   stage: P5阶段词;
   state: 'pending' | 'active' | 'passed' | 'ended';
@@ -1455,6 +1638,8 @@ interface P5阶段区wire形 {
   checklist: { label: string; done: boolean }[];
   transcript: P5时间线wire形[];
   instruction_receipts: { instruction_id: string; owner: P5角色词; stage: P5阶段词; expression?: string; occurred_at: string }[];
+  /** S0 展开块（include=screening_records）：匿名初筛区必在且必为对象，其余阶段带键即漂移 */
+  screening_records?: P5筛选记录wire形;
 }
 
 interface P5Case记录形 {
@@ -1486,6 +1671,8 @@ interface P5Case记录形 {
   解析: 'none' | 'pending' | 'failed' | 'succeeded';
   /** 非法分支：原样覆盖 state wire（未知词 / 矩阵外四元组），decode 必须 fail closed */
   state覆盖?: Record<string, unknown>;
+  /** open 工作区 recruiter 展开行的 candidate_summary（七键闭合对象或显式 null）；缺省 = 显式 null */
+  摘要?: P4摘要形 | null;
   /** P7（Task 7）：completed + complete 时的已发布会话坐标；handoff_pending 恒 null。 */
   conversationRef: string | null;
 }
@@ -1518,7 +1705,23 @@ function P5阶段区组(c: P5Case记录形): P5阶段区wire形[] {
     checklist: [],
     transcript: [],
     instruction_receipts: [],
+    // S0 展开块只随匿名初筛区（详情 GET 带 include=screening_records，decoder 必查）
+    ...(stage === 'anonymous_screening' ? { screening_records: { messages: [], summaries: [] } } : {}),
   }));
+}
+
+/** P5 open 招聘展开行的摘要样本：fixture 专属标记值，`词` 进现职/亮点，逐单可区分 */
+function P5摘要样本(词: string, 覆盖: Partial<P4摘要形> = {}): P4摘要形 {
+  return {
+    gender: 'male',
+    experience_years: 6,
+    job_status: 'employed',
+    degree: 'P5 本科',
+    latest_experience: { company: 'P5 Fixture 公司', title: `P5 Fixture 现职·${词}` },
+    latest_education: { institution: 'P5 Fixture 大学', major: 'P5 Fixture 专业' },
+    personal_highlights: [`P5 Fixture 亮点·${词}`],
+    ...覆盖,
+  };
 }
 
 function P5Case(基: Partial<P5Case记录形> & Pick<
@@ -1577,6 +1780,8 @@ function P5职位wire(c: P5Case记录形): Record<string, unknown> {
   };
 }
 
+/** 列表行 wire：招聘端 open 展开读取（include=candidate_summary）必须携带 candidate_summary
+ *  （null 合法 —— 摘要字段缺席语义）；历史行必不携带。候选端行只带 intention_id。 */
 function P5列表项wire(c: P5Case记录形, 角色: P5角色词): Record<string, unknown> {
   const 项: Record<string, unknown> = {
     state: P5状态wire(c),
@@ -1584,6 +1789,9 @@ function P5列表项wire(c: P5Case记录形, 角色: P5角色词): Record<string
     job: P5职位wire(c),
   };
   项[角色 === 'candidate' ? 'intention_id' : 'candidate_alias'] = 角色 === 'candidate' ? c.intentionId : c.alias;
+  // 2026-09-09 摘要接线：recruiter open 展开行必带 candidate_summary（显式 null 也合法）；
+  // candidate 行与历史行的闭合白名单没有这个键，多带即契约漂移，所以只在 open+recruiter 装配。
+  if (角色 === 'recruiter' && c.lifecycle === 'open') 项.candidate_summary = c.摘要 ?? null;
   return 项;
 }
 
@@ -1602,7 +1810,9 @@ function P5递交结果wire(c: P5Case记录形): Record<string, unknown> {
 }
 
 /** 详情 wire：候选端只带 intention_id、招聘端只带 candidate_alias；附件只落在 S1 段且
- *  招聘端必须已披露（匿名初筛段永不携带 —— 披露栅栏）；协同/终局块只接受缺席语义。 */
+ *  招聘端必须已披露（匿名初筛段永不携带 —— 披露栅栏）；协同/终局块只接受缺席语义。
+ *  S0 展开块（88a5948e 起）：详情 GET 恒带 include=screening_records，S0 段必须携带
+ *  screening_records 对象（空 messages/summaries 合法；招聘端携带候选小结会被解码拒绝）。 */
 function P5详情wire(c: P5Case记录形, 角色: P5角色词): Record<string, unknown> {
   const 附件可见 = c.已绑定 && (角色 === 'candidate' || c.已披露);
   const 详情: Record<string, unknown> = {
@@ -1612,6 +1822,9 @@ function P5详情wire(c: P5Case记录形, 角色: P5角色词): Record<string, u
     stages: c.阶段区们.map((区, 序) => ({
       ...区,
       ...P5区态(c, 序), // 段态随当前 stage 动态求值（推进后已过段转 passed、新当前段转 active）
+      ...(区.stage === 'anonymous_screening'
+        ? { screening_records: { messages: [], summaries: [] } }
+        : {}),
       ...(区.stage === 'resume_submission' && 附件可见
         ? { attachment: { file_id: P5编号.文件, file_version_id: P5编号.文件版本, display_name: P5标记.简历名 } }
         : {}),
@@ -1653,6 +1866,7 @@ function 创建P5MatchCasefixture(): P5MatchCasefixture形 {
   const 乙 = P5Case({
     caseId: P5编号.乙, lifecycle: 'open', stage: 'anonymous_screening', status: 'needs_user', step: 'human_decision',
     职位名: P5标记.乙职位名, alias: P5标记.乙别名, updatedAt: '2026-08-29T02:06:00Z',
+    摘要: P5摘要样本('乙'),
     候选: { needsAction: true, actions: ['respond_fact', 'end_screening'] },
   });
   乙.阶段区们[0]!.transcript = [
@@ -1673,12 +1887,14 @@ function 创建P5MatchCasefixture(): P5MatchCasefixture形 {
   const 丙一 = P5Case({
     caseId: P5编号.丙一, lifecycle: 'open', stage: 'resume_submission', status: 'waiting', step: 'awaiting_resume_parse',
     职位名: P5标记.丙一职位名, alias: P5标记.丙一别名, updatedAt: '2026-08-29T02:04:00Z',
+    摘要: P5摘要样本('丙一'),
     候选: { needsAction: true, actions: ['retry_resume_readiness'] },
     已绑定: true, 解析: 'pending',
   });
   const 丙二 = P5Case({
     caseId: P5编号.丙二, lifecycle: 'open', stage: 'resume_submission', status: 'waiting', step: 'awaiting_resume_parse',
     职位名: P5标记.丙二职位名, alias: P5标记.丙二别名, updatedAt: '2026-08-29T02:03:00Z',
+    摘要: P5摘要样本('丙二'),
     候选: { needsAction: true, actions: ['retry_resume_readiness'] },
     已绑定: true, 解析: 'failed',
   });
@@ -1689,6 +1905,7 @@ function 创建P5MatchCasefixture(): P5MatchCasefixture形 {
   const 甲 = P5Case({
     caseId: P5编号.甲, lifecycle: 'open', stage: 'resume_submission', status: 'needs_user', step: 'awaiting_recruiter_decision',
     职位名: P5标记.甲职位名, alias: P5标记.甲别名, updatedAt: '2026-08-29T02:05:00Z',
+    摘要: P5摘要样本('甲'),
     招聘: { needsAction: true, actions: ['decide_resume_screening'] },
     已绑定: true, 已披露: true, 解析: 'succeeded',
   });
@@ -1698,6 +1915,7 @@ function 创建P5MatchCasefixture(): P5MatchCasefixture形 {
   const 丁 = P5Case({
     caseId: P5编号.丁, lifecycle: 'open', stage: 'needs_coordination', status: 'needs_user', step: 'coordinating',
     职位名: P5标记.丁职位名, alias: P5标记.丁别名, updatedAt: '2026-08-29T02:07:00Z',
+    摘要: P5摘要样本('丁'),
     候选: { needsAction: true, actions: ['decide_coordination'] },
     招聘: { needsAction: true, actions: ['decide_coordination'] },
     协同: {
@@ -3572,7 +3790,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
           表项 = {
             role: 'candidate',
             读数: 0,
-            回执: { delegation_id: P4编号.candidateDelegation, recommendation_id: null, state: 'accepted', evaluation_id: null, case_id: null, refusal_code: null },
+            回执: { delegation_id: P4编号.candidateDelegation, recommendation_id: null, state: 'accepted', evaluation_id: null, case_id: null, refusal_code: null, failure_code: null },
           };
           p4委托表.set(键, 表项);
           for (const 卡 of P4域.候选推荐[换.intention_id ?? ''] ?? []) {
@@ -3616,7 +3834,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         const items = (url.searchParams.get('state') === 'rejected'
           ? P4域.招聘已筛[岗位编号]
           : P4域.招聘可用[岗位编号]) ?? [];
-        await route.fulfill({ status: 200, json: 信封(P4分页(items, false, 游标)) });
+        await route.fulfill({ status: 200, json: 信封(P4招聘分页(items, 游标)) });
         return;
       }
 
@@ -3669,7 +3887,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
           await route.fulfill({ status: 404, json: { error: { type: 'recommendation_not_found', message: '推荐不存在' } } });
           return;
         }
-        await route.fulfill({ status: 200, json: 信封(P4深克隆(卡)) });
+        await route.fulfill({ status: 200, json: 信封(P4非展开卡(卡)) });
         return;
       }
 
@@ -3693,7 +3911,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
           表项 = {
             role: 'recruiter',
             读数: 0,
-            回执: { delegation_id: P4编号.recruiterDelegation, recommendation_id: 推荐编号, state: 'accepted', evaluation_id: null, case_id: null, refusal_code: null },
+            回执: { delegation_id: P4编号.recruiterDelegation, recommendation_id: 推荐编号, state: 'accepted', evaluation_id: null, case_id: null, refusal_code: null, failure_code: null },
           };
           p4委托表.set(键, 表项);
           for (const 卡 of P4域.招聘可用[换.job_id ?? ''] ?? []) {
@@ -3725,6 +3943,12 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
     // ── resume ──
     if (path === '/api/v1/me/resume' && method === 'GET') {
       await route.fulfill({ status: 200, json: 信封(fixture简历) });
+      return;
+    }
+    // 候选账号档案（水合五支持域之一）：最小合法档案 —— 无头像。缺这条时兜底空信封
+    // 会让 解候选账号档案 fail closed，交互式切身份（hr→candidate）整轮被第一错误挡住。
+    if (path === '/api/v1/me/account-profile' && method === 'GET') {
+      await route.fulfill({ status: 200, json: 信封({ avatar_url: null, revision: 1, updated_at: null }) });
       return;
     }
     if (path === '/api/v1/me/resume/summary' && method === 'PATCH') {
@@ -4825,6 +5049,10 @@ async function 走完后端发岗向导(page: Page) {
   await page.getByPlaceholder('搜索城市名，从下方候选选择').fill('fixture');
   await page.getByRole('button', { name: 标记.城市display, exact: true }).click();
   await page.getByPlaceholder(/浦东新区世纪大道/).fill('Fixture 市 Fixture 路 1 号');
+  // 产品当前要求：改过硬性条件（学历/薪资）后必须勾选确认项才能发布（缺这步只弹
+  // 「请先勾选上面的确认项」，发布键不生效）。这是既有 fixture helper 补当前 UI 必需步骤，
+  // 不放宽任何断言。
+  await page.getByLabel(/我已确认经验和学历设置将作为自动匹配依据/).check();
   await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
 }
 
@@ -5546,6 +5774,303 @@ test.describe('P1C 招聘组织 fixture @backend', () => {
     // Mock 分支的静态公司页内容不出现（不回退静态档）
     await expect(page.getByText('公司自述')).toHaveCount(0);
     await expect(page.getByText('作息与条款')).toHaveCount(0);
+  });
+
+  // ── 企业名片统一（Task 3）：两栈消费同一份 企业公开页展示/招聘名片展示。
+  //    Backend 侧验证「合法缺字段是占位、契约错误/失败不是成功占位页」与能力差异，
+  //    不复写上方三条 P1C 既有回归，只新增统一展示的跨模式断言。──
+
+  test('企业名片统一 Backend 公开页真实字段上屏、缺字段占位、岗位/导航能力不可执行 @backend', async ({ page }) => {
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-org-full',
+      记录目录请求: () => undefined,
+      // 无企业关系：公开页只经 URL 按 opaque ID 直读，不经过名片当前关系
+      招聘组织Fixture: 带企业关系(P1C招聘组织Fixture, [], { [P1C标记.组织甲编号]: P1C组织甲() }),
+      主体初始角色: 'recruiter',
+    });
+
+    await page.goto(`/#/company/${P1C标记.组织甲编号}`);
+    await expect(page.getByText(P1C标记.组织甲法定名)).toBeVisible({ timeout: 10_000 });
+
+    // 身份行来自 HTTP：法定名/展示名/核验时间（slice(0,10)）；岗位数是真实已核验在招数
+    await expect(page.getByText('2026-08-25', { exact: true })).toBeVisible();
+    await expect(page.getByText('天使轮 · 20-99 人 · Fixture 行业')).toBeVisible();
+    // 同一岗位数文案出现在「企业身份」行与底部固定区两处
+    await expect(page.getByText('1 个已核验在招岗位')).toHaveCount(2);
+
+    // 能力不可执行：无岗位层入口、无导航键，只给事实与不可点说明，绝不给假按钮
+    await expect(page.getByRole('button', { name: /看这家在招的/ })).toHaveCount(0);
+    await expect(page.getByText('岗位列表暂不可用')).toBeVisible();
+    await expect(page.getByRole('button', { name: '导航 ›' })).toHaveCount(0);
+    await expect(page.getByText('导航暂不可用')).toBeVisible();
+
+    // 统一展示下两栈同结构：接口没有的字段是明确占位，不是整卡消失。
+    // 文化/历程占位在对应 Tab 正文里：切 Tab 只换正文，不改事实来源
+    await expect(page.getByText(P1C标记.公司介绍)).toBeVisible();
+    await page.getByRole('button', { name: '企业文化' }).click();
+    await expect(page.getByText('企业文化未知')).toBeVisible();
+    await page.getByRole('button', { name: '发展历程' }).click();
+    await expect(page.getByText('发展历程未知')).toBeVisible();
+    await page.getByRole('button', { name: '公司简介' }).click();
+    await expect(page.getByText('主营业务', { exact: true })).toBeVisible();
+    await expect(page.getByText('Fixture 主营业务一')).toBeVisible();
+    await expect(page.getByRole('img', { name: '公司相册未知' })).toBeVisible();
+    await expect(page.getByRole('img', { name: '企业 LOGO 未知' })).toBeVisible();
+    await expect(page.getByText('在职者反馈未知')).toBeVisible();
+    await expect(page.getByText('工商资料未知')).toBeVisible();
+    // 反馈未知就不画统计条，也不出现匿名评价来源说明
+    await expect(page.getByText('来自平台内匿名评价')).toHaveCount(0);
+
+    // 条款：福利标签是企业自述 → 「已提供 N 条条款」，没有代理核对结果就没有已核计数
+    const 条款卡 = page.getByRole('button', { name: /作息与条款/ });
+    await expect(条款卡).toContainText('已提供 1 条条款');
+    await expect(条款卡).not.toContainText('条已由代理核对');
+    await expect(条款卡).toContainText('双休');
+
+    // 全文层：产品/团队在固定五部分里完整可达（Backend 不再有独立产品/团队卡）
+    await page.getByRole('button', { name: '读全文 ›' }).click();
+    await expect(page.getByText('Fixture 产品介绍')).toBeVisible();
+    await expect(page.getByText('Fixture 成员简介')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // 条款层：接口没有代理核对结果 → 「代理核对信息未知」，不写「0 条已核」冒充已检查
+    await 条款卡.click();
+    await expect(page.getByText('代理核对信息未知')).toBeVisible();
+    await expect(page.getByText(/已核对 0 条条款/)).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    // 来源页脚：公开信息来源与身份核验说明
+    await expect(page.getByText('公开信息由企业主页提供 · 企业身份经平台核验')).toBeVisible();
+  });
+
+  test('企业名片统一 Backend 合法空公开档案逐字段占位且真实 0 不是未知 @backend', async ({ page }) => {
+    // 全空但合法的公开档案：每个字段都转成对应「未知」，0 岗位照常显示 0（真实 0 ≠ 未知），
+    // 整页仍是一张成功页，不是「打不开」的诚实空态。
+    const 空档案: P1C企业档案形 = {
+      ...P1C企业档案(),
+      brand_name: '',
+      industry: null,
+      company_size: '',
+      funding_stage: '',
+      office_address: '',
+      benefit_codes: [],
+      work_schedule: '',
+      company_intro: '',
+      business_items: [],
+      product_intro: '',
+      team_members: [],
+      logo: null,
+      office_media: [],
+      company_media: [],
+    };
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-org-empty',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: 带企业关系(P1C招聘组织Fixture, [], {
+        [P1C标记.组织甲编号]: {
+          legal_name: P1C标记.组织甲法定名,
+          display_name: P1C标记.组织甲名,
+          profile: 空档案,
+        },
+      }),
+      主体初始角色: 'recruiter',
+      // 内置公开企业路由的 active_verified_job_count 固定为 1；本用例经覆盖给出合法 0
+      覆盖: {
+        [`GET /api/v1/organizations/${P1C标记.组织甲编号}`]: () => ({
+          status: 200,
+          响应: 信封({
+            organization_id: P1C标记.组织甲编号,
+            legal_name: P1C标记.组织甲法定名,
+            display_name: P1C标记.组织甲名,
+            verified_at: '2026-08-25T00:00:00Z',
+            profile: 空档案,
+            active_verified_job_count: 0,
+          }),
+        }),
+      },
+    });
+
+    await page.goto(`/#/company/${P1C标记.组织甲编号}`);
+    await expect(page.getByText(P1C标记.组织甲法定名)).toBeVisible({ timeout: 10_000 });
+
+    // 规模行逐字段补未知后拼接；必需身份字段仍来自 HTTP，不用占位掩盖契约
+    await expect(page.getByText('融资阶段未知 · 公司规模未知 · 行业未知')).toBeVisible();
+    await expect(page.getByText('2026-08-25', { exact: true })).toBeVisible();
+
+    // 逐字段占位：每个缺失块保留区块与标签（文化/历程占位在各自 Tab 正文里）
+    await expect(page.getByText('公司简介未知')).toBeVisible();
+    await page.getByRole('button', { name: '企业文化' }).click();
+    await expect(page.getByText('企业文化未知')).toBeVisible();
+    await page.getByRole('button', { name: '发展历程' }).click();
+    await expect(page.getByText('发展历程未知')).toBeVisible();
+    await page.getByRole('button', { name: '公司简介' }).click();
+    await expect(page.getByText('主营业务未知')).toBeVisible();
+    await expect(page.getByRole('img', { name: '公司相册未知' })).toBeVisible();
+    await expect(page.getByText('作息信息未知')).toBeVisible();
+    await expect(page.getByText('福利信息未知')).toBeVisible();
+    await expect(page.getByText('办公地址未知')).toBeVisible();
+    await expect(page.getByText('地址补充未知')).toBeVisible();
+    await expect(page.getByText('在职者反馈未知')).toBeVisible();
+    await expect(page.getByText('工商资料未知')).toBeVisible();
+
+    // 全文层五部分里产品/团队同样占位
+    await page.getByRole('button', { name: '读全文 ›' }).click();
+    await expect(page.getByText('产品介绍未知')).toBeVisible();
+    await expect(page.getByText('团队介绍未知')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // 真实 0 照常展示（身份行 + 底栏两处），岗位列表仍不可用
+    await expect(page.getByText('0 个已核验在招岗位')).toHaveCount(2);
+    await expect(page.getByText('岗位列表暂不可用')).toBeVisible();
+    // 合法空档案 ≠ 请求失败：不出现诚实空态
+    await expect(page.getByText('这家企业暂时打不开')).toHaveCount(0);
+  });
+
+  test('企业名片统一 Organization 读取失败只见诚实空态不见成功占位区 @backend', async ({ page }) => {
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-org-fail',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: 带企业关系(P1C招聘组织Fixture, [P1C管理员关系], { [P1C标记.组织甲编号]: P1C组织甲() }),
+      主体初始角色: 'recruiter',
+      覆盖: {
+        'GET /api/v1/organizations/org-fixture-gone': () => ({
+          status: 404,
+          响应: { error: { type: 'organization_not_found', message: '企业不存在' } },
+        }),
+      },
+    });
+
+    await page.goto('/#/company/org-fixture-gone');
+    await expect(page.getByText('这家企业暂时打不开')).toBeVisible({ timeout: 10_000 });
+    // 失败页不出现成功页的任何占位/结构：占位只属于「成功取得资料后的合法缺失」
+    await expect(page.getByText('企业名称未知')).toHaveCount(0);
+    await expect(page.getByText('公司简介未知')).toHaveCount(0);
+    await expect(page.getByText('主营业务未知')).toHaveCount(0);
+    await expect(page.getByText('工商资料未知')).toHaveCount(0);
+    await expect(page.getByText('岗位列表暂不可用')).toHaveCount(0);
+    await expect(page.getByText('公司自述')).toHaveCount(0);
+    await expect(page.getByText('作息与条款')).toHaveCount(0);
+    await expect(page.getByText(P1C标记.公司介绍)).toHaveCount(0);
+  });
+
+  test('企业名片统一 名片空公开档案预览占位且未知不进输入与提交 @backend', async ({ page }) => {
+    // 全新招聘方 onboarding fixture：档案首读 404（合法的「还没有」）→ 名片空值态
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-card-empty',
+      记录目录请求: () => undefined,
+      招聘方OnboardingFixture: 创建招聘方OnboardingFixture(),
+    });
+
+    await 以招聘方进入名片(page);
+    await expect(page.getByRole('heading', { name: '招聘名片' })).toBeVisible({ timeout: 10_000 });
+
+    // 预览三段占位 + 无图的中性空白头像位（不用姓名首字/企业字标冒充照片）
+    await expect(page.getByText('姓名未知')).toBeVisible();
+    await expect(page.getByText('职务未知')).toBeVisible();
+    await expect(page.getByText('企业信息未知')).toBeVisible();
+    await expect(page.getByRole('img', { name: '头像未知' })).toBeVisible();
+
+    // 「未知」只进展示：输入框的值是空串，占位符是可行动提示
+    await expect(page.getByLabel('姓名')).toHaveValue('');
+    await expect(page.getByLabel('职务')).toHaveValue('');
+    await expect(page.getByLabel('公司')).toHaveValue('');
+    await expect(page.getByPlaceholder('请填写姓名')).toBeVisible();
+    await expect(page.getByPlaceholder('请填写职务')).toBeVisible();
+    await expect(page.getByPlaceholder('请填写公司名称')).toBeVisible();
+
+    // 空值保存：本地校验拦截，一个请求都不发，也不把占位文案写进任何提交
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page.getByText('请填写姓名')).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/#\/hr\/card$/);
+  });
+
+  test('企业名片统一 实名只读姓名保留公开名且认证标记按事实 @backend', async ({ page }) => {
+    const 写入们: { path: string; method: string; body: unknown }[] = [];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-card-verified',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: {
+        ...P1C招聘组织Fixture,
+        profile: {
+          ...P1C招聘组织Fixture.profile,
+          personal_verification_status: 'verified',
+          verified_name: '沈实名',
+          public_name: '公开马甲名',
+        },
+      },
+      主体初始角色: 'recruiter',
+      请求拦截: ({ path, method, body }) => {
+        if (method !== 'GET') 写入们.push({ path, method, body });
+      },
+    });
+
+    // 应用内普通编辑入口（非注册流）→ 主按钮是「保存」
+    await page.goto('/#/hr/card');
+    await expect(page.getByText('姓名（已实名，不可修改）')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+
+    // 只读姓名在预览与只读行各出现一次；公开名不上屏
+    await expect(page.getByText('沈实名')).toHaveCount(2);
+    await expect(page.getByLabel('姓名')).toHaveCount(0);
+    await expect(page.getByText('公开马甲名')).toHaveCount(0);
+    await expect(page.getByText('已认证', { exact: true })).toBeVisible();
+
+    // 保存仍提交原公开名：实名只读不把 public_name 擅自替换成实名姓名
+    await page.getByLabel('公司').fill('实名客户公司');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByText('保存成功')).toBeVisible({ timeout: 10_000 });
+    const 档案写 = 写入们.find((项) => 项.path === '/api/v1/recruiter/profile' && 项.method === 'PATCH');
+    expect(档案写).toBeDefined();
+    expect(档案写!.body).toEqual({ public_name: '公开马甲名', title: P1C标记.招聘方职务 });
+  });
+
+  test('企业名片统一 名片保存失败保留输入与暂存头像并可重试 @backend', async ({ page }) => {
+    const 写入们: { path: string; method: string }[] = [];
+    let 档案写数 = 0;
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-uni-card-retry',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: P1C招聘组织Fixture,
+      请求拦截: ({ path, method }) => {
+        if (method !== 'GET') 写入们.push({ path, method });
+      },
+      覆盖: {
+        'PATCH /api/v1/recruiter/profile': () => {
+          档案写数 += 1;
+          if (档案写数 === 1) {
+            return { status: 500, 响应: { error: { type: 'internal_error', message: 'fixture 故障' } } };
+          }
+          return undefined; // 重试这一次放行给内置 fixture
+        },
+      },
+    });
+
+    await 以招聘方进入名片(page);
+    await expect(page.getByLabel('姓名')).toHaveValue(P1C标记.招聘方公开名);
+    await page.getByLabel('姓名').fill('重试招聘方');
+    await page.getByLabel('职务').fill('资深招聘');
+    await page.getByLabel('公司').fill('重试客户公司');
+    await page.setInputFiles('input[aria-label="更换头像"]', {
+      name: '重试头像.png', mimeType: 'image/png', buffer: 一像素PNG,
+    });
+    // 暂存预览：服务端成功前只是内存预览，不落权威档案
+    await expect(page.getByRole('img', { name: '头像预览' })).toBeVisible();
+
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page.getByText('后端服务暂时不可用，请稍后重试')).toBeVisible({ timeout: 10_000 });
+    // 失败保留输入、文件与预览，不离开本屏，按钮也不再是保存中
+    await expect(page).toHaveURL(/#\/hr\/card$/);
+    await expect(page.getByLabel('姓名')).toHaveValue('重试招聘方');
+    await expect(page.getByLabel('职务')).toHaveValue('资深招聘');
+    await expect(page.getByLabel('公司')).toHaveValue('重试客户公司');
+    await expect(page.getByRole('img', { name: '头像预览' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '保存中…' })).toHaveCount(0);
+
+    // 同一个保存键重试：PATCH 与头像 POST 各放行一次，随后按注册流推进发岗
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/, { timeout: 20_000 });
+    expect(写入们.filter((项) => 项.path === '/api/v1/recruiter/profile' && 项.method === 'PATCH')).toHaveLength(2);
+    expect(写入们.some((项) => 项.path === '/api/v1/recruiter/avatar' && 项.method === 'POST')).toBe(true);
   });
 });
 
@@ -6844,7 +7369,12 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
 
   test('P4 详情直取走 canonical job GET，同一批 HTTP 标记上屏 @backend', async ({ page }) => {
     const 请求序: string[] = [];
-    await 装P4候选(page, { 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
+    // 用例前提「无任何快照 → canonical job GET」：推荐清单显式置空（合法空页）。
+    // 2026-09-10 修复 fixture 缺 structured_requirements_confirmed 后默认清单可解码，
+    // 若保留默认快照，详情会拿到推荐坐标、不感兴趣不再禁用 —— 那是另一条链路。
+    const 空推荐fixture = P4发现fixture();
+    空推荐fixture.候选推荐 = {};
+    await 装P4候选(page, { fixture: 空推荐fixture, 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
 
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
@@ -6993,8 +7523,9 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}$`));
 
     // 首次 PUT 500：服务端先行 —— 不回列表，权威数组原样两张卡
+    // （远端 message 不进 UI，500 统一收口为安全文案）
     await page.getByRole('button', { name: '不感兴趣' }).click();
-    await expect(page.getByText('fixture 首次不感兴趣失败')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('后端服务暂时不可用，请稍后重试').first()).toBeVisible({ timeout: 10_000 });
     await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}$`));
     expect(fixture.候选推荐[P4编号.intention]).toHaveLength(2);
 
@@ -7019,10 +7550,11 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
     await page.getByRole('button', { name: '推荐', exact: true }).click();
 
-    // 列表：别名/摘要逐字来自 fixture；请求按当前岗位 scope 发出
+    // 列表：卡面摘要逐字来自 HTTP fixture 的 candidate_summary 投影（2026-09-09 摘要接线，
+    // include=candidate_summary 展开页）；请求按当前岗位 scope 发出
     await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(P4标记.candidateSummary).first()).toBeVisible();
-    expect(请求序.some((项) => 项 === `GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations?limit=50`)).toBe(true);
+    await expect(page.getByText(P4标记.summaryWork).first()).toBeVisible();
+    expect(请求序.some((项) => 项 === `GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations?limit=50&include=candidate_summary`)).toBe(true);
 
     // 详情：强制重读权威详情后渲染同一张卡的画像
     // J（Task 8）：点卡落 canonical 双坐标 URL（岗位 + 推荐都来自卡片坐标）
@@ -7031,7 +7563,8 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     // 先等列表卸载（hash 已换而 React 未换树的瞬态窗里，列表摘要仍会在 DOM）
     await expect(page.getByText('你的AI代理从人才库筛出')).toHaveCount(0, { timeout: 15_000 });
     await expect(page.getByText(P4标记.candidateSummary)).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(P4标记.candidateAlias)).toBeVisible();
+    // 去名改版（2026-09-09 第二批）：别名也不上匿名在线简历页，锚定简历正文段标
+    await expect(page.getByText('个人优势').first()).toBeVisible();
     expect(请求序).toContain(`GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations/${P4编号.recruiterRecommendation}`);
 
     // 身份/薪资 canary：HTTP 从未下发真名/直聊/经历段/年龄性别/期望薪资，页面一概不渲染；
@@ -7124,10 +7657,12 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await page.getByRole('button', { name: '推荐', exact: true }).click();
     await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible({ timeout: 15_000 });
 
-    // 无确认层：点击立即发起，页面全程没有弹层；卡原地长出「AI代理已接触」
+    // 无确认层：点击立即发起，页面全程没有弹层；卡原地长出 accepted 的权威文案
+    // 「已提交给 AI，等待处理」——「AI代理已接触」要 case_started + 非空 case_id，
+    // 而招聘端 P4 委托恒不制造 Case（本 fixture 单项 GET 也恒 accepted）
     // （滑动行整行 role=button 的可及名含全卡文字，去聊键按真实 <button> 定位）
     await page.locator('button:has-text("让AI代理去聊")').first().click();
-    await expect(page.getByText('AI代理已接触')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('已提交给 AI，等待处理')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('dialog')).toHaveCount(0);
 
     const 委托POST = 请求序.filter((项) => 项.path === '/api/v1/recruiter/candidate-delegations' && 项.method === 'POST');
@@ -7141,7 +7676,7 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await page.waitForTimeout(400);
     expect(page.url()).toMatch(/#\/hr$/);
     expect(fixture.变更请求).toHaveLength(1);
-    await expect(page.getByText('AI代理已接触')).toBeVisible();
+    await expect(page.getByText('已提交给 AI，等待处理')).toBeVisible();
   });
 
   test('P4 读取遇 401：统一清理把 P4 UI 带回登录页 @backend', async ({ page }) => {
@@ -7320,10 +7855,11 @@ test.describe('P4 Mock 数据源隔离 @mock', () => {
     await expect(page.getByRole('img', { name: '男' }).first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('江叙白')).toHaveCount(0);
 
-    // 详情：匿名在线简历（Mock 分支）
+    // 详情：匿名在线简历（Mock 分支）。去名改版第二批后头区也是 候选头行，
+    // 代号/真名都不上页面，锚定简历正文段标
     await page.getByRole('button', { name: '查看候选画像' }).first().click();
     await expect(page).toHaveURL(/#\/hr\/resume\//);
-    await expect(page.getByText('江叙白').first()).toBeVisible();
+    await expect(page.getByText('个人优势').first()).toBeVisible({ timeout: 10_000 });
 
     // 回列表：收藏（本地）→ 委托（本地）→ 左滑淘汰（本地）。
     // 淘汰放最后：卡片移除会让列表位移，紧随其后的点击会跟重渲染抢布局
@@ -7628,13 +8164,15 @@ async function 装P5双角色(
 }
 
 /** 纵序断言：各标记文本按给定顺序自上而下（服务端顺序原样保留，无客户端重排） */
-async function 断言纵序(page: Page, 文本们: readonly string[]) {
+async function 断言纵序(page: Page, 项们: readonly (string | Locator)[]) {
   const 纵们: number[] = [];
-  for (const 文本 of 文本们) {
-    const 定位 = page.getByText(文本).first();
+  for (const 项 of 项们) {
+    // string = 文本锚点（.first()）；Locator = 同词多元素时的显式定位（如「职位详情」
+    // 既是 Tab 按钮名又是区块标题，取内容侧的 .last()）
+    const 定位 = typeof 项 === 'string' ? page.getByText(项).first() : 项;
     await 定位.waitFor({ state: 'visible', timeout: 10_000 });
     const 框 = await 定位.boundingBox();
-    if (!框) throw new Error(`P5 标记不可见：${文本}`);
+    if (!框) throw new Error(`P5 标记不可见：${项}`);
     纵们.push(框.y);
   }
   for (let 序 = 1; 序 < 纵们.length; 序 += 1) {
@@ -7678,19 +8216,27 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await expect(page.getByText('代理处理中', { exact: true })).toHaveCount(1);
 
     // ── 切招聘端：同一批 Case 的 needs_action 由 viewer 重新裁决 ──
+    // 招聘端在谈卡 2026-09-09 起只渲染 candidate_summary 摘要 + 阶段段（别名/冻结职位
+    // 事实退场）；fixture 摘要恒 null → 首行中性「候选信息暂未披露」，就绪锚点随之换。
     await page.goto('/#/identity?switch=1&from=app');
     await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 30_000 });
-    await expect(page.getByText(P5标记.甲职位名)).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(P5标记.甲别名)).toBeVisible();
-    // 甲：候选端「代理处理中」→ 招聘端「需要你」（backend J5b 同款分歧）
+    // 卡片统一（2026-09-10）后招聘端在谈卡面 = 候选摘要 + 阶段区：Case 职位名/别名退场，
+    // 行锚点改用 candidate_summary 投影的现职标记（逐单不同，逐字来自 HTTP fixture）
+    await expect(page.getByText(P5标记.现职.甲)).toBeVisible({ timeout: 20_000 });
+    // 甲：候选端「代理处理中」→ 招聘端「需要你」（backend J5b 同款分歧）。
+    // 卡片统一后徽标统一走 从P5到阶段：needs_action → 需要你，否则 代理处理中（候选端同映射）。
+    // 首页唯甲：需要你 ×1、代理处理中 ×0
     await expect(page.getByText('需要你', { exact: true })).toHaveCount(1);
     await expect(page.getByText('代理处理中', { exact: true })).toHaveCount(0);
-    expect(请求序).toContain(`GET /api/v1/recruiter/match-cases?job_id=${P5编号.job}&limit=50`);
+    expect(请求序).toContain(`GET /api/v1/recruiter/match-cases?job_id=${P5编号.job}&limit=50&include=candidate_summary`);
     await page.getByRole('button', { name: '加载更多' }).click();
-    await expect(page.getByText(P5标记.丁职位名)).toBeVisible({ timeout: 10_000 });
-    await 断言纵序(page, [P5标记.甲职位名, P5标记.丁职位名, P5标记.乙职位名, P5标记.丙一职位名, P5标记.丙二职位名]);
-    expect(请求序).toContain(`GET /api/v1/recruiter/match-cases?job_id=${P5编号.job}&limit=50&cursor=p5pg2`);
+    await expect(page.getByText(P5标记.现职.丁)).toBeVisible({ timeout: 10_000 });
+    await 断言纵序(page, [P5标记.现职.甲, P5标记.现职.丁, P5标记.现职.乙, P5标记.现职.丙一, P5标记.现职.丙二]);
+    // 读尽后：甲/丁 needs_action → 需要你 ×2；乙/丙一/丙二 waiting → 代理处理中 ×3
+    await expect(page.getByText('需要你', { exact: true })).toHaveCount(2);
+    await expect(page.getByText('代理处理中', { exact: true })).toHaveCount(3);
+    expect(请求序).toContain(`GET /api/v1/recruiter/match-cases?job_id=${P5编号.job}&limit=50&include=candidate_summary&cursor=p5pg2`);
 
     // 候选端专属上下文（intention_id）绝不上招聘端的屏
     await expect(page.getByText(new RegExp(P6标记.意向编号))).toHaveCount(0);
@@ -7739,10 +8285,13 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     // 首个导航就是详情深链：列表从未挂载，context 只来自详情 GET
     await page.goto(`/#/deal/${P5编号.乙}`);
     await expect(page.getByText(P5标记.乙职位名).first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(`意向 ${P6标记.意向编号}`)).toBeVisible();
-    await expect(page.getByText(P5标记.问题)).toBeVisible();
-    await expect(page.getByRole('button', { name: '提交回答' })).toBeVisible();
+    // 意向 ID 是内部坐标（P5 Task 4 起不进可见内容），深链渲染绝不依赖它
+    await expect(page.getByText(new RegExp(P6标记.意向编号))).toHaveCount(0);
     await expect(page.getByText('轮次 1/3')).toBeVisible();
+    // 当前问题在 S0 段内出现两处（时间线气泡 + 事实问题卡「问：」前缀）——
+    // Task 5 评审记录的已知展示重复，语义断言只认第一个
+    await expect(page.getByText(P5标记.问题).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: '提交回答' })).toBeVisible();
     expect(请求序).toContain(`GET /api/v1/me/match-cases/${P5编号.乙}`);
     expect(请求序.filter((项) => /\/match-cases\?/.test(项))).toEqual([]); // 零列表/历史读取
 
@@ -7765,8 +8314,14 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await 装P5招聘(page, { 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
 
     await page.goto(`/#/hr/candidate/${P5编号.甲}`);
-    await expect(page.getByText(P5标记.甲别名).first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(P5标记.甲职位名).first()).toBeVisible();
+    // 详情统一（spec §3.1）：招聘顶栏去名 —— alias 不显示，画像位置全保留并显示缺失，
+    // 冻结职位 · 城市 · 薪资带由岗位上下文单独承载
+    await expect(page.getByText(P5标记.甲职位名).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(P5标记.甲别名)).toHaveCount(0);
+    await expect(page.getByText('经验缺失')).toBeVisible();
+    await expect(page.getByText('学历缺失')).toBeVisible();
+    await expect(page.getByText('求职状态缺失')).toBeVisible();
+    await expect(page.getByRole('img', { name: '性别未知' })).toBeVisible();
     await expect(page.getByText('需要你', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '通过初筛' })).toBeVisible();
     await expect(page.getByRole('button', { name: '不合适' })).toBeVisible();
@@ -7783,7 +8338,8 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await 装P5候选(page, { fixture, 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
 
     await page.goto(`/#/deal/${P5编号.乙}`);
-    await expect(page.getByText(P5标记.问题)).toBeVisible({ timeout: 20_000 });
+    // 问题文本两处出现（时间线气泡 + 事实问题卡）—— Task 5 评审记录的已知展示重复
+    await expect(page.getByText(P5标记.问题).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('补充事实')).toBeVisible();
 
     // 首答两把 503（第一把被传输层受控重试同键消耗，第二把把失败递到屏层）：
@@ -7823,13 +8379,14 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await page.goto(`/#/deal/${P5编号.丙二}`);
     await expect(page.getByRole('button', { name: '重试校验' })).toBeVisible({ timeout: 20_000 });
 
-    // 首次递交：失败解析挡披露（409 明确提示），卡仍在
+    // 首次递交：失败解析挡披露（409 → 取后端错误文案 收口为通用提示），卡仍在
     await page.getByRole('button', { name: '重试校验' }).click();
     const 披露框 = page.getByRole('dialog');
     await expect(披露框.getByText(/这一 Case 递交/)).toBeVisible();
     await expect(披露框.getByText(new RegExp(P5标记.简历名))).toBeVisible();
     await 披露框.getByRole('button', { name: '确认递交' }).click();
-    await expect(page.getByText('简历解析未通过，请重试').first()).toBeVisible({ timeout: 10_000 });
+    // 409 resume_readiness_failed 的远端 message 不进 UI（真实性修复 D）：统一收口文案
+    await expect(page.getByText('请求失败，请稍后再试').first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: '重试校验' })).toBeVisible();
 
     // 解析恢复后同键重放同一对（file/version 与 typed 附件逐字一致）→ 披露成功
@@ -7851,9 +8408,14 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await page.goto('/#/identity?switch=1&from=app');
     await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 30_000 });
-    for (const [编号, 别名] of [[P5编号.丙一, P5标记.丙一别名], [P5编号.乙, P5标记.乙别名]] as const) {
+    for (const [编号, 职位名, 别名] of [
+      [P5编号.丙一, P5标记.丙一职位名, P5标记.丙一别名],
+      [P5编号.乙, P5标记.乙职位名, P5标记.乙别名],
+    ] as const) {
       await page.goto(`/#/hr/candidate/${编号}`);
-      await expect(page.getByText(别名).first()).toBeVisible({ timeout: 15_000 });
+      // 就绪锚点 = 岗位上下文（冻结职位 · 城市 · 薪资带）；去名裁定：别名不上详情顶栏
+      await expect(page.getByText(职位名).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(别名)).toHaveCount(0);
       // 姓名只在 /me/resume（候选端会话已读过）里存在；P5 投影绝无渲染路径
       await expect(page.getByText(标记.主体真名)).toHaveCount(0);
       // 无 PDF 入口：附件行（PDF 徽标 + 文件名）一个都不出现
@@ -7971,8 +8533,11 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     const 私聊键 = page.getByRole('button', { name: '开始私聊' });
     await expect(私聊键).toBeVisible();
     await expect(私聊键).toBeDisabled();
-    // completed 终态只读：零动作卡零输入
+    // completed 终态只读（Task 10 口径）：底部保留为只读区域、零发送 —— 位置断言（无输入
+    // 控件）保留，同时正向钉只读说明与发送键缺席
     await expect(page.getByRole('button', { name: '确认意向' })).toHaveCount(0);
+    await expect(page.getByText('当前在谈已结束，仅可查看')).toBeVisible();
+    await expect(page.getByRole('button', { name: '发送', exact: true })).toHaveCount(0);
     await expect(page.getByPlaceholder('有想法就告诉你的AI代理')).toHaveCount(0);
 
     // P7 Task 7：pending 不是详情终局 —— 3 秒节拍继续权威重读（same-party 长期
@@ -8017,18 +8582,23 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     expect(请求序).toContain('GET /api/v1/me/match-cases/history?lifecycle=ended&limit=50');
     await expect(page.getByRole('button', { name: '加载更多' })).toHaveCount(0);
 
-    // ended 详情：终局摘要原样（wire outcome/reason 不翻译），零动作零输入
+    // ended 详情：终局摘要原样（wire outcome/reason 不翻译），底部只读区域、零发送
+    //（Task 10 口径：位置断言保留 + 正向钉只读说明与发送键缺席）
     await page.getByText(P5标记.戊职位名).click();
     await expect(page.getByText('终局', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('user_ended').first()).toBeVisible();
+    await expect(page.getByText('当前在谈已结束，仅可查看')).toBeVisible();
+    await expect(page.getByRole('button', { name: '发送', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '提交回答' })).toHaveCount(0);
     await expect(page.getByPlaceholder('有想法就告诉你的AI代理')).toHaveCount(0);
 
-    // completed 详情同样只读（移交文案 + 恒禁用的开始私聊）
+    // completed 详情同样只读（移交文案 + 恒禁用的开始私聊 + 只读底栏零发送）
     await page.goto('/#/archived');
     await page.getByText(P5标记.己职位名).click();
     await expect(page.getByText('双方已确认，正在创建会话').first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: '开始私聊' })).toBeDisabled();
+    await expect(page.getByText('当前在谈已结束，仅可查看')).toBeVisible();
+    await expect(page.getByRole('button', { name: '发送', exact: true })).toHaveCount(0);
 
     // 整条旅程零变异
     expect(fixture.变更请求).toEqual([]);
@@ -8048,13 +8618,15 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
     await expect(page.getByText(P5标记.丁职位名)).toBeVisible({ timeout: 15_000 });
 
-    // 切招聘端：候选端在谈内容一个字不留（P5 状态随会话转移摊平）
+    // 切招聘端：候选端在谈内容一个字不留（P5 状态随会话转移摊平）。
+    // 招聘端在谈卡 2026-09-09 起不渲染冻结职位事实，就绪锚点用中性摘要行 + 甲的待办徽标
     await page.goto('/#/identity?switch=1&from=app');
     await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 30_000 });
-    await expect(page.getByText(P5标记.甲职位名)).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(P5标记.丁职位名)).toHaveCount(0);
-    await expect(page.getByText(P5标记.乙职位名)).toHaveCount(0);
+    // 招聘端卡面锚点是摘要现职标记（卡片统一后 Case 职位名不在卡面）
+    await expect(page.getByText(P5标记.现职.甲)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(P5标记.现职.丁)).toHaveCount(0);
+    await expect(page.getByText(P5标记.现职.乙)).toHaveCount(0);
 
     // 切回候选端：新会话代际重新水合，自己的在谈重新可见
     await page.goto('/#/identity?switch=1&from=hr');
@@ -8079,6 +8651,340 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await page.waitForTimeout(1_000);
     await expect(page.getByText(P5标记.乙职位名)).toHaveCount(0);
     expect(P5请求数()).toBe(登出后);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 在谈详情完整布局 @mock/@backend —— 详情统一（2026-09-10 Spec §8.5）定向旅程：
+// 双端 × 两种来源 × 390/320px × 两个 Tab：约定区块齐全、说明可读、无横向溢出与
+// 交互遮挡。Mock 端走真实种子（J-01 顺利态 / A-01 卡点态）；Backend 端复用上面
+// P5 生命周期 的装P5候选/装P5招聘 作用域与 HTTP fixture，只改 Case 记录里的合法
+// 字段值（长正文/状态、可空字段有值→空），不发明 P5 不支持的 wire 键。两种来源
+// 的等价 DOM/CSS 由无 Provider 组件测试（详情外壳/详情状态区/职位资料/在线简历正文
+// 等）钉住；这里钉的是浏览器可达渲染路径上的区块顺序与完整缺失布局。
+// 截图统一落 test-results/详情布局/（Playwright 每次运行会重建该目录，最终权威
+// 运行的截图随目录留存；路径记录进 Task 10 报告）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('在谈详情完整布局', () => {
+  /** 水平溢出门（Spec §8.5）：允许 ≤2px 亚像素舍入，不允许布局性横向溢出。 */
+  async function 断言无横向溢出(page: Page) {
+    const 溢出 = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(溢出).toBeLessThanOrEqual(2);
+  }
+
+  // ── Mock 端（mock/stg 4181）：共用详情壳 + Mock 连接层投影 ──────────────────
+  test.describe('Mock 双端 @mock', () => {
+    test.use({ baseURL: 'http://127.0.0.1:4181' });
+    test.use({ timeout: 90_000 });
+
+    test('求职端 390/320：顶栏、双 Tab、四阶段、动作卡与资料全区块，无横向溢出 @mock', async ({ page }) => {
+      // Mock 登录与既有 @mock 旅程同口径：协议 → 微信登录 → 我要找工作
+      await page.goto('/');
+      await page.getByText(/已阅读并同意/).click();
+      await page.getByRole('button', { name: '微信登录' }).click();
+      await expect(page).toHaveURL(/#\/identity$/);
+      await page.getByRole('button', { name: '我要找工作' }).click();
+      await expect(page).toHaveURL(/#\/student$/);
+
+      // J-01 顺利态（意向确认，需要你点头）：顶栏职位名 + 两个 Tab
+      await page.goto('/#/deal/J-01');
+      await expect(page.getByText('资深后端工程师 · 交易网关').first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole('button', { name: '代谈进度', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '职位详情', exact: true })).toBeVisible();
+
+      // 进度 Tab：四阶段分节自上而下 + 意向确认动作卡（共用详情动作卡）
+      await 断言纵序(page, ['匿名初筛', '递交简历', '需要协调', '意向确认']);
+      await expect(page.getByText('确认意向', { exact: true }).first()).toBeVisible();
+      await expect(page.getByRole('button', { name: '开始私聊 ›' })).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/mock-求职-进度-390.png', fullPage: true });
+
+      // 资料 Tab：匹配分析 → 职位详情 → 职位要求 → 公司信息 → 对接人（spec §3.3 顺序）
+      await page.getByRole('button', { name: '职位详情', exact: true }).click();
+      await 断言纵序(page, ['匹配度分析', page.getByText('职位详情', { exact: true }).last(), '职位要求', '公司信息', '对接人']);
+      await expect(page.getByText('抖音').first()).toBeVisible(); // 公司档案真实值，非占位
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/mock-求职-资料-390.png', fullPage: true });
+
+      // 320px：两个 Tab 的约定区块仍在、无横向溢出（长公司介绍/标签不把页面撑宽）
+      await page.setViewportSize({ width: 320, height: 568 });
+      await expect(page.getByText('对接人', { exact: true })).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/mock-求职-资料-320.png', fullPage: true });
+      await page.getByRole('button', { name: '代谈进度', exact: true }).click();
+      await expect(page.getByRole('button', { name: '开始私聊 ›' })).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/mock-求职-进度-320.png', fullPage: true });
+    });
+
+    test('招聘端 390/320：画像顶栏、四阶段、卡点决策与在线简历九区，无横向溢出 @mock', async ({ page }) => {
+      await page.goto('/');
+      await page.getByText(/已阅读并同意/).click();
+      await page.getByRole('button', { name: '微信登录' }).click();
+      await expect(page).toHaveURL(/#\/identity$/);
+      await page.getByRole('button', { name: '我要找工作' }).click();
+      await expect(page).toHaveURL(/#\/student$/);
+      await page.goto('/#/identity?switch=1&from=app');
+      await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
+      await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
+
+      // A-01 卡点态（需要协调，需要你拍板）
+      await page.goto('/#/hr/candidate/A-01');
+      // 去名顶栏：性别图标 + 年限｜学历｜求职状态（画像行；段与竖分同 span，子串匹配），代号/真名不上顶栏
+      await expect(page.getByRole('img', { name: '男' }).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('9 年', { exact: true })).toBeVisible();
+      await expect(page.getByText('硕士')).toBeVisible();
+      await expect(page.getByText('在职看机会')).toBeVisible();
+      await expect(page.getByRole('button', { name: '代谈进度', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '在线简历', exact: true })).toBeVisible();
+
+      // 进度 Tab：四阶段 + 卡点决策动作卡（接受 / 不接受）
+      await 断言纵序(page, ['匿名初筛', '递交简历', '需要协调', '意向确认']);
+      await expect(page.getByText('卡点决策', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '接受', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '不接受', exact: true })).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/mock-招聘-进度-390.png', fullPage: true });
+
+      // 资料 Tab：在线简历正文九个信息区（spec §3.4 顺序；头区画像行在最上）
+      await page.getByRole('button', { name: '在线简历', exact: true }).click();
+      await 断言纵序(page, ['匹配度分析', '个人优势', '求职期望', '工作经历', '项目经历', '教育经历', '专业技能']);
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/mock-招聘-资料-390.png', fullPage: true });
+
+      await page.setViewportSize({ width: 320, height: 568 });
+      await expect(page.getByText('专业技能', { exact: true })).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/mock-招聘-资料-320.png', fullPage: true });
+      await page.getByRole('button', { name: '代谈进度', exact: true }).click();
+      await expect(page.getByRole('button', { name: '接受', exact: true })).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/mock-招聘-进度-320.png', fullPage: true });
+    });
+  });
+
+  // ── Backend 端（backend/stg 4182）：P5 HTTP fixture 的完整缺失布局样本 ─────
+  test.describe('Backend HTTP fixture @backend', () => {
+    test.use({ baseURL: 'http://127.0.0.1:4182' });
+    test.use({ timeout: 120_000 });
+
+    test('求职端正常全缺：双 Tab、四阶段、补充事实卡与资料区缺失占位 @backend', async ({ page }) => {
+      // 默认 fixture = 正常全缺样本：P5 detail 只有冻结职位四事实，其余展示字段全缺
+      await 装P5候选(page);
+      await page.goto(`/#/deal/${P5编号.乙}`);
+
+      // 顶栏：冻结职位名 + 城市 · 薪资带；匹配分缺失显示「—」并带可访问说明
+      await expect(page.getByText(P5标记.乙职位名).first()).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText(`${P5标记.城市} · ${P5标记.薪资带}`).first()).toBeVisible();
+      await expect(page.getByTitle('匹配分缺失')).toBeVisible();
+      await expect(page.getByRole('button', { name: '代谈进度', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '职位详情', exact: true })).toBeVisible();
+
+      // 进度 Tab：状态区（待办徽标/步骤说明/轮次）+ 四阶段（P5 阶段标题）+ S0 动作卡
+      await expect(page.getByText('需要你', { exact: true }).first()).toBeVisible();
+      await expect(page.getByText('轮次 1/3')).toBeVisible();
+      await 断言纵序(page, ['匿名初筛', '简历提交', '差异协同', '意向确认']);
+      await expect(page.getByText('补充事实', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '提交回答' })).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-求职-进度-390.png', fullPage: true });
+
+      // 资料 Tab：区块级缺口说明 + 全部约定区块原位缺失（spec §3.3/§4）
+      await page.getByRole('button', { name: '职位详情', exact: true }).click();
+      await expect(page.getByText('当前在谈详情数据未提供').first()).toBeVisible();
+      await 断言纵序(page, [
+        '匹配度分析',
+        page.getByText('职位详情', { exact: true }).last(),
+        '职位要求',
+        // 顶栏标题含「公司信息缺失」（F3 公司槽缺失占位），substring 锚点会命中顶栏 —— 用精确锚点取区块标题
+        page.getByText('公司信息', { exact: true }),
+        '对接人',
+      ]);
+      await expect(page.getByText('匹配分析缺失')).toBeVisible();
+      // 冻结摘要四事实如实展示（不因其他字段缺失而隐藏）
+      await expect(page.getByText(P5标记.乙职位名).first()).toBeVisible();
+      await expect(page.getByText(P5标记.技能).first()).toBeVisible();
+      await expect(page.getByText('职位详情缺失')).toBeVisible();
+      await expect(page.getByText('职位要求缺失')).toBeVisible();
+      // 公司：五元行标签齐全、值全「—」，导航入口真实禁用并就地解释
+      await expect(page.getByText('公司详情暂不可用')).toBeVisible();
+      await expect(page.getByText('公司介绍缺失')).toBeVisible();
+      for (const 标签 of ['融资阶段', '规模', '行业', '成立', '地址']) {
+        await expect(page.getByText(标签, { exact: true })).toBeVisible();
+      }
+      await expect(page.getByText('公司标签缺失')).toBeVisible();
+      await expect(page.getByRole('img', { name: '对接人头像缺失' })).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-求职-资料-390.png', fullPage: true });
+
+      // 320px：完整缺失时所有约定区块可见、说明可读、无横向溢出
+      await page.setViewportSize({ width: 320, height: 568 });
+      await expect(page.getByRole('img', { name: '对接人头像缺失' })).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-求职-资料-320.png', fullPage: true });
+      await page.getByRole('button', { name: '代谈进度', exact: true }).click();
+      await expect(page.getByRole('button', { name: '提交回答' })).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-求职-进度-320.png', fullPage: true });
+    });
+
+    test('招聘端画像全缺与长正文/合法空数组：区块仍全、长文本可读 @backend', async ({ page }) => {
+      const fixture = 创建P5MatchCasefixture();
+      // 长正文样本：只加长自由文本 wire 字段（时间线 text / 叮嘱回执 expression）。
+      // 阶段区 summary 是 17 个 step 闭词（未知词按安全文案「阶段信息待更新」收口，不进
+      // DOM），状态/步骤同为闭词 —— 不用闭词字段造长文（spec：仅测试服务端真实支持的事实）。
+      const 长前缀 = `P5 长文本标记·${P5编号.甲.slice(-4)}`;
+      const 长文 = `${长前缀}${'：这是一段很长的自由文本，用来验证长正文换行可读、不横向溢出、不截断丢内容。'.repeat(6)}`;
+      const 甲 = fixture.cases[P5编号.甲]!;
+      甲.阶段区们[1]!.transcript = [
+        {
+          event_id: 'evt_p5_long', stage: 'resume_submission', kind: 'stage_note', role: '',
+          text: 长文, occurred_at: '2026-08-29T02:05:30Z',
+        },
+      ];
+      甲.阶段区们[1]!.instruction_receipts = [
+        {
+          instruction_id: 'aci_p5_long', owner: 'recruiter', stage: 'resume_submission',
+          expression: `${长前缀}回执`, occurred_at: '2026-08-29T02:05:40Z',
+        },
+      ];
+      await 装P5招聘(page, { fixture });
+
+      // 甲（S1 已披露）：画像全缺顶栏 + 岗位上下文 + typed 附件 + 长正文当前段
+      await page.goto(`/#/hr/candidate/${P5编号.甲}`);
+      await expect(page.getByText(`${P5标记.甲职位名} · ${P5标记.城市} · ${P5标记.薪资带}`).first())
+        .toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText('经验缺失')).toBeVisible();
+      await expect(page.getByText('学历缺失')).toBeVisible();
+      await expect(page.getByText('求职状态缺失')).toBeVisible();
+      await expect(page.getByRole('img', { name: '性别未知' })).toBeVisible();
+      await expect(page.getByTitle('匹配分缺失')).toBeVisible();
+      await expect(page.getByText(P5标记.甲别名)).toHaveCount(0); // 去名：alias 不上详情
+      await expect(page.getByText('出具简历初筛结论', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '通过初筛' })).toBeVisible();
+      await 断言纵序(page, ['匿名初筛', '简历提交', '差异协同', '意向确认']);
+      // 长时间线文本与长叮嘱回执完整上屏（换行可读，不横向溢出）
+      await expect(page.getByText(长文)).toBeVisible();
+      await expect(page.getByText(`${长前缀}回执`)).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-招聘-进度-390.png', fullPage: true });
+
+      // 丙一（S1 waiting）：合法空数组样本 —— transcript/checklist 为空，段与摘要仍在，
+      // 招聘端未披露无附件入口，也不生成模拟对话
+      await page.goto(`/#/hr/candidate/${P5编号.丙一}`);
+      await expect(page.getByText(P5标记.丙一职位名).first()).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText('简历提交', { exact: true })).toBeVisible();
+      await expect(page.getByText('正在解析简历', { exact: true })).toBeVisible();
+      await expect(page.locator('button').filter({ hasText: 'PDF' })).toHaveCount(0);
+
+      // 资料 Tab（甲）：档 null 的完整缺失布局 —— 九个信息区逐区缺失 + 页尾披露说明
+      await page.goto(`/#/hr/candidate/${P5编号.甲}`);
+      await page.getByRole('button', { name: '在线简历', exact: true }).click();
+      await expect(page.getByText('当前在谈详情数据未提供').first()).toBeVisible({ timeout: 20_000 });
+      await 断言纵序(page, ['匹配度分析', '个人优势', '求职期望', '工作经历', '项目经历', '教育经历', '专业技能']);
+      for (const 缺 of ['匿名画像缺失', '职位信息缺失', '匹配分析缺失', '个人优势缺失', '求职期望缺失', '工作经历缺失', '项目经历缺失', '教育经历缺失', '专业技能缺失']) {
+        await expect(page.getByText(缺).first()).toBeVisible();
+      }
+      await expect(page.getByText('在线简历缺失 · 内容不可转发').first()).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-招聘-资料-390.png', fullPage: true });
+
+      await page.setViewportSize({ width: 320, height: 568 });
+      await expect(page.getByText('专业技能缺失').first()).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-招聘-资料-320.png', fullPage: true });
+
+      // 320px 回切进度 Tab：长正文样本在最窄视口仍完整可读、不横向溢出（与其余三侧同构）
+      await page.getByRole('button', { name: '代谈进度', exact: true }).click();
+      await expect(page.getByText(长文)).toBeVisible();
+      await expect(page.getByText(`${长前缀}回执`)).toBeVisible();
+      await expect(page.getByRole('button', { name: '通过初筛' })).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-招聘-进度-320.png', fullPage: true });
+    });
+
+    test('终局只读布局：ended 摘要与 completed 移交在 320px 完整可读、零发送 @backend', async ({ page }) => {
+      await 装P5候选(page);
+
+      // ended（戊）：终局摘要 + 只读底栏，零动作零发送（spec §5 终局只读语义）
+      await page.goto('/#/archived');
+      await page.getByText(P5标记.戊职位名).click();
+      await expect(page.getByText('终局', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('当前在谈已结束，仅可查看')).toBeVisible();
+      await expect(page.getByRole('button', { name: '发送', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '提交回答' })).toHaveCount(0);
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-终局-ended-390.png', fullPage: true });
+
+      // completed pending（己）：移交文案 + 恒禁用的开始私聊（禁用说明就地）
+      await page.goto(`/#/deal/${P5编号.己}`);
+      await expect(page.getByText('双方已确认，正在创建会话').first()).toBeVisible({ timeout: 15_000 });
+      const 私聊 = page.getByRole('button', { name: '开始私聊' });
+      await expect(私聊).toBeDisabled();
+      await expect(page.getByText('准备中')).toBeVisible();
+      await expect(page.getByText('当前在谈已结束，仅可查看')).toBeVisible();
+      await expect(page.getByRole('button', { name: '发送', exact: true })).toHaveCount(0);
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-终局-completed-390.png', fullPage: true });
+
+      // 320px：终局摘要/移交/只读底栏都在，无横向溢出
+      await page.setViewportSize({ width: 320, height: 568 });
+      await expect(page.getByText('双方已确认，正在创建会话').first()).toBeVisible();
+      await expect(私聊).toBeDisabled();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-终局-completed-320.png', fullPage: true });
+
+      await page.goto(`/#/deal/${P5编号.戊}`);
+      await expect(page.getByText('终局', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('当前在谈已结束，仅可查看')).toBeVisible();
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-终局-ended-320.png', fullPage: true });
+    });
+
+    test('同 Case 附件由有值刷新为空：PDF 入口清理、区块仍在、零内容请求 @backend', async ({ page }) => {
+      const fixture = await 装P5招聘(page);
+
+      await page.goto(`/#/hr/candidate/${P5编号.甲}`);
+      const 附件键 = page.getByRole('button', { name: new RegExp(P5标记.简历名) });
+      await expect(附件键).toBeVisible({ timeout: 20_000 });
+      await page.screenshot({ path: 'test-results/详情布局/bk-刷新前-附件在场-390.png', fullPage: true });
+
+      // 合法可空字段有值→空：已绑定撤销 → S1 typed 附件缺席（不放宽 decoder，键整体不出场）
+      fixture.cases[P5编号.甲]!.已绑定 = false;
+      await expect(附件键).toHaveCount(0, { timeout: 10_000 }); // 轮询重读后入口清理
+      await expect(page.getByText(P5标记.简历名)).toHaveCount(0); // 无残留文件名
+      await expect(page.getByText(P5标记.甲职位名).first()).toBeVisible(); // 详情仍是正常页
+      await expect(page.getByRole('button', { name: '通过初筛' })).toBeVisible(); // 动作卡不丢
+      await 断言纵序(page, ['匿名初筛', '简历提交', '差异协同', '意向确认']); // 四阶段不缺段
+      expect(fixture.PDF读取).toEqual([]); // 全程零内容 GET
+      expect(fixture.变更请求).toEqual([]); // 刷新过渡零变异
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-刷新后-附件缺席-390.png', fullPage: true });
+    });
+
+    test('同 Case 核对清单由有值刷新为空数组：清单行消失、区块与动作卡仍在 @backend', async ({ page }) => {
+      const fixture = 创建P5MatchCasefixture();
+      // 清单 label 是 8 词闭集（未知 label 展示层整项省略）：有值样本用闭集词，显示固定中文
+      const 乙 = fixture.cases[P5编号.乙]!;
+      乙.阶段区们[0]!.checklist = [{ label: 'anonymous_screening_passed', done: true }];
+      await 装P5候选(page, { fixture });
+
+      await page.goto(`/#/deal/${P5编号.乙}`);
+      await expect(page.getByText('匿名初筛已通过').first()).toBeVisible({ timeout: 20_000 });
+
+      // 合法空数组样本：checklist 有值 → []（decoder 原样接受，UI 不残留旧行）
+      fixture.cases[P5编号.乙]!.阶段区们[0]!.checklist = [];
+      await expect(page.getByText('匿名初筛已通过')).toHaveCount(0, { timeout: 10_000 });
+      await expect(page.getByText('匿名初筛', { exact: true }).first()).toBeVisible(); // 段仍在
+      await expect(page.getByRole('button', { name: '提交回答' })).toBeVisible(); // 问题卡不丢
+      await expect(page.getByText(P5标记.问题).first()).toBeVisible();
+      expect(fixture.变更请求).toEqual([]); // 刷新过渡零变异
+      await 断言无横向溢出(page);
+      await page.screenshot({ path: 'test-results/详情布局/bk-刷新后-清单为空-390.png', fullPage: true });
+    });
   });
 });
 
@@ -8126,7 +9032,12 @@ test.describe('P5 Mock 数据源隔离 @mock', () => {
     await page.goto('/#/hr/archived');
     await expect(page.getByText('历史代谈').first()).toBeVisible({ timeout: 10_000 });
     await page.goto('/#/hr/candidate/A-01');
-    await expect(page.getByText('沈亦舟').first()).toBeVisible({ timeout: 10_000 });
+    // 去名改版后详情顶栏 = 候选头行画像行（性别/年限/学历/求职状态）+ 画像副标题，
+    // 代号/真名都不上屏；就绪锚点 = 画像性别图标 + 副标题 + 当前段卡点决策卡
+    await expect(page.getByRole('img', { name: '男' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Go / 高并发交易 · 字节跳动').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('卡点决策', { exact: true })).toBeVisible();
+    await expect(page.getByText('沈亦舟')).toHaveCount(0); // 真名不在去名详情的可见面
 
     // P5 域在 Mock 下零请求：match-cases 请求清单为空（空列表），整段会话无任何 /api/v1
     expect(matchCase请求).toEqual([]);
@@ -8822,7 +9733,10 @@ test.describe('P8 控制面 fixture @backend', () => {
 
   test('P8 职位举报（详情直取）：target=job_id 隐私安全 body @backend', async ({ page }, 测试信息) => {
     const 隐私 = P3隐私fixture();
-    const fixture = await 装P8候选(page, { 发现fixture: P4发现fixture(), 隐私fixture: 隐私 });
+    // 直取前提 = 无推荐快照（抽屉只给举报、无不感兴趣）：推荐清单显式置空（合法空页）
+    const 空推荐fixture = P4发现fixture();
+    空推荐fixture.候选推荐 = {};
+    const fixture = await 装P8候选(page, { 发现fixture: 空推荐fixture, 隐私fixture: 隐私 });
     fixture.举报屏蔽组织[`job:${P4编号.job}`] = {
       organization_id: P8标记.屏蔽组织编号,
       organization_display_name: P8标记.屏蔽组织名,
@@ -9801,5 +10715,527 @@ test.describe('标注评审构建 @annotation', () => {
       中心x >= 机身.x && 中心x <= 机身.x + 机身.width &&
       中心y >= 机身.y && 中心y <= 机身.y + 机身.height;
     expect(在机身内).toBe(false);
+  });
+});
+// ─────────────────────────────────────────────────────────────────────────────
+// 卡片统一（2026-09-10）：三类共享列表卡的跨模式布局验收（Plan Task 4 / Spec §8 层次 3/4）。
+// 模式无关性已由无 Provider 组件测试证明，这里不重复建；本组用例只看真实页面入口上的
+// 展示层几何与可用性：区域 DOM 顺序、相对卡根几何、水平溢出/遮挡、390 与 320 两档宽的
+// 完整 / 全空 / 部分空 / 长文本，以及收藏 / 整卡 / 委托 / 滑动的真实点击。
+// Mock 与 Backend 的数据本就不相同（P5 缺公司与匹配分），所以跨模式只比固定区位置
+// （≤1px），不做全页像素等同，也不为同图扩展 HTTP schema。
+// 截图落在 test-results/卡片统一/（Playwright 每轮清理，属一次性观察证据）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 单个卡区相对卡根的几何（px，两位小数） */
+interface 卡区几何 { x: number; y: number; w: number; h: number }
+
+/** 一张共享卡的观察：区域 DOM 顺序 + 相对卡根几何 + 文字盒（右列让位检查用） */
+interface 卡观察 {
+  宽: number;
+  高: number;
+  顺序: string[];
+  区域: Record<string, 卡区几何>;
+  文字盒: 卡区几何;
+  /** 文字盒内文本的实测渲染宽度（Range）；单行省略文本被裁切时以较小者为准 */
+  文字宽: number;
+}
+
+/** 采集一张卡内全部 data-card-region 相对卡根的坐标/尺寸；文字盒 = 被右列让位约束的
+ *  那个文本容器（招聘两卡 = 候选头行根；求职在谈卡 = 公司名/简介列）。 */
+async function 采集卡观察(page: Page, 卡: Locator): Promise<卡观察> {
+  return 卡.evaluate((根) => {
+    const 两位 = (值: number) => Math.round(值 * 100) / 100;
+    const 根框 = 根.getBoundingClientRect();
+    const 取 = (元素: Element): 卡区几何 => {
+      const 框 = 元素.getBoundingClientRect();
+      return {
+        x: 两位(框.x - 根框.x), y: 两位(框.y - 根框.y), w: 两位(框.width), h: 两位(框.height),
+      };
+    };
+    const 区域: Record<string, 卡区几何> = {};
+    const 顺序: string[] = [];
+    for (const 元素 of Array.from(根.querySelectorAll('[data-card-region]'))) {
+      const 名 = 元素.getAttribute('data-card-region')!;
+      顺序.push(名);
+      区域[名] = 取(元素);
+    }
+    const 文字元素 = 根.querySelector('[data-card-region="head"] > div')
+      ?? 根.querySelector('[data-card-region="company"] > div:not([data-card-region])');
+    let 文字宽 = 0;
+    if (文字元素) {
+      const 范围 = document.createRange();
+      范围.selectNodeContents(文字元素);
+      文字宽 = 两位(范围.getBoundingClientRect().width);
+    }
+    return {
+      宽: 两位(根框.width),
+      高: 两位(根框.height),
+      顺序,
+      区域,
+      文字盒: 文字元素 ? 取(文字元素) : { x: 0, y: 0, w: 0, h: 0 },
+      文字宽,
+    };
+  });
+}
+
+/** 区域 DOM 顺序 = Spec 冻结的阅读顺序 */
+function 断言区域顺序(观察: 卡观察, 期待: readonly string[]) {
+  expect(观察.顺序, '卡区 DOM 顺序').toEqual(期待);
+}
+
+/** 两张卡固定区的相对几何对齐（≤1px）：只比调用方点名的数据等价区；
+ *  内含量不同的区（标签高度、阶段区、薪资宽度）由调用方排除或只比 y */
+function 断言区域对齐(
+  甲: 卡观察,
+  乙: 卡观察,
+  区域名们: readonly string[],
+  键们: readonly ('x' | 'y' | 'r' | 'b')[] = ['x', 'y'],
+) {
+  const 值 = (区: 卡区几何, 键: 'x' | 'y' | 'r' | 'b') =>
+    键 === 'x' ? 区.x : 键 === 'y' ? 区.y : 键 === 'r' ? 区.x + 区.w : 区.y + 区.h;
+  for (const 名 of 区域名们) {
+    expect(甲.区域[名], `缺少卡区 ${名}`).toBeDefined();
+    expect(乙.区域[名], `缺少卡区 ${名}`).toBeDefined();
+    for (const 键 of 键们) {
+      expect(Math.abs(值(甲.区域[名]!, 键) - 值(乙.区域[名]!, 键)), `固定区 ${名}.${键} 跨模式差`).toBeLessThanOrEqual(1);
+    }
+  }
+}
+
+/** 卡与全部卡区都落在视口/卡根内：无水平溢出、无绝对定位区被裁出卡根 */
+async function 断言卡在视口内(page: Page, 卡: Locator) {
+  const 观 = await 卡.evaluate((根) => {
+    const 根框 = 根.getBoundingClientRect();
+    const 区框们 = Array.from(根.querySelectorAll('[data-card-region]')).map((元) => 元.getBoundingClientRect());
+    return {
+      视口宽: document.documentElement.clientWidth,
+      滚动宽: document.documentElement.scrollWidth,
+      卡左: 根框.left, 卡右: 根框.right, 卡底: 根框.bottom,
+      区左: 区框们.length === 0 ? 根框.left : Math.min(根框.left, ...区框们.map((框) => 框.left)),
+      区右: 区框们.length === 0 ? 根框.right : Math.max(根框.right, ...区框们.map((框) => 框.right)),
+      区底: 区框们.length === 0 ? 根框.bottom : Math.max(...区框们.map((框) => 框.bottom)),
+    };
+  });
+  expect(观.滚动宽, '页面水平滚动宽').toBeLessThanOrEqual(观.视口宽);
+  expect(观.卡右, '卡右缘出视口').toBeLessThanOrEqual(观.视口宽 + 0.5);
+  expect(观.区右, '卡区右缘出卡根').toBeLessThanOrEqual(观.卡右 + 0.5);
+  expect(观.区左, '卡区左缘出卡根').toBeGreaterThanOrEqual(观.卡左 - 0.5);
+  expect(观.区底, '卡区底部出卡根').toBeLessThanOrEqual(观.卡底 + 0.5);
+}
+
+/** 右列分数位不被头行/公司行文字挤住或遮住：实际渲染出的文字右缘 ≤ 分数区左缘（容差 1px） */
+function 断言分数位让位(观察: 卡观察) {
+  expect(观察.区域.score, '缺少分数区').toBeDefined();
+  const 文字右缘 = 观察.文字盒.x + Math.min(观察.文字盒.w, 观察.文字宽);
+  expect(
+    文字右缘,
+    `头行文字右缘 ${文字右缘} 应 ≤ 分数区左缘 ${观察.区域.score!.x}`,
+  ).toBeLessThanOrEqual(观察.区域.score!.x + 1);
+}
+
+/** 候选头行最多两行（Spec §6）：实测文字盒高 ≤ 两行行框（22px × 2 + 容差） */
+function 断言头行最多两行(观察: 卡观察) {
+  expect(观察.文字盒.h, '头行文字盒高度').toBeLessThanOrEqual(46);
+}
+
+/** Mock 源（@mock describe 的 baseURL；Backend 用例跨源比较时显式传 4181 绝对地址） */
+const Mock源 = 'http://127.0.0.1:4181';
+
+/** 占位次要色（Spec §6）：--次要浅 = #7d8276。只有真实浏览器才解析 CSS var，
+ *  单测里只能断类名，这里断计算值。 */
+const 次要浅色 = 'rgb(125, 130, 118)';
+
+/** Mock 登录到求职端在谈单（零 API）。page.goto 的相对路径按项目 baseURL 解析，
+ *  跨源比较必须传绝对地址，否则会回到 Backend origin。 */
+async function Mock登录求职(page: Page, 源: string = Mock源) {
+  await page.goto(`${源}/`);
+  await page.getByText(/已阅读并同意/).click();
+  await page.getByRole('button', { name: '微信登录' }).click();
+  await expect(page).toHaveURL(/#\/identity$/);
+  await page.getByRole('button', { name: '我要找工作' }).click();
+  await expect(page).toHaveURL(/#\/student$/);
+}
+
+/** Mock 切到招聘端推荐屏（零 API）：切身份 → 推荐子视图 */
+async function Mock切到招聘推荐(page: Page, 源: string = Mock源) {
+  await page.goto(`${源}/#/identity?switch=1&from=app`);
+  await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
+  await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
+  await page.getByRole('button', { name: '推荐', exact: true }).click();
+}
+
+test.describe('卡片统一 Mock 三屏 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('卡片统一 Mock 三屏 390/320：区域顺序、无溢出与整卡点击可用 @mock', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // ── 求职端在谈单：求职在谈卡（完整 Mock 数据）──
+    await Mock登录求职(page);
+    await page.goto('/#/app');
+    const mock在谈卡 = page.getByTestId('求职在谈卡').first();
+    await expect(mock在谈卡.getByText('资深后端工程师 · 交易网关')).toBeVisible({ timeout: 15_000 });
+    const mock在谈390 = await 采集卡观察(page, mock在谈卡);
+    await 断言卡在视口内(page, mock在谈卡);
+    断言区域顺序(mock在谈390, ['company', 'score', 'salary', 'title', 'tags', 'stage']);
+    断言分数位让位(mock在谈390);
+    // 阶段区胶囊落在白卡上同底（透明或白），不另起一块色底
+    expect(await mock在谈卡.evaluate((根) => {
+      const 标 = 根.querySelector('[data-card-region="stage"] span');
+      return 标 ? getComputedStyle(标).backgroundColor : 'missing';
+    })).toMatch(/rgba\(0, 0, 0, 0\)|rgb\(255, 255, 255\)/);
+    await page.screenshot({ path: 'test-results/卡片统一/mock-在谈-390.png' });
+    // 整卡点击 → 在谈详情
+    await mock在谈卡.click();
+    await expect(page).toHaveURL(/#\/deal\/J-01$/, { timeout: 10_000 });
+
+    // ── 招聘端在谈候选：招聘在谈卡（Mock 数据亮点缺 → 标签占位）──
+    await page.goto('/#/identity?switch=1&from=app');
+    await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
+    const mock在谈候选卡 = page.getByTestId('招聘在谈卡').first();
+    await expect(mock在谈候选卡.getByRole('img', { name: '适配 94 分' })).toBeVisible({ timeout: 15_000 });
+    const mock候选390 = await 采集卡观察(page, mock在谈候选卡);
+    await 断言卡在视口内(page, mock在谈候选卡);
+    断言区域顺序(mock候选390, ['score', 'head', 'work', 'education', 'tags', 'stage']);
+    断言分数位让位(mock候选390);
+    await expect(mock在谈候选卡.getByText('亮点信息未知')).toBeVisible();
+    await page.screenshot({ path: 'test-results/卡片统一/mock-企业在谈候选-390.png' });
+    // 整卡点击 → 候选详情
+    await mock在谈候选卡.click();
+    await expect(page).toHaveURL(/#\/hr\/candidate\/A-01$/, { timeout: 10_000 });
+
+    // ── 招聘端推荐：招聘推荐卡 ──
+    await Mock切到招聘推荐(page);
+    const mock推荐卡 = page.getByTestId('招聘推荐卡').first();
+    await expect(mock推荐卡.getByRole('img', { name: '适配 91 分' })).toBeVisible({ timeout: 15_000 });
+    const mock推荐390 = await 采集卡观察(page, mock推荐卡);
+    await 断言卡在视口内(page, mock推荐卡);
+    断言区域顺序(mock推荐390, ['score', 'head', 'work', 'education', 'tags', 'actions']);
+    断言分数位让位(mock推荐390);
+    await page.screenshot({ path: 'test-results/卡片统一/mock-推荐-390.png' });
+    // 卡主体与 › 都开匿名在线简历；★ 收藏可点
+    await mock推荐卡.getByRole('button', { name: '查看候选画像' }).click();
+    await expect(page).toHaveURL(/#\/hr\/resume\/R-11$/, { timeout: 10_000 });
+    await page.goBack();
+    await expect(mock推荐卡.getByRole('img', { name: '适配 91 分' })).toBeVisible({ timeout: 15_000 });
+    await mock推荐卡.getByRole('button', { name: '收藏', exact: true }).click();
+    await expect(mock推荐卡.getByRole('button', { name: '取消收藏' })).toBeVisible({ timeout: 10_000 });
+
+    // ── 320×844：三屏重新观察（收窄后仍不溢出、分数位让位、头行不超两行）──
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.goto('/#/app');
+    await expect(page.getByTestId('求职在谈卡').first()).toBeVisible({ timeout: 15_000 });
+    await 断言卡在视口内(page, page.getByTestId('求职在谈卡').first());
+    断言分数位让位(await 采集卡观察(page, page.getByTestId('求职在谈卡').first()));
+    await page.screenshot({ path: 'test-results/卡片统一/mock-在谈-320.png' });
+    await page.goto('/#/hr');
+    // 上一步把招聘端子视图停在「推荐」：先点回「在谈」再观察在谈卡
+    await page.getByRole('button', { name: '在谈', exact: true }).click();
+    await expect(page.getByTestId('招聘在谈卡').first()).toBeVisible({ timeout: 15_000 });
+    await 断言卡在视口内(page, page.getByTestId('招聘在谈卡').first());
+    断言头行最多两行(await 采集卡观察(page, page.getByTestId('招聘在谈卡').first()));
+    await page.screenshot({ path: 'test-results/卡片统一/mock-企业在谈候选-320.png' });
+    await Mock切到招聘推荐(page);
+    await expect(page.getByTestId('招聘推荐卡').first()).toBeVisible({ timeout: 15_000 });
+    await 断言卡在视口内(page, page.getByTestId('招聘推荐卡').first());
+    断言头行最多两行(await 采集卡观察(page, page.getByTestId('招聘推荐卡').first()));
+    await page.screenshot({ path: 'test-results/卡片统一/mock-推荐-320.png' });
+  });
+});
+
+test.describe('卡片统一 Backend @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+  test.use({ timeout: 180_000 });
+
+  test('卡片统一 招聘推荐卡两模式固定区几何对齐、390/320 与收藏委托滑动可用 @backend', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await 装P4招聘(page);
+
+    // ── Backend：P4 推荐腿的招聘推荐卡（完整 candidate_summary）──
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    await page.getByRole('button', { name: '推荐', exact: true }).click();
+    const 后端推荐卡 = page.getByTestId('招聘推荐卡').first();
+    await expect(后端推荐卡.getByRole('img', { name: '适配 88 分' })).toBeVisible({ timeout: 15_000 });
+    const 后端推荐390 = await 采集卡观察(page, 后端推荐卡);
+    await 断言卡在视口内(page, 后端推荐卡);
+    断言区域顺序(后端推荐390, ['score', 'head', 'work', 'education', 'tags', 'actions']);
+    断言分数位让位(后端推荐390);
+    await expect(后端推荐卡.getByText(P4标记.summaryWork)).toBeVisible();
+    await page.screenshot({ path: 'test-results/卡片统一/backend-推荐-390.png' });
+
+    // ── Mock 同一张卡的完整数据基准（mock/stg origin）：固定区跨模式 ≤1px ──
+    await Mock登录求职(page);
+    await Mock切到招聘推荐(page);
+    const mock推荐卡 = page.getByTestId('招聘推荐卡').first();
+    await expect(mock推荐卡.getByRole('img', { name: '适配 91 分' })).toBeVisible({ timeout: 15_000 });
+    const mock推荐390 = await 采集卡观察(page, mock推荐卡);
+    expect(Math.abs(mock推荐390.宽 - 后端推荐390.宽)).toBeLessThanOrEqual(1);
+    断言区域对齐(mock推荐390, 后端推荐390, ['score', 'head', 'work', 'education', 'tags']);
+
+    // ── Backend 委托 / 收藏 / 详情 / 滑动可用性：先点键，最后才滑开（滑开的行吞卡内点击）──
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.goto('http://127.0.0.1:4182/');
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    await page.getByRole('button', { name: '推荐', exact: true }).click();
+    await expect(page.getByTestId('招聘推荐卡').first()).toBeVisible({ timeout: 15_000 });
+    await 断言卡在视口内(page, page.getByTestId('招聘推荐卡').first());
+    断言头行最多两行(await 采集卡观察(page, page.getByTestId('招聘推荐卡').first()));
+    await page.screenshot({ path: 'test-results/卡片统一/backend-推荐-320.png' });
+    // 委托无确认层：点击立即发起，卡原地长出 accepted 的权威文案，全程无弹层
+    await page.locator('button:has-text("让AI代理去聊")').first().click();
+    await expect(page.getByText('已提交给 AI，等待处理').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('dialog')).toHaveCount(0);
+    // 收藏：星标点亮（服务端先行 PUT）
+    await page.getByTestId('招聘推荐卡').first().getByRole('button', { name: '收藏', exact: true }).click();
+    await expect(page.getByTestId('招聘推荐卡').first().getByRole('button', { name: '取消收藏' })).toBeVisible({ timeout: 10_000 });
+    // › 详情：canonical 双坐标
+    await page.getByTestId('招聘推荐卡').first().getByRole('button', { name: '查看候选画像' }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4编号.recruiterRecommendation}$`),
+      { timeout: 15_000 },
+    );
+    await page.goBack();
+    await expect(page.getByTestId('招聘推荐卡').first()).toBeVisible({ timeout: 15_000 });
+    // 真实触屏左滑露出「不合适」
+    await 左滑候选卡(page, P4标记.candidateBRing);
+    await expect(page.getByRole('button', { name: '不合适' })).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('卡片统一 双端在谈卡两模式固定区几何对齐、390/320 与整卡点击可用 @backend', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await 装P5双角色(page, { 主体初始角色: 'candidate' });
+
+    // ── Backend 候选端：求职在谈卡（公司/简介/字标/匹配分 P5 不提供 → 未知占位）──
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    const 后端在谈卡 = page.getByTestId('求职在谈卡').first();
+    await expect(后端在谈卡.getByRole('img', { name: '匹配分未知' })).toBeVisible({ timeout: 15_000 });
+    const 后端在谈390 = await 采集卡观察(page, 后端在谈卡);
+    await 断言卡在视口内(page, 后端在谈卡);
+    断言区域顺序(后端在谈390, ['company', 'score', 'salary', 'title', 'tags', 'stage']);
+    // 未知分说明放在 40px 容器内：右列单行高、不把薪资推下一行、也不压到职位名
+    expect(后端在谈390.区域.score!.h, '未知分右列高度').toBeLessThanOrEqual(46);
+    expect(
+      后端在谈390.区域.score!.y + 后端在谈390.区域.score!.h,
+      '未知分右列底缘应不越过职位名顶',
+    ).toBeLessThanOrEqual(后端在谈390.区域.title!.y + 1);
+    await expect(后端在谈卡.getByText('公司信息未知')).toBeVisible();
+    await expect(后端在谈卡.getByText('公司简介未知')).toBeVisible();
+    // 卡面沿用原 Mock 展示行为：把 - 换成 –（不改币种/单位/数值）
+    await expect(后端在谈卡.getByText(P5标记.薪资带.replace('-', '–'))).toBeVisible();
+    await page.screenshot({ path: 'test-results/卡片统一/backend-在谈候选端-390.png' });
+    // 320 收窄：还在候选端会话里，先看候选端在谈卡
+    await page.setViewportSize({ width: 320, height: 844 });
+    await 断言卡在视口内(page, 后端在谈卡);
+    断言分数位让位(await 采集卡观察(page, 后端在谈卡));
+    // 320 公司列截断实测（记录行为，版式裁定属产品）：卡内容宽 274 − 右列让位 178
+    // − 字标 34 − 间距 10 ≈ 52px 文本盒，两行占位文本在 .单行 下都会省略号截断
+    const 公司截断 = await 后端在谈卡.evaluate((根) => {
+      const 列 = 根.querySelector('[data-card-region="company"] > div:not([data-card-region])');
+      if (!列) return [];
+      return Array.from(列.children).map((行) => {
+        const 元素 = 行 as HTMLElement;
+        const 范围 = document.createRange();
+        范围.selectNodeContents(元素);
+        return {
+          文本: (元素.textContent ?? '').slice(0, 6),
+          盒宽: Math.round(元素.clientWidth * 100) / 100,
+          内容宽: 元素.scrollWidth,
+        };
+      });
+    });
+    expect(公司截断).toHaveLength(2);
+    for (const 行 of 公司截断) {
+      expect(行.盒宽, '320 公司文本盒 ≈52px（274−178−34−10）').toBeLessThan(60);
+      expect(行.内容宽, `「${行.文本}…」在 320 宽被省略号截断`).toBeGreaterThan(行.盒宽);
+    }
+    await page.screenshot({ path: 'test-results/卡片统一/backend-在谈候选端-320.png' });
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // ── Backend 招聘端：招聘在谈卡（candidate_summary 投影 + 未知分占位）──
+    await page.goto('/#/identity?switch=1&from=app');
+    await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 30_000 });
+    const 后端招聘在谈卡 = page.getByTestId('招聘在谈卡').first();
+    await expect(后端招聘在谈卡.getByText(P5标记.现职.甲)).toBeVisible({ timeout: 20_000 });
+    const 后端招聘在谈390 = await 采集卡观察(page, 后端招聘在谈卡);
+    await 断言卡在视口内(page, 后端招聘在谈卡);
+    断言区域顺序(后端招聘在谈390, ['score', 'head', 'work', 'education', 'tags', 'stage']);
+    断言分数位让位(后端招聘在谈390);
+    await expect(后端招聘在谈卡.getByRole('img', { name: '匹配分未知' })).toBeVisible();
+    await expect(后端招聘在谈卡.getByText('需要你', { exact: true })).toBeVisible();
+    await page.screenshot({ path: 'test-results/卡片统一/backend-在谈招聘端-390.png' });
+    // 整卡点击 → 候选详情（Case 坐标不变）
+    await 后端招聘在谈卡.click();
+    await expect(page).toHaveURL(new RegExp(`#/hr/candidate/${P5编号.甲}$`), { timeout: 15_000 });
+
+    // ── Mock 基准（mock/stg origin）：两类在谈卡完整数据，固定区跨模式 ≤1px ──
+    await Mock登录求职(page);
+    await page.goto(`${Mock源}/#/app`);
+    const mock在谈卡 = page.getByTestId('求职在谈卡').first();
+    await expect(mock在谈卡.getByText('资深后端工程师 · 交易网关')).toBeVisible({ timeout: 15_000 });
+    const mock在谈390 = await 采集卡观察(page, mock在谈卡);
+    expect(Math.abs(mock在谈390.宽 - 后端在谈390.宽)).toBeLessThanOrEqual(1);
+    // 公司头行/职位名/标签行是固定区；标签条数不同 → 阶段区高度不比
+    断言区域对齐(mock在谈390, 后端在谈390, ['company', 'title', 'tags']);
+    // 右列绝对定位靠右，宽随薪资文案变：只比 y 与右缘
+    断言区域对齐(mock在谈390, 后端在谈390, ['score'], ['y', 'r']);
+    // 薪资文本盒高度随字形（「薪」是 CJK 字形，行框更高）而变，不是固定区；
+    // 两模式各自查「薪资与环同一行、不越出右列」这一布局事实
+    for (const 观 of [mock在谈390, 后端在谈390]) {
+      expect(观.区域.salary!.y + 观.区域.salary!.h, '薪资底缘不越出右列').toBeLessThanOrEqual(观.区域.score!.y + 观.区域.score!.h + 1);
+    }
+    await page.goto(`${Mock源}/#/identity?switch=1&from=app`);
+    await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
+    const mock在谈候选卡 = page.getByTestId('招聘在谈卡').first();
+    await expect(mock在谈候选卡.getByRole('img', { name: '适配 94 分' })).toBeVisible({ timeout: 15_000 });
+    const mock在谈候选390 = await 采集卡观察(page, mock在谈候选卡);
+    断言区域对齐(mock在谈候选390, 后端招聘在谈390, ['score', 'head', 'work', 'education', 'tags']);
+
+    // ── 320×844：Mock 招聘端在谈卡重新观察 ──
+    await page.setViewportSize({ width: 320, height: 844 });
+    await 断言卡在视口内(page, page.getByTestId('招聘在谈卡').first());
+    断言头行最多两行(await 采集卡观察(page, page.getByTestId('招聘在谈卡').first()));
+    await page.screenshot({ path: 'test-results/卡片统一/backend-在谈招聘端-320.png' });
+  });
+
+  test('卡片统一 推荐卡全空/零值/长文本变体 390：占位齐、分数位不被挤、行不收 @backend', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // P4 推荐腿三个变体卡：全空摘要 / 长文本摘要 / 零值分（+ 零年）
+    const fixture = P4发现fixture();
+    fixture.招聘可用 = {
+      [P4编号.recruiterJob]: [
+        P4招聘卡({ candidate_summary: null }),
+        P4招聘卡({
+          recommendation_id: 'rec_e2e_card_unified_long',
+          candidate_summary: P4摘要({
+            gender: null,
+            experience_years: 12,
+            job_status: 'unemployed',
+            degree: 'P4 Fixture 一段很长很长的学历名称用来验证头行最多两行的截断行为',
+            latest_experience: {
+              company: 'P4 Fixture 一家公司名称特别长',
+              title: '负责超大规模分布式系统与多机房容灾的资深后端工程师',
+            },
+            latest_education: { institution: 'P4 Fixture 一所名称很长的大学', major: '超长专业名称方向' },
+            personal_highlights: ['P4 Fixture 长亮点之一', 'P4 Fixture 长亮点之二'],
+          }),
+        }),
+        P4招聘卡({
+          recommendation_id: 'rec_e2e_card_unified_zero',
+          match_score: 0,
+          candidate_summary: P4摘要({ experience_years: 0, personal_highlights: [], degree: ' ' }),
+        }),
+      ],
+    };
+    await 装P4招聘(page, { fixture });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    await page.getByRole('button', { name: '推荐', exact: true }).click();
+    const 卡们 = page.getByTestId('招聘推荐卡');
+    await expect(卡们).toHaveCount(3, { timeout: 15_000 });
+
+    // 全空：六个未知占位齐，工作/教育/标签行一个不收
+    const 全空卡 = 卡们.nth(0);
+    // 头行段外层 span 连着「｜」分隔符：占位文本用子串匹配
+    for (const 占位 of ['经验未知', '学历未知', '求职状态未知', '工作经历未知', '教育经历未知', '亮点信息未知']) {
+      await expect(全空卡.getByText(占位)).toBeVisible();
+    }
+    await expect(全空卡.getByRole('img', { name: '性别未知' })).toBeVisible();
+    await 断言卡在视口内(page, 全空卡);
+    断言分数位让位(await 采集卡观察(page, 全空卡));
+
+    // 长文本：头行最多两行、分数位仍让位；工作/教育行仍在（不收行）
+    const 长卡 = 卡们.nth(1);
+    await expect(长卡.getByText('工作经历未知')).toHaveCount(0);
+    await 断言卡在视口内(page, 长卡);
+    const 长观察 = await 采集卡观察(page, 长卡);
+    断言分数位让位(长观察);
+    断言头行最多两行(长观察);
+
+    // 零值：真实 0 分仍是 0 分环（不是未知占位）；0 年 = 「不满 1 年」；亮点空 → 占位；
+    // 纯空白学历（wire 上 degree: ' '）不冒充已知值 → 「学历未知」占位
+    const 零卡 = 卡们.nth(2);
+    await expect(零卡.getByRole('img', { name: '适配 0 分' })).toBeVisible();
+    await expect(零卡.getByRole('img', { name: '匹配分未知' })).toHaveCount(0);
+    await expect(零卡.getByText('不满 1 年')).toBeVisible();
+    await expect(零卡.getByText('学历未知')).toBeVisible();
+    await expect(零卡.getByText('亮点信息未知')).toBeVisible();
+    await 断言卡在视口内(page, 零卡);
+    await page.screenshot({ path: 'test-results/卡片统一/backend-推荐变体-390.png' });
+
+    // 320 收窄（Spec §8.3：390 与 320 都看长文状态）：长文本卡仍不溢出、
+    // 头行最多两行、分数位不被挤
+    await page.setViewportSize({ width: 320, height: 844 });
+    await 断言卡在视口内(page, 长卡);
+    const 长观察320 = await 采集卡观察(page, 长卡);
+    断言头行最多两行(长观察320);
+    断言分数位让位(长观察320);
+    await page.screenshot({ path: 'test-results/卡片统一/backend-推荐变体-320.png' });
+  });
+
+  test('卡片统一 在谈卡超长职位名与全空摘要变体 390/320：占位齐、行不收 @backend', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // 候选端首页唯一一行 丁 换超长职位名；招聘端首页唯一一行 甲 摘要显式 null → 全未知占位
+    const P5fixture = 创建P5MatchCasefixture();
+    P5fixture.cases[P5编号.丁]!.职位名 =
+      'P5 Fixture 超长在谈岗位名称用来验证求职在谈卡职位名单行收尾不把标签行挤走';
+    P5fixture.cases[P5编号.甲]!.摘要 = null;
+    await 装P5双角色(page, { fixture: P5fixture, 主体初始角色: 'candidate' });
+
+    // ── 候选端：超长职位名单行收尾（单行截断），标签行不被挤走 ──
+    await page.goto('/#/app');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    const 长职位卡 = page.getByTestId('求职在谈卡').first();
+    await expect(长职位卡.getByText(/超长在谈岗位名称/)).toBeVisible({ timeout: 15_000 });
+    // 公司名占位 = 次要文字色（Spec §6）：P5 不给公司名，占位不再与真实公司名同色
+    expect(await 长职位卡.getByText('公司信息未知').evaluate((元) => getComputedStyle(元).color)).toBe(次要浅色);
+    await 断言卡在视口内(page, 长职位卡);
+    const 长职位观察 = await 采集卡观察(page, 长职位卡);
+    expect(长职位观察.区域.title!.h, '职位名单行高').toBeLessThanOrEqual(30);
+    expect(
+      长职位观察.区域.tags!.y,
+      '标签行仍贴在职位名下方一行的距离内',
+    ).toBeLessThanOrEqual(长职位观察.区域.title!.y + 长职位观察.区域.title!.h + 20);
+    await page.screenshot({ path: 'test-results/卡片统一/backend-在谈变体-390.png' });
+
+    // 320 收窄（Spec §8.3：长文状态两档宽都看）：超长职位名仍单行收尾、
+    // 标签行不被挤走、右列分数位不被遮
+    await page.setViewportSize({ width: 320, height: 844 });
+    await 断言卡在视口内(page, 长职位卡);
+    const 长职位观察320 = await 采集卡观察(page, 长职位卡);
+    expect(长职位观察320.区域.title!.h, '职位名单行高(320)').toBeLessThanOrEqual(30);
+    断言分数位让位(长职位观察320);
+    await page.screenshot({ path: 'test-results/卡片统一/backend-在谈变体-320.png' });
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // ── 招聘端：摘要显式 null = 全未知占位，行与图标一个不少 ──
+    await page.goto('/#/identity?switch=1&from=app');
+    await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 30_000 });
+    const 全空在谈卡 = page.getByTestId('招聘在谈卡').first();
+    await expect(全空在谈卡.getByText('工作经历未知')).toBeVisible({ timeout: 20_000 });
+    for (const 占位 of ['经验未知', '学历未知', '求职状态未知', '工作经历未知', '教育经历未知', '亮点信息未知']) {
+      await expect(全空在谈卡.getByText(占位)).toBeVisible();
+    }
+    // 头行占位段也走次要文字色（Spec §6）：头行三段占位不再继承头行的 --墨
+    expect(await 全空在谈卡.getByText('经验未知').evaluate((元) => getComputedStyle(元).color)).toBe(次要浅色);
+    await 断言卡在视口内(page, 全空在谈卡);
+    断言分数位让位(await 采集卡观察(page, 全空在谈卡));
+    await page.screenshot({ path: 'test-results/卡片统一/backend-在谈招聘端全空-390.png' });
+
+    // 320 收窄：全空在谈卡仍不溢出、头行不超两行
+    await page.setViewportSize({ width: 320, height: 844 });
+    await 断言卡在视口内(page, page.getByTestId('招聘在谈卡').first());
+    断言头行最多两行(await 采集卡观察(page, page.getByTestId('招聘在谈卡').first()));
+    await page.screenshot({ path: 'test-results/卡片统一/backend-在谈招聘端全空-320.png' });
   });
 });

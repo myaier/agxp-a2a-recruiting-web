@@ -1,24 +1,8 @@
-// D16 授权与规则 · 企业代理设置（P6 接权威规则域）
-//
-// 同构镜像：求职端 规则库.tsx（A10·B 清单版）。版式、字号、间距、圆角与同构源一致。
-// Mock：规则读全局状态的 企业规则（单组「全局规则 · 所有岗位生效」，无意向级分组），
-// 开关沿用既有 Mock 动作；手动添加先显示确认卡，用户确认后才派发 企业新增规则。
-//
-// 企业侧增量（D16 授权分层语义）：提示条上方多一块「授权范围」卡 ——
-// 匿名初筛 / 递交简历 由 AI 代理自动执行，意向确认必须委托人拍板；右侧值只读。
-//
-// Backend（P6）：一切展示先过角色水合门控（expectedRole = 'recruiter'）——
-// rules 成功前不显示规则行/计数；proposals 也成功后才给 手动添加/确认/放弃 控件与提案卡；
-// 任一域 失败 出「规则加载失败，重试」；进行中出 role="status" 加载壳，已成功的域保持在屏。
-// 开关 active→pause、paused→resume（If-Match 当前版本）；手动添加走提案流、永不携带范围。
-// 本期不新增 recruiter 编辑/删除 UI（冻结契约只要求 pause/resume）。
-// 所有动作 await 操作层，失败 轻提示(取Agent规则错误文案) 并保留本地草稿。
-//
-// 规则**不能**用本地 useState —— 必须读全局状态，开关状态才能被别的屏看到。
-
-import { useEffect, useRef, useState } from 'react';
-import 样式 from './企业代理设置.module.css';
-import { 次级页外壳, 返回栏, 滚动区, 开关 } from '../组件/通用';
+// 已批准的 AI代理设置：保留角色水合、权威提案确认与原账号缓存边界。
+import { useRef, useState } from 'react';
+import 样式 from './规则库.module.css';
+import 可编辑规则行 from '../组件/可编辑规则行';
+import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { 先问选择行 } from '../组件/先问选择行';
 import Agent规则提案卡 from '../组件/Agent规则提案卡';
 import { useAgent规则提案轮询 } from '../状态/后端/useAgent规则提案轮询';
@@ -33,7 +17,7 @@ import type { 规则 } from '../数据/类型';
 
 const 未水合: Agent规则角色水合状态 = { rules: '未开始', proposals: '未开始' };
 
-type Mock招聘提案 = { dto: BFFAgent规则提案; 文本: string };
+type Mock招聘提案 = { dto: BFFAgent规则提案; 文本: string; 替换编号?: string };
 
 /** actionable 提案展示序：created_at 早的在前，缺席的排最后，同刻按 proposal_id 稳定排序。 */
 function 提案展示序(提案们: BFFAgent规则提案[]): BFFAgent规则提案[] {
@@ -70,29 +54,10 @@ export default function 企业代理设置() {
     roleHydration.proposals === '未开始' || roleHydration.proposals === '进行中'
   );
   const 是Backend = 数据源模式 === 'backend';
-  const Agent设置快照 = role === null ? null : 后端状态.Agent设置?.[role] ?? null;
-  const Agent设置已就绪 = !是Backend || Agent设置快照?.阶段 === '成功';
-  const [Agent设置保存中, 设Agent设置保存中] = useState(false);
-
-  useEffect(() => {
-    if (是Backend && role === 'recruiter') void 操作.加载Agent设置();
-  }, [是Backend, role, 操作]);
-
-  const 保存招聘Agent设置 = async (value: '先问我' | '直接回绝') => {
-    设Agent设置保存中(true);
-    try {
-      await 操作.保存Agent设置({ out_of_authority_concession: value === '先问我' ? 'ask_first' : 'reject' });
-      轻提示('设置已保存');
-    } catch {
-      轻提示('设置没有保存成功，请重试');
-    } finally {
-      设Agent设置保存中(false);
-    }
-  };
-
   // 手动添加：折叠态是一条按钮，点开后原地变成输入行（不另开弹层，减少一次跳转）
   const [添加中, 设添加中] = useState(false);
   const [新规则文本, 设新规则文本] = useState('');
+  const 添加组合中 = useRef(false);
   const [提交中, 设提交中] = useState(false);
   // 提案卡的忙：只圈住正在接受/放弃的那一张卡（failed 卡的关闭永远可用）
   const [卡忙编号, 设卡忙编号] = useState<string | null>(null);
@@ -103,10 +68,6 @@ export default function 企业代理设置() {
   // §7.3：公开的 Proposal DTO 不带正文 —— 创建成功后把原草稿寄存进 sessionStorage
   //（Agent规则草稿寄存），跨导航存活；提案翻 failed 且用户关闭失败卡时原样还原，
   // 提案收口（接受/放弃）时清掉寄存。
-
-  // 返回栏右侧的「N 条生效」= 企业规则里 生效 为 true 的条数（开关联动；
-  // Backend 只在 rules 水合成功后显示，首次成功前不出 Mock 计数）
-  const 生效数 = 状态.企业规则.filter((条) => 条.生效).length;
 
   // actionable 提案：Backend 读招聘方 raw 字典；Mock 用同一确认卡模拟“理解后确认”。
   const 可见提案 = 提案展示序(
@@ -135,8 +96,22 @@ export default function 企业代理设置() {
     }
   };
 
+  const 保存编辑 = async (条: 规则, 内容: string) => {
+    if (!是Backend) {
+      Mock提案序.current += 1;
+      设Mock提案们(旧 => [...旧, {
+        dto: { proposal_id: `mock-recruiter-${Mock提案序.current}`, state: 'ready', normalized_text: 内容, consequence: 'advisory' },
+        文本: 内容, 替换编号: 条.编号,
+      }]);
+      return;
+    }
+    const 编号 = await 操作.创建Agent规则替换提案(条.编号, 内容);
+    if (!编号) throw new Error('修改尚未提交，请重试');
+  };
+
   // 提交手动添加：招聘方提案永不携带范围；失败保留草稿供再次明确提交
   const 提交新规则 = async () => {
+    if (添加组合中.current) return;
     const 内容 = 新规则文本.trim();
     if (!内容) {
       轻提示('请先写下希望AI代理遵守的规则');
@@ -157,6 +132,7 @@ export default function 企业代理设置() {
         return;
       }
       const 回执编号 = await 操作.创建Agent规则提案({ 文本: 内容 });
+      if (!回执编号) throw new Error('规则尚未提交，请重试');
       // 成功才寄存草稿并收起输入行；失败一律保留现场，不伪造成功
       if (回执编号) {
         写Agent规则草稿(回执编号, {
@@ -192,7 +168,8 @@ export default function 企业代理设置() {
     try {
       if (!是Backend) {
         const 提案 = Mock提案们.find((条) => 条.dto.proposal_id === 编号);
-        if (提案) 派发({ 型: '企业新增规则', 内容: 提案.文本, 来源: '手动添加' });
+        if (提案?.替换编号) 派发({ 型: '企业改规则', 编号: 提案.替换编号, 内容: 提案.文本 });
+        else if (提案) 派发({ 型: '企业新增规则', 内容: 提案.文本, 来源: '手动添加' });
         设Mock提案们((旧) => 旧.filter((条) => 条.dto.proposal_id !== 编号));
         return;
       }
@@ -226,45 +203,7 @@ export default function 企业代理设置() {
       <返回栏
         返回={返回}
         标题="AI代理设置"
-        右侧={显示清单 ? <span className={`${样式.生效数} 等宽数字`}>{生效数} 条生效</span> : null}
       />
-
-      {/* ── 哪些事先问你(2026-08-31 定稿):页面只放真选项。「匿名初筛/递交简历自动执行」
-            「意向确认必须拍板」这类铁律不再渲染成设置 —— 不可改的设置是噪音。
-            Backend 角色不符时随安全壳一起收起 ── */}
-      {!是Backend || role !== null ? (
-        <div className={样式.授权组}>
-          <div className={样式.分组标}>哪 些 事 先 问 你</div>
-          <div className={样式.授权卡}>
-            {是Backend && Agent设置快照?.阶段 !== '成功' ? (
-              Agent设置快照?.阶段 === '失败'
-                ? <button className={`${样式.重试键} 可点`} onClick={() => { void 操作.加载Agent设置(true); }}>设置加载失败，重试</button>
-                : <div className={样式.加载壳} role="status">AI代理设置加载中</div>
-            ) : null}
-            {!是Backend ? (
-              <先问选择行
-                标题="发送内部版 JD"
-                注="含只发给对方代理的内部信息"
-                值={状态.企业先问偏好.递交材料}
-                选项={['先问我', '自动发送'] as const}
-                选择={(值) => 派发({ 型: '设先问偏好', 端: '企业', 偏好: { 递交材料: 值 } })}
-              />
-            ) : null}
-            <先问选择行
-              标题="对方要的让步超出授权"
-              注="比如涨薪上限、多要的远程天数"
-              值={状态.企业先问偏好.超授权让步}
-              选项={['先问我', '直接回绝'] as const}
-              选择={(值) => {
-                if (!是Backend) 派发({ 型: '设先问偏好', 端: '企业', 偏好: { 超授权让步: 值 } });
-                else void 保存招聘Agent设置(值);
-              }}
-              禁用={!Agent设置已就绪 || Agent设置保存中}
-              末行
-            />
-          </div>
-        </div>
-      ) : null}
 
       {是Backend ? (
         <div className={样式.提示条}>
@@ -310,17 +249,12 @@ export default function 企业代理设置() {
 
           {显示清单 ? (
             <>
-              <div className={样式.分组标}>你 教 它 的 规 则</div>
+              <section className={样式.分区} aria-label="你教它的规则">
+              <h2 className={样式.分组标}>你教它的规则</h2>
               <div className={样式.卡}>
-                {状态.企业规则.map((条, 序) => (
-                  <规则行
-                    key={条.编号}
-                    条={条}
-                    切换={() => { void 切换规则(条); }}
-                    带开关={是Backend}
-                    末条={序 === 状态.企业规则.length - 1}
-                  />
-                ))}
+                {状态.企业规则.map(条 => <可编辑规则行 key={条.编号} 条={条} 可编辑={显示控件}
+                  保存={内容 => 保存编辑(条, 内容)} 删除={() => 操作.删除Agent规则(条.编号)}
+                  切换={() => 切换规则(条)} />)}
               </div>
 
               {添加中 ? (
@@ -329,17 +263,21 @@ export default function 企业代理设置() {
                     className={样式.添加输入框}
                     placeholder="例：到岗超过 60 天的候选先不推进"
                     value={新规则文本}
+                    disabled={提交中}
+                    onCompositionStart={() => { 添加组合中.current = true; }}
+                    onCompositionEnd={() => { 添加组合中.current = false; }}
                     onChange={(事件) => 设新规则文本(事件.target.value)}
                     onKeyDown={(事件) => {
                       // 中文输入法组合期按 Enter 是选字，不是提交
-                      if (事件.key === 'Enter' && !事件.nativeEvent.isComposing) void 提交新规则();
-                      if (事件.key === 'Escape') 设添加中(false);
+                      if (事件.key === 'Enter' && !添加组合中.current && !事件.nativeEvent.isComposing && 事件.keyCode !== 229) void 提交新规则();
+                      if (事件.key === 'Escape' && !事件.nativeEvent.isComposing) { 设添加中(false); 设新规则文本(''); }
                     }}
                     enterKeyHint="done"
                     autoFocus
                   />
                   <button
                     className={`${样式.取消添加} 可点`}
+                    disabled={提交中}
                     onClick={() => {
                       设新规则文本('');
                       设添加中(false);
@@ -354,47 +292,22 @@ export default function 企业代理设置() {
               ) : 显示控件 ? (
                 <button className={`${样式.手动添加} 可点`} onClick={() => 设添加中(true)}>
                   <span className={样式.添加圆}>＋</span>
-                  <span className={样式.添加文字}>手动添加规则</span>
+                  <span className={样式.添加文字}>添加规则</span>
                 </button>
               ) : null}
 
-              <div className={样式.尾注}>
-                {是Backend
-                  ? '关闭的规则立即停用但保留记录。'
-                  : '要调整或不再用，直接告诉AI代理。'}
-              </div>
+              </section>
+              <section className={样式.分区} aria-label="哪些事先问你">
+                <h2 className={样式.分组标}>哪些事先问你</h2>
+                {!是Backend ? <先问选择行 标题="发送内部版 JD" 注="含只发给对方代理的内部信息" 值={状态.企业先问偏好.递交材料}
+                  选项={['先问我', '自动发送'] as const} 选择={值 => 派发({ 型: '设先问偏好', 端: '企业', 偏好: { 递交材料: 值 } })} 末行 />
+                  : <p className={样式.边界说明}>内部版 JD 发送授权暂不支持在此设置。</p>}
+              </section>
+
             </>
           ) : null}
         </div>
       </滚动区>
     </次级页外壳>
-  );
-}
-
-// ── 单条规则：左侧「内容 + 来源」，右侧开关。停用后内容字色转灰但记录保留 ──
-// 本期无编辑/删除 UI：招聘方冻结契约只要求 pause/resume（P6）
-function 规则行({
-  条,
-  切换,
-  带开关,
-  末条,
-}: {
-  条: 规则;
-  切换: () => void;
-  /** Backend 冻结契约(P6)要求 pause/resume 开关;Mock 定稿(2026-08-31)不带开关 ——
-      规则来自你的叮嘱和选择,要调整直接告诉代理,不是要维护的配置 */
-  带开关: boolean;
-  末条: boolean;
-}) {
-  return (
-    <div className={`${样式.规则行} ${末条 ? 样式.末条 : ''}`}>
-      <div className={样式.规则主体}>
-        <div className={样式.规则头}>
-          <span className={`${样式.规则内容} ${条.生效 ? '' : 样式.已停用}`}>{条.内容}</span>
-        </div>
-        <div className={样式.规则来源}>{条.来源}</div>
-      </div>
-      {带开关 ? <开关 标签={`规则：${条.内容}`} 开={条.生效} 切换={切换} /> : null}
-    </div>
   );
 }

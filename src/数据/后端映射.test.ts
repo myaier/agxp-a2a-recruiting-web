@@ -475,7 +475,10 @@ describe('候选人后端映射', () => {
     const 草稿 = 从BFF意向草稿(dto);
     expect(草稿).toEqual({
       编辑编号: dto.intention_id,
-      求职类型: '全职',
+      毕业时间: dto.graduation_month, 实习月数: dto.internship_months,
+      每周到岗天数: dto.onsite_days_per_week, 薪资周期: dto.salary_period,
+      排除项: dto.exclusions, 私有偏好: dto.private_preferences,
+      求职类型: '实习生',
       工作城市: '上海',
       工作城市引用: { id: 'loc_shanghai', display_name: '上海' },
       期望职位: '产品经理',

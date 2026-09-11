@@ -41,7 +41,14 @@ export type 页面简历写入 = Omit<页面简历快照, '服务端快照'>;
 export interface 意向草稿型 {
   /** null = 新建；非空 = 正在编辑 求职意向表 里的这一条 */
   编辑编号: string | null;
-  求职类型: '全职' | '兼职';
+  求职类型: '全职' | '校园招聘' | '实习生' | '兼职';
+  /** 可选字段兼容旧草稿；显式 null 表示用户清空。 */
+  毕业时间?: string | null;
+  实习月数?: number | null;
+  每周到岗天数?: number | null;
+  薪资周期?: 'month' | 'day' | 'hour';
+  排除项?: BFFOwnerIntention['exclusions'];
+  私有偏好?: string;
   工作城市: string;
   /** Backend 城市选择器选中的 Location 引用（id + display_name）；Mock 模式为 undefined。
    *  保存意向时映射层用它取 primary_location_id；Task 6 的 从BFF意向草稿 会填充它。*/

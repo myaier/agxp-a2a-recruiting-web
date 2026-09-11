@@ -5,6 +5,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import 样式 from './消息列表.module.css';
 import 消息列表 from './消息列表';
 
 const 导航 = vi.hoisted(() => ({ 跳转: vi.fn() }));
@@ -41,5 +42,50 @@ describe('消息列表 · 模式分支', () => {
     await userEvent.click(screen.getByRole('button', { name: /林筱/ }));
     expect(mock应用状态.派发).toHaveBeenCalledWith({ 型: '读消息', 编号: 'X-03' });
     expect(导航.跳转).toHaveBeenCalledWith('/chat/human');
+  });
+
+  it('Mock 行真实消费共享展示：页签/搜索过滤、未读三态与共享行 class（P1 Task 4）', async () => {
+    // undefined = 已读（无标记）、0 = 红点、正数 = 数字；与 reducer 未读语义一致
+    mock应用状态 = {
+      数据源模式: 'mock',
+      状态: { 消息未读: { 'X-02': 0, 'X-03': 2 } },
+      派发: vi.fn(),
+    };
+    const 视图 = render(<消息列表 />);
+    // AI代理行走代理头像容器，真人行走字标头像容器，都是共享展示的原 46px class
+    expect(视图.container.querySelector(`.${样式.代理头像}`)).not.toBeNull();
+    const 林筱行 = screen.getByRole('button', { name: /林筱/ });
+    expect(林筱行.className).toContain(样式.会话行);
+    expect(林筱行.querySelector(`.${样式.头像}`)!.textContent).toBe('林');
+    // 未读数字胶囊（X-03 = 2）与红点（X-02 = 0）各在其行
+    expect(林筱行.querySelector(`.${样式.未读徽标}`)!.textContent).toBe('2');
+    const 陆知遥行 = screen.getByRole('button', { name: /陆知遥/ });
+    expect(陆知遥行.querySelector(`.${样式.红点}`)).not.toBeNull();
+    // AI代理动态（X-01）未读 undefined → 无任何标记
+    const AI行 = screen.getByRole('button', { name: /AI代理动态/ });
+    expect(AI行.querySelector(`.${样式.未读徽标}`)).toBeNull();
+    expect(AI行.querySelector(`.${样式.红点}`)).toBeNull();
+
+    // 页签过滤走共享外壳的受控页签
+    await userEvent.click(screen.getByRole('button', { name: '仅会话' }));
+    expect(screen.queryByText('AI代理动态')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: '通知' }));
+    expect(screen.queryByText('林筱')).toBeNull();
+    expect(screen.getByText('AI代理动态')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '全部' }));
+
+    // 搜索过滤走共享外壳的受控输入
+    await userEvent.type(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'), '林');
+    expect(screen.queryByText('陆知遥')).toBeNull();
+    expect(screen.getByText('林筱')).toBeTruthy();
+
+    // 搜索无命中走共享后置提示
+    await userEvent.clear(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'));
+    await userEvent.type(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'), '不存在的词');
+    // 多行空态是 文案<br/>文案（原结构），文本合在一个元素里
+    const 空态 = 视图.container.querySelector(`.${样式.空态}`);
+    expect(空态!.textContent).toContain('没有匹配的会话。');
+    expect(空态!.textContent).toContain('换个关键词，或者切到「全部」看看。');
+    expect(screen.queryByRole('button', { name: /林筱/ })).toBeNull();
   });
 });

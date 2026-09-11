@@ -1,6 +1,9 @@
 /* P5 Task 4：双端 open 工作区列表（Backend 专用）。
-   只承载 P5 列表必要的新态（契约错误卡 / 追加键 / 错误行 / 空态 / 徽标），
-   版式沿用 在谈首页.module.css 的卡片语言，不做视觉重设计。 */
+   2026-09-10 卡片统一后，本文件只承载列表态（列表 / 契约错误卡 / 追加键 / 错误行 / 空态）；
+   两张卡面在 组件/列表卡片/招聘在谈卡 与 求职在谈卡 各自的 module.css 里。
+   剩下的卡面类（卡/头行/职位名/事实行/标签行/标签/阶段区/阶段头/阶段标/状态文/注意说明/
+   尖括号/徽标×3）不再被本列表渲染，但 MatchCase历史.tsx / MatchCase详情.tsx 仍按
+   `列表样式.*` 引用同一文件（历史页不改版）—— 删前先全仓 rg 引用。 */
 
 .列表 {
   padding: 0 8px 130px;
@@ -33,51 +36,11 @@
   color: var(--墨);
 }
 
-/* ── 招聘卡摘要（2026-09-09）：局部类，只服务本模块招聘卡，不动候选卡共享的类 ── */
+/* 招聘卡摘要样式（2026-09-09 局部类）已随原 Backend 招聘卡 JSX 删除（2026-09-10 卡片统一）：
+   招聘卡面 = 组件/列表卡片/招聘在谈卡（卡体在 候选信息主体.module.css，阶段区在 在谈阶段区.module.css）。 */
 
-/* 摘要头行文字段：性别符 + 年限｜学历｜求职状态（镜像 候选推荐 的 .基本行） */
-.摘要基本行 {
-  display: flex;
-  align-items: center;
-  min-height: 22px;
-  font-size: 15.5px;
-  font-weight: 700;
-  color: var(--墨);
-}
-
-.性别符 {
-  display: inline-flex;
-  flex: none;
-  margin-right: 5px;
-}
-
-.竖分 {
-  margin: 0 2px;
-  color: var(--最弱);
-  font-size: 10px;
-}
-
-/* 最近工作 / 最近教育信息行（镜像 候选推荐 的 .信息行/.信息文） */
-.摘要行 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 7px;
-  margin-top: 5px;
-}
-
-.摘要行:first-of-type {
-  margin-top: 8px;
-}
-
-.摘要文 {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  color: var(--墨);
-}
-
-/* viewer 专属动作归属徽标：需要你（needs_action）/ 代理处理中（其余） */
+/* viewer 专属动作归属徽标：需要你（needs_action）/ 代理处理中（其余）；列表卡面统一后
+   只剩详情页在用（历史页沿用 阶段标，不用徽标） */
 .徽标 {
   flex: none;
   border-radius: 999px;

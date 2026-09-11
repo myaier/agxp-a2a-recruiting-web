@@ -1,6 +1,9 @@
-// 去名改版（定稿 2026-09-08）：在谈卡全匿名 —— 卡面无真名、无代号、无「薪资带有交集」；
-// 原 基本行 升为头行：性别图标（role=img，name 男/女）+ 年限｜学历｜在找「·」后半段。
-// 信息行 ×2 / 阶段区 / 右列适配环 一个像素不动；S1 披露规则、候选详情页、简历原件弹层不在本文件范围。
+// 去名改版（定稿 2026-09-08）：在谈卡全匿名 —— 卡面无真名、无代号、无「薪资带有交集」。
+// 卡片统一（2026-09-10）：Mock 在谈候选与 Backend P5 招聘在谈共用 src/组件/列表卡片/招聘在谈卡，
+// 卡内位置用 data-testid="招聘在谈卡" 与 data-card-region（head/score/work/education/tags/stage）
+// 锚定：头行 = 性别图标（或「性别未知」占位）+ 年限｜学历｜在找「·」后半段（缺段给「未知」占位）；
+// 信息行 ×2 / 亮点标签行恒在；阶段区 = 阶段标签 + 下一步（Mock 不出归属徽标，需要你 出呼吸点）。
+// S1 披露规则、候选详情页、简历原件弹层不在本文件范围。
 // 只测 Mock 分支卡面（Backend 分支的 P5 列表在 P5/MatchCase列表.test.tsx）。
 // 测试宿主：mock 应用状态 / 导航钩子（同 候选推荐.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
@@ -57,21 +60,17 @@ function 置Mock状态(候选表: 候选[] = P01候选) {
   };
 }
 
-/** 头行 = 性别图标所在的那一行（定稿：图标跟在头行最前，行类名沿用 .基本行） */
-function 取头行(图标: Element): HTMLElement {
-  const 行 = 图标.closest('[class*="基本行"]');
-  if (!(行 instanceof HTMLElement)) throw new Error('性别图标不在头行（.基本行）内');
-  return 行;
-}
-
-/** 在某性别的全部头行里找同时含所有片段的那一张卡；返回头行与它的图标 */
-function 找头行(性别: '男' | '女', 片段: string[]): { 头行: HTMLElement; 图标: Element } {
+/** 头区 = 卡内 data-card-region="head" 的那块（候选信息主体 的头行外层） */
+function 找头区(性别: '男' | '女', 片段: string[]): { 头区: HTMLElement; 图标: Element } {
   for (const 图标 of screen.getAllByRole('img', { name: 性别 })) {
-    const 头行 = 取头行(图标);
-    if (片段.every((段) => (头行.textContent ?? '').includes(段))) return { 头行, 图标 };
+    const 头区 = 图标.closest<HTMLElement>('[data-card-region="head"]');
+    if (头区 && 片段.every((段) => (头区.textContent ?? '').includes(段))) return { 头区, 图标 };
   }
   throw new Error(`没有「${性别}」头行同时含 ${片段.join(' / ')}`);
 }
+
+const 读头区们 = () =>
+  Array.from(document.querySelectorAll<HTMLElement>('[data-card-region="head"]'));
 
 describe('企业在谈候选 · 去名改版卡面（定稿 2026-09-08）', () => {
   beforeEach(() => {
@@ -107,32 +106,59 @@ describe('企业在谈候选 · 去名改版卡面（定稿 2026-09-08）', () =
       ['女', ['10 年', '本科', '在职看机会']], // A-07：匿名初筛、真名 null，头行与其他卡同构
     ];
     for (const [性别, 片段] of 期望) {
-      const { 头行, 图标 } = 找头行(性别, 片段);
-      expect(头行.textContent).not.toMatch(/薪资/);
-      expect(头行.textContent).not.toContain('后端工程师'); // 在找 只取「·」后半段，方向不进头行
-      expect(头行.firstElementChild?.contains(图标)).toBe(true); // 图标跟在头行最前
+      const { 头区, 图标 } = 找头区(性别, 片段);
+      expect(头区.textContent).not.toMatch(/薪资/);
+      expect(头区.textContent).not.toContain('后端工程师'); // 在找 只取「·」后半段，方向不进头行
+      expect(头区.firstElementChild?.contains(图标)).toBe(true); // 图标跟在头行最前
     }
 
-    // 右列适配环 / 阶段区 不动
+    // 工作/教育信息行、亮点标签行保留（回查推荐库查不到 → 标签位给「亮点信息未知」占位）
+    expect(screen.getByText('字节跳动 · Go / 高并发交易')).toBeTruthy();
+    expect(screen.getByText('上海交通大学 · 计算机科学与技术')).toBeTruthy();
+    expect(screen.getAllByText('亮点信息未知')).toHaveLength(4);
+
+    // 右列匹配分 / 阶段区 不动：已知分照常是适配环，Mock 不新增归属徽标
     expect(screen.getByRole('img', { name: '适配 94 分' })).toBeTruthy();
     expect(screen.getAllByText('需要协调').length).toBeGreaterThan(0);
     expect(screen.getByText('对方要每周 2 天远程，AI代理建议给 1 天')).toBeTruthy();
+    for (const 徽标文案 of ['需要你', '需注意', '代理处理中']) {
+      expect(screen.queryByText(徽标文案)).toBeNull();
+    }
   });
 
-  it('验收1 · 在找 缺省不渲染求职状态词；性别 缺省不渲染图标；其余头行不变', async () => {
+  it('验收1 · 阶段区：需要你 的卡有呼吸点，不需要你 的没有；阶段标签在标签行下方', async () => {
+    置Mock状态();
+    render(<企业在谈候选 />);
+    await screen.findAllByRole('img', { name: '男' });
+    // A-01 / A-03 需要你 → 两颗呼吸点；A-02 / A-07 不需要你 → 无呼吸点
+    expect(document.querySelectorAll('[class*="阶段点呼吸"]')).toHaveLength(2);
+    const 卡们 = screen.getAllByTestId('招聘在谈卡');
+    expect(卡们).toHaveLength(4);
+    for (const 卡 of 卡们) {
+      const 区域们 = Array.from(卡.querySelectorAll('[data-card-region]'))
+        .map((元) => 元.getAttribute('data-card-region'));
+      // 阶段区在标签行下方：tags 先于 stage；右列分数位在最前
+      expect(区域们).toEqual(['score', 'head', 'work', 'education', 'tags', 'stage']);
+    }
+  });
+
+  it('验收1 · 在找 缺省给「求职状态未知」；性别 缺省给「性别未知」占位（不造男女图标）；其余头行不变', async () => {
     const A01 = P01候选.find((候) => 候.编号 === 'A-01');
     if (!A01) throw new Error('Mock 数据里没有 A-01');
     置Mock状态([{ ...A01, 在找: undefined, 性别: undefined }]);
     render(<企业在谈候选 />);
-    await waitFor(() => expect(document.querySelector('[class*="基本行"]')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-card-region="head"]')).not.toBeNull());
 
+    // 性别未知走 16px ? 占位（可访问名 性别未知），不是男/女图标
     expect(screen.queryByRole('img', { name: '男' })).toBeNull();
     expect(screen.queryByRole('img', { name: '女' })).toBeNull();
-    const 头行 = document.querySelector('[class*="基本行"]')?.textContent ?? '';
-    expect(头行).toContain('9 年');
-    expect(头行).toContain('硕士');
-    expect(头行).not.toMatch(/在职看机会|离职可到岗|薪资/);
-    expect(头行).not.toMatch(/｜\s*$/); // 缺省词不留悬空竖分
+    expect(screen.getByLabelText('性别未知')).toBeTruthy();
+    const 头区 = document.querySelector('[data-card-region="head"]')?.textContent ?? '';
+    expect(头区).toContain('9 年');
+    expect(头区).toContain('硕士');
+    expect(头区).toContain('求职状态未知');
+    expect(头区).not.toMatch(/在职看机会|离职可到岗|薪资/);
+    expect(头区).not.toMatch(/｜\s*$/); // 缺省词不留悬空竖分
     expect(screen.queryByText('陈屿')).toBeNull();
     expect(screen.queryByText('沈亦舟')).toBeNull();
   });
@@ -154,8 +180,7 @@ describe('企业在谈候选 · 删筛选（第二批 验收2/3/4/5）', () => {
     '11 年｜本科｜在职看机会', // A-02
     '10 年｜本科｜在职看机会', // A-07
   ];
-  const 读头行 = () =>
-    Array.from(document.querySelectorAll('[class*="基本行"]')).map((行) => 行.textContent ?? '');
+  const 读头行 = () => 读头区们().map((区) => 区.textContent ?? '');
 
   it('验收2 · 顶栏无「筛选」文字按钮，也无「看哪几单」面板；在谈 / 推荐 子视图键仍在', async () => {
     置Mock状态();

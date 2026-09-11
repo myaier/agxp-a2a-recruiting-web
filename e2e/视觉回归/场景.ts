@@ -171,18 +171,18 @@ const 在谈首页场景: 视觉场景 = {
   },
 };
 
-// candidate-negotiation-detail：在谈详情的职位详情 Tab，求职端已注册。
-// 注：计划步骤只写「打开 /#/deal/J-01」，但该页默认 Tab 是「代谈进度」，ready 中的
-// 「匹配度分析」「职位详情」文案在「职位详情」Tab 内。按 carry-forward 规则在到达步骤里
-// 点一次「职位详情」Tab 切到该视图，不改产品代码。另：「职位详情」文案同时是 Tab 按钮名与
-// 内容标题，getByText 解析到 2 个节点触发 strict mode，故关键元素改用 Tab 按钮定位。
+// candidate-negotiation-detail：在谈详情的第二 Tab「职位详情」（资料槽），求职端已注册。
+// 详情统一（2026-09-10）曾把两个 Tab 改叫 进度/资料；review-r1（同日）按 spec §1/§3.1
+// 恢复产品名（第一 Tab 代谈进度、求职端第二 Tab 职位详情）—— 基线与当前同名，
+// 锚点收回精确 Tab 按钮名，不再需要跨版本 alternation。到达方式仍用深链 ?tab=job
+//（旧页直开 职位详情 Tab、新外壳直开 资料 槽，两端同落点）。「职位详情」同时是 Tab
+// 按钮名与内容区块标题，继续用 role=button 锚点避开 strict mode 歧义。
 const 在谈详情场景: 视觉场景 = {
   id: 'candidate-negotiation-detail',
   状态: '求职端已注册',
   async 到达(page: Page): Promise<void> {
-    await 打开稳定页面(page, '/#/deal/J-01', '求职端已注册');
+    await 打开稳定页面(page, '/#/deal/J-01?tab=job', '求职端已注册');
     await 注入候选突变(page);
-    await page.getByRole('button', { name: '职位详情' }).click();
   },
   async 就绪(page: Page): Promise<void> {
     await expect(page.getByText('匹配度分析', { exact: true })).toBeVisible();
@@ -407,6 +407,26 @@ const 反馈场景 = 构造场景({
   },
 });
 
+// enterprise-public：企业公开页（Mock 静态档 yunqu），求职端已注册（企业名片统一 Task 3 新增）。
+// 统一展示后本页相对基线有 Spec §7 列明的批准差异（缺图字标改空白图位、原先隐藏的缺字段
+// 区块出现占位、工商区改名并容纳身份行、主营业务加标签、条款摘要文案），由 ui:check 的
+// 逐差异人工对账收口，不在采集口径里掩盖。关键元素只选新旧两版都存在的稳定锚点；
+// 新增的占位/空白图位刻意不设为关键元素 —— 基线侧本来就没有这些元素。
+const 企业公开页场景 = 构造场景({
+  id: 'enterprise-public',
+  状态: '求职端已注册',
+  路径: '/#/company/yunqu',
+  关键元素(page: Page) {
+    return [
+      { 名称: '公司标题 云衢科技', 定位: page.getByRole('heading', { name: '云衢科技' }) },
+      { 名称: '卡标题 公司自述', 定位: page.getByText('公司自述', { exact: true }) },
+      { 名称: '文字键 读全文', 定位: page.getByRole('button', { name: '读全文 ›' }) },
+      { 名称: '卡标题 办公地', 定位: page.getByText('办公地', { exact: true }) },
+      { 名称: '岗位入口 看这家在招', 定位: page.getByRole('button', { name: /看这家在招的/ }) },
+    ];
+  },
+});
+
 export const 视觉场景们: 视觉场景[] = [
   登录场景,
   身份场景,
@@ -425,4 +445,5 @@ export const 视觉场景们: 视觉场景[] = [
   候选画像场景,
   账号安全场景,
   反馈场景,
+  企业公开页场景,
 ];

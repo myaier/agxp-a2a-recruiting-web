@@ -160,15 +160,16 @@ async function 左滑露不合适() {
   await waitFor(() => expect(screen.getByRole('button', { name: '不合适' })).toBeTruthy());
 }
 
-/** 头行文本表（定稿 2026-09-08：原 基本行 升为头行，类名沿用 .基本行；一张卡一行） */
+/** 头行文本表（定稿 2026-09-08：原 基本行 升为头行；2026-09-10 起头行出自共用组件 候选头行，
+ *  类名改回 .头行；主体外层是 .头区，类名不含「头行」二字，一张卡仍只捞到一行） */
 function 读头行文本(): string[] {
-  return Array.from(document.querySelectorAll('[class*="基本行"]')).map((行) => 行.textContent ?? '');
+  return Array.from(document.querySelectorAll('[class*="头行"]')).map((行) => 行.textContent ?? '');
 }
 
 /** 性别图标所在的头行（定稿：图标跟在头行最前） */
 function 取头行(图标: Element): HTMLElement {
-  const 行 = 图标.closest('[class*="基本行"]');
-  if (!(行 instanceof HTMLElement)) throw new Error('性别图标不在头行（.基本行）内');
+  const 行 = 图标.closest('[class*="头行"]');
+  if (!(行 instanceof HTMLElement)) throw new Error('性别图标不在头行内');
   return 行;
 }
 
@@ -357,7 +358,7 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     }
   });
 
-  it('个人亮点空数组整行收起，不回退旧 highlights；旧代理小结文案不上卡', () => {
+  it('个人亮点空数组给「亮点信息未知」占位，不回退旧 highlights；旧代理小结文案不上卡', () => {
     置P4状态({
       快照: P4快照({
         阶段: '成功',
@@ -370,8 +371,11 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
       }),
     });
     render(<候选推荐 />);
+    // 占位只表示「没有可展示的亮点」，绝不把旧匹配理由 / 旧代理小结补回去
+    expect(screen.getByText('亮点信息未知')).toBeTruthy();
     expect(screen.queryByText('带领5人团队交付')).toBeNull();
     expect(screen.queryByText('职位方向匹配')).toBeNull();
+    expect(screen.queryByText('category_matched')).toBeNull();
     expect(screen.queryByText('四年全栈经验')).toBeNull();
   });
 
@@ -1080,12 +1084,14 @@ describe('候选推荐 · 去名改版头行（定稿 2026-09-08）', () => {
     expect(mock派发).toHaveBeenCalledWith({ 型: '接触推荐候选', 编号: 'R-11' });
   });
 
-  it('验收2 · Mock 卡：性别 缺省不渲染图标，头行其余不变', () => {
+  it('验收2 · Mock 卡：性别 缺省出「性别未知」占位（不造男女图标），头行其余不变', () => {
     置Mock状态();
     mock应用状态.状态.推荐列表 = [{ ...推荐列表[0]!, 性别: undefined }];
     render(<候选推荐 />);
     expect(screen.queryByRole('img', { name: '男' })).toBeNull();
     expect(screen.queryByRole('img', { name: '女' })).toBeNull();
+    const 性别未知 = screen.getByLabelText('性别未知');
+    expect(性别未知.getAttribute('title')).toBe('性别未知');
     const 头行 = 读头行文本();
     expect(头行).toHaveLength(1);
     expect(头行[0]).toContain('7 年');
@@ -1094,22 +1100,27 @@ describe('候选推荐 · 去名改版头行（定稿 2026-09-08）', () => {
     expect(screen.queryByText('江叙白')).toBeNull();
   });
 
-  it('验收3 · Backend 卡：无代号；摘要缺失显示中性头行；信息行/标签行收起、底行仍在', () => {
+  it('验收3 · Backend 卡：无代号；摘要缺失逐字段未知占位（头行 + 工作/教育/亮点）、底行仍在', () => {
     置P4状态({});
     render(<候选推荐 />);
     expect(screen.queryByText('候选人甲')).toBeNull();
+    // 默认样本无 candidate_summary（键缺席 = 显式 null）：不再有旧的中性整段文案，
+    // 每个字段各自给明确的未知占位（Spec §4.2），性别位出「性别未知」标记
+    expect(screen.queryByText('候选信息暂未披露')).toBeNull();
+    const 性别未知 = screen.getByLabelText('性别未知');
+    expect(性别未知.getAttribute('title')).toBe('性别未知');
     const 头行 = 读头行文本();
     expect(头行).toHaveLength(1);
-    // 默认样本无 candidate_summary：头行只有中性文案，无分隔符、无图标
-    expect(头行[0]).toContain('候选信息暂未披露');
-    expect(头行[0]).not.toContain('｜');
+    for (const 段 of ['经验未知', '学历未知', '求职状态未知']) expect(头行[0]).toContain(段);
+    expect(screen.getByText('工作经历未知')).toBeTruthy();
+    expect(screen.getByText('教育经历未知')).toBeTruthy();
+    expect(screen.getByText('亮点信息未知')).toBeTruthy();
     expect(头行[0]).not.toMatch(/薪资/);
     expect(document.body.textContent).not.toMatch(/薪资带/);
     expect(screen.queryByRole('img', { name: '男' })).toBeNull();
     expect(screen.queryByRole('img', { name: '女' })).toBeNull();
     期望样本卡在场();
-    // 无摘要时工作/教育/标签行整体收起；收藏/›/去聊键照常
-    expect(screen.queryByText('四年全栈经验')).toBeNull();
+    // 收藏/›/去聊键照常
     expect(screen.getByRole('button', { name: '收藏' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '查看候选画像' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '让AI代理去聊' })).toBeTruthy();
@@ -1135,7 +1146,7 @@ describe('候选推荐 · 去名改版头行（定稿 2026-09-08）', () => {
     expect(头行.textContent).not.toContain('4 年');
   });
 
-  it('验收5 · Backend 摘要变 null：旧摘要信息消失，头行回到中性文案', () => {
+  it('验收5 · Backend 摘要变 null：旧摘要信息消失，回到逐字段未知占位', () => {
     置P4状态({
       快照: P4快照({ 阶段: '成功', items: [换卡({ 推荐ID: 'rec_r1', 别名: '候选人甲' })] }),
     });
@@ -1148,7 +1159,11 @@ describe('候选推荐 · 去名改版头行（定稿 2026-09-08）', () => {
     页.rerender(<候选推荐 />);
     expect(screen.queryByText('示例公司 · 软件工程师')).toBeNull();
     expect(screen.queryByText('带领5人团队交付')).toBeNull();
-    expect(读头行文本()).toEqual([expect.stringContaining('候选信息暂未披露')]);
+    expect(screen.queryByText('在职看机会')).toBeNull();
+    expect(screen.getByText('工作经历未知')).toBeTruthy();
+    expect(screen.getByText('亮点信息未知')).toBeTruthy();
+    expect(screen.getByLabelText('性别未知')).toBeTruthy();
+    expect(读头行文本()).toEqual([expect.stringContaining('经验未知')]);
   });
 
   it.each([

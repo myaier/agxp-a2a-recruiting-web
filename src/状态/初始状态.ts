@@ -314,10 +314,38 @@ function 写入后删旧键(存储: 资料缓存存储 | null, 新键: string, �
   }
 }
 
+/** 模拟意向独立缓存：缺失/损坏回落种子；合法空表表示用户已删除全部意向。 */
+export function 读模拟意向缓存(存储: 资料缓存存储 | null, 范围: 资料缓存范围): 状态['求职意向表'] | null {
+  try {
+    const 原文 = 存储?.getItem(账号存储键('求职意向v1', 范围));
+    if (!原文) return null;
+    const 表: unknown = JSON.parse(原文);
+    if (!Array.isArray(表) || !表.every(条 => {
+      if (!条 || typeof 条.编号 !== 'string' || typeof 条.标题 !== 'string' || typeof 条.说明 !== 'string') return false;
+      const 草稿 = 条.完整草稿;
+      if (草稿 === undefined) return true;
+      return 草稿 && ['全职', '校园招聘', '实习生', '兼职'].includes(草稿.求职类型)
+        && typeof 草稿.工作城市 === 'string' && typeof 草稿.期望职位 === 'string'
+        && ['感兴趣城市们', '期望行业们', '办公方式'].every(键 => Array.isArray(草稿[键]) && 草稿[键].every((值: unknown) => typeof 值 === 'string'))
+        && ['薪资下限', '薪资上限'].every(键 => 草稿[键] === null || (typeof 草稿[键] === 'number' && Number.isFinite(草稿[键])))
+        && (草稿.毕业时间 == null || typeof 草稿.毕业时间 === 'string')
+        && ['实习月数', '每周到岗天数'].every(键 => 草稿[键] == null || (typeof 草稿[键] === 'number' && Number.isFinite(草稿[键])))
+        && (草稿.薪资周期 === undefined || ['month', 'day', 'hour'].includes(草稿.薪资周期))
+        && (草稿.私有偏好 === undefined || typeof 草稿.私有偏好 === 'string')
+        && (草稿.排除项 === undefined || (草稿.排除项 && ['alternate_weekend_work', 'outsourcing_only', 'onsite_only', 'frequent_travel'].every(键 => ['allowed', 'excluded', 'unspecified'].includes(草稿.排除项[键]))));
+    }) || new Set(表.map(条 => 条.编号)).size !== 表.length) return null;
+    return 表;
+  } catch {
+    // 与现有简历缓存一致：无法解析的缓存不进入页面状态。
+    return null;
+  }
+}
+
 export function 创建初始状态(源: 招聘数据源选择): 状态 {
   if (源.模式 === 'backend') return { ...后端种子状态 };
   const 存储 = 安全取存储('local');
   const 范围 = 演示范围(源.后端环境 ?? 'stg');
+  const 意向表 = 读模拟意向缓存(存储, 范围) ?? 初始状态.求职意向表;
   const 简历键 = 账号存储键('简历v3', 范围);
   const 筛选键 = 账号存储键('求职筛选v2', 范围);
   let 简历缓存 = 读简历缓存(存储, 简历键);
@@ -336,6 +364,8 @@ export function 创建初始状态(源: 招聘数据源选择): 状态 {
   return {
     ...初始状态,
     ...资料缓存,
+    求职意向表: 意向表,
+    当前意向: 选新当前意向(意向表, 初始状态.当前意向),
     资料缓存范围键: 资料缓存键(范围),
     简历经历: 简历缓存?.经历 ?? 简历经历初始,
     简历教育: 简历缓存?.教育 ?? 简历教育初始,
