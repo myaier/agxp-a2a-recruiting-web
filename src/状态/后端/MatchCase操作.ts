@@ -1330,7 +1330,12 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     持久化待核对();
   }
 
-  /** 读该 record 的未决 retry：内存优先，落 owner 存储兜底（硬刷新后内存为空）。 */
+  /**
+   * 读该 record 的未决 retry：内存优先，落 owner 存储兜底（硬刷新后内存为空）。
+   * 存储兜底命中即种回内存 —— 后续 改（补 已确认回执）/删（整批持久化）都按内存
+   * 定位，不种回则存储-only 的命令永远改不动、删不掉（pending 滞留、已确认 write
+   * 可能被再次重放）。
+   */
   function 读重试待核对(recordId: string): 待核对重试命令 | null {
     const 内存 = deps.委托待核对内存?.current;
     const 键 = 委托重试目标键(recordId);
@@ -1339,8 +1344,10 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
     const 会话 = 取待核对会话();
     if (会话 === null) return null;
     const { 命令 } = 读取待核对(会话.storage, 会话.owner);
-    return 命令.find((条): 条 is 待核对重试命令 =>
+    const 命中 = 命令.find((条): 条 is 待核对重试命令 =>
       条.operation === 'retry' && 条.record_id === recordId) ?? null;
+    if (命中 !== null && 内存 !== undefined) 内存.set(键, 命中);
+    return 命中;
   }
 
   /** 只改在场的那条（绝不插入）：202 受理后补 已确认回执；重放不以此改写原命令。 */

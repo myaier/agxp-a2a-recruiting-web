@@ -2274,6 +2274,30 @@ describe('J-PILOT-01 Task 3：委托待核对命令（create）', () => {
     expect(env.操作.取候选待核对命令('int_1', 'job_1')).toBeNull();
   });
 
+  it('硬刷新后已确认 create 只回读并收口存储：零重发已确认 write', async () => {
+    // 第一段：POST 受理但 canonical 读失败 → pending 保留 已确认回执 + delegation_id（内存 + 存储）
+    vi.mocked(env.数据源.创建候选岗位委托).mockResolvedValueOnce([
+      { ...BFF候选委托回执样本, delegation_id: 'del_refresh' },
+    ]);
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockRejectedValueOnce(new BFF错误(503, 'downstream_unavailable', 'down'));
+    await env.操作.委托候选岗位(候选委托输入);
+    const 共享存储 = env.委托待核对存储.current!.storage!;
+    expect(读取待核对(共享存储, 待核对owner).命令).toEqual([
+      expect.objectContaining({ operation: 'create', delegation_id: 'del_refresh', 已确认回执: true }),
+    ]);
+
+    // 硬刷新 = 同一 owner 存储、全新内存表：核对只回读（GET-only），成功后收口必须落回存储
+    const env2 = 创建P4操作测试环境({ 待核对存储: 共享存储 });
+    expect(env2.操作.取候选待核对命令('int_1', 'job_1')).toMatchObject({ delegation_id: 'del_refresh' });
+    vi.mocked(env2.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(连续聚合桩('del_refresh') as never);
+    await env2.操作.核对候选委托('int_1', 'job_1');
+    expect(env2.数据源.创建候选岗位委托).not.toHaveBeenCalled(); // 零重发已确认 write
+    expect(env2.委托待核对内存.current.has('create:int_1:job_1')).toBe(false);
+    expect(读取待核对(共享存储, 待核对owner).命令).toEqual([]); // 存储被清，pending 收口
+  });
+
   it('409 idempotency_conflict 不自动新 key：pending 与原键保留，重放沿用原键', async () => {
     const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
       .mockReturnValueOnce(UUID键('conflict-key-0001'))
