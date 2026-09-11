@@ -37,7 +37,7 @@
 
 阅读同 revision 的 `docs/contracts/J-PILOT-01/README.md` 和后端最小接线 Spec，旧实现状态只作历史。前端产品文档按批准 Spec §2 锁定。本地源码检查不是部署证明。
 
-Task 1 开工前，在既有本地 fixture 记录 Task 7 所需的 320/390 视口原控件几何，作为 PM 布局基准；不新增测试配置或运行真实服务。
+Task 1 开工前，在既有本地 fixture 记录 Task 7 所需的 320/390 视口原控件几何，作为 PM 布局基准：将关键几何数值、视口、fixture 内容和源码 commit 直接记录在本 Plan 验证表，不能仅存会被 Playwright 清理的 test-results；不新增测试配置或运行真实服务。
 
 开工可用 `git cat-file -e <revision>`、`git rev-parse <revision>:<path>` 核对上表；不能拿新 YAML 静默替代批准合同。必要 Git 对象或文件缺失时先恢复准确输入，只暂停依赖该输入的工作；不启动后端环境。所有后续测试为本地前端范围。
 
@@ -71,8 +71,7 @@ Codex execution: superpowers:executing-plans
 ```ts
 type NegotiationShelf = 'active' | 'history';
 interface 连续代谈数据源 {
-  读取候选连续列表(shelf: NegotiationShelf, intentionId: string | null,
-    cursor: string | null): Promise<NegotiationPage>;
+  读取候选连续列表(shelf: NegotiationShelf, cursor: string | null): Promise<NegotiationPage>;
   读取候选连续详情(recordId: string): Promise<NegotiationDetail>;
   重试候选连续记录(recordId: string, generation: number,
     key: string): Promise<NegotiationRetryReceipt>;
@@ -80,14 +79,15 @@ interface 连续代谈数据源 {
 }
 ```
 
-`创建连续代谈数据源(请求)` 采用发现推荐 facade 的请求依赖类型，混入 HTTP招聘数据源。列表 limit=50、intentionId/cursor 为 null 时省略，详情不带 include；retry body `{expected_retry_generation:generation}`＋Idempotency-Key，archive body `{}` 无 key；API 路径固定 `/api/v1/me/negotiations` 及 `/{encodedID}`、`/retry`、`/archive`。
+`创建连续代谈数据源(请求)` 采用发现推荐 facade 的请求依赖类型，混入 HTTP招聘数据源。本次没有按意向过滤的连续列表消费者，facade/状态范围键不提供该可选维度；有明确产品入口后再考虑。列表 limit=50、恒省略 intention_id、cursor 为 null 时省略，详情不带 include；retry body `{expected_retry_generation:generation}`＋Idempotency-Key，archive body `{}` 无 key；API 路径固定 `/api/v1/me/negotiations` 及 `/{encodedID}`、`/retry`、`/archive`。
 
-扩展 `P5MatchCase状态`：`P5连续列表: Record<string, 连续列表快照>` 与 `P5连续详情: Record<string, 连续详情快照>`；快照复用现有阶段/刷新/error/generation 形状，分别持有 NegotiationCard[]／NegotiationDetail|null，并带 ownerSubjectId。范围键 `P5范围键.negotiations(shelf,intentionId)` 与 `P5范围键.negotiation(recordId)`，保留 candidate 角色标识；复用 P5范围代际、P5幂等意图、P5可见范围，不新增全站锁管理器。
+扩展 `P5MatchCase状态`：`P5连续列表: Record<string, 连续列表快照>` 与 `P5连续详情: Record<string, 连续详情快照>`；快照复用现有阶段/刷新/error/generation 形状，分别持有 NegotiationCard[]／NegotiationDetail|null，并带 ownerSubjectId。范围键 `P5范围键.negotiations(shelf)` 与 `P5范围键.negotiation(recordId)`，保留 candidate 角色标识；复用 P5范围代际、P5幂等意图、P5可见范围，不新增全站锁管理器。
 
 ```ts
 // 加入既有 MatchCase操作，所有写操作的 key 由控制操作层负责。
-加载连续列表(shelf: NegotiationShelf, intentionId: string | null, force?: boolean): Promise<void>;
-追加连续列表(shelf: NegotiationShelf, intentionId: string | null): Promise<void>;
+加载连续列表(shelf: NegotiationShelf, force?: boolean): Promise<void>;
+追加连续列表(shelf: NegotiationShelf): Promise<void>;
+刷新连续列表(shelf: NegotiationShelf): Promise<void>; // 从首屏重建已载窗口
 读取连续详情(recordId: string, force?: boolean): Promise<void>;
 重试连续记录(recordId: string): Promise<void>;
 归档连续记录(recordId: string): Promise<void>;
@@ -133,7 +133,7 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 **消费/产出：** 消费 HTTP 请求函数及导出的 `解P5详情(input,'candidate')`；产出协议 A facade/DTO。必要时导出既有局部 Case decoder，不复制实现。
 
 - [ ] 核对四个 operation 与 schema 及引用闭合边界；在单测写最小请求捕获正反例。卡片完整 fixture 按冻结 schema，case_detail 复用现有 Case wire 样本。
-- [ ] 首先断言 `读取候选连续列表('active',null,null)` 请求不含 intention_id/cursor；`重试候选连续记录('dlg_…',0,'k')` 严格 body 为 `{expected_retry_generation:0}` 且带 key，archive 无 key。用受控请求桩记录参数，不连接后端。
+- [ ] 首先断言 `读取候选连续列表('active',null)` 请求不含 intention_id/cursor；`重试候选连续记录('dlg_…',0,'k')` 严格 body 为 `{expected_retry_generation:0}` 且带 key，archive 无 key。用受控请求桩记录参数，不连接后端。
 - [ ] 实现 facade，检查 required/nullable、固定枚举、history needs_action=false、嵌套 Case 权限和详情/列表一致性；全量 referenced evaluation/evidence 严格解码，不通过 unknown 保留未校验展示数据。
 - [ ] 扩展 S0 信息不足成对 outcome/code 的条件约束，finalized_at 合法、终局动作空；附件双端仅 resume_submission。旧合法其它终局仍可读，S0 私有总结招聘侧严格拒绝。
 - [ ] 执行 `npm test -- src/数据/招聘数据源/连续代谈.test.ts src/数据/招聘数据源/MatchCase.test.ts`；预期先出现缺实现失败，再全部通过。额外反例：recommendations/items=null、漏 required、history 待办 true、新终局混 semantic_not_fit、S0/S2 附件。
@@ -153,11 +153,11 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 
 - [ ] 对现有 P5 操作测试增加连续列表/详情样本和主体反例，不拷贝整套状态工厂。测试 alias mc 输入返回 dlg 仅保存一个 canonical、同 version 新消息更新、切主体迟到 401 不登出新主体。
 - [ ] 将空连续快照和 alias 对照纳入 `创建空P5MatchCase状态`、Provider 初始值、清账号/换角色/换主体的全部既有重置口。不要把业务快照写入资料持久化。
-- [ ] 在 P5 工厂增加连续读取，复用读锁与代际：首屏替换、下一页 canonical 去重/upsert、null cursor 零请求；force 刷新丢旧 cursor 只重读首屏。旧 cursor 400 仅恢复一次，其他 400 显式失败。
+- [ ] 在 P5 工厂增加连续读取，复用读锁与代际：首屏替换、下一页 canonical 去重/upsert、null cursor 零请求；force 手动刷新丢旧 cursor 只重读首屏；`刷新连续列表(shelf)` 复用既有窗口读取语义，从首屏的新 cursor 顺序重建已载页数后一次替换，不重用旧页 cursor、不混旧新分页，不将 5 秒轮询降成只读首屏。旧 cursor 400 仅恢复一次，其他 400 显式失败。
 - [ ] 当前主体 401/403、详情 404 清旧敏感详情；普通网络/503/坏合同刷新只保留同主体只读旧快照；retention 响应替换旧 case_detail，不向旧 `P5详情` 留镜像。
 - [ ] 逐个核对 `运行命令`/`权威重读详情` 的候选路径：候选 Case 动作成功和未知结果 GET 对账都通过真实 case_id 的 negotiation alias 读取，从其 case_detail 取 P5 判断；招聘继续原 Case GET。POST 已成功、GET 失败不能 reject 成写失败；聚合封闭时不能用空动作表判写成功。
 - [ ] 失效/刷新候选已载 continuous active/history；只刷新当前候选已载 Case summary，不强迫加载其它域。调用旧 `读取详情('candidate',caseId)` 的现存消费者也通过 alias 聚合读取，避免漏掉 P7/历史入口。
-- [ ] 执行 `npm test -- src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts` 和 `npm run typecheck`。反例含旧游标、跨页分组移动、迟到旧 GET、成功 POST 后 404、Case 已封闭；确认没有 candidate 双 GET。
+- [ ] 执行 `npm test -- src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts` 和 `npm run typecheck`。反例含旧游标、跨页分组移动、迟到旧 GET、成功 POST 后 404、Case 已封闭；确认没有 candidate 双 GET；加载两页后窗口轮询仍保留已载覆盖和正确的下一页 cursor。
 - [ ] 提交 `feat: wire continuous negotiation state into P5`。
 
 **完成/停止：** 当前候选连续读取不依赖旧列表记忆；已有招聘/PDF生命周期不回归。发现需要改变后端 alias 语义时停该差异，不能猜映射。
@@ -168,17 +168,17 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 **依赖：** Task 1–2 facade/读取；Spec §4/8。
 **预期编辑文件：**
 - 新增：`src/状态/后端/委托待核对.ts`、`src/状态/后端/委托待核对.test.ts`。
-- 修改：`src/状态/后端/发现推荐操作.ts`、`src/状态/后端/发现推荐操作.test.ts`、`src/状态/后端/MatchCase操作.ts`、`src/状态/后端/MatchCase操作.test.ts`、`src/状态/后端/类型.ts`、`src/状态/应用状态.tsx`、`src/状态/应用状态.test.ts`、`src/状态/后端/会话操作.ts`、`src/屏幕/职位详情.tsx`、`src/屏幕/职位详情.test.tsx`、`src/数据/招聘数据源/发现推荐.ts`、`src/数据/招聘数据源/发现推荐.test.ts`。
+- 修改：`src/状态/后端/发现推荐操作.ts`、`src/状态/后端/发现推荐操作.test.ts`、`src/状态/后端/MatchCase操作.ts`、`src/状态/后端/MatchCase操作.test.ts`、`src/状态/后端/类型.ts`、`src/状态/应用状态.tsx`、`src/状态/应用状态.test.ts`、`src/状态/后端/会话操作.ts`、`src/屏幕/职位详情.tsx`、`src/屏幕/职位详情.test.tsx`。
 - 删除：无。
 **消费/产出：** 消费 A 读取及已有 `委托候选岗位`；产出 B helper、A 的三个写/核对方法。`核对候选委托` 归发现推荐操作，retry/archive 归 MatchCase操作；pending 内存引用由 Provider 一次初始化并传给两者，存储 helper 无 React。
 
 - [ ] 先写存储白名单/主体分仓/坏 JSON/抛异常测试，以及“POST 无响应→切页面→硬刷新→原 body/key”的操作测试。比较完整 body，不能仅断言同 key。
 - [ ] 保存 B 命令后才发 POST；从固定命令生成请求，不再次读取 PDF latest/推荐 top。单飞锁按命令目标，普通页面清 scope 不删该 pending，401/登出/角色或主体切换清旧 owner。
 - [ ] 有回执后补 ID、读 canonical 并失效 active 首屏；只在确认命令结果和持久记录后删 pending。业务拒绝无 ID 不造卡。存储失败保留本次内存并提示不能保证刷新恢复。
-- [ ] 身份完成后读取 owner pending，先读已知 ID，原 key/body 完整且 write 未确认时每次恢复最多重放一次。仍未知就待核对；用户点原按钮再次核对。若需要无 ID 辅助查 receipt，给发现推荐 facade 增加 `读取候选委托回执页(intentionId,cursor)` 对应既有 `listCandidateJobDelegations`（limit=50、无 job/key 查询），严格 decoder；无唯一结果不选同岗位任意记录。
-- [ ] 实现 retry：新意图取当前权威允许动作与 generation；未决重放不以最新动作或 generation 改写。202 仅受理，随后 GET；archive 严格 `{}` 无 key，归档/retry 竞争回读实际 shelf。存在 pending retry 时允许核对原命令，不自动发下一代。
+- [ ] 身份完成后读取 owner pending，先读已知 ID，原 key/body 完整且 write 未确认时每次恢复最多重放一次。仍未知就待核对；用户点原按钮再次核对。本次不新增委托回执列表 facade：无 ID 时仅用已接推荐/continuous 列表辅助核对，写入归属仍由完整原命令重放的回执确认；原命令丢失且无法唯一识别就待核对。Spec 的 receipt 辅助路径是可选能力，不为它新增接线。
+- [ ] 实现 retry：新意图取当前权威允许动作与 generation；未决重放不以最新动作或 generation 改写。202 仅受理，随后 GET；archive 严格 `{}` 无 key，归档/retry 竞争回读实际 shelf。存在 pending retry 时允许核对原命令，不自动发下一代。create/retry/archive 的 409 按冻结合同 code 区分幂等冲突、generation 冲突和业务门，回读权威状态；保留原 key/body/generation，不自动换 key、取最新 generation 或再次 POST，不把冲突本身当成已受理或未受理的证明。
 - [ ] 岗位详情只改既有主按钮文案/禁用/回调：受理后“查看进展”不跳页，点击导航 `/deal/<knownID>`；无 ID 的未知命令“核对提交结果”，不重新选 PDF。初次委托的 0/1/多 PDF 及确认层布局保持。
-- [ ] 执行 `npm test -- src/状态/后端/委托待核对.test.ts src/状态/后端/发现推荐操作.test.ts src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts src/屏幕/职位详情.test.tsx src/数据/招聘数据源/发现推荐.test.ts`，再 `npm run typecheck`。包括取消零 POST、同 job 不等于原命令、GET 404 不证明未受理、storage 失败不自动新 key。
+- [ ] 执行 `npm test -- src/状态/后端/委托待核对.test.ts src/状态/后端/发现推荐操作.test.ts src/状态/后端/MatchCase操作.test.ts src/状态/应用状态.test.ts src/屏幕/职位详情.test.tsx`，再 `npm run typecheck`。包括取消零 POST、同 job 不等于原命令、GET 404 不证明未受理、storage 失败不自动新 key、三类 409 均只回读不自动另起命令。
 - [ ] 提交 `feat: preserve delegation commands and recovery actions`。
 
 **完成/停止：** 可从未知提交恢复或明确留待核对，无原命令则不猜；不新增跨设备恢复保证。真实数据/环境不具备不是启用 L3 的理由。
@@ -194,7 +194,7 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 **消费/产出：** 消费 A 列表快照及 C 页面规则；产出 `映射连续列表项(card)` 的候选卡投影，复用现有 `候选在谈卡`/白卡/阶段组件接受的展示数据，不强制转成 P5列表项。
 
 - [ ] 增加 accepted/evaluating/evaluation_failed/refused/case_started 的列表 fixture。比较渲染顺序与服务端输入；主列表未选意向也读全意向。不依据 case_state=null 隐藏卡。
-- [ ] 用数据源模式/角色分支只替换候选 Backend 读取与投影，招聘/Mock 继续原入口；列表 5 秒可见轮询通过既有 hook 的 callback 调 `加载连续列表(...,true)`，不新增永久 timer。history 手动刷新/动作后刷新，无运行 timer。
+- [ ] 用数据源模式/角色分支只替换候选 Backend 读取与投影，招聘/Mock 继续原入口；列表 5 秒可见轮询通过既有 hook 的 callback 调 `刷新连续列表(shelf)`，不新增永久 timer。既有“加载更多”按钮接 `追加连续列表(shelf)`；手动刷新用 force 首屏，动作后刷新用已载窗口方法。history 无运行 timer。
 - [ ] 历史按单一服务端分页原序渲染原卡片组件；显示结果/失败原因并点击同详情，retry 在详情动作槽出现。旧 Case 已结束不可恢复，归档初评失败由权威 actions.retry 决定。
 - [ ] 候选首页和市场横幅改读同一全意向连续快照；“需要你处理”，首载/失败/未读尽不伪精确计数；替换无条件“已谈完”的前文为“代谈进度持续更新，”。顶部意向选择器仍服务市场，不改变其已选值；在谈明确显示全部范围。
 - [ ] 统计格不新增请求、不改布局：候选“在谈”标“已开案”，“待你拍”标“开案待办”，“已归档”标“开案归档”；初筛/完成仍为 Case 口径。代理详情同样注明已开案，招聘统计保持。计数入口进入全意向在谈，不声称是全量委托计数。
@@ -215,7 +215,7 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 
 - [ ] 路由测试先从空缓存打开 dlg 及 mc alias，GET 成功后只保留 canonical 身份并 replace 地址（保留 tab query）；同卡从 pre-Case→Case 不加历史条目、不重置 Tab。
 - [ ] 候选控制只读 continuous detail；招聘继续 `读取详情`。复用 3 秒可见轮询 callback；accepted/evaluating 继续观察，pre-Case 已失败/refused/归档无自动推进时停，Case 沿旧 ended 或已发布会话停止口径，completed+handoff pending 继续，不以 history 一概停表。
-- [ ] 复用详情外壳顶栏、两个 Tab、状态区、四阶段流和底栏。pre-Case 状态与四个未到达阶段为展示数据，不提交为业务 state；无轮次不造 0/3。公开初评用现有总结组件/槽位标来源，保留 result/evidence，不生成评分或条件裁决。
+- [ ] 复用详情外壳顶栏、两个 Tab、状态区、四阶段流和底栏。pre-Case 状态与四个未到达阶段为展示数据，不提交为业务 state；无轮次不造 0/3。公开初评用现有总结组件/槽位标来源，保留 result/evidence，不生成评分或条件裁决。pre-Case 底栏 placeholder 与禁用标记由连续代谈展示映射产出，按 Spec §7 区分“AI 代理正在进行公开信息初评”和失败/拒绝后的真实文案；Task 6 的原控件禁用能力就绪后联合验证，不落回只读 div。
 - [ ] 有 Case 时只显示一次 S0 总结，公开初评与 S0 各自独立来源；retention 只显示公开残留状态，清旧 case_detail/附件/PDF，不发补全 GET。两个 Tab 缺失槽照原 Spec 保留。
 - [ ] 失败操作复用 `详情动作卡` 和原按钮样式：重试／归档仅权威允许时提供，重试受理显示真实评估状态；history 恢复同卡。不新增 modal 工作流，归档以现有确认层描述“移入历史，不是取消”。
 - [ ] 执行 `npm test -- src/屏幕/P5/MatchCase详情.test.tsx src/屏幕/详情控制/use后端详情控制.test.tsx src/屏幕/详情控制/后端正常详情.test.tsx src/数据/连续代谈展示映射.test.ts src/数据/详情展示映射.test.ts`，再 `npm run typecheck`。反例包括 mc 旧链、开案时 Tab 不跳、S1 后回看 S0、retention 清露出、同 version 新消息、招聘无公开初评请求。
@@ -256,7 +256,7 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 - [ ] 修正现有候选 P5 fixture 的请求契约以满足新读取；保留招聘原 Case 端点。所有 `/api/v1/**` 请求由本地 route 处理，未声明请求记错并拒绝，不能穿透到真实后端。`backend-stg` 是现有配置项目名，不代表访问 STG。
 - [ ] 场景一：UI 选择 PDF/确认→POST accepted→仍在岗位页→原按钮查看进展→在谈同卡→初评→S0→S1；断言原 PDF pair、来源区分、无第二张卡/第二个候选 Case GET。
 - [ ] 场景二：写响应丢失→同标签页 reload→原命令核对→失败→retry 原 generation→归档竞争回读；只用本场景需要的 fixture 相位，不建设可配置编排器。原命令缺失时待核对、无新 key 的反例由 Task 3 操作测试覆盖。
-- [ ] 场景三：320/390 两个视口的双端 S0，原输入和发送 DOM 存在禁用、Tab/阶段/附件位置保持、长 placeholder 不溢出；几何基准在 Task 1 开工前用既有本地 fixture 捕获，Task 7 比较同视口同内容区；不以改完后的界面作为自己的基准。截图存既有测试输出目录，不批量接受无关基准。招聘屏无候选私有总结/初评。
+- [ ] 场景三：320/390 两个视口的双端 S0，原输入和发送 DOM 存在禁用、Tab/阶段/附件位置保持、长 placeholder 不溢出；几何基准在 Task 1 开工前用既有本地 fixture 捕获，Task 7 比较同视口同内容区；不以改完后的界面作为自己的基准。关键几何比较本 Plan 已记录的改前数值（实施时可抄为此用例断言常量），截图仅作当轮辅助证据存既有测试输出目录，不批量接受无关基准。招聘屏无候选私有总结/初评。
 - [ ] 执行 `npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --project=backend-stg --grep 'J-PILOT-01' --workers=1`。所有 API 必须被 fixture 拦截；发现任何真实服务前置立即停止这一测试，不准备 STG/local 后端。不运行整个配置所有项目。
 - [ ] 对已改 shared consumer 的现有 `卡片统一 双端在谈卡`、`卡片统一 在谈卡超长职位名` 执行同入口精确 `--grep '卡片统一 (双端在谈卡|在谈卡超长职位名)'`，仅当其受新候选读取实际影响；结果记录在本 Plan 验证记录，不另建 handoff 报告。
 - [ ] 提交 `test: cover J-PILOT-01 wiring with existing frontend fixtures`。
@@ -281,6 +281,7 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 
 |范围|执行状态|证据/限制|
 |---|---|---|
+|PM 改前布局基准|待 Task 1 开工前记录|源码 commit、fixture、320/390 视口及关键控件几何数值直接记本表，不仅存一次性截图|
 |Task 1–7 本地检查|未执行（规划阶段）|实施者追加候选 commit、命令、结果和复用依据|
 |最终 typecheck/lint/build 与受影响用例并集|未执行（规划阶段）|不重复已有效覆盖|
 |L3/真实旅程/STG/初始化/测试框架|用户明确延后，本次不安排|不能记录 PASS，不作为当前 final gate 必过项|
@@ -304,4 +305,17 @@ GET 查存在记录不证明某个 key 成功；有完整原 body 才可原样�
 
 ## 文档 review 记录
 
-状态：等待本轮 Claude 文档 review；范围仅本 Plan 与对应批准 Spec，非整个分支或产品源码审查。reviewer 不跑测试、不改文件；后续在本节记录精确候选版本、轮次及逐条裁决，不生成独立 review 报告文档。
+已完成 1 轮 Claude Opus/high 文档 review，模式 WORKFLOW_DOCUMENT_REVIEW；候选 commit `677e168f`、Plan blob `7cbf02e5`，范围仅本 Plan 与对应 Spec，批准正文仍绑定头部的完整 revision/blob。未跑测试、未改文件；驱动侧审后核对 HEAD、工作树状态和两文件指纹均不变。审查进行了引用文件/符号的存在性只读核对，未评审产品代码实现。
+
+按 receiving-code-review 核实后，3 条 Important/required 和 3 条 Minor/optional 全部采纳；没有新增需求、未决 required 或待决 optional。以下裁决均不改变批准 Spec，复杂度均不增加；修正文档后按无未决有效 required 的停止条件结束，不将其描述成 reviewer 返回 NO FINDINGS。
+
+|Finding|必要性 / 复杂度|核实与裁决|
+|---|---|---|
+|5 秒 force 只读首屏导致追加页消失|required / 不变|成立；现有 P5 有窗口刷新机制。补刷新连续列表及加载更多绑定，窗口从首屏顺序重建；手动 force 保留首屏语义，新增两页后轮询反例。|
+|409 冲突处理未落实|required / 不变|成立；Spec §8 明确要求。Task 3 补三类 code 的只读回查和原命令保护，禁止自动新 generation/key。|
+|改前几何可能被输出目录清理|required / 不变|成立；既有 fixture 注释明确 test-results 每轮清理。关键数值及基线 commit 直接记本 Plan，截图只作当轮辅助，无新管线。|
+|intentionId 过滤没有消费者|optional / 降低|采纳；主/历史列表都全意向，删 facade 形参与范围键维度，未来明确入口后再考虑。|
+|可选回执 facade 留设计分叉|optional / 降低|采纳；不新增该接口及 decoder，用已知 ID/已接读取/原命令回执恢复；无法确认就待核对，移除额外数据源文件改动范围。|
+|pre-Case placeholder 归属不明确|optional / 不变|采纳；Task 5 明确由连续代谈映射产出文案/禁用标记，与 Task 6 原控件能力联合验证。|
+
+本轮只修 Plan，批准 Spec 正文未改；实际产品验证仍未执行。
