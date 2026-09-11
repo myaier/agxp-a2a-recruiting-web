@@ -8,8 +8,10 @@ import {
   删候选引导草稿,
   读候选引导草稿,
   写候选引导草稿,
+  创建候选建档草稿存储,
   type 资料缓存快照,
   type 候选引导草稿快照,
+  type 候选引导建档草稿,
 } from './资料缓存';
 
 function 内存存储() {
@@ -292,5 +294,195 @@ describe('候选引导草稿 在校选择 编解码（Task 5B）', () => {
     const 读出 = 读候选引导草稿(存储, 范围);
     expect(读出?.城市们).toEqual(['上海']);
     expect(读出).not.toHaveProperty('在校选择');
+  });
+});
+
+// ── J-PILOT-02 Task 2：建档草稿（未提交输入 / 编辑层 / 单一未结算写入槽）的编解码 ──
+// Global 7 字段白名单：未出现字段兼容旧草稿；在场的损坏/未知字段（含凭据/PDF）
+// 整条拒绝并删除。文件操作只存核对元数据，回执只存 ID/revision/source tuple。
+
+describe('候选引导草稿 建档编解码（J-PILOT-02 Task 2）', () => {
+  const 范围A = { 模式: 'backend' as const, 环境: 'stg' as const, 账号: 'sub_A' };
+  const 范围B = { 模式: 'backend' as const, 环境: 'stg' as const, 账号: 'sub_B' };
+
+  const 建档样本 = (): 候选引导建档草稿 => ({
+    位置: { pathname: '/onboarding/工作经历', search: '?step=3', 题序: 3 },
+    资料: {
+      基本信息: { 真名: '李雷', 开始工作年: '2021', 身份: '在职' },
+      个人优势: '五年后端',
+      技能: ['Go', '分布式'],
+      经历: [{
+        编号: 'e1', 公司: '甲公司', 行业: '互联网', 职位: '后端工程师',
+        开始: '2021-07', 结束: null, 内容: '做事', 隐藏: true,
+        项目: [{ 编号: 'p1', 名称: '网关重构', 角色: '开发', 结果: '上线' }],
+      }],
+      教育: [{ 编号: 'edu1', 学校: '上海交通大学', 学历: '本科', 专业: '计算机', 开始: '2017-09', 结束: '2021-06' }],
+      证书: [{ 编号: 'c1', 名称: 'CET-6', 年份: '2020' }],
+      作品集链接: null,
+    },
+    编辑中: { 种类: 'education', 本地编号: 'edu2', 字段: { 学校: '复旦大学', 学历: '硕士' } },
+    排除项: ['大小周'],
+    自定义诉求: ['不接受值班'],
+    已存条目: [
+      { 本地编号: 'edu1', 种类: 'education', 资源编号: 'edu_srv_1', revision: 3 },
+      { 本地编号: 'p1', 种类: 'project', 资源编号: 'prj_srv_1', revision: 1, 父编号: 'e1' },
+    ],
+    已存分区: { profile: 2, summary: 1 },
+    明确删除条目: [{ 种类: 'experience', 资源编号: 'exp_srv_1', revision: 5 }],
+    公司待选: {
+      搜索词: '字节',
+      选择: { organization_id: 'org_1', display_name: '字节跳动', legal_name: '字节跳动有限公司' },
+    },
+    首次意向: { id: 'int_1', revision: 2 },
+    待写入: {
+      种类: 'education-create', 本地编号: 'edu2',
+      请求体: { institution_id: 'ins_1' }, 幂等键: 'idem-a', 阶段: 'prepared',
+    },
+    头像状态: '待核对',
+  });
+
+  it('旧 v1 记录无 建档 仍可读，不补造该键', () => {
+    const 存储 = 内存存储();
+    存储.setItem(候选引导草稿键(范围A), JSON.stringify({ 城市们: ['上海'], 职位: ['后端工程师'] }));
+    const 读出 = 读候选引导草稿(存储, 范围A);
+    expect(读出?.城市们).toEqual(['上海']);
+    expect(读出).not.toHaveProperty('建档');
+  });
+
+  it('完整 建档 草稿 round trip', () => {
+    const 存储 = 内存存储();
+    const 建档 = 建档样本();
+    expect(写候选引导草稿(存储, 范围A, { 城市们: ['上海'], 职位: ['后端工程师'], 建档 })).toBe(true);
+    expect(读候选引导草稿(存储, 范围A)?.建档).toEqual(建档);
+    // 其它主体读不到
+    expect(读候选引导草稿(存储, 范围B)?.建档).toBe(undefined);
+  });
+
+  it('不完整编辑字段（编辑中 只填一半）可回读，缺项不补造', () => {
+    const 存储 = 内存存储();
+    const 建档: 候选引导草稿快照['建档'] = {
+      编辑中: { 种类: 'education', 本地编号: 'edu9', 字段: { 学校: '复旦大学' } },
+    };
+    写候选引导草稿(存储, 范围A, { 城市们: [], 职位: [], 建档 });
+    expect(读候选引导草稿(存储, 范围A)?.建档).toEqual(建档);
+    expect(读候选引导草稿(存储, 范围A)?.建档?.编辑中?.字段).toEqual({ 学校: '复旦大学' });
+  });
+
+  it('写入只落 建档 白名单键：credentials / PDF 附加字段绝不落盘；读取整条拒绝带凭据记录', () => {
+    const 存储 = 内存存储();
+    const 污染输入 = {
+      ...建档样本(),
+      credentials: { token: 'secret' },
+      pdf_bytes: 'JVBERi',
+    } as never as 候选引导草稿快照['建档'];
+    写候选引导草稿(存储, 范围A, { 城市们: [], 职位: [], 建档: 污染输入 });
+    const 原文 = 存储.getItem(候选引导草稿键(范围A))!;
+    expect(原文).not.toContain('secret');
+    expect(原文).not.toContain('pdf_bytes');
+    expect(原文).not.toContain('credentials');
+    expect(Object.keys(JSON.parse(原文).建档).sort()).toEqual([
+      '位置', '公司待选', '头像状态', '已存分区', '已存条目', '明确删除条目',
+      '首次意向', '待写入', '排除项', '自定义诉求', '编辑中', '资料',
+    ].sort());
+    // 反向：存储里带凭据键的 建档 记录整条拒绝并删除
+    存储.setItem(候选引导草稿键(范围A), JSON.stringify({
+      城市们: [], 职位: [],
+      建档: { ...建档样本(), token: 'x' },
+    }));
+    expect(读候选引导草稿(存储, 范围A)).toBe(null);
+    expect(存储.getItem(候选引导草稿键(范围A))).toBe(null);
+  });
+
+  const 损坏建档表: [名称: string, 值: Record<string, unknown>][] = [
+    ['头像状态枚举非法', { ...建档样本(), 头像状态: '已上传' }],
+    ['位置缺 search', { ...建档样本(), 位置: { pathname: '/x' } }],
+    ['位置题序非整数', { ...建档样本(), 位置: { pathname: '/x', search: '', 题序: 1.5 } }],
+    ['待写入种类未知', { ...建档样本(), 待写入: { 种类: 'deploy-job', 阶段: 'prepared' } }],
+    ['待写入缺阶段', { ...建档样本(), 待写入: { 种类: 'profile' } }],
+    ['待写入阶段非法', { ...建档样本(), 待写入: { 种类: 'profile', 阶段: 'done' } }],
+    ['待写入携带任意 URL 键', { ...建档样本(), 待写入: { 种类: 'profile', 阶段: 'prepared', url: 'https://evil' } }],
+    ['回执带未知键', { ...建档样本(), 待写入: { 种类: 'profile', 阶段: 'received', 回执: { id: 'p1', extra: 1 } } }],
+    ['回执 revision 非数', { ...建档样本(), 待写入: { 种类: 'summary', 阶段: 'received', 回执: { revision: '3' } } }],
+    ['回执 source 缺 version_id', {
+      ...建档样本(),
+      待写入: { 种类: 'resume-file-parse', 阶段: 'received', 回执: { source: { file_id: 'rf_1', parse_id: null } } },
+    }],
+    ['文件核对缺 sha256', {
+      ...建档样本(),
+      待写入: { 种类: 'avatar', 阶段: 'prepared', 文件核对: { name: 'a.png', type: 'image/png', size: 1, lastModified: 1 } },
+    }],
+    ['已存条目缺 revision', { ...建档样本(), 已存条目: [{ 本地编号: 'edu1', 种类: 'education', 资源编号: 'edu_srv_1' }] }],
+    ['已存条目种类未知', { ...建档样本(), 已存条目: [{ 本地编号: 'x', 种类: 'blog', 资源编号: 's', revision: 1 }] }],
+    ['已存分区未知键', { ...建档样本(), 已存分区: { profile: 1, education: 2 } }],
+    ['明确删除条目缺资源编号', { ...建档样本(), 明确删除条目: [{ 种类: 'experience', revision: 1 }] }],
+    ['公司待选选择缺 legal_name', {
+      ...建档样本(),
+      公司待选: { 搜索词: '字节', 选择: { organization_id: 'o1', display_name: '字节' } },
+    }],
+    ['首次意向 id 非串', { ...建档样本(), 首次意向: { id: 7, revision: 1 } }],
+    ['编辑中种类未知', { ...建档样本(), 编辑中: { 种类: 'award', 本地编号: 'x', 字段: {} } }],
+    ['编辑中缺本地编号', { ...建档样本(), 编辑中: { 种类: 'education', 字段: { 学校: '复旦' } } }],
+    ['编辑中字段未知键', {
+      ...建档样本(),
+      编辑中: { 种类: 'education', 本地编号: 'edu2', 字段: { 学校: '复旦', token: 'x' } },
+    }],
+    ['编辑中经历字段类型错', { ...建档样本(), 编辑中: { 种类: 'experience', 本地编号: 'e9', 字段: { 隐藏: 'yes' } } }],
+    ['资料经历缺隐藏', {
+      ...建档样本(),
+      资料: {
+        ...建档样本().资料,
+        经历: [{ 编号: 'e1', 公司: '甲', 行业: '互联网', 职位: '后端', 开始: '2021-07', 结束: null, 内容: 'x' }],
+      },
+    }],
+    ['资料基本信息身份枚举非法', { ...建档样本(), 资料: { 基本信息: { 身份: '自由职业' } } }],
+    ['资料作品集链接非串非 null', { ...建档样本(), 资料: { 作品集链接: 5 } }],
+    ['排除项混入非字符串', { ...建档样本(), 排除项: ['大小周', 3] }],
+    ['建档根未知字段', { ...建档样本(), resume_text: '整份简历正文不得落草稿' }],
+  ];
+
+  it.each(损坏建档表)('损坏的 建档（%s）整条拒绝并删除', (名称, 建档值) => {
+    void 名称;
+    const 存储 = 内存存储();
+    存储.setItem(候选引导草稿键(范围A), JSON.stringify({
+      城市们: ['上海'], 职位: ['后端工程师'], 建档: 建档值,
+    }));
+    expect(读候选引导草稿(存储, 范围A)).toBe(null);
+    expect(存储.getItem(候选引导草稿键(范围A))).toBe(null);
+  });
+
+  it('存储抛错或无存储：写草稿与建档适配器写入都返回 false，不抛错', () => {
+    const 抛错存储 = {
+      getItem: () => null,
+      setItem: () => { throw new Error('QuotaExceeded'); },
+      removeItem: () => { /* no-op */ },
+    };
+    expect(写候选引导草稿(抛错存储, 范围A, { 城市们: [], 职位: [], 建档: 建档样本() })).toBe(false);
+    expect(创建候选建档草稿存储({ storage: 抛错存储, 范围: 范围A }).写入(建档样本())).toBe(false);
+    expect(创建候选建档草稿存储({ storage: null, 范围: 范围A }).写入(建档样本())).toBe(false);
+    expect(创建候选建档草稿存储({ storage: null, 范围: 范围A }).读取()).toBe(null);
+  });
+
+  it('建档适配器：读取只回 建档；写入与既有向导答案合并不顶掉；坏输入 fail closed', () => {
+    const 存储 = 内存存储();
+    写候选引导草稿(存储, 范围A, { 城市们: ['上海'], 职位: ['后端工程师'] });
+    const 适配器 = 创建候选建档草稿存储({ storage: 存储, 范围: 范围A });
+    expect(适配器.读取()).toBe(null);
+    expect(适配器.写入({ 头像状态: '未选' })).toBe(true);
+    // 合并：既有城市/职位答案不被 建档 写入顶掉
+    const 读出 = 读候选引导草稿(存储, 范围A);
+    expect(读出?.城市们).toEqual(['上海']);
+    expect(读出?.职位).toEqual(['后端工程师']);
+    expect(读出?.建档).toEqual({ 头像状态: '未选' });
+    expect(适配器.读取()).toEqual({ 头像状态: '未选' });
+    // 无既有记录的主体：建档写入创建最小记录，不虚构向导答案
+    const 适配器B = 创建候选建档草稿存储({ storage: 存储, 范围: 范围B });
+    expect(适配器B.写入({ 头像状态: '未选' })).toBe(true);
+    const 读B = 读候选引导草稿(存储, 范围B);
+    expect(读B?.城市们).toEqual([]);
+    expect(读B?.职位).toEqual([]);
+    expect(读B?.建档).toEqual({ 头像状态: '未选' });
+    // 坏 建档 输入 fail closed：不落一条读不回来的记录
+    expect(适配器.写入({ 头像状态: '已上传' } as never)).toBe(false);
+    expect(读候选引导草稿(存储, 范围A)?.建档).toEqual({ 头像状态: '未选' });
   });
 });

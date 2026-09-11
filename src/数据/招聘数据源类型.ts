@@ -141,6 +141,68 @@ export interface 页面岗位快照 {
   服务端: Record<string, BFFOwnerJob>;
 }
 
+// ── J-PILOT-02 Global 4/5：候选 onboarding 建档的单一未结算写入槽与跟踪接口 ──
+// 本旅程只有一个串行未结算写入槽（不是队列）；恢复重放只走同域原方法，
+// 不接受任意 URL/HTTP 方法。文件操作不存 body 字节，仅存核对元数据；
+// 回执只存该种类已返回的 ID/revision/aggregate_revision/source tuple。
+
+/** 单槽命令的闭合种类集合（Global 4）。 */
+export type 建档待写入种类 =
+  | 'profile' | 'summary' | 'skills'
+  | 'experience-create' | 'experience-update' | 'experience-delete'
+  | 'project-create' | 'project-update' | 'project-delete'
+  | 'education-create' | 'education-update' | 'education-delete'
+  | 'certificate-create' | 'certificate-update' | 'certificate-delete'
+  | 'first-intention-create' | 'first-intention-update'
+  | 'organization-block' | 'organization-unblock'
+  | 'resume-file-create' | 'resume-file-replace' | 'resume-file-parse'
+  | 'avatar';
+
+/** 文件类命令的用户核对元数据：绝不存字节，仅 name/type/size/lastModified/SHA-256。 */
+export interface 建档文件核对 {
+  name: string;
+  type: string;
+  size: number;
+  lastModified: number;
+  sha256: string;
+}
+
+/** 回执仅存该种类已返回的 ID/revision/aggregate_revision/source tuple，不存完整响应或解析输出。 */
+export interface 建档写入回执 {
+  id?: string;
+  revision?: number;
+  aggregate_revision?: number;
+  source?: { file_id: string; version_id: string; parse_id: string | null };
+}
+
+/**
+ * 唯一的串行未结算写入槽：结构闭合，未知键一律拒绝。
+ * 请求体 使用该域现有 BFF 写 DTO（普通对象）；阶段 prepared = 未收到回执，
+ * received = 已收到回执（Task 3 起把身份移入 已存条目/已存分区 后清槽）。
+ */
+export interface 建档待写入 {
+  种类: 建档待写入种类;
+  本地编号?: string;
+  资源编号?: string;
+  父编号?: string;
+  请求体?: Record<string, unknown>;
+  幂等键?: string;
+  ifMatch?: number;
+  阶段: 'prepared' | 'received';
+  回执?: 建档写入回执;
+  文件核对?: 建档文件核对;
+}
+
+/**
+ * Global 5：原数据源的可选跟踪参数 —— 发送前先在当前 scope 固定白名单命令并
+ * 同步尝试写 session，返回带原幂等键/ifMatch 的命令；已确认 先同步更新内存和
+ * 草稿的已存身份再持久化回执。仅本旅程调用，普通调用省略保持兼容。
+ */
+export interface 建档写入跟踪 {
+  发送前(命令: 建档待写入): 建档待写入;
+  已确认(命令: 建档待写入, 回执: 建档写入回执): void;
+}
+
 /**
  * 创建岗位的返回：权威岗位快照 + POST 响应里的真实 job_id。
  * 只有创建返回它（列表／更新／归档／重开／删除仍返回 页面岗位快照）——

@@ -53,6 +53,7 @@ import type {
 import type { P8导出恢复存储 } from '../../数据/P8导出恢复';
 import type { PDF对象租约 } from '../../数据/PDF对象租约';
 import type { 在招岗位, 披露档, 屏蔽来源, 屏蔽项 } from '../../数据/类型';
+import type { 候选引导建档草稿, 候选引导草稿快照, 候选建档草稿存储 } from '../../数据/资料缓存';
 import type { 资料形 } from '../../数据/公司主页资料';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 动作, 状态 } from '../应用状态';
@@ -555,6 +556,14 @@ export interface 后端操作依赖 {
   候选实名读取锁?: 可变引用<Promise<void> | null>;
   候选实名变更锁?: 可变引用<Set<'create' | 'cancel'>>;
   候选实名提交意图?: 可变引用<string | null>;
+  /**
+   * J-PILOT-02 Task 2：建档草稿运行时引用 —— 同步内存 ref（操作调用先固定输入与命令，
+   * 不等 React 下一帧）与 subject 绑定的 session 存储适配器（candidate 主体在场才换绑，
+   * Mock / 非 candidate / 未登录恒 null）。与 P4–P8 同一纪律：Provider 恒一次性注入；
+   * 可选成员只为既有 测试依赖桩 的编译兼容，会话操作 在工厂入口显式收窄。
+   */
+  建档草稿引用?: 可变引用<候选引导建档草稿 | null>;
+  候选建档草稿?: 可变引用<候选建档草稿存储 | null>;
 }
 
 /** 候选实名的三个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -955,7 +964,17 @@ export interface 候选实名操作 {
 export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 &
   发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 &
   P8账号控制面操作 & P8合规操作 & 简历预填操作 & JD导入操作 & 接触记录操作 &
-  候选实名操作;
+  候选实名操作 & 建档草稿操作;
+
+/**
+ * J-PILOT-02 Task 2（Global 8）：建档草稿的同步更新口。先同步固定内存 ref 与命令
+ * （不等 React 下一帧），再尝试写 subject-scoped sessionStorage，最后派发；
+ * 写失败经既有轻提示说明刷新风险，不抛掉输入、不阻断当前明确保存动作。
+ * Mock / 非 candidate scope 无存储适配器，仅留内存。
+ */
+export interface 建档草稿操作 {
+  更新候选建档草稿(建档: 候选引导草稿快照['建档']): void;
+}
 
 /**
  * 候选 onboarding 简历预填操作方法表（页面不得直接调用数据源）。

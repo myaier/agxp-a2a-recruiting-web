@@ -6,7 +6,8 @@
 
 import type { 后端环境 } from '../配置/运行配置';
 import type { 办公偏好, 求职类型, 求职初筛偏好 } from '../流程/onboarding配置';
-import type { 公司自述覆盖, 规则, 先问偏好 } from './类型';
+import type { 公司自述覆盖, 规则, 先问偏好, 基本信息, 简历经历段, 简历教育段, 简历项目, 简历证书 } from './类型';
+import type { 建档待写入 } from './招聘数据源类型';
 
 export type 资料缓存存储 = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -229,6 +230,8 @@ export interface 候选引导草稿快照 {
   到岗?: string;
   /** 首屏默认（Task 5B）：学生分流「是否在校」的显式选择；缺省 = 未选择 */
   在校选择?: boolean;
+  /** J-PILOT-02 Task 2（Global 7）：建档增量（未提交输入/编辑层/单一未结算写入槽）；缺省 = 旧草稿兼容。 */
+  建档?: 候选引导建档草稿;
 }
 
 export const 候选引导草稿分类 = '候选引导草稿v1';
@@ -236,7 +239,7 @@ export const 候选引导草稿分类 = '候选引导草稿v1';
 /** 候选 onboarding 草稿的 sessionStorage 键：与 账号存储键 同口径（模式 + 环境 + 账号）。 */
 export const 候选引导草稿键 = (范围: 资料缓存范围): string => 账号存储键(候选引导草稿分类, 范围);
 
-const 候选草稿根键们: readonly string[] = ['城市们', '职位', '城市引用们', '职位引用们', '筛选偏好', '薪资', '到岗', '在校选择'];
+const 候选草稿根键们: readonly string[] = ['城市们', '职位', '城市引用们', '职位引用们', '筛选偏好', '薪资', '到岗', '在校选择', '建档'];
 const 筛选偏好键们: readonly string[] = ['求职类型', '办公方式', '毕业时间', '实习月数', '每周到岗天数'];
 const 求职类型们: readonly 求职类型[] = ['社招全职', '校园招聘', '实习生', '兼职'];
 const 办公方式们: readonly 办公偏好[] = ['现场', '混合', '全远程'];
@@ -310,6 +313,7 @@ function 是候选引导草稿快照(值: unknown): 值 is 候选引导草稿快
   if (候选.薪资 !== undefined && !是草稿薪资(候选.薪资)) return false;
   if (候选.到岗 !== undefined && typeof 候选.到岗 !== 'string') return false;
   if (候选.在校选择 !== undefined && typeof 候选.在校选择 !== 'boolean') return false;
+  if (候选.建档 !== undefined && !是候选引导建档草稿(候选.建档)) return false;
   return true;
 }
 
@@ -375,6 +379,7 @@ export function 写候选引导草稿(存储: 资料缓存存储 | null, 范围:
   }
   if (草稿.到岗 !== undefined) 快照.到岗 = 草稿.到岗;
   if (草稿.在校选择 !== undefined) 快照.在校选择 = 草稿.在校选择;
+  if (草稿.建档 !== undefined) 快照.建档 = 拷贝建档草稿(草稿.建档);
   try {
     存储.setItem(候选引导草稿键(范围), JSON.stringify(快照));
     return true;
@@ -391,4 +396,362 @@ export function 删候选引导草稿(存储: 资料缓存存储 | null, 范围:
   } catch {
     // 存储不可用时无键可清。
   }
+}
+
+// ── J-PILOT-02 Task 2（Global 7）：候选 onboarding 建档草稿的 sessionStorage 白名单 ──
+// 只缓存「服务端尚未接管」的建档增量：未提交资料输入、编辑层原表单字段、
+// 已存条目/分区身份、单条未结算写入槽与文件核对元数据。未出现字段兼容旧草稿；
+// 在场的损坏/未知字段（含凭据、PDF 字节/文本）整条拒绝并删除。
+// 文件操作不存字节；回执只存 ID/revision/aggregate_revision/source tuple。
+
+export type 建档条目种类 = 'experience' | 'project' | 'education' | 'certificate';
+
+export interface 建档已存条目 {
+  本地编号: string;
+  种类: 建档条目种类;
+  资源编号: string;
+  revision: number;
+  父编号?: string;
+}
+
+export interface 建档明确删除条目 {
+  种类: 建档条目种类;
+  资源编号: string;
+  revision: number;
+  父编号?: string;
+}
+
+/** 建档资料草稿：页面简历写入中用户明确输入的字段（各键可缺省 = 未填/未改），不含服务端快照。 */
+export interface 建档资料草稿 {
+  基本信息?: Partial<基本信息>;
+  个人优势?: string;
+  技能?: string[];
+  经历?: 简历经历段[];
+  教育?: 简历教育段[];
+  证书?: 简历证书[];
+  /** 属性缺省 = 未改；存在（含 null）= 用户已修改（null = 清空）。 */
+  作品集链接?: string | null;
+}
+
+/** 现有教育/经历/项目/证书编辑器的未完成表单：判别种类 + 本地编号 + 原表单字段（允许不完整字符串）。 */
+export type 建档编辑中草稿 =
+  | { 种类: 'education'; 本地编号: string; 字段: Omit<Partial<简历教育段>, '编号'> }
+  | { 种类: 'experience'; 本地编号: string; 字段: Omit<Partial<简历经历段>, '编号'> }
+  | { 种类: 'project'; 本地编号: string; 父编号?: string; 字段: Omit<Partial<简历项目>, '编号'> }
+  | { 种类: 'certificate'; 本地编号: string; 字段: Omit<Partial<简历证书>, '编号'> };
+
+export interface 候选引导建档草稿 {
+  位置?: { pathname: string; search: string; 题序?: number };
+  资料?: 建档资料草稿;
+  编辑中?: 建档编辑中草稿;
+  排除项?: string[];
+  自定义诉求?: string[];
+  已存条目?: 建档已存条目[];
+  已存分区?: { profile?: number; summary?: number; skills?: number };
+  明确删除条目?: 建档明确删除条目[];
+  公司待选?: {
+    搜索词: string;
+    选择?: { organization_id: string; display_name: string; legal_name: string };
+  };
+  首次意向?: { id: string; revision: number };
+  待写入?: 建档待写入;
+  头像状态?: '未选' | '待核对' | '已保存' | '已放弃';
+}
+
+const 建档键们: readonly string[] = [
+  '位置', '资料', '编辑中', '排除项', '自定义诉求', '已存条目', '已存分区',
+  '明确删除条目', '公司待选', '首次意向', '待写入', '头像状态',
+];
+const 建档条目种类们: readonly 建档条目种类[] = ['experience', 'project', 'education', 'certificate'];
+const 头像状态们: readonly string[] = ['未选', '待核对', '已保存', '已放弃'];
+const 待写入种类们: readonly string[] = [
+  'profile', 'summary', 'skills',
+  'experience-create', 'experience-update', 'experience-delete',
+  'project-create', 'project-update', 'project-delete',
+  'education-create', 'education-update', 'education-delete',
+  'certificate-create', 'certificate-update', 'certificate-delete',
+  'first-intention-create', 'first-intention-update',
+  'organization-block', 'organization-unblock',
+  'resume-file-create', 'resume-file-replace', 'resume-file-parse',
+  'avatar',
+];
+const 待写入键们: readonly string[] = ['种类', '本地编号', '资源编号', '父编号', '请求体', '幂等键', 'ifMatch', '阶段', '回执', '文件核对'];
+
+function 是记录(值: unknown): 值 is Record<string, unknown> {
+  return typeof 值 === 'object' && 值 !== null && !Array.isArray(值);
+}
+
+function 是键集闭(值: Record<string, unknown>, 允许键: readonly string[]): boolean {
+  return Object.keys(值).every((键) => 允许键.includes(键));
+}
+
+function 是非负整数(值: unknown): 值 is number {
+  return 是有限整数(值) && 值 >= 0;
+}
+
+function 是非空串(值: unknown): 值 is string {
+  return typeof 值 === 'string' && 值 !== '';
+}
+
+function 是建档位置(值: unknown): 值 is 候选引导建档草稿['位置'] {
+  if (!是记录(值) || !是键集闭(值, ['pathname', 'search', '题序'])) return false;
+  if (typeof 值.pathname !== 'string' || typeof 值.search !== 'string') return false;
+  if (值.题序 !== undefined && !是非负整数(值.题序)) return false;
+  return true;
+}
+
+const 基本信息键们: readonly string[] = ['真名', '开始工作年', '身份', '在读学历', '毕业年', '性别', '出生年', '出生月'];
+const 身份们: readonly string[] = ['', '在校', '在职', '离职'];
+
+function 是建档基本信息(值: unknown): 值 is 建档资料草稿['基本信息'] {
+  if (!是记录(值) || !是键集闭(值, 基本信息键们)) return false;
+  for (const 键 of ['真名', '开始工作年', '在读学历', '毕业年', '出生年', '出生月'] as const) {
+    if (值[键] !== undefined && typeof 值[键] !== 'string') return false;
+  }
+  if (值.身份 !== undefined && (typeof 值.身份 !== 'string' || !身份们.includes(值.身份))) return false;
+  if (值.性别 !== undefined && 值.性别 !== '男' && 值.性别 !== '女') return false;
+  return true;
+}
+
+function 是建档项目(值: unknown): 值 is 简历项目 {
+  if (!是记录(值) || !是键集闭(值, ['编号', '名称', '角色', '结果'])) return false;
+  return ['编号', '名称', '角色', '结果'].every((键) => typeof 值[键] === 'string');
+}
+
+const 经历键们: readonly string[] = ['编号', '公司', '行业', '行业引用', '职位', '开始', '结束', '内容', '隐藏', '实习', '项目'];
+
+function 是建档经历段(值: unknown): 值 is 简历经历段 {
+  if (!是记录(值) || !是键集闭(值, 经历键们)) return false;
+  for (const 键 of ['编号', '公司', '行业', '职位', '开始', '内容']) {
+    if (typeof 值[键] !== 'string') return false;
+  }
+  if (值.结束 !== null && typeof 值.结束 !== 'string') return false;
+  if (typeof 值.隐藏 !== 'boolean') return false;
+  if (值.行业引用 !== undefined && !是草稿引用(值.行业引用)) return false;
+  if (值.实习 !== undefined && typeof 值.实习 !== 'boolean') return false;
+  if (值.项目 !== undefined && !(Array.isArray(值.项目) && 值.项目.every(是建档项目))) return false;
+  return true;
+}
+
+const 教育键们: readonly string[] = ['编号', '学校', '学校引用', '学历', '专业', '专业引用', '开始', '结束'];
+
+function 是建档教育段(值: unknown): 值 is 简历教育段 {
+  if (!是记录(值) || !是键集闭(值, 教育键们)) return false;
+  for (const 键 of ['编号', '学校', '学历', '专业', '开始', '结束']) {
+    if (typeof 值[键] !== 'string') return false;
+  }
+  if (值.学校引用 !== undefined && !是草稿引用(值.学校引用)) return false;
+  if (值.专业引用 !== undefined && !是草稿引用(值.专业引用)) return false;
+  return true;
+}
+
+function 是建档证书(值: unknown): 值 is 简历证书 {
+  if (!是记录(值) || !是键集闭(值, ['编号', '名称', '年份'])) return false;
+  return ['编号', '名称', '年份'].every((键) => typeof 值[键] === 'string');
+}
+
+function 是建档资料(值: unknown): 值 is 建档资料草稿 {
+  if (!是记录(值) || !是键集闭(值, ['基本信息', '个人优势', '技能', '经历', '教育', '证书', '作品集链接'])) return false;
+  if (值.基本信息 !== undefined && !是建档基本信息(值.基本信息)) return false;
+  if (值.个人优势 !== undefined && typeof 值.个人优势 !== 'string') return false;
+  if (值.技能 !== undefined && !是字符串数组(值.技能)) return false;
+  if (值.经历 !== undefined && !(Array.isArray(值.经历) && 值.经历.every(是建档经历段))) return false;
+  if (值.教育 !== undefined && !(Array.isArray(值.教育) && 值.教育.every(是建档教育段))) return false;
+  if (值.证书 !== undefined && !(Array.isArray(值.证书) && 值.证书.every(是建档证书))) return false;
+  if (值.作品集链接 !== undefined && 值.作品集链接 !== null && typeof 值.作品集链接 !== 'string') return false;
+  return true;
+}
+
+const 教育编辑键们: readonly string[] = ['学校', '学校引用', '学历', '专业', '专业引用', '开始', '结束'];
+const 经历编辑键们: readonly string[] = ['公司', '行业', '行业引用', '职位', '开始', '结束', '内容', '隐藏', '实习'];
+const 项目编辑键们: readonly string[] = ['名称', '角色', '结果'];
+const 证书编辑键们: readonly string[] = ['名称', '年份'];
+
+/** 编辑层的未完成字段集：键在白名单内、值按编辑器原类型（串/引用/布尔/null）逐一校验。 */
+function 是编辑字段集(值: unknown, 允许键: readonly string[], 校验: (键: string, 值: unknown) => boolean): 值 is Record<string, unknown> {
+  if (!是记录(值)) return false;
+  for (const 键 of Object.keys(值)) {
+    if (!允许键.includes(键) || !校验(键, 值[键])) return false;
+  }
+  return true;
+}
+
+function 是建档编辑中(值: unknown): 值 is 建档编辑中草稿 {
+  if (!是记录(值) || typeof 值.种类 !== 'string' || !是非空串(值.本地编号)) return false;
+  switch (值.种类) {
+    case 'education':
+      if (!是键集闭(值, ['种类', '本地编号', '字段'])) return false;
+      return 是编辑字段集(值.字段, 教育编辑键们, (键, 字段值) =>
+        (键 === '学校引用' || 键 === '专业引用') ? 是草稿引用(字段值) : typeof 字段值 === 'string');
+    case 'experience':
+      if (!是键集闭(值, ['种类', '本地编号', '字段'])) return false;
+      return 是编辑字段集(值.字段, 经历编辑键们, (键, 字段值) => {
+        if (键 === '行业引用') return 是草稿引用(字段值);
+        if (键 === '结束') return 字段值 === null || typeof 字段值 === 'string';
+        if (键 === '隐藏' || 键 === '实习') return typeof 字段值 === 'boolean';
+        return typeof 字段值 === 'string';
+      });
+    case 'project':
+      if (!是键集闭(值, ['种类', '本地编号', '父编号', '字段'])) return false;
+      if (值.父编号 !== undefined && typeof 值.父编号 !== 'string') return false;
+      return 是编辑字段集(值.字段, 项目编辑键们, (_, 字段值) => typeof 字段值 === 'string');
+    case 'certificate':
+      if (!是键集闭(值, ['种类', '本地编号', '字段'])) return false;
+      return 是编辑字段集(值.字段, 证书编辑键们, (_, 字段值) => typeof 字段值 === 'string');
+    default:
+      return false;
+  }
+}
+
+function 是建档已存条目(值: unknown): 值 is 建档已存条目 {
+  if (!是记录(值) || !是键集闭(值, ['本地编号', '种类', '资源编号', 'revision', '父编号'])) return false;
+  if (!是非空串(值.本地编号) || !是非空串(值.资源编号)) return false;
+  if (typeof 值.种类 !== 'string' || !(建档条目种类们 as readonly string[]).includes(值.种类)) return false;
+  if (!是非负整数(值.revision)) return false;
+  if (值.父编号 !== undefined && typeof 值.父编号 !== 'string') return false;
+  return true;
+}
+
+function 是建档明确删除条目(值: unknown): 值 is 建档明确删除条目 {
+  if (!是记录(值) || !是键集闭(值, ['种类', '资源编号', 'revision', '父编号'])) return false;
+  if (!是非空串(值.资源编号)) return false;
+  if (typeof 值.种类 !== 'string' || !(建档条目种类们 as readonly string[]).includes(值.种类)) return false;
+  if (!是非负整数(值.revision)) return false;
+  if (值.父编号 !== undefined && typeof 值.父编号 !== 'string') return false;
+  return true;
+}
+
+function 是建档已存分区(值: unknown): 值 is NonNullable<候选引导建档草稿['已存分区']> {
+  if (!是记录(值) || !是键集闭(值, ['profile', 'summary', 'skills'])) return false;
+  for (const 键 of ['profile', 'summary', 'skills'] as const) {
+    if (值[键] !== undefined && !是非负整数(值[键])) return false;
+  }
+  return true;
+}
+
+function 是建档公司待选(值: unknown): 值 is NonNullable<候选引导建档草稿['公司待选']> {
+  if (!是记录(值) || !是键集闭(值, ['搜索词', '选择'])) return false;
+  if (typeof 值.搜索词 !== 'string') return false;
+  if (值.选择 !== undefined) {
+    const 选 = 值.选择;
+    if (!是记录(选) || !是键集闭(选, ['organization_id', 'display_name', 'legal_name'])) return false;
+    if (!是非空串(选.organization_id)) return false;
+    if (typeof 选.display_name !== 'string' || typeof 选.legal_name !== 'string') return false;
+  }
+  return true;
+}
+
+function 是建档首次意向(值: unknown): 值 is NonNullable<候选引导建档草稿['首次意向']> {
+  if (!是记录(值) || !是键集闭(值, ['id', 'revision'])) return false;
+  return 是非空串(值.id) && 是非负整数(值.revision);
+}
+
+function 是建档写入回执(值: unknown): 值 is NonNullable<建档待写入['回执']> {
+  if (!是记录(值) || !是键集闭(值, ['id', 'revision', 'aggregate_revision', 'source'])) return false;
+  if (值.id !== undefined && !是非空串(值.id)) return false;
+  if (值.revision !== undefined && !是非负整数(值.revision)) return false;
+  if (值.aggregate_revision !== undefined && !是非负整数(值.aggregate_revision)) return false;
+  if (值.source !== undefined) {
+    const 源 = 值.source;
+    if (!是记录(源) || !是键集闭(源, ['file_id', 'version_id', 'parse_id'])) return false;
+    if (!是非空串(源.file_id) || !是非空串(源.version_id)) return false;
+    if (源.parse_id !== null && typeof 源.parse_id !== 'string') return false;
+  }
+  return true;
+}
+
+function 是建档文件核对(值: unknown): 值 is NonNullable<建档待写入['文件核对']> {
+  if (!是记录(值) || !是键集闭(值, ['name', 'type', 'size', 'lastModified', 'sha256'])) return false;
+  if (typeof 值.name !== 'string' || typeof 值.type !== 'string' || typeof 值.sha256 !== 'string') return false;
+  return 是非负整数(值.size) && 是非负整数(值.lastModified);
+}
+
+function 是建档待写入(值: unknown): 值 is 建档待写入 {
+  if (!是记录(值) || !是键集闭(值, 待写入键们)) return false;
+  if (typeof 值.种类 !== 'string' || !待写入种类们.includes(值.种类)) return false;
+  for (const 键 of ['本地编号', '资源编号', '父编号', '幂等键'] as const) {
+    if (值[键] !== undefined && typeof 值[键] !== 'string') return false;
+  }
+  if (值.请求体 !== undefined && !是记录(值.请求体)) return false;
+  if (值.ifMatch !== undefined && !是非负整数(值.ifMatch)) return false;
+  if (值.阶段 !== 'prepared' && 值.阶段 !== 'received') return false;
+  if (值.回执 !== undefined && !是建档写入回执(值.回执)) return false;
+  if (值.文件核对 !== undefined && !是建档文件核对(值.文件核对)) return false;
+  return true;
+}
+
+function 是候选引导建档草稿(值: unknown): 值 is 候选引导建档草稿 {
+  if (!是记录(值) || !是键集闭(值, 建档键们)) return false;
+  if (值.位置 !== undefined && !是建档位置(值.位置)) return false;
+  if (值.资料 !== undefined && !是建档资料(值.资料)) return false;
+  if (值.编辑中 !== undefined && !是建档编辑中(值.编辑中)) return false;
+  if (值.排除项 !== undefined && !是字符串数组(值.排除项)) return false;
+  if (值.自定义诉求 !== undefined && !是字符串数组(值.自定义诉求)) return false;
+  if (值.已存条目 !== undefined && !(Array.isArray(值.已存条目) && 值.已存条目.every(是建档已存条目))) return false;
+  if (值.已存分区 !== undefined && !是建档已存分区(值.已存分区)) return false;
+  if (值.明确删除条目 !== undefined && !(Array.isArray(值.明确删除条目) && 值.明确删除条目.every(是建档明确删除条目))) return false;
+  if (值.公司待选 !== undefined && !是建档公司待选(值.公司待选)) return false;
+  if (值.首次意向 !== undefined && !是建档首次意向(值.首次意向)) return false;
+  if (值.待写入 !== undefined && !是建档待写入(值.待写入)) return false;
+  if (值.头像状态 !== undefined
+    && (typeof 值.头像状态 !== 'string' || !(头像状态们 as readonly string[]).includes(值.头像状态))) return false;
+  return true;
+}
+
+/** 写入构造全新白名单对象（含 建档 内层），不展开调用方对象，不带未知键落盘。 */
+function 拷贝建档草稿(建档: 候选引导建档草稿): 候选引导建档草稿 {
+  const 拷贝: 候选引导建档草稿 = {};
+  if (建档.位置 !== undefined) {
+    拷贝.位置 = { pathname: 建档.位置.pathname, search: 建档.位置.search };
+    if (建档.位置.题序 !== undefined) 拷贝.位置.题序 = 建档.位置.题序;
+  }
+  if (建档.资料 !== undefined) 拷贝.资料 = structuredClone(建档.资料);
+  if (建档.编辑中 !== undefined) 拷贝.编辑中 = structuredClone(建档.编辑中);
+  if (建档.排除项 !== undefined) 拷贝.排除项 = [...建档.排除项];
+  if (建档.自定义诉求 !== undefined) 拷贝.自定义诉求 = [...建档.自定义诉求];
+  if (建档.已存条目 !== undefined) 拷贝.已存条目 = structuredClone(建档.已存条目);
+  if (建档.已存分区 !== undefined) {
+    const 分区: NonNullable<候选引导建档草稿['已存分区']> = {};
+    if (建档.已存分区.profile !== undefined) 分区.profile = 建档.已存分区.profile;
+    if (建档.已存分区.summary !== undefined) 分区.summary = 建档.已存分区.summary;
+    if (建档.已存分区.skills !== undefined) 分区.skills = 建档.已存分区.skills;
+    拷贝.已存分区 = 分区;
+  }
+  if (建档.明确删除条目 !== undefined) 拷贝.明确删除条目 = structuredClone(建档.明确删除条目);
+  if (建档.公司待选 !== undefined) {
+    拷贝.公司待选 = { 搜索词: 建档.公司待选.搜索词 };
+    if (建档.公司待选.选择 !== undefined) {
+      拷贝.公司待选.选择 = {
+        organization_id: 建档.公司待选.选择.organization_id,
+        display_name: 建档.公司待选.选择.display_name,
+        legal_name: 建档.公司待选.选择.legal_name,
+      };
+    }
+  }
+  if (建档.首次意向 !== undefined) 拷贝.首次意向 = { id: 建档.首次意向.id, revision: 建档.首次意向.revision };
+  if (建档.待写入 !== undefined) 拷贝.待写入 = structuredClone(建档.待写入);
+  if (建档.头像状态 !== undefined) 拷贝.头像状态 = 建档.头像状态;
+  return 拷贝;
+}
+
+/** 建档草稿的 subject 绑定读写口（与 候选预填恢复存储 同模式）：只动 建档 子键，不顶掉既有向导答案。 */
+export interface 候选建档草稿存储 {
+  /** 只回当前 scope 记录里的 建档 子键（记录缺失/损坏/无 建档 → null）。 */
+  读取(): 候选引导建档草稿 | null;
+  /** 校验入参并把 建档 合并进既有记录（无记录则建最小记录，不虚构向导答案）；失败返回 false。 */
+  写入(建档: 候选引导建档草稿): boolean;
+}
+
+export function 创建候选建档草稿存储(input: { storage: 资料缓存存储 | null; 范围: 资料缓存范围 }): 候选建档草稿存储 {
+  const { storage, 范围 } = input;
+  return {
+    读取() {
+      return 读候选引导草稿(storage, 范围)?.建档 ?? null;
+    },
+    写入(建档) {
+      if (!storage || !是候选引导建档草稿(建档)) return false;
+      const 现有 = 读候选引导草稿(storage, 范围) ?? { 城市们: [], 职位: [] };
+      return 写候选引导草稿(storage, 范围, { ...现有, 建档 });
+    },
+  };
 }

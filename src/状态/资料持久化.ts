@@ -183,17 +183,14 @@ export function use资料持久化({
   // ── Task 4：候选 onboarding 草稿（Backend + candidate + subject 三重范围的 sessionStorage）──
   // 写屏障：只有「已完成当前键恢复」才允许写。已恢复候选键 记录恢复完成的键；
   // null === null 绝不授权 —— Mock / recruiter / 未登录在这里一律不做任何候选草稿读写。
+  // J-PILOT-02 Task 2：已移除「任一 active 意向即删除草稿」的判断 —— 草稿是「未提交答案」，
+  // 已提交事实由服务端权威快照表达，active 意向在场不再阻止恢复/写回。
   const 已恢复候选键 = useRef<string | null>(null);
   const 上一候选范围 = useRef<资料缓存范围 | null>(null);
   /** 已派发 水合候选引导草稿 但 reducer 尚未落地的键：该提交里 引导预填 还是旧值（null），
    * 此时不得按 null 删键 —— 否则首帧空状态会在水合落地前删掉存量草稿。 */
   const 待落水合键 = useRef<string | null>(null);
-  /** 上一提交里 已提交引导 的值：识别 active→空（最后一条意向被删）的转移。 */
-  const 上一已提交引导 = useRef(false);
   const [候选恢复代际, 设候选恢复代际] = useState(0);
-  /** Codex review-loop R1 [P2]：权威意向里已有 active（引导已提交）时，
-   * 引导草稿不再属于「未提交答案」——不恢复、不写回，只清理。 */
-  const 已提交引导 = Object.values(状态.后端意向服务端).some((行) => 行.status === 'active');
 
   useEffect(() => {
     const 当前候选范围: 资料缓存范围 | null = 是后端 && 当前候选主体标识 !== null
@@ -208,7 +205,6 @@ export function use资料持久化({
       if (旧键 !== 当前键) {
         删候选引导草稿(会话存储, 旧范围);
         已恢复候选键.current = null;
-        上一已提交引导.current = false;
         派发({ 型: '清后端草稿' });
         上一候选范围.current = null;
       }
@@ -217,13 +213,12 @@ export function use资料持久化({
       // Backend / candidate 角色 / subject / 范围 任一缺失：复位写屏障即返回，
       // 不做任何候选草稿读/写/删。
       已恢复候选键.current = null;
-      上一已提交引导.current = false;
       return;
     }
     上一候选范围.current = 当前候选范围;
     if (已恢复候选键.current === 当前键) return;
     const 草稿 = 读候选引导草稿(会话存储, 当前候选范围);
-    if (草稿 !== null && !已提交引导) {
+    if (草稿 !== null) {
       待落水合键.current = 当前键;
       派发({ 型: '水合候选引导草稿', 草稿 });
     }
@@ -231,7 +226,7 @@ export function use资料持久化({
     // 首帧空状态不会在水合前覆盖存量草稿。
     已恢复候选键.current = 当前键;
     设候选恢复代际((值) => 值 + 1);
-  }, [是后端, 环境, 当前候选主体标识, 会话存储, 派发, 已提交引导]);
+  }, [是后端, 环境, 当前候选主体标识, 会话存储, 派发]);
 
   useEffect(() => {
     // 写前同一套守卫：Backend + candidate + subject 任一缺失直接返回，
@@ -241,22 +236,6 @@ export function use资料持久化({
     const 当前键 = 候选引导草稿键(范围);
     // 每次写入都重比键：恢复未完成（或主体已换）的过期 effect 一律不写。
     if (已恢复候选键.current !== 当前键) return;
-    // 引导已提交（存在 active 意向）：已提交答案不得再以草稿形态落存储。
-    if (已提交引导) {
-      上一已提交引导.current = true;
-      待落水合键.current = null;
-      删候选引导草稿(会话存储, 范围);
-      return;
-    }
-    // active→空（最后一条意向被删）：已消费的引导答案连内存一起清，
-    // 否则上面保留的 引导预填 会在 已提交引导 翻回 false 后重新落成草稿。
-    if (上一已提交引导.current) {
-      上一已提交引导.current = false;
-      待落水合键.current = null;
-      删候选引导草稿(会话存储, 范围);
-      派发({ 型: '清后端草稿' });
-      return;
-    }
     if (状态.引导预填 !== null) {
       待落水合键.current = null;
       写候选引导草稿(会话存储, 范围, 状态.引导预填);
@@ -265,5 +244,5 @@ export function use资料持久化({
     // 引导预填 === null：若水合派发尚未落地（同一提交的旧值），先不删键。
     if (待落水合键.current === 当前键) return;
     删候选引导草稿(会话存储, 范围);
-  }, [是后端, 环境, 当前候选主体标识, 会话存储, 状态.引导预填, 候选恢复代际, 已提交引导, 派发]);
+  }, [是后端, 环境, 当前候选主体标识, 会话存储, 状态.引导预填, 候选恢复代际, 派发]);
 }

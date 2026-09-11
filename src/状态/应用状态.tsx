@@ -56,6 +56,8 @@ import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 招聘数据, type 招聘数据源选择 } from '../数据/接口层';
 import type { 资料缓存快照 } from '../数据/资料缓存';
 import { 读资料缓存 } from '../数据/资料缓存';
+import { 创建候选建档草稿存储 } from '../数据/资料缓存';
+import type { 候选引导建档草稿, 候选建档草稿存储 } from '../数据/资料缓存';
 import { 创建P8导出恢复存储, type P8导出恢复存储 } from '../数据/P8导出恢复';
 import { 创建候选预填恢复存储 } from '../数据/候选Onboarding预填恢复';
 import type { PDF对象租约 } from '../数据/PDF对象租约';
@@ -194,6 +196,7 @@ export function 归约(旧: 状态, 动作: 动作): 状态 {
     case '水合后端简历':
     case '水合后端意向':
     case '水合候选引导草稿':
+    case '更新候选建档草稿':
     case '清后端草稿':
       return 归约候选资料(旧, 动作);
 
@@ -626,6 +629,19 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
       范围: { 模式: 'backend', 环境, 账号: 当前候选主体标识 },
     })
     : null;
+  // J-PILOT-02 Task 2：建档草稿的同步内存 ref 与 subject 绑定的 session 存储适配器。
+  // ref 每次渲染先从 reducer 状态同步（水合/清理口随状态落地）；操作方法在派发前
+  // 直接写 ref，保证同步更新函数与 ref 立即一致，不等 React 下一帧。适配器与
+  // 候选预填恢复 同模式：candidate 主体在场才换绑，Mock / 招聘端 / 未登录恒 null。
+  const 建档草稿引用 = useRef<候选引导建档草稿 | null>(null);
+  建档草稿引用.current = 状态.引导预填?.建档 ?? null;
+  const 候选建档草稿 = useRef<候选建档草稿存储 | null>(null);
+  候选建档草稿.current = 是后端 && 当前候选主体标识 !== null
+    ? 创建候选建档草稿存储({
+      storage: 安全取存储('session'),
+      范围: { 模式: 'backend', 环境, 账号: 当前候选主体标识 },
+    })
+    : null;
   use资料持久化({
     状态, 派发, 是后端, 环境, 当前主体标识, 当前候选主体标识,
     已接纳候选意向, 会话代际,
@@ -887,6 +903,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         候选实名读取锁,
         候选实名变更锁,
         候选实名提交意图,
+        建档草稿引用,
+        候选建档草稿,
       };
       return {
         ...创建会话操作(deps),

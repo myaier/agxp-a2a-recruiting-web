@@ -27,6 +27,13 @@ import { 从BFF隐私 } from '../../数据/隐私映射';
 import type { 页面简历快照, 页面岗位快照, 页面隐私快照 } from '../../数据/招聘数据源类型';
 import { 创建初始状态, 初始状态 } from '../初始状态';
 import { 归约 } from '../应用状态';
+import {
+  候选引导草稿键,
+  创建候选建档草稿存储,
+  type 候选引导草稿快照,
+  type 候选引导建档草稿,
+  type 候选建档草稿存储,
+} from '../../数据/资料缓存';
 import { 创建空P4发现状态 } from './发现推荐操作';
 import type {
   后端操作依赖, 后端状态, 候选预填恢复存储, 候选预填状态, 候选预填运行时引用,
@@ -91,6 +98,9 @@ function 创建会话测试依赖(后端: HTTP招聘数据源) {
     // Provider 回调的测试替身：同样先过捕获栅栏，再派发 + 同步权威意向快照。
     // 恢复编号 由本桩按 恢复选择 从注入的 恢复候选意向编号 取（默认无偏好）。
     恢复候选意向编号: null as string | null,
+    // J-PILOT-02 Task 2：建档草稿运行时引用（Provider 恒注入；用例按需换绑适配器）
+    建档草稿引用: { current: null as 候选引导建档草稿 | null },
+    候选建档草稿: { current: null as 候选建档草稿存储 | null },
     提交候选意向快照: (input: 提交候选意向快照输入) => {
       if (deps.主体标识引用.current !== input.subjectId) return;
       if (deps.会话代际.current !== input.sessionGeneration) return;
@@ -1967,5 +1977,111 @@ describe('清账号状态 · 空简历快照空身份（M）', () => {
     ) as { 快照: { 基本信息: { 身份: string } } };
     expect(水合).toBeTruthy();
     expect(水合.快照.基本信息.身份).toBe('');
+  });
+});
+
+// ── J-PILOT-02 Task 2：更新候选建档草稿（同步固定内存命令 + 单槽守卫 + 存储失败降级）──
+describe('更新候选建档草稿（J-PILOT-02 Task 2）', () => {
+  const 范围 = { 模式: 'backend' as const, 环境: 'stg' as const, 账号: 'sub_a' };
+
+  function 内存存储() {
+    const 存 = new Map<string, string>();
+    return {
+      getItem: vi.fn((键: string) => 存.get(键) ?? null),
+      setItem: vi.fn((键: string, 值: string) => { 存.set(键, 值); }),
+      removeItem: vi.fn((键: string) => { 存.delete(键); }),
+    };
+  }
+
+  function 空后端(): HTTP招聘数据源 {
+    return { 清空目录缓存: vi.fn() } as unknown as HTTP招聘数据源;
+  }
+
+  const 槽A = {
+    种类: 'education-create' as const,
+    本地编号: 'edu2',
+    请求体: { institution_id: 'ins_1' },
+    幂等键: 'idem-a',
+    阶段: 'prepared' as const,
+  };
+  const 槽B = {
+    种类: 'summary' as const,
+    请求体: { summary: '新优势' },
+    幂等键: 'idem-b',
+    阶段: 'prepared' as const,
+  };
+
+  it('同步固定内存命令并派发：ref 立即可读、存储同步写入、成功不提示', () => {
+    const { deps, 动作流 } = 创建会话测试依赖(空后端());
+    const 存储 = 内存存储();
+    deps.候选建档草稿.current = 创建候选建档草稿存储({ storage: 存储, 范围 });
+    const 操作 = 创建会话操作(deps);
+    清空轻提示();
+    const 建档: 候选引导草稿快照['建档'] = { 资料: { 个人优势: '一半' }, 待写入: 槽A };
+    操作.更新候选建档草稿(建档);
+    // ref 立即一致，不等 React 下一帧
+    expect(deps.建档草稿引用.current).toEqual(建档);
+    // 派发已发生（内存态随 reducer 落地）
+    expect(动作流).toContainEqual({ 型: '更新候选建档草稿', 建档 });
+    // 存储同步写入（无 React 参与）
+    expect(JSON.parse(存储.getItem(候选引导草稿键(范围))!).建档.待写入.幂等键).toBe('idem-a');
+    expect(轻提示条数()).toBe(0);
+  });
+
+  it('未结算槽（prepared）不被第二条不同命令覆盖；同命令推进 received 可落地，结算后可接新槽', () => {
+    const { deps } = 创建会话测试依赖(空后端());
+    deps.候选建档草稿.current = 创建候选建档草稿存储({ storage: 内存存储(), 范围 });
+    const 操作 = 创建会话操作(deps);
+    操作.更新候选建档草稿({ 资料: { 个人优势: '一半' }, 待写入: 槽A });
+    // 第二条不同命令：槽保留 A，普通输入字段照常更新（读与手填输入不受单槽限制）
+    操作.更新候选建档草稿({ 资料: { 个人优势: '完整优势' }, 待写入: 槽B });
+    expect(deps.建档草稿引用.current?.待写入?.幂等键).toBe('idem-a');
+    expect(deps.建档草稿引用.current?.资料?.个人优势).toBe('完整优势');
+    // 同一条命令推进 received（回执落地）不被守卫拦
+    操作.更新候选建档草稿({
+      资料: { 个人优势: '完整优势' },
+      待写入: { ...槽A, 阶段: 'received', 回执: { id: 'edu_srv_1', revision: 4 } },
+    });
+    expect(deps.建档草稿引用.current?.待写入?.阶段).toBe('received');
+    expect(deps.建档草稿引用.current?.待写入?.回执).toEqual({ id: 'edu_srv_1', revision: 4 });
+    // 已结算（received）后新命令可接槽
+    操作.更新候选建档草稿({ 待写入: 槽B });
+    expect(deps.建档草稿引用.current?.待写入?.幂等键).toBe('idem-b');
+  });
+
+  it('存储写入失败：轻提示刷新风险，ref 与派发照常、不抛错、不丢输入', () => {
+    const { deps, 动作流 } = 创建会话测试依赖(空后端());
+    const 抛错存储 = {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(() => { throw new Error('QuotaExceeded'); }),
+      removeItem: vi.fn(),
+    };
+    deps.候选建档草稿.current = 创建候选建档草稿存储({ storage: 抛错存储, 范围 });
+    const 操作 = 创建会话操作(deps);
+    清空轻提示();
+    const 建档: 候选引导草稿快照['建档'] = { 资料: { 个人优势: '内存保留' } };
+    expect(() => 操作.更新候选建档草稿(建档)).not.toThrow();
+    // 输入不被丢：ref 与派发照常
+    expect(deps.建档草稿引用.current).toEqual(建档);
+    expect(动作流).toContainEqual({ 型: '更新候选建档草稿', 建档 });
+    expect(轻提示条数()).toBe(1);
+  });
+
+  it('无存储适配器（Mock / 非 candidate scope）仅留内存，不提示', () => {
+    const { deps, 动作流 } = 创建会话测试依赖(空后端());
+    const 操作 = 创建会话操作(deps);
+    清空轻提示();
+    操作.更新候选建档草稿({ 头像状态: '未选' });
+    expect(deps.建档草稿引用.current).toEqual({ 头像状态: '未选' });
+    expect(动作流).toContainEqual({ 型: '更新候选建档草稿', 建档: { 头像状态: '未选' } });
+    expect(轻提示条数()).toBe(0);
+  });
+
+  it('清账号状态 同步清空 建档草稿引用（内存），不等待 React 下一帧', () => {
+    const { deps } = 创建会话测试依赖(空后端());
+    deps.建档草稿引用.current = { 头像状态: '待核对' };
+    清账号状态(deps);
+    expect(deps.建档草稿引用.current).toBe(null);
+    expect(deps.状态引用.current.引导预填).toBe(null);
   });
 });
