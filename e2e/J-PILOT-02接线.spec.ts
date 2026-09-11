@@ -115,7 +115,7 @@ interface 建档fixture形 {
   intentions: 意向条目形[];
   /** 非读取请求（method/path/body）存证；GET 计数走 读取 */
   mutations: { method: string; path: string; body: unknown }[];
-  读取: { 简历: number; 意向: number; 意向详情: number };
+  读取: { 简历: number; 意向: number; 意向详情ID们: string[] };
   /** >0 时 GET /me/resume 答 503 并递减：制造「education POST 成功后读取失败」窗口 */
   简历GET失败剩余: number;
   /** 头像域：应答脚本（'unknown' → 503 operation_outcome_unknown；'ok' → 200）逐请求消费 */
@@ -154,7 +154,7 @@ function 创建建档fixture(): 建档fixture形 {
     },
     intentions: [],
     mutations: [],
-    读取: { 简历: 0, 意向: 0, 意向详情: 0 },
+    读取: { 简历: 0, 意向: 0, 意向详情ID们: [] },
     简历GET失败剩余: 0,
     头像: { 应答脚本: [], 请求们: [], revision: 1, avatar_url: null },
   };
@@ -325,7 +325,7 @@ async function 安装BFF路由(page: Page, fixture: 建档fixture形): Promise<v
     }
     const 意向详情 = /^\/api\/v1\/me\/intentions\/([^/]+)$/.exec(path);
     if (意向详情 && method === 'GET') {
-      fixture.读取.意向详情 += 1;
+      fixture.读取.意向详情ID们.push(意向详情[1]!);
       const 目标 = fixture.intentions.find((条) => 条.intention_id === 意向详情[1]);
       if (目标 === undefined) {
         await route.fulfill({ status: 404, json: { error: { type: 'intention_not_found', message: 'fixture：未知意向' } } });
@@ -501,8 +501,8 @@ async function 滚轮(page: Page, 名称: string, 档: number): Promise<void> {
   await expect(轮.getByRole('option', { name: String(档), exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
 }
 
-/** 基本信息页 → 求职状态（选档）→ 学历四连页（Backend 学校/专业走 fixture 目录） */
-async function 走资料与学历(page: Page, 在校: boolean, 档: string): Promise<void> {
+/** 基本信息页 → 求职状态（选档）→ 学历四连页（Backend 学校/专业走 fixture 目录；社招路径） */
+async function 走资料与学历(page: Page, 档: string): Promise<void> {
   await page.getByPlaceholder('身份证上的名字').fill('Fixture 候选人');
   await page.getByRole('button', { name: '下一步' }).click();
   await expect(page).toHaveURL(/#\/onboard\/status$/, { timeout: 15_000 });
@@ -510,10 +510,8 @@ async function 走资料与学历(page: Page, 在校: boolean, 档: string): Pro
   await page.getByRole('button', { name: 档 }).click();
   await page.getByRole('button', { name: '下一步' }).click();
 
-  if (!在校) {
-    // 社招：状态后走学历四连页；学生已在进本函数前走完（学生顺序：basic → 学历 → 经历 → 状态）
-    await 走学历四连页(page);
-  }
+  // 社招：状态后走学历四连页（学生顺序不同：basic → 学历 → 经历 → 状态，不经过本函数尾段）
+  await 走学历四连页(page);
 }
 
 /** 学历四连页：本科 → fixture 学校 → fixture 专业 → 就读时间段（两侧滚轮各滚一次即确认） */
@@ -623,7 +621,7 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     await expect(page).toHaveURL(/#\/basic$/);
 
     // ── 姓名 → 在职档 → 学历四连页 → 就读时间段 ──
-    await 走资料与学历(page, false, '在职 · 考虑机会');
+    await 走资料与学历(page, '在职 · 考虑机会');
     await 走就读时间段(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
@@ -672,7 +670,9 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     expect(计数(fixture, 'POST', '/api/v1/me/intentions')).toBe(1);
     expect(fixture.intentions).toHaveLength(1);
     expect(fixture.intentions[0]!.intention_id).toBe(标记.意向编号);
-    expect(fixture.读取.意向详情).toBeGreaterThanOrEqual(1);
+    // 完成核对按本轮 exact ID 读取：记录到的请求 id 必须就是本次创建的那一个
+    expect(fixture.读取.意向详情ID们.length).toBeGreaterThanOrEqual(1);
+    expect(fixture.读取.意向详情ID们).toContain(标记.意向编号);
     // exclusions 固定四键全 unspecified；自定义原文逐字进 private_preferences（固定拼接 + 换行分隔）
     expect(Object.keys(fixture.intentions[0]!.exclusions).sort()).toEqual(['alternate_weekend_work', 'frequent_travel', 'onsite_only', 'outsourcing_only']);
     expect(Object.values(fixture.intentions[0]!.exclusions).every((值) => 值 === 'unspecified')).toBe(true);
@@ -725,7 +725,9 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     expect(fixture.intentions[0]!.recruitment_type).toBe('internship');
     expect(fixture.intentions[0]!.job_category).toEqual({ id: 'job-fixture-001', display_name: 标记.职位 });
     expect(fixture.intentions[0]!.primary_location).toEqual({ id: 'loc-fixture-001', display_name: 标记.城市 });
-    expect(fixture.读取.意向详情).toBeGreaterThanOrEqual(1);
+    // 完成核对按本轮 exact ID 读取：记录到的请求 id 必须就是本次创建的那一个
+    expect(fixture.读取.意向详情ID们.length).toBeGreaterThanOrEqual(1);
+    expect(fixture.读取.意向详情ID们).toContain(标记.意向编号);
     // 完成后角色偏好已落 candidate（刷新直达主壳的依据）
     expect(fixture.主体.last_used_role).toBe('candidate');
   });
@@ -742,7 +744,7 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     await 滚轮(page, '最低月薪', 30);
     await 滚轮(page, '最高月薪', 40);
     await page.getByRole('button', { name: '下一步' }).click();
-    await 走资料与学历(page, false, '在职 · 考虑机会');
+    await 走资料与学历(page, '在职 · 考虑机会');
     await 走就读时间段(page);
 
     // ── 注入一次读取失败窗口：POST 教育成功 → 紧随的权威 GET 503 → 保存失败留在原页 ──
@@ -759,6 +761,7 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     await expect(page).toHaveURL(/#\/onboard\/eduyears$/, { timeout: 30_000 });
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible();
     await expect(page.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2020', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 10_000 });
+    await expect(page.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2024', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 10_000 });
 
     // ── 重走下一步：按已存身份核对，不再 POST 教育；GET 成功后推进 ──
     await page.getByRole('button', { name: '下一步' }).click();
@@ -784,7 +787,7 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     await 滚轮(page, '最低月薪', 30);
     await 滚轮(page, '最高月薪', 40);
     await page.getByRole('button', { name: '下一步' }).click();
-    await 走资料与学历(page, false, '在职 · 考虑机会');
+    await 走资料与学历(page, '在职 · 考虑机会');
     await 走就读时间段(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });

@@ -392,3 +392,47 @@ describe('简历数据源 · 建档跟踪回执（J-PILOT-02 Task 3）', () => {
     expect(链接桩.已确认们[0]).toMatchObject({ 命令: { 种类: 'profile' } });
   });
 });
+
+// ── J-PILOT-02 fix（Task 10 评审裁决）：教育 diff 不看键序 —— 权威页快照按 转教育
+//    的规范键序建对象，注册流草稿的 学校引用/专业引用 是各屏逐次追加的键；整对象
+//    JSON.stringify 会把内容未变的条目误判「已变化」，后续每次保存都发一次多余的
+//    PATCH /me/resume/educations/{id}（同 id CAS，幂等但无谓）。 ──
+
+describe('简历数据源 · 教育 diff 键序（J-PILOT-02 fix）', () => {
+  it('键序不同内容未变：后续保存零教育写入；内容真变化仍照常 PATCH', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [教育DTO('edu_srv_1', 1)] };
+    const 基页 = 从BFF简历(previous);
+    const 权威页条目 = 基页.教育[0]!;
+    // 注册流草稿的键插入序（学校引用/专业引用追加在尾），内容与权威页完全一致
+    const 草稿条目: 简历教育段 = {
+      编号: 'edu_srv_1',
+      学校: '云衢大学',
+      学历: '本科',
+      专业: '计算机',
+      开始: '2020-09',
+      结束: '2024-06',
+      学校引用: { id: 'inst_1', display_name: '云衢大学' },
+      专业引用: { id: 'major_1', display_name: '计算机' },
+    };
+    // 断言必要性：旧比较（整对象 stringify）确实把这对内容相同的条目判为不同
+    expect(JSON.stringify(权威页条目)).not.toBe(JSON.stringify(草稿条目));
+
+    // 内容未变：整次保存零写入，只有收尾的权威 GET
+    const 未变 = 请求桩(previous);
+    await 创建简历数据源(未变.请求).保存简历({ ...基页, 教育: [草稿条目] }, previous);
+    const 未变调用 = 未变.请求Mock.mock.calls.map((c) => [(c[0] as BFF请求选项).method ?? 'GET', (c[0] as BFF请求选项).path]);
+    expect(未变调用).toEqual([['GET', '/api/v1/me/resume']]);
+
+    // 内容真变化（毕业时间改了）：仍照常 PATCH 该条目，CAS 挂当前 revision
+    const 变化 = 请求桩(previous);
+    await 创建简历数据源(变化.请求).保存简历(
+      { ...基页, 教育: [{ ...草稿条目, 结束: '2025-06' }] },
+      previous,
+    );
+    const 变化PATCH = 变化.请求Mock.mock.calls.map((c) => c[0] as BFF请求选项)
+      .find((o) => o.method === 'PATCH' && o.path === '/api/v1/me/resume/educations/edu_srv_1')!;
+    expect(变化PATCH).toBeDefined();
+    expect(变化PATCH.body).toEqual({ institution_id: 'inst_1', degree: '本科', major_id: 'major_1', start_month: '2020-09', end_month: '2025-06' });
+    expect(变化PATCH.ifMatch).toBe('"1"');
+  });
+});

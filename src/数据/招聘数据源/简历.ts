@@ -59,6 +59,23 @@ function 找证书(dto: BFF简历, id: string): BFF证书 | undefined {
   return dto.certificates.find((c) => c.id === id);
 }
 
+/**
+ * 键序无关的稳定序列化：对象按排序键递归展开（数组保序）。
+ * J-PILOT-02 fix：教育 diff 原用整对象 JSON.stringify 比较 —— 权威页快照按 转教育
+ * 的规范键序建对象，注册流草稿的学校/专业引用是各屏逐次追加的键，插入序不同，
+ * 内容未变的条目被判「已变化」，每次后续保存都发一次多余的
+ * PATCH /me/resume/educations/{id}（同 id CAS，幂等但无谓写入）。只用于教育条目
+ * 比较；经历/证书侧同形比较未观察到该证据，不动。
+ */
+function 稳定序列化(值: unknown): string {
+  if (Array.isArray(值)) return `[${值.map(稳定序列化).join(',')}]`;
+  if (值 !== null && typeof 值 === 'object') {
+    const 记录 = 值 as Record<string, unknown>;
+    return `{${Object.keys(记录).sort().map((键) => `${JSON.stringify(键)}:${稳定序列化(记录[键])}`).join(',')}}`;
+  }
+  return JSON.stringify(值);
+}
+
 /** 更新回执只认本命令条目：响应里找不到对应条目时回空回执，绝不把其它资源的 revision 冒充。 */
 function 条目更新回执(dto: BFF简历, 找条目: (dto: BFF简历) => { id: string; revision: number } | undefined): 建档写入回执 {
   const 条目 = 找条目(dto);
@@ -291,7 +308,7 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
           跟踪 ? { 种类: 'education-create', 本地编号: 段.编号, 请求体: { ...body } as Record<string, unknown>, 阶段: 'prepared' as const } : null,
           (r) => 条目创建回执(r.result),
         ).then((r) => r.result));
-      } else if (JSON.stringify(旧Page) !== JSON.stringify(段)) {
+      } else if (稳定序列化(旧Page) !== 稳定序列化(段)) {
         const body = 转教育写入(段);
         const 旧教育 = previous.educations.find((e) => e.id === 段.编号)!;
         写入步骤们.push(() => 发出<BFF简历>(
