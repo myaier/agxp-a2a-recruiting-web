@@ -346,6 +346,20 @@ function 从槽重建页面(基底: 页面简历写入, 槽: 建档待写入): �
 }
 
 /**
+ * review-cx F1：完成核对与登录落点共用的只读资源判据（零请求）。完成核对要保持
+ * 两条独立的缺项提示，登录落点只取布尔 —— 判据本身只有这一份，两处不再各写一套。
+ */
+export function 建档必填资料齐备(简历: BFF简历): boolean {
+  return 简历.profile.real_name.trim() !== '' && 简历.profile.status !== '';
+}
+
+export function 建档完整教育在场(简历: BFF简历): boolean {
+  return 简历.educations.some((条) =>
+    条.institution.id !== '' && 条.degree !== '' && 条.major.id !== ''
+    && 条.start_month !== '' && 条.end_month !== null && 条.end_month !== '');
+}
+
+/**
  * Task 9：完成核对里的意向比对 —— 权威意向必须是本轮 exact ID 读出的 active，且与
  * 本轮向导确认输入经 转首次意向写入 重建的期望逐字段一致（本次选择/薪资/初筛/私有
  * 诉求）。类型专属条件（毕业时间/实习月数/到岗天数）只在期望非 null 时参与：类型没变
@@ -1167,13 +1181,10 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
         // ② 权威 resume：GET 失败原样抛出（失败不是空资源），栅栏破防整包作废
         const 权威 = (await 后端!.读取简历()).服务端快照;
         if (!栅栏仍立()) throw 拦下('会话已变化，本次完成未生效');
-        if (权威.profile.real_name.trim() === '' || 权威.profile.status === '') {
+        if (!建档必填资料齐备(权威)) {
           throw 拦下('必填资料还没保存：请回基本信息与求职状态完成');
         }
-        const 完整教育在场 = 权威.educations.some((条) =>
-          条.institution.id !== '' && 条.degree !== '' && 条.major.id !== ''
-          && 条.start_month !== '' && 条.end_month !== null && 条.end_month !== '');
-        if (!完整教育在场) throw 拦下('至少需要一条完整的教育经历（含毕业时间）');
+        if (!建档完整教育在场(权威)) throw 拦下('至少需要一条完整的教育经历（含毕业时间）');
         // 已提交的 summary/URL 回读一致：草稿记的是用户明确提交的输入，服务端没对上
         // 就是那次保存没成（或被别人改走），不能带着假完成往下走
         if ((建档.资料?.个人优势 ?? '').trim() !== '' && 权威.summary !== 建档.资料?.个人优势) {

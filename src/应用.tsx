@@ -6,6 +6,7 @@ import { Routes, Route, Navigate, matchPath, useLocation, useNavigate } from 're
 import { 路径 } from './路由/路径表';
 import { 候选Onboarding预填边界, 是活跃Onboarding位置, 恢复落点 } from './流程/候选Onboarding预填边界';
 import { 并入建档草稿 } from './流程/onboarding配置';
+import { 建档必填资料齐备, 建档完整教育在场 } from './状态/后端/候选操作';
 import { 主按钮 } from './组件/通用';
 import 登录 from './屏幕/登录';
 import type { BFF主体, BFF角色 } from './数据/BFF契约';
@@ -238,15 +239,30 @@ export default function 应用() {
   const { 数据源模式, 后端状态, 操作, 状态 } = use应用状态();
   const 位置 = useLocation();
   const 前往 = useNavigate();
+  // review-cx F1：登录落点分流要看的「本轮建档草稿不在场」——进依赖表（布尔，不引整份 状态）。
+  const 无建档草稿 = 状态.引导预填?.建档 === undefined;
 
   // Backend 初始化完成且已恢复会话时的确定性落点（P0 修复 Task 2）：
   // 候选与未知角色保持原有兜底；招聘方只在**组织链聚合阶段报成功之后**才解释
   // profile 阶段 —— 组织链还没结论或已失败时不导航，后来的组织失败绝不被伪装成 onboarding。
   // 招聘方 onboarding 是否走完只看档案是否存在（缺失 → 注册流名片），与岗位数无关。
+  // review-cx F1（Spec §6 第三分支）：无草稿的候选不再无条件进主壳 —— 用**已水合**的
+  // 简历快照 + 意向快照按 完成候选Onboarding 同判据判完备，不完备 replace 回旅程入口
+  // 学生分流 重走并复用已保存资源；简历快照未水合（水合失败/未结束）不新增路由（保持
+  // 原主壳落点），也不在此发任何新 GET；有草稿的回访走下方 Task 9 恢复落点，不进此分支。
   useEffect(() => {
     if (数据源模式 !== 'backend' || 后端状态.初始化 !== '完成' || !后端状态.已登录) return;
     const 角色 = 后端状态.主体?.last_used_role;
     if (角色 === 'candidate' && 位置.pathname === 路径.登录) {
+      const 简历 = 后端状态.简历快照;
+      const 完备 = 简历 !== null
+        && 建档必填资料齐备(简历)
+        && 建档完整教育在场(简历)
+        && Object.values(后端状态.意向快照).some((条) => 条.status === 'active');
+      if (无建档草稿 && 简历 !== null && !完备) {
+        前往(路径.学生分流, { replace: true });
+        return;
+      }
       前往(路径.主壳, { replace: true });
       return;
     }
@@ -264,7 +280,7 @@ export default function 应用() {
     if (后端状态.招聘方档案水合阶段 === '成功' && 位置.pathname === 路径.登录) {
       前往(路径.企业主壳, { replace: true });
     }
-  }, [数据源模式, 后端状态, 位置.pathname, 前往]);
+  }, [数据源模式, 后端状态, 位置.pathname, 前往, 无建档草稿]);
 
   // ── 候选 onboarding 预填的退出清理（设计 §9 / Task 7）──────────────────
   // 离开注册会话（进主壳、切其它产品路由）就作废预填轮与恢复元数据（内存 + session

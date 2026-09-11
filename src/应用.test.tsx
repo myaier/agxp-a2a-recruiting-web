@@ -10,7 +10,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BFF主体样本 } from './测试/BFF样本';
+import { BFF主体样本, BFF简历样本 } from './测试/BFF样本';
 import type { BFF主体 } from './数据/BFF契约';
 import { 初始状态 } from './状态/初始状态';
 import { 路径 } from './路由/路径表';
@@ -1017,6 +1017,70 @@ describe('应用路由：候选 onboarding 回访落点（Task 9）', () => {
     expect(写位置).toHaveBeenLastCalledWith(expect.objectContaining({
       位置: { pathname: 路径.学生分流, search: '' },
     }));
+  });
+});
+
+// ── review-cx F1：无草稿候选的登录落点按已水合权威事实分流（Spec §6 第三分支）──
+// 无本轮建档草稿时，「确实未完成者」不能被无条件送进主壳：只用已水合的 简历快照 +
+// 意向快照 判完备（与 完成候选Onboarding 同判据：必填 profile + 至少一条完整教育 +
+// 至少一条 active 意向），不完备 replace 回旅程入口 学生分流 复用已保存资源；
+// 简历快照未水合（水合失败/未结束）不新增路由，保持原主壳落点。
+describe('应用路由：无草稿候选登录落点按事实分流（review-cx F1）', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+  });
+
+  /** 最小 active/archived 意向快照 —— 落点判据只读 status。 */
+  const 意向快照 = (状态: 'active' | 'archived') =>
+    ({ itn_1: { status: 状态 } }) as never as 后端状态['意向快照'];
+
+  it('资料完备且有 active 意向：登录落点仍是主壳（不重做 onboarding）', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值({
+      简历快照: BFF简历样本,
+      意向快照: 意向快照('active'),
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.主壳));
+    expect(screen.getByTestId('屏幕:主壳')).toBeTruthy();
+  });
+
+  it('无草稿且教育不完整：登录落点 replace 回旅程入口 学生分流，不进主壳', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值({
+      // 毕业时间缺失 = 不完整教育（完成核对同判据），即便意向已在也过不了完备线
+      简历快照: { ...BFF简历样本, educations: [{ ...BFF简历样本.educations[0]!, end_month: null }] },
+      意向快照: 意向快照('active'),
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
+    expect(screen.getByTestId('屏幕:学生分流')).toBeTruthy();
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+  });
+
+  it('无草稿且没有 active 意向：登录落点同样回旅程入口（复用已保存资源）', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值({
+      简历快照: BFF简历样本,
+      意向快照: 意向快照('archived'),
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+  });
+
+  it('简历快照未水合（失败/未结束）：不新增路由，保持原主壳落点', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值({
+      简历快照: null,
+      意向快照: {},
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.主壳));
   });
 });
 
