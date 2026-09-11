@@ -550,6 +550,12 @@ describe('选期望职位 catalogVersion 重同步（review-cx F5）', () => {
     await screen.findByText('大类C新版');
     expect(screen.queryByText('大类A')).toBeNull();
     expect(screen.queryByText('大类旧页')).toBeNull();
+    // review-cx-r2：重开请求带 强制刷新（真数据源上会定向失效旧快照缓存，不吃 v2 首页）
+    expect(
+      查询Taxonomy.mock.calls.some(
+        (调用) => ((调用 as unknown[])[2] as { 强制刷新?: boolean } | undefined)?.强制刷新 === true,
+      ),
+    ).toBe(true);
   });
 
   it('子项追加页换版本：右栏整组替换为新版本第一页，不带死游标重试', async () => {

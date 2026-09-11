@@ -1349,6 +1349,12 @@ describe('引导问答 细选层 catalogVersion 重同步（review-cx F5）', ()
     await screen.findByText('方向新一');
     expect(screen.queryByText('方向旧一')).toBeNull();
     expect(screen.queryByText('方向过期页')).toBeNull();
+    // review-cx-r2：重开请求带 强制刷新（真数据源上会定向失效旧快照缓存，不吃 v2 首页）
+    expect(
+      查询Taxonomy.mock.calls.some(
+        (调用) => ((调用 as unknown[])[2] as { 强制刷新?: boolean } | undefined)?.强制刷新 === true,
+      ),
+    ).toBe(true);
     // 重开后不再带死游标发请求
     滚到底(滚动容器(2));
     await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());

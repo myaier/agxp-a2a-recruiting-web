@@ -14,10 +14,21 @@ interface BFF目录页<T extends { id: string; display_name: string }> {
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 
+/**
+ * review-cx-r2（冻结合同 2）：目录换代重同步用的窄口径查询选项。
+ * 强制刷新 = 该端点已缓存的页（含带旧游标的追加页）全部来自旧快照，先一并失效再
+ * 真发请求重取本页并回填缓存 —— 页面层检测到 catalogVersion 变化后的重开请求用它，
+ * 否则重开永远命中缓存里的旧首页，形成无恢复的版本死循环。只做端点内定向失效，
+ * 不动其它端点，也不是新的缓存框架。
+ */
+export interface 目录查询选项 {
+  强制刷新?: boolean;
+}
+
 export interface 目录数据源 {
-  查询Taxonomy(kind: 'job-categories' | 'industries' | 'majors', query: Taxonomy查询): Promise<目录页<BFFTaxonomyItem>>;
-  查询Location(query: Location查询): Promise<目录页<BFFLocationItem>>;
-  查询Institution(query: Institution查询): Promise<目录页<BFFInstitutionItem>>;
+  查询Taxonomy(kind: 'job-categories' | 'industries' | 'majors', query: Taxonomy查询, 选项?: 目录查询选项): Promise<目录页<BFFTaxonomyItem>>;
+  查询Location(query: Location查询, 选项?: 目录查询选项): Promise<目录页<BFFLocationItem>>;
+  查询Institution(query: Institution查询, 选项?: 目录查询选项): Promise<目录页<BFFInstitutionItem>>;
   清空目录缓存(): void;
 }
 
@@ -33,9 +44,15 @@ export function 创建目录数据源(请求: 请求函数): 目录数据源 {
     return params.toString();
   }
 
-  /** 一页查询：同 key in-flight 去重；失败时从缓存里删掉这个 key 再抛。 */
-  async function 查询一页<T extends BFF目录引用>(path: `/api/v1/catalog/${string}`, query: string): Promise<目录页<T>> {
+  /** 一页查询：同 key in-flight 去重；失败时从缓存里删掉这个 key 再抛。
+   *  review-cx-r2：强制刷新 先失效本端点全部缓存页（旧首页 + 死游标追加页）再重取回填。 */
+  async function 查询一页<T extends BFF目录引用>(path: `/api/v1/catalog/${string}`, query: string, 强制刷新?: boolean): Promise<目录页<T>> {
     const key = `${path}?${query}`;
+    if (强制刷新) {
+      for (const 已缓存键 of 目录页面缓存.keys()) {
+        if (已缓存键.startsWith(`${path}?`)) 目录页面缓存.delete(已缓存键);
+      }
+    }
     const existing = 目录页面缓存.get(key) as Promise<目录页<T>> | undefined;
     if (existing) return existing;
     const pending = 请求<BFF目录页<T>>({ path: `${path}${query ? `?${query}` : ''}` as `/api/v1/${string}` })
@@ -46,7 +63,7 @@ export function 创建目录数据源(请求: 请求函数): 目录数据源 {
   }
 
   return {
-    查询Taxonomy(kind, query) {
+    查询Taxonomy(kind, query, 选项) {
       const path = `/api/v1/catalog/${kind}` as `/api/v1/catalog/${string}`;
       const query_string = 编码查询([
         ['parent_id', query.parentId],
@@ -54,9 +71,9 @@ export function 创建目录数据源(请求: 请求函数): 目录数据源 {
         ['cursor', query.cursor],
         ['limit', query.limit],
       ]);
-      return 查询一页<BFFTaxonomyItem>(path, query_string);
+      return 查询一页<BFFTaxonomyItem>(path, query_string, 选项?.强制刷新);
     },
-    查询Location(query) {
+    查询Location(query, 选项) {
       const path = '/api/v1/catalog/locations';
       const query_string = 编码查询([
         ['q', query.q],
@@ -65,9 +82,9 @@ export function 创建目录数据源(请求: 请求函数): 目录数据源 {
         ['cursor', query.cursor],
         ['limit', query.limit],
       ]);
-      return 查询一页<BFFLocationItem>(path, query_string);
+      return 查询一页<BFFLocationItem>(path, query_string, 选项?.强制刷新);
     },
-    查询Institution(query) {
+    查询Institution(query, 选项) {
       const path = '/api/v1/catalog/education-institutions';
       const query_string = 编码查询([
         ['q', query.q],
@@ -76,7 +93,7 @@ export function 创建目录数据源(请求: 请求函数): 目录数据源 {
         ['cursor', query.cursor],
         ['limit', query.limit],
       ]);
-      return 查询一页<BFFInstitutionItem>(path, query_string);
+      return 查询一页<BFFInstitutionItem>(path, query_string, 选项?.强制刷新);
     },
     清空目录缓存() {
       目录页面缓存.clear();

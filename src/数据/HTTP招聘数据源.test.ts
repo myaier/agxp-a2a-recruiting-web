@@ -430,6 +430,63 @@ describe('HTTP 招聘数据源', () => {
     expect(请求Mock).toHaveBeenCalledTimes(2);
   });
 
+  // ── review-cx-r2 F5-R2：目录换代重开必须真打到服务端（缓存定向失效）──
+  // v2 首页 → v3 追加页（目录换代，页面层判版本不一致）→ 重开第一页带 强制刷新：
+  // 该端点缓存页（旧 v2 首页 + 带死游标的追加页）一并失效，重开真发请求拿 v3 首页，
+  // 新游标的追加页正常；旧死游标再被碰到时也不再吐缓存里的死页。
+  it('catalogVersion 换代重开带强制刷新：丢弃端点缓存真重取，新游标追加正常', async () => {
+    let 首页调用 = 0;
+    const 页 = (items: string[], next_cursor: string | null, catalog_version: string) => ({
+      result: {
+        items: items.map((id) => ({ id, display_name: id })),
+        next_cursor,
+        catalog_version,
+      },
+    });
+    请求Mock.mockImplementation(async (options: BFF请求选项) => {
+      const 路径 = options.path as string;
+      if (路径 === '/api/v1/catalog/locations?cursor=cur_1&limit=20') {
+        return 页(['loc_旧快照第二页'], 'dead_cur', 'v3');
+      }
+      if (路径 === '/api/v1/catalog/locations?cursor=v3_cur_1&limit=20') {
+        return 页(['loc_杭州v3'], null, 'v3');
+      }
+      if (路径 === '/api/v1/catalog/locations?limit=20') {
+        首页调用 += 1;
+        return 首页调用 === 1 ? 页(['loc_上海v2'], 'cur_1', 'v2') : 页(['loc_上海v3'], 'v3_cur_1', 'v3');
+      }
+      return 页([], null, 'v2');
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    const 查询 = source.查询Location;
+
+    // ① 首页 v2 → ② 追加页 v3（页面层判换代）
+    await expect(查询({ limit: 20 })).resolves.toMatchObject({ catalogVersion: 'v2', nextCursor: 'cur_1' });
+    await expect(查询({ cursor: 'cur_1', limit: 20 })).resolves.toMatchObject({ catalogVersion: 'v3' });
+
+    // ③ 重开（页面层 F5 的 restart 调用形态）：必须真发请求拿 v3 首页，不吃 v2 缓存
+    const 重开页 = await 查询({ limit: 20 }, { 强制刷新: true });
+    expect(重开页.catalogVersion).toBe('v3');
+    expect(重开页.items.map((项) => 项.id)).toEqual(['loc_上海v3']);
+    expect(重开页.nextCursor).toBe('v3_cur_1');
+    const 首页请求数 = 请求Mock.mock.calls
+      .filter(([o]) => (o as BFF请求选项).path === '/api/v1/catalog/locations?limit=20').length;
+    expect(首页请求数).toBe(2);
+
+    // ④ 死游标页缓存也被丢弃：再碰 cur_1 是真请求，不是缓存里的旧死页
+    await 查询({ cursor: 'cur_1', limit: 20 });
+    const 死游标请求数 = 请求Mock.mock.calls
+      .filter(([o]) => (o as BFF请求选项).path === '/api/v1/catalog/locations?cursor=cur_1&limit=20').length;
+    expect(死游标请求数).toBe(2);
+
+    // ⑤ 新游标追加正常（未缓存过的键，普通路径）
+    await expect(查询({ cursor: 'v3_cur_1', limit: 20 })).resolves.toMatchObject({
+      items: [{ id: 'loc_杭州v3', display_name: 'loc_杭州v3' }],
+      nextCursor: null,
+      catalogVersion: 'v3',
+    });
+  });
+
   // Task 1：院校结果的嵌套 location 原样保留，映射层不抹平嵌套字段。
   it('院校结果保留嵌套地点', async () => {
     请求Mock.mockResolvedValueOnce({ result: { items: [{

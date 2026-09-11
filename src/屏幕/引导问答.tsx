@@ -29,6 +29,7 @@ import { 城市字典, 热门城市, 行业字典 } from '../数据/城市与行
 import { use城市搜索, use城市默认页, 按行政区分组 } from './城市查询钩子';
 import { use可访问滚轮 } from '../组件/可访问滚轮';
 import type { BFFTaxonomyItem, BFFLocationItem } from '../数据/BFF契约';
+import type { 目录查询选项 } from '../数据/招聘数据源/目录';
 import type { 屏蔽项 } from '../数据/类型';
 import { 合并目录页 } from '../数据/目录选择';
 import {
@@ -407,7 +408,7 @@ function 期望职位题({
   切换: (项: string) => void;
   设已选: (更新: (旧: string[]) => string[]) => void;
   是后端: boolean;
-  查询Taxonomy: ((kind: 'job-categories', query: { parentId?: string; q?: string; cursor?: string; limit?: number }) => Promise<{ items: BFFTaxonomyItem[]; nextCursor: string | null; catalogVersion: string }>) | undefined;
+  查询Taxonomy: ((kind: 'job-categories', query: { parentId?: string; q?: string; cursor?: string; limit?: number }, 选项?: 目录查询选项) => Promise<{ items: BFFTaxonomyItem[]; nextCursor: string | null; catalogVersion: string }>) | undefined;
   已选引用: BFFTaxonomyItem[];
   设已选引用: (更新: (旧: BFFTaxonomyItem[]) => BFFTaxonomyItem[]) => void;
 }) {
@@ -534,8 +535,9 @@ function 期望职位题({
     try {
       const 页 = await 方法('job-categories', { cursor: 根游标, limit: 50 });
       if (页.catalogVersion !== 根版本) {
-        // review-cx F5：目录换代 —— 旧游标是死页，从根查询第一页静默重开
-        const 重开 = await 方法('job-categories', { limit: 50 });
+        // review-cx F5：目录换代 —— 旧游标是死页，从根查询第一页静默重开。
+        // review-cx-r2：强制刷新让重开真打到服务端（缓存首页已来自旧快照）
+        const 重开 = await 方法('job-categories', { limit: 50 }, { 强制刷新: true });
         设根项(重开.items);
         设根游标(重开.nextCursor);
         设根版本(重开.catalogVersion);
@@ -563,8 +565,9 @@ function 期望职位题({
       const 页 = await 方法('job-categories', { parentId: 目标根id, cursor: 子项游标, limit: 50 });
       if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
       if (页.catalogVersion !== 子项版本) {
-        // review-cx F5：目录换代 —— 子项整组替换为新版本第一页（既有 parentId 路径，静默）
-        const 重开 = await 方法('job-categories', { parentId: 目标根id, limit: 50 });
+        // review-cx F5：目录换代 —— 子项整组替换为新版本第一页（既有 parentId 路径，静默）。
+        // review-cx-r2：强制刷新让重开真打到服务端（缓存首页已来自旧快照）
+        const 重开 = await 方法('job-categories', { parentId: 目标根id, limit: 50 }, { 强制刷新: true });
         if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
         设子项(重开.items);
         设子项游标(重开.nextCursor);
@@ -592,8 +595,9 @@ function 期望职位题({
       const 页 = await 方法('job-categories', { q: 搜词, cursor: 搜索游标, limit: 50 });
       if (本次 !== 搜索代际.current) return;
       if (页.catalogVersion !== 搜索版本) {
-        // review-cx F5：目录换代 —— 搜索结果整组替换为新版本第一页（静默）
-        const 重开 = await 方法('job-categories', { q: 搜词, limit: 50 });
+        // review-cx F5：目录换代 —— 搜索结果整组替换为新版本第一页（静默）。
+        // review-cx-r2：强制刷新让重开真打到服务端（缓存首页已来自旧快照）
+        const 重开 = await 方法('job-categories', { q: 搜词, limit: 50 }, { 强制刷新: true });
         if (本次 !== 搜索代际.current) return;
         设搜索结果项(重开.items);
         设搜索游标(重开.nextCursor);
@@ -646,8 +650,9 @@ function 期望职位题({
       const 页 = await 方法('job-categories', { parentId: 节点.id, cursor: 细选游标, limit: 50 });
       if (本次 !== 细选代际.current || 细选节点引用.current?.id !== 节点.id) return;
       if (页.catalogVersion !== 细选版本) {
-        // review-cx F5：目录换代 —— 细选列表整组替换为新版本第一页（静默）
-        const 重开 = await 方法('job-categories', { parentId: 节点.id, limit: 50 });
+        // review-cx F5：目录换代 —— 细选列表整组替换为新版本第一页（静默）。
+        // review-cx-r2：强制刷新让重开真打到服务端（缓存首页已来自旧快照）
+        const 重开 = await 方法('job-categories', { parentId: 节点.id, limit: 50 }, { 强制刷新: true });
         if (本次 !== 细选代际.current || 细选节点引用.current?.id !== 节点.id) return;
         设细选项们(重开.items);
         设细选游标(重开.nextCursor);

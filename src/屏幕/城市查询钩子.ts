@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { 目录页, Location查询 } from '../数据/招聘数据源类型';
+import type { 目录查询选项 } from '../数据/招聘数据源/目录';
 import type { BFFLocationItem } from '../数据/BFF契约';
 import type { 城市分组配置 } from '../数据/城市与行业';
 import { 轻提示 } from '../组件/轻提示';
@@ -12,7 +13,7 @@ import { 取后端错误文案 } from '../数据/HTTP客户端';
 const 搜索防抖毫秒 = 250;
 const 默认页大小 = 20;
 
-export type 查询Location方法 = (q: Location查询) => Promise<目录页<BFFLocationItem>>;
+export type 查询Location方法 = (q: Location查询, 选项?: 目录查询选项) => Promise<目录页<BFFLocationItem>>;
 
 export interface 分组查询状态 {
   items: BFFLocationItem[];
@@ -20,8 +21,9 @@ export interface 分组查询状态 {
   cursor: string | null;
   /** review-r1 P2-1：多 filter 分组（如直辖市四码）的每 filter 游标，加载更多时各取各的下一页 */
   游标们: (string | null)[];
-  /** review-cx F5：本组第一页的 catalogVersion（冻结合同 2）—— 追加页换版本时整组重开 */
-  版本: string;
+  /** review-cx-r2：每 filter 第一页的 catalogVersion（与 游标们 对齐）—— 追加页只与
+   *  同 filter 的首页版本比对，各 filter 版本各自稳定（哪怕互不相同）时不误判换代。 */
+  版本们: string[];
   还有: boolean;
   已请求: boolean;
 }
@@ -86,8 +88,9 @@ export function use城市默认页(查询Location: 查询Location方法 | undefi
     try {
       const 页 = await 方法({ cursor: 游标, limit: 默认页大小 });
       if (页.catalogVersion !== 版本引用.current) {
-        // 目录换代：旧游标已是死页，静默从本查询第一页重开（含热门区）
-        const 重开 = await 方法({ limit: 默认页大小 });
+        // 目录换代：旧游标已是死页，静默从本查询第一页重开（含热门区）。
+        // review-cx-r2：强制刷新让重开真打到服务端（端点缓存页已全部来自旧快照）
+        const 重开 = await 方法({ limit: 默认页大小 }, { 强制刷新: true });
         设热门项们(重开.items);
         设项们(重开.items);
         设游标(重开.nextCursor);
@@ -128,40 +131,51 @@ export function use城市分组(查询Location: 查询Location方法 | undefined
   const 方法引用 = useRef(查询Location);
   方法引用.current = 查询Location;
 
-  const 请求首页 = async (组: 城市分组配置) => {
+  const 请求首页 = async (组: 城市分组配置, 强制刷新?: boolean) => {
     const 方法 = 方法引用.current;
     const 键 = 组.省;
     // 海外组：filters 为空，不发请求，直接标记已请求（展示组不制造可提交值）
     if (组.filters.length === 0) {
       设状态表((旧) => ({
         ...旧,
-        [键]: { items: [], 加载中: false, cursor: null, 游标们: [], 版本: '', 还有: false, 已请求: true },
+        [键]: { items: [], 加载中: false, cursor: null, 游标们: [], 版本们: [], 还有: false, 已请求: true },
       }));
       return;
     }
     if (!方法) return;
     设状态表((旧) => ({
       ...旧,
-      [键]: { items: [], 加载中: true, cursor: null, 游标们: [], 版本: '', 还有: false, 已请求: true },
+      [键]: { items: [], 加载中: true, cursor: null, 游标们: [], 版本们: [], 还有: false, 已请求: true },
     }));
     try {
-      const 页们 = await Promise.all(
-        组.filters.map((f) =>
-          方法({ countryCode: f.countryCode, admin1Code: f.admin1Code, limit: 默认页大小 }),
-        ),
-      );
+      // review-cx-r2：并发第一页版本不一致 = 目录正在换代，不提交混合快照 —— 带缓存
+      // 失效重取一组一致首页（病态服务端下有上限，超限后按各 filter 实际版本提交，
+      // 后续追加仍只与同 filter 首页版本比对，不会误判重启）。
+      let 页们: 目录页<BFFLocationItem>[] = [];
+      for (let 尝试 = 0; 尝试 < 3; 尝试 += 1) {
+        页们 = await Promise.all(
+          组.filters.map((f) =>
+            方法(
+              { countryCode: f.countryCode, admin1Code: f.admin1Code, limit: 默认页大小 },
+              强制刷新 || 尝试 > 0 ? { 强制刷新: true } : undefined,
+            ),
+          ),
+        );
+        if (new Set(页们.map((页) => 页.catalogVersion)).size <= 1) break;
+      }
       const 合并 = 去重(页们.flatMap((页) => 页.items));
       const 游标们 = 页们.map((页) => 页.nextCursor);
+      const 版本们 = 页们.map((页) => 页.catalogVersion);
       const 还有 = 游标们.some((c) => c !== null);
       const cursor = 游标们.find((c) => c !== null) ?? null;
       设状态表((旧) => ({
         ...旧,
-        [键]: { items: 合并, 加载中: false, cursor, 游标们, 版本: 页们[0]?.catalogVersion ?? '', 还有, 已请求: true },
+        [键]: { items: 合并, 加载中: false, cursor, 游标们, 版本们, 还有, 已请求: true },
       }));
     } catch {
       设状态表((旧) => ({
         ...旧,
-        [键]: { items: [], 加载中: false, cursor: null, 游标们: [], 版本: '', 还有: false, 已请求: true },
+        [键]: { items: [], 加载中: false, cursor: null, 游标们: [], 版本们: [], 还有: false, 已请求: true },
       }));
     }
   };
@@ -190,10 +204,11 @@ export function use城市分组(查询Location: 查询Location方法 | undefined
           return 方法({ countryCode: f.countryCode, admin1Code: f.admin1Code, cursor: c, limit: 默认页大小 });
         }),
       );
-      // review-cx F5：任一追加页换版本 = 目录已换代 —— 不跨版本合并，整组（含各
-      // filter 的累计页与游标）丢弃并从该组第一页重开（请求首页 即既有第一页路径，静默）。
-      if (页们.some((页) => 页.catalogVersion !== '' && 页.catalogVersion !== 状态.版本)) {
-        await 请求首页(组);
+      // review-cx F5 / review-cx-r2：追加页只与同 filter 的第一页版本比对；任一 filter
+      // 换版本 = 目录已换代 —— 不跨版本合并，整组（含各 filter 的累计页与游标）丢弃并
+      // 从该组第一页重开（请求首页 即既有第一页路径，带缓存失效真重取，静默）。
+      if (页们.some((页, i) => 页.catalogVersion !== '' && 页.catalogVersion !== 状态.版本们[i])) {
+        await 请求首页(组, true);
         return;
       }
       const 新游标们 = 页们.map((页) => 页.nextCursor);
@@ -281,8 +296,9 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
       const 页 = await 方法({ q: 词.trim(), cursor: 下一页游标 });
       if (本次 !== 代际.current) return;
       if (页.catalogVersion !== 版本引用.current) {
-        // review-cx F5：目录换代 —— 不跨版本合并，从本查询第一页静默重开
-        const 重开 = await 方法({ q: 词.trim() });
+        // review-cx F5：目录换代 —— 不跨版本合并，从本查询第一页静默重开。
+        // review-cx-r2：强制刷新让重开真打到服务端（缓存首页已来自旧快照）
+        const 重开 = await 方法({ q: 词.trim() }, { 强制刷新: true });
         if (本次 !== 代际.current) return;
         设结果(重开.items);
         设下一页游标(重开.nextCursor);

@@ -227,6 +227,9 @@ describe('use城市默认页 catalogVersion 重同步（review-cx F5）', () => 
     输出 = JSON.parse(container.querySelector('output')!.textContent!);
     expect(输出.全部).toEqual(['loc_sh_v3']);
     expect(输出.热门).toEqual(['loc_sh_v3']);
+    // review-cx-r2：重开请求带 强制刷新（真数据源上会定向失效旧快照缓存，不吃 v2 首页）
+    const 原始调用 = (查询 as unknown as ReturnType<typeof vi.fn>).mock.calls as unknown[][];
+    expect(原始调用.some((调用) => (调用[1] as { 强制刷新?: boolean } | undefined)?.强制刷新 === true)).toBe(true);
 
     // 重开后仍是单一版本且继续可翻：新游标 v3_cur_1 的追加页正常合并
     await act(async () => { 加载更多外!(); });
@@ -329,5 +332,111 @@ describe('use城市搜索 catalogVersion 重同步（review-cx F5）', () => {
     // 加载更多：追加页 v3 → 结果整组替换为新版本第一页，不跨版本拼接
     await act(async () => { 加载更多外!(); });
     expect(JSON.parse(container.querySelector('output')!.textContent!).结果).toEqual(['loc_a1_v3']);
+  });
+});
+
+// ── review-cx-r2 F5-R2：多 filter 分组的版本按 filter 记（版本们 与 游标们 对齐）──
+// 追加页只与同 filter 的第一页版本比对：各 filter 版本各自稳定（哪怕互相不同）时
+// 正常合并不误判重启；整个目录真换代（追加页集体换版本）仍整组重开。并发第一页
+// 自身版本不一致时不提交混合结果 —— 带缓存失效重取一组一致首页（有上限）。
+describe('use城市分组 多 filter 版本们（review-cx-r2）', () => {
+  it('双 filter 各自版本稳定：追加按各自首页版本比对，正常合并不误判重启', async () => {
+    let 切换外: (() => void) | null = null;
+    let 加载更多外: (() => void) | null = null;
+    let 读取状态: (() => { items: string[]; 还有: boolean }) | null = null;
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 状态表, 切换展开, 加载更多 } = use城市分组(查询);
+      const 组 = { 省: '双省', filters: [{ countryCode: 'CN', admin1Code: '44' }, { countryCode: 'CN', admin1Code: '33' }] };
+      切换外 = () => 切换展开(组);
+      加载更多外 = () => void 加载更多(组);
+      读取状态 = () => {
+        const 状态 = 状态表['双省'];
+        return { items: (状态?.items ?? []).map((项) => 项.id), 还有: 状态?.还有 ?? false };
+      };
+      return createElement('output', null, '');
+    }
+
+    // 44（粤）恒 v2，33（浙）恒 v3：各 filter 版本跨页稳定但互不相同
+    const 查询 = vi.fn(async (q: { admin1Code?: string; cursor?: string }) => {
+      const 是粤 = q.admin1Code === '44';
+      if (q.cursor) {
+        return {
+          items: [{ id: 是粤 ? 'gz2' : 'hz2', display_name: '追加' } as BFFLocationItem],
+          nextCursor: null,
+          catalogVersion: 是粤 ? 'v2' : 'v3',
+        };
+      }
+      return {
+        items: [{ id: 是粤 ? 'gz' : 'hz', display_name: '首页' } as BFFLocationItem],
+        nextCursor: (是粤 ? 'gd_cur' : 'zj_cur') as string | null,
+        catalogVersion: 是粤 ? 'v2' : 'v3',
+      };
+    }) as unknown as 查询Location方法;
+
+    const { 查询: 查询记录 } = { 查询 } as never as { 查询: ReturnType<typeof vi.fn> };
+    render(createElement(探针, { 查询 }));
+    await act(async () => { 切换外!(); });
+    const 首页调用数 = () => 查询记录.mock.calls.filter(([q]) => !(q as { cursor?: string }).cursor).length;
+    // 展开后提交了各 filter 的首页（并发版本不一致的病态服务端按上限重取后仍不一致，
+    // 按每 filter 各自版本提交）
+    const 展开后首页调用 = 首页调用数();
+    expect(展开后首页调用).toBeGreaterThanOrEqual(2);
+    expect(读取状态!().items).toEqual(['gz', 'hz']);
+
+    // 追加：44 的追加页 v2 对 44 首页 v2、33 的追加页 v3 对 33 首页 v3 —— 不误判换代
+    await act(async () => { 加载更多外!(); });
+    expect(读取状态!()).toEqual({ items: ['gz', 'hz', 'gz2', 'hz2'], 还有: false });
+    // 没有触发整组重开（第一页请求数不再增长）
+    expect(首页调用数()).toBe(展开后首页调用);
+  });
+
+  it('整个目录真换代：双 filter 追加页集体换版本，仍整组重开为新版本首页', async () => {
+    let 切换外: (() => void) | null = null;
+    let 加载更多外: (() => void) | null = null;
+    let 读取状态: (() => { items: string[]; 还有: boolean }) | null = null;
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 状态表, 切换展开, 加载更多 } = use城市分组(查询);
+      const 组 = { 省: '双省', filters: [{ countryCode: 'CN', admin1Code: '44' }, { countryCode: 'CN', admin1Code: '33' }] };
+      切换外 = () => 切换展开(组);
+      加载更多外 = () => void 加载更多(组);
+      读取状态 = () => {
+        const 状态 = 状态表['双省'];
+        return { items: (状态?.items ?? []).map((项) => 项.id), 还有: 状态?.还有 ?? false };
+      };
+      return createElement('output', null, '');
+    }
+
+    let 换代 = false;
+    const 查询 = vi.fn(async (q: { admin1Code?: string; cursor?: string }) => {
+      const 是粤 = q.admin1Code === '44';
+      if (q.cursor) {
+        换代 = true;
+        return {
+          items: [{ id: '旧快照追加页', display_name: '旧' } as BFFLocationItem],
+          nextCursor: null,
+          catalogVersion: 'v3',
+        };
+      }
+      if (!换代) {
+        return {
+          items: [{ id: 是粤 ? 'gz_v2' : 'hz_v2', display_name: '首页' } as BFFLocationItem],
+          nextCursor: (是粤 ? 'gd_cur' : 'zj_cur') as string | null,
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{ id: 是粤 ? 'gz_v3' : 'hz_v3', display_name: '首页新' } as BFFLocationItem],
+        nextCursor: null,
+        catalogVersion: 'v3',
+      };
+    }) as unknown as 查询Location方法;
+
+    render(createElement(探针, { 查询 }));
+    await act(async () => { 切换外!(); });
+    expect(读取状态!()).toEqual({ items: ['gz_v2', 'hz_v2'], 还有: true });
+
+    // 追加页集体 v3：对两个 filter 的首页版本都不一致 → 整组重开为新版本首页
+    await act(async () => { 加载更多外!(); });
+    expect(读取状态!()).toEqual({ items: ['gz_v3', 'hz_v3'], 还有: false });
   });
 });
