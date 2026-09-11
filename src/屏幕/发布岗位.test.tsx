@@ -347,11 +347,11 @@ describe('发布岗位页 Backend 选择器', () => {
    *  职位要求=null 时故意留空，用来验前置校验。 */
   async function 填到发布前(
     选城市: boolean,
-    选项: { 职位描述?: string | null; 职位要求?: string | null; 勾选确认?: boolean } = {},
+    选项: { 职位描述?: string | null; 职位要求?: string | null; 勾选确认?: boolean; 从注册流?: boolean } = {},
   ) {
     const 用户 = userEvent.setup();
     const 视图 = render(
-      <MemoryRouter initialEntries={['/hr/post-job']}>
+      <MemoryRouter initialEntries={[{ pathname: '/hr/post-job', state: { 从注册流: 选项.从注册流 === true } }]}>
         <Routes>
           <Route path="/hr/post-job" element={<发布岗位 />} />
           <Route path="/hr/post-job/:id" element={<发布岗位 />} />
@@ -530,12 +530,14 @@ describe('发布岗位页 Backend 选择器', () => {
 
   // ── P0 修复 Task 4：JobCreate 的三条独立必填文本 ──
 
-  it('第三步只显示私有多行输入，公开要求没有可见输入', async () => {
+  it('第三步公开岗位要求与私有筛选要求各有独立空白多行输入', async () => {
     await 填到发布前(true, { 职位要求: null });
     expect(screen.queryByRole('textbox', { name: /给候选人看的职位要求/ })).toBeNull();
     const 偏好框 = screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' });
     expect(偏好框.getAttribute('placeholder')).toBe('');
-    expect(document.querySelectorAll('textarea')).toHaveLength(1);
+    expect((screen.getByRole('textbox', { name: '岗位要求' }) as HTMLTextAreaElement).value).toBe('');
+    expect(screen.getByRole('textbox', { name: '岗位要求' }).getAttribute('placeholder')).toBe('');
+    expect(document.querySelectorAll('textarea')).toHaveLength(2);
     expect(screen.getByText('选填')).toBeTruthy();
     expect(screen.getByText('写下你的要求和偏好，AI 代理会据此筛选候选人。')).toBeTruthy();
     expect(screen.getByText('薪资仅判断双方区间是否匹配，不询问或协商具体金额。')).toBeTruthy();
@@ -606,6 +608,50 @@ describe('发布岗位页 Backend 选择器', () => {
     await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
     expect(mock更新岗位.mock.calls[0][0]).toMatchObject({ 编号: 'job_1' });
     expect(screen.queryByText('请先在招聘名片填写公司名称')).toBeNull();
+  });
+
+  it.each([false, true])('手工发布公开岗位要求无需JD导入，从注册流=%s', async 从注册流 => {
+    const { 用户 } = await 填到发布前(true, { 职位要求: null, 勾选确认: false, 从注册流 });
+    const 输入 = screen.getByRole('textbox', { name: '岗位要求' }) as HTMLTextAreaElement;
+    expect(输入.value).toBe('');
+    expect(输入.placeholder).toBe('');
+    expect(输入.tagName).toBe('TEXTAREA');
+    await 用户.type(输入, '熟悉交易系统\n能够独立排查问题');
+    await 用户.type(screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }), '优先金融经验');
+    await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    const 请求 = 转岗位创建(mock发布岗位.mock.calls[0][0], { publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null } });
+    expect(请求.requirements).toBe('熟悉交易系统\n能够独立排查问题');
+    expect(请求.private_screening_preferences).toBe('优先金融经验');
+    expect(mock创建JD导入).not.toHaveBeenCalled();
+  });
+
+  it('编辑岗位要求完整回填，改动撤销确认并按现有补丁保存', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    const { 用户 } = await 打开编辑第三步({ 职位要求: '原岗位要求\n第二行', 结构化要求已确认: true });
+    const 输入 = screen.getByRole('textbox', { name: '岗位要求' });
+    expect((输入 as HTMLTextAreaElement).value).toBe('原岗位要求\n第二行');
+    await 用户.clear(输入);
+    await 用户.type(输入, '新岗位要求\n仍保留多行');
+    expect((screen.getByRole('checkbox', { name: 结构化确认文案 }) as HTMLInputElement).checked).toBe(false);
+    await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(转岗位补丁(mock更新岗位.mock.calls[0][0], BFF岗位样本).requirements).toBe('新岗位要求\n仍保留多行');
+  });
+
+  it('全远程编辑地址回填且修改保存不被清空，不放开城市锁定', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    const { 用户 } = await 打开编辑第三步({ 办公方式: '全远程', 办公地: '远程原地址', 结构化要求已确认: true });
+    const 地址 = screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层') as HTMLInputElement;
+    expect(地址.value).toBe('远程原地址');
+    expect(地址.disabled).toBe(false);
+    expect((screen.getByPlaceholderText('搜索城市名，从下方候选选择') as HTMLInputElement).readOnly).toBe(true);
+    await 用户.clear(地址); await 用户.type(地址, '远程新地址');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(转岗位补丁(mock更新岗位.mock.calls[0][0], { ...BFF岗位样本, workplace_mode: 'remote', office_location: '远程原地址' }).office_location).toBe('远程新地址');
   });
 
   it('完整表单把独立 description 和 requirements 交给 operation', async () => {
@@ -1761,7 +1807,7 @@ describe('发布岗位页 JD 建议合并', () => {
     expect(按下('暂不提供')).toBe('false');
   });
 
-  it('办公方式组：全远程清空并禁用办公地点', async () => {
+  it('办公方式组：导入全远程仍清旧址，但允许手填选填地址', async () => {
     const POST门 = deferred<BFFJD导入>();
     mock创建JD导入.mockReturnValue(POST门.promise);
     render发布岗位();
@@ -1777,7 +1823,7 @@ describe('发布岗位页 JD 建议合并', () => {
     POST门.resolve(成功(JD建议({ workplace_mode: 'remote', office_location: '不该出现的地址' })));
     await 微任务结算();
     expect(办公地框().value).toBe('');
-    expect(办公地框().disabled).toBe(true);
+    expect(办公地框().disabled).toBe(false);
     返回();
     返回();
     expect(按下('全远程')).toBe('true');
@@ -1989,13 +2035,13 @@ describe('发布岗位页 全远程地址与 Catalog 门禁', () => {
     await 用户.click(screen.getByRole('checkbox', { name: '我已确认经验和学历设置将作为自动匹配依据；补充要求不会被自动解析。修改上述内容后需要重新确认。' }));
   }
 
-  it('手动全远程：清空并禁用办公地点、跳过地址校验、payload 办公地为空串', async () => {
+  it('手动全远程：办公地点可填但非必填，留空发布仍为空串', async () => {
     const 用户 = userEvent.setup();
     render发布岗位();
     await 填到发布前(用户, { 办公方式: '全远程', 办公地: null });
-    // 办公地点仍占原位置，但为空且禁用
+    // 办公地点可输入；不填仍可发布
     const 地址框 = screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层') as HTMLInputElement;
-    expect(地址框.disabled).toBe(true);
+    expect(地址框.disabled).toBe(false);
     expect(地址框.value).toBe('');
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
@@ -2011,6 +2057,23 @@ describe('发布岗位页 全远程地址与 Catalog 门禁', () => {
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     expect(await screen.findByText('请填写办公地点')).toBeTruthy();
     expect(mock发布岗位).toHaveBeenCalledTimes(1);
+  });
+
+  it('全远程手填地址跨步保留并写入公开创建请求', async () => {
+    const 用户 = userEvent.setup();
+    render发布岗位();
+    await 填到发布前(用户, { 办公方式: '全远程', 办公地: null });
+    const 取地址 = () => screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层') as HTMLInputElement;
+    await 用户.type(取地址(), '远程团队联络点\n上海张江');
+    const 录入值 = 取地址().value;
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    expect(取地址().value).toBe(录入值);
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    const 请求 = 转岗位创建(mock发布岗位.mock.calls[0][0], { publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null } });
+    expect(请求.workplace_mode).toBe('remote');
+    expect(请求.office_location).toBe(录入值);
   });
 
   it('JD 城市源文本只进搜索框：未经候选选择发布被拦，点候选后带地点引用发布', async () => {

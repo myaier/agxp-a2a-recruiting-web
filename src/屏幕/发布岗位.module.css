@@ -898,3 +898,15 @@
   color: var(--弱化);
   margin: 2px 0 4px;
 }
+
+/* 多行岗位要求与代理偏好沿用上方单行输入的绿色焦点边框。 */
+.筛选要求输入:focus {
+  outline: none;
+  border-color: var(--淡绿描边);
+}
+
+/* 仅公开岗位要求标签留出12px，不影响代理筛选标题。 */
+.硬性区 > label[for="岗位要求"] {
+  display: block;
+  margin-bottom: 12px;
+}
