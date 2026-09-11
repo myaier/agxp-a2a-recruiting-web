@@ -775,18 +775,35 @@ describe('学生分流 候选 onboarding 简历预填（Spec §7 上传页接线
     expect(screen.getByText('重新上传 ›')).toBeTruthy();
   });
 
-  // review r1 裁决 B：无自动预填轮时离开本屏 = 明确放弃那条未结算的可选上传 ——
-  // 同一个「继续手填」动作在无轮时只释放建档单槽（操作层语义），页面不额外声称任何结果。
-  it('无轮时点下一步用既有的继续手填动作释放未结算单槽；ready 轮绝不调用它', async () => {
+  // review r1 裁决 B（r2 细化）：判据是「有没有未结算的文件命令」+「本次上传不在飞」，
+  // 不是轮的阶段 —— ready 轮同样可能卡着一条替换失败的槽（永久挡住后续资料保存）。
+  const 未结算文件槽 = {
+    种类: 'resume-file-replace' as const,
+    资源编号: 文件A.file_id,
+    ifMatch: 1,
+    幂等键: 'idem-replace-unknown-1',
+    阶段: 'prepared' as const,
+    文件核对: { name: 'a.pdf', type: 'application/pdf', size: 8, lastModified: 1, sha256: 'f'.repeat(64) },
+  };
+
+  it('ready 轮卡着未结算文件槽：下一步用既有继续手填动作释放它（旧建议本就不能再应用）', async () => {
     const 用户 = userEvent.setup();
-    const { 视图 } = render学生分流({ 数据源: 'backend', 引导预填: 完整预填, 附件库: { items: [], limits } });
+    render学生分流({
+      数据源: 'backend',
+      引导预填: { ...完整预填, 建档: { 待写入: 未结算文件槽 } },
+      附件库: { items: [文件A], limits },
+      候选预填: 预填轮({
+        phase: 'ready',
+        source: { file_id: 文件A.file_id, version_id: `v_${文件A.file_id}`, parse_id: 'p_rf_a' },
+      }),
+    });
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     expect(mock操作.继续手填候选Onboarding).toHaveBeenCalledTimes(1);
     expect(mock跳转).toHaveBeenCalled();
-    视图.unmount();
+  });
 
-    mock操作.继续手填候选Onboarding.mockClear();
-    mock跳转.mockClear();
+  it('没有未结算文件槽的健康 ready 轮：下一步不动本轮（建议照常带去后续页面）', async () => {
+    const 用户 = userEvent.setup();
     render学生分流({
       数据源: 'backend',
       引导预填: 完整预填,
@@ -797,8 +814,25 @@ describe('学生分流 候选 onboarding 简历预填（Spec §7 上传页接线
       }),
     });
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    expect(mock操作.继续手填候选Onboarding).not.toHaveBeenCalled(); // 不能把已到手的建议改掉
+    expect(mock操作.继续手填候选Onboarding).not.toHaveBeenCalled();
     expect(mock跳转).toHaveBeenCalled();
+  });
+
+  it('上传仍在飞时点下一步：绝不释放在飞命令的槽（否则重试会铸新键造重复文件）', async () => {
+    const 用户 = userEvent.setup();
+    mock操作.创建附件简历.mockImplementation(() => new Promise<'已提交'>(() => {})); // 永不结算
+    render学生分流({
+      数据源: 'backend',
+      引导预填: { ...完整预填, 建档: { 待写入: { ...未结算文件槽, 种类: 'resume-file-create' as const } } },
+      附件库: { items: [], limits },
+    });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await 用户.upload(input, new File(['%PDF'], 'inflight.pdf', { type: 'application/pdf' }));
+    await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
+    await waitFor(() => expect(mock操作.创建附件简历).toHaveBeenCalledTimes(1));
+    await 用户.click(screen.getByRole('button', { name: '下一步' })); // 上传未结算就离页
+    expect(mock操作.继续手填候选Onboarding).not.toHaveBeenCalled();
+    expect(mock跳转).toHaveBeenCalled(); // 上传不阻塞下一步（既有行为不变）
   });
 
   // review r1 #5：本屏自己从不种 建档 草稿 —— 首次上传时草稿不在场是设计如此，

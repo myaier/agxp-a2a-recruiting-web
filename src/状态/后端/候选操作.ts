@@ -82,13 +82,20 @@ function 同一命令(a: 建档待写入, b: 建档待写入): boolean {
     && JSON.stringify(a.请求体 ?? null) === JSON.stringify(b.请求体 ?? null);
 }
 
-/** 服务端确定拒绝：本地/远端已确定失败的 BFF 错误。409 冲突、503 未知、网络断开保留待核对。 */
+/**
+ * 本条命令是否已确定「没写成」—— 只有它才能清槽（J-PILOT-02 Task 6 review r1 #3：
+ * 清槽判据必须与「结果未知」同出一处，不能各写一份各自漂移）。
+ * 确定：请求从未发出（status 0 的本地拦截 invalid_request）、以及服务端确定拒绝的 4xx。
+ * 不确定（一律保留槽与原幂等键）：401 会话失效、409 冲突（另有权威核对路径）、
+ * 全部 5xx（含 503 storage_unavailable / downstream_unavailable）、网络中断、非 BFF 错误。
+ * 丢掉槽就等于丢掉原幂等键：用户再点保存会铸新键，造出重复的教育/经历条目 ——
+ * 正是单槽要防的重复写入。
+ */
 function 是确定拒绝(错误: unknown): boolean {
-  return 错误 instanceof BFF错误
-    && 错误.status !== 401
-    && 错误.status !== 409
-    && !(错误.status === 503 && 错误.code === 'operation_outcome_unknown')
-    && 错误.code !== 'network_error';
+  if (!(错误 instanceof BFF错误)) return false;
+  if (错误.status === 0) return 错误.code === 'invalid_request';
+  if (错误.status === 401 || 错误.status === 409) return false;
+  return 错误.status >= 400 && 错误.status < 500;
 }
 
 /** 把回执身份落进草稿：条目写 已存条目（项目带父编号）并替换 资料 同编号条目；单例写 已存分区。 */
@@ -441,7 +448,10 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
         const 槽 = 现有.待写入;
         if (槽 !== undefined && !同一命令(槽, 命令)) {
           // Global 6：一个槽未结算时禁止另一 mutation 覆盖 —— 先按闭合种类结算原命令再算下一步
-          throw new Error('上一条写入结果未确认，请先重试或核对原步骤');
+          // Task 6 review r1：必须是可上屏的闭合错误 —— 裸 Error 会被 取后端错误文案
+          // 收成「请求失败，请稍后再试」，用户不知道要回原步骤核对/重选那份文件。
+          // status 0 + invalid_request 是既有的「本地拦截、原文直通」通路。
+          throw new BFF错误(0, 'invalid_request', '上一条写入结果未确认，请先重试或核对原步骤');
         }
         const 复用键 = 槽 !== undefined && 同一命令(槽, 命令) ? 槽.幂等键 : undefined;
         const 键 = 复用键 ?? 命令.幂等键

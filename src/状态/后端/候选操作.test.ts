@@ -5,7 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
-import { BFF错误, type BFF请求选项, type BFF响应 } from '../../数据/HTTP客户端';
+import { BFF错误, 取后端错误文案, type BFF请求选项, type BFF响应 } from '../../数据/HTTP客户端';
 import type { BFF简历, BFF教育 } from '../../数据/BFF契约';
 import type { 简历经历段, 简历教育段 } from '../../数据/类型';
 import { 初始状态 } from '../初始状态';
@@ -584,6 +584,59 @@ describe('创建候选操作 · 建档跟踪保存（J-PILOT-02 Task 3）', () =
       .rejects.toBe(未知);
     const 未知草稿 = 未知场景.deps.建档草稿引用!.current!;
     expect(未知草稿.待写入).toMatchObject({ 种类: 'education-create', 阶段: 'prepared' }); // 待核对
+  });
+
+  // J-PILOT-02 Task 6 review r1：合法保留中的文件槽会挡下资料保存 —— 挡下本身是对的
+  //（Global 6：一个槽未结算时禁止另一 mutation 覆盖），但抛裸 Error 会被 取后端错误文案
+  // 收成「请求失败，请稍后再试」，用户不知道要回原步骤重选那份文件。
+  it('保留中的文件槽挡下资料保存：抛可上屏的闭合文案（不是通用「请求失败」）', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    const 文件槽 = {
+      种类: 'resume-file-create' as const,
+      幂等键: 'idem-upload-unknown-1',
+      阶段: 'prepared' as const,
+      文件核对: { name: '简历.pdf', type: 'application/pdf', size: 8, lastModified: 1, sha256: 'f'.repeat(64) },
+    };
+    const 请求Mock = 只读请求桩([previous]);
+    const 场景 = 创建场景({
+      建档: { 资料: { 教育: [教育段('edu_local_1')] }, 待写入: 文件槽 },
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    const next = { ...从BFF简历(previous), 教育: [教育段('edu_local_1')] };
+    const 错误 = await 场景.操作.保存简历(next as never).then(() => null, (e: unknown) => e);
+    expect(错误).toBeInstanceOf(BFF错误);
+    // 用户真正看到的那句话（页面统一走 取后端错误文案）必须是可行动的原文
+    expect(取后端错误文案(错误)).toBe('上一条写入结果未确认，请先重试或核对原步骤');
+    const 请求们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    expect(请求们.filter((o) => (o.method ?? 'GET') !== 'GET')).toHaveLength(0); // 零 mutation
+    expect(场景.deps.建档草稿引用!.current!.待写入).toEqual(文件槽); // 槽原样保留
+  });
+
+  // review r1 #3 的同一缺陷在资料域：503 storage_unavailable 结果不确定 ——
+  // 清槽就丢了原幂等键，用户再点保存会铸新键，造出重复的教育条目。
+  it('503 storage_unavailable：保留槽与原幂等键（重试不铸新键造重复条目）', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    const 未确定 = new BFF错误(503, 'storage_unavailable', '存储暂不可用');
+    const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+      if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+        return { result: previous, etag: null, requestId: 'r' };
+      }
+      if (选项.method === 'POST' && 选项.path === '/api/v1/me/resume/educations') throw 未确定;
+      throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+    });
+    const 场景 = 创建场景({
+      建档: { 资料: { 教育: [教育段('edu_local_1')] } },
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    await expect(场景.操作.保存简历({ ...从BFF简历(previous), 教育: [教育段('edu_local_1')] } as never))
+      .rejects.toBe(未确定);
+    const 槽 = 场景.deps.建档草稿引用!.current!.待写入;
+    expect(槽).toMatchObject({ 种类: 'education-create', 阶段: 'prepared' });
+    const 发出的键 = (请求Mock.mock.calls
+      .map((c) => c[0] as BFF请求选项)
+      .find((o) => o.method === 'POST'))?.幂等键;
+    expect(槽?.幂等键).toBe(发出的键); // 原键留在槽里，重试复用同一把
   });
 
   it('重复点击：第一条在途时第二条 保存简历 拒绝明确 busy 错误，不 return 假成功', async () => {
