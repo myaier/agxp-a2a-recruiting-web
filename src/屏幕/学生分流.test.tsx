@@ -802,6 +802,31 @@ describe('学生分流 候选 onboarding 简历预填（Spec §7 上传页接线
     expect(mock跳转).toHaveBeenCalled();
   });
 
+  // review r3：failed 轮的「本次点击视为继续手填」原本无条件释放槽 —— 但 failed 轮照样
+  // 能点「重新上传」，替换在飞时 发送前 已登记槽；此时点下一步若释放，就丢了原幂等键，
+  // 该请求再以 503/网络 结束时 清本命令槽 认不出它，重传铸新键 → 重复文件。
+  it('failed 轮且上传仍在飞时点下一步：不释放在飞命令的槽', async () => {
+    const 用户 = userEvent.setup();
+    mock操作.替换附件简历.mockImplementation(() => new Promise<'已提交'>(() => {})); // 永不结算
+    render学生分流({
+      数据源: 'backend',
+      引导预填: { ...完整预填, 建档: { 待写入: 未结算文件槽 } },
+      附件库: { items: [文件A], limits },
+      候选预填: 预填轮({
+        phase: 'failed',
+        source: { file_id: 文件A.file_id, version_id: `v_${文件A.file_id}`, parse_id: null },
+        error: '简历识别失败，可重新上传或继续手填',
+      }),
+    });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await 用户.upload(input, new File(['%PDF'], 'retry.pdf', { type: 'application/pdf' }));
+    await 用户.click(screen.getByRole('button', { name: '同意并继续' }));
+    await waitFor(() => expect(mock操作.替换附件简历).toHaveBeenCalledTimes(1));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock操作.继续手填候选Onboarding).not.toHaveBeenCalled();
+    expect(mock跳转).toHaveBeenCalled(); // 上传不阻塞下一步（既有行为不变）
+  });
+
   it('没有未结算文件槽的健康 ready 轮：下一步不动本轮（建议照常带去后续页面）', async () => {
     const 用户 = userEvent.setup();
     render学生分流({

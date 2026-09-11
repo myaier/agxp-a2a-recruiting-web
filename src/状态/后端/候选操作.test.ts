@@ -613,6 +613,35 @@ describe('创建候选操作 · 建档跟踪保存（J-PILOT-02 Task 3）', () =
     expect(场景.deps.建档草稿引用!.current!.待写入).toEqual(文件槽); // 槽原样保留
   });
 
+  // review r3（裁决 C 扩展）：结算单槽 判定「无法安全重放」时抛的也必须是可上屏的闭合
+  // 文案 —— 裸 Error 会被 取后端错误文案 收成「请求失败，请稍后再试」，用户不知道要回
+  // 原步骤核对。该抛出早于 保存简历（发送前 没跑过），所以不会误清正被保留的槽。
+  it('无法安全重放的槽：抛可上屏的闭合文案，零 mutation，槽原样保留', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    // 父经历不在权威快照里 → 从槽重建页面 返回 null（无法安全重放）
+    const 孤儿项目槽 = {
+      种类: 'project-create' as const,
+      本地编号: 'proj_local_1',
+      父编号: 'exp_not_in_snapshot',
+      请求体: { name: '孤儿项目' },
+      幂等键: 'idem-project-1',
+      阶段: 'prepared' as const,
+    };
+    const 请求Mock = 只读请求桩([previous]);
+    const 场景 = 创建场景({
+      建档: { 资料: { 教育: [教育段('edu_local_1')] }, 待写入: 孤儿项目槽 },
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    const next = { ...从BFF简历(previous), 教育: [教育段('edu_local_1')] };
+    const 错误 = await 场景.操作.保存简历(next as never).then(() => null, (e: unknown) => e);
+    expect(错误).toBeInstanceOf(BFF错误);
+    expect(取后端错误文案(错误)).toBe('上一条写入结果未确认，无法安全重放，请先核对原步骤');
+    const 请求们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    expect(请求们.filter((o) => (o.method ?? 'GET') !== 'GET')).toHaveLength(0);
+    expect(场景.deps.建档草稿引用!.current!.待写入).toEqual(孤儿项目槽); // 槽没有被误清
+  });
+
   // review r1 #3 的同一缺陷在资料域：503 storage_unavailable 结果不确定 ——
   // 清槽就丢了原幂等键，用户再点保存会铸新键，造出重复的教育条目。
   it('503 storage_unavailable：保留槽与原幂等键（重试不铸新键造重复条目）', async () => {
