@@ -1,264 +1,178 @@
-# 双端列表、在线简历与职位详情接线需求
+# 双端列表、在线简历与职位详情前端接线设计
 
-日期：2026-09-11。状态：需求清单/设计候选，待用户审阅；不是已批准的实施 Plan。
+更新：2026-09-12。状态：后端合同已实施并核对，本文已改为前端接线 Spec，待审阅；尚未编写本轮实施 Plan，未修改业务代码。
 
-用户已确认把必要后端补字段纳入评估，并追加在线简历、职位详情。本文覆盖现有信息位置和相关读取接口，不实施代码、不新增另一套页面。候选端本人的在线简历编辑接口也纳入来源核对，但不将本人简历直接暴露给招聘方。
+## 1. 目标与冻结基线
 
-## 1. 核对依据与结论
+把已经统一的四个列表、独立职位详情、匿名在线简历和在谈资料 Tab 接上已实施的后端展示字段。复用现有组件、数据源、状态和真实操作，保留 Mock 布局及最新主线产品行为。
 
-核对 FE `d8e69a03c32950574ceee5435e68f84e3cf2cbc5`，BE `release/0.2.5@405d2788c9eb3f21dfdd0a9fdb75990627a2bac0`。
+- FE 已按用户要求 fetch 并无冲突 rebase 到 `origin/main@5f6aabbdda0eb0f07550da5acc461aa4340dd3bd`。改写前本分支 HEAD 为 `7535302b`，含本需求的两个文档提交。
+- BE 核对版本：`release/0.2.5@886e06837512bd8b08c4f10e010533baf89649dc`。
+- BE 浏览器合同：`apps/recruitment-bff/openapi/mobile-v1.yaml`；内部生产者合同：`apps/recruitment/openapi/mobile-resources-v1.yaml`。以下 BE 路径均相对后端仓库。
+- BE 实施 Spec：`docs/superpowers/specs/2026-09-11-recruitment-mobile-r1-r5-display-design.md`；实施及 final gate 记录：`docs/superpowers/plans/2026-09-11-recruitment-mobile-r1-r5-display.md`。
+- 旧版本文已作为后端需求输入；本版以其实际已实施合同替换“建议新增字段”的措辞，不继续要求后端重复开发。
 
-后端文件（以下 BE 路径均相对后端仓库）：
+**结论：原 R1–R5 必要字段以及 candidate_identity 已齐全，可以开始前端接线。** 这是所核对版本的 OpenAPI、生产代码和既有验收记录结论，不代表所有老 Case 都有非空资料，也不代表当前运行环境或前端已联调通过。
 
-- 浏览器公开合同：`apps/recruitment-bff/openapi/mobile-v1.yaml`。
-- recruitment 内部读取合同：`apps/recruitment/openapi/mobile-resources-v1.yaml`；对应 BFF 增量必须同步内部生产者及其真实投影，不能只改 YAML。
-- `contracts/api/openapi.yaml` 是 AGXP 公共 API，不是这组移动招聘页面的主合同。
-- 实现依据：`apps/recruitment/internal/privacy/projection.go`、`privacy/recruiter_summary.go`、`privacy/service.go`、`discovery/negotiations.go`。
+最新 FE 已合入 J-PILOT-01 连续在谈接线：候选首页/历史使用 negotiations，全意向列表恒省略 intention_id，canonical record_id 导航、分页、重试/归档、未知提交恢复均已有。不能按旧 Spec 再迁移一次，更不能恢复当前意向过滤。招聘端继续按现有岗位范围读取 MatchCase。
 
-前端依据：`src/数据/发现推荐映射.ts`、`招聘候选摘要映射.ts`、`详情展示映射.ts`，`src/屏幕/P5/MatchCase列表.tsx`，`src/屏幕/匿名在线简历.tsx`，`src/组件/在谈详情/在线简历正文.tsx`，`src/屏幕/职位详情展示/准备职位正文.ts`。现有三类卡片、详情统一 Spec 和 J-PILOT-01 产品规则继续作为布局与业务约束。
+## 2. 后端逐项核对结果
 
-静态结论：主体接口已存在；招聘摘要已接；主要缺口是 Case 的展示上下文和结构化在线简历。公司资料、发布人头像有部分现成能力，不能全部列作后端新增。未调用真实 API，不据此判定某个账号的空字段是缺资料还是运行故障。
+路径均以 `/api/v1` 开头，GET 响应路径相对 result；数组路径在表中明确。
 
-## 2. 范围与最小方案
+| 原需求 | Endpoint | 已实施字段/Schema | 本轮前端工作 |
+| --- | --- | --- | --- |
+| R1 连续列表 | `/me/negotiations` | items[].match_score；items[].job 的 organization、required_skills、recruitment_type、workplace_mode、annual_salary_months | 扩展既有连续 DTO/解码/映射，替换卡片固定 null |
+| R1 连续详情 | `/me/negotiations/{record_id}` | match_score、job_detail；case_detail 使用扩展后的 CandidateMatchCaseDetail | 接现有详情控制，不新增另一条详情读取链 |
+| R2 招聘在谈 | `/recruiter/match-cases` | items[].match_score、candidate_identity；candidate_summary 仍按 include 展开 | 分数上卡；身份解码保留但不展示 |
+| R3 推荐简历 | `/recruiter/jobs/{job_id}/candidate-recommendations/{recommendation_id}` | 独立 DiscoveryRecruiterDetail，新增 candidate_resume | 分离列表/详情 DTO，接共享在线简历正文 |
+| R4 招聘 Case | `/recruiter/match-cases/{case_id}` | match_score、job_detail、candidate_resume、candidate_identity | 接头部与在线简历/资料区 |
+| R4 候选 Case | `/me/match-cases/{case_id}` | match_score、job_detail | 更新共用解码与映射；候选主路由仍优先既有 negotiations 聚合读 |
+| R5 市场 | `/me/job-recommendations` | recommendations[].job.organization，CandidateJob 必填键 | 接公司短行/Logo，保留推荐分与操作 |
+| R5 独立职位 | `/jobs/{job_id}` | organization，CandidateJob 必填键 | 公司摘要接线；完整企业档案复用现有公开 GET |
+| S1 身份头像 | `/recruiter/match-cases/{case_id}/candidate-avatar/content` | 已有新 Case 授权内容出口 | 本轮不展示身份，因此不预加载该头像；未来消费返回的 URL |
 
-覆盖：候选市场、候选在谈、招聘推荐、招聘在谈；市场进入的独立职位详情；推荐进入的匿名在线简历；在谈详情内的职位资料和在线简历 Tab，以及两端详情头部。
+新增字段都已进入 required，合法缺值显式 null；不是“键可省略”。例外是既有 candidate_summary 等 opt-in 字段，继续按原展开条件判定。候选推荐 refresh 若返回 CandidateJob，也走同一解码，不漏掉写后读取。
 
-本轮后端另提供带披露状态的候选姓名和头像，供招聘在谈列表与 Case 在线简历消费；前端本轮不要求展示。未来消息列表可复用同一身份结构与授权判断，本轮不实现消息列表接线或扩展消息接口。
+### 2.1 实现证据与验证限度
 
-方案：复用现有 endpoint；列表只补紧凑展示事实，完整正文只进入详情。公开公司页复用已有读取，不把整份企业档案塞进每张列表卡。新候选在谈以 `/me/negotiations` 为目标入口；招聘在谈继续用 recruiter MatchCase。已接字段保留解码和映射，只修漏接。共享少量确实被多个 endpoint 消费的具体 schema，不增加通用字段引擎、聚合服务或新状态库。
+已核对：
 
-比较：仅前端接线无法提供缺失的 Case 正文/分数；把列表都改成逐卡拉岗位、公司、简历会引入请求放大，还会混入当前资料与历史事实。选择服务端补 Case 上下文、前端复用公开公司读取的方式。
+- `apps/recruitment/internal/job/display.go`：具体公司摘要/职位正文模型。
+- `apps/recruitment/internal/privacy/candidate_resume.go`：七成员在线简历及结构化隐私投影。
+- `apps/recruitment/internal/store/case_store.go`：Case 输入的 display_job/display_resume 冻结保存；旧内容缺区合法空。
+- `apps/recruitment/internal/store/case_resume_submission.go`：实际披露事务冻结候选填写姓名。
+- `apps/recruitment/internal/store/case_candidate_identity.go`、`matchcase/candidate_identity.go`：当前查看者资格、Case 披露与头像内容授权。
+- `apps/recruitment/internal/mobileapi/discovery.go`、`negotiations.go`、`matchcase_workspace.go`：真实序列化出口。
+- `apps/recruitment-bff/internal/recruitmentclient/display.go`：required 检查、嵌套解码、受控媒体 URL 投影；两份 OpenAPI 已声明对应字段。
 
-非目标：重新计算推荐算法、生成新的 AI 批注、改阶段决策协议、提前开放真人直聊、把 PDF 解析结果当已确认在线简历、重做公司/个人编辑页。§8 明确列出本次默认不补的展示槽及重新考虑条件。
+本次用结构化 YAML 检查核对了上述核心 schema 必填字段与 GET response 引用。后端 Plan 记录完整 affected 119 suite（其中一个超时后单独重跑通过），development L3 receipt `run-20260911T195659-424e76d0` 在 `32e18d59a` 上 PASS、450.5s，并记录普通 fast-forward 合入 release/0.2.5。本会话未重跑这些测试、未调用真实 API；引用的后端结果不能代替本轮前端验证。
 
-## 3. 已有字段与接线任务（不要重复新增）
+### 2.2 必须同步的已确认产品口径
 
-| 页面/信息 | 已有公开来源 | 所需工作 |
-| --- | --- | --- |
-| 招聘两列表的性别、经验、状态、学历、最近工作/教育、个人亮点 | recruiter 推荐列表及 open MatchCase 列表的 `include=candidate_summary` | 已请求并映射；检查真实响应和源资料，不再新增相同字段 |
-| 推荐分 | 两端推荐的 `match_score` | 保持真实 0；这是批次分，不是持续谈判分 |
-| 市场/独立职位正文 | `CandidateJob.title/description/requirements`、薪资、location、office_location、workplace_mode、annual_salary_months、经验/学历要求及确认字段等 | 已有；按页面逐项完成现有字段映射，不重复设计另一份 JD |
-| 公司行业、规模、融资、介绍、地址、福利、Logo | `GET /api/v1/organizations/{organization_id}` 的 `profile.industry/company_size/funding_stage/company_intro/office_address/benefit_codes/logo` | 由真实 `hiring_organization_ref` 读取；同一组织复用现有快照/请求，不按名称猜 ID |
-| 发布人姓名、职务、认证、头像 | `CandidateJob.publisher_profile.public_name/title/personal_verification_status/avatar_url` | 头像当前映射未带出，需要 DTO/解码/视图/图片组件全链路接入；不是新增头像接口 |
-| 候选本人完整在线简历 | `GET /api/v1/me/resume` 的 profile、summary、skills、experiences[].projects、educations | 作为已有资料来源；招聘方不得调用它获取对方简历 |
-| 委托、连续在谈状态及操作资格 | 推荐 delegation；`NegotiationCard.phase/case_state/needs_action/failure/actions/retry_generation` | 前端接入已有新协议，accepted/evaluating 也进入连续在谈；不新增本地假成功 |
-| 已开 Case 阶段、待办、可用动作、S0 记录、S1 PDF 和最终会话 | 两端 MatchCase detail 的已有字段及现有展开机制 | 保留原权威来源；本次展示字段不能取代动作授权 |
+后端实施 Spec §2 记录用户确认的变更，本版前端遵循：
 
-候选摘要合法空值：源简历未填、披露策略、最近经历自身缺值、个人亮点未确认/失效/被披露规则过滤都可能造成空值。接口本身不能区分所有空因，前端继续中性未知，不把所有 null 称为“未披露”。
+1. 在线简历以本人已保存结构化资料为准，不新增确认/发布操作；PDF 解析建议不自动等于已保存在线资料。
+2. personal_highlights 使用 PDF 自动标签，推荐读取唯一 active PDF 的有效成功解析来源；Case 使用自身精确绑定来源。零份、多份或无有效来源可返回 []，不再要求候选确认，不用在线简历 revision 猜标签是否失效。
+3. 自由文本按后端原样投影，前端正常文本转义展示，不另做关键词/模型脱敏；结构化字段继续执行隐私规则，不宣传“匿名正文保证不含身份信息”。
+4. 姓名是 S1 实际披露事务冻结的当时在线 profile.real_name，不是实名认证姓名，也不证明与 PDF 内容核验一致。
+5. 尚未正式上线，后端先发布、前端再接；本轮直接支持新 required 合同，不新增旧版本兼容开关、协商协议或全局宽松解码。
 
-## 4. 后端必须补齐的 endpoint 清单
+## 3. 范围与最小设计
 
-以下字段名是本次建议合同，均不是声称当前已存在。新增展示字段采用固定键和显式 null；准确 schema、枚举和兼容发布方式在批准后的 Plan 冻结。
+本轮只改前端：DTO/严格解码 → 既有领域快照 → 纯展示映射 → 已统一组件。完整正文只在详情读取，列表不逐卡拉 Job、Resume 或企业完整档案。独立职位详情例外按真实组织 ID 复用既有公开公司读取，为该详情补完整公司资料。
 
-### R1 候选连续在谈列表与详情
+实际消费者包括 `src/屏幕/看市场.tsx`、`候选推荐.tsx`、`职位详情.tsx`、`匿名在线简历.tsx`，`src/屏幕/P5/MatchCase列表.tsx` 及既有详情控制；共享解码涉及历史页，需保护其兼容，但不改版历史页面。
 
-Endpoint：
+相同展示字段复用已有映射/组件；仅为 nullable 在线简历和真实媒体补具体展示类型。不能把后端对象强转成必填 Mock 简历档，也不为满足类型填假姓名、假薪资、假分数。相比另造 Backend 页面，这样最小且避免卡面再次分叉。相比重新设计 Provider/通用 schema 引擎，此任务没有相应必要性。
 
-- `GET /api/v1/me/negotiations`
-- `GET /api/v1/me/negotiations/{record_id}`
+非目标：修改后端、重新迁移连续在谈、重写状态机/排序/范围/轮询/幂等恢复、生成 AI 批注、重新算推荐分、提前开放直聊、重做编辑页面、消息列表接线、展示候选姓名头像。本轮只消费 candidate_identity，不据此改变当前去名 UI。
 
-| 新增字段路径 | 类型/内容 | 用途与来源 |
-| --- | --- | --- |
-| `job.organization` | 对象或 null，见 §5 | 公司名、行业/融资/规模短行、Logo；不能再只有 job_id |
-| `job.required_skills` | string[] 或 null | 保留目前旧在谈列表已能显示的技能；迁移新接口不能把它们丢掉 |
-| `job.recruitment_type` | 既有招聘类型枚举或 null | 与市场卡同口径的岗位属性 |
-| `job.workplace_mode` | 既有办公方式枚举或 null | 办公方式标签 |
-| `job.annual_salary_months` | integer 或 null | 年薪月数标签，缺失不得默认 12 |
-| `match_score` | integer 0–100 或 null | 与产生该记录的原始推荐批次关联，规则见 §7 |
+## 4. 前端合同与解码
 
-详情另外增加 `job_detail`（§5 的完整安全职位正文或 null）；其 `case_detail` 同步消费 R4 的扩展。无 Case 的记录也可打开记录详情，不能强行按空 case_id 跳 Case 页面。
+落点以现有 `src/数据/BFF契约.ts`、`招聘数据源/发现推荐.ts`、`招聘数据源/MatchCase.ts`、`招聘数据源/连续代谈.ts` 及其消费类型为基础。新增具体展示 schema 可共用解码，但不新建通用反射校验框架。
 
-维持现有 `record_id`、phase、shelf、actions、needs_action、游标和去重规则；不把公司资料是否齐全当在谈是否存在的条件。来源不可读时按照现有 availability/权限语义返回 null，不退回当前活跃 Job 冒充原始事实。
+| 后端 schema | 必须消费的字段 |
+| --- | --- |
+| JobOrganizationSummary | organization_id、display_name、industry、company_size、funding_stage、logo；六键必填，成员可空 |
+| SafeJobDetail | title、description、requirements、recruitment_type、category、location、office_location、workplace_mode、salary_lower、salary_upper、salary_period、annual_salary_months、campus_cohort、internship_months、onsite_days_per_week、experience_requirement、education_requirement、hard_requirements、structured_requirements_confirmed、keywords、organization、company_intro、office_address、benefit_codes、publisher_profile |
+| RecruiterCandidateResume | summary、self_description、skills、experiences、educations、expectation、compensation_relationship |
+| SafeResumeExperience | company、industry、title、start_month、end_month、description、internship、projects |
+| SafeResumeProject | name、role、result；无项目独立日期 |
+| SafeResumeEducation | institution、major、degree、start_month、end_month |
+| SafeCandidateExpectation | recruitment_type、job_category、locations、workplace_modes |
+| CaseCandidateIdentity | state、name、avatar_url、disclosed_at；anonymous/disclosed 闭集 |
 
-### R2 招聘在谈列表
+成员类型、枚举、可空性逐项以冻结 BFF OpenAPI 为准，不把所有内容粗略声明成 string 或任意对象。`logo` 使用既有公开媒体结构（media_id/media_type/size_bytes/width/height/url）；发布人头像消费已有 publisher_profile.avatar_url。
 
-Endpoint：`GET /api/v1/recruiter/match-cases?include=candidate_summary`。
+- 新增必填键缺失、非法枚举、越界分数、非法嵌套结构仍是协议错误；不能降级成一张正常未知卡。
+- 合法 null、[]、0、false 区分保留；整区 null 与已读空数组不混用。
+- DiscoveryRecruiterDetail 与列表分离：详情有 candidate_resume、没有 candidate_summary 展开；列表不被迫要求整份简历。现有默认详情拒绝新字段的断言改成新合同，隐私和未知键断言继续保留。
+- MatchCase 详情和 NegotiationDetail.case_detail 使用同一扩展解码，不复制两份角色校验。候选响应不能混入 recruiter 的 candidate_resume/identity。
+- 所有共享响应入口一次更新，包括刷新、写后回读、直达详情及历史复用；不能只改首次列表 GET。
 
-新增 `items[].match_score: integer | null`，来源见 §7。
+## 5. 列表接线
 
-新增 `items[].candidate_identity`，按当前查看者与该行 Case 返回 §6.1 的身份披露对象；不依赖 candidate_summary 是否展开，展开页和默认 open 列表均执行同一身份授权规则。
+### 5.1 市场与招聘推荐
 
-现有 `candidate_summary` 七组字段不扩成完整简历；继续保留原展开条件、隐私门控、排序和分页。不能为填亮点改用推荐 `highlights` 冒充候选 `personal_highlights`。
+市场的公司名优先使用合法 organization.display_name；对象/名称缺失时可保留同一 CandidateJob 已有公开 claim 名。公司短行由 industry.display_name、funding_stage、company_size 经现有码表组合，只保留已知段。真实 Logo 取 organization.logo.url；不可用保留中性图位，不按公司名命中静态图片。薪资、推荐分、标签、发布人和委托继续使用原权威来源，接通 publisher_profile.avatar_url。
 
-### R3 推荐进入的匿名在线简历
+招聘推荐继续使用 include=candidate_summary 和现有七字段映射，分数取 match_score；个人标签只用 personal_highlights，不用推荐 highlights 代填。按新 PDF 来源规则调整说明/测试，不新增确认按钮。
 
-Endpoint：`GET /api/v1/recruiter/jobs/{job_id}/candidate-recommendations/{recommendation_id}`。
+### 5.2 两端在谈
 
-增加详情专属 `candidate_resume: object | null`，字段见 §6。不要把完整在线简历放进推荐列表的每个元素。
+候选列表继续全意向 active、恒省略 intention_id，按 record_id 导航。将固定公司/分数 null 替换为 job.organization 与 match_score。标签按招聘类型、现有 location 文本、办公方式、年薪月数、required_skills 的顺序展示有效值，未知成员不补默认；pre-Case 的 location 与 Case 冻结 location 语义保持服务端原文，不把办公地点推断为行政城市。
 
-当前该 endpoint 使用与列表相同的 DiscoveryRecruiterCard，明确排除了详情性别且不允许 candidate_summary。因此必须给详情单独命名 response schema，保留已有推荐字段，追加 candidate_resume；同步修订“detail exactly equals card”“gender undisclosed”等冲突说明及严格解码器。不能仅让前端临时携带 `include=candidate_summary`，现有详情不支持该参数。
+招聘列表继续 job 范围与服务端排序，匹配分取该行 match_score，摘要仍取该行展开的 candidate_summary。candidate_identity 完整解码进入主体/Case 隔离的数据域，但不向卡面输出姓名头像、不预加载身份图片。
 
-匿名内容优先复用已有 `privacy.CandidateContent` 的安全工作、项目、教育投影，扩展浏览器公开出口；不直接序列化 owner Resume。性别仅按与已批准列表摘要相同的授权范围，在新候选简历摘要中提供，不顺带加入年龄、出生日期或其他身份字段。此项是有意识的公开合同扩展。
+保留阶段、待办、故障、轮询、分页和空/错态。公司或简历为空不改变 Case 是否存在；刷新变空清除旧展示值；暂时读取失败沿用已有明确错误和只读缓存策略，不冒充权限已确认。
 
-### R4 在谈中的在线简历与职位详情
+## 6. 职位详情接线
 
-Endpoint：
+### 6.1 独立职位
 
-- `GET /api/v1/recruiter/match-cases/{case_id}`
-- `GET /api/v1/me/match-cases/{case_id}`
+复用 `src/屏幕/职位详情展示/准备职位正文.ts` 与现有展示组件。CandidateJob 供职位事实、正文、公司摘要及发布人；成功获得真实 hiring_organization_ref 后复用公开组织 GET 取 profile.company_intro/office_address/benefit_codes 等完整资料。
 
-两端 detail 新增：
+组织补读作为详情局部状态，不阻塞已成功读取的职位或委托能力；失败保留岗位已知内容，局部提示与重试，不称作公司资料本来为空。换岗位/主体/组织时旧响应不得写回；有真实 ID 才导航，不按名称猜坐标。不在市场列表逐卡触发完整公司读取。
 
-- `match_score: integer | null`。
-- `job_detail: object | null`：完整安全职位正文，见 §5，候选端职位 Tab 直接使用。
+头像与 Logo 使用显式真实 URL 图位，加载失败中性占位；不把姓名首字说成真实照片。职位详情直取没有推荐坐标时分数仍未知，不创建无意向全局分数。匹配行继续原有结构化要求核对，明确与推荐批次分并非同一计算。
 
-招聘端 detail 额外新增：
+### 6.2 在谈内职位资料
 
-- `candidate_resume: object | null`：§6，供匿名画像头部和在线简历 Tab；不把推荐详情缓存当 Case 简历。
-- `candidate_identity`：§6.1，与招聘在谈列表同源；在线简历和详情头部复用该对象，不在 candidate_resume 内复制一份姓名/头像。
+候选正常详情从现有 NegotiationDetail.job_detail 映射，已开 Case 的嵌套值同源；共用 P5 详情入口则消费其 job_detail。标题公司名、分数与正文保持同源；字段只有旧 job 四事实时继续展示它们，不因 job_detail=null 抹去旧事实。
 
-公司名称、分数同时服务详情头部，不能让顶部未知而正文已知。现有 job 四事实继续保留，新增正文与它们来自同一 Case 绑定版本，不覆盖原字段。现有已结束/已完成 Case、已删除账号的保留规则仍有效；无法合法读取原始资料时返回缺失，不扩大读取权限。
+接入完整 JD、结构化要求、薪资、公司简介/元信息/福利、发布人姓名职务与头像。公司地址与岗位办公地址分开。**Case 不补读当前 Job/组织替换冻结正文**；旧 Case 缺内容照常保留未知。
 
-R1 详情嵌套的 `case_detail` 使用同一扩展 schema；重复的分数/职位事实必须同源一致，不分别重算。
+有 Case 的匹配分析只能使用同一 Case 授权可读的绑定事实。当前响应未提供完整对齐证据时只显示权威分数及现有阶段结果，不用当前简历、本地 Mock 算法或推荐缓存补一份分析。pre-Case 公开初评继续已有 agent_summary/evaluation 托盘，不重算或合成新结论。
 
-### R5 市场与独立职位详情的公司摘要
+## 7. 在线简历接线
 
-Endpoint：
+推荐详情读取当前候选已保存的 candidate_resume；招聘 Case 详情读取该 Case 冻结 candidate_resume。两入口使用同一共享在线简历正文，连接侧负责不同数据来源与操作，不保留 Backend 独立正文副本。
 
-- `GET /api/v1/me/job-recommendations`：`recommendations[].job.organization`。
-- `GET /api/v1/jobs/{job_id}`：`organization`。
+- 头行取 resume.summary 的性别/年限/学历/求职状态，最近工作组合职位行；仍不显示代号、真名或头像。
+- 个人优势取 self_description；个人亮点取 summary.personal_highlights，和推荐匹配理由区分。
+- 工作经历完整展示 company/industry/title/起止/description；项目按所属工作顺序展开 name/role/result，不拿工作日期当项目日期。多个教育条目逐条展示，不能截成第一段。
+- 求职期望只显示 expectation 的招聘类型/职位方向/地点/办公方式；compensation_relationship 仅显示闭合薪资关系。没有候选薪资数字就不造带宽，无依据不出“一致”绿条。
+- 技能取 skills；整区 null 给未知，合法 [] 给无条目状态。只有有真实开始时间的经历才将 end_month=null 显示为至今；起始也缺失时显示日期未知，不造一段任职。
+- 组件使用具体可空展示类型，允许部分资料已知；不要把 candidate_resume=null 转成空 Mock 档。身份状态不通过“真名非空”或“简历对象非空”推断。
+- 显示来源说明遵循已保存在线资料/PDF 标签的事实，不保留“由 AI 生成且真实性经双向核验”等无依据承诺。自由文本以文本节点展示，不解释成可执行 HTML。
+- S1 原件 PDF 继续精确 file/version 与实际披露控制；在线简历读取不自动打开 PDF、不提前建立真人沟通。
 
-新增 §5 紧凑公司摘要，放入两处共用的 CandidateJob schema。理由是市场列表需要公司短行和 Logo，单页不应为每张卡读取整份公司档案。独立职位详情的完整公司介绍、地址和福利继续通过已有公开公司 endpoint 按需读取。
+## 8. 姓名与头像：本轮仅消费协议
 
-`publisher_profile.avatar_url` 已存在，仅接线；候选推荐的 refresh 响应若使用相同 CandidateJob schema，也必须同步实际序列化新字段。查询参数、委托入参和写动作不因展示扩展改变。
+后端已实现 candidate_identity：仅本 Case 实际 S1 披露且当前查看者有权时 disclosed；仅上传/保存/授权/进入 S1 都不足。anonymous 的 name/avatar_url/disclosed_at 全 null；disclosed 允许缺姓名头像。name 在 S1 冻结，头像是当前可读头像，disclosed_at 是真实持久披露时间。
 
-### R6 旧候选在谈列表的边界
+前端严格校验、按主体和 Case 存储，后续返回 anonymous 时覆盖并清除旧身份；不得日志/持久化扩散姓名、复用到别的推荐或 Case。当前卡面、在线简历不新增姓名头像，也不因 disclosed 解除结构化正文隐私或开放直聊。
 
-`GET /api/v1/me/match-cases` 不再作为目标连续在谈首页的数据源。本次不为它再做一遍独立公司/分数扩展。其既有消费者在迁移前仍按原合同工作；R4 的 Case 详情必须补齐，因为新连续详情仍会消费。
+头像路由由响应给出，后端在内容请求上再次授权；本轮不显示所以不发身份图片请求。未来消息列表可复用 CaseCandidateIdentity 和 Case 授权规则，本轮不改消息接口/列表/通知，也不预建通用身份服务。
 
-历史页不是本次页面改版范围，但共享详情 schema 的扩展必须可读，历史/撤回/源不可用都允许 null。不得偷偷用当前 Job 给历史补快照。
+## 9. 剩余未知与延后项
 
-## 5. 公司摘要与职位正文的准确内容
+以下均不阻塞当前接线，不是本轮遗漏的后端必填合同：
 
-### 5.1 `organization` 紧凑公司摘要
+| 情况 | 前端规则 |
+| --- | --- |
+| 老 Case 未保存新展示快照 | job_detail/candidate_resume 可为 null；禁止按当前资料伪回填 |
+| 无该查看者原推荐关联 | match_score=null，真实 0 正常显示；不借对向或最新推荐分 |
+| 公司档案不全、合法隐私隐藏、无有效 PDF 标签 | 展示已知部分和既有未知/空状态，不扩大读取权限 |
+| 公司成立时间、发布人备注、项目独立起止 | 后端本轮按批准范围延后，保留未知；未来另做采集读写链 |
+| 工作/项目 AI 批注、确定性匹配分析缺证据 | 不现场生成，不用模拟内容填槽 |
+| candidate_identity 已披露但无姓名快照/头像 | 状态不降级；本轮本就不展示身份 |
 
-| 字段 | 类型 | 语义 |
-| --- | --- | --- |
-| `organization_id` | string 或 null | 可公开读取的真实组织坐标；未认证声明可能没有 |
-| `display_name` | string 或 null | 岗位所属招聘公司名称，不冒充招聘者本人雇主 |
-| `industry` | 既有 CatalogReference 或 null | 取 display_name 展示，不发明行业 |
-| `company_size` | 既有公司规模码或 null | 前端复用现有公司码表 |
-| `funding_stage` | 既有融资码或 null | 同上 |
-| `logo` | 既有公开媒体描述或 null | BFF 内容 URL；不下发 object key，不用静态公司名匹配替代真实 Logo |
+## 10. 验收与完成条件
 
-未认证但已有 company claim 时可以仅有 display_name，其他 null；不能因完整公司档案不存在而丢掉合法公司名。列表“公司简介”实际是行业/规模/融资短行，由真实非空段组合，不新增一个重复存储的 summary 字符串。
+1. DTO/解码测试覆盖全部新 required 字段、合法 null/[]/0/false、非法嵌套/枚举/分数、角色隔离、anonymous 夹带身份、列表/详情不同形状。共享历史和写后读取不可遗漏。
+2. 纯映射与共享组件覆盖完整/部分空/全空、多段经历教育、公司媒体失败、长文本、刷新从有值变空。Mock 既有完整场景布局保持；后端未提供的事实不得被补成已知。
+3. 页面集成覆盖市场/两端在谈/推荐详情/独立职位/在谈资料 Tab，确认新字段到达真实消费位置；保留 J-PILOT-01 的全意向、排序、record_id、分页、迟到响应围栏、未知提交恢复、retry/archive 与 S1 精确附件权限测试。
+4. 网络边界验证：列表零逐卡资料补读；独立职位按真实组织 ID 补读，换主体丢迟到响应；Case 资料零当前 Job/Resume 回填；候选身份零新增显示/图片请求。
+5. 复用当前 npm test、typecheck、lint、build 和既有 Playwright 入口，Plan 按实际影响冻结定向命令。320px/390px 核验真实媒体、多段资料、长文本和未知状态，无横向溢出/遮挡；不直接更新视觉基线掩盖变化。
+6. 真实后端联调按 `docs/dogfood/真实后端行为验收.md` 选择相关流程：新 Case 与旧 Case、S1 前后、源资料更新后 Case 冻结、不同查看者。后端已有 L3 记录可作前置，不能替代本前端的实际请求证据；无环境时如实记录未验证，不称全部通过。
 
-### 5.2 `job_detail` 安全职位正文
+完成标准：原有固定缺口中有权威数据的字段已实际显示；合法未知保持正确；新 required 合同不再被旧解码误拒绝；所有现有操作/权限/范围规则不回归；本轮身份只消费、消息不实现。无需为了消除全部占位增加后端能力。
 
-字段复用 CandidateJob 的既有命名与类型：`title`、`description`、`requirements`、`recruitment_type`、`category`、`location`、`office_location`、`workplace_mode`、`salary_lower`、`salary_upper`、`salary_period`、`annual_salary_months`、`campus_cohort`、`internship_months`、`onsite_days_per_week`、`experience_requirement`、`education_requirement`、`hard_requirements`、`structured_requirements_confirmed`、`keywords`。
+## 11. 批准与改写记录
 
-另含 §5.1 的 `organization`，以及完整公司展示字段 `company_intro`、`office_address`、`benefit_codes`；含 `publisher_profile`（公开姓名/职务/认证/头像）供对接人卡。公司地址与岗位办公地址是两件事，不互相代填。所有历史缺字段允许 null；已知不限/否定值保留原语义。
-
-这里只复用候选可读岗位字段，不复制 OwnerJob 的权限/主体/管理字段。详情有多个实际消费场景才共用这份具体 schema，不做任意实体的通用 snapshot 框架。
-
-### 5.3 当前值与冻结值
-
-- 市场/独立职位：沿用当前 CandidateJob 和当前公开公司资料。
-- 未开 Case 的连续记录：跟随其当前可读 Job；不可读按现有 unavailable 处理。
-- 已开 Case：JD 正文、结构化要求和公司/发布人展示身份来自 Case 建立时绑定的展示事实。现有快照不足就补生产/保存链路；GET 不重新读当前 Job 拼正文。
-- Logo/头像的内容访问仍实时执行现有媒体授权与删除规则，快照不代表永久可下载；图不可用显示占位。
-- 老 Case 原快照没有的字段为 null，不做按 job_id 查询当前资料的伪回填。持久化细节在 Plan 核对实际存储后选择最小改动。
-
-## 6. `candidate_resume` 结构化安全在线简历
-
-| 字段 | 建议类型/成员 | 页面用途及边界 |
-| --- | --- | --- |
-| `summary` | 复用 RecruiterCandidateSummary 的七字段对象或 null | 性别、年限、学历、状态、最近职位与个人亮点，摘要规则一致 |
-| `self_description` | string 或 null | 个人优势正文，来源是现有 Resume.summary，不是推荐算法摘要 |
-| `skills` | string[] 或 null | 专业技能 |
-| `experiences` | array 或 null | 每项 `company/industry/title/start_month/end_month/description/internship/projects`，复用已有匿名投影 |
-| `experiences[].projects` | array | 每项 `name/role/result`；作为项目区展示，不带 owner entry ID/revision |
-| `educations` | array 或 null | 每项 `institution/major/degree/start_month/end_month`，目录展示名；支持多段 |
-| `expectation` | 对象或 null | `recruitment_type`、`job_category`、`locations`、`workplace_modes`；只从该推荐/Case 绑定意向中选择允许披露的事实 |
-| `compensation_relationship` | 既有 overlap/near_miss/disjoint/unknown 枚举 | 求职期望旁薪资关系，不发送候选期望薪资数值 |
-
-建议采用的新命名是为了避免“简历 summary”和“七字段摘要”混淆。无来源/未获准展示的整区为 null；成功读取且确无条目的集合为 []。end_month=null 在真实经历中继续表示至今，不混用为未知截止时间；无整个经历时不制造记录。
-
-安全及版本规则：
-
-1. 推荐详情读取当前已确认在线简历，并重新执行当前隐私门控。
-2. Case 详情展示 Case 自己绑定的已确认在线资料版本，并叠加当前权限/撤回限制；不得未经说明换成最新简历，也不自动把 S1 PDF 当在线简历。绑定快照未存某区时返回 null。
-3. 工作/项目自由文本必须走后端已认可的匿名投影规则；扩展到浏览器时检查已知身份/联系方式的披露边界，不能因为字段在 owner Resume 存在就直接发布。
-4. `expectation` 是新增的招聘方安全投影，复用选定意向的公开可披露部分；不发送 intention_id、薪资数字、私人偏好、排除公司/规则。没有唯一绑定意向或授权来源时 null，不选“第一条意向”。
-5. 性别按摘要授权范围提供；candidate_resume 本身不新增年龄、真名、电话、候选主体 ID、出生数据。Case 身份披露仅通过 §6.1 的独立对象提供姓名/头像；推荐列表和独立推荐简历仍保持匿名。学校/公司按既有披露策略；不能让列表、推荐详情与 Case 阶段权限彼此绕过。
-6. 不新增“真实性已双向核验”“一致性已确认”的布尔装饰字段。现有确切阶段记录可供说明，缺证据不显示肯定文案。
-
-### 6.1 `candidate_identity`：本 Case 实际披露后的身份
-
-2026-09-11 用户确认：“已经提供简历”指本 Case 的 S1 简历已经实际递交并披露给对应招聘方；并授权将此设计加入 Spec。姓名和头像由后端先提供，前端是否显示留待后续产品决定。
-
-本轮 endpoint 落点：
-
-- `GET /api/v1/recruiter/match-cases` 的 `items[].candidate_identity`，含默认及 `include=candidate_summary` 读取。
-- `GET /api/v1/recruiter/match-cases/{case_id}` 的 `candidate_identity`，供详情及在线简历复用。
-
-该对象固定存在，四个成员均必填；不因未披露省略对象，不借 candidate_resume=null 推断身份权限。
-
-| 字段 | 类型 | 语义 |
-| --- | --- | --- |
-| `state` | `anonymous` 或 `disclosed` | 后端根据当前查看者、本 Case 的实际 S1 披露记录及现行访问权限判断；不是前端根据阶段名推导 |
-| `name` | string 或 null | 已披露且有可核实姓名来源时返回；采用本 Case 实际披露绑定的候选姓名事实，不从 PDF 文件名、代号或模型猜测姓名；无结构化来源则 null |
-| `avatar_url` | string 或 null | 已披露后可返回候选当前设置且获准读取的头像，通过 BFF 受控媒体 URL 提供；未设置/删除/不可读时 null，不是承诺头像在 S1 时已冻结 |
-| `disclosed_at` | RFC3339 时间或 null | 本 Case 首次实际完成 S1 简历披露的持久时间；不能使用授权时间、进入 S1 的时间或本次 GET 时间代替；旧记录有披露依据但无可核实精确时间时允许 null |
-
-授权及状态约束：
-
-1. 仅上传简历、填写在线简历、接受委托、评估中、预先同意披露或进入 S1，都不触发 disclosed。以实际成功披露的持久事实为准；等待附件就绪或提交失败仍 anonymous。招聘方是否已经点击下载不作为额外前提。
-2. anonymous 时 name、avatar_url、disclosed_at 均为 null；disclosed 时姓名或头像缺失不反向降为 anonymous。state 表示当前身份展示权限，不表示姓名真实性认证，也不证明招聘方已经阅读简历。
-3. 授权按“当前有权查看该 Case 的招聘方 + 本 Case”判定。另一个岗位/Case/招聘方不能因该候选在别处递交过简历而获得实名；不增加按候选 ID 查询身份的全局 endpoint。
-4. Case 正常进入后续阶段或结束，本身不撤销已成立披露；继续服从既有保留、删除和访问规则。整条 Case 已不可访问时沿用现有拒绝响应；Case 可读但身份已无权展示时返回 anonymous 并清空三字段。anonymous 不声称该 Case 历史上从未披露。授权读取的技术失败走既有错误处理，不冒充 anonymous。
-5. 头像内容请求本身也必须检查当前查看者及 Case 的身份读取资格。仅在 JSON 隐藏 URL 不构成授权；复制该 URL、换账号或权限被收回后不能绕过检查。优先复用现有媒体能力；若现有头像路由仅限本人访问，实施 Plan 必须冻结必要的 Case 范围授权媒体路由，不能直接下发 owner-only URL 或公网对象地址。
-6. 推荐列表和独立推荐匿名简历不回查其他 Case 的披露状态，不获得 candidate_identity 的实名扩展。S1 姓名/头像披露不自动解除公司/教育等正文隐私规则，不新增联系方式，也不提前开放真人会话。
-7. 列表和详情复用同一后端投影/授权逻辑；在相同数据与权限条件下输出一致。客户端按主体和 Case 隔离缓存，刷新后身份不再可见时清除原姓名和头像。前端只需兼容解码，本轮不改现有去名卡面或在线简历的视觉裁定。
-
-未来消息列表复用边界：沿真实会话绑定的 Case，以当前招聘查看者执行同一判断，再投影同结构的 candidate_identity。没有唯一可授权 Case 上下文时不返回姓名/头像；不从会话是否存在、候选 ID 或另一条会话缓存推断。此次只复用结构和规则设计，不新增消息列表字段、会话接口、通知行为或消息 UI，也不预建通用身份服务。
-
-## 7. 分数与匹配分析
-
-新增到在谈的 `match_score` 统一定义为“产生该记录的推荐批次匹配分”，不表示谈判成功概率，不实时重算。两端视角分数分别按各自可追溯来源取值；只有一侧有来源时另一侧允许 null，不复制对方私有评估。
-
-- 有原始推荐关联：沿持久 delegation/Case 关联取该批次真实分，可为 0。
-- 直接岗位委托、主动接触、缺少该查看者推荐来源、历史关联缺失：null。
-- Case 阶段推进、简历后来编辑、岗位后来改薪资不改变批次分。
-- 独立职位 `GET /jobs/{job_id}` 仍无意向/推荐坐标，不增加一个无上下文全局分数。页面有原推荐坐标时用该推荐分，硬刷新无法恢复时显示未知。
-
-匹配分析首先复用已有真实结构化岗位要求与授权简历事实，并明确核对来源；不把推荐批次分解释为当前本地核对的计算结果。Case 分析只核对同一 Case 的绑定资料；证据不足则保留未知。S0/S1 的真实结论继续使用阶段专属记录，候选的 `agent_summary` 不公开给招聘方。
-
-本次不新增 match_analysis 生成服务，不为了填满 Mock 的自然语言批注要求后端现场调用模型。
-
-## 8. 无可靠来源的槽位：完整登记，默认延后
-
-这些位置已评估，但不是“加一个读字段”能解决；默认保持未知/无该说明，避免把本次接线扩大成新的资料采集和内容生成系统。
-
-| 槽位 | 现状 | 本次处理；重新考虑条件 |
-| --- | --- | --- |
-| 公司成立日期/年份 | OrganizationProfile 没有该字段 | 保持未知；确需填写时再给组织 profile 的 GET/PUT 增加 `founded_date`，并同步公开 GET 与管理表单；不能用 verified_at 代填 |
-| 发布人备注 | RecruiterProfile/PublicRecruiterProfile 无对应正文 | 保持未知；产品确认其含义与编辑入口后，在 recruiter profile GET/PATCH 增加 `bio` 并投影到 publisher_profile |
-| 项目独立起止时间 | ProjectRead 只有 name/role/result 等，无独立时间 | 保持未知；确需采集时给经历下 projects 的 POST/PUT、ProjectRead、匿名项目增加 start_month/end_month；不能直接挪用雇佣时间 |
-| 项目/经历 AI 批注、求职期望一致性绿条 | 无对应已保存权威事实 | 不生成；未来有定义明确的生成、确认与失效来源再接 |
-| 招聘端候选薪资数字、年龄、提前直聊 | 现有匿名/阶段合同明确限制 | 不作为缺字段补齐；修改需独立产品与权限契约 |
-
-若用户要求所有槽位都能录入真实值，前三项可以加入本 Spec 修订版，但必须同时包含写入/采集/读取链路，不能只给响应增加永远为空的字段。
-
-## 9. 发布兼容与验收要求
-
-新增字段需贯穿内部 OpenAPI、实际来源投影、BFF DTO/校验与媒体映射、BFF OpenAPI、前端 DTO/严格解码、视图映射、共享展示组件。现有 strict decoder 可能拒绝新字段，应冻结协调发布方案或明确版本/展开边界，不把“JSON 添加字段”假定为天然兼容；不引入全局宽松解码。
-
-最低验收清单：
-
-- 每个 R1–R5 endpoint 有合法完整/部分空/历史缺值的序列化与消费证据；列表无完整简历大对象、无逐卡资料请求放大。
-- 改岗位/公司/简历后，独立页显示当前事实，已有 Case 仍显示其绑定事实；旧快照不伪回填。
-- 推荐列表→匿名简历→在谈列表→Case 在线简历，字段在同一授权/版本条件下保持一致，隐私收紧后不残留旧内容。
-- 身份披露覆盖：仅上传/仅授权/等待附件/披露失败仍 anonymous；S1 实际披露后 disclosed；无头像或无结构化姓名仍保留正确状态；列表与详情一致；同候选跨 Case/岗位/招聘方不串权；后续阶段不误退匿名；删除/撤权与头像 URL 直接访问遵守权限。前端不展示身份也不能省略这些后端契约验证。
-- company claim 无组织 ID、组织不可读、媒体删除、候选不可见、无匹配来源、真实 0 分、多段经历教育、空亮点均正确展示。
-- 新连续列表含 accepted/evaluating/失败/Case；切意向、换主体、分页去重、待办排序、重试/归档按现有合同；旧游标失效按已有规则重读。
-- 页面组件保留现有布局；320px/390px 验证真实图片、长文本、部分空值；不通过假数据或变更权限消除占位。
-- 文档核对不等于真实后端验收；实施 Plan 按两仓库测试规则选择受影响测试，不在需求阶段宣布通过。
-
-## 10. 审阅与后续
-
-2026-09-11：用户要求完整 endpoint/字段需求列表，并把在线简历与职位详情纳入评估。该要求授权本需求清单，不等于已批准上述新公开字段的最终 schema 或实施。
-
-2026-09-11 补充批准：用户确认以“本 Case 的 S1 简历实际递交并披露给对应招聘方”为姓名/头像披露条件，并回复“是的，你可以加到这个Spec里”。已加入 R2/R4、§6.1 及验收要求；本轮只要求后端暴露，前端展示另定，消息列表本轮不实现。本批准针对该补充设计，不自动视为整份 Spec/Plan 或业务实施获批。
-
-请审阅 R1–R5、§5–§7 的数据来源与 §8 延后边界。批准 Spec 后才编写实施 Plan、执行异构文档 review、生成新会话实施提示词。本会话没有修改两仓库业务代码或运行真实业务动作。
+- 2026-09-11：用户要求 endpoint/字段完整需求清单，追加在线简历与职位详情；原版形成后端输入。
+- 2026-09-11：用户确认本 Case S1 实际披露后可向对应招聘方提供姓名/头像，授权写入；前端显示另定，消息列表本轮不实现。
+- 2026-09-12：用户告知后端已实施，要求核查并改写为前端接线 Spec；随后要求先 rebase 最新 origin/main。已完成无冲突 rebase，核查后端字段，按最新主线和后端已批准变化重写本文。
+- 本版尚待最终审阅；不将改写授权当作本轮产品代码实施或 Plan 批准。批准后继续 development-workflow 的 Plan、异构文档 review 和新会话执行提示词交付。
