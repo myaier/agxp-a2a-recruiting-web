@@ -1134,6 +1134,10 @@ function 经历编辑页({
   const 行业子项版本表 = useRef<Record<string, string>>({});
   const 行业方法引用 = useRef(目录查询?.查询Taxonomy);
   行业方法引用.current = 目录查询?.查询Taxonomy;
+  // review-r3（Codex r3 F1）：页内行业代际——根换代清理派生状态时 +1；在飞的子/孙
+  // 请求回写前核对代际，不符即静默作废，不把旧版本条目重新挂回新版本列表（沿 职位详情
+  // 准备代际 的本页局部 useRef 做法，不抽共用基础设施）。
+  const 行业代际引用 = useRef(0);
   // 年月滚轮打开在哪一侧：null = 没开
   const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
   const 至今 = 草稿.结束 === null;
@@ -1180,11 +1184,16 @@ function 经历编辑页({
         行业根版本引用.current = 重开.catalogVersion;
         // review-r2：换代重开时派生状态同步失效——旧版本根下的子/孙展开一并丢弃，
         // 重新展开从新版本取数，不再残留旧版本条目可选可提交
+        // review-r3（Codex r3 F1）：换代同时递增行业代际并清 busy 表——还在飞的旧代
+        // 子/孙请求回写时对不上代际即整包静默作废，busy 标记不残留
+        行业代际引用.current += 1;
         设行业子项表({});
         设行业子项游标表({});
         行业子项版本表.current = {};
         设行业孙项表({});
         设行业孙项游标表({});
+        设行业子项加载中表({});
+        设行业孙项加载中表({});
         return;
       }
       设行业根项((旧) => 合并目录页(旧, 页.items));
@@ -1201,12 +1210,16 @@ function 经历编辑页({
     if (行业子项表[项.id]) return;
     const 方法 = 行业方法引用.current;
     if (!方法) return;
+    const 起始代际 = 行业代际引用.current;
     try {
       const 子页 = await 方法('industries', { parentId: 项.id, limit: 50 });
+      // review-r3（Codex r3 F1）：迟到作废——换代清理后旧代展开不回写
+      if (行业代际引用.current !== 起始代际) return;
       设行业子项表((旧) => ({ ...旧, [项.id]: 子页.items }));
       设行业子项游标表((旧) => ({ ...旧, [项.id]: 子页.nextCursor }));
       行业子项版本表.current[项.id] = 子页.catalogVersion;
     } catch (错误) {
+      if (行业代际引用.current !== 起始代际) return;
       轻提示(取后端错误文案(错误));
     }
   };
@@ -1219,21 +1232,39 @@ function 经历编辑页({
     const 方法 = 行业方法引用.current;
     if (!方法) return;
     设行业子项加载中表((旧) => ({ ...旧, [根id]: true }));
+    const 起始代际 = 行业代际引用.current;
     try {
       const 页 = await 方法('industries', { parentId: 根id, cursor: 游标, limit: 50 });
+      // review-r3（Codex r3 F1）：迟到作废——换代清理后旧代分页不回写
+      if (行业代际引用.current !== 起始代际) return;
       if (页.catalogVersion !== 行业子项版本表.current[根id]) {
         const 重开 = await 方法('industries', { parentId: 根id, limit: 50 }, { 强制刷新: true });
+        if (行业代际引用.current !== 起始代际) return;
+        // review-r3（Codex r3 F2）：换代替换前，旧子项名下的孙项状态一并失效——
+        // v2 复用同 ID 子项时不再把 v1 孙项重新挂上去（沿 选期望行业 round-2 的摘旧做法）
+        const 旧子id们 = (行业子项表[根id] ?? []).map((子) => 子.id);
         设行业子项表((旧) => ({ ...旧, [根id]: 重开.items }));
         设行业子项游标表((旧) => ({ ...旧, [根id]: 重开.nextCursor }));
         行业子项版本表.current[根id] = 重开.catalogVersion;
+        if (旧子id们.length > 0) {
+          const 旧集 = new Set(旧子id们);
+          const 摘旧 = <T,>(旧: Record<string, T>) =>
+            Object.fromEntries(Object.entries(旧).filter(([键]) => !旧集.has(键)));
+          设行业孙项表(摘旧);
+          设行业孙项游标表(摘旧);
+          设行业孙项加载中表(摘旧);
+        }
         return;
       }
-      设行业子项表((旧) => ({ ...旧, [根id]: 合并目录页(旧[根id] ?? [], 页.items) }));
-      设行业子项游标表((旧) => ({ ...旧, [根id]: 页.nextCursor }));
+      设行业子项表((旧) => (旧[根id] === undefined ? 旧 : { ...旧, [根id]: 合并目录页(旧[根id], 页.items) }));
+      设行业子项游标表((旧) => (旧[根id] === undefined ? 旧 : { ...旧, [根id]: 页.nextCursor }));
     } catch {
       // 失败不动
     } finally {
-      设行业子项加载中表((旧) => ({ ...旧, [根id]: false }));
+      // review-r3（Codex r3 F1）：换代后本请求已作废，busy 交由换代的清理负责，不回插键
+      if (行业代际引用.current === 起始代际) {
+        设行业子项加载中表((旧) => ({ ...旧, [根id]: false }));
+      }
     }
   };
 
@@ -1243,11 +1274,15 @@ function 经历编辑页({
     if (行业孙项表[项.id]) return;
     const 方法 = 行业方法引用.current;
     if (!方法) return;
+    const 起始代际 = 行业代际引用.current;
     try {
       const 孙页 = await 方法('industries', { parentId: 项.id, limit: 50 });
+      // review-r3（Codex r3 F1）：迟到作废——换代清理后旧代孙展开不回写
+      if (行业代际引用.current !== 起始代际) return;
       设行业孙项表((旧) => ({ ...旧, [项.id]: 孙页.items }));
       设行业孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
     } catch (错误) {
+      if (行业代际引用.current !== 起始代际) return;
       轻提示(取后端错误文案(错误));
     }
   };
@@ -1259,14 +1294,21 @@ function 经历编辑页({
     const 方法 = 行业方法引用.current;
     if (!方法) return;
     设行业孙项加载中表((旧) => ({ ...旧, [子id]: true }));
+    const 起始代际 = 行业代际引用.current;
     try {
       const 页 = await 方法('industries', { parentId: 子id, cursor: 游标, limit: 50 });
-      设行业孙项表((旧) => ({ ...旧, [子id]: 合并目录页(旧[子id] ?? [], 页.items) }));
-      设行业孙项游标表((旧) => ({ ...旧, [子id]: 页.nextCursor }));
+      // review-r3（Codex r3 F1）：迟到作废 + 键已删不回插——根换代或其父项换代把该
+      // 孙键摘掉后，旧代孙分页整包不动
+      if (行业代际引用.current !== 起始代际) return;
+      设行业孙项表((旧) => (旧[子id] === undefined ? 旧 : { ...旧, [子id]: 合并目录页(旧[子id], 页.items) }));
+      设行业孙项游标表((旧) => (旧[子id] === undefined ? 旧 : { ...旧, [子id]: 页.nextCursor }));
     } catch {
       // 失败不动
     } finally {
-      设行业孙项加载中表((旧) => ({ ...旧, [子id]: false }));
+      // review-r3（Codex r3 F1）：换代后本请求已作废，busy 交由换代的清理负责，不回插键
+      if (行业代际引用.current === 起始代际) {
+        设行业孙项加载中表((旧) => (子id in 旧 ? { ...旧, [子id]: false } : 旧));
+      }
     }
   };
 

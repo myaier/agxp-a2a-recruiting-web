@@ -1349,6 +1349,9 @@ function 职业分类层后端({
           设当前根(null);
           设子项([]);
           设子项游标(null);
+          // review-r3（Codex r3 F3）：清空当前根同样同步清右栏 busy——在飞的旧根分页
+          // finally 会因代际不符跳过清理，这里不清就把右栏分页永久留在 loading
+          设子项加载中(false);
           子项版本引用.current = '';
           导航代际.current += 1;
         }
@@ -1398,6 +1401,9 @@ function 职业分类层后端({
     设当前根(项);
     设子项([]);
     设子项游标(null);
+    // review-r3（Codex r3 F3）：切根同步清右栏 busy——在飞的旧根分页 finally 会因
+    // 导航代际不符跳过清理，这里不清就把右栏分页永久留在 loading
+    设子项加载中(false);
     const 方法 = 方法引用.current;
     if (!方法) return;
     const 本次 = ++导航代际.current;

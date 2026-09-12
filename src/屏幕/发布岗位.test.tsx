@@ -1325,6 +1325,81 @@ describe('发布岗位页 Backend 职业分类层分页与代际（review-r3）'
     expect(screen.getByText('B岗位1')).toBeTruthy();
     expect(screen.queryByText('A岗位1（过期）')).toBeNull();
   });
+
+  // review-r3（Codex r3 F3）：右栏分页在飞时根换代走 选根 —— 选根 同步清 子项加载中，
+  // 旧请求的 finally 因代际不符跳过清理也不至于把右栏分页永久留在 loading。
+  it('右栏加载更多在飞时根换代：选根清 子项加载中，新根分页仍可用', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({ items, nextCursor, catalogVersion: 版本 });
+    const { promise: 慢Promise, resolve: 慢Resolve } = deferred<{
+      items: unknown[];
+      nextCursor: string | null;
+      catalogVersion: string;
+    }>();
+    const 查询Taxonomy = vi.fn(async (
+      _kind: string,
+      query: { parentId?: string; cursor?: string; q?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (!query.parentId && !query.cursor) {
+        return 选项?.强制刷新
+          ? 页([{ id: 'cat_v2', display_name: '大类V2', parent_id: null, selectable: false, has_children: true }], null, 'v2')
+          : 页([{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false, has_children: true }], 'root_cur_v1', 'v1');
+      }
+      if (query.cursor === 'root_cur_v1') {
+        // 追加页来自新快照：触发根列表重开
+        return 页([{ id: 'cat_old', display_name: '旧版本追加类', parent_id: null, selectable: false, has_children: false }], null, 'v2');
+      }
+      if (query.parentId === 'cat_a' && query.cursor === 'sub_cur_v1') {
+        // 右栏分页在飞（慢响应）
+        return 慢Promise;
+      }
+      if (query.parentId === 'cat_a') {
+        return 页([{ id: 'job_a1', display_name: 'A岗位1', parent_id: 'cat_a', selectable: true, has_children: false }], 'sub_cur_v1', 'v2');
+      }
+      if (query.parentId === 'cat_v2' && query.cursor === 'sub_cur_v2') {
+        return 页([{ id: 'job_v2_2', display_name: 'V2岗位2', parent_id: 'cat_v2', selectable: true, has_children: false }], null, 'v2');
+      }
+      if (query.parentId === 'cat_v2') {
+        return 页([{ id: 'job_v2', display_name: 'V2岗位', parent_id: 'cat_v2', selectable: true, has_children: false }], 'sub_cur_v2', 'v2');
+      }
+      return 页([], null, 'v2');
+    });
+    置Backend应用状态(查询Taxonomy, vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })));
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job']}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    await screen.findByText('大类A');
+    await screen.findByText('A岗位1');
+    // 右栏分页在飞（[0]=左栏根分页，[1]=右栏子项分页）
+    await 用户.click(screen.getAllByRole('button', { name: '加载更多' })[1]);
+    // 根栏追加页换版本 → 重开 + 选根(新根) —— 右栏 loading 必须被同步清掉
+    await 用户.click(screen.getAllByRole('button', { name: '加载更多' })[0]);
+    await screen.findByText('大类V2');
+    await screen.findByText('V2岗位');
+    // 右栏分页键可用（不再卡在「加载中…」禁用态）
+    const 右加载更多 = await waitFor(() => {
+      const 键 = screen.getByRole('button', { name: '加载更多' }) as HTMLButtonElement;
+      expect(键.disabled).toBe(false);
+      return 键;
+    });
+    // 旧代右栏分页迟到写回：被导航代际作废
+    慢Resolve(页([{ id: 'job_a2_old', display_name: 'A岗位2（旧）', parent_id: 'cat_a', selectable: true, has_children: false }], null, 'v2'));
+    await waitFor(() => expect(screen.queryByText('A岗位2（旧）')).toBeNull());
+    // 新根的右栏分页继续可用：翻页用新根的新游标
+    await 用户.click(右加载更多);
+    await screen.findByText('V2岗位2');
+    expect(查询Taxonomy).toHaveBeenCalledWith(
+      'job-categories',
+      expect.objectContaining({ parentId: 'cat_v2', cursor: 'sub_cur_v2' }),
+    );
+  });
 });
 
 // ── P0 修复 Task 6：岗位表单的服务端校验投影 ────────────────────────

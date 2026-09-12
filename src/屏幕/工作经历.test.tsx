@@ -129,6 +129,17 @@ function render工作经历(选项: {
   };
 }
 
+/** 手控 Promise：让某个目录请求「在飞」，用例决定它何时迟到返回 */
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((ok, fail) => {
+    resolve = ok;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('工作经历 行业弹层 Backend', () => {
   beforeEach(() => {
     mock跳转.mockClear();
@@ -332,6 +343,117 @@ describe('工作经历 行业弹层 Backend', () => {
     await 用户.click(screen.getByText('金融科技'));
     await screen.findByText('新子行业');
     expect(screen.queryByText('证券与基金')).toBeNull();
+  });
+
+  // review-r3（Codex r3 F1）：根换代清理作废在飞的旧代展开请求——迟到写回被页内
+  // 行业代际作废，不把旧版本条目重新挂回新版本列表；重新展开从新版本取数。
+  it('行业弹层子展开在飞时根换代：迟到写回被作废，重新展开取新版本', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({
+      items,
+      nextCursor,
+      catalogVersion: 版本,
+    });
+    let 换代 = false;
+    const { promise: 慢Promise, resolve: 慢Resolve } = deferred<{
+      items: unknown[];
+      nextCursor: string | null;
+      catalogVersion: string;
+    }>();
+    const 查询Taxonomy = vi.fn(async (
+      _kind: string,
+      query: { parentId?: string; cursor?: string; q?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (!query.parentId && !query.q && !query.cursor) {
+        return 选项?.强制刷新
+          ? 页([{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], null, 'v2')
+          : 页([{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], 'ind_cur_1', 'v1');
+      }
+      if (query.cursor === 'ind_cur_1') {
+        // 追加页来自新快照：触发根列表重开
+        return 页([{ id: 'ind_old', display_name: '旧版本追加行业', parent_id: null, selectable: false, has_children: false }], null, 'v2');
+      }
+      if (query.parentId === 'ind_fin') {
+        return 换代
+          ? 页([{ id: 'ind_new', display_name: '新子行业', parent_id: 'ind_fin', selectable: true, has_children: false }], null, 'v2')
+          : 慢Promise;
+      }
+      return 页([], null, 'v2');
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await screen.findByText('金融科技');
+    // 展开根 → 子项请求在飞（慢响应未回）
+    await 用户.click(screen.getByText('金融科技'));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('industries', expect.objectContaining({ parentId: 'ind_fin' })));
+    // 根栏追加页换版本 → 根列表重开，旧版本派生展开状态清空（子展开仍在飞）
+    换代 = true;
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull());
+    // 旧代子项迟到写回：被代际作废，不重挂旧版本条目
+    慢Resolve(页([{ id: 'ind_old_sub', display_name: '旧子行业', parent_id: 'ind_fin', selectable: true, has_children: false }], null, 'v1'));
+    await waitFor(() => expect(screen.queryByText('旧子行业')).toBeNull());
+    // 重新展开同一根：从新版本取数（不被旧展开缓存挡住）
+    await 用户.click(screen.getByText('金融科技'));
+    await screen.findByText('新子行业');
+    expect(screen.queryByText('旧子行业')).toBeNull();
+  });
+
+  // review-r3（Codex r3 F2）：子列表换代替换时，旧子项名下的孙项状态一并失效——
+  // v2 复用同 ID 子项时不再把 v1 孙项重新挂上去（沿 选期望行业 round-2 的摘旧做法）。
+  it('行业弹层子列表换代：旧子的孙项状态失效，同 ID 子不再挂旧孙项', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({
+      items,
+      nextCursor,
+      catalogVersion: 版本,
+    });
+    let 换代 = false;
+    const 查询Taxonomy = vi.fn(async (
+      _kind: string,
+      query: { parentId?: string; cursor?: string; q?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (!query.parentId && !query.q && !query.cursor) {
+        return 页([{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], null, 'v1');
+      }
+      if (query.cursor === 'sub_cur_v1') {
+        // 子项追加页来自新快照：触发子列表整组重开
+        return 页([{ id: 'ind_extra', display_name: '旧追加子行业', parent_id: 'ind_fin', selectable: true, has_children: false }], null, 'v2');
+      }
+      if (query.parentId === 'ind_fin') {
+        // 换代前后都复用同一子 ID，差别在名下孙项（v1 公募基金 / v2 新孙叶子）
+        const 子 = { id: 'ind_sub', display_name: '证券与基金', parent_id: 'ind_fin', selectable: false, has_children: true };
+        return 换代 || 选项?.强制刷新
+          ? 页([子], null, 'v2')
+          : 页([子], 'sub_cur_v1', 'v1');
+      }
+      if (query.parentId === 'ind_sub') {
+        return 换代
+          ? 页([{ id: 'ind_leaf_v2', display_name: '新孙叶子', parent_id: 'ind_sub', selectable: true, has_children: false }], null, 'v2')
+          : 页([{ id: 'ind_leaf', display_name: '公募基金', parent_id: 'ind_sub', selectable: true, has_children: false }], null, 'v1');
+      }
+      return 页([], null, 'v2');
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await screen.findByText('金融科技');
+    // 展开根 → 子项，再展开子 → 孙叶子（v1）
+    await 用户.click(screen.getByText('金融科技'));
+    await 用户.click(await screen.findByText('证券与基金'));
+    await screen.findByText('公募基金');
+    // 子列表追加页换版本 → 整组重开（v2 复用同 ID 子项），旧子名下的孙项状态失效
+    换代 = true;
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(screen.queryByText('公募基金')).toBeNull());
+    expect(screen.queryByText('旧追加子行业')).toBeNull();
+    // 重新展开同 ID 子项：从新版本取孙项，不再命中旧孙缓存
+    await 用户.click(screen.getByText('证券与基金'));
+    await screen.findByText('新孙叶子');
+    expect(screen.queryByText('公募基金')).toBeNull();
   });
 });
 

@@ -70,6 +70,10 @@ export default function 选期望行业() {
   const [孙项版本表, 设孙项版本表] = useState<Record<string, string>>({});
   const 方法引用 = useRef(目录查询?.查询Taxonomy);
   方法引用.current = 目录查询?.查询Taxonomy;
+  // review-r3（Codex r3 F1）：页内目录代际——根换代清理派生状态时 +1；在飞的子/孙
+  // 请求回写前核对代际，不符即静默作废，不把旧版本条目重新挂回新版本列表（沿 职位详情
+  // 准备代际 的本页局部 useRef 做法，不抽共用基础设施）。
+  const 目录代际引用 = useRef(0);
 
   // Backend mount：读 roots
   useEffect(() => {
@@ -106,6 +110,9 @@ export default function 选期望行业() {
         设根版本(重开.catalogVersion);
         // review-r2：换代重开时派生状态同步失效——旧版本根下的子/孙展开一并丢弃，
         // 重新展开从新版本取数，不再残留旧版本条目可选可提交
+        // review-r3（Codex r3 F1）：换代同时递增目录代际——还在飞的旧代子/孙请求
+        // 回写时对不上代际即整包静默作废（展开状态里的 加载中 一并随清理消失）
+        目录代际引用.current += 1;
         设展开状态({});
         设孙项表({});
         设孙项游标表({});
@@ -126,10 +133,14 @@ export default function 选期望行业() {
     设展开状态((旧) => ({ ...旧, [项.id]: { 子项: [], 加载中: true, 游标: null, 版本: '' } }));
     const 方法 = 方法引用.current;
     if (!方法) return;
+    const 起始代际 = 目录代际引用.current;
     try {
       const 子页 = await 方法('industries', { parentId: 项.id, limit: 50 });
+      // review-r3（Codex r3 F1）：迟到作废——换代清理后旧代展开不回写
+      if (目录代际引用.current !== 起始代际) return;
       设展开状态((旧) => ({ ...旧, [项.id]: { 子项: 子页.items, 加载中: false, 游标: 子页.nextCursor, 版本: 子页.catalogVersion } }));
     } catch (错误) {
+      if (目录代际引用.current !== 起始代际) return;
       // review-r1 F4：失败不写「已展开」记录（否则入口守卫挡住重试），经既有轻提示说明
       设展开状态((旧) => {
         if (!(项.id in 旧)) return 旧;
@@ -148,12 +159,16 @@ export default function 选期望行业() {
     const 方法 = 方法引用.current;
     if (!方法) return;
     设展开状态((旧) => ({ ...旧, [项.id]: { ...旧[项.id], 加载中: true } }));
+    const 起始代际 = 目录代际引用.current;
     try {
       const 子页 = await 方法('industries', { parentId: 项.id, cursor: 状态.游标, limit: 50 });
+      // review-r3（Codex r3 F1）：迟到作废——换代清理后旧代分页不回写
+      if (目录代际引用.current !== 起始代际) return;
       if (子页.catalogVersion !== 状态.版本) {
         // review-r1 F5：目录换代 —— 该父项整组（累计页与游标）丢弃，从其第一页静默重开。
         // review-r2：换代重开时该父项旧子项名下的孙展开同步失效
         const 重开 = await 方法('industries', { parentId: 项.id, limit: 50 }, { 强制刷新: true });
+        if (目录代际引用.current !== 起始代际) return;
         const 旧子id们 = 状态.子项.map((子) => 子.id);
         设展开状态((旧) => ({
           ...旧,
@@ -169,13 +184,20 @@ export default function 选期望行业() {
         }
         return;
       }
-      设展开状态((旧) => ({
-        ...旧,
-        [项.id]: { 子项: 合并目录页(旧[项.id].子项, 子页.items), 加载中: false, 游标: 子页.nextCursor, 版本: 旧[项.id].版本 },
-      }));
+      设展开状态((旧) => {
+        // review-r3（Codex r3 F1）：换代清理可能在核对后代写，键已删则整包不动
+        //（旧[项.id].子项 直接读会在键被删时崩溃）
+        const 旧态 = 旧[项.id];
+        if (!旧态) return 旧;
+        return { ...旧, [项.id]: { 子项: 合并目录页(旧态.子项, 子页.items), 加载中: false, 游标: 子页.nextCursor, 版本: 旧态.版本 } };
+      });
     } catch {
-      // 游标不动，用户再点一次就是重试
-      设展开状态((旧) => ({ ...旧, [项.id]: { ...旧[项.id], 加载中: false } }));
+      if (目录代际引用.current !== 起始代际) return;
+      // 游标不动，用户再点一次就是重试；键已被换代清理删掉时不再回插空展开记录
+      设展开状态((旧) => {
+        if (!(项.id in 旧)) return 旧;
+        return { ...旧, [项.id]: { ...旧[项.id], 加载中: false } };
+      });
     }
   };
 
@@ -184,12 +206,16 @@ export default function 选期望行业() {
     if (孙项表[项.id]) return;
     const 方法 = 方法引用.current;
     if (!方法) return;
+    const 起始代际 = 目录代际引用.current;
     try {
       const 孙页 = await 方法('industries', { parentId: 项.id, limit: 50 });
+      // review-r3（Codex r3 F1）：迟到作废——换代清理后旧代孙展开不回写
+      if (目录代际引用.current !== 起始代际) return;
       设孙项表((旧) => ({ ...旧, [项.id]: 孙页.items }));
       设孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
       设孙项版本表((旧) => ({ ...旧, [项.id]: 孙页.catalogVersion }));
     } catch (错误) {
+      if (目录代际引用.current !== 起始代际) return;
       // review-r1 F4：失败不写空孙表（否则入口守卫挡住重试），经既有轻提示说明
       轻提示(取后端错误文案(错误));
     }
@@ -202,18 +228,25 @@ export default function 选期望行业() {
     if (游标 === null || 游标 === undefined) return;
     const 方法 = 方法引用.current;
     if (!方法) return;
+    const 起始代际 = 目录代际引用.current;
     try {
       const 孙页 = await 方法('industries', { parentId: 项.id, cursor: 游标, limit: 50 });
+      // review-r3（Codex r3 F1）：迟到作废——换代清理后旧代孙分页不回写
+      if (目录代际引用.current !== 起始代际) return;
       if (孙页.catalogVersion !== 版本) {
         // review-r1 F5：目录换代 —— 孙项整组丢弃，从其第一页静默重开。
         const 重开 = await 方法('industries', { parentId: 项.id, limit: 50 }, { 强制刷新: true });
-        设孙项表((旧) => ({ ...旧, [项.id]: 重开.items }));
-        设孙项游标表((旧) => ({ ...旧, [项.id]: 重开.nextCursor }));
-        设孙项版本表((旧) => ({ ...旧, [项.id]: 重开.catalogVersion }));
+        if (目录代际引用.current !== 起始代际) return;
+        // review-r3（Codex r3 F1/F2）：其父项换代已把该孙键摘掉时不回插（整组已随父失效）
+        设孙项表((旧) => (项.id in 旧 ? { ...旧, [项.id]: 重开.items } : 旧));
+        设孙项游标表((旧) => (项.id in 旧 ? { ...旧, [项.id]: 重开.nextCursor } : 旧));
+        设孙项版本表((旧) => (项.id in 旧 ? { ...旧, [项.id]: 重开.catalogVersion } : 旧));
         return;
       }
-      设孙项表((旧) => ({ ...旧, [项.id]: 合并目录页(旧[项.id] ?? [], 孙页.items) }));
-      设孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
+      // review-r3（Codex r3 F1/F2）：写回前核对该孙键仍在——根换代或其父项换代把它
+      // 摘掉后不回插（键已删则整包不动）
+      设孙项表((旧) => (项.id in 旧 ? { ...旧, [项.id]: 合并目录页(旧[项.id], 孙页.items) } : 旧));
+      设孙项游标表((旧) => (项.id in 旧 ? { ...旧, [项.id]: 孙页.nextCursor } : 旧));
     } catch {
       // 失败不动
     }

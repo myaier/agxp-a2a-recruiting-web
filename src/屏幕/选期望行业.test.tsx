@@ -441,6 +441,77 @@ describe('选期望行业 展开失败不缓存空结果（review-r1 F4）', () 
   });
 });
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((ok, fail) => {
+    resolve = ok;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+// review-r3（Codex r3 F1）：根换代清理作废在飞的旧代展开请求——迟到写回被页内
+// 目录代际作废，不把旧版本条目重新挂回新版本列表；重新展开从新版本取数。
+describe('选期望行业 根换代作废在飞请求（review-r3）', () => {
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('子展开在飞时根换代：迟到写回被作废，重新展开取新版本子项', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({
+      items,
+      nextCursor,
+      catalogVersion: 版本,
+    });
+    let 换代 = false;
+    const { promise: 慢Promise, resolve: 慢Resolve } = deferred<{
+      items: unknown[];
+      nextCursor: string | null;
+      catalogVersion: string;
+    }>();
+    const 查询Taxonomy = vi.fn(async (
+      _kind: string,
+      query: { parentId?: string; cursor?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (!query.parentId && !query.cursor) {
+        return 选项?.强制刷新
+          ? 页([{ id: 'r1', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], null, 'v2')
+          : 页([{ id: 'r1', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], 'root_cur_v1', 'v1');
+      }
+      if (query.cursor === 'root_cur_v1') {
+        // 追加页来自新快照：触发根列表重开
+        return 页([{ id: 'r_old', display_name: '旧版本追加行业', parent_id: null, selectable: false, has_children: false }], null, 'v2');
+      }
+      if (query.parentId === 'r1') {
+        return 换代
+          ? 页([{ id: 'c2', display_name: '新子项', parent_id: 'r1', selectable: true, has_children: false }], null, 'v2')
+          : 慢Promise;
+      }
+      return 页([], null, 'v2');
+    });
+    render选期望行业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    // 展开根 → 子项请求在飞（慢响应未回）
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('industries', expect.objectContaining({ parentId: 'r1' })));
+    // 根栏追加页换版本 → 根列表重开，旧版本派生展开状态清空（子展开仍在飞）
+    换代 = true;
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull());
+    // 旧代子项迟到写回：被代际作废，不重挂旧版本条目
+    慢Resolve(页([{ id: 'c1', display_name: '旧子项', parent_id: 'r1', selectable: true, has_children: false }], null, 'v1'));
+    await waitFor(() => expect(screen.queryByText('旧子项')).toBeNull());
+    // 重新展开同一根：从新版本取数（不被旧展开缓存挡住）
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    await screen.findByText('新子项');
+    expect(screen.queryByText('旧子项')).toBeNull();
+  });
+});
+
 // F5：子项追加页返回不同 catalogVersion 时，不跨版本合并 —— 丢弃该父项累计的旧页
 // 与游标，从该父项第一页静默重开（沿 城市查询钩子 的版本引用做法，留在本页局部）。
 describe('选期望行业 子项分页忽略 catalogVersion（review-r1 F5）', () => {
