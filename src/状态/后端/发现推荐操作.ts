@@ -323,7 +323,9 @@ function 淘汰落位(旧: 后端状态, jobId: string, 卡: BFF招聘推荐详�
   for (const 键 of rejected键覆盖岗位(旧, jobId)) {
     const 快照 = 招聘已筛候选[键];
     const items = 快照.items.some((条) => 条.recommendation_id === 编号)
-      ? 快照.items.map((条) => (条.recommendation_id === 编号 ? 列表卡 : 条))
+      // 替换既有卡（二次淘汰落位）时保留它 include 装载时已展开的 candidate_summary：
+      // 详情重读不带该键，整卡替换会让已展开的摘要凭空消失（Task 3 遗留指针裁决）。
+      ? 快照.items.map((条) => (条.recommendation_id === 编号 ? { ...条, ...列表卡 } : 条))
       : [...快照.items, 列表卡].sort((甲, 乙) => 甲.rank - 乙.rank);
     招聘已筛候选[键] = { ...快照, items };
   }

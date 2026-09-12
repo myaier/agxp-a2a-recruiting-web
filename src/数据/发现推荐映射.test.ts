@@ -13,12 +13,19 @@ import {
   招聘候选摘要样本,
 } from '../测试/BFF样本';
 import type { BFFCandidateJob, BFF候选岗位推荐, BFF招聘候选推荐 } from './BFF契约';
-import { BFF招聘推荐详情无简历样本, BFF招聘推荐详情样本, BFF候选在线简历样本 } from '../测试/展示资料样本';
+import {
+  BFF公司摘要样本,
+  BFF公司摘要声明样本,
+  BFF招聘推荐详情无简历样本,
+  BFF招聘推荐详情样本,
+  BFF候选在线简历样本,
+} from '../测试/展示资料样本';
 import {
   P4委托状态文案,
   P4拒绝原因文案,
   P4淘汰原因文案,
   P4淘汰原因码,
+  公司短行,
   判断P4招聘组织前提,
   从P4CandidateJob,
   从P4候选岗位,
@@ -246,6 +253,100 @@ describe('从P4候选岗位 / 从P4CandidateJob', () => {
     expect(从P4候选岗位(card).委托).toEqual({
       delegation_id: 'del_c1', state: 'case_started', case_id: 'case_9',
     });
+  });
+});
+
+describe('市场卡公司摘要落位（Spec §5.1）', () => {
+  it('公司名优先合法 organization.display_name，短行由 融资·规模·行业 经现有码表拼出', () => {
+    const view = 从P4候选岗位({ ...BFF候选岗位推荐样本, job: { ...BFFCandidateJob样本, organization: BFF公司摘要样本 } });
+    expect(view.卡.公司).toBe('云衢科技');
+    expect(view.卡.公司首字).toBe('云');
+    expect(view.卡.公司简介).toBe('C 轮 · 500-1000 人 · 金融科技');
+    // 真实 Logo 只认 BFF 媒体 URL；发布人头像同接 avatar_url
+    expect(view.卡.公司图片URL).toBe(BFF公司摘要样本.logo!.url);
+  });
+
+  it('对象或名称缺失回退同一 CandidateJob 的公开 claim 名；claim 也不得变成组织坐标', () => {
+    const 无组织 = 从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      job: { ...BFFCandidateJob样本, organization: null },
+    });
+    expect(无组织.卡.公司).toBe('云衢科技'); // claim 名
+    expect(无组织.卡.公司简介).toBe('');
+    expect(无组织.卡.公司图片URL).toBeNull();
+    const 缺名 = 从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      job: { ...BFFCandidateJob样本, organization: { ...BFF公司摘要样本, display_name: null } },
+    });
+    expect(缺名.卡.公司).toBe('云衢科技');
+    const 空白名 = 从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      job: { ...BFFCandidateJob样本, organization: { ...BFF公司摘要样本, display_name: '  ' } },
+    });
+    expect(空白名.卡.公司).toBe('云衢科技');
+  });
+
+  it('短行只保留已知段：开放码不在闭合文案表内不展示、不强转枚举；全缺失给空串', () => {
+    expect(公司短行({ ...BFF公司摘要样本, funding_stage: 'seed_round', company_size: '50_60' }))
+      .toBe('金融科技');
+    expect(公司短行({ ...BFF公司摘要样本, industry: null })).toBe('C 轮 · 500-1000 人');
+    expect(公司短行({ ...BFF公司摘要样本, funding_stage: null, company_size: null }))
+      .toBe('金融科技');
+    expect(公司短行(BFF公司摘要声明样本)).toBe('');
+    expect(公司短行(null)).toBe('');
+    expect(公司短行({ ...BFF公司摘要样本, funding_stage: '  ', industry: { id: 'x', display_name: '  ' } }))
+      .toBe('500-1000 人');
+  });
+
+  it('真实 0 推荐分照常显示，不折算成未知；组织坐标不进卡面（claim 不是 ID）', () => {
+    const 零分 = 从P4候选岗位({ ...BFF候选岗位推荐样本, match_score: 0 });
+    expect(零分.卡.适配分).toBe(0);
+    const 卡面文本 = JSON.stringify(从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      job: {
+        ...BFFCandidateJob样本,
+        // 媒体 URL 合法地内嵌路由坐标；组织坐标本身（organization_id）不进卡面
+        organization: { ...BFF公司摘要样本, organization_id: 'org_pub_9' },
+      },
+    }).卡);
+    expect(卡面文本).not.toContain('org_pub_9');
+    expect(卡面文本).toContain('https://cdn.example.com/org_1/media_1.png');
+  });
+
+  it('发布人头像接 avatar_url：缺席发布人给 null，声明 URL 为空的发布人不造图', () => {
+    const 带头像 = 从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      job: {
+        ...BFFCandidateJob样本,
+        publisher_profile: {
+          public_name: '林澈', title: '招聘负责人',
+          personal_verification_status: 'verified', avatar_url: 'https://cdn.example.com/p.png',
+        },
+      },
+    });
+    expect(带头像.卡.发布人图片URL).toBe('https://cdn.example.com/p.png');
+    expect(从P4候选岗位(BFF候选岗位推荐样本).卡.发布人图片URL).toBeNull();
+    const 空头像 = 从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      job: {
+        ...BFFCandidateJob样本,
+        publisher_profile: {
+          public_name: '林澈', title: '招聘负责人',
+          personal_verification_status: 'verified', avatar_url: null,
+        },
+      },
+    });
+    expect(空头像.卡.发布人图片URL).toBeNull();
+  });
+
+  it('claim-only 摘要（声明样本）：公司名/简介/图与市场卡逐字一致，不添已知段', () => {
+    const view = 从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      job: { ...BFFCandidateJob样本, organization: BFF公司摘要声明样本 },
+    });
+    expect(view.卡.公司).toBe('云衢科技');
+    expect(view.卡.公司简介).toBe('');
+    expect(view.卡.公司图片URL).toBeNull();
   });
 });
 

@@ -348,6 +348,8 @@ export interface P5列表正常视图 {
   待办: boolean;
   终局: boolean;
   更新于: string;
+  /** release/0.2.5：本查看者的原推荐批次分（recruiter 行才有 wire 成员）；无溯源为 null，不造 0。 */
+  匹配分: number | null;
   /** 同 P5详情正常视图.注意说明：attention_required 行的安全说明，其余恒 null。 */
   注意说明: string | null;
   /** 仅已展开 recruiter open 行出现（摘要视图或显式 null）；candidate 行与历史行必缺席。 */
@@ -633,6 +635,8 @@ export function 映射P5列表项(item: P5列表项): P5列表视图 {
     待办: item.needsAction === true,
     终局: 生命周期终局表[行.lifecycle],
     更新于: state.updatedAt,
+    // match_score 只在 recruiter 行上；candidate 行的 Case 无该 wire 成员，恒 null
+    匹配分: item.role === 'recruiter' ? item.matchScore : null,
     注意说明: 映射Agent注意(state),
     ...(候选摘要 === undefined ? {} : { 候选摘要 }),
   };

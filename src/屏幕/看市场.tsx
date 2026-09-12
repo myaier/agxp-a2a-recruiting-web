@@ -579,13 +579,29 @@ function 市场卡({
 }) {
   // 分从行来(2026-08-31):卡上的环与职位详情的环同一份计算分
   const 计算适配分 = use适配分(岗);
+  // release/0.2.5 真实媒体：发布人头像接 avatar_url（Mock 档不设 → 原首字位不变）；
+  // 加载失败回既有首字位，换 URL 清除失败状态。公司 Logo 经 公司字标 的显式图片分支。
+  const [头像失败, 设头像失败] = useState(false);
+  useEffect(() => {
+    设头像失败(false);
+  }, [岗.发布人图片URL]);
+  const 发布人图 = 岗.发布人图片URL !== undefined && 岗.发布人图片URL !== null && !头像失败;
   return (
     <白卡 类名={样式.卡}>
       {/* 卡主体整块点进职位详情 */}
       <button className={`${样式.卡主体} 可点`} onClick={按下}>
-        {/* 公司头行：字标 + 公司名/简介 + 右列[适配环 + 薪资]，与在谈卡一比一 */}
+        {/* 公司头行：字标 + 公司名/简介 + 右列[适配环 + 薪资]，与在谈卡一比一。
+            Mock 岗不带 公司图片URL → 字标走原公司名静态分支；Backend 显式传（含 null）。
+            图位尺寸/圆角原样，不给图片接线改样式。 */}
         <div className={样式.公司头行}>
-          <公司字标 首字={岗.公司首字} 公司名={岗.公司} 尺寸={34} 圆角={10} 字号={14} />
+          <公司字标
+            首字={岗.公司首字}
+            公司名={岗.公司}
+            公司图片URL={岗.公司图片URL}
+            尺寸={34}
+            圆角={10}
+            字号={14}
+          />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className={`${样式.公司名} 单行`}>{岗.公司}</div>
             <div className={`${样式.公司简介} 单行`}>{岗.公司简介}</div>
@@ -616,7 +632,19 @@ function 市场卡({
           className={样式.发布人头像}
           style={{ background: 岗.发布人底色, color: 岗.发布人字色 }}
         >
-          {岗.发布人首字}
+          {发布人图 ? (
+            <img
+              src={岗.发布人图片URL ?? undefined}
+              alt=""
+              onError={() => 设头像失败(true)}
+              style={{
+                width: '100%', height: '100%', objectFit: 'cover',
+                display: 'block', borderRadius: 'inherit',
+              }}
+            />
+          ) : (
+            岗.发布人首字
+          )}
         </span>
         <span className={`${样式.发布人} 单行`}>
           {岗.发布人.startsWith(`${岗.公司} · `) ? 岗.发布人.slice(岗.公司.length + 3) : 岗.发布人}

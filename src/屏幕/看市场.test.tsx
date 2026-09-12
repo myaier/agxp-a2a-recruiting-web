@@ -24,6 +24,7 @@ import { 今日简报, 在谈列表 } from '../数据/模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库, BFF委托回执 } from '../数据/BFF契约';
 import { BFF候选岗位推荐样本, BFF意向样本, BFF主体样本 } from '../测试/BFF样本';
+import { BFF公司摘要样本 } from '../测试/展示资料样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
 import type { NegotiationCard } from '../数据/招聘数据源/连续代谈';
@@ -1056,6 +1057,39 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     expect(mock跳转.mock.lastCall).toHaveLength(1);
     expect(String(mock跳转.mock.lastCall![0])).toMatch(/^\/job\//);
     Mock页.unmount();
+  });
+
+  it('市场卡接公司摘要：公司名优先 organization.display_name，短行/Logo/发布人头像落原位', () => {
+    置P4候选状态([{
+      ...BFF候选岗位推荐样本,
+      match_score: 0,
+      job: {
+        ...BFF候选岗位推荐样本.job,
+        organization: { ...BFF公司摘要样本, display_name: '衢云集团' },
+        publisher_profile: {
+          public_name: '林澈', title: '招聘负责人',
+          personal_verification_status: 'verified', avatar_url: 'https://cdn.example.com/p.png',
+        },
+      },
+    }]);
+    const 页 = render(<看市场 />);
+    expect(screen.getByText('衢云集团')).toBeTruthy();
+    expect(screen.queryByText('云衢科技')).toBeNull(); // 组织名在场时不回落 claim 名
+    expect(screen.getByText('C 轮 · 500-1000 人 · 金融科技')).toBeTruthy();
+    expect(页.container.querySelector('img[src="https://cdn.example.com/org_1/media_1.png"]'))
+      .toBeTruthy();
+    expect(页.container.querySelector('img[src="https://cdn.example.com/p.png"]')).toBeTruthy();
+    // 真实 0 分照常画 0 分环；组织坐标不进卡面（claim 不是 ID）
+    expect(screen.getByRole('img', { name: '适配 0 分' })).toBeTruthy();
+  });
+
+  it('公司对象缺失时市场卡回落 claim 名、短行与图位保持未知；发布人头像缺席不造图', () => {
+    置P4候选状态([BFF候选岗位推荐样本]);
+    render(<看市场 />);
+    expect(screen.getByText('云衢科技')).toBeTruthy();
+    expect(screen.queryByText('C 轮 · 500-1000 人 · 金融科技')).toBeNull();
+    expect(screen.queryByRole('img', { name: /cdn\.example/ })).toBeNull();
+    expect(screen.getByRole('button', { name: '让AI代理去谈' })).toBeTruthy();
   });
 
   it('Mock 保持一键委托：立即派发 委托入谈，无确认层', async () => {

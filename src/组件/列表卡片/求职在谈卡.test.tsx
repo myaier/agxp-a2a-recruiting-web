@@ -169,3 +169,52 @@ describe('求职在谈卡 · 行为', () => {
     expect(screen.queryByRole('button', { name: /收藏|委托|淘汰/ })).toBeNull();
   });
 });
+
+describe('求职在谈卡 · 真实公司图位（release/0.2.5）', () => {
+  const 阶段信息 = 阶段();
+  const 基础属性: 求职在谈卡属性 = {
+    公司: '云衢科技',
+    公司简介: 'C 轮 · 500-1000 人',
+    公司字标: { 首字: '云', 公司名: '云衢科技' },
+    匹配分: 61,
+    薪资: '20-35K',
+    职位: '资深后端工程师',
+    标签: ['上海'],
+    阶段: 阶段信息,
+    打开: vi.fn(),
+  };
+
+  it('给 公司图片URL 时图位渲染真实图片：不显示首字，尺寸仍由原字标槽承担', () => {
+    const 宿主 = render(<求职在谈卡 {...基础属性} 公司图片URL="https://cdn.example.com/logo.png" />);
+    const 图 = 宿主.container.querySelector('img[src="https://cdn.example.com/logo.png"]');
+    expect(图).toBeTruthy();
+    expect(screen.queryByText('云')).toBeNull(); // 有真实图就不叠首字
+  });
+
+  it('加载失败回中性图位：图片退场、首字块补位；不按公司名命中静态公司标', () => {
+    const 宿主 = render(<求职在谈卡 {...基础属性} 公司图片URL="https://cdn.example.com/坏.png" />);
+    const 图 = 宿主.container.querySelector('img');
+    expect(图).toBeTruthy();
+    fireEvent.error(图 as Element);
+    expect(宿主.container.querySelector('img')).toBeNull();
+    expect(screen.getByText('云')).toBeTruthy(); // 中性首字块
+  });
+
+  it('换 URL 清除之前的失败状态：新地址重新出图', () => {
+    const 宿主 = render(<求职在谈卡 {...基础属性} 公司图片URL="https://cdn.example.com/a.png" />);
+    fireEvent.error(宿主.container.querySelector('img') as Element);
+    expect(宿主.container.querySelector('img')).toBeNull();
+    宿主.rerender(<求职在谈卡 {...基础属性} 公司图片URL="https://cdn.example.com/b.png" />);
+    const 新图 = 宿主.container.querySelector('img[src="https://cdn.example.com/b.png"]');
+    expect(新图).toBeTruthy();
+  });
+
+  it('不传该 prop 的既有调用方走原字标分支；字标空位时图位仍是中性空白块', () => {
+    const 宿主 = render(<求职在谈卡 {...基础属性} />);
+    expect(宿主.container.querySelector('img')).toBeNull();
+    expect(screen.getByText('云')).toBeTruthy();
+    const 空位宿主 = render(<求职在谈卡 {...基础属性} 公司字标={null} 公司图片URL={null} />);
+    expect(空位宿主.container.querySelector('img')).toBeNull();
+    expect(screen.getByLabelText('公司图片未知')).toBeTruthy();
+  });
+});

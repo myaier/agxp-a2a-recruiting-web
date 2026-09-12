@@ -27,6 +27,7 @@ import { P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import { 路径 } from '../../路由/路径表';
 import { 在谈列表, 在招岗位列表, 在谈候选列表 } from '../../测试/P5Mock边界种子';
 import { BFF主体样本, 招聘候选摘要样本 } from '../../测试/BFF样本';
+import { BFF公司摘要样本 } from '../../测试/展示资料样本';
 
 const mock派发 = vi.fn();
 const mock跳转 = vi.fn();
@@ -86,6 +87,11 @@ function 连续卡(选项: {
   refusalCode?: NegotiationCard['refusal_code'];
   职位名?: string | null;
   城市?: string | null;
+  组织?: NegotiationCard['job']['organization'];
+  技能?: string[] | null;
+  办公方式?: NegotiationCard['job']['workplace_mode'];
+  薪资月数?: number | null;
+  匹配分?: number | null;
 }): NegotiationCard {
   const recordKind = 选项.recordId.startsWith('dlg_') ? 'delegation' : 'case';
   return {
@@ -99,11 +105,11 @@ function 连续卡(选项: {
       location: 选项.城市 === undefined ? '上海' : 选项.城市,
       public_salary_range: '300-500 元/天',
       availability: 'available',
-      organization: null,
-      required_skills: null,
+      organization: 选项.组织 ?? null,
+      required_skills: 选项.技能 ?? null,
       recruitment_type: null,
-      workplace_mode: null,
-      annual_salary_months: null,
+      workplace_mode: 选项.办公方式 ?? null,
+      annual_salary_months: 选项.薪资月数 ?? null,
     },
     delegation_id: recordKind === 'delegation' ? 'dlg_rcpt_01' : null,
     evaluation_id: null,
@@ -115,7 +121,7 @@ function 连续卡(选项: {
     refusal_code: 选项.refusalCode ?? null,
     actions: { retry: false, archive: false, open_case: false },
     retry_generation: 0,
-    match_score: null,
+    match_score: 选项.匹配分 ?? null,
     created_at: '2026-09-01T08:00:00Z',
     updated_at: '2026-09-01T09:00:00Z',
     archived_at: null,
@@ -176,7 +182,7 @@ function 候选行(选项: { caseId: string; 待办?: boolean; 更新于?: strin
   };
 }
 
-function 招聘行(选项: { caseId: string; 待办?: boolean; 更新于?: string; 别名?: string; 摘要?: BFF招聘候选摘要 | null }): P5列表项 {
+function 招聘行(选项: { caseId: string; 待办?: boolean; 更新于?: string; 别名?: string; 摘要?: BFF招聘候选摘要 | null; 匹配分?: number | null }): Extract<P5列表项, { role: 'recruiter' }> {
   return {
     role: 'recruiter',
     state: {
@@ -185,7 +191,7 @@ function 招聘行(选项: { caseId: string; 待办?: boolean; 更新于?: strin
     needsAction: 选项.待办 ?? false,
     candidateAlias: 选项.别名 ?? 别名,
     job: 候选行({ caseId: 选项.caseId }).job,
-    matchScore: null,
+    matchScore: 选项.匹配分 ?? null,
     candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
     ...(选项.摘要 === undefined ? {} : { candidateSummary: 选项.摘要 }),
   };
@@ -490,6 +496,52 @@ describe('MatchCase列表 · 候选连续在谈（J-PILOT-01 Task 4）', () => {
     expect(mock加载连续列表).toHaveBeenCalledTimes(1);
     expect(mock派发).not.toHaveBeenCalled();
     expect(mock适配分).not.toHaveBeenCalled();
+  });
+
+  it('候选连续卡接组织摘要与匹配分：公司三件套 + Logo 图位 + 真实分；标签沿岗位属性顺序接技能', () => {
+    置P5状态({
+      role: 'candidate', filterRef: null,
+      连续快照: 连续快照({
+        items: [连续卡({
+          recordId: 'dlg_org', phase: 'evaluating',
+          组织: BFF公司摘要样本, 匹配分: 0,
+          办公方式: 'hybrid', 薪资月数: 15, 技能: ['Go', '高并发'],
+        })],
+      }),
+    });
+    const 宿主 = render(列表元素('candidate', null));
+    const 卡 = screen.getByTestId('求职在谈卡');
+    expect(screen.getByText('云衢科技')).toBeTruthy();
+    expect(screen.getByText('C 轮 · 500-1000 人 · 金融科技')).toBeTruthy();
+    expect(宿主.container.querySelector('img[src="https://cdn.example.com/org_1/media_1.png"]'))
+      .toBeTruthy();
+    // 真实 0 分照常画 0 分环（不折算未知）
+    expect(screen.getByRole('img', { name: '适配 0 分' })).toBeTruthy();
+    const 标签顺序 = Array.from(卡.querySelector('[data-card-region="tags"]')?.children ?? [])
+      .map((元) => 元.textContent);
+    expect(标签顺序).toEqual(['上海', '15 薪', '混合', 'Go', '高并发']);
+    // 组织摘要只来自快照内已 decode 的字段：零逐卡补读
+    expect(mock加载连续列表).toHaveBeenCalledTimes(1);
+  });
+
+  it('招聘 Case open 行的匹配分上卡：真实 0 照常画环，identity 即使 disclosed 也不出姓名头像', () => {
+    置P5状态({
+      role: 'recruiter', filterRef: 职位ID,
+      快照: 快照({
+        items: [{
+          ...招聘行({ caseId: 'mc_9' }),
+          matchScore: 0,
+          candidateIdentity: {
+            state: 'disclosed', name: '内部姓名不上卡',
+            avatar_url: 'https://cdn.example.com/av.png', disclosed_at: '2026-09-01T00:00:00Z',
+          },
+        }],
+      }),
+    });
+    render(列表元素('recruiter', 职位ID));
+    expect(screen.getByRole('img', { name: '适配 0 分' })).toBeTruthy();
+    expect(screen.queryByText('内部姓名不上卡')).toBeNull();
+    expect(document.querySelector('img[src="https://cdn.example.com/av.png"]')).toBeNull();
   });
 
   it('evaluation_failed 卡给失败原因注意说明：待办优先「需要你」，非待办「需注意」，零列表级重试键', () => {

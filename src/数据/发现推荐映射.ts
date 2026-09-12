@@ -7,6 +7,7 @@
 
 import type {
   BFFCandidateJob,
+  BFF公司摘要,
   BFFOwnerJob,
   BFF候选岗位推荐,
   BFF委托回执,
@@ -20,6 +21,7 @@ import type {
 import type { 市场职位 } from './类型';
 import type { P4候选岗位页面, P4招聘候选页面 } from './招聘数据源类型';
 import { 映射招聘候选摘要 } from './招聘候选摘要映射';
+import { 公司规模文案, 融资阶段文案 } from './组织映射';
 
 // ── 闭合文案表：契约内枚举 → 展示文案，无表外键、无默认兜底 ──
 const 薪资关系文案 = {
@@ -76,20 +78,54 @@ function 薪资文案(下: number, 上: number, 周期: 'month' | 'day' | 'hour'
   return `${下}-${上}${单位 === 'K' ? 单位 : ` ${单位}`}`;
 }
 
+/** 开放 string 码只认闭合文案表内键（Spec §5.1：表外码不展示、不强转枚举）；空档给 null */
+function 码表段<T extends object>(表: T, 码: string | null): string | null {
+  if (码 === null || !已有键(表, 码)) return null;
+  const 文 = 表[码];
+  return typeof 文 === 'string' && 文.trim() !== '' ? 文 : null;
+}
+
+/**
+ * 公司短行：融资 · 规模 · 行业（与 公司主页资料.规模行 同一组合顺序），只保留已知段。
+ * organization 缺席 → 空串；industry.display_name 空白按缺失段处理。
+ */
+export function 公司短行(组织: BFF公司摘要 | null): string {
+  const 段们 = [
+    码表段(融资阶段文案, 组织?.funding_stage ?? null),
+    码表段(公司规模文案, 组织?.company_size ?? null),
+    非空文本(组织?.industry?.display_name ?? null),
+  ].filter((段): 段 is string => 段 !== null);
+  return 段们.join(' · ');
+}
+
+/** trim 后无有效字符按缺失处理（同 列表卡片映射 的缺失规则） */
+function 非空文本(值: string | null | undefined): string | null {
+  const 文 = 值?.trim() ?? '';
+  return 文 === '' ? null : 文;
+}
+
+/** 市场卡公司名：优先合法 organization.display_name；对象或名称缺失回退同 job 的公开 claim 名 */
+function 公司显示名(job: BFFCandidateJob): string {
+  return 非空文本(job.organization?.display_name ?? null) ?? job.hiring_organization_claim.display_name;
+}
+
 /**
  * CandidateJob → 市场卡。适配分/意向/匹配理由由调用方按 wire 事实供给
  * （推荐卡带真实匹配分与 match_reasons；详情直取 wire 上没有，给 0 与空，不编造）。
+ * 公司三件套与图位（release/0.2.5）：公司名优先合法 organization.display_name（缺失回退
+ * 公开 claim 名）；短行 = 融资 · 规模 · 行业 只留已知段；Logo/发布人头像只认 BFF 媒体
+ * URL，不可用给 null（卡面走既有中性图位，绝不按公司名命中静态图）。
  */
 function 建卡(job: BFFCandidateJob, 适配分: number, 意向: string, 理由: string[]): 市场职位 {
   const 发布人 = job.publisher_profile ?? null;
+  const 公司 = 公司显示名(job);
   return {
     编号: job.job_id,
     意向,
     职位: job.title,
-    公司: job.hiring_organization_claim.display_name,
-    公司首字: 首字(job.hiring_organization_claim.display_name),
-    // wire 不带 行业/轮次/规模，留空不编造（筛选与展示都只吃公司名/职位/标签，空串安全）
-    公司简介: '',
+    公司,
+    公司首字: 首字(公司),
+    公司简介: 公司短行(job.organization ?? null),
     薪资: 薪资文案(job.salary_lower, job.salary_upper, job.salary_period),
     适配分,
     标签: [
@@ -107,6 +143,8 @@ function 建卡(job: BFFCandidateJob, 适配分: number, 意向: string, 理由:
     发布人首字: 发布人 ? 首字(发布人.public_name) : '',
     发布人底色: 发布人配色.底色,
     发布人字色: 发布人配色.字色,
+    发布人图片URL: 发布人?.avatar_url ?? null,
+    公司图片URL: job.organization?.logo?.url ?? null,
     // 发布人 absent → 空串（市场卡渲染必填 string）；绝不拿公司声明合成「某某 · 企业直招」
     发布人: 发布人 ? `${发布人.public_name} · ${发布人.title}` : '',
   };

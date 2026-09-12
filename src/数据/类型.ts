@@ -79,6 +79,13 @@ export interface 市场职位 {
   发布人底色: string;
   发布人字色: string;
   发布人: string;
+  /**
+   * release/0.2.5 真实媒体（可选，仅 Backend 推荐卡设置）：organization.logo 与
+   * publisher_profile.avatar_url 的 BFF 媒体 URL。Mock 静态档不设 → 公司字标走原
+   * 公司名静态分支、发布人保持首字位；显式 null = 无权威媒体 → 中性图位。
+   */
+  公司图片URL?: string | null;
+  发布人图片URL?: string | null;
 }
 
 /** 消息列表条目 */

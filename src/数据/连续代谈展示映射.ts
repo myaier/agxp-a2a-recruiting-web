@@ -16,7 +16,7 @@
 import type { P5阶段, P5状态 } from './BFF契约';
 import type { P5Agent注意码, P5状态视图 } from './招聘数据源/MatchCase';
 import type { NegotiationCard, NegotiationDetail } from './招聘数据源/连续代谈';
-import { P4委托状态文案, P4失败原因文案, P4拒绝原因文案 } from './发现推荐映射';
+import { P4委托状态文案, P4失败原因文案, P4拒绝原因文案, 公司短行 } from './发现推荐映射';
 import { 从职位摘要到资料 } from './详情展示映射';
 import type { 分段项 } from '../组件/阶段对话流';
 import type {
@@ -36,6 +36,19 @@ export interface 连续列表视图 {
   职位名: string;
   城市: string | null;
   薪资带: string;
+  /**
+   * release/0.2.5 组织摘要（Spec §5.2）：公司名/短行/字标/Logo 只认 job.organization，
+   * 对象或成员缺失给 null（卡面走既有未知占位，不拿 claim 名冒充已知公司）。字标只在
+   * 真实 Logo 在场时给出 —— 无媒体保持中性空位，绝不按公司名命中静态图。
+   */
+  公司: string | null;
+  公司简介: string | null;
+  公司字标: { 首字: string; 公司名: string } | null;
+  公司图片URL: string | null;
+  /** 当前查看者原推荐批次分（0 合法）；无溯源为 null，不造 0。 */
+  匹配分: number | null;
+  /** 在谈卡标签行：地点 → N 薪 → 办公方式 → 技能，未知成员不补默认（Mock 岗位属性顺序）。 */
+  标签们: readonly string[];
   阶段标题: string;
   状态文案: string;
   /** viewer 专属待办（history 恒 false；不据此隐藏卡，也不否决 actions.retry）。 */
@@ -65,6 +78,9 @@ const P5阶段标题文案表 = {
   needs_coordination: '差异协同',
   intent_confirmation: '意向确认',
 } as const satisfies Record<P5阶段, string>;
+
+// 在谈卡标签行的办公方式段：与 发现推荐映射 的闭表同一份文案（该表未导出，按同一份词重申）
+const 办公方式文案 = { onsite: '现场', hybrid: '混合', remote: '全远程' } as const;
 
 const P5状态文案表 = {
   running: '进行中',
@@ -132,6 +148,10 @@ export function 映射连续列表项(card: NegotiationCard): 连续列表视图
       break;
   }
 
+  // release/0.2.5：组织摘要、批次分与标签行成员都来自卡上已 decode 的字段；未知不补默认。
+  const 组织 = card.job.organization;
+  const 公司名 = 非空段(组织?.display_name ?? null);
+  const 公司图片URL = 组织?.logo?.url ?? null;
   return {
     recordId: card.record_id,
     recordKind: card.record_kind,
@@ -139,6 +159,22 @@ export function 映射连续列表项(card: NegotiationCard): 连续列表视图
     职位名: 非空段(card.job.title) ?? '职位信息未知',
     城市: 非空段(card.job.location),
     薪资带: 非空段(card.job.public_salary_range) ?? '薪资未知',
+    公司: 公司名,
+    公司简介: 组织 === null || 公司名 === null ? null : 公司短行(组织),
+    公司字标: 公司名 !== null && 公司图片URL !== null
+      ? { 首字: Array.from(公司名)[0] ?? '', 公司名 }
+      : null,
+    公司图片URL,
+    匹配分: card.match_score,
+    标签们: [
+      非空段(card.job.location),
+      card.job.annual_salary_months !== null ? `${card.job.annual_salary_months} 薪` : null,
+      card.job.workplace_mode === null ? null : 办公方式文案[card.job.workplace_mode],
+      ...(card.job.required_skills ?? []),
+    ].flatMap((段) => {
+      const 文 = typeof 段 === 'string' ? 非空段(段) : null;
+      return 文 === null ? [] : [文];
+    }),
     阶段标题,
     状态文案,
     待办: card.needs_action,

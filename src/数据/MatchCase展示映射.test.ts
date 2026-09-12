@@ -944,9 +944,23 @@ describe('映射P5列表项', () => {
     expect(视图.intentionId).toBe(null);
     expect(Object.keys(视图).sort()).toEqual([
       'caseId', 'candidateAlias', 'intentionId', 'kind', 'role',
-      '待办', '更新于', '状态文案', '终局', '职位', '阶段标题', '注意说明',
+      '待办', '更新于', '状态文案', '终局', '职位', '阶段标题', '注意说明', '匹配分',
     ].sort());
-    expect(JSON.stringify(视图)).not.toMatch(/匹配分|评分|推荐理由|亮点|公司简介|在线简历|score|highlights/);
+    expect(JSON.stringify(视图)).not.toMatch(/评分|推荐理由|亮点|公司简介|在线简历|score|highlights/);
+  });
+
+  it('匹配分取该行 match_score：真实 0 照常，无溯源 null；identity 即使 disclosed 也不进视图', () => {
+    const 行 = 造列表项({ role: 'recruiter' }) as Extract<P5列表项, { role: 'recruiter' }>;
+    expect(断言正常(映射P5列表项({ ...行, matchScore: 0 })).匹配分).toBe(0);
+    expect(断言正常(映射P5列表项(行)).匹配分).toBeNull();
+    const 披露名 = '内部姓名不得上卡';
+    const 文本 = JSON.stringify(映射P5列表项({
+      ...行,
+      matchScore: 61,
+      candidateIdentity: { state: 'disclosed', name: 披露名, avatar_url: 'https://x/avatar.png', disclosed_at: '2026-09-01T00:00:00Z' },
+    }));
+    expect(文本).not.toContain(披露名);
+    expect(文本).not.toContain('avatar');
   });
 
   it.each([

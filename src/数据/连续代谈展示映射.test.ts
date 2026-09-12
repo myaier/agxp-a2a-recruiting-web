@@ -22,6 +22,7 @@ import {
   映射连续列表项,
 } from './连续代谈展示映射';
 import { 从连续到阶段 } from './列表卡片映射';
+import { BFF公司摘要样本 } from '../测试/展示资料样本';
 
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
 const 职位ID = 'job_0123456789abcdef0123456789abcdef';
@@ -39,6 +40,11 @@ function 连续卡(选项: {
   职位名?: string | null;
   城市?: string | null;
   薪资?: string | null;
+  组织?: NegotiationCard['job']['organization'];
+  技能?: string[] | null;
+  办公方式?: NegotiationCard['job']['workplace_mode'];
+  薪资月数?: number | null;
+  匹配分?: number | null;
 }): NegotiationCard {
   const recordKind = 选项.recordId.startsWith('dlg_') ? 'delegation' : 'case';
   return {
@@ -52,11 +58,11 @@ function 连续卡(选项: {
       location: 选项.城市 === undefined ? '上海' : 选项.城市,
       public_salary_range: 选项.薪资 === undefined ? '300-500 元/天' : 选项.薪资,
       availability: 'available',
-      organization: null,
-      required_skills: null,
+      organization: 选项.组织 ?? null,
+      required_skills: 选项.技能 ?? null,
       recruitment_type: null,
-      workplace_mode: null,
-      annual_salary_months: null,
+      workplace_mode: 选项.办公方式 ?? null,
+      annual_salary_months: 选项.薪资月数 ?? null,
     },
     delegation_id: recordKind === 'delegation' ? 'dlg_rcpt_01' : null,
     evaluation_id: 选项.phase === 'accepted' || 选项.phase === 'evaluating' ? 'ev_01' : null,
@@ -71,7 +77,7 @@ function 连续卡(选项: {
     created_at: '2026-09-01T08:00:00Z',
     updated_at: '2026-09-01T09:00:00Z',
     archived_at: null,
-    match_score: null,
+    match_score: 选项.匹配分 ?? null,
   };
 }
 
@@ -138,6 +144,12 @@ describe('映射连续列表项 · 五阶段投影', () => {
       职位名: 'AI 产品实习生',
       城市: '上海',
       薪资带: '300-500 元/天',
+      公司: null,
+      公司简介: null,
+      公司字标: null,
+      公司图片URL: null,
+      匹配分: null,
+      标签们: ['上海'],
       阶段标题: '已受理',
       状态文案: '已提交给 AI，等待处理',
       待办: false,
@@ -475,5 +487,82 @@ describe('Task 5 · 映射连续失败动作（Spec §8：只有 actions 允许�
     }));
     expect(仅重试!.重试文案).toBe('重试初评');
     expect(仅重试!.归档文案).toBeNull();
+  });
+});
+
+describe('映射连续列表项 · 组织摘要与匹配分落位（Spec §5.2）', () => {
+  it('固定 null 替换为 job.organization 与 match_score：公司三件套 + 字标 + 真实 Logo', () => {
+    const 卡 = 映射连续列表项(连续卡({
+      recordId: 'dlg_org', phase: 'evaluating',
+      组织: BFF公司摘要样本, 匹配分: 73,
+    }));
+    expect(卡.公司).toBe('云衢科技');
+    expect(卡.公司简介).toBe('C 轮 · 500-1000 人 · 金融科技');
+    expect(卡.公司图片URL).toBe(BFF公司摘要样本.logo!.url);
+    expect(卡.公司字标).toEqual({ 首字: '云', 公司名: '云衢科技' });
+    expect(卡.匹配分).toBe(73);
+  });
+
+  it('真实 0 分照常带出，无溯源 null 不造 0', () => {
+    expect(映射连续列表项(连续卡({ recordId: 'dlg_z', phase: 'accepted', 匹配分: 0 })).匹配分).toBe(0);
+    expect(映射连续列表项(连续卡({ recordId: 'dlg_n', phase: 'accepted' })).匹配分).toBeNull();
+  });
+
+  it('organization 缺席或缺名：公司/简介/字标/图位全未知，不拿 claim 造已知公司', () => {
+    const 无组织 = 映射连续列表项(连续卡({ recordId: 'dlg_x', phase: 'accepted' }));
+    expect(无组织.公司).toBeNull();
+    expect(无组织.公司简介).toBeNull();
+    expect(无组织.公司图片URL).toBeNull();
+    expect(无组织.公司字标).toBeNull();
+    const 缺名 = 映射连续列表项(连续卡({
+      recordId: 'dlg_y', phase: 'accepted',
+      组织: { ...BFF公司摘要样本, display_name: null },
+    }));
+    expect(缺名.公司).toBeNull();
+    expect(缺名.公司字标).toBeNull();
+    // 图位语义跟组织对象走：名称缺失但 Logo 在场仍是已知媒体
+    expect(缺名.公司图片URL).toBe(BFF公司摘要样本.logo!.url);
+    const 无Logo = 映射连续列表项(连续卡({
+      recordId: 'dlg_l', phase: 'accepted',
+      组织: { ...BFF公司摘要样本, logo: null },
+    }));
+    expect(无Logo.公司).toBe('云衢科技');
+    expect(无Logo.公司图片URL).toBeNull();
+    expect(无Logo.公司字标).toBeNull(); // 无真实媒体不出字标，保留中性空位
+  });
+
+  it('标签行沿 Mock 岗位属性顺序：地点 → N 薪 → 办公方式 → 技能；未知成员不补默认', () => {
+    const 完整 = 映射连续列表项(连续卡({
+      recordId: 'dlg_t1', phase: 'accepted',
+      城市: '徐汇区漕河泾', 办公方式: 'hybrid', 薪资月数: 15, 技能: ['Go', '高并发'],
+    }));
+    expect(完整.标签们).toEqual(['徐汇区漕河泾', '15 薪', '混合', 'Go', '高并发']);
+    // 未知成员不补默认：无薪资月数/办公方式/技能时只留地点
+    const 只有地点 = 映射连续列表项(连续卡({ recordId: 'dlg_t2', phase: 'accepted' }));
+    expect(只有地点.标签们).toEqual(['上海']);
+    const 全缺 = 映射连续列表项(连续卡({
+      recordId: 'dlg_t3', phase: 'accepted', 城市: '  ', 技能: [],
+    }));
+    expect(全缺.标签们).toEqual([]);
+    // 技能保留源顺序与重复；空字符串技能按缺失段丢弃
+    const 技能 = 映射连续列表项(连续卡({
+      recordId: 'dlg_t4', phase: 'accepted', 技能: ['Python', '', 'Python'],
+    }));
+    expect(技能.标签们).toEqual(['上海', 'Python', 'Python']);
+    // 地点保持服务端原文：办公地点语义不推断成行政城市
+    const 原文 = 映射连续列表项(连续卡({
+      recordId: 'dlg_t5', phase: 'accepted', 城市: '张江科学城 · 2F',
+    }));
+    expect(原文.标签们).toEqual(['张江科学城 · 2F']);
+  });
+
+  it('组织短行经现有码表拼装：开放码不展示，只留已知段；组织对象缺失给 null', () => {
+    const 部分 = 映射连续列表项(连续卡({
+      recordId: 'dlg_s1', phase: 'accepted',
+      组织: { ...BFF公司摘要样本, funding_stage: 'pre_a', company_size: null },
+    }));
+    expect(部分.公司简介).toBe('金融科技');
+    const 无组织 = 映射连续列表项(连续卡({ recordId: 'dlg_s2', phase: 'accepted' }));
+    expect(无组织.公司简介).toBeNull();
   });
 });

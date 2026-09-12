@@ -62,6 +62,12 @@ describe('招聘推荐卡 · 占位与卡面', () => {
     expect(screen.queryByLabelText('匹配分未知')).toBeNull();
   });
 
+  it('wire 带来的真实 0 分照常画 0 分环，不落未知占位（release/0.2.5）', () => {
+    渲染卡({ 匹配分: 0 });
+    expect(screen.getByRole('img', { name: '适配 0 分' })).toBeTruthy();
+    expect(screen.queryByLabelText('匹配分未知')).toBeNull();
+  });
+
   it('收藏态：★ 实心 + 可访问名切换为 取消收藏', () => {
     渲染卡({ 收藏: true });
     expect(screen.getByRole('button', { name: '取消收藏' })).toBeTruthy();

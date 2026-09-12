@@ -90,6 +90,12 @@ describe('招聘在谈卡 · 卡面与占位（Spec §5.2 / §4）', () => {
     expect(阶段区?.textContent).toContain('AI 服务暂时不可用，本 Case 尚未继续');
     expect(阶段区?.textContent).toContain('对方要每周 2 天远程，AI代理建议给 1 天');
   });
+
+  it('P5 open 行带来的真实 0 分照常画 0 分环，不落未知占位（release/0.2.5）', () => {
+    render(<招聘在谈卡 信息={全未知} 匹配分={0} 阶段={阶段()} 打开={vi.fn()} />);
+    expect(screen.getByRole('img', { name: '适配 0 分' })).toBeTruthy();
+    expect(screen.queryByLabelText('匹配分未知')).toBeNull();
+  });
 });
 
 describe('招聘在谈卡 · 行为', () => {

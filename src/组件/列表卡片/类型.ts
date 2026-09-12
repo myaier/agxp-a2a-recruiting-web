@@ -57,6 +57,12 @@ export interface 求职在谈卡属性 {
   公司: string | null;
   公司简介: string | null;
   公司字标: { 首字: string; 公司名: string } | null;
+  /**
+   * release/0.2.5 真实公司图位：organization.logo 的 BFF 媒体 URL。可选 prop：
+   * 既有 Mock 调用方不传 → 原公司名查静态标分支逐字不变；传 null = 无权威媒体 →
+   * 中性空位；传 URL = 真实图，加载失败回既有中性图位，换 URL 清除失败状态。
+   */
+  公司图片URL?: string | null;
   匹配分: number | null;
   薪资: string;
   职位: string;

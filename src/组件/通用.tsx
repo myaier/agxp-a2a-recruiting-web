@@ -437,10 +437,14 @@ export function 小结托盘({
 }
 
 // ── 公司字标方块 ───────────────────────────────────────────────
-// 传 公司名 且在 公司标映射 里有真 logo 时渲染图片（标注 23:55），否则首字占位
+// 传 公司名 且在 公司标映射 里有真 logo 时渲染图片（标注 23:55），否则首字占位。
+// release/0.2.5 真实媒体：显式传 公司图片URL（含 null）时只认该 BFF 媒体 URL ——
+// 不按公司名命中静态公司标；加载失败回中性首字块，换 URL 清除之前的失败状态。
+// 不传该 prop 的既有调用方（Mock 字标分支）行为逐字不变。
 export function 公司字标({
   首字,
   公司名,
+  公司图片URL,
   尺寸 = 38,
   圆角 = 11,
   底色 = 'var(--白)',
@@ -451,6 +455,8 @@ export function 公司字标({
   首字: string;
   /** 公司全名，用于查真实 logo */
   公司名?: string;
+  /** 真实公司 Logo 的 BFF 媒体 URL；显式传（含 null）即走真实媒体分支 */
+  公司图片URL?: string | null;
   尺寸?: number;
   圆角?: number;
   底色?: string;
@@ -458,7 +464,13 @@ export function 公司字标({
   描边?: boolean;
   字号?: number;
 }) {
-  const 真标 = 公司名 ? 公司标映射[公司名] : undefined;
+  const 显式图片 = 公司图片URL !== undefined;
+  const 真标 = 显式图片 || !公司名 ? undefined : 公司标映射[公司名];
+  const [图片失败, 设图片失败] = useState(false);
+  useEffect(() => {
+    设图片失败(false);
+  }, [公司图片URL]);
+  const 显示图片 = 显式图片 && !图片失败 && 公司图片URL !== null && 公司图片URL !== '';
   return (
     <span
       className={样式.公司字标}
@@ -466,10 +478,10 @@ export function 公司字标({
         width: 尺寸,
         height: 尺寸,
         borderRadius: 圆角,
-        background: 真标 ? 'var(--白)' : 底色,
+        background: 真标 || 显示图片 ? 'var(--白)' : 底色,
         color: 字色,
         fontSize: 字号,
-        border: 描边 || 真标 ? '1px solid var(--描边)' : 'none',
+        border: 描边 || 真标 || 显示图片 ? '1px solid var(--描边)' : 'none',
         overflow: 'hidden',
       }}
     >
@@ -477,6 +489,13 @@ export function 公司字标({
         <img
           src={真标}
           alt=""
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      ) : 显示图片 ? (
+        <img
+          src={公司图片URL ?? undefined}
+          alt=""
+          onError={() => 设图片失败(true)}
           style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />
       ) : (

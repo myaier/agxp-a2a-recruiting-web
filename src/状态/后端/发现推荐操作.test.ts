@@ -882,6 +882,34 @@ describe('招聘反馈与服务端先行', () => {
     expect(env.最新状态().招聘候选详情.rec_r1).toEqual(已淘汰卡);
   });
 
+  it('同一推荐二次淘汰落位：替换既有 rejected 卡时保留它已展开的 candidate_summary', async () => {
+    设主体角色(招聘主体);
+    // rejected 快照是 include=candidate_summary 装载的：既有卡带已展开摘要
+    vi.mocked(env.数据源.读取招聘候选).mockImplementation(async (_jobId, state) =>
+      state === 'rejected'
+        ? [{ ...BFF招聘候选推荐样本, candidate_summary: 招聘候选摘要样本 }]
+        : []);
+    await env.操作.加载招聘候选('job_1');
+    env.操作.设置发现推荐范围('recruiter', P4范围键.招聘已筛(['job_1']));
+    await env.操作.加载招聘已筛(['job_1']);
+    vi.mocked(env.数据源.设置招聘候选淘汰).mockResolvedValue({
+      ...BFF发现偏好样本, rejected: true, rejection_reason: 'direction_mismatch',
+    });
+    // 详情重读没有 candidate_summary 键（include 语法只属于列表）
+    const 已淘汰卡: BFF招聘推荐详情 = {
+      ...BFF招聘推荐详情样本,
+      rejected: true, rejection_reason: 'direction_mismatch', state: 'rejected',
+    };
+    vi.mocked(env.数据源.读取招聘候选详情).mockResolvedValue(已淘汰卡);
+
+    await env.操作.淘汰候选('job_1', 'rec_r1', 'direction_mismatch');
+
+    const jobKey = P4范围键.招聘已筛(['job_1']);
+    // 已展开的摘要保住：替换不能让 rejected 卡的摘要槽凭空消失
+    expect(env.最新状态().招聘已筛候选[jobKey]?.items[0]?.candidate_summary)
+      .toEqual(招聘候选摘要样本);
+  });
+
   it('撤销淘汰成功只移出 rejected，不回塞当前 available 批次', async () => {
     设主体角色(招聘主体);
     vi.mocked(env.数据源.读取招聘候选).mockImplementation(async (_jobId, state) =>
