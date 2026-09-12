@@ -123,6 +123,9 @@ function 候选S0详情DTO(): P5详情 {
     intentConfirmations: { candidate: '', recruiter: '' },
     terminalSummary: null,
     conversationRef: null,
+    // release/0.2.5：展示字段是解码层 required 成员；本屏不消费，置合法 null 档。
+    matchScore: null,
+    jobDetail: null,
   };
 }
 
@@ -178,6 +181,10 @@ function 招聘S1附件详情DTO(带附件: boolean): P5详情 {
     intentConfirmations: { candidate: '', recruiter: '' },
     terminalSummary: null,
     conversationRef: null,
+    matchScore: null,
+    jobDetail: null,
+    candidateResume: null,
+    candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };
 }
 
@@ -496,6 +503,11 @@ function 连续详情DTO(选项: { phase?: NegotiationDetail['phase'] } = {}): N
       location: '上海',
       public_salary_range: '25-40K·16薪',
       availability: 'available',
+      organization: null,
+      required_skills: null,
+      recruitment_type: null,
+      workplace_mode: null,
+      annual_salary_months: null,
     },
     delegation_id: 'dlg_rcpt_01',
     evaluation_id: phase === 'accepted' || phase === 'evaluating' ? 'ev_01' : null,
@@ -510,6 +522,7 @@ function 连续详情DTO(选项: { phase?: NegotiationDetail['phase'] } = {}): N
     created_at: '2026-09-01T08:00:00Z',
     updated_at: '2026-09-01T09:00:00Z',
     archived_at: null,
+    match_score: null,
     evaluation: null,
     case_detail: null,
     failure_history: [],
@@ -529,6 +542,7 @@ function 连续详情DTO(选项: { phase?: NegotiationDetail['phase'] } = {}): N
       },
       condition_confirmation: null,
     },
+    job_detail: null,
   };
 }
 

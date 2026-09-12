@@ -27,6 +27,12 @@ import {
   S0仅问题记录Wire,
   S0未知回答记录Wire,
 } from '../../测试/S0筛选记录样本';
+import {
+  BFF安全职位资料样本,
+  BFF候选身份匿名样本,
+  BFF候选身份披露样本,
+  BFF候选在线简历样本,
+} from '../../测试/展示资料样本';
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 type 二进制函数 = Pick<BFF客户端, '请求二进制'>['请求二进制'];
@@ -933,6 +939,150 @@ describe('MatchCase数据源', () => {
     const 块 = S0块({ messages: [造S0消息({ text: ' 需要空白的问题 ' })] });
     expect(() => 解P5详情(带S0记录(P5候选详情Wire, 块), 'candidate')).toThrow(契约漂移);
     expect((块.messages as Record<string, unknown>[])[0].text).toBe(' 需要空白的问题 ');
+  });
+
+  // ── release/0.2.5 展示字段：match_score / job_detail / candidate_resume / candidate_identity ──
+
+  /** 展示字段齐全的详情 wire（共享样本展开非 null；嵌套形状与 wire 同名同形）。 */
+  const 候选展示详情Wire = { ...P5候选详情Wire, job_detail: BFF安全职位资料样本 };
+  const 招聘展示详情Wire = {
+    ...P5招聘详情Wire,
+    job_detail: BFF安全职位资料样本,
+    candidate_resume: BFF候选在线简历样本,
+    candidate_identity: BFF候选身份披露样本,
+  };
+
+  /** 展示资料嵌套漂移由 展示资料.ts 抛错（本域消息不同，按协议错误码断言）。 */
+  function 漂移码(执行: () => unknown): string | null {
+    try {
+      执行();
+    } catch (错误) {
+      return (错误 as { code?: string }).code ?? null;
+    }
+    return null;
+  }
+
+  it('两端详情解出 match_score 与 job_detail；合法 0 分与 null 快照原样保留', () => {
+    expect(解P5详情(候选展示详情Wire, 'candidate')).toMatchObject({
+      matchScore: 92,
+      jobDetail: BFF安全职位资料样本,
+    });
+    expect(解P5详情(招聘展示详情Wire, 'recruiter')).toMatchObject({
+      matchScore: 87,
+      jobDetail: BFF安全职位资料样本,
+    });
+    // 合法 0 分：真实评分原样保留，绝不漂移成 null
+    expect(解P5详情({ ...P5候选详情Wire, match_score: 0 }, 'candidate').matchScore).toBe(0);
+    // 合法 null：legacy Case 冻结展示缺席，原样保留，不补读当前 Job
+    expect(解P5详情({ ...P5候选详情Wire, job_detail: null }, 'candidate')).toMatchObject({
+      matchScore: 92, jobDetail: null,
+    });
+    expect(解P5详情({ ...P5招聘详情Wire, match_score: null, job_detail: null }, 'recruiter')).toMatchObject({
+      matchScore: null, jobDetail: null,
+    });
+  });
+
+  it('招聘详情解出 candidate_resume/candidate_identity：完整档、匿名档与 disclosed 缺姓名头像不降级', () => {
+    expect(解P5详情(招聘展示详情Wire, 'recruiter')).toMatchObject({
+      candidateResume: BFF候选在线简历样本,
+      candidateIdentity: BFF候选身份披露样本,
+    });
+    // 匿名档：恒三 null
+    expect(解P5详情({ ...P5招聘详情Wire, candidate_identity: BFF候选身份匿名样本 }, 'recruiter'))
+      .toMatchObject({ candidateIdentity: BFF候选身份匿名样本 });
+    // disclosed 缺姓名头像不降级：三值全 null 仍 disclosed
+    const 缺值披露 = { state: 'disclosed', name: null, avatar_url: null, disclosed_at: null } as const;
+    expect(解P5详情({ ...P5招聘详情Wire, candidate_identity: 缺值披露 }, 'recruiter'))
+      .toMatchObject({ candidateIdentity: 缺值披露 });
+  });
+
+  it('candidate 角色拒绝混入招聘私有键；recruiter 缺展示键或缺私有键都漂移', () => {
+    expect(() => 解P5详情({ ...P5候选详情Wire, candidate_resume: BFF候选在线简历样本 }, 'candidate'))
+      .toThrow(契约漂移);
+    expect(() => 解P5详情({ ...P5候选详情Wire, candidate_identity: BFF候选身份匿名样本 }, 'candidate'))
+      .toThrow(契约漂移);
+    const { candidate_resume: _简历, ...缺简历 } = 招聘展示详情Wire;
+    const { candidate_identity: _身份, ...缺身份 } = 招聘展示详情Wire;
+    const { job_detail: _展示, ...缺展示 } = 候选展示详情Wire;
+    const { match_score: _评分, ...缺评分 } = 候选展示详情Wire;
+    expect(() => 解P5详情(缺简历, 'recruiter')).toThrow(契约漂移);
+    expect(() => 解P5详情(缺身份, 'recruiter')).toThrow(契约漂移);
+    expect(() => 解P5详情(缺展示, 'candidate')).toThrow(契约漂移);
+    expect(() => 解P5详情(缺评分, 'candidate')).toThrow(契约漂移);
+  });
+
+  it('match_score 出域（负数/101/小数/字符串）按契约漂移拒绝', () => {
+    for (const 坏评分 of [-1, 101, 1.5, '92']) {
+      expect(() => 解P5详情({ ...P5候选详情Wire, match_score: 坏评分 }, 'candidate')).toThrow(契约漂移);
+      expect(() => 解P5详情({ ...P5招聘详情Wire, match_score: 坏评分 }, 'recruiter')).toThrow(契约漂移);
+    }
+  });
+
+  it('job_detail/candidate_resume/candidate_identity 嵌套漂移按协议错误码整包拒绝', () => {
+    expect(漂移码(() => 解P5详情({ ...候选展示详情Wire, job_detail: { title: 'x' } }, 'candidate')))
+      .toBe('invalid_response');
+    expect(漂移码(() => 解P5详情({ ...招聘展示详情Wire, candidate_resume: { summary: 7 } }, 'recruiter')))
+      .toBe('invalid_response');
+    expect(漂移码(() => 解P5详情({
+      ...P5招聘详情Wire,
+      candidate_identity: { state: 'anonymous', name: '夹带姓名', avatar_url: null, disclosed_at: null },
+    }, 'recruiter'))).toBe('invalid_response');
+    expect(漂移码(() => 解P5详情({
+      ...P5招聘详情Wire,
+      candidate_identity: { state: 'maybe', name: null, avatar_url: null, disclosed_at: null },
+    }, 'recruiter'))).toBe('invalid_response');
+  });
+
+  it('招聘列表行与历史行解出 match_score/candidate_identity；0 分、null 评分与匿名身份合法', async () => {
+    请求Mock
+      .mockResolvedValueOnce(响应({ items: [招聘展开工作区项], next_cursor: null }))
+      .mockResolvedValueOnce(响应({
+        items: [{ ...P5招聘工作区项Wire, state: P5已完成状态Wire, match_score: null }],
+        next_cursor: null,
+      }))
+      .mockResolvedValueOnce(响应({
+        items: [{ ...招聘展开工作区项, match_score: 0 }],
+        next_cursor: null,
+      }));
+    const 首页 = await source.读取P5Open列表('recruiter', 职位ID, null);
+    expect(首页.items[0]).toMatchObject({ matchScore: 87, candidateIdentity: BFF候选身份匿名样本 });
+    const 历史页 = await source.读取P5历史('recruiter', 'completed', 职位ID, null);
+    expect(历史页.items[0]).toMatchObject({ matchScore: null, candidateIdentity: BFF候选身份匿名样本 });
+    const 零分页 = await source.读取P5Open列表('recruiter', null, null);
+    expect(零分页.items[0]).toMatchObject({ matchScore: 0 });
+    expect(请求Mock).toHaveBeenCalledTimes(3);
+  });
+
+  it('招聘列表/历史行缺 match_score 或 candidate_identity 漂移；候选行携带招聘私有键漂移', async () => {
+    const { match_score: _评分, ...缺评分 } = P5招聘工作区项Wire;
+    const { candidate_identity: _身份, ...缺身份 } = P5招聘工作区项Wire;
+    for (const 破损行 of [缺评分, 缺身份]) {
+      请求Mock.mockResolvedValueOnce(响应({ items: [破损行], next_cursor: null }));
+      await expect(source.读取P5Open列表('recruiter', 职位ID, null))
+        .rejects.toMatchObject({ code: 'invalid_response' });
+      请求Mock.mockResolvedValueOnce(响应({ items: [破损行], next_cursor: null }));
+      await expect(source.读取P5历史('recruiter', 'completed', 职位ID, null))
+        .rejects.toMatchObject({ code: 'invalid_response' });
+    }
+    // 候选列表行不在合同内：携带 match_score / candidate_identity 键即漂移
+    for (const 私有键 of [
+      { ...P5候选工作区项Wire, match_score: 87 },
+      { ...P5候选工作区项Wire, candidate_identity: BFF候选身份匿名样本 },
+    ]) {
+      请求Mock.mockResolvedValueOnce(响应({ items: [私有键], next_cursor: null }));
+      await expect(source.读取P5Open列表('candidate', 意向ID, null))
+        .rejects.toMatchObject({ code: 'invalid_response' });
+    }
+    expect(请求Mock).toHaveBeenCalledTimes(6);
+  });
+
+  it('招聘列表行 candidate_identity 嵌套漂移按协议错误码拒绝', async () => {
+    请求Mock.mockResolvedValueOnce(响应({
+      items: [{ ...P5招聘工作区项Wire, candidate_identity: { state: 'anonymous', name: '夹带', avatar_url: null, disclosed_at: null } }],
+      next_cursor: null,
+    }));
+    await expect(source.读取P5Open列表('recruiter', 职位ID, null))
+      .rejects.toMatchObject({ code: 'invalid_response' });
   });
 
   // ── 请求路径 / body ──

@@ -99,6 +99,11 @@ function 连续卡(选项: {
       location: 选项.城市 === undefined ? '上海' : 选项.城市,
       public_salary_range: '300-500 元/天',
       availability: 'available',
+      organization: null,
+      required_skills: null,
+      recruitment_type: null,
+      workplace_mode: null,
+      annual_salary_months: null,
     },
     delegation_id: recordKind === 'delegation' ? 'dlg_rcpt_01' : null,
     evaluation_id: null,
@@ -110,6 +115,7 @@ function 连续卡(选项: {
     refusal_code: 选项.refusalCode ?? null,
     actions: { retry: false, archive: false, open_case: false },
     retry_generation: 0,
+    match_score: null,
     created_at: '2026-09-01T08:00:00Z',
     updated_at: '2026-09-01T09:00:00Z',
     archived_at: null,
@@ -179,6 +185,8 @@ function 招聘行(选项: { caseId: string; 待办?: boolean; 更新于?: strin
     needsAction: 选项.待办 ?? false,
     candidateAlias: 选项.别名 ?? 别名,
     job: 候选行({ caseId: 选项.caseId }).job,
+    matchScore: null,
+    candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
     ...(选项.摘要 === undefined ? {} : { candidateSummary: 选项.摘要 }),
   };
 }

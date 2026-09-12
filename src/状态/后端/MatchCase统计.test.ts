@@ -21,6 +21,8 @@ function 连续卡(选项: { recordId: string; phase: NegotiationCard['phase']; 
     job: {
       job_id: 职位ID, title: 'AI 产品实习生', location: '上海',
       public_salary_range: '300-500 元/天', availability: 'available',
+      organization: null, required_skills: null, recruitment_type: null,
+      workplace_mode: null, annual_salary_months: null,
     },
     delegation_id: null, evaluation_id: null, case_id: null,
     shelf: 'active',
@@ -29,6 +31,7 @@ function 连续卡(选项: { recordId: string; phase: NegotiationCard['phase']; 
     failure: null, refusal_code: null,
     actions: { retry: false, archive: false, open_case: false },
     retry_generation: 0,
+    match_score: null,
     created_at: '2026-09-01T08:00:00Z', updated_at: '2026-09-01T09:00:00Z', archived_at: null,
   };
 }

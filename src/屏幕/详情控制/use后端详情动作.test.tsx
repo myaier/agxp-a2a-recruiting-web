@@ -107,12 +107,16 @@ function S0详情DTO(选项: { role?: P5角色; caseId?: string; 问题ref?: str
     intentConfirmations: { candidate: '', recruiter: '' } as const,
     terminalSummary: null,
     conversationRef: null,
+    matchScore: null,
+    jobDetail: null,
   };
   if ((选项.role ?? 'candidate') === 'recruiter') {
     return {
       role: 'recruiter',
       context: { candidateAlias: 'candidate-0123456789ab', job: 冻结职位 },
       stages: 阶段区组('recruiter', 选项.问题ref ?? 'prompt_hr'),
+      candidateResume: null,
+      candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
       ...公共,
     };
   }
@@ -209,6 +213,8 @@ function S0邀请详情DTO(caseId = 'mc_a'): P5详情 {
     intentConfirmations: { candidate: '', recruiter: '' },
     terminalSummary: null,
     conversationRef: null,
+    matchScore: null,
+    jobDetail: null,
   };
 }
 
@@ -225,6 +231,8 @@ function S1重试详情DTO(带绑定: boolean, caseId = 'mc_a'): P5详情 {
     intentConfirmations: { candidate: '', recruiter: '' },
     terminalSummary: null,
     conversationRef: null,
+    matchScore: null,
+    jobDetail: null,
   };
 }
 
@@ -241,6 +249,8 @@ function S1更换详情DTO(caseId = 'mc_a'): P5详情 {
     intentConfirmations: { candidate: '', recruiter: '' },
     terminalSummary: null,
     conversationRef: null,
+    matchScore: null,
+    jobDetail: null,
   };
 }
 
@@ -257,6 +267,10 @@ function S1初筛详情DTO(caseId = 'mc_hr'): P5详情 {
     intentConfirmations: { candidate: '', recruiter: '' },
     terminalSummary: null,
     conversationRef: null,
+    matchScore: null,
+    jobDetail: null,
+    candidateResume: null,
+    candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };
 }
 
@@ -297,6 +311,8 @@ function S2详情DTO(角色: P5角色, 协同: P5详情['currentCoordination'], 
         intentConfirmations: { candidate: '', recruiter: '' },
         terminalSummary: null,
         conversationRef: null,
+        matchScore: null,
+        jobDetail: null,
       }
     : {
         role: 'recruiter',
@@ -309,6 +325,10 @@ function S2详情DTO(角色: P5角色, 协同: P5详情['currentCoordination'], 
         intentConfirmations: { candidate: '', recruiter: '' },
         terminalSummary: null,
         conversationRef: null,
+        matchScore: null,
+        jobDetail: null,
+        candidateResume: null,
+        candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
       };
 }
 
@@ -332,6 +352,8 @@ function S3详情DTO(
     intentConfirmations: 意向,
     terminalSummary: null,
     conversationRef: null,
+    matchScore: null,
+    jobDetail: null,
   };
   return 角色 === 'candidate'
     ? {
@@ -344,6 +366,8 @@ function S3详情DTO(
         role: 'recruiter',
         context: { candidateAlias: 'candidate-0123456789ab', job: 冻结职位 },
         state: 状态({ caseId, stage: 'intent_confirmation', status: 'needs_user', step: 'awaiting_confirmations' }),
+        candidateResume: null,
+        candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
         ...公共,
       };
 }

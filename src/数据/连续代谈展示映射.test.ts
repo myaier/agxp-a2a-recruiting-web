@@ -52,6 +52,11 @@ function 连续卡(选项: {
       location: 选项.城市 === undefined ? '上海' : 选项.城市,
       public_salary_range: 选项.薪资 === undefined ? '300-500 元/天' : 选项.薪资,
       availability: 'available',
+      organization: null,
+      required_skills: null,
+      recruitment_type: null,
+      workplace_mode: null,
+      annual_salary_months: null,
     },
     delegation_id: recordKind === 'delegation' ? 'dlg_rcpt_01' : null,
     evaluation_id: 选项.phase === 'accepted' || 选项.phase === 'evaluating' ? 'ev_01' : null,
@@ -66,6 +71,7 @@ function 连续卡(选项: {
     created_at: '2026-09-01T08:00:00Z',
     updated_at: '2026-09-01T09:00:00Z',
     archived_at: null,
+    match_score: null,
   };
 }
 
@@ -118,6 +124,7 @@ function 连续详情(选项: {
       public_evaluation: 选项.publicEvaluation === undefined ? null : 选项.publicEvaluation,
       condition_confirmation: null,
     },
+    job_detail: null,
   };
 }
 

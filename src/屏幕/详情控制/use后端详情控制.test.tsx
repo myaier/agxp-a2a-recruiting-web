@@ -127,6 +127,9 @@ function 候选详情DTO(覆盖: { state?: P5列表项['state']; availableAction
     intentConfirmations: { candidate: '', recruiter: '' },
     terminalSummary: null,
     conversationRef: null,
+    // release/0.2.5：展示字段是解码层 required 成员；本屏不消费，置合法 null 档。
+    matchScore: null,
+    jobDetail: null,
   };
 }
 
@@ -151,6 +154,8 @@ function 候选S1详情DTO(选项: { caseId?: string } = {}): P5详情 {
     intentConfirmations: { candidate: '', recruiter: '' },
     terminalSummary: null,
     conversationRef: null,
+    matchScore: null,
+    jobDetail: null,
   };
 }
 
@@ -262,6 +267,11 @@ function 连续详情DTO(选项: {
       location: '上海',
       public_salary_range: '25-40K·16薪',
       availability: 'available',
+      organization: null,
+      required_skills: null,
+      recruitment_type: null,
+      workplace_mode: null,
+      annual_salary_months: null,
     },
     delegation_id: recordKind === 'delegation' ? 'dlg_rcpt_01' : null,
     evaluation_id: phase === 'accepted' || phase === 'evaluating' ? 'ev_01' : null,
@@ -278,6 +288,7 @@ function 连续详情DTO(选项: {
     created_at: '2026-09-01T08:00:00Z',
     updated_at: '2026-09-01T09:00:00Z',
     archived_at: null,
+    match_score: null,
     evaluation: null,
     case_detail: caseDetail,
     failure_history: [],
@@ -285,6 +296,7 @@ function 连续详情DTO(选项: {
       public_evaluation: 选项.publicEvaluation === undefined ? null : 选项.publicEvaluation,
       condition_confirmation: null,
     },
+    job_detail: null,
   };
 }
 

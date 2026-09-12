@@ -86,6 +86,11 @@ function 连续行(选项: 连续行选项): NegotiationCard {
       location: '上海',
       public_salary_range: '25-40K·16薪',
       availability: 'available',
+      organization: null,
+      required_skills: null,
+      recruitment_type: null,
+      workplace_mode: null,
+      annual_salary_months: null,
     },
     delegation_id: recordKind === 'delegation' ? 'dlg_rcpt_01' : null,
     evaluation_id: null,
@@ -98,6 +103,7 @@ function 连续行(选项: 连续行选项): NegotiationCard {
     actions: { retry: false, archive: false, open_case: false, ...选项.actions },
     retry_generation: 0,
     created_at: '2026-08-20T01:00:00Z', updated_at: '2026-08-29T02:00:00Z', archived_at: '2026-08-29T03:00:00Z',
+    match_score: null,
   };
 }
 
@@ -189,6 +195,8 @@ function 招聘终局行(选项: 行选项): P5列表项 {
     needsAction: false,
     candidateAlias: 别名,
     job: 候选终局行(选项).job,
+    matchScore: null,
+    candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };
 }
 

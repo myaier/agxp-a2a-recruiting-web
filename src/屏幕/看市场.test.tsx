@@ -1383,6 +1383,8 @@ describe('看市场 · P5 横幅共用（Backend）', () => {
       job: {
         job_id: 职位ID, title: '后端工程师', location: '上海',
         public_salary_range: '20-30K', availability: 'available',
+        organization: null, required_skills: null, recruitment_type: null,
+        workplace_mode: null, annual_salary_months: null,
       },
       delegation_id: null, evaluation_id: null, case_id: null,
       shelf: 'active',
@@ -1391,6 +1393,7 @@ describe('看市场 · P5 横幅共用（Backend）', () => {
       failure: null, refusal_code: null,
       actions: { retry: false, archive: false, open_case: false },
       retry_generation: 0,
+      match_score: null,
       created_at: '2026-09-01T08:00:00Z', updated_at: '2026-09-01T09:00:00Z', archived_at: null,
     };
   }

@@ -91,6 +91,11 @@ const 连续卡片: NegotiationCard = {
     location: '上海',
     public_salary_range: '300-500 元/天',
     availability: 'available',
+    organization: null,
+    required_skills: null,
+    recruitment_type: null,
+    workplace_mode: null,
+    annual_salary_months: null,
   },
   delegation_id: 连续记录A,
   evaluation_id: null,
@@ -105,6 +110,7 @@ const 连续卡片: NegotiationCard = {
   created_at: '2026-08-29T01:00:00Z',
   updated_at: '2026-08-29T02:00:00Z',
   archived_at: null,
+  match_score: null,
 };
 
 const 连续聚合DTO: NegotiationDetail = {
@@ -113,6 +119,7 @@ const 连续聚合DTO: NegotiationDetail = {
   case_detail: P5候选详情DTO,
   failure_history: [],
   agent_summary: { public_evaluation: null, condition_confirmation: null },
+  job_detail: null,
 };
 
 describe('应用状态 reducer', () => {

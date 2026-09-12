@@ -10,8 +10,10 @@
 
 import { BFF错误 } from '../HTTP客户端';
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
+import type { BFF安全职位资料, BFF公司摘要 } from '../BFF契约';
 import { 解P5详情, 解P5状态视图, 解S0小结, 解下一游标, 校验调用方游标 } from './MatchCase';
 import type { P5S0筛选总结, P5状态视图, P5详情 } from './MatchCase';
+import { 解公司摘要, 解职位资料 } from './展示资料';
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 
@@ -99,6 +101,17 @@ function 要求范围整数(值: unknown, 最小: number, 最大: number): numbe
   return 整数;
 }
 
+function 要求可空整数(值: unknown): number | null {
+  if (值 === null) return null;
+  return 要求整数(值);
+}
+
+/** 可空闭集：null 与闭词外的取值都区分（null 合法原样，表外词漂移）。 */
+function 要求可空枚举<T extends string>(值: unknown, 取值: readonly T[]): T | null {
+  if (值 === null) return null;
+  return 要求枚举(值, 取值);
+}
+
 const RFC3339模式 = /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/;
 
 /** 协议 B 时间戳按 OpenAPI 声明为 RFC 3339 UTC；形状或可解析性不对都拒绝。 */
@@ -136,6 +149,9 @@ const 输入警示全表 = [
   'resume_summary_missing', 'candidate_context_truncated',
 ] as const;
 const 阶段状态全表 = ['pending', 'active', 'passed', 'ended'] as const;
+// release/0.2.5 R1 展示成员：NegotiationJob 的闭集与 SafeJobDetail/CatalogReference 家族同词汇。
+const 招聘类型全表 = ['social_full_time', 'campus', 'internship', 'part_time'] as const;
+const 办公方式全表 = ['onsite', 'hybrid', 'remote'] as const;
 
 // ── 公开 DTO：保留 YAML 原字段名；嵌套 Case 块复用既有 P5 decoder 的形状 ──
 
@@ -147,6 +163,12 @@ export interface NegotiationJob {
   location: string | null;
   public_salary_range: string | null;
   availability: 'available' | 'unavailable';
+  /** release/0.2.5 R1 展示成员：五键全 required 且可空；null 与 []、0 不互换。 */
+  organization: BFF公司摘要 | null;
+  required_skills: string[] | null;
+  recruitment_type: 'social_full_time' | 'campus' | 'internship' | 'part_time' | null;
+  workplace_mode: 'onsite' | 'hybrid' | 'remote' | null;
+  annual_salary_months: number | null;
 }
 
 export interface NegotiationFailure {
@@ -190,6 +212,8 @@ export interface NegotiationCard {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  /** release/0.2.5：本查看者可溯源的原始推荐分（0 是合法真实分，无溯源为 null）。 */
+  match_score: number | null;
 }
 
 export interface NegotiationPage {
@@ -277,6 +301,8 @@ export interface NegotiationDetail extends NegotiationCard {
   case_detail: P5详情 | null;
   failure_history: NegotiationFailureEvent[];
   agent_summary: NegotiationAgentSummary;
+  /** release/0.2.5：详情专属冻结岗位展示（Case-bound 与 case_detail.job_detail 同一冻结区；legacy 为显式 null）。 */
+  job_detail: BFF安全职位资料 | null;
 }
 
 export interface NegotiationRetryReceipt {
@@ -292,13 +318,26 @@ export interface NegotiationArchiveReceipt {
 // ── 具体 decoder：逐字段过 guard，不做 `as` 直转 ──
 
 function 解NegotiationJob(input: unknown): NegotiationJob {
-  const raw = 要求闭合对象(input, ['job_id', 'title', 'location', 'public_salary_range', 'availability']);
+  const raw = 要求闭合对象(input, [
+    'job_id', 'title', 'location', 'public_salary_range', 'availability',
+    'organization', 'required_skills', 'recruitment_type', 'workplace_mode', 'annual_salary_months',
+  ]);
+  // release/0.2.5：五个展示成员全 required；null（unavailable / legacy 冻结缺席）与 []、0
+  // 原样保留区分，非 null 整包过各自的闭合解码。
+  const requiredSkills = raw.required_skills;
   return {
     job_id: 要求非空字符串(raw.job_id),
     title: 要求可空字符串(raw.title),
     location: 要求可空字符串(raw.location),
     public_salary_range: 要求可空字符串(raw.public_salary_range),
     availability: 要求枚举(raw.availability, 岗位可用性全表),
+    organization: raw.organization === null ? null : 解公司摘要(raw.organization),
+    required_skills: requiredSkills === null
+      ? null
+      : 要求数组(requiredSkills).map(要求字符串),
+    recruitment_type: 要求可空枚举(raw.recruitment_type, 招聘类型全表),
+    workplace_mode: 要求可空枚举(raw.workplace_mode, 办公方式全表),
+    annual_salary_months: 要求可空整数(raw.annual_salary_months),
   };
 }
 
@@ -329,9 +368,9 @@ function 解NegotiationFailureEvent(input: unknown): NegotiationFailureEvent {
 const 卡片必需键 = [
   'needs_action', 'record_id', 'record_kind', 'intention_id', 'job', 'delegation_id',
   'evaluation_id', 'case_id', 'shelf', 'phase', 'case_state', 'failure', 'refusal_code',
-  'actions', 'retry_generation', 'created_at', 'updated_at', 'archived_at',
+  'actions', 'retry_generation', 'created_at', 'updated_at', 'archived_at', 'match_score',
 ] as const;
-const 详情附加键 = ['evaluation', 'case_detail', 'failure_history', 'agent_summary'] as const;
+const 详情附加键 = ['evaluation', 'case_detail', 'failure_history', 'agent_summary', 'job_detail'] as const;
 
 /** 卡片主体：列表行与详情共用的键集与规则（history 恒无待办），保证详情/列表一致。 */
 function 解卡片字段(raw: Record<string, unknown>): NegotiationCard {
@@ -358,6 +397,8 @@ function 解卡片字段(raw: Record<string, unknown>): NegotiationCard {
     created_at: 要求RFC3339(raw.created_at),
     updated_at: 要求RFC3339(raw.updated_at),
     archived_at: 要求可空RFC3339(raw.archived_at),
+    // release/0.2.5：可溯源原始推荐分（0..100）；0 是合法真实分，null 是无溯源，二者不互换。
+    match_score: raw.match_score === null ? null : 要求范围整数(raw.match_score, 0, 100),
   };
 }
 
@@ -491,6 +532,9 @@ export function 解NegotiationDetail(input: unknown): NegotiationDetail {
   const evaluation = raw.evaluation === null ? null : 解JobEvaluationView(raw.evaluation);
   // 聚合嵌套详情按候选角色解码：招聘端 Case 详情（含其专属动作/别名）不能充当候选聚合。
   const case_detail = raw.case_detail === null ? null : 解P5详情(raw.case_detail, 'candidate');
+  // release/0.2.5：详情专属冻结岗位展示 —— Case-bound 与 case_detail.job_detail 是同一
+  // 冻结区；null 是 legacy Case 的合法快照，绝不补读当前 Job。
+  const job_detail = raw.job_detail === null ? null : 解职位资料(raw.job_detail);
   const failure_history = 要求数组(raw.failure_history).map(解NegotiationFailureEvent);
   const agent_summary = 解NegotiationAgentSummary(raw.agent_summary);
   // J-PILOT-01 review-r1（Spec §4/§6「Case mutation 使用真实 case_id，negotiation 读取及恢复
@@ -518,6 +562,7 @@ export function 解NegotiationDetail(input: unknown): NegotiationDetail {
     case_detail,
     failure_history,
     agent_summary,
+    job_detail,
   };
 }
 

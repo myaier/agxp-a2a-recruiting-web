@@ -915,6 +915,10 @@ export interface BFF招聘工作区项 {
   needs_action: boolean;
   job: BFFMatchCase工作区职位;
   candidate_alias: string;
+  /** release/0.2.5：每行恒在场的可溯源原始推荐分（无溯源为 null，0 是合法真实分）。 */
+  match_score: number | null;
+  /** release/0.2.5：Case 作用域候选身份（恒在场；匿名档恒三 null）。 */
+  candidate_identity: BFF候选身份;
   /** include=candidate_summary 展开时出现（闭合对象或显式 null）；历史行没有该键。 */
   candidate_summary?: BFF招聘候选摘要 | null;
 }
@@ -1007,6 +1011,10 @@ export interface BFF候选MatchCase详情 {
   terminal_summary?: BFFMatchCase终局摘要;
   intention_id: string;
   job: BFFMatchCase工作区职位;
+  /** release/0.2.5：本查看者可溯源的原始推荐分（0 是合法真实分，无溯源为 null）。 */
+  match_score: number | null;
+  /** release/0.2.5：Case 创建时冻结的具体岗位展示；legacy Case 冻结缺席为显式 null。 */
+  job_detail: BFF安全职位资料 | null;
   /**
    * P7 Task 6：completed + complete 时必在的已发布会话坐标（^[1-9][0-9]{0,63}$）；
    * handoff_pending / open / ended 详情必缺席 —— 与 state.step 的联合不变式由
@@ -1024,6 +1032,14 @@ export interface BFF招聘MatchCase详情 {
   terminal_summary?: BFFMatchCase终局摘要;
   job: BFFMatchCase工作区职位;
   candidate_alias: string;
+  /** release/0.2.5：同 BFF候选MatchCase详情.match_score（招聘视角）。 */
+  match_score: number | null;
+  /** release/0.2.5：同 BFF候选MatchCase详情.job_detail（同一 Case 冻结区）。 */
+  job_detail: BFF安全职位资料 | null;
+  /** release/0.2.5：招聘专属冻结安全简历；无冻结区或当前授权拒绝为显式 null。 */
+  candidate_resume: BFF候选在线简历 | null;
+  /** release/0.2.5：Case 作用域候选身份（与列表行同一存储读，恒在场）。 */
+  candidate_identity: BFF候选身份;
   /** P7 Task 6：同 BFF候选MatchCase详情.conversation_ref。 */
   conversation_ref?: string;
 }

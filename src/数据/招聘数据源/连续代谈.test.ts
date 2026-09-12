@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
 import { P5候选详情Wire, P5招聘详情Wire, P5状态视图Wire, P5工作区职位Wire } from '../../测试/BFF样本';
+import { BFF公司摘要样本, BFF安全职位资料样本 } from '../../测试/展示资料样本';
 import {
   创建连续代谈数据源,
   解JobEvaluationView,
@@ -68,6 +69,11 @@ function 连续卡片Wire(覆盖: Record<string, unknown> = {}): Record<string, 
       location: '上海',
       public_salary_range: '300-500 元/天',
       availability: 'available',
+      organization: BFF公司摘要样本,
+      required_skills: ['Python'],
+      recruitment_type: 'internship',
+      workplace_mode: 'hybrid',
+      annual_salary_months: null,
     },
     delegation_id: 记录ID,
     evaluation_id: 'eva_0123456789abcdef0123456789abcdef',
@@ -82,6 +88,7 @@ function 连续卡片Wire(覆盖: Record<string, unknown> = {}): Record<string, 
     created_at: '2026-09-10T01:00:00Z',
     updated_at: '2026-09-10T02:00:00Z',
     archived_at: null,
+    match_score: 92,
     ...覆盖,
   };
 }
@@ -161,7 +168,7 @@ const 条件确认Wire = {
   ],
 };
 
-/** pre-Case 详情：卡片键 + evaluation/case_detail/failure_history/agent_summary。 */
+/** pre-Case 详情：卡片键 + job_detail/evaluation/case_detail/failure_history/agent_summary。 */
 function 连续详情Wire(覆盖: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     ...连续卡片Wire(),
@@ -169,6 +176,7 @@ function 连续详情Wire(覆盖: Record<string, unknown> = {}): Record<string, 
     case_detail: null,
     failure_history: [],
     agent_summary: { public_evaluation: null, condition_confirmation: null },
+    job_detail: null,
     ...覆盖,
   };
 }
@@ -179,6 +187,7 @@ const 开案详情Wire = {
   case_detail: P5候选详情Wire,
   failure_history: [],
   agent_summary: { public_evaluation: null, condition_confirmation: 条件确认Wire },
+  job_detail: null,
 };
 
 const 信息不足历史详情Wire = {
@@ -189,6 +198,7 @@ const 信息不足历史详情Wire = {
     { retry_generation: 0, evaluation_id: null, code: 'delegation_agent_unavailable', occurred_at: '2026-09-10T01:30:00Z' },
   ],
   agent_summary: { public_evaluation: null, condition_confirmation: null },
+  job_detail: null,
 };
 
 /** 真实缺键（键不在场，而不是 undefined 值）。 */
@@ -418,9 +428,15 @@ describe('连续代谈数据源', () => {
       archived_at: '2026-09-10T04:00:00Z',
     })).case_state).toMatchObject({ outcomeCode: 'user_ended' });
     expect(解NegotiationCard(连续卡片Wire({
-      job: { job_id: 职位ID, title: null, location: null, public_salary_range: null, availability: 'unavailable' },
+      job: {
+        job_id: 职位ID, title: null, location: null, public_salary_range: null, availability: 'unavailable',
+        organization: null, required_skills: null, recruitment_type: null, workplace_mode: null,
+        annual_salary_months: null,
+      },
     })).job).toEqual({
       job_id: 职位ID, title: null, location: null, public_salary_range: null, availability: 'unavailable',
+      organization: null, required_skills: null, recruitment_type: null, workplace_mode: null,
+      annual_salary_months: null,
     });
   });
 
@@ -429,7 +445,7 @@ describe('连续代谈数据源', () => {
   it('详情解出卡片全部键且与同值列表卡逐字段一致', () => {
     const 详情 = 解NegotiationDetail(开案详情Wire);
     const 卡片 = 解NegotiationCard(开案卡片Wire);
-    const { evaluation: _评估, case_detail: _案件, failure_history: _失败史, agent_summary: _总结, ...详情卡片部分 } = 详情;
+    const { evaluation: _评估, case_detail: _案件, failure_history: _失败史, agent_summary: _总结, job_detail: _岗位展示, ...详情卡片部分 } = 详情;
     expect(详情卡片部分).toEqual(卡片);
     expect(详情.case_detail).toMatchObject({ role: 'candidate', context: { intentionId: 意向ID } });
     expect(详情.failure_history).toEqual([]);
@@ -651,6 +667,90 @@ describe('连续代谈数据源', () => {
     // 合法对照：开案详情全部内层坐标同为 mc_1，pre-Case 详情三块全空，均可读
     expect(() => 解NegotiationDetail(开案详情Wire)).not.toThrow();
     expect(() => 解NegotiationDetail(连续详情Wire())).not.toThrow();
+  });
+
+  // ── release/0.2.5 展示字段：job 五成员 / match_score / job_detail ──
+
+  it('卡片 job 解出五个 R1 展示成员；unavailable 全 null 与 Case 冻结 legacy 的 null 都原样保留', () => {
+    expect(解NegotiationCard(连续卡片Wire()).job).toEqual({
+      job_id: 职位ID,
+      title: 'AI 产品实习生',
+      location: '上海',
+      public_salary_range: '300-500 元/天',
+      availability: 'available',
+      organization: BFF公司摘要样本,
+      required_skills: ['Python'],
+      recruitment_type: 'internship',
+      workplace_mode: 'hybrid',
+      annual_salary_months: null,
+    });
+    // unavailable 档：五个展示成员全显式 null（不是缺键，也不归一成 []）
+    const 全空Job = {
+      job_id: 职位ID, title: null, location: null, public_salary_range: null, availability: 'unavailable',
+      organization: null, required_skills: null, recruitment_type: null, workplace_mode: null,
+      annual_salary_months: null,
+    };
+    expect(解NegotiationCard(连续卡片Wire({ job: 全空Job })).job).toEqual(全空Job);
+    // Case-bound legacy 冻结：availability=available 而 required_skills=null 合法（[] 与 null 不互换）
+    expect(解NegotiationCard(连续卡片Wire({
+      job: { ...(连续卡片Wire().job as Record<string, unknown>), required_skills: null },
+    })).job.required_skills).toBe(null);
+  });
+
+  it('卡片 job 展示成员与 match_score 的类型/枚举/出界漂移都拒绝', () => {
+    const 基础Job = 连续卡片Wire().job as Record<string, unknown>;
+    for (const 破损 of [
+      略键(连续卡片Wire(), 'match_score'),
+      连续卡片Wire({ match_score: -1 }),
+      连续卡片Wire({ match_score: 101 }),
+      连续卡片Wire({ match_score: 1.5 }),
+      连续卡片Wire({ match_score: '92' }),
+      连续卡片Wire({ job: { ...基础Job, organization: { organization_id: 7 } } }),
+      连续卡片Wire({ job: { ...基础Job, required_skills: ['Python', 3] } }),
+      连续卡片Wire({ job: { ...基础Job, required_skills: 'Python' } }),
+      连续卡片Wire({ job: { ...基础Job, recruitment_type: 'gig' } }),
+      连续卡片Wire({ job: { ...基础Job, workplace_mode: 'meta' } }),
+      连续卡片Wire({ job: { ...基础Job, annual_salary_months: '13' } }),
+      连续卡片Wire({ job: 略键(基础Job, 'organization') }),
+      连续卡片Wire({ job: 略键(基础Job, 'annual_salary_months') }),
+    ]) {
+      expect(() => 解NegotiationCard(破损)).toThrow();
+    }
+  });
+
+  it('详情 job_detail：完整样本解码、legacy null 合法、嵌套漂移按协议错误码拒绝', () => {
+    const 完整 = 解NegotiationDetail(连续详情Wire({ job_detail: BFF安全职位资料样本 }));
+    expect(完整.job_detail).toEqual(BFF安全职位资料样本);
+    // Case-bound legacy 冻结：null 原样保留，不补读当前 Job
+    expect(解NegotiationDetail(连续详情Wire()).job_detail).toBe(null);
+    try {
+      解NegotiationDetail(连续详情Wire({ job_detail: { title: 'x' } }));
+      throw new Error('未抛错');
+    } catch (错误) {
+      expect((错误 as { code?: string }).code).toBe('invalid_response');
+    }
+  });
+
+  it('开案详情嵌套 case_detail 解出扩展展示字段，历史详情同样携带 job_detail', () => {
+    const 嵌套展示 = { ...P5候选详情Wire, match_score: 0, job_detail: BFF安全职位资料样本 };
+    const 详情 = 解NegotiationDetail(连续详情Wire({
+      record_id: 案件记录ID,
+      record_kind: 'case',
+      delegation_id: null,
+      evaluation_id: null,
+      case_id: 'mc_1',
+      phase: 'case_started',
+      case_state: P5状态视图Wire,
+      case_detail: 嵌套展示,
+      agent_summary: { public_evaluation: null, condition_confirmation: null },
+      evaluation: null,
+      job_detail: BFF安全职位资料样本,
+    }));
+    expect(详情.case_detail).toMatchObject({ matchScore: 0, jobDetail: BFF安全职位资料样本 });
+    // 详情自身 job_detail 与嵌套 Case 冻结展示同源同形
+    expect(详情.job_detail).toEqual(BFF安全职位资料样本);
+    // history 聚合同样携带详情级 job_detail（合法 null 快照原样进历史）
+    expect(解NegotiationDetail(信息不足历史详情Wire).job_detail).toBe(null);
   });
 
   // ── 回执解码 ──

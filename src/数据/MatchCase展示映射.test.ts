@@ -230,6 +230,9 @@ function 造详情(选项: {
     intentConfirmations: { candidate: '', recruiter: '' } as { candidate: ''; recruiter: '' },
     terminalSummary: 选项.terminalSummary ?? null,
     conversationRef: 选项.conversationRef ?? null,
+    // release/0.2.5：展示字段是解码层的 required 成员；本映射层不消费，置合法 null 档。
+    matchScore: null,
+    jobDetail: null,
   };
   if (role === 'candidate') {
     return {
@@ -245,6 +248,8 @@ function 造详情(选项: {
     ...主体,
     role,
     context: { candidateAlias: 选项.candidateAlias ?? 'candidate-0123456789ab', job: 岗位样本 },
+    candidateResume: null,
+    candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };
 }
 
@@ -258,7 +263,13 @@ function 造列表项(选项: {
   if (role === 'candidate') {
     return { ...主体, role, intentionId: 'int_0123456789abcdef0123456789abcdef' };
   }
-  return { ...主体, role, candidateAlias: 'candidate-0123456789ab' };
+  return {
+    ...主体,
+    role,
+    candidateAlias: 'candidate-0123456789ab',
+    matchScore: null,
+    candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
+  };
 }
 
 type 正常视图 = { kind: '正常' };

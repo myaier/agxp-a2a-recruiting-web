@@ -583,6 +583,10 @@ export const P5终局摘要Wire: BFFMatchCase终局摘要 = {
   finalized_at: '2026-08-29T03:00:00Z',
 };
 
+/** CaseCandidateIdentity 的缺省档：anonymous 恒三 null（disclosed/缺值档由各测试展开覆盖）。 */
+const P5候选身份Wire = { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null } as const;
+
+/** release/0.2.5：两端详情 required match_score/job_detail；招聘详情 required 私有展示二键。 */
 export const P5候选详情Wire: BFF候选MatchCase详情 = {
   state: P5状态视图Wire,
   needs_action: true,
@@ -591,6 +595,8 @@ export const P5候选详情Wire: BFF候选MatchCase详情 = {
   intent_confirmations: { candidate: '', recruiter: '' },
   intention_id: 'int_0123456789abcdef0123456789abcdef',
   job: P5工作区职位Wire,
+  match_score: 92,
+  job_detail: null,
 };
 
 export const P5招聘详情Wire: BFF招聘MatchCase详情 = {
@@ -601,6 +607,10 @@ export const P5招聘详情Wire: BFF招聘MatchCase详情 = {
   intent_confirmations: { candidate: '', recruiter: '' },
   job: P5工作区职位Wire,
   candidate_alias: 'candidate-0123456789ab',
+  match_score: 87,
+  job_detail: null,
+  candidate_resume: null,
+  candidate_identity: P5候选身份Wire,
 };
 
 export const P5候选工作区项Wire: BFF候选工作区项 = {
@@ -610,11 +620,14 @@ export const P5候选工作区项Wire: BFF候选工作区项 = {
   job: P5工作区职位Wire,
 };
 
+/** release/0.2.5：招聘列表/历史行 required match_score/candidate_identity（恒在场）。 */
 export const P5招聘工作区项Wire: BFF招聘工作区项 = {
   state: P5状态视图Wire,
   needs_action: false,
   job: P5工作区职位Wire,
   candidate_alias: 'candidate-0123456789ab',
+  match_score: 87,
+  candidate_identity: P5候选身份Wire,
 };
 
 export const 招聘候选摘要样本: BFF招聘候选摘要 = {

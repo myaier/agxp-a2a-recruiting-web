@@ -101,7 +101,15 @@ function 候选行(caseId: string): P5列表项 {
 }
 
 function 招聘行(caseId: string): P5列表项 {
-  return { role: 'recruiter', state: 候选状态(caseId), needsAction: false, candidateAlias: 'candidate-0123456789ab', job: 职位快照 };
+  return {
+    role: 'recruiter',
+    state: 候选状态(caseId),
+    needsAction: false,
+    candidateAlias: 'candidate-0123456789ab',
+    job: 职位快照,
+    matchScore: null,
+    candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
+  };
 }
 
 function 候选页(items: P5列表项[], nextCursor: string | null): P5列表页 {
@@ -191,6 +199,11 @@ function 连续卡(recordId: string, 覆盖: Partial<NegotiationCard> = {}): Neg
       location: '上海',
       public_salary_range: '300-500 元/天',
       availability: 'available',
+      organization: null,
+      required_skills: null,
+      recruitment_type: null,
+      workplace_mode: null,
+      annual_salary_months: null,
     },
     delegation_id: recordId.startsWith('dlg_') ? recordId : null,
     evaluation_id: null,
@@ -205,6 +218,7 @@ function 连续卡(recordId: string, 覆盖: Partial<NegotiationCard> = {}): Neg
     created_at: '2026-08-29T01:00:00Z',
     updated_at: '2026-08-29T02:00:00Z',
     archived_at: null,
+    match_score: null,
     ...覆盖,
   };
 }
@@ -223,6 +237,7 @@ function 连续聚合(
     case_detail,
     failure_history: [],
     agent_summary: { public_evaluation: null, condition_confirmation: null },
+    job_detail: null,
     ...覆盖,
   };
 }
@@ -769,6 +784,14 @@ describe('连续列表读取', () => {
       阶段: '成功', 刷新中: false, items: [连续卡(连续记录A)], nextCursor: 'cur_2',
       已加载页数: 1, error: null, generation: 0, ownerSubjectId: 'sub_1',
     });
+    // release/0.2.5：卡片的 match_score 与 job 五成员随同一返回类型进入连续列表缓存
+    expect(env.最新状态().P5连续列表['p5:negotiations:candidate:active']?.items[0]).toMatchObject({
+      match_score: null,
+      job: {
+        organization: null, required_skills: null, recruitment_type: null,
+        workplace_mode: null, annual_salary_months: null,
+      },
+    });
   });
 
   it('非 force 命中同主体成功快照零请求；force 手动刷新丢旧 cursor 只重读首屏', async () => {
@@ -1022,6 +1045,10 @@ describe('候选 Case 详情聚合路径', () => {
     expect(env.最新状态().P5详情[P5范围键.detail('candidate', 连续Case坐标)]).toEqual({
       阶段: '成功', 刷新中: false, detail: 权威候选详情, error: null, generation: 0,
     });
+    // release/0.2.5：聚合 case_detail（含扩展展示字段）整包投影进旧详情槽，不另镜第二权威
+    expect(env.最新状态().P5详情[P5范围键.detail('candidate', 连续Case坐标)]?.detail).toMatchObject({
+      matchScore: 92, jobDetail: null,
+    });
   });
 
   it('聚合返回 canonical 与输入不同：canonical 连续快照唯一、详情槽仍按输入 case 坐标投影', async () => {
@@ -1271,6 +1298,11 @@ describe('scope 隔离与迟到完成', () => {
     expect(工作区[`p5:open:recruiter:${职位ID}`]?.items.map((行) => 行.state.caseId)).toEqual(['mc_r']);
     // candidate_alias 只是展示文本：快照键与坐标全部以 case_id / role+过滤 为准
     expect(工作区[`p5:open:recruiter:${职位ID}`]?.items[0]).toHaveProperty('candidateAlias', 'candidate-0123456789ab');
+    // release/0.2.5：招聘行的扩展展示字段随同一返回类型进入列表缓存
+    expect(工作区[`p5:open:recruiter:${职位ID}`]?.items[0]).toMatchObject({
+      matchScore: null,
+      candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
+    });
   });
 
   it('既有刷新入口整组替换 items：新页摘要变 null 后旧摘要不得残留（2026-09-09 接线）', async () => {

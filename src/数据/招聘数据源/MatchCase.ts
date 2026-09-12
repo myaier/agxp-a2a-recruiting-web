@@ -13,6 +13,9 @@
 import { BFF错误 } from '../HTTP客户端';
 import type { BFF二进制响应, BFF客户端 } from '../HTTP客户端';
 import type {
+  BFF候选身份,
+  BFF候选在线简历,
+  BFF安全职位资料,
   BFF招聘候选摘要,
   P5动作,
   P5历史生命周期,
@@ -23,6 +26,7 @@ import type {
   P5步骤,
 } from '../BFF契约';
 import { 解招聘候选摘要 } from './候选摘要';
+import { 解候选身份, 解候选在线简历, 解职位资料 } from './展示资料';
 
 export type { P5角色, P5历史生命周期, P5步骤, P5动作 } from '../BFF契约';
 
@@ -110,6 +114,12 @@ function 要求范围整数(值: unknown, 最小: number, 最大: number): numbe
   const 整数 = 要求整数(值);
   if (整数 < 最小 || 整数 > 最大) throw 契约错误();
   return 整数;
+}
+
+/** match_score：required 的 integer-or-null，0..100；0 是合法真实分，null 是无溯源，二者不互换。 */
+function 要求可空评分(值: unknown): number | null {
+  if (值 === null) return null;
+  return 要求范围整数(值, 0, 100);
 }
 
 const RFC3339模式 = /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/;
@@ -369,11 +379,25 @@ interface P5详情主体 {
    * 规范）；handoff_pending / open / ended 归一为 null。列表/历史行不携带该字段。
    */
   conversationRef: string | null;
+  /**
+   * release/0.2.5：本查看者可溯源的原始推荐分（0..100 或 null；0 是合法真实分，null
+   * 是无溯源，二者不互换）与 Case 创建时冻结的具体岗位展示（legacy Case 冻结缺席为
+   * 显式 null，绝不补读当前 Job）。
+   */
+  matchScore: number | null;
+  jobDetail: BFF安全职位资料 | null;
 }
 
 export type P5详情 =
   | (P5详情主体 & { role: 'candidate'; context: { intentionId: string; job: P5工作区职位 } })
-  | (P5详情主体 & { role: 'recruiter'; context: { candidateAlias: string; job: P5工作区职位 } });
+  | (P5详情主体 & {
+      role: 'recruiter';
+      context: { candidateAlias: string; job: P5工作区职位 };
+      /** 招聘专属冻结安全简历（无冻结区或当前授权拒绝为显式 null）。 */
+      candidateResume: BFF候选在线简历 | null;
+      /** Case 作用域候选身份（完整解码进数据域；本层不派生动作、不映射卡面、不预载头像）。 */
+      candidateIdentity: BFF候选身份;
+    });
 
 interface P5列表项主体 {
   state: P5状态视图;
@@ -386,6 +410,9 @@ export type P5列表项 =
   | (P5列表项主体 & {
       role: 'recruiter';
       candidateAlias: string;
+      /** release/0.2.5：每行恒在场的可溯源原始推荐分与 Case 作用域候选身份。 */
+      matchScore: number | null;
+      candidateIdentity: BFF候选身份;
       /** 仅 recruiter open 展开读取（include=candidate_summary）时出现；历史行必缺席。 */
       candidateSummary?: BFF招聘候选摘要 | null;
     });
@@ -763,18 +790,24 @@ function 解终局摘要块(raw: Record<string, unknown>, state: P5状态视图)
 
 const 详情共用必需键 = [
   'state', 'needs_action', 'available_actions', 'stages', 'intent_confirmations', 'job',
+  'match_score', 'job_detail',
 ] as const;
 const 详情可选键 = ['current_coordination', 'terminal_summary', 'conversation_ref'] as const;
 
 /**
  * 解P5详情：把双端 role detail 的 wire 值解成归一化 P5详情。候选端带 intention_id、
- * 招聘端带 candidate_alias，对端上下文键即漂移；current_coordination / terminal_summary
- * 只接受缺席（公开 wire 不收显式 null），缺席解成内部 null。
+ * 招聘端带 candidate_alias，对端上下文键即漂移；候选端携带招聘专属
+ * candidate_resume/candidate_identity 同样漂移（不在白名单）。current_coordination /
+ * terminal_summary 只接受缺席（公开 wire 不收显式 null），缺席解成内部 null。
  */
 export function 解P5详情(input: unknown, role: P5角色): P5详情 {
   const raw = role === 'candidate'
     ? 要求闭合对象(input, [...详情共用必需键, 'intention_id'], 详情可选键)
-    : 要求闭合对象(input, [...详情共用必需键, 'candidate_alias'], 详情可选键);
+    : 要求闭合对象(
+        input,
+        [...详情共用必需键, 'candidate_alias', 'candidate_resume', 'candidate_identity'],
+        详情可选键,
+      );
   const state = 解P5状态视图(raw.state);
   const needsAction = 要求布尔(raw.needs_action);
   const availableActions = 解可用动作(raw.available_actions, role, state, needsAction);
@@ -785,6 +818,10 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
   });
   const intentConfirmations = 解意向确认(raw.intent_confirmations, state);
   const job = 解工作区职位(raw.job);
+  const matchScore = 要求可空评分(raw.match_score);
+  // Case 创建时冻结的具体岗位展示：null 是 legacy Case 的合法快照，绝不补读当前 Job；
+  // 非 null 整包过 展示资料 的 SafeJobDetail 闭合解码。
+  const jobDetail = raw.job_detail === null ? null : 解职位资料(raw.job_detail);
   const currentCoordination = raw.current_coordination === undefined
     ? null
     : 解协同(raw.current_coordination, state);
@@ -808,6 +845,8 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
       intentConfirmations,
       terminalSummary,
       conversationRef,
+      matchScore,
+      jobDetail,
     };
   }
   return {
@@ -821,6 +860,10 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
     intentConfirmations,
     terminalSummary,
     conversationRef,
+    matchScore,
+    jobDetail,
+    candidateResume: raw.candidate_resume === null ? null : 解候选在线简历(raw.candidate_resume),
+    candidateIdentity: 解候选身份(raw.candidate_identity),
   };
 }
 
@@ -832,8 +875,8 @@ function 解P5列表项(input: unknown, role: P5角色, 架子: 'open' | P5历�
   const raw = role === 'candidate'
     ? 要求闭合对象(input, ['state', 'needs_action', 'intention_id', 'job'])
     : 要求闭合对象(input, 展开
-      ? ['state', 'needs_action', 'job', 'candidate_alias', 'candidate_summary']
-      : ['state', 'needs_action', 'job', 'candidate_alias']);
+      ? ['state', 'needs_action', 'job', 'candidate_alias', 'match_score', 'candidate_identity', 'candidate_summary']
+      : ['state', 'needs_action', 'job', 'candidate_alias', 'match_score', 'candidate_identity']);
   const state = 解P5状态视图(raw.state);
   const needsAction = 要求布尔(raw.needs_action);
   // 架子规则：open 列表只装 open 行、历史只装对应终态行，终态行永无 viewer 待办；
@@ -856,6 +899,9 @@ function 解P5列表项(input: unknown, role: P5角色, 架子: 'open' | P5历�
     needsAction,
     candidateAlias: 要求模式串(raw.candidate_alias, 候选别名模式),
     job,
+    // release/0.2.5：招聘行恒在场的可溯源推荐分与 Case 作用域候选身份（默认页与展开页都带）。
+    matchScore: 要求可空评分(raw.match_score),
+    candidateIdentity: 解候选身份(raw.candidate_identity),
     ...(展开 ? { candidateSummary: 解招聘候选摘要(raw.candidate_summary, 契约错误) } : {}),
   };
 }
