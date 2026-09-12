@@ -248,3 +248,21 @@ Codex execution: superpowers:executing-plans
 - 驱动方补齐：Task1在新增必填candidateResume页面字段的同一Task扩展现有映射与测试，防止Task1类型检查依赖Task3才可过；Mock前图采集明确为所有产品改动之前的前置步骤。均是原合同内依赖/验证澄清。
 - 停止裁决：4条中接受修复3条，拒绝1条；无未解决有效required、无延后项。按review-loop结束条件在第1轮裁决后结束，未声称修订版获第二轮NO FINDINGS；修订由驱动方核实，批准产品合同未变。
 - 规划验证：2026-09-12 已生成单文件双宿主prompt；下列校验返回 exit 0 / `OK: dual-host prompt bundle validated`，7个Task、宿主路由、角色档位、分级句与可迁移路径通过。记录提交后重新固定prompt版本并再次校验；未运行产品测试。命令： `development-workflow` 的 `scripts/validate_prompt_grading.py --plan docs/superpowers/plans/2026-09-12-recruitment-display-frontend-wiring.md --prompt docs/superpowers/prompts/2026-09-12-recruitment-display-frontend-wiring.md`。
+
+## 执行与验证记录（2026-09-12，实施 session）
+
+- 前置：Mock 前图基线在任何产品改动前采集（commit d2622399，12 场景 × 320/390 = 24 passed，`ui-regression-output/展示字段接线/reference`，环境记录 environment.json）。
+- Task 1–7 串行完成，每 Task 独立 implementer + 宿主内 task review（spec+quality 合并单 reviewer，档位按角色表）+ fix loop 收敛：
+  - Task 1（4b3ed29c + 2fddf15c）：淘汰落位剥 candidate_resume 修复；reviewer 核实 OwnerJob 无 organization 零改动成立。
+  - Task 2（fff47695）：类型.ts/MatchCase操作.ts 零改动经类型推导链核实成立；11 个共享 fixture 文件同合同修复。
+  - Task 3（08fa60d3）：遗留指针（二次淘汰 candidate_summary 保留）已修复。
+  - Task 4（e8fe4d53）：无页内重试经裁决成立（无可复用局部重试节点，PM 停止条件禁新 UI）。
+  - Task 5（b56812a8 + ebf13eac）：头行求职状态反转优先级（摘要事实优先）修复。
+  - Task 6（2e2b3c75）：四条实现者声明（分析分/无原槽字段/benefit []/键集合钉子）均裁决合规。
+  - Task 7（3757f380 + efe2c0a7）：删不可达公开企业兜底块；报告用例数/失败清单修正（171 收集 / 155 通过 / 16 失败全量披露）。
+- 宿主内全局 review（whole-branch，opus）：Ready to merge: Yes，0 Critical/Important；deferred minor 全部 triage 延后/交 PM，无必修项。基线时序、解码一致性、网络边界双层、J-PILOT-01 红线均独立核实。
+- Codex 异构 review-loop（gpt-5.6-sol，2 轮，thread 01a093b2…）：r1 两条 required——F1（连续详情丢弃同响应 job.organization/required_skills）接受并修复（d0d0e241，顶栏同语义回退 + 摘要技能三态 + fixture 乙/丙区分）；F2（公开企业页内重试）拒绝（Task 4 已裁决 + PM 停止条件，无新证据）。r2 复审 NO FINDINGS，干净结束。
+- affected（L0–L2，最终 HEAD d0d0e241）：lint 66 变更文件 exit 0；typecheck exit 0；build exit 0；定向单测全集 1497/1497；新 spec e2e 34/34（backend 10 + Mock 采集 24）；数据源模式详情域 10/10；Mock 视觉比较器 pass=24/warning=0/blocked=0（零漂移）。
+- Coverage limitation（如实记录）：数据源模式 e2e 16 个失败为域外既有失败（P6×5、P8×4、P1C/P3/P2/候选与招聘方 onboarding/JD导入/mock 规则种子各 1），与本分支新 required 键无关，逐条核实记录于 Task 7 报告（.superpowers 本地产物），本轮未修（超出展示接线范围）。
+- PM 待确认差异（不阻塞合入，final gate 一并展示）：①详情公司名恒 claim vs 市场卡优先 organization.display_name；②缺名有 Logo 不上卡的图位回退语义；③expectation 四槽全空收口/薪资关系独立槽；④公开企业读取失败「可稍后重试」文案（404 终态误导）。
+- 正式真实后端 L3：required，留待用户批准 final gate 后按 `docs/dogfood/真实后端行为验收.md` 执行（本 session 未跑真实后端请求）。
