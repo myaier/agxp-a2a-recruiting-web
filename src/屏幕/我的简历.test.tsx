@@ -17,7 +17,7 @@ import { BFF错误 } from '../数据/HTTP客户端';
 import type { 基本信息 as 基本信息类型, 简历经历段, 简历教育段, 简历证书 } from '../数据/类型';
 import type { 附件变更结果 } from '../状态/后端/类型';
 import 样式 from './我的简历.module.css';
-import 我的简历, { 检查资料完整度 } from './我的简历';
+import 我的简历, { 检查资料完整度, 注入模拟解析失败 } from './我的简历';
 
 /** 共享实例：断言按 brief 原样写 userEvent.click(...) */
 const userEvent = userEventApi.setup();
@@ -134,7 +134,7 @@ function render我的简历(选项: {
     操作: mock操作,
     派发: vi.fn(),
   };
-  render(
+  return render(
     <MemoryRouter>
       <我的简历 />
     </MemoryRouter>,
@@ -154,13 +154,128 @@ function 附件输入框(): HTMLInputElement {
   return document.querySelector('input[type="file"]') as HTMLInputElement;
 }
 
-describe('我的简历 · Mock 演示基线（P2 不动）', () => {
-  it('Mock keeps the original one-row demo and explanation interaction', async () => {
+describe('我的简历 · Mock 演示基线（演示行保留，动作经共用附件区）', () => {
+  it('Mock keeps the demo row first with the shared add entry and prototype hint', async () => {
     render我的简历({ mode: 'mock' });
     expect(screen.getByText('沈亦舟_简历_2026.pdf')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '添加附件简历' })).toBeNull();
+    expect(screen.getByText('初筛通过后发送 PDF 原件')).toBeTruthy();
+    // 共用附件区带来获批的 ＋ 入口（Mock 模拟上限内可添加）
+    expect(screen.getByRole('button', { name: '添加附件简历' })).toBeTruthy();
     await userEvent.click(screen.getByText('沈亦舟_简历_2026.pdf'));
     expect(screen.getByText('原型演示：真机上在这里打开系统 PDF 预览。')).toBeTruthy();
+  });
+});
+
+describe('我的简历 · Mock 附件模拟（core editors §5.3 Task 8）', () => {
+  /** 模拟旅程里的四个后端附件操作探针：Mock 模式全程零调用 = 真实请求数为 0 */
+  function 零后端附件请求() {
+    expect(mock操作.创建附件简历).not.toHaveBeenCalled();
+    expect(mock操作.替换附件简历).not.toHaveBeenCalled();
+    expect(mock操作.删除附件简历).not.toHaveBeenCalled();
+    expect(mock操作.请求附件解析).not.toHaveBeenCalled();
+    expect(mock操作.刷新附件简历).not.toHaveBeenCalled();
+  }
+
+  it('add waits for consent, appends with 未识别 state after 同意, and emits zero requests', async () => {
+    render我的简历({ mode: 'mock' });
+    await userEvent.click(screen.getByRole('button', { name: '添加附件简历' }));
+    await userEvent.upload(附件输入框(), new File(['%PDF'], 'mine.pdf', { type: 'application/pdf' }));
+    expect(screen.getByText('允许 AI 识别这份简历？')).toBeTruthy();
+    expect(screen.queryByText('mine.pdf')).toBeNull(); // 确认前无变更
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    expect(screen.getByText('mine.pdf')).toBeTruthy();
+    expect(screen.getByText('尚未识别')).toBeTruthy();
+    零后端附件请求();
+  });
+
+  it('cancel keeps the mock rows untouched', async () => {
+    render我的简历({ mode: 'mock' });
+    await userEvent.click(screen.getByRole('button', { name: '添加附件简历' }));
+    await userEvent.upload(附件输入框(), new File(['%PDF'], 'mine.pdf', { type: 'application/pdf' }));
+    await userEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.queryByText('允许 AI 识别这份简历？')).toBeNull();
+    expect(screen.queryByText('mine.pdf')).toBeNull();
+    零后端附件请求();
+  });
+
+  it('replace keeps the clicked target identity and resets its parse state', async () => {
+    render我的简历({ mode: 'mock' });
+    await revealActions(0);
+    await userEvent.click(screen.getByRole('button', { name: '替换' }));
+    await userEvent.upload(附件输入框(), new File(['%PDF'], 'new.pdf', { type: 'application/pdf' }));
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    // 点击目标身份保留：演示行名称不动，新挑的文件名不出现；解析状态重置为 尚未识别
+    expect(screen.getByText('沈亦舟_简历_2026.pdf')).toBeTruthy();
+    expect(screen.queryByText('new.pdf')).toBeNull();
+    expect(screen.getByText('尚未识别')).toBeTruthy();
+    零后端附件请求();
+  });
+
+  it('simulated parse walks 尚未识别 → 正在识别 → 识别完成 with local async state', async () => {
+    render我的简历({ mode: 'mock' });
+    await revealActions(0);
+    await userEvent.click(screen.getByRole('button', { name: '解析' }));
+    expect(screen.getByText('允许 AI 识别这份简历？')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    expect(screen.getByText('正在识别')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('识别完成')).toBeTruthy(), { timeout: 3000 });
+    零后端附件请求();
+  });
+
+  it('injected failure ends the simulated parse in the retryable failed state', async () => {
+    注入模拟解析失败.启用 = true;
+    try {
+      render我的简历({ mode: 'mock' });
+      await revealActions(0);
+      await userEvent.click(screen.getByRole('button', { name: '解析' }));
+      await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+      await waitFor(() => expect(screen.getByText('识别失败 · 可重试')).toBeTruthy(), { timeout: 3000 });
+      // 动作矩阵：failed 有 重新解析
+      await revealActions(0);
+      expect(screen.getByRole('button', { name: '重新解析' })).toBeTruthy();
+    } finally {
+      注入模拟解析失败.启用 = false;
+    }
+    零后端附件请求();
+  });
+
+  it('delete waits for the frozen confirm copy and removing all rows shows the shared empty state', async () => {
+    render我的简历({ mode: 'mock' });
+    await revealActions(0);
+    await userEvent.click(screen.getByRole('button', { name: '删除' }));
+    expect(mock操作.删除附件简历).not.toHaveBeenCalled();
+    expect(screen.getByText('删除后无法恢复。')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '删除附件简历' }));
+    expect(screen.queryByText('沈亦舟_简历_2026.pdf')).toBeNull();
+    expect(screen.getByText('还未上传附件简历')).toBeTruthy();
+    零后端附件请求();
+  });
+
+  it('caps mock rows at the same limit of three and the ＋ entry disappears at cap', async () => {
+    render我的简历({ mode: 'mock' });
+    await userEvent.click(screen.getByRole('button', { name: '添加附件简历' }));
+    await userEvent.upload(附件输入框(), new File(['%PDF'], 'second.pdf', { type: 'application/pdf' }));
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    await userEvent.click(screen.getByRole('button', { name: '添加附件简历' }));
+    await userEvent.upload(附件输入框(), new File(['%PDF'], 'third.pdf', { type: 'application/pdf' }));
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    expect(screen.getAllByTestId('附件简历行')).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: '添加附件简历' })).toBeNull();
+    零后端附件请求();
+  });
+
+  it('leaving the page returns to the demo initial values (no persistence claimed)', async () => {
+    const { unmount } = render我的简历({ mode: 'mock' });
+    await userEvent.click(screen.getByRole('button', { name: '添加附件简历' }));
+    await userEvent.upload(附件输入框(), new File(['%PDF'], 'mine.pdf', { type: 'application/pdf' }));
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    expect(screen.getByText('mine.pdf')).toBeTruthy();
+    unmount();
+    render我的简历({ mode: 'mock' });
+    // 离页回到演示初值：只有原演示行，不宣称持久化
+    expect(screen.getByText('沈亦舟_简历_2026.pdf')).toBeTruthy();
+    expect(screen.queryByText('mine.pdf')).toBeNull();
+    零后端附件请求();
   });
 });
 
@@ -318,6 +433,38 @@ describe('我的简历 · Backend 附件简历库（P2 Task 6）', () => {
     expect(mock操作.替换附件简历).toHaveBeenCalledWith(文件A.file_id, pdf, true);
     expect(mock操作.创建附件简历).not.toHaveBeenCalled();
     await waitFor(() => expect(mock轻提示).toHaveBeenLastCalledWith('简历已上传，正在识别'));
+  });
+
+  it('replace and parse bind the real file id, not the array index, after reordering', async () => {
+    const 视图 = render我的简历({ mode: 'backend', library: { items: [文件A, 文件B], limits } });
+    // 删掉第 0 行（文件A）
+    await revealActions(0);
+    await userEvent.click(screen.getByRole('button', { name: '删除' }));
+    await userEvent.click(screen.getByRole('button', { name: '删除附件简历' }));
+    expect(mock操作.删除附件简历).toHaveBeenCalledWith(文件A.file_id);
+    // 权威回读后库只剩 文件B：旧 index 0 现在指向 文件B，新动作必须绑 文件B 的真实 ID
+    mock应用状态 = {
+      ...mock应用状态,
+      后端状态: { ...mock应用状态.后端状态, 附件简历库: { items: [文件B], limits } },
+    };
+    视图.rerender(
+      <MemoryRouter>
+        <我的简历 />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByTestId('附件简历行')).toHaveLength(1);
+    await revealActions(0);
+    await userEvent.click(screen.getByRole('button', { name: '替换' }));
+    const pdf = new File(['%PDF'], 'new.pdf', { type: 'application/pdf' });
+    await userEvent.upload(附件输入框(), pdf);
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    expect(mock操作.替换附件简历).toHaveBeenCalledWith(文件B.file_id, pdf, true);
+    expect(mock操作.替换附件简历).not.toHaveBeenCalledWith(文件A.file_id, expect.anything(), expect.anything());
+    // 文件B 处于 failed：重新解析也必须绑定真实 file ID
+    await revealActions(0);
+    await userEvent.click(screen.getByRole('button', { name: '重新解析' }));
+    await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    expect(mock操作.请求附件解析).toHaveBeenCalledWith(文件B.file_id, true);
   });
 
   it('creates from the title plus button after consent and toasts the frozen success copy', async () => {

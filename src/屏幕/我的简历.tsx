@@ -7,12 +7,13 @@
 //
 // 这是本人视角，所以真名可以直接显示；对方视角是 组件/简历预览层.tsx，那里永远只有代号。
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import 样式 from './我的简历.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 表单条目 } from '../组件/通用';
 import 确认层 from '../组件/确认层';
-import 滑动行, { type 滑动操作 } from '../组件/滑动行';
+import { 简历附件区, type 附件展示行 } from '../组件/简历附件区';
+import type { 滑动操作 } from '../组件/滑动行';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -93,24 +94,85 @@ export function 检查资料完整度(input: {
   return { 待补全, 可提升 };
 }
 
+// ── core editors §5.3（Task 8）：Mock 附件模拟 —— 本页局部生命周期，零请求零 mutation ──
+
+/** Mock 模拟解析状态（附件解析状态的子集）：不伪造 pending（等待态是 Backend 轮询的产物） */
+type Mock解析状态 = 'not_started' | 'processing' | 'succeeded' | 'failed';
+
+/** Mock 行状态 → 说明的闭合映射（沿用 附件状态文案 的同一套产品文案；failed 取可重试口径） */
+const Mock解析文案: Record<Mock解析状态, string> = {
+  not_started: '尚未识别',
+  processing: '正在识别',
+  succeeded: '识别完成',
+  failed: '识别失败 · 可重试',
+};
+
+/** 一条模拟附件行：稳定模拟键与显示名分离。演示说明 只承载原 Mock 演示行的静态说明，
+ *  状态一旦被模拟动作改变即改用状态文案（不把演示文案冒充解析状态）。 */
+type Mock附件行 = { 键: string; 名称: string; 状态: Mock解析状态; 演示说明?: string };
+
+/** 模拟附件上限：与 Backend limits.max_files 的既有附件上限一致（演示口径，不宣称合同值） */
+const 模拟附件上限 = 3;
+
+/** 模拟解析从 正在识别 到终态的演示节拍（本页生命周期内的局部定时，卸载即清） */
+const 模拟解析毫秒 = 1200;
+
+/** 测试注入：置真后下一次模拟解析以 failed 终态收尾（产品运行恒为 false，无调试面板）。
+ *  错误状态通过注入验证（设计 §4.2），Mock 不伪造解析结果、不生成内容/PDF。 */
+export const 注入模拟解析失败 = { 启用: false };
+
+/** 演示初值：以原 Mock 附件名称作为首条，保留原静态说明；离页即回到这份初值（不持久化） */
+function 演示附件初值(): Mock附件行[] {
+  return [
+    { 键: 'mock_att_0', 名称: '沈亦舟_简历_2026.pdf', 状态: 'not_started', 演示说明: '初筛通过后发送 PDF 原件' },
+  ];
+}
+
+/** 模拟行的说明：状态未动过且带演示说明时保留原静态说明，否则用状态文案 */
+function Mock行说明(行: Mock附件行): string {
+  return 行.状态 === 'not_started' && 行.演示说明 !== undefined ? 行.演示说明 : Mock解析文案[行.状态];
+}
+
+/** 两模式共用的左滑动作矩阵输入：字面量并集，矩阵只关心 not_started / failed 两个分支 */
+type 附件解析简 = BFF附件简历['current_version']['parse']['status'];
+
+/** 附件待处理动作（唯一挂起槽）：create/replace 由 ＋ 与行内替换进入并挂起所选文件，
+ *  parse/delete 各自挂起触发行的标识。确认层同一调用结构由这个槽派生 props。 */
+type 待处理动作形 =
+  | { kind: 'create' }
+  | { kind: 'replace'; fileId: string }
+  | { kind: 'parse'; fileId: string }
+  | { kind: 'delete'; fileId: string };
+
 export default function 我的简历() {
   const { 返回, 跳转 } = use导航();
   // 全部简历数据读全局切片：在工作经历页 / 基本信息页改完，这里立刻是新的
   const { 状态: 全局, 操作, 数据源模式, 后端状态 } = use应用状态();
   const 经历列表 = 全局.简历经历;
 
-  // P2 Task 6：附件简历库（Backend）—— 权威 0–3 行替换硬编码演示行，Mock 分支 JSX 逐字保留。
-  // 一次只开一行滑动；创建/替换共用同一个授权层（replace 锁定触发动作的 file id），
-  // 显式解析与删除各有自己的层；四个 mutation 都过 执行附件变更 的返回值门再提示。
+  // P2 Task 6 + core editors §5.3（Task 8）：附件简历卡两模式共用 简历附件区 展示。
+  // 一次只开一行滑动（打开附件编号 两模式同源）；附件待处理动作收进唯一挂起槽 待处理动作
+  //（create/replace 共用授权层并锁定触发动作的真实 file ID / 模拟键，显式解析与删除
+  // 各自挂起），确认层由这一个槽派生同一套 props，不再维护多套 modal JSX。
+  // Backend：四个 mutation 都过 执行附件变更 的返回值门再提示；Mock：同意后本地模拟，
+  // 零请求零 mutation，成功与否以行状态变化呈现（不宣称真实上传/识别）。
   const [打开附件编号, 设打开附件编号] = useState<string | null>(null);
-  const [待上传, 设待上传] = useState<{ kind: 'create' } | { kind: 'replace'; fileId: string } | null>(null);
+  const [待处理动作, 设待处理动作] = useState<待处理动作形 | null>(null);
   const [待确认文件, 设待确认文件] = useState<File | null>(null);
-  const [待解析编号, 设待解析编号] = useState<string | null>(null);
-  const [待删除编号, 设待删除编号] = useState<string | null>(null);
   const [附件提交中, 设附件提交中] = useState(false);
   const 附件选择框 = useRef<HTMLInputElement>(null);
   const 附件库 = 数据源模式 === 'backend' ? 后端状态.附件简历库 : null;
-  const 可添加 = 附件库 !== null && 附件库.items.length < 附件库.limits.max_files;
+  // 两种模式收成同一份行投影（诊断区与附件区都用）：不新增分组标题或布局节点，只按模式换文案与行尾
+  const 是后端 = 数据源模式 === 'backend';
+  // Mock 模拟行：本页局部生命周期，选择文件后沿现有验证与同意步骤，离页回演示初值
+  const [模拟附件行们, 设模拟附件行们] = useState<Mock附件行[]>(演示附件初值);
+  const 模拟键序 = useRef(1);
+  const 模拟解析定时 = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // 卸载清理：模拟解析的异步状态不跨页存活（局部受清理的异步状态）
+  useEffect(() => () => {
+    for (const 定时 of 模拟解析定时.current.values()) clearTimeout(定时);
+    模拟解析定时.current.clear();
+  }, []);
   // Backend 页面可见期轮询附件解析状态（钩子内部自判 Mock / 未登录 / 角色，静默）；
   // 预览钩子只在点击行后才开窗，挂载本身零副作用
   use附件简历刷新(数据源模式 === 'backend');
@@ -170,8 +232,6 @@ export default function 我的简历() {
       ? `可提升 · ${完整度.可提升[0].文案}`
       : '硬性条件核对需要的信息都齐了';
   const Backend展开键文案 = 完整度.待补全.length > 0 ? '去补全' : '看建议';
-  // 两种模式收成同一份行投影：不新增分组标题或布局节点，只按模式换文案与行尾
-  const 是后端 = 数据源模式 === 'backend';
   const 诊断有行 = 是后端 ? Backend诊断项.length > 0 : 诊断项.length > 0;
   const 诊断行 = 是后端
     ? Backend诊断项.map((项) => ({
@@ -218,7 +278,7 @@ export default function 我的简历() {
     }
   };
 
-  // ── P2 Task 6：附件动作处理 ──
+  // ── 附件动作处理（P2 Task 6 + core editors §5.3 Task 8）──
 
   /** 四个 mutation 共用的返回值门：已换代（会话已转移）静默不提示，
       已提交 才发成功文案；失败走 附件错误文案 的闭合表。不允许在 await 后无条件 toast。 */
@@ -248,74 +308,175 @@ export default function 我的简历() {
     设待确认文件(文件);
   }
 
-  /** 授权层「同意并继续」：空位 create / 行内 replace。执行时捕获 待上传，
-      replace 只替换触发动作的那一行 file id；成功后层关，失败保留权威行仅提示。 */
+  /** 清掉某行的模拟解析定时：替换/删除/重新解析前先收掉，迟到的定时不得改写新状态 */
+  function 清模拟解析定时(键: string) {
+    const 定时 = 模拟解析定时.current.get(键);
+    if (定时 !== undefined) {
+      clearTimeout(定时);
+      模拟解析定时.current.delete(键);
+    }
+  }
+
+  // ── Mock 模拟（零请求零 mutation）：同意后才动本地模拟状态，行状态变化即反馈 ──
+
+  function 模拟创建附件(file: File) {
+    const 键 = `mock_att_${模拟键序.current++}`;
+    设模拟附件行们((旧行们) => [...旧行们, { 键, 名称: file.name, 状态: 'not_started' as const }]);
+  }
+
+  /** 替换保留点击目标身份：键与名称不动，只重置解析状态（未完成的模拟解析定时一并清掉） */
+  function 模拟替换附件(键: string) {
+    清模拟解析定时(键);
+    设模拟附件行们((旧行们) =>
+      旧行们.map((行) => (行.键 === 键 ? { 键: 行.键, 名称: 行.名称, 状态: 'not_started' as const } : 行)));
+  }
+
+  function 模拟删除附件(键: string) {
+    清模拟解析定时(键);
+    设模拟附件行们((旧行们) => 旧行们.filter((行) => 行.键 !== 键));
+  }
+
+  /** 模拟解析 not_started → processing →（局部定时）succeeded / 注入 failed：
+      不生成解析内容、不伪造 pending，定时受卸载与本行后续动作清理。 */
+  function 模拟解析附件(键: string) {
+    清模拟解析定时(键);
+    设模拟附件行们((旧行们) => 旧行们.map((行) => (行.键 === 键 ? { ...行, 状态: 'processing' as const } : 行)));
+    模拟解析定时.current.set(键, setTimeout(() => {
+      模拟解析定时.current.delete(键);
+      const 终态: Mock解析状态 = 注入模拟解析失败.启用 ? 'failed' : 'succeeded';
+      设模拟附件行们((旧行们) => 旧行们.map((行) => (行.键 === 键 ? { ...行, 状态: 终态 } : 行)));
+    }, 模拟解析毫秒));
+  }
+
+  /** 授权层「同意并继续」：空位 create / 行内 replace。执行时捕获 待处理动作 与所选文件，
+      replace 只替换触发动作的那一行真实 file ID（重排不变 index）；成功后层关，
+      失败保留权威行仅提示；Mock 同意后本地模拟，确认前无变更。 */
   async function 同意上传附件() {
-    if (!待确认文件 || !待上传 || 附件提交中) return;
+    if (!待确认文件 || !待处理动作 || 附件提交中) return;
+    if (待处理动作.kind !== 'create' && 待处理动作.kind !== 'replace') return;
     const file = 待确认文件;
-    const target = 待上传;
-    设附件提交中(true);
-    try {
-      if (target.kind === 'create') {
-        await 执行附件变更(() => 操作.创建附件简历(file, true), '简历已上传，正在识别');
-      } else {
-        await 执行附件变更(() => 操作.替换附件简历(target.fileId, file, true), '简历已上传，正在识别');
+    const target = 待处理动作;
+    if (是后端) {
+      设附件提交中(true);
+      try {
+        if (target.kind === 'create') {
+          await 执行附件变更(() => 操作.创建附件简历(file, true), '简历已上传，正在识别');
+        } else {
+          await 执行附件变更(() => 操作.替换附件简历(target.fileId, file, true), '简历已上传，正在识别');
+        }
+      } finally {
+        设附件提交中(false);
+        设待确认文件(null);
+        设待处理动作(null);
       }
-    } finally {
-      设附件提交中(false);
-      设待确认文件(null);
-      设待上传(null);
+      return;
     }
+    if (target.kind === 'create') 模拟创建附件(file);
+    else 模拟替换附件(target.fileId);
+    设待确认文件(null);
+    设待处理动作(null);
   }
 
-  /** 解析授权层「同意并继续」：显式 parse 只对触发行发请求，consent 字面量 true。 */
+  /** 解析授权层「同意并继续」：显式 parse 只对触发行发请求（consent 字面量 true）；
+      Mock 走本地模拟解析。 */
   async function 同意解析附件() {
-    if (待解析编号 === null || 附件提交中) return;
-    const fileId = 待解析编号;
-    设附件提交中(true);
-    try {
-      await 执行附件变更(() => 操作.请求附件解析(fileId, true), '已开始识别简历');
-    } finally {
-      设附件提交中(false);
-      设待解析编号(null);
+    if (!待处理动作 || 待处理动作.kind !== 'parse' || 附件提交中) return;
+    const fileId = 待处理动作.fileId;
+    if (是后端) {
+      设附件提交中(true);
+      try {
+        await 执行附件变更(() => 操作.请求附件解析(fileId, true), '已开始识别简历');
+      } finally {
+        设附件提交中(false);
+        设待处理动作(null);
+      }
+      return;
     }
+    模拟解析附件(fileId);
+    设待处理动作(null);
   }
 
-  /** 删除确认「删除附件简历」：确认前不动任何状态，行一直在权威列表里。 */
+  /** 删除确认「删除附件简历」：确认前不动任何状态，行一直在权威/模拟列表里。 */
   async function 确认删除附件() {
-    if (待删除编号 === null || 附件提交中) return;
-    const fileId = 待删除编号;
-    设附件提交中(true);
-    try {
-      await 执行附件变更(() => 操作.删除附件简历(fileId), '附件简历已删除');
-    } finally {
-      设附件提交中(false);
-      设待删除编号(null);
+    if (!待处理动作 || 待处理动作.kind !== 'delete' || 附件提交中) return;
+    const fileId = 待处理动作.fileId;
+    if (是后端) {
+      设附件提交中(true);
+      try {
+        await 执行附件变更(() => 操作.删除附件简历(fileId), '附件简历已删除');
+      } finally {
+        设附件提交中(false);
+        设待处理动作(null);
+      }
+      return;
     }
+    模拟删除附件(fileId);
+    设待处理动作(null);
   }
 
   /** 状态 → 左滑动作矩阵（设计 §8.2）：not_started=解析、failed=重新解析，
-      pending/processing/succeeded 无解析动作；替换 / 删除全态可用。 */
-  function 附件动作(file: BFF附件简历): 滑动操作[] {
+      pending/processing/succeeded 无解析动作；替换 / 删除全态可用。
+      标识 = Backend 真实 file ID（闭包捕获，不因重排变 index）/ Mock 模拟键 —— 两模式同一矩阵。 */
+  function 附件动作(解析: 附件解析简, 标识: string): 滑动操作[] {
     const 动作: 滑动操作[] = [];
-    const 解析 = file.current_version.parse.status;
     if (解析 === 'not_started' || 解析 === 'failed') {
       动作.push({
         文字: 解析 === 'not_started' ? '解析' : '重新解析',
-        按下: () => 设待解析编号(file.file_id),
+        按下: () => 设待处理动作({ kind: 'parse', fileId: 标识 }),
       });
     }
     动作.push({
       文字: '替换',
       按下: () => {
-        // 先锁定这一行的 file id 再开文件框：授权时只替换它，与 ＋ 的 create 路径互斥
-        设待上传({ kind: 'replace', fileId: file.file_id });
+        // 先锁定这一行的标识再开文件框：授权时只替换它，与 ＋ 的 create 路径互斥
+        设待处理动作({ kind: 'replace', fileId: 标识 });
         附件选择框.current?.click();
       },
     });
-    动作.push({ 文字: '删除', 危险: true, 按下: () => 设待删除编号(file.file_id) });
+    动作.push({ 文字: '删除', 危险: true, 按下: () => 设待处理动作({ kind: 'delete', fileId: 标识 }) });
     return 动作;
   }
+
+  // 两模式收成同一份行投影喂给共用附件区：Backend 权威库（真实 file ID），Mock 模拟行
+  //（模拟键）—— 同一可见结构，不按数据源选另一套 JSX。状态文案走 附件状态文案 / Mock行说明。
+  const Backend附件行们: 附件展示行[] = (附件库?.items ?? []).map((file) => ({
+    键: file.file_id,
+    名称: file.display_name,
+    说明: 附件状态文案(file),
+    操作们: 附件动作(file.current_version.parse.status, file.file_id),
+    打开: () => { void 打开附件PDF(file.file_id); },
+  }));
+  const Mock附件行们: 附件展示行[] = 模拟附件行们.map((行) => ({
+    键: 行.键,
+    名称: 行.名称,
+    说明: Mock行说明(行),
+    操作们: 附件动作(行.状态, 行.键),
+    打开: () => 设显示附件说明((旧) => !旧),
+  }));
+
+  /** 确认层 props 由唯一挂起槽派生：上传/解析授权同一套文案，删除用自己的标题/执行文
+      —— 同一调用结构，不维护多套 modal JSX；取消只清挂起态，零 mutation。
+      上传/替换必须等所选文件挂起才出层（确认前无变更），解析/删除挂起即出。 */
+  const 附件确认层 = (() => {
+    if (待处理动作 === null) return null;
+    if (待处理动作.kind === 'create' || 待处理动作.kind === 'replace') {
+      if (待确认文件 === null) return null;
+    }
+    if (待处理动作.kind === 'delete') {
+      return {
+        标题: '删除附件简历？',
+        正文: '删除后无法恢复。',
+        执行文: '删除附件简历',
+        执行: () => { void 确认删除附件(); },
+      };
+    }
+    return {
+      标题: '允许 AI 识别这份简历？',
+      正文: '这份 PDF 将发送给受控模型服务进行简历识别，可能包含个人信息。确认后才会上传并开始处理。',
+      执行文: '同意并继续',
+      执行: () => { void (待处理动作.kind === 'parse' ? 同意解析附件() : 同意上传附件()); },
+    };
+  })();
 
   // 工作年限是派生值：空/非法/未来年份一律「未填写」，绝不用当前年补文本伪造起始年
   const 折算年限 = 折算工作年限(基本.开始工作年);
@@ -525,84 +686,33 @@ export default function 我的简历() {
           </div>
 
           {/* 附件简历：初筛通过后递交 PDF 原件，原件含姓名与联系方式。
-              Mock 保留硬编码演示行与原型说明（演示基线不动）；
-              Backend 渲染权威 0–3 行，点行直接打开真实 PDF 预览（P2 Task 6） */}
+              两模式共用 简历附件区（core editors §5.3）：标题/＋、PDF 行、空态、
+              滑动容器同一套，不按数据源选另一套 JSX；卡外壳与文件 input 留本页。
+              Backend 点行打开真实 PDF 预览（P2 Task 6）；Mock 点行走既有原型预览提示 */}
           <div className={样式.卡}>
-            {数据源模式 === 'backend' ? (
-              <>
-                {/* 标题与 ＋ 挂同一节点：复用 .卡标题 的 margin，标题外壳不增高 */}
-                <div className={`${样式.卡标题} ${样式.附件标题行}`} data-testid="附件简历标题">
-                  <span>附件简历</span>
-                  {可添加 ? (
-                    <button
-                      type="button"
-                      className={样式.附件添加键}
-                      aria-label="添加附件简历"
-                      onClick={() => {
-                        设待上传({ kind: 'create' });
-                        附件选择框.current?.click();
-                      }}
-                    >
-                      ＋
-                    </button>
-                  ) : null}
-                </div>
-                {附件库 && 附件库.items.length > 0 ? (
-                  附件库.items.map((file) => (
-                    <滑动行
-                      key={file.file_id}
-                      操作={附件动作(file)}
-                      打开={打开附件编号 === file.file_id}
-                      请求打开={(开) => 设打开附件编号(开 ? file.file_id : null)}
-                      按下={() => void 打开附件PDF(file.file_id)}
-                      // 行面 aria-label 会覆盖内容拼出来的名字，所以这里要把
-                      // 「哪一份」和「现在什么状态」一起给全，读屏听到的信息量不减
-                      名称={`${file.display_name} ${附件状态文案(file)}`}
-                    >
-                      <div className={样式.附件行} data-testid="附件简历行">
-                        <span className={样式.PDF块}>
-                          <span className={样式.PDF字}>PDF</span>
-                        </span>
-                        <span className={样式.附件主体}>
-                          <span className={样式.附件名}>{file.display_name}</span>
-                          <span className={样式.附件说明}>{附件状态文案(file)}</span>
-                        </span>
-                        <span className={样式.尖括号}>›</span>
-                      </div>
-                    </滑动行>
-                  ))
-                ) : (
-                  <div className={样式.附件空态}>还未上传附件简历</div>
-                )}
-                <input
-                  ref={附件选择框}
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  hidden
-                  onChange={选中附件文件}
-                />
-              </>
-            ) : (
-              <>
-                <div className={样式.卡标题}>附件简历</div>
-                <button
-                  className={`${样式.附件行} 可点`}
-                  onClick={() => 设显示附件说明((旧) => !旧)}
-                >
-                  <span className={样式.PDF块}>
-                    <span className={样式.PDF字}>PDF</span>
-                  </span>
-                  <span className={样式.附件主体}>
-                    <span className={样式.附件名}>沈亦舟_简历_2026.pdf</span>
-                    <span className={样式.附件说明}>初筛通过后发送 PDF 原件</span>
-                  </span>
-                  <span className={样式.尖括号}>›</span>
-                </button>
-                {显示附件说明 ? (
-                  <div className={样式.附件提示}>原型演示：真机上在这里打开系统 PDF 预览。</div>
-                ) : null}
-              </>
-            )}
+            <简历附件区
+              行们={是后端 ? Backend附件行们 : Mock附件行们}
+              可添加={是后端
+                ? 附件库 !== null && 附件库.items.length < 附件库.limits.max_files
+                : Mock附件行们.length < 模拟附件上限}
+              忙={附件提交中}
+              添加={() => {
+                设待处理动作({ kind: 'create' });
+                附件选择框.current?.click();
+              }}
+              展开键={打开附件编号}
+              请求展开={设打开附件编号}
+            />
+            <input
+              ref={附件选择框}
+              type="file"
+              accept=".pdf,application/pdf"
+              hidden
+              onChange={选中附件文件}
+            />
+            {显示附件说明 ? (
+              <div className={样式.附件提示}>原型演示：真机上在这里打开系统 PDF 预览。</div>
+            ) : null}
           </div>
 
           {/* 多意向引导：一份简历可以挂多个求职意向，各自独立谈。
@@ -614,44 +724,19 @@ export default function 我的简历() {
         </div>
       </滚动区>
 
-      {/* P2 Task 6：附件授权 / 确认层。上传授权的标题/正文/执行文与 完善资料（Task 5）
-          逐字相同；取消 / 遮罩 / Escape 都只清本地挂起态，零 mutation */}
-      {待确认文件 ? (
+      {/* P2 Task 6 + core editors §5.3（Task 8）：附件授权 / 确认层 —— 唯一一套 modal JSX，
+          props 由待处理动作派生（上传授权的标题/正文/执行文与 完善资料（Task 5）逐字相同；
+          删除用自己的标题/执行文）。取消 / 遮罩 / Escape 都只清本地挂起态，零 mutation。 */}
+      {附件确认层 ? (
         <确认层
-          标题="允许 AI 识别这份简历？"
-          正文="这份 PDF 将发送给受控模型服务进行简历识别，可能包含个人信息。确认后才会上传并开始处理。"
-          执行文="同意并继续"
-          执行={() => {
-            void 同意上传附件();
-          }}
+          标题={附件确认层.标题}
+          正文={附件确认层.正文}
+          执行文={附件确认层.执行文}
+          执行={附件确认层.执行}
           取消={() => {
             设待确认文件(null);
-            设待上传(null);
+            设待处理动作(null);
           }}
-        />
-      ) : null}
-
-      {待解析编号 !== null ? (
-        <确认层
-          标题="允许 AI 识别这份简历？"
-          正文="这份 PDF 将发送给受控模型服务进行简历识别，可能包含个人信息。确认后才会上传并开始处理。"
-          执行文="同意并继续"
-          执行={() => {
-            void 同意解析附件();
-          }}
-          取消={() => 设待解析编号(null)}
-        />
-      ) : null}
-
-      {待删除编号 !== null ? (
-        <确认层
-          标题="删除附件简历？"
-          正文="删除后无法恢复。"
-          执行文="删除附件简历"
-          执行={() => {
-            void 确认删除附件();
-          }}
-          取消={() => 设待删除编号(null)}
         />
       ) : null}
     </次级页外壳>

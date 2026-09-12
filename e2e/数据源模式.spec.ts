@@ -13446,3 +13446,215 @@ test.describe('核心编辑 期望行业 @backend', () => {
     expect(目录请求.every((p) => p === '/api/v1/catalog/industries')).toBe(true);
   });
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 附件 @mock（core editors §5.3 Task 8）：我的简历 附件简历卡两模式共用
+// 简历附件区 —— Mock 外层局部模拟：原演示行仍为首条（保留原静态说明），获批的 ＋ 入口、
+// 左滑 解析/替换/删除、上传/解析授权与删除确认层同一套可见交互。添加/替换/删除/解析
+// 全部本地模拟：零 /api/v1 请求、不生成内容/PDF，模拟解析 尚未识别→正在识别→识别完成；
+// 替换保留点击目标身份并重置解析状态；上限与既有附件上限一致（3 条）；离页回演示初值。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 附件 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('添加→同意→替换→解析→删除走同一共用附件区，模拟状态可观察且零请求 @mock', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '微信登录' }).click();
+    await expect(page).toHaveURL(/#\/identity$/);
+    await page.getByRole('button', { name: '我要找工作' }).click();
+    await expect(page).toHaveURL(/#\/student$/);
+    await page.goto('/#/resume');
+    await expect(page.getByText('沈亦舟_简历_2026.pdf')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('初筛通过后发送 PDF 原件')).toBeVisible();
+    await expect(page.getByRole('button', { name: '添加附件简历' })).toBeVisible();
+
+    // 正常态截图（与改前拍对照：演示行原样，新增获批的 ＋ 与左滑动作）
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-附件-正常.png`, fullPage: true });
+
+    // 点演示行 → 既有原型预览提示（缺真实 PDF，不伪造预览）
+    await page.getByText('沈亦舟_简历_2026.pdf').click();
+    await expect(page.getByText('原型演示：真机上在这里打开系统 PDF 预览。')).toBeVisible();
+
+    // ＋ → 授权层取消：零变更零请求
+    await page.getByRole('button', { name: '添加附件简历' }).click();
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'cancel.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    await expect(page.getByText('cancel.pdf')).toHaveCount(0); // 确认前无变更
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(page.getByText('允许 AI 识别这份简历？')).toHaveCount(0);
+
+    // 添加 → 同意 → 行以「尚未识别」入列
+    await page.getByRole('button', { name: '添加附件简历' }).click();
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'add.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    const 加行 = page.getByTestId('附件简历行').filter({ hasText: 'add.pdf' });
+    await expect(加行).toBeVisible();
+    await expect(加行.getByText('尚未识别')).toBeVisible();
+
+    // 解析 → 同意 → 模拟解析 尚未识别 → 正在识别 → 识别完成
+    await 左滑附件行(page, 'add.pdf');
+    await page.getByRole('button', { name: '解析', exact: true }).click();
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    await expect(page.getByText('正在识别')).toBeVisible();
+    await expect(page.getByText('识别完成')).toBeVisible({ timeout: 5_000 });
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-附件-解析完成.png`, fullPage: true });
+
+    // 替换 → 同意：点击目标身份保留（add.pdf 名称不动、replacement.pdf 不出现），解析状态重置
+    await 左滑附件行(page, 'add.pdf');
+    await page.getByRole('button', { name: '替换', exact: true }).click();
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'replacement.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    await expect(page.getByText('replacement.pdf')).toHaveCount(0);
+    await expect(加行).toBeVisible();
+    await expect(加行.getByText('尚未识别')).toBeVisible();
+
+    // 加到 3/3（与既有附件上限一致）：＋ 消失；行面键盘可聚焦、无横向溢出
+    await page.getByRole('button', { name: '添加附件简历' }).click();
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'second.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    await expect(page.getByTestId('附件简历行').filter({ hasText: 'second.pdf' })).toBeVisible();
+    await expect(page.getByTestId('附件简历行')).toHaveCount(3);
+    await expect(page.getByRole('button', { name: '添加附件简历' })).toHaveCount(0);
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-附件-上限.png`, fullPage: true });
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    const 演示行面 = page.getByRole('button', { name: /沈亦舟_简历_2026\.pdf/ });
+    await 演示行面.focus();
+    await expect(演示行面).toBeFocused();
+
+    // 删除：先取消（行保留），再确认（行消失、＋ 回来）
+    await 左滑附件行(page, 'second.pdf');
+    await page.getByRole('button', { name: '删除', exact: true }).click();
+    await expect(page.getByText('删除后无法恢复。')).toBeVisible();
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(page.getByTestId('附件简历行').filter({ hasText: 'second.pdf' })).toBeVisible();
+    await 左滑附件行(page, 'second.pdf');
+    await page.getByRole('button', { name: '删除', exact: true }).click();
+    await page.getByRole('button', { name: '删除附件简历', exact: true }).click();
+    await expect(page.getByTestId('附件简历行').filter({ hasText: 'second.pdf' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '添加附件简历' })).toBeVisible();
+
+    // Mock 模拟全程零 API 请求（真实请求数为 0）
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 附件 @backend（core editors §5.3 Task 8）：Backend 分支消费同一共用附件区 ——
+// 权威 0–3 行、上传/解析授权前零写入、替换按槽位保留身份、失败终态可重新解析（改桩终态
+// 后识别完成）、行点开 authenticated content GET、删除取消零 DELETE 确认恰一次。
+// 复用现有 创建P2附件fixture 与文件选择机制；网络桩符合已审合同，不是 live 验收。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 附件 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('添加→同意→替换→重新解析→删除 走同一共用附件区并保持权威契约 @backend', async ({ page }, testInfo) => {
+    // 多段 3s 轮询 + 手势 + 删除确认全在一条 journey：显式放宽到 120s
+    test.setTimeout(120_000);
+    const P2 = 创建P2附件fixture('parser_temporarily_unavailable');
+    await 安装BFF路由(page, {
+      记录目录请求: () => {}, 登录尝试id: 'att-core-edit-attachment', 附件fixture: P2,
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    await page.goto('/#/resume');
+    await expect(page.getByText('还未上传附件简历')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '添加附件简历' })).toBeVisible();
+
+    // 空态截图（共用空态照旧）
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-附件-空态.png`, fullPage: true });
+
+    // ＋ → 授权层：同意前零写入（基线采样在触发文件选择之前）
+    const writesBeforeAdd = P2.写入次数;
+    await page.getByRole('button', { name: '添加附件简历' }).click();
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'candidate.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    expect(P2.写入次数).toBe(writesBeforeAdd);
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    const 首行 = page.getByTestId('附件简历行').filter({ hasText: 'candidate.pdf' });
+    await expect(首行).toBeVisible({ timeout: 15_000 });
+    // 上传后解析状态机走完 → 失败终态（可重试口径）
+    await expect(page.getByText('服务繁忙 · 稍后重试')).toBeVisible({ timeout: 20_000 });
+
+    // 替换 → 同意：槽位身份保留（display name 不变成 replacement.pdf），重新入列解析
+    await 左滑附件行(page, 'candidate.pdf');
+    await page.getByRole('button', { name: '替换', exact: true }).click();
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'replacement.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    await expect(page.getByText('replacement.pdf')).toHaveCount(0);
+    await expect(首行).toBeVisible();
+    await expect(首行.getByText('服务繁忙 · 稍后重试')).toBeVisible({ timeout: 20_000 });
+
+    // 重新解析：授权前零写入；改桩终态 → 同意 → 识别完成
+    const writesBeforeParse = P2.写入次数;
+    await 左滑附件行(page, 'candidate.pdf');
+    await page.getByRole('button', { name: '重新解析', exact: true }).click();
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    expect(P2.写入次数).toBe(writesBeforeParse);
+    P2.下次终态 = 'succeeded';
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    await expect(page.getByText('识别完成')).toBeVisible({ timeout: 20_000 });
+
+    // 预览：行点击只断言 authenticated content GET，不依赖 headless PDF viewer 内容
+    const 内容请求 = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === '/api/v1/me/resume-files/rf_1/content',
+    );
+    await 首行.click();
+    await 内容请求;
+    expect(P2.下载次数).toBeGreaterThanOrEqual(1);
+
+    // 布局门 + viewport 检查：标题几何未漂移、无横向溢出、行面键盘可聚焦
+    await 断言附件标题几何未漂移(page);
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-附件-完成.png`, fullPage: true });
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    const 行面 = page.getByRole('button', { name: /candidate\.pdf/ });
+    await 行面.focus();
+    await expect(行面).toBeFocused();
+
+    // 删除：取消零 DELETE；确认恰一次 DELETE 且行消失
+    const 删除请求: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'DELETE' && new URL(request.url()).pathname.startsWith('/api/v1/me/resume-files')) {
+        删除请求.push(request.url());
+      }
+    });
+    const writesBeforeDelete = P2.写入次数;
+    await 左滑附件行(page, 'candidate.pdf');
+    await page.getByRole('button', { name: '删除', exact: true }).click();
+    await expect(page.getByText('删除后无法恢复。')).toBeVisible();
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    expect(P2.写入次数).toBe(writesBeforeDelete);
+    expect(删除请求).toEqual([]);
+    await expect(首行).toBeVisible();
+    await 左滑附件行(page, 'candidate.pdf');
+    await page.getByRole('button', { name: '删除', exact: true }).click();
+    // 弹层遮罩的 aria-label「关闭删除附件简历？」也含这段文字：exact 只认执行键
+    await page.getByRole('button', { name: '删除附件简历', exact: true }).click();
+    await expect(首行).toHaveCount(0, { timeout: 10_000 });
+    expect(P2.写入次数).toBe(writesBeforeDelete + 1);
+    expect(删除请求.length).toBe(1);
+  });
+});
