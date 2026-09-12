@@ -224,6 +224,70 @@ describe('职位资料 · 有值与部分缺失', () => {
   });
 });
 
+describe('职位资料 · 真实媒体图位（Task 6：只填既有图位，沿用 Task 3/4 图片输入模式）', () => {
+  const 有媒体信息: 职位资料信息 = {
+    ...有值信息,
+    公司: {
+      ...有值信息.公司,
+      字标: null, // 有真实媒体时不用姓名首字冒充
+      图片URL: 'https://cdn.example.com/org_1/media_1.png',
+      编号: 'org_1',
+    },
+    对接人: { ...有值信息.对接人, 字标: null, 头像URL: 'https://cdn.example.com/publisher.png' },
+  };
+
+  it('Logo/发布人头像在既有图位内渲染 <img>，未提供媒体输入的调用方行为不变', () => {
+    render(<职位资料 信息={有媒体信息} 公司详情={可用导航()} />);
+    const 图 = document.querySelector('img[src="https://cdn.example.com/org_1/media_1.png"]');
+    expect(图).toBeTruthy();
+    expect(图!.closest('button')).toBeTruthy(); // 仍在公司头行图位内
+    expect(document.querySelector('img[src="https://cdn.example.com/publisher.png"]')).toBeTruthy();
+    // 头像字/字标退场：媒体在场不叠加文字首字
+    expect(screen.queryByText('星')).toBeNull();
+    expect(screen.queryByText('林')).toBeNull();
+  });
+
+  it('媒体 URL 为 null：回到既有中性空位（不加载占位图、不生成字母）', () => {
+    render(
+      <职位资料
+        信息={{
+          ...有媒体信息,
+          公司: { ...有媒体信息.公司, 图片URL: null },
+          对接人: { ...有媒体信息.对接人, 头像URL: null },
+        }}
+        公司详情={可用导航()}
+      />,
+    );
+    expect(screen.getByRole('img', { name: '公司标志缺失' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: '对接人头像缺失' })).toBeTruthy();
+    expect(document.querySelector('img[src]')).toBeNull();
+  });
+
+  it('加载失败回既有回退（公司回缺失空位、头像回空位），换 URL 清失败态', () => {
+    const 页 = render(<职位资料 信息={有媒体信息} 公司详情={可用导航()} />);
+    const 公司图 = document.querySelector('img[src="https://cdn.example.com/org_1/media_1.png"]')!;
+    fireEvent.error(公司图);
+    expect(screen.getByRole('img', { name: '公司标志缺失' })).toBeTruthy();
+    const 头像图 = document.querySelector('img[src="https://cdn.example.com/publisher.png"]')!;
+    fireEvent.error(头像图);
+    expect(screen.getByRole('img', { name: '对接人头像缺失' })).toBeTruthy();
+
+    // 换 URL：失败态清零，新图照常渲染
+    页.rerender(
+      <职位资料
+        信息={{
+          ...有媒体信息,
+          公司: { ...有媒体信息.公司, 图片URL: 'https://cdn.example.com/org_2/logo.png' },
+          对接人: { ...有值信息.对接人, 字标: null, 头像URL: 'https://cdn.example.com/p2.png' },
+        }}
+        公司详情={可用导航()}
+      />,
+    );
+    expect(document.querySelector('img[src="https://cdn.example.com/org_2/logo.png"]')).toBeTruthy();
+    expect(document.querySelector('img[src="https://cdn.example.com/p2.png"]')).toBeTruthy();
+  });
+});
+
 describe('职位资料 · rerender 的缺失过渡（同一已挂载组件）', () => {
   it('有值→合法空值：文字/图位变缺失、导航禁用且旧回调不再执行；空值→有值再次可显示新值', () => {
     const 旧回调 = vi.fn();

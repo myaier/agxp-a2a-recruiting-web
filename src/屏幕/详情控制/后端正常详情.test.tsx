@@ -28,9 +28,15 @@ import {
 } from '../../数据/连续代谈展示映射';
 import { 映射P5详情, 映射S0底栏说明 } from '../../数据/MatchCase展示映射';
 import { 路径 } from '../../路由/路径表';
+import { 从BFF到在线简历展示 } from '../../数据/在线简历展示映射';
 import type { P5详情正常视图 } from '../../数据/MatchCase展示映射';
 import type { P5列表项, P5详情, P5阶段区, P5简历附件 } from '../../数据/招聘数据源/MatchCase';
 import type { NegotiationDetail } from '../../数据/招聘数据源/连续代谈';
+import {
+  BFF安全职位资料样本,
+  BFF候选在线简历样本,
+  BFF候选身份披露样本,
+} from '../../测试/展示资料样本';
 
 const mock跳转 = vi.fn();
 vi.mock('../../路由/导航钩子', () => ({
@@ -108,7 +114,7 @@ function S0阶段区组(): P5阶段区[] {
   ];
 }
 
-function 候选S0详情DTO(): P5详情 {
+function 候选S0详情DTO(覆盖: { matchScore?: number | null; jobDetail?: P5详情['jobDetail'] } = {}): P5详情 {
   return {
     role: 'candidate',
     context: {
@@ -123,9 +129,9 @@ function 候选S0详情DTO(): P5详情 {
     intentConfirmations: { candidate: '', recruiter: '' },
     terminalSummary: null,
     conversationRef: null,
-    // release/0.2.5：展示字段是解码层 required 成员；本屏不消费，置合法 null 档。
-    matchScore: null,
-    jobDetail: null,
+    // release/0.2.5：展示字段是解码层 required 成员；Task 6 起消费（旧 Case 合法 null 档）。
+    matchScore: 覆盖.matchScore ?? null,
+    jobDetail: 覆盖.jobDetail ?? null,
   };
 }
 
@@ -154,7 +160,11 @@ const 已披露附件: P5简历附件 = {
 };
 
 /** 招聘端 S1 初筛行（needs_user + screening）：typed 附件是该段唯一 PDF 入口。 */
-function 招聘S1附件详情DTO(带附件: boolean): P5详情 {
+function 招聘S1附件详情DTO(带附件: boolean, 覆盖: {
+  candidateResume?: Extract<P5详情, { role: 'recruiter' }>['candidateResume'];
+  identity?: Extract<P5详情, { role: 'recruiter' }>['candidateIdentity'];
+  jobDetail?: P5详情['jobDetail'];
+} = {}): P5详情 {
   return {
     role: 'recruiter',
     context: { candidateAlias: 'candidate-0123456789ab', job: 冻结职位 },
@@ -182,9 +192,9 @@ function 招聘S1附件详情DTO(带附件: boolean): P5详情 {
     terminalSummary: null,
     conversationRef: null,
     matchScore: null,
-    jobDetail: null,
-    candidateResume: null,
-    candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
+    jobDetail: 覆盖.jobDetail ?? null,
+    candidateResume: 覆盖.candidateResume ?? null,
+    candidateIdentity: 覆盖.identity ?? { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };
 }
 
@@ -276,6 +286,8 @@ function 宿主({
       状态: 从P5到详情状态(视图),
       分段们: 从P5到详情分段(视图, 详情.state.stage),
       职位资料: 从P5到职位资料(视图),
+      // Task 6：招聘角色映射 candidate_resume（候选恒 null），与父控制 hook 同口径
+      在线简历资料: 详情.role === 'recruiter' ? 从BFF到在线简历展示(详情.candidateResume) : null,
       底栏,
       终局: {
         摘要: 视图.终局摘要 !== null ? { ...视图.终局摘要 } : null,
@@ -487,10 +499,77 @@ describe('后端正常详情 · 终局（J-PILOT-01 S0 分行）', () => {
   });
 });
 
+// ── Task 6：资料 Tab 的冻结正文、公司导航与在线简历 ─────────────────────────────
+
+describe('后端正常详情 · 资料 Tab 冻结正文与公司导航（Task 6）', () => {
+  it('候选 Case 冻结职位资料抵达真实 Tab：JD/公司名可见，有真实组织编号时公司入口可导航', async () => {
+    const user = userEvent.setup();
+    render(<宿主 详情={候选S0详情DTO({ matchScore: 73, jobDetail: BFF安全职位资料样本 })} caseId="mc_direct" />);
+    expect(screen.getByText('平台工程师 · 云衢科技')).toBeTruthy(); // 顶栏公司名同源
+    expect(screen.getByText('73')).toBeTruthy(); // 顶栏权威分（0 之外的真实值原样）
+    await user.click(screen.getByRole('button', { name: '职位详情' }));
+    expect(screen.getByText('参与产品工作')).toBeTruthy(); // JD 原槽
+    expect(screen.getByText('云衢科技')).toBeTruthy();
+    expect(screen.queryByText('当前在谈详情数据未提供')).toBeNull(); // 冻结快照在场缺口说明退场
+    const 入口 = screen.getByRole('button', { name: /云衢科技/ }) as HTMLButtonElement;
+    expect(入口.disabled).toBe(false);
+    await user.click(入口);
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业详情('org_1')); // 现有 路径.企业详情
+    expect(mock跳转).toHaveBeenCalledTimes(1); // 只导航，不改 Case 缓存
+    expect(mock读取简历PDF).not.toHaveBeenCalled(); // 无额外自动公司/Job/Resume 请求
+  });
+
+  it('旧 Case（job_detail=null）：公司入口仍禁用并就地解释，资料区保留未知口径', async () => {
+    const user = userEvent.setup();
+    render(<宿主 详情={候选S0详情DTO()} caseId="mc_direct" />);
+    await user.click(screen.getByRole('button', { name: '职位详情' }));
+    // 名称缺失时公司头行的可访问名是「公司标志缺失—」，按图位定位入口
+    const 入口 = screen.getByRole('img', { name: '公司标志缺失' }).closest('button') as HTMLButtonElement;
+    expect(入口.disabled).toBe(true);
+    expect(screen.getByText('公司详情暂不可用')).toBeTruthy();
+    await user.click(入口);
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy();
+  });
+
+  it('招聘端 Case 资料 Tab 吃共享在线简历正文：内容抵达，S1 披露前后仍去名、零头像请求', async () => {
+    const user = userEvent.setup();
+    const 页 = render(
+      <宿主
+        详情={招聘S1附件详情DTO(false, {
+          candidateResume: BFF候选在线简历样本,
+          identity: BFF候选身份披露样本, // 已披露带姓名头像
+        })}
+        caseId="mc_hr"
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: '在线简历' }));
+    expect(screen.getByText('四年全栈经验')).toBeTruthy(); // self_description 原槽
+    expect(screen.queryByText('沈亦舟')).toBeNull(); // 本轮仍去名
+    expect(document.querySelector('img[src="https://cdn.example.com/case/avatar_1.png"]')).toBeNull();
+    // S1 前后 identity 变 anonymous：UI 仍去名（在线简历资料与身份无关）
+    页.rerender(
+      <宿主
+        详情={招聘S1附件详情DTO(false, {
+          candidateResume: BFF候选在线简历样本,
+          identity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
+        })}
+        caseId="mc_hr"
+      />,
+    );
+    expect(screen.getByText('四年全栈经验')).toBeTruthy();
+    expect(screen.queryByText('沈亦舟')).toBeNull();
+  });
+});
+
 // ── J-PILOT-01 Task 5：公开初评托盘 + 后端详情渲染 的联合切换 ──
 
 /** pre-Case 聚合样本：控制层连续资源的同形产出（映射全走真实 mapper）。 */
-function 连续详情DTO(选项: { phase?: NegotiationDetail['phase'] } = {}): NegotiationDetail {
+function 连续详情DTO(选项: {
+  phase?: NegotiationDetail['phase'];
+  jobDetail?: NegotiationDetail['job_detail'];
+  匹配分?: number | null;
+} = {}): NegotiationDetail {
   const phase = 选项.phase ?? 'evaluating';
   return {
     needs_action: false,
@@ -522,7 +601,7 @@ function 连续详情DTO(选项: { phase?: NegotiationDetail['phase'] } = {}): N
     created_at: '2026-09-01T08:00:00Z',
     updated_at: '2026-09-01T09:00:00Z',
     archived_at: null,
-    match_score: null,
+    match_score: 选项.匹配分 ?? null,
     evaluation: null,
     case_detail: null,
     failure_history: [],
@@ -542,7 +621,7 @@ function 连续详情DTO(选项: { phase?: NegotiationDetail['phase'] } = {}): N
       },
       condition_confirmation: null,
     },
-    job_detail: null,
+    job_detail: 选项.jobDetail ?? null,
   };
 }
 
@@ -616,6 +695,22 @@ describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5�
     await user.click(screen.getByRole('button', { name: '代谈进度' }));
     expect(screen.getByText('每周可以到岗几天？')).toBeTruthy(); // Case 四阶段流照常
   });
+
+  // Task 6：pre-case 也用它自身 job_detail + match_score（顶栏/资料区同源），公司入口按编号导航
+  it('pre-case 冻结职位与公司导航：无 case_id 照常显示，入口按真实组织编号进企业详情', async () => {
+    const user = userEvent.setup();
+    render(
+      <后端详情渲染 资源={连续资源(连续详情DTO({ jobDetail: BFF安全职位资料样本, 匹配分: 73 }))} />,
+    );
+    expect(screen.getByText('平台工程师 · 云衢科技')).toBeTruthy();
+    expect(screen.getByText('73')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '职位详情' }));
+    expect(screen.getByText('参与产品工作')).toBeTruthy();
+    const 入口 = screen.getByRole('button', { name: /云衢科技/ }) as HTMLButtonElement;
+    expect(入口.disabled).toBe(false);
+    await user.click(入口);
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业详情('org_1'));
+  });
 });
 
 /** 与父控制正常分支同形的正常资源（真实 mapper；公开初评恒 null）。 */
@@ -629,6 +724,7 @@ function 构造正常资源(视图: P5详情正常视图, caseId: string): 后�
     状态: 从P5到详情状态(视图),
     分段们: 从P5到详情分段(视图, 详情.state.stage),
     职位资料: 从P5到职位资料(视图),
+    在线简历资料: null,
     底栏: { kind: '输入', 占位: '有想法就告诉你的AI代理', 值: '', 改变: () => undefined, 发送: null, 禁用说明: null },
     终局: { 摘要: null, 移交: null },
     刷新错误: null,

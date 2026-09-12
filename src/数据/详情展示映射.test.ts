@@ -6,8 +6,12 @@
 // 「默认展开」只标有动作的合法当前段（raw stage），分段绝不携带命令。
 
 import { describe, expect, it } from 'vitest';
-import { 从P5到详情分段, 从P5到详情状态, 从P5到详情顶栏, 从P5到职位资料, 从职位摘要到资料 } from './详情展示映射';
+import {
+  从P5到详情分段, 从P5到详情状态, 从P5到详情顶栏, 从P5到职位资料, 从职位摘要到资料, 从冻结职位到资料,
+} from './详情展示映射';
 import type { P5阶段, P5阶段区块视图, P5详情正常视图 } from './MatchCase展示映射';
+import type { BFF安全职位资料 } from './BFF契约';
+import { BFF安全职位资料样本, BFF公司摘要样本 } from '../测试/展示资料样本';
 
 const 别名 = 'candidate-0123456789ab';
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
@@ -40,6 +44,9 @@ function 正常视图(覆盖: Partial<P5详情正常视图> = {}): P5详情正�
     阶段区块: [],
     终局摘要: null,
     注意说明: null,
+    // Task 6：同一响应的权威分与冻结职位资料（旧 Case 合法 null 档）
+    匹配分: null,
+    冻结职位资料: null,
     ...覆盖,
   };
 }
@@ -70,6 +77,31 @@ describe('从P5到详情顶栏', () => {
       岗位上下文: '平台工程师 · 上海 · 25-40K·16薪',
     });
     // 别名一个字都不带出（不解析成身份，也不以「缺少姓名」占位恢复姓名区）
+    expect(JSON.stringify(顶栏)).not.toContain(别名);
+  });
+
+  // Task 6：顶栏取同一响应的 match_score 与 job_detail 公司名（标题/分数/正文同源）
+  it('冻结组织在场：求职端标题公司名用 job_detail 的 organization.display_name，右侧权威分原样', () => {
+    const 顶栏 = 从P5到详情顶栏(正常视图({ 匹配分: 73, 冻结职位资料: BFF安全职位资料样本 }));
+    expect(顶栏.标题).toBe('平台工程师 · 云衢科技');
+    expect(顶栏.右侧).toEqual({ kind: '分数', 值: 73 });
+  });
+
+  it('真实 0 分照常带出；无溯源（null）与组织缺席保持既有未知口径，不外查分数', () => {
+    const 零分 = 从P5到详情顶栏(正常视图({ 匹配分: 0 }));
+    expect(零分.右侧).toEqual({ kind: '分数', 值: 0 });
+    expect(零分.标题).toBe('平台工程师 · 公司信息缺失');
+    const 无分 = 从P5到详情顶栏(正常视图({ 匹配分: null }));
+    expect(无分.右侧).toEqual({ kind: '分数', 值: null });
+    expect(无分.标题).toBe('平台工程师 · 公司信息缺失');
+  });
+
+  it('招聘端同样带权威分：岗位上下文不变，别名不因分数在场而泄漏', () => {
+    const 顶栏 = 从P5到详情顶栏(
+      正常视图({ role: 'recruiter', candidateAlias: 别名, 匹配分: 61, 冻结职位资料: BFF安全职位资料样本 }),
+    );
+    expect(顶栏.右侧).toEqual({ kind: '分数', 值: 61 });
+    expect(顶栏.岗位上下文).toBe('平台工程师 · 上海 · 25-40K·16薪');
     expect(JSON.stringify(顶栏)).not.toContain(别名);
   });
 });
@@ -189,6 +221,119 @@ describe('从P5到职位资料', () => {
   it('从职位摘要到资料：同一份职位事实在两条详情路由产出完全相同的资料区', () => {
     const 职位 = { 职位: '平台工程师', 城市: '上海', 薪资: '25-40K·16薪', 技能: ['Go'] };
     expect(从职位摘要到资料(职位)).toEqual(从P5到职位资料(正常视图()));
+  });
+
+  // Task 6：视图携带冻结职位资料后，从P5到职位资料 消费同一响应的 job_detail（同源）
+  it('从P5到职位资料：冻结快照在场时消费它，摘要仍用旧四事实；alias 不进资料区', () => {
+    const 资料 = 从P5到职位资料(正常视图({ 冻结职位资料: BFF安全职位资料样本, 匹配分: 73 }));
+    expect(资料.职位详情).toEqual(['参与产品工作']);
+    expect(资料.公司.名称).toBe('云衢科技');
+    expect(资料.公司.编号).toBe('org_1');
+    expect(资料.分析.分).toBe(73);
+    expect(资料.摘要).toEqual({ 职位: '平台工程师', 城市: '上海', 薪资: '25-40K·16薪', 技能: ['Go'] });
+    expect(JSON.stringify(资料)).not.toContain(别名);
+  });
+});
+
+// ── Task 6：Case 冻结职位资料（BFF安全职位资料）→ 资料区投影 ────────────────────────
+
+describe('从冻结职位到资料', () => {
+  const 摘要 = { 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300-500 元/天', 技能: ['Python'] };
+
+  it('新 Case 完整：JD/要求/公司/发布人/福利落既有原槽，接口缺口说明退场，权威分进分析槽', () => {
+    expect(从冻结职位到资料({ 摘要, 冻结: BFF安全职位资料样本, 分: 73 })).toEqual({
+      摘要,
+      分析: { 分: 73, 行们: null, 文案: null },
+      职位详情: ['参与产品工作'],
+      职位要求: ['在校生'],
+      公司: {
+        名称: '云衢科技',
+        字标: null, // 文字首字不冒充真实媒体：只有 Logo 在场才给图位输入
+        图片URL: 'https://cdn.example.com/org_1/media_1.png',
+        编号: 'org_1',
+        简介: '做可靠的技术产品',
+        元行: [
+          { 标签: '融资阶段', 值: 'C 轮' },
+          { 标签: '规模', 值: '500-1000 人' },
+          { 标签: '行业', 值: '金融科技' },
+          { 标签: '成立', 值: null }, // 公司成立时间本轮无源（Spec §9 延后项）
+          { 标签: '地址', 值: '上海市张江路 1 号' }, // 公司地址；岗位办公地址（office_location）分开
+        ],
+        标签: ['五险一金', '股票期权'],
+      },
+      对接人: { 姓名: '林澈', 职务: '招聘负责人', 字标: null, 头像URL: null },
+      接口缺口说明: null,
+    });
+  });
+
+  it('旧 Case 双区 null：冻结缺席时沿用全缺失底座与缺口说明，不因 job_detail=null 抹去旧四事实', () => {
+    expect(从冻结职位到资料({ 摘要, 冻结: null, 分: null })).toEqual({
+      ...从职位摘要到资料(摘要),
+      分析: { 分: null, 行们: null, 文案: null },
+    });
+    // 无溯源分数不造 0；有权威分时也只填分数槽，证据行/缺口说明照旧缺失
+    expect(从冻结职位到资料({ 摘要, 冻结: null, 分: 73 }).分析).toEqual({ 分: 73, 行们: null, 文案: null });
+    expect(从冻结职位到资料({ 摘要, 冻结: null, 分: 73 }).接口缺口说明).toBe('当前在谈详情数据未提供');
+  });
+
+  it('真实 0 分合法：分析分槽原样 0（组件按「有分无证据」给缺失说明，不画假环）', () => {
+    expect(从冻结职位到资料({ 摘要, 冻结: null, 分: 0 }).分析.分).toBe(0);
+  });
+
+  it('JD/要求按行拆条：多行文本 trim 丢空行；空串 = 提供了但一条没有（暂无）；null = 缺失', () => {
+    const 多行: BFF安全职位资料 = {
+      ...BFF安全职位资料样本,
+      description: '参与产品工作\r\n\n  维护需求池  ',
+      requirements: '',
+    };
+    const 资料 = 从冻结职位到资料({ 摘要, 冻结: 多行, 分: null });
+    expect(资料.职位详情).toEqual(['参与产品工作', '维护需求池']);
+    expect(资料.职位要求).toEqual([]);
+    const 缺失: BFF安全职位资料 = { ...BFF安全职位资料样本, description: null, requirements: null };
+    expect(从冻结职位到资料({ 摘要, 冻结: 缺失, 分: null }).职位详情).toBeNull();
+    expect(从冻结职位到资料({ 摘要, 冻结: 缺失, 分: null }).职位要求).toBeNull();
+  });
+
+  it('每成员可 null：组织/公司简介/福利/发布人缺席给未知；开放福利码不展示；空白文本按缺失', () => {
+    const 缺源: BFF安全职位资料 = {
+      ...BFF安全职位资料样本,
+      organization: null,
+      company_intro: '   ',
+      benefit_codes: null,
+      publisher_profile: null,
+      office_address: '  ',
+    };
+    const 资料 = 从冻结职位到资料({ 摘要, 冻结: 缺源, 分: null });
+    expect(资料.公司.名称).toBeNull();
+    expect(资料.公司.编号).toBeNull();
+    expect(资料.公司.图片URL).toBeNull();
+    expect(资料.公司.简介).toBeNull();
+    expect(资料.公司.元行.map((行) => 行.值)).toEqual([null, null, null, null, null]);
+    expect(资料.公司.标签).toBeNull();
+    expect(资料.对接人).toEqual({ 姓名: null, 职务: null, 字标: null, 头像URL: null });
+    // 冻结快照在场：缺口说明退场（资料已提供），缺失槽由组件原位显示
+    expect(资料.接口缺口说明).toBeNull();
+  });
+
+  it('开放 string 福利码只认闭合文案表：未知码丢弃，全未知收口为空数组（暂无）', () => {
+    const 未知码: BFF安全职位资料 = {
+      ...BFF安全职位资料样本,
+      benefit_codes: ['social_insurance_housing_fund', 'not_a_benefit'],
+    };
+    expect(从冻结职位到资料({ 摘要, 冻结: 未知码, 分: null }).公司.标签).toEqual(['五险一金']);
+    const 全未知: BFF安全职位资料 = { ...BFF安全职位资料样本, benefit_codes: ['nope'] };
+    expect(从冻结职位到资料({ 摘要, 冻结: 全未知, 分: null }).公司.标签).toEqual([]);
+  });
+
+  it('组织摘要成员缺失时保留已知段：编号缺失（公司导航禁用坐标）与名称/媒体互不连坐', () => {
+    const 缺编号: BFF安全职位资料 = {
+      ...BFF安全职位资料样本,
+      organization: { ...BFF公司摘要样本, organization_id: null },
+    };
+    const 资料 = 从冻结职位到资料({ 摘要, 冻结: 缺编号, 分: null });
+    expect(资料.公司.编号).toBeNull(); // 无合法导航坐标
+    expect(资料.公司.名称).toBe('云衢科技');
+    expect(资料.公司.图片URL).toBe('https://cdn.example.com/org_1/media_1.png');
   });
 });
 

@@ -22,7 +22,7 @@ import {
   映射连续列表项,
 } from './连续代谈展示映射';
 import { 从连续到阶段 } from './列表卡片映射';
-import { BFF公司摘要样本 } from '../测试/展示资料样本';
+import { BFF安全职位资料样本, BFF公司摘要样本 } from '../测试/展示资料样本';
 
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
 const 职位ID = 'job_0123456789abcdef0123456789abcdef';
@@ -108,6 +108,9 @@ function 连续详情(选项: {
   职位名?: string | null;
   城市?: string | null;
   薪资?: string | null;
+  /** Task 6：详情响应的冻结职位资料与权威分（旧记录合法 null 档）。 */
+  jobDetail?: NegotiationDetail['job_detail'];
+  匹配分?: number | null;
 } = {}): NegotiationDetail {
   return {
     ...连续卡({
@@ -122,6 +125,7 @@ function 连续详情(选项: {
       职位名: 选项.职位名,
       城市: 选项.城市,
       薪资: 选项.薪资,
+      匹配分: 选项.匹配分,
     }),
     evaluation: null,
     case_detail: 选项.caseDetail ?? null,
@@ -130,7 +134,7 @@ function 连续详情(选项: {
       public_evaluation: 选项.publicEvaluation === undefined ? null : 选项.publicEvaluation,
       condition_confirmation: null,
     },
-    job_detail: null,
+    job_detail: 选项.jobDetail ?? null,
   };
 }
 
@@ -361,12 +365,43 @@ describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => 
     expect(缺失.副标题).toBe('城市未知 · 薪资未知');
   });
 
+  // Task 6：顶栏取同一响应的 match_score 与 job_detail 公司名（列表/详情、pre-case/case 一致）
+  it('冻结组织与权威分在场：标题公司名用 job_detail 组织名，右侧 0 是合法值；无溯源不造 0', () => {
+    const 完整 = 从连续到详情顶栏(
+      连续详情({ phase: 'accepted', jobDetail: BFF安全职位资料样本, 匹配分: 73 }),
+    );
+    expect(完整.标题).toBe('AI 产品实习生 · 云衢科技');
+    expect(完整.右侧).toEqual({ kind: '分数', 值: 73 });
+    const 零分 = 从连续到详情顶栏(连续详情({ phase: 'accepted', 匹配分: 0 }));
+    expect(零分.右侧).toEqual({ kind: '分数', 值: 0 });
+    const 无分 = 从连续到详情顶栏(连续详情({ phase: 'accepted' }));
+    expect(无分.右侧).toEqual({ kind: '分数', 值: null });
+    expect(无分.标题).toBe('AI 产品实习生 · 公司信息缺失');
+  });
+
   it('职位资料：negotiation.job 只给实际字段，其余全缺失，缺口说明沿用约定句；技能段恒空', () => {
     const 资料 = 从连续到职位资料(连续详情({ phase: 'accepted' }));
     expect(资料.摘要).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300-500 元/天', 技能: [] });
     expect(资料.职位详情).toBeNull();
     expect(资料.公司.元行.map((行) => 行.标签)).toEqual(['融资阶段', '规模', '行业', '成立', '地址']);
     expect(资料.接口缺口说明).toBe('当前在谈详情数据未提供');
+    // 权威分只进分析分数槽，无对齐证据不给行（与 Case 详情同一底座）
+    expect(从连续到职位资料(连续详情({ phase: 'accepted', 匹配分: 73 })).分析).toEqual({
+      分: 73, 行们: null, 文案: null,
+    });
+  });
+
+  // Task 6：pre-case 也用它自身 job_detail —— 不因为没有 case_id 不显示已给的冻结职位
+  it('pre-case job_detail 在场：JD/公司/发布人照常投影（case_id 为 null 不是隐藏理由）', () => {
+    const 资料 = 从连续到职位资料(
+      连续详情({ phase: 'accepted', jobDetail: BFF安全职位资料样本 }),
+    );
+    expect(资料.职位详情).toEqual(['参与产品工作']);
+    expect(资料.公司.名称).toBe('云衢科技');
+    expect(资料.公司.编号).toBe('org_1');
+    expect(资料.对接人.姓名).toBe('林澈');
+    expect(资料.接口缺口说明).toBeNull();
+    expect(资料.摘要).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300-500 元/天', 技能: [] });
   });
 });
 

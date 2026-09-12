@@ -26,6 +26,7 @@ import type { P5列表项, P5详情, P5阶段区 } from '../../数据/招聘数�
 import type { NegotiationDetail } from '../../数据/招聘数据源/连续代谈';
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import type { BFF主体 } from '../../数据/BFF契约';
+import { BFF安全职位资料样本, BFF候选在线简历样本, BFF候选身份披露样本 } from '../../测试/展示资料样本';
 
 const mock跳转 = vi.fn();
 vi.mock('../../路由/导航钩子', () => ({
@@ -115,7 +116,12 @@ function 阶段区组(): P5阶段区[] {
   return [S0, 待('resume_submission'), 待('needs_coordination'), 待('intent_confirmation')];
 }
 
-function 候选详情DTO(覆盖: { state?: P5列表项['state']; availableActions?: P5详情['availableActions'] } = {}): P5详情 {
+function 候选详情DTO(覆盖: {
+  state?: P5列表项['state'];
+  availableActions?: P5详情['availableActions'];
+  matchScore?: number | null;
+  jobDetail?: P5详情['jobDetail'];
+} = {}): P5详情 {
   return {
     role: 'candidate',
     context: { intentionId: 意向ID, job: 冻结职位 },
@@ -127,9 +133,34 @@ function 候选详情DTO(覆盖: { state?: P5列表项['state']; availableAction
     intentConfirmations: { candidate: '', recruiter: '' },
     terminalSummary: null,
     conversationRef: null,
-    // release/0.2.5：展示字段是解码层 required 成员；本屏不消费，置合法 null 档。
-    matchScore: null,
-    jobDetail: null,
+    // release/0.2.5：展示字段是解码层 required 成员；Task 6 起消费（旧 Case 合法 null 档）。
+    matchScore: 覆盖.matchScore ?? null,
+    jobDetail: 覆盖.jobDetail ?? null,
+  };
+}
+
+/** 招聘端 Case DTO：带冻结在线简历与候选身份（Task 6 资料 Tab / 去名边界用）。 */
+function 招聘详情DTO(覆盖: {
+  matchScore?: number | null;
+  jobDetail?: P5详情['jobDetail'];
+  candidateResume?: Extract<P5详情, { role: 'recruiter' }>['candidateResume'];
+  identity?: Extract<P5详情, { role: 'recruiter' }>['candidateIdentity'];
+} = {}): P5详情 {
+  return {
+    role: 'recruiter',
+    context: { candidateAlias: 'candidate-0123456789ab', job: 冻结职位 },
+    state: 状态(),
+    needsAction: true,
+    availableActions: ['respond_fact', 'end_screening'],
+    stages: 阶段区组(),
+    currentCoordination: null,
+    intentConfirmations: { candidate: '', recruiter: '' },
+    terminalSummary: null,
+    conversationRef: null,
+    matchScore: 覆盖.matchScore ?? null,
+    jobDetail: 覆盖.jobDetail ?? null,
+    candidateResume: 覆盖.candidateResume ?? null,
+    candidateIdentity: 覆盖.identity ?? { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };
 }
 
@@ -251,6 +282,8 @@ function 连续详情DTO(选项: {
   actions?: Partial<NegotiationDetail['actions']>;
   caseDetail?: P5详情 | null;
   publicEvaluation?: NegotiationDetail['agent_summary']['public_evaluation'];
+  jobDetail?: NegotiationDetail['job_detail'];
+  匹配分?: number | null;
 } = {}): NegotiationDetail {
   const recordId = 选项.recordId ?? 'mc_direct';
   const recordKind = recordId.startsWith('dlg_') ? ('delegation' as const) : ('case' as const);
@@ -288,7 +321,7 @@ function 连续详情DTO(选项: {
     created_at: '2026-09-01T08:00:00Z',
     updated_at: '2026-09-01T09:00:00Z',
     archived_at: null,
-    match_score: null,
+    match_score: 选项.匹配分 ?? null,
     evaluation: null,
     case_detail: caseDetail,
     failure_history: [],
@@ -296,7 +329,7 @@ function 连续详情DTO(选项: {
       public_evaluation: 选项.publicEvaluation === undefined ? null : 选项.publicEvaluation,
       condition_confirmation: null,
     },
-    job_detail: null,
+    job_detail: 选项.jobDetail ?? null,
   };
 }
 
@@ -504,6 +537,115 @@ describe('use后端详情控制 · 正常资源与映射', () => {
     expect(mock读取连续详情).toHaveBeenLastCalledWith('mc_direct', true);
   });
 
+});
+
+// ── Task 6：在谈详情第二 Tab 的冻结正文、顶栏分数与在线简历资料 ────────────────────
+
+describe('use后端详情控制 · Case 冻结正文与在线简历资料（Task 6）', () => {
+  it('新 Case 完整：顶栏权威分 + 资料区吃嵌套 case_detail.job_detail（同源），候选无在线简历资料', () => {
+    置详情状态({
+      快照: 详情快照({
+        detail: 候选详情DTO({ matchScore: 73, jobDetail: BFF安全职位资料样本 }),
+      }),
+    });
+    const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
+    const 资源 = 取正常(result.current);
+    expect(资源.顶栏.右侧).toEqual({ kind: '分数', 值: 73 });
+    expect(资源.顶栏.标题).toBe('平台工程师 · 云衢科技');
+    expect(资源.职位资料.公司.编号).toBe('org_1');
+    expect(资源.职位资料.公司.名称).toBe('云衢科技');
+    expect(资源.职位资料.职位详情).toEqual(['参与产品工作']);
+    expect(资源.职位资料.接口缺口说明).toBeNull();
+    // 摘要仍用旧四事实（不因 job_detail 在场重写）
+    expect(资源.职位资料.摘要).toEqual({ 职位: '平台工程师', 城市: '上海', 薪资: '25-40K·16薪', 技能: ['Go', 'Kubernetes'] });
+    expect(资源.在线简历资料).toBeNull(); // 候选角色不构造在线简历资料
+  });
+
+  it('旧 Case 双区 null：资料区沿用全缺失底座，顶栏公司槽与分数保持既有未知，无补读', () => {
+    置详情状态({ 快照: 详情快照({ detail: 候选详情DTO() }) });
+    const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
+    const 资源 = 取正常(result.current);
+    expect(资源.顶栏.标题).toBe('平台工程师 · 公司信息缺失');
+    expect(资源.顶栏.右侧).toEqual({ kind: '分数', 值: null });
+    expect(资源.职位资料.接口缺口说明).toBe('当前在谈详情数据未提供');
+    expect(资源.职位资料.公司.编号).toBeUndefined(); // 无合法公司导航坐标
+    expect(资源.在线简历资料).toBeNull();
+    // 冻结快照不被覆盖：除挂载直达读外零任何 Job/组织/在线简历补读请求
+    expect(mock读取连续详情).toHaveBeenCalledTimes(1);
+    expect(mock读取详情).not.toHaveBeenCalled();
+  });
+
+  it('真实 0 分照常进顶栏；不因 0 分外查/拼其它记录分数', () => {
+    置详情状态({ 快照: 详情快照({ detail: 候选详情DTO({ matchScore: 0 }) }) });
+    const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
+    expect(取正常(result.current).顶栏.右侧).toEqual({ kind: '分数', 值: 0 });
+  });
+
+  it('招聘端映射 candidate_resume 为共享在线简历资料；identity S1 前后变化 UI 仍去名、零头像请求', () => {
+    置详情状态({
+      role: 'recruiter', caseId: 'mc_hr',
+      快照: 详情快照({
+        detail: 招聘详情DTO({
+          matchScore: 61,
+          jobDetail: BFF安全职位资料样本,
+          candidateResume: BFF候选在线简历样本,
+          identity: BFF候选身份披露样本, // 已披露带姓名头像
+        }),
+      }),
+    });
+    const { result } = renderHook(() => use后端详情控制({ role: 'recruiter', caseId: 'mc_hr' }));
+    const 资源 = 取正常(result.current);
+    expect(资源.在线简历资料).not.toBeNull();
+    expect(资源.在线简历资料!.个人优势).toBe('四年全栈经验');
+    expect(资源.顶栏.右侧).toEqual({ kind: '分数', 值: 61 });
+    // 去名边界：披露姓名/头像 URL 不进任何展示资源（顶栏/资料区/在线简历资料；
+    // 动作输入里的 raw DTO 是动作控制域，不是展示面）
+    const 展示面 = JSON.stringify({
+      顶栏: 资源.顶栏, 状态: 资源.状态, 分段们: 资源.分段们,
+      职位资料: 资源.职位资料, 在线简历资料: 资源.在线简历资料, 终局: 资源.终局,
+    });
+    const 文本 = 展示面;
+    expect(文本).not.toContain('沈亦舟');
+    expect(文本).not.toContain('avatar_url');
+    expect(文本).not.toContain('candidate-0123456789ab'); // 别名仍不进展示
+    expect(mock读取简历PDF).not.toHaveBeenCalled(); // 不请求身份头像/PDF
+
+    // S1 后 identity 变 anonymous：资料层覆盖清除旧身份，UI 仍去名（同一映射不受影响）
+    置详情状态({
+      role: 'recruiter', caseId: 'mc_hr',
+      快照: 详情快照({
+        detail: 招聘详情DTO({
+          matchScore: 61,
+          jobDetail: BFF安全职位资料样本,
+          candidateResume: BFF候选在线简历样本,
+          identity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
+        }),
+      }),
+    });
+    const 再次 = renderHook(() => use后端详情控制({ role: 'recruiter', caseId: 'mc_hr' }));
+    const 资源2 = 取正常(再次.result.current);
+    expect(资源2.在线简历资料).toEqual(资源.在线简历资料); // 身份变化不改变简历正文
+    expect(JSON.stringify(资源2)).not.toContain('沈亦舟');
+  });
+
+  it('pre-case 聚合 job_detail 在场：连续资源照常投影冻结职位（不因无 case_id 隐藏）', () => {
+    置详情状态({
+      连续快照: 连续详情快照({
+        聚合: 连续详情DTO({
+          recordId: 'dlg_0123456789abcdef0123456789abcdef',
+          phase: 'evaluating', caseDetail: null,
+          jobDetail: BFF安全职位资料样本, 匹配分: 73,
+        }),
+      }),
+    });
+    const { result } = renderHook(() => use后端详情控制({
+      role: 'candidate', caseId: 'dlg_0123456789abcdef0123456789abcdef',
+    }));
+    const 资源 = 取连续(result.current);
+    expect(资源.顶栏.右侧).toEqual({ kind: '分数', 值: 73 });
+    expect(资源.职位资料.职位详情).toEqual(['参与产品工作']);
+    expect(资源.职位资料.公司.编号).toBe('org_1');
+  });
 });
 
 describe('use后端详情控制 · Case 叮嘱（S1 起恢复输入）', () => {

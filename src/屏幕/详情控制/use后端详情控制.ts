@@ -53,6 +53,8 @@ import type { 公开初评托盘视图 } from '../../数据/连续代谈展示�
 import { 映射P5详情, 映射S0底栏说明, P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import type { 分段项 } from '../../组件/阶段对话流';
+import { 从BFF到在线简历展示 } from '../../数据/在线简历展示映射';
+import type { 在线简历展示资料 } from '../../组件/在谈详情/类型';
 import type {
   详情动作卡信息,
   详情底栏信息,
@@ -93,6 +95,10 @@ export interface 后端正常资源 {
   状态: 状态区信息;
   分段们: 分段项[];
   职位资料: 职位资料信息;
+  /** Task 6：招聘角色把 Case 冻结 candidate_resume 映射成共享正文资料；候选角色恒 null
+   *  （不构造该资料，第二 Tab 走 职位资料）。身份（identity）不进这条映射 —— 去名不受
+   *  S1 披露状态影响。 */
+  在线简历资料: 在线简历展示资料 | null;
   底栏: 详情底栏信息;
   终局: 终局区信息;
   刷新错误: string | null;
@@ -394,6 +400,8 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
     状态: 从P5到详情状态(正常),
     分段们: 从P5到详情分段(正常, 原文.state.stage),
     职位资料: 从P5到职位资料(正常),
+    // 招聘角色吃 Case 冻结 candidate_resume（缺源档给 null）；候选不构造，正文走 职位资料
+    在线简历资料: 原文.role === 'recruiter' ? 从BFF到在线简历展示(原文.candidateResume) : null,
     底栏,
     终局,
     // 刷新/轮询失败：旧详情原样保留只读，错误单独一行交代 + 重试（§10.3）

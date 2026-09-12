@@ -4,30 +4,57 @@
 // 顶栏投影在 Task 1 落地，Task 2 补状态区与阶段分段，Task 3 补资料区投影（契约 B）。
 
 import type { P5阶段, P5阶段区块视图, P5详情正常视图, P5角色 } from './MatchCase展示映射';
+import type { BFF安全职位资料 } from './BFF契约';
+import { 公司规模文案, 融资阶段文案, 福利文案 } from './组织映射';
 import type { 状态区信息, 顶栏信息, 职位资料信息 } from '../组件/在谈详情/类型';
 import type { 分段项 } from '../组件/阶段对话流';
 import type { 对话条, 阶段 } from './类型';
 
+/** trim 后无有效字符按缺失处理（同 列表卡片映射 的缺失规则） */
+function 非空文本(值: string | null | undefined): string | null {
+  const 文 = 值?.trim() ?? '';
+  return 文 === '' ? null : 文;
+}
+
+/** 开放 string 码只认闭合文案表内键（同 发现推荐映射.码表段：表外码不展示、不强转枚举） */
+function 码表段<T extends object>(表: T, 码: string | null | undefined): string | null {
+  if (码 === null || 码 === undefined || !已有键(表, 码)) return null;
+  const 文 = 表[码];
+  return typeof 文 === 'string' && 文.trim() !== '' ? 文 : null;
+}
+
+function 已有键<T extends object>(表: T, key: PropertyKey): key is keyof T {
+  return Object.prototype.hasOwnProperty.call(表, key);
+}
+
+/** JD 文本按行拆条：trim 后丢空行（同 发现推荐映射.拆行 的口径） */
+function 拆行(文本: string): string[] {
+  return 文本.split(/\r?\n/).map((行) => 行.trim()).filter((行) => 行 !== '');
+}
+
 /**
  * P5 详情正常视图 → 顶栏信息。
  *
- * 求职端：标题 = 冻结职位名 · 公司信息缺失（spec §3.1「公司缺失显示『公司信息缺失』」，
+ * 求职端：标题 = 冻结职位名 · 公司名（spec §6.2「标题公司名与正文同源」—— 只吃同一
+ * 响应的 冻结职位资料.organization.display_name；对象/名称缺失显示『公司信息缺失』，
  * 公司槽位原样保留在标题里，不加新查询/类型）、副标题 = 城市 · 薪资带（与接线前逐字
- * 一致）；岗位上下文已由标题/副标题承载，给 null。Backend 详情没有匹配分，右侧给
- * null —— 展示层显示「—」并说明「匹配分缺失」，不画假分数。
+ * 一致）；岗位上下文已由标题/副标题承载，给 null。右侧取同一响应的权威 match_score
+ * （真实 0 合法；null 无溯源 → 展示层显示「—」并说明「匹配分缺失」，不画假分数，
+ * 不外查、不拼其它记录的分数）。
  *
  * 招聘端：去名裁定 —— candidateAlias 是不透明展示文本，不进顶栏（标题/副标题 null）；
  * Backend 详情没有结构化画像字段，但画像位置全保留（字段全 null，占位文案归展示层）；
  * 冻结职位 · 城市 · 薪资带改由 岗位上下文 单独承载，不丢 Backend 已知事实。
  */
 export function 从P5到详情顶栏(view: P5详情正常视图): 顶栏信息 {
+  const 公司名 = 非空文本(view.冻结职位资料?.organization?.display_name ?? null) ?? '公司信息缺失';
   if (view.role === 'candidate') {
     return {
       端: '求职',
-      标题: `${view.职位.职位名} · 公司信息缺失`,
+      标题: `${view.职位.职位名} · ${公司名}`,
       副标题: `${view.职位.城市} · ${view.职位.薪资带}`,
       画像: null,
-      右侧: { kind: '分数', 值: null },
+      右侧: { kind: '分数', 值: view.匹配分 },
       岗位上下文: null,
     };
   }
@@ -36,7 +63,7 @@ export function 从P5到详情顶栏(view: P5详情正常视图): 顶栏信息 {
     标题: null,
     副标题: null,
     画像: { 性别: null, 年限: null, 学历: null, 求职状态: null },
-    右侧: { kind: '分数', 值: null },
+    右侧: { kind: '分数', 值: view.匹配分 },
     岗位上下文: `${view.职位.职位名} · ${view.职位.城市} · ${view.职位.薪资带}`,
   };
 }
@@ -87,14 +114,77 @@ export function 从职位摘要到资料(职位: {
 }
 
 /**
+ * 冻结职位资料（BFF安全职位资料，可 null）→ 第二 Tab（资料）的职位资料信息。
+ *
+ * 在谈详情的 Case/pre-Case 共用底座（Spec §6.2）：摘要仍用旧职位四事实（不因
+ * job_detail=null 抹去旧事实），冻结快照在场时把完整 JD、结构化要求正文、公司简介/
+ * 元信息/福利、发布人姓名职务填进既有原槽，成员缺失给 null（未知）；只有旧 job 四
+ * 事实的 legacy Case 原样走 从职位摘要到资料 的全缺失底座 + 缺口说明。
+ * 不补读当前 Job/组织替换冻结正文；匹配分析无对齐证据不给行（权威分只进分数槽，
+ * 组件按「有分无证据」显示缺失，绝不把空行喂给分析块）。
+ */
+export function 从冻结职位到资料(输入: {
+  摘要: { 职位: string; 城市: string; 薪资: string; 技能: readonly string[] };
+  冻结: BFF安全职位资料 | null;
+  分: number | null;
+}): 职位资料信息 {
+  const 基础 = 从职位摘要到资料(输入.摘要);
+  // 同一响应的权威分：0 合法；无对齐证据时 行们/文案 保持缺失（组件负责缺失说明）
+  基础.分析 = { 分: 输入.分, 行们: null, 文案: null };
+  const 冻结 = 输入.冻结;
+  if (冻结 === null) return 基础;
+  const 组织 = 冻结.organization;
+  return {
+    ...基础,
+    职位详情: 冻结.description === null ? null : 拆行(冻结.description),
+    职位要求: 冻结.requirements === null ? null : 拆行(冻结.requirements),
+    公司: {
+      名称: 非空文本(组织?.display_name ?? null),
+      // 文字首字不冒充真实媒体：只有 Logo 在场才给图位输入（同 Task 3/4 图片口径）
+      字标: null,
+      图片URL: 组织?.logo?.url ?? null,
+      编号: 非空文本(组织?.organization_id ?? null),
+      简介: 非空文本(冻结.company_intro),
+      元行: [
+        { 标签: '融资阶段', 值: 码表段(融资阶段文案, 组织?.funding_stage ?? null) },
+        { 标签: '规模', 值: 码表段(公司规模文案, 组织?.company_size ?? null) },
+        { 标签: '行业', 值: 非空文本(组织?.industry?.display_name ?? null) },
+        // 公司成立时间本轮无源（Spec §9 延后项），位置保留
+        { 标签: '成立', 值: null },
+        // 地址 = 公司地址（office_address）；岗位办公地址（office_location）语义分开不混填
+        { 标签: '地址', 值: 非空文本(冻结.office_address) },
+      ],
+      // 福利码只认闭合文案表：未知码不展示，全部未知收口空数组（暂无）
+      标签: 冻结.benefit_codes === null
+        ? null
+        : 冻结.benefit_codes.flatMap((码) => (已有键(福利文案, 码) ? [福利文案[码]] : [])),
+    },
+    对接人: {
+      姓名: 非空文本(冻结.publisher_profile?.public_name ?? null),
+      职务: 非空文本(冻结.publisher_profile?.title ?? null),
+      // 不用姓名首字充当照片（Task 4 口径）：只有真实头像 URL 才给图位输入
+      字标: null,
+      头像URL: 冻结.publisher_profile?.avatar_url ?? null,
+    },
+    // 冻结快照在场：整页缺口说明退场（成员级缺失由组件原位显示）
+    接口缺口说明: null,
+  };
+}
+
+/**
  * P5 详情正常视图 → 第二 Tab（资料）的职位资料信息（从P5到职位资料 的 Case 入口）。
+ * 摘要四事实与 权威分/冻结职位资料 同源（同一响应）。
  */
 export function 从P5到职位资料(view: P5详情正常视图): 职位资料信息 {
-  return 从职位摘要到资料({
-    职位: view.职位.职位名,
-    城市: view.职位.城市,
-    薪资: view.职位.薪资带,
-    技能: view.职位.技能,
+  return 从冻结职位到资料({
+    摘要: {
+      职位: view.职位.职位名,
+      城市: view.职位.城市,
+      薪资: view.职位.薪资带,
+      技能: view.职位.技能,
+    },
+    冻结: view.冻结职位资料,
+    分: view.匹配分,
   });
 }
 

@@ -11,6 +11,7 @@
 // 分析区给缺失说明，绝不把伪造的 0 分/空行喂给它。无合法公司导航坐标时公司区与导航
 // 入口位置照旧保留，入口禁用并就地解释 —— 本组件绝不从公司名文本推 opaque ID。
 
+import { useEffect, useState } from 'react';
 import { 匹配分析块 } from '../匹配分析块';
 import 样式 from './职位资料.module.css';
 import type { 详情按钮, 职位资料信息 } from './类型';
@@ -28,6 +29,14 @@ function 值位({ 值, 说明, 类名 }: { 值: string | null; 说明: string; �
 
 export function 职位资料({ 信息, 公司详情 }: { 信息: 职位资料信息; 公司详情: 详情按钮 }) {
   const { 摘要, 分析, 职位详情, 职位要求, 公司, 对接人, 接口缺口说明 } = 信息;
+  // 真实媒体（Task 6，Task 4 图位模式）：URL 只填既有图位，加载失败回既有回退
+  // （公司回字标/缺失空位、对接人回缺失空位），换 URL 清失败态。不新增视觉节点。
+  const [公司图片失败, 设公司图片失败] = useState(false);
+  useEffect(() => { 设公司图片失败(false); }, [公司.图片URL]);
+  const [头像失败, 设头像失败] = useState(false);
+  useEffect(() => { 设头像失败(false); }, [对接人.头像URL]);
+  const 显示公司图片 = 公司.图片URL !== undefined && 公司.图片URL !== null && !公司图片失败;
+  const 显示头像 = 对接人.头像URL !== undefined && 对接人.头像URL !== null && !头像失败;
   // 契约 A 的按钮栅栏：只有 执行 与 禁用说明 同时合法才可触发
   const 公司导航 =
     公司详情.执行 !== null && 公司详情.禁用说明 === null ? { 执行: 公司详情.执行 } : null;
@@ -126,7 +135,19 @@ export function 职位资料({ 信息, 公司详情 }: { 信息: 职位资料信
           disabled={公司导航 === null}
           onClick={公司导航 === null ? undefined : 公司导航.执行}
         >
-          {公司.字标 !== null ? (
+          {显示公司图片 ? (
+            <span className={样式.标志}>
+              <img
+                src={公司.图片URL ?? undefined}
+                alt=""
+                onError={() => 设公司图片失败(true)}
+                style={{
+                  width: '100%', height: '100%', objectFit: 'cover',
+                  display: 'block', borderRadius: 'inherit',
+                }}
+              />
+            </span>
+          ) : 公司.字标 !== null ? (
             <span className={样式.标志}>{公司.字标}</span>
           ) : (
             <span className={`${样式.标志} ${样式.标志空}`} role="img" aria-label="公司标志缺失" />
@@ -176,7 +197,19 @@ export function 职位资料({ 信息, 公司详情 }: { 信息: 职位资料信
       <section className={样式.区块}>
         <div className={样式.区块标题}>对接人</div>
         <div className={样式.对接人行}>
-          {对接人.字标 !== null ? (
+          {显示头像 ? (
+            <span className={样式.头像}>
+              <img
+                src={对接人.头像URL ?? undefined}
+                alt=""
+                onError={() => 设头像失败(true)}
+                style={{
+                  width: '100%', height: '100%', objectFit: 'cover',
+                  display: 'block', borderRadius: 'inherit',
+                }}
+              />
+            </span>
+          ) : 对接人.字标 !== null ? (
             <span className={样式.头像}>
               <span className={样式.头像字}>{对接人.字标}</span>
             </span>

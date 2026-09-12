@@ -6,7 +6,7 @@
 // completed + handoff_pending 一种：只给「正在创建会话」的文案，canChat 恒 false，绝不生成、
 // 缓存或推断任何会话标识。本模块不 import React / Mock / HTTP，不发请求，可被列表与详情共用。
 
-import type { P5生命周期, P5阶段, P5状态 } from './BFF契约';
+import type { P5生命周期, P5阶段, P5状态, BFF安全职位资料 } from './BFF契约';
 import { 映射招聘候选摘要 } from './招聘候选摘要映射';
 import type { 招聘候选摘要视图 } from './招聘候选摘要映射';
 import type {
@@ -301,6 +301,13 @@ export interface P5详情正常视图 {
   intentionId: string | null;
   /** P5 别名：不透明展示文本，原样带出，永不解析/截断/派生。 */
   candidateAlias: string | null;
+  /**
+   * release/0.2.5（Task 6）：同一响应的权威推荐分（0 合法，null 无溯源，二者不互换）
+   * 与 Case 创建时冻结的岗位展示（legacy 显式 null，绝不补读当前 Job）。顶栏分数与
+   * 第二 Tab 资料区从这里投影 —— 与 职位（旧四事实）同源，不外查、不拼其它记录。
+   */
+  匹配分: number | null;
+  冻结职位资料: BFF安全职位资料 | null;
   阶段标题: string;
   状态文案: string;
   步骤说明: string;
@@ -719,6 +726,9 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
     职位,
     intentionId,
     candidateAlias,
+    // 同一响应的权威分与冻结岗位展示原样透传（顶栏分数与资料区同源；不外查）
+    匹配分: detail.matchScore,
+    冻结职位资料: detail.jobDetail,
     阶段标题: 阶段标题表[行.stage],
     状态文案: 状态文案表[行.status],
     步骤说明: 步骤说明表[state.step],

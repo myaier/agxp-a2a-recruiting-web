@@ -17,7 +17,7 @@ import type { P5阶段, P5状态 } from './BFF契约';
 import type { P5Agent注意码, P5状态视图 } from './招聘数据源/MatchCase';
 import type { NegotiationCard, NegotiationDetail } from './招聘数据源/连续代谈';
 import { P4委托状态文案, P4失败原因文案, P4拒绝原因文案, 公司短行 } from './发现推荐映射';
-import { 从职位摘要到资料 } from './详情展示映射';
+import { 从冻结职位到资料 } from './详情展示映射';
 import type { 分段项 } from '../组件/阶段对话流';
 import type {
   详情底栏信息,
@@ -230,25 +230,38 @@ export function 从连续到详情状态(detail: NegotiationDetail): 状态区�
   };
 }
 
-/** pre-Case 详情顶栏：求职端同款槽位；negotiation.job 可空段缺失给占位，不猜公司。 */
+/**
+ * pre-Case 详情顶栏：求职端同款槽位；negotiation.job 可空段缺失给占位，不猜公司。
+ * Task 6：公司名取同一响应 job_detail 的组织名（缺失保持『公司信息缺失』），右侧取
+ * 同一响应的权威 match_score（0 合法；无溯源 null 不造 0，不外查/拼其它记录）。
+ */
 export function 从连续到详情顶栏(detail: NegotiationDetail): 顶栏信息 {
+  const 公司名 = 非空段(detail.job_detail?.organization?.display_name ?? null) ?? '公司信息缺失';
   return {
     端: '求职',
-    标题: `${非空段(detail.job.title) ?? '职位信息未知'} · 公司信息缺失`,
+    标题: `${非空段(detail.job.title) ?? '职位信息未知'} · ${公司名}`,
     副标题: `${非空段(detail.job.location) ?? '城市未知'} · ${非空段(detail.job.public_salary_range) ?? '薪资未知'}`,
     画像: null,
-    右侧: { kind: '分数', 值: null },
+    右侧: { kind: '分数', 值: detail.match_score },
     岗位上下文: null,
   };
 }
 
-/** pre-Case 第二 Tab 职位资料：negotiation.job 只给实际字段，其余沿用全缺失底座。 */
+/**
+ * pre-Case 第二 Tab 职位资料：negotiation.job 只给实际字段；Task 6 起消费同一响应的
+ * job_detail（pre-case 也用它自身冻结职位，不因没有 case_id 隐藏）与 match_score；
+ * legacy（job_detail=null）沿用全缺失底座，旧四事实不被抹去。
+ */
 export function 从连续到职位资料(detail: NegotiationDetail): 职位资料信息 {
-  return 从职位摘要到资料({
-    职位: 非空段(detail.job.title) ?? '职位信息未知',
-    城市: 非空段(detail.job.location) ?? '城市未知',
-    薪资: 非空段(detail.job.public_salary_range) ?? '薪资未知',
-    技能: [], // NegotiationJob 不提供技能段，恒空（不跨 API 拼资料）
+  return 从冻结职位到资料({
+    摘要: {
+      职位: 非空段(detail.job.title) ?? '职位信息未知',
+      城市: 非空段(detail.job.location) ?? '城市未知',
+      薪资: 非空段(detail.job.public_salary_range) ?? '薪资未知',
+      技能: [], // NegotiationJob 不提供技能段，恒空（不跨 API 拼资料）
+    },
+    冻结: detail.job_detail,
+    分: detail.match_score,
   });
 }
 

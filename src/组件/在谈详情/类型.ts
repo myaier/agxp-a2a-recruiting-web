@@ -89,8 +89,16 @@ export interface 职位资料信息 {
     名称: string | null; 字标: string | null; 简介: string | null;
     元行: readonly { 标签: '融资阶段' | '规模' | '行业' | '成立' | '地址'; 值: string | null }[];
     标签: readonly string[] | null;
+    /** Task 6：真实组织编号 —— 公司导航唯一坐标（有值才允许入口启用，绝不从公司名推 ID）。
+     *  缺省（undefined）= 既有调用方未提供该输入（Mock 沿用调用方自给的坐标）。 */
+    编号?: string | null;
+    /** Task 6：真实 Logo 媒体（Task 4 图位模式）：null = 无媒体（既有中性空位）；
+     *  缺省（undefined）= 既有调用方行为不变。 */
+    图片URL?: string | null;
   };
-  对接人: { 姓名: string | null; 职务: string | null; 字标: string | null };
+  对接人: { 姓名: string | null; 职务: string | null; 字标: string | null;
+    /** Task 6：发布人真实头像媒体；缺省（undefined）= 既有调用方行为不变。 */
+    头像URL?: string | null };
   接口缺口说明: string | null;
 }
 

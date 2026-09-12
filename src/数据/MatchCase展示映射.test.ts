@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { 映射P5详情, 映射P5列表项, 映射S0底栏说明, P5展示矩阵行数, P5展示状态矩阵 } from './MatchCase展示映射';
 import type { P5详情视图, P5列表视图, P5阶段, P5状态 } from './MatchCase展示映射';
 import { 招聘候选摘要样本 } from '../测试/BFF样本';
+import { BFF安全职位资料样本 } from '../测试/展示资料样本';
 import type {
   P5S0筛选记录,
   P5动作,
@@ -217,6 +218,9 @@ function 造详情(选项: {
   conversationRef?: string | null;
   /** Task 2：注入 S0 展开块的归一化记录（缺省为合法空块）。 */
   S0记录?: P5S0筛选记录 | null;
+  /** Task 6：同一响应的权威分与冻结职位资料（旧 Case 合法 null 档）。 */
+  matchScore?: number | null;
+  jobDetail?: P5详情['jobDetail'];
 } = {}): P5详情 {
   const role = 选项.role ?? 'candidate';
   const state = 选项.state ?? 造状态();
@@ -230,9 +234,9 @@ function 造详情(选项: {
     intentConfirmations: { candidate: '', recruiter: '' } as { candidate: ''; recruiter: '' },
     terminalSummary: 选项.terminalSummary ?? null,
     conversationRef: 选项.conversationRef ?? null,
-    // release/0.2.5：展示字段是解码层的 required 成员；本映射层不消费，置合法 null 档。
-    matchScore: null,
-    jobDetail: null,
+    // release/0.2.5：展示字段是解码层的 required 成员；Task 6 起透传进视图（旧 Case null 档）
+    matchScore: 选项.matchScore ?? null,
+    jobDetail: 选项.jobDetail ?? null,
   };
   if (role === 'candidate') {
     return {
@@ -569,9 +573,21 @@ describe('映射P5详情：别名与键纪律', () => {
     expect(Object.keys(视图).sort()).toEqual([
       'actions', 'caseId', 'candidateAlias', '详情终局', 'handoff', 'intentionId', 'kind', 'role',
       '状态文案', '终局', '终局摘要', '职位', '轮次', '阶段标题', '阶段区块', '步骤说明', '更新于', '待办', '注意说明',
+      '匹配分', '冻结职位资料',
     ].sort());
     const 序列化 = JSON.stringify(视图);
-    expect(序列化).not.toMatch(/匹配分|评分|推荐理由|亮点|公司简介|公司档案|在线简历|score|highlights|match_reasons/);
+    // Task 6 后 匹配分/冻结职位资料 是同一响应的权威投影；在线简历仍不进视图（映射归控制层）
+    expect(序列化).not.toMatch(/评分|推荐理由|亮点|公司简介|公司档案|在线简历|score|highlights|match_reasons/);
+  });
+
+  // Task 6：同一响应的 match_score 与 job_detail 透传（顶栏分数与资料区同源）
+  it('权威分与冻结职位资料原样透传：真实 0 合法，无溯源 null；旧 Case 双 null 档照常', () => {
+    expect(断言正常(映射P5详情(造详情())).匹配分).toBeNull();
+    expect(断言正常(映射P5详情(造详情())).冻结职位资料).toBeNull();
+    expect(断言正常(映射P5详情(造详情({ matchScore: 0 }))).匹配分).toBe(0);
+    expect(断言正常(映射P5详情(造详情({ matchScore: 73 }))).匹配分).toBe(73);
+    expect(断言正常(映射P5详情(造详情({ jobDetail: BFF安全职位资料样本 }))).冻结职位资料)
+      .toBe(BFF安全职位资料样本);
   });
 
   it('职位快照四事实原样投影；终局摘要 定格于 换成本地展示值', () => {
