@@ -184,8 +184,8 @@ describe('在线简历正文 · 资料模式（Backend 显式传 资料，档 �
     expect(screen.getByText('TypeScript')).toBeTruthy();
     // 教育两条同文同起止：都渲染，不因 key 重复丢条
     expect(container.querySelectorAll('[class*="教育行"]').length).toBe(2);
-    // 头行求职状态：显式 prop 优先于资料摘要状态
-    expect(screen.getByText('在职')).toBeTruthy();
+    // 头行求职状态按约束取资料摘要事实（闭表更全）；显式 prop 只在摘要缺失时回退
+    expect(screen.getByText('在职看机会')).toBeTruthy();
     expect(screen.queryByText('匹配度分析')).toBeNull(); // 无对齐行就不生成匹配区
     断言顺序(正文, [
       '示例公司 · 软件工程师', '个人优势', '求职期望', '工作经历', '项目经历', '教育经历', '专业技能',
@@ -243,6 +243,27 @@ describe('在线简历正文 · 资料模式（Backend 显式传 资料，档 �
       expect(screen.getByText(暂无)).toBeTruthy();
     }
     expect(screen.queryByText('工作经历缺失')).toBeNull();
+  });
+
+  it('摘要带求职状态时取摘要事实，调用方文案不覆盖', () => {
+    const 画像 = 资料齐备.画像;
+    if (画像 === null) throw new Error('样本画像缺失');
+    render(<在线简历正文 档={null} 资料={资料齐备} 求职状态="在职" />);
+    expect(screen.getByText('在职看机会')).toBeTruthy();
+    expect(screen.queryByText('在职')).toBeNull();
+  });
+
+  it('摘要求职状态缺失时才回退调用方文案', () => {
+    const 画像 = 资料齐备.画像;
+    if (画像 === null) throw new Error('样本画像缺失');
+    render(
+      <在线简历正文
+        档={null}
+        资料={{ ...资料齐备, 画像: { ...画像, 求职状态: null } }}
+        求职状态="在职"
+      />,
+    );
+    expect(screen.getByText('在职')).toBeTruthy();
   });
 
   it('资料 null（整份缺源档）与档 null 同构：全部缺失 + 在线简历缺失页尾注', () => {

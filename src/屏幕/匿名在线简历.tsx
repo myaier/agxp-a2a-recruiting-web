@@ -382,6 +382,7 @@ function Backend匿名简历({ 岗位编号, 推荐编号 }: { 岗位编号: str
         <在线简历正文
           档={null}
           资料={从BFF到在线简历展示(视图.candidateResume)}
+          // 头行求职状态按约束取 candidate_resume.summary 的事实；此 prop 只是摘要缺失时的回退文案
           求职状态={视图.求职状态}
         />
       </滚动区>
