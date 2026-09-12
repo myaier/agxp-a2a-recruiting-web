@@ -130,7 +130,7 @@ npm run ui:check -- --base 3ad5d4bf3efff659ebd01188e956000ae5655f9d
 - 修改：`src/屏幕/登录.tsx`、`src/屏幕/登录.module.css`、`src/屏幕/登录.test.tsx`、`src/数据/招聘数据源/会话.ts`、`src/数据/HTTP招聘数据源.test.ts`、`src/状态/后端/类型.ts`、`src/状态/后端/会话操作.ts`、`src/状态/后端/会话操作.test.ts`、`src/状态/应用状态.tsx`、`src/状态/应用状态.test.ts`。
 - 删除：无。只读复用 `src/组件/弹层框架.tsx`，不改其公共行为。
 
-**输入/输出：** 消费现有 `客户端校验错误`、弹层、attempt ref 和 Provider 水合；输出 §1 准确签名。新增稳定引用加入 `后端操作依赖` 并在 Provider 注入，定向测试依赖构造同步补齐，不使用可选 fallback 掩盖生产依赖遗漏。给 `会话操作` 增加取消方法只扩展前端本地接口，无新后端 route。跨 task 依赖：无。
+**输入/输出：** 消费现有 `客户端校验错误`、弹层、attempt ref 和 Provider 水合；输出 §1 准确签名。新增稳定引用在共享 `后端操作依赖` 中声明为 `手机登录代际?: 可变引用<number>`，Provider 恒注入；在 `创建会话操作` 工厂入口检查 undefined 即抛接线错误并收窄，不创建 fallback 引用。仅实际调用该工厂的定向测试构造同步补齐。沿用已有 `提交候选意向快照` 的“共享类型可选、消费入口必需”约定，避免牵连不消费登录代际的其他域依赖桩；无需修改 P8 等无关测试。给 `会话操作` 增加取消方法只扩展前端本地接口，无新后端 route。跨 task 依赖：无。
 
 - [ ] 阅读批准 Spec §4、上述文件与所有 `开始手机登录`/`尝试引用` 消费者，保存原默认请求和 Mock 路由断言。
 - [ ] 先补纯函数失败测试：默认/显式 +86、+999 完整号码、分隔符、无效区号、字母、空和超长、切区号保留数字；先执行单文件 Vitest，确认失败源于待实现行为。
@@ -175,6 +175,7 @@ npm run ui:check -- --base 3ad5d4bf3efff659ebd01188e956000ae5655f9d
 **输入/输出：** 消费 Task 1 区号 UI、Task 2 默认/新行为证据和后端固定 CLI 合同；输出新增范围名 `STG 基础试点`、两轮节点表和清理结果。原“全部”继续仅指原 B/H 范围，STG 不偷偷替代 local 环境段。
 
 - [ ] 在入口/提示词/环境选择中增加 `STG 基础试点`，首先路由，选中此项跳过 local dev-local/browser-fixture 和 B/H baseline 前置；原 local 启动与 receipt v2 完整保留。
+- [ ] 指南环境段增加独立 STG 前端启动变体：`VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=stg npm run dev -- --host localhost --port 5173 --strictPort`，默认浏览器 URL 为 `http://localhost:5173`；不能沿用 local 变量或擅换 127.0.0.1。已有服务需核对实际 env、代理目标和归属，否则独占启动或明确端口阻塞。记录启动输出与实际 API 请求，确认走 STG 代理，不能把本地栈结果算 STG PASS。
 - [ ] 指南给出从调用者后端 checkout 根执行的确定顺序，变量为执行时显式输入：
 
 ```bash
@@ -185,11 +186,11 @@ apps/recruitment/scripts/stg-env.sh verify --run-id "$STG_RUN_ID"
 apps/recruitment/scripts/stg-env.sh cleanup --run-id "$STG_RUN_ID"
 ```
 
-- [ ] 说明 `STG_RUN_ID` 每轮新建；prepare 部分失败只用同 ID 重试/cleanup，未清理不可换 ID。`status` 不带 run-id；`preflight` 为并集，只区分无关固定账号输入，真实 ephemeral 管理前置不跳过。依赖缺失按后端指引经 `tools/dev-env.sh exec --` 使用相同 CLI，不现场安装临时框架。
+- [ ] 说明 `STG_RUN_ID` 每轮新建；prepare 部分失败只用同 ID 重试/cleanup，未清理不可换 ID。prepare 未返回 READY 或 verify 失败不得进入浏览器消费；ephemeral 失败不得降级为固定账号。`status` 不带 run-id；`preflight` 为并集，只区分无关固定账号输入，真实 ephemeral 管理前置不跳过。依赖缺失按后端指引经 `tools/dev-env.sh exec --` 使用相同 CLI，不现场安装临时框架。
 - [ ] 登录材料在后端 `.agxp-recruitment-stg-env/sessions/ID/login.json`，安全回执在 `receipts/`；OTP 经 skill 描述的受限通道取得。读取到受限进程/浏览器输入，不打印、不录像登录、不输出完整认证状态。执行者先确认工具支持安全输入；无法做到则 BLOCKED，不以 shell 明文 argv 或报告泄露绕行。
 - [ ] 精确写入 Spec §5 两轮节点；第一轮初始资源 ID、每次写入后/刷新证据、双会话隔离、CLEANED；第二轮双登录/意向 CRUD/身份不同/不继承/清理。首轮号码比较及清理后登录失效验证只在受限内存进行，公开报告只记结论和安全字段。
 - [ ] 给出排除动作、自动请求副作用观察、rc2/75/1、foreign 占用、proof 丢失、残留持锁和中断恢复规则；不放宽 Cookie 或忽略 cleanup。不关他人服务；只收尾本轮 session/PID，无 `close --all` 或端口批量杀进程。
-- [ ] 模板增加环境类型、每轮 run/scene/后端实际版本/receipt 与材料路径、节点状态、旧登录失效、identity rotation 和 cleanup。原 B/H 表保留 NOT_RUN，试点结论单列，不能把子集填成原 B02/B04 全通过。
+- [ ] 模板增加环境类型、实际 `VITE_DATA_SOURCE`/`VITE_BACKEND_ENV`、浏览器 URL/代理目标、每轮 run/scene/后端实际版本/receipt 与材料路径、节点状态、旧登录失效、identity rotation 和 cleanup。原 B/H 表保留 NOT_RUN，试点结论单列，不能把子集填成原 B02/B04 全通过。
 - [ ] 核对指南与模板互链、命令存在、CLI 参数及范围判定一致，沿用 gitignored `dogfood-output/` 和现有 `docs/runs/` 摘要约定。规划/review 摘要写本 Plan，不新增独立 handoff/review 文档。
 - [ ] 文档 diff 自检、按 task 精确路径提交；不为 Markdown 机械增加镜像单测，不执行远端环境 mutation。
 
@@ -210,4 +211,17 @@ apps/recruitment/scripts/stg-env.sh cleanup --run-id "$STG_RUN_ID"
 - Spec §4 → Task 1；§6 默认/新 E2E → Task 2 与 U/B/V；§5 → Task 3 与 S；§7 非目标贯穿 Global Constraints。未增加 Spec 之外的产品能力。
 - 所有 task 均有精确文件、依赖、接口、反例、命令及完成/停止条件；只三个实施 Task，正式 STG 和异构 review 属收尾。
 - 批准状态仅更新 Spec 元信息，契约仍绑定 `ed25e232` / `18300b23ee1faddd80da6c3faacc3f6f18c2a106`。
-- 文档 review 将以本 Spec/Plan 两条精确路径和冻结候选进行，完成结果在本节就地记录；尚无文档 review PASS 或产品测试 PASS。
+- 文档 review 已按下述冻结输入完成；本阶段仍无产品实现或产品测试 PASS。
+
+### Claude 文档 review 与裁决（2026-09-12）
+
+- 模式 `WORKFLOW_DOCUMENT_REVIEW`，父 workflow 已授权；reviewer Claude Opus / high，独立只读 session `ee541951-67b0-4e05-a520-3d0a291313f8`，一轮。候选 HEAD `470fd44c`，范围恰为本 Plan 与批准 Spec 路径；原批准合同 `ed25e232` / `18300b23ee1faddd80da6c3faacc3f6f18c2a106`。
+- 审查前后 status、HEAD、两文件指纹一致；reviewer 未运行测试。结论为 2 条 Important/required、1 条 Minor/optional，不表述为原报告 NO FINDINGS。
+
+| Finding | 裁决与证据 | 必要性 / 复杂度影响 |
+| --- | --- | --- |
+| 全局依赖必填牵连无关测试构造 | 接受并修复。源码确有多域完整 `后端操作依赖` 构造；沿用 `提交候选意向快照` 的可选声明加消费入口 throw，Provider 恒注入，只更新会话工厂的消费者测试。不降低接线约束、不扩大 P8 行为范围。 | required / 降低 |
+| Task 3 缺 STG 前端启动命令 | 接受并修复。指南现有启动是 local，已明确要求新增 backend/stg 命令、URL、实际 env/代理证据与模板字段，防止误跑本地栈。 | required / 不变 |
+| READY 与禁止固定账号降级应写入步骤 | 接受并补充。既有 Spec 已规定，Task 3 显式落为指南义务，提高零上下文可执行性。 | optional / 不变 |
+
+三项修订均不改变批准 Spec。主控逐条核实，修订后做文件/结构/契约自检；无未解决的有效 required finding，按 review-loop 停止条件结束一轮，不伪称修订后经过第二轮 Claude review。review 原始结果存本轮临时产物，长期裁决以上表为准。
