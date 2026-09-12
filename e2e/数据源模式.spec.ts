@@ -5574,6 +5574,197 @@ async function 走完后端发岗向导(page: Page) {
   await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
 }
 
+// ── 登录区号：仅覆盖未登录→短信登录→身份页的最小路由集。─────────────
+// 独立于上方历史大 fixture：正则同时拦截 /api/v1 根路径与全部子路由，
+// 未声明坐标回 501 并记录，用例末端必须断言为空；绝不 continue 到真实 STG。
+interface 登录区号请求记录 {
+  method: string;
+  path: string;
+  body: unknown;
+}
+
+const 是APIv1路径 = (url: URL) => /^\/api\/v1(?:\/|$)/.test(url.pathname);
+
+async function 安装登录区号BFF路由(page: Page, attemptId: string) {
+  const 状态 = {
+    已登录: false,
+    请求: [] as 登录区号请求记录[],
+    未声明: [] as string[],
+  };
+  await page.routeWebSocket(是APIv1路径, (webSocket) => {
+    const path = new URL(webSocket.url()).pathname;
+    // 已登录壳会连同源事件流；保持本地模拟连接，不调 connectToServer。
+    if (path !== '/api/v1/events/live') 状态.未声明.push(`WS ${path}`);
+  });
+  await page.route(是APIv1路径, async (route: Route) => {
+    const 请求 = route.request();
+    const path = new URL(请求.url()).pathname;
+    const method = 请求.method();
+    const body = method === 'GET'
+      ? null
+      : (() => { try { return 请求.postDataJSON(); } catch { return null; } })();
+    状态.请求.push({ method, path, body });
+
+    if (method === 'GET' && path === '/api/v1/session') {
+      if (!状态.已登录) {
+        await route.fulfill({ status: 401, json: { error: { type: 'invalid_session', message: '未登录' } } });
+      } else {
+        await route.fulfill({
+          status: 200,
+          json: 信封({ identity_id: 'id-login-dial', session_id: 'sess-login-dial', expires_at: '2027-09-12T00:00:00Z' }),
+        });
+      }
+      return;
+    }
+    if (method === 'POST' && path === '/api/v1/auth/login-attempts') {
+      await route.fulfill({
+        status: 200,
+        json: 信封({ attempt_id: attemptId, next_action: { type: 'enter_code', expires_at: '2027-09-12T00:00:00Z' } }),
+      });
+      return;
+    }
+    if (method === 'POST' && path === `/api/v1/auth/login-attempts/${attemptId}/complete`) {
+      状态.已登录 = true;
+      await route.fulfill({
+        status: 200,
+        json: 信封({
+          identity_id: 'id-login-dial', session_id: 'sess-login-dial', expires_at: '2027-09-12T00:00:00Z',
+          next_action: { type: 'completed' },
+        }),
+      });
+      return;
+    }
+    if (method === 'GET' && path === '/api/v1/me') {
+      await route.fulfill({
+        status: 200,
+        json: 信封({
+          subject_id: 'subj-login-dial',
+          roles: [{ role: 'candidate', status: 'active' }],
+          last_used_role: null,
+        }),
+      });
+      return;
+    }
+
+    状态.未声明.push(`${method} ${path}`);
+    await route.fulfill({
+      status: 501,
+      json: { error: { type: 'fixture_route_not_declared', message: '登录区号 fixture 未声明该路由' } },
+    });
+  });
+  return 状态;
+}
+
+async function 断言登录页无水平溢出(page: Page) {
+  await expect.poll(() => page.evaluate(() => ({
+    root: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    body: document.body.scrollWidth - document.body.clientWidth,
+  }))).toEqual({ root: 0, body: 0 });
+}
+
+async function 断言登录区号弹层可达(page: Page) {
+  const 宽 = await page.evaluate(() => window.innerWidth);
+  for (const 定位 of [page.getByRole('textbox', { name: '区号', exact: true }), page.getByRole('button', { name: '确认区号' })]) {
+    await expect(定位).toBeVisible();
+    const 框 = await 定位.boundingBox();
+    expect(框).not.toBeNull();
+    expect(框!.x).toBeGreaterThanOrEqual(0);
+    expect(框!.x + 框!.width).toBeLessThanOrEqual(宽);
+  }
+  await 断言登录页无水平溢出(page);
+}
+
+test.describe('登录区号 fixture 证据', () => {
+  test('登录区号 Backend：+999 全号请求、四位 complete、身份落点与刷新 @backend', async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    const fixture = await 安装登录区号BFF路由(page, 'att-login-dial-999');
+    await page.setViewportSize({ width: 390, height: 664 });
+    await page.goto('http://127.0.0.1:4182/');
+    await expect(page.getByRole('button', { name: '编辑区号，当前 +86' })).toBeVisible();
+    await 断言登录页无水平溢出(page);
+    await page.screenshot({ path: testInfo.outputPath('登录默认-390.png'), fullPage: true });
+
+    await page.getByRole('button', { name: '编辑区号，当前 +86' }).click();
+    await expect(page.getByRole('dialog', { name: '编辑登录区号' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: '区号', exact: true })).toBeFocused();
+    await 断言登录区号弹层可达(page);
+    await page.screenshot({ path: testInfo.outputPath('登录区号弹层-390.png'), fullPage: true });
+
+    await page.setViewportSize({ width: 320, height: 568 });
+    await 断言登录区号弹层可达(page);
+    await page.screenshot({ path: testInfo.outputPath('登录区号弹层-320.png'), fullPage: true });
+    await page.getByRole('textbox', { name: '区号', exact: true }).fill('999');
+    await page.getByRole('button', { name: '确认区号' }).click();
+    await expect(page.getByRole('button', { name: '编辑区号，当前 +999' })).toBeVisible();
+    await page.getByLabel('手机号').fill('123456789012');
+    await expect(page.getByLabel('手机号')).toHaveValue('123456789012');
+    await page.getByRole('button', { name: '获取验证码' }).click();
+
+    await expect.poll(() => fixture.请求.find(
+      (项) => 项.method === 'POST' && 项.path === '/api/v1/auth/login-attempts',
+    )?.body).toEqual({ provider: 'phone_otp', input: { phone: '+999123456789012' } });
+    await expect(page.locator('[class*="验证码格"]')).toHaveCount(4);
+    await page.getByLabel('短信验证码').fill('1234');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '进入' }).click();
+    await expect(page).toHaveURL(/#\/identity$/, { timeout: 15_000 });
+    expect(fixture.请求.find((项) => 项.path.endsWith('/complete'))?.body).toEqual({ proof: { code: '1234' } });
+
+    await page.reload();
+    await expect(page).toHaveURL(/#\/identity$/, { timeout: 15_000 });
+    expect(fixture.未声明).toEqual([]);
+  });
+
+  test('登录区号 Mock：弹层取消保持 +86，旧 11 位序列零 API @mock', async ({ page }, testInfo) => {
+    const apiRequests: string[] = [];
+    await page.routeWebSocket(是APIv1路径, (webSocket) => {
+      // 记录即失败；不 connectToServer，因此回归失败也不会先碰 STG。
+      apiRequests.push(webSocket.url());
+    });
+    await page.route(是APIv1路径, async (route) => {
+      apiRequests.push(route.request().url());
+      await route.fulfill({
+        status: 501,
+        json: { error: { type: 'mock_api_forbidden', message: 'Mock 登录不应请求 API' } },
+      });
+    });
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto('http://127.0.0.1:4181/');
+    const 区号键 = page.getByRole('button', { name: '编辑区号，当前 +86' });
+    await 区号键.click();
+    await 断言登录区号弹层可达(page);
+    await page.screenshot({ path: testInfo.outputPath('登录默认取消-320.png'), fullPage: true });
+    await page.getByRole('button', { name: '取消' }).click();
+    await expect(区号键).toBeFocused();
+    await expect(区号键).toHaveAccessibleName('编辑区号，当前 +86');
+    await page.getByLabel('手机号').fill('13800000000');
+    await page.getByRole('button', { name: '获取验证码' }).click();
+    await page.getByLabel('短信验证码').fill('1234');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '进入' }).click();
+    await expect(page).toHaveURL(/#\/identity$/);
+    expect(apiRequests).toEqual([]);
+  });
+
+  test('登录区号 Backend：已取码后实际改号禁用旧码且保留倒计时 @backend', async ({ page }) => {
+    const fixture = await 安装登录区号BFF路由(page, 'att-login-dial-stale');
+    await page.goto('http://127.0.0.1:4182/');
+    await page.getByLabel('手机号').fill('13800000000');
+    await page.getByRole('button', { name: '获取验证码' }).click();
+    await expect(page.getByText('60s')).toBeVisible();
+    await page.getByLabel('短信验证码').fill('1234');
+    await page.getByLabel('手机号').fill('13900000000');
+
+    await expect(page.getByText('60s')).toBeVisible();
+    await expect(page.getByRole('button', { name: '重新获取' })).toHaveCount(0);
+    await expect(page.getByLabel('短信验证码')).toHaveValue('');
+    await expect(page.getByLabel('短信验证码')).toBeDisabled();
+    await expect(page.getByRole('button', { name: '进入' })).toBeDisabled();
+    expect(fixture.请求.filter((项) => 项.path.endsWith('/complete'))).toEqual([]);
+    expect(fixture.未声明).toEqual([]);
+  });
+});
+
 test.describe('Backend 数据源 fixture @backend', () => {
   // 显式 backend/stg server（端口 4182）
   test.use({ baseURL: 'http://127.0.0.1:4182' });
