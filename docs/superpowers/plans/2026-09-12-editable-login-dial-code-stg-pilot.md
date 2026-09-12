@@ -132,14 +132,14 @@ npm run ui:check -- --base 3ad5d4bf3efff659ebd01188e956000ae5655f9d
 
 **输入/输出：** 消费现有 `客户端校验错误`、弹层、attempt ref 和 Provider 水合；输出 §1 准确签名。新增稳定引用在共享 `后端操作依赖` 中声明为 `手机登录代际?: 可变引用<number>`，Provider 恒注入；在 `创建会话操作` 工厂入口检查 undefined 即抛接线错误并收窄，不创建 fallback 引用。仅实际调用该工厂的定向测试构造同步补齐。沿用已有 `提交候选意向快照` 的“共享类型可选、消费入口必需”约定，避免牵连不消费登录代际的其他域依赖桩；无需修改 P8 等无关测试。给 `会话操作` 增加取消方法只扩展前端本地接口，无新后端 route。跨 task 依赖：无。
 
-- [ ] 阅读批准 Spec §4、上述文件与所有 `开始手机登录`/`尝试引用` 消费者，保存原默认请求和 Mock 路由断言。
-- [ ] 先补纯函数失败测试：默认/显式 +86、+999 完整号码、分隔符、无效区号、字母、空和超长、切区号保留数字；先执行单文件 Vitest，确认失败源于待实现行为。
-- [ ] 实现 §1 纯函数，数据源和状态层增加可选区号参数；不修改 HTTP 路由/幂等或 P8 规则。保留原单参数断言并追加显式区号零重复前缀断言。
-- [ ] 先写状态反例：无 attempt 完成零请求；A begin 迟到于取消/B begin；A 失败不能清除 B；取消零网络；正常四位 complete 后水合仍成立。将旧“空 attempt 仍发 complete”的历史断言改为本地拒绝，注明此项是已批准失效修复，不能顺便削弱其他断言。
-- [ ] 用稳定代际与既有 attempt ref 实现失效，只改手机号登录的写入和守卫。新 begin 清旧 attempt；取码重放无无限重试。保持完成会话的主体/角色水合及原账号清理逻辑。
-- [ ] 组件先写失败反例，再增加弹层、默认值和全长号码显示；按 §1 可访问名称定位。取消/同值不失效，实际换号清码但不抹去未到期重发等待；请求期间禁用相冲突输入/按钮并有同步守卫。卸载时清理局部延迟聚焦/定时回调与旧取码尝试。
-- [ ] 测试 default +86、区号确认/取消/Escape/焦点、+999 十二位、超长可见但禁用提交、改回 +86 不截断、四格码、协议、Mock 零后端操作、begin/complete 飞行期保护、卸载重进旧响应无效。用现有 deferred/fake timers，不让单测等待真实 60 秒。
-- [ ] 运行 U 中单测与类型检查；验证 red→green 和完整旧默认请求断言仍在。记录实际命令/耗时，不写“预计通过”。按本 task 精确路径提交。
+- [x] 阅读批准 Spec §4、上述文件与所有 `开始手机登录`/`尝试引用` 消费者，保存原默认请求和 Mock 路由断言。
+- [x] 先补纯函数失败测试：默认/显式 +86、+999 完整号码、分隔符、无效区号、字母、空和超长、切区号保留数字；先执行单文件 Vitest，确认失败源于待实现行为。
+- [x] 实现 §1 纯函数，数据源和状态层增加可选区号参数；不修改 HTTP 路由/幂等或 P8 规则。保留原单参数断言并追加显式区号零重复前缀断言。
+- [x] 先写状态反例：无 attempt 完成零请求；A begin 迟到于取消/B begin；A 失败不能清除 B；取消零网络；正常四位 complete 后水合仍成立。将旧“空 attempt 仍发 complete”的历史断言改为本地拒绝，注明此项是已批准失效修复，不能顺便削弱其他断言。
+- [x] 用稳定代际与既有 attempt ref 实现失效，只改手机号登录的写入和守卫。新 begin 清旧 attempt；取码重放无无限重试。保持完成会话的主体/角色水合及原账号清理逻辑。
+- [x] 组件先写失败反例，再增加弹层、默认值和全长号码显示；按 §1 可访问名称定位。取消/同值不失效，实际换号清码但不抹去未到期重发等待；请求期间禁用相冲突输入/按钮并有同步守卫。卸载时清理局部延迟聚焦/定时回调与旧取码尝试。
+- [x] 测试 default +86、区号确认/取消/Escape/焦点、+999 十二位、超长可见但禁用提交、改回 +86 不截断、四格码、协议、Mock 零后端操作、begin/complete 飞行期保护、卸载重进旧响应无效。用现有 deferred/fake timers，不让单测等待真实 60 秒。
+- [x] 运行 U 中单测与类型检查；验证 red→green 和完整旧默认请求断言仍在。记录实际命令/耗时，不写“预计通过”。按本 task 精确路径提交。
 
 **完成/停止：** 全部 §4 行为和 U 定向测试通过。若需要修改 P8、全局会话协议、后端或新依赖，停止扩大范围并报告具体原因；不为绕开 TypeScript 改成宽泛 any。
 
@@ -154,12 +154,12 @@ npm run ui:check -- --base 3ad5d4bf3efff659ebd01188e956000ae5655f9d
 
 **输入/输出：** 依赖 Task 1 的默认 +86、§1 UI 名称和请求签名，先核对其 commit 与实际导出存在。输出 `登录区号` 名称前缀的新 fixture Case 与 B/V 证据；原测试号码、选择器和默认操作序列不变。
 
-- [ ] 在现有 `e2e/数据源模式.spec.ts` 原 fixture 边界内追加 `登录区号` describe，按 @backend/@mock 区分项目。既有 fixture 能力直接复用；拦截 URL 根路径 `api/v1` 及其全部子路由，对未声明请求失败，不 route.continue 到真实 STG。
-- [ ] 固定最小新增旅程：Backend 弹层改 +999 → 十二位号码取码 → 请求 body 为完整合成号码 → 四位 complete → 角色落点 → 刷新；默认 Mock 打开弹层后取消仍 +86 → 原 11 位登录且零 API；Backend 已取码后实际改号不可用旧码完成、倒计时不被重置成可立即重发。延迟/竞态主要由 Task 1 单测承担，浏览器不重复所有排列。
-- [ ] 在新增弹层旅程中检查 390 和 320 宽度、输入/确认按钮可达、页面无水平溢出；保存默认与弹层截图至 Playwright 现有 test output，不新建截图框架。
-- [ ] 对 B 三条命令分别 `--list`，记录预期旧/new Case 命中；随后实际运行 B。旧默认用例保持原号码与操作，不添加“先选 +86”绕过默认值验证。
-- [ ] 执行 V 一次，检查实际默认登录差异与框位置；代码改变 default 首屏时不能用整体更新基线让它通过。记录其他场景如有已存失败的证据与归因。
-- [ ] 失败按 systematic-debugging 定位；Task 1 实现回归只修批准范围并补受影响测试，修改范围预告先更新。完成后按 task 精确路径提交测试改动。
+- [x] 在现有 `e2e/数据源模式.spec.ts` 原 fixture 边界内追加 `登录区号` describe，按 @backend/@mock 区分项目。既有 fixture 能力直接复用；拦截 URL 根路径 `api/v1` 及其全部子路由，对未声明请求失败，不 route.continue 到真实 STG。
+- [x] 固定最小新增旅程：Backend 弹层改 +999 → 十二位号码取码 → 请求 body 为完整合成号码 → 四位 complete → 角色落点 → 刷新；默认 Mock 打开弹层后取消仍 +86 → 原 11 位登录且零 API；Backend 已取码后实际改号不可用旧码完成、倒计时不被重置成可立即重发。延迟/竞态主要由 Task 1 单测承担，浏览器不重复所有排列。
+- [x] 在新增弹层旅程中检查 390 和 320 宽度、输入/确认按钮可达、页面无水平溢出；保存默认与弹层截图至 Playwright 现有 test output，不新建截图框架。
+- [x] 对 B 三条命令分别 `--list`，记录预期旧/new Case 命中；随后实际运行 B。旧默认用例保持原号码与操作，不添加“先选 +86”绕过默认值验证。
+- [x] 执行 V 一次，检查实际默认登录差异与框位置；代码改变 default 首屏时不能用整体更新基线让它通过。记录其他场景如有已存失败的证据与归因。
+- [x] 失败按 systematic-debugging 定位；Task 1 实现回归只修批准范围并补受影响测试，修改范围预告先更新。完成后按 task 精确路径提交测试改动。
 
 **完成/停止：** 旧短信和微信/Mock 导航路径、新区号、默认视觉有实际结果。环境/基线故障如实报告；不能用 `--list`、API probe 或修改旧默认输入替代实际浏览器结果。新增用例运行必须不接触真实 STG。
 
@@ -174,9 +174,9 @@ npm run ui:check -- --base 3ad5d4bf3efff659ebd01188e956000ae5655f9d
 
 **输入/输出：** 消费 Task 1 区号 UI、Task 2 默认/新行为证据和后端固定 CLI 合同；输出新增范围名 `STG 基础试点`、两轮节点表和清理结果。原“全部”继续仅指原 B/H 范围，STG 不偷偷替代 local 环境段。
 
-- [ ] 在入口/提示词/环境选择中增加 `STG 基础试点`，首先路由，选中此项跳过 local dev-local/browser-fixture 和 B/H baseline 前置；原 local 启动与 receipt v2 完整保留。
-- [ ] 指南环境段增加独立 STG 前端启动变体：`VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=stg npm run dev -- --host localhost --port 5173 --strictPort`，默认浏览器 URL 为 `http://localhost:5173`；不能沿用 local 变量或擅换 127.0.0.1。已有服务需核对实际 env、代理目标和归属，否则独占启动或明确端口阻塞。记录启动输出与实际 API 请求，确认走 STG 代理，不能把本地栈结果算 STG PASS。
-- [ ] 指南给出从调用者后端 checkout 根执行的确定顺序，变量为执行时显式输入：
+- [x] 在入口/提示词/环境选择中增加 `STG 基础试点`，首先路由，选中此项跳过 local dev-local/browser-fixture 和 B/H baseline 前置；原 local 启动与 receipt v2 完整保留。
+- [x] 指南环境段增加独立 STG 前端启动变体：`VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=stg npm run dev -- --host localhost --port 5173 --strictPort`，默认浏览器 URL 为 `http://localhost:5173`；不能沿用 local 变量或擅换 127.0.0.1。已有服务需核对实际 env、代理目标和归属，否则独占启动或明确端口阻塞。记录启动输出与实际 API 请求，确认走 STG 代理，不能把本地栈结果算 STG PASS。
+- [x] 指南给出从调用者后端 checkout 根执行的确定顺序，变量为执行时显式输入：
 
 ```bash
 apps/recruitment/scripts/stg-env.sh validate --config apps/recruitment/testdata/stg-ephemeral/default.yaml
@@ -186,13 +186,13 @@ apps/recruitment/scripts/stg-env.sh verify --run-id "$STG_RUN_ID"
 apps/recruitment/scripts/stg-env.sh cleanup --run-id "$STG_RUN_ID"
 ```
 
-- [ ] 说明 `STG_RUN_ID` 每轮新建；prepare 部分失败只用同 ID 重试/cleanup，未清理不可换 ID。prepare 未返回 READY 或 verify 失败不得进入浏览器消费；ephemeral 失败不得降级为固定账号。`status` 不带 run-id；`preflight` 为并集，只区分无关固定账号输入，真实 ephemeral 管理前置不跳过。依赖缺失按后端指引经 `tools/dev-env.sh exec --` 使用相同 CLI，不现场安装临时框架。
-- [ ] 登录材料在后端 `.agxp-recruitment-stg-env/sessions/ID/login.json`，安全回执在 `receipts/`；OTP 经 skill 描述的受限通道取得。读取到受限进程/浏览器输入，不打印、不录像登录、不输出完整认证状态。执行者先确认工具支持安全输入；无法做到则 BLOCKED，不以 shell 明文 argv 或报告泄露绕行。
-- [ ] 精确写入 Spec §5 两轮节点；第一轮初始资源 ID、每次写入后/刷新证据、双会话隔离、CLEANED；第二轮双登录/意向 CRUD/身份不同/不继承/清理。首轮号码比较及清理后登录失效验证只在受限内存进行，公开报告只记结论和安全字段。
-- [ ] 给出排除动作、自动请求副作用观察、rc2/75/1、foreign 占用、proof 丢失、残留持锁和中断恢复规则；不放宽 Cookie 或忽略 cleanup。不关他人服务；只收尾本轮 session/PID，无 `close --all` 或端口批量杀进程。
-- [ ] 模板增加环境类型、实际 `VITE_DATA_SOURCE`/`VITE_BACKEND_ENV`、浏览器 URL/代理目标、每轮 run/scene/后端实际版本/receipt 与材料路径、节点状态、旧登录失效、identity rotation 和 cleanup。原 B/H 表保留 NOT_RUN，试点结论单列，不能把子集填成原 B02/B04 全通过。
-- [ ] 核对指南与模板互链、命令存在、CLI 参数及范围判定一致，沿用 gitignored `dogfood-output/` 和现有 `docs/runs/` 摘要约定。规划/review 摘要写本 Plan，不新增独立 handoff/review 文档。
-- [ ] 文档 diff 自检、按 task 精确路径提交；不为 Markdown 机械增加镜像单测，不执行远端环境 mutation。
+- [x] 说明 `STG_RUN_ID` 每轮新建；prepare 部分失败只用同 ID 重试/cleanup，未清理不可换 ID。prepare 未返回 READY 或 verify 失败不得进入浏览器消费；ephemeral 失败不得降级为固定账号。`status` 不带 run-id；`preflight` 为并集，只区分无关固定账号输入，真实 ephemeral 管理前置不跳过。依赖缺失按后端指引经 `tools/dev-env.sh exec --` 使用相同 CLI，不现场安装临时框架。
+- [x] 登录材料在后端 `.agxp-recruitment-stg-env/sessions/ID/login.json`，安全回执在 `receipts/`；OTP 经 skill 描述的受限通道取得。读取到受限进程/浏览器输入，不打印、不录像登录、不输出完整认证状态。执行者先确认工具支持安全输入；无法做到则 BLOCKED，不以 shell 明文 argv 或报告泄露绕行。
+- [x] 精确写入 Spec §5 两轮节点；第一轮初始资源 ID、每次写入后/刷新证据、双会话隔离、CLEANED；第二轮双登录/意向 CRUD/身份不同/不继承/清理。首轮号码比较及清理后登录失效验证只在受限内存进行，公开报告只记结论和安全字段。
+- [x] 给出排除动作、自动请求副作用观察、rc2/75/1、foreign 占用、proof 丢失、残留持锁和中断恢复规则；不放宽 Cookie 或忽略 cleanup。不关他人服务；只收尾本轮 session/PID，无 `close --all` 或端口批量杀进程。
+- [x] 模板增加环境类型、实际 `VITE_DATA_SOURCE`/`VITE_BACKEND_ENV`、浏览器 URL/代理目标、每轮 run/scene/后端实际版本/receipt 与材料路径、节点状态、旧登录失效、identity rotation 和 cleanup。原 B/H 表保留 NOT_RUN，试点结论单列，不能把子集填成原 B02/B04 全通过。
+- [x] 核对指南与模板互链、命令存在、CLI 参数及范围判定一致，沿用 gitignored `dogfood-output/` 和现有 `docs/runs/` 摘要约定。规划/review 摘要写本 Plan，不新增独立 handoff/review 文档。
+- [x] 文档 diff 自检、按 task 精确路径提交；不为 Markdown 机械增加镜像单测，不执行远端环境 mutation。
 
 **完成/停止：** 新会话只凭指南、后端 checkout 与安全材料即可执行；local 原责任未改变。遇后端 CLI 合同漂移先记录真实版本和缺口，不在本 Task 实施后端修复。
 
@@ -225,3 +225,14 @@ apps/recruitment/scripts/stg-env.sh cleanup --run-id "$STG_RUN_ID"
 | READY 与禁止固定账号降级应写入步骤 | 接受并补充。既有 Spec 已规定，Task 3 显式落为指南义务，提高零上下文可执行性。 | optional / 不变 |
 
 三项修订均不改变批准 Spec。主控逐条核实，修订后做文件/结构/契约自检；无未解决的有效 required finding，按 review-loop 停止条件结束一轮，不伪称修订后经过第二轮 Claude review。review 原始结果存本轮临时产物，长期裁决以上表为准。
+
+## 实施与 final gate 结果（2026-09-12 至 2026-09-13）
+
+- 实现提交：`4a43dd0c`、`e0aa65dc`、`97078810`、`9f8babdf`；旧旅程脚本经用户追加授权后修复于 `70ee1a5c`。目标 `origin/main` 更新后，以 `aac11606a0830704fa592d87dc0cf8ce5cb59524` 为 `final_target_base` 合入，合并候选为 `61749b5b7bcff00d99b8fb661920f188d5f2480b`。
+- 异构代码 review：固定候选 `9f8babdf` 经 Claude 两轮审查，最终返回 `NO FINDINGS`。其后的 `70ee1a5c` 仅修正旧 E2E 旅程，`61749b5b` 为目标同步；按获批 final gate 合同未重新进入异构 review，不冒称覆盖这两个后续提交。
+- U：六个精确 Vitest 文件共 349/349 通过（10.18s）；`npm run typecheck` 通过；mock/STG 构建通过（385 modules，432ms，仅保留既有 PostCSS warning）。
+- B：`--list` 校准为 mock 3、backend 4、默认 config 10；实际分别 3/3、4/4、10/10 通过。Task 2 的实际改动因用户批准修复旧脚本而扩展至 `e2e/换壳无闪屏.spec.ts`，未扩展产品行为。
+- V：以 `aac11606a0830704fa592d87dc0cf8ce5cb59524` 为基准，18 个场景全部通过，0 warning/blocked/new/removed/infrastructure；`entry-login-default` 的 `pixelDiffRatio=0`。
+- S：按 `STG 基础试点` 严格执行两轮。第一轮在设置页读取意外物化空实名认证 aggregate 后，官方 cleanup 被 operator 的 unsupported-family 规则阻塞；经用户明确授权、事务内重复断言 aggregate/request/evidence/audit 为 `1/0/0/0` 后，仅删除该空 aggregate，同 run 官方 cleanup 随后 `CLEANED`、占用释放。本地 receipt 仍保留历史 blocked residual，是 operator 记账缺陷，不冒称其为 `residuals=[]`。第二轮官方 cleanup 直接 `CLEANED`、`residuals=[]`、占用释放；cleanup 后两角色正常认证 begin 均为 HTTP 401。第一轮材料已按合同销毁，因此旧登录失效为第二轮同合同材料的等价复验，不冒称直接重放第一轮材料。
+- S 排除项：附件/PDF、披露、首次 onboarding、发现/委托、规则、Hosted、MatchCase、IM、实名、导出、反馈、公司资料编辑均为 `NOT_RUN`。长期脱敏证据见 `docs/runs/2026-09-12-agent-browser-dogfood-editable-login-dial-code-stg-pilot.md`。
+- 收尾：代码候选上的 U/B/V/S 已完整；本段和长期摘要属于仅文档变更，不使既有产品验证失效。普通 push 仍以第二次 fetch 后 `origin/main` 未偏离 `final_target_base` 为前提，禁止 force push。
