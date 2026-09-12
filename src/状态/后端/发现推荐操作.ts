@@ -301,11 +301,20 @@ function 从候选范围移除(旧: 后端状态, intentionId: string, recommend
   return { ...旧, 候选岗位推荐: { ...旧.候选岗位推荐, [intentionId]: { ...快照, items } } };
 }
 
+/** 权威详情卡 → 列表卡形状：剥掉详情专属的 candidate_resume。列表快照只装 BFF招聘候选推荐
+ *  形状 —— 「列表来源 candidateResume 恒 null」是映射层以 candidate_resume 键判别详情的
+ *  前提，正文只落在详情缓存。 */
+function 详情转列表卡(卡: BFF招聘推荐详情): BFF招聘候选推荐 {
+  const { candidate_resume: _正文, ...列表卡 } = 卡;
+  return 列表卡;
+}
+
 /** 淘汰落位（权威重读成功后）：available 全部出现移除；覆盖该岗位的 rejected 快照并入
- *  服务端更新卡（rank 稳定序）；详情缓存落权威卡并撤销不可用标记。卡来自权威详情重读
- *  （BFF招聘推荐详情），不是列表浅对象。 */
+ *  服务端更新卡（rank 稳定序，剥掉详情专属正文）；详情缓存落权威卡并撤销不可用标记。
+ *  卡来自权威详情重读（BFF招聘推荐详情），不是列表浅对象。 */
 function 淘汰落位(旧: 后端状态, jobId: string, 卡: BFF招聘推荐详情): 后端状态 {
   const 编号 = 卡.recommendation_id;
+  const 列表卡 = 详情转列表卡(卡);
   const 招聘可用候选: 后端状态['招聘可用候选'] = {};
   for (const [键, 快照] of Object.entries(旧.招聘可用候选)) {
     招聘可用候选[键] = { ...快照, items: 快照.items.filter((条) => 条.recommendation_id !== 编号) };
@@ -314,8 +323,8 @@ function 淘汰落位(旧: 后端状态, jobId: string, 卡: BFF招聘推荐详�
   for (const 键 of rejected键覆盖岗位(旧, jobId)) {
     const 快照 = 招聘已筛候选[键];
     const items = 快照.items.some((条) => 条.recommendation_id === 编号)
-      ? 快照.items.map((条) => (条.recommendation_id === 编号 ? 卡 : 条))
-      : [...快照.items, 卡].sort((甲, 乙) => 甲.rank - 乙.rank);
+      ? 快照.items.map((条) => (条.recommendation_id === 编号 ? 列表卡 : 条))
+      : [...快照.items, 列表卡].sort((甲, 乙) => 甲.rank - 乙.rank);
     招聘已筛候选[键] = { ...快照, items };
   }
   return {

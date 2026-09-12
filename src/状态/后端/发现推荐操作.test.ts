@@ -47,6 +47,7 @@ import {
   BFF招聘推荐详情样本,
 } from '../../测试/展示资料样本';
 import type { 页面岗位快照 } from '../../数据/招聘数据源类型';
+import { 从P4招聘候选 } from '../../数据/发现推荐映射';
 import { 初始状态 } from '../初始状态';
 import type { 动作 } from '../应用状态';
 import {
@@ -873,7 +874,11 @@ describe('招聘反馈与服务端先行', () => {
     expect(vi.mocked(env.数据源.读取招聘候选详情)).toHaveBeenCalledWith('job_1', 'rec_r1');
     expect(env.最新状态().招聘可用候选.job_1?.items ?? []).toEqual([]);
     const jobKey = P4范围键.招聘已筛(['job_1']);
-    expect(env.最新状态().招聘已筛候选[jobKey]?.items).toEqual([已淘汰卡]);
+    // rejected 快照只装列表卡形状：详情专属正文剥掉，映射层对它必须取列表分支
+    const { candidate_resume: _正文, ...已淘汰列表卡 } = 已淘汰卡;
+    expect(env.最新状态().招聘已筛候选[jobKey]?.items).toEqual([已淘汰列表卡]);
+    expect(从P4招聘候选(env.最新状态().招聘已筛候选[jobKey]!.items[0]).candidateResume).toBeNull();
+    // 详情缓存照旧落权威完整正文
     expect(env.最新状态().招聘候选详情.rec_r1).toEqual(已淘汰卡);
   });
 
