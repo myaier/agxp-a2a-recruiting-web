@@ -572,7 +572,7 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     添加组织屏蔽: vi.fn(async () => BFF屏蔽回执样本),
     解除组织屏蔽: vi.fn(async () => 从BFF隐私(BFF隐私快照样本)),
     搜索组织: vi.fn(async () => BFF组织搜索页样本),
-    开始手机登录: vi.fn(),
+    开始手机登录: vi.fn(async () => ({ attempt_id: 'att_test', next_action: { type: 'enter_code' as const } })),
     完成手机登录: vi.fn(),
     开始微信登录: vi.fn(),
     退出登录: vi.fn(),
@@ -713,6 +713,11 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     创建候选实名申请: vi.fn(async (): Promise<候选实名摘要> => 待审实名摘要),
     取消候选实名申请: vi.fn(async (): Promise<候选实名摘要> => 取消后实名摘要),
   };
+}
+
+async function 通过测试手机登录(当前: ReturnType<typeof use应用状态>, code = '1234'): Promise<void> {
+  await 当前.操作.开始手机登录('13800000000');
+  await 当前.操作.完成手机登录(code);
 }
 
 /** 候选实名域 fixture：待审 / 取消后的 owner summary（页面域命名，data source 已解码形状）。 */
@@ -910,7 +915,7 @@ describe('应用状态提供者 后端会话', () => {
       '加载候选账号档案', '保存候选头像', '删除候选头像',
       // J-PILOT-02 Task 9（Global 8 冻结契约）：完成注册前的本人资源核对
       '完成候选Onboarding',
-      '切身份', '发布岗位', '完成手机登录', '开始手机登录', '归档岗位', '微信登录',
+      '切身份', '发布岗位', '完成手机登录', '开始手机登录', '取消手机登录尝试', '归档岗位', '微信登录',
       '更新岗位', '退出登录', '重开岗位',
       // P0 修复 Task 2：招聘方数据显式重试（会话操作）
       '重新水合招聘方数据',
@@ -1192,7 +1197,7 @@ describe('应用状态提供者 后端会话', () => {
     ));
     await waitFor(() => expect(后端.读取简历).toHaveBeenCalledTimes(1));
 
-    await act(async () => { await 当前.操作.完成手机登录('1234'); });
+    await act(async () => { await 通过测试手机登录(当前); });
     expect(当前.后端状态.主体?.subject_id).toBe('fresh-subject');
 
     旧简历门.resolve(从BFF简历(BFF简历样本));
@@ -1230,7 +1235,7 @@ describe('应用状态提供者 后端会话', () => {
     expect(当前.后端状态.已登录).toBe(false);
 
     // act 包裹：登录提交与水合派发都要落进 React 提交，探针读到的是导航可见时的状态
-    await act(async () => { await 当前.操作.完成手机登录('1234'); });
+    await act(async () => { await 通过测试手机登录(当前); });
 
     expect(当前.后端状态.已登录).toBe(true);
     expect(当前.状态.基本信息.真名).toBe(BFF简历样本.profile.real_name);
@@ -1528,8 +1533,8 @@ describe('应用状态提供者 切身份与退出登录', () => {
     expect(screen.getByText(/"已登录":true/)).toBeDefined();
   });
 
-  // #6：开始手机登录 失败时清除尝试引用，完成手机登录 不用过期 attempt 提交。
-  it('开始手机登录 失败时清除尝试引用，完成手机登录 用空 attempt（#6）', async () => {
+  // 已批准失效修复：开始失败后无有效 attempt，完成必须本地拒绝而不是向 BFF 发空串。
+  it('开始手机登录失败后完成操作本地拒绝且零 complete 请求', async () => {
     let 当前!: ReturnType<typeof use应用状态>;
     function 上下文探针() { 当前 = use应用状态(); return null; }
     const 后端 = 创建后端桩('candidate');
@@ -1538,9 +1543,11 @@ describe('应用状态提供者 切身份与退出登录', () => {
     render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
     await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
     await expect(当前.操作.开始手机登录('13800000000')).rejects.toMatchObject({ code: 'sms_unavailable' });
-    // 尝试引用已清除 → 完成手机登录 用空串调 BFF
-    await 当前.操作.完成手机登录('1234');
-    expect(后端.完成手机登录).toHaveBeenCalledWith('', '1234');
+    await expect(当前.操作.完成手机登录('1234')).rejects.toMatchObject({
+      name: '客户端校验错误',
+      field: 'attempt',
+    });
+    expect(后端.完成手机登录).not.toHaveBeenCalled();
   });
 
   it('effect 依赖变更后（同实例 cleanup→setup）初始化仍能落到 完成（F1）', async () => {
@@ -1730,7 +1737,7 @@ describe('应用状态提供者 目录水合与原型缓存隔离', () => {
       .mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
     render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端 as unknown as HTTP招聘数据源 } }, createElement(上下文探针)));
     await waitFor(() => expect(当前.状态.企业认证.姓名).toBe('A'));
-    await 当前.操作.完成手机登录('1234');
+    await 通过测试手机登录(当前);
     await waitFor(() => expect(当前.状态.企业认证.姓名).toBe('B'));
     expect(当前.状态.资料缓存范围键).toBe('AGXP账号资料v2:backend:stg:sub_B');
   });
@@ -1912,7 +1919,7 @@ describe('应用状态提供者 review-r2 会话边界', () => {
     await waitFor(() => expect(当前.状态.意向草稿.期望职位).toBe('A 的职位'));
     // B 在同一 Provider 登录（完成手机登录 → 读取主体 返回 sub_B）
     vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
-    await 当前.操作.完成手机登录('1234');
+    await 通过测试手机登录(当前);
     await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
     // A 的草稿/引导预填被清，不串到 B
     expect(当前.状态.意向草稿.期望职位).toBe('');
@@ -1931,7 +1938,7 @@ describe('应用状态提供者 review-r2 会话边界', () => {
     current派发引导预填(当前, '上海');
     await waitFor(() => expect(当前.状态.引导预填).not.toBe(null));
     // 同 subject_id 再次完成手机登录
-    await 当前.操作.完成手机登录('1234');
+    await 通过测试手机登录(当前);
     // 草稿保留
     expect(当前.状态.引导预填).not.toBe(null);
   });
@@ -1955,7 +1962,7 @@ describe('应用状态提供者 review-r2 会话边界', () => {
     await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
     // 重新登录：读取主体 返回新主体
     vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_A' });
-    await 当前.操作.完成手机登录('5678');
+    await 通过测试手机登录(当前, '5678');
     await waitFor(() => expect(当前.后端状态.已登录).toBe(true));
     // 旧请求的 401 到达
     目录拒绝.reject(new BFF错误(401, 'invalid_session', 'expired'));
@@ -2061,7 +2068,7 @@ describe('应用状态提供者 review-r3 会话边界收口', () => {
     // 先有些上个账号的草稿
     当前.派发({ 型: '改意向草稿', 补丁: { 期望职位: '旧职位' } });
     当前.派发({ 型: '存引导预填', 城市们: ['上海'], 职位: ['产品经理'], 城市引用们: [], 职位引用们: [] });
-    await 当前.操作.完成手机登录('1234');
+    await 通过测试手机登录(当前);
     // 读取主体 401 → 不落 已登录，清理会话
     await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
     expect(当前.后端状态.主体).toBe(null);
@@ -2079,7 +2086,7 @@ describe('应用状态提供者 review-r3 会话边界收口', () => {
     const 后端源 = 后端 as unknown as HTTP招聘数据源;
     render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
     await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
-    await 当前.操作.完成手机登录('1234');
+    await 通过测试手机登录(当前);
     await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
     expect(当前.后端状态.主体).toBe(null);
   });
@@ -2214,7 +2221,7 @@ describe('应用状态提供者 接触记录会话边界', () => {
     await act(async () => { void 当前.操作.加载接触记录(true); });
     // 主体 B 在同一 Provider 登录（完成手机登录 → 读取主体 返回 sub_B）
     vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
-    await act(async () => { await 当前.操作.完成手机登录('1234'); });
+    await act(async () => { await 通过测试手机登录(当前); });
     await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
     expect(当前.后端状态.接触记录).toEqual(pristine快照);
     // 旧 candidate 响应迟到到达：不落新主体
@@ -2775,7 +2782,7 @@ describe('应用状态提供者 P2 附件库快照', () => {
     render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
     await waitFor(() => expect(当前.后端状态.附件简历库).toEqual(附件库样本));
     vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
-    await 当前.操作.完成手机登录('1234');
+    await 通过测试手机登录(当前);
     await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
     expect(当前.后端状态.附件简历库?.items).toEqual([]);
   });
@@ -2950,7 +2957,7 @@ describe('应用状态提供者 P5 MatchCase 运行时状态', () => {
     expect(后端.读取候选连续详情).toHaveBeenCalledTimes(1);
     // 换主体登录：主体基串变化触发 Provider 反应式清理
     vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
-    await 当前.操作.完成手机登录('1234');
+    await 通过测试手机登录(当前);
     await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
     // effect 必须把 P5别名对照 随其余 P5 引用一并传入并清空（对照不得跨主体残留）
     await waitFor(() => {
@@ -2974,7 +2981,7 @@ describe('应用状态提供者 P5 MatchCase 运行时状态', () => {
     await 当前.操作.加载连续列表('active');
     await waitFor(() => expect(当前.后端状态.P5工作区['p5:open:candidate:*']).toMatchObject({ 阶段: '成功' }));
     vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
-    await 当前.操作.完成手机登录('1234');
+    await 通过测试手机登录(当前);
     await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
     expect(当前.后端状态.P5工作区).toEqual({});
     expect(当前.后端状态.P5历史).toEqual({});
@@ -3231,7 +3238,7 @@ describe('应用状态提供者 P8 控制面运行时状态', () => {
     await act(async () => { await 当前.操作.加载P8凭证(); });
     expect(当前.后端状态.credentials.data).toEqual([手机凭证DTO]);
     vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
-    await 当前.操作.完成手机登录('1234');
+    await 通过测试手机登录(当前);
     await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
     expect(当前.后端状态.credentials).toMatchObject({ phase: 'idle', data: null });
     expect(当前.后端状态.sessions).toMatchObject({ phase: 'idle', data: null });
@@ -3325,7 +3332,7 @@ describe('应用状态提供者 P8 控制面运行时状态', () => {
     const A写入数 = 本地.setItem.mock.calls.filter(([键]) => 键 === A键).length;
     // 同一 Provider 实例切换主体（完成手机登录换主体）：渲染期把 ref 换绑到 B 的适配器
     vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_B' });
-    await act(async () => { await 当前.操作.完成手机登录('1234'); });
+    await act(async () => { await 通过测试手机登录(当前); });
     await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
     await act(async () => { await 当前.操作.创建P8数据导出(); });
     const B键 = 'AGXPP8数据导出v1:backend:stg:sub_B';
@@ -3473,7 +3480,7 @@ describe('应用状态提供者 候选引导草稿持久化', () => {
     await waitFor(() => expect(当前.状态.引导预填?.职位).toEqual(['后端工程师']));
     // 同一 Provider 换主体登录
     vi.mocked(后端.读取主体).mockResolvedValueOnce({ ...BFF主体样本, subject_id: 'sub_B' });
-    await 当前.操作.完成手机登录('1234');
+    await 通过测试手机登录(当前);
     await waitFor(() => expect(当前.后端状态.主体?.subject_id).toBe('sub_B'));
     // A 的答案不串进 B 的内存态
     expect(当前.状态.引导预填).toBe(null);

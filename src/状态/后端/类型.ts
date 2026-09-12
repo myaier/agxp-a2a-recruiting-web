@@ -522,6 +522,8 @@ export interface 后端操作依赖 {
   状态引用: 可变引用<状态>;
   锁: 可变引用<Set<string>>;
   尝试引用: 可变引用<string | null>;
+  /** 手机登录 begin/cancel 的稳定代际；会话工厂入口收窄为必需。 */
+  手机登录代际?: 可变引用<number>;
   主体标识引用: 可变引用<string | null>;
   会话代际: 可变引用<number>;
   /**
@@ -696,7 +698,8 @@ export interface 候选预填运行时引用 {
 }
 
 export interface 会话操作 {
-  开始手机登录(phone: string): Promise<void>;
+  开始手机登录(phone: string, dialCode?: string): Promise<void>;
+  取消手机登录尝试(): void;
   完成手机登录(code: string): Promise<void>;
   微信登录(): Promise<string | null>;
   退出登录(): Promise<void>;

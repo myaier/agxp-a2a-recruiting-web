@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { 创建空P7会话状态 } from './真人会话操作';
 import { 创建空P5MatchCase状态 } from './MatchCase操作';
-import type { BFF主体, BFF角色, BFF附件简历库 } from '../../数据/BFF契约';
+import type { BFF主体, BFF角色, BFF附件简历库, BFF登录尝试 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误 } from '../../数据/HTTP客户端';
 import {
@@ -91,7 +91,9 @@ function 创建会话测试依赖(后端: HTTP招聘数据源) {
     后端状态引用: { current: 创建测试后端状态() },
     状态引用,
     锁: { current: new Set<string>() },
-    尝试引用: { current: null as string | null },
+    // 会话/水合用例默认建模为「begin 已成功」；无 attempt 反例自行清空。
+    尝试引用: { current: 'att_test' as string | null },
+    手机登录代际: { current: 0 },
     主体标识引用: { current: null as string | null },
     会话代际: { current: 0 },
     读取恢复企业关系编号: vi.fn(() => null),
@@ -147,6 +149,103 @@ function 清空轻提示(): void {
   ) as HTMLElement | undefined;
   if (容器) 容器.innerHTML = '';
 }
+
+describe('手机登录尝试生命周期', () => {
+  function 登录数据源() {
+    return {
+      开始手机登录: vi.fn(),
+      完成手机登录: vi.fn(),
+    } as unknown as HTTP招聘数据源;
+  }
+
+  it('工厂在 Provider 未注入手机登录代际时立即拒绝', () => {
+    const { deps } = 创建会话测试依赖(登录数据源());
+    const 缺代际 = { ...deps, 手机登录代际: undefined } as 后端操作依赖;
+    expect(() => 创建会话操作(缺代际)).toThrow('手机登录代际 未初始化');
+  });
+
+  it('无当前 attempt 时本地拒绝完成且零请求', async () => {
+    const 后端 = 登录数据源();
+    const { deps } = 创建会话测试依赖(后端);
+    deps.尝试引用.current = null;
+
+    await expect(创建会话操作(deps).完成手机登录('1234')).rejects.toMatchObject({
+      name: '客户端校验错误',
+      field: 'attempt',
+    });
+    expect(后端.完成手机登录).not.toHaveBeenCalled();
+  });
+
+  it('A begin 迟到于取消和 B begin 时不覆盖 B', async () => {
+    const A = deferred<BFF登录尝试>();
+    const B = deferred<BFF登录尝试>();
+    const 后端 = 登录数据源();
+    vi.mocked(后端.开始手机登录)
+      .mockReturnValueOnce(A.promise)
+      .mockReturnValueOnce(B.promise);
+    const { deps } = 创建会话测试依赖(后端);
+    const 操作 = 创建会话操作(deps);
+
+    const A请求 = 操作.开始手机登录('13800000000');
+    操作.取消手机登录尝试();
+    const B请求 = 操作.开始手机登录('123456789012', '+999');
+    B.resolve({ attempt_id: 'att_b', next_action: { type: 'enter_code' } });
+    await B请求;
+    A.resolve({ attempt_id: 'att_a', next_action: { type: 'enter_code' } });
+    await A请求;
+
+    expect(deps.尝试引用.current).toBe('att_b');
+    expect(后端.开始手机登录).toHaveBeenNthCalledWith(2, '123456789012', '+999');
+  });
+
+  it('A begin 失败不清除后发的 B attempt', async () => {
+    const A = deferred<BFF登录尝试>();
+    const 后端 = 登录数据源();
+    vi.mocked(后端.开始手机登录)
+      .mockReturnValueOnce(A.promise)
+      .mockResolvedValueOnce({ attempt_id: 'att_b', next_action: { type: 'enter_code' } });
+    const { deps } = 创建会话测试依赖(后端);
+    const 操作 = 创建会话操作(deps);
+
+    const A请求 = 操作.开始手机登录('13800000000');
+    await 操作.开始手机登录('13900000000');
+    A.reject(new Error('A failed'));
+    await expect(A请求).rejects.toThrow('A failed');
+
+    expect(deps.尝试引用.current).toBe('att_b');
+  });
+
+  it('取消只作废本地尝试且不发请求', () => {
+    const 后端 = 登录数据源();
+    const { deps } = 创建会话测试依赖(后端);
+    deps.尝试引用.current = 'att_old';
+
+    创建会话操作(deps).取消手机登录尝试();
+
+    expect(deps.尝试引用.current).toBeNull();
+    expect(deps.手机登录代际.current).toBe(1);
+    expect(后端.开始手机登录).not.toHaveBeenCalled();
+    expect(后端.完成手机登录).not.toHaveBeenCalled();
+  });
+
+  it('取消后 complete 迟到失败静默收口且不读主体', async () => {
+    const complete = deferred<void>();
+    const 后端 = {
+      ...登录数据源(),
+      完成手机登录: vi.fn(() => complete.promise),
+      读取主体: vi.fn(),
+    } as unknown as HTTP招聘数据源;
+    const { deps } = 创建会话测试依赖(后端);
+    const 操作 = 创建会话操作(deps);
+
+    const 完成请求 = 操作.完成手机登录('1234');
+    操作.取消手机登录尝试();
+    complete.reject(new Error('late complete failure'));
+
+    await expect(完成请求).resolves.toBeUndefined();
+    expect(后端.读取主体).not.toHaveBeenCalled();
+  });
+});
 
 function 主体(subject_id: string): BFF主体 {
   return { ...BFF主体样本, subject_id };
@@ -480,7 +579,9 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
     },
     状态引用,
     锁: { current: new Set<string>() },
-    尝试引用: { current: null as string | null },
+    // 本 helper 服务于 complete 后的角色水合，前置为已取得合法 attempt。
+    尝试引用: { current: 'att_test' as string | null },
+    手机登录代际: { current: 0 },
     主体标识引用: { current: null as string | null },
     会话代际: { current: 0 },
     读取恢复企业关系编号: vi.fn(() => null),
@@ -1495,6 +1596,7 @@ describe('P8 控制面会话清理', () => {
     await 操作.退出登录();
     expect(deps.P8导出恢复?.current).toBe(恢复适配器);
     expect(恢复适配器.删除).not.toHaveBeenCalled();
+    deps.尝试引用.current = 'att_test_2'; // 建模换主体前的新一轮 begin 已成功
     await 操作.完成手机登录('2222'); // 换主体 sub_b：句柄坐标仍归操作层换绑
     expect(deps.P8导出恢复?.current).toBe(恢复适配器);
     expect(恢复适配器.写入).not.toHaveBeenCalled();
@@ -1803,6 +1905,26 @@ describe('重新水合招聘方数据', () => {
 // 同 subject 后一轮登录让前一轮的迟到水合整包作废，不得重复提交登录态。
 
 describe('交互短信登录水合编排', () => {
+  it('手机登录水合期取消后丢弃迟到快照且不提交登录态', async () => {
+    const 后端 = 创建P6数据源桩();
+    const 简历门 = deferred<Awaited<ReturnType<typeof 后端.读取简历>>>();
+    vi.mocked(后端.读取主体).mockResolvedValue(candidate主体);
+    vi.mocked(后端.读取简历).mockReturnValue(简历门.promise);
+    const { deps, 状态引用, 最新后端状态 } = 创建P6会话依赖(后端);
+    deps.设后端状态((旧) => ({ ...旧, 已登录: false, 主体: null }));
+    const 操作 = 创建会话操作(deps);
+
+    const 登录 = 操作.完成手机登录('1234');
+    await vi.waitFor(() => expect(后端.读取简历).toHaveBeenCalledTimes(1));
+    操作.取消手机登录尝试();
+    简历门.resolve(await 创建P6数据源桩().读取简历());
+    await 登录;
+
+    expect(最新后端状态().已登录).toBe(false);
+    expect(最新后端状态().主体).toBeNull();
+    expect(状态引用.current.基本信息.真名).toBe('');
+  });
+
   it('已有 candidate 短信登录在五类支持域结算后才提交登录态', async () => {
     const 后端 = 创建P6数据源桩();
     const 附件门 = deferred<BFF附件简历库>();

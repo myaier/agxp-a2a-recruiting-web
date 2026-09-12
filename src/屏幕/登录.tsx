@@ -12,7 +12,7 @@
 // 于是「注册」本身就是代理第一次替你干活，顺带把产品最核心的承诺
 // （替你看市场 / 底线只有我知道）在第一屏就说清。
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import 样式 from './登录.module.css';
 import { 次级页外壳 } from '../组件/通用';
 import 代理标 from '../组件/代理标';
@@ -23,6 +23,8 @@ import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
 import { 短信验证码位数 } from '../数据/验证码规则';
+import { 构造登录手机号, 规范化登录区号 } from '../数据/登录手机号';
+import 弹层框架 from '../组件/弹层框架';
 
 /** 验证码格数：与登录、换绑等短信验证入口共享同一产品规则。 */
 const 验证码格数 = 短信验证码位数;
@@ -40,21 +42,51 @@ export default function 登录() {
   const { 跳转 } = use导航();
   const { 数据源模式, 操作 } = use应用状态();
   const [手机号数字, 设手机号数字] = useState('');
+  const [区号, 设区号] = useState('+86');
+  const [区号层开, 设区号层开] = useState(false);
+  const [区号草稿, 设区号草稿] = useState('+86');
+  const [区号错误, 设区号错误] = useState('');
   const [验证码, 设验证码] = useState('');
   const [已同意, 设已同意] = useState(false);
   // 倒计时剩余秒数：null = 还没发过验证码；0 = 跑完可重发
   const [剩余秒, 设剩余秒] = useState<number | null>(null);
   // Backend 登录提交的可见等待态：按钮换字并禁用（同步 ref 守卫之外的用户反馈）
   const [正在进入, 设正在进入] = useState(false);
+  const [正在取码, 设正在取码] = useState(false);
+  const [有效取码, 设有效取码] = useState(false);
   const 验证码输入引用 = useRef<HTMLInputElement>(null);
   // Backend 三个按钮的重复点击守卫（取码/微信仍纯 ref 不动 UI；登录提交另有 正在进入 可见态）
   const 取码中 = useRef(false);
   const 进入中 = useRef(false);
   const 微信中 = useRef(false);
+  const 已取码号码 = useRef<string | null>(null);
+  const 挂载中 = useRef(true);
+  const 聚焦定时 = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const 手机号齐 = 手机号数字.length === 11;
+  let 完整手机号: string | null = null;
+  try {
+    完整手机号 = 构造登录手机号(手机号数字, 区号);
+  } catch {
+    完整手机号 = null;
+  }
+  const 手机号齐 = 完整手机号 !== null;
   const 验证码齐 = 验证码.length === 验证码格数;
-  const 可进入 = 手机号齐 && 验证码齐 && 已同意;
+  const 有可用挑战 = 数据源模式 === 'mock' || 有效取码;
+  const 可进入 = 手机号齐 && 验证码齐 && 已同意 && 有可用挑战;
+  const 交互锁定 = 正在取码 || 正在进入;
+
+  const 取消区号编辑 = useCallback(() => {
+    设区号错误('');
+    设区号层开(false);
+  }, []);
+
+  const 作废已取码 = useCallback(() => {
+    if (已取码号码.current === null) return;
+    已取码号码.current = null;
+    设有效取码(false);
+    设验证码('');
+    if (数据源模式 === 'backend') 操作.取消手机登录尝试();
+  }, [数据源模式, 操作]);
 
   // 真倒计时：每秒 -1，归零停
   useEffect(() => {
@@ -63,49 +95,104 @@ export default function 登录() {
     return () => clearTimeout(定时);
   }, [剩余秒]);
 
+  useEffect(() => {
+    挂载中.current = true;
+    return () => {
+      挂载中.current = false;
+      if (聚焦定时.current !== null) clearTimeout(聚焦定时.current);
+      if (数据源模式 === 'backend') {
+        操作.取消手机登录尝试();
+      }
+    };
+  }, [数据源模式, 操作]);
+
+  const 更新手机号 = (原始值: string) => {
+    const 下一值 = /^[0-9 ()-]*$/.test(原始值) ? 原始值.replace(/[ ()-]/g, '') : 原始值;
+    if (已取码号码.current !== null) {
+      let 下一完整号码: string | null = null;
+      try {
+        下一完整号码 = 构造登录手机号(下一值, 区号);
+      } catch {
+        下一完整号码 = null;
+      }
+      if (下一完整号码 !== 已取码号码.current) 作废已取码();
+    }
+    设手机号数字(下一值);
+  };
+
+  const 打开区号编辑 = () => {
+    设区号草稿(区号);
+    设区号错误('');
+    设区号层开(true);
+  };
+
+  const 确认区号 = () => {
+    try {
+      const 下一区号 = 规范化登录区号(区号草稿);
+      if (下一区号 !== 区号) {
+        作废已取码();
+        设区号(下一区号);
+      }
+      取消区号编辑();
+    } catch (错误) {
+      设区号错误(错误 instanceof Error ? 错误.message : '区号不正确');
+    }
+  };
+
   const 发验证码 = () => {
     if (!手机号齐) {
-      轻提示('先输入 11 位手机号');
+      轻提示(区号 === '+86' ? '先输入 11 位手机号' : '请输入有效的手机号');
       return;
     }
     if (剩余秒 !== null && 剩余秒 > 0) return; // 倒计时中不可重发
     if (数据源模式 === 'backend') {
       if (取码中.current) return;
       取码中.current = true;
+      设正在取码(true);
+      设有效取码(false);
+      已取码号码.current = null;
       // 验证码格先亮起来（视觉反馈），但倒计时等请求成功才启动：
       // 原来先设 剩余秒 再发请求，请求失败时 60s 倒计时仍在跑、用户无法重发，
       // 且验证码格亮着却没有合法 attempt_id。失败时把视觉反馈复位以便重试。
       设验证码('');
-      操作.开始手机登录(手机号数字)
+      操作.开始手机登录(手机号数字, 区号)
         .then(() => {
+          if (!挂载中.current) return;
+          已取码号码.current = 完整手机号;
+          设有效取码(true);
           设剩余秒(倒计时秒数);
           轻提示('验证码已发送');
           // 验证码格在 剩余秒 非 null 后才渲染，焦点等成功后再送进去，
           // 避免网络延迟下输入格还没渲染就 focus（#8）。
-          setTimeout(() => 验证码输入引用.current?.focus(), 80);
+          聚焦定时.current = setTimeout(() => 验证码输入引用.current?.focus(), 80);
         })
         .catch((错误) => {
+          if (!挂载中.current) return;
           // 失败时复位视觉反馈：剩余秒 归 null（可重发），验证码清空，
           // 不留 0 秒 + 旧 attempt 的脏态（#6）
           设剩余秒(null);
           设验证码('');
+          设有效取码(false);
           轻提示(取后端错误文案(错误));
         })
         .finally(() => {
           取码中.current = false;
+          if (挂载中.current) 设正在取码(false);
         });
       return;
     }
     设剩余秒(倒计时秒数);
     设验证码('');
+    设有效取码(true);
+    已取码号码.current = 完整手机号;
     轻提示('验证码已发送（原型不校验，任意 4 位数字即可）');
     // 发完码直接把焦点送进验证码格，弹数字键盘
-    setTimeout(() => 验证码输入引用.current?.focus(), 80);
+    聚焦定时.current = setTimeout(() => 验证码输入引用.current?.focus(), 80);
   };
 
   const 进入下一步 = async () => {
     if (!可进入) {
-      if (!手机号齐) 轻提示('先输入 11 位手机号');
+      if (!手机号齐) 轻提示(区号 === '+86' ? '先输入 11 位手机号' : '请输入有效的手机号');
       else if (!验证码齐) 轻提示('输入 4 位验证码');
       else 轻提示('先勾选用户协议');
       return;
@@ -120,10 +207,11 @@ export default function 登录() {
         // 水合完角色才提交，落点（主壳/选身份/注册流名片）归 应用.tsx 的水合守卫独占。
         await 操作.完成手机登录(验证码);
       } catch (错误) {
+        if (!挂载中.current) return;
         轻提示(取后端错误文案(错误));
       } finally {
         进入中.current = false;
-        设正在进入(false);
+        if (挂载中.current) 设正在进入(false);
       }
       return;
     }
@@ -182,18 +270,22 @@ export default function 登录() {
 
         {/* 表单：上一行手机号、下一行验证码四格 + 获取验证码 */}
         <div className={样式.手机行}>
-          <button className={`${样式.区号} 可点`} onClick={() => 轻提示('原型暂只支持 +86')}>
-            +86 <span className={样式.区号箭头}>▾</span>
+          <button
+            className={`${样式.区号} 可点`}
+            onClick={打开区号编辑}
+            aria-label={`编辑区号，当前 ${区号}`}
+            disabled={交互锁定}
+          >
+            {区号} <span className={样式.区号箭头}>▾</span>
           </button>
           <span className={样式.竖线} />
           <input
             className={`${样式.手机输入} 等宽数字`}
-            value={格式化手机号(手机号数字)}
+            value={区号 === '+86' && /^\d{0,11}$/.test(手机号数字) ? 格式化手机号(手机号数字) : 手机号数字}
             placeholder="输入手机号"
             // 只留数字：粘贴带空格 / 横线 / 括号的号码自动洗干净
-            onChange={(事件) =>
-              设手机号数字(事件.target.value.replace(/\D/g, '').slice(0, 11))
-            }
+            onChange={(事件) => 更新手机号(事件.target.value)}
+            disabled={交互锁定}
             inputMode="tel"
             autoComplete="tel"
             aria-label="手机号"
@@ -235,6 +327,7 @@ export default function 登录() {
               autoComplete="one-time-code"
               maxLength={验证码格数}
               aria-label="短信验证码"
+              disabled={交互锁定 || !有可用挑战}
             />
           </div>
           ) : null}
@@ -246,8 +339,9 @@ export default function 登录() {
             <button
               className={`${样式.取码键} 可点 ${手机号齐 ? '' : 样式.取码键灰}`}
               onClick={发验证码}
+              disabled={!手机号齐 || 交互锁定}
             >
-              {剩余秒 === 0 ? '重新获取' : '获取验证码'}
+              {正在取码 ? '正在发送…' : 剩余秒 === 0 ? '重新获取' : '获取验证码'}
             </button>
           )}
         </div>
@@ -257,6 +351,7 @@ export default function 登录() {
           className={`${样式.同意行} 可点`}
           onClick={() => 设已同意((旧) => !旧)}
           aria-pressed={已同意}
+          disabled={交互锁定}
         >
           <span className={`${样式.勾选圈} ${已同意 ? '' : 样式.未选}`}>
             {已同意 ? <对勾图标 尺寸={9} 色="#fff" 线宽={3.6} /> : null}
@@ -287,10 +382,40 @@ export default function 登录() {
       </div>
 
       <div className={样式.微信区}>
-        <button className={`${样式.微信键} 可点`} onClick={微信登录按下}>
+        <button className={`${样式.微信键} 可点`} onClick={微信登录按下} disabled={交互锁定}>
           微信登录
         </button>
       </div>
+
+      {区号层开 ? (
+        <弹层框架
+          标签="编辑登录区号"
+          遮罩类名={样式.区号遮罩}
+          面板类名={样式.区号层}
+          位置="居中"
+          关闭={取消区号编辑}
+        >
+          <h2 className={样式.区号标题}>编辑登录区号</h2>
+          <label className={样式.区号标签}>
+            区号
+            <input
+              className={`${样式.区号输入} 等宽数字`}
+              value={区号草稿}
+              onChange={(事件) => {
+                设区号草稿(事件.target.value);
+                设区号错误('');
+              }}
+              aria-label="区号"
+              inputMode="tel"
+            />
+          </label>
+          {区号错误 ? <p className={样式.区号错误} role="alert">{区号错误}</p> : null}
+          <div className={样式.区号操作}>
+            <button type="button" className={样式.区号取消} onClick={取消区号编辑}>取消</button>
+            <button type="button" className={样式.区号确认} onClick={确认区号}>确认区号</button>
+          </div>
+        </弹层框架>
+      ) : null}
     </次级页外壳>
   );
 }

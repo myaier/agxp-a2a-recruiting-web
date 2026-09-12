@@ -450,7 +450,7 @@ function 建档命令坐标(命令: 建档待写入): string {
 
 export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建档草稿操作 {
   const {
-    是后端, 后端, 派发, 设后端状态, 尝试引用, 主体标识引用, 会话代际, 读取恢复企业关系编号,
+    是后端, 后端, 派发, 设后端状态, 尝试引用, 手机登录代际, 主体标识引用, 会话代际, 读取恢复企业关系编号,
     提交候选意向快照,
     P4范围代际, P4幂等意图, P4可见范围,
     P7范围代际, P7待定意图, P7可见收件箱, P7可见会话, P7已读位置,
@@ -478,6 +478,9 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
   if (提交候选意向快照 === undefined) {
     throw new Error('提交候选意向快照 未初始化（Provider 必须一次性注入）');
   }
+  if (手机登录代际 === undefined) {
+    throw new Error('手机登录代际 未初始化（Provider 必须一次性注入）');
+  }
   const 角色水合依赖 = {
     后端: 后端!, 派发, 设后端状态, 主体标识引用, 会话代际, 读取恢复企业关系编号,
     提交候选意向快照,
@@ -488,6 +491,21 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
     候选实名读取锁, 候选实名变更锁, 候选实名提交意图,
     建档草稿引用,
     委托待核对内存, 委托待核对存储,
+  };
+  let 手机登录水合会话代际: number | null = null;
+  const 推进手机登录代际 = (): number => {
+    手机登录代际.current += 1;
+    尝试引用.current = null;
+    if (
+      手机登录水合会话代际 !== null &&
+      会话代际.current === 手机登录水合会话代际
+    ) {
+      // complete 已进入角色水合时，同时推进其使用的会话栅栏，
+      // 让水合 helper 在统一结算口丢弃迟到快照。
+      会话代际.current += 1;
+    }
+    手机登录水合会话代际 = null;
+    return 手机登录代际.current;
   };
 
   return {
@@ -522,24 +540,43 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
       }
       派发({ 型: '更新候选建档草稿', 建档: 下一步 });
     },
-    async 开始手机登录(phone) {
+    async 开始手机登录(phone, dialCode) {
       if (!是后端 || !后端) return;
+      const 本次代际 = 推进手机登录代际();
       try {
-        const 尝试 = await 后端.开始手机登录(phone);
-        尝试引用.current = 尝试.attempt_id;
+        const 尝试 = await 后端.开始手机登录(phone, dialCode);
+        if (手机登录代际.current === 本次代际) {
+          尝试引用.current = 尝试.attempt_id;
+        }
       } catch (错误) {
-        // 发送失败时清除旧 attempt_id，防止 完成手机登录 用过期 attempt 提交
-        尝试引用.current = null;
+        if (手机登录代际.current === 本次代际) {
+          尝试引用.current = null;
+        }
         throw 错误;
       }
     },
+    取消手机登录尝试() {
+      推进手机登录代际();
+    },
     async 完成手机登录(code) {
       if (!是后端 || !后端) return;
-      await 后端.完成手机登录(尝试引用.current ?? '', code);
+      const attemptId = 尝试引用.current;
+      if (attemptId === null) {
+        throw new 客户端校验错误('attempt', '请先重新获取验证码');
+      }
+      const 本次手机登录代际 = 手机登录代际.current;
+      try {
+        await 后端.完成手机登录(attemptId, code);
+      } catch (错误) {
+        if (手机登录代际.current !== 本次手机登录代际) return;
+        throw 错误;
+      }
+      if (手机登录代际.current !== 本次手机登录代际) return;
       let 主体: BFF主体;
       try {
         主体 = await 后端.读取主体();
       } catch (错误) {
+        if (手机登录代际.current !== 本次手机登录代际) return;
         // review-r3 R3-I-3：读取主体 失败时不能落 已登录=true。
         // 401（会话刚建立就已过期）→ 统一账号清理，不设已登录；
         // 其他失败（网络等）→ 留未登录 + 轻提示，不顶着一个 null 主体当登录态。
@@ -551,6 +588,7 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
         }
         return;
       }
+      if (手机登录代际.current !== 本次手机登录代际) return;
       // review-r2 R2-I-4：主体 subject_id 变化时先清上个账号的草稿/快照/缓存，
       // 不让 A 的引导预填/意向草稿串到 B（同 Provider 实例的跨账号泄漏）。
       // 同 subject_id（如刷新后重新登录）保留草稿。
@@ -603,6 +641,7 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
       // review-r2 R2-M-4：新会话建立，递增代际（让在飞的旧会话目录请求 401 成为 stale）
       会话代际.current += 1;
       const 本次代际 = 会话代际.current;
+      手机登录水合会话代际 = 本次代际;
 
       // 登录也是角色转移口：规则域与招聘方组织阶段回干净底座（同主体重登不带走
       // 上次会话的 进行中|成功|失败），候选侧附件快照同口径清空后由本轮水合重写。
@@ -621,13 +660,21 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
 
       // 登录提交前先水合支持域：已登录=true 只在当前轮水合收口后落下，
       // 导航可见时权威资料已就位（mount-init 口径：非 401 失败只提示不阻断登录）。
-      const 会话失效 = await 水合角色数据(角色水合依赖, 主体, false, 本次代际);
+      let 会话失效: boolean;
+      try {
+        会话失效 = await 水合角色数据(角色水合依赖, 主体, false, 本次代际);
+      } finally {
+        if (手机登录水合会话代际 === 本次代际) {
+          手机登录水合会话代际 = null;
+        }
+      }
       if (会话失效) {
         // 当前轮 401：清账号状态 已在 水合角色数据 内部清完（含主体标识 + 会话代际），
         // 这里只把终态交给页面 owner —— 登录.tsx catch 后提示并留在登录页，不导航。
         throw new BFF错误(401, 'invalid_session', 'expired');
       }
       if (
+        手机登录代际.current !== 本次手机登录代际 ||
         主体标识引用.current !== 主体.subject_id ||
         会话代际.current !== 本次代际
       ) return;

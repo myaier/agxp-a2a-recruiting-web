@@ -333,3 +333,82 @@
   font-weight: 500;
   color: var(--正文);
 }
+
+/* 区号编辑只复用全局弹层骨架；面板保持当前登录卡的白底、绿色主动作。 */
+.区号遮罩 {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(26, 26, 26, 0.34);
+}
+
+.区号层 {
+  width: min(320px, calc(100vw - 56px)) !important;
+  padding: 22px;
+  border-radius: var(--圆角-卡片);
+  background: var(--白);
+  box-shadow: 0 18px 48px rgba(26, 26, 26, 0.2);
+}
+
+.区号标题 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--墨);
+}
+
+.区号标签 {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--次要);
+}
+
+.区号输入 {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--描边中);
+  border-radius: var(--圆角-按钮);
+  outline: none;
+  font-size: 17px;
+  color: var(--墨);
+  background: var(--白);
+}
+
+.区号输入:focus {
+  border-color: var(--深绿);
+}
+
+.区号错误 {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #b42318;
+}
+
+.区号操作 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.区号取消,
+.区号确认 {
+  height: 42px;
+  border-radius: var(--圆角-按钮);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.区号取消 {
+  border: 1px solid var(--淡绿描边);
+  color: var(--正文);
+  background: var(--白);
+}
+
+.区号确认 {
+  color: var(--墨);
+  background: var(--荧光绿);
+}

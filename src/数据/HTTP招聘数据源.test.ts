@@ -49,6 +49,34 @@ describe('HTTP 招聘数据源', () => {
     ]);
   });
 
+  it('手机登录显式区号只拼接一次', async () => {
+    请求Mock.mockResolvedValue({
+      result: { attempt_id: 'att_999', next_action: { type: 'enter_code' } },
+      etag: null,
+      requestId: 'r999',
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+
+    await source.开始手机登录('123456789012', '+999');
+
+    expect(请求Mock).toHaveBeenCalledWith({
+      path: '/api/v1/auth/login-attempts',
+      method: 'POST',
+      body: { provider: 'phone_otp', input: { phone: '+999123456789012' } },
+      幂等: true,
+    });
+  });
+
+  it('手机登录非法输入在 HTTP 前拒绝', async () => {
+    const source = 创建HTTP招聘数据源(依赖());
+
+    await expect(source.开始手机登录('1234567890123', '+999')).rejects.toMatchObject({
+      name: '客户端校验错误',
+      field: 'phone',
+    });
+    expect(请求Mock).not.toHaveBeenCalled();
+  });
+
   it('保存简历按快照 diff 写 singleton/entries 后重新 GET', async () => {
     const 请求Mock = vi.fn(async (options: BFF请求选项) => {
       if (options.method === 'POST') {

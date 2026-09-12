@@ -6,7 +6,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act } from 'react';
+import { act, StrictMode } from 'react';
 import 登录 from './登录';
 import { 路径 } from '../路由/路径表';
 import { BFF错误 } from '../数据/HTTP客户端';
@@ -14,6 +14,7 @@ import { BFF错误 } from '../数据/HTTP客户端';
 const mock跳转 = vi.fn();
 const mock操作 = {
   开始手机登录: vi.fn(),
+  取消手机登录尝试: vi.fn(),
   完成手机登录: vi.fn(),
   微信登录: vi.fn(),
 };
@@ -34,11 +35,19 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+function 轻提示文案条数(文案: string): number {
+  const 容器 = Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  );
+  return Array.from(容器?.children ?? []).filter((节点) => 节点.textContent === 文案).length;
+}
+
 describe('登录页 Backend', () => {
   beforeEach(() => {
     mock环境.数据源模式 = 'backend';
     mock跳转.mockClear();
     mock操作.开始手机登录.mockClear();
+    mock操作.取消手机登录尝试.mockClear();
     mock操作.完成手机登录.mockClear();
     mock操作.微信登录.mockClear();
   });
@@ -64,6 +73,8 @@ describe('登录页 Backend', () => {
     // 请求飞行中：按钮换成「正在进入…」且禁用（比 ref 守卫多一层可见反馈）
     const 等待按钮 = screen.getByRole('button', { name: '正在进入…' });
     expect((等待按钮 as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('手机号') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '编辑区号，当前 +86' }) as HTMLButtonElement).disabled).toBe(true);
     expect(mock操作.完成手机登录).toHaveBeenCalledWith('1234');
     expect(mock跳转).not.toHaveBeenCalled();
 
@@ -90,6 +101,8 @@ describe('登录页 Backend', () => {
     await 用户.click(screen.getByText(/已阅读并同意/));
     await 用户.click(screen.getByRole('button', { name: '进入' }));
     expect(mock跳转).toHaveBeenCalledWith(路径.选身份);
+    expect(mock操作.开始手机登录).not.toHaveBeenCalled();
+    expect(mock操作.取消手机登录尝试).not.toHaveBeenCalled();
     expect(mock操作.完成手机登录).not.toHaveBeenCalled();
   });
 
@@ -187,5 +200,195 @@ describe('登录页 Backend', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('新挂载默认 +86，区号弹层取消与 Escape 都恢复触发焦点', async () => {
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <登录 />
+      </MemoryRouter>,
+    );
+    const 区号键 = screen.getByRole('button', { name: '编辑区号，当前 +86' });
+    expect((screen.getByLabelText('手机号') as HTMLInputElement).value).toBe('');
+
+    await 用户.click(区号键);
+    expect(screen.getByRole('dialog', { name: '编辑登录区号' })).toBeDefined();
+    expect(document.activeElement).toBe(screen.getByLabelText('区号'));
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('dialog', { name: '编辑登录区号' })).toBeNull();
+    expect(document.activeElement).toBe(区号键);
+
+    await 用户.click(区号键);
+    await 用户.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: '编辑登录区号' })).toBeNull();
+    expect(document.activeElement).toBe(区号键);
+    expect(mock操作.取消手机登录尝试).not.toHaveBeenCalled();
+  });
+
+  it('非法区号在弹层内显示错误且不提交', async () => {
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><登录 /></MemoryRouter>);
+    await 用户.click(screen.getByRole('button', { name: '编辑区号，当前 +86' }));
+    const 输入 = screen.getByLabelText('区号');
+    await 用户.clear(输入);
+    await 用户.type(输入, '8x6');
+    await 用户.click(screen.getByRole('button', { name: '确认区号' }));
+    expect(screen.getByText('区号必须是 1 到 3 位数字且首位不能为 0')).toBeDefined();
+    expect(screen.getByRole('dialog', { name: '编辑登录区号' })).toBeDefined();
+    expect(mock操作.取消手机登录尝试).not.toHaveBeenCalled();
+  });
+
+  it('+999 保留 12 位本地号码并将区号透传给 begin', async () => {
+    mock操作.开始手机登录.mockResolvedValue(undefined);
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><登录 /></MemoryRouter>);
+    await 用户.click(screen.getByRole('button', { name: '编辑区号，当前 +86' }));
+    const 区号输入 = screen.getByLabelText('区号');
+    await 用户.clear(区号输入);
+    await 用户.type(区号输入, '999');
+    await 用户.click(screen.getByRole('button', { name: '确认区号' }));
+    const 手机号 = screen.getByLabelText('手机号');
+    await 用户.type(手机号, '123456789012');
+    expect((手机号 as HTMLInputElement).value).toBe('123456789012');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    await waitFor(() => expect(mock操作.开始手机登录).toHaveBeenCalledWith('123456789012', '+999'));
+  });
+
+  it('已取码后实际换号清除验证码和 attempt，但保留未到期倒计时', async () => {
+    mock操作.开始手机登录.mockResolvedValue(undefined);
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><登录 /></MemoryRouter>);
+    await 用户.type(screen.getByLabelText('手机号'), '13800000000');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    await waitFor(() => expect(screen.getByText('60s')).toBeDefined());
+    await 用户.type(screen.getByLabelText('短信验证码'), '1234');
+    await 用户.clear(screen.getByLabelText('手机号'));
+    await 用户.type(screen.getByLabelText('手机号'), '13900000000');
+
+    expect((screen.getByLabelText('短信验证码') as HTMLInputElement).value).toBe('');
+    expect(screen.getByText('60s')).toBeDefined();
+    expect(mock操作.取消手机登录尝试).toHaveBeenCalled();
+  });
+
+  it('确认相同区号不作废已取码状态', async () => {
+    mock操作.开始手机登录.mockResolvedValue(undefined);
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><登录 /></MemoryRouter>);
+    await 用户.type(screen.getByLabelText('手机号'), '13800000000');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    await waitFor(() => expect(screen.getByText('60s')).toBeDefined());
+    await 用户.type(screen.getByLabelText('短信验证码'), '1234');
+    await 用户.click(screen.getByRole('button', { name: '编辑区号，当前 +86' }));
+    await 用户.click(screen.getByRole('button', { name: '确认区号' }));
+
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '(138) 0000-0000' } });
+
+    expect((screen.getByLabelText('短信验证码') as HTMLInputElement).value).toBe('1234');
+    expect(mock操作.取消手机登录尝试).not.toHaveBeenCalled();
+  });
+
+  it('非 +86 超长输入完整可见但不能发送，改回 +86 也不截断', async () => {
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><登录 /></MemoryRouter>);
+    await 用户.click(screen.getByRole('button', { name: '编辑区号，当前 +86' }));
+    await 用户.clear(screen.getByLabelText('区号'));
+    await 用户.type(screen.getByLabelText('区号'), '999');
+    await 用户.click(screen.getByRole('button', { name: '确认区号' }));
+    const 手机号 = screen.getByLabelText('手机号');
+    await 用户.type(手机号, '1234567890123');
+    expect((手机号 as HTMLInputElement).value).toBe('1234567890123');
+    expect((screen.getByRole('button', { name: '获取验证码' }) as HTMLButtonElement).disabled).toBe(true);
+
+    await 用户.click(screen.getByRole('button', { name: '编辑区号，当前 +999' }));
+    await 用户.clear(screen.getByLabelText('区号'));
+    await 用户.type(screen.getByLabelText('区号'), '86');
+    await 用户.click(screen.getByRole('button', { name: '确认区号' }));
+    expect((手机号 as HTMLInputElement).value).toBe('1234567890123');
+    expect(mock操作.开始手机登录).not.toHaveBeenCalled();
+  });
+
+  it('begin 飞行期禁用手机号、区号和重复取码', async () => {
+    const begin = deferred<void>();
+    mock操作.开始手机登录.mockReturnValue(begin.promise);
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><登录 /></MemoryRouter>);
+    await 用户.type(screen.getByLabelText('手机号'), '13800000000');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+
+    expect((screen.getByLabelText('手机号') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '编辑区号，当前 +86' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '正在发送…' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mock操作.开始手机登录).toHaveBeenCalledTimes(1);
+
+    begin.resolve();
+    await act(async () => { await begin.promise; });
+  });
+
+  it('未完成的 begin 在卸载时作废，迟到响应不更新新页面', async () => {
+    const begin = deferred<void>();
+    mock操作.开始手机登录.mockReturnValue(begin.promise);
+    const 用户 = userEvent.setup();
+    const 结果 = render(<MemoryRouter><登录 /></MemoryRouter>);
+    await 用户.type(screen.getByLabelText('手机号'), '13800000000');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    结果.unmount();
+    expect(mock操作.取消手机登录尝试).toHaveBeenCalledTimes(1);
+
+    render(<MemoryRouter><登录 /></MemoryRouter>);
+    begin.resolve();
+    await act(async () => { await begin.promise; });
+    expect(document.querySelectorAll('[class*="验证码格"]')).toHaveLength(0);
+  });
+
+  it('complete 飞行期卸载也作废本轮手机登录', async () => {
+    const complete = deferred<void>();
+    mock操作.开始手机登录.mockResolvedValue(undefined);
+    mock操作.完成手机登录.mockReturnValue(complete.promise);
+    const 用户 = userEvent.setup();
+    const 结果 = render(<MemoryRouter><登录 /></MemoryRouter>);
+    await 用户.type(screen.getByLabelText('手机号'), '13800000000');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    await 用户.type(screen.getByLabelText('短信验证码'), '1234');
+    await 用户.click(screen.getByText(/已阅读并同意/));
+    await 用户.click(screen.getByRole('button', { name: '进入' }));
+
+    结果.unmount();
+
+    expect(mock操作.取消手机登录尝试).toHaveBeenCalledTimes(1);
+    complete.resolve();
+    await act(async () => { await complete.promise; });
+  });
+
+  it('complete 在卸载后迟到失败不污染新页面提示', async () => {
+    const complete = deferred<void>();
+    mock操作.开始手机登录.mockResolvedValue(undefined);
+    mock操作.完成手机登录.mockReturnValue(complete.promise);
+    const 用户 = userEvent.setup();
+    const 结果 = render(<MemoryRouter><登录 /></MemoryRouter>);
+    await 用户.type(screen.getByLabelText('手机号'), '13800000000');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    await 用户.type(screen.getByLabelText('短信验证码'), '1234');
+    await 用户.click(screen.getByText(/已阅读并同意/));
+    await 用户.click(screen.getByRole('button', { name: '进入' }));
+    结果.unmount();
+
+    render(<MemoryRouter><登录 /></MemoryRouter>);
+    const 旧错误提示数 = 轻提示文案条数('请求失败，请稍后再试');
+    complete.reject(new Error('旧页登录失败'));
+    await act(async () => { await expect(complete.promise).rejects.toThrow('旧页登录失败'); });
+    expect(轻提示文案条数('请求失败，请稍后再试')).toBe(旧错误提示数);
+  });
+
+  it('StrictMode effect cleanup→setup 后仍接纳当前 begin 响应', async () => {
+    const begin = deferred<void>();
+    mock操作.开始手机登录.mockReturnValue(begin.promise);
+    const 用户 = userEvent.setup();
+    render(<StrictMode><MemoryRouter><登录 /></MemoryRouter></StrictMode>);
+    await 用户.type(screen.getByLabelText('手机号'), '13800000000');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    begin.resolve();
+    await act(async () => { await begin.promise; });
+    await waitFor(() => expect(screen.getByText('60s')).toBeDefined());
   });
 });

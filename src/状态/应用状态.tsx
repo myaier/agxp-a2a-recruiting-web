@@ -540,6 +540,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   状态引用.current = 状态;
   // 手机登录尝试号：开始登录写入，完成登录读出
   const 尝试引用 = useRef<string | null>(null);
+  const 手机登录代际 = useRef(0);
   // StrictMode 下 effect 会跑两次，用 ref 阻止恢复会话重复请求
   const 已初始化 = useRef(false);
   // 并发写锁：简历保存 / 意向:${id|new} 同一操作进行中时拒绝重复提交
@@ -893,6 +894,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         状态引用,
         锁,
         尝试引用,
+        手机登录代际,
         主体标识引用,
         会话代际,
         读取恢复企业关系编号,

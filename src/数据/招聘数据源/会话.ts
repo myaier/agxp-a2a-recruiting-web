@@ -4,6 +4,7 @@
 
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
 import type { BFF当前会话, BFF登录尝试, BFF主体, BFF角色 } from '../BFF契约';
+import { 构造登录手机号 } from '../登录手机号';
 
 interface BFF登录完成 {
   identity_id: string;
@@ -19,7 +20,7 @@ type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 
 export interface 会话数据源 {
   恢复会话(): Promise<BFF当前会话>;
-  开始手机登录(手机号11位: string): Promise<BFF登录尝试>;
+  开始手机登录(phone: string, dialCode?: string): Promise<BFF登录尝试>;
   开始微信登录(): Promise<BFF登录尝试>;
   完成手机登录(attemptId: string, code4位: string): Promise<BFF当前会话>;
   退出登录(): Promise<void>;
@@ -33,13 +34,14 @@ export function 创建会话数据源(请求: 请求函数): 会话数据源 {
     恢复会话() {
       return 请求<BFF当前会话>({ path: '/api/v1/session' }).then((r) => r.result);
     },
-    开始手机登录(手机号11位) {
-      return 请求<BFF登录尝试>({
+    async 开始手机登录(phone, dialCode) {
+      const response = await 请求<BFF登录尝试>({
         path: '/api/v1/auth/login-attempts',
         method: 'POST',
-        body: { provider: 'phone_otp', input: { phone: `+86${手机号11位}` } },
+        body: { provider: 'phone_otp', input: { phone: 构造登录手机号(phone, dialCode) } },
         幂等: true,
-      }).then((r) => r.result);
+      });
+      return response.result;
     },
     开始微信登录() {
       return 请求<BFF登录尝试>({
