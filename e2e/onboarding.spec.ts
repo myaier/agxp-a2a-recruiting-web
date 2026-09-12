@@ -273,6 +273,8 @@ test.describe('multi-role onboarding', () => {
     //（2026-09-11 起第三步的公开要求输入 label 从「职位要求」改回「岗位要求」，
     // 与代理私有筛选要求区分 —— 只修选择器，不改布局预期）
     await page.getByLabel('岗位要求').fill('在校本科及以上，熟悉用户研究方法，能独立推进需求。');
+    // Spec §5.4：确认门两模式共用，Mock 新建未确认不再放行发布
+    await page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ }).check();
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
 
     await expect(page).toHaveURL(/#\/hr$/);

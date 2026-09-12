@@ -192,7 +192,11 @@ test.describe('注册流换壳不闪中间屏', () => {
     await page.getByPlaceholder('如：上海').fill('上海');
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');
     // 职位要求与职位描述是两条互相独立的必填文本，各填各的
-    await page.getByLabel('职位要求').fill('在校生，熟悉用户研究方法，能独立推进需求。');
+    //（2026-09-11 起第三步的公开要求输入 label 从「职位要求」改回「岗位要求」，
+    // 与代理私有筛选要求区分 —— 只修选择器，与 onboarding.spec 同口径）
+    await page.getByLabel('岗位要求').fill('在校生，熟悉用户研究方法，能独立推进需求。');
+    // Spec §5.4：确认门两模式共用，Mock 新建未确认不再放行发布
+    await page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ }).check();
 
     const 序列 = await 采换壳画面(page, '发布岗位并开始寻访', /#\/hr$/);
 
