@@ -4077,42 +4077,6 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         return;
       }
 
-      // release/0.2.5（Task 2）：独立职位详情按 hiring_organization_ref 补读公开企业
-      // （GET /organizations/{id}/profile，BFF公开企业 形）。P1C 组织域在场的用例由上方
-      // 组织处理器先答（owner 档案管理语义不变）；这里只兜候选详情的公开补读。
-      const P4公开企业匹配 = /^\/api\/v1\/organizations\/([^/]+)\/profile$/.exec(path);
-      if (P4公开企业匹配 && method === 'GET') {
-        await route.fulfill({
-          status: 200,
-          json: 信封({
-            organization_id: decodeURIComponent(P4公开企业匹配[1]),
-            legal_name: 'P4 Fixture 星河科技有限公司',
-            display_name: P4标记.company,
-            verified_at: '2026-08-27T00:00:00Z',
-            profile: {
-              brand_name: P4标记.company,
-              industry: { id: 'ind-fixture-p4', display_name: 'P4 Fixture 行业' },
-              company_size: '100_499',
-              funding_stage: 'series_b',
-              office_address: 'P4 Fixture 市 Fixture 路 8 号',
-              benefit_codes: ['social_insurance_housing_fund'],
-              work_schedule: 'two_day_weekend',
-              company_intro: 'P4 fixture 公司介绍',
-              business_items: ['P4 Fixture 主营业务'],
-              product_intro: 'P4 fixture 产品介绍',
-              team_members: [],
-              logo: null,
-              office_media: [],
-              company_media: [],
-              revision: 1,
-              updated_at: '2026-08-27T00:00:00Z',
-            },
-            active_verified_job_count: 1,
-          }),
-        });
-        return;
-      }
-
       // 候选端刷新：POST 建新批次；受控重试分支首把键 503，同键重试成功
       if (path === '/api/v1/me/job-recommendation-refreshes' && method === 'POST') {
         记录P4变更(path);
