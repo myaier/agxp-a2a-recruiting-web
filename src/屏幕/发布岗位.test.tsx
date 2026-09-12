@@ -4,7 +4,7 @@
 // 手输城市不选候选 → 发布被拦（操作.发布岗位 不调用）。
 // Mock 下 操作 内部同步 dispatch，DOM/流程由现有 onboarding E2E 覆盖。
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,7 +13,7 @@ import { 页面岗位样本, BFF岗位样本 } from '../测试/BFF样本';
 import { 转岗位创建, 转岗位补丁 } from '../数据/后端映射';
 import { 在招岗位列表 } from '../数据/企业端模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFFJD导入, BFFJD导入失败码, BFFJD建议 } from '../数据/BFF契约';
+import type { BFFJD导入, BFFJD导入失败码, BFFJD建议, BFFTaxonomyItem } from '../数据/BFF契约';
 
 const mock返回 = vi.fn();
 const mock进企业主壳 = vi.fn();
@@ -870,14 +870,243 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
       screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'),
       '张江路 1 号',
     );
-    // P4 互认 Task 3：确认勾选框仅 Backend 渲染，Mock 发岗语义冻结、无需确认
-    expect(screen.queryByRole('checkbox', { name: 结构化确认文案 })).toBeNull();
+    // P4 互认 Task 3 + Spec §5.4：确认勾选框两模式共用同一位置（公开要求之后、
+    // 私有筛选之前），Mock 同样走「未确认不得发布」的门。
+    const 勾选框 = () => screen.getByRole('checkbox', { name: 结构化确认文案 }) as HTMLInputElement;
+    expect(勾选框()).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    expect(await screen.findByText('请确认经验和学历将作为自动匹配依据')).toBeTruthy();
+    expect(mock发布岗位).not.toHaveBeenCalled();
+    // 勾上后同一份草稿可发布：Mock 载荷仍不带确认事实（OwnerJob truth 仅 Backend）
+    await 用户.click(勾选框());
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
 
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
     expect(mock发布岗位.mock.calls[0][0]).toMatchObject({ 职位要求: '', 筛选要求: '私有偏好', 年薪月数: 12 });
+    expect(mock发布岗位.mock.calls[0][0]).not.toHaveProperty('结构化要求已确认');
     expect(screen.queryByText('请填写职位要求')).toBeNull();
     expect(screen.queryByText('请先在招聘名片填写公司名称')).toBeNull();
+  });
+});
+
+// ── Spec §5.4：确认门覆盖两模式 —— Mock 用页面草稿/原始岗位状态模拟，保持
+// 新建与 legacy 编辑区别：新建一律未确认起步；legacy 编辑未真实改三处不拦，
+// 真实改经验/学历/公开要求撤销确认；重复点同值或改私有筛选不撤销；
+// 校招/实习隐藏残留经验档按最终 wire 语义判断，不误触发确认。──
+describe('发布岗位页 确认门覆盖两模式（Mock 模拟）', () => {
+  const 勾选框 = () => screen.getByRole('checkbox', { name: 结构化确认文案 }) as HTMLInputElement;
+
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock进企业主壳.mockClear();
+    mock替换跳转.mockClear();
+    mock跳转.mockClear();
+    mock更新岗位.mockClear();
+    mock发布岗位.mockClear();
+    mock删除岗位.mockClear();
+    清空轻提示();
+    mock更新岗位.mockResolvedValue(undefined);
+  });
+
+  /** Mock 编辑态打开第三步；岗位覆盖由用例注入，缺省社招全职带足可保存字段 */
+  async function 打开Mock编辑第三步(岗位覆盖: Record<string, unknown> = {}) {
+    const 用户 = userEvent.setup();
+    mock应用状态.状态.岗位列表 = [
+      {
+        ...页面岗位样本,
+        招聘类型: '社招全职',
+        年薪月数: 12,
+        ...岗位覆盖,
+      },
+    ];
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job/job_1']}>
+        <Routes><Route path="/hr/post-job/:id" element={<发布岗位 />} /></Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '职位要求' }));
+    return { 用户 };
+  }
+
+  it('legacy 编辑未真实改三处时不勾选也能保存；改私有筛选不撤销已勾确认', async () => {
+    const { 用户 } = await 打开Mock编辑第三步();
+    expect(勾选框().checked).toBe(false);
+    await 用户.type(screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }), '只改私有偏好');
+    expect(勾选框().checked).toBe(false);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({ 编号: 'job_1' });
+
+    // 勾上后再改私有筛选：确认不被撤销
+    await 用户.click(勾选框());
+    await 用户.type(screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }), '再补一句');
+    expect(勾选框().checked).toBe(true);
+  });
+
+  it('真实改公开要求/经验/学历撤销确认；重复点同值不撤销', async () => {
+    const { 用户 } = await 打开Mock编辑第三步();
+    await 用户.click(勾选框());
+
+    // 公开要求真实变化 → 撤销
+    await 用户.type(screen.getByRole('textbox', { name: '岗位要求' }), '（改）');
+    expect(勾选框().checked).toBe(false);
+
+    // 经验档位真实变化 → 撤销
+    await 用户.click(勾选框());
+    await 用户.click(screen.getByRole('button', { name: '1-3 年' }));
+    expect(勾选框().checked).toBe(false);
+
+    // 重复点同一档位（no-op）不撤销
+    await 用户.click(勾选框());
+    await 用户.click(screen.getByRole('button', { name: '1-3 年' }));
+    expect(勾选框().checked).toBe(true);
+
+    // 学历档位真实变化 → 撤销
+    await 用户.click(screen.getByRole('button', { name: '硕士' }));
+    expect(勾选框().checked).toBe(false);
+
+    await 用户.click(勾选框());
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+  });
+
+  it('校招隐藏残留经验档按最终 wire 语义判断：不改三处保存不误拦', async () => {
+    // 存量校招岗残留经验档（旧数据形态）：第三步经验整块隐藏，落库一律「不限」，
+    // 这份残留不构成用户可见的变化，不得把 legacy 无关字段保存拦成「需确认」
+    const { 用户 } = await 打开Mock编辑第三步({
+      招聘类型: '校园招聘',
+      届别: '2027 届',
+      经验要求: '5 年以上',
+      职位要求: '原岗位要求',
+    });
+    expect(screen.queryByRole('button', { name: '1-3 年' })).toBeNull();
+    expect(勾选框().checked).toBe(false);
+    await 用户.type(screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }), '偏好有项目经历');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    // 最终 wire 语义：校招落库一律「不限」
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({ 经验要求: '不限' });
+  });
+});
+
+// ── Spec §5.2：两模式消费共用分类正文 —— Mock 本地表映射同一 props（左栏导航、
+// 右栏可选、关闭重开保留选中勾）；Backend 右栏分页/下钻、无子项不可选项不提交、
+// 同名叶子按稳定 ID 提交。Backend hooks 外层（分页/代际守卫）保持原样。──
+describe('发布岗位页 两模式共用职业分类正文', () => {
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock进企业主壳.mockClear();
+    mock替换跳转.mockClear();
+    mock跳转.mockClear();
+    mock更新岗位.mockClear();
+    mock发布岗位.mockClear();
+    mock删除岗位.mockClear();
+    清空轻提示();
+    mock发布岗位.mockResolvedValue(undefined);
+  });
+
+  it('Mock：左栏大类换右栏、右栏选定写回职位类别，关闭重开保留选中勾', async () => {
+    置Mock应用状态();
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job']}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    expect(screen.getByRole('dialog', { name: '选择职位类别' })).toBeTruthy();
+    // 左栏点大类换右栏（本地职业分类表照旧）
+    await 用户.click(screen.getByRole('button', { name: '产品' }));
+    await 用户.click(await screen.findByRole('button', { name: '产品经理' }));
+    // 层关闭，行上回显
+    await screen.findByText('产品 · 产品经理');
+
+    // 关闭重开：选中勾保留（✓ 由选中项内的 勾 span 渲染，可访问名带 ✓ 尾缀；
+    // 在弹层对话框内查，避开第一步那行「产品 · 产品经理」回显）
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    const 弹层 = await screen.findByRole('dialog', { name: '选择职位类别' });
+    const 重开项 = within(弹层).getByRole('button', { name: /产品经理✓/ });
+    expect(重开项.textContent).toContain('✓');
+  });
+
+  it('Backend：右栏分页追加、下钻不可选父项、死端父项不提交，同名叶子按 ID 提交', async () => {
+    // 目录桩：根『同名类』(不可选) → 子项第一页只有『中转』(不可选,有子项,带游标)
+    // → 游标页『分页叶子』；『中转』下钻 → 『死端父项』(不可选,无子项) + 『同名类』叶子。
+    const 大类A: BFFTaxonomyItem = { id: 'root_same', display_name: '同名类', parent_id: null, selectable: false, has_children: true };
+    const 中转: BFFTaxonomyItem = { id: 'branch_mid', display_name: '中转', parent_id: 'root_same', selectable: false, has_children: true };
+    const 分页叶子: BFFTaxonomyItem = { id: 'leaf_page', display_name: '分页叶子', parent_id: 'root_same', selectable: true, has_children: false };
+    const 死端父项: BFFTaxonomyItem = { id: 'branch_dead', display_name: '死端父项', parent_id: 'branch_mid', selectable: false, has_children: false };
+    const 同名叶子: BFFTaxonomyItem = { id: 'leaf_same', display_name: '同名类', parent_id: 'branch_mid', selectable: true, has_children: false };
+    const 页 = (items: BFFTaxonomyItem[], nextCursor: string | null) => ({ items, nextCursor, catalogVersion: 'v2' });
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string; q?: string }) => {
+      if (!query.parentId && !query.cursor) return 页([大类A], null);
+      if (query.parentId === 'root_same' && !query.cursor) return 页([中转], 'child_cur_1');
+      if (query.cursor === 'child_cur_1') return 页([分页叶子], null);
+      if (query.parentId === 'branch_mid') return 页([死端父项, 同名叶子], null);
+      return 页([], null);
+    });
+    const 查询Location = vi.fn(async () => ({
+      items: [{
+        id: 'loc_shanghai', display_name: '上海', country_code: 'CN', country_name: '中国',
+        admin1_code: 'SH', admin1_name: '上海', timezone: 'Asia/Shanghai', population: 24000000,
+      }],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    置Backend应用状态(查询Taxonomy, 查询Location);
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job']}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    // mount 预选第一根并载其子项第一页
+    await screen.findByText('中转');
+    // 右栏分页：加载更多追加第二页
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    await screen.findByText('分页叶子');
+    // 右栏下钻：不可选且有子项 → 替换右栏
+    await 用户.click(screen.getByText('中转'));
+    await screen.findByText('死端父项');
+    // 死端父项（不可选且无子项）：不提交不展开，零目录请求
+    const 下钻后调用数 = 查询Taxonomy.mock.calls.length;
+    await 用户.click(screen.getByText('死端父项'));
+    expect(查询Taxonomy.mock.calls.length).toBe(下钻后调用数);
+    expect(screen.getByText('死端父项')).toBeTruthy();
+    // 同名叶子（与根同名不同键）单击选定：层关闭，行上回显
+    const 同名们 = screen.getAllByText('同名类');
+    await 用户.click(同名们[同名们.length - 1]!);
+    await screen.findByText('互联网/AI · 同名类');
+
+    // 把剩余表单填完并发布：类别引用必须是叶子的稳定 ID，不是按名称反查
+    await 用户.type(screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关'), '共用正文岗');
+    await 用户.click(screen.getByRole('button', { name: '现场' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.type(screen.getByRole('textbox', { name: '职位描述' }), '验证两栏共用正文');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.type(screen.getByLabelText('薪资下限'), '50');
+    await 用户.type(screen.getByLabelText('薪资上限'), '65');
+    await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.type(screen.getByRole('textbox', { name: '岗位要求' }), '三年以上后端经验');
+    await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), '张江路 1 号');
+    await 用户.type(screen.getByPlaceholderText('搜索城市名，从下方候选选择'), '上海');
+    await 用户.click(await screen.findByRole('button', { name: '上海' }, { timeout: 2000 }));
+    await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
+      职位类别: '同名类',
+      类别引用: { id: 'leaf_same', display_name: '同名类' },
+    });
   });
 });
 

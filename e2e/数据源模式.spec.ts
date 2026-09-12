@@ -4510,23 +4510,25 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         keywords: string[];
         private_screening_preferences: string;
       };
-      存量.office_location = 补丁.office_location;
-      存量.workplace_mode = 补丁.workplace_mode;
-      存量.salary_lower = 补丁.salary.lower;
-      存量.salary_upper = 补丁.salary.upper;
+      // P4 互认 Task 2 的真实契约是 sparse patch：只叠加 body 里出现的可编辑字段，
+      // 未携带（未变化）的字段沿存量原值 —— 否则无关编辑保存会在 fixture 里假崩溃。
+      存量.office_location = 补丁.office_location ?? 存量.office_location;
+      存量.workplace_mode = 补丁.workplace_mode ?? 存量.workplace_mode;
+      存量.salary_lower = 补丁.salary?.lower ?? 存量.salary_lower;
+      存量.salary_upper = 补丁.salary?.upper ?? 存量.salary_upper;
       存量.salary_period = 存量.recruitment_type === 'internship' || 存量.recruitment_type === 'part_time' ? 'day' : 'month';
-      存量.annual_salary_months = 补丁.annual_salary_months;
-      存量.campus_cohort = 补丁.campus_cohort;
-      存量.internship_months = 补丁.internship_months;
-      存量.onsite_days_per_week = 补丁.onsite_days_per_week;
-      存量.experience_requirement = 补丁.experience_requirement;
-      存量.education_requirement = 补丁.education_requirement;
-      存量.structured_requirements_confirmed = 补丁.structured_requirements_confirmed;
+      存量.annual_salary_months = 补丁.annual_salary_months ?? 存量.annual_salary_months;
+      存量.campus_cohort = 补丁.campus_cohort ?? 存量.campus_cohort;
+      存量.internship_months = 补丁.internship_months ?? 存量.internship_months;
+      存量.onsite_days_per_week = 补丁.onsite_days_per_week ?? 存量.onsite_days_per_week;
+      存量.experience_requirement = 补丁.experience_requirement ?? 存量.experience_requirement;
+      存量.education_requirement = 补丁.education_requirement ?? 存量.education_requirement;
+      存量.structured_requirements_confirmed = 补丁.structured_requirements_confirmed ?? 存量.structured_requirements_confirmed;
       存量.hard_requirements = { ...P3全未知硬性条件(), ...补丁.hard_requirements };
-      存量.description = 补丁.description;
-      存量.requirements = 补丁.requirements;
-      存量.keywords = Array.isArray(补丁.keywords) ? [...补丁.keywords] : [];
-      存量.private_screening_preferences = 补丁.private_screening_preferences;
+      存量.description = 补丁.description ?? 存量.description;
+      存量.requirements = 补丁.requirements ?? 存量.requirements;
+      存量.keywords = Array.isArray(补丁.keywords) ? [...补丁.keywords] : 存量.keywords;
+      存量.private_screening_preferences = 补丁.private_screening_preferences ?? 存量.private_screening_preferences;
       存量.revision += 1;
       存量.updated_at = '2026-08-27T02:00:00Z';
       await route.fulfill({ status: 200, json: 信封({ ...存量 }) });
@@ -5567,7 +5569,9 @@ async function 走完后端发岗向导(page: Page) {
   await page.getByRole('button', { name: '下一步' }).click();
 
   // P0 修复 Task 4/7：职位要求是与描述互相独立的必填文本，第三步不填就发不出岗
-  await page.getByLabel('职位要求').fill(
+  // （2026-09-11 起该输入 label 从「职位要求」改回「岗位要求」，与代理私有筛选要求区分，
+  // 与 onboarding.spec 同口径 —— 只修选择器）
+  await page.getByLabel('岗位要求').fill(
     '应届或毕业年级；有产品、技术、增长、分析或创业经历；关注 AI、SaaS、工作流、开发工具与 Agent',
   );
 
@@ -11211,6 +11215,270 @@ test.describe('核心编辑 城市 @backend', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 岗位 @mock（core editors §5.2/§5.4 Task 4）：职位类别两栏与结构化确认门
+// 两模式共用 —— Mock 用本地职业分类表驱动同一分类正文（左栏导航、右栏可选、
+// 关闭重开保留选中勾）；确认勾选框出现在公开要求之后、私有筛选之前，新建未确认
+// 发布被拦、勾选可发布；真实改经验撤销确认、改私有筛选不撤销；编辑 legacy 岗
+// 只改私有字段不勾选也能保存，改公开要求需重新确认。全程零 /api/v1 请求。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 岗位 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('新建分类→确认门→发布，编辑公开/私有字段与确认撤销 @mock', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '微信登录' }).click();
+    await expect(page).toHaveURL(/#\/identity$/);
+
+    // ── 新建第一步：两栏共用正文选类别 ──
+    await page.goto('/#/hr/post-job');
+    const 职位类别行 = page.getByRole('button').filter({ hasText: '职位类别' });
+    await 职位类别行.click();
+    const 类别弹层 = page.getByRole('dialog', { name: '选择职位类别' });
+    await expect(类别弹层).toBeVisible({ timeout: 10_000 });
+    // 正常态截图（与改前拍对照：同一弹层标题/两栏/尺寸）
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-岗位-分类正常.png`, fullPage: true });
+    await 类别弹层.getByRole('button', { name: '产品', exact: true }).click();
+    await 类别弹层.getByRole('button', { name: '产品经理', exact: true }).click();
+    await expect(职位类别行).toContainText('产品 · 产品经理');
+
+    // 关闭重开：选中勾保留（✓ 由选中项渲染；可访问名把名称与勾 span 以空格连接）
+    await 职位类别行.click();
+    await expect(类别弹层.getByRole('button', { name: /产品经理\s*✓/ })).toBeVisible();
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-岗位-分类选中.png`, fullPage: true });
+    await page.keyboard.press('Escape');
+
+    await page.getByPlaceholder(/资深后端工程师/).fill('共用正文确认门岗');
+    await page.getByRole('button', { name: '现场', exact: true }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await page.getByLabel('职位描述').fill('验证两栏分类正文与确认门在 Mock 生效。');
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    // ── 第三步：确认门在公开要求之后、私有筛选之前；未确认发布被拦 ──
+    const 确认框 = page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ });
+    await expect(确认框).toBeVisible();
+    await expect(确认框).not.toBeChecked();
+    await page.getByLabel('薪资下限').fill('50');
+    await page.getByLabel('薪资上限').fill('65');
+    await page.getByRole('button', { name: /年薪月数/ }).click();
+    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByLabel('岗位要求').fill('三年以上产品经验，带过完整上线周期');
+    await page.getByPlaceholder('如：上海').fill('上海');
+    await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');
+    await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
+    await expect(page.getByText('请确认经验和学历将作为自动匹配依据').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/#\/hr\/post-job$/);
+    await expect(确认框).not.toBeChecked();
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-岗位-确认门拦截.png`, fullPage: true });
+
+    // 勾选后改私有筛选不撤销；真实改经验档位撤销
+    await 确认框.check();
+    await expect(确认框).toBeChecked();
+    await page.getByRole('textbox', { name: '给 AI 代理的筛选要求' }).fill('偏好有 AI 产品背景');
+    await expect(确认框).toBeChecked();
+    await page.getByRole('button', { name: '1-3 年' }).click();
+    await expect(确认框).not.toBeChecked();
+
+    // 重新确认后发布成功，岗位进本地列表
+    await 确认框.check();
+    await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
+    await expect(page.getByText('共用正文确认门岗')).toBeVisible({ timeout: 15_000 });
+
+    // iPhone 13 viewport 检查（编辑屏）：无横向溢出、输入可聚焦、保存不被遮挡
+    await page.goto('/#/hr/post-job/P-05');
+    await expect(page.getByPlaceholder(/资深后端工程师/)).toHaveValue('共用正文确认门岗', { timeout: 15_000 });
+    await page.getByRole('button', { name: '职位要求' }).click();
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    const 要求框 = page.getByLabel('岗位要求');
+    await 要求框.focus();
+    await expect(要求框).toBeFocused();
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+
+    // 编辑 legacy 岗（Mock 无确认事实 = 未确认）：只改私有筛选，不勾选也能保存
+    const 编辑确认框 = page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ });
+    await expect(编辑确认框).not.toBeChecked();
+    await page.getByRole('textbox', { name: '给 AI 代理的筛选要求' }).fill('偏好有 AI 产品背景，重项目管理');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByText('岗位已保存').first()).toBeVisible({ timeout: 15_000 });
+
+    // 改公开要求：撤销确认 → 发布被拦 → 重新确认后保存
+    await page.goto('/#/hr/post-job/P-05');
+    await page.getByRole('button', { name: '职位要求' }).click();
+    await expect(page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ })).not.toBeChecked({ timeout: 15_000 });
+    await page.getByLabel('岗位要求').fill('三年以上产品经验，带过完整上线周期，熟悉 B 端');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByText('请确认经验和学历将作为自动匹配依据').first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ }).check();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByText('岗位已保存').first()).toBeVisible({ timeout: 15_000 });
+
+    // Mock 全程零 API 请求
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 岗位 @backend（core editors §5.2/§5.4 Task 4）：Backend 分支消费同一
+// 分类正文 —— 右栏分页「加载更多」、不可选父项下钻替换右栏、无子项不可选项不提交
+// （零目录请求）、同名叶子按稳定 ID 提交；确认门两模式同位同文案，新建未确认发布
+// 被拦；编辑 hydrated confirmed 岗改公开要求撤销确认，稀疏补丁只带变化字段。
+// job-categories 目录用本用例专用网络桩（后装 route 先匹配，不改共享 helper）；
+// 符合已审合同的网络桩边界验证，不是 live 验收。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 岗位 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('新建两栏下钻分类→确认门→发布，编辑公开/私有字段走稀疏补丁 @backend', async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    const 请求们: { path: string; method: string; body: unknown }[] = [];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-core-edit-job',
+      记录目录请求: () => undefined,
+      请求拦截: ({ path, method, body }) => 请求们.push({ path, method, body }),
+      招聘组织Fixture: P1C招聘组织Fixture,
+    });
+
+    // job-categories 目录桩（本用例专用精确状态）：根『同名类』不可选 → 子项第一页
+    // 『中转』(不可选,有子项) 带游标 → 游标页『分页叶子』；『中转』下钻 →
+    // 『死端父项』(不可选,无子项) + 与根同名的可选叶子『同名类』。
+    const 目录请求: string[] = [];
+    const 税目 = (id: string, 名称: string, parentId: string | null, selectable: boolean, hasChildren: boolean) => ({
+      id, display_name: 名称, parent_id: parentId, selectable, has_children: hasChildren,
+    });
+    await page.route('**/api/v1/catalog/job-categories*', async (route) => {
+      const url = new URL(route.request().url());
+      // 合同 wire 参数名是 parent_id（见 src/数据/招聘数据源/目录.ts 的编码表）
+      const parentId = url.searchParams.get('parent_id');
+      const cursor = url.searchParams.get('cursor');
+      目录请求.push(`parent_id=${parentId ?? '-'}&cursor=${cursor ?? '-'}`);
+      const 页 = (items: ReturnType<typeof 税目>[], next: string | null) =>
+        route.fulfill({ status: 200, json: 信封({ items, next_cursor: next, catalog_version: 'tax-v1' }) });
+      if (parentId === 'root_same' && !cursor) return 页([税目('branch_mid', '中转', 'root_same', false, true)], 'child_cur_1');
+      if (cursor === 'child_cur_1') return 页([税目('leaf_page', '分页叶子', 'root_same', true, false)], null);
+      if (parentId === 'branch_mid') {
+        return 页([
+          税目('branch_dead', '死端父项', 'branch_mid', false, false),
+          税目('leaf_same', '同名类', 'branch_mid', true, false),
+        ], null);
+      }
+      return 页([税目('root_same', '同名类', null, false, true)], null);
+    });
+
+    // 新招聘方 onboarding 同链：名片首写 → 保存并继续 → 发岗向导
+    await page.goto('/');
+    await page.getByRole('button', { name: '我要招人' }).click();
+    await expect(page).toHaveURL(/#\/hr\/card$/, { timeout: 20_000 });
+    await page.getByLabel('姓名').fill('林澈');
+    await page.getByLabel('职务').fill('招聘负责人');
+    await page.getByLabel('公司').fill('星河科技');
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/, { timeout: 20_000 });
+
+    // ── 第一步：两栏共用正文 —— 右栏分页 / 下钻 / 死端不提交 / 同名叶子按 ID ──
+    const 职位类别行 = page.getByRole('button').filter({ hasText: '职位类别' });
+    await 职位类别行.click();
+    const 类别弹层 = page.getByRole('dialog', { name: '选择职位类别' });
+    await expect(类别弹层.getByText('中转')).toBeVisible({ timeout: 10_000 });
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-岗位-分类正常.png`, fullPage: true });
+    // 右栏分页：加载更多追加游标页
+    await 类别弹层.getByRole('button', { name: '加载更多', exact: true }).click();
+    await expect(类别弹层.getByRole('button', { name: '分页叶子', exact: true })).toBeVisible({ timeout: 10_000 });
+    // 右栏下钻：不可选且有子项 → 替换右栏（沿原稿不可选项带 aria-disabled，Playwright
+    // 动作性判定视作不可点，用 force 触发与用户指针点击等价的事件）
+    await 类别弹层.getByRole('button', { name: '中转', exact: true }).click({ force: true });
+    await expect(类别弹层.getByRole('button', { name: '死端父项', exact: true })).toBeVisible({ timeout: 10_000 });
+    // 死端父项（不可选且无子项）：不提交不展开，零目录请求
+    const 下钻后目录请求数 = 目录请求.length;
+    await 类别弹层.getByRole('button', { name: '死端父项', exact: true }).click({ force: true });
+    await expect(类别弹层.getByRole('button', { name: '死端父项', exact: true })).toBeVisible();
+    expect(目录请求.length).toBe(下钻后目录请求数);
+    // 同名叶子（与左栏根同名不同键）单击选定
+    await 类别弹层.getByRole('button', { name: '同名类', exact: true }).last().click();
+    await expect(职位类别行).toContainText('同名类');
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-岗位-分类选中.png`, fullPage: true });
+
+    await page.getByPlaceholder(/资深后端工程师/).fill('共用正文确认门岗');
+    await page.getByRole('button', { name: '现场', exact: true }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await page.getByLabel('职位描述').fill('验证两栏分类正文与确认门在 Backend 生效。');
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    // ── 第三步：确认门未勾选发布被拦（零 Job POST）──
+    const 确认框 = page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ });
+    await expect(确认框).toBeVisible();
+    await expect(确认框).not.toBeChecked();
+    await page.getByLabel('薪资下限').fill('50');
+    await page.getByLabel('薪资上限').fill('65');
+    await page.getByRole('button', { name: /年薪月数/ }).click();
+    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByLabel('岗位要求').fill('三年以上后端经验，熟悉交易系统');
+    await page.getByPlaceholder(/浦东新区世纪大道/).fill('Fixture 市 Fixture 路 1 号');
+    await page.getByPlaceholder('搜索城市名，从下方候选选择').fill('fixture');
+    await page.getByRole('button', { name: 标记.城市display, exact: true }).click();
+    await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
+    await expect(page.getByText('请确认经验和学历将作为自动匹配依据').first()).toBeVisible({ timeout: 10_000 });
+    // 零 Job 写入：水合的 jobs GET 不算 mutation，只看 POST/PATCH
+    expect(请求们.find((项) => 项.path === '/api/v1/recruiter/jobs' && 项.method !== 'GET')).toBeUndefined();
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-岗位-确认门拦截.png`, fullPage: true });
+
+    await 确认框.check();
+    await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    const 创建 = 请求们.find((项) => 项.path === '/api/v1/recruiter/jobs' && 项.method === 'POST');
+    expect(创建).toBeDefined();
+    // 同名叶子按稳定 ID 提交，不按名称反查目录；确认事实随创建体上送
+    expect(创建!.body).toMatchObject({
+      category_id: 'leaf_same',
+      structured_requirements_confirmed: true,
+      requirements: '三年以上后端经验，熟悉交易系统',
+    });
+
+    // ── 编辑 hydrated confirmed 岗：改公开要求撤销确认；稀疏补丁只带变化字段 ──
+    await page.goto('/#/hr/post-job/job-fixture-created-1');
+    await expect(page.getByPlaceholder(/资深后端工程师/)).toHaveValue('共用正文确认门岗', { timeout: 15_000 });
+    await page.getByRole('button', { name: '职位要求' }).click();
+    const 编辑确认框 = page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ });
+    await expect(编辑确认框).toBeChecked({ timeout: 15_000 });
+    // 改公开要求 → 确认被撤销；改私有筛选不动它
+    await page.getByLabel('岗位要求').fill('三年以上后端经验，熟悉交易系统与撮合链路');
+    await expect(编辑确认框).not.toBeChecked();
+    await page.getByRole('textbox', { name: '给 AI 代理的筛选要求' }).fill('偏好系统设计背景');
+    await expect(编辑确认框).not.toBeChecked();
+    // iPhone 13 viewport 检查（编辑屏）
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    const 要求框 = page.getByLabel('岗位要求');
+    await 要求框.focus();
+    await expect(要求框).toBeFocused();
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+    // 重新确认后保存：requirements 与私有偏好各自进稀疏补丁，确认事实随变化携带
+    await 编辑确认框.check();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByText('岗位已保存').first()).toBeVisible({ timeout: 15_000 });
+    const 补丁 = 请求们.find(
+      (项) => /^\/api\/v1\/recruiter\/jobs\/job-fixture-created-1$/.test(项.path) && 项.method === 'PATCH',
+    );
+    expect(补丁).toBeDefined();
+    expect(补丁!.body).toMatchObject({
+      requirements: '三年以上后端经验，熟悉交易系统与撮合链路',
+      private_screening_preferences: '偏好系统设计背景',
+      structured_requirements_confirmed: true,
+    });
+
+    // 本会话目录请求只打 job-categories，且死端父项未产生额外下钻请求
+    expect(目录请求.length).toBeGreaterThan(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 招聘方 onboarding Backend fixture @backend（P0 修复 Task 7）：全新招聘方从身份选择页
 // 起步 —— profile 首读 404 not_found（合法的「缺失」而非故障），名片首写走
 // PATCH + If-Match: "0"（fixture 按自己的当前 revision 做 CAS），发岗写出三段独立
@@ -11536,8 +11804,8 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
     expect(fixture.mutations.find((项) => 项.path === '/api/v1/recruiter/jobs')).toBeUndefined();
     // 点真实候选取得 地点引用 后主动发布：此时才出现 Job POST
     await page.getByRole('button', { name: 标记.城市display, exact: true }).click();
-    // 职位要求由建议填入（未被用户改过）
-    await expect(page.getByLabel('职位要求')).toHaveValue(建议稿.requirements);
+    // 职位要求由建议填入（未被用户改过；输入 label 自 2026-09-11 起为「岗位要求」）
+    await expect(page.getByLabel('岗位要求')).toHaveValue(建议稿.requirements);
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
 
