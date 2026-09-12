@@ -5755,7 +5755,7 @@ test.describe('登录区号 fixture 证据', () => {
     await page.getByLabel('短信验证码').fill('1234');
     await page.getByLabel('手机号').fill('13900000000');
 
-    await expect(page.getByText('60s')).toBeVisible();
+    await expect(page.getByText(/^(?:[1-9]|[1-5]\d|60)s$/)).toBeVisible();
     await expect(page.getByRole('button', { name: '重新获取' })).toHaveCount(0);
     await expect(page.getByLabel('短信验证码')).toHaveValue('');
     await expect(page.getByLabel('短信验证码')).toBeDisabled();

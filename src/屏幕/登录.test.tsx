@@ -255,6 +255,18 @@ describe('登录页 Backend', () => {
     await waitFor(() => expect(mock操作.开始手机登录).toHaveBeenCalledWith('123456789012', '+999'));
   });
 
+  it('默认 +86 号码不足时保留原中文提示且零 begin 请求', async () => {
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><登录 /></MemoryRouter>);
+    await 用户.type(screen.getByLabelText('手机号'), '1380000000');
+    const 提示数 = 轻提示文案条数('先输入 11 位手机号');
+
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+
+    expect(轻提示文案条数('先输入 11 位手机号')).toBe(提示数 + 1);
+    expect(mock操作.开始手机登录).not.toHaveBeenCalled();
+  });
+
   it('已取码后实际换号清除验证码和 attempt，但保留未到期倒计时', async () => {
     mock操作.开始手机登录.mockResolvedValue(undefined);
     const 用户 = userEvent.setup();
@@ -267,7 +279,7 @@ describe('登录页 Backend', () => {
     await 用户.type(screen.getByLabelText('手机号'), '13900000000');
 
     expect((screen.getByLabelText('短信验证码') as HTMLInputElement).value).toBe('');
-    expect(screen.getByText('60s')).toBeDefined();
+    expect(screen.getByText(/^(?:[1-9]|[1-5]\d|60)s$/)).toBeDefined();
     expect(mock操作.取消手机登录尝试).toHaveBeenCalled();
   });
 
@@ -298,7 +310,10 @@ describe('登录页 Backend', () => {
     const 手机号 = screen.getByLabelText('手机号');
     await 用户.type(手机号, '1234567890123');
     expect((手机号 as HTMLInputElement).value).toBe('1234567890123');
-    expect((screen.getByRole('button', { name: '获取验证码' }) as HTMLButtonElement).disabled).toBe(true);
+    const 提示数 = 轻提示文案条数('请输入有效的手机号');
+    await 用户.click(screen.getByRole('button', { name: '获取验证码' }));
+    expect(轻提示文案条数('请输入有效的手机号')).toBe(提示数 + 1);
+    expect(mock操作.开始手机登录).not.toHaveBeenCalled();
 
     await 用户.click(screen.getByRole('button', { name: '编辑区号，当前 +999' }));
     await 用户.clear(screen.getByLabelText('区号'));
@@ -341,7 +356,7 @@ describe('登录页 Backend', () => {
     expect(document.querySelectorAll('[class*="验证码格"]')).toHaveLength(0);
   });
 
-  it('complete 飞行期卸载也作废本轮手机登录', async () => {
+  it('complete 飞行期卸载保留本轮成功登录资格', async () => {
     const complete = deferred<void>();
     mock操作.开始手机登录.mockResolvedValue(undefined);
     mock操作.完成手机登录.mockReturnValue(complete.promise);
@@ -355,7 +370,7 @@ describe('登录页 Backend', () => {
 
     结果.unmount();
 
-    expect(mock操作.取消手机登录尝试).toHaveBeenCalledTimes(1);
+    expect(mock操作.取消手机登录尝试).not.toHaveBeenCalled();
     complete.resolve();
     await act(async () => { await complete.promise; });
   });

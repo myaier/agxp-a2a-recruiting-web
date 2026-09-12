@@ -100,7 +100,8 @@ export default function 登录() {
     return () => {
       挂载中.current = false;
       if (聚焦定时.current !== null) clearTimeout(聚焦定时.current);
-      if (数据源模式 === 'backend') {
+      // begin 退出后必须作废；已提交的 complete 则继续由 Provider 水合并提交登录态。
+      if (数据源模式 === 'backend' && !进入中.current) {
         操作.取消手机登录尝试();
       }
     };
@@ -339,7 +340,7 @@ export default function 登录() {
             <button
               className={`${样式.取码键} 可点 ${手机号齐 ? '' : 样式.取码键灰}`}
               onClick={发验证码}
-              disabled={!手机号齐 || 交互锁定}
+              disabled={交互锁定}
             >
               {正在取码 ? '正在发送…' : 剩余秒 === 0 ? '重新获取' : '获取验证码'}
             </button>
