@@ -1225,6 +1225,53 @@ describe('发布岗位页 Backend 职业分类层分页与代际（review-r3）'
     );
   });
 
+  // review-r2：根栏追加页换版本重开时，旧版本根下的右栏子项（派生状态）同步失效，
+  // 右栏按新版本第一根重新展开，不再残留旧版本子项可提交
+  it('根栏追加页换版本：右栏旧版本子项失效，按新版本第一根重新展开', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({ items, nextCursor, catalogVersion: 版本 });
+    const 查询Taxonomy = vi.fn(async (
+      _kind: string,
+      query: { parentId?: string; cursor?: string; q?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (!query.parentId && !query.cursor) {
+        return 选项?.强制刷新
+          ? 页([{ id: 'cat_v2', display_name: '大类V2', parent_id: null, selectable: false, has_children: true }], null, 'v2')
+          : 页([{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false, has_children: true }], 'root_cur_v1', 'v1');
+      }
+      if (query.cursor === 'root_cur_v1') {
+        // 追加页来自新快照：触发根列表重开
+        return 页([{ id: 'cat_old', display_name: '旧版本追加类', parent_id: null, selectable: false, has_children: false }], null, 'v2');
+      }
+      if (query.parentId === 'cat_a') {
+        return 页([{ id: 'job_a1', display_name: 'A岗位1', parent_id: 'cat_a', selectable: true, has_children: false }], null, 'v2');
+      }
+      if (query.parentId === 'cat_v2') {
+        return 页([{ id: 'job_v2', display_name: 'V2岗位', parent_id: 'cat_v2', selectable: true, has_children: false }], null, 'v2');
+      }
+      return 页([], null, 'v2');
+    });
+    置Backend应用状态(查询Taxonomy, vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })));
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job']}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    await screen.findByText('大类A');
+    // 旧版本根的子项已载入右栏
+    await screen.findByText('A岗位1');
+    // 追加页换版本 → 根列表重开，右栏旧版本子项一并失效，按新版本第一根重新展开
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    await screen.findByText('大类V2');
+    expect(screen.queryByText('A岗位1')).toBeNull();
+    await screen.findByText('V2岗位');
+  });
+
   it('快速切大类时旧响应不覆盖新子项（R3-I-6）', async () => {
     const { promise: 慢Promise, resolve: 慢Resolve } = deferred<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>();
     const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string; q?: string }) => {

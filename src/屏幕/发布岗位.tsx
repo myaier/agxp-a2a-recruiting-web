@@ -1340,6 +1340,18 @@ function 职业分类层后端({
         设根项(重开.items);
         设根游标(重开.nextCursor);
         根版本引用.current = 重开.catalogVersion;
+        // review-r2：换代重开时右栏派生状态同步失效——旧版本 当前根/子项/子游标 一并丢弃，
+        // 按新版本第一根重新走 选根（同一套代际守卫），右栏不再残留旧版本子项可提交
+        const 新根 = 重开.items[0];
+        if (新根) {
+          void 选根(新根);
+        } else {
+          设当前根(null);
+          设子项([]);
+          设子项游标(null);
+          子项版本引用.current = '';
+          导航代际.current += 1;
+        }
         return;
       }
       设根项((旧) => 合并目录页(旧, 页.items));

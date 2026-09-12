@@ -493,4 +493,55 @@ describe('选期望行业 子项分页忽略 catalogVersion（review-r1 F5）', 
       expect.objectContaining({ parentId: 'r1', cursor: 'sub_cur_v2' }),
     );
   });
+
+  // review-r2：根栏追加页换版本重开时，旧版本根下的子/孙展开（派生状态）同步失效，
+  // 重新展开从新版本取数，不再残留旧版本条目可选可提交
+  it('根栏追加页换版本：旧根下的子/孙展开失效，重新展开取新版本', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({
+      items,
+      nextCursor,
+      catalogVersion: 版本,
+    });
+    let 换代 = false;
+    const 查询Taxonomy = vi.fn(async (
+      _kind: string,
+      query: { parentId?: string; cursor?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (!query.parentId && !query.cursor) {
+        return 选项?.强制刷新
+          ? 页([{ id: 'r1', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], null, 'v2')
+          : 页([{ id: 'r1', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], 'root_cur_v1', 'v1');
+      }
+      if (query.cursor === 'root_cur_v1') {
+        // 追加页来自新快照：触发根列表重开
+        return 页([{ id: 'r_old', display_name: '旧版本追加行业', parent_id: null, selectable: false, has_children: false }], null, 'v2');
+      }
+      if (query.parentId === 'r1') {
+        return 换代
+          ? 页([{ id: 'c2', display_name: '新子项', parent_id: 'r1', selectable: false, has_children: false }], null, 'v2')
+          : 页([{ id: 'c1', display_name: '旧子项', parent_id: 'r1', selectable: false, has_children: true }], null, 'v1');
+      }
+      if (query.parentId === 'c1') {
+        return 页([{ id: 'g1', display_name: '旧孙叶子', parent_id: 'c1', selectable: true, has_children: false }], null, 'v1');
+      }
+      return 页([], null, 'v2');
+    });
+    render选期望行业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    // 展开根 → 子项，再展开子 → 孙叶子
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    await 用户.click(await screen.findByText('旧子项'));
+    await screen.findByText('旧孙叶子');
+    // 根栏追加页换版本 → 根列表重开（新版本同名根），旧版本根下的子/孙展开一并失效
+    换代 = true;
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(screen.queryByText('旧孙叶子')).toBeNull());
+    expect(screen.queryByText('旧子项')).toBeNull();
+    // 重新展开同一根：从新版本取数，不再命中旧展开缓存
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    await screen.findByText('新子项');
+    expect(screen.queryByText('旧子项')).toBeNull();
+  });
 });

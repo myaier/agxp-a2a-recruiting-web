@@ -280,6 +280,59 @@ describe('工作经历 行业弹层 Backend', () => {
     await screen.findByText('互联网');
     expect(screen.getByText('金融科技')).toBeTruthy();
   });
+
+  // review-r2：根栏追加页换版本重开时，旧版本根下的子/孙展开（派生状态）同步失效，
+  // 重新展开从新版本取数，不再残留旧版本条目可选可提交
+  it('行业弹层根追加页换版本：旧根下的子/孙展开失效，重新展开取新版本', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({
+      items,
+      nextCursor,
+      catalogVersion: 版本,
+    });
+    let 换代 = false;
+    const 查询Taxonomy = vi.fn(async (
+      _kind: string,
+      query: { parentId?: string; cursor?: string; q?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (query.cursor === 'ind_cur_1') {
+        // 追加页来自新快照：触发根列表重开
+        return 页([{ id: 'ind_old', display_name: '旧版本追加行业', parent_id: null, selectable: false, has_children: false }], null, 'v2');
+      }
+      if (!query.parentId && !query.q) {
+        return 选项?.强制刷新
+          ? 页([{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], null, 'v2')
+          : 页([{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], 'ind_cur_1', 'v1');
+      }
+      if (query.parentId === 'ind_fin') {
+        return 换代
+          ? 页([{ id: 'ind_new', display_name: '新子行业', parent_id: 'ind_fin', selectable: true, has_children: false }], null, 'v2')
+          : 页([{ id: 'ind_sub', display_name: '证券与基金', parent_id: 'ind_fin', selectable: false, has_children: true }], null, 'v1');
+      }
+      if (query.parentId === 'ind_sub') {
+        return 页([{ id: 'ind_leaf', display_name: '公募基金', parent_id: 'ind_sub', selectable: true, has_children: false }], null, 'v1');
+      }
+      return 页([], null, 'v2');
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await screen.findByText('金融科技');
+    // 展开根 → 子项，再展开子 → 孙叶子
+    await 用户.click(screen.getByText('金融科技'));
+    await 用户.click(await screen.findByText('证券与基金'));
+    await screen.findByText('公募基金');
+    // 根栏追加页换版本 → 根列表重开（新版本同名根），旧版本根下的子/孙展开一并失效
+    换代 = true;
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(screen.queryByText('公募基金')).toBeNull());
+    expect(screen.queryByText('证券与基金')).toBeNull();
+    // 重新展开同一根：从新版本取数，不再命中旧展开缓存
+    await 用户.click(screen.getByText('金融科技'));
+    await screen.findByText('新子行业');
+    expect(screen.queryByText('证券与基金')).toBeNull();
+  });
 });
 
 // review-r3 R3-Minor-2：Backend 行业弹层去掉自由文本输入——它看起来可保存但完成守卫要求引用，

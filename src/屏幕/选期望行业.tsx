@@ -104,6 +104,12 @@ export default function 选期望行业() {
         设根项(重开.items);
         设根游标(重开.nextCursor);
         设根版本(重开.catalogVersion);
+        // review-r2：换代重开时派生状态同步失效——旧版本根下的子/孙展开一并丢弃，
+        // 重新展开从新版本取数，不再残留旧版本条目可选可提交
+        设展开状态({});
+        设孙项表({});
+        设孙项游标表({});
+        设孙项版本表({});
         return;
       }
       设根项((旧) => 合并目录页(旧, 页.items));
@@ -146,11 +152,21 @@ export default function 选期望行业() {
       const 子页 = await 方法('industries', { parentId: 项.id, cursor: 状态.游标, limit: 50 });
       if (子页.catalogVersion !== 状态.版本) {
         // review-r1 F5：目录换代 —— 该父项整组（累计页与游标）丢弃，从其第一页静默重开。
+        // review-r2：换代重开时该父项旧子项名下的孙展开同步失效
         const 重开 = await 方法('industries', { parentId: 项.id, limit: 50 }, { 强制刷新: true });
+        const 旧子id们 = 状态.子项.map((子) => 子.id);
         设展开状态((旧) => ({
           ...旧,
           [项.id]: { 子项: 重开.items, 加载中: false, 游标: 重开.nextCursor, 版本: 重开.catalogVersion },
         }));
+        if (旧子id们.length > 0) {
+          const 旧集 = new Set(旧子id们);
+          const 摘旧 = <T,>(旧: Record<string, T>) =>
+            Object.fromEntries(Object.entries(旧).filter(([键]) => !旧集.has(键)));
+          设孙项表(摘旧);
+          设孙项游标表(摘旧);
+          设孙项版本表(摘旧);
+        }
         return;
       }
       设展开状态((旧) => ({
