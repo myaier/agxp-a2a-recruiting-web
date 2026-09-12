@@ -1021,6 +1021,109 @@ describe('工作经历 · Task 4 资料接线', () => {
   });
 });
 
+// ── Task 1（core editors §6.1）：日常作品集写入三态 —— 链接编辑意图独立于 onboarding：
+// 未编辑省略属性、明确清空 null、设置字符串；失败保留输入可重试、成功清意图取权威回显；
+// 普通编辑不生成建档草稿；空身份 + 链接脏沿既有「请先选择求职状态」提示阻止假成功，不离页。
+describe('工作经历 · 日常作品集写入（Task 1）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+    mock确认分区.mockClear();
+    mock更新草稿.mockClear();
+  });
+
+  it('日常编辑（无旅程标记）设置链接：保存带规范化 URL，且不生成建档草稿', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({ 经历: [], 教育: [完整教育], 保存简历, 作品集链接: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    await 用户.tab();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({ 作品集链接: 'https://github.com/shen' }));
+    expect(mock更新草稿).not.toHaveBeenCalled();
+  });
+
+  it('日常编辑（无旅程标记）清空链接：保存带 null', async () => {
+    const 保存简历 = vi.fn(async (_写入: Record<string, unknown>) => {});
+    render工作经历({
+      经历: [], 教育: [完整教育], 保存简历, 作品集链接: 'https://github.com/shen',
+    });
+    const 用户 = userEvent.setup();
+    await 用户.clear(screen.getByLabelText('作品集或项目链接'));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历.mock.calls[0][0]).toEqual(expect.objectContaining({ 作品集链接: null }));
+  });
+
+  it('保存失败且权威水合旧 URL 后，本次输入仍保留在输入框可手动重试；重试成功清意图', async () => {
+    let 次数 = 0;
+    const 保存简历 = vi.fn(async () => {
+      次数 += 1;
+      if (次数 === 1) {
+        // 模拟 处理写入错误 的权威水合：旧 URL 回 Context
+        mock应用状态.状态.简历作品集链接 = 'https://old.example.com';
+        throw new Error('保存失败');
+      }
+    });
+    render工作经历({ 经历: [], 教育: [完整教育], 保存简历, 作品集链接: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    // 权威水合回写了旧 URL，但已触碰的本地输入不被覆盖
+    // （点保存先失焦 → onBlur 规范化已把输入收成带协议形态）
+    const 输入 = screen.getByLabelText('作品集或项目链接') as HTMLInputElement;
+    expect(输入.value).toBe('https://github.com/shen');
+    // 手动重试成功后取权威回显并清意图
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(2));
+    expect(mock轻提示).toHaveBeenCalledWith('简历已保存');
+    expect(mock跳转).toHaveBeenCalled();
+  });
+
+  it('身份空且链接脏：不发保存、不提示成功、不离页，沿既有求职状态提示收口', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({
+      经历: [], 教育: [完整教育], 保存简历,
+      基本信息: { 真名: '沈', 开始工作年: '', 身份: '' },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(保存简历).not.toHaveBeenCalled();
+    expect(mock轻提示).not.toHaveBeenCalledWith('简历已保存');
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock轻提示).toHaveBeenCalledWith('请先选择求职状态');
+  });
+
+  it('旅程草稿恢复的链接已改（刷新后未触碰输入）：保存仍带草稿里的三态值', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({
+      经历: [], 教育: [完整教育], 保存简历,
+      建档: { 资料: { 作品集链接: 'https://github.com/shen' } },
+    });
+    const 用户 = userEvent.setup();
+    // 未触碰输入框（跟随草稿），直接保存
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({ 作品集链接: 'https://github.com/shen' }));
+  });
+
+  it('旅程草稿恢复的明确清空（刷新后未触碰输入）：保存仍带 null', async () => {
+    const 保存简历 = vi.fn(async (_写入: Record<string, unknown>) => {});
+    render工作经历({
+      经历: [], 教育: [完整教育], 保存简历,
+      建档: { 资料: { 作品集链接: null } },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历.mock.calls[0][0]).toEqual(expect.objectContaining({ 作品集链接: null }));
+  });
+});
+
 // ── review-cx F4：证书行内录入接 编辑中.certificate（冻结合同 7 的证书编辑器变体）──
 // 列表视图「证书与语言」的行内输入是旅程里唯一的证书编辑控件：输入即写草稿
 // （certificate 变体：本地编号 + 名称），刷新后回填输入框原位；「添加」是它的

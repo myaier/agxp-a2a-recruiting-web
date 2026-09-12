@@ -393,6 +393,75 @@ describe('简历数据源 · 建档跟踪回执（J-PILOT-02 Task 3）', () => {
   });
 });
 
+// ── Task 1（core editors §6.1）：日常作品集三态 —— 「有建档跟踪」不再是 URL 可写条件。
+// next.作品集链接 缺省/undefined = 无写意图（body 不带 portfolio_url）、null = 清空、
+// 字符串 = 设置；URL-only 真变化即使其他资料未变也触发保留其余字段的 profile PATCH。
+describe('简历数据源 · 日常作品集三态（Task 1）', () => {
+  it('跟踪缺省、只改 URL：恰一次 profile PATCH，body.portfolio_url 为新 URL，其余字段完整保留，If-Match 为旧 profile revision，最后权威 GET', async () => {
+    const previous = BFF简历样本;
+    const { 请求Mock, 请求 } = 请求桩();
+    const next = { ...从BFF简历(previous), 作品集链接: 'https://me.example.com' };
+    await 创建简历数据源(请求).保存简历(next, previous);
+    const 调用 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    const patch = 调用.find((o) => o.method === 'PATCH' && o.path === '/api/v1/me/resume/profile');
+    expect(patch).toBeDefined();
+    expect(patch!.body).toMatchObject({
+      portfolio_url: 'https://me.example.com',
+      // URL-only PATCH 不得清空姓名/身份等既有事实
+      real_name: '沈亦舟',
+      status: 'employed',
+      work_start_year: 2021,
+      gender: 'male',
+      birth_year: 1998,
+      birth_month: 6,
+    });
+    expect(patch!.ifMatch).toBe(`"${previous.profile_revision}"`);
+    // URL-only PATCH 是唯一的 mutation，保存以最终权威 GET 收尾
+    expect(调用.filter((o) => o.method === 'PATCH' || o.method === 'POST' || o.method === 'DELETE')).toHaveLength(1);
+    expect(调用.at(-1)!.method ?? 'GET').toBe('GET');
+    expect(调用.at(-1)!.path).toBe('/api/v1/me/resume');
+  });
+
+  it('跟踪缺省、明确清空：body.portfolio_url 为 null', async () => {
+    const previous: BFF简历 = {
+      ...BFF简历样本,
+      profile: { ...BFF简历样本.profile, portfolio_url: 'https://old.example.com' },
+    };
+    const { 请求Mock, 请求 } = 请求桩();
+    const next = { ...从BFF简历(previous), 作品集链接: null };
+    await 创建简历数据源(请求).保存简历(next, previous);
+    const patch = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项)
+      .find((o) => o.method === 'PATCH' && o.path === '/api/v1/me/resume/profile');
+    expect(patch).toBeDefined();
+    expect(patch!.body).toMatchObject({ portfolio_url: null, real_name: '沈亦舟' });
+  });
+
+  it('跟踪缺省、省略 URL 属性改姓名：profile PATCH body 不含 portfolio_url 键', async () => {
+    const previous = BFF简历样本;
+    const { 请求Mock, 请求 } = 请求桩();
+    // 普通资料编辑不带该字段：按契约剥掉快照必返的 作品集链接 属性（存在即视为有意编辑）
+    const { 作品集链接: _省略, ...基底 } = 从BFF简历(previous);
+    const next = { ...基底, 基本信息: { ...基底.基本信息, 真名: '改名' } };
+    await 创建简历数据源(请求).保存简历(next, previous);
+    const patch = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项)
+      .find((o) => o.method === 'PATCH' && o.path === '/api/v1/me/resume/profile');
+    expect(patch).toBeDefined();
+    expect(patch!.body).not.toHaveProperty('portfolio_url');
+  });
+
+  it('跟踪缺省、URL 与服务端值相同（规范化等价值）：零 mutation，只有权威 GET', async () => {
+    const previous: BFF简历 = {
+      ...BFF简历样本,
+      profile: { ...BFF简历样本.profile, portfolio_url: 'https://me.example.com' },
+    };
+    const { 请求Mock, 请求 } = 请求桩(previous);
+    const next = { ...从BFF简历(previous), 作品集链接: 'https://me.example.com' };
+    await 创建简历数据源(请求).保存简历(next, previous);
+    const 调用 = 请求Mock.mock.calls.map((c) => [(c[0] as BFF请求选项).method ?? 'GET', (c[0] as BFF请求选项).path]);
+    expect(调用).toEqual([['GET', '/api/v1/me/resume']]);
+  });
+});
+
 // ── J-PILOT-02 fix（Task 10 评审裁决）：教育 diff 不看键序 —— 权威页快照按 转教育
 //    的规范键序建对象，注册流草稿的 学校引用/专业引用 是各屏逐次追加的键；整对象
 //    JSON.stringify 会把内容未变的条目误判「已变化」，后续每次保存都发一次多余的

@@ -2661,7 +2661,9 @@ function 断言证书写入(body: unknown): asserts body is { name: string; year
   )).toBe(true);
 }
 
-/** 资料（profile）分区写入：八键全量替换，status 只认三个后端档位 */
+/** 资料（profile）分区写入：八键全量替换，status 只认三个后端档位。
+ *  Task 1（core editors §6.1）：portfolio_url 是合同内的三态可选键 —— 缺席 = 保留已存
+ *  URL，null = 明确清空，非空字符串 = 替换（^https?://[^\s]+$，≤2048 码点）。 */
 function 断言资料写入(body: unknown): asserts body is {
   real_name: string;
   work_start_year: number | null;
@@ -2671,8 +2673,9 @@ function 断言资料写入(body: unknown): asserts body is {
   gender: 'male' | 'female' | null;
   birth_year: number | null;
   birth_month: number | null;
+  portfolio_url?: string | null;
 } {
-  断言精确键集(body, ['real_name', 'work_start_year', 'status', 'current_education', 'graduation_year', 'gender', 'birth_year', 'birth_month']);
+  断言闭合键集(body, ['real_name', 'work_start_year', 'status', 'current_education', 'graduation_year', 'gender', 'birth_year', 'birth_month', 'portfolio_url'], ['real_name', 'work_start_year', 'status', 'current_education', 'graduation_year', 'gender', 'birth_year', 'birth_month']);
   const 写 = body as Record<string, unknown>;
   expect(typeof 写.real_name).toBe('string');
   expect(写.work_start_year === null || Number.isInteger(写.work_start_year)).toBe(true);
@@ -2682,6 +2685,14 @@ function 断言资料写入(body: unknown): asserts body is {
   expect(写.gender === null || ['male', 'female'].includes(写.gender as string)).toBe(true);
   expect(写.birth_year === null || Number.isInteger(写.birth_year)).toBe(true);
   expect(写.birth_month === null || Number.isInteger(写.birth_month)).toBe(true);
+  if (Object.prototype.hasOwnProperty.call(写, 'portfolio_url')) {
+    expect(
+      写.portfolio_url === null
+        || (typeof 写.portfolio_url === 'string'
+          && /^https?:\/\/\S+$/.test(写.portfolio_url)
+          && [...写.portfolio_url].length <= 2048),
+    ).toBe(true);
+  }
 }
 
 /** 个人优势（summary）分区写入：单键 value */
@@ -10797,6 +10808,99 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     expect(fixture.mutations.some((条) => 条.path.includes('/catalog/'))).toBe(false);
     // 角色偏好已落 candidate：reload 直接进主壳而非身份选择页
     expect(fixture.主体.last_used_role).toBe('candidate');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 作品集 @backend（core editors §6.1 Task 1）：日常编辑（无 onboarding 草稿）
+// 的存量候选直接进 /experience 编辑作品集链接 —— URL-only 变化触发带 portfolio_url 的
+// profile PATCH（其余八键全量保留、If-Match 为旧 profile revision），保存以最终权威 GET
+// 收尾；重新进入页面读权威值不丢；再明确清空（PATCH body portfolio_url null）。
+// 网络桩 route fixture 边界验证，不是 live 验收。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 作品集 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('日常编辑作品集：保存→权威回读→重进不丢→再清空，未走 onboarding @backend', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const fixture = 创建候选OnboardingFixture();
+    // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足
+    // 建档完备判据（真实登录落点按「已水合简历 + active 意向」分流），预置权威 URL
+    fixture.主体.last_used_role = 'candidate';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选', portfolio_url: 'https://github.com/existing' },
+      summary: '存量个人优势',
+    };
+    fixture.intentions = [P4深克隆(fixture意向列表.intentions[0])];
+    const profile写入: { method: string; path: string; body: unknown; ifMatch: string | null }[] = [];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-core-edit-portfolio',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: P3隐私fixture(),
+      请求拦截: (请求) => {
+        if (请求.path === '/api/v1/me/resume/profile' && 请求.method === 'PATCH') {
+          profile写入.push({ method: 请求.method, path: 请求.path, body: 请求.body, ifMatch: 请求.headers['if-match'] ?? null });
+        }
+      },
+    });
+    const 次数 = (方法: string, 路径: string) =>
+      fixture.mutations.filter((条) => 条.method === 方法 && 条.path === 路径).length;
+
+    // 日常入口：登录落主壳后直接进 /experience（不经过学生分流/建档旅程）
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto('/#/experience');
+    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    const 输入 = page.getByLabel('作品集或项目链接');
+    await expect(输入).toHaveValue('https://github.com/existing');
+
+    // 日常设置：改 URL（点保存先失焦 → 规范化补 https）→ 保存
+    await 输入.fill('github.com/new-works');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/wizard$/, { timeout: 20_000 });
+    // URL-only 变化恰发一次 profile PATCH：portfolio_url 在 body、其余键全量保留、
+    // If-Match 为旧 profile revision；保存以最终权威 GET 收尾
+    expect(次数('PATCH', '/api/v1/me/resume/profile')).toBe(1);
+    const 设置写入 = profile写入[0]!;
+    expect(设置写入.ifMatch).toBe(`"${fixture简历.profile_revision}"`);
+    expect(设置写入.body).toEqual(expect.objectContaining({
+      portfolio_url: 'https://github.com/new-works',
+      real_name: '存量候选',
+      status: 'employed',
+    }));
+    expect((设置写入.body as Record<string, unknown>).current_education).toBeNull();
+    expect(fixture.resume.profile.portfolio_url).toBe('https://github.com/new-works');
+    expect(fixture.简历请求.at(-1)).toEqual({ method: 'GET', path: '/api/v1/me/resume' });
+    // 未走 onboarding：本会话零建档写入（无经历/教育/证书/意向/角色写入）
+    expect(fixture.mutations.filter((条) => 条.path !== '/api/v1/me/resume/profile')).toEqual([]);
+
+    // 权威回读后重新进入：值不丢
+    await page.goto('/#/experience');
+    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel('作品集或项目链接')).toHaveValue('https://github.com/new-works');
+
+    // iPhone 13 viewport：横向溢出 ≤2px、保存键不被遮挡、URL 输入可聚焦
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    const 链接输入 = page.getByLabel('作品集或项目链接');
+    await 链接输入.focus();
+    await expect(链接输入).toBeFocused();
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-作品集.png`, fullPage: true });
+
+    // 再明确清空：PATCH body portfolio_url 为 null，权威回读后重进为空
+    await page.getByLabel('作品集或项目链接').fill('');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/wizard$/, { timeout: 20_000 });
+    expect(次数('PATCH', '/api/v1/me/resume/profile')).toBe(2);
+    const 清空写入 = profile写入[1]!;
+    expect((清空写入.body as Record<string, unknown>).portfolio_url).toBeNull();
+    expect(fixture.resume.profile.portfolio_url).toBeNull();
+    await page.goto('/#/experience');
+    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel('作品集或项目链接')).toHaveValue('');
   });
 });
 

@@ -186,16 +186,16 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
     // profile。M：身份为 ''（未选择）时整个分区跳过 —— 转资料写入 会拒绝空身份，
     // Context 里 /basic 未提交的姓名/生日草稿不该阻断其余五个分区，也不许借默认档铸 body；
     // 身份非空且 profile 真有变化时才 PATCH。
-    // J-PILOT-02：作品集链接三态 —— 属性缺省不带 portfolio_url（普通资料编辑即此路径），
-    // 存在（含 null）即用户有意编辑，单独变化也触发保留其余字段的 profile PATCH。
-    // 只有带 跟踪 的 onboarding 保存会携带该属性（Global 1「onboarding 明确编辑才带」）：
-    // 普通调用即使快照展开带出旧 GET 的 portfolio_url 也不顺带发送。
-    const 链接已改 = 跟踪 !== undefined
-      && next.作品集链接 !== undefined
+    // Task 1（core editors §6.1）：作品集链接三态不再以「有建档跟踪」为可写条件 ——
+    // 属性缺省（含 undefined）= 无写意图（body 不带 portfolio_url，普通资料编辑即此路径），
+    // null = 明确清空，字符串 = 设置；只在本轮最终值与权威值不同时才把 portfolio_url
+    // 写进 body（规范化等价值省略，不产生 URL-only PATCH）。跟踪只负责建档命令/回执，
+    // 不再作为是否写 URL 的门。
+    const 链接已改 = next.作品集链接 !== undefined
       && next.作品集链接 !== (旧页面.作品集链接 ?? null);
     if (next.基本信息.身份 !== ''
       && (JSON.stringify(next.基本信息) !== JSON.stringify(旧页面.基本信息) || 链接已改)) {
-      const body = 跟踪 !== undefined && next.作品集链接 !== undefined
+      const body = 链接已改
         ? 转资料写入(next.基本信息, next.作品集链接)
         : 转资料写入(next.基本信息);
       写入步骤们.push(() => 发出<BFF简历>(
