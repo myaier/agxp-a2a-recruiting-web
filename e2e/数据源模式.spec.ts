@@ -315,6 +315,7 @@ const 标记 = {
   主体真名: '后端 fixture 候选人',
   城市display: ' Fixture 市',
   学校display: ' Fixture 大学',
+  专业display: ' Fixture 专业',
   学校副行: 'Fixture City · Fixtureland',
   职位display: ' Fixture 工程师',
   简历summary: '后端 fixture 个人优势标记',
@@ -556,6 +557,18 @@ interface P4CandidateJob形 {
     avatar_url?: string | null;
   };
   title: string;
+  // release/0.2.5：用人企业摘要 required；claim-only 岗位合法档是显式 null 的六键
+  organization: {
+    organization_id: string | null;
+    display_name: string | null;
+    industry: { id: string; display_name: string } | null;
+    company_size: string | null;
+    funding_stage: string | null;
+    logo: {
+      media_id: string; media_type: 'image/png' | 'image/jpeg'; size_bytes: number;
+      width: number; height: number; url: string;
+    } | null;
+  };
   recruitment_type: 'social_full_time' | 'campus' | 'internship' | 'part_time';
   category: { id: string; display_name: string };
   location: { id: string; display_name: string };
@@ -662,6 +675,40 @@ interface P4招聘推荐形 {
   delegation: P4委托摘要形 | null;
   /** include=candidate_summary 展开页才有；单项详情/历史响应绝不携带（闭合白名单） */
   candidate_summary?: P4摘要形 | null;
+}
+
+/** release/0.2.5：招聘单项详情恒在场的 candidate_resume（RecruiterCandidateResume 七键闭合）。
+ *  摘要复用 P4摘要；两条教育/两段经历给「多段 + 合法空」样本，供匿名简历页展示接线证据。 */
+function P4在线简历(): Record<string, unknown> {
+  return {
+    summary: P4摘要(),
+    self_description: 'P4 fixture 自我描述',
+    skills: ['Go', '分布式事务'],
+    experiences: [
+      {
+        company: 'P4 Fixture 公司', industry: '互联网', title: 'P4 Fixture 现职',
+        start_month: '2021-01', end_month: null,
+        description: 'P4 fixture 经历描述', internship: false,
+        projects: [{ name: 'P4 Fixture 项目', role: '负责人', result: '转化提升 12%' }],
+      },
+      {
+        company: null, industry: null, title: null,
+        start_month: '2020-01', end_month: '2020-12',
+        description: null, internship: true, projects: [],
+      },
+    ],
+    educations: [
+      { institution: 'P4 Fixture 大学', major: 'P4 Fixture 专业', degree: 'P4 本科', start_month: '2017-09', end_month: '2021-06' },
+      { institution: null, major: null, degree: 'P4 硕士', start_month: '2021-09', end_month: null },
+    ],
+    expectation: {
+      recruitment_type: 'social_full_time',
+      job_category: { id: 'job-fixture-p4-cat', display_name: '后端工程师' },
+      locations: [{ id: 'loc-fixture-p4', display_name: 'P4 Fixture 市' }],
+      workplace_modes: ['hybrid'],
+    },
+    compensation_relationship: 'overlap',
+  };
 }
 
 /** P4 wire 发现批次（与 BFF契约.BFF发现批次 同构） */
@@ -828,6 +875,15 @@ function P4CandidateJob(覆盖: Partial<P4CandidateJob形> = {}): P4CandidateJob
     publisher_verification_status: 'verified',
     hiring_organization_verification_status: 'verified',
     hiring_organization_claim: { display_name: P4标记.company, legal_name: 'P4 Fixture 星河科技有限公司' },
+    // claim-only 合法档：只答声明显示名，其余成员显式 null（公司路由坐标仍走 hiring_organization_ref）
+    organization: {
+      organization_id: null,
+      display_name: P4标记.company,
+      industry: null,
+      company_size: null,
+      funding_stage: null,
+      logo: null,
+    },
     title: P4标记.jobTitle,
     recruitment_type: 'social_full_time',
     category: { id: 'job-fixture-p4-cat', display_name: '后端工程师' },
@@ -1003,7 +1059,19 @@ const fixture简历 = {
   skills: ['Go', '分布式事务'],
   skills_revision: 1,
   experiences: [],
-  educations: [],
+  // J-PILOT-02 起登录落点按「已水合简历 + active 意向」判建档完备（至少一条含毕业时间的
+  // 完整教育经历）；educations 空会把候选打回 /student 学生分流，主壳用例全部落空。
+  educations: [
+    {
+      id: 'edu-fixture-001',
+      institution: { id: 'inst-fixture-001', display_name: 标记.学校display },
+      degree: '本科',
+      major: { id: 'major-fixture-001', display_name: 标记.专业display },
+      start_month: '2015-09',
+      end_month: '2019-06',
+      revision: 1,
+    },
+  ],
   certificates: [],
   aggregate_revision: 1,
 };
@@ -1679,6 +1747,10 @@ interface P5Case记录形 {
   state覆盖?: Record<string, unknown>;
   /** open 工作区 recruiter 展开行的 candidate_summary（七键闭合对象或显式 null）；缺省 = 显式 null */
   摘要?: P4摘要形 | null;
+  /** release/0.2.5：招聘行/详情恒在场的可溯源推荐分；缺省 = 显式 null（无溯源） */
+  matchScore?: number | null;
+  /** release/0.2.5：Case 作用域候选身份；缺省 = anonymous 三 null，'disclosed' 才给真名/头像 */
+  身份?: 'anonymous' | 'disclosed';
   /** P7（Task 7）：completed + complete 时的已发布会话坐标；handoff_pending 恒 null。 */
   conversationRef: string | null;
 }
@@ -1786,6 +1858,18 @@ function P5职位wire(c: P5Case记录形): Record<string, unknown> {
   };
 }
 
+/** release/0.2.5：招聘行恒在场的 CaseCandidateIdentity。默认 anonymous 三 null；用例把
+ *  P5Case记录形.身份 置 'disclosed' 才给姓名/头像/时间（头像 URL 只是解码事实，UI 零请求）。 */
+function P5身份wire(c: P5Case记录形): Record<string, unknown> {
+  if (c.身份 !== 'disclosed') return { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null };
+  return {
+    state: 'disclosed',
+    name: 'P5 Fixture 候选真名',
+    avatar_url: `https://cdn.fixture.example/wiring-avatar-${c.caseId.slice(-4)}.png`,
+    disclosed_at: c.updatedAt,
+  };
+}
+
 /** 列表行 wire：招聘端 open 展开读取（include=candidate_summary）必须携带 candidate_summary
  *  （null 合法 —— 摘要字段缺席语义）；历史行必不携带。候选端行只带 intention_id。 */
 function P5列表项wire(c: P5Case记录形, 角色: P5角色词): Record<string, unknown> {
@@ -1798,6 +1882,11 @@ function P5列表项wire(c: P5Case记录形, 角色: P5角色词): Record<string
   // 2026-09-09 摘要接线：recruiter open 展开行必带 candidate_summary（显式 null 也合法）；
   // candidate 行与历史行的闭合白名单没有这个键，多带即契约漂移，所以只在 open+recruiter 装配。
   if (角色 === 'recruiter' && c.lifecycle === 'open') 项.candidate_summary = c.摘要 ?? null;
+  // release/0.2.5：招聘行（默认页与历史页都）恒带可溯源推荐分与 Case 作用域候选身份
+  if (角色 === 'recruiter') {
+    项.match_score = c.matchScore ?? null;
+    项.candidate_identity = P5身份wire(c);
+  }
   return 项;
 }
 
@@ -1838,7 +1927,16 @@ function P5详情wire(c: P5Case记录形, 角色: P5角色词): Record<string, u
     })),
     intent_confirmations: { ...c.意向词 },
     job: P5职位wire(c),
+    // release/0.2.5：详情 required match_score/job_detail。fixture 全走 legacy 快照
+    // （显式 null = 冻结正文缺席合法档），不补读当前 Job/Resume。
+    match_score: c.matchScore ?? null,
+    job_detail: null,
   };
+  // 招聘端详情 required 私有展示二键：恒在场的共享在线简历正文与候选身份
+  if (角色 === 'recruiter') {
+    详情.candidate_resume = null;
+    详情.candidate_identity = P5身份wire(c);
+  }
   if (c.协同 && c.lifecycle === 'open' && c.stage === 'needs_coordination') {
     详情.current_coordination = { ...c.协同, required_roles: [...c.协同.required_roles] };
   }
@@ -1903,6 +2001,8 @@ interface P5连续记录形 {
   archivedAt: string | null;
   /** 公开信息初评（agent_summary.public_evaluation）；null = 尚无 */
   公开评: { decision: 'fit' | 'not_fit' | 'uncertain'; summary: string } | null;
+  /** release/0.2.5：可溯源原始推荐分；缺省 = 显式 null（无溯源） */
+  matchScore?: number | null;
 }
 
 /** 连续记录的动态事实：shelf、needs_action、case_state/case_detail 全部按当前 fixture 求值。 */
@@ -1974,6 +2074,13 @@ function P5连续卡wire(
       location: P5标记.城市,
       public_salary_range: P5标记.薪资带,
       availability: 'available',
+      // release/0.2.5：NegotiationJob 五个展示成员全 required（null 与 []/0 不互换）；
+      // display_name 显式 null（无权威公司名）→ 卡面公司名占位与旧行为一致
+      organization: { organization_id: null, display_name: null, industry: null, company_size: null, funding_stage: null, logo: null },
+      required_skills: [P5标记.技能],
+      recruitment_type: 'social_full_time',
+      workplace_mode: 'hybrid',
+      annual_salary_months: 15,
     },
     delegation_id: r.delegationId,
     evaluation_id: r.evaluationId,
@@ -1988,6 +2095,8 @@ function P5连续卡wire(
     created_at: r.createdAt,
     updated_at: r.updatedAt,
     archived_at: r.archivedAt,
+    // release/0.2.5：可溯源原始推荐分（0 是合法真实分，null 是无溯源）
+    match_score: r.matchScore ?? null,
   };
 }
 
@@ -2020,6 +2129,8 @@ function P5连续详情wire(
       },
       condition_confirmation: null,
     },
+    // release/0.2.5：详情专属冻结岗位展示（fixture 走 legacy 显式 null，绝不补读当前 Job）
+    job_detail: null,
   };
 }
 
@@ -3966,6 +4077,42 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         return;
       }
 
+      // release/0.2.5（Task 2）：独立职位详情按 hiring_organization_ref 补读公开企业
+      // （GET /organizations/{id}/profile，BFF公开企业 形）。P1C 组织域在场的用例由上方
+      // 组织处理器先答（owner 档案管理语义不变）；这里只兜候选详情的公开补读。
+      const P4公开企业匹配 = /^\/api\/v1\/organizations\/([^/]+)\/profile$/.exec(path);
+      if (P4公开企业匹配 && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({
+            organization_id: decodeURIComponent(P4公开企业匹配[1]),
+            legal_name: 'P4 Fixture 星河科技有限公司',
+            display_name: P4标记.company,
+            verified_at: '2026-08-27T00:00:00Z',
+            profile: {
+              brand_name: P4标记.company,
+              industry: { id: 'ind-fixture-p4', display_name: 'P4 Fixture 行业' },
+              company_size: '100_499',
+              funding_stage: 'series_b',
+              office_address: 'P4 Fixture 市 Fixture 路 8 号',
+              benefit_codes: ['social_insurance_housing_fund'],
+              work_schedule: 'two_day_weekend',
+              company_intro: 'P4 fixture 公司介绍',
+              business_items: ['P4 Fixture 主营业务'],
+              product_intro: 'P4 fixture 产品介绍',
+              team_members: [],
+              logo: null,
+              office_media: [],
+              company_media: [],
+              revision: 1,
+              updated_at: '2026-08-27T00:00:00Z',
+            },
+            active_verified_job_count: 1,
+          }),
+        });
+        return;
+      }
+
       // 候选端刷新：POST 建新批次；受控重试分支首把键 503，同键重试成功
       if (path === '/api/v1/me/job-recommendation-refreshes' && method === 'POST') {
         记录P4变更(path);
@@ -4144,7 +4291,8 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
           await route.fulfill({ status: 404, json: { error: { type: 'recommendation_not_found', message: '推荐不存在' } } });
           return;
         }
-        await route.fulfill({ status: 200, json: 信封(P4非展开卡(卡)) });
+        // release/0.2.5：DiscoveryRecruiterDetail 恒带 candidate_resume（键集闭合，缺键即漂移）
+        await route.fulfill({ status: 200, json: 信封({ ...P4非展开卡(卡), candidate_resume: P4在线简历() }) });
         return;
       }
 
@@ -7971,15 +8119,18 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await expect(page).toHaveURL(new RegExp(`#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4编号.recruiterRecommendation}$`));
     // 先等列表卸载（hash 已换而 React 未换树的瞬态窗里，列表摘要仍会在 DOM）
     await expect(page.getByText('你的AI代理从人才库筛出')).toHaveCount(0, { timeout: 15_000 });
-    await expect(page.getByText(P4标记.candidateSummary)).toBeVisible({ timeout: 15_000 });
-    // 去名改版（2026-09-09 第二批）：别名也不上匿名在线简历页，锚定简历正文段标
-    await expect(page.getByText('个人优势').first()).toBeVisible();
+    // release/0.2.5：详情不再有 candidate_summary（include 语法只属于列表），正文来自
+    // 恒在场的 candidate_resume（共享在线简历）——多段经历/教育如实上屏
+    await expect(page.getByText('个人优势').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('P4 fixture 自我描述')).toBeVisible();
+    await expect(page.getByText('工作经历').first()).toBeVisible();
+    await expect(page.getByText('项目经历').first()).toBeVisible();
+    await expect(page.getByText('教育经历').first()).toBeVisible();
     expect(请求序).toContain(`GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations/${P4编号.recruiterRecommendation}`);
 
-    // 身份/薪资 canary：HTTP 从未下发真名/直聊/经历段/年龄性别/期望薪资，页面一概不渲染；
+    // 身份/薪资 canary：HTTP 从未下发真名/直聊/期望薪资，页面一概不渲染；
     // Mock 人才库的候选（江叙白）与会话主体真名也不兜底出现
     await expect(page.getByText('直接聊')).toHaveCount(0);
-    await expect(page.getByText('工作经历')).toHaveCount(0);
     await expect(page.getByText('沈亦舟')).toHaveCount(0);
     await expect(page.getByText('后端 fixture 候选人')).toHaveCount(0);
     await expect(page.getByText(/期望薪资/)).toHaveCount(0);

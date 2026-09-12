@@ -512,3 +512,312 @@ for (const 宽度 of 视口宽度们) {
     }
   });
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// 展示字段接线 @backend / @mock 数据源（Task 7）
+//
+// 用 HTTP fixture 路由拦截证明 release/0.2.5 展示字段的端到端接线与请求边界：
+//   · 四列表只读其列表/既有必要请求，零逐卡 Job/Resume/公开企业补读；
+//   · 独立职位详情有组织坐标才读该公开企业（恰好一次）、claim-only 零请求、
+//     主体切换不显示旧数据；
+//   · Case 详情无当前 Job/Resume 补读（冻结正文/公司导航只来自 wire 的 job_detail）；
+//   · anonymous 与 disclosed 均零候选身份头像请求（响应里已有头像 URL 也只解码不使用）；
+//   · 320/390 视口 scrollWidth <= clientWidth、按钮/Tab 可操作、媒体加载失败有回退。
+// 全部 /api/v1 请求被 e2e/fixtures/展示字段接线.ts 的 path+method 白名单捕获，
+// 白名单外记录并返回受控 503；请求序列来自返回的 { 请求 }，断言不放行真实网络。
+// ═══════════════════════════════════════════════════════════════════════════
+
+import { 安装展接线路由 } from './fixtures/展示字段接线';
+import type { 展接线角色 } from './fixtures/展示字段接线';
+
+/** 断言页面无横向溢出（320/390 双视口的滚动边界）。 */
+async function 期望无溢出(page: Page): Promise<void> {
+  const 溢出 = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(溢出, '页面横向溢出').toBeLessThanOrEqual(0);
+}
+
+/** 打开后端入口：清空存储 + 关动画 + 等主壳落定（candidate → /#/app，recruiter → /#/hr）。 */
+async function 打开后端主壳(page: Page, role: 展接线角色): Promise<void> {
+  await 打开稳定页面(page, '/', '未登录');
+  await expect(page).toHaveURL(role === 'candidate' ? /#\/app$/ : /#\/hr$/, { timeout: 20_000 });
+}
+
+/** 页面上 wiring- 媒体请求记录器（候选身份头像/加载失败探针都在 cdn.fixture.example 下）。 */
+function 安装媒体记录(page: Page): string[] {
+  const 媒体请求: string[] = [];
+  page.on('request', (req) => {
+    if (req.url().includes('cdn.fixture.example')) 媒体请求.push(req.url());
+  });
+  return 媒体请求;
+}
+
+const 后端宽度们 = [320, 390];
+
+for (const 宽度 of 后端宽度们) {
+  test.describe(`展接线 Backend ${宽度} @backend`, () => {
+    test.use({
+      viewport: { width: 宽度, height: 844 },
+      locale: 'zh-CN',
+      timezoneId: 'Asia/Shanghai',
+      reducedMotion: 'reduce',
+    });
+
+    test('候选 市场列表与独立职位详情：零逐卡补读、公开企业单读、0分/长文/局部空/媒体回退 @backend', async ({ page }) => {
+      test.setTimeout(120_000);
+      const { 请求 } = await 安装展接线路由(page, { role: 'candidate', 场景: '完整' });
+      const 诊断 = 安装诊断(page);
+      const 媒体请求 = 安装媒体记录(page);
+      await 打开后端主壳(page, 'candidate');
+
+      // 市场列表：只读列表本身（零逐卡 Job / 公开企业 / 简历补读）
+      await page.getByRole('button', { name: '市场', exact: true }).click();
+      await expect(page.getByText('展接FIX 交易中台架构师').first()).toBeVisible({ timeout: 15_000 });
+      expect(请求.some((条) => 条.method === 'GET' && 条.path === '/api/v1/me/job-recommendations')).toBe(true);
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/organizations/'))).toEqual([]);
+
+      // 真实 0 分与推荐分同屏（wire 给 0 就是 0，不重算不省略）
+      await expect(page.getByRole('img', { name: '适配 92 分' })).toBeVisible();
+      await expect(page.getByRole('img', { name: '适配 0 分' })).toBeVisible();
+      // 真实媒体 URL：卡上 logo-ok 加载成功（naturalWidth > 0）；logo-broken 加载失败走回退
+      await expect.poll(async () => page.evaluate(() =>
+        Array.from(document.querySelectorAll('img')).some(
+          (img) => img.src.includes('wiring-logo-ok') && img.complete && img.naturalWidth > 0,
+        ),
+      )).toBe(true);
+      // 加载失败探针：broken logo 已发起加载（组件 onError 后退首字块，img 自身退场），
+      // 但任何 img 都不会把它当成功图渲染；且失败只发生在媒体 URL，零 /api/v1 失败
+      await expect.poll(() => 媒体请求.filter((url) => url.includes('wiring-logo-broken')).length).toBeGreaterThanOrEqual(1);
+      expect(await page.evaluate(() =>
+        Array.from(document.querySelectorAll('img')).some(
+          (img) => img.src.includes('wiring-logo-broken') && img.complete && img.naturalWidth > 0,
+        ),
+      )).toBe(false);
+      expect(媒体请求.filter((url) => url.includes('/api/'))).toEqual([]);
+
+      // A 卡（有组织坐标）：进详情零 canonical job GET（快照命中），公开企业补读只打 A 自己的坐标
+      await page.getByRole('button', { name: '查看职位详情' }).nth(0).click();
+      await expect(page).toHaveURL(new RegExp(`#/job/${'job_00112233445566778899aabbccddee01'}$`), { timeout: 10_000 });
+      await expect(page.getByText('展接FIX 交易中台架构师', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
+      await expect.poll(() =>
+        请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/organizations/')).length,
+        { timeout: 15_000 },
+      ).toBeGreaterThanOrEqual(1);
+      expect(
+        new Set(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/organizations/')).map((条) => 条.path)),
+      ).toEqual(new Set(['/api/v1/organizations/org-wire-01']));
+      await 期望无溢出(page);
+
+      // 主体切换：claim-only B 卡无组织坐标 → 零新增公开企业请求，A 的组织摘要不残留
+      await 打开后端主壳(page, 'candidate');
+      await page.getByRole('button', { name: '市场', exact: true }).click();
+      await expect(page.getByText('展接FIX 交易中台架构师').first()).toBeVisible({ timeout: 15_000 });
+      const 公开读前 = 请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/organizations/')).length;
+      await page.getByRole('button', { name: '查看职位详情' }).nth(1).click();
+      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee02$/, { timeout: 10_000 });
+      await expect(page.getByText('展接FIX 缺口补齐工程师', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole('img', { name: '适配 0 分' }).first()).toBeVisible();
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/organizations/')).length).toBe(公开读前);
+      await expect(page.getByText('展接FIX 星河科技').first()).toBeVisible();
+      await expect(page.getByText('金融科技')).toHaveCount(0);
+      await 期望无溢出(page);
+
+      // 局部空 D 卡：JD 描述有值 + 职位要求合法空；失败回退已在列表阶段断言过
+      await 打开后端主壳(page, 'candidate');
+      await page.getByRole('button', { name: '市场', exact: true }).click();
+      await expect(page.getByText('展接FIX 交易中台架构师').first()).toBeVisible({ timeout: 15_000 });
+      await page.getByRole('button', { name: '查看职位详情' }).nth(3).click();
+      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee04$/, { timeout: 10_000 });
+      await expect(page.getByText('展接FIX 局部空岗位：JD 描述这节有值，职位要求这节合法空。', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('职位要求未知', { exact: true }).first()).toBeVisible();
+      await expect(page.getByText('职位详情未知', { exact: true })).toHaveCount(0);
+      await 期望无溢出(page);
+
+      // 长文 C 卡：长公司名与长文本如实上屏（自然增高，不缩字号不扩容）
+      await 打开后端主壳(page, 'candidate');
+      await page.getByRole('button', { name: '市场', exact: true }).click();
+      await expect(page.getByText('展接FIX 交易中台架构师').first()).toBeVisible({ timeout: 15_000 });
+      await page.getByRole('button', { name: '查看职位详情' }).nth(2).click();
+      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee03$/, { timeout: 10_000 });
+      await expect(page.getByText('测'.repeat(80), { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('展'.repeat(48)).first()).toBeVisible();
+      await 期望无溢出(page);
+
+      // 无意外诊断：fixture 受控 404（broken logo）之外零 console/页面错误、零失败请求
+      expect(诊断.pageErrors).toEqual([]);
+      expect(诊断.failedRequests).toEqual([]);
+      expect(诊断.consoleErrors.filter((文) => !/the server responded with a status of 404/.test(文))).toEqual([]);
+      诊断.detach();
+    });
+
+    test('候选 在谈列表与详情：零当前 Job/Resume 补读、冻结正文、pre-Case 与 legacy 全空 @backend', async ({ page }) => {
+      test.setTimeout(120_000);
+      const { 请求 } = await 安装展接线路由(page, { role: 'candidate', 场景: '完整' });
+      const 诊断 = 安装诊断(page);
+      await 打开后端主壳(page, 'candidate');
+
+      // 在谈列表（默认子视图）：只读连续集合，零逐记录详情 GET、零 Job/Resume 补读
+      const 简历读 = 请求.filter((条) => 条.path === '/api/v1/me/resume').length;
+      await expect(page.getByTestId('求职在谈卡').first()).toBeVisible({ timeout: 15_000 });
+      expect(请求.some((条) => 条.method === 'GET' && 条.path === '/api/v1/me/negotiations')).toBe(true);
+      expect(请求.filter((条) => 条.method === 'GET' && /^\/api\/v1\/me\/negotiations\/[^/]+$/.test(条.path))).toEqual([]);
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
+      await 期望无溢出(page);
+
+      // 甲（case_started）：详情强制 GET（轮询等它落定），零 canonical Job 补读、零简历补读
+      await page.getByTestId('求职在谈卡').first().click();
+      await expect(page).toHaveURL(new RegExp(`#/deal/${'mc_00112233445566778899aabbccddee01'}`), { timeout: 10_000 });
+      await expect(page.getByText('展接FIX 冻结企业').first()).toBeVisible({ timeout: 15_000 });
+      await expect.poll(() =>
+        请求.filter((条) => 条.method === 'GET' && /^\/api\/v1\/me\/negotiations\/[^/]+$/.test(条.path)).length,
+        { timeout: 15_000 },
+      ).toBeGreaterThanOrEqual(1);
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
+      expect(请求.filter((条) => 条.path === '/api/v1/me/resume').length).toBe(简历读);
+
+      // 资料 Tab（职位详情）：冻结正文与公司导航来自 wire job_detail，按钮可操作不遮挡
+      await page.getByRole('button', { name: '职位详情', exact: true }).click();
+      await expect(page.getByText('展接FIX 冻结企业').first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('公司信息', { exact: true }).first()).toBeVisible();
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
+      expect(请求.filter((条) => 条.path.startsWith('/api/v1/organizations/'))).toEqual([]);
+      await 期望无溢出(page);
+
+      // 乙（pre-Case delegation）：聚合可渲染、Case 块缺席、零 Case 详情读、零 Job 补读
+      await 打开后端主壳(page, 'candidate');
+      await expect(page.getByTestId('求职在谈卡').first()).toBeVisible({ timeout: 15_000 });
+      const Case读前 = 请求.filter((条) => 条.method === 'GET' && /^\/api\/v1\/me\/negotiations\/[^/]+$/.test(条.path)).length;
+      await page.getByTestId('求职在谈卡').nth(1).click();
+      await expect(page).toHaveURL(new RegExp(`#/deal/${'dlg_00112233445566778899aabbccddee02'}`), { timeout: 10_000 });
+      await expect(page.getByText('展接FIX 缺口补齐工程师').first()).toBeVisible({ timeout: 15_000 });
+      await expect.poll(() =>
+        请求.filter((条) => 条.method === 'GET' && /^\/api\/v1\/me\/negotiations\/[^/]+$/.test(条.path)).length,
+        { timeout: 15_000 },
+      ).toBeGreaterThanOrEqual(Case读前 + 1);
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
+      await 期望无溢出(page);
+
+      // 丙（legacy Case 全空）：match_score / job_detail 双 null → 未知占位，不补读不编造
+      await 打开后端主壳(page, 'candidate');
+      await expect(page.getByTestId('求职在谈卡').first()).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId('求职在谈卡').nth(2).click();
+      await expect(page).toHaveURL(new RegExp(`#/deal/${'mc_00112233445566778899aabbccddee03'}`), { timeout: 10_000 });
+      await expect(page.getByText('公司信息缺失').first()).toBeVisible({ timeout: 15_000 });
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
+
+      expect(诊断.pageErrors).toEqual([]);
+      expect(诊断.failedRequests).toEqual([]);
+      expect(诊断.consoleErrors).toEqual([]);
+      诊断.detach();
+    });
+
+    test('数据刷新由有值到空：在谈列表权威刷新后旧卡清空 @backend', async ({ page }) => {
+      test.setTimeout(120_000);
+      const { 请求 } = await 安装展接线路由(page, { role: 'candidate', 场景: '刷新为空' });
+      const 诊断 = 安装诊断(page);
+      await 打开后端主壳(page, 'candidate');
+
+      await expect(page.getByTestId('求职在谈卡').first()).toBeVisible({ timeout: 15_000 });
+      // 可见 5 秒节拍触发权威刷新：第 2 次读取返回合法空页，旧卡清空不出错误态
+      await expect(page.getByText('暂时没有在谈职位。')).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId('求职在谈卡')).toHaveCount(0);
+      expect(
+        请求.filter((条) => 条.method === 'GET' && 条.path === '/api/v1/me/negotiations').length,
+      ).toBeGreaterThanOrEqual(2);
+
+      expect(诊断.pageErrors).toEqual([]);
+      expect(诊断.failedRequests).toEqual([]);
+      expect(诊断.consoleErrors).toEqual([]);
+      诊断.detach();
+    });
+
+    test('招聘 推荐列表与匿名简历：零逐卡补读、多段简历、零候选头像请求 @backend', async ({ page }) => {
+      test.setTimeout(120_000);
+      const { 请求 } = await 安装展接线路由(page, { role: 'recruiter', 场景: '完整' });
+      const 诊断 = 安装诊断(page);
+      const 媒体请求 = 安装媒体记录(page);
+      await 打开后端主壳(page, 'recruiter');
+
+      // 推荐列表：owner 岗位 + 展开列表（既有必要请求），零逐卡详情/简历补读
+      await page.getByRole('button', { name: '推荐', exact: true }).click();
+      await expect(page.getByTestId('招聘推荐卡').first()).toBeVisible({ timeout: 15_000 });
+      expect(请求.some((条) => 条.method === 'GET' && 条.path === '/api/v1/recruiter/jobs')).toBe(true);
+      expect(
+        请求.some((条) => 条.method === 'GET' && /^\/api\/v1\/recruiter\/jobs\/[^/]+\/candidate-recommendations$/.test(条.path)),
+      ).toBe(true);
+      expect(请求.filter((条) => 条.method === 'GET' && /\/candidate-recommendations\/[^/]+$/.test(条.path))).toEqual([]);
+      await 期望无溢出(page);
+
+      // 匿名简历详情：展开读取恰好携带 candidate_resume；多段教育/项目如实上屏
+      await page.getByRole('button', { name: '查看候选画像' }).first().click();
+      await expect(page).toHaveURL(/#\/hr\/jobs\/[^/]+\/recommendations\/[^/]+$/, { timeout: 10_000 });
+      await expect(page.getByText('个人优势', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+      expect(
+        请求.filter((条) => 条.method === 'GET' && /\/candidate-recommendations\/[^/]+$/.test(条.path)).length,
+      ).toBeGreaterThanOrEqual(1);
+      await expect(page.getByText('展接FIX 多活改造').first()).toBeVisible();
+      await expect(page.getByText('教育经历', { exact: true }).first()).toBeVisible();
+      // anonymous 域：零候选身份头像请求（响应无身份对象，更不该有头像网络）
+      expect(媒体请求.filter((url) => url.includes('wiring-avatar-'))).toEqual([]);
+      await 期望无溢出(page);
+
+      expect(诊断.pageErrors).toEqual([]);
+      expect(诊断.failedRequests).toEqual([]);
+      expect(诊断.consoleErrors).toEqual([]);
+      诊断.detach();
+    });
+
+    test('招聘 在谈列表与 Case 资料：零当前 Job/Resume 补读、身份头像零请求、legacy 全空 @backend', async ({ page }) => {
+      test.setTimeout(120_000);
+      const { 请求 } = await 安装展接线路由(page, { role: 'recruiter', 场景: '完整' });
+      const 诊断 = 安装诊断(page);
+      const 媒体请求 = 安装媒体记录(page);
+      await 打开后端主壳(page, 'recruiter');
+
+      // 在谈列表：只读 match-cases 展开列表，零逐 Case 详情 GET
+      await page.getByRole('button', { name: '在谈', exact: true }).click();
+      await expect(page.getByTestId('招聘在谈卡').first()).toBeVisible({ timeout: 15_000 });
+      expect(
+        请求.some((条) => 条.method === 'GET' && 条.path === '/api/v1/recruiter/match-cases'),
+      ).toBe(true);
+      expect(请求.filter((条) => 条.method === 'GET' && /^\/api\/v1\/recruiter\/match-cases\/[^/]+$/.test(条.path))).toEqual([]);
+      await 期望无溢出(page);
+
+      // S1 已披露 Case：详情强制 GET（轮询等它落定）；零 Job/Resume 补读；头像 URL 只解码零请求
+      await page.getByTestId('招聘在谈卡').first().click();
+      await expect(page).toHaveURL(new RegExp(`#/hr/candidate/${'mc-fixture-wire-s1'}`), { timeout: 10_000 });
+      await expect(page.getByText('展接FIX 交易中台架构师').first()).toBeVisible({ timeout: 15_000 });
+      await expect.poll(() =>
+        请求.filter((条) => 条.method === 'GET' && /^\/api\/v1\/recruiter\/match-cases\/[^/]+$/.test(条.path)).length,
+        { timeout: 15_000 },
+      ).toBeGreaterThanOrEqual(1);
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
+
+      // 资料 Tab（在线简历）：多段教育/项目如实上屏；真名与头像 URL 都不落 UI 网络
+      await page.getByRole('button', { name: '在线简历', exact: true }).click();
+      await expect(page.getByText('个人优势', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('展接FIX 多活改造').first()).toBeVisible();
+      await expect(page.getByText('教育经历', { exact: true }).first()).toBeVisible();
+      await expect(page.getByText('展接FIX 候选真名')).toHaveCount(0);
+      expect(媒体请求.filter((url) => url.includes('wiring-avatar-'))).toEqual([]);
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
+      await 期望无溢出(page);
+
+      // legacy Case 全空：candidate_resume / job_detail / match_score 全 null → 占位而非补读
+      await 打开后端主壳(page, 'recruiter');
+      await page.getByRole('button', { name: '在谈', exact: true }).click();
+      await expect(page.getByTestId('招聘在谈卡').first()).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId('招聘在谈卡').nth(1).click();
+      await expect(page).toHaveURL(new RegExp(`#/hr/candidate/${'mc-fixture-wire-legacy'}`), { timeout: 10_000 });
+      await expect(page.getByText('学历缺失').first()).toBeVisible({ timeout: 15_000 });
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
+
+      expect(诊断.pageErrors).toEqual([]);
+      expect(诊断.failedRequests).toEqual([]);
+      expect(诊断.consoleErrors).toEqual([]);
+      诊断.detach();
+    });
+  });
+}

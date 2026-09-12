@@ -87,6 +87,8 @@ function 主体(role: P1角色) {
   };
 }
 
+// J-PILOT-02 起登录落点按「已水合简历 + active 意向」判建档完备（至少一条完整教育经历，
+// 含毕业时间）；educations 空会把候选打回 /student 学生分流，主壳用例全部落空。
 const 简历 = {
   profile: {
     real_name: 'P1FIX 候选人',
@@ -104,7 +106,17 @@ const 简历 = {
   skills: ['Go', '分布式事务'],
   skills_revision: 1,
   experiences: [],
-  educations: [],
+  educations: [
+    {
+      id: 'edu-fixture-p1',
+      institution: { id: 'inst-fixture-p1', display_name: 'P1FIX 大学' },
+      degree: '本科',
+      major: { id: 'major-fixture-p1', display_name: 'P1FIX 专业' },
+      start_month: '2015-09',
+      end_month: '2019-06',
+      revision: 1,
+    },
+  ],
   certificates: [],
   aggregate_revision: 1,
 };
@@ -169,6 +181,18 @@ interface P1CandidateJob形 {
   publisher_verification_status: string;
   hiring_organization_verification_status: string;
   hiring_organization_claim: { display_name: string; legal_name: string | null };
+  // release/0.2.5：用人企业摘要 required；claim-only 岗位合法档是显式 null 的六键
+  organization: {
+    organization_id: string | null;
+    display_name: string | null;
+    industry: { id: string; display_name: string } | null;
+    company_size: string | null;
+    funding_stage: string | null;
+    logo: {
+      media_id: string; media_type: 'image/png' | 'image/jpeg'; size_bytes: number;
+      width: number; height: number; url: string;
+    } | null;
+  };
   title: string;
   recruitment_type: 'social_full_time';
   category: { id: string; display_name: string };
@@ -205,6 +229,15 @@ function P1岗位(job_id: string, 覆盖: Partial<P1CandidateJob形> = {}): P1Ca
     publisher_verification_status: 'verified',
     hiring_organization_verification_status: 'verified',
     hiring_organization_claim: { display_name: 标记.同文公司, legal_name: null },
+    // claim-only 合法档：只答声明显示名，其余成员显式 null（公司路由坐标仍走 hiring_organization_ref）
+    organization: {
+      organization_id: null,
+      display_name: 标记.同文公司,
+      industry: null,
+      company_size: null,
+      funding_stage: null,
+      logo: null,
+    },
     title: 标记.同文职位,
     recruitment_type: 'social_full_time',
     category: { id: 'job-fixture-p1', display_name: '后端工程师' },
@@ -447,7 +480,7 @@ function 场景fixture(场景: P1场景名): P1场景fixture {
 
 // ── 事件源桩：只拦截 /api/v1/events/live 的 WebSocket，放行 Vite HMR 的原生套接字 ──
 // 用普通构造函数（不用 class）：非事件 URL 直接 return new 原生(...)，避免构造器返回值的类型歧义。
-async function 安装P1事件桩(page: Page): Promise<void> {
+export async function 安装P1事件桩(page: Page): Promise<void> {
   await page.addInitScript(() => {
     // 测试 seam 只挂到 window，产品 bundle 不含
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -566,6 +599,37 @@ export async function 安装P1路由(
           return;
         }
         await 答(200, 信封(岗));
+        return;
+      }
+      // Task 2 起独立职位详情按 hiring_organization_ref 补读公开企业（GET /organizations/{id}）；
+      // 给出合法公开档，避免补读落进白名单外 503（console 资源错误会破坏「零意外诊断」断言）。
+      const 公开企业匹配 = /^\/api\/v1\/organizations\/([^/]+)$/.exec(path);
+      if (公开企业匹配 && method === 'GET') {
+        await 答(200, 信封({
+          organization_id: decodeURIComponent(公开企业匹配[1]!),
+          legal_name: 'P1FIX 美团科技有限公司',
+          display_name: 标记.同文公司,
+          verified_at: 时间戳,
+          profile: {
+            brand_name: 标记.同文公司,
+            industry: { id: 'ind-fixture-p1', display_name: '本地生活' },
+            company_size: '10000_plus',
+            funding_stage: 'public',
+            office_address: 'P1FIX 市 Fixture 路 8 号',
+            benefit_codes: ['social_insurance_housing_fund'],
+            work_schedule: 'two_day_weekend',
+            company_intro: 'P1FIX 公司简介',
+            business_items: ['P1FIX 主营业务'],
+            product_intro: 'P1FIX 产品介绍',
+            team_members: [],
+            logo: null,
+            office_media: [],
+            company_media: [],
+            revision: 1,
+            updated_at: 时间戳,
+          },
+          active_verified_job_count: 1,
+        }));
         return;
       }
     }
