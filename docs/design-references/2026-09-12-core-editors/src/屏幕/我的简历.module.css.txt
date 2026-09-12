@@ -1,0 +1,358 @@
+/* A17 我的简历 · 编辑页（像素值取自 RN 源 屏幕/我的简历.js） */
+
+/* ── 代理诊断绿条 ── */
+.诊断区 {
+  flex: none;
+  padding: 0 18px;
+}
+
+.诊断条 {
+  margin-top: 2px;
+  background: var(--淡绿底);
+  border: 1px solid var(--淡绿描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 9px 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.诊断标 {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.诊断说明 {
+  flex: 1;
+  font-size: 10.5px;
+  color: var(--正文);
+}
+
+.诊断键 {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 16px;
+  background: var(--荧光绿);
+  color: var(--墨);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* 展开后的两条待优化项，视觉上挂在绿条下面 */
+.诊断详情 {
+  margin-top: 6px;
+  padding: 9px 13px;
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边2);
+  border-radius: var(--圆角-小托盘);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.诊断项 {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--标题次级);
+}
+
+/* ── 滚动区内容 ── */
+.列表 {
+  padding: 10px 18px 40px;
+  display: flex;
+  flex-direction: column; /* RN 默认 column，DOM 必须显式写 */
+  gap: 10px;
+}
+
+/* ── 卡 ──
+   2026-09-09 产品负责人定稿「纯去框」：三个区块卡删掉 1px 描边、不加投影，
+   只靠白底与页面底的色差分块；顶部诊断条的淡绿描边不在此列、原样保留。 */
+.卡 {
+  background: var(--白);
+  border-radius: var(--圆角-中卡);
+  padding: 13px 15px 4px;
+}
+
+.卡标题 {
+  font-size: var(--字号-区块标题);
+  font-weight: 800;
+  color: var(--墨);
+  margin-bottom: 4px;
+}
+
+/* 表单条目自带左右无内边距，这里补 2px 让分隔线略微内收 */
+.条目区 {
+  padding: 0 2px;
+}
+
+/* ── 工作经历行 ── */
+.经历行 {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--分隔线);
+  text-align: left;
+}
+.经历行.末行 {
+  border-bottom: none;
+}
+
+.经历主体 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.经历公司 {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.经历职位 {
+  font-size: 12.5px;
+  color: var(--正文);
+  margin-top: 3px;
+}
+
+.经历时间 {
+  font-size: 11px;
+  color: var(--次要浅);
+  margin-top: 3px;
+}
+
+/* ── 关键项目：挂在所属经历行下面，缩进一档表达从属关系 ── */
+.项目组 {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 7px;
+  padding-left: 9px;
+  border-left: 2px solid var(--淡绿描边);
+}
+
+.项目行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.项目名 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--标题次级);
+}
+
+.项目附 {
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+.项目结果 {
+  flex: 1 1 100%;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--次要浅);
+}
+
+/* ── 专业技能标签墙 / 空态行 ── */
+.标签行 {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 14px;
+  text-align: left;
+}
+
+.标签组 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.标签 {
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--淡绿底);
+  color: var(--深绿文字);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.空态 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--最弱);
+}
+
+/* 证书名沿用经历公司的字重，年份走 .经历时间 */
+.证书名 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+/* ── 多意向引导行：一行轻提示，不做成卡片，别跟简历分节抢分量 ── */
+.加意向行 {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 8px;
+  text-align: left;
+}
+
+.加意向文 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--深绿);
+}
+
+/* ── 个人优势：数据里带 \n，靠 pre-line 还原换行 ── */
+.优势正文 {
+  font-size: 12.5px;
+  line-height: 24px; /* RN lineHeight 24 */
+  color: var(--正文);
+  padding-bottom: 12px;
+  white-space: pre-line;
+}
+
+/* ── 附件简历 ── */
+.附件行 {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  text-align: left;
+}
+
+.PDF块 {
+  flex: none;
+  width: 30px;
+  height: 36px;
+  border-radius: 5px;
+  background: var(--淡绿底);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.PDF字 {
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.附件主体 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.附件名 {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.附件说明 {
+  font-size: 10.5px;
+  color: var(--次要浅);
+  margin-top: 2px;
+}
+
+.附件提示 {
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--最弱);
+  padding-bottom: 10px;
+}
+
+/* P2 Task 6（Backend）：标题行只补 flex 排布，几何仍由 .卡标题 决定；
+   ＋ 复用区块标题字号；空态同卡内轻量一行 —— 三条之外不加任何新规则 */
+.附件标题行 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.附件添加键 {
+  border: 0;
+  background: transparent;
+  color: var(--深绿);
+  font-size: var(--字号-区块标题);
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.附件空态 {
+  padding: 12px 0;
+  color: var(--最弱);
+  font-size: 12.5px;
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* 基本信息行内编辑态（标注意见 #6）：版式与 表单条目 对齐，切换不跳动 */
+.编辑条目 {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+.编辑条目标签 {
+  font-size: 12px;
+  color: var(--次要浅);
+}
+.编辑条目输入 {
+  width: 100%;
+  margin-top: 6px;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--深绿);
+  border-bottom: 1px solid var(--淡绿描边);
+  padding-bottom: 2px;
+}
+
+/* 诊断项改成可点行（标注 21:22：这块就是告诉用户哪里要补，点了要能直接去补）*/
+.诊断项 {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.诊断项文 {
+  flex: 1;
+  min-width: 0;
+}
+
+.诊断项去 {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--深绿);
+}

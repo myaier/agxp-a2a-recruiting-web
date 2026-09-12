@@ -1,0 +1,912 @@
+/* D0/D0b/D0c 发布岗位 —— 三步合一。
+   表单条目取自 工作经历.module.css（编辑视图），
+   textarea 卡取自 引导问答 的个人优势卡，保持企业端与求职端同构。 */
+
+/* 发布壳：整屏 flex 列容器（返回栏 + 步骤体 + 主按钮） */
+.发布壳 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 编辑态的分段切换（替代进度条）：三步可直接点，改哪步进哪步 ── */
+.分段行 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  margin: 0 18px 6px;
+  padding: 3px;
+  background: var(--浅灰底);
+  border-radius: 11px;
+}
+.分段 {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 0;
+  border-radius: 9px;
+  font-size: 12px;
+  color: var(--次要);
+  text-align: center;
+}
+.分段选中 {
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  font-weight: 700;
+  color: var(--深绿文字);
+}
+
+/* ── 第一步：表单条目（同 工作经历 编辑视图）── */
+/* 一键上传 JD 横幅的容器(2026-09-01):与表单区同左右边距,横幅本体样式复用 通用.代理横幅 */
+.上传JD区 {
+  /* 横幅从左到右撑满,与主页 agent 框同宽(用户 2026-09-02 定稿):
+     宽度写死为「左右各 11px」这一条主页规则,不依赖容器内边距 */
+  padding: 0 0 6px;
+}
+
+.上传JD区 > button {
+  margin: 12px 11px 0;
+  width: calc(100% - 22px);
+}
+
+.表单区 {
+  padding: 6px 22px 0;
+}
+.编辑条目 {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+.条目标签 {
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：题名降为小灰标，让内容而不是问题占版面 */
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
+  margin-bottom: 10px;
+}
+/* 自由输入的字段（岗位名称 / 工作城市 / 办公地点）。
+   标注 2026-08-22「岗位名称和职位类别是不是重复了」：两者不重复 ——
+   岗位名称是自己起的名字（打字），职位类别是平台两级字典（点开选、初筛按它匹配）。
+   之前两条都是「粗标签 + 一行文字」，不点开分不出哪条要打字，所以这里给输入型
+   字段套一个看得见的框：空框 + 光标 = 手机上「这里要打字」的通用形态，
+   与下方 .选择条目 的「一整行 + 右侧 ›」形成两种可分辨的条目形态，不靠加文案解释。
+   框的像素沿用本页原来的日期输入框，不新造一套（那个日期字段 2026-08-22 已随
+   「最晚可接受实习开始日期」一起删除，样式块也跟着撤了）。 */
+.条目输入 {
+  width: 100%;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边加深一档 */
+  border: 1px solid var(--描边深);
+  border-radius: 10px;
+  padding: 10px 12px;
+  outline: none;
+  background: var(--白);
+  /* 标注 2026-08-22：本页正文字号按「招聘类型」宫格里的 .类型名 13.5px 统一 */
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+.条目输入::placeholder {
+  font-weight: 400;
+  color: var(--最弱);
+}
+.条目输入:focus {
+  border-color: var(--淡绿描边);
+}
+
+/* 薪资带：两个数字框 + 连字符（框样式同 工作经历 的月份输入）*/
+.薪资行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.薪资框 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边加深一档 */
+  border: 1px solid var(--描边深);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: var(--白);
+}
+.薪资数字输入 {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--墨);
+}
+.薪资数字输入::placeholder {
+  font-weight: 400;
+  color: var(--最弱);
+}
+.薪资单位 {
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--次要浅);
+}
+.薪资连字 {
+  flex: none;
+  color: var(--次要浅);
+}
+
+/* ── 点击式选择条目（职位类别 / 年薪月数）：点开弹层选 ──
+   标注 2026-08-22：原来它和 .编辑条目 一样是「标签在上、值在下」两行，
+   跟自由输入的岗位名称长得一模一样，所以看着像重复字段。
+   这里改成一整行（标签靠左、值 + › 靠右）—— 手机上这就是「点开挑一个」的固定形态，
+   和上面带框的 .条目输入 一眼分得开。 */
+.选择条目 {
+  width: 100%;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：「值 ›」选择行 = 白底 + 实线描边深盒
+     （同 完善资料 的选择行），分隔线改为整圈描边 */
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--描边深);
+  border-radius: 12px;
+  background: var(--白);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+/* 行内的标签不再压下方值，去掉栈式布局留的下边距 */
+.选择条目 .条目标签 {
+  flex: none;
+  margin-bottom: 0;
+}
+
+.选择条目值行 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.条目值 {
+  flex: 1;
+  min-width: 0;
+  /* 标注 2026-08-22：与 .类型名 13.5px 对齐；比 17px 的标签明显轻，不再像第二个标题 */
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--墨);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* 快捷片（办公方式 / 硬性条件，同 工作经历 的行业片）*/
+.快捷片行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+.快捷片 {
+  padding: 6px 12px;
+  border-radius: var(--圆角-胶囊);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选 = 白底 + 深描边 + 次要色中字重 */
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  /* 标注 2026-08-22：办公方式的片原来 12px，比招聘类型宫格里的 13.5px 小一号，
+     同一屏两种正文字号看着不齐 —— 统一到 13.5px */
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--次要);
+}
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中 = 1.5px 亮绿描边 + 墨字 + ✓，删淡绿实底 */
+.快捷片选中 {
+  border: 1.5px solid var(--亮绿);
+  color: var(--墨);
+  font-weight: 700;
+}
+.快捷片选中::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
+}
+
+/* ── 第二 / 三步：大 textarea 卡（同 引导问答 的个人优势卡）── */
+.描述卡 {
+  margin: 16px 18px 0;
+  background: var(--白);
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：文本输入卡描边加深一档 */
+  border: 1px solid var(--描边深);
+  border-radius: var(--圆角-中卡);
+  padding: 16px;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+.描述输入 {
+  flex: 1;
+  min-height: 200px;
+  width: 100%;
+  display: block;
+  border: none;
+  outline: none;
+  background: transparent;
+  resize: none;
+  padding: 0;
+  font-size: 13.5px;
+  line-height: 2;
+  color: var(--正文);
+  font-family: inherit;
+}
+.描述底 {
+  border-top: 1px solid var(--分隔线);
+  margin-top: 12px;
+  padding-top: 9px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.描述计数 {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--次要浅);
+}
+
+/* ── 第三步：硬性条件区 ── */
+.硬性区 {
+  padding: 16px 22px 0;
+}
+
+.初筛合同 {
+  margin: 18px 22px 0;
+  padding: 14px;
+  border: 1px solid var(--淡绿描边);
+  border-radius: 14px;
+  background: var(--淡绿底2);
+}
+
+.初筛合同标题 {
+  font-size: var(--字号-区块标题);
+  font-weight: 700;
+  color: var(--深绿文字);
+}
+
+.初筛合同说明 {
+  margin-top: 5px;
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--次要浅);
+}
+
+/* 2026-09-09 产品负责人：.已选片行（胶囊行容器）随「硬性条件」展示区块一并删除 */
+/* 已写进合同的条件：选中态片 + 右侧 ✕，点整片即删 */
+.已选片 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 12px;
+  border-radius: var(--圆角-胶囊);
+  background: var(--淡绿底);
+  border: 1px solid var(--淡绿描边);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
+.已选片删 {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--次要浅);
+}
+
+/* 一条都没有时的提示：说清后果，而不是留一片空白 */
+.条件空提示 {
+  margin-top: 10px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--次要浅);
+}
+
+/* 备选区小标 */
+.备选标 {
+  margin-top: 16px;
+  font-size: 11px;
+  color: var(--最弱);
+}
+
+/* 自定义添加行（输入框 + 添加键，版式同 屏蔽名单 的添加行）*/
+.自定义行 {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  margin-top: 14px;
+}
+.自定义输入 {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--描边深);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--墨);
+  background: var(--白);
+  outline: none;
+  font-family: inherit;
+}
+.自定义输入::placeholder {
+  color: var(--最弱);
+}
+.自定义输入:focus {
+  border-color: var(--淡绿描边);
+}
+.自定义键 {
+  flex: none;
+  padding: 0 16px;
+  border-radius: 12px;
+  background: var(--荧光绿);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+}
+.自定义键禁用 {
+  background: var(--浅灰底);
+  color: var(--最弱);
+}
+/* 双盲说明：淡绿卡（同 引导问答 的优势示例卡），强调 AI 代理执行语义 */
+.硬性说明 {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: var(--圆角-小托盘);
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边2);
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: var(--次要);
+}
+
+/* ── Task 5：四问硬性事实的三态钮 ──
+   中性(未说明)=快捷片同款白底深描边 + 灰 —；
+   必须=全站选择风格统一的亮绿描边墨字 + 绿 ✓；
+   不要求=浅灰底次要字 + ×。三态共用胶囊圆角与既有色板，不引新颜色。 */
+.硬性事实行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+.硬性事实片 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--圆角-胶囊);
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--次要);
+}
+.硬性事实必须 {
+  border: 1.5px solid var(--亮绿);
+  color: var(--墨);
+  font-weight: 700;
+}
+.硬性事实必须 .档符号 {
+  color: var(--亮绿);
+}
+/* 不要求：降为灰排但保留同一枚胶囊与描边，跟「未说明」的空白 — 一眼分得开 */
+.硬性事实不要求 {
+  background: var(--浅灰底2);
+  color: var(--次要浅);
+}
+.硬性事实不要求 .档符号 {
+  font-weight: 700;
+}
+.档符号 {
+  min-width: 12px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--最弱);
+}
+
+/* 2026-09-09 产品负责人：.存量片（存量手动条只读胶囊）随「硬性条件」展示区块一并删除 */
+
+/* ── BOSS 对照补齐（2026-08-19）：红线提示 / 不可改注 / 锁标 / 档位片 / 同意行 ── */
+
+/* JD 红线提示：联系方式与歧视性内容。中性灰底，不做成吓人的红框 */
+.红线提示 {
+  margin: 2px 22px 12px;
+  background: var(--浅灰底2);
+  border-radius: 11px;
+  padding: 10px 13px;
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: var(--次要);
+}
+
+/* 第一步底部：发布后不可修改的四项 */
+.不可改注 {
+  padding: 12px 26px 0;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--最弱);
+}
+
+/* 编辑态字段标签后的小锁字 */
+.锁标 {
+  margin-left: 7px;
+  font-size: 10px;
+  color: var(--最弱);
+  font-weight: 400;
+}
+
+/* 档位生成的合同条：淡绿底，区别于可删的手动条 */
+.档位片 {
+  background: var(--淡绿底2);
+  border: 1px solid var(--淡绿描边2);
+  color: var(--深绿文字);
+}
+
+/* 经验/学历两组档位之间的间距 */
+.档位间距 {
+  margin-top: 14px;
+}
+
+/* 发布即同意行 */
+.同意行 {
+  margin: 14px 26px 0;
+  font-size: 11px;
+  line-height: 1.8;
+  color: var(--次要浅);
+}
+
+.同意链接 {
+  display: inline;
+  color: var(--深绿);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+/* ── 招聘类型宫格（第一步最前，2026-08-18 用户定：类型先选、表单跟着变）── */
+.类型宫格 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.类型块 {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  text-align: left;
+}
+
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中 = 1.5px 亮绿描边，删淡绿实底/橄榄描边 */
+.类型块选中 {
+  border: 1.5px solid var(--亮绿);
+}
+
+.类型名 {
+  font-size: 13.5px;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选降为次要色中字重 */
+  font-weight: 500;
+  color: var(--次要);
+}
+
+/* 2026-08-24 全站选择风格统一（C1 定稿）：选中名墨色加粗 + 亮绿 ✓ 前缀 */
+.类型块选中 .类型名 {
+  color: var(--墨);
+  font-weight: 700;
+}
+.类型块选中 .类型名::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
+}
+
+.类型副 {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--次要浅);
+}
+
+/* 进度轨下的步名 */
+.步名行 {
+  display: flex;
+  flex-direction: row;
+  padding: 5px 26px 0;
+  gap: 8px;
+}
+
+.步名 {
+  flex: 1;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--最弱);
+}
+
+.步名当前 {
+  color: var(--墨);
+  font-weight: 700;
+}
+
+/* 类型自适应的收起说明（校招/实习没有经验档） */
+.适配注 {
+  padding: 12px 0 10px;
+  border-bottom: 1px solid var(--分隔线);
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+/* 第三步下半场的小节标：结构化要求之后才是写给人看的文本 */
+.要求文标 {
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：题名降为小灰标（仍与 条目标签 同级） */
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
+  padding: 16px 26px 10px;
+}
+
+/* ── P4 互认：结构化要求确认勾选框（仅 Backend 第三步，紧跟职位要求输入）── */
+.结构化确认 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 26px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--弱化);
+}
+
+.结构化确认 input {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.结构化确认警示 {
+  border-color: #e45745;
+  background: #fff4f1;
+}
+
+.结构化确认提示 {
+  display: block;
+  margin: -8px 20px 12px;
+  color: #b83624;
+  font-size: 12px;
+}
+
+/* ── 职业分类两级选择层（标注 00:21：像选省份那样 大类 → 小类）── */
+.分类遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  display: flex;
+  align-items: flex-end;
+  z-index: 70;
+}
+
+.分类层 {
+  width: 100%;
+  height: 62%;
+  background: var(--白);
+  border-radius: 18px 18px 0 0;
+  padding: 10px 0 calc(var(--安全区下) + 8px);
+  display: flex;
+  flex-direction: column;
+}
+
+.分类抓手 {
+  flex: none;
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  margin: 0 auto 12px;
+}
+
+.分类标题 {
+  flex: none;
+  /* 职位类别选择层的层标题 */
+  font-size: var(--字号-区块标题);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+  text-align: center;
+  padding-bottom: 10px;
+}
+
+.分类体 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  border-top: 1px solid var(--分隔线);
+}
+
+/* 左栏大类：浅灰底，选中项白底 + 荧光绿左条 */
+.大类栏 {
+  flex: none;
+  width: 108px;
+  background: var(--浅灰底2);
+}
+
+.大类项 {
+  display: block;
+  width: 100%;
+  padding: 13px 14px;
+  font-size: 12.5px;
+  color: var(--正文);
+  text-align: left;
+  position: relative;
+}
+
+.大类项选中 {
+  background: var(--白);
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.大类项选中::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--荧光绿);
+}
+
+/* 右栏小类 */
+.小类栏 {
+  flex: 1;
+  min-width: 0;
+}
+
+.小类项 {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 18px;
+  font-size: 13px;
+  color: var(--墨);
+  text-align: left;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.小类项选中 {
+  font-weight: 700;
+  color: var(--深绿);
+}
+
+.小类勾 {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--深绿);
+}
+
+/* ── 筛选要求（标注 13:40）：小标 + 常驻多行输入 ── */
+.筛选要求标 {
+  margin: 18px 0 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.筛选要求题 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
+}
+
+.筛选要求注 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.筛选要求说明 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--次要浅);
+}
+
+.筛选要求输入 {
+  width: 100%;
+  height: 121px;
+  min-height: 121px;
+  border-radius: 12px;
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  padding: 11px 13px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--墨);
+  resize: none;
+}
+
+.筛选要求输入::placeholder {
+  color: var(--灰白);
+}
+
+/* 日薪/时薪的滚轮触发键（标注 14:50：改滚轮，不手输） */
+.计薪键 {
+  flex: 1;
+  height: 46px;
+  border-radius: 12px;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：点开去滚轮选的值行 = 白底 + 实线描边深 */
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.计薪单位 {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--次要浅);
+}
+
+/* ── 编辑态底部双键（BOSS 对照 2026-08-20）：删除 + 保存 ──
+   像素与 通用.module.css 的 .主按钮区 / .主按钮 对齐，只是拆成两枚 */
+.底键区 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  padding: 12px 18px calc(var(--安全区下) + 12px);
+}
+
+/* 删除是不可逆动作，但它不是这一屏的主操作 —— 白底红字，不做实心红块 */
+.删除键 {
+  flex: 1;
+  height: 48px;
+  border-radius: var(--圆角-按钮);
+  background: var(--白);
+  border: 1.5px solid var(--紧急描边);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--紧急文字);
+}
+
+.保存键 {
+  flex: 1.6;
+  height: 48px;
+  border-radius: var(--圆角-按钮);
+  background: var(--荧光绿);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--墨);
+}
+
+/* ── 删除二次确认层（版式同 岗位管理 的确认层）── */
+.删遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28px;
+  z-index: 80;
+  animation: 删遮罩淡入 0.18s ease both;
+}
+
+.删确认框 {
+  width: 100%;
+  background: var(--白);
+  border-radius: 18px;
+  padding: 20px 18px 14px;
+  animation: 删弹层放大 0.2s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.删标题 {
+  /* 确认弹层标题 */
+  font-size: var(--字号-区块标题);
+  font-weight: 700;
+  color: var(--墨);
+  text-align: center;
+}
+
+.删正文 {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--次要);
+  text-align: center;
+  margin-top: 8px;
+}
+
+.删键行 {
+  display: flex;
+  flex-direction: row;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.删取消 {
+  flex: 1;
+  padding: 11px 0;
+  border-radius: 12px;
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--正文);
+}
+
+.删执行 {
+  flex: 1;
+  padding: 11px 0;
+  border-radius: 12px;
+  background: var(--意向);
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+}
+
+@keyframes 删遮罩淡入 {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes 删弹层放大 {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* 薪资承诺小字(2026-08-26:原 AI 初筛卡删除,唯一有信息量的一句降格至此) */
+.薪资小注 {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--弱化);
+  margin: 2px 0 4px;
+}
+
+/* 多行岗位要求与代理偏好沿用上方单行输入的绿色焦点边框。 */
+.筛选要求输入:focus {
+  outline: none;
+  border-color: var(--淡绿描边);
+}
+
+/* 仅公开岗位要求标签留出12px，不影响代理筛选标题。 */
+.硬性区 > label[for="岗位要求"] {
+  display: block;
+  margin-bottom: 12px;
+}

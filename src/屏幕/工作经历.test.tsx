@@ -8,7 +8,7 @@
 // 证书年份空串；unresolvedCount 只进保存点击的 轻提示（还有 N 处需要选择目录或补充必填项），
 // 不渲染任何提示节点；确认 work 分区只在既有保存成功后。
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -98,12 +98,17 @@ function render工作经历(选项: {
       引导预填: 选项.建档 === undefined ? null : { 城市们: [], 职位: [], 建档: 选项.建档 },
     },
     后端状态: { 候选预填状态: 选项.预填 ?? 创建空候选预填状态() },
-    派发: vi.fn((动作: { 型?: string; 经历?: 简历经历段[]; 教育?: 简历教育段[]; 技能?: string[]; 证书?: 简历证书[] }) => {
+    派发: vi.fn((动作: { 型?: string; 经历?: 简历经历段[]; 教育?: 简历教育段[]; 技能?: string[]; 证书?: 简历证书[]; 链接?: string }) => {
       if (动作.型 === '存简历') {
         mock应用状态.状态.简历经历 = 动作.经历 ?? mock应用状态.状态.简历经历;
         mock应用状态.状态.简历教育 = 动作.教育 ?? mock应用状态.状态.简历教育;
         mock应用状态.状态.简历技能 = 动作.技能 ?? mock应用状态.状态.简历技能;
         mock应用状态.状态.简历证书 = 动作.证书 ?? mock应用状态.状态.简历证书;
+        触发重渲染?.();
+      }
+      // 模拟全局 reducer：存作品集链接 写权威切片（Backend 该切片由 GET 水合，Mock 由输入写）
+      if (动作.型 === '存作品集链接') {
+        mock应用状态.状态.简历作品集链接 = 动作.链接 ?? '';
         触发重渲染?.();
       }
     }),
@@ -116,8 +121,23 @@ function render工作经历(选项: {
       }),
     },
   };
-  render(<宿主 />);
-  return { 派发: mock应用状态.派发 as ReturnType<typeof vi.fn>, 重渲染: () => 触发重渲染?.() };
+  const 视图 = render(<宿主 />);
+  return {
+    派发: mock应用状态.派发 as ReturnType<typeof vi.fn>,
+    重渲染: () => 触发重渲染?.(),
+    卸载: () => 视图.unmount(),
+  };
+}
+
+/** 手控 Promise：让某个目录请求「在飞」，用例决定它何时迟到返回 */
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((ok, fail) => {
+    resolve = ok;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
 }
 
 describe('工作经历 行业弹层 Backend', () => {
@@ -131,7 +151,7 @@ describe('工作经历 行业弹层 Backend', () => {
       if (!query.parentId && !query.q) {
         return {
           items: [
-            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false },
+            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -179,7 +199,7 @@ describe('工作经历 行业弹层 Backend', () => {
       if (!query.parentId && !query.q) {
         return {
           items: [
-            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false },
+            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -188,7 +208,7 @@ describe('工作经历 行业弹层 Backend', () => {
       if (query.parentId === 'ind_fin') {
         return {
           items: [
-            { id: 'ind_sub', display_name: '证券与基金', parent_id: 'ind_fin', selectable: false },
+            { id: 'ind_sub', display_name: '证券与基金', parent_id: 'ind_fin', selectable: false, has_children: true },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -240,7 +260,7 @@ describe('工作经历 行业弹层 Backend', () => {
         根调用 += 1;
         if (根调用 === 1) {
           return {
-            items: [{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false }],
+            items: [{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }],
             nextCursor: 'ind_cur_1',
             catalogVersion: 'v2',
           };
@@ -271,6 +291,170 @@ describe('工作经历 行业弹层 Backend', () => {
     await screen.findByText('互联网');
     expect(screen.getByText('金融科技')).toBeTruthy();
   });
+
+  // review-r2：根栏追加页换版本重开时，旧版本根下的子/孙展开（派生状态）同步失效，
+  // 重新展开从新版本取数，不再残留旧版本条目可选可提交
+  it('行业弹层根追加页换版本：旧根下的子/孙展开失效，重新展开取新版本', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({
+      items,
+      nextCursor,
+      catalogVersion: 版本,
+    });
+    let 换代 = false;
+    const 查询Taxonomy = vi.fn(async (
+      _kind: string,
+      query: { parentId?: string; cursor?: string; q?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (query.cursor === 'ind_cur_1') {
+        // 追加页来自新快照：触发根列表重开
+        return 页([{ id: 'ind_old', display_name: '旧版本追加行业', parent_id: null, selectable: false, has_children: false }], null, 'v2');
+      }
+      if (!query.parentId && !query.q) {
+        return 选项?.强制刷新
+          ? 页([{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], null, 'v2')
+          : 页([{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], 'ind_cur_1', 'v1');
+      }
+      if (query.parentId === 'ind_fin') {
+        return 换代
+          ? 页([{ id: 'ind_new', display_name: '新子行业', parent_id: 'ind_fin', selectable: true, has_children: false }], null, 'v2')
+          : 页([{ id: 'ind_sub', display_name: '证券与基金', parent_id: 'ind_fin', selectable: false, has_children: true }], null, 'v1');
+      }
+      if (query.parentId === 'ind_sub') {
+        return 页([{ id: 'ind_leaf', display_name: '公募基金', parent_id: 'ind_sub', selectable: true, has_children: false }], null, 'v1');
+      }
+      return 页([], null, 'v2');
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await screen.findByText('金融科技');
+    // 展开根 → 子项，再展开子 → 孙叶子
+    await 用户.click(screen.getByText('金融科技'));
+    await 用户.click(await screen.findByText('证券与基金'));
+    await screen.findByText('公募基金');
+    // 根栏追加页换版本 → 根列表重开（新版本同名根），旧版本根下的子/孙展开一并失效
+    换代 = true;
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(screen.queryByText('公募基金')).toBeNull());
+    expect(screen.queryByText('证券与基金')).toBeNull();
+    // 重新展开同一根：从新版本取数，不再命中旧展开缓存
+    await 用户.click(screen.getByText('金融科技'));
+    await screen.findByText('新子行业');
+    expect(screen.queryByText('证券与基金')).toBeNull();
+  });
+
+  // review-r3（Codex r3 F1）：根换代清理作废在飞的旧代展开请求——迟到写回被页内
+  // 行业代际作废，不把旧版本条目重新挂回新版本列表；重新展开从新版本取数。
+  it('行业弹层子展开在飞时根换代：迟到写回被作废，重新展开取新版本', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({
+      items,
+      nextCursor,
+      catalogVersion: 版本,
+    });
+    let 换代 = false;
+    const { promise: 慢Promise, resolve: 慢Resolve } = deferred<{
+      items: unknown[];
+      nextCursor: string | null;
+      catalogVersion: string;
+    }>();
+    const 查询Taxonomy = vi.fn(async (
+      _kind: string,
+      query: { parentId?: string; cursor?: string; q?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (!query.parentId && !query.q && !query.cursor) {
+        return 选项?.强制刷新
+          ? 页([{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], null, 'v2')
+          : 页([{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], 'ind_cur_1', 'v1');
+      }
+      if (query.cursor === 'ind_cur_1') {
+        // 追加页来自新快照：触发根列表重开
+        return 页([{ id: 'ind_old', display_name: '旧版本追加行业', parent_id: null, selectable: false, has_children: false }], null, 'v2');
+      }
+      if (query.parentId === 'ind_fin') {
+        return 换代
+          ? 页([{ id: 'ind_new', display_name: '新子行业', parent_id: 'ind_fin', selectable: true, has_children: false }], null, 'v2')
+          : 慢Promise;
+      }
+      return 页([], null, 'v2');
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await screen.findByText('金融科技');
+    // 展开根 → 子项请求在飞（慢响应未回）
+    await 用户.click(screen.getByText('金融科技'));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('industries', expect.objectContaining({ parentId: 'ind_fin' })));
+    // 根栏追加页换版本 → 根列表重开，旧版本派生展开状态清空（子展开仍在飞）
+    换代 = true;
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull());
+    // 旧代子项迟到写回：被代际作废，不重挂旧版本条目
+    慢Resolve(页([{ id: 'ind_old_sub', display_name: '旧子行业', parent_id: 'ind_fin', selectable: true, has_children: false }], null, 'v1'));
+    await waitFor(() => expect(screen.queryByText('旧子行业')).toBeNull());
+    // 重新展开同一根：从新版本取数（不被旧展开缓存挡住）
+    await 用户.click(screen.getByText('金融科技'));
+    await screen.findByText('新子行业');
+    expect(screen.queryByText('旧子行业')).toBeNull();
+  });
+
+  // review-r3（Codex r3 F2）：子列表换代替换时，旧子项名下的孙项状态一并失效——
+  // v2 复用同 ID 子项时不再把 v1 孙项重新挂上去（沿 选期望行业 round-2 的摘旧做法）。
+  it('行业弹层子列表换代：旧子的孙项状态失效，同 ID 子不再挂旧孙项', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({
+      items,
+      nextCursor,
+      catalogVersion: 版本,
+    });
+    let 换代 = false;
+    const 查询Taxonomy = vi.fn(async (
+      _kind: string,
+      query: { parentId?: string; cursor?: string; q?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (!query.parentId && !query.q && !query.cursor) {
+        return 页([{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], null, 'v1');
+      }
+      if (query.cursor === 'sub_cur_v1') {
+        // 子项追加页来自新快照：触发子列表整组重开
+        return 页([{ id: 'ind_extra', display_name: '旧追加子行业', parent_id: 'ind_fin', selectable: true, has_children: false }], null, 'v2');
+      }
+      if (query.parentId === 'ind_fin') {
+        // 换代前后都复用同一子 ID，差别在名下孙项（v1 公募基金 / v2 新孙叶子）
+        const 子 = { id: 'ind_sub', display_name: '证券与基金', parent_id: 'ind_fin', selectable: false, has_children: true };
+        return 换代 || 选项?.强制刷新
+          ? 页([子], null, 'v2')
+          : 页([子], 'sub_cur_v1', 'v1');
+      }
+      if (query.parentId === 'ind_sub') {
+        return 换代
+          ? 页([{ id: 'ind_leaf_v2', display_name: '新孙叶子', parent_id: 'ind_sub', selectable: true, has_children: false }], null, 'v2')
+          : 页([{ id: 'ind_leaf', display_name: '公募基金', parent_id: 'ind_sub', selectable: true, has_children: false }], null, 'v1');
+      }
+      return 页([], null, 'v2');
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await screen.findByText('金融科技');
+    // 展开根 → 子项，再展开子 → 孙叶子（v1）
+    await 用户.click(screen.getByText('金融科技'));
+    await 用户.click(await screen.findByText('证券与基金'));
+    await screen.findByText('公募基金');
+    // 子列表追加页换版本 → 整组重开（v2 复用同 ID 子项），旧子名下的孙项状态失效
+    换代 = true;
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(screen.queryByText('公募基金')).toBeNull());
+    expect(screen.queryByText('旧追加子行业')).toBeNull();
+    // 重新展开同 ID 子项：从新版本取孙项，不再命中旧孙缓存
+    await 用户.click(screen.getByText('证券与基金'));
+    await screen.findByText('新孙叶子');
+    expect(screen.queryByText('公募基金')).toBeNull();
+  });
 });
 
 // review-r3 R3-Minor-2：Backend 行业弹层去掉自由文本输入——它看起来可保存但完成守卫要求引用，
@@ -285,7 +469,7 @@ describe('工作经历 经历编辑页 Backend 行业无自由文本（R3-Minor-
     const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
       if (!query.parentId && !query.q) {
         return {
-          items: [{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false }],
+          items: [{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
@@ -668,7 +852,7 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
       if (!query.parentId && !query.q) {
         return {
           items: [
-            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false },
+            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -1021,6 +1205,109 @@ describe('工作经历 · Task 4 资料接线', () => {
   });
 });
 
+// ── Task 1（core editors §6.1）：日常作品集写入三态 —— 链接编辑意图独立于 onboarding：
+// 未编辑省略属性、明确清空 null、设置字符串；失败保留输入可重试、成功清意图取权威回显；
+// 普通编辑不生成建档草稿；空身份 + 链接脏沿既有「请先选择求职状态」提示阻止假成功，不离页。
+describe('工作经历 · 日常作品集写入（Task 1）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+    mock确认分区.mockClear();
+    mock更新草稿.mockClear();
+  });
+
+  it('日常编辑（无旅程标记）设置链接：保存带规范化 URL，且不生成建档草稿', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({ 经历: [], 教育: [完整教育], 保存简历, 作品集链接: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    await 用户.tab();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({ 作品集链接: 'https://github.com/shen' }));
+    expect(mock更新草稿).not.toHaveBeenCalled();
+  });
+
+  it('日常编辑（无旅程标记）清空链接：保存带 null', async () => {
+    const 保存简历 = vi.fn(async (_写入: Record<string, unknown>) => {});
+    render工作经历({
+      经历: [], 教育: [完整教育], 保存简历, 作品集链接: 'https://github.com/shen',
+    });
+    const 用户 = userEvent.setup();
+    await 用户.clear(screen.getByLabelText('作品集或项目链接'));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历.mock.calls[0][0]).toEqual(expect.objectContaining({ 作品集链接: null }));
+  });
+
+  it('保存失败且权威水合旧 URL 后，本次输入仍保留在输入框可手动重试；重试成功清意图', async () => {
+    let 次数 = 0;
+    const 保存简历 = vi.fn(async () => {
+      次数 += 1;
+      if (次数 === 1) {
+        // 模拟 处理写入错误 的权威水合：旧 URL 回 Context
+        mock应用状态.状态.简历作品集链接 = 'https://old.example.com';
+        throw new Error('保存失败');
+      }
+    });
+    render工作经历({ 经历: [], 教育: [完整教育], 保存简历, 作品集链接: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    // 权威水合回写了旧 URL，但已触碰的本地输入不被覆盖
+    // （点保存先失焦 → onBlur 规范化已把输入收成带协议形态）
+    const 输入 = screen.getByLabelText('作品集或项目链接') as HTMLInputElement;
+    expect(输入.value).toBe('https://github.com/shen');
+    // 手动重试成功后取权威回显并清意图
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(2));
+    expect(mock轻提示).toHaveBeenCalledWith('简历已保存');
+    expect(mock跳转).toHaveBeenCalled();
+  });
+
+  it('身份空且链接脏：不发保存、不提示成功、不离页，沿既有求职状态提示收口', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({
+      经历: [], 教育: [完整教育], 保存简历,
+      基本信息: { 真名: '沈', 开始工作年: '', 身份: '' },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(保存简历).not.toHaveBeenCalled();
+    expect(mock轻提示).not.toHaveBeenCalledWith('简历已保存');
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock轻提示).toHaveBeenCalledWith('请先选择求职状态');
+  });
+
+  it('旅程草稿恢复的链接已改（刷新后未触碰输入）：保存仍带草稿里的三态值', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({
+      经历: [], 教育: [完整教育], 保存简历,
+      建档: { 资料: { 作品集链接: 'https://github.com/shen' } },
+    });
+    const 用户 = userEvent.setup();
+    // 未触碰输入框（跟随草稿），直接保存
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({ 作品集链接: 'https://github.com/shen' }));
+  });
+
+  it('旅程草稿恢复的明确清空（刷新后未触碰输入）：保存仍带 null', async () => {
+    const 保存简历 = vi.fn(async (_写入: Record<string, unknown>) => {});
+    render工作经历({
+      经历: [], 教育: [完整教育], 保存简历,
+      建档: { 资料: { 作品集链接: null } },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历.mock.calls[0][0]).toEqual(expect.objectContaining({ 作品集链接: null }));
+  });
+});
+
 // ── review-cx F4：证书行内录入接 编辑中.certificate（冻结合同 7 的证书编辑器变体）──
 // 列表视图「证书与语言」的行内输入是旅程里唯一的证书编辑控件：输入即写草稿
 // （certificate 变体：本地编号 + 名称），刷新后回填输入框原位；「添加」是它的
@@ -1085,5 +1372,492 @@ describe('工作经历 · 证书行内输入接线（review-cx F4）', () => {
     const 末次 = mock更新草稿.mock.calls.at(-1)![0];
     expect('编辑中' in 末次).toBe(false);
     expect((输入 as HTMLInputElement).value).toBe('');
+  });
+});
+
+// ── Task 5（core editors §5.2）：教育 学校/专业 候选行共用 ──────────────
+// 一个具体组件（教育目录候选列表）供学校与专业在两模式都调用：输入框、词、候选显隐、
+// 选中引用、250ms 查询、目录版本/迟到响应守卫全部留在本页外层。
+// Mock 用现有 高校名录/专业名录 演示种子做局部搜索/分页，选中只落文本（沿用本地选择控制，
+// 不落引用）；Backend 回调通过当前查询页的稳定键解析回引用，同名不同 ID 不串。
+describe('工作经历 教育编辑页 共用候选（Task 5）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+    mock确认分区.mockClear();
+    mock更新草稿.mockClear();
+  });
+
+  /** 存简历 里首条教育段（无则 undefined） */
+  function 首条教育(): { 学校: string; 学校引用?: unknown; 专业: string; 专业引用?: unknown } | undefined {
+    const 派发 = mock应用状态.派发;
+    const 调用 = 派发.mock.calls.find(
+      (c: unknown[]) => (c[0] as { 型?: string })?.型 === '存简历',
+    )?.[0] as { 教育: { 学校: string; 学校引用?: unknown; 专业: string; 专业引用?: unknown }[] } | undefined;
+    return 调用?.教育[0];
+  }
+
+  it('Mock 演示候选：输入→子串命中→分页→选候选落文本→完成可保存（无引用门槛）', async () => {
+    render工作经历({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('添加教育经历'));
+
+    // 输入「大学」：本地名录子串命中（30 条全部命中），首页 8 条后列表尾出「加载更多」
+    const 学校输入 = screen.getAllByPlaceholderText('必填')[0];
+    await 用户.type(学校输入, '大学');
+    await screen.findByText('清华大学');
+    expect(screen.queryByText('同济大学')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    // 切片翻页切进名录第 9–16 位
+    await screen.findByText('同济大学');
+
+    // 选候选：只落文本（Mock 不落引用），列表收起
+    await 用户.click(screen.getByRole('button', { name: '清华大学' }));
+    expect((学校输入 as HTMLInputElement).value).toBe('清华大学');
+    expect(screen.queryByRole('button', { name: '清华大学' })).toBeNull();
+
+    // 专业同走共用列表（无副行）
+    const 专业输入 = screen.getAllByPlaceholderText('必填')[1];
+    await 用户.type(专业输入, '工程');
+    await screen.findByText('软件工程');
+    await 用户.click(screen.getByRole('button', { name: '软件工程' }));
+    expect((专业输入 as HTMLInputElement).value).toBe('软件工程');
+
+    // Mock 无引用门槛：完成照常存
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    const 教育 = 首条教育();
+    expect(教育?.学校).toBe('清华大学');
+    expect(教育?.专业).toBe('软件工程');
+    expect(教育?.学校引用).toBeUndefined();
+    expect(教育?.专业引用).toBeUndefined();
+  });
+
+  it('Backend 同名不同 ID：按稳定键落引用并准确提交', async () => {
+    const 查询Institution = vi.fn(async (_q: { q?: string }) => ({
+      items: [
+        {
+          id: 'inst_same_a',
+          display_name: '清华大学',
+          location: { id: 'loc_bj', display_name: '北京', country_name: '中国' },
+          selectable: true,
+        },
+        {
+          id: 'inst_same_b',
+          display_name: '清华大学',
+          location: { id: 'loc_tw', display_name: '新竹', country_name: '中国' },
+          selectable: true,
+        },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    const 查询Taxonomy = vi.fn(async (_kind: string) => ({
+      items: [{ id: 'tax_cs', display_name: '计算机科学与技术', parent_id: null, selectable: true }],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    render工作经历({ 数据源: 'backend', 查询Institution, 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('添加教育经历'));
+    await 用户.type(screen.getAllByPlaceholderText('必填')[0], '清华');
+    await screen.findByText('新竹 · 中国');
+    // 两行同名：选第二行（不同 ID），副行区分城市
+    const 同名行 = screen.getAllByRole('button', { name: '清华大学' });
+    expect(同名行.length).toBe(2);
+    await 用户.click(同名行[1]!);
+    await 用户.type(screen.getAllByPlaceholderText('必填')[1], '计算机');
+    await 用户.click(await screen.findByText('计算机科学与技术'));
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    const 教育 = 首条教育();
+    expect(教育?.学校).toBe('清华大学');
+    expect(教育?.学校引用).toEqual({ id: 'inst_same_b', display_name: '清华大学' });
+    expect(教育?.专业引用).toEqual({ id: 'tax_cs', display_name: '计算机科学与技术' });
+  });
+
+  it('Backend 改输入清旧引用：未重新选有效引用不能提交（轻提示拦下、不派发存简历）', async () => {
+    const 查询Institution = vi.fn(async (_q: { q?: string }) => ({
+      items: [
+        {
+          id: 'inst_thu',
+          display_name: '清华大学',
+          location: { id: 'loc_bj', display_name: '北京', country_name: '中国' },
+          selectable: true,
+        },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    const 查询Taxonomy = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' }));
+    render工作经历({ 数据源: 'backend', 查询Institution, 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('添加教育经历'));
+    const 学校输入 = screen.getAllByPlaceholderText('必填')[0];
+    await 用户.type(学校输入, '清华');
+    await 用户.click(await screen.findByText('清华大学'));
+    // 继续输入 → 旧引用清除；专业未选（引用 undefined）
+    await 用户.type(学校输入, '大学');
+    const 专业输入 = screen.getAllByPlaceholderText('必填')[1];
+    await 用户.type(专业输入, '计算机');
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    // 守卫顺序沿原页：先学校后专业
+    expect(mock轻提示).toHaveBeenCalledWith('请从候选学校中选择');
+    expect(mock应用状态.派发.mock.calls.filter((c: unknown[]) => (c[0] as { 型?: string })?.型 === '存简历')).toHaveLength(0);
+  });
+
+  it('Backend 旧词迟到响应不回填（代际守卫沿用原外层）', async () => {
+    let 放行旧词: () => void = () => {};
+    const 查询Institution = vi.fn(async (q: { q?: string }) => {
+      if (q.q === '清') {
+        // 旧词的响应悬挂，测试尾段才放行 —— 慢的旧搜索不得覆盖新词结果
+        return new Promise((解决) => {
+          放行旧词 = () => 解决({
+            items: [{
+              id: 'inst_old',
+              display_name: '清華舊詞大學',
+              location: { id: 'loc_old', display_name: '旧城', country_name: '旧国' },
+              selectable: true,
+            }],
+            nextCursor: null,
+            catalogVersion: 'v1',
+          });
+        }) as never;
+      }
+      return {
+        items: [{
+          id: 'inst_thu',
+          display_name: '清华大学',
+          location: { id: 'loc_bj', display_name: '北京', country_name: '中国' },
+          selectable: true,
+        }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    const 查询Taxonomy = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' }));
+    render工作经历({ 数据源: 'backend', 查询Institution, 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('添加教育经历'));
+    const 学校输入 = screen.getAllByPlaceholderText('必填')[0];
+    // 先敲「清」并等过 250ms 防抖（旧词请求在飞），再补「华」触发新代际
+    await 用户.type(学校输入, '清');
+    await new Promise((解决) => setTimeout(解决, 320));
+    await 用户.type(学校输入, '华');
+    await screen.findByText('清华大学');
+    // 旧词响应此刻才迟到：不得回填候选，也不得清掉新词结果
+    await act(async () => {
+      放行旧词();
+    });
+    await new Promise((解决) => setTimeout(解决, 20));
+    expect(screen.getByText('清华大学')).toBeTruthy();
+    expect(screen.queryByText('清華舊詞大學')).toBeNull();
+    expect(screen.queryByText('旧城 · 旧国')).toBeNull();
+  });
+});
+
+// ── Task 6（core editors §5.2）：经历行业层迁出共用 简历行业选择正文 ──
+// 页面把现有根/子/孙三层展开状态按当前渲染顺序映射为分段（既有列表及其分页尾的展示
+// 批次，不是新树存储）；组件点击回调按稳定键在本外层解析回目录项（同名不同 ID 不串，
+// 不按显示名反查），选中回显按稳定 ID（同名条目不相互覆盖）；非 selectable 且
+// has_children=false 的行不展开不提交也不发目录请求。Mock 常见行业作为模拟目录走同一
+// 正文，自填输入经可选 自填 提供，Backend 不暴露自由文本；单选关闭/回填时机沿原页。
+describe('工作经历 经历编辑页 行业共用正文（Task 6）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+  });
+
+  it('Backend 同名不同 ID：按稳定键提交所点行，重开层勾只落该行（选中按 ID 回显）', async () => {
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [
+            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'ind_fin') {
+        return {
+          items: [
+            { id: 'ind_pay_a', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true, has_children: false },
+            { id: 'ind_pay_b', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true, has_children: false },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    // 层先出根列表，点根项才拉子列表（两层同名叶子都在 金融科技 之下）
+    await 用户.click(await screen.findByText('金融科技'));
+    // 行项在弹层 dialog 内按 button 定位（编辑页 选择条目 的可及名含回显值，须排除）
+    const 层内 = within(screen.getByRole('dialog', { name: '选择所属行业' }));
+    const 同名行 = await 层内.findAllByRole('button', { name: /支付与清结算/ });
+    expect(同名行).toHaveLength(2);
+    await 用户.click(同名行[1]!);
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    // 提交按所点行的稳定 ID（同名不相互覆盖，不按显示名反查）
+    const 派发 = mock应用状态.派发;
+    const 存简历调用 = 派发.mock.calls.find((c: unknown[]) => (c[0] as { 型?: string })?.型 === '存简历')?.[0] as {
+      经历: { 行业: string; 行业引用?: unknown }[];
+    } | undefined;
+    expect(存简历调用).toBeDefined();
+    expect(存简历调用!.经历[0].行业).toBe('支付与清结算');
+    expect(存简历调用!.经历[0].行业引用).toEqual({ id: 'ind_pay_b', display_name: '支付与清结算' });
+    // 重开层（重进编辑页是全新层状态，先重新展开根）：勾只落所点行 ——
+    // 选中回显按稳定 ID，同名条目不相互覆盖
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await 用户.click(await screen.findByText('金融科技'));
+    const 重开层内 = within(screen.getByRole('dialog', { name: '选择所属行业' }));
+    const 重开行 = await 重开层内.findAllByRole('button', { name: /支付与清结算/ });
+    expect(重开行[0]!.textContent).not.toContain('✓');
+    expect(重开行[1]!.textContent).toContain('✓');
+  });
+
+  it('Backend 非 selectable 且无子项（has_children false）：点击不展开不提交也不发目录请求', async () => {
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [
+            { id: 'ind_dead', display_name: '死端行业', parent_id: null, selectable: false, has_children: false },
+            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'ind_fin') {
+        return {
+          items: [
+            { id: 'ind_pay', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true, has_children: false },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await screen.findByText('金融科技');
+    // 弹层打开即拉根列表：此后点击死端行不得再发任何目录请求（父项不当叶子提交，也不空展开）
+    const 打开后调用数 = 查询Taxonomy.mock.calls.length;
+    await 用户.click(screen.getByText('死端行业'));
+    expect(查询Taxonomy.mock.calls.length).toBe(打开后调用数);
+  });
+
+  it('Mock 常见行业与自填走同一正文：选定回填并关闭层，自填 Enter 确认仍可用', async () => {
+    render工作经历({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    // 常见行业作为模拟目录在同一正文（全部可选、无缩进）
+    await screen.findByText('互联网');
+    await screen.findByText('硬件');
+    // 点常见行业 → 回填所属行业行并关闭层（单选关闭/回填时机沿原页）
+    await 用户.click(screen.getByText('金融科技'));
+    expect(screen.queryByPlaceholderText('没有合适的？直接输入')).toBeNull();
+    expect(screen.getByText('金融科技')).toBeTruthy();
+    // 取消（遮罩）不落任何选择：层关闭且所属行业行保持已回填值，不保存经历条目
+    await 用户.click(screen.getByText('所属行业'));
+    await 用户.click(screen.getByRole('button', { name: '关闭选择所属行业' }));
+    expect(screen.queryByPlaceholderText('没有合适的？直接输入')).toBeNull();
+    expect(screen.getByText('金融科技')).toBeTruthy();
+    // 自填（Mock 能力）仍可用：fireEvent 单次设值/回车（既有弹层框架 quirk：父层每次
+    // 重渲染把焦点收回首个控件，逐字符 type 会被打断、Enter 落到首行 —— 照原样保留，
+    // 见 Task 6 报告；fireEvent 不依赖焦点，正交地钉 修改/确认 两个回调的接线）
+    await 用户.click(screen.getByText('所属行业'));
+    const 自填输入 = screen.getByPlaceholderText('没有合适的？直接输入') as HTMLInputElement;
+    fireEvent.change(自填输入, { target: { value: '机器人' } });
+    fireEvent.keyDown(自填输入, { key: 'Enter' });
+    expect(screen.queryByPlaceholderText('没有合适的？直接输入')).toBeNull();
+    // 完成回写：Mock 无引用门槛，行业文本落经历段（不落引用）
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    const 派发 = mock应用状态.派发;
+    const 存简历调用 = 派发.mock.calls.find((c: unknown[]) => (c[0] as { 型?: string })?.型 === '存简历')?.[0] as {
+      经历: { 行业: string; 行业引用?: unknown }[];
+    } | undefined;
+    expect(存简历调用).toBeDefined();
+    expect(存简历调用!.经历[0].行业).toBe('机器人');
+    expect('行业引用' in 存简历调用!.经历[0]).toBe(false);
+  });
+});
+
+// ── review-r1 F1：日常作品集输入在保存前不得写权威全局状态 ──────────────
+// Backend 的 全局.简历作品集链接 由权威 GET 水合：输入只落本页局部意图，保存才写入。
+// 否则「打字 → 离开不存 → 再进来」会把未保存的值冒充成已保存值。
+describe('工作经历 · 日常作品集输入边界（review-r1 F1）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('Backend 打字不派发 存作品集链接：离开不保存再进来，回显权威值而非未保存输入', async () => {
+    const { 卸载 } = render工作经历({ 数据源: 'backend', 经历: [], 教育: [完整教育], 作品集链接: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    expect((screen.getByLabelText('作品集或项目链接') as HTMLInputElement).value).toBe('github.com/shen');
+    // 离开页面（组件卸载），权威切片未被污染
+    expect(mock应用状态.派发.mock.calls.some((c: unknown[]) => (c[0] as { 型?: string })?.型 === '存作品集链接')).toBe(false);
+    卸载();
+    // 重新进页（重挂载）：输入跟随权威值，不是未保存的打字值
+    render(<宿主 />);
+    expect((screen.getByLabelText('作品集或项目链接') as HTMLInputElement).value).toBe('');
+  });
+
+  it('Backend 未保存就重进：后续保存不带 作品集链接 属性', async () => {
+    const 保存简历 = vi.fn(async (_写入: Record<string, unknown>) => {});
+    const { 卸载 } = render工作经历({ 数据源: 'backend', 经历: [], 教育: [完整教育], 保存简历, 作品集链接: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    // 卸载重挂（未保存）：局部意图已清，本轮没改 → 保存不带属性
+    卸载();
+    render(<宿主 />);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect('作品集链接' in 保存简历.mock.calls[0][0]).toBe(false);
+  });
+
+  it('Mock 保留原行为：打字即写全局模拟态', async () => {
+    render工作经历({ 数据源: 'mock', 经历: [], 教育: [完整教育], 作品集链接: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    expect(mock应用状态.派发).toHaveBeenCalledWith({ 型: '存作品集链接', 链接: 'github.com/shen' });
+  });
+});
+
+// ── review-r1 F4：行业展开失败不缓存空结果（工作经历侧） ────────────────
+describe('工作经历 行业展开失败可重试（review-r1 F4）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('展开行业根第一次请求失败：轻提示报错、不缓存空子表，再点重新发请求并成功', async () => {
+    let 拒绝首次 = true;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (query.parentId === 'ind_fin') {
+        if (拒绝首次) {
+          拒绝首次 = false;
+          throw new Error('network down');
+        }
+        return {
+          items: [{ id: 'ind_pay', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true, has_children: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(await screen.findByText('金融科技'));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    // 失败没有缓存成空子表：再点同一行重新发请求
+    await 用户.click(screen.getByText('金融科技'));
+    await screen.findByText('支付与清结算');
+  });
+
+  it('展开行业子（孙项）第一次请求失败：轻提示报错、不缓存空孙表，再点重新发请求并成功', async () => {
+    let 拒绝首次 = true;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (query.parentId === 'ind_sub') {
+        if (拒绝首次) {
+          拒绝首次 = false;
+          throw new Error('network down');
+        }
+        return {
+          items: [{ id: 'ind_leaf', display_name: '公募基金', parent_id: 'ind_sub', selectable: true, has_children: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'ind_fin') {
+        return {
+          items: [{ id: 'ind_sub', display_name: '证券与基金', parent_id: 'ind_fin', selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(await screen.findByText('金融科技'));
+    await 用户.click(await screen.findByText('证券与基金'));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    await 用户.click(screen.getByText('证券与基金'));
+    await screen.findByText('公募基金');
+  });
+});
+
+// ── review-r1 F5：学校搜索追加页换 catalogVersion 时整组重开（工作经历侧代表点） ──
+describe('工作经历 学校搜索分页版本重开（review-r1 F5）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('学校追加页返回不同版本：丢弃累计页与游标，从第一页重开；后续游标是新版本的', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({ items, nextCursor, catalogVersion: 版本 });
+    const 查询Institution = vi.fn(async (q: { q?: string; cursor?: string }, 选项?: { 强制刷新?: boolean }) => {
+      if (q.q === '清' && !q.cursor) {
+        return 选项?.强制刷新
+          ? 页([{ id: 'inst_v2', display_name: '復旦大學', location: { id: 'loc_sh', display_name: '上海', country_name: '中国' } }], 'inst_cur_v2', 'v2')
+          : 页([{ id: 'inst_v1', display_name: '清华大学', location: { id: 'loc_bj', display_name: '北京', country_name: '中国' } }], 'inst_cur_v1', 'v1');
+      }
+      if (q.cursor === 'inst_cur_v1') {
+        // 追加页来自新快照：不与 v1 首页合并，触发重开
+        return 页([{ id: 'inst_old', display_name: '北京大學', location: { id: 'loc_bj2', display_name: '北京', country_name: '中国' } }], null, 'v2');
+      }
+      return 页([], null, 'v2');
+    });
+    const 查询Taxonomy = vi.fn(async () => 页([], null, 'v2'));
+    render工作经历({ 数据源: 'backend', 查询Taxonomy, 查询Institution });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('添加教育经历'));
+    const 学校输入 = screen.getAllByPlaceholderText('必填')[0];
+    await 用户.type(学校输入, '清');
+    await new Promise((解决) => setTimeout(解决, 320));
+    await screen.findByText('北京 · 中国');
+    // 翻页：追加页换版本 → 不做 v1∪v2 合并，重开出 v2 第一页
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    await screen.findByText('復旦大學');
+    expect(screen.queryByText('北京大學')).toBeNull();
+    expect(screen.queryByText('清华大学')).toBeNull();
+    // 后续翻页用 v2 的游标
+    const 重开调用数 = 查询Institution.mock.calls.length;
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(查询Institution.mock.calls.length).toBeGreaterThan(重开调用数));
+    expect(查询Institution).toHaveBeenNthCalledWith(
+      重开调用数 + 1,
+      expect.objectContaining({ q: '清', cursor: 'inst_cur_v2' }),
+    );
   });
 });

@@ -42,7 +42,18 @@ describe('意向完整本地数据链路', () => {
     expect(跨类.意向草稿).toMatchObject({ 薪资周期: 'month', 薪资下限: null, 薪资上限: null, 求职类型已改: true, 工作城市: '上海', 感兴趣城市们: ['杭州'] });
   });
   it('后端历史薪资、年薪月数、排除三态和私有原文无损提交', () => {
-    const 原始 = { ...BFF意向样本, compensation: { mode: 'range' as const, lower: 300.5, upper: 500, annual_salary_months: 13 }, exclusions: 完整草稿.排除项!, private_preferences: '\n原文  不要清空\n' };
+    // core editors §6.2（Task 2）：年薪月数只对 social_full_time/campus 合法，
+    // 无损来源改为合同内合法的社招月薪区间（原 internship 携带 13 薪是合同外状态）。
+    const 原始 = {
+      ...BFF意向样本,
+      recruitment_type: 'social_full_time' as const,
+      salary_period: 'month' as const,
+      internship_months: null,
+      onsite_days_per_week: null,
+      compensation: { mode: 'range' as const, lower: 300.5, upper: 500, annual_salary_months: 13 },
+      exclusions: 完整草稿.排除项!,
+      private_preferences: '\n原文  不要清空\n',
+    };
     const 草稿 = 从BFF意向草稿(原始);
     const 写入 = 转意向写入(草稿, { 原始 });
     expect(写入).toMatchObject({ recruitment_type: 原始.recruitment_type, compensation: 原始.compensation, exclusions: 原始.exclusions, private_preferences: 原始.private_preferences, internship_months: 原始.internship_months, onsite_days_per_week: 原始.onsite_days_per_week });
