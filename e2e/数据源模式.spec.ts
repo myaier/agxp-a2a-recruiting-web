@@ -11000,6 +11000,217 @@ test.describe('核心编辑 意向薪资 @backend', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 城市 @mock（core editors §5.1 Task 3）：其他感兴趣城市两模式共用正文 ——
+// Mock 行政分组（城市字典省份组切片 + 列表尾「加载更多」）、拼音子串搜索、9 上限，
+// 无 A–Z 字母索引条；取消不写草稿、保存才写回并在行上回显。全程零 /api/v1 请求。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 城市 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('行政分组正文：选择→翻页→搜索→取消→保存回显，全程零 API @mock', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '微信登录' }).click();
+    await expect(page).toHaveURL(/#\/identity$/);
+
+    // 「添加求职期望」→ 其他感兴趣城市行 → 城市子页（共用正文）
+    await page.goto('/#/intentions/new');
+    await expect(page.getByText('其他感兴趣城市（0/9）')).toBeVisible({ timeout: 15_000 });
+    await page.getByText('请选择更多感兴趣城市').click();
+    await expect(page.getByRole('heading', { name: '选择城市' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('0/9')).toBeVisible();
+    // 行政分组标题上屏；A–Z 字母索引条消失
+    await expect(page.getByText('广东')).toBeVisible();
+    await expect(page.getByText('浙江')).toBeVisible();
+    await expect(page.getByRole('button', { name: /跳到 / })).toHaveCount(0);
+
+    // 正常态截图（与改前拍对照：旧稿 A–Z 分节 + 右侧字母索引条）
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-城市-正常.png`, fullPage: true });
+
+    // 选择热门区杭州 → 计数 1/9；翻页把更多省份组切进来
+    await page.getByRole('button', { name: '杭州', exact: true }).first().click();
+    await expect(page.getByText('1/9')).toBeVisible();
+    await page.getByRole('button', { name: '加载更多', exact: true }).click();
+    await expect(page.getByText('湖北')).toBeVisible({ timeout: 10_000 });
+
+    // 搜索：拼音子串命中，已选不丢（选中城片的可访问名带 CSS ::before 的「✓ 」前缀）
+    await page.getByPlaceholder('搜索城市名/拼音').fill('hang');
+    await expect(page.getByRole('button', { name: /^✓ ?杭州$/ }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '移除 杭州' })).toBeVisible();
+
+    // 取消：✕ 关闭不写草稿，回到行上仍是 0/9
+    await page.getByRole('button', { name: '关闭' }).click();
+    await expect(page).toHaveURL(/#\/intentions\/new$/, { timeout: 10_000 });
+    await expect(page.getByText('其他感兴趣城市（0/9）')).toBeVisible({ timeout: 15_000 });
+
+    // 重进选择两城：选中态截图 + iPhone 13 viewport 检查，保存才写回
+    await page.getByText('请选择更多感兴趣城市').click();
+    await expect(page.getByText('0/9')).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '杭州', exact: true }).first().click();
+    await page.getByRole('button', { name: '苏州', exact: true }).first().click();
+    await expect(page.getByText('2/9')).toBeVisible();
+    await expect(page.getByRole('button', { name: '移除 杭州' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '移除 苏州' })).toBeVisible();
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-城市-选中.png`, fullPage: true });
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    const 搜索输入 = page.getByPlaceholder('搜索城市名/拼音');
+    await 搜索输入.focus();
+    await expect(搜索输入).toBeFocused();
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/intentions\/new$/, { timeout: 10_000 });
+    await expect(page.getByText('其他感兴趣城市（2/9）')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('杭州、苏州')).toBeVisible();
+
+    // Mock 全程零 API 请求
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 城市 @backend（core editors §5.1 Task 3）：Backend 分支迁移到同一共用正文 ——
+// 热门区来自不带 q 的默认目录页，分组标题只用返回的 admin1_name，位置区是已批准的
+// 「暂未获取定位」缺失态；列表尾「加载更多」翻默认页/搜索页；按 ID 选择、取消不写草稿、
+// 保存写 意向草稿.感兴趣城市引用们 且重进回读不丢。Location 目录用本用例专用网络桩
+// （后装的 route 先匹配，不改共享 helper）；符合已审合同的网络桩边界验证，不是 live 验收。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 城市 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('默认页行政分组→翻页→搜索→取消→保存回读，引用按 ID 不丢 @backend', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const fixture = 创建候选OnboardingFixture();
+    // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
+    fixture.主体.last_used_role = 'candidate';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选' },
+      summary: '存量个人优势',
+    };
+    fixture.intentions = [P4深克隆(fixture意向列表.intentions[0])];
+    // 目录请求记录用页面监听：Location 目录桩是后装 route（先匹配），共享 helper 的
+    // 记录钩子在本用例里不会被触发，不能用它计数
+    const 目录请求: string[] = [];
+    page.on('request', (request) => {
+      const 路径 = new URL(request.url()).pathname;
+      if (路径.startsWith('/api/v1/catalog/')) 目录请求.push(路径);
+    });
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-core-edit-cities',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: P3隐私fixture(),
+    });
+
+    // Location 目录桩（本用例专用精确状态）：默认页两省两城 + 游标；翻页第三城；搜索按 q。
+    // 字段形状与既有 /catalog/locations 内置桩一致（信封闭合解码）。
+    const 省份城 = (id: string, 名称: string, 省: string) => ({
+      id,
+      display_name: 名称,
+      country_code: 'CN',
+      country_name: '中国',
+      admin1_code: '31',
+      admin1_name: 省,
+      timezone: 'Asia/Shanghai',
+      population: 1000,
+    });
+    await page.route('**/api/v1/catalog/locations*', async (route) => {
+      const url = new URL(route.request().url());
+      const q = url.searchParams.get('q') ?? '';
+      const cursor = url.searchParams.get('cursor');
+      if (q !== '') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({ items: [省份城('loc-shaoxing', '绍兴市', '浙江省')], next_cursor: null, catalog_version: 'loc-v1' }),
+        });
+        return;
+      }
+      if (cursor === 'loc-cur-1') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({ items: [省份城('loc-ningbo', '宁波市', '浙江省')], next_cursor: null, catalog_version: 'loc-v1' }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        json: 信封({
+          items: [省份城('loc-hangzhou', '杭州市', '浙江省'), 省份城('loc-suzhou', '苏州市', '江苏省')],
+          next_cursor: 'loc-cur-1',
+          catalog_version: 'loc-v1',
+        }),
+      });
+    });
+
+    // 登录落主壳 → 直接进城市子页（共用正文，Backend 控制）
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto('/#/intentions/cities');
+    await expect(page.getByRole('heading', { name: '选择城市' })).toBeVisible({ timeout: 15_000 });
+    // 热门区来自默认页返回项；分组标题只用 admin1_name；位置区是已批准缺失态；无字母索引
+    await expect(page.getByRole('button', { name: '杭州市', exact: true }).first()).toBeVisible();
+    await expect(page.getByText('浙江省')).toBeVisible();
+    await expect(page.getByText('江苏省')).toBeVisible();
+    await expect(page.getByText('暂未获取定位')).toBeVisible();
+    await expect(page.getByRole('button', { name: /跳到 / })).toHaveCount(0);
+    await expect(page.getByText('0/9')).toBeVisible();
+
+    // 正常态截图
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-城市-正常.png`, fullPage: true });
+
+    // 选择杭州市 → 1/9；列表尾「加载更多」翻出第二页宁波市
+    await page.getByRole('button', { name: '杭州市', exact: true }).first().click();
+    await expect(page.getByText('1/9')).toBeVisible();
+    await page.getByRole('button', { name: '加载更多', exact: true }).click();
+    await expect(page.getByRole('button', { name: '宁波市', exact: true })).toBeVisible({ timeout: 10_000 });
+
+    // 搜索：绍兴市入搜索列表；已选不丢
+    await page.getByPlaceholder('搜索城市名/拼音').fill('绍兴');
+    await expect(page.getByRole('button', { name: '绍兴市', exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '移除 杭州市' })).toBeVisible();
+    await page.getByRole('button', { name: '绍兴市', exact: true }).click();
+    await expect(page.getByText('2/9')).toBeVisible();
+
+    // 选中态截图 + iPhone 13 viewport 检查：无横向溢出、搜索可聚焦、保存不被遮挡
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-城市-选中.png`, fullPage: true });
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    const 搜索输入 = page.getByPlaceholder('搜索城市名/拼音');
+    await 搜索输入.focus();
+    await expect(搜索输入).toBeFocused();
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+
+    // 取消：✕ 关闭不写草稿；重进为空（0/9 无 chip）
+    await page.getByRole('button', { name: '关闭' }).click();
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 10_000 });
+    await page.goto('/#/intentions/cities');
+    await expect(page.getByText('0/9')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '移除 杭州市' })).toHaveCount(0);
+
+    // 选择并保存：草稿引用写入；重进回读不丢
+    await expect(page.getByRole('button', { name: '杭州市', exact: true }).first()).toBeVisible();
+    await page.getByRole('button', { name: '杭州市', exact: true }).first().click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 10_000 });
+    await page.goto('/#/intentions/cities');
+    await expect(page.getByText('1/9')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '移除 杭州市' })).toBeVisible();
+
+    // 本会话目录请求只打 locations（默认页不带 q，已由钩子单测钉住）
+    expect(目录请求.length).toBeGreaterThan(0);
+    expect(目录请求.every((p) => p === '/api/v1/catalog/locations')).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 招聘方 onboarding Backend fixture @backend（P0 修复 Task 7）：全新招聘方从身份选择页
 // 起步 —— profile 首读 404 not_found（合法的「缺失」而非故障），名片首写走
 // PATCH + If-Match: "0"（fixture 按自己的当前 revision 做 CAS），发岗写出三段独立
