@@ -13416,10 +13416,10 @@ test.describe('核心编辑 期望行业 @backend', () => {
     await page.getByRole('button', { name: '证券与交易系统', exact: true }).click();
     await expect(page.getByText('2/3')).toBeVisible();
 
-    // 推荐区可选根写入第 3 项 → 3/3；未选片进入上限禁用态（沿原页）
+    // 推荐区可选根写入第 3 项 → 3/3；非 selectable 展开项在上限保持可用（fix(review-r1) F2）
     await page.getByRole('button', { name: '互联网', exact: true }).click();
     await expect(page.getByText('3/3')).toBeVisible();
-    await expect(page.getByRole('button', { name: '支付与清结算', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '支付与清结算', exact: true })).toBeEnabled();
 
     // 选中态截图 + iPhone 13 viewport 检查：无横向溢出、保存可见可聚焦
     await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-选中.png`, fullPage: true });
@@ -13510,7 +13510,7 @@ test.describe('核心编辑 附件 @mock', () => {
     await expect(page.getByText('识别完成')).toBeVisible({ timeout: 5_000 });
     await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-附件-解析完成.png`, fullPage: true });
 
-    // 替换 → 同意：点击目标身份保留（add.pdf 名称不动、replacement.pdf 不出现），解析状态重置
+    // 替换 → 同意：行身份保留，显示新文件名且旧名消失，解析状态重置（fix(review-r1) F6）
     await 左滑附件行(page, 'add.pdf');
     await page.getByRole('button', { name: '替换', exact: true }).click();
     await page.locator('input[type=file]').setInputFiles({
@@ -13518,9 +13518,10 @@ test.describe('核心编辑 附件 @mock', () => {
     });
     await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
     await page.getByRole('button', { name: '同意并继续' }).click();
-    await expect(page.getByText('replacement.pdf')).toHaveCount(0);
-    await expect(加行).toBeVisible();
-    await expect(加行.getByText('尚未识别')).toBeVisible();
+    const 替换行 = page.getByTestId('附件简历行').filter({ hasText: 'replacement.pdf' });
+    await expect(替换行).toBeVisible();
+    await expect(替换行.getByText('尚未识别')).toBeVisible();
+    await expect(page.getByText('add.pdf')).toHaveCount(0);
 
     // 加到 3/3（与既有附件上限一致）：＋ 消失；行面键盘可聚焦、无横向溢出
     await page.getByRole('button', { name: '添加附件简历' }).click();
