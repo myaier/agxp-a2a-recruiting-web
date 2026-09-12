@@ -7,7 +7,7 @@
 
 import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 在招岗位, 求职意向, 披露项, 屏蔽项, 市场职位 } from './类型';
 import type { 求职初筛偏好, 求职薪资单位 } from '../流程/onboarding配置';
-import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF隐私快照, BFF委托摘要, BFF淘汰原因, BFF附件简历库, BFF候选在线简历 } from './BFF契约';
+import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF公司摘要, BFF隐私快照, BFF委托摘要, BFF淘汰原因, BFF附件简历库, BFF候选在线简历 } from './BFF契约';
 import type { 招聘候选摘要视图 } from './招聘候选摘要映射';
 
 // ── 分页目录查询（Task 1）：页面层只拿已选目录项的引用，不再全量预取 ──
@@ -274,6 +274,9 @@ export interface P4候选岗位页面 {
   公司: {
     名称: string; 首字: string; 简介: string;
     organizationId: string | null;
+    /** Spec §6.1：CandidateJob 的公开公司摘要原对象（独立职位先展示摘要，六键原样）；
+     *  摘要缺席是合法缺源 → null，绝不从 claim 伪造 */
+    organization: BFF公司摘要 | null;
   };
   发布人: {
     姓名: string; 职务: string; 首字: string;

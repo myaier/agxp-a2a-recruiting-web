@@ -6,21 +6,40 @@
 // 无 Context、无运行模式、无路由、无请求、无匹配计算。
 // 未知占位（.未知分数位 / 公司图位 / 发布人图位）只作用于缺失节点；完整状态沿用原声明值。
 
-import type { ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import 样式 from '../职位详情.module.css';
 import { 公司区块 } from '../../组件/公司区块';
 import { 匹配分析块 } from '../../组件/匹配分析块';
 import 适配环 from '../../组件/适配环';
 import type { 图位, 职位正文展示属性 } from './类型';
 
-/** 公司图位：已知字标沿用 公司区块 缺省标志（与原 Mock 渲染逐像素一致）；未知给中性空白占位 */
+/**
+ * 公司图位：字标/真实图片沿用 公司区块 缺省标志（与原 Mock 渲染逐像素一致；真实 URL 走
+ * 公司字标 的显式图片分支，失败回中性首字块）；未知给中性空白占位。
+ */
 function 公司标志(图: 图位): ReactElement | undefined {
   if (图.种类 !== '未知') return undefined;
   return <span className={样式.公司图位} role="img" aria-label={图.可访问名} />;
 }
 
+/** 公司头行 首字：字标给字；真实图片只作加载失败的回退字；未知不给（不充当真实图片） */
+function 公司兜底字(图: 图位): string {
+  if (图.种类 === '字标') return 图.字;
+  return 图.种类 === '图片' ? 图.兜底字 : '';
+}
+
 export function 职位正文展示({ 数据, 打开公司, 直接聊 }: 职位正文展示属性): ReactElement {
   const { 匹配, 发布人 } = 数据;
+  // 发布人头像（Spec §6.1）：显式真实 URL 渲染进原头像槽，失败回既有中性未知图位
+  //（与无图源同一形态，不拿姓名首字充当照片），换 URL 清失败状态 —— 与 看市场
+  // 发布人头像的既有接线同一套图片事件实践
+  const 发布人图片URL = 发布人.图.种类 === '图片' ? 发布人.图.URL : null;
+  const [发布人图片失败, 设发布人图片失败] = useState(false);
+  useEffect(() => {
+    设发布人图片失败(false);
+  }, [发布人图片URL]);
+  const 显示发布人图片 = 发布人图片URL !== null && !发布人图片失败;
+  const 发布人图位未知 = 发布人.图.种类 === '未知' || (发布人.图.种类 === '图片' && 发布人图片失败);
   return (
     <div className={样式.内容}>
       {/* 职位名 + 薪资：baseline 对齐，让 21px 的职位名和 16px 的薪资底线齐平。
@@ -78,7 +97,8 @@ export function 职位正文展示({ 数据, 打开公司, 直接聊 }: 职位�
       <div className={样式.卡}>
         <公司区块
           名称={数据.公司.名称}
-          首字={数据.公司.图.种类 === '字标' ? 数据.公司.图.字 : ''}
+          首字={公司兜底字(数据.公司.图)}
+          公司图片URL={数据.公司.图.种类 === '图片' ? 数据.公司.图.URL : undefined}
           一行简介={数据.公司.简介}
           资料={数据.公司.资料}
           标志={公司标志(数据.公司.图)}
@@ -91,13 +111,23 @@ export function 职位正文展示({ 数据, 打开公司, 直接聊 }: 职位�
           卡位始终保留；图位/文字缺什么补什么未知占位（§3.2） */}
       <div className={`${样式.卡} ${样式.发布人卡}`}>
         <span
-          className={发布人.图.种类 === '未知'
+          className={发布人图位未知
             ? `${样式.发布人头像} ${样式.发布人图位}`
             : 样式.发布人头像}
-          role={发布人.图.种类 === '未知' ? 'img' : undefined}
-          aria-label={发布人.图.种类 === '未知' ? 发布人.图.可访问名 : undefined}
+          role={发布人图位未知 ? 'img' : undefined}
+          aria-label={发布人图位未知 && '可访问名' in 发布人.图 ? 发布人.图.可访问名 : undefined}
         >
-          {发布人.图.种类 === '字标' ? 发布人.图.字 : null}
+          {显示发布人图片 ? (
+            <img
+              src={发布人图片URL ?? undefined}
+              alt=""
+              onError={() => 设发布人图片失败(true)}
+              style={{
+                width: '100%', height: '100%', objectFit: 'cover',
+                display: 'block', borderRadius: 'inherit',
+              }}
+            />
+          ) : 发布人.图.种类 === '字标' ? 发布人.图.字 : null}
         </span>
         <div className={样式.发布人文字区}>
           <div className={样式.发布人名}>

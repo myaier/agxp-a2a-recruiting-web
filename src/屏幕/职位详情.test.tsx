@@ -19,9 +19,10 @@ import 职位详情 from './职位详情';
 import { 标记看市场来路, 复位看市场来路 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库, BFF委托回执 } from '../数据/BFF契约';
+import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库, BFF公开企业, BFF委托回执 } from '../数据/BFF契约';
 import type { P8ReportReceipt } from '../数据/招聘数据源/P8控制面';
-import { BFF候选岗位推荐样本, BFFCandidateJob样本 } from '../测试/BFF样本';
+import { BFF候选岗位推荐样本, BFFCandidateJob样本, BFF企业档案样本, BFF公开企业样本 } from '../测试/BFF样本';
+import { BFF公司摘要样本 } from '../测试/展示资料样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 
 const mock派发 = vi.fn();
@@ -44,6 +45,8 @@ const mock核对候选委托 = vi.fn(async () => undefined);
 const mock准备候选委托简历 = vi.fn();
 // P8 Task 7：上下文举报（P8合规操作 域的桩）
 const mock提交P8举报 = vi.fn();
+// Task 4：独立职位按真实 organization_id 补读公开企业（组织操作 域的桩）
+const mock读取公开企业 = vi.fn(async (_id: string): Promise<unknown> => undefined);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -90,12 +93,18 @@ function 渲染Backend状态(选项: {
   待核对命令?: import('../状态/后端/委托待核对').待核对命令 | null;
   /** 真实简历事实（匹配对齐行的 Backend 证据来源）；缺省是空简历 */
   简历?: Record<string, unknown>;
+  /** Task 4：公开企业缓存表（同一主体键复用既有结果的口径）；缺省空表 */
+  公开企业表?: Record<string, unknown>;
+  /** 已判定不可用（404 收口）的公开企业编号；缺省空组 */
+  不可用公开企业编号?: string[];
 }) {
   mock应用状态 = {
     状态: {
       已委托: [], 简历经历: [], 简历教育: [], 简历技能: [],
       基本信息: { 真名: '', 开始工作年: '', 身份: '在职' },
       当前意向编号: 选项.当前意向编号 === undefined ? 'int_1' : 选项.当前意向编号,
+      公开企业表: 选项.公开企业表 ?? {},
+      不可用公开企业编号: 选项.不可用公开企业编号 ?? [],
       ...选项.简历,
     },
     派发: mock派发,
@@ -120,6 +129,7 @@ function 渲染Backend状态(选项: {
       核对候选委托: mock核对候选委托,
       准备候选委托简历: mock准备候选委托简历,
       提交P8举报: mock提交P8举报,
+      读取公开企业: mock读取公开企业,
     }),
   };
   // J-PILOT-01 Task 3：本用例的待核对投影（缺省无未决命令）
@@ -290,6 +300,9 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     // 委托前的权威库准备缺省给单文件库：一份文件也必须披露确认点名后才发委托
     mock准备候选委托简历.mockReset();
     mock准备候选委托简历.mockResolvedValue(单文件附件库);
+    // Task 4：公开企业补读桩缺省静默成功（不写缓存表；用例自行决定是否回填）
+    mock读取公开企业.mockReset();
+    mock读取公开企业.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -1658,5 +1671,129 @@ describe('职位详情 · P8 上下文举报（Backend）', () => {
     await waitFor(() => expect(mock读取候选岗位详情).toHaveBeenCalledWith('job_1', true));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '举报' })).toBeNull());
     expect(mock轻提示).toHaveBeenCalledWith('举报对象已不存在，请刷新后重试');
+  });
+});
+
+
+describe('职位详情 · 公开企业补读（Task 4 · Spec §6.1）', () => {
+  beforeEach(() => {
+    复位看市场来路();
+    mock派发.mockClear();
+    mock替换跳转.mockClear();
+    mock返回.mockClear();
+    mock跳转.mockClear();
+    mock公司路由键.mockClear();
+    mock取公司档案.mockClear();
+    mock轻提示.mockClear();
+    mock加载候选岗位.mockReset();
+    mock读取候选岗位详情.mockReset();
+    mock读取公开企业.mockReset();
+    mock读取公开企业.mockResolvedValue(undefined);
+  });
+
+  const 带坐标详情 = (编号 = 'job_1', 组织编号 = 'org_1') => ({
+    [编号]: { ...BFFCandidateJob样本, organization: BFF公司摘要样本, hiring_organization_ref: 组织编号 },
+  });
+
+  it('有真实 organization_id 才补读：按该 ID 恰好请求一次', () => {
+    渲染Backend状态({ 候选岗位详情: 带坐标详情('job_1', 'org_pub_1') });
+    渲染('job_1');
+    expect(mock读取公开企业).toHaveBeenCalledTimes(1);
+    expect(mock读取公开企业).toHaveBeenCalledWith('org_pub_1');
+  });
+
+  it('claim-only（无真实组织坐标）不补读：不按公司名或 claim 文案猜 ID', () => {
+    渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
+    渲染('job_1');
+    expect(mock读取公开企业).not.toHaveBeenCalled();
+  });
+
+  it('同一主体键复用 状态.公开企业表 既有结果：不再请求，已提供事实进公司原槽', () => {
+    渲染Backend状态({
+      候选岗位详情: 带坐标详情('job_1', 'org_1'),
+      公开企业表: { org_1: BFF公开企业样本 },
+    });
+    const 页 = 渲染('job_1');
+    expect(mock读取公开企业).not.toHaveBeenCalled();
+    // 公开档案已提供的事实填既有公司槽；成立无源仍未知
+    expect(screen.getByText('做可靠的技术产品')).toBeTruthy();
+    expect(screen.getByText('上海市张江路 1 号')).toBeTruthy();
+    expect(screen.getByText('C 轮')).toBeTruthy();
+    expect(screen.getByText('500-1000 人')).toBeTruthy();
+    expect(screen.getByText('金融科技')).toBeTruthy();
+    expect(screen.getAllByText('未知').some((节) => 节.textContent === '未知')).toBe(true);
+    // 摘要 Logo 进原公司图位；不新增视觉区
+    expect(页.container.querySelector(`img[src="${BFF企业档案样本.logo!.url}"]`)).toBeTruthy();
+  });
+
+  it('已判定不可用（organization_not_found 404 收口）的编号不再重发，岗位照常渲染', () => {
+    渲染Backend状态({
+      候选岗位详情: 带坐标详情('job_1', 'org_pub_1'),
+      不可用公开企业编号: ['org_pub_1'],
+    });
+    渲染('job_1');
+    expect(mock读取公开企业).not.toHaveBeenCalled();
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
+    // 局部缺源保持既有未知口径：公司槽不空缺也不伪造
+    expect(screen.getByText('公司简介未知')).toBeTruthy();
+  });
+
+  it('公开读取失败只局部降级：岗位正文与委托能力不受影响，不转成职位不存在', async () => {
+    mock读取公开企业.mockRejectedValue(new BFF错误(404, 'organization_not_found', 'not found'));
+    // 走推荐卡路径：委托能力在场，才能证明局部失败没有连带禁用岗位操作
+    渲染Backend状态({
+      候选岗位推荐: 快照With({
+        ...推荐卡样本,
+        job: { ...BFFCandidateJob样本, organization: BFF公司摘要样本, hiring_organization_ref: 'org_pub_1' },
+      }),
+    });
+    const 页 = 渲染('job_1');
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledTimes(1));
+    // 岗位照常完整渲染：局部失败绝不升级成安全不可用页
+    expect(screen.queryByText('这个职位暂时看不了')).toBeNull();
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
+    const 主键 = screen.getByRole('button', { name: '让AI代理去谈' }) as HTMLButtonElement;
+    expect(主键.disabled).toBe(false);
+    // 公司槽保留岗位已知内容（摘要先展示的未知口径），不称公司资料本来为空
+    expect(screen.getByText('公司简介未知')).toBeTruthy();
+    // 失败不触发循环重发
+    await act(async () => {});
+    expect(mock读取公开企业).toHaveBeenCalledTimes(1);
+    页.unmount();
+  });
+
+  it('换岗位后 A 的迟到响应不写回：B 页只按自己的 organization_id 取表', async () => {
+    const 用户 = userEvent.setup();
+    let 解决!: (值: BFF公开企业) => void;
+    mock读取公开企业.mockImplementation(
+      () => new Promise<BFF公开企业>((res) => { 解决 = res; }),
+    );
+    渲染Backend状态({
+      候选岗位详情: { ...带坐标详情('job_1', 'org_pub_1'), job_乙: BFFCandidateJob样本 },
+    });
+    // 真实路由导航换岗（同一路由模式，参数变化、组件实例保留）——同 既有 scope 栅栏用例
+    const 视图 = render(
+      <MemoryRouter initialEntries={['/job/job_1']}>
+        <换岗驱动 目标="/job/job_乙" />
+        <Routes>
+          <Route path="/job/:id" element={<职位详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(mock读取公开企业).toHaveBeenCalledWith('org_pub_1'));
+    await 用户.click(screen.getByRole('button', { name: '换岗测试驱动' }));
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
+    // A 的公开企业迟到落库：claim-only 的 B 岗只认自己的 organization_id，A 的资料不得出现
+    解决(BFF公开企业样本);
+    渲染Backend状态({
+      候选岗位详情: { ...带坐标详情('job_1', 'org_pub_1'), job_乙: BFFCandidateJob样本 },
+      公开企业表: { org_pub_1: BFF公开企业样本 },
+    });
+    await act(async () => {});
+    expect(screen.queryByText('做可靠的技术产品')).toBeNull();
+    expect(screen.queryByText('上海市张江路 1 号')).toBeNull();
+    // B 岗无组织坐标：不为它补发请求
+    expect(mock读取公开企业).toHaveBeenCalledTimes(1);
+    视图.unmount();
   });
 });

@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BFFCandidateJob样本,
+  BFF企业档案样本,
   BFF岗位样本,
   BFF候选岗位推荐样本,
   BFF委托失败回执样本,
@@ -26,6 +27,7 @@ import {
   P4淘汰原因文案,
   P4淘汰原因码,
   公司短行,
+  公司已知元行组,
   判断P4招聘组织前提,
   从P4CandidateJob,
   从P4候选岗位,
@@ -347,6 +349,47 @@ describe('市场卡公司摘要落位（Spec §5.1）', () => {
     expect(view.卡.公司).toBe('云衢科技');
     expect(view.卡.公司简介).toBe('');
     expect(view.卡.公司图片URL).toBeNull();
+  });
+
+  it('公司槽携带 organization 摘要原对象（独立职位先展示摘要）；缺席给 null（Spec §6.1）', () => {
+    const 带摘要 = 从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      job: { ...BFFCandidateJob样本, organization: BFF公司摘要样本 },
+    });
+    expect(带摘要.公司.organization).toEqual(BFF公司摘要样本);
+    expect(从P4CandidateJob({ ...BFFCandidateJob样本, organization: BFF公司摘要样本 }).公司.organization)
+      .toEqual(BFF公司摘要样本);
+    // 摘要缺席是合法缺源：null 透传，不造空对象
+    expect(从P4候选岗位({ ...BFF候选岗位推荐样本, job: { ...BFFCandidateJob样本, organization: null } }).公司.organization)
+      .toBeNull();
+    expect(从P4候选岗位(BFF候选岗位推荐样本).公司.organization).toEqual(BFF公司摘要声明样本);
+  });
+});
+
+describe('公司已知元行组（Spec §6.1 独立职位公司摘要）', () => {
+  it('摘要已知段 → 既有元行标签（融资阶段/规模/行业）；未知段不出行', () => {
+    expect(公司已知元行组(BFF公司摘要样本)).toEqual([
+      { 标签: '融资阶段', 值: 'C 轮' },
+      { 标签: '规模', 值: '500-1000 人' },
+      { 标签: '行业', 值: '金融科技' },
+    ]);
+    // 局部 null：只出已知段，顺序与 公司短行 同一组合
+    expect(公司已知元行组({ ...BFF公司摘要样本, funding_stage: null, industry: null })).toEqual([
+      { 标签: '规模', 值: '500-1000 人' },
+    ]);
+    // 开放码不在闭合文案表内不展示；全缺失给空组
+    expect(公司已知元行组({ ...BFF公司摘要样本, funding_stage: 'seed_round', company_size: '50_60' }))
+      .toEqual([{ 标签: '行业', 值: '金融科技' }]);
+    expect(公司已知元行组(BFF公司摘要声明样本)).toEqual([]);
+    expect(公司已知元行组(null)).toEqual([]);
+  });
+
+  it('公开企业档案（BFF企业档案）同一入口：枚举成员结构兼容摘要三键', () => {
+    expect(公司已知元行组(BFF企业档案样本)).toEqual([
+      { 标签: '融资阶段', 值: 'C 轮' },
+      { 标签: '规模', 值: '500-1000 人' },
+      { 标签: '行业', 值: '金融科技' },
+    ]);
   });
 });
 

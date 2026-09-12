@@ -98,6 +98,24 @@ export function 公司短行(组织: BFF公司摘要 | null): string {
   return 段们.join(' · ');
 }
 
+/**
+ * 公司已知元行：同一组闭合码表 → 加厚公司卡的既有元行标签（融资阶段/规模/行业），只保留
+ * 已知段。输入按结构收敛到三员，BFF公司摘要 与 BFF企业档案（公开企业 GET 的 profile）都
+ * 能喂进来 —— 独立职位详情先展示摘要、公开读取成功后补已提供事实（Spec §6.1）。
+ */
+export function 公司已知元行组(
+  组织: Pick<BFF公司摘要, 'funding_stage' | 'company_size' | 'industry'> | null,
+): { 标签: string; 值: string }[] {
+  const 融资 = 码表段(融资阶段文案, 组织?.funding_stage ?? null);
+  const 规模 = 码表段(公司规模文案, 组织?.company_size ?? null);
+  const 行业 = 非空文本(组织?.industry?.display_name ?? null);
+  return [
+    ...(融资 !== null ? [{ 标签: '融资阶段', 值: 融资 }] : []),
+    ...(规模 !== null ? [{ 标签: '规模', 值: 规模 }] : []),
+    ...(行业 !== null ? [{ 标签: '行业', 值: 行业 }] : []),
+  ];
+}
+
 /** trim 后无有效字符按缺失处理（同 列表卡片映射 的缺失规则） */
 function 非空文本(值: string | null | undefined): string | null {
   const 文 = 值?.trim() ?? '';
@@ -198,6 +216,8 @@ function 建候选岗位视图(
       简介: '',
       // 公开公司路由 ID 只认 hiring_organization_ref；claim 不是组织坐标，缺 ref 就是 null
       organizationId: job.hiring_organization_ref ?? null,
+      // 公开摘要原对象（独立职位详情先展示摘要）；缺席是合法缺源 → null
+      organization: job.organization ?? null,
     },
     发布人: job.publisher_profile
       ? {

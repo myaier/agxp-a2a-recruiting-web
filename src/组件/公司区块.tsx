@@ -49,6 +49,7 @@ export function 公司区块({
   资料,
   按下,
   标志,
+  公司图片URL,
   children,
 }: {
   名称: string;
@@ -61,6 +62,9 @@ export function 公司区块({
   按下?: () => void;
   /** 自定义标志(如企业端已上传的 LOGO);缺省用黑底橄榄字的品牌字标 */
   标志?: ReactNode;
+  /** 真实公司 Logo 的 BFF 媒体 URL(Spec §6.1):显式传(含 null)只认该 URL,失败回既有首字块;
+   *  不传(undefined)的既有调用方行为逐字不变 */
+  公司图片URL?: string | null;
   /** 追加在元表之后的内容(如在谈详情的公司标签行) */
   children?: ReactNode;
 }) {
@@ -77,6 +81,7 @@ export function 公司区块({
         {标志 ?? (
           <公司字标
             首字={首字}
+            公司图片URL={公司图片URL}
             尺寸={40}
             圆角={14}
             底色="var(--墨)"

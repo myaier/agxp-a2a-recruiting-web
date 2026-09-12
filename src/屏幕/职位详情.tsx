@@ -42,7 +42,7 @@ import { 准备Backend职位正文, 准备Mock职位正文 } from './职位详�
 import type { 职位核对简历, 职位正文展示属性 } from './职位详情展示/类型';
 import { 从P4候选岗位, 从P4CandidateJob, 映射P4委托展示 } from '../数据/发现推荐映射';
 import type { P4候选岗位页面 } from '../数据/招聘数据源类型';
-import type { BFF附件简历 } from '../数据/BFF契约';
+import type { BFF公开企业, BFF附件简历 } from '../数据/BFF契约';
 import { P4错误文案, P4范围键 } from '../状态/后端/发现推荐操作';
 import { use发现推荐委托轮询 } from '../状态/后端/use发现推荐委托轮询';
 import 确认层 from '../组件/确认层';
@@ -244,6 +244,31 @@ function Backend职位详情() {
     [岗位, 推荐卡]
   );
 
+  // ── 公开企业补读（Spec §6.1 的详情局部状态）──
+  // 只有当前独立职位的真实 organization_id（hiring_organization_ref）在场才补读，claim
+  // 文案不是 ID；同一主体键复用 状态.公开企业表 的既有结果（含本页早前读到的缓存），已
+  // 判定不可用（organization_not_found 404 收口）的编号不再重发。补读是局部的：失败只
+  // 轻提示并保留岗位已知内容（不称公司资料本来为空），绝不阻塞已成功的职位渲染、绝不把
+  // 局部失败升级成「职位不存在」；新岗位只按自己的 organization_id 取表，换岗位/离屏后
+  // 迟到的响应随 effect 栅栏作废，写不回新页。
+  const 组织编号 = 视图 === null ? null : 视图.公司.organizationId;
+  const 公开企业: BFF公开企业 | null =
+    组织编号 === null ? null : 状态.公开企业表[组织编号] ?? null;
+  useEffect(() => {
+    if (组织编号 === null) return;
+    if (状态.公开企业表[组织编号] !== undefined) return;
+    if (状态.不可用公开企业编号.includes(组织编号)) return;
+    let 已失效 = false;
+    void 操作.读取公开企业(组织编号).catch(() => {
+      // 迟到的失败不写回：换岗位 / 离屏后 A 岗的读取错误不再提示
+      if (已失效) return;
+      轻提示('公司资料暂时读不到，可稍后重试');
+    });
+    return () => {
+      已失效 = true;
+    };
+  }, [组织编号, 状态.公开企业表, 状态.不可用公开企业编号, 操作]);
+
   // 委托状态只认 映射P4委托展示 的闭合六态投影：摘要 + 权威回执（按 delegation_id 对上）；
   // 详情直取没有推荐坐标，摘要恒 null
   const 委托摘要 = 推荐卡?.delegation ?? null;
@@ -444,7 +469,7 @@ function Backend职位详情() {
   return (
     <次级页外壳>
       <职位页面展示
-        {...职位正文属性({ 岗: 视图.卡, P4视图: 视图, 简历: 收拢简历(状态), 是后端: true, 跳转 })}
+        {...职位正文属性({ 岗: 视图.卡, P4视图: 视图, 简历: 收拢简历(状态), 是后端: true, 跳转, 公开企业 })}
         返回={安全返回}
         更多打开={抽屉展开}
         改更多打开={设抽屉展开}
@@ -549,6 +574,7 @@ function 职位正文属性({
   简历,
   是后端,
   跳转,
+  公开企业 = null,
 }: {
   岗: 市场职位;
   藏直聊?: boolean;
@@ -556,6 +582,8 @@ function 职位正文属性({
   简历: 职位核对简历;
   是后端: boolean;
   跳转: (目标: string) => void;
+  /** Spec §6.1：独立职位详情补读到的公开企业；缺省 null（Mock / 直聊层不受影响） */
+  公开企业?: BFF公开企业 | null;
 }): 职位正文展示属性 {
   // 视图只在「Backend 且调用方给了 P4视图」时生效：Mock 调用方不传，行为不变
   const 视图 = 是后端 && P4视图 ? P4视图 : null;
@@ -563,7 +591,7 @@ function 职位正文属性({
   // Backend P4 路径不读 Mock 详情表（取市场岗位详情 是演示域数据），Mock/直聊会话
   // 路径保持原读取；两条路径收成同一份展示数据，JSX 只有一份。
   const 数据 = 视图 !== null
-    ? 准备Backend职位正文(视图, 简历)
+    ? 准备Backend职位正文(视图, 简历, 公开企业)
     : 准备Mock职位正文(岗, 简历);
 
   // 公司槽落点：Backend 只认 hiring_organization_ref（claim 不是组织坐标）；

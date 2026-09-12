@@ -3,7 +3,7 @@
 // 展示只按 数据/能力 渲染：核对/说明两态、未知占位（§3.2）只作用于缺失节点、
 // 完整状态沿用原声明值。有值 → 空 的 rerender 逐槽断言无旧数据残留。
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { 职位正文展示 } from './职位正文展示';
@@ -214,5 +214,61 @@ describe('职位正文展示 · 说明分支与缺失占位（§3.2）', () => {
     expect(screen.queryByText('—')).toBeNull();
     expect(screen.queryByText('结构化设置：已确认')).toBeNull();
     expect(screen.getByRole('img', { name: '适配 50 分' })).toBeTruthy();
+  });
+});
+
+describe('职位正文展示 · 真实媒体图位（Spec §6.1）', () => {
+  const 公司图数据: 职位正文数据 = {
+    ...说明未知数据,
+    公司: {
+      ...说明未知数据.公司,
+      图: { 种类: '图片', URL: 'https://cdn.example.com/logo.png', 兜底字: '云', 可访问名: '公司图片未知' },
+    },
+  };
+  const 头像数据: 职位正文数据 = {
+    ...说明未知数据,
+    发布人: {
+      ...说明未知数据.发布人,
+      图: { 种类: '图片', URL: 'https://cdn.example.com/p.png', 兜底字: '', 可访问名: '发布人图片未知' },
+    },
+  };
+
+  it('公司图位给真实 URL 时原图位节点渲染图片，不叠首字；公司块交互形态不变', () => {
+    const 宿主 = render(<职位正文展示 数据={公司图数据} 打开公司={() => undefined} />);
+    expect(宿主.container.querySelector('img[src="https://cdn.example.com/logo.png"]')).toBeTruthy();
+    expect(screen.queryByText('云')).toBeNull();
+    // 图位填充不改变公司槽形态：给了 打开公司 就还是可点公司块（同一节点）
+    expect(screen.getByRole('button', { name: /云衢科技/ })).toBeTruthy();
+  });
+
+  it('公司 Logo 加载失败回中性首字块；换 URL 清失败态重新出图', () => {
+    const 宿主 = render(<职位正文展示 数据={公司图数据} />);
+    fireEvent.error(宿主.container.querySelector('img') as Element);
+    expect(宿主.container.querySelector('img')).toBeNull();
+    expect(screen.getByText('云')).toBeTruthy();
+    宿主.rerender(<职位正文展示 数据={{ ...公司图数据, 公司: { ...公司图数据.公司, 图: { 种类: '图片', URL: 'https://cdn.example.com/logo-2.png', 兜底字: '云', 可访问名: '公司图片未知' } } }} />);
+    expect(宿主.container.querySelector('img[src="https://cdn.example.com/logo-2.png"]')).toBeTruthy();
+    expect(screen.queryByText('云')).toBeNull();
+  });
+
+  it('发布人头像渲染在原头像槽内；加载失败回既有图位（未知占位），换 URL 清失败态', () => {
+    const 宿主 = render(<职位正文展示 数据={头像数据} />);
+    const 图 = 宿主.container.querySelector('img[src="https://cdn.example.com/p.png"]');
+    expect(图).toBeTruthy();
+    fireEvent.error(图 as Element);
+    expect(宿主.container.querySelector('img')).toBeNull();
+    expect(screen.getByLabelText('发布人图片未知')).toBeTruthy();
+    宿主.rerender(<职位正文展示 数据={{ ...头像数据, 发布人: { ...头像数据.发布人, 图: { 种类: '图片', URL: 'https://cdn.example.com/p2.png', 兜底字: '', 可访问名: '发布人图片未知' } } }} />);
+    expect(宿主.container.querySelector('img[src="https://cdn.example.com/p2.png"]')).toBeTruthy();
+  });
+
+  it('字标/未知图位不渲染图片：Mock 字标与 Backend 中性占位行为逐字不变', () => {
+    const 字标宿主 = render(<职位正文展示 数据={核对数据} />);
+    expect(字标宿主.container.querySelectorAll('img').length).toBe(0);
+    字标宿主.unmount();
+    render(<职位正文展示 数据={说明未知数据} />);
+    expect(document.querySelectorAll('img').length).toBe(0);
+    expect(screen.getByLabelText('公司图片未知')).toBeTruthy();
+    expect(screen.getByLabelText('发布人图片未知')).toBeTruthy();
   });
 });

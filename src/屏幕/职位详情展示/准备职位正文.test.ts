@@ -14,7 +14,8 @@ import { 准备Backend职位正文, 准备Mock职位正文 } from './准备职�
 import { 公司区块 } from '../../组件/公司区块';
 import { 从P4CandidateJob, 从P4候选岗位 } from '../../数据/发现推荐映射';
 import { 市场列表, 取市场岗位详情 } from '../../数据/模拟数据';
-import { BFF候选岗位推荐样本, BFFCandidateJob样本 } from '../../测试/BFF样本';
+import { BFF候选岗位推荐样本, BFFCandidateJob样本, BFF企业档案样本, BFF公开企业样本 } from '../../测试/BFF样本';
+import { BFF公司摘要样本 } from '../../测试/展示资料样本';
 
 // Spy 包装真实实现：Mock 路径照常工作，Backend 路径用「零调用」自证不读 Mock 来源
 const { mock取市场岗位详情, mock取公司档案, mock公司路由键 } = vi.hoisted(() => ({
@@ -247,6 +248,118 @@ describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
     const 发布人 = 准备Backend职位正文(视图, 真实简历).发布人;
     expect(发布人.姓名).toBe('李四');
     expect(发布人.公司).toBe('企业信息未知');
+  });
+});
+
+describe('准备Backend职位正文 · 公开企业补读（Spec §6.1）', () => {
+  /** organization 摘要 + 真实组织坐标的推荐卡（公开读取合法前提） */
+  const 带摘要卡 = {
+    ...BFF候选岗位推荐样本,
+    job: { ...BFFCandidateJob样本, organization: BFF公司摘要样本, hiring_organization_ref: 'org_1' },
+  };
+
+  it('公司摘要先展示：organization 六键把 融资/规模/行业 行填上已知值，成立/地址保持未知', () => {
+    const 数据 = 准备Backend职位正文(从P4候选岗位(带摘要卡), 真实简历);
+    expect(数据.公司.资料.元行组).toEqual([
+      { 标签: '融资阶段', 值: 'C 轮' },
+      { 标签: '规模', 值: '500-1000 人' },
+      { 标签: '行业', 值: '金融科技' },
+      { 标签: '成立', 值: '未知' },
+      { 标签: '地址', 值: '未知' },
+    ]);
+    // 公开读取没回来：介绍段不称已读无介绍，仍给未知文案
+    expect(数据.公司.资料.介绍段).toBe('公司简介未知');
+    // organization.logo.url → 原公司图位的真实图片输入；兜底字只作失败回退
+    expect(数据.公司.图).toEqual({
+      种类: '图片', URL: BFF公司摘要样本.logo!.url, 兜底字: '云', 可访问名: '公司图片未知',
+    });
+  });
+
+  it('公开读取成功补已提供事实：介绍段/地址进原槽；成立无源仍未知；JD/薪资/匹配不覆盖', () => {
+    const 无公开 = 准备Backend职位正文(从P4候选岗位(带摘要卡), 真实简历);
+    const 有公开 = 准备Backend职位正文(从P4候选岗位(带摘要卡), 真实简历, BFF公开企业样本);
+    expect(有公开.公司.资料.介绍段).toBe(BFF企业档案样本.company_intro);
+    expect(有公开.公司.资料.元行组).toEqual([
+      { 标签: '融资阶段', 值: 'C 轮' },
+      { 标签: '规模', 值: '500-1000 人' },
+      { 标签: '行业', 值: '金融科技' },
+      { 标签: '成立', 值: '未知' },
+      { 标签: '地址', 值: BFF企业档案样本.office_address },
+    ]);
+    // 岗位正文、薪资与匹配结论是权威来源，公开企业资料不覆盖
+    expect(有公开.职位详情行).toEqual(无公开.职位详情行);
+    expect(有公开.职位要求行).toEqual(无公开.职位要求行);
+    expect(有公开.职位事实行).toEqual(无公开.职位事实行);
+    expect(有公开.薪资).toBe(无公开.薪资);
+    expect(有公开.匹配).toEqual(无公开.匹配);
+  });
+
+  it('局部 null：摘要缺失段由公开档案补；档案也未提供的成员保持未知；空正文不换未知口径', () => {
+    const 视图 = 从P4候选岗位({
+      ...带摘要卡,
+      job: {
+        ...带摘要卡.job,
+        organization: { ...BFF公司摘要样本, funding_stage: null, company_size: '20_99', logo: null },
+      },
+    });
+    const 数据 = 准备Backend职位正文(视图, 真实简历, {
+      ...BFF公开企业样本,
+      profile: { ...BFF企业档案样本, company_intro: '  ', office_address: '   ' },
+    });
+    expect(数据.公司.资料.元行组).toEqual([
+      { 标签: '融资阶段', 值: 'C 轮' },
+      { 标签: '规模', 值: '20-99 人' },
+      { 标签: '行业', 值: '金融科技' },
+      { 标签: '成立', 值: '未知' },
+      { 标签: '地址', 值: '未知' },
+    ]);
+    // 档案介绍/地址空白 = 未提供：保持未知，不渲染空白段
+    expect(数据.公司.资料.介绍段).toBe('公司简介未知');
+  });
+
+  it('摘要缺席时公开档案是唯一已知源：Logo/元行/介绍段都由档案补齐', () => {
+    const 视图 = 从P4CandidateJob({
+      ...BFFCandidateJob样本, organization: null, hiring_organization_ref: 'org_1',
+    });
+    const 数据 = 准备Backend职位正文(视图, 真实简历, BFF公开企业样本);
+    expect(数据.公司.图).toEqual({
+      种类: '图片', URL: BFF企业档案样本.logo!.url, 兜底字: '云', 可访问名: '公司图片未知',
+    });
+    expect(数据.公司.资料.元行组).toEqual([
+      { 标签: '融资阶段', 值: 'C 轮' },
+      { 标签: '规模', 值: '500-1000 人' },
+      { 标签: '行业', 值: '金融科技' },
+      { 标签: '成立', 值: '未知' },
+      { 标签: '地址', 值: BFF企业档案样本.office_address },
+    ]);
+  });
+
+  it('公司图位：真实 URL 优先摘要 Logo，无图保持中性未知占位；发布人头像同接 avatar_url', () => {
+    const 无图 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), 真实简历);
+    expect(无图.公司.图).toEqual({ 种类: '未知', 可访问名: '公司图片未知' });
+    expect(无图.发布人.图).toEqual({ 种类: '未知', 可访问名: '发布人图片未知' });
+    // 发布人在场但无头像：仍是中性图位，不拿姓名首字充当真实照片
+    const 带发布人 = 从P4CandidateJob({
+      ...BFFCandidateJob样本,
+      publisher_profile: {
+        public_name: '林澈', title: '招聘负责人',
+        personal_verification_status: 'verified', avatar_url: null,
+      },
+    });
+    expect(准备Backend职位正文(带发布人, 真实简历).发布人.图)
+      .toEqual({ 种类: '未知', 可访问名: '发布人图片未知' });
+    // avatar_url 在场 → 图位给真实 URL；兜底字只用于加载失败回退
+    const 带头像 = 从P4CandidateJob({
+      ...BFFCandidateJob样本,
+      publisher_profile: {
+        public_name: '林澈', title: '招聘负责人',
+        personal_verification_status: 'verified', avatar_url: 'https://cdn.example.com/p.png',
+      },
+    });
+    // 兜底字恒空：发布人失败回未知占位，不用姓名首字充当照片
+    expect(准备Backend职位正文(带头像, 真实简历).发布人.图).toEqual({
+      种类: '图片', URL: 'https://cdn.example.com/p.png', 兜底字: '', 可访问名: '发布人图片未知',
+    });
   });
 });
 
