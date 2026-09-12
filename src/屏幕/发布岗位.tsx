@@ -33,6 +33,7 @@ import { 可用企业关系 } from '../数据/组织映射';
 import { 空岗位硬性事实 } from '../数据/类型';
 import type { 在招岗位, 岗位硬性事实 } from '../数据/类型';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
+import type { 目录查询选项 } from '../数据/招聘数据源/目录';
 import type {
   BFFTaxonomyItem,
   BFFJD建议,
@@ -1269,7 +1270,7 @@ function 职业分类层后端({
   选定,
   关闭,
 }: {
-  查询Taxonomy?: (kind: 'job-categories', query: { parentId?: string; q?: string; cursor?: string; limit?: number }) => Promise<{ items: BFFTaxonomyItem[]; nextCursor: string | null; catalogVersion: string }>;
+  查询Taxonomy?: (kind: 'job-categories', query: { parentId?: string; q?: string; cursor?: string; limit?: number }, 选项?: 目录查询选项) => Promise<{ items: BFFTaxonomyItem[]; nextCursor: string | null; catalogVersion: string }>;
   当前引用: 目录选择值 | undefined;
   选定: (项: BFFTaxonomyItem) => void;
   关闭: () => void;
@@ -1284,6 +1285,9 @@ function 职业分类层后端({
   const [根加载中, 设根加载中] = useState(false);
   const [子项游标, 设子项游标] = useState<string | null>(null);
   const [子项加载中, 设子项加载中] = useState(false);
+  // review-r1 F5：根/子查询第一页的 catalogVersion —— 追加页换版本时整组重开（本层局部）
+  const 根版本引用 = useRef('');
+  const 子项版本引用 = useRef('');
   // review-r3 R3-I-6：导航代际守 stale；R3-I-8：当前根 ref
   const 导航代际 = useRef(0);
   const 当前根引用 = useRef(当前根);
@@ -1298,6 +1302,7 @@ function 职业分类层后端({
         const 页 = await 方法('job-categories', { limit: 50 });
         设根项(页.items);
         设根游标(页.nextCursor);
+        根版本引用.current = 页.catalogVersion;
         if (页.items.length > 0 && !当前根) {
           设当前根(页.items[0]);
           const 本次 = ++导航代际.current;
@@ -1306,6 +1311,7 @@ function 职业分类层后端({
             if (本次 !== 导航代际.current) return;
             设子项(子页.items);
             设子项游标(子页.nextCursor);
+            子项版本引用.current = 子页.catalogVersion;
           } catch {
             if (本次 !== 导航代际.current) return;
             设子项([]);
@@ -1321,6 +1327,7 @@ function 职业分类层后端({
   }, []);
 
   // review-r3 R3-I-5：根加载更多
+  // review-r1 F5：追加页换版本 → 根列表整组从第一页静默重开，不跨版本合并。
   const 根加载更多 = async () => {
     if (根游标 === null || 根加载中) return;
     const 方法 = 方法引用.current;
@@ -1328,6 +1335,13 @@ function 职业分类层后端({
     设根加载中(true);
     try {
       const 页 = await 方法('job-categories', { cursor: 根游标, limit: 50 });
+      if (页.catalogVersion !== 根版本引用.current) {
+        const 重开 = await 方法('job-categories', { limit: 50 }, { 强制刷新: true });
+        设根项(重开.items);
+        设根游标(重开.nextCursor);
+        根版本引用.current = 重开.catalogVersion;
+        return;
+      }
       设根项((旧) => 合并目录页(旧, 页.items));
       设根游标(页.nextCursor);
     } catch {
@@ -1348,6 +1362,15 @@ function 职业分类层后端({
     try {
       const 页 = await 方法('job-categories', { parentId: 目标根id, cursor: 子项游标, limit: 50 });
       if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+      if (页.catalogVersion !== 子项版本引用.current) {
+        // review-r1 F5：目录换代 —— 右栏整组替换为新版本第一页（静默，不跨版本合并）
+        const 重开 = await 方法('job-categories', { parentId: 目标根id, limit: 50 }, { 强制刷新: true });
+        if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
+        设子项(重开.items);
+        设子项游标(重开.nextCursor);
+        子项版本引用.current = 重开.catalogVersion;
+        return;
+      }
       设子项((旧) => 合并目录页(旧, 页.items));
       设子项游标(页.nextCursor);
     } catch {
@@ -1371,6 +1394,7 @@ function 职业分类层后端({
       if (本次 !== 导航代际.current) return;
       设子项(子页.items);
       设子项游标(子页.nextCursor);
+      子项版本引用.current = 子页.catalogVersion;
     } catch {
       if (本次 !== 导航代际.current) return;
       设子项([]);

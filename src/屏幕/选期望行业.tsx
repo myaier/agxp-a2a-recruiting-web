@@ -12,8 +12,10 @@
 // （与城市不同：本页不做取消回滚事务，保存负责返回。）
 //
 // Backend selectable=true 叶子原子保存 期望行业们+行业引用们（ID 去重，上限 3）；
-// 推荐 chips：Backend 推荐 chips 沿规格按 selectable 决定 可选/可展开（不可选点击走
-// 展开不混成写入），Mock 推荐 chips 沿原行为可切换一级行业。
+// 推荐 chips：可选/可展开按目录形态映射（可选=selectable、可展开=has_children，
+// 不可选点击走展开不混成写入），Mock 推荐 chips 沿原行为可切换一级行业。
+// review-r1 F4：目录展开/装载失败不缓存成空结果（展开记录不落盘即允许重试），
+// 失败经既有 轻提示 说明；review-r1 F5：各查询追加页与首页 catalogVersion 不同时整组重开。
 
 import { useEffect, useRef, useState } from 'react';
 import { use导航 } from '../路由/导航钩子';
@@ -22,6 +24,8 @@ import { 行业字典 } from '../数据/城市与行业';
 import type { BFFTaxonomyItem } from '../数据/BFF契约';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
 import { 合并目录页 } from '../数据/目录选择';
+import { 轻提示 } from '../组件/轻提示';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 import {
   期望行业选择正文,
   type 期望行业组,
@@ -52,14 +56,18 @@ export default function 选期望行业() {
   const 已选引用 = 全局.意向草稿.行业引用们 ?? [];
   const 已选满 = 已选行业们.length >= 行业上限;
 
-  // ── Backend：roots + 展开子项（支持 >2 级：非 selectable 子项再展开取孙项）──
+  // ── Backend：roots + 展开子项（支持 >2 级：非 selectable 且有子项的子项再展开取孙项）──
   const [根项, 设根项] = useState<BFFTaxonomyItem[]>([]);
   // review-r2 R2-M-1：根行业分页游标 + 子项分页游标
+  // review-r1 F5：根查询第一页的 catalogVersion —— 追加页换版本时整组重开（沿 城市查询钩子
+  // 的版本引用做法，留在本页局部，不抽共用基础设施）。
   const [根游标, 设根游标] = useState<string | null>(null);
   const [根加载中, 设根加载中] = useState(false);
-  const [展开状态, 设展开状态] = useState<Record<string, { 子项: BFFTaxonomyItem[]; 加载中: boolean; 游标: string | null }>>({});
+  const [根版本, 设根版本] = useState('');
+  const [展开状态, 设展开状态] = useState<Record<string, { 子项: BFFTaxonomyItem[]; 加载中: boolean; 游标: string | null; 版本: string }>>({});
   const [孙项表, 设孙项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
   const [孙项游标表, 设孙项游标表] = useState<Record<string, string | null>>({});
+  const [孙项版本表, 设孙项版本表] = useState<Record<string, string>>({});
   const 方法引用 = useRef(目录查询?.查询Taxonomy);
   方法引用.current = 目录查询?.查询Taxonomy;
 
@@ -73,9 +81,10 @@ export default function 选期望行业() {
         const 页 = await 方法('industries', { limit: 50 });
         设根项(页.items);
         设根游标(页.nextCursor);
-      } catch {
-        设根项([]);
-        设根游标(null);
+        设根版本(页.catalogVersion);
+      } catch (错误) {
+        // review-r1 F4：失败不动既有列表（不把失败缓存成空目录），经既有轻提示说明，重进可再试
+        轻提示(取后端错误文案(错误));
       }
     })();
   }, [是后端]);
@@ -88,6 +97,15 @@ export default function 选期望行业() {
     设根加载中(true);
     try {
       const 页 = await 方法('industries', { cursor: 根游标, limit: 50 });
+      if (页.catalogVersion !== 根版本) {
+        // review-r1 F5：目录换代 —— 旧游标是死页，不跨版本合并，从根查询第一页静默重开。
+        // review-cx-r2：强制刷新让重开真打到服务端（缓存首页已来自旧快照）
+        const 重开 = await 方法('industries', { limit: 50 }, { 强制刷新: true });
+        设根项(重开.items);
+        设根游标(重开.nextCursor);
+        设根版本(重开.catalogVersion);
+        return;
+      }
       设根项((旧) => 合并目录页(旧, 页.items));
       设根游标(页.nextCursor);
     } catch {
@@ -99,14 +117,21 @@ export default function 选期望行业() {
 
   const 展开根 = async (项: BFFTaxonomyItem) => {
     if (展开状态[项.id]) return;
-    设展开状态((旧) => ({ ...旧, [项.id]: { 子项: [], 加载中: true, 游标: null } }));
+    设展开状态((旧) => ({ ...旧, [项.id]: { 子项: [], 加载中: true, 游标: null, 版本: '' } }));
     const 方法 = 方法引用.current;
     if (!方法) return;
     try {
       const 子页 = await 方法('industries', { parentId: 项.id, limit: 50 });
-      设展开状态((旧) => ({ ...旧, [项.id]: { 子项: 子页.items, 加载中: false, 游标: 子页.nextCursor } }));
-    } catch {
-      设展开状态((旧) => ({ ...旧, [项.id]: { 子项: [], 加载中: false, 游标: null } }));
+      设展开状态((旧) => ({ ...旧, [项.id]: { 子项: 子页.items, 加载中: false, 游标: 子页.nextCursor, 版本: 子页.catalogVersion } }));
+    } catch (错误) {
+      // review-r1 F4：失败不写「已展开」记录（否则入口守卫挡住重试），经既有轻提示说明
+      设展开状态((旧) => {
+        if (!(项.id in 旧)) return 旧;
+        const 其余 = { ...旧 };
+        delete 其余[项.id];
+        return 其余;
+      });
+      轻提示(取后端错误文案(错误));
     }
   };
 
@@ -119,16 +144,26 @@ export default function 选期望行业() {
     设展开状态((旧) => ({ ...旧, [项.id]: { ...旧[项.id], 加载中: true } }));
     try {
       const 子页 = await 方法('industries', { parentId: 项.id, cursor: 状态.游标, limit: 50 });
+      if (子页.catalogVersion !== 状态.版本) {
+        // review-r1 F5：目录换代 —— 该父项整组（累计页与游标）丢弃，从其第一页静默重开。
+        const 重开 = await 方法('industries', { parentId: 项.id, limit: 50 }, { 强制刷新: true });
+        设展开状态((旧) => ({
+          ...旧,
+          [项.id]: { 子项: 重开.items, 加载中: false, 游标: 重开.nextCursor, 版本: 重开.catalogVersion },
+        }));
+        return;
+      }
       设展开状态((旧) => ({
         ...旧,
-        [项.id]: { 子项: 合并目录页(旧[项.id].子项, 子页.items), 加载中: false, 游标: 子页.nextCursor },
+        [项.id]: { 子项: 合并目录页(旧[项.id].子项, 子页.items), 加载中: false, 游标: 子页.nextCursor, 版本: 旧[项.id].版本 },
       }));
     } catch {
+      // 游标不动，用户再点一次就是重试
       设展开状态((旧) => ({ ...旧, [项.id]: { ...旧[项.id], 加载中: false } }));
     }
   };
 
-  // 非 selectable 子项：按 parentId 取孙项，展开为嵌套列表
+  // 非 selectable 且有子项的子项：按 parentId 取孙项，展开为嵌套列表
   const 展开子 = async (项: BFFTaxonomyItem) => {
     if (孙项表[项.id]) return;
     const 方法 = 方法引用.current;
@@ -137,20 +172,30 @@ export default function 选期望行业() {
       const 孙页 = await 方法('industries', { parentId: 项.id, limit: 50 });
       设孙项表((旧) => ({ ...旧, [项.id]: 孙页.items }));
       设孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
-    } catch {
-      设孙项表((旧) => ({ ...旧, [项.id]: [] }));
-      设孙项游标表((旧) => ({ ...旧, [项.id]: null }));
+      设孙项版本表((旧) => ({ ...旧, [项.id]: 孙页.catalogVersion }));
+    } catch (错误) {
+      // review-r1 F4：失败不写空孙表（否则入口守卫挡住重试），经既有轻提示说明
+      轻提示(取后端错误文案(错误));
     }
   };
 
   // review-r2 R2-M-1：孙项加载更多（>2 级 taxonomy 分页）
   const 孙项加载更多 = async (项: BFFTaxonomyItem) => {
     const 游标 = 孙项游标表[项.id];
+    const 版本 = 孙项版本表[项.id];
     if (游标 === null || 游标 === undefined) return;
     const 方法 = 方法引用.current;
     if (!方法) return;
     try {
       const 孙页 = await 方法('industries', { parentId: 项.id, cursor: 游标, limit: 50 });
+      if (孙页.catalogVersion !== 版本) {
+        // review-r1 F5：目录换代 —— 孙项整组丢弃，从其第一页静默重开。
+        const 重开 = await 方法('industries', { parentId: 项.id, limit: 50 }, { 强制刷新: true });
+        设孙项表((旧) => ({ ...旧, [项.id]: 重开.items }));
+        设孙项游标表((旧) => ({ ...旧, [项.id]: 重开.nextCursor }));
+        设孙项版本表((旧) => ({ ...旧, [项.id]: 重开.catalogVersion }));
+        return;
+      }
       设孙项表((旧) => ({ ...旧, [项.id]: 合并目录页(旧[项.id] ?? [], 孙页.items) }));
       设孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
     } catch {
@@ -244,13 +289,15 @@ export default function 选期望行业() {
   /** 选中身份按稳定 ID：Backend 勾只落在已选引用的 ID 上（同名条目不互串）；Mock 沿名称草稿 */
   const 后端选中 = (项: BFFTaxonomyItem) => 已选引用.some((条) => 条.id === 项.id);
 
-  /** Backend 目录项 → 展示片（可选/可展开由 selectable 决定，组件不推导） */
+  /** Backend 目录项 → 展示片（可选/可展开由目录形态决定，组件不推导）。
+   *  review-r1 F3：可展开按契约 has_children 原样读取，不再用 !selectable 推导 ——
+   *  非 selectable 且没有子项的条目拿不到展开请求，也不会落一个空的孙盒。 */
   const 片值 = (项: BFFTaxonomyItem): 期望行业项 => ({
     键: 项.id,
     名称: 项.display_name,
     选中: 后端选中(项),
     可选: 项.selectable,
-    可展开: !项.selectable,
+    可展开: 项.has_children,
   });
 
   // ── 展示映射（分组们 = 展示批次不是新树）：根组 + 其孙项盒紧跟其后 ──
@@ -318,7 +365,7 @@ export default function 选期望行业() {
               名称: 项.display_name,
               选中: 后端选中(项),
               可选: 项.selectable,
-              可展开: !项.selectable,
+              可展开: 项.has_children,
             }))
           : 推荐行业们.map((组, 组下标) => ({
               键: `mock_ind_${组下标}`,

@@ -9,11 +9,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 选期望行业 from './选期望行业';
 
 const mock返回 = vi.fn();
+const mock轻提示 = vi.hoisted(() => vi.fn());
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 返回: mock返回 }) }));
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
+vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 
 const 空草稿 = {
   编辑编号: null,
@@ -82,7 +84,7 @@ describe('选期望行业 Backend', () => {
       if (!query.parentId && !query.q) {
         return {
           items: [
-            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false },
+            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -91,7 +93,7 @@ describe('选期望行业 Backend', () => {
       if (query.parentId === 'ind_fin') {
         return {
           items: [
-            { id: 'ind_pay', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true },
+            { id: 'ind_pay', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true, has_children: false },
           ],
           nextCursor: null,
           catalogVersion: 'v2',
@@ -125,13 +127,13 @@ describe('选期望行业 Backend', () => {
         调用次数 += 1;
         if (调用次数 === 1) {
           return {
-            items: [{ id: 'ind_a', display_name: '行业A', parent_id: null, selectable: false }],
+            items: [{ id: 'ind_a', display_name: '行业A', parent_id: null, selectable: false, has_children: true }],
             nextCursor: 'root_cur_1',
             catalogVersion: 'v2',
           };
         }
         return {
-          items: [{ id: 'ind_b', display_name: '行业B', parent_id: null, selectable: false }],
+          items: [{ id: 'ind_b', display_name: '行业B', parent_id: null, selectable: false, has_children: false }],
           nextCursor: null,
           catalogVersion: 'v2',
         };
@@ -327,5 +329,168 @@ describe('选期望行业 共用正文（Task 7）', () => {
     const 已选片 = screen.getByText('支付与清结算');
     expect(已选片.getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByText('1/3')).toBeTruthy();
+  });
+});
+// ── review-r1 F3/F4/F5 ──────────────────────────────────────────
+// F3：适配层 可展开 按契约 has_children 原样读取，不再用 !selectable 推导 ——
+// 非 selectable 且 has_children=false 的子项点击不发目录请求（死端不空展开）；
+// has_children=true 的子项照常展开。
+describe('选期望行业 可展开按 has_children（review-r1 F3）', () => {
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('非 selectable 且 has_children=false 的子项点击不发目录请求；has_children=true 照常展开', async () => {
+    const 目录页 = (items: unknown[], nextCursor: string | null = null) => ({
+      items,
+      nextCursor,
+      catalogVersion: 'v2',
+    });
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string }) => {
+      if (query.parentId === 'r1') {
+        return 目录页([
+          { id: 'c_dead', display_name: '死端子项', parent_id: 'r1', selectable: false, has_children: false },
+          { id: 'c_live', display_name: '风控与反欺诈', parent_id: 'r1', selectable: false, has_children: true },
+        ]);
+      }
+      if (query.parentId === 'c_live') {
+        return 目录页([{ id: 'g1', display_name: '反欺诈引擎', parent_id: 'c_live', selectable: true, has_children: false }]);
+      }
+      return 目录页([{ id: 'r1', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }]);
+    });
+    render选期望行业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    // 死端子项：点击不发任何目录请求
+    await 用户.click(await screen.findByText('死端子项'));
+    expect(查询Taxonomy).not.toHaveBeenCalledWith('industries', expect.objectContaining({ parentId: 'c_dead' }));
+    // has_children=true 的子项点击展开孙项
+    await 用户.click(screen.getByText('风控与反欺诈'));
+    await waitFor(() =>
+      expect(查询Taxonomy).toHaveBeenCalledWith('industries', expect.objectContaining({ parentId: 'c_live' })),
+    );
+    await screen.findByText('反欺诈引擎');
+  });
+});
+
+// F4：展开/子展开失败不得缓存成空结果 —— 入口守卫允许重试，失败经既有 轻提示 说明，
+// 首次成功的空页仍照旧缓存。
+describe('选期望行业 展开失败不缓存空结果（review-r1 F4）', () => {
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('展开根第一次请求失败：轻提示报错、不缓存空子表，再点重新发请求并成功', async () => {
+    const 目录页 = (items: unknown[], nextCursor: string | null = null) => ({
+      items,
+      nextCursor,
+      catalogVersion: 'v2',
+    });
+    let 拒绝首次 = true;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string }) => {
+      if (query.parentId === 'r1') {
+        if (拒绝首次) {
+          拒绝首次 = false;
+          throw new Error('network down');
+        }
+        return 目录页([{ id: 'c1', display_name: '支付与清结算', parent_id: 'r1', selectable: true, has_children: false }]);
+      }
+      return 目录页([{ id: 'r1', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }]);
+    });
+    render选期望行业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    // 失败没有写「已展开」记录：再点同一行重新发请求（不是命中缓存里的空子表）
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    await screen.findByText('支付与清结算');
+  });
+
+  it('展开子（孙项）第一次请求失败：轻提示报错、不缓存空孙表，再点重新发请求并成功', async () => {
+    const 目录页 = (items: unknown[], nextCursor: string | null = null) => ({
+      items,
+      nextCursor,
+      catalogVersion: 'v2',
+    });
+    let 拒绝首次 = true;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string }) => {
+      if (query.parentId === 'c1') {
+        if (拒绝首次) {
+          拒绝首次 = false;
+          throw new Error('network down');
+        }
+        return 目录页([{ id: 'g1', display_name: '反欺诈引擎', parent_id: 'c1', selectable: true, has_children: false }]);
+      }
+      if (query.parentId === 'r1') {
+        return 目录页([{ id: 'c1', display_name: '风控与反欺诈', parent_id: 'r1', selectable: false, has_children: true }]);
+      }
+      return 目录页([{ id: 'r1', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }]);
+    });
+    render选期望行业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    await 用户.click(await screen.findByText('风控与反欺诈'));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    await 用户.click(screen.getByText('风控与反欺诈'));
+    await screen.findByText('反欺诈引擎');
+  });
+});
+
+// F5：子项追加页返回不同 catalogVersion 时，不跨版本合并 —— 丢弃该父项累计的旧页
+// 与游标，从该父项第一页静默重开（沿 城市查询钩子 的版本引用做法，留在本页局部）。
+describe('选期望行业 子项分页忽略 catalogVersion（review-r1 F5）', () => {
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('子项追加页换版本：列表重置为新版本第一页（不并 v1∪v2），后续游标是新版本的', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({
+      items,
+      nextCursor,
+      catalogVersion: 版本,
+    });
+    const 查询Taxonomy = vi.fn(async (
+      _kind: string,
+      query: { parentId?: string; cursor?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (query.parentId === 'r1' && query.cursor === 'sub_cur_v1') {
+        // 追加页来自新快照：不与 v1 首页合并，触发重开
+        return 页([{ id: 'pay_b', display_name: '旧版本追加片', parent_id: 'r1', selectable: true, has_children: false }], null, 'v2');
+      }
+      if (query.parentId === 'r1') {
+        // 首页：普通路径回 v1，强制刷新（重开）回 v2
+        return 选项?.强制刷新
+          ? 页([{ id: 'pay_c', display_name: '新版本首页片', parent_id: 'r1', selectable: true, has_children: false }], 'sub_cur_v2', 'v2')
+          : 页([{ id: 'pay_a', display_name: '旧版本首页片', parent_id: 'r1', selectable: true, has_children: false }], 'sub_cur_v1', 'v1');
+      }
+      return 页([{ id: 'r1', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }], null, 'v2');
+    });
+    render选期望行业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    await screen.findByText('旧版本首页片');
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    // v1 首页片保留、追加页被丢弃，重开出 v2 第一页（不含追加页那条）
+    await screen.findByText('新版本首页片');
+    expect(screen.queryByText('旧版本追加片')).toBeNull();
+    expect(screen.queryByText('旧版本首页片')).toBeNull();
+    // 后续翻页用 v2 的游标（重开请求本身不带游标，再点一次「加载更多」才用新游标）
+    const 重开调用数 = 查询Taxonomy.mock.calls.length;
+    await waitFor(() => expect((screen.getByRole('button', { name: '加载更多' }) as HTMLButtonElement).disabled).toBe(false));
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(查询Taxonomy.mock.calls.length).toBeGreaterThan(重开调用数));
+    expect(查询Taxonomy).toHaveBeenNthCalledWith(
+      重开调用数 + 1,
+      'industries',
+      expect.objectContaining({ parentId: 'r1', cursor: 'sub_cur_v2' }),
+    );
   });
 });

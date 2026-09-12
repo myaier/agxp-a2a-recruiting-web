@@ -98,12 +98,17 @@ function render工作经历(选项: {
       引导预填: 选项.建档 === undefined ? null : { 城市们: [], 职位: [], 建档: 选项.建档 },
     },
     后端状态: { 候选预填状态: 选项.预填 ?? 创建空候选预填状态() },
-    派发: vi.fn((动作: { 型?: string; 经历?: 简历经历段[]; 教育?: 简历教育段[]; 技能?: string[]; 证书?: 简历证书[] }) => {
+    派发: vi.fn((动作: { 型?: string; 经历?: 简历经历段[]; 教育?: 简历教育段[]; 技能?: string[]; 证书?: 简历证书[]; 链接?: string }) => {
       if (动作.型 === '存简历') {
         mock应用状态.状态.简历经历 = 动作.经历 ?? mock应用状态.状态.简历经历;
         mock应用状态.状态.简历教育 = 动作.教育 ?? mock应用状态.状态.简历教育;
         mock应用状态.状态.简历技能 = 动作.技能 ?? mock应用状态.状态.简历技能;
         mock应用状态.状态.简历证书 = 动作.证书 ?? mock应用状态.状态.简历证书;
+        触发重渲染?.();
+      }
+      // 模拟全局 reducer：存作品集链接 写权威切片（Backend 该切片由 GET 水合，Mock 由输入写）
+      if (动作.型 === '存作品集链接') {
+        mock应用状态.状态.简历作品集链接 = 动作.链接 ?? '';
         触发重渲染?.();
       }
     }),
@@ -116,8 +121,12 @@ function render工作经历(选项: {
       }),
     },
   };
-  render(<宿主 />);
-  return { 派发: mock应用状态.派发 as ReturnType<typeof vi.fn>, 重渲染: () => 触发重渲染?.() };
+  const 视图 = render(<宿主 />);
+  return {
+    派发: mock应用状态.派发 as ReturnType<typeof vi.fn>,
+    重渲染: () => 触发重渲染?.(),
+    卸载: () => 视图.unmount(),
+  };
 }
 
 describe('工作经历 行业弹层 Backend', () => {
@@ -1505,5 +1514,175 @@ describe('工作经历 经历编辑页 行业共用正文（Task 6）', () => {
     expect(存简历调用).toBeDefined();
     expect(存简历调用!.经历[0].行业).toBe('机器人');
     expect('行业引用' in 存简历调用!.经历[0]).toBe(false);
+  });
+});
+
+// ── review-r1 F1：日常作品集输入在保存前不得写权威全局状态 ──────────────
+// Backend 的 全局.简历作品集链接 由权威 GET 水合：输入只落本页局部意图，保存才写入。
+// 否则「打字 → 离开不存 → 再进来」会把未保存的值冒充成已保存值。
+describe('工作经历 · 日常作品集输入边界（review-r1 F1）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('Backend 打字不派发 存作品集链接：离开不保存再进来，回显权威值而非未保存输入', async () => {
+    const { 卸载 } = render工作经历({ 数据源: 'backend', 经历: [], 教育: [完整教育], 作品集链接: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    expect((screen.getByLabelText('作品集或项目链接') as HTMLInputElement).value).toBe('github.com/shen');
+    // 离开页面（组件卸载），权威切片未被污染
+    expect(mock应用状态.派发.mock.calls.some((c: unknown[]) => (c[0] as { 型?: string })?.型 === '存作品集链接')).toBe(false);
+    卸载();
+    // 重新进页（重挂载）：输入跟随权威值，不是未保存的打字值
+    render(<宿主 />);
+    expect((screen.getByLabelText('作品集或项目链接') as HTMLInputElement).value).toBe('');
+  });
+
+  it('Backend 未保存就重进：后续保存不带 作品集链接 属性', async () => {
+    const 保存简历 = vi.fn(async (_写入: Record<string, unknown>) => {});
+    const { 卸载 } = render工作经历({ 数据源: 'backend', 经历: [], 教育: [完整教育], 保存简历, 作品集链接: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    // 卸载重挂（未保存）：局部意图已清，本轮没改 → 保存不带属性
+    卸载();
+    render(<宿主 />);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect('作品集链接' in 保存简历.mock.calls[0][0]).toBe(false);
+  });
+
+  it('Mock 保留原行为：打字即写全局模拟态', async () => {
+    render工作经历({ 数据源: 'mock', 经历: [], 教育: [完整教育], 作品集链接: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), 'github.com/shen');
+    expect(mock应用状态.派发).toHaveBeenCalledWith({ 型: '存作品集链接', 链接: 'github.com/shen' });
+  });
+});
+
+// ── review-r1 F4：行业展开失败不缓存空结果（工作经历侧） ────────────────
+describe('工作经历 行业展开失败可重试（review-r1 F4）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('展开行业根第一次请求失败：轻提示报错、不缓存空子表，再点重新发请求并成功', async () => {
+    let 拒绝首次 = true;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (query.parentId === 'ind_fin') {
+        if (拒绝首次) {
+          拒绝首次 = false;
+          throw new Error('network down');
+        }
+        return {
+          items: [{ id: 'ind_pay', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true, has_children: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(await screen.findByText('金融科技'));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    // 失败没有缓存成空子表：再点同一行重新发请求
+    await 用户.click(screen.getByText('金融科技'));
+    await screen.findByText('支付与清结算');
+  });
+
+  it('展开行业子（孙项）第一次请求失败：轻提示报错、不缓存空孙表，再点重新发请求并成功', async () => {
+    let 拒绝首次 = true;
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (query.parentId === 'ind_sub') {
+        if (拒绝首次) {
+          拒绝首次 = false;
+          throw new Error('network down');
+        }
+        return {
+          items: [{ id: 'ind_leaf', display_name: '公募基金', parent_id: 'ind_sub', selectable: true, has_children: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'ind_fin') {
+        return {
+          items: [{ id: 'ind_sub', display_name: '证券与基金', parent_id: 'ind_fin', selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    render工作经历({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(await screen.findByText('金融科技'));
+    await 用户.click(await screen.findByText('证券与基金'));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    await 用户.click(screen.getByText('证券与基金'));
+    await screen.findByText('公募基金');
+  });
+});
+
+// ── review-r1 F5：学校搜索追加页换 catalogVersion 时整组重开（工作经历侧代表点） ──
+describe('工作经历 学校搜索分页版本重开（review-r1 F5）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('学校追加页返回不同版本：丢弃累计页与游标，从第一页重开；后续游标是新版本的', async () => {
+    const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({ items, nextCursor, catalogVersion: 版本 });
+    const 查询Institution = vi.fn(async (q: { q?: string; cursor?: string }, 选项?: { 强制刷新?: boolean }) => {
+      if (q.q === '清' && !q.cursor) {
+        return 选项?.强制刷新
+          ? 页([{ id: 'inst_v2', display_name: '復旦大學', location: { id: 'loc_sh', display_name: '上海', country_name: '中国' } }], 'inst_cur_v2', 'v2')
+          : 页([{ id: 'inst_v1', display_name: '清华大学', location: { id: 'loc_bj', display_name: '北京', country_name: '中国' } }], 'inst_cur_v1', 'v1');
+      }
+      if (q.cursor === 'inst_cur_v1') {
+        // 追加页来自新快照：不与 v1 首页合并，触发重开
+        return 页([{ id: 'inst_old', display_name: '北京大學', location: { id: 'loc_bj2', display_name: '北京', country_name: '中国' } }], null, 'v2');
+      }
+      return 页([], null, 'v2');
+    });
+    const 查询Taxonomy = vi.fn(async () => 页([], null, 'v2'));
+    render工作经历({ 数据源: 'backend', 查询Taxonomy, 查询Institution });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('添加教育经历'));
+    const 学校输入 = screen.getAllByPlaceholderText('必填')[0];
+    await 用户.type(学校输入, '清');
+    await new Promise((解决) => setTimeout(解决, 320));
+    await screen.findByText('北京 · 中国');
+    // 翻页：追加页换版本 → 不做 v1∪v2 合并，重开出 v2 第一页
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    await screen.findByText('復旦大學');
+    expect(screen.queryByText('北京大學')).toBeNull();
+    expect(screen.queryByText('清华大学')).toBeNull();
+    // 后续翻页用 v2 的游标
+    const 重开调用数 = 查询Institution.mock.calls.length;
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(查询Institution.mock.calls.length).toBeGreaterThan(重开调用数));
+    expect(查询Institution).toHaveBeenNthCalledWith(
+      重开调用数 + 1,
+      expect.objectContaining({ q: '清', cursor: 'inst_cur_v2' }),
+    );
   });
 });

@@ -65,6 +65,8 @@ function render城市页(选项: {
   已选城市们?: string[];
   已选引用们?: { id: string; display_name: string }[];
   工作城市引用?: { id: string; display_name: string };
+  /** Mock 主工作城市（草稿里的 工作城市 名） */
+  工作城市?: string;
 }) {
   const 派发 = vi.fn();
   mock应用状态 = {
@@ -81,6 +83,7 @@ function render城市页(选项: {
       引导预填: { 城市们: [] as string[], 职位: [] as string[] },
       意向草稿: {
         ...空草稿,
+        工作城市: 选项.工作城市 ?? '',
         感兴趣城市们: 选项.已选城市们 ?? [],
         感兴趣城市引用们: 选项.已选引用们 ?? [],
         工作城市引用: 选项.工作城市引用,
@@ -363,5 +366,45 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
     await 用户.click(screen.getByRole('button', { name: '关闭' }));
     expect(mock返回).toHaveBeenCalledTimes(1);
     expect(派发).not.toHaveBeenCalled();
+  });
+});
+
+// ── review-r1 F7：进页初始选择去重 / 排除主城市 / Mock 上限 9 ────────────
+// 草稿里可能带着重复 ID 与主城市（历史脏数据）：初始选择要像 toggle 时一样清洗，
+// 否则计数虚高、主城市被自己重复占用一个名额。
+describe('选择城市 进页初始选择清洗（review-r1 F7）', () => {
+  it('Backend：初始引用按 ID 去重并排除主城市', async () => {
+    const 查询Location = vi.fn(async () => ({
+      items: [城({ id: 'loc_hz', display_name: '杭州市', admin1_name: '浙江省' })],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    render城市页({
+      数据源: 'backend',
+      查询Location,
+      已选引用们: [
+        { id: 'loc_a', display_name: '杭州市' },
+        { id: 'loc_a', display_name: '杭州市' },
+        { id: 'loc_main', display_name: '上海市' },
+      ],
+      工作城市引用: { id: 'loc_main', display_name: '上海市' },
+    });
+    await screen.findAllByText('杭州市');
+    // 重复 ID 只算一次，主城市不占备选名额
+    expect(screen.getByText('1/9')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '移除 杭州市' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: '移除 上海市' })).toBeNull();
+  });
+
+  it('Mock：初始名单排除当前主城市并按 9 上限截断', () => {
+    render城市页({
+      数据源: 'mock',
+      工作城市: '上海',
+      已选城市们: ['上海', '杭州', '苏州', '南京', '武汉', '成都', '广州', '深圳', '北京', '西安', '重庆'],
+    });
+    // 主城市排除 + 9 上限：10 个备选只进 9 个
+    expect(screen.getByText('9/9')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /移除 / })).toHaveLength(9);
+    expect(screen.queryByRole('button', { name: '移除 上海' })).toBeNull();
   });
 });

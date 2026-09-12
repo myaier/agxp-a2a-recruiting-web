@@ -41,21 +41,32 @@ export default function 选择城市() {
   const { 状态: 全局, 派发, 数据源模式, 目录查询 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
 
+  // 主城市（Backend = 工作城市引用 ID / Mock = 草稿 工作城市 名）：不进入备选列表（可见但禁用）
+  const 主城市Id = 是后端 ? 全局.意向草稿.工作城市引用?.id : undefined;
+  const Mock主城市 = 全局.意向草稿.工作城市;
+
   // ── 已选 state ──
   // Backend：BFFLocationItem[]（完整项，含 id/display_name），ID 去重；Mock：string[]，字符串去重。
   // 保存时映射为 目录选择值（只取 id + display_name）。
-  // 进页时取草稿里已有的选择；改动先落本地，点保存才写回 —— 中途 ✕ 退出不留脏数据
+  // 进页时取草稿里已有的选择；改动先落本地，点保存才写回 —— 中途 ✕ 退出不留脏数据。
+  // review-r1 F7：初始选择与 toggle 同一清洗 —— 按 ID 去重并排除主城市（Mock 排除主城市
+  // 名、按 9 上限截断），否则历史脏数据让计数虚高、主城市重复占名额。
   const [已选引用, 设已选引用] = useState<BFFLocationItem[]>(() => {
     if (!是后端) return [];
-    const 引用们 = 全局.意向草稿.感兴趣城市引用们 ?? [];
-    return 引用们.map((条) => ({ id: 条.id, display_name: 条.display_name } as BFFLocationItem));
+    const seen = new Set<string>();
+    const 初始: BFFLocationItem[] = [];
+    for (const 条 of 全局.意向草稿.感兴趣城市引用们 ?? []) {
+      if (条.id === 主城市Id || seen.has(条.id)) continue;
+      seen.add(条.id);
+      初始.push({ id: 条.id, display_name: 条.display_name } as BFFLocationItem);
+    }
+    return 初始;
   });
   const [已选, 设已选] = useState<string[]>(() =>
-    是后端 ? 已选引用.map((条) => 条.display_name) : 全局.意向草稿.感兴趣城市们,
+    是后端
+      ? 已选引用.map((条) => 条.display_name)
+      : 全局.意向草稿.感兴趣城市们.filter((城) => 城 !== Mock主城市).slice(0, 城市上限),
   );
-
-  // 主城市 ID（Backend）：不进入备选列表（可见但禁用）
-  const 主城市Id = 是后端 ? 全局.意向草稿.工作城市引用?.id : undefined;
 
   // Backend 展示键（= 项 ID）→ 完整目录项 的映射表：本页维护并保留选中引用。
   // 热门/默认页/搜索结果每见一次就登记一次，切回已选 chip 或翻页前的项都能拿到完整引用，

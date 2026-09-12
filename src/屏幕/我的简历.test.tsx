@@ -198,15 +198,16 @@ describe('我的简历 · Mock 附件模拟（core editors §5.3 Task 8）', () 
     零后端附件请求();
   });
 
-  it('replace keeps the clicked target identity and resets its parse state', async () => {
+  it('replace keeps the clicked target identity, shows the NEW file name, and resets its parse state', async () => {
     render我的简历({ mode: 'mock' });
     await revealActions(0);
     await userEvent.click(screen.getByRole('button', { name: '替换' }));
     await userEvent.upload(附件输入框(), new File(['%PDF'], 'new.pdf', { type: 'application/pdf' }));
     await userEvent.click(screen.getByRole('button', { name: '同意并继续' }));
-    // 点击目标身份保留：演示行名称不动，新挑的文件名不出现；解析状态重置为 尚未识别
-    expect(screen.getByText('沈亦舟_简历_2026.pdf')).toBeTruthy();
-    expect(screen.queryByText('new.pdf')).toBeNull();
+    // 点击目标身份保留：行还是那一行（键不动，行数不变），名称换成新挑的文件，解析状态重置为 尚未识别
+    expect(screen.getAllByTestId('附件简历行')).toHaveLength(1);
+    expect(screen.getByText('new.pdf')).toBeTruthy();
+    expect(screen.queryByText('沈亦舟_简历_2026.pdf')).toBeNull();
     expect(screen.getByText('尚未识别')).toBeTruthy();
     零后端附件请求();
   });

@@ -111,7 +111,10 @@ export default function 工作经历() {
   const 作品集错误 = 校验作品集链接(作品集链接);
   const 存作品集链接 = (值: string) => {
     设链接意图(值 === '' ? null : 值);
-    派发({ 型: '存作品集链接', 链接: 值 });
+    // review-r1 F1：Backend 的 全局.简历作品集链接 由权威 GET 水合 —— 保存前的逐字输入
+    // 不能写它，否则「打字 → 离开不保存 → 再进来」会把未保存的值冒充成已保存值；
+    // 输入只落本页局部意图（保存时随 next 带上）。Mock 没有权威水合，沿原行为即时写全局态。
+    if (!是后端) 派发({ 型: '存作品集链接', 链接: 值 });
     // 清空是「明确清空」，落 null；不是缺省
     if (旅程中) 操作.更新候选建档草稿(并入建档草稿(建档, { 资料: { 作品集链接: 值 === '' ? null : 值 } }));
   };
@@ -689,6 +692,10 @@ function 教育编辑页({
   // review-r1 P2-2 / review-r2 R2-M-2：代际 ref 守 stale response——清空也递增，load-more 也检查
   const 学校代际 = useRef(0);
   const 专业代际 = useRef(0);
+  // review-r1 F5：本查询第一页的 catalogVersion —— 追加页换版本时不跨版本合并，
+  // 丢弃累计页与游标从第一页静默重开（沿 城市查询钩子 的版本引用做法，留在本页局部）。
+  const 学校版本引用 = useRef('');
+  const 专业版本引用 = useRef('');
   const 学校方法引用 = useRef(目录查询?.查询Institution);
   学校方法引用.current = 目录查询?.查询Institution;
   const 专业方法引用 = useRef(目录查询?.查询Taxonomy);
@@ -720,6 +727,7 @@ function 教育编辑页({
         if (本次 !== 学校代际.current) return;
         设学校候选(页.items);
         设学校下一页(页.nextCursor);
+        学校版本引用.current = 页.catalogVersion;
       } catch {
         if (本次 !== 学校代际.current) return;
         设学校候选([]);
@@ -748,6 +756,7 @@ function 教育编辑页({
         if (本次 !== 专业代际.current) return;
         设专业候选(页.items);
         设专业下一页(页.nextCursor);
+        专业版本引用.current = 页.catalogVersion;
       } catch {
         if (本次 !== 专业代际.current) return;
         设专业候选([]);
@@ -757,7 +766,9 @@ function 教育编辑页({
     return () => window.clearTimeout(专业计时.current);
   }, [草稿.专业, 是后端]);
 
-  // review-r2 R2-M-1：学校/专业搜索加载更多——用当前游标请求下一页，合并去重；代际检查防 stale
+  // review-r2 R2-M-1：学校/专业搜索加载更多——用当前游标请求下一页，合并去重；代际检查防 stale。
+  // review-r1 F5：追加页 catalogVersion 与本查询第一页不同 → 目录换代，不跨版本合并：
+  // 丢弃累计页与游标，从本查询第一页静默重开（强制刷新让重开真打到服务端）。
   const 学校加载更多 = async () => {
     if (学校下一页 === null || 学校加载中) return;
     const 方法 = 学校方法引用.current;
@@ -767,6 +778,14 @@ function 教育编辑页({
     try {
       const 页 = await 方法({ q: 草稿.学校.trim(), cursor: 学校下一页, limit: 20 });
       if (本次 !== 学校代际.current) return;
+      if (页.catalogVersion !== 学校版本引用.current) {
+        const 重开 = await 方法({ q: 草稿.学校.trim(), limit: 20 }, { 强制刷新: true });
+        if (本次 !== 学校代际.current) return;
+        设学校候选(重开.items);
+        设学校下一页(重开.nextCursor);
+        学校版本引用.current = 重开.catalogVersion;
+        return;
+      }
       设学校候选((旧) => 合并目录页(旧, 页.items));
       设学校下一页(页.nextCursor);
     } catch {
@@ -784,6 +803,14 @@ function 教育编辑页({
     try {
       const 页 = await 方法('majors', { q: 草稿.专业.trim(), cursor: 专业下一页, limit: 20 });
       if (本次 !== 专业代际.current) return;
+      if (页.catalogVersion !== 专业版本引用.current) {
+        const 重开 = await 方法('majors', { q: 草稿.专业.trim(), limit: 20 }, { 强制刷新: true });
+        if (本次 !== 专业代际.current) return;
+        设专业候选(重开.items);
+        设专业下一页(重开.nextCursor);
+        专业版本引用.current = 重开.catalogVersion;
+        return;
+      }
       设专业候选((旧) => 合并目录页(旧, 页.items));
       设专业下一页(页.nextCursor);
     } catch {
@@ -1102,6 +1129,9 @@ function 经历编辑页({
   const [行业子项加载中表, 设行业子项加载中表] = useState<Record<string, boolean>>({});
   const [行业孙项游标表, 设行业孙项游标表] = useState<Record<string, string | null>>({});
   const [行业孙项加载中表, 设行业孙项加载中表] = useState<Record<string, boolean>>({});
+  // review-r1 F5：根/子查询第一页的 catalogVersion —— 追加页换版本时整组重开（本页局部）
+  const 行业根版本引用 = useRef('');
+  const 行业子项版本表 = useRef<Record<string, string>>({});
   const 行业方法引用 = useRef(目录查询?.查询Taxonomy);
   行业方法引用.current = 目录查询?.查询Taxonomy;
   // 年月滚轮打开在哪一侧：null = 没开
@@ -1126,6 +1156,7 @@ function 经历编辑页({
         const 页 = await 方法('industries', { limit: 50 });
         设行业根项(页.items);
         设行业根游标(页.nextCursor);
+        行业根版本引用.current = 页.catalogVersion;
       } catch {
         设行业根项([]);
         设行业根游标(null);
@@ -1134,6 +1165,7 @@ function 经历编辑页({
   }, [是后端, 行业层]);
 
   // review-r3 R3-I-5：root 加载更多
+  // review-r1 F5：追加页换版本 → 根列表整组从第一页静默重开，不跨版本合并。
   const 行业根加载更多 = async () => {
     if (行业根游标 === null || 行业根加载中) return;
     const 方法 = 行业方法引用.current;
@@ -1141,6 +1173,13 @@ function 经历编辑页({
     设行业根加载中(true);
     try {
       const 页 = await 方法('industries', { cursor: 行业根游标, limit: 50 });
+      if (页.catalogVersion !== 行业根版本引用.current) {
+        const 重开 = await 方法('industries', { limit: 50 }, { 强制刷新: true });
+        设行业根项(重开.items);
+        设行业根游标(重开.nextCursor);
+        行业根版本引用.current = 重开.catalogVersion;
+        return;
+      }
       设行业根项((旧) => 合并目录页(旧, 页.items));
       设行业根游标(页.nextCursor);
     } catch {
@@ -1150,6 +1189,7 @@ function 经历编辑页({
     }
   };
 
+  // review-r1 F4：展开失败不写「已展开」记录（否则入口守卫挡住重试），经既有轻提示说明
   const 展开行业根 = async (项: BFFTaxonomyItem) => {
     if (行业子项表[项.id]) return;
     const 方法 = 行业方法引用.current;
@@ -1158,13 +1198,14 @@ function 经历编辑页({
       const 子页 = await 方法('industries', { parentId: 项.id, limit: 50 });
       设行业子项表((旧) => ({ ...旧, [项.id]: 子页.items }));
       设行业子项游标表((旧) => ({ ...旧, [项.id]: 子页.nextCursor }));
-    } catch {
-      设行业子项表((旧) => ({ ...旧, [项.id]: [] }));
-      设行业子项游标表((旧) => ({ ...旧, [项.id]: null }));
+      行业子项版本表.current[项.id] = 子页.catalogVersion;
+    } catch (错误) {
+      轻提示(取后端错误文案(错误));
     }
   };
 
   // review-r3 R3-I-5：child 加载更多（按 parentId 记游标）
+  // review-r1 F5：追加页换版本 → 该父项的子列表整组从第一页静默重开。
   const 行业子项加载更多 = async (根id: string) => {
     const 游标 = 行业子项游标表[根id];
     if (游标 === null || 行业子项加载中表[根id]) return;
@@ -1173,6 +1214,13 @@ function 经历编辑页({
     设行业子项加载中表((旧) => ({ ...旧, [根id]: true }));
     try {
       const 页 = await 方法('industries', { parentId: 根id, cursor: 游标, limit: 50 });
+      if (页.catalogVersion !== 行业子项版本表.current[根id]) {
+        const 重开 = await 方法('industries', { parentId: 根id, limit: 50 }, { 强制刷新: true });
+        设行业子项表((旧) => ({ ...旧, [根id]: 重开.items }));
+        设行业子项游标表((旧) => ({ ...旧, [根id]: 重开.nextCursor }));
+        行业子项版本表.current[根id] = 重开.catalogVersion;
+        return;
+      }
       设行业子项表((旧) => ({ ...旧, [根id]: 合并目录页(旧[根id] ?? [], 页.items) }));
       设行业子项游标表((旧) => ({ ...旧, [根id]: 页.nextCursor }));
     } catch {
@@ -1183,6 +1231,7 @@ function 经历编辑页({
   };
 
   // 非 selectable 子项：按 parentId 取孙项（>2 级 taxonomy），展开为嵌套列表
+  // review-r1 F4：展开失败不写空孙表（否则入口守卫挡住重试），经既有轻提示说明
   const 展开行业子 = async (项: BFFTaxonomyItem) => {
     if (行业孙项表[项.id]) return;
     const 方法 = 行业方法引用.current;
@@ -1191,9 +1240,8 @@ function 经历编辑页({
       const 孙页 = await 方法('industries', { parentId: 项.id, limit: 50 });
       设行业孙项表((旧) => ({ ...旧, [项.id]: 孙页.items }));
       设行业孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
-    } catch {
-      设行业孙项表((旧) => ({ ...旧, [项.id]: [] }));
-      设行业孙项游标表((旧) => ({ ...旧, [项.id]: null }));
+    } catch (错误) {
+      轻提示(取后端错误文案(错误));
     }
   };
 

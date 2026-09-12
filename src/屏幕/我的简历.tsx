@@ -324,11 +324,12 @@ export default function 我的简历() {
     设模拟附件行们((旧行们) => [...旧行们, { 键, 名称: file.name, 状态: 'not_started' as const }]);
   }
 
-  /** 替换保留点击目标身份：键与名称不动，只重置解析状态（未完成的模拟解析定时一并清掉） */
-  function 模拟替换附件(键: string) {
+  /** 替换保留点击目标身份：键（行身份）不动，名称换成新挑的文件，解析状态重置
+      （未完成的模拟解析定时一并清掉） */
+  function 模拟替换附件(键: string, 名称: string) {
     清模拟解析定时(键);
     设模拟附件行们((旧行们) =>
-      旧行们.map((行) => (行.键 === 键 ? { 键: 行.键, 名称: 行.名称, 状态: 'not_started' as const } : 行)));
+      旧行们.map((行) => (行.键 === 键 ? { 键: 行.键, 名称, 状态: 'not_started' as const } : 行)));
   }
 
   function 模拟删除附件(键: string) {
@@ -372,7 +373,7 @@ export default function 我的简历() {
       return;
     }
     if (target.kind === 'create') 模拟创建附件(file);
-    else 模拟替换附件(target.fileId);
+    else 模拟替换附件(target.fileId, file.name);
     设待确认文件(null);
     设待处理动作(null);
   }

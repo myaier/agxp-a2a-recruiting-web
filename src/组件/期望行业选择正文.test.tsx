@@ -169,6 +169,38 @@ describe('期望行业选择正文 展示契约', () => {
     expect(切换).not.toHaveBeenCalled();
   });
 
+  // review-r1 F2：上限只禁「可选且未选」的片 —— 可选=false/可展开=true 的导航父项是
+  // 取消已选孙项的唯一入口，上限态把它禁掉用户就没法再展开去取消（真实故障：
+  // 选满 3 项后选中的孙项其未展开的父行点不动）。可选且未选的片仍在上限态禁用。
+  it('上限态只禁可选未选片：可展开父项仍可点且展开照发，可选未选片禁用', async () => {
+    const 切换 = vi.fn();
+    const 展开 = vi.fn();
+    render(
+      <期望行业选择正文
+        {...基础Props({
+          已选项们: [项('s1', '一', { 选中: true }), 项('s2', '二', { 选中: true }), 项('s3', '三', { 选中: true })],
+          分组们: [
+            组('g-fin', '金融科技', [
+              项('c-nav', '风控与反欺诈', { 可选: false, 可展开: true }),
+              项('c-leaf', '支付与清结算'),
+            ], { 已展开: true }),
+          ],
+          切换,
+          展开,
+        })}
+      />,
+    );
+    const 用户 = userEvent.setup();
+    const 导航父项 = screen.getByText('风控与反欺诈') as HTMLButtonElement;
+    expect(导航父项.disabled).toBe(false);
+    await 用户.click(导航父项);
+    expect(展开).toHaveBeenCalledWith('c-nav');
+    const 未选片 = screen.getByText('支付与清结算') as HTMLButtonElement;
+    expect(未选片.disabled).toBe(true);
+    await 用户.click(未选片);
+    expect(切换).not.toHaveBeenCalled();
+  });
+
   it('组尾分页沿用原控件：还有才渲染，忙时「加载中…」禁用，点击交给本组 加载更多', async () => {
     const 加载更多 = vi.fn();
     render(
