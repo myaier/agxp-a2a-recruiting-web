@@ -7,7 +7,8 @@
 //   · 片点击沿现有优先级：可选则 切换（含取消已选），否则可展开才 展开；
 //   · 上限（3）态沿用原页：未选片禁用变灰、已选片仍可点移除、组行展开不受限；
 //   · 组尾/根尾分页沿用原控件位置：还有才渲染、忙时「加载中…」禁用；
-//   · 层级 ≥1 组沿用原孙项盒（细分片组 + paddingLeft 12），跟随前面 层级 0 组。
+//   · 层级 ≥1 组沿用原孙项盒（细分片组 + paddingLeft 12），按稳定键紧跟同键子片，
+//     其余兄弟子片在孙盒后 —— 交错位置照原稿。
 // 两模式消费同一正文由 src/屏幕/选期望行业.test.tsx 与 e2e 证明。
 
 import { render, screen } from '@testing-library/react';
@@ -226,13 +227,16 @@ describe('期望行业选择正文 展示契约', () => {
     expect(screen.getAllByRole('button', { name: '加载更多' })).toHaveLength(1);
   });
 
-  it('层级 1 嵌套组沿用原孙项盒：跟在前面 层级 0 组后、缩进 12、自带分页尾', async () => {
+  it('层级 1 嵌套组沿用原孙项盒：缩进 12、紧跟同键子片、其余兄弟子片在孙盒后、自带分页尾', async () => {
     const 孙加载更多 = vi.fn();
     render(
       <期望行业选择正文
         {...基础Props({
           分组们: [
-            组('g-fin', '金融科技', [项('c-risk', '风控与反欺诈', { 可选: false, 可展开: true })], { 已展开: true }),
+            组('g-fin', '金融科技', [
+              项('c-risk', '风控与反欺诈', { 可选: false, 可展开: true }),
+              项('c-net', '电商与交易'),
+            ], { 已展开: true }),
             组('c-risk', '风控与反欺诈', [项('g-1', '反欺诈引擎'), 项('g-2', '设备指纹', { 选中: true })], {
               层级: 1,
               已展开: true,
@@ -249,6 +253,10 @@ describe('期望行业选择正文 展示契约', () => {
     // 嵌套盒缩进沿用原 inline paddingLeft 12
     const 嵌套盒 = (screen.getByText('反欺诈引擎').closest('div') as HTMLElement);
     expect(嵌套盒.style.paddingLeft).toBe('12px');
+    // 交错次序照原稿：子片 → 其孙盒 → 其余兄弟子片 → 组分页尾（DOM 序断言）
+    const 在后 = (前: Element, 后: Element) => (前.compareDocumentPosition(后) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(在后(screen.getByText('风控与反欺诈'), screen.getByText('反欺诈引擎'))).toBe(true);
+    expect(在后(screen.getByText('反欺诈引擎'), screen.getByText('电商与交易'))).toBe(true);
     await 用户.click(screen.getByRole('button', { name: '加载更多' }));
     expect(孙加载更多).toHaveBeenCalledTimes(1);
   });

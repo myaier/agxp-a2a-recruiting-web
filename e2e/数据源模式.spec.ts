@@ -13397,6 +13397,18 @@ test.describe('核心编辑 期望行业 @backend', () => {
     await page.getByRole('button', { name: '支付与清结算', exact: true }).click();
     await expect(page.getByRole('button', { name: '反欺诈引擎', exact: true })).toBeVisible({ timeout: 10_000 });
 
+    // 孙盒紧跟其子片（多级展开沿原实现的位置）：DOM 序 支付与清结算 → 孙盒(反欺诈引擎) → 兄弟子片 银行支付
+    const 孙盒紧跟子片 = await page.evaluate(() => {
+      const 按钮 = (名: string) => [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 名);
+      const 子片 = 按钮('支付与清结算');
+      const 孙盒 = 按钮('反欺诈引擎');
+      const 兄弟 = 按钮('银行支付');
+      if (!子片 || !孙盒 || !兄弟) return false;
+      const 在后 = (前: Element, 后: Element) => (前.compareDocumentPosition(后) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+      return 在后(子片, 孙盒) && 在后(孙盒, 兄弟);
+    });
+    expect(孙盒紧跟子片).toBe(true);
+
     // 子翻页翻出第 2 页可选叶子（2/3），第 1 页已选片保持选中
     await page.getByRole('button', { name: '加载更多', exact: true }).click();
     await expect(page.getByRole('button', { name: '证券与交易系统', exact: true })).toBeVisible({ timeout: 10_000 });
