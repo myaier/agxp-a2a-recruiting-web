@@ -83,7 +83,7 @@ export function 从职位摘要到资料(职位: {
   职位: string;
   城市: string;
   薪资: string;
-  技能: readonly string[];
+  技能: readonly string[] | null;
 }): 职位资料信息 {
   return {
     摘要: {
@@ -124,7 +124,7 @@ export function 从职位摘要到资料(职位: {
  * 组件按「有分无证据」显示缺失，绝不把空行喂给分析块）。
  */
 export function 从冻结职位到资料(输入: {
-  摘要: { 职位: string; 城市: string; 薪资: string; 技能: readonly string[] };
+  摘要: { 职位: string; 城市: string; 薪资: string; 技能: readonly string[] | null };
   冻结: BFF安全职位资料 | null;
   分: number | null;
 }): 职位资料信息 {

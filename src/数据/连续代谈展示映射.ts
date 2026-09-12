@@ -236,7 +236,12 @@ export function 从连续到详情状态(detail: NegotiationDetail): 状态区�
  * 同一响应的权威 match_score（0 合法；无溯源 null 不造 0，不外查/拼其它记录）。
  */
 export function 从连续到详情顶栏(detail: NegotiationDetail): 顶栏信息 {
-  const 公司名 = 非空段(detail.job_detail?.organization?.display_name ?? null) ?? '公司信息缺失';
+  // review-r1：公司名同语义回退 —— 冻结快照（job_detail）优先，缺席时用同一响应外层
+  // job.organization（同源权威事实，不补读）；双方都缺才给「公司信息缺失」。
+  const 公司名 =
+    非空段(detail.job_detail?.organization?.display_name ?? null) ??
+    非空段(detail.job.organization?.display_name ?? null) ??
+    '公司信息缺失';
   return {
     端: '求职',
     标题: `${非空段(detail.job.title) ?? '职位信息未知'} · ${公司名}`,
@@ -258,7 +263,9 @@ export function 从连续到职位资料(detail: NegotiationDetail): 职位资�
       职位: 非空段(detail.job.title) ?? '职位信息未知',
       城市: 非空段(detail.job.location) ?? '城市未知',
       薪资: 非空段(detail.job.public_salary_range) ?? '薪资未知',
-      技能: [], // NegotiationJob 不提供技能段，恒空（不跨 API 拼资料）
+      // review-r1：NegotiationJob 自 release/0.2.5 起携带 required_skills（null=未知，
+      // []=已知为空，二者不互换）；同一响应权威事实，不跨 API 拼资料。
+      技能: detail.job.required_skills,
     },
     冻结: detail.job_detail,
     分: detail.match_score,

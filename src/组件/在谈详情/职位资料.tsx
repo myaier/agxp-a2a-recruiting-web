@@ -82,7 +82,9 @@ export function 职位资料({ 信息, 公司详情 }: { 信息: 职位资料信
             <span className={样式.元行}>
               <span className={样式.元标}>技能</span>
               <span className={样式.元值}>
-                {摘要.技能.length > 0 ? (
+                {摘要.技能 === null ? (
+                  <span className={样式.暂无}>技能信息未知</span>
+                ) : 摘要.技能.length > 0 ? (
                   <span className={样式.标签行}>
                     {摘要.技能.map((技) => (
                       <span key={技} className={样式.标签}>

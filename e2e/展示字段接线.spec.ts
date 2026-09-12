@@ -692,6 +692,13 @@ for (const 宽度 of 后端宽度们) {
       await page.getByTestId('求职在谈卡').nth(1).click();
       await expect(page).toHaveURL(new RegExp(`#/deal/${'dlg_00112233445566778899aabbccddee02'}`), { timeout: 10_000 });
       await expect(page.getByText('展接FIX 缺口补齐工程师').first()).toBeVisible({ timeout: 15_000 });
+      // review-r1：job_detail=null 时顶栏公司名回退同一响应外层 job.organization，
+      // 资料 Tab 摘要技能消费 job.required_skills —— 已知事实不再折算成缺失/暂无
+      await expect(page.getByText('· 展接FIX 企业').first()).toBeVisible({ timeout: 15_000 });
+      await page.getByRole('button', { name: '职位详情', exact: true }).click();
+      await expect(page.getByText('公司信息', { exact: true }).first()).toBeVisible();
+      await expect(page.getByText('Go', { exact: true }).first()).toBeVisible();
+      expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
       await expect.poll(() =>
         请求.filter((条) => 条.method === 'GET' && /^\/api\/v1\/me\/negotiations\/[^/]+$/.test(条.path)).length,
         { timeout: 15_000 },

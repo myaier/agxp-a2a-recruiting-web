@@ -111,6 +111,9 @@ function 连续详情(选项: {
   /** Task 6：详情响应的冻结职位资料与权威分（旧记录合法 null 档）。 */
   jobDetail?: NegotiationDetail['job_detail'];
   匹配分?: number | null;
+  /** review-r1：外层 NegotiationJob 的公司摘要与技能（同响应权威事实）。 */
+  组织?: NegotiationCard['job']['organization'];
+  技能?: string[] | null;
 } = {}): NegotiationDetail {
   return {
     ...连续卡({
@@ -125,6 +128,8 @@ function 连续详情(选项: {
       职位名: 选项.职位名,
       城市: 选项.城市,
       薪资: 选项.薪资,
+      组织: 选项.组织,
+      技能: 选项.技能,
       匹配分: 选项.匹配分,
     }),
     evaluation: null,
@@ -379,9 +384,13 @@ describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => 
     expect(无分.标题).toBe('AI 产品实习生 · 公司信息缺失');
   });
 
-  it('职位资料：negotiation.job 只给实际字段，其余全缺失，缺口说明沿用约定句；技能段恒空', () => {
+  it('职位资料：negotiation.job 只给实际字段，其余全缺失，缺口说明沿用约定句；技能 null/[]/有值三态如实区分', () => {
+    // required_skills=null 是「未知」，不得折算成「已知为空」
     const 资料 = 从连续到职位资料(连续详情({ phase: 'accepted' }));
-    expect(资料.摘要).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300-500 元/天', 技能: [] });
+    expect(资料.摘要).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300-500 元/天', 技能: null });
+    expect(从连续到职位资料(连续详情({ phase: 'accepted', 技能: ['Go', '高并发'] })).摘要?.技能)
+      .toEqual(['Go', '高并发']);
+    expect(从连续到职位资料(连续详情({ phase: 'accepted', 技能: [] })).摘要?.技能).toEqual([]);
     expect(资料.职位详情).toBeNull();
     expect(资料.公司.元行.map((行) => 行.标签)).toEqual(['融资阶段', '规模', '行业', '成立', '地址']);
     expect(资料.接口缺口说明).toBe('当前在谈详情数据未提供');
@@ -401,7 +410,25 @@ describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => 
     expect(资料.公司.编号).toBe('org_1');
     expect(资料.对接人.姓名).toBe('林澈');
     expect(资料.接口缺口说明).toBeNull();
-    expect(资料.摘要).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300-500 元/天', 技能: [] });
+    expect(资料.摘要).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300-500 元/天', 技能: null });
+  });
+
+  // review-r1：job_detail 缺组织/缺席时，顶栏公司名回退到同一响应外层 job.organization（同语义，
+  // 不补读）；双方都缺才给「公司信息缺失」。job_detail 在场时冻结组织名优先。
+  it('顶栏公司名：job_detail 组织名优先，缺席时回退外层 job.organization，双缺才给缺失槽', () => {
+    const 回退 = 从连续到详情顶栏(连续详情({ phase: 'accepted', 组织: BFF公司摘要样本 }));
+    expect(回退.标题).toBe('AI 产品实习生 · 云衢科技');
+    const 优先 = 从连续到详情顶栏(连续详情({
+      phase: 'accepted',
+      组织: { ...BFF公司摘要样本, display_name: '外层在谈企业' },
+      jobDetail: BFF安全职位资料样本,
+    }));
+    expect(优先.标题).toBe('AI 产品实习生 · 云衢科技');
+    const 双缺 = 从连续到详情顶栏(连续详情({
+      phase: 'accepted',
+      组织: { ...BFF公司摘要样本, display_name: null },
+    }));
+    expect(双缺.标题).toBe('AI 产品实习生 · 公司信息缺失');
   });
 });
 

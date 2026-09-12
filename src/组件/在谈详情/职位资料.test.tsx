@@ -116,6 +116,27 @@ describe('职位资料 · 全缺（Backend 形态）', () => {
     expect(screen.queryByText('暂无技能')).toBeNull();
   });
 
+  // review-r1：摘要技能三态 —— null 是未知（不是已知为空）、[] 才是暂无、有值出标签
+  it('摘要技能 null 给未知占位，[] 给暂无，二者不互换', () => {
+    const { unmount } = render(
+      <职位资料
+        信息={{ ...有值信息, 摘要: { 职位: '资深后端工程师', 城市: '上海', 薪资: '50-65K', 技能: null } }}
+        公司详情={可用导航()}
+      />,
+    );
+    expect(screen.getByText('技能信息未知')).toBeTruthy();
+    expect(screen.queryByText('暂无技能')).toBeNull();
+    unmount();
+    render(
+      <职位资料
+        信息={{ ...有值信息, 摘要: { 职位: '资深后端工程师', 城市: '上海', 薪资: '50-65K', 技能: [] } }}
+        公司详情={可用导航()}
+      />,
+    );
+    expect(screen.getByText('暂无技能')).toBeTruthy();
+    expect(screen.queryByText('技能信息未知')).toBeNull();
+  });
+
   it('无合法公司导航坐标：入口真实 disabled、禁用说明可见、点击零回调零导航', () => {
     render(<职位资料 信息={全缺信息} 公司详情={禁用导航} />);
     const 入口 = screen.getByRole('button');

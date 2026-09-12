@@ -81,7 +81,7 @@ export interface 终局区信息 {
 /** 第二 Tab（资料）自己的输入（契约 B）：只为本页当前字段服务，不输出全局业务 DTO。
  *  null = 数据源未提供（缺失）；空数组 = 提供了但一条没有（「暂无…」）。 */
 export interface 职位资料信息 {
-  摘要: { 职位: string; 城市: string; 薪资: string; 技能: readonly string[] } | null;
+  摘要: { 职位: string; 城市: string; 薪资: string; 技能: readonly string[] | null } | null;
   分析: { 分: number | null; 行们: 对齐行[] | null; 文案: { 墨句: string; 灰句: string } | null };
   职位详情: readonly string[] | null;
   职位要求: readonly string[] | null;

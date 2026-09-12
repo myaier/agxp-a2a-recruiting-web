@@ -463,15 +463,17 @@ function 招聘Case详情(caseId: string, 覆盖: {
 
 // ── 候选连续代谈（me/negotiations）wire ─────────────────────────────────────────
 
-function 连续职位(title: string): Record<string, unknown> {
+function 连续职位(r: 连续记录形): Record<string, unknown> {
   return {
     job_id: 编号.职位A,
-    title,
+    title: r.title,
     location: '展接FIX 市',
     public_salary_range: 标记.薪资A,
     availability: 'available',
-    organization: 组织摘要({ display_name: '展接FIX 企业', logo: null }),
-    required_skills: ['Go'],
+    // review-r1：缺省给已知组织/技能（乙 pre-Case 演示 job_detail=null 时的同响应回退）；
+    // 丙 legacy 显式双 null —— 老记录外层成员也未知，不冒充已知。
+    organization: 组织摘要({ display_name: r.组织显示名 === undefined ? '展接FIX 企业' : r.组织显示名, logo: null }),
+    required_skills: r.技能 === undefined ? ['Go'] : r.技能,
     recruitment_type: 'social_full_time',
     workplace_mode: 'hybrid',
     annual_salary_months: 15,
@@ -486,6 +488,9 @@ interface 连续记录形 {
   matchScore: number | null;
   /** 卡面标题（case_started 用 Case 职位名） */
   title: string;
+  /** review-r1：外层 NegotiationJob 的组织显示名与技能；缺省 = 常规已知值（乙 演示顶栏/摘要回退） */
+  组织显示名?: string | null;
+  技能?: string[] | null;
 }
 
 function 连续卡(r: 连续记录形): Record<string, unknown> {
@@ -495,7 +500,7 @@ function 连续卡(r: 连续记录形): Record<string, unknown> {
     record_id: r.recordId,
     record_kind: r.recordKind,
     intention_id: 编号.意向,
-    job: 连续职位(r.title),
+    job: 连续职位(r),
     delegation_id: 是Case ? null : r.recordId,
     evaluation_id: null,
     case_id: r.caseId,
@@ -703,6 +708,8 @@ function 场景数据(场景: 展接线场景名, role: 展接线角色): 展接
     const 丙: 连续记录形 = {
       recordId: 编号.连续丙, recordKind: 'case', caseId: 编号.连续丙,
       phase: 'case_started', matchScore: null, title: 标记.职位A,
+      // legacy 全空：外层组织名/技能同为 null（未知），不冒充已知
+      组织显示名: null, 技能: null,
     };
     return {
       岗位: { [编号.职位A]: 岗位A, [编号.职位B]: 岗位B, [编号.职位C]: 岗位C, [编号.职位D]: 岗位D },
