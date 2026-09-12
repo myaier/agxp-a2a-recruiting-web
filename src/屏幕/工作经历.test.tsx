@@ -1190,3 +1190,183 @@ describe('工作经历 · 证书行内输入接线（review-cx F4）', () => {
     expect((输入 as HTMLInputElement).value).toBe('');
   });
 });
+
+// ── Task 5（core editors §5.2）：教育 学校/专业 候选行共用 ──────────────
+// 一个具体组件（教育目录候选列表）供学校与专业在两模式都调用：输入框、词、候选显隐、
+// 选中引用、250ms 查询、目录版本/迟到响应守卫全部留在本页外层。
+// Mock 用现有 高校名录/专业名录 演示种子做局部搜索/分页，选中只落文本（沿用本地选择控制，
+// 不落引用）；Backend 回调通过当前查询页的稳定键解析回引用，同名不同 ID 不串。
+describe('工作经历 教育编辑页 共用候选（Task 5）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+    mock确认分区.mockClear();
+    mock更新草稿.mockClear();
+  });
+
+  /** 存简历 里首条教育段（无则 undefined） */
+  function 首条教育(): { 学校: string; 学校引用?: unknown; 专业: string; 专业引用?: unknown } | undefined {
+    const 派发 = mock应用状态.派发;
+    const 调用 = 派发.mock.calls.find(
+      (c: unknown[]) => (c[0] as { 型?: string })?.型 === '存简历',
+    )?.[0] as { 教育: { 学校: string; 学校引用?: unknown; 专业: string; 专业引用?: unknown }[] } | undefined;
+    return 调用?.教育[0];
+  }
+
+  it('Mock 演示候选：输入→子串命中→分页→选候选落文本→完成可保存（无引用门槛）', async () => {
+    render工作经历({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('添加教育经历'));
+
+    // 输入「大学」：本地名录子串命中（30 条全部命中），首页 8 条后列表尾出「加载更多」
+    const 学校输入 = screen.getAllByPlaceholderText('必填')[0];
+    await 用户.type(学校输入, '大学');
+    await screen.findByText('清华大学');
+    expect(screen.queryByText('同济大学')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    // 切片翻页切进名录第 9–16 位
+    await screen.findByText('同济大学');
+
+    // 选候选：只落文本（Mock 不落引用），列表收起
+    await 用户.click(screen.getByRole('button', { name: '清华大学' }));
+    expect((学校输入 as HTMLInputElement).value).toBe('清华大学');
+    expect(screen.queryByRole('button', { name: '清华大学' })).toBeNull();
+
+    // 专业同走共用列表（无副行）
+    const 专业输入 = screen.getAllByPlaceholderText('必填')[1];
+    await 用户.type(专业输入, '工程');
+    await screen.findByText('软件工程');
+    await 用户.click(screen.getByRole('button', { name: '软件工程' }));
+    expect((专业输入 as HTMLInputElement).value).toBe('软件工程');
+
+    // Mock 无引用门槛：完成照常存
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    const 教育 = 首条教育();
+    expect(教育?.学校).toBe('清华大学');
+    expect(教育?.专业).toBe('软件工程');
+    expect(教育?.学校引用).toBeUndefined();
+    expect(教育?.专业引用).toBeUndefined();
+  });
+
+  it('Backend 同名不同 ID：按稳定键落引用并准确提交', async () => {
+    const 查询Institution = vi.fn(async (_q: { q?: string }) => ({
+      items: [
+        {
+          id: 'inst_same_a',
+          display_name: '清华大学',
+          location: { id: 'loc_bj', display_name: '北京', country_name: '中国' },
+          selectable: true,
+        },
+        {
+          id: 'inst_same_b',
+          display_name: '清华大学',
+          location: { id: 'loc_tw', display_name: '新竹', country_name: '中国' },
+          selectable: true,
+        },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    const 查询Taxonomy = vi.fn(async (_kind: string) => ({
+      items: [{ id: 'tax_cs', display_name: '计算机科学与技术', parent_id: null, selectable: true }],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    render工作经历({ 数据源: 'backend', 查询Institution, 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('添加教育经历'));
+    await 用户.type(screen.getAllByPlaceholderText('必填')[0], '清华');
+    await screen.findByText('新竹 · 中国');
+    // 两行同名：选第二行（不同 ID），副行区分城市
+    const 同名行 = screen.getAllByRole('button', { name: '清华大学' });
+    expect(同名行.length).toBe(2);
+    await 用户.click(同名行[1]!);
+    await 用户.type(screen.getAllByPlaceholderText('必填')[1], '计算机');
+    await 用户.click(await screen.findByText('计算机科学与技术'));
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    const 教育 = 首条教育();
+    expect(教育?.学校).toBe('清华大学');
+    expect(教育?.学校引用).toEqual({ id: 'inst_same_b', display_name: '清华大学' });
+    expect(教育?.专业引用).toEqual({ id: 'tax_cs', display_name: '计算机科学与技术' });
+  });
+
+  it('Backend 改输入清旧引用：未重新选有效引用不能提交（轻提示拦下、不派发存简历）', async () => {
+    const 查询Institution = vi.fn(async (_q: { q?: string }) => ({
+      items: [
+        {
+          id: 'inst_thu',
+          display_name: '清华大学',
+          location: { id: 'loc_bj', display_name: '北京', country_name: '中国' },
+          selectable: true,
+        },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    const 查询Taxonomy = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' }));
+    render工作经历({ 数据源: 'backend', 查询Institution, 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('添加教育经历'));
+    const 学校输入 = screen.getAllByPlaceholderText('必填')[0];
+    await 用户.type(学校输入, '清华');
+    await 用户.click(await screen.findByText('清华大学'));
+    // 继续输入 → 旧引用清除；专业未选（引用 undefined）
+    await 用户.type(学校输入, '大学');
+    const 专业输入 = screen.getAllByPlaceholderText('必填')[1];
+    await 用户.type(专业输入, '计算机');
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    // 守卫顺序沿原页：先学校后专业
+    expect(mock轻提示).toHaveBeenCalledWith('请从候选学校中选择');
+    expect(mock应用状态.派发.mock.calls.filter((c: unknown[]) => (c[0] as { 型?: string })?.型 === '存简历')).toHaveLength(0);
+  });
+
+  it('Backend 旧词迟到响应不回填（代际守卫沿用原外层）', async () => {
+    let 放行旧词: () => void = () => {};
+    const 查询Institution = vi.fn(async (q: { q?: string }) => {
+      if (q.q === '清') {
+        // 旧词的响应悬挂，测试尾段才放行 —— 慢的旧搜索不得覆盖新词结果
+        return new Promise((解决) => {
+          放行旧词 = () => 解决({
+            items: [{
+              id: 'inst_old',
+              display_name: '清華舊詞大學',
+              location: { id: 'loc_old', display_name: '旧城', country_name: '旧国' },
+              selectable: true,
+            }],
+            nextCursor: null,
+            catalogVersion: 'v1',
+          });
+        }) as never;
+      }
+      return {
+        items: [{
+          id: 'inst_thu',
+          display_name: '清华大学',
+          location: { id: 'loc_bj', display_name: '北京', country_name: '中国' },
+          selectable: true,
+        }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    const 查询Taxonomy = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' }));
+    render工作经历({ 数据源: 'backend', 查询Institution, 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('添加教育经历'));
+    const 学校输入 = screen.getAllByPlaceholderText('必填')[0];
+    // 先敲「清」并等过 250ms 防抖（旧词请求在飞），再补「华」触发新代际
+    await 用户.type(学校输入, '清');
+    await new Promise((解决) => setTimeout(解决, 320));
+    await 用户.type(学校输入, '华');
+    await screen.findByText('清华大学');
+    // 旧词响应此刻才迟到：不得回填候选，也不得清掉新词结果
+    await act(async () => {
+      放行旧词();
+    });
+    await new Promise((解决) => setTimeout(解决, 20));
+    expect(screen.getByText('清华大学')).toBeTruthy();
+    expect(screen.queryByText('清華舊詞大學')).toBeNull();
+    expect(screen.queryByText('旧城 · 旧国')).toBeNull();
+  });
+});

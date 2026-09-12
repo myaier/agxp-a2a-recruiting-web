@@ -19,9 +19,9 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import 样式 from './工作经历.module.css';
-// review-r1 P1-3：教育编辑页 Backend 候选列表复用 入职引导 的候选行样式
-import 引导样式 from './入职引导.module.css';
 import 年月滚轮层 from '../组件/年月滚轮层';
+// Task 5（core editors §5.2）：教育 学校/专业 候选行共用组件（原页内两份候选 JSX 迁出）
+import { 教育目录候选列表, type 教育候选 } from '../组件/教育目录候选列表';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 开关 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
 import { use应用状态 } from '../状态/应用状态';
@@ -37,6 +37,8 @@ import type { BFFTaxonomyItem, BFFInstitutionItem } from '../数据/BFF契约';
 import type { 建档编辑中草稿, 建档条目种类, 建档明确删除条目, 候选引导建档草稿 } from '../数据/资料缓存';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
 import { 学校副标题, 合并目录页 } from '../数据/目录选择';
+import { 高校名录 } from '../数据/高校名录';
+import { 专业名录 } from '../数据/专业名录';
 
 /** 一段工作经历。开始/结束用 input[type=month] 的 yyyy-MM 格式；结束 null = 至今 */
 /** 行业快捷片：点一下填入，省得手机上打字 */
@@ -619,9 +621,16 @@ export default function 工作经历() {
 }
 
 // ── 教育经历编辑页：学校 / 学历（快捷片）/ 专业 / 起止年月（滚轮）────
-// review-r1 P1-3：Backend 分支 学校/专业 输入走目录查询（与 毕业院校/选专业 同口径），
-// 点候选才落引用，继续输入清引用，没点候选阻止保存。Mock 分支保持自由文本不变。
+// review-r1 P1-3：学校/专业 输入走候选（与 毕业院校/选专业 同口径），点候选才落引用，
+// 继续输入清引用，没点候选阻止保存。
+// Task 5（core editors §5.2）：候选行 JSX 迁出到共用 教育目录候选列表，学校/专业在两模式
+// 都调用 —— 输入框、词、候选显隐、选中引用、250ms 查询、目录版本/迟到响应守卫仍在本外层。
+// Mock 用现有 高校名录/专业名录 演示种子做局部子串搜索/分页（稳定模拟键与名称分离），
+// 选中只落文本（沿用本地选择控制，不落引用）；Backend 回调通过当前查询页的稳定键解析回
+// 引用（同名不同 ID 不串），不在展示层查 DTO。
 const 教育搜索防抖毫秒 = 250;
+/** Mock 演示候选每页条数：只为驱动与 Backend 相同的「加载更多」可见状态 */
+const 教育演示每页条数 = 8;
 
 function 教育编辑页({
   初始,
@@ -781,12 +790,16 @@ function 教育编辑页({
 
   const 改学校 = (值: string) => {
     改('学校', 值);
-    // 继续输入立即清除旧引用（只有点候选才落引用）
+    // 继续输入立即清除旧引用（只有点候选才落引用）；Mock 演示候选重开并重置分页
     if (草稿.学校引用 !== undefined) 改('学校引用', undefined);
+    设学校演示收起(false);
+    设学校演示页数(1);
   };
   const 改专业 = (值: string) => {
     改('专业', 值);
     if (草稿.专业引用 !== undefined) 改('专业引用', undefined);
+    设专业演示收起(false);
+    设专业演示页数(1);
   };
   const 选学校候选 = (项: BFFInstitutionItem) => {
     改('学校', 项.display_name);
@@ -797,6 +810,82 @@ function 教育编辑页({
     改('专业', 项.display_name);
     改('专业引用', { id: 项.id, display_name: 项.display_name } as 目录选择值);
     设专业候选([]);
+  };
+  // Task 5：共用候选的稳定键 → 引用/文本 解析都在本外层，组件只按 键 回报点击
+  const 选学校键 = (键: string) => {
+    if (是后端) {
+      const 项 = 学校候选.find((项) => 项.id === 键);
+      if (项) 选学校候选(项);
+      return;
+    }
+    const 项 = 学校演示项们.find((项) => 项.键 === 键);
+    if (项) {
+      改学校(项.名称);
+      // Mock 点候选即收起（同 Backend 点候选行为）；文本已由 改学校 落草稿
+      设学校演示收起(true);
+    }
+  };
+  const 选专业键 = (键: string) => {
+    if (是后端) {
+      const 项 = 专业候选.find((项) => 项.id === 键);
+      if (项) 选专业候选(项);
+      return;
+    }
+    const 项 = 专业演示项们.find((项) => 项.键 === 键);
+    if (项) {
+      改专业(项.名称);
+      设专业演示收起(true);
+    }
+  };
+
+  // ── Mock 演示候选：现有学校/专业名录种子 + 局部子串搜索/分页 ──────────
+  // 只为本轮共用展示驱动可见状态（收起/页数），不建跨页 Mock service、不发请求。
+  // 稳定模拟键 = 种子下标（与名称分离）；选中的行沿 毕业院校 Mock 口径按当前词回显。
+  const [学校演示收起, 设学校演示收起] = useState(false);
+  const [学校演示页数, 设学校演示页数] = useState(1);
+  const [专业演示收起, 设专业演示收起] = useState(false);
+  const [专业演示页数, 设专业演示页数] = useState(1);
+  const 学校词 = 草稿.学校.trim();
+  const 专业词 = 草稿.专业.trim();
+  const 学校演示命中 = 学校词 === '' ? [] : 高校名录.filter((名) => 名.includes(学校词));
+  const 专业演示命中 = 专业词 === '' ? [] : 专业名录.filter((名) => 名.includes(专业词));
+  const 学校演示项们: 教育候选[] = 是后端 || 学校演示收起
+    ? []
+    : 学校演示命中
+        .slice(0, 学校演示页数 * 教育演示每页条数)
+        .map((名) => ({ 键: `mock_inst_${高校名录.indexOf(名)}`, 名称: 名, 选中: 名 === 学校词 }));
+  const 专业演示项们: 教育候选[] = 是后端 || 专业演示收起
+    ? []
+    : 专业演示命中
+        .slice(0, 专业演示页数 * 教育演示每页条数)
+        .map((名) => ({ 键: `mock_major_${专业名录.indexOf(名)}`, 名称: 名, 选中: 名 === 专业词 }));
+  // 两模式统一进组件的展示状态：Backend = 真实查询页，Mock = 演示切片
+  const 学校项们: 教育候选[] = 是后端
+    ? 学校候选.map((项) => ({
+        键: 项.id,
+        名称: 项.display_name,
+        副文: 学校副标题(项),
+        选中: 草稿.学校引用?.id === 项.id,
+      }))
+    : 学校演示项们;
+  const 专业项们: 教育候选[] = 是后端
+    ? 专业候选.map((项) => ({
+        键: 项.id,
+        名称: 项.display_name,
+        选中: 草稿.专业引用?.id === 项.id,
+      }))
+    : 专业演示项们;
+  const 学校还有 = 是后端
+    ? 学校下一页 !== null
+    : !学校演示收起 && 学校演示命中.length > 学校演示项们.length;
+  const 专业还有 = 是后端
+    ? 专业下一页 !== null
+    : !专业演示收起 && 专业演示命中.length > 专业演示项们.length;
+  const 学校演示加载更多 = () => {
+    if (学校演示命中.length > 学校演示项们.length) 设学校演示页数((旧) => 旧 + 1);
+  };
+  const 专业演示加载更多 = () => {
+    if (专业演示命中.length > 专业演示项们.length) 设专业演示页数((旧) => 旧 + 1);
   };
 
   return (
@@ -845,31 +934,16 @@ function 教育编辑页({
             placeholder="必填"
             onChange={(事件) => 改学校(事件.target.value)}
           />
-          {/* Backend 学校候选：学校名 + 「城市 · 国家」副行 */}
-          {是后端 && (学校候选.length > 0 || 学校下一页 !== null) ? (
-            <div className={引导样式.候选列表}>
-              {学校候选.map((项) => (
-                <button
-                  key={项.id}
-                  className={`${引导样式.候选行} 可点`}
-                  aria-label={项.display_name}
-                  onClick={() => 选学校候选(项)}
-                >
-                  <span>
-                    <span>{项.display_name}</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--最弱)', fontWeight: 400 }}>
-                      {学校副标题(项)}
-                    </span>
-                  </span>
-                </button>
-              ))}
-              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
-              {学校下一页 !== null ? (
-                <button className={`${引导样式.候选行} 可点`} onClick={学校加载更多} disabled={学校加载中} aria-label="加载更多">
-                  {学校加载中 ? '加载中…' : '加载更多'}
-                </button>
-              ) : null}
-            </div>
+          {/* Task 5：学校候选走共用 教育目录候选列表（学校名 + 「城市 · 国家」副行 + 列表尾加载更多）；
+              显隐条件沿原稿（有候选或还有下一页才渲染） */}
+          {学校项们.length > 0 || 学校还有 ? (
+            <教育目录候选列表
+              项们={学校项们}
+              加载中={学校加载中}
+              还有={学校还有}
+              选定={选学校键}
+              加载更多={是后端 ? 学校加载更多 : 学校演示加载更多}
+            />
           ) : null}
         </div>
 
@@ -896,26 +970,15 @@ function 教育编辑页({
             placeholder="必填"
             onChange={(事件) => 改专业(事件.target.value)}
           />
-          {/* Backend 专业候选 */}
-          {是后端 && (专业候选.length > 0 || 专业下一页 !== null) ? (
-            <div className={引导样式.候选列表}>
-              {专业候选.map((项) => (
-                <button
-                  key={项.id}
-                  className={`${引导样式.候选行} 可点`}
-                  aria-label={项.display_name}
-                  onClick={() => 选专业候选(项)}
-                >
-                  {项.display_name}
-                </button>
-              ))}
-              {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」 */}
-              {专业下一页 !== null ? (
-                <button className={`${引导样式.候选行} 可点`} onClick={专业加载更多} disabled={专业加载中} aria-label="加载更多">
-                  {专业加载中 ? '加载中…' : '加载更多'}
-                </button>
-              ) : null}
-            </div>
+          {/* Task 5：专业候选走同一共用列表（无副行）；显隐条件沿原稿 */}
+          {专业项们.length > 0 || 专业还有 ? (
+            <教育目录候选列表
+              项们={专业项们}
+              加载中={专业加载中}
+              还有={专业还有}
+              选定={选专业键}
+              加载更多={是后端 ? 专业加载更多 : 专业演示加载更多}
+            />
           ) : null}
         </div>
 

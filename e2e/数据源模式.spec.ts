@@ -11479,6 +11479,223 @@ test.describe('核心编辑 岗位 @backend', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 教育 @mock（core editors §5.2 Task 5）：教育编辑页 学校/专业 候选行共用 ——
+// Mock 用现有 高校名录/专业名录 演示种子做局部子串搜索/分页（列表尾「加载更多」），
+// 选候选只落文本（本地选择控制，不落引用），完成无引用门槛、保存进本地简历。
+// 全程零 /api/v1 请求。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 教育 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('学校/专业共用候选：输入→候选→分页→选候选→保存，全程零 API @mock', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '微信登录' }).click();
+    await expect(page).toHaveURL(/#\/identity$/);
+
+    // 日常入口：在线简历 → 添加教育经历（共用候选列表，Mock 演示种子）
+    await page.goto('/#/experience');
+    await expect(page.getByRole('button', { name: '＋ 添加教育经历' })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '＋ 添加教育经历' }).click();
+    await expect(page.getByText('学校名称')).toBeVisible({ timeout: 10_000 });
+
+    // 学校输入「大学」：名录子串命中，首页 8 条 + 列表尾「加载更多」
+    const 学校输入 = page.getByPlaceholder('必填').first();
+    await 学校输入.fill('大学');
+    await expect(page.getByRole('button', { name: '清华大学', exact: true })).toBeVisible({ timeout: 10_000 });
+    expect(await page.getByRole('button', { name: '清华大学', exact: true }).count()).toBe(1);
+    await expect(page.getByRole('button', { name: '加载更多', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '同济大学', exact: true })).toHaveCount(0);
+
+    // 输入及候选截图（与改前拍对照：旧 Mock 教育页无候选）
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-教育-输入及候选.png`, fullPage: true });
+
+    // 分页翻出名录第 9–16 位 → 选候选落文本、列表收起（同 Backend 点候选行为）
+    await page.getByRole('button', { name: '加载更多', exact: true }).click();
+    await expect(page.getByRole('button', { name: '同济大学', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '清华大学', exact: true }).click();
+    await expect(学校输入).toHaveValue('清华大学');
+    await expect(page.getByRole('button', { name: '清华大学', exact: true })).toHaveCount(0);
+
+    // 专业走同一共用列表（无副行）：输入「工程」→ 分页 → 选软件工程
+    const 专业输入 = page.getByPlaceholder('必填').nth(1);
+    await 专业输入.fill('工程');
+    await expect(page.getByRole('button', { name: '软件工程', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '加载更多', exact: true }).click();
+    await expect(page.getByRole('button', { name: '土木工程', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '软件工程', exact: true }).click();
+    await expect(专业输入).toHaveValue('软件工程');
+
+    // 选中态截图 + iPhone 13 viewport 检查：无横向溢出、学校输入可聚焦、完成不被遮挡
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-教育-选中.png`, fullPage: true });
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    await 学校输入.focus();
+    await expect(学校输入).toBeFocused();
+    await expect(page.getByRole('button', { name: '完成', exact: true })).toBeVisible();
+
+    // 完成（Mock 无引用门槛）→ 教育卡上屏；保存进本地简历，重进回读不丢
+    await page.getByRole('button', { name: '完成', exact: true }).click();
+    await expect(page.getByText(/清华大学/).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/本科 · 软件工程/)).toBeVisible();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/wizard$/, { timeout: 20_000 });
+    await page.goto('/#/experience');
+    await expect(page.getByText(/清华大学/).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/本科 · 软件工程/)).toBeVisible();
+
+    // Mock 全程零 API 请求
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 教育 @backend（core editors §5.2 Task 5）：Backend 分支消费同一共用候选列表 ——
+// 学校候选带「城市 · 国家」副行、列表尾「加载更多」翻真实游标页、同名不同 ID 按稳定键
+// 准确提交（education POST 的 institution_id 是所点行的 ID）；输入框布局不变。
+// 教育目录桩为本用例专用后装 route（先匹配，不改共享 安装BFF路由），符合已审合同网络桩，
+// 不是 live 验收。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 教育 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('目录候选：输入→副行→分页→选候选→保存，同名不同 ID 按键提交 @backend', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const fixture = 创建候选OnboardingFixture();
+    // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
+    fixture.主体.last_used_role = 'candidate';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选' },
+      summary: '存量个人优势',
+    };
+    fixture.intentions = [P4深克隆(fixture意向列表.intentions[0])];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-core-edit-education',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: P3隐私fixture(),
+    });
+
+    // 教育目录桩（本用例专用精确状态）：同名不同 ID 三校 + 游标分页；专业两页。字段形状
+    // 与既有内置 institutions/majors 桩一致（信封闭合解码）。
+    const 学校 = (id: string, 城: string) => ({
+      id,
+      display_name: '清华大学',
+      location: {
+        id: `loc-${id}`, display_name: 城, country_code: 'CN', country_name: '中国',
+        admin1_code: null, admin1_name: null, timezone: 'Asia/Shanghai', population: 0,
+      },
+      selectable: true,
+    });
+    const 教育 = (institution_id: string, major_id: string) => ({ institution_id, major_id });
+    await page.route('**/api/v1/catalog/education-institutions*', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('cursor') === 'inst-cur-1') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({ items: [学校('inst_same_c', '上海')], next_cursor: null, catalog_version: 'inst-v1' }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        json: 信封({
+          items: [学校('inst_same_a', '北京'), 学校('inst_same_b', '新竹')],
+          next_cursor: 'inst-cur-1',
+          catalog_version: 'inst-v1',
+        }),
+      });
+    });
+    await page.route('**/api/v1/catalog/majors*', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('cursor') === 'major-cur-1') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({
+            items: [{ id: 'major_se', display_name: '软件工程', parent_id: null, selectable: true }],
+            next_cursor: null,
+            catalog_version: 'major-v1',
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        json: 信封({
+          items: [{ id: 'major_cs', display_name: '计算机科学与技术', parent_id: null, selectable: true }],
+          next_cursor: 'major-cur-1',
+          catalog_version: 'major-v1',
+        }),
+      });
+    });
+
+    // 日常入口：登录落主壳后直接进 /experience（不经过建档旅程）
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto('/#/experience');
+    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '＋ 添加教育经历' }).click();
+    await expect(page.getByText('学校名称')).toBeVisible({ timeout: 10_000 });
+
+    // 学校输入「清」：同名不同 ID 两行以副行（城市 · 国家）区分 + 列表尾「加载更多」
+    const 学校输入 = page.getByPlaceholder('必填').first();
+    await 学校输入.fill('清');
+    await expect(page.getByRole('button', { name: '清华大学', exact: true })).toHaveCount(2, { timeout: 10_000 });
+    await expect(page.getByText('北京 · 中国')).toBeVisible();
+    await expect(page.getByText('新竹 · 中国')).toBeVisible();
+    await expect(page.getByRole('button', { name: '加载更多', exact: true })).toBeVisible();
+
+    // 输入及候选截图（与改前拍/冻结源码快照对照：原 Backend 候选行结构）
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-教育-输入及候选.png`, fullPage: true });
+
+    // 分页翻出第三行 → 选第二行（inst_same_b，同名不同 ID）
+    await page.getByRole('button', { name: '加载更多', exact: true }).click();
+    await expect(page.getByText('上海 · 中国')).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '清华大学', exact: true }).nth(1).click();
+    await expect(学校输入).toHaveValue('清华大学');
+    await expect(page.getByRole('button', { name: '清华大学', exact: true })).toHaveCount(0);
+
+    // 专业走同一共用列表（无副行）：输入 → 分页 → 选叶子
+    // （Backend 原外层行为：点候选清空候选数组后游标仍在，列表尾「加载更多」保持原样 ——
+    //   学校块尾与专业块尾各一枚，取第二枚）
+    const 专业输入 = page.getByPlaceholder('必填').nth(1);
+    await 专业输入.fill('计');
+    await expect(page.getByRole('button', { name: '计算机科学与技术', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '加载更多', exact: true }).nth(1).click();
+    await expect(page.getByRole('button', { name: '软件工程', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '软件工程', exact: true }).click();
+    await expect(专业输入).toHaveValue('软件工程');
+
+    // 选中态截图 + iPhone 13 viewport 检查：无横向溢出、学校输入可聚焦、完成不被遮挡
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-教育-选中.png`, fullPage: true });
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    await 学校输入.focus();
+    await expect(学校输入).toBeFocused();
+    await expect(page.getByRole('button', { name: '完成', exact: true })).toBeVisible();
+
+    // 完成 → 教育卡上屏；保存按所点行的稳定 ID 提交（同名不同 ID 不串，
+    // institution_id 是所点行的目录 ID，不按显示名反查）
+    await page.getByRole('button', { name: '完成', exact: true }).click();
+    await expect(page.getByText(/清华大学/).first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/wizard$/, { timeout: 20_000 });
+    const 教育写入 = fixture.mutations.filter(
+      (条) => 条.method === 'POST' && 条.path === '/api/v1/me/resume/educations',
+    );
+    expect(教育写入.length).toBeGreaterThan(0);
+    expect(教育写入[0]!.body).toMatchObject(教育('inst_same_b', 'major_se'));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 招聘方 onboarding Backend fixture @backend（P0 修复 Task 7）：全新招聘方从身份选择页
 // 起步 —— profile 首读 404 not_found（合法的「缺失」而非故障），名片首写走
 // PATCH + If-Match: "0"（fixture 按自己的当前 revision 做 CAS），发岗写出三段独立
