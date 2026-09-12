@@ -1,0 +1,704 @@
+/* A2 工作经历 —— BOSS直聘 形态：列表 + 全屏编辑页 */
+
+.保存 {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+/* ── 上传解析条：绿色虚线框 ── */
+.上传条 {
+  flex: none;
+  margin: 14px 18px 0;
+  background: var(--淡绿底);
+  border: 1.5px dashed var(--上传框描边);
+  border-radius: 15px;
+  padding: 11px 14px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.上传图标 {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  background: var(--深绿);
+  color: #fff;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.上传文案 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.上传标题 {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--深绿);
+}
+
+.上传说明 {
+  font-size: 10.5px;
+  color: var(--正文);
+}
+
+.隐藏文件框 {
+  display: none;
+}
+
+/* ── 列表视图：经历卡 ── */
+.经历卡 {
+  /* 2026-08-24 定稿丙（文档式）：条目平铺像一份真简历，卡壳拆掉。
+     编辑侧与阅读侧（简历正文屏）同形，用户直觉「我改的就是对方看到的」 */
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 2px;
+  text-align: left;
+  background: transparent;
+  border: none;
+}
+
+.经历卡主体 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.经历卡头行 {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.经历公司 {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.经历时间 {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.经历职位 {
+  font-size: 13px;
+  color: var(--正文);
+}
+
+.经历底行 {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+}
+
+.经历行业 {
+  font-size: 10.5px;
+  color: var(--次要浅);
+  background: var(--浅灰底);
+  padding: 2px 8px;
+  border-radius: 5px;
+}
+
+.隐身徽标 {
+  font-size: 10.5px;
+  color: var(--深绿);
+  background: var(--淡绿底);
+  padding: 2px 8px;
+  border-radius: 5px;
+}
+
+.尖括号 {
+  flex: none;
+  color: var(--最弱);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* ── 添加行 ── */
+.添加行 {
+  /* 定稿丙 + 「添加工作经历这种的文字明显一点」：淡绿虚线大钮收成
+     左对齐亮绿加粗文字行，可点性由颜色和加号承担，不再占一块 */
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 11px 2px;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+}
+
+.添加加号 {
+  color: var(--亮绿);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.添加文字 {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--亮绿);
+}
+
+/* ── 编辑视图 ── */
+.完成键 {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+.完成键灰 {
+  color: var(--最弱);
+}
+
+.编辑条目 {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.条目标签 {
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：字段名统一为小节标题灰标 */
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
+  margin-bottom: 8px;
+}
+
+.条目输入 {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.条目输入::placeholder {
+  font-weight: 400;
+  color: var(--最弱);
+}
+
+/* 行业快捷片 */
+.行业片行 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.行业片 {
+  padding: 6px 12px;
+  border-radius: 999px;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：未选片=白底细描边灰字 */
+  background: var(--白);
+  border: 1px solid var(--描边深);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--次要);
+}
+
+.行业片选中 {
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：选中=1.5px 亮绿描边+墨字+对勾，删淡绿实底 */
+  border: 1.5px solid var(--亮绿);
+  color: var(--墨);
+  font-weight: 700;
+}
+.行业片选中::before {
+  content: '✓ ';
+  color: var(--亮绿);
+  font-weight: 700;
+}
+
+/* 在职时间：原生年月选择器 */
+.时间行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 点开弹年月滚轮的触发键（原来是 input[type=month]，各平台长相不一）*/
+.月份键 {
+  flex: 1;
+  min-width: 0;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：选择行描边统一 描边深 */
+  border: 1px solid var(--描边深);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--墨);
+  background: var(--白);
+  font-family: inherit;
+  text-align: center;
+}
+
+.月份键空 {
+  font-weight: 400;
+  color: var(--最弱);
+}
+
+/* 起止倒置时两个键一起标红：错的是「这一段区间」，不是单独某一头 */
+.月份键错 {
+  border-color: #b42318;
+}
+
+.时间连字 {
+  flex: none;
+  color: var(--次要浅);
+}
+
+.至今占位 {
+  flex: 1;
+  min-width: 0;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：描边统一 描边深（灰底保留，表示已被「至今」接管）*/
+  border: 1px solid var(--描边深);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--次要浅);
+  background: var(--浅灰底);
+}
+
+.至今开关 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--正文);
+}
+
+.至今勾选框 {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--深绿);
+}
+
+/* 工作内容大文本 */
+.内容输入 {
+  width: 100%;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边统一 描边深 */
+  border: 1px solid var(--描边深);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--墨);
+  background: var(--白);
+  resize: none;
+  outline: none;
+  /* 随内容长高，框内不滚（标注 18:14）*/
+  overflow: hidden;
+  min-height: 96px;
+  font-family: inherit;
+}
+
+.内容输入::placeholder {
+  color: var(--最弱);
+}
+
+/* 编辑页底部的开关行：实习标记 / 对这家公司隐身，共用一套排版 */
+.开关条目 {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.开关标题 {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--墨);
+}
+
+/* 删除（仅编辑已有段） */
+.删除键 {
+  width: 100%;
+  margin-top: 22px;
+  padding: 13px 0;
+  border-radius: var(--圆角-按钮);
+  border: 1px solid var(--紧急描边);
+  background: var(--白);
+  color: var(--意向);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* ── 点击式选择条目（所属行业）+ 底部选择层（标注意见 21:43）── */
+.选择条目 {
+  width: 100%;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--分隔线);
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.选择条目值行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.条目值 {
+  flex: 1;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.条目占位 {
+  flex: 1;
+  font-size: 15.5px;
+  color: var(--最弱);
+}
+
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  background: var(--遮罩);
+  display: flex;
+  align-items: flex-end;
+  z-index: 40;
+  animation: 遮罩淡入 0.18s ease both;
+}
+
+.选择层 {
+  width: 100%;
+  background: var(--白);
+  border-radius: 18px 18px 0 0;
+  padding: 10px 18px calc(var(--安全区下) + 14px);
+  max-height: 72%;
+  display: flex;
+  flex-direction: column;
+  animation: 抽屉升起 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.选择层抓手 {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  align-self: center;
+  margin-bottom: 14px;
+}
+
+.选择层标题 {
+  /* 弹层标题与屏内区块标题同档 */
+  font-size: var(--字号-区块标题);
+  font-weight: 800;
+  color: var(--墨);
+  margin-bottom: 6px;
+}
+
+.选择层列表 {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.选择项 {
+  width: 100%;
+  padding: 14px 2px;
+  border-bottom: 1px solid var(--分隔线);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+  color: var(--墨);
+  text-align: left;
+}
+
+.选择项选中 {
+  color: var(--深绿);
+  font-weight: 700;
+}
+
+.选择勾 {
+  color: var(--深绿);
+  font-weight: 800;
+}
+
+.选择层输入 {
+  flex: none;
+  margin-top: 12px;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边统一 描边深 */
+  border: 1px solid var(--描边深);
+  border-radius: 12px;
+  padding: 11px 13px;
+  font-size: 14px;
+  color: var(--墨);
+  outline: none;
+  background: var(--白);
+}
+
+.选择层输入::placeholder {
+  color: var(--最弱);
+}
+
+/* 本地 keyframes：CSS Modules 会重命名 animation-name */
+@keyframes 遮罩淡入 {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes 抽屉升起 {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+/* ── 教育经历 / 专业技能 / 资格证书 区块标（列表页，工作经历下方）── */
+.区块标 {
+  /* 定稿丙：区块标降灰标，节与节之间靠这条发丝线分隔 */
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
+  border-top: 1px solid var(--分隔线);
+  padding-top: 16px;
+  margin-top: 6px;
+}
+
+/* ── 专业技能：标签墙 + 行内录入 ── */
+.技能卡 {
+  /* 2026-08-24 全站去框（产品负责人点名）：技能区拆壳平铺 */
+  padding: 2px 2px 0;
+}
+
+.标签组 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.标签 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--淡绿底);
+  color: var(--深绿文字);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.标签删 {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--深绿);
+  opacity: 0.6;
+}
+
+
+/* 行内录入行：技能 / 证书共用 */
+.录入行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.录入框 {
+  flex: 1;
+  min-width: 0;
+  /* 2026-08-24 去框二改（产品负责人点名技能/证书/作品集）：
+     输入从描边盒改成名片同款裸行 —— 无框无底，底部一道发丝线当下划线 */
+  border: none;
+  border-bottom: 1px solid var(--描边深);
+  border-radius: 0;
+  padding: 9px 2px;
+  background: transparent;
+  font-size: 13.5px;
+  color: var(--墨);
+}
+
+.录入框::placeholder {
+  color: var(--最弱);
+}
+
+.录入键 {
+  flex: none;
+  padding: 9px 15px;
+  border-radius: 11px;
+  background: var(--荧光绿);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+/* ── 资格证书行 ── */
+.证书行 {
+        padding: 12px 2px;
+  border-bottom: 1px solid var(--分隔线); /* 2026-08-24 全站去框 */
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.证书主体 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.证书名 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
+.证书年 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+/* 删除叉：技能标签之外的行式条目共用 */
+.行删除 {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
+  background: var(--浅灰底);
+  color: var(--次要浅);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 作品集或项目链接：整份简历一条，卡片形态与技能卡同源 ── */
+.整行输入 {
+  width: 100%;
+  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边统一 描边深 */
+  border: none;
+  border-bottom: 1px solid var(--描边深); /* 2026-08-24 去框二改：裸行输入 */
+      padding: 9px 2px;
+  font-size: 14px;
+  color: var(--墨);
+  outline: none;
+  font-family: inherit;
+}
+
+.整行输入::placeholder {
+  color: var(--最弱);
+}
+
+/* 字段级错误提示（与 学生分流 屏同款，红字一行贴在出错的字段下面）*/
+.字段错误 {
+  margin-top: 6px;
+  padding: 0 2px;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ── 经历编辑页内的「关键项目」子区块 ── */
+.选填注 {
+  margin-left: 6px;
+  font-size: 10.5px;
+  color: var(--弱化);
+}
+
+.项目卡 {
+  background: var(--浅灰底2);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-内托盘);
+  padding: 10px 12px 2px;
+  margin-bottom: 9px;
+}
+
+.项目卡头 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.项目序 {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--次要浅);
+}
+
+.项目输入 {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--描边深);
+  outline: none;
+  background: none;
+  padding: 9px 0;
+  font-size: 13.5px;
+  color: var(--墨);
+  font-family: inherit;
+}
+
+.项目输入::placeholder {
+  color: var(--最弱);
+}
+
+.项目末行 {
+  border-bottom: none;
+}
+
+/* 子区块里的添加行比列表页那条矮一档，不跟主分节抢视觉重量 */
+.添加行紧凑 {
+  padding: 10px 0;
+  margin-top: 2px;
+}
+
+/* 裸行输入聚焦态：压掉浏览器默认蓝框，聚焦用下划线变亮绿表达 */
+.录入框:focus,
+.整行输入:focus {
+  outline: none;
+  border-bottom-color: var(--亮绿);
+}
+
+/* 2026-09-08 产品负责人：紧跟在录入区后面的区块标去掉顶线——
+   录入框自带底线已经在分隔上下两块，再叠一条区块顶线是两条线重复（专业技能→证书与语言、证书与语言→作品集 两处） */
+.技能卡 + .区块标,
+.录入行 + .区块标 {
+  border-top: none;
+}
