@@ -154,7 +154,7 @@ npm run ui:check -- --base 3ad5d4bf3efff659ebd01188e956000ae5655f9d
 
 **输入/输出：** 依赖 Task 1 的默认 +86、§1 UI 名称和请求签名，先核对其 commit 与实际导出存在。输出 `登录区号` 名称前缀的新 fixture Case 与 B/V 证据；原测试号码、选择器和默认操作序列不变。
 
-- [ ] 在现有 `e2e/数据源模式.spec.ts` 原 fixture 边界内追加 `登录区号` describe，按 @backend/@mock 区分项目。既有 fixture 能力直接复用；全 `/api/v1` 拦截并对未声明请求失败，不 route.continue 到真实 STG。
+- [ ] 在现有 `e2e/数据源模式.spec.ts` 原 fixture 边界内追加 `登录区号` describe，按 @backend/@mock 区分项目。既有 fixture 能力直接复用；拦截 URL 根路径 `api/v1` 及其全部子路由，对未声明请求失败，不 route.continue 到真实 STG。
 - [ ] 固定最小新增旅程：Backend 弹层改 +999 → 十二位号码取码 → 请求 body 为完整合成号码 → 四位 complete → 角色落点 → 刷新；默认 Mock 打开弹层后取消仍 +86 → 原 11 位登录且零 API；Backend 已取码后实际改号不可用旧码完成、倒计时不被重置成可立即重发。延迟/竞态主要由 Task 1 单测承担，浏览器不重复所有排列。
 - [ ] 在新增弹层旅程中检查 390 和 320 宽度、输入/确认按钮可达、页面无水平溢出；保存默认与弹层截图至 Playwright 现有 test output，不新建截图框架。
 - [ ] 对 B 三条命令分别 `--list`，记录预期旧/new Case 命中；随后实际运行 B。旧默认用例保持原号码与操作，不添加“先选 +86”绕过默认值验证。
