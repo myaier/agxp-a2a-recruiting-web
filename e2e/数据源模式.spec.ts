@@ -13216,3 +13216,221 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     await page.screenshot({ path: 'test-results/J-PILOT-01/s3-招聘-S0-320.png', fullPage: true });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 期望行业 @mock（core editors §5.2 Task 7）：选期望行业页两模式共用
+// 期望行业选择正文 —— Mock 沿本地 行业字典 作模拟目录（推荐一级片可切换、手风琴组行
+// 展开细分片多选、3 项上限后未选片禁用变灰、已选片再点移除）。选择即写意向草稿
+//（原业务，保存只负责返回），返回重入计数与勾选保留。全程零 /api/v1 请求。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 期望行业 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('推荐+展开选满3项：返回重入保留、第4项禁用、已选片移除后回显 @mock', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '微信登录' }).click();
+    await expect(page).toHaveURL(/#\/identity$/);
+
+    // 「添加求职期望」→ 期望行业行 → 行业子页（共用正文，本地 行业字典 作模拟目录）
+    await page.goto('/#/intentions/new');
+    await expect(page.getByRole('button', { name: /期望行业/ })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: /期望行业/ }).click();
+    await expect(page.getByRole('heading', { name: '已选行业' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('0/3')).toBeVisible();
+    // 推荐区 3 枚一级片 + 手风琴 6 组行
+    await expect(page.getByRole('button', { name: '金融科技', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /智能硬件 \/ 制造 ⌄/ })).toBeVisible();
+
+    // 正常态截图（与改前拍对照：原 Mock 行业页同版式同控件）
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-正常.png`, fullPage: true });
+
+    // 展开互联网平台组选两个细分 + 推荐区选一级金融科技 → 3/3
+    await page.getByRole('button', { name: /互联网平台 ⌄/ }).click();
+    await page.getByRole('button', { name: '电商与交易', exact: true }).click();
+    await expect(page.getByText('1/3')).toBeVisible();
+    await page.getByRole('button', { name: '本地生活', exact: true }).click();
+    await expect(page.getByText('2/3')).toBeVisible();
+    await page.getByRole('button', { name: '金融科技', exact: true }).click();
+    await expect(page.getByText('3/3')).toBeVisible();
+
+    // 上限态：组行仍可展开，未选细分片禁用（沿原页：上限不锁手风琴展开）
+    await page.getByRole('button', { name: /企业服务 \/ SaaS ⌄/ }).click();
+    await expect(page.getByRole('button', { name: '协同办公', exact: true })).toBeDisabled();
+
+    // 选中态截图（选中片可访问名带 CSS ::before 的「✓ 」前缀）+ viewport 检查
+    await expect(page.getByRole('button', { name: /^✓ ?电商与交易$/ })).toBeVisible();
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-选中.png`, fullPage: true });
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    const 保存键 = page.getByRole('button', { name: '保存', exact: true });
+    await 保存键.focus();
+    await expect(保存键).toBeFocused();
+
+    // 保存（沿原业务：保存只负责返回）→ 行文本回显三选
+    await 保存键.click();
+    await expect(page).toHaveURL(/#\/intentions\/new$/, { timeout: 10_000 });
+    await expect(page.getByText('电商与交易、本地生活、金融科技')).toBeVisible({ timeout: 15_000 });
+
+    // 重入：3/3 与勾选保留（互联网平台组因含已选细分自动展开）
+    await page.getByRole('button', { name: /期望行业/ }).click();
+    await expect(page.getByText('3/3')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /^✓ ?电商与交易$/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^✓ ?本地生活$/ })).toBeVisible();
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-重入.png`, fullPage: true });
+
+    // Mock 全程零 API 请求
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 期望行业 @backend（core editors §5.2 Task 7）：Backend 分支消费同一共用正文 ——
+// 根/子/孙三层目录、各层「加载更多」、selectable 叶子按稳定 ID 写 期望行业们+行业引用们、
+// 非 selectable 子项点击走展开不混成写入、可选根推荐片可直接选定；3 项上限后未选片禁用；
+// 保存（返回）后重入草稿不丢，已选不依赖当前可见项（翻页翻走的已选仍在计数里）。
+// industries 目录用本用例专用后装 route（先匹配，不改共享 安装BFF路由），符合已审合同
+// 网络桩，不是 live 验收。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 期望行业 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('三层目录：推荐+展开选满3项→保存返回重入保留，翻页不丢已选 @backend', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const fixture = 创建候选OnboardingFixture();
+    // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
+    fixture.主体.last_used_role = 'candidate';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选' },
+      summary: '存量个人优势',
+    };
+    fixture.intentions = [P4深克隆(fixture意向列表.intentions[0])];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-core-edit-industries',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: P3隐私fixture(),
+    });
+
+    const 目录请求: string[] = [];
+    page.on('request', (request) => {
+      const 路径 = new URL(request.url()).pathname;
+      if (路径.startsWith('/api/v1/catalog/')) 目录请求.push(路径);
+    });
+
+    // industries 目录桩（本用例专用精确状态）：根两页（第二页根可选）+ 子两页（第二页叶子）
+    // + 孙一层可选叶子。字段形状与既有内置 industries 桩一致（信封闭合解码）。
+    const 项 = (id: string, 名称: string, parentId: string | null, selectable: boolean, hasChildren: boolean) => ({
+      id,
+      display_name: 名称,
+      parent_id: parentId,
+      selectable,
+      has_children: hasChildren,
+    });
+    await page.route('**/api/v1/catalog/industries*', async (route) => {
+      const url = new URL(route.request().url());
+      const parentId = url.searchParams.get('parent_id');
+      const cursor = url.searchParams.get('cursor');
+      if (parentId === 'ind_fin') {
+        const items = cursor === 'sub-cur'
+          ? [项('ind_sec', '证券与交易系统', 'ind_fin', true, false)]
+          : [项('ind_pay_grp', '支付与清结算', 'ind_fin', false, true), 项('ind_bank', '银行支付', 'ind_fin', true, false)];
+        await route.fulfill({
+          status: 200,
+          json: 信封({ items, next_cursor: cursor === 'sub-cur' ? null : 'sub-cur', catalog_version: 'ind-v1' }),
+        });
+        return;
+      }
+      if (parentId === 'ind_pay_grp') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({ items: [项('ind_anti', '反欺诈引擎', 'ind_pay_grp', true, false)], next_cursor: null, catalog_version: 'ind-v1' }),
+        });
+        return;
+      }
+      if (cursor === 'root-cur') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({ items: [项('ind_net', '互联网', null, true, false)], next_cursor: null, catalog_version: 'ind-v1' }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        json: 信封({ items: [项('ind_fin', '金融科技', null, false, true)], next_cursor: 'root-cur', catalog_version: 'ind-v1' }),
+      });
+    });
+
+    // 日常入口：登录落主壳后直接进行业子页（共用正文，Backend 控制）
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto('/#/intentions/industries');
+    await expect(page.getByRole('heading', { name: '已选行业' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('0/3')).toBeVisible();
+    // 根列表 + 根列表尾「加载更多」；推荐区渲染同一批根
+    await expect(page.getByRole('button', { name: /金融科技/ }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '加载更多', exact: true })).toBeVisible();
+
+    // 正常态截图（与改前拍/冻结源码快照对照：原 Backend 三层展开同版式）
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-正常.png`, fullPage: true });
+
+    // 根翻页翻出可选根「互联网」；推荐区同名一级片可选（沿规格：可选根不混成展开）
+    await page.getByRole('button', { name: '加载更多', exact: true }).click();
+    await expect(page.getByRole('button', { name: '互联网', exact: true })).toBeVisible({ timeout: 10_000 });
+
+    // 展开金融科技 → 子列表（非 selectable 子项 + 可选叶子）+ 子尾「加载更多」
+    await page.getByRole('button', { name: /金融科技/ }).last().click();
+    await expect(page.getByRole('button', { name: '支付与清结算', exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '银行支付', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '加载更多', exact: true })).toBeVisible();
+
+    // 可选叶子直接写入草稿（1/3）；非 selectable 子项点击走展开取孙项（不混成写入）
+    await page.getByRole('button', { name: '银行支付', exact: true }).click();
+    await expect(page.getByText('1/3')).toBeVisible();
+    await page.getByRole('button', { name: '支付与清结算', exact: true }).click();
+    await expect(page.getByRole('button', { name: '反欺诈引擎', exact: true })).toBeVisible({ timeout: 10_000 });
+
+    // 子翻页翻出第 2 页可选叶子（2/3），第 1 页已选片保持选中
+    await page.getByRole('button', { name: '加载更多', exact: true }).click();
+    await expect(page.getByRole('button', { name: '证券与交易系统', exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /^✓ ?银行支付$/ })).toBeVisible();
+    await page.getByRole('button', { name: '证券与交易系统', exact: true }).click();
+    await expect(page.getByText('2/3')).toBeVisible();
+
+    // 推荐区可选根写入第 3 项 → 3/3；未选片进入上限禁用态（沿原页）
+    await page.getByRole('button', { name: '互联网', exact: true }).click();
+    await expect(page.getByText('3/3')).toBeVisible();
+    await expect(page.getByRole('button', { name: '支付与清结算', exact: true })).toBeDisabled();
+
+    // 选中态截图 + iPhone 13 viewport 检查：无横向溢出、保存可见可聚焦
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-选中.png`, fullPage: true });
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    const 保存键 = page.getByRole('button', { name: '保存', exact: true });
+    await 保存键.focus();
+    await expect(保存键).toBeFocused();
+
+    // 保存（沿原业务：保存只负责返回）→ 主壳；重入草稿不丢
+    await 保存键.click();
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await page.goto('/#/intentions/industries');
+    await expect(page.getByText('3/3')).toBeVisible({ timeout: 15_000 });
+    // 重开已选保留：展开金融科技只见第 1 页子项，翻页翻走的 证券与交易系统 不在可见项里
+    // 但计数仍 3/3 —— 已选不依赖当前可见项
+    await page.getByRole('button', { name: /金融科技/ }).last().click();
+    await expect(page.getByRole('button', { name: /^✓ ?银行支付$/ })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '证券与交易系统', exact: true })).toHaveCount(0);
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-重入.png`, fullPage: true });
+
+    // 本会话目录请求只打 industries（目录身份按 ID，不按显示名反查）
+    expect(目录请求.length).toBeGreaterThan(0);
+    expect(目录请求.every((p) => p === '/api/v1/catalog/industries')).toBe(true);
+  });
+});

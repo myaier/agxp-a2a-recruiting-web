@@ -34,7 +34,15 @@ function render选期望行业(选项: {
   数据源: 'backend' | 'mock';
   查询Taxonomy?: ReturnType<typeof vi.fn>;
 }) {
-  const 派发 = vi.fn();
+  // Task 7 起草稿是真实回写的（选择即写意向草稿）：派发把 改意向草稿 补丁落进
+  // mock应用状态 并触发重渲染，多选/取消用例才能在真实草稿累积上断言。
+  const 控制: { 重渲染?: () => void } = {};
+  const 派发 = vi.fn((动作: { 型: string; 补丁?: Record<string, unknown> }) => {
+    if (动作.型 === '改意向草稿' && 动作.补丁) {
+      mock应用状态.状态.意向草稿 = { ...mock应用状态.状态.意向草稿, ...动作.补丁 };
+      控制.重渲染?.();
+    }
+  });
   mock应用状态 = {
     数据源模式: 选项.数据源,
     目录查询:
@@ -50,11 +58,17 @@ function render选期望行业(选项: {
     },
     派发,
   };
-  render(
+  const 页面 = render(
     <MemoryRouter>
       <选期望行业 />
     </MemoryRouter>,
   );
+  控制.重渲染 = () =>
+    页面.rerender(
+      <MemoryRouter>
+        <选期望行业 />
+      </MemoryRouter>,
+    );
   return { 派发 };
 }
 
@@ -156,5 +170,162 @@ describe('选期望行业 Mock', () => {
     );
     const 调用 = 派发.mock.calls.find((c) => c[0]?.型 === '改意向草稿')?.[0] as { 补丁: { 行业引用们?: unknown } };
     expect(调用.补丁.行业引用们).toBeUndefined();
+  });
+});
+// Task 7 共用正文接线：两模式把控制映射为 期望行业选择正文 的同一组 props。
+// 这里覆盖 brief 点名场景：多选与第 4 项上限、已选移除、同名不同 ID 按 ID 判定身份、
+// 非 selectable 父项不可写、目录失败不回退 Mock、翻页不丢已选。
+describe('选期望行业 共用正文（Task 7）', () => {
+  const 写调用 = (派发: ReturnType<typeof vi.fn>) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    派发.mock.calls.map((c: any[]) => c[0]).filter((a) => a.型 === '改意向草稿');
+
+  it('Mock：推荐一级片与细分片同正文多选，第 4 项禁用，已选片再点移除', async () => {
+    const { 派发 } = render选期望行业({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    // 推荐区一级片可切换（沿原 Mock：一级行业名本身写入草稿）
+    await 用户.click(screen.getAllByText('金融科技')[0]);
+    expect(写调用(派发)).toHaveLength(1);
+    expect(写调用(派发)[0].补丁).toEqual({ 期望行业们: ['金融科技'] });
+    // 展开手风琴组，细分片累计到第 3 项
+    await 用户.click(screen.getAllByText('互联网平台')[1]);
+    await 用户.click(await screen.findByText('电商与交易'));
+    await 用户.click(await screen.findByText('本地生活'));
+    expect(screen.getByText('3/3')).toBeTruthy();
+    // 第 4 项禁用：组行仍可展开，未选细分片点不动（上限态沿用原页）
+    await 用户.click(screen.getAllByText('企业服务 / SaaS')[1]);
+    const 第4项 = (await screen.findByText('协同办公')) as HTMLButtonElement;
+    expect(第4项.disabled).toBe(true);
+    await 用户.click(第4项);
+    expect(写调用(派发)).toHaveLength(3);
+    // 已选片再点移除（选择即写草稿的原业务语义）
+    await 用户.click(screen.getByText('电商与交易'));
+    const 最后 = 写调用(派发).at(-1);
+    expect(最后.补丁.期望行业们).toEqual(['金融科技', '本地生活']);
+  });
+
+  it('Backend：同名不同 ID 按 ID 判定身份，互不串、按所点键提交与取消', async () => {
+    const 目录页 = (items: unknown[], nextCursor: string | null = null) => ({
+      items,
+      nextCursor,
+      catalogVersion: 'v2',
+    });
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string }) => {
+      if (query.parentId === 'r1') {
+        return 目录页([{ id: 'pay_a', display_name: '支付与清结算', parent_id: 'r1', selectable: true, has_children: false }]);
+      }
+      if (query.parentId === 'r2') {
+        return 目录页([{ id: 'pay_b', display_name: '支付与清结算', parent_id: 'r2', selectable: true, has_children: false }]);
+      }
+      return 目录页([
+        { id: 'r1', display_name: '消费生活', parent_id: null, selectable: false, has_children: true },
+        { id: 'r2', display_name: '金融科技', parent_id: null, selectable: false, has_children: true },
+      ]);
+    });
+    const { 派发 } = render选期望行业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    // 展开两个根（同名叶子分属两根）
+    await 用户.click(screen.getAllByText('消费生活')[1]);
+    await 用户.click((await screen.findAllByText('支付与清结算'))[0]);
+    expect(写调用(派发)[0].补丁).toEqual({
+      期望行业们: ['支付与清结算'],
+      行业引用们: [{ id: 'pay_a', display_name: '支付与清结算' }],
+    });
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    const 同名们 = await screen.findAllByText('支付与清结算');
+    expect(同名们).toHaveLength(2);
+    // 同名叶子不因名称命中而误显选中：勾只落在已选 ID 上
+    expect(同名们[0].getAttribute('aria-pressed')).toBe('true');
+    expect(同名们[1].getAttribute('aria-pressed')).toBe('false');
+    await 用户.click(同名们[1]);
+    expect(写调用(派发)[1].补丁).toEqual({
+      期望行业们: ['支付与清结算', '支付与清结算'],
+      行业引用们: [
+        { id: 'pay_a', display_name: '支付与清结算' },
+        { id: 'pay_b', display_name: '支付与清结算' },
+      ],
+    });
+    // 取消按 ID：只摘除所点条目，同名另一条保留
+    await 用户.click(同名们[0]);
+    expect(写调用(派发)[2].补丁).toEqual({
+      期望行业们: ['支付与清结算'],
+      行业引用们: [{ id: 'pay_b', display_name: '支付与清结算' }],
+    });
+  });
+
+  it('Backend：非 selectable 子项点击只展开取孙项，不写草稿', async () => {
+    const 目录页 = (items: unknown[], nextCursor: string | null = null) => ({
+      items,
+      nextCursor,
+      catalogVersion: 'v2',
+    });
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string }) => {
+      if (query.parentId === 'r1') {
+        return 目录页([{ id: 'c1', display_name: '风控与反欺诈', parent_id: 'r1', selectable: false, has_children: true }]);
+      }
+      if (query.parentId === 'c1') {
+        return 目录页([{ id: 'g1', display_name: '反欺诈引擎', parent_id: 'c1', selectable: true, has_children: false }]);
+      }
+      return 目录页([{ id: 'r1', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }]);
+    });
+    const { 派发 } = render选期望行业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    // 非 selectable 父项不可写：点击走展开（发 parentId 请求），不改草稿
+    await 用户.click(await screen.findByText('风控与反欺诈'));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('industries', expect.objectContaining({ parentId: 'c1' })));
+    expect(写调用(派发)).toHaveLength(0);
+    // 孙层叶子可选可写
+    await 用户.click(await screen.findByText('反欺诈引擎'));
+    expect(写调用(派发)[0].补丁).toEqual({
+      期望行业们: ['反欺诈引擎'],
+      行业引用们: [{ id: 'g1', display_name: '反欺诈引擎' }],
+    });
+  });
+
+  it('Backend：目录查询失败不回退 Mock 行业字典，也不显示成功占位', async () => {
+    const 查询Taxonomy = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    render选期望行业({ 数据源: 'backend', 查询Taxonomy });
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    // Mock 字典手风琴不出现（金融科技 只存在于 Mock 目录）
+    expect(screen.queryByText('金融科技')).toBeNull();
+    expect(screen.getByText('0/3')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
+  });
+
+  it('Backend：子项翻页不丢已选，第 1 页已选片保持选中', async () => {
+    const 目录页 = (items: unknown[], nextCursor: string | null = null) => ({
+      items,
+      nextCursor,
+      catalogVersion: 'v2',
+    });
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string }) => {
+      if (query.parentId === 'r1') {
+        if (query.cursor === 'sub-cur') {
+          return 目录页([{ id: 'pay_b', display_name: '证券与交易系统', parent_id: 'r1', selectable: true, has_children: false }]);
+        }
+        return 目录页(
+          [{ id: 'pay_a', display_name: '支付与清结算', parent_id: 'r1', selectable: true, has_children: false }],
+          'sub-cur',
+        );
+      }
+      return 目录页([{ id: 'r1', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }]);
+    });
+    const { 派发 } = render选期望行业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(screen.getAllByText('金融科技')[1]);
+    await 用户.click(await screen.findByText('支付与清结算'));
+    expect(写调用(派发)).toHaveLength(1);
+    // 子项分页：翻出第 2 页，第 1 页已选片仍在且保持选中
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    await screen.findByText('证券与交易系统');
+    const 已选片 = screen.getByText('支付与清结算');
+    expect(已选片.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('1/3')).toBeTruthy();
   });
 });
