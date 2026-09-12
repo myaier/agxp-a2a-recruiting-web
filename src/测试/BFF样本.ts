@@ -358,6 +358,15 @@ export const BFFCandidateJob样本: BFFCandidateJob = {
   publisher_verification_status: 'unverified',
   hiring_organization_verification_status: 'unverified',
   hiring_organization_claim: { display_name: '云衢科技', legal_name: null },
+  // claim-only 岗位的合法摘要投影：只答声明显示名，其余成员显式 null
+  organization: {
+    organization_id: null,
+    display_name: '云衢科技',
+    industry: null,
+    company_size: null,
+    funding_stage: null,
+    logo: null,
+  },
   title: 'AI 产品实习生',
   recruitment_type: 'internship',
   category: { id: 'tax_product', display_name: '产品经理' },

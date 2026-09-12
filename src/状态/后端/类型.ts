@@ -26,6 +26,7 @@ import type {
   BFF委托回执,
   BFF候选岗位推荐,
   BFF招聘候选推荐,
+  BFF招聘推荐详情,
   BFF附件简历库,
   BFF简历预填建议,
   BFFJD导入,
@@ -168,7 +169,8 @@ export interface P4发现状态 {
   招聘可用候选: Record<string, P4ScopeSnapshot<BFF招聘候选推荐>>;
   招聘已筛候选: Record<string, P4ScopeSnapshot<BFF招聘候选推荐>>;
   招聘已筛聚合: { 阶段: P4加载阶段; jobKey: string; error: string | null };
-  招聘候选详情: Record<string, BFF招聘候选推荐>;
+  /** 详情缓存只存 DiscoveryRecruiterDetail 完整正文（含 candidate_resume），绝不存列表浅对象。 */
+  招聘候选详情: Record<string, BFF招聘推荐详情>;
   招聘候选不可用: string[];
   P4委托回执: Record<string, BFF委托回执>;
   P4真实Case引用: Record<string, string>;

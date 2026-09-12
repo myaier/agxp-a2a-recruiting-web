@@ -20,6 +20,7 @@ import {
   BFF招聘委托回执样本,
   BFF发现偏好样本,
 } from '../../测试/BFF样本';
+import { BFF招聘推荐详情无简历样本, BFF候选在线简历样本 } from '../../测试/展示资料样本';
 import { 创建发现推荐数据源, type 发现推荐数据源 } from './发现推荐';
 
 /** 列表页展开样本：招聘列表 GET 携带 include=candidate_summary，每个 item 必带摘要键。 */
@@ -279,10 +280,10 @@ expect(fetcher).toHaveBeenCalledTimes(1);
   it('候选岗位详情走 /api/v1/jobs/{job_id} 裸 GET，招聘详情走卡坐标 GET', async () => {
     请求Mock
       .mockResolvedValueOnce(响应(BFFCandidateJob样本))
-      .mockResolvedValueOnce(响应(BFF招聘候选推荐样本));
+      .mockResolvedValueOnce(响应(BFF招聘推荐详情无简历样本));
     await expect(source.读取候选岗位详情(BFFCandidateJob样本.job_id)).resolves.toEqual(BFFCandidateJob样本);
     await expect(source.读取招聘候选详情(BFF岗位样本.job_id, BFF招聘候选推荐样本.recommendation_id))
-      .resolves.toEqual(BFF招聘候选推荐样本);
+      .resolves.toEqual(BFF招聘推荐详情无简历样本);
     expect(请求Mock.mock.calls.map(([选项]) => 选项)).toEqual([
       { path: `/api/v1/jobs/${BFFCandidateJob样本.job_id}` },
       { path: `/api/v1/recruiter/jobs/${BFF岗位样本.job_id}/candidate-recommendations/${BFF招聘候选推荐样本.recommendation_id}` },
@@ -336,7 +337,7 @@ expect(fetcher).toHaveBeenCalledTimes(1);
     请求Mock
       .mockResolvedValueOnce(响应(招聘列表页([], 'Pg2_-1')))
       .mockResolvedValueOnce(响应(招聘列表页([], null)))
-      .mockResolvedValueOnce(响应(BFF招聘候选推荐样本));
+      .mockResolvedValueOnce(响应(BFF招聘推荐详情无简历样本));
     await source.读取招聘候选(BFF岗位样本.job_id);
     await source.读取招聘候选详情(BFF岗位样本.job_id, BFF招聘候选推荐样本.recommendation_id);
     const 招聘路径们 = 请求Mock.mock.calls.map(([选项]) => 选项.path as string)
@@ -797,5 +798,97 @@ expect(fetcher).toHaveBeenCalledTimes(1);
     await expect(source.读取候选岗位推荐(BFF意向样本.intention_id)).resolves.toEqual([卡]);
     expect(卡.structured_requirements_confirmed).toBe(false);
     expect(卡.job.structured_requirements_confirmed).toBe(true);
+  });
+
+  it('CandidateJob 的 organization 三个入口（列表/详情/直取）都接受完整摘要与 claim-only null 成员', async () => {
+    const 完整组织 = {
+      organization_id: 'org_1',
+      display_name: '云衢科技',
+      industry: { id: 'tax_fintech', display_name: '金融科技' },
+      company_size: '500_1000',
+      funding_stage: 'series_c',
+      logo: {
+        media_id: 'media_1', media_type: 'image/png', size_bytes: 2048,
+        width: 240, height: 240, url: 'https://cdn.example.com/org_1/media_1.png',
+      },
+    };
+    // 推荐列表内嵌 Job
+    请求Mock.mockResolvedValueOnce(响应({
+      recommendations: [{ ...BFF候选岗位推荐样本, job: { ...BFFCandidateJob样本, organization: 完整组织 } }],
+      next_cursor: null,
+    }));
+    await expect(source.读取候选岗位推荐(BFF意向样本.intention_id))
+      .resolves.toMatchObject([{ job: { organization: 完整组织 } }]);
+    // 详情直取 /api/v1/jobs/{job_id}
+    请求Mock.mockResolvedValueOnce(响应({ ...BFFCandidateJob样本, organization: 完整组织 }));
+    await expect(source.读取候选岗位详情(BFFCandidateJob样本.job_id))
+      .resolves.toMatchObject({ organization: 完整组织 });
+  });
+
+  it('CandidateJob 的 organization 缺键 / 多键 / 非法嵌套 / null 与 claim-only 档区分', async () => {
+    // claim-only：organization 在场但成员全 null —— 合法
+    请求Mock.mockResolvedValueOnce(响应(BFFCandidateJob样本));
+    await expect(source.读取候选岗位详情(BFFCandidateJob样本.job_id))
+      .resolves.toMatchObject({ organization: BFFCandidateJob样本.organization });
+    // 整体显式 null 合法
+    请求Mock.mockResolvedValueOnce(响应({ ...BFFCandidateJob样本, organization: null }));
+    await expect(source.读取候选岗位详情(BFFCandidateJob样本.job_id))
+      .resolves.toMatchObject({ organization: null });
+    // 缺键（新 required）
+    const { organization: _省略, ...缺组织 } = BFFCandidateJob样本;
+    请求Mock.mockResolvedValueOnce(响应(缺组织));
+    await expect(source.读取候选岗位详情(BFFCandidateJob样本.job_id))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+    // 多出未知键
+    请求Mock.mockResolvedValueOnce(响应({
+      ...BFFCandidateJob样本,
+      organization: { ...BFFCandidateJob样本.organization, legal_name: '上海云衢' },
+    }));
+    await expect(source.读取候选岗位详情(BFFCandidateJob样本.job_id))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+    // 非法嵌套（industry 缺 display_name）
+    请求Mock.mockResolvedValueOnce(响应({
+      ...BFFCandidateJob样本,
+      organization: { ...BFFCandidateJob样本.organization, industry: { id: 'tax_x' } },
+    }));
+    await expect(source.读取候选岗位详情(BFFCandidateJob样本.job_id))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+ expect(请求Mock).toHaveBeenCalledTimes(5);
+  });
+
+  it('招聘详情返回 candidate_resume：对象与显式 null 都保留，缺键与多余 candidate_summary 都拒绝', async () => {
+    const 详情样本 = { ...BFF招聘候选推荐样本, candidate_resume: BFF候选在线简历样本 };
+    请求Mock.mockResolvedValueOnce(响应(详情样本));
+    await expect(source.读取招聘候选详情(BFF岗位样本.job_id, BFF招聘候选推荐样本.recommendation_id))
+      .resolves.toEqual(详情样本);
+
+    请求Mock.mockResolvedValueOnce(响应(BFF招聘推荐详情无简历样本));
+    await expect(source.读取招聘候选详情(BFF岗位样本.job_id, BFF招聘候选推荐样本.recommendation_id))
+      .resolves.toEqual(BFF招聘推荐详情无简历样本);
+
+    const { candidate_resume: _省略, ...缺正文 } = 详情样本;
+    请求Mock.mockResolvedValueOnce(响应(缺正文));
+    await expect(source.读取招聘候选详情(BFF岗位样本.job_id, BFF招聘候选推荐样本.recommendation_id))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+
+    // include 语法只属于列表：详情携带 candidate_summary 键仍拒绝
+    请求Mock.mockResolvedValueOnce(响应({ ...详情样本, candidate_summary: 招聘候选摘要样本 }));
+    await expect(source.读取招聘候选详情(BFF岗位样本.job_id, BFF招聘候选推荐样本.recommendation_id))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+    expect(请求Mock.mock.calls.map(([选项]) => 选项.path).every((路径) => !(路径 as string).includes('include='))).toBe(true);
+  });
+
+  it('招聘详情的 candidate_resume 非法嵌套按契约漂移拒绝', async () => {
+    请求Mock.mockResolvedValueOnce(响应({
+      ...BFF招聘候选推荐样本,
+      candidate_resume: { ...BFF候选在线简历样本, compensation_relationship: 'equal' },
+    }));
+    await expect(source.读取招聘候选详情(BFF岗位样本.job_id, BFF招聘候选推荐样本.recommendation_id))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('招聘列表卡携带 candidate_resume 键（详情专属）按契约漂移拒绝', async () => {
+    请求Mock.mockResolvedValueOnce(响应(招聘列表页([{ ...招聘展开样本, candidate_resume: null }])));
+    await expect(source.读取招聘候选(BFF岗位样本.job_id)).rejects.toMatchObject({ code: 'invalid_response' });
   });
 });

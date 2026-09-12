@@ -13,6 +13,7 @@ import {
   招聘候选摘要样本,
 } from '../测试/BFF样本';
 import type { BFFCandidateJob, BFF候选岗位推荐, BFF招聘候选推荐 } from './BFF契约';
+import { BFF招聘推荐详情无简历样本, BFF招聘推荐详情样本, BFF候选在线简历样本 } from '../测试/展示资料样本';
 import {
   P4委托状态文案,
   P4拒绝原因文案,
@@ -306,7 +307,27 @@ describe('从P4招聘候选', () => {
       已淘汰: false,
       淘汰原因: null,
       委托: null,
+      // 列表卡没有正文：candidateResume 显式 null
+      candidateResume: null,
     });
+  });
+
+  it('详情卡以 candidate_resume 键区分：正文按 DTO 保留，摘要槽改取 candidate_resume.summary', () => {
+    const view = 从P4招聘候选(BFF招聘推荐详情样本);
+    expect(view.candidateResume).toEqual(BFF候选在线简历样本);
+    expect(view.候选摘要).toEqual({
+      性别: '女', 年限: '5 年', 学历: '本科', 求职状态: '在职看机会',
+      工作: '示例公司 · 软件工程师', 教育: '示例大学 · 计算机科学',
+      个人亮点: ['带领5人团队交付'],
+    });
+    // 列表卡正文恒 null，绝不把列表浅对象当详情
+    expect(从P4招聘候选(BFF招聘候选推荐样本).candidateResume).toBeNull();
+  });
+
+  it('详情缺源档：candidate_resume 显式 null 时正文为 null、摘要槽为 null，不降级成列表卡', () => {
+    const view = 从P4招聘候选(BFF招聘推荐详情无简历样本);
+    expect(view.candidateResume).toBeNull();
+    expect(view.候选摘要).toBeNull();
   });
 
   it('招聘卡匹配依据只认卡顶层 basis，匹配分原样带出，亮点按闭合表投影', () => {

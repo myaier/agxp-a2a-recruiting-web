@@ -14,6 +14,7 @@ import type {
   BFF委托拒绝码,
   BFF委托摘要,
   BFF招聘候选推荐,
+  BFF招聘推荐详情,
   BFF淘汰原因,
 } from './BFF契约';
 import type { 市场职位 } from './类型';
@@ -200,8 +201,14 @@ export function 从P4CandidateJob(job: BFFCandidateJob): P4候选岗位页面 {
   });
 }
 
-/** 推荐卡 → 招聘端候选页视图：匿名 allowlist 投影，DTO 上多出来的键一概带不出去。 */
-export function 从P4招聘候选(card: BFF招聘候选推荐): P4招聘候选页面 {
+/**
+ * 推荐卡 → 招聘端候选页视图：匿名 allowlist 投影，DTO 上多出来的键一概带不出去。
+ * 列表卡（BFF招聘候选推荐）与详情（BFF招聘推荐详情）共用本入口，以 candidate_resume 键
+ * 区分：列表 candidateResume 显式 null；详情按 DTO 保留正文，摘要槽改取
+ * candidate_resume.summary，不再依赖详情不存在的 candidate_summary。
+ */
+export function 从P4招聘候选(card: BFF招聘候选推荐 | BFF招聘推荐详情): P4招聘候选页面 {
+  const 是详情 = 'candidate_resume' in card;
   // 空别名（含纯空白）显示 匿名候选；头像字取显示别名的首个码点
   const 代号 = card.candidate_alias.trim() === '' ? '匿名候选' : card.candidate_alias;
   return {
@@ -233,8 +240,12 @@ export function 从P4招聘候选(card: BFF招聘候选推荐): P4招聘候选�
     // 保留 wire 码；中文文案经 P4淘汰原因文案 换取，展示层不自己猜
     淘汰原因: card.rejection_reason,
     委托: card.delegation,
-    // 摘要只在展开请求的卡上有键：默认详情/历史没有该键，视图不得伪造出 候选摘要: null
-    ...(card.candidate_summary === undefined ? {} : { 候选摘要: 映射招聘候选摘要(card.candidate_summary) }),
+    // 正文只在详情请求上有：列表卡显式 null，绝不把列表浅对象当详情
+    candidateResume: 是详情 ? card.candidate_resume : null,
+    ...(是详情
+      ? { 候选摘要: 映射招聘候选摘要(card.candidate_resume === null ? null : card.candidate_resume.summary) }
+      // 摘要只在展开请求的卡上有键：默认详情/历史没有该键，视图不得伪造出 候选摘要: null
+      : (card.candidate_summary === undefined ? {} : { 候选摘要: 映射招聘候选摘要(card.candidate_summary) })),
   };
 }
 

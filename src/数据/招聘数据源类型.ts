@@ -7,7 +7,7 @@
 
 import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 在招岗位, 求职意向, 披露项, 屏蔽项, 市场职位 } from './类型';
 import type { 求职初筛偏好, 求职薪资单位 } from '../流程/onboarding配置';
-import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF隐私快照, BFF委托摘要, BFF淘汰原因, BFF附件简历库 } from './BFF契约';
+import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF隐私快照, BFF委托摘要, BFF淘汰原因, BFF附件简历库, BFF候选在线简历 } from './BFF契约';
 import type { 招聘候选摘要视图 } from './招聘候选摘要映射';
 
 // ── 分页目录查询（Task 1）：页面层只拿已选目录项的引用，不再全量预取 ──
@@ -302,6 +302,12 @@ export interface P4招聘候选页面 {
   已淘汰: boolean;
   淘汰原因: BFF淘汰原因 | null;
   委托: BFF委托摘要 | null;
-  /** include=candidate_summary 展开时出现：摘要视图或显式 null；默认详情没有该键 */
+  /**
+   * release/0.2.5：匿名安全在线简历正文。列表来源恒 null；独立详情页按 DTO 保留
+   * （candidate_resume 显式 null 是合法缺源档）。本轮只贯通数据，Task 5 再接视觉槽。
+   */
+  candidateResume: BFF候选在线简历 | null;
+  /** include=candidate_summary 展开时出现：摘要视图或显式 null；默认列表没有该键。
+   *  详情视图的该槽改取 candidate_resume.summary，不再依赖详情的 candidate_summary。 */
   候选摘要?: 招聘候选摘要视图 | null;
 }

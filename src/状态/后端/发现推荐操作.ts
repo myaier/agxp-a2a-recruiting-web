@@ -45,6 +45,7 @@ import type {
   BFF角色,
   BFF候选岗位推荐,
   BFF招聘候选推荐,
+  BFF招聘推荐详情,
 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 页面岗位快照 } from '../../数据/招聘数据源类型';
@@ -243,14 +244,18 @@ function rejected键覆盖岗位(旧: 后端状态, jobId: string): string[] {
     键.slice('recruiter:rejected:'.length).split(',').includes(目标));
 }
 
+/** 反馈写只声明自己改的字段：以补丁对象落卡，详情正文（candidate_resume 等）原样保留。 */
+type 招聘卡反馈补丁 = Partial<Pick<BFF招聘候选推荐,
+  'favorite' | 'rejected' | 'rejection_reason' | 'state' | 'delegation'>>;
+
 /** 把同一 recommendation 的每处出现（available/rejected/detail）按 修补 替换 —— 收藏与撤销的同步核。 */
 function 替换招聘候选各处(
   旧: 后端状态,
   recommendationId: string,
-  修补: (卡: BFF招聘候选推荐) => BFF招聘候选推荐,
+  修补: (卡: BFF招聘候选推荐) => 招聘卡反馈补丁,
 ): 后端状态 {
   const 逐条 = (items: BFF招聘候选推荐[]) =>
-    items.map((卡) => (卡.recommendation_id === recommendationId ? 修补(卡) : 卡));
+    items.map((卡) => (卡.recommendation_id === recommendationId ? { ...卡, ...修补(卡) } : 卡));
   const 招聘可用候选: 后端状态['招聘可用候选'] = {};
   for (const [键, 快照] of Object.entries(旧.招聘可用候选)) {
     招聘可用候选[键] = { ...快照, items: 逐条(快照.items) };
@@ -261,7 +266,8 @@ function 替换招聘候选各处(
   }
   const 招聘候选详情 = { ...旧.招聘候选详情 };
   if (招聘候选详情[recommendationId]) {
-    招聘候选详情[recommendationId] = 修补(招聘候选详情[recommendationId]);
+    // 详情是完整正文：补丁只覆盖自己的字段，绝不用列表浅对象整体覆盖正文
+    招聘候选详情[recommendationId] = { ...招聘候选详情[recommendationId], ...修补(招聘候选详情[recommendationId]) };
   }
   return { ...旧, 招聘可用候选, 招聘已筛候选, 招聘候选详情 };
 }
@@ -296,8 +302,9 @@ function 从候选范围移除(旧: 后端状态, intentionId: string, recommend
 }
 
 /** 淘汰落位（权威重读成功后）：available 全部出现移除；覆盖该岗位的 rejected 快照并入
- *  服务端更新卡（rank 稳定序）；详情缓存落权威卡并撤销不可用标记。 */
-function 淘汰落位(旧: 后端状态, jobId: string, 卡: BFF招聘候选推荐): 后端状态 {
+ *  服务端更新卡（rank 稳定序）；详情缓存落权威卡并撤销不可用标记。卡来自权威详情重读
+ *  （BFF招聘推荐详情），不是列表浅对象。 */
+function 淘汰落位(旧: 后端状态, jobId: string, 卡: BFF招聘推荐详情): 后端状态 {
   const 编号 = 卡.recommendation_id;
   const 招聘可用候选: 后端状态['招聘可用候选'] = {};
   for (const [键, 快照] of Object.entries(旧.招聘可用候选)) {
@@ -473,8 +480,9 @@ function 修补候选卡(卡: BFF候选岗位推荐, 摘要: BFF委托摘要 | n
   return { ...卡, state, delegation: 摘要 };
 }
 
-/** 招聘卡落摘要：招聘卡 state 只有 available/rejected，进行中只体现在委托摘要上。 */
-function 修补招聘卡(卡: BFF招聘候选推荐, 摘要: BFF委托摘要 | null): BFF招聘候选推荐 {
+/** 招聘卡落摘要：招聘卡 state 只有 available/rejected，进行中只体现在委托摘要上。
+ *  泛型让详情（BFF招聘推荐详情）与列表卡各自保形，补丁不丢正文。 */
+function 修补招聘卡<T extends BFF招聘候选推荐>(卡: T, 摘要: BFF委托摘要 | null): T {
   return { ...卡, delegation: 摘要 };
 }
 
@@ -1568,7 +1576,7 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
         写: (源) => 源.设置招聘候选淘汰(jobId, recommendationId, reason),
         收口404: (fence) => 招聘反馈404收口(jobId, recommendationId, fence),
         成功: async (_回执, 源, fence) => {
-          let 卡: BFF招聘候选推荐;
+          let 卡: BFF招聘推荐详情;
           try {
             卡 = await 源.读取招聘候选详情(jobId, recommendationId);
           } catch (错误) {

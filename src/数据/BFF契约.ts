@@ -264,6 +264,11 @@ export interface BFFCandidateJob extends Omit<BFFOwnerJob,
   };
   status: 'active';
   hard_requirements: BFF硬性条件;
+  /**
+   * release/0.2.5：用人企业摘要投影，恒在场（claim-only 岗位只答 claim 显示名、其余成员
+   * null）；详情侧 company_intro / office_address / benefit_codes 刻意不在该投影上。
+   */
+  organization: BFF公司摘要 | null;
 }
 
 // ── 组织域 DTO（P1C：RecruiterProfile / Affiliation / 企业管理员申请 / 企业档案与媒体）──
@@ -610,6 +615,126 @@ export interface BFF招聘候选推荐 {
   delegation: BFF委托摘要 | null;
   /** include=candidate_summary 展开时出现（闭合对象或显式 null）；默认详情响应没有该键。 */
   candidate_summary?: BFF招聘候选摘要 | null;
+}
+
+// ── 双端展示资料域 DTO（release/0.2.5 展示字段：JobOrganizationSummary / SafeJobDetail /
+// RecruiterCandidateResume 家族与 CaseCandidateIdentity）──
+// 字段名逐项复制自 mobile-v1 OpenAPI；company_size / funding_stage / experience_requirement /
+// education_requirement 在本域合同里是开放 string 或 null（冻结 YAML 不声明枚举），
+// 不套用企业档案 schema 的闭集档位；exact key set 与嵌套闭合由 招聘数据源/展示资料.ts 校验。
+
+/** JobOrganizationSummary：六键全 required 且可空；logo 是 BFF 自己的内容路由，不是对象存储坐标。 */
+export interface BFF公司摘要 {
+  organization_id: string | null;
+  display_name: string | null;
+  industry: BFF目录引用 | null;
+  company_size: string | null;
+  funding_stage: string | null;
+  logo: BFF企业媒体 | null;
+}
+
+/** PublicRecruiterProfile：发布人的三个显示事实 + BFF 头像路由（SafeJobDetail 嵌套成员）。 */
+export interface BFF公开发布人档案 {
+  public_name: string;
+  title: string;
+  personal_verification_status: BFF验证状态;
+  avatar_url: string | null;
+}
+
+/** SafeJobDetail：25 键全 required 且可空的历史/Case 岗位展示，命名与词汇沿 CandidateJob。 */
+export interface BFF安全职位资料 {
+  title: string | null;
+  description: string | null;
+  requirements: string | null;
+  recruitment_type: BFFOwnerJob['recruitment_type'] | null;
+  category: BFF目录引用 | null;
+  location: BFF目录引用 | null;
+  office_location: string | null;
+  workplace_mode: BFFOwnerJob['workplace_mode'] | null;
+  salary_lower: number | null;
+  salary_upper: number | null;
+  salary_period: BFFOwnerJob['salary_period'] | null;
+  annual_salary_months: number | null;
+  campus_cohort: number | null;
+  internship_months: number | null;
+  onsite_days_per_week: number | null;
+  /** 开放 string 或 null：SafeJobDetail 合同不声明经验/学历枚举。 */
+  experience_requirement: string | null;
+  education_requirement: string | null;
+  hard_requirements: BFF硬性条件 | null;
+  structured_requirements_confirmed: boolean | null;
+  keywords: string[] | null;
+  organization: BFF公司摘要 | null;
+  company_intro: string | null;
+  office_address: string | null;
+  benefit_codes: string[] | null;
+  publisher_profile: BFF公开发布人档案 | null;
+}
+
+/** SafeResumeProject：三键，无 owner 条目 id、无独立日期。 */
+export interface BFF安全简历项目 {
+  name: string | null;
+  role: string | null;
+  result: string | null;
+}
+
+/** SafeResumeExperience：八键；company 是唯一可被隐私门遮蔽的成员，ongoing 的 end_month 为 null。 */
+export interface BFF安全简历经历 {
+  company: string | null;
+  /** Catalog 行业显示名；未解析或缺席即 null。 */
+  industry: string | null;
+  title: string | null;
+  start_month: string | null;
+  end_month: string | null;
+  description: string | null;
+  /** false 原样保留；null 表示未知。 */
+  internship: boolean | null;
+  projects: BFF安全简历项目[];
+}
+
+/** SafeResumeEducation：五键，Catalog 显示名；多条按源顺序。 */
+export interface BFF安全简历教育 {
+  institution: string | null;
+  major: string | null;
+  degree: string | null;
+  start_month: string | null;
+  end_month: string | null;
+}
+
+/** SafeCandidateExpectation：唯一绑定意向的可披露事实；无意向 id、无候选薪资数字、无私有偏好。 */
+export interface BFF安全期望 {
+  recruitment_type: BFFOwnerJob['recruitment_type'] | null;
+  job_category: BFF目录引用 | null;
+  locations: BFF目录引用[] | null;
+  workplace_modes: BFFOwnerJob['workplace_mode'][] | null;
+}
+
+/** RecruiterCandidateResume：七键全 required；缺席区域显式 null，读了但空是 []，二者不互换。 */
+export interface BFF候选在线简历 {
+  summary: BFF招聘候选摘要 | null;
+  self_description: string | null;
+  skills: string[] | null;
+  experiences: BFF安全简历经历[] | null;
+  educations: BFF安全简历教育[] | null;
+  expectation: BFF安全期望 | null;
+  compensation_relationship: 'overlap' | 'near_miss' | 'disjoint' | 'unknown';
+}
+
+/** CaseCandidateIdentity：四键全 required；anonymous 恒三 null，disclosed 缺值不降级状态。 */
+export interface BFF候选身份 {
+  state: 'anonymous' | 'disclosed';
+  name: string | null;
+  avatar_url: string | null;
+  disclosed_at: string | null;
+}
+
+/**
+ * DiscoveryRecruiterDetail：列表卡字段 + 恒在场的 candidate_resume；详情不再有
+ * candidate_summary opt-in（include 语法只属于列表）。缓存与映射以 candidate_resume
+ * 键区分详情与列表，绝不让详情再过列表断言。
+ */
+export interface BFF招聘推荐详情 extends Omit<BFF招聘候选推荐, 'candidate_summary'> {
+  candidate_resume: BFF候选在线简历 | null;
 }
 
 export interface BFF发现偏好 {
