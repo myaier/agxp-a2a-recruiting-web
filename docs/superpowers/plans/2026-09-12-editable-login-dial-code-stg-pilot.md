@@ -235,4 +235,4 @@ apps/recruitment/scripts/stg-env.sh cleanup --run-id "$STG_RUN_ID"
 - V：以 `aac11606a0830704fa592d87dc0cf8ce5cb59524` 为基准，18 个场景全部通过，0 warning/blocked/new/removed/infrastructure；`entry-login-default` 的 `pixelDiffRatio=0`。
 - S：按 `STG 基础试点` 严格执行两轮。第一轮在设置页读取意外物化空实名认证 aggregate 后，官方 cleanup 被 operator 的 unsupported-family 规则阻塞；经用户明确授权、事务内重复断言 aggregate/request/evidence/audit 为 `1/0/0/0` 后，仅删除该空 aggregate，同 run 官方 cleanup 随后 `CLEANED`、占用释放。本地 receipt 仍保留历史 blocked residual，是 operator 记账缺陷，不冒称其为 `residuals=[]`。第二轮官方 cleanup 直接 `CLEANED`、`residuals=[]`、占用释放；cleanup 后两角色正常认证 begin 均为 HTTP 401。第一轮材料已按合同销毁，因此旧登录失效为第二轮同合同材料的等价复验，不冒称直接重放第一轮材料。
 - S 排除项：附件/PDF、披露、首次 onboarding、发现/委托、规则、Hosted、MatchCase、IM、实名、导出、反馈、公司资料编辑均为 `NOT_RUN`。长期脱敏证据见 `docs/runs/2026-09-12-agent-browser-dogfood-editable-login-dial-code-stg-pilot.md`。
-- 收尾：代码候选上的 U/B/V/S 已完整；本段和长期摘要属于仅文档变更，不使既有产品验证失效。普通 push 仍以第二次 fetch 后 `origin/main` 未偏离 `final_target_base` 为前提，禁止 force push。
+- 收尾：代码候选上的 U/B/V/S 已完整；本段和长期摘要属于仅文档变更，不使既有产品验证失效。第二次 fetch 确认 `origin/main` 仍精确等于 `final_target_base` 后，已普通 fast-forward push `aac11606..7b631bb1`，未使用 force push；本条时态更正是随后的仅文档收尾。

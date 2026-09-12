@@ -65,3 +65,7 @@
 - 原 B01–B05 与 H01–H04 不在本次选择范围内，保持 `NOT_RUN`；不以本试点节点冒充其 PASS。
 
 原始浏览器截图及细粒度过程报告保存在 gitignored 的 `dogfood-output/front-dial-pilot-20260912T133934Z/`，不进入长期版本库。
+
+## 合入
+
+第二次 fetch 确认 `origin/main` 仍为获批 `final_target_base` `aac11606a0830704fa592d87dc0cf8ce5cb59524`，随后以普通 fast-forward 推送 `aac11606..7b631bb1`，未使用 force push。本节是推送后的仅文档时态收尾，不改变已验证的产品代码、fixture 或配置。
