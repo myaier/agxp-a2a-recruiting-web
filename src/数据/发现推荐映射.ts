@@ -24,7 +24,8 @@ import { 映射招聘候选摘要 } from './招聘候选摘要映射';
 import { 公司规模文案, 融资阶段文案 } from './组织映射';
 
 // ── 闭合文案表：契约内枚举 → 展示文案，无表外键、无默认兜底 ──
-const 薪资关系文案 = {
+// 薪资关系 / 招聘类型 / 办公方式 三表同时被 在线简历展示映射 复用（同一份文案，Task 5）。
+export const 薪资关系文案 = {
   overlap: '薪资带有交集', near_miss: '薪资带接近',
   disjoint: '薪资带无交集', unknown: '薪资带未核对',
 } as const;
@@ -32,11 +33,11 @@ const 淘汰文案 = {
   experience_insufficient: '年限不足', direction_mismatch: '方向不符',
   primary_stack_mismatch: '主栈不符', other: '其他',
 } as const;
-const 办公方式文案 = { onsite: '现场', hybrid: '混合', remote: '全远程' } as const;
+export const 办公方式文案 = { onsite: '现场', hybrid: '混合', remote: '全远程' } as const;
 const 薪资单位 = { month: 'K', day: '元/天', hour: '元/时' } as const;
 
 // 与 后端映射 的岗位展示同口径的三组展示文案（那些表未导出，这里按同一份文案重申闭合表）
-const 招聘类型文案 = { social_full_time: '社招全职', campus: '校园招聘', internship: '实习生', part_time: '兼职' } as const;
+export const 招聘类型文案 = { social_full_time: '社招全职', campus: '校园招聘', internship: '实习生', part_time: '兼职' } as const;
 const 经验要求文案 = {
   none: '不限', one_to_three_years: '1-3 年', three_to_five_years: '3-5 年',
   five_plus_years: '5 年以上', ten_plus_years: '10 年以上',

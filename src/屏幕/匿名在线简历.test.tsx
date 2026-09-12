@@ -16,6 +16,7 @@ import { 匿名简历表 } from '../数据/企业端模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF招聘候选推荐, BFF委托回执 } from '../数据/BFF契约';
 import { BFF招聘候选推荐样本, BFF岗位样本 } from '../测试/BFF样本';
+import { BFF招聘推荐详情无简历样本, BFF招聘推荐详情样本 } from '../测试/展示资料样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 
 // jsdom 不实现 scrollIntoView / scrollTo：详情页挂载自动定位、会话页滚到底都会调用
@@ -171,48 +172,69 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     await waitFor(() => expect(mock读取招聘候选详情).toHaveBeenCalledTimes(2));
   });
 
-  it('只渲染映射后的匿名画像：匹配分/经验/求职状态/小结/技能/教育/薪资关系（第二批：别名不再上屏）', () => {
-    置P4详情状态({ 详情: BFF招聘候选推荐样本 });
+  it('只渲染映射后的匿名画像：匹配分/头行/在线简历正文各槽按 candidate_resume 投影（第二批：别名不再上屏）', () => {
+    置P4详情状态({ 详情: BFF招聘推荐详情样本 });
     渲染详情();
     expect(screen.queryByText('候选人甲')).toBeNull(); // 第二批：大代号删除，别名不上屏
     expect(screen.getByText('87')).toBeTruthy(); // 返回栏 匹配 N
-    // 头区改成头行后 年限 / 学历 / 状态 可能与竖分同节点：按子串找
-    expect(screen.getAllByText(/4 年/).length).toBeGreaterThan(0);
-    // 求职状态按闭合表中文化：employed → 在职，屏上不出现原 token
+    // 头行由共享正文按 candidate_resume.summary 出：年限 / 学历 / 求职状态 / 性别图标
+    expect(screen.getAllByText(/5 年/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('img', { name: '女' })).toBeTruthy();
+    // 求职状态按推荐卡闭合表中文化：employed → 在职，屏上不出现原 token
     expect(screen.getAllByText(/在职/).length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toContain('employed');
+    // 正文各槽：个人优势 = self_description，技能 / 教育 / 工作 / 项目照实出
     expect(screen.getByText('四年全栈经验')).toBeTruthy();
     expect(screen.getByText('TypeScript')).toBeTruthy();
     expect(screen.getByText('复旦大学 · 计算机科学 · 本科')).toBeTruthy();
+    expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy();
+    expect(screen.getByText('云衢')).toBeTruthy();
+    expect(screen.getByText('推荐引擎')).toBeTruthy();
+    // 薪资关系只由 compensation_relationship 驱动既有文案（期望薪资槽）
     expect(screen.getByText('薪资带有交集')).toBeTruthy();
     expect(screen.getAllByText(/本科/).length).toBeGreaterThan(0);
   });
 
-  it('basis 已确认（控制组）：匹配分与推荐亮点整组照常渲染，亮点显示中文', () => {
-    置P4详情状态({
-      详情: { ...BFF招聘候选推荐样本, highlights: ['category_matched'] },
-    });
+  it('candidate_resume = null（合法缺源档）：正文各槽原位缺失，旧列表浅字段不再冒充正文', () => {
+    置P4详情状态({ 详情: BFF招聘推荐详情无简历样本 });
     渲染详情();
-    expect(screen.getByText('职位方向匹配')).toBeTruthy();
-    expect(document.body.textContent).not.toContain('category_matched');
-    expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
+    for (const 缺失 of ['匿名画像缺失', '个人优势缺失', '求职期望缺失', '工作经历缺失', '教育经历缺失', '专业技能缺失']) {
+      expect(screen.getByText(缺失)).toBeTruthy();
+    }
+    // 列表卡的浅字段（summary/skills/educations）不再重复上正文
+    expect(screen.queryByText('四年全栈经验')).toBeNull();
+    expect(screen.queryByText('复旦大学 · 计算机科学 · 本科')).toBeNull();
+    expect(screen.getByText(/在线简历缺失 · 内容不可转发/)).toBeTruthy();
   });
 
-  it('basis 未确认：匹配分保留，推荐亮点整组收起且文档里不留任何亮点，改显中性句', async () => {
+  it('刷新有值 → null：重读后旧正文清空，改显缺失，不残留上一次的资料', async () => {
+    置P4详情状态({ 详情: BFF招聘推荐详情样本 });
+    const 页 = 渲染详情();
+    expect(await screen.findByText('四年全栈经验')).toBeTruthy();
+    置P4详情状态({ 详情: BFF招聘推荐详情无简历样本 });
+    页.rerender(
+      <MemoryRouter initialEntries={[`/hr/jobs/${岗位编号}/recommendations/rec_r1`]}>
+        <Routes>
+          <Route path="/hr/jobs/:jobId/recommendations/:recommendationId" element={<匿名在线简历 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('个人优势缺失')).toBeTruthy();
+    expect(screen.queryByText('四年全栈经验')).toBeNull();
+    expect(screen.queryByText('云衢')).toBeNull();
+    expect(screen.queryByText('TypeScript')).toBeNull();
+  });
+
+  it('basis 不再产生亮点区：推荐亮点区随共享正文退役，屏上无亮点也不出中性句', async () => {
     置P4详情状态({
-      详情: {
-        ...BFF招聘候选推荐样本,
-        structured_requirements_confirmed: false,
-        highlights: ['category_matched', 'location_matched'],
-      },
+      详情: { ...BFF招聘推荐详情样本, structured_requirements_confirmed: false, highlights: ['category_matched', 'location_matched'] },
     });
     渲染详情();
     // 后端历史分保留（返回栏 匹配 N）
     expect(await screen.findByText('87')).toBeTruthy();
-    expect(screen.getByText('经验与学历尚未核对')).toBeTruthy();
-    // 整组收起：文档任何位置都不残留亮点文案，不做选择性过滤
     expect(screen.queryByText('职位方向匹配')).toBeNull();
     expect(screen.queryByText('工作地点匹配')).toBeNull();
+    expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
     expect(document.body.textContent).not.toContain('category_matched');
   });
 
@@ -220,13 +242,16 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     置P4详情状态({ 详情: BFF招聘候选推荐样本 });
     渲染详情();
     expect(screen.queryByText('直接聊')).toBeNull();
-    expect(screen.queryByText('工作经历')).toBeNull();
+    expect(screen.getByText('工作经历缺失')).toBeTruthy(); // candidate_resume 缺源 → 原位缺失，不伪造
     expect(screen.queryByText('沈亦舟')).toBeNull();
     expect(screen.queryByText(/期望薪资/)).toBeNull();
     // Mock 简历档（匿名简历表）绝不兜底出现
     expect(screen.queryByText('云衢科技')).toBeNull();
     expect(screen.queryByText('对方允许直接联系')).toBeNull();
     expect(screen.queryByText('对方未开放直接联系')).toBeNull();
+    // 页尾注中性：不宣称双向核验 / 已核验，也不把缺失说成未披露
+    expect(screen.queryByText(/双向核验/)).toBeNull();
+    expect(screen.getByText(/在线简历缺失 · 内容不可转发/)).toBeTruthy();
   });
 
   it('404 已收口给安全不可用页，不再渲染任何画像', () => {
@@ -663,15 +688,17 @@ describe('匿名在线简历 · 头区去名（第二批 验收8）', () => {
     expect(screen.getByText('字节跳动')).toBeTruthy();
   });
 
-  it('Backend rec_r1：无大代号（别名不上屏）、无人像占位；BFF 未给性别 → 无图标不报错；年限｜学历｜状态仍在', () => {
-    置P4详情状态({ 详情: BFF招聘候选推荐样本 });
+  it('Backend rec_r1：无大代号（别名不上屏）、无人像占位；性别图标只随 candidate_resume 摘要出现', () => {
+    置P4详情状态({ 详情: BFF招聘推荐详情样本 });
     渲染详情();
     expect(screen.queryByText('候选人甲')).toBeNull();
     expect(document.querySelector('[class*="大代号"]')).toBeNull();
     expect(document.querySelector('[class*="人像占位"]')).toBeNull();
+    // 性别只来自 candidate_resume.summary 的白名单事实（样本摘要给 female）
     expect(screen.queryByRole('img', { name: '男' })).toBeNull();
-    expect(screen.queryByRole('img', { name: '女' })).toBeNull();
-    expect(document.body.textContent).toMatch(/4 年/);
+    expect(screen.getByRole('img', { name: '女' })).toBeTruthy();
+    // 头行年限 / 学历 / 状态照常（由共享正文按摘要出）；open token 不透出
+    expect(document.body.textContent).toMatch(/5 年/);
     expect(document.body.textContent).toMatch(/本科/);
     expect(document.body.textContent).toMatch(/在职/);
     expect(document.body.textContent).not.toContain('employed');

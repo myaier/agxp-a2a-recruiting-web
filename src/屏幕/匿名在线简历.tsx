@@ -26,7 +26,6 @@ import { 在线简历正文 } from '../组件/在谈详情/在线简历正文';
 import type { 在线简历正文属性 } from '../组件/在谈详情/类型';
 import { 招聘侧对齐行 } from '../数据/匹配对齐';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
-import 候选头行 from '../组件/候选头行';
 import { 求职状态文案 } from './候选推荐';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
@@ -34,6 +33,7 @@ import { use应用状态 } from '../状态/应用状态';
 import { 匿名简历表, 推荐列表 } from '../数据/企业端模拟数据';
 import { 薪资初筛, 薪资初筛文案 } from '../数据/薪资初筛';
 import { 从P4招聘候选, P4已开案, 映射P4委托展示 } from '../数据/发现推荐映射';
+import { 从BFF到在线简历展示 } from '../数据/在线简历展示映射';
 import { 轻提示 } from '../组件/轻提示';
 import { P4错误文案, P4范围键 } from '../状态/后端/发现推荐操作';
 import { P4委托进度未知文案, use发现推荐委托轮询 } from '../状态/后端/use发现推荐委托轮询';
@@ -335,9 +335,6 @@ function Backend匿名简历({ 岗位编号, 推荐编号 }: { 岗位编号: str
     );
   }
 
-  const 教育头 = 视图.教育[0] ?? null;
-  // 经验 / 学历 已上头行（2026-09-09 第二批），概览条只剩薪资关系，不重复
-  const 概览项们 = [视图.薪资关系].filter(Boolean);
   const 已委托 = 委托摘要 !== null;
   // 权威文案 = 闭合六态 copy（refused 附服务端拒绝原因）；轮询连败被中性「进度未知」覆盖，
   // 绝不伪造终态回执
@@ -377,89 +374,16 @@ function Backend匿名简历({ 岗位编号, 推荐编号 }: { 岗位编号: str
       />
 
       <滚动区 样式覆盖={{ paddingBottom: 8 }}>
-        <div className={样式.页体}>
-          {/* ── 头区：与列表卡同一套头行 —— 经验｜学历｜求职状态（求职状态是映射后的闭合表中文，
-              原样透传不猜标签）；BFF 合同没给性别 → 不出图标。
-              2026-09-09 产品负责人（第二批）：原 大别名 + 匿名标 + 灰人像占位整体删除，别名不再上屏 ── */}
-          <div className={样式.头区}>
-            <候选头行 年限={视图.经验} 学历={教育头?.学历} 求职状态={视图.求职状态} />
-          </div>
-
-          {/* ── 概览条：薪资关系（经验 / 学历 已上头行）—— 无年龄（双盲不披露出生数据）── */}
-          <div className={样式.概览条}>
-            {概览项们.map((项, 序) => (
-              <span key={项} className={样式.概览项}>
-                {序 > 0 ? <span className={样式.概览分}>·</span> : null}
-                {项}
-              </span>
-            ))}
-          </div>
-
-          {/* ── 代理小结 ── */}
-          {视图.摘要 ? (
-            <>
-              <div className={样式.节标行}>
-                <span className={样式.节标}>个人优势</span>
-              </div>
-              <p className={样式.自述}>{视图.摘要}</p>
-            </>
-          ) : null}
-
-          {/* ── 教育经历（wire 教育段；缺员给「未披露」，不编造）── */}
-          <div className={样式.节标行}>
-            <span className={样式.节标}>教育经历</span>
-          </div>
-          {视图.教育.length === 0 ? (
-            <div className={样式.教育行}>
-              <span className={样式.教育文}>未披露</span>
-            </div>
-          ) : (
-            视图.教育.map((段) => (
-              <div key={`${段.学校}-${段.起止}`} className={样式.教育行}>
-                <span className={样式.教育文}>{`${段.学校} · ${段.专业} · ${段.学历}`}</span>
-                <span className={`${样式.经历起止} 等宽数字`}>{段.起止}</span>
-              </div>
-            ))
-          )}
-
-          {/* ── 专业技能 ── */}
-          <div className={样式.节标行}>
-            <span className={样式.节标}>专业技能</span>
-          </div>
-          <div className={样式.技能行}>
-            {视图.技能.map((技) => (
-              <span key={技} className={样式.技能片}>
-                {技}
-              </span>
-            ))}
-          </div>
-
-          {/* ── 亮点：推荐亮点行，与推荐卡标签同一批 wire 事实。
-              卡顶层 basis 未确认 = 这批亮点没核对过，整组收起、改显中性句，
-              绝不按亮点文字做选择性过滤 ── */}
-          {视图.匹配依据已确认 ? (
-            视图.亮点.length > 0 ? (
-              <>
-                <div className={样式.节标行}>
-                  <span className={样式.节标}>推荐亮点</span>
-                </div>
-                <div className={样式.技能行}>
-                  {视图.亮点.map((亮点) => (
-                    <span key={亮点} className={样式.技能片}>
-                      {亮点}
-                    </span>
-                  ))}
-                </div>
-              </>
-            ) : null
-          ) : (
-            <p className={样式.自述}>经验与学历尚未核对</p>
-          )}
-
-          <div className={样式.页尾注}>
-            这份简历由候选人的AI代理生成 · 内容真实性经双向核验 · 不可转发
-          </div>
-        </div>
+        {/* ── 正文唯一出处（Task 5）：共享 在线简历正文 吃 candidate_resume 投影的展示资料
+            （candidate_resume = null 是合法缺源档 → 各区原位缺失）。沿 Mock Up 原信息顺序，
+            真名不传；旧 Backend 分支的头区/概览条/小结/教育/技能/推荐亮点/页尾注重复
+            JSX 随之退役。推荐亮点区不恢复：personal_highlights 保留为候选摘要事实，
+            在线简历 Mock Up 无独立亮点标签区。 ── */}
+        <在线简历正文
+          档={null}
+          资料={从BFF到在线简历展示(视图.candidateResume)}
+          求职状态={视图.求职状态}
+        />
       </滚动区>
 
       {/* ── 底部：委托（无直聊：P4 没有直聊许可/会话坐标）+ 尾注 ── */}

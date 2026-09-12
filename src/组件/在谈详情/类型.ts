@@ -100,6 +100,10 @@ export interface 职位资料信息 {
 export interface 在线简历正文属性 {
   /** 匿名简历档；null = 数据源未提供结构化在线简历（各信息区在同一组 JSX 里显示缺失） */
   档: 匿名简历档 | null;
+  /** Backend 共享正文的展示资料（数据/在线简历展示映射 的产出）。不传（undefined）=
+   *  走既有 Mock 档；显式传（含 null = 整份缺源档）时正文只吃资料、档 保持 null。
+   *  不承载 identity / 候选薪资 / 公司实名恢复字段 —— 真名恢复永远不走这条路。 */
+  资料?: 在线简历展示资料 | null;
   /** 匹配对齐行(岗位硬性条件 × 简历证据);调用方按所属岗位算好传入,null = 不渲染该区 */
   对齐行们?: 对齐行[] | null;
   /** 候选人真名（S1 原件递交后非空）。非空时按 spec §3.2 还原公司实名（头区不显示真名，
@@ -115,4 +119,34 @@ export interface 在线简历正文属性 {
   完整布局?: boolean;
   /** 完整布局顶部的区块级缺口说明（如「当前在谈详情数据未提供」）；默认不渲染 */
   缺失说明?: string | null;
+}
+
+/** Backend 共享在线简历的展示资料（Task 5）：按 在线简历正文 的原信息槽组织，由
+ *  数据/在线简历展示映射 从 BFF候选在线简历（可 null）纯投影而来。语义逐槽冻结：
+ *  顶层各槽 null = 数据源未提供（缺失），数组 [] = 提供了但一条没有，二者不互换；
+ *  工作起止 / 教育起止是显示文案（有开始时间才给「至今」，起始缺失给「日期未知」）；
+ *  项目无独立日期，不借所属工作的起止充数。不承载 identity / 候选薪资 / 公司实名
+ *  恢复字段。 */
+export interface 在线简历展示资料 {
+  /** 头部画像 + 最近工作组合职位行；null = 摘要缺失（头区原位显示缺失） */
+  画像: {
+    性别: '男' | '女' | null;
+    年限: string | null;
+    学历: string | null;
+    求职状态: string | null;
+    职位行: string | null;
+  } | null;
+  /** self_description；null = 缺失 */
+  个人优势: string | null;
+  /** 求职期望原槽：标题（招聘类型 · 职位方向）、薪资关系文案（unknown 不作结论 → null）、
+   *  副行（地点 · 办公方式）；整段无证据收口为 null */
+  期望: { 标题: string | null; 薪资关系: string | null; 副行: string | null } | null;
+  /** 工作经历：公司为空给中性「未披露」，不借行业伪装；industry 无原槽不带出 */
+  工作: { 公司: string; 起止: string; 职位: string | null; 说明: string | null }[] | null;
+  /** 项目按所属工作顺序平铺（name/role/result 原位） */
+  项目: { 名称: string; 角色: string | null; 结果: string | null }[] | null;
+  /** 教育从旧单条适配为多条，保持源序 */
+  教育: { 行: string; 起止: string }[] | null;
+  /** skills；null = 整区未知，[] = 无条目 */
+  技能: string[] | null;
 }

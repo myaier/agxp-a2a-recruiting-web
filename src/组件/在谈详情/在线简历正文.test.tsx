@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { 在线简历正文 } from './在线简历正文';
 import { 匿名简历表 } from '../../数据/企业端模拟数据';
 import type { 对齐行 } from '../../数据/匹配对齐';
+import type { 在线简历展示资料 } from './类型';
 
 // A-01：项目/经历/技能齐备；A-02：项目为空（空态用例）。测试不是展示层，可以读夹具表。
 const 档A01 = 匿名简历表['A-01'];
@@ -144,5 +145,154 @@ describe('在线简历正文 · 完整布局=true（详情第二 Tab 显式选�
     expect(document.body.textContent).not.toContain('适配分'); // 缺失不填 0 分也不给任何分
     expect(document.querySelector('[class*="人像占位"]')).toBeNull();
     expect(document.querySelector('[class*="大代号"]')).toBeNull();
+  });
+});
+
+// Backend 共享正文的展示资料样本（结构与 在线简历展示映射 的产出一致）；
+// 测试不 import 映射 —— 组件契约只看 资料 形状本身。
+const 资料齐备: 在线简历展示资料 = {
+  画像: { 性别: '女', 年限: '5 年', 学历: '本科', 求职状态: '在职看机会', 职位行: '示例公司 · 软件工程师' },
+  个人优势: '四年全栈经验',
+  期望: { 标题: '社招全职 · 产品经理', 薪资关系: '薪资带有交集', 副行: '上海 · 混合 · 全远程' },
+  工作: [{ 公司: '云衢', 起止: '2021.01—至今', 职位: '工程师', 说明: '平台研发\n第二行' }],
+  项目: [{ 名称: '推荐引擎', 角色: '负责人', 结果: '转化提升 12%' }],
+  教育: [
+    { 行: '复旦大学 · 计算机科学 · 本科', 起止: '2017.09—2021.06' },
+    { 行: '复旦大学 · 计算机科学 · 本科', 起止: '2017.09—2021.06' },
+  ],
+  技能: ['TypeScript', 'React'],
+};
+
+describe('在线简历正文 · 资料模式（Backend 显式传 资料，档 恒 null）', () => {
+  it('资料齐备：各信息区按原槽渲染；教育两条都出（重复条目不丢）；无匹配分析区（无证据不生成行）', () => {
+    const { container } = render(<在线简历正文 档={null} 资料={资料齐备} 求职状态="在职" />);
+    const 正文 = container.firstElementChild;
+    if (!(正文 instanceof HTMLElement)) throw new Error('正文根节点缺失');
+    expect(screen.getByText('示例公司 · 软件工程师')).toBeTruthy(); // 最近工作组合职位行
+    expect(screen.getByText('四年全栈经验')).toBeTruthy();
+    expect(screen.getByText('社招全职 · 产品经理')).toBeTruthy();
+    expect(screen.getByText('薪资带有交集')).toBeTruthy();
+    expect(screen.getByText('上海 · 混合 · 全远程')).toBeTruthy();
+    expect(screen.getByText('云衢')).toBeTruthy();
+    expect(screen.getByText('2021.01—至今')).toBeTruthy();
+    expect(screen.getByText('工程师')).toBeTruthy();
+    expect(screen.getByText('平台研发')).toBeTruthy();
+    expect(screen.getByText('第二行')).toBeTruthy();
+    expect(screen.getByText('推荐引擎')).toBeTruthy();
+    expect(screen.getByText('负责人')).toBeTruthy();
+    expect(screen.getByText('转化提升 12%')).toBeTruthy();
+    expect(screen.getByText('TypeScript')).toBeTruthy();
+    // 教育两条同文同起止：都渲染，不因 key 重复丢条
+    expect(container.querySelectorAll('[class*="教育行"]').length).toBe(2);
+    // 头行求职状态：显式 prop 优先于资料摘要状态
+    expect(screen.getByText('在职')).toBeTruthy();
+    expect(screen.queryByText('匹配度分析')).toBeNull(); // 无对齐行就不生成匹配区
+    断言顺序(正文, [
+      '示例公司 · 软件工程师', '个人优势', '求职期望', '工作经历', '项目经历', '教育经历', '专业技能',
+    ]);
+  });
+
+  it('项目不借工作日期充项目日期：资料项目无起止槽；工作公司缺失给中性标记，不借行业伪装', () => {
+    render(
+      <在线简历正文
+        档={null}
+        资料={{
+          ...资料齐备,
+          工作: [{ 公司: '未披露', 起止: '日期未知', 职位: null, 说明: null }],
+          项目: [{ 名称: '推荐引擎', 角色: null, 结果: null }],
+        }}
+      />,
+    );
+    expect(screen.getByText('未披露')).toBeTruthy();
+    expect(screen.getByText('日期未知')).toBeTruthy();
+    expect(screen.queryByText('2021.01—至今')).toBeNull();
+    expect(screen.queryByText('工程师')).toBeNull();
+    expect(screen.queryByText('负责人')).toBeNull();
+  });
+
+  it('区级语义分界：null 给缺失、[] 给暂无（不互换），缺失走既有缺失样式', () => {
+    const { container } = render(
+      <在线简历正文
+        档={null}
+        资料={{
+          画像: null,
+          个人优势: null,
+          期望: null,
+          工作: null,
+          项目: null,
+          教育: null,
+          技能: null,
+        }}
+      />,
+    );
+    for (const 缺失 of ['匿名画像缺失', '职位信息缺失', '个人优势缺失', '求职期望缺失', '工作经历缺失', '项目经历缺失', '教育经历缺失', '专业技能缺失']) {
+      expect(screen.getByText(缺失)).toBeTruthy();
+    }
+    expect(screen.queryByText('暂无项目经历')).toBeNull(); // 项目区本例是 null → 缺失，不是暂无
+    expect(container.querySelector('[class*="区块缺失"]')).not.toBeNull();
+  });
+
+  it('合法 [] 给无条目状态；项目/技能空数组出「暂无…」而不是缺失', () => {
+    render(
+      <在线简历正文
+        档={null}
+        资料={{ ...资料齐备, 画像: null, 个人优势: null, 期望: null, 工作: [], 项目: [], 教育: [], 技能: [] }}
+      />,
+    );
+    for (const 暂无 of ['暂无工作经历', '暂无项目经历', '暂无教育经历', '暂无专业技能']) {
+      expect(screen.getByText(暂无)).toBeTruthy();
+    }
+    expect(screen.queryByText('工作经历缺失')).toBeNull();
+  });
+
+  it('资料 null（整份缺源档）与档 null 同构：全部缺失 + 在线简历缺失页尾注', () => {
+    render(<在线简历正文 档={null} 资料={null} />);
+    expect(screen.getByText('匿名画像缺失')).toBeTruthy();
+    expect(screen.getByText('个人优势缺失')).toBeTruthy();
+    expect(screen.getByText(/在线简历缺失 · 内容不可转发/)).toBeTruthy();
+  });
+
+  it('不给无依据承诺：无一致性 ✓、无默认薪资结论；页尾注不宣称双向核验 / 已核验', () => {
+    render(<在线简历正文 档={null} 资料={资料齐备} />);
+    expect(screen.queryByText('✓')).toBeNull();
+    expect(screen.queryByText('薪资带已进入初筛')).toBeNull();
+    expect(screen.queryByText(/双向核验/)).toBeNull();
+    expect(document.body.textContent).toContain('内容不可转发');
+  });
+
+  it('unknown 薪资关系不作结论：期望标题在、薪资槽整段不出', () => {
+    render(
+      <在线简历正文
+        档={null}
+        资料={{ ...资料齐备, 期望: { 标题: '社招全职 · 产品经理', 薪资关系: null, 副行: '上海' } }}
+      />,
+    );
+    expect(screen.getByText('社招全职 · 产品经理')).toBeTruthy();
+    expect(screen.queryByText(/薪资带/)).toBeNull();
+  });
+
+  it('自由文本以文本节点展示：HTML 样式字符不解释成元素', () => {
+    render(
+      <在线简历正文
+        档={null}
+        资料={{
+          ...资料齐备,
+          个人优势: '<b>主导交易网关重建</b><script>x</script>',
+          技能: ['<i>Go</i>'],
+        }}
+      />,
+    );
+    expect(document.querySelector('b')).toBeNull();
+    expect(document.querySelector('script')).toBeNull();
+    expect(document.querySelector('i')).toBeNull();
+    expect(document.body.textContent).toContain('<b>主导交易网关重建</b><script>x</script>');
+    expect(screen.getByText('<i>Go</i>')).toBeTruthy();
+  });
+
+  it('真名不透传旧真名恢复：资料模式即使传了 真名 也不还原公司实名、不显示姓名', () => {
+    render(<在线简历正文 档={null} 资料={资料齐备} 真名="沈亦舟" />);
+    expect(screen.queryByText('沈亦舟')).toBeNull();
+    expect(screen.getByText('云衢')).toBeTruthy(); // 资料的公司槽原样，不走 已披露 ? 公司实名
+    expect(screen.queryByText(/S1 原件披露/)).toBeNull();
   });
 });
