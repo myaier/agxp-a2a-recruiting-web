@@ -510,16 +510,23 @@ describe('候选人后端映射', () => {
   // #4：编辑已有意向时 annual_salary_months 从服务端快照保留（草稿不能表达此字段）。
   // salary_period 是 BFF 从 recruitment_type 派生的只读字段，不在 IntentionWrite body 里，
   // 保留 recruitment_type 即保留了 period —— 草稿不能表达 period，但保存不会丢它。
+  // core editors §6.2（Task 2）：原始来源改为合同内合法的社招区间（年薪月数只对
+  // social_full_time/campus 合法，原 fixture 的 internship 携带年薪月数是合同外数据）。
   it('转意向写入 更新时保留服务端 annual_salary_months', () => {
     const 草稿: 意向草稿型 = {
       ...空草稿,
       编辑编号: BFF意向样本.intention_id, 求职类型: '全职', 工作城市: '上海', 期望职位: '产品经理',
       工作城市引用: ref('loc_shanghai', '上海'), 职位引用: ref('tax_product', '产品经理'),
       感兴趣城市们: [], 薪资下限: 10, 薪资上限: 20, 期望行业们: [],
-      求职类型已改: false, 后端招聘类型: 'internship' as const,
+      求职类型已改: false, 后端招聘类型: 'social_full_time' as const,
       办公方式: ['hybrid'],
     };
-    const 原始 = { ...BFF意向样本, compensation: { mode: 'range' as const, lower: 300, upper: 500, annual_salary_months: 14 } };
+    const 原始 = {
+      ...BFF意向样本,
+      recruitment_type: 'social_full_time' as const,
+      salary_period: 'month' as const,
+      compensation: { mode: 'range' as const, lower: 300, upper: 500, annual_salary_months: 14 },
+    };
     const body = 转意向写入(草稿, { 原始 });
     expect(body.compensation.annual_salary_months).toBe(14);
   });
@@ -535,6 +542,73 @@ describe('候选人后端映射', () => {
     const body = 转意向写入(草稿, { 原始: null });
     expect(body.compensation).toEqual({ mode: 'range', lower: 10, upper: 20 });
     expect(body.compensation).not.toHaveProperty('annual_salary_months');
+  });
+
+  // ── core editors §6.2（Task 2）：年薪月数按最终类型过滤 ──
+  // 合同（IntentionCompensation）：annual_salary_months 只对 social_full_time/campus 的
+  // range 合法；internship/part_time 与面议一律禁止。是否携带由「最终 recruitment_type +
+  // compensation.mode」决定 —— 原始合法的 14 薪区间是唯一的保留来源。
+  const 原始14薪社招 = {
+    ...BFF意向样本,
+    recruitment_type: 'social_full_time' as const,
+    salary_period: 'month' as const,
+    compensation: { mode: 'range' as const, lower: 20, upper: 30, annual_salary_months: 14 },
+  };
+
+  it.each([
+    ['兼职', 'part_time' as const],
+    ['实习生', 'internship' as const],
+  ] as [意向草稿型['求职类型'], 'part_time' | 'internship'][])('社招 range/14薪 改 %s 后不带 annual_salary_months', (类型, 后端类型) => {
+    const 草稿: 意向草稿型 = {
+      ...从BFF意向草稿(原始14薪社招),
+      求职类型: 类型,
+      求职类型已改: true,
+      // 兼职保持月薪区间（跨周期清空不触发）；实习按页面真实路径：切型清上下限后重填日薪区间
+      ...(类型 === '实习生'
+        ? { 薪资周期: 'day' as const, 薪资下限: 150, 薪资上限: 200, 实习月数: 3, 每周到岗天数: 4 }
+        : {}),
+    };
+    const body = 转意向写入(草稿, { 原始: 原始14薪社招 });
+    expect(body.recruitment_type).toBe(后端类型);
+    expect(body.compensation).toEqual({
+      mode: 'range',
+      ...(类型 === '实习生' ? { lower: 150, upper: 200 } : { lower: 20, upper: 30 }),
+    });
+    expect(body.compensation).not.toHaveProperty('annual_salary_months');
+  });
+
+  it('社招14薪 改实习且不重填区间：面议精确为 { mode: negotiable }，无上下限与年薪月数', () => {
+    const 草稿: 意向草稿型 = {
+      ...从BFF意向草稿(原始14薪社招),
+      求职类型: '实习生',
+      求职类型已改: true,
+      薪资周期: 'day',
+      薪资下限: null,
+      薪资上限: null,
+      实习月数: 3,
+      每周到岗天数: 4,
+    };
+    const body = 转意向写入(草稿, { 原始: 原始14薪社招 });
+    expect(body.recruitment_type).toBe('internship');
+    expect(body.compensation).toEqual({ mode: 'negotiable' });
+  });
+
+  it.each([
+    // 社招↔校招互切（月→月不清上下限）：合法 14 薪保留
+    ['校园招聘', true, '2027-06'],
+    ['全职', true, null],
+    // 同类型重复选择：未改类型，按服务端快照原样保留
+    ['全职', false, null],
+  ] as [意向草稿型['求职类型'], boolean, string | null][])('社招↔校招与同类型重复选择保留合法14薪（%s 已改=%s）', (类型, 已改, 毕业时间) => {
+    const 草稿: 意向草稿型 = {
+      ...从BFF意向草稿(原始14薪社招),
+      求职类型: 类型,
+      求职类型已改: 已改,
+      毕业时间,
+    };
+    const body = 转意向写入(草稿, { 原始: 原始14薪社招 });
+    expect(body.compensation.annual_salary_months).toBe(14);
+    expect(body.compensation).toMatchObject({ mode: 'range', lower: 20, upper: 30 });
   });
 
   // Task 6 Step 1：新建意向不默认 onsite、不补 12、按 ID 去重地点

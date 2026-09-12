@@ -365,7 +365,9 @@ export function 转意向写入(草稿: 意向草稿型, 上下文: 意向映射
   const onsite_days_per_week = recruitment_type === 'internship'
     ? (草稿.每周到岗天数 === undefined ? 原始?.onsite_days_per_week ?? null : 草稿.每周到岗天数)
     : 类型未变 ? 原始.onsite_days_per_week : null;
-  // annual_salary_months：新建时不存在就省略（不填 12）；编辑时从服务端快照保留（#4）。
+  // annual_salary_months：新建时不存在就省略（不填 12）；编辑时只在目标类型合同内合法
+  // 才从服务端快照保留（#4 + core editors §6.2）—— 年薪月数只对 social_full_time/campus
+  // 的 range 合法，切到 internship/part_time 或面议必须缺属性（不写 null），否则 BFF 拒收。
   // salary_period 是 BFF 根据 recruitment_type 派生的只读字段（不在 IntentionWrite body 里），
   // 保留原 recruitment_type 即保留了 period —— 草稿不能表达 period，但保存不会丢它。
   const alternate_location_ids = 去重引用(草稿.感兴趣城市引用们 ?? [])
@@ -378,7 +380,10 @@ export function 转意向写入(草稿: 意向草稿型, 上下文: 意向映射
           mode: 'range',
           lower: 草稿.薪资下限,
           upper: 草稿.薪资上限,
-          ...(原始?.compensation.annual_salary_months == null ? {} : { annual_salary_months: 原始.compensation.annual_salary_months }),
+          ...((recruitment_type === 'social_full_time' || recruitment_type === 'campus')
+            && 原始?.compensation.annual_salary_months != null
+            ? { annual_salary_months: 原始.compensation.annual_salary_months }
+            : {}),
         };
   // exclusions：更新沿用服务端快照，新建四个均为 unspecified（草稿不带排除项）
   const exclusions: BFF意向排除 = 草稿.排除项 ?? (原始 !== null

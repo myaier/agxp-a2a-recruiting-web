@@ -10905,6 +10905,101 @@ test.describe('核心编辑 作品集 @backend', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 意向薪资 @backend（core editors §6.2 Task 2）：存量 14 薪社招区间意向
+// 切兼职并保存 —— 路由层断言真实序列化的 PATCH body 不携带目标类型禁止的
+// annual_salary_months（月薪区间原样保留），权威回执后重入编辑页回读保存值。
+// PATCH 由 覆盖 应答（fixture 只建模本用例需要的字段），body 闭合校验复用
+// 断言意向写入。网络桩 route fixture 边界验证，不是 live 验收。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 意向薪资 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('存量14薪社招意向切兼职：序列化 body 不含年薪月数，保存/重入闭环 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const fixture = 创建候选OnboardingFixture();
+    // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据，
+    // 预置合同内合法的 14 薪社招月薪区间（年薪月数只对 social_full_time/campus 合法）
+    fixture.主体.last_used_role = 'candidate';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选' },
+      summary: '存量个人优势',
+    };
+    const 意向编号 = Onboarding标记.意向编号;
+    const 意向14薪: BFFOwnerIntention = {
+      ...P4深克隆(fixture意向列表.intentions[0]),
+      intention_id: 意向编号,
+      compensation: { mode: 'range', lower: 20, upper: 30, annual_salary_months: 14 },
+    };
+    fixture.intentions = [意向14薪];
+    const 意向补丁们: { body: unknown; ifMatch: string | null }[] = [];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-core-edit-intent-salary',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: P3隐私fixture(),
+      请求拦截: (请求) => {
+        if (请求.path === `/api/v1/me/intentions/${意向编号}` && 请求.method === 'PATCH') {
+          断言意向写入(请求.body); // 12 键闭合契约对真实序列化 body 生效
+          意向补丁们.push({ body: 请求.body, ifMatch: 请求.headers['if-match'] ?? null });
+        }
+      },
+      覆盖: {
+        [`PATCH /api/v1/me/intentions/${意向编号}`]: () => {
+          // 服务端语义：PATCH 后同源列表读到已更新快照（目标类型不适用字段清空、
+          // 不再携带年薪月数、revision+1）；salary_period 沿用本 stub 的月薪口径
+          const 更新后: BFFOwnerIntention = {
+            ...P4深克隆(意向14薪),
+            recruitment_type: 'part_time',
+            graduation_month: null,
+            internship_months: null,
+            onsite_days_per_week: null,
+            compensation: { mode: 'range', lower: 20, upper: 30 },
+            revision: 2,
+          };
+          fixture.intentions = [更新后];
+          return { status: 200, 响应: P4深克隆(更新后) };
+        },
+      },
+    });
+
+    // 日常入口：登录落主壳（初始化收口后才出路由），再进意向编辑
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto(`/#/intentions/${意向编号}`);
+    // 编辑表单按权威 DTO 预填：月薪 20-30K，兼职未选中
+    await expect(page.getByText('20-30K')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '兼职' })).toHaveAttribute('aria-pressed', 'false');
+    // 切兼职（月→月不清上下限的既有行为）→ 保存
+    await page.getByRole('button', { name: '兼职' }).click();
+    await expect(page.getByRole('button', { name: '兼职' })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    // 保存链路收口（PATCH → 权威列表重读 → 清草稿 → 返回落主壳）完成后才重入，
+    // 否则重入时的 开意向草稿 会被仍在收尾的 清意向草稿 覆盖成空表
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+
+    // 恰好一次 PATCH：If-Match 用权威 revision；真实序列化 body 目标类型 part_time，
+    // compensation 精确为月薪区间、不含禁止的 annual_salary_months
+    expect(意向补丁们).toHaveLength(1);
+    const 补丁 = 意向补丁们[0]!;
+    expect(补丁.ifMatch).toBe(`"${意向14薪.revision}"`);
+    const 写 = 补丁.body as { recruitment_type: string; compensation: Record<string, unknown> };
+    expect(写.recruitment_type).toBe('part_time');
+    expect(写.compensation).toEqual({ mode: 'range', lower: 20, upper: 30 });
+    expect(写.compensation).not.toHaveProperty('annual_salary_months');
+    // fixture 已按服务端语义推进：权威快照不再携带年薪月数
+    expect(fixture.intentions[0]?.recruitment_type).toBe('part_time');
+    expect(fixture.intentions[0]?.compensation).not.toHaveProperty('annual_salary_months');
+
+    // 权威回读后重入编辑页：兼职选中、月薪区间不丢、无实习条件区
+    await page.goto(`/#/intentions/${意向编号}`);
+    await expect(page.getByText('20-30K')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '兼职' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByText('实习可用时间')).toHaveCount(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 招聘方 onboarding Backend fixture @backend（P0 修复 Task 7）：全新招聘方从身份选择页
 // 起步 —— profile 首读 404 not_found（合法的「缺失」而非故障），名片首写走
 // PATCH + If-Match: "0"（fixture 按自己的当前 revision 做 CAS），发岗写出三段独立

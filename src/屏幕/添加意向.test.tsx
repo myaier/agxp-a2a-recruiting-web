@@ -8,11 +8,16 @@
 // 新建（/intentions/new）与编辑（/intentions/:id）两条路由都要可达，所以 it.each 双跑。
 // 轻提示 是纯 DOM 单例组件，这里 mock 掉既不碰真实组件也能断言文案。
 
+import { useState } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BFFOwnerIntention } from '../数据/BFF契约';
 import type { 意向草稿型 } from '../数据/招聘数据源类型';
+import { 转意向写入 } from '../数据/后端映射';
+import { 归约候选资料 } from '../状态/领域/候选资料';
+import { 初始状态 } from '../状态/初始状态';
 import { BFF意向样本 } from '../测试/BFF样本';
 import 添加意向 from './添加意向';
 
@@ -49,13 +54,22 @@ let mock数据源模式: 'backend' | undefined;
 let mock状态扩展: Record<string, unknown> = {};
 
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回 }) }));
+// 真实归约路径（core editors §6.2 Task 2）：组件渲染时登记一个 setState 通知器，
+// 真实 reducer 归约后回调它触发重渲染，下一次 render 才能读到新草稿 —— 与真实
+// Provider 的「派发→重渲染」时序一致；不登记时保持原有单次渲染行为（零干扰）。
+let 通知重渲染: (() => void) | null = null;
+
 vi.mock('../状态/应用状态', () => ({
-  use应用状态: () => ({
-    状态: { 意向草稿: 当前草稿, ...mock状态扩展 },
-    派发: mock派发,
-    操作: { 保存意向: mock保存意向, 删除意向: mock删除意向 },
-    数据源模式: mock数据源模式,
-  }),
+  use应用状态: () => {
+    const [, 设渲染序号] = useState(0);
+    通知重渲染 = () => 设渲染序号((序) => 序 + 1);
+    return {
+      状态: { 意向草稿: 当前草稿, ...mock状态扩展 },
+      派发: mock派发,
+      操作: { 保存意向: mock保存意向, 删除意向: mock删除意向 },
+      数据源模式: mock数据源模式,
+    };
+  },
 }));
 
 function deferred<T>() {
@@ -256,5 +270,115 @@ describe('四类型与原引导排除接入', () => {
     await userEvent.type(输入, '不出差');
     await userEvent.click(screen.getByRole('button', { name: '添加' }));
     expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 私有偏好: '\n历史原文  \n不加班\n不出差' } });
+  });
+});
+
+// ── core editors §6.2（Task 2）：跨类型年薪月数按最终类型过滤 ──
+// 页面级反例走真实链路：类型选钮 / 薪资弹层 / 毕业滚轮 → 真实 归约候选资料
+// （跨周期清上下限、同类型不清值的既有行为原样生效）→ 真实 转意向写入 序列化。
+// 不 mock mapper、不手工构造期望草稿；保存后对落盘草稿跑真实映射断言 wire body。
+describe('添加意向页 跨类型年薪月数（core editors §6.2 Task 2）', () => {
+  /** 合同内合法的 14 薪社招区间来源（年薪月数只对 social_full_time/campus 合法） */
+  const 原始14薪: BFFOwnerIntention = {
+    ...BFF意向样本,
+    intention_id: 'int_14',
+    recruitment_type: 'social_full_time',
+    salary_period: 'month',
+    job_category: { id: 'job_pm', display_name: '产品经理' },
+    primary_location: { id: 'loc_sh', display_name: '上海' },
+    internship_months: null,
+    onsite_days_per_week: null,
+    compensation: { mode: 'range', lower: 20, upper: 30, annual_salary_months: 14 },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mock数据源模式 = 'backend';
+    // 真实候选域 reducer 驱动草稿：后端意向字典预置权威快照，开草稿走 从BFF意向草稿
+    const 候选状态 = { ...初始状态, 后端意向服务端: { int_14: 原始14薪 }, 求职意向表: [] };
+    当前草稿 = 候选状态.意向草稿;
+    mock状态扩展 = { 后端意向服务端: 候选状态.后端意向服务端, 求职意向表: [] };
+    mock派发.mockImplementation((动作: Parameters<typeof 归约候选资料>[1]) => {
+      候选状态.意向草稿 = 归约候选资料(候选状态, 动作).意向草稿;
+      当前草稿 = 候选状态.意向草稿;
+      通知重渲染?.();
+    });
+    mock保存意向.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    // 还原共享 mock：真实归约实现不得泄漏进本文件其他 describe
+    mock派发.mockReset();
+  });
+
+  it('14薪社招切兼职：保留月薪区间，序列化 body 不带 annual_salary_months', async () => {
+    渲染意向('/intentions/int_14');
+    await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
+    await userEvent.click(screen.getByRole('button', { name: '兼职' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '兼职' }).getAttribute('aria-pressed')).toBe('true'));
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
+    const body = 转意向写入(mock保存意向.mock.calls[0][0] as 意向草稿型, { 原始: 原始14薪 });
+    expect(body.recruitment_type).toBe('part_time');
+    expect(body.compensation).toEqual({ mode: 'range', lower: 20, upper: 30 });
+    expect(body.compensation).not.toHaveProperty('annual_salary_months');
+  });
+
+  it('14薪社招切实习并重填日薪区间：序列化 body 不带 annual_salary_months', async () => {
+    渲染意向('/intentions/int_14');
+    await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
+    await userEvent.click(screen.getByRole('button', { name: '实习生' }));
+    // 跨周期既有行为：切型清上下限，薪资行回落占位
+    await waitFor(() => expect(screen.getByText('请选择薪资要求')).toBeTruthy());
+    await userEvent.click(screen.getByRole('button', { name: '至少 3 个月' }));
+    await userEvent.click(screen.getByRole('button', { name: '每周 4 天' }));
+    // 页面真实路径重填区间：底部弹层 确定（日薪默认 150/200）
+    await userEvent.click(screen.getByText('薪资要求（日薪 · 元/天）'));
+    await userEvent.click(screen.getByRole('button', { name: '确定' }));
+    await waitFor(() => expect(screen.getByText('150-200 元/天')).toBeTruthy());
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
+    const body = 转意向写入(mock保存意向.mock.calls[0][0] as 意向草稿型, { 原始: 原始14薪 });
+    expect(body.recruitment_type).toBe('internship');
+    expect(body.compensation).toEqual({ mode: 'range', lower: 150, upper: 200 });
+    expect(body.compensation).not.toHaveProperty('annual_salary_months');
+  });
+
+  it('14薪社招切实习且不重填区间：序列化面议精确为 { mode: negotiable }', async () => {
+    渲染意向('/intentions/int_14');
+    await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
+    await userEvent.click(screen.getByRole('button', { name: '实习生' }));
+    await waitFor(() => expect(screen.getByText('请选择薪资要求')).toBeTruthy());
+    await userEvent.click(screen.getByRole('button', { name: '至少 3 个月' }));
+    await userEvent.click(screen.getByRole('button', { name: '每周 4 天' }));
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
+    const body = 转意向写入(mock保存意向.mock.calls[0][0] as 意向草稿型, { 原始: 原始14薪 });
+    expect(body.recruitment_type).toBe('internship');
+    expect(body.compensation).toEqual({ mode: 'negotiable' });
+  });
+
+  it('切校招并填毕业月保存：合法 14 薪保留', async () => {
+    渲染意向('/intentions/int_14');
+    await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
+    await userEvent.click(screen.getByRole('button', { name: '校园招聘' }));
+    await userEvent.click(screen.getByText('请选择毕业年月'));
+    await userEvent.click(screen.getByRole('button', { name: '完成' }));
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
+    const body = 转意向写入(mock保存意向.mock.calls[0][0] as 意向草稿型, { 原始: 原始14薪 });
+    expect(body.recruitment_type).toBe('campus');
+    expect(body.compensation).toEqual({ mode: 'range', lower: 20, upper: 30, annual_salary_months: 14 });
+  });
+
+  it('同类型重复点击社招全职不清值：序列化仍带合法 14 薪', async () => {
+    渲染意向('/intentions/int_14');
+    await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
+    await userEvent.click(screen.getByRole('button', { name: '社招全职' }));
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
+    const body = 转意向写入(mock保存意向.mock.calls[0][0] as 意向草稿型, { 原始: 原始14薪 });
+    expect(body.recruitment_type).toBe('social_full_time');
+    expect(body.compensation.annual_salary_months).toBe(14);
   });
 });
