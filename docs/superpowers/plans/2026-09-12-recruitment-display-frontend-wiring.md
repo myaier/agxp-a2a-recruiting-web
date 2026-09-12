@@ -266,3 +266,12 @@ Codex execution: superpowers:executing-plans
 - Coverage limitation（如实记录）：数据源模式 e2e 16 个失败为域外既有失败（P6×5、P8×4、P1C/P3/P2/候选与招聘方 onboarding/JD导入/mock 规则种子各 1），与本分支新 required 键无关，逐条核实记录于 Task 7 报告（.superpowers 本地产物），本轮未修（超出展示接线范围）。
 - PM 待确认差异（不阻塞合入，final gate 一并展示）：①详情公司名恒 claim vs 市场卡优先 organization.display_name；②缺名有 Logo 不上卡的图位回退语义；③expectation 四槽全空收口/薪资关系独立槽；④公开企业读取失败「可稍后重试」文案（404 终态误导）。
 - 正式真实后端 L3：required，留待用户批准 final gate 后按 `docs/dogfood/真实后端行为验收.md` 执行（本 session 未跑真实后端请求）。
+
+### Final gate 与合入 receipt（2026-09-12，用户批准后）
+
+用户已明确批准 final gate 方案（含 Rulings 清单与 PM 待确认差异）。按 final-integration 合同执行：
+
+- final_target_base：`5f6aabbdda0eb0f07550da5acc461aa4340dd3bd`（origin/main，未推进）；`git merge --no-edit origin/main` no-op（Already up to date），候选 `35800830` 未变、工作区干净。
+- final_evidence_mode：**PASS_REUSED**（UNCHANGED_CANDIDATE_REUSE：pre-gate L0–L2 全部 receipt 在当前候选 HEAD 上取得且六维不变——lint 66 文件 exit 0、typecheck exit 0、build exit 0、定向单测 1497/1497、新 spec e2e 34/34、数据源模式详情域 10/10、Mock 比较器 pass=24 零漂移；零 runner 重跑）。
+- formal L3（required）：**BLOCKED** —— 缺少外部输入：可用前端 URL、匹配 release/0.2.5@886e0683 的运行环境、两角色专用账号与 OTP 来源、可供验证的新/旧 Case 与 S1 前后数据。按批准方案，L3 为合入后人工执行项；本 session 未跑任何真实后端请求，未虚记任何 PASS。补跑入口：`docs/dogfood/真实后端行为验收.md`（B05 隔离风险相关部分 + 展示接线定向流程）。
+- 已知域外既有失败（数据源模式 16 个）与 PM 待确认差异（4 项）随上方执行记录一并交付，不阻塞本次合入。
