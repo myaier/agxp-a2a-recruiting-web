@@ -11696,6 +11696,206 @@ test.describe('核心编辑 教育 @backend', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 简历行业 @mock（core editors §5.2 Task 6）：经历编辑页 所属行业 底部选择层
+// 两模式共用 简历行业选择正文 —— Mock 用 常见行业 本地目录作模拟目录（同一正文），
+// 自由文本自填经可选 自填 保留（Backend 不提供）。选常见行业即回填并关闭层，
+// 完成后经历卡带行业标签，保存进本地简历、重进回读不丢。全程零 /api/v1 请求。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 简历行业 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('常见行业目录：展开层→选行业→经历保存并回读，自填输入保留 @mock', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '微信登录' }).click();
+    await expect(page).toHaveURL(/#\/identity$/);
+
+    // 日常入口：在线简历 → 添加工作经历 → 打开所属行业层（共用正文，常见行业为模拟目录）
+    await page.goto('/#/experience');
+    await expect(page.getByRole('button', { name: '＋ 添加工作经历' })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '＋ 添加工作经历' }).click();
+    await expect(page.getByPlaceholder('必填')).toHaveCount(2);
+    await page.getByPlaceholder('必填').nth(0).fill('演示公司');
+    await page.getByRole('button', { name: '所属行业' }).click();
+    await expect(page.getByRole('button', { name: '互联网', exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '硬件', exact: true })).toBeVisible();
+    // 自填自由文本输入保留（Mock 能力，Backend 不暴露）
+    await expect(page.getByPlaceholder('没有合适的？直接输入')).toBeVisible();
+
+    // 正常态截图（与改前拍对照：原 Mock 行业层同版式）
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-简历行业-正常.png`, fullPage: true });
+
+    // 选常见行业 → 回填所属行业行并关闭层（单选关闭/回填时机沿原页）
+    await page.getByRole('button', { name: '金融科技', exact: true }).click();
+    await expect(page.getByPlaceholder('没有合适的？直接输入')).toHaveCount(0);
+
+    // 选中回填态截图 + iPhone 13 viewport 检查：无横向溢出、公司输入可聚焦、完成可见
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-简历行业-选中.png`, fullPage: true });
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    await page.getByPlaceholder('必填').nth(0).focus();
+    await expect(page.getByPlaceholder('必填').nth(0)).toBeFocused();
+    await expect(page.getByRole('button', { name: '完成', exact: true })).toBeVisible();
+
+    // 补齐必填与入职年月 → 完成 → 经历卡带行业标签；保存进本地简历，重进回读不丢
+    await page.getByPlaceholder('必填').nth(1).fill('演示工程师');
+    await page.getByRole('button', { name: '入职年月' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '完成', exact: true }).click();
+    await expect(page.getByText(/金融科技/).first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/wizard$/, { timeout: 20_000 });
+    await page.goto('/#/experience');
+    await expect(page.getByText(/金融科技/).first()).toBeVisible({ timeout: 15_000 });
+
+    // Mock 全程零 API 请求
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 核心编辑 简历行业 @backend（core editors §5.2 Task 6）：Backend 分支消费同一共用正文 ——
+// 根/子/孙三层按当前渲染顺序分段展示（层级缩进）、各列表尾「加载更多」、可选叶子单击
+// 选定并按稳定 ID 精确提交（experience POST 的 industry_id 是所点行的目录 ID，同名不串）。
+// 行业目录桩为本用例专用后装 route（先匹配，不改共享 安装BFF路由），符合已审合同网络桩，
+// 不是 live 验收。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心编辑 简历行业 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('三层目录：展开根→选孙叶子→经历按 ID 保存，分段尾可翻页 @backend', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const fixture = 创建候选OnboardingFixture();
+    // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
+    fixture.主体.last_used_role = 'candidate';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选' },
+      summary: '存量个人优势',
+    };
+    fixture.intentions = [P4深克隆(fixture意向列表.intentions[0])];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-core-edit-industry',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: P3隐私fixture(),
+    });
+
+    // 行业目录桩（本用例专用精确状态）：根两页（第二页根可选）+ 子两页（第二页叶子）
+    // + 孙一层可选叶子。字段形状与既有内置 industries 桩一致（信封闭合解码）。
+    await page.route('**/api/v1/catalog/industries*', async (route) => {
+      const url = new URL(route.request().url());
+      const parentId = url.searchParams.get('parent_id');
+      const cursor = url.searchParams.get('cursor');
+      if (parentId === 'ind_root') {
+        const items = cursor === 'ind-cur-2'
+          ? [{ id: 'ind_leaf_direct', display_name: '第三方支付', parent_id: 'ind_root', selectable: true, has_children: false }]
+          : [{ id: 'ind_pay_grp', display_name: '支付与清结算', parent_id: 'ind_root', selectable: false, has_children: true }];
+        await route.fulfill({
+          status: 200,
+          json: 信封({ items, next_cursor: cursor === 'ind-cur-2' ? null : 'ind-cur-2', catalog_version: 'ind-v1' }),
+        });
+        return;
+      }
+      if (parentId === 'ind_pay_grp') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({
+            items: [{ id: 'ind_leaf_bank', display_name: '银行支付', parent_id: 'ind_pay_grp', selectable: true, has_children: false }],
+            next_cursor: null,
+            catalog_version: 'ind-v1',
+          }),
+        });
+        return;
+      }
+      if (cursor === 'ind-cur-1') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({
+            items: [{ id: 'ind_int', display_name: '互联网', parent_id: null, selectable: true, has_children: false }],
+            next_cursor: null,
+            catalog_version: 'ind-v1',
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        json: 信封({
+          items: [{ id: 'ind_root', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }],
+          next_cursor: 'ind-cur-1',
+          catalog_version: 'ind-v1',
+        }),
+      });
+    });
+
+    // 日常入口：登录落主壳后直接进 /experience（不经过建档旅程）
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto('/#/experience');
+    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '＋ 添加工作经历' }).click();
+    await expect(page.getByPlaceholder('必填')).toHaveCount(2);
+    await page.getByPlaceholder('必填').nth(0).fill('演示公司');
+
+    // 行业层：根列表 + 列表尾「加载更多」（分段 = 根列表及其分页尾）
+    await page.getByRole('button', { name: '所属行业' }).click();
+    await expect(page.getByRole('button', { name: /金融科技/ })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '加载更多', exact: true })).toBeVisible();
+
+    // 正常态截图（与改前拍/冻结源码快照对照：原 Backend 三层展开同版式）
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-简历行业-正常.png`, fullPage: true });
+
+    // 根分页翻出第二页根（可选根直接选定路径的另一形态），再展开 金融科技 → 子列表
+    await page.getByRole('button', { name: '加载更多', exact: true }).click();
+    await expect(page.getByRole('button', { name: '互联网', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: /金融科技/ }).click();
+    await expect(page.getByRole('button', { name: /支付与清结算/ })).toBeVisible({ timeout: 10_000 });
+    // 子列表尾「加载更多」在场（非 selectable 子项可展开孙层）
+    await expect(page.getByRole('button', { name: '加载更多', exact: true })).toBeVisible();
+
+    // 非 selectable 子项 → 孙层 → 可选孙叶子单击选定（层级缩进照原 inline padding）
+    await page.getByRole('button', { name: /支付与清结算/ }).click();
+    await expect(page.getByRole('button', { name: '银行支付', exact: true })).toBeVisible({ timeout: 10_000 });
+
+    // 三层缩进态截图（根/子/孙分段沿渲染顺序 + 各段分页尾）
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-简历行业-三层缩进.png`, fullPage: true });
+
+    await page.getByRole('button', { name: '银行支付', exact: true }).click();
+    await expect(page.getByPlaceholder('没有合适的？直接输入')).toHaveCount(0);
+
+    // 选中回填态截图 + iPhone 13 viewport 检查：无横向溢出、公司输入可聚焦、完成可见
+    await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-简历行业-选中.png`, fullPage: true });
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    await page.getByPlaceholder('必填').nth(0).focus();
+    await expect(page.getByPlaceholder('必填').nth(0)).toBeFocused();
+    await expect(page.getByRole('button', { name: '完成', exact: true })).toBeVisible();
+
+    // 补齐必填与入职年月 → 完成 → 经历卡带行业标签；保存按所点行的稳定 ID 提交
+    //（industry_id 是所点孙叶子的目录 ID，不按显示名反查）
+    await page.getByPlaceholder('必填').nth(1).fill('演示工程师');
+    await page.getByRole('button', { name: '入职年月' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '完成', exact: true }).click();
+    await expect(page.getByText(/银行支付/).first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/wizard$/, { timeout: 20_000 });
+    const 经历写入 = fixture.mutations.filter(
+      (条) => 条.method === 'POST' && 条.path === '/api/v1/me/resume/experiences',
+    );
+    expect(经历写入.length).toBeGreaterThan(0);
+    expect(经历写入[0]!.body).toMatchObject({ industry_id: 'ind_leaf_bank' });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 招聘方 onboarding Backend fixture @backend（P0 修复 Task 7）：全新招聘方从身份选择页
 // 起步 —— profile 首读 404 not_found（合法的「缺失」而非故障），名片首写走
 // PATCH + If-Match: "0"（fixture 按自己的当前 revision 做 CAS），发岗写出三段独立
