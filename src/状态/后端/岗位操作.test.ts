@@ -1,8 +1,7 @@
 // P1C Task 5：Job request/response 边界的行为测试。
 // 直接调用 创建岗位操作().发布岗位/更新岗位，检查传给数据源的 岗位创建上下文 与 previous DTO：
-// 决定服务端 claim 的路径必须在这里失败，而不是只依赖纯映射或最终 E2E。
-// 约束：BFF岗位创建/实际 JSON 不得出现 publisher_affiliation_ref / publisher_organization_ref /
-// hiring_organization_ref / verification status —— 服务端唯一推导 refs。
+// 合同 C 起创建上下文由 job 内的 发布模式/双企业编号 三字段构建；claim 由服务端从
+// hiring_organization_ref 快照生成，名片 / 关系 / 未认证声明都不再参与发岗。
 
 import { describe, expect, it, vi } from 'vitest';
 import { 创建空P7会话状态 } from './真人会话操作';
@@ -80,79 +79,45 @@ function 创建岗位测试依赖(input: {
   return deps;
 }
 
-describe('创建岗位操作 · Job claim 边界', () => {
-  it('无 current relation 时只把未认证声明作为 direct claim', async () => {
+describe('创建岗位操作 · Job 双企业坐标边界', () => {
+  // 合同 C：创建上下文由本次 job 的 发布模式/发布方企业编号/用人企业编号 构建；
+  // 前端新建模式只有 direct，缺省发布模式按 direct 落。
+  it('direct 岗位以 job 内三字段构建上下文，两侧同 ID 原样透传', async () => {
     const 创建岗位 = vi.fn(async () => ({ 列表: [页面岗位草稿], 服务端: { job_1: BFFOwnerJob样本 } }));
     const 数据源 = { 创建岗位 } as unknown as HTTP招聘数据源;
-    const 操作 = 创建岗位操作(创建岗位测试依赖({
-      数据源, 当前企业关系编号: null, 未认证公司声明: '示例客户公司',
-    }));
-    await 操作.发布岗位(页面岗位草稿);
-    expect(创建岗位).toHaveBeenCalledWith(页面岗位草稿, {
-      publisherMode: 'direct',
-      hiringOrganizationClaim: { display_name: '示例客户公司', legal_name: null },
-    });
-    expect(JSON.stringify(创建岗位.mock.calls[0])).not.toMatch(/organization_ref|verification_status/);
+    const 操作 = 创建岗位操作(创建岗位测试依赖({ 数据源, 未认证公司声明: '' }));
+    await 操作.发布岗位({ ...页面岗位草稿, 发布模式: 'direct', 发布方企业编号: 'org_pub', 用人企业编号: 'org_pub' });
+    expect(创建岗位).toHaveBeenCalledWith(
+      expect.objectContaining({ 发布模式: 'direct' }),
+      { publisherMode: 'direct', publisherOrganizationRef: 'org_pub', hiringOrganizationRef: 'org_pub' },
+    );
   });
 
-  it('current active verified relation 只把批准 organization_display_name 作为 direct claim 默认值', async () => {
-    const 数据源 = { 创建岗位: vi.fn(async () => ({ 列表: [页面岗位草稿], 服务端: { job_1: BFFOwnerJob样本 } })) } as unknown as HTTP招聘数据源;
+  it('agency 岗位的双 ID 原样进上下文；不读关系列表与未认证声明', async () => {
+    const 创建岗位 = vi.fn(async () => ({ 列表: [页面岗位草稿], 服务端: { job_1: BFFOwnerJob样本 } }));
+    const 数据源 = { 创建岗位 } as unknown as HTTP招聘数据源;
     const 操作 = 创建岗位操作(创建岗位测试依赖({
       数据源,
       企业关系列表: [{ ...BFF企业关系样本, organization_display_name: '批准的云衢科技' }],
       当前企业关系编号: 'aff_1',
       未认证公司声明: '旧声明公司',
     }));
+    await 操作.发布岗位({ ...页面岗位草稿, 发布模式: 'agency', 发布方企业编号: 'org_pub', 用人企业编号: 'org_client' });
+    expect(创建岗位).toHaveBeenCalledWith(expect.anything(), {
+      publisherMode: 'agency', publisherOrganizationRef: 'org_pub', hiringOrganizationRef: 'org_client',
+    });
+    const 上下文 = (创建岗位.mock.calls[0] as unknown[])[1];
+    expect(JSON.stringify(上下文)).not.toMatch(/hiring_organization_claim|verification_status/);
+  });
+
+  it('缺发布模式的 job 按 direct 落，缺 ref 交给数据源由映射层在发请求前拒绝', async () => {
+    const 创建岗位 = vi.fn(async () => ({ 列表: [页面岗位草稿], 服务端: { job_1: BFFOwnerJob样本 } }));
+    const 数据源 = { 创建岗位 } as unknown as HTTP招聘数据源;
+    const 操作 = 创建岗位操作(创建岗位测试依赖({ 数据源, 未认证公司声明: '' }));
     await 操作.发布岗位(页面岗位草稿);
-    expect(数据源.创建岗位).toHaveBeenCalledWith(页面岗位草稿, {
-      publisherMode: 'direct',
-      hiringOrganizationClaim: { display_name: '批准的云衢科技', legal_name: null },
+    expect(创建岗位).toHaveBeenCalledWith(页面岗位草稿, {
+      publisherMode: 'direct', publisherOrganizationRef: '', hiringOrganizationRef: '',
     });
-  });
-
-  it('current relation 不是 active verified（pending）时不当作 claim，回落未认证声明，仍允许发岗', async () => {
-    const 数据源 = { 创建岗位: vi.fn(async () => ({ 列表: [页面岗位草稿], 服务端: { job_1: BFFOwnerJob样本 } })) } as unknown as HTTP招聘数据源;
-    const 操作 = 创建岗位操作(创建岗位测试依赖({
-      数据源,
-      企业关系列表: [{ ...BFF企业关系样本, status: 'pending' }],
-      当前企业关系编号: 'aff_1',
-      未认证公司声明: '声明中的公司',
-    }));
-    await 操作.发布岗位(页面岗位草稿);
-    expect(数据源.创建岗位).toHaveBeenCalledWith(页面岗位草稿, {
-      publisherMode: 'direct',
-      hiringOrganizationClaim: { display_name: '声明中的公司', legal_name: null },
-    });
-  });
-
-  // P0 修复 Task 4：真实 BFF 的 JobCreate 必须带非空 hiring_organization_claim.display_name。
-  // 没有 verified 关系、未认证声明又只有空白时，operation 层就要 fail closed，一个请求都不发。
-  it('未认证公司声明为空时在 operation 层拒绝，零发布请求', async () => {
-    const deps = 创建岗位测试依赖({
-      数据源: { 创建岗位: vi.fn() } as unknown as HTTP招聘数据源,
-      企业关系列表: [], 当前企业关系编号: null, 未认证公司声明: '   ',
-    });
-    await expect(创建岗位操作(deps).发布岗位(页面岗位草稿))
-      .rejects.toMatchObject({ code: 'client_validation', field: 'hiring_organization_claim.display_name' });
-    expect(deps.后端.创建岗位).not.toHaveBeenCalled();
-  });
-
-  it('verified affiliation 的企业名会 trim 后成为声明', async () => {
-    const deps = 创建岗位测试依赖({
-      数据源: {
-        创建岗位: vi.fn(async () => ({ 列表: [页面岗位草稿], 服务端: { job_1: BFFOwnerJob样本 } })),
-      } as unknown as HTTP招聘数据源,
-      企业关系列表: [{ ...BFF企业关系样本, organization_display_name: '  星河科技  ' }],
-      当前企业关系编号: BFF企业关系样本.affiliation_id,
-    });
-    await 创建岗位操作(deps).发布岗位(页面岗位草稿);
-    expect(deps.后端.创建岗位).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        publisherMode: 'direct',
-        hiringOrganizationClaim: { display_name: '星河科技', legal_name: null },
-      }),
-    );
   });
 
   it('发布岗位后 owner 响应连 publisher/hiring refs/status 存进 后端状态.岗位快照', async () => {

@@ -29,10 +29,11 @@ function ref(id: string, display_name: string) {
   return { id, display_name };
 }
 
-/** P1C Task 5：Job 创建的显式 claim 输入（direct 直发 + 未认证声明起底） */
-const 直接发岗上下文 = (display_name: string): 岗位创建上下文 => ({
+/** 合同 C：Job 创建的双企业坐标输入（direct 两侧同 ID；agency 各自选定）。 */
+const 直接发岗上下文 = (id: string): 岗位创建上下文 => ({
   publisherMode: 'direct',
-  hiringOrganizationClaim: { display_name, legal_name: null },
+  publisherOrganizationRef: id,
+  hiringOrganizationRef: id,
 });
 
 /** P0 修复 Task 4：JobCreate 的最小完整草稿 —— 目录引用齐备，描述与要求各自独立非空。
@@ -175,6 +176,20 @@ describe('候选人后端映射', () => {
     });
   });
 
+  // 合同 C：发布模式与双企业编号从 OwnerJob 原样恢复；缺 ref 的旧岗位保持未选，
+  // 绝不从 claim 或名片推断坐标。
+  it('从BFF岗位 恢复发布模式与双企业编号，缺 ref 旧岗位不造坐标', () => {
+    const agency = { ...BFF岗位样本, publisher_mode: 'agency' as const, publisher_organization_ref: 'org_pub', hiring_organization_ref: 'org_client' };
+    expect(从BFF岗位(agency, {})).toMatchObject({
+      发布模式: 'agency', 发布方企业编号: 'org_pub', 用人企业编号: 'org_client',
+    });
+    // legacy claim-only 岗位：refs 缺席就是缺席，不把 claim 名当坐标
+    const 旧岗位 = 从BFF岗位(BFF岗位样本, {});
+    expect(旧岗位.发布模式).toBe('direct');
+    expect(旧岗位).not.toHaveProperty('发布方企业编号');
+    expect(旧岗位).not.toHaveProperty('用人企业编号');
+  });
+
   // ── 岗位办公方式闭合映射（backend 数据真相源 Task C）──
   // 页面 canonical 固定 现场/混合/全远程，wire 固定 onsite/hybrid/remote，
   // 读入与创建/补丁共用唯一一组双向映射；非法页值 fail closed，不再静默回退 onsite。
@@ -227,9 +242,9 @@ describe('候选人后端映射', () => {
       类别引用: { id: 'tax_product', display_name: '产品经理' },
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
       结构化要求已确认: true,
-    }, 直接发岗上下文('云衢科技'));
+    }, 直接发岗上下文('org_yunqu'));
     expect(body).toMatchObject({
-      publisher_mode: 'direct', hiring_organization_claim: { display_name: '云衢科技', legal_name: null },
+      publisher_mode: 'direct', publisher_organization_ref: 'org_yunqu', hiring_organization_ref: 'org_yunqu',
       title: 页面岗位样本.名称, category_id: 'tax_product', location_id: 'loc_shanghai',
       keywords: 页面岗位样本.职位关键词, private_screening_preferences: 页面岗位样本.筛选要求,
     });
@@ -237,15 +252,11 @@ describe('候选人后端映射', () => {
     expect(body).not.toHaveProperty('实习转正');
   });
 
-  // P0 修复 Task 4：真实 BFF 的 JobCreate 要求公司声明 / 描述 / 要求 三条各自 trim 后非空。
+  // P0 修复 Task 4：真实 BFF 的 JobCreate 要求描述 / 要求 两条各自 trim 后非空。
   // 「requirements 为空就复用 description」的老回退已删 —— 两个字段必须独立。
-  it('JobCreate 独立 trim 公司名、描述和要求，不互相复制', () => {
-    const body = 转岗位创建(完整岗位草稿, {
-      publisherMode: 'direct',
-      hiringOrganizationClaim: { display_name: '  星河科技  ', legal_name: null },
-    });
+  it('JobCreate 独立 trim 描述和要求，不互相复制', () => {
+    const body = 转岗位创建(完整岗位草稿, 直接发岗上下文('org_xinghe'));
     expect(body).toMatchObject({
-      hiring_organization_claim: { display_name: '星河科技', legal_name: null },
       description: '职位描述正文',
       requirements: '职位要求正文',
     });
@@ -263,18 +274,42 @@ describe('候选人后端映射', () => {
     }
   });
 
-  it('公司声明为空时 mapper 不生成 JobCreate', () => {
+  // ── 合同 C：创建 body 的双企业坐标 ──
+  // 两个 ref 都是发布者的显式目录选择；direct 模式两侧必须相同。声明名（claim）由
+  // 服务端从 hiring_organization_ref 快照生成，不再出现在创建 body 里。
+
+  it.each([
+    ['发布方', { publisherOrganizationRef: '', hiringOrganizationRef: 'org_h' }, 'publisher_organization_ref', '请选择发布方企业'],
+    ['用人', { publisherOrganizationRef: 'org_p', hiringOrganizationRef: '   ' }, 'hiring_organization_ref', '请选择用人企业'],
+  ])('新建缺%s企业 ref 时在生成 body 前拒绝并指明字段', (_label, 覆盖, field, 文案) => {
     try {
-      转岗位创建(完整岗位草稿, {
-        publisherMode: 'direct',
-        hiringOrganizationClaim: { display_name: '   ', legal_name: null },
-      });
-      expect.unreachable('空白公司声明必须拒绝');
+      转岗位创建(完整岗位草稿, { publisherMode: 'direct', ...覆盖 });
+      expect.unreachable('缺企业 ref 必须拒绝');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'client_validation', field });
+      expect((error as Error).message).toBe(文案);
+    }
+  });
+
+  it('direct 两 refs 不相等在发请求前拒绝', () => {
+    try {
+      转岗位创建(完整岗位草稿, { publisherMode: 'direct', publisherOrganizationRef: 'org_a', hiringOrganizationRef: 'org_b' });
+      expect.unreachable('direct 不相等必须拒绝');
     } catch (error) {
       expect(error).toMatchObject({
-        code: 'client_validation', field: 'hiring_organization_claim.display_name',
+        code: 'client_validation', field: 'hiring_organization_ref',
       });
+      expect((error as Error).message).toBe('直招岗位的发布方与用人企业必须相同');
     }
+  });
+
+  it('agency 创建两个不同 refs 同时在场', () => {
+    const body = 转岗位创建(完整岗位草稿, {
+      publisherMode: 'agency', publisherOrganizationRef: 'org_pub', hiringOrganizationRef: 'org_client',
+    });
+    expect(body).toMatchObject({
+      publisher_mode: 'agency', publisher_organization_ref: 'org_pub', hiring_organization_ref: 'org_client',
+    });
   });
 
   // Task 2：补丁收敛为 sparse diff —— 只发实际变化的可编辑字段（trim 后参与比较），
@@ -320,22 +355,24 @@ describe('候选人后端映射', () => {
     }
   });
 
-  // P1C Task 5：创建/补丁 body 不得携带服务端专有 refs 与 verification status。
-  it('岗位创建与补丁不携带 organization refs / verification status', () => {
+  // 合同 C：创建 JSON 恒带两个显式企业 ref，且不再有 claim / affiliation ref / verification status
+  // （声明名与认证状态由服务端从 hiring_organization_ref 快照/推导，是只读投影）。
+  it('创建 JSON 带两个企业 refs，无 hiring_organization_claim / affiliation ref / verification status', () => {
     const 带引用 = {
       ...页面岗位样本,
       类别引用: { id: 'tax_product', display_name: '产品经理' },
       地点引用: { id: 'loc_shanghai', display_name: '上海' },
       结构化要求已确认: true,
     };
-    expect(JSON.stringify(转岗位创建(带引用, 直接发岗上下文('云衢科技'))))
-      .not.toMatch(/publisher_affiliation_ref|publisher_organization_ref|hiring_organization_ref|verification_status/);
-    expect(JSON.stringify(转岗位补丁(带引用, BFF岗位样本)))
-      .not.toMatch(/publisher_affiliation_ref|publisher_organization_ref|hiring_organization_ref|verification_status/);
+    const json = JSON.stringify(转岗位创建(带引用, 直接发岗上下文('org_yunqu')));
+    expect(json).toMatch(/publisher_organization_ref/);
+    expect(json).toMatch(/hiring_organization_ref/);
+    expect(json)
+      .not.toMatch(/hiring_organization_claim|publisher_affiliation_ref|verification_status/);
   });
 
-  // P1C Task 5：普通 JD 编辑不拿当前自由文本改 claim，补丁沿用 previous 的 mode 与 claim。
-  // Task 2：sparse 之后「沿用」的含义就是这两类字段根本不进 body。
+  // 合同 C：普通 JD 编辑不拿当前自由文本改 claim，也不改 mode；sparse 之后
+  // 「沿用」的含义就是 mode 与 claim 根本不进 body。
   it('岗位补丁沿用 previous.publisher_mode 与 previous.hiring_organization_claim', () => {
     const previous = {
       ...BFF岗位样本,
@@ -345,6 +382,101 @@ describe('候选人后端映射', () => {
     const body = 转岗位补丁({ ...页面岗位样本, 结构化要求已确认: true }, previous);
     expect(body).not.toHaveProperty('publisher_mode');
     expect(body).not.toHaveProperty('hiring_organization_claim');
+    expect(body).not.toHaveProperty('publisher_organization_ref');
+    expect(body).not.toHaveProperty('hiring_organization_ref');
+  });
+
+  // ── 合同 C：补丁的双企业坐标 sparse 语义 ──
+  // 仅用户实际改变的 refs 进补丁；未改公司时不回传 refs/claim，也不受名片改变影响。
+  // 改企业会触发后端按模式验证两侧：direct 两侧相同（表单一次选择同写两键），
+  // agency 任一侧缺坐标（旧岗位没存过）时先补齐两侧再提交。
+
+  it('旧 direct 缺 refs 只改 JD：PATCH 无 refs / mode / claim，可以保存', () => {
+    const 旧岗位 = {
+      ...BFF岗位样本,
+      publisher_organization_ref: undefined,
+      hiring_organization_ref: undefined,
+    };
+    const body = 转岗位补丁({ ...完整岗位草稿, 职位描述: '改后的描述', 职位要求: '改后的要求' }, 旧岗位);
+    expect(body).toMatchObject({ description: '改后的描述', requirements: '改后的要求' });
+    expect(body).not.toHaveProperty('publisher_mode');
+    expect(body).not.toHaveProperty('publisher_organization_ref');
+    expect(body).not.toHaveProperty('hiring_organization_ref');
+    expect(body).not.toHaveProperty('hiring_organization_claim');
+  });
+
+  it('direct 改选后两个相同 refs 同时进 PATCH，不带 mode', () => {
+    const previous = {
+      ...BFF岗位样本,
+      publisher_organization_ref: 'org_old',
+      hiring_organization_ref: 'org_old',
+    };
+    // 页面基线从 previous 反 hydrate，其余字段与 previous 一致 —— 补丁里只应有 refs
+    const 页面 = { ...从BFF岗位(previous, {}), 发布方企业编号: 'org_new', 用人企业编号: 'org_new' };
+    const body = 转岗位补丁(页面, previous);
+    expect(body).toEqual({ publisher_organization_ref: 'org_new', hiring_organization_ref: 'org_new' });
+  });
+
+  it('direct 改选后两 refs 不相等在发请求前拒绝并指明字段', () => {
+    try {
+      转岗位补丁({
+        ...完整岗位草稿, 发布模式: 'direct', 发布方企业编号: 'org_a', 用人企业编号: 'org_b',
+      }, BFF岗位样本);
+      expect.unreachable('direct 不相等必须拒绝');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'client_validation', field: 'hiring_organization_ref' });
+    }
+  });
+
+  it('agency 改用人侧且发布方在档：PATCH 只带实际改变的用人 ref', () => {
+    const previous = {
+      ...BFF岗位样本,
+      publisher_mode: 'agency' as const,
+      publisher_organization_ref: 'org_pub',
+      hiring_organization_ref: 'org_client_old',
+    };
+    // 页面基线从 previous 反 hydrate（发布模式/发布方 ref 随读恢复），只改用人侧
+    const 页面 = { ...从BFF岗位(previous, {}), 用人企业编号: 'org_client_new' };
+    const body = 转岗位补丁(页面, previous);
+    expect(body).toEqual({ hiring_organization_ref: 'org_client_new' });
+  });
+
+  it('agency 未改企业的无关编辑不强制改企业，PATCH 无 refs', () => {
+    const previous = {
+      ...BFF岗位样本,
+      publisher_mode: 'agency' as const,
+      publisher_organization_ref: undefined,
+      hiring_organization_ref: undefined,
+    };
+    const body = 转岗位补丁({
+      ...完整岗位草稿, 发布模式: 'agency', 发布方企业编号: undefined, 用人企业编号: undefined,
+      职位描述: '改后的描述',
+    }, previous);
+    expect(body).toMatchObject({ description: '改后的描述' });
+    expect(body).not.toHaveProperty('publisher_mode');
+    expect(body).not.toHaveProperty('publisher_organization_ref');
+    expect(body).not.toHaveProperty('hiring_organization_ref');
+  });
+
+  it('agency 改企业但另一侧缺失：发请求前拒绝并指明缺失侧', () => {
+    const previous = {
+      ...BFF岗位样本,
+      publisher_mode: 'agency' as const,
+      publisher_organization_ref: undefined,
+      hiring_organization_ref: undefined,
+    };
+    // 用户改选了发布方，但用人侧从未存过坐标也不在草稿里 —— 必须先补齐两侧
+    try {
+      转岗位补丁({
+        ...完整岗位草稿, 发布模式: 'agency', 发布方企业编号: 'org_pub_new', 用人企业编号: undefined,
+      }, previous);
+      expect.unreachable('agency 缺另一侧必须拒绝');
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: 'client_validation', field: 'hiring_organization_ref',
+      });
+      expect((error as Error).message).toBe('请选择用人企业');
+    }
   });
 
   it('经验要求按 BFF enum 映射，不静默降级为 none', () => {

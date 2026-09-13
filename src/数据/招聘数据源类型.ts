@@ -119,14 +119,15 @@ export interface 首次意向输入 {
 }
 
 /**
- * P1C Task 5：Job 创建的显式 claim 输入。页面/操作层只声明 direct 直发与
- * 用人企业声明（display_name + legal_name），服务端专有的 refs 与 verification status
- * 一律由后端推导，不进创建 body。更新（补丁）不再接上下文：沿用 previous 的
- * publisher_mode 与 hiring_organization_claim，普通 JD 编辑不改 claim。
+ * 2026-09-13 合同 C：Job 创建的双企业坐标输入。页面/操作层只声明发布模式与两侧目录
+ * 企业 ID（direct 两侧相等，agency 各自明确选定），服务端从 hiring_organization_ref
+ * 快照生成声明名并推导认证状态 —— claim / affiliation ref / verification status
+ * 都不进创建 body。更新（补丁）仍不接上下文：仅将用户实际改变的 refs 进补丁。
  */
 export interface 岗位创建上下文 {
-  publisherMode: 'direct';
-  hiringOrganizationClaim: { display_name: string; legal_name: string | null };
+  publisherMode: 'direct' | 'agency';
+  publisherOrganizationRef: string;
+  hiringOrganizationRef: string;
 }
 
 export interface 页面意向快照 {

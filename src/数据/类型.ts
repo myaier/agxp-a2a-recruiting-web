@@ -302,6 +302,14 @@ export interface 在招岗位 {
    *  （Task 5）改为必填 —— 后端读经 从BFF硬性条件 必返完整块，Mock 列表 fixture
    *  也逐个显式给出；「未说明」只来自服务端 unknown，前端不得代答也不与 不要求 合并 */
   硬性事实: 岗位硬性事实;
+  // ── 合同 C：岗位双企业坐标（2026-09-13）──
+  /** Backend OwnerJob 读原样恢复；编辑不从名片重新推断。前端新建模式只有 direct
+   *  （agency 由已存在岗位的 publisher_mode 恢复并展示双企业行），Mock 模式为 undefined */
+  发布模式?: 'direct' | 'agency';
+  /** 发布方（代理模式）/ 用人企业（direct 模式与它相等）的目录企业 ID；缺 ref 的旧岗位为 undefined（行显示未选） */
+  发布方企业编号?: string;
+  /** 用人企业的目录企业 ID；缺 ref 的旧岗位为 undefined */
+  用人企业编号?: string;
   // ── 岗位详情页（2026-08-20 新增）：BOSS 对照补齐的三项 ──
   /** 职位关键词：发布岗位里多选，岗位详情「职位详情」区以 chips 展示 */
   职位关键词?: string[];

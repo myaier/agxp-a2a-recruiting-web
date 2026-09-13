@@ -25,11 +25,12 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { 岗位职业分类正文 } from '../组件/岗位职业分类正文';
+import 公司选择抽屉接线 from '../组件/公司选择抽屉接线';
+import { use组织查询 } from './组织查询钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 职业分类表, 查大类 } from '../数据/职业分类';
 import { use城市搜索 } from './城市查询钩子';
 import { 合并目录页 } from '../数据/目录选择';
-import { 可用企业关系 } from '../数据/组织映射';
 import { 空岗位硬性事实 } from '../数据/类型';
 import type { 在招岗位, 岗位硬性事实 } from '../数据/类型';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
@@ -42,6 +43,7 @@ import type {
   BFFJD办公方式,
   BFFJD学历,
   BFFJD经验,
+  BFF组织搜索项,
 } from '../数据/BFF契约';
 
 const 步骤顺序 = ['基础信息', '职位描述', '职位要求'] as const;
@@ -95,12 +97,20 @@ const 是学历条 = (条: string) => /^(大专|本科|硕士|博士)及以上$/
 // ── P0 修复 Task 6：服务端 422 的岗位表单投影 ──────────────────────
 // 只把「已知字段路径 × 已知空值类 reason」翻成用户能照做的中文；未知路径或未知
 // reason 一律落通用岗位文案 —— 机器 reason 绝不原样上屏。
+// 2026-09-13 合同 C：双企业坐标的服务端校验（未知/停用企业等）不看 reason，
+// 统一指回对应的企业选择行 —— claim 键退役，原 'hiring_organization_claim.display_name'
+// 投影随之删除。
 const 可本地化空值原因 = new Set(['required', 'blank', 'must_not_be_blank']);
 const 岗位字段文案: Record<string, string> = {
-  'hiring_organization_claim.display_name': '请填写公司名称',
   office_location: '请填写办公地点',
   description: '请填写职位描述',
   requirements: '请填写职位要求',
+};
+/** 企业坐标字段：任何 validation reason 都指回选择行（提交侧还会据此切回第三步）。 */
+const 岗位企业字段 = new Set(['publisher_organization_ref', 'hiring_organization_ref']);
+const 岗位企业字段文案: Record<string, string> = {
+  publisher_organization_ref: '请重新选择发布方企业',
+  hiring_organization_ref: '请重新选择用人企业',
 };
 
 /** 归一字段路径：点分（a.b）与 JSON Pointer（/a/b）两种写法收敛成同一把 key。 */
@@ -113,10 +123,19 @@ export function 取岗位提交错误文案(error: unknown): string {
     return 取后端错误文案(error);
   }
   for (const field of error.fieldErrors) {
-    const message = 岗位字段文案[归一字段路径(field.path)];
+    const path = 归一字段路径(field.path);
+    // 企业坐标失败一律指回选择行（reason 不参与判断：未知/停用企业都要重选）
+    if (岗位企业字段.has(path)) return 岗位企业字段文案[path];
+    const message = 岗位字段文案[path];
     if (message && 可本地化空值原因.has(field.reason)) return message;
   }
   return '请检查岗位信息';
+}
+
+/** 提交错误是否落在了企业坐标上（用于把用户带回企业选择行所在的第三步）。 */
+export function 是岗位企业校验错误(error: unknown): boolean {
+  return error instanceof BFF错误 && error.code === 'validation_failed'
+    && error.fieldErrors.some((field) => 岗位企业字段.has(归一字段路径(field.path)));
 }
 
 /** 从存量硬性条件里把经验档拆出来，如 '5 年以上经验' → '5 年以上'；拆不出返回 null */
@@ -258,6 +277,13 @@ const JD经验映射: Record<BFFJD经验, string> = {
 const 引用相等 = (left?: 目录选择值, right?: 目录选择值) =>
   left?.id === right?.id && left?.display_name === right?.display_name;
 
+/** 合同 C：企业选择行的草稿。名称 null = 尚未按 ID 读回（读取失败 → 行显示未选，可更换）。 */
+interface 企业草稿 {
+  id: string;
+  名称: string | null;
+  读取失败: boolean;
+}
+
 /** POST 起飞前的表单快照：全部可建议字段 + 三个耦合组的成员（Spec §8.1）。 */
 interface JD表单快照 {
   岗位名称: string;
@@ -367,6 +393,98 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
   const { 设词: 设城市搜索词, 结果: 城市候选, 搜索中: 城市搜索中, 下一页游标: 城市下一页, 加载中: 城市加载中, 加载更多: 城市加载更多 } = use城市搜索(
     是后端 ? 目录查询?.查询Location : undefined,
   );
+  // ── 合同 C：岗位双企业坐标草稿（2026-09-13）──
+  // 新建恒 direct；编辑从岗位自身的 发布模式 与两个 ID 恢复，绝不按当前名片猜。
+  // 名称经 读取目录企业 按 ID 恢复（读取失败/缺 ref 的行显示 未选 —— 允许更换，
+  // 不显示成已成功保存）；选中只改本岗草稿，取消保持原值。
+  const 发布模式: 'direct' | 'agency' = 编辑目标?.发布模式 ?? 'direct';
+  const [发布方草稿, 设发布方草稿] = useState<企业草稿 | null>(
+    () => 编辑目标?.发布方企业编号 ? { id: 编辑目标.发布方企业编号, 名称: null, 读取失败: false } : null,
+  );
+  const [用人草稿, 设用人草稿] = useState<企业草稿 | null>(
+    () => 编辑目标?.用人企业编号 ? { id: 编辑目标.用人企业编号, 名称: null, 读取失败: false } : null,
+  );
+  // 编辑态名称读取：只有还带着 null 名称的草稿才按 ID 经 读取目录企业 恢复；
+  // 用户改选后名称已直接落草稿，不会重读覆盖。失败置 读取失败（行显示未选，可更换），
+  // 绝不显示成已成功保存的名称。
+  useEffect(() => {
+    if (!是后端 || !发布方草稿 || 发布方草稿.名称 !== null || 发布方草稿.读取失败) return;
+    let 取消 = false;
+    操作.读取目录企业(发布方草稿.id)
+      .then((项) => {
+        if (!取消) 设发布方草稿((旧) => 旧 && 旧.id === 发布方草稿.id ? { ...旧, 名称: 项.display_name } : 旧);
+      })
+      .catch(() => {
+        if (!取消) 设发布方草稿((旧) => 旧 && 旧.id === 发布方草稿.id ? { ...旧, 读取失败: true } : 旧);
+      });
+    return () => { 取消 = true; };
+  }, [是后端, 发布方草稿, 操作]);
+  useEffect(() => {
+    if (!是后端 || !用人草稿 || 用人草稿.名称 !== null || 用人草稿.读取失败) return;
+    let 取消 = false;
+    操作.读取目录企业(用人草稿.id)
+      .then((项) => {
+        if (!取消) 设用人草稿((旧) => 旧 && 旧.id === 用人草稿.id ? { ...旧, 名称: 项.display_name } : 旧);
+      })
+      .catch(() => {
+        if (!取消) 设用人草稿((旧) => 旧 && 旧.id === 用人草稿.id ? { ...旧, 读取失败: true } : 旧);
+      });
+    return () => { 取消 = true; };
+  }, [是后端, 用人草稿, 操作]);
+
+  // 新建（恒 direct）：默认企业来自招聘档案已保存的 organization_ref，读取有效才选中；
+  // 无档案默认或读取失败 → 行保持未选，提交前必须用户选择。用户经抽屉触碰后
+  // 迟到的默认读取一律不覆盖草稿（同 招聘名片 的口径）。
+  const 已触碰企业 = useRef(false);
+  const 档案坐标 = 状态.招聘方档案?.organization_ref ?? null;
+  useEffect(() => {
+    if (!是后端 || 编辑目标 || 已触碰企业.current || 档案坐标 === null) return;
+    // 已有任一草稿（含上一次默认读取的结果）不再重复读取
+    if (发布方草稿 || 用人草稿) return;
+    let 取消 = false;
+    操作.读取目录企业(档案坐标)
+      .then((项) => {
+        if (取消 || 已触碰企业.current) return;
+        const 默认: 企业草稿 = { id: 项.organization_id, 名称: 项.display_name, 读取失败: false };
+        设发布方草稿(默认);
+        设用人草稿({ ...默认 });
+      })
+      .catch(() => { /* 无有效默认：行保持未选，提交前必须用户选择 */ });
+    return () => { 取消 = true; };
+  }, [是后端, 编辑目标, 档案坐标, 发布方草稿, 用人草稿, 操作]);
+
+  // ── 企业选择抽屉（合同 B）：搜索/创建走 组织操作 三方法，结果 ID 只经选定回填本岗草稿 ──
+  const [企业抽屉, 设企业抽屉] = useState<'发布方' | '用人' | null>(null);
+  const 企业查询 = use组织查询({
+    搜索: 操作.搜索组织,
+    创建: 操作.创建组织,
+    作用域键: JSON.stringify([数据源模式, 后端状态?.主体?.subject_id ?? null, '发布岗位', 编辑目标?.编号 ?? 'new']),
+  });
+  /** 抽屉回填：direct 一次选择同时写两侧相同 ID；agency 只写所针对的一侧。 */
+  const 选定企业 = (槽: '发布方' | '用人', 项: BFF组织搜索项) => {
+    已触碰企业.current = true;
+    const 草稿: 企业草稿 = { id: 项.organization_id, 名称: 项.display_name, 读取失败: false };
+    if (发布模式 === 'direct') {
+      设发布方草稿(草稿);
+      设用人草稿({ ...草稿 });
+    } else if (槽 === '发布方') {
+      设发布方草稿(草稿);
+    } else {
+      设用人草稿(草稿);
+    }
+    // 合同 B：父页面关闭抽屉时先作废再隐藏，在飞搜索/创建一并作废
+    企业查询.作废();
+    设企业抽屉(null);
+  };
+  async function 添加企业(名称: string) {
+    const 项 = await 企业查询.添加(名称);
+    if (项 && 企业抽屉) 选定企业(企业抽屉, 项);
+  }
+  function 关闭企业抽屉() {
+    // 取消/Escape/遮罩：草稿不变，作废在飞请求后隐藏
+    企业查询.作废();
+    设企业抽屉(null);
+  }
   // 实习要求（BOSS 对照补齐 2026-08-20）：只有招聘类型 = 实习生 时录入与落库。
   // 实习生看的是「实习几个月 · 每周到岗几天」，不是工龄档
   const [实习月数, 设实习月数] = useState(编辑目标?.实习月数 ?? 3);
@@ -798,19 +916,27 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
     if (!工作城市.trim()) return { 步骤: 2, 文案: '请填写工作城市' };
     // Task 7：Backend 工作城市必须从候选选（落 地点引用）；手输未选时阻止发布
     if (是后端 && !地点引用) return { 步骤: 2, 文案: '请从候选城市中选择' };
-    // 公司声明只在 Backend 新建岗位时有意义（Mock 发岗语义冻结，仍走 企业认证.公司）：
-    // 新建走 JobCreate，没有可用的 verified 关系时 未认证公司声明 就是 claim 的唯一来源，
-    // 必须非空。编辑走 JobPatch —— 请求里根本不带客户端 claim，服务端沿用岗位原有的
-    // 那份声明，这里没有任何东西要护；何况本页没有公司名输入框（它在招聘名片屏），
-    // 换设备（未认证公司声明 是设备本地态）或关系被撤销时挡在这里，这条 toast 无从消解。
-    const verified = 状态.企业关系列表.some(
-      (项) => 项.affiliation_id === 状态.当前企业关系编号 && 可用企业关系(项),
-    );
-    if (是后端 && !编辑态 && !verified && !状态.未认证公司声明.trim()) {
-      // review-final：文案必须指路。本页没有公司名输入框，只说「请填写公司名称」
-      // 等于把用户弹回第二步去找一个不存在的字段。（文件头 岗位字段文案 里的同名
-      // 映射是服务端 422 的投影，属于契约层，不跟这条页面前置校验同步改。）
-      return { 步骤: 2, 文案: '请先在招聘名片填写公司名称' };
+    // 合同 C：岗位企业坐标是显式选择，不再读 名片/未认证声明（「去招聘名片填写名称」
+    // 的阻挡随之删除）。新建（恒 direct）没有有效的企业默认时必须用户选择；编辑只在
+    // 用户实际改选了企业时要求两侧齐备 —— agency 任一侧缺坐标先补齐，direct 一次
+    // 选择自动两侧同值；无关字段编辑不强制改企业。
+    if (是后端) {
+      const 改选了 = (草稿: 企业草稿 | null, 原值: string | undefined) => 草稿 !== null && 草稿.id !== 原值;
+      if (编辑目标) {
+        const 改选企业 = 发布模式 === 'agency'
+          ? (改选了(发布方草稿, 编辑目标.发布方企业编号) || 改选了(用人草稿, 编辑目标.用人企业编号))
+          : 改选了(用人草稿, 编辑目标.用人企业编号);
+        if (改选企业) {
+          if (发布模式 === 'agency') {
+            if (!发布方草稿) return { 步骤: 2, 文案: '请选择发布方企业' };
+            if (!用人草稿) return { 步骤: 2, 文案: '请选择用人企业' };
+          } else if (!用人草稿) {
+            return { 步骤: 2, 文案: '请选择用人企业' };
+          }
+        }
+      } else if (!用人草稿) {
+        return { 步骤: 2, 文案: '请选择用人企业' };
+      }
     }
     // 全远程按后端合同允许空办公地址；其余办公方式地址必填
     if (办公方式 !== '全远程' && !办公地.trim()) return { 步骤: 2, 文案: '请填写办公地点' };
@@ -881,6 +1007,13 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
       // Task 5：四问硬性事实独立随对象提交 —— 没点过的问保持 未说明 原样发出，
       // 四员永远齐全（服务端 hard_requirements 必收完整块）；与上面的 legacy 合同互不影响
       硬性事实: { ...硬性事实 },
+      // 合同 C：双企业坐标只在本岗草稿里（选择行/档案默认回填）；Mock 模式不渲染
+      // 选择行，两者 undefined。direct 单行选一次 → 两侧同 ID；agency 两侧各自选定。
+      ...(是后端 ? {
+        发布模式,
+        发布方企业编号: (发布模式 === 'agency' ? 发布方草稿?.id : 用人草稿?.id) ?? undefined,
+        用人企业编号: 用人草稿?.id ?? undefined,
+      } : {}),
     };
   };
 
@@ -946,6 +1079,8 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
       // 诊断只留在开发态；生产用户只看到本地化文案，绝不泄露内部错误对象。
       if (import.meta.env.DEV) console.error('岗位提交失败', 错误);
       轻提示(取岗位提交错误文案(错误));
+      // 合同 C：企业坐标的服务端校验失败（未知/停用企业等）把用户带回企业选择行所在的第三步
+      if (是岗位企业校验错误(错误)) 设第几步(2);
     } finally {
       提交锁.current = false;
     }
@@ -1112,6 +1247,15 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
             城市下一页={城市下一页}
             城市加载中={城市加载中}
             城市加载更多={城市加载更多}
+            // 合同 C：企业选择行 —— direct 一个「用人企业」，agency 加「发布方企业」；
+            // Mock 不传（不渲染选择行，坐标字段为 undefined）
+            企业选择行={是后端 ? {
+              发布模式,
+              发布方值: 发布方草稿?.名称 ?? null,
+              用人值: 用人草稿?.名称 ?? null,
+              开发布方层: () => 设企业抽屉('发布方'),
+              开用人层: () => 设企业抽屉('用人'),
+            } : null}
           />
         ) : null}
 
@@ -1214,6 +1358,21 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
               关闭={() => 设类别层开(false)}
             />
           )
+        ) : null}
+
+        {/* 合同 C：企业选择抽屉 —— 薄包装 公司选择抽屉接线 消费本页 use组织查询；
+            选定回填只改本岗草稿，取消/遮罩/Escape 保持原值 */}
+        {企业抽屉 ? (
+          <公司选择抽屉接线
+            查询={企业查询}
+            选中键={(企业抽屉 === '发布方' ? 发布方草稿?.id : 用人草稿?.id) ?? null}
+            选定={(键) => {
+              const 项 = 企业查询.结果.find((候选) => 候选.organization_id === 键);
+              if (项 && 企业抽屉) 选定企业(企业抽屉, 项);
+            }}
+            关闭={关闭企业抽屉}
+            添加={添加企业}
+          />
         ) : null}
       </div>
     </次级页外壳>
@@ -1784,6 +1943,7 @@ function 职位要求步({
   城市下一页,
   城市加载中,
   城市加载更多,
+  企业选择行,
 }: {
   编辑态: boolean;
   招聘类型: 招聘类型;
@@ -1822,6 +1982,14 @@ function 职位要求步({
   城市下一页: string | null;
   城市加载中: boolean;
   城市加载更多: () => void;
+  /** 合同 C：企业选择行（direct 一个「用人企业」，agency 加「发布方企业」）；Mock 不传。 */
+  企业选择行: {
+    发布模式: 'direct' | 'agency';
+    发布方值: string | null;
+    用人值: string | null;
+    开发布方层: () => void;
+    开用人层: () => void;
+  } | null;
 }) {
   const { 跳转 } = use导航();
   const 提示不可改 = () => 轻提示('发布后不可修改，如需变更请新发一个岗位');
@@ -1968,6 +2136,30 @@ function 职位要求步({
             onChange={(事件) => 设办公地(事件.target.value)}
           />
         </div>
+
+        {/* 合同 C：企业选择行（紧邻办公地点，坐标是本岗显式选择而非名片推断）。
+            direct 一个「用人企业」（一次选择两 refs 同值）；agency 加「发布方企业」。
+            名称未读回/读取失败/缺 ref 都显示 未选 —— 允许更换，不显示成已成功保存。 */}
+        {企业选择行 ? (
+          <>
+            {企业选择行.发布模式 === 'agency' ? (
+              <button className={`${样式.选择条目} 可点`} onClick={企业选择行.开发布方层}>
+                <span className={样式.条目标签}>发布方企业</span>
+                <span className={样式.选择条目值行}>
+                  <span className={样式.条目值}>{企业选择行.发布方值 ?? '未选'}</span>
+                  <span className={样式.尖括号}>›</span>
+                </span>
+              </button>
+            ) : null}
+            <button className={`${样式.选择条目} 可点`} onClick={企业选择行.开用人层}>
+              <span className={样式.条目标签}>用人企业</span>
+              <span className={样式.选择条目值行}>
+                <span className={样式.条目值}>{企业选择行.用人值 ?? '未选'}</span>
+                <span className={样式.尖括号}>›</span>
+              </span>
+            </button>
+          </>
+        ) : null}
 
       </div>
 

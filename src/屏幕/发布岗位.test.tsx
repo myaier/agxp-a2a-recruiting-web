@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 发布岗位, { 取岗位提交错误文案 } from './发布岗位';
-import { 页面岗位样本, BFF岗位样本 } from '../测试/BFF样本';
+import { 页面岗位样本, BFF岗位样本, BFF招聘方档案样本, BFF组织搜索项样本 } from '../测试/BFF样本';
 import { 转岗位创建, 转岗位补丁 } from '../数据/后端映射';
 import { 在招岗位列表 } from '../数据/企业端模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
@@ -24,6 +24,10 @@ const mock发布岗位 = vi.fn();
 const mock删除岗位 = vi.fn();
 const mock创建JD导入 = vi.fn();
 const mock读取JD导入 = vi.fn();
+// 合同 C：公司选择行走 组织操作 的目录三操作
+const mock搜索组织 = vi.fn();
+const mock创建组织 = vi.fn();
+const mock读取目录企业 = vi.fn();
 
 // P4 互认 Task 3：结构化要求确认勾选框的可访问名称（label 内 span 文案），测试与实现共用
 const 结构化确认文案 =
@@ -61,12 +65,27 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-/** P0 修复 Task 4：发岗前置校验会读组织链三字段，两个桩都按 初始状态 的形状补齐。 */
+/** 合同 C：经公司选择抽屉选一家企业（搜索词触发 debounce 候选查询后点候选）。
+ *  搜索回执按所选企业覆盖缺省桩，保证抽屉里点得到这一行。 */
+async function 经抽屉选企业(
+  用户: ReturnType<typeof userEvent.setup>,
+  项: { organization_id: string; display_name: string },
+) {
+  mock搜索组织.mockResolvedValue({
+    items: [{ ...项, legal_name: null, verification_status: 'verified' as const }],
+    next_cursor: null,
+  });
+  await 用户.type(await screen.findByPlaceholderText('输入公司名称'), 项.display_name);
+  await 用户.click(await screen.findByRole('button', { name: new RegExp(项.display_name) }, { timeout: 3000 }));
+}
+
+/** 发岗前置校验读的桩状态形状：组织链三字段 + 合同 C 的 招聘方档案（默认无 → 无企业默认）。 */
 type 组织覆盖 = {
   企业关系列表?: unknown[];
   当前企业关系编号?: string | null;
   未认证公司声明?: string;
   企业认证?: { 姓名: string; 公司: string };
+  招聘方档案?: typeof BFF招聘方档案样本 | null;
 };
 
 function 组基础状态(覆盖: 组织覆盖 = {}) {
@@ -77,10 +96,12 @@ function 组基础状态(覆盖: 组织覆盖 = {}) {
     当前企业关系编号: 覆盖.当前企业关系编号 ?? null,
     未认证公司声明: 覆盖.未认证公司声明 ?? '星河科技',
     企业认证: 覆盖.企业认证 ?? { 姓名: '林澈', 公司: 'Mock 公司' },
+    // 合同 C：企业默认来自 招聘方档案.organization_ref；缺省 null = 无默认，必须用户选择
+    招聘方档案: 覆盖.招聘方档案 ?? null,
   };
 }
 
-/** 默认 Mock 模式桩：数据源模式 undefined → 是后端=false，与原 Mock 测试同形 */
+/** 默认 Mock 桩：数据源模式 undefined → 是后端=false，与原 Mock 测试同形 */
 function 置Mock应用状态(覆盖: 组织覆盖 = {}) {
   mock应用状态 = {
     状态: 组基础状态(覆盖),
@@ -89,18 +110,28 @@ function 置Mock应用状态(覆盖: 组织覆盖 = {}) {
   };
 }
 
-/** Backend 桩：数据源模式 'backend' + 目录查询 seam（查询Taxonomy/查询Location 可注入） */
+/** Backend 桩：数据源模式 'backend' + 目录查询 seam（查询Taxonomy/查询Location 可注入）
+ *  + 合同 C 的 组织操作 三方法（企业选择行 / 档案默认读取） */
 function 置Backend应用状态(
   查询Taxonomy: ReturnType<typeof vi.fn>,
   查询Location: ReturnType<typeof vi.fn>,
   覆盖: 组织覆盖 = {},
 ) {
+  // 组织操作三方法缺省回执：抽屉搜索能点中一家公司、按 ID 读取能恢复名称。
+  // 用例需要慢/失败读取时自行覆盖。
+  mock搜索组织.mockReset();
+  mock创建组织.mockReset();
+  mock读取目录企业.mockReset();
+  mock搜索组织.mockResolvedValue({ items: [BFF组织搜索项样本], next_cursor: null });
+  mock创建组织.mockResolvedValue({ organization: BFF组织搜索项样本, created: true });
+  mock读取目录企业.mockResolvedValue(BFF组织搜索项样本);
   mock应用状态 = {
     状态: 组基础状态(覆盖),
     派发: vi.fn(),
     操作: {
       更新岗位: mock更新岗位, 发布岗位: mock发布岗位, 删除岗位: mock删除岗位,
       创建JD导入: mock创建JD导入, 读取JD导入: mock读取JD导入,
+      搜索组织: mock搜索组织, 创建组织: mock创建组织, 读取目录企业: mock读取目录企业,
     },
     数据源模式: 'backend',
     // JD 导入入口按当前角色守卫：缺省给 recruiter 主体，用例可按需改写
@@ -344,10 +375,12 @@ describe('发布岗位页 Backend 选择器', () => {
   /** 把三步向导填到「只差点发布」的状态，返回候选城市按钮（已出现但未点）。
    *  选城市=false 时只输入不选；选城市=true 时点候选，落 地点引用。
    *  P0 修复 Task 4：公开要求从既有 JD 导入取得，默认与描述不同；
-   *  职位要求=null 时故意留空，用来验前置校验。 */
+   *  职位要求=null 时故意留空，用来验前置校验。
+   *  合同 C：企业选择行（direct 单行）默认一并选好 —— 缺省桩无 招聘方档案，
+   *  不选企业时发布被「请选择用人企业」拦下；选企业=false 用于验该前置校验。 */
   async function 填到发布前(
     选城市: boolean,
-    选项: { 职位描述?: string | null; 职位要求?: string | null; 勾选确认?: boolean; 从注册流?: boolean } = {},
+    选项: { 职位描述?: string | null; 职位要求?: string | null; 勾选确认?: boolean; 从注册流?: boolean; 选企业?: boolean } = {},
   ) {
     const 用户 = userEvent.setup();
     const 视图 = render(
@@ -404,6 +437,12 @@ describe('发布岗位页 Backend 选择器', () => {
     if (选城市) {
       await 用户.click(候选键);
     }
+    // 合同 C：direct 新建的用人企业选择行 —— 默认经抽屉选一家（两 refs 同值）；
+    // 选企业=false 时留空，发布被前置校验拦下
+    if (选项.选企业 !== false) {
+      await 用户.click(screen.getByRole('button', { name: /用人企业/ }));
+      await 经抽屉选企业(用户, { organization_id: 'org_xinghe', display_name: '星河控股' });
+    }
     // P4 互认 Task 3：Backend 发岗必须显式确认结构化要求。默认勾上，
     // 让既有用例继续走「表单填完即可发布」的主路径；确认语义本身的用例传 勾选确认:false 自己控制
     if (选项.勾选确认 !== false) {
@@ -433,7 +472,7 @@ describe('发布岗位页 Backend 选择器', () => {
     return { 用户, unmount: 视图.unmount };
   }
 
-  it('选类别候选 + 选城市候选 → 发布带 类别引用/地点引用', async () => {
+  it('选类别候选 + 选城市候选 + 选企业 → 发布带 类别引用/地点引用与同值双 refs', async () => {
     const { 用户 } = await 填到发布前(true);
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
 
@@ -441,6 +480,10 @@ describe('发布岗位页 Backend 选择器', () => {
     const 传入 = mock发布岗位.mock.calls[0][0];
     expect(传入.类别引用).toEqual({ id: 'job_be', display_name: '后端开发' });
     expect(传入.地点引用).toEqual({ id: 'loc_shanghai', display_name: '上海' });
+    // 合同 C：direct 一次选择同时产生相同的发布方与用人企业 ID
+    expect(传入.发布模式).toBe('direct');
+    expect(传入.发布方企业编号).toBe('org_xinghe');
+    expect(传入.用人企业编号).toBe('org_xinghe');
   });
 
   // ── Task 6：发布成功后按服务端返回的真实 job_id 选中新岗 ────────────────────
@@ -551,7 +594,7 @@ describe('发布岗位页 Backend 选择器', () => {
     const 岗位 = mock发布岗位.mock.calls[0][0];
     expect(岗位).toMatchObject({ 职位要求: '', 筛选要求: '只给代理' });
     expect(() => 转岗位创建(岗位, {
-      publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null },
+      publisherMode: 'direct', publisherOrganizationRef: 'org_xinghe', hiringOrganizationRef: 'org_xinghe',
     })).toThrow('请填写职位要求');
   });
 
@@ -568,23 +611,24 @@ describe('发布岗位页 Backend 选择器', () => {
     expect(screen.queryByRole('button', { name: '发布岗位并开始寻访' })).toBeNull();
   });
 
-  it('无 verified affiliation 且公司声明为空时零 mutation', async () => {
+  // 合同 C：无企业默认（招聘方档案为 null，读取无效）时必须用户选择 ——
+  // 发布被拦并带回企业选择行所在的第三步；不再有「去招聘名片填写名称」的指路文案。
+  it('新建未选企业时零 mutation，并带回企业选择行', async () => {
     置Backend应用状态(查询Taxonomy, 查询Location, {
       企业关系列表: [], 当前企业关系编号: null, 未认证公司声明: '   ',
     });
-    const { 用户 } = await 填到发布前(true);
+    const { 用户 } = await 填到发布前(true, { 选企业: false });
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
-    // review-final 修复 3：本页没有公司名输入框（它在招聘名片屏）——
-    // 文案必须指路，否则用户被弹回第二步去找一个这里根本不存在的字段。
-    expect(await screen.findByText('请先在招聘名片填写公司名称')).toBeTruthy();
+    expect(await screen.findByText('请选择用人企业')).toBeTruthy();
     expect(mock发布岗位).not.toHaveBeenCalled();
+    // 真的还在企业选择行所在的第三步
+    expect(screen.getByRole('button', { name: /用人企业/ })).toBeTruthy();
+    expect(screen.queryByText('请先在招聘名片填写公司名称')).toBeNull();
   });
 
-  // review-r1 回归：公司声明前置校验只管「新建」。编辑走 JobPatch —— claim 由服务端
-  // 沿用岗位原值，请求里根本不带客户端 claim；本页也没有公司名输入框，所以换设备
-  // （未认证公司声明 是设备本地态）或关系被撤销时挡在这里，那条 toast 无从消解。
-  // 与上一条创建用例互为对照：创建仍被挡，编辑必须放行。
-  it('编辑态无 verified affiliation 且公司声明为空时照常保存', async () => {
+  // 合同 C：编辑不强制补企业坐标 —— 旧岗位缺 refs 且用户只改无关字段时照常保存
+  // （补丁不带 refs/mode/claim）；也不再有「去招聘名片填写名称」的阻挡。
+  it('编辑态缺企业 refs 且只改无关字段时照常保存，不带企业坐标', async () => {
     const 用户 = userEvent.setup();
     mock更新岗位.mockResolvedValue(undefined);
     置Backend应用状态(查询Taxonomy, 查询Location, {
@@ -608,6 +652,7 @@ describe('发布岗位页 Backend 选择器', () => {
     await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
     expect(mock更新岗位.mock.calls[0][0]).toMatchObject({ 编号: 'job_1' });
     expect(screen.queryByText('请先在招聘名片填写公司名称')).toBeNull();
+    expect(screen.queryByText('请选择用人企业')).toBeNull();
   });
 
   it.each([false, true])('手工发布公开岗位要求无需JD导入，从注册流=%s', async 从注册流 => {
@@ -621,7 +666,7 @@ describe('发布岗位页 Backend 选择器', () => {
     await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
-    const 请求 = 转岗位创建(mock发布岗位.mock.calls[0][0], { publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null } });
+    const 请求 = 转岗位创建(mock发布岗位.mock.calls[0][0], { publisherMode: 'direct', publisherOrganizationRef: 'org_xinghe', hiringOrganizationRef: 'org_xinghe' });
     expect(请求.requirements).toBe('熟悉交易系统\n能够独立排查问题');
     expect(请求.private_screening_preferences).toBe('优先金融经验');
     expect(mock创建JD导入).not.toHaveBeenCalled();
@@ -676,7 +721,7 @@ describe('发布岗位页 Backend 选择器', () => {
       经验要求: '不限', 最低学历: '不限', 年薪月数: 12,
     });
     const 请求体 = 转岗位创建(mock发布岗位.mock.calls[0][0], {
-      publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null },
+      publisherMode: 'direct', publisherOrganizationRef: 'org_xinghe', hiringOrganizationRef: 'org_xinghe',
     });
     expect(请求体).toMatchObject({ requirements: '至少 3 年经验，本科优先', private_screening_preferences: '交易系统经验优先', annual_salary_months: 12 });
   });
@@ -814,6 +859,202 @@ describe('发布岗位页 Backend 选择器', () => {
       编号: 'job_1',
       结构化要求已确认: false,
     });
+  });
+
+  // ── 合同 C：企业选择行 / 档案默认 / 编辑按岗位自身 ID 恢复 ──────────────
+
+  it('新建默认读取档案所选企业，读取有效后才选中', async () => {
+    let 放行档案默认!: (项: { organization_id: string; display_name: string }) => void;
+    置Backend应用状态(查询Taxonomy, 查询Location, {
+      招聘方档案: { ...BFF招聘方档案样本, organization_ref: 'org_default' },
+    });
+    // 档案默认读取挂起（置桩会 reset，所以放在置桩之后）：行保持未选
+    mock读取目录企业.mockImplementationOnce(() => new Promise((ok) => { 放行档案默认 = ok; }));
+    const { 用户 } = await 填到发布前(true, { 选企业: false });
+    // 默认读取未回：行保持未选
+    expect(screen.getByRole('button', { name: /用人企业/ }).textContent).toContain('未选');
+    await act(async () => {
+      放行档案默认({ organization_id: 'org_default', display_name: '档案默认企业' });
+      await Promise.resolve();
+    });
+    // 读取有效才选中：行落到档案企业名
+    expect(screen.getByRole('button', { name: /用人企业/ }).textContent).toContain('档案默认企业');
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    // 直招单行选一次：两个 refs 相等
+    expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
+      发布模式: 'direct', 发布方企业编号: 'org_default', 用人企业编号: 'org_default',
+    });
+  });
+
+  it('用户触碰后迟到档案默认读取不能覆盖草稿', async () => {
+    let 放行档案默认!: (项: { organization_id: string; display_name: string }) => void;
+    置Backend应用状态(查询Taxonomy, 查询Location, {
+      招聘方档案: { ...BFF招聘方档案样本, organization_ref: 'org_default' },
+    });
+    mock读取目录企业.mockImplementationOnce(() => new Promise((ok) => { 放行档案默认 = ok; }));
+    const { 用户 } = await 填到发布前(true); // 用户经抽屉改选 星河控股
+    expect(screen.getByRole('button', { name: /用人企业/ }).textContent).toContain('星河控股');
+    await act(async () => {
+      放行档案默认({ organization_id: 'org_default', display_name: '档案默认企业' });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('button', { name: /用人企业/ }).textContent).toContain('星河控股');
+    expect(screen.getByRole('button', { name: /用人企业/ }).textContent).not.toContain('档案默认企业');
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
+      发布方企业编号: 'org_xinghe', 用人企业编号: 'org_xinghe',
+    });
+  });
+
+  it('JD 解析建议只填正文等字段，不创造或覆盖企业 ID', async () => {
+    // 无档案默认且用户未选企业：建议（公开要求）应用后企业行仍是未选，发布被拦
+    const { 用户 } = await 填到发布前(true, { 选企业: false });
+    expect(screen.getByRole('textbox', { name: '岗位要求' }).textContent.length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /用人企业/ }).textContent).toContain('未选');
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    expect(await screen.findByText('请选择用人企业')).toBeTruthy();
+    expect(mock发布岗位).not.toHaveBeenCalled();
+  });
+
+  it('取消抽屉保持原值，选中只改本岗草稿', async () => {
+    const { 用户 } = await 填到发布前(true, { 选企业: false });
+    await 用户.click(screen.getByRole('button', { name: /用人企业/ }));
+    await 用户.type(await screen.findByPlaceholderText('输入公司名称'), '星河');
+    // 不点候选，直接按遮罩关闭
+    await 用户.click(screen.getByRole('button', { name: '关闭选择企业' }));
+    expect(screen.getByRole('button', { name: /用人企业/ }).textContent).toContain('未选');
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    expect(await screen.findByText('请选择用人企业')).toBeTruthy();
+  });
+
+  // 编辑恢复：每个企业按其 ID 读取，不按当前名片猜；无效企业行不显示成已成功保存。
+  const 按ID回名 = (名称表: Record<string, string>) => mock读取目录企业.mockImplementation(async (id: string) => ({
+    organization_id: id,
+    display_name: 名称表[id] ?? `企业${id}`,
+    legal_name: null,
+    verification_status: 'unverified' as const,
+  }));
+
+  it('direct 编辑按岗位自身 ID 恢复名称；未改企业保存补丁不带 refs', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    按ID回名({ org_own: '自报企业' });
+    const previous = {
+      ...BFF岗位样本,
+      publisher_organization_ref: 'org_own',
+      hiring_organization_ref: 'org_own',
+    };
+    const { 用户 } = await 打开编辑第三步({
+      发布模式: 'direct',
+      发布方企业编号: 'org_own',
+      用人企业编号: 'org_own',
+    });
+    expect(await screen.findByRole('button', { name: /用人企业.*自报企业/ })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({
+      发布模式: 'direct', 发布方企业编号: 'org_own', 用人企业编号: 'org_own',
+    });
+    expect(转岗位补丁(mock更新岗位.mock.calls[0][0], previous)).toEqual({});
+  });
+
+  it('direct 编辑改选后两个相同 refs 同时在场', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    按ID回名({ org_own: '自报企业' });
+    const previous = {
+      ...BFF岗位样本,
+      publisher_organization_ref: 'org_own',
+      hiring_organization_ref: 'org_own',
+    };
+    const { 用户 } = await 打开编辑第三步({
+      发布模式: 'direct',
+      发布方企业编号: 'org_own',
+      用人企业编号: 'org_own',
+    });
+    await 用户.click(screen.getByRole('button', { name: /用人企业/ }));
+    await 经抽屉选企业(用户, { organization_id: 'org_xinghe', display_name: '星河控股' });
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({
+      发布方企业编号: 'org_xinghe', 用人企业编号: 'org_xinghe',
+    });
+    expect(转岗位补丁(mock更新岗位.mock.calls[0][0], previous))
+      .toEqual({ publisher_organization_ref: 'org_xinghe', hiring_organization_ref: 'org_xinghe' });
+  });
+
+  it('agency 编辑显示两行并各自按 ID 恢复；改用人侧保存只带该 ref', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    按ID回名({ org_pub: '代理发布企业', org_client: '客户企业' });
+    const previous = {
+      ...BFF岗位样本,
+      publisher_mode: 'agency' as const,
+      publisher_organization_ref: 'org_pub',
+      hiring_organization_ref: 'org_client',
+    };
+    const { 用户 } = await 打开编辑第三步({
+      发布模式: 'agency',
+      发布方企业编号: 'org_pub',
+      用人企业编号: 'org_client',
+    });
+    expect(await screen.findByRole('button', { name: /发布方企业.*代理发布企业/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /用人企业.*客户企业/ })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /用人企业/ }));
+    await 经抽屉选企业(用户, { organization_id: 'org_xinghe', display_name: '星河控股' });
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({
+      发布模式: 'agency', 发布方企业编号: 'org_pub', 用人企业编号: 'org_xinghe',
+    });
+    expect(转岗位补丁(mock更新岗位.mock.calls[0][0], previous))
+      .toEqual({ hiring_organization_ref: 'org_xinghe' });
+  });
+
+  it('agency 改用人侧但发布方缺失：要求先补齐两侧，零 mutation', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    按ID回名({ org_client: '客户企业' });
+    const { 用户 } = await 打开编辑第三步({
+      发布模式: 'agency',
+      用人企业编号: 'org_client',
+    });
+    await 用户.click(screen.getByRole('button', { name: /用人企业/ }));
+    await 经抽屉选企业(用户, { organization_id: 'org_xinghe', display_name: '星河控股' });
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(await screen.findByText('请选择发布方企业')).toBeTruthy();
+    expect(mock更新岗位).not.toHaveBeenCalled();
+  });
+
+  it('编辑企业读取失败：行显示未选允许更换，不显示成已成功保存', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    mock读取目录企业.mockRejectedValue(new BFF错误(503, 'unavailable', 'x'));
+    const { 用户 } = await 打开编辑第三步({
+      发布模式: 'direct',
+      发布方企业编号: 'org_invalid',
+      用人企业编号: 'org_invalid',
+    });
+    expect(await screen.findByRole('button', { name: /用人企业/ }).then((行) => 行.textContent?.includes('未选'))).toBe(true);
+    // 未改企业（草稿保持岗位自身 ID）直接保存：零 mutation 于企业坐标
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    expect(mock更新岗位.mock.calls[0][0]).toMatchObject({
+      发布方企业编号: 'org_invalid', 用人企业编号: 'org_invalid',
+    });
+  });
+
+  it('agency 无关编辑（两侧缺 refs 未改企业）照常保存，补丁不带企业坐标', async () => {
+    mock更新岗位.mockResolvedValue(undefined);
+    const previous = {
+      ...BFF岗位样本,
+      publisher_mode: 'agency' as const,
+    };
+    const { 用户 } = await 打开编辑第三步({ 发布模式: 'agency' });
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
+    const 岗位 = mock更新岗位.mock.calls[0][0];
+    expect(岗位.发布模式).toBe('agency');
+    expect(岗位.发布方企业编号).toBeUndefined();
+    expect(岗位.用人企业编号).toBeUndefined();
+    expect(转岗位补丁(岗位, previous)).toEqual({});
   });
 });
 
@@ -1100,6 +1341,9 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
     await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), '张江路 1 号');
     await 用户.type(screen.getByPlaceholderText('搜索城市名，从下方候选选择'), '上海');
     await 用户.click(await screen.findByRole('button', { name: '上海' }, { timeout: 2000 }));
+    // 合同 C：企业坐标经抽屉选好
+    await 用户.click(screen.getByRole('button', { name: /用人企业/ }));
+    await 经抽屉选企业(用户, { organization_id: 'org_xinghe', display_name: '星河控股' });
     await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
@@ -1408,11 +1652,20 @@ describe('发布岗位页 Backend 职业分类层分页与代际（review-r3）'
 // 路径写法都要归一。
 describe('取岗位提交错误文案', () => {
   it.each([
-    ['hiring_organization_claim.display_name', 'must_not_be_blank', '请填写公司名称'],
     ['/office_location', 'required', '请填写办公地点'],
     ['description', 'blank', '请填写职位描述'],
     ['/requirements', 'must_not_be_blank', '请填写职位要求'],
   ] as const)('把字段错误 %s 本地化', (path, reason, expected) => {
+    expect(取岗位提交错误文案(
+      new BFF错误(422, 'validation_failed', 'bad', [{ path, reason }]),
+    )).toBe(expected);
+  });
+
+  // 合同 C：双企业坐标的服务端校验（未知/停用企业等）不看 reason，统一指回企业选择行。
+  it.each([
+    ['publisher_organization_ref', 'organization_unknown', '请重新选择发布方企业'],
+    ['/hiring_organization_ref', 'blank', '请重新选择用人企业'],
+  ] as const)('把企业坐标错误 %s 指回选择行', (path, reason, expected) => {
     expect(取岗位提交错误文案(
       new BFF错误(422, 'validation_failed', 'bad', [{ path, reason }]),
     )).toBe(expected);
@@ -2434,6 +2687,9 @@ describe('发布岗位页 全远程地址与 Catalog 门禁', () => {
       await 用户.type(screen.getByPlaceholderText('搜索城市名，从下方候选选择'), '上海');
       await 用户.click(await screen.findByRole('button', { name: '上海' }, { timeout: 2000 }));
     }
+    // 合同 C：这两条用例聚焦地址/地点门禁，企业坐标在这里统一经抽屉选好
+    await 用户.click(screen.getByRole('button', { name: /用人企业/ }));
+    await 经抽屉选企业(用户, { organization_id: 'org_xinghe', display_name: '星河控股' });
     // Backend 发岗要求显式确认结构化匹配依据（确认框只在第三步渲染）；
     // 这两条用例聚焦地址/地点门禁，确认在这里统一补齐，不引入第二个变量。
     await 用户.click(screen.getByRole('checkbox', { name: '我已确认经验和学历设置将作为自动匹配依据；补充要求不会被自动解析。修改上述内容后需要重新确认。' }));
@@ -2475,7 +2731,7 @@ describe('发布岗位页 全远程地址与 Catalog 门禁', () => {
     expect(取地址().value).toBe(录入值);
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
-    const 请求 = 转岗位创建(mock发布岗位.mock.calls[0][0], { publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null } });
+    const 请求 = 转岗位创建(mock发布岗位.mock.calls[0][0], { publisherMode: 'direct', publisherOrganizationRef: 'org_xinghe', hiringOrganizationRef: 'org_xinghe' });
     expect(请求.workplace_mode).toBe('remote');
     expect(请求.office_location).toBe(录入值);
   });

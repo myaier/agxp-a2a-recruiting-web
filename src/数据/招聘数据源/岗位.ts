@@ -63,9 +63,11 @@ function 校验硬性条件(值: unknown): void {
 
 export interface 岗位数据源 {
   读取岗位(): Promise<页面岗位快照>;
-  /** P1C Task 5：创建只吃显式 claim（direct + 声明）；refs/verification status 服务端推导。 */
+  /** 2026-09-13 合同 C：创建吃显式双企业坐标上下文（direct 两侧同 ID；agency 各自选定）；
+   *  claim 由服务端从 hiring_organization_ref 快照生成，不进 body。 */
   创建岗位(job: 在招岗位, context: 岗位创建上下文): Promise<页面岗位创建结果>;
-  /** P1C Task 5：更新不接公司 context —— 补丁沿用 previous 的 mode 与 claim。 */
+  /** 合同 C：更新不接坐标上下文 —— 转岗位补丁 仅将用户实际改变的 refs 进补丁，
+   *  未改公司时补丁不带 refs/mode/claim。 */
   更新岗位(job: 在招岗位, previous: BFFOwnerJob): Promise<页面岗位快照>;
   归档岗位(id: string, revision: number): Promise<页面岗位快照>;
   重开岗位(id: string, revision: number): Promise<页面岗位快照>;

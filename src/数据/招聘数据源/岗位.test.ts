@@ -79,9 +79,10 @@ describe('岗位数据源 hard_requirements 校验', () => {
     }
   });
 
-  // P0 修复 Task 4：POST /jobs 的 body 必须保住三条各自独立的非空文本，
+  // P0 修复 Task 4：POST /jobs 的 body 必须保住两条各自独立的非空文本，
   // requirements 不许再从 description 复制过来（真实 BFF 把它们当两个字段）。
-  it('创建岗位 POST body 保留独立的公司声明 / 描述 / 要求三条文本', async () => {
+  // 合同 C：双企业坐标随创建提交，claim 键退役（声明名由服务端从 ref 快照生成）。
+  it('创建岗位 POST body 保留独立的描述 / 要求文本与两个企业 refs', async () => {
     请求Mock.mockImplementation(async (options: { method?: string }) => {
       if (options.method === 'POST') {
         return { result: { ...BFF岗位样本 }, etag: null, requestId: 'r-create' };
@@ -96,19 +97,57 @@ describe('岗位数据源 hard_requirements 校验', () => {
         职位要求: '有分布式系统经验',
         结构化要求已确认: true,
       },
-      { publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null } },
+      { publisherMode: 'direct', publisherOrganizationRef: 'org_yunqu', hiringOrganizationRef: 'org_yunqu' },
     );
     const POST调用 = 请求Mock.mock.calls.find((调用) => 调用[0].method === 'POST');
     expect(POST调用).toBeTruthy();
     const body = POST调用![0].body as {
-      hiring_organization_claim: { display_name: string };
+      publisher_organization_ref: string;
+      hiring_organization_ref: string;
       description: string;
       requirements: string;
     };
-    expect(body.hiring_organization_claim.display_name).toBe('星河科技');
+    expect(body.publisher_organization_ref).toBe('org_yunqu');
+    expect(body.hiring_organization_ref).toBe('org_yunqu');
+    expect('hiring_organization_claim' in body).toBe(false);
     expect(body.description).toBe('负责真实后端整栈验收');
     expect(body.requirements).toBe('有分布式系统经验');
     expect(body.requirements).not.toBe(body.description);
+  });
+
+  // 合同 C：agency 创建两个不同 refs 原样过数据源；缺 ref 在发请求前拒绝（零请求）。
+  it('agency 创建提交两个不同 refs；JSON 无 claim / affiliation ref / verification status', async () => {
+    请求Mock.mockImplementation(async (options: { method?: string }) => {
+      if (options.method === 'POST') {
+        return { result: { ...BFF岗位样本 }, etag: null, requestId: 'r-create' };
+      }
+      return { result: { jobs: [{ ...BFF岗位样本 }], next_cursor: null }, etag: null, requestId: 'r-jobs' };
+    });
+    await 数据源.创建岗位(
+      { ...页面岗位样本,
+        类别引用: { id: 'tax_product', display_name: '产品经理' },
+        地点引用: { id: 'loc_shanghai', display_name: '上海' },
+        结构化要求已确认: true,
+      },
+      { publisherMode: 'agency', publisherOrganizationRef: 'org_pub', hiringOrganizationRef: 'org_client' },
+    );
+    const POST调用 = 请求Mock.mock.calls.find((调用) => 调用[0].method === 'POST')!;
+    expect(POST调用[0].body).toMatchObject({
+      publisher_mode: 'agency', publisher_organization_ref: 'org_pub', hiring_organization_ref: 'org_client',
+    });
+    expect(JSON.stringify(POST调用[0].body))
+      .not.toMatch(/hiring_organization_claim|publisher_affiliation_ref|verification_status/);
+  });
+
+  it('创建岗位 缺用人企业 ref 时发请求前拒绝，指明字段', async () => {
+    请求Mock.mockImplementation(async () => {
+      throw new Error('不应该发出任何请求');
+    });
+    await expect(数据源.创建岗位(
+      { ...页面岗位样本, 结构化要求已确认: true },
+      { publisherMode: 'direct', publisherOrganizationRef: 'org_pub', hiringOrganizationRef: '' },
+    )).rejects.toMatchObject({ code: 'client_validation', field: 'hiring_organization_ref' });
+    expect(请求Mock).not.toHaveBeenCalled();
   });
 
   // ── Task 6：创建返回真实 job_id ────────────────────────────────────────────
@@ -123,7 +162,8 @@ describe('岗位数据源 hard_requirements 校验', () => {
   };
   const 声明 = {
     publisherMode: 'direct' as const,
-    hiringOrganizationClaim: { display_name: '星河科技', legal_name: null },
+    publisherOrganizationRef: 'org_yunqu',
+    hiringOrganizationRef: 'org_yunqu',
   };
 
   it('创建结果带 POST 响应的真实 job_id：与页面 P-xx 无关，也与重读数组位置无关', async () => {
@@ -244,7 +284,7 @@ describe('岗位数据源 hard_requirements 校验', () => {
         职位要求: '   ',
         结构化要求已确认: true,
       },
-      { publisherMode: 'direct', hiringOrganizationClaim: { display_name: '星河科技', legal_name: null } },
+      { publisherMode: 'direct', publisherOrganizationRef: 'org_yunqu', hiringOrganizationRef: 'org_yunqu' },
     )).rejects.toMatchObject({ code: 'client_validation', field: 'requirements' });
     expect(请求Mock).not.toHaveBeenCalled();
   });

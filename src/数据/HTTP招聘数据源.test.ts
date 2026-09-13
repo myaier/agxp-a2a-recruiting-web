@@ -731,8 +731,8 @@ describe('HTTP 招聘数据源', () => {
   });
 
   // Task 7：创建岗位 body 用 类别引用/地点引用 的 ID，不再按显示名反查目录（无 /catalog/ 请求）。
-  // P1C Task 5：上下文改为显式 岗位创建上下文（direct + claim）。
-  it('创建岗位 body 用引用 ID，不请求 /catalog/', async () => {
+  // 合同 C：上下文是显式 岗位创建上下文（direct 两侧同 ID），claim 键退役。
+  it('创建岗位 body 用引用 ID 与双企业 refs，不请求 /catalog/', async () => {
     // POST /recruiter/jobs 返回单个 job；后续 读取岗位 GET 返回 jobs 页
     请求Mock.mockImplementation(async (options: BFF请求选项) => {
       if (options.method === 'POST' && options.path === '/api/v1/recruiter/jobs') {
@@ -750,15 +750,17 @@ describe('HTTP 招聘数据源', () => {
     };
     await source.创建岗位(job, {
       publisherMode: 'direct',
-      hiringOrganizationClaim: { display_name: '甲公司', legal_name: null },
+      publisherOrganizationRef: 'org_pub',
+      hiringOrganizationRef: 'org_pub',
     });
     const post = 请求Mock.mock.calls
       .map(([o]) => o as BFF请求选项)
       .find((o) => o.method === 'POST' && o.path === '/api/v1/recruiter/jobs');
     expect(post?.body).toMatchObject({
       category_id: 'tax_pm', location_id: 'loc_sh',
-      publisher_mode: 'direct', hiring_organization_claim: { display_name: '甲公司', legal_name: null },
+      publisher_mode: 'direct', publisher_organization_ref: 'org_pub', hiring_organization_ref: 'org_pub',
     });
+    expect(JSON.stringify(post?.body)).not.toMatch(/hiring_organization_claim|verification_status/);
     // 没有任何 /catalog/ 请求
     const 目录请求 = 请求Mock.mock.calls
       .map(([o]) => o as BFF请求选项)
@@ -766,9 +768,9 @@ describe('HTTP 招聘数据源', () => {
     expect(目录请求).toBeUndefined();
   });
 
-  // P1C Task 5：创建/更新 的实际 JSON 不携带服务端专有 refs 与 verification status；
-  // 更新不接公司 context，只吃 previous owner DTO（补丁沿用 previous claim/mode）。
-  it('创建与更新的 JSON 无 organization refs / verification status，更新只吃 previous', async () => {
+  // 合同 C：创建 JSON 恒带两个企业 ref 且无 claim / affiliation / verification；
+  // 更新未改公司时补丁 JSON 不带 refs / mode / claim —— 更新仍只吃 previous owner DTO。
+  it('创建 JSON 带双企业 refs；更新 JSON 无 refs / claim / verification', async () => {
     请求Mock.mockImplementation(async (options: BFF请求选项) => {
       if (options.method === 'POST' || options.method === 'PATCH') {
         return { result: BFF岗位样本, etag: null, requestId: 'r-write' };
@@ -785,17 +787,19 @@ describe('HTTP 招聘数据源', () => {
     };
     await source.创建岗位(job, {
       publisherMode: 'direct',
-      hiringOrganizationClaim: { display_name: '甲公司', legal_name: null },
+      publisherOrganizationRef: 'org_pub',
+      hiringOrganizationRef: 'org_pub',
     });
     await source.更新岗位(job, BFF岗位样本);
-    const 写入们 = 请求Mock.mock.calls
-      .map(([o]) => o as BFF请求选项)
-      .filter((o) => o.method === 'POST' || o.method === 'PATCH');
-    expect(写入们).toHaveLength(2);
-    for (const 写入 of 写入们) {
-      expect(JSON.stringify(写入.body))
-        .not.toMatch(/publisher_affiliation_ref|publisher_organization_ref|hiring_organization_ref|verification_status/);
-    }
+    const post = 请求Mock.mock.calls.map(([o]) => o as BFF请求选项).find((o) => o.method === 'POST');
+    const patch = 请求Mock.mock.calls.map(([o]) => o as BFF请求选项).find((o) => o.method === 'PATCH');
+    expect(post).toBeTruthy();
+    expect(patch).toBeTruthy();
+    expect(post!.body).toMatchObject({ publisher_organization_ref: 'org_pub', hiring_organization_ref: 'org_pub' });
+    expect(JSON.stringify(post!.body))
+      .not.toMatch(/hiring_organization_claim|publisher_affiliation_ref|verification_status/);
+    expect(JSON.stringify(patch!.body))
+      .not.toMatch(/publisher_mode|publisher_organization_ref|hiring_organization_ref|hiring_organization_claim|verification_status/);
   });
 
   // Task 1（P6）：第八个域 facade（Agent 规则）组合进根 facade，公开方法一个不丢。

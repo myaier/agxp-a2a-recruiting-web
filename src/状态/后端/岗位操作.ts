@@ -2,39 +2,12 @@
 // 从 应用状态提供者 的 useMemo 操作体按真实后端 owner 拆出，行为逐字保持：
 // 写锁 / 409 + 503 重读岗位 / 401 统一清理 / revision 全部原样。接口失败绝不回退 Mock。
 
-import { BFF错误, 客户端校验错误 } from '../../数据/HTTP客户端';
-import { 可用企业关系 } from '../../数据/组织映射';
-import type { BFF企业关系 } from '../../数据/BFF契约';
+import { BFF错误 } from '../../数据/HTTP客户端';
 import type { 后端操作依赖, 岗位操作 } from './类型';
-import type { 岗位创建上下文 } from '../../数据/招聘数据源类型';
 import { 清账号状态 } from './会话操作';
 
-/**
- * P1C Task 5：发岗 claim 的唯一可信来源。
- * current active verified relation（Organization active 且关系 verified）只把批准的
- * organization_display_name 作为 direct claim 默认值；没有可用 current relation 时用
- * 未认证公司声明，仍允许发岗。refs / verification status 一律由服务端推导。
- *
- * P0 修复 Task 4：真实 BFF 的 JobCreate 要求 hiring_organization_claim.display_name
- * trim 后非空。两个来源都只有空白时在 operation 层 fail closed —— 一个创建请求都不发，
- * 让页面拿 客户端校验错误 弹可行动文案，而不是等服务端 422。
- */
-export function 取发岗声明(状态: { 企业关系列表: BFF企业关系[]; 当前企业关系编号: string | null; 未认证公司声明: string }): 岗位创建上下文 {
-  const 当前 = 状态.企业关系列表.find(
-    (项) => 项.affiliation_id === 状态.当前企业关系编号 && 可用企业关系(项),
-  );
-  const 声明名 = (当前?.organization_display_name ?? 状态.未认证公司声明).trim();
-  if (!声明名) {
-    throw new 客户端校验错误('hiring_organization_claim.display_name', '请填写公司名称');
-  }
-  return {
-    publisherMode: 'direct',
-    hiringOrganizationClaim: { display_name: 声明名, legal_name: null },
-  };
-}
-
 export function 创建岗位操作(deps: 后端操作依赖): 岗位操作 {
-  const { 是后端, 后端, 派发, 设后端状态, 后端状态引用, 状态引用, 锁, 主体标识引用, 会话代际 } = deps;
+  const { 是后端, 后端, 派发, 设后端状态, 后端状态引用, 锁, 主体标识引用, 会话代际 } = deps;
   // P4 Task 3 fix：三个 P4 引用随行 —— 岗位 401 的统一清理同样清 discovery 双 Map 与可见范围
   const 账号清理依赖 = {
     派发, 设后端状态, 后端, 主体标识引用, 会话代际,
@@ -91,10 +64,16 @@ export function 创建岗位操作(deps: 后端操作依赖): 岗位操作 {
         && 会话代际.current === 本次代际;
       try {
         // Task 7：create 直接用 类别引用/地点引用 取 ID，不再按需取目录。
-        // P1C Task 5：claim 只由 取发岗声明 从 Organization 权威事实推导，
-        // 不再读 企业认证.公司 自由文本；附属数据（加分关键词/实习转正）由数据层
-        // 用响应里的真实 job_id 写入；水合只派发服务端岗位列表，不派发 Mock 发布岗位。
-        const 快照 = await 后端.创建岗位(job, 取发岗声明(状态引用.current));
+        // 2026-09-13 合同 C：创建上下文由本次 job 内的 发布模式/发布方企业编号/用人企业编号
+        // 三字段构建 —— 前端新建模式只有 direct；缺 ref / direct 两 ref 不相等由
+        // 转岗位创建 在发请求前拒绝。名片 / 关系列表 / 未认证公司声明不再参与发岗，
+        // claim 由服务端从 hiring_organization_ref 快照生成；附属数据（加分关键词/
+        // 实习转正）由数据层用响应里的真实 job_id 写入；水合只派发服务端岗位列表。
+        const 快照 = await 后端.创建岗位(job, {
+          publisherMode: job.发布模式 ?? 'direct',
+          publisherOrganizationRef: job.发布方企业编号 ?? '',
+          hiringOrganizationRef: job.用人企业编号 ?? '',
+        });
         // 迟到成功不污染新主体：只有捕获栅栏仍有效才水合并把真实 ID 交给页面
         if (!仍有效()) return null;
         派发({ 型: '水合后端岗位', 快照 });
@@ -121,8 +100,8 @@ export function 创建岗位操作(deps: 后端操作依赖): 岗位操作 {
         if (!原始) return;
         // Task 7：update 的 immutable category/location 取 owner DTO（previous）的 id，
         // 不再按需取目录；If-Match 由数据层用 previous.revision 生成；附属按同 ID 更新。
-        // P1C Task 5：更新不接公司 context —— 补丁沿用 previous 的 mode 与 claim，
-        // 不读 企业认证.公司 自由文本。
+        // 合同 C：更新不接坐标上下文 —— 转岗位补丁 仅将用户实际改变的 refs 进补丁，
+        // 不读 名片/关系/未认证公司声明，未改公司时补丁不带 refs/mode/claim。
         const 快照 = await 后端.更新岗位(job, 原始);
         派发({ 型: '水合后端岗位', 快照 });
         设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));

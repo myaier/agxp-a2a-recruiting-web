@@ -50,9 +50,12 @@ function 必需引用(value: 目录选择值 | undefined, label: string, field: 
   return value.id;
 }
 
-/** 合同 C：经历写入必须携带真实企业 ID —— 解析或旧草稿的公司文本只作搜索词，不回退成坐标。 */
-function 必需组织编号(value: string | undefined): string {
-  if (!value || value.trim() === '') throw new 客户端校验错误('organization_id', '请选择公司');
+/** 合同 C：写入必须携带真实企业 ID —— 解析或旧草稿的公司文本只作搜索词，不回退成坐标；
+ *  字段名与文案由调用方指定（经历 organization_id / 岗位两个企业 ref 各有提示）。 */
+function 必需组织编号(value: string | undefined, field: string, message: string): string {
+  if (!value || value.trim() === '') {
+    throw new 客户端校验错误(field, message);
+  }
   return value;
 }
 
@@ -66,20 +69,6 @@ function 必需岗位文本(value: string | undefined, field: string, message: s
   const trimmed = (value ?? '').trim();
   if (!trimmed) throw new 客户端校验错误(field, message);
   return trimmed;
-}
-
-/** 创建用的用人企业声明：display_name 必填并 trim；legal_name 空白按 null 发出。 */
-function 合法用人企业声明(
-  claim: 岗位创建上下文['hiringOrganizationClaim'],
-): 岗位创建上下文['hiringOrganizationClaim'] {
-  return {
-    display_name: 必需岗位文本(
-      claim.display_name,
-      'hiring_organization_claim.display_name',
-      '请填写公司名称',
-    ),
-    legal_name: claim.legal_name?.trim() || null,
-  };
 }
 
 /** 后端 null → 页面可选空字符串；数值年份/月份 → 字符串。 */
@@ -226,7 +215,7 @@ export function 转经历写入(段: 简历经历段): BFF经历写入 {
   // 校验顺序与表单一致：缺行业引用与缺企业 ID 各有明确提示；body 键序仍以 organization_id 起头
   // （槽重放的 同一命令 比较按字面键序，重建槽体时同序）。
   const industry_id = 必需引用(段.行业引用, '行业', 'resume.experience.industry_id');
-  const organization_id = 必需组织编号(段.组织编号);
+  const organization_id = 必需组织编号(段.组织编号, 'organization_id', '请选择公司');
   const 写入: BFF经历写入 = {
     organization_id,
     industry_id,
@@ -606,6 +595,9 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
     最低学历: 后端到学历[dto.education_requirement as keyof typeof 后端到学历] ?? dto.education_requirement,
     // P4 互认：确认事实原样投影（Backend OwnerJob truth；Mock fixture 没有该字段，也从不推断）
     结构化要求已确认: dto.structured_requirements_confirmed,
+    // 合同 C：发布模式与双企业编号从 OwnerJob 原样恢复；缺 ref 的旧岗位保持未选，
+    // 绝不从 claim 或名片推断坐标（claim 名只能作搜索词）。
+    发布模式: dto.publisher_mode,
     // P3：四问硬性事实随 owner DTO 必返；缺员/坏档由数据源层在映射前拒绝
     硬性事实: 从BFF硬性条件(dto.hard_requirements),
     职位描述: dto.description,
@@ -617,6 +609,8 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
   if (dto.onsite_days_per_week !== null) 岗位.每周天数 = dto.onsite_days_per_week;
   if (dto.annual_salary_months !== null) 岗位.年薪月数 = dto.annual_salary_months;
   if (dto.campus_cohort !== null) 岗位.届别 = `${dto.campus_cohort} 届`;
+  if (dto.publisher_organization_ref) 岗位.发布方企业编号 = dto.publisher_organization_ref;
+  if (dto.hiring_organization_ref) 岗位.用人企业编号 = dto.hiring_organization_ref;
   if (附属.加分关键词) 岗位.加分关键词 = 附属.加分关键词;
   if (附属.实习转正 !== undefined) 岗位.实习转正 = 附属.实习转正;
   return 岗位;
@@ -624,16 +618,24 @@ export function 从BFF岗位(dto: BFFOwnerJob, 附属: { 加分关键词?: strin
 
 /** 页面岗位 → BFF岗位创建 body。加分关键词/实习转正 不进 body（只进前端附属存储）。
  *  Task 7：category_id/location_id 直接读 类别引用/地点引用（选择器保存的引用），不再按显示名反查目录。
- *  P1C Task 5：claim 只吃显式 岗位创建上下文（direct + 声明）；refs/verification status 由服务端推导，不进 body。
+ *  2026-09-13 合同 C：两个企业 ref 都是 JobCreate 必填的显式坐标，claim 键退役（声明名
+ *  由服务端从 hiring_organization_ref 快照生成）。缺 ref 或 direct 两 ref 不相等在发
+ *  请求前当面拒绝并指明字段；verification status 由服务端推导，不进 body。
  *  P4 互认 Task 2：未显式确认（缺字段/false）就在生成 body 前拒绝——「不限」也是合法选择，与未确认无关。 */
 export function 转岗位创建(页面岗位: 在招岗位, 上下文: 岗位创建上下文): BFF岗位创建 {
   if (页面岗位.结构化要求已确认 !== true) {
     throw new Error('请确认经验和学历将作为自动匹配依据');
   }
   const { lower, upper } = 解析薪资带(页面岗位.薪资带);
+  const 发布方 = 必需组织编号(上下文.publisherOrganizationRef, 'publisher_organization_ref', '请选择发布方企业');
+  const 用人 = 必需组织编号(上下文.hiringOrganizationRef, 'hiring_organization_ref', '请选择用人企业');
+  if (上下文.publisherMode === 'direct' && 发布方 !== 用人) {
+    throw new 客户端校验错误('hiring_organization_ref', '直招岗位的发布方与用人企业必须相同');
+  }
   return {
     publisher_mode: 上下文.publisherMode,
-    hiring_organization_claim: 合法用人企业声明(上下文.hiringOrganizationClaim),
+    publisher_organization_ref: 发布方,
+    hiring_organization_ref: 用人,
     title: 页面岗位.名称,
     recruitment_type: 岗位类型到后端[页面岗位.招聘类型 as keyof typeof 岗位类型到后端],
     category_id: 必需引用(页面岗位.类别引用, '类别', 'job.category_id'),
@@ -664,8 +666,11 @@ export function 转岗位创建(页面岗位: 在招岗位, 上下文: 岗位创
 /** 页面岗位 → BFF岗位补丁 body（P4 互认 Task 2：真实 sparse diff）。
  *  先把页面值转成最终 wire 值，再逐项与 previous 比较，只输出实际变化的可编辑字段；
  *  immutable（title/type/category/location/salary_period）与服务端专有
- *  （publisher_mode、claim、refs、verification status、revision）一律不再回传。
- *  P1C Task 5：不接公司 context —— 补丁根本不带 claim，普通 JD 编辑改不动它。
+ *  （publisher_mode、claim、refs、verification status、revision）不再无脑回传。
+ *  2026-09-13 合同 C：双企业坐标按 sparse 语义进补丁 —— 仅用户实际改变的 ref 出现在
+ *  body（未改公司时不回传 refs/claim，也不受名片改变影响）；改企业会触发后端按模式
+ *  验证两侧，direct 两侧必须相同（表单一次选择同写两键），agency 任一侧缺坐标
+ *  （旧岗位没存过）时先补齐两侧再提交，否则无关字段编辑不强制改企业。
  *  确认规则：经验/学历/requirements 任一变化必须携带显式确认；无关编辑不伪造确认；
  *  唯一例外是 legacy false 岗位的显式重新确认（内容未变也发仅含确认的补丁）。前端永不发送 false。 */
 export function 转岗位补丁(
@@ -678,6 +683,30 @@ export function 转岗位补丁(
   const 描述 = 必需岗位文本(页面岗位.职位描述, 'description', '请填写职位描述');
   const 要求 = 必需岗位文本(页面岗位.职位要求, 'requirements', '请填写职位要求');
   const patch: BFF岗位补丁 = {};
+  // 合同 C：页面 ref 为 undefined 表示该行未选（不改），缺省 = 服务端保留存储值；
+  // 只有用户实际改选（页面 ref 与 previous 不同）才进补丁。
+  const 页面发布方 = 页面岗位.发布方企业编号;
+  const 页面用人 = 页面岗位.用人企业编号;
+  const 发布方变 = 页面发布方 !== undefined && 页面发布方 !== previous.publisher_organization_ref;
+  const 用人变 = 页面用人 !== undefined && 页面用人 !== previous.hiring_organization_ref;
+  if (发布方变 || 用人变) {
+    if (页面岗位.发布模式 === 'agency') {
+      // 补丁后的两侧 = 草稿值 ?? 存储值；任一侧仍缺坐标就先补齐两侧再提交
+      if ((页面发布方 ?? previous.publisher_organization_ref) === undefined) {
+        throw new 客户端校验错误('publisher_organization_ref', '请选择发布方企业');
+      }
+      if ((页面用人 ?? previous.hiring_organization_ref) === undefined) {
+        throw new 客户端校验错误('hiring_organization_ref', '请选择用人企业');
+      }
+    } else {
+      // direct：一次选择同时写两侧相同 ID；不相等说明草稿被写坏，发请求前当面拒绝
+      if (!页面发布方 || !页面用人 || 页面发布方 !== 页面用人) {
+        throw new 客户端校验错误('hiring_organization_ref', '直招岗位的发布方与用人企业必须相同');
+      }
+    }
+    if (发布方变) patch.publisher_organization_ref = 页面发布方;
+    if (用人变) patch.hiring_organization_ref = 页面用人;
+  }
   // workplace mode 与 origin/main 的 fail-closed 闭合映射合流：
   // sparse 语义（变化才发）+ 未映射页值当面抛错，绝不静默回退 'onsite'。
   const 办公方式 = 岗位办公方式到Wire(页面岗位.办公方式);

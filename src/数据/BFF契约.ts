@@ -168,7 +168,9 @@ export interface BFFOwnerJob {
   publisher_affiliation_ref?: string;
   publisher_verification_status: 'unverified' | 'verified';
   hiring_organization_claim: { display_name: string; legal_name?: string | null };
-  // P1C：服务端推导的发布方/用人企业投影（只读）；创建岗位不提交这些字段。
+  // 2026-09-13 合同 C：双企业坐标随读原样恢复（legacy claim-only 岗位可缺席）；
+  // 编辑从岗位自身的两个 ID 恢复，不从名片重新推断。claim 是服务端冻结的名称快照，
+  // 只作展示/搜索词，不再是任何写入的坐标。
   publisher_organization_ref?: string;
   hiring_organization_verification_status: BFF验证状态;
   hiring_organization_ref?: string;
@@ -470,10 +472,12 @@ export interface BFF意向写入 {
 
 export interface BFF岗位创建 {
   publisher_mode: 'direct' | 'agency';
-  // P1C Task 5：创建/补丁 body 只声明 claim；publisher_affiliation_ref /
-  // publisher_organization_ref / hiring_organization_ref 与 verification status
-  // 是服务端推导的只读投影（见 BFFOwnerJob），客户端不得提交。
-  hiring_organization_claim: { display_name: string; legal_name: string | null };
+  // 2026-09-13 合同 C：两个企业 ref 都是发布者的显式目录选择（JobCreate 必填），
+  // direct 模式两侧必须相同；hiring_organization_claim 由服务端从 hiring_organization_ref
+  // 快照生成，创建/补丁 body 不再有该字段。publisher_affiliation_ref 与两个
+  // verification status 仍是服务端推导的只读投影（见 BFFOwnerJob），客户端不提交。
+  publisher_organization_ref: string;
+  hiring_organization_ref: string;
   title: string;
   recruitment_type: BFFOwnerJob['recruitment_type'];
   category_id: string;
@@ -499,6 +503,12 @@ export interface BFF岗位创建 {
   private_screening_preferences?: string;
 }
 
+/**
+ * 2026-09-13 合同 C：BFF岗位补丁 经 Partial 继承后 publisher_mode /
+ * publisher_organization_ref / hiring_organization_ref 均为可选 —— 仅在用户实际
+ * 改了企业坐标时携带（补丁不定义清空语义，缺省/null 都保留存储值）；
+ * 后端只在 mode/refs 变化时校验两侧（direct 合并后仍要求两侧一致）。
+ */
 export type BFF岗位补丁 = Partial<BFF岗位创建>;
 
 // ── Agent 规则域 DTO（P6：agent-rules / agent-rule-proposals 的 owner 投影）──
