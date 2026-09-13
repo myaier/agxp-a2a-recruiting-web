@@ -281,4 +281,8 @@ L3 selection: required，七类入口真实 API 闭环＋注册复用与双会�
 
 流程偏差：首轮 reviewer 自报曾在仓库外写一个临时 OpenAPI 文件，违反只读要求；驱动未删除或使用该临时文件，没有将首轮称为完全守约。仓库 post-round guard 无变化。复审将同一 session 限制为 Read/Grep/Glob，禁止 Bash、Edit、Write 及其他工具；提供批准 Spec 全文与精确版本，避免其以导出文件方式读取 Git 内容。复审只检查上述修订与新引入问题。
 
-首轮后的自检：API／浏览器路径改为相对同源根的表示并明确实际补单个斜杠，消除 prompt grader 将端点误报为本机绝对路径的问题；不改接口。所有修订保持批准产品契约，尚待受限复审返回。
+首轮后的自检：API／浏览器路径改为相对同源根的表示并明确实际补单个斜杠，消除 prompt grader 将端点误报为本机绝对路径的问题；不改接口。所有修订保持批准产品契约。
+
+第二轮：同一 Claude session，Opus/high、plan 权限、工具仅 Read/Grep/Glob。候选 revision `41cda7fb4a43db65873cd9df51de6ab8d03ae701`，Spec blob `f8fe890c9fc5455beff010a46d0efd406579df49`，Plan blob `3ed6bc63eee8621a7bca54072640de550a8fec95`。post-round guard 的仓库状态、HEAD、文档指纹均通过；reviewer 报告只使用 Read/Grep，未写文件、未运行测试。最终 Findings 为精确 `NO FINDINGS`，两条 required 已解决，无未解决有效 required；本 loop 共 2 轮，按停止条件结束。
+
+最终裁决：required 2 条全部接受修复；optional 2 条中 1 条接受，1 条部分接受并保留有明确隔离风险依据的作用域清理。未增加架构层。第二轮后仅追加本审查结论，不更改实施契约；首轮仓库外临时文件未清理、不作为验证证据，不将该轮称为完全守约。产品代码和产品测试均尚未实施，文档 review 不代表产品验收。
