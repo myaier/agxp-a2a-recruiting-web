@@ -21,7 +21,7 @@
 - 选中／创建只返回企业选择，父页面按自己的保存纪律执行；创建为独立已确认写入，父表单取消不删除共享企业。
 - 企业已认证、自报公司、用户 affiliation 三者不能混淆；`verified + admin` 才是管理员关系。只知企业 ID 不产生管理权限。
 - 搜索 250ms 防抖、分页、迟到响应与账号切换保护保留；抽屉中文输入与稳定关闭回调必须验证。
-- 不恢复旧公司文本为真实身份；旧草稿和解析文本只作搜索词。保留用户内容，阻止缺企业 ID 的实际经历／岗位写入，不通过跳过条目伪造保存成功。
+- 不恢复旧公司文本为真实身份；旧草稿和解析文本只作搜索词。保留用户内容，阻止缺企业 ID 的实际经历写入、岗位新建及不完整的企业改选写入；既有缺 refs 岗位未改企业的普通补丁按合同 C 保留，不通过跳过条目伪造保存成功。
 - 任务共享文件顺序修改；不刻意并行。每次扩大路径先按 development-workflow 的 `scripts/task_intents.py update` 更新本机预告并检查重叠，不删除他人记录。
 - 本 Plan 冻结边界、接口与反例；内部 helper 名称或等价实现可由实施者选择，不预写整套实现正文。若现场变更导致契约不可满足，报告精确冲突，不顺便重新设计。
 
@@ -69,7 +69,7 @@ interface BFF组织创建结果 { organization: BFF组织搜索项; created: boo
 // BFF公开企业：legal_name、verified_at 均 string | null，其他键保持原合同。
 ```
 
-数据源 `组织数据源` 新增 `创建组织(displayName: string, idempotencyKey: string): Promise<BFF组织创建结果>`，调用 `POST /api/v1/organizations`，JSON 仅 `{display_name}`，请求使用现有 `幂等: true, 幂等键: idempotencyKey`。沿用 `搜索组织(query)` 的路径、参数，解析四字段条目。返回结果经 strict decoder，不 `as` 直转、不将 null 变空字符串。
+数据源 `组织数据源` 新增 `创建组织(displayName: string, idempotencyKey: string): Promise<BFF组织创建结果>`，调用 `POST api/v1/organizations`（这里及后文的端点／浏览器路径均相对同源根，实际路径前补单个 `/`），JSON 仅 `{display_name}`，请求使用现有 `幂等: true, 幂等键: idempotencyKey`。沿用 `搜索组织(query)` 的路径、参数，解析四字段条目。返回结果经 strict decoder，不 `as` 直转、不将 null 变空字符串。
 
 操作表 `组织操作` 新增：
 
@@ -87,9 +87,9 @@ interface BFF组织创建结果 { organization: BFF组织搜索项; created: boo
 
 ### B. 共用 UI 合同
 
-在 `src/屏幕/组织查询钩子.ts` 导出扩展后的 `use组织查询`，保持现有一个钩子承担实例内搜索／创建控制；不新增 controller/service 层。参数改为 `{搜索?, 创建?, 作用域键: string}`：搜索和创建签名见 A；作用域键用既有 backend env + 主体 + 角色以及页面资源 ID 拼接，由页面传入，Mock 使用固定本地作用域。切换作用域清理本实例、作废在飞请求。
+在 `src/屏幕/组织查询钩子.ts` 导出扩展后的 `use组织查询`，保持现有一个钩子承担实例内搜索／创建控制；不新增 controller/service 层。参数改为 `{搜索?, 创建?, 作用域键: string}`：搜索和创建签名见 A；作用域键为 `JSON.stringify([数据源模式, 后端状态.主体?.subject_id ?? null, 后端状态.主体?.last_used_role ?? null, 当前页面资源ID ?? null])`，字段来自现有 use应用状态 与路由，Mock 无资源时可传 `mock`。保留它仅用于清除尚挂载页面已展示的上一主体结果，操作层迟到响应栅栏不能清理已经显示的列表；不引入 env provider。切换作用域清理本实例、作废在飞请求。
 
-输出保留 `词/设词/结果/搜索中/下一页游标/加载中/加载更多/重新查询/选择/选中`，新增 `搜索错误: string|null, 加载错误: string|null, 创建中: boolean, 创建错误: string|null, 添加(displayName: string): Promise<BFF组织搜索项|null>`。移除 `来源/设来源`；这两个 state 留在屏蔽页面。`添加` 同步单飞，每个提交名称意图保存 UUID key，失败重试同名同键、改名新键；页面关闭／作用域变更后返回 null，不回填。查询实例不持久化。
+输出保留 `词/设词/结果/搜索中/下一页游标/加载中/加载更多/重新查询`，删除 `选择/选中` 及选中名等于词的回显守卫；选中 ID 只来自父页面。新增 `搜索错误: string|null, 加载错误: string|null, 创建中: boolean, 创建错误: string|null, 添加(displayName: string): Promise<BFF组织搜索项|null>, 作废(): void`。移除 `来源/设来源`；这两个 state 留在屏蔽页面。`添加` 同步单飞，每个提交名称意图保存 UUID key，失败重试同名同键、改名新键；`作废()` 同步增加代际并清理定时器与本实例状态；父页面关闭抽屉（取消、Escape、遮罩或成功回填）时先调用作废再隐藏，不能只依赖纯展示组件卸载去清理仍挂载于页面的 hook。页面关闭／作用域变更后旧创建返回 null，不回填。查询实例不持久化。
 
 新增 `src/组件/公司选择层.tsx` 为纯展示（不读 Context、HTTP、BFF DTO、路由或存储），props 精确为：
 
@@ -112,13 +112,13 @@ Mock 模拟目录集中在 `src/数据/企业端模拟数据.ts` 增加导出，
 
 ### C. 保存归属与页面字段
 
-- 招聘名片待保存选择留本页，PATCH 带 organization_ref，成功后水合档案；头像后续 CAS 使用保存返回 revision。已有 `当前企业关系编号` 只服务 affiliation/管理，不被自报选择赋值。
-- 实名页选择仅为待申请选择，跳转 `/hr/organization-application?organization_id=<encoded-id>`。这是公开 ID，不是邀请 token；申请页以参数优先，其次档案 organization_ref，无值则空。读取校验成功前不允许申请；刷新保留 URL 目标，旧响应不覆盖新目标。更换选择更新 URL（replace）并清空原企业材料。
+- 招聘名片公司行唯一权威坐标是 `招聘方档案.organization_ref`；初次进入、刷新及档案坐标变化时经 `读取目录企业` 恢复名称，初始加载显示加载中，失败显示重试，null 显示未选。不能回退任职关系名或 `未认证公司声明`，迟到读取不能覆盖用户已改选的草稿。待保存选择留本页，PATCH 带 organization_ref，成功后水合档案；头像后续 CAS 使用保存返回 revision。已有 `当前企业关系编号` 只服务 affiliation/管理，不被自报选择赋值。名片不再调用 `保存未认证公司声明`，必填公司只判断所选 ID，不取 currentAffiliation。旧声明字段／方法暂保留给范围外旧消费者但七类新链路不再写或读；企业我的页维持现状，本次不清理其显示与状态，避免额外扩大页面范围。
+- 实名页选择仅为待申请选择，跳转 `hr/organization-application?organization_id=<encoded-id>`。这是公开 ID，不是邀请 token；申请页以参数优先，其次档案 organization_ref，无值则空。读取校验成功前不允许申请；刷新保留 URL 目标，旧响应不覆盖新目标。更换选择更新 URL（replace）并清空原企业材料。
 - 申请仍走原 multipart 元数据＋1–5 files。domains 可 `[]`，名称长度用 Unicode code points。列表按所选 organization_id 过滤，取消始终用实际 request_id/revision；未提交的其他企业选择不影响已有请求。不要新增单申请 GET。
 - `简历经历段` 新增 `组织编号?: string`，原 `公司` 只保留展示／搜索词。BFF经历读新增 organization_id，BFF经历写入改为 organization_id，禁止 company。其他领域不自动赋予成员权。
 - `在招岗位` 新增可选 `发布模式?: 'direct'|'agency', 发布方企业编号?: string, 用人企业编号?: string`。Backend 读从 OwnerJob 原样恢复；编辑不从名片重新推断。表单待选项可为本地完整目录项，最终保存到这三个字段。
 - 将 `岗位创建上下文` 改为 `{publisherMode: 'direct'|'agency'; publisherOrganizationRef: string; hiringOrganizationRef: string}`，现有创建数据源签名不变；context 由本次 job 字段构建，删除 `取发岗声明` 文本推导。更新数据源仍为 `更新岗位(job, previous)`，仅将用户实际改变的 refs 进补丁。
-- 当前前端新建模式只有 direct，本任务保持这一来源；agency 由已存在岗位的 publisher_mode 恢复并展示双企业行，不额外发明新建代理模式选择器。直招单行选一次，两 refs 相等。新建默认档案企业（读取有效后才选中），编辑恢复自己的 ID。
+- 当前前端新建模式只有 direct，本任务保持这一来源；agency 由已存在岗位的 publisher_mode 恢复并展示双企业行，不额外发明新建代理模式选择器。直招单行选一次，两 refs 相等。新建默认档案企业（读取有效后才选中），编辑恢复自己的 ID。既有岗位缺 ref 时，缺的行显示未选（claim 名只能作为搜索词）；只改 JD 等无关字段允许照常保存，补丁不带 mode/refs/claim。用户改选 direct 后同时提交两个相同 ID；agency 任一企业改选会触发后端验证两侧，若另一侧缺失，先要求补齐两侧再提交。未改企业的旧岗位不强制补齐，不新增兼容分支或旧 claim 写法。
 
 ## 测试选择与前置（五问）
 
@@ -183,9 +183,9 @@ L3 selection: required，七类入口真实 API 闭环＋注册复用与双会�
 
 消费：Task 1 A 操作／DTO；Task 2 B UI／hook。产出：合同 C 的档案保存、query 参数传值与按企业筛申请，供 Task 6 默认岗位企业使用。不新增全局“当前目录企业”，仍读 `招聘方档案.organization_ref`。
 
-- [ ] 名片测试冻结注册首写 If-Match 0、后续保存新 revision、选择未认证企业可保存且不改管理 relation；改选后取消保持原公司；保存后头像使用返回 revision；409 重读后用户草稿仍可见。
+- [ ] 名片测试冻结注册首写 If-Match 0、后续保存新 revision、选择未认证企业可保存且不改管理 relation；刷新／换设备只持有 organization_ref 时读取对应企业名称，即使管理 relation 属于另一企业也不覆盖自报公司；改选后取消保持原公司；保存后头像使用返回 revision；409 重读后用户草稿仍可见。
 - [ ] 实名和申请测试冻结 query 参数优先于档案、直接访问缺选择、刷新恢复、目标不存在、旧目标迟到、换企业清空证据、取消选择保留证据、只展示对应企业申请。先运行下方命令确认失败。
-- [ ] 名片公司展示 props 改为公司选择行和按下回调；保留现有关系列表作为管理关系控件，禁止把 affiliation id 赋给 organization_ref。公司 preview 使用待保存选择名。
+- [ ] 名片公司展示 props 改为公司选择行和按下回调；保留现有关系列表作为管理关系控件，禁止把 affiliation id 赋给 organization_ref。公司初始值按合同 C 从档案 ID 读取，preview 使用待保存选择名，移除需要公司声明／本地声明写入路径；旧声明的范围外消费者按合同 C 保留。
 - [ ] 实名页沿已批准位置显示待申请企业，按钮携带 encoded organization_id；个人实名与任职管理员独立显示。Mock 原型中公司输入也换同一选择 UI，保留其余原型行为。
 - [ ] 申请 metadata 精确为 `{organization_id, legal_name, registry_key, explanation, domains}`；display_name 从请求删除，展示名读选中企业。允许 domains=[]；保留文件边界、multipart 和输入长度。更换成功后清材料，提交在途禁止换目标／重复提交。
 - [ ] 创建操作读取真实申请结果后刷新申请列表；若 approved 再重读关系与目标企业，不以 POST 成功自行认证。提交已成功而后续刷新失败时保留返回申请，不诱导重复 POST；页面显示状态刷新失败可重试读取。取消只按选定申请 id/revision，不能替换为全列表最新项。
@@ -226,7 +226,7 @@ L3 selection: required，七类入口真实 API 闭环＋注册复用与双会�
 
 消费：A 组织操作、B 抽屉、Task 4 经历组织编号，以及 `添加组织屏蔽(id, source): Promise<void>` / `解除组织屏蔽(item)`。产出：两个入口及一键操作均使用现有隐私接口、既有权威状态，原来源 UI 不丢。
 
-- [ ] 屏蔽名单保留 `来源` 为页面本地 state，选择企业后按钮才可用；改来源清理待选，取消抽屉保留原值。写入成功后重读／合并权威隐私再显示 chip。
+- [ ] 屏蔽名单保留 `来源` 为页面本地 state，来源和待选企业互相独立，两者都有值才启用按钮；改来源不清理企业，取消抽屉保留原值。写入成功后重读／合并权威隐私再显示 chip。
 - [ ] 引导“再加一家”明确代表手动屏蔽，选中／添加完成即调用 source=手动添加；创建目录成功而屏蔽失败时显示屏蔽失败，不再次造目录条目，允许重选同一企业重试。
 - [ ] 一键屏蔽先检查所有非空公司经历都有组织编号；缺任一则提示回工作经历补选，本轮不静默部分执行。真实 ID 去重，已有屏蔽不改 source；结束时间为 null 的在职经历用当前雇主，其余曾任职企业用手动添加，不从历史经历推断 related_organization。多个同 ID 条目只调用一次，在职优先。
 - [ ] 用顺序 await 处理目标 ID；不要 Promise.all。现有隐私快照提交仅 setState 时同一 tick 后端状态引用可能落后，最小调整既有提交函数使本次权威 revision 同步写进 ref 后再派发；保留原隔离栅栏，不新建批处理协议。首次失败停止剩余写入，已成功项显示，重试跳过已有成功目标。
@@ -248,7 +248,7 @@ L3 selection: required，七类入口真实 API 闭环＋注册复用与双会�
 
 消费：A/B、Task 3 profile.organization_ref 和 C 的精确岗位字段/context。产出：BFF岗位创建两个必需 refs；补丁两个可选 refs，仅有用户实际变更才传；服务端公司快照只读。
 
-- [ ] 在映射／数据源测试替换“不得提交 refs”旧断言：创建 direct 两 refs 相等，agency 不同；JSON 无 hiring_organization_claim、affiliation ref、verification status。缺 ref 或 direct 不相等在发请求前指出具体字段。
+- [ ] 在映射／数据源测试替换“不得提交 refs”旧断言：创建 direct 两 refs 相等，agency 不同；JSON 无 hiring_organization_claim、affiliation ref、verification status。新建缺 ref 或 direct 改选不相等在发请求前指出具体字段；补充旧 direct 缺 refs 只改 JD 的 PATCH 无 refs/mode/claim、可以保存；选定后两个相同 refs 同时在场。agency 缺任一侧且改企业时要求补齐，否则无关字段编辑不强制改企业。
 - [ ] 从BFF岗位恢复发布模式和双 ID；新建默认读取档案所选企业，用户触碰后迟到默认读取不能覆盖。编辑每个企业按其 ID 读取，不按当前名片猜；无效企业允许更换，不能显示成已成功保存。
 - [ ] 在岗位表单现有企业信息相关位置加选择行，direct 一个“用人企业”、agency “发布方企业／用人企业”两个；不增加新建模式选择器。选中只改本岗草稿，取消保持原值。
 - [ ] 操作层以 job 内三字段构造 context；更新 mapping 将变化的 refs 进 PATCH，未改公司时不回传 claim/refs，不受名片改变影响。ID 清空或 suspension 错误回到对应选择行；保留 If-Match、结构化确认、所有权和现有 mutation 锁／会话代际。
@@ -270,4 +270,15 @@ L3 selection: required，七类入口真实 API 闭环＋注册复用与双会�
 
 ## 文档审查记录
 
-本段只记录当前 Spec/Plan 文档 review，不替代实施 code review。范围固定为本 Plan 与 `docs/superpowers/specs/2026-09-13-company-picker-and-verification-design.md`；批准输入精确版本见 Header。模式 `WORKFLOW_DOCUMENT_REVIEW`，`scope_approved_by_parent_workflow: true`。当前为首轮候选，尚未完成 Claude review；完成后在此原位记录 reviewer、轮次、候选版本、findings、逐条裁决和停止结论，不新建 review report。
+本段只记录当前 Spec/Plan 文档 review，不替代实施 code review。范围固定为本 Plan 与 `docs/superpowers/specs/2026-09-13-company-picker-and-verification-design.md`；批准输入精确版本见 Header。模式 `WORKFLOW_DOCUMENT_REVIEW`，`scope_approved_by_parent_workflow: true`。首轮 reviewer：Claude Code CLI 2.1.270，Opus/high，plan 权限；session `46d38863-afc5-43aa-85ea-1c63049bb2b8`。候选 revision `96761ac19dd503f082f4dc940fab32c1edda2770`，Spec blob `f8fe890c9fc5455beff010a46d0efd406579df49`、Plan blob `cf90e7f97c0221e9b2d2d77ef955cae8a7b6e23a`。仓库状态、HEAD 和两文档指纹 post-round guard 均通过，未运行测试。
+
+|Finding|首轮标记|裁决与修订|
+|---|---|---|
+|R1-1 名片读回与本地声明|Important / required / 不变|接受。合同 C、Task 3 明确按 profile.organization_ref 读取名称，禁止关系名／本地声明回退，补刷新反例；范围外企业我的页保持现状，不增加页面改造。|
+|R1-2 旧岗位缺 refs|Important / required / 不变|接受。后端 repository 仅在 mode/refs 变化时校验双 ID；合同 C、Task 6 明确无关编辑不带 refs 可保存，direct 改选同时写双 ID，agency 改选时补齐缺侧。|
+|R1-3 查询冗余|Minor / optional / 降低|部分接受。删除选择／选中回显；保留作用域清理以防仍挂载页面泄露已有结果，写明现有数据来源，不引入 env provider。补充作废回调保证关抽屉即作废页面 hook 请求。|
+|R1-4 来源清空企业|Minor / optional / 降低|接受。来源与选择独立，删除换源清空规则。|
+
+流程偏差：首轮 reviewer 自报曾在仓库外写一个临时 OpenAPI 文件，违反只读要求；驱动未删除或使用该临时文件，没有将首轮称为完全守约。仓库 post-round guard 无变化。复审将同一 session 限制为 Read/Grep/Glob，禁止 Bash、Edit、Write 及其他工具；提供批准 Spec 全文与精确版本，避免其以导出文件方式读取 Git 内容。复审只检查上述修订与新引入问题。
+
+首轮后的自检：API／浏览器路径改为相对同源根的表示并明确实际补单个斜杠，消除 prompt grader 将端点误报为本机绝对路径的问题；不改接口。所有修订保持批准产品契约，尚待受限复审返回。
