@@ -451,9 +451,15 @@ export interface 候选引导建档草稿 {
   已存条目?: 建档已存条目[];
   已存分区?: { profile?: number; summary?: number; skills?: number };
   明确删除条目?: 建档明确删除条目[];
+  /** 合同 C：待选企业快照 —— 目录条目原样四字段（未认证 legal_name 为 null，不归一成空串）。 */
   公司待选?: {
     搜索词: string;
-    选择?: { organization_id: string; display_name: string; legal_name: string };
+    选择?: {
+      organization_id: string;
+      display_name: string;
+      legal_name: string | null;
+      verification_status: 'unverified' | 'verified';
+    };
   };
   首次意向?: { id: string; revision: number };
   待写入?: 建档待写入;
@@ -520,7 +526,7 @@ function 是建档项目(值: unknown): 值 is 简历项目 {
   return ['编号', '名称', '角色', '结果'].every((键) => typeof 值[键] === 'string');
 }
 
-const 经历键们: readonly string[] = ['编号', '公司', '行业', '行业引用', '职位', '开始', '结束', '内容', '隐藏', '实习', '项目'];
+const 经历键们: readonly string[] = ['编号', '组织编号', '公司', '行业', '行业引用', '职位', '开始', '结束', '内容', '隐藏', '实习', '项目'];
 
 function 是建档经历段(值: unknown): 值 is 简历经历段 {
   if (!是记录(值) || !是键集闭(值, 经历键们)) return false;
@@ -529,6 +535,8 @@ function 是建档经历段(值: unknown): 值 is 简历经历段 {
   }
   if (值.结束 !== null && typeof 值.结束 !== 'string') return false;
   if (typeof 值.隐藏 !== 'boolean') return false;
+  // 合同 C：真实企业 ID 可选（旧文本草稿没有它仍合法）；在场必须是非空字符串
+  if (值.组织编号 !== undefined && !是非空串(值.组织编号)) return false;
   if (值.行业引用 !== undefined && !是草稿引用(值.行业引用)) return false;
   if (值.实习 !== undefined && typeof 值.实习 !== 'boolean') return false;
   if (值.项目 !== undefined && !(Array.isArray(值.项目) && 值.项目.every(是建档项目))) return false;
@@ -565,7 +573,7 @@ function 是建档资料(值: unknown): 值 is 建档资料草稿 {
 }
 
 const 教育编辑键们: readonly string[] = ['学校', '学校引用', '学历', '专业', '专业引用', '开始', '结束'];
-const 经历编辑键们: readonly string[] = ['公司', '行业', '行业引用', '职位', '开始', '结束', '内容', '隐藏', '实习'];
+const 经历编辑键们: readonly string[] = ['组织编号', '公司', '行业', '行业引用', '职位', '开始', '结束', '内容', '隐藏', '实习'];
 const 项目编辑键们: readonly string[] = ['名称', '角色', '结果'];
 const 证书编辑键们: readonly string[] = ['名称', '年份'];
 
@@ -588,6 +596,7 @@ function 是建档编辑中(值: unknown): 值 is 建档编辑中草稿 {
     case 'experience':
       if (!是键集闭(值, ['种类', '本地编号', '字段'])) return false;
       return 是编辑字段集(值.字段, 经历编辑键们, (键, 字段值) => {
+        if (键 === '组织编号') return 是非空串(字段值);
         if (键 === '行业引用') return 是草稿引用(字段值);
         if (键 === '结束') return 字段值 === null || typeof 字段值 === 'string';
         if (键 === '隐藏' || 键 === '实习') return typeof 字段值 === 'boolean';
@@ -636,9 +645,12 @@ function 是建档公司待选(值: unknown): 值 is NonNullable<候选引导建
   if (typeof 值.搜索词 !== 'string') return false;
   if (值.选择 !== undefined) {
     const 选 = 值.选择;
-    if (!是记录(选) || !是键集闭(选, ['organization_id', 'display_name', 'legal_name'])) return false;
+    // 四字段闭合：未认证条目的 legal_name 就是 null；verification_status 只收两档
+    if (!是记录(选) || !是键集闭(选, ['organization_id', 'display_name', 'legal_name', 'verification_status'])) return false;
     if (!是非空串(选.organization_id)) return false;
-    if (typeof 选.display_name !== 'string' || typeof 选.legal_name !== 'string') return false;
+    if (typeof 选.display_name !== 'string') return false;
+    if (选.legal_name !== null && typeof 选.legal_name !== 'string') return false;
+    if (选.verification_status !== 'unverified' && 选.verification_status !== 'verified') return false;
   }
   return true;
 }
@@ -727,6 +739,7 @@ function 拷贝建档草稿(建档: 候选引导建档草稿): 候选引导建�
         organization_id: 建档.公司待选.选择.organization_id,
         display_name: 建档.公司待选.选择.display_name,
         legal_name: 建档.公司待选.选择.legal_name,
+        verification_status: 建档.公司待选.选择.verification_status,
       };
     }
   }

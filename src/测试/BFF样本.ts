@@ -63,6 +63,7 @@ export const BFF简历样本: BFF简历 = {
   experiences: [
     {
       id: 'exp_1',
+      organization_id: 'org_yunqu',
       company: '云衢',
       industry: { id: 'tax_i', display_name: '互联网' },
       title: '工程师',

@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案, type BFF请求选项, type BFF响应 } from '../../数据/HTTP客户端';
-import type { BFF简历, BFF教育, BFFOwnerIntention } from '../../数据/BFF契约';
+import type { BFF简历, BFF教育, BFF经历, BFFOwnerIntention } from '../../数据/BFF契约';
 import type { 简历经历段, 简历教育段 } from '../../数据/类型';
 import { 初始状态 } from '../初始状态';
 import { BFF意向样本, BFF简历样本 } from '../../测试/BFF样本';
@@ -351,6 +351,34 @@ const 教育段 = (编号: string): 简历教育段 => ({
   专业引用: { id: 'major_1', display_name: '计算机' },
   开始: '2020-09',
   结束: '2024-06',
+});
+
+const 经历DTO = (id: string, revision: number): BFF经历 => ({
+  id,
+  organization_id: 'org_yunqu',
+  company: '云衢',
+  industry: { id: 'tax_i', display_name: '互联网' },
+  title: '工程师',
+  start_month: '2021-01',
+  end_month: null,
+  description: '平台',
+  hidden: true,
+  internship: false,
+  revision,
+  projects: [],
+});
+
+const 经历段 = (编号: string): 简历经历段 => ({
+  编号,
+  组织编号: 'org_yunqu',
+  公司: '云衢',
+  行业: '互联网',
+  行业引用: { id: 'tax_i', display_name: '互联网' },
+  职位: '工程师',
+  开始: '2021-01',
+  结束: null,
+  内容: '平台',
+  隐藏: true,
 });
 
 /** 只允许 GET 的权威读桩；任何 mutation 请求都按「未预期」抛错。 */
@@ -1522,5 +1550,126 @@ describe('创建候选操作 · 建档头像写入（J-PILOT-02 Task 8）', () =
     } finally {
       摘要桩.mockRestore();
     }
+  });
+});
+
+// ── 合同 C：经历真实企业 ID 的建档恢复 —— prepared experience 槽按原 body/原幂等键
+//    重放（不再次创建已成功经历），experience-update CAS 核对改读 organization_id，
+//    旧 company body 的槽不自动重放旧合同，标为需重新选企业 ──
+describe('创建候选操作 · 经历建档恢复（合同 C）', () => {
+  const 经历创建体 = {
+    organization_id: 'org_yunqu',
+    industry_id: 'tax_i',
+    title: '工程师',
+    start_month: '2021-01',
+    end_month: null,
+    description: '平台',
+    hidden: true,
+  };
+
+  it('prepared experience-create 槽按原 body/原幂等键重放：不再次创建已成功经历', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, experiences: [] };
+    const 权威后 = { ...BFF简历样本, experiences: [经历DTO('exp_srv_9', 1)] };
+    let 经历POST数 = 0;
+    const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+      if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+        return { result: 经历POST数 === 0 ? previous : 权威后, etag: null, requestId: 'r' };
+      }
+      if (选项.method === 'POST' && 选项.path === '/api/v1/me/resume/experiences') {
+        经历POST数 += 1;
+        return {
+          result: { entry: { kind: 'experience', experience: 经历DTO('exp_srv_9', 1) }, aggregate_revision: 5 },
+          etag: null, requestId: 'r',
+        };
+      }
+      throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+    });
+    const 建档: 候选引导建档草稿 = {
+      资料: { 经历: [经历段('exp_local_1')] },
+      待写入: {
+        种类: 'experience-create',
+        本地编号: 'exp_local_1',
+        请求体: { ...经历创建体 },
+        幂等键: 'idem-exp-1234567',
+        阶段: 'prepared',
+      },
+    };
+    const 场景 = 创建场景({
+      建档,
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    const next = { ...从BFF简历(previous), 经历: [经历段('exp_local_1')] };
+    await expect(场景.操作.保存简历(next as never)).resolves.toBeUndefined();
+    const POST们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项).filter((o) => o.method === 'POST');
+    expect(POST们).toHaveLength(1); // 同一本地条目始终一条服务器资源，不再次创建
+    expect(POST们[0].body).toEqual(经历创建体); // 重放 body 与原幂等 key 一致
+    expect(POST们[0].body).not.toHaveProperty('company');
+    expect(POST们[0].幂等键).toBe('idem-exp-1234567'); // 复用原 key
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.已存条目?.[0]).toMatchObject({ 本地编号: 'exp_local_1', 资源编号: 'exp_srv_9' });
+    expect(草稿.资料?.经历?.[0].编号).toBe('exp_srv_9');
+    expect(草稿.资料?.经历?.[0].组织编号).toBe('org_yunqu'); // 保留组织编号
+    expect(草稿.待写入).toBeUndefined();
+  });
+
+  it('experience-update CAS 只读核对读 organization_id：一致即结算，不重放', async () => {
+    const previous: BFF简历 = BFF简历样本;
+    const 请求Mock = 只读请求桩([previous]);
+    const 场景 = 创建场景({
+      建档: {
+        资料: { 经历: [经历段('exp_1')] },
+        已存条目: [{ 本地编号: 'exp_local_1', 种类: 'experience', 资源编号: 'exp_1', revision: 3 }],
+        待写入: {
+          种类: 'experience-update',
+          资源编号: 'exp_1',
+          请求体: {
+            organization_id: 'org_yunqu',
+            industry_id: 'tax_i',
+            title: '工程师',
+            start_month: '2021-01',
+            end_month: null,
+            description: '平台',
+            hidden: true,
+          },
+          ifMatch: 4,
+          阶段: 'prepared',
+        },
+      },
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    await expect(场景.操作.保存简历(从BFF简历(previous) as never)).resolves.toBeUndefined();
+    // 一致即零重放：只有权威 GET
+    const 请求们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    expect(请求们.filter((o) => (o.method ?? 'GET') !== 'GET')).toHaveLength(0);
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    // 已存身份按权威 revision 前进，组织编号仍在草稿
+    expect(草稿.已存条目?.[0]).toMatchObject({ 资源编号: 'exp_1', revision: 4 });
+    expect(草稿.资料?.经历?.[0].组织编号).toBe('org_yunqu');
+    expect(草稿.待写入).toBeUndefined();
+  });
+
+  it('旧 company body 的槽不自动重放旧合同：抛需重新选企业文案，零 mutation，槽保留', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, experiences: [] };
+    const 旧合同槽 = {
+      种类: 'experience-create' as const,
+      本地编号: 'exp_local_1',
+      请求体: { company: '云衢', industry_id: 'tax_i', title: '工程师', start_month: '2021-01' },
+      幂等键: 'idem-old-contract',
+      阶段: 'prepared' as const,
+    };
+    const 请求Mock = 只读请求桩([previous]);
+    const 场景 = 创建场景({
+      建档: { 资料: { 经历: [经历段('exp_local_1')] }, 待写入: 旧合同槽 },
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    const next = { ...从BFF简历(previous), 经历: [经历段('exp_local_1')] };
+    const 错误 = await 场景.操作.保存简历(next as never).then(() => null, (e: unknown) => e);
+    expect(错误).toBeInstanceOf(BFF错误);
+    expect(取后端错误文案(错误)).toBe('该条经历还没有选择企业，请回经历编辑重新选择公司');
+    const 请求们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    expect(请求们.filter((o) => (o.method ?? 'GET') !== 'GET')).toHaveLength(0); // 不自动重放旧合同
+    expect(场景.deps.建档草稿引用!.current!.待写入).toEqual(旧合同槽); // 槽原样保留
   });
 });

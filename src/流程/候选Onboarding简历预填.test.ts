@@ -489,7 +489,28 @@ describe('取工作页预填', () => {
     const 结果 = 取工作页预填(state, 空工作页());
     expect(结果.experiences.map((段) => 段.公司)).toEqual(['Example Systems', 'Second Corp']);
     expect(结果.experiences.map((段) => 段.编号)).toEqual(['prefill:exp:0', 'prefill:exp:1']);
+    // 两条物化经历都还没有真实企业 ID：各计一处未完成
+    expect(结果.unresolvedCount).toBe(2);
+  });
+
+  // 合同 C：解析预填只预填搜索词 —— 解析文本不自动匹配企业、不创建，物化条目
+  // 没有 organization_id 就是未完成；公司显示文本原样保留供抽屉搜索。
+  it('解析预填缺企业 ID 的经历计入未完成，公司文本保留供搜索', () => {
+    const 结果 = 取工作页预填(readyState(wire建议()), 空工作页());
+    const 段 = 结果.experiences[0];
+    expect(段.公司).toBe('Example Systems'); // 显示文本保留
+    expect('组织编号' in 段).toBe(false); // 绝不自动匹配首命中 / 创建
     expect(结果.unresolvedCount).toBe(1);
+    expect(数未完成项(结果.experiences, [], [])).toBe(1);
+  });
+
+  it('选中真实企业 ID 后的条目不再计未完成（公司文本仍在）', () => {
+    const 选中 = readyState(wire建议());
+    const 条目: 简历经历段 = {
+      ...取工作页预填(选中, 空工作页()).experiences[0],
+      组织编号: 'org_example',
+    };
+    expect(数未完成项([条目], [], [])).toBe(0);
   });
 
   it('附加教育只在「已有第 0 条且无更多条」时物化 slice(1)', () => {
@@ -504,8 +525,8 @@ describe('取工作页预填', () => {
       开始: '2021-09',
       结束: '',
     }]);
-    // 附加教育 unresolved（学校/专业无 canonical ref）计入 unresolvedCount
-    expect(结果.unresolvedCount).toBe(1);
+    // 附加教育 unresolved（学校/专业无 canonical ref）+ 物化经历缺企业 ID，共两处
+    expect(结果.unresolvedCount).toBe(2);
   });
 
   it('当前已有附加教育时不追加；当前教育为空（无第 0 条）时也不物化', () => {
@@ -558,7 +579,8 @@ describe('取工作页预填', () => {
     }));
     const 结果 = 取工作页预填(state, 空工作页());
     expect(结果.certificates).toEqual([{ 编号: 'prefill:cer:0', 名称: '', 年份: '' }]);
-    expect(结果.unresolvedCount).toBe(1);
+    // 空名称证书行 + 物化经历缺真实企业 ID，共两处
+    expect(结果.unresolvedCount).toBe(2);
   });
 
   it('work 已确认时整页保留当前值', () => {
@@ -615,11 +637,12 @@ describe('数未完成项', () => {
     隐藏: true,
   };
 
-  /** 已补齐的物化经历（编辑页完成守卫放行后的形状：带 canonical 行业引用）。 */
+  /** 已补齐的物化经历（编辑页完成守卫放行后的形状：带 canonical 行业引用与真实企业 ID）。 */
   const 已补齐经历: 简历经历段 = {
     ...未完成经历,
     编号: 'prefill:exp:1',
     行业引用: { id: 'tax_aaaaaaaaaaaaaaaaaaaaaaaaaa', display_name: 'Software' },
+    组织编号: 'org_example',
   };
 
   /** 未完成的物化附加教育（学校/专业只留 source_name 文本，无 canonical 引用）。 */

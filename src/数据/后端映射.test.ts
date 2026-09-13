@@ -56,12 +56,15 @@ describe('候选人后端映射', () => {
     const 页面 = 从BFF简历({
       profile: { real_name: '沈亦舟', work_start_year: 2021, status: 'employed', current_education: null, graduation_year: null, gender: 'male', birth_year: 1998, birth_month: 6 },
       profile_revision: 2, summary: '优势', summary_revision: 1, skills: ['TypeScript'], skills_revision: 3,
-      experiences: [{ id: 'exp_1', company: '云衢', industry: { id: 'tax_i', display_name: '互联网' }, title: '工程师', start_month: '2021-01', end_month: null, description: '平台', hidden: true, internship: false, revision: 4, projects: [] }],
+      experiences: [{ id: 'exp_1', organization_id: 'org_yunqu', company: '云衢', industry: { id: 'tax_i', display_name: '互联网' }, title: '工程师', start_month: '2021-01', end_month: null, description: '平台', hidden: true, internship: false, revision: 4, projects: [] }],
       educations: [{ id: 'edu_1', institution: { id: 'ins_1', display_name: '复旦大学' }, degree: '本科', major: { id: 'tax_m', display_name: '计算机科学' }, start_month: '2017-09', end_month: '2021-06', revision: 2 }],
       certificates: [{ id: 'cert_1', name: 'PMP', year: 2024, revision: 1 }], aggregate_revision: 9,
     });
     expect(页面.基本信息).toMatchObject({ 真名: '沈亦舟', 开始工作年: '2021', 身份: '在职', 性别: '男', 出生年: '1998', 出生月: '6' });
     expect(页面.经历[0].编号).toBe('exp_1');
+    // 合同 C：读侧 organization_id 落页面 组织编号；company 仍是展示快照
+    expect(页面.经历[0].组织编号).toBe('org_yunqu');
+    expect(页面.经历[0].公司).toBe('云衢');
     expect(页面.教育[0].编号).toBe('edu_1');
     expect(页面.证书[0].编号).toBe('cert_1');
     expect(页面.服务端快照.aggregate_revision).toBe(9);
@@ -82,9 +85,36 @@ describe('候选人后端映射', () => {
 
   it('Experience 直接使用选择时保存的行业引用 ID', () => {
     expect(转经历写入({
-      编号: 'exp_local', 公司: '云衢', 行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' },
+      编号: 'exp_local', 组织编号: 'org_yunqu', 公司: '云衢', 行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' },
       职位: '工程师', 开始: '2021-01', 结束: null, 内容: '平台', 隐藏: true,
     })).toMatchObject({ industry_id: 'tax_i' });
+  });
+
+  // 合同 C：经历写入只携带真实企业 ID，company 键退役。
+  it('经历写入带真实组织 ID：请求含 organization_id、不含 company', () => {
+    const body = 转经历写入({
+      编号: 'exp_local', 组织编号: 'org_1', 公司: '快照名',
+      行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' },
+      职位: '工程师', 开始: '2021-01', 结束: null, 内容: '平台', 隐藏: true,
+    });
+    expect(body).toMatchObject({ organization_id: 'org_1' });
+    expect('company' in body).toBe(false);
+  });
+
+  it('缺组织 ID 的经历写入抛 organization_id 校验错「请选择公司」，不回退公司文本', () => {
+    let 错误: unknown;
+    try {
+      转经历写入({
+        编号: 'exp_local', 公司: '手输公司', 行业: '互联网',
+        行业引用: { id: 'tax_i', display_name: '互联网' },
+        职位: '工程师', 开始: '2021-01', 结束: null, 内容: '', 隐藏: true,
+      });
+      expect.unreachable('缺 organization_id 必须失败');
+    } catch (捕获) {
+      错误 = 捕获;
+    }
+    expect(错误).toMatchObject({ field: 'organization_id' });
+    expect((错误 as Error).message).toBe('请选择公司');
   });
 
   // Task 1：证书 year 是可空契约 —— 没填年份显式写 null，绝不编造年份；非法年份在客户端拒绝。

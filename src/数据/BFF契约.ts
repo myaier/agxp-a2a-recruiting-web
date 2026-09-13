@@ -76,6 +76,8 @@ export interface BFF项目 {
 
 export interface BFF经历 {
   id: string;
+  /** 合同 C：owner 目录坐标（读写同键）；company 是服务端冻结的展示快照，只用于显示。 */
+  organization_id: string;
   company: string;
   industry: BFF目录引用;
   title: string;
@@ -421,7 +423,8 @@ export interface BFF资料写入 extends Omit<BFF简历资料, 'status'> {
 }
 
 export interface BFF经历写入 {
-  company: string;
+  /** 合同 C：唯一的企业坐标；company 键退役，wire 不收。 */
+  organization_id: string;
   industry_id: string;
   title: string;
   start_month: string;

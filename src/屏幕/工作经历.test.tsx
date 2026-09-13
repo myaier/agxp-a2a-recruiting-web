@@ -36,6 +36,7 @@ vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 const 简历经历初始 = [
   {
     编号: 'e1',
+    组织编号: 'org_bytedance',
     公司: '字节跳动',
     行业: '',
     职位: '后端开发',
@@ -66,6 +67,9 @@ function render工作经历(选项: {
   查询Taxonomy?: ReturnType<typeof vi.fn>;
   查询Institution?: ReturnType<typeof vi.fn>;
   保存简历?: ReturnType<typeof vi.fn>;
+  /** 合同 C：公司选择抽屉的目录搜索/创建（Backend 走操作层） */
+  搜索组织?: ReturnType<typeof vi.fn>;
+  创建组织?: ReturnType<typeof vi.fn>;
   预填?: 候选预填状态;
   经历?: 简历经历段[];
   教育?: 简历教育段[];
@@ -97,7 +101,10 @@ function render工作经历(选项: {
       基本信息: 选项.基本信息 ?? { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
       引导预填: 选项.建档 === undefined ? null : { 城市们: [], 职位: [], 建档: 选项.建档 },
     },
-    后端状态: { 候选预填状态: 选项.预填 ?? 创建空候选预填状态() },
+    后端状态: {
+      候选预填状态: 选项.预填 ?? 创建空候选预填状态(),
+      主体: { subject_id: 'sub_1', roles: [], last_used_role: 'candidate' },
+    },
     派发: vi.fn((动作: { 型?: string; 经历?: 简历经历段[]; 教育?: 简历教育段[]; 技能?: string[]; 证书?: 简历证书[]; 链接?: string }) => {
       if (动作.型 === '存简历') {
         mock应用状态.状态.简历经历 = 动作.经历 ?? mock应用状态.状态.简历经历;
@@ -118,6 +125,11 @@ function render工作经历(选项: {
       更新候选建档草稿: mock更新草稿.mockImplementation((建档: 候选引导建档草稿) => {
         mock应用状态.状态.引导预填 = { 城市们: [], 职位: [], 建档 };
         触发重渲染?.();
+      }),
+      // 合同 C：公司选择抽屉的目录操作（Backend 走操作层；Mock 用本地模拟目录）
+      搜索组织: 选项.搜索组织 ?? vi.fn(async () => ({ items: [], next_cursor: null })),
+      创建组织: 选项.创建组织 ?? vi.fn(async () => {
+        throw new Error('未预期的组织创建');
       }),
     },
   };
@@ -709,6 +721,20 @@ function 空列表页(): { 经历: 简历经历段[]; 教育: 简历教育段[];
   return { 经历: [], 教育: [], 技能: [], 证书: [] };
 }
 
+/** 合同 C：经历编辑页里打开公司抽屉并选中指定行（搜索词由旧公司文本预填） */
+async function 抽屉选公司(
+  用户: ReturnType<typeof userEvent.setup>,
+  搜索组织: ReturnType<typeof vi.fn>,
+  行名称: string,
+) {
+  await 用户.click(screen.getByText('公司名称'));
+  const 抽屉 = await screen.findByRole('dialog', { name: '选择企业' });
+  void 搜索组织;
+  // 250ms debounce 后搜索结果才上屏：等行出现再点（同时覆盖搜索词预填触发搜索）
+  await 用户.click(await within(抽屉).findByText(行名称));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull());
+}
+
 describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
   beforeEach(() => {
     mock跳转.mockClear();
@@ -846,8 +872,15 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
 
   // review Issue 1：保存拦截必须对当前列表实时重数 —— 挂载时冻结的 unresolvedCount
   // 在用户补齐物化条目后仍非零，会把已经无未完成项的保存一直拦到离开页面为止。
-  it('补齐建议条目（编辑页选 canonical 行业）后再保存放行：重数当前列表而非挂载冻结值', async () => {
+  it('补齐建议条目（编辑页选 canonical 行业并选真实企业 ID）后再保存放行：重数当前列表而非挂载冻结值', async () => {
     const 保存简历 = vi.fn(async () => {});
+    const 搜索组织 = vi.fn(async () => ({
+      items: [{
+        organization_id: 'org_example', display_name: 'Example Systems',
+        legal_name: null, verification_status: 'unverified' as const,
+      }],
+      next_cursor: null,
+    }));
     const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
       if (!query.parentId && !query.q) {
         return {
@@ -880,6 +913,7 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
       ...空列表页(),
       保存简历,
       查询Taxonomy,
+      搜索组织,
     });
     const 用户 = userEvent.setup();
     // 第一次保存：确实还有 1 处未完成，被拦
@@ -895,13 +929,20 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     await 用户.click(await screen.findByText('金融科技'));
     await 用户.click(await screen.findByText('支付与清结算'));
     await 用户.click(screen.getByRole('button', { name: '完成' }));
+    // 合同 C：再补真实企业 ID（缺 ID 的条目仍不能完成）
+    await 用户.click(screen.getByText('Example Systems'));
+    await 抽屉选公司(用户, 搜索组织, 'Example Systems');
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
     // 回列表再保存：无未完成项，放行（不再被挂载时冻结的计数拦下）
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
     expect(mock轻提示).not.toHaveBeenCalledWith('还有 1 处需要选择目录或补充必填项');
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      经历: [expect.objectContaining({ 组织编号: 'org_example' })],
+    }));
   });
 
-  it('删除未完成的建议条目后重数清零：保存不再被冻结计数拦下', async () => {
+  it('删除未完成的建议条目后重数实时下降：缺 ID 的条目不放行，删完才清零', async () => {
     const 保存简历 = vi.fn(async () => {});
     render工作经历({
       预填: readyWork({}, 映射变体((建议) => {
@@ -917,30 +958,50 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
       保存简历,
     });
     const 用户 = userEvent.setup();
-    // 第一条 exact 完整、第二条 unresolved：还有 1 处，先被拦
+    // 两条物化经历都还没有真实企业 ID：还有 2 处，先被拦
     await 用户.click(screen.getByRole('button', { name: '保存' }));
-    expect(mock轻提示).toHaveBeenCalledWith('还有 1 处需要选择目录或补充必填项');
-    // 删除未完成的第二条
+    expect(mock轻提示).toHaveBeenCalledWith('还有 2 处需要选择目录或补充必填项');
+    // 删除未完成的第二条：第一条仍缺 ID，重数实时降到 1 处
     await 用户.click(screen.getByText('Second Corp'));
     await 用户.click(screen.getByText('删除这段经历'));
-    // 回列表再保存：剩下的第一条完整，放行
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenCalledWith('还有 1 处需要选择目录或补充必填项');
+    expect(保存简历).not.toHaveBeenCalled();
+    // 缺 ID 的条目不能直接跳过再报告完成：删完才放行
+    await 用户.click(screen.getByText('Example Systems'));
+    await 用户.click(screen.getByText('删除这段经历'));
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
     const 存入 = 存简历调用们(mock应用状态.派发);
-    expect(存入.at(-1)!.经历).toHaveLength(1);
-    expect(存入.at(-1)!.经历[0].公司).toBe('Example Systems');
+    expect(存入.at(-1)!.经历).toHaveLength(0);
   });
 
-  it('exact 引用齐全时保存照常发生：unresolvedCount 为 0 不拦截', async () => {
+  it('exact 行业引用并选中真实企业 ID 后保存照常发生', async () => {
     const 保存简历 = vi.fn(async () => {});
-    render工作经历({ 预填: readyWork(), ...空列表页(), 保存简历 });
+    const 搜索组织 = vi.fn(async () => ({
+      items: [{
+        organization_id: 'org_example', display_name: 'Example Systems',
+        legal_name: null, verification_status: 'unverified' as const,
+      }],
+      next_cursor: null,
+    }));
+    render工作经历({ 预填: readyWork(), ...空列表页(), 保存简历, 搜索组织 });
     const 用户 = userEvent.setup();
+    // 解析预填不自动搜索首命中／创建：物化阶段零目录请求，缺 ID 先被拦
+    expect(搜索组织).not.toHaveBeenCalled();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenCalledWith('还有 1 处需要选择目录或补充必填项');
+    mock轻提示.mockClear();
+    // 进编辑页选真实企业 ID 后放行
+    await 用户.click(screen.getByText('Example Systems'));
+    await 抽屉选公司(用户, 搜索组织, 'Example Systems');
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
     expect(mock轻提示).not.toHaveBeenCalledWith(expect.stringContaining('需要选择目录'));
-    // 保存携带物化条目（prefill: 临时编号 + 隐私默认）与物化技能
+    // 保存携带物化条目（prefill: 临时编号 + 隐私默认 + 真实企业 ID）与物化技能
     expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({
-      经历: [expect.objectContaining({ 编号: 'prefill:exp:0', 隐藏: true })],
+      经历: [expect.objectContaining({ 编号: 'prefill:exp:0', 隐藏: true, 组织编号: 'org_example' })],
       技能: ['Go'],
     }));
   });
@@ -955,8 +1016,21 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
 
   it('保存成功后确认 work 分区（先于跳转），保存携带物化条目', async () => {
     const 保存简历 = vi.fn(async () => {});
-    render工作经历({ 预填: readyWork(), ...空列表页(), 保存简历 });
+    const 搜索组织 = vi.fn(async () => ({
+      items: [{
+        organization_id: 'org_example', display_name: 'Example Systems',
+        legal_name: null, verification_status: 'unverified' as const,
+      }],
+      next_cursor: null,
+    }));
+    render工作经历({ 预填: readyWork(), ...空列表页(), 保存简历, 搜索组织 });
     const 用户 = userEvent.setup();
+    // 合同 C：物化条目缺真实企业 ID 时保存被拦，选中后才放行
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock确认分区).not.toHaveBeenCalled();
+    await 用户.click(screen.getByText('Example Systems'));
+    await 抽屉选公司(用户, 搜索组织, 'Example Systems');
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock确认分区).toHaveBeenCalledWith('work'));
     expect(mock确认分区.mock.invocationCallOrder[0]).toBeLessThan(mock跳转.mock.invocationCallOrder[0]);
@@ -967,8 +1041,18 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     const 保存简历 = vi.fn(async () => {
       throw new Error('保存失败');
     });
-    render工作经历({ 预填: readyWork(), ...空列表页(), 保存简历 });
+    const 搜索组织 = vi.fn(async () => ({
+      items: [{
+        organization_id: 'org_example', display_name: 'Example Systems',
+        legal_name: null, verification_status: 'unverified' as const,
+      }],
+      next_cursor: null,
+    }));
+    render工作经历({ 预填: readyWork(), ...空列表页(), 保存简历, 搜索组织 });
     const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('Example Systems'));
+    await 抽屉选公司(用户, 搜索组织, 'Example Systems');
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
     expect(保存简历).toHaveBeenCalledTimes(1);
@@ -1178,11 +1262,11 @@ describe('工作经历 · Task 4 资料接线', () => {
     render工作经历({ 经历: [], 教育: [完整教育], 建档: { 待写入: 槽 } });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: /添加工作经历/ }));
-    // 公司名称 / 职位名称 共用「必填」占位：第一个是公司名称
-    await 用户.type(screen.getAllByPlaceholderText('必填')[0], '字节');
+    // 公司名称已改为抽屉选择（合同 C）；编辑层输入以 职位名称 验证
+    await 用户.type(screen.getByPlaceholderText('必填'), '后端开发');
     const 末次 = mock更新草稿.mock.calls.at(-1)![0];
     expect(末次.编辑中.种类).toBe('experience');
-    expect(末次.编辑中.字段.公司).toBe('字节');
+    expect(末次.编辑中.字段.职位).toBe('后端开发');
     expect('项目' in 末次.编辑中.字段).toBe(false);
     expect(末次.待写入).toEqual(槽);
   });
@@ -1859,5 +1943,138 @@ describe('工作经历 学校搜索分页版本重开（review-r1 F5）', () => 
       重开调用数 + 1,
       expect.objectContaining({ q: '清', cursor: 'inst_cur_v2' }),
     );
+  });
+});
+
+// ── 合同 C：经历真实企业 ID —— 公司名称走 公司选择抽屉接线，旧公司文本只作搜索词，
+//    选中才落真实 organization_id；完成守卫与保存路径都不允许缺 ID 绕过 ──
+describe('工作经历 · 经历真实企业 ID（合同 C）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  const 同名目录 = (搜索组织: ReturnType<typeof vi.fn>) => {
+    搜索组织.mockImplementation(async () => ({
+      items: [
+        { organization_id: 'org_old', display_name: '字节跳动', legal_name: '旧主体', verification_status: 'verified' as const },
+        { organization_id: 'org_new', display_name: '字节跳动', legal_name: null, verification_status: 'unverified' as const },
+      ],
+      next_cursor: null,
+    }));
+  };
+
+  it('公司行打开抽屉并以旧公司文本预填搜索词；同名不同 ID 按键选中并保存真实 ID', async () => {
+    const 搜索组织 = vi.fn(async () => ({ items: [], next_cursor: null }));
+    同名目录(搜索组织);
+    render工作经历({
+      数据源: 'backend',
+      搜索组织,
+      // 行业引用已齐备：本组用例只考核企业 ID 路径
+      经历: [{ ...简历经历初始[0], 行业引用: { id: 'tax_i', display_name: '互联网' } }],
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    // 打开抽屉：搜索词预填旧公司文本（不是自动选中首命中）
+    await 用户.click(screen.getByText('公司名称'));
+    const 抽屉 = await screen.findByRole('dialog', { name: '选择企业' });
+    expect((within(抽屉).getByPlaceholderText('输入公司名称') as HTMLInputElement).value).toBe('字节跳动');
+    await waitFor(() =>
+      expect(搜索组织).toHaveBeenCalledWith(expect.objectContaining({ q: '字节跳动' })),
+    );
+    // 同名不同 ID：两条都在，勾只落用户点的那一行（按稳定键回显）
+    const 行们 = within(抽屉).getAllByText('字节跳动');
+    expect(行们).toHaveLength(2);
+    await 用户.click(行们[1]);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull());
+    // 重开抽屉：选中回显只落在 org_new 那一行
+    await 用户.click(screen.getByText('公司名称'));
+    const 重开抽屉 = await screen.findByRole('dialog', { name: '选择企业' });
+    await waitFor(() => expect(within(重开抽屉).getAllByText('字节跳动')).toHaveLength(2));
+    const 重开行们 = within(重开抽屉).getAllByText('字节跳动');
+    expect(within(重开行们[0].closest('button')!).queryByText('✓')).toBeNull();
+    expect(within(重开行们[1].closest('button')!).getByText('✓')).toBeTruthy();
+    await 用户.click(重开行们[1]);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull());
+    // 完成提交：显示名与真实 ID 一起落，缺一不可
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    const 存简历调用 = (mock应用状态.派发.mock.calls as { 型?: string; 经历?: { 公司: string; 组织编号?: string }[] }[][])
+      .filter(([动作]) => 动作.型 === '存简历').at(-1);
+    expect(存简历调用).toBeDefined();
+    expect(存简历调用![0].经历![0]).toMatchObject({ 公司: '字节跳动', 组织编号: 'org_new' });
+  });
+
+  it('取消（Escape）不改旧值：公司文本与真实 ID 都保持原样', async () => {
+    const 搜索组织 = vi.fn(async () => ({ items: [], next_cursor: null }));
+    同名目录(搜索组织);
+    render工作经历({
+      数据源: 'backend',
+      搜索组织,
+      经历: [{ ...简历经历初始[0], 行业引用: { id: 'tax_i', display_name: '互联网' } }],
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('公司名称'));
+    await screen.findByRole('dialog', { name: '选择企业' });
+    await 用户.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull());
+    expect(screen.getByText('公司名称').closest('button')?.textContent).toContain('字节跳动');
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    const 存简历调用 = (mock应用状态.派发.mock.calls as { 型?: string; 经历?: { 组织编号?: string }[] }[][])
+      .filter(([动作]) => 动作.型 === '存简历').at(-1);
+    expect(存简历调用![0].经历![0].组织编号).toBe('org_bytedance');
+  });
+
+  it('添加新企业走同一回填路径：创建回执的 ID 与名称落草稿', async () => {
+    const 搜索组织 = vi.fn(async () => ({ items: [], next_cursor: null }));
+    const 创建组织 = vi.fn(async (名称: string) => ({
+      organization: {
+        organization_id: 'org_fresh', display_name: 名称,
+        legal_name: null, verification_status: 'unverified' as const,
+      },
+      created: true,
+    }));
+    const 查询Taxonomy = vi.fn(async () => ({
+      items: [{ id: 'tax_i', display_name: '互联网', parent_id: null, selectable: true }],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    render工作经历({ 数据源: 'backend', 搜索组织, 创建组织, 查询Taxonomy, 经历: [] });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /添加工作经历/ }));
+    await 用户.click(screen.getByText('公司名称'));
+    const 抽屉 = await screen.findByRole('dialog', { name: '选择企业' });
+    await 用户.click(within(抽屉).getByText('添加新企业'));
+    await 用户.type(within(抽屉).getByPlaceholderText('输入公司名称'), '新公司');
+    await 用户.click(within(抽屉).getByRole('button', { name: '添加并选择' }));
+    await waitFor(() => expect(创建组织).toHaveBeenCalledWith('新公司', expect.any(String)));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull());
+    // 入职时间 / 行业也齐备后再完成（本用例考核的是企业 ID 回填路径）
+    await 用户.type(screen.getByPlaceholderText('必填'), '工程师');
+    await 用户.click(screen.getByRole('button', { name: '入职年月' }));
+    await 用户.click(within(await screen.findByRole('dialog', { name: '选择入职年月' })).getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByText('所属行业'));
+    await 用户.click(await screen.findByText('互联网'));
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    const 存简历调用 = (mock应用状态.派发.mock.calls as { 型?: string; 经历?: { 公司: string; 组织编号?: string }[] }[][])
+      .filter(([动作]) => 动作.型 === '存简历').at(-1);
+    expect(存简历调用![0].经历![0]).toMatchObject({ 公司: '新公司', 组织编号: 'org_fresh' });
+  });
+
+  it('缺 ID 的完整条目完成被拦：请选择公司，不派发存简历，文本保留', async () => {
+    render工作经历({
+      数据源: 'backend',
+      经历: [{ 编号: 'e9', 公司: '旧文本公司', 行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' }, 职位: '后端', 开始: '2021-01', 结束: null, 内容: '', 隐藏: true }],
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('旧文本公司'));
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请选择公司');
+    const 存简历数 = (mock应用状态.派发.mock.calls as { 型?: string }[][])
+      .filter(([动作]) => 动作.型 === '存简历').length;
+    expect(存简历数).toBe(0);
+    // 缺 ID 条目的可见内容不被清掉
+    expect(screen.getByText('公司名称').closest('button')?.textContent).toContain('旧文本公司');
   });
 });

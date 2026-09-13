@@ -312,7 +312,7 @@ describe('候选引导草稿 建档编解码（J-PILOT-02 Task 2）', () => {
       个人优势: '五年后端',
       技能: ['Go', '分布式'],
       经历: [{
-        编号: 'e1', 公司: '甲公司', 行业: '互联网', 职位: '后端工程师',
+        编号: 'e1', 组织编号: 'org_jia', 公司: '甲公司', 行业: '互联网', 职位: '后端工程师',
         开始: '2021-07', 结束: null, 内容: '做事', 隐藏: true,
         项目: [{ 编号: 'p1', 名称: '网关重构', 角色: '开发', 结果: '上线' }],
       }],
@@ -331,7 +331,10 @@ describe('候选引导草稿 建档编解码（J-PILOT-02 Task 2）', () => {
     明确删除条目: [{ 种类: 'experience', 资源编号: 'exp_srv_1', revision: 5 }],
     公司待选: {
       搜索词: '字节',
-      选择: { organization_id: 'org_1', display_name: '字节跳动', legal_name: '字节跳动有限公司' },
+      选择: {
+        organization_id: 'org_1', display_name: '字节跳动',
+        legal_name: '字节跳动有限公司', verification_status: 'verified',
+      },
     },
     首次意向: { id: 'int_1', revision: 2 },
     待写入: {
@@ -356,6 +359,57 @@ describe('候选引导草稿 建档编解码（J-PILOT-02 Task 2）', () => {
     expect(读候选引导草稿(存储, 范围A)?.建档).toEqual(建档);
     // 其它主体读不到
     expect(读候选引导草稿(存储, 范围B)?.建档).toBe(undefined);
+  });
+
+  // 合同 C：白名单沿现有字段扩展 组织编号 与四字段 公司待选（legal_name nullable）；
+  // 旧文本草稿不升级为真实选择，也不因新增字段判坏删除。
+  it('经历 组织编号 与四字段 公司待选（legal_name 为 null）round trip', () => {
+    const 存储 = 内存存储();
+    const 建档 = {
+      ...建档样本(),
+      公司待选: {
+        搜索词: '字节',
+        选择: {
+          organization_id: 'org_1', display_name: '字节跳动',
+          legal_name: null, verification_status: 'unverified' as const,
+        },
+      },
+    };
+    expect(写候选引导草稿(存储, 范围A, { 城市们: [], 职位: [], 建档 })).toBe(true);
+    const 读出 = 读候选引导草稿(存储, 范围A)?.建档;
+    expect(读出?.资料?.经历?.[0].组织编号).toBe('org_jia');
+    expect(读出?.公司待选?.选择).toEqual({
+      organization_id: 'org_1', display_name: '字节跳动', legal_name: null, verification_status: 'unverified',
+    });
+  });
+
+  it('旧文本草稿不升级为真实选择，也不因新增字段判坏删除', () => {
+    const 存储 = 内存存储();
+    const 旧建档: 候选引导草稿快照['建档'] = {
+      资料: {
+        经历: [{
+          编号: 'e1', 公司: '旧文本公司', 行业: '互联网', 职位: '后端',
+          开始: '2021-07', 结束: null, 内容: '', 隐藏: true,
+        }],
+      },
+    };
+    expect(写候选引导草稿(存储, 范围A, { 城市们: [], 职位: [], 建档: 旧建档 })).toBe(true);
+    const 读出 = 读候选引导草稿(存储, 范围A)?.建档;
+    expect(读出?.资料?.经历?.[0].公司).toBe('旧文本公司');
+    expect(读出?.资料?.经历?.[0].组织编号).toBeUndefined();
+    expect(读出?.公司待选).toBeUndefined();
+  });
+
+  it('编辑中 经历层可携带 组织编号（选完企业刷新后不丢真实 ID）', () => {
+    const 存储 = 内存存储();
+    const 建档: 候选引导草稿快照['建档'] = {
+      编辑中: {
+        种类: 'experience', 本地编号: 'e9',
+        字段: { 公司: '字节跳动', 组织编号: 'org_1', 行业: '互联网' },
+      },
+    };
+    expect(写候选引导草稿(存储, 范围A, { 城市们: [], 职位: [], 建档 })).toBe(true);
+    expect(读候选引导草稿(存储, 范围A)?.建档?.编辑中).toEqual(建档.编辑中);
   });
 
   it('不完整编辑字段（编辑中 只填一半）可回读，缺项不补造', () => {
@@ -415,9 +469,31 @@ describe('候选引导草稿 建档编解码（J-PILOT-02 Task 2）', () => {
     ['已存条目种类未知', { ...建档样本(), 已存条目: [{ 本地编号: 'x', 种类: 'blog', 资源编号: 's', revision: 1 }] }],
     ['已存分区未知键', { ...建档样本(), 已存分区: { profile: 1, education: 2 } }],
     ['明确删除条目缺资源编号', { ...建档样本(), 明确删除条目: [{ 种类: 'experience', revision: 1 }] }],
-    ['公司待选选择缺 legal_name', {
+    ['公司待选选择缺 verification_status', {
       ...建档样本(),
-      公司待选: { 搜索词: '字节', 选择: { organization_id: 'o1', display_name: '字节' } },
+      公司待选: { 搜索词: '字节', 选择: { organization_id: 'o1', display_name: '字节', legal_name: null } },
+    }],
+    ['公司待选选择 legal_name 非串非 null', {
+      ...建档样本(),
+      公司待选: {
+        搜索词: '字节',
+        选择: { organization_id: 'o1', display_name: '字节', legal_name: 5, verification_status: 'unverified' },
+      },
+    }],
+    ['公司待选选择 verification_status 非法', {
+      ...建档样本(),
+      公司待选: {
+        搜索词: '字节',
+        选择: { organization_id: 'o1', display_name: '字节', legal_name: null, verification_status: 'pending' },
+      },
+    }],
+    ['资料经历组织编号非串', {
+      ...建档样本(),
+      资料: { ...建档样本().资料, 经历: [{ ...建档样本().资料!.经历![0], 组织编号: 7 }] },
+    }],
+    ['资料经历组织编号空串', {
+      ...建档样本(),
+      资料: { ...建档样本().资料, 经历: [{ ...建档样本().资料!.经历![0]!, 组织编号: '' }] },
     }],
     ['首次意向 id 非串', { ...建档样本(), 首次意向: { id: 7, revision: 1 } }],
     ['编辑中种类未知', { ...建档样本(), 编辑中: { 种类: 'award', 本地编号: 'x', 字段: {} } }],

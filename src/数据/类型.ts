@@ -399,6 +399,9 @@ export interface 问答条 {
 
 export interface 简历经历段 {
   编号: string;
+  /** 合同 C：真实企业目录 ID（读侧 organization_id / 选中回填）。缺省 = 尚未选择企业，
+   *  公司 只保留展示／搜索词快照，写入经历只传 组织编号。 */
+  组织编号?: string;
   公司: string;
   行业: string;
   /** Backend 行业选择器选中的目录引用（id + display_name）；Mock 模式为 undefined。

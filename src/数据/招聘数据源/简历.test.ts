@@ -128,6 +128,7 @@ const 教育段 = (编号: string): 简历教育段 => ({
 
 const 经历DTO = (id: string, revision: number): BFF经历 => ({
   id,
+  organization_id: 'org_yunqu',
   company: '云衢',
   industry: { id: 'tax_i', display_name: '互联网' },
   title: '工程师',
@@ -142,6 +143,7 @@ const 经历DTO = (id: string, revision: number): BFF经历 => ({
 
 const 经历段 = (编号: string): 简历经历段 => ({
   编号,
+  组织编号: 'org_yunqu',
   公司: '云衢',
   行业: '互联网',
   行业引用: { id: 'tax_i', display_name: '互联网' },
@@ -503,5 +505,73 @@ describe('简历数据源 · 教育 diff 键序（J-PILOT-02 fix）', () => {
     expect(变化PATCH).toBeDefined();
     expect(变化PATCH.body).toEqual({ institution_id: 'inst_1', degree: '本科', major_id: 'major_1', start_month: '2020-09', end_month: '2025-06' });
     expect(变化PATCH.ifMatch).toBe('"1"');
+  });
+});
+
+// ── 合同 C：经历真实企业 ID —— 写入只传 organization_id；缺 ID 的用户完整条目在
+//    构建 mutation 步骤前明确拦截（零请求），旧空白占位仍按中间屏规则跳过 ──
+
+describe('简历数据源 · 经历真实组织 ID（合同 C）', () => {
+  it('新建经历 POST body 含 organization_id 且不含 company', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, experiences: [] };
+    const POST体: Record<string, unknown> = {};
+    const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+      if (选项.method === 'POST' && 选项.path === '/api/v1/me/resume/experiences') {
+        Object.assign(POST体, 选项.body);
+        return {
+          result: { entry: { kind: 'experience', experience: 经历DTO('exp_srv_1', 1) }, aggregate_revision: 2 },
+          etag: null, requestId: 'r1',
+        };
+      }
+      if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+        return { result: { ...BFF简历样本, experiences: [经历DTO('exp_srv_1', 1)] }, etag: null, requestId: 'r2' };
+      }
+      throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+    });
+    // 该用例只关注经历主体的 body：不带嵌套项目
+    const 段 = { ...经历段('exp_local_1'), 项目: undefined };
+    await 创建简历数据源(请求Mock as unknown as 请求函数)
+      .保存简历({ ...从BFF简历(previous), 经历: [段] }, previous);
+    expect(POST体.organization_id).toBe('org_yunqu');
+    expect('company' in POST体).toBe(false);
+  });
+
+  it('公司/行业/开始齐全但缺组织 ID 的条目：构建步骤时拦截，零 mutation，文本保留不跳过', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, experiences: [] };
+    const { 请求Mock, 请求 } = 请求桩();
+    const 缺ID段: 简历经历段 = { ...经历段('exp_local_1'), 组织编号: undefined };
+    await expect(
+      创建简历数据源(请求).保存简历({ ...从BFF简历(previous), 经历: [缺ID段] }, previous),
+    ).rejects.toMatchObject({ field: 'organization_id', message: '请选择公司' });
+    const 调用 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    // 任何 body 物化抛错都发生在第一个 mutation 之前：零请求发出
+    expect(调用).toHaveLength(0);
+  });
+
+  it('旧空白占位（公司为空）仍按中间屏规则跳过：不发经历请求，返回快照保留该段', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, experiences: [] };
+    const 占位段: 简历经历段 = {
+      ...经历段('exp_local_blank'),
+      组织编号: undefined, 公司: '', 行业: '', 行业引用: undefined,
+    };
+    const { 请求Mock, 请求 } = 请求桩();
+    const 快照 = await 创建简历数据源(请求)
+      .保存简历({ ...从BFF简历(previous), 经历: [占位段] }, previous);
+    const 调用 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    expect(调用.filter((o) => o.path === '/api/v1/me/resume/experiences')).toHaveLength(0);
+    // 跳过的本地不完整条目留在返回页面态里，不被服务端权威清掉
+    expect(快照.经历.some((段) => 段.编号 === 'exp_local_blank')).toBe(true);
+  });
+
+  it('经历完全未变（含组织编号）且只改教育：零经历写入，不强制用户重写经历', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [教育DTO('edu_srv_1', 1)] };
+    const 基页 = 从BFF简历(previous);
+    const { 请求Mock, 请求 } = 请求桩();
+    await 创建简历数据源(请求).保存简历(
+      { ...基页, 教育: [{ ...基页.教育[0]!, 开始: '2018-09' }] },
+      previous,
+    );
+    const 调用 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    expect(调用.filter((o) => o.path.includes('/experiences'))).toHaveLength(0);
   });
 });

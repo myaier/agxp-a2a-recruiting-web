@@ -50,6 +50,12 @@ function 必需引用(value: 目录选择值 | undefined, label: string, field: 
   return value.id;
 }
 
+/** 合同 C：经历写入必须携带真实企业 ID —— 解析或旧草稿的公司文本只作搜索词，不回退成坐标。 */
+function 必需组织编号(value: string | undefined): string {
+  if (!value || value.trim() === '') throw new 客户端校验错误('organization_id', '请选择公司');
+  return value;
+}
+
 /**
  * P0 修复 Task 4：岗位写入用的必填自由文本。真实 BFF 的 JobCreate 把
  * hiring_organization_claim.display_name / description / requirements 当三条互相独立的
@@ -97,10 +103,13 @@ function 转项目(项: BFF项目): 简历项目 {
   return { 编号: 项.id, 名称: 项.name, 角色: 项.role, 结果: 项.result };
 }
 
-/** Experience 的 id 直接作页面 编号；industry.display_name → 行业，industry 本体作 行业引用；projects 保留真实 ID。 */
+/** Experience 的 id 直接作页面 编号；organization_id → 组织编号（合同 C）；industry.display_name → 行业，industry 本体作 行业引用；projects 保留真实 ID。 */
 function 转经历(段: BFF经历): 简历经历段 {
   const 经历: 简历经历段 = {
     编号: 段.id,
+    // 读写同键：读入的真实企业 ID 原样保留，既有已关联经历无需重复选择
+    组织编号: 段.organization_id,
+    // company 是服务端冻结的展示快照，只用于显示／搜索词
     公司: 段.company,
     行业: 段.industry.display_name,
     // owner DTO 的 industry 即 BFF目录引用，写入时直接用 引用.id，不再反查目录
@@ -211,11 +220,16 @@ function 写作品集链接(文本: string): string {
   return 规范;
 }
 
-/** 页面经历段 → 后端经历写入 body；行业引用.id 直接作 industry_id，不再按显示名反查目录。 */
+/** 页面经历段 → 后端经历写入 body（合同 C）：organization_id 是唯一企业坐标；
+ *  行业引用.id 直接作 industry_id，不再按显示名反查目录；company 键退役，wire 不收。 */
 export function 转经历写入(段: 简历经历段): BFF经历写入 {
+  // 校验顺序与表单一致：缺行业引用与缺企业 ID 各有明确提示；body 键序仍以 organization_id 起头
+  // （槽重放的 同一命令 比较按字面键序，重建槽体时同序）。
+  const industry_id = 必需引用(段.行业引用, '行业', 'resume.experience.industry_id');
+  const organization_id = 必需组织编号(段.组织编号);
   const 写入: BFF经历写入 = {
-    company: 段.公司,
-    industry_id: 必需引用(段.行业引用, '行业', 'resume.experience.industry_id'),
+    organization_id,
+    industry_id,
     title: 段.职位,
     start_month: 段.开始,
     end_month: 段.结束,

@@ -216,8 +216,9 @@ function 只读核对目标(权威: BFF简历, 槽: 建档待写入): 核对结�
     case 'experience-update': {
       const 条目 = 权威.experiences.find((e) => e.id === 槽.资源编号);
       if (条目 === undefined) return { kind: '已删除' };
+      // 合同 C：请求体的企业坐标是 organization_id，company 只是展示快照，不参与核对
       const 一致 = 每键一致({
-        company: 条目.company,
+        organization_id: 条目.organization_id,
         industry_id: 条目.industry.id,
         title: 条目.title,
         start_month: 条目.start_month,
@@ -299,11 +300,13 @@ function 从槽重建页面(基底: 页面简历写入, 槽: 建档待写入): �
         } satisfies 简历教育段],
       };
     case 'experience-create':
+      // 合同 C：body 的企业坐标是 organization_id；公司显示文本不参与重放身份
       return {
         ...基底,
         经历: [...基底.经历, {
           编号,
-          公司: 串('company'),
+          组织编号: 串('organization_id'),
+          公司: '',
           行业: 串('industry_id'),
           行业引用: { id: 串('industry_id'), display_name: 串('industry_id') },
           职位: 串('title'),
@@ -681,6 +684,14 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
     const 条目种类 = 命令条目种类(槽.种类);
     const 动作 = 命令动作(槽.种类);
     if (动作 === 'create' && 条目种类 !== null) {
+      // 合同 C：旧合同的 company body 缺 organization_id —— 不自动重放旧合同，也绝不
+      // 把旧文本冒充真实身份。槽原样保留（本地拦截早于 发送前，不会被误清），用户回
+      // 经历编辑重新选择企业后按新合同重写。
+      const 槽体 = (槽.请求体 ?? {}) as Record<string, unknown>;
+      if (条目种类 === 'experience'
+        && (typeof 槽体.organization_id !== 'string' || 槽体.organization_id === '')) {
+        throw new BFF错误(0, 'invalid_request', '该条经历还没有选择企业，请回经历编辑重新选择公司');
+      }
       const { 作品集链接: _省略, ...基底 } = 从BFF简历(权威);
       const 结算next = 从槽重建页面(基底, 槽);
       if (结算next === null) {
