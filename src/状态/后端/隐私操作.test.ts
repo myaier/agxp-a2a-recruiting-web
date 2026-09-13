@@ -16,11 +16,9 @@ import {
   BFF隐私快照样本,
   BFF隐私组织屏蔽样本,
   BFF屏蔽回执样本,
-  BFF组织搜索页样本,
 } from '../../测试/BFF样本';
 import { 从BFF隐私, 披露编号到BFF, 披露档到BFF, 屏蔽来源到BFF } from '../../数据/隐私映射';
 import type { 屏蔽项 } from '../../数据/类型';
-import type { 组织搜索查询 } from '../../数据/招聘数据源类型';
 import { 初始状态 } from '../初始状态';
 import { 归约, type 动作 } from '../应用状态';
 import type { 后端操作依赖, 后端状态 } from './类型';
@@ -110,12 +108,32 @@ describe('创建隐私操作 · 成功路径（服务端成功先于本地提交
     expect(修改隐私).toHaveBeenCalledTimes(1);
   });
 
-  it('搜索可屏蔽组织 透传查询并返回服务端分页', async () => {
-    const 搜索组织 = vi.fn().mockResolvedValue(BFF组织搜索页样本);
-    const deps = 创建隐私测试依赖({ 搜索组织 } as unknown as HTTP招聘数据源, BFF隐私快照样本);
-    const 查询: 组织搜索查询 = { q: '云衢', limit: 20 };
-    await expect(创建隐私操作(deps).搜索可屏蔽组织(查询)).resolves.toBe(BFF组织搜索页样本);
-    expect(搜索组织).toHaveBeenCalledWith(查询);
+  it('连续屏蔽顺序 await：首写回执 revision 同步进 ref，第二写携带新 revision（不再发旧值）', async () => {
+    // 隐私 revision 3 起：首写携带 3、回执 4；同一 tick 的第二写必须携带 4。
+    // 若提交函数只 setState 不同步 ref，第二写会拿旧值 3 被 BFF 409。
+    const 组织屏蔽行 = (id: string) => ({ ...BFF隐私组织屏蔽样本, organization_id: id });
+    const 携带修订们: number[] = [];
+    const 添加组织屏蔽 = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    添加组织屏蔽.mockImplementation(async (_id: any, _source: any, revision: any) => {
+      携带修订们.push(revision);
+      return {
+        organization_block: 组织屏蔽行(_id),
+        privacy_revision: revision + 1,
+        created_at: '2026-08-24T00:00:00Z',
+      };
+    });
+    const deps = 创建隐私测试依赖(
+      { 添加组织屏蔽 } as unknown as HTTP招聘数据源,
+      { ...BFF隐私快照样本, revision: 3 },
+    );
+    const 操作 = 创建隐私操作(deps);
+    await 操作.添加组织屏蔽('org_a', '手动添加');
+    await 操作.添加组织屏蔽('org_b', '手动添加');
+    // 首写携带 3、回执 4；第二写携带 4
+    expect(携带修订们).toEqual([3, 4]);
+    expect(更新后的隐私快照(deps)?.revision).toBe(5);
+    expect(deps.派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '水合后端隐私' }));
   });
 
   it('非 BFF 错误原样抛出且不触发重读', async () => {
@@ -363,19 +381,6 @@ describe('创建隐私操作 · 变更 status 0/503 只允许一次 GET 校验�
 });
 
 describe('创建隐私操作 · 401 统一清理', () => {
-  it('搜索可屏蔽组织 401 触发 清账号状态 并拒绝', async () => {
-    const 搜索组织 = vi.fn().mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
-    const 清空目录缓存 = vi.fn();
-    const deps = 创建隐私测试依赖(
-      { 搜索组织, 清空目录缓存 } as unknown as HTTP招聘数据源, BFF隐私快照样本,
-    );
-    await expect(创建隐私操作(deps).搜索可屏蔽组织({ q: '云衢' })).rejects.toMatchObject({ status: 401 });
-    expect(清空目录缓存).toHaveBeenCalled();
-    expect(deps.派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '清后端隐私' }));
-    expect(deps.主体标识引用.current).toBeNull();
-    expect(deps.会话代际.current).toBe(2);
-  });
-
   it('修改隐私 401 触发 清账号状态 且不重读隐私', async () => {
     const 修改隐私 = vi.fn().mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
     const 读取隐私 = vi.fn();

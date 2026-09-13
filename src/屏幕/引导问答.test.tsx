@@ -16,6 +16,8 @@ import { 构造映射变体基底 } from '../数据/招聘数据源/简历预填
 import { 个人优势文本 } from '../数据/模拟数据';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
 import type { 屏蔽项 } from '../数据/类型';
+import { BFF错误 } from '../数据/HTTP客户端';
+import { BFF组织搜索项样本, BFF组织搜索页样本 } from '../测试/BFF样本';
 
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
@@ -916,13 +918,22 @@ const 权威屏蔽项: 屏蔽项 = {
 
 function render排除题(选项: {
   屏蔽名单?: 屏蔽项[];
-  简历经历?: { 公司: string }[];
+  /** 简历经历段的最小形状：一键目标读 公司/组织编号/结束 */
+  简历经历?: { 公司: string; 组织编号?: string; 结束?: string | null }[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   解除组织屏蔽?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  添加组织屏蔽?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  搜索组织?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  创建组织?: any;
   身份?: '在校' | '离职';
 } = {}) {
   const 解除组织屏蔽 = 选项.解除组织屏蔽 ?? vi.fn(async () => {});
-  const 添加组织屏蔽 = vi.fn(async () => {});
+  const 添加组织屏蔽 = 选项.添加组织屏蔽 ?? vi.fn(async () => {});
+  const 搜索组织 = 选项.搜索组织 ?? vi.fn(async () => ({ items: [], next_cursor: null }));
+  const 创建组织 = 选项.创建组织 ?? vi.fn();
   mock应用状态 = {
     数据源模式: 'backend',
     目录查询: {
@@ -938,16 +949,33 @@ function render排除题(选项: {
       屏蔽名单: 选项.屏蔽名单 ?? [],
       基本信息: { 真名: '沈', 开始工作年: '2017', 身份: 选项.身份 ?? '离职' },
     },
-    后端状态: { 候选预填状态: 创建空候选预填状态() },
+    后端状态: { 候选预填状态: 创建空候选预填状态(), 主体: null },
     派发: vi.fn(),
-    操作: { ...mock操作, 解除组织屏蔽, 添加组织屏蔽 },
+    操作: { ...mock操作, 解除组织屏蔽, 添加组织屏蔽, 搜索组织, 创建组织 },
   };
   render(
     <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
       <引导问答 />
     </MemoryRouter>,
   );
-  return { 解除组织屏蔽, 添加组织屏蔽 };
+  return { 解除组织屏蔽, 添加组织屏蔽, 搜索组织, 创建组织 };
+}
+
+/** 抽屉内查询域（弹层框架 dialog，标签「选择企业」） */
+function 公司抽屉() {
+  return within(screen.getByRole('dialog', { name: '选择企业' }));
+}
+
+/** 再加一家 → 开抽屉 → 输入搜索词等过 250ms debounce（行按钮 aria-label = 常用名） */
+async function 打开抽屉并搜索公司(用户: ReturnType<typeof userEvent.setup>, 词: string) {
+  await 用户.click(screen.getByRole('button', { name: /再加一家/ }));
+  fireEvent.change(公司抽屉().getByPlaceholderText('输入公司名称'), { target: { value: 词 } });
+  await waitFor(() => expect(公司抽屉().getByRole('button', { name: '云衢科技' })).toBeDefined());
+}
+
+/** 选中抽屉里的唯一命中行 */
+async function 选中公司行() {
+  fireEvent.click(公司抽屉().getByRole('button', { name: '云衢科技' }));
 }
 
 describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', () => {
@@ -1045,7 +1073,7 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
     expect(传入.自定义诉求).toEqual([]);
   });
 
-  it('Backend 社招：简历公司名不默认已屏蔽，一键开关不自动写任何组织', async () => {
+  it('Backend 社招：简历公司名不默认已屏蔽；缺组织编号的经历让一键提示补选且不部分执行', async () => {
     const { 添加组织屏蔽 } = render排除题({ 简历经历: [{ 公司: '云衢科技' }] });
     const 用户 = userEvent.setup();
     // 简历里的公司名不是组织身份：既不显示成已屏蔽 chip，开关也默认关
@@ -1053,21 +1081,11 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
     const 开关 = screen.getByRole('switch', { name: '一键屏蔽简历中的公司' });
     expect(开关.getAttribute('aria-checked')).toBe('false');
     await 用户.click(开关);
+    // 非空公司经历没有组织编号：提示回工作经历补选，本轮不静默部分执行
     expect(添加组织屏蔽).not.toHaveBeenCalled();
     expect(开关.getAttribute('aria-checked')).toBe('false');
-    expect(screen.queryByRole('button', { name: /云衢科技/ })).toBeNull();
-    await waitFor(() => expect(document.body.textContent).toContain('无法确认具体公司'));
-  });
-
-  it('Backend 手输公司名不产生成功 chip（真实组织选择仍缺口）', async () => {
-    const { 添加组织屏蔽 } = render排除题();
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /再加一家/ }));
-    await 用户.type(screen.getByPlaceholderText('公司名，可只写关键词'), '云衢科技');
-    await 用户.click(screen.getAllByRole('button', { name: '添加' })[1]);
-    expect(添加组织屏蔽).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: /云衢科技 ✕/ })).toBeNull();
-    await waitFor(() => expect(document.body.textContent).toContain('无法确认具体公司'));
+    await waitFor(() => expect(document.body.textContent).toContain('请先到工作经历补选'));
   });
 
   it('Backend chip 来自权威屏蔽快照；解除失败保留 chip，不做本地假成功', async () => {
@@ -1141,6 +1159,179 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
     // 非在校：一键开关默认开，简历公司进本地列表
     expect(screen.getByRole('switch', { name: '一键屏蔽简历中的公司' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('button', { name: /云衢科技 ✕/ })).toBeDefined();
+  });
+});
+
+// ── Task 5：再加一家复用公司选择抽屉 + 一键屏蔽的真实 ID 写线 ──
+// 选中/添加完成即以 source=手动添加 屏蔽，成功才由权威快照出 chip；
+// 一键目标按真实组织 ID 去重、在职优先，顺序 await，首次失败停止剩余写入。
+
+const 任务5已屏蔽行: 屏蔽项 = {
+  编号: 'B-01', 名称: '云衢科技', 首字: '云', 理由: '你手动加入 · 双向不可见',
+  时间: '刚刚', 组织编号: 'org_a', 来源: '手动添加', 组织状态: '有效',
+};
+const 任务5已屏蔽行B: 屏蔽项 = {
+  ...任务5已屏蔽行,
+  编号: 'B-02', 名称: '恒达外包', 首字: '恒', 组织编号: 'org_b',
+};
+
+describe('引导问答 再加一家：公司选择抽屉与手动屏蔽（Task 5）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
+    mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockReset();
+    mock操作.更新候选建档草稿.mockReset();
+  });
+
+  it('再加一家打开抽屉；选定命中即以 source=手动添加 屏蔽，未写成功不出 chip', async () => {
+    const { 添加组织屏蔽 } = render排除题({
+      搜索组织: vi.fn().mockResolvedValue(BFF组织搜索页样本),
+    });
+    const 用户 = userEvent.setup();
+    expect(添加组织屏蔽).not.toHaveBeenCalled();
+    await 打开抽屉并搜索公司(用户, '云衢');
+    await 选中公司行();
+    await waitFor(() => expect(添加组织屏蔽).toHaveBeenCalledWith('org_1', '手动添加'));
+    // 权威快照没变：不出 chip，不做本地假成功
+    expect(screen.queryByRole('button', { name: /云衢科技 ✕/ })).toBeNull();
+    expect(mock应用状态.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '拉黑' }));
+    // 选定成功抽屉关闭
+    await waitFor(() => expect(screen.queryByText('选择企业')).toBeNull());
+  });
+
+  it('创建目录成功而屏蔽失败：显示屏蔽失败、不再次造目录条目，可重选同一企业重试', async () => {
+    let 屏蔽成功 = false;
+    const 添加组织屏蔽 = vi.fn(async () => { if (!屏蔽成功) throw new BFF错误(503, 'backend_unavailable', 'down'); });
+    const 创建组织 = vi.fn(async () => ({ organization: BFF组织搜索项样本 }));
+    render排除题({
+      搜索组织: vi.fn().mockResolvedValue(BFF组织搜索页样本),
+      创建组织,
+      添加组织屏蔽,
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /再加一家/ }));
+    await 用户.click(screen.getByRole('button', { name: '添加新企业' }));
+    await 用户.type(screen.getByPlaceholderText('输入公司名称'), '云衢科技');
+    await 用户.click(screen.getByRole('button', { name: '添加并选择' }));
+    // 创建一次成功、屏蔽一次失败：不再次造目录条目
+    await waitFor(() => expect(添加组织屏蔽).toHaveBeenCalledTimes(1));
+    expect(添加组织屏蔽).toHaveBeenCalledWith('org_1', '手动添加');
+    expect(创建组织).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(document.body.textContent).toContain('后端服务暂时不可用'));
+    // 抽屉仍开着（返回搜索可重选同一企业重试），不再次造目录条目
+    expect(screen.getByRole('button', { name: '返回搜索' })).toBeDefined();
+
+    // 重试：返回搜索视图，重选同一命中行（不再创建）→ 第二次屏蔽成功后抽屉关闭
+    屏蔽成功 = true;
+    await 用户.click(screen.getByRole('button', { name: '返回搜索' }));
+    fireEvent.change(screen.getByPlaceholderText('输入公司名称'), { target: { value: '云衢' } });
+    await waitFor(() => expect(公司抽屉().getByRole('button', { name: '云衢科技' })).toBeDefined());
+    fireEvent.click(公司抽屉().getByRole('button', { name: '云衢科技' }));
+    await waitFor(() => expect(添加组织屏蔽).toHaveBeenCalledTimes(2));
+    expect(添加组织屏蔽).toHaveBeenLastCalledWith('org_1', '手动添加');
+    expect(创建组织).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByText('选择企业')).toBeNull());
+  });
+
+  it('一键屏蔽：缺任一组织编号则提示回工作经历补选，本轮不静默部分执行', async () => {
+    const { 添加组织屏蔽 } = render排除题({
+      简历经历: [
+        { 公司: '云衢科技', 组织编号: 'org_a', 结束: null },
+        { 公司: '恒达外包', 组织编号: 'org_b', 结束: '2022-03' },
+        { 公司: '某厂' }, // 缺组织编号 → 本轮不执行
+      ],
+    });
+    const 用户 = userEvent.setup();
+    const 开关 = screen.getByRole('switch', { name: '一键屏蔽简历中的公司' });
+    expect(开关.getAttribute('aria-checked')).toBe('false');
+    await 用户.click(开关);
+    expect(添加组织屏蔽).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.body.textContent).toContain('请先到工作经历补选'));
+    expect(开关.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('一键屏蔽：在职经历用当前雇主、其余曾任职企业用手动添加，同 ID 去重只调用一次，不推断关联公司', async () => {
+    const { 添加组织屏蔽 } = render排除题({
+      简历经历: [
+        { 公司: '云衢科技', 组织编号: 'org_a', 结束: '2021-01' },
+        { 公司: '云衢科技', 组织编号: 'org_a', 结束: null },
+        { 公司: '恒达外包', 组织编号: 'org_b', 结束: '2022-03' },
+      ],
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('switch', { name: '一键屏蔽简历中的公司' }));
+    await waitFor(() => expect(添加组织屏蔽).toHaveBeenCalledTimes(2));
+    expect(添加组织屏蔽).toHaveBeenNthCalledWith(1, 'org_a', '当前雇主');
+    expect(添加组织屏蔽).toHaveBeenNthCalledWith(2, 'org_b', '手动添加');
+  });
+
+  it('一键屏蔽顺序 await：第二项失败停止剩余写入，已成功项显示，重试跳过已有成功目标', async () => {
+    const 添加组织屏蔽 = vi.fn(async (id: string) => {
+      if (id === 'org_a') return;
+      throw new BFF错误(503, 'backend_unavailable', 'down');
+    });
+    render排除题({
+      简历经历: [
+        { 公司: '云衢科技', 组织编号: 'org_a', 结束: null }, // 在职 → 当前雇主
+        { 公司: '恒达外包', 组织编号: 'org_b', 结束: '2022-03' },
+      ],
+      添加组织屏蔽,
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('switch', { name: '一键屏蔽简历中的公司' }));
+    // 首次失败停止剩余写入：恰两次调用，org_b 失败
+    await waitFor(() => expect(添加组织屏蔽).toHaveBeenCalledTimes(2));
+    expect(添加组织屏蔽).toHaveBeenNthCalledWith(1, 'org_a', '当前雇主');
+    expect(添加组织屏蔽).toHaveBeenNthCalledWith(2, 'org_b', '手动添加');
+    await waitFor(() => expect(document.body.textContent).toContain('后端服务暂时不可用'));
+
+    // 权威快照前进（org_a 已成功 → 首项 chip），整页按权威状态重渲染后重试：
+    // org_a 已成功不重写，只补 org_b
+    cleanup();
+    const 重试屏蔽 = vi.fn(async () => {});
+    render排除题({
+      简历经历: [
+        { 公司: '云衢科技', 组织编号: 'org_a', 结束: '2021-01' },
+        { 公司: '恒达外包', 组织编号: 'org_b', 结束: '2022-03' },
+      ],
+      屏蔽名单: [任务5已屏蔽行],
+      添加组织屏蔽: 重试屏蔽,
+    });
+    await 用户.click(screen.getByRole('switch', { name: '一键屏蔽简历中的公司' }));
+    await waitFor(() => expect(重试屏蔽).toHaveBeenCalledTimes(1));
+    expect(重试屏蔽).toHaveBeenCalledWith('org_b', '手动添加');
+  });
+
+  it('一键全成功后开关显示已屏蔽；关闭导航现有屏蔽名单逐项解除，不自动解除', async () => {
+    const 解除组织屏蔽 = vi.fn();
+    const { 添加组织屏蔽 } = render排除题({
+      简历经历: [
+        { 公司: '云衢科技', 组织编号: 'org_a', 结束: '2021-01' },
+        { 公司: '恒达外包', 组织编号: 'org_b', 结束: '2022-03' },
+      ],
+      屏蔽名单: [任务5已屏蔽行, 任务5已屏蔽行B],
+      解除组织屏蔽,
+    });
+    const 用户 = userEvent.setup();
+    const 开关 = screen.getByRole('switch', { name: '一键屏蔽简历中的公司' });
+    expect(开关.getAttribute('aria-checked')).toBe('true');
+    // 关闭只去现有解除入口：导航屏蔽名单，不自动解除、不发任何写
+    await 用户.click(开关);
+    expect(mock跳转).toHaveBeenCalledWith('/blocklist');
+    expect(解除组织屏蔽).not.toHaveBeenCalled();
+    expect(添加组织屏蔽).not.toHaveBeenCalled();
+  });
+
+  it('无目标时开关不能显示全部已屏蔽：保持关闭并说明无可一键屏蔽的公司', async () => {
+    render排除题({ 简历经历: [] });
+    const 用户 = userEvent.setup();
+    const 开关 = screen.getByRole('switch', { name: '一键屏蔽简历中的公司' });
+    expect(开关.getAttribute('aria-checked')).toBe('false');
+    await 用户.click(开关);
+    await waitFor(() => expect(document.body.textContent).toContain('简历里还没有可一键屏蔽的公司'));
+    expect(开关.getAttribute('aria-checked')).toBe('false');
   });
 });
 

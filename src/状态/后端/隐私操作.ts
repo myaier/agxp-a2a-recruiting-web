@@ -1,5 +1,7 @@
-// 后端隐私域操作：自身隐私快照的读写 / 组织屏蔽与解除 / 可屏蔽组织搜索。
-// P3 Task 2：从 Provider deps 组合出页面调用的五个方法。
+// 后端隐私域操作：自身隐私快照的读写 / 组织屏蔽与解除。
+// P3 Task 2：从 Provider deps 组合出页面调用的方法；2026-09-13 合同 A/B：隐私域搜索代理
+// （搜索可屏蔽组织）删除 —— 目录查询一律走 组织操作 的 搜索组织/创建组织（合同 A），
+// 不留重复实现。
 // 铁律：无乐观写 —— 服务端成功（或一次 GET 确认真实效果）先于任何本地提交；
 // 冲突 / 已屏蔽 / 风控确认按 BFF code 分派恢复（409 version_conflict、
 // 409 organization_already_blocked、422 risk_acknowledgement_required）：
@@ -35,8 +37,12 @@ const 空白隐私快照: BFF隐私快照 = {
   revision: 0,
 };
 
-/** 一个 helper 同时更新 React 渲染镜像与页面 reducer：保持两者来自同一份服务端响应。 */
+/** 一个 helper 同时更新 React 渲染镜像与页面 reducer：保持两者来自同一份服务端响应。
+ *  Task 5（顺序屏蔽链）：只 setState 时 ref 要等下一次 React 提交才更新 —— 同一 tick 内
+ *  连续的第二笔写会从 ref 读到旧 revision 被 BFF 409。最小修法：本次权威快照先同步写进
+ *  ref 再派发；下一帧渲染的 ref 赋值与本功能式更新收敛到同一份状态，不引入批处理协议。 */
 function 提交隐私快照(deps: 后端操作依赖, 快照: 页面隐私快照): void {
+  deps.后端状态引用.current = { ...deps.后端状态引用.current, 隐私快照: 快照.服务端 };
   deps.设后端状态((旧) => ({ ...旧, 隐私快照: 快照.服务端 }));
   deps.派发({ 型: '水合后端隐私', 快照 });
 }
@@ -154,17 +160,6 @@ export function 创建隐私操作(deps: 后端操作依赖): 隐私操作 {
           await 处理隐私写入错误(错误, { kind: 'disclosure', field: 字段, value: 码档 });
         }
       });
-    },
-
-    async 搜索可屏蔽组织(query) {
-      if (!是后端 || !后端) return { items: [], next_cursor: null };
-      try {
-        return await 后端!.搜索组织(query);
-      } catch (错误) {
-        // 只读不落锁：401 也走统一会话清理
-        if (错误 instanceof BFF错误 && 错误.status === 401) 清账号状态(账号清理依赖);
-        throw 错误;
-      }
     },
 
     async 添加组织屏蔽(organizationId, source) {

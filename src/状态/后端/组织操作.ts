@@ -602,7 +602,7 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
     // ── 合同 A：目录三操作 —— 只读 / 零派发，绝不修改当前管理关系，不建目录缓存 ──
 
     async 搜索组织(query) {
-      // Mock 模式与 搜索可屏蔽组织 同口径返回空页；页面搜索在 Mock 走各自的本地 callbacks。
+      // Mock 模式返回空页；页面搜索在 Mock 走各自的本地 callbacks。
       if (!是后端 || !后端) return { items: [], next_cursor: null };
       const 仍有效 = 目录会话栅栏();
       try {

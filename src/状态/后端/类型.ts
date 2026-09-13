@@ -817,7 +817,7 @@ export interface 组织操作 {
 export interface 隐私操作 {
   设置雇主隐私(enabled: boolean): Promise<void>;
   设置披露偏好(id: 'D-03' | 'D-04' | 'D-05', 档: 披露档): Promise<void>;
-  搜索可屏蔽组织(query: 组织搜索查询): Promise<BFF组织搜索页>;
+  // 2026-09-13 合同 A/B：可屏蔽组织搜索代理删除 —— 目录查询一律走 组织操作.搜索组织。
   添加组织屏蔽(organizationId: string, source: 屏蔽来源): Promise<void>;
   /** 解除带完整 屏蔽项：组织编号来自 item.组织编号，risk_acknowledged 由 来源 推导。 */
   解除组织屏蔽(item: 屏蔽项): Promise<void>;

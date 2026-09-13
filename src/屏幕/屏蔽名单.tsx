@@ -3,20 +3,25 @@
 // 屏蔽是双向的（业务约束 6）：加进来之后你看不到它的岗位，它也搜不到你的任何画像。
 // 当前雇主及其关联公司在建档时自动进名单，可解除但会给一次明确警示。
 //
-// P3 Task 4：Backend 模式改为「选来源 → 搜组织 → 点结果 → 屏蔽」—— 输入框只作搜索文本，
-// 自由文本本身永远不构成屏蔽，发给服务端的是搜索命中的稳定组织 ID；
-// organization_unavailable 时弃选中、按同词重查。Mock 模式保持原本地 free-text 路径不变。
+// 2026-09-13 合同 A/B（Task 5）：Backend 模式改为「选来源 → 开抽屉搜/选组织 → 屏蔽」——
+// 搜索与创建走 公司选择抽屉接线（合同 B，操作.搜索组织 / 操作.创建组织），
+// 发给服务端的是选中的稳定组织 ID，自由文本本身永远不构成屏蔽。
+// 来源 与 待选企业 是页面本地 state 且互相独立：两者都有值才启用「屏蔽」，
+// 改来源不清理待选，取消抽屉保留原值；写入成功后权威隐私由操作层合并提交，chip 随权威名单展示。
+// organization_unavailable 时弃掉本次待选。Mock 模式保持原本地 free-text 路径不变。
 
 import { useEffect, useState } from 'react';
 import 样式 from './我的功能页.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
+import type { BFF组织搜索项 } from '../数据/BFF契约';
 import type { 屏蔽项, 屏蔽来源 } from '../数据/类型';
 import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import { 轻提示 } from '../组件/轻提示';
 import 弹层框架 from '../组件/弹层框架';
 import { use组织查询 } from './组织查询钩子';
+import 公司选择抽屉接线 from '../组件/公司选择抽屉接线';
 
 const 全部来源: 屏蔽来源[] = ['当前雇主', '关联公司', '手动添加'];
 
@@ -31,9 +36,17 @@ export default function 屏蔽名单() {
   const [草稿, 设草稿] = useState('');
   const [待解除, 设待解除] = useState<屏蔽项 | null>(null);
   const [提示, 设提示] = useState<string | null>(null);
+  // 合同 B：来源 与 待选企业 都是页面本地 state，互相独立；两者都有值才启用「屏蔽」
+  const [来源, 设来源] = useState<屏蔽来源 | null>(null);
+  const [待选, 设待选] = useState<BFF组织搜索项 | null>(null);
+  const [抽屉开, 设抽屉开] = useState(false);
 
-  // Backend 才挂搜索方法；Mock 不传 —— 组织查询钩子全体方法退化为空操作，绝不搜索
-  const 查询 = use组织查询(是后端 ? 操作?.搜索可屏蔽组织 : undefined);
+  // 合同 B：Backend 才挂目录搜索/创建（合同 A 组织操作）；Mock 不传 —— 钩子全体方法退化为空操作
+  const 查询 = use组织查询({
+    搜索: 是后端 ? 操作?.搜索组织 : undefined,
+    创建: 是后端 ? 操作?.创建组织 : undefined,
+    作用域键: JSON.stringify([数据源模式, 后端状态?.主体?.subject_id ?? null, '屏蔽名单']),
+  });
 
   useEffect(() => {
     if (!提示) return;
@@ -61,21 +74,45 @@ export default function 屏蔽名单() {
     设草稿('');
   };
 
-  /** Backend：屏蔽当前选中的搜索命中项（稳定组织 ID + 所选来源），成功后才清词保留来源 */
+  /** Backend：屏蔽当前选中的待选企业（稳定组织 ID + 页面所选来源）。
+   *  成功后权威隐私已由操作层合并提交 —— 清掉待选、保留来源，chip 随权威名单展示。 */
   const 执行屏蔽 = async () => {
-    if (!是后端 || 未水合 || 查询.来源 === null || 查询.选择 === null) return;
-    const 选中项 = 查询.选择;
+    if (!是后端 || 未水合 || 来源 === null || 待选 === null) return;
+    const 选中项 = 待选;
+    const 所选来源 = 来源;
     try {
-      await 操作.添加组织屏蔽(选中项.organization_id, 查询.来源);
+      await 操作.添加组织屏蔽(选中项.organization_id, 所选来源);
     } catch (错误) {
-      // 所选组织已不存在：弃掉本次选中并按同词重查，输入框里的可见文字保持不动，
-      // 让用户另选命中项；其余失败不派发任何本地假成功，只复用现有轻提示报错
-      if (错误 instanceof BFF错误 && 错误.code === 'organization_unavailable') 查询.重新查询();
+      // 所选组织已不存在：弃掉本次待选，让用户重开抽屉另选；其余失败不派发任何
+      // 本地假成功，只复用现有轻提示报错，待选保留供直接重试
+      if (错误 instanceof BFF错误 && 错误.code === 'organization_unavailable') 设待选(null);
       else 轻提示(取后端错误文案(错误));
       return;
     }
     查询.设词('');
+    设待选(null);
     设提示(`已屏蔽 ${选中项.display_name}，双向不可见`);
+  };
+
+  /** 抽屉选定回填：真实 ID 与显示名一起落，关抽屉先 作废（合同 B：父页面关闭时先作废再隐藏） */
+  const 回填待选 = (项: BFF组织搜索项) => {
+    设待选(项);
+    查询.作废();
+    设抽屉开(false);
+  };
+  const 选定企业键 = (键: string) => {
+    // 选中 ID 只来自父页面：在本实例结果里定位完整项，同名不同 ID 不混淆
+    const 项 = 查询.结果.find((候选) => 候选.organization_id === 键);
+    if (项) 回填待选(项);
+  };
+  const 添加企业 = async (名称: string) => {
+    const 项 = await 查询.添加(名称);
+    if (项) 回填待选(项);
+  };
+  const 关闭抽屉 = () => {
+    // 取消 / Escape / 遮罩：待选与来源都不变，作废在飞请求后隐藏，原值保留
+    查询.作废();
+    设抽屉开(false);
   };
 
   const 确认解除 = async () => {
@@ -111,15 +148,15 @@ export default function 屏蔽名单() {
 
         {是后端 ? (
           <>
-            {/* 先选屏蔽来源，再搜组织、点结果 */}
+            {/* 先选屏蔽来源；来源与待选企业互相独立，两者都有值才启用「屏蔽」 */}
             <div className={样式.分段}>
               {全部来源.map((源) => (
                 <button
                   key={源}
-                  className={`${样式.分段项} ${查询.来源 === 源 ? 样式.分段项选中 : ''} ${
+                  className={`${样式.分段项} ${来源 === 源 ? 样式.分段项选中 : ''} ${
                     未水合 ? 样式.分段项禁用 : '可点'
                   }`}
-                  onClick={() => 查询.设来源(源)}
+                  onClick={() => 设来源(源)}
                   disabled={未水合}
                 >
                   {源}
@@ -127,49 +164,33 @@ export default function 屏蔽名单() {
               ))}
             </div>
             <div className={样式.添加行}>
-              <input
-                className={样式.添加框}
-                value={查询.词}
-                onChange={(事件) => 查询.设词(事件.target.value)}
-                placeholder="输入公司全称，如「某某科技」"
-                disabled={未水合 || 查询.来源 === null}
-              />
+              {/* 公司搜索/选择在合同 B 抽屉里进行：入口回显当前待选，点开抽屉换选 */}
               <button
-                className={`${样式.添加键} ${查询.选择 ? '可点' : 样式.添加键禁用}`}
+                type="button"
+                className={样式.添加框}
+                style={{ textAlign: 'left' }}
+                onClick={() => 设抽屉开(true)}
+                disabled={未水合}
+              >
+                {待选 ? 待选.display_name : '选择要屏蔽的公司'}
+              </button>
+              <button
+                className={`${样式.添加键} ${来源 !== null && 待选 ? '可点' : 样式.添加键禁用}`}
                 onClick={() => void 执行屏蔽()}
-                disabled={未水合 || 查询.选择 === null}
+                disabled={未水合 || 来源 === null || 待选 === null}
               >
                 屏蔽
               </button>
             </div>
-            {/* 搜索命中：整行可点即选中（词回显为该组织名，备选保持可见供换选） */}
-            {查询.结果.length > 0 ? (
-              <div className={样式.卡}>
-                {查询.结果.map((项) => (
-                  <button
-                    key={项.organization_id}
-                    className={`${样式.行} 可点`}
-                    onClick={() => 查询.选中(项)}
-                  >
-                    <span className={样式.字标}>{项.display_name.charAt(0)}</span>
-                    <span className={样式.行文字组}>
-                      <span className={样式.行标题}>{项.display_name}</span>
-                      <span className={样式.行说明}>{项.legal_name}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            {查询.下一页游标 !== null ? (
-              /* 游标只属于产生它的那次查询：选中命中项后词已回显为组织名，旧游标不得继续翻页 */
-              <button
-                className="可点"
-                onClick={() => void 查询.加载更多()}
-                disabled={查询.加载中 || 查询.选择 !== null}
-                style={{ width: '100%', padding: '10px', color: 'var(--最弱)' }}
-              >
-                {查询.加载中 ? '加载中…' : '加载更多'}
-              </button>
+            {/* 合同 B：公司选择抽屉（合同 B 薄包装）；关闭已先 作废 在飞搜索/创建 */}
+            {抽屉开 ? (
+              <公司选择抽屉接线
+                查询={查询}
+                选中键={待选?.organization_id ?? null}
+                选定={选定企业键}
+                关闭={关闭抽屉}
+                添加={(名称) => void 添加企业(名称)}
+              />
             ) : null}
           </>
         ) : (
