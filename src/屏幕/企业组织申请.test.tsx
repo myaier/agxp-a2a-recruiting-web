@@ -308,6 +308,48 @@ describe('企业组织申请 · 目标企业（合同 C）', () => {
     expect((screen.getByLabelText('公司全称') as HTMLInputElement).value).toBe('');
   });
 
+  it('点击抽屉里当前已选中的同一企业：只关抽屉，不清表单与证据（非「更换」）', async () => {
+    const 用户 = userEvent.setup();
+    渲染申请页('/hr/organization-application?organization_id=org_1');
+    expect(await screen.findByText('企业org_1')).toBeTruthy();
+    await 填写(用户, { 企业域名: '' });
+    expect(screen.getByText('执照.png')).toBeTruthy();
+
+    // 打开抽屉，搜索结果里当前选中企业带 ✓；点同一行不算更换选择
+    await 用户.click(screen.getByRole('button', { name: '更换企业' }));
+    await 用户.type(screen.getAllByPlaceholderText('输入公司名称')[0], '云衢');
+    await 用户.click(await screen.findByRole('button', { name: /云衢科技/ }));
+    expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull();
+    // 表单与证据原样保留，URL 不变
+    expect(screen.getByText('执照.png')).toBeTruthy();
+    expect((screen.getByLabelText('公司全称') as HTMLInputElement).value).toBe('上海云衢科技有限公司');
+    expect((screen.getByLabelText('工商注册号') as HTMLInputElement).value).toBe('91310000MA1FL000X');
+    expect((screen.getByLabelText('申请说明') as HTMLTextAreaElement).value).toBe('我是这家公司的招聘负责人，附营业执照与在职证明。');
+    expect(screen.getByTestId('位置').textContent).toBe('/hr/organization-application?organization_id=org_1');
+  });
+
+  it('主体切换（同挂载）清空抽屉已展示的上一账号搜索结果：作用域键含 subject_id', async () => {
+    置Backend应用状态();
+    mock应用状态.后端状态 = { 主体: { subject_id: 'subject_A' } };
+    const 用户 = userEvent.setup();
+    const 视图 = 渲染申请页('/hr/organization-application?organization_id=org_1');
+    await screen.findByText('企业org_1');
+    await 用户.click(screen.getByRole('button', { name: '更换企业' }));
+    await 用户.type(screen.getAllByPlaceholderText('输入公司名称')[0], '云衢');
+    expect(await screen.findByRole('button', { name: /云衢科技/ })).toBeTruthy();
+
+    // 同一挂载实例下换账号：抽屉仍开着，但上一账号的结果必须被清掉
+    mock应用状态.后端状态 = { 主体: { subject_id: 'subject_B' } };
+    视图.rerender(
+      <MemoryRouter initialEntries={['/hr/organization-application?organization_id=org_1']}>
+        <位置探针 />
+        <企业组织申请 />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('button', { name: /云衢科技/ })).toBeNull();
+    expect((screen.getAllByPlaceholderText('输入公司名称')[0] as HTMLInputElement).value).toBe('');
+  });
+
   it('旧目标迟到响应不覆盖新目标（换企业后旧读取被代际丢弃）', async () => {
     let 兑现旧目标!: (值: { organization_id: string; display_name: string; legal_name: null; verification_status: 'unverified' }) => void;
     mock读取目录企业.mockImplementationOnce(() => new Promise((兑现) => { 兑现旧目标 = 兑现; }));

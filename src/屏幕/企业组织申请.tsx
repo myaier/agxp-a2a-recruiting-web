@@ -93,7 +93,7 @@ function 校验证据(files: File[]): string | null {
 
 export default function 企业组织申请() {
   const { 返回 } = use导航();
-  const { 状态, 操作, 数据源模式 } = use应用状态();
+  const { 状态, 操作, 后端状态, 数据源模式 } = use应用状态();
   // 合同 C：目标企业 = URL query 参数优先（公开 ID），其次档案自报企业，无值则空
   const [查询参数, 设查询参数] = useSearchParams();
   const 参数目标 = 查询参数.get('organization_id');
@@ -156,10 +156,16 @@ export default function 企业组织申请() {
   const 查询 = use组织查询({
     搜索: 操作.搜索组织,
     创建: 操作.创建组织,
-    作用域键: JSON.stringify(['企业组织申请', 数据源模式]),
+    作用域键: JSON.stringify([数据源模式, 后端状态?.主体?.subject_id ?? null, '企业组织申请']),
   });
   /** 换企业：URL replace 写公开 ID + 清空上一企业的材料（取消选择不走这里） */
   function 确认目标(项: BFF组织搜索项) {
+    // 点的是当前已选中的同一行：不是「更换」，只关抽屉，不清原企业材料
+    if (项.organization_id === 目标?.id) {
+      查询.作废();
+      设抽屉开(false);
+      return;
+    }
     查询.作废();
     设抽屉开(false);
     设查询参数({ organization_id: 项.organization_id }, { replace: true });

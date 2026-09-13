@@ -57,6 +57,17 @@ describe('从公开企业到展示 · BFF 公开视图', () => {
     expect(d.条款?.every((x) => !x.已核 && x.说明 === null)).toBe(true);
   });
 
+  it('verified_at null（合同 C 绑定未核验目录企业）→ 已核验 false，页脚不宣称平台核验', () => {
+    const d = 从公开企业到展示(从BFF公开企业({ ...BFF公开企业样本, verified_at: null }));
+    expect(d.身份.已核验).toBe(false);
+    expect(d.身份.核验时间).toBeNull();
+    expect(d.页脚).toBe('公开信息由企业主页提供');
+    // 对照：已核验视图保持「已核验: true + 平台核验页脚」
+    const 已核 = 从公开企业到展示(从BFF公开企业(BFF公开企业样本));
+    expect(已核.身份.已核验).toBe(true);
+    expect(已核.页脚).toBe('公开信息由企业主页提供 · 企业身份经平台核验');
+  });
+
   it('合法空档案：空值逐字段转未知，但不产生失败态，0 与身份事实保留', () => {
     // 全空 profile 是合法 DTO（closed 枚举含 ''，列表允许空），不是请求失败
     const 空DTO: BFF公开企业 = {

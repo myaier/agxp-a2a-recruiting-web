@@ -23,6 +23,9 @@ function 文本(值: string): string | null {
 
 export function 从公开企业到展示(视图: 公开企业视图): 企业公开页资料 {
   const 简介 = 文本(视图.companyIntro);
+  // 已核验只跟 verified_at 事实走：合同 C 允许岗位显式绑定未核验目录企业，
+  // 此类公开页不得显示「已核验: true / 企业身份经平台核验」的虚构核验态。
+  const 已核验 = 视图.verifiedAt !== null;
   const 相册 = [...视图.officeMediaUrls, ...视图.companyMediaUrls];
   return {
     名称: 视图.displayName,
@@ -62,11 +65,11 @@ export function 从公开企业到展示(视图: 公开企业视图): 企业公�
       法定名称: 视图.legalName,
       展示名称: 视图.displayName,
       核验时间: 视图.verifiedAt === null ? null : 视图.verifiedAt.slice(0, 10),
-      已核验: true,
+      已核验,
       岗位数: 视图.activeVerifiedJobCount,
       岗位数已核验: true,
     },
-    页脚: '公开信息由企业主页提供 · 企业身份经平台核验',
+    页脚: 已核验 ? '公开信息由企业主页提供 · 企业身份经平台核验' : '公开信息由企业主页提供',
   };
 }
 
