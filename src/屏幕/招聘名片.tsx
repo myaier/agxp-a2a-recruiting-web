@@ -182,12 +182,15 @@ function 后端名片() {
     }
     保存锁.current = true;
     设保存中(true);
+    // 顺序保存链（PATCH → 头像）共用发起保存时的 owner：PATCH 成功后主体若已切换，
+    // 头像操作核对预期主体不符即中止，不把本闭包捕获的旧文件写进新账号档案
+    const 发起主体 = 后端状态.主体?.subject_id ?? null;
     try {
       const 档案 = await 操作.保存招聘方档案({ public_name: publicName, title, organization_ref: organizationRef });
       if (头像文件) {
         // 头像 If-Match 必须用 PATCH 响应里的新 revision：dispatch 后 state ref 要到
         // 下一个 React 提交才更新，此刻读 ref 拿到的是旧 revision（真实 BFF 会 409）
-        await 操作.替换招聘方头像(头像文件, 档案.revision);
+        await 操作.替换招聘方头像(头像文件, 档案.revision, 发起主体);
         收口预览();
       }
       // 注册流：档案已经在服务端了，接着去发岗；应用内普通编辑留在本屏

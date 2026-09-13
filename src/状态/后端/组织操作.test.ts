@@ -845,6 +845,33 @@ describe('组织操作：替换招聘方头像', () => {
     expect(deps.主体标识引用.current).toBeNull();
     expect(deps.会话代际.current).toBe(2);
   });
+
+  // review r2：顺序保存链（PATCH → 头像）共用发起保存时的 owner —— A 的 PATCH 成功后、
+  // 头像请求发起前切到 B，操作层核对预期主体不符即中止，不把 A 的头像文件经
+  // PATCH 回执 revision 写进 B 的档案
+  it('保存链发起主体已切换：预期主体核对不符即中止，头像请求不发出', async () => {
+    const 替换头像 = vi.fn(async () => BFF招聘方档案样本);
+    const 后端 = 创建完整测试数据源({ 替换招聘方头像: 替换头像 });
+    const { deps, 操作 } = 创建头像测试环境(后端);
+    // A 的档案 PATCH 已成功返回，此刻会话已切到 B（主体与代际都前进）
+    deps.主体标识引用.current = 'sub_2';
+    deps.会话代际.current = 2;
+    await expect(操作.替换招聘方头像(头像文件, 1, 'sub_1')).rejects.toMatchObject({
+      name: '客户端校验错误', field: 'session',
+    });
+    expect(替换头像).not.toHaveBeenCalled();
+    expect(deps.状态引用.current.招聘方档案).toEqual(BFF招聘方档案样本);
+  });
+
+  it('预期主体与当前主体一致：核对通过照常上传', async () => {
+    const 新档案 = { ...BFF招聘方档案样本, avatar_url: 'https://cdn.example.com/a.png', revision: 2 };
+    const 替换头像 = vi.fn(async () => 新档案);
+    const 后端 = 创建完整测试数据源({ 替换招聘方头像: 替换头像 });
+    const { deps, 操作 } = 创建头像测试环境(后端);
+    await 操作.替换招聘方头像(头像文件, 1, 'sub_1');
+    expect(替换头像).toHaveBeenCalledWith(头像文件, 1);
+    expect(deps.状态引用.current.招聘方档案).toEqual(新档案);
+  });
 });
 
 // ── 企业档案 replacement 的恢复语义与 wire body 冻结（Task 4 Step 3）──

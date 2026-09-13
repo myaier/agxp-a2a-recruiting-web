@@ -72,10 +72,25 @@ function 后端身份摘要() {
   const [待申请读取失败, 设待申请读取失败] = useState(false);
   // 用户经抽屉改选后置位：此后档案坐标的迟到变化不再覆盖本页选择
   const 已改选 = useRef(false);
+  // 合同 B：本页作用域键纳入 last_used_role；同挂载切主体时复位改选标记，待申请选择
+  // 按新主体档案重新恢复（两主体坐标相同 / 均为 null 也要强制重跑，不把 A 的选择留给 B）
+  const 主体作用域键 = JSON.stringify([
+    数据源模式, 后端状态?.主体?.subject_id ?? null, 后端状态?.主体?.last_used_role ?? null, '企业实名认证',
+  ]);
+  const 首次渲染 = useRef(true);
+  const [主体复位, 设主体复位] = useState(0);
+  useEffect(() => {
+    if (首次渲染.current) {
+      首次渲染.current = false;
+      return;
+    }
+    已改选.current = false;
+    设主体复位((旧) => 旧 + 1);
+  }, [主体作用域键]);
   useEffect(() => {
     if (已改选.current) return;
     设待申请ID(档案坐标);
-  }, [档案坐标]);
+  }, [档案坐标, 主体复位]);
   useEffect(() => {
     if (已改选.current) return; // 改选的名称随回填已定，不再按 ID 重读
     if (待申请ID === null) {
@@ -100,7 +115,7 @@ function 后端身份摘要() {
     return () => {
       已取消 = true;
     };
-  }, [待申请ID, 操作]);
+  }, [待申请ID, 操作, 主体复位]);
   const 待申请值 = 待申请读取中
     ? '公司信息加载中…'
     : 待申请读取失败
@@ -112,7 +127,7 @@ function 后端身份摘要() {
   const 查询 = use组织查询({
     搜索: 操作.搜索组织,
     创建: 操作.创建组织,
-    作用域键: JSON.stringify([数据源模式, 后端状态?.主体?.subject_id ?? null, '企业实名认证']),
+    作用域键: 主体作用域键,
   });
   function 回填待申请(项: BFF组织搜索项) {
     已改选.current = true;

@@ -414,8 +414,14 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
       }
     },
 
-    async 替换招聘方头像(file, revision) {
+    async 替换招聘方头像(file, revision, 预期主体?) {
       if (!是后端 || !后端) return;
+      // 顺序保存链（PATCH → 头像）沿用发起保存时的 owner：调用方传入发起保存时的主体，
+      // 此处当前主体已切换即中止 —— A 的档案 PATCH 成功后切到 B，闭包里仍是 A 的
+      // 头像文件与 PATCH 回执 revision，栅栏重新捕获也只会捕到 B 的主体，拦不住串写
+      if (预期主体 !== undefined && deps.主体标识引用.current !== 预期主体) {
+        throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
+      }
       const before = 状态引用.current.招聘方档案;
       // P0 修复 Task 3：缺失档案首写链（PATCH → 头像）走到这里时 before 还是 null ——
       // 上一步 派发 的 水合招聘方档案 要到下一个 React 提交才写进 state ref。这一步的

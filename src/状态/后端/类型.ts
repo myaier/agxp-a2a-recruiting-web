@@ -788,8 +788,10 @@ export interface 组织操作 {
   取消企业管理员申请(id: string): Promise<void>;
   接受企业邀请(token: string): Promise<void>;
   /** revision 缺省读 state ref；紧跟 保存招聘方档案 的调用必须显式传响应 revision
-   *  （dispatch 后 ref 要到下一个 React 提交才更新，读 ref 会拿旧值被 BFF 409）。 */
-  替换招聘方头像(file: File, revision?: number): Promise<void>;
+   *  （dispatch 后 ref 要到下一个 React 提交才更新，读 ref 会拿旧值被 BFF 409）。
+   *  顺序保存链（PATCH → 头像）还应传发起保存时的主体：操作层在发请求前核对当前主体
+   *  与预期一致，不一致即按迟到栅栏同口径抛 客户端校验错误('session')，请求不发出。 */
+  替换招聘方头像(file: File, revision?: number, 预期主体?: string | null): Promise<void>;
   保存企业档案(draft: 资料形): Promise<void>;
   上传并发布企业媒体(purpose: BFF企业媒体用途, file: File): Promise<void>;
   移除企业媒体(purpose: BFF企业媒体用途, mediaId: string): Promise<void>;

@@ -516,7 +516,7 @@ describe('招聘名片 · Backend 头像原子保存', () => {
     expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '存招聘头像' }));
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     // 头像 If-Match 的 revision 来自 PATCH 响应（不是渲染时闭包里的旧值）
-    await waitFor(() => expect(mock替换头像).toHaveBeenCalledWith(pngFile, BFF招聘方档案样本.revision));
+    await waitFor(() => expect(mock替换头像).toHaveBeenCalledWith(pngFile, BFF招聘方档案样本.revision, 'sub_1'));
     // 服务端成功后预览收口：object URL 被回收，权威头像由 operation 的响应替换
     expect(revoke).toHaveBeenCalledWith('blob:avatar-preview');
     expect(screen.queryByRole('img', { name: '头像预览' })).toBeNull();
@@ -594,6 +594,26 @@ describe('招聘名片 · Backend 头像原子保存', () => {
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock保存招聘方档案).toHaveBeenCalledTimes(1));
     expect(mock替换头像).not.toHaveBeenCalled();
+  });
+
+  // review r2：顺序保存链共用发起保存时的 owner —— PATCH 在途时切到 sub_2，
+  // 页面传给头像操作的仍是发起保存时的 sub_1（操作层核对不符即中止，见 组织操作.test.ts）
+  it('保存链发起后主体切换：头像操作携带发起保存时的主体', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:avatar-owner');
+    let 兑现!: (值: BFF招聘方档案) => void;
+    mock保存招聘方档案.mockReturnValue(new Promise<BFF招聘方档案>((r) => { 兑现 = r; }));
+    const 用户 = userEvent.setup();
+    const 视图 = render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    await 用户.upload(screen.getByLabelText('更换头像'), pngFile);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock保存招聘方档案).toHaveBeenCalledTimes(1));
+    // PATCH 在途时切换账号：运行中的闭包已捕获 A 的文件与 revision
+    置Backend应用状态({ 后端状态: { 主体: { subject_id: 'sub_2' } } });
+    视图.rerender(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    兑现(BFF招聘方档案样本);
+    // 发起主体（sub_1）冻结进链路，不随当前主体（sub_2）漂移
+    await waitFor(() => expect(mock替换头像).toHaveBeenCalledWith(pngFile, BFF招聘方档案样本.revision, 'sub_1'));
+    expect(mock替换头像).not.toHaveBeenCalledWith(pngFile, BFF招聘方档案样本.revision, 'sub_2');
   });
 });
 
@@ -723,7 +743,7 @@ describe('招聘名片 · Backend 缺失档案首写', () => {
     await render填写完成的缺失Profile名片(用户);
     await 用户.upload(screen.getByLabelText('更换头像'), pngFile);
     await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
-    await waitFor(() => expect(mock替换头像).toHaveBeenCalledWith(pngFile, 1));
+    await waitFor(() => expect(mock替换头像).toHaveBeenCalledWith(pngFile, 1, 'sub_1'));
     await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.发布岗位, { 从注册流: true }));
   });
 

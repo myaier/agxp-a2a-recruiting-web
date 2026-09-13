@@ -1267,6 +1267,40 @@ describe('引导问答 再加一家：公司选择抽屉与手动屏蔽（Task 5
     await waitFor(() => expect(screen.queryByText('选择企业')).toBeNull());
   });
 
+  // review r2：一键 与 手动 两条屏蔽入口共用同一同步写入锁 —— 一键在途时抽屉里
+  // 再选同一企业不能被操作层同键锁静默吞掉后当成成功关抽屉
+  it('一键屏蔽在途时抽屉再选同一企业不伪造成功：抽屉不关、无第二笔调用；一键失败后可重试', async () => {
+    const 门们: { resolve: (值?: unknown) => void; reject: (错误?: unknown) => void }[] = [];
+    const 添加组织屏蔽 = vi.fn(() => new Promise((ok, fail) => { 门们.push({ resolve: ok as () => void, reject: fail }); }));
+    render排除题({
+      简历经历: [{ 公司: '云衢科技', 组织编号: 'org_1', 结束: null }],
+      搜索组织: vi.fn().mockResolvedValue(BFF组织搜索页样本),
+      添加组织屏蔽,
+    });
+    const 用户 = userEvent.setup();
+    // 一键屏蔽 org_1 在途（首请求未结算）
+    await 用户.click(screen.getByRole('switch', { name: '一键屏蔽简历中的公司' }));
+    await waitFor(() => expect(添加组织屏蔽).toHaveBeenCalledTimes(1));
+    expect(添加组织屏蔽).toHaveBeenCalledWith('org_1', '当前雇主');
+
+    // 一键仍在途：抽屉里选同一企业 → 共用锁挡下，无第二笔调用、抽屉不关（无伪成功）
+    await 打开抽屉并搜索公司(用户, '云衢');
+    fireEvent.click(公司抽屉().getByRole('button', { name: '云衢科技' }));
+    await waitFor(() => {});
+    expect(添加组织屏蔽).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog', { name: '选择企业' })).toBeDefined();
+    expect(mock应用状态.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '拉黑' }));
+
+    // 一键请求失败：提示失败；从抽屉原选择重试，真实结算成功才关抽屉
+    门们[0].reject(new BFF错误(503, 'backend_unavailable', 'down'));
+    await waitFor(() => expect(document.body.textContent).toContain('后端服务暂时不可用'));
+    expect(screen.getByRole('dialog', { name: '选择企业' })).toBeDefined();
+    fireEvent.click(公司抽屉().getByRole('button', { name: '云衢科技' }));
+    await waitFor(() => expect(添加组织屏蔽).toHaveBeenCalledTimes(2));
+    门们[1].resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull());
+  });
+
   it('一键屏蔽：缺任一组织编号则提示回工作经历补选，本轮不静默部分执行', async () => {
     const { 添加组织屏蔽 } = render排除题({
       简历经历: [
