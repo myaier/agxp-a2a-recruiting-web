@@ -1,6 +1,6 @@
 # 七类公司选择入口统一与企业认证接线
 
-日期：2026-09-13。版本：v1.0。状态：交互方向已获用户批准；本落盘 Spec 待批准，尚未编写 Plan、启动实施。
+日期：2026-09-13。版本：v1.0。状态：用户于 2026-09-13 批准 v1.0 并要求零上下文 Plan、Claude review 与执行提示词；进入规划，尚未实施。批准内容快照：revision `4b4edad965ef89e6a59a9927cacab3a94cdbdf37`，blob `1aeb99dc03fb2ff343a3fd10cb67a7771aace7d1`。
 
 ## 1. 目标与依据
 
@@ -137,4 +137,4 @@
 
 采用 development-workflow：批准本 Spec 后编写单份零上下文 Plan，再进行 Claude 异构文档 review，完成后生成 Claude Code／Codex 双节执行提示词；产品实现留给用户启动的新 session。
 
-安装前置：当前 development-workflow 指向的 skill 根相对 `../_shared/review-contract.md` 缺失，已搜索本地 agents/codex 技能目录未找到。此项不阻止 Spec 审阅，但文档 review 前必须恢复正式合同，不以自行编写的替代规则宣称已完成该阶段。
+安装前置已核实：技能入口为符号链接，解析真实 skill 根目录后，`../_shared/review-contract.md` 存在且已完整读取。此前按链接入口查找的缺失判断已纠正，无需安装替代合同。此更新仅记录批准及现场前置，不改变 v1.0 产品契约。
