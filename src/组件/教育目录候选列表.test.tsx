@@ -1,8 +1,9 @@
-// 教育目录候选列表 组件测试（Task 5）：
+// 教育目录候选列表 组件测试（Task 5；Task 2 起该组件是 目录候选列表 的教育包装）：
 // 教育编辑页 学校/专业 候选行的两模式共用列表 —— 纯展示，props 只有展示值、稳定键、
 // 状态与回调（brief 接口逐字）：学校副行沿原「城市 · 国家」inline 字体/颜色、专业无副行、
 // 选中行沿用 候选行选中/候选勾 既有样式、列表尾「加载更多」沿用原控件（忙时禁用）。
-// 两模式消费同一列表由 src/屏幕/工作经历.test.tsx 与 e2e 证明。
+// 行 JSX 已提取到共用的 目录候选列表（公司选择抽屉复用），教育包装的 props/导出不变，
+// 这里逐条冻结包装后的行为不变；两模式消费同一列表由 src/屏幕/工作经历.test.tsx 与 e2e 证明。
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

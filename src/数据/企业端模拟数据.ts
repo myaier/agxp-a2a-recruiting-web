@@ -18,6 +18,8 @@ import type {
   会话条,
   披露项,
 } from './类型';
+import type { BFF组织创建结果, BFF组织搜索项, BFF组织搜索页 } from './BFF契约';
+import type { 组织搜索查询 } from './招聘数据源类型';
 
 /** 在招岗位（顶栏切换 + D17 岗位管理） */
 export const 在招岗位列表: 在招岗位[] = [
@@ -1861,3 +1863,48 @@ export const 初筛对话表: Record<string, 对话条[]> = {
   'A-07': [...(各候选阶段对话['A-07']?.匿名初筛 ?? []), ...苏含章初筛收尾],
   'A-09': 何砚清初筛,
 };
+
+// ── 模拟企业目录（Task 2 合同 B）：公司选择抽屉 Mock 模式的本地搜索/添加数据源 ──
+// 只被页面在 Mock 模式接进 公司选择层 的 callbacks，绝不取真实接口，也不把本地 ID
+// 送入任何真实接口；同名（去首尾空白后）复用只发生在本地数组。目录条目与合同 A 的
+// BFF组织搜索项 同形，页面 callbacks 可原样返回。
+
+export const 模拟企业目录: BFF组织搜索项[] = [
+  { organization_id: 'mock_org_1', display_name: '云衢科技', legal_name: '云衢网络科技有限公司', verification_status: 'verified' },
+  { organization_id: 'mock_org_2', display_name: '星桥传媒', legal_name: null, verification_status: 'unverified' },
+  { organization_id: 'mock_org_3', display_name: '澜舟数据', legal_name: '澜舟数据科技有限公司', verification_status: 'verified' },
+  { organization_id: 'mock_org_4', display_name: '白帆设计', legal_name: null, verification_status: 'unverified' },
+  { organization_id: 'mock_org_5', display_name: '临港智造', legal_name: '上海临港智能制造有限公司', verification_status: 'verified' },
+  { organization_id: 'mock_org_6', display_name: '青梧咨询', legal_name: null, verification_status: 'unverified' },
+];
+
+/** 本地分页搜索：display_name / legal_name 包含 q（忽略大小写）即命中；cursor = 已跳过的命中条数 */
+export function 模拟目录搜索(query: 组织搜索查询): BFF组织搜索页 {
+  const 词 = query.q.trim().toLowerCase();
+  const 命中 = 模拟企业目录.filter(
+    (项) =>
+      项.display_name.toLowerCase().includes(词) ||
+      (项.legal_name ?? '').toLowerCase().includes(词),
+  );
+  const 起始 = query.cursor === undefined ? 0 : Number(query.cursor);
+  const 页 = 命中.slice(起始, 起始 + (query.limit ?? 20));
+  const 下一 = 起始 + 页.length;
+  return { items: 页, next_cursor: 下一 < 命中.length ? String(下一) : null };
+}
+
+let 模拟新增序号 = 0;
+/** 本地添加：同名（trim 后）复用既有条目（created=false），否则追加新条目（created=true，未认证、法定名 null） */
+export function 模拟目录添加(displayName: string): BFF组织创建结果 {
+  const 名称 = displayName.trim();
+  const 已有 = 模拟企业目录.find((项) => 项.display_name === 名称);
+  if (已有) return { organization: 已有, created: false };
+  模拟新增序号 += 1;
+  const 新项: BFF组织搜索项 = {
+    organization_id: `mock_org_new_${模拟新增序号}`,
+    display_name: 名称,
+    legal_name: null,
+    verification_status: 'unverified',
+  };
+  模拟企业目录.push(新项);
+  return { organization: 新项, created: true };
+}

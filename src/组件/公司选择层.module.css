@@ -1,0 +1,85 @@
+/* 公司选择层（Task 2 合同 B）：公司抽屉相对原行业选择只补公司特有的三处 ——
+   搜索框、正文高度与错误位置。骨架（遮罩/选择层/抓手/标题）沿用 工作经历.module.css，
+   候选行沿用 入职引导.module.css（目录候选列表），主按钮沿用 通用.module.css。 */
+
+/* 搜索/添加共用名称输入框：与 选择层输入 同档描边，独立类便于在抽屉内定位 */
+.输入框 {
+  flex: none;
+  margin-top: 10px;
+  border: 1px solid var(--描边深);
+  border-radius: 12px;
+  padding: 11px 13px;
+  font-size: 14px;
+  color: var(--墨);
+  outline: none;
+  background: var(--白);
+  width: 100%;
+}
+.输入框::placeholder {
+  color: var(--最弱);
+}
+
+/* 正文高度：390×844 及键盘出现时列表能滚动，底部操作可达 */
+.正文 {
+  flex: 1;
+  min-height: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.提示行 {
+  padding: 18px 2px;
+  font-size: 13px;
+  color: var(--最弱);
+  text-align: center;
+}
+
+/* 错误位置：一行贴在正文/输入之下，沿全站字段错误红 */
+.错误行 {
+  flex: none;
+  margin-top: 6px;
+  padding: 0 2px;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 首页搜索失败的重试入口（空词/零结果不渲染） */
+.重试键 {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 2px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+/* 添加视图的返回入口（返回搜索不丢原父页选择） */
+.返回键 {
+  flex: none;
+  align-self: flex-start;
+  padding: 2px 0 6px;
+  font-size: 13px;
+  color: var(--最弱);
+}
+
+/* 「添加新企业」说明行：锁权限预期，不加第二层确认框 */
+.说明行 {
+  flex: none;
+  margin: 8px 0 12px;
+  font-size: 12px;
+  color: var(--最弱);
+  line-height: 1.5;
+}
+
+/* 底部「添加新企业」入口：搜索视图常驻，弱色不抢候选行 */
+.添加入口 {
+  flex: none;
+  margin-top: 10px;
+  padding: 10px 2px;
+  font-size: 14px;
+  color: var(--深绿);
+  font-weight: 600;
+  text-align: left;
+}
