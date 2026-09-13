@@ -301,14 +301,18 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
       if (revision === null) {
         throw new 客户端校验错误('recruiter.profile', '招聘方档案状态尚未就绪，请刷新后重试');
       }
+      // 会话栅栏：本次写入捕获主体 + 会话代际 —— 迟到成功不派发、不返回可应用的旧主体
+      // 档案（页面走既有 catch，保存→头像的后续链随之中断）；迟到 401 不清新会话
+      const 仍有效 = 目录会话栅栏();
       try {
         const next = await 后端.保存招聘方档案(patch, revision);
+        if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
         派发({ 型: '水合招聘方档案', 档案: next });
         // 首写成功即「有档案」：阶段从 缺失 收口到 成功，路由不再把用户按回注册流名片
         deps.设后端状态((旧) => ({ ...旧, 招聘方档案水合阶段: '成功' }));
         return next;
       } catch (error) {
-        处理组织401(error);
+        处理目录错误(error, 仍有效);
         throw error;
       }
     },
@@ -327,8 +331,12 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
     async 创建企业管理员申请(metadata, evidence) {
       // 调用方需要真实回执（列表刷新失败的呈现由页面负责），Mock 模式没有这条链，直接抛
       if (!是后端 || !后端) throw new Error('创建企业管理员申请仅 Backend 模式可用');
+      // 会话栅栏：POST / 刷新 / approved 重读的每个 await 后先过栅栏再派发，
+      // 迟到成功整体中止（不派发旧申请、不返回可应用结果），迟到 401 不清新会话
+      const 仍有效 = 目录会话栅栏();
       try {
         const 申请 = await 后端.创建企业管理员申请(metadata, evidence);
+        if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
         // 合同 C：POST 回执先按 request_id upsert 进全局列表 —— 后续列表刷新失败也
         // 保留返回申请，不诱导重复 POST
         派发({
@@ -338,26 +346,33 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
         let 列表刷新失败 = false;
         try {
           const 申请列表 = await 后端.读取企业管理员申请();
+          if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
           派发({ 型: '水合企业管理员申请', 申请: 申请列表 });
         } catch (刷新错误) {
-          处理组织401(刷新错误);
+          // 栅栏破（含迟到 401）：迟到结果整体中止，不返回可应用的旧主体结果
+          if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
+          处理目录错误(刷新错误, 仍有效);
           列表刷新失败 = true;
         }
         // approved：关系与企业事实随服务端变化 → 重读权威值；仍不以 POST 成功自行认证
         if (申请.status === 'approved') {
           try {
             const affiliations = await 后端.读取我的企业关系();
+            if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
             const currentId = 选择当前企业关系(affiliations, 状态引用.current.当前企业关系编号);
             派发({ 型: '水合企业关系', 关系: affiliations, 当前编号: currentId });
             const organization = await 后端.读取公开企业(metadata.organization_id);
+            if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
             派发({ 型: '缓存公开企业', 企业: organization });
           } catch (重读错误) {
-            处理组织401(重读错误); // 重读失败不影响申请结果，页面按服务端回执展示
+            // 栅栏破（含迟到 401）：迟到结果整体中止；其余重读失败不影响申请结果
+            if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
+            处理目录错误(重读错误, 仍有效);
           }
         }
         return { 申请, 列表刷新失败 };
       } catch (error) {
-        处理组织401(error);
+        处理目录错误(error, 仍有效);
         throw error;
       }
     },
@@ -366,12 +381,15 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
       if (!是后端 || !后端) return;
       const 原始 = 状态引用.current.企业管理员申请列表.find((项) => 项.request_id === id);
       if (!原始) return;
+      const 仍有效 = 目录会话栅栏();
       try {
         await 后端.取消企业管理员申请(id, 原始.revision);
+        if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
         const 申请 = await 后端.读取企业管理员申请();
+        if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
         派发({ 型: '水合企业管理员申请', 申请 });
       } catch (error) {
-        处理组织401(error);
+        处理目录错误(error, 仍有效);
         throw error;
       }
     },
@@ -404,23 +422,25 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
       // If-Match 依据本来就由显式 revision 提供，before 只是 503 confirmed-success 的
       // 比较基线，缺席不该把上传拦成一个假的「尚未水合」网络错误。
       if (revision === undefined && !before) throw new Error('招聘方档案尚未水合');
+      // 会话栅栏：上传与 409/503 恢复重读的每个 await 后先过栅栏再派发，
+      // 迟到结果不写新会话（A 选的头像不会经迟到回执落到 B 的档案上），迟到 401 不清会话
+      const 仍有效 = 目录会话栅栏();
       try {
         // 一次原子替换：multipart + If-Match 当前 revision，响应即权威档案。
         // revision 显式传入时优先（同一次保存里前一步 PATCH 的响应值）——dispatch 后
         // state ref 要到下一个 React 提交才更新，读 ref 会拿旧 revision 被 BFF 409。
         const after = await 后端.替换招聘方头像(file, revision ?? before!.revision);
+        if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
         派发({ 型: '水合招聘方档案', 档案: after });
       } catch (error) {
-        if (error instanceof BFF错误 && error.status === 401) {
-          清账号状态(deps);
-        } else if (是并发或不确定写入(error)) {
+        处理目录错误(error, 仍有效);
+        if (是并发或不确定写入(error)) {
           // 409/503：重读权威档案覆盖本地（页面保留 file/预览自行重试）；重读失败或
-          // 主体已换都不能确认，只能把原始错误抛回 UI，不用别的错误顶替、不自动重发
-          const 起始主体 = deps.主体标识引用.current;
+          // 栅栏已破（主体已换/换代）都不能确认，只能把原始错误抛回 UI，不顶替、不自动重发
           let current: BFF招聘方档案;
           try {
             const profile = await 后端.读取招聘方档案();
-            if (deps.主体标识引用.current !== 起始主体) throw error;
+            if (!仍有效()) throw error;
             派发({ 型: '水合招聘方档案', 档案: profile });
             current = profile;
           } catch {

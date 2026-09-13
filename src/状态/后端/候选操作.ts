@@ -300,13 +300,16 @@ function 从槽重建页面(基底: 页面简历写入, 槽: 建档待写入): �
         } satisfies 简历教育段],
       };
     case 'experience-create':
-      // 合同 C：body 的企业坐标是 organization_id；公司显示文本不参与重放身份
+      // 合同 C：body 的企业坐标是 organization_id；公司显示文本不参与重放身份。
+      // 这里必须给非空占位（组织 ID 本身）：空 公司 会被 简历 数据源当作「不完整条目」
+      // 跳过服务端写入，原 POST 重放不落地 → 槽永不结算 → 最新草稿的修改被单槽守卫
+      // 以「上一条写入结果未确认」拒绝，恢复卡死。
       return {
         ...基底,
         经历: [...基底.经历, {
           编号,
           组织编号: 串('organization_id'),
-          公司: '',
+          公司: 串('organization_id'),
           行业: 串('industry_id'),
           行业引用: { id: 串('industry_id'), display_name: 串('industry_id') },
           职位: 串('title'),

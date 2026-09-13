@@ -1449,3 +1449,173 @@ describe('组织操作：创建企业管理员申请（合同 C）', () => {
     expect(取消企业管理员申请).toHaveBeenCalledWith('req_old', 旧申请.revision);
   });
 });
+
+// ── 合同 A 扩展：档案 / 头像 / 管理员申请写入的会话栅栏 ──
+// 与 目录三操作 同一口径：发起时捕获主体 + 会话代际；迟到成功不派发、不返回可应用
+// 结果（页面拿到错误而非旧档案，头像链随之中断），迟到 401 不清新会话。
+
+describe('组织操作：档案 / 头像 / 申请写入的会话栅栏', () => {
+  const 元数据 = {
+    organization_id: 'org_1', legal_name: '上海云衢科技有限公司', registry_key: 'k',
+    explanation: 'e', domains: [],
+  };
+
+  function 创建档案写环境(后端: HTTP招聘数据源) {
+    const 环境 = 创建操作测试环境({ 后端 });
+    环境.deps.状态引用.current = 归约(环境.deps.状态引用.current, {
+      型: '水合招聘方档案', 档案: BFF招聘方档案样本,
+    });
+    环境.deps.后端状态引用.current = 创建测试后端状态({ 招聘方档案水合阶段: '成功' });
+    return 环境;
+  }
+
+  it('档案 PATCH 在途切账号：回执到达不派发、不返回可应用结果', async () => {
+    const 保存门 = deferred<BFF招聘方档案>();
+    const 后端 = 创建完整测试数据源({ 保存招聘方档案: () => 保存门.promise });
+    const { deps, 派发, 操作 } = 创建档案写环境(后端);
+    const 运行 = 操作.保存招聘方档案({ title: 'HR 负责人' });
+    deps.主体标识引用.current = 'sub_2'; // 响应在飞时账号已切走
+    保存门.resolve({ ...BFF招聘方档案样本, title: '旧主体档案', revision: 2 });
+    await expect(运行).rejects.toBeInstanceOf(客户端校验错误);
+    // 旧回执不写新会话状态，页面也拿不到可应用的旧档案（头像链自然中断）
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '水合招聘方档案' }));
+    expect(deps.状态引用.current.招聘方档案).toEqual(BFF招聘方档案样本);
+    expect(deps.主体标识引用.current).toBe('sub_2');
+    expect(deps.会话代际.current).toBe(1);
+  });
+
+  it('档案 PATCH 迟到 401 不清新会话', async () => {
+    const 后端 = 创建完整测试数据源({
+      保存招聘方档案: async () => { throw new BFF错误(401, 'invalid_session', 'expired'); },
+    });
+    const { deps, 派发, 操作 } = 创建档案写环境(后端);
+    const 运行 = 操作.保存招聘方档案({ title: 'HR 负责人' });
+    deps.主体标识引用.current = 'sub_2';
+    await expect(运行).rejects.toMatchObject({ status: 401 });
+    expect(deps.主体标识引用.current).toBe('sub_2');
+    expect(deps.会话代际.current).toBe(1);
+    expect(派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
+  });
+
+  it('档案保存当前会话 401 仍走统一清账号状态', async () => {
+    const 后端 = 创建完整测试数据源({
+      保存招聘方档案: async () => { throw new BFF错误(401, 'invalid_session', 'expired'); },
+    });
+    const { deps, 派发, 操作 } = 创建档案写环境(后端);
+    await expect(操作.保存招聘方档案({ title: 'HR 负责人' })).rejects.toMatchObject({ status: 401 });
+    expect(派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(deps.会话代际.current).toBe(2);
+  });
+
+  it('头像上传在途切账号：回执到达不派发旧档案', async () => {
+    const 替换门 = deferred<BFF招聘方档案>();
+    const 后端 = 创建完整测试数据源({ 替换招聘方头像: () => 替换门.promise });
+    const { deps, 操作 } = 创建头像测试环境(后端);
+    const 运行 = 操作.替换招聘方头像(头像文件);
+    deps.主体标识引用.current = 'sub_2';
+    替换门.resolve({ ...BFF招聘方档案样本, avatar_url: 'https://cdn.example.com/old.png', revision: 2 });
+    await expect(运行).rejects.toBeInstanceOf(客户端校验错误);
+    expect(deps.状态引用.current.招聘方档案).toEqual(BFF招聘方档案样本);
+    expect(deps.主体标识引用.current).toBe('sub_2');
+    expect(deps.会话代际.current).toBe(1);
+  });
+
+  it('头像上传迟到 401 不清新会话', async () => {
+    const 后端 = 创建完整测试数据源({
+      替换招聘方头像: async () => { throw new BFF错误(401, 'invalid_session', 'expired'); },
+    });
+    const { deps, 派发, 操作 } = 创建头像测试环境(后端);
+    const 运行 = 操作.替换招聘方头像(头像文件);
+    deps.主体标识引用.current = 'sub_2';
+    await expect(运行).rejects.toMatchObject({ status: 401 });
+    expect(deps.主体标识引用.current).toBe('sub_2');
+    expect(派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
+  });
+
+  it('头像 409 重读期间切账号（换代）：不派发重读结果，原始错误抛回', async () => {
+    const 重读门 = deferred<BFF招聘方档案>();
+    const 后端 = 创建完整测试数据源({
+      替换招聘方头像: async () => { throw new BFF错误(409, 'version_conflict', 'conflict'); },
+      读取招聘方档案: () => 重读门.promise,
+    });
+    const { deps, 操作 } = 创建头像测试环境(后端);
+    const 运行 = 操作.替换招聘方头像(头像文件);
+    deps.会话代际.current = 2; // 409 恢复重读在飞时换代
+    重读门.resolve({ ...BFF招聘方档案样本, revision: 5 });
+    await expect(运行).rejects.toMatchObject({ code: 'version_conflict' });
+    expect(deps.状态引用.current.招聘方档案).toEqual(BFF招聘方档案样本);
+  });
+
+  it('申请 POST 在途切账号：回执到达不派发，后续列表刷新不发起', async () => {
+    const 创建门 = deferred<typeof BFF企业管理员申请样本>();
+    const 读取企业管理员申请 = vi.fn(async () => [BFF企业管理员申请样本]);
+    const 后端 = 创建完整测试数据源({ 创建企业管理员申请: () => 创建门.promise, 读取企业管理员申请 });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    const 运行 = 操作.创建企业管理员申请(元数据, []);
+    deps.主体标识引用.current = 'sub_2';
+    创建门.resolve(BFF企业管理员申请样本);
+    await expect(运行).rejects.toBeInstanceOf(客户端校验错误);
+    expect(读取企业管理员申请).not.toHaveBeenCalled();
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '水合企业管理员申请' }));
+    expect(deps.主体标识引用.current).toBe('sub_2');
+  });
+
+  it('approved 申请 POST 在途切账号：关系与企业重读不发起', async () => {
+    const 创建门 = deferred<typeof BFF企业管理员申请样本>();
+    const 读取我的企业关系 = vi.fn(async () => [BFF企业关系样本]);
+    const 读取公开企业 = vi.fn(async () => BFF公开企业样本);
+    const 后端 = 创建完整测试数据源({
+      创建企业管理员申请: () => 创建门.promise,
+      读取我的企业关系,
+      读取公开企业,
+    });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    const 运行 = 操作.创建企业管理员申请(元数据, []);
+    deps.主体标识引用.current = 'sub_2';
+    创建门.resolve({ ...BFF企业管理员申请样本, status: 'approved' as const });
+    await expect(运行).rejects.toBeInstanceOf(客户端校验错误);
+    expect(读取我的企业关系).not.toHaveBeenCalled();
+    expect(读取公开企业).not.toHaveBeenCalled();
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '水合企业关系' }));
+  });
+
+  it('申请列表刷新迟到 401 不清新会话，迟到列表不派发', async () => {
+    const 刷新列表 = [{ ...BFF企业管理员申请样本, request_id: 'req_late' }];
+    const 刷新门 = deferred<Array<typeof BFF企业管理员申请样本>>();
+    const 后端 = 创建完整测试数据源({
+      创建企业管理员申请: async () => BFF企业管理员申请样本,
+      读取企业管理员申请: () => 刷新门.promise,
+    });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    const 运行 = 操作.创建企业管理员申请(元数据, []);
+    // POST 同代成功先落回执，列表刷新在飞时账号切走
+    await vi.waitFor(() => expect(刷新门.resolve).toBeDefined());
+    deps.主体标识引用.current = 'sub_2';
+    刷新门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    // 迟到 401：结果整体中止（同 栅栏 口径），且不清新会话
+    await expect(运行).rejects.toBeInstanceOf(客户端校验错误);
+    expect(deps.主体标识引用.current).toBe('sub_2');
+    expect(deps.会话代际.current).toBe(1);
+    // 迟到刷新列表不派发（同代 POST 回执仍按原口径 upsert）
+    expect(派发).not.toHaveBeenCalledWith({
+      型: '水合企业管理员申请', 申请: 刷新列表,
+    });
+  });
+
+  it('取消申请在途切账号：结果不派发', async () => {
+    const 取消门 = deferred<typeof BFF企业管理员申请样本>();
+    const 读取企业管理员申请 = vi.fn(async () => [BFF企业管理员申请样本]);
+    const 后端 = 创建完整测试数据源({ 取消企业管理员申请: () => 取消门.promise, 读取企业管理员申请 });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    deps.状态引用.current = 归约(deps.状态引用.current, {
+      型: '水合企业管理员申请', 申请: [BFF企业管理员申请样本],
+    });
+    const 运行 = 操作.取消企业管理员申请(BFF企业管理员申请样本.request_id);
+    deps.主体标识引用.current = 'sub_2';
+    取消门.resolve(BFF企业管理员申请样本);
+    await expect(运行).rejects.toBeInstanceOf(客户端校验错误);
+    expect(读取企业管理员申请).not.toHaveBeenCalled();
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '水合企业管理员申请' }));
+  });
+});

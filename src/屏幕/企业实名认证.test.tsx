@@ -3,7 +3,7 @@
 // 不再用 1.2 秒计时器伪造「认证通过」；Mock 分支的原型交互原样保留。
 // 仓库未装 @testing-library/jest-dom，断言一律用 DOM 属性 / truthy，不用 toHaveValue。
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +12,8 @@ import {
   BFF企业关系样本,
   BFF企业管理员申请样本,
   BFF招聘方档案样本,
+  BFF组织搜索项样本,
+  BFF组织搜索页样本,
 } from '../测试/BFF样本';
 import type { BFF企业管理员申请 } from '../数据/BFF契约';
 import { 路径 } from '../路由/路径表';
@@ -36,7 +38,7 @@ vi.mock('../路由/导航钩子', () => ({
 }));
 
 /** Backend 桩：只补本屏消费的组织身份字段，其余键与真实 状态 形状无关（本屏不读）。 */
-function 置Backend应用状态(组织: Record<string, unknown> = {}) {
+function 置Backend应用状态(组织: Record<string, unknown> = {}, 操作覆盖: Record<string, unknown> = {}) {
   mock应用状态 = {
     状态: {
       招聘方档案: BFF招聘方档案样本,
@@ -49,6 +51,7 @@ function 置Backend应用状态(组织: Record<string, unknown> = {}) {
     操作: {
       读取企业管理员申请: mock读取企业管理员申请,
       读取目录企业: mock读取目录企业,
+      ...操作覆盖,
     },
     数据源模式: 'backend',
   };
@@ -148,11 +151,14 @@ describe('企业实名认证 · Backend 身份诚实性', () => {
     expect(screen.queryByText(/认证通过/)).toBeNull();
   });
 
-  it('两个入口分别去组织申请页与邀请加入页', async () => {
+  it('空选择时申请入口引导先选（打开抽屉不跳转）；邀请入口照旧', async () => {
     const 用户 = userEvent.setup();
     render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
     await 用户.click(screen.getByRole('button', { name: /申请企业管理员/ }));
-    expect(mock跳转).toHaveBeenCalledWith(路径.企业组织申请);
+    // 空选择引导先选：不跳转，直接给本页选择抽屉
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: '选择企业' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '关闭选择企业' }));
     await 用户.click(screen.getByRole('button', { name: /输入邀请口令加入企业/ }));
     expect(mock跳转).toHaveBeenCalledWith(路径.企业邀请加入);
   });
@@ -164,23 +170,139 @@ describe('企业实名认证 · Backend 身份诚实性', () => {
     });
     render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
     expect(mock读取目录企业).toHaveBeenCalledWith('org/9&x');
-    expect(await screen.findByText('待申请企业：星河控股')).toBeTruthy();
+    expect(await screen.findByText('星河控股')).toBeTruthy();
     await 用户.click(screen.getByRole('button', { name: /申请企业管理员/ }));
     // 公开 ID 走 encodeURIComponent，不是邀请 token
     expect(mock跳转).toHaveBeenCalledWith('/hr/organization-application?organization_id=org%2F9%26x');
   });
+});
 
-  it('档案无自报企业时入口显示未选择并不携带参数；个人实名与任职管理员行照旧独立', async () => {
+// ── Backend 本页待申请企业选择（Spec §4.1）：默认 = 档案坐标，更换是本页本地选择，
+//    申请入口携带本页所选 encoded ID，不 PATCH 档案、不改 affiliation；刷新恢复档案默认 ──
+
+/** 抽屉内查询域（弹层框架 dialog，标签「选择企业」） */
+function 抽屉() {
+  return within(screen.getByRole('dialog', { name: '选择企业' }));
+}
+
+/** 打开本页选择抽屉并输入搜索词，等过 250ms debounce（屏蔽名单.test.tsx 同款真实时钟手法） */
+async function 打开抽屉并搜索(用户: ReturnType<typeof userEvent.setup>, 词: string) {
+  await 用户.click(screen.getByRole('button', { name: /待申请企业/ }));
+  fireEvent.change(抽屉().getByPlaceholderText('输入公司名称'), { target: { value: 词 } });
+  await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
+}
+
+describe('企业实名认证 · Backend 本页待申请企业选择', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock读取企业管理员申请.mockClear();
+    mock读取企业管理员申请.mockResolvedValue(undefined);
+    mock读取目录企业.mockClear();
+    mock读取目录企业.mockImplementation(async (编号: string) => ({
+      organization_id: 编号,
+      display_name: '星河控股',
+      legal_name: null,
+      verification_status: 'unverified' as const,
+    }));
+    置Backend应用状态({
+      招聘方档案: { ...BFF招聘方档案样本, organization_ref: 'org/9&x' },
+    });
+  });
+
+  it('本页改选后申请入口携带新 ID；不 PATCH 档案、不改关系', async () => {
+    const 用户 = userEvent.setup();
+    const 搜索组织 = vi.fn(async () => BFF组织搜索页样本);
+    置Backend应用状态({
+      招聘方档案: { ...BFF招聘方档案样本, organization_ref: 'org/9&x' },
+    }, { 搜索组织 });
+    render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
+    expect(await screen.findByText('星河控股')).toBeTruthy();
+
+    await 打开抽屉并搜索(用户, '云衢');
+    fireEvent.click(抽屉().getByRole('button', { name: '云衢科技' }));
+    // 本页选择已更新；申请入口携带新 encoded ID
+    expect(screen.getByText('云衢科技')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /申请企业管理员/ }));
+    expect(mock跳转).toHaveBeenCalledWith('/hr/organization-application?organization_id=org_1');
+    // 不 PATCH 档案、不改 affiliation：本屏不发任何写请求、不派发任何动作
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(搜索组织).toHaveBeenCalledWith({ q: '云衢', limit: 20 });
+  });
+
+  it('取消抽屉保持原选择', async () => {
+    const 用户 = userEvent.setup();
+    置Backend应用状态({
+      招聘方档案: { ...BFF招聘方档案样本, organization_ref: 'org/9&x' },
+    }, { 搜索组织: vi.fn(async () => BFF组织搜索页样本) });
+    render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
+    expect(await screen.findByText('星河控股')).toBeTruthy();
+
+    await 打开抽屉并搜索(用户, '云衢');
+    fireEvent.click(screen.getByRole('button', { name: '关闭选择企业' }));
+    // 取消：本页选择不变，申请入口仍携带档案默认
+    expect(screen.getByText('星河控股')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /申请企业管理员/ }));
+    expect(mock跳转).toHaveBeenCalledWith('/hr/organization-application?organization_id=org%2F9%26x');
+  });
+
+  it('抽屉内创建企业后选定，入口携带创建回执的 encoded ID', async () => {
+    const 用户 = userEvent.setup();
+    const 创建组织 = vi.fn(async () => ({ organization: BFF组织搜索项样本, created: true }));
+    置Backend应用状态({
+      招聘方档案: { ...BFF招聘方档案样本, organization_ref: 'org/9&x' },
+    }, { 创建组织 });
+    render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
+    await screen.findByText('星河控股');
+
+    await 用户.click(screen.getByRole('button', { name: /待申请企业/ }));
+    await 用户.click(抽屉().getByRole('button', { name: '添加新企业' }));
+    await 用户.type(抽屉().getByPlaceholderText('输入公司名称'), '云衢科技');
+    await 用户.click(抽屉().getByRole('button', { name: '添加并选择' }));
+    expect(await screen.findByText('云衢科技')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /申请企业管理员/ }));
+    expect(mock跳转).toHaveBeenCalledWith('/hr/organization-application?organization_id=org_1');
+  });
+
+  it('重新挂载（刷新）恢复档案默认选择', async () => {
+    const 用户 = userEvent.setup();
+    置Backend应用状态({
+      招聘方档案: { ...BFF招聘方档案样本, organization_ref: 'org/9&x' },
+    }, { 搜索组织: vi.fn(async () => BFF组织搜索页样本) });
+    const 视图 = render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
+    expect(await screen.findByText('星河控股')).toBeTruthy();
+
+    await 打开抽屉并搜索(用户, '云衢');
+    fireEvent.click(抽屉().getByRole('button', { name: '云衢科技' }));
+    expect(screen.getByText('云衢科技')).toBeTruthy();
+
+    视图.unmount();
+    render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
+    // 本地选择不持久化：重挂载回到档案默认
+    expect(await screen.findByText('星河控股')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /申请企业管理员/ }));
+    expect(mock跳转).toHaveBeenCalledWith('/hr/organization-application?organization_id=org%2F9%26x');
+  });
+
+  it('档案无自报企业时入口引导先选；选定后携带所选 ID，任职行照旧独立', async () => {
     const 用户 = userEvent.setup();
     置Backend应用状态({
       招聘方档案: BFF招聘方档案样本,
       企业关系列表: [BFF企业关系样本],
       当前企业关系编号: BFF企业关系样本.affiliation_id,
-    });
+    }, { 搜索组织: vi.fn(async () => BFF组织搜索页样本) });
     render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
-    expect(screen.getByText('待申请企业：未选择')).toBeTruthy();
+    expect(screen.getByText('未选择')).toBeTruthy();
     await 用户.click(screen.getByRole('button', { name: /申请企业管理员/ }));
-    expect(mock跳转).toHaveBeenCalledWith(路径.企业组织申请);
+    expect(mock跳转).not.toHaveBeenCalled(); // 空选择引导先选
+    expect(screen.getByRole('dialog', { name: '选择企业' })).toBeTruthy();
+
+    fireEvent.change(抽屉().getByPlaceholderText('输入公司名称'), { target: { value: '云衢' } });
+    await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
+    fireEvent.click(抽屉().getByRole('button', { name: '云衢科技' }));
+    expect(screen.getByText('云衢科技')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /申请企业管理员/ }));
+    expect(mock跳转).toHaveBeenCalledWith('/hr/organization-application?organization_id=org_1');
     // 任职（管理 relation）行照旧独立展示，不与待申请企业混排
     expect(screen.getByText('任职：云衢科技 · 管理员 · 已认证')).toBeTruthy();
   });

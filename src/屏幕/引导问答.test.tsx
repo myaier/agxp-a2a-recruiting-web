@@ -1201,6 +1201,38 @@ describe('引导问答 再加一家：公司选择抽屉与手动屏蔽（Task 5
     await waitFor(() => expect(screen.queryByText('选择企业')).toBeNull());
   });
 
+  it('首个屏蔽请求在途时再点同一行不伪造成功：抽屉不关、无第二笔调用；失败后可重试', async () => {
+    const 门们: { resolve: (值?: unknown) => void; reject: (错误?: unknown) => void }[] = [];
+    const 添加组织屏蔽 = vi.fn(() => new Promise((ok, fail) => { 门们.push({ resolve: ok as () => void, reject: fail }); }));
+    render排除题({
+      搜索组织: vi.fn().mockResolvedValue(BFF组织搜索页样本),
+      添加组织屏蔽,
+    });
+    const 用户 = userEvent.setup();
+    await 打开抽屉并搜索公司(用户, '云衢');
+    选中公司行();
+    await waitFor(() => expect(添加组织屏蔽).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('dialog', { name: '选择企业' })).toBeDefined();
+
+    // 首个请求未结算：再点同一行被重入挡下，不产生第二笔调用，抽屉不关（无假成功）
+    fireEvent.click(公司抽屉().getByRole('button', { name: '云衢科技' }));
+    await waitFor(() => {});
+    expect(添加组织屏蔽).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog', { name: '选择企业' })).toBeDefined();
+    expect(mock应用状态.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '拉黑' }));
+
+    // 首个请求拒绝：显示失败、抽屉仍开可重试
+    门们[0].reject(new BFF错误(503, 'backend_unavailable', 'down'));
+    await waitFor(() => expect(document.body.textContent).toContain('后端服务暂时不可用'));
+    expect(screen.getByRole('dialog', { name: '选择企业' })).toBeDefined();
+
+    // 重试同一行：真实结算成功才关抽屉
+    fireEvent.click(公司抽屉().getByRole('button', { name: '云衢科技' }));
+    await waitFor(() => expect(添加组织屏蔽).toHaveBeenCalledTimes(2));
+    门们[1].resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull());
+  });
+
   it('创建目录成功而屏蔽失败：显示屏蔽失败、不再次造目录条目，可重选同一企业重试', async () => {
     let 屏蔽成功 = false;
     const 添加组织屏蔽 = vi.fn(async () => { if (!屏蔽成功) throw new BFF错误(503, 'backend_unavailable', 'down'); });

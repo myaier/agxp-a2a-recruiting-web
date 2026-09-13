@@ -10,7 +10,7 @@
 // 改来源不清理待选，取消抽屉保留原值；写入成功后权威隐私由操作层合并提交，chip 随权威名单展示。
 // organization_unavailable 时弃掉本次待选。Mock 模式保持原本地 free-text 路径不变。
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 样式 from './我的功能页.module.css';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { use导航 } from '../路由/导航钩子';
@@ -75,11 +75,17 @@ export default function 屏蔽名单() {
   };
 
   /** Backend：屏蔽当前选中的待选企业（稳定组织 ID + 页面所选来源）。
+   *  在途时「屏蔽」禁用挡下重入 —— 操作层对相同在途键的重复提交会被背刺防护吞掉，
+   *  不能把未执行的调用当成功：只有真实请求结算后才清待选/显示成功。
    *  成功后权威隐私已由操作层合并提交 —— 清掉待选、保留来源，chip 随权威名单展示。 */
+  const [屏蔽中, 设屏蔽中] = useState(false);
+  const 屏蔽锁 = useRef(false);
   const 执行屏蔽 = async () => {
-    if (!是后端 || 未水合 || 来源 === null || 待选 === null) return;
+    if (!是后端 || 未水合 || 来源 === null || 待选 === null || 屏蔽锁.current) return;
     const 选中项 = 待选;
     const 所选来源 = 来源;
+    屏蔽锁.current = true;
+    设屏蔽中(true);
     try {
       await 操作.添加组织屏蔽(选中项.organization_id, 所选来源);
     } catch (错误) {
@@ -88,6 +94,9 @@ export default function 屏蔽名单() {
       if (错误 instanceof BFF错误 && 错误.code === 'organization_unavailable') 设待选(null);
       else 轻提示(取后端错误文案(错误));
       return;
+    } finally {
+      屏蔽锁.current = false;
+      设屏蔽中(false);
     }
     查询.设词('');
     设待选(null);
@@ -177,7 +186,7 @@ export default function 屏蔽名单() {
               <button
                 className={`${样式.添加键} ${来源 !== null && 待选 ? '可点' : 样式.添加键禁用}`}
                 onClick={() => void 执行屏蔽()}
-                disabled={未水合 || 来源 === null || 待选 === null}
+                disabled={未水合 || 来源 === null || 待选 === null || 屏蔽中}
               >
                 屏蔽
               </button>

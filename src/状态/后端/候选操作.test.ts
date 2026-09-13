@@ -1612,6 +1612,70 @@ describe('创建候选操作 · 经历建档恢复（合同 C）', () => {
     expect(草稿.待写入).toBeUndefined();
   });
 
+  it('prepared experience-create + 最新草稿已修改：原命令先重放结算，最新修改 PATCH 同一经历', async () => {
+    // POST 结果未知 → 用户修改该经历（职位/正文）→ 重放必须仍按原 body/原幂等键完成
+    // 并结算，随后同一服务端经历收到最新修改的 PATCH；草稿展示内容与组织编号均保留
+    const previous: BFF简历 = { ...BFF简历样本, experiences: [] };
+    const 权威后 = { ...BFF简历样本, experiences: [经历DTO('exp_srv_9', 1)] };
+    const 修改后段: 简历经历段 = { ...经历段('exp_local_1'), 职位: '高级工程师', 内容: '平台与增长' };
+    let 读取序 = 0;
+    const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+      if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+        读取序 += 1;
+        return { result: 读取序 === 1 ? previous : 权威后, etag: null, requestId: 'r' };
+      }
+      if (选项.method === 'POST' && 选项.path === '/api/v1/me/resume/experiences') {
+        return {
+          result: { entry: { kind: 'experience', experience: 经历DTO('exp_srv_9', 1) }, aggregate_revision: 5 },
+          etag: null, requestId: 'r',
+        };
+      }
+      if (选项.method === 'PATCH' && 选项.path === '/api/v1/me/resume/experiences/exp_srv_9') {
+        return {
+          result: {
+            ...BFF简历样本,
+            experiences: [{ ...经历DTO('exp_srv_9', 2), title: '高级工程师', description: '平台与增长' }],
+          },
+          etag: null, requestId: 'r',
+        };
+      }
+      throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+    });
+    const 建档: 候选引导建档草稿 = {
+      资料: { 经历: [修改后段] },
+      待写入: {
+        种类: 'experience-create',
+        本地编号: 'exp_local_1',
+        请求体: { ...经历创建体 },
+        幂等键: 'idem-exp-1234567',
+        阶段: 'prepared',
+      },
+    };
+    const 场景 = 创建场景({
+      建档,
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    const next = { ...从BFF简历(previous), 经历: [修改后段] };
+    await expect(场景.操作.保存简历(next as never)).resolves.toBeUndefined();
+    const 请求们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
+    // 原命令先重放结算：原 body / 原幂等键的 POST 真正发出
+    const POST们 = 请求们.filter((o) => o.method === 'POST');
+    expect(POST们).toHaveLength(1);
+    expect(POST们[0].body).toEqual(经历创建体);
+    expect(POST们[0].幂等键).toBe('idem-exp-1234567');
+    // 同一服务端经历收到最新修改的 PATCH
+    const PATCH们 = 请求们.filter((o) => o.method === 'PATCH');
+    expect(PATCH们).toHaveLength(1);
+    expect(PATCH们[0].path).toBe('/api/v1/me/resume/experiences/exp_srv_9');
+    expect(PATCH们[0].body).toMatchObject({ title: '高级工程师', description: '平台与增长', organization_id: 'org_yunqu' });
+    // 草稿展示内容与组织 ID 均保留，槽已结算
+    const 草稿 = 场景.deps.建档草稿引用!.current!;
+    expect(草稿.资料?.经历?.[0]).toMatchObject({
+      编号: 'exp_srv_9', 组织编号: 'org_yunqu', 职位: '高级工程师', 内容: '平台与增长',
+    });
+    expect(草稿.待写入).toBeUndefined();
+  });
+
   it('experience-update CAS 只读核对读 organization_id：一致即结算，不重放', async () => {
     const previous: BFF简历 = BFF简历样本;
     const 请求Mock = 只读请求桩([previous]);

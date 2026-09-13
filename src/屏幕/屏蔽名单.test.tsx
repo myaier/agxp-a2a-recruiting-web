@@ -195,6 +195,38 @@ describe('屏蔽名单 · Backend 公司选择抽屉写线', () => {
     expect(await screen.findByText('已解除对 恒达外包 的屏蔽')).toBeTruthy();
   });
 
+  it('首个屏蔽请求在途时按钮禁用：重复触发不产生第二笔调用、不清待选、不伪造成功；失败后可重试', async () => {
+    const 用户 = userEvent.setup();
+    const 门们: { resolve: (值?: unknown) => void; reject: (错误?: unknown) => void }[] = [];
+    const 添加组织屏蔽 = vi.fn(() => new Promise((ok, fail) => { 门们.push({ resolve: ok as () => void, reject: fail }); }));
+    后端环境({ 添加组织屏蔽 });
+    渲染屏蔽名单();
+    await 用户.click(screen.getByRole('button', { name: '手动添加' }));
+    await 打开抽屉并搜索(用户, '云衢');
+    await 选中命中行();
+    await 用户.click(screen.getByRole('button', { name: '屏蔽' }));
+    expect(添加组织屏蔽).toHaveBeenCalledTimes(1);
+
+    // 首个请求未结算：屏蔽钮禁用挡下重入，待选不清、无成功提示
+    expect((screen.getByRole('button', { name: '屏蔽' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '屏蔽' }));
+    await act(async () => {});
+    expect(添加组织屏蔽).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '云衢科技' })).toBeTruthy();
+    expect(screen.queryByText(/已屏蔽 云衢科技/)).toBeNull();
+
+    // 首个请求拒绝：显示失败、待选保留、按钮恢复可重试
+    门们[0].reject(new BFF错误(503, 'backend_unavailable', '后端不可用'));
+    expect(await screen.findByText('后端服务暂时不可用，请稍后重试')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '云衢科技' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: '屏蔽' }) as HTMLButtonElement).disabled).toBe(false);
+    // 轻提示是全局单例容器：断言后清掉，不把失败提示泄漏进后续用例（会话操作.test.ts 同款）
+    const 容器 = Array.from(document.body.children).find(
+      (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+    ) as HTMLElement | undefined;
+    if (容器) 容器.innerHTML = '';
+  });
+
   it('organization_unavailable：弃掉本次待选，「屏蔽」回到禁用，绝不落本地假成功', async () => {
     const 用户 = userEvent.setup();
     const { 派发 } = 后端环境({
