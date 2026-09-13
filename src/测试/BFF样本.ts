@@ -190,6 +190,7 @@ export const BFF招聘方档案样本: BFF招聘方档案 = {
   public_name: '林澈',
   title: '招聘负责人',
   personal_verification_status: 'unverified',
+  organization_ref: null,
   verified_name: null,
   avatar_url: null,
   revision: 1,
@@ -208,6 +209,7 @@ export const BFF企业关系样本: BFF企业关系 = {
 
 export const BFF企业管理员申请样本: BFF企业管理员申请 = {
   request_id: 'req_1',
+  organization_id: 'org_1',
   legal_name: '上海云衢科技有限公司',
   display_name: '云衢科技',
   domains: ['yunqu.example'],
@@ -293,6 +295,7 @@ export const BFF组织搜索项样本: BFF组织搜索项 = {
   organization_id: 'org_1',
   display_name: '云衢科技',
   legal_name: '上海云衢科技有限公司',
+  verification_status: 'verified',
 };
 
 export const BFF组织搜索页样本: BFF组织搜索页 = {

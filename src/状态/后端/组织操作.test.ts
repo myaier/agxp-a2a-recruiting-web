@@ -6,7 +6,7 @@ import { 创建空P7会话状态 } from './真人会话操作';
 import { 创建空P8控制面状态 } from './P8控制面操作';
 import { 创建空接触记录状态 } from './接触记录操作';
 import { 创建空P5MatchCase状态 } from './MatchCase操作';
-import type { BFF企业档案, BFF企业档案替换, BFF招聘方档案 } from '../../数据/BFF契约';
+import type { BFF企业档案, BFF企业档案替换, BFF公开企业, BFF招聘方档案, BFF组织搜索页 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 页面岗位快照 } from '../../数据/招聘数据源类型';
 import { BFF错误, 客户端校验错误 } from '../../数据/HTTP客户端';
@@ -19,6 +19,8 @@ import {
   BFF企业管理员申请样本,
   BFF公开企业样本,
   BFF招聘方档案样本,
+  BFF组织搜索项样本,
+  BFF组织搜索页样本,
 } from '../../测试/BFF样本';
 import { 初始状态 } from '../初始状态';
 import { 归约, type 动作, type 状态 } from '../应用状态';
@@ -64,6 +66,9 @@ function 创建完整测试数据源(覆盖: Partial<HTTP招聘数据源> = {}):
     上传企业媒体: async () => BFF企业媒体样本,
     删除企业媒体: async () => undefined,
     读取公开企业: async () => BFF公开企业样本,
+    // 合同 A：目录搜索 / 创建（本文件用例默认成功，需要时逐用例覆盖）
+    搜索组织: async () => BFF组织搜索页样本,
+    创建组织: async () => ({ organization: BFF组织搜索项样本, created: true }),
     // P6 Task 4 起 水合角色数据 会把 Agent 规则水合并进角色分支：这里给空集，
     // 让本文件的组织用例继续只钉组织/Jobs 的行为
     读取Agent规则: async () => [],
@@ -667,7 +672,7 @@ describe('组织操作：选择企业关系 / 保存企业档案 / 公开企业�
 
 const 首写档案 = {
   public_name: '林澈', title: '招聘负责人', personal_verification_status: 'unverified' as const,
-  verified_name: null, avatar_url: null, revision: 1,
+  organization_ref: null, verified_name: null, avatar_url: null, revision: 1,
 };
 
 describe('组织操作：保存招聘方档案的 revision 选择', () => {
@@ -1214,5 +1219,148 @@ describe('组织操作：重新水合招聘方组织', () => {
     const 最终 = 最终后端状态(deps);
     expect(最终.招聘方档案水合阶段).toBe('失败');
     expect(最终.招聘方组织水合.阶段).toBe('失败');
+  });
+});
+
+// ── 合同 A：目录三操作（搜索 / 创建 / 读取目录企业）──
+// 只读、零派发：不能修改当前管理关系；发起时捕获主体 + 会话代际，
+// 迟到成功不返回可应用的旧主体结果，迟到 401 不清新会话。
+
+describe('组织操作：目录搜索与创建', () => {
+  it('搜索组织 原样返回数据源结果且不改当前管理关系', async () => {
+    const 搜索组织 = vi.fn(async () => BFF组织搜索页样本);
+    const 后端 = 创建完整测试数据源({ 搜索组织 });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.搜索组织({ q: '云衢' })).resolves.toEqual(BFF组织搜索页样本);
+    expect(搜索组织).toHaveBeenCalledWith({ q: '云衢' });
+    expect(deps.状态引用.current.当前企业关系编号).toBe(BFF企业关系样本.affiliation_id);
+    expect(动作型列表(派发)).toEqual([]);
+  });
+
+  it('创建组织 原样返回服务端回执且不改当前管理关系', async () => {
+    const 创建结果 = { organization: BFF组织搜索项样本, created: true };
+    const 创建组织 = vi.fn(async (_名称: string, _键: string) => 创建结果);
+    const 后端 = 创建完整测试数据源({ 创建组织 });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.创建组织('启明科技', 'company-create-key-0001')).resolves.toEqual(创建结果);
+    expect(创建组织).toHaveBeenCalledWith('启明科技', 'company-create-key-0001');
+    expect(deps.状态引用.current.当前企业关系编号).toBe(BFF企业关系样本.affiliation_id);
+    expect(动作型列表(派发)).toEqual([]);
+  });
+
+  it('搜索组织 迟到成功（在飞时切账号）不返回可应用的旧主体结果', async () => {
+    const 搜索门 = deferred<BFF组织搜索页>();
+    const 后端 = 创建完整测试数据源({ 搜索组织: () => 搜索门.promise });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    const 运行 = 操作.搜索组织({ q: '云衢' });
+    deps.主体标识引用.current = 'sub_2'; // 响应在飞时账号已切走
+    搜索门.resolve(BFF组织搜索页样本);
+    await expect(运行).rejects.toBeInstanceOf(客户端校验错误);
+    // 迟到成功不清新会话：新主体与其会话代际保持原样
+    expect(deps.主体标识引用.current).toBe('sub_2');
+    expect(deps.会话代际.current).toBe(1);
+  });
+
+  it('创建组织 迟到成功（在飞时会话换代）不返回可应用的旧主体结果', async () => {
+    const 创建门 = deferred<{ organization: typeof BFF组织搜索项样本; created: boolean }>();
+    const 后端 = 创建完整测试数据源({ 创建组织: () => 创建门.promise });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    const 运行 = 操作.创建组织('启明科技', 'company-create-key-0001');
+    deps.会话代际.current = 2; // 中途清账号换代
+    创建门.resolve({ organization: BFF组织搜索项样本, created: true });
+    await expect(运行).rejects.toBeInstanceOf(客户端校验错误);
+    expect(deps.主体标识引用.current).toBe('sub_1');
+  });
+
+  it('旧主体 401 不清新会话，也不派发任何清理动作', async () => {
+    const 后端 = 创建完整测试数据源({
+      搜索组织: async () => { throw new BFF错误(401, 'invalid_session', 'expired'); },
+    });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    const 运行 = 操作.搜索组织({ q: '云衢' });
+    deps.主体标识引用.current = 'sub_2'; // 401 在飞时账号已切走：迟到 401
+    await expect(运行).rejects.toMatchObject({ status: 401 });
+    expect(deps.主体标识引用.current).toBe('sub_2');
+    expect(deps.会话代际.current).toBe(1);
+    expect(派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
+  });
+
+  it('当前会话 401 走统一清账号状态', async () => {
+    const 后端 = 创建完整测试数据源({
+      创建组织: async () => { throw new BFF错误(401, 'invalid_session', 'expired'); },
+    });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.创建组织('启明科技', 'company-create-key-0001')).rejects.toMatchObject({ status: 401 });
+    expect(派发).toHaveBeenCalledWith({ 型: '清后端组织状态' });
+    expect(deps.主体标识引用.current).toBeNull();
+    expect(deps.会话代际.current).toBe(2);
+  });
+});
+
+describe('组织操作：读取目录企业', () => {
+  it('两认证事实非空时投影 verified，且零派发不改当前管理关系', async () => {
+    const 后端 = 创建完整测试数据源({}); // 读取公开企业 → BFF公开企业样本（两事实非空）
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.读取目录企业('org_1')).resolves.toEqual({
+      organization_id: 'org_1',
+      display_name: '云衢科技',
+      legal_name: '上海云衢科技有限公司',
+      verification_status: 'verified',
+    });
+    expect(动作型列表(派发)).toEqual([]);
+    expect(deps.状态引用.current.当前企业关系编号).toBe(BFF企业关系样本.affiliation_id);
+  });
+
+  it('两认证事实均 null 时投影 unverified，null 不归一为空串', async () => {
+    const 后端 = 创建完整测试数据源({
+      读取公开企业: async () => ({ ...BFF公开企业样本, legal_name: null, verified_at: null }),
+    });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.读取目录企业('org_1')).resolves.toMatchObject({
+      legal_name: null, verification_status: 'unverified',
+    });
+  });
+
+  it('两认证事实矛盾（一空一非空）拒绝', async () => {
+    const 后端 = 创建完整测试数据源({
+      读取公开企业: async () => ({ ...BFF公开企业样本, verified_at: null }),
+    });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.读取目录企业('org_1')).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('回执 ID 与请求不一致拒绝且不写公开企业缓存', async () => {
+    const 读取公开企业 = vi.fn(async () => 公开企业B); // 服务端答 org_2
+    const 后端 = 创建完整测试数据源({ 读取公开企业 });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.读取目录企业('org_1')).rejects.toMatchObject({ code: 'invalid_response' });
+    expect(读取公开企业).toHaveBeenCalledWith('org_1');
+    expect(动作型列表(派发)).toEqual([]);
+    expect(deps.状态引用.current.公开企业表).toEqual({});
+  });
+
+  it('目录读取期间切账号：迟到成功不返回可应用的旧主体选择', async () => {
+    const 读取门 = deferred<BFF公开企业>();
+    const 后端 = 创建完整测试数据源({ 读取公开企业: () => 读取门.promise });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    const 运行 = 操作.读取目录企业('org_1');
+    deps.主体标识引用.current = 'sub_2';
+    读取门.resolve(BFF公开企业样本);
+    await expect(运行).rejects.toBeInstanceOf(客户端校验错误);
+    expect(deps.主体标识引用.current).toBe('sub_2');
+    expect(deps.会话代际.current).toBe(1);
+  });
+
+  it('读取目录企业 旧 401 不清新会话', async () => {
+    const 后端 = 创建完整测试数据源({
+      读取公开企业: async () => { throw new BFF错误(401, 'invalid_session', 'expired'); },
+    });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    const 运行 = 操作.读取目录企业('org_1');
+    deps.主体标识引用.current = 'sub_2';
+    await expect(运行).rejects.toMatchObject({ status: 401 });
+    expect(deps.主体标识引用.current).toBe('sub_2');
+    expect(deps.会话代际.current).toBe(1);
+    expect(派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
   });
 });

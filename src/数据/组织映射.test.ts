@@ -253,6 +253,12 @@ describe('从BFF公开企业', () => {
     expect(视图.industryName).toBeNull();
     expect(视图.logoUrl).toBeNull();
   });
+
+  it('未认证条目的两项认证事实 null 原样进视图，不归一为空串', () => {
+    const 视图 = 从BFF公开企业({ ...BFF公开企业样本, legal_name: null, verified_at: null });
+    expect(视图.legalName).toBeNull();
+    expect(视图.verifiedAt).toBeNull();
+  });
 });
 
 describe('从BFF岗位发布方', () => {

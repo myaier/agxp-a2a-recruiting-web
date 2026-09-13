@@ -240,7 +240,14 @@ export interface BFF隐私屏蔽回执 {
   privacy_revision: number;
   created_at: string;
 }
-export interface BFF组织搜索项 { organization_id: string; display_name: string; legal_name: string }
+export interface BFF组织搜索项 {
+  organization_id: string;
+  display_name: string;
+  /** 合同 A：未认证目录条目的法定名为 null，原样保留，绝不归一成空串。 */
+  legal_name: string | null;
+  verification_status: BFF验证状态;
+}
+export interface BFF组织创建结果 { organization: BFF组织搜索项; created: boolean }
 export interface BFF组织搜索页 { items: BFF组织搜索项[]; next_cursor: string | null }
 export interface BFF硬性条件 {
   alternate_weekend_work: BFF硬性要求档;
@@ -280,6 +287,8 @@ export interface BFF招聘方档案 {
   public_name: string;
   title: string;
   personal_verification_status: BFF验证状态;
+  /** 合同 A：自报的目录企业引用（active organization），未选择时为 null；选择不产生管理关系。 */
+  organization_ref: string | null;
   verified_name?: string | null;
   avatar_url?: string | null;
   revision: number;
@@ -300,6 +309,8 @@ export interface BFF企业关系列表 { affiliations: BFF企业关系[] }
 
 export interface BFF企业管理员申请 {
   request_id: string;
+  /** 合同 A：申请创建时绑定的目录组织，绑定后永不改变。 */
+  organization_id: string;
   legal_name: string;
   display_name: string;
   domains: string[];
@@ -350,9 +361,10 @@ export interface BFF企业档案 {
 
 export interface BFF公开企业 {
   organization_id: string;
-  legal_name: string;
+  /** 合同 A：未认证条目的两认证事实均为 null；本身没有 verification_status，投影归消费方。 */
+  legal_name: string | null;
   display_name: string;
-  verified_at: string;
+  verified_at: string | null;
   profile: BFF企业档案;
   active_verified_job_count: number;
 }
@@ -360,11 +372,14 @@ export interface BFF公开企业 {
 export interface BFF招聘方档案补丁 {
   public_name?: string;
   title?: string;
+  /** 合同 A：三态 —— 属性缺省保留服务端已存选择，null 显式清空，string 选定目录组织。 */
+  organization_ref?: string | null;
 }
 
 export interface BFF企业管理员申请元数据 {
+  /** 合同 A：申请升级既有目录组织；common name 由服务端从该组织快照，不再是请求字段。 */
+  organization_id: string;
   legal_name: string;
-  display_name: string;
   registry_key: string;
   explanation: string;
   domains: string[];

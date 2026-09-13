@@ -90,7 +90,8 @@ export interface 招聘身份视图 {
 }
 
 export interface 公开企业视图 {
-  organizationId: string; legalName: string; displayName: string; verifiedAt: string;
+  // 合同 A：未认证条目的两认证事实是显式 null，视图原样保留（展示层再决定未知文案）
+  organizationId: string; legalName: string | null; displayName: string; verifiedAt: string | null;
   brandName: string; industryName: string | null; companySizeLabel: string; fundingStageLabel: string;
   officeAddress: string; benefitLabels: readonly string[]; workScheduleLabel: string;
   companyIntro: string; businessItems: readonly string[]; productIntro: string;

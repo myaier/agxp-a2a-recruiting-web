@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BFF简历样本, BFF意向样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本, BFF发现批次样本 } from '../测试/BFF样本';
+import { BFF简历样本, BFF意向样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索项样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本, BFF发现批次样本 } from '../测试/BFF样本';
 import { BFF错误, 客户端校验错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
 import { 从BFF简历, 从BFF意向草稿 } from './后端映射';
 import type { 建档待写入, 建档写入回执 } from './招聘数据源类型';
@@ -814,6 +814,8 @@ describe('HTTP 招聘数据源', () => {
     const source = 创建HTTP招聘数据源(依赖());
     expect(Object.keys(source).sort()).toEqual([
       '保存简历', '保存招聘方档案', '创建岗位', '创建意向', '创建首次意向', '创建企业管理员申请',
+      // 合同 A：目录组织创建
+      '创建组织',
       '创建JD导入',
       '删除岗位', '删除意向', '删除企业媒体', '开始微信登录', '开始手机登录', '归档岗位',
       '恢复会话', '更新岗位', '更新意向', '上传企业媒体', '查询Institution', '查询Location',
@@ -925,6 +927,21 @@ describe('HTTP 招聘数据源', () => {
       .find((o) => o.method === 'POST')!;
     expect(post.幂等).toBe(true);
     expect(Object.keys(source)).not.toContain('读取候选岗位');
+  });
+
+  // 合同 A：目录组织创建经根 facade 走到线上，body 只有 display_name 且幂等键逐字保留。
+  it('根 facade 创建组织按冻结契约发请求并解析回执', async () => {
+    const 回执 = { organization: BFF组织搜索项样本, created: true };
+    请求Mock.mockResolvedValueOnce({ result: 回执, etag: null, requestId: 'r-create' });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.创建组织('启明科技', 'company-create-key-0001')).resolves.toEqual(回执);
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/organizations',
+      method: 'POST',
+      body: { display_name: '启明科技' },
+      幂等: true,
+      幂等键: 'company-create-key-0001',
+    });
   });
 
   // Task 1（P6）：组合后的 Agent 规则方法直接走冻结的 agent-rule-proposals 路径并解码。

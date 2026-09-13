@@ -235,6 +235,20 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
     if (error instanceof BFF错误 && error.status === 401) 清账号状态(deps);
   }
 
+  /** 合同 A 目录三操作的会话栅栏：发起时捕获主体与会话代际。
+   *  响应到达时栅栏已破（切账号 / 换代）即不把结果交回页面（不返回可应用的旧主体选择），
+   *  且迟到 401 不清新会话 —— 清理只发生在栅栏仍立时。 */
+  function 目录会话栅栏(): () => boolean {
+    const subjectId = deps.主体标识引用.current;
+    const generation = deps.会话代际.current;
+    return () => deps.主体标识引用.current === subjectId && deps.会话代际.current === generation;
+  }
+
+  /** 目录操作的统一错误分派：401 只在栅栏仍立时走统一清账号，其余原样抛出。 */
+  function 处理目录错误(error: unknown, 仍有效: () => boolean): void {
+    if (error instanceof BFF错误 && error.status === 401 && 仍有效()) 清账号状态(deps);
+  }
+
   return {
     async 选择企业关系(id) {
       if (!是后端 || !后端) return;
@@ -555,6 +569,65 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
           const current = state.企业关系列表.find((item) => item.affiliation_id === state.当前企业关系编号);
           if (current?.organization_id === id) 派发({ 型: '选择当前企业关系', 编号: null });
         }
+        throw error;
+      }
+    },
+
+    // ── 合同 A：目录三操作 —— 只读 / 零派发，绝不修改当前管理关系，不建目录缓存 ──
+
+    async 搜索组织(query) {
+      // Mock 模式与 搜索可屏蔽组织 同口径返回空页；页面搜索在 Mock 走各自的本地 callbacks。
+      if (!是后端 || !后端) return { items: [], next_cursor: null };
+      const 仍有效 = 目录会话栅栏();
+      try {
+        const 页 = await 后端.搜索组织(query);
+        if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
+        return 页;
+      } catch (error) {
+        处理目录错误(error, 仍有效);
+        throw error;
+      }
+    },
+
+    async 创建组织(displayName, idempotencyKey) {
+      // 调用方需要真实回执落选择坐标，Mock 模式没有这条链，直接抛而不是悄悄返回半成品
+      if (!是后端 || !后端) throw new Error('创建组织仅 Backend 模式可用');
+      const 仍有效 = 目录会话栅栏();
+      try {
+        const 结果 = await 后端.创建组织(displayName, idempotencyKey);
+        if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
+        return 结果;
+      } catch (error) {
+        处理目录错误(error, 仍有效);
+        throw error;
+      }
+    },
+
+    async 读取目录企业(id) {
+      // 目录读取不改管理关系、不写公开企业缓存；Mock 模式无权威事实来源，直接抛。
+      if (!是后端 || !后端) throw new Error('读取目录企业仅 Backend 模式可用');
+      const 仍有效 = 目录会话栅栏();
+      try {
+        const organization = await 后端.读取公开企业(id);
+        if (!仍有效()) throw new 客户端校验错误('session', '登录状态已失效，请重新登录');
+        if (organization.organization_id !== id) {
+          throw new BFF错误(200, 'invalid_response', '服务返回的组织与请求的目录 ID 不一致');
+        }
+        // PublicOrganization 没有 verification_status：由两认证事实投影 ——
+        // 非空即 verified，均 null 即 unverified，一空一非空是矛盾响应，拒绝。
+        const 有法定名 = organization.legal_name !== null;
+        const 有核验时间 = organization.verified_at !== null;
+        if (有法定名 !== 有核验时间) {
+          throw new BFF错误(200, 'invalid_response', '组织的认证事实相互矛盾');
+        }
+        return {
+          organization_id: organization.organization_id,
+          display_name: organization.display_name,
+          legal_name: organization.legal_name,
+          verification_status: 有法定名 ? 'verified' : 'unverified',
+        };
+      } catch (error) {
+        处理目录错误(error, 仍有效);
         throw error;
       }
     },

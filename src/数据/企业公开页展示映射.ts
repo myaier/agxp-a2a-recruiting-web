@@ -61,7 +61,7 @@ export function 从公开企业到展示(视图: 公开企业视图): 企业公�
     身份: {
       法定名称: 视图.legalName,
       展示名称: 视图.displayName,
-      核验时间: 视图.verifiedAt.slice(0, 10),
+      核验时间: 视图.verifiedAt === null ? null : 视图.verifiedAt.slice(0, 10),
       已核验: true,
       岗位数: 视图.activeVerifiedJobCount,
       岗位数已核验: true,

@@ -16,7 +16,9 @@ import type {
   BFF企业管理员申请元数据,
   BFF企业媒体用途,
   BFF隐私快照,
+  BFF组织创建结果,
   BFF组织搜索页,
+  BFF组织搜索项,
   BFF角色,
   BFFAgent规则,
   BFFAgent规则提案,
@@ -788,6 +790,16 @@ export interface 组织操作 {
   上传并发布企业媒体(purpose: BFF企业媒体用途, file: File): Promise<void>;
   移除企业媒体(purpose: BFF企业媒体用途, mediaId: string): Promise<void>;
   读取公开企业(id: string): Promise<void>;
+  /** 合同 A：目录搜索（双角色开放）。只读零派发；发起时捕获主体与会话代际，
+   *  迟到成功不返回可应用的旧主体结果，迟到 401 不清新会话。Mock 模式返回空页。 */
+  搜索组织(query: 组织搜索查询): Promise<BFF组织搜索页>;
+  /** 合同 A：按调用方幂等键创建（或按同规范名收敛）目录组织；返回服务端回执，
+   *  409 冲突保留输入不自动换键；零派发，不修改当前管理关系。 */
+  创建组织(displayName: string, idempotencyKey: string): Promise<BFF组织创建结果>;
+  /** 合同 A：按 ID 读取目录企业并从公开企业两认证事实投影 verification_status
+   *  （非空即 verified，均 null 即 unverified，矛盾拒绝）；回执 ID 必须一致；
+   *  不缓存、不派发、不改当前管理关系。 */
+  读取目录企业(id: string): Promise<BFF组织搜索项>;
   /** P0 修复 Task 1：重跑整条 profile → affiliations → current organization 链。
    *  失败原样 reject（含会话失效的 客户端校验错误），由调用方呈现。 */
   重新水合招聘方组织(): Promise<void>;

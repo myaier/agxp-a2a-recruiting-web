@@ -48,7 +48,8 @@ describe('组织数据源', () => {
   it('显式 revision 0 仍使用 PATCH 和 If-Match 0', async () => {
     请求Mock.mockResolvedValueOnce({
       result: {
-        public_name: '林澈', title: '招聘负责人', personal_verification_status: 'unverified', revision: 1,
+        public_name: '林澈', title: '招聘负责人', personal_verification_status: 'unverified',
+        organization_ref: null, revision: 1,
       },
       etag: '"1"', requestId: 'r0',
     });
@@ -77,8 +78,8 @@ describe('组织数据源', () => {
   it('创建企业管理员申请 metadata Blob + 重复 evidence part，带幂等', async () => {
     请求Mock.mockResolvedValueOnce({ result: BFF企业管理员申请样本, etag: null, requestId: 'r1' });
     const 元数据: BFF企业管理员申请元数据 = {
+      organization_id: 'org_1',
       legal_name: '上海云衢科技有限公司',
-      display_name: '云衢科技',
       registry_key: '',
       explanation: '我是这家公司的管理员',
       domains: ['yunqu.example'],
@@ -200,7 +201,8 @@ describe('组织数据源', () => {
 
   it('招聘方档案缺 verified_name/avatar_url 时归一为 null', async () => {
     请求Mock.mockResolvedValueOnce({ result: {
-      public_name: '林澈', title: '', personal_verification_status: 'unverified', revision: 1,
+      public_name: '林澈', title: '', personal_verification_status: 'unverified',
+      organization_ref: null, revision: 1,
     } });
     await expect(数据源.读取招聘方档案()).resolves.toMatchObject({
       verified_name: null, avatar_url: null,
@@ -240,14 +242,17 @@ describe('组织数据源', () => {
     });
   });
 
-  // P3：候选人组织搜索 —— q/limit/cursor 按序编码，结果只保留三个公开登记字段。
-  it('candidate organization search encodes q/cursor and strictly decodes the three public fields', async () => {
+  // P3：候选人组织搜索 —— q/limit/cursor 按序编码；合同 A 起条目是四公开登记字段。
+  it('candidate organization search encodes q/cursor and strictly decodes the four public fields', async () => {
     请求Mock.mockResolvedValueOnce({
-      result: { items: [{ organization_id: 'org_1', display_name: 'Acme', legal_name: 'Acme Ltd' }], next_cursor: null },
+      result: {
+        items: [{ organization_id: 'org_1', display_name: 'Acme', legal_name: 'Acme Ltd', verification_status: 'verified' }],
+        next_cursor: null,
+      },
       etag: null, requestId: 'r-search',
     });
     await expect(数据源.搜索组织({ q: 'Acme & Co', limit: 20, cursor: 'abc_DEF-12' })).resolves.toMatchObject({
-      items: [{ organization_id: 'org_1' }], next_cursor: null,
+      items: [{ organization_id: 'org_1', verification_status: 'verified' }], next_cursor: null,
     });
     expect(请求Mock.mock.calls[0][0]).toEqual({
       path: '/api/v1/organizations?q=Acme%20%26%20Co&limit=20&cursor=abc_DEF-12',
@@ -269,8 +274,8 @@ describe('组织数据源', () => {
     expect(请求Mock).not.toHaveBeenCalled();
   });
 
-  it('组织搜索结果多字段 / items:null / 缺 next_cursor 都抛 invalid_response', async () => {
-    const 干净项 = { organization_id: 'org_1', display_name: 'Acme', legal_name: 'Acme Ltd' };
+  it('组织搜索结果多字段 / items:null / 缺 next_cursor / 坏 verification_status 都抛 invalid_response', async () => {
+    const 干净项 = { organization_id: 'org_1', display_name: 'Acme', legal_name: 'Acme Ltd', verification_status: 'verified' as const };
     请求Mock.mockResolvedValueOnce({ result: { items: [{ ...干净项, status: 'active' }], next_cursor: null } });
     await expect(数据源.搜索组织({ q: 'acme' })).rejects.toMatchObject({ code: 'invalid_response' });
 
@@ -279,5 +284,125 @@ describe('组织数据源', () => {
 
     请求Mock.mockResolvedValueOnce({ result: { items: [] } });
     await expect(数据源.搜索组织({ q: 'acme' })).rejects.toMatchObject({ code: 'invalid_response' });
+
+    请求Mock.mockResolvedValueOnce({ result: { items: [{ ...干净项, verification_status: 'banned' }], next_cursor: null } });
+    await expect(数据源.搜索组织({ q: 'acme' })).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  // ── 合同 A：目录搜索项是四字段，未认证条目 legal_name 为 null，绝不归一成空串 ──
+
+  it('null legal_name ＋ unverified 的四字段页可读且不改写 null', async () => {
+    const 未认证项 = { organization_id: 'org_9', display_name: 'Acme Unverified', legal_name: null, verification_status: 'unverified' as const };
+    请求Mock.mockResolvedValueOnce({ result: { items: [未认证项], next_cursor: null } });
+    await expect(数据源.搜索组织({ q: 'Acme' })).resolves.toEqual({
+      items: [未认证项],
+      next_cursor: null,
+    });
+  });
+
+  // ── 合同 A：目录创建 —— body 只有 display_name，幂等键逐字保留；201/200 两种回执都可解析 ──
+
+  it('创建组织 POST /organizations 只有 display_name 且保留调用方幂等键', async () => {
+    请求Mock.mockResolvedValueOnce({
+      result: {
+        organization: { organization_id: 'org_new', display_name: '启明科技', legal_name: null, verification_status: 'unverified' },
+        created: true,
+      },
+    });
+    await expect(数据源.创建组织('启明科技', 'company-create-key-0001')).resolves.toEqual({
+      organization: { organization_id: 'org_new', display_name: '启明科技', legal_name: null, verification_status: 'unverified' },
+      created: true,
+    });
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/organizations',
+      method: 'POST',
+      body: { display_name: '启明科技' },
+      幂等: true,
+      幂等键: 'company-create-key-0001',
+    });
+  });
+
+  it('创建组织 201 新建与 200 同名收敛两种回执都可解析', async () => {
+    请求Mock.mockResolvedValueOnce({
+      result: {
+        organization: { organization_id: 'org_new', display_name: '启明科技', legal_name: null, verification_status: 'unverified' },
+        created: true,
+      },
+    });
+    await expect(数据源.创建组织('启明科技', 'company-create-key-0001'))
+      .resolves.toMatchObject({ created: true, organization: { legal_name: null } });
+
+    请求Mock.mockResolvedValueOnce({
+      result: {
+        organization: {
+          organization_id: 'org_old', display_name: '启明科技（杭州）',
+          legal_name: '启明科技（杭州）有限公司', verification_status: 'verified',
+        },
+        created: false,
+      },
+    });
+    await expect(数据源.创建组织('启明科技', 'company-create-key-0001'))
+      .resolves.toMatchObject({ created: false, organization: { verification_status: 'verified' } });
+  });
+
+  it('创建结果 created 非布尔 / 组织项坏 enum / 多余字段抛 invalid_response', async () => {
+    const 干净项 = { organization_id: 'org_new', display_name: '启明科技', legal_name: null, verification_status: 'unverified' as const };
+    请求Mock.mockResolvedValueOnce({ result: { organization: 干净项, created: 'yes' } });
+    await expect(数据源.创建组织('启明科技', 'company-create-key-0001')).rejects.toMatchObject({ code: 'invalid_response' });
+
+    请求Mock.mockResolvedValueOnce({ result: { organization: { ...干净项, verification_status: 'banned' }, created: true } });
+    await expect(数据源.创建组织('启明科技', 'company-create-key-0001')).rejects.toMatchObject({ code: 'invalid_response' });
+
+    请求Mock.mockResolvedValueOnce({ result: { organization: { ...干净项, domain: 'x.example' }, created: true } });
+    await expect(数据源.创建组织('启明科技', 'company-create-key-0001')).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  // ── 合同 A：PublicOrganization 未认证条目两认证事实为 null，原样可读 ──
+
+  it('公开企业两项认证事实 null 时原样可读（不归一为空串）', async () => {
+    请求Mock.mockResolvedValueOnce({ result: { ...BFF公开企业样本, legal_name: null, verified_at: null } });
+    await expect(数据源.读取公开企业('org_1')).resolves.toMatchObject({ legal_name: null, verified_at: null });
+  });
+
+  // ── 合同 A：招聘方档案 organization_ref 必需且三态；补丁透传三态 ──
+
+  it('招聘方档案 organization_ref 字符串 / null 可读，缺键拒绝', async () => {
+    请求Mock.mockResolvedValueOnce({ result: { ...BFF招聘方档案样本, organization_ref: 'org_1' } });
+    await expect(数据源.读取招聘方档案()).resolves.toMatchObject({ organization_ref: 'org_1' });
+
+    请求Mock.mockResolvedValueOnce({ result: { ...BFF招聘方档案样本, organization_ref: null } });
+    await expect(数据源.读取招聘方档案()).resolves.toMatchObject({ organization_ref: null });
+
+    const 带ref样本 = { ...BFF招聘方档案样本, organization_ref: 'org_1' };
+    const { organization_ref: _缺ref, ...缺ref档案 } = 带ref样本;
+    请求Mock.mockResolvedValueOnce({ result: 缺ref档案 });
+    await expect(数据源.读取招聘方档案()).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('保存招聘方档案补丁透传 organization_ref 三态且响应可读', async () => {
+    请求Mock.mockResolvedValueOnce({ result: { ...BFF招聘方档案样本, organization_ref: 'org_9' } });
+    await expect(数据源.保存招聘方档案({ organization_ref: 'org_9' }, 1)).resolves.toMatchObject({ organization_ref: 'org_9' });
+    expect(请求Mock.mock.calls[0][0]).toEqual({
+      path: '/api/v1/recruiter/profile', method: 'PATCH', body: { organization_ref: 'org_9' }, ifMatch: '"1"',
+    });
+
+    请求Mock.mockResolvedValueOnce({ result: { ...BFF招聘方档案样本, organization_ref: null } });
+    await expect(数据源.保存招聘方档案({ organization_ref: null }, 1)).resolves.toMatchObject({ organization_ref: null });
+    expect(请求Mock.mock.calls[1][0]).toEqual({
+      path: '/api/v1/recruiter/profile', method: 'PATCH', body: { organization_ref: null }, ifMatch: '"1"',
+    });
+  });
+
+  // ── 合同 A：企业管理员申请绑定目录组织，organization_id 必需 ──
+
+  it('企业管理员申请回执含 organization_id 且缺键拒绝', async () => {
+    请求Mock.mockResolvedValueOnce({ result: { requests: [{ ...BFF企业管理员申请样本, organization_id: 'org_1' }] } });
+    await expect(数据源.读取企业管理员申请()).resolves.toMatchObject({
+      0: { request_id: 'req_1', organization_id: 'org_1' },
+    });
+
+    const { organization_id: _缺组织, ...缺键申请 } = { ...BFF企业管理员申请样本, organization_id: 'org_1' };
+    请求Mock.mockResolvedValueOnce({ result: { requests: [缺键申请] } });
+    await expect(数据源.读取企业管理员申请()).rejects.toMatchObject({ code: 'invalid_response' });
   });
 });

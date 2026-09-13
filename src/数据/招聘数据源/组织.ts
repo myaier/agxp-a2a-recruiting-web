@@ -24,6 +24,7 @@ import type {
   BFF目录引用,
   BFF招聘方档案,
   BFF招聘方档案补丁,
+  BFF组织创建结果,
   BFF组织搜索页,
   BFF组织搜索项,
 } from '../BFF契约';
@@ -45,8 +46,11 @@ export interface 组织数据源 {
   上传企业媒体(organizationId: string, purpose: BFF企业媒体用途, file: File): Promise<BFF企业媒体>;
   删除企业媒体(organizationId: string, mediaId: string): Promise<void>;
   读取公开企业(organizationId: string): Promise<BFF公开企业>;
-  /** P3：候选人按名称搜索活跃组织（屏蔽/授权选择器用）；结果只有三个公开登记字段。 */
+  /** P3：候选人按名称搜索活跃组织（屏蔽/授权选择器用）；合同 A 起条目是四公开登记字段。 */
   搜索组织(query: 组织搜索查询): Promise<BFF组织搜索页>;
+  /** 合同 A：按同源根 POST api/v1/organizations 创建（或按同规范名收敛到既有）目录组织；
+   *  body 只有 display_name，幂等键由调用方逐字提供，绝不自动换键。 */
+  创建组织(displayName: string, idempotencyKey: string): Promise<BFF组织创建结果>;
 }
 
 // ── 本域小 guard：只写组织域需要的几个断言，不引入第三方 validator ──
@@ -92,6 +96,11 @@ function 要求整数(值: unknown): number {
   return 值;
 }
 
+function 要求布尔(值: unknown): boolean {
+  if (typeof 值 !== 'boolean') throw 契约错误();
+  return 值;
+}
+
 function 要求数组(值: unknown): unknown[] {
   if (!Array.isArray(值)) throw 契约错误();
   return 值;
@@ -118,7 +127,7 @@ const 作息全表 = ['', 'two_day_weekend', 'alternate_saturday', 'flexible'] a
 // ── 具体 decoder：逐字段过 guard，不做 `as` 直转 ──
 
 const 招聘方档案必需键 = [
-  'public_name', 'title', 'personal_verification_status', 'revision',
+  'public_name', 'title', 'personal_verification_status', 'organization_ref', 'revision',
 ] as const;
 const 招聘方档案可选键 = ['verified_name', 'avatar_url'] as const;
 
@@ -128,6 +137,8 @@ function 解招聘方档案(input: unknown): BFF招聘方档案 {
     public_name: 要求字符串(raw.public_name),
     title: 要求字符串(raw.title),
     personal_verification_status: 要求枚举(raw.personal_verification_status, ['unverified', 'verified'] as const),
+    // 合同 A：organization_ref 是必需键（可空不可缺）—— 缺键即契约漂移，null 是合法的未选择。
+    organization_ref: 要求可空字符串(raw.organization_ref),
     verified_name: 要求可空可缺字符串(raw.verified_name),
     avatar_url: 要求可空可缺字符串(raw.avatar_url),
     revision: 要求整数(raw.revision),
@@ -158,12 +169,13 @@ function 解企业关系列表(input: unknown): BFF企业关系列表 {
   return { affiliations: 要求数组(raw.affiliations).map(解企业关系) };
 }
 
-const 管理员申请必需键 = ['request_id', 'legal_name', 'display_name', 'domains', 'status', 'revision'] as const;
+const 管理员申请必需键 = ['request_id', 'organization_id', 'legal_name', 'display_name', 'domains', 'status', 'revision'] as const;
 
 function 解企业管理员申请(input: unknown): BFF企业管理员申请 {
   const raw = 要求闭合对象(input, 管理员申请必需键);
   return {
     request_id: 要求字符串(raw.request_id),
+    organization_id: 要求字符串(raw.organization_id),
     legal_name: 要求字符串(raw.legal_name),
     display_name: 要求字符串(raw.display_name),
     domains: 要求数组(raw.domains).map(要求字符串),
@@ -240,9 +252,10 @@ function 解公开企业(input: unknown): BFF公开企业 {
   ] as const);
   return {
     organization_id: 要求字符串(raw.organization_id),
-    legal_name: 要求字符串(raw.legal_name),
+    // 合同 A：未认证条目的两认证事实是显式 null（键必在），原样保留，不归一成空串。
+    legal_name: 要求可空字符串(raw.legal_name),
     display_name: 要求字符串(raw.display_name),
-    verified_at: 要求字符串(raw.verified_at),
+    verified_at: 要求可空字符串(raw.verified_at),
     profile: 解企业档案(raw.profile),
     active_verified_job_count: 要求整数(raw.active_verified_job_count),
   };
@@ -255,14 +268,15 @@ function 请求校验错误(message: string): BFF错误 {
   return new BFF错误(0, 'invalid_request', message);
 }
 
-const 组织搜索项必需键 = ['organization_id', 'display_name', 'legal_name'] as const;
+const 组织搜索项必需键 = ['organization_id', 'display_name', 'legal_name', 'verification_status'] as const;
 
 function 解组织搜索项(input: unknown): BFF组织搜索项 {
   const raw = 要求闭合对象(input, 组织搜索项必需键);
   return {
     organization_id: 要求字符串(raw.organization_id),
     display_name: 要求字符串(raw.display_name),
-    legal_name: 要求字符串(raw.legal_name),
+    legal_name: 要求可空字符串(raw.legal_name),
+    verification_status: 要求枚举(raw.verification_status, ['unverified', 'verified'] as const),
   };
 }
 
@@ -272,6 +286,12 @@ function 解组织搜索页(input: unknown): BFF组织搜索页 {
     items: 要求数组(raw.items).map(解组织搜索项),
     next_cursor: 要求可空字符串(raw.next_cursor),
   };
+}
+
+/** 合同 A：目录创建的闭合回执 —— organization 与搜索项同一四字段形状，created 标记是否新建。 */
+function 解组织创建结果(input: unknown): BFF组织创建结果 {
+  const raw = 要求闭合对象(input, ['organization', 'created'] as const);
+  return { organization: 解组织搜索项(raw.organization), created: 要求布尔(raw.created) };
 }
 
 /**
@@ -405,6 +425,16 @@ export function 创建组织数据源(请求: 请求函数): 组织数据源 {
       ];
       const { result } = await 请求<unknown>({ path: `/api/v1/organizations?${参数们.join('&')}` });
       return 解组织搜索页(result);
+    },
+    async 创建组织(displayName, idempotencyKey) {
+      const { result } = await 请求<unknown>({
+        path: '/api/v1/organizations',
+        method: 'POST',
+        body: { display_name: displayName },
+        幂等: true,
+        幂等键: idempotencyKey,
+      });
+      return 解组织创建结果(result);
     },
   };
 }
