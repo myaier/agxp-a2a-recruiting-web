@@ -153,6 +153,33 @@ describe('use组织查询', () => {
     expect(创建).toHaveBeenCalledTimes(2);
   });
 
+  it('创建在飞时 设词 搁浅在飞创建：回执到达后 创建中 复位、后续创建不再被守卫卡死', async () => {
+    const 回执 = deferred<BFF组织创建结果>();
+    const 创建 = vi.fn(async (): Promise<BFF组织创建结果> => 回执.promise);
+    const { result } = renderHook(() => use组织查询({ 作用域键: 'mock', 创建 }));
+    let 搁浅回执: BFF组织搜索项 | null | undefined;
+    await act(async () => { void result.current.添加('旧公司').then((值) => { 搁浅回执 = 值; }); });
+    expect(result.current.创建中).toBe(true);
+
+    // 创建在飞时返回搜索视图输入新词：代际递增把在飞创建搁浅，守卫同步复位
+    act(() => result.current.设词('Acme'));
+    expect(result.current.创建中).toBe(false);
+
+    await act(async () => { 回执.resolve({ organization: 新组织, created: true }); });
+    // 搁浅的旧创建返回 null，不回填
+    expect(搁浅回执).toBeNull();
+    expect(result.current.创建中).toBe(false);
+
+    // 守卫已复位：后续创建可正常发起并收口
+    const 第二回执 = deferred<BFF组织创建结果>();
+    创建.mockImplementationOnce(() => 第二回执.promise);
+    await act(async () => { void result.current.添加('新大陆科技'); });
+    expect(创建).toHaveBeenCalledTimes(2);
+    expect(result.current.创建中).toBe(true);
+    await act(async () => { 第二回执.resolve({ organization: 新组织, created: true }); });
+    expect(result.current.创建中).toBe(false);
+  });
+
   it('同名失败重试用同一幂等键，改名换新键；失败保留 创建错误', async () => {
     const 键们: string[] = [];
     const 创建 = vi.fn(async (_名称: string, 键: string): Promise<BFF组织创建结果> => {
