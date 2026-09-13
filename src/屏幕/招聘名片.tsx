@@ -6,12 +6,13 @@
 // P1C 起分双分支，共用 组件/招聘名片/招聘名片展示（接口 B）这一份表单/预览 JSX：
 //   Mock    —— 三行收笔落全局（读 企业认证 fixture，落 存企业认证，去发岗）。
 //   Backend —— 姓名槽显示 verified_name ?? public_name（verified 即只读），职务落 title，
-//              一次保存调 保存招聘方档案；公司槽读 current affiliation / 未认证声明，
-//              多个可用关系列出待选、不自动猜。公司格是受控输入，和姓名/职务一样只在
-//              按下保存 里落库（不再 blur 即落，否则按钮会抢在 blur 之前吃掉这一下）。
-//              头像走原子保存：选图只生成 object URL
-//              内存预览（不压 data URL、不落 存招聘头像），保存时调 替换招聘方头像，
-//              成功后由 operation 用响应里的 avatar_url/revision 替换权威档案、回收预览。
+//              一次保存调 保存招聘方档案；合同 C 起公司行唯一权威坐标是
+//              招聘方档案.organization_ref：名称经 读取目录企业 恢复、改选经 公司选择层
+//              回填、PATCH 带 organization_ref，不再写或读 未认证公司声明；任职关系列表
+//              只作管理关系控件，affiliation id 绝不赋给自报坐标。头像走原子保存：
+//              选图只生成 object URL 内存预览（不压 data URL、不落 存招聘头像），
+//              保存时调 替换招聘方头像，成功后由 operation 用响应里的 avatar_url/revision
+//              替换权威档案、回收预览。
 //
 // 本文件只剩连接：数据投影、保存事务、头像生命周期、选图校验都留在这里；
 // 展示不读数据源模式/全局状态、不发请求。两栈持久化时机不同（收笔 vs 受控），
@@ -21,6 +22,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import 招聘名片展示 from '../组件/招聘名片/招聘名片展示';
 import type { 名片输入 } from '../组件/招聘名片/招聘名片展示';
+import { 公司选择层 } from '../组件/公司选择层';
+import { use组织查询 } from './组织查询钩子';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
@@ -28,6 +31,7 @@ import { 路径 } from '../路由/路径表';
 import { 压成头像 } from '../组件/头像处理';
 import { 从BFF招聘身份 } from '../数据/组织映射';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
+import type { BFF组织搜索项 } from '../数据/BFF契约';
 
 export default function 招聘名片() {
   const { 数据源模式 } = use应用状态();
@@ -41,7 +45,7 @@ const 头像字节上限 = 10 * 1024 * 1024;
 
 function 后端名片() {
   const { 跳转, 返回 } = use导航();
-  const { 状态, 操作, 后端状态 } = use应用状态();
+  const { 状态, 操作, 后端状态, 数据源模式 } = use应用状态();
   // 注册流标记由招聘路由守卫 / 选身份写进 history.state：只有它决定保存成功后是继续去发岗，
   // 还是（应用内普通编辑）留在本屏。应用内进来的名片没有这个标记
   const 位置 = useLocation();
@@ -95,45 +99,87 @@ function 后端名片() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [主体标识]);
 
-  // ── 公司：受控字段，权威值 = current affiliation，没有关系时回落未认证声明 ──
-  // 原来这一格是 defaultValue + onBlur 收笔：全新招聘方在名片上填完公司直接按保存，
-  // 按钮抢在 blur 之前吃掉这一下，声明从没落过 —— 发岗那边拿到空 company claim。
-  // 现在输入即入 state，落库统一由 按下保存 这一条有序路径负责。
-  const 权威公司 = 身份.currentAffiliation?.organizationName ?? 状态.未认证公司声明;
-  const [公司, 设公司] = useState(权威公司);
-  // 权威值变化（水合晚于进屏 / 选了任职企业）或换账号都要重新同步，不把上一份留在框里
-  useEffect(() => 设公司(权威公司), [主体标识, 权威公司]);
-  /** 没有 current affiliation 时，未认证声明是发岗 company claim 的唯一来源，必填 */
-  const 需要公司声明 = 身份.currentAffiliation === null;
+  // ── 合同 C：自报公司 = 招聘方档案.organization_ref ──
+  // 唯一权威坐标；名称只在初次进入 / 刷新 / 坐标变化时经 读取目录企业 恢复，
+  // 绝不回退任职关系名或 未认证公司声明；用户改选草稿优先于迟到读取。
+  const 档案坐标 = 状态.招聘方档案?.organization_ref ?? null;
+  const [自报, 设自报] = useState<{ id: string; 名称: string } | null>(null);
+  const [自报态, 设自报态] = useState<'加载中' | '错误' | '就绪'>('加载中');
+  // 用户经抽屉改选后置位：此后的迟到/重读响应一律不覆盖草稿（含 409 重读）
+  const 已改选 = useRef(false);
+  const 读取代际 = useRef(0);
+  const [读取重试, 设读取重试] = useState(0);
+  useEffect(() => {
+    const 本次 = ++读取代际.current;
+    if (已改选.current) return;
+    if (档案坐标 === null) {
+      设自报(null);
+      设自报态('就绪');
+      return;
+    }
+    设自报(null);
+    设自报态('加载中');
+    操作.读取目录企业(档案坐标)
+      .then((项) => {
+        if (读取代际.current !== 本次 || 已改选.current) return;
+        设自报({ id: 项.organization_id, 名称: 项.display_name });
+        设自报态('就绪');
+      })
+      .catch(() => {
+        if (读取代际.current !== 本次 || 已改选.current) return;
+        设自报(null);
+        设自报态('错误');
+      });
+  }, [档案坐标, 读取重试, 操作]);
+
+  // ── 公司选择抽屉（合同 B）：搜索/创建走操作层目录三操作，结果 ID 只经这里回填 ──
+  const [抽屉开, 设抽屉开] = useState(false);
+  const 查询 = use组织查询({
+    搜索: 操作.搜索组织,
+    创建: 操作.创建组织,
+    作用域键: JSON.stringify([数据源模式, 后端状态.主体?.subject_id ?? null, '招聘名片']),
+  });
+  /** 抽屉回填：草稿置位 + 关抽屉 + 作废（合同 B：父页面关闭时先作废再隐藏） */
+  function 回填公司(项: BFF组织搜索项) {
+    已改选.current = true;
+    设自报({ id: 项.organization_id, 名称: 项.display_name });
+    查询.作废();
+    设抽屉开(false);
+  }
+  async function 添加公司(名称: string) {
+    const 项 = await 查询.添加(名称);
+    if (项) 回填公司(项);
+  }
+  function 关闭抽屉() {
+    // 取消/Escape/遮罩：草稿不变，作废在飞请求后隐藏
+    查询.作废();
+    设抽屉开(false);
+  }
 
   // 单飞保存：按钮 disabled 挡住鼠标，保存锁挡住 disabled 生效前的重入（键盘连按 / 竞态）
   const [保存中, 设保存中] = useState(false);
   const 保存锁 = useRef(false);
 
-  /** 一次保存 = 公司声明 → 档案 PATCH →（有待传头像才）头像 CAS，顺序固定。
+  /** 一次保存 = 档案 PATCH（带 organization_ref）→（有待传头像才）头像 CAS，顺序固定。
    *  本地校验不通过一律不发请求；失败保留输入、预览与文件，用户按同一个键重试。 */
   async function 按下保存() {
     if (保存锁.current) return;
     const publicName = 公开名.trim();
     const title = 职务.trim();
-    const company = 公司.trim();
+    // 必填公司只判断所选 ID：草稿优先，其次档案坐标（读取失败时仍按已存坐标提交）
+    const organizationRef = 自报?.id ?? 档案坐标;
     if (!publicName) {
       轻提示('请填写姓名');
       return;
     }
-    if (需要公司声明 && !company) {
-      // 有可用任职关系却还没选当前：公司格在这一态根本不渲染（见下方 声明 prop 条件），
-      // 叫用户「填写公司名称」是死路 —— 这一态的正解是回去选当前任职企业
-      轻提示(可选关系.length > 0 ? '请选择当前任职企业' : '请填写公司名称');
+    if (organizationRef === null) {
+      轻提示('请选择公司');
       return;
     }
     保存锁.current = true;
     设保存中(true);
     try {
-      // 声明是账号内本地事实（不建 Organization），先落它再写档案：档案成功后
-      // 发岗立刻能读到同一份 claim
-      if (需要公司声明) 操作.保存未认证公司声明(company);
-      const 档案 = await 操作.保存招聘方档案({ public_name: publicName, title });
+      const 档案 = await 操作.保存招聘方档案({ public_name: publicName, title, organization_ref: organizationRef });
       if (头像文件) {
         // 头像 If-Match 必须用 PATCH 响应里的新 revision：dispatch 后 state ref 要到
         // 下一个 React 提交才更新，此刻读 ref 拿到的是旧 revision（真实 BFF 会 409）
@@ -171,46 +217,81 @@ function 后端名片() {
   const 头像地址 = 头像预览 ?? 身份.avatarUrl;
 
   return (
-    <招聘名片展示
-      预览={{
-        // 预览姓名用权威值（verified 优先），职务/公司用本地受控值
-        姓名: 显示姓名,
-        职务,
-        公司,
-        图片: 头像地址,
-        暂存图片: 头像预览 !== null,
-        已认证: 身份.personalVerification.code === 'verified',
-      }}
-      姓名={
-        可编辑公开名
-          ? { 类型: '公开名', 输入: { 模式: '受控', 值: 公开名, 修改: 设公开名 } }
-          : { 类型: '只读', 值: 显示姓名 }
-      }
-      职务={{ 模式: '受控', 值: 职务, 修改: 设职务 }}
-      公司={{
-        // 关系按身份投影逐项映射，当前态显式传入，不在展示里猜
-        关系: 身份.affiliations.map((项) => ({
-          id: 项.id,
-          名称: 项.organizationName,
-          角色: 项.roleLabel,
-          状态: 项.statusLabel,
-          可选: 项.selectable,
-          当前: 身份.currentAffiliation?.id === 项.id,
-        })),
-        选择: (id) => void 操作.选择企业关系(id).catch((错误) => 轻提示(取后端错误文案(错误))),
-        待选提示: 可选关系.length > 1 && !身份.currentAffiliation,
-        // 没有任何可选关系且无 current：未认证声明是发岗 company claim 唯一来源，输入面不能缺席
-        声明: 可选关系.length === 0 && 需要公司声明
-          ? { 标签: '公司（未认证声明）', 输入: { 模式: '受控', 值: 公司, 修改: 设公司 } }
-          : null,
-      }}
-      选照片={选了照片}
-      保存={按下保存}
-      保存文字={从注册流 ? '保存并继续' : '保存'}
-      保存中={保存中}
-      返回={返回}
-      打开公司资料={() => 跳转(路径.公司档案编辑)}
-    />
+    <>
+      <招聘名片展示
+        预览={{
+          // 预览姓名用权威值（verified 优先），职务受控，公司用待保存选择名
+          姓名: 显示姓名,
+          职务,
+          公司: 自报?.名称 ?? '',
+          图片: 头像地址,
+          暂存图片: 头像预览 !== null,
+          已认证: 身份.personalVerification.code === 'verified',
+        }}
+        姓名={
+          可编辑公开名
+            ? { 类型: '公开名', 输入: { 模式: '受控', 值: 公开名, 修改: 设公开名 } }
+            : { 类型: '只读', 值: 显示姓名 }
+        }
+        职务={{ 模式: '受控', 值: 职务, 修改: 设职务 }}
+        公司={{
+          // 管理关系按身份投影逐项映射，只服务任职/管理；自报公司行独立走 organization_ref
+          关系: 身份.affiliations.map((项) => ({
+            id: 项.id,
+            名称: 项.organizationName,
+            角色: 项.roleLabel,
+            状态: 项.statusLabel,
+            可选: 项.selectable,
+            当前: 身份.currentAffiliation?.id === 项.id,
+          })),
+          选择: (id) => void 操作.选择企业关系(id).catch((错误) => 轻提示(取后端错误文案(错误))),
+          待选提示: 可选关系.length > 1 && !身份.currentAffiliation,
+          自报: {
+            名称: 自报?.名称 ?? null,
+            加载中: 自报态 === '加载中',
+            读取错误: 自报态 === '错误',
+            重试: () => 设读取重试((旧) => 旧 + 1),
+            按下: () => 设抽屉开(true),
+          },
+          声明: null,
+        }}
+        选照片={选了照片}
+        保存={按下保存}
+        保存文字={从注册流 ? '保存并继续' : '保存'}
+        保存中={保存中}
+        返回={返回}
+        打开公司资料={() => 跳转(路径.公司档案编辑)}
+      />
+      {抽屉开 ? (
+        <公司选择层
+          搜索词={查询.词}
+          修改搜索词={查询.设词}
+          项们={查询.结果.map((项) => ({
+            键: 项.organization_id,
+            名称: 项.display_name,
+            正式名: 项.legal_name,
+            已认证: 项.verification_status === 'verified',
+            选中: 自报?.id === 项.organization_id,
+          }))}
+          搜索中={查询.搜索中}
+          搜索错误={查询.搜索错误}
+          重试搜索={查询.重新查询}
+          还有={查询.下一页游标 !== null}
+          加载中={查询.加载中}
+          加载错误={查询.加载错误}
+          加载更多={() => void 查询.加载更多()}
+          选定={(键) => {
+            // 选中 ID 只来自父页面：在本实例结果里定位完整项再回填
+            const 项 = 查询.结果.find((候选) => 候选.organization_id === 键);
+            if (项) 回填公司(项);
+          }}
+          关闭={关闭抽屉}
+          创建中={查询.创建中}
+          创建错误={查询.创建错误}
+          添加={(名称) => void 添加公司(名称)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -269,10 +350,11 @@ function Mock名片() {
       姓名={{ 类型: '姓名', 输入: 收笔输入('姓名') }}
       职务={收笔输入('职务')}
       公司={{
-        // Mock 没有任职关系概念：关系恒空，声明输入总是提供
+        // Mock 没有任职关系概念：关系恒空，声明输入总是提供；自报选择行是 Backend 专用
         关系: [],
         选择: () => {},
         待选提示: false,
+        自报: null,
         声明: { 标签: '公司', 输入: 收笔输入('公司') },
       }}
       选照片={选了照片}

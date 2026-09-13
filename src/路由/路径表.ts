@@ -106,6 +106,10 @@ export const 路径 = {
   /** 企业组织管理员申请：填写组织事实 + 证明材料提交审核（实名认证摘要页的入口，
    *  不是注册步骤 —— 注册流仍直接进招聘名片，见 onboarding配置 的合同测试） */
   企业组织申请: '/hr/organization-application',
+  /** 合同 C：管理员申请的目标企业坐标走 query 参数（公开 ID，不是邀请 token）；
+   *  携带值必须在申请页经真实读取验证，更换选择用 replace 写同一个参数。 */
+  企业组织申请带企业: (organizationId: string) =>
+    `/hr/organization-application?organization_id=${encodeURIComponent(organizationId)}`,
   /** 邀请加入：输入管理员分享的邀请口令加入企业；raw token 只进 POST body，不进 URL/状态 */
   企业邀请加入: '/hr/organization-invitation',
   发布岗位: '/hr/post-job',

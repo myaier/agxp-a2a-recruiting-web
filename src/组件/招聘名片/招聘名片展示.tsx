@@ -32,9 +32,21 @@ export interface 招聘名片展示属性 {
   姓名: { 类型: '只读'; 值: string } | { 类型: '公开名'; 输入: 名片输入 } | { 类型: '姓名'; 输入: 名片输入 };
   职务: 名片输入;
   公司: {
+    /** 管理关系控件（affiliation 事实）：只服务任职/管理展示与选择，绝不赋给自报坐标 */
     关系: readonly { id: string; 名称: string; 角色: string; 状态: string; 可选: boolean; 当前: boolean }[];
     选择: (id: string) => void;
     待选提示: boolean;
+    /** 合同 C：自报公司选择行 —— 名称来自 招聘方档案.organization_ref 的目录读取或本页
+     *  改选草稿；名称 null 显示未选。按下交给外层打开 公司选择层。null = 本页不渲染该行
+     *  （Mock 分支仍走 声明 文本输入）。 */
+    自报: {
+      名称: string | null;
+      加载中: boolean;
+      读取错误: boolean;
+      重试: () => void;
+      按下: () => void;
+    } | null;
+    /** 旧声明输入只留给范围外旧消费者（Mock 原型）；合同 C 的七类新链路不再写或读声明 */
     声明: { 标签: '公司' | '公司（未认证声明）'; 输入: 名片输入 } | null;
   };
   选照片: (文件: File) => void;
@@ -176,7 +188,7 @@ export default function 招聘名片展示({
         {/* ── 职务 ── */}
         <就地输入行 标签="职务" 无障碍标签="职务" 提示="请填写职务" 输入={职务} />
 
-        {/* ── 公司：关系列表与声明输入是连接层算好的两种业务状态 ── */}
+        {/* ── 公司：管理关系列表、自报选择行与声明输入是连接层算好的三种业务状态 ── */}
         {公司.关系.length > 0 ? (
           <div className={样式.就地条目}>
             <div className={样式.就地标签}>任职企业</div>
@@ -197,6 +209,35 @@ export default function 招聘名片展示({
                   {项.名称} · {项.角色} · {项.状态}（不可选）
                 </div>
               ),
+            )}
+          </div>
+        ) : null}
+        {公司.自报 ? (
+          <div className={样式.就地条目}>
+            <div className={样式.就地标签}>公司（自报企业）</div>
+            {公司.自报.加载中 ? (
+              <div className={样式.就地输入}>公司信息加载中…</div>
+            ) : 公司.自报.读取错误 ? (
+              <div className={样式.就地输入} style={{ color: 'var(--次要浅)' }}>
+                <span>公司信息读取失败</span>
+                <button
+                  type="button"
+                  className="可点"
+                  style={{ marginLeft: 8, textDecoration: 'underline', cursor: 'pointer' }}
+                  onClick={公司.自报.重试}
+                >
+                  重试
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className={`${样式.就地输入} 可点`}
+                style={{ textAlign: 'left', cursor: 'pointer' }}
+                onClick={公司.自报.按下}
+              >
+                {公司.自报.名称 ?? '未选择公司'}
+              </button>
             )}
           </div>
         ) : null}

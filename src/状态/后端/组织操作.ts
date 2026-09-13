@@ -325,11 +325,37 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
     },
 
     async 创建企业管理员申请(metadata, evidence) {
-      if (!是后端 || !后端) return;
+      // 调用方需要真实回执（列表刷新失败的呈现由页面负责），Mock 模式没有这条链，直接抛
+      if (!是后端 || !后端) throw new Error('创建企业管理员申请仅 Backend 模式可用');
       try {
-        await 后端.创建企业管理员申请(metadata, evidence);
-        const 申请 = await 后端.读取企业管理员申请();
-        派发({ 型: '水合企业管理员申请', 申请 });
+        const 申请 = await 后端.创建企业管理员申请(metadata, evidence);
+        // 合同 C：POST 回执先按 request_id upsert 进全局列表 —— 后续列表刷新失败也
+        // 保留返回申请，不诱导重复 POST
+        派发({
+          型: '水合企业管理员申请',
+          申请: [申请, ...状态引用.current.企业管理员申请列表.filter((项) => 项.request_id !== 申请.request_id)],
+        });
+        let 列表刷新失败 = false;
+        try {
+          const 申请列表 = await 后端.读取企业管理员申请();
+          派发({ 型: '水合企业管理员申请', 申请: 申请列表 });
+        } catch (刷新错误) {
+          处理组织401(刷新错误);
+          列表刷新失败 = true;
+        }
+        // approved：关系与企业事实随服务端变化 → 重读权威值；仍不以 POST 成功自行认证
+        if (申请.status === 'approved') {
+          try {
+            const affiliations = await 后端.读取我的企业关系();
+            const currentId = 选择当前企业关系(affiliations, 状态引用.current.当前企业关系编号);
+            派发({ 型: '水合企业关系', 关系: affiliations, 当前编号: currentId });
+            const organization = await 后端.读取公开企业(metadata.organization_id);
+            派发({ 型: '缓存公开企业', 企业: organization });
+          } catch (重读错误) {
+            处理组织401(重读错误); // 重读失败不影响申请结果，页面按服务端回执展示
+          }
+        }
+        return { 申请, 列表刷新失败 };
       } catch (error) {
         处理组织401(error);
         throw error;

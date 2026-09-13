@@ -8,22 +8,26 @@
 // P1C 起分双分支：
 //   Mock   —— 保留原 1.2 秒人脸识别原型：点「开始人脸识别」→「认证中…」
 //              （setTimeout + 本地态）→ 轻提示('认证通过') → 跳 招聘名片。
+//              合同 B/C：公司输入换成同一 公司选择层（本地 模拟企业目录，
+//              不发任何请求），其余原型行为原样保留。
 //   Backend —— 这屏不再是「做一次认证」，而是诚实的身份摘要：
-//              个人 / 任职 / 管理员申请三条按服务端事实分开展示，
-//              两个动作入口（申请企业管理员 / 输入邀请口令加入）。
+//              个人 / 任职 / 管理员申请三条按服务端事实分开展示；
+//              合同 C：申请入口显示待申请企业（档案 organization_ref 经
+//              读取目录企业 恢复名称），按下携带 encoded 公开 ID 进申请页
+//              —— 这只是进入申请页的待申请选择，不隐式修改招聘档案。
 //              Backend 分支不进任何计时器代码 —— 没有 KYC 结果就不伪造「认证通过」。
 
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './企业实名认证.module.css';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 主按钮, 表单条目 } from '../组件/通用';
+import { 公司选择层 } from '../组件/公司选择层';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
 import { 从BFF招聘身份 } from '../数据/组织映射';
-
-/** 公司全称输入上限（对照 BOSS 的 46 字；营业执照名称不会超过这个长度） */
-const 公司全称上限 = 46;
+import { use组织查询 } from './组织查询钩子';
+import { 模拟目录搜索, 模拟目录添加 } from '../数据/企业端模拟数据';
 
 /** 公司全称的注意事项（BOSS 截图三条，换成我们的口径） */
 const 公司注意事项 = [
@@ -56,6 +60,42 @@ function 后端身份摘要() {
       已取消 = true;
     };
   }, [操作]);
+
+  // 合同 C：待申请企业 = 招聘档案已保存的自报企业；名称经 读取目录企业 恢复。
+  // 这里只是入口展示 —— 真正的目标校验由申请页按 query 参数重新读取。
+  const 档案坐标 = 状态.招聘方档案?.organization_ref ?? null;
+  const [待申请名称, 设待申请名称] = useState<string | null>(null);
+  const [待申请读取中, 设待申请读取中] = useState(false);
+  const [待申请读取失败, 设待申请读取失败] = useState(false);
+  useEffect(() => {
+    if (档案坐标 === null) {
+      设待申请名称(null);
+      设待申请读取中(false);
+      设待申请读取失败(false);
+      return;
+    }
+    let 已取消 = false;
+    设待申请读取中(true);
+    设待申请读取失败(false);
+    操作.读取目录企业(档案坐标)
+      .then((项) => {
+        if (!已取消) 设待申请名称(项.display_name);
+      })
+      .catch(() => {
+        if (!已取消) 设待申请读取失败(true);
+      })
+      .finally(() => {
+        if (!已取消) 设待申请读取中(false);
+      });
+    return () => {
+      已取消 = true;
+    };
+  }, [档案坐标, 操作]);
+  const 待申请行 = 待申请读取中
+    ? '待申请企业：公司信息加载中…'
+    : 待申请读取失败
+      ? '待申请企业：公司信息读取失败'
+      : `待申请企业：${待申请名称 ?? '未选择'}`;
 
   const 当前任职 = 身份.currentAffiliation;
   const 申请行 = 申请读取失败
@@ -107,8 +147,8 @@ function 后端身份摘要() {
         <div className={样式.表单区}>
           <表单条目
             标签="申请企业管理员"
-            值="提交组织事实与证明材料，人工审核"
-            按下={() => 跳转(路径.企业组织申请)}
+            值={待申请行}
+            按下={() => 跳转(档案坐标 ? 路径.企业组织申请带企业(档案坐标) : 路径.企业组织申请)}
           />
           <表单条目
             标签="输入邀请口令加入企业"
@@ -121,7 +161,7 @@ function 后端身份摘要() {
   );
 }
 
-// ── Mock：1.2 秒人脸识别原型（原实现逐字保留，Backend 条件不进这里）────
+// ── Mock：1.2 秒人脸识别原型（计时行为逐字保留，公司输入换同一选择抽屉）────
 
 function Mock人脸原型() {
   const { 跳转, 返回 } = use导航();
@@ -132,6 +172,33 @@ function Mock人脸原型() {
   const [认证中, 设认证中] = useState(false);
   // 计时器句柄：认证中途退出本屏时清掉，避免离屏后仍触发跳转
   const 计时器 = useRef<number | null>(null);
+  // 合同 B/C：公司输入换同一 公司选择层 —— 搜索/添加走本地 模拟企业目录，
+  // 不发任何请求；选中回填后关抽屉并 作废（父页面关闭时先作废再隐藏）。
+  const [抽屉开, 设抽屉开] = useState(false);
+  const 查询 = use组织查询({
+    // Mock 不发请求：本地 模拟企业目录 直接当 Promise 返回
+    搜索: async (查询参数) => 模拟目录搜索(查询参数),
+    创建: async (名称) => 模拟目录添加(名称),
+    作用域键: JSON.stringify(['mock', '企业实名认证']),
+  });
+  function 选定公司(键: string) {
+    const 项 = 查询.结果.find((候选) => 候选.organization_id === 键);
+    if (!项) return;
+    设公司全称(项.display_name);
+    查询.作废();
+    设抽屉开(false);
+  }
+  async function 添加公司(名称: string) {
+    const 项 = await 查询.添加(名称);
+    if (!项) return;
+    设公司全称(项.display_name);
+    查询.作废();
+    设抽屉开(false);
+  }
+  function 关闭抽屉() {
+    查询.作废();
+    设抽屉开(false);
+  }
 
   useEffect(() => {
     return () => {
@@ -181,18 +248,14 @@ function Mock人脸原型() {
 
           <div className={样式.编辑条目}>
             <div className={样式.条目标签}>任职公司（营业执照全称）</div>
-            <div className={样式.条目输入行}>
-              <input
-                className={样式.条目输入}
-                value={公司全称}
-                placeholder="如：上海云衢信息科技有限公司"
-                maxLength={公司全称上限}
-                onChange={(事件) => 设公司全称(事件.target.value)}
-              />
-              <span className={`${样式.计数} 等宽数字`}>
-                {公司全称.length}/{公司全称上限}
-              </span>
-            </div>
+            <button
+              type="button"
+              className={`${样式.条目输入} 可点`}
+              style={{ textAlign: 'left', cursor: 'pointer' }}
+              onClick={() => 设抽屉开(true)}
+            >
+              {公司全称 || '请选择公司'}
+            </button>
           </div>
 
           <div className={样式.注意事项}>
@@ -232,6 +295,32 @@ function Mock人脸原型() {
         禁用={认证中}
         按下={开始识别}
       />
+
+      {抽屉开 ? (
+        <公司选择层
+          搜索词={查询.词}
+          修改搜索词={查询.设词}
+          项们={查询.结果.map((项) => ({
+            键: 项.organization_id,
+            名称: 项.display_name,
+            正式名: 项.legal_name,
+            已认证: 项.verification_status === 'verified',
+            选中: 项.display_name === 公司全称,
+          }))}
+          搜索中={查询.搜索中}
+          搜索错误={查询.搜索错误}
+          重试搜索={查询.重新查询}
+          还有={查询.下一页游标 !== null}
+          加载中={查询.加载中}
+          加载错误={查询.加载错误}
+          加载更多={() => void 查询.加载更多()}
+          选定={选定公司}
+          关闭={关闭抽屉}
+          创建中={查询.创建中}
+          创建错误={查询.创建错误}
+          添加={(名称) => void 添加公司(名称)}
+        />
+      ) : null}
     </次级页外壳>
   );
 }

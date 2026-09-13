@@ -1364,3 +1364,88 @@ describe('组织操作：读取目录企业', () => {
     expect(派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
   });
 });
+
+// ── 合同 C：管理员申请的列表刷新 / approved 重读 / 取消按选定 id+revision ──
+
+describe('组织操作：创建企业管理员申请（合同 C）', () => {
+  it('POST 成功后读取真实申请列表并派发；返回回执与刷新结果，pending 不自行认证', async () => {
+    const 创建企业管理员申请 = vi.fn(async () => BFF企业管理员申请样本);
+    const 读取企业管理员申请 = vi.fn(async () => [BFF企业管理员申请样本]);
+    const 读取我的企业关系 = vi.fn(async () => [BFF企业关系样本]);
+    const 读取公开企业 = vi.fn(async () => BFF公开企业样本);
+    const 后端 = 创建完整测试数据源({ 创建企业管理员申请, 读取企业管理员申请, 读取我的企业关系, 读取公开企业 });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    const 元数据 = {
+      organization_id: 'org_1', legal_name: '上海云衢科技有限公司', registry_key: 'k',
+      explanation: 'e', domains: [],
+    };
+    await expect(操作.创建企业管理员申请(元数据, [])).resolves.toEqual({
+      申请: BFF企业管理员申请样本, 列表刷新失败: false,
+    });
+    expect(创建企业管理员申请).toHaveBeenCalledWith(元数据, []);
+    expect(读取企业管理员申请).toHaveBeenCalledTimes(1);
+    // pending：不重读关系与企业事实 —— 不以 POST 成功自行认证
+    expect(读取我的企业关系).not.toHaveBeenCalled();
+    expect(读取公开企业).not.toHaveBeenCalled();
+  });
+
+  it('approved 回执重读关系与目标企业事实', async () => {
+    const 创建企业管理员申请 = vi.fn(async () => ({ ...BFF企业管理员申请样本, status: 'approved' as const }));
+    const 读取我的企业关系 = vi.fn(async () => [BFF企业关系样本]);
+    const 读取公开企业 = vi.fn(async () => BFF公开企业样本);
+    const 后端 = 创建完整测试数据源({ 创建企业管理员申请, 读取我的企业关系, 读取公开企业 });
+    const { 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await 操作.创建企业管理员申请({
+      organization_id: 'org_1', legal_name: 'l', registry_key: 'k', explanation: 'e', domains: [],
+    }, []);
+    expect(读取我的企业关系).toHaveBeenCalledTimes(1);
+    expect(读取公开企业).toHaveBeenCalledWith('org_1');
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '水合企业关系' }));
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '缓存公开企业', 企业: BFF公开企业样本,
+    }));
+  });
+
+  it('POST 成功而列表刷新失败：保留返回申请（upsert 进列表）并报告刷新失败', async () => {
+    const 新申请 = { ...BFF企业管理员申请样本, request_id: 'req_2' };
+    const 创建企业管理员申请 = vi.fn(async () => 新申请);
+    const 读取企业管理员申请 = vi.fn(async () => { throw new BFF错误(503, 'unavailable', 'x'); });
+    const 后端 = 创建完整测试数据源({ 创建企业管理员申请, 读取企业管理员申请 });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    deps.状态引用.current = 归约(deps.状态引用.current, {
+      型: '水合企业管理员申请', 申请: [BFF企业管理员申请样本],
+    });
+    await expect(操作.创建企业管理员申请({
+      organization_id: 'org_1', legal_name: 'l', registry_key: 'k', explanation: 'e', domains: [],
+    }, [])).resolves.toEqual({ 申请: 新申请, 列表刷新失败: true });
+    // 返回申请保留在列表里（upsert），不诱导重复 POST
+    expect(deps.状态引用.current.企业管理员申请列表.map((项) => 项.request_id)).toEqual(['req_2', 'req_1']);
+    expect(派发).toHaveBeenCalledWith({
+      型: '水合企业管理员申请', 申请: [新申请, BFF企业管理员申请样本],
+    });
+  });
+
+  it('POST 失败原样抛出，不派发任何列表', async () => {
+    const 创建企业管理员申请 = vi.fn(async () => { throw new BFF错误(400, 'validation_failed', '校验未通过'); });
+    const 后端 = 创建完整测试数据源({ 创建企业管理员申请 });
+    const { 派发, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.创建企业管理员申请({
+      organization_id: 'org_1', legal_name: 'l', registry_key: 'k', explanation: 'e', domains: [],
+    }, [])).rejects.toMatchObject({ status: 400 });
+    expect(派发).not.toHaveBeenCalled();
+  });
+
+  it('取消只按选定申请的 id/revision，不取全列表最新项', async () => {
+    const 旧申请 = { ...BFF企业管理员申请样本, request_id: 'req_old', revision: 7 };
+    const 取消企业管理员申请 = vi.fn(async () => 旧申请);
+    const 后端 = 创建完整测试数据源({ 取消企业管理员申请 });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    // 列表最新在前：req_new（revision 9）在前，旧申请在后 —— 取消旧申请必须用旧 revision
+    deps.状态引用.current = 归约(deps.状态引用.current, {
+      型: '水合企业管理员申请',
+      申请: [{ ...BFF企业管理员申请样本, request_id: 'req_new', revision: 9 }, 旧申请],
+    });
+    await 操作.取消企业管理员申请('req_old');
+    expect(取消企业管理员申请).toHaveBeenCalledWith('req_old', 旧申请.revision);
+  });
+});

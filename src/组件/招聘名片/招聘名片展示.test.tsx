@@ -27,6 +27,7 @@ function Mock属性(覆盖: Partial<招聘名片展示属性> = {}): 招聘名�
       关系: [],
       选择: () => {},
       待选提示: false,
+      自报: null,
       声明: { 标签: '公司', 输入: 收笔输入('云衢科技') },
     },
     选照片: () => {},
@@ -64,7 +65,7 @@ describe('招聘名片展示 · 输入行共用外壳', () => {
           预览: { 姓名: '', 职务: '', 公司: '', 图片: null, 暂存图片: false, 已认证: false },
           姓名: { 类型: '公开名', 输入: 受控输入('') },
           职务: 受控输入(''),
-          公司: { 关系: [], 选择: () => {}, 待选提示: false, 声明: { 标签: '公司', 输入: 受控输入('') } },
+          公司: { 关系: [], 选择: () => {}, 待选提示: false, 自报: null, 声明: { 标签: '公司', 输入: 受控输入('') } },
         })}
       />,
     );
@@ -85,7 +86,7 @@ describe('招聘名片展示 · 输入行共用外壳', () => {
         {...Mock属性({
           姓名: { 类型: '姓名', 输入: 收笔输入('') },
           职务: 收笔输入(''),
-          公司: { 关系: [], 选择: () => {}, 待选提示: false, 声明: { 标签: '公司', 输入: 收笔输入('') } },
+          公司: { 关系: [], 选择: () => {}, 待选提示: false, 自报: null, 声明: { 标签: '公司', 输入: 收笔输入('') } },
         })}
       />,
     );
@@ -148,6 +149,7 @@ describe('招聘名片展示 · 输入行共用外壳', () => {
             关系: [],
             选择: () => {},
             待选提示: false,
+            自报: null,
             声明: { 标签: '公司（未认证声明）', 输入: 受控输入('云衢科技') },
           },
         })}
@@ -232,6 +234,7 @@ describe('招聘名片展示 · 公司区', () => {
             ],
             选择,
             待选提示: true,
+            自报: null,
             声明: null,
           },
         })}
@@ -244,15 +247,78 @@ describe('招聘名片展示 · 公司区', () => {
     expect(选择).toHaveBeenCalledWith('aff_2');
   });
 
-  it('声明为 null 时不渲染公司输入（有可用关系未选当前的态）', () => {
+  it('声明为 null 且自报为 null 时不渲染任何公司行', () => {
     render(
       <招聘名片展示
         {...Mock属性({
-          公司: { 关系: [], 选择: () => {}, 待选提示: false, 声明: null },
+          公司: { 关系: [], 选择: () => {}, 待选提示: false, 自报: null, 声明: null },
         })}
       />,
     );
     expect(screen.queryByLabelText('公司')).toBeNull();
+    expect(screen.queryByText('未选择公司')).toBeNull();
+    expect(screen.queryByText('公司信息加载中…')).toBeNull();
+  });
+});
+
+// ── 合同 C：自报公司选择行（Backend 专用，Mock 分支仍走声明输入）──
+
+describe('招聘名片展示 · 自报公司选择行（合同 C）', () => {
+  it('自报行显示已恢复名称，按下交给外层打开选择抽屉；关系列表照常作为管理关系控件', async () => {
+    const 按下 = vi.fn();
+    const 用户 = userEvent.setup();
+    render(
+      <招聘名片展示
+        {...Mock属性({
+          公司: {
+            关系: [
+              { id: 'aff_1', 名称: '云衢科技', 角色: '管理员', 状态: '已认证', 可选: true, 当前: true },
+            ],
+            选择: () => {},
+            待选提示: false,
+            自报: { 名称: '星河控股', 加载中: false, 读取错误: false, 重试: () => {}, 按下 },
+            声明: null,
+          },
+        })}
+      />,
+    );
+    // 管理关系行（affiliation）与自报公司行各自独立，不互相顶替
+    expect(screen.getByText(/云衢科技 · 管理员 · 已认证（当前）/)).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '星河控股' }));
+    expect(按下).toHaveBeenCalledTimes(1);
+  });
+
+  it('名称 null 显示未选择公司；加载中与读取失败分别展示，失败给重试回调', async () => {
+    const 重试 = vi.fn();
+    const 用户 = userEvent.setup();
+    const 自报 = (覆盖: Partial<{ 名称: string | null; 加载中: boolean; 读取错误: boolean }>) => ({
+      名称: null as string | null,
+      加载中: false,
+      读取错误: false,
+      重试,
+      按下: () => {},
+      ...覆盖,
+    });
+    const { rerender } = render(
+      <招聘名片展示
+        {...Mock属性({ 公司: { 关系: [], 选择: () => {}, 待选提示: false, 自报: 自报({}), 声明: null } })}
+      />,
+    );
+    expect(screen.getByText('未选择公司')).toBeTruthy();
+    rerender(
+      <招聘名片展示
+        {...Mock属性({ 公司: { 关系: [], 选择: () => {}, 待选提示: false, 自报: 自报({ 加载中: true }), 声明: null } })}
+      />,
+    );
+    expect(screen.getByText('公司信息加载中…')).toBeTruthy();
+    rerender(
+      <招聘名片展示
+        {...Mock属性({ 公司: { 关系: [], 选择: () => {}, 待选提示: false, 自报: 自报({ 读取错误: true }), 声明: null } })}
+      />,
+    );
+    expect(screen.getByText('公司信息读取失败')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    expect(重试).toHaveBeenCalledTimes(1);
   });
 });
 

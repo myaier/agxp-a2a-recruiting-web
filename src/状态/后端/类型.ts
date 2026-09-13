@@ -13,6 +13,7 @@ import type {
   BFFOwnerJob,
   BFF招聘方档案,
   BFF招聘方档案补丁,
+  BFF企业管理员申请,
   BFF企业管理员申请元数据,
   BFF企业媒体用途,
   BFF隐私快照,
@@ -780,7 +781,10 @@ export interface 组织操作 {
   /** 返回保存后的权威档案：同一次保存里紧跟的 CAS 写入（头像）必须用响应里的新 revision。 */
   保存招聘方档案(patch: BFF招聘方档案补丁): Promise<BFF招聘方档案>;
   读取企业管理员申请(): Promise<void>;
-  创建企业管理员申请(metadata: BFF企业管理员申请元数据, evidence: File[]): Promise<void>;
+  /** 合同 C：返回 POST 回执与「后续列表刷新是否失败」。刷新失败时回执已按 request_id
+   *  upsert 进全局列表（保留返回申请，不诱导重复 POST），页面据此显示可重试读取。 */
+  创建企业管理员申请(metadata: BFF企业管理员申请元数据, evidence: File[]):
+    Promise<{ 申请: BFF企业管理员申请; 列表刷新失败: boolean }>;
   取消企业管理员申请(id: string): Promise<void>;
   接受企业邀请(token: string): Promise<void>;
   /** revision 缺省读 state ref；紧跟 保存招聘方档案 的调用必须显式传响应 revision

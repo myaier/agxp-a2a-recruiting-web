@@ -65,7 +65,8 @@ const 反福利 = new Map<string, BFF福利码>(
   Object.entries(福利文案).map(([code, 文]) => [文, code as BFF福利码]));
 
 const 企业关系状态文案 = { pending: '待认证', verified: '已认证', revoked: '已解除' } as const;
-const 管理员申请状态文案 = { pending: '待审核', approved: '已通过', rejected: '已驳回', cancelled: '已取消' } as const;
+/** 合同 C：申请页按企业过滤后直接吃 BFF DTO，状态文案由这里的闭合表投影 */
+export const 管理员申请状态文案 = { pending: '待审核', approved: '已通过', rejected: '已驳回', cancelled: '已取消' } as const;
 const 验证状态文案 = { unverified: '未认证', verified: '已认证' } as const;
 
 // ── 页面 view：React 只能消费这些字段，不得另起别名解释 DTO ──

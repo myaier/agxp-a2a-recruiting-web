@@ -20,6 +20,12 @@ const mock派发 = vi.fn();
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
 const mock读取企业管理员申请 = vi.fn(async () => {});
+const mock读取目录企业 = vi.fn(async (编号: string) => ({
+  organization_id: 编号,
+  display_name: '星河控股',
+  legal_name: null,
+  verification_status: 'unverified' as const,
+}));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -40,15 +46,18 @@ function 置Backend应用状态(组织: Record<string, unknown> = {}) {
       ...组织,
     },
     派发: mock派发,
-    操作: { 读取企业管理员申请: mock读取企业管理员申请 },
+    操作: {
+      读取企业管理员申请: mock读取企业管理员申请,
+      读取目录企业: mock读取目录企业,
+    },
     数据源模式: 'backend',
   };
 }
 
-/** Mock 桩：数据源模式 undefined → Mock 分支，读旧 企业认证 fixture。 */
-function 置Mock应用状态() {
+/** Mock 桩：数据源模式 undefined → Mock 分支，读旧 企业认证 fixture（公司可覆盖）。 */
+function 置Mock应用状态(公司 = '云衢科技') {
   mock应用状态 = {
-    状态: { 企业认证: { 姓名: '邵铭', 公司: '云衢科技', 职务: '技术 VP' } },
+    状态: { 企业认证: { 姓名: '邵铭', 公司, 职务: '技术 VP' } },
     派发: mock派发,
   };
 }
@@ -60,6 +69,13 @@ describe('企业实名认证 · Backend 身份诚实性', () => {
     mock返回.mockClear();
     mock读取企业管理员申请.mockClear();
     mock读取企业管理员申请.mockResolvedValue(undefined);
+    mock读取目录企业.mockClear();
+    mock读取目录企业.mockImplementation(async (编号: string) => ({
+      organization_id: 编号,
+      display_name: '星河控股',
+      legal_name: null,
+      verification_status: 'unverified' as const,
+    }));
     置Backend应用状态();
   });
 
@@ -140,6 +156,34 @@ describe('企业实名认证 · Backend 身份诚实性', () => {
     await 用户.click(screen.getByRole('button', { name: /输入邀请口令加入企业/ }));
     expect(mock跳转).toHaveBeenCalledWith(路径.企业邀请加入);
   });
+
+  it('申请入口默认展示档案自报企业并携带 encoded organization_id（合同 C）', async () => {
+    const 用户 = userEvent.setup();
+    置Backend应用状态({
+      招聘方档案: { ...BFF招聘方档案样本, organization_ref: 'org/9&x' },
+    });
+    render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
+    expect(mock读取目录企业).toHaveBeenCalledWith('org/9&x');
+    expect(await screen.findByText('待申请企业：星河控股')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /申请企业管理员/ }));
+    // 公开 ID 走 encodeURIComponent，不是邀请 token
+    expect(mock跳转).toHaveBeenCalledWith('/hr/organization-application?organization_id=org%2F9%26x');
+  });
+
+  it('档案无自报企业时入口显示未选择并不携带参数；个人实名与任职管理员行照旧独立', async () => {
+    const 用户 = userEvent.setup();
+    置Backend应用状态({
+      招聘方档案: BFF招聘方档案样本,
+      企业关系列表: [BFF企业关系样本],
+      当前企业关系编号: BFF企业关系样本.affiliation_id,
+    });
+    render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
+    expect(screen.getByText('待申请企业：未选择')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /申请企业管理员/ }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业组织申请);
+    // 任职（管理 relation）行照旧独立展示，不与待申请企业混排
+    expect(screen.getByText('任职：云衢科技 · 管理员 · 已认证')).toBeTruthy();
+  });
 });
 
 describe('企业实名认证 · Mock 原型保持不变', () => {
@@ -150,29 +194,37 @@ describe('企业实名认证 · Mock 原型保持不变', () => {
     置Mock应用状态();
   });
 
-  it('Mock 分支保留表单与人脸文案，1.2 秒后落全局并进招聘名片', () => {
-    vi.useFakeTimers();
-    try {
-      render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
-      // 原布局：两个输入 + 人脸占位说明
-      const 姓名框 = screen.getByPlaceholderText('与证件一致，向候选人实名示人');
-      const 公司框 = screen.getByPlaceholderText('如：上海云衢信息科技有限公司');
-      expect(screen.getByText('人脸识别将核对上面两项')).toBeTruthy();
-      fireEvent.change(姓名框, { target: { value: '邵铭' } });
-      fireEvent.change(公司框, { target: { value: '云衢科技' } });
-      fireEvent.click(screen.getByRole('button', { name: '开始人脸识别' }));
-      expect(mock派发).not.toHaveBeenCalled(); // 计时器未到，不提前落全局
-      expect(screen.getByRole('button', { name: '认证中…' })).toBeTruthy();
-      vi.advanceTimersByTime(1200);
-      expect(mock派发).toHaveBeenCalledWith({
-        型: '存企业认证',
-        姓名: '邵铭',
-        公司: '云衢科技',
-      });
-      expect(screen.getByText('认证通过')).toBeTruthy();
-      expect(mock跳转).toHaveBeenCalledWith(路径.招聘名片);
-    } finally {
-      vi.useRealTimers();
-    }
+  it('Mock 公司输入换成同一选择抽屉，1.2 秒后仍落全局并进招聘名片', async () => {
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
+    // 原布局：姓名输入 + 公司选择行 + 人脸占位说明；自由文本公司输入已撤
+    const 姓名框 = screen.getByPlaceholderText('与证件一致，向候选人实名示人');
+    expect(screen.getByText('人脸识别将核对上面两项')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('如：上海云衢信息科技有限公司')).toBeNull();
+    fireEvent.change(姓名框, { target: { value: '邵铭' } });
+    // 公司行默认显示 fixture 里的公司；打开抽屉改选 澜舟数据（250ms 防抖后出候选行）
+    await 用户.click(screen.getByRole('button', { name: '云衢科技' }));
+    await 用户.type(screen.getAllByPlaceholderText('输入公司名称')[0], '澜舟');
+    await 用户.click(await screen.findByRole('button', { name: /澜舟数据/ }));
+    expect(screen.getByRole('button', { name: '澜舟数据' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '开始人脸识别' }));
+    expect(mock派发).not.toHaveBeenCalled(); // 计时器未到，不提前落全局
+    expect(screen.getByRole('button', { name: '认证中…' })).toBeTruthy();
+    expect(await screen.findByText('认证通过', {}, { timeout: 3000 })).toBeTruthy();
+    expect(mock派发).toHaveBeenCalledWith({
+      型: '存企业认证',
+      姓名: '邵铭',
+      公司: '澜舟数据',
+    });
+    expect(mock跳转).toHaveBeenCalledWith(路径.招聘名片);
+  });
+
+  it('Mock 未选公司时人脸识别拦下：请填写营业执照上的公司全称', () => {
+    置Mock应用状态('');
+    render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
+    fireEvent.change(screen.getByPlaceholderText('与证件一致，向候选人实名示人'), { target: { value: '邵铭' } });
+    fireEvent.click(screen.getByRole('button', { name: '开始人脸识别' }));
+    expect(screen.getByText('请填写营业执照上的公司全称')).toBeTruthy();
+    expect(mock派发).not.toHaveBeenCalled();
   });
 });
