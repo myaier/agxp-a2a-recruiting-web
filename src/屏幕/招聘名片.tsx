@@ -22,7 +22,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import 招聘名片展示 from '../组件/招聘名片/招聘名片展示';
 import type { 名片输入 } from '../组件/招聘名片/招聘名片展示';
-import { 公司选择层 } from '../组件/公司选择层';
+import 公司选择抽屉接线 from '../组件/公司选择抽屉接线';
 import { use组织查询 } from './组织查询钩子';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
@@ -95,6 +95,10 @@ function 后端名片() {
       首次渲染.current = false;
       return;
     }
+    // 换账号：上一账号的自报草稿一并作废，读取 effect 经 读取重试 强制按新档案重跑
+    //（两账号坐标相同时也要重读/复位，绝不把上一账号的公司名留给新账号）
+    已改选.current = false;
+    设读取重试((旧) => 旧 + 1);
     if (预览引用.current !== null) 收口预览();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [主体标识]);
@@ -263,31 +267,15 @@ function 后端名片() {
         打开公司资料={() => 跳转(路径.公司档案编辑)}
       />
       {抽屉开 ? (
-        <公司选择层
-          搜索词={查询.词}
-          修改搜索词={查询.设词}
-          项们={查询.结果.map((项) => ({
-            键: 项.organization_id,
-            名称: 项.display_name,
-            正式名: 项.legal_name,
-            已认证: 项.verification_status === 'verified',
-            选中: 自报?.id === 项.organization_id,
-          }))}
-          搜索中={查询.搜索中}
-          搜索错误={查询.搜索错误}
-          重试搜索={查询.重新查询}
-          还有={查询.下一页游标 !== null}
-          加载中={查询.加载中}
-          加载错误={查询.加载错误}
-          加载更多={() => void 查询.加载更多()}
+        <公司选择抽屉接线
+          查询={查询}
+          选中键={自报?.id ?? null}
           选定={(键) => {
             // 选中 ID 只来自父页面：在本实例结果里定位完整项再回填
             const 项 = 查询.结果.find((候选) => 候选.organization_id === 键);
             if (项) 回填公司(项);
           }}
           关闭={关闭抽屉}
-          创建中={查询.创建中}
-          创建错误={查询.创建错误}
           添加={(名称) => void 添加公司(名称)}
         />
       ) : null}

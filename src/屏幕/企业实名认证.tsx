@@ -20,7 +20,7 @@
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './企业实名认证.module.css';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 主按钮, 表单条目 } from '../组件/通用';
-import { 公司选择层 } from '../组件/公司选择层';
+import 公司选择抽屉接线 from '../组件/公司选择抽屉接线';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
@@ -175,6 +175,8 @@ function Mock人脸原型() {
   // 合同 B/C：公司输入换同一 公司选择层 —— 搜索/添加走本地 模拟企业目录，
   // 不发任何请求；选中回填后关抽屉并 作废（父页面关闭时先作废再隐藏）。
   const [抽屉开, 设抽屉开] = useState(false);
+  // 本地选择只留名称写 企业认证；抽屉的 ✓ 标记另记所选行的目录键
+  const [选中键, 设选中键] = useState<string | null>(null);
   const 查询 = use组织查询({
     // Mock 不发请求：本地 模拟企业目录 直接当 Promise 返回
     搜索: async (查询参数) => 模拟目录搜索(查询参数),
@@ -185,6 +187,7 @@ function Mock人脸原型() {
     const 项 = 查询.结果.find((候选) => 候选.organization_id === 键);
     if (!项) return;
     设公司全称(项.display_name);
+    设选中键(项.organization_id);
     查询.作废();
     设抽屉开(false);
   }
@@ -192,6 +195,7 @@ function Mock人脸原型() {
     const 项 = await 查询.添加(名称);
     if (!项) return;
     设公司全称(项.display_name);
+    设选中键(项.organization_id);
     查询.作废();
     设抽屉开(false);
   }
@@ -297,27 +301,11 @@ function Mock人脸原型() {
       />
 
       {抽屉开 ? (
-        <公司选择层
-          搜索词={查询.词}
-          修改搜索词={查询.设词}
-          项们={查询.结果.map((项) => ({
-            键: 项.organization_id,
-            名称: 项.display_name,
-            正式名: 项.legal_name,
-            已认证: 项.verification_status === 'verified',
-            选中: 项.display_name === 公司全称,
-          }))}
-          搜索中={查询.搜索中}
-          搜索错误={查询.搜索错误}
-          重试搜索={查询.重新查询}
-          还有={查询.下一页游标 !== null}
-          加载中={查询.加载中}
-          加载错误={查询.加载错误}
-          加载更多={() => void 查询.加载更多()}
+        <公司选择抽屉接线
+          查询={查询}
+          选中键={选中键}
           选定={选定公司}
           关闭={关闭抽屉}
-          创建中={查询.创建中}
-          创建错误={查询.创建错误}
           添加={(名称) => void 添加公司(名称)}
         />
       ) : null}

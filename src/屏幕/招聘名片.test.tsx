@@ -413,6 +413,49 @@ describe('招聘名片 · 自报公司（合同 C）', () => {
     expect(screen.getByRole('button', { name: '云衢科技' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '星河控股' })).toBeNull();
   });
+
+  it('换账号后自报草稿作废：新档案坐标重新读取，不串上一账号的公司', async () => {
+    const 用户 = userEvent.setup();
+    const 视图 = render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    await 用户.click(await screen.findByRole('button', { name: '星河控股' }));
+    await 用户.type(await 抽屉搜索框(用户), '云衢');
+    await 用户.click(await screen.findByRole('button', { name: /云衢科技/ }));
+    expect(await screen.findByRole('button', { name: '云衢科技' })).toBeTruthy();
+    // 换账号（新主体 + 新档案坐标 org_2）：旧草稿与新账号的公司都不能串
+    mock读取目录企业.mockImplementation(async (编号: string) => ({
+      organization_id: 编号,
+      display_name: `企业${编号}`,
+      legal_name: null,
+      verification_status: 'unverified',
+    }));
+    置Backend应用状态({
+      招聘方档案: { ...BFF招聘方档案样本, organization_ref: 'org_2' },
+      后端状态: { 主体: { subject_id: 'sub_2' } },
+    });
+    视图.rerender(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    expect(await screen.findByRole('button', { name: '企业org_2' })).toBeTruthy();
+    expect(mock读取目录企业).toHaveBeenLastCalledWith('org_2');
+    // 上一账号的改选草稿不再上屏
+    expect(screen.queryByRole('button', { name: '云衢科技' })).toBeNull();
+  });
+
+  it('换账号且新账号无自报企业时显示未选择公司，保存被拦且不串旧坐标', async () => {
+    const 用户 = userEvent.setup();
+    const 视图 = render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    await 用户.click(await screen.findByRole('button', { name: '星河控股' }));
+    await 用户.type(await 抽屉搜索框(用户), '云衢');
+    await 用户.click(await screen.findByRole('button', { name: /云衢科技/ }));
+    await screen.findByRole('button', { name: '云衢科技' });
+    置Backend应用状态({
+      招聘方档案: BFF招聘方档案样本, // organization_ref null
+      后端状态: { 主体: { subject_id: 'sub_2' } },
+    });
+    视图.rerender(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    expect(await screen.findByText('未选择公司')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByText('请选择公司')).toBeTruthy();
+    expect(mock保存招聘方档案).not.toHaveBeenCalled();
+  });
 });
 
 /** 重渲染当前页（模拟 409 重读把新档案带进 Context）：同一实例 rerender，草稿留在组件 state。 */

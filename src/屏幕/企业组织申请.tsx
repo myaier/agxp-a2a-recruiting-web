@@ -22,7 +22,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import 样式 from './企业组织申请.module.css';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 主按钮 } from '../组件/通用';
-import { 公司选择层 } from '../组件/公司选择层';
+import 公司选择抽屉接线 from '../组件/公司选择抽屉接线';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
@@ -418,27 +418,11 @@ export default function 企业组织申请() {
       />
 
       {抽屉开 ? (
-        <公司选择层
-          搜索词={查询.词}
-          修改搜索词={查询.设词}
-          项们={查询.结果.map((项) => ({
-            键: 项.organization_id,
-            名称: 项.display_name,
-            正式名: 项.legal_name,
-            已认证: 项.verification_status === 'verified',
-            选中: 项.organization_id === 目标?.id,
-          }))}
-          搜索中={查询.搜索中}
-          搜索错误={查询.搜索错误}
-          重试搜索={查询.重新查询}
-          还有={查询.下一页游标 !== null}
-          加载中={查询.加载中}
-          加载错误={查询.加载错误}
-          加载更多={() => void 查询.加载更多()}
+        <公司选择抽屉接线
+          查询={查询}
+          选中键={目标?.id ?? null}
           选定={选定目标}
           关闭={关闭抽屉}
-          创建中={查询.创建中}
-          创建错误={查询.创建错误}
           添加={(名称) => void 添加目标(名称)}
         />
       ) : null}
