@@ -1,19 +1,24 @@
-// 就读时间段 页面预填接线测试（Spec §8 分页应用 /onboard/eduyears，Task 5）：
+// 就读时间段 页面预填接线测试（Spec §8 分页应用 /onboard/eduyears）：
 // 首挂载同步用 取就读年份预填 预选双滚轮：仅 2000..2030 界内年份才预选，
-// 超界/缺席保留页面既有默认（2021/2025）；学生 end month 缺失可回退 graduation_year；
+// 缺席就是空值（「请选择」空档，无数字选中）；学生 end month 缺失可回退 graduation_year；
 // 确认 education_period 分区只在既有保存 resolve 之后、跳转之前，拒绝时分区不确认。
+// Task 4：2021/2025 演示预填迁到数据层显式 Mock 种子（就读年份演示预填），
+// 页面不再持有伪默认 —— 空输入就是空值，点下一步标持续字段错误。
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF简历预填建议 } from '../数据/BFF契约';
+import { 就读年份演示预填 } from '../数据/模拟数据';
 import { 构造映射变体基底 } from '../数据/招聘数据源/简历预填.fixture';
 import { 路径 } from '../路由/路径表';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
+import { 创建初始状态 } from '../状态/初始状态';
 import type { 简历教育段 } from '../数据/类型';
 import type { 候选引导建档草稿 } from '../数据/资料缓存';
 import 就读时间段 from './就读时间段';
+import 样式 from './入职引导.module.css';
 
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
@@ -105,6 +110,17 @@ function 选中档(列名: string, 档: string) {
   ).toBe('true');
 }
 
+/** Task 4 空值真相：指定列只有「请选择」空档选中，所有数字档都未选中 */
+function 无数字选中(列名: string) {
+  const 列 = screen.getByRole('listbox', { name: 列名 });
+  const 空档 = within(列).getByRole('option', { name: '请选择' });
+  expect(空档.getAttribute('aria-selected')).toBe('true');
+  for (const 档 of within(列).getAllByRole('option')) {
+    if (档 === 空档) continue;
+    expect(档.getAttribute('aria-selected')).toBe('false');
+  }
+}
+
 beforeEach(() => {
   mock跳转.mockClear();
   mock返回.mockClear();
@@ -118,15 +134,15 @@ describe('就读时间段 预填预选', () => {
     选中档('毕业年', '2021');
   });
 
-  it('年份超出 2000..2030 时保留页面既有默认（2021/2025）', () => {
+  it('年份超出 2000..2030 时不补默认：只选中「请选择」空档', () => {
     render就读时间段({
       候选预填: readyState(映射变体((建议) => {
         建议.draft.educations[0].start_month = { value: '1999-09', confidence: 'high' };
         建议.draft.educations[0].end_month = { value: '2031-06', confidence: 'high' };
       })),
     });
-    选中档('入学年', '2021');
-    选中档('毕业年', '2025');
+    无数字选中('入学年');
+    无数字选中('毕业年');
   });
 
   it('学生 end month 缺失时回退 graduation_year（仍须界内）', () => {
@@ -146,12 +162,12 @@ describe('就读时间段 预填预选', () => {
     ['educations 非空（服务端已有教育）', (状态: 候选预填状态) => {
       状态.eligibility = { ...全可预填, educations: false };
     }],
-  ])('%s 保留旧初始化', (_名, 改) => {
+  ])('%s 不补建议也不补默认（空档选中）', (_名, 改) => {
     const 轮 = readyState(构造映射变体基底());
     改(轮);
     render就读时间段({ 候选预填: 轮 });
-    选中档('入学年', '2021');
-    选中档('毕业年', '2025');
+    无数字选中('入学年');
+    无数字选中('毕业年');
   });
 });
 
@@ -241,7 +257,7 @@ describe('就读时间段 · 空时间显式确认（R）', () => {
       简历教育: [{ ...空白首段()[0], 开始: '2017-09', 结束: '' }],
     });
     const 用户 = userEvent.setup();
-    // 毕业年缺失（显示占位 2025）：滚到 2024 —— 交互即确认
+    // 毕业年缺失（空档「请选择」）：滚到 2024 —— 交互即写值
     const 毕业列 = screen.getByRole('listbox', { name: '毕业年' });
     await 用户.click(within(毕业列).getByRole('option', { name: '2024' }));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
@@ -250,10 +266,30 @@ describe('就读时间段 · 空时间显式确认（R）', () => {
       教育: [expect.objectContaining({ 开始: '2017-09', 结束: '2024-06' })],
     }));
   });
+});
 
-  it('Mock 空时间保持 2021/2025 演示默认', async () => {
+// ── Task 4：空值真相（无伪默认）、持续字段错误与显式 Mock 种子 ──
+describe('就读时间段 · 空值真相与显式种子（Task 4）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockClear();
+    mock操作.更新候选建档草稿.mockClear();
+  });
+
+  function 演示种子教育(): 简历教育段[] {
+    return [{
+      编号: 'edu1',
+      学校: '演示大学',
+      学历: '本科',
+      专业: '演示专业',
+      开始: 就读年份演示预填.开始,
+      结束: 就读年份演示预填.结束,
+    }];
+  }
+
+  it('Mock 生产种子 2021/2025 是有效当前值：直接下一步就保存', async () => {
     mock应用状态 = {
-      ...建状态({ 身份: '在校', 简历教育: 空白首段() }),
+      ...建状态({ 身份: '在校', 简历教育: 演示种子教育() }),
       数据源模式: 'mock',
     };
     render(
@@ -261,12 +297,126 @@ describe('就读时间段 · 空时间显式确认（R）', () => {
         <就读时间段 />
       </MemoryRouter>,
     );
+    选中档('入学年', '2021');
+    选中档('毕业年', '2025');
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
     expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
       教育: [expect.objectContaining({ 开始: '2021-09', 结束: '2025-06' })],
     }));
+  });
+
+  it('创建初始状态 默认 Mock 教育是既有样例 2014/2017：直接下一步就保存', async () => {
+    const 默认状态 = 创建初始状态({ 模式: 'mock', 后端环境: 'stg' });
+    expect(默认状态.简历教育[0]?.开始).toBe('2014-09');
+    expect(默认状态.简历教育[0]?.结束).toBe('2017-06');
+    mock应用状态 = {
+      ...建状态({ 身份: '在职', 简历教育: 默认状态.简历教育 }),
+      数据源模式: 'mock',
+    };
+    render(
+      <MemoryRouter>
+        <就读时间段 />
+      </MemoryRouter>,
+    );
+    选中档('入学年', '2014');
+    选中档('毕业年', '2017');
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      教育: [expect.objectContaining({ 开始: '2014-09', 结束: '2017-06' })],
+    }));
+  });
+
+  it.each([
+    ['Mock', 'mock'],
+    ['Backend', 'backend'],
+  ] as const)('%s 空输入无数字选中；点 2021/2025 后可直接下一步', async (_名, 模式) => {
+    mock应用状态 = {
+      ...建状态({ 身份: '在校', 简历教育: 空白首段() }),
+      数据源模式: 模式,
+    };
+    render(
+      <MemoryRouter>
+        <就读时间段 />
+      </MemoryRouter>,
+    );
+    无数字选中('入学年');
+    无数字选中('毕业年');
+    const 用户 = userEvent.setup();
+    await 用户.click(within(screen.getByRole('listbox', { name: '入学年' })).getByRole('option', { name: '2021' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '毕业年' })).getByRole('option', { name: '2025' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      教育: [expect.objectContaining({ 开始: '2021-09', 结束: '2025-06' })],
+    }));
+  });
+
+  it('空输入下一步标持续字段错误：修一侧清一侧，另一侧仍拦', async () => {
+    render就读时间段({ 身份: '在校', 简历教育: 空白首段() });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请选择入学时间和毕业时间');
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    const 入学年头 = screen.getByText('入学年');
+    const 毕业年头 = screen.getByText('毕业年');
+    expect(入学年头.className).toContain(样式.滚轮头文字错误);
+    expect(毕业年头.className).toContain(样式.滚轮头文字错误);
+    // 修改入学年一侧：该项错误清除，毕业年错误持续
+    await 用户.click(within(screen.getByRole('listbox', { name: '入学年' })).getByRole('option', { name: '2021' }));
+    expect(入学年头.className).not.toContain(样式.滚轮头文字错误);
+    expect(毕业年头.className).toContain(样式.滚轮头文字错误);
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenLastCalledWith('请选择入学时间和毕业时间');
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    // 毕业年也修好：不再拦截
+    await 用户.click(within(screen.getByRole('listbox', { name: '毕业年' })).getByRole('option', { name: '2025' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+  });
+
+  it('点空项清空写回草稿空字符串；重开不补回种子', async () => {
+    const 教育 = [{ ...空白首段()[0], 开始: '2017-09', 结束: '2021-06' }];
+    render就读时间段({
+      身份: '在校',
+      简历教育: 教育,
+      建档: { 资料: { 教育 } },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(
+      within(screen.getByRole('listbox', { name: '入学年' })).getByRole('option', { name: '请选择' }),
+    );
+    const 末次 = mock操作.更新候选建档草稿.mock.calls.at(-1)![0];
+    expect(末次.资料.教育[0].开始).toBe('');
+    // 「重开」：把草稿落盘结果回灌进全局状态再挂一次 —— 清空是真相，不补回 2021/2025
+    cleanup();
+    mock应用状态 = 建状态({
+      身份: '在校',
+      建档: { 资料: { 教育: [{ ...教育[0], 开始: '', 结束: '2021-06' }] } },
+    });
+    render(
+      <MemoryRouter>
+        <就读时间段 />
+      </MemoryRouter>,
+    );
+    无数字选中('入学年');
+    选中档('毕业年', '2021');
+  });
+
+  it('倒置显示错误且零提交', async () => {
+    render就读时间段({
+      身份: '在校',
+      简历教育: [{ ...空白首段()[0], 开始: '2025-09', 结束: '' }],
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(within(screen.getByRole('listbox', { name: '毕业年' })).getByRole('option', { name: '2020' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('毕业时间不能早于入学时间');
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
   });
 });
 
