@@ -14061,7 +14061,7 @@ test.describe('picker 统一 经历行业弹层 @backend', () => {
 
   test('目录展开→短屏列表滚到底选中→重开已选在，Escape 可关 @picker @backend', async ({ page }) => {
     test.setTimeout(120_000);
-    const fixture = await pickerBackend存量候选(page, 'att-picker-industry');
+    await pickerBackend存量候选(page, 'att-picker-industry');
 
     // 行业目录桩（本用例专用后装 route）：单页两根 + 每根 8 个可选叶子，撑出内滚
     await page.route('**/api/v1/catalog/industries*', async (route) => {
