@@ -876,9 +876,9 @@ describe('组织操作：替换招聘方头像', () => {
 
 // ── 企业档案 replacement 的恢复语义与 wire body 冻结（Task 4 Step 3）──
 
-/** BFF企业档案替换 的 14 个键：完整 replacement 不多不少正好这些 */
+/** BFF企业档案替换 的 15 个键：完整 replacement 不多不少正好这些（Spec §2 起 display_name 必在）*/
 const 企业档案替换键 = [
-  'brand_name', 'industry_id', 'company_size', 'funding_stage', 'office_address',
+  'display_name', 'brand_name', 'industry_id', 'company_size', 'funding_stage', 'office_address',
   'benefit_codes', 'work_schedule', 'company_intro', 'business_items',
   'office_media_ids', 'company_media_ids', 'product_intro', 'team_members', 'logo_media_id',
 ] as const;
@@ -969,6 +969,56 @@ describe('组织操作：企业档案 replacement 与恢复', () => {
     const { 操作 } = 创建操作测试环境({ 后端 });
     await expect(操作.保存企业档案(从BFF企业档案(BFF企业档案样本)))
       .rejects.toMatchObject({ code: 'version_conflict' });
+  });
+
+  // ── Spec §2（2026-09-14）：常用名随完整 replacement 携带，成功后同 ID 权威名刷新 ──
+
+  it('改常用名的 replacement 携带 display_name 且品牌名不串写；成功后刷新身份/公开缓存/当前关系显示', async () => {
+    const 新档案 = { ...BFF企业档案样本, display_name: '新常用名', revision: 4 };
+    const 替换企业档案 = vi.fn(async (_orgId: string, _body: BFF企业档案替换, _rev: number) => 新档案);
+    const 后端 = 创建完整测试数据源({ 替换企业档案 });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    await 操作.保存企业档案({ ...从BFF企业档案(BFF企业档案样本), 企业常用名: '新常用名' });
+    const body = 替换企业档案.mock.calls[0][1];
+    expect(body.display_name).toBe('新常用名');
+    expect(body.brand_name).toBe('云衢科技');
+    // 同 ID 权威常用名刷新：当前身份、公开缓存、当前关系显示，快照即响应档案
+    expect(deps.状态引用.current.当前企业身份?.display_name).toBe('新常用名');
+    expect(deps.状态引用.current.公开企业表[BFF公开企业样本.organization_id]?.display_name)
+      .toBe('新常用名');
+    expect(deps.状态引用.current.企业关系列表
+      .find((条) => 条.affiliation_id === BFF企业关系样本.affiliation_id)!
+      .organization_display_name).toBe('新常用名');
+    // 其他企业的关系不被全局字符串替换
+    expect(deps.状态引用.current.企业关系列表
+      .find((条) => 条.affiliation_id === 关系B.affiliation_id)!
+      .organization_display_name).toBe(关系B.organization_display_name);
+    expect(deps.状态引用.current.企业档案快照).toEqual(新档案);
+  });
+
+  it('只编辑公司介绍（未动常用名）的 replacement 仍携带原 display_name', async () => {
+    const 替换企业档案 = vi.fn(async (_orgId: string, _body: BFF企业档案替换, _rev: number) =>
+      ({ ...BFF企业档案样本, company_intro: '新介绍', revision: 4 }) as BFF企业档案);
+    const 后端 = 创建完整测试数据源({ 替换企业档案 });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    await 操作.保存企业档案({ ...从BFF企业档案(BFF企业档案样本), 公司介绍: '新介绍' });
+    const body = 替换企业档案.mock.calls[0][1];
+    expect(body.display_name).toBe('云衢科技');
+    expect(body.company_intro).toBe('新介绍');
+  });
+
+  it('媒体操作的内联 replacement body（上传发布 / 移除去引用）同样携带常用名', async () => {
+    const 捕获体: BFF企业档案替换[] = [];
+    const 后端 = 创建完整测试数据源({
+      上传企业媒体: vi.fn(async () => 媒体B),
+      替换企业档案: vi.fn(async (_id, body) => { 捕获体.push(body); return BFF企业档案样本; }),
+      删除企业媒体: vi.fn(async () => undefined),
+    });
+    const { 操作 } = 创建操作测试环境({ 后端 });
+    await 操作.上传并发布企业媒体('office_photo', 头像文件);
+    await 操作.移除企业媒体('office_photo', BFF企业媒体样本.media_id);
+    expect(捕获体).toHaveLength(2);
+    for (const body of 捕获体) expect(body.display_name).toBe('云衢科技');
   });
 
   it('写成功后 current 已被清/切换：不再用 pre-await 身份拼 public cache', async () => {

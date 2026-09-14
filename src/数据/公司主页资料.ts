@@ -126,6 +126,10 @@ export interface 资料形 {
   团队介绍: 团队成员项[];
   // ── P1C：映射完整 replacement 所需、但不直接产生新表单槽位的可选元数据 ──
   // 从BFF企业档案() 会填充；Mock 既有构造函数可以不传。
+  /** Spec §2（2026-09-14）：企业常用名（profile.display_name，目录/公开企业同源）。
+   *  Backend 表单独立编辑；未提供（Mock 构造）时 replacement 保留 server.display_name，
+   *  显式空串按常用名校验拒绝，绝不 truthy 回退。品牌名继续走 公司全称，不与常用名串写。 */
+  企业常用名?: string;
   /** 目录行业引用：写入 replacement 时直接用其 id，不从显示名反查 */
   行业引用?: BFF目录引用;
   /** 服务端 LOGO 媒体（无则为 null）；logo_media_id 从这里取，不从 URL 解析 */

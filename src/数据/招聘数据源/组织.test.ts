@@ -148,6 +148,7 @@ describe('组织数据源', () => {
 
   it('替换企业档案 PATCH full JSON replacement 带 If-Match（不是 PUT）', async () => {
     const body: BFF企业档案替换 = {
+      display_name: '云衢科技',
       brand_name: '云衢科技',
       industry_id: 'tax_fintech',
       company_size: '500_1000',
@@ -167,6 +168,25 @@ describe('组织数据源', () => {
     await expect(数据源.替换企业档案('org_1', body, 3)).resolves.toEqual(BFF企业档案样本);
     expect(请求Mock.mock.calls[0][0]).toEqual({
       path: '/api/v1/organizations/org_1/profile', method: 'PATCH', body, ifMatch: '"3"',
+    });
+  });
+
+  // ── Spec §2（2026-09-14）：profile.display_name 是企业常用名（目录/公开企业同源）──
+  // 读侧合同必返；缺键即契约漂移 fail closed，不缺省成品牌名或空串。
+
+  it('企业档案闭合对象接受 display_name（新合法闭合 profile）', async () => {
+    请求Mock.mockResolvedValueOnce({
+      result: { ...BFF企业档案样本, display_name: '云衢常用名' },
+      etag: '"3"', requestId: 'r3',
+    });
+    await expect(数据源.读取企业档案('org_1')).resolves.toMatchObject({ display_name: '云衢常用名' });
+  });
+
+  it('企业档案缺 display_name 抛 invalid_response，不回落旧闭合键集', async () => {
+    const { display_name: _缺常用名, ...缺键档案 } = { ...BFF企业档案样本, display_name: '云衢科技' };
+    请求Mock.mockResolvedValueOnce({ result: 缺键档案 });
+    await expect(数据源.读取企业档案('org_1')).rejects.toMatchObject({
+      status: 200, code: 'invalid_response',
     });
   });
 

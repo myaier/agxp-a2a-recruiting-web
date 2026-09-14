@@ -1158,6 +1158,8 @@ interface P1C企业媒体形 {
 }
 
 interface P1C企业档案形 {
+  // Spec §2（2026-09-14）：企业常用名，与目录/公开企业 display_name 同源
+  display_name: string;
   brand_name: string;
   industry: { id: string; display_name: string } | null;
   company_size: string;
@@ -1274,6 +1276,8 @@ function 创建招聘方OnboardingFixture(): 招聘方OnboardingFixture形 {
 
 function P1C企业档案(): P1C企业档案形 {
   return {
+    // 默认即组织甲的常用名（组织乙在 P1C组织乙 覆盖为自己的名字）：目录与 profile 同源
+    display_name: P1C标记.组织甲名,
     brand_name: P1C标记.品牌名,
     industry: { id: 'ind-fixture-001', display_name: 'Fixture 行业' },
     company_size: '20_99',
@@ -1384,7 +1388,7 @@ const P1C组织甲 = (): P1C组织形 => ({
 const P1C组织乙 = (): P1C组织形 => ({
   legal_name: '上海 Fixture 关联企业有限公司',
   display_name: P1C标记.组织乙名,
-  profile: P1C企业档案(),
+  profile: { ...P1C企业档案(), display_name: P1C标记.组织乙名 },
 });
 
 /** 在主管 fixture 上叠企业关系 / 在招岗位（各用例按需组合） */
@@ -3758,13 +3762,21 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         }
         if (method === 'PATCH') {
           const 换 = body as {
-            brand_name: string; industry_id: string; company_size: P1C企业档案形['company_size'];
+            display_name: string; brand_name: string; industry_id: string;
+            company_size: P1C企业档案形['company_size'];
             funding_stage: P1C企业档案形['funding_stage']; office_address: string;
             benefit_codes: string[]; work_schedule: P1C企业档案形['work_schedule']; company_intro: string;
             business_items: string[]; office_media_ids: string[]; company_media_ids: string[];
             product_intro: string; team_members: { name: string; title: string; summary: string }[];
             logo_media_id: string;
           };
+          // Spec §2：常用名与目录 display_name 同源 —— 改名同步公开企业应答与同企业关系的显示名
+          档.display_name = 换.display_name;
+          const 组织 = 组织fixture.organizations[档案匹配[1]];
+          if (组织) 组织.display_name = 换.display_name;
+          for (const 关 of 关系可变) {
+            if (关.organization_id === 档案匹配[1]) 关.organization_display_name = 换.display_name;
+          }
           档.brand_name = 换.brand_name;
           档.industry = 换.industry_id ? { id: 换.industry_id, display_name: 'Fixture 行业' } : null;
           档.company_size = 换.company_size;

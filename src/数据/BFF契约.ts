@@ -345,6 +345,9 @@ export type BFF福利码 =
   | 'snacks_afternoon_tea' | 'overtime_allowance' | 'year_end_bonus' | 'shuttle_bus' | 'regular_training';
 
 export interface BFF企业档案 {
+  /** Spec §2（2026-09-14）：企业常用名，与目录/公开企业 display_name 同源；
+   *  管理员经完整 replacement 改写，遵循 trim/无控制字符/80 码点与 normalized 唯一性。 */
+  display_name: string;
   brand_name: string;
   industry: BFF目录引用 | null;
   company_size: BFF企业规模;
@@ -392,6 +395,9 @@ export interface BFF企业管理员申请元数据 {
 export type BFF企业媒体用途 = 'organization_logo' | 'office_photo' | 'company_photo';
 
 export interface BFF企业档案替换 {
+  /** Spec §2：常用名改名随同一完整 replacement 走全局唯一规则；
+   *  与他企业的 normalized 名冲突由后端以 409 organization_name_conflict 拒绝。 */
+  display_name: string;
   brand_name: string;
   industry_id: string;
   company_size: BFF企业规模;

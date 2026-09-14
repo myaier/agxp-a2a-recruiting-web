@@ -19,6 +19,7 @@ import type {
   BFF招聘方档案,
 } from './BFF契约';
 import type { 资料形 } from './公司主页资料';
+import { 客户端校验错误 } from './HTTP客户端';
 
 // ── closed code↔中文 表（与 BFF契约 的闭合 union 一一对应）──
 
@@ -155,8 +156,23 @@ export function 取企业认证状态文案(
 
 // ── 企业档案 wire ↔ 页面资料 ──
 
+/** Spec §2 冻结的常用名输入规则（镜像 BFF ValidOrganizationDisplayName）：
+ *  trim 后非空、≤80 个 Unicode 码点、无控制字符（U+0000–001F / U+007F–009F，
+ *  与 Go unicode.IsControl 同口径）。normalized 唯一性只由后端裁决。 */
+export function 校验企业常用名(名: string): string | null {
+  const 去空 = 名.trim();
+  if (去空 === '') return '请填写企业常用名';
+  if (Array.from(去空).length > 80) return '企业常用名不超过 80 字';
+  for (const 码 of 去空) {
+    const 值 = 码.codePointAt(0)!;
+    if (值 < 0x20 || (值 >= 0x7f && 值 <= 0x9f)) return '企业常用名不能包含控制字符';
+  }
+  return null;
+}
+
 export function 从BFF企业档案(profile: BFF企业档案): 资料形 {
   return {
+    企业常用名: profile.display_name,
     公司全称: profile.brand_name,
     行业: profile.industry?.display_name ?? '',
     规模: 公司规模文案[profile.company_size],
@@ -187,7 +203,16 @@ export function 转BFF企业档案替换(draft: 资料形, server: BFF企业档�
   else if (draft.行业.trim() === '') industry_id = '';
   else throw new Error('请从候选行业中选择');
 
+  // Spec §2：常用名以 draft 为准 —— 未提供（Mock 构造）保留 server.display_name；
+  // 提供即按冻结规则校验（显式空串拒绝，不能 truthy 回退），值原样上送，trim 归后端。
+  const 常用名 = draft.企业常用名;
+  if (常用名 !== undefined) {
+    const 错 = 校验企业常用名(常用名);
+    if (错 !== null) throw new 客户端校验错误('display_name', 错);
+  }
+
   return {
+    display_name: 常用名 ?? server.display_name,
     brand_name: draft.公司全称,
     industry_id,
     company_size: 反规模.get(draft.规模) ?? '',

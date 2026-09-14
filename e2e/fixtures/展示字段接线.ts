@@ -872,6 +872,7 @@ export async function 安装展接线路由(
           display_name: 标记.企业A,
           verified_at: 时间戳,
           profile: {
+            display_name: 标记.企业A,
             brand_name: 标记.企业A,
             industry: { id: 'tax_fintech', display_name: '金融科技' },
             company_size: '500_1000',

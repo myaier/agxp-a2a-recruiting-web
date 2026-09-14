@@ -228,6 +228,7 @@ export const BFF企业媒体样本: BFF企业媒体 = {
 };
 
 export const BFF企业档案样本: BFF企业档案 = {
+  display_name: '云衢科技',
   brand_name: '云衢科技',
   industry: { id: 'tax_fintech', display_name: '金融科技' },
   company_size: '500_1000',
