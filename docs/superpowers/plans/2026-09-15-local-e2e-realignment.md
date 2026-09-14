@@ -182,7 +182,7 @@ npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --grep 'P1C|企业�
 - [ ] `手动添加规则` 改为当前“添加规则”入口；编辑用 `编辑规则：<正文>`，更多用 `显示删除：<正文>`，删除用 `删除规则：<正文>`，正文按钮 exact 匹配，开关仍为 `规则：<正文>`。确认前零删除请求，确认后才归档。只定位不存在的旧按钮不得靠 `.first()` 糊过去。
 - [ ] P6 CAS 冲突用当前仍可编辑的 global/recruiter 规则承载，保留“只一次权威重读，零自动重放”；accept 409/503、失败草稿恢复、首次水合无写入口、切角色迟到响应隔离均保留。移除仅针对退役意向维护的操作片段，不连带删除全链路。
 - [ ] P8 产品反馈保留工单提交与真实返回；删除从反馈页点击“举报虚假岗位”的旧操作，因为当前具体职位举报已在 10561/10596 覆盖。原反馈用例补“此页无举报入口／零 reports”断言即可，不重复整条举报路径。
-- [ ] 原 `/#/chat/direct/J-01` 用例改验证不可用说明、“查看在谈”导航、零直接聊天／举报写入。不能将它改成 Mock 直聊，也不能删掉无权威 target 禁止写入风险。
+- [ ] 原 hash 路由 `chat/direct/J-01`（根路径） 用例改验证不可用说明、“查看在谈”导航、零直接聊天／举报写入。不能将它改成 Mock 直聊，也不能删掉无权威 target 禁止写入风险。
 
 ```sh
 npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --grep 'Mock 双端规则页|P6 |P8 产品反馈|P8 Backend 直聊|P8 .*举报' --workers=4 --output=ui-regression-output/e2e-realignment/run-6/artifacts
@@ -266,3 +266,5 @@ Claude Opus/high 第 1 轮（WORKFLOW_DOCUMENT_REVIEW），冻结候选 revision
 |R1-4 list,json 未指定独立 JSON 文件|接受；三条最终命令显式 PLAYWRIGHT_JSON_OUTPUT_NAME，文件不在 runner 清理目录内|optional|不变|
 
 本轮所有有效 required 已修订，未改变批准产品范围；4 项均为文档局部修订，没有产品测试或产品代码改动。按 review skill 的“核实后无未解决的有效 required”停止规则结束，共 1 轮，无未解决 required；修订由 planner 静态核对，不宣称修订后另有 Claude 复审。
+
+执行提示词校验记录：单文件 Claude Code／Codex 两节，使用 development-workflow 的 scripts/validate_prompt_grading.py 校验；已将旧直聊路由写为根 hash 路由，避免把路由误判为机器绝对目录。具体运行结果随 prompt 提交记录，未执行产品测试。
