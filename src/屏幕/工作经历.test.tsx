@@ -1796,7 +1796,6 @@ describe('工作经历 经历编辑页 行业共用正文（Task 6）', () => {
     await 用户.click(screen.getByText('字节跳动'));
     await 用户.click(screen.getByText('所属行业'));
     await 用户.click(await screen.findByText('行业A'));
-    const 打开前 = 更新次数();
     // 单选：选定立即写当前经历草稿（行业引用）并关闭，不再有第二条确认路径
     await 用户.click(await screen.findByText('子项一'));
     expect(screen.queryByRole('dialog', { name: '选择所属行业' })).toBeNull();
@@ -1810,7 +1809,6 @@ describe('工作经历 经历编辑页 行业共用正文（Task 6）', () => {
     await 用户.click(screen.getByText('所属行业'));
     await screen.findByText('行业A');
     await 用户.click(screen.getByRole('button', { name: '关闭选择所属行业' }));
-    expect(更新次数()).toBe(打开前 + (更新次数() - 打开前));
     expect(更新次数() - 选择后).toBe(0);
   });
 });

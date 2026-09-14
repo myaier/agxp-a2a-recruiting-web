@@ -13940,16 +13940,6 @@ const picker滚动列表 = (范围: Locator) => 范围.locator('[class*="列表"
 /** 轮询元素矩形完整落在视口内（含 4px 边框/安全区误差）——抽屉升起动画 0.24s 期间
  *  矩形会越界，等动画落定再取值，不在动画中段冒充越界 */
 async function picker在视口内(元素: Locator, 宽: number, 高: number): Promise<void> {
-  const 越界 = async (): Promise<number> => {
-    const 框 = await 元素.boundingBox();
-    if (!框) return -1;
-    return Math.max(
-      2 - 框.x,
-      2 - 框.y,
-      框.x + 框.width - (宽 + 4),
-      框.y + 框.height - (高 + 4),
-    );
-  };
   const 截止 = Date.now() + 5_000;
   let 框: { x: number; y: number; width: number; height: number } | null = null;
   for (;;) {
