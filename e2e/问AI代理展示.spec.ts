@@ -58,7 +58,7 @@ const 溢出像素 = (page: Page): Promise<number> =>
 async function 存截图(testInfo: TestInfo, page: Page, 名称: string): Promise<void> {
   const 文件 = testInfo.outputPath(名称);
   await page.screenshot({ path: 文件 });
-  testInfo.attach(名称, { path: 文件, contentType: 'image/png' });
+  await testInfo.attach(名称, { path: 文件, contentType: 'image/png' });
 }
 
 /** 简报头对齐到对话流容器顶再截图（与 Task 1 基线同位）：直接设容器 scrollTop，
