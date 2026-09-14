@@ -237,3 +237,21 @@ Task 4 两条浏览器命令也是本次完整责任的一部分，证据有效�
 - R2：同一隔离 Claude 会话复审候选 `c6120b61`（Plan blob `517df4e5` 前缀，Spec 校准 blob 不变），返回精确 `NO FINDINGS`；status/HEAD/内容指纹守卫再次通过。共2轮，1项 required及1项optional均已修复，无拒绝/延后/未解决项；本行仅记录已发生的review结论，不改变受审实施合同。
 - selection 校验：驱动者执行 Task 4 的 P1 命令加 `--list`，列出五种消息用例×320/390两宽度，共10条，未执行浏览器产品测试。两轮reviewer均未运行测试。
 - 执行交付：使用逻辑 development-workflow 的双宿主模板生成单个 prompt 文件，再运行 `scripts/validate_prompt_grading.py --plan docs/superpowers/plans/2026-09-14-agent-session-and-display-components.md --prompt docs/superpowers/prompts/2026-09-14-agent-session-and-display-components.md`；实际校验结果随prompt提交记录，不再变更此处已冻结实施内容。
+
+## 实施进度与 Review 裁决（2026-09-14/15 执行 session）
+
+执行宿主 Claude Code，路由 `subagent-driven-development`（Task count 4 > 3），角色档位按角色表（T1/T3 spec reviewer opus，其余 sonnet）。基线核对：Spec blob `6df34375`、Plan blob `9bbf21b6`、`origin/main@1f8c2237` 均一致后开工；task_intents 登记 `b67eeebb`。
+
+| Task | 提交 | review 结论 |
+|---|---|---|
+| 1 Backend 固定 AI 行 | `c02ab777` | spec ✅ / quality ✅（0 必修；deferred minors：通知无匹配文案 plan-mandated、测试 helper 全局查询等） |
+| 2 对话展示+禁用外壳 | `75a0c39a` → fix `f08b1ba7` | 双 reviewer 同报 `.求职.简报气泡` 复合选择器死代码（Critical/Important）；fix round 1 改后代选择器+补 简报=true 断言/550ms 正向断言/注释更正，re-review 4/4 ADDRESSED |
+| 3 受控简报/建议/漏斗 | `6e1da44c` → fix `5454476e` | spec 报统计数强调 CSS 优先级倒置（Critical，控制器源码核实）；fix round 1 共用底提色+CSS 源码形状钉+DOM 顺序断言+漏斗说明随人数，re-review 4/4 ADDRESSED |
+| 4 双模式浏览器验收 | `f6046805` | spec ✅ / quality ✅；@agent 8 条 pass、P1 消息 selection 10 条 pass（`--list` 证据核对五消息用例×两宽度），exit 0 |
+
+裁决记录：
+- **fixture 前提修复**（Task 4）：brief 写"不修改 fixture 文件"，但 Plan 测试选择第 3 条明文授权"若 fixture 被新上游拒绝，修测试前提，不修改产品守卫"。上游合同 A 使 recruiter profile 必需键 `organization_ref`（可空，见 `src/数据/招聘数据源/组织.ts:140-141`），旧载荷被严格解码器拒绝。`e2e/fixtures/P1展示统一.ts` 仅 +4/−1 补该键（白名单/场景/断言/onboarding 守卫零变化，双 reviewer 与 final review 逐行核实），task_intents 已扩大路径。裁为接受。
+- Task 2 实现者 A/B 回退事故抹掉两个未提交文件、逐字重建并全量复验（5210→5215/5215 + DOM 标记确认新组件在场），reviewer 核验重建保真。
+- final whole-branch review（opus）：**Ready to merge: Yes**，0 Critical/Important；文件范围与允许清单逐条一致零漂移；可选清理项：`e2e/fixtures/展示字段接线.ts:924` 同缺 `organization_ref`（基线已存在、本分支未触碰，合并后跟进）、readFileSync cwd 依赖、滚到简报头 失配显式化、等落定/返回值去重（授权清单外，合并后清理）。
+
+过程证据：浏览器基线与对照截图在 `ui-regression-output/agent/`（git-ignored，磁盘留存）；e2e 截图走 `testInfo.outputPath` attach；各 Task 测试命令、TDD RED/GREEN、typecheck/lint 输出见 `.superpowers/sdd/2026-09-14-agent-session-and-display-components/task-N-report.md`（git-ignored 工作区）。
