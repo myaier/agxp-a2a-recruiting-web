@@ -199,6 +199,59 @@ npx playwright test --config=playwright.数据源模式.config.ts e2e/P1展示�
 5. 收尾后对账，记录业务与清理/保留证据；仅补因此失效验证，确认target未推进后按获批动作普通fast-forward push，不force。不在确认后重新启动异构review；target race或语义范围变化更新方案。解析未开放可经用户批准只跑两个manual，但明确四变体尚未全验收。
 6. 报告修改文件/根因/后端合同、各命令完整数量、git diff --check、所有FAIL/SKIP/BLOCKED/NOT_RUN原因与无无关重构；维护task intent。实现记录写本Plan，真实运行摘要沿既有docs/runs约定，不新增独立规划review报告。
 
+## 实施记录（2026-09-14，执行 session 追加）
+
+批准基线：origin/main `5825ff47a27600cbe5591fb1a9a5fe43e7201272`（只读 fetch 核对，未推进）。实施执行：Claude Code subagent-driven-development，5 Task 全部完成，每 Task 宿主内双角色 review（spec + code-quality，档位按角色表）。
+
+### 提交清单
+
+| 阶段 | commit | 内容 |
+|---|---|---|
+| Task 1 | `2f55f40b` | MatchCase 解工作区职位 允许显式空 required_skills（仅删 length<1 下界）；定向 2 文件 115 绿 |
+| Task 2 | `9da4ec58` | 企业 display_name 常用名独立接线（decoder/映射/表单/全部 replacement/发布收口刷新）；review fix `b19f3e8f` 补 P1展示统一 fixture display_name 键；定向 6 文件 369 绿 |
+| Task 3 | `6e590a58` | Onboarding HTTP 域（GET no-store + POST 严格 {}，闭合解码）；定向 2 文件 76 绿 |
+| Task 4 | `4f01743a`/`8a03532d`/`9c5da729`/`b4bbdbc0` | Onboarding 运行态/操作/水合接线、Spec §5 分流与招聘名片 complete、e2e fixtures、测试桩；定向 8 文件 506 绿 + 全量单元 5041 绿 |
+| Task 5 | `8bef56fa` | stg-onboarding Suite 文档 + 合成简历/JD PDF + 指南/模板更新；四变体全部 NOT_RUN 待 final gate |
+| Codex r1 | `611ddc7b` | 迟到完成响应栅栏（先查后递增+过期抛会话已变化）、无草稿未完成 /app 守卫、RFC3339 逐分量回比 |
+| Codex r2 | `a2eaf7bb` | /app 拦截移至 Routes 前同步渲染守卫（主壳零挂载，TDD 红：挂载 1→0） |
+| Codex r3 | `47201984` | 候选主壳落点重定向 共用布尔，预填清理效应不再误清有效预填轮 |
+| closeout | `02a31eb4` | 6 个存量日常用例 fixture 主体补完成态；移除已完成用户 /student 反弹（保留注册流名片反弹） |
+
+### Review 记录
+
+- 宿主内：每 Task spec+quality 双审；Task 2 一轮 fix；whole-branch review（fable 档）Ready to merge: Yes，13 项 optional minors 全部 triage 为可延后。
+- 异构：Codex review-loop 3 轮（上限），范围 `5825ff47...8bef56fa`，守约规则 `_shared/review-contract.md`；5 条 required findings 全部接受并修复（commit 611ddc7b/a2eaf7bb/47201984）；r3 修复后无第 4 轮，由 TDD + 定向 + 全量单元覆盖。
+
+### 六条命令（候选 `02a31eb4`）
+
+1. `npm test`：219 文件 / 5057 测试全绿（37.7s；47201984 与 02a31eb4 各一轮同绿）。
+2. `npm run typecheck`：通过（零输出）。
+3. `npm run lint`：通过（oxlint 零输出）。
+4. `npm run build`：通过（417ms）。
+5. `npm run test:e2e`：10 passed / 5 skipped / 80 failed——80 个失败与未实施基线 `7e3982ac` 的同命令结果（80 failed / 5 skipped / 10 passed）**标题级集合零差异**，全部为既有失败（mock 采集用例需 P1_CAPTURE_DIR/WIRING_CAPTURE_DIR 环境、其余为既有债）。
+6. `npm run test:e2e:data-source`：114 passed / 111 failed——与基线（112 passed / 113 failed）标题级对比**候选独有失败 0**；52 个为采集目录环境类，6 个为 organization_ref 基线债（见下），其余为既有大面积不稳定（基线同样失败）。基线独有 2 个（P1C 组织读取失败、P2 owns PDF library）在候选上通过。
+
+`git diff --check 5825ff47..HEAD`：通过（0）。
+
+### 基线既有债务（非本 Plan 引入，如实记录）
+
+- `e2e/fixtures/P1展示统一.ts` recruiter profile fixture 缺合同 A 必需键 `organization_ref`（可空不可缺）→ P1展示统一/展示字段接线 @backend 焦点跑 6 个既有失败（revert 实证基线既有）。一行可修（补 `organization_ref: null`），待用户定夺是否顺手修。
+- 默认 e2e 与数据源 e2e 全量存在大面积既有失败（80/111 个，基线同数），含 52 个采集目录环境类与组织链既有债；本 Plan 候选与基线零差异（零回归）。
+- `核心编辑 简历行业` 用例对 picker UI 的断言过时（20f7dc09 早于本计划合入）。
+
+### 后端依赖状态（未就绪，如实等待）
+
+- 正式 STG L3：后端 onboarding API（GET/POST complete）实现与部署、ephemeral-empty/verify/cleanup CLI 能力均未核对就绪（见 `docs/runs/2026-09-14-backend-onboarding-handoff.md` 交接记录，未跟踪文件）；四变体文档已固化、全部 NOT_RUN。
+- candidate parsed 需后端 B02 附件验收开放；JD parsed 需真实任务及有限保留支持。
+- 本地 route-fixture Playwright 证据不冒称真实 STG。
+
+### Final gate 候选
+
+- candidate_commit：`02a31eb4`（分支 test/backend-stg-skills）
+- pre_gate_target_base：`5825ff47`（origin/main，未推进）
+- L0–L2：六条命令如上，无证据缺口（e2e 全量失败均为基线既有，A/B 零差异）
+- 待用户确认后：fetch 核对 target → merge --no-edit → 按 INCREMENTAL_EVIDENCE 复用/补缺 → 必要 development L3（STG 四变体待后端就绪，逐项 PASS/FAIL/BLOCKED/NOT_RUN）→ cleanup 对账 → 普通 fast-forward push（不 force）
+
 ```sh
 npm test
 npm run typecheck
