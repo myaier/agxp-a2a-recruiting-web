@@ -14067,6 +14067,9 @@ async function pickerBackend存量候选(
 ): Promise<候选OnboardingFixture> {
   const fixture = 创建候选OnboardingFixture();
   fixture.主体.last_used_role = 'candidate';
+  // 存量日常会话按冻结决策返回 candidate 已完成（与核心编辑用例同口径，final-gate
+  // merge 追平）：登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+  fixture.完成.candidate = '2026-08-25T10:00:00Z';
   fixture.resume = {
     ...P4深克隆(fixture简历),
     profile: { ...fixture简历.profile, real_name: '存量候选' },
