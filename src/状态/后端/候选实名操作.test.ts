@@ -7,6 +7,7 @@
 // 设后端状态 同步更新 后端状态引用.current，模拟真实 Provider。快照只进内存。
 
 import { describe, expect, it, vi } from 'vitest';
+import { 创建空Onboarding状态 } from './Onboarding操作';
 import type { BFF主体 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { 创建候选实名输入, 候选实名摘要 } from '../../数据/招聘数据源/候选实名';
@@ -124,6 +125,8 @@ function 创建环境(
   // 取候选实名快照() 的统一回退（Provider 生产路径则恒播种）。
   let 后端值: 后端状态 = {
     初始化: '完成',
+    // Onboarding 运行态显式播种（本域用例不触达）
+     Onboarding: 创建空Onboarding状态(),
     已登录: 主体 !== null,
     主体,
     简历快照: null,

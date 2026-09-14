@@ -4,6 +4,7 @@
 // 纪律：另一个 scope 的用例必须先 设置发现推荐范围 再发请求 —— 通过即证明生产可见范围栅栏，而非绕过它。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { 创建空Onboarding状态 } from './Onboarding操作';
 import type {
   BFF主体,
   BFF候选岗位推荐,
@@ -171,6 +172,8 @@ function 创建P4操作测试环境(选项: { 待核对存储?: 委托待核对�
   const 派发 = vi.fn<(动作: 动作) => void>();
   let 后端值: 后端状态 = {
     初始化: '完成',
+    // Onboarding 运行态显式播种（本域用例不触达）
+     Onboarding: 创建空Onboarding状态(),
     已登录: true,
     主体: 候选主体,
     简历快照: null,

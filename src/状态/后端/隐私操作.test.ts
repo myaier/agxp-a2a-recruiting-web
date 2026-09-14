@@ -5,6 +5,7 @@
 // 重读权威视图并原样抛出，绝不重放变更）；只有变更 status 0/503 允许一次 GET 校验结果。
 
 import { describe, expect, it, vi, type Mock } from 'vitest';
+import { 创建空Onboarding状态 } from './Onboarding操作';
 import { 创建空P7会话状态 } from './真人会话操作';
 import { 创建空P8控制面状态 } from './P8控制面操作';
 import { 创建空接触记录状态 } from './接触记录操作';
@@ -32,6 +33,8 @@ function 创建隐私测试依赖(后端: HTTP招聘数据源, 服务端: BFF隐
     是后端: true, 后端, 派发: vi.fn(), 设后端状态: vi.fn(), 状态引用,
     后端状态引用: { current: {
       初始化: '完成' as const, 已登录: true, 主体: null, 简历快照: null,
+      // Onboarding 运行态显式播种（本域用例不触达）
+       Onboarding: 创建空Onboarding状态(),
       意向快照: {}, 岗位快照: {}, 隐私快照: 服务端,
       // P6：Task 3 起 后端状态 携带 Agent 规则原始快照与水合阶段（这里的用例不触达它们）
       候选规则快照: {}, 招聘规则快照: {}, 候选规则提案: {}, 招聘规则提案: {},

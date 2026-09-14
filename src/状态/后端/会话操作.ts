@@ -21,6 +21,7 @@ import { 创建空候选实名快照, 清候选实名引用 } from './候选实�
 import { 清候选预填引用 } from './简历预填操作';
 import { 清除待核对 } from './委托待核对';
 import { 创建空候选预填状态 } from './类型';
+import { 水合Onboarding, 清Onboarding引用, 创建空Onboarding状态 } from './Onboarding操作';
 
 /** 退出登录 / 401 清理时把支持域重置为空：与 后端种子状态 的支持域一致，但不触达未支持演示域。 */
 const 空BFF简历 = {
@@ -143,7 +144,8 @@ export function 清账号状态(
       '候选预填代际' | '候选预填读取锁' | '候选预填恢复' |
       '接触记录代际' | '接触记录读取锁' | '接触记录已消费游标' |
       '候选实名读取锁' | '候选实名变更锁' | '候选实名提交意图' |
-      '建档草稿引用' | '委托待核对内存' | '委托待核对存储'>>,
+      '建档草稿引用' | '委托待核对内存' | '委托待核对存储' |
+      'Onboarding请求序号'>>,
 ): void {
   const { 派发, 设后端状态, 后端, 主体标识引用, 会话代际 } = deps;
   派发({ 型: '水合后端简历', 快照: 空简历快照 });
@@ -180,6 +182,8 @@ export function 清账号状态(
     ...创建空招聘方组织水合状态(),
     // 候选预填状态回 pristine 底座：内存建议绝不跨主体 / 不跨会话存活
     候选预填状态: 创建空候选预填状态(),
+    // Onboarding 运行态摊平：完成事实 / 失败绝不跨主体 / 不跨会话存活
+    Onboarding: 创建空Onboarding状态(),
     初始化: '完成',
     已登录: false,
     主体: null,
@@ -214,6 +218,8 @@ export function 清账号状态(
   // J-PILOT-01 Task 3：未决 create/retry 命令不跨主体/跨会话存活 —— 内存表清空 +
   // outgoing owner 的恢复记录删除（适配器此刻仍绑着 outgoing subject）。
   清委托待核对引用(deps);
+  // Onboarding：请求序号递增作废在飞读（快照已由上方状态摊平兜底）
+  清Onboarding引用(deps);
 }
 
 /** 角色水合的依赖形状：会话五个必需键 + 全部 P4/P7/P8/候选预填/候选实名/委托待核对清理引用（可选，随 清账号状态 一起清）。 */
@@ -226,7 +232,8 @@ type 角色水合依赖 = Pick<后端操作依赖,
   '候选预填代际' | '候选预填读取锁' | '候选预填恢复' |
   '候选实名读取锁' | '候选实名变更锁' | '候选实名提交意图' |
   '建档草稿引用' |
-  '委托待核对内存' | '委托待核对存储'
+  '委托待核对内存' | '委托待核对存储' |
+  'Onboarding请求序号'
 > & {
   后端: HTTP招聘数据源;
   /** Provider 恒注入；候选意向水合必须经它提交（栅栏 + 恢复偏好 + 持久化写屏障）。 */
@@ -260,6 +267,36 @@ const 是当前水合 = (
  * @returns 会话失效 —— true 表示水合途中遇到当前轮 401 并已执行登出清理，调用方不应再落 已登录=true
  */
 export async function 水合角色数据(
+  deps: 角色水合依赖,
+  主体: BFF主体,
+  交互: boolean,
+  generation: number,
+): Promise<boolean> {
+  // stg 契约对齐 2026-09-14（Spec §5）：主体确定后、任何候选草稿恢复写副作用之前，
+  // 先拿到 me/onboarding 结论 —— Onboarding 读取与支持域水合并行起跑，统一在本
+  // 包装口结算。读取失败只落 Onboarding.失败（提示与恢复），不吞也不放大组织/简历
+  // 的既有错误策略；当前栅栏 401 由 水合Onboarding 内部统一清账号并折算 会话失效。
+  // last_used_role=null 保持身份选择页，不读取（选择后由 切身份 的 ensure+preference
+  // 成功触发的本轮水合刷新，不用旧空 roles 响应判新角色不存在）。
+  let onboarding会话失效 = false;
+  const onboarding读取 = 主体.last_used_role === null
+    ? Promise.resolve(false)
+    : 水合Onboarding(deps, 主体.subject_id, generation).then((失效) => {
+      onboarding会话失效 = 失效;
+    });
+  let 本体会话失效 = false;
+  let 本体错误: { 错误: unknown } | null = null;
+  try {
+    本体会话失效 = await 水合角色数据域(deps, 主体, 交互, generation);
+  } catch (错误) {
+    本体错误 = { 错误 };
+  }
+  await onboarding读取;
+  if (本体错误 !== null) throw 本体错误.错误;
+  return onboarding会话失效 || 本体会话失效;
+}
+
+async function 水合角色数据域(
   deps: 角色水合依赖,
   主体: BFF主体,
   交互: boolean,
@@ -491,6 +528,7 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
     候选实名读取锁, 候选实名变更锁, 候选实名提交意图,
     建档草稿引用,
     委托待核对内存, 委托待核对存储,
+    Onboarding请求序号: deps.Onboarding请求序号,
   };
   let 手机登录水合会话代际: number | null = null;
   const 推进手机登录代际 = (): number => {
@@ -618,6 +656,8 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
           候选预填状态: 创建空候选预填状态(),
           // 候选实名：A 的 owner summary 与待定 key 同样不能串进 B
           候选实名: 创建空候选实名快照(),
+          // Onboarding：A 的完成事实 / 失败同样不能串进 B
+          Onboarding: 创建空Onboarding状态(),
           简历快照: null,
           意向快照: {},
           岗位快照: {},
@@ -635,6 +675,8 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
         }
         // J-PILOT-01 Task 3：A 的未决 create/retry 命令与恢复记录不串进 B（主体切换清旧 owner）
         清委托待核对引用({ 委托待核对内存, 委托待核对存储 });
+        // Onboarding：换主体递增请求序号，A 的在飞读整包作废
+        清Onboarding引用({ Onboarding请求序号: deps.Onboarding请求序号 });
         后端.清空目录缓存();
       }
       主体标识引用.current = 主体.subject_id;
@@ -653,10 +695,13 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
         ...创建空招聘方组织水合状态(),
         附件简历库: null,
         候选实名: 创建空候选实名快照(),
+        // Onboarding：新会话从 未读取 起跑（同 subject 重登也不继承上次会话的结论）
+        Onboarding: 创建空Onboarding状态(),
       }));
       if (候选实名读取锁 && 候选实名变更锁 && 候选实名提交意图) {
         清候选实名引用({ 候选实名读取锁, 候选实名变更锁, 候选实名提交意图 });
       }
+      清Onboarding引用({ Onboarding请求序号: deps.Onboarding请求序号 });
 
       // 登录提交前先水合支持域：已登录=true 只在当前轮水合收口后落下，
       // 导航可见时权威资料已就位（mount-init 口径：非 401 失败只提示不阻断登录）。
@@ -754,6 +799,8 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
         // 候选实名：切离 candidate = 实名会话边界，owner summary 回空底座，
         // 切回 candidate 从空态按需重新 GET，不跨角色存活
         候选实名: 创建空候选实名快照(),
+        // Onboarding：切角色 = 分流语义换 scope —— 回 未读取，由本轮水合按新角色重读
+        Onboarding: 创建空Onboarding状态(),
         附件简历库: null,
       }));
       清P4发现引用({ P4范围代际, P4幂等意图, P4可见范围 });
@@ -771,6 +818,8 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
       // J-PILOT-01 Task 3：切离 candidate = 委托待核对会话边界 —— 上个角色的未决
       // create/retry 命令与恢复记录不跨角色存活（适配器此刻仍绑着当前主体）
       清委托待核对引用({ 委托待核对内存, 委托待核对存储 });
+      // Onboarding：请求序号递增作废上个角色的在飞读；本轮水合按新角色刷新
+      清Onboarding引用({ Onboarding请求序号: deps.Onboarding请求序号 });
       会话代际.current += 1;
       // 切身份后水合目标角色的支持域：mount-init 只按上次角色水合，
       // 不补这一步，候选切到招聘方会顶着一个空岗位盘，招聘方切到候选看到的是空简历/意向。
@@ -795,6 +844,7 @@ export function 创建会话操作(deps: 后端操作依赖): 会话操作 & 建
         候选实名读取锁, 候选实名变更锁, 候选实名提交意图,
         建档草稿引用,
         委托待核对内存, 委托待核对存储,
+        Onboarding请求序号: deps.Onboarding请求序号,
       }, 最新主体, true, 本次代际);
       if (会话失效) {
         // review-r3 R3-I-2：清账号状态 已在 水合角色数据 内部清完（含主体标识 + 会话代际）

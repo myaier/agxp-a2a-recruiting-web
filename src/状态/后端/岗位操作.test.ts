@@ -4,6 +4,7 @@
 // hiring_organization_ref 快照生成，名片 / 关系 / 未认证声明都不再参与发岗。
 
 import { describe, expect, it, vi } from 'vitest';
+import { 创建空Onboarding状态 } from './Onboarding操作';
 import { 创建空P7会话状态 } from './真人会话操作';
 import { 创建空P8控制面状态 } from './P8控制面操作';
 import { 创建空接触记录状态 } from './接触记录操作';
@@ -48,6 +49,8 @@ function 创建岗位测试依赖(input: {
     },
     后端状态引用: { current: {
       初始化: '完成' as const, 已登录: true, 主体: null, 简历快照: null, 意向快照: {}, 岗位快照: {},
+      // Onboarding 运行态显式播种（本域用例不触达）
+       Onboarding: 创建空Onboarding状态(),
       隐私快照: null,
       // P6：Task 3 起 后端状态 携带 Agent 规则原始快照与水合阶段（这里的用例不触达它们）
       候选规则快照: {}, 招聘规则快照: {}, 候选规则提案: {}, 招聘规则提案: {},
