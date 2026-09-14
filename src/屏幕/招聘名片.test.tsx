@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 招聘名片 from './招聘名片';
+import 样式 from '../组件/招聘名片/招聘名片展示.module.css';
 import { BFF企业关系样本, BFF招聘方档案样本, BFF组织搜索页样本 } from '../测试/BFF样本';
 import type { BFF招聘方档案, BFF组织搜索页 } from '../数据/BFF契约';
 import { BFF错误 } from '../数据/HTTP客户端';
@@ -148,10 +149,12 @@ describe('招聘名片 · Backend 诚实身份', () => {
         verified_name: '林澈真名',
       },
     });
-    render(<MemoryRouter><招聘名片 /></MemoryRouter>);
+    const 视图 = render(<MemoryRouter><招聘名片 /></MemoryRouter>);
     // 姓名槽是只读展示：没有输入框，预览行与姓名行都显示实名
     expect(screen.queryByLabelText('姓名')).toBeNull();
     expect(screen.getAllByText('林澈真名').length).toBeGreaterThan(0);
+    // 预览权威实名：实名存在时顶部预览不跟随任何草稿值
+    expect(预览姓名文本(视图)).toBe('林澈真名');
     expect(screen.getByText('已认证')).toBeTruthy();
     expect(screen.getByLabelText('职务')).toBeTruthy();
   });
@@ -160,6 +163,34 @@ describe('招聘名片 · Backend 诚实身份', () => {
     render(<MemoryRouter><招聘名片 /></MemoryRouter>);
     expect(screen.getByLabelText('姓名')).toBeTruthy();
     expect(screen.queryByText('已认证')).toBeNull();
+  });
+
+  // 未实名草稿即时预览：两个入口一致 —— 改名不保存也要立刻反映在顶部名片预览容器，
+  // 清空成空串也不得回退旧公开名（塌到未知占位）
+  it.each([
+    { 描述: '应用内普通编辑', 从注册流: false },
+    { 描述: '注册流入口', 从注册流: true },
+  ])('未实名改名未保存：草稿即时上顶部预览（$描述），清空不回旧名', async ({ 从注册流 }) => {
+    const 用户 = userEvent.setup();
+    const 视图 = render(
+      <MemoryRouter
+        initialEntries={[
+          从注册流 ? { pathname: 路径.招聘名片, state: { 从注册流: true } } : 路径.招聘名片,
+        ]}
+      >
+        <招聘名片 />
+      </MemoryRouter>,
+    );
+    const 姓名 = screen.getByLabelText('姓名') as HTMLInputElement;
+    await 用户.clear(姓名);
+    await 用户.type(姓名, '改名未存');
+    // 顶部预览容器显示草稿名，而不是只在输入框里
+    expect(姓名.value).toBe('改名未存');
+    expect(预览姓名文本(视图)).toBe('改名未存');
+    // 清空也不回旧名：预览塌到未知占位，不回落权威 public_name（林澈）
+    await 用户.clear(姓名);
+    expect(screen.getByText('姓名未知')).toBeTruthy();
+    expect(预览姓名文本(视图)).not.toContain('林澈');
   });
 
   it('保存一次携带 public_name、title 与自报 organization_ref，成功响应后才提示保存成功', async () => {
@@ -463,6 +494,12 @@ function 视图重渲染(
   视图: { rerender: (ui: React.ReactElement) => void },
 ) {
   视图.rerender(<MemoryRouter><招聘名片 /></MemoryRouter>);
+}
+
+/** 顶部名片预览行的姓名文本（区别于姓名输入框的 value；草稿即时预览断言专用）。
+ *  只取姓名文本节点：实名时认证 badge 也渲染在同一 span 里，不能算进姓名。 */
+function 预览姓名文本(视图: { container: HTMLElement }) {
+  return 视图.container.querySelector(`.${样式.预览行} .${样式.预览姓名}`)?.childNodes[0]?.textContent ?? '';
 }
 
 /** 打开抽屉（按下自报公司行）后取搜索输入框 */
