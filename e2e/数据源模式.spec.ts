@@ -2584,6 +2584,8 @@ interface 候选OnboardingFixture {
   读取: { 简历: number; 意向: number };
   /** 简历域请求序列（含分区写入与 GET）：断言保存以最终权威 GET 收尾 */
   简历请求: { method: string; path: string }[];
+  /** stg 契约对齐 2026-09-14：me/onboarding 的完成状态（null 起步，POST complete 推进） */
+  完成: { candidate: string | null; recruiter: string | null };
 }
 
 /** 只存在于本 fixture 的标记值（区别于 P8标记.手机掩码 与 既有静态 fixture 的编号） */
@@ -2636,6 +2638,7 @@ function 创建候选OnboardingFixture(): 候选OnboardingFixture {
     mutations: [],
     读取: { 简历: 0, 意向: 0 },
     简历请求: [],
+    完成: { candidate: null, recruiter: null },
   };
 }
 
@@ -2967,6 +2970,12 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         last_used_role: (选项.主体初始角色 ?? null) as 'candidate' | 'recruiter' | null,
       }
     : fixture主体;
+  // onboarding 完成状态：基础/P1C 组织 fixture = 已建立账号（双角色已完成）；
+  // 新招聘方 onboarding 旅程的 recruiter 从 null 起步（候选旅程 fixture 自带状态并接管路由）
+  const Onboarding完成表: Record<'candidate' | 'recruiter', string | null> = {
+    candidate: '2026-08-25T10:00:00Z',
+    recruiter: onboardingFixture ? null : '2026-08-25T10:00:00Z',
+  };
 
   // ── P1C 组织域可变 fixture 状态：每次安装独立一份，页面写入只影响本测试 ──
   let 档案可变: P1C招聘方档案形 | null = 组织fixture?.profile ? { ...组织fixture.profile } : null;
@@ -3093,6 +3102,32 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       // 主体：last_used_role 从 null 起步（会话恢复落身份选择页），角色写入推进它
       if (path === '/api/v1/me' && method === 'GET') {
         await route.fulfill({ status: 200, json: 信封(P4深克隆(Onboarding域.主体)) });
+        return;
+      }
+      // stg 契约对齐 2026-09-14：onboarding 状态只列本 fixture 实际角色，完成由 POST 推进
+      if (path === '/api/v1/me/onboarding' && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({
+            roles: Onboarding域.主体.roles.map((行) => ({
+              role: 行.role,
+              status: 'active' as const,
+              completed_at: Onboarding域.完成[行.role],
+            })),
+          }),
+        });
+        return;
+      }
+      const Onboarding完成写 = /^\/api\/v1\/me\/onboarding\/(candidate|recruiter)\/complete$/.exec(path);
+      if (Onboarding完成写 && method === 'POST') {
+        断言精确键集(body, []); // complete：body 精确 {}
+        记变更(path);
+        const role = Onboarding完成写[1] as 'candidate' | 'recruiter';
+        Onboarding域.完成[role] ??= '2026-09-14T08:00:00Z'; // 首次与重试同一时间
+        await route.fulfill({
+          status: 200,
+          json: 信封({ role, status: 'active', completed_at: Onboarding域.完成[role] }),
+        });
         return;
       }
       const Onboarding角色写 = /^\/api\/v1\/me\/roles\/(candidate|recruiter)$/.exec(path);
@@ -3321,6 +3356,33 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       // 服务端语义：记录偏好后，后续 GET /me 返回新值（刷新恢复用例依赖这一点）
       if (主体 !== fixture主体) 主体.last_used_role = (body as { role?: 'recruiter' | null })?.role ?? null;
       await route.fulfill({ status: 200, json: 信封(主体) });
+      return;
+    }
+
+    // ── stg 契约对齐 2026-09-14：me/onboarding 显式路由（绝不在兜底通配上躲测试）。
+    //    缺省按已建立账号返回双角色已完成；新招聘方 onboarding 旅程的 recruiter 从
+    //    null 起步，POST complete 模拟对应状态变化（首次与重试同一时间）并受理 body {} ──
+    if (path === '/api/v1/me/onboarding' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        json: 信封({
+          roles: [
+            { role: 'candidate', status: 'active', completed_at: Onboarding完成表.candidate },
+            { role: 'recruiter', status: 'active', completed_at: Onboarding完成表.recruiter },
+          ],
+        }),
+      });
+      return;
+    }
+    const Onboarding完成写主 = /^\/api\/v1\/me\/onboarding\/(candidate|recruiter)\/complete$/.exec(path);
+    if (Onboarding完成写主 && method === 'POST') {
+      断言精确键集(body, []);
+      const role = Onboarding完成写主[1] as 'candidate' | 'recruiter';
+      Onboarding完成表[role] ??= '2026-09-14T08:00:00Z';
+      await route.fulfill({
+        status: 200,
+        json: 信封({ role, status: 'active', completed_at: Onboarding完成表[role] }),
+      });
       return;
     }
 

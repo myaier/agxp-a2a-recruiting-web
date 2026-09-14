@@ -115,6 +115,8 @@ interface 建档fixture形 {
   intentions: 意向条目形[];
   /** 非读取请求（method/path/body）存证；GET 计数走 读取 */
   mutations: { method: string; path: string; body: unknown }[];
+  /** stg 契约对齐 2026-09-14：me/onboarding 完成状态（candidate 从 null 起步，POST complete 推进） */
+  完成: { candidate: string | null; recruiter: string | null };
   读取: { 简历: number; 意向: number; 意向详情ID们: string[] };
   /** >0 时 GET /me/resume 答 503 并递减：制造「education POST 成功后读取失败」窗口 */
   简历GET失败剩余: number;
@@ -129,6 +131,7 @@ interface 建档fixture形 {
 
 function 创建建档fixture(): 建档fixture形 {
   return {
+    完成: { candidate: null, recruiter: null },
     主体: { subject_id: 标记.主体, roles: [{ role: 'candidate', status: 'active' }], last_used_role: null },
     resume: {
       profile: {
@@ -209,6 +212,33 @@ async function 安装BFF路由(page: Page, fixture: 建档fixture形): Promise<v
       断言键集(body, ['role']);
       fixture.主体.last_used_role = (body as { role: 'candidate' | 'recruiter' }).role;
       await route.fulfill({ status: 200, json: 信封({ ...fixture.主体 }) });
+      return;
+    }
+
+    // ── stg 契约对齐 2026-09-14：onboarding 状态（只列 fixture 实际角色；complete 推进状态）──
+    if (path === '/api/v1/me/onboarding' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        json: 信封({
+          roles: fixture.主体.roles.map((行) => ({
+            role: 行.role,
+            status: 'active' as const,
+            completed_at: fixture.完成[行.role],
+          })),
+        }),
+      });
+      return;
+    }
+    const Onboarding完成 = /^\/api\/v1\/me\/onboarding\/(candidate|recruiter)\/complete$/.exec(path);
+    if (Onboarding完成 && method === 'POST') {
+      断言键集(body, []); // complete：body 精确 {}
+      fixture.mutations.push({ method, path, body });
+      const role = Onboarding完成[1] as 'candidate' | 'recruiter';
+      fixture.完成[role] ??= '2026-09-14T08:00:00Z'; // 首次与重试同一时间
+      await route.fulfill({
+        status: 200,
+        json: 信封({ role, status: 'active', completed_at: fixture.完成[role] }),
+      });
       return;
     }
 

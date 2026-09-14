@@ -166,6 +166,19 @@ const 附件空库 = {
 
 const 账号档案 = { avatar_url: null, revision: 0, updated_at: null };
 
+// stg 契约对齐 2026-09-14：me/onboarding 的 fixture 状态。P1 展示统一的主页用例都是
+// 已建立账号 —— 对应角色返回已完成（完成事实来自服务端，不由本地资料推导）；POST
+// complete 模拟对应状态变化（首次与重试返回同一时间），供注册流浏览器接线验证。
+const Onboarding完成时间 = '2026-08-30T10:46:00Z';
+
+function Onboarding快照(role: P1角色, completed_at: string | null) {
+  return { roles: [{ role, status: 'active', completed_at }] };
+}
+
+function Onboarding完成回执(role: P1角色) {
+  return { role, status: 'active', completed_at: Onboarding完成时间 };
+}
+
 const MatchCase摘要零 = {
   open_total: 0,
   open_anonymous_screening_total: 0,
@@ -563,6 +576,16 @@ export async function 安装P1路由(
     }
     if (path === '/api/v1/me' && method === 'GET') {
       await 答(200, 信封(主体(role)));
+      return;
+    }
+
+    // ── Onboarding 域（stg 契约对齐）：主页用例返回对应角色已完成；未知路径仍 503 ──
+    if (path === '/api/v1/me/onboarding' && method === 'GET') {
+      await 答(200, 信封(Onboarding快照(role, Onboarding完成时间)));
+      return;
+    }
+    if (path === `/api/v1/me/onboarding/${role}/complete` && method === 'POST') {
+      await 答(200, 信封(Onboarding完成回执(role)));
       return;
     }
 
