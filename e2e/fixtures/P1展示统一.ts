@@ -661,7 +661,10 @@ export async function 安装P1路由(
     // ── 招聘端启动水合（组织链 + owner Jobs 空页 + MatchCase 空页）──
     if (role === 'recruiter') {
       if (path === '/api/v1/recruiter/profile' && method === 'GET') {
-        await 答(200, 信封({ public_name: 'P1FIX 招聘方', title: '招聘负责人', personal_verification_status: 'unverified', verified_name: null, avatar_url: null, revision: 1 }));
+        // 合同 A/C：organization_ref 是档案必需键（可空不可缺）—— 缺它 解招聘方档案
+        // 会按契约漂移拒绝整份档案（与 数据源模式.spec.ts 同一口径），组织链在此中断，
+        // 招聘端主壳落恢复面。null = 未选择公司，合法档。
+        await 答(200, 信封({ public_name: 'P1FIX 招聘方', title: '招聘负责人', personal_verification_status: 'unverified', organization_ref: null, verified_name: null, avatar_url: null, revision: 1 }));
         return;
       }
       if (path === '/api/v1/recruiter/affiliations' && method === 'GET') { await 答(200, 信封({ affiliations: [] })); return; }

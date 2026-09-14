@@ -747,6 +747,26 @@ async function 期望无溢出(page: Page): Promise<void> {
   expect(溢出, '页面横向溢出').toBe(0);
 }
 
+/**
+ * 固定 AI 入口行（Task c02ab777 起 Backend 收件箱展示层组装）：唯一入口、无模拟
+ * 摘要/时间/未读 —— 取代旧「Backend 无 AI代理动态」缺席断言（那断言只因 Mock 行同名
+ * 就判污染，与新的固定入口行为相反）。返回入口行定位供调用方继续断言。
+ */
+async function 期望固定AI入口行(page: Page): Promise<Locator> {
+  const 行 = page.getByRole('button', { name: /AI代理动态/ });
+  await expect(行).toHaveCount(1);
+  const 条 = 行.first();
+  // 固定摘要与副标题；Mock 的「替你初筛 23 人 / 替你拒绝…」与「刚刚」不入 Backend 行
+  await expect(条).toContainText('聊天暂未开放，可查看代理功能');
+  await expect(条).not.toContainText('刚刚');
+  await expect(条).not.toContainText('替你初筛');
+  await expect(条).not.toContainText('替你拒绝');
+  // 时间留空不伪造；无未读标记（数字胶囊、红点、unread-testid 都不渲染）
+  await expect(条.locator('span[class*="会话时间"]')).toHaveText('');
+  await expect(条.locator('span[class*="未读徽标"], span[class*="红点"], [data-testid^="unread-"]')).toHaveCount(0);
+  return 条;
+}
+
 /** 打开后端入口：清空存储 + 关动画 + 等主壳落定（candidate → /#/app，recruiter → /#/hr）。 */
 async function 打开后端主壳(page: Page, role: P1角色): Promise<void> {
   await 打开稳定页面(page, '/', '未登录');
@@ -955,8 +975,10 @@ for (const 宽度 of 后端宽度们) {
       // 行映射（candidate：标题=职位、副标题=地点）与 HTTP 标记值
       await expect(page.getByText('MiniMax · 直聊中 · 未走AI代理', { exact: true })).toBeVisible();
       await expect(page.getByText('新建岗，产品这边你是第一个，配 6 个工程师')).toBeVisible();
-      // Mock 独有文案零残留；Backend 未读 0 不误套 Mock 红点语义（无红点无数字）
-      await expect(page.getByText('AI代理动态')).toHaveCount(0);
+      // 固定 AI 入口行：唯一入口、无模拟摘要/时间/未读（取代旧缺席断言）；
+      // Backend 未读 0 不误套 Mock 红点语义（无红点无数字）
+      await 期望固定AI入口行(page);
+      await expect(page.getByText('替你拒绝了薪资带无交集')).toHaveCount(0);
       await expect(page.getByTestId('unread-3001')).toHaveCount(0);
       await expect(page.getByTestId('unread-3002')).toHaveCount(0);
 
@@ -976,9 +998,10 @@ for (const 宽度 of 后端宽度们) {
       // 点击前不产生读消息请求
       expect(请求.filter((条) => 条.path.includes('/conversations/3001/messages'))).toEqual([]);
 
-      // 页签：通知=明确空态，仅会话=同一已加载集合
+      // 页签：通知=固定 AI 入口行（Task c02ab777 起取代旧「还没有通知」空态），
+      // 仅会话=同一已加载集合
       await page.getByRole('button', { name: '通知', exact: true }).click();
-      await expect(page.getByText('还没有通知', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: /AI代理动态/ })).toHaveCount(1);
       await expect(page.getByRole('button', { name: /陆知遥/ })).toHaveCount(0);
       await page.getByRole('button', { name: '仅会话', exact: true }).click();
       await expect(page.getByRole('button', { name: /陆知遥/ })).toBeVisible();
@@ -1035,7 +1058,9 @@ for (const 宽度 of 后端宽度们) {
       await 消息定位(page).click();
       const 行甲 = page.getByRole('button', { name: /MiniMax · 直聊中 · 未走AI代理/ }).first();
       await expect(行甲).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByText('AI代理动态')).toHaveCount(0);
+      // 固定 AI 入口行：唯一入口、无模拟摘要/时间/未读；Mock 的「本周替你初筛 23 人」零残留
+      await 期望固定AI入口行(page);
+      await expect(page.getByText('本周替你初筛 23 人')).toHaveCount(0);
       await expect(page.getByTestId('unread-3001')).toHaveCount(0);
 
       await 采集后端场景(page, 诊断, `p1-backend-hr-msg-all-${宽度}`, [
@@ -1077,9 +1102,9 @@ for (const 宽度 of 后端宽度们) {
       // 无 lastMessage 行：摘要缺省「已建立真人会话」，不生成假预览
       const 无lastMessage行 = page.getByRole('button', { name: /P1FIX 职位 3002/ }).first();
       await expect(无lastMessage行).toContainText('已建立真人会话');
-      // 未读正数行：数字胶囊
+      // 未读正数行：数字胶囊；固定 AI 入口行在缺失场景同样是唯一入口（无模拟摘要/时间/未读）
       await expect(page.getByTestId('unread-3003')).toHaveText('3');
-      await expect(page.getByText('AI代理动态')).toHaveCount(0);
+      await 期望固定AI入口行(page);
 
       // 降级行仍可点进会话：消息事实仍在，读写不受影响
       await 降级行.click();
