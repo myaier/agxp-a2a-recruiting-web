@@ -246,6 +246,44 @@ describe('行业目录钩子 目录换代', () => {
     expect(result.current.行.find((行) => 行.键 === 'A')).toBeUndefined();
   });
 
+  it('根分页换版作废在飞子请求：在飞标记随清理释放，窗口内重新展开同键发新请求且数据到达', async () => {
+    // 时序（review Important finding）：展开 A 的子请求 deferred 在飞 → 根分页换版把 A
+    // 的缓存/展开状态作废（旧子请求未 settle）→ 窗口内重新展开同键 A 不得被旧请求的
+    // 在飞标记挡死（否则行展开后既无加载中也无错误/重试，数据永远不来）
+    const { promise: 慢, resolve: 慢Resolve } = deferred<行业页>();
+    let 子调用 = 0;
+    const 查询 = vi.fn(async (父键: string | null, 游标: string | null): Promise<行业页> => {
+      if (父键 === null && 游标 === null) return 页([根项A], '根游标1', 'v1');
+      if (父键 === null) {
+        // 追加页来自新快照：v2 复用同 ID 根 A → 触发根换代、A 的派生状态作废
+        return 页([根项A, 根项B], null, 'v2');
+      }
+      if (父键 === 'A' && 游标 === null) {
+        子调用 += 1;
+        if (子调用 === 1) return 慢; // 旧代请求在飞（永不主动 settle）
+        return 页([{ 键: 'a1', 名称: '子项一', 可选: true, 有子项: false }], null, 'v2');
+      }
+      return 页([], null, 'v2');
+    });
+    const { result } = renderHook(() => use行业目录({ 查询, 目录身份: 'backend:sub1' }));
+    await waitFor(() => expect(result.current.根加载中).toBe(false));
+    // 展开 A：子请求在飞（慢响应未回）
+    await act(async () => result.current.切换展开('A'));
+    await waitFor(() => expect(查询).toHaveBeenCalledWith('A', null));
+    // 根分页换版：根列表重开（v2 复用 A、追加 B），A 的缓存与展开状态作废，旧子请求仍未 settle
+    await act(async () => result.current.加载更多(null));
+    await waitFor(() => expect(result.current.行.find((行) => 行.键 === 'B')).toBeTruthy());
+    expect(result.current.行.find((行) => 行.键 === 'a1')).toBeUndefined();
+    // 窗口内重新展开同键 A：不被旧请求的在飞标记挡死（新请求发出）
+    await act(async () => result.current.切换展开('A'));
+    await waitFor(() => expect(子调用).toBe(2));
+    // 新一代数据到达
+    await waitFor(() => expect(result.current.行.find((行) => 行.键 === 'a1')).toBeTruthy());
+    // 旧代响应迟到写回：被代际作废，不重挂旧版本条目（a1 仍是新版本行）
+    慢Resolve(页([{ 键: 'a1', 名称: '旧子项', 可选: true, 有子项: false }], null, 'v1'));
+    await waitFor(() => expect(result.current.行.find((行) => 行.键 === 'a1')!.名称).toBe('子项一'));
+  });
+
   it('迟到响应在目录身份变更后不回写：旧主体响应作废，新主体重新拉根页', async () => {
     const { promise: 慢, resolve: 慢Resolve } = deferred<行业页>();
     const 查询 = vi.fn(async (父键: string | null): Promise<行业页> =>

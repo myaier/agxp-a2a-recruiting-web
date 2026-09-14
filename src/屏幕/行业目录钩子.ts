@@ -173,9 +173,11 @@ export function use行业目录({ 查询, 目录身份 }: { 查询: 查询行业
   const 数据引用 = useRef(数据);
   数据引用.current = 数据;
 
-  // 代际：目录身份变更/换代清理时 +1，在飞响应回写前核对，不符即静默作废
+  // 代际：目录身份变更/换代清理时 +1，在飞响应回写前核对，不符即静默作废。
+  // 在飞 = 键 → 发起请求的序号：换代/换主体作废被摘键的旧标记（释放重展开），
+  // 旧请求 settle 时凭令牌核对，只删自己名下的标记，不误删新一代请求的标记。
   const 代际 = useRef(0);
-  const 在飞 = useRef(new Set<string>());
+  const 在飞 = useRef(new Map<string, number>());
   const 请求序 = useRef(0);
   const 查询引用 = useRef(查询);
   查询引用.current = 查询;
@@ -212,6 +214,8 @@ const 写子页 = (父键: string, 页: 行业页, 首页: boolean) => {
       代际.current += 1;
       const 摘 = new Set<string>();
       for (const 项 of 旧缓存.项) 收集后代(项.键, 摘, 现在.子表);
+      // 作废即释放在飞标记：被摘键旧代请求仍在飞时，窗口内重新展开同键不被旧标记挡死
+      for (const 键 of 摘) 在飞.current.delete(键);
       提交({
         ...现在,
         子表: {
@@ -238,9 +242,9 @@ const 写子页 = (父键: string, 页: 行业页, 首页: boolean) => {
     if (在飞.current.has(父键) || 缓存?.加载中) return; // 请求去重
     const 游标 = 首页 ? null : (缓存?.下一页 ?? null);
     if (!首页 && 游标 === null) return;
-    在飞.current.add(父键);
-    const 本次 = 代际.current;
     const 序号 = ++请求序.current;
+    在飞.current.set(父键, 序号);
+    const 本次 = 代际.current;
     const 现在 = 数据引用.current;
     提交({
       ...现在,
@@ -279,7 +283,8 @@ const 写子页 = (父键: string, 页: 行业页, 首页: boolean) => {
         子表: { ...当前.子表, [父键]: { ...本条, 加载中: false, 序: 0 } },
       });
     } finally {
-      在飞.current.delete(父键);
+      // 只删自己名下的在飞标记（换代/换主体已删旧标记或新一代请求已接手时不误删）
+      if (在飞.current.get(父键) === 序号) 在飞.current.delete(父键);
       // 收尾只清自己名下的在飞标记：缓存已被换代清理/新请求接手（序号不符）时不动
       const 收尾 = 数据引用.current.子表[父键];
       if (收尾?.序 === 序号 && 收尾.加载中) {
@@ -297,6 +302,8 @@ const 写子页 = (父键: string, 页: 行业页, 首页: boolean) => {
       代际.current += 1;
       const 摘 = new Set<string>();
       for (const 项 of 现在.根项) 收集后代(项.键, 摘, 现在.子表);
+      // 作废即释放在飞标记：旧代子请求仍在飞时，窗口内重新展开同键不被旧标记挡死
+      for (const 键 of 摘) 在飞.current.delete(键);
       提交({
         ...现在,
         根项: 页.项,
@@ -321,9 +328,9 @@ const 写子页 = (父键: string, 页: 行业页, 首页: boolean) => {
   const 载入根页 = async () => {
     const 现在 = 数据引用.current;
     if (在飞.current.has(根页签) || 现在.根加载中) return;
-    在飞.current.add(根页签);
-    const 本次 = 代际.current;
     const 序号 = ++请求序.current;
+    在飞.current.set(根页签, 序号);
+    const 本次 = 代际.current;
     提交({ ...现在, 根加载中: true, 根错误: null, 根序: 序号 });
     try {
       const 页 = await 查询引用.current(null, null);
@@ -334,7 +341,8 @@ const 写子页 = (父键: string, 页: 行业页, 首页: boolean) => {
       // 失败不动既有列表（不把失败缓存成空目录），保留重试入口
       提交({ ...数据引用.current, 根加载中: false, 根错误: 取后端错误文案(错误), 根序: 0 });
     } finally {
-      在飞.current.delete(根页签);
+      // 只删自己名下的在飞标记（换代/换主体已删旧标记或新一代请求已接手时不误删）
+      if (在飞.current.get(根页签) === 序号) 在飞.current.delete(根页签);
       // 收尾只清自己名下的在飞标记（序号不符 = 已被换代清理/新请求接手）
       const 收尾 = 数据引用.current;
       if (收尾.根序 === 序号 && 收尾.根加载中) 提交({ ...收尾, 根加载中: false, 根序: 0 });
@@ -345,9 +353,11 @@ const 写子页 = (父键: string, 页: 行业页, 首页: boolean) => {
   useEffect(() => {
     代际.current += 1;
     const 本次 = 代际.current;
-    在飞.current.delete(根页签);
+    // 作废全部在飞标记（含子键）：被作废请求 settle 后凭序号只删自己名下的标记
+    在飞.current.clear();
     提交({ ...空目录(), 根加载中: true });
-    在飞.current.add(根页签);
+    const 序号 = ++请求序.current;
+    在飞.current.set(根页签, 序号);
     void (async () => {
       try {
         const 页 = await 查询引用.current(null, null);
@@ -359,7 +369,7 @@ const 写子页 = (父键: string, 页: 行业页, 首页: boolean) => {
         // 失败不动既有列表（不把失败缓存成空目录），保留重试入口
         提交({ ...数据引用.current, 根加载中: false, 根错误: 取后端错误文案(错误), 根序: 0 });
       } finally {
-        在飞.current.delete(根页签);
+        if (在飞.current.get(根页签) === 序号) 在飞.current.delete(根页签);
       }
     })();
     return () => {
@@ -388,9 +398,9 @@ const 写子页 = (父键: string, 页: 行业页, 首页: boolean) => {
     if (父键 === null) {
       const 现在 = 数据引用.current;
       if (现在.根游标 === null || 现在.根加载中 || 在飞.current.has(根页签)) return;
-      在飞.current.add(根页签);
-      const 本次 = 代际.current;
       const 序号 = ++请求序.current;
+      在飞.current.set(根页签, 序号);
+      const 本次 = 代际.current;
       提交({ ...现在, 根加载中: true, 根序: 序号 });
       void (async () => {
         try {
@@ -400,7 +410,8 @@ const 写子页 = (父键: string, 页: 行业页, 首页: boolean) => {
         } catch {
           // 失败不动：游标仍在，用户可再点
         } finally {
-          在飞.current.delete(根页签);
+          // 只删自己名下的在飞标记（换代清理/换主体接手时不误删新一代标记）
+          if (在飞.current.get(根页签) === 序号) 在飞.current.delete(根页签);
           // 收尾只清自己名下的在飞标记（换代清理/身份变更接手时序号不符，不回写）
           const 收尾 = 数据引用.current;
           if (收尾.根序 === 序号 && 收尾.根加载中) 提交({ ...收尾, 根加载中: false, 根序: 0 });
