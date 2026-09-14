@@ -14514,6 +14514,13 @@ test.describe('picker 统一 岗位城市与月薪 @mock', () => {
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
     await expect(page.getByText('选择器统一岗')).toBeVisible({ timeout: 15_000 });
+    // 发布结果带滚轮设置的原金额：编辑回读该岗第三步，薪资选择行为 18/28（Mock 零 API
+    // 无 POST body 可断言，岗位列表卡不渲染薪资带 —— 以编辑回读作存证）
+    await page.goto('/#/hr/post-job/P-05');
+    await expect(page.getByPlaceholder(/资深后端工程师/)).toHaveValue('选择器统一岗', { timeout: 15_000 });
+    await page.getByRole('button', { name: '职位要求' }).click();
+    await expect(下限键).toContainText('18', { timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '薪资上限' })).toContainText('28');
     expect(apiRequests).toEqual([]);
   });
 });
@@ -14625,6 +14632,8 @@ test.describe('picker 统一 岗位城市与月薪 @backend', () => {
     expect(岗位写入[0]!.body).toMatchObject({
       location_id: 'loc-fixture-001',
       title: '选择器统一岗',
+      // 本用例刚用滚轮设置的原金额（转岗位创建 body 键 salary: {lower, upper}）
+      salary: { lower: 50, upper: 65 },
     });
     // 城市子视图全程停在发岗 route，没有导航到候选 onboarding
     expect(请求们.every((项) => !项.path.includes('/onboard/'))).toBe(true);
@@ -14693,11 +14702,16 @@ test.describe('picker 统一 就读年份 @mock', () => {
     await 毕业年轮.getByRole('option', { name: '2025', exact: true }).click();
     await expect(入学年轮.getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(毕业年轮.getByRole('option', { name: '2025', exact: true })).toHaveAttribute('aria-selected', 'true');
-    // 真实滚动把入学年改到 2022 → 保存；硬刷新沿存值恢复
+    // 真实滚动把入学年改到 2022 → 下一步保存（Mock 模式 简历教育 变更经 资料持久化
+    // 自动落盘 AGXP简历v3，无测试侧 reseed）→ 硬刷新沿应用自己存盘的值恢复
     await 滚薪资轮(page, '入学年', 2022);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
-    await 写缓存({ 编号: 'edu1', 学校: '演示大学', 学历: '本科', 专业: '演示专业', 开始: '2022-09', 结束: '2025-06' });
+    // 消费应用自己落盘的值：存盘后缓存里应有 2022-09（不是测试注入的）
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('AGXP简历v3:mock:stg:demo') ?? ''), { timeout: 10_000 })
+      .toContain('2022-09');
+    // 硬刷新回就读时间段（只改 hash，不再 reseed 缓存）
+    await page.evaluate(() => { location.hash = '#/onboard/eduyears'; });
     await page.reload();
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 15_000 });
     await expect(入学年轮.getByRole('option', { name: '2022', exact: true })).toHaveAttribute('aria-selected', 'true');
