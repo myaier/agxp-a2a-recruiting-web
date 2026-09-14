@@ -6,13 +6,18 @@
 // Backend MatchCase 精确统计追加：在谈/待拍板/意向达成 读当前 recruiter owner 的
 // summary 精确统计（注册 summary scope + 挂载刷新），在招岗位仍来自 Job；
 // 企业候选列表 不再进入 Backend 展示；Mock 保留原型统计且零 summary operation 调用。
+// 2026-09-14 追加：头像行改代表招聘者本人 —— 主标题非空实名→非空公开名→「完善招聘名片」
+// （企业信息不参与名字判定），头像读 avatarUrl（Mock 招聘头像）、无图或 error 回退有效
+// 姓名首字、缺名给中性「人」；职务/公司下移成独立行、非空才显示；图片失败态限定于
+// 主体+URL（URL 更新/切主体重挂载重置，旧图迟到 error 不污染新图）；Mock 同样用本人名。
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 企业我的 from './企业我的';
 import { BFF企业关系样本, BFF招聘方档案样本, BFF主体样本 } from '../测试/BFF样本';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
+import { 路径 } from '../路由/路径表';
 import type { P5摘要快照 } from '../状态/后端/类型';
 
 const mock派发 = vi.fn();
@@ -20,6 +25,9 @@ const mock跳转 = vi.fn();
 // 稳定 operation spy：生产 Provider 的 操作 引用稳定，桩宿主同样给恒定表
 const mock设置P5范围 = vi.fn();
 const mock加载摘要 = vi.fn(async () => undefined);
+// 两套 fixture 共用同一个 操作 引用：换 fixture 不换引用，否则屏幕的 summary effect
+// 会把「操作对象变了」误判成需要权威刷新（rerender 生命周期用例依赖这一点）
+const 操作桩 = { 设置P5范围: mock设置P5范围, 加载摘要: mock加载摘要 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -49,11 +57,13 @@ function 成功招聘摘要(ownerSubjectId = 'sub_recruiter'): P5摘要快照 {
   };
 }
 
-/** 屏幕消费的共享字段补空数组；组织身份字段由用例按 Backend 事实覆写。 */
+/** 屏幕消费的共享字段补空数组；组织身份字段由用例按 Backend 事实覆写。
+ *  主体编号 参数供「切主体」用例换成另一个 recruiter subject。 */
 function 置Backend应用状态(
   组织: Record<string, unknown> = {},
   招聘规则阶段 = '未开始',
   P5摘要?: P5摘要快照,
+  主体编号 = 'sub_recruiter',
 ) {
   mock应用状态 = {
     状态: {
@@ -69,9 +79,9 @@ function 置Backend应用状态(
     },
     派发: mock派发,
     数据源模式: 'backend',
-    操作: { 设置P5范围: mock设置P5范围, 加载摘要: mock加载摘要 },
+    操作: 操作桩,
     后端状态: {
-      主体: { ...BFF主体样本, subject_id: 'sub_recruiter', last_used_role: 'recruiter' },
+      主体: { ...BFF主体样本, subject_id: 主体编号, last_used_role: 'recruiter' },
       Agent规则水合: {
         candidate: { rules: '未开始', proposals: '未开始' },
         recruiter: { rules: 招聘规则阶段, proposals: '未开始' },
@@ -92,7 +102,7 @@ function 置Mock应用状态(组织: Record<string, unknown> = {}) {
     },
     派发: mock派发,
     数据源模式: 'mock',
-    操作: { 设置P5范围: mock设置P5范围, 加载摘要: mock加载摘要 },
+    操作: 操作桩,
     后端状态: {
       主体: null,
       Agent规则水合: {
@@ -287,5 +297,180 @@ describe('企业我的 · 代理卡规则计数的水合门控（P6 Task 7）', 
     置Mock应用状态({ 企业规则: 招聘规则种子 });
     render(<MemoryRouter><企业我的 /></MemoryRouter>);
     expect(screen.getByText(/规则 1 条生效/)).toBeTruthy();
+  });
+});
+
+// ── 2026-09-14：头像行代表招聘者本人。主标题非空实名→非空公开名→「完善招聘名片」
+//    （有无企业不参与名字判定），职务/公司独立行、非空才显示，原个人验证与任职标签
+//    和整行跳 招聘名片 保留；Mock 同样用本人名（企业认证.姓名）而非公司。──
+describe('企业我的 · 招聘者本人头像与姓名（Backend）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+  });
+
+  /** 默认带一家已认证公司（后端映射科技），用例按需覆写档案字段。 */
+  function 置身份(档案覆写: Record<string, unknown>) {
+    置Backend应用状态({
+      招聘方档案: { ...BFF招聘方档案样本, ...档案覆写 },
+      企业关系列表: [{ ...BFF企业关系样本, organization_display_name: '后端映射科技' }],
+      当前企业关系编号: 'aff_1',
+    });
+  }
+
+  it('实名优先于公开名，头像走 avatar_url 与 alt，职务与公司独立行，标签与跳转保留', () => {
+    置身份({
+      personal_verification_status: 'verified',
+      verified_name: '林澈真名',
+      avatar_url: 'https://cdn.example.com/recruiter.png',
+    });
+    render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect(screen.getByText('林澈真名')).toBeTruthy();
+    expect(screen.queryByText('林澈')).toBeNull();
+    const 图 = screen.getByAltText('招聘者头像') as HTMLImageElement;
+    expect(图.getAttribute('src')).toBe('https://cdn.example.com/recruiter.png');
+    expect(screen.getByText('招聘负责人')).toBeTruthy();
+    expect(screen.getByText('后端映射科技')).toBeTruthy();
+    expect(screen.getByText('个人：已认证')).toBeTruthy();
+    expect(screen.getByText('任职：已认证')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /林澈真名/ }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.招聘名片);
+  });
+
+  it('无实名显示公开名，无图时头像取有效姓名首字（不是公司首字）', () => {
+    置身份({ verified_name: null, avatar_url: null });
+    render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect(screen.getByText('林澈')).toBeTruthy();
+    expect(screen.queryByAltText('招聘者头像')).toBeNull();
+    expect(screen.getByText('林')).toBeTruthy();
+    expect(screen.queryByText('后')).toBeNull();
+  });
+
+  it('首字回退取首个 Unicode 字符（代理对不拆散）', () => {
+    置身份({ verified_name: '𠀀安', avatar_url: null });
+    render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect(screen.getByText('𠀀安')).toBeTruthy();
+    expect(screen.getByText('𠀀')).toBeTruthy();
+  });
+
+  it('姓名缺失：主标题给完善招聘名片，头像占位用中性「人」', () => {
+    置身份({ verified_name: null, public_name: '', avatar_url: null });
+    render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect(screen.getByText('完善招聘名片')).toBeTruthy();
+    expect(screen.getByText('人')).toBeTruthy();
+  });
+
+  it('无企业但有名片：不伪造公司行，主标题仍是本人名且整行可进名片', () => {
+    置Backend应用状态({
+      招聘方档案: { ...BFF招聘方档案样本, verified_name: '林澈真名' },
+      企业关系列表: [],
+      当前企业关系编号: null,
+      未认证公司声明: '',
+    });
+    render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect(screen.getByText('林澈真名')).toBeTruthy();
+    expect(screen.getByText('招聘负责人')).toBeTruthy();
+    expect(screen.queryByText(/科技/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /林澈真名/ }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.招聘名片);
+  });
+
+  it('职务为空时该段不出，公司仍独立显示', () => {
+    置身份({ title: '' });
+    render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect(screen.queryByText('招聘负责人')).toBeNull();
+    expect(screen.getByText('后端映射科技')).toBeTruthy();
+  });
+});
+
+describe('企业我的 · Mock 同样用本人名与招聘头像', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+  });
+
+  it('主标题是企业认证.姓名而非公司，头像读 招聘头像，仍整行进名片', () => {
+    置Mock应用状态({ 招聘头像: 'data:image/png;base64,QQ==' });
+    render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect(screen.getByText('邵铭')).toBeTruthy();
+    const 图 = screen.getByAltText('招聘者头像') as HTMLImageElement;
+    expect(图.getAttribute('src')).toBe('data:image/png;base64,QQ==');
+    expect(screen.getByText('技术 VP')).toBeTruthy();
+    expect(screen.getByText('云衢科技')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /邵铭/ }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.招聘名片);
+  });
+
+  it('无招聘头像显示姓名首字；姓名缺失时占位「人」与完善招聘名片，公司仍如实显示', () => {
+    置Mock应用状态({ 企业认证: { 姓名: '', 公司: '云衢科技', 职务: '' } });
+    render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect(screen.getByText('完善招聘名片')).toBeTruthy();
+    expect(screen.getByText('人')).toBeTruthy();
+    expect(screen.getByText('云衢科技')).toBeTruthy();
+  });
+});
+
+// ── 图片失败态只属于「当前主体+当前URL」的实例：URL 更新或切主体后新图允许加载，
+//    旧 img 节点迟到的 error 不污染新图；头像生命周期不产生任何新请求
+//    （原 summary 挂载/换主体刷新不计为新增）。──
+describe('企业我的 · 头像生命周期限定于主体+URL', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+  });
+
+  function 置头像档案(avatarUrl: string | null, 主体编号 = 'sub_recruiter') {
+    置Backend应用状态(
+      { 招聘方档案: { ...BFF招聘方档案样本, verified_name: '林澈真名', avatar_url: avatarUrl } },
+      '未开始',
+      undefined,
+      主体编号,
+    );
+  }
+
+  it('URL 更新后新图加载，旧图迟到 error 不污染新图；除原 summary 加载外零新增请求', () => {
+    置头像档案('https://cdn.example.com/a-1.png');
+    const { rerender } = render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    const 旧图 = screen.getByAltText('招聘者头像') as HTMLImageElement;
+    expect(旧图.getAttribute('src')).toBe('https://cdn.example.com/a-1.png');
+    expect(mock加载摘要).toHaveBeenCalledTimes(1); // 原 summary 挂载加载
+
+    置头像档案('https://cdn.example.com/a-2.png');
+    rerender(<MemoryRouter><企业我的 /></MemoryRouter>);
+    const 新图 = screen.getByAltText('招聘者头像') as HTMLImageElement;
+    expect(新图.getAttribute('src')).toBe('https://cdn.example.com/a-2.png');
+    fireEvent.error(旧图);
+    expect(screen.getByAltText('招聘者头像')).toBe(新图);
+    expect(mock加载摘要).toHaveBeenCalledTimes(1);
+    expect(mock设置P5范围).toHaveBeenCalledTimes(1);
+  });
+
+  it('当前 URL 的图 error 后回退姓名首字；URL 再更新时失败态重置、新图重新显示', () => {
+    置头像档案('https://cdn.example.com/a-1.png');
+    const { rerender } = render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    fireEvent.error(screen.getByAltText('招聘者头像'));
+    expect(screen.queryByAltText('招聘者头像')).toBeNull();
+    expect(screen.getByText('林')).toBeTruthy();
+
+    置头像档案('https://cdn.example.com/a-2.png');
+    rerender(<MemoryRouter><企业我的 /></MemoryRouter>);
+    expect((screen.getByAltText('招聘者头像') as HTMLImageElement).getAttribute('src'))
+      .toBe('https://cdn.example.com/a-2.png');
+  });
+
+  it('切主体：key 变化重挂载头像，新主体 URL 的图加载，旧图 error 不污染；summary 按原栅栏随主体刷新', () => {
+    置头像档案('https://cdn.example.com/a-1.png');
+    const { rerender } = render(<MemoryRouter><企业我的 /></MemoryRouter>);
+    const 旧图 = screen.getByAltText('招聘者头像') as HTMLImageElement;
+
+    置头像档案('https://cdn.example.com/a-2.png', 'sub_next');
+    rerender(<MemoryRouter><企业我的 /></MemoryRouter>);
+    const 新图 = screen.getByAltText('招聘者头像') as HTMLImageElement;
+    expect(新图.getAttribute('src')).toBe('https://cdn.example.com/a-2.png');
+    fireEvent.error(旧图);
+    expect(screen.getByAltText('招聘者头像')).toBe(新图);
+    // 换主体的 summary 权威刷新是原有行为（挂载+换主体各一次），其余零请求
+    expect(mock加载摘要).toHaveBeenCalledTimes(2);
+    expect(mock加载摘要).toHaveBeenCalledWith('recruiter');
   });
 });

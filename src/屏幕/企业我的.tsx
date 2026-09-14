@@ -1,14 +1,16 @@
 // D13 企业「我的」Tab · 状态入口 + 功能宫格 —— 求职端 A15（我的.tsx）的同构镜像
 //
-// 版式与求职端一比一：右上两枚工具图标（切换身份 / 设置）→ 头像行（公司首字深绿底
-// 圆头像 + 公司名 + 认证人认证身份胶囊）→ 四个统计数 → 代理状态毛玻璃卡（我的招聘
-// AI代理 → 企业代理设置）→ 常用/其他功能宫格 → 页脚合规小字。
+// 版式与求职端一比一：右上两枚工具图标（切换身份 / 设置）→ 头像行（招聘者头像或
+// 本人姓名首字圆头像 + 本人姓名 + 职务·公司行 + 认证人认证身份胶囊）→ 四个统计数 →
+// 代理状态毛玻璃卡（我的招聘AI代理 → 企业代理设置）→ 常用/其他功能宫格 → 页脚合规小字。
 // 只替换数据源（企业信息）与文案视角（求职者 → 招聘方），字号、间距、圆角全部不动。
+// 2026-09-14：头像行改代表招聘者本人 —— 姓名认本人（实名→公开名→完善名片），
+// 头像认 avatarUrl（Mock 招聘头像），失败回退有效姓名首字；公司只作任职信息行。
 //
 // 屏内只有「功能宫格 + 页脚」这一段滚动，上半部分钉住不动 —— 与同构源一致：
 // 公司状态是常驻信息，功能入口才是可翻的列表。
 
-import { useEffect, type ComponentType } from 'react';
+import { useEffect, useState, type ComponentType } from 'react';
 import 样式 from './企业我的.module.css';
 import { 主页外壳, 滚动区 } from '../组件/通用';
 import {
@@ -58,6 +60,32 @@ function 取统计色(色名: string): string {
   return 'var(--墨)';
 }
 
+/** 有效姓名的首个 Unicode 字符（代理对安全）；姓名缺失给中性「人」，
+ *  不拿公司首字或「完善招聘名片」的首字凑数 */
+function 取头像首字(姓名: string): string {
+  return Array.from(姓名)[0] ?? '人';
+}
+
+/** 招聘者头像这一个真实生命周期边界单独成组件：图片失败 state 只属于
+ *  「当前主体+当前URL」的这个实例（key 由调用方给），URL 更新或切主体时重挂载、
+ *  失败态天然重置，旧 img 节点迟到的 error 落在已卸载实例上、不污染新图。
+ *  只此一处，不做共享头像框架。无图或失败都渲染 兜底字。 */
+function 招聘者头像({ 地址, 兜底字 }: { 地址: string | null; 兜底字: string }) {
+  const [加载失败, 设加载失败] = useState(false);
+  return (
+    <span className={样式.头像}>
+      {地址 && !加载失败 ? (
+        <img
+          className={样式.头像图}
+          src={地址}
+          alt="招聘者头像"
+          onError={() => 设加载失败(true)}
+        />
+      ) : 兜底字}
+    </span>
+  );
+}
+
 export default function 企业我的() {
   const { 跳转 } = use导航();
   const { 状态, 派发, 数据源模式, 后端状态, 操作 } = use应用状态();
@@ -82,6 +110,17 @@ export default function 企业我的() {
   const 显示公司 = 是后端
     ? (身份.currentAffiliation?.organizationName ?? 状态.未认证公司声明)
     : 状态.企业认证.公司;
+  // 头像行代表招聘者本人：主标题非空实名 → 非空公开名 → 「完善招聘名片」，
+  // 有无企业不参与名字判定；职务/公司下移成独立行、非空才显示；头像认
+  // avatarUrl（Mock 招聘头像），无图或失败回退有效姓名首字。Mock 读现有
+  // 企业认证/招聘头像 fixture，同样零新增请求。
+  const 有效姓名 = 是后端
+    ? ((身份.verifiedName ?? '').trim() || 身份.publicName.trim())
+    : 状态.企业认证.姓名.trim();
+  const 显示职务 = 是后端 ? 身份.title.trim() : (状态.企业认证.职务 ?? '').trim();
+  const 头像地址 = 是后端 ? 身份.avatarUrl : 状态.招聘头像;
+  // 失败 state 以 主体+URL 为 key 重挂载重置（见 招聘者头像）
+  const 主体标识 = 后端状态.主体?.subject_id ?? 'mock';
   // Backend MatchCase 真相源：在谈/待拍板/意向达成只读当前 recruiter/owner 的权威
   // summary；在招岗位继续读 Job。每次挂载刷新，失败时显示 —，不回退分页或 Mock。
   const P5Scope = P5范围键.summary('recruiter');
@@ -189,11 +228,23 @@ export default function 企业我的() {
       </div>
 
       {/* ── 头像行：整行可点，进「招聘名片」（= 企业对外形象的编辑入口，
-             镜像求职端头像行 → 我的简历）。Backend 状态胶囊只按服务端事实各说各的 ── */}
+             镜像求职端头像行 → 我的简历）。主标题/头像代表招聘者本人；
+             职务·公司独立行非空才显示；Backend 状态胶囊只按服务端事实各说各的 ── */}
       <button className={`${样式.头像行} 可点`} onClick={() => 跳转(路径.招聘名片)}>
-        <span className={样式.头像}>{显示公司.charAt(0)}</span>
+        <招聘者头像
+          key={`${主体标识}:${头像地址 ?? ''}`}
+          地址={头像地址}
+          兜底字={取头像首字(有效姓名)}
+        />
         <span className={样式.头像信息}>
-          <span className={`${样式.姓名} 单行`}>{显示公司 || '完善招聘名片'}</span>
+          <span className={`${样式.姓名} 单行`}>{有效姓名 || '完善招聘名片'}</span>
+          {显示职务 || 显示公司 ? (
+            <span className={`${样式.任职行} 单行`}>
+              {显示职务 ? <span>{显示职务}</span> : null}
+              {显示职务 && 显示公司 ? <span> · </span> : null}
+              {显示公司 ? <span>{显示公司}</span> : null}
+            </span>
+          ) : null}
           <span className={样式.状态行}>
             {是后端 ? (
               <>

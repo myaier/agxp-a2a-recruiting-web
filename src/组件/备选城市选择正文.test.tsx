@@ -20,7 +20,8 @@ function 基础Props(覆盖: Partial<备选城市正文Props> = {}): 备选城�
     搜索词: '',
     改搜索词: vi.fn(),
     位置项们: [按钮('上海', '上海')],
-    热门项们: [按钮('热门-北京', '北京'), 按钮('热门-杭州', '杭州')],
+    国内热门项们: [按钮('热门-北京', '北京'), 按钮('热门-杭州', '杭州')],
+    海外热门项们: [按钮('热门-新加坡', '新加坡')],
     分组们: [{ 键: '浙江', 标题: '浙江', 项们: [按钮('杭州', '杭州')] }],
     搜索项们: [],
     已选项们: [],
@@ -38,9 +39,10 @@ describe('备选城市选择正文 展示契约', () => {
   it('无搜索词：位置/热门/行政分组上屏，右侧字母索引条不再渲染', async () => {
     render(<备选城市选择正文 {...基础Props()} />);
 
-    // 位置区（沿用原标签）与热门区照旧
+    // 位置区（沿用原标签）与两个精选区照旧
     expect(screen.getByText('当前/历史访问城市')).toBeTruthy();
-    expect(screen.getByText('热门城市')).toBeTruthy();
+    expect(screen.getByText('国内热门城市')).toBeTruthy();
+    expect(screen.getByText('海外热门城市')).toBeTruthy();
     // 行政分组标题上屏
     expect(screen.getByText('浙江')).toBeTruthy();
     expect(screen.getByText('北京')).toBeTruthy();
@@ -49,13 +51,32 @@ describe('备选城市选择正文 展示契约', () => {
     expect(screen.queryByRole('button', { name: '跳到 Z' })).toBeNull();
   });
 
+  it('两个精选区独立渲染：国内热门城市 / 海外热门城市，同名键各自交切换', async () => {
+    const 切换 = vi.fn();
+    render(
+      <备选城市选择正文
+        {...基础Props({
+          切换,
+          国内热门项们: [按钮('热门-广州', '广州')],
+          海外热门项们: [按钮('热门-广州', '广州')],
+        })}
+      />,
+    );
+    const 两枚 = screen.getAllByText('广州');
+    expect(两枚).toHaveLength(2);
+    await userEvent.setup().click(两枚[0]);
+    expect(切换).toHaveBeenCalledWith('热门-广州');
+    await userEvent.setup().click(两枚[1]);
+    expect(切换).toHaveBeenCalledWith('热门-广州');
+  });
+
   it('城市片点击把稳定键交给 切换（同名两枚不同键各自独立）', async () => {
     const 切换 = vi.fn();
     render(
       <备选城市选择正文
         {...基础Props({
           切换,
-          热门项们: [按钮('热门-杭州', '杭州')],
+          国内热门项们: [按钮('热门-杭州', '杭州')],
           分组们: [{ 键: '浙江', 标题: '浙江', 项们: [按钮('浙江-杭州', '杭州')] }],
         })}
       />,
@@ -89,7 +110,7 @@ describe('备选城市选择正文 展示契约', () => {
     render(
       <备选城市选择正文
         {...基础Props({
-          热门项们: [按钮('热门-北京', '北京', false, true)],
+          国内热门项们: [按钮('热门-北京', '北京', false, true)],
           已选项们: ['一', '二', '三', '四', '五', '六', '七', '八', '九'].map((名称, i) =>
             按钮(`k${i}`, 名称, true),
           ),
@@ -113,7 +134,8 @@ describe('备选城市选择正文 展示契约', () => {
     );
     expect(screen.getByText('杭州')).toBeTruthy();
     expect(screen.queryByText('当前/历史访问城市')).toBeNull();
-    expect(screen.queryByText('热门城市')).toBeNull();
+    expect(screen.queryByText('国内热门城市')).toBeNull();
+    expect(screen.queryByText('海外热门城市')).toBeNull();
     expect(screen.queryByText('浙江')).toBeNull();
 
     const 输入 = screen.getByPlaceholderText('搜索城市名/拼音');
@@ -131,7 +153,7 @@ describe('备选城市选择正文 展示契约', () => {
     // 默认页首载（热门/分组都还没到）也用同一现有文案
     rerender(
       <备选城市选择正文
-        {...基础Props({ 热门项们: [], 分组们: [], 位置项们: [], 加载中: true })}
+        {...基础Props({ 国内热门项们: [], 海外热门项们: [], 分组们: [], 位置项们: [], 加载中: true })}
       />,
     );
     expect(screen.getByText('加载中…')).toBeTruthy();

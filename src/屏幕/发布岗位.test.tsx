@@ -354,22 +354,29 @@ describe('发布岗位页 Backend 选择器', () => {
     return { items: [], nextCursor: null, catalogVersion: 'v2' };
   });
 
-  const 查询Location = vi.fn(async () => ({
-    items: [
-      {
-        id: 'loc_shanghai',
-        display_name: '上海',
-        country_code: 'CN',
-        country_name: '中国',
-        admin1_code: 'SH',
-        admin1_name: '上海',
-        timezone: 'Asia/Shanghai',
-        population: 24000000,
-      },
-    ],
-    nextCursor: null,
-    catalogVersion: 'v2',
-  }));
+  // merge 调和（2026-09-14）：默认目录按四支分页 —— 桩按 countryCode 分发，
+  // CN 支返回 上海，TW/HK/MO 返回空页（避免跨国响应被拒收产生无关噪声）
+  const 查询Location = vi.fn(async (query: { countryCode?: string }) => {
+    if (query.countryCode !== 'CN') {
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    }
+    return {
+      items: [
+        {
+          id: 'loc_shanghai',
+          display_name: '上海',
+          country_code: 'CN',
+          country_name: '中国',
+          admin1_code: 'SH',
+          admin1_name: '上海',
+          timezone: 'Asia/Shanghai',
+          population: 24000000,
+        },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    };
+  });
 
   beforeEach(() => {
     mock返回.mockClear();
@@ -497,7 +504,8 @@ describe('发布岗位页 Backend 选择器', () => {
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
     const 传入 = mock发布岗位.mock.calls[0][0];
     expect(传入.类别引用).toEqual({ id: 'job_be', display_name: '后端开发' });
-    expect(传入.地点引用).toEqual({ id: 'loc_shanghai', display_name: '上海' });
+    // merge 调和：默认视图首位是精选配置的 上海（canonical ID），点它保存按 ID 提交
+    expect(传入.地点引用).toEqual({ id: 'loc_ugt5s3vsvxs3fvd2llx7zc6fqe', display_name: '上海' });
     // 合同 C：direct 一次选择同时产生相同的发布方与用人企业 ID
     expect(传入.发布模式).toBe('direct');
     expect(传入.发布方企业编号).toBe('org_xinghe');
@@ -630,33 +638,40 @@ describe('发布岗位页 Backend 选择器', () => {
     expect((screen.getByRole('textbox', { name: '岗位要求' }) as HTMLTextAreaElement).value).toBe('有分布式系统与撮合引擎经验');
     expect(screen.getByRole('button', { name: /用人企业/ }).textContent).toContain('星河控股');
     // 行回填：城市显示名在场；发布只写 location_id 的目录引用
+    // （点击的是精选区 上海，merge 后保存其 canonical ID）
     expect(screen.getByRole('button', { name: /工作城市/ }).textContent).toContain('上海');
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
     expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
       城市: '上海',
-      地点引用: { id: 'loc_shanghai', display_name: '上海' },
+      地点引用: { id: 'loc_ugt5s3vsvxs3fvd2llx7zc6fqe', display_name: '上海' },
     });
   });
 
   it('同名不同 ID：选第二枚保存带第二枚 ID，不按名称反查', async () => {
-    const 同名Location = vi.fn(async () => ({
-      items: [
-        { id: 'loc_a', display_name: '朝阳', country_code: 'CN', country_name: '中国', admin1_code: '11', admin1_name: '北京市', timezone: 'Asia/Shanghai', population: 0 },
-        { id: 'loc_b', display_name: '朝阳', country_code: 'CN', country_name: '中国', admin1_code: '21', admin1_name: '辽宁省', timezone: 'Asia/Shanghai', population: 0 },
-      ],
-      nextCursor: null,
-      catalogVersion: 'v2',
-    }));
+    // merge 调和：四支分页 —— CN 支返回同名两枚（不同 admin1 分组），其他支空页
+    const 同名Location = vi.fn(async (query: { countryCode?: string }) => {
+      if (query.countryCode !== 'CN') {
+        return { items: [], nextCursor: null, catalogVersion: 'v2' };
+      }
+      return {
+        items: [
+          { id: 'loc_a', display_name: '朝阳', country_code: 'CN', country_name: '中国', admin1_code: '11', admin1_name: '北京市', timezone: 'Asia/Shanghai', population: 0 },
+          { id: 'loc_b', display_name: '朝阳', country_code: 'CN', country_name: '中国', admin1_code: '21', admin1_name: '辽宁省', timezone: 'Asia/Shanghai', population: 0 },
+        ],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
     置Backend应用状态(查询Taxonomy, 同名Location);
     mock发布岗位.mockResolvedValue('job_new_9');
     const { 用户 } = await 填到发布前(true, { 城市: '不开' });
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
-    // 同名两枚都渲染（热门区 2 枚 + 两个行政区分组各 1 枚），选第 b 枚
+    // 同名两枚各在两个行政区分组渲染（merge 后热门区来自精选配置，不再回显返回项），选第 b 枚
     const 全部 = await screen.findAllByRole('button', { name: '朝阳' });
-    expect(全部.length).toBeGreaterThanOrEqual(4);
-    await 用户.click(全部[3]);
+    expect(全部.length).toBeGreaterThanOrEqual(2);
+    await 用户.click(全部[1]);
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
@@ -667,8 +682,10 @@ describe('发布岗位页 Backend 选择器', () => {
     // 行内错误行（正文列表区）；同一错误文案也会出现在全局轻提示里，用行内容器定位
     const 错误行 = () => document.querySelector('[class*="错误行"]');
     let 目录调用 = 0;
-    const 时好时坏 = vi.fn(async (query: { q?: string }) => {
+    // merge 调和：四支分页 —— CN 支首页先失败后成功，其他支恒成功空页；搜索恒空页
+    const 时好时坏 = vi.fn(async (query: { q?: string; countryCode?: string }) => {
       if (query.q !== undefined) return { items: [], nextCursor: null, catalogVersion: 'v2' };
+      if (query.countryCode !== 'CN') return { items: [], nextCursor: null, catalogVersion: 'v2' };
       目录调用 += 1;
       if (目录调用 === 1) throw new Error('boom');
       return {
@@ -711,14 +728,15 @@ describe('发布岗位页 Backend 选择器', () => {
   });
 
   it('切主体作废在飞查询：旧主体的响应不落新子视图，新查询重新发出', async () => {
-    // 每次调用的门都单独记录：门[0]=旧主体首页（在飞），门[1]=新主体首页
+    // 每次调用的门都单独记录：门[0]=旧主体 CN 首页（在飞），门[4]=新主体 CN 首页
+    // （merge 调和：四支分页，一轮默认页 = CN/TW/HK/MO 四次请求）
     const 门们: ((value: { items: unknown[]; nextCursor: string | null; catalogVersion: string }) => void)[] = [];
     const 慢Location = vi.fn(async () => new Promise<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>((ok) => { 门们.push(ok); }));
     置Backend应用状态(查询Taxonomy, 慢Location);
     const { 用户, 视图 } = await 填到发布前(true, { 城市: '不开' });
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
-    expect(慢Location).toHaveBeenCalledTimes(1);
+    expect(慢Location).toHaveBeenCalledTimes(4);
     // 换主体：子视图按主体身份重挂（旧在飞查询随卸载作废），新一轮默认页请求发出
     mock应用状态.后端状态 = { 主体: { subject_id: 'sub_2', roles: [], last_used_role: 'recruiter' } };
     视图.rerender(
@@ -726,7 +744,7 @@ describe('发布岗位页 Backend 选择器', () => {
         <Routes><Route path="/hr/post-job" element={<发布岗位 />} /></Routes>
       </MemoryRouter>,
     );
-    await waitFor(() => expect(慢Location).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(慢Location).toHaveBeenCalledTimes(8));
     // 旧主体首页此刻才回：旧子视图已卸载，响应被作废，不得落进新子视图
     await act(async () => {
       门们[0]({ items: [{ id: 'loc_old', display_name: '旧主体城' }], nextCursor: null, catalogVersion: 'v2' });
@@ -2891,14 +2909,20 @@ describe('发布岗位页 全远程地址与 Catalog 门禁', () => {
     }
     return { items: [], nextCursor: null, catalogVersion: 'v2' };
   });
-  const 地点查询 = vi.fn(async () => ({
-    items: [{
-      id: 'loc_shanghai', display_name: '上海', country_code: 'CN', country_name: '中国',
-      admin1_code: 'SH', admin1_name: '上海', timezone: 'Asia/Shanghai', population: 24000000,
-    }],
-    nextCursor: null,
-    catalogVersion: 'v2',
-  }));
+  // merge 调和：四支分页 —— CN 支与搜索（JD 初词走 q）返回 上海，其他支空页
+  const 地点查询 = vi.fn(async (query: { q?: string; countryCode?: string }) => {
+    if (query.q === undefined && query.countryCode !== 'CN') {
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    }
+    return {
+      items: [{
+        id: 'loc_shanghai', display_name: '上海', country_code: 'CN', country_name: '中国',
+        admin1_code: 'SH', admin1_name: '上海', timezone: 'Asia/Shanghai', population: 24000000,
+      }],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    };
+  });
 
   beforeEach(() => {
     mock创建JD导入.mockReset();

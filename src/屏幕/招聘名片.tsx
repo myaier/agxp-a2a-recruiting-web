@@ -53,13 +53,14 @@ function 后端名片() {
   const 身份 = 从BFF招聘身份(
     状态.招聘方档案, 状态.企业关系列表, 状态.当前企业关系编号, 状态.企业管理员申请列表,
   );
-  // 显式判定，不从公司名推断：姓名槽 = verified_name ?? public_name；只有无实名才可编辑公开名
-  const 显示姓名 = 身份.verifiedName ?? 身份.publicName;
+  // 显式判定，不从公司名推断：只有无实名才可编辑公开名
   const 可编辑公开名 = 身份.verifiedName === null;
   const 可选关系 = 身份.affiliations.filter((项) => 项.selectable);
 
   const [公开名, 设公开名] = useState(身份.publicName);
   const [职务, 设职务] = useState(身份.title);
+  // 预览姓名：无实名（可编辑）时跟随公开名草稿即时预览（含清空成空串）；有实名仍是权威只读实名
+  const 显示姓名 = 身份.verifiedName === null ? 公开名 : 身份.verifiedName;
   // 水合晚于进屏时同步服务端权威值；保存成功后 re-hydrate 回写的是同一份内容
   useEffect(() => {
     设公开名(身份.publicName);
@@ -227,7 +228,7 @@ function 后端名片() {
     <>
       <招聘名片展示
         预览={{
-          // 预览姓名用权威值（verified 优先），职务受控，公司用待保存选择名
+          // 预览姓名：无实名时跟随草稿（即时预览），实名时权威只读；职务受控，公司用待保存选择名
           姓名: 显示姓名,
           职务,
           公司: 自报?.名称 ?? '',

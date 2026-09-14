@@ -323,14 +323,13 @@ export function P4淘汰原因码(copy: string): BFF淘汰原因 {
 
 export type P4招聘组织前提 =
   | { kind: 'unknown' }
-  | { kind: 'blocked'; reason: 'unverified' | 'missing_ref' }
+  | { kind: 'blocked'; reason: 'missing_ref' }
   | { kind: 'ready'; organizationRef: string };
 
+// 2026-09-14 撤销企业认证前提：认证状态不再决定可用性 —— owner job 有非空 ref 即 ready；
+// 缺 ref 引导编辑岗位；blocked 只剩 missing_ref。旧认证拒绝只作为实际请求失败呈现。
 export function 判断P4招聘组织前提(job: BFFOwnerJob | null | undefined): P4招聘组织前提 {
   if (job == null) return { kind: 'unknown' };
-  if (job.hiring_organization_verification_status !== 'verified') {
-    return { kind: 'blocked', reason: 'unverified' };
-  }
   const organizationRef = job.hiring_organization_ref?.trim() ?? '';
   return organizationRef === ''
     ? { kind: 'blocked', reason: 'missing_ref' }
