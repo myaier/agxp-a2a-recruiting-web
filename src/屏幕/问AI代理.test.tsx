@@ -103,6 +103,9 @@ describe('问AI代理 · Backend 只读真实导航', () => {
 });
 
 describe('问AI代理 · Mock 原型保持与定时器隔离', () => {
+  // 550ms 生成的回复与初始 fixture 那条前缀相同，但少一句「我按方向对口度排了序」；
+  // 用整句精确匹配，才不会把 fixture 气泡误认成泄漏的模拟回复
+  const 远程回复 = '搜到 7 个全远程、薪资带覆盖你底线的。要我直接去谈前 3 个吗？';
   it('Mock keeps the briefing, quick questions, and send input', () => {
     mock当前模式 = 'mock';
     render(<问AI代理 />);
@@ -111,14 +114,23 @@ describe('问AI代理 · Mock 原型保持与定时器隔离', () => {
     expect(screen.getByRole('button', { name: 快捷问句[0] })).toBeTruthy();
   });
 
+  it('Mock replies within 550ms on the happy path', async () => {
+    // fake timers 下不用 userEvent（指针事件等待会被假时钟卡死，仓库惯例是 fireEvent）
+    vi.useFakeTimers();
+    mock当前模式 = 'mock';
+    render(<问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: 快捷问句[0] }));
+    // 发出后先只有 fixture 旧句（整句不同），回复要等 550ms
+    expect(screen.queryByText(远程回复)).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(550));
+    expect(screen.getByText(远程回复)).toBeTruthy();
+  });
+
   it('switching Mock to Backend clears every queued fake reply timer', async () => {
     // fake timers 下不用 userEvent（指针事件等待会被假时钟卡死，仓库惯例是 fireEvent）
     vi.useFakeTimers();
     const 定时Spy = vi.spyOn(window, 'setTimeout');
     const 清除Spy = vi.spyOn(window, 'clearTimeout');
-    // 550ms 生成的回复与初始 fixture 那条前缀相同，但少一句「我按方向对口度排了序」；
-    // 用整句精确匹配，才不会把 fixture 气泡误认成泄漏的模拟回复
-    const 远程回复 = '搜到 7 个全远程、薪资带覆盖你底线的。要我直接去谈前 3 个吗？';
     mock当前模式 = 'mock';
     const page = render(<问AI代理 />);
     // 点快捷问句：我方消息上屏（按钮 + 气泡两处同文），550ms 回复还在排队

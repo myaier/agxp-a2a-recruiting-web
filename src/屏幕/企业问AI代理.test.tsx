@@ -114,6 +114,18 @@ describe('企业问AI代理 · Mock 原型保持与定时器隔离', () => {
     expect(screen.getByRole('button', { name: 企业快捷问句[0] })).toBeTruthy();
   });
 
+  it('Mock replies within 550ms on the happy path', async () => {
+    // fake timers 下不用 userEvent（指针事件等待会被假时钟卡死，仓库惯例是 fireEvent）
+    vi.useFakeTimers();
+    mock当前模式 = 'mock';
+    render(<企业问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: 企业快捷问句[0] }));
+    // 「本周漏斗：触达 23…」只出自关键词回复，fixture 初始对话里没有这句
+    expect(screen.queryByText(/本周漏斗：触达 23/)).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(550));
+    expect(screen.getByText(/本周漏斗：触达 23/)).toBeTruthy();
+  });
+
   it('switching Mock to Backend clears every queued funnel reply timer', async () => {
     // fake timers 下不用 userEvent（指针事件等待会被假时钟卡死，仓库惯例是 fireEvent）
     vi.useFakeTimers();
