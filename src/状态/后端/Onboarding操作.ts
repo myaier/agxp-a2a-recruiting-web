@@ -191,21 +191,23 @@ export async function 查证Onboarding角色(
 /** 完成回执的合并顺序：契约固定 candidate→recruiter。 */
 const 角色顺序: Record<BFF角色, number> = { candidate: 0, recruiter: 1 };
 
-/** 把完成回执登记进 成功 快照：序号推进（旧 GET 不覆盖本次结果），同名条目整体替换。 */
+/**
+ * 把完成回执登记进 成功 快照：先过主体/会话代际栅栏，破防（迟到旧会话）不触碰请求
+ * 序号、不写状态，返回 false（review-r1 F1：先推进序号会把新会话在飞 GET 捕获的
+ * 快照作废）；栅栏仍立才推进序号（旧 GET 不覆盖本次结果）并同名条目整体替换。
+ */
 export function 登记Onboarding完成(
   deps: Onboarding域依赖,
   subjectId: string,
   generation: number,
   结果: BFFOnboarding角色状态,
-): void {
-  const 序号 = 取序号引用(deps);
-  序号.current += 1;
-  const 本次 = 序号.current;
+): boolean {
   if (
     deps.主体标识引用.current !== subjectId
     || deps.会话代际.current !== generation
-    || 序号.current !== 本次
-  ) return;
+  ) return false;
+  const 序号 = 取序号引用(deps);
+  序号.current += 1;
   deps.设后端状态((旧) => {
     const 当前 = 取Onboarding状态(旧);
     const 现有 = 当前.阶段 === '成功' ? 当前.数据.roles : [];
@@ -213,6 +215,7 @@ export function 登记Onboarding完成(
     const roles = [...其余, 结果].sort((a, b) => 角色顺序[a.role] - 角色顺序[b.role]);
     return { ...旧, Onboarding: { 阶段: '成功', 数据: { roles } } };
   });
+  return true;
 }
 
 /**
@@ -231,7 +234,11 @@ export async function 完成Onboarding角色(
   const generation = deps.会话代际.current;
   try {
     const 结果 = await 后端.完成Onboarding(role);
-    登记Onboarding完成(deps, subjectId, generation, 结果);
+    // 栅栏破防（换账号/切身份后迟到的回执）：登记拒绝时不把本次当成功交回调用方
+    //（review-r1 F1）—— 调用方继续收口会清掉新会话的草稿/状态或跳错误落点。
+    if (!登记Onboarding完成(deps, subjectId, generation, 结果)) {
+      throw new BFF错误(0, 'invalid_request', '会话已变化，本次完成未生效');
+    }
     return 结果;
   } catch (错误) {
     if (是401(错误)

@@ -1175,6 +1175,91 @@ describe('应用路由：候选登录落点按 Onboarding 分流（Spec §5）',
   });
 });
 
+// ── codex review-r1 F2：candidate 未完成且无草稿不能从 /app 绕过 onboarding ──
+// Spec §5 受保护入口与登录/切端同一语义：candidate 的主落点 主壳 也是受保护入口 ——
+// active 未完成且无建档草稿时 replace 回旅程入口；有草稿由既有草稿回访路径接手
+//（不在此重复拦截）；已完成不因任何资料事实退回引导；查询中由分流门出加载屏。
+describe('应用路由：candidate 主壳受保护入口按 Onboarding 分流（review-r1）', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+  });
+
+  it('未完成且无草稿：直达 /app replace 回学生分流，主壳一次都不挂载', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值({
+      Onboarding: Onboarding未完成('candidate'),
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
+    expect(screen.getByTestId('屏幕:学生分流')).toBeTruthy();
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+  });
+
+  it('切端落点同样拦截：选身份后导航到 /app（模拟 recruiter→candidate 切换后的落点）被送回学生分流', async () => {
+    const 值 = 候选后端应用值({ Onboarding: Onboarding未完成('candidate') });
+    mock应用状态.mockReturnValue(值);
+    const 探针 = () => {
+      const 导航 = useNavigate();
+      return <button type="button" onClick={() => 导航(路径.主壳)}>探针-去主壳</button>;
+    };
+    render(
+      <MemoryRouter initialEntries={[路径.选身份]}><应用 /><位置探针 /><探针 /></MemoryRouter>,
+    );
+    // 切身份成功的主体状态已就位（candidate、未完成、无草稿）；选身份 的 替换跳转(主壳) 由探针表达
+    await userEvent.click(screen.getByRole('button', { name: '探针-去主壳' }));
+    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
+    expect(screen.getByTestId('屏幕:学生分流')).toBeTruthy();
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+  });
+
+  it('已完成 candidate 直达 /app：主壳照常挂载，不被送回引导', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值());
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:主壳')).toBeTruthy());
+    expect(当前路径()).toBe(路径.主壳);
+  });
+
+  it('未完成但草稿在场：/app 由草稿回访路径接手（回草稿位置），不走无草稿分流', async () => {
+    const 值 = 候选后端应用值({ Onboarding: Onboarding未完成('candidate') });
+    mock应用状态.mockReturnValue({
+      ...值,
+      状态: {
+        ...初始状态,
+        引导预填: {
+          城市们: ['上海市'],
+          职位: ['产品经理'],
+          建档: {
+            资料: { 个人优势: '一半' },
+            位置: { pathname: 路径.引导问答, search: '?stage=salary', 题序: 1 },
+          },
+        },
+      } as never,
+    });
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.引导问答));
+    expect(screen.getByTestId('search').textContent).toBe('?stage=salary');
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+  });
+
+  it('查询未完成（未读取）：/app 只出既有加载屏，不挂主壳也不闪引导', () => {
+    mock应用状态.mockReturnValue(候选后端应用值({
+      Onboarding: 创建空Onboarding状态(),
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    expect(screen.getByText('正在加载…')).toBeTruthy();
+    expect(当前路径()).toBe(路径.主壳);
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+    expect(screen.queryByTestId('屏幕:学生分流')).toBeNull();
+  });
+});
+
 // ── stg 契约对齐：recruiter 引导入口的完成反弹（普通选身份 / 注册流名片）──
 describe('应用路由：recruiter 完成反弹（Spec §5）', () => {
   beforeEach(() => {

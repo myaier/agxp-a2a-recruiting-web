@@ -316,6 +316,17 @@ export default function 应用() {
       && 是受保护招聘路径(当前)
     ) {
       前往(路径.招聘名片, { replace: true, state: { 从注册流: true } });
+      return;
+    }
+    // candidate 受保护主入口（review-r1 F2）：未完成且无草稿的 主壳 落点与登录/切端
+    // 同一语义（Spec §5）—— 直达 /app 或切身份后的落点都 replace 回旅程入口；
+    // 有草稿的回访由下方 恢复落点 守卫接手，已完成不因资料事实退回引导。
+    if (
+      Onboarding分流.型 === '未完成' && Onboarding分流.角色 === 'candidate'
+      && 无建档草稿 && 当前 === 路径.主壳
+    ) {
+      前往(路径.学生分流, { replace: true });
+      return;
     }
     // 后端状态整体进依赖（分流/组织阶段变化都要重评）；操作/前往 由 router 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps

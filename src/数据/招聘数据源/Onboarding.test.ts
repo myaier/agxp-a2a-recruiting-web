@@ -63,6 +63,10 @@ describe('Onboarding数据源', () => {
     ['未知 role', { roles: [角色状态Wire('admin', null)] }],
     ['未知 status', { roles: [角色状态Wire('candidate', null, 'pending')] }],
     ['completed_at 非法日历时间', { roles: [角色状态Wire('candidate', '2026-13-45T99:99:99Z')] }],
+    // codex review-r1 F3：Date.parse 会把越界分量归一化成另一天，不存在的日历时间也要拒绝
+    ['completed_at 不存在的日历（非闰年 2025-02-29）', { roles: [角色状态Wire('candidate', '2025-02-29T00:00:00Z')] }],
+    ['completed_at 不存在的日历（2026-02-30）', { roles: [角色状态Wire('candidate', '2026-02-30T00:00:00Z')] }],
+    ['completed_at 不存在的时刻（24:00 被归一化为次日）', { roles: [角色状态Wire('candidate', '2026-01-01T24:00:00Z')] }],
     ['completed_at 缺 RFC3339 形状', { roles: [角色状态Wire('candidate', '2026-08-24 00:00:00Z')] }],
     ['completed_at 是数字', { roles: [{ role: 'candidate', status: 'active', completed_at: 1758624000000 }] }],
     ['角色重复（两个 candidate）', { roles: [角色状态Wire('candidate', null), 角色状态Wire('candidate', 合法时间)] }],
@@ -105,6 +109,8 @@ describe('Onboarding数据源', () => {
 
   it.each([
     ['completed_at 为 null（null 仅查询允许）', 角色状态Wire('candidate', null)],
+    ['completed_at 不存在的日历（2026-02-30）', 角色状态Wire('candidate', '2026-02-30T00:00:00Z')],
+    ['completed_at 不存在的时刻（24:00）', 角色状态Wire('candidate', '2026-01-01T24:00:00Z')],
     ['status 为 suspended', 角色状态Wire('candidate', 合法时间, 'suspended')],
     ['role 与请求不一致', 角色状态Wire('recruiter', 合法时间)],
     ['result 缺 completed_at 键', { role: 'candidate', status: 'active' }],
@@ -114,6 +120,22 @@ describe('Onboarding数据源', () => {
     const source = 创建Onboarding数据源(请求);
     await expect(source.完成Onboarding('candidate'))
       .rejects.toMatchObject({ status: 200, code: 'invalid_response' });
+  });
+
+  // codex review-r1 F3 反面：真实存在的 RFC3339 日历时间（含闰日、偏移时区、小写
+  // z/t、小数秒）都放行 —— 逐分量回比只拒绝被 Date.parse 归一化的不存在时间。
+  it.each([
+    ['闰日 2024-02-29', '2024-02-29T00:00:00Z'],
+    ['偏移时区 +08:00', '2026-09-14T10:30:00+08:00'],
+    ['小写 t/z 与小数秒', '2026-09-14t10:30:00.5z'],
+  ])('GET/POST 接受真实存在的 RFC3339：%s', async (_场景, 时间) => {
+    const GET请求 = vi.fn().mockResolvedValue(响应({ roles: [角色状态Wire('candidate', 时间)] }));
+    await expect(创建Onboarding数据源(GET请求).读取Onboarding()).resolves.toEqual({
+      roles: [{ role: 'candidate', status: 'active', completed_at: 时间 }],
+    });
+    const POST请求 = vi.fn().mockResolvedValue(响应(角色状态Wire('candidate', 时间)));
+    await expect(创建Onboarding数据源(POST请求).完成Onboarding('candidate'))
+      .resolves.toEqual({ role: 'candidate', status: 'active', completed_at: 时间 });
   });
 
   // ── 错误语义：原样传递，不转空 roles 或完成状态 ──

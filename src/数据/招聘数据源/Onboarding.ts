@@ -46,12 +46,27 @@ function 要求枚举<T extends string>(值: unknown, 取值: readonly T[]): T {
   throw 契约错误();
 }
 
-const RFC3339模式 = /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/;
+const RFC3339模式 = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/;
 
-/** Spec §4：completed_at 必在，为 null 或合法 RFC3339；形状或可解析性不对都拒绝。 */
+/**
+ * Spec §4：completed_at 必在，为 null 或合法 RFC3339 —— 合法指真实存在的日历时间。
+ * Date.parse 会把 2026-02-30 / 24:00 这类越界分量归一化成另一天（review-r1 F3），
+ * 与 接触记录.ts 的 要求RFC3339 同口径：把分量按原时区偏移还原回去逐一比对，
+ * 任何被归一化的不存在时间都按契约漂移拒绝；小数秒不参与分量比较。
+ */
 function 要求可空RFC3339(值: unknown): string | null {
   if (值 === null) return null;
-  if (typeof 值 !== 'string' || !RFC3339模式.test(值) || Number.isNaN(Date.parse(值))) {
+  if (typeof 值 !== 'string') throw 契约错误();
+  const 组 = RFC3339模式.exec(值);
+  if (组 === null || Number.isNaN(Date.parse(值))) throw 契约错误();
+  const [, 年, 月, 日, 时, 分, 秒, , 区] = 组;
+  const 偏移分钟 = 区 === 'Z' || 区 === 'z'
+    ? 0
+    : (区[0] === '-' ? -1 : 1) * (Number(区.slice(1, 3)) * 60 + Number(区.slice(4, 6)));
+  const 还原 = new Date(Date.parse(值) + 偏移分钟 * 60000);
+  if (还原.getUTCFullYear() !== Number(年) || 还原.getUTCMonth() !== Number(月) - 1 ||
+    还原.getUTCDate() !== Number(日) || 还原.getUTCHours() !== Number(时) ||
+    还原.getUTCMinutes() !== Number(分) || 还原.getUTCSeconds() !== Number(秒)) {
     throw 契约错误();
   }
   return 值;

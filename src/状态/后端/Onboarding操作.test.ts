@@ -270,7 +270,7 @@ describe('完成Onboarding角色：POST 与登记', () => {
     expect(deps.主体标识引用.current).toBeNull();
   });
 
-  it('栅栏破防（换会话）后的迟到成功不写新 scope', async () => {
+  it('栅栏破防（换会话）后的迟到成功不写新 scope，并以会话已变化拒绝', async () => {
     const 迟到 = deferred<ReturnType<typeof 角色行>>();
     const 后端 = 数据源({ 完成Onboarding: vi.fn(() => 迟到.promise) });
     const { deps } = 创建Onboarding测试依赖(后端);
@@ -279,8 +279,62 @@ describe('完成Onboarding角色：POST 与登记', () => {
     deps.主体标识引用.current = 'sub_b';
     deps.会话代际.current += 1;
     迟到.resolve(角色行('candidate', 完成时间));
-    await 调用;
+    await expect(调用).rejects.toMatchObject({
+      status: 0, code: 'invalid_request', message: '会话已变化，本次完成未生效',
+    });
     expect(最终Onboarding(deps).阶段).toBe('未读取');
+  });
+
+  // ── codex review-r1 F1：迟到的旧会话完成回执不得污染新会话 ──
+  // 旧缺陷：登记Onboarding完成 无条件先推进共享请求序号再查栅栏，迟到的旧 POST 会
+  // 把新会话在飞 GET 捕获的序号快照作废；且完成调用仍以成功返回，调用方继续收口。
+  it('换账号后迟到的完成回执：complete 拒绝、序号不被污染，新会话在飞 GET 照常落地', async () => {
+    const 迟到POST = deferred<ReturnType<typeof 角色行>>();
+    const 新GET = deferred<BFFOnboarding状态>();
+    const 后端 = 数据源({
+      完成Onboarding: vi.fn(() => 迟到POST.promise),
+      读取Onboarding: vi.fn(() => 新GET.promise),
+    });
+    const { deps } = 创建Onboarding测试依赖(后端);
+    deps.主体标识引用.current = 'sub_a';
+    const 调用 = 完成Onboarding角色(deps, 'candidate');
+    // A 的 POST 在飞时换到账号 B，并已开始 B 的 GET（序号快照已被该 GET 捕获）
+    deps.主体标识引用.current = 'sub_b';
+    deps.会话代际.current += 1;
+    const 新会话读取 = 水合Onboarding(deps, 'sub_b', 1);
+    迟到POST.resolve(角色行('candidate', 完成时间));
+    await expect(调用).rejects.toMatchObject({
+      status: 0, code: 'invalid_request', message: '会话已变化，本次完成未生效',
+    });
+    新GET.resolve(Onboarding状态([角色行('candidate', null)]));
+    await 新会话读取;
+    // 旧会话回执不推进序号：B 的 GET 结果照常落地，状态里没有 A 的完成回执
+    expect(最终Onboarding(deps)).toEqual({
+      阶段: '成功',
+      数据: { roles: [角色行('candidate', null)] },
+    });
+  });
+
+  it('同主体换会话代际（切身份/重登）后的迟到完成回执：同样拒绝且序号不被污染', async () => {
+    const 迟到POST = deferred<ReturnType<typeof 角色行>>();
+    const 新GET = deferred<BFFOnboarding状态>();
+    const 后端 = 数据源({
+      完成Onboarding: vi.fn(() => 迟到POST.promise),
+      读取Onboarding: vi.fn(() => 新GET.promise),
+    });
+    const { deps } = 创建Onboarding测试依赖(后端);
+    deps.主体标识引用.current = 'sub_1';
+    const 调用 = 完成Onboarding角色(deps, 'candidate');
+    deps.会话代际.current += 1; // 主体未变，会话代际翻新
+    const 新会话读取 = 水合Onboarding(deps, 'sub_1', 1);
+    迟到POST.resolve(角色行('candidate', 完成时间));
+    await expect(调用).rejects.toMatchObject({ message: '会话已变化，本次完成未生效' });
+    新GET.resolve(Onboarding状态([角色行('candidate', null)]));
+    await 新会话读取;
+    expect(最终Onboarding(deps)).toEqual({
+      阶段: '成功',
+      数据: { roles: [角色行('candidate', null)] },
+    });
   });
 });
 
