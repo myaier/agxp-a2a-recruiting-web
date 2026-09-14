@@ -12,6 +12,8 @@
 
 后端 API 的批准文档、revision/blob 见 Spec §1、接口见 §4。前端调查基线 `5825ff47a27600cbe5591fb1a9a5fe43e7201272`，target `origin/main`，最终获批后 push `refs/heads/main`。工作区 `.`，不创建第二个用户工作区。后端 checkout 由用户提供，不在交付中固化机器路径。
 
+本文Plan中的HTTP路径写作origin根相对路径（如 `api/v1/me/onboarding`），实际发送时带起始斜杠；精确路由见批准Spec§4。此约定不适用于仓库文件路径。
+
 ## Global Constraints
 
 - 仅上述 Spec 范围。后端不在本任务写入范围；设计冻结允许并行编码，不代表实际 STG 已提供接口。
@@ -125,7 +127,7 @@ interface Onboarding数据源 {
 POST decoder额外保证status active、completed_at非null及role与参数相同。HTTP招聘数据源组合该域并再导出类型；字段closed、数组顺序/无重复与RFC3339按批准Spec，不建通用validator库。
 
 - [ ] 写失败测试：GET空roles、两角色不同时间；缺键/额外键/未知role/status、重复/逆序角色、错误时间、缺completed_at拒绝；null仅查询允许。POST严格{}、两角色路径、成功同角色active非null；未知结果错误原样传递。
-- [ ] GET `/api/v1/me/onboarding` 使用既有no-store选项；POST `/api/v1/me/onboarding/{role}/complete` 不发If-Match/新增幂等键。无效运行时role在发送前拒绝，保持客户端错误语义。
+- [ ] GET `api/v1/me/onboarding` 使用既有no-store选项；POST `api/v1/me/onboarding/{role}/complete` 不发If-Match/新增幂等键。无效运行时role在发送前拒绝，保持客户端错误语义。
 - [ ] 复用HTTP客户端 envelope/fieldErrors处理。非法成功响应抛invalid_response，401/403/422/503不转空roles；正常/me样本与decoder保持不变。
 - [ ] HTTP facade测试确保工厂确实暴露两个方法且路径/body正确，正常请求走真实域decoder；定向红绿通过后提交。
 
@@ -141,8 +143,8 @@ npx vitest run src/数据/招聘数据源/Onboarding.test.ts src/数据/HTTP招�
 
 预期编辑文件：
 - 新增：`src/状态/后端/Onboarding操作.ts`、`src/状态/后端/Onboarding操作.test.ts`。
-- 修改：`src/状态/后端/类型.ts`、`src/状态/后端/会话操作.ts`、`src/状态/后端/会话操作.test.ts`、`src/状态/后端/候选操作.ts`、`src/状态/后端/候选操作.test.ts`、`src/状态/应用状态.tsx`、`src/状态/应用状态.test.ts`、`src/应用.tsx`、`src/应用.test.tsx`、`src/屏幕/选身份.tsx`、`src/屏幕/选身份.test.tsx`、`src/屏幕/招聘名片.tsx`、`src/屏幕/招聘名片.test.tsx`、`src/屏幕/添加头像.tsx`、`src/屏幕/添加头像.test.tsx`、`src/测试/操作桩.ts`、`e2e/数据源模式.spec.ts`、`e2e/J-PILOT-02接线.spec.ts`。
-- 条件修改：`src/流程/候选Onboarding预填边界.tsx`、`src/流程/候选Onboarding预填边界.test.tsx`，限已完成时阻止旧预填/草稿自动重放；先核对现有实际文件名，等价路径调整只记录不扩设计。
+- 修改：`src/状态/后端/类型.ts`、`src/状态/后端/会话操作.ts`、`src/状态/后端/会话操作.test.ts`、`src/状态/后端/候选操作.ts`、`src/状态/后端/候选操作.test.ts`、`src/状态/应用状态.tsx`、`src/状态/应用状态.test.ts`、`src/应用.tsx`、`src/应用.test.tsx`、`src/屏幕/选身份.tsx`、`src/屏幕/选身份.test.tsx`、`src/屏幕/招聘名片.tsx`、`src/屏幕/招聘名片.test.tsx`、`src/屏幕/添加头像.tsx`、`src/屏幕/添加头像.test.tsx`、`src/测试/操作桩.ts`、`e2e/数据源模式.spec.ts`、`e2e/J-PILOT-02接线.spec.ts`、`e2e/fixtures/P1展示统一.ts`、`e2e/fixtures/展示字段接线.ts`。
+- 条件修改：`e2e/P1展示统一.spec.ts`、`e2e/展示字段接线.spec.ts`（只更新确实受新增查询影响的请求断言）；`src/流程/候选Onboarding预填边界.tsx`、`src/流程/候选Onboarding预填边界.test.tsx`，限已完成时阻止旧预填/草稿自动重放；先核对现有实际文件名，等价路径调整只记录不扩设计。
 - 删除：无。不新增sessionStorage完成标志、逐屏后端进度或route mock服务。
 
 状态接缝：在后端状态中新增required `Onboarding` 判别union（未读取/加载中/成功{数据:BFFOnboarding状态}/失败{错误}），错误承载复用现有BFF错误类型。应用操作增 `刷新Onboarding():Promise<BFFOnboarding状态>` 与 `完成角色Onboarding(role:BFF角色):Promise<BFFOnboarding角色状态>`，放既有创建操作组合。Mock不发网络且沿原页面流程；不要用一个假completed=true更新Backend状态。
@@ -156,11 +158,12 @@ npx vitest run src/数据/招聘数据源/Onboarding.test.ts src/数据/HTTP招�
 - [ ] 招聘名片本次profile和选定头像写成功后、注册流导航前调用完成角色Onboarding('recruiter')。完成失败不得重复创建名片或重新上传已经成功头像；复用已有已保存结果/操作幂等，重试以完成操作为主。普通名片编辑不强制complete或跳发岗。无公司但后端已完成的用户可正常回访，保留当前注册UI公司选择步骤。
 - [ ] 422按冻结path给可行动中文提示：姓名/status、完整教育、意向、招聘名片；留当前草稿，引导用户正常导航到相应现有页面，不后台补写。未知503给重试/查证；当前401才清账号。不得把“本轮确认”的前端草稿字段传完成API。
 - [ ] 组件覆盖已完成+旧草稿、未完成+有效草稿、无草稿完整资料但完成null（仍引导）、已完成后删最后意向（仍主页）、停用、有角色偏好null、保存失败保留输入、普通名片编辑、首次名片完成后首岗不被截断。
-- [ ] 更新两个现有E2E文件的按测试可变Onboarding fixture：GET输出真实样本，POST模拟对应状态变化用于浏览器接线验证；不在通配路由一律返回已完成来躲测试。fixture继承现有role/subject隔离。
-- [ ] 定向测试通过后提交，完整Playwright留确认前权威一轮；若定向发现跨页风险需要提前运行受影响具体测试可用现有grep，记录后续复用。
+- [ ] 更新数据源模式、J-PILOT-02及P1/展示字段接线共享fixture的Onboarding响应：GET输出真实样本，POST模拟对应状态变化用于浏览器接线验证；不在通配路由一律返回已完成来躲测试。fixture继承现有role/subject隔离；P1/展示字段接线的主页用例返回对应角色已完成，未知路径仍503。对应spec的精确请求数量若新增GET而变化，只调整该合法增量。
+- [ ] 定向测试通过后提交，P1/展示字段接线用下述现有Playwright定向命令验证白名单接线，完整Playwright留确认前权威一轮；若定向发现跨页风险需要提前运行受影响具体测试可用现有grep，记录后续复用。
 
 ```sh
 npx vitest run src/状态/后端/Onboarding操作.test.ts src/状态/后端/会话操作.test.ts src/状态/后端/候选操作.test.ts src/状态/应用状态.test.ts src/应用.test.tsx src/屏幕/选身份.test.tsx src/屏幕/招聘名片.test.tsx src/屏幕/添加头像.test.tsx
+npx playwright test --config=playwright.数据源模式.config.ts e2e/P1展示统一.spec.ts e2e/展示字段接线.spec.ts --project=backend-stg --grep @backend
 ```
 
 完成条件：三类入口同一语义、两个完成按钮接线、已完成事实优先但输入不误丢、未知结果不误清；不靠真实STG先跑才发现基础分流。
@@ -210,4 +213,10 @@ L3 selection：`stg-onboarding` required；candidate/manual、recruiter/manual�
 
 ## 文档 review 与实施记录
 
-本Plan候选待Claude异构文档review；范围仅批准Spec与本文，不审其他分支内容、不跑产品测试。记录将在本节就地追加，不新建review文件。当前无实施、测试计时或STG证据；不得预填通过数。
+2026-09-14：Claude Opus/high，WORKFLOW_DOCUMENT_REVIEW，一轮，只读、无测试。批准Spec为header精确版本；受审Plan revision b2063198b928dc17db6481e31a1c29e470617604 / blob 3298ddc72835329f1981aa81a130def0dd7fc1ab。审阅前后HEAD、工作区状态和两份受审文件指纹一致。
+
+|finding|裁决与依据|状态|
+|---|---|---|
+|R1-1 Important/契约违反；required；复杂度不变：Task4漏P1/展示字段接线的Backend fixture|核实两文件未知API均503，会被新必需GET阻断主页。Task4补两fixture、条件消费者spec和现有Playwright定向命令。只补对应角色状态，不放行通配路径，不新增框架。|接受并修复；不改变批准Spec|
+
+有效required未解决0，按review-loop结束规则停止；不声称原报告NO FINDINGS或Claude重新审阅了修订。仅另做HTTP路径书写规范化以通过交付可迁移检查，不变更端点。当前无实施、业务测试计时或STG证据；不得预填通过数。
