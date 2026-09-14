@@ -34,7 +34,7 @@ function 创建隐私测试依赖(后端: HTTP招聘数据源, 服务端: BFF隐
     后端状态引用: { current: {
       初始化: '完成' as const, 已登录: true, 主体: null, 简历快照: null,
       // Onboarding 运行态显式播种（本域用例不触达）
-       Onboarding: 创建空Onboarding状态(),
+      Onboarding: 创建空Onboarding状态(),
       意向快照: {}, 岗位快照: {}, 隐私快照: 服务端,
       // P6：Task 3 起 后端状态 携带 Agent 规则原始快照与水合阶段（这里的用例不触达它们）
       候选规则快照: {}, 招聘规则快照: {}, 候选规则提案: {}, 招聘规则提案: {},

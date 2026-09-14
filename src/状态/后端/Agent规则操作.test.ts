@@ -132,7 +132,7 @@ function 种子后端状态(role: BFF角色 | null): 后端状态 {
   return {
     初始化: '完成',
     // Onboarding 运行态显式播种（本域用例不触达）
-     Onboarding: 创建空Onboarding状态(),
+    Onboarding: 创建空Onboarding状态(),
     已登录: role !== null,
     主体: role === null ? null : ({ ...BFF主体样本, last_used_role: role }),
     简历快照: null,

@@ -52,7 +52,7 @@ function 创建测试后端状态(覆盖: Partial<后端状态> = {}): 后端状
   return {
     初始化: '完成', 已登录: true, 主体: null, 简历快照: null, 意向快照: {}, 岗位快照: {},
     // Onboarding 运行态显式播种（本域用例不触达）
-     Onboarding: 创建空Onboarding状态(),
+    Onboarding: 创建空Onboarding状态(),
     隐私快照: null,
     // P6：Task 3 起 后端状态 携带 Agent 规则原始快照与水合阶段（这里的用例不触达它们）
     候选规则快照: {}, 招聘规则快照: {}, 候选规则提案: {}, 招聘规则提案: {},
@@ -538,7 +538,7 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
   let 后端值: 后端状态 = {
     初始化: '完成',
     // Onboarding 运行态显式播种（本域用例不触达）
-     Onboarding: 创建空Onboarding状态(),
+    Onboarding: 创建空Onboarding状态(),
     已登录: true,
     主体: null,
     简历快照: null,

@@ -110,7 +110,7 @@ function 创建P7操作测试环境(是后端 = true, 源 = 创建P7数据源())
   let 后端值: 后端状态 = {
     初始化: '完成',
     // Onboarding 运行态显式播种（本域用例不触达）
-     Onboarding: 创建空Onboarding状态(),
+    Onboarding: 创建空Onboarding状态(),
     已登录: true,
     主体: 候选主体,
     简历快照: null,
