@@ -35,6 +35,8 @@ import type {
   BFF招聘MatchCase详情,
   BFF候选工作区项,
   BFF招聘工作区项,
+  BFFOnboarding角色状态,
+  BFFOnboarding状态,
 } from '../数据/BFF契约';
 import type { 在招岗位 } from '../数据/类型';
 
@@ -643,4 +645,24 @@ export const 招聘候选摘要样本: BFF招聘候选摘要 = {
   latest_experience: { company: '示例公司', title: '软件工程师' },
   latest_education: { institution: '示例大学', major: '计算机科学' },
   personal_highlights: ['带领5人团队交付'],
+};
+
+// ── Onboarding（stg 契约对齐 2026-09-14，Spec §4）──
+
+/** GET 未完成：查询允许 completed_at 为 null。 */
+export const BFFOnboarding角色状态样本: BFFOnboarding角色状态 = {
+  role: 'candidate',
+  status: 'active',
+  completed_at: null,
+};
+
+/** POST 完成回执：active 且 completed_at 非空。 */
+export const BFFOnboarding完成角色状态样本: BFFOnboarding角色状态 = {
+  role: 'recruiter',
+  status: 'active',
+  completed_at: '2026-08-24T00:00:00Z',
+};
+
+export const BFFOnboarding状态样本: BFFOnboarding状态 = {
+  roles: [BFFOnboarding角色状态样本, BFFOnboarding完成角色状态样本],
 };

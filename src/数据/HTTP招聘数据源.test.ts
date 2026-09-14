@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BFF简历样本, BFF意向样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索项样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本, BFF发现批次样本, P5状态视图Wire, P5工作区职位Wire } from '../测试/BFF样本';
+import { BFF简历样本, BFF意向样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索项样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本, BFF发现批次样本, BFFOnboarding完成角色状态样本, BFFOnboarding状态样本, P5状态视图Wire, P5工作区职位Wire } from '../测试/BFF样本';
 import { BFF错误, 客户端校验错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
 import { 从BFF简历, 从BFF意向草稿 } from './后端映射';
 import type { 建档待写入, 建档写入回执 } from './招聘数据源类型';
@@ -864,6 +864,8 @@ describe('HTTP 招聘数据源', () => {
       '读取候选实名', '创建候选实名申请', '取消候选实名申请',
       // J-PILOT-01 连续代谈域（候选 me/negotiations）
       '读取候选连续列表', '读取候选连续详情', '重试候选连续记录', '归档候选连续记录',
+      // stg onboarding 契约对齐域（me/onboarding 读取与角色完成）
+      '读取Onboarding', '完成Onboarding',
     ].sort());
     // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
     expect(Object.keys(source)).not.toContain('读取公开岗位');
@@ -872,6 +874,26 @@ describe('HTTP 招聘数据源', () => {
     expect(Object.keys(source)).not.toContain('创建候选岗位watch');
     expect(Object.keys(source)).not.toContain('撤销候选岗位不感兴趣');
     expect(Object.keys(source)).not.toContain('读取候选岗位委托列表');
+  });
+
+  // Task 3（stg onboarding 契约对齐）：第十八个域 facade 组合后走真实域 decoder 与冻结路径。
+  it('根 facade 组合 onboarding 域并按冻结路径与严格解码请求', async () => {
+    请求Mock.mockImplementation(async (options: BFF请求选项) => {
+      if (options.method === 'POST') {
+        return { result: BFFOnboarding完成角色状态样本, etag: null, requestId: 'r-complete' };
+      }
+      return { result: BFFOnboarding状态样本, etag: null, requestId: 'r-read' };
+    });
+    const source = 创建HTTP招聘数据源(依赖());
+    await expect(source.读取Onboarding()).resolves.toEqual(BFFOnboarding状态样本);
+    await expect(source.完成Onboarding('recruiter')).resolves.toEqual(BFFOnboarding完成角色状态样本);
+    expect(请求Mock.mock.calls.map(([options]) => options)).toEqual([
+      { path: '/api/v1/me/onboarding', 不缓存: true },
+      { path: '/api/v1/me/onboarding/recruiter/complete', method: 'POST', body: {} },
+    ]);
+    // 非法成功响应经真实域 decoder fail closed，不做 `as` 直转
+    请求Mock.mockResolvedValue({ result: { roles: [], extra: true }, etag: null, requestId: 'r-drift' });
+    await expect(source.读取Onboarding()).rejects.toMatchObject({ status: 200, code: 'invalid_response' });
   });
 
   // Task 1（接触记录）：第十六个域 facade 组合后经共用 mock client 捕获正确的 contact-events 路径。

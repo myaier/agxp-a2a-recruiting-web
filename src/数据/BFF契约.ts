@@ -1315,3 +1315,17 @@ export type BFFJD导入 =
   | (BFFJD导入基础 & { status: 'pending' | 'processing' })
   | (BFFJD导入基础 & { status: 'succeeded'; suggestion: BFFJD建议 })
   | (BFFJD导入基础 & { status: 'failed'; failure_code: BFFJD导入失败码 });
+
+// ── Onboarding 产品 API（stg 契约对齐 2026-09-14，Spec §4 冻结）──
+// GET /api/v1/me/onboarding 与 POST /api/v1/me/onboarding/{role}/complete 的 result。
+// role/status 闭集、completed_at 必在且为 null 或合法 RFC3339、GET 列表 candidate→recruiter
+// 最多两项无重复、POST 额外保证 active/非空时间/role 与请求一致，
+// 由 招聘数据源/Onboarding.ts 的 strict decoder 校验。
+
+export type BFFOnboarding角色状态 = {
+  role: BFF角色;
+  status: 'active' | 'suspended';
+  completed_at: string | null;
+};
+
+export type BFFOnboarding状态 = { roles: BFFOnboarding角色状态[] };
