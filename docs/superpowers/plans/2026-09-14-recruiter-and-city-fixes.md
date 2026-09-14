@@ -186,7 +186,7 @@ use城市默认页(查询Location: 查询Location方法 | undefined): {
 
 #### 步骤与验证
 
-- [ ] **真实ID前置：** 读 Spec§6.2的22项及后端快照出处；定位执行环境提供的后端checkout，读其规则和local启动说明。按dogfood文档使用健康的测试栈/账号，GET `/api/v1/catalog/locations` 核对每项ID、国家、城市与可选返回。大陆可按CN首页核对12项；海外按表中国家+API原名查询，翻页直到命中精确ID或明确无结果。仅开发核验可以逐项查，运行产品禁止首载22次搜索。后端未运行时按现有启动文档准备，不能改其代码或占用/关闭他人的栈；外部前置缺失记BLOCKED。保存非敏感核验摘要和原始证据于 `dogfood-output/<run-id>/`，记录backend commit、catalog_version。
+- [ ] **真实ID前置：** 读 Spec§6.2的22项及后端快照出处；定位执行环境提供的后端checkout，读其规则和local启动说明。按dogfood文档使用健康的测试栈/账号，GET `/api/v1/catalog/locations` 核对每项ID、国家、城市与可选返回。大陆CN首页仅作核验快捷路径；未命中的国内精选和海外精选都继续按各自countryCode分页，或按countryCode+API原名查询并翻页，直到命中精确ID或结果穷尽。首页未命中不等于不可验证。仅开发核验可以逐项查，运行产品禁止首载22次搜索。后端未运行时按现有启动文档准备，不能改其代码或占用/关闭他人的栈；外部前置缺失记BLOCKED。保存非敏感核验摘要和原始证据于 `dogfood-output/<run-id>/`，记录backend commit、catalog_version。
 - [ ] 若任一精选无法真实核实，不生成可提交假城市；可先做其余确定的查询/页面工作，但Task4与最终交付保持未完成，不能用快照替代接口核验。确认后的ID表才能进入 `城市精选.ts`，以实际回包为准的等价ID更新需记录原因；换产品城市需重新确认。
 - [ ] **先RED：** 用现有hook测试助手追加按countryCode分发的promise桩：首次仅四国、各自分页、同tick单飞、一国首页失败后重试、追加失败保留cursor、版本重开失败再试从首页、跨国家响应拒收、卸载迟到结果不提交；保留全局搜索的q无国家限制/清空/换词迟到反例。
 - [ ] 在三个页面测试中都断言两个精选区、无港澳台精选、三个中文组标题与英文可选条目、全球搜索与清空恢复、按ID选择；不要继续用默认首页动态项当热门的断言。选工作城市覆盖注册多选与 `来源=意向` 单选；选择城市覆盖主城市排除、9上限、历史/取消/保存；引导问答覆盖默认和搜索第二页可达及原建档引用保存。
@@ -233,7 +233,13 @@ npm run ui:check -- --base "$START_BASE"
 
 ## 文档 review 记录
 
-候选范围仅本Plan与批准Spec。使用 WORKFLOW_DOCUMENT_REVIEW，scope_approved_by_parent_workflow=true；reviewer为Claude opus/high，plan权限、只读且不跑测试。逐轮精确revision/blob、finding裁决与结论在实际审查后写入本节；当前尚未获得review结论，不据此生成执行提示词。
+已完成1轮 WORKFLOW_DOCUMENT_REVIEW，scope_approved_by_parent_workflow=true。reviewer为Claude CLI 2.1.270，opus/high，permission-mode plan，独立session，未运行测试。批准Spec引用见header；冻结候选revision `e1d247e86fe970f05ac403e14b78255dd4f37474`，Spec blob `0d19bf56241fab334d53b9b8cfec121351a848ed`，Plan blob `6602ad3f577bf7f4654b8ac8a4d4f1968cf22147`。范围为这两个文档与必要规则；reviewer另读取少量接线源码/包脚本来核实文档描述，未执行分支代码审查或修改。审查后guard确认status、HEAD、两文件指纹与审查前一致。
+
+|Finding|裁决与依据|必要性|复杂度影响|改变批准契约|
+|---|---|---|---|---|
+|R1-1：国内精选真实ID核验只提CN首页，未命中可能误判阻塞|接受并修正：CN首页仅为快捷路径，未命中时与海外一样继续按国家分页/搜索直到精确ID命中或结果穷尽。后端快照当前精选排前12，但零上下文执行不应依赖运行环境永远同排序|optional|不变|否|
+
+结论：0个required、1个optional已由planner核实修正，0个未解决finding。依claude-review-loop停止条件“裁决后无未解决有效required”结束，不为零建议追加复审。上述一句核验说明为审查后planner修正，未另经Claude复审；产品范围不变。文档review不替代新实施session的代码review。最终Plan的revision/blob由执行提示词固定，不在本文件写自身hash造成递归。
 
 ## 实施记录
 
