@@ -731,6 +731,29 @@ describe('发布岗位页 Backend 选择器', () => {
     expect(类型们).not.toContain('改意向草稿');
   });
 
+  // review Important：子视图占位区关闭时必须接管外壳的满高 flex 链，否则 .发布壳 的
+  // flex:1 相对内容高解析、高度链断裂。jsdom 不证布局，这里只钉结构契约。
+  it('城市子视图占位区关闭时保持外壳满高 flex 链，打开时退出无障碍树', async () => {
+    await 填到发布前(true);
+    const 占位区 = document.querySelector('[aria-busy]')!.parentElement as HTMLElement;
+    // 关闭态：接管 .次级页外壳 的满高语义（display:flex + flex:1 + min-height:0），
+    // .发布壳 的 flex:1 继续有效
+    expect(占位区.hidden).toBe(false);
+    expect(占位区.style.display).toBe('flex');
+    // jsdom 把 flex:1 展开成完整缩写
+    expect(占位区.style.flex).toBe('1 1 0%');
+    expect(占位区.style.minHeight).toBe('0px');
+    expect(占位区.style.flexDirection).toBe('column');
+    // 打开态：display 显式 none + hidden 仍置位（author display 不压过折叠）
+    await userEvent.click(screen.getByRole('button', { name: /工作城市/ }));
+    await screen.findByText('选择工作城市');
+    expect(占位区.hidden).toBe(true);
+    expect(占位区.style.display).toBe('none');
+    await userEvent.click(screen.getByRole('button', { name: '返回' }));
+    expect(占位区.hidden).toBe(false);
+    expect(占位区.style.display).toBe('flex');
+  });
+
   // ── P0 修复 Task 4：JobCreate 的三条独立必填文本 ──
 
   it('第三步公开岗位要求与私有筛选要求各有独立空白多行输入', async () => {

@@ -1160,8 +1160,15 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
 
       {/* Task 2：城市全页子视图打开时，原步骤/操作区（含文件框与各弹层）保持挂载但
           hidden —— 退出键盘与无障碍树；兄弟正文填满页面容器。不换路由、无新 history
-          条目，浏览器返回沿旧 route 离开；本次选择查询/临时状态随子视图销毁。 */}
-      <div hidden={城市子视图}>
+          条目，浏览器返回沿旧 route 离开；本次选择查询/临时状态随子视图销毁。
+          review Important：wrapper 必须接管外壳的满高语义（flex:1/min-height:0/纵向
+          flex），否则 .发布壳 的 flex:1 只能相对内容高的中间 div 解析，高度链断裂；
+          display 随子视图开合显式切换 —— 仓库没有全局 [hidden] 规则，任何固定的
+          author display 都会压过 UA 的 [hidden]{display:none} 使折叠失效。 */}
+      <div
+        hidden={城市子视图}
+        style={{ flex: 1, minHeight: 0, display: 城市子视图 ? 'none' : 'flex', flexDirection: 'column' }}
+      >
       {/* 一键上传 JD 的隐藏文件框：只收 PDF；选中即清 value 允许重选同一文件；
           consent 前零请求（2026-09-03 接线，位置与 inline style 不变） */}
       <input
