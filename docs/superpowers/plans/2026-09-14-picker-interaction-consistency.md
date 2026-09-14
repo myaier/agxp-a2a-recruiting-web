@@ -250,3 +250,43 @@ Planner附加自检：既有薪资区间层.test.tsx由“新增”改为“修�
 | 真人会话操作栏 详情层 | `.详情层` | height:100%（非 max-height） | 行为不变 | `.详情正文区` flex:1/min-height:0/overflow-y:auto | 不受影响（order 置底的「继续沟通」首开焦点结构未动） |
 
 居中消费者（单列，不受 bottom 修改影响）：`确认层`、岗位管理 / 屏蔽名单 / 企业设置 / 岗位详情 / 发布岗位(删确认) / 设置 / 账号安全(注销确认) / 登录区号层 —— 全部 `位置="居中"`，居中分支保持 `maxHeight:'none'`（弹层框架.test 断言 position static + maxHeight none）。非弹层框架的 max-height/overflow 命中（岗位详情折叠正文、标注层、代理详情、通用输入框、顶部意向栏、可编辑规则行等）与弹层无关。新增受影响者仅上述两家，均为修复的同向变化；已由全量单测（219 文件 / 4947 用例 PASS）佐证。
+
+### 实施进度与 review 对账（2026-09-14，执行会话收尾）
+
+实施（分支 `audit-job-position-backend`，调查基线 `5825ff47`）：
+
+| Task | 提交 | review 与修复 |
+|---|---|---|
+| 1 行业折叠列表+弹层滚动 | `19cbc64c` + 落档 `424b569a` + 修复 `ea54cca9` | spec ✅/quality Needs fixes（在飞标记作废缺陷）→ fix r1 re-review ADDRESSED |
+| 2 全页城市+岗位子视图 | `3b2771ff` + 修复 `b1d06487` | spec ✅/quality Needs fixes（wrapper flex 链）→ fix r1 re-review ADDRESSED（反论核实：仓库无全局 `[hidden]` 规则） |
+| 3 月薪双滚轮 | `7a8e0c11` | 双 review 一次通过 |
+| 4 可空年份+Mock 种子 | `46466326` | 双 review 一次通过（清单外 6 行错误样式裁决采纳，intent 补登） |
+| 5 @picker 两模式回归 | `498c4bd2` + 修复 `b748ab11` | spec ❌/quality（提交原金额断言缺口、年份 reseed 架空）→ fix r1 re-review ADDRESSED |
+| 全局 | whole-branch review（宿主内）：Ready to merge（0C/0I/6M）+ 卫生 wave `179f9ccb`（恒真断言/updater 轻提示/种子死展开/e2e 死闭包/EOF），scoped re-review 全绿 |
+
+控制端 Rulings（记档）：`城市项.禁用?:boolean` 采纳（Spec §4.3）；e2e `onboarding.spec.ts:270`、`换壳无闪屏.spec.ts:193` 并入 Task 5 最小更新；Task 5 对 Ruling 外同理由修复（期望行业两模式/自填/行名箭头）与 `安装BFF路由` 三处 fixture 合同形状补齐（organization_ref / jobs ref 键 / verification_status）均采纳，review 核实纯测试形状。
+
+异构 review-loop（Codex `gpt-5.6-sol/high`，thread `01a09f3b`，base `5825ff47`，绑定批准 Spec `ad6abf85@e84dc211` 与 `../_shared/review-contract.md`，reviewer 只读不跑测试）：
+
+- R1（候选 `179f9ccb`，guard PASS）：2 findings 均 Important/required，控制端逐条核实成立并接受，修复 `264abe8c`：
+  1. 行业目录钩子：子树换版的全局代际误伤兄弟分支在飞请求，B 缓存被 finally 落成成功空页、永久「暂无内容」——修法：`写子页` 换代分支不再递增全局代际（子树作废由缓存摘除+在飞释放保证），`载入子页` 写回路径加 `子表[父键]?.序 === 序号` 逐请求所有权校验；TDD RED 症状与缺陷一致。
+  2. 发布岗位：Mock 保存城市后重开子视图 `初始已选` 恒空（无 chip、保存禁用），两模式不对称——修法：Mock 分支用当前 `工作城市` 文本构造初始已选（已核实 Mock 下该文本只来自正文保存/既有记录，JD 导入只写搜索初词）；e2e @mock 用例补「保存后重开→chip 回显→取消」步骤代码（轮间不跑浏览器，随 @picker 全量验证）。
+- R2（候选 `264abe8c`，guard PASS）：exact `NO FINDINGS`。Loop 两轮干净结束。
+
+L0–L2 完整责任清单（候选 `f74a50e5`，`264abe8c` 之后仅 e2e 一行等义改写 `f74a50e5` 删未用 `fixture` 绑定，lint 零 warning）：
+
+| 责任 | 命令 / selection | 结果 | 输出位置 |
+|---|---|---|---|
+| 单元并集（T1 七文件+T2 四+T3 二+T4 三+非空三） | `npm test -- <17 个去重文件>` | 17 files / 383 tests PASS（31.7s） | 本会话终端，2026-09-14 |
+| 类型 | `npm run typecheck` | PASS | 同上 |
+| 静态 | `npm run lint`（oxlint） | PASS（f74a50e5 后零 warning） | 同上 |
+| 生产打包 | `npm run build` | PASS（✓ built in 682ms） | `/tmp/build-gate.log` |
+| @picker 浏览器回归 | `npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --project=mock-stg --project=backend-stg --grep @picker --workers=1` | 10 passed（42.3s，mock-stg 5 + backend-stg 5，含 R1-F2 重开回显步骤） | `/tmp/picker-gate.log` |
+| Ruling 两文件单测 | `npx playwright test e2e/onboarding.spec.ts -g "publishes an internship with explicit recruiter screening fields" --workers=1`；同型 换壳无闪屏 `-g "招聘端"` | 各 1 passed | `/tmp/legacy-onboarding-gate.log`、`/tmp/legacy-huanshke-gate.log` |
+| 复用有效 PASS | T4 定向（卫生 wave 已复跑 113+154，`264abe8c`/`f74a50e5` 未触碰其文件） | 有效复用，未重跑 | task-4-report.md、卫生 wave 报告 |
+
+依赖/运行时/fixture：React 19 + Vite + Vitest（node 24，ExperimentalWarning: localStorage 为既有环境噪音，与结果无关）；@picker 用 `playwright.数据源模式.config.ts`（mock-stg 4181 / backend-stg 4182，chrome channel，route fixture 全拦截，Mock 断言零 `/api/v1`）；Ruling 单测用默认 `playwright.config.ts`（mobile-chromium，dev 4173）。
+
+已知遗留红灯（核实与本分支无关，归各自计划收尾，不阻塞本轮）：`核心编辑 简历行业 @mock/@backend`（contract C 必填输入变化）、岗位 @backend / JD 导入 / 发岗向导调用方（P1C 水合+合同 C 企业选择行）、`候选 onboarding Backend fixture @backend`（伪默认删除与候选空偏好共同前提失效，其修复属候选端所在计划）、`P3 Backend 隐私主链路 @backend`（stash 基线同签名红灯）。
+
+pre-gate target 事实（只读 fetch，2026-09-14）：`origin/main` = `fab0a35590248e6e19ac761c4f5567c68473467b`，较分支基点 `5825ff47` 新增 15 提交（另一「招聘者与城市前端修复」计划：含 `选工作城市.tsx/.test`、`城市查询钩子.ts/.test` 等 4 文件与本分支 Task 2 文件重叠，merge 时需语义调和其「精选城市/默认目录范围/失败反馈」与本次「错误/重试+共用正文」改动）。
