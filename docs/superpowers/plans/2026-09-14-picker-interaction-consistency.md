@@ -290,3 +290,31 @@ L0–L2 完整责任清单（候选 `f74a50e5`，`264abe8c` 之后仅 e2e 一行
 已知遗留红灯（核实与本分支无关，归各自计划收尾，不阻塞本轮）：`核心编辑 简历行业 @mock/@backend`（contract C 必填输入变化）、岗位 @backend / JD 导入 / 发岗向导调用方（P1C 水合+合同 C 企业选择行）、`候选 onboarding Backend fixture @backend`（伪默认删除与候选空偏好共同前提失效，其修复属候选端所在计划）、`P3 Backend 隐私主链路 @backend`（stash 基线同签名红灯）。
 
 pre-gate target 事实（只读 fetch，2026-09-14）：`origin/main` = `fab0a35590248e6e19ac761c4f5567c68473467b`，较分支基点 `5825ff47` 新增 15 提交（另一「招聘者与城市前端修复」计划：含 `选工作城市.tsx/.test`、`城市查询钩子.ts/.test` 等 4 文件与本分支 Task 2 文件重叠，merge 时需语义调和其「精选城市/默认目录范围/失败反馈」与本次「错误/重试+共用正文」改动）。
+
+### Final gate 执行记录（2026-09-14）
+
+用户批准方案后执行；中途发现与 origin/main 已合入的 `2026-09-14-recruiter-and-city-fixes`（四支城市目录/精选热门/分支重试）在 `城市查询钩子.ts`、`选工作城市.tsx` 及两测试文件合同级相撞，按方案条款中止报告；用户裁决「对方机制为底 + 我方错误/重试薄层」，据此调和并完成合入。
+
+- `final_target_base` = `fab0a35590248e6e19ac761c4f5567c68473467b`
+- merge commit = `79e13ed5`（双亲 `40c2f1a5` + `fab0a355`；调和内容：`use城市默认页` 取对方四支 CN/TW/HK/MO 模型，追加兼容 `错误`/`重试`（分支重试语义，失败与成功空页分开）；`use城市搜索` 对方实现为底叠加我方 `错误`/`重试`；`选工作城市` 保留我方共享正文提取、数据适配对方精选热门+四支分组+港澳台中文组标题；`发布岗位` 岗位城市选择层适配合并后钩子形状；双方测试套件合并保留）。
+
+最终证据对账（`INCREMENTAL_EVIDENCE`，全部在 `79e13ed5`）：
+
+```yaml
+final_target_base: fab0a35590248e6e19ac761c4f5567c68473467b
+final_affected_base: fab0a35590248e6e19ac761c4f5567c68473467b
+candidate_commit: 79e13ed5
+required_selection_receipt:
+  - 全量单元 npm test：5064/5064 PASS（53.6s，含对方新增推荐/名片/我的/城市全部套件）
+  - @picker 两项目 e2e：10 passed（45.3s，mock-stg 5 + backend-stg 5）
+  - typecheck / lint：PASS
+  - npm run build：PASS（456ms）
+  - 城市域定向（城市查询钩子/选工作城市/发布岗位/工作城市选择正文/引导问答/选择城市/备选城市选择正文）：301/301 PASS（30.7s）
+  - ui:check --base fab0a355：17 pass / 1 warning（recruiter-post-job-3 像素差 1.01%，属本计划已批准的城市选择行+月薪选择行既定视觉变化；执行端无法读图，留人工抽查 diff/recruiter-post-job-3.png）
+reused_items: Task 1 行业/弹层、Task 3 薪资、Task 4 年份定向 PASS（merge 未触碰其文件，按原 receipt 复用）
+executed_items: 上述 selection（merge 改动城市域 + 对方全量合入后以全量单元 + @picker + build 一次性覆盖）
+invalidated_items: []
+final_evidence_mode: PASS_INCREMENTAL
+```
+
+正式 L3（B02、B04 + 工作经历行业/空值年份补充）：**NOT_RUN —— 用户于 2026-09-14 明确指示本轮不执行**。此为遗留责任，非 PASS；fixture e2e 不替代真实后端验证。后续执行按 `docs/dogfood/真实后端行为验收.md` local 范围补做。
