@@ -255,3 +255,16 @@ Task 4 两条浏览器命令也是本次完整责任的一部分，证据有效�
 - final whole-branch review（opus）：**Ready to merge: Yes**，0 Critical/Important；文件范围与允许清单逐条一致零漂移；可选清理项：`e2e/fixtures/展示字段接线.ts:924` 同缺 `organization_ref`（基线已存在、本分支未触碰，合并后跟进）、readFileSync cwd 依赖、滚到简报头 失配显式化、等落定/返回值去重（授权清单外，合并后清理）。
 
 过程证据：浏览器基线与对照截图在 `ui-regression-output/agent/`（git-ignored，磁盘留存）；e2e 截图走 `testInfo.outputPath` attach；各 Task 测试命令、TDD RED/GREEN、typecheck/lint 输出见 `.superpowers/sdd/2026-09-14-agent-session-and-display-components/task-N-report.md`（git-ignored 工作区）。
+
+### 实施后收尾对账（final gate 前）
+
+- 异构 review（codex-review-loop，2/3 轮 clean）：R1 一条 required（`testInfo.attach` 未 await，证据附件可能不完整）→ 修复 `c0838452` 并按 reviewer 指定命令重验（@agent 8 passed、48 张附件落盘）；R2 精确 `NO FINDINGS`。两轮 guard（工作树/HEAD 基线比对）均 PASS。
+- affected L0–L2（候选 `c0838452`，2026-09-15）：
+  - 单元 9 文件：93/93 通过，exit 0（1.33s）。
+  - `看市场` 跨页单条：1/1 通过，exit 0。
+  - `npm run typecheck`：exit 0；`npm run lint`（oxlint）：exit 0；`npm run build`：exit 0。
+  - 浏览器命令 1（`e2e/问AI代理展示.spec.ts --grep '@agent'`）：修复后重跑 8 passed，exit 0（23.0s）。
+  - 浏览器命令 2（`P1展示统一.spec.ts --project=backend-stg` 消息 selection 10 条）：`f6046805` 时 10 passed exit 0；其后候选仅变更 docs 与 `问AI代理展示.spec.ts`，P1 spec/fixture/src/配置零变化，按增量证据原则复用，不重跑。
+- 只读 fetch：`origin/main` 仍为 `1f8c2237`（= merge-base），未推进。
+- 正式 development L3 selection：`none`（按 Plan 第 4 条：不改后端接口、写入、会话发送或持久化；实际 diff 未越出该边界）。
+- 合入动作（待用户确认后执行）：checkout main → fast-forward 到 `c0838452` → push origin main（普通 fast-forward，不 force）。增量补验方案：push 前核对 target 仍为 `1f8c2237`；若推进则停下重新对账。
