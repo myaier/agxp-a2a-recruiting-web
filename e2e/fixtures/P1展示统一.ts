@@ -611,6 +611,7 @@ export async function 安装P1路由(
           display_name: 标记.同文公司,
           verified_at: 时间戳,
           profile: {
+            display_name: 标记.同文公司,
             brand_name: 标记.同文公司,
             industry: { id: 'ind-fixture-p1', display_name: '本地生活' },
             company_size: '10000_plus',
