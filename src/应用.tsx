@@ -252,6 +252,15 @@ export default function 应用() {
     && 后端状态.已登录
     ? 判定Onboarding分流(后端状态.主体, 取Onboarding状态(后端状态))
     : null;
+  // review-r3：candidate 未完成且无草稿的 主壳 落点 —— 渲染守卫的重定向与预填清理
+  // 效应共用的同一判定。这种「即将被送回引导」的落点仍算注册会话内：/student 上传
+  // 简历只激活预填轮（source/suggestion + 恢复元数据）不建 建档草稿，重定向跳变上
+  // 烧掉在飞预填轮会让解析流程降级为手动。
+  const 候选主壳落点重定向 = Onboarding分流 !== null
+    && Onboarding分流.型 === '未完成'
+    && Onboarding分流.角色 === 'candidate'
+    && 无建档草稿
+    && 位置.pathname === 路径.主壳;
   const 位置从注册流 = Boolean((位置.state as { 从注册流?: boolean } | null)?.从注册流);
   // 完成判定被消费的表面：登录/主壳/初始化的主页落点 + 旅程入口（学生分流 / 注册流名片）。
   // 其余页面（设置/账号安全/普通名片编辑等）不被 Onboarding 阶段阻塞。
@@ -337,10 +346,12 @@ export default function 应用() {
   const 已清理路径引用 = useRef<string | null>(null);
   useEffect(() => {
     if (!预填清理就绪) return;
-    if (是活跃Onboarding位置(位置.pathname)) {
+    if (是活跃Onboarding位置(位置.pathname) || 候选主壳落点重定向) {
       // codex review-r1 P2：进入（或回到）活跃集合时复位栅栏 —— 下一次「活跃→非活跃」
       // 转移必须再清一次。否则清过 /app 后重进 onboarding 激活新轮、再退回 /app 时，
       // 路径相同被去重跳过，新 suggestion 与恢复元数据会活到刷新。
+      // review-r3：被拦截重定向的 /app 落点同属注册会话 —— 本帧只复位栅栏返回，
+      // 不把在飞预填轮当「已离开注册会话」清掉。
       已清理路径引用.current = null;
       return;
     }
@@ -447,16 +458,13 @@ export default function 应用() {
     }
   }
 
-  // ── candidate 受保护主入口（review-r2）：未完成且无草稿的 主壳 落点与登录/切端
+  // ── candidate 受保护主入口（review-r2/r3）：未完成且无草稿的 主壳 落点与登录/切端
   // 同一语义（Spec §5）—— 在 <Routes> 挂载前同步 replace 回旅程入口，主壳（含其
   // 挂载效应 加载会话列表）一次都不能挂载（与 角色重定向 同款防闪守卫）；有草稿的
   // 回访由下方 恢复落点 守卫接手，已完成不因资料事实退回引导；查询中/失败/停用
-  // 已被上方分流门拦下，Mock（Onboarding分流 null）不受影响。
-  if (
-    Onboarding分流 !== null
-    && Onboarding分流.型 === '未完成' && Onboarding分流.角色 === 'candidate'
-    && 无建档草稿 && 位置.pathname === 路径.主壳
-  ) {
+  // 已被上方分流门拦下，Mock（Onboarding分流 null → 判定恒 false）不受影响。
+  // 判定与预填清理效应共用（见上方 候选主壳落点重定向）。
+  if (候选主壳落点重定向) {
     return <Navigate to={路径.学生分流} replace />;
   }
 

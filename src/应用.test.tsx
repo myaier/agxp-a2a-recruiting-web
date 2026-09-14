@@ -1227,6 +1227,23 @@ describe('应用路由：candidate 主壳受保护入口按 Onboarding 分流（
     expect(当前路径()).toBe(路径.主壳);
   });
 
+  // review-r3：/student 上传简历只激活预填轮（source/suggestion + 恢复元数据），
+  // 不建 建档草稿 —— 被拦截的 /app 落点仍算注册会话内，重定向跳变不得把在飞
+  // 预填轮烧掉（否则回 /student 后解析流程降级为手动）。
+  it('预填轮在场但无建档草稿：/app 拦截重定向不清预填轮（解析建议与恢复元数据存活）', async () => {
+    const 值 = 候选后端应用值({
+      Onboarding: Onboarding未完成('candidate'),
+      候选预填状态: ready预填轮(),
+    });
+    mock应用状态.mockReturnValue(值);
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
+    expect(屏幕挂载次数.get('主壳') ?? 0).toBe(0);
+    expect(值.操作.清候选Onboarding预填).not.toHaveBeenCalled();
+  });
+
   it('未完成但草稿在场：/app 由草稿回访路径接手（回草稿位置），不走无草稿分流', async () => {
     const 值 = 候选后端应用值({ Onboarding: Onboarding未完成('candidate') });
     mock应用状态.mockReturnValue({
