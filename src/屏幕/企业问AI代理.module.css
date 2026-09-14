@@ -22,7 +22,9 @@
   padding: 6px 16px 10px;
 }
 
-/* ── 代理侧（左）：小盾牌头像 + 白气泡 ── */
+/* ── 代理侧（左）：小盾牌头像 + 白气泡 ──
+   普通代理气泡 / 我方气泡 / 快捷行已迁到 组件/问AI代理/对话展示（两端共用）；
+   这里只剩简报卡还在用的壳（代理行 / 小盾牌 / 代理气泡），Task 3 提取简报时一并迁走。 */
 .代理行 {
   display: flex;
   flex-direction: row;
@@ -50,30 +52,6 @@
   border: 1px solid var(--描边);
   border-radius: 4px 14px 14px 14px;
   padding: 10px 13px;
-}
-
-/* ── 我方（右）：荧光绿浅底气泡，右下角切角 ── */
-.我行 {
-  display: flex;
-  flex-direction: row;
-  justify-content: flex-end;
-}
-
-.我气泡 {
-  /* 左缘与代理气泡起点线对齐（行宽 - 头像列 39 - 左净空 39）*/
-  max-width: calc(100% - 78px);
-  background: var(--气泡绿);
-  border-radius: 14px 14px 3px 14px;
-  padding: 10px 13px;
-}
-
-/* 两侧气泡共用的正文排版；overflow-wrap 防止用户输入超长无空格串撑破气泡 */
-.气泡文字 {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--墨);
-  text-align: left;
-  overflow-wrap: anywhere;
 }
 
 /* ── 今日简报卡（嵌在代理气泡内）── */
@@ -210,49 +188,6 @@
   font-size: 10.5px;
   color: var(--灰白);
   margin-top: 7px;
-}
-
-/* ── 快捷问句胶囊行 ── */
-.快捷行 {
-  flex: none;
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 7px;
-  padding: 10px 16px 0;
-}
-
-.快捷键 {
-  flex: none;
-  padding: 6px 11px;
-  border-radius: 14px;
-  background: var(--白);
-  border: 1px solid var(--淡绿描边2);
-  font-size: 11.5px;
-  color: var(--正文);
-}
-
-/* 我方头像（标注 23:52）：尺寸对齐左侧代理头像 */
-.我行 {
-  align-items: flex-start;
-  gap: 9px;
-}
-
-.我头像 {
-  /* 标注 17:29：太小 —— 与代理头像同为 30 */
-  flex: none;
-  width: 30px;
-  height: 30px;
-  border-radius: 15px;
-  margin-top: 2px;
-  background: var(--墨);
-  color: var(--荧光绿);
-  font-size: 12.5px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
 }
 
 /* ── 简报卡内的绿色「要不要放宽薪资带？」建议卡 ──

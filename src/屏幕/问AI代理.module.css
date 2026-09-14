@@ -21,7 +21,9 @@
   padding: 6px 16px 10px;
 }
 
-/* ── 代理侧（左）：小盾牌头像 + 白气泡 ── */
+/* ── 代理侧（左）：小盾牌头像 + 白气泡 ──
+   普通代理气泡 / 我方气泡 / 快捷行已迁到 组件/问AI代理/对话展示（两端共用）；
+   这里只剩简报卡还在用的壳（代理行 / 小盾牌 / 代理气泡 / 简报气泡），Task 3 提取简报时一并迁走。 */
 .代理行 {
   display: flex;
   flex-direction: row;
@@ -52,33 +54,6 @@
   border: 1px solid var(--描边);
   border-radius: 4px 14px 14px 14px;
   padding: 10px 13px;
-}
-
-/* ── 我方（右）：荧光绿浅底气泡，右下角切角 ── */
-.我行 {
-  display: flex;
-  flex-direction: row;
-  justify-content: flex-end;
-}
-
-.我气泡 {
-  /* 左缘与代理气泡起点线对齐（行宽 - 头像列 39 - 左净空 39）*/
-  max-width: calc(100% - 78px);
-  background: var(--气泡绿);
-  border-radius: 14px 14px 3px 14px;
-  padding: 10px 13px;
-}
-
-/* 两侧气泡共用的正文排版；overflow-wrap 防止用户输入超长无空格串撑破气泡 */
-.气泡文字 {
-  /* 气泡正文（标注 10:56 再收一档）：15 → 13.5，行高回到 1.45。
-     与全站正文主力档（12.5–13.5）对齐，聊天屏不再是最大的那一屏。 */
-  font-size: 13.5px;
-  line-height: 1.45;
-  letter-spacing: -0.01em;
-  color: var(--墨);
-  text-align: left;
-  overflow-wrap: anywhere;
 }
 
 /* ── 今日简报卡（嵌在代理气泡内）──
@@ -183,56 +158,6 @@
   font-size: 11px;
   color: var(--灰白);
   margin-top: 9px;
-}
-
-/* ── 快捷问句胶囊行 ── */
-.快捷行 {
-  flex: none;
-  display: flex;
-  flex-direction: row;
-  /* 单行横滑、紧贴下方输入框（标注意见 #4）：不换行堆叠 */
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  scrollbar-width: none;
-  gap: 7px;
-  padding: 6px 16px 0;
-}
-
-.快捷行::-webkit-scrollbar {
-  display: none;
-}
-
-.快捷键 {
-  flex: none;
-  padding: 6px 11px;
-  border-radius: 14px;
-  background: var(--白);
-  border: 1px solid var(--淡绿描边2);
-  font-size: 11.5px;
-  color: var(--正文);
-}
-
-/* 我方头像（标注 23:52）：尺寸对齐左侧代理头像 */
-.我行 {
-  align-items: flex-start;
-  gap: 9px;
-}
-
-.我头像 {
-  /* 标注 17:29：太小 —— 与代理头像同为 30 */
-  flex: none;
-  width: 30px;
-  height: 30px;
-  border-radius: 15px;
-  margin-top: 2px;
-  background: var(--墨);
-  color: var(--荧光绿);
-  font-size: 12.5px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
 }
 
 /* ── 简报卡内的绿色「要不要松一档？」建议卡 ──
