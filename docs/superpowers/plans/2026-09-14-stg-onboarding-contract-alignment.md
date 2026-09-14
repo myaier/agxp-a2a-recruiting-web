@@ -252,6 +252,46 @@ npx playwright test --config=playwright.数据源模式.config.ts e2e/P1展示�
 - L0–L2：六条命令如上，无证据缺口（e2e 全量失败均为基线既有，A/B 零差异）
 - 待用户确认后：fetch 核对 target → merge --no-edit → 按 INCREMENTAL_EVIDENCE 复用/补缺 → 必要 development L3（STG 四变体待后端就绪，逐项 PASS/FAIL/BLOCKED/NOT_RUN）→ cleanup 对账 → 普通 fast-forward push（不 force）
 
+## Final gate 执行记录（2026-09-14，用户批准后追加）
+
+用户批准进入 final gate 并告知后端已 release 到 STG（release/0.2.5 @ `495177f4`，deployment tag `6bf9fe3f3364`，后端自己的 final gate 报告 `docs/testing/e2e-runs/run-report-2026-09-14-recruitment-stg-onboarding-final-gate.md` 为 PASS/merge GO）。
+
+### Merge 与 L0–L2 对账
+
+- `final_target_base` = `3f9efe4b`（origin/main 已推进：picker 统一/城市目录批次合入）。`git merge --no-edit origin/main` 无冲突（merge commit `50a55e76`）。
+- 合并候选四条快命令全绿：npm test **5191/5191**（含 main 新增 134 测试）、typecheck/lint/build ✓。
+- 两条 e2e 与基线 A/B：默认套件失败集合与 merge 前零差异；数据源套件新增 5 个失败，标题级归因：3 个 `picker 统一 @backend`（main 上通过 = **merge 语义冲突**，由 `5e481f12` 修复——main 的 `pickerBackend存量候选` helper 补 onboarding 完成态，守卫零改动，修复后 picker 组双项目 10/0 绿）+ 2 个 main 自身既有失败（核心编辑 城市/简历行业，main 上同样失败，范围外）。按 INCREMENTAL_EVIDENCE 仅补跑受影响面（picker 组），未重跑全量。
+- 最终候选：`5e481f12`。
+
+### 正式 STG L3（四变体，逐项状态）
+
+前端访问 localhost:5173（候选代码，VITE_BACKEND_ENV=stg 代理 recruitment-stg.agxp.ai）；operator 命令经 ~/agxp-monorepo（release/0.2.5）tools/dev-env.sh exec；每项独立 STG_RUN_ID + 独立浏览器会话 + 完整生命周期（prepare ephemeral-empty → verify initial → 旅程 → verify journey → finally cleanup）。
+
+| 变体 | 状态 | 摘要 |
+|---|---|---|
+| candidate/manual | **PASS** | 7 节点全过：空起点登录选身份→引导→基本资料/教育/意向（目录点选；合成校名不在真实目录，就近选 浙江理工大学，薪资档无 25 取 26–35，差异如实记录）→完成落点 #/app→刷新持久化→退出重登直接主页；只读 GET completed:true；verify journey OK；cleanup CLEANED |
+| recruiter/manual | **PASS** | 6 节点全过：名片+run 唯一公司（云杉智能装备-8156 搜索未果创建）→完成→首岗页→目录点选+薪资人工→发布→刷新→重登直接招聘主页含岗位；只读 completed_at 非空；verify journey OK；cleanup CLEANED |
+| candidate/parsed | **NOT_RUN**（能力未开放） | 上传授权层正常，POST resume-files 15 分钟 6 次 503（BFF 日志 resume_files.create → recruitment_service_unavailable，合同 ResumeFileStorageUnavailable；STG 主机无对象存储容器）——与后端 Spec §7.3「B02 附件验收限制仍有效」一致；未转手填；cleanup CLEANED；cleanup 后旧凭据重放 /me 与 /me/onboarding 均 401（§9 受限反证 OK） |
+| recruiter/parsed | **NOT_RUN**（真实 JD 任务不可用；原判 FAIL，controller 改判并保留原判记录） | 名片/公司/完成节点 PASS（落首岗页）；JD 上传+同意 PASS；POST job-draft-imports 两次 **500 internal_error**（request_id 76bb72bd…/f1068d11…；BFF 日志确认 recruitment 服务自身应答；Postgres 无 ERROR、job_draft_imports 0 行=任务未建立）。按 §7.3「真实 JD 任务不可用→NOT_RUN」改判；500 为后端未分类基础设施故障，线索移交后端排查；未手填凑数；cleanup CLEANED |
+
+四项逐项状态如实列示，不把两项 manual PASS 称为四项全通过。四轮独立 run 的 initial verify 均证明空起点（旧资料未混入），多轮衔接证据成立；均为单三元组运行，不冒称两轮隔离已验证（cp 项做了凭据反证，其余三项未做）。
+
+证据：`dogfood-output/stg-onb-{cm-20260914T103813-6790, rm-20260914T110327-18156, cp-20260914T111642-13308, rp-20260914T113009-12819}/结论.md`（目录按约定 gitignore，本地留存）；operator receipts 在后端 checkout `.agxp-recruitment-stg-env/receipts/`。
+
+### 观察到的范围外问题（移交线索，不阻塞本轮）
+
+- recruiter/manual：招聘主页「在谈」tab 零会话态显示「服务返回异常」且重试/重登不恢复——疑似空态误渲染为错误（在谈域，非本 Plan 改动面）。
+- recruiter/parsed：job-draft-imports 500 internal_error（后端排查）。
+- STG 缺对象存储容器导致 resume-files 503（后端部署能力缺口，candidate/parsed 的解锁条件）。
+- 招聘方薪资轮盘含 25 档而候选方无（两处轮盘选项不一致）。
+- 确认前简历文件名/大小未在行内展示（节点 2 断言项，未判定）。
+
+### L3 后对账与合入
+
+- L3 全程未修改 tracked 文件（dogfood-output 为 ignored 证据目录）→ L0–L2 证据在 `5e481f12` 上仍有效，零 runner 复跑。
+- 工作树仅剩两个既有未跟踪用户文件（docs/runs/ 两份，按约束不自动提交）。
+- 二次 fetch 核对 target 未推进后，普通 fast-forward push `refs/heads/main`（不 force）。
+
 ```sh
 npm test
 npm run typecheck
