@@ -11,7 +11,6 @@ import type {
   BFF委托摘要,
   BFF发现批次,
   BFF发现偏好,
-  BFFOwnerJob,
   BFF招聘候选推荐,
   BFF招聘推荐详情,
 } from '../../数据/BFF契约';
@@ -36,7 +35,6 @@ import {
   BFF候选岗位推荐样本,
   BFF候选委托回执样本,
   BFF委托失败回执样本,
-  BFF岗位样本,
   BFF招聘发现批次样本,
   BFF招聘候选推荐样本,
   BFF招聘委托回执样本,
@@ -1155,11 +1153,11 @@ describe('P4 闭合错误文案', () => {
       .toBe('服务暂时不可用，请稍后再试');
     expect(P4错误文案(new BFF错误(503, 'operation_outcome_unknown', 'unknown')))
       .toBe('操作结果暂未确认，请稍后重试');
-    // Task 6 组织错误收敛进闭合表：精确 409 的组织文案不再裸抛后端英文 message
+    // 2026-09-14 撤销认证前提：旧组织码只剩「实际请求失败」一种含义，文案不再指向认证
     expect(P4错误文案(new BFF错误(
       409, 'organization_verification_required',
       'A verified organization is required to discover candidates.')))
-      .toBe('匿名候选推荐需要已验证的用人组织');
+      .toBe('推荐请求被服务端拒绝，请稍后重试');
     // 闭合表之外先走 取后端错误文案 的既有分类：network_error / 非 200 的 invalid_response 原样保留
     expect(P4错误文案(new BFF错误(0, 'network_error', '网络连接失败，请稍后再试')))
       .toBe('无法连接后端服务，请检查网络或稍后重试');
@@ -1797,124 +1795,77 @@ describe('刷新委托', () => {
   });
 });
 
-// ── Task 6：组织认证竞态对账 —— 精确组织 409 终止 POST，只做一次 Owner Jobs 权威重读 ──
-//    不变量（设计 §7/§8/§9.4）：每个用户意图最多一次 refresh POST + 一次 Owner Jobs GET；
-//    绝不换幂等键重发；迟到成败整包丢弃；栅栏内 401 走统一清会话；除精确组织 409 外
-//    的一切直接失败零重读。
+// ── 2026-09-14 撤销企业认证前提：refresh 的精确组织 409 不再有 Owner Jobs 对账专用路径 ——
+//    与任何实际请求失败同一收口：一次 refresh POST、零 读取岗位、零二次 POST、零水合；
+//    持久快照落 P4 闭合中文文案（推荐请求被服务端拒绝，请稍后重试），原错误照抛；
+//    同键重试、并发点击单飞、401 与 stale fence 语义保持不变。
 
-describe('组织认证竞态对账（一次 Owner Jobs 重读）', () => {
+describe('招聘刷新失败收口（撤销组织认证前提）', () => {
   /** Task 5 strict contract 铸出的精确组织 409（仅 recruiter refresh 路由透传该码）。 */
   const 组织409 = () => new BFF错误(
     409, 'organization_verification_required',
     'A verified organization is required to discover candidates.');
-  const 岗位页 = (服务端: Record<string, BFFOwnerJob>): 页面岗位快照 => ({ 列表: [], 服务端 });
 
-  it.each([
-    ['unverified', BFF岗位样本],
-    ['missing ref', {
-      ...BFF岗位样本, hiring_organization_verification_status: 'verified' as const,
-    }],
-  ] as const)('精确组织 409 + 权威重读 %s：一次 POST、一次读取岗位、水合一次并替换岗位快照，原组织错误照抛', async (_名, ownerJob) => {
+  it('精确组织 409：只发一次 refresh POST、零 读取岗位、零水合，持久快照为服务端拒绝中文且原错误照抛', async () => {
     设主体角色(招聘主体);
     vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(组织409());
-    const 快照 = 岗位页({ job_1: { ...ownerJob, job_id: 'job_1' } });
-    vi.mocked(env.数据源.读取岗位).mockResolvedValueOnce(快照);
 
     await expect(env.操作.刷新招聘候选('job_1')).rejects.toMatchObject({
       status: 409, code: 'organization_verification_required',
     });
 
-    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
-    expect(env.派发).toHaveBeenCalledTimes(1);
-    expect(env.派发).toHaveBeenCalledWith({ 型: '水合后端岗位', 快照 });
-    expect(env.最新状态().岗位快照).toEqual(快照.服务端);
-    // 运行范围刷新 的 POST 失败路径已把组织文案落进快照；对账确认受阻后不再二次落
-    expect(env.最新状态().招聘可用候选.job_1?.error).toBe('匿名候选推荐需要已验证的用人组织');
-    // 组织 409 绝不换幂等键重发：同一意图的键原样保留
+    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1); // 不自动重 POST
+    expect(vi.mocked(env.数据源.读取岗位)).not.toHaveBeenCalled();
+    expect(env.派发).not.toHaveBeenCalled(); // 无水合 = 无组织 CTA 信号
+    expect(env.最新状态().岗位快照).toEqual({});
+    expect(env.最新状态().招聘可用候选.job_1?.error).toBe('推荐请求被服务端拒绝，请稍后重试');
+    // 409 不在清键路径上：同一未结算意图的键原样保留
     expect(env.deps.P4幂等意图!.current.has('recruiter:list:job_1:refresh')).toBe(true);
   });
 
-  it('权威重读后仍 verified + ref：一次 POST、一次读取岗位、零二次 POST，invalid_response 带中文「数据状态异常」', async () => {
+  it('同键重试：组织 409 之后的重试沿用保留键，完整 POST+GET 成功才释放', async () => {
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('org409-key-0001'))
+      .mockReturnValue(UUID键('org409-key-0002'));
     设主体角色(招聘主体);
-    vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(组织409());
-    vi.mocked(env.数据源.读取岗位).mockResolvedValueOnce(岗位页({
-      job_1: {
-        ...BFF岗位样本, hiring_organization_verification_status: 'verified' as const,
-        hiring_organization_ref: 'org_1',
-      },
-    }));
+    vi.mocked(env.数据源.刷新招聘候选)
+      .mockRejectedValueOnce(组织409())
+      .mockResolvedValueOnce(BFF招聘发现批次样本);
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValue([BFF招聘候选推荐样本]);
 
     await expect(env.操作.刷新招聘候选('job_1')).rejects.toMatchObject({
-      status: 409, code: 'invalid_response', message: '数据状态异常，请稍后再试',
+      code: 'organization_verification_required',
     });
+    await env.操作.刷新招聘候选('job_1');
 
-    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
-    expect(env.派发).toHaveBeenCalledTimes(1); // 权威 owner 页照常水合
-    expect(env.最新状态().岗位快照).toEqual({
-      job_1: {
-        ...BFF岗位样本, hiring_organization_verification_status: 'verified' as const,
-        hiring_organization_ref: 'org_1',
-      },
+    expect(vi.mocked(env.数据源.刷新招聘候选).mock.calls).toEqual([
+      ['job_1', 'org409-key-0001'], ['job_1', 'org409-key-0001'],
+    ]);
+    expect(randomUUID).toHaveBeenCalledTimes(1);
+    expect(env.最新状态().招聘可用候选.job_1).toMatchObject({
+      阶段: '成功', items: [BFF招聘候选推荐样本],
     });
-    // 仍 ready = 合同漂移：持久快照改述真实收口，绝不再留组织受阻文案
-    expect(env.最新状态().招聘可用候选.job_1?.error).toBe('数据状态异常，请稍后再试');
+    expect(env.deps.P4幂等意图!.current.has('recruiter:list:job_1:refresh')).toBe(false);
+    randomUUID.mockRestore();
   });
 
-  it('权威重读页里没有所请求的岗位：按 invalid_response 收口，不是组织 CTA', async () => {
+  it('刷新 POST 在飞时第二次点击让路：不重复 POST，第一次照常结算', async () => {
     设主体角色(招聘主体);
-    vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(组织409());
-    vi.mocked(env.数据源.读取岗位).mockResolvedValueOnce(岗位页({}));
+    const POST门 = deferred<BFF发现批次>();
+    vi.mocked(env.数据源.刷新招聘候选).mockReturnValueOnce(POST门.promise);
+    const 第一次 = env.操作.刷新招聘候选('job_1');
 
-    const 捕获 = await env.操作.刷新招聘候选('job_1').catch((错误: unknown) => 错误);
-
-    expect(捕获).toMatchObject({
-      status: 409, code: 'invalid_response', message: '数据状态异常，请稍后再试',
-    });
-    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
-    expect(env.派发).toHaveBeenCalledTimes(1); // 权威页水合照常：所请求岗位确实不在页里
-    expect(env.最新状态().岗位快照).toEqual({});
-    expect(env.最新状态().招聘可用候选.job_1?.error).toBe('数据状态异常，请稍后再试');
-  });
-
-  it('对账重读 401 且原栅栏仍新：走统一清账号状态，不再向屏叠抛', async () => {
-    设主体角色(招聘主体);
-    vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(组织409());
-    vi.mocked(env.数据源.读取岗位).mockRejectedValueOnce(new BFF错误(401, 'invalid_session', 'expired'));
-
+    // 同一未结算意图在飞期间的第二次点击：读锁被持有，让路收场，零重复 POST
     await expect(env.操作.刷新招聘候选('job_1')).resolves.toBeUndefined();
-
     expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
-    expect(env.最新状态().已登录).toBe(false);
-    expect(env.最新状态().主体).toBeNull();
-    expect(env.最新状态().招聘可用候选).toEqual({});
-    expect(env.deps.会话代际.current).toBe(2);
-    expect(env.deps.P4幂等意图!.current.size).toBe(0);
-    expect(env.数据源.清空目录缓存).toHaveBeenCalled();
-  });
 
-  it('对账重读 503：无水合、岗位快照不动，通用可恢复错误落快照并照抛', async () => {
-    设主体角色(招聘主体);
-    vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(组织409());
-    vi.mocked(env.数据源.读取岗位).mockRejectedValueOnce(new BFF错误(503, 'source_unavailable', 'down'));
-
-    await expect(env.操作.刷新招聘候选('job_1')).rejects.toMatchObject({
-      status: 503, code: 'source_unavailable',
-    });
-
+    POST门.resolve(BFF招聘发现批次样本);
+    await 第一次;
     expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
-    expect(env.派发).not.toHaveBeenCalled();
-    expect(env.最新状态().岗位快照).toEqual({});
-    expect(env.最新状态().招聘可用候选.job_1?.error).toBe('服务暂时不可用，请稍后再试');
-    expect(env.最新状态().已登录).toBe(true);
   });
 
   // 栅栏五维（设计 §8）：subject / active role / session generation / visible scope /
-  // scope generation —— 任一换代后，对账重读的迟到结果整包丢弃
+  // scope generation —— 任一换代后，POST 的迟到失败整包丢弃
   const 换代表: readonly [string, () => void][] = [
     ['换主体', () => { env.deps.主体标识引用.current = 'sub_new'; }],
     ['换角色', () => { 设主体角色(候选主体); }],
@@ -1928,84 +1879,49 @@ describe('组织认证竞态对账（一次 Owner Jobs 重读）', () => {
     }],
   ];
 
-  it.each(换代表)('对账重读在飞时%s：迟到成功整包丢弃 —— 不水合、不写快照、不抛组织错', async (_名, 换代) => {
+  it.each(换代表)('刷新 POST 在飞时%s：迟到失败整包丢弃 —— 不写快照、不抛组织错', async (_名, 换代) => {
     设主体角色(招聘主体);
     const POST门 = deferred<BFF发现批次>();
-    const 重读门 = deferred<页面岗位快照>();
     vi.mocked(env.数据源.刷新招聘候选).mockReturnValueOnce(POST门.promise);
-    vi.mocked(env.数据源.读取岗位).mockReturnValueOnce(重读门.promise);
     const 运行 = env.操作.刷新招聘候选('job_1');
-    POST门.reject(组织409());
-    await POST门.promise.catch(() => undefined); // 对账重读已在飞
     const 提交数 = 设后端状态调用数();
     换代();
-    重读门.resolve(岗位页({ job_1: BFF岗位样本 })); // 权威页说组织受阻
+    POST门.reject(组织409());
 
     await expect(运行).resolves.toBeUndefined();
 
     expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
-    expect(设后端状态调用数()).toBe(提交数); // 迟到成功零写入
-    expect(env.派发).not.toHaveBeenCalled(); // 无水合 = 屏上不出现组织 CTA 信号
-    expect(env.最新状态().岗位快照).toEqual({});
+    expect(设后端状态调用数()).toBe(提交数); // 迟到失败零写入
+    expect(env.派发).not.toHaveBeenCalled();
+    expect(env.最新状态().已登录).toBe(true);
   });
 
-  it.each(换代表)('对账重读在飞时%s：迟到 401 不清新会话也不写状态', async (_名, 换代) => {
+  it.each(换代表)('刷新 POST 在飞时%s：迟到 401 不清新会话也不写状态', async (_名, 换代) => {
     设主体角色(招聘主体);
     const POST门 = deferred<BFF发现批次>();
-    const 重读门 = deferred<页面岗位快照>();
     vi.mocked(env.数据源.刷新招聘候选).mockReturnValueOnce(POST门.promise);
-    vi.mocked(env.数据源.读取岗位).mockReturnValueOnce(重读门.promise);
     const 运行 = env.操作.刷新招聘候选('job_1');
-    POST门.reject(组织409());
-    await POST门.promise.catch(() => undefined); // 对账重读已在飞
     const 提交数 = 设后端状态调用数();
     换代();
-    重读门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    POST门.reject(new BFF错误(401, 'invalid_session', 'expired'));
 
     await expect(运行).resolves.toBeUndefined();
 
-    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
     expect(设后端状态调用数()).toBe(提交数);
     expect(env.最新状态().已登录).toBe(true);
     expect(env.派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
     expect(env.数据源.清空目录缓存).not.toHaveBeenCalled();
   });
 
-  it('对账重读在飞时第二次点击让路：不重复 POST、不发起第二次 Owner Jobs 重读', async () => {
-    设主体角色(招聘主体);
-    const POST门 = deferred<BFF发现批次>();
-    const 重读门 = deferred<页面岗位快照>();
-    vi.mocked(env.数据源.刷新招聘候选).mockReturnValueOnce(POST门.promise);
-    vi.mocked(env.数据源.读取岗位).mockReturnValueOnce(重读门.promise);
-    const 第一次 = env.操作.刷新招聘候选('job_1');
-    POST门.reject(组织409());
-    await POST门.promise.catch(() => undefined); // 对账重读已在飞（此时读锁已被 finally 释放）
-
-    // 窗口期内同一未结算意图的第二次点击：让路收场，绝不沿用保留键重复 POST
-    await expect(env.操作.刷新招聘候选('job_1')).resolves.toBeUndefined();
-    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
-
-    重读门.resolve(岗位页({ job_1: BFF岗位样本 })); // 权威页说组织受阻
-    await expect(第一次).rejects.toMatchObject({
-      status: 409, code: 'organization_verification_required',
-    });
-
-    // 第一次的对账照常结算：一次 POST、一次重读、一次水合，键仍按组织 409 语义保留
-    expect(vi.mocked(env.数据源.刷新招聘候选)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(env.数据源.读取岗位)).toHaveBeenCalledTimes(1);
-    expect(env.派发).toHaveBeenCalledTimes(1);
-    expect(env.deps.P4幂等意图!.current.has('recruiter:list:job_1:refresh')).toBe(true);
-  });
-
   it.each([
+    ['organization_verification_required（精确组织 409）', new BFF错误(
+      409, 'organization_verification_required',
+      'A verified organization is required to discover candidates.')],
     ['recommendation_unavailable', new BFF错误(409, 'recommendation_unavailable', 'gone')],
     ['invalid_response（合同漂移）', new BFF错误(409, 'invalid_response', 'drift')],
     ['401', new BFF错误(401, 'invalid_session', 'expired')],
     ['503', new BFF错误(503, 'source_unavailable', 'down')],
-  ] as const)('%s 直接失败零 Owner Jobs 重读，一次 POST 原样收口', async (_名, 错误) => {
+  ] as const)('%s 直接失败零 读取岗位，一次 POST 原样收口', async (_名, 错误) => {
     设主体角色(招聘主体);
     vi.mocked(env.数据源.刷新招聘候选).mockRejectedValueOnce(错误);
 
