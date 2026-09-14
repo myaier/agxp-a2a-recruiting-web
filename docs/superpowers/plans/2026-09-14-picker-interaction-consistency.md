@@ -232,3 +232,21 @@ Mock 数据契约：在 `模拟数据.ts` 导出 `就读年份演示预填 = { �
 Planner附加自检：既有薪资区间层.test.tsx由“新增”改为“修改”，纳入薪资次级输入样式文件；补行业hook参数类型，不改变产品合同。修订后由同一Claude session仅复审文档和上述裁决。
 
 第二轮：Claude Opus/high，同一review session，候选HEAD `7b2e85d6`、Plan blob `0cdf667e`，批准Spec引用不变。reviewer确认只读文档及限定版本差异，未读源码/其他配置、未运行测试、未写文件；状态/HEAD/指纹guard再次PASS。复审接受第1项裁决，确认第2–4项已解决，`## Findings` 返回精确 `NO FINDINGS`。本loop在2轮结束，无未解决有效required项；本行仅追加最终review结论，不改实施合同。产品尚未实现，实施测试与真实后端验收尚未运行。
+
+## 实施记录
+
+### Task 1：弹层 bottom 消费者检查结论
+
+检查命令：`rg -n '弹层框架|定位=|max-height|maxHeight|overflow' src/组件 src/屏幕`（2026-09-14，Task 1 commit `19cbc64c`，完整逐消费者表见 `.superpowers/sdd/2026-09-14-picker-interaction-consistency/task-1-report.md` 第五节）。
+
+| bottom 消费者 | 面板类 | 面板 CSS 限高 | 移除内联 maxHeight 后 | 内部滚动 | 结论 |
+|---|---|---|---|---|---|
+| 简历行业选择正文 | 工作经历.module.css `.选择层` | 72%（此前被内联压过） | 生效（本 Task 目标） | 共用 `.列表` flex:1/min-height:0/overflow-y:auto | 已补弹层单元断言；真实滚动归 Task 5 |
+| 公司选择层（公司选择抽屉） | 同上 `.选择层` | 72% | 生效（**附带受益**，此前不限高） | `.正文` flex:1/min-height:0/overflow-y:auto（本就为限高面板设计） | 全量单测 PASS；建议纳入 Task 5 真实滚动场景 |
+| 企业公开页 展示层 | `.层` | 86% !important（内联时代已生效） | 行为不变 | overflow:hidden + 内部 overflow-y:auto | 不受影响；其注释提及的内联覆盖已失准（不在本 Task 文件清单，建议后续顺手清） |
+| 附件简历选择层 / 在谈详情 简历选择层 | `.面板` | 面板无限高 | 不变 | 内部 `.清单` max-height 40vh + overflow-y:auto | 不受影响 |
+| 年月滚轮层 / 数字滚轮层 / 薪资区间层 / 学生分流毕业轮 / 添加意向毕业轮 | `.层` | 面板无限高（固定内容高度） | 行为不变 | 无需内部滚动 | 不受影响 |
+| 举报层 / 先问选择行 / 岗位职业分类正文 / 简历预览层 / 原始PDF层 / 候选推荐原因层 / 职位页面展示抽屉 / 账号安全抽屉（换绑/导出/注销说明） | 各自面板 | 面板均无 max-height（rg 逐条核对） | 行为不变 | 各自内部 overflow-y:auto 列表 | 不受影响 |
+| 真人会话操作栏 详情层 | `.详情层` | height:100%（非 max-height） | 行为不变 | `.详情正文区` flex:1/min-height:0/overflow-y:auto | 不受影响（order 置底的「继续沟通」首开焦点结构未动） |
+
+居中消费者（单列，不受 bottom 修改影响）：`确认层`、岗位管理 / 屏蔽名单 / 企业设置 / 岗位详情 / 发布岗位(删确认) / 设置 / 账号安全(注销确认) / 登录区号层 —— 全部 `位置="居中"`，居中分支保持 `maxHeight:'none'`（弹层框架.test 断言 position static + maxHeight none）。非弹层框架的 max-height/overflow 命中（岗位详情折叠正文、标注层、代理详情、通用输入框、顶部意向栏、可编辑规则行等）与弹层无关。新增受影响者仅上述两家，均为修复的同向变化；已由全量单测（219 文件 / 4947 用例 PASS）佐证。
