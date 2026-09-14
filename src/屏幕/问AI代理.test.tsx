@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 问AI代理 from './问AI代理';
 import { 路径 } from '../路由/路径表';
 import { 快捷问句 } from '../数据/模拟数据';
+import { 轻提示 } from '../组件/轻提示';
 
 const mock派发 = vi.fn();
 const mock返回 = vi.fn();
@@ -168,5 +169,42 @@ describe('问AI代理 · Mock 原型保持与定时器隔离', () => {
     // 卸载后假时钟走完也不再有宿主可渲染；证据就是上面的逐句柄 clearTimeout 调用
     await act(() => vi.advanceTimersByTimeAsync(550));
     expect(screen.queryByText(/搜到 7 个全远程/)).toBeNull();
+  });
+
+  it('Mock 维持红线是零规则 mutation：不派发、不跳转、不轻提示，容器送文案后才换确认行', () => {
+    mock当前模式 = 'mock';
+    render(<问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: '维持红线' }));
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(vi.mocked(轻提示)).not.toHaveBeenCalled();
+    // 容器把 处理文案 送进卡片 → 双按钮换成对应的「已维持红线…」确认行
+    expect(screen.getByText('已维持红线 · 规则不变，我会继续替你挡掉这类岗位。')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '维持红线' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '改成可谈' })).toBeNull();
+  });
+
+  it('Mock 退出重入后简报建议回到初始双按钮（处理状态随容器重挂初始化）', () => {
+    mock当前模式 = 'mock';
+    const 页 = render(<问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: '维持红线' }));
+    expect(screen.queryByRole('button', { name: '维持红线' })).toBeNull();
+    页.unmount();
+    render(<问AI代理 />);
+    expect(screen.getByRole('button', { name: '维持红线' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '改成可谈' })).toBeTruthy();
+    expect(screen.queryByText(/已维持红线 ·/)).toBeNull();
+  });
+
+  it('Mock 改成可谈派发规则但不把建议标成已维持（放宽 ≠ 已处理）', () => {
+    mock当前模式 = 'mock';
+    render(<问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: '改成可谈' }));
+    // 规则载荷与轻提示的逐字断言在 看市场.test.tsx 的跨页用例（原文件继续沿用）
+    expect(mock派发).toHaveBeenCalledTimes(1);
+    // 放宽不替换按钮：容器没把 改成可谈 当作「已维持红线」处理
+    expect(screen.getByRole('button', { name: '维持红线' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '改成可谈' })).toBeTruthy();
+    expect(screen.queryByText(/已维持红线 ·/)).toBeNull();
   });
 });

@@ -14,7 +14,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 企业问AI代理 from './企业问AI代理';
 import { 路径 } from '../路由/路径表';
-import { 企业快捷问句 } from '../数据/企业端模拟数据';
+import { 企业快捷问句, 企业日报 } from '../数据/企业端模拟数据';
 
 const mock派发 = vi.fn();
 const mock返回 = vi.fn();
@@ -169,5 +169,60 @@ describe('企业问AI代理 · Mock 原型保持与定时器隔离', () => {
     // 卸载后假时钟走完也不再有宿主可渲染；证据就是上面的逐句柄 clearTimeout 调用
     await act(() => vi.advanceTimersByTimeAsync(550));
     expect(screen.queryByText(/本周漏斗：触达 23/)).toBeNull();
+  });
+
+  it('Mock 漏斗唯一入口：只有硬性匹配整行可点（原 aria-label），点击跳初筛记录', () => {
+    mock当前模式 = 'mock';
+    render(<企业问AI代理 />);
+    const 可点行 = screen.getByRole('button', { name: '硬性匹配 12，打开本周初筛记录' });
+    fireEvent.click(可点行);
+    expect(mock跳转).toHaveBeenCalledWith(路径.初筛记录);
+    // 唯一入口：整份漏斗里带「初筛记录」读屏说明的可点行只有这一个
+    expect(
+      screen.getAllByRole('button', { name: /初筛记录/ }).length,
+    ).toBe(1);
+    // 其余四档没有落地屏，保持不可点（没有按钮语义）
+    for (const 档名 of ['触达', '在谈', '深谈', '意向达成']) {
+      expect(screen.queryByRole('button', { name: 档名 })).toBeNull();
+    }
+  });
+
+  it('Mock 维持红线是零规则 mutation：不派发、不跳转，容器送文案后才换确认行', () => {
+    mock当前模式 = 'mock';
+    render(<企业问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: '维持红线' }));
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    // 容器把 处理文案 送进卡片 → 双按钮换成对应的「已维持红线…」确认行
+    expect(screen.getByText('已维持红线 · 规则不变，我会继续替你挡掉这类候选。')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '维持红线' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '放宽薪资带' })).toBeNull();
+  });
+
+  it('Mock 退出重入后简报建议回到初始双按钮（处理状态随容器重挂初始化）', () => {
+    mock当前模式 = 'mock';
+    const 页 = render(<企业问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: '维持红线' }));
+    expect(screen.queryByRole('button', { name: '维持红线' })).toBeNull();
+    页.unmount();
+    render(<企业问AI代理 />);
+    expect(screen.getByRole('button', { name: '维持红线' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '放宽薪资带' })).toBeTruthy();
+    expect(screen.queryByText(/已维持红线 ·/)).toBeNull();
+  });
+
+  it('Mock 放宽薪资带派发企业新增规则并跳AI代理设置，不把建议标成已维持', () => {
+    mock当前模式 = 'mock';
+    render(<企业问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: '放宽薪资带' }));
+    expect(mock派发).toHaveBeenCalledWith({
+      型: '企业新增规则',
+      内容: 企业日报.松一档.规则内容,
+      来源: 企业日报.松一档.规则来源,
+    });
+    expect(mock跳转).toHaveBeenCalledWith(路径.企业代理设置);
+    // 放宽 ≠ 已处理：容器没把它当作「已维持红线」，确认文案不出、按钮不消失
+    expect(screen.getByRole('button', { name: '放宽薪资带' })).toBeTruthy();
+    expect(screen.queryByText(/已维持红线 ·/)).toBeNull();
   });
 });

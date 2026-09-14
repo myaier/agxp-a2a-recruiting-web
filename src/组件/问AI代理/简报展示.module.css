@@ -1,0 +1,293 @@
+/* 简报展示（两端共用）：求职 A27 问AI代理.module.css 与招聘 D14 企业问AI代理.module.css
+   的简报卡样式合并，像素值原样照搬，不为统一改像素：
+   · 两端完全一致的声明直接共用：统计条 / 统计项 / 统计数强调 / 建议卡（松一档）全家族 /
+     按钮行与已维持；统计名、简报强调、简报脚注除一两条端差外一致，用共用底 + 端差补丁；
+   · 简报头 / 简报标题 / 简报时间 / 统计数 / 简报正文 两端各成一档，按端整组保留：
+     求职 —— 头部发丝线分隔、时间戳 11px 素排（次要浅）、统计数 19px 薪资体（SF 系/500/等宽）、
+     正文 13.5px/1.5；
+     招聘 —— 时间戳 10px 淡绿胶囊、统计数 17px/800、正文 12px/1.7、头部无分隔线。
+
+   外观容器：CSS module 的类名跨文件不通，对话展示 挂在行根的 外观类 本模块看不见，
+   所以 简报展示 在气泡内容外自己挂一层 .求职 / .招聘（无任何声明的纯 block，
+   不新增影响 flex / 布局的层级），专供本模块端差后代选择器作挂点。 */
+
+/* ── 简报头：卡标题 + 更新时间 ── */
+.简报头 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.求职 .简报头 {
+  gap: 8px;
+  padding-bottom: 9px;
+  margin-bottom: 11px;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.招聘 .简报头 {
+  gap: 7px;
+  margin-bottom: 9px;
+}
+
+/* 「今日简报」= 这张日报卡的卡标题，下面挂统计条 / 漏斗 / 正文 / 决策子卡。
+   同名类两端同档（var(--字号-区块标题)）—— 旧值 14.5px 的「比正文小半档」理由
+   已被企业端推翻，收口到区块标题档，消除「同一概念两屏差 2.5px」。 */
+.简报标题 {
+  font-size: var(--字号-区块标题);
+  color: var(--墨);
+}
+
+.求职 .简报标题 {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.招聘 .简报标题 {
+  font-weight: 800;
+}
+
+/* 更新时间：求职对齐 iMessage 的 11px / 600 素排，靠右不抢标题；
+   招聘是淡绿底胶囊。共同点只有 600 字重。 */
+.简报时间 {
+  font-weight: 600;
+}
+
+.求职 .简报时间 {
+  flex: none;
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--次要浅);
+}
+
+.招聘 .简报时间 {
+  font-size: 10px;
+  color: var(--深绿);
+  background: var(--淡绿底);
+  padding: 2px 7px;
+  border-radius: 9px;
+}
+
+/* 四个统计数横条：等宽四列，flex:1 平分。
+   2026-08-24 全站去框（产品负责人批）：统计条卡壳拆掉（白底/灰底/描边/圆角撤），
+   与下方内容之间改用发丝线分隔；左右 padding 收到 2px。两端同改、同值。 */
+.统计条 {
+  display: flex;
+  flex-direction: row;
+  background: transparent;
+  border-bottom: 1px solid var(--分隔线);
+  padding: 11px 2px;
+}
+
+.统计项 {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+
+/* 统计数：两端字体档不同，整组按端保留 ——
+   求职（标注 2026-08-23）：与主页薪资同一套数字（SF 系 / 500 / 收字距 / 等宽），
+   字号留 19px（这里是统计位不是价格位）；
+   招聘：17px / 800。 */
+.求职 .统计数 {
+  font-family: var(--字体-数字);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  color: var(--墨);
+}
+
+.招聘 .统计数 {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--墨);
+}
+
+/* 「需要你」这一列标红：待决策项优先被看到（两端同值） */
+.统计数强调 {
+  color: var(--意向);
+}
+
+.统计名 {
+  color: var(--次要浅);
+  margin-top: 2px;
+}
+
+.求职 .统计名 {
+  font-size: 10.5px;
+}
+
+.招聘 .统计名 {
+  font-size: 10px;
+}
+
+/* 简报正文：与气泡正文同族；求职略小一档拉出层级（13.5/1.5），招聘 12/1.7 */
+.求职 .简报正文 {
+  font-size: 13.5px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  margin-top: 11px;
+  color: var(--墨);
+}
+
+.招聘 .简报正文 {
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 9px;
+  color: var(--墨);
+}
+
+/* 正文强调（「3 件事等你定」）两端同为意向红 700；
+   求职端额外 nowrap：「3 件事等你定：」是一个语义单元，断成「3 件 / 事等你定：」很难读 */
+.简报强调 {
+  color: var(--意向);
+  font-weight: 700;
+}
+
+.求职 .简报强调 {
+  white-space: nowrap;
+}
+
+.求职 .简报脚注 {
+  font-size: 11px;
+  color: var(--灰白);
+  margin-top: 9px;
+}
+
+.招聘 .简报脚注 {
+  font-size: 10.5px;
+  color: var(--灰白);
+  margin-top: 7px;
+}
+
+/* ── 人才漏斗（招聘端独有）：统计条下方五档，每行 档名 + 横条 + 人数 ── */
+.漏斗块 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.漏斗行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 档名列定宽，保证五条横条左缘对齐（最长档名「意向达成」四字） */
+.漏斗名 {
+  flex: none;
+  width: 52px;
+  font-size: 10.5px;
+  color: var(--次要);
+}
+
+/* 可点的那一档（硬性匹配）外层是 <button>，它自带 text-align:center 与自己的
+   字号，会把 52px 定宽的档名列排成居中、与其余四行错开半格；这里钉回继承值。
+   按压反馈走全局 .可点，不另写 hover —— 手机上没有 hover 这一态。 */
+.漏斗行可点 {
+  text-align: left;
+  font: inherit;
+}
+
+/* 横条轨道占满剩余宽度；实际横条宽度由数据里的 宽度% 决定。
+   display:block 是给 <span> 版本补的：可点那行嵌在 <button> 里只能用短语元素 */
+.漏斗槽 {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 橄榄色渐变到淡绿：越往漏斗深处条越短，颜色横向由深到浅 */
+.漏斗条 {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--橄榄), var(--淡绿描边));
+}
+
+/* 人数列右对齐定宽，五行数字纵向对齐 */
+.漏斗数 {
+  flex: none;
+  width: 18px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--墨);
+  text-align: right;
+}
+
+/* ── 简报卡内的决策子卡（「要不要松一档 / 放宽薪资带？」）──
+   2026-08-22 随洞察从已删除的 未通过说明 / 候选未通过 屏搬来
+   （docs/design/代理拒绝理由归宿.md），两端像素值一致：
+   2026-08-24 全站去框（产品负责人批）：决策子卡卡壳拆掉（白底/淡绿底/描边/圆角撤），
+   与上方简报正文之间改用发丝线分隔；标题深绿字保留 ——
+   这块「代理在等你拍板」的身份还认得出来。 */
+.松一档卡 {
+  background: transparent;
+  border-top: 1px solid var(--分隔线);
+  padding: 12px 2px;
+  margin-top: 12px;
+}
+
+/* 日报卡内嵌的决策子卡标题：卡内再分的小标，两端同档（小节标题档） */
+.松一档标题 {
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  color: var(--深绿文字);
+}
+
+.松一档正文 {
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--正文);
+  margin-top: 5px;
+}
+
+.松一档强调 {
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.按钮行 {
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.次按钮 {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 15px;
+  background: var(--白);
+  border: 1px solid var(--描边中);
+  color: var(--次要);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.主按钮 {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 15px;
+  background: var(--荧光绿);
+  color: var(--墨);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* 选了「维持红线」后按钮行换成一行确认文案（文案由容器经 处理文案 送入） */
+.已维持 {
+  margin-top: 11px;
+  font-size: 11.5px;
+  line-height: 1.65;
+  font-weight: 600;
+  color: var(--深绿文字);
+}
