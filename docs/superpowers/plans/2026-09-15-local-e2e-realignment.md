@@ -21,6 +21,7 @@
 - 52 个 Mock 场景与 18 个独立场景是调查基线，默认保留；删除或新增须有对账，不机械维持数量。显式采集目录协议保持可用。
 - 功能项目固定 UTC；现有专门采集／P1／代理展示 suite 自己显式指定的 Asia/Shanghai 保持，不改变产品时间格式。
 - 开工通过逻辑 skill `development-workflow` 找到其根目录，读取 `assets/execution-contract.md`，用 `scripts/task_intents.py start` 登记预期路径；扩大路径前 update 并检查重叠。全部交付路径仓库相对。
+- 所有需复用的证据使用已忽略的 `ui-regression-output/e2e-realignment/`，每个 invocation 显式指定独立 `--output` 子目录；日志/JSON/外部采集目录放该 artifacts 子目录之外。重跑同一命令时在原目录名追加 attempt-2 等后缀，不能覆盖旧 receipt。运行前创建目录并记录其与 commit/命令的对应，不新建 runner。
 - 同一候选、相同有效输入下不重复 broad gate；任务测试是最小反馈，正式完整责任在异构代码 review 后一次核算。没有仓库 affected runner，不自建一个。
 
 ## Task index
@@ -29,7 +30,7 @@ Task count: 6
 Claude Code execution: superpowers:subagent-driven-development
 Codex execution: superpowers:executing-plans
 
-按 1 → 2 → 3 → 4 → 5 → 6 串行。Task 1 修入口；Task 2 提供有效共享依赖；Task 3–5 修业务旅程；Task 6 只处理展示稳定性和最终覆盖记录，不承载 final gate。
+按 1 → 2 → 3 → 4 → 5 → 6 串行。Task 1 修入口；Task 2 提供有效共享依赖；Task 3–5 修业务旅程；Task 6 处理展示稳定性、其余招聘消费者旧断言和覆盖记录，不承载 final gate。
 
 |Task|交付与依赖|implementer|spec reviewer|code-quality reviewer|
 |---|---|---|---|---|
@@ -105,8 +106,8 @@ await 采集场景(page, 场景, 宽度, 根目录);
 ```sh
 npm run test:e2e -- --list
 npm run test:e2e:data-source -- --list
-npm run test:e2e -- e2e/P1展示统一.spec.ts e2e/展示字段接线.spec.ts --grep 'Mock视觉' --workers=4
-P1_CAPTURE_DIR=test-results/e2e-realignment/explicit-p1 WIRING_CAPTURE_DIR=test-results/e2e-realignment/explicit-wiring npm run test:e2e -- --grep '采集 (p1-job-top|wiring-job-top)' --workers=2
+npm run test:e2e -- e2e/P1展示统一.spec.ts e2e/展示字段接线.spec.ts --grep 'Mock视觉' --workers=4 --output=ui-regression-output/e2e-realignment/run-1/artifacts
+P1_CAPTURE_DIR=ui-regression-output/e2e-realignment/explicit-p1 WIRING_CAPTURE_DIR=ui-regression-output/e2e-realignment/explicit-wiring npm run test:e2e -- --grep '采集 (p1-job-top|wiring-job-top)' --workers=2 --output=ui-regression-output/e2e-realignment/run-2/artifacts
 ```
 
 检查默认不同用例输出目录不同，显式两目录各有 320/390 的 JSON 和 PNG，JSON screenshot 指向真实文件，关键几何和诊断字段未消失。不必为路径拼装引入新单测框架。
@@ -131,14 +132,13 @@ P1_CAPTURE_DIR=test-results/e2e-realignment/explicit-p1 WIRING_CAPTURE_DIR=test-
 - [ ] 对照当前消费者补齐实际使用的管理员申请 organization_id、企业 profile display_name、目录和 onboarding 响应。复用已有 `创建招聘方OnboardingFixture` 和路由分支，保持每 test 独立可变状态。不要改“未知字段拒绝”负例。
 - [ ] 当前招聘名片保存会 PATCH 档案、必要时上传头像、注册态再 complete。fixture 的完成事实必须由完成请求推进；读取完成快照不能自动完成。已有完成场景的种子则显式 completed_at。公司选择 ID 不得赋予 affiliation 管理权限。
 - [ ] 如果 trace 表明事件 WebSocket 逃逸：在已有路由安装处只拦 `events/live`，复用现有事件桩能力；专用 P7 的 `__emitP7/__P7断开` 事件驱动不得被第二层静默桩覆盖。不得对所有 WebSocket 一刀切或修改 Vite HMR。无逃逸证据则不改事件桩。
-- [ ] 跑代表 consumer，失败已走到后续旧交互时将新首失败归入 Task 3/4/5/6，不伪称该旅程通过：
+- [ ] 修复共享输入后运行全部原 36 条受影响消费者（该选择还含相关 P1C 空档案用例），先 --list 核对台账完整标题，不能仅跑代表样本。第一次运行可暴露旧 UI 失败；按原因分配：fixture 本身由 Task 2 修并定向验证；公司/屏蔽归 Task 3；规则/退役入口归 Task 4；候选/城市归 Task 5；其余发现、Case、PDF、真人会话、卡片几何和 S0 旧断言由 Task 6 修并验证。不得把这些已知受影响消费者第一次运行推迟到异构代码 review 之后。
 
 ```sh
-npm run test:e2e:data-source -- e2e/展示字段接线.spec.ts --project=backend-stg --grep '招聘 推荐列表与匿名简历|招聘 在谈列表与 Case' --workers=4
-npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --project=backend-stg --grep '招聘详情直达刷新|招聘端列表与详情渲染匿名|招聘端经内容无关失效事件' --workers=3
+npm run test:e2e:data-source -- e2e/数据源模式.spec.ts e2e/展示字段接线.spec.ts --project=backend-stg --grep 'P1C|企业名片统一|招聘 推荐列表与匿名简历|招聘 在谈列表与 Case|P6 切换招聘端|招聘端列表与详情渲染匿名|收藏本地过滤|招聘端委托无确认层|招聘端简历详情 404|同一 Case 双端 needs_action|招聘详情直达刷新|披露前与解析中|已披露招聘端|S2/S3 每步|登出与角色切换清空可见 P5|招聘端画像全缺|同 Case 附件|招聘端经内容无关失效事件|P5 发布后招聘端|P8 切换身份|新建两栏下钻分类|卡片统一 .*@backend|场景三：双端 S0' --workers=4 --retries=0 --output=ui-regression-output/e2e-realignment/recruiter-consumers/artifacts
 ```
 
-期望：档案解码成功，正确进入招聘主壳／详情，不再有缺键导致的异常页；验证请求记录和完整代表路径。P1 已有通过 fixture 只作为参照，不纳入无依据修改。
+期望：成功档案解码与水合；记录每个 consumer 的完整结果。将后续失败交接给上述明确 Task，不伪称该旅程通过。Task 6 结束前全部当前有效消费者须已通过；按变动依赖复用或定向补跑，不机械再跑该整个选择。
 
 - [ ] 台账记录哪些消费者已完整通过、哪些只有前置已恢复，提交 `fix(e2e): align recruiter fixtures with current contracts`。
 
@@ -161,7 +161,7 @@ npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --project=backend-st
 - [ ] 如原用例没有单独证明“选择企业不等于获得管理权限”或“选择前后无业务写入”，优先在现有对应旅程补断言；相同风险已由本文件某个浏览器用例覆盖则不重复增加。
 
 ```sh
-npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --grep 'P1C|企业名片统一|核心编辑 简历行业|核心编辑 岗位|招聘方 onboarding|JD 建议稿导入|P3 隐私读写|AddBlock|组织搜索竞态' --workers=4
+npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --grep 'P1C|企业名片统一|核心编辑 简历行业|核心编辑 岗位|招聘方 onboarding|JD 建议稿导入|P3 隐私读写|AddBlock|组织搜索竞态' --workers=4 --output=ui-regression-output/e2e-realignment/run-5/artifacts
 ```
 
 期望：以上所有仍有当前风险的用例完整通过，两种数据源模式守住 ID／零 API 边界。删除用例不能使 grep 得到 0 tests 并被记为成功。
@@ -185,7 +185,7 @@ npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --grep 'P1C|企业�
 - [ ] 原 `/#/chat/direct/J-01` 用例改验证不可用说明、“查看在谈”导航、零直接聊天／举报写入。不能将它改成 Mock 直聊，也不能删掉无权威 target 禁止写入风险。
 
 ```sh
-npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --grep 'Mock 双端规则页|P6 |P8 产品反馈|P8 Backend 直聊|P8 举报' --workers=4
+npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --grep 'Mock 双端规则页|P6 |P8 产品反馈|P8 Backend 直聊|P8 .*举报' --workers=4 --output=ui-regression-output/e2e-realignment/run-6/artifacts
 ```
 
 期望：原 7 个规则失败、2 个退役入口失败及保留的举报 consumer 通过；新场景删除确认或禁止写入若已有覆盖只加精准断言。
@@ -208,9 +208,9 @@ npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --grep 'Mock 双端�
 - [ ] 时间 10253/10353 维持原 UTC 文案和完整导出下载。使用宿主 TZ=Asia/Singapore 验证配置内 UTC 生效，不写产品时间强制 UTC。
 
 ```sh
-npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --grep '候选 onboarding 完整|核心编辑 城市' --workers=3
-TZ=Asia/Singapore npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --project=backend-stg --grep 'P8 账号安全首屏|P8 数据导出：创建无 body' --workers=2
-npm run test:e2e:data-source -- e2e/J-PILOT-02接线.spec.ts --project=backend-stg --workers=3
+npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --grep '候选 onboarding 完整|核心编辑 城市' --workers=3 --output=ui-regression-output/e2e-realignment/run-7/artifacts
+TZ=Asia/Singapore npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --project=backend-stg --grep 'P8 账号安全首屏|P8 数据导出：创建无 body' --workers=2 --output=ui-regression-output/e2e-realignment/run-8/artifacts
+npm run test:e2e:data-source -- e2e/J-PILOT-02接线.spec.ts --project=backend-stg --workers=3 --output=ui-regression-output/e2e-realignment/run-9/artifacts
 ```
 
 最后一条用于建档删除/迁移的替代责任核对与入口转移验证；如果未改建档且同候选已有有效 PASS 可复用，不再重复跑。期望合法选集全过，删除前后独立风险对应明确。
@@ -221,20 +221,21 @@ npm run test:e2e:data-source -- e2e/J-PILOT-02接线.spec.ts --project=backend-s
 
 ### Task 6: 核查展示偶发并完成最小覆盖对照
 
-预期编辑文件：新增无；修改 `e2e/展示字段接线.spec.ts`、`e2e/fixtures/展示字段接线.ts`、`README.md`、本 Plan；无原因证据时前两文件不作猜测性修改。删除无文件。
+预期编辑文件：新增无；修改 `e2e/展示字段接线.spec.ts`、`e2e/fixtures/展示字段接线.ts`、`e2e/数据源模式.spec.ts`、`README.md`、本 Plan；无原因证据时前两文件不作猜测性修改。删除无文件。
 
-目标：处理全量 390px 公司名偶发，清楚记录所有旧测试如何迁移。非目标：不增加全局 retry、不重构展示业务、不把汇总当作正式 final gate。
+目标：处理全量 390px 公司名偶发，修复 Task 2 运行暴露且不属于 Task 3–5 的发现、Case/PDF、真人会话、卡片及 S0 旧断言，清楚记录所有旧测试如何迁移。非目标：不增加全局 retry、不重构展示业务、不把汇总当作正式 final gate。
 
 依赖：前五个 Task；消费 Task 2 fixture，Task 1 采集路径。读取 `e2e/展示字段接线.spec.ts` 的 566 用例、fixture claim-only B 卡与 `src/屏幕/职位详情.tsx`（只读）；生产原用例更精确的可观察等待／数据隔离，保持标题和 320/390 责任。
 
 - [ ] 用现有 trace 或下列有界重复记录公司名丢失的页面、目标 Job ID、请求/响应顺序；场景步骤必须仍经过 A→B 切换。原单 worker 通过仅证明未复现，不叫修复。
 
 ```sh
-npm run test:e2e:data-source -- e2e/展示字段接线.spec.ts --project=backend-stg --grep '候选 市场列表与独立职位详情' --workers=4 --repeat-each=3 --retries=0
+npm run test:e2e:data-source -- e2e/展示字段接线.spec.ts --project=backend-stg --grep '候选 市场列表与独立职位详情' --workers=4 --repeat-each=3 --retries=0 --output=ui-regression-output/e2e-realignment/run-10/artifacts
 ```
 
 - [ ] 已证实是就绪条件竞态时，导航前注册目标响应等待、导航后等目标 Job ID/详情标题与 claim-only 公司名稳定；仅等请求计数不能证明 response 已消费。已证实是测试共享可变对象则在原 fixture 构造点独立实例化；不得 clone 整个测试框架或重写产品缓存。
 - [ ] 未复现且源码无确定性缺陷则不改产品或猜改等待，记录 6 次采样结果与根因未定；若仍失败且无法在测试范围内修复，该责任未完成，不能标记已就绪。
+- [ ] 完成 Task 2 交接的其余消费者：保留列表分页/匿名字段、PDF 披露边界、S2/S3 权威动作、角色清理、会话读取、卡片几何和 S0 禁用输入的原有效断言，只迁移旧入口与过时文案。针对失败标题运行 `npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --project=backend-stg --grep <该条完整标题转义后的正则> --workers=4 --retries=0 --output=ui-regression-output/e2e-realignment/consumer-repair-N/artifacts`，N 为该次补验序号；精确标题来自 Task 2 记录而不是自行猜测。共享 fixture 再改则重算所有消费者，全部在 Task 结束前验证，不能只记账或留至收尾。
 - [ ] 核对本 Plan 台账全部组，增补解除前置后暴露的失败：每个删除指明退役依据或精确替代测试，每个新增指明独立风险。不新增单独 review/report/handoff 文档，不把 trace 的机器绝对路径写入交付。
 - [ ] README 删除过期“只有两项目”“公司只能填 claim”等说明，写当前 mock/backend/annotation 三入口与边界；只修与本任务有关的说明。
 - [ ] 提交 `fix(e2e): tighten display readiness and reconcile coverage`；无测试代码变动时用 docs commit，禁止为满足 commit 名义编造修改。
@@ -245,8 +246,8 @@ npm run test:e2e:data-source -- e2e/展示字段接线.spec.ts --project=backend
 
 1. 完成上述全部 Task 与执行 skill 要求的宿主内全局 review（未要求则不新增）后，退出 Task/global review 流程。绑定本 Plan 和批准 Spec 的精确版本：Codex 使用 Claude `claude-review-loop`；Claude Code 使用以 Codex 为 reviewer 的多轮只读 review-loop。按其共用 `../_shared/review-contract.md` 核实 findings，reviewer 默认不跑测试。异构 review 只在此处调用，轮间修复仅跑轻量静态/单元检查，不跑整套 E2E；轮次与结束条件归 review skill。
 2. Review 返回允许继续后核算适用 L0–L2（仓库没有 affected runner）：运行 `git diff --check`、针对实际修改文件的 `npx oxlint <files>`；不把 app-only typecheck 误记为 E2E 类型覆盖。采集 helper 改动时选择 `npm test -- e2e/视觉回归/比较器.test.ts e2e/视觉回归/场景.test.ts`，不自动全量 npm test/build。
-3. 最终功能责任最小组合：完整 `npm run test:e2e:data-source -- --workers=4 --retries=0 --reporter=list,json`；默认独有与代理 Mock 入口 `npm run test:e2e -- e2e/onboarding.spec.ts e2e/换壳无闪屏.spec.ts e2e/问AI代理展示.spec.ts --workers=4 --retries=0 --reporter=list,json`；默认 52 采集的配置依赖由 Task 1 的默认运行证据覆盖。若后续修改了两采集文件中的采集步骤、目录 helper、依赖 fixture 或配置，则相应场景证据失效，需要补跑这些场景；仅 Backend 测试块修改可通过 diff 证明不影响独立 Mock 采集。对于默认与数据源重叠用例，只有 server 模式、suite 配置、fixture 与内容相同才复用业务 PASS，两个 `--list` 和默认实际运行证明入口路由。无法证明等价的重叠条目单独补跑，不把 data-source 全绿直接称默认全绿。两命令若意外 0 tests 则覆盖失败。
-4. `UI_CAPTURE_DIR=test-results/e2e-realignment/visual npm run ui:capture -- --retries=0` 覆盖独立 18 场景；Task 1 显式目录样本证据若依赖未变复用，不重跑 52 场景第二遍。选择实际 JSON output 文件和 output 目录，每次 suite 使用不同路径，保存 exit code、commit、时区、Chrome/Node、选集和 trace；记录到本 Plan。任何后续修复只补对应失效消费者，不能省掉受共享 fixture 影响的消费者。
+3. 最终功能责任最小组合：完整 `PLAYWRIGHT_JSON_OUTPUT_NAME=ui-regression-output/e2e-realignment/final-data.json npm run test:e2e:data-source -- --workers=4 --retries=0 --reporter=list,json --output=ui-regression-output/e2e-realignment/final-data-artifacts`；默认独有与代理 Mock 入口 `PLAYWRIGHT_JSON_OUTPUT_NAME=ui-regression-output/e2e-realignment/final-default.json npm run test:e2e -- e2e/onboarding.spec.ts e2e/换壳无闪屏.spec.ts e2e/问AI代理展示.spec.ts --workers=4 --retries=0 --reporter=list,json --output=ui-regression-output/e2e-realignment/final-default-artifacts`；默认 52 采集的配置依赖由 Task 1 的默认运行证据覆盖。若后续修改了两采集文件中的采集步骤、目录 helper、依赖 fixture 或配置，则相应场景证据失效，需要补跑这些场景；仅 Backend 测试块修改可通过 diff 证明不影响独立 Mock 采集。对于默认与数据源重叠用例，只有 server 模式、suite 配置、fixture 与内容相同才复用业务 PASS，两个 `--list` 和默认实际运行证明入口路由。无法证明等价的重叠条目单独补跑，不把 data-source 全绿直接称默认全绿。两命令若意外 0 tests 则覆盖失败。
+4. `UI_CAPTURE_DIR=ui-regression-output/e2e-realignment/visual PLAYWRIGHT_JSON_OUTPUT_NAME=ui-regression-output/e2e-realignment/final-visual.json npm run ui:capture -- --retries=0 --reporter=list,json --output=ui-regression-output/e2e-realignment/final-visual-artifacts` 覆盖独立 18 场景；Task 1 显式目录样本证据若依赖未变复用，不重跑 52 场景第二遍。选择实际 JSON output 文件和 output 目录，每次 suite 使用不同路径，保存 exit code、commit、时区、Chrome/Node、选集和 trace；记录到本 Plan。任何后续修复只补对应失效消费者，不能省掉受共享 fixture 影响的消费者。
 5. 范围内失败自主归因修复；affected 开始后不重新跑 Task/global/异构 review，标明已 review commit 与后续修复差异。仅在适用责任无缺口后准备 final gate。真实后端 development L3：none（仅改 intercepted E2E，无生产代码/真实后端边界变化）；release-only 不属于本任务。
 6. Final gate 确认前允许只读 fetch 获取 remote 状态，target 由实施者检测候选 parent／远端并把精确 ref/SHA 纳入待批准方案；用户未指定时不得静默假定 main 或 push。展示候选 commit、测试/审查事实、复用与增量范围、目标和普通合入动作、自主恢复边界，等待明确确认。不在此前合 target、跑正式 L3、push。
 7. 确认后同一执行者完整读取逻辑 skill `development-workflow` 的 `references/final-integration.md` 与 `assets/final-integration-contract.md`：同步已确认 target 记录 final_target_base、重算完整责任、只补无效证据、执行必要 L3（本范围 none）、cleanup 后再对账、确认 target 未推进后普通 fast-forward push。禁止 force push；target race、产品范围扩大或外部资源不可得时报告，不无限追赶。确认后不再异构 review，保留原 review 版本。任务 intent 完成状态只在事实完成后刷新。
@@ -255,4 +256,13 @@ npm run test:e2e:data-source -- e2e/展示字段接线.spec.ts --project=backend
 
 规划自检：6 个 Task、宿主路由及角色表齐全；全部修改限定测试/配置/文档，删除新增均有责任边界；原 111 个失败和默认误选/跳过均有 Task 映射。规划期未重复运行产品测试。
 
-当前文档审查状态：等待冻结候选后调用 Claude WORKFLOW_DOCUMENT_REVIEW；此状态不是 clean。review 结果与裁决就地写本节；完成后才生成执行 prompt。
+Claude Opus/high 第 1 轮（WORKFLOW_DOCUMENT_REVIEW），冻结候选 revision `59b691767faac7ca7fbe2f7a9e7c5f9cd226d58e` / Plan blob `6fe595f0f7b5fb12201baf001829d1e773ede34e`；批准 Spec 为文首版本。审查前后 status、HEAD 与两文档指纹相同，未运行测试。
+
+|Finding|裁决与修复|必要性|复杂度影响|
+|---|---|---|---|
+|R1-1 证据落默认 test-results 会被后续运行清空|接受；所有复用证据搬至 ui-regression-output，每次 invocation 独立 --output artifacts，JSON/显式采集为其外部兄弟路径；重跑换 attempt 后缀|required|不变|
+|R1-2 部分共享 fixture 消费者未分配完整任务级修复|接受责任缺口；不依赖报告中的近似条数。Task 2 选择覆盖全部 36 条并记录新失败，Task 3–5 分域处理，Task 6 明确承担其余发现/Case/PDF/会话/卡片/S0 旧断言，全部在代码 review 前验证|required|不变|
+|R1-3 替代举报 10561 未被 Task 4 grep 选中|接受；使用 P8 .*举报 覆盖替代 consumer|optional|不变|
+|R1-4 list,json 未指定独立 JSON 文件|接受；三条最终命令显式 PLAYWRIGHT_JSON_OUTPUT_NAME，文件不在 runner 清理目录内|optional|不变|
+
+本轮所有有效 required 已修订，未改变批准产品范围；4 项均为文档局部修订，没有产品测试或产品代码改动。按 review skill 的“核实后无未解决的有效 required”停止规则结束，共 1 轮，无未解决 required；修订由 planner 静态核对，不宣称修订后另有 Claude 复审。
