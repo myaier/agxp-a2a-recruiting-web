@@ -234,4 +234,6 @@ Task 4 两条浏览器命令也是本次完整责任的一部分，证据有效�
 - Claude 文档 review 固定范围仅本 Plan 与所引用 Spec。首轮候选 `545e65a4`；reviewer 为独立 Claude CLI（opus / high、plan 只读模式），无测试；工作树状态、HEAD、文件指纹守卫通过。
 - R1-F1（Important / 真实缺陷 / required / 复杂度不变）：接受。旧 `--grep '消息'` 漏掉缺失、长标题、错误缓存用例，缺失用例仍断言 AI 行不存在。已明确修改该断言并将 Task 4 与收尾引用的 selection 改为五种消息用例×两宽度，不扩大到岗位测试；不改变 Spec。
 - R1-F2（Minor / 真实缺陷 / optional / 复杂度不变）：接受。补全 `e2e/视觉回归/稳定页面.ts` 路径并指定 `打开稳定页面` 导出，避免执行者猜工具位置。
-- 修订后提交同一 Claude 会话复审，结果在返回后记录；当前不将首轮建议已改写等同于 reviewer 对最终版本的无 finding 结论。
+- R2：同一隔离 Claude 会话复审候选 `c6120b61`（Plan blob `517df4e5` 前缀，Spec 校准 blob 不变），返回精确 `NO FINDINGS`；status/HEAD/内容指纹守卫再次通过。共2轮，1项 required及1项optional均已修复，无拒绝/延后/未解决项；本行仅记录已发生的review结论，不改变受审实施合同。
+- selection 校验：驱动者执行 Task 4 的 P1 命令加 `--list`，列出五种消息用例×320/390两宽度，共10条，未执行浏览器产品测试。两轮reviewer均未运行测试。
+- 执行交付：使用逻辑 development-workflow 的双宿主模板生成单个 prompt 文件，再运行 `scripts/validate_prompt_grading.py --plan docs/superpowers/plans/2026-09-14-agent-session-and-display-components.md --prompt docs/superpowers/prompts/2026-09-14-agent-session-and-display-components.md`；实际校验结果随prompt提交记录，不再变更此处已冻结实施内容。
