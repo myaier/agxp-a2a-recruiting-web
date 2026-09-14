@@ -163,7 +163,8 @@ export function use城市默认页(查询Location: 查询Location方法 | undefi
   };
 
   const 项们 = 去重(默认国家们.flatMap((国家) => 分支们[国家]?.items ?? []));
-  const 还有 = 默认国家们.some((国家) => {
+  // 还有 = 任一未成功首页或有游标；查询禁用（Mock）时没有可取的默认页，恒 false
+  const 还有 = 可查询 && 默认国家们.some((国家) => {
     const 分支 = 分支们[国家];
     return !分支 || !分支.首页成功 || 分支.游标 !== null;
   });

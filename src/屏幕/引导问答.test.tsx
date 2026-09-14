@@ -981,11 +981,35 @@ describe('引导问答 Backend 城市题：精选区 + 四支默认目录（Task
     await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), 'A');
     await waitFor(() => expect(查询Location).toHaveBeenCalledWith(expect.objectContaining({ q: 'A' })));
     expect(screen.queryByText('没有匹配的城市，换个词试试。')).toBeNull();
+    // 全球搜索：q 直达端点、不带国家限制（review fix 1；页面级断言）
+    const 搜索调用 = ((查询Location as ReturnType<typeof vi.fn>).mock.calls as unknown[][]).find(
+      (单调用) => (单调用[0] as { q?: string }).q === 'A',
+    );
+    expect(搜索调用).toBeTruthy();
+    expect(Object.keys(搜索调用![0] as Record<string, unknown>)).not.toHaveProperty('countryCode');
     await screen.findByText('A城');
     await 用户.click(screen.getByRole('button', { name: '加载更多' }));
     await waitFor(() => expect(查询Location).toHaveBeenCalledWith(expect.objectContaining({ q: 'A', cursor: 'a_cur_1' })));
     await A第二页.resolve({ items: [城({ id: 'loc_a2', display_name: 'A城2', admin1_name: null })], nextCursor: null, catalogVersion: 'v2' });
     expect(await screen.findByText('A城2')).toBeTruthy();
+  });
+
+  it('搜索清空恢复默认目录：精选区与已选保持（Task 4 review fix 1）', async () => {
+    const 查询Location = 四国桩({
+      CN: { items: [城({ id: 'loc_cn1', display_name: '广州市', admin1_name: '广东省' })], nextCursor: null },
+      搜索: { items: [城({ id: 'loc_a1', display_name: 'A城', admin1_name: null })], nextCursor: null },
+    });
+    render引导问答后端({ 查询Location });
+    const 用户 = await 进城市题();
+    // 精选区先选一枚 → 搜索离开默认目录 → 清空恢复
+    await 用户.click(await screen.findByRole('button', { name: '新加坡' }));
+    await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), 'A');
+    await screen.findByText('A城');
+    await 用户.clear(screen.getByPlaceholderText('搜索城市 / 省份'));
+    // 恢复：精选区与默认分组回来，已选不丢
+    expect(await screen.findByText('国内热门城市')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '广州市' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '新加坡 ✕' })).toBeTruthy();
   });
 
   it('选海外精选保存 canonical ID（原建档引用保存）', async () => {
@@ -1021,6 +1045,8 @@ describe('引导问答 Mock 城市题（Task 4）', () => {
     expect(screen.queryByText('海外', { selector: 'div' })).toBeNull();
     expect(screen.queryByRole('button', { name: '迪拜' })).toBeNull();
     expect(screen.queryByText('港澳台')).toBeNull();
+    // Mock 无默认目录查询：列表尾不出现永不消失的死按钮（review fix 2）
+    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
     await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), '新加坡');
     expect(await screen.findByRole('button', { name: '新加坡' })).toBeTruthy();
   });

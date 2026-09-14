@@ -410,7 +410,8 @@ describe('use城市默认页 四支默认目录（Task 4）', () => {
       CN首页.resolve({ items: [条目({ id: 'loc_cn1', display_name: '广州市', country_code: 'CN', admin1_code: '44', admin1_name: '广东省' })], nextCursor: null, catalogVersion: 'v2' });
     });
     // 迟到的完成不提交；迟到的 finally 不再改加载态
-    expect(JSON.parse(container.querySelector('output')!.textContent!)).toEqual({ 项们: [], 加载中: false, 还有: true });
+    // 查询禁用后没有可取的默认页：还有 随之归 false（不再驱动死按钮）
+    expect(JSON.parse(container.querySelector('output')!.textContent!)).toEqual({ 项们: [], 加载中: false, 还有: false });
     // 禁用后加载更多是空操作
     await act(async () => { 加载更多外!(); });
     expect(((查询 as unknown as ReturnType<typeof vi.fn>).mock.calls as unknown[][])).toHaveLength(4);

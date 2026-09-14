@@ -244,3 +244,15 @@ npm run ui:check -- --base "$START_BASE"
 ## 实施记录
 
 尚未实施。新实施session在此记录实际START_BASE、Task提交、代码review候选与裁决、验证摘要/忽略证据位置、缺口及final gate状态；不把规划基线420条旧测试PASS当成本次实现PASS。
+
+---
+
+以下为 2026-09-14 Claude Code 实施 session 记录：
+
+- **START_BASE** = `30bb1e3c0cff936954b892448af1bbd8f9156266`（开工 fetch 后 origin/main=`5825ff47` 未推进，merge no-op，工作树干净；Spec/Plan blob 指纹与批准版本一致）。Task intent 35ca5c9d（active）。
+- **Task 1**（撤销推荐企业认证前提）：提交 `f2c054fb`，6 文件 +230/−317。RED 17 目标失败 → GREEN 定向 6 文件 429/429、全仓 4938/4938、typecheck/lint 干净。spec review ✅（sonnet）+ quality Approved（opus）；2 个 deferred Minor（候选推荐.tsx 前提未知原因 blocked 死分支；发现推荐映射.test 参数化行名与输入不符）。
+- **Task 2**（名片公开名草稿即时预览）：提交 `b8d7554e`。偏差（内联 `verifiedName === null` 替代 alias 公式）经两 reviewer 独立核查逐值等价。spec ✅（sonnet）+ quality Approved（sonnet）；3 deferred Minor（断言作用域、谓词双写、测试 helper 依赖）。
+- **Task 3**（我页招聘者头像姓名）：提交 `cae166fe`。RED 9 目标失败 → GREEN 25/25。spec ✅（sonnet）+ quality Approved（sonnet）；3 deferred Minor（报告计数口径、key 前缀共享、迟到 error 平凡 no-op 注记）。
+- **Task 4**（四国目录+精选+三入口）：提交 `13afd991`。真实 ID 前置核验由主控完成：**22/22 命中**（catalog_version `cities500-2026-08-22-59d087eca781`，后端 `agxp-monorepo@bf1ae2fd` local 栈，经 5173 代理逐国分页比对；证据 `dogfood-output/2026-09-14-city-ids/`）。定向 8 文件 220 测试 + typecheck + 全仓 4981 全过，RED 有记录。双 opus review 进行中。
+- **环境修复裁决**（local 栈冷启动，无在用服务）：清除 .mt-dev/core.env 陈旧 onboarding key；删除 litellm 库 blocked 孤儿别名行；hub/recruitment postgres 角色 socket 内 ALTER ROLE 对齐现 env 密码（保留全部数据，替代 reset 销毁路径）；五个固定 dev 租户 owner/product_state 清 NULL 后 bootstrap 收敛（五账号就绪）。
+
