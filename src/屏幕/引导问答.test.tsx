@@ -842,24 +842,38 @@ describe('引导问答 Backend 期望职位题 接原 Mock 说明卡与方向细
   });
 });
 
-describe('引导问答 Backend 城市题 接原 Mock 定位/热门/行政区分组（Task 5）', () => {
+describe('引导问答 Backend 城市题：精选区 + 四支默认目录（Task 4）', () => {
   beforeEach(() => {
     mock跳转.mockClear();
     mock返回.mockClear();
   });
 
   /** 造一条 Location 目录项（字段全部来自后端返回） */
-  function 城(项: { id: string; display_name: string; admin1_name: string | null; country_name?: string }) {
+  function 城(项: { id: string; display_name: string; countryCode?: string; admin1_name: string | null }) {
     return {
       id: 项.id,
       display_name: 项.display_name,
-      country_code: 'CN',
-      country_name: 项.country_name ?? '中国',
+      country_code: 项.countryCode ?? 'CN',
+      country_name: 项.countryCode ?? '中国',
       admin1_code: '31',
       admin1_name: 项.admin1_name,
       timezone: 'Asia/Shanghai',
       population: 0,
     };
+  }
+
+  type 页形 = { items: ReturnType<typeof 城>[]; nextCursor: string | null };
+  type 国家名 = 'CN' | 'TW' | 'HK' | 'MO';
+
+  /** 四支分发桩：按 countryCode 返回各自页；搜索词命中时返回搜索结果 */
+  function 四国桩(配置: Partial<Record<国家名, 页形>> & { 搜索?: 页形 }) {
+    return vi.fn(async (query: { q?: string; countryCode?: string; cursor?: string; limit?: number }) => {
+      if (query.q !== undefined) {
+        return { ...(配置.搜索 ?? { items: [], nextCursor: null }), catalogVersion: 'v2' };
+      }
+      const 页 = 配置[(query.countryCode ?? 'CN') as 国家名] ?? { items: [], nextCursor: null };
+      return { ...页, catalogVersion: 'v2' };
+    });
   }
 
   /** 从第一题（期望职位）推进到工作城市题 */
@@ -870,34 +884,145 @@ describe('引导问答 Backend 城市题 接原 Mock 定位/热门/行政区分�
     return 用户;
   }
 
-  it('当前定位显示「暂未获取定位」且点不出上海；热门与行政区分组都来自返回字段', async () => {
-    const 查询Location = vi.fn(async (_query: { q?: string; cursor?: string }) => ({
-      items: [
-        城({ id: 'loc_sh', display_name: '上海', admin1_name: '上海市' }),
-        城({ id: 'loc_gz', display_name: '广州市', admin1_name: '广东省' }),
-      ],
-      nextCursor: null,
-      catalogVersion: 'v2',
-    }));
-    render引导问答后端({ 查询Location });
+  it('当前定位缺失态点不出上海；两精选区上屏且无港澳台精选；默认查询按国家分支不带 q', async () => {
+    const 查询Location = 四国桩({
+      CN: {
+        items: [
+          城({ id: 'loc_sh', display_name: '上海', admin1_name: '上海市' }),
+          城({ id: 'loc_gz', display_name: '广州市', admin1_name: '广东省' }),
+        ],
+        nextCursor: null,
+      },
+    });
+    const { 派发 } = render引导问答后端({ 查询Location });
     const 用户 = await 进城市题();
     const 定位 = await screen.findByText('暂未获取定位');
     await 用户.click(定位);
     // 缺失态点不出任何城市：没有已选 chip，下一步仍禁用
     expect(screen.queryByRole('button', { name: '上海 ✕' })).toBeNull();
     expect((screen.getByRole('button', { name: /保存/ }) as HTMLButtonElement).disabled).toBe(true);
-    // 默认查询不发 q
-    const 首次参数 = 查询Location.mock.calls[0][0] as Record<string, unknown>;
-    expect(Object.keys(首次参数)).not.toContain('q');
-    // 热门区来自返回项，行政区分组标题用返回的 admin1_name
-    expect(screen.getAllByText('广州市').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('广东省')).toBeTruthy();
-    // 不编造省份、不造「其他地区」、不显示 Mock 的硬编码省墙
+    // 默认查询按国家分支，不带 q
+    const 调用 = 查询Location.mock.calls as unknown[][];
+    expect(调用.length).toBeGreaterThanOrEqual(4);
+    for (const 单调用 of 调用) {
+      expect(Object.keys(单调用[0] as Record<string, unknown>)).not.toContain('q');
+    }
+    // 两精选区（静态配置）与精选条目；港澳台不进精选（TW/HK/MO 支为空也不出现英文名）
+    expect(screen.getByText('国内热门城市')).toBeTruthy();
+    expect(screen.getByText('海外热门城市')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '新加坡' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Taipei' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Hong Kong' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Macau' })).toBeNull();
+    // 不造「其他地区」、不显示 Mock 硬编码省墙
     expect(screen.queryByText('其他地区')).toBeNull();
     expect(screen.queryByText('直辖市')).toBeNull();
-    // 真实项仍可选
-    await 用户.click(screen.getAllByText('广州市')[0]);
+    expect(screen.queryByText('港澳台')).toBeNull();
+    // 真实项仍可选并按 ID 保存
+    await 用户.click(screen.getByRole('button', { name: '广州市' }));
     expect(screen.getByRole('button', { name: '广州市 ✕' })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({
+        型: '存引导预填',
+        城市引用们: [{ id: 'loc_gz', display_name: '广州市' }],
+      }),
+    );
+  });
+
+  it('三个中文组标题与英文条目：TW/HK/MO 返回无视 admin1 细分，组内可选保存', async () => {
+    const 查询Location = 四国桩({
+      TW: { items: [城({ id: 'loc_tpe', display_name: 'Taipei', countryCode: 'TW', admin1_name: 'Taipei' })], nextCursor: null },
+      HK: { items: [城({ id: 'loc_hk', display_name: 'Hong Kong', countryCode: 'HK', admin1_name: 'Hong Kong' })], nextCursor: null },
+      MO: { items: [城({ id: 'loc_mo', display_name: 'Macau', countryCode: 'MO', admin1_name: null })], nextCursor: null },
+    });
+    const { 派发 } = render引导问答后端({ 查询Location });
+    const 用户 = await 进城市题();
+    await screen.findByText('台湾省');
+    expect(screen.getByText('香港特别行政区')).toBeTruthy();
+    expect(screen.getByText('澳门特别行政区')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Taipei' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hong Kong' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Macau' })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: 'Taipei' }));
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({
+        型: '存引导预填',
+        城市引用们: [{ id: 'loc_tpe', display_name: 'Taipei' }],
+      }),
+    );
+  });
+
+  it('列表尾「加载更多」：默认第二页与搜索第二页可达，初始加载不当无结果', async () => {
+    const CN第二页 = deferredPromise<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>();
+    const A第二页 = deferredPromise<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>();
+    const 查询Location = vi.fn(async (query: { q?: string; countryCode?: string; cursor?: string }) => {
+      if (query.cursor === 'cn_1') return CN第二页.promise;
+      if (query.cursor === 'a_cur_1') return A第二页.promise;
+      if (query.q === 'A') {
+        return { items: [城({ id: 'loc_a1', display_name: 'A城', admin1_name: null })], nextCursor: 'a_cur_1', catalogVersion: 'v2' };
+      }
+      if (query.countryCode === 'CN') {
+        return { items: [城({ id: 'loc_cn1', display_name: '广州市', admin1_name: '广东省' })], nextCursor: 'cn_1', catalogVersion: 'v2' };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render引导问答后端({ 查询Location });
+    const 用户 = await 进城市题();
+    // 默认第二页可达：列表尾按钮翻 CN 的下一页
+    await screen.findByText('广州市');
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(查询Location).toHaveBeenCalledWith(expect.objectContaining({ countryCode: 'CN', cursor: 'cn_1' })));
+    await CN第二页.resolve({ items: [城({ id: 'loc_cn2', display_name: '杭州市', admin1_name: '浙江省' })], nextCursor: null, catalogVersion: 'v2' });
+    expect(await screen.findByText('杭州市')).toBeTruthy();
+
+    // 搜索：词在飞行中不显示「没有匹配」；结果到后搜索第二页经同一按钮可达
+    await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), 'A');
+    await waitFor(() => expect(查询Location).toHaveBeenCalledWith(expect.objectContaining({ q: 'A' })));
+    expect(screen.queryByText('没有匹配的城市，换个词试试。')).toBeNull();
+    await screen.findByText('A城');
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    await waitFor(() => expect(查询Location).toHaveBeenCalledWith(expect.objectContaining({ q: 'A', cursor: 'a_cur_1' })));
+    await A第二页.resolve({ items: [城({ id: 'loc_a2', display_name: 'A城2', admin1_name: null })], nextCursor: null, catalogVersion: 'v2' });
+    expect(await screen.findByText('A城2')).toBeTruthy();
+  });
+
+  it('选海外精选保存 canonical ID（原建档引用保存）', async () => {
+    const 查询Location = 四国桩({});
+    const { 派发 } = render引导问答后端({ 查询Location });
+    const 用户 = await 进城市题();
+    await 用户.click(await screen.findByRole('button', { name: '新加坡' }));
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({
+        型: '存引导预填',
+        城市引用们: [{ id: 'loc_qdyx7r6fcyjrcokobaxsorhhrm', display_name: '新加坡' }],
+      }),
+    );
+  });
+});
+
+describe('引导问答 Mock 城市题（Task 4）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+  });
+
+  it('默认分组：港澳台三中文组标题配英文条目、无海外长组；搜索读搜索字典仍可搜海外', async () => {
+    render引导问答Mock();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
+    expect(screen.getByText('台湾省')).toBeTruthy();
+    expect(screen.getByText('香港特别行政区')).toBeTruthy();
+    expect(screen.getByText('澳门特别行政区')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Taipei' })).toBeTruthy();
+    expect(screen.queryByText('海外', { selector: 'div' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '迪拜' })).toBeNull();
+    expect(screen.queryByText('港澳台')).toBeNull();
+    await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), '新加坡');
+    expect(await screen.findByRole('button', { name: '新加坡' })).toBeTruthy();
   });
 });
 
