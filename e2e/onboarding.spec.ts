@@ -267,7 +267,12 @@ test.describe('multi-role onboarding', () => {
     await page.getByRole('button', { name: '完成' }).click();
     await page.getByRole('button', { name: '— 元/天' }).click();
     await page.getByRole('button', { name: '完成' }).click();
-    await page.getByPlaceholder('如：上海').fill('上海');
+    // picker 统一 Task 2：岗位城市 input 已删 —— 经工作城市行打开全页选择子视图选上海
+    await page.getByRole('button').filter({ hasText: '工作城市' }).click();
+    await expect(page.getByRole('heading', { name: '选择工作城市' })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '上海', exact: true }).first().click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '选择工作城市' })).toHaveCount(0);
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');
     // 职位要求与职位描述是两条互相独立的必填文本，各填各的
     //（2026-09-11 起第三步的公开要求输入 label 从「职位要求」改回「岗位要求」，

@@ -1,0 +1,110 @@
+/* 行业分类列表（picker 统一 Task 1）：两处行业选择共用的折叠目录列表样式。
+   版式沿原经历行业弹层（选择项行式 + 底部分隔线 + 选中深绿✓），
+   容器交给弹层/全页两种外壳自适配高度。 */
+
+.列表 {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.行键 {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--分隔线);
+}
+
+.行名 {
+  font-size: 15px;
+  color: var(--墨);
+}
+
+/* 选中照原 选择项选中 口径：深绿 + 加粗 + ✓ */
+.行选中 .行名 {
+  color: var(--深绿);
+  font-weight: 700;
+}
+
+.勾 {
+  color: var(--深绿);
+  font-weight: 800;
+}
+
+.箭头 {
+  flex: none;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--最弱);
+}
+
+.展开键 {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--最弱);
+}
+
+/* 选满后的未选行：整行退到底色层，明确「这会儿点不动」 */
+.行禁用 {
+  color: var(--最弱);
+  cursor: default;
+}
+
+/* 行尾状态：加载中 / 成功空页 / 错误 + 重试 / 分页尾 */
+.尾注 {
+  font-size: 13px;
+  color: var(--最弱);
+  padding: 10px 0;
+}
+
+.尾区 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.错误文 {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #b42318;
+}
+
+.重试键 {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--深绿文字);
+  padding: 4px 10px;
+}
+
+/* 分页尾沿用原「加载更多」控件口径 */
+.加载更多键 {
+  width: 100%;
+  padding: 10px;
+  font-size: 13px;
+  color: var(--最弱);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--分隔线);
+  text-align: left;
+}

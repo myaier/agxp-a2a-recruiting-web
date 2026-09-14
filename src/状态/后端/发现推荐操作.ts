@@ -36,7 +36,6 @@ import {
   P4失败原因文案,
   P4拒绝原因文案,
   P4委托状态文案,
-  判断P4招聘组织前提,
 } from '../../数据/发现推荐映射';
 import type {
   BFF发现偏好,
@@ -48,7 +47,6 @@ import type {
   BFF招聘推荐详情,
 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
-import type { 页面岗位快照 } from '../../数据/招聘数据源类型';
 import { 清账号状态 } from './会话操作';
 import { 失效P5连续列表, 失效P5开案工作区 } from './MatchCase操作';
 import {
@@ -380,7 +378,8 @@ export function P4错误文案(error: unknown): string {
     source_unavailable: '服务暂时不可用，请稍后再试',
     recruitment_service_unavailable: '服务暂时不可用，请稍后再试',
     operation_outcome_unknown: '操作结果暂未确认，请稍后重试',
-    organization_verification_required: '匿名候选推荐需要已验证的用人组织',
+    // 2026-09-14 撤销认证前提：旧组织码只剩「实际请求失败」一种含义，文案不再指向认证
+    organization_verification_required: '推荐请求被服务端拒绝，请稍后重试',
   };
   const 文案 = copy[error.code]
     // 全局兜底已不再透传原始 message（§8.2），但 status-200 的 BFF错误 只能由本模块
@@ -636,7 +635,7 @@ function 按委托编号改摘要(
 }
 
 export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐操作 {
-  const { 是后端, 后端, 派发, 设后端状态, 后端状态引用, 锁, 主体标识引用, 会话代际 } = deps;
+  const { 是后端, 后端, 设后端状态, 后端状态引用, 锁, 主体标识引用, 会话代际 } = deps;
   // Provider 恒注入；收窄一次，域内不再到处断言。
   const 引用 = 取P4引用(deps);
   const { P4范围代际, P4幂等意图, P4可见范围 } = 引用;
@@ -1455,92 +1454,39 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     },
 
     /**
-     * 刷新招聘候选（Task 6 组织对账）：POST 建批次与权威重读仍走 运行范围刷新（不改它）。
-     * POST 以精确组织 409（strict contract 只在 refresh 路由透传该码）失败时，本层做
-     * 恰好一次 Owner Jobs 权威重读收敛「发请时本地仍 ready、后端事实已变」的竞态：
-     *   · 权威页说组织受阻 → 水合岗位快照，原组织错误原样抛给屏（受阻态由权威事实驱动）；
-     *   · 权威页说仍 ready / 找不到该岗位 / unknown → 合同漂移，持久快照改述
-     *     「数据状态异常」并抛 invalid_response（fail closed，绝不发组织 CTA）；
-     *   · 重读受同一道栅栏约束：迟到成败整包丢弃，栅栏内 401 走统一 清账号状态；
-     *   · 绝不重发 refresh POST、绝不换幂等键（键生命周期仍归 运行范围刷新）；
-     *   · 对账全程重新持有同一把 scope 读锁（运行范围刷新 的 finally 先释放了它）：
-     *     重读在飞时同一未结算意图的第二次点击让路，零重复 POST / 零重复重读。
+     * 刷新招聘候选：POST 建批次与权威重读走 运行范围刷新，与本域其它刷新同一收口。
+     * 2026-09-14 撤销企业认证前提：精确组织 409（organization_verification_required）
+     * 只是实际请求失败的一种 —— 按 P4 闭合文案落持久快照并原样抛给屏，不再做 Owner Jobs
+     * 权威重读对账，也不自动重 POST；幂等键生命周期仍归 运行范围刷新。
      */
     async 刷新招聘候选(jobId) {
       if (!是后端 || !后端) return;
-      const scopeKey = P4范围键.招聘列表(jobId);
-      // 同一份 job-scoped 快照的三个落点：运行范围刷新 与组织对账共用，谁最后结算谁说了算
-      const 提交开始 = (fence: P4Fence) => 设后端状态((旧) => ({
-        ...旧,
-        招聘可用候选: {
-          ...旧.招聘可用候选,
-          [jobId]: 起步快照(旧.招聘可用候选[jobId], fence.scopeGeneration),
-        },
-      }));
-      const 提交成功 = (items: BFF招聘候选推荐[], fence: P4Fence) => 设后端状态((旧) => ({
-        ...旧,
-        招聘可用候选: {
-          ...旧.招聘可用候选,
-          [jobId]: 成功快照(items, fence.scopeGeneration),
-        },
-      }));
-      const 提交失败 = (文案: string, fence: P4Fence) => 设后端状态((旧) => ({
-        ...旧,
-        招聘可用候选: {
-          ...旧.招聘可用候选,
-          [jobId]: 失败快照文案(旧.招聘可用候选[jobId], 文案, fence.scopeGeneration),
-        },
-      }));
-      const 对账Fence = 捕获栅栏(引用, scopeKey);
-      try {
-        await 运行范围刷新<BFF招聘候选推荐[]>({
-          scopeKey,
-          发起: (源, 幂等键) => 源.刷新招聘候选(jobId, 幂等键),
-          重读: (源) => 源.读取招聘候选(jobId),
-          开始: 提交开始,
-          成功: 提交成功,
-          失败: 提交失败,
-        });
-      } catch (错误) {
-        if (!(错误 instanceof BFF错误) ||
-            错误.status !== 409 ||
-            错误.code !== 'organization_verification_required') throw 错误;
-        // 屏已换代（切岗/换代/登出）：组织错误与对账结果都归新会话，静默收口
-        if (!fenceStillCurrent(引用, 对账Fence)) return;
-        // 运行范围刷新 的 finally 已先释放读锁：对账重读期间重新持有同一把 scope 单飞，
-        // 窗口期内第二次点击让路 —— 同一未结算意图绝不沿用保留键重复 POST / 重复重读
-        const 对账锁 = 获取读锁(scopeKey);
-        try {
-          let 快照: 页面岗位快照;
-          try {
-            // 恰好一次 后端.读取岗位()；绝不再次调用 刷新招聘候选
-            快照 = await 后端.读取岗位();
-          } catch (对账错误) {
-            if (!fenceStillCurrent(引用, 对账Fence)) return; // 迟到失败只丢弃
-            if (是401(对账错误)) {
-              清账号状态(账号清理依赖); // 栅栏内 401 统一清会话，不再向屏叠抛
-              return;
-            }
-            提交失败(P4错误文案(对账错误), 对账Fence); // 持久快照改述真实重读失败
-            throw 对账错误;
-          }
-          if (!fenceStillCurrent(引用, 对账Fence)) return; // 迟到成功只丢弃
-          派发({ 型: '水合后端岗位', 快照 });
-          设后端状态((旧) => ({ ...旧, 岗位快照: 快照.服务端 }));
-          if (判断P4招聘组织前提(快照.服务端[jobId]).kind === 'blocked') {
-            // 运行范围刷新 已把组织文案落进快照：不再二次结算，原组织错误照抛，
-            // 屏不 toast，权威水合驱动既有受阻态渲染两个 CTA
-            throw 错误;
-          }
-          // 权威岗位仍 ready / 页里没有该岗位 / unknown：权威页完整在手却对不上组织错误，
-          // 按合同漂移 fail closed —— 持久快照改述「数据状态异常」，抛带中文文案的 invalid_response
-          提交失败('数据状态异常，请稍后再试', 对账Fence);
-          throw new BFF错误(409, 'invalid_response', '数据状态异常，请稍后再试');
-        } finally {
-          // 仅当属主仍是自己（未被换代接管）才释放：token 已易主则绝不动新属主的锁
-          if (对账锁) 释放读锁(对账锁);
-        }
-      }
+      await 运行范围刷新<BFF招聘候选推荐[]>({
+        scopeKey: P4范围键.招聘列表(jobId),
+        发起: (源, 幂等键) => 源.刷新招聘候选(jobId, 幂等键),
+        重读: (源) => 源.读取招聘候选(jobId),
+        开始: (fence) => 设后端状态((旧) => ({
+          ...旧,
+          招聘可用候选: {
+            ...旧.招聘可用候选,
+            [jobId]: 起步快照(旧.招聘可用候选[jobId], fence.scopeGeneration),
+          },
+        })),
+        成功: (items, fence) => 设后端状态((旧) => ({
+          ...旧,
+          招聘可用候选: {
+            ...旧.招聘可用候选,
+            [jobId]: 成功快照(items, fence.scopeGeneration),
+          },
+        })),
+        失败: (文案, fence) => 设后端状态((旧) => ({
+          ...旧,
+          招聘可用候选: {
+            ...旧.招聘可用候选,
+            [jobId]: 失败快照文案(旧.招聘可用候选[jobId], 文案, fence.scopeGeneration),
+          },
+        })),
+      });
     },
 
     // ── Task 4：反馈 mutation（服务端先行，失败绝不移动卡片）──

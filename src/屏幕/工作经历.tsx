@@ -23,11 +23,18 @@ import 年月滚轮层 from '../组件/年月滚轮层';
 // Task 5（core editors §5.2）：教育 学校/专业 候选行共用组件（原页内两份候选 JSX 迁出）
 import { 教育目录候选列表, type 教育候选 } from '../组件/教育目录候选列表';
 // Task 6（core editors §5.2）：经历 所属行业 底部选择层正文共用组件（原页内两模式两套 JSX 迁出）
+// picker 统一 Task 1：目录机制收敛到共用 行业目录钩子（查询适配在本文件注入），正文纯展示
 import {
   简历行业选择正文,
-  type 简历行业行,
-  type 简历行业分段,
 } from '../组件/简历行业选择正文';
+import {
+  use行业目录,
+  创建模拟行业查询,
+  创建目录行业查询,
+  模拟行业名,
+  模拟行业键们,
+} from './行业目录钩子';
+import type { 行业项, 查询行业页 } from '../组件/行业分类列表';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 开关 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
 import { use应用状态 } from '../状态/应用状态';
@@ -52,8 +59,6 @@ import { 模拟目录搜索, 模拟目录添加 } from '../数据/企业端模�
 import type { BFF组织搜索项 } from '../数据/BFF契约';
 
 /** 一段工作经历。开始/结束用 input[type=month] 的 yyyy-MM 格式；结束 null = 至今 */
-/** 行业快捷片：点一下填入，省得手机上打字 */
-const 常见行业 = ['互联网', '金融科技', 'AI / 大模型', '企业服务', '云计算', '电商', '游戏', '硬件'];
 
 const 学历选项 = ['大专', '本科', '硕士', '博士'];
 
@@ -1094,7 +1099,7 @@ function 经历编辑页({
   完成: (段: 简历经历段) => void;
   删除?: () => void;
 }) {
-  const { 数据源模式, 目录查询, 操作, 后端状态 } = use应用状态();
+  const { 数据源模式, 操作, 后端状态 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
   const [草稿, 设草稿] = useState<简历经历段>(() => {
     const 基础: 简历经历段 = 初始 ?? {
@@ -1123,27 +1128,6 @@ function 经历编辑页({
     变更引用.current?.({ 种类: 'experience', 本地编号: 编号, 字段 });
   }, [草稿]);
   const [行业层, 设行业层] = useState(false);
-  // Backend 行业列表：弹层打开时按需 查询Taxonomy('industries')，支持一级展开取子项
-  const [行业根项, 设行业根项] = useState<BFFTaxonomyItem[]>([]);
-  const [行业子项表, 设行业子项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
-  // 非 selectable 子项展开后的孙项（>2 级 taxonomy）
-  const [行业孙项表, 设行业孙项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
-  // review-r3 R3-I-5：分页游标 + 加载中状态（root / child / grandchild 三层各自记游标）
-  const [行业根游标, 设行业根游标] = useState<string | null>(null);
-  const [行业根加载中, 设行业根加载中] = useState(false);
-  const [行业子项游标表, 设行业子项游标表] = useState<Record<string, string | null>>({});
-  const [行业子项加载中表, 设行业子项加载中表] = useState<Record<string, boolean>>({});
-  const [行业孙项游标表, 设行业孙项游标表] = useState<Record<string, string | null>>({});
-  const [行业孙项加载中表, 设行业孙项加载中表] = useState<Record<string, boolean>>({});
-  // review-r1 F5：根/子查询第一页的 catalogVersion —— 追加页换版本时整组重开（本页局部）
-  const 行业根版本引用 = useRef('');
-  const 行业子项版本表 = useRef<Record<string, string>>({});
-  const 行业方法引用 = useRef(目录查询?.查询Taxonomy);
-  行业方法引用.current = 目录查询?.查询Taxonomy;
-  // review-r3（Codex r3 F1）：页内行业代际——根换代清理派生状态时 +1；在飞的子/孙
-  // 请求回写前核对代际，不符即静默作废，不把旧版本条目重新挂回新版本列表（沿 职位详情
-  // 准备代际 的本页局部 useRef 做法，不抽共用基础设施）。
-  const 行业代际引用 = useRef(0);
   // 年月滚轮打开在哪一侧：null = 没开
   const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
   const 至今 = 草稿.结束 === null;
@@ -1193,169 +1177,6 @@ function 经历编辑页({
     设公司抽屉开(false);
   };
 
-  // Backend：弹层打开时加载行业 roots；点根项再按 parentId 取子项
-  // review-r3 R3-I-5：保留 nextCursor 以支持分页加载更多
-  useEffect(() => {
-    if (!是后端 || !行业层) return;
-    const 方法 = 行业方法引用.current;
-    if (!方法) return;
-    void (async () => {
-      try {
-        const 页 = await 方法('industries', { limit: 50 });
-        设行业根项(页.items);
-        设行业根游标(页.nextCursor);
-        行业根版本引用.current = 页.catalogVersion;
-      } catch {
-        设行业根项([]);
-        设行业根游标(null);
-      }
-    })();
-  }, [是后端, 行业层]);
-
-  // review-r3 R3-I-5：root 加载更多
-  // review-r1 F5：追加页换版本 → 根列表整组从第一页静默重开，不跨版本合并。
-  const 行业根加载更多 = async () => {
-    if (行业根游标 === null || 行业根加载中) return;
-    const 方法 = 行业方法引用.current;
-    if (!方法) return;
-    设行业根加载中(true);
-    try {
-      const 页 = await 方法('industries', { cursor: 行业根游标, limit: 50 });
-      if (页.catalogVersion !== 行业根版本引用.current) {
-        const 重开 = await 方法('industries', { limit: 50 }, { 强制刷新: true });
-        设行业根项(重开.items);
-        设行业根游标(重开.nextCursor);
-        行业根版本引用.current = 重开.catalogVersion;
-        // review-r2：换代重开时派生状态同步失效——旧版本根下的子/孙展开一并丢弃，
-        // 重新展开从新版本取数，不再残留旧版本条目可选可提交
-        // review-r3（Codex r3 F1）：换代同时递增行业代际并清 busy 表——还在飞的旧代
-        // 子/孙请求回写时对不上代际即整包静默作废，busy 标记不残留
-        行业代际引用.current += 1;
-        设行业子项表({});
-        设行业子项游标表({});
-        行业子项版本表.current = {};
-        设行业孙项表({});
-        设行业孙项游标表({});
-        设行业子项加载中表({});
-        设行业孙项加载中表({});
-        return;
-      }
-      设行业根项((旧) => 合并目录页(旧, 页.items));
-      设行业根游标(页.nextCursor);
-    } catch {
-      // 失败不动，用户可再点
-    } finally {
-      设行业根加载中(false);
-    }
-  };
-
-  // review-r1 F4：展开失败不写「已展开」记录（否则入口守卫挡住重试），经既有轻提示说明
-  const 展开行业根 = async (项: BFFTaxonomyItem) => {
-    if (行业子项表[项.id]) return;
-    const 方法 = 行业方法引用.current;
-    if (!方法) return;
-    const 起始代际 = 行业代际引用.current;
-    try {
-      const 子页 = await 方法('industries', { parentId: 项.id, limit: 50 });
-      // review-r3（Codex r3 F1）：迟到作废——换代清理后旧代展开不回写
-      if (行业代际引用.current !== 起始代际) return;
-      设行业子项表((旧) => ({ ...旧, [项.id]: 子页.items }));
-      设行业子项游标表((旧) => ({ ...旧, [项.id]: 子页.nextCursor }));
-      行业子项版本表.current[项.id] = 子页.catalogVersion;
-    } catch (错误) {
-      if (行业代际引用.current !== 起始代际) return;
-      轻提示(取后端错误文案(错误));
-    }
-  };
-
-  // review-r3 R3-I-5：child 加载更多（按 parentId 记游标）
-  // review-r1 F5：追加页换版本 → 该父项的子列表整组从第一页静默重开。
-  const 行业子项加载更多 = async (根id: string) => {
-    const 游标 = 行业子项游标表[根id];
-    if (游标 === null || 行业子项加载中表[根id]) return;
-    const 方法 = 行业方法引用.current;
-    if (!方法) return;
-    设行业子项加载中表((旧) => ({ ...旧, [根id]: true }));
-    const 起始代际 = 行业代际引用.current;
-    try {
-      const 页 = await 方法('industries', { parentId: 根id, cursor: 游标, limit: 50 });
-      // review-r3（Codex r3 F1）：迟到作废——换代清理后旧代分页不回写
-      if (行业代际引用.current !== 起始代际) return;
-      if (页.catalogVersion !== 行业子项版本表.current[根id]) {
-        const 重开 = await 方法('industries', { parentId: 根id, limit: 50 }, { 强制刷新: true });
-        if (行业代际引用.current !== 起始代际) return;
-        // review-r3（Codex r3 F2）：换代替换前，旧子项名下的孙项状态一并失效——
-        // v2 复用同 ID 子项时不再把 v1 孙项重新挂上去（沿 选期望行业 round-2 的摘旧做法）
-        const 旧子id们 = (行业子项表[根id] ?? []).map((子) => 子.id);
-        设行业子项表((旧) => ({ ...旧, [根id]: 重开.items }));
-        设行业子项游标表((旧) => ({ ...旧, [根id]: 重开.nextCursor }));
-        行业子项版本表.current[根id] = 重开.catalogVersion;
-        if (旧子id们.length > 0) {
-          const 旧集 = new Set(旧子id们);
-          const 摘旧 = <T,>(旧: Record<string, T>) =>
-            Object.fromEntries(Object.entries(旧).filter(([键]) => !旧集.has(键)));
-          设行业孙项表(摘旧);
-          设行业孙项游标表(摘旧);
-          设行业孙项加载中表(摘旧);
-        }
-        return;
-      }
-      设行业子项表((旧) => (旧[根id] === undefined ? 旧 : { ...旧, [根id]: 合并目录页(旧[根id], 页.items) }));
-      设行业子项游标表((旧) => (旧[根id] === undefined ? 旧 : { ...旧, [根id]: 页.nextCursor }));
-    } catch {
-      // 失败不动
-    } finally {
-      // review-r3（Codex r3 F1）：换代后本请求已作废，busy 交由换代的清理负责，不回插键
-      if (行业代际引用.current === 起始代际) {
-        设行业子项加载中表((旧) => ({ ...旧, [根id]: false }));
-      }
-    }
-  };
-
-  // 非 selectable 子项：按 parentId 取孙项（>2 级 taxonomy），展开为嵌套列表
-  // review-r1 F4：展开失败不写空孙表（否则入口守卫挡住重试），经既有轻提示说明
-  const 展开行业子 = async (项: BFFTaxonomyItem) => {
-    if (行业孙项表[项.id]) return;
-    const 方法 = 行业方法引用.current;
-    if (!方法) return;
-    const 起始代际 = 行业代际引用.current;
-    try {
-      const 孙页 = await 方法('industries', { parentId: 项.id, limit: 50 });
-      // review-r3（Codex r3 F1）：迟到作废——换代清理后旧代孙展开不回写
-      if (行业代际引用.current !== 起始代际) return;
-      设行业孙项表((旧) => ({ ...旧, [项.id]: 孙页.items }));
-      设行业孙项游标表((旧) => ({ ...旧, [项.id]: 孙页.nextCursor }));
-    } catch (错误) {
-      if (行业代际引用.current !== 起始代际) return;
-      轻提示(取后端错误文案(错误));
-    }
-  };
-
-  // review-r3 R3-I-5：grandchild 加载更多（按 parentId 记游标）
-  const 行业孙项加载更多 = async (子id: string) => {
-    const 游标 = 行业孙项游标表[子id];
-    if (游标 === null || 行业孙项加载中表[子id]) return;
-    const 方法 = 行业方法引用.current;
-    if (!方法) return;
-    设行业孙项加载中表((旧) => ({ ...旧, [子id]: true }));
-    const 起始代际 = 行业代际引用.current;
-    try {
-      const 页 = await 方法('industries', { parentId: 子id, cursor: 游标, limit: 50 });
-      // review-r3（Codex r3 F1）：迟到作废 + 键已删不回插——根换代或其父项换代把该
-      // 孙键摘掉后，旧代孙分页整包不动
-      if (行业代际引用.current !== 起始代际) return;
-      设行业孙项表((旧) => (旧[子id] === undefined ? 旧 : { ...旧, [子id]: 合并目录页(旧[子id], 页.items) }));
-      设行业孙项游标表((旧) => (旧[子id] === undefined ? 旧 : { ...旧, [子id]: 页.nextCursor }));
-    } catch {
-      // 失败不动
-    } finally {
-      // review-r3（Codex r3 F1）：换代后本请求已作废，busy 交由换代的清理负责，不回插键
-      if (行业代际引用.current === 起始代际) {
-        设行业孙项加载中表((旧) => (子id in 旧 ? { ...旧, [子id]: false } : 旧));
-      }
-    }
-  };
-
   // ── 工作业绩（原「关键项目」，标注 14:28 改名）：挂在这一段经历里面，不做独立大分节 ──
   // 业绩脱离了公司和时间就没有可核对性（「这件事是在哪家公司、什么时候做的」），
   // 所以它必须长在经历段内部，而不是简历里另起一个平级分节。
@@ -1363,125 +1184,6 @@ function 经历编辑页({
   const 写项目 = (新列表: 简历项目[]) => 改('项目', 新列表);
   const 改项目 = <键 extends keyof 简历项目>(编号: string, 键名: 键, 值: 简历项目[键]) =>
     写项目(项目列表.map((条) => (条.编号 === 编号 ? { ...条, [键名]: 值 } : 条)));
-
-  // ── Task 6（core editors §5.2）：行业层正文迁出共用 简历行业选择正文 ──
-  // 页面把现有根/子/孙三层展开状态按当前渲染顺序映射为分段：每段是既有列表（根列表 /
-  // 某展开根的子列表 / 某展开子的孙列表）及其分页尾的展示批次，不是新树存储；各列表
-  // 独立的 busy/还有/加载更多 原样进入所属分段（展开的子列表把外层行打断时沿渲染顺序
-  // 切片，只有带分页尾的最后一段携带 还有/加载中/加载更多）。选中回显按稳定 ID
-  //（行业引用.id 比对，同名条目不相互覆盖）；可展开按 has_children 原样读取，
-  // 可选按 selectable 原样读取。组件按 键 回报点击，本外层解析回目录项 —— 同名不同
-  // ID 不串，不按显示名反查。单选关闭/回填时机、查询版本与错误轻提示都在原位置不动。
-  const 行业行们 = (项们: BFFTaxonomyItem[], 层级: 简历行业行['层级']): 简历行业行[] =>
-    项们.map((项) => ({
-      键: 项.id,
-      名称: 项.display_name,
-      层级,
-      选中: 草稿.行业引用?.id === 项.id,
-      可选: 项.selectable,
-      // 父项用于展开不当叶子提交：非 selectable 且按契约有子项才可展开；
-      // 孙层（第 3 层）再往下已超出现有三层控件承载（见报告 PM 缺口），不展开也不提交
-      可展开: !项.selectable && 项.has_children === true && 层级 < 2,
-      展开中: false,
-    }));
-  const 行业分段们: 简历行业分段[] = (() => {
-    if (!是后端) {
-      // Mock：现有 常见行业 本地目录作模拟目录，同一正文；稳定模拟键与名称分离
-      return [
-        {
-          键: '行业-常见',
-          行们: 常见行业.map((名称, 序) => ({
-            键: `mock_ind_${序}`,
-            名称,
-            层级: 0 as const,
-            选中: 草稿.行业 === 名称,
-            可选: true,
-            可展开: false,
-            展开中: false,
-          })),
-          加载中: false,
-          还有: false,
-          加载更多: () => {},
-        },
-      ];
-    }
-    const 分段们: 简历行业分段[] = [];
-    let 根行们: 简历行业行[] = [];
-    const 落根段 = (带尾: boolean) => {
-      if (根行们.length === 0 && !带尾) return;
-      分段们.push({
-        键: `行业根-${分段们.length}`,
-        行们: 根行们,
-        加载中: 带尾 && 行业根加载中,
-        还有: 带尾 && 行业根游标 !== null,
-        加载更多: 行业根加载更多,
-      });
-      根行们 = [];
-    };
-    for (const 根 of 行业根项) {
-      根行们.push(...行业行们([根], 0));
-      const 子项 = 行业子项表[根.id];
-      if (子项 === undefined) continue;
-      落根段(false);
-      let 子行们: 简历行业行[] = [];
-      const 落子段 = (带尾: boolean) => {
-        if (子行们.length === 0 && !带尾) return;
-        分段们.push({
-          键: `行业子-${根.id}-${分段们.length}`,
-          行们: 子行们,
-          加载中: 带尾 && (行业子项加载中表[根.id] ?? false),
-          还有: 带尾 && 行业子项游标表[根.id] !== null,
-          加载更多: () => void 行业子项加载更多(根.id),
-        });
-        子行们 = [];
-      };
-      for (const 子 of 子项) {
-        子行们.push(...行业行们([子], 1));
-        const 孙项 = 行业孙项表[子.id];
-        if (孙项 === undefined) continue;
-        落子段(false);
-        分段们.push({
-          键: `行业孙-${子.id}`,
-          行们: 行业行们(孙项, 2),
-          加载中: 行业孙项加载中表[子.id] ?? false,
-          // 原稿孙尾只在列表非空且有游标时渲染，照原样
-          还有: 孙项.length > 0 && 行业孙项游标表[子.id] !== null,
-          加载更多: () => void 行业孙项加载更多(子.id),
-        });
-      }
-      落子段(行业子项游标表[根.id] !== null);
-    }
-    落根段(行业根游标 !== null);
-    return 分段们;
-  })();
-  // 组件点击回调按稳定键解析回目录项（根/子/孙三层当前已载列表），同名不同 ID 不串
-  const 选定行业键 = (键: string) => {
-    if (!是后端) {
-      const 行 = 行业分段们[0]?.行们.find((行) => 行.键 === 键);
-      if (行 === undefined) return;
-      // Mock 沿用本地选择控制：只落文本（不落引用，完成守卫无引用门槛）
-      改('行业', 行.名称);
-      设行业层(false);
-      return;
-    }
-    const 项 =
-      行业根项.find((条) => 条.id === 键)
-      ?? Object.values(行业子项表).flat().find((条) => 条.id === 键)
-      ?? Object.values(行业孙项表).flat().find((条) => 条.id === 键);
-    if (项 === undefined || !项.selectable) return;
-    改('行业', 项.display_name);
-    改('行业引用', { id: 项.id, display_name: 项.display_name } as 目录选择值);
-    设行业层(false);
-  };
-  const 展开行业键 = (键: string) => {
-    const 根 = 行业根项.find((条) => 条.id === 键);
-    if (根 !== undefined) {
-      void 展开行业根(根);
-      return;
-    }
-    const 子 = Object.values(行业子项表).flat().find((条) => 条.id === 键);
-    if (子 !== undefined) void 展开行业子(子);
-  };
 
   return (
     // 2026-08-24 全站选择风格统一（C1 定稿）：页底白底
@@ -1694,7 +1396,6 @@ function 经历编辑页({
         ) : null}
       </滚动区>
 
-      {/* 行业选择层：常见行业一行一条，底部留手输入口 */}
       {滚轮 ? (
         <年月滚轮层
           标题={滚轮 === '开始' ? '选择入职年月' : '选择离职年月'}
@@ -1709,20 +1410,13 @@ function 经历编辑页({
         />
       ) : null}
 
-      {/* 行业选择层：Task 6 迁出共用 简历行业选择正文（分段 = 既有列表及其分页尾的展示批次）。
-          review-r3 R3-Minor-2 保留：Backend 不提供自由文本（完成守卫要求 行业引用），
-          自填经可选 自填 仅 Mock 传入；Backend 必须从目录叶子里选。 */}
+      {/* 行业选择层（picker 统一 Task 1）：共用 简历行业选择正文（纯展示）+ 行业目录钩子
+          （展开/缓存/分页/重试/换代）。单选选定立即写当前经历草稿并关闭；关闭未选择不改草稿。 */}
       {行业层 ? (
-        <简历行业选择正文
-          分段们={行业分段们}
-          展开={展开行业键}
-          选定={选定行业键}
+        <行业选择层
+          草稿={草稿}
+          改={改}
           关闭={() => 设行业层(false)}
-          自填={
-            是后端
-              ? undefined
-              : { 值: 草稿.行业, 修改: (值: string) => 改('行业', 值), 确认: () => 设行业层(false) }
-          }
         />
       ) : null}
 
@@ -1738,4 +1432,55 @@ function 经历编辑页({
       ) : null}
     </次级页外壳>
   );
+}
+
+// ── 所属行业选择层（picker 统一 Task 1）：弹层开着才挂载，目录机制全部来自 行业目录钩子 ──
+// Backend 注入 现有 查询Taxonomy('industries') 的 DTO 适配；Mock 沿本地 行业字典 的模拟适配
+//（根仅展开、细分可选，不发真实请求）。目录身份 = 模式+主体，主体变更作废旧缓存。
+// 单选（上限=1）选定立即写当前经历草稿并关闭；关闭未选择时草稿不变；
+// Backend 引用从稳定键取得（键 = 目录 ID，同名不同 ID 不串），不从名称重建 ID。
+function 行业选择层({
+  草稿,
+  改,
+  关闭,
+}: {
+  草稿: 简历经历段;
+  改: <键 extends keyof 简历经历段>(键名: 键, 值: 简历经历段[键]) => void;
+  关闭: () => void;
+}) {
+  const { 数据源模式, 目录查询, 后端状态 } = use应用状态();
+  const 是后端 = 数据源模式 === 'backend';
+  // 查询适配注入：getter 读最新 目录查询（不把 Context 传进展示层）
+  const 取得查询方法 = useRef(() => 目录查询?.查询Taxonomy);
+  取得查询方法.current = () => 目录查询?.查询Taxonomy;
+  const 查询引用 = useRef<查询行业页 | null>(null);
+  if (查询引用.current === null) {
+    查询引用.current = 是后端 ? 创建目录行业查询(() => 取得查询方法.current()) : 创建模拟行业查询();
+  }
+  const 目录 = use行业目录({
+    查询: 查询引用.current,
+    目录身份: `${数据源模式}:${后端状态?.主体?.subject_id ?? ''}`,
+  });
+
+  // 已选回显按稳定键：Backend 勾只落 行业引用.id；Mock 沿名称草稿回显
+  const 已选键 = 是后端
+    ? (草稿.行业引用 ? [草稿.行业引用.id] : [])
+    : (草稿.行业 === '' ? [] : 模拟行业键们(草稿.行业));
+
+  /** 单选：立即写当前经历草稿并关闭（选定即回填，无第二条确认路径） */
+  const 选择 = (项: 行业项) => {
+    if (是后端) {
+      改('行业', 项.名称);
+      // 引用从稳定键取得（键 = 目录 ID），不从名称重建
+      改('行业引用', { id: 项.键, display_name: 项.名称 } as 目录选择值);
+    } else {
+      const 名 = 模拟行业名(项.键);
+      if (名 === undefined) return;
+      // Mock 沿本地选择控制：只落文本（不落引用，完成守卫无引用门槛）
+      改('行业', 名);
+    }
+    关闭();
+  };
+
+  return <简历行业选择正文 目录={目录} 已选键={已选键} 选择={选择} 关闭={关闭} />;
 }

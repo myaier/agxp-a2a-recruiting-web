@@ -30,7 +30,7 @@
   text-align: left;
 }
 
-/* 公司头像 = 公司首字 + 深绿底（镜像求职端的姓名首字头像） */
+/* 招聘者头像：招聘者图片，无图/失败回退本人姓名首字（镜像求职端的姓名首字头像） */
 .头像 {
   flex: none;
   width: 56px;
@@ -43,6 +43,15 @@
   justify-content: center;
   font-size: 22px;
   font-weight: 700;
+  overflow: hidden;
+}
+
+/* 圆形容器内的真实头像图：铺满裁圆 */
+.头像图 {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .头像信息 {
@@ -58,6 +67,13 @@
   /* 同构源 letterSpacing -0.3 @ 20px ≈ -0.015em */
   letter-spacing: -0.015em;
   color: var(--墨);
+}
+
+/* 姓名（本人）下方的 职务 · 公司 独立行：两段非空才渲染 */
+.任职行 {
+  font-size: 12px;
+  color: var(--次要);
+  margin-top: 2px;
 }
 
 .状态行 {

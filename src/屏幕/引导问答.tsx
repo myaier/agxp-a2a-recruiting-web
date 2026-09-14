@@ -25,10 +25,12 @@ import { use应用状态 } from '../状态/应用状态';
 import { 轻提示 } from '../组件/轻提示';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
 import { 个人优势文本 } from '../数据/模拟数据';
-import { 城市字典, 热门城市, 行业字典 } from '../数据/城市与行业';
-import { use城市搜索, use城市默认页, 按行政区分组 } from './城市查询钩子';
+import { Mock城市搜索字典, Mock默认城市字典, 行业字典 } from '../数据/城市与行业';
+import { 国内精选城市, 海外精选城市 } from '../数据/城市精选';
+import { use城市搜索, use城市默认页, 按行政区分组, type 查询Location方法 } from './城市查询钩子';
 import { use可访问滚轮 } from '../组件/可访问滚轮';
 import type { BFF组织搜索项, BFFTaxonomyItem, BFFLocationItem } from '../数据/BFF契约';
+import type { 目录选择值 } from '../数据/招聘数据源类型';
 import type { 目录查询选项 } from '../数据/招聘数据源/目录';
 import type { 屏蔽项, 屏蔽来源 } from '../数据/类型';
 import { 合并目录页 } from '../数据/目录选择';
@@ -112,8 +114,8 @@ export default function 引导问答() {
   const [已选职位引用, 设已选职位引用] = useState<BFFTaxonomyItem[]>(
     是后端 ? (全局.引导预填?.职位引用们 ?? []).map((条) => ({ id: 条.id, display_name: 条.display_name, parent_id: null, selectable: true, has_children: false })) : []
   );
-  const [已选城市引用, 设已选城市引用] = useState<BFFLocationItem[]>(
-    是后端 ? (全局.引导预填?.城市引用们 ?? []).map((条) => ({ id: 条.id, display_name: 条.display_name, country_code: '', country_name: '', admin1_code: '', admin1_name: '', timezone: '', population: 0 })) : []
+  const [已选城市引用, 设已选城市引用] = useState<目录选择值[]>(
+    是后端 ? (全局.引导预填?.城市引用们 ?? []).map((条) => ({ id: 条.id, display_name: 条.display_name })) : []
   );
   // 没答过薪资时两轮都落在「面议」（档值 0，档表第一档，所以轮子停在最上面），
   // 右轮按既有规则换成空位，等用户自己往下滚去调 —— 标注 2026-08-22：
@@ -177,9 +179,7 @@ export default function 引导问答() {
   const 落盘当前题 = () => {
     if (当前题 === '期望职位' || 当前题 === '工作城市') {
       // Task 6：Backend 分支把选中候选的 refs 原子写入 引导预填；Mock 分支仍占位空数组。
-      const 城市引用们 = 是后端
-        ? 已选城市引用.map((条) => ({ id: 条.id, display_name: 条.display_name }))
-        : [];
+      const 城市引用们 = 是后端 ? 已选城市引用 : [];
       const 职位引用们 = 是后端
         ? 已选职位引用.map((条) => ({ id: 条.id, display_name: 条.display_name }))
         : [];
@@ -194,7 +194,7 @@ export default function 引导问答() {
         单位: 当前薪资单位,
         城市们: 已选城市名们,
         职位: 已选职位名们,
-        城市引用们: 已选城市引用.map((条) => ({ id: 条.id, display_name: 条.display_name })),
+        城市引用们: 已选城市引用,
         职位引用们: 已选职位引用.map((条) => ({ id: 条.id, display_name: 条.display_name })),
       });
     }
@@ -220,9 +220,7 @@ export default function 引导问答() {
         const 职位引用 = 是后端 && 已选职位引用.length > 0
           ? { id: 已选职位引用[0].id, display_name: 已选职位引用[0].display_name }
           : undefined;
-        const 城市引用们 = 是后端
-          ? 已选城市引用.map((条) => ({ id: 条.id, display_name: 条.display_name }))
-          : undefined;
+        const 城市引用们 = 是后端 ? 已选城市引用 : undefined;
         await 操作.保存首次意向({
           职位们: 已选职位名们,
           城市们: 已选城市名们,
@@ -965,7 +963,7 @@ function 方向细选页({
   );
 }
 
-// ── A3b 工作城市：当前定位 + 热门 + 按省份铺开（标注意见 21:45）────
+// ── A3b 工作城市：当前定位 + 国内/海外精选 + 四支默认目录分组（标注意见 21:45）────
 function 城市题({
   已选,
   切换,
@@ -977,37 +975,39 @@ function 城市题({
   已选: string[];
   切换: (项: string) => void;
   是后端: boolean;
-  查询Location: ((q: { q?: string; countryCode?: string; admin1Code?: string; cursor?: string; limit?: number }) => Promise<{ items: BFFLocationItem[]; nextCursor: string | null; catalogVersion: string }>) | undefined;
-  已选引用: BFFLocationItem[];
-  设已选引用: (更新: (旧: BFFLocationItem[]) => BFFLocationItem[]) => void;
+  查询Location: 查询Location方法 | undefined;
+  已选引用: 目录选择值[];
+  设已选引用: (更新: (旧: 目录选择值[]) => 目录选择值[]) => void;
 }) {
-  // Backend：搜索 250ms debounce；默认目录页（不发 q）供热门区与行政区分组
-  const { 词, 设词, 结果: 搜索结果项, 搜索中 } = use城市搜索(是后端 ? 查询Location : undefined);
-  const { 热门项们, 项们: 默认项们 } = use城市默认页(是后端 ? 查询Location : undefined);
+  // Backend：搜索 250ms debounce；默认目录按 CN/TW/HK/MO 四支分页（不发 q）
+  const { 词, 设词, 结果: 搜索结果项, 搜索中, 下一页游标: 搜索下一页, 加载中: 搜索加载中, 加载更多: 搜索加载更多 } = use城市搜索(是后端 ? 查询Location : undefined);
+  const { 项们: 默认项们, 加载中: 默认加载中, 还有: 默认还有, 加载更多: 默认加载更多 } = use城市默认页(是后端 ? 查询Location : undefined);
   const 搜词 = 词.trim();
 
-  // Backend 切换：按 ID 去重，同名两条互不误删
-  const 切换后端 = (项: BFFLocationItem) => {
+  // Backend 切换：按 ID 去重，同名两条互不误删；入参统一收窄为目录选择值
+  const 切换后端 = (项: 目录选择值) => {
     设已选引用((旧) =>
       旧.some((条) => 条.id === 项.id) ? 旧.filter((条) => 条.id !== 项.id) : [...旧, 项],
     );
   };
 
-  // 搜索跨全国匹配，省名也算命中（输「浙」出浙江全省），比只搜热门 15 城实用
+  // 搜索跨全国匹配，省名也算命中（输「浙」出浙江全省），读搜索字典 —— 海外仍可搜
   const 搜索结果 =
     搜词 === ''
       ? []
-      : 城市字典.flatMap((组) =>
+      : Mock城市搜索字典.flatMap((组) =>
           组.省.includes(搜词) ? 组.城市 : 组.城市.filter((城) => 城.includes(搜词))
         );
 
   // ── 两模式的展示输入（下面只有一套 JSX）──
-  const 后端片 = (项: BFFLocationItem, 键?: string): 城市片 => ({
-    键: 键 ?? 项.id,
-    文字: 项.display_name,
-    选中: 已选引用.some((条) => 条.id === 项.id),
-    按下: () => 切换后端(项),
+  // 点击入参收窄为 id + display_name，已选 state 与落盘引用里只有目录选择值
+  const 引用片 = (引用: 目录选择值, 键?: string): 城市片 => ({
+    键: 键 ?? 引用.id,
+    文字: 引用.display_name,
+    选中: 已选引用.some((条) => 条.id === 引用.id),
+    按下: () => 切换后端({ id: 引用.id, display_name: 引用.display_name }),
   });
+  const 后端片 = (项: BFFLocationItem, 键?: string): 城市片 => 引用片(项, 键);
   const Mock片 = (城: string, 键?: string): 城市片 => ({
     键: 键 ?? 城,
     文字: 城,
@@ -1019,16 +1019,20 @@ function 城市题({
   const 定位片: 城市片 = 是后端
     ? { 键: '当前定位', 文字: '暂未获取定位', 选中: false, 禁用: true, 按下: () => {} }
     : Mock片('上海');
-  const 热门片们: 城市片[] = 是后端
-    ? 热门项们.map((项) => 后端片(项, `热门-${项.id}`))
-    : 热门城市.map((城) => Mock片(城));
+  // Task 4：热门区来自精选配置（12 大陆 + 10 海外，无港澳台精选），与默认目录返回无关
+  const 国内热门片们: 城市片[] = 国内精选城市.map((项) =>
+    是后端 ? 引用片(项, `精选-${项.id}`) : Mock片(项.display_name, `精选-${项.display_name}`),
+  );
+  const 海外热门片们: 城市片[] = 海外精选城市.map((项) =>
+    是后端 ? 引用片(项, `精选-${项.id}`) : Mock片(项.display_name, `精选-${项.display_name}`),
+  );
   const 分组们: { 键: string; 标题: string; 片们: 城市片[] }[] = 是后端
     ? 按行政区分组(默认项们).map((组) => ({
         键: 组.键,
         标题: 组.键,
         片们: 组.城市们.map((项) => 后端片(项, `${组.键}-${项.id}`)),
       }))
-    : 城市字典.map((组) => ({
+    : Mock默认城市字典.map((组) => ({
         键: 组.省,
         标题: 组.省,
         片们: 组.城市.map((城) => Mock片(城, `${组.省}-${城}`)),
@@ -1048,6 +1052,15 @@ function 城市题({
     if (目标) 切换后端(目标);
   };
 
+  // Task 4：共享滚动区不暴露 onScroll —— 列表尾放同款「加载更多」按钮，
+  // 按当前搜索态接搜索/默认的还有与加载中；失败支保留可重试（还有仍 true）
+  const 在搜索 = 搜词 !== '';
+  const 还有 = 在搜索 ? 搜索下一页 !== null : 默认还有;
+  const 加载中 = 在搜索 ? 搜索中 || 搜索加载中 : 默认加载中;
+  const 处理加载更多 = () => {
+    void (在搜索 ? 搜索加载更多() : 默认加载更多());
+  };
+
   return (
     <div className={样式.题体}>
       <div className={样式.标题上移2}>
@@ -1062,10 +1075,13 @@ function 城市题({
             <div className={样式.分组标}>当 前 定 位</div>
             <div className={样式.城市网格}>{城市键(定位片)}</div>
 
-            <div className={`${样式.分组标} ${样式.分组标间距}`}>热 门 城 市</div>
-            <div className={样式.城市网格}>{热门片们.map(城市键)}</div>
+            <div className={`${样式.分组标} ${样式.分组标间距}`}>国内热门城市</div>
+            <div className={样式.城市网格}>{国内热门片们.map(城市键)}</div>
 
-            {/* 按省份铺开：一省一组，省名当分组标 */}
+            <div className={`${样式.分组标} ${样式.分组标间距}`}>海外热门城市</div>
+            <div className={样式.城市网格}>{海外热门片们.map(城市键)}</div>
+
+            {/* 按行政区铺开：CN 一省一组，港澳台三个中文组标题 */}
             {分组们.map((组) => (
               <div key={组.键}>
                 <div className={`${样式.分组标} ${样式.分组标间距}`}>{组.标题}</div>
@@ -1082,6 +1098,17 @@ function 城市题({
             ) : null}
           </>
         )}
+        {/* 初始加载与翻页共用这个既有中性文案；失败支的还有保持 true，可再点重试 */}
+        {还有 ? (
+          <button
+            className="可点"
+            onClick={处理加载更多}
+            disabled={加载中}
+            style={{ width: '100%', padding: '10px', color: 'var(--最弱)', marginTop: 8 }}
+          >
+            {加载中 ? '加载中…' : '加载更多'}
+          </button>
+        ) : null}
       </滚动区>
 
       <已选条 条目们={已选条目们} 移除={移除已选} />

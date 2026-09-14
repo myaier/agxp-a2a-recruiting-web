@@ -609,25 +609,35 @@ describe('淘汰原因 文案与反向码', () => {
   });
 });
 
+// 2026-09-14 撤销企业认证前提：认证状态不再决定可用性 —— 非空 ref 即 ready；
+// blocked 只剩 missing_ref；unknown/ready 形状保持不变。
 describe('判断P4招聘组织前提', () => {
-  it('missing owner snapshot is unknown, not unverified', () => {
-    expect(判断P4招聘组织前提(undefined)).toEqual({ kind: 'unknown' });
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+  ] as const)('%s owner snapshot is unknown', (_名, job) => {
+    expect(判断P4招聘组织前提(job)).toEqual({ kind: 'unknown' });
   });
 
   it.each([
-    [{ ...BFF岗位样本, hiring_organization_verification_status: 'unverified' }, 'unverified'],
-    [{ ...BFF岗位样本, hiring_organization_verification_status: 'verified', hiring_organization_ref: undefined }, 'missing_ref'],
-    [{ ...BFF岗位样本, hiring_organization_verification_status: 'verified', hiring_organization_ref: '   ' }, 'missing_ref'],
-  ] as const)('blocks only from owner Job evidence', (job, reason) => {
-    expect(判断P4招聘组织前提(job)).toEqual({ kind: 'blocked', reason });
-  });
-
-  it('requires verified plus a non-blank opaque ref', () => {
+    ['verified', 'org_9', 'verified'],
+    ['unverified', 'org_9', 'unverified'],
+  ] as const)('%s + non-blank ref is ready（认证状态不参与判定）', (_名, ref, 认证态) => {
     expect(判断P4招聘组织前提({
       ...BFF岗位样本,
-      hiring_organization_verification_status: 'verified',
-      hiring_organization_ref: 'org_9',
-    })).toEqual({ kind: 'ready', organizationRef: 'org_9' });
+      hiring_organization_ref: ref,
+      hiring_organization_verification_status: 认证态,
+    }))
+      .toEqual({ kind: 'ready', organizationRef: 'org_9' });
+  });
+
+  it.each([
+    ['missing ref', undefined],
+    ['empty ref', ''],
+    ['blank ref', '   '],
+  ] as const)('%s blocks with missing_ref regardless of verification', (_名, ref) => {
+    expect(判断P4招聘组织前提({ ...BFF岗位样本, hiring_organization_ref: ref }))
+      .toEqual({ kind: 'blocked', reason: 'missing_ref' });
   });
 });
 

@@ -8,7 +8,7 @@
 // 证书年份空串；unresolvedCount 只进保存点击的 轻提示（还有 N 处需要选择目录或补充必填项），
 // 不渲染任何提示节点；确认 work 分区只在既有保存成功后。
 
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -503,12 +503,13 @@ describe('工作经历 经历编辑页 Backend 行业无自由文本（R3-Minor-
     expect(screen.queryByPlaceholderText('没有合适的？直接输入')).toBeNull();
   });
 
-  it('Mock 行业弹层保留自由文本输入框', async () => {
+  it('picker 统一 Task 1：Mock 行业弹层同样无自由文本输入框（自填已删除）', async () => {
     render工作经历({ 数据源: 'mock' });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByText('字节跳动'));
     await 用户.click(screen.getByText('所属行业'));
-    expect(screen.getByPlaceholderText('没有合适的？直接输入')).toBeTruthy();
+    await screen.findByText('金融科技');
+    expect(screen.queryByPlaceholderText('没有合适的？直接输入')).toBeNull();
   });
 });
 
@@ -1739,31 +1740,23 @@ describe('工作经历 经历编辑页 行业共用正文（Task 6）', () => {
     expect(查询Taxonomy.mock.calls.length).toBe(打开后调用数);
   });
 
-  it('Mock 常见行业与自填走同一正文：选定回填并关闭层，自填 Enter 确认仍可用', async () => {
+  it('picker 统一 Task 1：Mock 沿共用 行业字典 折叠列表单选选定回填并关闭层；无「自填行业」输入', async () => {
     render工作经历({ 数据源: 'mock' });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByText('字节跳动'));
     await 用户.click(screen.getByText('所属行业'));
-    // 常见行业作为模拟目录在同一正文（全部可选、无缩进）
-    await screen.findByText('互联网');
-    await screen.findByText('硬件');
-    // 点常见行业 → 回填所属行业行并关闭层（单选关闭/回填时机沿原页）
-    await 用户.click(screen.getByText('金融科技'));
+    // Mock 目录 = 共用 行业字典 适配（根仅展开、细分可选；与 Backend 同一正文/同一交互）
+    await screen.findByText('金融科技');
+    // 无「自填行业」自由文本输入（原 Mock 自填按 Plan 删除）
     expect(screen.queryByPlaceholderText('没有合适的？直接输入')).toBeNull();
-    expect(screen.getByText('金融科技')).toBeTruthy();
+    // 展开根 → 点细分 → 回填所属行业行并关闭层（单选关闭/回填时机沿原页）
+    await 用户.click(screen.getByText('金融科技'));
+    await 用户.click(await screen.findByText('支付与清结算'));
+    expect(screen.getByText('支付与清结算')).toBeTruthy();
     // 取消（遮罩）不落任何选择：层关闭且所属行业行保持已回填值，不保存经历条目
     await 用户.click(screen.getByText('所属行业'));
     await 用户.click(screen.getByRole('button', { name: '关闭选择所属行业' }));
-    expect(screen.queryByPlaceholderText('没有合适的？直接输入')).toBeNull();
-    expect(screen.getByText('金融科技')).toBeTruthy();
-    // 自填（Mock 能力）仍可用：fireEvent 单次设值/回车（既有弹层框架 quirk：父层每次
-    // 重渲染把焦点收回首个控件，逐字符 type 会被打断、Enter 落到首行 —— 照原样保留，
-    // 见 Task 6 报告；fireEvent 不依赖焦点，正交地钉 修改/确认 两个回调的接线）
-    await 用户.click(screen.getByText('所属行业'));
-    const 自填输入 = screen.getByPlaceholderText('没有合适的？直接输入') as HTMLInputElement;
-    fireEvent.change(自填输入, { target: { value: '机器人' } });
-    fireEvent.keyDown(自填输入, { key: 'Enter' });
-    expect(screen.queryByPlaceholderText('没有合适的？直接输入')).toBeNull();
+    expect(screen.getByText('支付与清结算')).toBeTruthy();
     // 完成回写：Mock 无引用门槛，行业文本落经历段（不落引用）
     await 用户.click(screen.getByRole('button', { name: '完成' }));
     const 派发 = mock应用状态.派发;
@@ -1771,8 +1764,52 @@ describe('工作经历 经历编辑页 行业共用正文（Task 6）', () => {
       经历: { 行业: string; 行业引用?: unknown }[];
     } | undefined;
     expect(存简历调用).toBeDefined();
-    expect(存简历调用!.经历[0].行业).toBe('机器人');
+    expect(存简历调用!.经历[0].行业).toBe('支付与清结算');
     expect('行业引用' in 存简历调用!.经历[0]).toBe(false);
+  });
+
+  // picker 统一 Task 1 回归：单选选定只写当前经历草稿并关闭；关闭未选择时草稿不变
+  it('经历单选 a1 后仅回填当前经历草稿并关闭；关闭未选择时草稿不变', async () => {
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [{ id: 'A', display_name: '行业A', parent_id: null, selectable: false, has_children: true }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'A') {
+        return {
+          items: [{ id: 'a1', display_name: '子项一', parent_id: 'A', selectable: true, has_children: false }],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    const 建档 = {
+      资料: { 基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const } },
+    } as never;
+    render工作经历({ 数据源: 'backend', 查询Taxonomy, 建档 });
+    const 用户 = userEvent.setup();
+    const 更新次数 = () => mock更新草稿.mock.calls.length;
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.click(screen.getByText('所属行业'));
+    await 用户.click(await screen.findByText('行业A'));
+    // 单选：选定立即写当前经历草稿（行业引用）并关闭，不再有第二条确认路径
+    await 用户.click(await screen.findByText('子项一'));
+    expect(screen.queryByRole('dialog', { name: '选择所属行业' })).toBeNull();
+    const 落层 = mock更新草稿.mock.calls.map((c: unknown[]) => c[0] as { 编辑中?: { 种类?: string; 字段?: { 行业?: string; 行业引用?: unknown } } })
+      .filter((草稿) => 草稿.编辑中?.种类 === 'experience');
+    const 最后落层 = 落层.at(-1) as { 编辑中: { 字段: { 行业: string; 行业引用?: unknown } } } | undefined;
+    expect(最后落层?.编辑中.字段.行业).toBe('子项一');
+    expect(最后落层?.编辑中.字段.行业引用).toEqual({ id: 'a1', display_name: '子项一' });
+    // 打开层又直接关闭（未选择）：草稿不变（无新的 编辑中 写入）
+    const 选择后 = 更新次数();
+    await 用户.click(screen.getByText('所属行业'));
+    await screen.findByText('行业A');
+    await 用户.click(screen.getByRole('button', { name: '关闭选择所属行业' }));
+    expect(更新次数() - 选择后).toBe(0);
   });
 });
 
@@ -1854,9 +1891,9 @@ describe('工作经历 行业展开失败可重试（review-r1 F4）', () => {
     await 用户.click(screen.getByText('所属行业'));
     await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
     await 用户.click(await screen.findByText('金融科技'));
-    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
-    // 失败没有缓存成空子表：再点同一行重新发请求
-    await 用户.click(screen.getByText('金融科技'));
+    // picker 统一 Task 1：失败经行内错误 + 重试入口说明（不缓存成空子表），不再走 轻提示
+    await waitFor(() => expect(mock轻提示).not.toHaveBeenCalled());
+    await 用户.click(await screen.findByRole('button', { name: '重试' }));
     await screen.findByText('支付与清结算');
   });
 
@@ -1894,8 +1931,8 @@ describe('工作经历 行业展开失败可重试（review-r1 F4）', () => {
     await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
     await 用户.click(await screen.findByText('金融科技'));
     await 用户.click(await screen.findByText('证券与基金'));
-    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
-    await 用户.click(screen.getByText('证券与基金'));
+    // 失败经行内错误 + 重试入口说明（不缓存成空孙表）
+    await 用户.click(await screen.findByRole('button', { name: '重试' }));
     await screen.findByText('公募基金');
   });
 });
