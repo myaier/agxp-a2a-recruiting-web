@@ -515,8 +515,8 @@ function 解工作区职位(input: unknown): P5工作区职位 {
   const raw = 要求闭合对象(input, ['job_id', 'job']);
   const 职位 = 要求闭合对象(raw.job, ['title', 'location', 'public_salary_range', 'required_skills']);
   const 技能 = 要求数组(职位.required_skills).map(要求字符串);
-  // required_skills 声明 minItems 1 / maxItems 64
-  if (技能.length < 1 || 技能.length > 64) throw 契约错误();
+  // required_skills 声明 maxItems 64 且无 minItems：数组必在、显式空数组是合法快照
+  if (技能.length > 64) throw 契约错误();
   return {
     jobId: 要求模式串(raw.job_id, 职位ID模式),
     job: {

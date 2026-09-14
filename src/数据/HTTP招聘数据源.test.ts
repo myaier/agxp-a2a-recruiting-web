@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BFF简历样本, BFF意向样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索项样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本, BFF发现批次样本 } from '../测试/BFF样本';
+import { BFF简历样本, BFF意向样本, BFF岗位样本, 页面岗位样本, BFF隐私视图样本, BFF屏蔽回执样本, BFF组织搜索项样本, BFF组织搜索页样本, BFFAgent规则解释中提案样本, BFF发现批次样本, P5状态视图Wire, P5工作区职位Wire } from '../测试/BFF样本';
 import { BFF错误, 客户端校验错误, type BFF请求选项, type BFF响应 } from './HTTP客户端';
 import { 从BFF简历, 从BFF意向草稿 } from './后端映射';
 import type { 建档待写入, 建档写入回执 } from './招聘数据源类型';
@@ -970,12 +970,27 @@ describe('HTTP 招聘数据源', () => {
     });
   });
 
-  // Task 1（P5）：组合后的 MatchCase open 列表直接走冻结的双端前缀 + 固定 limit=50，GET 显式 no-store。
-  it('根 facade 组合后 P5 open 列表走 no-store 双端前缀', async () => {
-    请求Mock.mockResolvedValueOnce({ result: { items: [], next_cursor: null }, etag: null, requestId: 'p5' });
+  // Task 1（P5）：组合后的 MatchCase open 列表直接走冻结的双端前缀 + 固定 limit=50，GET 显式 no-store；
+  // 显式空技能 job 行（OpenAPI 无 minItems）沿公开方法进入真实 decoder 并精确保留 requiredSkills:[]。
+  it('根 facade 组合后 P5 open 列表走 no-store 双端前缀，空技能行解码保留 requiredSkills:[]', async () => {
+    请求Mock.mockResolvedValueOnce({
+      result: {
+        items: [{
+          state: P5状态视图Wire,
+          needs_action: true,
+          intention_id: 'int_0123456789abcdef0123456789abcdef',
+          job: { ...P5工作区职位Wire, job: { ...P5工作区职位Wire.job, required_skills: [] } },
+        }],
+        next_cursor: null,
+      },
+      etag: null,
+      requestId: 'p5',
+    });
     const source = 创建HTTP招聘数据源(依赖());
-    await expect(source.读取P5Open列表('candidate', null, null)).resolves.toEqual({
-      role: 'candidate', items: [], nextCursor: null,
+    await expect(source.读取P5Open列表('candidate', null, null)).resolves.toMatchObject({
+      role: 'candidate',
+      items: [{ job: { job: { requiredSkills: [] } } }],
+      nextCursor: null,
     });
     expect(请求Mock.mock.calls[0][0]).toEqual({
       path: '/api/v1/me/match-cases?limit=50', 不缓存: true,
