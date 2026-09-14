@@ -3,11 +3,20 @@
 // 纯内存组件，无需任何 Provider，props 全部自造（不 import fixture）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { 简报展示, 规则建议 } from './简报展示';
 import type { 简报展示属性, 规则建议属性 } from './简报展示';
 import 样式 from './简报展示.module.css';
+
+// jsdom 不加载模块 CSS、也不做级联计算，要钉「强调红必须压过统计数底色」这类
+// 选择器形状 / 源序约束，只能读源码文本（vitest 以仓库根为 cwd）
+const cssSource = readFileSync(
+  join(process.cwd(), 'src', '组件', '问AI代理', '简报展示.module.css'),
+  'utf8',
+);
 
 // 自造建议 props：维持 / 放宽 默认各给新 spy，逐条测试再覆盖
 const 造建议 = (覆盖: Partial<规则建议属性> = {}): 规则建议属性 => ({
@@ -25,14 +34,15 @@ const 造建议 = (覆盖: Partial<规则建议属性> = {}): 规则建议属性
   ...覆盖,
 });
 
-// 自造漏斗：一档不可点 + 一档可点（动作说明=读屏整句）；人数/宽度可覆盖供 rerender 断言
+// 自造漏斗：一档不可点 + 一档可点（读屏说明随人数拼，保证 aria 名跟踪可见人数）；
+// 人数/宽度可覆盖供 rerender 断言
 const 造漏斗 = (可点: { 人数: number; 宽度: number; 按下: () => void }) => [
   { 名称: '触达', 人数: 3, 宽度: 40, 动作: null },
   {
     名称: '硬性匹配',
     人数: 可点.人数,
     宽度: 可点.宽度,
-    动作: { 说明: '硬性匹配 12，打开本周初筛记录', 按下: 可点.按下 },
+    动作: { 说明: `硬性匹配 ${可点.人数}，打开本周初筛记录`, 按下: 可点.按下 },
   },
 ];
 
@@ -124,9 +134,10 @@ describe('简报展示', () => {
     expect(screen.getByText('12')).toBeTruthy();
     expect(screen.getByText(/新正文：/)).toBeTruthy();
     expect(screen.queryByText(/旧正文：/)).toBeNull();
-    // 漏斗人数与宽度：宽度是数据原样传入的百分比，不从人数推算
+    // 漏斗人数与宽度：宽度是数据原样传入的百分比，不从人数推算；
+    // 可点行的读屏名（aria-label 由容器按人数拼）跟着人数走
     expect(screen.getByText('5')).toBeTruthy();
-    const 可点行 = screen.getByRole('button', { name: '硬性匹配 12，打开本周初筛记录' });
+    const 可点行 = screen.getByRole('button', { name: '硬性匹配 5，打开本周初筛记录' });
     const 漏斗条 = 可点行.querySelector(`[class*="${样式.漏斗条}"]`) as HTMLElement;
     expect(漏斗条.style.width).toBe('22%');
   });
@@ -178,5 +189,41 @@ describe('简报展示', () => {
 
     const 招聘页 = render(<简报展示 {...造属性({ 外观: '招聘' })} />);
     expect(招聘页.container.querySelector(`[class*="${样式.漏斗块}"]`)!.tagName).toBe('DIV');
+  });
+});
+
+describe('统计强调与卡片区块顺序（防回归钉）', () => {
+  it('强调=true：统计数强调类与统计数同元素（类组合钉，jsdom 不算级联）', () => {
+    const 页 = render(
+      <简报展示 {...造属性({ 统计: [{ 名称: '需要你', 数值: '3', 强调: true }] })} />,
+    );
+    const 统计数 = 页.container.querySelector(`[class*="${样式.统计数}"]`) as HTMLElement;
+    expect(统计数.className).toContain(样式.统计数强调);
+  });
+
+  it('CSS 形状：墨色底在 .统计数强调 之前，端差规则不得声明 color（强调红必须胜出）', () => {
+    // 回归背景：端差 .求职/.招聘 .统计数 若带 color（(0,2,0)）会压死 (0,1,0) 的强调红
+    const 底 = cssSource.indexOf('.统计数 {');
+    const 强调 = cssSource.indexOf('.统计数强调 {');
+    expect(底).toBeGreaterThan(-1);
+    expect(强调).toBeGreaterThan(底);
+    expect(cssSource.match(/\.统计数强调\s*\{[^}]*color:\s*var\(--意向\)/)).toBeTruthy();
+    for (const 端规则 of ['.求职 .统计数 {', '.招聘 .统计数 {']) {
+      const 起点 = cssSource.indexOf(端规则);
+      expect(起点).toBeGreaterThan(-1);
+      const 规则体 = cssSource.slice(起点, cssSource.indexOf('}', 起点));
+      expect(规则体).not.toContain('color');
+    }
+  });
+
+  it('DOM 顺序：统计条 → 漏斗块 → 正文 → 建议卡 → 脚注（brief 定序）', () => {
+    const 页 = render(<简报展示 {...造属性({ 外观: '招聘' })} />);
+    const 区块 = ['统计条', '漏斗块', '简报正文', '松一档卡', '简报脚注'].map(
+      (类) => 页.container.querySelector(`[class*="${类}"]`) as Element,
+    );
+    for (let i = 0; i < 区块.length - 1; i += 1) {
+      const 在后 = 区块[i].compareDocumentPosition(区块[i + 1]);
+      expect(在后 & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
   });
 });
