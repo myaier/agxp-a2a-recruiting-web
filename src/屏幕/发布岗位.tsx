@@ -16,6 +16,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import 样式 from './发布岗位.module.css';
 import 数字滚轮层 from '../组件/数字滚轮层';
+import 薪资区间层 from '../组件/薪资区间层';
 import { 代理横幅, 主按钮, 次级页外壳, 滚动区, 页面大标题, 返回栏 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
 import 确认层 from '../组件/确认层';
@@ -1954,33 +1955,6 @@ function 基础信息步({
   );
 }
 
-/** 薪资数字输入：只收数字，单位挂在框内右侧（月薪 K / 日薪 元/天 / 时薪 元/时） */
-function 薪资数字框({
-  值,
-  改变,
-  名称,
-  单位 = 'K',
-}: {
-  值: string;
-  改变: (值: string) => void;
-  名称: string;
-  单位?: string;
-}) {
-  return (
-    <span className={样式.薪资框}>
-      <input
-        className={`${样式.薪资数字输入} 等宽数字`}
-        value={值}
-        placeholder="必填"
-        inputMode="numeric"
-        aria-label={名称}
-        onChange={(事件) => 改变(事件.target.value.replace(/\D/g, '').slice(0, 4))}
-      />
-      <span className={样式.薪资单位}>{单位}</span>
-    </span>
-  );
-}
-
 // ── D0b 第二步：职位描述（大 textarea）──
 function 职位描述步({
   文本,
@@ -2099,6 +2073,8 @@ function 职位要求步({
   const 单位 = 薪资单位(当前类型);
   // 日薪/时薪走滚轮（标注 2026-08-20 14:50）：值域整齐，手输反而麻烦
   const [计薪轮, 设计薪轮] = useState<'下限' | '上限' | null>(null);
+  // Task 3：月薪走 薪资区间层 双滚轮（用途='岗位'）；弹层只改临时值，确定才回填字符串字段
+  const [月薪层开, 设月薪层开] = useState(false);
   const 薪资标签 =
     单位 === 'K' ? '薪资带（月薪 · K）' : 单位 === '元/天' ? '日薪（元/天）' : '时薪（元/时）';
 
@@ -2147,9 +2123,24 @@ function 职位要求步({
           <div className={样式.薪资行}>
             {单位 === 'K' ? (
               <>
-                <薪资数字框 值={薪资下限} 改变={设薪资下限} 名称="薪资下限" 单位={单位} />
+                {/* Task 3：月薪主入口与日/时薪同版式的选择行；点击开共用的 薪资区间层 双滚轮 */}
+                <button
+                  className={`${样式.计薪键} 可点`}
+                  aria-label="薪资下限"
+                  onClick={() => 设月薪层开(true)}
+                >
+                  <span className="等宽数字">{薪资下限 || '—'}</span>
+                  <span className={样式.计薪单位}>{单位}</span>
+                </button>
                 <span className={样式.薪资连字}>—</span>
-                <薪资数字框 值={薪资上限} 改变={设薪资上限} 名称="薪资上限" 单位={单位} />
+                <button
+                  className={`${样式.计薪键} 可点`}
+                  aria-label="薪资上限"
+                  onClick={() => 设月薪层开(true)}
+                >
+                  <span className="等宽数字">{薪资上限 || '—'}</span>
+                  <span className={样式.计薪单位}>{单位}</span>
+                </button>
               </>
             ) : (
               <>
@@ -2303,6 +2294,21 @@ function 职位要求步({
           </button>
           ，违规将可能导致岗位下架与账号锁定。
         </div>
+      ) : null}
+
+      {/* 月薪区间层：取消/Escape/遮罩零回填，确定才回填原字符串字段（金额域 K 不乘 1000） */}
+      {月薪层开 ? (
+        <薪资区间层
+          用途="岗位"
+          下限={薪资下限 === '' ? null : Number(薪资下限)}
+          上限={薪资上限 === '' ? null : Number(薪资上限)}
+          确认={(下, 上) => {
+            设薪资下限(String(下));
+            设薪资上限(String(上));
+            设月薪层开(false);
+          }}
+          取消={() => 设月薪层开(false)}
+        />
       ) : null}
 
       {/* 计薪轮：日薪 / 时薪。步长 10 —— 标注 2026-08-22「这个根据一次 10 块来加，

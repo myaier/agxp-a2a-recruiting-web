@@ -58,6 +58,57 @@
   padding: 14px 4px 10px;
 }
 
+/* 岗位用途「输入金额」次级入口：沿用原岗位数字框的整数输入，两位并排 */
+.精确区 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 10px 0 2px;
+}
+
+.精确框 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--描边);
+  padding: 0 4px;
+}
+
+.精确输入 {
+  width: 88px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 22px;
+  text-align: center;
+  color: var(--墨);
+}
+
+.精确单位 {
+  font-size: 13px;
+  color: var(--次要);
+}
+
+.精确连字 {
+  color: var(--次要);
+}
+
+.精确切换 {
+  display: block;
+  margin: 12px auto 0;
+  font-size: 13.5px;
+  color: var(--深绿);
+}
+
+/* 确定被拦（空/倒置）时的字段错误行 */
+.错误行 {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 13px;
+  color: #e45745;
+}
+
 @keyframes 遮罩淡入 {
   from {
     opacity: 0;
