@@ -18,6 +18,20 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+/** 动态取轻提示条数：每次断言都重查单例容器（轻提示是纯 DOM 单例，不走 React）。 */
+function 轻提示条数(): number {
+  return (Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined)?.childElementCount ?? 0;
+}
+
+function 清空轻提示(): void {
+  const 容器 = Array.from(document.body.children).find(
+    (节点) => (节点 as HTMLElement).style?.zIndex === '999',
+  ) as HTMLElement | undefined;
+  if (容器) 容器.innerHTML = '';
+}
+
 /** 造一条后端 Location 目录项：字段全部来自返回，不补造页面字段 */
 function 条目(项: {
   id: string;
@@ -271,6 +285,100 @@ describe('use城市默认页 四支默认目录（Task 4）', () => {
     输出 = JSON.parse(container.querySelector('output')!.textContent!);
     expect(输出.项们).toEqual(['loc_cn1', 'loc_TW', 'loc_HK', 'loc_MO']);
     expect(输出.还有).toBe(false);
+  });
+
+  // spec §6.1：沿用旧默认目录「失败给轻提示」的交互 —— 首页与加载更多失败同路提示
+  // （旧实现两条路径都提示）；代际守卫让卸载/禁用后的迟到失败不再提示。
+  it('一支首页失败：轻提示失败文案，其他支结果与可重试状态不变', async () => {
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 项们, 还有 } = use城市默认页(查询);
+      return createElement('output', null, JSON.stringify({ 项们: 项们.map((项) => 项.id), 还有 }));
+    }
+
+    const CN首页 = deferred<页形>();
+    const 查询 = vi.fn(async (q: { countryCode?: string }) => {
+      if (q.countryCode === 'CN') return CN首页.promise;
+      return { items: [条目({ id: `loc_${q.countryCode}`, display_name: q.countryCode!, country_code: q.countryCode! })], nextCursor: null, catalogVersion: 'v2' };
+    }) as unknown as 查询Location方法;
+
+    清空轻提示();
+    const { container } = render(createElement(探针, { 查询 }));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { CN首页.reject(new Error('网络错误')); });
+    // 失败反馈与交互都沿用旧实现：提示文案落轻提示，分支保留可重试（还有=true）
+    expect(轻提示条数()).toBe(1);
+    expect(document.body.textContent).toContain('请求失败，请稍后再试');
+    expect(JSON.parse(container.querySelector('output')!.textContent!)).toEqual({
+      项们: ['loc_TW', 'loc_HK', 'loc_MO'],
+      还有: true,
+    });
+  });
+
+  it('加载更多失败：同样轻提示失败文案', async () => {
+    let 加载更多外: (() => void) | null = null;
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 项们, 还有, 加载更多 } = use城市默认页(查询);
+      加载更多外 = () => void 加载更多();
+      return createElement('output', null, JSON.stringify({ 项们: 项们.map((项) => 项.id), 还有 }));
+    }
+
+    const CN追加 = deferred<页形>();
+    const 查询 = vi.fn(async (q: { countryCode?: string; cursor?: string }) => {
+      if (q.cursor === 'cn_1') return CN追加.promise;
+      if (q.countryCode === 'CN') return { items: [条目({ id: 'loc_cn1', display_name: '广州市', country_code: 'CN' })], nextCursor: 'cn_1', catalogVersion: 'v2' };
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    }) as unknown as 查询Location方法;
+
+    清空轻提示();
+    const { container } = render(createElement(探针, { 查询 }));
+    await act(async () => { await Promise.resolve(); });
+    expect(轻提示条数()).toBe(0);
+    await act(async () => { 加载更多外!(); });
+    await act(async () => { CN追加.reject(new Error('网络错误')); });
+    expect(轻提示条数()).toBe(1);
+    expect(document.body.textContent).toContain('请求失败，请稍后再试');
+    // 失败不伪造完成：还有仍 true，可重试
+    expect(JSON.parse(container.querySelector('output')!.textContent!)).toEqual({ 项们: ['loc_cn1'], 还有: true });
+  });
+
+  it('禁用查询后代际作废：迟到的失败不提示', async () => {
+    function 探针({ 查询 }: { 查询: 查询Location方法 | undefined }) {
+      const { 项们 } = use城市默认页(查询);
+      return createElement('output', null, JSON.stringify({ 项们: 项们.map((项) => 项.id) }));
+    }
+
+    const CN首页 = deferred<页形>();
+    const 查询 = vi.fn(async (q: { countryCode?: string }) => {
+      if (q.countryCode === 'CN') return CN首页.promise;
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    }) as unknown as 查询Location方法;
+
+    清空轻提示();
+    const { rerender } = render(createElement(探针, { 查询 }));
+    await act(async () => { await Promise.resolve(); });
+    rerender(createElement(探针, { 查询: undefined }));
+    await act(async () => { CN首页.reject(new Error('网络错误')); });
+    expect(轻提示条数()).toBe(0);
+  });
+
+  it('卸载后迟到的失败不提示也不报错', async () => {
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 项们 } = use城市默认页(查询);
+      return createElement('output', null, JSON.stringify({ 项们: 项们.map((项) => 项.id) }));
+    }
+
+    const CN首页 = deferred<页形>();
+    const 查询 = vi.fn(async (q: { countryCode?: string }) => {
+      if (q.countryCode === 'CN') return CN首页.promise;
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    }) as unknown as 查询Location方法;
+
+    清空轻提示();
+    const { unmount } = render(createElement(探针, { 查询 }));
+    await act(async () => { await Promise.resolve(); });
+    unmount();
+    await act(async () => { CN首页.reject(new Error('网络错误')); });
+    expect(轻提示条数()).toBe(0);
   });
 
   it('追加页失败保留原游标，重试同一游标成功', async () => {

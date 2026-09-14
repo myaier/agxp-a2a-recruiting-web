@@ -8,6 +8,7 @@ import type { 目录查询选项 } from '../数据/招聘数据源/目录';
 import type { BFFLocationItem } from '../数据/BFF契约';
 import type { 城市分组配置 } from '../数据/城市与行业';
 import { 轻提示 } from '../组件/轻提示';
+import { 取后端错误文案 } from '../数据/HTTP客户端';
 
 const 搜索防抖毫秒 = 250;
 const 默认页大小 = 20;
@@ -115,8 +116,12 @@ export function use城市默认页(查询Location: 查询Location方法 | undefi
         版本: 页.catalogVersion,
         首页成功: true,
       });
-    } catch {
-      // 失败：首页失败仍待首页、追加失败保留原游标，均可重试
+    } catch (错误) {
+      // 失败：首页失败仍待首页、追加失败保留原游标，均可重试。轻提示沿用旧默认
+      // 目录的失败反馈（spec §6.1，旧实现首页/加载更多两条路径都提示，故逐支提示，
+      // 全部支并发失败时四条同文案属可接受的瞬时噪音）；代际守卫让卸载/禁用后的
+      // 迟到失败不再提示。
+      if (本代 === 代际.current) 轻提示(取后端错误文案(错误));
     } finally {
       if (本代 === 代际.current) {
         待定引用.current.delete(国家);

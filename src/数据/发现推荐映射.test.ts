@@ -620,10 +620,14 @@ describe('判断P4招聘组织前提', () => {
   });
 
   it.each([
-    ['verified', 'org_9'],
-    ['unverified', 'org_9'],
-  ] as const)('%s + non-blank ref is ready（认证状态不参与判定）', (_名, ref) => {
-    expect(判断P4招聘组织前提({ ...BFF岗位样本, hiring_organization_ref: ref }))
+    ['verified', 'org_9', 'verified'],
+    ['unverified', 'org_9', 'unverified'],
+  ] as const)('%s + non-blank ref is ready（认证状态不参与判定）', (_名, ref, 认证态) => {
+    expect(判断P4招聘组织前提({
+      ...BFF岗位样本,
+      hiring_organization_ref: ref,
+      hiring_organization_verification_status: 认证态,
+    }))
       .toEqual({ kind: 'ready', organizationRef: 'org_9' });
   });
 
