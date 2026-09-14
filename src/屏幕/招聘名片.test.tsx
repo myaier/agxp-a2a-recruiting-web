@@ -22,6 +22,11 @@ const mock保存招聘方档案 = vi.fn(async () => BFF招聘方档案样本);
 const mock选择企业关系 = vi.fn(async () => {});
 const mock保存未认证公司声明 = vi.fn();
 const mock替换头像 = vi.fn(async (_文件: File, _修订?: number) => {});
+const mock完成角色Onboarding = vi.fn(async () => ({
+  role: 'recruiter' as const,
+  status: 'active' as const,
+  completed_at: '2026-09-14T08:00:00Z',
+}));
 const mock读取目录企业 = vi.fn(async (编号: string) => ({
   organization_id: 编号,
   display_name: '星河控股',
@@ -84,6 +89,8 @@ function 置Backend应用状态(
       读取目录企业: mock读取目录企业,
       搜索组织: mock搜索组织,
       创建组织: mock创建组织,
+      // stg 契约对齐 2026-09-14：注册流收尾的 recruiter complete（Spec §5）
+      完成角色Onboarding: mock完成角色Onboarding,
     },
     后端状态: {
       主体: { subject_id: 'sub_1' },
@@ -676,6 +683,12 @@ describe('招聘名片 · Backend 缺失档案首写', () => {
     mock搜索组织.mockClear();
     mock搜索组织.mockResolvedValue(BFF组织搜索页样本);
     mock创建组织.mockClear();
+    mock完成角色Onboarding.mockClear();
+    mock完成角色Onboarding.mockResolvedValue({
+      role: 'recruiter' as const,
+      status: 'active' as const,
+      completed_at: '2026-09-14T08:00:00Z',
+    });
     清空轻提示();
   });
 
@@ -804,6 +817,56 @@ describe('招聘名片 · Backend 缺失档案首写', () => {
     render(<MemoryRouter initialEntries={[路径.招聘名片]}><招聘名片 /></MemoryRouter>);
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(await screen.findByText('保存成功')).toBeTruthy();
+    expect(mock跳转).not.toHaveBeenCalled();
+    // 普通名片编辑不强制 complete（也不跳发岗）
+    expect(mock完成角色Onboarding).not.toHaveBeenCalled();
+  });
+
+  // ── stg 契约对齐 2026-09-14（Spec §5）：注册流收尾先 complete 再去发岗 ──
+  it('注册流保存成功后调用 完成角色Onboarding(recruiter)，成功才去发岗', async () => {
+    mock保存招聘方档案.mockResolvedValue({
+      public_name: '林澈', title: '招聘负责人', personal_verification_status: 'unverified',
+      organization_ref: 'org_1', revision: 1,
+    });
+    const 用户 = userEvent.setup();
+    await render填写完成的缺失Profile名片(用户);
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    expect(mock完成角色Onboarding).toHaveBeenCalledTimes(1);
+    expect(mock完成角色Onboarding).toHaveBeenCalledWith('recruiter');
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.发布岗位, { 从注册流: true }));
+  });
+
+  it('完成失败留在本屏不跳转：头像不重传、重试走同一保存链', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:first-write');
+    mock保存招聘方档案.mockResolvedValue({ ...BFF招聘方档案样本, revision: 1, organization_ref: 'org_1' });
+    mock完成角色Onboarding.mockRejectedValueOnce(new BFF错误(503, 'operation_outcome_unknown', '结果未知'));
+    const 用户 = userEvent.setup();
+    await render填写完成的缺失Profile名片(用户);
+    await 用户.upload(screen.getByLabelText('更换头像'), pngFile);
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    expect(await screen.findByText('后端服务暂时不可用，请稍后重试')).toBeTruthy();
+    expect(mock跳转).not.toHaveBeenCalled();
+    // 头像已成功（预览已收口）：完成失败后的重试不再重传头像，只重走保存链 + complete
+    expect(screen.queryByRole('img', { name: '头像预览' })).toBeNull();
+    mock完成角色Onboarding.mockResolvedValueOnce({
+      role: 'recruiter' as const, status: 'active' as const, completed_at: '2026-09-14T08:00:00Z',
+    });
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    expect(mock保存招聘方档案).toHaveBeenCalledTimes(2);
+    expect(mock替换头像).toHaveBeenCalledTimes(1);
+    expect(mock完成角色Onboarding).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.发布岗位, { 从注册流: true }));
+  });
+
+  it('完成 422 按冻结 path 给可行动提示（招聘名片），不泄露机器 reason', async () => {
+    mock保存招聘方档案.mockResolvedValue({ ...BFF招聘方档案样本, revision: 1, organization_ref: 'org_1' });
+    mock完成角色Onboarding.mockRejectedValueOnce(new BFF错误(422, 'validation_failed', '校验未通过', [
+      { path: 'recruiter.profile.public_name', reason: 'required' },
+    ]));
+    const 用户 = userEvent.setup();
+    await render填写完成的缺失Profile名片(用户);
+    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
+    expect(await screen.findByText('招聘名片还没保存成功：请回「招聘名片」完善姓名后重试')).toBeTruthy();
     expect(mock跳转).not.toHaveBeenCalled();
   });
 });

@@ -6,7 +6,8 @@ import { Routes, Route, Navigate, matchPath, useLocation, useNavigate } from 're
 import { 路径 } from './路由/路径表';
 import { 候选Onboarding预填边界, 是活跃Onboarding位置, 恢复落点 } from './流程/候选Onboarding预填边界';
 import { 并入建档草稿 } from './流程/onboarding配置';
-import { 建档必填资料齐备, 建档完整教育在场 } from './状态/后端/候选操作';
+import { 判定Onboarding分流, 取Onboarding状态 } from './状态/后端/Onboarding操作';
+import { 取后端错误文案 } from './数据/HTTP客户端';
 import { 主按钮 } from './组件/通用';
 import 登录 from './屏幕/登录';
 import type { BFF主体, BFF角色 } from './数据/BFF契约';
@@ -242,45 +243,83 @@ export default function 应用() {
   // review-cx F1：登录落点分流要看的「本轮建档草稿不在场」——进依赖表（布尔，不引整份 状态）。
   const 无建档草稿 = 状态.引导预填?.建档 === undefined;
 
-  // Backend 初始化完成且已恢复会话时的确定性落点（P0 修复 Task 2）：
-  // 候选与未知角色保持原有兜底；招聘方只在**组织链聚合阶段报成功之后**才解释
-  // profile 阶段 —— 组织链还没结论或已失败时不导航，后来的组织失败绝不被伪装成 onboarding。
-  // 招聘方 onboarding 是否走完只看档案是否存在（缺失 → 注册流名片），与岗位数无关。
-  // review-cx F1（Spec §6 第三分支）：无草稿的候选不再无条件进主壳 —— 用**已水合**的
-  // 简历快照 + 意向快照按 完成候选Onboarding 同判据判完备，不完备 replace 回旅程入口
-  // 学生分流 重走并复用已保存资源；简历快照未水合（水合失败/未结束）不新增路由（保持
-  // 原主壳落点），也不在此发任何新 GET；有草稿的回访走下方 Task 9 恢复落点，不进此分支。
+  // ── stg 契约对齐 2026-09-14（Spec §5 分流表）：登录/选身份/切端/受保护入口同一语义 ──
+  // 旧「profile 存在 / 简历教育+意向完备」的回访判定已被明确替代：完成事实只来自
+  // me/onboarding 成功快照（判定Onboarding分流）；查询未完成前显示加载/重试，不挂载
+  // 会自动保存的引导页，也不闪进主壳。已有 URL 角色隔离（角色路由重定向）保持在前。
+  const Onboarding分流 = 数据源模式 === 'backend'
+    && 后端状态.初始化 === '完成'
+    && 后端状态.已登录
+    ? 判定Onboarding分流(后端状态.主体, 取Onboarding状态(后端状态))
+    : null;
+  const 位置从注册流 = Boolean((位置.state as { 从注册流?: boolean } | null)?.从注册流);
+  // 完成判定被消费的表面：登录/主壳/初始化的主页落点 + 旅程入口（学生分流 / 注册流名片）。
+  // 其余页面（设置/账号安全/普通名片编辑等）不被 Onboarding 阶段阻塞。
+  const 是Onboarding引导入口 = 位置.pathname === 路径.学生分流
+    || (位置.pathname === 路径.招聘名片 && 位置从注册流);
+  const 是主页落点 = 位置.pathname === 路径.登录
+    || 位置.pathname === 路径.主壳
+    || 位置.pathname === 路径.企业主壳
+    || 位置.pathname === 路径.初始化;
+  const 分流生效面 = Onboarding分流 !== null && (是Onboarding引导入口 || 是主页落点);
+
+  // 引导入口的完成反弹只认「进入」那次导航：本次注册名片上刚 complete 成功时用户
+  // 仍坐在名片页（pathname 未变），显式跳首岗的导航不被已完成状态抢走。
+  const 进入的路径 = useRef<string | null>(null);
   useEffect(() => {
-    if (数据源模式 !== 'backend' || 后端状态.初始化 !== '完成' || !后端状态.已登录) return;
-    const 角色 = 后端状态.主体?.last_used_role;
-    if (角色 === 'candidate' && 位置.pathname === 路径.登录) {
-      const 简历 = 后端状态.简历快照;
-      const 完备 = 简历 !== null
-        && 建档必填资料齐备(简历)
-        && 建档完整教育在场(简历)
-        && Object.values(后端状态.意向快照).some((条) => 条.status === 'active');
-      if (无建档草稿 && 简历 !== null && !完备) {
+    if (Onboarding分流 === null) return;
+    const 当前 = 位置.pathname;
+    const 是进入 = 进入的路径.current !== 当前;
+    进入的路径.current = 当前;
+    if (当前 === 路径.登录) {
+      // 登录落点：选择身份 / 已完成主页 / 未完成引导（无草稿）三类确定性导航；
+      // 查询中、读取失败、角色不可用与「未完成+有草稿」不在effect里猜 —— 渲染区的
+      // 分流门给出加载/恢复面，草稿回访由下方 恢复落点 守卫接手。
+      if (Onboarding分流.型 === '选择身份') {
+        前往(路径.选身份, { replace: true });
+        return;
+      }
+      if (Onboarding分流.型 === '已完成') {
+        前往(Onboarding分流.角色 === 'recruiter' ? 路径.企业主壳 : 路径.主壳, { replace: true });
+        return;
+      }
+      if (Onboarding分流.型 === '未完成' && Onboarding分流.角色 === 'candidate' && 无建档草稿) {
         前往(路径.学生分流, { replace: true });
         return;
       }
-      前往(路径.主壳, { replace: true });
-      return;
-    }
-    if (角色 !== 'candidate' && 角色 !== 'recruiter' && 位置.pathname === 路径.登录) {
-      前往(路径.选身份, { replace: true });
-      return;
-    }
-    if (角色 !== 'recruiter' || 后端状态.招聘方组织水合.阶段 !== '成功') return;
-    if (后端状态.招聘方档案水合阶段 === '缺失') {
-      if (是受保护招聘路径(位置.pathname)) {
+      if (
+        Onboarding分流.型 === '未完成' && Onboarding分流.角色 === 'recruiter'
+        && 后端状态.招聘方组织水合.阶段 !== '失败'
+      ) {
         前往(路径.招聘名片, { replace: true, state: { 从注册流: true } });
+        return;
       }
       return;
     }
-    if (后端状态.招聘方档案水合阶段 === '成功' && 位置.pathname === 路径.登录) {
-      前往(路径.企业主壳, { replace: true });
+    // 已完成用户进入旅程入口：完成事实优先于引导（消除完成后反复引导）；仅认进入
+    // 那次导航，名片页上的原地完成（pathname 未变）不触发。
+    if (是进入 && Onboarding分流.型 === '已完成') {
+      if (当前 === 路径.学生分流) {
+        前往(路径.主壳, { replace: true });
+        return;
+      }
+      if (当前 === 路径.招聘名片 && 位置从注册流) {
+        前往(路径.企业主壳, { replace: true });
+        return;
+      }
     }
-  }, [数据源模式, 后端状态, 位置.pathname, 前往, 无建档草稿]);
+    // recruiter 受保护路径的引导重定向：未完成 → 注册流名片。已完成用户不因档案缺失
+    // 或资料减少退回引导（Spec §5）；组织链失败保持既有恢复面，不被伪装成注册流。
+    if (
+      Onboarding分流.型 === '未完成' && Onboarding分流.角色 === 'recruiter'
+      && 后端状态.招聘方组织水合.阶段 !== '失败'
+      && 是受保护招聘路径(当前)
+    ) {
+      前往(路径.招聘名片, { replace: true, state: { 从注册流: true } });
+    }
+    // 后端状态整体进依赖（分流/组织阶段变化都要重评）；操作/前往 由 router 保证稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [数据源模式, 后端状态, 位置, 前往, 无建档草稿]);
 
   // ── 候选 onboarding 预填的退出清理（设计 §9 / Task 7）──────────────────
   // 离开注册会话（进主壳、切其它产品路由）就作废预填轮与恢复元数据（内存 + session
@@ -379,14 +418,43 @@ export default function 应用() {
     return <Navigate to={路径.登录} replace />;
   }
 
+  // ── stg 契约对齐 2026-09-14（Spec §5）：完成判定消费表面上的分流门 ──────────
+  // 查询未完成（未读取/加载中）→ 既有 路由加载中：不挂载会自动保存的引导页，也不闪进
+  // 主壳；读取失败 / 角色停用或不存在 → 恢复面（真实错误 + 重试 刷新Onboarding +
+  // 切换身份），不擅自激活、不猜完成/未完成。Mock（Onboarding分流 null）与其余页面
+  // 不受影响。重试的加载交接与 重新水合招聘方数据 同款：刷新起步写 加载中，本门让位。
+  if (分流生效面 && Onboarding分流 !== null) {
+    if (Onboarding分流.型 === '查询中') {
+      return <路由加载中 />;
+    }
+    if (Onboarding分流.型 === '读取失败' || Onboarding分流.型 === '角色不可用') {
+      return (
+        <招聘方恢复失败
+          error={Onboarding分流.型 === '角色不可用'
+            ? '当前身份不可用或已停用，请切换身份后重试'
+            : 取后端错误文案(Onboarding分流.错误)}
+          retry={async () => {
+            try {
+              await 操作.刷新Onboarding();
+            } catch {
+              // 失败已记录进 Onboarding.失败，恢复面随之重挂；不把异常抛进路由树
+            }
+          }}
+          switchRole={() => 前往(路径.选身份, { replace: true })}
+        />
+      );
+    }
+  }
+
   // ── J-PILOT-02 Task 9：未完成草稿的回访落点（Spec §6 回访分流）──
   // 同标签有未完成建档草稿时，直接打开完成落点（登录/主壳/初始化）不能借直达跳过
   // 保存：同步 replace 回草稿记录的恢复落点（白名单外或无位置记录回旅程入口 学生分流），
-  // 目标屏一次都不挂载（不先挂空表单又被卸载）。无草稿的已完成老账号不进此门，
-  // 保持原有落点（登录 → 主壳），不因缺「本次 id」重做 onboarding；水合未结束
-  //（初始化 !== 完成）时上方仍是既有 路由加载中，本守卫不生效。选身份/账号安全等
+  // 目标屏一次都不挂载（不先挂空表单又被卸载）。stg 契约对齐 2026-09-14：后端已完成
+  // 事实优先于旧草稿回访拦截 —— 分流不是 未完成（已完成 / 查询中 / 失败）时不拦截，
+  // 已完成由 Provider 的完成清理作废旧草稿；无草稿账号不进此门。选身份/账号安全等
   // 恢复出口不在拦截集合内，切换身份与登出的既有路径不受影响。
   const 回访重定向 = 建档在场
+    && Onboarding分流?.型 === '未完成'
     && !是活跃Onboarding位置(位置.pathname)
     && (位置.pathname === 路径.主壳
       || 位置.pathname === 路径.登录

@@ -31,6 +31,7 @@ import { 路径 } from '../路由/路径表';
 import { 压成头像 } from '../组件/头像处理';
 import { 从BFF招聘身份 } from '../数据/组织映射';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
+import { Onboarding422提示 } from '../状态/后端/Onboarding操作';
 import type { BFF组织搜索项 } from '../数据/BFF契约';
 
 export default function 招聘名片() {
@@ -193,12 +194,18 @@ function 后端名片() {
         await 操作.替换招聘方头像(头像文件, 档案.revision, 发起主体);
         收口预览();
       }
-      // 注册流：档案已经在服务端了，接着去发岗；应用内普通编辑留在本屏
-      if (从注册流) 跳转(路径.发布岗位, { 从注册流: true });
-      else 轻提示('保存成功'); // 成功响应之后才提示
+      // 注册流：本次 profile 与选定头像都写成功后、去发岗前调用 recruiter complete
+      // （stg 契约对齐 2026-09-14，Spec §5）。完成失败留在本屏可重试：名片已建、头像
+      // 已传的事实不回滚（不重复创建名片 / 不重传已成功头像），重试以同一保存链为主。
+      // 应用内普通编辑不强制 complete，也不跳发岗。
+      if (从注册流) {
+        await 操作.完成角色Onboarding('recruiter');
+        跳转(路径.发布岗位, { 从注册流: true });
+      } else 轻提示('保存成功'); // 成功响应之后才提示
     } catch (错误) {
-      // 409/503 等失败保留 file 与预览，用户检查后按同一个保存键重试
-      轻提示(取后端错误文案(错误));
+      // 409/503 等失败保留 file 与预览，用户检查后按同一个保存键重试；
+      // complete 的 422 按冻结 path 给可行动提示，其余交一般文案
+      轻提示(Onboarding422提示(错误) ?? 取后端错误文案(错误));
     } finally {
       保存锁.current = false;
       设保存中(false);
