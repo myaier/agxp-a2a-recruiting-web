@@ -11096,6 +11096,9 @@ test.describe('核心编辑 作品集 @backend', () => {
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足
     // 建档完备判据（真实登录落点按「已水合简历 + active 意向」分流），预置权威 URL
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选', portfolio_url: 'https://github.com/existing' },
@@ -11189,6 +11192,9 @@ test.describe('核心编辑 意向薪资 @backend', () => {
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据，
     // 预置合同内合法的 14 薪社招月薪区间（年薪月数只对 social_full_time/campus 合法）
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选' },
@@ -11359,6 +11365,9 @@ test.describe('核心编辑 城市 @backend', () => {
     const fixture = 创建候选OnboardingFixture();
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选' },
@@ -11835,6 +11844,9 @@ test.describe('核心编辑 教育 @backend', () => {
     const fixture = 创建候选OnboardingFixture();
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选' },
@@ -12039,6 +12051,9 @@ test.describe('核心编辑 简历行业 @backend', () => {
     const fixture = 创建候选OnboardingFixture();
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选' },
@@ -13571,6 +13586,9 @@ test.describe('核心编辑 期望行业 @backend', () => {
     const fixture = 创建候选OnboardingFixture();
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选' },

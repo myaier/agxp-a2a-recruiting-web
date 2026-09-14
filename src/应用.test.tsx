@@ -1157,13 +1157,17 @@ describe('应用路由：候选登录落点按 Onboarding 分流（Spec §5）',
     expect(screen.getByTestId('屏幕:主壳')).toBeTruthy();
   });
 
-  it('已完成用户进入旅程入口 学生分流：完成事实优先，replace 回主壳（不重做引导）', async () => {
+  // closeout：Spec §5 表只定义登录/恢复/切端/受保护入口的落点，不要求把显式深链
+  // /student 的已完成用户弹出 —— 旧反弹会挡掉「已完成用户经学生分流传简历」的真实
+  // 路径（P2 附件 e2e），按裁决移除；完成事实仍在登录/初始化落点生效。
+  it('已完成用户显式进入 学生分流：留在旅程入口，不被弹回主壳', async () => {
     mock应用状态.mockReturnValue(候选后端应用值());
     render(
       <MemoryRouter initialEntries={[路径.学生分流]}><应用 /><位置探针 /></MemoryRouter>,
     );
-    await waitFor(() => expect(当前路径()).toBe(路径.主壳));
-    expect(screen.queryByTestId('屏幕:学生分流')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('屏幕:学生分流')).toBeTruthy());
+    expect(当前路径()).toBe(路径.学生分流);
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
   });
 
   it('未完成用户照常进入 学生分流：不被分流门拦下', async () => {
