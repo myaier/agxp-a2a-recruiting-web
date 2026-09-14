@@ -15,7 +15,7 @@
 - 仓库 `agxp-a2a-recruiting-web`；target `origin/main`；规划集成基线 `1f8c223739deb8fb14fdfba51ca8240f081ab089`，宿主工作区 `.`。执行前核对精确 Git 对象、规则、实际 diff；复用用户选定工作区，不另建第二工作区、不 stash/reset/clean 他人内容。
 - 完整读取 `CLAUDE.md`、`AGENTS.md`、批准 Spec 与本 Plan。逻辑 skill development-workflow 的资源按其安装根解析；实施开工读取 `assets/execution-contract.md`，用 `scripts/task_intents.py` 的 help 确认参数后 start 登记；扩大路径前 update 并查重叠。
 - AI 行维持 Mock 分类：全部第一条会话行、通知显示、仅会话隐藏；按标题/副标题/摘要做 trim 后包含匹配，搜索不匹配可隐藏。不是 CSS 吸顶，不加置顶状态。
-- Backend AI 行：标题“AI代理动态”；副标题“你的求职AI代理”/“你的招聘AI代理”；摘要“聊天暂未开放，可查看代理功能”；时间空、未读无；点击 `/agent`/`/hr/agent`。不创建 P7 ID，不注入 P7 快照、不算真人未读、不占分页。
+- Backend AI 行：标题“AI代理动态”；副标题“你的求职AI代理”/“你的招聘AI代理”；摘要“聊天暂未开放，可查看代理功能”；时间空、未读无；点击分别导航到 `路径.问AI代理` / `路径.企业问AI代理`。不创建 P7 ID，不注入 P7 快照、不算真人未读、不占分页。
 - Backend 聊天页使用既有标题、真实说明、导航与更多入口，增加值为空、提示“AI代理聊天暂未开放”的 `真输入条`，textarea/发送都 disabled。零 Mock 会话、简报、回复、规则 mutation；不可发送，不能先挂 Mock 再隐藏。
 - Mock 的 fixture、关键词口径、550ms 延迟、头像 / 薪资读取、退出重入生命周期、规则派发及反馈留在页面。不统一两端放宽行为，不改 fixture 文案 / 统计，不添加清空 / 删除 / 新建 / 持久化 Session。
 - 展示组件不 import fixture、Context、路由、API、存储或业务操作；收到新 props 直接更新，不把初值复制为不可更新的 state。不建立 DTO、助手事件枚举、操作状态机、useChat、注册平台或通用适配层。
@@ -70,7 +70,7 @@ Codex execution: superpowers:executing-plans
 - AI 行在 P7 失败、清空缓存、重试、追加、角色重挂时保持当前角色唯一入口，但仍受页签/搜索约束；固定第一条会话行不要求越过前置错误提示。
 
 实施与验证：
-- [ ] 用既有浏览器工具在当前未修改代码基线上启动 Mock Vite（`VITE_DATA_SOURCE=mock VITE_BACKEND_ENV=stg npm run dev -- --host 127.0.0.1 --port 4173 --strictPort`，只复用已核实模式的自有服务）。`/#/app` / `/#/hr` 消息 Tab，以及 `/#/agent` / `/#/hr/agent`；320×844、390×844 保存截图到 `ui-regression-output/agent/reference/`，文件以角色、列表/代理、宽度命名。记录 commit 与 viewport；滚到简报头再截图，另保存快捷行/输入所在底部。此为实际修改前基线，不是新一轮需求调查。不为截图改产品或添加入口。
+- [ ] 用既有浏览器工具在当前未修改代码基线上启动 Mock Vite（`VITE_DATA_SOURCE=mock VITE_BACKEND_ENV=stg npm run dev -- --host 127.0.0.1 --port 4173 --strictPort`，只复用已核实模式的自有服务）。`http://127.0.0.1:4173/#/app` / `http://127.0.0.1:4173/#/hr` 消息 Tab，以及 `http://127.0.0.1:4173/#/agent` / `http://127.0.0.1:4173/#/hr/agent`；320×844、390×844 保存截图到 `ui-regression-output/agent/reference/`，文件以角色、列表/代理、宽度命名。记录 commit 与 viewport；滚到简报头再截图，另保存快捷行/输入所在底部。此为实际修改前基线，不是新一轮需求调查。不为截图改产品或添加入口。
 - [ ] 扩充现有可变状态 harness，按两个角色验证完整/成功空/首读/失败/错误带缓存、页签和搜索；新增断言先失败于 AI 行缺席。既有“通知空”改为正确分类，真实 P7 路由/已读/分页断言保留。
 - [ ] 按上述数据流在连接组件内组装入口、过滤与提示，零 P7 数据写入。AI 点击 spy 只收到代理路径，现有派发 spy 为零；P7 点击仍去真人参数路由。
 - [ ] rerender 空页→有数据→追加页，验证只有一条 AI 行及真人次序；有 AI 搜索命中且真人零命中时无错误的无匹配提示。切通知时错误提示/加载更多消失，切回恢复。
@@ -188,14 +188,14 @@ npm run test -- src/屏幕/看市场.test.tsx -t '问AI代理：Backend 不挂�
 - 修改：`e2e/P1展示统一.spec.ts`。
 - 删除：无。
 
-依赖：Task 1–3 已完成及定向测试通过；共用 `e2e/fixtures/P1展示统一.ts` 当前导出 `安装P1路由(page,{role,场景})`，其中 role 为 candidate/recruiter，场景为完整/缺失/长文/错误带缓存，返回 `{请求}`；已包含 `/me/onboarding` 角色 completed 应答，不再复制启动 fixture。不 import 任意 `.spec.ts`（会注册无关测试），不修改 fixture 文件。前端现有 `playwright.数据源模式.config.ts` 启动 mock-stg 4181、backend-stg 4182，Chrome iPhone 配置；端口占用立即报告，不按端口杀他人进程或改成放行外网。
+依赖：Task 1–3 已完成及定向测试通过；共用 `e2e/fixtures/P1展示统一.ts` 当前导出 `安装P1路由(page,{role,场景})`，其中 role 为 candidate/recruiter，场景为完整/缺失/长文/错误带缓存，返回 `{请求}`；已包含 Onboarding 域对应角色的 completed 应答，不再复制启动 fixture。不 import 任意 `.spec.ts`（会注册无关测试），不修改 fixture 文件。前端现有 `playwright.数据源模式.config.ts` 启动 mock-stg 4181、backend-stg 4182，Chrome iPhone 配置；端口占用立即报告，不按端口杀他人进程或改成放行外网。
 
 浏览器合同：新增测试使用 `@agent @mock` / `@agent @backend` 标签和对应项目 baseURL；循环两种角色、320/390 宽度，height=844。Backend 安装上述完整场景，`page.goto('/#/app')` 或 `'/#/hr'` 后等正确主壳，再点 nav 内消息按钮。Mock 走同样主壳路径，不写 Session 存储；若需稳定资料使用 `e2e/视觉回归/稳定页面.ts` 导出的 `打开稳定页面` 既有 Mock 种子能力，不绕过 Backend guard。
 
 实施与验证：
-- [ ] 新增 Backend 浏览器用例：全部第一条 AI 行，通知有 / 仅会话无，搜索“AI代理”命中 / 无关词不命中 / 清空恢复；点击进入正确代理 URL，真实说明、三个导航与禁用输入可见。按键/点发送后无新消息，无新增 POST/PUT/DELETE；断言请求记录中无 `/conversations/<固定入口键>`、无规则 mutation，不禁止合法收件箱 GET。
+- [ ] 新增 Backend 浏览器用例：全部第一条 AI 行，通知有 / 仅会话无，搜索“AI代理”命中 / 无关词不命中 / 清空恢复；点击进入正确代理 URL，真实说明、三个导航与禁用输入可见。按键/点发送后无新消息，无新增 POST/PUT/DELETE；断言请求记录中 P7 会话详情请求路径不包含固定入口键、无规则 mutation，不禁止合法收件箱 GET。
 - [ ] 空页/加载/失败组合由 Task 1 双角色组件测试覆盖，浏览器只用完整 HTTP 集合证明真实组装和导航，不再创建一套状态机。对全部/通知/仅会话的既有 P1 消息段作定向校准：删除仅因名称相同就判 Mock 污染的旧“AI代理动态不存在”，改为唯一入口、无模拟摘要/时间/未读；“还没有通知”改为固定行。其中“缺失 无上下文、无 lastMessage 与未读”内的旧 AI 缺席断言也必须修改；搜索筛掉 AI 的旧缺席断言保留；真人参数路由、读消息、分页和错误带缓存断言保留。
-- [ ] 新增 Mock 浏览器用例：两端列表与代理初始页面、输入一条长文本、快捷句立即发送并等真实 DOM 回复、建议操作。求职放宽留本页/提示，招聘放宽跳设置；维持不导航且显示本端文案；招聘只有硬性匹配可点。请求监听证明 Mock 页面旅程零 `/api/v1/`（不含 HMR）。
+- [ ] 新增 Mock 浏览器用例：两端列表与代理初始页面、输入一条长文本、快捷句立即发送并等真实 DOM 回复、建议操作。求职放宽留本页/提示，招聘放宽跳设置；维持不导航且显示本端文案；招聘只有硬性匹配可点。请求监听证明 Mock 页面旅程零业务 API 请求（沿用现有 API 请求监听范围，不含 HMR）。
 - [ ] 同视口保存初始/长文本/建议处理后的截图至 `testInfo.outputPath(...)` 并 attach；对照 Task 1 的 Mock 基线，相同内容字体/宽度/间距保持；超长输入不得产生新横向溢出。Backend 新增输入导致垂直空间变化是预期，但导航/输入不得遮挡；测试 DOM 的 disabled 与焦点/点击实际行为。
 - [ ] 执行下面精确用例集合。P1 只选消息相关测试，不采集岗位或运行其全套；新 @agent 覆盖两项目。P1 应选中五种消息用例（完整候选、完整招聘、缺失、长标题、错误缓存）×两个宽度，共10条，排除四种岗位用例；检查实际 selection，空或缺失 selection 不算 PASS。提交两个文件。
 
