@@ -82,7 +82,7 @@ npx vitest run src/数据/招聘数据源/MatchCase.test.ts src/数据/HTTP招�
 
 预期编辑文件：
 - 修改：`src/数据/BFF契约.ts`、`src/数据/招聘数据源/组织.ts`、`src/数据/招聘数据源/组织.test.ts`、`src/数据/组织映射.ts`、`src/数据/组织映射.test.ts`、`src/数据/公司主页资料.ts`、`src/屏幕/公司档案编辑.tsx`、`src/屏幕/公司档案编辑.test.tsx`、`src/屏幕/公司档案分区编辑.tsx`、`src/屏幕/公司档案分区编辑.test.tsx`、`src/状态/后端/组织操作.ts`、`src/状态/后端/组织操作.test.ts`、`src/测试/BFF样本.ts`、`e2e/数据源模式.spec.ts`。
-- 条件修改：`src/状态/应用状态.tsx`、`src/状态/应用状态.test.ts`、`src/屏幕/公司主页.tsx`、`src/屏幕/公司主页.test.tsx`、`src/数据/HTTP招聘数据源.test.ts`、`e2e/fixtures/展示字段接线.ts`；限同ID当前名称发布/共享样本补键。先验证路径存在，若消费者位置漂移更新intent记录等价路径。
+- 条件修改：`src/状态/应用状态.tsx`、`src/状态/应用状态.test.ts`、`src/屏幕/企业详情.tsx`、`src/屏幕/企业详情.test.tsx`、`src/数据/HTTP招聘数据源.test.ts`、`e2e/fixtures/展示字段接线.ts`；限同ID当前名称发布/共享样本补键。先验证路径存在，若消费者位置漂移更新intent记录等价路径。
 - 新增/删除：无；不改样式文件。
 
 接口：BFF企业档案、BFF企业档案替换均增加 required display_name:string；资料形增加可选 `企业常用名?: string` 以不改Mock构造，Backend从profile始终赋值。转BFF企业档案替换 用 draft.企业常用名，未提供时保留server.display_name；显式空字符串仍按常用名校验拒绝，不能truthy回退。旧公司全称继续作为品牌draft承载，避免无关重命名。
