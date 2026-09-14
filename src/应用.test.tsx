@@ -51,7 +51,9 @@ vi.mock('./屏幕/选身份', () => 屏幕桩('选身份'));
 // J-PILOT-02 Task 9：回访落点测试会真的落到 学生分流（旅程入口），同样换桩 ——
 // 本文件只钉 应用.tsx 自己的守卫与导航决策。
 vi.mock('./屏幕/学生分流', () => 屏幕桩('学生分流'));
-vi.mock('./屏幕/主壳', () => 屏幕桩('主壳'));
+// review-r2：主壳桩可计数 —— 未完成候选的 /app 拦截断言主壳（含其挂载效应
+// 加载会话列表）一次都不挂载，与角色路由防闪断言同一手法。
+vi.mock('./屏幕/主壳', () => 可计数屏幕桩('主壳'));
 vi.mock('./屏幕/企业主壳', () => 屏幕桩('企业主壳'));
 vi.mock('./屏幕/招聘名片', () => 屏幕桩('招聘名片'));
 vi.mock('./屏幕/企业实名认证', () => 屏幕桩('企业实名认证'));
@@ -1182,6 +1184,7 @@ describe('应用路由：候选登录落点按 Onboarding 分流（Spec §5）',
 describe('应用路由：candidate 主壳受保护入口按 Onboarding 分流（review-r1）', () => {
   beforeEach(() => {
     mock应用状态.mockReset();
+    屏幕挂载次数.clear();
   });
 
   it('未完成且无草稿：直达 /app replace 回学生分流，主壳一次都不挂载', async () => {
@@ -1193,7 +1196,9 @@ describe('应用路由：candidate 主壳受保护入口按 Onboarding 分流（
     );
     await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
     expect(screen.getByTestId('屏幕:学生分流')).toBeTruthy();
-    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+    // review-r2：拦截必须发生在 <Routes> 之前（同步渲染守卫）—— 主壳连同其
+    // 挂载效应（加载会话列表 业务请求）一次都不能挂载，不只是一个帧后弹走。
+    expect(屏幕挂载次数.get('主壳') ?? 0).toBe(0);
   });
 
   it('切端落点同样拦截：选身份后导航到 /app（模拟 recruiter→candidate 切换后的落点）被送回学生分流', async () => {
@@ -1210,7 +1215,7 @@ describe('应用路由：candidate 主壳受保护入口按 Onboarding 分流（
     await userEvent.click(screen.getByRole('button', { name: '探针-去主壳' }));
     await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
     expect(screen.getByTestId('屏幕:学生分流')).toBeTruthy();
-    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+    expect(屏幕挂载次数.get('主壳') ?? 0).toBe(0);
   });
 
   it('已完成 candidate 直达 /app：主壳照常挂载，不被送回引导', async () => {

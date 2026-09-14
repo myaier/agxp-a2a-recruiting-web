@@ -318,16 +318,6 @@ export default function 应用() {
       前往(路径.招聘名片, { replace: true, state: { 从注册流: true } });
       return;
     }
-    // candidate 受保护主入口（review-r1 F2）：未完成且无草稿的 主壳 落点与登录/切端
-    // 同一语义（Spec §5）—— 直达 /app 或切身份后的落点都 replace 回旅程入口；
-    // 有草稿的回访由下方 恢复落点 守卫接手，已完成不因资料事实退回引导。
-    if (
-      Onboarding分流.型 === '未完成' && Onboarding分流.角色 === 'candidate'
-      && 无建档草稿 && 当前 === 路径.主壳
-    ) {
-      前往(路径.学生分流, { replace: true });
-      return;
-    }
     // 后端状态整体进依赖（分流/组织阶段变化都要重评）；操作/前往 由 router 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [数据源模式, 后端状态, 位置, 前往, 无建档草稿]);
@@ -455,6 +445,19 @@ export default function 应用() {
         />
       );
     }
+  }
+
+  // ── candidate 受保护主入口（review-r2）：未完成且无草稿的 主壳 落点与登录/切端
+  // 同一语义（Spec §5）—— 在 <Routes> 挂载前同步 replace 回旅程入口，主壳（含其
+  // 挂载效应 加载会话列表）一次都不能挂载（与 角色重定向 同款防闪守卫）；有草稿的
+  // 回访由下方 恢复落点 守卫接手，已完成不因资料事实退回引导；查询中/失败/停用
+  // 已被上方分流门拦下，Mock（Onboarding分流 null）不受影响。
+  if (
+    Onboarding分流 !== null
+    && Onboarding分流.型 === '未完成' && Onboarding分流.角色 === 'candidate'
+    && 无建档草稿 && 位置.pathname === 路径.主壳
+  ) {
+    return <Navigate to={路径.学生分流} replace />;
   }
 
   // ── J-PILOT-02 Task 9：未完成草稿的回访落点（Spec §6 回访分流）──
