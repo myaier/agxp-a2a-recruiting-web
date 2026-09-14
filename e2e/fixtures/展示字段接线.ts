@@ -921,7 +921,9 @@ export async function 安装展接线路由(
     // ── 招聘端启动水合 + 四列表两详情 ──
     if (role === 'recruiter') {
       if (path === '/api/v1/recruiter/profile' && method === 'GET') {
-        await 答(200, 信封({ public_name: '展接FIX 招聘方', title: '招聘负责人', personal_verification_status: 'verified', verified_name: null, avatar_url: null, revision: 1 }));
+        // 合同 A：organization_ref 是档案必需键（可空不可缺）——缺键 解招聘方档案 按契约
+        // 漂移拒绝整份档案，招聘端水合中断。本场景无任职关系、未选目录组织 → 显式 null。
+        await 答(200, 信封({ public_name: '展接FIX 招聘方', title: '招聘负责人', personal_verification_status: 'verified', organization_ref: null, verified_name: null, avatar_url: null, revision: 1 }));
         return;
       }
       if (path === '/api/v1/recruiter/affiliations' && method === 'GET') { await 答(200, 信封({ affiliations: [] })); return; }

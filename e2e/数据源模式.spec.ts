@@ -1132,6 +1132,8 @@ interface P1C招聘方档案形 {
   public_name: string;
   title: string;
   personal_verification_status: P1C验证状态;
+  // 合同 A：必需键（可空不可缺）——null = 未选择目录组织；选了组织给 fixture 组织 ID
+  organization_ref: string | null;
   verified_name: string | null;
   avatar_url: string | null;
   revision: number;
@@ -1186,6 +1188,8 @@ interface P1C组织形 {
 
 interface P1C管理员申请形 {
   request_id: string;
+  // 解企业管理员申请 的必需键：申请目标目录组织 ID（缺键整份列表按契约漂移拒绝）
+  organization_id: string;
   legal_name: string;
   display_name: string;
   domains: string[];
@@ -1356,6 +1360,7 @@ const P1C招聘组织Fixture: P1C招聘组织Fixture形 = {
     public_name: P1C标记.招聘方公开名,
     title: P1C标记.招聘方职务,
     personal_verification_status: 'unverified',
+    organization_ref: null, // 未选择目录组织（无任职关系、未自报）；404 首写路径不经此档案
     verified_name: null,
     avatar_url: null,
     revision: 3,
@@ -1363,7 +1368,7 @@ const P1C招聘组织Fixture: P1C招聘组织Fixture形 = {
   affiliations: [],
   organizations: {},
   adminRequests: [
-    { request_id: 'req-fixture-001', legal_name: P1C标记.组织甲法定名, display_name: P1C标记.组织甲名, domains: ['fixture.example'], status: 'pending', revision: 1 },
+    { request_id: 'req-fixture-001', organization_id: P1C标记.组织甲编号, legal_name: P1C标记.组织甲法定名, display_name: P1C标记.组织甲名, domains: ['fixture.example'], status: 'pending', revision: 1 },
   ],
   ownerJobs: [],
 };
