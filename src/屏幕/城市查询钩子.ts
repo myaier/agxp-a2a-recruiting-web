@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { 目录页, Location查询 } from '../数据/招聘数据源类型';
 import type { 目录查询选项 } from '../数据/招聘数据源/目录';
 import type { BFFLocationItem } from '../数据/BFF契约';
-import type { 城市分组配置 } from '../数据/城市与行业';
+import { 城市字典, type 城市分组配置 } from '../数据/城市与行业';
 import { 轻提示 } from '../组件/轻提示';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
 
@@ -41,8 +41,9 @@ function 去重(项们: BFFLocationItem[]): BFFLocationItem[] {
 }
 
 /** 默认目录页（Task 5）：不发 q 的默认推荐页。首页条目就是热门区，
- *  滚到底按服务端 nextCursor 追加；返回项按 ID 去重。加载中锁住重入，
- *  失败经既有轻提示说明，用户再滚一次即可重试。
+ *  滚到底按服务端 nextCursor 追加；返回项按 ID 去重。加载中锁住重入。
+ *  Task 2：失败暴露 错误/重试（重试重发首页；不改变词与游标），既有轻提示
+ *  说明保留，正文消费者再显示行内错误 —— 失败与成功空页分开，不装成空页。
  *  review-cx F5（冻结合同 2）：第一页记录 catalogVersion；追加页返回不同版本时不
  *  跨版本合并 —— 丢弃本查询累计的旧页与游标，从本查询第一页重开（静默一致性
  *  重同步，不是错误、不提示），恢复到单一版本且继续可翻页的状态。 */
@@ -51,6 +52,9 @@ export function use城市默认页(查询Location: 查询Location方法 | undefi
   const [项们, 设项们] = useState<BFFLocationItem[]>([]);
   const [游标, 设游标] = useState<string | null>(null);
   const [加载中, 设加载中] = useState(false);
+  const [错误, 设错误] = useState<string | null>(null);
+  // Task 2：重试经请求序号触发 effect 重跑（首页重发）；代次在卸载/新序号时失效
+  const [请求序号, 设请求序号] = useState(0);
   const 版本引用 = useRef('');
   const 方法引用 = useRef(查询Location);
   方法引用.current = 查询Location;
@@ -70,15 +74,20 @@ export function use城市默认页(查询Location: 查询Location方法 | undefi
         设项们(页.items);
         设游标(页.nextCursor);
         版本引用.current = 页.catalogVersion;
+        设错误(null);
       } catch (错误) {
         if (作废) return;
+        // 已有项与游标保持不变，错误交给正文显示重试
+        设错误(取后端错误文案(错误));
         轻提示(取后端错误文案(错误));
       } finally {
         if (!作废) 设加载中(false);
       }
     })();
     return () => { 作废 = true; };
-  }, [可查询]);
+  }, [可查询, 请求序号]);
+
+  const 重试 = () => 设请求序号((旧) => 旧 + 1);
 
   const 加载更多 = async () => {
     if (游标 === null || 加载中) return;
@@ -95,19 +104,22 @@ export function use城市默认页(查询Location: 查询Location方法 | undefi
         设项们(重开.items);
         设游标(重开.nextCursor);
         版本引用.current = 重开.catalogVersion;
+        设错误(null);
         return;
       }
       设项们((旧) => 去重([...旧, ...页.items]));
       设游标(页.nextCursor);
+      设错误(null);
     } catch (错误) {
-      // 游标保持不变，用户再滚一次就是重试
+      // 游标与已有项保持不变（不装成成功空页），错误交给正文显示 + 重试入口
+      设错误(取后端错误文案(错误));
       轻提示(取后端错误文案(错误));
     } finally {
       设加载中(false);
     }
   };
 
-  return { 热门项们, 项们, 加载中, 还有: 游标 !== null, 加载更多 };
+  return { 热门项们, 项们, 加载中, 还有: 游标 !== null, 加载更多, 错误, 重试 };
 }
 
 /** 按返回的行政区/国家字段分组（Task 5）：两个字段都缺的项不编造省份、
@@ -234,7 +246,10 @@ export function use城市分组(查询Location: 查询Location方法 | undefined
 /** 搜索查询：250ms debounce 后调 查询Location({ q })。
  *  review-r1 P2-2 / review-r2 R2-M-1/R2-M-2：代际 ref 守 stale response——每次输入变化（含清空）
  *  都递增代际；响应 resolve 时只有代际与最新一致才 commit。搜索保留 nextCursor，
- *  暴露 加载更多 供滚到底追加下一页（合并去重）。 */
+ *  暴露 加载更多 供滚到底追加下一页（合并去重）。
+ *  Task 2：失败暴露 错误/重试 —— 首页失败置错误（结果清空但错误可见，不装成成功空页）；
+ *  重试用当前词重发首页（请求序号触发 effect 重跑，代次失效旧响应）；分页失败保留
+ *  已有结果与当前游标，错误可见。成功后错误清空，空词也清错误。 */
 export function use城市搜索(查询Location: 查询Location方法 | undefined) {
   const [词, 设词] = useState('');
   const [结果, 设结果] = useState<BFFLocationItem[]>([]);
@@ -242,6 +257,9 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
   // review-r2 R2-M-1：搜索结果的下一页游标，null 表示无更多
   const [下一页游标, 设下一页游标] = useState<string | null>(null);
   const [加载中, 设加载中] = useState(false);
+  const [错误, 设错误] = useState<string | null>(null);
+  // Task 2：重试经请求序号触发 effect 重跑（同词重发）；代次在卸载/新词/新序号时失效
+  const [请求序号, 设请求序号] = useState(0);
   const 计时 = useRef(0);
   const 代际 = useRef(0);
   // review-cx F5：本次搜索第一页的 catalogVersion —— 追加页换版本时结果整组重开
@@ -261,6 +279,7 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
     版本引用.current = '';
     if (!方法 || trimmed === '') {
       设搜索中(false);
+      设错误(null);
       return;
     }
     设搜索中(true);
@@ -274,16 +293,21 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
         设结果(页.items);
         设下一页游标(页.nextCursor);
         版本引用.current = 页.catalogVersion;
-      } catch {
+        设错误(null);
+      } catch (错误) {
         if (本次 !== 代际.current) return;
         设结果([]);
         设下一页游标(null);
+        // 失败不装成成功空页：错误可见，重试用当前词
+        设错误(取后端错误文案(错误));
       } finally {
         if (本次 === 代际.current) 设搜索中(false);
       }
     }, 搜索防抖毫秒);
     return () => window.clearTimeout(计时.current);
-  }, [词]);
+  }, [词, 请求序号]);
+
+  const 重试 = () => 设请求序号((旧) => 旧 + 1);
 
   // review-r2 R2-M-1：加载更多——用当前游标请求下一页，合并去重；代际检查防 stale 追加
   const 加载更多 = async () => {
@@ -303,16 +327,30 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
         设结果(重开.items);
         设下一页游标(重开.nextCursor);
         版本引用.current = 重开.catalogVersion;
+        设错误(null);
         return;
       }
       设结果((旧) => 去重([...旧, ...页.items]));
       设下一页游标(页.nextCursor);
-    } catch {
+      设错误(null);
+    } catch (错误) {
       if (本次 !== 代际.current) return;
+      // 结果与当前游标保持不变，错误交给正文显示 + 重试入口
+      设错误(取后端错误文案(错误));
     } finally {
       if (本次 === 代际.current) 设加载中(false);
     }
   };
 
-  return { 词, 设词, 结果, 搜索中, 下一页游标, 加载中, 加载更多 };
+  return { 词, 设词, 结果, 搜索中, 下一页游标, 加载中, 加载更多, 错误, 重试 };
+}
+
+/** Mock 本地搜索（选工作城市 / 岗位全页选择共用）：省名也算命中，输「浙」出浙江全省。
+ *  Mock 不发真实请求，只是本地字典过滤。 */
+export function 本地城市搜索结果(词: string): string[] {
+  const 搜索词 = 词.trim();
+  if (搜索词 === '') return [];
+  return 城市字典.flatMap((组) =>
+    组.省.includes(搜索词) ? 组.城市 : 组.城市.filter((城) => 城.includes(搜索词)),
+  );
 }

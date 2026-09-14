@@ -62,7 +62,7 @@ const 空草稿 = {
   编辑编号: null,
   求职类型: '全职' as const,
   工作城市: '',
-  工作城市引用: undefined,
+  工作城市引用: undefined as { id: string; display_name: string } | undefined,
   期望职位: '',
   感兴趣城市们: [] as string[],
   感兴趣城市引用们: [] as string[],
@@ -73,9 +73,22 @@ const 空草稿 = {
   求职类型已改: false,
 };
 
+/** 轻提示 是挂在 document.body 上的纯 DOM 单例，RTL cleanup 不清它 */
+function 轻提示文案们(): string[] {
+  for (const 节点 of Array.from(document.body.children)) {
+    const 元素 = 节点 as HTMLElement;
+    if (元素.style.position === 'fixed' && 元素.style.zIndex === '999') {
+      return Array.from(元素.children).map((条) => 条.textContent ?? '');
+    }
+  }
+  return [];
+}
+
 function render城市页(选项: {
   数据源: 'backend' | 'mock';
   查询Location?: ReturnType<typeof vi.fn>;
+  来源意向?: boolean;
+  引导城市们?: string[];
 }) {
   const 派发 = vi.fn();
   mock应用状态 = {
@@ -89,13 +102,13 @@ function render城市页(选项: {
           }
         : null,
     状态: {
-      引导预填: { 城市们: [] as string[], 职位: [] as string[] },
+      引导预填: { 城市们: 选项.引导城市们 ?? [], 职位: [] as string[] },
       意向草稿: { ...空草稿 },
     },
     派发,
   };
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={选项.来源意向 ? ['/onboard/city?来源=意向'] : undefined}>
       <选工作城市 />
     </MemoryRouter>,
   );
@@ -105,6 +118,10 @@ function render城市页(选项: {
 describe('选工作城市 Backend', () => {
   beforeEach(() => {
     mock返回.mockClear();
+    for (const 节点 of Array.from(document.body.children)) {
+      const 元素 = 节点 as HTMLElement;
+      if (元素.style.position === 'fixed' && 元素.style.zIndex === '999') 元素.innerHTML = '';
+    }
   });
 
   it('默认目录页点上海市保存 Location ID，查询不带 q 也不带省标题', async () => {
@@ -278,6 +295,10 @@ describe('选工作城市 Backend', () => {
 describe('选工作城市 Mock', () => {
   beforeEach(() => {
     mock返回.mockClear();
+    for (const 节点 of Array.from(document.body.children)) {
+      const 元素 = 节点 as HTMLElement;
+      if (元素.style.position === 'fixed' && 元素.style.zIndex === '999') 元素.innerHTML = '';
+    }
   });
 
   it('本地城市字典与 DOM 不变，保存带空引用数组', async () => {
@@ -293,5 +314,114 @@ describe('选工作城市 Mock', () => {
         城市引用们: [],
       }),
     );
+  });
+
+  // Task 2：候选引导的多选上限保持 —— 第 11 枚被拒并提示，可取消已选后再补
+  it('多选上限 10：第 11 枚被拒并提示，取消一枚后可再选', async () => {
+    render城市页({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    const 热门 = ['北京', '上海', '深圳', '广州', '杭州', '成都', '南京', '武汉', '苏州', '西安'];
+    for (const 城 of 热门) {
+      await 用户.click(screen.getAllByRole('button', { name: 城 })[0]);
+    }
+    expect(screen.getByText('10/10')).toBeTruthy();
+    await 用户.click(screen.getAllByRole('button', { name: '长沙' })[0]);
+    expect(screen.getByText('10/10')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '长沙 ✕' })).toBeNull();
+    expect(轻提示文案们()).toContain('最多选 10 个');
+    await 用户.click(screen.getByRole('button', { name: '西安 ✕' }));
+    await 用户.click(screen.getAllByRole('button', { name: '长沙' })[0]);
+    expect(screen.getByRole('button', { name: '长沙 ✕' })).toBeTruthy();
+  });
+});
+
+// ── Task 2：意向单选与失败/无结果分界（共用正文后的页面回归）──
+
+describe('选工作城市 意向单选与错误态（Task 2）', () => {
+  beforeEach(() => {
+    mock返回.mockClear();
+    for (const 节点 of Array.from(document.body.children)) {
+      const 元素 = 节点 as HTMLElement;
+      if (元素.style.position === 'fixed' && 元素.style.zIndex === '999') 元素.innerHTML = '';
+    }
+  });
+
+  it('意向来源：单选替换、无 N/10 计数、保存带 id+name 引用', async () => {
+    const 查询Location = vi.fn(async () => ({
+      items: [
+        城({ id: 'loc_bj', display_name: '北京市', admin1_name: '北京市' }),
+        城({ id: 'loc_sh', display_name: '上海市', admin1_name: '上海市' }),
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    const { 派发 } = render城市页({ 数据源: 'backend', 查询Location, 来源意向: true });
+    const 用户 = userEvent.setup();
+    // 单选：不渲染 N/10 计数
+    expect(screen.queryByText('0/10')).toBeNull();
+    await screen.findAllByText('北京市');
+    await 用户.click(screen.getAllByRole('button', { name: '北京市' })[0]);
+    await 用户.click(screen.getAllByRole('button', { name: '上海市' })[0]);
+    // 点新的取代旧的：只剩一枚已选
+    expect(screen.getByRole('button', { name: '上海市 ✕' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '北京市 ✕' })).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({
+        型: '改意向草稿',
+        补丁: expect.objectContaining({
+          工作城市: '上海市',
+          工作城市引用: { id: 'loc_sh', display_name: '上海市' },
+        }),
+      }),
+    );
+  });
+
+  /** 行内错误行（正文列表区）：错误文案同时会出现在全局轻提示里，用行内容器定位 */
+  const 错误行 = () => document.querySelector('[class*="错误行"]');
+
+  it('默认页失败显示错误与重试，重试成功后渲染目录（失败不装成成功空页）', async () => {
+    let 调用 = 0;
+    const 查询Location = vi.fn(async () => {
+      调用 += 1;
+      if (调用 === 1) throw new Error('boom');
+      return {
+        items: [城({ id: 'loc_sh', display_name: '上海市' })],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    render城市页({ 数据源: 'backend', 查询Location });
+    const 用户 = userEvent.setup();
+    await waitFor(() => expect(错误行()).toBeTruthy());
+    // 失败 ≠ 无结果
+    expect(screen.queryByText('没有匹配的城市，换个词试试。')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    expect(await screen.findAllByRole('button', { name: '上海市' })).toBeTruthy();
+    await waitFor(() => expect(错误行()).toBeNull());
+    expect(查询Location).toHaveBeenCalledTimes(2);
+  });
+
+  it('搜索失败显示错误与重试且用当前词重发；成功 0 条显示无结果', async () => {
+    let 调用 = 0;
+    const 查询Location = vi.fn(async (query: { q?: string }) => {
+      if (query.q === undefined) {
+        return { items: [], nextCursor: null, catalogVersion: 'v2' };
+      }
+      调用 += 1;
+      if (调用 === 1) throw new Error('boom');
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render城市页({ 数据源: 'backend', 查询Location });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), '不存在的城');
+    await waitFor(() => expect(错误行()).toBeTruthy());
+    expect(screen.queryByText('没有匹配的城市，换个词试试。')).toBeNull();
+    // 重试使用当前词重发
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    await waitFor(() => expect(查询Location).toHaveBeenCalledTimes(2));
+    // 重试成功但 0 条：显示无结果，行内错误撤掉
+    expect(await screen.findByText('没有匹配的城市，换个词试试。')).toBeTruthy();
+    await waitFor(() => expect(错误行()).toBeNull());
   });
 });

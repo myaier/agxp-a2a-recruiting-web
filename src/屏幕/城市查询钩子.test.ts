@@ -335,6 +335,166 @@ describe('use城市搜索 catalogVersion 重同步（review-cx F5）', () => {
   });
 });
 
+// ── Task 2：错误与重试 —— 失败与成功空页分开；重试用当前词重发；
+// 分页失败保留已有项与当前游标（不装成成功空页、不用新词/新代次吞掉旧页）。──
+
+describe('use城市搜索 错误与重试（Task 2）', () => {
+  it('首页失败 → 错误文案可见；重试用当前词重发并清错误', async () => {
+    let 设词外: ((v: string) => void) | null = null;
+    let 重试外: (() => void) | null = null;
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 设词, 结果, 错误, 重试 } = use城市搜索(查询);
+      设词外 = 设词;
+      重试外 = 重试;
+      return createElement('output', null, JSON.stringify({ 结果: 结果.map((r) => r.id), 错误 }));
+    }
+
+    let 调用 = 0;
+    const 查询 = vi.fn(async (_query: { q?: string }) => {
+      调用 += 1;
+      if (调用 === 1) throw new Error('boom');
+      return {
+        items: [{ id: 'loc_hz', display_name: '杭州市' } as BFFLocationItem],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    }) as unknown as 查询Location方法;
+
+    const { container } = render(createElement(探针, { 查询 }));
+    act(() => 设词外!('杭州市'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    let 输出 = JSON.parse(container.querySelector('output')!.textContent!);
+    expect(输出.错误).toBe('请求失败，请稍后再试');
+    expect(输出.结果).toEqual([]);
+
+    // 重试：同一当前词重发（第二次调用成功）。点击与等待分两个 act：
+    // 合并在一个 async act 里 effect 要等 act 收尾才重跑，debounce 会落在等待窗口之外
+    await act(async () => { 重试外!(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    expect((查询 as unknown as ReturnType<typeof vi.fn>).mock.calls.filter((调用) => 调用[0].q === '杭州市')).toHaveLength(2);
+    输出 = JSON.parse(container.querySelector('output')!.textContent!);
+    expect(输出.错误).toBeNull();
+    expect(输出.结果).toEqual(['loc_hz']);
+  });
+
+  it('分页失败保留已有结果与当前游标，错误可见；再次加载更多仍用原游标', async () => {
+    let 设词外: ((v: string) => void) | null = null;
+    let 加载更多外: (() => void) | null = null;
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 设词, 结果, 错误, 加载更多 } = use城市搜索(查询);
+      设词外 = 设词;
+      加载更多外 = () => void 加载更多();
+      return createElement('output', null, JSON.stringify({ 结果: 结果.map((r) => r.id), 错误 }));
+    }
+
+    let 追加调用 = 0;
+    const 查询 = vi.fn(async (q: { q?: string; cursor?: string }) => {
+      if (q.cursor) {
+        追加调用 += 1;
+        if (追加调用 === 1) throw new Error('boom');
+        return {
+          items: [{ id: 'loc_a2', display_name: 'A城2' } as BFFLocationItem],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{ id: 'loc_a1', display_name: 'A城' } as BFFLocationItem],
+        nextCursor: 'a_cur_1' as string | null,
+        catalogVersion: 'v2',
+      };
+    }) as unknown as 查询Location方法;
+
+    const { container } = render(createElement(探针, { 查询 }));
+    act(() => 设词外!('A'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    expect(JSON.parse(container.querySelector('output')!.textContent!).结果).toEqual(['loc_a1']);
+
+    // 追加页失败：错误可见，结果与游标都保留
+    await act(async () => { 加载更多外!(); });
+    let 输出 = JSON.parse(container.querySelector('output')!.textContent!);
+    expect(输出.错误).toBe('请求失败，请稍后再试');
+    expect(输出.结果).toEqual(['loc_a1']);
+    // 再次加载更多：仍用原游标（不装成成功空页、不丢页）
+    await act(async () => { 加载更多外!(); });
+    expect((查询 as unknown as ReturnType<typeof vi.fn>).mock.calls.filter((调用) => 调用[0].cursor === 'a_cur_1')).toHaveLength(2);
+    输出 = JSON.parse(container.querySelector('output')!.textContent!);
+    expect(输出.错误).toBeNull();
+    expect(输出.结果).toEqual(['loc_a1', 'loc_a2']);
+  });
+});
+
+describe('use城市默认页 错误与重试（Task 2）', () => {
+  it('首页失败 → 错误文案可见；重试重发首页并清错误', async () => {
+    let 重试外: (() => void) | null = null;
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 热门项们, 错误, 重试 } = use城市默认页(查询);
+      重试外 = 重试;
+      return createElement('output', null, JSON.stringify({ 热门: 热门项们.map((项) => 项.id), 错误 }));
+    }
+
+    let 调用 = 0;
+    const 查询 = vi.fn(async () => {
+      调用 += 1;
+      if (调用 === 1) throw new Error('boom');
+      return {
+        items: [{ id: 'loc_sh', display_name: '上海市' } as BFFLocationItem],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    }) as unknown as 查询Location方法;
+
+    const { container } = render(createElement(探针, { 查询 }));
+    await act(async () => { await Promise.resolve(); });
+    let 输出 = JSON.parse(container.querySelector('output')!.textContent!);
+    expect(输出.错误).toBe('请求失败，请稍后再试');
+    expect(输出.热门).toEqual([]);
+
+    await act(async () => { 重试外!(); await Promise.resolve(); });
+    输出 = JSON.parse(container.querySelector('output')!.textContent!);
+    expect(输出.错误).toBeNull();
+    expect(输出.热门).toEqual(['loc_sh']);
+  });
+
+  it('分页失败保留已有项与当前游标；继续加载更多仍用原游标', async () => {
+    let 加载更多外: (() => void) | null = null;
+    function 探针({ 查询 }: { 查询: 查询Location方法 }) {
+      const { 项们, 错误, 加载更多 } = use城市默认页(查询);
+      加载更多外 = () => void 加载更多();
+      return createElement('output', null, JSON.stringify({ 全部: 项们.map((项) => 项.id), 错误 }));
+    }
+
+    let 追加调用 = 0;
+    const 查询 = vi.fn(async (q: { cursor?: string }) => {
+      if (q.cursor === 'cur_1') {
+        追加调用 += 1;
+        if (追加调用 === 1) throw new Error('boom');
+        return {
+          items: [{ id: 'loc_hz', display_name: '杭州市' } as BFFLocationItem],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{ id: 'loc_sh', display_name: '上海市' } as BFFLocationItem],
+        nextCursor: 'cur_1' as string | null,
+        catalogVersion: 'v2',
+      };
+    }) as unknown as 查询Location方法;
+
+    const { container } = render(createElement(探针, { 查询 }));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { 加载更多外!(); });
+    let 输出 = JSON.parse(container.querySelector('output')!.textContent!);
+    expect(输出.错误).toBe('请求失败，请稍后再试');
+    expect(输出.全部).toEqual(['loc_sh']);
+    await act(async () => { 加载更多外!(); });
+    expect((查询 as unknown as ReturnType<typeof vi.fn>).mock.calls.filter((调用) => 调用[0].cursor === 'cur_1')).toHaveLength(2);
+    输出 = JSON.parse(container.querySelector('output')!.textContent!);
+    expect(输出.全部).toEqual(['loc_sh', 'loc_hz']);
+  });
+});
+
 // ── review-cx-r2 F5-R2：多 filter 分组的版本按 filter 记（版本们 与 游标们 对齐）──
 // 追加页只与同 filter 的第一页版本比对：各 filter 版本各自稳定（哪怕互相不同）时
 // 正常合并不误判重启；整个目录真换代（追加页集体换版本）仍整组重开。并发第一页
