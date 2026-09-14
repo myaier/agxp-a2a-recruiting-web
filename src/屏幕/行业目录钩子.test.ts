@@ -284,6 +284,65 @@ describe('行业目录钩子 目录换代', () => {
     await waitFor(() => expect(result.current.行.find((行) => 行.键 === 'a1')!.名称).toBe('子项一'));
   });
 
+  it('子分页换版只作废被摘子树：兄弟根 B 的在飞响应正常落缓存，被摘键上新请求不被旧代迟到响应覆盖', async () => {
+    // 时序（review Important finding）：同时展开 A/B，B 首页请求 deferred 在飞；
+    // A 分页换版（v1→v2）只作废 A 被摘子树（缓存摘除 + 在飞标记释放），不得用全局
+    // 代际把兄弟根 B 的在飞响应静默作废 —— 否则 finally 把 B 收尾成「成功空页」，
+    // 收起再展开命中空缓存不再发请求，B 永远「暂无内容」（违反 Spec §5.2）。
+    const { promise: B慢, resolve: B解决 } = deferred<行业页>();
+    const { promise: A分页慢, resolve: A分页解决 } = deferred<行业页>();
+    const { promise: a1慢, resolve: a1解决 } = deferred<行业页>();
+    let a1调用 = 0;
+    const 根B = { 键: 'B', 名称: '行业B', 可选: false, 有子项: true };
+    const 查询 = vi.fn(async (父键: string | null, 游标: string | null): Promise<行业页> => {
+      if (父键 === null) return 页([根项A, 根B], null, 'v1');
+      if (父键 === 'A' && 游标 === null) {
+        return 页([{ 键: 'a1', 名称: '子项a1', 可选: false, 有子项: true }], 'a游标', 'v1');
+      }
+      if (父键 === 'A') return A分页慢; // 分页换版触发点
+      if (父键 === 'B') return B慢;
+      if (父键 === 'a1') {
+        a1调用 += 1;
+        return a1调用 === 1 ? a1慢 : 页([{ 键: 'g2', 名称: '新孙项', 可选: true, 有子项: false }], null, 'v2');
+      }
+      return 页([], null, 'v1');
+    });
+    const { result } = renderHook(() => use行业目录({ 查询, 目录身份: 'backend:sub1' }));
+    await waitFor(() => expect(result.current.根加载中).toBe(false));
+    // 同时展开 A 与 B：B 首页请求 deferred 在飞
+    await act(async () => {
+      result.current.切换展开('B');
+      result.current.切换展开('A');
+    });
+    await waitFor(() => expect(查询).toHaveBeenCalledWith('B', null));
+    await waitFor(() => expect(result.current.行.find((行) => 行.键 === 'a1')).toBeTruthy());
+    // 展开 a1：旧代孙请求 deferred 在飞
+    await act(async () => result.current.切换展开('a1'));
+    await waitFor(() => expect(a1调用).toBe(1));
+    // A 分页请求在飞 → resolve 出 v2 追加页：触发换版（a1 缓存/展开作废、在飞标记释放）
+    await act(async () => result.current.加载更多('A'));
+    await act(async () => A分页解决(页([{ 键: 'a1', 名称: '子项a1', 可选: false, 有子项: true }], null, 'v2')));
+    await waitFor(() => expect(result.current.行.find((行) => 行.键 === 'a1')!.展开).toBe(false));
+    // 被摘键 a1：用户窗口内重新展开 → 新请求发新版本孙项
+    await act(async () => result.current.切换展开('a1'));
+    await waitFor(() => expect(a1调用).toBe(2));
+    await waitFor(() => expect(result.current.行.find((行) => 行.键 === 'g2')).toBeTruthy());
+    // A 旧代孙请求迟到：凭逐请求序号作废，不覆盖新请求的缓存
+    await act(async () => a1解决(页([{ 键: 'g1', 名称: '旧孙项', 可选: true, 有子项: false }], null, 'v1')));
+    await waitFor(() => expect(result.current.行.find((行) => 行.键 === 'g2')).toBeTruthy());
+    expect(result.current.行.find((行) => 行.键 === 'g1')).toBeUndefined();
+    // B 的迟到响应正常落缓存（不被 A 子树换版误伤）
+    await act(async () => B解决(页([{ 键: 'b1', 名称: '子项b1', 可选: true, 有子项: false }], null, 'v1')));
+    await waitFor(() => expect(result.current.行.find((行) => 行.键 === 'b1')).toBeTruthy());
+    // 收起 B 再展开：缓存保留，不重发请求（修复前命中「成功空页」永远暂无内容）
+    await act(async () => result.current.切换展开('B'));
+    expect(result.current.行.find((行) => 行.键 === 'b1')).toBeUndefined();
+    await act(async () => result.current.切换展开('B'));
+    await waitFor(() => expect(result.current.行.find((行) => 行.键 === 'b1')).toBeTruthy());
+    // 根 + A首页 + a1旧 + A分页 + a1新 + B首页，B 不重发
+    expect(查询).toHaveBeenCalledTimes(6);
+  });
+
   it('迟到响应在目录身份变更后不回写：旧主体响应作废，新主体重新拉根页', async () => {
     const { promise: 慢, resolve: 慢Resolve } = deferred<行业页>();
     const 查询 = vi.fn(async (父键: string | null): Promise<行业页> =>

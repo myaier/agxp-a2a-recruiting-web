@@ -1330,6 +1330,50 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
     expect(screen.queryByText('请填写职位要求')).toBeNull();
     expect(screen.queryByText('请先在招聘名片填写公司名称')).toBeNull();
   });
+
+  it('Mock 保存城市后重开子视图回显已选 chip 且保存可用，取消不回填（Spec §4.3/§6）', async () => {
+    // 缺陷（review Important finding）：Mock 保存只写 工作城市 文本、不设 地点引用，
+    // 重开城市子视图时 初始已选 恒空 → 无已选 chip、保存禁用，岗位行与选择页状态不一致
+    置Mock应用状态();
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job']}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await 用户.type(screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关'), 'AI 产品实习生');
+    await 用户.click(screen.getByRole('button', { name: '现场' }));
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    await 用户.click(screen.getByRole('button', { name: '产品' }));
+    await 用户.click(screen.getByRole('button', { name: '产品经理' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.type(screen.getByRole('textbox', { name: '职位描述' }), '描述正文');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+
+    // 选 上海 → 保存：岗位行回填
+    await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
+    await screen.findByText('选择工作城市');
+    await 用户.click((await screen.findAllByRole('button', { name: '上海' }))[0]);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByRole('button', { name: /工作城市/ }).textContent).toContain('上海');
+
+    // 重开城市子视图：已选 chip 在场、保存可用
+    await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
+    await screen.findByText('选择工作城市');
+    expect(screen.getByRole('button', { name: '上海 ✕' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(false);
+    // 取消关闭：岗位行仍是 上海，不回填临时态
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(screen.queryByText('选择工作城市')).toBeNull();
+    expect(screen.getByRole('button', { name: /工作城市/ }).textContent).toContain('上海');
+    // 零候选草稿派发不变
+    const 类型们 = mock应用状态.派发.mock.calls.map((调用: unknown[]) => (调用[0] as { 型: string }).型);
+    expect(类型们).not.toContain('存引导预填');
+    expect(类型们).not.toContain('改意向草稿');
+  });
 });
 
 // ── Spec §5.4：确认门覆盖两模式 —— Mock 用页面草稿/原始岗位状态模拟，保持

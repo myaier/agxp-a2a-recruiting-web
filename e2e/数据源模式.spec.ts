@@ -14498,6 +14498,16 @@ test.describe('picker 统一 岗位城市与月薪 @mock', () => {
     const 键集后 = await page.evaluate(() => Object.keys(localStorage).sort());
     expect(键集后).toEqual(键集前);
 
+    // 保存后重开子视图：已选 chip 回显、保存可用（Spec §4.3/§6 两模式同已选状态）；
+    // 取消关闭不改岗位行
+    await 城市行.click();
+    await expect(page.getByRole('heading', { name: '选择工作城市' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '上海 ✕' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('heading', { name: '选择工作城市' })).toHaveCount(0);
+    await expect(城市行).toContainText('上海');
+
     // 发布：办公地点（现场必填）+ 确认门勾选（Spec §5.4 两模式共用）→ 岗位带城市上屏
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');
     await page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ }).check();
