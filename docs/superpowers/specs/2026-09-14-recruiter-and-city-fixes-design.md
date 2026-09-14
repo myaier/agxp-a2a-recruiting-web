@@ -1,6 +1,6 @@
 # 招聘推荐、招聘者展示与城市目录前端修复
 
-日期：2026-09-14。版本：v1.2。状态：整体 Spec 待用户批准；尚未编写实施 Plan、进行文档异构审查或实施。v1.2 记录用户明确裁定：不动后端，精选不含港澳台，港澳台分组内允许 API 原始英文名称；该项展示决策已确认。
+日期：2026-09-14。版本：v1.2。状态：用户已批准，进入 Plan 与文档异构审查，尚未实施。批准依据：用户确认“可以，还有什么需要我澄清的吗”，并进一步要求零上下文最小接线计划、Claude review 与执行提示词。批准产品正文来自 revision `7b6e51221a51aac3d52c6c23920ff3237faf1da0`，blob `9a76a1c34c1d76cdd810f578ebe8ae133e9ee4ed`；本次仅记录批准状态。v1.2 裁定：不动后端，精选不含港澳台，港澳台分组内允许 API 原始英文名称。
 
 ## 1. 范围、基线与核实结论
 
@@ -165,4 +165,4 @@ Mock 默认目录拆开三个指定区域，删除海外长分组；Mock 全球�
 - 真实 local Location GET 探测：`http://127.0.0.1:8097/api/v1/catalog/locations?country_code=SG&limit=20` 当前连接失败（curl HTTP 000），未取得接口响应。没有启动或关闭后端栈。
 - 精选 ID：已从后端 active/selectable 快照核实；真实接口核验和浏览器回归仍未执行。
 - 完整单元、typecheck、lint、build 与视觉回归：本轮规划未执行，保留为实施交付责任。
-- 下一批准门：用户批准本 Spec 后，调用 writing-plans 编写单 Plan；之后按 development-workflow 调用 Claude 异构文档 review，记录 findings 与裁决，生成双宿主执行提示词。当前没有执行提示词，也不自动启动实施 session。
+- 规划流程：用户已批准本 Spec；调用 writing-plans 编写单 Plan，按 development-workflow 调用 Claude 异构文档 review，记录 findings 与裁决，生成双宿主执行提示词，不自动启动实施 session。审查结论与精确 Plan/prompt 版本在对应交付中记录，本节不声称未来步骤已通过。
