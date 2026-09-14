@@ -22,6 +22,8 @@
 //   P1_CAPTURE_DIR=ui-regression-output/p1/reference npm run test:e2e:data-source -- \
 //     e2e/P1展示统一.spec.ts --project=mock-stg --grep 'P1 Mock视觉' --workers=1
 // 候选采集同一命令换 P1_CAPTURE_DIR 即可；sceneId 含视口宽度，两个宽度互不覆盖。
+// 不带 P1_CAPTURE_DIR 的普通入口也能跑：根目录落在本用例独立的
+// testInfo.outputPath('capture')，不要求 shell 变量（见下方 取采集目录 注释）。
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -31,28 +33,21 @@ import type { 场景采集结果, 场景状态种子, 元素几何 } from './视
 import { 路径 } from '../src/路由/路径表';
 
 // ── 采集目录（测试专用环境变量，不新增产品 env）─────────────────────────
-// P1_CAPTURE_DIR 只在 Mock视觉 采集用例里需要；P1 Backend展示 用例（Task 5）不采集
-// 也能跑（brief 的 backend 命令不带该变量），所以这里从模块加载期断言改成用例期断言，
-// 采集行为（目录结构 / 文件名 / JSON schema）与 Task 1 基准逐字一致。
-const P1采集根目录 = process.env.P1_CAPTURE_DIR ?? null;
-
-let 采集子目录: { 截图目录: string; 场景目录: string } | null = null;
-function 取采集目录(): { 截图目录: string; 场景目录: string } {
-  if (P1采集根目录 === null) {
-    throw new Error('P1_CAPTURE_DIR 未设置：P1 Mock视觉 采集需要明确输出目录');
-  }
-  if (采集子目录 === null) {
-    const 截图目录 = join(P1采集根目录, 'screenshots');
-    const 场景目录 = join(P1采集根目录, 'scenes');
-    mkdirSync(截图目录, { recursive: true });
-    mkdirSync(场景目录, { recursive: true });
-    采集子目录 = { 截图目录, 场景目录 };
-  }
-  return 采集子目录;
+// P1_CAPTURE_DIR 是基准/候选采集的显式目录协议（本次 invocation 专用，调用者保证
+// 不与另一 invocation 共用）。默认入口不设它时，采集根目录在 test 回调内用
+// testInfo.outputPath('capture') 现算——每个用例独立目录，重复/并发采集互不覆盖；
+// 不用模块级可变缓存记住第一个用例的 TestInfo。目录结构 / 文件名 / JSON schema
+// 与 Task 1 基准逐字一致。
+function 取采集目录(根目录: string): { 截图目录: string; 场景目录: string } {
+  const 截图目录 = join(根目录, 'screenshots');
+  const 场景目录 = join(根目录, 'scenes');
+  mkdirSync(截图目录, { recursive: true });
+  mkdirSync(场景目录, { recursive: true });
+  return { 截图目录, 场景目录 };
 }
 
-function 写结果(结果: 场景采集结果): void {
-  const 路径名 = join(取采集目录().场景目录, `${结果.sceneId}.json`);
+function 写结果(根目录: string, 结果: 场景采集结果): void {
+  const 路径名 = join(取采集目录(根目录).场景目录, `${结果.sceneId}.json`);
   mkdirSync(dirname(路径名), { recursive: true });
   writeFileSync(路径名, JSON.stringify(结果, null, 2));
 }
@@ -491,7 +486,7 @@ const P1场景们: P1场景[] = [
 
 // ── 采集执行：每场景 × 每视口宽度一个 test，sceneId 含宽度 ─────────────
 
-async function 采集场景(page: Page, 场景: P1场景, 宽度: number): Promise<void> {
+async function 采集场景(page: Page, 场景: P1场景, 宽度: number, 根目录: string): Promise<void> {
   const sceneId = `${场景.基名}-${宽度}`;
   const 诊断 = 安装诊断(page);
   let 结果: 场景采集结果 = {
@@ -553,7 +548,7 @@ async function 采集场景(page: Page, 场景: P1场景, 宽度: number): Promi
     );
 
     const 视窗 = page.viewportSize() ?? { width: 0, height: 0 };
-    const 截图文件 = join(取采集目录().截图目录, `${sceneId}.png`);
+    const 截图文件 = join(取采集目录(根目录).截图目录, `${sceneId}.png`);
     await page.screenshot({ path: 截图文件 });
 
     结果 = {
@@ -572,7 +567,7 @@ async function 采集场景(page: Page, 场景: P1场景, 宽度: number): Promi
       horizontalOverflow: 溢出,
       failure: null,
     };
-    写结果(结果);
+    写结果(根目录, 结果);
     诊断.detach();
   } catch (原始错误) {
     结果 = {
@@ -586,7 +581,8 @@ async function 采集场景(page: Page, 场景: P1场景, 宽度: number): Promi
       apiRequests: [...诊断.apiRequests],
       failure: 原始错误 instanceof Error ? 原始错误.message : String(原始错误),
     };
-    写结果(结果);
+    // 失败 JSON 与正常结果写同一根目录，错误不会被「写不进结果」遮住
+    写结果(根目录, 结果);
     诊断.detach();
     throw 原始错误;
   }
@@ -605,9 +601,12 @@ for (const 宽度 of 视口宽度们) {
     });
 
     for (const 场景 of P1场景们) {
-      test(`采集 ${场景.基名} @mock`, async ({ page }) => {
+      test(`采集 ${场景.基名} @mock`, async ({ page }, testInfo) => {
         test.setTimeout(120_000);
-        await 采集场景(page, 场景, 宽度);
+        // 根目录在 test 回调内计算：显式目录（基准/候选协议）优先，否则落到本用例
+        // 独立的 Playwright 输出目录，普通入口无需 shell 采集变量。
+        const 根目录 = process.env.P1_CAPTURE_DIR ?? testInfo.outputPath('capture');
+        await 采集场景(page, 场景, 宽度, 根目录);
       });
     }
   });
