@@ -190,18 +190,18 @@ npm run test -- src/屏幕/看市场.test.tsx -t '问AI代理：Backend 不挂�
 
 依赖：Task 1–3 已完成及定向测试通过；共用 `e2e/fixtures/P1展示统一.ts` 当前导出 `安装P1路由(page,{role,场景})`，其中 role 为 candidate/recruiter，场景为完整/缺失/长文/错误带缓存，返回 `{请求}`；已包含 `/me/onboarding` 角色 completed 应答，不再复制启动 fixture。不 import 任意 `.spec.ts`（会注册无关测试），不修改 fixture 文件。前端现有 `playwright.数据源模式.config.ts` 启动 mock-stg 4181、backend-stg 4182，Chrome iPhone 配置；端口占用立即报告，不按端口杀他人进程或改成放行外网。
 
-浏览器合同：新增测试使用 `@agent @mock` / `@agent @backend` 标签和对应项目 baseURL；循环两种角色、320/390 宽度，height=844。Backend 安装上述完整场景，`page.goto('/#/app')` 或 `'/#/hr'` 后等正确主壳，再点 nav 内消息按钮。Mock 走同样主壳路径，不写 Session 存储；若需稳定资料使用 `视觉回归/稳定页面.ts` 的既有 Mock 种子能力，不绕过 Backend guard。
+浏览器合同：新增测试使用 `@agent @mock` / `@agent @backend` 标签和对应项目 baseURL；循环两种角色、320/390 宽度，height=844。Backend 安装上述完整场景，`page.goto('/#/app')` 或 `'/#/hr'` 后等正确主壳，再点 nav 内消息按钮。Mock 走同样主壳路径，不写 Session 存储；若需稳定资料使用 `e2e/视觉回归/稳定页面.ts` 导出的 `打开稳定页面` 既有 Mock 种子能力，不绕过 Backend guard。
 
 实施与验证：
 - [ ] 新增 Backend 浏览器用例：全部第一条 AI 行，通知有 / 仅会话无，搜索“AI代理”命中 / 无关词不命中 / 清空恢复；点击进入正确代理 URL，真实说明、三个导航与禁用输入可见。按键/点发送后无新消息，无新增 POST/PUT/DELETE；断言请求记录中无 `/conversations/<固定入口键>`、无规则 mutation，不禁止合法收件箱 GET。
-- [ ] 空页/加载/失败组合由 Task 1 双角色组件测试覆盖，浏览器只用完整 HTTP 集合证明真实组装和导航，不再创建一套状态机。对全部/通知/仅会话的既有 P1 消息段作定向校准：删除仅因名称相同就判 Mock 污染的旧“AI代理动态不存在”，改为唯一入口、无模拟摘要/时间/未读；“还没有通知”改为固定行。搜索筛掉 AI 的旧缺席断言保留；真人参数路由、读消息、分页和错误带缓存断言保留。
+- [ ] 空页/加载/失败组合由 Task 1 双角色组件测试覆盖，浏览器只用完整 HTTP 集合证明真实组装和导航，不再创建一套状态机。对全部/通知/仅会话的既有 P1 消息段作定向校准：删除仅因名称相同就判 Mock 污染的旧“AI代理动态不存在”，改为唯一入口、无模拟摘要/时间/未读；“还没有通知”改为固定行。其中“缺失 无上下文、无 lastMessage 与未读”内的旧 AI 缺席断言也必须修改；搜索筛掉 AI 的旧缺席断言保留；真人参数路由、读消息、分页和错误带缓存断言保留。
 - [ ] 新增 Mock 浏览器用例：两端列表与代理初始页面、输入一条长文本、快捷句立即发送并等真实 DOM 回复、建议操作。求职放宽留本页/提示，招聘放宽跳设置；维持不导航且显示本端文案；招聘只有硬性匹配可点。请求监听证明 Mock 页面旅程零 `/api/v1/`（不含 HMR）。
 - [ ] 同视口保存初始/长文本/建议处理后的截图至 `testInfo.outputPath(...)` 并 attach；对照 Task 1 的 Mock 基线，相同内容字体/宽度/间距保持；超长输入不得产生新横向溢出。Backend 新增输入导致垂直空间变化是预期，但导航/输入不得遮挡；测试 DOM 的 disabled 与焦点/点击实际行为。
-- [ ] 执行下面精确用例集合。P1 只选消息相关测试，不采集岗位或运行其全套；新 @agent 覆盖两项目。检查输出实际选中的测试数，空 selection 不算 PASS。提交两个文件。
+- [ ] 执行下面精确用例集合。P1 只选消息相关测试，不采集岗位或运行其全套；新 @agent 覆盖两项目。P1 应选中五种消息用例（完整候选、完整招聘、缺失、长标题、错误缓存）×两个宽度，共10条，排除四种岗位用例；检查实际 selection，空或缺失 selection 不算 PASS。提交两个文件。
 
 ```bash
 npm run test:e2e:data-source -- e2e/问AI代理展示.spec.ts --grep '@agent' --workers=1
-npm run test:e2e:data-source -- e2e/P1展示统一.spec.ts --project=backend-stg --grep '消息' --workers=1
+npm run test:e2e:data-source -- e2e/P1展示统一.spec.ts --project=backend-stg --grep '消息行|lastMessage|长标题与截断|错误缓存共存' --workers=1
 ```
 
 失败反例：为跳过 onboarding 直接修改全局应用状态；所有 GET 泛化成功；Backend 出现“刚刚/替你初筛23人”的模拟摘要；把旧 Backend AI 缺席断言全部删除却不校验新增入口；用角色名代替外观截图。完成条件：两宽度、双角色、两模式实际整页证据及 P1 消费者均成立，没有测试平台注册或业务接线变化。
@@ -231,4 +231,7 @@ Task 4 两条浏览器命令也是本次完整责任的一部分，证据有效�
 - 用户已批准原 Spec 并授权 rebase、校准、Plan、Claude Review及执行提示词；本 Plan 不增加产品目标。
 - rebase 到 `origin/main@1f8c223739deb8fb14fdfba51ca8240f081ab089` 无冲突；核心问 AI / 列表 / 输入代码未变。校准采用已有完成 onboarding 的 P1 fixture，且将旧 P1 消息断言纳入 Task 4 精确修改范围。
 - 校准验证：在 `b969b267de0cac54dbd68c17c1a7544b67413fa0` 运行两端消息、Backend 列表、共享消息展示/映射、两端问 AI 的 7 文件 / 50 条 Vitest，全部通过，耗时 1.05 秒。未运行新增行为或真实后端验收。
-- Claude 文档 review 的固定范围仅本 Plan 与所引用 Spec；结果在实际完成后补于此处。当前尚未执行，不将准备阶段记为 clean。
+- Claude 文档 review 固定范围仅本 Plan 与所引用 Spec。首轮候选 `545e65a4`；reviewer 为独立 Claude CLI（opus / high、plan 只读模式），无测试；工作树状态、HEAD、文件指纹守卫通过。
+- R1-F1（Important / 真实缺陷 / required / 复杂度不变）：接受。旧 `--grep '消息'` 漏掉缺失、长标题、错误缓存用例，缺失用例仍断言 AI 行不存在。已明确修改该断言并将 Task 4 与收尾引用的 selection 改为五种消息用例×两宽度，不扩大到岗位测试；不改变 Spec。
+- R1-F2（Minor / 真实缺陷 / optional / 复杂度不变）：接受。补全 `e2e/视觉回归/稳定页面.ts` 路径并指定 `打开稳定页面` 导出，避免执行者猜工具位置。
+- 修订后提交同一 Claude 会话复审，结果在返回后记录；当前不将首轮建议已改写等同于 reviewer 对最终版本的无 finding 结论。
