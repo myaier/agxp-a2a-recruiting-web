@@ -1,6 +1,10 @@
 # 双端固定 AI 代理入口与展示组件整理 Spec
 
-状态：待用户审阅批准。用户已确认产品方向与页签规则；本文件的最终版本尚未批准。批准后才编写实施 Plan、进行异构文档 review 并生成新实施 Session 的执行提示词。
+状态：已批准，按用户要求完成 rebase 后事实校准。用户在审阅提交后明确要求“rebase到origin/main，然后校准Spec，然后按照 /development-workflow 写0上下文Plan，Claude Review和写执行提示词”，作为本 Spec 的批准及后续规划授权。
+
+批准内容基线：原提交 `c214d8ab648f6ccbd7d0a91ee50711354db67d8d`，文件 blob `3332632638f1f1f93984bc44c6401e692d7435fa`；rebase 后对应提交 `9209299c0b1576cc94cd804337df4d2b52d05b35`，内容 blob 不变。本次校准仅补充批准记录、上游基线和测试前提，不更改第 1–10 节的产品约定。
+
+校准目标：`origin/main@1f8c223739deb8fb14fdfba51ca8240f081ab089`。上游新增 onboarding 门控和选择器改动；两端问 AI 页面、Backend 消息列表及真输入条核心实现未变。Backend 浏览器测试必须复用已提供对应角色完成态的 `e2e/fixtures/P1展示统一.ts`，不可绕过新 onboarding 守卫。已有 P1 浏览器断言“AI代理动态不存在 / 通知为空”是本任务直接消费者，应按新约定定向调整；不修改 onboarding 产品逻辑或扩大 fixture API 白名单。
 
 ## 1. 目标与边界
 
@@ -226,4 +230,4 @@ Mock 的建议仍在简报正文后、脚注前；共享提取不把它变成独
 
 本 Spec 取代已删除的 `docs/superpowers/plans/2026-09-14-agent-display-components.md` 早期草稿。它根据用户后续确认，明确覆盖旧 P7 / P1 文档的“Backend 通知为空”以及旧代理隔离文档的“Backend 不渲染输入”两项局部约束；其他真实性和模式隔离约束继续有效。
 
-用户审阅批准最终 Spec 后，再依 development-workflow 编写一份零上下文 Plan，绑定批准版本，进行 Claude 异构文档 review 并生成执行提示词。本轮只交付 Spec，不自动开始产品实施。
+批准后依 development-workflow 编写一份零上下文 Plan，绑定上述批准内容及校准版本，进行 Claude 异构文档 review 并生成执行提示词。规划 session 不自动开始产品实施。
