@@ -5672,9 +5672,9 @@ async function 走完后端发岗向导(page: Page) {
   );
 
   await page.getByRole('button', { name: '— 元/天' }).first().click();
-  await page.getByRole('button', { name: '完成' }).click();
+  await page.getByRole('button', { name: '确定' }).click();
   await page.getByRole('button', { name: '— 元/天' }).click();
-  await page.getByRole('button', { name: '完成' }).click();
+  await page.getByRole('button', { name: '确定' }).click();
   // picker 统一 Task 2：城市改经工作城市行 → 全页选择子视图（搜索候选 → 保存回填）
   await page.getByRole('button').filter({ hasText: '工作城市' }).click();
   const picker城市搜索 = page.getByPlaceholder('搜索城市 / 省份');

@@ -187,9 +187,9 @@ test.describe('注册流换壳不闪中间屏', () => {
     await page.getByLabel('职位描述').fill('参与 AI 招聘产品的需求分析与原型设计。');
     await page.getByRole('button', { name: '下一步' }).click();
     await page.getByRole('button', { name: '— 元/天' }).first().click();
-    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '确定' }).click();
     await page.getByRole('button', { name: '— 元/天' }).click();
-    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '确定' }).click();
     // picker 统一 Task 2：岗位城市 input 已删 —— 经工作城市行打开全页选择子视图选上海
     await page.getByRole('button').filter({ hasText: '工作城市' }).click();
     await expect(page.getByRole('heading', { name: '选择工作城市' })).toBeVisible({ timeout: 10_000 });

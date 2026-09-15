@@ -492,9 +492,14 @@ async function 进完善资料(page: Page, 在校: boolean): Promise<void> {
   await page.getByRole('button', { name: 在校 ? '在校' : '已毕业', exact: true }).click();
   await page.getByRole('button', { name: 在校 ? '实习生' : '社招全职', exact: true }).click();
   if (在校) {
-    // 实习生必填：可实习月数 / 每周到岗天数（Backend 无默认，必须点选）
-    await page.getByRole('button', { name: '至少 3 个月' }).click();
-    await page.getByRole('button', { name: '每周 3 天' }).click();
+    // 实习生必填：可实习月数 / 每周到岗天数（Backend 无默认，必须点选）——
+    // picker 统一 Task 2 起两字段改共用数字抽屉：点选择行 → 选同档 → 确定
+    await page.getByRole('button', { name: '实习时长' }).click();
+    await page.getByRole('listbox', { name: '实习时长' }).getByRole('option', { name: '3', exact: true }).click();
+    await page.getByRole('button', { name: '确定' }).click();
+    await page.getByRole('button', { name: '每周到岗' }).click();
+    await page.getByRole('listbox', { name: '每周到岗' }).getByRole('option', { name: '3', exact: true }).click();
+    await page.getByRole('button', { name: '确定' }).click();
   }
   // 办公方式：Backend 从空起步，点一枚「现场」补齐
   await page.getByRole('button', { name: '现场', exact: true }).click();

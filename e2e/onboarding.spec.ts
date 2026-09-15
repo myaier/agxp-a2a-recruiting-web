@@ -264,9 +264,9 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByText('薪资仅判断双方区间是否匹配，不询问或协商具体金额。')).toBeVisible();
 
     await page.getByRole('button', { name: '— 元/天' }).first().click();
-    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '确定' }).click();
     await page.getByRole('button', { name: '— 元/天' }).click();
-    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '确定' }).click();
     // picker 统一 Task 2：岗位城市 input 已删 —— 经工作城市行打开全页选择子视图选上海
     await page.getByRole('button').filter({ hasText: '工作城市' }).click();
     await expect(page.getByRole('heading', { name: '选择工作城市' })).toBeVisible({ timeout: 10_000 });
