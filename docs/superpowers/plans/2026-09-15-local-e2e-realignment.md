@@ -284,3 +284,13 @@ L0–L2：`git diff --check 8e333ce3...HEAD` CLEAN；`npx oxlint`（两配置+�
 备注：annotation 项目输出含既有 PostCSS `from` 选项警告（工具链噪声，非本分支引入，未扩展处理）。
 
 target 事实（只读 fetch 后）：origin/main=eeaead9a（自开工未推进）；本地 main=5825ff47（落后 origin/main）；eeaead9a..c7be3b8b 共 17 commits（1 spec 草案 + 5 规划 docs + 11 实施/修复），全部属本 Plan 生命周期，origin/main 为 HEAD 祖先，普通 fast-forward 可达。真实 Backend/STG/Hosted L3：none（intercepted E2E，无生产代码改动）。
+
+## 合并后修复段（2026-09-15，追加）
+
+事实链：target 推进（origin/main `eeaead9a` → `47a7ea24`，S0–S3 continuity）→ merge 进 `e2e/triage`（`34282b98`，merge diff 只含对方 src 改动、零 e2e/ 文件）→ 全量复跑 243 中 20 失败（receipt final-data-r2.json + final-data-r2-artifacts/ 各 error-context.md）→ 归因 → 处置 → r3 全绿。
+
+归因：合并把 `continuity_version` 定为 P5 role-detail wire 必需键（`解P5详情`→`解连续块`；v1 允许连续块四成员整组缺席、缺版本号即契约漂移 fail closed）。本地 fixture 的 Case 详情响应按旧闭合键集装配 → 解码拒绝 → 20 条用例的详情页统一落「这一单暂时打不开／服务返回异常」错误态（8×P5 生命周期、1×P7、5×在谈详情完整布局 Backend、2×J-PILOT-01 场景一/三、4×展接线 Backend）。零文案对齐改动：e2e 全文 grep 冻结终局词（agent_failed/response_timeout/semantic_uncertain_stop 等）零命中，`user_ended` 原样上屏与 completed 移交文案路径未被 08b89b95 改动；零 PRODUCT_BLOCKED。
+
+处置（`37abf436`，2 文件 +8 行，src/ 零改动）：`e2e/数据源模式.spec.ts` `P5详情wire` 与 `e2e/fixtures/展示字段接线.ts` `候选Case详情`/`招聘Case详情` 补 `continuity_version: 1`（历史 Case 合法档：v1 纯 `{action}` 命令 body 断言、「旧版状态待核实」v1 行为分支、fail-closed 探针语义全部原样保留）。无断言改动、无 skip/sleep/retry。
+
+r3 结果：定向 29/29（merge-fix-1.log）；全量 243/243、3.1m、flaky=0（receipt final-data-r3.json + final-data-r3-artifacts/；完整 stdout 留痕 final-data-r3.log）。逐条归因表见 .superpowers/sdd/2026-09-15-local-e2e-realignment/merge-fix-report.md。上节「最终选集」各行坐标与 receipt 路径为合并前候选事实，保留不改写；本段为合并后新基线（`37abf436`）。
