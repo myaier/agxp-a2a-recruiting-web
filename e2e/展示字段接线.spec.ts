@@ -618,6 +618,8 @@ for (const 宽度 of 后端宽度们) {
       const 公开读前 = 请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/organizations/')).length;
       await page.getByRole('button', { name: '查看职位详情' }).nth(1).click();
       await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee02$/, { timeout: 10_000 });
+      // JD 卡标题只在独立职位详情渲染：先等详情 DOM 提交，claim 名称断言不落在切换前的列表卡上
+      await expect(page.getByText('岗位信息与职位详情', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText('展接FIX 缺口补齐工程师', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByRole('img', { name: '适配 0 分' }).first()).toBeVisible();
       expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/organizations/')).length).toBe(公开读前);
@@ -642,6 +644,7 @@ for (const 宽度 of 后端宽度们) {
       await expect(page.getByText('展接FIX 交易中台架构师').first()).toBeVisible({ timeout: 15_000 });
       await page.getByRole('button', { name: '查看职位详情' }).nth(2).click();
       await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee03$/, { timeout: 10_000 });
+      await expect(page.getByText('岗位信息与职位详情', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText('测'.repeat(80), { exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText('展'.repeat(48)).first()).toBeVisible();
       await 期望无溢出(page);

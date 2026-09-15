@@ -318,6 +318,8 @@ interface 岗位覆盖形 {
   job_id?: string;
   title?: string;
   organization?: Record<string, unknown>;
+  /** claim-only 卡必须随卡换名：独立职位详情的公司名取 claim，不覆盖会错挂 A 的声明 */
+  hiring_organization_claim?: Record<string, unknown>;
   hiring_organization_ref?: string | undefined;
   publisher_profile?: Record<string, unknown> | undefined;
   description?: string;
@@ -329,7 +331,7 @@ function 候选岗位(覆盖: 岗位覆盖形 = {}): Record<string, unknown> {
     job_id: 覆盖.job_id ?? 编号.职位A,
     publisher_verification_status: 'verified',
     hiring_organization_verification_status: 'verified',
-    hiring_organization_claim: { display_name: 标记.企业A, legal_name: null },
+    hiring_organization_claim: 覆盖.hiring_organization_claim ?? { display_name: 标记.企业A, legal_name: null },
     organization: 覆盖.organization ?? 组织摘要(),
     title: 覆盖.title ?? 标记.职位A,
     recruitment_type: 'social_full_time',
@@ -663,6 +665,7 @@ function 场景数据(场景: 展接线场景名, role: 展接线角色): 展接
     job_id: 编号.职位B,
     title: 标记.职位B,
     organization: { organization_id: null, display_name: 标记.企业B, industry: null, company_size: null, funding_stage: null, logo: null },
+    hiring_organization_claim: { display_name: 标记.企业B, legal_name: null },
     hiring_organization_ref: undefined,
     publisher_profile: undefined,
   });
@@ -670,6 +673,7 @@ function 场景数据(场景: 展接线场景名, role: 展接线角色): 展接
     job_id: 编号.职位C,
     title: 标记.职位C,
     organization: 组织摘要({ display_name: 标记.企业C }),
+    hiring_organization_claim: { display_name: 标记.企业C, legal_name: null },
     description: '展接FIX 长文段落。'.repeat(30),
     requirements: '展接FIX 长要求段落。'.repeat(30),
   });

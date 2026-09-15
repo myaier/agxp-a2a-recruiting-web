@@ -5964,8 +5964,9 @@ test.describe('Backend 数据源 fixture @backend', () => {
   // 显式 backend/stg server（端口 4182）
   test.use({ baseURL: 'http://127.0.0.1:4182' });
 
-  // 后端用例统一 60s 超时（涉及 debounce + 网络路由 fixture）
-  test.use({ timeout: 60_000 });
+  // 后端用例统一 60s 超时（涉及 debounce + 网络路由 fixture）；
+  // test.use({timeout}) 在 Playwright 1.62 不生效：beforeEach 恢复原 60s 预算
+  test.beforeEach(() => { test.setTimeout(60_000); });
 
   test('candidate 会话恢复后无 Catalog 请求 @backend', async ({ page }) => {
     const 目录请求: string[] = [];
@@ -7789,7 +7790,8 @@ async function 断言意向规则零写入口(page: Page, 正文: string) {
 test.describe('P6 规则域 fixture @backend', () => {
   // 显式 backend/stg server（端口 4182），与既有 @backend 用例同一口径
   test.use({ baseURL: 'http://127.0.0.1:4182' });
-  test.use({ timeout: 60_000 });
+  // test.use({timeout}) 在 Playwright 1.62 不生效：beforeEach 恢复原 60s 预算
+  test.beforeEach(() => { test.setTimeout(60_000); });
 
   test('P6 全链路：双端规则生命周期与请求契约 @backend', async ({ page }) => {
     // 冻结序列：candidate restore → 双端水合（意向规则只读入意向域，本页零写入口）→
@@ -8323,7 +8325,8 @@ async function 左滑候选卡(page: Page, 适配环名: string) {
 test.describe('P4 发现推荐域 fixture @backend', () => {
   // 显式 backend/stg server（端口 4182），与既有 @backend 用例同一口径
   test.use({ baseURL: 'http://127.0.0.1:4182' });
-  test.use({ timeout: 120_000 });
+  // test.use({timeout}) 在 Playwright 1.62 不生效：beforeEach 恢复原 120s 预算
+  test.beforeEach(() => { test.setTimeout(120_000); });
 
   test('P4 候选列表与详情的职位/公司/发布人来自 HTTP fixture，快照命中不再 GET @backend', async ({ page }) => {
     const 请求序: string[] = [];
@@ -9178,7 +9181,8 @@ function 断言重读发生(请求序: readonly string[], POST项: string) {
 test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
   // 显式 backend/stg server（端口 4182），与既有 @backend 用例同一口径
   test.use({ baseURL: 'http://127.0.0.1:4182' });
-  test.use({ timeout: 120_000 });
+  // test.use({timeout}) 在 Playwright 1.62 不生效：beforeEach 恢复原 120s 预算
+  test.beforeEach(() => { test.setTimeout(120_000); });
 
   test('同一 Case 双端 needs_action 分歧，列表保留服务端顺序与游标 @backend', async ({ page }) => {
     const 请求序: string[] = [];
@@ -9654,7 +9658,8 @@ test.describe('在谈详情完整布局', () => {
   // ── Mock 端（mock/stg 4181）：共用详情壳 + Mock 连接层投影 ──────────────────
   test.describe('Mock 双端 @mock', () => {
     test.use({ baseURL: 'http://127.0.0.1:4181' });
-    test.use({ timeout: 90_000 });
+    // test.use({timeout}) 在 Playwright 1.62 不生效：beforeEach 恢复原 90s 预算
+    test.beforeEach(() => { test.setTimeout(90_000); });
 
     test('求职端 390/320：顶栏、双 Tab、四阶段、动作卡与资料全区块，无横向溢出 @mock', async ({ page }) => {
       // Mock 登录与既有 @mock 旅程同口径：协议 → 微信登录 → 我要找工作
@@ -9745,7 +9750,8 @@ test.describe('在谈详情完整布局', () => {
   // ── Backend 端（backend/stg 4182）：P5 HTTP fixture 的完整缺失布局样本 ─────
   test.describe('Backend HTTP fixture @backend', () => {
     test.use({ baseURL: 'http://127.0.0.1:4182' });
-    test.use({ timeout: 120_000 });
+    // test.use({timeout}) 在 Playwright 1.62 不生效：beforeEach 恢复原 120s 预算
+    test.beforeEach(() => { test.setTimeout(120_000); });
 
     test('求职端正常全缺：双 Tab、四阶段、补充事实卡与资料区缺失占位 @backend', async ({ page }) => {
       // 默认 fixture = 正常全缺样本：P5 detail 只有冻结职位四事实，其余展示字段全缺
@@ -10195,7 +10201,8 @@ function 断言P8变更边界(条: P8变更回执形, 源: string): void {
 
 test.describe('P7 真人会话 fixture @backend', () => {
   test.use({ baseURL: 'http://127.0.0.1:4182' });
-  test.use({ timeout: 120_000 });
+  // test.use({timeout}) 在 Playwright 1.62 不生效：beforeEach 恢复原 120s 预算
+  test.beforeEach(() => { test.setTimeout(120_000); });
 
   test('候选端收件箱未读 → 进会话 read-through → 权威收件箱归零 @backend', async ({ page }) => {
     const fixture = P7带消息fixture(P7标记.招聘消息);
@@ -10402,7 +10409,8 @@ test.describe('P7 Mock 数据源隔离 @mock', () => {
 
 test.describe('P8 控制面 fixture @backend', () => {
   test.use({ baseURL: 'http://127.0.0.1:4182' });
-  test.use({ timeout: 120_000 });
+  // test.use({timeout}) 在 Playwright 1.62 不生效：beforeEach 恢复原 120s 预算
+  test.beforeEach(() => { test.setTimeout(120_000); });
 
   test('P8 账号安全首屏：fixture 凭证掩码与真实会话时间上屏，无设备/地点字面量 @backend', async ({ page }, 测试信息) => {
     const fixture = await 装P8候选(page);
@@ -12827,7 +12835,8 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
 test.describe('标注评审构建 @annotation', () => {
   // 显式标注构建 server（端口 4183，VITE_ANNOTATION_ENABLED=true）
   test.use({ baseURL: 'http://127.0.0.1:4183' });
-  test.use({ timeout: 60_000 });
+  // test.use({timeout}) 在 Playwright 1.62 不生效：beforeEach 恢复原 60s 预算
+  test.beforeEach(() => { test.setTimeout(60_000); });
 
   // 先种上「最大高度」的启动器分支：计数角标 + 铅笔同列（22 + 6gap + 34 = 62px），
   // 让启动器命中区取最大值 —— 工具行按这个最大高度定尺寸，回归才有意义
@@ -13135,7 +13144,8 @@ test.describe('卡片统一 Mock 三屏 @mock', () => {
 
 test.describe('卡片统一 Backend @backend', () => {
   test.use({ baseURL: 'http://127.0.0.1:4182' });
-  test.use({ timeout: 180_000 });
+  // test.use({timeout}) 在 Playwright 1.62 不生效：beforeEach 恢复原 180s 预算
+  test.beforeEach(() => { test.setTimeout(180_000); });
 
   test('卡片统一 招聘推荐卡两模式固定区几何对齐、390/320 与收藏委托滑动可用 @backend', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -13439,7 +13449,8 @@ test.describe('卡片统一 Backend @backend', () => {
 
 test.describe('J-PILOT-01 连续委托接线 @backend', () => {
   test.use({ baseURL: 'http://127.0.0.1:4182' });
-  test.use({ timeout: 150_000 });
+  // test.use({timeout}) 在 Playwright 1.62 不生效：beforeEach 恢复原 150s 预算
+  test.beforeEach(() => { test.setTimeout(150_000); });
 
   /** 场景公共前置：P4 候选推荐卡 + 1 份 PDF 附件库 + P5 fixture（连续臂在场）。
    *  既有 Case 的连续记录全部删去：本次委托的 dlg 记录是这条旅程的唯一连续身份

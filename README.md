@@ -146,9 +146,10 @@ P1_CAPTURE_DIR=ui-regression-output/p1/reference npm run test:e2e:data-source --
 ### 数据源边界 E2E
 
 ```bash
-npm run test:e2e:data-source                       # 全量（mock + backend 两组）
-npm run test:e2e:data-source -- --grep '@mock'     # 只跑 Mock 回归
-npm run test:e2e:data-source -- --grep '@backend'  # 只跑 Backend fixture
+npm run test:e2e:data-source                       # 全量（mock + backend + 标注 三组）
+npm run test:e2e:data-source -- --grep '@mock'       # 只跑 Mock 回归
+npm run test:e2e:data-source -- --grep '@backend'    # 只跑 Backend fixture
+npm run test:e2e:data-source -- --grep '@annotation' # 只跑标注评审构建（4183 独有构建）
 ```
 
 由 `playwright.数据源模式.config.ts` 同时启动三个不可复用的 Vite dev server
@@ -168,7 +169,8 @@ npm run test:e2e:data-source -- --grep '@backend'  # 只跑 Backend fixture
   part + If-Match）、企业关系与 current 选择、公开企业直读、企业档案 CAS（409 用
   `覆盖` seam 注入 `version_conflict`）、两步媒体协议（`metadata`+`media` part 名按
   content-type boundary 检查、删除走 204）、管理员申请按屏读取、owner Jobs 创建
-  （body 只带 claim，无 refs / verification status）。multipart 不用 JSON parser 解
+  （新建恒 direct：body 显式携带所选发布方/用人方组织 ref，不伪造 verification
+  status / affiliation / claim）。multipart 不用 JSON parser 解
   整体，敏感正文只在测试进程内比对。
 - 基线视觉回归（`e2e/视觉回归/`，固定 18 个场景）由 `playwright.视觉回归.config.ts`
   单独驱动，不为本套件增加 Backend 视觉场景；Backend 行为全部由数据源模式 Playwright 验证。
