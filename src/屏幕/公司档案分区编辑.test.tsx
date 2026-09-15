@@ -2,9 +2,12 @@
 // Backend：草稿=从 企业档案快照 构造的完整 资料形，保存走 保存企业档案（完整 replacement），
 // 409/503 草稿保留由用户重按保存；基本信息槽位改名「品牌名称」+ 只读「工商全称（已核验）」；
 // 行业走 industries taxonomy（roots/parentId 展开/q 搜索，selectable 叶子原子写显示名+引用）；
+// editor-catalog-fullscreen Task 4 起 行业 是字段行 + 全屏选择正文（选择行业 对话框），
+// 查询状态/打开状态在分区根层，父子导航/分页/搜索/迟到保护都发生在子视图内。
 // 媒体走 上传并发布企业媒体/移除企业媒体；P1B 长度/数量/文件上限冻结在页面。
 // P0 Task 5 起深链先过 招聘方组织门：任何非就绪态都不得挂出空的可编辑草稿。
-// Mock：原静态档 + 存公司自述 路径逐字保留。仓库未装 jest-dom，断言直接读 DOM。
+// Mock：原静态档 + 存公司自述 路径保留，行业改为同一字段行 + 本地 行业池 正文。
+// 仓库未装 jest-dom，断言直接读 DOM。
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -288,20 +291,29 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     expect(mock保存企业档案).toHaveBeenCalledTimes(2);
   });
 
-  it('行业选择：打开读根项、展开读子项，selectable 叶子原子写显示名+引用', async () => {
+  it('行业：字段行打开全屏正文并隐藏父表单，展开读子项，selectable 叶子原子写显示名+引用', async () => {
     置Backend应用状态();
     const 用户 = userEvent.setup();
     渲染分区('basic');
+    // 打开前零查询：目录请求只在子视图打开时发生
     expect(mock查询Taxonomy).not.toHaveBeenCalled();
+    // 入口是同一字段行：展示当前行业值，点击打开全屏正文
+    expect(screen.getByLabelText('更换行业').textContent).toContain('金融科技');
     await 用户.click(screen.getByLabelText('更换行业'));
+    const 对话框 = screen.getByRole('dialog', { name: '选择行业' });
+    // 正文不在被隐藏的父 wrapper 里；父表单（含品牌名输入与保存栏）保持挂载但被隐藏
+    expect(对话框.closest('[hidden]')).toBeNull();
+    expect(screen.getByLabelText('品牌名称').closest('[hidden]')).not.toBeNull();
     await waitFor(() => expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { limit: 50 }));
-    expect(await screen.findByRole('button', { name: '互联网 ›' })).toBeTruthy();
     // 非 selectable 根项只做展开导航
-    await 用户.click(screen.getByRole('button', { name: '互联网 ›' }));
+    await 用户.click(await screen.findByText('互联网'));
     await waitFor(() =>
       expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { parentId: 'ind_root', limit: 50 }),
     );
-    await 用户.click(await screen.findByRole('button', { name: '电子商务' }));
+    await 用户.click(await screen.findByText('电子商务'));
+    // 选择只关闭子视图并写基本信息草稿，不提前保存整个公司
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择行业' })).toBeNull());
+    expect(mock保存企业档案).not.toHaveBeenCalled();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(mock保存企业档案).toHaveBeenCalledWith(expect.objectContaining({
       行业: '电子商务',
@@ -323,6 +335,75 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     expect(mock保存企业档案).toHaveBeenCalledWith(expect.objectContaining({
       行业引用: { id: 'ind_fintech', display_name: '金融科技' },
     }));
+  });
+
+  it('行业取消（Escape）不改名称/ref，重开重新读根项', async () => {
+    置Backend应用状态();
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await waitFor(() => expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { limit: 50 }));
+    await 用户.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: '选择行业' })).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    // 取消没碰草稿：行业与引用仍是快照原值
+    expect(mock保存企业档案).toHaveBeenCalledWith(expect.objectContaining({
+      行业: '金融科技',
+      行业引用: { id: 'tax_fintech', display_name: '金融科技' },
+    }));
+    // 重开：子视图重新挂载，根项按需重读
+    mock查询Taxonomy.mockClear();
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await waitFor(() => expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { limit: 50 }));
+    expect(screen.getByRole('dialog', { name: '选择行业' })).toBeTruthy();
+  });
+
+  it('行业根分页：roots 带游标时给「加载更多」，追加第二页合并去重', async () => {
+    置Backend应用状态();
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string; cursor?: string }) => {
+        if (query.parentId) return 目录页Of([]);
+        if (query.cursor === 'c2') {
+          return 目录页Of([
+            { id: 'ind_l2', display_name: '第二页行业', parent_id: null, selectable: true, has_children: false },
+          ]);
+        }
+        return { items: 行业根, nextCursor: 'c2', catalogVersion: 'v1' };
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
+    expect(await screen.findByRole('button', { name: '第二页行业' })).toBeTruthy();
+    expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { cursor: 'c2', limit: 50 });
+  });
+
+  it('迟到响应保护：展开在飞时关闭，返回的结果被丢弃，重开不残留旧子项', async () => {
+    置Backend应用状态();
+    let 解开!: (页: unknown) => void;
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string }) => {
+        if (query.parentId === 'ind_root') {
+          return new Promise((解决) => { 解开 = 解决; });
+        }
+        if (query.parentId) return 目录页Of([]);
+        if (query.q) return 目录页Of([]);
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await 用户.click(await screen.findByText('互联网'));
+    // 子项请求在飞时关闭正文
+    await 用户.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择行业' })).toBeNull());
+    解开(目录页Of(行业子项));
+    // 重开：迟到的那批子项不允许串进新会话
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    expect(screen.queryByText('电子商务')).toBeNull();
   });
 
   it.each([
@@ -583,20 +664,50 @@ describe('公司档案分区编辑 · Backend 媒体两步协议（页面侧）'
 });
 
 describe('公司档案分区编辑 · Mock 原型保持不变', () => {
-  it('基本信息仍是「公司全称」就地编辑，保存派发 存公司自述 并返回', async () => {
+  it('基本信息仍是「公司全称」就地编辑；行业走同一字段行 + 本地 行业池 全屏正文，保存派发 存公司自述', async () => {
     置Mock应用状态();
     const 用户 = userEvent.setup();
     渲染分区('basic');
     expect(screen.getByLabelText('公司全称')).toBeTruthy();
     expect(screen.queryByLabelText('品牌名称')).toBeNull();
     expect(screen.queryByText('工商全称（已核验）')).toBeNull();
-    // Mock 没有目录 seam，行业仍是静态池片组
+    // Mock 没有目录 seam：全屏正文来自本地 行业池 映射的可选行，零目录查询
     expect(mock查询Taxonomy).not.toHaveBeenCalled();
+    await 用户.click(screen.getByLabelText('更换行业'));
+    expect(screen.getByRole('dialog', { name: '选择行业' })).toBeTruthy();
+    // 池子原值原样可选（不是简历行业字典）；选定只写基本信息草稿并关闭
+    await 用户.click(await screen.findByRole('button', { name: '人工智能' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择行业' })).toBeNull());
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(mock派发).toHaveBeenCalledWith(expect.objectContaining({
+        型: '存公司自述',
+        值: expect.objectContaining({ 行业: '人工智能' }),
+      })),
+    );
+    expect(mock返回).toHaveBeenCalled();
+    expect(mock保存企业档案).not.toHaveBeenCalled();
+  });
+
+  it('Mock 行业取消不改行业；搜索只在本地池内过滤', async () => {
+    置Mock应用状态();
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await 用户.type(screen.getByLabelText('搜索行业'), '医疗');
+    expect(mock查询Taxonomy).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '医疗健康' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '金融科技' })).toBeNull();
+    // 取消：草稿不动，行业保持静态档原值
+    await 用户.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: '选择行业' })).toBeNull();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() =>
       expect(mock派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '存公司自述' })),
     );
-    expect(mock返回).toHaveBeenCalled();
-    expect(mock保存企业档案).not.toHaveBeenCalled();
+    const 存自述 = mock派发.mock.calls.find(
+      (调用) => (调用[0] as { 型?: string }).型 === '存公司自述',
+    ) as [{ 值: { 行业: string } }];
+    expect(存自述[0].值.行业).toBe('金融科技');
   });
 });

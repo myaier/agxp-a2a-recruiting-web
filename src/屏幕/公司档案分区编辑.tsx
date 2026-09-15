@@ -19,16 +19,20 @@
 //              「工商全称（已核验）」（取 当前企业身份.legal_name，第三方核验事实
 //              不给编辑，为空显示未提供）。
 //              行业走 industries taxonomy（roots / parentId 展开 / q 搜索，selectable
-//              叶子原子写 显示名+行业引用）；媒体走两步协议 operation
+//              叶子原子写 显示名+行业引用）；editor-catalog-fullscreen Task 4 起
+//              行业入口是字段行，选择在 全屏选择外壳 承载的 公司行业选择正文（与 Mock
+//              行业池共用同一私有正文），查询状态/打开状态在本分区根层（R2-2）；
+//              媒体走两步协议 operation
 //              （上传并发布企业媒体 / 移除企业媒体），页面只做校验、object URL 内存预览
 //              与 purpose/mediaId 传参，服务端 URL 一律来自 DTO。
 // 直接返回（不点保存）就是丢弃改动 —— 文本草稿只活在本页的 useState 里。
 
-import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './公司档案分区编辑.module.css';
 import { 次级页外壳, 返回栏, 滚动区, 页面大标题 } from '../组件/通用';
+import { 全屏选择外壳 } from '../组件/全屏选择外壳';
 import { 轻提示 } from '../组件/轻提示';
 import { 相机图标 } from '../组件/图标';
 import { use导航 } from '../路由/导航钩子';
@@ -74,8 +78,53 @@ const 成员数上限 = 20;
 
 /** Backend 行业选择只用得到 industries 一个 kind（目录查询 seam 的窄化形态） */
 type 行业查询方法 = (kind: 'industries', query: Taxonomy查询) => Promise<目录页<BFFTaxonomyItem>>;
-type 目录查询形 = { 查询Taxonomy: 行业查询方法 } | null;
 type 企业身份形 = Omit<BFF公开企业, 'profile'> | null;
+
+/** 公司行业选择正文的一行（Task 4）：键是稳定键（HTTP = 目录 ID，Mock = 池内名称）。
+ *  行们按「父行后紧跟其可见后代」的树摊平序给出，层级只作缩进。 */
+type 公司行业行 = {
+  键: string;
+  名称: string;
+  层级: number;
+  可选: boolean;
+  有子项: boolean;
+  展开: boolean;
+  选中: boolean;
+};
+
+/** 一个父块（父键 null = 根列表）的分页尾态：错误=文案+重试；还有=加载更多 */
+type 公司行业分页 = { 父键: string | null; 还有: boolean; 加载中: boolean; 错误: string | null };
+
+/** A 契约的父页记账（Task 4，两模式的分区根层共用）：打开前先记录触发行与各
+ *  .滚动区 祖先的 scrollTop，关闭后由 layout effect 在 wrapper 已恢复显示时
+ *  先 focus({ preventScroll: true }) 回仍连接的触发行、再原样还原 scrollTop；
+ *  首次挂载不恢复（曾打开 守卫）。 */
+function use行业子视图() {
+  const [开, 设开] = useState(false);
+  const 行引用 = useRef<HTMLButtonElement>(null);
+  const 曾打开 = useRef(false);
+  const 打开滚动 = useRef<{ 节点: HTMLElement; 顶: number }[]>([]);
+  useLayoutEffect(() => {
+    if (开) {
+      曾打开.current = true;
+      return;
+    }
+    if (!曾打开.current) return;
+    曾打开.current = false;
+    const 触发行 = 行引用.current;
+    if (触发行?.isConnected) 触发行.focus({ preventScroll: true });
+    for (const { 节点, 顶 } of 打开滚动.current) 节点.scrollTop = 顶;
+    打开滚动.current = [];
+  }, [开]);
+  const 开层 = () => {
+    打开滚动.current = [];
+    for (let 节点 = 行引用.current?.parentElement; 节点; 节点 = 节点.parentElement) {
+      if (节点.classList.contains('滚动区')) 打开滚动.current.push({ 节点, 顶: 节点.scrollTop });
+    }
+    设开(true);
+  };
+  return { 开, 行引用, 开层, 关层: () => 设开(false) };
+}
 
 export default function 公司档案分区编辑() {
   const { area: 段 } = useParams<{ area: string }>();
@@ -271,9 +320,197 @@ function 后端分区表单(
     }
   }
 
+  // ── 行业全屏子视图（Task 4 / R2-2）：查询 state、生命周期与回调自 后端行业区 上移到
+  //  本根层，基本信息后代只保留字段行。表/游标与原实现同形；打开时读根项，搜索 250ms
+  //  debounce 按 q 查询；在飞响应一律用 开着引用 作废 —— 关闭后不得再写选择状态，
+  //  更不能改父草稿。 ──────────────────────────────────────────────
+  const { 开: 行业层开, 行引用: 行业行引用, 开层: 开行业层, 关层: 关闭行业层 } = use行业子视图();
+  const [行业搜索词, 设行业搜索词] = useState('');
+  const [行业根项, 设行业根项] = useState<BFFTaxonomyItem[]>([]);
+  const [行业根游标, 设行业根游标] = useState<string | null>(null);
+  // 已展开父项的子项与游标（键 = 父项 id；任意层级都用这一个表）
+  const [行业子项表, 设行业子项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
+  const [行业子游标表, 设行业子游标表] = useState<Record<string, string | null>>({});
+  // null = 浏览目录模式；有值 = 显示搜索结果。搜索不补目录没有的能力：不参与展开/分页
+  const [行业搜索结果, 设行业搜索结果] = useState<BFFTaxonomyItem[] | null>(null);
+  // 已请求展开的父项（键 = 父项 id）：展开意图与已到的子项分开记，首载/失败也亮得出分页尾
+  const [行业展开表, 设行业展开表] = useState<Record<string, true>>({});
+  // 各父块（'' = 根）的请求尾态。分页「加载更多」失败不动（原行为），游标还在可再点
+  const [行业取态, 设行业取态] = useState<Record<string, { 忙: boolean; 错误: string | null }>>({});
+  const 行业开着引用 = useRef(false);
+  行业开着引用.current = 行业层开;
+  const 行业查询方法引用 = useRef<行业查询方法 | null>(目录查询?.查询Taxonomy);
+  行业查询方法引用.current = 目录查询?.查询Taxonomy;
+
+  function 设取态(键: string, 补丁: { 忙?: boolean; 错误?: string | null }) {
+    // 缺省 → 已有态 → 本次补丁：未给的键回落默认（不发错、不挂忙）
+    设行业取态((旧) => ({ ...旧, [键]: { ...旧[键], 忙: false, 错误: null, ...补丁 } }));
+  }
+
+  // 弹开时按需读根项（与 工作经历 已验证的 industries 模式一致）；重试(null) 复用同一读取。
+  // 忙 态在 finally 无条件收口（丢弃的响应也不能留下永久「加载中」）；数据写入才受开着守卫
+  function 读行业根项() {
+    const 方法 = 行业查询方法引用.current;
+    if (!方法) return;
+    void (async () => {
+      设取态('', { 忙: true, 错误: null });
+      try {
+        const 页 = await 方法('industries', { limit: 50 });
+        if (!行业开着引用.current) return;
+        设行业根项(页.items);
+        设行业根游标(页.nextCursor);
+      } catch {
+        if (行业开着引用.current) {
+          设行业根项([]);
+          设行业根游标(null);
+          设取态('', { 错误: '加载失败，请重试' });
+        }
+      } finally {
+        设取态('', { 忙: false });
+      }
+    })();
+  }
+  useEffect(() => {
+    if (行业层开) 读行业根项();
+    // 打开即读一次；方法经引用取最新，不进依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [行业层开]);
+
+  // 搜索：250ms debounce 后按 q 查询（空串回浏览模式）；关闭后返回的结果丢弃
+  useEffect(() => {
+    const 词 = 行业搜索词.trim();
+    if (词 === '') {
+      设行业搜索结果(null);
+      return;
+    }
+    const 方法 = 行业查询方法引用.current;
+    if (!方法) return;
+    const 计时器 = setTimeout(() => {
+      void 方法('industries', { q: 词, limit: 50 })
+        .then((页) => {
+          if (行业开着引用.current) 设行业搜索结果(页.items);
+        })
+        .catch(() => {
+          if (行业开着引用.current) 设行业搜索结果([]);
+        });
+    }, 250);
+    return () => clearTimeout(计时器);
+  }, [行业搜索词]);
+
+  async function 读行业子项(父键: string) {
+    const 方法 = 行业查询方法引用.current;
+    if (!方法) return;
+    设行业展开表((旧) => ({ ...旧, [父键]: true }));
+    设取态(父键, { 忙: true, 错误: null });
+    try {
+      const 页 = await 方法('industries', { parentId: 父键, limit: 50 });
+      if (!行业开着引用.current) return;
+      设行业子项表((旧) => ({ ...旧, [父键]: 页.items }));
+      设行业子游标表((旧) => ({ ...旧, [父键]: 页.nextCursor }));
+    } catch {
+      if (行业开着引用.current) 设取态(父键, { 错误: '加载失败，请重试' });
+    } finally {
+      设取态(父键, { 忙: false });
+    }
+  }
+
+  function 展开行业(父键: string) {
+    // 已加载不再请求（原行为）；在飞不重复排队；失败后经 重试(父键) 再来
+    if (行业子项表[父键] !== undefined || 行业取态[父键]?.忙) return;
+    void 读行业子项(父键);
+  }
+
+  async function 加载更多行业(父键: string | null) {
+    const 游标 = 父键 === null ? 行业根游标 : 行业子游标表[父键];
+    if (游标 === null || 游标 === undefined) return;
+    const 方法 = 行业查询方法引用.current;
+    if (!方法) return;
+    设取态(父键 ?? '', { 忙: true });
+    try {
+      const 页 = await 方法('industries', { parentId: 父键 ?? undefined, cursor: 游标, limit: 50 });
+      if (!行业开着引用.current) return;
+      if (父键 === null) {
+        设行业根项((旧) => 合并目录页(旧, 页.items));
+        设行业根游标(页.nextCursor);
+      } else {
+        设行业子项表((旧) => ({ ...旧, [父键]: 合并目录页(旧[父键] ?? [], 页.items) }));
+        设行业子游标表((旧) => ({ ...旧, [父键]: 页.nextCursor }));
+      }
+    } catch {
+      // 失败不动，用户可再点（原行为）
+    } finally {
+      设取态(父键 ?? '', { 忙: false });
+    }
+  }
+
+  function 重试行业(父键: string | null) {
+    if (父键 === null) 读行业根项();
+    else void 读行业子项(父键);
+  }
+
+  function 选定行业(键: string) {
+    // 名称与引用从同一条 DTO 原子落草稿（键 = 目录 ID，同名不同 ID 不串），绝不按名反查；
+    // 只有 selectable 叶子可选。选中即收口子视图并清搜索，下一次打开回到浏览模式
+    const 项 = 行业搜索结果?.find((候选) => 候选.id === 键)
+      ?? 行业根项.find((候选) => 候选.id === 键)
+      ?? Object.values(行业子项表).flat().find((候选) => 候选.id === 键);
+    if (!项 || !项.selectable) return;
+    改({ 行业: 项.display_name, 行业引用: { id: 项.id, display_name: 项.display_name } });
+    设行业搜索词('');
+    设行业搜索结果(null);
+    关闭行业层();
+  }
+
+  // DTO → 展示行（Backend 映射只在根层做一次；选中回显按稳定键，不吃显示名）。
+  // 搜索结果行不参与展开/分页，所以 有子项 只在浏览模式给真值。
+  const 行业转行 = (项: BFFTaxonomyItem, 层级: number): 公司行业行 => ({
+    键: 项.id,
+    名称: 项.display_name,
+    层级,
+    可选: 项.selectable,
+    有子项: 行业搜索结果 === null && 项.has_children,
+    展开: 行业展开表[项.id] === true,
+    选中: 资料.行业引用?.id === 项.id,
+  });
+  const 行业行们: 公司行业行[] = [];
+  if (行业搜索结果 !== null) {
+    for (const 项 of 行业搜索结果) 行业行们.push(行业转行(项, 0));
+  } else {
+    const 摊平 = (项们: BFFTaxonomyItem[], 层级: number) => {
+      for (const 项 of 项们) {
+        行业行们.push(行业转行(项, 层级));
+        const 子们 = 行业子项表[项.id];
+        if (子们 !== undefined) 摊平(子们, 层级 + 1);
+      }
+    };
+    摊平(行业根项, 0);
+  }
+  const 行业分页们: 公司行业分页[] = 行业搜索结果 !== null ? [] : [
+    {
+      父键: null,
+      还有: 行业根游标 !== null,
+      加载中: 行业取态['']?.忙 === true,
+      错误: 行业取态['']?.错误 ?? null,
+    },
+    ...Object.keys(行业展开表).map((父键) => ({
+      父键,
+      还有: (行业子游标表[父键] ?? null) !== null,
+      加载中: 行业取态[父键]?.忙 === true,
+      错误: 行业取态[父键]?.错误 ?? null,
+    })),
+  ];
+
   return (
     // 2026-08-24 全站选择风格统一（C1 定稿）：页底改白
     <次级页外壳 白底>
+      {/* Task 4：行业全屏子视图打开时，含返回/保存栏的整个父表单 wrapper 保持挂载但
+          hidden —— 仓库没有全局 [hidden] 规则，内联 display 会压过 UA 折叠，必须随
+          子视图开合显式切换；wrapper 接管外壳的满高语义（flex:1/min-height:0/纵向
+          flex），选择正文是下面的内容兄弟，绝不能藏进自己的 hidden 祖先。 */}
+      <div
+        hidden={行业层开}
+        style={{ flex: 1, minHeight: 0, display: 行业层开 ? 'none' : 'flex', flexDirection: 'column' }}
+      >
       <返回栏
         返回={返回}
         右侧={
@@ -350,7 +587,8 @@ function 后端分区表单(
           改常用名={改常用名}
           LOGO预览={LOGO预览}
           选了LOGO={选了LOGO}
-          目录查询={目录查询}
+          开行业层={开行业层}
+          行业行引用={行业行引用}
         />
       ) : null}
 
@@ -391,6 +629,23 @@ function 后端分区表单(
       {分区.键 === '团队介绍' ? (
         <团队介绍区 资料={资料} 改={改} 禁用={!可编辑} 人数上限={成员数上限} />
       ) : null}
+      </div>
+
+      {/* Task 4：行业全屏子视图（两模式共用 公司行业选择正文，R2-2 裁定的根层直连兄弟子页）。
+          开着才挂载；选定/关闭回调写回本根层草稿，外壳按 A 契约管焦点/Escape。 */}
+      {行业层开 ? (
+        <公司行业选择正文
+          搜索词={行业搜索词}
+          改搜索词={设行业搜索词}
+          行们={行业行们}
+          分页们={行业分页们}
+          加载更多={加载更多行业}
+          重试={重试行业}
+          关闭={关闭行业层}
+          选定={选定行业}
+          展开={展开行业}
+        />
+      ) : null}
     </次级页外壳>
   );
 }
@@ -398,7 +653,8 @@ function 后端分区表单(
 /** Backend 基本信息：企业常用名 · 品牌名称 · 公司 LOGO · 行业（taxonomy）· 规模 · 融资阶段 · 办公地址，
  *  外加只读的「工商全称（已核验）」—— 第三方核验事实，企业侧不可编辑。
  *  Spec §2 三名独立：常用名（display_name，目录/公开企业同源）与品牌名（brand_name）
- *  各是各的输入槽，工商全称只读、为空诚实显示未提供，不回填常用名。 */
+ *  各是各的输入槽，工商全称只读、为空诚实显示未提供，不回填常用名。
+ *  Task 4（R2-2）：行业查询状态上移分区根层，这里只收字段行需要的打开回调与触发行引用。 */
 function 后端基本信息区({
   资料,
   改,
@@ -408,7 +664,8 @@ function 后端基本信息区({
   改常用名,
   LOGO预览,
   选了LOGO,
-  目录查询,
+  开行业层,
+  行业行引用,
 }: {
   资料: 资料形;
   改: (补丁: Partial<资料形>) => void;
@@ -419,7 +676,8 @@ function 后端基本信息区({
   改常用名: (值: string) => void;
   LOGO预览: string | null;
   选了LOGO: (事件: React.ChangeEvent<HTMLInputElement>) => void;
-  目录查询: 目录查询形;
+  开行业层: () => void;
+  行业行引用: { current: HTMLButtonElement | null };
 }) {
   const LOGO框 = useRef<HTMLInputElement>(null);
   const LOGO地址 = LOGO预览 ?? 资料.LOGO媒体?.url ?? null;
@@ -503,7 +761,7 @@ function 后端基本信息区({
         />
       </div>
 
-      <后端行业区 资料={资料} 改={改} 可编辑={可编辑} 目录查询={目录查询} />
+      <行业字段行 值={资料.行业} 可点={可编辑} 开选择={开行业层} 行引用={行业行引用} />
       <单选片组 标签="规模" 选项={规模池} 当前={资料.规模} 禁用={!可编辑} 选中={(值) => 改({ 规模: 值 })} />
       <单选片组
         标签="融资阶段"
@@ -529,172 +787,253 @@ function 后端基本信息区({
   );
 }
 
-/** Backend 行业选择：打开读 industries 根项（limit 50），非 selectable 项按 parentId 展开，
- *  搜索按 q 查询；只有 selectable=true 的叶子能选中 —— 选中原子写 显示名+行业引用，
- *  从不按显示名反查 id。这里刻意接受一份仅限公司基本信息的局部实现，不抽取 工作经历。 */
-function 后端行业区({
-  资料,
-  改,
-  可编辑,
-  目录查询,
+/** 行业字段行（Task 4，两模式同一入口）：标签 + 当前值 ›，点击打开全屏选择正文。
+ *  只读（Backend 非 admin+verified+active）不给可提交入口：值照常展示，但不是按钮。
+ *  字段行只是入口：查询状态与选定归属都在两模式各自的分区根层（R2-2）。 */
+function 行业字段行({
+  值,
+  可点,
+  开选择,
+  行引用,
 }: {
-  资料: 资料形;
-  改: (补丁: Partial<资料形>) => void;
-  可编辑: boolean;
-  目录查询: 目录查询形;
+  值: string;
+  可点: boolean;
+  开选择: () => void;
+  行引用: { current: HTMLButtonElement | null };
 }) {
-  const [开着, 设开着] = useState(false);
-  const [根项, 设根项] = useState<BFFTaxonomyItem[]>([]);
-  const [根游标, 设根游标] = useState<string | null>(null);
-  // 已展开父项的子项与游标（键 = 父项 id；根用 ''，任意层级都用这一个表）
-  const [子项表, 设子项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
-  const [子游标表, 设子游标表] = useState<Record<string, string | null>>({});
-  const [搜索词, 设搜索词] = useState('');
-  // null = 浏览根项模式；有值 = 显示搜索结果
-  const [搜索结果, 设搜索结果] = useState<BFFTaxonomyItem[] | null>(null);
-  const 方法引用 = useRef(目录查询?.查询Taxonomy);
-  方法引用.current = 目录查询?.查询Taxonomy;
-
-  // 弹开时按需读根项（与 工作经历 已验证的 industries 模式一致）
-  useEffect(() => {
-    if (!开着) return;
-    const 方法 = 方法引用.current;
-    if (!方法) return;
-    void (async () => {
-      try {
-        const 页 = await 方法('industries', { limit: 50 });
-        设根项(页.items);
-        设根游标(页.nextCursor);
-      } catch {
-        设根项([]);
-        设根游标(null);
-      }
-    })();
-  }, [开着]);
-
-  // 搜索：250ms debounce 后按 q 查询（空串回浏览模式）
-  useEffect(() => {
-    const 词 = 搜索词.trim();
-    if (词 === '') {
-      设搜索结果(null);
-      return;
-    }
-    const 方法 = 方法引用.current;
-    if (!方法) return;
-    const 计时器 = setTimeout(() => {
-      void 方法('industries', { q: 词, limit: 50 })
-        .then((页) => 设搜索结果(页.items))
-        .catch(() => 设搜索结果([]));
-    }, 250);
-    return () => clearTimeout(计时器);
-  }, [搜索词]);
-
-  async function 展开(项: BFFTaxonomyItem) {
-    if (子项表[项.id]) return;
-    const 方法 = 方法引用.current;
-    if (!方法) return;
-    try {
-      const 页 = await 方法('industries', { parentId: 项.id, limit: 50 });
-      设子项表((旧) => ({ ...旧, [项.id]: 页.items }));
-      设子游标表((旧) => ({ ...旧, [项.id]: 页.nextCursor }));
-    } catch {
-      设子项表((旧) => ({ ...旧, [项.id]: [] }));
-      设子游标表((旧) => ({ ...旧, [项.id]: null }));
-    }
-  }
-
-  async function 加载更多(父id: string) {
-    const 游标 = 父id === '' ? 根游标 : 子游标表[父id];
-    if (游标 === null || 游标 === undefined) return;
-    const 方法 = 方法引用.current;
-    if (!方法) return;
-    try {
-      const 页 = await 方法('industries', { parentId: 父id === '' ? undefined : 父id, cursor: 游标, limit: 50 });
-      if (父id === '') 设根项((旧) => 合并目录页(旧, 页.items));
-      else 设子项表((旧) => ({ ...旧, [父id]: 合并目录页(旧[父id] ?? [], 页.items) }));
-      设子游标表((旧) => ({ ...旧, [父id]: 页.nextCursor }));
-      if (父id === '') 设根游标(页.nextCursor);
-    } catch {
-      // 失败不动，用户可再点
-    }
-  }
-
-  function 选中(项: BFFTaxonomyItem) {
-    改({ 行业: 项.display_name, 行业引用: { id: 项.id, display_name: 项.display_name } });
-    设开着(false);
-    设搜索词('');
-    设搜索结果(null);
-  }
-
-  const 候选 = 搜索结果 ?? 根项;
-
   return (
     <div className={样式.字段}>
       <div className={样式.字段标签}>行业</div>
-      <div className={样式.片行}>
-        <span className={`${资料.行业 ? 样式.片选中 : ''} ${样式.片}`}>
-          {资料.行业 || '未设置'}
-        </span>
-        {可编辑 ? (
-          <button
-            className={`${样式.片} 可点`}
-            aria-label="更换行业"
-            onClick={() => 设开着(!开着)}
-          >
-            {开着 ? '收起' : '更换行业'}
-          </button>
-        ) : null}
-      </div>
-
-      {开着 ? (
-        <div className={样式.片行} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-          <input
-            className={样式.单行输入}
-            aria-label="搜索行业"
-            placeholder="搜索行业"
-            value={搜索词}
-            onChange={(事件) => 设搜索词(事件.target.value)}
-          />
-          <div className={样式.片行}>
-            {候选.map((项) => (
-              <button
-                key={项.id}
-                className={`${样式.片} ${资料.行业引用?.id === 项.id ? 样式.片选中 : ''} 可点`}
-                onClick={() => (项.selectable ? 选中(项) : void 展开(项))}
-              >
-                {项.selectable ? 项.display_name : `${项.display_name} ›`}
-              </button>
-            ))}
-            {搜索结果 === null && 根游标 !== null ? (
-              <button className={`${样式.片} 可点`} onClick={() => void 加载更多('')}>
-                加载更多
-              </button>
-            ) : null}
-          </div>
-          {/* 已展开父项的子项行（支持多级：展开过的都摊在这里，按展开顺序） */}
-          {Object.entries(子项表).map(([父id, 子们]) =>
-            子们.length > 0 ? (
-              <div key={父id} className={样式.片行} style={{ paddingLeft: 12 }}>
-                {子们.map((项) => (
-                  <button
-                    key={项.id}
-                    className={`${样式.片} ${资料.行业引用?.id === 项.id ? 样式.片选中 : ''} 可点`}
-                    onClick={() => (项.selectable ? 选中(项) : void 展开(项))}
-                  >
-                    {项.selectable ? 项.display_name : `${项.display_name} ›`}
-                  </button>
-                ))}
-                {子游标表[父id] ? (
-                  <button className={`${样式.片} 可点`} onClick={() => void 加载更多(父id)}>
-                    加载更多
-                  </button>
-                ) : null}
-              </div>
-            ) : null,
-          )}
-        </div>
-      ) : null}
+      {可点 ? (
+        <button
+          ref={行引用}
+          className={样式.单行输入}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+            textAlign: 'left', fontFamily: 'inherit',
+          }}
+          aria-label="更换行业"
+          onClick={开选择}
+        >
+          <span style={值 === '' ? { color: 'var(--次要浅)', fontWeight: 400 } : undefined}>
+            {值 || '未设置'}
+          </span>
+          <span aria-hidden="true" style={{ color: 'var(--次要浅)' }}>›</span>
+        </button>
+      ) : (
+        <div className={样式.单行输入} style={{ color: 'var(--次要浅)' }}>{值 || '未设置'}</div>
+      )}
     </div>
+  );
+}
+
+/** 公司行业选择正文（Task 4）：公司基本信息「行业」字段的全屏选择正文，Mock 行业池与
+ *  Backend industries taxonomy 两模式共用。纯展示：只收行/分页状态与回调，不读
+ *  数据源模式、Context、BFF DTO 或路由；查询状态与生命周期在两模式各自的分区根层
+ *  （R2-2），本文件私有、不跨页复用。行点击归属：可选=选定；可选且有子项=名称选定、
+ *  独立展开钮展开；不可选且有子项=整行展开；不可选且无子项=死端不可点。分页尾跟在
+ *  各自父块之后（根在列表末尾）。列表 flex:1/min-height:0/overflow-y:auto 自滚，
+ *  不与外壳正文双滚（A 契约）。 */
+function 公司行业选择正文({
+  搜索词,
+  改搜索词,
+  行们,
+  分页们,
+  加载更多,
+  重试,
+  关闭,
+  选定,
+  展开: 切换展开,
+}: {
+  搜索词: string;
+  改搜索词: (词: string) => void;
+  行们: 公司行业行[];
+  分页们: 公司行业分页[];
+  加载更多: (父键: string | null) => void;
+  重试: (父键: string | null) => void;
+  关闭: () => void;
+  选定: (键: string) => void;
+  展开: (键: string) => void;
+}): React.JSX.Element {
+  const 分页按键 = new Map(分页们.map((页) => [页.父键, 页]));
+
+  /** 行块缩进（根 0，每层 28px，同 行业分类列表 的层距） */
+  const 缩进 = (层级: number): CSSProperties => (层级 > 0 ? { paddingLeft: 12 + 层级 * 28 } : {});
+
+  /** 分页尾：错误=文案+重试；还有=加载更多（忙时禁用）；首载中=加载中… */
+  const 分页尾 = (页: 公司行业分页, 层级: number, 键: string): React.JSX.Element | null => {
+    const 缩进样式 = 缩进(层级);
+    if (页.错误 !== null) {
+      return (
+        <div
+          key={键}
+          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 2px', ...缩进样式 }}
+        >
+          <span style={{ fontSize: 12, color: 'var(--警示, #c0392b)' }}>{页.错误}</span>
+          <button
+            className="可点"
+            style={{
+              border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 12.5,
+              fontWeight: 600, color: 'var(--深绿文字)', padding: '2px 4px',
+            }}
+            onClick={() => 重试(页.父键)}
+          >
+            重试
+          </button>
+        </div>
+      );
+    }
+    if (页.还有) {
+      return (
+        <button
+          key={键}
+          className="可点"
+          disabled={页.加载中}
+          style={{
+            display: 'block', width: '100%', textAlign: 'center',
+            border: '1px solid var(--描边深)', background: 'var(--白)',
+            borderRadius: 'var(--圆角-小托盘)', fontFamily: 'inherit', fontSize: 13,
+            fontWeight: 600, color: 'var(--深绿文字)', padding: '10px 0', marginBottom: 8,
+            ...缩进样式,
+          }}
+          onClick={() => 加载更多(页.父键)}
+        >
+          {页.加载中 ? '加载中…' : '加载更多'}
+        </button>
+      );
+    }
+    if (页.加载中) {
+      return (
+        <div key={键} style={{ padding: '10px 2px', fontSize: 12, color: 'var(--次要浅)', ...缩进样式 }}>
+          加载中…
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const 行盒: CSSProperties = {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+    width: '100%', textAlign: 'left', fontFamily: 'inherit', fontSize: 14,
+    border: '1px solid var(--描边深)', background: 'var(--白)',
+    borderRadius: 'var(--圆角-小托盘)', padding: '11px 12px', marginBottom: 8, color: 'var(--正文)',
+  };
+
+  return (
+    <全屏选择外壳 标题="选择行业" 关闭={关闭}>
+      {/* 内衬只补横向留白：纵向 flex 链保持，滚动只发生在下面的列表自身 */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '0 18px' }}>
+        <input
+          className={样式.单行输入}
+          aria-label="搜索行业"
+          placeholder="搜索行业"
+          value={搜索词}
+          onChange={(事件) => 改搜索词(事件.target.value)}
+          style={{ marginBottom: 10 }}
+        />
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 8 }}>
+          {行们.map((行, 下标) => {
+            const 下层 = 下标 === 行们.length - 1 ? -1 : 行们[下标 + 1]!.层级;
+            const 选中勾 = 行.选中 ? (
+              <span style={{ color: 'var(--亮绿)', fontWeight: 700 }}>✓</span>
+            ) : null;
+            let 行元素: React.JSX.Element;
+            if (行.可选 && 行.有子项) {
+              // 可选且有子项：分开选择区（名称点击=选定）与独立展开钮
+              行元素 = (
+                <div key={行.键} style={{ display: 'flex', gap: 8, marginBottom: 8, ...缩进(行.层级) }}>
+                  <button
+                    className="可点"
+                    style={{ ...行盒, flex: 1, marginBottom: 0 }}
+                    aria-pressed={行.选中}
+                    onClick={() => 选定(行.键)}
+                  >
+                    <span>{行.名称}</span>
+                    {选中勾}
+                  </button>
+                  <button
+                    className="可点"
+                    style={{ ...行盒, width: 44, justifyContent: 'center', marginBottom: 0, color: 'var(--次要浅)' }}
+                    aria-label={`展开${行.名称}`}
+                    aria-expanded={行.展开}
+                    onClick={() => 切换展开(行.键)}
+                  >
+                    {行.展开 ? '⌃' : '⌄'}
+                  </button>
+                </div>
+              );
+            } else if (行.可选) {
+              行元素 = (
+                <button
+                  key={行.键}
+                  className="可点"
+                  style={{ ...行盒, ...缩进(行.层级) }}
+                  aria-pressed={行.选中}
+                  onClick={() => 选定(行.键)}
+                >
+                  <span>{行.名称}</span>
+                  {选中勾}
+                </button>
+              );
+            } else if (行.有子项) {
+              行元素 = (
+                <button
+                  key={行.键}
+                  className="可点"
+                  style={{ ...行盒, ...缩进(行.层级) }}
+                  aria-expanded={行.展开}
+                  onClick={() => 切换展开(行.键)}
+                >
+                  <span>{行.名称}</span>
+                  <span aria-hidden="true" style={{ color: 'var(--次要浅)' }}>{行.展开 ? '⌃' : '⌄'}</span>
+                </button>
+              );
+            } else {
+              // 不可选且无子项：死端行不可点
+              行元素 = (
+                <div key={行.键} style={{ ...行盒, color: 'var(--次要浅)', ...缩进(行.层级) }}>
+                  <span>{行.名称}</span>
+                </div>
+              );
+            }
+            // 本行的分页尾排在其整块后代之后；同一位置可能有多个祖先块一起收尾
+            //（父块与祖先块都延伸到本行）：从深到浅逐一收集
+            const 收尾们: React.JSX.Element[] = [];
+            if (下层 <= 行.层级 && 行.展开) {
+              const 页 = 分页按键.get(行.键);
+              if (页) {
+                const 尾 = 分页尾(页, 行.层级, `尾-${行.键}`);
+                if (尾) 收尾们.push(尾);
+              }
+            }
+            let 指针 = 下标;
+            for (let 层 = 行.层级 - 1; 层 >= 0; 层 -= 1) {
+              while (指针 >= 0 && 行们[指针]!.层级 > 层) 指针 -= 1;
+              if (指针 < 0 || 行们[指针]!.层级 !== 层) break;
+              const 祖先 = 行们[指针]!;
+              if (下层 <= 层 && 祖先.展开) {
+                const 页 = 分页按键.get(祖先.键);
+                if (页) {
+                  const 尾 = 分页尾(页, 层, `尾-${祖先.键}`);
+                  if (尾) 收尾们.push(尾);
+                }
+              }
+            }
+            return (
+              <Fragment key={行.键}>
+                {行元素}
+                {收尾们}
+              </Fragment>
+            );
+          })}
+          {/* 根列表（父键 = null）的分页尾固定在整个列表末尾 */}
+          {(() => {
+            const 根页 = 分页按键.get(null);
+            return 根页 ? 分页尾(根页, 0, '尾-根') : null;
+          })()}
+        </div>
+      </div>
+    </全屏选择外壳>
   );
 }
 
@@ -841,9 +1180,40 @@ function Mock分区编辑({ 分区, 返回 }: { 分区: 分区定义; 返回: ()
     返回();
   }
 
+  // Task 4：行业改为同一字段行 + 全屏选择正文（与 Backend 共用 公司行业选择正文）。
+  // Mock 行业池就地表成单层可选行（池子与原值都不动）；静态池没有目录 API，搜索只在
+  // 池内过滤，也没有分页/展开 —— 不为此虚构查询能力。
+  const { 开: 行业层开, 行引用: 行业行引用, 开层: 开行业层, 关层: 关闭行业层 } = use行业子视图();
+  const [行业搜索词, 设行业搜索词] = useState('');
+  const 搜索词 = 行业搜索词.trim();
+  const 行业池行们: 公司行业行[] = 行业池
+    .filter((名) => 搜索词 === '' || 名.includes(搜索词))
+    .map((名) => ({
+      键: 名,
+      名称: 名,
+      层级: 0,
+      可选: true,
+      有子项: false,
+      展开: false,
+      选中: 资料.行业 === 名,
+    }));
+
+  function 选定行业(键: string) {
+    // 键 = 池内名称（静态池没有 ID）；只写基本信息草稿的 行业，不碰引用与其它字段
+    改({ 行业: 键 });
+    设行业搜索词('');
+    关闭行业层();
+  }
+
   return (
     // 2026-08-24 全站选择风格统一（C1 定稿）：页底改白
     <次级页外壳 白底>
+      {/* Task 4：行业全屏子视图打开时，含返回/保存栏的整个父表单 wrapper 保持挂载但
+          hidden + 显式 display:none（同 Backend 分支）；选择正文是内容兄弟。 */}
+      <div
+        hidden={行业层开}
+        style={{ flex: 1, minHeight: 0, display: 行业层开 ? 'none' : 'flex', flexDirection: 'column' }}
+      >
       <返回栏
         返回={返回}
         右侧={
@@ -874,6 +1244,8 @@ function Mock分区编辑({ 分区, 返回 }: { 分区: 分区定义; 返回: ()
           改={改}
           LOGO={状态.公司LOGO}
           存LOGO={(图) => 派发({ 型: '存公司LOGO', 图 })}
+          开行业层={开行业层}
+          行业行引用={行业行引用}
         />
       ) : null}
 
@@ -882,6 +1254,22 @@ function Mock分区编辑({ 分区, 返回 }: { 分区: 分区定义; 返回: ()
       {分区键 === '公司相册' ? <Mock公司相册区 资料={资料} 改={改} /> : null}
 
       {分区键 === '团队介绍' ? <团队介绍区 资料={资料} 改={改} /> : null}
+      </div>
+
+      {/* Task 4：行业全屏子视图（两模式共用 公司行业选择正文）；开着才挂载 */}
+      {行业层开 ? (
+        <公司行业选择正文
+          搜索词={行业搜索词}
+          改搜索词={设行业搜索词}
+          行们={行业池行们}
+          分页们={[]}
+          加载更多={() => {}}
+          重试={() => {}}
+          关闭={关闭行业层}
+          选定={选定行业}
+          展开={() => {}}
+        />
+      ) : null}
     </次级页外壳>
   );
 }
@@ -920,17 +1308,22 @@ function 整屏文本({
   );
 }
 
-/** Mock 基本信息：公司全称 · 公司 LOGO · 行业 · 规模 · 融资阶段 · 办公地址（原样保留） */
+/** Mock 基本信息：公司全称 · 公司 LOGO · 行业 · 规模 · 融资阶段 · 办公地址（原样保留；
+ *  Task 4 起行业是字段行 + 全屏正文，查询状态在 Mock分区编辑 根层，这里只收打开回调） */
 function Mock基本信息区({
   资料,
   改,
   LOGO,
   存LOGO,
+  开行业层,
+  行业行引用,
 }: {
   资料: 资料形;
   改: (补丁: Partial<资料形>) => void;
   LOGO: string | null;
   存LOGO: (图: string) => void;
+  开行业层: () => void;
+  行业行引用: { current: HTMLButtonElement | null };
 }) {
   const LOGO框 = useRef<HTMLInputElement>(null);
 
@@ -984,7 +1377,7 @@ function Mock基本信息区({
         />
       </div>
 
-      <单选片组 标签="行业" 选项={行业池} 当前={资料.行业} 选中={(值) => 改({ 行业: 值 })} />
+      <行业字段行 值={资料.行业} 可点 开选择={开行业层} 行引用={行业行引用} />
       <单选片组 标签="规模" 选项={规模池} 当前={资料.规模} 选中={(值) => 改({ 规模: 值 })} />
       <单选片组
         标签="融资阶段"
