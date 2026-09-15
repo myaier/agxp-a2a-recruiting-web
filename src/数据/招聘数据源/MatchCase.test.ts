@@ -77,15 +77,18 @@ function 带S0记录(
 
 function 造S0消息(覆盖: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    id: 's0q_x', kind: 'question', role: 'candidate', round: 1,
+    id: 's0q_x', kind: 'question', role: 'candidate',
+    stage: 'anonymous_screening', asking_role: 'candidate', round: 1,
     text: '每周可以到岗几天？', occurred_at: '2026-08-29T01:10:00Z', ...覆盖,
   };
 }
 
 function 造S0回答(覆盖: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    id: 's0a_x', kind: 'answer', role: 'recruiter', round: 1,
-    text: '每周三天。', answer_status: 'answered', occurred_at: '2026-08-29T01:11:00Z', ...覆盖,
+    id: 's0a_x', kind: 'answer', role: 'recruiter',
+    stage: 'anonymous_screening', asking_role: 'candidate', round: 1,
+    text: '每周三天。', answer_source: 'agent', answer_status: 'answered',
+    occurred_at: '2026-08-29T01:11:00Z', ...覆盖,
   };
 }
 
@@ -699,14 +702,15 @@ describe('MatchCase数据源', () => {
     const 候选 = 解P5详情(带S0记录(P5候选详情Wire, S0候选完整记录Wire), 'candidate');
     const 招聘 = 解P5详情(带S0记录(P5招聘详情Wire, S0招聘完整记录Wire), 'recruiter');
     expect(候选.stages[0].screeningRecords?.messages).toEqual([
-      // v1（历史 Case）记录没有 stage/asking_role/answer_source：按「记录块即 S0、
-      // S0 由候选发问」归一，来源未知留 null（绝不猜成 agent）。
+      // 历史（continuity_version 1）Case 的记录同样带 stage/asking_role/answer_source
+      //（旧 Service 的记录由 BFF 回填）：decoder 对任何版本都要求这三个键。
       { id: 's0q_1', kind: 'question', role: 'candidate',
         stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-        text: '这个岗位是否需要固定晚班？', occurredAt: '2026-08-23T10:01:00Z' },
+        text: '这个岗位是否需要固定晚班？', exchangeRef: null,
+        occurredAt: '2026-08-23T10:01:00Z' },
       { id: 's0a_1', kind: 'answer', role: 'recruiter',
         stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-        text: '没有固定晚班。', answerStatus: 'answered', answerSource: null,
+        text: '没有固定晚班。', answerStatus: 'answered', answerSource: 'agent',
         occurredAt: '2026-08-23T10:02:00Z' },
     ]);
     expect(候选.stages[0].screeningRecords?.summaries).toEqual([
@@ -730,7 +734,8 @@ describe('MatchCase数据源', () => {
     expect(仅问题.stages[0].screeningRecords?.messages).toEqual([
       { id: 's0q_1', kind: 'question', role: 'candidate',
         stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-        text: '这个岗位是否需要固定晚班？', occurredAt: '2026-08-23T10:01:00Z' },
+        text: '这个岗位是否需要固定晚班？', exchangeRef: null,
+        occurredAt: '2026-08-23T10:01:00Z' },
     ]);
     expect(仅问题.stages[0].screeningRecords?.summaries).toEqual([]);
     // 未回答分支不带正文（unknown fixture 已省略 text）
@@ -738,7 +743,7 @@ describe('MatchCase数据源', () => {
     expect(未知.stages[0].screeningRecords?.messages[1]).toEqual({
       id: 's0a_1', kind: 'answer', role: 'recruiter',
       stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-      answerStatus: 'unknown', answerSource: null, occurredAt: '2026-08-23T10:02:00Z',
+      answerStatus: 'unknown', answerSource: 'agent', occurredAt: '2026-08-23T10:02:00Z',
     });
     // declined 与 not_available 只从 unknown fixture 替换 answer_status，不添加 text
     for (const 回答状态 of ['declined', 'not_available'] as const) {
@@ -753,7 +758,7 @@ describe('MatchCase数据源', () => {
       expect(详情.stages[0].screeningRecords?.messages[1]).toEqual({
         id: 's0a_1', kind: 'answer', role: 'recruiter',
         stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-        answerStatus: 回答状态, answerSource: null, occurredAt: '2026-08-23T10:02:00Z',
+        answerStatus: 回答状态, answerSource: 'agent', occurredAt: '2026-08-23T10:02:00Z',
       });
     }
     // 空 messages + initial 小结
@@ -1562,6 +1567,68 @@ describe('MatchCase 连续筛选块（continuity_version 2）解码', () => {
     expect(S2回答?.kind === 'answer' ? S2回答.answerSource : null).toBe('human');
   });
 
+  it('历史（v1）详情的记录同样带三个键：解码成功，缺任一键在任何版本上都拒绝', () => {
+    // P5候选详情Wire 是 continuity_version 1 的历史 Case；它的 S0 记录走真实公开 wire
+    //（stage / asking_role / answer_source 都在场，旧 Service 的记录由 BFF 回填）。
+    const v1 = 解P5详情(带S0记录(P5候选详情Wire, S0候选完整记录Wire), 'candidate');
+    expect(v1.continuityVersion).toBe(1);
+    expect(v1.stages[0].screeningRecords?.messages.map((条) => [条.stage, 条.askingRole])).toEqual([
+      ['anonymous_screening', 'candidate'],
+      ['anonymous_screening', 'candidate'],
+    ]);
+    const 首条回答 = v1.stages[0].screeningRecords?.messages[1];
+    expect(首条回答?.kind === 'answer' ? 首条回答.answerSource : null).toBe('agent');
+    // 缺键一律漂移：decoder 不按 continuity_version 自行放宽记录形状
+    for (const 键 of ['stage', 'asking_role']) {
+      expect(() => 解P5详情(
+        带S0记录(P5候选详情Wire, S0块({ messages: [略S0键(造S0消息(), 键)] })), 'candidate'), 键,
+      ).toThrow(契约漂移);
+    }
+    expect(() => 解P5详情(
+      带S0记录(P5候选详情Wire, S0块({ messages: [造S0消息(), 略S0键(造S0回答(), 'answer_source')] })),
+      'candidate',
+    )).toThrow(契约漂移);
+  });
+
+  it('记录 exchange_ref：只属 S1/S2 的问题，S0 记录与任何回答携带即漂移，空串拒绝', () => {
+    const S2块 = (问题覆盖: Record<string, unknown>) => ({
+      ...v2详情(), ...带S0记录(P5候选详情Wire, {
+        messages: [{
+          ...v2问题({
+            id: 'cdx_q', stage: 'needs_coordination', role: 'recruiter', asking_role: 'recruiter',
+          }),
+          ...问题覆盖,
+        }],
+        summaries: [],
+      }),
+      continuity_version: 2, pending_actions: [], dialogue_progress: null,
+      reconsideration: null, confirmation_summary: null,
+      needs_action: false, available_actions: [],
+    });
+    // S2 问题带 exchange_ref：原样解出（不解析编码，只留作精确相等比对）
+    const 命中 = 解P5详情(S2块({ exchange_ref: 交换ID }), 'candidate');
+    const 问题 = 命中.stages[0].screeningRecords?.messages[0];
+    expect(问题?.kind === 'question' ? 问题.exchangeRef : null).toBe(交换ID);
+    // 缺席同样合法（S1/S2 的问题不一定挂着人工待办）
+    const 缺席 = 解P5详情(S2块({}), 'candidate');
+    const 无引用 = 缺席.stages[0].screeningRecords?.messages[0];
+    expect(无引用?.kind === 'question' ? 无引用.exchangeRef : '未取到').toBeNull();
+    // 空串拒绝
+    expect(() => 解P5详情(S2块({ exchange_ref: '' }), 'candidate')).toThrow(契约漂移);
+    // S0 的问题不会有待办可指
+    expect(() => 解P5详情(
+      带S0记录(P5候选详情Wire, S0块({ messages: [{ ...造S0消息(), exchange_ref: 交换ID }] })),
+      'candidate',
+    )).toThrow(契约漂移);
+    // 回答分支根本没有这个键
+    expect(() => 解P5详情(
+      带S0记录(P5候选详情Wire, S0块({
+        messages: [造S0消息(), { ...造S0回答(), exchange_ref: 交换ID }],
+      })),
+      'candidate',
+    )).toThrow(契约漂移);
+  });
+
   it('记录块 fail closed：未知阶段词、块序回跳、问答方向错、无正文回答带 text 都拒绝', () => {
     const v2块 = (messages: unknown[]) => ({
       ...v2详情(), ...带S0记录(P5候选详情Wire, { messages, summaries: [] }),
@@ -1579,7 +1646,7 @@ describe('MatchCase 连续筛选块（continuity_version 2）解码', () => {
     // question 的 role 必须等于 asking_role；answer 的 role 必须是对端
     expect(() => 解P5详情(v2块([v2问题({ role: 'recruiter' })]), 'candidate')).toThrow(契约漂移);
     expect(() => 解P5详情(v2块([v2问题(), v2回答({ role: 'candidate' })]), 'candidate')).toThrow(契约漂移);
-    // v2 缺三键之一
+    // 三个自述键与版本无关：缺任一个都拒绝
     expect(() => 解P5详情(v2块([略S0键(v2问题(), 'stage')]), 'candidate')).toThrow(契约漂移);
     expect(() => 解P5详情(v2块([略S0键(v2问题(), 'asking_role')]), 'candidate')).toThrow(契约漂移);
     expect(() => 解P5详情(v2块([v2问题(), 略S0键(v2回答(), 'answer_source')]), 'candidate')).toThrow(契约漂移);

@@ -572,7 +572,8 @@ export const P5阶段区组Wire: BFFMatchCase阶段区[] = [
         occurred_at: '2026-08-29T01:05:00Z',
       },
     ],
-    // 展开读取（include=screening_records）专属块：通用 wire 属性 optional，其余三段必缺席
+    // 展开读取（include=screening_records）专属块：通用 wire 属性 optional，其余三段必缺席。
+    // 每条记录都带 stage / asking_role（answer 再带 answer_source）—— 与版本无关的公开 wire。
     screening_records: { messages: [], summaries: [] },
   },
   { stage: 'resume_submission', state: 'pending', summary: '简历提交未开始', checklist: [], transcript: [], instruction_receipts: [] },

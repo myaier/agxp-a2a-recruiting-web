@@ -1037,9 +1037,9 @@ describe('映射P5列表项', () => {
 const S0候选完整记录: P5S0筛选记录 = {
   messages: [
     { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-      text: '这个岗位是否需要固定晚班？', occurredAt: '2026-08-23T10:01:00Z' },
+      text: '这个岗位是否需要固定晚班？', exchangeRef: null, occurredAt: '2026-08-23T10:01:00Z' },
     { id: 's0a_1', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-      text: '没有固定晚班。', answerStatus: 'answered', answerSource: null, occurredAt: '2026-08-23T10:02:00Z' },
+      text: '没有固定晚班。', answerStatus: 'answered', answerSource: 'agent', occurredAt: '2026-08-23T10:02:00Z' },
   ],
   summaries: [
     { id: 's0s_0', phase: 'initial', summary: '需要确认岗位的值班安排。',
@@ -1054,10 +1054,10 @@ describe('映射P5详情：S0 展开块投影', () => {
     const 视图 = 断言正常(映射P5详情(造详情({ S0记录: S0候选完整记录 })));
     expect(视图.阶段区块[0].Agent消息).toEqual([
       { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-        answerStatus: null, answerSource: null, occurredAt: '2026-08-23T10:01:00Z',
+        answerStatus: null, answerSource: null, exchangeRef: null, occurredAt: '2026-08-23T10:01:00Z',
         内容: '这个岗位是否需要固定晚班？' },
       { id: 's0a_1', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-        answerStatus: 'answered', answerSource: null, occurredAt: '2026-08-23T10:02:00Z',
+        answerStatus: 'answered', answerSource: 'agent', exchangeRef: null, occurredAt: '2026-08-23T10:02:00Z',
         内容: '没有固定晚班。' },
     ]);
     expect(视图.阶段区块[0].Agent总结).toEqual([
@@ -1079,18 +1079,18 @@ describe('映射P5详情：S0 展开块投影', () => {
     const 记录: P5S0筛选记录 = {
       messages: [
         { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-          text: '这个岗位是否需要固定晚班？', occurredAt: '2026-08-23T10:01:00Z' },
+          text: '这个岗位是否需要固定晚班？', exchangeRef: null, occurredAt: '2026-08-23T10:01:00Z' },
         { id: 's0a_2', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-          answerStatus, answerSource: null, occurredAt: '2026-08-23T10:02:00Z' },
+          answerStatus, answerSource: 'agent', occurredAt: '2026-08-23T10:02:00Z' },
       ],
       summaries: [],
     };
     const 视图 = 断言正常(映射P5详情(造详情({ S0记录: 记录 })));
     expect(视图.阶段区块[0].Agent消息).toEqual([
       { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-        answerStatus: null, answerSource: null, occurredAt: '2026-08-23T10:01:00Z', 内容: '这个岗位是否需要固定晚班？' },
+        answerStatus: null, answerSource: null, exchangeRef: null, occurredAt: '2026-08-23T10:01:00Z', 内容: '这个岗位是否需要固定晚班？' },
       { id: 's0a_2', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-        answerStatus, answerSource: null, occurredAt: '2026-08-23T10:02:00Z', 内容: 文案 },
+        answerStatus, answerSource: 'agent', exchangeRef: null, occurredAt: '2026-08-23T10:02:00Z', 内容: 文案 },
     ]);
   });
 
@@ -1205,6 +1205,12 @@ describe('映射P5详情：连续筛选块', () => {
       连续块: { continuityVersion: 2 },
     })));
     expect(v2.actions.map((卡) => 卡.action)).toEqual(['end_screening']);
+    // v2 的 S0 卡是「继续 or 结束」的中立决定卡：标题不能只说结束（主键是「继续」）
+    expect(v2.actions[0]).toEqual({
+      action: 'end_screening',
+      标题: '是否继续这一单',
+      说明: '继续表示愿意进一步了解和协调，不代表接受差异；结束后这一单无法恢复',
+    });
     expect(v2.注意说明).toBeNull();
 
     const v1 = 断言正常(映射P5详情(造详情({ state: S0待处理, availableActions: ['end_screening'] })));
@@ -1302,8 +1308,8 @@ describe('映射P5详情：连续筛选块', () => {
   it('公开问答记录按各自 stage 落到对应阶段段；S3 段没有问答，小结只留在 S0', () => {
     const 记录: P5S0筛选记录 = {
       messages: [
-        { id: 'q_s0', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, text: 'S0 的问题', occurredAt: '2026-08-23T10:01:00Z' },
-        { id: 'q_s1', kind: 'question', role: 'recruiter', stage: 'resume_submission', askingRole: 'recruiter', round: 1, text: 'S1 的问题', occurredAt: '2026-08-24T10:01:00Z' },
+        { id: 'q_s0', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, text: 'S0 的问题', exchangeRef: null, occurredAt: '2026-08-23T10:01:00Z' },
+        { id: 'q_s1', kind: 'question', role: 'recruiter', stage: 'resume_submission', askingRole: 'recruiter', round: 1, text: 'S1 的问题', exchangeRef: null, occurredAt: '2026-08-24T10:01:00Z' },
         { id: 'a_s2', kind: 'answer', role: 'candidate', stage: 'needs_coordination', askingRole: 'recruiter', round: 1, text: 'S2 的本人回答', answerStatus: 'answered', answerSource: 'human', occurredAt: '2026-08-25T10:01:00Z' },
       ],
       summaries: [

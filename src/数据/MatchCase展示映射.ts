@@ -84,6 +84,8 @@ const 步骤说明表 = {
 /** 十个动作闭词的动作卡文案（标题 + 说明）。 */
 const 动作卡文案表 = {
   respond_fact: { 标题: '补充事实', 说明: '回答当前阶段待补充的问题' },
+  // v1 旧卡的原词（该卡在 v1 已停止交互，只保留词表完整）；v2 的同一动作词是「继续或结束」
+  // 的中立决定卡，标题走 连续决定卡文案表。
   end_screening: { 标题: '结束初筛', 说明: '结束本次匿名初筛' },
   accept_resume_invitation: { 标题: '接受简历邀请', 说明: '同意披露简历并进入简历评估' },
   decline_resume_invitation: { 标题: '婉拒简历邀请', 说明: '拒绝本次简历披露邀请' },
@@ -98,6 +100,17 @@ const 动作卡文案表 = {
   answer_dialogue: { 标题: '回答对方的问题', 说明: '你的回答是本次匹配的正式回答，双方都能看到' },
   reconsider: { 标题: '重新考虑', 说明: '在七天窗口内继续这一单：不重投简历、不重跑初筛' },
 } as const satisfies Record<P5动作, { 标题: string; 说明: string }>;
+
+/**
+ * continuity_version 2 覆盖的动作卡文案：S0 的人工卡是「继续 or 结束」的中立决定，
+ * 标题不能只说结束（主键是「继续」），也不能把继续说成接受或把恢复说成重新申请。
+ */
+const 连续决定卡文案表 = {
+  end_screening: {
+    标题: '是否继续这一单',
+    说明: '继续表示愿意进一步了解和协调，不代表接受差异；结束后这一单无法恢复',
+  },
+} as const;
 
 /** 阶段区自身 state 的展示文案。 */
 const 阶段区状态文案表 = {
@@ -228,7 +241,9 @@ const 矩阵元组表 = [
     ['confirm_intent', 'decline_intent']],
   ['ended', 'anonymous_screening', 'ended', ['complete'], []],
   // 七天重新考虑只由 S1 的可恢复结束产生（冻结合同 C1）：只有这一行留该卡，
-  // S0/S2/S3 的终局不给恢复入口。
+  // S0/S2/S3 的终局不给恢复入口。这一行的取值刻意与后端 ReconsiderableEnding
+  // （matchcase/continuity_deadlines.go）是同一个集合 —— 后端放宽可恢复结束的范围时，
+  // 必须同步放宽这里的白名单，否则真给出的卡会被交集惰性挡掉。
   ['ended', 'resume_submission', 'ended', ['complete'], ['reconsider']],
   ['ended', 'needs_coordination', 'ended', ['complete'], []],
   ['ended', 'intent_confirmation', 'ended', ['complete'], []],
@@ -282,7 +297,8 @@ export interface P5终局摘要视图 {
 /**
  * 展开块的单条公开问答视图：技术字段原样保留，正文按 answer_status 投影。
  * stage/askingRole/round 全部来自服务端记录本身 —— 前端不重排、不重编号、不按位置猜块。
- * answerSource 'human' 是本人写的公开回答（双方可见）；null = 历史记录未标注来源。
+ * answerSource 'human' 是本人写的公开回答（双方可见）。exchangeRef 只在 S1/S2 的 question
+ * 上出现，是它对应人工待办的不透明引用：只做精确相等比对，绝不解析、绝不从 id 推导。
  */
 export interface P5S0消息视图 {
   id: string;
@@ -293,6 +309,7 @@ export interface P5S0消息视图 {
   round: number;
   answerStatus: P5回答状态 | null;
   answerSource: P5回答来源 | null;
+  exchangeRef: string | null;
   occurredAt: string;
   内容: string;
 }
@@ -515,7 +532,12 @@ function 渲染动作卡(offered: readonly P5动作[], 行: P5展示状态行, �
   const 白名单 = 本行可出动作(行, 连续版本);
   return 动作顺序表
     .filter((动作) => offered.includes(动作) && 白名单.includes(动作))
-    .map((动作) => ({ action: 动作, 标题: 动作卡文案表[动作].标题, 说明: 动作卡文案表[动作].说明 }));
+    .map((动作) => {
+      const 文案 = 连续版本 === 2 && 已有键(连续决定卡文案表, 动作)
+        ? 连续决定卡文案表[动作]
+        : 动作卡文案表[动作];
+      return { action: 动作, 标题: 文案.标题, 说明: 文案.说明 };
+    });
 }
 
 function 映射职位(job: P5工作区职位): P5职位视图 | null {
@@ -600,6 +622,11 @@ const 重新考虑不可用文案表 = {
   case_unavailable: '这一单目前不能恢复',
 } as const;
 
+/**
+ * 七天窗口的展示投影。它只描述服务端给的窗口，不判定资格 —— 是否出卡由
+ * available_actions ∩ 行白名单决定，而那一行的集合与后端 ReconsiderableEnding
+ * （matchcase/continuity_deadlines.go）必须同进同退（见 矩阵元组表 的同名注释）。
+ */
 function 映射重新考虑(块: P5重新考虑 | null): P5重新考虑视图 | null {
   if (块 === null) return null;
   const 截止于 = 格式化终局时间(块.deadline);
@@ -747,6 +774,7 @@ function 映射S0消息(消息: P5S0筛选消息): P5S0消息视图 {
     round: 消息.round,
     answerStatus: 消息.kind === 'answer' ? 消息.answerStatus : null,
     answerSource: 消息.kind === 'answer' ? 消息.answerSource : null,
+    exchangeRef: 消息.kind === 'question' ? 消息.exchangeRef : null,
     occurredAt: 消息.occurredAt,
     内容: 消息.kind === 'question'
       ? 消息.text

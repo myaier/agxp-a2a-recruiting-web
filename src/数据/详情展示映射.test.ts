@@ -364,8 +364,8 @@ describe('从P5到详情分段', () => {
             { instructionId: 'aci_2', owner: 'recruiter', stage: 'anonymous_screening', expression: '两周内走完', occurredAt: '2026-08-29T01:06:00Z' },
           ],
           Agent消息: [
-            { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, answerStatus: null, answerSource: null, occurredAt: '2026-08-23T10:01:00Z', 内容: '需要确认岗位的值班安排。' },
-            { id: 's0a_1', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, answerStatus: 'answered', answerSource: null, occurredAt: '2026-08-23T10:05:00Z', 内容: '没有固定晚班。' },
+            { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, answerStatus: null, answerSource: null, exchangeRef: null, occurredAt: '2026-08-23T10:01:00Z', 内容: '需要确认岗位的值班安排。' },
+            { id: 's0a_1', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, answerStatus: 'answered', answerSource: 'agent', exchangeRef: null, occurredAt: '2026-08-23T10:05:00Z', 内容: '没有固定晚班。' },
           ],
         },
       }),

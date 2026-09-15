@@ -2293,14 +2293,14 @@ const S0别名 = 'hr-0123456789ab';
 function S0记录样本(): P5S0筛选记录 {
   return {
     messages: [
-      { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, text: '需要确认岗位的值班安排。', occurredAt: '2026-08-23T10:01:00Z' },
-      { id: 's0a_1', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, answerStatus: 'answered', answerSource: null, text: '没有固定晚班，周末偶尔需要支援。', occurredAt: '2026-08-23T10:05:00Z' },
-      { id: 's0q_2', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 2, text: '还需要了解团队规模。', occurredAt: '2026-08-30T09:00:00Z' },
-      { id: 's0a_2', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 2, answerStatus: 'declined', answerSource: null, occurredAt: '2026-08-30T09:02:00Z' },
-      { id: 's0q_3', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 3, text: '平时出差频率如何？', occurredAt: '2026-08-30T09:10:00Z' },
-      { id: 's0a_3', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 3, answerStatus: 'unknown', answerSource: null, occurredAt: '2026-08-30T09:12:00Z' },
-      { id: 's0q_4', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 4, text: '带团队的人数规模？', occurredAt: '2026-08-30T09:20:00Z' },
-      { id: 's0a_4', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 4, answerStatus: 'not_available', answerSource: null, occurredAt: '2026-08-30T09:22:00Z' },
+      { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, text: '需要确认岗位的值班安排。', exchangeRef: null, occurredAt: '2026-08-23T10:01:00Z' },
+      { id: 's0a_1', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, answerStatus: 'answered', answerSource: 'agent', text: '没有固定晚班，周末偶尔需要支援。', occurredAt: '2026-08-23T10:05:00Z' },
+      { id: 's0q_2', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 2, text: '还需要了解团队规模。', exchangeRef: null, occurredAt: '2026-08-30T09:00:00Z' },
+      { id: 's0a_2', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 2, answerStatus: 'declined', answerSource: 'agent', occurredAt: '2026-08-30T09:02:00Z' },
+      { id: 's0q_3', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 3, text: '平时出差频率如何？', exchangeRef: null, occurredAt: '2026-08-30T09:10:00Z' },
+      { id: 's0a_3', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 3, answerStatus: 'unknown', answerSource: 'agent', occurredAt: '2026-08-30T09:12:00Z' },
+      { id: 's0q_4', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 4, text: '带团队的人数规模？', exchangeRef: null, occurredAt: '2026-08-30T09:20:00Z' },
+      { id: 's0a_4', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 4, answerStatus: 'not_available', answerSource: 'agent', occurredAt: '2026-08-30T09:22:00Z' },
     ],
     summaries: [
       { id: 's0sum_1', phase: 'initial', summary: '初评已确认岗位在浦东园区，值班安排仍待确认。', occurredAt: '2026-08-23T10:06:00Z' },
@@ -3016,7 +3016,8 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
                 {
                   id: 's0q_5', kind: 'question' as const, role: 'candidate' as const,
                   stage: 'anonymous_screening' as const, askingRole: 'candidate' as const, round: 5,
-                  text: '到岗时间能接受节假日轮班吗？', occurredAt: '2026-08-30T09:50:00Z',
+                  text: '到岗时间能接受节假日轮班吗？', exchangeRef: null,
+                  occurredAt: '2026-08-30T09:50:00Z',
                 },
               ],
               summaries: 区.screeningRecords.summaries,

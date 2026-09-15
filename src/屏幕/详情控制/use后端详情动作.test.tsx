@@ -1307,8 +1307,8 @@ describe('use后端详情动作 · S2 人工补答（v2）', () => {
   const S2状态 = 状态({ stage: 'needs_coordination', status: 'needs_user', step: 'coordinating' });
   const S2待办 = v2待办({ purpose: 's2_answer', exchangeRef: V2交换ID });
 
-  /** S2 段带一条公开问题：id 与待办 exchange_ref 精确相等时才当成「当前问题」。 */
-  function S2阶段区组(问题ID: string): P5阶段区[] {
+  /** S2 段带一条公开问题：只有它的 exchange_ref 与待办的相等时才当成「当前问题」。 */
+  function S2阶段区组(问题引用: string | null): P5阶段区[] {
     return S1阶段区组(null).map((区) => 区.stage === 'needs_coordination'
       ? {
           ...区,
@@ -1317,9 +1317,10 @@ describe('use后端详情动作 · S2 人工补答（v2）', () => {
           summary: 'coordinating',
           screeningRecords: {
             messages: [{
-              id: 问题ID, kind: 'question' as const, role: 'recruiter' as const,
+              id: 'cdx_公开问题', kind: 'question' as const, role: 'recruiter' as const,
               stage: 'needs_coordination' as const, askingRole: 'recruiter' as const, round: 1,
-              text: '远程比例最多能到多少？', occurredAt: '2026-09-10T02:00:00Z',
+              text: '远程比例最多能到多少？', exchangeRef: 问题引用,
+              occurredAt: '2026-09-10T02:00:00Z',
             }],
             summaries: [],
           },
@@ -1327,9 +1328,9 @@ describe('use后端详情动作 · S2 人工补答（v2）', () => {
       : 区);
   }
 
-  function S2详情(问题ID = V2交换ID): P5详情 {
+  function S2详情(问题引用: string | null = V2交换ID): P5详情 {
     // 记录块整包挂在 S0 段（冻结 wire）：这里把 S2 记录放进 S0 段，映射按 stage 分发
-    const 段们 = S2阶段区组(问题ID);
+    const 段们 = S2阶段区组(问题引用);
     const S2记录 = 段们[2].screeningRecords;
     return v2详情DTO({
       state: S2状态,
@@ -1355,6 +1356,7 @@ describe('use后端详情动作 · S2 人工补答（v2）', () => {
     expect(卡.勾选们?.[0].标签).toBe('暂时无法回答');
     expect(卡.勾选们?.[0].说明).toBe('记录为「暂时无法回答」，不等于同意对方的方案');
     // 当前问题按 exchange_ref 与记录 id 精确相等取；轮次说明来自服务端记账
+    // 当前问题按两侧 exchange_ref 精确相等取（绝不碰不透明的记录 id）
     expect(卡.提示们?.[0]).toBe('对方的问题：远程比例最多能到多少？');
     expect(卡.提示们?.[1]).toBe('当前由招聘方发问，已问 1/2 轮');
     const 提交 = 取按钮(卡, 'answer_dialogue_submit');
@@ -1398,11 +1400,13 @@ describe('use后端详情动作 · S2 人工补答（v2）', () => {
     });
   });
 
-  it('exchange_ref 与任何记录 id 都不相等：不编造问题正文，只保留对话流本身', () => {
-    const { result } = 挂动作(动作输入({ 详情: S2详情('cex_ffffffffffffffffffffffffffffffff') }));
-    const 卡 = 取卡片(result, 'answer_dialogue');
-    expect(卡.提示们?.[0]).toBe('当前由招聘方发问，已问 1/2 轮');
-    expect(JSON.stringify(卡.提示们)).not.toContain('远程比例最多能到多少？');
+  it('没有记录的 exchange_ref 与待办相等（不同值或整个缺席）：不编造问题正文', () => {
+    for (const 引用 of ['cex_ffffffffffffffffffffffffffffffff', null]) {
+      const { result } = 挂动作(动作输入({ 详情: S2详情(引用) }));
+      const 卡 = 取卡片(result, 'answer_dialogue');
+      expect(卡.提示们?.[0]).toBe('当前由招聘方发问，已问 1/2 轮');
+      expect(JSON.stringify(卡.提示们)).not.toContain('远程比例最多能到多少？');
+    }
   });
 
   it('没有 s2_answer 待办的一方：零控件零请求（绝不要求无待办方作答）', () => {

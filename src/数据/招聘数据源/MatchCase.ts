@@ -337,9 +337,9 @@ export type P5回答状态 = 'answered' | 'declined' | 'unknown' | 'not_availabl
 
 /**
  * 展开块里的单条问答（冻结合同 §6.5）：question 只带原文，answer 按 answer_status 带或
- * 不带原文。continuity_version 2 起每条自述 stage/askingRole/answerSource —— 同一数组装着
- * S0/S1/S2 三段；历史（version 1）记录没有这三个键，归一为 S0/候选发问/来源未知（null）。
- * answerSource 'human' 表示那是本人写的公开回答，双方都看得到。
+ * 不带原文。每条记录都自述 stage/askingRole（answer 再带 answerSource），同一数组装着
+ * S0/S1/S2 三段。answerSource 'human' 表示那是本人写的公开回答，双方都看得到；
+ * question 的 exchangeRef 只在 S1/S2 出现，是它对应人工待办的不透明引用（可能缺席）。
  */
 interface P5筛选消息基础 {
   id: string;
@@ -350,12 +350,12 @@ interface P5筛选消息基础 {
   occurredAt: string;
 }
 export type P5S0筛选消息 =
-  | (P5筛选消息基础 & { kind: 'question'; text: string })
-  | (P5筛选消息基础 & { kind: 'answer'; text: string; answerStatus: 'answered'; answerSource: P5回答来源 | null })
+  | (P5筛选消息基础 & { kind: 'question'; text: string; exchangeRef: string | null })
+  | (P5筛选消息基础 & { kind: 'answer'; text: string; answerStatus: 'answered'; answerSource: P5回答来源 })
   | (P5筛选消息基础 & {
       kind: 'answer';
       answerStatus: Exclude<P5回答状态, 'answered'>;
-      answerSource: P5回答来源 | null;
+      answerSource: P5回答来源;
     });
 
 /** S0 总结：initial 无轮次，reevaluation 绑定真实轮次。 */
@@ -666,30 +666,33 @@ function 解简历附件(input: unknown): P5简历附件 {
 
 /**
  * 公开问答记录（冻结合同 §6.5）：kind↔role、text↔answer_status 的三分支 wire 形状逐一
- * 闭合，按分支构造判别联合。v2 每条自述 stage/asking_role（answer 再带 answer_source），
- * 三键必须齐备；v1 记录没有这三键 —— 只在 continuityVersion 1 上放行，并按「记录块即 S0、
- * S0 由候选发问」这两个已知事实归一，来源未知留 null，绝不猜成 agent。
+ * 闭合，按分支构造判别联合。stage / asking_role 在**任何** continuity_version 上都是必需键
+ * （公开 wire 对每条记录都发；历史 Service 的记录由 BFF 回填），answer 分支再必带
+ * answer_source —— 缺任一键都是契约漂移，前端不按版本自行放宽、更不自造 wire 形状。
+ *
+ * exchange_ref 是唯一的条件键：只出现在 S1/S2 发问块的 question 记录上，值与该问题对应的
+ * 人工待办 pending_actions[].exchange_ref 相同；S0 记录与所有 answer 携带它即漂移。
+ * 它是不透明引用 —— 只做精确相等比对，绝不解析编码，也绝不从 id 推导。
  */
-function 解筛选消息(input: unknown, 连续版本: 1 | 2): P5S0筛选消息 {
+function 解筛选消息(input: unknown): P5S0筛选消息 {
   if (!是记录(input)) throw 契约错误();
   const kind = 要求枚举(input.kind, S0消息类别全表);
-  const v2键 = 连续版本 === 2 ? ['stage', 'asking_role'] : [];
   const raw = kind === 'question'
-    ? 要求闭合对象(input, ['id', 'kind', 'role', 'round', 'text', 'occurred_at', ...v2键])
+    ? 要求闭合对象(
+        input,
+        ['id', 'kind', 'role', 'stage', 'asking_role', 'round', 'text', 'occurred_at'],
+        ['exchange_ref'],
+      )
     : 要求闭合对象(
         input,
-        ['id', 'kind', 'role', 'round', 'answer_status', 'occurred_at', ...v2键,
-          ...(连续版本 === 2 ? ['answer_source'] : [])],
+        ['id', 'kind', 'role', 'stage', 'asking_role', 'round', 'answer_status',
+          'answer_source', 'occurred_at'],
         ['text'],
       );
   const role = 要求枚举(raw.role, 叮嘱主人全表);
-  // v1：记录块只装 S0，且 S0 恒由候选 Agent 发问、招聘 Agent 作答（历史闭合不变式）。
-  const stage: P5筛选阶段 = 连续版本 === 2
-    ? 要求枚举(raw.stage, 记录阶段全表)
-    : 'anonymous_screening';
-  const askingRole: P5角色 = 连续版本 === 2 ? 要求枚举(raw.asking_role, 叮嘱主人全表) : 'candidate';
+  const stage = 要求枚举(raw.stage, 记录阶段全表);
+  const askingRole = 要求枚举(raw.asking_role, 叮嘱主人全表);
   // question 的 role 就是发问方；answer 的 role 是作答方（即发问方的对端）。
-  // v1 记录归一后的 askingRole 恒 candidate，这一条同时钉住历史的「候选问、招聘答」。
   if (kind === 'question' ? role !== askingRole : role === askingRole) throw 契约错误();
   const 基础 = {
     id: 要求非空字符串(raw.id),
@@ -700,10 +703,17 @@ function 解筛选消息(input: unknown, 连续版本: 1 | 2): P5S0筛选消息 
     occurredAt: 要求S0时间(raw.occurred_at),
   };
   if (kind === 'question') {
-    return { ...基础, kind, text: 要求S0原文(raw.text) };
+    // S0 的问题没有人工待办可指（S0 不走 S2 补答路径）：携带 exchange_ref 即漂移。
+    if (raw.exchange_ref !== undefined && stage === 'anonymous_screening') throw 契约错误();
+    return {
+      ...基础,
+      kind,
+      text: 要求S0原文(raw.text),
+      exchangeRef: raw.exchange_ref === undefined ? null : 要求非空字符串(raw.exchange_ref),
+    };
   }
   const answerStatus = 要求枚举(raw.answer_status, S0回答状态全表);
-  const answerSource = 连续版本 === 2 ? 要求枚举(raw.answer_source, 回答来源全表) : null;
+  const answerSource = 要求枚举(raw.answer_source, 回答来源全表);
   if (answerStatus === 'answered') {
     // 有正文的回答只可能来自 Agent 或本人；none 是「没有回答」的来源，不能带正文。
     if (answerSource === 'none') throw 契约错误();
@@ -746,9 +756,9 @@ export function 解S0小结(input: unknown): P5S0筛选总结 {
  * summaries 只属 S0：initial 最多一条且先于全部 reevaluation，复评轮次预算内严格递增。
  * 原数组顺序原样返回（不 sort、不重编号，未答轮次的缺口保留）。
  */
-function 解S0筛选记录(input: unknown, roundBudget: number, 连续版本: 1 | 2): P5S0筛选记录 {
+function 解S0筛选记录(input: unknown, roundBudget: number): P5S0筛选记录 {
   const raw = 要求闭合对象(input, ['messages', 'summaries']);
-  const messages = 要求数组(raw.messages).map((条) => 解筛选消息(条, 连续版本));
+  const messages = 要求数组(raw.messages).map(解筛选消息);
   const summaries = 要求数组(raw.summaries).map(解S0小结);
   const 已见ID = new Set<string>();
   /** 每个「块 + 发问侧」各自记账：轮次不共享、不借额度、不交错。 */
@@ -799,7 +809,7 @@ function 解S0筛选记录(input: unknown, roundBudget: number, 连续版本: 1 
 }
 
 /** 阶段区：三个必在数组不接受 null；attachment 坐标闭合，招聘端的匿名初筛区不得携带。 */
-function 解P5阶段区(input: unknown, viewer: P5角色, roundBudget: number, 连续版本: 1 | 2): P5阶段区 {
+function 解P5阶段区(input: unknown, viewer: P5角色, roundBudget: number): P5阶段区 {
   const raw = 要求闭合对象(
     input,
     ['stage', 'state', 'summary', 'checklist', 'transcript', 'instruction_receipts'],
@@ -826,7 +836,7 @@ function 解P5阶段区(input: unknown, viewer: P5角色, roundBudget: number, �
   // S0 展开块（include=screening_records）必在且必为对象；其余阶段多键即漂移。
   if (stage === 'anonymous_screening') {
     if (raw.screening_records === undefined) throw 契约错误();
-    区.screeningRecords = 解S0筛选记录(raw.screening_records, roundBudget, 连续版本);
+    区.screeningRecords = 解S0筛选记录(raw.screening_records, roundBudget);
     // 隐私栅栏：候选端小结绝不下发招聘端 —— 招聘端展开详情恒同批 messages 且 summaries=[]。
     if (viewer === 'recruiter' && 区.screeningRecords.summaries.length > 0) throw 契约错误();
   } else if (raw.screening_records !== undefined) {
@@ -1096,8 +1106,7 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
   const needsAction = 要求布尔(raw.needs_action);
   const availableActions = 解可用动作(raw.available_actions, role, state, needsAction);
   const 连续块 = 解连续块(raw, role, state, availableActions);
-  const { continuityVersion } = 连续块;
-  const stages = 要求数组(raw.stages).map((区) => 解P5阶段区(区, role, state.roundBudget, continuityVersion));
+  const stages = 要求数组(raw.stages).map((区) => 解P5阶段区(区, role, state.roundBudget));
   if (stages.length !== 4) throw 契约错误();
   阶段顺序.forEach((stage, 下标) => {
     if (stages[下标].stage !== stage) throw 契约错误();

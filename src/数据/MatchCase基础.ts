@@ -72,14 +72,14 @@ export function 取对方待办<T extends { role: P5基础角色 }>(
 }
 
 /**
- * S2 待办要回答的那个公开问题：只认 exchange_ref 与记录 id 的精确相等，不解析任何编码、
- * 不按「最后一条问题」推断。冻结合同没有声明两者同域，所以取不到就取不到 —— 调用方退回
- * 只展示对话流本身，绝不编造一个问题正文。
+ * S2 待办要回答的那个公开问题：按两侧的 exchange_ref 精确相等取（记录的 exchange_ref 与
+ * 该待办的同值，服务端给定），不解析任何编码、不碰不透明的记录 id、不按「最后一条问题」
+ * 推断。取不到就取不到 —— 调用方退回只展示对话流本身，绝不编造一个问题正文。
  */
-export function 取S2待答问题<T extends { id: string; kind: string; 内容: string }>(
+export function 取S2待答问题<T extends { kind: string; exchangeRef: string | null }>(
   消息们: readonly T[],
   exchangeRef: string | null,
 ): T | null {
   if (exchangeRef === null) return null;
-  return 消息们.find((条) => 条.kind === 'question' && 条.id === exchangeRef) ?? null;
+  return 消息们.find((条) => 条.kind === 'question' && 条.exchangeRef === exchangeRef) ?? null;
 }
