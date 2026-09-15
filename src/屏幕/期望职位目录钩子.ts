@@ -471,7 +471,13 @@ export function use期望职位目录({ 查询, 搜索词, 已选键们 }: 期�
         await 展开搜索组们(本次, true);
         return;
       }
-      提交({ ...数据引用.current, 直接项: 合并项们(现在2.直接项, 页.items), 直接游标: 页.nextCursor, 直接加载中: false });
+      // 追加页沿用首页口径：只有可选叶子进直接结果组，非可选命中不作职位卡呈现
+      提交({
+        ...数据引用.current,
+        直接项: 合并项们(现在2.直接项, 页.items.filter((项) => 项.selectable)),
+        直接游标: 页.nextCursor,
+        直接加载中: false,
+      });
     } catch (错误) {
       if (搜索代际.current !== 本次) return;
       // 失败不动既有直接结果，游标不动，错误进直接组尾态

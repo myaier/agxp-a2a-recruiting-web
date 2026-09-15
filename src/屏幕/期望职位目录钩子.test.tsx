@@ -372,6 +372,37 @@ describe('use期望职位目录 搜索', () => {
     expect(产品经理组们[0]?.项们.map((项) => 项.键)).toEqual(['tax_leaf_ai']);
   });
 
+  it('搜索直接结果组追加：第 2 页只进可选叶子，非可选命中不渲染成禁用职位卡', async () => {
+    const 查询 = 桩(async (_kind, query) => {
+      if (query.q === '产品' && query.cursor === 's_c1') {
+        return 页([
+          节点('tax_p2_leaf', '产品二页', { selectable: true }),
+          // 第 2 页的非可选命中：与首页同口径 —— 只能作组标题，不能变成禁用职位卡
+          节点('tax_p2_group', '产品组', { has_children: true }),
+        ], null);
+      }
+      if (query.q === '产品') {
+        return 页([节点('tax_p1_leaf', '产品一页', { selectable: true })], 's_c1');
+      }
+      return 页([]);
+    });
+    const 视图 = renderHook(() => use期望职位目录({ 查询: 查询, 搜索词: '产品', 已选键们: [] }));
+    await waitFor(() => expect(组项名们(视图.result.current.组们, '')).toEqual(['产品一页']));
+    const 直接组 = 视图.result.current.组们.find((组) => 组.标题 === '');
+    expect(直接组?.尾态.还有).toBe(true);
+    // 加载更多：追加页只并入可选叶子
+    await act(async () => {
+      直接组?.尾态.加载更多();
+    });
+    await waitFor(() => expect(组项名们(视图.result.current.组们, '')).toEqual(['产品一页', '产品二页']));
+    const 直接组2 = 视图.result.current.组们.find((组) => 组.标题 === '');
+    // 非可选命中不以禁用卡出现在直接结果组，也不新建命中组（页 2 命中组从简不补建）
+    expect(直接组2?.项们.map((项) => 项.键)).toEqual(['tax_p1_leaf', 'tax_p2_leaf']);
+    expect(视图.result.current.组们.filter((组) => 组.标题 === '产品组')).toHaveLength(0);
+    // 追加后游标已尽，不再有下一页
+    expect(直接组2?.尾态.还有).toBe(false);
+  });
+
   it('清空搜索恢复最近根且旧搜索响应不回写；快速换词旧词结果作废', async () => {
     const { promise: 慢Promise, resolve: 慢Resolve } = deferred<目录页<BFFTaxonomyItem>>();
     const 查询 = 桩(async (_kind, query) => {
