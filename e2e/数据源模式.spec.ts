@@ -7131,11 +7131,7 @@ test.describe('P3 Backend 隐私主链路 @backend', () => {
     // ── 手动来源：加入与解除都不需要风险确认（risk_acknowledged=false）──
     await page.getByRole('button', { name: '手动添加' }).click();
     await page.getByRole('button', { name: '选择要屏蔽的公司' }).click();
-    const 手动抽屉 = page.getByRole('dialog', { name: '选择企业' });
-    await 手动抽屉.getByPlaceholder('输入公司名称').fill('磐石');
-    await expect(手动抽屉.getByRole('button', { name: P3标记.手动组织甲 })).toBeVisible({ timeout: 10_000 });
-    await 手动抽屉.getByRole('button', { name: P3标记.手动组织甲 }).click();
-    await expect(手动抽屉).toHaveCount(0, { timeout: 10_000 });
+    await 抽屉搜企业并选中(page, '磐石', P3标记.手动组织甲);
     await page.getByRole('button', { name: '屏蔽', exact: true }).click();
     await expect(page.getByText(`已屏蔽 ${P3标记.手动组织甲}，双向不可见`)).toBeVisible({ timeout: 10_000 });
     expect(请求们.filter((项) => 项.path === '/api/v1/me/privacy/organization-blocks' && 项.method === 'POST').length).toBe(2);
@@ -7312,11 +7308,7 @@ test.describe('P3 Backend 恢复分派 @backend', () => {
     await page.goto('/#/blocklist');
     await page.getByRole('button', { name: '手动添加' }).click();
     await page.getByRole('button', { name: '选择要屏蔽的公司' }).click();
-    const 组织抽屉 = page.getByRole('dialog', { name: '选择企业' });
-    await 组织抽屉.getByPlaceholder('输入公司名称').fill('云衢');
-    await expect(组织抽屉.getByRole('button', { name: P3标记.可屏蔽组织甲 })).toBeVisible({ timeout: 10_000 });
-    await 组织抽屉.getByRole('button', { name: P3标记.可屏蔽组织甲 }).click();
-    await expect(组织抽屉).toHaveCount(0, { timeout: 10_000 });
+    await 抽屉搜企业并选中(page, '云衢', P3标记.可屏蔽组织甲);
     await page.getByRole('button', { name: '屏蔽', exact: true }).click();
     // 首个意图：in-progress 后同键受控重试成功；回填的待选供直接重试
     await expect(page.getByText(`已屏蔽 ${P3标记.可屏蔽组织甲}，双向不可见`)).toBeVisible({ timeout: 10_000 });
@@ -7326,11 +7318,7 @@ test.describe('P3 Backend 恢复分派 @backend', () => {
 
     // 新意图：成功路径清了待选，重开抽屉再搜再选另一枚命中 → 新请求必须换一把 Idempotency-Key
     await page.getByRole('button', { name: '选择要屏蔽的公司' }).click();
-    const 新意图抽屉 = page.getByRole('dialog', { name: '选择企业' });
-    await 新意图抽屉.getByPlaceholder('输入公司名称').fill('云衢');
-    await expect(新意图抽屉.getByRole('button', { name: P3标记.可屏蔽组织乙 })).toBeVisible({ timeout: 10_000 });
-    await 新意图抽屉.getByRole('button', { name: P3标记.可屏蔽组织乙 }).click();
-    await expect(新意图抽屉).toHaveCount(0, { timeout: 10_000 });
+    await 抽屉搜企业并选中(page, '云衢', P3标记.可屏蔽组织乙);
     await page.getByRole('button', { name: '屏蔽', exact: true }).click();
     await expect(page.getByText(`已屏蔽 ${P3标记.可屏蔽组织乙}，双向不可见`)).toBeVisible({ timeout: 10_000 });
     expect(幂等键们.length).toBe(3);
@@ -7381,11 +7369,7 @@ test.describe('P3 Backend 恢复分派 @backend', () => {
     await page.goto('/#/blocklist');
     await page.getByRole('button', { name: '手动添加' }).click();
     await page.getByRole('button', { name: '选择要屏蔽的公司' }).click();
-    const 组织抽屉 = page.getByRole('dialog', { name: '选择企业' });
-    await 组织抽屉.getByPlaceholder('输入公司名称').fill('磐石');
-    await expect(组织抽屉.getByRole('button', { name: P3标记.手动组织甲 })).toBeVisible({ timeout: 10_000 });
-    await 组织抽屉.getByRole('button', { name: P3标记.手动组织甲 }).click();
-    await expect(组织抽屉).toHaveCount(0, { timeout: 10_000 });
+    await 抽屉搜企业并选中(page, '磐石', P3标记.手动组织甲);
     await page.getByRole('button', { name: '屏蔽', exact: true }).click();
 
     // 效果达成路径：按 GET 核实后按成功兑现（清待选 + 成功提示）
