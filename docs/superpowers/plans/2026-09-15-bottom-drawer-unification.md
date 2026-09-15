@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-15-bottom-drawer-unification-design.md`，批准内容 revision `0e07383dad5e5288ef641a96e5d673bbcceb577f`，blob `bf3c8383f6dac7147060360111296bd8c5d0ffcb`。随后 Spec 仅记录批准状态，不以未批准新内容替代该契约。
 
-版本：v1.1。状态：已完成 Claude 文档 review 及两项 required finding 的核实修订，无未解决有效 required；尚未实施。
+版本：v1.1。状态：已完成 2 轮 Claude 文档 review；第二轮确认两项修订到位并返回 NO FINDINGS；尚未实施。
 
 ## Global Constraints
 
@@ -300,7 +300,7 @@ Task 1公共框架影响目录/公司/居中确认框，现有 `src/组件/弹�
 
 覆盖映射：Spec §2/§5.2→Task1；§3/§6.3→Task2；§6.2年月→Task3；§6.2年份区间→Task4；§6.1→Task5；§5事务和§8验收分布于每Task；§7并行边界、§9非目标与样式最小实现由Global Constraints约束。
 
-### Claude 文档 review：1 轮
+### Claude 文档 review：2 轮
 
 - 模式：WORKFLOW_DOCUMENT_REVIEW；scope_approved_by_parent_workflow=true。reviewer：独立 Claude CLI，opus / high，permission-mode plan；只读、未运行测试、未修改文件。受审清单为本 Spec 与本 Plan，不审整个分支diff。
 - 批准Spec：文首revision/blob。首轮候选revision `4641b914a1fe78e5c68c0f504d3e757e64044bc0`；Plan blob `11fa5f71f15e1dde59289242b968c07bfab7c44f`；候选Spec只改变批准记录。
@@ -308,4 +308,7 @@ Task 1公共框架影响目录/公司/居中确认框，现有 `src/组件/弹�
 - F1：Important / 契约违反 / required / 复杂度不变。接受核心问题：Task3明确学生分流未填毕业月父行显示“请选择”，次年6月仅为层内临时值；增加空值取消与缓存不写入断言。核实review引用的学生分流2027-06单测本身是已有值场景，保留其回显期待；实际需更新的默认父行e2e为campus graduation month，已明确。未改Spec。
 - F2：Important / 真实缺陷 / required / 复杂度不变。接受并修订：Task5明确加入 `e2e/换壳无闪屏.spec.ts` 的招聘端日薪流程适配和定向命令，保留原换壳断言；最终权威选择同步覆盖。未改Spec。
 - 自检修正：Task1路由引用改为仓库路由常量，避免可迁移路径校验将应用路由误当机器绝对路径；无产品语义变化。
-- 裁决：2项required均已在文档中修复；0拒绝、0可选延后、0未解决有效required。依claude-review-loop的“核实后无未解决有效required”停止条件结束首轮，不声称Claude对修订文本另给了NO FINDINGS。最终v1.1包含上述最小修订；可以生成执行提示词。
+- 首轮裁决：2项required均已在文档中修复；0拒绝、0可选延后。最初由主控核实后结束；用户随后明确“接受finding并修改后必须由Claude复审”，因此恢复同一reviewer session执行第二轮。
+- 第二轮候选revision `c3090c7262e00e3325469a72ae2403d8e6b65254`；Plan blob `8ee5a8bc92dea7773aaa3916cdcdc77c7247cfce`。批准Spec及受审清单不变，`--resume` 原session，保持opus/high、只读、不运行测试；轮前/后状态、HEAD与文档指纹保护检查通过。
+- 第二轮Claude结论：F1和F2修订均到位；检查新增改动后未发现新问题；最终 Findings 为精确的 `NO FINDINGS`。无未解决required或optional。本次仅更新审查元数据，不改变第二轮受审的实施方案。
+- 后续规则：接受finding并修改实质内容后必须交回Claude复审，不再由主控自行认定修好后结束；本次据第二轮明确NO FINDINGS结束，刷新执行提示词的最终版本引用。
