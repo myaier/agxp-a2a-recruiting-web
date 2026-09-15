@@ -4,11 +4,11 @@
 
 **Goal:** 修复简历编辑越界、意向私有文本编辑、技能与证书样式差异、个人优势缺失入口，以及代理卡 Backend 文案。
 
-**Architecture:** 保留现有页面及数据源；URL 显式表达日常编辑来源，资料页只在对应场景结束编辑。一个轻量标签录入组件复用技能与证书 UI；个人优势复用既有向导正文，单独隔离保存行为。城市修复由其它分支承接，不重复实施。
+**Architecture:** 保留现有页面及数据源；URL 显式表达日常编辑来源，资料页只在对应场景结束编辑。一个轻量标签录入组件复用技能与证书 UI；个人优势复用既有向导正文，单独隔离保存行为。城市名称修复已在基线 `2312cba5` 合入，仅回归受影响消费者。
 
 **Tech Stack:** React 19、TypeScript、React Router、Vitest/Testing Library、Playwright，现有 BFF 数据源。
 
-**Spec:** `docs/superpowers/specs/2026-09-15-candidate-profile-edit-boundaries-design.md`；批准 revision `31f52deee3c1e61ba9ab7d209dceba8d1343dd53`，blob `930e0899a34acc742e2bc422ed70e9c50a278c63`。用户确认“在线”字样和绿点固定保留，随后要求按 development-workflow 写计划。
+**Spec:** `docs/superpowers/specs/2026-09-15-candidate-profile-edit-boundaries-design.md`；批准 revision `6b9e617adfbef4b80f6396d72f0f5a56e2eead29`，blob `68a3b1e2592c60363315a1ea16fe44680502411d`。用户确认“在线”字样和绿点固定保留，随后要求按 development-workflow 写计划。
 
 ## Global Constraints
 
@@ -171,9 +171,11 @@ npx vitest run src/屏幕/我的.test.tsx
 
 ## 文档 review 与运行记录
 
-- 规划 owner 已自检五项 Spec 对应五个 Task，城市为外部依赖；用户明确在线覆盖旧断言。
+- 校准前历史记录：规划 owner 自检五项 Spec 对应五个 Task，当时城市为外部依赖；该等待条件现已解除。用户明确在线覆盖旧断言。
 - 文档 review：Claude opus/high，WORKFLOW_DOCUMENT_REVIEW，1轮。冻结候选 revision `342b14f4`，Spec blob `e06bc1beffb185b39b7978a0f885dbaa375a0af2`、Plan blob `79dcf46c`（完整指纹保存在该轮本机审查产物）；只读守卫通过，HEAD、工作树状态和文档指纹未变化，未运行产品测试。
 - Finding R1-1：Minor／可选增强／optional／复杂度不变。活跃位置调用写成“仅当”会给执行者留下遗漏 search 的空间。已核对应用三处调用，接受并修正文档：明确三处传完整位置、清理依赖与去重同步，并补应用层回归义务。未改变批准产品契约。无有效 required 未解决项，按 review-loop 结束条件结束；无其它 finding。
 - 实施依赖、每 Task 验证与 final gate 记录由执行者在发生时追加；本节不代表未运行事项通过。
 
 - 本轮校准：以 main `2312cba5` 为生产基线，用户批准需求不变。五个 Task 保留；删除等待两个分支及重复城市实现/验收要求；Task 1 适配已存在的全屏目录 E2E，Task 3 明确共享 CSS 消费方保护。旧审查结论只属于旧版，本校准版本须重新进行 WORKFLOW_DOCUMENT_REVIEW；提示词在该审查结束后重新生成。
+
+- 本次校准 review R1（Claude opus/high，候选 `02357e98`）：required 1条、optional 1条，均接受。required修正Spec §10城市既有回归不要求红绿；optional清理Architecture/历史记录的外部依赖残留。复杂度均降低，不改变批准产品契约；Spec引用已同步到修正文档版本。等待同一reviewer复核，未运行产品测试。
