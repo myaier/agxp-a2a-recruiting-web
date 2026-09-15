@@ -324,3 +324,19 @@ type 期望职位选择正文Props = {
 R3-1：Minor / 可选增强 / optional / 复杂度不变。概述仍称 DTO 在旧后端行业区映射，与根层拥有状态的详细步骤不一致。核实后接受，统一改成“Backend DTO 在公司分区编辑根层映射为 公司行业行”。仅此一句为第 3 轮之后的内容修正，未改变批准合同，未再次送审。
 
 **最终结论：Claude 共审查 3 轮；首轮 3 项、第二轮 2 项、第三轮 1 项，共 6 项均接受修正，无拒绝/延后，无未解决有效 required。Claude 第三轮仍报告 1 条 optional，没有给出 NO FINDINGS；不可将本状态称为 Claude NO FINDINGS。已达 skill 三轮上限，不启动第四轮。** 最后一条文字修正由规划者核验；后续仅更新 review 元数据和执行提示词版本指纹，不代表产品实现或产品测试完成。
+
+## 实施与异构 review 记录（2026-09-15，执行会话追加）
+
+本节为执行记录，不改变上方批准实现合同。
+
+**实施摘要**：8 个实施 Task 在分支 `audit-option-components-editors` 按依赖完成（Task 1–7 各经 implementer + 宿主内 spec/quality reviewer scoped review，Task 7 经 1 轮 fix loop，Task 8 经主控裁定的清单外必需修复 1 项）。Task 8 期间经用户明确指示：丢弃其未提交改动、提前合并 origin/main（e2e realignment + bottom-drawer-unification，merge `6cb48414` 无文本冲突；合并后全仓 vitest 全绿 + typecheck/lint 干净），Task 8 在合并后基线重做（@catalog-fullscreen 22 用例 mock 10/backend 12 全绿）。宿主内最终 whole-branch review 3 条 required + 死代码清理经 fix wave 修复（其中误删共享抽屉 CSS 经 re-review 发现后恢复）。
+
+**异构 review-loop（Claude 宿主，Codex reviewer `gpt-5.6-sol`/high，read-only，3 轮上限内）**：候选 base `3234fb1c`（origin/main tip）。每轮前记录基线，轮后守卫（状态/HEAD/指纹一致），reviewer 未运行测试、未改文件。
+
+|轮次|Findings|核实与裁决|
+|---|---|---|
+|R1（6 项）|公司行业旧请求竞态、搜索无加载/空/错误/分页状态、搜索命中父节点不可展开（均 Spec §4.2/§5.4）；期望职位搜索第二页丢弃父级命中（Plan"非可选节点只呈现标题"，新证据重开此前"从简"裁定）；onboarding Mock 点选后以显示值重过滤（§5.5）；根分页换版不重置右视图|主控逐条读码核实全部成立，6/6 接受修复 @`a8717bf3`/`7bd60d48`/`02e8cdde`（TDD，与旧断言冲突的 Task 7 fix 用例按冻结 Plan 口径改写）|
+|R2（3 项）|公司行业 finally 跨会话清忙态；搜索成功空页无空态文案、追加失败静默；期望职位根换版未作废旧右视图在飞请求|均为 R1 修复收尾缺口，核实成立，3/3 接受修复 @`8ebe2017`（含关闭时显式清忙态、搜索空态文案、追加失败沿原游标续传、换版先升 浏览代际 再重载）|
+|R3|**NO FINDINGS（reviewer 实际输出）**|—|
+
+修复期间及轮间只跑轻量定向测试；最终全仓 vitest 230 文件 / 5407 测试绿、typecheck/lint 干净。review 修复使 e2e selection 证据失效，按 INCREMENTAL_EVIDENCE 重跑缺口见 final gate 呈现。
