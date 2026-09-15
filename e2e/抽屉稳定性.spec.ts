@@ -46,14 +46,14 @@ async function 进添加意向(page: Page) {
 /** 薪资入口（添加意向页第 5 行） */
 const 薪资入口 = (page: Page): Locator => page.getByRole('button', { name: /薪资要求/ });
 
-/** 从点击薪资入口的捕获阶段起逐帧采样到 ~450ms。
+/** 从点击入口行的捕获阶段起逐帧采样到 ~450ms（入口按行内文本匹配）。
  *  rAF 循环在 click 捕获监听器里启动：捕获先于 React 处理，一帧都不会漏。 */
-function 采抽屉打开帧(page: Page): Promise<采样结果> {
-  return page.evaluate(() => new Promise<采样结果>((resolve, reject) => {
+function 采抽屉打开帧(page: Page, 入口文本: string): Promise<采样结果> {
+  return page.evaluate((文本) => new Promise<采样结果>((resolve, reject) => {
     const 标题 = document.querySelector('h1');
-    const 入口 = [...document.querySelectorAll('button')].find((钮) => 钮.textContent?.includes('薪资要求'));
+    const 入口 = [...document.querySelectorAll('button')].find((钮) => 钮.textContent?.includes(文本));
     if (!标题 || !入口) {
-      reject(new Error('找不到 h1 或薪资入口'));
+      reject(new Error(`找不到 h1 或入口行（${文本}）`));
       return;
     }
     const 祖先们: Element[] = [];
@@ -86,7 +86,7 @@ function 采抽屉打开帧(page: Page): Promise<采样结果> {
       requestAnimationFrame(记一帧);
     }, { capture: true, once: true });
     入口.click();
-  }));
+  }), 入口文本);
 }
 
 /** 逐帧断言：标题位移 < 1 CSS px，所有背景祖先滚动值与打开前一致。
@@ -136,7 +136,7 @@ test.describe('390×844 真手机全屏', () => {
 
   test('390×844 逐帧：抽屉打开背景不跳动，焦点落取消，Escape 后焦点回薪资入口', async ({ page }, testInfo) => {
     await 进添加意向(page);
-    const 结果 = await 采抽屉打开帧(page);
+    const 结果 = await 采抽屉打开帧(page, '薪资要求');
     await 附采样证据(testInfo, '390x844', 结果, page);
     断背景纹丝不动(结果);
 
@@ -168,7 +168,7 @@ test.describe('390×844 真手机全屏', () => {
     expect(滚动前).toBeGreaterThan(0);
 
     // 第一次打开：逐帧验证背景（含已滚动的滚动区）不动
-    const 首开 = await 采抽屉打开帧(page);
+    const 首开 = await 采抽屉打开帧(page, '薪资要求');
     await 附采样证据(testInfo, '390x844-已滚动-首开', 首开, page);
     断背景纹丝不动(首开);
 
@@ -182,7 +182,7 @@ test.describe('390×844 真手机全屏', () => {
     ).toBe(滚动前);
 
     // 重复打开再取消：同样的合同一个字不改
-    const 重开 = await 采抽屉打开帧(page);
+    const 重开 = await 采抽屉打开帧(page, '薪资要求');
     断背景纹丝不动(重开);
     await expect(page.getByRole('button', { name: '取消' })).toBeFocused();
     await page.keyboard.press('Escape');
@@ -260,7 +260,7 @@ test.describe('短屏 390×500', () => {
 
   test('390×500 短屏回归：抽屉打开背景不跳动、取消与焦点恢复可用', async ({ page }, testInfo) => {
     await 进添加意向(page);
-    const 结果 = await 采抽屉打开帧(page);
+    const 结果 = await 采抽屉打开帧(page, '薪资要求');
     await 附采样证据(testInfo, '390x500', 结果, page);
     断背景纹丝不动(结果);
     await expect(page.getByRole('button', { name: '取消' })).toBeFocused();
@@ -277,7 +277,7 @@ test.describe('1280×900 桌面机身模式', () => {
     await 进添加意向(page);
     // 前置：这台视口确实走了机身模式（整机等比缩放），别让用例悄悄测错形态
     await expect(page.locator('[class*="机身"]').first()).toBeVisible();
-    const 结果 = await 采抽屉打开帧(page);
+    const 结果 = await 采抽屉打开帧(page, '薪资要求');
     await 附采样证据(testInfo, '1280x900', 结果, page);
     断背景纹丝不动(结果);
     await expect(page.getByRole('button', { name: '取消' })).toBeFocused();
@@ -348,5 +348,86 @@ test.describe('数字抽屉实习档位（picker 统一 Task 2）', () => {
     await page.getByRole('button', { name: '确定' }).click();
     await expect(月数行).toContainText('至少 1 个月');
     await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+});
+
+// ── 年月抽屉（picker 统一 Task 3）：出生年月 / 预计毕业时间 复用 年月滚轮层。
+//    已滚动表单上打开与取消：背景稳定、滚动位置不动、取消零写入；
+//    毕业抽屉缺值临时落「次年 6 月」，未来 8 年档不被夹掉。 ──
+test.describe('年月抽屉（picker 统一 Task 3）', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  /** 把页内滚动区滚到底并返回原 scrollTop（恢复焦点若带动滚动，这里最先暴露） */
+  async function 滚到底(page: Page): Promise<number> {
+    await page.evaluate(() => {
+      const 区 = document.querySelector('.滚动区');
+      区!.scrollTop = 区!.scrollHeight;
+    });
+    const 滚动前 = await page.evaluate(() => document.querySelector('.滚动区')!.scrollTop);
+    expect(滚动前).toBeGreaterThan(0);
+    return 滚动前;
+  }
+
+  test('基本信息 生日抽屉：已滚动打开背景稳定，取消零写入、确定成对回填', async ({ page }, testInfo) => {
+    // 短屏 390×500：双滚轮改选择行后 /basic 在 390×844 正好一屏放得下，
+    // 短屏才滚得动；「已滚动 + 短屏」也正对焦点滚动的最坏场景（同 短屏 describe 的取舍）
+    await page.setViewportSize({ width: 390, height: 500 });
+    // Mock 数据源直接进 /basic：演示默认 1998/6 已确认（Mock 显式演示值合同保留）
+    await page.goto('/#/basic');
+    await expect(page.getByRole('heading', { name: '创建在线简历' })).toBeVisible();
+    await page.waitForTimeout(300);
+    const 生日行 = page.getByRole('button', { name: /出生年月/ });
+    await expect(生日行).toContainText('1998 年 06 月');
+    const 滚动前 = await 滚到底(page);
+
+    // 已滚动表单打开抽屉：逐帧背景纹丝不动
+    const 结果 = await 采抽屉打开帧(page, '出生年月');
+    await 附采样证据(testInfo, '年月-生日-390x844', 结果, page);
+    断背景纹丝不动(结果);
+
+    // 取消：零写入，行值与滚动位置都不动
+    await page.getByRole('button', { name: '取消' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(生日行).toContainText('1998 年 06 月');
+    expect(await page.evaluate(() => document.querySelector('.滚动区')!.scrollTop)).toBe(滚动前);
+
+    // 重开改 2001/3 确定：成对回填到父行
+    await 生日行.click();
+    await page.getByRole('listbox', { name: '出生年' }).getByRole('option', { name: '2001' }).click();
+    await page.getByRole('listbox', { name: '出生月' }).getByRole('option', { name: '3', exact: true }).click();
+    await page.getByRole('button', { name: '确定' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(生日行).toContainText('2001 年 03 月');
+  });
+
+  test('添加意向 毕业抽屉：缺值临时落次年6月、未来8年在档，已滚动打开取消稳定零写入', async ({ page }, testInfo) => {
+    await 进添加意向(page);
+    await page.getByRole('button', { name: '校园招聘', exact: true }).click();
+    const 毕业行 = page.getByRole('button', { name: /预计毕业年月/ });
+    await expect(毕业行).toContainText('请选择毕业年月');
+    const 滚动前 = await 滚到底(page);
+
+    // 已滚动表单打开抽屉：逐帧背景纹丝不动
+    const 结果 = await 采抽屉打开帧(page, '预计毕业年月');
+    await 附采样证据(testInfo, '年月-毕业-390x844', 结果, page);
+    断背景纹丝不动(结果);
+
+    // 缺值临时落「次年 6 月」；未来 8 年在档、月份到 12 月不被上界夹掉
+    const 抽屉 = page.getByRole('dialog', { name: '预计毕业时间' });
+    const 年列 = 抽屉.getByRole('listbox', { name: '毕业年' });
+    await expect(年列.getByRole('option', { name: String(new Date().getFullYear() + 1) })).toHaveAttribute('aria-selected', 'true');
+    await expect(年列.getByRole('option', { name: String(new Date().getFullYear() + 7) })).toHaveCount(1);
+    await expect(抽屉.getByRole('listbox', { name: '毕业月' }).getByRole('option', { name: '12', exact: true })).toHaveCount(1);
+
+    // 取消：零写入，行仍占位、滚动位置不动；Escape 重开同样只关层
+    await 抽屉.getByRole('button', { name: '取消' }).click();
+    await expect(抽屉).toHaveCount(0);
+    await expect(毕业行).toContainText('请选择毕业年月');
+    expect(await page.evaluate(() => document.querySelector('.滚动区')!.scrollTop)).toBe(滚动前);
+    await 毕业行.click();
+    await expect(page.getByRole('dialog', { name: '预计毕业时间' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: '预计毕业时间' })).toHaveCount(0);
+    await expect(毕业行).toContainText('请选择毕业年月');
   });
 });

@@ -239,9 +239,9 @@ describe('学生分流 Mock onboarding（R2-I-1 回归）', () => {
 });
 
 describe('学生分流 预计毕业时间弹层（可访问滚轮）', () => {
-  it('预计毕业时间弹层把毕业年和毕业月接入真实 Tab 顺序', async () => {
-    const 用户 = userEvent.setup();
-    render学生分流({
+  /** 校园招聘已选、其余偏好齐备的渲染；毕业时间由调用方给定（缺省 = 未填写） */
+  function 渲染校园招聘(毕业时间?: string) {
+    return render学生分流({
       数据源: 'backend',
       基本信息: { 身份: '在校' },
       引导预填: {
@@ -249,23 +249,58 @@ describe('学生分流 预计毕业时间弹层（可访问滚轮）', () => {
         筛选偏好: {
           ...完整预填.筛选偏好,
           求职类型: ['校园招聘'],
-          毕业时间: '2027-06',
+          ...(毕业时间 ? { 毕业时间 } : {}),
         },
       },
     });
-    await 用户.click(screen.getByRole('button', { name: /2027 年 06 月/ }));
+  }
+
+  it('已有 2027-06 回显在父行，抽屉把毕业年和毕业月接入真实 Tab 顺序', async () => {
+    const 用户 = userEvent.setup();
+    渲染校园招聘('2027-06');
+    // 已有值回显在父行（picker 统一 Task 3：行挂 aria-label=预计毕业时间）
+    expect(screen.getByRole('button', { name: '预计毕业时间' }).textContent).toContain('2027 年 06 月');
+    await 用户.click(screen.getByRole('button', { name: '预计毕业时间' }));
     const 取消 = screen.getByRole('button', { name: '取消' });
-    const 完成 = screen.getByRole('button', { name: '完成' });
+    const 确定 = screen.getByRole('button', { name: '确定' });
     const 年列 = screen.getByRole('listbox', { name: '毕业年' });
     const 月列 = screen.getByRole('listbox', { name: '毕业月' });
 
     expect(document.activeElement).toBe(取消);
     await 用户.tab();
-    expect(document.activeElement).toBe(完成);
+    expect(document.activeElement).toBe(确定);
     await 用户.tab();
     expect(document.activeElement).toBe(年列);
     await 用户.tab();
     expect(document.activeElement).toBe(月列);
+  });
+
+  it('空毕业时间显示请选择：打开临时落次年6月，取消后仍未填写且零偏好写入', async () => {
+    const { 派发 } = 渲染校园招聘();
+    const 用户 = userEvent.setup();
+    const 行 = screen.getByRole('button', { name: '预计毕业时间' });
+    expect(行.textContent).toContain('请选择');
+    await 用户.click(行);
+    // 缺值临时落「次年 6 月」：只在抽屉内，父行不动
+    const 年列 = screen.getByRole('listbox', { name: '毕业年' });
+    expect(
+      within(年列).getByRole('option', { name: String(new Date().getFullYear() + 1) }).getAttribute('aria-selected'),
+    ).toBe('true');
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('button', { name: '预计毕业时间' }).textContent).toContain('请选择');
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '存求职筛选偏好' }));
+  });
+
+  it('打开改年确定才写入毕业时间（一次 存求职筛选偏好，只动这一个字段）', async () => {
+    const { 派发 } = 渲染校园招聘();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '预计毕业时间' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '毕业年' })).getByRole('option', { name: '2030' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    const 存偏好 = 派发.mock.calls.filter(([动作]) => 动作.型 === '存求职筛选偏好');
+    expect(存偏好).toHaveLength(1);
+    expect((存偏好[0][0] as { 偏好: { 毕业时间: string } }).偏好.毕业时间).toBe('2030-06');
   });
 });
 

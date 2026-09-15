@@ -224,7 +224,7 @@ describe('四类型与原引导排除接入', () => {
     await userEvent.click(screen.getByRole('button', { name: 名称 }));
     expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 求职类型: 名称 === '社招全职' ? '全职' : 名称 } });
   });
-  it('校园毕业月必填，完成滚轮才写值', async () => {
+  it('校园毕业月必填，抽屉确定才写值', async () => {
     当前草稿 = { ...基础草稿, 求职类型: '校园招聘' };
     渲染意向('/intentions/new');
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
@@ -232,8 +232,21 @@ describe('四类型与原引导排除接入', () => {
     expect(mock保存意向).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: /预计毕业年月/ }));
     expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 补丁: expect.objectContaining({ 毕业时间: expect.any(String) }) }));
-    await userEvent.click(screen.getByRole('button', { name: '完成' }));
+    await userEvent.click(screen.getByRole('button', { name: '确定' }));
     expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 毕业时间: `${new Date().getFullYear() + 1}-06` } });
+  });
+  it('已有毕业年补入年表并原样回显确定，未来 8 年照常可选', async () => {
+    当前草稿 = { ...基础草稿, 求职类型: '校园招聘', 毕业时间: '2020-06' };
+    渲染意向('/intentions/new');
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /预计毕业年月/ }));
+    const 年列 = screen.getByRole('listbox', { name: '毕业年' });
+    // 已有毕业年 2020 在表头并回显选中；表中间的空洞年不出现
+    expect(within(年列).getByRole('option', { name: '2020' }).getAttribute('aria-selected')).toBe('true');
+    expect(within(年列).queryByRole('option', { name: '2023' })).toBeNull();
+    expect(within(年列).getByRole('option', { name: String(new Date().getFullYear() + 7) })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 毕业时间: '2020-06' } });
   });
   it('实习时间必填并显示日薪；数字抽屉确定分别写草稿', async () => {
     当前草稿 = { ...基础草稿, 求职类型: '实习生' };
@@ -395,7 +408,7 @@ describe('添加意向页 跨类型年薪月数（core editors §6.2 Task 2）',
     await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
     await userEvent.click(screen.getByRole('button', { name: '校园招聘' }));
     await userEvent.click(screen.getByText('请选择毕业年月'));
-    await userEvent.click(screen.getByRole('button', { name: '完成' }));
+    await userEvent.click(screen.getByRole('button', { name: '确定' }));
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
     const body = 转意向写入(mock保存意向.mock.calls[0][0] as 意向草稿型, { 原始: 原始14薪 });

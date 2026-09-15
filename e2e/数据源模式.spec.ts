@@ -11012,7 +11012,7 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     await page.getByRole('button', { name: 'Fixture 行业', exact: true }).click();
     await page.getByPlaceholder('必填').nth(1).fill('Fixture 后端工程师');
     await page.getByRole('button', { name: '入职年月' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: '完成' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '确定' }).click();
     await page.getByRole('button', { name: '完成', exact: true }).click();
 
     const 技能输入 = page.getByPlaceholder('如：Go、分布式事务');
@@ -12076,7 +12076,7 @@ test.describe('核心编辑 简历行业 @mock', () => {
     // 补齐必填与入职年月 → 完成 → 经历卡带行业标签；保存进本地简历，重进回读不丢
     await page.getByPlaceholder('必填').nth(1).fill('演示工程师');
     await page.getByRole('button', { name: '入职年月' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: '完成' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '确定' }).click();
     await page.getByRole('button', { name: '完成', exact: true }).click();
     await expect(page.getByText(/金融科技/).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: '保存', exact: true }).click();
@@ -12215,7 +12215,7 @@ test.describe('核心编辑 简历行业 @backend', () => {
     //（industry_id 是所点孙叶子的目录 ID，不按显示名反查）
     await page.getByPlaceholder('必填').nth(1).fill('演示工程师');
     await page.getByRole('button', { name: '入职年月' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: '完成' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '确定' }).click();
     await page.getByRole('button', { name: '完成', exact: true }).click();
     await expect(page.getByText(/银行支付/).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: '保存', exact: true }).click();
