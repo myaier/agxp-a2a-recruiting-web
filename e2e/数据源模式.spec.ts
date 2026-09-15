@@ -1952,6 +1952,10 @@ function P5详情wire(c: P5Case记录形, 角色: P5角色词): Record<string, u
     // （显式 null = 冻结正文缺席合法档），不补读当前 Job/Resume。
     match_score: c.matchScore ?? null,
     job_detail: null,
+    // S0–S3 连续筛选合并（2026-09-15）：continuity_version 是详情 required 键。
+    // 本 fixture 全部 Case 走 version 1（历史 Case）：连续块四成员整组缺席即合法档，
+    // 命令层也因此保持 v1 纯 {action} body（不冒充 v2 待办语义）。
+    continuity_version: 1,
   };
   // 招聘端详情 required 私有展示二键：恒在场的共享在线简历正文与候选身份
   if (角色 === 'recruiter') {

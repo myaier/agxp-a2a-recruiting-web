@@ -450,6 +450,8 @@ function 候选Case详情(caseId: string, 覆盖: { matchScore: number | null; j
     intention_id: 编号.意向,
     match_score: 覆盖.matchScore,
     job_detail: 覆盖.jobDetail,
+    // S0–S3 连续筛选合并（2026-09-15）：version 1 = 历史 Case，连续块四成员整组缺席合法。
+    continuity_version: 1,
   };
 }
 
@@ -472,6 +474,8 @@ function 招聘Case详情(caseId: string, 覆盖: {
     job_detail: 覆盖.jobDetail,
     candidate_resume: 覆盖.resume,
     candidate_identity: 候选身份(覆盖.disclosed),
+    // S0–S3 连续筛选合并（2026-09-15）：version 1 = 历史 Case，连续块四成员整组缺席合法。
+    continuity_version: 1,
   };
 }
 
