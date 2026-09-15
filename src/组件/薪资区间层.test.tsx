@@ -186,4 +186,141 @@ describe('薪资区间层 岗位用途', () => {
     await 用户.click(screen.getByRole('button', { name: '确定' }));
     expect(确认).toHaveBeenCalledWith(20, 30);
   });
+
+  it('精确输入只在月薪显示：日薪弹层没有「输入金额」入口', () => {
+    render(<薪资区间层 用途="岗位" 周期="day" 下限={null} 上限={null} 确认={vi.fn()} 取消={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: '输入金额' })).toBeNull();
+  });
+});
+
+// ── 岗位日薪/时薪（Task 5）：同一双轮层接走原两个 数字滚轮层 入口 ──
+// 冻结策略：日薪 50–800 / 时薪 20–200 步长 10；每侧缺值临时 200/40；初值沿旧
+// 数字滚轮「先夹范围再就近吸附」；确定同步两字段，不在抽屉内新增倒置拦截；
+// 取消原字段值不受吸附影响（回填与否由页面负责，这里只锁弹层合同）。
+describe('薪资区间层 岗位日薪/时薪', () => {
+  it('空弹层两侧临时落 200；档 50–800 步 10 共 76 档，无精确输入入口', () => {
+    render(<薪资区间层 用途="岗位" 周期="day" 下限={null} 上限={null} 确认={vi.fn()} 取消={vi.fn()} />);
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    expect(within(下限列).getByRole('option', { name: '200' }).getAttribute('aria-selected')).toBe('true');
+    expect(within(screen.getByRole('listbox', { name: '薪资上限' }))
+      .getByRole('option', { name: '200' }).getAttribute('aria-selected')).toBe('true');
+    expect(within(下限列).getAllByRole('option').length).toBe(76);
+    expect(within(下限列).getByRole('option', { name: '50' })).toBeTruthy();
+    expect(within(下限列).getByRole('option', { name: '800' })).toBeTruthy();
+    expect(within(下限列).queryByRole('option', { name: '795' })).toBeNull();
+  });
+
+  it('空弹层时薪两侧临时落 40；档 20–200 步 10 共 19 档', async () => {
+    const 确认 = vi.fn();
+    render(<薪资区间层 用途="岗位" 周期="hour" 下限={null} 上限={null} 确认={确认} 取消={vi.fn()} />);
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    expect(within(下限列).getAllByRole('option').length).toBe(19);
+    expect(within(下限列).getByRole('option', { name: '40' }).getAttribute('aria-selected')).toBe('true');
+    await userEvent.click(screen.getByRole('button', { name: '确定' }));
+    expect(确认).toHaveBeenCalledWith(40, 40);
+  });
+
+  it('倒置 300/200 确定仍回填：倒置拦截归表单提交校验，不新增到日/时薪抽屉', async () => {
+    const 确认 = vi.fn();
+    const 用户 = userEvent.setup();
+    render(<薪资区间层 用途="岗位" 周期="day" 下限={null} 上限={null} 确认={确认} 取消={vi.fn()} />);
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: '300' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资上限' })).getByRole('option', { name: '200' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(确认).toHaveBeenCalledWith(300, 200);
+    expect(screen.queryByText('薪资下限不能高于上限')).toBeNull();
+  });
+
+  it('已有 55 吸附到 60、900 夹到 800：初值沿旧数字轮先夹范围再就近吸附', () => {
+    const { unmount } = render(
+      <薪资区间层 用途="岗位" 周期="day" 下限={55} 上限={null} 确认={vi.fn()} 取消={vi.fn()} />,
+    );
+    expect(within(screen.getByRole('listbox', { name: '薪资下限' }))
+      .getByRole('option', { name: '60' }).getAttribute('aria-selected')).toBe('true');
+    unmount();
+    render(<薪资区间层 用途="岗位" 周期="day" 下限={900} 上限={200} 确认={vi.fn()} 取消={vi.fn()} />);
+    expect(within(screen.getByRole('listbox', { name: '薪资下限' }))
+      .getByRole('option', { name: '800' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('取消零回填：确认不调用，原值不受吸附影响', async () => {
+    const 确认 = vi.fn();
+    const 取消 = vi.fn();
+    render(<薪资区间层 用途="岗位" 周期="day" 下限={55} 上限={900} 确认={确认} 取消={取消} />);
+    await userEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(取消).toHaveBeenCalledTimes(1);
+    expect(确认).not.toHaveBeenCalled();
+  });
+});
+
+// ── 求职引导用途（Task 5）：引导薪资接同一双轮层 ──
+// 冻结策略：初值沿页面已填/面议（0）；改下限为 0 设上限 0 并隐藏右轮；从面议恢复
+// 或上限小于下限时按 min(下限+10 或 100, 260 或 2200) 联动；不额外夹上限到动态帽；
+// 确定原样回填两侧（无 max 规则、无倒置拦截）。
+describe('薪资区间层 求职引导用途', () => {
+  it('面议 0/0：左轮停在面议档（零值文案），右轮整列隐藏，确定回填 0/0', async () => {
+    const 确认 = vi.fn();
+    render(<薪资区间层 用途="求职引导" 下限={0} 上限={0} 确认={确认} 取消={vi.fn()} />);
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    expect(within(下限列).getByRole('option', { name: '面议' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByRole('listbox', { name: '薪资上限' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: '确定' }));
+    expect(确认).toHaveBeenCalledWith(0, 0);
+  });
+
+  it('从面议点 20：右轮出现并联动 30（min(20+10,260)），确定回填 20/30', async () => {
+    const 确认 = vi.fn();
+    const 用户 = userEvent.setup();
+    render(<薪资区间层 用途="求职引导" 下限={0} 上限={0} 确认={确认} 取消={vi.fn()} />);
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: '20' }));
+    const 上限列 = screen.getByRole('listbox', { name: '薪资上限' });
+    expect(within(上限列).getByRole('option', { name: '30' }).getAttribute('aria-selected')).toBe('true');
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(确认).toHaveBeenCalledWith(20, 30);
+  });
+
+  it('下限 40 联动 50：不额外夹上限到动态帽', async () => {
+    const 用户 = userEvent.setup();
+    render(<薪资区间层 用途="求职引导" 下限={0} 上限={0} 确认={vi.fn()} 取消={vi.fn()} />);
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: '40' }));
+    expect(within(screen.getByRole('listbox', { name: '薪资上限' }))
+      .getByRole('option', { name: '50' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('点回面议：右轮消失、上限临时值归 0，确定回填 0/0', async () => {
+    const 确认 = vi.fn();
+    const 用户 = userEvent.setup();
+    render(<薪资区间层 用途="求职引导" 下限={0} 上限={0} 确认={确认} 取消={vi.fn()} />);
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    await 用户.click(within(下限列).getByRole('option', { name: '20' }));
+    expect(screen.getByRole('listbox', { name: '薪资上限' })).toBeTruthy();
+    await 用户.click(within(下限列).getByRole('option', { name: '面议' }));
+    expect(screen.queryByRole('listbox', { name: '薪资上限' })).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(确认).toHaveBeenCalledWith(0, 0);
+  });
+
+  it('已答 300/500 日薪打开原样定位；键盘改下限确定后回填同一值', async () => {
+    const 确认 = vi.fn();
+    const 用户 = userEvent.setup();
+    render(<薪资区间层 用途="求职引导" 周期="day" 下限={300} 上限={500} 确认={确认} 取消={vi.fn()} />);
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    expect(within(下限列).getByRole('option', { name: '300' }).getAttribute('aria-selected')).toBe('true');
+    下限列.focus();
+    await 用户.keyboard('{ArrowDown}');
+    // 键盘按档序移动：300 的下一档是 320（220–500 段步长 20）
+    expect(within(下限列).getByRole('option', { name: '320' }).getAttribute('aria-selected')).toBe('true');
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(确认).toHaveBeenCalledWith(320, 500);
+  });
+
+  it('取消零回填：确认不调用', async () => {
+    const 确认 = vi.fn();
+    const 取消 = vi.fn();
+    render(<薪资区间层 用途="求职引导" 下限={0} 上限={0} 确认={确认} 取消={取消} />);
+    await userEvent.click(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: '20' }));
+    await userEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(取消).toHaveBeenCalledTimes(1);
+    expect(确认).not.toHaveBeenCalled();
+  });
 });

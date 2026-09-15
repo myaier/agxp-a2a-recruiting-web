@@ -494,3 +494,141 @@ test.describe('年份区间抽屉（bottom-drawer 统一 Task 4）', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 });
+
+// ── 薪资抽屉统一（bottom-drawer 统一 Task 5）：全部薪资入口同一双轮抽屉。
+//    引导面议（右轮隐藏）、意向薪资、岗位 day/hour 双轮入口、岗位月薪精确输入
+//    模式与取消零回填，配手机短屏截图附件 —— 不以单一用途代表策略覆盖。 ──
+test.describe('薪资抽屉统一（bottom-drawer 统一 Task 5）', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  /** Mock 数据源直接进引导薪资题：默认职位/城市已选，两步「下一步」到期望薪资 */
+  async function 进引导薪资题(page: Page) {
+    await page.goto('/#/wizard?stage=salary');
+    await page.getByRole('button', { name: /保存（已选/ }).click(); // 期望职位（Mock 默认已选）
+    await page.getByRole('button', { name: /保存（已选/ }).click(); // 工作城市（Mock 默认上海）
+    await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toBeVisible();
+    await page.waitForTimeout(300);
+  }
+
+  test('引导面议：入口行开抽屉背景不跳动，右轮隐藏，取消零回填、确定写 0/0', async ({ page }, testInfo) => {
+    await 进引导薪资题(page);
+    const 入口 = page.getByRole('button', { name: /薪资要求（月薪/ });
+    await expect(入口).toContainText('面议');
+
+    const 结果 = await 采抽屉打开帧(page, '薪资要求');
+    await 附采样证据(testInfo, '薪资-引导面议-390x844', 结果, page);
+    断背景纹丝不动(结果);
+
+    // 面议 0/0：左轮停在面议档，右轮整列隐藏
+    const 抽屉 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+    await expect(抽屉.getByRole('listbox', { name: '薪资上限' })).toHaveCount(0);
+    await expect(抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '面议' })).toHaveAttribute('aria-selected', 'true');
+
+    // 取消零回填，行仍面议
+    await 抽屉.getByRole('button', { name: '取消' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(入口).toContainText('面议');
+
+    // 确定写 0/0：行仍显示面议
+    await 入口.click();
+    await page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' }).getByRole('button', { name: '确定' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(入口).toContainText('面议');
+  });
+
+  test('岗位日薪双轮入口：开同一抽屉背景不跳动，缺值 200/200，取消零回填、确定两字段', async ({ page }, testInfo) => {
+    await page.goto('/#/hr/post-job');
+    await page.getByRole('button', { name: '实习生 在校生实习，按天计薪' }).click();
+    await page.getByRole('button', { name: '提供转正机会' }).click();
+    await page.getByPlaceholder(/资深后端工程师/).fill('双轮日薪岗');
+    await page.getByRole('button').filter({ hasText: '职位类别' }).click();
+    await page.getByRole('button', { name: '产品', exact: true }).click();
+    await page.getByRole('button', { name: '产品经理', exact: true }).click();
+    await page.getByRole('button', { name: '混合', exact: true }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await page.getByLabel('职位描述').fill('双轮日薪岗的职位描述。');
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page.getByText('日薪（元/天）')).toBeVisible();
+    await page.waitForTimeout(300);
+
+    const 结果 = await 采抽屉打开帧(page, '元/天');
+    await 附采样证据(testInfo, '薪资-岗位日薪双轮-390x844', 结果, page);
+    断背景纹丝不动(结果);
+
+    const 抽屉 = page.getByRole('dialog', { name: '薪资要求(日薪，单位:元)' });
+    await expect(抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '200' })).toHaveAttribute('aria-selected', 'true');
+    await expect(抽屉.getByRole('listbox', { name: '薪资上限' }).getByRole('option', { name: '200' })).toHaveAttribute('aria-selected', 'true');
+
+    // 取消零回填：两个金额键仍是未填占位
+    await 抽屉.getByRole('button', { name: '取消' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    for (const 键 of await page.getByRole('button', { name: /元\/天/ }).all()) {
+      await expect(键).toContainText('—');
+    }
+
+    // 重开改 300/400 确定：两个金额键同步回填
+    await page.getByRole('button', { name: /元\/天/ }).first().click();
+    await 抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '300' }).click();
+    await 抽屉.getByRole('listbox', { name: '薪资上限' }).getByRole('option', { name: '400' }).click();
+    await 抽屉.getByRole('button', { name: '确定' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /元\/天/ }).first()).toContainText('300');
+    await expect(page.getByRole('button', { name: /元\/天/ }).nth(1)).toContainText('400');
+  });
+
+  test('岗位月薪精确输入模式：入口开双轮再切金额框，Escape 关闭不回填', async ({ page }, testInfo) => {
+    await page.goto('/#/hr/post-job');
+    await page.getByPlaceholder(/资深后端工程师/).fill('精确输入岗');
+    await page.getByRole('button').filter({ hasText: '职位类别' }).click();
+    await page.getByRole('button', { name: '产品', exact: true }).click();
+    await page.getByRole('button', { name: '产品经理', exact: true }).click();
+    await page.getByRole('button', { name: '混合', exact: true }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await page.getByLabel('职位描述').fill('精确输入岗的职位描述。');
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page.getByRole('button', { name: '薪资下限' })).toBeVisible();
+    await page.waitForTimeout(300);
+
+    // 月薪金额键的「薪资下限」在 aria-label 上，采帧按行内文本匹配 —— 用行文字 '—K' 定位
+    const 结果 = await 采抽屉打开帧(page, '—K');
+    await 附采样证据(testInfo, '薪资-岗位月薪精确输入-390x844', 结果, page);
+    断背景纹丝不动(结果);
+
+    const 抽屉 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+    await 抽屉.getByRole('button', { name: '输入金额' }).click();
+    await expect(抽屉.getByLabel('薪资下限')).toBeVisible();
+    await expect(抽屉.getByLabel('薪资上限')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('薪资-精确输入模式-390x844.png') });
+    await testInfo.attach('薪资-精确输入模式-390x844.png', {
+      path: testInfo.outputPath('薪资-精确输入模式-390x844.png'),
+      contentType: 'image/png',
+    });
+
+    // Escape 只关层：金额键仍是未填占位
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '薪资下限' })).toContainText('—');
+  });
+
+  test('意向薪资短屏 390×500：抽屉可达且取消键在视口内，附件留档', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 500 });
+    await 进添加意向(page);
+    await page.getByRole('button', { name: /薪资要求/ }).click();
+    await expect(page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' })).toBeVisible();
+    await page.waitForTimeout(350);
+    const 取消 = page.getByRole('button', { name: '取消' });
+    await expect(取消).toBeFocused();
+    expect(
+      await 取消.evaluate((钮) => {
+        const 形 = 钮.getBoundingClientRect();
+        return 形.top >= 0 && 形.bottom <= window.innerHeight;
+      }),
+      '取消键聚焦后不在视口内',
+    ).toBe(true);
+    const 截图文件 = testInfo.outputPath('薪资-意向-短屏-390x500.png');
+    await page.screenshot({ path: 截图文件 });
+    await testInfo.attach('薪资-意向-短屏-390x500.png', { path: 截图文件, contentType: 'image/png' });
+    await 取消.click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+});

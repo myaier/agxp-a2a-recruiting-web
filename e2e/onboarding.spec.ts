@@ -121,7 +121,22 @@ test.describe('multi-role onboarding', () => {
 
     await expect(page).toHaveURL(/#\/wizard$/);
     await expect(page.getByRole('heading', { name: '期望实习日薪是？' })).toBeVisible();
-    await expect(page.getByRole('listbox', { name: '最低日薪' })).toBeVisible();
+    // bottom-drawer 统一 Task 5：页内自写双轮改薪资入口行 + 共用 薪资区间层。
+    // 面议起步：抽屉里左轮停在面议档、右轮整列隐藏；确定写 0/0 后行仍显示面议
+    const 薪资入口 = page.getByRole('button', { name: /薪资要求（日薪/ });
+    await expect(薪资入口).toContainText('面议');
+    await 薪资入口.click();
+    const 薪资抽屉 = page.getByRole('dialog', { name: '薪资要求(日薪，单位:元)' });
+    await expect(薪资抽屉).toBeVisible();
+    await expect(薪资抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '面议' })).toHaveAttribute('aria-selected', 'true');
+    await expect(薪资抽屉.getByRole('listbox', { name: '薪资上限' })).toHaveCount(0);
+    await 薪资抽屉.getByRole('button', { name: '取消' }).click();
+    await expect(薪资抽屉).toHaveCount(0);
+    await expect(薪资入口).toContainText('面议');
+    await 薪资入口.click();
+    await page.getByRole('dialog', { name: '薪资要求(日薪，单位:元)' }).getByRole('button', { name: '确定' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(薪资入口).toContainText('面议');
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible();
   });
@@ -271,9 +286,9 @@ test.describe('multi-role onboarding', () => {
     // AI 初筛卡 2026-08-26 已删,薪资承诺句降格为薪资区小字
     await expect(page.getByText('薪资仅判断双方区间是否匹配，不询问或协商具体金额。')).toBeVisible();
 
+    // bottom-drawer 统一 Task 5：日薪两个金额按钮开同一双轮抽屉 —— 一次打开、
+    // 点一次「确定」同步上下限两字段（缺值临时落 200/200）
     await page.getByRole('button', { name: '— 元/天' }).first().click();
-    await page.getByRole('button', { name: '确定' }).click();
-    await page.getByRole('button', { name: '— 元/天' }).click();
     await page.getByRole('button', { name: '确定' }).click();
     // picker 统一 Task 2：岗位城市 input 已删 —— 经工作城市行打开全页选择子视图选上海
     await page.getByRole('button').filter({ hasText: '工作城市' }).click();

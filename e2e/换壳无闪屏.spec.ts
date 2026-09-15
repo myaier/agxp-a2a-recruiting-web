@@ -186,9 +186,10 @@ test.describe('注册流换壳不闪中间屏', () => {
     await page.getByRole('button', { name: '下一步' }).click();
     await page.getByLabel('职位描述').fill('参与 AI 招聘产品的需求分析与原型设计。');
     await page.getByRole('button', { name: '下一步' }).click();
+    // bottom-drawer 统一 Task 5：日薪两个金额按钮开同一双轮抽屉 —— 一次打开、
+    // 点一次「确定」同步上下限两字段（缺值临时落 200/200）。只改薪资操作，
+    // 换壳逐帧断言原样保留。
     await page.getByRole('button', { name: '— 元/天' }).first().click();
-    await page.getByRole('button', { name: '确定' }).click();
-    await page.getByRole('button', { name: '— 元/天' }).click();
     await page.getByRole('button', { name: '确定' }).click();
     // picker 统一 Task 2：岗位城市 input 已删 —— 经工作城市行打开全页选择子视图选上海
     await page.getByRole('button').filter({ hasText: '工作城市' }).click();
