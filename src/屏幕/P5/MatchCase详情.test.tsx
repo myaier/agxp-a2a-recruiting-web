@@ -29,6 +29,7 @@ import type { P5S0筛选记录 } from '../../数据/招聘数据源/MatchCase';
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import { P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import type { BFF主体, BFF附件简历库 } from '../../数据/BFF契约';
+import { P5历史连续块 } from '../../测试/BFF样本';
 
 // jsdom 不实现 scrollIntoView（详情屏挂载后自动定位会调用它）
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -198,6 +199,7 @@ function 候选详情DTO(选项: 详情选项 = {}): P5详情 {
     // release/0.2.5：展示字段是解码层 required 成员；本屏不消费，置合法 null 档。
     matchScore: null,
     jobDetail: null,
+    ...P5历史连续块,
   };
 }
 
@@ -237,6 +239,7 @@ function 招聘详情DTO(选项: 详情选项 = {}): P5详情 {
     conversationRef: 选项.conversationRef ?? null,
     matchScore: null,
     jobDetail: null,
+    ...P5历史连续块,
     candidateResume: null,
     candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };
@@ -2290,14 +2293,14 @@ const S0别名 = 'hr-0123456789ab';
 function S0记录样本(): P5S0筛选记录 {
   return {
     messages: [
-      { id: 's0q_1', kind: 'question', role: 'candidate', round: 1, text: '需要确认岗位的值班安排。', occurredAt: '2026-08-23T10:01:00Z' },
-      { id: 's0a_1', kind: 'answer', role: 'recruiter', round: 1, answerStatus: 'answered', text: '没有固定晚班，周末偶尔需要支援。', occurredAt: '2026-08-23T10:05:00Z' },
-      { id: 's0q_2', kind: 'question', role: 'candidate', round: 2, text: '还需要了解团队规模。', occurredAt: '2026-08-30T09:00:00Z' },
-      { id: 's0a_2', kind: 'answer', role: 'recruiter', round: 2, answerStatus: 'declined', occurredAt: '2026-08-30T09:02:00Z' },
-      { id: 's0q_3', kind: 'question', role: 'candidate', round: 3, text: '平时出差频率如何？', occurredAt: '2026-08-30T09:10:00Z' },
-      { id: 's0a_3', kind: 'answer', role: 'recruiter', round: 3, answerStatus: 'unknown', occurredAt: '2026-08-30T09:12:00Z' },
-      { id: 's0q_4', kind: 'question', role: 'candidate', round: 4, text: '带团队的人数规模？', occurredAt: '2026-08-30T09:20:00Z' },
-      { id: 's0a_4', kind: 'answer', role: 'recruiter', round: 4, answerStatus: 'not_available', occurredAt: '2026-08-30T09:22:00Z' },
+      { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, text: '需要确认岗位的值班安排。', occurredAt: '2026-08-23T10:01:00Z' },
+      { id: 's0a_1', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, answerStatus: 'answered', answerSource: null, text: '没有固定晚班，周末偶尔需要支援。', occurredAt: '2026-08-23T10:05:00Z' },
+      { id: 's0q_2', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 2, text: '还需要了解团队规模。', occurredAt: '2026-08-30T09:00:00Z' },
+      { id: 's0a_2', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 2, answerStatus: 'declined', answerSource: null, occurredAt: '2026-08-30T09:02:00Z' },
+      { id: 's0q_3', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 3, text: '平时出差频率如何？', occurredAt: '2026-08-30T09:10:00Z' },
+      { id: 's0a_3', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 3, answerStatus: 'unknown', answerSource: null, occurredAt: '2026-08-30T09:12:00Z' },
+      { id: 's0q_4', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 4, text: '带团队的人数规模？', occurredAt: '2026-08-30T09:20:00Z' },
+      { id: 's0a_4', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 4, answerStatus: 'not_available', answerSource: null, occurredAt: '2026-08-30T09:22:00Z' },
     ],
     summaries: [
       { id: 's0sum_1', phase: 'initial', summary: '初评已确认岗位在浦东园区，值班安排仍待确认。', occurredAt: '2026-08-23T10:06:00Z' },
@@ -2450,7 +2453,8 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     渲染详情('candidate', 'mc_direct');
     // 三条未回答的气泡正文就是固定文案本身（getByText 精确匹配：拼了别的字就找不到）
     expect(screen.getByText('已拒绝回答')).toBeTruthy();
-    expect(screen.getByText('暂无法确认')).toBeTruthy();
+    // 冻结合同 §6.1：unknown 对外固定「暂时无法回答」（是一条被记录的回答，不等于同意）
+    expect(screen.getByText('暂时无法回答')).toBeTruthy();
     expect(screen.getByText('暂无可用信息')).toBeTruthy();
     // 段内气泡 9 个不多不少：轮 2–4 的 6 条 S0 问答 + 旧 transcript 1 条 + 旧叮嘱回执 2 条
     const 列 = 气泡行('还需要了解团队规模。').parentElement as HTMLElement;
@@ -3010,7 +3014,8 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
               messages: [
                 ...区.screeningRecords.messages,
                 {
-                  id: 's0q_5', kind: 'question' as const, role: 'candidate' as const, round: 5,
+                  id: 's0q_5', kind: 'question' as const, role: 'candidate' as const,
+                  stage: 'anonymous_screening' as const, askingRole: 'candidate' as const, round: 5,
                   text: '到岗时间能接受节假日轮班吗？', occurredAt: '2026-08-30T09:50:00Z',
                 },
               ],

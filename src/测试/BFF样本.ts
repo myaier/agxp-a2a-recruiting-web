@@ -601,6 +601,8 @@ export const P5候选详情Wire: BFF候选MatchCase详情 = {
   job: P5工作区职位Wire,
   match_score: 92,
   job_detail: null,
+  // 缺省样本是历史（continuity_version 1）Case：另四个连续块成员合法缺席。
+  continuity_version: 1,
 };
 
 export const P5招聘详情Wire: BFF招聘MatchCase详情 = {
@@ -615,6 +617,19 @@ export const P5招聘详情Wire: BFF招聘MatchCase详情 = {
   job_detail: null,
   candidate_resume: null,
   candidate_identity: P5候选身份Wire,
+  continuity_version: 1,
+};
+
+/**
+ * 归一化 P5详情 的「历史 Case」连续块（continuity_version 1）：v1 详情没有待办、没有
+ * 发问块计数、没有恢复窗口与固定总结；测试构造 DTO 时展开它即可。
+ */
+export const P5历史连续块 = {
+  continuityVersion: 1 as const,
+  pendingActions: [],
+  dialogueProgress: null,
+  reconsideration: null,
+  confirmationSummary: null,
 };
 
 export const P5候选工作区项Wire: BFF候选工作区项 = {

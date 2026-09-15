@@ -38,7 +38,14 @@ import type {
 } from '../../数据/BFF契约';
 import type { 页面简历写入, 页面意向快照, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
-import type { P5列表项, P5详情, MatchCaseSummary } from '../../数据/招聘数据源/MatchCase';
+import type {
+  P5列表项,
+  P5详情,
+  P5决定目标,
+  P5对话回答,
+  P5意向目标,
+  MatchCaseSummary,
+} from '../../数据/招聘数据源/MatchCase';
 import type { NegotiationCard, NegotiationDetail, NegotiationShelf } from '../../数据/招聘数据源/连续代谈';
 import type { 接触事件 } from '../../数据/招聘数据源/接触记录';
 import type { 创建候选实名输入, 候选实名摘要 } from '../../数据/招聘数据源/候选实名';
@@ -991,10 +998,19 @@ export interface MatchCase操作 {
    * 与 候选P4委托输入.disclosureAcknowledged: true 同一纪律。
    */
   提交简历(caseId: string, fileId: string, fileVersionId: string, disclosureConfirmed: true): Promise<void>;
-  决定S0(caseId: string, action: 'continue' | 'end'): Promise<void>;
-  决定S1(caseId: string, action: 'continue' | 'not_fit'): Promise<void>;
+  /**
+   * S0/S1/S3 决定：continuity_version 2 的 Case 必须带 目标（本人待办 + 私有说明 /
+   * 所读 summary_version），历史 Case 不带 —— 意图键把 目标 一并算进去，所以改说明或
+   * 改回答之后是全新意图（绝不沿用旧 body 的键），同一 body 的网络重试才复用同一把键。
+   */
+  决定S0(caseId: string, action: 'continue' | 'end', 目标?: P5决定目标): Promise<void>;
+  决定S1(caseId: string, action: 'continue' | 'not_fit' | 'end', 目标?: P5决定目标): Promise<void>;
   决定S2(role: P5角色, caseId: string, issueId: string, action: 'accept' | 'reject'): Promise<void>;
-  决定S3(role: P5角色, caseId: string, action: 'confirm' | 'decline'): Promise<void>;
+  决定S3(role: P5角色, caseId: string, action: 'confirm' | 'decline', 目标?: P5意向目标): Promise<void>;
+  /** S2 人工补答（v2）：本人的公开回答、暂时无法回答，或改为结束匹配。 */
+  回答对话(role: P5角色, caseId: string, 载荷: P5对话回答): Promise<void>;
+  /** S1 七天重新考虑（v2，仅招聘端）：不带待办，只有 continue 一个动作词。 */
+  重新考虑(caseId: string, privateNote: string | null): Promise<void>;
   新增叮嘱(role: P5角色, caseId: string, text: string): Promise<void>;
   /** 披露后的原始简历 PDF：返回 Plan 1 对象租约（登记在域内，会话边界统一回收）。 */
   读取简历PDF(role: P5角色, caseId: string): Promise<PDF对象租约>;

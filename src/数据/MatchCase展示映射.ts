@@ -16,15 +16,24 @@ import type {
   P5简历附件,
   P5阶段区,
   P5时间线项,
+  P5待办,
+  P5待办用途,
+  P5对话进度,
+  P5确认总结,
+  P5重新考虑,
   P5状态视图,
   P5终局摘要,
   P5工作区职位,
   P5Agent注意码,
+  P5回答来源,
+  P5回答状态,
+  P5筛选阶段,
+  P5S0筛选记录,
   P5S0筛选消息,
   P5S0筛选总结,
 } from './招聘数据源/MatchCase';
 
-export type { P5角色, P5动作, P5步骤 } from './招聘数据源/MatchCase';
+export type { P5角色, P5动作, P5步骤, P5待办用途 } from './招聘数据源/MatchCase';
 export type { P5生命周期, P5阶段, P5状态 } from './BFF契约';
 import type { P5角色, P5动作, P5步骤 } from './招聘数据源/MatchCase';
 
@@ -84,6 +93,10 @@ const 动作卡文案表 = {
   decide_coordination: { 标题: '回应协同事项', 说明: '对当前协同事项作出接受或拒绝' },
   confirm_intent: { 标题: '确认意向', 说明: '确认匹配并进入会话创建' },
   decline_intent: { 标题: '婉拒意向', 说明: '拒绝本次匹配' },
+  // S0–S3 连续筛选（v2）：S2 人工补答与 S1 七天重新考虑。「继续」只表示愿意进一步了解
+  // 和协调，不代表接受差异，也不授权 Agent 自行让步（冻结合同 Global Constraints）。
+  answer_dialogue: { 标题: '回答对方的问题', 说明: '你的回答是本次匹配的正式回答，双方都能看到' },
+  reconsider: { 标题: '重新考虑', 说明: '在七天窗口内继续这一单：不重投简历、不重跑初筛' },
 } as const satisfies Record<P5动作, { 标题: string; 说明: string }>;
 
 /** 阶段区自身 state 的展示文案。 */
@@ -94,12 +107,17 @@ const 阶段区状态文案表 = {
   ended: '已结束',
 } as const satisfies Record<P5阶段区['state'], string>;
 
-/** S0 未回答 answer 的固定文案（不编造正文）；只有这三个 answer_status 不带 text。 */
+/**
+ * 未回答 answer 的固定文案（不编造正文）；这四个 answer_status 都不带 text。
+ * unknown 对外固定「暂时无法回答」—— 它是一条被记录的回答，不等于同意（冻结合同 §6.1）；
+ * incomplete 是技术失败留下的未完成项，同样不等于已解决。
+ */
 const 未回答文案表 = {
   declined: '已拒绝回答',
-  unknown: '暂无法确认',
+  unknown: '暂时无法回答',
   not_available: '暂无可用信息',
-} as const;
+  incomplete: '技术原因未完成',
+} as const satisfies Record<Exclude<P5回答状态, 'answered'>, string>;
 
 /** 8 个 checklist label 闭词的固定中文（后端确认词表，spec §2.4）；未知 label 整项省略。 */
 const 清单文案表 = {
@@ -138,7 +156,7 @@ const 阶段顺序表 = [
 const 动作顺序表 = [
   'respond_fact', 'end_screening', 'accept_resume_invitation', 'decline_resume_invitation',
   'retry_resume_readiness', 'replace_resume', 'decide_resume_screening', 'decide_coordination',
-  'confirm_intent', 'decline_intent',
+  'confirm_intent', 'decline_intent', 'answer_dialogue', 'reconsider',
 ] as const satisfies readonly P5动作[];
 
 const 已知动作集合 = new Set<string>(动作顺序表);
@@ -185,7 +203,9 @@ const 矩阵元组表 = [
   ['open', 'anonymous_screening', 'waiting', ['candidate_reevaluation'], []],
   // review-r1（Spec §7 停止该卡交互）：旧 S0 needs_user/human_decision 行可出动作清空 ——
   // end_screening 不再出卡，待核实说明与禁用输入之外的交互全部停止。
-  ['open', 'anonymous_screening', 'needs_user', ['human_decision'], []],
+  // v2 的 S0 人工卡就落在这一行（continue / end）；v1 的同一行是旧 needs_user 遗留卡，
+  // 按 Spec §7 停止全部交互 —— 版本差异由 本行可出动作 施加，不另立第 18 行。
+  ['open', 'anonymous_screening', 'needs_user', ['human_decision'], ['end_screening']],
   ['open', 'anonymous_screening', 'passed',
     ['complete', 'awaiting_candidate_resume_invitation', 'awaiting_resume_parse'],
     ['accept_resume_invitation', 'decline_resume_invitation']],
@@ -196,15 +216,20 @@ const 矩阵元组表 = [
   ['open', 'resume_submission', 'needs_user', ['awaiting_resume_parse', 'awaiting_recruiter_decision'],
     ['retry_resume_readiness', 'replace_resume', 'decide_resume_screening']],
   ['open', 'resume_submission', 'attention_required', ['screening_resume'], []],
+  // S2 三行都可能带 v2 的人工补答卡（s2_answer 待办不绑 status；缺待办由 hook 零控件挡下）
   ['open', 'needs_coordination', 'waiting',
-    ['coordinating', 'awaiting_candidate_decision', 'awaiting_recruiter_decision'], ['decide_coordination']],
-  ['open', 'needs_coordination', 'needs_user', ['coordinating'], ['decide_coordination']],
-  ['open', 'needs_coordination', 'attention_required', ['coordinating'], ['decide_coordination']],
+    ['coordinating', 'awaiting_candidate_decision', 'awaiting_recruiter_decision'],
+    ['decide_coordination', 'answer_dialogue']],
+  ['open', 'needs_coordination', 'needs_user', ['coordinating'], ['decide_coordination', 'answer_dialogue']],
+  ['open', 'needs_coordination', 'attention_required', ['coordinating'],
+    ['decide_coordination', 'answer_dialogue']],
   ['open', 'intent_confirmation', 'needs_user',
     ['awaiting_confirmations', 'awaiting_candidate_confirmation', 'awaiting_recruiter_confirmation'],
     ['confirm_intent', 'decline_intent']],
   ['ended', 'anonymous_screening', 'ended', ['complete'], []],
-  ['ended', 'resume_submission', 'ended', ['complete'], []],
+  // 七天重新考虑只由 S1 的可恢复结束产生（冻结合同 C1）：只有这一行留该卡，
+  // S0/S2/S3 的终局不给恢复入口。
+  ['ended', 'resume_submission', 'ended', ['complete'], ['reconsider']],
   ['ended', 'needs_coordination', 'ended', ['complete'], []],
   ['ended', 'intent_confirmation', 'ended', ['complete'], []],
   // P7 Task 6：completed 行两步移交 —— handoff_pending（ref 必缺席）与 complete（ref 必在场）；
@@ -254,13 +279,20 @@ export interface P5终局摘要视图 {
   定格于: string;
 }
 
-/** S0 展开块的单条 Agent 问答视图：技术字段原样保留，正文按 answer_status 投影。 */
+/**
+ * 展开块的单条公开问答视图：技术字段原样保留，正文按 answer_status 投影。
+ * stage/askingRole/round 全部来自服务端记录本身 —— 前端不重排、不重编号、不按位置猜块。
+ * answerSource 'human' 是本人写的公开回答（双方可见）；null = 历史记录未标注来源。
+ */
 export interface P5S0消息视图 {
   id: string;
   kind: 'question' | 'answer';
   role: P5角色;
+  stage: P5筛选阶段;
+  askingRole: P5角色;
   round: number;
-  answerStatus: 'answered' | 'declined' | 'unknown' | 'not_available' | null;
+  answerStatus: P5回答状态 | null;
+  answerSource: P5回答来源 | null;
   occurredAt: string;
   内容: string;
 }
@@ -290,6 +322,64 @@ export interface P5阶段区块视图 {
   /** S0 展开块的 Agent 问答与候选私有总结：仅展示，永不参与状态/动作判定（S1–S3 恒空）。 */
   Agent消息: readonly P5S0消息视图[];
   Agent总结: readonly P5S0总结视图[];
+}
+
+// ── S0–S3 连续筛选（continuity_version 2）的展示视图（冻结合同 §6.2 / C4-C6）──
+
+/** 待办用途的中文说明（闭词表；未知词在 decode 阶段已被拒）。 */
+const 待办用途文案表 = {
+  s0_continue: '决定是否继续这一单',
+  s1_continue: '出具简历初筛结论',
+  s2_answer: '回答对方的问题',
+  s3_confirm: '确认意向',
+} as const satisfies Record<P5待办用途, string>;
+
+/** 到期口径（产品常量 72 小时）：逾期由服务端做到期转换，前端绝不本地推进 Case。 */
+export const P5待办到期说明 = '逾期未回应，这一单会自动结束';
+
+/**
+ * 一条人工待办的展示：deadline 用服务端绝对时刻（本地时区可读），不做本地倒计时 ——
+ * 本地时钟越过它只会禁用提交并等下一次权威重读，绝不由前端改变 Case 生命周期。
+ */
+export interface P5待办视图 {
+  id: string;
+  role: P5角色;
+  purpose: P5待办用途;
+  /** 原始 RFC3339（提交前的过期判定用它，只用于禁用控件）。 */
+  deadline: string;
+  截止于: string;
+  说明: string;
+  到期说明: string;
+  exchangeRef: string | null;
+  summaryVersion: number | null;
+}
+
+/** 发问块计数（只属 S1/S2）：轮次由服务端唯一记账，前端不本地加一。 */
+export interface P5对话进度视图 {
+  stage: 'resume_submission' | 'needs_coordination';
+  轮次说明: string;
+}
+
+/** S1 七天重新考虑窗口：双方都读得到，但只有招聘端会拿到 reconsider 卡。 */
+export interface P5重新考虑视图 {
+  可恢复: boolean;
+  deadline: string;
+  截止于: string;
+  说明: string;
+}
+
+export interface P5确认总结分节 {
+  键: 'confirmed' | 'agreed' | 'unresolved' | 'incomplete';
+  标题: string;
+  空说明: string;
+  条目们: readonly { 编号: string; 文本: string }[];
+}
+
+/** S3 固定总结（C6）：双方内容完全相同；确认只表示愿意继续讨论，不代表接受全部条件。 */
+export interface P5确认总结视图 {
+  version: number;
+  含义说明: string;
+  分节们: readonly P5确认总结分节[];
 }
 
 export interface P5详情正常视图 {
@@ -331,6 +421,13 @@ export interface P5详情正常视图 {
    * 唯一推导，不保存第二个同源字段。
    */
   注意说明: string | null;
+  /** 1 = 历史 Case（绝不发 v2 body）；2 = S0–S3 连续筛选。 */
+  continuity版本: 1 | 2;
+  /** 本 Case 的全部开放人工待办（双方可见：在等谁、到几时）。 */
+  待办们: readonly P5待办视图[];
+  对话进度: P5对话进度视图 | null;
+  重新考虑: P5重新考虑视图 | null;
+  确认总结: P5确认总结视图 | null;
 }
 
 /** 契约错误视图：动作表恒空、无移交（与正常视图共享字段名以便联合窄化）。 */
@@ -400,10 +497,24 @@ function 查列表行(item: P5列表项): { 行: P5展示状态行; state: P5状
   return { 行, state };
 }
 
+/**
+ * 本行在该 continuity 版本下真正可出的动作。唯一版本差异：S0 的 open/needs_user 行 ——
+ * v2 是真正的 S0 人工卡（continue / end），v1 是 Spec §7 的旧遗留卡，必须停止该卡交互
+ * （只留 注意说明 的待核实提示）。其余行两版同白名单。
+ */
+function 本行可出动作(行: P5展示状态行, 连续版本: 1 | 2): readonly P5动作[] {
+  if (连续版本 === 1 && 行.lifecycle === 'open'
+    && 行.stage === 'anonymous_screening' && 行.status === 'needs_user') {
+    return [];
+  }
+  return 行.可出动作;
+}
+
 /** 按钮可见性 = 行侧白名单 ∩ available_actions，按 wire 枚举顺序渲染。 */
-function 渲染动作卡(offered: readonly P5动作[], 行: P5展示状态行): P5动作卡[] {
+function 渲染动作卡(offered: readonly P5动作[], 行: P5展示状态行, 连续版本: 1 | 2): P5动作卡[] {
+  const 白名单 = 本行可出动作(行, 连续版本);
   return 动作顺序表
-    .filter((动作) => offered.includes(动作) && 行.可出动作.includes(动作))
+    .filter((动作) => offered.includes(动作) && 白名单.includes(动作))
     .map((动作) => ({ action: 动作, 标题: 动作卡文案表[动作].标题, 说明: 动作卡文案表[动作].说明 }));
 }
 
@@ -423,7 +534,7 @@ function 映射职位(job: P5工作区职位): P5职位视图 | null {
   };
 }
 
-/** 终局时间的展示格式化器（只服务本 mapper 的 定格于，不是通用日期能力）。 */
+/** 绝对时刻的展示格式化器（本 mapper 的 定格于 与待办 截止于 共用，不是通用日期能力）。 */
 const 终局时间格式 = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -449,6 +560,89 @@ function 格式化终局时间(原文: string): string {
   const 分 = 取('minute');
   if ([年, 月, 日, 时, 分].some((值) => 值 === '')) return '时间待确认';
   return `${年}-${月}-${日} ${时}:${分}`;
+}
+
+/** 角色的对外称呼（展示用；招聘端看到的候选人仍是去名的「候选人」）。 */
+const 角色称呼表 = { candidate: '候选人', recruiter: '招聘方' } as const satisfies Record<P5角色, string>;
+
+/**
+ * 一条待办 → 展示视图。说明按「是不是本人的待办」分化：本人的是要你做什么，对端的是
+ * 在等谁做什么 —— 对端的卡没有按钮（available_actions 为空），只交代等待对象与截止时刻。
+ */
+function 映射待办(待办: P5待办, viewer: P5角色): P5待办视图 {
+  const 用途 = 待办用途文案表[待办.purpose];
+  return {
+    id: 待办.id,
+    role: 待办.role,
+    purpose: 待办.purpose,
+    deadline: 待办.deadline,
+    截止于: 格式化终局时间(待办.deadline),
+    说明: 待办.role === viewer ? `需要你${用途}` : `等待${角色称呼表[待办.role]}${用途}`,
+    到期说明: P5待办到期说明,
+    exchangeRef: 待办.exchangeRef,
+    summaryVersion: 待办.summaryVersion,
+  };
+}
+
+/** 发问块计数 → 一行中文说明（服务端唯一记账；前端不本地加一、不自造总轮次）。 */
+function 映射对话进度(进度: P5对话进度 | null): P5对话进度视图 | null {
+  if (进度 === null) return null;
+  const 本侧轮 = 进度.askingRole === 'recruiter' ? 进度.recruiterRound : 进度.candidateRound;
+  return {
+    stage: 进度.stage,
+    轮次说明: `当前由${角色称呼表[进度.askingRole]}发问，已问 ${本侧轮}/${进度.roundBudget} 轮`,
+  };
+}
+
+/** GET 只会给出 expired / case_unavailable 两个非空词（另两个只作命令 409 码）。 */
+const 重新考虑不可用文案表 = {
+  expired: '七天重新考虑窗口已过',
+  case_unavailable: '这一单目前不能恢复',
+} as const;
+
+function 映射重新考虑(块: P5重新考虑 | null): P5重新考虑视图 | null {
+  if (块 === null) return null;
+  const 截止于 = 格式化终局时间(块.deadline);
+  const 原因 = 块.unavailableReason;
+  return {
+    可恢复: 块.eligible,
+    deadline: 块.deadline,
+    截止于,
+    说明: 块.eligible
+      ? `可在 ${截止于} 前重新考虑这一单`
+      : 原因 !== null && 已有键(重新考虑不可用文案表, 原因)
+        ? 重新考虑不可用文案表[原因]
+        : '这一单目前不能恢复',
+  };
+}
+
+/** C6 四个分节的固定标题与空态说明（继续/确认都不是接受证据，所以「安排」合法为空）。 */
+const 确认分节文案表 = [
+  { 键: 'confirmed' as const, 标题: '已知事实', 空说明: '暂无已确认的公开事实' },
+  { 键: 'agreed' as const, 标题: '已达成的安排', 空说明: '没有双方公开接受的安排（继续或确认都不是接受证据）' },
+  { 键: 'unresolved' as const, 标题: '仍未解决', 空说明: '暂无未决事项' },
+  { 键: 'incomplete' as const, 标题: '未完成', 空说明: '没有因技术原因未完成的事项' },
+];
+
+/** confirmation_meaning 的唯一闭词 → 冻结中文（确认不等于接受全部条件）。 */
+const 确认含义文案表 = {
+  continue_discussion_without_accepting_all_terms:
+    '确认表示你愿意继续讨论，不代表接受全部条件',
+} as const;
+
+function 映射确认总结(总结: P5确认总结 | null): P5确认总结视图 | null {
+  if (总结 === null) return null;
+  const 分组 = {
+    confirmed: 总结.confirmedFacts.map((条, 序) => ({ 编号: `confirmed:${序}`, 文本: 条.text })),
+    agreed: 总结.agreedArrangements.map((条, 序) => ({ 编号: `agreed:${序}`, 文本: 条.text })),
+    unresolved: 总结.unresolvedItems.map((条) => ({ 编号: `unresolved:${条.ref}`, 文本: 条.text })),
+    incomplete: 总结.incompleteItems.map((条) => ({ 编号: `incomplete:${条.ref}`, 文本: 条.text })),
+  };
+  return {
+    version: 总结.version,
+    含义说明: 确认含义文案表[总结.confirmationMeaning],
+    分节们: 确认分节文案表.map((节) => ({ ...节, 条目们: 分组[节.键] })),
+  };
 }
 
 function 映射终局摘要(摘要: P5终局摘要 | null): P5终局摘要视图 | null {
@@ -510,8 +704,9 @@ const 旧S0待核实说明 = '旧版状态待核实，请交负责人处理';
 
 /** 详情视图的注意说明：旧 S0 needs_user（人工补事实遗留行）固定给待核实提示，
  *  其余沿 attention 的 owner-safe 口径。 */
-function 映射详情注意说明(state: P5状态视图): string | null {
-  if (state.lifecycle === 'open' && state.stage === 'anonymous_screening'
+function 映射详情注意说明(state: P5状态视图, 连续版本: 1 | 2): string | null {
+  // v2 的同一行是真正的 S0 人工卡（有 continue/end 可做），不是旧遗留待核实状态。
+  if (连续版本 === 1 && state.lifecycle === 'open' && state.stage === 'anonymous_screening'
     && state.status === 'needs_user') {
     return 旧S0待核实说明;
   }
@@ -547,8 +742,11 @@ function 映射S0消息(消息: P5S0筛选消息): P5S0消息视图 {
     id: 消息.id,
     kind: 消息.kind,
     role: 消息.role,
+    stage: 消息.stage,
+    askingRole: 消息.askingRole,
     round: 消息.round,
     answerStatus: 消息.kind === 'answer' ? 消息.answerStatus : null,
+    answerSource: 消息.kind === 'answer' ? 消息.answerSource : null,
     occurredAt: 消息.occurredAt,
     内容: 消息.kind === 'question'
       ? 消息.text
@@ -587,10 +785,19 @@ function 映射阶段区状态(区: P5阶段区, state: P5状态视图): string 
  * 漂移时返回 null 交由调用方 fail closed，绝不静默过滤。Agent 记录只作展示，不写入旧 摘要，
  * 旧 清单/时间线/叮嘱/附件 语义不变。
  */
-function 映射阶段区(区: P5阶段区, state: P5状态视图, viewer: P5角色): P5阶段区块视图 | null {
-  const 记录 = 区.screeningRecords;
-  if (区.stage !== 'anonymous_screening' && 记录 !== null) return null;
+function 映射阶段区(
+  区: P5阶段区,
+  state: P5状态视图,
+  viewer: P5角色,
+  记录: P5S0筛选记录 | null,
+): P5阶段区块视图 | null {
+  // wire 只把整包记录挂在 S0 区（冻结合同 §6.5）；其余段携带即漂移。
+  if (区.stage !== 'anonymous_screening' && 区.screeningRecords !== null) return null;
   if (viewer === 'recruiter' && (记录?.summaries.length ?? 0) > 0) return null;
+  // 每条记录自述属于哪个发问块：按真实 stage 落到对应阶段段（S3 段天然没有公开问答）。
+  const 本段消息 = 记录 === null
+    ? []
+    : 记录.messages.filter((条) => 条.stage === 区.stage);
   return {
     stage: 区.stage,
     标题: 阶段标题表[区.stage],
@@ -602,8 +809,11 @@ function 映射阶段区(区: P5阶段区, state: P5状态视图, viewer: P5角�
     时间线: 区.transcript,
     叮嘱: 区.instructionReceipts,
     附件: 区.attachment,
-    Agent消息: 记录 === null ? [] : 记录.messages.map(映射S0消息),
-    Agent总结: 记录 === null ? [] : 记录.summaries.map(映射S0总结),
+    Agent消息: 本段消息.map(映射S0消息),
+    // 初评/复评小结只属 S0，且只有候选本人的详情带（decoder 已挡，映射层再守一道）
+    Agent总结: 记录 === null || 区.stage !== 'anonymous_screening'
+      ? []
+      : 记录.summaries.map(映射S0总结),
   };
 }
 
@@ -677,7 +887,11 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
   if (!Array.isArray(offered) || !offered.every((动作) => 已知动作集合.has(动作))) {
     return 契约错误详情();
   }
-  if (行.lifecycle !== 'open' && offered.length > 0) return 契约错误详情();
+  // 终态零动作 —— 唯一例外是 S1 七天重新考虑：终局 Case 仍可带这一张卡（§6.3），
+  // 它本身不改 needs_action（终局恒 false）。
+  if (行.lifecycle !== 'open' && offered.some((动作) => 动作 !== 'reconsider')) {
+    return 契约错误详情();
+  }
 
   // 四阶段区固定 S0→S3。
   const 区组 = detail.stages;
@@ -690,9 +904,11 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
   if (职位 === null) return 契约错误详情();
 
   // 阶段区块：S0 展开块归属漂移（S1–S3 非空 records / 招聘端非空总结）fail closed。
+  // 公开问答记录整包挂在 S0 区（§6.5），按每条自述的 stage 分发到对应阶段段。
+  const 记录 = 区组[0].screeningRecords;
   const 区块: P5阶段区块视图[] = [];
   for (const 区 of 区组) {
-    const 区块视图 = 映射阶段区(区, state, detail.role);
+    const 区块视图 = 映射阶段区(区, state, detail.role, 记录);
     if (区块视图 === null) return 契约错误详情();
     区块.push(区块视图);
   }
@@ -701,7 +917,7 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
   // J-PILOT-01（Spec §7）：S0 行白名单已不再含 respond_fact；review-r1 起旧 S0 needs_user
   // 行也不含 end_screening（停止该卡交互）—— 双端零人工补事实输入，旧后端若仍返回这些
   // 动作由交集惰性挡下；人工待核实说明走 注意说明。
-  const 动作卡 = 渲染动作卡(offered, 行);
+  const 动作卡 = 渲染动作卡(offered, 行, detail.continuityVersion);
 
   // P7 Task 6：completed 行两步移交 —— handoff_pending（无 ref）pending；
   // complete（带 ref）ready；组合漂移（decode 已挡）在映射层再 fail closed 一次。
@@ -741,6 +957,15 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
     actions: 动作卡,
     阶段区块: 区块,
     终局摘要: 映射终局摘要(detail.terminalSummary),
-    注意说明: 映射详情注意说明(state),
+    注意说明: 映射详情注意说明(state, detail.continuityVersion),
+    continuity版本: detail.continuityVersion,
+    // 终局 Case 没有开放待办（§6.3：终局 needs_action 恒 false）—— 终局卡绝不把对端
+    // 显示成「待回应」，哪怕上游留下了过期条目。
+    待办们: 行.lifecycle === 'open'
+      ? detail.pendingActions.map((待办) => 映射待办(待办, detail.role))
+      : [],
+    对话进度: 映射对话进度(detail.dialogueProgress),
+    重新考虑: 映射重新考虑(detail.reconsideration),
+    确认总结: 映射确认总结(detail.confirmationSummary),
   };
 }

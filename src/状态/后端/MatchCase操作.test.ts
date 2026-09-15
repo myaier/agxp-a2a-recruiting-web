@@ -255,6 +255,8 @@ function 创建P5数据源(覆盖: Record<string, unknown> = {}): HTTP招聘数�
     决定P5S1: vi.fn(async (): Promise<void> => undefined),
     决定P5S2: vi.fn(async (): Promise<void> => undefined),
     决定P5S3: vi.fn(async (): Promise<void> => undefined),
+    回答P5对话: vi.fn(async (): Promise<void> => undefined),
+    重新考虑P5: vi.fn(async (): Promise<void> => undefined),
     新增P5叮嘱: vi.fn(async (): Promise<void> => undefined),
     读取P5简历PDF: vi.fn(async (): Promise<BFF二进制响应> => PDF响应),
     // J-PILOT-01 Task 2：连续代谈 facade（默认空页成功；详情默认把输入坐标当 canonical
@@ -1504,6 +1506,40 @@ describe('S0–S3 命令与幂等意图', () => {
     randomUUID.mockRestore();
   });
 
+  it('v2 待办命令的键：同 body 的网络重试沿用同键；改过说明/回答后是全新意图（新键）', async () => {
+    const 待办ID = 'cpa_0123456789abcdef0123456789abcdef';
+    const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce(UUID键('s0-note-a'))
+      .mockReturnValueOnce(UUID键('s0-note-b'))
+      .mockReturnValue(UUID键('s2-answer-a'));
+    vi.mocked(env.数据源.决定P5S0).mockRejectedValue(new Error('网络中断'));
+    const 目标 = { pendingActionId: 待办ID, privateNote: '更希望远程' };
+    await expect(env.操作.决定S0('mc_1', 'continue', 目标)).rejects.toThrow('网络中断');
+    // 同一 body 的网络重试：同意图 → 同一把键，绝不换键强发
+    await expect(env.操作.决定S0('mc_1', 'continue', { ...目标 })).rejects.toThrow('网络中断');
+    expect(vi.mocked(env.数据源.决定P5S0).mock.calls.map((调用) => 调用[2]))
+      .toEqual(['s0-note-a', 's0-note-a']);
+    // 改过说明后是新意图：绝不沿用旧 body 的键
+    await expect(env.操作.决定S0('mc_1', 'continue', { pendingActionId: 待办ID, privateNote: '改成混合办公' }))
+      .rejects.toThrow('网络中断');
+    expect(vi.mocked(env.数据源.决定P5S0).mock.calls[2]![2]).toBe('s0-note-b');
+
+    // S2 人工补答同理：回答正文进意图坐标
+    vi.mocked(env.数据源.回答P5对话).mockRejectedValue(new Error('网络中断'));
+    await expect(env.操作.回答对话('candidate', 'mc_1', {
+      pendingActionId: 待办ID, action: 'answer', status: 'answered', answer: '每周三天',
+    })).rejects.toThrow('网络中断');
+    // 意图键逐段转义（同 段()）：说明/回答正文进坐标 —— 改一个字就是另一把键
+    const 键们 = [...env.deps.P5幂等意图!.current.keys()];
+    expect(键们).toContain(
+      `p5:意图:candidate:mc_1:decide_s0:${encodeURIComponent(`continue|${待办ID}|改成混合办公`)}`,
+    );
+    expect(键们).toContain(
+      `p5:意图:candidate:mc_1:respond_dialogue:${encodeURIComponent(`answer|answered|${待办ID}|每周三天`)}`,
+    );
+    randomUUID.mockRestore();
+  });
+
   it('不同目标各自成键：不同 prompt / 不同 Case / 不同动作互不影响', async () => {
     const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID')
       .mockReturnValueOnce(UUID键('k-a'))
@@ -1763,17 +1799,18 @@ describe('S0–S3 命令与幂等意图', () => {
     // 候选命令（决定S0/提交简历）成功后的权威重读走聚合；招聘命令走原 Case GET
     vi.mocked(env.数据源.读取候选连续详情).mockResolvedValue(连续聚合('mc_1', 权威候选详情));
     vi.mocked(env.数据源.读取P5详情).mockResolvedValue(权威候选详情);
+    // v1（历史 Case）路径：不带 目标，facade 仍收 {action} body（第四位 undefined）
     await env.操作.决定S0('mc_1', 'end');
-    expect(env.数据源.决定P5S0).toHaveBeenCalledWith('mc_1', 'end', 'cmd-key');
+    expect(env.数据源.决定P5S0).toHaveBeenCalledWith('mc_1', 'end', 'cmd-key', undefined);
     await env.操作.提交简历('mc_1', 'rf_1', 'rfv_1', true);
     expect(env.数据源.提交P5简历).toHaveBeenCalledWith('mc_1', 'rf_1', 'rfv_1', true, 'cmd-key');
     设主体角色(招聘主体);
     await env.操作.决定S1('mc_1', 'not_fit');
-    expect(env.数据源.决定P5S1).toHaveBeenCalledWith('mc_1', 'not_fit', 'cmd-key');
+    expect(env.数据源.决定P5S1).toHaveBeenCalledWith('mc_1', 'not_fit', 'cmd-key', undefined);
     await env.操作.决定S2('recruiter', 'mc_1', 'cdi_1', 'accept');
     expect(env.数据源.决定P5S2).toHaveBeenCalledWith('recruiter', 'mc_1', 'cdi_1', 'accept', 'cmd-key');
     await env.操作.决定S3('recruiter', 'mc_1', 'decline');
-    expect(env.数据源.决定P5S3).toHaveBeenCalledWith('recruiter', 'mc_1', 'decline', 'cmd-key');
+    expect(env.数据源.决定P5S3).toHaveBeenCalledWith('recruiter', 'mc_1', 'decline', 'cmd-key', undefined);
     await env.操作.新增叮嘱('recruiter', 'mc_1', '请工作日联系');
     expect(env.数据源.新增P5叮嘱).toHaveBeenCalledWith('recruiter', 'mc_1', '请工作日联系', 'cmd-key');
     randomUUID.mockRestore();

@@ -27,6 +27,7 @@ import type { NegotiationDetail } from '../../数据/招聘数据源/连续代�
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import type { BFF主体 } from '../../数据/BFF契约';
 import { BFF安全职位资料样本, BFF候选在线简历样本, BFF候选身份披露样本 } from '../../测试/展示资料样本';
+import { P5历史连续块 } from '../../测试/BFF样本';
 
 const mock跳转 = vi.fn();
 vi.mock('../../路由/导航钩子', () => ({
@@ -136,6 +137,7 @@ function 候选详情DTO(覆盖: {
     // release/0.2.5：展示字段是解码层 required 成员；Task 6 起消费（旧 Case 合法 null 档）。
     matchScore: 覆盖.matchScore ?? null,
     jobDetail: 覆盖.jobDetail ?? null,
+    ...P5历史连续块,
   };
 }
 
@@ -159,6 +161,7 @@ function 招聘详情DTO(覆盖: {
     conversationRef: null,
     matchScore: 覆盖.matchScore ?? null,
     jobDetail: 覆盖.jobDetail ?? null,
+    ...P5历史连续块,
     candidateResume: 覆盖.candidateResume ?? null,
     candidateIdentity: 覆盖.identity ?? { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };
@@ -187,6 +190,7 @@ function 候选S1详情DTO(选项: { caseId?: string } = {}): P5详情 {
     conversationRef: null,
     matchScore: null,
     jobDetail: null,
+    ...P5历史连续块,
   };
 }
 

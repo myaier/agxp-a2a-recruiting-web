@@ -47,6 +47,12 @@ function 正常视图(覆盖: Partial<P5详情正常视图> = {}): P5详情正�
     // Task 6：同一响应的权威分与冻结职位资料（旧 Case 合法 null 档）
     匹配分: null,
     冻结职位资料: null,
+    // S0–S3 连续筛选（默认历史 Case：无待办、无发问块计数、无恢复窗口与固定总结）
+    continuity版本: 1,
+    待办们: [],
+    对话进度: null,
+    重新考虑: null,
+    确认总结: null,
     ...覆盖,
   };
 }
@@ -358,8 +364,8 @@ describe('从P5到详情分段', () => {
             { instructionId: 'aci_2', owner: 'recruiter', stage: 'anonymous_screening', expression: '两周内走完', occurredAt: '2026-08-29T01:06:00Z' },
           ],
           Agent消息: [
-            { id: 's0q_1', kind: 'question', role: 'candidate', round: 1, answerStatus: null, occurredAt: '2026-08-23T10:01:00Z', 内容: '需要确认岗位的值班安排。' },
-            { id: 's0a_1', kind: 'answer', role: 'recruiter', round: 1, answerStatus: 'answered', occurredAt: '2026-08-23T10:05:00Z', 内容: '没有固定晚班。' },
+            { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, answerStatus: null, answerSource: null, occurredAt: '2026-08-23T10:01:00Z', 内容: '需要确认岗位的值班安排。' },
+            { id: 's0a_1', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, answerStatus: 'answered', answerSource: null, occurredAt: '2026-08-23T10:05:00Z', 内容: '没有固定晚班。' },
           ],
         },
       }),
@@ -367,8 +373,8 @@ describe('从P5到详情分段', () => {
     const 段 = 分段[0]!;
     // S0 记录：角色标签按 wire role 投影（不显示内部 ID/round/记录 ID），左右按 viewer
     expect(段.Agent对话).toEqual([
-      { 编号: 's0:s0q_1', 角色: '候选 Agent', 方: '我方', 时间: 本地时分('2026-08-23T10:01:00Z'), 内容: '需要确认岗位的值班安排。' },
-      { 编号: 's0:s0a_1', 角色: '招聘 Agent', 方: '对方', 时间: 本地时分('2026-08-23T10:05:00Z'), 内容: '没有固定晚班。' },
+      { 编号: 'rec:s0q_1', 角色: '候选 Agent · 第 1 轮', 方: '我方', 时间: 本地时分('2026-08-23T10:01:00Z'), 内容: '需要确认岗位的值班安排。' },
+      { 编号: 'rec:s0a_1', 角色: '招聘 Agent · 第 1 轮', 方: '对方', 时间: 本地时分('2026-08-23T10:05:00Z'), 内容: '没有固定晚班。' },
     ]);
     // 系统状态行：只带正文的文本事件，不投成对方气泡
     expect(段.系统消息).toEqual([{ 编号: 'evt:evt_1', 内容: '每周可以到岗几天？' }]);

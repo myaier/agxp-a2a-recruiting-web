@@ -189,19 +189,30 @@ const 步骤全表 = [
 const 动作全表 = [
   'respond_fact', 'end_screening', 'accept_resume_invitation', 'decline_resume_invitation',
   'retry_resume_readiness', 'replace_resume', 'decide_resume_screening', 'decide_coordination',
-  'confirm_intent', 'decline_intent',
+  'confirm_intent', 'decline_intent', 'answer_dialogue', 'reconsider',
 ] as const satisfies readonly P5动作[];
 const 阶段区状态全表 = ['pending', 'active', 'passed', 'ended'] as const;
 const 时间线角色全表 = ['', 'candidate', 'recruiter'] as const;
 const 叮嘱主人全表 = ['candidate', 'recruiter'] as const satisfies readonly P5角色[];
 const S0消息类别全表 = ['question', 'answer'] as const;
-const S0回答状态全表 = ['answered', 'declined', 'unknown', 'not_available'] as const;
+const S0回答状态全表 = ['answered', 'declined', 'unknown', 'not_available', 'incomplete'] as const;
 const S0小结阶段全表 = ['initial', 'reevaluation'] as const;
 const 协同类目全表 = [
   'work_mode', 'work_schedule', 'travel', 'team_and_reporting', 'technical_direction',
 ] as const;
 const 意向词全表 = ['', 'confirm', 'decline'] as const;
 const Agent注意码全表 = ['agent_unavailable', 'agent_result_invalid'] as const satisfies readonly P5Agent注意码[];
+// ── S0–S3 连续筛选（continuity_version 2）闭词表（冻结合同 §6.2/§6.5）──
+const 待办用途全表 = ['s0_continue', 's1_continue', 's2_answer', 's3_confirm'] as const;
+const 对话阶段全表 = ['resume_submission', 'needs_coordination'] as const;
+const 重新考虑原因全表 = ['expired', 'candidate_ended', 'case_unavailable', 'active_case_conflict'] as const;
+const 确认含义全表 = ['continue_discussion_without_accepting_all_terms'] as const;
+const 记录阶段全表 = ['anonymous_screening', 'resume_submission', 'needs_coordination'] as const;
+const 回答来源全表 = ['agent', 'human', 'none'] as const;
+/** 记录块的真实时间序：S0 → S1 → S2（跨块只允许前进，绝不回跳）。 */
+const 记录阶段序 = new Map<P5筛选阶段, number>(记录阶段全表.map((阶段, 序) => [阶段, 序]));
+const 待办ID模式 = /^cpa_[0-9a-f]{32}$/;
+const 交换ID模式 = /^cex_[0-9a-f]{32}$/;
 
 /** 详情四个阶段区的固定 S0→S3 顺序（严格客户端同款）：数量与顺序都不可漂。 */
 const 阶段顺序 = ['anonymous_screening', 'resume_submission', 'needs_coordination', 'intent_confirmation'] as const;
@@ -253,6 +264,9 @@ const 动作归属: Record<P5动作, P5角色 | '双端'> = {
   decide_coordination: '双端',
   confirm_intent: '双端',
   decline_intent: '双端',
+  // S2 人工补答归有待办的那一方（双端都可能）；S1 七天重新考虑只属招聘端。
+  answer_dialogue: '双端',
+  reconsider: 'recruiter',
 };
 
 // ── 归一化 DTO：保留 wire 值，候选/招聘上下文走不同分支，跨角色可选字段进不了 UI ──
@@ -316,11 +330,33 @@ export interface P5简历附件 {
   displayName: string;
 }
 
-/** S0 展开块里的单条问答：question 只带原文，answer 按 answer_status 带或不带原文。 */
+/** 记录块自述的发问块（S3 不产生公开问答记录）。 */
+export type P5筛选阶段 = 'anonymous_screening' | 'resume_submission' | 'needs_coordination';
+export type P5回答来源 = 'agent' | 'human' | 'none';
+export type P5回答状态 = 'answered' | 'declined' | 'unknown' | 'not_available' | 'incomplete';
+
+/**
+ * 展开块里的单条问答（冻结合同 §6.5）：question 只带原文，answer 按 answer_status 带或
+ * 不带原文。continuity_version 2 起每条自述 stage/askingRole/answerSource —— 同一数组装着
+ * S0/S1/S2 三段；历史（version 1）记录没有这三个键，归一为 S0/候选发问/来源未知（null）。
+ * answerSource 'human' 表示那是本人写的公开回答，双方都看得到。
+ */
+interface P5筛选消息基础 {
+  id: string;
+  role: P5角色;
+  stage: P5筛选阶段;
+  askingRole: P5角色;
+  round: number;
+  occurredAt: string;
+}
 export type P5S0筛选消息 =
-  | { id: string; kind: 'question'; role: 'candidate'; round: number; text: string; occurredAt: string }
-  | { id: string; kind: 'answer'; role: 'recruiter'; round: number; text: string; answerStatus: 'answered'; occurredAt: string }
-  | { id: string; kind: 'answer'; role: 'recruiter'; round: number; answerStatus: 'declined' | 'unknown' | 'not_available'; occurredAt: string };
+  | (P5筛选消息基础 & { kind: 'question'; text: string })
+  | (P5筛选消息基础 & { kind: 'answer'; text: string; answerStatus: 'answered'; answerSource: P5回答来源 | null })
+  | (P5筛选消息基础 & {
+      kind: 'answer';
+      answerStatus: Exclude<P5回答状态, 'answered'>;
+      answerSource: P5回答来源 | null;
+    });
 
 /** S0 总结：initial 无轮次，reevaluation 绑定真实轮次。 */
 export type P5S0筛选总结 =
@@ -366,6 +402,53 @@ export interface P5终局摘要 {
   finalizedAt: string;
 }
 
+// ── S0–S3 连续筛选（continuity_version 2）的归一化块 ──
+
+export type P5待办用途 = 's0_continue' | 's1_continue' | 's2_answer' | 's3_confirm';
+
+/** 一条人工待办：双方都看得到在等谁、到几时；deadline 是服务端绝对时刻。 */
+export interface P5待办 {
+  id: string;
+  role: P5角色;
+  purpose: P5待办用途;
+  createdAt: string;
+  deadline: string;
+  /** 仅 s2_answer 在场；其余用途恒 null。 */
+  exchangeRef: string | null;
+  /** 仅 s3_confirm 在场；其余用途恒 null。 */
+  summaryVersion: number | null;
+}
+
+export interface P5对话进度 {
+  stage: 'resume_submission' | 'needs_coordination';
+  askingRole: P5角色;
+  recruiterRound: number;
+  candidateRound: number;
+  roundBudget: number;
+}
+
+export type P5重新考虑不可用原因 =
+  | 'expired' | 'candidate_ended' | 'case_unavailable' | 'active_case_conflict';
+
+export interface P5重新考虑 {
+  eligible: boolean;
+  deadline: string;
+  unavailableReason: P5重新考虑不可用原因 | null;
+}
+
+export interface P5确认事实 { text: string; sourceRefs: string[] }
+export interface P5确认条目 { ref: string; text: string; sourceRefs: string[] }
+
+export interface P5确认总结 {
+  version: number;
+  createdAt: string;
+  confirmedFacts: P5确认事实[];
+  agreedArrangements: P5确认事实[];
+  unresolvedItems: P5确认条目[];
+  incompleteItems: P5确认条目[];
+  confirmationMeaning: 'continue_discussion_without_accepting_all_terms';
+}
+
 interface P5详情主体 {
   state: P5状态视图;
   needsAction: boolean;
@@ -386,6 +469,15 @@ interface P5详情主体 {
    */
   matchScore: number | null;
   jobDetail: BFF安全职位资料 | null;
+  /**
+   * S0–S3 连续筛选块（冻结合同 §6.2）。continuityVersion 1 = 历史 Case：绝不发 v2 body，
+   * 其余四个成员允许整组缺席（归一为 []/null）；v2 详情必须五员齐备（可空处才为 null）。
+   */
+  continuityVersion: 1 | 2;
+  pendingActions: P5待办[];
+  dialogueProgress: P5对话进度 | null;
+  reconsideration: P5重新考虑 | null;
+  confirmationSummary: P5确认总结 | null;
 }
 
 export type P5详情 =
@@ -572,33 +664,55 @@ function 解简历附件(input: unknown): P5简历附件 {
   };
 }
 
-/** S0 问答消息：kind↔role、text↔answer_status 的三分支 wire 形状逐一闭合，按分支构造判别联合。 */
-function 解S0消息(input: unknown): P5S0筛选消息 {
+/**
+ * 公开问答记录（冻结合同 §6.5）：kind↔role、text↔answer_status 的三分支 wire 形状逐一
+ * 闭合，按分支构造判别联合。v2 每条自述 stage/asking_role（answer 再带 answer_source），
+ * 三键必须齐备；v1 记录没有这三键 —— 只在 continuityVersion 1 上放行，并按「记录块即 S0、
+ * S0 由候选发问」这两个已知事实归一，来源未知留 null，绝不猜成 agent。
+ */
+function 解筛选消息(input: unknown, 连续版本: 1 | 2): P5S0筛选消息 {
   if (!是记录(input)) throw 契约错误();
   const kind = 要求枚举(input.kind, S0消息类别全表);
+  const v2键 = 连续版本 === 2 ? ['stage', 'asking_role'] : [];
   const raw = kind === 'question'
-    ? 要求闭合对象(input, ['id', 'kind', 'role', 'round', 'text', 'occurred_at'])
-    : 要求闭合对象(input, ['id', 'kind', 'role', 'round', 'answer_status', 'occurred_at'], ['text']);
+    ? 要求闭合对象(input, ['id', 'kind', 'role', 'round', 'text', 'occurred_at', ...v2键])
+    : 要求闭合对象(
+        input,
+        ['id', 'kind', 'role', 'round', 'answer_status', 'occurred_at', ...v2键,
+          ...(连续版本 === 2 ? ['answer_source'] : [])],
+        ['text'],
+      );
+  const role = 要求枚举(raw.role, 叮嘱主人全表);
+  // v1：记录块只装 S0，且 S0 恒由候选 Agent 发问、招聘 Agent 作答（历史闭合不变式）。
+  const stage: P5筛选阶段 = 连续版本 === 2
+    ? 要求枚举(raw.stage, 记录阶段全表)
+    : 'anonymous_screening';
+  const askingRole: P5角色 = 连续版本 === 2 ? 要求枚举(raw.asking_role, 叮嘱主人全表) : 'candidate';
+  // question 的 role 就是发问方；answer 的 role 是作答方（即发问方的对端）。
+  // v1 记录归一后的 askingRole 恒 candidate，这一条同时钉住历史的「候选问、招聘答」。
+  if (kind === 'question' ? role !== askingRole : role === askingRole) throw 契约错误();
   const 基础 = {
     id: 要求非空字符串(raw.id),
+    role,
+    stage,
+    askingRole,
     round: 要求整数(raw.round),
     occurredAt: 要求S0时间(raw.occurred_at),
   };
-  // 问答两分支的角色是闭合常量：question 只属于候选端，answer 只属于招聘端。
-  const role = 要求枚举(raw.role, 叮嘱主人全表);
   if (kind === 'question') {
-    if (role !== 'candidate') throw 契约错误();
-    return { ...基础, kind, role, text: 要求S0原文(raw.text) };
+    return { ...基础, kind, text: 要求S0原文(raw.text) };
   }
-  if (role !== 'recruiter') throw 契约错误();
   const answerStatus = 要求枚举(raw.answer_status, S0回答状态全表);
+  const answerSource = 连续版本 === 2 ? 要求枚举(raw.answer_source, 回答来源全表) : null;
   if (answerStatus === 'answered') {
-    return { ...基础, kind, role, text: 要求S0原文(raw.text), answerStatus };
+    // 有正文的回答只可能来自 Agent 或本人；none 是「没有回答」的来源，不能带正文。
+    if (answerSource === 'none') throw 契约错误();
+    return { ...基础, kind, text: 要求S0原文(raw.text), answerStatus, answerSource };
   }
   if (raw.text !== undefined) {
     throw 契约错误(); // 未回答不携带正文（显式 null 同样拒绝，绝不读成空回答）
   }
-  return { ...基础, kind, role, answerStatus };
+  return { ...基础, kind, answerStatus, answerSource };
 }
 
 /** S0 总结：initial 无 round（携带即漂移），reevaluation 必带 round；按 phase 构造判别联合。 */
@@ -626,30 +740,43 @@ export function 解S0小结(input: unknown): P5S0筛选总结 {
 }
 
 /**
- * S0 展开块整包校验：ID 跨两数组唯一；messages 按轮不降、同轮问／答各最多一条且答必命中
- * 同轮已登记的问；summaries 的 initial 最多一条且先于全部 reevaluation，复评轮次预算内严格
- * 递增。原数组顺序原样返回（不 sort、不重编号，未答轮次的缺口保留）。
+ * 展开块整包校验：ID 跨两数组唯一；messages 按真实时间序 S0→S1→S2 前进（块序不回跳），
+ * 每个「块 + 发问侧」内按轮不降、同轮问／答各最多一条且答必命中同轮已登记的问；S0 轮次
+ * 仍受 Case round_budget 约束（S1/S2 的预算在 dialogue_progress，此处只要求 ≥1）。
+ * summaries 只属 S0：initial 最多一条且先于全部 reevaluation，复评轮次预算内严格递增。
+ * 原数组顺序原样返回（不 sort、不重编号，未答轮次的缺口保留）。
  */
-function 解S0筛选记录(input: unknown, roundBudget: number): P5S0筛选记录 {
+function 解S0筛选记录(input: unknown, roundBudget: number, 连续版本: 1 | 2): P5S0筛选记录 {
   const raw = 要求闭合对象(input, ['messages', 'summaries']);
-  const messages = 要求数组(raw.messages).map(解S0消息);
+  const messages = 要求数组(raw.messages).map((条) => 解筛选消息(条, 连续版本));
   const summaries = 要求数组(raw.summaries).map(解S0小结);
   const 已见ID = new Set<string>();
-  const 同轮问题 = new Set<number>();
-  const 同轮回答 = new Set<number>();
-  let 前一轮 = 0;
+  /** 每个「块 + 发问侧」各自记账：轮次不共享、不借额度、不交错。 */
+  const 块账 = new Map<string, { 问: Set<number>; 答: Set<number>; 前一轮: number }>();
+  let 前一块序 = 0;
   for (const 消息 of messages) {
-    if (消息.round < 1 || 消息.round > roundBudget || 消息.round < 前一轮) throw 契约错误();
-    前一轮 = 消息.round;
+    const 块序 = 记录阶段序.get(消息.stage) ?? -1;
+    if (块序 < 前一块序) throw 契约错误();
+    前一块序 = 块序;
+    if (消息.round < 1) throw 契约错误();
+    if (消息.stage === 'anonymous_screening' && 消息.round > roundBudget) throw 契约错误();
     if (已见ID.has(消息.id)) throw 契约错误();
     已见ID.add(消息.id);
+    const 块键 = `${消息.stage}|${消息.askingRole}`;
+    let 账 = 块账.get(块键);
+    if (账 === undefined) {
+      账 = { 问: new Set<number>(), 答: new Set<number>(), 前一轮: 0 };
+      块账.set(块键, 账);
+    }
+    if (消息.round < 账.前一轮) throw 契约错误();
+    账.前一轮 = 消息.round;
     if (消息.kind === 'question') {
-      if (同轮问题.has(消息.round)) throw 契约错误();
-      同轮问题.add(消息.round);
-    } else if (同轮回答.has(消息.round) || !同轮问题.has(消息.round)) {
+      if (账.问.has(消息.round)) throw 契约错误();
+      账.问.add(消息.round);
+    } else if (账.答.has(消息.round) || !账.问.has(消息.round)) {
       throw 契约错误();
     } else {
-      同轮回答.add(消息.round);
+      账.答.add(消息.round);
     }
   }
   let 前一复评轮 = 0;
@@ -672,7 +799,7 @@ function 解S0筛选记录(input: unknown, roundBudget: number): P5S0筛选记�
 }
 
 /** 阶段区：三个必在数组不接受 null；attachment 坐标闭合，招聘端的匿名初筛区不得携带。 */
-function 解P5阶段区(input: unknown, viewer: P5角色, roundBudget: number): P5阶段区 {
+function 解P5阶段区(input: unknown, viewer: P5角色, roundBudget: number, 连续版本: 1 | 2): P5阶段区 {
   const raw = 要求闭合对象(
     input,
     ['stage', 'state', 'summary', 'checklist', 'transcript', 'instruction_receipts'],
@@ -699,7 +826,7 @@ function 解P5阶段区(input: unknown, viewer: P5角色, roundBudget: number): 
   // S0 展开块（include=screening_records）必在且必为对象；其余阶段多键即漂移。
   if (stage === 'anonymous_screening') {
     if (raw.screening_records === undefined) throw 契约错误();
-    区.screeningRecords = 解S0筛选记录(raw.screening_records, roundBudget);
+    区.screeningRecords = 解S0筛选记录(raw.screening_records, roundBudget, 连续版本);
     // 隐私栅栏：候选端小结绝不下发招聘端 —— 招聘端展开详情恒同批 messages 且 summaries=[]。
     if (viewer === 'recruiter' && 区.screeningRecords.summaries.length > 0) throw 契约错误();
   } else if (raw.screening_records !== undefined) {
@@ -760,6 +887,111 @@ function 解终局摘要(input: unknown, state: P5状态视图): P5终局摘要 
   return 摘要;
 }
 
+// ── S0–S3 连续筛选块的 decoder（冻结合同 §6.2）──
+
+/** 一条人工待办：purpose 决定哪一个条件键在场（多带一个就是漂移）。 */
+function 解待办(input: unknown): P5待办 {
+  const raw = 要求闭合对象(
+    input,
+    ['id', 'role', 'purpose', 'created_at', 'deadline'],
+    ['exchange_ref', 'summary_version'],
+  );
+  const purpose = 要求枚举(raw.purpose, 待办用途全表);
+  if ((raw.exchange_ref !== undefined) !== (purpose === 's2_answer')) throw 契约错误();
+  if ((raw.summary_version !== undefined) !== (purpose === 's3_confirm')) throw 契约错误();
+  return {
+    id: 要求模式串(raw.id, 待办ID模式),
+    role: 要求枚举(raw.role, 叮嘱主人全表),
+    purpose,
+    createdAt: 要求RFC3339(raw.created_at),
+    deadline: 要求RFC3339(raw.deadline),
+    exchangeRef: raw.exchange_ref === undefined ? null : 要求模式串(raw.exchange_ref, 交换ID模式),
+    summaryVersion: raw.summary_version === undefined
+      ? null
+      : 要求范围整数(raw.summary_version, 1, Number.MAX_SAFE_INTEGER),
+  };
+}
+
+/** 待办数组：ID 唯一，同一角色同一用途最多一条（同时两张同款卡无法定位目标）。 */
+function 解待办们(input: unknown): P5待办[] {
+  const 待办们 = 要求数组(input).map(解待办);
+  const 已见ID = new Set<string>();
+  const 已见位 = new Set<string>();
+  for (const 待办 of 待办们) {
+    if (已见ID.has(待办.id)) throw 契约错误();
+    已见ID.add(待办.id);
+    const 位 = `${待办.role}|${待办.purpose}`;
+    if (已见位.has(位)) throw 契约错误();
+    已见位.add(位);
+  }
+  return 待办们;
+}
+
+/** 发问块计数：只属 S1/S2；轮次都在预算内，前端绝不本地推进。 */
+function 解对话进度(input: unknown): P5对话进度 {
+  const raw = 要求闭合对象(
+    input,
+    ['stage', 'asking_role', 'recruiter_round', 'candidate_round', 'round_budget'],
+  );
+  const roundBudget = 要求范围整数(raw.round_budget, 1, Number.MAX_SAFE_INTEGER);
+  const recruiterRound = 要求范围整数(raw.recruiter_round, 0, roundBudget);
+  const candidateRound = 要求范围整数(raw.candidate_round, 0, roundBudget);
+  return {
+    stage: 要求枚举(raw.stage, 对话阶段全表),
+    askingRole: 要求枚举(raw.asking_role, 叮嘱主人全表),
+    recruiterRound,
+    candidateRound,
+    roundBudget,
+  };
+}
+
+/** S1 七天窗口：eligible 与不可用原因互斥（可恢复就没有原因，不可恢复必须给原因）。 */
+function 解重新考虑(input: unknown, state: P5状态视图): P5重新考虑 {
+  const raw = 要求闭合对象(input, ['eligible', 'deadline', 'unavailable_reason']);
+  // 恢复窗口只属于已结束的 Case：open/completed 携带该块即漂移。
+  if (state.lifecycle !== 'ended') throw 契约错误();
+  const eligible = 要求布尔(raw.eligible);
+  const unavailableReason = raw.unavailable_reason === null
+    ? null
+    : 要求枚举(raw.unavailable_reason, 重新考虑原因全表);
+  if (eligible !== (unavailableReason === null)) throw 契约错误();
+  return { eligible, deadline: 要求RFC3339(raw.deadline), unavailableReason };
+}
+
+function 解确认事实(input: unknown): P5确认事实 {
+  const raw = 要求闭合对象(input, ['text', 'source_refs']);
+  return {
+    text: 要求非空字符串(raw.text),
+    sourceRefs: 要求数组(raw.source_refs).map(要求字符串),
+  };
+}
+
+function 解确认条目(input: unknown): P5确认条目 {
+  const raw = 要求闭合对象(input, ['ref', 'text', 'source_refs']);
+  return {
+    ref: 要求非空字符串(raw.ref),
+    text: 要求非空字符串(raw.text),
+    sourceRefs: 要求数组(raw.source_refs).map(要求字符串),
+  };
+}
+
+/** S3 固定总结：四个列表恒在场（可空），含义只有一个闭词 —— 确认不等于接受全部条件。 */
+function 解确认总结(input: unknown): P5确认总结 {
+  const raw = 要求闭合对象(input, [
+    'version', 'created_at', 'confirmed_facts', 'agreed_arrangements',
+    'unresolved_items', 'incomplete_items', 'confirmation_meaning',
+  ]);
+  return {
+    version: 要求范围整数(raw.version, 1, Number.MAX_SAFE_INTEGER),
+    createdAt: 要求RFC3339(raw.created_at),
+    confirmedFacts: 要求数组(raw.confirmed_facts).map(解确认事实),
+    agreedArrangements: 要求数组(raw.agreed_arrangements).map(解确认事实),
+    unresolvedItems: 要求数组(raw.unresolved_items).map(解确认条目),
+    incompleteItems: 要求数组(raw.incomplete_items).map(解确认条目),
+    confirmationMeaning: 要求枚举(raw.confirmation_meaning, 确认含义全表),
+  };
+}
+
 /** viewer 专属动作表：闭词、不重复、归属正确；终态零动作零待办，open 与非空列表精确耦合。 */
 function 解可用动作(input: unknown, viewer: P5角色, state: P5状态视图, needsAction: boolean): P5动作[] {
   const actions = 要求数组(input).map((值) => 要求枚举(值, 动作全表));
@@ -770,10 +1002,13 @@ function 解可用动作(input: unknown, viewer: P5角色, state: P5状态视图
     const 归属 = 动作归属[action];
     if (归属 !== '双端' && 归属 !== viewer) throw 契约错误();
   }
+  // 终局 Case 的 needs_action 恒 false，动作表也只剩 S1 七天重新考虑这一张卡（§6.3）；
+  // 其余终态动作、以及 open 上出现的 reconsider，都是契约漂移。
   if (state.lifecycle !== 'open') {
-    if (needsAction || actions.length > 0) throw 契约错误();
+    if (needsAction || actions.some((action) => action !== 'reconsider')) throw 契约错误();
     return actions;
   }
+  if (actions.includes('reconsider')) throw 契约错误();
   if (needsAction !== (actions.length > 0)) throw 契约错误();
   return actions;
 }
@@ -790,9 +1025,58 @@ function 解终局摘要块(raw: Record<string, unknown>, state: P5状态视图)
 
 const 详情共用必需键 = [
   'state', 'needs_action', 'available_actions', 'stages', 'intent_confirmations', 'job',
-  'match_score', 'job_detail',
+  'match_score', 'job_detail', 'continuity_version',
 ] as const;
-const 详情可选键 = ['current_coordination', 'terminal_summary', 'conversation_ref'] as const;
+// 连续块四员只对 continuity_version 1（历史 Case）允许缺席；v2 由下方逐一要求在场。
+const 详情可选键 = [
+  'current_coordination', 'terminal_summary', 'conversation_ref',
+  'pending_actions', 'dialogue_progress', 'reconsideration', 'confirmation_summary',
+] as const;
+
+/**
+ * 连续筛选块（§6.2）：版本 1 允许四员整组缺席（归一为 []/null）；版本 2 必须五员齐备，
+ * 可空处才为 null。reconsider 卡与 reconsideration 的成对关系在此闭合 —— 卡只可能出现在
+ * 已结束、仍可恢复、且查看者是招聘方的 Case 上。
+ */
+function 解连续块(
+  raw: Record<string, unknown>,
+  role: P5角色,
+  state: P5状态视图,
+  availableActions: readonly P5动作[],
+): {
+  continuityVersion: 1 | 2;
+  pendingActions: P5待办[];
+  dialogueProgress: P5对话进度 | null;
+  reconsideration: P5重新考虑 | null;
+  confirmationSummary: P5确认总结 | null;
+} {
+  const 版本号 = 要求范围整数(raw.continuity_version, 1, 2);
+  const continuityVersion: 1 | 2 = 版本号 === 2 ? 2 : 1;
+  /** v2 五员齐备：缺席即漂移（可空处的 null 合法）；v1 允许整组缺席。 */
+  const 必在 = (值: unknown) => {
+    if (continuityVersion === 2 && 值 === undefined) throw 契约错误();
+    return 值;
+  };
+  const pendingActions = 必在(raw.pending_actions) === undefined
+    ? []
+    : 解待办们(raw.pending_actions);
+  const dialogueProgress = 必在(raw.dialogue_progress) == null
+    ? null
+    : 解对话进度(raw.dialogue_progress);
+  const reconsideration = 必在(raw.reconsideration) == null
+    ? null
+    : 解重新考虑(raw.reconsideration, state);
+  const confirmationSummary = 必在(raw.confirmation_summary) == null
+    ? null
+    : 解确认总结(raw.confirmation_summary);
+  // 待办只归本 Case 的两个角色，且历史 Case 没有待办（§6.2「Empty on a version 1 Case」）。
+  if (continuityVersion === 1 && pendingActions.length > 0) throw 契约错误();
+  if (availableActions.includes('reconsider')
+    && (role !== 'recruiter' || reconsideration === null || !reconsideration.eligible)) {
+    throw 契约错误();
+  }
+  return { continuityVersion, pendingActions, dialogueProgress, reconsideration, confirmationSummary };
+}
 
 /**
  * 解P5详情：把双端 role detail 的 wire 值解成归一化 P5详情。候选端带 intention_id、
@@ -811,7 +1095,9 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
   const state = 解P5状态视图(raw.state);
   const needsAction = 要求布尔(raw.needs_action);
   const availableActions = 解可用动作(raw.available_actions, role, state, needsAction);
-  const stages = 要求数组(raw.stages).map((区) => 解P5阶段区(区, role, state.roundBudget));
+  const 连续块 = 解连续块(raw, role, state, availableActions);
+  const { continuityVersion } = 连续块;
+  const stages = 要求数组(raw.stages).map((区) => 解P5阶段区(区, role, state.roundBudget, continuityVersion));
   if (stages.length !== 4) throw 契约错误();
   阶段顺序.forEach((stage, 下标) => {
     if (stages[下标].stage !== stage) throw 契约错误();
@@ -847,6 +1133,7 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
       conversationRef,
       matchScore,
       jobDetail,
+      ...连续块,
     };
   }
   return {
@@ -862,6 +1149,7 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
     conversationRef,
     matchScore,
     jobDetail,
+    ...连续块,
     candidateResume: raw.candidate_resume === null ? null : 解候选在线简历(raw.candidate_resume),
     candidateIdentity: 解候选身份(raw.candidate_identity),
   };
@@ -993,6 +1281,28 @@ function 历史查询(
   return P5路径(role, `/match-cases/history?${片段.join('&')}`);
 }
 
+/**
+ * v2 命令的待办目标（冻结合同 §6.1）：pending_action_id 必带 —— 「Case 当前停在哪」不是
+ * 目标；私有说明只能随 continue，且只投给本人 Agent，任何响应里都不会回显。
+ */
+export interface P5决定目标 {
+  pendingActionId: string;
+  /** trim 后为空等同未填；end 一律不带（调用方传 null）。 */
+  privateNote: string | null;
+}
+
+/** S3 决定目标：本人 s3_confirm 待办 + 本屏读到的那个 summary_version。 */
+export interface P5意向目标 {
+  pendingActionId: string;
+  summaryVersion: number;
+}
+
+/** S2 人工补答载荷：answer 必带 status；answered 必带非空 answer；end 两者都不带。 */
+export type P5对话回答 =
+  | { pendingActionId: string; action: 'answer'; status: 'answered'; answer: string }
+  | { pendingActionId: string; action: 'answer'; status: 'unknown' }
+  | { pendingActionId: string; action: 'end' };
+
 export interface MatchCase数据源 {
   读取P5摘要(role: P5角色): Promise<MatchCaseSummary>;
   读取P5Open列表(role: P5角色, filterRef: string | null, cursor: string | null): Promise<P5列表页>;
@@ -1000,10 +1310,14 @@ export interface MatchCase数据源 {
   读取P5详情(role: P5角色, caseId: string): Promise<P5详情>;
   回答P5事实(role: P5角色, caseId: string, promptId: string, response: string, key: string): Promise<void>;
   提交P5简历(caseId: string, fileId: string, fileVersionId: string, disclosureConfirmed: true, key: string): Promise<void>;
-  决定P5S0(caseId: string, action: 'continue' | 'end', key: string): Promise<void>;
-  决定P5S1(caseId: string, action: 'continue' | 'not_fit', key: string): Promise<void>;
+  决定P5S0(caseId: string, action: 'continue' | 'end', key: string, 目标?: P5决定目标): Promise<void>;
+  决定P5S1(caseId: string, action: 'continue' | 'not_fit' | 'end', key: string, 目标?: P5决定目标): Promise<void>;
   决定P5S2(role: P5角色, caseId: string, issueId: string, action: 'accept' | 'reject', key: string): Promise<void>;
-  决定P5S3(role: P5角色, caseId: string, action: 'confirm' | 'decline', key: string): Promise<void>;
+  决定P5S3(role: P5角色, caseId: string, action: 'confirm' | 'decline', key: string, 目标?: P5意向目标): Promise<void>;
+  /** S2 人工补答（v2 专属端点）：本人回答或改为结束匹配。 */
+  回答P5对话(role: P5角色, caseId: string, 载荷: P5对话回答, key: string): Promise<void>;
+  /** S1 七天重新考虑（v2 专属端点，仅招聘端）：不带待办，action 只有 continue。 */
+  重新考虑P5(caseId: string, privateNote: string | null, key: string): Promise<void>;
   新增P5叮嘱(role: P5角色, caseId: string, text: string, key: string): Promise<void>;
   读取P5简历PDF(role: P5角色, caseId: string): Promise<BFF二进制响应>;
 }
@@ -1090,21 +1404,77 @@ export function 创建MatchCase数据源(client: Pick<BFF客户端, '请求' | '
     });
   }
 
-  async function 决定P5S0(caseId: string, action: 'continue' | 'end', key: string): Promise<void> {
+  /**
+   * 决定 body：历史（v1）Case 只发 {action}；v2 必带 pending_action_id，私有说明只随
+   * continue 且 trim 后非空才带（trim 后空 = 未填，绝不发空串）。
+   */
+  function 决定body(action: string, 目标: P5决定目标 | undefined): Record<string, unknown> {
+    if (目标 === undefined) return { action };
+    const 说明 = 目标.privateNote === null ? '' : 目标.privateNote.trim();
+    return {
+      action,
+      pending_action_id: 目标.pendingActionId,
+      ...(action === 'continue' && 说明 !== '' ? { private_note: 说明 } : {}),
+    };
+  }
+
+  async function 决定P5S0(
+    caseId: string,
+    action: 'continue' | 'end',
+    key: string,
+    目标?: P5决定目标,
+  ): Promise<void> {
     await 请求<unknown>({
       path: `/api/v1/me/match-cases/${encodeURIComponent(caseId)}/decisions`,
       method: 'POST',
-      body: { action },
+      body: 决定body(action, 目标),
       幂等: true,
       幂等键: key,
     });
   }
 
-  async function 决定P5S1(caseId: string, action: 'continue' | 'not_fit', key: string): Promise<void> {
+  async function 决定P5S1(
+    caseId: string,
+    action: 'continue' | 'not_fit' | 'end',
+    key: string,
+    目标?: P5决定目标,
+  ): Promise<void> {
     await 请求<unknown>({
       path: `/api/v1/recruiter/match-cases/${encodeURIComponent(caseId)}/resume-screening-decisions`,
       method: 'POST',
-      body: { action },
+      body: 决定body(action, 目标),
+      幂等: true,
+      幂等键: key,
+    });
+  }
+
+  async function 回答P5对话(
+    role: P5角色,
+    caseId: string,
+    载荷: P5对话回答,
+    key: string,
+  ): Promise<void> {
+    await 请求<unknown>({
+      path: P5路径(role, `/match-cases/${encodeURIComponent(caseId)}/dialogue-responses`),
+      method: 'POST',
+      body: {
+        pending_action_id: 载荷.pendingActionId,
+        action: 载荷.action,
+        ...(载荷.action === 'answer' ? { status: 载荷.status } : {}),
+        ...(载荷.action === 'answer' && 载荷.status === 'answered' ? { answer: 载荷.answer } : {}),
+      },
+      幂等: true,
+      幂等键: key,
+    });
+  }
+
+  async function 重新考虑P5(caseId: string, privateNote: string | null, key: string): Promise<void> {
+    const 说明 = privateNote === null ? '' : privateNote.trim();
+    await 请求<unknown>({
+      path: `/api/v1/recruiter/match-cases/${encodeURIComponent(caseId)}/reconsider`,
+      method: 'POST',
+      // 恢复就是一次「迟到的 continue」：action 只有 continue，且不带待办目标。
+      body: { action: 'continue', ...(说明 !== '' ? { private_note: 说明 } : {}) },
       幂等: true,
       幂等键: key,
     });
@@ -1131,11 +1501,15 @@ export function 创建MatchCase数据源(client: Pick<BFF客户端, '请求' | '
     caseId: string,
     action: 'confirm' | 'decline',
     key: string,
+    目标?: P5意向目标,
   ): Promise<void> {
     await 请求<unknown>({
       path: P5路径(role, `/match-cases/${encodeURIComponent(caseId)}/intent-decisions`),
       method: 'POST',
-      body: { action },
+      // v2 必带本人待办与本屏所读 summary_version（旧版本由服务端 409 拦下，绝不自动改投新版）
+      body: 目标 === undefined
+        ? { action }
+        : { action, pending_action_id: 目标.pendingActionId, summary_version: 目标.summaryVersion },
       幂等: true,
       幂等键: key,
     });
@@ -1173,6 +1547,8 @@ export function 创建MatchCase数据源(client: Pick<BFF客户端, '请求' | '
     决定P5S1,
     决定P5S2,
     决定P5S3,
+    回答P5对话,
+    重新考虑P5,
     新增P5叮嘱,
     读取P5简历PDF,
   };
