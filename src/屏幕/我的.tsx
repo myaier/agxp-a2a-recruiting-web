@@ -249,14 +249,16 @@ export default function 我的() {
         <span className={样式.代理文字}>
           <span className={样式.代理标题行}>
             <span className={样式.代理标题}>我的求职AI代理</span>
-            {/* 在线绿点：代理正在后台并行谈判的可视信号（Backend 没有 runtime presence
-                合同，不得声称在线） */}
-            {!是后端 ? <span className={样式.在线点} /> : null}
+            {/* 2026-09-15 用户裁定：两模式共用 Mock 同款固定展示 —— 「在线」字样、绿点
+                与「正在跟进 N 个机会」都是产品固定文案，不代表接入了实时在线 presence
+                接口。唯一模式变量是机会数：Backend 取当前 candidate owner 权威 summary
+                的 openTotal（首载/刷新/失败/换主体显示 —），Mock 沿用原型在谈列表长度。 */}
+            <span className={样式.在线点} />
           </span>
           <span className={`${样式.代理状态} 单行`}>
-            {是后端
-              ? '当前 MatchCase：' + Backend统计.open
-              : '在线 · 正在跟进 ' + 状态.在谈列表.length + ' 个机会'}
+            {'在线 · 正在跟进 ' +
+              (是后端 ? Backend统计.open : 状态.在谈列表.length) +
+              ' 个机会'}
             {/* 规则计数未水合时（Backend）整段不出，不渲染 0 也不拿 Mock 数充数 */}
             {可显示候选规则数 ? (
               <> · 规则 {生效规则数} 条生效</>

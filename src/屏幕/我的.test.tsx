@@ -9,9 +9,12 @@
 // 匹配一律 —，绝不回退 legacy 在谈列表 的 fixture 数字；Mock 保留原型统计且零
 // summary operation 调用。
 //
-// 真实性修复追加：Backend 代理卡没有 runtime presence/status 合同 —— 在线绿点与
-// 「在线 · 正在跟进」断言删除，只说「当前 MatchCase：N」；占位运营页脚（热线/许可
-// 证/资质证照）只在 Mock 渲染。规则数继续服从既有水合 gate。
+// 2026-09-15 产品裁定追加：代理卡回到 Mock 同款固定展示 —— 「在线 · 正在跟进 N 个
+// 机会」与在线绿点两模式都保留（产品固定文案，不代表接入实时在线 presence 接口）；
+// 唯一模式变量是机会数，Backend 取当前 candidate owner 权威 summary 的 openTotal
+// （保留「页面列表仅 8 条而 summary=51」的精确计数反例），中性态照旧显示 —。
+// 占位运营页脚（热线/许可证/资质证照）只在 Mock 渲染。规则数继续服从既有水合
+// gate，且已水合 0 条生效时显示 0 而不是隐藏。
 //
 // 注意：这里 mock 了 ../状态/应用状态（整模块被工厂替换），所以 初始状态 要从
 // 它的原始定义处 ../状态/初始状态 引入，不能走 应用状态 的转发导出。
@@ -22,6 +25,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import type { BFF简历, BFF主体 } from '../数据/BFF契约';
 import { BFF简历样本, BFF主体样本 } from '../测试/BFF样本';
 import { 初始状态 } from '../状态/初始状态';
+import 样式 from './我的.module.css';
 import 我的 from './我的';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
 import type { P5摘要快照 } from '../状态/后端/类型';
@@ -75,11 +79,24 @@ function 布置(
     主体?: BFF主体;
     P5摘要?: P5摘要快照;
     规则水合?: '未开始' | '成功';
+    /** 覆写生效规则计数（默认沿用 Mock 种子：全局 2 + 意向 2 = 4 条生效） */
+    生效规则数?: number;
   } = {},
 ) {
   mock上下文.当前 = {
     状态: {
       ...初始状态,
+      ...(选项.生效规则数 === undefined
+        ? {}
+        : {
+            全局规则: Array.from({ length: 选项.生效规则数 }, (_, i) => ({
+              编号: `R-T${i}`,
+              内容: '测试生效规则',
+              来源: '测试',
+              生效: true,
+            })),
+            意向级规则: [],
+          }),
       基本信息: {
         ...初始状态.基本信息,
         真名: 选项.真名 ?? '',
@@ -143,7 +160,7 @@ it('Mock 保留原型姓名与状态兜底', () => {
 
 it('Backend 注册 candidate summary scope，并按已开案口径标签显示精确跨页统计', async () => {
   const scope = P5范围键.summary('candidate');
-  const { unmount } = 布置('backend', {
+  const { unmount, container: 视图 } = 布置('backend', {
     主体: { ...BFF主体样本, subject_id: 'sub_candidate', last_used_role: 'candidate' },
     P5摘要: 成功摘要(),
   });
@@ -152,37 +169,49 @@ it('Backend 注册 candidate summary scope，并按已开案口径标签显示�
     expect(screen.getByText(text)).toBeTruthy();
   }
   expect(screen.queryByText(/^在谈$/)).toBeNull();
-  expect(screen.getByText(/当前 MatchCase：51/)).toBeTruthy();
+  expect(screen.getByText(/在线 · 正在跟进 51 个机会/)).toBeTruthy();
+  expect(视图.querySelector(`.${样式.在线点}`)).not.toBeNull();
   await waitFor(() => expect(设置P5范围).toHaveBeenCalledWith('candidate', scope));
   expect(加载摘要).toHaveBeenCalledWith('candidate');
   unmount();
   expect(设置P5范围).toHaveBeenLastCalledWith('candidate', null);
 });
 
-it('刷新中或旧 owner 显示 —；Mock 保留原数字且零 summary operation', () => {
-  布置('backend', {
+it('刷新中或旧 owner 显示 —（含代理卡文案）；Mock 保留原数字且零 summary operation', () => {
+  const { unmount, container: 后端视图 } = 布置('backend', {
     主体: { ...BFF主体样本, subject_id: 'sub_new', last_used_role: 'candidate' },
     P5摘要: { ...成功摘要('sub_old'), 阶段: '进行中', 刷新中: true, summary: null },
   });
   expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(4);
+  // 固定文案不随数据可用性变化：中性态只在数字位显示 —，绿点照常在
+  expect(screen.getByText(/在线 · 正在跟进 — 个机会/)).toBeTruthy();
+  expect(后端视图.querySelector(`.${样式.在线点}`)).not.toBeNull();
+  unmount();
 
   设置P5范围.mockClear();
   加载摘要.mockClear();
-  布置('mock');
+  const { container: mock视图 } = 布置('mock');
   expect(screen.getByText(String(初始状态.在谈列表.length))).toBeTruthy();
+  expect(mock视图.querySelector(`.${样式.在线点}`)).not.toBeNull();
   expect(设置P5范围).not.toHaveBeenCalled();
   expect(加载摘要).not.toHaveBeenCalled();
 });
 
-// Backend 没有 runtime presence/status 合同：代理卡不说「在线」，只说 MatchCase 事实；
-// 占位运营页脚（热线/许可证/资质证照）只在 Mock 渲染。规则数服从既有水合 gate。
-it('Backend 代理卡只说 MatchCase 事实，无在线断言与占位运营页脚', () => {
-  const { unmount } = 布置('backend', {
+// 2026-09-15 产品裁定：代理卡两模式共用 Mock 固定文案「在线 · 正在跟进 N 个机会」
+// 与在线绿点（产品固定展示，不是 presence 合同）；Backend 只把 N 换成权威 summary 的
+// openTotal。精确计数反例保留：页面在谈列表仅 8 条（单页），卡片仍显示 summary=51。
+// 占位运营页脚（热线/许可证/资质证照）只在 Mock 渲染，旧「当前 MatchCase」字样不恢复。
+it('Backend 代理卡与 Mock 同款在线文案，仅数字取权威 summary', () => {
+  const { unmount, container: 后端视图 } = 布置('backend', {
     主体: { ...BFF主体样本, subject_id: 'sub_candidate', last_used_role: 'candidate' },
     P5摘要: 成功摘要(),
   });
-  expect(screen.getByText(/当前 MatchCase：51/)).toBeTruthy();
-  for (const text of ['在线', '并行寻访', '400-000-0000', '人力资源服务许可证', '资质证照']) {
+  expect(screen.getByText(/在线 · 正在跟进 51 个机会/)).toBeTruthy();
+  expect(后端视图.querySelector(`.${样式.在线点}`)).not.toBeNull();
+  // 不拿页面列表长度补位（8 ≠ 51），也不恢复旧「当前 MatchCase」字样
+  expect(screen.queryByText(new RegExp(`正在跟进 ${初始状态.在谈列表.length} 个机会`))).toBeNull();
+  expect(screen.queryByText(/当前 MatchCase/)).toBeNull();
+  for (const text of ['并行寻访', '400-000-0000', '人力资源服务许可证', '资质证照']) {
     expect(screen.queryByText(new RegExp(text))).toBeNull();
   }
   // 规则未水合：不出规则计数
@@ -190,19 +219,30 @@ it('Backend 代理卡只说 MatchCase 事实，无在线断言与占位运营页
   unmount();
 });
 
-it('Backend 规则水合成功后显示当前 MatchCase 与已水合规则数', () => {
+it('Backend 规则水合成功后显示完整在线文案与已水合规则数', () => {
   布置('backend', {
     规则水合: '成功',
+    生效规则数: 2,
     主体: { ...BFF主体样本, subject_id: 'sub_candidate', last_used_role: 'candidate' },
     P5摘要: 成功摘要(),
   });
-  expect(screen.getByText(/当前 MatchCase：51/)).toBeTruthy();
-  expect(screen.getByText(/规则 \d+ 条生效/)).toBeTruthy();
+  expect(screen.getByText(/在线 · 正在跟进 51 个机会 · 规则 2 条生效/)).toBeTruthy();
 });
 
-it('Mock 保留原型在线文案与页脚', () => {
-  布置('mock');
+it('Backend 规则已水合但 0 条生效时显示 0 而不是隐藏', () => {
+  布置('backend', {
+    规则水合: '成功',
+    生效规则数: 0,
+    主体: { ...BFF主体样本, subject_id: 'sub_candidate', last_used_role: 'candidate' },
+    P5摘要: 成功摘要(),
+  });
+  expect(screen.getByText(/在线 · 正在跟进 51 个机会 · 规则 0 条生效/)).toBeTruthy();
+});
+
+it('Mock 保留原型在线文案、绿点与页脚', () => {
+  const { container: mock视图 } = 布置('mock');
   expect(screen.getByText(/在线 · 正在跟进 \d+ 个机会/)).toBeTruthy();
+  expect(mock视图.querySelector(`.${样式.在线点}`)).not.toBeNull();
   expect(screen.getByText(/服务热线 400-000-0000/)).toBeTruthy();
   expect(screen.getByText(/人力资源服务许可证/)).toBeTruthy();
 });
