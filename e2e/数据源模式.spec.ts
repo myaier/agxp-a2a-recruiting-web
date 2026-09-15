@@ -3256,6 +3256,28 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         });
         return;
       }
+      // 教育更新（同 id CAS）：body 同创建（end_month 可选）；成功以整册权威快照回读
+      //（与 保存简历 的 PATCH /me/resume/educations/{id} 消费合同一致，J-PILOT-02 同款）
+      const Onboarding教育改 = /^\/api\/v1\/me\/resume\/educations\/([^/]+)$/.exec(path);
+      if (Onboarding教育改 && method === 'PATCH') {
+        断言教育写入(body);
+        记变更(path);
+        const 目标 = Onboarding域.resume.educations.find((条) => 条.id === Onboarding教育改[1]);
+        if (目标 === undefined) {
+          await route.fulfill({ status: 404, json: { error: { type: 'education_not_found', message: 'fixture：未知教育条目' } } });
+          return;
+        }
+        const 写 = body as { institution_id: string; degree: string; major_id: string; start_month: string; end_month?: string | null };
+        目标.institution = { id: 写.institution_id, display_name: Onboarding目录展示[写.institution_id] ?? '' };
+        目标.degree = 写.degree;
+        目标.major = { id: 写.major_id, display_name: Onboarding目录展示[写.major_id] ?? '' };
+        目标.start_month = 写.start_month;
+        目标.end_month = 写.end_month ?? null;
+        目标.revision += 1;
+        Onboarding域.resume.aggregate_revision += 1;
+        await 答简历();
+        return;
+      }
       if (path === '/api/v1/me/resume/certificates' && method === 'POST') {
         断言证书写入(body);
         记变更(path);
@@ -3316,6 +3338,17 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         };
         Onboarding域.intentions.push(新意向);
         await route.fulfill({ status: 200, json: 信封(P4深克隆(新意向)) });
+        return;
+      }
+      // 完成核对的 exact ID 权威回读（J-PILOT-02 同款）：只认本轮创建的那一条
+      const Onboarding意向详情 = /^\/api\/v1\/me\/intentions\/([^/]+)$/.exec(path);
+      if (Onboarding意向详情 && method === 'GET') {
+        const 目标 = Onboarding域.intentions.find((条) => 条.intention_id === Onboarding意向详情[1]);
+        if (目标 === undefined) {
+          await route.fulfill({ status: 404, json: { error: { type: 'intention_not_found', message: 'fixture：未知意向' } } });
+          return;
+        }
+        await route.fulfill({ status: 200, json: 信封(P4深克隆(目标)) });
         return;
       }
 
@@ -10994,11 +11027,12 @@ test.describe('P8 Mock 数据源隔离 @mock', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 滚薪资轮到指定档：按 listbox 的可访问名定位，滚到目标档那一格（行高按相邻两档
- * 的 offsetTop 差现算），停下后等防抖（90ms）落值 —— aria-selected 翻true 才继续。
- * 这是真滚轮滚动（scroll-snap 吸附交给浏览器），不是绕过 UI 的值注入。
+ * 滚滚轮到指定档：按 listbox 的可访问名定位（薪资/年份等内嵌滚轮共用），滚到目标档
+ * 那一格（行高按相邻两档的 offsetTop 差现算），停下后等防抖（90ms）落值 ——
+ * aria-selected 翻true 才继续。这是真滚轮滚动（scroll-snap 吸附交给浏览器），
+ * 不是绕过 UI 的值注入。
  */
-async function 滚薪资轮(page: Page, 名称: string, 档: number): Promise<void> {
+async function 滚滚轮(page: Page, 名称: string, 档: number): Promise<void> {
   const 轮 = page.getByRole('listbox', { name: 名称 });
   await 轮.waitFor();
   await 轮.evaluate((节点, 目标) => {
@@ -11019,12 +11053,15 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     test.setTimeout(180_000);
 
     const fixture = 创建候选OnboardingFixture();
+    // 合同 C：经历公司走 公司选择抽屉 —— 搜索池给默认组织库，选中按稳定 ID 回填
+    const 隐私 = P3隐私fixture();
+    隐私.组织库 = P3默认组织库();
     await 安装BFF路由(page, {
       记录目录请求: () => {},
       登录尝试id: 'att-onboarding-001',
       候选OnboardingFixture: fixture,
       // 选身份是交互水合（任一支持域失败会抛回身份页），隐私域要给合法权威视图
-      隐私fixture: P3隐私fixture(),
+      隐私fixture: 隐私,
     });
     const 次数 = (方法: string, 路径: string) =>
       fixture.mutations.filter((条) => 条.method === 方法 && 条.path === 路径).length;
@@ -11036,15 +11073,18 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     await expect(page).toHaveURL(/#\/student$/, { timeout: 30_000 });
     await expect(page.getByRole('heading', { name: '完善资料' })).toBeVisible();
 
-    // ── 2. 完善资料：已毕业（保留社招全职）、办公方式、工作城市与期望职位
-    //      都走全屏选择页的可见搜索/选择/保存返回 ──
-    // 选中态的 ✓ 由 CSS ::before 渲染、会进可访问名，所以选择钮一律用非精确匹配。
-    // 城市行先选（引导预填还是 null，行内是可见占位「选择工作城市」），办公方式
-    // 在两个全屏选择页返回之后再点 —— 存求职筛选偏好 的 reducer 兜底会往 null 预填里
-    // 播种 Mock 默认城市「上海」（既有行为，与本轮修复无关），先选城市不触发它。
+    // ── 2. 完善资料：工作城市与期望职位走全屏选择页的可见搜索/选择/保存返回 ──
+    // Backend 初始偏好为空（空求职初筛偏好）：「已毕业」只排资料填写顺序，不替选
+    // 求职类型（未选择时两钮都不亮）—— 类型要显式点「社招全职」才亮。
     await page.getByRole('button', { name: '已毕业' }).click();
+    await expect(page.getByRole('button', { name: '社招全职' })).toHaveAttribute('aria-pressed', 'false');
+    await page.getByRole('button', { name: '社招全职' }).click();
     await expect(page.getByRole('button', { name: '社招全职' })).toHaveAttribute('aria-pressed', 'true');
 
+    // 选中态的 ✓ 由 CSS ::before 渲染、会进可访问名，所以选择钮一律用非精确匹配。
+    // 城市行先选（引导预填还是 null，行内是可见占位「选择工作城市」），办公方式
+    // 在两个全屏选择页返回之后再点 —— Backend 的偏好派发携带的城市就是当前空列表，
+    // 不会像 Mock 兜底那样播种「上海」。
     await page.getByRole('button', { name: '选择工作城市' }).click();
     await expect(page).toHaveURL(/#\/onboard\/city$/);
     await page.getByPlaceholder('搜索城市 / 省份').fill('fixture');
@@ -11063,8 +11103,9 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page).toHaveURL(/#\/student$/);
 
-    // 办公方式至少一种：默认三档全亮，点掉「混合」后现场/全远程仍在
-    await page.getByRole('button', { name: '混合' }).click();
+    // 办公方式 Backend 同样从空起步：三档全不亮，显式点「现场」
+    await expect(page.getByRole('button', { name: '现场' })).toHaveAttribute('aria-pressed', 'false');
+    await page.getByRole('button', { name: '现场' }).click();
     await expect(page.getByRole('button', { name: '现场' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
 
@@ -11072,8 +11113,8 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/wizard\?stage=salary$/);
     await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toBeVisible();
-    await 滚薪资轮(page, '最低月薪', 30);
-    await 滚薪资轮(page, '最高月薪', 40);
+    await 滚滚轮(page, '最低月薪', 30);
+    await 滚滚轮(page, '最高月薪', 40);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
     await expect(page.getByRole('heading', { name: '创建在线简历' })).toBeVisible();
@@ -11117,9 +11158,12 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     await page.getByRole('button', { name: 'Fixture 专业', exact: true }).click();
     await page.getByRole('button', { name: '下一步' }).click();
 
-    // 就读时间段：滚轮默认 2021—2025 合法，走可见 下一步（日期轮的完成键在经历编辑页）
+    // 就读时间段：年份轮可空不兜底（无 2021/2025 伪默认），滚到 2020/2024（滚轮交互
+    // 即确认）再走可见 下一步（日期轮的完成键在经历编辑页）
     await expect(page).toHaveURL(/#\/onboard\/eduyears$/, { timeout: 15_000 });
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible();
+    await 滚滚轮(page, '入学年', 2020);
+    await 滚滚轮(page, '毕业年', 2024);
     await page.getByRole('button', { name: '下一步' }).click();
 
     // ── 5. 在线简历：添加工作经历（公司 / 行业 / 职位 / 入职年月·完成）→
@@ -11127,11 +11171,14 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
     await expect(page.getByRole('heading', { name: '在线简历' })).toBeVisible();
     await page.getByRole('button', { name: '添加工作经历' }).click();
-    await expect(page.getByPlaceholder('必填')).toHaveCount(2);
-    await page.getByPlaceholder('必填').nth(0).fill('Fixture 星桥数据');
+    // 合同 C：公司名称行走 公司选择抽屉 —— 编辑页唯一 placeholder='必填' 的输入只剩职位名称
+    await expect(page.getByPlaceholder('必填')).toHaveCount(1);
+    await page.getByRole('button').filter({ hasText: '公司名称' }).click();
+    await 抽屉搜企业并选中(page, '磐石', P3标记.手动组织甲);
+    await expect(page.getByRole('button').filter({ hasText: '公司名称' })).toContainText(P3标记.手动组织甲);
     await page.getByRole('button', { name: '所属行业' }).click();
     await page.getByRole('button', { name: 'Fixture 行业', exact: true }).click();
-    await page.getByPlaceholder('必填').nth(1).fill('Fixture 后端工程师');
+    await page.getByPlaceholder('必填').fill('Fixture 后端工程师');
     await page.getByRole('button', { name: '入职年月' }).click();
     await page.getByRole('dialog').getByRole('button', { name: '完成' }).click();
     await page.getByRole('button', { name: '完成', exact: true }).click();
@@ -11184,9 +11231,11 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     // 返回栏居中标题是 div 不是 heading，按可见文本断言
     await expect(page.getByText('我的简历', { exact: true })).toBeVisible();
 
-    // 权威快照渲染：经历 / 教育 / 技能 / 证书 全部来自 HTTP fixture
-    await expect(page.getByText('Fixture 星桥数据')).toBeVisible();
+    // 权威快照渲染：经历 / 教育 / 技能 / 证书 全部来自 HTTP fixture。
+    // 经历卡的公司名是服务端冻结的展示快照（合同 C，本 stub 不反查组织名 → company
+    // 为空串），卡上可断言的坐标是职位名与行业标签
     await expect(page.getByText('Fixture 后端工程师')).toBeVisible();
+    await expect(page.getByText(/· Fixture 行业/)).toBeVisible();
     await expect(page.getByText(标记.学校display)).toBeVisible();
     await expect(page.getByText('本科 · Fixture 专业').first()).toBeVisible();
     await expect(page.getByText('Go', { exact: true }).first()).toBeVisible();
@@ -11206,6 +11255,14 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     const 证书Mutation = fixture.mutations.find((条) => 条.path === '/api/v1/me/resume/certificates');
     expect(证书Mutation?.body).toEqual({ name: 'CET-4', year: null });
     expect(fixture.resume.experiences).toHaveLength(1);
+    // 合同 C：经历按稳定 ID 提交（organization_id 是抽屉选中的组织甲、industry_id 是
+    // 所点行业叶），company 是服务端冻结展示快照（stub 不反查 → 空串）
+    expect(fixture.resume.experiences[0]).toMatchObject({
+      organization_id: 'org-fixture-p3-manual-a',
+      industry: { id: 'ind-fixture-001', display_name: 'Fixture 行业' },
+      title: 'Fixture 后端工程师',
+      company: '',
+    });
     expect(fixture.resume.skills).toEqual(['Go']);
     expect(fixture.resume.educations).toHaveLength(1);
     expect(fixture.resume.certificates).toEqual([
@@ -11213,6 +11270,10 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     ]);
     expect(fixture.intentions).toHaveLength(1);
     expect(fixture.intentions[0]?.status).toBe('active');
+    // 显式点选的类型/办公方式如实进意向：社招全职 + 现场（「已毕业」从未替选）
+    expect(fixture.intentions[0]?.recruitment_type).toBe('social_full_time');
+    expect(fixture.intentions[0]?.workplace_modes).toEqual(['onsite']);
+    expect(fixture.intentions[0]?.graduation_month).toBeNull();
     // 意向坐标来自目录引用 ID（薪资 30–40K / 城市 / 职位都是 fixture 的标记值）
     expect(fixture.intentions[0]?.compensation).toEqual({ mode: 'range', lower: 30, upper: 40 });
     expect(fixture.intentions[0]?.job_category).toEqual({ id: 'job-fixture-001', display_name: 标记.职位display });
@@ -11538,13 +11599,14 @@ test.describe('核心编辑 城市 @backend', () => {
     });
 
     // Location 目录桩（本用例专用精确状态）：默认页两省两城 + 游标；翻页第三城；搜索按 q。
+    // 分组按 admin1_code 聚合（标题取 admin1_name），浙江 33 / 江苏 32 各归其省。
     // 字段形状与既有 /catalog/locations 内置桩一致（信封闭合解码）。
-    const 省份城 = (id: string, 名称: string, 省: string) => ({
+    const 省份城 = (id: string, 名称: string, 省: string, 码: string) => ({
       id,
       display_name: 名称,
       country_code: 'CN',
       country_name: '中国',
-      admin1_code: '31',
+      admin1_code: 码,
       admin1_name: 省,
       timezone: 'Asia/Shanghai',
       population: 1000,
@@ -11556,21 +11618,21 @@ test.describe('核心编辑 城市 @backend', () => {
       if (q !== '') {
         await route.fulfill({
           status: 200,
-          json: 信封({ items: [省份城('loc-shaoxing', '绍兴市', '浙江省')], next_cursor: null, catalog_version: 'loc-v1' }),
+          json: 信封({ items: [省份城('loc-shaoxing', '绍兴市', '浙江省', '33')], next_cursor: null, catalog_version: 'loc-v1' }),
         });
         return;
       }
       if (cursor === 'loc-cur-1') {
         await route.fulfill({
           status: 200,
-          json: 信封({ items: [省份城('loc-ningbo', '宁波市', '浙江省')], next_cursor: null, catalog_version: 'loc-v1' }),
+          json: 信封({ items: [省份城('loc-ningbo', '宁波市', '浙江省', '33')], next_cursor: null, catalog_version: 'loc-v1' }),
         });
         return;
       }
       await route.fulfill({
         status: 200,
         json: 信封({
-          items: [省份城('loc-hangzhou', '杭州市', '浙江省'), 省份城('loc-suzhou', '苏州市', '江苏省')],
+          items: [省份城('loc-hangzhou', '杭州市', '浙江省', '33'), 省份城('loc-suzhou', '苏州市', '江苏省', '32')],
           next_cursor: 'loc-cur-1',
           catalog_version: 'loc-v1',
         }),
@@ -14966,7 +15028,7 @@ test.describe('picker 统一 就读年份 @mock', () => {
     await expect(毕业年轮.getByRole('option', { name: '2025', exact: true })).toHaveAttribute('aria-selected', 'true');
     // 真实滚动把入学年改到 2022 → 下一步保存（Mock 模式 简历教育 变更经 资料持久化
     // 自动落盘 AGXP简历v3，无测试侧 reseed）→ 硬刷新沿应用自己存盘的值恢复
-    await 滚薪资轮(page, '入学年', 2022);
+    await 滚滚轮(page, '入学年', 2022);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
     // 消费应用自己落盘的值：存盘后缓存里应有 2022-09（不是测试注入的）
@@ -15024,8 +15086,8 @@ test.describe('picker 统一 就读年份 @backend', () => {
     await page.getByRole('button', { name: '混合' }).click();
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/wizard\?stage=salary$/, { timeout: 15_000 });
-    await 滚薪资轮(page, '最低月薪', 30);
-    await 滚薪资轮(page, '最高月薪', 40);
+    await 滚滚轮(page, '最低月薪', 30);
+    await 滚滚轮(page, '最高月薪', 40);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/, { timeout: 15_000 });
     await page.getByPlaceholder('身份证上的名字').fill('Fixture 候选人');
@@ -15066,7 +15128,7 @@ test.describe('picker 统一 就读年份 @backend', () => {
     // 点档直选 2021（写建档草稿）；真实滚动把毕业年滚到 2025
     await 入学年轮.getByRole('option', { name: '2021', exact: true }).click();
     await expect(入学年轮.getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await 滚薪资轮(page, '毕业年', 2025);
+    await 滚滚轮(page, '毕业年', 2025);
 
     // 硬刷新：沿建档草稿恢复两轮（草稿随滚轮交互落盘）
     await page.reload();
