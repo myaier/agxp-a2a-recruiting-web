@@ -431,3 +431,66 @@ test.describe('年月抽屉（picker 统一 Task 3）', () => {
     await expect(毕业行).toContainText('请选择毕业年月');
   });
 });
+
+// ── 年份区间抽屉（bottom-drawer 统一 Task 4）：就读时间段 页内双滚轮改入口行 +
+//    共用 年份区间层（弹层框架 + 内嵌双滚轮）。打开逐帧背景稳定、取消零回填、
+//    确定才回填入口行；短屏可达。 ──
+test.describe('年份区间抽屉（bottom-drawer 统一 Task 4）', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  /** Mock 数据源下直接进就读时间段（默认演示教育 2014/2017），等布局稳定 */
+  async function 进就读时间段(page: Page) {
+    await page.goto('/#/onboard/eduyears');
+    await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible();
+    await page.waitForTimeout(300);
+  }
+
+  test('390×844 逐帧：抽屉打开背景不跳动，取消零回填，确定才回填入口行', async ({ page }, testInfo) => {
+    await 进就读时间段(page);
+    const 入口行 = page.getByRole('button', { name: '入学年和毕业年' });
+    await expect(入口行).toContainText('2014');
+    await expect(入口行).toContainText('2017');
+
+    const 结果 = await 采抽屉打开帧(page, '入学年');
+    await 附采样证据(testInfo, '年份区间-390x844', 结果, page);
+    断背景纹丝不动(结果);
+    await expect(page.getByRole('button', { name: '取消' })).toBeFocused();
+
+    // 取消零回填：入口行值不变、无弹层残留
+    await page.getByRole('button', { name: '取消' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(入口行).toContainText('2014');
+    await expect(入口行).toContainText('2017');
+
+    // 重开改 2021/2025 确定：确定才回填到入口行
+    await 入口行.click();
+    const 抽屉 = page.getByRole('dialog', { name: '就读时间段' });
+    await 抽屉.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2021', exact: true }).click();
+    await 抽屉.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2025', exact: true }).click();
+    await 抽屉.getByRole('button', { name: '确定' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(入口行).toContainText('2021');
+    await expect(入口行).toContainText('2025');
+  });
+
+  test('390×500 短屏可达：入口行与抽屉取消键都落在视口内，Escape 可关', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 500 });
+    await 进就读时间段(page);
+    await page.getByRole('button', { name: '入学年和毕业年' }).click();
+    const 取消 = page.getByRole('button', { name: '取消' });
+    await expect(取消).toBeVisible();
+    // 等入场动画（240ms）落定：途中面板还停在 translateY(100%) 起点，
+    // 那是入场窗口自身的暂态，不是「可达」要回答的问题
+    await page.waitForTimeout(350);
+    expect(
+      await 取消.evaluate((钮) => {
+        const 形 = 钮.getBoundingClientRect();
+        return 形.top >= 0 && 形.bottom <= window.innerHeight;
+      }),
+      '取消键聚焦后不在视口内',
+    ).toBe(true);
+    await expect(取消).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+});

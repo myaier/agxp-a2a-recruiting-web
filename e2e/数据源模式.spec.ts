@@ -14758,48 +14758,57 @@ test.describe('picker 统一 就读年份 @mock', () => {
       }, [简历键, 教育]);
 
     // 1) 默认 Mock 会话（不注入教育 fixture）：既有样例 2014/2017 原样优先，直接继续
+    //    （bottom-drawer 统一 Task 4：档位断言经共用年份抽屉，取消零写入后直接下一步）
     await pickerMock登录(page);
     await page.goto('/#/onboard/eduyears');
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2014', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2017', exact: true })).toHaveAttribute('aria-selected', 'true');
+    const 入口行 = page.getByRole('button', { name: '入学年和毕业年' });
+    await expect(入口行).toContainText('2014');
+    await expect(入口行).toContainText('2017');
+    await 入口行.click();
+    const 年抽屉 = page.getByRole('dialog', { name: '就读时间段' });
+    await expect(年抽屉.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2014', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(年抽屉.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2017', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await 年抽屉.getByRole('button', { name: '取消' }).click();
+    await expect(年抽屉).toHaveCount(0);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
 
-    // 2) 显式 Mock 2021/2025 演示数据（种子形态缓存）：滚轮停在种子档，直接继续
+    // 2) 显式 Mock 2021/2025 演示数据（种子形态缓存）：入口行停在种子档，直接继续
     await 写缓存({ 编号: 'edu1', 学校: '演示大学', 学历: '本科', 专业: '演示专业', 开始: '2021-09', 结束: '2025-06' });
     await page.reload();
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2025', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('button', { name: '入学年和毕业年' })).toContainText('2021');
+    await expect(page.getByRole('button', { name: '入学年和毕业年' })).toContainText('2025');
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
 
-    // 3) 空值「请选择」：程序定位不选年；不碰滚轮硬刷新仍不补默认；点档直选成功并保存
+    // 3) 空值「请选择」：硬刷新不补默认；抽屉点档确认成功并保存
     await 写缓存({ 编号: 'edu1', 学校: '演示大学', 学历: '本科', 专业: '演示专业', 开始: '', 结束: '' });
     await page.reload();
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 15_000 });
-    const 入学年轮 = page.getByRole('listbox', { name: '入学年' });
-    const 毕业年轮 = page.getByRole('listbox', { name: '毕业年' });
-    await expect(入学年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(毕业年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('button', { name: '入学年和毕业年' })).toContainText('请选择');
     await page.reload();
-    await expect(入学年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(毕业年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
-    // 程序定位（focus）不选年
-    await 入学年轮.focus();
-    await expect(入学年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('button', { name: '入学年和毕业年' })).toContainText('请选择');
     // 点下一步被拦（两侧都空）
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page.getByText('请选择入学时间和毕业时间')).toBeVisible();
-    // 点档直选 2021 / 2025 成功
-    await 入学年轮.getByRole('option', { name: '2021', exact: true }).click();
-    await 毕业年轮.getByRole('option', { name: '2025', exact: true }).click();
-    await expect(入学年轮.getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(毕业年轮.getByRole('option', { name: '2025', exact: true })).toHaveAttribute('aria-selected', 'true');
-    // 真实滚动把入学年改到 2022 → 下一步保存（Mock 模式 简历教育 变更经 资料持久化
+    // 抽屉空档选中；点档 2021 / 2025 确认回填入口行
+    await page.getByRole('button', { name: '入学年和毕业年' }).click();
+    const 年抽屉3 = page.getByRole('dialog', { name: '就读时间段' });
+    await expect(年抽屉3.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(年抽屉3.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await 年抽屉3.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2021', exact: true }).click();
+    await 年抽屉3.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2025', exact: true }).click();
+    await 年抽屉3.getByRole('button', { name: '确定' }).click();
+    await expect(年抽屉3).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '入学年和毕业年' })).toContainText('2021');
+    // 抽屉确认改 2022 → 下一步保存（Mock 模式 简历教育 变更经 资料持久化
     // 自动落盘 AGXP简历v3，无测试侧 reseed）→ 硬刷新沿应用自己存盘的值恢复
-    await 滚薪资轮(page, '入学年', 2022);
+    await page.getByRole('button', { name: '入学年和毕业年' }).click();
+    const 年抽屉4 = page.getByRole('dialog', { name: '就读时间段' });
+    await 年抽屉4.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2022', exact: true }).click();
+    await 年抽屉4.getByRole('button', { name: '确定' }).click();
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
     // 消费应用自己落盘的值：存盘后缓存里应有 2022-09（不是测试注入的）
@@ -14809,8 +14818,9 @@ test.describe('picker 统一 就读年份 @mock', () => {
     await page.evaluate(() => { location.hash = '#/onboard/eduyears'; });
     await page.reload();
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 15_000 });
-    await expect(入学年轮.getByRole('option', { name: '2022', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(毕业年轮.getByRole('option', { name: '2025', exact: true })).toHaveAttribute('aria-selected', 'true');
+    const 回读入口 = page.getByRole('button', { name: '入学年和毕业年' });
+    await expect(回读入口).toContainText('2022');
+    await expect(回读入口).toContainText('2025');
 
     // Mock 全程零 API 请求
     expect(apiRequests).toEqual([]);
@@ -14880,43 +14890,53 @@ test.describe('picker 统一 就读年份 @backend', () => {
     await page.getByRole('button', { name: 标记.专业display, exact: true }).click();
     await page.getByRole('button', { name: '下一步' }).click();
 
-    // ── 就读时间段：Backend 空教育 → 双轮停在「请选择」空档 ──
+    // ── 就读时间段：Backend 空教育 → 入口行两侧「请选择」（bottom-drawer 统一 Task 4：
+    //    档位断言与点档都经共用年份抽屉；确定才原子写建档草稿）──
     await expect(page).toHaveURL(/#\/onboard\/eduyears$/, { timeout: 15_000 });
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible();
-    const 入学年轮 = page.getByRole('listbox', { name: '入学年' });
-    const 毕业年轮 = page.getByRole('listbox', { name: '毕业年' });
-    await expect(入学年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 10_000 });
-    await expect(毕业年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    const 入口行 = page.getByRole('button', { name: '入学年和毕业年' });
+    await expect(入口行).toContainText('请选择', { timeout: 10_000 });
 
     // 空值真相检查在前：下一步被拦
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page.getByText('请选择入学时间和毕业时间')).toBeVisible();
 
-    // 程序定位（focus）不选年
-    await 入学年轮.focus();
-    await expect(入学年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    // 抽屉两侧都停在「请选择」空档；点档 2021/2025 确定才回填
+    await 入口行.click();
+    const 年抽屉 = page.getByRole('dialog', { name: '就读时间段' });
+    await expect(年抽屉.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(年抽屉.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await 年抽屉.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2021', exact: true }).click();
+    await 年抽屉.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2025', exact: true }).click();
+    await 年抽屉.getByRole('button', { name: '确定' }).click();
+    await expect(年抽屉).toHaveCount(0);
+    await expect(入口行).toContainText('2021');
+    await expect(入口行).toContainText('2025');
 
-    // 点档直选 2021（写建档草稿）；真实滚动把毕业年滚到 2025
-    await 入学年轮.getByRole('option', { name: '2021', exact: true }).click();
-    await expect(入学年轮.getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await 滚薪资轮(page, '毕业年', 2025);
-
-    // 硬刷新：沿建档草稿恢复两轮（草稿随滚轮交互落盘）
+    // 硬刷新：沿建档草稿恢复（草稿随抽屉确定落盘）
     await page.reload();
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 30_000 });
-    await expect(入学年轮.getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
-    await expect(毕业年轮.getByRole('option', { name: '2025', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+    const 刷新入口 = page.getByRole('button', { name: '入学年和毕业年' });
+    await expect(刷新入口).toContainText('2021', { timeout: 15_000 });
+    await expect(刷新入口).toContainText('2025');
 
-    // 选空档清空毕业年（草稿写空）→ 硬刷新仍为空，不补 2021/2025 默认
-    await 毕业年轮.getByRole('option', { name: '请选择', exact: true }).click();
-    await expect(毕业年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    // 抽屉选空档清空毕业年（草稿原子写回空）→ 硬刷新仍为空，不补 2021/2025 默认
+    await 刷新入口.click();
+    const 清空抽屉 = page.getByRole('dialog', { name: '就读时间段' });
+    await 清空抽屉.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '请选择', exact: true }).click();
+    await 清空抽屉.getByRole('button', { name: '确定' }).click();
+    await expect(清空抽屉).toHaveCount(0);
     await page.reload();
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 30_000 });
-    await expect(入学年轮.getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
-    await expect(毕业年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+    const 清空入口 = page.getByRole('button', { name: '入学年和毕业年' });
+    await expect(清空入口).toContainText('2021', { timeout: 15_000 });
+    await expect(清空入口).toContainText('请选择');
 
-    // 补上毕业年 → 直接继续；education POST 带真实滚动保存的起止
-    await 毕业年轮.getByRole('option', { name: '2025', exact: true }).click();
+    // 补上毕业年 → 直接继续；education POST 带抽屉确认保存的起止
+    await 清空入口.click();
+    const 补齐抽屉 = page.getByRole('dialog', { name: '就读时间段' });
+    await 补齐抽屉.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2025', exact: true }).click();
+    await 补齐抽屉.getByRole('button', { name: '确定' }).click();
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/experience$/, { timeout: 20_000 });
     const 教育写入 = fixture.mutations.filter(

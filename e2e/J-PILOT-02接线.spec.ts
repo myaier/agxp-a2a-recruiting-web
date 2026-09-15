@@ -573,11 +573,15 @@ async function 走学历四连页(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible();
 }
 
-/** 就读时间段：滚轮交互即确认 —— 滚到与显示默认（2021/2025）不同的档，
- *  值真正变化才会走 设入学年并确认/设毕业年并确认（滚到默认档是 no-op，不确认） */
+/** 就读时间段：抽屉确认才回填（bottom-drawer 统一 Task 4）—— 开共用年份抽屉
+ *  点 2020/2024 确定（一次原子写草稿），取消/遮罩不写。 */
 async function 走就读时间段(page: Page): Promise<void> {
-  await 滚轮(page, '入学年', 2020);
-  await 滚轮(page, '毕业年', 2024);
+  await page.getByRole('button', { name: '入学年和毕业年' }).click();
+  const 抽屉 = page.getByRole('dialog', { name: '就读时间段' });
+  await 抽屉.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2020', exact: true }).click();
+  await 抽屉.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2024', exact: true }).click();
+  await 抽屉.getByRole('button', { name: '确定' }).click();
+  await expect(抽屉).toHaveCount(0);
 }
 
 /** 偏好段尾：排除题 →（可选自定义原文，走常驻「用你自己的话写」行内输入；
@@ -795,8 +799,8 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     await page.reload();
     await expect(page).toHaveURL(/#\/onboard\/eduyears$/, { timeout: 30_000 });
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible();
-    await expect(page.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2020', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 10_000 });
-    await expect(page.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2024', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '入学年和毕业年' })).toContainText('2020', { timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '入学年和毕业年' })).toContainText('2024');
 
     // ── 重走下一步：按已存身份核对，不再 POST 教育；GET 成功后推进 ──
     await page.getByRole('button', { name: '下一步' }).click();
