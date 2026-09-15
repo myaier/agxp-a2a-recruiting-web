@@ -312,3 +312,16 @@ Task 1公共框架影响目录/公司/居中确认框，现有 `src/组件/弹�
 - 第二轮候选revision `c3090c7262e00e3325469a72ae2403d8e6b65254`；Plan blob `8ee5a8bc92dea7773aaa3916cdcdc77c7247cfce`。批准Spec及受审清单不变，`--resume` 原session，保持opus/high、只读、不运行测试；轮前/后状态、HEAD与文档指纹保护检查通过。
 - 第二轮Claude结论：F1和F2修订均到位；检查新增改动后未发现新问题；最终 Findings 为精确的 `NO FINDINGS`。无未解决required或optional。本次仅更新审查元数据，不改变第二轮受审的实施方案。
 - 后续规则：接受finding并修改实质内容后必须交回Claude复审，不再由主控自行认定修好后结束；本次据第二轮明确NO FINDINGS结束，刷新执行提示词的最终版本引用。
+
+### 实施与 final integration 记录（2026-09-15 追加）
+
+实施 host：Claude Code（superpowers:subagent-driven-development，Task 1–5 逐 Task 派 implementer + spec/quality review）。
+
+- 实施 commits（基线 `eeaead9a`）：`8e17679d` 弹层框架聚焦修复 + 逐帧回归；`abc02f95`/`9f7610cc`/`866bbc5f` 实习数字抽屉 + 完成文案统一及连带选择器；`650a5bc2` 出生/毕业年月复用；`98fe842d` 就读年份薄抽屉 + 原子草稿；`8d719c72` 薪资统一 + 策略迁移；`44e4b451`/`6370163e` final review 修复与清理。各 Task review 均 Spec ✅ / quality Approved；Task 2、final fix wave 各经 scoped re-review 全 ADDRESSED。
+- Final whole-branch review（@opus）：唯一 required（J-PILOT-02 与 数据源模式 的引导薪资步骤仍指向已删滚轮）已修并复审通过；15 项 deferred minors 逐条裁为合理延后。
+- 异构 review：codex-review-loop FEATURE_BRANCH_REVIEW，round 1（gpt-5.6-sol/high，只读，绑定批准 Spec `bf3c8383` 与本 Plan `272a719a`）→ 精确 `NO FINDINGS`（53 条只读命令实质审查，post-round guard 干净）。
+- Final gate：候选 `6370163e`，pre-gate target `4939af8a`（基线后推进 26 commits，文件重叠仅 数据源模式.spec.ts）。用户批准后 `git merge --no-edit origin/main` → `2b627996`；冲突机械调解：薪资/年份调用点用抽屉流程，删除对侧已无调用点的 `滚滚轮` helper，并对侧一条候选 onboarding 旅程的 eduyears 常驻轮步骤改抽屉交互（其对侧评论所述旧行为已被本 Plan 明确覆盖）。
+- 合并后 affected 补验 @`2b627996`：typecheck ✓、oxlint（变更文件）✓、`git diff --check` ✓、定向 vitest 14 文件 505/505 ✓、`npm run build` ✓、抽屉稳定性+onboarding 23 passed、换壳无闪屏-招聘端 1 passed、数据源 backend-stg 被调解旅程「候选 onboarding 完整保存并创建首次意向」1 passed（12.1s 真链路）、J-PILOT-02 backend-stg 5 passed。
+- Push：二次 fetch 核对 target 未推进（`4939af8a`）后普通 fast-forward push `4939af8a..2b627996` → origin/main。不 force push。
+- L3：N/A（选择理由 none：纯前端、无新增接口、序列化/wire 零 diff；真机软键盘与 iOS Safari 未验证如实记 NOT_RUN）。backend-stg 既有环境失败（企业名片步/身份屏）经 A/B 复跑证实与本交付无关。
+- 本记录仅追加事实，不改变批准产品契约。
