@@ -344,6 +344,55 @@ describe('use期望职位目录 自动分组', () => {
     ).toBe(true);
   });
 
+  // review-r2 F3：根换版必须作废旧版右视图的在飞请求 —— 旧二级响应最后完成也不得回写
+  it('根加载更多换版后旧二级在飞请求晚到不回写新右视图', async () => {
+    let 旧二级已挂起: ((页: 目录页<BFFTaxonomyItem>) => void) | null = null;
+    const 查询 = 桩(async (
+      _kind: string,
+      query: { parentId?: string; q?: string; cursor?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (!query.parentId && !query.cursor && 选项?.强制刷新) {
+        return 页([节点('tax_z', '新大类', { has_children: true })], null, 'v2');
+      }
+      if (!query.parentId && query.cursor === 'root_c1') {
+        return 页([节点('tax_z_old', '占位', { has_children: true })], null, 'v2');
+      }
+      if (!query.parentId && !query.cursor) {
+        return 页([节点('tax_a', '旧根', { has_children: true })], 'root_c1', 'v1');
+      }
+      if (query.parentId === 'tax_a') {
+        // 挂载自动读旧根二级：挂起到换版完成后才释放
+        return new Promise<目录页<BFFTaxonomyItem>>((解决) => { 旧二级已挂起 = 解决; });
+      }
+      if (query.parentId === 'tax_z') {
+        return 页([节点('tax_z_g', '新组', { parent_id: 'tax_z', has_children: true })]);
+      }
+      if (query.parentId === 'tax_z_g') {
+        return 页([节点('tax_z_l', '新叶子', { parent_id: 'tax_z_g', selectable: true })]);
+      }
+      return 页([]);
+    });
+    const 视图 = renderHook(() => use期望职位目录({ 查询: 查询, 搜索词: '', 已选键们: [] }));
+    await waitFor(() => expect(视图.result.current.根项们.map((项) => 项.名称)).toEqual(['旧根']));
+    expect(旧二级已挂起).not.toBeNull();
+    await act(async () => {
+      视图.result.current.根尾态.加载更多();
+    });
+    // 换版完成：右视图按新首根重载完毕
+    await waitFor(() => expect(组项名们(视图.result.current.组们, '新组')).toEqual(['新叶子']));
+    // 赋值发生在桩闭包里，TS 静态收窄认作 null：经 unknown 两步收窄
+    const 解开旧二级 = 旧二级已挂起 as unknown as (页: 目录页<BFFTaxonomyItem>) => void;
+    // 旧二级请求最后完成：不得回写旧版二级/组（新右视图保持原样）
+    await act(async () => {
+      解开旧二级(页([节点('tax_a_g', '旧组', { parent_id: 'tax_a', has_children: true })]));
+    });
+    expect(视图.result.current.根项们.find((项) => 项.键 === 'tax_z')?.选中).toBe(true);
+    expect(标题们(视图.result.current)).toEqual(['新组']);
+    expect(组项名们(视图.result.current.组们, '旧组')).toEqual([]);
+    expect(组项名们(视图.result.current.组们, '新组')).toEqual(['新叶子']);
+  });
+
   it('按键取项按 ID 返回真实目录项（同名组/叶子以 ID 区分）', async () => {
     const 查询 = 三级查询桩();
     const 视图 = await 挂载到三级(查询);

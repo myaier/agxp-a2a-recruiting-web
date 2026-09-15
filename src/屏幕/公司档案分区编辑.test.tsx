@@ -514,6 +514,152 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
   });
 
+  // ── review-r2 F1：finally 按捕获会话收口 + 关闭显式清忙 ──
+
+  it('关闭时在飞的根分页请求完成不带走新会话的加载态（finally 按会话收口）', async () => {
+    置Backend应用状态();
+    let 根首页调用 = 0;
+    let 解开加载更多!: (页: unknown) => void;
+    let 解开重开根!: (页: unknown) => void;
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string; cursor?: string }) => {
+        if (query.parentId) return 目录页Of([]);
+        if (query.cursor === 'c2') return new Promise((解决) => { 解开加载更多 = 解决; });
+        根首页调用 += 1;
+        if (根首页调用 >= 2) return new Promise((解决) => { 解开重开根 = 解决; });
+        return { items: 行业根, nextCursor: 'c2', catalogVersion: 'v1' };
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    // 会话 1：根分页在飞
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    await waitFor(() =>
+      expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { cursor: 'c2', limit: 50 }),
+    );
+    await 用户.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择行业' })).toBeNull());
+    // 会话 2：重开触发新根页（挂起），根尾显示加载中
+    await 用户.click(screen.getByLabelText('更换行业'));
+    expect(await screen.findByText('加载中…')).toBeTruthy();
+    // 旧会话的加载更多此刻完成：不得清掉新会话同键的忙态，也不得回写旧页数据
+    解开加载更多(目录页Of([
+      { id: 'ind_l2', display_name: '第二页行业', parent_id: null, selectable: true, has_children: false },
+    ]));
+    await new Promise((就绪) => setTimeout(就绪, 0));
+    expect(screen.getByText('加载中…')).toBeTruthy();
+    expect(screen.queryByText('第二页行业')).toBeNull();
+    // 新会话根页完成：正常呈现
+    解开重开根({ items: 行业根, nextCursor: null, catalogVersion: 'v1' });
+    await screen.findByText('人工智能');
+  });
+
+  it('关闭时在飞请求留下的忙态被显式清理：重开后展开不被阻塞', async () => {
+    置Backend应用状态();
+    let 子项请求次数 = 0;
+    let 解开首次子项!: (页: unknown) => void;
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string }) => {
+        if (query.parentId === 'ind_root') {
+          子项请求次数 += 1;
+          if (子项请求次数 === 1) return new Promise((解决) => { 解开首次子项 = 解决; });
+          return 目录页Of(行业子项);
+        }
+        if (query.parentId) return 目录页Of([]);
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    // 展开在飞时关闭（遗留忙态无人清就永久阻塞重开后的展开）
+    await 用户.click(screen.getByText('互联网'));
+    await waitFor(() =>
+      expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { parentId: 'ind_root', limit: 50 }),
+    );
+    await 用户.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择行业' })).toBeNull());
+    // 重开：展开不再被遗留忙态拦截，重新发子项请求并呈现
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    await 用户.click(screen.getByText('互联网'));
+    await waitFor(() =>
+      expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { parentId: 'ind_root', limit: 50 }),
+    );
+    expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { parentId: 'ind_root', limit: 50 });
+    await screen.findByText('电子商务');
+    // 首次挂起的旧会话请求此时完成：不得串进新会话
+    解开首次子项(目录页Of([]));
+    expect(screen.getByText('电子商务')).toBeTruthy();
+  });
+
+  // ── review-r2 F2：搜索空态文案 + 追加失败可重试续传 ──
+
+  it('行业搜索成功空结果给明确空态文案（不静默空白）', async () => {
+    置Backend应用状态();
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string }) => {
+        if (query.parentId) return 目录页Of([]);
+        if (query.q) return 目录页Of([]);
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    await 用户.type(screen.getByLabelText('搜索行业'), '不存在');
+    await waitFor(() =>
+      expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { q: '不存在', limit: 50 }),
+    );
+    expect(await screen.findByText('没有匹配的行业')).toBeTruthy();
+    expect(screen.queryByText('加载失败，请重试')).toBeNull();
+  });
+
+  it('行业搜索追加失败：首屏行保留 + 错误可重试，重试沿原词原游标续传', async () => {
+    置Backend应用状态();
+    let 第二页已失败 = false;
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string; cursor?: string }) => {
+        if (query.parentId) return 目录页Of([]);
+        if (query.q) {
+          if (query.cursor === 'sc2') {
+            if (!第二页已失败) {
+              第二页已失败 = true;
+              throw new Error('网络错误');
+            }
+            return 目录页Of([
+              { id: 'ind_s2', display_name: '搜索第二页', parent_id: null, selectable: true, has_children: false },
+            ]);
+          }
+          return { items: 行业搜索结果, nextCursor: 'sc2', catalogVersion: 'v1' };
+        }
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    await 用户.type(screen.getByLabelText('搜索行业'), '金融');
+    await screen.findByRole('button', { name: '金融科技' });
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    // 追加失败：错误 + 重试，首屏行保留（不伪装成「没有更多」）
+    expect(await screen.findByText('加载失败，请重试')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '金融科技' })).toBeTruthy();
+    // 重试沿原词原游标续传（不重开首屏）
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    await waitFor(() =>
+      expect(mock查询Taxonomy).toHaveBeenLastCalledWith('industries', { q: '金融', cursor: 'sc2', limit: 50 }),
+    );
+    expect(await screen.findByRole('button', { name: '搜索第二页' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '金融科技' })).toBeTruthy();
+    expect(screen.queryByText('加载失败，请重试')).toBeNull();
+  });
+
   // ── review-r1 F3：搜索命中父节点保留 has_children，可展开读子项 ──
 
   it('行业搜索命中父节点可展开：展开读子项，选中回填原子写显示名+引用', async () => {
