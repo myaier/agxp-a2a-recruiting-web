@@ -141,10 +141,7 @@ test.describe('Mock 数据源回归 @mock', () => {
     await expect(page.getByRole('switch', { name: '规则：不主动披露并行接触数量' })).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('switch', { name: '规则：全现场办公的岗位直接婉拒' })).toHaveAttribute('aria-checked', 'false');
     // 意向级规则属于意向域：本页不渲染，也不提供编辑/删除/开关任何一个写入口
-    await expect(page.getByText('双休是底线；隔周六可谈，大小周不谈')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '编辑规则：双休是底线；隔周六可谈，大小周不谈' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '删除规则：双休是底线；隔周六可谈，大小周不谈' })).toHaveCount(0);
-    await expect(page.getByRole('switch', { name: '规则：双休是底线；隔周六可谈，大小周不谈' })).toHaveCount(0);
+    await 断言意向规则零写入口(page, '双休是底线；隔周六可谈，大小周不谈');
 
     // ── 候选端市场：顶栏没有「筛选」入口（放大镜「搜索职位」仍在）──
     await page.goto('/#/app');
@@ -7748,6 +7745,14 @@ function 就绪卡动作键(page: Page, 正文: string, 名称: string) {
   return page.getByText(正文).locator('..').getByRole('button', { name: 名称 });
 }
 
+/** 历史意向规则的零写入口承诺：正文不渲染，行内 编辑/删除/开关 三个写入口一个都没有。 */
+async function 断言意向规则零写入口(page: Page, 正文: string) {
+  await expect(page.getByText(正文)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: `编辑规则：${正文}` })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: `删除规则：${正文}` })).toHaveCount(0);
+  await expect(page.getByRole('switch', { name: `规则：${正文}` })).toHaveCount(0);
+}
+
 test.describe('P6 规则域 fixture @backend', () => {
   // 显式 backend/stg server（端口 4182），与既有 @backend 用例同一口径
   test.use({ baseURL: 'http://127.0.0.1:4182' });
@@ -7774,10 +7779,7 @@ test.describe('P6 规则域 fixture @backend', () => {
     await page.goto('/#/rules');
     await expect(page.getByRole('button', { name: P6标记.候选全局规则, exact: true })).toBeVisible({ timeout: 15_000 });
     // 历史意向规则只水合进意向域：本页不渲染它，编辑/删除/开关三个写入口一个都没有
-    await expect(page.getByText(P6标记.候选意向规则)).toHaveCount(0);
-    await expect(page.getByRole('button', { name: `编辑规则：${P6标记.候选意向规则}` })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: `删除规则：${P6标记.候选意向规则}` })).toHaveCount(0);
-    await expect(page.getByRole('switch', { name: `规则：${P6标记.候选意向规则}` })).toHaveCount(0);
+    await 断言意向规则零写入口(page, P6标记.候选意向规则);
     await expect(page.getByText('AI代理正在理解这条规则…')).toBeVisible();
     await expect(page.getByText(P6标记.就绪提案正文)).toBeVisible();
     // auto_deny 的安全摘要逐字来自 fixture 的 consequence，页面不做任何浏览器侧可接受性判定
@@ -8156,9 +8158,7 @@ test.describe('P6 规则域 fixture @backend', () => {
     await expect(page.getByRole('button', { name: P6标记.候选全局规则, exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('switch', { name: `规则：${P6标记.候选全局规则}` })).toBeVisible();
     // 历史意向规则水合进意向域：本页不渲染，也没有任何写入口
-    await expect(page.getByText(P6标记.候选意向规则)).toHaveCount(0);
-    await expect(page.getByRole('button', { name: `编辑规则：${P6标记.候选意向规则}` })).toHaveCount(0);
-    await expect(page.getByRole('switch', { name: `规则：${P6标记.候选意向规则}` })).toHaveCount(0);
+    await 断言意向规则零写入口(page, P6标记.候选意向规则);
   });
 
   test('P6 accept 409 not_actionable 权威恢复保留卡片 @backend', async ({ page }) => {
