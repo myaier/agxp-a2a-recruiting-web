@@ -12744,6 +12744,79 @@ test.describe('候选资料编辑边界 @backend', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 个人优势独立编辑 @backend（Task 4）：已完成候选从 我的简历 个人优势卡进
+// /wizard?from=resume —— 向导内该参数唯一表示只编辑个人优势（题序单题、按钮「保存」、
+// 无“已根据你上传的简历预先提取”与恢复动作），初值是已水合的存量 summary；
+// 返回未保存零写入；URL 刷新保持编辑场景；保存成功回我的简历并显示新值（多行换行
+// 保留），fixture 记录的真实请求恰一次 summary PATCH 且首次意向 POST 为零。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('候选个人优势编辑 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('我的简历个人优势进编辑保存回读：刷新保持、返回零写、首次意向 POST 为零 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const fixture = 创建候选OnboardingFixture();
+    fixture.主体.last_used_role = 'candidate';
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选' },
+      summary: '存量优势第一行\n存量优势第二行',
+    };
+    fixture.intentions = [P4深克隆(fixture意向列表.intentions[0])];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-summary-edit-entry',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: P3隐私fixture(),
+    });
+
+    // 真实 UI 流程：登录落主壳 → 我的简历 → 个人优势卡（有值回显多行原文）
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto('/#/resume');
+    await expect(page.getByText('我的简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button').filter({ hasText: '存量优势第一行' }).click();
+    await expect(page).toHaveURL(/#\/wizard\?from=resume$/, { timeout: 15_000 });
+
+    // 编辑场景：初值是存量 summary；无提取说明、无恢复动作、按钮为「保存」
+    const 优势框 = page.getByLabel('个人优势');
+    await expect(优势框).toHaveValue('存量优势第一行\n存量优势第二行', { timeout: 15_000 });
+    await expect(page.getByText('已根据你上传的简历预先提取')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /恢复简历识别建议|重新从简历提取/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+
+    // 返回未保存不提交：退回我的简历，零写入
+    await page.getByRole('button', { name: '返回' }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 15_000 });
+    expect(fixture.mutations.filter((条) => 条.path === '/api/v1/me/resume/summary')).toEqual([]);
+
+    // 再次进入并刷新：编辑场景保持（题序单题 + 「保存」按钮）
+    await page.getByRole('button').filter({ hasText: '存量优势第一行' }).click();
+    await expect(page).toHaveURL(/#\/wizard\?from=resume$/, { timeout: 15_000 });
+    await page.reload();
+    await expect(page).toHaveURL(/#\/wizard\?from=resume$/, { timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible({ timeout: 15_000 });
+
+    // 改写为多行文本并保存：回我的简历并显示新值（换行保留）
+    const 编辑框 = page.getByLabel('个人优势');
+    await 编辑框.fill('改后优势第一行\n改后优势第二行');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
+    await expect(page.getByText('改后优势第一行')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('改后优势第二行')).toBeVisible({ timeout: 15_000 });
+
+    // fixture 记录的真实请求：summary PATCH 恰一次、value 逐字；首次意向 POST 为零
+    const 摘要写入 = fixture.mutations.filter(
+      (条) => 条.method === 'PATCH' && 条.path === '/api/v1/me/resume/summary',
+    );
+    expect(摘要写入.length).toBe(1);
+    expect(摘要写入[0]!.body).toEqual({ value: '改后优势第一行\n改后优势第二行' });
+    expect(fixture.mutations.filter((条) => 条.method === 'POST' && 条.path === '/api/v1/me/intentions')).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 招聘方 onboarding Backend fixture @backend（P0 修复 Task 7）：全新招聘方从身份选择页
 // 起步 —— profile 首读 404 not_found（合法的「缺失」而非故障），名片首写走
 // PATCH + If-Match: "0"（fixture 按自己的当前 revision 做 CAS），发岗写出三段独立

@@ -688,10 +688,22 @@ export default function 我的简历() {
             )}
           </div>
 
-          {/* 个人优势：数据里是带 \n 的多行串，靠 white-space: pre-line 还原换行 */}
+          {/* 个人优势：数据里是带 \n 的多行串，靠 white-space: pre-line 还原换行。
+              整卡行是一枚编辑入口（Task 4）：进 /wizard?from=resume 的独立个人优势
+              编辑（复用向导原优势题）；空值给添加引导，有值回显多行原文 */}
           <div className={样式.卡}>
             <div className={样式.卡标题}>个人优势</div>
-            <div className={样式.优势正文}>{全局.个人优势}</div>
+            <button
+              className={`${样式.优势行} 可点`}
+              onClick={() => 跳转(编辑入口(路径.引导问答))}
+            >
+              {全局.个人优势.trim() === '' ? (
+                <span className={样式.空态}>还没填写个人优势，去添加</span>
+              ) : (
+                <span className={样式.优势正文}>{全局.个人优势}</span>
+              )}
+              <span className={样式.尖括号}>›</span>
+            </button>
           </div>
 
           {/* 附件简历：初筛通过后递交 PDF 原件，原件含姓名与联系方式。

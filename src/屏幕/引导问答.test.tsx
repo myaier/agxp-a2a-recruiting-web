@@ -783,6 +783,122 @@ describe('引导问答 个人优势预填（Spec §8 偏好段）', () => {
     expect(优势框().value).toBe(个人优势文本);
   });
 });
+
+// ── 个人优势独立编辑入口（Task 4）：/wizard?from=resume 在向导内唯一表示「只编辑
+//    个人优势」—— 题序直接为个人优势单题，初值是已水合 全局.个人优势（不消费候选
+//    预填建议、不显示“已根据你上传的简历预先提取”与恢复动作）；「保存」只调
+//    保存个人优势 后回我的简历，确认分区 / 首次意向 / 建档草稿一概不碰。──
+
+function render个人优势编辑(选项: { 个人优势?: string; 预填?: 候选预填状态 } = {}) {
+  mock应用状态 = {
+    数据源模式: 'backend',
+    目录查询: {
+      查询Taxonomy: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+      查询Location: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+      查询Institution: vi.fn(),
+    },
+    状态: {
+      引导预填: null,
+      个人优势: 选项.个人优势 ?? '',
+      简历作品集链接: '',
+      简历经历: [],
+      屏蔽名单: [],
+      基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
+    },
+    后端状态: { 候选预填状态: 选项.预填 ?? 创建空候选预填状态() },
+    派发: vi.fn(),
+    操作: mock操作,
+  };
+  render(
+    <MemoryRouter initialEntries={['/onboard/wizard?from=resume']}>
+      <引导问答 />
+    </MemoryRouter>,
+  );
+}
+
+describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
+    mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockReset();
+    mock操作.更新候选建档草稿.mockReset();
+  });
+
+  it('刷新直达编辑场景：题序只有个人优势一题，按钮为「保存」', () => {
+    render个人优势编辑({ 个人优势: '存量优势' });
+    expect(优势框().value).toBe('存量优势');
+    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '保存并继续' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '下一步' })).toBeNull();
+    // 不问城市 / 薪资 / 排除题：排除网格不出现
+    expect(screen.queryByRole('button', { name: '大小周' })).toBeNull();
+  });
+
+  it('初值是已水合现值：ready 预填建议不种入，提取说明与恢复动作不进场', () => {
+    render个人优势编辑({ 个人优势: '我自己写的优势', 预填: readySummary() });
+    expect(优势框().value).toBe('我自己写的优势');
+    expect(screen.queryByText('已根据你上传的简历预先提取，直接删改即可。')).toBeNull();
+    expect(screen.queryByRole('button', { name: /恢复简历识别建议|重新从简历提取/ })).toBeNull();
+  });
+
+  it('保存只调 保存个人优势 并回我的简历：确认分区/首次意向/建档草稿全零', async () => {
+    render个人优势编辑({ 个人优势: '旧优势' });
+    const 用户 = userEvent.setup();
+    await 用户.clear(优势框());
+    await 用户.type(优势框(), '改后的优势');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('改后的优势'));
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    expect(mock操作.保存首次意向).not.toHaveBeenCalled();
+    expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.我的简历));
+  });
+
+  it('多行文本逐字保存（保留换行）', async () => {
+    render个人优势编辑({ 个人优势: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(优势框(), '第一行{Enter}第二行');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('第一行\n第二行'));
+  });
+
+  it('保存失败留在编辑页：输入保留、不跳转', async () => {
+    mock操作.保存个人优势.mockRejectedValue(new Error('offline'));
+    render个人优势编辑({ 个人优势: '还没保存的优势' });
+    const 用户 = userEvent.setup();
+    await 用户.type(优势框(), '追加');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(document.body.textContent).toContain('请求失败，请稍后再试'));
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(优势框().value).toBe('还没保存的优势追加');
+  });
+
+  it('保存在途重复点击只发一次', async () => {
+    let 解决!: () => void;
+    mock操作.保存个人优势.mockImplementationOnce(() => new Promise<void>((ok) => { 解决 = ok; }));
+    render个人优势编辑({ 个人优势: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(优势框(), '在途优势');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    解决();
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.我的简历));
+    expect(mock操作.保存个人优势).toHaveBeenCalledTimes(1);
+  });
+
+  it('返回未保存不提交：零保存零跳转', async () => {
+    render个人优势编辑({ 个人优势: '原优势' });
+    const 用户 = userEvent.setup();
+    await 用户.type(优势框(), '改一半');
+    await 用户.click(screen.getByRole('button', { name: /返回/ }));
+    expect(mock操作.保存个人优势).not.toHaveBeenCalled();
+    expect(mock操作.保存首次意向).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+});
 // ── Task 5：职位与城市两模式共用各自原 Mock 展示 ──
 
 describe('引导问答 Backend 期望职位题 接原 Mock 说明卡与方向细选页（Task 5）', () => {

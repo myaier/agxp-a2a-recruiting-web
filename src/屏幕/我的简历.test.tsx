@@ -811,6 +811,35 @@ describe('我的简历 · 编辑入口带 from=resume', () => {
   });
 });
 
+// ── 个人优势独立编辑入口（Task 4）：卡片是一枚可点、可键盘操作的编辑入口，
+//    去向固定为 /wizard?from=resume；有值回显多行原文并带可见编辑指示，
+//    空值给「还没填写个人优势，去添加」。──
+describe('我的简历 · 个人优势独立编辑入口（Task 4）', () => {
+  it('有值：行内回显多行原文并带编辑指示，点击进个人优势编辑', async () => {
+    render我的简历({ mode: 'backend', 状态覆盖: { 个人优势: '跨团队沟通协调\n熟悉支付合规' } });
+    const 行 = screen.getByText(/跨团队沟通协调/).closest('button');
+    expect(行).toBeTruthy();
+    // 可见编辑指示与其他行同一枚尖括号
+    expect(行!.textContent).toContain('›');
+    await userEvent.click(行!);
+    expect(mock跳转).toHaveBeenCalledWith(`${路径.引导问答}?from=resume`);
+  });
+
+  it('键盘可达：焦点在行上按 Enter 触发同一编辑入口', async () => {
+    render我的简历({ mode: 'backend', 状态覆盖: { 个人优势: '键盘也能编辑' } });
+    const 行 = screen.getByText('键盘也能编辑').closest('button') as HTMLButtonElement;
+    行.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(mock跳转).toHaveBeenCalledWith(`${路径.引导问答}?from=resume`);
+  });
+
+  it('空值：显示添加引导文案，点击进同一编辑入口', async () => {
+    render我的简历({ mode: 'backend', 状态覆盖: { 个人优势: '' } });
+    await userEvent.click(screen.getByText('还没填写个人优势，去添加'));
+    expect(mock跳转).toHaveBeenCalledWith(`${路径.引导问答}?from=resume`);
+  });
+});
+
 // ── 第二批（2026-09-09 定稿）：「我的简历」三个区块纯去框 —— .卡 删 `border: 1px solid var(--描边)`，
 //    不加投影；顶部 AI 代理诊断条的淡绿描边不动。jsdom 会把带 var() 的 border 整条丢弃（进不了
 //    computed style），所以描边断言直接读 module.css 源文本里的规则块；DOM 侧只证三个区块与诊断条

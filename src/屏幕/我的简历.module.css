@@ -221,8 +221,21 @@
   color: var(--深绿);
 }
 
-/* ── 个人优势：数据里带 \n，靠 pre-line 还原换行 ── */
+/* ── 个人优势：数据里带 \n，靠 pre-line 还原换行 ──
+   Task 4：整卡行改成编辑入口（进 /wizard?from=resume），行骨架同 标签行、
+   行尾复用 尖括号；正文 span 要撑满剩余宽度，箭头才贴右 */
+.优势行 {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 2px;
+  text-align: left;
+}
+
 .优势正文 {
+  flex: 1;
+  min-width: 0;
   font-size: 12.5px;
   line-height: 24px; /* RN lineHeight 24 */
   color: var(--正文);

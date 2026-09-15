@@ -197,6 +197,9 @@ describe('消费位置判定（向导段写在 query 上，消费必须看 searc
     expect(是预填消费位置(路径.基本信息, '?from=resume')).toBe(false);
     expect(是预填消费位置(路径.工作经历, '?from=resume')).toBe(false);
     expect(是预填消费位置(路径.引导问答, '?stage=preference&from=resume')).toBe(false);
+    // 个人优势独立编辑（Task 4）的固定地址不带段参数：同样不消费建议，
+    // 刷新后绝不触发恢复（编辑初值只来自已水合的全局简历切片）
+    expect(是预填消费位置(路径.引导问答, '?from=resume')).toBe(false);
     // 其余 query 不受影响：无标记的消费页照旧消费
     expect(是预填消费位置(路径.引导问答, '?stage=preference')).toBe(true);
   });
@@ -233,6 +236,8 @@ describe('活跃 Onboarding 集合：以 Onboarding流程 为唯一事实源', (
     expect(是活跃Onboarding位置(`${路径.工作经历}?from=resume`)).toBe(false);
     expect(是活跃Onboarding位置(`${路径.求职状态}?from=resume`)).toBe(false);
     expect(是活跃Onboarding位置(`${路径.引导问答}?stage=salary&from=resume`)).toBe(false);
+    // 个人优势独立编辑（Task 4）的固定地址同样属简历域，不算注册会话
+    expect(是活跃Onboarding位置(`${路径.引导问答}?from=resume`)).toBe(false);
     // 原无参数结果不变
     expect(是活跃Onboarding位置(路径.基本信息)).toBe(true);
     expect(是活跃Onboarding位置(路径.引导问答薪资段)).toBe(true);
