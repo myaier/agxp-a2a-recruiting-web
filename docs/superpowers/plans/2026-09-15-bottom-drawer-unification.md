@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-15-bottom-drawer-unification-design.md`，批准内容 revision `0e07383dad5e5288ef641a96e5d673bbcceb577f`，blob `bf3c8383f6dac7147060360111296bd8c5d0ffcb`。随后 Spec 仅记录批准状态，不以未批准新内容替代该契约。
 
-版本：v1.0。状态：候选 Plan，待 Claude 文档 review；尚未实施。
+版本：v1.1。状态：已完成 Claude 文档 review 及两项 required finding 的核实修订，无未解决有效 required；尚未实施。
 
 ## Global Constraints
 
@@ -81,7 +81,7 @@ Codex execution: superpowers:executing-plans
 
 **基线检查：** 读取该组件全文及薪资、年月、数字、公司选择 CSS。确认入场 transform、useEffect 首开聚焦、设备外框与次级页外壳 overflow 布局仍存在；若根因已由另一变更修复，保留回归与证据，不重复增加机制。
 
-- [ ] 在真实 `/intentions/new` 薪资入口为 390×844、1280×900 编写逐帧用例；打开前记录 h1 的 y 和所有背景祖先 scrollTop，从 click 捕获到首帧、450ms 动画窗口记录值。断言标题位移 <1 CSS px、背景祖先滚动值不变、弹层正常入场且焦点位于取消；Escape 后入口焦点恢复。不要只 await 动画结束再取一次值。
+- [ ] 在真实 `路径.添加意向`（浏览器由该路由进入）的薪资入口为 390×844、1280×900 编写逐帧用例；打开前记录 h1 的 y 和所有背景祖先 scrollTop，从 click 捕获到首帧、450ms 动画窗口记录值。断言标题位移 <1 CSS px、背景祖先滚动值不变、弹层正常入场且焦点位于取消；Escape 后入口焦点恢复。不要只 await 动画结束再取一次值。
 - [ ] 执行 `npx playwright test e2e/抽屉稳定性.spec.ts -g '背景'`。原代码应因约 236px（手机）/263px（缩放后桌面可见坐标）的位移失败；数字仅为调查证据，不硬编码为跨设备期望。
 - [ ] 最小修改首开及恢复聚焦；用 DOM 连接性与现有可聚焦条件防止恢复到失效节点，不维护新的全局焦点栈。
 - [ ] 补单元行为：重新渲染不抢焦点、关闭使用最新回调、触发元素移除后卸载不抛错、Tab 首尾可用。增加已滚动页面的重复打开/取消与短屏浏览器回归；长列表代表消费者确认键盘焦点可见，居中确认框定位不变。
@@ -131,7 +131,7 @@ type 档位输入 =
 **预期编辑文件：**
 
 - 新增：无。
-- 修改：`src/组件/年月滚轮层.tsx`、`src/组件/年月滚轮层.test.tsx`、`src/屏幕/基本信息.tsx`、`src/屏幕/基本信息.test.tsx`、`src/屏幕/学生分流.tsx`、`src/屏幕/学生分流.test.tsx`、`src/屏幕/添加意向.tsx`、`src/屏幕/添加意向.test.tsx`、`src/屏幕/工作经历.test.tsx`、`e2e/抽屉稳定性.spec.ts`。
+- 修改：`src/组件/年月滚轮层.tsx`、`src/组件/年月滚轮层.test.tsx`、`src/屏幕/基本信息.tsx`、`src/屏幕/基本信息.test.tsx`、`src/屏幕/学生分流.tsx`、`src/屏幕/学生分流.test.tsx`、`src/屏幕/添加意向.tsx`、`src/屏幕/添加意向.test.tsx`、`src/屏幕/工作经历.test.tsx`、`e2e/onboarding.spec.ts`、`e2e/抽屉稳定性.spec.ts`。
 - 删除：无。
 
 **Interfaces：** 保留 `标题:string, 初值:string, 最小?:string, 最大?:string, 确认:(值:string)=>void, 取消:()=>void`；新增以下可选属性，默认不改变旧调用：
@@ -147,7 +147,7 @@ YYYY-MM 输入/输出不变。提供年份档时，最小/最大仍界定月份�
 **消费者精确接线：**
 
 - 基本信息：最小 `1970-01`、最大 `2010-12`，年/月名称“出生年/出生月”；初值用现有本地出生年/月（未确认可用原1998/6临时值）。父行只有原 `出生年月已确认` 为真才显示年月；确定回填成对数值、设确认标志，取消保持 false；保存仍由现有下一步负责。
-- 学生分流：年份表为执行当年起 8 年，不加无依据新范围；初值已有毕业月，否则次年6月；年/月名称“毕业年/毕业月”；上下界覆盖该表的1月至12月，过去月份仍由现有父级校验报错，不在组件提前裁掉。
+- 学生分流：年份表为执行当年起 8 年，不加无依据新范围；父行以实际 `筛选偏好.毕业时间` 判断：空值显示“请选择”，不能显示次年6月；只有抽屉初值在缺值时使用次年6月。年/月名称“毕业年/毕业月”；上下界覆盖该表的1月至12月，过去月份仍由现有父级校验报错，不在组件提前裁掉。
 - 添加意向：年份表在上面8年基础上加入已有毕业年并升序去重；上下界从表头1月到表尾12月，不因组件默认最晚当年而夹掉未来值。确认用一次 `改草稿({ 毕业时间: 值 })`；取消不调用。
 - 工作经历：原调用签名及起止上下界完全不变，仅跟随共享组件顶栏文案和背景修复；当前“至今”不转换成日期。
 
@@ -156,8 +156,8 @@ YYYY-MM 输入/输出不变。提供年份档时，最小/最大仍界定月份�
 - [ ] 单元先覆盖指定非连续年表（既有历史年+未来8年）原样确认、年份切换时月份约束；页面覆盖“生日未确认→打开改值→取消→下一步不写生日”和“确定后成对写入”。旧实现未有抽屉/年份表时应失败。
 - [ ] 执行 `npm test -- src/组件/年月滚轮层.test.tsx src/屏幕/基本信息.test.tsx src/屏幕/学生分流.test.tsx src/屏幕/添加意向.test.tsx`。
 - [ ] 实现兼容扩展与三处接线。删除页面自组弹层/双轮/临时年、月状态与不再使用的 import；父页保留是否打开状态。生日入口复用基本信息现有 `选择条目`/`选择值行`，毕业使用原选择行，不新建样式。
-- [ ] 更新预填测试到显式打开检查滚轮、取消/确定后再保存的流程；保留 eligibility、错误、确认分区顺序与序列化断言。旧“完成”选择器改“确定”。
-- [ ] 执行上述命令和 `npm test -- src/屏幕/工作经历.test.tsx`；浏览器增加生日/未来毕业、已滚动表单打开取消稳定，执行 `npx playwright test e2e/抽屉稳定性.spec.ts -g '年月'`。
+- [ ] 更新预填测试到显式打开检查滚轮、取消/确定后再保存的流程；保留 eligibility、错误、确认分区顺序与序列化断言。旧“完成”选择器改“确定”。补学生分流空毕业时间显示“请选择”→打开→取消仍未填、缓存仍为空的断言；`e2e/onboarding.spec.ts` 的 campus graduation month 用例替换旧“父行显示默认次年6月”断言。`学生分流.test.tsx` 的已有2027-06用例继续验证已有值回显，不能误删已有数据期待。
+- [ ] 执行上述命令和 `npm test -- src/屏幕/工作经历.test.tsx`；浏览器增加生日/未来毕业、已滚动表单打开取消稳定，执行 `npx playwright test e2e/抽屉稳定性.spec.ts -g '年月'` 与 `npx playwright test e2e/onboarding.spec.ts -g 'campus graduation month'`。
 - [ ] 显式暂存实际清单，`git diff --check`；提交 `refactor: share birth and graduation month drawers`。
 
 **失败反例 / 完成：** 当年默认最大值误夹2027年、取消意外确认1998/6、清除页面状态后确认覆盖其他草稿均不得发生；原简历起止约束仍正确。日期业务本身的历史问题另报，不夹带修复。
@@ -206,7 +206,7 @@ type 年份区间层属性 = {
 **预期编辑文件：**
 
 - 新增：`src/组件/引导薪资档位.ts`。
-- 修改：`src/组件/薪资区间层.tsx`、`src/组件/薪资区间层.test.tsx`、`src/组件/内嵌双滚轮.tsx`、`src/组件/内嵌双滚轮.test.tsx`、`src/屏幕/引导问答.tsx`、`src/屏幕/引导问答.module.css`、`src/屏幕/引导问答.test.tsx`、`src/屏幕/薪资上限档.test.ts`、`src/屏幕/发布岗位.tsx`、`src/屏幕/发布岗位.test.tsx`、`src/屏幕/添加意向.test.tsx`、`e2e/onboarding.spec.ts`、`e2e/抽屉稳定性.spec.ts`。
+- 修改：`src/组件/薪资区间层.tsx`、`src/组件/薪资区间层.test.tsx`、`src/组件/内嵌双滚轮.tsx`、`src/组件/内嵌双滚轮.test.tsx`、`src/屏幕/引导问答.tsx`、`src/屏幕/引导问答.module.css`、`src/屏幕/引导问答.test.tsx`、`src/屏幕/薪资上限档.test.ts`、`src/屏幕/发布岗位.tsx`、`src/屏幕/发布岗位.test.tsx`、`src/屏幕/添加意向.test.tsx`、`e2e/onboarding.spec.ts`、`e2e/换壳无闪屏.spec.ts`、`e2e/抽屉稳定性.spec.ts`。
 - 删除：无整文件；引导页面自写薪资轮、旧档表/算法正文与无消费者样式删除。
 
 **Interfaces：**
@@ -253,7 +253,7 @@ type 年份区间层属性 = {
 - [ ] 引导页和岗位页按上述接线；更新页面测试到打开→操作→确定/取消→下一步/保存，保留原后端映射和提交失败断言。
 - [ ] 冻结算法反例：下限10K动态帽15K；25K帽50K；26K近档27、28、29、30、31；面议无上限档；250K上限不超260K；日薪下限最高2000仍有2200上限；方向键/点击改变与确定值一致。这些期待直接用常量，不调用生产算法生成期望。
 - [ ] 执行 `npm test -- src/组件/薪资区间层.test.tsx src/组件/内嵌双滚轮.test.tsx src/组件/年份区间层.test.tsx src/屏幕/引导问答.test.tsx src/屏幕/薪资上限档.test.ts src/屏幕/发布岗位.test.tsx src/屏幕/添加意向.test.tsx`。
-- [ ] 更新既有 onboarding e2e 的必要选择器（旧年/数字完成文案、新薪资入口）；执行 `npx playwright test e2e/抽屉稳定性.spec.ts e2e/onboarding.spec.ts`。新增实际引导面议、意向薪资、岗位day/hour双轮入口、精确输入模式、取消和手机短屏截图附件；不以只测一种用途代替策略覆盖。
+- [ ] 更新既有 onboarding e2e 的必要选择器（旧年/数字完成文案、新薪资入口）；执行 `npx playwright test e2e/抽屉稳定性.spec.ts e2e/onboarding.spec.ts`，并将 `e2e/换壳无闪屏.spec.ts` 的招聘端日薪操作改成一次打开双轮、点“确定”，执行 `npx playwright test e2e/换壳无闪屏.spec.ts -g '招聘端'`。只更新该流程的薪资操作，保留换壳逐帧断言。新增实际引导面议、意向薪资、岗位day/hour双轮入口、精确输入模式、取消和手机短屏截图附件；不以只测一种用途代替策略覆盖。
 - [ ] 确认纯函数调用无循环依赖、删除引导无消费者CSS（先核对共享类其他用处）；显式暂存，`git diff --check`；提交 `refactor: reuse salary range drawers across onboarding and jobs`。
 
 **完成 / 停止：** Spec全部入口已接线；参数类型后向兼容；没加新薪资规则或金额转换；现有项目样式可识别一致。策略中需改变业务算法的修复超出批准范围，不能擅自落实。
@@ -278,7 +278,7 @@ type 年份区间层属性 = {
 
 ### 2. 最小合法反馈命令
 
-Task命令给出精确文件；最终选择为这些文件的去重并集并随实际diff缩减/增加。静态命令 `npm run typecheck`（跨组件props必须全项目编译）；`npx oxlint` 后显式列出实际变更的ts/tsx文件；`npm run build` 用于最终打包/CSS模块检查（内部已执行tsc -b，候选未变时不再单独重复typecheck）。`git diff --check` 检查格式。浏览器权威入口 `npx playwright test e2e/抽屉稳定性.spec.ts e2e/onboarding.spec.ts`；不运行整个e2e目录或整套视觉采集来代替定向选择。
+Task命令给出精确文件；最终选择为这些文件的去重并集并随实际diff缩减/增加。静态命令 `npm run typecheck`（跨组件props必须全项目编译）；`npx oxlint` 后显式列出实际变更的ts/tsx文件；`npm run build` 用于最终打包/CSS模块检查（内部已执行tsc -b，候选未变时不再单独重复typecheck）。`git diff --check` 检查格式。浏览器权威入口 `npx playwright test e2e/抽屉稳定性.spec.ts e2e/onboarding.spec.ts`，以及 `npx playwright test e2e/换壳无闪屏.spec.ts -g '招聘端'`（防止旧岗位日薪双次开层流程失效）；不运行整个e2e目录或整套视觉采集来代替定向选择。
 
 Task 1公共框架影响目录/公司/居中确认框，现有 `src/组件/弹层框架.test.tsx` 与真实浏览器代表页面共同覆盖；清单外消费者若实际调用或测试被确认文案影响，先通过改动预告更新其精确文件，验证其风险后纳入，不能静默漏掉也不能泛化到全仓。
 
@@ -300,4 +300,13 @@ Task 1公共框架影响目录/公司/居中确认框，现有 `src/组件/弹�
 
 覆盖映射：Spec §2/§5.2→Task1；§3/§6.3→Task2；§6.2年月→Task3；§6.2年份区间→Task4；§6.1→Task5；§5事务和§8验收分布于每Task；§7并行边界、§9非目标与样式最小实现由Global Constraints约束。
 
-文档review尚未开始。本节在冻结Spec/Plan后记录Claude reviewer轮次、候选revision/blob、逐条finding裁决和最终返回结论；不另建review报告。未完成文档review不得生成执行提示词。
+### Claude 文档 review：1 轮
+
+- 模式：WORKFLOW_DOCUMENT_REVIEW；scope_approved_by_parent_workflow=true。reviewer：独立 Claude CLI，opus / high，permission-mode plan；只读、未运行测试、未修改文件。受审清单为本 Spec 与本 Plan，不审整个分支diff。
+- 批准Spec：文首revision/blob。首轮候选revision `4641b914a1fe78e5c68c0f504d3e757e64044bc0`；Plan blob `11fa5f71f15e1dde59289242b968c07bfab7c44f`；候选Spec只改变批准记录。
+- 轮前/轮后工作树状态、HEAD、两文档内容指纹一致，保护检查通过。
+- F1：Important / 契约违反 / required / 复杂度不变。接受核心问题：Task3明确学生分流未填毕业月父行显示“请选择”，次年6月仅为层内临时值；增加空值取消与缓存不写入断言。核实review引用的学生分流2027-06单测本身是已有值场景，保留其回显期待；实际需更新的默认父行e2e为campus graduation month，已明确。未改Spec。
+- F2：Important / 真实缺陷 / required / 复杂度不变。接受并修订：Task5明确加入 `e2e/换壳无闪屏.spec.ts` 的招聘端日薪流程适配和定向命令，保留原换壳断言；最终权威选择同步覆盖。未改Spec。
+- 自检修正：Task1路由引用改为仓库路由常量，避免可迁移路径校验将应用路由误当机器绝对路径；无产品语义变化。
+- 裁决：2项required均已在文档中修复；0拒绝、0可选延后、0未解决有效required。依claude-review-loop的“核实后无未解决有效required”停止条件结束首轮，不声称Claude对修订文本另给了NO FINDINGS。最终v1.1包含上述最小修订；可以生成执行提示词。
+
