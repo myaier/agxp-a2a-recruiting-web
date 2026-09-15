@@ -910,16 +910,16 @@ describe('引导问答 Backend 城市题：精选区 + 四支默认目录（Task
     // 两精选区（静态配置）与精选条目；港澳台不进精选（TW/HK/MO 支为空也不出现英文名）
     expect(screen.getByText('国内热门城市')).toBeTruthy();
     expect(screen.getByText('海外热门城市')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '新加坡' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Taipei' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Singapore' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Singapore市' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Hong Kong' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Macau' })).toBeNull();
     // 不造「其他地区」、不显示 Mock 硬编码省墙
     expect(screen.queryByText('其他地区')).toBeNull();
     expect(screen.queryByText('直辖市')).toBeNull();
     expect(screen.queryByText('港澳台')).toBeNull();
-    // 真实项仍可选并按 ID 保存
-    await 用户.click(screen.getByRole('button', { name: '广州市' }));
+    // 真实项仍可选并按 ID 保存（精选区同名「广州市」在前，取末枚点目录项）
+    await 用户.click(screen.getAllByRole('button', { name: '广州市' }).at(-1)!);
     expect(screen.getByRole('button', { name: '广州市 ✕' })).toBeTruthy();
     await 用户.click(screen.getByRole('button', { name: /保存/ }));
     expect(派发).toHaveBeenCalledWith(
@@ -970,8 +970,8 @@ describe('引导问答 Backend 城市题：精选区 + 四支默认目录（Task
     });
     render引导问答后端({ 查询Location });
     const 用户 = await 进城市题();
-    // 默认第二页可达：列表尾按钮翻 CN 的下一页
-    await screen.findByText('广州市');
+    // 默认第二页可达：列表尾按钮翻 CN 的下一页（精选区同名在前，取行政区分组那枚）
+    expect((await screen.findAllByText('广州市')).length).toBeGreaterThanOrEqual(2);
     await 用户.click(screen.getByRole('button', { name: '加载更多' }));
     await waitFor(() => expect(查询Location).toHaveBeenCalledWith(expect.objectContaining({ countryCode: 'CN', cursor: 'cn_1' })));
     await CN第二页.resolve({ items: [城({ id: 'loc_cn2', display_name: '杭州市', admin1_name: '浙江省' })], nextCursor: null, catalogVersion: 'v2' });
@@ -1002,26 +1002,26 @@ describe('引导问答 Backend 城市题：精选区 + 四支默认目录（Task
     render引导问答后端({ 查询Location });
     const 用户 = await 进城市题();
     // 精选区先选一枚 → 搜索离开默认目录 → 清空恢复
-    await 用户.click(await screen.findByRole('button', { name: '新加坡' }));
+    await 用户.click(await screen.findByRole('button', { name: 'Singapore' }));
     await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), 'A');
     await screen.findByText('A城');
     await 用户.clear(screen.getByPlaceholderText('搜索城市 / 省份'));
     // 恢复：精选区与默认分组回来，已选不丢
     expect(await screen.findByText('国内热门城市')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '广州市' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '新加坡 ✕' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '广州市' }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole('button', { name: 'Singapore ✕' })).toBeTruthy();
   });
 
   it('选海外精选保存 canonical ID（原建档引用保存）', async () => {
     const 查询Location = 四国桩({});
     const { 派发 } = render引导问答后端({ 查询Location });
     const 用户 = await 进城市题();
-    await 用户.click(await screen.findByRole('button', { name: '新加坡' }));
+    await 用户.click(await screen.findByRole('button', { name: 'Singapore' }));
     await 用户.click(screen.getByRole('button', { name: /保存/ }));
     expect(派发).toHaveBeenCalledWith(
       expect.objectContaining({
         型: '存引导预填',
-        城市引用们: [{ id: 'loc_qdyx7r6fcyjrcokobaxsorhhrm', display_name: '新加坡' }],
+        城市引用们: [{ id: 'loc_qdyx7r6fcyjrcokobaxsorhhrm', display_name: 'Singapore' }],
       }),
     );
   });
@@ -1048,7 +1048,75 @@ describe('引导问答 Mock 城市题（Task 4）', () => {
     // Mock 无默认目录查询：列表尾不出现永不消失的死按钮（review fix 2）
     expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
     await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), '新加坡');
-    expect(await screen.findByRole('button', { name: '新加坡' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Singapore' })).toBeTruthy();
+  });
+});
+
+// ── Task 6：热门城市规范显示名与有限别名兼容 ──────────────────────
+describe('引导问答 城市题 规范名与有限别名（Task 6）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+  });
+
+  it('Mock 默认「上海」按规范名回显，与热门「上海市」同项：再点即取消', async () => {
+    render引导问答Mock();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
+    // Mock 默认种子「上海」按规范名回显，与热门「上海市」同项
+    expect(screen.getByRole('button', { name: '上海市 ✕' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '上海 ✕' })).toBeNull();
+    // 点热门区「上海市」= 取消同一项
+    await 用户.click(screen.getAllByRole('button', { name: '上海市' })[0]);
+    expect(screen.queryByRole('button', { name: '上海市 ✕' })).toBeNull();
+    // 分省组里的「上海市」（同键）也跟着取消
+    expect(screen.getByText('保存（已选 0）')).toBeTruthy();
+  });
+
+  it('Mock 城市题取消（返回上一题）不落盘：返回后无新的 存引导预填 派发', async () => {
+    const { 派发 } = render引导问答Mock();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
+    const 落盘数 = 派发.mock.calls.filter(
+      (调用: unknown[]) => (调用[0] as { 型: string }).型 === '存引导预填',
+    ).length;
+    // 回到上一题 = 取消，不落盘工作城市答案
+    await 用户.click(screen.getByRole('button', { name: /返回/ }));
+    expect(mock跳转).not.toHaveBeenCalled();
+    const 落盘数后 = 派发.mock.calls.filter(
+      (调用: unknown[]) => (调用[0] as { 型: string }).型 === '存引导预填',
+    ).length;
+    expect(落盘数后).toBe(落盘数);
+  });
+
+  it('Mock 搜索旧中文海外名命中规范项；同项去重只出现一枚', async () => {
+    render引导问答Mock();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
+    await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), 'Singapore');
+    // 别名匹配：规范英文名也能搜到（经旧中文名命中）
+    expect(await screen.findByRole('button', { name: 'Singapore' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Singapore' })).toHaveLength(1);
+  });
+
+  it('Backend 精选区与已选共享 ID：点热门「北京市」保存按 canonical ID 提交且显示名为规范名', async () => {
+    // 进城市题后先点热门区「北京市」（canonical ID），保存按 ID 提交、显示名为规范名
+    const 查询Location = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' }));
+    const { 派发 } = render引导问答后端({ 查询Location });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
+    await 用户.click(await screen.findByRole('button', { name: '北京市' }));
+    await 用户.click(screen.getByRole('button', { name: /保存/ }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({
+        型: '存引导预填',
+        城市引用们: [{ id: 'loc_7gn74qrcymqcwwuqwotm47dbba', display_name: '北京市' }],
+      }),
+    );
   });
 });
 

@@ -28,7 +28,7 @@ import {
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { Mock城市搜索字典, Mock默认城市字典 } from '../数据/城市与行业';
-import { 国内精选城市, 海外精选城市 } from '../数据/城市精选';
+import { 国内精选城市, 海外精选城市, 精选城市显示名, 规范精选城市名称 } from '../数据/城市精选';
 import { 城市拼音 } from '../数据/城市首字母';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
 import type { BFFLocationItem } from '../数据/BFF契约';
@@ -45,15 +45,17 @@ export default function 选择城市() {
   const { 状态: 全局, 派发, 数据源模式, 目录查询 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
 
-  // 主城市（Backend = 工作城市引用 ID / Mock = 草稿 工作城市 名）：不进入备选列表（可见但禁用）
+  // 主城市（Backend = 工作城市引用 ID / Mock = 草稿 工作城市 名）：不进入备选列表（可见但禁用）。
+  // Task 6：Mock 城名统一按规范名比较（旧草稿「北京」与热门「北京市」同项）。
   const 主城市Id = 是后端 ? 全局.意向草稿.工作城市引用?.id : undefined;
-  const Mock主城市 = 全局.意向草稿.工作城市;
+  const Mock主城市 = 规范精选城市名称(全局.意向草稿.工作城市);
 
   // ── 已选 state ──
   // Backend：目录选择值[]（id + display_name），ID 去重；Mock：string[]，字符串去重。
   // 进页时取草稿里已有的选择；改动先落本地，点保存才写回 —— 中途 ✕ 退出不留脏数据。
   // review-r1 F7：初始选择与 toggle 同一清洗 —— 按 ID 去重并排除主城市（Mock 排除主城市
   // 名、按 9 上限截断），否则历史脏数据让计数虚高、主城市重复占名额。
+  // Task 6：显示名经有限映射归一（ID 命中用规范名 / Mock 走别名表），存储不重写。
   const [已选引用, 设已选引用] = useState<目录选择值[]>(() => {
     if (!是后端) return [];
     const seen = new Set<string>();
@@ -61,14 +63,17 @@ export default function 选择城市() {
     for (const 条 of 全局.意向草稿.感兴趣城市引用们 ?? []) {
       if (条.id === 主城市Id || seen.has(条.id)) continue;
       seen.add(条.id);
-      初始.push({ id: 条.id, display_name: 条.display_name });
+      初始.push({ id: 条.id, display_name: 精选城市显示名(条.id, 条.display_name) });
     }
     return 初始;
   });
   const [已选, 设已选] = useState<string[]>(() =>
     是后端
       ? 已选引用.map((条) => 条.display_name)
-      : 全局.意向草稿.感兴趣城市们.filter((城) => 城 !== Mock主城市).slice(0, 城市上限),
+      : 全局.意向草稿.感兴趣城市们
+          .map(规范精选城市名称)
+          .filter((城) => 城 !== Mock主城市)
+          .slice(0, 城市上限),
   );
 
   // Backend 展示键（= 项 ID）→ 目录选择值 的映射表：本页维护并保留选中引用。
@@ -129,19 +134,32 @@ export default function 选择城市() {
   };
 
   // 中文名和全拼都算命中：输「杭」「hangzhou」「hang」都出杭州（Mock 分支本地过滤，
-  // 全集读 Mock城市搜索字典 —— 海外与精选名不因默认页收窄而搜不到）
+  // 全集读 Mock城市搜索字典 —— 海外与精选名不因默认页收窄而搜不到）。
+  // Task 6：旧中文海外名（别名）与目录规范名都算命中，结果归一到规范名并去重，
+  // 同名城市（旧名/规范名两条字典记录）只出一条。
   const 搜索词 = 词.trim().toLowerCase();
   const Mock搜索全集 = useMemo(
     () => Array.from(new Set(Mock城市搜索字典.flatMap((组) => 组.城市))),
     [],
   );
-  const 搜索结果 = useMemo(
-    () =>
-      搜索词 === ''
-        ? []
-        : Mock搜索全集.filter((城) => 城.includes(搜索词) || (城市拼音[城] ?? '').includes(搜索词)),
-    [搜索词, Mock搜索全集],
-  );
+  const 搜索结果 = useMemo(() => {
+    if (搜索词 === '') return [];
+    const 见过 = new Set<string>();
+    const 结果: string[] = [];
+    for (const 城 of Mock搜索全集) {
+      const 规范名 = 规范精选城市名称(城);
+      if (见过.has(规范名)) continue;
+      if (
+        城.includes(搜索词) ||
+        规范名.toLowerCase().includes(搜索词) ||
+        (城市拼音[城] ?? '').includes(搜索词)
+      ) {
+        见过.add(规范名);
+        结果.push(规范名);
+      }
+    }
+    return 结果;
+  }, [搜索词, Mock搜索全集]);
 
   // ── 当前可见列表的加载/分页归属（正文只有一套「加载中/还有/加载更多」props）──
   const 在搜索 = 搜索词 !== '';
@@ -160,13 +178,14 @@ export default function 选择城市() {
   };
 
   /** Backend 城市按钮值：按 ID 识别；主城市禁用；选满后未选中禁用。
-   *  展示键 → 目录选择值 登记一次（收窄为 id + display_name），切换时按 ID 拿回引用。 */
+   *  展示键 → 目录选择值 登记一次（收窄为 id + display_name，显示名按 ID 归一），切换时按 ID 拿回引用。 */
   const 后端片 = (项: BFFLocationItem): 城市按钮值 => {
+    const 名称 = 精选城市显示名(项.id, 项.display_name);
     const 选中 = 已选引用.some((条) => 条.id === 项.id);
-    项映射.current.set(项.id, { id: 项.id, display_name: 项.display_name });
+    项映射.current.set(项.id, { id: 项.id, display_name: 名称 });
     return {
       键: 项.id,
-      名称: 项.display_name,
+      名称,
       选中,
       禁用: (选满 && !选中) || 项.id === 主城市Id,
     };
@@ -184,13 +203,16 @@ export default function 选择城市() {
     };
   };
 
-  /** Mock 城市按钮值：城名即稳定键 */
-  const Mock片 = (城: string): 城市按钮值 => ({
-    键: 城,
-    名称: 城,
-    选中: 已选.includes(城),
-    禁用: 选满 && !已选.includes(城),
-  });
+  /** Mock 城市按钮值：规范名即稳定键（热门/分省/搜索同名同键） */
+  const Mock片 = (城: string): 城市按钮值 => {
+    const 名 = 规范精选城市名称(城);
+    return {
+      键: 名,
+      名称: 名,
+      选中: 已选.includes(名),
+      禁用: 选满 && !已选.includes(名),
+    };
+  };
 
   // ── 两模式的展示输入（下面只有一套 props）──
   // 当前/历史访问城市：Backend 用已批准的缺失态「暂未获取定位」，Mock 用演示值上海

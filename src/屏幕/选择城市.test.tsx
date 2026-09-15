@@ -132,12 +132,12 @@ describe('选择城市 Mock（行政分组共用正文）', () => {
     expect(screen.queryByRole('button', { name: '跳到 A' })).toBeNull();
     expect(screen.queryByRole('button', { name: '跳到 Z' })).toBeNull();
 
-    // 中文/拼音子串搜索沿用：杭、hangzhou、hang 都出杭州
+    // 中文/拼音子串搜索沿用：杭、hangzhou、hang 都出杭州市（Task 6 规范名回显）
     const 输入 = screen.getByPlaceholderText('搜索城市名/拼音');
     for (const 词 of ['杭', 'hangzhou', 'hang']) {
       await 用户.clear(输入);
       await 用户.type(输入, 词);
-      expect(await screen.findByText('杭州')).toBeTruthy();
+      expect(await screen.findByText('杭州市')).toBeTruthy();
     }
     await 用户.clear(输入);
   });
@@ -147,8 +147,8 @@ describe('选择城市 Mock（行政分组共用正文）', () => {
     // 两个精选区：12 大陆 + 10 海外（此处抽点断言），无港澳台条目
     expect(screen.getByText('国内热门城市')).toBeTruthy();
     expect(screen.getByText('海外热门城市')).toBeTruthy();
-    // 新加坡不在 Mock 默认分组里，按钮唯一来自海外精选区
-    expect(screen.getByRole('button', { name: '新加坡' })).toBeTruthy();
+    // 新加坡不在 Mock 默认分组里，按钮唯一来自海外精选区（Task 6 规范英文名）
+    expect(screen.getByRole('button', { name: 'Singapore' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Taipei' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Hong Kong' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Macau' })).toBeNull();
@@ -162,15 +162,15 @@ describe('选择城市 Mock（行政分组共用正文）', () => {
     const 用户 = userEvent.setup();
 
     // 国内精选正好 12 枚，取前 9 枚点满
-    const 热门枚 = ['北京', '上海', '深圳', '广州', '杭州', '成都', '南京', '武汉', '苏州'];
+    const 热门枚 = ['北京市', '上海市', '深圳市', '广州市', '杭州市', '成都市', '南京市', '武汉市', '苏州市'];
     for (const 城名 of 热门枚) {
       await 用户.click((await screen.findAllByText(城名))[0]);
     }
     expect(screen.getByText('9/9')).toBeTruthy();
-    // 未选中的城片禁用：点第 10 枚（西安）不越过上限
-    await 用户.click((await screen.findAllByText('西安'))[0]);
+    // 未选中的城片禁用：点第 10 枚（西安市）不越过上限
+    await 用户.click((await screen.findAllByText('西安市'))[0]);
     expect(screen.getByText('9/9')).toBeTruthy();
-    expect(((screen.getAllByText('西安')[0] as HTMLButtonElement).disabled)).toBe(true);
+    expect(((screen.getAllByText('西安市')[0] as HTMLButtonElement).disabled)).toBe(true);
 
     // 取消 = ✕ 关闭：只返回，不派发任何草稿改动
     await 用户.click(screen.getByRole('button', { name: '关闭' }));
@@ -178,19 +178,19 @@ describe('选择城市 Mock（行政分组共用正文）', () => {
     expect(派发).not.toHaveBeenCalled();
   });
 
-  it('保存才写回草稿：保存派发感兴趣城市们，中途取消的会话不派发', async () => {
+  it('保存才写回草稿：保存派发感兴趣城市们（归一到规范名），中途取消的会话不派发', async () => {
     const { 派发 } = render城市页({ 数据源: 'mock', 已选城市们: ['杭州'] });
     const 用户 = userEvent.setup();
-    // 进页带入既有选择：计数 1/9，chip 可移除
+    // 进页带入既有选择：旧名「杭州」按规范名回显，计数 1/9，chip 可移除
     expect(screen.getByText('1/9')).toBeTruthy();
-    await 用户.click(screen.getByRole('button', { name: '移除 杭州' }));
+    await 用户.click(screen.getByRole('button', { name: '移除 杭州市' }));
     expect(screen.getByText('0/9')).toBeTruthy();
-    await 用户.click((await screen.findAllByText('苏州'))[0]);
+    await 用户.click((await screen.findAllByText('苏州市'))[0]);
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(mock返回).toHaveBeenCalledTimes(1);
     expect(派发).toHaveBeenCalledTimes(1);
     expect(派发).toHaveBeenCalledWith(
-      expect.objectContaining({ 型: '改意向草稿', 补丁: { 感兴趣城市们: ['苏州'] } }),
+      expect.objectContaining({ 型: '改意向草稿', 补丁: { 感兴趣城市们: ['苏州市'] } }),
     );
   });
 
@@ -203,7 +203,7 @@ describe('选择城市 Mock（行政分组共用正文）', () => {
     expect(screen.queryByRole('button', { name: '移除 香港' })).toBeNull();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(派发).toHaveBeenCalledWith(
-      expect.objectContaining({ 型: '改意向草稿', 补丁: { 感兴趣城市们: ['杭州'] } }),
+      expect.objectContaining({ 型: '改意向草稿', 补丁: { 感兴趣城市们: ['杭州市'] } }),
     );
   });
 
@@ -268,11 +268,13 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
     expect(screen.getByText('广东省')).toBeTruthy();
     expect(screen.queryByText('其他地区')).toBeNull();
     expect(screen.queryByText('港澳台')).toBeNull();
-    // 主城市不进入备选：可见但禁用
-    const 主城片 = (await screen.findAllByText('上海市')).find(
+    // 主城市不进入备选：可见但禁用（精选区同名「上海市」可选，目录项那枚禁用）
+    const 上海市片们 = (await screen.findAllByText('上海市')).filter(
       (节点) => 节点.tagName === 'BUTTON',
-    ) as HTMLButtonElement;
-    expect(主城片.disabled).toBe(true);
+    ) as HTMLButtonElement[];
+    const 目录主城片 = 上海市片们.find((片) => 片.disabled);
+    expect(目录主城片).toBeTruthy();
+    expect(目录主城片!.disabled).toBe(true);
     // 无行政区的城市不编造分组、默认列表不可见，但仍可被搜索命中且可点
     expect(screen.queryByText('泉州')).toBeNull();
     await 用户.type(screen.getByPlaceholderText('搜索城市名/拼音'), '泉州');
@@ -301,15 +303,15 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
     const 查询Location = 四国桩({});
     const { 派发 } = render城市页({ 数据源: 'backend', 查询Location });
     const 用户 = userEvent.setup();
-    await 用户.click(await screen.findByRole('button', { name: '新加坡' }));
+    await 用户.click(await screen.findByRole('button', { name: 'Singapore' }));
     expect(screen.getByText('1/9')).toBeTruthy();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(派发).toHaveBeenCalledWith(
       expect.objectContaining({
         型: '改意向草稿',
         补丁: {
-          感兴趣城市们: ['新加坡'],
-          感兴趣城市引用们: [{ id: 'loc_qdyx7r6fcyjrcokobaxsorhhrm', display_name: '新加坡' }],
+          感兴趣城市们: ['Singapore'],
+          感兴趣城市引用们: [{ id: 'loc_qdyx7r6fcyjrcokobaxsorhhrm', display_name: 'Singapore' }],
         },
       }),
     );
@@ -424,7 +426,8 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
     expect(screen.getByRole('button', { name: '移除 苏州市' })).toBeTruthy();
 
     // 追加一枚后保存：引用按 ID 提交（含回读那条），名称列表同步
-    await 用户.click((await screen.findAllByRole('button', { name: '杭州市' }))[0]);
+    // 精选区同名「杭州市」在前，目录项在行政区分组（DOM 尾部）—— 取末枚点目录项
+    await 用户.click((await screen.findAllByRole('button', { name: '杭州市' })).at(-1)!);
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(派发).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -488,5 +491,71 @@ describe('选择城市 进页初始选择清洗（review-r1 F7）', () => {
     expect(screen.getByText('9/9')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /移除 / })).toHaveLength(9);
     expect(screen.queryByRole('button', { name: '移除 上海' })).toBeNull();
+  });
+});
+
+// ── Task 6：热门城市规范显示名与有限别名兼容 ──────────────────────
+describe('选择城市 规范名与有限别名（Task 6）', () => {
+  it('Mock 旧草稿「北京」与热门「北京市」视为同项：回显规范名、点热门即取消、取消关闭不派发', async () => {
+    const { 派发 } = render城市页({ 数据源: 'mock', 已选城市们: ['北京'] });
+    const 用户 = userEvent.setup();
+    expect(screen.getByText('1/9')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '移除 北京市' })).toBeTruthy();
+    // 精选区「北京市」与旧草稿是同一项：点它 = 取消
+    await 用户.click(screen.getAllByRole('button', { name: '北京市' })[0]);
+    expect(screen.getByText('0/9')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '移除 北京市' })).toBeNull();
+    // ✕ 关闭：只返回，不派发任何草稿改动（归一化不悄悄落盘）
+    await 用户.click(screen.getByRole('button', { name: '关闭' }));
+    expect(mock返回).toHaveBeenCalledTimes(1);
+    expect(派发).not.toHaveBeenCalled();
+  });
+
+  it('Mock 热门与省内同项只选一次、回显同名：点精选杭州市后省内片同选且计数 1', async () => {
+    render城市页({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    await 用户.click((await screen.findAllByText('杭州市'))[0]);
+    expect(screen.getByText('1/9')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '移除 杭州市' })).toBeTruthy();
+    // 点省内浙江组里的「杭州市」（同名同键）= 取消同一项，不产生第二条
+    const 省内片 = (await screen.findAllByText('杭州市')).at(-1)!;
+    await 用户.click(省内片);
+    expect(screen.getByText('0/9')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '移除 杭州市' })).toBeNull();
+  });
+
+  it('Mock 未知名字保持、海外映射不加后缀：历史「迪拜」原样，精选区无「Singapore市」', async () => {
+    render城市页({ 数据源: 'mock', 已选城市们: ['迪拜'] });
+    expect(screen.getByRole('button', { name: '移除 迪拜' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Singapore' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Singapore市' })).toBeNull();
+  });
+
+  it('Backend 旧 ref「新加坡」回显规范名「Singapore」且与精选区同 ID 共享选中，保存仍原 ID', async () => {
+    const 查询Location = 四国桩({});
+    const { 派发 } = render城市页({
+      数据源: 'backend',
+      查询Location,
+      已选引用们: [{ id: 'loc_qdyx7r6fcyjrcokobaxsorhhrm', display_name: '新加坡' }],
+    });
+    const 用户 = userEvent.setup();
+    // 静态旧 ref 显示按 ID 规范化
+    expect(await screen.findByRole('button', { name: '移除 Singapore' })).toBeTruthy();
+    expect(screen.getByText('1/9')).toBeTruthy();
+    // 与精选区同一 ID：再点精选区那枚 = 取消
+    await 用户.click(screen.getByRole('button', { name: 'Singapore' }));
+    expect(screen.getByText('0/9')).toBeTruthy();
+    // 重新选中后保存：ID 不变，显示名为规范名
+    await 用户.click(screen.getByRole('button', { name: 'Singapore' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({
+        型: '改意向草稿',
+        补丁: {
+          感兴趣城市们: ['Singapore'],
+          感兴趣城市引用们: [{ id: 'loc_qdyx7r6fcyjrcokobaxsorhhrm', display_name: 'Singapore' }],
+        },
+      }),
+    );
   });
 });

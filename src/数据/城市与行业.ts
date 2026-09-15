@@ -5,7 +5,7 @@
 // 不做全国 300+ 地级市全集 —— 招聘产品里没人从 300 个里翻，反而拖慢选择。
 // 接后端后整表由接口下发（见 docs/后端接口需求.md §3）。
 
-import { 海外精选城市 } from './城市精选';
+import { 海外精选城市, 规范精选城市名称 } from './城市精选';
 
 export interface 省份分组 {
   省: string;
@@ -113,7 +113,9 @@ const 原海外模拟城市们 =
 
 /**
  * Mock 城市搜索字典：默认字典 + 原海外模拟记录 + 海外精选名，按城市名去重。
- * 三个 Mock 搜索读这一份；国内精选名已全部在默认字典里，无需另列。
+ * 三个 Mock 搜索读这一份；国内精选名已全部在默认字典里（旧中文名即别名），无需另列。
+ * Task 6：海外精选 display_name 是目录规范英文名，与旧中文模拟名并存 ——
+ * 搜索经 Mock城市搜索结果 做别名/规范名双匹配并按规范名去重，同名城市绝不重复上屏。
  */
 export const Mock城市搜索字典: 省份分组[] = [
   ...Mock默认城市字典,
@@ -122,6 +124,39 @@ export const Mock城市搜索字典: 省份分组[] = [
     城市: Array.from(new Set([...原海外模拟城市们, ...海外精选城市.map((项) => 项.display_name)])),
   },
 ];
+
+/**
+ * Task 6：Mock 城市搜索适配 —— 旧中文名（别名）与目录规范名都能命中，
+ * 返回按规范名去重后的规范名列表（同名城市只出一条）。省名也算命中
+ * （输「浙」出浙江全省），搜索范围与 城市查询钩子.本地城市搜索结果 一致，不发请求。
+ */
+export function Mock城市搜索结果(词: string): string[] {
+  const 搜索词 = 词.trim();
+  if (搜索词 === '') return [];
+  const 见过 = new Set<string>();
+  const 结果: string[] = [];
+  for (const 组 of Mock城市搜索字典) {
+    if (组.省.includes(搜索词)) {
+      for (const 城 of 组.城市) {
+        const 名 = 规范精选城市名称(城);
+        if (!见过.has(名)) {
+          见过.add(名);
+          结果.push(名);
+        }
+      }
+      continue;
+    }
+    for (const 城 of 组.城市) {
+      const 名 = 规范精选城市名称(城);
+      if (见过.has(名)) continue;
+      if (城.includes(搜索词) || 名.includes(搜索词)) {
+        见过.add(名);
+        结果.push(名);
+      }
+    }
+  }
+  return 结果;
+}
 
 /** 行业二级字典：一级行业 → 细分方向（标注意见：点开行业卡要能细选） */
 export interface 行业分组 {

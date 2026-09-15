@@ -455,7 +455,8 @@ describe('发布岗位页 Backend 选择器', () => {
       await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
       await screen.findByText('选择工作城市');
       if (城市流程 === '选') {
-        await 用户.click((await screen.findAllByRole('button', { name: '上海' }))[0]);
+        // Task 6：精选区首位是目录规范名「上海市」（canonical ID）
+        await 用户.click((await screen.findAllByRole('button', { name: '上海市' }))[0]);
         await 用户.click(screen.getByRole('button', { name: '保存' }));
       } else {
         // 未保存引用直接返回
@@ -505,7 +506,8 @@ describe('发布岗位页 Backend 选择器', () => {
     const 传入 = mock发布岗位.mock.calls[0][0];
     expect(传入.类别引用).toEqual({ id: 'job_be', display_name: '后端开发' });
     // merge 调和：默认视图首位是精选配置的 上海（canonical ID），点它保存按 ID 提交
-    expect(传入.地点引用).toEqual({ id: 'loc_ugt5s3vsvxs3fvd2llx7zc6fqe', display_name: '上海' });
+    // Task 6：显示名为目录规范名「上海市」，ID 不变
+    expect(传入.地点引用).toEqual({ id: 'loc_ugt5s3vsvxs3fvd2llx7zc6fqe', display_name: '上海市' });
     // 合同 C：direct 一次选择同时产生相同的发布方与用人企业 ID
     expect(传入.发布模式).toBe('direct');
     expect(传入.发布方企业编号).toBe('org_xinghe');
@@ -625,10 +627,10 @@ describe('发布岗位页 Backend 选择器', () => {
     // 空选择：保存禁用
     expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
     // 选择后可保存；已选芯片可取消回到空态
-    const 城市键们 = await screen.findAllByRole('button', { name: '上海' });
+    const 城市键们 = await screen.findAllByRole('button', { name: '上海市' });
     await 用户.click(城市键们[0]);
-    expect(screen.getByRole('button', { name: '上海 ✕' })).toBeTruthy();
-    await 用户.click(screen.getByRole('button', { name: '上海 ✕' }));
+    expect(screen.getByRole('button', { name: '上海市 ✕' })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '上海市 ✕' }));
     expect(screen.queryByText('已选')).toBeNull();
     expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
     await 用户.click(城市键们[0]);
@@ -643,8 +645,8 @@ describe('发布岗位页 Backend 选择器', () => {
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
     expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
-      城市: '上海',
-      地点引用: { id: 'loc_ugt5s3vsvxs3fvd2llx7zc6fqe', display_name: '上海' },
+      城市: '上海市',
+      地点引用: { id: 'loc_ugt5s3vsvxs3fvd2llx7zc6fqe', display_name: '上海市' },
     });
   });
 
@@ -716,8 +718,8 @@ describe('发布岗位页 Backend 选择器', () => {
     const { 用户 } = await 填到发布前(true, { 城市: '不开' });
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
-    await 用户.click((await screen.findAllByRole('button', { name: '上海' }))[0]);
-    expect(screen.getByRole('button', { name: '上海 ✕' })).toBeTruthy();
+    await 用户.click((await screen.findAllByRole('button', { name: '上海市' }))[0]);
+    expect(screen.getByRole('button', { name: '上海市 ✕' })).toBeTruthy();
     await 用户.click(screen.getByRole('button', { name: '返回' }));
     expect(screen.getByRole('button', { name: /工作城市/ }).textContent).toContain('请选择');
     // 重开：上一次未保存的选中不保留，初始已选为空
@@ -1325,7 +1327,7 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
     // 工作城市：Mock 同样走全页选择正文（本地字典，不发请求）→ 选 上海 → 保存
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
-    await 用户.click((await screen.findAllByRole('button', { name: '上海' }))[0]);
+    await 用户.click((await screen.findAllByRole('button', { name: '上海市' }))[0]);
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await 用户.type(
       screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'),
@@ -1371,17 +1373,17 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
     await 用户.type(screen.getByRole('textbox', { name: '职位描述' }), '描述正文');
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
 
-    // 选 上海 → 保存：岗位行回填
+    // 选 上海 → 保存：岗位行回填（Mock 城名归一到规范名）
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
-    await 用户.click((await screen.findAllByRole('button', { name: '上海' }))[0]);
+    await 用户.click((await screen.findAllByRole('button', { name: '上海市' }))[0]);
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(screen.getByRole('button', { name: /工作城市/ }).textContent).toContain('上海');
 
     // 重开城市子视图：已选 chip 在场、保存可用
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
-    expect(screen.getByRole('button', { name: '上海 ✕' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '上海市 ✕' })).toBeTruthy();
     expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(false);
     // 取消关闭：岗位行仍是 上海，不回填临时态
     await 用户.click(screen.getByRole('button', { name: '返回' }));
@@ -1605,7 +1607,7 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
     // 工作城市：全页选择正文 → 选 上海 → 保存
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
-    await 用户.click((await screen.findAllByRole('button', { name: '上海' }))[0]);
+    await 用户.click((await screen.findAllByRole('button', { name: '上海市' }))[0]);
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     // 合同 C：企业坐标经抽屉选好
     await 用户.click(screen.getByRole('button', { name: /用人企业/ }));
@@ -3433,7 +3435,7 @@ describe('发布岗位页 全页城市选择（Mock 模式）', () => {
     // 打开全页正文：本地热门 + 省份字典，无任何目录请求可发
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
-    await 用户.click((await screen.findAllByRole('button', { name: '上海' }))[0]);
+    await 用户.click((await screen.findAllByRole('button', { name: '上海市' }))[0]);
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(screen.getByRole('button', { name: /工作城市/ }).textContent).toContain('上海');
     await 设月薪带(用户, 20, 30);
@@ -3443,8 +3445,8 @@ describe('发布岗位页 全页城市选择（Mock 模式）', () => {
     await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
-    // Mock 无目录引用概念：城市即文本，不构造引用
-    expect(mock发布岗位.mock.calls[0][0]).toMatchObject({ 城市: '上海' });
+    // Mock 无目录引用概念：城市即文本（Task 6 归一到规范名），不构造引用
+    expect(mock发布岗位.mock.calls[0][0]).toMatchObject({ 城市: '上海市' });
     expect(mock发布岗位.mock.calls[0][0].地点引用).toBeUndefined();
     const 类型们 = mock应用状态.派发.mock.calls.map((调用: unknown[]) => (调用[0] as { 型: string }).型);
     expect(类型们).not.toContain('存引导预填');
@@ -3518,7 +3520,7 @@ describe('发布岗位页 月薪选择行（薪资区间层）', () => {
     await 用户.click(screen.getByRole('button', { name: '完成' }));
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
-    await 用户.click((await screen.findAllByRole('button', { name: '上海' }))[0]);
+    await 用户.click((await screen.findAllByRole('button', { name: '上海市' }))[0]);
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), '张江路 1 号');
     await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
@@ -3541,7 +3543,7 @@ describe('发布岗位页 月薪选择行（薪资区间层）', () => {
     await 用户.click(screen.getByRole('button', { name: '完成' }));
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
-    await 用户.click((await screen.findAllByRole('button', { name: '上海' }))[0]);
+    await 用户.click((await screen.findAllByRole('button', { name: '上海市' }))[0]);
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     expect(await screen.findByText('请填写薪资带')).toBeTruthy();
