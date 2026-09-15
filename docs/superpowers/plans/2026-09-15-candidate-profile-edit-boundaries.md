@@ -52,7 +52,7 @@ Codex execution: superpowers:executing-plans
 
 ### Task 1: 简历编辑显式来源与保存后返回
 
-预期编辑文件：新增无；修改 `src/屏幕/我的简历.tsx`、`src/屏幕/基本信息.tsx`、`src/屏幕/工作经历.tsx`、`src/屏幕/求职状态.tsx`、`src/流程/候选Onboarding预填边界.tsx`、`src/应用.tsx`、`src/屏幕/我的简历.test.tsx`、`src/屏幕/基本信息.test.tsx`、`src/屏幕/工作经历.test.tsx`、`src/屏幕/求职状态.test.tsx`、`src/流程/候选Onboarding预填边界.test.tsx`、`e2e/数据源模式.spec.ts`；删除无。应用文件仅当调用活跃位置判定需传入完整 search 时改对应调用，不重构路由。
+预期编辑文件：新增无；修改 `src/屏幕/我的简历.tsx`、`src/屏幕/基本信息.tsx`、`src/屏幕/工作经历.tsx`、`src/屏幕/求职状态.tsx`、`src/流程/候选Onboarding预填边界.tsx`、`src/应用.tsx`、`src/应用.test.tsx`、`src/屏幕/我的简历.test.tsx`、`src/屏幕/基本信息.test.tsx`、`src/屏幕/工作经历.test.tsx`、`src/屏幕/求职状态.test.tsx`、`src/流程/候选Onboarding预填边界.test.tsx`、`e2e/数据源模式.spec.ts`；删除无。应用中三个活跃位置判定调用均须传入 `位置.pathname + 位置.search`；清理 effect 的依赖与去重键同步使用完整位置。不重构路由。
 
 目标：从简历资料入口保存只回简历；非目标：不改首次引导题序、全局未保存拦截或子编辑器保存机制。
 
@@ -62,12 +62,12 @@ Codex execution: superpowers:executing-plans
 - [ ] 在现有测试构造 MemoryRouter 带 `from=resume` 入口，覆盖基本信息／工作经历／求职状态学生与社招成功保存、失败留页、刷新模式与完整度跳转；旧无参数成功用例继续断言原出口。断言日常模式零更新建档、零确认分区、零到岗预填。
 - [ ] 执行下述 Vitest，确认新增用例因当前旧跳转／副作用失败，不接受桩缺方法造成的红。
 - [ ] 入口拼接参数，三页增加窄编辑分支；日常模式旅程判定为 false。基本信息／求职状态按钮为“保存”；保存成功到简历。基本信息空身份保留当前延迟 profile 写入路径，去带参数的求职状态后保存收口，不能跳过必填。求职状态保存成功后在派发到岗预填之前结束日常分支。分区确认仅 onboarding 执行。
-- [ ] 修改预填消费／活跃判定，使刷新不恢复建议、已退出的引导状态不因资料路径又被当作活跃。保留所有无参数正常引导恢复用例。
+- [ ] 修改预填消费／活跃判定，使刷新不恢复建议、已退出的引导状态不因资料路径又被当作活跃。保留所有无参数正常引导恢复用例。在 `src/应用.test.tsx` 增加同 pathname 从无参数切到 `from=resume` 的用例，验证退出引导清理执行、编辑位置不再写入建档，防止只改纯函数却漏接调用方。
 - [ ] 浏览器现有“核心编辑 简历行业”用例从我的简历点击进入，保存并重入验证；保留公司/行业目录 ID 与原负例，不用裸 `/experience` 冒充日常入口。新增小用例标签 `候选资料编辑边界 @backend`：已完成候选经基本信息保存回简历，首次意向写入零次；通过真实 UI 流程进入，fixture 使用现有安装函数，不导出新的模拟框架。
 - [ ] 跑定向用例后提交 `fix: keep resume edits within resume flow`。
 
 ```sh
-npx vitest run src/屏幕/我的简历.test.tsx src/屏幕/基本信息.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/求职状态.test.tsx src/流程/候选Onboarding预填边界.test.tsx
+npx vitest run src/应用.test.tsx src/屏幕/我的简历.test.tsx src/屏幕/基本信息.test.tsx src/屏幕/工作经历.test.tsx src/屏幕/求职状态.test.tsx src/流程/候选Onboarding预填边界.test.tsx
 npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --project=backend-stg --grep '核心编辑 简历行业|候选资料编辑边界' --retries=0
 ```
 
@@ -171,5 +171,6 @@ npx vitest run src/屏幕/我的.test.tsx
 ## 文档 review 与运行记录
 
 - 规划 owner 已自检五项 Spec 对应五个 Task，城市为外部依赖；用户明确在线覆盖旧断言。
-- 文档 review 在冻结本 Plan 后由 Claude opus/high 执行，结果及逐项裁决在此记录；尚未完成，不能据此生成执行提示词或启动实施。
+- 文档 review：Claude opus/high，WORKFLOW_DOCUMENT_REVIEW，1轮。冻结候选 revision `342b14f4`，Spec blob `e06bc1beffb185b39b7978a0f885dbaa375a0af2`、Plan blob `79dcf46c`（完整指纹保存在该轮本机审查产物）；只读守卫通过，HEAD、工作树状态和文档指纹未变化，未运行产品测试。
+- Finding R1-1：Minor／可选增强／optional／复杂度不变。活跃位置调用写成“仅当”会给执行者留下遗漏 search 的空间。已核对应用三处调用，接受并修正文档：明确三处传完整位置、清理依赖与去重同步，并补应用层回归义务。未改变批准产品契约。无有效 required 未解决项，按 review-loop 结束条件结束；无其它 finding。
 - 实施依赖、每 Task 验证与 final gate 记录由执行者在发生时追加；本节不代表未运行事项通过。
