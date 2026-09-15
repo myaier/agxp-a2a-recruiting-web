@@ -20,7 +20,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import 样式 from './工作经历.module.css';
 import 年月滚轮层 from '../组件/年月滚轮层';
-// Task 5（core editors §5.2）：教育 学校/专业 候选行共用组件（原页内两份候选 JSX 迁出）
+// Task 5（core editors §5.2）：教育 学校/专业 候选行共用组件；Task 2（editor-catalog-fullscreen）
+// 起由 教育目录子视图 在全屏子视图里调用（原页内两份候选 JSX 与查询状态已迁入）
 import { 教育目录候选列表, type 教育候选 } from '../组件/教育目录候选列表';
 // Task 6（core editors §5.2）：经历 所属行业 底部选择层正文共用组件（原页内两模式两套 JSX 迁出）
 // picker 统一 Task 1：目录机制收敛到共用 行业目录钩子（查询适配在本文件注入），正文纯展示
@@ -45,9 +46,8 @@ import { 路径 } from '../路由/路径表';
 import { 并入建档草稿, 教育段缺项, 规范化作品集链接, 校验作品集链接, 校验起止年月 } from '../流程/onboarding配置';
 import { 取工作页预填, 数未完成项 } from '../流程/候选Onboarding简历预填';
 import { 创建空候选预填状态 } from '../状态/后端/类型';
-import type { BFFTaxonomyItem, BFFInstitutionItem } from '../数据/BFF契约';
 import type { 建档编辑中草稿, 建档条目种类, 建档明确删除条目, 候选引导建档草稿 } from '../数据/资料缓存';
-import type { 目录选择值 } from '../数据/招聘数据源类型';
+import type { 目录选择值, 目录页 } from '../数据/招聘数据源类型';
 import { 学校副标题, 合并目录页 } from '../数据/目录选择';
 import { 高校名录 } from '../数据/高校名录';
 import { 专业名录 } from '../数据/专业名录';
@@ -57,6 +57,8 @@ import 公司选择抽屉接线 from '../组件/公司选择抽屉接线';
 import { use组织查询 } from './组织查询钩子';
 import { 模拟目录搜索, 模拟目录添加 } from '../数据/企业端模拟数据';
 import type { BFF组织搜索项 } from '../数据/BFF契约';
+// Task 2（editor-catalog-fullscreen）：教育 学校/专业 的全屏选择子视图外壳（A 契约）
+import { 全屏选择外壳 } from '../组件/全屏选择外壳';
 
 /** 一段工作经历。开始/结束用 input[type=month] 的 yyyy-MM 格式；结束 null = 至今 */
 
@@ -639,14 +641,14 @@ export default function 工作经历() {
   );
 }
 
-// ── 教育经历编辑页：学校 / 学历（快捷片）/ 专业 / 起止年月（滚轮）────
-// review-r1 P1-3：学校/专业 输入走候选（与 毕业院校/选专业 同口径），点候选才落引用，
-// 继续输入清引用，没点候选阻止保存。
-// Task 5（core editors §5.2）：候选行 JSX 迁出到共用 教育目录候选列表，学校/专业在两模式
-// 都调用 —— 输入框、词、候选显隐、选中引用、250ms 查询、目录版本/迟到响应守卫仍在本外层。
-// Mock 用现有 高校名录/专业名录 演示种子做局部子串搜索/分页（稳定模拟键与名称分离），
-// 选中只落文本（沿用本地选择控制，不落引用）；Backend 回调通过当前查询页的稳定键解析回
-// 引用（同名不同 ID 不串），不在展示层查 DTO。
+// ── 教育经历编辑页：学校（点击行 + 全屏子视图）/ 学历（快捷片）/ 专业（点击行 + 全屏子视图）
+//    / 起止年月（滚轮）─────────────────────────────────────────────
+// review-r1 P1-3：学校/专业曾走页内输入候选（点候选落引用、继续输入清引用）。
+// Task 2（editor-catalog-fullscreen）：两字段改为点击行 + 全屏目录子视图 —— 打开时把草稿
+// 当前名称复制为子页搜索初词；搜索/候选/游标/失败重试全在子视图，关闭即销毁；只有选中
+// 有效候选才原子写 名称+引用 并只关闭，取消/搜索编辑/翻页都不碰父草稿（初始复制后搜索是
+// 独立 state）。Backend 引用只来自所点行的稳定 ID（同名不同 ID 不串）；Mock 沿本地选择
+// 控制只落文本。完成守卫保持：Backend 没有引用的旧文本不得当引用提交。
 const 教育搜索防抖毫秒 = 250;
 /** Mock 演示候选每页条数：只为驱动与 Backend 相同的「加载更多」可见状态 */
 const 教育演示每页条数 = 8;
@@ -668,7 +670,7 @@ function 教育编辑页({
   完成: (段: 简历教育段) => void;
   删除?: () => void;
 }) {
-  const { 数据源模式, 目录查询 } = use应用状态();
+  const { 数据源模式 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
   const [草稿, 设草稿] = useState<简历教育段>(() => {
     const 基础: 简历教育段 = 初始 ?? {
@@ -682,7 +684,7 @@ function 教育编辑页({
     return 恢复 ? { ...基础, ...恢复.字段 } : 基础;
   });
   // 草稿每变一次就把本层写回建档草稿。用 effect 而不是在 改 里逐次回调：
-  // 选候选这类动作会连着调两次 改，逐次回调只能看到过期的 草稿。
+  // 子视图选定这类动作会连着调两次 改，逐次回调只能看到过期的 草稿。
   const 变更引用 = useRef(变更);
   变更引用.current = 变更;
   useEffect(() => {
@@ -690,27 +692,6 @@ function 教育编辑页({
     变更引用.current?.({ 种类: 'education', 本地编号: 编号, 字段 });
   }, [草稿]);
   const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
-  // Backend 学校候选 + 专业候选
-  const [学校候选, 设学校候选] = useState<BFFInstitutionItem[]>([]);
-  const [专业候选, 设专业候选] = useState<BFFTaxonomyItem[]>([]);
-  // review-r2 R2-M-1：学校/专业搜索分页游标
-  const [学校下一页, 设学校下一页] = useState<string | null>(null);
-  const [专业下一页, 设专业下一页] = useState<string | null>(null);
-  const [学校加载中, 设学校加载中] = useState(false);
-  const [专业加载中, 设专业加载中] = useState(false);
-  const 学校计时 = useRef(0);
-  const 专业计时 = useRef(0);
-  // review-r1 P2-2 / review-r2 R2-M-2：代际 ref 守 stale response——清空也递增，load-more 也检查
-  const 学校代际 = useRef(0);
-  const 专业代际 = useRef(0);
-  // review-r1 F5：本查询第一页的 catalogVersion —— 追加页换版本时不跨版本合并，
-  // 丢弃累计页与游标从第一页静默重开（沿 城市查询钩子 的版本引用做法，留在本页局部）。
-  const 学校版本引用 = useRef('');
-  const 专业版本引用 = useRef('');
-  const 学校方法引用 = useRef(目录查询?.查询Institution);
-  学校方法引用.current = 目录查询?.查询Institution;
-  const 专业方法引用 = useRef(目录查询?.查询Taxonomy);
-  专业方法引用.current = 目录查询?.查询Taxonomy;
   // 毕业早于入学一定是滚错档：不拦住，这段教育会带着「2020.09 — 2018.06」一直存下去
   const 时间错误 = 校验起止年月(草稿.开始, 草稿.结束, '入学时间', '毕业时间');
   const 可完成 = 草稿.学校.trim() !== '' && 草稿.专业.trim() !== '' && !时间错误;
@@ -718,364 +699,418 @@ function 教育编辑页({
   const 改 = <K extends keyof 简历教育段>(键: K, 值: 简历教育段[K]) =>
     设草稿((旧) => ({ ...旧, [键]: 值 }));
 
-  // Backend 学校搜索：250ms debounce 后 查询Institution({ q })
-  useEffect(() => {
-    if (!是后端) return;
-    const 方法 = 学校方法引用.current;
-    const trimmed = 草稿.学校.trim();
-    if (!方法 || trimmed === '') {
-      // review-r2 R2-M-2：清空输入时也递增代际，让在飞的慢响应成为 stale
-      学校代际.current += 1;
-      设学校候选([]);
-      设学校下一页(null);
+  // ── Task 2：学校/专业 全屏目录子视图的打开状态 + A 契约父页焦点/滚动记账 ──
+  const [打开目录, 设打开目录] = useState<'学校' | '专业' | null>(null);
+  const 学校行引用 = useRef<HTMLButtonElement>(null);
+  const 专业行引用 = useRef<HTMLButtonElement>(null);
+  const 目录触发行 = useRef<HTMLButtonElement | null>(null);
+  const 目录曾打开 = useRef(false);
+  const 目录打开滚动 = useRef<{ 节点: HTMLElement; 顶: number }[]>([]);
+  const 开目录 = (种类: '学校' | '专业') => {
+    const 行 = (种类 === '学校' ? 学校行引用 : 专业行引用).current;
+    // A：设打开状态前，沿触发行祖先链记录所有实际滚动节点（.滚动区）的 scrollTop
+    目录触发行.current = 行 ?? null;
+    目录打开滚动.current = [];
+    for (let 节点 = 行?.parentElement; 节点; 节点 = 节点.parentElement) {
+      if (节点.classList.contains('滚动区')) 目录打开滚动.current.push({ 节点, 顶: 节点.scrollTop });
+    }
+    设打开目录(种类);
+  };
+  // A：关闭后 wrapper 已恢复显示，先 focus({ preventScroll: true }) 回仍连接的触发行，
+  // 再原样还原 scrollTop；首次挂载不恢复
+  useLayoutEffect(() => {
+    if (打开目录 !== null) {
+      目录曾打开.current = true;
       return;
     }
-    window.clearTimeout(学校计时.current);
-    const 本次 = ++学校代际.current;
-    学校计时.current = window.setTimeout(async () => {
-      try {
-        const 页 = await 方法({ q: trimmed, limit: 20 });
-        if (本次 !== 学校代际.current) return;
-        设学校候选(页.items);
-        设学校下一页(页.nextCursor);
-        学校版本引用.current = 页.catalogVersion;
-      } catch {
-        if (本次 !== 学校代际.current) return;
-        设学校候选([]);
-        设学校下一页(null);
-      }
-    }, 教育搜索防抖毫秒);
-    return () => window.clearTimeout(学校计时.current);
-  }, [草稿.学校, 是后端]);
+    if (!目录曾打开.current) return;
+    目录曾打开.current = false;
+    const 触发行 = 目录触发行.current;
+    if (触发行?.isConnected) 触发行.focus({ preventScroll: true });
+    for (const { 节点, 顶 } of 目录打开滚动.current) 节点.scrollTop = 顶;
+    目录打开滚动.current = [];
+  }, [打开目录]);
 
-  // Backend 专业搜索：250ms debounce 后 查询Taxonomy('majors', { q })
-  useEffect(() => {
-    if (!是后端) return;
-    const 方法 = 专业方法引用.current;
-    const trimmed = 草稿.专业.trim();
-    if (!方法 || trimmed === '') {
-      专业代际.current += 1;
-      设专业候选([]);
-      设专业下一页(null);
-      return;
+  /** 选定：子视图只在选中有效候选时回调 —— 名称与引用原子落草稿，随后只关闭。
+   *  Mock 沿本地选择控制不落引用（完成无引用门槛）；Backend 引用 = 子视图按稳定键构造的目录值。 */
+  const 选定目录 = (种类: '学校' | '专业', 值: 目录选择值) => {
+    if (种类 === '学校') {
+      改('学校', 值.display_name);
+      if (是后端) 改('学校引用', 值);
+    } else {
+      改('专业', 值.display_name);
+      if (是后端) 改('专业引用', 值);
     }
-    window.clearTimeout(专业计时.current);
-    const 本次 = ++专业代际.current;
-    专业计时.current = window.setTimeout(async () => {
-      try {
-        const 页 = await 方法('majors', { q: trimmed, limit: 20 });
-        if (本次 !== 专业代际.current) return;
-        设专业候选(页.items);
-        设专业下一页(页.nextCursor);
-        专业版本引用.current = 页.catalogVersion;
-      } catch {
-        if (本次 !== 专业代际.current) return;
-        设专业候选([]);
-        设专业下一页(null);
-      }
-    }, 教育搜索防抖毫秒);
-    return () => window.clearTimeout(专业计时.current);
-  }, [草稿.专业, 是后端]);
-
-  // review-r2 R2-M-1：学校/专业搜索加载更多——用当前游标请求下一页，合并去重；代际检查防 stale。
-  // review-r1 F5：追加页 catalogVersion 与本查询第一页不同 → 目录换代，不跨版本合并：
-  // 丢弃累计页与游标，从本查询第一页静默重开（强制刷新让重开真打到服务端）。
-  const 学校加载更多 = async () => {
-    if (学校下一页 === null || 学校加载中) return;
-    const 方法 = 学校方法引用.current;
-    if (!方法) return;
-    const 本次 = 学校代际.current;
-    设学校加载中(true);
-    try {
-      const 页 = await 方法({ q: 草稿.学校.trim(), cursor: 学校下一页, limit: 20 });
-      if (本次 !== 学校代际.current) return;
-      if (页.catalogVersion !== 学校版本引用.current) {
-        const 重开 = await 方法({ q: 草稿.学校.trim(), limit: 20 }, { 强制刷新: true });
-        if (本次 !== 学校代际.current) return;
-        设学校候选(重开.items);
-        设学校下一页(重开.nextCursor);
-        学校版本引用.current = 重开.catalogVersion;
-        return;
-      }
-      设学校候选((旧) => 合并目录页(旧, 页.items));
-      设学校下一页(页.nextCursor);
-    } catch {
-      if (本次 !== 学校代际.current) return;
-    } finally {
-      if (本次 === 学校代际.current) 设学校加载中(false);
-    }
-  };
-  const 专业加载更多 = async () => {
-    if (专业下一页 === null || 专业加载中) return;
-    const 方法 = 专业方法引用.current;
-    if (!方法) return;
-    const 本次 = 专业代际.current;
-    设专业加载中(true);
-    try {
-      const 页 = await 方法('majors', { q: 草稿.专业.trim(), cursor: 专业下一页, limit: 20 });
-      if (本次 !== 专业代际.current) return;
-      if (页.catalogVersion !== 专业版本引用.current) {
-        const 重开 = await 方法('majors', { q: 草稿.专业.trim(), limit: 20 }, { 强制刷新: true });
-        if (本次 !== 专业代际.current) return;
-        设专业候选(重开.items);
-        设专业下一页(重开.nextCursor);
-        专业版本引用.current = 重开.catalogVersion;
-        return;
-      }
-      设专业候选((旧) => 合并目录页(旧, 页.items));
-      设专业下一页(页.nextCursor);
-    } catch {
-      if (本次 !== 专业代际.current) return;
-    } finally {
-      if (本次 === 专业代际.current) 设专业加载中(false);
-    }
-  };
-
-  const 改学校 = (值: string) => {
-    改('学校', 值);
-    // 继续输入立即清除旧引用（只有点候选才落引用）；Mock 演示候选重开并重置分页
-    if (草稿.学校引用 !== undefined) 改('学校引用', undefined);
-    设学校演示收起(false);
-    设学校演示页数(1);
-  };
-  const 改专业 = (值: string) => {
-    改('专业', 值);
-    if (草稿.专业引用 !== undefined) 改('专业引用', undefined);
-    设专业演示收起(false);
-    设专业演示页数(1);
-  };
-  const 选学校候选 = (项: BFFInstitutionItem) => {
-    改('学校', 项.display_name);
-    改('学校引用', { id: 项.id, display_name: 项.display_name } as 目录选择值);
-    设学校候选([]);
-  };
-  const 选专业候选 = (项: BFFTaxonomyItem) => {
-    改('专业', 项.display_name);
-    改('专业引用', { id: 项.id, display_name: 项.display_name } as 目录选择值);
-    设专业候选([]);
-  };
-  // Task 5：共用候选的稳定键 → 引用/文本 解析都在本外层，组件只按 键 回报点击
-  const 选学校键 = (键: string) => {
-    if (是后端) {
-      const 项 = 学校候选.find((项) => 项.id === 键);
-      if (项) 选学校候选(项);
-      return;
-    }
-    const 项 = 学校演示项们.find((项) => 项.键 === 键);
-    if (项) {
-      改学校(项.名称);
-      // Mock 点候选即收起（同 Backend 点候选行为）；文本已由 改学校 落草稿
-      设学校演示收起(true);
-    }
-  };
-  const 选专业键 = (键: string) => {
-    if (是后端) {
-      const 项 = 专业候选.find((项) => 项.id === 键);
-      if (项) 选专业候选(项);
-      return;
-    }
-    const 项 = 专业演示项们.find((项) => 项.键 === 键);
-    if (项) {
-      改专业(项.名称);
-      设专业演示收起(true);
-    }
-  };
-
-  // ── Mock 演示候选：现有学校/专业名录种子 + 局部子串搜索/分页 ──────────
-  // 只为本轮共用展示驱动可见状态（收起/页数），不建跨页 Mock service、不发请求。
-  // 稳定模拟键 = 种子下标（与名称分离）；选中的行沿 毕业院校 Mock 口径按当前词回显。
-  const [学校演示收起, 设学校演示收起] = useState(false);
-  const [学校演示页数, 设学校演示页数] = useState(1);
-  const [专业演示收起, 设专业演示收起] = useState(false);
-  const [专业演示页数, 设专业演示页数] = useState(1);
-  const 学校词 = 草稿.学校.trim();
-  const 专业词 = 草稿.专业.trim();
-  const 学校演示命中 = 学校词 === '' ? [] : 高校名录.filter((名) => 名.includes(学校词));
-  const 专业演示命中 = 专业词 === '' ? [] : 专业名录.filter((名) => 名.includes(专业词));
-  const 学校演示项们: 教育候选[] = 是后端 || 学校演示收起
-    ? []
-    : 学校演示命中
-        .slice(0, 学校演示页数 * 教育演示每页条数)
-        .map((名) => ({ 键: `mock_inst_${高校名录.indexOf(名)}`, 名称: 名, 选中: 名 === 学校词 }));
-  const 专业演示项们: 教育候选[] = 是后端 || 专业演示收起
-    ? []
-    : 专业演示命中
-        .slice(0, 专业演示页数 * 教育演示每页条数)
-        .map((名) => ({ 键: `mock_major_${专业名录.indexOf(名)}`, 名称: 名, 选中: 名 === 专业词 }));
-  // 两模式统一进组件的展示状态：Backend = 真实查询页，Mock = 演示切片
-  const 学校项们: 教育候选[] = 是后端
-    ? 学校候选.map((项) => ({
-        键: 项.id,
-        名称: 项.display_name,
-        副文: 学校副标题(项),
-        选中: 草稿.学校引用?.id === 项.id,
-      }))
-    : 学校演示项们;
-  const 专业项们: 教育候选[] = 是后端
-    ? 专业候选.map((项) => ({
-        键: 项.id,
-        名称: 项.display_name,
-        选中: 草稿.专业引用?.id === 项.id,
-      }))
-    : 专业演示项们;
-  const 学校还有 = 是后端
-    ? 学校下一页 !== null
-    : !学校演示收起 && 学校演示命中.length > 学校演示项们.length;
-  const 专业还有 = 是后端
-    ? 专业下一页 !== null
-    : !专业演示收起 && 专业演示命中.length > 专业演示项们.length;
-  const 学校演示加载更多 = () => {
-    if (学校演示命中.length > 学校演示项们.length) 设学校演示页数((旧) => 旧 + 1);
-  };
-  const 专业演示加载更多 = () => {
-    if (专业演示命中.length > 专业演示项们.length) 设专业演示页数((旧) => 旧 + 1);
+    设打开目录(null);
   };
 
   return (
     // 2026-08-24 全站选择风格统一（C1 定稿）：页底白底
     <次级页外壳 白底>
-      <返回栏
-        返回={取消}
-        标题="教育经历"
-        右侧={
+      {/* Task 2：目录子视图打开时父表单保持挂载但 hidden + 显式 display:none 隔离 ——
+          仓库没有全局 [hidden] 规则，固定 author display 会压过 UA 折叠；wrapper 接管
+          外壳的满高语义（flex:1/min-height:0/纵向 flex），全屏子视图是下面的内容兄弟，
+          绝不能藏进自己的 hidden 祖先。 */}
+      <div
+        hidden={打开目录 !== null}
+        style={{ flex: 1, minHeight: 0, display: 打开目录 !== null ? 'none' : 'flex', flexDirection: 'column' }}
+      >
+        <返回栏
+          返回={取消}
+          标题="教育经历"
+          右侧={
+            <button
+              className={`${样式.完成键} ${可完成 ? '' : 样式.完成键灰} 可点`}
+              onClick={() => {
+                // 原来点灰按钮什么都不发生，用户不知道卡在哪一项 —— 照经历编辑页的做法给轻提示。
+                // 报错顺序也跟经历编辑页对齐：先必填、后引用、后时间，体感一致
+                if (草稿.学校.trim() === '' || 草稿.专业.trim() === '') {
+                  轻提示('学校、专业是必填的');
+                  return;
+                }
+                // review-r1 P1-3：Backend 旧文本没有引用（未在子视图选中过）→ 阻止保存，
+                // 自由文本不得冒充目录引用
+                if (是后端 && 草稿.学校引用 === undefined) {
+                  轻提示('请从候选学校中选择');
+                  return;
+                }
+                if (是后端 && 草稿.专业引用 === undefined) {
+                  轻提示('请从候选专业中选择');
+                  return;
+                }
+                if (时间错误) {
+                  轻提示(时间错误);
+                  return;
+                }
+                完成(草稿);
+              }}
+            >
+              完成
+            </button>
+          }
+        />
+
+        <滚动区 样式覆盖={{ padding: '4px 22px 40px' }}>
+          {/* 学校名称：点击行打开全屏目录子视图（Task 2），不再页内输入 */}
           <button
-            className={`${样式.完成键} ${可完成 ? '' : 样式.完成键灰} 可点`}
-            onClick={() => {
-              // 原来点灰按钮什么都不发生，用户不知道卡在哪一项 —— 照经历编辑页的做法给轻提示。
-              // 报错顺序也跟经历编辑页对齐：先必填、后时间，两页体感一致
-              if (草稿.学校.trim() === '' || 草稿.专业.trim() === '') {
-                轻提示('学校、专业是必填的');
-                return;
-              }
-              // review-r1 P1-3：Backend 没点过候选 → 阻止保存
-              if (是后端 && 草稿.学校引用 === undefined) {
-                轻提示('请从候选学校中选择');
-                return;
-              }
-              if (是后端 && 草稿.专业引用 === undefined) {
-                轻提示('请从候选专业中选择');
-                return;
-              }
-              if (时间错误) {
-                轻提示(时间错误);
-                return;
-              }
-              完成(草稿);
-            }}
+            ref={学校行引用}
+            className={`${样式.选择条目} 可点`}
+            onClick={() => 开目录('学校')}
           >
-            完成
+            <span className={样式.条目标签}>学校名称</span>
+            <span className={样式.选择条目值行}>
+              <span className={`${草稿.学校 ? 样式.条目值 : 样式.条目占位} 单行`}>
+                {草稿.学校 || '选择学校'}
+              </span>
+              <span className={样式.尖括号}>›</span>
+            </span>
           </button>
-        }
-      />
 
-      <滚动区 样式覆盖={{ padding: '4px 22px 40px' }}>
-        <div className={样式.编辑条目}>
-          <div className={样式.条目标签}>学校名称</div>
-          <input
-            className={样式.条目输入}
-            value={草稿.学校}
-            placeholder="必填"
-            onChange={(事件) => 改学校(事件.target.value)}
-          />
-          {/* Task 5：学校候选走共用 教育目录候选列表（学校名 + 「城市 · 国家」副行 + 列表尾加载更多）；
-              显隐条件沿原稿（有候选或还有下一页才渲染） */}
-          {学校项们.length > 0 || 学校还有 ? (
-            <教育目录候选列表
-              项们={学校项们}
-              加载中={学校加载中}
-              还有={学校还有}
-              选定={选学校键}
-              加载更多={是后端 ? 学校加载更多 : 学校演示加载更多}
-            />
-          ) : null}
-        </div>
-
-        <div className={样式.编辑条目}>
-          <div className={样式.条目标签}>学历</div>
-          <div className={样式.行业片行}>
-            {学历选项.map((项) => (
-              <button
-                key={项}
-                className={`${样式.行业片} ${草稿.学历 === 项 ? 样式.行业片选中 : ''} 可点`}
-                onClick={() => 改('学历', 项)}
-              >
-                {项}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className={样式.编辑条目}>
-          <div className={样式.条目标签}>专业</div>
-          <input
-            className={样式.条目输入}
-            value={草稿.专业}
-            placeholder="必填"
-            onChange={(事件) => 改专业(事件.target.value)}
-          />
-          {/* Task 5：专业候选走同一共用列表（无副行）；显隐条件沿原稿 */}
-          {专业项们.length > 0 || 专业还有 ? (
-            <教育目录候选列表
-              项们={专业项们}
-              加载中={专业加载中}
-              还有={专业还有}
-              选定={选专业键}
-              加载更多={是后端 ? 专业加载更多 : 专业演示加载更多}
-            />
-          ) : null}
-        </div>
-
-        <div className={样式.编辑条目}>
-          <div className={样式.条目标签}>在读时间</div>
-          <div className={样式.时间行}>
-            <button
-              className={`${样式.月份键} ${时间错误 ? 样式.月份键错 : ''} 等宽数字 可点`}
-              onClick={() => 设滚轮('开始')}
-              aria-label="入学年月"
-            >
-              {草稿.开始.replace('-', '.')}
-            </button>
-            <span className={样式.时间连字}>—</span>
-            <button
-              className={`${样式.月份键} ${时间错误 ? 样式.月份键错 : ''} 等宽数字 可点`}
-              onClick={() => 设滚轮('结束')}
-              aria-label="毕业年月"
-            >
-              {草稿.结束.replace('-', '.')}
-            </button>
-          </div>
-          {/* role=alert：两个键都是 button，button 不支持 aria-invalid，
-              读屏用户靠这条即时播报的错误文案知道哪一项不对 */}
-          {时间错误 ? (
-            <div className={样式.字段错误} role="alert">
-              {时间错误}
+          <div className={样式.编辑条目}>
+            <div className={样式.条目标签}>学历</div>
+            <div className={样式.行业片行}>
+              {学历选项.map((项) => (
+                <button
+                  key={项}
+                  className={`${样式.行业片} ${草稿.学历 === 项 ? 样式.行业片选中 : ''} 可点`}
+                  onClick={() => 改('学历', 项)}
+                >
+                  {项}
+                </button>
+              ))}
             </div>
-          ) : null}
-        </div>
-      </滚动区>
+          </div>
 
-      {删除 ? (
-        <div style={{ padding: '0 22px 24px' }}>
-          <button className={`${样式.删除键} 可点`} onClick={删除}>
-            删除这段教育经历
+          {/* 专业：与学校同一套点击行 + 全屏子视图 */}
+          <button
+            ref={专业行引用}
+            className={`${样式.选择条目} 可点`}
+            onClick={() => 开目录('专业')}
+          >
+            <span className={样式.条目标签}>专业</span>
+            <span className={样式.选择条目值行}>
+              <span className={`${草稿.专业 ? 样式.条目值 : 样式.条目占位} 单行`}>
+                {草稿.专业 || '选择专业'}
+              </span>
+              <span className={样式.尖括号}>›</span>
+            </span>
           </button>
-        </div>
-      ) : null}
 
-      {滚轮 ? (
-        <年月滚轮层
-          标题={滚轮 === '开始' ? '选择入学年月' : '选择毕业年月'}
-          初值={滚轮 === '开始' ? 草稿.开始 : 草稿.结束}
-          最小={滚轮 === '结束' ? 草稿.开始 : undefined}
-          最大={滚轮 === '开始' ? 开始上界(草稿.结束) : 本月()}
-          确认={(值) => {
-            改(滚轮, 值);
-            设滚轮(null);
-          }}
-          取消={() => 设滚轮(null)}
+          <div className={样式.编辑条目}>
+            <div className={样式.条目标签}>在读时间</div>
+            <div className={样式.时间行}>
+              <button
+                className={`${样式.月份键} ${时间错误 ? 样式.月份键错 : ''} 等宽数字 可点`}
+                onClick={() => 设滚轮('开始')}
+                aria-label="入学年月"
+              >
+                {草稿.开始.replace('-', '.')}
+              </button>
+              <span className={样式.时间连字}>—</span>
+              <button
+                className={`${样式.月份键} ${时间错误 ? 样式.月份键错 : ''} 等宽数字 可点`}
+                onClick={() => 设滚轮('结束')}
+                aria-label="毕业年月"
+              >
+                {草稿.结束.replace('-', '.')}
+              </button>
+            </div>
+            {/* role=alert：两个键都是 button，button 不支持 aria-invalid，
+                读屏用户靠这条即时播报的错误文案知道哪一项不对 */}
+            {时间错误 ? (
+              <div className={样式.字段错误} role="alert">
+                {时间错误}
+              </div>
+            ) : null}
+          </div>
+        </滚动区>
+
+        {删除 ? (
+          <div style={{ padding: '0 22px 24px' }}>
+            <button className={`${样式.删除键} 可点`} onClick={删除}>
+              删除这段教育经历
+            </button>
+          </div>
+        ) : null}
+
+        {滚轮 ? (
+          <年月滚轮层
+            标题={滚轮 === '开始' ? '选择入学年月' : '选择毕业年月'}
+            初值={滚轮 === '开始' ? 草稿.开始 : 草稿.结束}
+            最小={滚轮 === '结束' ? 草稿.开始 : undefined}
+            最大={滚轮 === '开始' ? 开始上界(草稿.结束) : 本月()}
+            确认={(值) => {
+              改(滚轮, 值);
+              设滚轮(null);
+            }}
+            取消={() => 设滚轮(null)}
+          />
+        ) : null}
+      </div>
+
+      {/* Task 2：教育目录全屏子视图。开着才挂载 —— 搜索/候选/游标/失败重试随子视图
+          销毁（关闭不写父草稿，重复打开按当前名称重查）；外壳按 A 契约管焦点。 */}
+      {打开目录 !== null ? (
+        <教育目录子视图
+          字段种类={打开目录}
+          当前名称={打开目录 === '学校' ? 草稿.学校 : 草稿.专业}
+          当前引用={打开目录 === '学校' ? 草稿.学校引用 : 草稿.专业引用}
+          选定={(值) => 选定目录(打开目录, 值)}
+          关闭={() => 设打开目录(null)}
         />
       ) : null}
     </次级页外壳>
+  );
+}
+
+// ── 教育目录子视图（Task 2）：学校/专业 共用的全屏选择正文（只在本文件使用）────
+// 输入：字段种类、当前名称/ref 来自父层草稿，目录查询经 Context 注入，选定(目录选择值)/关闭。
+// 打开时把当前名称复制为搜索初词并查询（空名称 = 空词，不发请求）；此后搜索是子视图自己的
+// state。Backend 沿既有查询合同：250ms 防抖、代际守 stale、第一页版本引用、追加页换代从
+// 第一页强制重开；失败如实上屏给同词重试（不伪装成空态）。Mock 用现有 高校/专业名录 本地
+// 子串过滤 + 切片分页，稳定模拟键与名称分离，旧已选按名称标记。目录命中行按 ref ID 标记
+//（Mock 按名称）；目录缺失的旧文本只在当前值区域可见，不伪造可选行。卸载即销毁查询。
+/** Backend 目录候选的页面内行形状：稳定键 = 目录 ID；学校带「城市 · 国家」副文 */
+type 教育目录候选 = { id: string; display_name: string; 副文?: string };
+
+function 教育目录子视图({
+  字段种类,
+  当前名称,
+  当前引用,
+  选定,
+  关闭,
+}: {
+  字段种类: '学校' | '专业';
+  当前名称: string;
+  当前引用: 目录选择值 | undefined;
+  选定: (值: 目录选择值) => void;
+  关闭: () => void;
+}) {
+  const { 数据源模式, 目录查询 } = use应用状态();
+  const 是后端 = 数据源模式 === 'backend';
+  const 是学校 = 字段种类 === '学校';
+  // 打开时复制父草稿当前名称为搜索初词；此后是子视图独立 state —— 编辑搜索不写父草稿、
+  // 不取消父选择
+  const [词, 设词] = useState(当前名称);
+  const [候选, 设候选] = useState<教育目录候选[]>([]);
+  const [下一页, 设下一页] = useState<string | null>(null);
+  const [加载中, 设加载中] = useState(false);
+  const [查询失败, 设查询失败] = useState(false);
+  const [重试序号, 设重试序号] = useState(0);
+  // Mock 演示切片翻页（与 Backend 加载更多同一可见控件）
+  const [演示页数, 设演示页数] = useState(1);
+  const 计时 = useRef(0);
+  // 代际 ref 守 stale：换词/清空/重试都递增，load-more 也检查（沿原页 review-r1 P2-2 做法）
+  const 代际 = useRef(0);
+  // 本查询第一页的 catalogVersion：追加页换版本时不跨版本合并，丢弃累计页从第一页重开
+  //（沿原页 review-r1 F5 做法）
+  const 版本引用 = useRef('');
+  const 目录引用 = useRef(目录查询);
+  目录引用.current = 目录查询;
+
+  /** Backend 查询适配：两字段共用一条管道，行形状统一为 稳定 ID + 显示名（学校带副文） */
+  const 查询教育页 = async (
+    参数: { q: string; cursor?: string },
+    选项?: { 强制刷新?: boolean },
+  ): Promise<目录页<教育目录候选>> => {
+    const 方法 = 目录引用.current;
+    if (!方法) throw new Error('目录查询不可用');
+    if (是学校) {
+      const 页 = await 方法.查询Institution({ ...参数, limit: 20 }, 选项);
+      return {
+        items: 页.items.map((项) => ({
+          id: 项.id,
+          display_name: 项.display_name,
+          副文: 学校副标题(项),
+        })),
+        nextCursor: 页.nextCursor,
+        catalogVersion: 页.catalogVersion,
+      };
+    }
+    const 页 = await 方法.查询Taxonomy('majors', { ...参数, limit: 20 }, 选项);
+    return {
+      items: 页.items.map((项) => ({ id: 项.id, display_name: 项.display_name })),
+      nextCursor: 页.nextCursor,
+      catalogVersion: 页.catalogVersion,
+    };
+  };
+
+  // Backend 搜索：250ms 防抖后查询；代际守 stale；失败置 查询失败（错误不伪装成空态）
+  useEffect(() => {
+    if (!是后端) return;
+    const trimmed = 词.trim();
+    代际.current += 1;
+    设候选([]);
+    设下一页(null);
+    设查询失败(false);
+    // 空词：保持空态，不发请求（空名称打开的现有行为）
+    if (trimmed === '') return;
+    window.clearTimeout(计时.current);
+    const 本次 = 代际.current;
+    计时.current = window.setTimeout(async () => {
+      try {
+        const 页 = await 查询教育页({ q: trimmed });
+        if (本次 !== 代际.current) return;
+        设候选(页.items);
+        设下一页(页.nextCursor);
+        版本引用.current = 页.catalogVersion;
+      } catch {
+        if (本次 !== 代际.current) return;
+        设查询失败(true);
+      }
+    }, 教育搜索防抖毫秒);
+    return () => window.clearTimeout(计时.current);
+    // 查询教育页 每渲染换标不影响语义：查询只由 词/模式/重试 驱动
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [词, 是后端, 重试序号]);
+
+  // Backend 加载更多：当前游标请求下一页，合并去重；代际检查防 stale；追加页换版本从第一页重开
+  const 加载更多 = async () => {
+    if (下一页 === null || 加载中) return;
+    const trimmed = 词.trim();
+    const 本次 = 代际.current;
+    设加载中(true);
+    try {
+      const 页 = await 查询教育页({ q: trimmed, cursor: 下一页 });
+      if (本次 !== 代际.current) return;
+      if (页.catalogVersion !== 版本引用.current) {
+        const 重开 = await 查询教育页({ q: trimmed }, { 强制刷新: true });
+        if (本次 !== 代际.current) return;
+        设候选(重开.items);
+        设下一页(重开.nextCursor);
+        版本引用.current = 重开.catalogVersion;
+        return;
+      }
+      设候选((旧) => 合并目录页(旧, 页.items));
+      设下一页(页.nextCursor);
+    } catch {
+      if (本次 !== 代际.current) return;
+      // 追加失败不动已加载页：可再点一次（沿既有加载更多口径）
+    } finally {
+      if (本次 === 代际.current) 设加载中(false);
+    }
+  };
+
+  // ── Mock 演示候选：现有名录种子 + 局部子串搜索/切片分页 ──────────
+  // 稳定模拟键 = 种子下标（与名称分离，沿原页键格式）；选中的行按名称回显（Mock 无引用）
+  const 名录 = 是学校 ? 高校名录 : 专业名录;
+  const 词值 = 词.trim();
+  const 演示命中 = 词值 === '' ? [] : 名录.filter((名) => 名.includes(词值));
+  const 演示项们: 教育候选[] = 演示命中
+    .slice(0, 演示页数 * 教育演示每页条数)
+    .map((名) => ({
+      键: `mock_${是学校 ? 'inst' : 'major'}_${名录.indexOf(名)}`,
+      名称: 名,
+      选中: 名 === 当前名称,
+    }));
+  const 演示加载更多 = () => {
+    if (演示命中.length > 演示项们.length) 设演示页数((旧) => 旧 + 1);
+  };
+
+  // 两模式统一进共用候选列表：Backend = 真实查询页（按 ref ID 标记选中），Mock = 演示切片
+  const 项们: 教育候选[] = 是后端
+    ? 候选.map((项) => ({
+        键: 项.id,
+        名称: 项.display_name,
+        副文: 项.副文,
+        选中: 当前引用?.id === 项.id,
+      }))
+    : 演示项们;
+  const 还有 = 是后端 ? 下一页 !== null : 演示命中.length > 演示项们.length;
+
+  /** 点行即选中：从本实例结果按稳定键定位（同名不同 ID 不串），引用由键与显示名构成，
+   *  不按名称反查真实 ID */
+  const 选定键 = (键: string) => {
+    const 行 = 项们.find((项) => 项.键 === 键);
+    if (行) 选定({ id: 行.键, display_name: 行.名称 });
+  };
+
+  const 改词 = (值: string) => {
+    设词(值);
+    设演示页数(1); // 新词重开切片（沿原页改词重置分页）
+  };
+
+  return (
+    <全屏选择外壳 标题={是学校 ? '选择学校' : '选择专业'} 关闭={关闭}>
+      <滚动区 样式覆盖={{ padding: '12px 22px 20px' }}>
+        {/* 当前值区域：旧已选值持续可见；目录缺失的旧文本只在这里展示，不伪造可选行 */}
+        <div className={样式.编辑条目}>
+          <div className={样式.条目标签}>{是学校 ? '当前学校' : '当前专业'}</div>
+          <div className={当前名称 ? 样式.条目值 : 样式.条目占位}>{当前名称 || '未选择'}</div>
+        </div>
+
+        <div className={样式.编辑条目}>
+          <input
+            className={样式.条目输入}
+            value={词}
+            placeholder={是学校 ? '搜索学校名称' : '搜索专业名称'}
+            onChange={(事件) => 改词(事件.target.value)}
+          />
+        </div>
+
+        {/* 候选走共用 教育目录候选列表（学校带「城市 · 国家」副行 + 列表尾加载更多） */}
+        {项们.length > 0 || 还有 ? (
+          <教育目录候选列表
+            项们={项们}
+            加载中={加载中}
+            还有={还有}
+            选定={选定键}
+            加载更多={是后端 ? 加载更多 : 演示加载更多}
+          />
+        ) : null}
+
+        {/* 搜索失败如实上屏，给同词重试（错误不伪装成空态） */}
+        {是后端 && 查询失败 ? (
+          <button
+            className="可点"
+            onClick={() => 设重试序号((旧) => 旧 + 1)}
+            style={{ width: '100%', padding: '10px', color: 'var(--意向)' }}
+          >
+            加载失败，请重试
+          </button>
+        ) : null}
+      </滚动区>
+    </全屏选择外壳>
   );
 }
 
