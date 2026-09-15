@@ -165,7 +165,56 @@
 .条目 { padding: 12px 0; border-bottom: 0; }
 .条目值行 { border-radius: 12px; }
 .值占位 { color: var(--次要); }
-.排除节 { margin: 0 -22px; }
-.排除标题 { font-size: var(--字号-页面大标题); color: var(--墨); margin: 0 0 20px; }
+
+/* ── 私有筛选要求（Task 2）：小标 + 选填旁注 + 常驻整段多行输入 ──
+   版式与 发布岗位 的「给 AI 代理的筛选要求」同构（题/注/说明/输入框四件套，
+   同款 11px/13px 内边距、12px 圆角、1px 描边深、121px 高、绿色焦点边框），
+   字号改取本页令牌档；刻意不移植它的 maxLength=200 —— 意向私有偏好是历史原文
+   整段编辑（可含前导换行/尾空格），截断会静默丢字。 */
+.筛选要求区 { margin: 20px 0 4px; }
+
+.筛选要求标 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.筛选要求题 {
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
+}
+
+.筛选要求注 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.筛选要求说明 {
+  margin: 6px 0 10px;
+  font-size: var(--字号-正文);
+  line-height: 1.6;
+  color: var(--次要浅);
+}
+
+.筛选要求输入 {
+  width: 100%;
+  height: 121px;
+  min-height: 121px;
+  border-radius: 12px;
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  padding: 11px 13px;
+  font-size: var(--字号-正文);
+  line-height: 1.6;
+  color: var(--墨);
+  resize: none;
+}
+
+.筛选要求输入:focus {
+  outline: none;
+  border-color: var(--淡绿描边);
+}
 
 .求职类型区 .类型选项 { width: 100%; padding: 8px 12px; min-height: 38px; }

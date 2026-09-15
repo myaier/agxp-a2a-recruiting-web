@@ -17,9 +17,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useNavigationType, useParams } from 'react-router-dom';
-import { 排除选项 } from './引导问答';
-import 通用样式 from '../组件/通用.module.css';
-import 引导样式 from './引导问答.module.css';
 import 数字滚轮层 from '../组件/数字滚轮层';
 import 年月滚轮层 from '../组件/年月滚轮层';
 import { 校验预计毕业时间 } from '../流程/onboarding配置';
@@ -127,20 +124,6 @@ function 意向编辑表单({ 路由编号 }: { 路由编号?: string }) {
   const [毕业轮开, 设毕业轮开] = useState(false);
   const 薪资周期 = 草稿.薪资周期 ?? (草稿.求职类型 === '实习生' ? 'day' : 'month');
   const 薪资单位 = 薪资周期 === 'day' ? ' 元/天' : 薪资周期 === 'hour' ? ' 元/时' : 'K';
-  const 排除键 = { 大小周: 'alternate_weekend_work', '纯外包 / 乙方': 'outsourcing_only', 全现场办公: 'onsite_only', 频繁出差: 'frequent_travel' } as const;
-  // 不拆写历史私有文本：按整段保留，自定义新增用独立行追加。
-  const 自定义们 = (草稿.私有偏好 ?? '').split('\n').filter(Boolean);
-  const 已选排除 = [...Object.entries(排除键).filter(([, 键]) => 草稿.排除项?.[键] === 'excluded').map(([名]) => 名), ...自定义们];
-  const 切换排除 = (项: string) => {
-    const 键 = 排除键[项 as keyof typeof 排除键];
-    if (键) {
-      const 原 = 草稿.排除项 ?? { alternate_weekend_work: 'unspecified', outsourcing_only: 'unspecified', onsite_only: 'unspecified', frequent_travel: 'unspecified' };
-      改草稿({ 排除项: { ...原, [键]: 原[键] === 'excluded' ? 'unspecified' : 'excluded' } });
-    } else {
-      const 原文 = 草稿.私有偏好 ?? '';
-      改草稿({ 私有偏好: 自定义们.includes(项) ? 原文.split('\n').filter((行) => 行 !== 项).join('\n') : `${原文}${原文 ? '\n' : ''}${项}` });
-    }
-  };
 
   // 办公方式必填校验的可见状态：只在点保存且没选时点亮（aria-invalid + aria-description），
   // 用户点任一办公方式选钮立即熄灭 —— 错误跟着「最后一次校验」走，不常驻。
@@ -374,9 +357,25 @@ function 意向编辑表单({ 路由编号 }: { 路由编号?: string }) {
           占位="不限"
           按下={() => 跳转(路径.选期望行业)}
         />
-        <section className={样式.排除节}>
-          <div className={通用样式.大标题区}><h2 className={通用样式.大标题}>哪些情况直接排除？</h2></div>
-          <div className={引导样式.排除区}><排除选项 已选={已选排除} 切换={切换排除} 自动聚焦={false} /></div>
+        {/* Task 2：私有筛选要求整段文本区（替代原「哪些情况直接排除？」排除选项卡）——
+            草稿.私有偏好 原样作为唯一数据源，onChange 把整段写回草稿；
+            不设 maxLength：历史原文可超 200 字，截断会静默丢字；
+            清空后草稿里是 ''，保存时 显式落 private_preferences: ''（不再回落服务端历史文本）。 */}
+        <section className={样式.筛选要求区}>
+          <div className={样式.筛选要求标}>
+            <label className={样式.筛选要求题} htmlFor="候选私有筛选要求">给 AI 代理的筛选要求</label>
+            <span className={样式.筛选要求注}>选填</span>
+          </div>
+          <p className={样式.筛选要求说明} id="候选私有筛选要求说明">写下你的要求和偏好，AI 代理会据此筛选岗位。</p>
+          <textarea
+            id="候选私有筛选要求"
+            aria-describedby="候选私有筛选要求说明"
+            className={样式.筛选要求输入}
+            value={草稿.私有偏好 ?? ''}
+            placeholder=""
+            rows={4}
+            onChange={(事件) => 改草稿({ 私有偏好: 事件.target.value })}
+          />
         </section>
       </滚动区>
 

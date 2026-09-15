@@ -9,7 +9,7 @@
 // 轻提示 是纯 DOM 单例组件，这里 mock 掉既不碰真实组件也能断言文案。
 
 import { useState } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -212,7 +212,7 @@ describe('添加意向页 办公方式必填校验', () => {
   });
 });
 
-describe('四类型与原引导排除接入', () => {
+describe('四类型字段接入', () => {
   beforeEach(() => {
     当前草稿 = { ...基础草稿 };
     mock数据源模式 = undefined;
@@ -286,30 +286,122 @@ describe('四类型与原引导排除接入', () => {
     expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 实习月数: 3 } });
     expect(screen.queryByRole('listbox', { name: '实习时长' })).toBeNull();
   });
-  it('兼职保持月薪、无副标题和屏蔽公司；合并外包项正确映射', async () => {
+  it('兼职保持月薪、无副标题和屏蔽公司，排除卡片区已由私有筛选要求文本区取代', async () => {
     当前草稿 = { ...基础草稿, 求职类型: '兼职' };
     渲染意向('/intentions/new');
     expect(screen.getByText('薪资要求（月薪 · K）')).toBeTruthy();
     expect(screen.queryByText('屏蔽公司')).toBeNull();
     expect(screen.queryByText('求职期望的不同，推荐的职位也会不同')).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: '纯外包 / 乙方' }));
-    expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 排除项: { alternate_weekend_work: 'unspecified', outsourcing_only: 'excluded', onsite_only: 'unspecified', frequent_travel: 'unspecified' } } });
+    // Task 2：本页排除选项卡（固定键 + 拆行自定义）退役，改常驻整段文本区
+    expect(screen.queryByText('哪些情况直接排除？')).toBeNull();
+    expect(screen.queryByText('自定义 · 写下你不喜欢的工作偏好，AI代理筛选时帮你挡掉')).toBeNull();
+    expect(screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' })).toBeTruthy();
   });
-  it('新增自定义保留历史原文；重复或空白添加均清空输入且不派发修改', async () => {
-    当前草稿 = { ...基础草稿, 私有偏好: '\n历史原文  \n不加班' };
-    渲染意向('/intentions/new');
-    const 输入 = screen.getByPlaceholderText('用你自己的话写') as HTMLInputElement;
-    await userEvent.type(输入, '不加班');
-    await userEvent.click(screen.getByRole('button', { name: '添加' }));
+});
+
+// ── Task 2：意向私有筛选要求文本编辑 ──
+// 页面级正例走真实链路（同 跨类型年薪月数 describe）：textarea 是 草稿.私有偏好 的唯一
+// 编辑面，改写经 真实 归约候选资料 落草稿，保存后对落盘草稿跑真实 转意向写入 断言 wire body；
+// 重开回显走真实 开意向草稿 → 从BFF意向草稿。不 mock mapper、不手工构造期望草稿。
+describe('私有筛选要求文本编辑（Task 2）', () => {
+  /** 历史原文：前导换行 + 尾随空格 + 超过 200 字，任何截断/trim 都过不了逐字断言 */
+  const 历史原文 = `\n${'重视成长与团队透明沟通，希望参与有真实用户的产品。'.repeat(9)}  `;
+  /** 合同内合法的实习意向，带历史私有文本与非缺省 exclusions（改写/清空都不得动它们） */
+  const 原始意向: BFFOwnerIntention = {
+    ...BFF意向样本,
+    intention_id: 'int_pp',
+    exclusions: {
+      alternate_weekend_work: 'excluded',
+      outsourcing_only: 'allowed',
+      onsite_only: 'unspecified',
+      frequent_travel: 'excluded',
+    },
+    private_preferences: 历史原文,
+  };
+  let 候选状态: typeof 初始状态;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mock数据源模式 = 'backend';
+    候选状态 = { ...初始状态, 后端意向服务端: { int_pp: 原始意向 }, 求职意向表: [] };
+    当前草稿 = 候选状态.意向草稿;
+    mock状态扩展 = { 后端意向服务端: 候选状态.后端意向服务端, 求职意向表: [] };
+    mock派发.mockImplementation((动作: Parameters<typeof 归约候选资料>[1]) => {
+      候选状态.意向草稿 = 归约候选资料(候选状态, 动作).意向草稿;
+      当前草稿 = 候选状态.意向草稿;
+      通知重渲染?.();
+    });
+    mock保存意向.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    // 还原共享 mock：真实归约实现不得泄漏进本文件其他 describe
+    mock派发.mockReset();
+  });
+
+  function 取筛选输入() {
+    return screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }) as HTMLTextAreaElement;
+  }
+
+  it('完整回显历史原文：前导换行、尾空格与超 200 字逐字不截断', async () => {
+    渲染意向('/intentions/int_pp');
+    await waitFor(() => expect(取筛选输入().value).toBe(历史原文));
+    expect(取筛选输入().value.length).toBeGreaterThan(200);
+  });
+
+  it('整段改写（含前导换行、尾空格、超 200 字）保存：序列化逐字透传，exclusions 与其他字段保留，重开回显新文本', async () => {
+    const 新文本 = `\n${'更看重团队透明沟通与代码评审文化，拒绝形式化加班。'.repeat(9)}  `;
+    const 视图 = 渲染意向('/intentions/int_pp');
+    const 输入 = 取筛选输入();
+    await waitFor(() => expect(输入.value).toBe(历史原文));
+    // 整段一次改写（粘贴多行长文本的 onChange 路径），>200 字不得被 maxLength 截断
+    fireEvent.change(输入, { target: { value: 新文本 } });
+    expect(输入.value).toBe(新文本);
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
+    const body = 转意向写入(mock保存意向.mock.calls[0][0] as 意向草稿型, { 原始: 原始意向 });
+    expect(body.private_preferences).toBe(新文本);
+    expect(body.private_preferences.length).toBeGreaterThan(200);
+    expect(body.exclusions).toEqual(原始意向.exclusions);
+    expect(body.compensation).toEqual({ mode: 'range', lower: 300, upper: 500 });
+    expect(body.workplace_modes).toEqual(['hybrid']);
+    expect(body.internship_months).toBe(3);
+    expect(body.job_category_id).toBe('tax_product');
+    // 保存成功重开：真实 开意向草稿 → 从BFF意向草稿，文本区回显改写后的整段
+    视图.unmount();
+    候选状态.后端意向服务端 = { int_pp: { ...原始意向, private_preferences: 新文本, revision: 2 } };
+    渲染意向('/intentions/int_pp');
+    await waitFor(() => expect(取筛选输入().value).toBe(新文本));
+  });
+
+  it('清空后保存：显式落空串（不回落历史原文），exclusions 与其他字段原值透传', async () => {
+    渲染意向('/intentions/int_pp');
+    const 输入 = 取筛选输入();
+    await waitFor(() => expect(输入.value).toBe(历史原文));
+    const user = userEvent.setup();
+    await user.clear(输入);
     expect(输入.value).toBe('');
-    expect(mock派发).not.toHaveBeenCalled();
-    await userEvent.type(输入, '   ');
-    await userEvent.click(screen.getByRole('button', { name: '添加' }));
-    expect(输入.value).toBe('');
-    expect(mock派发).not.toHaveBeenCalled();
-    await userEvent.type(输入, '不出差');
-    await userEvent.click(screen.getByRole('button', { name: '添加' }));
-    expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 私有偏好: '\n历史原文  \n不加班\n不出差' } });
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
+    const body = 转意向写入(mock保存意向.mock.calls[0][0] as 意向草稿型, { 原始: 原始意向 });
+    expect(body.private_preferences).toBe('');
+    expect(body.exclusions).toEqual(原始意向.exclusions);
+    expect(body.compensation).toEqual({ mode: 'range', lower: 300, upper: 500 });
+    expect(body.onsite_days_per_week).toBe(4);
+  });
+
+  it('保存失败不离页：轻提示，改写保留在文本区可重试', async () => {
+    mock保存意向.mockRejectedValue(new Error('网络错误'));
+    渲染意向('/intentions/int_pp');
+    const 输入 = 取筛选输入();
+    await waitFor(() => expect(输入.value).toBe(历史原文));
+    const user = userEvent.setup();
+    await user.clear(输入);
+    await user.type(输入, '远程优先，五险一金足额缴纳');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(输入.value).toBe('远程优先，五险一金足额缴纳');
   });
 });
 

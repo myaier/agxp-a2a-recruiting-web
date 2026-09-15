@@ -1119,6 +1119,59 @@ describe('首次意向诉求映射（J-PILOT-02 合同 3）', () => {
   });
 });
 
+// ── Task 2：意向私有筛选要求文本编辑 —— 草稿.私有偏好 是 textarea 的唯一数据源，
+// 序列化必须整段逐字透传（不截断、不 trim、不改写）；清空后的空串必须显式落
+// private_preferences: ''（'' 是已填值，不得回落 原始 快照的历史文本）；
+// exclusions 等其他字段在只改文本时原样保留。
+describe('意向私有筛选要求文本映射（Task 2）', () => {
+  const 原始 = {
+    ...BFF意向样本,
+    private_preferences: '\n不接受大小周\n周末尽量双休  ',
+    exclusions: {
+      alternate_weekend_work: 'excluded',
+      outsourcing_only: 'allowed',
+      onsite_only: 'unspecified',
+      frequent_travel: 'excluded',
+    } as const,
+  };
+  const 基础草稿: 意向草稿型 = {
+    ...空草稿,
+    编辑编号: 原始.intention_id,
+    工作城市引用: ref('loc_sh', '上海'),
+    职位引用: ref('tax_pm', '产品经理'),
+    办公方式: ['混合'],
+    // 从BFF意向草稿 会把薪资/实习数值带进草稿；这里同形预填，模拟真实编辑草稿
+    薪资下限: 300,
+    薪资上限: 500,
+    实习月数: 3,
+    每周到岗天数: 4,
+    后端招聘类型: 'internship' as const,
+  };
+
+  it('改写文本逐字透传：前导换行、尾空格与超 200 字不截断不 trim', () => {
+    const 改写 = `\n${'更看重团队透明沟通与代码评审文化，拒绝形式化加班。'.repeat(9)}  `;
+    expect(转意向写入({ ...基础草稿, 私有偏好: 改写 }, { 原始 }).private_preferences).toBe(改写);
+    expect(改写.length).toBeGreaterThan(200);
+  });
+
+  it('清空后的空串显式提交，不回落 原始.private_preferences；exclusions 与其他字段保留', () => {
+    const body = 转意向写入({ ...基础草稿, 私有偏好: '' }, { 原始 });
+    expect(body.private_preferences).toBe('');
+    expect(body.exclusions).toEqual(原始.exclusions);
+    // 样本年薪月数为 null → 序列化按既有规则省略该键；文本编辑不改变薪资结构
+    expect(body.compensation).toEqual({ mode: 'range', lower: 300, upper: 500 });
+    expect(body.workplace_modes).toEqual(['hybrid']);
+    expect(body.job_category_id).toBe('tax_pm');
+    expect(body.primary_location_id).toBe('loc_sh');
+  });
+
+  it('草稿未带 私有偏好（未触过文本区）时沿用 原始 快照的历史文本', () => {
+    const 草稿: 意向草稿型 = { ...基础草稿 };
+    delete 草稿.私有偏好;
+    expect(转意向写入(草稿, { 原始 }).private_preferences).toBe('\n不接受大小周\n周末尽量双休  ');
+  });
+});
+
 // ── M：空身份 —— BFF 空 status 映射为页面 ''，转资料写入 拒绝空身份 ──
 describe('空身份映射与写入校验（M）', () => {
   it('从BFF简历 对空 status 保持 身份:""（不再显示默认「在职」）', () => {

@@ -11548,6 +11548,140 @@ test.describe('核心编辑 意向薪资 @backend', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 候选私有筛选要求 @backend（Task 2）：由意向管理打开现有意向，整段编辑／清空
+// 「给 AI 代理的筛选要求」文本区 → 保存（PATCH + If-Match revision）→ 刷新回读。
+// 断言真实序列化的 PATCH body：private_preferences 逐字透传（前导换行 / 尾空格 /
+// 超 200 字不截断）、清空显式落 ''、exclusions 与其他字段保留。被测写入全部经浏览器
+// UI 完成，不用 API 直接造数；网络桩 route fixture 边界验证，不是 live 验收。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('候选私有筛选要求 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('意向管理进入编辑：改写/清空筛选要求保存，PATCH 逐字落盘、revision 推进、其余字段保留 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const fixture = 创建候选OnboardingFixture();
+    // 存量候选日常会话（与核心编辑用例同口径）：登录落主壳后由意向管理进入编辑
+    fixture.主体.last_used_role = 'candidate';
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选' },
+      summary: '存量个人优势',
+    };
+    const 意向编号 = Onboarding标记.意向编号;
+    // 历史原文：前导换行 + 尾随空格 + 超 200 字；exclusions 非缺省（证明文本编辑不动它）
+    const 历史原文 = `\n${'重视成长与团队透明沟通，希望参与有真实用户的产品。'.repeat(9)}  `;
+    const 原始排除 = {
+      alternate_weekend_work: 'excluded',
+      outsourcing_only: 'allowed',
+      onsite_only: 'unspecified',
+      frequent_travel: 'excluded',
+    } as const;
+    const 原始意向: BFFOwnerIntention = {
+      ...P4深克隆(fixture意向列表.intentions[0]),
+      intention_id: 意向编号,
+      exclusions: { ...原始排除 },
+      private_preferences: 历史原文,
+    };
+    fixture.intentions = [P4深克隆(原始意向)];
+    const 意向补丁们: { body: unknown; ifMatch: string | null }[] = [];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-core-edit-screening-text',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: P3隐私fixture(),
+      请求拦截: (请求) => {
+        if (请求.path === `/api/v1/me/intentions/${意向编号}` && 请求.method === 'PATCH') {
+          断言意向写入(请求.body); // 12 键闭合契约对真实序列化 body 生效
+          意向补丁们.push({ body: 请求.body, ifMatch: 请求.headers['if-match'] ?? null });
+        }
+      },
+      覆盖: {
+        [`PATCH /api/v1/me/intentions/${意向编号}`]: (body) => {
+          // 服务端语义：PATCH 后同源列表读到已更新文本、revision+1，其余字段原样
+          const 写 = body as { private_preferences: string };
+          const 当前 = fixture.intentions[0]!;
+          const 更新后: BFFOwnerIntention = {
+            ...P4深克隆(原始意向),
+            private_preferences: 写.private_preferences,
+            revision: 当前.revision + 1,
+          };
+          fixture.intentions = [更新后];
+          return { status: 200, 响应: P4深克隆(更新后) };
+        },
+      },
+    });
+
+    // 日常入口：登录落主壳（初始化收口后才出路由），再由意向管理打开现有意向
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto('/#/intentions');
+    const 意向行 = page.getByRole('button', { name: /Fixture 工程师/ });
+    await expect(意向行).toBeVisible({ timeout: 15_000 });
+    await 意向行.click();
+
+    // 编辑表单按权威 DTO 预填：历史私有文本整段回显（前导换行/尾空格/超 200 字不截断）
+    const 筛选输入 = page.getByLabel('给 AI 代理的筛选要求');
+    await expect(筛选输入).toHaveValue(历史原文, { timeout: 15_000 });
+
+    // 改写整段（粘贴多行长文本）→ 保存
+    const 改写文本 = `\n${'更看重团队透明沟通与代码评审文化，拒绝形式化加班。'.repeat(9)}  `;
+    await 筛选输入.fill(改写文本);
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    // 保存链路收口（PATCH → 权威列表重读 → 清草稿 → 返回）完成后才刷新：
+    // 回到意向管理且路由落定，避免与在途的同文档导航/权威重读竞态
+    await expect(page).toHaveURL(/#\/intentions$/, { timeout: 20_000 });
+    await expect(意向行).toBeVisible({ timeout: 20_000 });
+
+    // 恰好一次 PATCH：If-Match 用权威 revision；真实序列化 body 文本逐字透传且
+    // exclusions / 薪资结构 / 目录引用等其他字段原样保留
+    expect(意向补丁们).toHaveLength(1);
+    const 第一次 = 意向补丁们[0]!;
+    expect(第一次.ifMatch).toBe(`"${原始意向.revision}"`);
+    const 写1 = 第一次.body as {
+      private_preferences: string;
+      exclusions: Record<string, string>;
+      compensation: Record<string, unknown>;
+      job_category_id: string;
+      primary_location_id: string;
+      workplace_modes: string[];
+    };
+    expect(写1.private_preferences).toBe(改写文本);
+    expect(写1.private_preferences.length).toBeGreaterThan(200);
+    expect(写1.exclusions).toEqual(原始排除);
+    expect(写1.compensation).toEqual({ mode: 'range', lower: 30, upper: 50, annual_salary_months: 15 });
+    expect(写1.job_category_id).toBe('job-fixture-001');
+    expect(写1.primary_location_id).toBe('loc-fixture-001');
+    expect(写1.workplace_modes).toEqual(['onsite']);
+
+    // 刷新回读：权威列表已推进（revision 2 + 新文本），重开编辑页文本区回显改写后的整段
+    await page.reload();
+    await expect(意向行).toBeVisible({ timeout: 20_000 });
+    await 意向行.click();
+    await expect(筛选输入).toHaveValue(改写文本, { timeout: 15_000 });
+
+    // 清空 → 保存：显式落 ''（不回落历史文本），exclusions 与其他字段第二次原样透传
+    await 筛选输入.fill('');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/intentions$/, { timeout: 20_000 });
+    await expect(意向行).toBeVisible({ timeout: 20_000 });
+    expect(意向补丁们).toHaveLength(2);
+    const 第二次 = 意向补丁们[1]!;
+    expect(第二次.ifMatch).toBe('"2"');
+    const 写2 = 第二次.body as { private_preferences: string; exclusions: Record<string, string>; compensation: Record<string, unknown> };
+    expect(写2.private_preferences).toBe('');
+    expect(写2.exclusions).toEqual(原始排除);
+    expect(写2.compensation).toEqual({ mode: 'range', lower: 30, upper: 50, annual_salary_months: 15 });
+
+    // 刷新回读：清空后的编辑页文本区为空串
+    await page.reload();
+    await expect(意向行).toBeVisible({ timeout: 20_000 });
+    await 意向行.click();
+    await expect(筛选输入).toHaveValue('', { timeout: 15_000 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 核心编辑 城市 @mock（core editors §5.1 Task 3）：其他感兴趣城市两模式共用正文 ——
 // Mock 行政分组（城市字典省份组切片 + 列表尾「加载更多」）、拼音子串搜索、9 上限，
 // 无 A–Z 字母索引条；取消不写草稿、保存才写回并在行上回显。全程零 /api/v1 请求。
