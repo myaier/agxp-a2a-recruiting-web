@@ -134,11 +134,17 @@ test.describe('Mock 数据源回归 @mock', () => {
     await page.getByRole('button', { name: '我要找工作' }).click();
     await expect(page).toHaveURL(/#\/student$/);
 
-    // ── /rules：Mock 种子规则直接上屏（5 条种子里 1 条默认停用 → 生效计数 4）──
+    // ── /rules：按当前分区与精确规则标记验证全局规则（不再有「4 条」式总计）──
     await page.goto('/#/rules');
-    await expect(page.getByText('不主动披露并行接触数量')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('双休是底线；隔周六可谈，大小周不谈')).toBeVisible();
-    await expect(page.getByText('4 条')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '你教它的规则' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: '哪些情况直接排除' })).toBeVisible();
+    await expect(page.getByRole('switch', { name: '规则：不主动披露并行接触数量' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('switch', { name: '规则：全现场办公的岗位直接婉拒' })).toHaveAttribute('aria-checked', 'false');
+    // 意向级规则属于意向域：本页不渲染，也不提供编辑/删除/开关任何一个写入口
+    await expect(page.getByText('双休是底线；隔周六可谈，大小周不谈')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '编辑规则：双休是底线；隔周六可谈，大小周不谈' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '删除规则：双休是底线；隔周六可谈，大小周不谈' })).toHaveCount(0);
+    await expect(page.getByRole('switch', { name: '规则：双休是底线；隔周六可谈，大小周不谈' })).toHaveCount(0);
 
     // ── 候选端市场：顶栏没有「筛选」入口（放大镜「搜索职位」仍在）──
     await page.goto('/#/app');
@@ -147,14 +153,14 @@ test.describe('Mock 数据源回归 @mock', () => {
     await expect(page.getByRole('button', { name: /筛选/ })).toHaveCount(0);
     await expect(page.getByText('告诉AI代理你的硬性要求')).toHaveCount(0);
 
-    // ── 切到招聘端：Mock 定稿规则只展示，不提供维护型开关 ──
+    // ── 切到招聘端：Mock 企业规则行本地可维护（开关 + 添加规则），无「3 条生效」式总计 ──
     await page.goto('/#/identity?switch=1&from=app');
     await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
     await page.goto('/#/hr/agent-settings');
     await expect(page.getByText('竞对在职候选人不接触、不推进')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('switch')).toHaveCount(0);
-    await expect(page.getByText('3 条生效')).toBeVisible();
+    await expect(page.getByRole('switch', { name: '规则：竞对在职候选人不接触、不推进' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('button', { name: '添加规则' })).toBeVisible();
 
     // ── 招聘端推荐子视图：企业顶栏没有「筛选」入口 ──
     await page.goto('/#/hr');
@@ -382,7 +388,6 @@ const P6标记 = {
   丢失提案正文: '晚上十点后不聊工作（fixture 响应丢失提案）',
   未知提案正文: '只看给缴社保的岗位（fixture 结果未知提案）',
   全局新建草稿: '不接受外包岗位（fixture 新建规则）',
-  意向新建草稿: '只和 Fixture 市的岗位谈（fixture 意向新建）',
   替换草稿: '只投双休岗位（fixture 替换规则）',
   招聘新建草稿: '两周内到岗的候选优先（fixture 招聘新建）',
   失败草稿: '这句语法不通顺代理理解不了（fixture 失败重试）',
@@ -7749,8 +7754,9 @@ test.describe('P6 规则域 fixture @backend', () => {
   test.use({ timeout: 60_000 });
 
   test('P6 全链路：双端规则生命周期与请求契约 @backend', async ({ page }) => {
-    // 冻结序列：candidate restore → 双端水合 → global create→accept → 意向 create →
-    // 替换(If-Match) → 归档(If-Match) → 切招聘端 → 招聘 create(no scope)→accept → pause/resume 版本推进
+    // 冻结序列：candidate restore → 双端水合（意向规则只读入意向域，本页零写入口）→
+    // global create→accept → 替换(If-Match) → 显示删除/删除规则 确认后归档(If-Match) →
+    // 切招聘端 → 招聘 create(no scope)→accept → pause/resume 版本推进
     test.setTimeout(150_000);
     const { p6 } = await 安装BFF路由(page, {
       登录尝试id: 'att-p6-life',
@@ -7766,9 +7772,12 @@ test.describe('P6 规则域 fixture @backend', () => {
 
     // ── candidate Rule/Proposal 水合：标记值只存在于 fixture ──
     await page.goto('/#/rules');
-    await expect(page.getByText(P6标记.候选全局规则)).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(P6标记.候选意向规则)).toBeVisible();
-    await expect(page.getByText('2 条')).toBeVisible();
+    await expect(page.getByRole('button', { name: P6标记.候选全局规则, exact: true })).toBeVisible({ timeout: 15_000 });
+    // 历史意向规则只水合进意向域：本页不渲染它，编辑/删除/开关三个写入口一个都没有
+    await expect(page.getByText(P6标记.候选意向规则)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: `编辑规则：${P6标记.候选意向规则}` })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: `删除规则：${P6标记.候选意向规则}` })).toHaveCount(0);
+    await expect(page.getByRole('switch', { name: `规则：${P6标记.候选意向规则}` })).toHaveCount(0);
     await expect(page.getByText('AI代理正在理解这条规则…')).toBeVisible();
     await expect(page.getByText(P6标记.就绪提案正文)).toBeVisible();
     // auto_deny 的安全摘要逐字来自 fixture 的 consequence，页面不做任何浏览器侧可接受性判定
@@ -7779,7 +7788,9 @@ test.describe('P6 规则域 fixture @backend', () => {
     expect(p6.proposalReads[P6编号.解释中提案]).toBeGreaterThanOrEqual(2);
 
     // ── global create → interpreting → ready → accept → active Rule ──
-    await page.getByRole('button', { name: '手动添加规则' }).click();
+    await page.getByRole('button', { name: '添加规则' }).click();
+    // composer 没有范围选择器：候选端提案只能全局，意向规则退役后无任何定向写入口
+    await expect(page.getByLabel('规则范围')).toHaveCount(0);
     const 候选输入 = page.getByPlaceholder('例：不接受大小周的岗位直接过滤');
     await 候选输入.fill(P6标记.全局新建草稿);
     await page.getByRole('button', { name: '提交给AI代理理解' }).click();
@@ -7789,71 +7800,65 @@ test.describe('P6 规则域 fixture @backend', () => {
     // accept-success fixture 的公开 consequence 是 mixed
     await expect(page.getByText('这条规则同时包含推进、拦截或参考条件')).toBeVisible();
     await 就绪卡动作键(page, `已理解：${P6标记.全局新建草稿}`, '确认规则').click();
-    // 确认后权威 Rule 才物化：正文从卡片变成规则行（按钮）
-    await expect(page.getByRole('button', { name: new RegExp(`已理解：${P6标记.全局新建草稿}`) })).toBeVisible({ timeout: 15_000 });
+    // 确认后权威 Rule 才物化：正文从卡片变成规则行（按钮，exact 避开 显示删除：⋯ 同文键）
+    await expect(page.getByRole('button', { name: `已理解：${P6标记.全局新建草稿}`, exact: true })).toBeVisible({ timeout: 15_000 });
     const 创建全局 = p6.mutationRequests.find((项) => 项.method === 'POST' && 项.path === '/api/v1/me/agent-rule-proposals');
     expect(创建全局).toBeDefined();
     expect(创建全局!.body).toEqual({ text: P6标记.全局新建草稿, scope: { type: 'global' } });
     expect(创建全局!.ifMatch).toBeNull();
     expect(创建全局!.idempotencyKey).toMatch(/\S/);
 
-    // ── intention create：范围选择发的是 fixture 的真实 intention_id ──
-    await page.getByRole('button', { name: '手动添加规则' }).click();
-    await page.getByLabel('规则范围').selectOption(P6标记.意向编号);
-    await page.getByPlaceholder('例：不接受大小周的岗位直接过滤').fill(P6标记.意向新建草稿);
-    await page.getByRole('button', { name: '提交给AI代理理解' }).click();
-    await expect(page.getByText(`已理解：${P6标记.意向新建草稿}`)).toBeVisible({ timeout: 20_000 });
-    const 创建意向 = p6.mutationRequests.filter((项) => 项.method === 'POST' && 项.path === '/api/v1/me/agent-rule-proposals')[1];
-    expect(创建意向).toBeDefined();
-    expect(创建意向!.body).toEqual({
-      text: P6标记.意向新建草稿,
-      scope: { type: 'intention', intention_id: P6标记.意向编号 },
-    });
-    expect(创建意向!.idempotencyKey).toMatch(/\S/);
-
-    // ── replacement：发当前 If-Match；确认前旧 Rule 一直可见、新正文不是规则行 ──
-    await page.getByRole('button', { name: new RegExp(P6标记.候选全局规则) }).click();
-    // 编辑态下规则库只有这一只输入框（composer 已收起），草稿预填原文
-    const 编辑框 = page.getByRole('textbox');
+    // ── replacement：点规则正文进入行内编辑（草稿预填原文）；确认前旧 Rule 一直可见、新正文不是规则行 ──
+    await page.getByRole('button', { name: P6标记.候选全局规则, exact: true }).click();
+    const 编辑框 = page.getByRole('textbox', { name: `编辑规则：${P6标记.候选全局规则}` });
     await expect(编辑框).toHaveCount(1, { timeout: 10_000 });
     await expect(编辑框).toHaveValue(P6标记.候选全局规则);
     await 编辑框.fill(P6标记.替换草稿);
-    await page.getByRole('button', { name: '提交修改' }).click();
+    await page.getByRole('button', { name: '完成' }).click();
     await expect(page.getByText(`已理解：${P6标记.替换草稿}`)).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(P6标记.候选全局规则)).toBeVisible();
-    await expect(page.getByRole('button', { name: new RegExp(`已理解：${P6标记.替换草稿}`) })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: P6标记.候选全局规则, exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: `已理解：${P6标记.替换草稿}`, exact: true })).toHaveCount(0);
     const 替换回执 = p6.mutationRequests.find((项) => 项.path === `/api/v1/me/agent-rules/${P6编号.候选全局规则}/replacement-proposals`);
     expect(替换回执).toBeDefined();
     expect(替换回执!.ifMatch).toBe('"1"');
     expect(替换回执!.body).toEqual({ text: P6标记.替换草稿, scope: { type: 'global' } });
     expect(替换回执!.idempotencyKey).toMatch(/\S/);
     await 就绪卡动作键(page, `已理解：${P6标记.替换草稿}`, '确认规则').click();
-    await expect(page.getByRole('button', { name: new RegExp(`已理解：${P6标记.替换草稿}`) })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: `已理解：${P6标记.替换草稿}`, exact: true })).toBeVisible({ timeout: 15_000 });
     // 旧规则归档出局：原文整行（含卡片）消失
     await expect(page.getByText(P6标记.候选全局规则)).toHaveCount(0);
 
-    // ── archive：DELETE 带当前 If-Match ──
-    await page.getByRole('button', { name: new RegExp(`已理解：${P6标记.替换草稿}`) }).click();
-    await page.getByRole('button', { name: '删除', exact: true }).click();
-    await expect(page.getByRole('button', { name: new RegExp(`已理解：${P6标记.替换草稿}`) })).toHaveCount(0, { timeout: 10_000 });
+    // ── archive：键盘揭开删除（触屏布局下 ⋯ 是 1×1 可达键，走 P7 同款键盘路径）；
+    //    确认层确认前零 DELETE，确认后才归档（If-Match 当前版本）──
+    const 更多键 = page.getByRole('button', { name: `显示删除：已理解：${P6标记.替换草稿}` });
+    await expect(更多键).toHaveAttribute('aria-expanded', 'false');
+    await 更多键.focus();
+    await page.keyboard.press('Enter');
+    const 删除键 = page.getByRole('button', { name: `删除规则：已理解：${P6标记.替换草稿}` });
+    await expect(删除键).toBeVisible();
+    expect(p6.mutationRequests.filter((项) => 项.method === 'DELETE')).toHaveLength(0);
+    await 删除键.click();
+    await expect(page.getByText('删除这条规则？')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click();
+    // 权威回读：规则行与开关整行消失
+    await expect(page.getByRole('button', { name: `已理解：${P6标记.替换草稿}`, exact: true })).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByRole('switch', { name: `规则：已理解：${P6标记.替换草稿}` })).toHaveCount(0);
     const 删除们 = p6.mutationRequests.filter((项) => 项.method === 'DELETE');
     expect(删除们.length).toBe(1);
     expect(删除们[0]!.ifMatch).toBe('"1"');
     expect(删除们[0]!.path).toMatch(/^\/api\/v1\/me\/agent-rules\/rul_[0-9a-f]{32}$/);
-    await expect(page.getByText('2 条')).toBeVisible();
 
     // ── 切到招聘端：真实 PUT 角色 + 偏好链，切完直接进企业主壳 ──
     await page.goto('/#/identity?switch=1&from=app');
     await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 30_000 });
 
-    // ── recruiter：规则水合 + create（body 永不携带 scope）→ accept ──
+    // ── recruiter：规则水合 + create（body 永不携带 scope）→ accept；作用域与候选端互相独立 ──
     await page.goto('/#/hr/agent-settings');
-    await expect(page.getByText(P6标记.招聘全局规则)).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('1 条生效')).toBeVisible();
+    await expect(page.getByRole('button', { name: P6标记.招聘全局规则, exact: true })).toBeVisible({ timeout: 15_000 });
     const 总开关 = page.getByRole('switch', { name: `规则：${P6标记.招聘全局规则}` });
     await expect(总开关).toHaveAttribute('aria-checked', 'true');
-    await page.getByRole('button', { name: '手动添加规则' }).click();
+    await page.getByRole('button', { name: '添加规则' }).click();
     await page.getByPlaceholder('例：到岗超过 60 天的候选先不推进').fill(P6标记.招聘新建草稿);
     await page.getByRole('button', { name: '提交给AI代理理解' }).click();
     await expect(page.getByText(`已理解：${P6标记.招聘新建草稿}`)).toBeVisible({ timeout: 20_000 });
@@ -7864,7 +7869,6 @@ test.describe('P6 规则域 fixture @backend', () => {
     await 就绪卡动作键(page, `已理解：${P6标记.招聘新建草稿}`, '确认规则').click();
     // 招聘端规则行没有编辑按钮：权威落地以行内容 + 开关为准
     await expect(page.getByRole('switch', { name: `规则：已理解：${P6标记.招聘新建草稿}` })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('2 条生效')).toBeVisible();
     const 招聘接受 = p6.mutationRequests.find((项) => 项.path.startsWith('/api/v1/recruiter/agent-rule-proposals/') && 项.path.endsWith('/accept'));
     expect(招聘接受).toBeDefined();
     expect(招聘接受!.body).toEqual({});
@@ -7873,10 +7877,8 @@ test.describe('P6 规则域 fixture @backend', () => {
     // ── pause → resume：每个应答的版本都在前进（resume 的 If-Match 就是 pause 应答的新版本）──
     await 总开关.click();
     await expect(总开关).toHaveAttribute('aria-checked', 'false', { timeout: 10_000 });
-    await expect(page.getByText('1 条生效')).toBeVisible();
     await 总开关.click();
     await expect(总开关).toHaveAttribute('aria-checked', 'true', { timeout: 10_000 });
-    await expect(page.getByText('2 条生效')).toBeVisible();
     const 开关写 = p6.mutationRequests.filter((项) => 项.method === 'PATCH' && 项.path === `/api/v1/recruiter/agent-rules/${P6编号.招聘全局规则}`);
     expect(开关写.length).toBe(2);
     expect(开关写[0]!.body).toEqual({ operation: 'pause' });
@@ -7886,10 +7888,11 @@ test.describe('P6 规则域 fixture @backend', () => {
     // 权威版本链落到 fixture：pause 1→2、resume 2→3
     expect(p6.rules.recruiter.find((规) => 规.rule_id === P6编号.招聘全局规则)?.version).toBe(3);
 
-    // 幂等纪律：两次 candidate 创建是两个意图 → 两把不同的 key；accept 一律空对象 body + 非 key
+    // 幂等纪律：candidate 唯一一次创建带非空 key；两次 accept（新建 + 替换）一律空对象 body + 各自的 key。
+    // 「不同意图 → 不同 key」由 P6 失败提案卡用例的两次创建承载，这里不重复。
     const 候选创建们 = p6.mutationRequests.filter((项) => 项.method === 'POST' && 项.path === '/api/v1/me/agent-rule-proposals');
-    expect(候选创建们.length).toBe(2);
-    expect(候选创建们[0]!.idempotencyKey).not.toBe(候选创建们[1]!.idempotencyKey);
+    expect(候选创建们.length).toBe(1);
+    expect(候选创建们[0]!.idempotencyKey).toMatch(/\S/);
     const 候选接受们 = p6.mutationRequests.filter((项) => 项.method === 'POST' && 项.path.includes('/me/') && 项.path.endsWith('/accept'));
     expect(候选接受们.length).toBe(2);
     for (const 项 of 候选接受们) {
@@ -7994,7 +7997,7 @@ test.describe('P6 规则域 fixture @backend', () => {
 
     // 响应丢失：POST 恰一次（mutation 不自动重试），权威收敛后规则行出现、卡片消失
     await 就绪卡动作键(page, P6标记.丢失提案正文, '确认规则').click();
-    await expect(page.getByRole('button', { name: new RegExp(P6标记.丢失提案正文) })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('button', { name: P6标记.丢失提案正文, exact: true })).toBeVisible({ timeout: 20_000 });
     await expect(就绪卡动作键(page, P6标记.丢失提案正文, '确认规则')).toHaveCount(0);
     const 丢失接受们 = p6.mutationRequests.filter((项) => 项.path === `/api/v1/me/agent-rule-proposals/${P6分支编号.丢失提案}/accept`);
     expect(丢失接受们.length).toBe(1);
@@ -8002,7 +8005,7 @@ test.describe('P6 规则域 fixture @backend', () => {
 
     // 结果未知：受控重试一次、两把 key 是同一把，仍 503 后同样经 GET 提案 + Rule 清单收敛
     await 就绪卡动作键(page, P6标记.未知提案正文, '确认规则').click();
-    await expect(page.getByRole('button', { name: new RegExp(P6标记.未知提案正文) })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('button', { name: P6标记.未知提案正文, exact: true })).toBeVisible({ timeout: 20_000 });
     await expect(就绪卡动作键(page, P6标记.未知提案正文, '确认规则')).toHaveCount(0);
     const 未知接受们 = p6.mutationRequests.filter((项) => 项.path === `/api/v1/me/agent-rule-proposals/${P6分支编号.未知提案}/accept`);
     expect(未知接受们.length).toBe(2);
@@ -8088,14 +8091,15 @@ test.describe('P6 规则域 fixture @backend', () => {
     await page.getByRole('button', { name: '关闭' }).click();
     await expect(page.getByText('本次规则没有生效')).toHaveCount(0);
 
-    // 创建失败：composer 不收起，草稿/范围原样保留（绝不伪造成功）
-    await page.getByRole('button', { name: '手动添加规则' }).click();
+    // 创建失败：composer 不收起，草稿原样保留（绝不伪造成功；范围选择器已退役，提案恒为全局）
+    await page.getByRole('button', { name: '添加规则' }).click();
     const 候选输入 = page.getByPlaceholder('例：不接受大小周的岗位直接过滤');
     await 候选输入.fill(P6标记.失败草稿);
     await page.getByRole('button', { name: '提交给AI代理理解' }).click();
-    await expect(page.getByText(P6标记.创建失败提示)).toBeVisible({ timeout: 10_000 });
+    // 500 的原始 message 不进 UI：兜底固定文案上屏（真实性修复 D），草稿原样保留可再提交
+    await expect(page.getByText('后端服务暂时不可用，请稍后重试')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(P6标记.创建失败提示)).toHaveCount(0);
     await expect(候选输入).toHaveValue(P6标记.失败草稿);
-    await expect(page.getByLabel('规则范围')).toHaveValue('');
 
     // 再次提交：新意图、新 key，创建成功才收起输入行
     await page.getByRole('button', { name: '提交给AI代理理解' }).click();
@@ -8122,9 +8126,8 @@ test.describe('P6 规则域 fixture @backend', () => {
     await page.goto('/#/rules');
     await expect(page.getByRole('button', { name: '规则加载失败，重试' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('规则加载中')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '手动添加规则' })).toHaveCount(0);
-    await expect(page.getByText('2 条')).toHaveCount(0);
-    await expect(page.getByText(P6标记.候选全局规则)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '添加规则' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: P6标记.候选全局规则, exact: true })).toHaveCount(0);
     await expect(page.getByText(P6标记.候选意向规则)).toHaveCount(0);
     await expect(page.getByText('不主动披露并行接触数量')).toHaveCount(0);
     await expect(page.getByText('双休是底线；隔周六可谈，大小周不谈')).toHaveCount(0);
@@ -8132,7 +8135,7 @@ test.describe('P6 规则域 fixture @backend', () => {
 
   test('P6 首次水合挂起期间无任何规则内容与写入口 @backend', async ({ page }) => {
     // 规则清单第一页被挂起：初始化完成前整壳只有路由加载中 ——
-    // Mock 种子行 / 计数 / 写控件 / 重试键都不上屏；放行后权威行与计数一并落地。
+    // Mock 种子行 / 写控件 / 重试键都不上屏；放行后权威行落地（意向规则仍不渲染、无写入口）。
     test.setTimeout(120_000);
     let 放行!: () => void;
     const 门 = new Promise<void>((ok) => { 放行 = ok; });
@@ -8146,13 +8149,16 @@ test.describe('P6 规则域 fixture @backend', () => {
     await expect(page.getByText('正在加载…')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('不主动披露并行接触数量')).toHaveCount(0);
     await expect(page.getByText('双休是底线；隔周六可谈，大小周不谈')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '手动添加规则' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '添加规则' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '规则加载失败，重试' })).toHaveCount(0);
 
     放行();
-    await expect(page.getByText(P6标记.候选全局规则)).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(P6标记.候选意向规则)).toBeVisible();
-    await expect(page.getByText('2 条')).toBeVisible();
+    await expect(page.getByRole('button', { name: P6标记.候选全局规则, exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('switch', { name: `规则：${P6标记.候选全局规则}` })).toBeVisible();
+    // 历史意向规则水合进意向域：本页不渲染，也没有任何写入口
+    await expect(page.getByText(P6标记.候选意向规则)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: `编辑规则：${P6标记.候选意向规则}` })).toHaveCount(0);
+    await expect(page.getByRole('switch', { name: `规则：${P6标记.候选意向规则}` })).toHaveCount(0);
   });
 
   test('P6 accept 409 not_actionable 权威恢复保留卡片 @backend', async ({ page }) => {
@@ -8182,10 +8188,10 @@ test.describe('P6 规则域 fixture @backend', () => {
 
     await 就绪卡动作键(page, P6标记.不可接受提案正文, '确认规则').click();
     await expect(page.getByText('这条内容暂时不能成为长期规则，请放弃或换一种说法')).toBeVisible({ timeout: 10_000 });
-    // 权威恢复：GET 回执仍是 ready → 卡片原样保留，规则计数不变、没有规则行被物化
+    // 权威恢复：GET 回执仍是 ready → 卡片原样保留，规则清单不变、没有规则行被物化
     await expect(page.getByText(P6标记.不可接受提案正文)).toBeVisible();
-    await expect(page.getByRole('button', { name: new RegExp(P6标记.不可接受提案正文) })).toHaveCount(0);
-    await expect(page.getByText('2 条')).toBeVisible();
+    await expect(page.getByRole('button', { name: P6标记.不可接受提案正文, exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: P6标记.候选全局规则, exact: true })).toBeVisible();
     const 接受们 = p6.mutationRequests.filter((项) => 项.path === `/api/v1/me/agent-rule-proposals/${P6分支编号.不可接受提案}/accept`);
     expect(接受们.length).toBe(1);
     expect(p6.proposalReads[P6分支编号.不可接受提案]).toBeGreaterThanOrEqual(1);
@@ -10634,7 +10640,7 @@ test.describe('P8 控制面 fixture @backend', () => {
     expect(保护读取.下载).toEqual({ 状态: 401, 码: 'invalid_session' });
   });
 
-  test('P8 产品反馈真实工单上屏；举报两类零 reports 请求 @backend', async ({ page }) => {
+  test('P8 产品反馈真实工单上屏；反馈页无举报入口零 reports 请求 @backend', async ({ page }) => {
     test.setTimeout(120_000);
     const fixture = await 装P8候选(page);
     await page.goto('/#/feedback');
@@ -10652,23 +10658,16 @@ test.describe('P8 控制面 fixture @backend', () => {
     expect(反馈[0]!.body).toEqual({ category: 'bug', details: 'Fixture 反馈：账号页导出行点击无响应' });
     断言P8变更边界(反馈[0]!, new URL(page.url()).origin);
 
-    // 举报两类没有可核实对象：提交只给入口指引，绝不把无目标的一段话当举报发出去。
+    // 反馈页没有举报入口：举报两类没有可核实对象，只能从具体岗位/谈判/真人会话发起
+    //（已在 P8 职位举报 / P7 会话举报用例覆盖真实举报路径，这里只断言本页不代发）。
     // 离开反馈页前先等账号页可见：连发的同文档 hash 跳转会被 React Router 合并，
     // 不等中间屏落定就跳回会保留旧的致谢态组件实例。
     await page.goto('/#/account');
     await expect(page.getByText('账号与安全', { exact: true })).toBeVisible({ timeout: 10_000 });
     await page.goto('/#/feedback');
-    await expect(page.getByRole('button', { name: '举报虚假岗位' })).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: '举报虚假岗位' }).click();
-    await page.getByRole('textbox').fill('这个岗位写得薪资很高，实际聊下来完全不一样');
-    await page.getByRole('button', { name: '提交', exact: true }).click();
     await expect(page.getByText('举报要从具体的岗位、谈判或真人会话里发起；这里只收集产品反馈。')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('已收到，谢谢你')).toHaveCount(0); // 无本地成功
-    // 轻提示每笔一条、1.8s 后淡出：等上一条完全移除再提交第二类（避免两条同文叠放）
-    await expect(page.getByText('举报要从具体的岗位、谈判或真人会话里发起；这里只收集产品反馈。')).toHaveCount(0, { timeout: 10_000 });
-    await page.getByRole('button', { name: '举报骚扰行为' }).click();
-    await page.getByRole('button', { name: '提交', exact: true }).click();
-    await expect(page.getByText('举报要从具体的岗位、谈判或真人会话里发起；这里只收集产品反馈。')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '举报虚假岗位' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '举报骚扰行为' })).toHaveCount(0);
     expect(fixture.变更请求.filter((条) => 条.path === '/api/v1/compliance/reports')).toEqual([]);
     expect(fixture.反馈受理).toBe(1);
   });
@@ -10803,15 +10802,22 @@ test.describe('P8 控制面 fixture @backend', () => {
       .toBeGreaterThan(会话详情前);
   });
 
-  test('P8 Backend 直聊：无举报入口、零 reports 请求 @backend', async ({ page }, 测试信息) => {
+  test('P8 Backend 直聊：不可用说明与查看在谈导航，零直接聊天/举报写入 @backend', async ({ page }, 测试信息) => {
     const fixture = await 装P8候选(page);
     await page.goto('/#/chat/direct/J-01');
-    await expect(page.getByRole('button', { name: '看职位' })).toBeVisible({ timeout: 15_000 });
-    // P4 不发布直聊许可/会话坐标 → 没有可发的权威 target：⋯ 举报入口整体隐藏
+    // P4 不发布直聊许可/会话坐标 → Backend 没有权威直聊会话：整页只有不可用说明
+    await expect(page.getByText('当前暂不提供直接聊天。请从已建立的 MatchCase 进入真人会话。')).toBeVisible({ timeout: 15_000 });
+    // 无权威 target 禁止写入：⋯ 举报入口整体隐藏，操作排与输入条都不渲染，页面没有可写的会话
     await expect(page.getByRole('button', { name: '举报', exact: true })).toHaveCount(0);
     await expect(page.getByText('⋯')).toHaveCount(0);
-    // 手动证据（d）：Backend 直聊页无非法举报入口
+    await expect(page.getByRole('button', { name: '看职位' })).toHaveCount(0);
+    await expect(page.getByPlaceholder('发消息…')).toHaveCount(0);
+    // 手动证据（d）：Backend 直聊页不可用态
     await page.screenshot({ path: 测试信息.outputPath('P8-backend-direct-chat.png'), fullPage: true });
+    // 「查看在谈」指路在谈列表所在的主壳，不把用户留在死页
+    await page.getByRole('button', { name: '查看在谈' }).click();
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 10_000 });
+    // 零举报写入：全程没有发出任何 reports 请求
     expect(fixture.变更请求.filter((条) => 条.path === '/api/v1/compliance/reports')).toEqual([]);
   });
 
