@@ -104,15 +104,6 @@
   font-weight: 700;
 }
 
-/* ── 出生年月：内嵌双滚轮的外卡 ── */
-.滚轮卡 {
-  /* 2026-08-24 全站选择风格统一（C1 定稿）：写死旧描边色换令牌 */
-  background: var(--白);
-  border: 1px solid var(--描边深);
-  border-radius: var(--圆角-内托盘);
-  padding: 8px 0;
-}
-
 /* ── 身份快捷片 ── */
 .片行 {
   display: flex;

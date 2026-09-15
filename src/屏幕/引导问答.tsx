@@ -11,9 +11,8 @@
 // 「答案只存在内存里」这条旧口径已经不成立：期望职位 / 工作城市 / 期望薪资 / 个人优势
 // 都在离开该题时落全局（2026-08-21 修数据静默丢失），只有草稿态的输入还留在 useState。
 //
-// 薪资那一题 RN 里靠 snapToInterval 做原生吸附，Web 上改用
-// scroll-snap-type: y mandatory + scroll-snap-align: center —— 吸附交给浏览器，
-// 只需在滚动停下后算一次落点，比 RN 版更省代码且手感一致。
+// 薪资那一题 RN 里靠 snapToInterval 做原生吸附，Web 上（bottom-drawer 统一 Task 5）
+// 改点薪资入口行开共用 薪资区间层 抽屉，档位吸附与落点都在抽屉的滚轮里完成。
 
 import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react';
 import { useLocation } from 'react-router-dom';
