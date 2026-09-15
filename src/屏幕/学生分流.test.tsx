@@ -14,7 +14,7 @@
 // 横幅只换既有 代理横幅 props。操作层行为（恢复分支/单飞/栅栏）归 Task 3 的
 // 简历预填操作.test.ts，这里只测页面接线。
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -992,5 +992,85 @@ describe('学生分流 · 首屏零默认（Task 5B）', () => {
     const 最后 = 存选择[存选择.length - 1][0] as { 城市们: string[]; 偏好: { 求职类型: string[] } };
     expect(最后.城市们).toEqual(['上海']);
     expect(最后.偏好.求职类型).toEqual(['实习生']);
+  });
+});
+
+// ── 实习数值数字抽屉（picker 统一 Task 2）：实习月数 / 每周到岗天数从标签片改共用
+//    数字滚轮层（离散档 [1,3,6] / [2,3,4,5]）。打开与取消零写入；确定才回填一个字段；
+//    缺值临时落首档，但父字段在确定前仍是未填写，必填检查不被绕过。──
+describe('学生分流 实习数值数字抽屉（picker 统一 Task 2）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  /** 求职类型已选 实习生、其余偏好齐备（城市/职位引用完整）的渲染 */
+  function 渲染实习生(偏好覆盖: { 实习月数?: number; 每周到岗天数?: number } = {}) {
+    return render学生分流({
+      数据源: 'backend',
+      引导预填: {
+        ...完整预填,
+        筛选偏好: { 求职类型: ['实习生'], 办公方式: ['现场'], ...偏好覆盖 },
+      },
+    });
+  }
+
+  it('缺值两行显示请选择；打开落首档、取消零写入，行仍是未填写', async () => {
+    const { 派发 } = 渲染实习生();
+    const 用户 = userEvent.setup();
+    const 月数行 = screen.getByRole('button', { name: '实习时长' });
+    const 天数行 = screen.getByRole('button', { name: '每周到岗' });
+    expect(月数行.textContent).toContain('请选择');
+    expect(天数行.textContent).toContain('请选择');
+
+    await 用户.click(月数行);
+    const 轮 = screen.getByRole('listbox', { name: '实习时长' });
+    // 缺值临时传首档，仅层内临时值
+    expect(within(轮).getByRole('option', { name: '1' }).getAttribute('aria-selected')).toBe('true');
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('listbox', { name: '实习时长' })).toBeNull();
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '存求职筛选偏好' }));
+    // 开过层不等于已填
+    expect(screen.getByRole('button', { name: '实习时长' }).textContent).toContain('请选择');
+  });
+
+  it('再次打开改选 6 并确定才写入筛选偏好，且只回填当前层字段', async () => {
+    const { 派发 } = 渲染实习生({ 每周到岗天数: 4 });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '实习时长' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '实习时长' })).getByRole('option', { name: '6' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    const 存偏好 = 派发.mock.calls
+      .map(([动作]) => 动作)
+      .filter((动作: { 型: string }) => 动作.型 === '存求职筛选偏好');
+    expect(存偏好).toHaveLength(1);
+    expect((存偏好[0] as { 偏好: { 实习月数: number } }).偏好.实习月数).toBe(6);
+    // 天数没被顺带改写：确定只回填打开的那一个字段
+    expect((存偏好[0] as { 偏好: { 每周到岗天数: number } }).偏好.每周到岗天数).toBe(4);
+  });
+
+  it('已填值回显「至少 N 个月 / 每周 N 天」，天数层确定后月数原值保留', async () => {
+    const { 派发 } = 渲染实习生({ 实习月数: 3 });
+    const 用户 = userEvent.setup();
+    expect(screen.getByRole('button', { name: '实习时长' }).textContent).toContain('至少 3 个月');
+    expect(screen.getByRole('button', { name: '每周到岗' }).textContent).toContain('请选择');
+    await 用户.click(screen.getByRole('button', { name: '每周到岗' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '每周到岗' })).getByRole('option', { name: '5' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    const 存偏好 = 派发.mock.calls
+      .map(([动作]) => 动作)
+      .filter((动作: { 型: string }) => 动作.型 === '存求职筛选偏好');
+    expect((存偏好[0] as { 偏好: { 每周到岗天数: number; 实习月数: number } }).偏好)
+      .toMatchObject({ 每周到岗天数: 5, 实习月数: 3 });
+  });
+
+  it('缺值取消后下一步仍被必填拦下（开层不绕过检查）', async () => {
+    渲染实习生();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '实习时长' }));
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请补充：可实习月数、每周可到岗天数');
   });
 });

@@ -443,7 +443,7 @@ describe('发布岗位页 Backend 选择器', () => {
     await 设月薪带(用户, 50, 65);
     // 年薪月数（社招全职必填）：打开滚轮 → 完成（默认 12）
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     // 办公地点
     await 用户.type(
       screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'),
@@ -1037,7 +1037,7 @@ describe('发布岗位页 Backend 选择器', () => {
     );
     // 年薪月数滚轮也是无关控件
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     expect(勾选框().checked).toBe(true);
 
     // 描述在第二步：返回 → 改描述 → 下一步回第三步，确认态不能被跨步编辑冲掉
@@ -1321,7 +1321,7 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
     await 用户.type(screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }), '私有偏好');
     await 设月薪带(用户, 20, 30);
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     // 工作城市：Mock 同样走全页选择正文（本地字典，不发请求）→ 选 上海 → 保存
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
@@ -1599,7 +1599,7 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     await 设月薪带(用户, 50, 65);
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.type(screen.getByRole('textbox', { name: '岗位要求' }), '三年以上后端经验');
     await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), '张江路 1 号');
     // 工作城市：全页选择正文 → 选 上海 → 保存
@@ -2667,7 +2667,7 @@ describe('发布岗位页 JD 建议合并', () => {
     fireEvent.click(within(screen.getByRole('listbox', { name: '薪资上限' })).getByRole('option', { name: '65' }));
     fireEvent.click(screen.getByRole('button', { name: '确定' }));
     fireEvent.click(screen.getByRole('button', { name: /年薪月数/ }));
-    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    fireEvent.click(screen.getByRole('button', { name: '确定' }));
     返回();
     返回();
     选择并确认JD(JDPDF());
@@ -2975,7 +2975,7 @@ describe('发布岗位页 全远程地址与 Catalog 门禁', () => {
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     await 设月薪带(用户, 50, 65);
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     if (办公地 !== null) {
       await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), 办公地);
     }
@@ -3311,7 +3311,7 @@ describe('发布岗位页 全页城市选择（Mock 模式）', () => {
     expect(screen.getByRole('button', { name: /工作城市/ }).textContent).toContain('上海');
     await 设月薪带(用户, 20, 30);
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), '张江路 1 号');
     await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
@@ -3388,7 +3388,7 @@ describe('发布岗位页 月薪选择行（薪资区间层）', () => {
     expect(screen.getByRole('button', { name: '薪资下限' }).textContent).toContain('20');
     expect(screen.getByRole('button', { name: '薪资上限' }).textContent).toContain('30');
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
     await 用户.click((await screen.findAllByRole('button', { name: '上海' }))[0]);
@@ -3411,7 +3411,7 @@ describe('发布岗位页 月薪选择行（薪资区间层）', () => {
     await 用户.click(screen.getByRole('button', { name: '取消' }));
     expect(screen.getByRole('button', { name: '薪资下限' }).textContent).toContain('—');
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
     await 用户.click((await screen.findAllByRole('button', { name: '上海' }))[0]);

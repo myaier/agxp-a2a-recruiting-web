@@ -283,3 +283,70 @@ test.describe('1280×900 桌面机身模式', () => {
     await expect(page.getByRole('button', { name: '取消' })).toBeFocused();
   });
 });
+
+// ── 数字抽屉实习档位（picker 统一 Task 2）：求职侧 实习时长 / 每周到岗 改共用
+//    数字滚轮层，只开放离散档 [1,3,6] / [2,3,4,5] —— 发布岗的连续 1-24 / 1-7 档
+//    不得泄漏到求职侧；打开与 取消 / Escape 零写入，确定才回填页面草稿。 ──
+test.describe('数字抽屉实习档位（picker 统一 Task 2）', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  /** 进添加意向后切到 实习生：两行实习数值入口出现 */
+  async function 进实习生意向(page: Page) {
+    await 进添加意向(page);
+    await page.getByRole('button', { name: '实习生', exact: true }).click();
+    await expect(page.getByRole('button', { name: '实习时长' })).toBeVisible();
+  }
+
+  test('数字档位只开放产品档：实习月数 1/3/6、每周到岗 2-5，岗位连续档不泄漏', async ({ page }) => {
+    await 进实习生意向(page);
+    await page.getByRole('button', { name: '实习时长' }).click();
+    const 月数轮 = page.getByRole('listbox', { name: '实习时长' });
+    await expect(月数轮).toBeVisible();
+    for (const 档 of ['1', '3', '6']) {
+      await expect(月数轮.getByRole('option', { name: 档, exact: true })).toHaveCount(1);
+    }
+    // 2/4/5 个月是求职侧未开放的档；24 个月是发布岗连续档的尽头 —— 都不许出现
+    for (const 泄漏档 of ['2', '4', '5', '24']) {
+      await expect(月数轮.getByRole('option', { name: 泄漏档, exact: true })).toHaveCount(0);
+    }
+    await page.getByRole('button', { name: '取消' }).click();
+
+    await page.getByRole('button', { name: '每周到岗' }).click();
+    const 天数轮 = page.getByRole('listbox', { name: '每周到岗' });
+    await expect(天数轮).toBeVisible();
+    for (const 档 of ['2', '3', '4', '5']) {
+      await expect(天数轮.getByRole('option', { name: 档, exact: true })).toHaveCount(1);
+    }
+    // 1/6/7 天是求职侧未开放的档；7 天是发布岗连续档的尽头
+    for (const 泄漏档 of ['1', '6', '7']) {
+      await expect(天数轮.getByRole('option', { name: 泄漏档, exact: true })).toHaveCount(0);
+    }
+  });
+
+  test('数字实习抽屉取消与 Escape 零写入，确定才回填', async ({ page }) => {
+    await 进实习生意向(page);
+    const 月数行 = page.getByRole('button', { name: '实习时长' });
+    await expect(月数行).toContainText('请选择');
+
+    // 改到 6 再取消：不写草稿，行未填，重开也不是 6（缺值临时落首档）
+    await 月数行.click();
+    await page.getByRole('listbox', { name: '实习时长' }).getByRole('option', { name: '6', exact: true }).click();
+    await page.getByRole('button', { name: '取消' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(月数行).toContainText('请选择');
+    await 月数行.click();
+    await expect(
+      page.getByRole('listbox', { name: '实习时长' }).getByRole('option', { name: '1', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+    // Escape 同样零写入
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(月数行).toContainText('请选择');
+
+    // 确定才回填一次
+    await 月数行.click();
+    await page.getByRole('button', { name: '确定' }).click();
+    await expect(月数行).toContainText('至少 1 个月');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+});

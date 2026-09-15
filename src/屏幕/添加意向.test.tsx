@@ -9,7 +9,7 @@
 // 轻提示 是纯 DOM 单例组件，这里 mock 掉既不碰真实组件也能断言文案。
 
 import { useState } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -235,16 +235,43 @@ describe('四类型与原引导排除接入', () => {
     await userEvent.click(screen.getByRole('button', { name: '完成' }));
     expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 毕业时间: `${new Date().getFullYear() + 1}-06` } });
   });
-  it('实习时间必填并显示日薪；选项分别写草稿', async () => {
+  it('实习时间必填并显示日薪；数字抽屉确定分别写草稿', async () => {
     当前草稿 = { ...基础草稿, 求职类型: '实习生' };
     渲染意向('/intentions/new');
     expect(screen.getByText('薪资要求（日薪 · 元/天）')).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
     expect(mock保存意向).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: '至少 3 个月' }));
-    await userEvent.click(screen.getByRole('button', { name: '每周 4 天' }));
+    await userEvent.click(screen.getByRole('button', { name: /实习时长/ }));
+    await userEvent.click(within(screen.getByRole('listbox', { name: '实习时长' })).getByRole('option', { name: '3' }));
+    await userEvent.click(screen.getByRole('button', { name: '确定' }));
+    await userEvent.click(screen.getByRole('button', { name: /每周到岗/ }));
+    await userEvent.click(within(screen.getByRole('listbox', { name: '每周到岗' })).getByRole('option', { name: '4' }));
+    await userEvent.click(screen.getByRole('button', { name: '确定' }));
     expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 实习月数: 3 } });
     expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 每周到岗天数: 4 } });
+  });
+  it('实习抽屉打开取消零写入、缺值必填仍拦下；再次打开确定才写', async () => {
+    当前草稿 = { ...基础草稿, 求职类型: '实习生', 实习月数: null, 每周到岗天数: null };
+    渲染意向('/intentions/new');
+    const 用户 = userEvent.setup();
+    // 未填行显示请选择
+    const 月数行 = screen.getByRole('button', { name: /实习时长/ });
+    expect(月数行.textContent).toContain('请选择');
+    await 用户.click(月数行);
+    // 缺值临时落首档，但只是层内临时值
+    expect(within(screen.getByRole('listbox', { name: '实习时长' })).getByRole('option', { name: '1' }).getAttribute('aria-selected')).toBe('true');
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '改意向草稿' }));
+    // 开层不把缺值变成已填：保存仍被实习必填拦下
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请选择实习月数和每周到岗天数');
+    expect(mock保存意向).not.toHaveBeenCalled();
+    // 再次打开，确定才写入
+    await 用户.click(screen.getByRole('button', { name: /实习时长/ }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '实习时长' })).getByRole('option', { name: '3' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(mock派发).toHaveBeenCalledWith({ 型: '改意向草稿', 补丁: { 实习月数: 3 } });
+    expect(screen.queryByRole('listbox', { name: '实习时长' })).toBeNull();
   });
   it('兼职保持月薪、无副标题和屏蔽公司；合并外包项正确映射', async () => {
     当前草稿 = { ...基础草稿, 求职类型: '兼职' };
@@ -330,8 +357,11 @@ describe('添加意向页 跨类型年薪月数（core editors §6.2 Task 2）',
     await userEvent.click(screen.getByRole('button', { name: '实习生' }));
     // 跨周期既有行为：切型清上下限，薪资行回落占位
     await waitFor(() => expect(screen.getByText('请选择薪资要求')).toBeTruthy());
-    await userEvent.click(screen.getByRole('button', { name: '至少 3 个月' }));
-    await userEvent.click(screen.getByRole('button', { name: '每周 4 天' }));
+    // 实习必填改经数字抽屉：缺值确定落首档（1 个月 / 2 天），足以过必填闸
+    await userEvent.click(screen.getByRole('button', { name: /实习时长/ }));
+    await userEvent.click(screen.getByRole('button', { name: '确定' }));
+    await userEvent.click(screen.getByRole('button', { name: /每周到岗/ }));
+    await userEvent.click(screen.getByRole('button', { name: '确定' }));
     // 页面真实路径重填区间：底部弹层 确定（日薪默认 150/200）
     await userEvent.click(screen.getByText('薪资要求（日薪 · 元/天）'));
     await userEvent.click(screen.getByRole('button', { name: '确定' }));
@@ -349,8 +379,10 @@ describe('添加意向页 跨类型年薪月数（core editors §6.2 Task 2）',
     await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
     await userEvent.click(screen.getByRole('button', { name: '实习生' }));
     await waitFor(() => expect(screen.getByText('请选择薪资要求')).toBeTruthy());
-    await userEvent.click(screen.getByRole('button', { name: '至少 3 个月' }));
-    await userEvent.click(screen.getByRole('button', { name: '每周 4 天' }));
+    await userEvent.click(screen.getByRole('button', { name: /实习时长/ }));
+    await userEvent.click(screen.getByRole('button', { name: '确定' }));
+    await userEvent.click(screen.getByRole('button', { name: /每周到岗/ }));
+    await userEvent.click(screen.getByRole('button', { name: '确定' }));
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
     const body = 转意向写入(mock保存意向.mock.calls[0][0] as 意向草稿型, { 原始: 原始14薪 });

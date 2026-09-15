@@ -275,7 +275,7 @@ describe('基本信息 根草稿保持（离开再回来）', () => {
     await 用户.click(screen.getByRole('button', { name: /开始工作年份/ }));
     const 年轮 = screen.getByRole('listbox', { name: '开始工作年份' });
     await 用户.click(within(年轮).getByRole('option', { name: '2019' }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     第一次.卸载();
     // 只统计再进入这一程的种入派发（第一程的键入/种入已结算）
     第一次.派发.mockClear();
