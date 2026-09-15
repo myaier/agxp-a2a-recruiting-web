@@ -192,9 +192,10 @@ test.describe('注册流换壳不闪中间屏', () => {
     await page.getByRole('button', { name: '— 元/天' }).first().click();
     await page.getByRole('button', { name: '确定' }).click();
     // picker 统一 Task 2：岗位城市 input 已删 —— 经工作城市行打开全页选择子视图选上海
+    // Task 6：精选区按钮是目录规范名「上海市」（22 城市规范名，不再用旧别名「上海」）
     await page.getByRole('button').filter({ hasText: '工作城市' }).click();
     await expect(page.getByRole('heading', { name: '选择工作城市' })).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: '上海', exact: true }).first().click();
+    await page.getByRole('button', { name: '上海市', exact: true }).first().click();
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByRole('heading', { name: '选择工作城市' })).toHaveCount(0);
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');

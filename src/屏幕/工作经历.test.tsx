@@ -1736,6 +1736,90 @@ describe('工作经历 教育学校/专业全屏子视图（Task 2）', () => {
     expect(within(学校层).queryByText('旧城 · 旧国')).toBeNull();
   });
 
+  // review 终审 Issue 2：加载更多在飞时改词 —— 换词 effect 必须同步复位 加载中，
+  // 否则迟到响应被代际作废、finally 守卫跳过重置，新搜索的 加载更多 永久「加载中…」并禁用。
+  it('加载更多在飞时改词：新搜索结果可正常翻页，不卡永久加载中', async () => {
+    let 放行旧游标页: () => void = () => {};
+    const 查询Institution = vi.fn(async (q: { q?: string; cursor?: string }) => {
+      if (q.q === '清' && !q.cursor) {
+        return {
+          items: [{
+            id: 'inst_thu', display_name: '清华大学',
+            location: { id: 'loc_bj', display_name: '北京', country_name: '中国' }, selectable: true,
+          }],
+          nextCursor: 'c1',
+          catalogVersion: 'v2',
+        };
+      }
+      if (q.cursor === 'c1') {
+        // 追加页请求悬挂，改词后才放行 —— 作废的响应不得把 加载中 永久挂起
+        return new Promise((解决) => {
+          放行旧游标页 = () => 解决({
+            items: [{
+              id: 'inst_pk', display_name: '北京大學',
+              location: { id: 'loc_bj2', display_name: '北京', country_name: '中国' }, selectable: true,
+            }],
+            nextCursor: null,
+            catalogVersion: 'v2',
+          });
+        }) as never;
+      }
+      if (q.q === '华' && !q.cursor) {
+        return {
+          items: [{
+            id: 'inst_hust', display_name: '华中科技大学',
+            location: { id: 'loc_wh', display_name: '武汉', country_name: '中国' }, selectable: true,
+          }],
+          nextCursor: 'c2',
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{
+          id: 'inst_hust2', display_name: '华中农业大学',
+          location: { id: 'loc_wh2', display_name: '武汉', country_name: '中国' }, selectable: true,
+        }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    render工作经历({
+      数据源: 'backend',
+      查询Institution,
+      查询Taxonomy: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('添加教育经历'));
+    await 用户.click(screen.getByRole('button', { name: /学校名称/ }));
+    const 学校层 = await screen.findByRole('dialog', { name: '选择学校' });
+    const 搜索框 = within(学校层).getByPlaceholderText('搜索学校名称') as HTMLInputElement;
+    // 搜「清」出带游标结果 → 点加载更多（追加页请求在飞）
+    await 用户.type(搜索框, '清');
+    await within(学校层).findByRole('button', { name: '清华大学' });
+    await 用户.click(within(学校层).getByRole('button', { name: '加载更多' }));
+    expect(within(学校层).getByRole('button', { name: '加载更多' }).textContent).toBe('加载中…');
+    expect(within(学校层).getByRole('button', { name: '加载更多' })).toHaveProperty('disabled', true);
+    // 在飞时改词：代际 +1、游标清空，加载中 必须同步复位
+    await 用户.clear(搜索框);
+    await 用户.type(搜索框, '华');
+    await within(学校层).findByRole('button', { name: '华中科技大学' });
+    expect(within(学校层).getByRole('button', { name: '加载更多' }).textContent).toBe('加载更多');
+    expect(within(学校层).getByRole('button', { name: '加载更多' })).toHaveProperty('disabled', false);
+    // 迟到响应此刻作废：不得回填，也不得把加载中 拉回 true
+    await act(async () => {
+      放行旧游标页();
+    });
+    await new Promise((解决) => setTimeout(解决, 20));
+    expect(within(学校层).queryByRole('button', { name: '北京大學' })).toBeNull();
+    // 新搜索结果带游标：加载更多 可点并按新游标翻页（修复前永久禁用）
+    await 用户.click(within(学校层).getByRole('button', { name: '加载更多' }));
+    await within(学校层).findByRole('button', { name: '华中农业大学' });
+    expect(查询Institution).toHaveBeenLastCalledWith(
+      expect.objectContaining({ q: '华', cursor: 'c2' }),
+      undefined,
+    );
+  });
+
   it('学校追加页返回不同版本：丢弃累计页与游标，从第一页重开；后续游标是新版本的', async () => {
     const 页 = (items: unknown[], nextCursor: string | null, 版本: string) => ({ items, nextCursor, catalogVersion: 版本 });
     const 查询Institution = vi.fn(async (q: { q?: string; cursor?: string }, 选项?: { 强制刷新?: boolean }) => {

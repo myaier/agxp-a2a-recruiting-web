@@ -379,6 +379,49 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { cursor: 'c2', limit: 50 });
   });
 
+  // review 终审 Issue 3：行业根/子项首载失败必须如实上屏错误 + 重试可重新发请求 ——
+  // 设取态 合并序不得让 finally 的 { 忙: false } 抹掉 catch 写入的错误（否则错误+重试 UI 是死代码）。
+  it('行业根/子项首载失败：显示「加载失败，请重试」，点重试重新发请求并恢复', async () => {
+    置Backend应用状态();
+    let 根已失败 = false;
+    let 子已失败 = false;
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string }) => {
+        if (query.parentId === 'ind_root') {
+          if (!子已失败) {
+            子已失败 = true;
+            throw new Error('网络错误');
+          }
+          return 目录页Of(行业子项);
+        }
+        if (query.parentId) return 目录页Of([]);
+        if (query.q) return 目录页Of(行业搜索结果);
+        if (!根已失败) {
+          根已失败 = true;
+          throw new Error('网络错误');
+        }
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    // 根首载失败：错误文案 + 重试（修复前 finally 未传 错误 会把 catch 的错误抹成 null）
+    expect(await screen.findByText('加载失败，请重试')).toBeTruthy();
+    const 根调用数 = mock查询Taxonomy.mock.calls.length;
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    await screen.findByText('互联网');
+    expect(mock查询Taxonomy.mock.calls.length).toBeGreaterThan(根调用数);
+    // 子项首载失败：行尾错误 + 重试同样可用（分页尾错误/重试路径补零测试缺口）
+    await 用户.click(await screen.findByText('互联网'));
+    expect(await screen.findByText('加载失败，请重试')).toBeTruthy();
+    const 子调用数 = mock查询Taxonomy.mock.calls.length;
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    await screen.findByText('电子商务');
+    expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { parentId: 'ind_root', limit: 50 });
+    expect(mock查询Taxonomy.mock.calls.length).toBeGreaterThan(子调用数);
+  });
+
   it('迟到响应保护：展开在飞时关闭，返回的结果被丢弃，重开不残留旧子项', async () => {
     置Backend应用状态();
     let 解开!: (页: unknown) => void;
