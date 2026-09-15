@@ -1458,6 +1458,106 @@ describe('工作经历 · 证书行内输入接线（review-cx F4）', () => {
   });
 });
 
+// ── Task 3（candidate-profile-edit-boundaries）：技能与证书共用 简历标签录入 ──
+// 证书从行式条目换成技能标签形式，但数据义务原样保留：证书键 = 原编号（同名不同
+// 编号不串、按编号删除），既有年份原样保存与展示（标签补充文本，不新增年份输入），
+// 新添加证书年份为空、本地编号新生成；技能沿用去重、证书空白提示保留、不新增证书
+// 去重产品规则；onboarding 证书草稿恢复/清理语义不变，日常编辑零引导草稿。
+describe('工作经历 · 技能/证书共用标签录入（Task 3）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+    mock确认分区.mockClear();
+    mock更新草稿.mockClear();
+  });
+
+  const 同名证书: 简历证书[] = [
+    { 编号: 'cert_cpa_2020', 名称: 'CPA', 年份: '2020' },
+    { 编号: 'cert_cpa_2021', 名称: 'CPA', 年份: '2021' },
+  ];
+
+  it('同名不同编号证书只删除目标：按编号过滤，另一条年份/编号保存不变', async () => {
+    render工作经历({ 证书: 同名证书, 经历: [], 教育: [] });
+    const 用户 = userEvent.setup();
+    // 两条同名标签各自带年份展示
+    expect(screen.getByText('2020 年取得')).toBeTruthy();
+    expect(screen.getByText('2021 年取得')).toBeTruthy();
+    // 删除第二条（2021 那张）：同名删除钮按 DOM 顺序定位
+    const 删除钮们 = screen.getAllByRole('button', { name: '删除证书 CPA' });
+    expect(删除钮们).toHaveLength(2);
+    await 用户.click(删除钮们[1]!);
+    const 证书 = 存简历调用们(mock应用状态.派发).at(-1)!.证书;
+    expect(证书).toEqual([{ 编号: 'cert_cpa_2020', 名称: 'CPA', 年份: '2020' }]);
+    expect(screen.queryByText('2021 年取得')).toBeNull();
+    expect(screen.getByText('2020 年取得')).toBeTruthy();
+  });
+
+  it('既有年份在标签中展示且保存不变；新添加证书年份为空、编号新生成不复用', async () => {
+    render工作经历({ 证书: [{ 编号: 'cert_old', 名称: 'CPA', 年份: '2019' }], 经历: [], 教育: [] });
+    const 用户 = userEvent.setup();
+    const 输入 = screen.getByPlaceholderText('证书或语言，如 CPA、雅思 7.0');
+    await 用户.type(输入, 'CET-6');
+    await 用户.click(输入.parentElement!.querySelector('button')!);
+    const 证书 = 存简历调用们(mock应用状态.派发).at(-1)!.证书;
+    expect(证书).toEqual([
+      { 编号: 'cert_old', 名称: 'CPA', 年份: '2019' },
+      { 编号: expect.any(String), 名称: 'CET-6', 年份: '' },
+    ]);
+    expect(证书[1]!.编号).not.toBe('cert_old');
+    expect(screen.getByText('2019 年取得')).toBeTruthy();
+  });
+
+  it('技能添加沿用去重：重复添加同一技能只留一条', async () => {
+    render工作经历({ 技能: ['Go'], 经历: [], 教育: [] });
+    const 用户 = userEvent.setup();
+    const 输入 = screen.getByPlaceholderText('如：Go、分布式事务');
+    // 先加一条新技能
+    await 用户.type(输入, 'Rust');
+    await 用户.click(输入.parentElement!.querySelector('button')!);
+    expect(存简历调用们(mock应用状态.派发).at(-1)!.技能).toEqual(['Go', 'Rust']);
+    // 重复添加同一技能：去重吞掉不报错，列表仍只有一条
+    await 用户.type(输入, 'Rust');
+    await 用户.click(输入.parentElement!.querySelector('button')!);
+    expect(存简历调用们(mock应用状态.派发).at(-1)!.技能).toEqual(['Go', 'Rust']);
+    expect(screen.getAllByRole('button', { name: '删除技能 Rust' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: '删除技能 Go' })).toHaveLength(1);
+  });
+
+  it('证书空白提示保留：空输入点添加只轻提示，不落列表', async () => {
+    render工作经历({ 经历: [], 教育: [] });
+    const 用户 = userEvent.setup();
+    const 输入 = screen.getByPlaceholderText('证书或语言，如 CPA、雅思 7.0');
+    await 用户.click(输入.parentElement!.querySelector('button')!);
+    expect(mock轻提示).toHaveBeenCalledWith('先填证书名称');
+    expect(存简历调用们(mock应用状态.派发)).toHaveLength(0);
+  });
+
+  it('不新增证书去重规则：同名证书可并存，逐条删除各删各的', async () => {
+    render工作经历({ 经历: [], 教育: [] });
+    const 用户 = userEvent.setup();
+    const 输入 = screen.getByPlaceholderText('证书或语言，如 CPA、雅思 7.0');
+    await 用户.type(输入, 'CPA');
+    await 用户.click(输入.parentElement!.querySelector('button')!);
+    await 用户.type(输入, 'CPA');
+    await 用户.click(输入.parentElement!.querySelector('button')!);
+    expect(存简历调用们(mock应用状态.派发).at(-1)!.证书).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: '删除证书 CPA' })).toHaveLength(2);
+    // 删掉其中一条，另一条原样保留
+    await 用户.click(screen.getAllByRole('button', { name: '删除证书 CPA' })[0]!);
+    expect(存简历调用们(mock应用状态.派发).at(-1)!.证书).toHaveLength(1);
+  });
+
+  it('日常编辑不写引导草稿：敲技能与证书输入零 更新候选建档草稿', async () => {
+    // 无 建档 → 引导预填 null → 非旅程（日常编辑），输入只落本页局部草稿
+    render工作经历({ 经历: [], 教育: [] });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('如：Go、分布式事务'), 'Go');
+    await 用户.type(screen.getByPlaceholderText('证书或语言，如 CPA、雅思 7.0'), 'CPA');
+    expect(mock更新草稿).not.toHaveBeenCalled();
+  });
+});
+
 // ── Task 2（editor-catalog-fullscreen）：教育 学校/专业 改为字段点击行 + 全屏子视图 ──
 // 父编辑页保持挂载（hidden + 显式 display:none 隔离），子视图是 次级页外壳 的内容兄弟；
 // 每次打开把父草稿当前名称复制为搜索初词并查询（空名称 = 空词，不发请求、无候选）；

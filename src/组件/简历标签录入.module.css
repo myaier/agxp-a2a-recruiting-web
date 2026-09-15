@@ -1,0 +1,84 @@
+/* 简历标签录入（Task 3）：布局自 src/屏幕/工作经历.module.css 的技能卡/录入行迁移而来，
+   技能与证书共用一份，避免两处样式副本漂移。 */
+
+.卡 {
+  /* 2026-08-24 全站去框（产品负责人点名）：技能区拆壳平铺 */
+  padding: 2px 2px 0;
+}
+
+.标签组 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.标签 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--淡绿底);
+  color: var(--深绿文字);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.标签删 {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--深绿);
+  opacity: 0.6;
+}
+
+/* 标签补充副文（证书的既有年份展示）：弱化、不加粗，不抢名称 */
+.标签补充 {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--次要浅);
+}
+
+/* 行内录入行 */
+.录入行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.录入框 {
+  flex: 1;
+  min-width: 0;
+  /* 2026-08-24 去框二改（产品负责人点名技能/证书/作品集）：
+     输入从描边盒改成名片同款裸行 —— 无框无底，底部一道发丝线当下划线 */
+  border: none;
+  border-bottom: 1px solid var(--描边深);
+  border-radius: 0;
+  padding: 9px 2px;
+  background: transparent;
+  font-size: 13.5px;
+  color: var(--墨);
+}
+
+.录入框::placeholder {
+  color: var(--最弱);
+}
+
+.录入键 {
+  flex: none;
+  padding: 9px 15px;
+  border-radius: 11px;
+  background: var(--荧光绿);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+/* 裸行输入聚焦态：压掉浏览器默认蓝框，聚焦用下划线变亮绿表达 */
+.录入框:focus {
+  outline: none;
+  border-bottom-color: var(--亮绿);
+}
