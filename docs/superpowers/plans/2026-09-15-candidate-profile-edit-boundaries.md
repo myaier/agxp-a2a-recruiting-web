@@ -181,3 +181,25 @@ npx vitest run src/屏幕/我的.test.tsx
 - 本次校准 review R1（Claude opus/high，候选 `02357e98`）：required 1条、optional 1条，均接受。required修正Spec §10城市既有回归不要求红绿；optional清理Architecture/历史记录的外部依赖残留。复杂度均降低，不改变批准产品契约；Spec引用已同步到修正文档版本。等待同一reviewer复核，未运行产品测试。
 
 - 本次校准 review R2：同一 Claude opus/high session 复核候选 `5a448b96`（Spec blob `68a3b1e2592c60363315a1ea16fe44680502411d`，Plan blob `fc7be50e`），返回 **NO FINDINGS**。两轮只读守卫均通过，无产品测试执行。R1 required 1/optional 1均修复，未解决0；当前文档审查完成，可生成执行提示词。
+
+## 运行记录（2026-09-15/16 实施，宿主 Claude Code）
+
+- 执行路径：subagent-driven-development（Task count 5 > 3），基线核对 2312cba5 为 HEAD 祖先，Spec blob 68a3b1e2 / Plan blob 3a03afd2 Git 对象核对一致；task_intents f65f26d1 全程维护。
+- Task 1–5 串行完成（implementer/reviewer 均 sonnet，commits dbed8886 / 01a9b6f7 / 1a0745ab / 0300c33a / 24ee3c16），每 Task spec+quality 双裁决 review 全部通过，累计 0 Critical / 0 Important；TDD RED→GREEN 证据在各 task report（SDD workspace，已随收尾清理）。
+- 整分支全局 review（最强档）：Ready to merge，跨 Task 交叉风险（from=resume × 向导窄分支、城市消费者、公司选择层共享 CSS、共享 e2e 文件）源码级核实无回归；deferred minors 15 条分诊（13 defer，2 条于收尾执行）。
+- 异构 review（codex-review-loop，gpt-5.6-sol/high，2 轮，绑定批准 Spec/Plan 与共用守约）：R1 一条 required 契约违反——`from=resume` 未传到底层保存，草稿非空时日常保存误入 onboarding 跟踪分支（结算槽阻塞、删除补回、写建档草稿）；源码核实成立，修复 6019e42a（简历域保存显式来源，默认行为零变化），TDD 红 3+7 例转绿、定向 347/347；R2 **NO FINDINGS**。
+- affected / 浏览器收尾：typecheck、lint、`git diff --check 2312cba5..HEAD` 干净；单元增量 receipts（fix-r1 347/347、引导问答 70/70、标签组件+工作经历 99/99），输入不变项复用各 Task receipts；e2e backend-stg 联合选集（--list 5 条非空）5/5、J-PILOT-02接线 1/1、onboarding Mock 8/8、优势单例（含新增 reload 初值断言）1/1；agent-browser 390/1280 布局检查——发现无空格长标签贴边硬截断，按全局 review 预授权补丁修复（cb12821d），其余检查项（证书年份、优势入口与编辑场景、意向文本框 rows=4 无 maxLength、代理卡完整文案+绿点）全部通过；城市回归限于 引导问答（两度通过，城市配置零触碰）。
+- Final gate：用户 2026-09-16 批准，**指示跳过本地栈 L3**。final_target_base = 2312cba5（两次 fetch 核对未推进），merge no-op，UNCHANGED_CANDIDATE_REUSE 成立（L0–L2 全部复用确认前权威 receipts，零 runner）：
+
+```yaml
+final_target_base: 2312cba5a68f8c2156872dadd0633230330cd4b0
+final_affected_base: 2312cba5a68f8c2156872dadd0633230330cd4b0
+candidate_commit: cb12821de8790dd1280aa03c3723d0ddb7101029
+reused_items: L0–L2 全项（静态三件套 + 单元增量/复用 receipts + e2e 联合/J-PILOT-02/onboarding/优势单例；source_candidate=cb12821d 或输入不变前序）
+executed_items: none（确认后零 runner）
+invalidated_items: none
+final_evidence_mode: PASS_REUSED
+l3_responsibility: required → NOT_RUN（用户 final gate 指示跳过本地栈 L3；按真实后端验收指南的 B01/B02 定向节点本轮未执行，不声称为 PASS，留待后续按需补跑）
+```
+
+- 合入结果：普通 fast-forward push 成功，`origin/main 2312cba5 → cb12821d`（无 force）；本记录提交随后推送。真实后端 L3（B01/B02 定向）为唯一未执行验证责任，按用户指示记录在案。
