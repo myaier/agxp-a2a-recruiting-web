@@ -179,3 +179,5 @@ npx vitest run src/屏幕/我的.test.tsx
 - 本轮校准：以 main `2312cba5` 为生产基线，用户批准需求不变。五个 Task 保留；删除等待两个分支及重复城市实现/验收要求；Task 1 适配已存在的全屏目录 E2E，Task 3 明确共享 CSS 消费方保护。旧审查结论只属于旧版，本校准版本须重新进行 WORKFLOW_DOCUMENT_REVIEW；提示词在该审查结束后重新生成。
 
 - 本次校准 review R1（Claude opus/high，候选 `02357e98`）：required 1条、optional 1条，均接受。required修正Spec §10城市既有回归不要求红绿；optional清理Architecture/历史记录的外部依赖残留。复杂度均降低，不改变批准产品契约；Spec引用已同步到修正文档版本。等待同一reviewer复核，未运行产品测试。
+
+- 本次校准 review R2：同一 Claude opus/high session 复核候选 `5a448b96`（Spec blob `68a3b1e2592c60363315a1ea16fe44680502411d`，Plan blob `fc7be50e`），返回 **NO FINDINGS**。两轮只读守卫均通过，无产品测试执行。R1 required 1/optional 1均修复，未解决0；当前文档审查完成，可生成执行提示词。
