@@ -56,10 +56,10 @@ function 置状态(选项: 建状态选项 = {}) {
   };
 }
 
-function 渲染(选项: 建状态选项 = {}) {
+function 渲染(选项: 建状态选项 & { 入口?: string } = {}) {
   置状态(选项);
   return render(
-    <MemoryRouter initialEntries={['/onboard/status']}>
+    <MemoryRouter initialEntries={[选项.入口 ?? '/onboard/status']}>
       <求职状态 />
     </MemoryRouter>,
   );
@@ -174,5 +174,57 @@ describe('求职状态 · 建档草稿接线（Task 4）', () => {
     const 末次 = mock操作.更新候选建档草稿.mock.calls.at(-1)![0];
     expect(末次.资料.基本信息).toEqual(expect.objectContaining({ 真名: '沈星', 身份: '在职' }));
     expect(末次.待写入).toEqual(槽);
+  });
+});
+
+// ── 简历编辑显式来源（Task 1）：from=resume 是唯一日常编辑标记 ──
+// 基本信息空身份延迟写入把编辑用户送到这里：按钮为「保存」，保存成功后在派发到岗预填
+// 之前结束日常分支（只回我的简历），零分区确认、零建档草稿、零到岗预填；失败留页。
+describe('求职状态 · 简历编辑来源（from=resume）', () => {
+  it('按钮为保存（不再叫下一步）', () => {
+    渲染({ 身份: '在职', 入口: '/onboard/status?from=resume' });
+    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '下一步' })).toBeNull();
+  });
+
+  it('社招（在职）编辑：保存成功只回我的简历，在派发到岗预填之前结束', async () => {
+    渲染({ 身份: '在职', 入口: '/onboard/status?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /在职 · 月内到岗/ }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 身份: '在职' }),
+    }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
+    // 日常分支先于 到岗预填 派发收口：零到岗预填、零分区确认、零建档草稿
+    expect(mock应用状态.派发).not.toHaveBeenCalled();
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
+  });
+
+  it('学生（在校）编辑：保存成功同样只回我的简历，零建档草稿零到岗预填', async () => {
+    // 建档在场：编辑标记赢过 引导预填 非空，旅程判定必须为 false
+    渲染({ 身份: '在校', 建档: { 资料: { 基本信息: { 真名: '沈星' } } }, 入口: '/onboard/status?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /在校 · 月内到岗/ }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.引导问答);
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
+    expect(mock应用状态.派发).not.toHaveBeenCalled();
+  });
+
+  it('保存失败：轻提示留页，零派发零跳转', async () => {
+    mock操作.保存简历.mockRejectedValueOnce(new Error('offline'));
+    渲染({ 身份: '离职', 入口: '/onboard/status?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /离职 · 随时到岗/ }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock应用状态.派发).not.toHaveBeenCalled();
   });
 });

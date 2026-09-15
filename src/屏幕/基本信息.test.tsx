@@ -81,12 +81,12 @@ interface 建状态参数 {
  */
 let 触发重渲染: (() => void) | null = null;
 
-function 宿主() {
+function 宿主({ 入口 }: { 入口?: string } = {}) {
   const [, 设代] = useState(0);
   // 渲染期登记（早于子组件的 useLayoutEffect 种入派发）；设代 在同一挂载内稳定
   触发重渲染 = () => 设代((代) => 代 + 1);
   return (
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[入口 ?? '/basic']}>
       <基本信息 />
     </MemoryRouter>
   );
@@ -121,9 +121,9 @@ function 建状态(选项: 建状态参数 = {}) {
   };
 }
 
-function render基本信息(选项: 建状态参数 & { 状态?: ReturnType<typeof 建状态> } = {}) {
+function render基本信息(选项: 建状态参数 & { 状态?: ReturnType<typeof 建状态>; 入口?: string } = {}) {
   mock应用状态 = 选项.状态 ?? 建状态(选项);
-  const 视图 = render(<宿主 />);
+  const 视图 = render(<宿主 入口={选项.入口} />);
   return { 状态: mock应用状态, 派发: mock应用状态.派发 as ReturnType<typeof vi.fn>, 卸载: () => 视图.unmount() };
 }
 
@@ -560,5 +560,97 @@ describe('基本信息 · 出生年月抽屉（picker 统一 Task 3）', () => {
     expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
       基本信息: expect.objectContaining({ 出生年: '2001', 出生月: '9' }),
     }));
+  });
+});
+
+// ── 简历编辑显式来源（Task 1）：from=resume 是唯一日常编辑标记 ──
+// 我的简历 → 基本信息 的日常编辑：按钮为「保存」，成功只回我的简历；旅程判定为 false
+//（编辑标记赢过 引导预填）：零建档草稿、零分区确认；空身份保留延迟 profile 写入并去
+// 带标记的求职状态收口；必填不跳过；失败留页；刷新（同 URL 重挂载）保持编辑模式。
+describe('基本信息 · 简历编辑来源（from=resume）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockClear();
+    mock操作.更新候选建档草稿.mockClear();
+  });
+
+  it('社招（在职）编辑：按钮为保存，成功只回我的简历，零分区确认零建档草稿', async () => {
+    // 建档在场：证明编辑标记赢过 引导预填 非空 —— 旅程判定必须为 false
+    render基本信息({
+      基本信息: { 真名: '沈', 身份: '在职' },
+      建档: { 资料: { 个人优势: '旧' } },
+      入口: '/basic?from=resume',
+    });
+    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '下一步' })).toBeNull();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
+    expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.求职状态);
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.最高学历);
+  });
+
+  it('学生（在校）编辑：成功同样只回我的简历，不进最高学历', async () => {
+    render基本信息({ 基本信息: { 真名: '沈', 身份: '在校' }, 入口: '/basic?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.最高学历);
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+  });
+
+  it('保存失败：轻提示并留在本页，不确认分区不跳转', async () => {
+    mock操作.保存简历.mockRejectedValueOnce(new Error('offline'));
+    render基本信息({ 基本信息: { 真名: '沈', 身份: '在职' }, 入口: '/basic?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+  });
+
+  it('空身份编辑保留延迟 profile 写入：只存页面草稿并去带标记的求职状态收口', async () => {
+    const { 派发 } = render基本信息({ 基本信息: { 真名: '沈', 身份: '' }, 入口: '/basic?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '存简历',
+      基本信息: expect.objectContaining({ 真名: '沈', 身份: '' }),
+    }));
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    expect(mock跳转).toHaveBeenCalledWith(`${路径.求职状态}?from=resume`);
+  });
+
+  it('编辑模式必填不跳过：空真名点保存只提示，零派发零跳转', async () => {
+    render基本信息({ 基本信息: { 真名: '', 身份: '在职' }, 入口: '/basic?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenCalledWith('填一下真名，递交简历（S1）原件时即向招聘方显示');
+    expect(mock应用状态.派发).not.toHaveBeenCalled();
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('刷新（同 URL 重挂载）保持编辑模式，ready 建议在场也零预填种入', async () => {
+    const 第一次 = render基本信息({
+      基本信息: { 真名: '沈', 身份: '在职' },
+      候选预填: readyState(正向基本建议()),
+      入口: '/basic?from=resume',
+    });
+    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+    expect(第一次.派发).not.toHaveBeenCalled();
+    第一次.卸载();
+    const 第二次 = render基本信息({
+      基本信息: { 真名: '沈', 身份: '在职' },
+      候选预填: readyState(正向基本建议()),
+      入口: '/basic?from=resume',
+    });
+    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+    expect(第二次.派发).not.toHaveBeenCalled();
   });
 });

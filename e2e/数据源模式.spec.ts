@@ -12449,10 +12449,14 @@ test.describe('核心编辑 简历行业 @backend', () => {
       });
     });
 
-    // 日常入口：登录落主壳后直接进 /experience（不经过建档旅程）
+    // 日常入口（简历编辑显式来源）：登录落主壳后从 我的简历 点行进在线简历 ——
+    // 编辑入口带 from=resume，保存后只回我的简历；不用裸 /experience 冒充日常入口
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
-    await page.goto('/#/experience');
+    await page.goto('/#/resume');
+    await expect(page.getByText('我的简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button').filter({ hasText: 'Fixture 大学' }).click();
+    await expect(page).toHaveURL(/#\/experience\?from=resume$/, { timeout: 15_000 });
     await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: '＋ 添加工作经历' }).click();
     // 公司名称行改按钮选择后，编辑页唯一 placeholder='必填' 的输入只剩职位名称
@@ -12504,7 +12508,8 @@ test.describe('核心编辑 简历行业 @backend', () => {
     await page.getByRole('button', { name: '完成', exact: true }).click();
     await expect(page.getByText(/银行支付/).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page).toHaveURL(/#\/wizard$/, { timeout: 20_000 });
+    // 编辑入口带 from=resume：保存只回我的简历，不进注册流向导
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
     const 经历写入 = fixture.mutations.filter(
       (条) => 条.method === 'POST' && 条.path === '/api/v1/me/resume/experiences',
     );
@@ -12514,11 +12519,13 @@ test.describe('核心编辑 简历行业 @backend', () => {
       industry_id: 'ind_leaf_bank',
     });
 
-    // ── 保存／重入（review-r1 F2）：company 是服务端按 organization_id 冻结的展示快照
-    //    —— 刷新重进后经历卡与编辑页公司行都显示所选企业（非空、即该企业 display_name），
-    //    公司非空过必填门完成可用；改职位再保存，PATCH 仍提交同一 organization_id ──
-    await page.goto('/#/experience');
+    // ── 保存／重入（review-r1 F2 + 简历编辑显式来源）：company 是服务端按
+    //    organization_id 冻结的展示快照 —— 从 我的简历 重进后经历卡与编辑页公司行
+    //    都显示所选企业（非空、即该企业 display_name），公司非空过必填门完成可用；
+    //    改职位再保存回我的简历，PATCH 仍提交同一 organization_id ──
     await expect(page.getByText(P3标记.手动组织甲).first()).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button').filter({ hasText: P3标记.手动组织甲 }).click();
+    await expect(page).toHaveURL(/#\/experience\?from=resume$/, { timeout: 15_000 });
     await page.getByRole('button').filter({ hasText: P3标记.手动组织甲 }).click();
     const 重入公司行 = page.getByRole('button').filter({ hasText: '公司名称' });
     await expect(重入公司行).toContainText(P3标记.手动组织甲);
@@ -12527,7 +12534,7 @@ test.describe('核心编辑 简历行业 @backend', () => {
     await page.getByPlaceholder('必填').fill('演示工程师·复核');
     await page.getByRole('button', { name: '完成', exact: true }).click();
     await page.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page).toHaveURL(/#\/wizard$/, { timeout: 20_000 });
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
     const 经历更新 = fixture.mutations.filter(
       (条) => 条.method === 'PATCH' && /^\/api\/v1\/me\/resume\/experiences\/[^/]+$/.test(条.path),
     );
@@ -12537,6 +12544,68 @@ test.describe('核心编辑 简历行业 @backend', () => {
       industry_id: 'ind_leaf_bank',
       title: '演示工程师·复核',
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 候选资料编辑边界 @backend（简历编辑显式来源，Task 1）：已完成候选从 我的简历 真实
+// UI 流程进基本信息（入口带 from=resume），URL 刷新保留编辑模式，整页按钮为「保存」，
+// 保存成功只回我的简历；简历域 PATCH 照发，但首次意向写入为零 —— 日常编辑绝不触发
+// 注册流的建档/意向写入。fixture 全部复用现有 安装BFF路由，不导出新的模拟框架。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('候选资料编辑边界 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('已完成候选经基本信息保存回我的简历：刷新保留编辑模式，首次意向写入零次 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const fixture = 创建候选OnboardingFixture();
+    // 存量候选日常会话：last_used_role 已落 candidate，已完成事实决定登录落主壳
+    fixture.主体.last_used_role = 'candidate';
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选' },
+      summary: '存量个人优势',
+    };
+    fixture.intentions = [P4深克隆(fixture意向列表.intentions[0])];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-resume-edit-boundary',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: P3隐私fixture(),
+    });
+
+    // 真实 UI 流程：登录落主壳 → 我的简历 → 基本信息行（入口带 from=resume）
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto('/#/resume');
+    await expect(page.getByText('我的简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button').filter({ hasText: '工作年限' }).click();
+    await expect(page).toHaveURL(/#\/basic\?from=resume$/, { timeout: 15_000 });
+
+    // 编辑模式：按钮为「保存」，URL 刷新保留模式（不弹回注册流、不恢复旧出口）
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '下一步', exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(page).toHaveURL(/#\/basic\?from=resume$/, { timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible({ timeout: 15_000 });
+
+    // 改真名并保存：保存成功只回我的简历，profile PATCH 照发（简历域真实写入）
+    await page.getByPlaceholder('身份证上的名字').fill('存量候选·复核');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
+    await expect(page.getByText('我的简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    const 资料写入 = fixture.mutations.filter(
+      (条) => 条.method === 'PATCH' && 条.path === '/api/v1/me/resume/profile',
+    );
+    expect(资料写入.length).toBe(1);
+    expect(资料写入[0]!.body).toMatchObject({ real_name: '存量候选·复核', status: 'employed' });
+    expect(fixture.resume.profile.real_name).toBe('存量候选·复核');
+
+    // 编辑边界：首次意向写入零次（日常编辑不建意向、不走注册流收尾）
+    expect(fixture.mutations.filter((条) => 条.method === 'POST' && 条.path === '/api/v1/me/intentions')).toEqual([]);
+    // 我的简历回显新名字：保存的权威回读落到了本页
+    await expect(page.getByText('存量候选·复核')).toBeVisible({ timeout: 15_000 });
   });
 });
 
@@ -15690,7 +15759,12 @@ test.describe('catalog-fullscreen 候选侧三入口 @backend', () => {
 
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
-    await page.goto('/#/experience');
+    // 日常入口（简历编辑显式来源）：从 我的简历 点行进在线简历（带 from=resume），
+    // 整页保存落点随之回我的简历；子视图取消零写与 ID 断言保持原样
+    await page.goto('/#/resume');
+    await expect(page.getByText('我的简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button').filter({ hasText: 'Fixture 大学' }).first().click();
+    await expect(page).toHaveURL(/#\/experience\?from=resume$/, { timeout: 15_000 });
     await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
 
     // ── 教育「选择学校」：进入充满可用区、父字段 hidden、Escape 取消零写、重开选择 ──
@@ -15732,11 +15806,12 @@ test.describe('catalog-fullscreen 候选侧三入口 @backend', () => {
     await 专业层.getByRole('button', { name: 标记.专业display }).click();
     await expect(专业层).toHaveCount(0);
     await expect(专业行).toContainText('Fixture 专业');
-    // 完成 → 教育卡上屏；保存按所点行的原目录 ID 提交（不按显示名反查）
+    // 完成 → 教育卡上屏；保存按所点行的原目录 ID 提交（不按显示名反查），
+    // 编辑入口带 from=resume：整页保存落点是我的简历
     await page.getByRole('button', { name: '完成', exact: true }).click();
     await expect(page.getByText(/Fixture 大学/).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page).toHaveURL(/#\/wizard$/, { timeout: 20_000 });
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
     const 教育写入 = fixture.mutations.filter(
       (条) => 条.method === 'POST' && 条.path === '/api/v1/me/resume/educations',
     );
@@ -15744,7 +15819,8 @@ test.describe('catalog-fullscreen 候选侧三入口 @backend', () => {
     expect(教育写入[0]!.body).toMatchObject({ institution_id: 'inst-fixture-001', major_id: 'major-fixture-001' });
 
     // ── 经历「所属行业」：先填其它字段 → 取消零写 → 重开下钻选叶子 → 按 ID 保存 ──
-    await page.goto('/#/experience');
+    await page.getByRole('button').filter({ hasText: 'Fixture 大学' }).first().click();
+    await expect(page).toHaveURL(/#\/experience\?from=resume$/, { timeout: 15_000 });
     await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: '＋ 添加工作经历' }).click();
     await expect(page.getByPlaceholder('必填')).toHaveCount(1);
@@ -15769,13 +15845,14 @@ test.describe('catalog-fullscreen 候选侧三入口 @backend', () => {
     await 行业层.getByRole('button', { name: '银行支付', exact: true }).click();
     await expect(行业层).toHaveCount(0);
     await expect(page.getByRole('button', { name: /所属行业/ })).toContainText('银行支付');
-    // 入职年月 → 完成 → 保存：experience POST 的 industry_id 是所点叶子的原目录 ID
+    // 入职年月 → 完成 → 保存：experience POST 的 industry_id 是所点叶子的原目录 ID，
+    // 编辑入口带 from=resume：整页保存落点是我的简历
     await page.getByRole('button', { name: '入职年月' }).click();
     await page.getByRole('dialog').getByRole('button', { name: '确定' }).click();
     await page.getByRole('button', { name: '完成', exact: true }).click();
     await expect(page.getByText(/银行支付/).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page).toHaveURL(/#\/wizard$/, { timeout: 20_000 });
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
     const 经历写入 = fixture.mutations.filter(
       (条) => 条.method === 'POST' && 条.path === '/api/v1/me/resume/experiences',
     );

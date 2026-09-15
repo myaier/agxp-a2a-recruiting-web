@@ -590,6 +590,59 @@ describe('应用路由：候选 onboarding 预填恢复与退出清理（Task 7�
     await waitFor(() => expect(值.操作.清候选Onboarding预填).toHaveBeenCalledTimes(2));
   });
 
+  // 简历编辑显式来源（Task 1）：同 pathname 从无参数切到 from=resume 时，活跃判定必须
+  // 吃到完整位置（pathname+search）—— 否则已退出的引导状态被资料编辑路径重新当作活跃
+  //（不清理、建档位置还被继续写入）。这里钉调用方接线，防止只改纯函数却漏改 应用.tsx。
+  it('同 pathname 从无参数切到 from=resume：退出引导清理执行、编辑位置不再写入建档', async () => {
+    const 值 = 候选后端应用值({
+      Onboarding: Onboarding未完成('candidate'),
+      候选预填状态: ready预填轮(),
+    });
+    mock应用状态.mockReturnValue({
+      ...值,
+      状态: {
+        ...初始状态,
+        引导预填: {
+          城市们: ['上海市'],
+          职位: ['产品经理'],
+          建档: { 资料: { 个人优势: '一半' } },
+        },
+      } as never,
+    });
+    const 探针 = () => {
+      const 导航 = useNavigate();
+      return (
+        <button type="button" onClick={() => 导航(`${路径.基本信息}?from=resume`)}>
+          探针-带编辑标记进基本信息
+        </button>
+      );
+    };
+    render(
+      <MemoryRouter initialEntries={[路径.基本信息]}>
+        <应用 />
+        <探针 />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:基本信息')).toBeTruthy());
+    // 无参数 /basic 仍是注册会话内：位置照常写入、不做离开清理
+    await waitFor(() => expect(值.操作.更新候选建档草稿).toHaveBeenCalledWith(expect.objectContaining({
+      位置: { pathname: 路径.基本信息, search: '' },
+    })));
+    expect(值.操作.清候选Onboarding预填).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: '探针-带编辑标记进基本信息' }));
+    // pathname 未变、只多了编辑标记：不再算注册会话 —— 退出引导清理必须执行
+    await waitFor(() => expect(值.操作.清候选Onboarding预填).toHaveBeenCalledTimes(1));
+    // 编辑位置不再写入建档位置：所有位置写入都停在无参数那次
+    const 位置写入 = 值.操作.更新候选建档草稿.mock.calls.filter(
+      ([草稿]) => (草稿 as { 位置?: unknown } | undefined)?.位置 !== undefined,
+    );
+    expect(位置写入.length).toBeGreaterThan(0);
+    for (const [草稿] of 位置写入) {
+      expect((草稿 as { 位置: { search: string } }).位置.search).not.toContain('from=resume');
+    }
+  });
+
   it.each([
     ['薪资段', 路径.引导问答薪资段, '屏幕:引导问答'],
     ['求职状态', 路径.求职状态, '屏幕:求职状态'],

@@ -7,12 +7,14 @@
 // 在新流程里的唯一采集口（原 基本信息 屏的身份快捷片已删）。
 
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import 样式 from './入职引导.module.css';
 import { 次级页外壳, 返回栏, 页面大标题, 主按钮, 滚动区 } from '../组件/通用';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
+import { 带简历编辑标记 } from '../流程/候选Onboarding预填边界';
 import { 并入建档草稿 } from '../流程/onboarding配置';
 import { 路径 } from '../路由/路径表';
 
@@ -41,10 +43,15 @@ export default function 求职状态() {
   const { 跳转, 返回 } = use导航();
   const { 状态: 全局, 派发, 操作, 数据源模式 } = use应用状态();
   const 是后端 = 数据源模式 === 'backend';
+  // 日常编辑标记（简历编辑显式来源，Task 1）：基本信息 空身份的编辑收口把人送到这里时
+  // 带着它。编辑模式保存成功只回我的简历，在派发到岗预填之前结束，零分区确认零建档草稿。
+  const [查询参数] = useSearchParams();
+  const 来自简历 = 带简历编辑标记(查询参数.toString());
   // J-PILOT-02 Task 4：/basic 的姓名/生日在空身份那一步没有发过 profile —— 刷新后
   // 它们只在建档草稿里。身份在这一屏收口，profile 写入必须带上草稿里的那几项。
-  // 旅程标记见 基本信息.tsx：日常编辑进不到这一屏，但判据保持同一套，不留第二种口径
-  const 旅程中 = 是后端 && 全局.引导预填 !== null;
+  // 旅程标记见 基本信息.tsx：编辑标记优先于 引导预填 非空 —— 带 from=resume 的保存
+  // 绝不算注册旅程，判据仍保持同一套，不留第二种口径
+  const 旅程中 = 是后端 && 全局.引导预填 !== null && !来自简历;
   const 建档 = 旅程中 ? 全局.引导预填?.建档 : undefined;
   const 草稿基本 = 建档?.资料?.基本信息;
   const 在校中 = (草稿基本?.身份 ?? 全局.基本信息.身份) === '在校';
@@ -80,6 +87,12 @@ export default function 求职状态() {
       });
     } catch (错误) {
       轻提示(取后端错误文案(错误));
+      return;
+    }
+    if (来自简历) {
+      // 日常编辑（简历编辑显式来源）：保存成功即收口，在派发到岗预填之前结束；
+      // 分区确认仅注册旅程执行，编辑模式零确认
+      跳转(路径.我的简历);
       return;
     }
     if (进入时空身份) 操作.确认候选Onboarding预填分区('basic');
@@ -125,7 +138,7 @@ export default function 求职状态() {
         </div>
       </滚动区>
 
-      <主按钮 文字="下一步" 按下={下一步} />
+      <主按钮 文字={来自简历 ? '保存' : '下一步'} 按下={下一步} />
     </次级页外壳>
   );
 }

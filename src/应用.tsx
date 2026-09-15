@@ -341,10 +341,13 @@ export default function 应用() {
     && 后端状态.初始化 === '完成'
     && 后端状态.已登录
     && 后端状态.主体?.last_used_role === 'candidate';
+  // 活跃判定的路由身份是完整位置（pathname+search）：向导段与日常编辑标记（from=resume）
+  // 都写在 query 上，只看 pathname 会把 /basic?from=resume 的编辑位置误判成注册会话。
+  const 完整位置 = `${位置.pathname}${位置.search}`;
   const 已清理路径引用 = useRef<string | null>(null);
   useEffect(() => {
     if (!预填清理就绪) return;
-    if (是活跃Onboarding位置(位置.pathname) || 候选主壳落点重定向) {
+    if (是活跃Onboarding位置(完整位置) || 候选主壳落点重定向) {
       // codex review-r1 P2：进入（或回到）活跃集合时复位栅栏 —— 下一次「活跃→非活跃」
       // 转移必须再清一次。否则清过 /app 后重进 onboarding 激活新轮、再退回 /app 时，
       // 路径相同被去重跳过，新 suggestion 与恢复元数据会活到刷新。
@@ -353,12 +356,12 @@ export default function 应用() {
       已清理路径引用.current = null;
       return;
     }
-    if (已清理路径引用.current === 位置.pathname) return;
-    已清理路径引用.current = 位置.pathname;
+    if (已清理路径引用.current === 完整位置) return;
+    已清理路径引用.current = 完整位置;
     操作.清候选Onboarding预填();
     // 操作 由 Provider 的 useMemo 保持稳定；后端状态刻意不进依赖（清理写状态会回环）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [预填清理就绪, 位置.pathname, 操作]);
+  }, [预填清理就绪, 完整位置, 操作]);
 
   // ── J-PILOT-02 Task 9：候选 onboarding 回访落点（Spec §6 回访按事实分流）──
   // 旅程未完成的事实只由建档草稿表达（无客户端「completed」假服务端标记）：Backend
@@ -372,7 +375,7 @@ export default function 应用() {
     && 状态.引导预填?.建档 !== undefined;
   useEffect(() => {
     if (!建档在场) return;
-    if (!是活跃Onboarding位置(位置.pathname)) return;
+    if (!是活跃Onboarding位置(完整位置)) return;
     const 建档 = 状态.引导预填?.建档;
     const 现有 = 建档?.位置;
     if (现有?.pathname === 位置.pathname && 现有?.search === 位置.search) return;
@@ -382,7 +385,7 @@ export default function 应用() {
     // 操作 由 Provider 的 useMemo 保持稳定；草稿对象只作比较输入（比较守卫防回环），
     // 刻意不进依赖表。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [建档在场, 位置.pathname, 位置.search, 操作]);
+  }, [建档在场, 完整位置, 操作]);
 
   // ── Backend 角色路由边界（前端真实性修复 Plan 1）──────────────────
   // 初始化完成且已登录后，在 <Routes> 挂载前同步判角色：错误角色的业务组件
@@ -475,7 +478,7 @@ export default function 应用() {
   // 恢复出口不在拦截集合内，切换身份与登出的既有路径不受影响。
   const 回访重定向 = 建档在场
     && Onboarding分流?.型 === '未完成'
-    && !是活跃Onboarding位置(位置.pathname)
+    && !是活跃Onboarding位置(完整位置)
     && (位置.pathname === 路径.主壳
       || 位置.pathname === 路径.登录
       || 位置.pathname === 路径.初始化)

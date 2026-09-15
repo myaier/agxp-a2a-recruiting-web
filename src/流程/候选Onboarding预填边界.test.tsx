@@ -190,6 +190,16 @@ describe('消费位置判定（向导段写在 query 上，消费必须看 searc
       expect(是预填消费位置(站, '')).toBe(false);
     }
   });
+
+  // 简历编辑显式来源（Task 1）：from=resume 是唯一日常编辑标记 —— 带它进来的资料页
+  // 属日常简历域，刷新也不恢复建议（否则我的简历进来的编辑表单会被附件建议种入）。
+  it('编辑标记优先：带 from=resume 的完整位置不消费建议', () => {
+    expect(是预填消费位置(路径.基本信息, '?from=resume')).toBe(false);
+    expect(是预填消费位置(路径.工作经历, '?from=resume')).toBe(false);
+    expect(是预填消费位置(路径.引导问答, '?stage=preference&from=resume')).toBe(false);
+    // 其余 query 不受影响：无标记的消费页照旧消费
+    expect(是预填消费位置(路径.引导问答, '?stage=preference')).toBe(true);
+  });
 });
 
 describe('活跃 Onboarding 集合：以 Onboarding流程 为唯一事实源', () => {
@@ -214,6 +224,21 @@ describe('活跃 Onboarding 集合：以 Onboarding流程 为唯一事实源', (
     for (const 站 of [路径.主壳, 路径.登录, 路径.选身份, 路径.设置, 路径.我的简历, 路径.企业主壳]) {
       expect(是活跃Onboarding位置(站)).toBe(false);
     }
+  });
+
+  // 简历编辑显式来源（Task 1）：完整位置带 from=resume 时不再算注册会话 ——
+  // 否则我的简历进来的编辑位置会被 应用 的离开清理/建档位置记录当成 onboarding 活跃。
+  it('编辑标记优先：带 from=resume 的完整位置不活跃，原无参数结果保留', () => {
+    expect(是活跃Onboarding位置(`${路径.基本信息}?from=resume`)).toBe(false);
+    expect(是活跃Onboarding位置(`${路径.工作经历}?from=resume`)).toBe(false);
+    expect(是活跃Onboarding位置(`${路径.求职状态}?from=resume`)).toBe(false);
+    expect(是活跃Onboarding位置(`${路径.引导问答}?stage=salary&from=resume`)).toBe(false);
+    // 原无参数结果不变
+    expect(是活跃Onboarding位置(路径.基本信息)).toBe(true);
+    expect(是活跃Onboarding位置(路径.引导问答薪资段)).toBe(true);
+    expect(是活跃Onboarding位置(路径.主壳)).toBe(false);
+    // 同名 query 在白名单外路径上依旧不活跃（不因标记改变白名单判定）
+    expect(是活跃Onboarding位置(`${路径.主壳}?from=resume`)).toBe(false);
   });
 });
 

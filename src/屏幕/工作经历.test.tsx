@@ -52,12 +52,12 @@ const 简历经历初始 = [
 // reducer 换新对象后的渲染），否则物化种入后受控列表不更新、卡片不出现。
 let 触发重渲染: (() => void) | null = null;
 
-function 宿主() {
+function 宿主({ 入口 }: { 入口?: string } = {}) {
   const [, 设代] = useState(0);
   // 渲染期登记（早于子组件的 useLayoutEffect 种入派发）；设代 在同一挂载内稳定
   触发重渲染 = () => 设代((代) => 代 + 1);
   return (
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[入口 ?? '/experience']}>
       <工作经历 />
     </MemoryRouter>
   );
@@ -80,6 +80,8 @@ function render工作经历(选项: {
   作品集链接?: string;
   /** J-PILOT-02 Task 4：会话恢复出的建档草稿（更新回写同一对象并重渲染，贴近 Provider）*/
   建档?: 候选引导建档草稿;
+  /** 简历编辑显式来源（Task 1）：带 from=resume 的入口（编辑模式用例） */
+  入口?: string;
 }) {
   const 数据源 = 选项.数据源 ?? 'backend';
   mock应用状态 = {
@@ -134,7 +136,7 @@ function render工作经历(选项: {
       }),
     },
   };
-  const 视图 = render(<宿主 />);
+  const 视图 = render(<宿主 入口={选项.入口} />);
   return {
     派发: mock应用状态.派发 as ReturnType<typeof vi.fn>,
     重渲染: () => 触发重渲染?.(),
@@ -605,6 +607,60 @@ describe('工作经历 保存 single-flight', () => {
     const 恢复键 = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
     expect(恢复键.disabled).toBe(false);
     expect(恢复键.textContent).toBe('保存');
+  });
+});
+
+// ── 简历编辑显式来源（Task 1）：from=resume 是唯一日常编辑标记 ──
+// 我的简历 → 在线简历 的日常编辑：保存成功只回我的简历（学生/社招一致），旅程判定为
+// false（编辑标记赢过 引导预填：零建档草稿、零分区确认），失败留页，零建议物化。
+describe('工作经历 · 简历编辑来源（from=resume）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+    mock确认分区.mockClear();
+    mock更新草稿.mockClear();
+  });
+
+  it('社招编辑：保存成功只回我的简历，零分区确认零建档草稿', async () => {
+    // 建档在场：证明编辑标记赢过 引导预填 非空 —— 旅程判定必须为 false
+    render工作经历({ 建档: { 资料: { 个人优势: '旧' } }, 入口: '/experience?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('简历已保存'));
+    expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.引导问答);
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.求职状态);
+    expect(mock确认分区).not.toHaveBeenCalled();
+    expect(mock更新草稿).not.toHaveBeenCalled();
+  });
+
+  it('学生编辑：保存成功同样只回我的简历（不进求职状态）', async () => {
+    render工作经历({
+      基本信息: { 真名: '沈', 开始工作年: '', 身份: '在校' },
+      入口: '/experience?from=resume',
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('简历已保存'));
+    expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.求职状态);
+    expect(mock确认分区).not.toHaveBeenCalled();
+  });
+
+  it('保存失败：轻提示并留在本页，零分区确认零跳转', async () => {
+    const 保存简历 = vi.fn(async () => { throw new Error('网络失败'); });
+    render工作经历({ 保存简历, 入口: '/experience?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock确认分区).not.toHaveBeenCalled();
+  });
+
+  it('编辑模式零建议物化：ready 轮在场也不写根草稿', () => {
+    const { 派发 } = render工作经历({ 预填: readyWork(), ...空列表页(), 入口: '/experience?from=resume' });
+    expect(存简历调用们(派发)).toHaveLength(0);
   });
 });
 

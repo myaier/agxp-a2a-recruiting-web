@@ -773,7 +773,7 @@ describe('我的简历 · 空身份展示与姓名门（M）', () => {
     expect(result.待补全.some((项) => /当前状态/.test(项.文案))).toBe(true);
   });
 
-  it('空身份尝试改名：提示「请先选择求职状态」并跳求职状态，零保存', async () => {
+  it('空身份尝试改名：提示「请先选择求职状态」并跳带编辑标记的求职状态，零保存', async () => {
     render我的简历({ mode: 'backend', 基本信息: { 身份: '' } });
     await userEvent.click(screen.getByRole('button', { name: /姓名（递交简历后披露）/ }));
     const 输入 = screen.getByLabelText('姓名（递交简历后披露）');
@@ -781,7 +781,33 @@ describe('我的简历 · 空身份展示与姓名门（M）', () => {
     await userEvent.type(输入, '新名字');
     await userEvent.tab(); // blur → 保存姓名
     expect(mock操作.保存简历).not.toHaveBeenCalled();
-    expect(mock跳转).toHaveBeenCalledWith(路径.求职状态);
+    expect(mock跳转).toHaveBeenCalledWith(`${路径.求职状态}?from=resume`);
+  });
+});
+
+// ── 简历编辑显式来源（Task 1）：本页是三个资料编辑屏的唯一日常入口，全部带 from=resume
+//（保存后只回本页）；显式添加意向入口有自己的旅程，不带该参数。──
+describe('我的简历 · 编辑入口带 from=resume', () => {
+  it('基本信息/工作经历/求职状态行与完整度跳转全部带编辑标记', async () => {
+    render我的简历({ mode: 'backend', 基本信息: { 身份: '' } });
+    await userEvent.click(screen.getByText('工作年限'));
+    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.基本信息}?from=resume`);
+    await userEvent.click(screen.getByText('当前状态'));
+    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.基本信息}?from=resume`);
+    await userEvent.click(screen.getByText('最高学历'));
+    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.工作经历}?from=resume`);
+    // 完整度检查行：展开后点「当前状态还没选择」→ 求职状态同样带标记
+    //（摘要与详情行同文案：第一处是 诊断条 摘要 span，最后一个是可点详情行）
+    await userEvent.click(screen.getByRole('button', { name: '去补全' }));
+    const 同文节点 = screen.getAllByText('待补全 · 当前状态还没选择');
+    await userEvent.click(同文节点[同文节点.length - 1]);
+    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.求职状态}?from=resume`);
+  });
+
+  it('显式添加意向入口不带编辑标记', async () => {
+    render我的简历({ mode: 'backend' });
+    await userEvent.click(screen.getByText('还可以再加一个求职意向'));
+    expect(mock跳转).toHaveBeenLastCalledWith(路径.添加意向);
   });
 });
 

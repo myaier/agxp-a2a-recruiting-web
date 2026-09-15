@@ -18,6 +18,7 @@
 // 不新增任何提示节点；确认 work 分区只在既有保存成功后。
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import 样式 from './工作经历.module.css';
 import 年月滚轮层 from '../组件/年月滚轮层';
 // Task 5（core editors §5.2）：教育 学校/专业 候选行共用组件；Task 2（editor-catalog-fullscreen）
@@ -46,6 +47,7 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 并入建档草稿, 教育段缺项, 规范化作品集链接, 校验作品集链接, 校验起止年月 } from '../流程/onboarding配置';
 import { 取工作页预填, 数未完成项 } from '../流程/候选Onboarding简历预填';
+import { 带简历编辑标记 } from '../流程/候选Onboarding预填边界';
 import { 创建空候选预填状态 } from '../状态/后端/类型';
 import type { 建档编辑中草稿, 建档条目种类, 建档明确删除条目, 候选引导建档草稿 } from '../数据/资料缓存';
 import type { 目录选择值, 目录页 } from '../数据/招聘数据源类型';
@@ -99,7 +101,11 @@ export default function 工作经历() {
   // 只有注册旅程（引导预填 非 null，由 学生分流 的 启程引导 在进旅程前派发）才碰草稿：
   // 日常编辑一旦落下草稿，简历域保存 就从「非 onboarding 原路径」切到单槽 + 缺项保护
   // 那条，删除会被原样带回、教育门槛会误伤「至今在读」，那是改日常编辑业务。
-  const 旅程中 = 是后端 && 全局.引导预填 !== null;
+  // 简历编辑显式来源（Task 1）：入口带的 from=resume 是编辑模式的唯一判据，优先于
+  // 引导预填 非空 —— 编辑模式保存只回我的简历，零建档草稿零分区确认。
+  const [查询参数] = useSearchParams();
+  const 来自简历 = 带简历编辑标记(查询参数.toString());
+  const 旅程中 = 是后端 && 全局.引导预填 !== null && !来自简历;
   const 建档 = 旅程中 ? 全局.引导预填?.建档 : undefined;
   // 学生分支（身份来自学生分流屏）：教育置顶，工作经历段改叫「实习经历」
   const 在校中 = (建档?.资料?.基本信息?.身份 ?? 全局.基本信息.身份) === '在校';
@@ -220,8 +226,9 @@ export default function 工作经历() {
   // 候选 onboarding 预填（Spec §8 /experience）：首挂载同步用 取工作页预填 算一次 ——
   // manual/inactive/已确认轮返回页面现值（四个列表原引用），只有真物化才换新数组。
   // 物化条目与手建条目走同一条 存简历 通道进根草稿：列表数据本就来自全局（2026-08-18）。
+  // 编辑模式传 pristine 空轮：建议只在注册旅程物化，编辑路径零建议写入（刷新同此）。
   const [工作页预填] = useState(() =>
-    取工作页预填(后端状态?.候选预填状态 ?? 创建空候选预填状态(), {
+    取工作页预填(来自简历 ? 创建空候选预填状态() : (后端状态?.候选预填状态 ?? 创建空候选预填状态()), {
       experiences: 经历列表,
       educations: 教育列表,
       skills: 技能列表,
@@ -329,9 +336,14 @@ export default function 工作经历() {
       });
       // 成功后取权威回显并清意图；失败不清，输入保留供显式重试
       设链接意图(undefined);
-      // 预填确认只在既有保存成功后（拒绝时分区不确认），且先于提示与跳转
-      操作.确认候选Onboarding预填分区('work');
+      // 分区确认仅注册旅程执行（编辑模式零确认），且先于提示与跳转
+      if (!来自简历) 操作.确认候选Onboarding预填分区('work');
       轻提示('简历已保存');
+      // 日常编辑保存成功只回我的简历，不接注册流后续屏
+      if (来自简历) {
+        跳转(路径.我的简历);
+        return;
+      }
       跳转(在校中 ? 路径.求职状态 : 路径.引导问答);
     } catch (错误) {
       轻提示(取后端错误文案(错误));

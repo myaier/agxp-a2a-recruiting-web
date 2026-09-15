@@ -37,8 +37,21 @@ const 消费预填路径 = new Set<string>([
   路径.工作经历,
 ]);
 
-/** 该位置是否会消费 suggestion：路由身份必须含 search —— 向导段写在 query 上。 */
+/** 日常编辑标记（简历编辑显式来源，Task 1）：我的简历 的基本信息／工作经历／求职状态
+ *  全部入口在地址上带它，是「这次编辑只服务简历域」的唯一标记 —— 保存后只回我的简历，
+ *  不写建档草稿、不确认分区、不派发到岗预填。查询串保持 ASCII（URL 参数既有约定）。 */
+export const 简历编辑查询 = 'from=resume';
+
+/** 该 search 是否带日常编辑标记。三个资料屏、应用 的活跃判定与预填边界共用同一判据，
+ *  不允许第二种口径（比如拿 引导预填 非空去推断编辑来源）。 */
+export function 带简历编辑标记(search: string): boolean {
+  return new URLSearchParams(search).get('from') === 'resume';
+}
+
+/** 该位置是否会消费 suggestion：路由身份必须含 search —— 向导段写在 query 上。
+ *  带日常编辑标记的完整位置绝不消费（从我的简历进来的编辑刷新后也不恢复建议）。 */
 export function 是预填消费位置(pathname: string, search: string): boolean {
+  if (带简历编辑标记(search)) return false;
   if (消费预填路径.has(pathname)) return true;
   return pathname === 路径.引导问答 && 读向导段(new URLSearchParams(search).get(向导段参数名)) === '偏好段';
 }
@@ -63,9 +76,13 @@ const 活跃Onboarding路径 = new Set<string>(
 
 /**
  * 该位置是否仍在候选注册会话内。向导两段（含薪资段）都在合同里，活跃与否不看
- * query —— query 只决定消费（上面的段判定）；离开集合的位置由 应用.tsx 清理。
+ * query —— 唯一例外是日常编辑标记：带 from=resume 的完整位置（如 /basic?from=resume）
+ * 属简历域，绝不是注册会话；否则已退出的引导状态会被资料编辑路径重新当作活跃。
+ * 其余离开集合的位置由 应用.tsx 清理。
  */
 export function 是活跃Onboarding位置(路径串: string): boolean {
+  const 位 = 路径串.indexOf('?');
+  if (位 !== -1 && 带简历编辑标记(路径串.slice(位))) return false;
   return 活跃Onboarding路径.has(剥问号(路径串));
 }
 

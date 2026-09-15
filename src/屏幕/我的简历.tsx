@@ -17,6 +17,7 @@ import type { 滑动操作 } from '../组件/滑动行';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
+import { 简历编辑查询 } from '../流程/候选Onboarding预填边界';
 import { use应用状态 } from '../状态/应用状态';
 import { 附件错误文案, 附件状态文案, 校验附件PDF } from '../流程/附件简历交互';
 import { use附件简历刷新 } from '../流程/附件简历刷新';
@@ -45,6 +46,13 @@ const 状态文案: Record<基本信息类型['身份'], string> = {
 export interface 完整度项 {
   文案: string;
   去处: string;
+}
+
+/** 日常编辑入口（简历编辑显式来源，Task 1）：本页是基本信息／工作经历／求职状态三屏的
+ *  唯一日常编辑入口，全部地址带 from=resume —— 目标屏据此走编辑分支（保存只回本页，
+ *  零建档草稿／分区确认／到岗预填）。显式添加意向入口有自己的旅程，不带该参数。 */
+function 编辑入口(目标: string): string {
+  return `${目标}?${简历编辑查询}`;
 }
 
 /**
@@ -261,7 +269,7 @@ export default function 我的简历() {
     // M：姓名走 profile 分区，身份未定时先去状态页收口，不靠数据源「跳过 profile」假装保存成功
     if (数据源模式 === 'backend' && 基本.身份 === '') {
       轻提示('请先选择求职状态');
-      跳转(路径.求职状态);
+      跳转(编辑入口(路径.求职状态));
       return;
     }
     try {
@@ -521,7 +529,7 @@ export default function 我的简历() {
               <button
                 key={条.键}
                 className={`${样式.诊断项} 可点`}
-                onClick={() => 跳转(条.去处)}
+                onClick={() => 跳转(编辑入口(条.去处))}
               >
                 <span className={样式.诊断项文}>{条.文案}</span>
                 <span className={样式.诊断项去}>{条.行尾}</span>
@@ -556,17 +564,17 @@ export default function 我的简历() {
                       ? '未填写'
                       : `${折算年限} 年 · 自 ${基本.开始工作年} 年起`
                 }
-                按下={() => 跳转(路径.基本信息)}
+                按下={() => 跳转(编辑入口(路径.基本信息))}
               />
               <表单条目
                 标签="最高学历"
                 值={教育列表[0] ? `${教育列表[0].学历} · ${教育列表[0].专业}` : '未填'}
-                按下={() => 跳转(路径.工作经历)}
+                按下={() => 跳转(编辑入口(路径.工作经历))}
               />
               <表单条目
                 标签="当前状态"
                 值={状态文案[基本.身份]}
-                按下={() => 跳转(路径.基本信息)}
+                按下={() => 跳转(编辑入口(路径.基本信息))}
               />
             </div>
           </div>
@@ -578,7 +586,7 @@ export default function 我的简历() {
               <button
                 key={条.编号}
                 className={`${样式.经历行} ${序 === 经历列表.length - 1 ? 样式.末行 : ''} 可点`}
-                onClick={() => 跳转(路径.工作经历)}
+                onClick={() => 跳转(编辑入口(路径.工作经历))}
               >
                 <span className={样式.经历主体}>
                   <span className={样式.经历公司}>{条.公司}</span>
@@ -612,7 +620,7 @@ export default function 我的简历() {
               <button
                 key={条.编号}
                 className={`${样式.经历行} ${序 === 教育列表.length - 1 ? 样式.末行 : ''} 可点`}
-                onClick={() => 跳转(路径.工作经历)}
+                onClick={() => 跳转(编辑入口(路径.工作经历))}
               >
                 <span className={样式.经历主体}>
                   <span className={样式.经历公司}>{条.学校}</span>
@@ -633,7 +641,7 @@ export default function 我的简历() {
             <div className={样式.卡标题}>专业技能</div>
             <button
               className={`${样式.标签行} 可点`}
-              onClick={() => 跳转(路径.工作经历)}
+              onClick={() => 跳转(编辑入口(路径.工作经历))}
             >
               {技能列表.length > 0 ? (
                 <span className={样式.标签组}>
@@ -658,7 +666,7 @@ export default function 我的简历() {
                 <button
                   key={条.编号}
                   className={`${样式.经历行} ${序 === 证书列表.length - 1 ? 样式.末行 : ''} 可点`}
-                  onClick={() => 跳转(路径.工作经历)}
+                  onClick={() => 跳转(编辑入口(路径.工作经历))}
                 >
                   <span className={样式.经历主体}>
                     <span className={样式.证书名}>{条.名称}</span>
@@ -672,7 +680,7 @@ export default function 我的简历() {
             ) : (
               <button
                 className={`${样式.标签行} 可点`}
-                onClick={() => 跳转(路径.工作经历)}
+                onClick={() => 跳转(编辑入口(路径.工作经历))}
               >
                 <span className={样式.空态}>还没填证书，去添加</span>
                 <span className={样式.尖括号}>›</span>
