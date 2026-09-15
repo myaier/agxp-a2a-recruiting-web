@@ -295,6 +295,55 @@ describe('use期望职位目录 自动分组', () => {
     expect(查询.mock.calls.filter((调用) => (调用[1] as { parentId?: string }).parentId === 'tax_g1')).toHaveLength(1);
   });
 
+  // review-r1 F6：根加载更多换版且新版不含当前根 —— 旧二级/三级立即消失，按新首根重载
+  it('根加载更多换版且新版不含当前根：右视图重置并按新首根重载', async () => {
+    const 查询 = 桩(async (
+      _kind: string,
+      query: { parentId?: string; q?: string; cursor?: string },
+      选项?: { 强制刷新?: boolean },
+    ) => {
+      if (!query.parentId && !query.cursor && 选项?.强制刷新) {
+        return 页([节点('tax_z', '新大类', { has_children: true })], null, 'v2');
+      }
+      if (!query.parentId && query.cursor === 'root_c1') {
+        return 页([节点('tax_z_old', '旧版新根', { has_children: true })], null, 'v2');
+      }
+      if (!query.parentId && !query.cursor) {
+        return 页([节点('tax_a', '旧根', { has_children: true })], 'root_c1', 'v1');
+      }
+      if (query.parentId === 'tax_a') {
+        return 页([节点('tax_a_g', '旧组', { parent_id: 'tax_a', has_children: true })]);
+      }
+      if (query.parentId === 'tax_a_g') {
+        return 页([节点('tax_a_l', '旧叶子', { parent_id: 'tax_a_g', selectable: true })]);
+      }
+      if (query.parentId === 'tax_z') {
+        return 页([节点('tax_z_g', '新组', { parent_id: 'tax_z', has_children: true })]);
+      }
+      if (query.parentId === 'tax_z_g') {
+        return 页([节点('tax_z_l', '新叶子', { parent_id: 'tax_z_g', selectable: true })]);
+      }
+      return 页([]);
+    });
+    const 视图 = renderHook(() => use期望职位目录({ 查询: 查询, 搜索词: '', 已选键们: [] }));
+    await waitFor(() => expect(组项名们(视图.result.current.组们, '旧组')).toEqual(['旧叶子']));
+    await act(async () => {
+      视图.result.current.根尾态.加载更多();
+    });
+    await waitFor(() => {
+      // 换版重开：新版不含旧根 tax_a → 右视图按新首根重载，旧组/旧叶子不再出现
+      expect(标题们(视图.result.current)).toEqual(['新组']);
+      expect(组项名们(视图.result.current.组们, '新组')).toEqual(['新叶子']);
+    });
+    expect(组项名们(视图.result.current.组们, '旧组')).toEqual([]);
+    expect(视图.result.current.根项们.find((项) => 项.键 === 'tax_z')?.选中).toBe(true);
+    expect(
+      查询.mock.calls.some(
+        (调用) => ((调用 as unknown[])[2] as { 强制刷新?: boolean } | undefined)?.强制刷新 === true,
+      ),
+    ).toBe(true);
+  });
+
   it('按键取项按 ID 返回真实目录项（同名组/叶子以 ID 区分）', async () => {
     const 查询 = 三级查询桩();
     const 视图 = await 挂载到三级(查询);
@@ -372,17 +421,23 @@ describe('use期望职位目录 搜索', () => {
     expect(产品经理组们[0]?.项们.map((项) => 项.键)).toEqual(['tax_leaf_ai']);
   });
 
-  it('搜索直接结果组追加：第 2 页只进可选叶子，非可选命中不渲染成禁用职位卡', async () => {
+  // review-r1 F4：追加页沿用首页分类口径 —— 第 2 页非可选命中出现为同名标题组且
+  // 其可选子项可加载，仍不渲染成禁用职位卡（原「页 2 命中组从简不补建」断言与
+  // 冻结 Plan 冲突：分类逻辑适用于全部页，已按新口径改写）
+  it('搜索直接结果组追加：第 2 页非可选命中出现为标题组且可选子项可加载', async () => {
     const 查询 = 桩(async (_kind, query) => {
       if (query.q === '产品' && query.cursor === 's_c1') {
         return 页([
           节点('tax_p2_leaf', '产品二页', { selectable: true }),
-          // 第 2 页的非可选命中：与首页同口径 —— 只能作组标题，不能变成禁用职位卡
-          节点('tax_p2_group', '产品组', { has_children: true }),
+          // 第 2 页的非可选命中：与首页同口径 —— 成组标题并展开子项，不变禁用职位卡
+          节点('tax_p2_group', '产品组', { parent_id: 'tax_root_p', has_children: true }),
         ], null);
       }
       if (query.q === '产品') {
         return 页([节点('tax_p1_leaf', '产品一页', { selectable: true })], 's_c1');
+      }
+      if (query.parentId === 'tax_p2_group') {
+        return 页([节点('tax_p2_child', '产品组子项', { parent_id: 'tax_p2_group', selectable: true })]);
       }
       return 页([]);
     });
@@ -390,17 +445,49 @@ describe('use期望职位目录 搜索', () => {
     await waitFor(() => expect(组项名们(视图.result.current.组们, '')).toEqual(['产品一页']));
     const 直接组 = 视图.result.current.组们.find((组) => 组.标题 === '');
     expect(直接组?.尾态.还有).toBe(true);
-    // 加载更多：追加页只并入可选叶子
     await act(async () => {
       直接组?.尾态.加载更多();
     });
-    await waitFor(() => expect(组项名们(视图.result.current.组们, '')).toEqual(['产品一页', '产品二页']));
+    await waitFor(() => {
+      expect(组项名们(视图.result.current.组们, '')).toEqual(['产品一页', '产品二页']);
+      // 第 2 页非可选命中出现为标题组，其可选子项已自动加载
+      expect(组项名们(视图.result.current.组们, '产品组')).toEqual(['产品组子项']);
+    });
     const 直接组2 = 视图.result.current.组们.find((组) => 组.标题 === '');
-    // 非可选命中不以禁用卡出现在直接结果组，也不新建命中组（页 2 命中组从简不补建）
+    // 非可选命中不以禁用卡出现在直接结果组
     expect(直接组2?.项们.map((项) => 项.键)).toEqual(['tax_p1_leaf', 'tax_p2_leaf']);
-    expect(视图.result.current.组们.filter((组) => 组.标题 === '产品组')).toHaveLength(0);
+    expect(直接组2?.项们.every((项) => !项.禁用)).toBe(true);
     // 追加后游标已尽，不再有下一页
     expect(直接组2?.尾态.还有).toBe(false);
+  });
+
+  // review-r1 F4 补充：第 1 页可选叶子、第 2 页命中的根（parent_id 空）——
+  // 加载更多后出现父标题组，自动查二级再查三级，可选子项呈现
+  it('搜索追加页命中的根自动查二级再查三级，出现标题组及其可选子项', async () => {
+    const 查询 = 桩(async (_kind, query) => {
+      if (query.q === '产品' && query.cursor === 's_c1') {
+        return 页([节点('tax_p2_root', '游戏', { parent_id: null, has_children: true })], null);
+      }
+      if (query.q === '产品') {
+        return 页([节点('tax_p1_leaf', '产品一页', { selectable: true })], 's_c1');
+      }
+      if (query.parentId === 'tax_p2_root') {
+        return 页([节点('tax_p2_group', '电竞', { parent_id: 'tax_p2_root', has_children: true })]);
+      }
+      if (query.parentId === 'tax_p2_group') {
+        return 页([节点('tax_p2_leaf', '电竞选手', { parent_id: 'tax_p2_group', selectable: true })]);
+      }
+      return 页([]);
+    });
+    const 视图 = renderHook(() => use期望职位目录({ 查询: 查询, 搜索词: '产品', 已选键们: [] }));
+    await waitFor(() => expect(组项名们(视图.result.current.组们, '')).toEqual(['产品一页']));
+    await act(async () => {
+      视图.result.current.组们.find((组) => 组.标题 === '')?.尾态.加载更多();
+    });
+    await waitFor(() => {
+      expect(组项名们(视图.result.current.组们, '游戏')).toEqual(['电竞选手']);
+    });
+    expect(组项名们(视图.result.current.组们, '')).toEqual(['产品一页']);
   });
 
   it('清空搜索恢复最近根且旧搜索响应不回写；快速换词旧词结果作废', async () => {
