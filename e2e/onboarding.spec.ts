@@ -121,7 +121,22 @@ test.describe('multi-role onboarding', () => {
 
     await expect(page).toHaveURL(/#\/wizard$/);
     await expect(page.getByRole('heading', { name: '期望实习日薪是？' })).toBeVisible();
-    await expect(page.getByRole('listbox', { name: '最低日薪' })).toBeVisible();
+    // bottom-drawer 统一 Task 5：页内自写双轮改薪资入口行 + 共用 薪资区间层。
+    // 面议起步：抽屉里左轮停在面议档、右轮整列隐藏；确定写 0/0 后行仍显示面议
+    const 薪资入口 = page.getByRole('button', { name: /薪资要求（日薪/ });
+    await expect(薪资入口).toContainText('面议');
+    await 薪资入口.click();
+    const 薪资抽屉 = page.getByRole('dialog', { name: '薪资要求(日薪，单位:元)' });
+    await expect(薪资抽屉).toBeVisible();
+    await expect(薪资抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '面议' })).toHaveAttribute('aria-selected', 'true');
+    await expect(薪资抽屉.getByRole('listbox', { name: '薪资上限' })).toHaveCount(0);
+    await 薪资抽屉.getByRole('button', { name: '取消' }).click();
+    await expect(薪资抽屉).toHaveCount(0);
+    await expect(薪资入口).toContainText('面议');
+    await 薪资入口.click();
+    await page.getByRole('dialog', { name: '薪资要求(日薪，单位:元)' }).getByRole('button', { name: '确定' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(薪资入口).toContainText('面议');
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible();
   });
@@ -206,22 +221,30 @@ test.describe('multi-role onboarding', () => {
 
     await page.goto('/#/student');
 
-    // 2026-08-24 二改：毕业时间平时是字段行（值 ›），点开才弹滚轮层。
-    // 「选了校园招聘自动落默认毕业月」的 mount effect 已删（Task 5B：用户未确认的
-    // 滚轮默认值不写入）—— 滚轮默认「明年 6 月」只是显示，确认前不落盘
+    // picker 统一 Task 3：毕业时间平时是字段行（值 ›），点开才弹共用 年月滚轮层。
+    // 「选了校园招聘自动落默认毕业月」的 mount effect 已删（Task 5B）：父行以实际
+    // 筛选偏好.毕业时间 判断 —— 空值显示「请选择」，临时落点「次年 6 月」只在抽屉里
     await expect(page.getByText('预计毕业时间')).toBeVisible();
-    await expect(page.getByRole('button', { name: /\d{4} 年 \d{2} 月/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: '预计毕业时间' })).toContainText('请选择');
     const 未确认存值 = await page.evaluate(
       () => JSON.parse(localStorage.getItem('AGXP求职筛选v2:mock:stg:demo') ?? '{}')?.筛选偏好?.毕业时间 ?? '',
     );
     expect(未确认存值).toBe('');
-    // 打开滚轮层点「完成」才写值；默认档仍是明年 6 月（毕业季）
-    await page.getByRole('button', { name: /\d{4} 年 \d{2} 月/ }).click();
-    await page.getByRole('dialog', { name: '预计毕业时间' }).getByRole('button', { name: '完成' }).click();
+    // 打开抽屉再取消：仍未填写、缓存仍为空
+    await page.getByRole('button', { name: '预计毕业时间' }).click();
+    const 抽屉 = page.getByRole('dialog', { name: '预计毕业时间' });
+    await expect(抽屉).toBeVisible();
+    await 抽屉.getByRole('button', { name: '取消' }).click();
+    await expect(抽屉).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '预计毕业时间' })).toContainText('请选择');
+    // 打开点「确定」才写值；缺值临时落「次年 6 月」（毕业季）
+    await page.getByRole('button', { name: '预计毕业时间' }).click();
+    await page.getByRole('dialog', { name: '预计毕业时间' }).getByRole('button', { name: '确定' }).click();
     const 存值 = await page.evaluate(
       () => JSON.parse(localStorage.getItem('AGXP求职筛选v2:mock:stg:demo') ?? '{}')?.筛选偏好?.毕业时间 ?? '',
     );
     expect(存值).toMatch(/^\d{4}-06$/);
+    await expect(page.getByRole('button', { name: '预计毕业时间' })).toContainText(`${new Date().getFullYear() + 1} 年 06 月`);
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
   });
 
@@ -263,10 +286,10 @@ test.describe('multi-role onboarding', () => {
     // AI 初筛卡 2026-08-26 已删,薪资承诺句降格为薪资区小字
     await expect(page.getByText('薪资仅判断双方区间是否匹配，不询问或协商具体金额。')).toBeVisible();
 
+    // bottom-drawer 统一 Task 5：日薪两个金额按钮开同一双轮抽屉 —— 一次打开、
+    // 点一次「确定」同步上下限两字段（缺值临时落 200/200）
     await page.getByRole('button', { name: '— 元/天' }).first().click();
-    await page.getByRole('button', { name: '完成' }).click();
-    await page.getByRole('button', { name: '— 元/天' }).click();
-    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '确定' }).click();
     // picker 统一 Task 2：岗位城市 input 已删 —— 经工作城市行打开全页选择子视图选上海
     await page.getByRole('button').filter({ hasText: '工作城市' }).click();
     await expect(page.getByRole('heading', { name: '选择工作城市' })).toBeVisible({ timeout: 10_000 });

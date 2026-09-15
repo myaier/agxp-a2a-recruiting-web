@@ -225,3 +225,67 @@ describe('内嵌双滚轮 允许空值', () => {
     expect(screen.getByLabelText('左值').textContent).toBe('未选择');
   });
 });
+
+// ── Task 5：可选展示属性 零值文案 / 隐藏右列 ──
+// 只改显示：0 档可以念成「面议」（引导），但数值与 aria-selected 的选中键不变；
+// 隐藏右列保留列占位、去掉右 listbox 与其固定单位，左轮键盘照常。
+describe('内嵌双滚轮 零值文案与隐藏右列', () => {
+  function 面议宿主({ 右列隐藏 = false }: { 右列隐藏?: boolean }) {
+    const [左, 设左] = useState(0);
+    const [右, 设右] = useState(30);
+    return (
+      <>
+        <output aria-label="左值">{左}</output>
+        <output aria-label="右值">{右}</output>
+        <内嵌双滚轮
+          左档={[0, 10, 20]}
+          右档={[30, 40]}
+          左值={左}
+          右值={右}
+          设左值={设左}
+          设右值={设右}
+          左名="薪资下限"
+          右名="薪资上限"
+          左单位="K"
+          右单位="K"
+          零值文案="面议"
+          隐藏右列={右列隐藏}
+        />
+      </>
+    );
+  }
+
+  it('0 档显示「面议」，aria-selected 仍按数值 0 生效，固定单位隐藏不撤节点', () => {
+    render(<面议宿主 />);
+    const 左列 = screen.getByRole('listbox', { name: '薪资下限' });
+    const 面议档 = within(左列).getByRole('option', { name: '面议' });
+    expect(面议档.getAttribute('aria-selected')).toBe('true');
+    // 数值选中键不变：同列里没有显示成数字 0 的档
+    expect(within(左列).queryByRole('option', { name: '0' })).toBeNull();
+    // 单位隐藏（visibility）而非撤节点：整组位置不因面议/数字切换而跳
+    const 单位 = [...(左列.parentElement as HTMLElement).querySelectorAll('span')]
+      .find((节) => 节.textContent === 'K');
+    expect(单位).toBeTruthy();
+    expect((单位 as HTMLElement).style.visibility).toBe('hidden');
+  });
+
+  it('右列数字档照常显示且带单位：零值文案只作用于 0 档', () => {
+    render(<面议宿主 />);
+    const 右列 = screen.getByRole('listbox', { name: '薪资上限' });
+    expect(within(右列).getByRole('option', { name: '30' }).getAttribute('aria-selected')).toBe('true');
+    const 单位 = [...(右列.parentElement as HTMLElement).querySelectorAll('span')]
+      .find((节) => 节.textContent === 'K');
+    expect((单位 as HTMLElement).style.visibility).toBe('');
+  });
+
+  it('隐藏右列：右 listbox 不渲染，左轮键盘照常（nullable 合同不受影响）', async () => {
+    const 用户 = userEvent.setup();
+    render(<面议宿主 右列隐藏 />);
+    expect(screen.queryByRole('listbox', { name: '薪资上限' })).toBeNull();
+    const 左列 = screen.getByRole('listbox', { name: '薪资下限' });
+    左列.focus();
+    await 用户.keyboard('{ArrowDown}');
+    expect(within(左列).getByRole('option', { name: '10' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByLabelText('左值').textContent).toBe('10');
+  });
+});

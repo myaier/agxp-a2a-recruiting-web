@@ -492,9 +492,14 @@ async function 进完善资料(page: Page, 在校: boolean): Promise<void> {
   await page.getByRole('button', { name: 在校 ? '在校' : '已毕业', exact: true }).click();
   await page.getByRole('button', { name: 在校 ? '实习生' : '社招全职', exact: true }).click();
   if (在校) {
-    // 实习生必填：可实习月数 / 每周到岗天数（Backend 无默认，必须点选）
-    await page.getByRole('button', { name: '至少 3 个月' }).click();
-    await page.getByRole('button', { name: '每周 3 天' }).click();
+    // 实习生必填：可实习月数 / 每周到岗天数（Backend 无默认，必须点选）——
+    // picker 统一 Task 2 起两字段改共用数字抽屉：点选择行 → 选同档 → 确定
+    await page.getByRole('button', { name: '实习时长' }).click();
+    await page.getByRole('listbox', { name: '实习时长' }).getByRole('option', { name: '3', exact: true }).click();
+    await page.getByRole('button', { name: '确定' }).click();
+    await page.getByRole('button', { name: '每周到岗' }).click();
+    await page.getByRole('listbox', { name: '每周到岗' }).getByRole('option', { name: '3', exact: true }).click();
+    await page.getByRole('button', { name: '确定' }).click();
   }
   // 办公方式：Backend 从空起步，点一枚「现场」补齐
   await page.getByRole('button', { name: '现场', exact: true }).click();
@@ -518,17 +523,17 @@ async function 进完善资料(page: Page, 在校: boolean): Promise<void> {
   await expect(page).toHaveURL(/#\/student$/);
 }
 
-/** 滚轮滚到指定档（薪资轮/年份轮同一实现：listbox 可访问名 + 纯数字 option） */
-async function 滚轮(page: Page, 名称: string, 档: number): Promise<void> {
-  const 轮 = page.getByRole('listbox', { name: 名称 });
-  await 轮.waitFor();
-  await 轮.evaluate((节点, 目标) => {
-    const 档们 = [...节点.querySelectorAll<HTMLElement>('[role="option"]')];
-    const 序 = Math.max(0, 档们.findIndex((项) => (项.textContent ?? '').trim() === String(目标)));
-    const 行高 = 档们.length > 1 ? 档们[1]!.offsetTop - 档们[0]!.offsetTop : 46;
-    节点.scrollTop = 序 * 行高;
-  }, 档);
-  await expect(轮.getByRole('option', { name: String(档), exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
+/** 向导薪资段（bottom-drawer 统一 Task 5）：点薪资入口行开共用 薪资区间层，
+ *  点 薪资下限 30 档 —— 引导联动自动把上限抬到 40（不单独碰上限轮）——
+ *  点 确定回填，入口行显示 30-40K。 */
+async function 走向导薪资(page: Page): Promise<void> {
+  const 入口行 = page.getByRole('button', { name: /薪资要求（月薪/ });
+  await 入口行.click();
+  const 抽屉 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+  await 抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '30', exact: true }).click();
+  await 抽屉.getByRole('button', { name: '确定' }).click();
+  await expect(抽屉).toHaveCount(0);
+  await expect(入口行).toContainText('30-40K');
 }
 
 /** 基本信息页 → 求职状态（选档）→ 学历四连页（Backend 学校/专业走 fixture 目录；社招路径） */
@@ -568,11 +573,15 @@ async function 走学历四连页(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible();
 }
 
-/** 就读时间段：滚轮交互即确认 —— 滚到与显示默认（2021/2025）不同的档，
- *  值真正变化才会走 设入学年并确认/设毕业年并确认（滚到默认档是 no-op，不确认） */
+/** 就读时间段：抽屉确认才回填（bottom-drawer 统一 Task 4）—— 开共用年份抽屉
+ *  点 2020/2024 确定（一次原子写草稿），取消/遮罩不写。 */
 async function 走就读时间段(page: Page): Promise<void> {
-  await 滚轮(page, '入学年', 2020);
-  await 滚轮(page, '毕业年', 2024);
+  await page.getByRole('button', { name: '入学年和毕业年' }).click();
+  const 抽屉 = page.getByRole('dialog', { name: '就读时间段' });
+  await 抽屉.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2020', exact: true }).click();
+  await 抽屉.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2024', exact: true }).click();
+  await 抽屉.getByRole('button', { name: '确定' }).click();
+  await expect(抽屉).toHaveCount(0);
 }
 
 /** 偏好段尾：排除题 →（可选自定义原文，走常驻「用你自己的话写」行内输入；
@@ -645,8 +654,7 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/wizard\?stage=salary$/);
     await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toBeVisible();
-    await 滚轮(page, '最低月薪', 30);
-    await 滚轮(page, '最高月薪', 40);
+    await 走向导薪资(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
 
@@ -771,8 +779,7 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     // ── 走到就读时间段（教育四连页已收口，只差起止）──
     await 进完善资料(page, false);
     await page.getByRole('button', { name: '下一步' }).click();
-    await 滚轮(page, '最低月薪', 30);
-    await 滚轮(page, '最高月薪', 40);
+    await 走向导薪资(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await 走资料与学历(page, '在职 · 考虑机会');
     await 走就读时间段(page);
@@ -790,8 +797,8 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     await page.reload();
     await expect(page).toHaveURL(/#\/onboard\/eduyears$/, { timeout: 30_000 });
     await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible();
-    await expect(page.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2020', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 10_000 });
-    await expect(page.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2024', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '入学年和毕业年' })).toContainText('2020', { timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '入学年和毕业年' })).toContainText('2024');
 
     // ── 重走下一步：按已存身份核对，不再 POST 教育；GET 成功后推进 ──
     await page.getByRole('button', { name: '下一步' }).click();
@@ -814,8 +821,7 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     // ── 走完整旅程到头像页（未选头像本可完成；这里上传撞未知结果）──
     await 进完善资料(page, false);
     await page.getByRole('button', { name: '下一步' }).click();
-    await 滚轮(page, '最低月薪', 30);
-    await 滚轮(page, '最高月薪', 40);
+    await 走向导薪资(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await 走资料与学历(page, '在职 · 考虑机会');
     await 走就读时间段(page);

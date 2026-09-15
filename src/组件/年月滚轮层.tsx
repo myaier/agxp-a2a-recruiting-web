@@ -25,6 +25,12 @@ interface 属性 {
   最大?: string;
   确认: (值: string) => void;
   取消: () => void;
+  /** picker 统一 Task 3：提供时取代连续年表（调用方给已去重升序非空档，
+   *  如添加意向的「已有毕业年 + 未来 8 年」）；最小/最大仍界定月份边界 */
+  年份选项?: readonly number[];
+  /** 两列滚轮的可访问名，缺省沿用「年份/月份」（出生年月等场景由调用方命名） */
+  年名称?: string;
+  月名称?: string;
 }
 
 /** 'yyyy-MM' → [年, 月]，非法输入返回 null */
@@ -36,18 +42,33 @@ function 拆(值: string): [number, number] | null {
 
 const 拼 = (年: number, 月: number) => `${年}-${String(月).padStart(2, '0')}`;
 
-export default function 年月滚轮层({ 标题, 初值, 最小, 最大, 确认, 取消 }: 属性) {
+export default function 年月滚轮层({ 标题, 初值, 最小, 最大, 确认, 取消, 年份选项, 年名称 = '年份', 月名称 = '月份' }: 属性) {
   const 下界 = 最小 ? 拆(最小) : null;
   const 上界 = 最大 ? 拆(最大) : null;
   const 今年 = new Date().getFullYear();
 
   const 起年 = 下界?.[0] ?? 1980;
   const 止年 = 上界?.[0] ?? 今年;
-  const 年列表 = Array.from({ length: Math.max(1, 止年 - 起年 + 1) }, (_, 序) => 起年 + 序);
+  // 有年份档原样用调用方的表（同 数字滚轮层 的离散档合同）；没有才按上下界生成连续年表
+  const 年列表: readonly number[] = 年份选项 ?? Array.from(
+    { length: Math.max(1, 止年 - 起年 + 1) },
+    (_, 序) => 起年 + 序,
+  );
 
   // 没有初值时落在上界（多数场景是「现在」），比落在 1980 少滚几十下
   const 初 = 拆(初值) ?? 上界 ?? [今年, new Date().getMonth() + 1];
-  const [年, 设年] = useState(Math.min(Math.max(初[0], 起年), 止年));
+  // 连续范围把初值年夹进区间；年份档取最近档、同距取小年（档表升序，先遇到的不换）
+  // —— 否则 indexOf 落空，滚轮定位不到、不产生无选中项
+  const [年, 设年] = useState(() => {
+    if (年份选项) {
+      let 最近 = 年份选项[0];
+      for (const 档 of 年份选项) {
+        if (Math.abs(档 - 初[0]) < Math.abs(最近 - 初[0])) 最近 = 档;
+      }
+      return 最近;
+    }
+    return Math.min(Math.max(初[0], 起年), 止年);
+  });
   const [月, 设月] = useState(初[1]);
 
   // 当前年份下允许的月：贴着下界那年从下界月起，贴着上界那年到上界月止
@@ -69,15 +90,15 @@ export default function 年月滚轮层({ 标题, 初值, 最小, 最大, 确认
           </button>
           <span className={样式.标题}>{标题}</span>
           <button className={`${样式.确认键} 可点`} onClick={() => 确认(拼(年, 月))}>
-            完成
+            确定
           </button>
         </div>
 
         <div className={样式.轮区}>
           {/* 中间那一档的高亮底，不接收点击 */}
           <div className={样式.高亮带} />
-          <滚轮列 选项={年列表} 值={年} 设值={设年} 单位="年" 名称="年份" />
-          <滚轮列 选项={月列表} 值={月} 设值={设月} 单位="月" 名称="月份" />
+          <滚轮列 选项={年列表} 值={年} 设值={设年} 单位="年" 名称={年名称} />
+          <滚轮列 选项={月列表} 值={月} 设值={设月} 单位="月" 名称={月名称} />
         </div>
     </弹层框架>
   );
@@ -91,7 +112,7 @@ function 滚轮列({
   单位,
   名称,
 }: {
-  选项: number[];
+  选项: readonly number[];
   值: number;
   设值: (值: number) => void;
   单位: string;

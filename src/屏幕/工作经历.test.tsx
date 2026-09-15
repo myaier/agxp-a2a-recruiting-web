@@ -2335,7 +2335,7 @@ describe('工作经历 · 经历真实企业 ID（合同 C）', () => {
     // 入职时间 / 行业也齐备后再完成（本用例考核的是企业 ID 回填路径）
     await 用户.type(screen.getByPlaceholderText('必填'), '工程师');
     await 用户.click(screen.getByRole('button', { name: '入职年月' }));
-    await 用户.click(within(await screen.findByRole('dialog', { name: '选择入职年月' })).getByRole('button', { name: '完成' }));
+    await 用户.click(within(await screen.findByRole('dialog', { name: '选择入职年月' })).getByRole('button', { name: '确定' }));
     await 用户.click(screen.getByText('所属行业'));
     await 用户.click(await screen.findByText('互联网'));
     await 用户.click(screen.getByRole('button', { name: '完成' }));

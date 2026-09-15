@@ -134,6 +134,11 @@ function 选中档(列名: string, 档: string) {
   ).toBe('true');
 }
 
+/** 打开出生年月抽屉（picker 统一 Task 3）：滚轮搬进抽屉，不再常驻页面 */
+async function 打开生日抽屉(用户: ReturnType<typeof userEvent.setup>) {
+  await 用户.click(screen.getByRole('button', { name: /出生年月/ }));
+}
+
 /** 姓名输入框 */
 function 姓名框(): HTMLInputElement {
   return screen.getByPlaceholderText('身份证上的名字') as HTMLInputElement;
@@ -152,7 +157,7 @@ beforeEach(() => {
 });
 
 describe('基本信息 预填种入', () => {
-  it('ready 建议种入空白真名/性别/开始工作年与出生滚轮，status（身份）永不映射', () => {
+  it('ready 建议种入空白真名/性别/开始工作年与出生抽屉，status（身份）永不映射', async () => {
     const { 派发 } = render基本信息({ 候选预填: readyState(正向基本建议()) });
     expect(姓名框().value).toBe('Synthetic Candidate');
     // 性别：female → 女被预选
@@ -160,7 +165,10 @@ describe('基本信息 预填种入', () => {
     expect(screen.getByRole('button', { name: '男' }).getAttribute('aria-pressed')).toBe('false');
     // 非学生：开始工作年 2021（既有显示是 当前年 兜底，可区分）
     expect(screen.getByText('2021 年')).toBeTruthy();
-    // 出生滚轮：页本地数字态初值
+    // 出生抽屉：显式打开检查滚轮初值（完整可用预填已确认，父行直接回显）
+    expect(screen.getByRole('button', { name: /出生年月/ }).textContent).toContain('1995 年 09 月');
+    const 用户 = userEvent.setup();
+    await 打开生日抽屉(用户);
     选中档('出生年', '1995');
     选中档('出生月', '9');
     // status：种入派发不写 身份/在读学历/毕业年，草稿身份保持 在职
@@ -170,8 +178,12 @@ describe('基本信息 预填种入', () => {
     expect(存简历动作.基本信息).not.toHaveProperty('毕业年');
   });
 
-  it('出生年/月超出 1970..2010 / 1..12 时保留既有默认（1998/6），其余建议照常种入', () => {
+  it('出生年/月超出 1970..2010 / 1..12 时保留既有默认（1998/6），其余建议照常种入', async () => {
     render基本信息({ 候选预填: readyState(超界生日建议()) });
+    // 超界建议映射层落 undefined：父行不回显（未确认），抽屉里仍是 1998/6 临时落点
+    expect(screen.getByRole('button', { name: /出生年月/ }).textContent).toContain('未填写');
+    const 用户 = userEvent.setup();
+    await 打开生日抽屉(用户);
     选中档('出生年', '1998');
     选中档('出生月', '6');
     expect(姓名框().value).toBe('Synthetic Candidate');
@@ -184,13 +196,15 @@ describe('基本信息 预填种入', () => {
     expect(存简历动作.基本信息.开始工作年).toBe('');
   });
 
-  it('当前页面非空值优先：已填的真名/性别不被建议覆盖，空白生日仍种入', () => {
+  it('当前页面非空值优先：已填的真名/性别不被建议覆盖，空白生日仍种入', async () => {
     render基本信息({
       基本信息: { 真名: '张三', 性别: '男' },
       候选预填: readyState(正向基本建议()),
     });
     expect(姓名框().value).toBe('张三');
     expect(screen.getByRole('button', { name: '男' }).getAttribute('aria-pressed')).toBe('true');
+    const 用户 = userEvent.setup();
+    await 打开生日抽屉(用户);
     选中档('出生年', '1995');
     选中档('出生月', '9');
   });
@@ -205,12 +219,14 @@ describe('基本信息 预填种入', () => {
         profile: { real_name: false, work_start_year: false, gender: false, birth_year: false, birth_month: false, current_education: false },
       };
     }],
-  ])('%s 保留旧初始化（零种入派发）', (_名, 改) => {
+  ])('%s 保留旧初始化（零种入派发）', async (_名, 改) => {
     const 轮 = readyState(正向基本建议());
     改(轮);
     const { 派发 } = render基本信息({ 候选预填: 轮 });
     expect(姓名框().value).toBe('');
     expect(screen.getByRole('button', { name: '女' }).getAttribute('aria-pressed')).toBe('false');
+    const 用户 = userEvent.setup();
+    await 打开生日抽屉(用户);
     选中档('出生年', '1998');
     选中档('出生月', '6');
     expect(派发).not.toHaveBeenCalled();
@@ -275,7 +291,7 @@ describe('基本信息 根草稿保持（离开再回来）', () => {
     await 用户.click(screen.getByRole('button', { name: /开始工作年份/ }));
     const 年轮 = screen.getByRole('listbox', { name: '开始工作年份' });
     await 用户.click(within(年轮).getByRole('option', { name: '2019' }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     第一次.卸载();
     // 只统计再进入这一程的种入派发（第一程的键入/种入已结算）
     第一次.派发.mockClear();
@@ -404,13 +420,14 @@ describe('基本信息 · 空生日确认分离（L）', () => {
     }));
   });
 
-  it('Backend 用户滚动任一轮后保存当前双值', async () => {
+  it('Backend 用户抽屉只改年并确定后保存当前双值（临时月一起落盘）', async () => {
     render基本信息({ 基本信息: { 身份: '在职' } });
     const 用户 = userEvent.setup();
     await 用户.type(姓名框(), '沈');
-    // 滚动出生年轮：确认态置位
-    const 年轮 = screen.getByRole('listbox', { name: '出生年' });
-    await 用户.click(within(年轮).getByRole('option', { name: '2001' }));
+    // 打开抽屉只改年、点确定：确认态置位，未动过的月沿用临时落点 6
+    await 打开生日抽屉(用户);
+    await 用户.click(within(screen.getByRole('listbox', { name: '出生年' })).getByRole('option', { name: '2001' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
     expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
@@ -468,6 +485,9 @@ describe('基本信息 · 建档草稿接线（Task 4）', () => {
     });
     expect(姓名框().value).toBe('沈星');
     expect(screen.getByRole('button', { name: '女' }).getAttribute('aria-pressed')).toBe('true');
+    // 草稿里的完整生日已确认：显式打开抽屉核对滚轮回显
+    const 打开用户 = userEvent.setup();
+    await 打开生日抽屉(打开用户);
     选中档('出生年', '2000');
     选中档('出生月', '9');
     const 用户 = userEvent.setup();
@@ -483,11 +503,62 @@ describe('基本信息 · 建档草稿接线（Task 4）', () => {
     render基本信息({ 基本信息: { 身份: '' }, 建档: {} });
     const 用户 = userEvent.setup();
     await 用户.type(姓名框(), '沈');
-    const 年轮 = screen.getByRole('listbox', { name: '出生年' });
-    await 用户.click(within(年轮).getByRole('option', { name: '2001' }));
+    await 打开生日抽屉(用户);
+    await 用户.click(within(screen.getByRole('listbox', { name: '出生年' })).getByRole('option', { name: '2001' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     expect(mock操作.保存简历).not.toHaveBeenCalled();
     const 末次 = mock操作.更新候选建档草稿.mock.calls.at(-1)![0];
     expect(末次.资料.基本信息).toEqual(expect.objectContaining({ 真名: '沈', 出生年: '2001', 出生月: '6' }));
+  });
+});
+
+// ── 出生年月抽屉（picker 统一 Task 3）：内嵌双滚轮改共用 年月滚轮层。
+//    父行只有 出生年月已确认 才显示年月，Backend 未确认显示 未填写；
+//    打开 / 滚动 / 取消零写入，只有 确定 才成对回填并置确认标志。──
+describe('基本信息 · 出生年月抽屉（picker 统一 Task 3）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear();
+    mock操作.确认候选Onboarding预填分区.mockClear();
+    mock操作.更新候选建档草稿.mockClear();
+  });
+
+  it('生日未确认：父行显示未填写，打开改值后取消，下一步不写生日', async () => {
+    render基本信息({ 基本信息: { 身份: '在职' } });
+    const 用户 = userEvent.setup();
+    const 行 = screen.getByRole('button', { name: /出生年月/ });
+    expect(行.textContent).toContain('未填写');
+    await 用户.click(行);
+    // 抽屉内沿用 1998/6 临时落点（显示值 ≠ 确认态）
+    选中档('出生年', '1998');
+    选中档('出生月', '6');
+    // 改值后取消：不回填、确认态仍为 false
+    await 用户.click(within(screen.getByRole('listbox', { name: '出生月' })).getByRole('option', { name: '3' }));
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('button', { name: /出生年月/ }).textContent).toContain('未填写');
+    await 用户.type(姓名框(), '沈');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.not.objectContaining({ 出生年: expect.anything(), 出生月: expect.anything() }),
+    }));
+  });
+
+  it('确定后成对写入并点亮父行，保存双值', async () => {
+    render基本信息({ 基本信息: { 身份: '在职' } });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /出生年月/ }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '出生年' })).getByRole('option', { name: '2001' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '出生月' })).getByRole('option', { name: '9' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('button', { name: /出生年月/ }).textContent).toContain('2001 年 09 月');
+    await 用户.type(姓名框(), '沈');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 出生年: '2001', 出生月: '9' }),
+    }));
   });
 });

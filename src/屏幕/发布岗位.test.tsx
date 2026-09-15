@@ -443,7 +443,7 @@ describe('发布岗位页 Backend 选择器', () => {
     await 设月薪带(用户, 50, 65);
     // 年薪月数（社招全职必填）：打开滚轮 → 完成（默认 12）
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     // 办公地点
     await 用户.type(
       screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'),
@@ -1039,7 +1039,7 @@ describe('发布岗位页 Backend 选择器', () => {
     );
     // 年薪月数滚轮也是无关控件
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     expect(勾选框().checked).toBe(true);
 
     // 描述在第二步：返回 → 改描述 → 下一步回第三步，确认态不能被跨步编辑冲掉
@@ -1323,7 +1323,7 @@ describe('发布岗位页 Mock 发岗（公司声明前置校验不生效）', (
     await 用户.type(screen.getByRole('textbox', { name: '给 AI 代理的筛选要求' }), '私有偏好');
     await 设月薪带(用户, 20, 30);
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     // 工作城市：Mock 同样走全页选择正文（本地字典，不发请求）→ 选 上海 → 保存
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
@@ -1601,7 +1601,7 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     await 设月薪带(用户, 50, 65);
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.type(screen.getByRole('textbox', { name: '岗位要求' }), '三年以上后端经验');
     await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), '张江路 1 号');
     // 工作城市：全页选择正文 → 选 上海 → 保存
@@ -2796,7 +2796,7 @@ describe('发布岗位页 JD 建议合并', () => {
     fireEvent.click(within(screen.getByRole('listbox', { name: '薪资上限' })).getByRole('option', { name: '65' }));
     fireEvent.click(screen.getByRole('button', { name: '确定' }));
     fireEvent.click(screen.getByRole('button', { name: /年薪月数/ }));
-    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    fireEvent.click(screen.getByRole('button', { name: '确定' }));
     返回();
     返回();
     选择并确认JD(JDPDF());
@@ -3104,7 +3104,7 @@ describe('发布岗位页 全远程地址与 Catalog 门禁', () => {
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     await 设月薪带(用户, 50, 65);
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     if (办公地 !== null) {
       await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), 办公地);
     }
@@ -3440,7 +3440,7 @@ describe('发布岗位页 全页城市选择（Mock 模式）', () => {
     expect(screen.getByRole('button', { name: /工作城市/ }).textContent).toContain('上海');
     await 设月薪带(用户, 20, 30);
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), '张江路 1 号');
     await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
@@ -3517,7 +3517,7 @@ describe('发布岗位页 月薪选择行（薪资区间层）', () => {
     expect(screen.getByRole('button', { name: '薪资下限' }).textContent).toContain('20');
     expect(screen.getByRole('button', { name: '薪资上限' }).textContent).toContain('30');
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
     await 用户.click((await screen.findAllByRole('button', { name: '上海市' }))[0]);
@@ -3540,7 +3540,7 @@ describe('发布岗位页 月薪选择行（薪资区间层）', () => {
     await 用户.click(screen.getByRole('button', { name: '取消' }));
     expect(screen.getByRole('button', { name: '薪资下限' }).textContent).toContain('—');
     await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
-    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
     await screen.findByText('选择工作城市');
     await 用户.click((await screen.findAllByRole('button', { name: '上海市' }))[0]);
@@ -3605,5 +3605,132 @@ describe('发布岗位页 月薪选择行（薪资区间层）', () => {
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock更新岗位).toHaveBeenCalledTimes(1));
     expect(mock更新岗位.mock.calls[0][0]).toMatchObject({ 编号: 'job_k', 薪资带: '123-234K' });
+  });
+});
+
+// ── Task 5：岗位日薪/时薪改同一 薪资区间层 双轮 —— 两个金额按钮开同一弹层，
+// 缺值临时 200/40、初值沿旧数字轮吸附、确定同步两字段、取消零回填；抽屉内
+// 不新增倒置拦截，倒置校验仍由既有表单提交规则负责。──
+describe('发布岗位页 日薪/时薪双轮（薪资区间层）', () => {
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock进企业主壳.mockClear();
+    mock替换跳转.mockClear();
+    mock跳转.mockClear();
+    mock更新岗位.mockClear();
+    mock发布岗位.mockClear();
+    mock删除岗位.mockClear();
+    清空轻提示();
+    置Mock应用状态();
+    mock发布岗位.mockResolvedValue(undefined);
+    mock更新岗位.mockResolvedValue(undefined);
+  });
+
+  function render新建() {
+    return render(
+      <MemoryRouter initialEntries={['/hr/post-job']}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  async function 填到第三步(用户: ReturnType<typeof userEvent.setup>, 类型: '实习生' | '兼职') {
+    await 用户.type(
+      screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关'),
+      '日薪双轮岗',
+    );
+    await 用户.click(screen.getByRole('button', { name: new RegExp(类型) }));
+    if (类型 === '实习生') await 用户.click(screen.getByRole('button', { name: '提供转正机会' }));
+    await 用户.click(screen.getByRole('button', { name: '现场' }));
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    await 用户.click(screen.getByRole('button', { name: '产品' }));
+    await 用户.click(screen.getByRole('button', { name: '产品经理' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await 用户.type(screen.getByRole('textbox', { name: '职位描述' }), '描述正文');
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+  }
+
+  it('实习生日薪：两个金额按钮开同一双轮，缺值临时 200/200，确定同步两字段', async () => {
+    const 用户 = userEvent.setup();
+    render新建();
+    await 填到第三步(用户, '实习生');
+    // 布局不重排：仍是两个金额选择键（textContent 未填占位）
+    const 金额键 = () => screen.getAllByRole('button', { name: /元\/天/ });
+    expect(金额键().length).toBe(2);
+    expect(金额键()[0].textContent).toContain('—');
+    await 用户.click(金额键()[0]);
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    expect(within(下限列).getByRole('option', { name: '200' }).getAttribute('aria-selected')).toBe('true');
+    expect(within(screen.getByRole('listbox', { name: '薪资上限' }))
+      .getByRole('option', { name: '200' }).getAttribute('aria-selected')).toBe('true');
+    await 用户.click(within(下限列).getByRole('option', { name: '300' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资上限' })).getByRole('option', { name: '400' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(screen.queryByRole('listbox', { name: '薪资下限' })).toBeNull();
+    expect(金额键()[0].textContent).toContain('300');
+    expect(金额键()[1].textContent).toContain('400');
+  });
+
+  it('取消零回填：缺值行仍为占位，重开吸附初值不写草稿', async () => {
+    const 用户 = userEvent.setup();
+    render新建();
+    await 填到第三步(用户, '实习生');
+    await 用户.click(screen.getAllByRole('button', { name: /元\/天/ })[0]);
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: '300' }));
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('listbox', { name: '薪资下限' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: /元\/天/ })[0].textContent).toContain('—');
+  });
+
+  it('倒置 300/200 确定仍回填两字段；提交被既有表单校验拦下', async () => {
+    const 用户 = userEvent.setup();
+    render新建();
+    await 填到第三步(用户, '实习生');
+    await 用户.click(screen.getAllByRole('button', { name: /元\/天/ })[0]);
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: '300' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资上限' })).getByRole('option', { name: '200' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    // 抽屉内无倒置拦截：两值原样回填
+    expect(screen.queryByRole('listbox', { name: '薪资下限' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: /元\/天/ })[0].textContent).toContain('300');
+    expect(screen.getAllByRole('button', { name: /元\/天/ })[1].textContent).toContain('200');
+    // 倒置校验仍归表单提交规则
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    expect(await screen.findByText('薪资下限不能高于上限')).toBeTruthy();
+    expect(mock发布岗位).not.toHaveBeenCalled();
+  });
+
+  it('兼职时薪：缺值临时 40/40，档 20–200 步 10，确定同步两字段', async () => {
+    const 用户 = userEvent.setup();
+    render新建();
+    await 填到第三步(用户, '兼职');
+    await 用户.click(screen.getAllByRole('button', { name: /元\/时/ })[0]);
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    expect(within(下限列).getAllByRole('option').length).toBe(19);
+    expect(within(下限列).getByRole('option', { name: '40' }).getAttribute('aria-selected')).toBe('true');
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(screen.getAllByRole('button', { name: /元\/时/ })[0].textContent).toContain('40');
+    expect(screen.getAllByRole('button', { name: /元\/时/ })[1].textContent).toContain('40');
+  });
+
+  it('重开从已存值定位，取消后行值原样（吸附只影响确定回填）', async () => {
+    const 用户 = userEvent.setup();
+    render新建();
+    await 填到第三步(用户, '实习生');
+    // 先用双轮写入合法带 300/400
+    await 用户.click(screen.getAllByRole('button', { name: /元\/天/ })[0]);
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: '300' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资上限' })).getByRole('option', { name: '400' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    // 重开从已存值定位；改 55→60 的档外吸附与超范围夹紧由 薪资区间层.test.tsx 冻结
+    await 用户.click(screen.getAllByRole('button', { name: /元\/天/ })[0]);
+    expect(within(screen.getByRole('listbox', { name: '薪资下限' }))
+      .getByRole('option', { name: '300' }).getAttribute('aria-selected')).toBe('true');
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: '60' }));
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.getAllByRole('button', { name: /元\/天/ })[0].textContent).toContain('300');
   });
 });

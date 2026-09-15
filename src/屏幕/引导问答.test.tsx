@@ -103,71 +103,97 @@ describe('引导问答 Mock 存引导预填', () => {
   });
 });
 
-// ── 期望薪资 双滚轮的可访问合同（Task 3）──
-// 传「无 薪资 键」的预填：已有引导预填 让题序塌到只剩 期望薪资，缺的薪资仍以 面议(0/0) 起步。
-// 这三条用例守住 onboarding 薪资的状态合同；内嵌双滚轮.test.tsx 继续守住共享 Hook 的
-// 键盘 / 滚动 / 重复写值矩阵。
+// ── 期望薪资：共用 薪资区间层（bottom-drawer 统一 Task 5）──
+// 页内自写双轮已删：入口行显示 面议/区间，点开底部抽屉（用途='求职引导'），
+// 确定才调用两侧 setter、离开该题时照旧派发 存薪资预填；取消 / Escape 零回填。
+// 弹层内滚轮的键盘 / 滚动 / 重复写值矩阵由 薪资区间层.test.tsx 与 内嵌双滚轮.test.tsx 守。
 
 const 月薪题预填 = {
   城市们: [], 职位: [], 城市引用们: [], 职位引用们: [],
   筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] },
 };
 
-describe('引导问答 期望薪资 双滚轮 可访问合同', () => {
+describe('引导问答 期望薪资 共用薪资区间层', () => {
   beforeEach(() => {
     mock跳转.mockClear();
     mock返回.mockClear();
   });
 
-  it('onboarding 薪资双轮支持键盘和直接点选并保存同一值', async () => {
+  it('打开抽屉键盘与点选后确定，下一步落盘同一值', async () => {
     const { 派发 } = render引导问答Mock(月薪题预填);
     const 用户 = userEvent.setup();
-    const 下限列 = screen.getByRole('listbox', { name: '最低月薪' });
+    await 用户.click(screen.getByRole('button', { name: /薪资要求（月薪/ }));
+    // 面议起步：左轮选中面议档，右轮整列隐藏
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    expect(within(下限列).getByRole('option', { name: '面议' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByRole('listbox', { name: '薪资上限' })).toBeNull();
 
     下限列.focus();
     await 用户.keyboard('{ArrowDown}');
-    expect(within(下限列).getByRole('option', { name: '1' }).getAttribute('aria-selected'))
-      .toBe('true');
+    expect(within(下限列).getByRole('option', { name: '1' }).getAttribute('aria-selected')).toBe('true');
     await 用户.click(within(下限列).getByRole('option', { name: '20' }));
     expect(document.activeElement).toBe(下限列);
 
-    const 上限列 = screen.getByRole('listbox', { name: '最高月薪' });
+    // 联动：min(20+10,260)=30 出现在右轮
+    const 上限列 = screen.getByRole('listbox', { name: '薪资上限' });
     await 用户.click(within(上限列).getByRole('option', { name: '30' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(screen.queryByRole('listbox', { name: '薪资下限' })).toBeNull();
     await 用户.click(screen.getByRole('button', { name: /下一步/ }));
     expect(派发).toHaveBeenCalledWith(expect.objectContaining({
       型: '存薪资预填', 下限: 20, 上限: 30, 单位: '月薪K',
     }));
   });
 
-  it('onboarding 下限回到面议时保持现有 0/0 与隐藏上限合同', async () => {
+  it('点回面议：右轮消失，确定后落盘 0/0', async () => {
     const { 派发 } = render引导问答Mock(月薪题预填);
     const 用户 = userEvent.setup();
-    const 下限列 = screen.getByRole('listbox', { name: '最低月薪' });
+    await 用户.click(screen.getByRole('button', { name: /薪资要求（月薪/ }));
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
     await 用户.click(within(下限列).getByRole('option', { name: '20' }));
-    expect(screen.getByRole('listbox', { name: '最高月薪' })).toBeTruthy();
+    expect(screen.getByRole('listbox', { name: '薪资上限' })).toBeTruthy();
     await 用户.click(within(下限列).getByRole('option', { name: '面议' }));
-    expect(screen.queryByRole('listbox', { name: '最高月薪' })).toBeNull();
+    expect(screen.queryByRole('listbox', { name: '薪资上限' })).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.click(screen.getByRole('button', { name: /下一步/ }));
     expect(派发).toHaveBeenCalledWith(expect.objectContaining({
       型: '存薪资预填', 下限: 0, 上限: 0, 单位: '月薪K',
     }));
   });
 
-  it('onboarding 日薪档继续使用元每天单位并接入同一键盘合同', async () => {
+  it('取消零回填：改过再取消，下一步落盘仍是原面议 0/0', async () => {
+    const { 派发 } = render引导问答Mock(月薪题预填);
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: /薪资要求（月薪/ }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: '20' }));
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('listbox', { name: '薪资下限' })).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: /下一步/ }));
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '存薪资预填', 下限: 0, 上限: 0, 单位: '月薪K',
+    }));
+  });
+
+  it('日薪已答回显区间并接入同一抽屉合同', async () => {
     const { 派发 } = render引导问答Mock({
       城市们: [], 职位: [], 城市引用们: [], 职位引用们: [],
       筛选偏好: { 求职类型: ['实习生'], 办公方式: ['混合'] },
       薪资: { 下限: 300, 上限: 500, 单位: '元/天' },
     });
     const 用户 = userEvent.setup();
-    const 下限列 = screen.getByRole('listbox', { name: '最低日薪' });
+    // 入口行回显已答区间
+    expect(screen.getByRole('button', { name: /薪资要求（日薪/ }).textContent).toContain('300-500/天');
+    await 用户.click(screen.getByRole('button', { name: /薪资要求（日薪/ }));
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    expect(within(下限列).getByRole('option', { name: '300' }).getAttribute('aria-selected')).toBe('true');
     下限列.focus();
     await 用户.keyboard('{ArrowDown}');
-    expect(within(下限列).getByRole('option', { name: '320' }).getAttribute('aria-selected'))
-      .toBe('true');
+    // 键盘按档序移动：300 的下一档是 320（220–500 段步长 20）
+    expect(within(下限列).getByRole('option', { name: '320' }).getAttribute('aria-selected')).toBe('true');
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
     await 用户.click(screen.getByRole('button', { name: /下一步/ }));
     expect(派发).toHaveBeenCalledWith(expect.objectContaining({
-      型: '存薪资预填', 下限: 320, 单位: '元/天',
+      型: '存薪资预填', 下限: 320, 上限: 500, 单位: '元/天',
     }));
   });
 });

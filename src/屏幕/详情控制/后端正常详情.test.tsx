@@ -37,6 +37,7 @@ import {
   BFF候选在线简历样本,
   BFF候选身份披露样本,
 } from '../../测试/展示资料样本';
+import { P5历史连续块 } from '../../测试/BFF样本';
 
 const mock跳转 = vi.fn();
 vi.mock('../../路由/导航钩子', () => ({
@@ -63,6 +64,8 @@ const mock操作 = {
   决定S1: mock决定S1,
   决定S2: mock决定S2,
   决定S3: mock决定S3,
+  回答对话: vi.fn(async (): Promise<void> => undefined),
+  重新考虑: vi.fn(async (): Promise<void> => undefined),
   提交简历: mock提交简历,
   读取简历PDF: mock读取简历PDF,
   准备候选委托简历: mock准备候选委托简历,
@@ -132,6 +135,7 @@ function 候选S0详情DTO(覆盖: { matchScore?: number | null; jobDetail?: P5�
     // release/0.2.5：展示字段是解码层 required 成员；Task 6 起消费（旧 Case 合法 null 档）。
     matchScore: 覆盖.matchScore ?? null,
     jobDetail: 覆盖.jobDetail ?? null,
+    ...P5历史连续块,
   };
 }
 
@@ -193,6 +197,7 @@ function 招聘S1附件详情DTO(带附件: boolean, 覆盖: {
     conversationRef: null,
     matchScore: null,
     jobDetail: 覆盖.jobDetail ?? null,
+    ...P5历史连续块,
     candidateResume: 覆盖.candidateResume ?? null,
     candidateIdentity: 覆盖.identity ?? { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };

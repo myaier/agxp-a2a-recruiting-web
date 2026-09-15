@@ -2,12 +2,19 @@ import type { BFFS0筛选记录 } from '../数据/BFF契约';
 
 // Source: agxp-monorepo@462367b6571d1bbfc4bb29621a4ea1c741dba762
 // apps/recruitment-bff/internal/recruitmentclient/testdata/s0_screening_records.json
+//
+// 2026-09-15（S0–S3 连续筛选）：公开 wire 对**每条**记录都发 stage / asking_role
+// （answer 再发 answer_source），与 continuity_version 无关 —— 历史 Service 的记录由
+// BFF 回填成 anonymous_screening / candidate / agent。样本随之补齐这三个键。
 export const S0候选完整记录Wire: BFFS0筛选记录 = {
   messages: [
-    { id: 's0q_1', kind: 'question', role: 'candidate', round: 1,
+    { id: 's0q_1', kind: 'question', role: 'candidate',
+      stage: 'anonymous_screening', asking_role: 'candidate', round: 1,
       text: '这个岗位是否需要固定晚班？', occurred_at: '2026-08-23T10:01:00Z' },
-    { id: 's0a_1', kind: 'answer', role: 'recruiter', round: 1,
-      text: '没有固定晚班。', answer_status: 'answered', occurred_at: '2026-08-23T10:02:00Z' },
+    { id: 's0a_1', kind: 'answer', role: 'recruiter',
+      stage: 'anonymous_screening', asking_role: 'candidate', round: 1,
+      text: '没有固定晚班。', answer_source: 'agent', answer_status: 'answered',
+      occurred_at: '2026-08-23T10:02:00Z' },
   ],
   summaries: [
     { id: 's0s_0', phase: 'initial', summary: '需要确认岗位的值班安排。',
@@ -30,8 +37,9 @@ export const S0仅问题记录Wire: BFFS0筛选记录 = {
 export const S0未知回答记录Wire: BFFS0筛选记录 = {
   messages: [
     S0候选完整记录Wire.messages[0]!,
-    { id: 's0a_1', kind: 'answer', role: 'recruiter', round: 1,
-      answer_status: 'unknown', occurred_at: '2026-08-23T10:02:00Z' },
+    { id: 's0a_1', kind: 'answer', role: 'recruiter',
+      stage: 'anonymous_screening', asking_role: 'candidate', round: 1,
+      answer_source: 'agent', answer_status: 'unknown', occurred_at: '2026-08-23T10:02:00Z' },
   ],
   summaries: S0候选完整记录Wire.summaries.map((item) => ({ ...item })),
 };

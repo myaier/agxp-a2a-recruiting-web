@@ -149,6 +149,26 @@
   color: var(--未读红);
 }
 
+/* bottom-drawer 统一 Task 4：页内双滚轮改年份区间抽屉入口 —— 沿用滚轮卡/滚轮头
+   样式，只补 button 缺的基础布局（全局 reset 不管宽高布局）与值行排布。
+   值行字号对齐 内嵌双滚轮 的选中档（27/600/--墨），请选择同尺寸同轮内空档 */
+.年份入口 {
+  display: block;
+  width: 100%;
+}
+
+.年份值行 {
+  display: flex;
+  justify-content: space-around;
+  padding: 2px 26px 8px;
+}
+
+.年份值 {
+  font-size: 27px;
+  font-weight: 600;
+  color: var(--墨);
+}
+
 /* ── 添加头像 ── */
 .头像区 {
   display: flex;

@@ -21,6 +21,15 @@ interface 属性 {
  * （如 经历行业选择层 的 72%）重新生效，长列表在面板内滚动而不是把弹层顶出屏幕。
  * 居中分支保持 maxHeight:'none' 不限高。
  */
+
+/** 恢复焦点前对原触发元素的检查：仍连着文档、且仍接受程序聚焦（原生控件未禁用，
+ *  或带 tabindex —— 含外层抽屉对话框自身的 tabIndex={-1}，嵌套弹层关掉一层时
+ *  焦点要能回到外层面板）。触发元素已被卸载就不再恢复，让焦点自然回落；
+ *  只看 DOM 当下状态，不为此维护全局焦点栈。 */
+const 仍可聚焦 = (元素: HTMLElement) =>
+  元素.isConnected
+  && 元素.matches('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]');
+
 export default function 弹层框架({ 标签, 遮罩类名, 面板类名, 关闭, children, 层级 = 81, 位置 = '底部' }: 属性) {
   const 对话框 = useRef<HTMLDialogElement>(null);
 
@@ -62,10 +71,17 @@ export default function 弹层框架({ 标签, 遮罩类名, 面板类名, 关�
     const 首个控件 = 对话框.current?.querySelector<HTMLElement>(
       'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex="0"]'
     );
-    首个控件?.focus();
+    // 首开聚焦必须 preventScroll：此刻底部面板还停在入场动画 translateY(100%)
+    // 的起点，裸 focus 会让浏览器为露出焦点目标把 overflow:hidden 的外壳
+    // （次级页外壳 / body，程序可滚）整体滚下去，背景先跳上去再随动画滑回来
+    // （2026-09-15 逐帧实测手机 ~236px，e2e/抽屉稳定性.spec.ts 抓的就是它）。
+    // Tab 圈的 focus 不加：长列表里被 Tab 到的目标仍要靠滚动露出来。
+    首个控件?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener('keydown', 处理按键);
-      原焦点?.focus();
+      // 恢复焦点同样 preventScroll：取消时用户可能已把页面滚到别处，
+      // 裸 focus 会把背景再拽一次（二次跳动）；触发元素没了就不恢复
+      if (原焦点 && 仍可聚焦(原焦点)) 原焦点.focus({ preventScroll: true });
     };
     // 焦点圈/Escape/恢复只在首开与卸载成立；关闭 经 关闭引用 读取最新值
     // eslint-disable-next-line react-hooks/exhaustive-deps

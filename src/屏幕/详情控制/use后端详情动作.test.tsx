@@ -26,7 +26,10 @@ import type { P5详情正常视图, P5角色, P5动作 } from '../../数据/Matc
 import type { P5阶段区, P5状态视图, P5详情, P5工作区职位, P5简历附件 } from '../../数据/招聘数据源/MatchCase';
 import type { BFF附件简历, BFF附件简历库 } from '../../数据/BFF契约';
 import type { 简历选择属性, 确认属性, 详情动作卡信息 } from '../../组件/在谈详情/类型';
+import type { 应用操作 } from '../../状态/后端/类型';
+import { BFF错误 } from '../../数据/HTTP客户端';
 import { 路径 } from '../../路由/路径表';
+import { P5历史连续块 } from '../../测试/BFF样本';
 
 // 空附件库跳转 我的简历 走 导航钩子（屏级测试同款 mock；hook 本体在 Router 内运行）
 const mock跳转 = vi.fn();
@@ -109,6 +112,7 @@ function S0详情DTO(选项: { role?: P5角色; caseId?: string; 问题ref?: str
     conversationRef: null,
     matchScore: null,
     jobDetail: null,
+    ...P5历史连续块,
   };
   if ((选项.role ?? 'candidate') === 'recruiter') {
     return {
@@ -215,6 +219,7 @@ function S0邀请详情DTO(caseId = 'mc_a'): P5详情 {
     conversationRef: null,
     matchScore: null,
     jobDetail: null,
+    ...P5历史连续块,
   };
 }
 
@@ -233,6 +238,7 @@ function S1重试详情DTO(带绑定: boolean, caseId = 'mc_a'): P5详情 {
     conversationRef: null,
     matchScore: null,
     jobDetail: null,
+    ...P5历史连续块,
   };
 }
 
@@ -251,6 +257,7 @@ function S1更换详情DTO(caseId = 'mc_a'): P5详情 {
     conversationRef: null,
     matchScore: null,
     jobDetail: null,
+    ...P5历史连续块,
   };
 }
 
@@ -269,6 +276,7 @@ function S1初筛详情DTO(caseId = 'mc_hr'): P5详情 {
     conversationRef: null,
     matchScore: null,
     jobDetail: null,
+    ...P5历史连续块,
     candidateResume: null,
     candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };
@@ -313,6 +321,7 @@ function S2详情DTO(角色: P5角色, 协同: P5详情['currentCoordination'], 
         conversationRef: null,
         matchScore: null,
         jobDetail: null,
+        ...P5历史连续块,
       }
     : {
         role: 'recruiter',
@@ -327,6 +336,7 @@ function S2详情DTO(角色: P5角色, 协同: P5详情['currentCoordination'], 
         conversationRef: null,
         matchScore: null,
         jobDetail: null,
+        ...P5历史连续块,
         candidateResume: null,
         candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
       };
@@ -354,6 +364,7 @@ function S3详情DTO(
     conversationRef: null,
     matchScore: null,
     jobDetail: null,
+    ...P5历史连续块,
   };
   return 角色 === 'candidate'
     ? {
@@ -413,10 +424,12 @@ function 挂动作(输入: 后端详情动作输入) {
 }
 
 /** 操作桩签名与 应用操作 对应方法同形（避免 vi.fn 推导宽类型过不了合同检查）。 */
-type 决定S0桩 = (caseId: string, action: 'continue' | 'end') => Promise<void>;
-type 决定S1桩 = (caseId: string, action: 'continue' | 'not_fit') => Promise<void>;
-type 决定S2桩 = (role: P5角色, caseId: string, issueId: string, action: 'accept' | 'reject') => Promise<void>;
-type 决定S3桩 = (role: P5角色, caseId: string, action: 'confirm' | 'decline') => Promise<void>;
+type 决定S0桩 = 应用操作['决定S0'];
+type 决定S1桩 = 应用操作['决定S1'];
+type 决定S2桩 = 应用操作['决定S2'];
+type 决定S3桩 = 应用操作['决定S3'];
+type 回答对话桩 = 应用操作['回答对话'];
+type 重新考虑桩 = 应用操作['重新考虑'];
 type 提交简历桩 = (caseId: string, fileId: string, fileVersionId: string, disclosureConfirmed: true) => Promise<void>;
 type 准备委托桩 = () => Promise<BFF附件简历库 | null>;
 
@@ -426,6 +439,8 @@ function 动作输入(选项: {
   决定S1?: 决定S1桩;
   决定S2?: 决定S2桩;
   决定S3?: 决定S3桩;
+  回答对话?: 回答对话桩;
+  重新考虑?: 重新考虑桩;
   提交简历?: 提交简历桩;
   准备候选委托简历?: 准备委托桩;
 }): 后端详情动作输入 {
@@ -439,6 +454,8 @@ function 动作输入(选项: {
       决定S1: 选项.决定S1 ?? vi.fn(async (): Promise<void> => undefined),
       决定S2: 选项.决定S2 ?? vi.fn(async (): Promise<void> => undefined),
       决定S3: 选项.决定S3 ?? vi.fn(async (): Promise<void> => undefined),
+      回答对话: 选项.回答对话 ?? vi.fn(async (): Promise<void> => undefined),
+      重新考虑: 选项.重新考虑 ?? vi.fn(async (): Promise<void> => undefined),
       提交简历: 选项.提交简历 ?? vi.fn(async (): Promise<void> => undefined),
       准备候选委托简历: 选项.准备候选委托简历 ?? vi.fn(async (): Promise<null> => null),
     },
@@ -1056,5 +1073,435 @@ describe('use后端详情动作 · S3 意向确认/婉拒（confirm_intent / dec
     expect(取卡片(result, 'confirm_intent').按钮们).toHaveLength(0);
     expect(取卡片(result, 'decline_intent').按钮们).toHaveLength(0);
     expect(决定S3).not.toHaveBeenCalled();
+  });
+});
+
+// ── S0–S3 连续筛选（continuity_version 2）：待办目标、私有说明、公开补答与知情确认 ──
+// 目标只来自服务端下发的本人待办；缺待办一律零控件零请求。所有 body 与冻结合同 §6.1 一致。
+
+const V2待办ID = 'cpa_0123456789abcdef0123456789abcdef';
+const V2交换ID = 'cex_0123456789abcdef0123456789abcdef';
+/** 固定在未来的截止时刻（避免本地时钟把夹具判成已过期）。 */
+const 未来截止 = '2099-01-01T00:00:00Z';
+
+type 连续块 = Pick<P5详情,
+  'continuityVersion' | 'pendingActions' | 'dialogueProgress' | 'reconsideration' | 'confirmationSummary'>;
+
+function v2块(覆盖: Partial<连续块> = {}): 连续块 {
+  return {
+    continuityVersion: 2,
+    pendingActions: [],
+    dialogueProgress: null,
+    reconsideration: null,
+    confirmationSummary: null,
+    ...覆盖,
+  };
+}
+
+function v2待办(覆盖: Partial<P5详情['pendingActions'][number]> = {}): P5详情['pendingActions'][number] {
+  return {
+    id: V2待办ID, role: 'candidate', purpose: 's0_continue',
+    createdAt: '2026-09-10T01:00:00Z', deadline: 未来截止,
+    exchangeRef: null, summaryVersion: null, ...覆盖,
+  };
+}
+
+/** 任意行的 v2 详情（连续块可注入）：与 17 行矩阵一致的合法状态由调用方给。 */
+function v2详情DTO(选项: {
+  role?: P5角色;
+  state: P5状态视图;
+  availableActions: P5动作[];
+  块?: Partial<连续块>;
+  stages?: P5阶段区[];
+}): P5详情 {
+  const role = 选项.role ?? 'candidate';
+  const 公共 = {
+    state: 选项.state,
+    needsAction: 选项.state.lifecycle === 'open' && 选项.availableActions.length > 0,
+    availableActions: 选项.availableActions,
+    stages: 选项.stages ?? S1阶段区组(null),
+    currentCoordination: null,
+    intentConfirmations: { candidate: '', recruiter: '' } as const,
+    terminalSummary: 选项.state.lifecycle === 'ended'
+      ? {
+          stage: 选项.state.stage, outcome: 选项.state.outcome ?? 'semantic_not_fit',
+          reasonSummary: 选项.state.outcomeCode ?? 'semantic_not_fit',
+          finalizedAt: 选项.state.finalizedAt ?? '2026-09-11T01:00:00Z',
+        }
+      : null,
+    conversationRef: null,
+    matchScore: null,
+    jobDetail: null,
+    ...v2块(选项.块),
+  };
+  return role === 'candidate'
+    ? { role, context: { intentionId: 'int_0123456789abcdef0123456789abcdef', job: 冻结职位 }, ...公共 }
+    : {
+        role,
+        context: { candidateAlias: 'candidate-0123456789ab', job: 冻结职位 },
+        candidateResume: null,
+        candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
+        ...公共,
+      };
+}
+
+function 取输入(卡: 详情动作卡信息, 键: string) {
+  const 输入 = (卡.输入们 ?? []).find((条) => 条.键 === 键);
+  if (输入 === undefined) throw new Error(`夹具必须提供输入位 ${键}`);
+  return 输入;
+}
+
+function 取按钮(卡: 详情动作卡信息, 键: string) {
+  const 按钮 = 卡.按钮们.find((条) => 条.键 === 键);
+  if (按钮 === undefined) throw new Error(`夹具必须提供按钮 ${键}`);
+  return 按钮;
+}
+
+describe('use后端详情动作 · S0 人工卡（v2）', () => {
+  const S0状态 = 状态({ stage: 'anonymous_screening', status: 'needs_user', step: 'human_decision' });
+
+  it('继续带只给本人 AI 的说明；结束经二次确认且不带说明', async () => {
+    const 决定S0 = vi.fn(async (): Promise<void> => undefined);
+    const 详情 = v2详情DTO({
+      state: S0状态,
+      availableActions: ['end_screening'],
+      块: { pendingActions: [v2待办()] },
+    });
+    const { result } = 挂动作(动作输入({ 详情, 决定S0 }));
+    const 卡 = 取卡片(result, 'end_screening');
+    // 固定标签（C4/C5）与口径：只发给自己的 AI，继续也不代表接受差异
+    expect(取输入(卡, 's0').标签).toBe('给我的 AI 一句说明（选填）');
+    expect(取输入(卡, 's0').说明).toBe('只发给你自己的 AI，对方看不到；继续也不代表接受差异');
+    // 服务端绝对截止时刻 + 到期说明
+    expect(卡.提示们?.[1]).toBe('逾期未回应，这一单会自动结束');
+
+    await act(async () => {
+      取输入(卡, 's0').改变('更希望每周两天远程');
+    });
+    await act(async () => {
+      取按钮(取卡片(result, 'end_screening'), 'decide_s0_continue').执行?.();
+    });
+    expect(决定S0).toHaveBeenCalledWith('mc_a', 'continue', {
+      pendingActionId: V2待办ID, privateNote: '更希望每周两天远程',
+    });
+    // 成功后草稿清空（失败路径另有用例：必须原样保住）
+    expect(取输入(取卡片(result, 'end_screening'), 's0').值).toBe('');
+
+    // 结束：先二次确认，确认后才发，且不带私有说明
+    await act(async () => {
+      取按钮(取卡片(result, 'end_screening'), 'decide_s0_end').执行?.();
+    });
+    expect(决定S0).toHaveBeenCalledTimes(1); // 确认前零请求
+    await act(async () => {
+      取终结确认(result).执行();
+    });
+    expect(决定S0).toHaveBeenLastCalledWith('mc_a', 'end', {
+      pendingActionId: V2待办ID, privateNote: null,
+    });
+  });
+
+  it('待办属于对端（或整批缺席）→ 零控件零请求', () => {
+    const 决定S0 = vi.fn(async (): Promise<void> => undefined);
+    const 对端 = 挂动作(动作输入({
+      详情: v2详情DTO({
+        state: S0状态,
+        availableActions: ['end_screening'],
+        块: { pendingActions: [v2待办({ role: 'recruiter', purpose: 's1_continue' })] },
+      }),
+      决定S0,
+    }));
+    expect(取卡片(对端.result, 'end_screening').按钮们).toEqual([]);
+    const 无待办 = 挂动作(动作输入({
+      详情: v2详情DTO({ state: S0状态, availableActions: ['end_screening'] }),
+      决定S0,
+    }));
+    expect(取卡片(无待办.result, 'end_screening').按钮们).toEqual([]);
+    expect(决定S0).not.toHaveBeenCalled();
+  });
+
+  it('待办已过期：提交键就地禁用并解释，前端不自行改变 Case', () => {
+    const 决定S0 = vi.fn(async (): Promise<void> => undefined);
+    const { result } = 挂动作(动作输入({
+      详情: v2详情DTO({
+        state: S0状态,
+        availableActions: ['end_screening'],
+        块: { pendingActions: [v2待办({ deadline: '2020-01-01T00:00:00Z' })] },
+      }),
+      决定S0,
+    }));
+    const 继续 = 取按钮(取卡片(result, 'end_screening'), 'decide_s0_continue');
+    expect(继续.执行).toBeNull();
+    expect(继续.禁用说明).toBe('这条待办已到期，正在等待最新状态');
+    expect(决定S0).not.toHaveBeenCalled();
+  });
+});
+
+describe('use后端详情动作 · S1 人工卡与七天重新考虑（v2）', () => {
+  it('S1 只有继续 / 结束两个词（v2 不发 not_fit）', async () => {
+    const 决定S1 = vi.fn(async (): Promise<void> => undefined);
+    const { result } = 挂动作(动作输入({
+      详情: v2详情DTO({
+        role: 'recruiter',
+        state: 状态({ stage: 'resume_submission', status: 'needs_user', step: 'awaiting_recruiter_decision' }),
+        availableActions: ['decide_resume_screening'],
+        块: { pendingActions: [v2待办({ role: 'recruiter', purpose: 's1_continue' })] },
+      }),
+      决定S1,
+    }));
+    const 卡 = 取卡片(result, 'decide_resume_screening');
+    expect(卡.按钮们.map((键) => 键.键))
+      .toEqual(['decide_resume_screening_continue', 'decide_resume_screening_end']);
+    await act(async () => {
+      取按钮(卡, 'decide_resume_screening_continue').执行?.();
+    });
+    expect(决定S1).toHaveBeenCalledWith('mc_a', 'continue', {
+      pendingActionId: V2待办ID, privateNote: null,
+    });
+    await act(async () => {
+      取按钮(取卡片(result, 'decide_resume_screening'), 'decide_resume_screening_end').执行?.();
+    });
+    await act(async () => {
+      取终结确认(result).执行();
+    });
+    expect(决定S1).toHaveBeenLastCalledWith('mc_a', 'end', {
+      pendingActionId: V2待办ID, privateNote: null,
+    });
+  });
+
+  it('重新考虑：确认前零请求，确认后带说明发 continue（恢复不是重新申请）', async () => {
+    const 重新考虑 = vi.fn(async (): Promise<void> => undefined);
+    const { result } = 挂动作(动作输入({
+      详情: v2详情DTO({
+        role: 'recruiter',
+        state: 状态({
+          caseId: 'mc_a', lifecycle: 'ended', stage: 'resume_submission', status: 'ended',
+          step: 'complete', needsUser: false, outcome: 'semantic_not_fit',
+          outcomeCode: 'semantic_not_fit', finalizedAt: '2026-09-11T01:00:00Z',
+        }),
+        availableActions: ['reconsider'],
+        块: {
+          reconsideration: { eligible: true, deadline: 未来截止, unavailableReason: null },
+        },
+      }),
+      重新考虑,
+    }));
+    const 卡 = 取卡片(result, 'reconsider');
+    await act(async () => {
+      取输入(卡, 'reconsider').改变('远程比例可以再谈');
+    });
+    await act(async () => {
+      取按钮(取卡片(result, 'reconsider'), 'reconsider').执行?.();
+    });
+    expect(重新考虑).not.toHaveBeenCalled(); // 确认前零请求
+    const 确认 = 取终结确认(result);
+    expect(确认.标题).toBe('重新考虑这一单？');
+    expect(确认.正文).toContain('不重新投递简历');
+    await act(async () => {
+      确认.执行();
+    });
+    expect(重新考虑).toHaveBeenCalledWith('mc_a', '远程比例可以再谈');
+  });
+});
+
+describe('use后端详情动作 · S2 人工补答（v2）', () => {
+  const S2状态 = 状态({ stage: 'needs_coordination', status: 'needs_user', step: 'coordinating' });
+  const S2待办 = v2待办({ purpose: 's2_answer', exchangeRef: V2交换ID });
+
+  /** S2 段带一条公开问题：只有它的 exchange_ref 与待办的相等时才当成「当前问题」。 */
+  function S2阶段区组(问题引用: string | null): P5阶段区[] {
+    return S1阶段区组(null).map((区) => 区.stage === 'needs_coordination'
+      ? {
+          ...区,
+          state: 'active' as const,
+          occurredAt: '2026-09-10T02:00:00Z',
+          summary: 'coordinating',
+          screeningRecords: {
+            messages: [{
+              id: 'cdx_公开问题', kind: 'question' as const, role: 'recruiter' as const,
+              stage: 'needs_coordination' as const, askingRole: 'recruiter' as const, round: 1,
+              text: '远程比例最多能到多少？', exchangeRef: 问题引用,
+              occurredAt: '2026-09-10T02:00:00Z',
+            }],
+            summaries: [],
+          },
+        }
+      : 区);
+  }
+
+  function S2详情(问题引用: string | null = V2交换ID): P5详情 {
+    // 记录块整包挂在 S0 段（冻结 wire）：这里把 S2 记录放进 S0 段，映射按 stage 分发
+    const 段们 = S2阶段区组(问题引用);
+    const S2记录 = 段们[2].screeningRecords;
+    return v2详情DTO({
+      state: S2状态,
+      availableActions: ['answer_dialogue'],
+      块: {
+        pendingActions: [S2待办],
+        dialogueProgress: {
+          stage: 'needs_coordination', askingRole: 'recruiter',
+          recruiterRound: 1, candidateRound: 0, roundBudget: 2,
+        },
+      },
+      stages: 段们.map((区, 下标) => (下标 === 0
+        ? { ...区, screeningRecords: S2记录 }
+        : { ...区, screeningRecords: null })),
+    });
+  }
+
+  it('两个主要动作 + 「暂时无法回答」勾选；空回答不可提交，没有「接受方案」按钮', () => {
+    const { result } = 挂动作(动作输入({ 详情: S2详情() }));
+    const 卡 = 取卡片(result, 'answer_dialogue');
+    expect(卡.按钮们.map((键) => 键.文案)).toEqual(['提交回答', '结束匹配']);
+    expect(JSON.stringify(卡)).not.toContain('接受方案');
+    expect(卡.勾选们?.[0].标签).toBe('暂时无法回答');
+    expect(卡.勾选们?.[0].说明).toBe('记录为「暂时无法回答」，不等于同意对方的方案');
+    // 当前问题按 exchange_ref 与记录 id 精确相等取；轮次说明来自服务端记账
+    // 当前问题按两侧 exchange_ref 精确相等取（绝不碰不透明的记录 id）
+    expect(卡.提示们?.[0]).toBe('对方的问题：远程比例最多能到多少？');
+    expect(卡.提示们?.[1]).toBe('当前由招聘方发问，已问 1/2 轮');
+    const 提交 = 取按钮(卡, 'answer_dialogue_submit');
+    expect(提交.执行).toBeNull();
+    expect(提交.禁用说明).toBe('请先写下回答，或勾选「暂时无法回答」');
+  });
+
+  it('提交公开回答 → answered；勾选后提交 → unknown 且不带正文；结束经确认后发 end', async () => {
+    const 回答对话 = vi.fn(async (): Promise<void> => undefined);
+    const { result } = 挂动作(动作输入({ 详情: S2详情(), 回答对话 }));
+    await act(async () => {
+      取输入(取卡片(result, 'answer_dialogue'), 's2_answer').改变('最多每周三天远程');
+    });
+    await act(async () => {
+      取按钮(取卡片(result, 'answer_dialogue'), 'answer_dialogue_submit').执行?.();
+    });
+    expect(回答对话).toHaveBeenCalledWith('candidate', 'mc_a', {
+      pendingActionId: V2待办ID, action: 'answer', status: 'answered', answer: '最多每周三天远程',
+    });
+    // 成功后草稿清空（下一轮问题不会带着上一轮的正文）
+    expect(取输入(取卡片(result, 'answer_dialogue'), 's2_answer').值).toBe('');
+
+    await act(async () => {
+      取卡片(result, 'answer_dialogue').勾选们?.[0].切换(true);
+    });
+    await act(async () => {
+      取按钮(取卡片(result, 'answer_dialogue'), 'answer_dialogue_submit').执行?.();
+    });
+    expect(回答对话).toHaveBeenLastCalledWith('candidate', 'mc_a', {
+      pendingActionId: V2待办ID, action: 'answer', status: 'unknown',
+    });
+
+    await act(async () => {
+      取按钮(取卡片(result, 'answer_dialogue'), 'answer_dialogue_end').执行?.();
+    });
+    await act(async () => {
+      取终结确认(result).执行();
+    });
+    expect(回答对话).toHaveBeenLastCalledWith('candidate', 'mc_a', {
+      pendingActionId: V2待办ID, action: 'end',
+    });
+  });
+
+  it('没有记录的 exchange_ref 与待办相等（不同值或整个缺席）：不编造问题正文', () => {
+    for (const 引用 of ['cex_ffffffffffffffffffffffffffffffff', null]) {
+      const { result } = 挂动作(动作输入({ 详情: S2详情(引用) }));
+      const 卡 = 取卡片(result, 'answer_dialogue');
+      expect(卡.提示们?.[0]).toBe('当前由招聘方发问，已问 1/2 轮');
+      expect(JSON.stringify(卡.提示们)).not.toContain('远程比例最多能到多少？');
+    }
+  });
+
+  it('没有 s2_answer 待办的一方：零控件零请求（绝不要求无待办方作答）', () => {
+    const 回答对话 = vi.fn(async (): Promise<void> => undefined);
+    const 详情 = v2详情DTO({
+      role: 'recruiter',
+      state: S2状态,
+      availableActions: ['answer_dialogue'],
+      块: { pendingActions: [S2待办] }, // 待办归候选方
+    });
+    const { result } = 挂动作(动作输入({ 详情, 回答对话 }));
+    expect(取卡片(result, 'answer_dialogue').按钮们).toEqual([]);
+    expect(回答对话).not.toHaveBeenCalled();
+  });
+});
+
+describe('use后端详情动作 · S3 知情确认（v2）', () => {
+  const S3状态 = 状态({ stage: 'intent_confirmation', status: 'needs_user', step: 'awaiting_confirmations' });
+  const S3总结 = (version: number): NonNullable<P5详情['confirmationSummary']> => ({
+    version,
+    createdAt: '2026-09-10T03:00:00Z',
+    confirmedFacts: [{ text: '岗位在浦东园区', sourceRefs: [] }],
+    agreedArrangements: [],
+    unresolvedItems: [],
+    incompleteItems: [],
+    confirmationMeaning: 'continue_discussion_without_accepting_all_terms',
+  });
+
+  function S3详情(version: number): P5详情 {
+    return v2详情DTO({
+      state: S3状态,
+      availableActions: ['confirm_intent', 'decline_intent'],
+      块: {
+        pendingActions: [v2待办({ purpose: 's3_confirm', summaryVersion: version })],
+        confirmationSummary: S3总结(version),
+      },
+    });
+  }
+
+  it('确认带本屏所读的 summary_version，并就地说明「确认不等于接受全部条件」', async () => {
+    const 决定S3 = vi.fn(async (): Promise<void> => undefined);
+    const { result } = 挂动作(动作输入({ 详情: S3详情(1), 决定S3 }));
+    expect(取卡片(result, 'confirm_intent').提示们?.[0])
+      .toBe('确认表示你愿意继续讨论，不代表接受全部条件');
+    await act(async () => {
+      取按钮(取卡片(result, 'confirm_intent'), 'confirm_intent').执行?.();
+    });
+    expect(决定S3).toHaveBeenCalledWith('candidate', 'mc_a', 'confirm', {
+      pendingActionId: V2待办ID, summaryVersion: 1,
+    });
+  });
+
+  it('409 summary_version_conflict：提示总结已变化、保留未提交输入，绝不自动对新版再确认', async () => {
+    const 决定S3 = vi.fn(async (): Promise<void> => {
+      throw new BFF错误(409, 'summary_version_conflict', '总结版本已变化');
+    });
+    const { result, rerender } = 挂动作(动作输入({ 详情: S3详情(1), 决定S3 }));
+    await act(async () => {
+      取按钮(取卡片(result, 'confirm_intent'), 'confirm_intent').执行?.();
+    });
+    await waitFor(() => expect(决定S3).toHaveBeenCalledTimes(1));
+    // 权威重读把总结换成第 2 版（刷新由操作层完成；这里模拟新视图到达）
+    rerender(动作输入({ 详情: S3详情(2), 决定S3 }));
+    expect(取卡片(result, 'confirm_intent').提示们)
+      .toContain('你确认的是第 1 版总结，它已更新为第 2 版；请重新阅读后再决定。');
+    // 新版本没有被自动确认：仍然只有那一次调用
+    expect(决定S3).toHaveBeenCalledTimes(1);
+    // 用户再次确认时提交的是新版本
+    await act(async () => {
+      取按钮(取卡片(result, 'confirm_intent'), 'confirm_intent').执行?.();
+    });
+    expect(决定S3).toHaveBeenLastCalledWith('candidate', 'mc_a', 'confirm', {
+      pendingActionId: V2待办ID, summaryVersion: 2,
+    });
+  });
+
+  it('命令失败不清草稿：改过的说明原样留在卡上（新 body 才会是新意图）', async () => {
+    const 决定S0 = vi.fn(async (): Promise<void> => {
+      throw new BFF错误(409, 'case_state_conflict', '待办已不在');
+    });
+    const { result } = 挂动作(动作输入({
+      详情: v2详情DTO({
+        state: 状态({ stage: 'anonymous_screening', status: 'needs_user', step: 'human_decision' }),
+        availableActions: ['end_screening'],
+        块: { pendingActions: [v2待办()] },
+      }),
+      决定S0,
+    }));
+    await act(async () => {
+      取输入(取卡片(result, 'end_screening'), 's0').改变('希望保留远程');
+    });
+    await act(async () => {
+      取按钮(取卡片(result, 'end_screening'), 'decide_s0_continue').执行?.();
+    });
+    await waitFor(() => expect(决定S0).toHaveBeenCalledTimes(1));
+    expect(取输入(取卡片(result, 'end_screening'), 's0').值).toBe('希望保留远程');
   });
 });
