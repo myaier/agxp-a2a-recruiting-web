@@ -1,5 +1,6 @@
-// 工作经历 行业弹层 Backend 接入测试（Task 4）：
-// Backend 弹层按需 查询Taxonomy('industries')，点 selectable 叶子写 行业引用；
+// 工作经历 行业选择 Backend 接入测试（Task 4；editor-catalog-fullscreen Task 3 起承载
+// 从 72% 底部弹层换成全屏选择外壳，目录行为不变）：
+// Backend 按需 查询Taxonomy('industries')，点 selectable 叶子写 行业引用；
 // 继续自由输入清除引用。Mock 保留 常见行业 不变。
 //
 // 候选 onboarding 简历预填（Spec §8 /experience，Task 6）：首挂载同步用 取工作页预填
@@ -1907,8 +1908,8 @@ describe('工作经历 经历编辑页 行业共用正文（Task 6）', () => {
     await 用户.click(screen.getByText('所属行业'));
     // 层先出根列表，点根项才拉子列表（两层同名叶子都在 金融科技 之下）
     await 用户.click(await screen.findByText('金融科技'));
-    // 行项在弹层 dialog 内按 button 定位（编辑页 选择条目 的可及名含回显值，须排除）
-    const 层内 = within(screen.getByRole('dialog', { name: '选择所属行业' }));
+    // 行项在全屏子视图 dialog 内按 button 定位（编辑页 选择条目 的可及名含回显值，须排除）
+    const 层内 = within(screen.getByRole('dialog', { name: '所属行业' }));
     const 同名行 = await 层内.findAllByRole('button', { name: /支付与清结算/ });
     expect(同名行).toHaveLength(2);
     await 用户.click(同名行[1]!);
@@ -1926,7 +1927,7 @@ describe('工作经历 经历编辑页 行业共用正文（Task 6）', () => {
     await 用户.click(screen.getByText('字节跳动'));
     await 用户.click(screen.getByText('所属行业'));
     await 用户.click(await screen.findByText('金融科技'));
-    const 重开层内 = within(screen.getByRole('dialog', { name: '选择所属行业' }));
+    const 重开层内 = within(screen.getByRole('dialog', { name: '所属行业' }));
     const 重开行 = await 重开层内.findAllByRole('button', { name: /支付与清结算/ });
     expect(重开行[0]!.textContent).not.toContain('✓');
     expect(重开行[1]!.textContent).toContain('✓');
@@ -1979,9 +1980,10 @@ describe('工作经历 经历编辑页 行业共用正文（Task 6）', () => {
     await 用户.click(screen.getByText('金融科技'));
     await 用户.click(await screen.findByText('支付与清结算'));
     expect(screen.getByText('支付与清结算')).toBeTruthy();
-    // 取消（遮罩）不落任何选择：层关闭且所属行业行保持已回填值，不保存经历条目
+    // 取消（Escape）不落任何选择：层关闭且所属行业行保持已回填值，不保存经历条目
     await 用户.click(screen.getByText('所属行业'));
-    await 用户.click(screen.getByRole('button', { name: '关闭选择所属行业' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '所属行业' })).toBeNull());
     expect(screen.getByText('支付与清结算')).toBeTruthy();
     // 完成回写：Mock 无引用门槛，行业文本落经历段（不落引用）
     await 用户.click(screen.getByRole('button', { name: '完成' }));
@@ -2024,7 +2026,7 @@ describe('工作经历 经历编辑页 行业共用正文（Task 6）', () => {
     await 用户.click(await screen.findByText('行业A'));
     // 单选：选定立即写当前经历草稿（行业引用）并关闭，不再有第二条确认路径
     await 用户.click(await screen.findByText('子项一'));
-    expect(screen.queryByRole('dialog', { name: '选择所属行业' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: '所属行业' })).toBeNull();
     const 落层 = mock更新草稿.mock.calls.map((c: unknown[]) => c[0] as { 编辑中?: { 种类?: string; 字段?: { 行业?: string; 行业引用?: unknown } } })
       .filter((草稿) => 草稿.编辑中?.种类 === 'experience');
     const 最后落层 = 落层.at(-1) as { 编辑中: { 字段: { 行业: string; 行业引用?: unknown } } } | undefined;
@@ -2034,8 +2036,71 @@ describe('工作经历 经历编辑页 行业共用正文（Task 6）', () => {
     const 选择后 = 更新次数();
     await 用户.click(screen.getByText('所属行业'));
     await screen.findByText('行业A');
-    await 用户.click(screen.getByRole('button', { name: '关闭选择所属行业' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '所属行业' })).toBeNull());
     expect(更新次数() - 选择后).toBe(0);
+  });
+});
+
+// ── editor-catalog-fullscreen Task 3：所属行业 从 72% 底部弹层换成全屏选择外壳（A 契约）──
+// 父经历编辑页 hidden 保持挂载、正文在 wrapper 兄弟位置、关闭后按 A 恢复触发行焦点与
+// 滚动；行业目录行为（展开/分页/重试/换代/单选回填）不因容器变化失效。
+describe('工作经历 经历编辑页 行业全屏子视图（Task 3）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+  });
+
+  it('打开时父经历编辑页 hidden 保持挂载且行业正文在 wrapper 外；关闭恢复触发行焦点与滚动；首次挂载不抢焦点', async () => {
+    render工作经历({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    // 首次挂载不恢复焦点
+    expect(document.activeElement).toBe(document.body);
+    await 用户.click(screen.getByText('字节跳动'));
+    const 行业行 = screen.getByText('所属行业').closest('button') as HTMLElement;
+    const 滚动节点 = 行业行.closest('.滚动区') as HTMLElement;
+    expect(滚动节点).toBeTruthy();
+    滚动节点.scrollTop = 96;
+    await 用户.click(行业行);
+    const 行业层 = await screen.findByRole('dialog', { name: '所属行业' });
+    // 父编辑页 wrapper hidden + 显式 display:none；全屏正文不在 hidden 祖先里
+    const 隐藏区 = document.querySelector('div[hidden]') as HTMLElement;
+    expect(隐藏区).toBeTruthy();
+    expect(隐藏区.style.display).toBe('none');
+    expect(隐藏区.contains(行业层)).toBe(false);
+    // 父表单没有卸载（失败反例：卸载整个经历表单）——行业行还在 DOM 里，只是退出无障碍树
+    expect(隐藏区.contains(行业行)).toBe(true);
+    expect(screen.queryByRole('button', { name: /公司名称/ })).toBeNull();
+    // Escape 关闭：焦点回触发行、滚动还原，经历表单原样恢复
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '所属行业' })).toBeNull());
+    expect(document.activeElement).toBe(行业行);
+    expect(滚动节点.scrollTop).toBe(96);
+    expect(screen.getByRole('button', { name: '完成' })).toBeTruthy();
+  });
+
+  it('行业全屏取消不丢未保存草稿：职位/工作内容/时间跨/公司跨取消保留，行业行保持未选', async () => {
+    render工作经历({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByText('字节跳动'));
+    // 未保存改动：职位、工作内容、时间跨（至今 → 手填结束）
+    const 职位框 = screen.getByPlaceholderText('必填') as HTMLInputElement;
+    await 用户.clear(职位框);
+    await 用户.type(职位框, '资深后端');
+    await 用户.type(screen.getByPlaceholderText('请详细写职责、规模、结果'), '未保存的描述');
+    await 用户.click(screen.getByRole('checkbox', { name: '至今' }));
+    expect(screen.getByRole('button', { name: '离职年月' })).toBeTruthy();
+    // 打开行业全屏再取消（返回键，不选定任何行业）
+    await 用户.click(screen.getByText('所属行业'));
+    await screen.findByRole('dialog', { name: '所属行业' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '所属行业' })).toBeNull());
+    // 草稿原样：文本输入、时间跨、公司回显都还在；行业行仍是占位
+    expect((screen.getByPlaceholderText('必填') as HTMLInputElement).value).toBe('资深后端');
+    expect((screen.getByPlaceholderText('请详细写职责、规模、结果') as HTMLTextAreaElement).value).toContain('未保存的描述');
+    expect(screen.getByRole('button', { name: '离职年月' })).toBeTruthy();
+    expect(screen.getByText('公司名称').closest('button')!.textContent).toContain('字节跳动');
+    expect(screen.getByText('所属行业').closest('button')!.textContent).toContain('选择行业');
   });
 });
 

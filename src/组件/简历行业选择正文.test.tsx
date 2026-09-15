@@ -1,13 +1,15 @@
-// 简历行业选择正文 组件测试（picker 统一 Task 1）：
+// 简历行业选择正文 组件测试（editor-catalog-fullscreen Task 3）：
 // 纯展示正文 —— 经历编辑页两模式把 行业目录钩子 的目录状态与选择注入同一组件：
-// 底部弹层骨架（弹层框架 + 工作经历.module.css 选择层）+ 共用 行业分类列表。
+// 全屏选择外壳（A 契约，Task 1）+ 共用 行业分类列表。旧 72% 底部弹层骨架
+//（弹层框架 + 工作经历.module.css 选择层：抓手/遮罩/层内标题）不再存在。
 // 这里只断言正文壳的展示契约与归属：
-//   · 壳：抓手 + 标题「所属行业」+ 目录行上屏；关闭沿弹层骨架（遮罩/Escape 交给 关闭）；
+//   · 壳：对话框语义 + 返回栏标题「所属行业」+ 目录行上屏；关闭沿全屏外壳
+//    （Escape / 返回键交给 关闭，无底部遮罩可点）；
 //   · 无「自填行业」自由文本输入（两模式一致，原 Mock 自填按 Plan 删除）；
 //   · 单选（上限=1）语义透传：选择/切换展开/加载更多/重试 交给注入回调；
 //   · 已选回显按稳定键；两模式消费同一正文由 src/屏幕/工作经历.test.tsx 与 e2e 证明。
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -56,7 +58,7 @@ function 基础Props(覆盖: Partial<简历行业选择正文Props> = {}): 简�
 }
 
 describe('简历行业选择正文 展示契约', () => {
-  it('原弹层骨架上屏：抓手、标题、共用目录行（根可展开、子行缩进、选中行带勾）', () => {
+  it('全屏外壳上屏：对话框语义、首次焦点在返回键、标题「所属行业」、共用目录行（缩进、选中带勾）、无底部弹层遮罩', () => {
     render(
       <简历行业选择正文
         {...基础Props({
@@ -71,11 +73,17 @@ describe('简历行业选择正文 展示契约', () => {
         })}
       />,
     );
-    expect(screen.getByText('所属行业')).toBeTruthy();
+    // A 契约壳：role=dialog + aria-modal + 可访问名称（标题「所属行业」），首焦点在返回键
+    const 对话框 = screen.getByRole('dialog', { name: '所属行业' });
+    expect(对话框.getAttribute('aria-modal')).toBe('true');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '返回' }));
     // 共用 行业分类列表 上屏：根行可展开、子/孙缩进、已选带勾
     expect((screen.getByText('支付与清结算')!.closest('button') as HTMLElement).style.paddingLeft).toBe('28px');
     expect((screen.getByText('公募基金')!.closest('button') as HTMLElement).style.paddingLeft).toBe('52px');
     expect(screen.getByText('公募基金')!.closest('button')!.textContent).toContain('✓');
+    // 旧 72% 底部弹层骨架不再渲染：无遮罩按钮、无抓手（抓手类名只属于旧 选择层 CSS）
+    expect(screen.queryByRole('button', { name: '关闭选择所属行业' })).toBeNull();
+    expect(document.querySelector('dialog')).toBeNull();
   });
 
   it('行点击与展开归属透传给注入回调：可选行=选择、导航行=切换展开', async () => {
@@ -132,10 +140,13 @@ describe('简历行业选择正文 展示契约', () => {
     expect(screen.queryByPlaceholderText('没有合适的？直接输入')).toBeNull();
   });
 
-  it('关闭沿弹层骨架：遮罩交给 关闭', async () => {
+  it('关闭沿全屏外壳：Escape 与返回键都交给 关闭（旧 72% 弹层的遮罩按钮不再存在）', async () => {
     const 关闭 = vi.fn();
     render(<简历行业选择正文 {...基础Props({ 关闭 })} />);
-    await userEvent.setup().click(screen.getByRole('button', { name: '关闭选择所属行业' }));
+    expect(screen.queryByRole('button', { name: '关闭选择所属行业' })).toBeNull();
+    fireEvent.keyDown(window, { key: 'Escape' });
     expect(关闭).toHaveBeenCalledTimes(1);
+    await userEvent.setup().click(screen.getByRole('button', { name: '返回' }));
+    expect(关闭).toHaveBeenCalledTimes(2);
   });
 });

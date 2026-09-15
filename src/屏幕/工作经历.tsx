@@ -23,8 +23,9 @@ import 年月滚轮层 from '../组件/年月滚轮层';
 // Task 5（core editors §5.2）：教育 学校/专业 候选行共用组件；Task 2（editor-catalog-fullscreen）
 // 起由 教育目录子视图 在全屏子视图里调用（原页内两份候选 JSX 与查询状态已迁入）
 import { 教育目录候选列表, type 教育候选 } from '../组件/教育目录候选列表';
-// Task 6（core editors §5.2）：经历 所属行业 底部选择层正文共用组件（原页内两模式两套 JSX 迁出）
+// Task 6（core editors §5.2）：经历 所属行业 选择正文共用组件（原页内两模式两套 JSX 迁出）
 // picker 统一 Task 1：目录机制收敛到共用 行业目录钩子（查询适配在本文件注入），正文纯展示
+// editor-catalog-fullscreen Task 3：承载从 72% 底部弹层换成全屏选择外壳（A 契约），目录行为不变
 import {
   简历行业选择正文,
 } from '../组件/简历行业选择正文';
@@ -1163,6 +1164,33 @@ function 经历编辑页({
     变更引用.current?.({ 种类: 'experience', 本地编号: 编号, 字段 });
   }, [草稿]);
   const [行业层, 设行业层] = useState(false);
+  // ── Task 3（editor-catalog-fullscreen）：行业全屏子视图的 A 契约父页焦点/滚动记账 ──
+  // 打开处理器在设置打开状态前记录触发行与各祖先滚动节点（.滚动区，屏幕内唯一允许
+  // 滚动的容器，多个则分别记录）的 scrollTop；关闭后由 layout effect 在 wrapper 恢复
+  // 显示时先 focus({ preventScroll: true }) 回仍连接的触发行，再原样恢复 scrollTop。
+  // 首次挂载不恢复（同 教育目录子视图 的记账写法）。
+  const 行业行引用 = useRef<HTMLButtonElement>(null);
+  const 行业曾打开 = useRef(false);
+  const 行业打开滚动 = useRef<{ 节点: HTMLElement; 顶: number }[]>([]);
+  const 开行业层 = () => {
+    行业打开滚动.current = [];
+    for (let 节点 = 行业行引用.current?.parentElement; 节点; 节点 = 节点.parentElement) {
+      if (节点.classList.contains('滚动区')) 行业打开滚动.current.push({ 节点, 顶: 节点.scrollTop });
+    }
+    设行业层(true);
+  };
+  useLayoutEffect(() => {
+    if (行业层) {
+      行业曾打开.current = true;
+      return;
+    }
+    if (!行业曾打开.current) return;
+    行业曾打开.current = false;
+    const 触发行 = 行业行引用.current;
+    if (触发行?.isConnected) 触发行.focus({ preventScroll: true });
+    for (const { 节点, 顶 } of 行业打开滚动.current) 节点.scrollTop = 顶;
+    行业打开滚动.current = [];
+  }, [行业层]);
   // 年月滚轮打开在哪一侧：null = 没开
   const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
   const 至今 = 草稿.结束 === null;
@@ -1223,6 +1251,14 @@ function 经历编辑页({
   return (
     // 2026-08-24 全站选择风格统一（C1 定稿）：页底白底
     <次级页外壳 白底>
+      {/* Task 3：行业全屏子视图打开时父表单保持挂载但 hidden + 显式 display:none 隔离
+          （仓库没有全局 [hidden] 规则，固定 author display 会压过 UA 折叠）；wrapper 接管
+          外壳的满高语义（flex:1/min-height:0/纵向 flex），行业全屏正文是下面的内容兄弟，
+          绝不能藏进自己的 hidden 祖先（同 教育目录子视图 的结构）。 */}
+      <div
+        hidden={行业层}
+        style={{ flex: 1, minHeight: 0, display: 行业层 ? 'none' : 'flex', flexDirection: 'column' }}
+      >
       <返回栏
         返回={取消}
         标题={初始 ? `编辑${区块名}` : `添加${区块名}`}
@@ -1274,8 +1310,9 @@ function 经历编辑页({
         </button>
 
         {/* 所属行业：标注意见 21:43 —— 不摊一排快捷片，改成和「公司名称」同款的
-            点击行，点开从底部选择层里挑（也可在层里手输），选完回填 */}
-        <button className={`${样式.选择条目} 可点`} onClick={() => 设行业层(true)}>
+            点击行；editor-catalog-fullscreen Task 3 起点开全屏行业目录挑选
+            （单选选定即回填，层内无自由文本），选完回填 */}
+        <button ref={行业行引用} className={`${样式.选择条目} 可点`} onClick={开行业层}>
           <span className={样式.条目标签}>所属行业</span>
           <span className={样式.选择条目值行}>
             <span className={`${草稿.行业 ? 样式.条目值 : 样式.条目占位} 单行`}>
@@ -1445,16 +1482,6 @@ function 经历编辑页({
         />
       ) : null}
 
-      {/* 行业选择层（picker 统一 Task 1）：共用 简历行业选择正文（纯展示）+ 行业目录钩子
-          （展开/缓存/分页/重试/换代）。单选选定立即写当前经历草稿并关闭；关闭未选择不改草稿。 */}
-      {行业层 ? (
-        <行业选择层
-          草稿={草稿}
-          改={改}
-          关闭={() => 设行业层(false)}
-        />
-      ) : null}
-
       {/* 合同 C：公司选择抽屉（合同 B 薄包装）；关闭已先 作废 在飞搜索/创建 */}
       {公司抽屉开 ? (
         <公司选择抽屉接线
@@ -1465,11 +1492,25 @@ function 经历编辑页({
           添加={(名称) => void 添加公司(名称)}
         />
       ) : null}
+      </div>
+
+      {/* 行业全屏子视图（picker 统一 Task 1 + editor-catalog-fullscreen Task 3）：共用
+          简历行业选择正文（纯展示）+ 行业目录钩子（展开/缓存/分页/重试/换代）。开着才挂载，
+          是上面 hidden wrapper 的兄弟（正文不能藏进自己的 hidden 祖先）；单选选定立即写
+          当前经历草稿并关闭，关闭未选择不改草稿；外壳按 A 契约管焦点/Escape。 */}
+      {行业层 ? (
+        <行业选择层
+          草稿={草稿}
+          改={改}
+          关闭={() => 设行业层(false)}
+        />
+      ) : null}
     </次级页外壳>
   );
 }
 
-// ── 所属行业选择层（picker 统一 Task 1）：弹层开着才挂载，目录机制全部来自 行业目录钩子 ──
+// ── 所属行业全屏子视图（picker 统一 Task 1；Task 3 起由 全屏选择外壳 承载）：
+// 开着才挂载，目录机制全部来自 行业目录钩子 ──
 // Backend 注入 现有 查询Taxonomy('industries') 的 DTO 适配；Mock 沿本地 行业字典 的模拟适配
 //（根仅展开、细分可选，不发真实请求）。目录身份 = 模式+主体，主体变更作废旧缓存。
 // 单选（上限=1）选定立即写当前经历草稿并关闭；关闭未选择时草稿不变；
