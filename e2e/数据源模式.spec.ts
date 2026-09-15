@@ -2617,6 +2617,9 @@ const Onboarding目录展示: Record<string, string> = {
   'loc-fixture-001': 标记.城市display,
   'job-fixture-001': 标记.职位display,
   'ind-fixture-001': 'Fixture 行业',
+  // 简历行业 @backend 用例自建行业目录的孙叶子：权威快照回读要带显示名 ——
+  // 空显示名会让 重入后的经历段 被 保存简历 的「不完整条目跳过」守卫拦下（零写入）
+  'ind_leaf_bank': '银行支付',
   'inst-fixture-001': 标记.学校display,
   'major-fixture-001': 'Fixture 专业',
 };
@@ -3117,6 +3120,15 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       const 答简历 = async () => {
         await route.fulfill({ status: 200, json: 信封(P4深克隆(Onboarding域.resume)) });
       };
+      // company 是服务端冻结的展示快照（合同 C）：按 organization_id 从既有组织目录
+      //（招聘组织 fixture + 隐私搜索池）反查 display_name 冻结进快照（真实 BFF 同语义，
+      // src/数据/后端映射.ts 转经历 注释）；无 organization_id 维持空串
+      const 经历企业展示名 = (编号: string | undefined): string =>
+        编号 !== undefined && 编号 !== ''
+          ? 组织fixture?.organizations[编号]?.display_name
+            ?? 选项.隐私fixture?.组织库[编号]?.display_name
+            ?? ''
+          : '';
 
       // 主体：last_used_role 从 null 起步（会话恢复落身份选择页），角色写入推进它
       if (path === '/api/v1/me' && method === 'GET') {
@@ -3215,8 +3227,7 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         const 新经历: BFF简历['experiences'][number] = {
           id: `exp-fixture-onboard-${Onboarding域.resume.experiences.length + 1}`,
           organization_id: 写.organization_id,
-          // company 是服务端冻结的展示快照（合同 C）：本 fixture 不做组织名反查，留空串
-          company: '',
+          company: 经历企业展示名(写.organization_id),
           industry: { id: 写.industry_id, display_name: Onboarding目录展示[写.industry_id] ?? '' },
           title: 写.title,
           start_month: 写.start_month,
@@ -3233,6 +3244,35 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
           status: 200,
           json: 信封({ entry: { kind: 'experience', experience: P4深克隆(新经历) }, aggregate_revision: Onboarding域.resume.aggregate_revision }),
         });
+        return;
+      }
+      // 经历更新（同 id CAS）：body 同创建；company 快照按最新 organization_id 重新冻结
+      //（与 保存简历 的 PATCH /me/resume/experiences/{id} 消费合同一致，教育 PATCH 同款）
+      const Onboarding经历改 = /^\/api\/v1\/me\/resume\/experiences\/([^/]+)$/.exec(path);
+      if (Onboarding经历改 && method === 'PATCH') {
+        断言经历写入(body);
+        记变更(path);
+        const 目标 = Onboarding域.resume.experiences.find((条) => 条.id === Onboarding经历改[1]);
+        if (目标 === undefined) {
+          await route.fulfill({ status: 404, json: { error: { type: 'experience_not_found', message: 'fixture：未知经历条目' } } });
+          return;
+        }
+        const 写 = body as {
+          organization_id: string; industry_id: string; title: string; start_month: string;
+          end_month?: string | null; description?: string; hidden?: boolean; internship?: boolean;
+        };
+        目标.organization_id = 写.organization_id;
+        目标.company = 经历企业展示名(写.organization_id);
+        目标.industry = { id: 写.industry_id, display_name: Onboarding目录展示[写.industry_id] ?? '' };
+        目标.title = 写.title;
+        目标.start_month = 写.start_month;
+        目标.end_month = 写.end_month ?? null;
+        目标.description = 写.description ?? '';
+        目标.hidden = 写.hidden ?? false;
+        目标.internship = 写.internship ?? false;
+        目标.revision += 1;
+        Onboarding域.resume.aggregate_revision += 1;
+        await 答简历();
         return;
       }
       if (path === '/api/v1/me/resume/educations' && method === 'POST') {
@@ -11204,8 +11244,9 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     await expect(page.getByText('我的简历', { exact: true })).toBeVisible();
 
     // 权威快照渲染：经历 / 教育 / 技能 / 证书 全部来自 HTTP fixture。
-    // 经历卡的公司名是服务端冻结的展示快照（合同 C，本 stub 不反查组织名 → company
-    // 为空串），卡上可断言的坐标是职位名与行业标签
+    // 经历卡的公司名是服务端按 organization_id 冻结的展示快照（合同 C，fixture 反查
+    // 搜索池 → company 即所选企业名），卡上可断言 公司名 / 职位名 / 行业标签
+    await expect(page.getByText(P3标记.手动组织甲)).toBeVisible();
     await expect(page.getByText('Fixture 后端工程师')).toBeVisible();
     await expect(page.getByText(/· Fixture 行业/)).toBeVisible();
     await expect(page.getByText(标记.学校display)).toBeVisible();
@@ -11228,12 +11269,12 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     expect(证书Mutation?.body).toEqual({ name: 'CET-4', year: null });
     expect(fixture.resume.experiences).toHaveLength(1);
     // 合同 C：经历按稳定 ID 提交（organization_id 是抽屉选中的组织甲、industry_id 是
-    // 所点行业叶），company 是服务端冻结展示快照（stub 不反查 → 空串）
+    // 所点行业叶），company 是服务端按 organization_id 反查冻结的展示快照（即所选企业名）
     expect(fixture.resume.experiences[0]).toMatchObject({
       organization_id: 'org-fixture-p3-manual-a',
       industry: { id: 'ind-fixture-001', display_name: 'Fixture 行业' },
       title: 'Fixture 后端工程师',
-      company: '',
+      company: P3标记.手动组织甲,
     });
     expect(fixture.resume.skills).toEqual(['Go']);
     expect(fixture.resume.educations).toHaveLength(1);
@@ -12405,6 +12446,30 @@ test.describe('核心编辑 简历行业 @backend', () => {
     expect(经历写入[0]!.body).toMatchObject({
       organization_id: 'org-fixture-p3-manual-a',
       industry_id: 'ind_leaf_bank',
+    });
+
+    // ── 保存／重入（review-r1 F2）：company 是服务端按 organization_id 冻结的展示快照
+    //    —— 刷新重进后经历卡与编辑页公司行都显示所选企业（非空、即该企业 display_name），
+    //    公司非空过必填门完成可用；改职位再保存，PATCH 仍提交同一 organization_id ──
+    await page.goto('/#/experience');
+    await expect(page.getByText(P3标记.手动组织甲).first()).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button').filter({ hasText: P3标记.手动组织甲 }).click();
+    const 重入公司行 = page.getByRole('button').filter({ hasText: '公司名称' });
+    await expect(重入公司行).toContainText(P3标记.手动组织甲);
+    await expect(page.getByRole('button', { name: '完成', exact: true })).toBeEnabled();
+    // 改职位制造差异：无差异的再保存不发 PATCH（保存简历按分区 diff 决定写入）
+    await page.getByPlaceholder('必填').fill('演示工程师·复核');
+    await page.getByRole('button', { name: '完成', exact: true }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/wizard$/, { timeout: 20_000 });
+    const 经历更新 = fixture.mutations.filter(
+      (条) => 条.method === 'PATCH' && /^\/api\/v1\/me\/resume\/experiences\/[^/]+$/.test(条.path),
+    );
+    expect(经历更新.length).toBe(1);
+    expect(经历更新[0]!.body).toMatchObject({
+      organization_id: 'org-fixture-p3-manual-a',
+      industry_id: 'ind_leaf_bank',
+      title: '演示工程师·复核',
     });
   });
 });
