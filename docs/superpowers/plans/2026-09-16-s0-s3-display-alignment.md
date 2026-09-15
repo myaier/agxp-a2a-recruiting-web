@@ -137,7 +137,7 @@ export function 历史代谈外壳(props: {
 
 - [ ] 添加卡DOM/可访问按钮/媒体失败测试；先断言Backend卡与Mock同props同DOM/CSS，不用快照冻结不同数据整页高度。
 - [ ] 添加映射反例：completed无额外原因、ended semantic_not_fit、未知码、无Case初评失败、finalized/archived/updated三级标签、招聘合法alias但无画像、无身份图标、不取identity。
-- [ ] 复制Mock卡/说明条样式到共享module，接入四个角色×来源入口。保留 `14px 18px 24px`、卡 `13px 14px`/gap11/margin10；结果成功/提醒/中性按明确事实。Backend缺logo用中性图位；Mock字标允许自带。
+- [ ] 复制Mock卡/说明条样式到共享module，接入四个角色×来源入口。保留 `14px 18px 24px`、卡 `13px 14px`，gap11、margin10；结果成功/提醒/中性按明确事实。Backend缺logo用中性图位；Mock字标允许自带。
 - [ ] 保留服务端顺序、canonical record_id/case_id路由、无total不显示假总数；招聘两架标题/独立加载更多/失败不互清，未开始不报0。空态/错误/旧数据刷新失败均在共享壳内。说明替换为Spec §4.1固定中文。
 - [ ] `npm test -- src/组件/历史代谈展示.test.tsx src/数据/历史代谈展示映射.test.ts src/屏幕/P5/MatchCase历史.test.tsx`。预期分页/迟到结果隔离、零轮询、单架失败保另一架、点击导航均通过；不因卡造逐条详情请求。
 - [ ] 全仓 `rg` 核对抽出类名消费者后仅删无用CSS和重复JSX；提交 `refactor: share mock history layout across data sources`。
