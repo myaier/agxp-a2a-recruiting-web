@@ -268,3 +268,19 @@ Claude Opus/high 第 1 轮（WORKFLOW_DOCUMENT_REVIEW），冻结候选 revision
 本轮所有有效 required 已修订，未改变批准产品范围；4 项均为文档局部修订，没有产品测试或产品代码改动。按 review skill 的“核实后无未解决的有效 required”停止规则结束，共 1 轮，无未解决 required；修订由 planner 静态核对，不宣称修订后另有 Claude 复审。
 
 执行提示词校验记录：单文件 Claude Code／Codex 两节，使用 development-workflow 的 scripts/validate_prompt_grading.py 校验；已将旧直聊路由写为根 hash 路由，避免把路由误判为机器绝对目录。具体运行结果随 prompt 提交记录，未执行产品测试。
+
+## 实施收尾记录（2026-09-15，追加）
+
+实施：6 Task 全部完成（Claude Code 宿主，subagent-driven-development，逐 Task spec+quality 双 review，2 个 fix round）；最终全分支 review 2 条 required 文档事实修正（46a3033d）已 re-review 闭合。异构 review：Codex review-loop 2 轮——round 1 两 required 契约违反（批量 describe 级超时抬升；Backend 经历快照 company 空串丢失保存/重入覆盖）均接受并修复（2a00db61、c7be3b8b），round 2 精确 NO FINDINGS，轮后守卫全过；review 终点候选 c7be3b8b，其后无修复。证据：/tmp/codex-review-loop/session-HbnEDosg/（合同 /Users/visionclaw/coding-harness/skills/_shared/review-contract.md）。
+
+L0–L2：`git diff --check 8e333ce3...HEAD` CLEAN；`npx oxlint`（两配置+三 spec+一 fixture）0 finding exit 0；采集 helper 相关 `npm test -- e2e/视觉回归/比较器.test.ts e2e/视觉回归/场景.test.ts` 8/8。
+
+最终选集（Node v26.3.0、Playwright 1.62.1 channel=chrome、宿主 TZ+08、--workers=4 --retries=0）：
+- data-source 全量：243/243（3.1m），receipt ui-regression-output/e2e-realignment/final-data.json + final-data-artifacts/
+- 默认独有（onboarding/换壳无闪屏/问AI代理展示）：14/14（21.4s），receipt final-default.json + final-default-artifacts/
+- 默认 52 Mock 采集补跑（Task 2/6 触碰 e2e/fixtures/展示字段接线.ts 与 e2e/展示字段接线.spec.ts，按失效重算；review-r1 修复仅触碰 e2e/数据源模式.spec.ts 可由 diff 证明不影响）：52/52（22.2s），receipt final-default-capture.json + final-default-capture-artifacts/
+- 独立视觉 18 场景（UI_CAPTURE_DIR=…/visual）：18/18（20.1s），receipt final-visual.json + final-visual-artifacts/ + visual/
+
+备注：annotation 项目输出含既有 PostCSS `from` 选项警告（工具链噪声，非本分支引入，未扩展处理）。
+
+target 事实（只读 fetch 后）：origin/main=eeaead9a（自开工未推进）；本地 main=5825ff47（落后 origin/main）；eeaead9a..c7be3b8b 共 17 commits（1 spec 草案 + 5 规划 docs + 11 实施/修复），全部属本 Plan 生命周期，origin/main 为 HEAD 祖先，普通 fast-forward 可达。真实 Backend/STG/Hosted L3：none（intercepted E2E，无生产代码改动）。
