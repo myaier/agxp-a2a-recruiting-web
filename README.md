@@ -116,16 +116,45 @@ Backend 模式不预取全量目录。选择器（城市 / 学校 / 职位 / 行
 - 引导草稿、预填恢复坐标、当前意向选择、未认证公司声明及前端附属字段各有存储边界；这些不等于服务端业务副本，具体见 `src/状态/资料持久化.ts` 与各域恢复实现。
 - 退出登录 / 401 清空后端目录缓存，避免下个会话复用上个会话的目录页。
 
+### 本地 E2E 入口与采集
+
+Playwright 用例分三个互不混跑的入口，各自独立起 server，模式不互相污染：
+
+```bash
+npm run test:e2e                 # 默认入口：显式 mock/stg dev server（4173，--strictPort、
+                                 # 不可复用），grepInvert 挡掉 @backend/@annotation 标签用例
+npm run test:e2e:data-source     # 数据源入口：mock(4181) / backend(4182) / 标注(4183) 三个
+                                 # 不可复用 server，按 @mock/@backend/@annotation 分项目
+npm run ui:capture               # 视觉回归入口：e2e/视觉回归/ 固定 18 个场景（需 UI_CAPTURE_DIR）
+```
+
+- 默认入口跑 Mock 页面功能断言与采集冒烟，**不需要** shell 采集变量：采集 spec
+  （`e2e/P1展示统一.spec.ts`、`e2e/展示字段接线.spec.ts`）不带 `P1_CAPTURE_DIR` /
+  `WIRING_CAPTURE_DIR` 时，采集结果落在每个用例独立的 Playwright 输出目录
+  （`--output` 下每个用例自己的 `capture/`），重复与并发运行互不覆盖。
+- 基准／候选采集仍走显式目录协议（目录为当次 invocation 专用，由调用者保证不与
+  另一次运行共用）：
+
+```bash
+P1_CAPTURE_DIR=ui-regression-output/p1/reference npm run test:e2e:data-source -- \
+  e2e/P1展示统一.spec.ts --project=mock-stg --grep 'P1 Mock视觉' --workers=1
+```
+
+- 功能项目的时区缺省 UTC；P1／展接线／视觉采集 suite 自带 `Asia/Shanghai`，
+  以 suite 声明为准，产品时间格式不受配置影响。
+
 ### 数据源边界 E2E
 
 ```bash
-npm run test:e2e:data-source                       # 全量（mock + backend 两组）
-npm run test:e2e:data-source -- --grep '@mock'     # 只跑 Mock 回归
-npm run test:e2e:data-source -- --grep '@backend'  # 只跑 Backend fixture
+npm run test:e2e:data-source                       # 全量（mock + backend + 标注 三组）
+npm run test:e2e:data-source -- --grep '@mock'       # 只跑 Mock 回归
+npm run test:e2e:data-source -- --grep '@backend'    # 只跑 Backend fixture
+npm run test:e2e:data-source -- --grep '@annotation' # 只跑标注评审构建（4183 独有构建）
 ```
 
-由 `playwright.数据源模式.config.ts` 同时启动两个不可复用的 Vite dev server
-（`mock/stg` 端口 4181、`backend/stg` 端口 4182），按测试标题里的 `@mock` / `@backend`
+由 `playwright.数据源模式.config.ts` 同时启动三个不可复用的 Vite dev server
+（`mock/stg` 端口 4181、`backend/stg` 端口 4182、`backend/stg` 标注构建端口 4183），
+按测试标题里的 `@mock` / `@backend` / `@annotation`
 标签分项目各跑一组用例（iPhone 13 视口、本机 Chrome）。
 
 - **Mock 运行方式**：显式 `VITE_DATA_SOURCE=mock` server。断言招聘剧情从身份选择进
@@ -140,9 +169,10 @@ npm run test:e2e:data-source -- --grep '@backend'  # 只跑 Backend fixture
   part + If-Match）、企业关系与 current 选择、公开企业直读、企业档案 CAS（409 用
   `覆盖` seam 注入 `version_conflict`）、两步媒体协议（`metadata`+`media` part 名按
   content-type boundary 检查、删除走 204）、管理员申请按屏读取、owner Jobs 创建
-  （body 只带 claim，无 refs / verification status）。multipart 不用 JSON parser 解
+  （新建恒 direct：body 显式携带所选发布方/用人方组织 ref，不伪造 verification
+  status / affiliation / claim）。multipart 不用 JSON parser 解
   整体，敏感正文只在测试进程内比对。
-- 基线视觉回归（`e2e/视觉回归/`，固定 16 个 scene ID）由 `playwright.视觉回归.config.ts`
+- 基线视觉回归（`e2e/视觉回归/`，固定 18 个场景）由 `playwright.视觉回归.config.ts`
   单独驱动，不为本套件增加 Backend 视觉场景；Backend 行为全部由数据源模式 Playwright 验证。
 
 确定性 fixture 通过后，还需按上面命令对可达的真实 `stg`（以及本地 BFF 可用时的 `local`）

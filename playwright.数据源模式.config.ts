@@ -25,13 +25,16 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: 'list',
   use: {
+    // 功能项目固定 UTC；自带 test.use timezoneId 的 suite（如 P1/展接线采集的
+    // Asia/Shanghai）以 suite 为准，这里只是缺省兜底。
+    timezoneId: 'UTC',
     trace: 'retain-on-failure',
   },
   webServer: [
     {
       name: 'mock-stg',
       command:
-        'VITE_DATA_SOURCE=mock VITE_BACKEND_ENV=stg npm run dev -- --host 127.0.0.1 --port 4181 --strictPort',
+        'VITE_DATA_SOURCE=mock VITE_BACKEND_ENV=stg VITE_ANNOTATION_ENABLED=false npm run dev -- --host 127.0.0.1 --port 4181 --strictPort',
       url: 'http://127.0.0.1:4181',
       reuseExistingServer: false,
       timeout: 120_000,
@@ -39,7 +42,7 @@ export default defineConfig({
     {
       name: 'backend-stg',
       command:
-        'VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=stg npm run dev -- --host 127.0.0.1 --port 4182 --strictPort',
+        'VITE_DATA_SOURCE=backend VITE_BACKEND_ENV=stg VITE_ANNOTATION_ENABLED=false npm run dev -- --host 127.0.0.1 --port 4182 --strictPort',
       url: 'http://127.0.0.1:4182',
       reuseExistingServer: false,
       timeout: 120_000,

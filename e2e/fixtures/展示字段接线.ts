@@ -318,6 +318,8 @@ interface 岗位覆盖形 {
   job_id?: string;
   title?: string;
   organization?: Record<string, unknown>;
+  /** claim-only 卡必须随卡换名：独立职位详情的公司名取 claim，不覆盖会错挂 A 的声明 */
+  hiring_organization_claim?: Record<string, unknown>;
   hiring_organization_ref?: string | undefined;
   publisher_profile?: Record<string, unknown> | undefined;
   description?: string;
@@ -329,7 +331,7 @@ function 候选岗位(覆盖: 岗位覆盖形 = {}): Record<string, unknown> {
     job_id: 覆盖.job_id ?? 编号.职位A,
     publisher_verification_status: 'verified',
     hiring_organization_verification_status: 'verified',
-    hiring_organization_claim: { display_name: 标记.企业A, legal_name: null },
+    hiring_organization_claim: 覆盖.hiring_organization_claim ?? { display_name: 标记.企业A, legal_name: null },
     organization: 覆盖.organization ?? 组织摘要(),
     title: 覆盖.title ?? 标记.职位A,
     recruitment_type: 'social_full_time',
@@ -448,6 +450,8 @@ function 候选Case详情(caseId: string, 覆盖: { matchScore: number | null; j
     intention_id: 编号.意向,
     match_score: 覆盖.matchScore,
     job_detail: 覆盖.jobDetail,
+    // S0–S3 连续筛选合并（2026-09-15）：version 1 = 历史 Case，连续块四成员整组缺席合法。
+    continuity_version: 1,
   };
 }
 
@@ -470,6 +474,8 @@ function 招聘Case详情(caseId: string, 覆盖: {
     job_detail: 覆盖.jobDetail,
     candidate_resume: 覆盖.resume,
     candidate_identity: 候选身份(覆盖.disclosed),
+    // S0–S3 连续筛选合并（2026-09-15）：version 1 = 历史 Case，连续块四成员整组缺席合法。
+    continuity_version: 1,
   };
 }
 
@@ -663,6 +669,7 @@ function 场景数据(场景: 展接线场景名, role: 展接线角色): 展接
     job_id: 编号.职位B,
     title: 标记.职位B,
     organization: { organization_id: null, display_name: 标记.企业B, industry: null, company_size: null, funding_stage: null, logo: null },
+    hiring_organization_claim: { display_name: 标记.企业B, legal_name: null },
     hiring_organization_ref: undefined,
     publisher_profile: undefined,
   });
@@ -670,6 +677,7 @@ function 场景数据(场景: 展接线场景名, role: 展接线角色): 展接
     job_id: 编号.职位C,
     title: 标记.职位C,
     organization: 组织摘要({ display_name: 标记.企业C }),
+    hiring_organization_claim: { display_name: 标记.企业C, legal_name: null },
     description: '展接FIX 长文段落。'.repeat(30),
     requirements: '展接FIX 长要求段落。'.repeat(30),
   });
@@ -921,7 +929,9 @@ export async function 安装展接线路由(
     // ── 招聘端启动水合 + 四列表两详情 ──
     if (role === 'recruiter') {
       if (path === '/api/v1/recruiter/profile' && method === 'GET') {
-        await 答(200, 信封({ public_name: '展接FIX 招聘方', title: '招聘负责人', personal_verification_status: 'verified', verified_name: null, avatar_url: null, revision: 1 }));
+        // 合同 A：organization_ref 是档案必需键（可空不可缺）——缺键 解招聘方档案 按契约
+        // 漂移拒绝整份档案，招聘端水合中断。本场景无任职关系、未选目录组织 → 显式 null。
+        await 答(200, 信封({ public_name: '展接FIX 招聘方', title: '招聘负责人', personal_verification_status: 'verified', organization_ref: null, verified_name: null, avatar_url: null, revision: 1 }));
         return;
       }
       if (path === '/api/v1/recruiter/affiliations' && method === 'GET') { await 答(200, 信封({ affiliations: [] })); return; }

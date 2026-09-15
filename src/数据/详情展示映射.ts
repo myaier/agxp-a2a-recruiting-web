@@ -3,7 +3,13 @@
 // 的协议语义不动；Mock 的顶栏由连接层用已有状态构造，不在 mapper 内读全局数据。
 // 顶栏投影在 Task 1 落地，Task 2 补状态区与阶段分段，Task 3 补资料区投影（契约 B）。
 
-import type { P5阶段, P5阶段区块视图, P5详情正常视图, P5角色 } from './MatchCase展示映射';
+import type {
+  P5待办用途,
+  P5阶段,
+  P5阶段区块视图,
+  P5详情正常视图,
+  P5角色,
+} from './MatchCase展示映射';
 import type { BFF安全职位资料 } from './BFF契约';
 import { 公司规模文案, 融资阶段文案, 福利文案 } from './组织映射';
 import type { 状态区信息, 顶栏信息, 职位资料信息 } from '../组件/在谈详情/类型';
@@ -227,13 +233,46 @@ export function 从P5到详情状态(view: P5详情正常视图): 状态区信�
 function 段内Agent对话(区: P5阶段区块视图, role: P5角色): 分段项['Agent对话'] {
   if (区.Agent消息.length === 0) return undefined;
   return 区.Agent消息.map((条) => ({
-    编号: `s0:${条.id}`,
-    角色: 条.role === 'candidate' ? '候选 Agent' : '招聘 Agent',
+    编号: `rec:${条.id}`,
+    角色: `${记录角色标签(条)} · 第 ${条.round} 轮`,
     方: 条.role === role ? ('我方' as const) : ('对方' as const),
     时间: 取本地时分(条.occurredAt),
     内容: 条.内容,
   }));
 }
+
+/**
+ * 记录的角色标签：answer_source='human' 是那一方本人写的公开回答（双方可见），必须与
+ * Agent 的问答区分开；其余（含历史未标来源的记录）按 wire role 投影成「候选 Agent／
+ * 招聘 Agent」。不显示内部 ID/task/operation 字样。
+ */
+function 记录角色标签(条: P5阶段区块视图['Agent消息'][number]): string {
+  const 侧 = 条.role === 'candidate' ? '候选' : '招聘';
+  return 条.answerSource === 'human' ? `${侧}方本人` : `${侧} Agent`;
+}
+
+/**
+ * 正在等对端的人工待办 → 段内一行（S0–S3 连续筛选）：本人的待办由段尾动作卡承载
+ * （连同它自己的截止时刻），这里只交代「在等谁、到几时」，绝不给按钮。
+ */
+function 段内待办说明(视图: P5详情正常视图, stage: P5阶段): 分段项['待办说明'] {
+  const 行们 = 视图.待办们
+    .filter((待办) => 待办.role !== 视图.role && 待办用途阶段表[待办.purpose] === stage)
+    .map((待办) => ({
+      编号: `todo:${待办.id}`,
+      内容: 待办.说明,
+      截止说明: `截止 ${待办.截止于} · ${待办.到期说明}`,
+    }));
+  return 行们.length > 0 ? 行们 : undefined;
+}
+
+/** 待办用途 → 它所属的阶段段（记录/卡都落在自己的阶段里，不串段）。 */
+const 待办用途阶段表: Record<P5待办用途, P5阶段> = {
+  s0_continue: 'anonymous_screening',
+  s1_continue: 'resume_submission',
+  s2_answer: 'needs_coordination',
+  s3_confirm: 'intent_confirmation',
+};
 
 /**
  * 旧 transcript 事件 → 系统状态行（J-PILOT-01，Spec §7）：canonical case 事件以系统
@@ -316,6 +355,15 @@ export function 从P5到详情分段(view: P5详情正常视图, currentStage: P
         : undefined,
       Agent对话: 段内Agent对话(区, view.role),
       系统消息: 段内系统消息(区),
+      待办说明: 段内待办说明(view, 区.stage),
+      // S3 固定总结只挂意向确认段（双方内容相同；版本号随权威重读换代）
+      确认总结: 区.stage === 'intent_confirmation' && view.确认总结 !== null
+        ? {
+            版本说明: `本次确认的总结版本：第 ${view.确认总结.version} 版`,
+            含义说明: view.确认总结.含义说明,
+            分节们: view.确认总结.分节们,
+          }
+        : null,
       对话: 段内叮嘱对话(区, view.role),
       // S0 候选总结原样适配进小结托盘（标签/内容由 mapper 给定）；招聘方自然得到空数组
       Agent总结: 区.Agent总结.length > 0
