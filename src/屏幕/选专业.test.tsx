@@ -256,6 +256,105 @@ describe('选专业 Backend', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('加载失败，请重试');
   });
 
+  // Task 5 修复：点选候选只更新显示值与引用，不清结果、不改查询——列表持续存在，
+  // 不出现新的加载/空态，API 不因为选择额外调用；重复点同一项保持稳定。
+  it('点选候选后列表保持，重复点选同项不重查不消失', async () => {
+    const 查询Taxonomy = vi.fn(async () => ({
+      items: [{ id: 'maj_cs', display_name: '计算机科学与技术', parent_id: null, selectable: true }],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    render选专业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('专业名称'), '计算机');
+    expect(await screen.findByText('计算机科学与技术')).toBeTruthy();
+    expect(查询Taxonomy).toHaveBeenCalledTimes(1);
+    await 用户.click(screen.getByRole('button', { name: /计算机科学与技术/ }));
+    expect(screen.getByText('计算机科学与技术')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: /计算机科学与技术/ }));
+    expect(screen.getByText('计算机科学与技术')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(查询Taxonomy).toHaveBeenCalledTimes(1);
+  });
+
+  // Task 5 修复：换候选——先点 A 再点 B，引用随最后一次点选更新
+  it('换候选时引用更新为最后点选的项', async () => {
+    const 查询Taxonomy = vi.fn(async () => ({
+      items: [
+        { id: 'maj_cs', display_name: '计算机科学与技术', parent_id: null, selectable: true },
+        { id: 'maj_se', display_name: '软件工程', parent_id: null, selectable: true },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    const { 保存简历 } = render选专业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('专业名称'), '计算');
+    await screen.findByText('软件工程');
+    await 用户.click(screen.getByRole('button', { name: '计算机科学与技术' }));
+    await 用户.click(screen.getByRole('button', { name: '软件工程' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalled());
+    expect(保存简历).toHaveBeenCalledWith(
+      expect.objectContaining({
+        教育: [expect.objectContaining({ 专业引用: { id: 'maj_se', display_name: '软件工程' } })],
+      }),
+    );
+  });
+
+  // Task 5 修复：真实选择用 ID 判断——同名不同 ID 的两行，只有点中的那行打勾
+  it('同名不同 ID 只有点中的项打勾，选中按引用 ID 判断', async () => {
+    const 查询Taxonomy = vi.fn(async () => ({
+      items: [
+        { id: 'maj_a', display_name: '同名专业', parent_id: null, selectable: true },
+        { id: 'maj_b', display_name: '同名专业', parent_id: null, selectable: true },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    render选专业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('专业名称'), '同名');
+    const 行 = await screen.findAllByRole('button', { name: '同名专业' });
+    expect(行).toHaveLength(2);
+    await 用户.click(行[0]);
+    expect(行[0].textContent).toContain('✓');
+    expect(行[1].textContent).not.toContain('✓');
+    await 用户.click(行[1]);
+    expect(行[0].textContent).not.toContain('✓');
+    expect(行[1].textContent).toContain('✓');
+  });
+
+  // Task 5 修复：点选不改变当前查询——选中后加载更多仍沿首屏搜索词 + 游标翻页
+  it('选中候选后加载更多仍用首屏搜索词（不是回填的完整名称）', async () => {
+    let 调用次 = 0;
+    const 查询Taxonomy = vi.fn(async (_kind: string, _q: { q?: string; cursor?: string }) => {
+      调用次 += 1;
+      if (调用次 === 1) {
+        return {
+          items: [{ id: 'maj_1', display_name: '经济学', parent_id: null, selectable: true }],
+          nextCursor: 'cur_1',
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [{ id: 'maj_2', display_name: '经济统计学', parent_id: null, selectable: true }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    render选专业({ 数据源: 'backend', 查询Taxonomy });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('专业名称'), '经济');
+    await screen.findByText('经济学');
+    await 用户.click(screen.getByRole('button', { name: '经济学' }));
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    await screen.findByText('经济统计学');
+    // 翻页请求仍用首屏的「经济」，而不是已回填的「经济学」
+    expect(查询Taxonomy).toHaveBeenLastCalledWith('majors', expect.objectContaining({ q: '经济', cursor: 'cur_1' }));
+  });
+
   // Task 5：旧关键词的慢响应晚于新关键词到达 → 不覆盖当前结果
   it('旧关键词的慢响应不覆盖新关键词的结果', async () => {
     type 页 = { items: { id: string; display_name: string; parent_id: null; selectable: boolean }[]; nextCursor: null; catalogVersion: string };
@@ -310,6 +409,28 @@ describe('选专业 Mock', () => {
     await waitFor(() => expect(保存简历).toHaveBeenCalled());
     const 调用 = 保存简历.mock.calls[0][0] as { 教育: { 专业引用?: unknown }[] };
     expect(调用.教育[0].专业引用).toBeUndefined();
+  });
+
+  // Task 5 修复：删除「已点选隐藏全部候选」——点选后列表保持且标记选中
+  it('Mock 点选候选后列表保持且标记选中，不再隐藏全部候选', async () => {
+    render选专业({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByRole('textbox'), '经济');
+    await 用户.click(await screen.findByText('经济学'));
+    // 点选后候选仍在且打勾（不再因 已点选 清空列表）
+    expect(screen.getByText('经济学')).toBeTruthy();
+    const 选中行 = screen
+      .getAllByRole('button', { name: /经济学/ })
+      .find((行) => 行.textContent?.includes('✓'));
+    expect(选中行).toBeTruthy();
+  });
+
+  // Task 5 修复：删除「排除与完整输入相同名称」——输入完整名称时同名候选仍出现
+  it('Mock 输入完整名称时同名候选仍出现（不再排除精确匹配）', async () => {
+    render选专业({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByRole('textbox'), '经济学');
+    expect(await screen.findByText('经济学')).toBeTruthy();
   });
 });
 

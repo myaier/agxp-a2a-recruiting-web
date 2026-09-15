@@ -285,6 +285,109 @@ describe('毕业院校 Backend', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('加载失败，请重试');
   });
 
+  // Task 5 修复：点选候选只更新显示值与引用，不清结果、不改查询——列表持续存在，
+  // 不出现新的加载/空态，API 不因为选择额外调用；重复点同一项保持稳定。
+  it('点选候选后列表保持，重复点选同项不重查不消失', async () => {
+    const 查询Institution = vi.fn(async () => 复旦结果页());
+    render毕业院校({ 数据源: 'backend', 查询Institution });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('学校名称'), '复旦');
+    expect(await screen.findByText('上海市 · 中国')).toBeTruthy();
+    expect(查询Institution).toHaveBeenCalledTimes(1);
+    // 第一次点选：列表仍在，无「加载中…」/「没有匹配结果」
+    await 用户.click(screen.getByRole('button', { name: /复旦大学/ }));
+    expect(screen.getByText('上海市 · 中国')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+    // 重复点同一项：列表仍稳定，API 没有额外调用
+    await 用户.click(screen.getByRole('button', { name: /复旦大学/ }));
+    expect(screen.getByText('上海市 · 中国')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(查询Institution).toHaveBeenCalledTimes(1);
+  });
+
+  // Task 5 修复：换候选——先点 A 再点 B，引用随最后一次点选更新
+  it('换候选时引用更新为最后点选的项', async () => {
+    const 查询Institution = vi.fn(async () => ({
+      items: [
+        { id: 'ins_fudan', display_name: '复旦大学', location: { id: 'loc_sh', display_name: '上海市', country_name: '中国' } },
+        { id: 'ins_jiaotong', display_name: '上海交通大学', location: { id: 'loc_sh2', display_name: '上海市', country_name: '中国' } },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    const { 保存简历 } = render毕业院校({ 数据源: 'backend', 查询Institution });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('学校名称'), '上海');
+    await screen.findByText('上海交通大学');
+    await 用户.click(screen.getByRole('button', { name: /复旦大学/ }));
+    await 用户.click(screen.getByRole('button', { name: /上海交通大学/ }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalled());
+    expect(保存简历).toHaveBeenCalledWith(
+      expect.objectContaining({
+        教育: [expect.objectContaining({ 学校引用: { id: 'ins_jiaotong', display_name: '上海交通大学' } })],
+      }),
+    );
+  });
+
+  // Task 5 修复：真实选择用 ID 判断——同名不同 ID 的两行，只有点中的那行打勾
+  it('同名不同 ID 只有点中的项打勾，选中按引用 ID 判断', async () => {
+    const 查询Institution = vi.fn(async () => ({
+      items: [
+        { id: 'ins_a', display_name: '同名学院', location: { id: 'loc_a', display_name: '城市A', country_name: '国A' } },
+        { id: 'ins_b', display_name: '同名学院', location: { id: 'loc_b', display_name: '城市B', country_name: '国B' } },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    render毕业院校({ 数据源: 'backend', 查询Institution });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('学校名称'), '同名');
+    const 行 = await screen.findAllByRole('button', { name: /同名学院/ });
+    expect(行).toHaveLength(2);
+    // 点第一行：只有第一行打勾
+    await 用户.click(行[0]);
+    expect(行[0].textContent).toContain('✓');
+    expect(行[1].textContent).not.toContain('✓');
+    // 换点第二行：勾移到第二行
+    await 用户.click(行[1]);
+    expect(行[0].textContent).not.toContain('✓');
+    expect(行[1].textContent).toContain('✓');
+  });
+
+  // Task 5 修复：点选不改变当前查询——选中后加载更多仍沿首屏搜索词 + 游标翻页
+  it('选中候选后加载更多仍用首屏搜索词（不是回填的完整名称）', async () => {
+    let 调用次 = 0;
+    const 查询Institution = vi.fn(async (_q: { q?: string; cursor?: string }) => {
+      调用次 += 1;
+      if (调用次 === 1) {
+        return {
+          items: [
+            { id: 'ins_fudan', display_name: '复旦大学', location: { id: 'loc_sh', display_name: '上海市', country_name: '中国' } },
+          ],
+          nextCursor: 'cursor_2',
+          catalogVersion: 'v2',
+        };
+      }
+      return {
+        items: [
+          { id: 'ins_b', display_name: '复旦附中', location: { id: 'loc_b', display_name: '上海市', country_name: '中国' } },
+        ],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    });
+    render毕业院校({ 数据源: 'backend', 查询Institution });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('学校名称'), '复旦');
+    await screen.findByText('上海市 · 中国');
+    await 用户.click(screen.getByRole('button', { name: /复旦大学/ }));
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    await screen.findByText('复旦附中');
+    // 翻页请求仍用首屏的「复旦」，而不是已回填的「复旦大学」
+    expect(查询Institution).toHaveBeenLastCalledWith(expect.objectContaining({ q: '复旦', cursor: 'cursor_2' }));
+  });
+
   // Task 5：旧关键词的慢响应晚于新关键词到达 → 不覆盖当前结果
   it('旧关键词的慢响应不覆盖新关键词的结果', async () => {
     type 页 = { items: { id: string; display_name: string; location: { id: string; display_name: string; country_name: string } }[]; nextCursor: null; catalogVersion: string };

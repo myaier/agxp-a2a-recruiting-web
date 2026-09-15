@@ -50,8 +50,10 @@ export default function 选专业() {
   // 候选 onboarding 预填：首挂载同步初始化文本与引用（当前文本非空原样保留）
   const 专业初始 = 取专业预填(后端状态.候选预填状态 ?? 创建空候选预填状态(), 首段?.专业 ?? '', 首段?.专业引用);
   const [专业, 设专业] = useState(专业初始.text);
-  // 点过候选后收起联想，避免选完还挂着列表
-  const [已点选, 设已点选] = useState(false);
+  // Task 5 修复：实际查询词与显示值分开——只有用户输入才更新它；点候选不改查询，
+  // 否则短词变全名会触发清空/重查（闪烁），二次点选同名项则清列表后误报无结果。
+  // 同时删除 Mock 的 已点选隐藏 / 精确匹配排除（选完不再隐藏全部候选）。
+  const [查询词, 设查询词] = useState(专业初始.text.trim());
   // Backend：点候选后才落的引用；继续输入立即清空
   const [专业引用, 设专业引用] = useState<目录选择值 | undefined>(专业初始.ref);
   const [候选项, 设候选项] = useState<BFFTaxonomyItem[]>([]);
@@ -72,10 +74,11 @@ export default function 选专业() {
   const 不可继续 = 词 === '' || (是后端 && 专业引用 === undefined);
 
   // Backend 搜索：250ms debounce 后 查询Taxonomy('majors', { q, limit })
+  // Task 5 修复：effect 只依赖实际查询词——点候选不改查询词，effect 不重跑、列表不闪
   useEffect(() => {
     if (!是后端) return;
     const 方法 = 方法引用.current;
-    const trimmed = 词;
+    const trimmed = 查询词;
     // review-r3 R3-I-7：每次查询词变化都重置分页状态（候选/游标/加载），避免新词带着旧游标请求
     请求序.current += 1;
     设候选项([]);
@@ -105,7 +108,7 @@ export default function 选专业() {
       }
     }, 搜索防抖毫秒);
     return () => window.clearTimeout(计时.current);
-  }, [专业, 是后端, 词]);
+  }, [查询词, 是后端]);
 
   // review-r2 R2-M-1：加载更多——用当前游标请求下一页，合并去重；请求序检查防 stale 追加
   const 加载更多 = async () => {
@@ -115,7 +118,7 @@ export default function 选专业() {
     const 本次 = 请求序.current;
     设加载中(true);
     try {
-      const 页 = await 方法('majors', { q: 词, cursor: 下一页游标, limit: 20 });
+      const 页 = await 方法('majors', { q: 查询词, cursor: 下一页游标, limit: 20 });
       if (本次 !== 请求序.current) return;
       设候选项((旧) => 合并目录页(旧, 页.items));
       设下一页游标(页.nextCursor);
@@ -126,8 +129,9 @@ export default function 选专业() {
     }
   };
 
-  // Mock 候选：本地名录过滤
-  const mock候选 = 已点选 || 词 === '' ? [] : 专业名录.filter((名) => 名.includes(词) && 名 !== 词);
+  // Mock 候选：本地名录过滤。Task 5 修复：删除 已点选隐藏 与 精确匹配排除——
+  // 点选后列表保持并标记选中；输入完整名称时同名候选仍出现。保持原有自由文本下一步语义。
+  const mock候选 = 词 === '' ? [] : 专业名录.filter((名) => 名.includes(词));
 
   /** 同名专业按稳定 ID 区分：写草稿时专业文本与引用一起落，改文字即作废旧引用。 */
   const 写教育草稿 = (改: { 专业: string; 专业引用?: 目录选择值 }) => {
@@ -139,17 +143,22 @@ export default function 选专业() {
     }));
   };
 
+  // Task 5 修复：点候选只更新显示值与引用，不清结果、不改当前查询及游标——
+  // 列表保持、已选状态可见、重复点选稳定，API 不因选择额外调用
   const 选候选 = (项: BFFTaxonomyItem) => {
     设专业(项.display_name);
     设专业引用({ id: 项.id, display_name: 项.display_name });
-    设已点选(true);
-    设候选项([]);
     写教育草稿({ 专业: 项.display_name, 专业引用: { id: 项.id, display_name: 项.display_name } });
+  };
+
+  const 选Mock候选 = (名: string) => {
+    设专业(名);
   };
 
   const 输入改变 = (值: string) => {
     设专业(值);
-    设已点选(false);
+    // 只有用户真实输入才更新实际查询词（点候选不动查询）
+    设查询词(值.trim());
     if (专业引用 !== undefined) 设专业引用(undefined);
     写教育草稿({ 专业: 值 });
   };
@@ -207,22 +216,22 @@ export default function 选专业() {
             ? 候选项.map((项) => (
                 <button
                   key={项.id}
-                  className={`${样式.候选行} 可点`}
+                  className={`${样式.候选行} ${专业引用?.id === 项.id ? 样式.候选行选中 : ''} 可点`}
                   onClick={() => 选候选(项)}
                 >
-                  {项.display_name}
+                  <span>{项.display_name}</span>
+                  {/* Task 5 修复：选中按引用 ID 判断，同名不同 ID 不误打勾 */}
+                  {专业引用?.id === 项.id ? <span className={样式.候选勾}>✓</span> : null}
                 </button>
               ))
             : mock候选.map((名) => (
                 <button
                   key={名}
-                  className={`${样式.候选行} 可点`}
-                  onClick={() => {
-                    设专业(名);
-                    设已点选(true);
-                  }}
+                  className={`${样式.候选行} ${名 === 词 ? 样式.候选行选中 : ''} 可点`}
+                  onClick={() => 选Mock候选(名)}
                 >
-                  {名}
+                  <span>{名}</span>
+                  {名 === 词 ? <span className={样式.候选勾}>✓</span> : null}
                 </button>
               ))}
           {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」，点击追加下一页 */}

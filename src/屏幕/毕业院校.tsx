@@ -52,6 +52,9 @@ export default function 毕业院校() {
   const 学校初始 = 取学校预填(后端状态.候选预填状态 ?? 创建空候选预填状态(), 首段?.学校 ?? '', 首段?.学校引用);
   // 输入框即答案：点候选 = 把校名灌进输入框，也可以直接手输名录外的学校
   const [学校, 设学校] = useState(学校初始.text);
+  // Task 5 修复：实际查询词与显示值分开——只有用户输入才更新它；点候选不改查询，
+  // 否则短词变全名会触发清空/重查（闪烁），二次点选同名项则清列表后误报无结果。
+  const [查询词, 设查询词] = useState(学校初始.text.trim());
   // Backend：点候选后才落的引用；继续输入立即清空
   const [学校引用, 设学校引用] = useState<目录选择值 | undefined>(学校初始.ref);
   const [候选项, 设候选项] = useState<BFFInstitutionItem[]>([]);
@@ -71,10 +74,11 @@ export default function 毕业院校() {
   const 不可继续 = 词 === '' || (是后端 && 学校引用 === undefined);
 
   // Backend 搜索：250ms debounce 后 查询Institution({ q, limit: 20 })
+  // Task 5 修复：effect 只依赖实际查询词——点候选不改查询词，effect 不重跑、列表不闪
   useEffect(() => {
     if (!是后端) return;
     const 方法 = 方法引用.current;
-    const trimmed = 词;
+    const trimmed = 查询词;
     // review-r3 R3-I-7：每次查询词变化都重置分页状态（候选/游标/加载），避免新词带着旧游标请求
     请求序.current += 1;
     设候选项([]);
@@ -104,7 +108,7 @@ export default function 毕业院校() {
       }
     }, 搜索防抖毫秒);
     return () => window.clearTimeout(计时.current);
-  }, [学校, 是后端, 词]);
+  }, [查询词, 是后端]);
 
   // review-r1 P2-1 / review-r2 R2-M-2：加载更多——用当前游标请求下一页，合并去重；
   // 请求序检查防 stale 追加（query 已变时不把旧 query 的下一页 append 进来）
@@ -115,7 +119,7 @@ export default function 毕业院校() {
     const 本次 = 请求序.current;
     设加载中(true);
     try {
-      const 页 = await 方法({ q: 词, cursor: 下一页游标, limit: 20 });
+      const 页 = await 方法({ q: 查询词, cursor: 下一页游标, limit: 20 });
       if (本次 !== 请求序.current) return;
       设候选项((旧) => 合并目录页(旧, 页.items));
       设下一页游标(页.nextCursor);
@@ -140,10 +144,11 @@ export default function 毕业院校() {
     }));
   };
 
+  // Task 5 修复：点候选只更新显示值与引用，不清结果、不改当前查询及游标——
+  // 列表保持、已选状态可见、重复点选稳定，API 不因选择额外调用
   const 选候选 = (项: BFFInstitutionItem) => {
     设学校(项.display_name);
     设学校引用({ id: 项.id, display_name: 项.display_name });
-    设候选项([]);
     写教育草稿({ 学校: 项.display_name, 学校引用: { id: 项.id, display_name: 项.display_name } });
   };
 
@@ -153,6 +158,8 @@ export default function 毕业院校() {
 
   const 输入改变 = (值: string) => {
     设学校(值);
+    // 只有用户真实输入才更新实际查询词（点候选不动查询）
+    设查询词(值.trim());
     // 继续输入立即清除旧引用（只有点候选才落引用）
     if (学校引用 !== undefined) 设学校引用(undefined);
     写教育草稿({ 学校: 值 });
@@ -211,7 +218,7 @@ export default function 毕业院校() {
             ? 候选项.map((项) => (
                 <button
                   key={项.id}
-                  className={`${样式.候选行} ${项.display_name === 词 ? 样式.候选行选中 : ''} 可点`}
+                  className={`${样式.候选行} ${学校引用?.id === 项.id ? 样式.候选行选中 : ''} 可点`}
                   onClick={() => 选候选(项)}
                 >
                   <span>
@@ -221,7 +228,8 @@ export default function 毕业院校() {
                       {学校副标题(项)}
                     </span>
                   </span>
-                  {项.display_name === 词 ? <span className={样式.候选勾}>✓</span> : null}
+                  {/* Task 5 修复：选中按引用 ID 判断，同名不同 ID 不误打勾 */}
+                  {学校引用?.id === 项.id ? <span className={样式.候选勾}>✓</span> : null}
                 </button>
               ))
             : mock候选.map((名) => (
