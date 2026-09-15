@@ -96,9 +96,9 @@ export function 代谈终局文案(
   outcome: string | null, code: string | null,
 ): { 状态文: string; 原因: string; 色调: '成功' | '提醒' | '中性' };
 ```
-`completed` 的成功事实由调用者按 lifecycle处理，不传成 outcome猜测。未知 decision/state给“初评结果暂未提供/初评状态暂未提供”；未知 outcome/code为“已结束/结束原因暂未提供”。所有已知映射按 Spec，code具体说明优先、同义去重；不能把未知code原词带出。证据项无 source；同一输入恒相同，不读时间、Context或全局表。既有 `映射公开初评` 的原返回结构本 Task 可保留兼容，决定/证据行改为中文，不对其英文 summary造翻译；顶部删除由Task4完整交付。
+`completed` 的成功事实由调用者按 lifecycle处理，不传成 outcome猜测。未知 decision/state给“初评结果暂未提供/初评状态暂未提供”；未知 outcome/code为“已结束/结束原因暂未提供”。所有已知映射按 Spec，code具体说明优先、同义去重；不能把未知code原词带出。`项` 是完整可见句（如“招聘类型：匹配”“薪资条件：暂无法比较”“毕业届别：不限”“经验要求：待招聘方确认”“学历要求：待招聘方确认”“信息不足，待确认”）；`结果` 仅决定图标/色调，不作为后缀自动拼接。旧Mock `核对中` 仅在项中未承载检查状态时沿用现有次要状态字，不能给待确认/未完成追加“核对中”。无需另建同义的匹配枚举或结论文案字段。证据项无 source；同一输入恒相同，不读时间、Context或全局表。既有 `映射公开初评` 的原返回结构本 Task 可保留兼容，决定/证据行改为中文，不对其英文 summary造翻译；顶部删除由Task4完整交付。
 
-- [ ] 核对Spec A.2/A.4；写表驱动测试：三decision、四evaluation.state、13维度×三组、七outcome、四附加终局code、五特殊证据code、未知维度/码。断言完整中文及色调，技术失败无成功勾。
+- [ ] 核对Spec A.2/A.4；写表驱动测试：三decision、四evaluation.state、13维度×三组、七outcome、四附加终局code、五特殊证据code、未知维度/码。断言上述六种完整句仅出现一次且无附加“通过/待确认”重复后缀；状态只控制图标/色调，技术失败无成功勾。
 - [ ] 用 `npm test -- src/数据/代谈结果文案.test.ts` 确認失败源是未实现的新行为。
 - [ ] 实现最小字典与纯函数；将已有公共初评可见决定/证据和终局文字接上；不做全站翻译模块。阶段内部键不改，详情显示名“需要协调”在详情投影统一，不盲改全站卡色系键。
 - [ ] `npm test -- src/数据/代谈结果文案.test.ts src/数据/连续代谈展示映射.test.ts src/数据/MatchCase展示映射.test.ts`。预期全通过；断言 unknown不泄码、known policy细因不丢、fit不改P5 state、不引入动作。
@@ -167,6 +167,7 @@ export type 段内记录 =
 // 态: '已完成' | '当前' | '未到达' | '已结束'
 // 记录?: readonly 段内记录[]
 // 核对清单?: { 项: string; 结果: 核对结果 }[]
+// 默认展开?: boolean (现有字段保留，非新增；只在没有手动覆盖时生效)
 // 可展开?: boolean (仅允许显式pre-Case信息/权威动作访问，不改变业务阶段)
 // 展开状态?: boolean; 切展开?: (展开: boolean) => void (可选受控；两项配对)
 ```
@@ -175,8 +176,8 @@ export type 段内记录 =
 - [ ] 写有序输入渲染测试：注释/问/答/注释顺序、标签和长文、灰注释不计条数、空数组不回落旧数据；passed可折叠、ended非成功勾且默认开、未到达默认不可展开。
 - [ ] 提取原Mock系统胶囊样式（font11.5/line17/padding4 11/radius9与灰色令牌），先接回两个往来记录消费者；不可只新增无人用组件。
 - [ ] 扩展阶段输入和渲染，灰注释走共享件；核对清单明确不匹配、待确认、未完成不同于核对中。原passed图标不套ended；保留真实附件入口常驻能力。
-- [ ] 将两个Mock详情适配到 `记录`；公开内容/脚本顺序保持，原用户气泡与回执亦进入相同遍历。维持状态机与本地动作，不引入HTTP。
-- [ ] 支持连接层可选受控展开；不传时保留本地手开/手收集合。受控值不被默认展开覆盖；未到达必须显式可展开才允许信息/合法动作区可达。
+- [ ] 将两个Mock详情适配到 `记录`；公开内容/脚本顺序保持，原用户气泡与回执亦进入相同遍历。维持状态机与本地动作，不引入HTTP。两个Mock详情连接器各自持有按stage的手动展开覆盖，向阶段流传受控对；切Tab保留、换记录重置，不能仅依赖被Tab卸载的阶段组件本地集合。
+- [ ] 支持连接层可选受控展开；不传时保留本地手开/手收集合。受控值不被默认展开覆盖；未到达必须显式可展开才允许信息/合法动作区可达。当前段引用应定位实际当前段；无当前但有结束段时定位结束段，不能因增加“已结束”态丢失原自动定位。
 - [ ] `npm test -- src/组件/对话系统注释.test.tsx src/组件/阶段对话流.test.tsx src/屏幕/在谈详情.test.tsx src/屏幕/候选详情.test.tsx`。预期上述行为与原Mock动作回归通过；原往来记录灰注释视觉由Task7浏览器检查。
 - [ ] 搜索迁移消费者，提交 `refactor: share ordered stage conversation rendering`。
 
@@ -198,13 +199,14 @@ export type 段内记录 =
 - `映射公开初评` 增量产出 `决定文: string`、`核对清单: {项:string;结果:核对结果}[]`，只来源 `agent_summary.public_evaluation`。使用Task1函数；停止产出用于上屏的英文summary/原code字符串；所有消费者一并迁移。
 - 以消息自身stage归属；候选S0 `screeningRecords.summaries` 唯一时间流来源，招聘不显示；condition_confirmation/latest_summary不重复。用日期epoch毫秒升序，tie稳定按输入遍历序（summaries→messages→有效transcript→receipts）；缺失/非法时间保留原序并放有效时间之后，不造当前时刻；同一来源只按稳定ID去重，不按文本删掉不同事件。
 - `case_advanced`无正文不显示；有价值的case_created/decision_continue/resume_submitted用中文注释。case_ended已由阶段结果表达不重复；有正文的系统事件保留语义。接线后的正式回执仍以本人/代理身份而非对端气泡显示；failure_history非空按真实时间的安全中文注释去重，空不占位。
+- `分段项.状态文` 承载Spec A.2.1胶囊：pending未开始；active默认进行中，有本人权威待办为需要你、有对方待办为等待对方（不能把所有needs_user当本人）；passed已通过，S3且双方完成事实为已确认；ended按实际结束段outcome。不以summary自然语言决定状态。
 - S0摘要=真实阶段结论＋注明“公开资料匹配检查”的决定与证据；S1/S2/S3核对项只反映自身状态。done=false终局未完成，只有明确 semantic_not_fit且resume_screened=false可文案“简历初筛未通过”。技术失败不推不匹配。
 - 结束状态/原因/结束时间只入actual ended stage。当前步骤/round来自当前段，round_budget不写死3；无需填零轮假对话。S1 reconsider中性窗口说明保留，按钮继续现有actions权限；S3 confirmation_summary固定四节、version冲突及终局移交保留。
 - `终局区`只作现有移交展示复用时传 `摘要:null` 并装S3尾部，pending不可点击、ready有合法坐标才允许。正常页无顶部终局，但retention不擅自造阶段。
 - pre-Case四段仍pending，S0为“未开始”，通过 `可展开:true/默认展开:true` 提供初评过程及失败retry/archive动作信息区域。不要为打开区域设active/passed；解析失败视图不走正常骨架。
 - 由 `后端详情渲染` 持各stage手动展开覆盖值，给阶段流受控props；记录/owner key更换重置。同记录轮询及切Tab、pre-Case→Case保留覆盖。无手动覆盖时当前或ended默认开、passed默认关；合法动作确保段可展开访问。
 
-- [ ] 建去标识化等价fixture于现有测试：public fit，S0 passed且initial/reeval两条；screening_records混有S1两条消息；S1 ended semantic_not_fit；S2/S3 pending；eligible=true但candidate动作空。断言中文、逐条一次及S1消息不留S0。
+- [ ] 建去标识化等价fixture于现有测试：public fit，S0 passed且initial/reeval两条；screening_records混有S1两条消息；S1 ended semantic_not_fit；S2/S3 pending；eligible=true但candidate动作空。断言中文、逐条一次及S1消息不留S0；另覆盖active本人待办/对方待办和S3双确认已确认、仅到S3尚未双确认的反例。
 - [ ] 先跑 `npm test -- src/数据/详情展示映射.test.ts src/屏幕/详情控制/后端正常详情.test.tsx` 得到对应新行为失败。
 - [ ] 更新来源投影和排序/去重，接上Task3记录渲染；结束阶段状态、时间/轮次/证据归位。阶段上方只剩请求反馈，删除三块重复UI。
 - [ ] pre-Case/retention各自安全处理；阶段尾部继续组装原动作卡和S1附件、S3移交；不得把PDF hook移入资料Tab。迁移受控展开，保留手选状态。
@@ -226,7 +228,7 @@ export type 段内记录 =
 - 新增：无。
 - 删除：无。
 
-**接口：** 在现有 `详情展示映射.ts` 导出 `投影冻结职位摘要(摘要: {职位:string;城市:string;薪资:string;技能:readonly string[]|null}, 冻结: BFF安全职位资料|null): {职位:string;城市:string;薪资:string;技能:readonly string[]|null}`。它用于 `从冻结职位到资料` 与两种Backend顶栏映射，所有输入来自同一记录同一次响应。原摘要有效非空优先；冻结title/location补空；skills只摘要原值。薪资完整合法 lower/upper/period且lower<=upper才格式化，0不当false；单值上下限相等用既有简洁格式，month K/day元每天/hour元每时，示例20-30K。缺成员、非法数字或倒置保持缺失，不猜period；无需年薪乘月数。
+**接口：** 在现有 `详情展示映射.ts` 导出 `投影冻结职位摘要(摘要: {职位:string;城市:string;薪资:string;技能:readonly string[]|null}, 冻结: BFF安全职位资料|null): {职位:string;城市:string;薪资:string;技能:readonly string[]|null}`。它用于 `从冻结职位到资料` 与两种Backend顶栏映射，所有输入来自同一记录同一次响应。原摘要有效非空优先；冻结title/location补空；skills只摘要原值。薪资完整合法 lower/upper/period且lower<=upper才格式化，0不当false；单值上下限相等用既有简洁格式，month K/day 元/天、hour 元/时，示例20-30K。缺成员、非法数字或倒置保持缺失，不猜period；无需年薪乘月数。
 
 - [ ] 映射测试固定矩阵：public非空优先；20/30/month；日/时；0；缺上下限/周期；倒置；冻结null；只缺title/city；两个record异值不串。Case与pre-Case均验证顶栏/Tab使用同投影。
 - [ ] 投影摘要并接线，S0–S2候选顶栏职位·公司和分数；S3职位与薪资，副标题非空拼接无尾随分隔符。match_score=null为“—”，0保留。
@@ -316,4 +318,16 @@ export interface 在线简历正文属性 {
 
 ## 文档审查记录
 
-候选文档为本Plan和唯一Spec，review mode `WORKFLOW_DOCUMENT_REVIEW`，parent scope已批准。批准Spec固定为 `31dfb7f013fbf5c689db16cbbe58b00650864638` / `4690d718b38fd0df2f69223926b704ba056a3a6d`，叠加用户no-L3覆盖。此处由planner在文档review完成后记录冻结候选、reviewer、轮次、裁决和结论；不得把文档审查当实施代码审查或产品测试。
+候选文档为本Plan和唯一Spec，review mode `WORKFLOW_DOCUMENT_REVIEW`，parent scope已批准。批准Spec固定为 `31dfb7f013fbf5c689db16cbbe58b00650864638` / `4690d718b38fd0df2f69223926b704ba056a3a6d`，叠加用户no-L3覆盖。不得把文档审查当实施代码审查或产品测试。
+
+- 2026-09-16 第1轮：Claude CLI `opus` / `high` / `permission-mode plan`，只读reviewer persona；候选revision `c781c366a65f027e3f8c62bb34dead9018a82bc3`，Plan blob `01ca54c19b6e48d0845f03e96efd3ce9a22cf357`，候选Spec blob `a0d3d5ef`（完整指纹保存在该轮临时receipt）；批准产品Spec仍为上列精确对象。
+- 进程正常exit 0、is_error=false；父会话在读取findings前核对HEAD、porcelain-z与两份文档hash-object均未改变。reviewer未运行测试、未改文件。
+
+| Finding | 级别/必要性/复杂度 | 核实与裁决 |
+| --- | --- | --- |
+| R1-1 证据文案无法由闭合结果枚举表达 | Important / required / 不变 | 接受零上下文文案合同需更清楚，已补完整句样例、结果仅管图标/色调及不重复后缀断言。拒绝新增结论字段/同义枚举的具体建议：现有 `阶段对话流.tsx` 直接渲染 `条.项`，仅核对中有额外字；`项` 能承载完整句，原报告的“必然拼成两个后缀”前提不成立。澄清即可，无需增加重复状态。 |
+| R1-2 day/hour单位偏离批准Spec | Minor / required / 不变 | 接受并修复Task5为“元/天、元/时”，与Spec §6.2一致。 |
+| R1-3 active/passed胶囊缺显式任务责任 | Minor / optional / 不变 | 采纳：Task4明确 `状态文` 来源和本人/对方待办、S3双确认反例；无新接口。 |
+| R1-4 默认展开不在接口 | Minor / optional / 不变 | 拒绝不存在的判断：基线 `分段项.默认展开?: boolean` 已存在，Task3接口是增量。为零上下文在接口注释明确保留现有字段；不采用每次pre-Case强制受控true，否则会覆盖手动折叠。 |
+
+另据自检补充Task3两个Mock连接器实际持有折叠覆盖及结束段定位；这是Spec §3.2/§5.3既有责任，不扩产品范围。所有改动仅Plan合同澄清/文案修正。按review skill“核实后无未解决有效required finding”结束，1轮，无未解决必修项；这不是修订后又收到NO FINDINGS，也不声称产品测试通过。最终Plan revision/blob由执行提示词冻结，不在正文自引用造成循环。
