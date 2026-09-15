@@ -12,7 +12,6 @@ import type { 目录页, Location查询 } from '../数据/招聘数据源类型'
 import type { 目录查询选项 } from '../数据/招聘数据源/目录';
 import type { BFFLocationItem } from '../数据/BFF契约';
 import type { 城市分组配置 } from '../数据/城市与行业';
-import { Mock城市搜索字典 } from '../数据/城市与行业';
 import { 轻提示 } from '../组件/轻提示';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
 
@@ -454,15 +453,4 @@ export function use城市搜索(查询Location: 查询Location方法 | undefined
   };
 
   return { 词, 设词, 结果, 搜索中, 下一页游标, 加载中, 加载更多, 错误, 重试 };
-}
-
-/** Mock 本地搜索（选工作城市 / 岗位全页选择共用）：省名也算命中，输「浙」出浙江全省。
- *  Mock 不发真实请求，只是本地字典过滤；读 Mock城市搜索字典（Task 4 形态：
- *  默认字典 + 原海外模拟记录 + 海外精选名，搜索范围不因默认页收窄）。 */
-export function 本地城市搜索结果(词: string): string[] {
-  const 搜索词 = 词.trim();
-  if (搜索词 === '') return [];
-  return Mock城市搜索字典.flatMap((组) =>
-    组.省.includes(搜索词) ? 组.城市 : 组.城市.filter((城) => 城.includes(搜索词)),
-  );
 }
