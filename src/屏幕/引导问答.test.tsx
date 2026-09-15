@@ -812,7 +812,7 @@ function render个人优势编辑(选项: { 个人优势?: string; 预填?: 候�
     操作: mock操作,
   };
   render(
-    <MemoryRouter initialEntries={['/onboard/wizard?from=resume']}>
+    <MemoryRouter initialEntries={[`${路径.引导问答}?from=resume`]}>
       <引导问答 />
     </MemoryRouter>,
   );

@@ -12800,6 +12800,9 @@ test.describe('候选个人优势编辑 @backend', () => {
 
     // 改写为多行文本并保存：回我的简历并显示新值（换行保留）
     const 编辑框 = page.getByLabel('个人优势');
+    // final review：reload 后先钉住初值再改写 —— 自我介绍 useState 初值依赖「水合完成才
+    // 挂路由」的结构前提，此断言让异步水合下的初值丢失在 fill 掩盖前先红。
+    await expect(编辑框).toHaveValue('存量优势第一行\n存量优势第二行', { timeout: 15_000 });
     await 编辑框.fill('改后优势第一行\n改后优势第二行');
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
