@@ -5788,9 +5788,9 @@ async function 走完后端发岗向导(page: Page) {
     '应届或毕业年级；有产品、技术、增长、分析或创业经历；关注 AI、SaaS、工作流、开发工具与 Agent',
   );
 
+  // bottom-drawer 统一 Task 5：日薪两个金额按钮开同一双轮抽屉 —— 一次打开、
+  // 点一次「确定」同步上下限两字段（缺值临时落 200/200），不再有第二轮点击。
   await page.getByRole('button', { name: '— 元/天' }).first().click();
-  await page.getByRole('button', { name: '确定' }).click();
-  await page.getByRole('button', { name: '— 元/天' }).click();
   await page.getByRole('button', { name: '确定' }).click();
   // picker 统一 Task 2：城市改经工作城市行 → 全页选择子视图（搜索候选 → 保存回填）
   await page.getByRole('button').filter({ hasText: '工作城市' }).click();
