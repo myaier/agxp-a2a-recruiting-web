@@ -11576,7 +11576,7 @@ test.describe('核心编辑 岗位 @mock', () => {
     await 月薪层.getByRole('button', { name: '确定' }).click();
     await expect(月薪层).toHaveCount(0);
     await page.getByRole('button', { name: /年薪月数/ }).click();
-    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '确定' }).click();
     await page.getByLabel('岗位要求').fill('三年以上产品经验，带过完整上线周期');
     // Task 2 起城市经工作城市行 → 全页选择子视图（热门城市点 上海）
     await page.getByRole('button').filter({ hasText: '工作城市' }).click();
@@ -11739,7 +11739,7 @@ test.describe('核心编辑 岗位 @backend', () => {
     await 月薪层.getByRole('button', { name: '确定' }).click();
     await expect(月薪层).toHaveCount(0);
     await page.getByRole('button', { name: /年薪月数/ }).click();
-    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '确定' }).click();
     await page.getByLabel('岗位要求').fill('三年以上后端经验，熟悉交易系统');
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('Fixture 市 Fixture 路 1 号');
     // Task 2 起城市经工作城市行 → 全页选择子视图（搜索候选 → 保存回填）
@@ -12552,7 +12552,7 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
     await 月薪层.getByRole('button', { name: '确定' }).click();
     await expect(月薪层).toHaveCount(0);
     await page.getByRole('button', { name: /年薪月数/ }).click();
-    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '确定' }).click();
     await page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ }).check();
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
     await expect(page.getByText('请从候选城市中选择')).toBeVisible();
@@ -14548,7 +14548,7 @@ test.describe('picker 统一 岗位城市与月薪 @mock', () => {
     await expect(下限键).toContainText('18');
     await expect(page.getByRole('button', { name: '薪资上限' })).toContainText('28');
     await page.getByRole('button', { name: /年薪月数/ }).click();
-    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '确定' }).click();
     await page.getByLabel('岗位要求').fill('三年以上产品经验，带过完整上线周期');
     // 倒置：上限 < 下限，确定被拦、弹层不关
     await 下限键.click();
@@ -14687,7 +14687,7 @@ test.describe('picker 统一 岗位城市与月薪 @backend', () => {
     await expect(下限键).toContainText('50');
     await expect(page.getByRole('button', { name: '薪资上限' })).toContainText('65');
     await page.getByRole('button', { name: /年薪月数/ }).click();
-    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '确定' }).click();
 
     // ── 工作城市：全页子视图（不换路由、原表单 hidden、取消保留、搜索候选保存）──
     const 城市行 = page.getByRole('button').filter({ hasText: '工作城市' });
