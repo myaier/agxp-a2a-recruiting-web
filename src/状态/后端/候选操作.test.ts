@@ -52,6 +52,13 @@ function 创建场景(选项: {
     替换候选头像: vi.fn(),
     删除候选头像: vi.fn(),
     清空目录缓存: vi.fn(),
+    // stg 契约对齐 2026-09-14：完成 POST 与查证 GET 的默认桩（各用例按需覆盖）
+    完成Onboarding: vi.fn(async () => ({
+      role: 'candidate' as const,
+      status: 'active' as const,
+      completed_at: '2026-09-14T08:00:00Z',
+    })),
+    读取Onboarding: vi.fn(async () => ({ roles: [{ role: 'candidate' as const, status: 'active' as const, completed_at: null }] })),
   };
   // 后端覆盖（真实数据源链路）用 Object.assign 合入：保持各属性的 Mock 静态类型不变
   Object.assign(后端, 选项.后端覆盖 ?? {});
@@ -1157,6 +1164,7 @@ describe('创建候选操作 · 完成资源核对（J-PILOT-02 Task 9）', () =
     简历?: BFF简历;
     意向?: BFFOwnerIntention;
     意向读取?: () => Promise<BFFOwnerIntention>;
+    后端覆盖?: Partial<HTTP招聘数据源>;
   }) {
     const 推荐 = vi.fn(async () => {
       throw new Error('推荐读取不是完成门槛的输入');
@@ -1166,6 +1174,7 @@ describe('创建候选操作 · 完成资源核对（J-PILOT-02 Task 9）', () =
       后端覆盖: {
         读取简历: vi.fn(async () => 从BFF简历(选项.简历 ?? 权威简历())),
         读取指定意向: 选项.意向读取 ?? vi.fn(async () => 选项.意向 ?? 权威意向()),
+        ...(选项.后端覆盖 ?? {}),
       },
     });
     // 任何推荐读取入口：完成核对绝不触碰（空/失败都不阻塞）
@@ -1294,6 +1303,116 @@ describe('创建候选操作 · 完成资源核对（J-PILOT-02 Task 9）', () =
     expect(场景.后端.读取简历).toHaveBeenCalledTimes(1);
     放行();
     await expect(第一).resolves.toBeUndefined();
+  });
+
+  // ── stg 契约对齐 2026-09-14（Spec §5）：完成核对通过后 POST complete 的收口序 ──
+  it('核对全部通过后先 POST complete（body 恒 candidate、零草稿字段）再清草稿，并登记完成事实', async () => {
+    const 场景 = 完成场景({});
+    await expect(场景.操作.完成候选Onboarding()).resolves.toBeUndefined();
+    expect(场景.后端.完成Onboarding).toHaveBeenCalledTimes(1);
+    expect(场景.后端.完成Onboarding).toHaveBeenCalledWith('candidate');
+    // 完成事实已登记进 Onboarding 成功快照（设后端状态 已由 harness 折叠）
+    expect(场景.后端状态引用.current.Onboarding).toEqual({
+      阶段: '成功',
+      数据: { roles: [{ role: 'candidate', status: 'active', completed_at: '2026-09-14T08:00:00Z' }] },
+    });
+    expect(场景.deps.建档草稿引用!.current).toBeNull();
+  });
+
+  it('POST 结果未知（503）→ GET 查证已完成：收口清草稿、resolve', async () => {
+    const 场景 = 完成场景({
+      后端覆盖: {
+        完成Onboarding: vi.fn(async () => {
+          throw new BFF错误(503, 'operation_outcome_unknown', '结果未知');
+        }),
+        读取Onboarding: vi.fn(async () => ({
+          roles: [{ role: 'candidate' as const, status: 'active' as const, completed_at: '2026-09-14T09:00:00Z' }],
+        })),
+      },
+    });
+    await expect(场景.操作.完成候选Onboarding()).resolves.toBeUndefined();
+    expect(场景.后端.读取Onboarding).toHaveBeenCalledTimes(1);
+    expect(场景.deps.建档草稿引用!.current).toBeNull();
+    expect(场景.后端状态引用.current.Onboarding).toEqual({
+      阶段: '成功',
+      数据: { roles: [{ role: 'candidate', status: 'active', completed_at: '2026-09-14T09:00:00Z' }] },
+    });
+  });
+
+  it('POST 结果未知且 GET 仍未完成：原样抛原错误、草稿保留（可安全重试）', async () => {
+    const 场景 = 完成场景({
+      后端覆盖: {
+        完成Onboarding: vi.fn(async () => {
+          throw new BFF错误(503, 'operation_outcome_unknown', '结果未知');
+        }),
+        读取Onboarding: vi.fn(async () => ({
+          roles: [{ role: 'candidate' as const, status: 'active' as const, completed_at: null }],
+        })),
+      },
+    });
+    await expect(场景.操作.完成候选Onboarding()).rejects.toMatchObject({ status: 503 });
+    expect(场景.deps.建档草稿引用!.current).not.toBeNull();
+    expect(场景.派发).not.toHaveBeenCalledWith({ 型: '清后端草稿' });
+  });
+
+  it('POST 结果未知且 GET 失败：留错误（原样抛 POST 错误）、草稿保留', async () => {
+    const 场景 = 完成场景({
+      后端覆盖: {
+        完成Onboarding: vi.fn(async () => {
+          throw new BFF错误(503, 'operation_outcome_unknown', '结果未知');
+        }),
+        读取Onboarding: vi.fn(async () => {
+          throw new BFF错误(503, 'recruitment_service_unavailable', '不可用');
+        }),
+      },
+    });
+    await expect(场景.操作.完成候选Onboarding()).rejects.toMatchObject({ code: 'operation_outcome_unknown' });
+    expect(场景.deps.建档草稿引用!.current).not.toBeNull();
+  });
+
+  it('422 按冻结 path 给可行动中文提示：拦下文案可上屏、草稿保留、不猜写入', async () => {
+    const 场景 = 完成场景({
+      后端覆盖: {
+        完成Onboarding: vi.fn(async () => {
+          throw new BFF错误(422, 'validation_failed', '校验未通过', [
+            { path: 'resume.educations', reason: 'complete_entry_required' },
+          ]);
+        }),
+      },
+    });
+    const 错误 = await 场景.操作.完成候选Onboarding().then(() => null, (e: unknown) => e);
+    expect(取后端错误文案(错误)).toContain('教育');
+    expect(场景.deps.建档草稿引用!.current).not.toBeNull();
+    // 查证 GET 不发起：422 是终局拒绝，不是结果未知
+    expect(场景.后端.读取Onboarding).not.toHaveBeenCalled();
+  });
+
+  it('422 未知字段回一般文案（不猜写入），草稿保留', async () => {
+    const 场景 = 完成场景({
+      后端覆盖: {
+        完成Onboarding: vi.fn(async () => {
+          throw new BFF错误(422, 'validation_failed', '校验未通过', [
+            { path: 'unknown.field', reason: 'required' },
+          ]);
+        }),
+      },
+    });
+    const 错误 = await 场景.操作.完成候选Onboarding().then(() => null, (e: unknown) => e);
+    expect(取后端错误文案(错误)).toBe('填写内容未通过校验');
+    expect(场景.deps.建档草稿引用!.current).not.toBeNull();
+  });
+
+  it('确定 4xx 拒绝（400）不走 GET 查证：原样抛出、草稿保留', async () => {
+    const 场景 = 完成场景({
+      后端覆盖: {
+        完成Onboarding: vi.fn(async () => {
+          throw new BFF错误(400, 'invalid_request_body', '调用错误');
+        }),
+      },
+    });
+    await expect(场景.操作.完成候选Onboarding()).rejects.toMatchObject({ status: 400 });
+    expect(场景.后端.读取Onboarding).not.toHaveBeenCalled();
+    expect(场景.deps.建档草稿引用!.current).not.toBeNull();
   });
 });
 

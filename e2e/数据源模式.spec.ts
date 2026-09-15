@@ -1158,6 +1158,8 @@ interface P1C企业媒体形 {
 }
 
 interface P1C企业档案形 {
+  // Spec §2（2026-09-14）：企业常用名，与目录/公开企业 display_name 同源
+  display_name: string;
   brand_name: string;
   industry: { id: string; display_name: string } | null;
   company_size: string;
@@ -1274,6 +1276,8 @@ function 创建招聘方OnboardingFixture(): 招聘方OnboardingFixture形 {
 
 function P1C企业档案(): P1C企业档案形 {
   return {
+    // 默认即组织甲的常用名（组织乙在 P1C组织乙 覆盖为自己的名字）：目录与 profile 同源
+    display_name: P1C标记.组织甲名,
     brand_name: P1C标记.品牌名,
     industry: { id: 'ind-fixture-001', display_name: 'Fixture 行业' },
     company_size: '20_99',
@@ -1384,7 +1388,7 @@ const P1C组织甲 = (): P1C组织形 => ({
 const P1C组织乙 = (): P1C组织形 => ({
   legal_name: '上海 Fixture 关联企业有限公司',
   display_name: P1C标记.组织乙名,
-  profile: P1C企业档案(),
+  profile: { ...P1C企业档案(), display_name: P1C标记.组织乙名 },
 });
 
 /** 在主管 fixture 上叠企业关系 / 在招岗位（各用例按需组合） */
@@ -2580,6 +2584,8 @@ interface 候选OnboardingFixture {
   读取: { 简历: number; 意向: number };
   /** 简历域请求序列（含分区写入与 GET）：断言保存以最终权威 GET 收尾 */
   简历请求: { method: string; path: string }[];
+  /** stg 契约对齐 2026-09-14：me/onboarding 的完成状态（null 起步，POST complete 推进） */
+  完成: { candidate: string | null; recruiter: string | null };
 }
 
 /** 只存在于本 fixture 的标记值（区别于 P8标记.手机掩码 与 既有静态 fixture 的编号） */
@@ -2632,6 +2638,7 @@ function 创建候选OnboardingFixture(): 候选OnboardingFixture {
     mutations: [],
     读取: { 简历: 0, 意向: 0 },
     简历请求: [],
+    完成: { candidate: null, recruiter: null },
   };
 }
 
@@ -2963,6 +2970,12 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         last_used_role: (选项.主体初始角色 ?? null) as 'candidate' | 'recruiter' | null,
       }
     : fixture主体;
+  // onboarding 完成状态：基础/P1C 组织 fixture = 已建立账号（双角色已完成）；
+  // 新招聘方 onboarding 旅程的 recruiter 从 null 起步（候选旅程 fixture 自带状态并接管路由）
+  const Onboarding完成表: Record<'candidate' | 'recruiter', string | null> = {
+    candidate: '2026-08-25T10:00:00Z',
+    recruiter: onboardingFixture ? null : '2026-08-25T10:00:00Z',
+  };
 
   // ── P1C 组织域可变 fixture 状态：每次安装独立一份，页面写入只影响本测试 ──
   let 档案可变: P1C招聘方档案形 | null = 组织fixture?.profile ? { ...组织fixture.profile } : null;
@@ -3089,6 +3102,32 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       // 主体：last_used_role 从 null 起步（会话恢复落身份选择页），角色写入推进它
       if (path === '/api/v1/me' && method === 'GET') {
         await route.fulfill({ status: 200, json: 信封(P4深克隆(Onboarding域.主体)) });
+        return;
+      }
+      // stg 契约对齐 2026-09-14：onboarding 状态只列本 fixture 实际角色，完成由 POST 推进
+      if (path === '/api/v1/me/onboarding' && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({
+            roles: Onboarding域.主体.roles.map((行) => ({
+              role: 行.role,
+              status: 'active' as const,
+              completed_at: Onboarding域.完成[行.role],
+            })),
+          }),
+        });
+        return;
+      }
+      const Onboarding完成写 = /^\/api\/v1\/me\/onboarding\/(candidate|recruiter)\/complete$/.exec(path);
+      if (Onboarding完成写 && method === 'POST') {
+        断言精确键集(body, []); // complete：body 精确 {}
+        记变更(path);
+        const role = Onboarding完成写[1] as 'candidate' | 'recruiter';
+        Onboarding域.完成[role] ??= '2026-09-14T08:00:00Z'; // 首次与重试同一时间
+        await route.fulfill({
+          status: 200,
+          json: 信封({ role, status: 'active', completed_at: Onboarding域.完成[role] }),
+        });
         return;
       }
       const Onboarding角色写 = /^\/api\/v1\/me\/roles\/(candidate|recruiter)$/.exec(path);
@@ -3317,6 +3356,33 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       // 服务端语义：记录偏好后，后续 GET /me 返回新值（刷新恢复用例依赖这一点）
       if (主体 !== fixture主体) 主体.last_used_role = (body as { role?: 'recruiter' | null })?.role ?? null;
       await route.fulfill({ status: 200, json: 信封(主体) });
+      return;
+    }
+
+    // ── stg 契约对齐 2026-09-14：me/onboarding 显式路由（绝不在兜底通配上躲测试）。
+    //    缺省按已建立账号返回双角色已完成；新招聘方 onboarding 旅程的 recruiter 从
+    //    null 起步，POST complete 模拟对应状态变化（首次与重试同一时间）并受理 body {} ──
+    if (path === '/api/v1/me/onboarding' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        json: 信封({
+          roles: [
+            { role: 'candidate', status: 'active', completed_at: Onboarding完成表.candidate },
+            { role: 'recruiter', status: 'active', completed_at: Onboarding完成表.recruiter },
+          ],
+        }),
+      });
+      return;
+    }
+    const Onboarding完成写主 = /^\/api\/v1\/me\/onboarding\/(candidate|recruiter)\/complete$/.exec(path);
+    if (Onboarding完成写主 && method === 'POST') {
+      断言精确键集(body, []);
+      const role = Onboarding完成写主[1] as 'candidate' | 'recruiter';
+      Onboarding完成表[role] ??= '2026-09-14T08:00:00Z';
+      await route.fulfill({
+        status: 200,
+        json: 信封({ role, status: 'active', completed_at: Onboarding完成表[role] }),
+      });
       return;
     }
 
@@ -3562,7 +3628,13 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         const 池 = Object.entries(P3域.组织库)
           .filter(([, 项]) => 项.status === 'active')
           .filter(([, 项]) => 项.display_name.includes(q))
-          .map(([编号, 项]) => ({ organization_id: 编号, display_name: 项.display_name, legal_name: 项.legal_name }));
+          .map(([编号, 项]) => ({
+            organization_id: 编号,
+            display_name: 项.display_name,
+            legal_name: 项.legal_name,
+            // 公司选择抽屉的 搜索组织 闭合解码要求该键（合同 B 四字段形状）
+            verification_status: 'unverified' as const,
+          }));
         const 每页 = 2;
         const 起点 = Number.isInteger(页码) && 页码 > 0 && 归属词 === q ? (页码 - 1) * 每页 : -1;
         const items = 起点 < 0 ? [] : 池.slice(起点, 起点 + 每页);
@@ -3678,11 +3750,16 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
           });
           return;
         }
-        const patch = body as { public_name?: string; title?: string };
+        const patch = body as { public_name?: string; title?: string; organization_ref?: string | null };
+        // 合同 A/C：organization_ref 是档案必需键（可空不可缺）—— 名片自报公司选择
+        // 走 公司选择抽屉 的稳定 ID，缺它 解招聘方档案 会按契约漂移拒绝整份档案
         档案可变 = {
           public_name: patch.public_name ?? 档案可变?.public_name ?? '',
           title: patch.title ?? 档案可变?.title ?? '',
           personal_verification_status: 档案可变?.personal_verification_status ?? 'unverified',
+          organization_ref: patch.organization_ref !== undefined
+            ? patch.organization_ref
+            : (档案可变?.organization_ref ?? null),
           verified_name: 档案可变?.verified_name ?? null,
           avatar_url: 档案可变?.avatar_url ?? null,
           revision: (档案可变?.revision ?? 0) + 1,
@@ -3758,13 +3835,21 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         }
         if (method === 'PATCH') {
           const 换 = body as {
-            brand_name: string; industry_id: string; company_size: P1C企业档案形['company_size'];
+            display_name: string; brand_name: string; industry_id: string;
+            company_size: P1C企业档案形['company_size'];
             funding_stage: P1C企业档案形['funding_stage']; office_address: string;
             benefit_codes: string[]; work_schedule: P1C企业档案形['work_schedule']; company_intro: string;
             business_items: string[]; office_media_ids: string[]; company_media_ids: string[];
             product_intro: string; team_members: { name: string; title: string; summary: string }[];
             logo_media_id: string;
           };
+          // Spec §2：常用名与目录 display_name 同源 —— 改名同步公开企业应答与同企业关系的显示名
+          档.display_name = 换.display_name;
+          const 组织 = 组织fixture.organizations[档案匹配[1]];
+          if (组织) 组织.display_name = 换.display_name;
+          for (const 关 of 关系可变) {
+            if (关.organization_id === 档案匹配[1]) 关.organization_display_name = 换.display_name;
+          }
           档.brand_name = 换.brand_name;
           档.industry = 换.industry_id ? { id: 换.industry_id, display_name: 'Fixture 行业' } : null;
           档.company_size = 换.company_size;
@@ -4406,7 +4491,10 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       // P3：hard_requirements 四员块必收完整（客户端永远带整块），fixture 原样落库回读。
       const 换 = body as {
         publisher_mode: 'direct' | 'agency';
-        hiring_organization_claim: { display_name: string; legal_name?: string | null };
+        // 合同 C（2026-09-13）：claim 键退役 —— body 只带 publisher/hiring 两个 ref，
+        // claim 由服务端从 ref 快照生成；fixture 从组织池反查显示名
+        publisher_organization_ref?: string;
+        hiring_organization_ref?: string;
         title: string;
         recruitment_type: P1C岗位形['recruitment_type'];
         category_id: string;
@@ -4428,6 +4516,14 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         hard_requirements?: P3硬性条件形;
       };
       const 发布关系 = 关系可变.find((项) => 项.status === 'verified' && 项.organization_status === 'active');
+      const 组织显示名 = (编号: string | null | undefined): string | null => {
+        if (!编号) return null;
+        return 组织fixture.organizations[编号]?.display_name
+          ?? P3域?.组织库[编号]?.display_name
+          ?? null;
+      };
+      const 发布方编号 = 换.publisher_organization_ref ?? 发布关系?.organization_id ?? null;
+      const 用人编号 = 换.hiring_organization_ref ?? 发布关系?.organization_id ?? null;
       const 现在 = '2026-08-26T00:00:00Z';
       const 新岗: P1C岗位形 = {
         job_id: `job-fixture-created-${岗位可变.length + 1}`,
@@ -4435,12 +4531,12 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
         publisher_affiliation_ref: 发布关系?.affiliation_id,
         publisher_verification_status: 发布关系 ? 'verified' : 'unverified',
         hiring_organization_claim: {
-          display_name: 换.hiring_organization_claim.display_name,
-          legal_name: 换.hiring_organization_claim.legal_name ?? null,
+          display_name: 组织显示名(用人编号) ?? '',
+          legal_name: null,
         },
-        publisher_organization_ref: 发布关系?.organization_id,
+        publisher_organization_ref: 发布方编号,
         hiring_organization_verification_status: 发布关系 ? 'verified' : 'unverified',
-        hiring_organization_ref: 发布关系?.organization_id,
+        hiring_organization_ref: 用人编号,
         title: 换.title,
         recruitment_type: 换.recruitment_type,
         category: { id: 换.category_id, display_name: 标记.职位display },
@@ -5579,8 +5675,14 @@ async function 走完后端发岗向导(page: Page) {
   await page.getByRole('button', { name: '完成' }).click();
   await page.getByRole('button', { name: '— 元/天' }).click();
   await page.getByRole('button', { name: '完成' }).click();
-  await page.getByPlaceholder('搜索城市名，从下方候选选择').fill('fixture');
+  // picker 统一 Task 2：城市改经工作城市行 → 全页选择子视图（搜索候选 → 保存回填）
+  await page.getByRole('button').filter({ hasText: '工作城市' }).click();
+  const picker城市搜索 = page.getByPlaceholder('搜索城市 / 省份');
+  await expect(picker城市搜索).toBeVisible({ timeout: 5_000 });
+  await picker城市搜索.fill('fixture');
   await page.getByRole('button', { name: 标记.城市display, exact: true }).click();
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByPlaceholder('搜索城市 / 省份')).toHaveCount(0);
   await page.getByPlaceholder(/浦东新区世纪大道/).fill('Fixture 市 Fixture 路 1 号');
   // 产品当前要求：改过硬性条件（学历/薪资）后必须勾选确认项才能发布（缺这步只弹
   // 「请先勾选上面的确认项」，发布键不生效）。这是既有 fixture helper 补当前 UI 必需步骤，
@@ -11022,6 +11124,9 @@ test.describe('核心编辑 作品集 @backend', () => {
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足
     // 建档完备判据（真实登录落点按「已水合简历 + active 意向」分流），预置权威 URL
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选', portfolio_url: 'https://github.com/existing' },
@@ -11115,6 +11220,9 @@ test.describe('核心编辑 意向薪资 @backend', () => {
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据，
     // 预置合同内合法的 14 薪社招月薪区间（年薪月数只对 social_full_time/campus 合法）
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选' },
@@ -11285,6 +11393,9 @@ test.describe('核心编辑 城市 @backend', () => {
     const fixture = 创建候选OnboardingFixture();
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选' },
@@ -11455,12 +11566,24 @@ test.describe('核心编辑 岗位 @mock', () => {
     const 确认框 = page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ });
     await expect(确认框).toBeVisible();
     await expect(确认框).not.toBeChecked();
-    await page.getByLabel('薪资下限').fill('50');
-    await page.getByLabel('薪资上限').fill('65');
+    // Task 3 起月薪主入口是选择行：打开共用薪资区间层，精确输入 50/65
+    await page.getByRole('button', { name: '薪资下限' }).click();
+    const 月薪层 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+    await expect(月薪层).toBeVisible({ timeout: 10_000 });
+    await 月薪层.getByRole('button', { name: '输入金额' }).click();
+    await 月薪层.getByLabel('薪资下限').fill('50');
+    await 月薪层.getByLabel('薪资上限').fill('65');
+    await 月薪层.getByRole('button', { name: '确定' }).click();
+    await expect(月薪层).toHaveCount(0);
     await page.getByRole('button', { name: /年薪月数/ }).click();
     await page.getByRole('button', { name: '完成' }).click();
     await page.getByLabel('岗位要求').fill('三年以上产品经验，带过完整上线周期');
-    await page.getByPlaceholder('如：上海').fill('上海');
+    // Task 2 起城市经工作城市行 → 全页选择子视图（热门城市点 上海）
+    await page.getByRole('button').filter({ hasText: '工作城市' }).click();
+    await expect(page.getByPlaceholder('搜索城市 / 省份')).toBeVisible({ timeout: 5_000 });
+    await page.getByRole('button', { name: '上海', exact: true }).first().click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByPlaceholder('搜索城市 / 省份')).toHaveCount(0);
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
     await expect(page.getByText('请确认经验和学历将作为自动匹配依据').first()).toBeVisible({ timeout: 10_000 });
@@ -11606,14 +11729,27 @@ test.describe('核心编辑 岗位 @backend', () => {
     const 确认框 = page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ });
     await expect(确认框).toBeVisible();
     await expect(确认框).not.toBeChecked();
-    await page.getByLabel('薪资下限').fill('50');
-    await page.getByLabel('薪资上限').fill('65');
+    // Task 3 起月薪主入口是选择行：打开共用薪资区间层，精确输入 50/65
+    await page.getByRole('button', { name: '薪资下限' }).click();
+    const 月薪层 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+    await expect(月薪层).toBeVisible({ timeout: 10_000 });
+    await 月薪层.getByRole('button', { name: '输入金额' }).click();
+    await 月薪层.getByLabel('薪资下限').fill('50');
+    await 月薪层.getByLabel('薪资上限').fill('65');
+    await 月薪层.getByRole('button', { name: '确定' }).click();
+    await expect(月薪层).toHaveCount(0);
     await page.getByRole('button', { name: /年薪月数/ }).click();
     await page.getByRole('button', { name: '完成' }).click();
     await page.getByLabel('岗位要求').fill('三年以上后端经验，熟悉交易系统');
     await page.getByPlaceholder(/浦东新区世纪大道/).fill('Fixture 市 Fixture 路 1 号');
-    await page.getByPlaceholder('搜索城市名，从下方候选选择').fill('fixture');
+    // Task 2 起城市经工作城市行 → 全页选择子视图（搜索候选 → 保存回填）
+    await page.getByRole('button').filter({ hasText: '工作城市' }).click();
+    const 后端城市搜索 = page.getByPlaceholder('搜索城市 / 省份');
+    await expect(后端城市搜索).toBeVisible({ timeout: 5_000 });
+    await 后端城市搜索.fill('fixture');
     await page.getByRole('button', { name: 标记.城市display, exact: true }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(后端城市搜索).toHaveCount(0);
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
     await expect(page.getByText('请确认经验和学历将作为自动匹配依据').first()).toBeVisible({ timeout: 10_000 });
     // 零 Job 写入：水合的 jobs GET 不算 mutation，只看 POST/PATCH
@@ -11761,6 +11897,9 @@ test.describe('核心编辑 教育 @backend', () => {
     const fixture = 创建候选OnboardingFixture();
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选' },
@@ -11895,7 +12034,7 @@ test.describe('核心编辑 教育 @backend', () => {
 test.describe('核心编辑 简历行业 @mock', () => {
   test.use({ baseURL: 'http://127.0.0.1:4181' });
 
-  test('常见行业目录：展开层→选行业→经历保存并回读，自填输入保留 @mock', async ({ page }, testInfo) => {
+  test('常见行业目录：展开层→选行业→经历保存并回读，自填输入已按 Plan 删除 @mock', async ({ page }, testInfo) => {
     test.setTimeout(120_000);
     const apiRequests: string[] = [];
     page.on('request', (request) => {
@@ -11916,8 +12055,8 @@ test.describe('核心编辑 简历行业 @mock', () => {
     await page.getByRole('button', { name: '所属行业' }).click();
     await expect(page.getByRole('button', { name: '互联网', exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: '硬件', exact: true })).toBeVisible();
-    // 自填自由文本输入保留（Mock 能力，Backend 不暴露）
-    await expect(page.getByPlaceholder('没有合适的？直接输入')).toBeVisible();
+    // picker 统一 Task 1 按 Plan 删除 Mock 自填自由文本输入（两模式无「自填行业」）
+    await expect(page.getByPlaceholder('没有合适的？直接输入')).toHaveCount(0);
 
     // 正常态截图（与改前拍对照：原 Mock 行业层同版式）
     await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-简历行业-正常.png`, fullPage: true });
@@ -11965,6 +12104,9 @@ test.describe('核心编辑 简历行业 @backend', () => {
     const fixture = 创建候选OnboardingFixture();
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选' },
@@ -12400,18 +12542,29 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
     await expect(办公地框).toBeDisabled();
     await expect(办公地框).toHaveValue('');
 
-    // ── 城市源文本只进搜索框：先补齐薪资/年薪月数，再验证发布被城市门禁拦下 ──
-    await expect(page.getByPlaceholder('搜索城市名，从下方候选选择')).toHaveValue('fixture');
-    await page.getByLabel('薪资下限').fill('50');
-    await page.getByLabel('薪资上限').fill('65');
+    // ── 城市源文本只进子视图搜索框（打开时作初词）：先补齐薪资/年薪月数，再验证发布被城市门禁拦下 ──
+    await page.getByRole('button', { name: '薪资下限' }).click();
+    const 月薪层 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+    await expect(月薪层).toBeVisible({ timeout: 10_000 });
+    await 月薪层.getByRole('button', { name: '输入金额' }).click();
+    await 月薪层.getByLabel('薪资下限').fill('50');
+    await 月薪层.getByLabel('薪资上限').fill('65');
+    await 月薪层.getByRole('button', { name: '确定' }).click();
+    await expect(月薪层).toHaveCount(0);
     await page.getByRole('button', { name: /年薪月数/ }).click();
     await page.getByRole('button', { name: '完成' }).click();
     await page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ }).check();
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
     await expect(page.getByText('请从候选城市中选择')).toBeVisible();
     expect(fixture.mutations.find((项) => 项.path === '/api/v1/recruiter/jobs')).toBeUndefined();
-    // 点真实候选取得 地点引用 后主动发布：此时才出现 Job POST
+    // 打开全页城市子视图：JD 源文本 'fixture' 作为本次搜索初词；点真实候选取得
+    // 地点引用 并保存回填，此时才具备 Job POST 的城市坐标
+    await page.getByRole('button').filter({ hasText: '工作城市' }).click();
+    const 城市搜索框 = page.getByPlaceholder('搜索城市 / 省份');
+    await expect(城市搜索框).toHaveValue('fixture');
     await page.getByRole('button', { name: 标记.城市display, exact: true }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(城市搜索框).toHaveCount(0);
     // 职位要求由建议填入（未被用户改过；输入 label 自 2026-09-11 起为「岗位要求」）
     await expect(page.getByLabel('岗位要求')).toHaveValue(建议稿.requirements);
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
@@ -13435,31 +13588,31 @@ test.describe('核心编辑 期望行业 @mock', () => {
     await page.getByRole('button', { name: /期望行业/ }).click();
     await expect(page.getByRole('heading', { name: '已选行业' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('0/3')).toBeVisible();
-    // 推荐区 3 枚一级片 + 手风琴 6 组行
-    await expect(page.getByRole('button', { name: '金融科技', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: /智能硬件 \/ 制造 ⌄/ })).toBeVisible();
+    // picker 统一 Task 1：推荐区按 Plan 删除，页面只剩手风琴 6 组行
+    await expect(page.getByText('推荐')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /智能硬件 \/ 制造/ })).toBeVisible();
 
     // 正常态截图（与改前拍对照：原 Mock 行业页同版式同控件）
     await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-正常.png`, fullPage: true });
 
-    // 展开互联网平台组选两个细分 + 推荐区选一级金融科技 → 3/3
-    await page.getByRole('button', { name: /互联网平台 ⌄/ }).click();
+    // 展开互联网平台组选两个细分 + 展开云计算组选一级叶子 → 3/3（推荐片已删除；
+    // 选中勾由共用 行业分类列表 行内渲染，折叠态由 Task 5 的 @picker 用例专门覆盖）
+    await page.getByRole('button', { name: /互联网平台/ }).click();
     await page.getByRole('button', { name: '电商与交易', exact: true }).click();
     await expect(page.getByText('1/3')).toBeVisible();
+    await expect(page.getByRole('button', { name: /电商与交易 ✓/ })).toBeVisible();
     await page.getByRole('button', { name: '本地生活', exact: true }).click();
     await expect(page.getByText('2/3')).toBeVisible();
-    await page.getByRole('button', { name: '金融科技', exact: true }).click();
+    await page.getByRole('button', { name: /云计算 \/ 基础软件/ }).click();
+    await page.getByRole('button', { name: '数据库', exact: true }).click();
     await expect(page.getByText('3/3')).toBeVisible();
-
-    // 上限态：组行仍可展开，未选细分片禁用（沿原页：上限不锁手风琴展开）
-    await page.getByRole('button', { name: /企业服务 \/ SaaS ⌄/ }).click();
-    await expect(page.getByRole('button', { name: '协同办公', exact: true })).toBeDisabled();
-
-    // 选中态截图（选中片可访问名带 CSS ::before 的「✓ 」前缀）+ viewport 检查
-    await expect(page.getByRole('button', { name: /^✓ ?电商与交易$/ })).toBeVisible();
     await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-选中.png`, fullPage: true });
     const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(溢出).toBeLessThanOrEqual(2);
+
+    // 上限态：组行仍可展开，未选细分片禁用（沿原页：上限不锁手风琴展开）
+    await page.getByRole('button', { name: /企业服务 \/ SaaS/ }).click();
+    await expect(page.getByRole('button', { name: '协同办公', exact: true })).toBeDisabled();
     const 保存键 = page.getByRole('button', { name: '保存', exact: true });
     await 保存键.focus();
     await expect(保存键).toBeFocused();
@@ -13467,13 +13620,14 @@ test.describe('核心编辑 期望行业 @mock', () => {
     // 保存（沿原业务：保存只负责返回）→ 行文本回显三选
     await 保存键.click();
     await expect(page).toHaveURL(/#\/intentions\/new$/, { timeout: 10_000 });
-    await expect(page.getByText('电商与交易、本地生活、金融科技')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('电商与交易、本地生活、数据库')).toBeVisible({ timeout: 15_000 });
 
-    // 重入：3/3 与勾选保留（互联网平台组因含已选细分自动展开）
+    // 重入：3/3 与勾选保留（已选不依赖可见项；显式展开含已选的组行看勾）
     await page.getByRole('button', { name: /期望行业/ }).click();
     await expect(page.getByText('3/3')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('button', { name: /^✓ ?电商与交易$/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^✓ ?本地生活$/ })).toBeVisible();
+    await page.getByRole('button', { name: /互联网平台/ }).click();
+    await expect(page.getByRole('button', { name: /电商与交易 ✓/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /本地生活 ✓/ })).toBeVisible();
     await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-重入.png`, fullPage: true });
 
     // Mock 全程零 API 请求
@@ -13497,6 +13651,9 @@ test.describe('核心编辑 期望行业 @backend', () => {
     const fixture = 创建候选OnboardingFixture();
     // 存量候选日常会话：last_used_role 已落 candidate；简历与 active 意向满足建档完备判据
     fixture.主体.last_used_role = 'candidate';
+    // 存量日常会话按冻结决策返回 candidate 已完成（与 P1/展示字段接线的主页用例同口径）：
+    // 登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
     fixture.resume = {
       ...P4深克隆(fixture简历),
       profile: { ...fixture简历.profile, real_name: '存量候选' },
@@ -13578,19 +13735,20 @@ test.describe('核心编辑 期望行业 @backend', () => {
 
     // 展开金融科技 → 子列表（非 selectable 子项 + 可选叶子）+ 子尾「加载更多」
     await page.getByRole('button', { name: /金融科技/ }).last().click();
-    await expect(page.getByRole('button', { name: '支付与清结算', exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /支付与清结算/ })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: '银行支付', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '加载更多', exact: true })).toBeVisible();
 
     // 可选叶子直接写入草稿（1/3）；非 selectable 子项点击走展开取孙项（不混成写入）
     await page.getByRole('button', { name: '银行支付', exact: true }).click();
     await expect(page.getByText('1/3')).toBeVisible();
-    await page.getByRole('button', { name: '支付与清结算', exact: true }).click();
+    await page.getByRole('button', { name: /支付与清结算/ }).click();
     await expect(page.getByRole('button', { name: '反欺诈引擎', exact: true })).toBeVisible({ timeout: 10_000 });
 
     // 孙盒紧跟其子片（多级展开沿原实现的位置）：DOM 序 支付与清结算 → 孙盒(反欺诈引擎) → 兄弟子片 银行支付
+    //（共用 行业分类列表 的行按钮文本带箭头尾缀，按前缀找行）
     const 孙盒紧跟子片 = await page.evaluate(() => {
-      const 按钮 = (名: string) => [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 名);
+      const 按钮 = (名: string) => [...document.querySelectorAll('button')].find((b) => (b.textContent ?? '').trim().startsWith(名));
       const 子片 = 按钮('支付与清结算');
       const 孙盒 = 按钮('反欺诈引擎');
       const 兄弟 = 按钮('银行支付');
@@ -13603,14 +13761,14 @@ test.describe('核心编辑 期望行业 @backend', () => {
     // 子翻页翻出第 2 页可选叶子（2/3），第 1 页已选片保持选中
     await page.getByRole('button', { name: '加载更多', exact: true }).click();
     await expect(page.getByRole('button', { name: '证券与交易系统', exact: true })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('button', { name: /^✓ ?银行支付$/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /银行支付 ✓/ })).toBeVisible();
     await page.getByRole('button', { name: '证券与交易系统', exact: true }).click();
     await expect(page.getByText('2/3')).toBeVisible();
 
     // 推荐区可选根写入第 3 项 → 3/3；非 selectable 展开项在上限保持可用（fix(review-r1) F2）
     await page.getByRole('button', { name: '互联网', exact: true }).click();
     await expect(page.getByText('3/3')).toBeVisible();
-    await expect(page.getByRole('button', { name: '支付与清结算', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: /支付与清结算/ })).toBeEnabled();
 
     // 选中态截图 + iPhone 13 viewport 检查：无横向溢出、保存可见可聚焦
     await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-选中.png`, fullPage: true });
@@ -13628,7 +13786,7 @@ test.describe('核心编辑 期望行业 @backend', () => {
     // 重开已选保留：展开金融科技只见第 1 页子项，翻页翻走的 证券与交易系统 不在可见项里
     // 但计数仍 3/3 —— 已选不依赖当前可见项
     await page.getByRole('button', { name: /金融科技/ }).last().click();
-    await expect(page.getByRole('button', { name: /^✓ ?银行支付$/ })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /银行支付 ✓/ })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: '证券与交易系统', exact: true })).toHaveCount(0);
     await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-期望行业-重入.png`, fullPage: true });
 
@@ -13848,5 +14006,923 @@ test.describe('核心编辑 附件 @backend', () => {
     await expect(首行).toHaveCount(0, { timeout: 10_000 });
     expect(P2.写入次数).toBe(writesBeforeDelete + 1);
     expect(删除请求.length).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// picker 统一 @picker（Plan 2026-09-14 Task 5）：把 Task 1–4 的真实布局与用户操作
+// 固化到两数据模式的实际页面（mock-stg 4181 / backend-stg 4182，viewport 沿项目
+// iPhone 13 390×844，短屏用例显式 844×390）。非目标：不新建测试框架、不拍全站
+// 视觉基线、不启动真实后端 —— Backend 全部 API 请求走既有 安装BFF路由 + 用例专用
+// 后装目录桩，意外未匹配请求使测试失败；Mock 断言全程零 /api/v1 请求。
+//   · 经历行业底部弹层：72% 限高在视口内、列表真滚动（scrollHeight > clientHeight、
+//     滚到底最后项可点、回顶可达）、展开两根不抢焦点、重开已选仍在；
+//   · 期望行业全页：折叠不丢选中、无推荐区；
+//   · 其他底部弹层（薪资）与居中确认框：首开聚焦、Tab 焦点圈、Escape 关闭恢复、
+//     弹层不截断；
+//   · 岗位城市全页子视图（不换路由、原表单 hidden 键盘不可进、取消保留、保存回填）
+//     与岗位月薪双滚轮（确定/取消/精确输入/倒置）；
+//   · 就读年份：默认 Mock 2014/2017 原样、显式 2021/2025 种子、空值「请选择」、
+//     真实滚动保存与硬刷新恢复、空项刷新不补默认。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 弹层/页面里的共用折叠目录列表（行业分类列表 根容器，dev 类名含「列表」） */
+const picker滚动列表 = (范围: Locator) => 范围.locator('[class*="列表"]').first();
+
+/** 轮询元素矩形完整落在视口内（含 4px 边框/安全区误差）——抽屉升起动画 0.24s 期间
+ *  矩形会越界，等动画落定再取值，不在动画中段冒充越界 */
+async function picker在视口内(元素: Locator, 宽: number, 高: number): Promise<void> {
+  const 截止 = Date.now() + 5_000;
+  let 框: { x: number; y: number; width: number; height: number } | null = null;
+  for (;;) {
+    框 = await 元素.boundingBox().catch(() => null);
+    const 值 = 框 === null
+      ? -1
+      : Math.max(-2 - 框.x, -2 - 框.y, 框.x + 框.width - (宽 + 4), 框.y + 框.height - (高 + 4));
+    if (值 <= 0 || Date.now() > 截止) {
+      if (值 > 0) {
+        throw new Error(
+          `弹层超出视口：bbox=${JSON.stringify(框)} 视口=${宽}x${高}（超出 ${值.toFixed(1)}px）`,
+        );
+      }
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/** Mock 登录最小入口：协议同意 → 微信登录 → 身份页 */
+async function pickerMock登录(page: Page): Promise<void> {
+  await page.goto('/');
+  await page.getByText(/已阅读并同意/).click();
+  await page.getByRole('button', { name: '微信登录' }).click();
+  await expect(page).toHaveURL(/#\/identity$/);
+}
+
+/** Backend 存量候选日常会话（与核心编辑用例同口径）：登录落主壳 */
+async function pickerBackend存量候选(
+  page: Page,
+  登录尝试id: string,
+  隐私覆盖: Partial<P3隐私形> = {},
+): Promise<候选OnboardingFixture> {
+  const fixture = 创建候选OnboardingFixture();
+  fixture.主体.last_used_role = 'candidate';
+  // 存量日常会话按冻结决策返回 candidate 已完成（与核心编辑用例同口径，final-gate
+  // merge 追平）：登录落点按完成事实进主壳，而不是被未完成分流送回学生分流
+  fixture.完成.candidate = '2026-08-25T10:00:00Z';
+  fixture.resume = {
+    ...P4深克隆(fixture简历),
+    profile: { ...fixture简历.profile, real_name: '存量候选' },
+    summary: '存量个人优势',
+  };
+  fixture.intentions = [P4深克隆(fixture意向列表.intentions[0])];
+  await 安装BFF路由(page, {
+    登录尝试id,
+    记录目录请求: () => {},
+    候选OnboardingFixture: fixture,
+    隐私fixture: P3隐私fixture(隐私覆盖),
+  });
+  return fixture;
+}
+
+test.describe('picker 统一 经历行业弹层 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('两根展开不抢焦点→列表滚到底选中→重开已选在 @picker @mock', async ({ page }) => {
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await pickerMock登录(page);
+
+    // 日常入口：在线简历 → 添加工作经历 → 打开所属行业层（本地 常见行业 作模拟目录）
+    // （公司名称已是合同 C 的公司选择抽屉行，本用例只驱动行业层，不需要公司）
+    await page.goto('/#/experience');
+    await expect(page.getByRole('button', { name: '＋ 添加工作经历' })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '＋ 添加工作经历' }).click();
+    await expect(page.getByPlaceholder('必填')).toHaveCount(1);
+    await page.getByRole('button', { name: /所属行业/ }).click();
+    const 弹层 = page.getByRole('dialog', { name: '选择所属行业' });
+    await expect(弹层.getByRole('button', { name: /金融科技/ })).toBeVisible({ timeout: 10_000 });
+
+    // 面板限高 72%（844×0.72≈607.7，允许边框误差），动画落定后取值
+    await expect.poll(async () => (await 弹层.boundingBox())?.height ?? -1, { timeout: 5_000 })
+      .toBeLessThanOrEqual(844 * 0.72 + 4);
+    await picker在视口内(弹层, 390, 844);
+
+    // 展开两根：焦点留在被点的组行上，不抢到首控件（组行整行展开，箭头 ⌄→⌃）
+    await 弹层.getByRole('button', { name: /金融科技/ }).click();
+    await expect(弹层.getByRole('button', { name: '支付与清结算', exact: true })).toBeVisible({ timeout: 10_000 });
+    await 弹层.getByRole('button', { name: /互联网平台/ }).click();
+    await expect(弹层.getByRole('button', { name: /互联网平台 ⌃/ })).toBeFocused();
+
+    // 直接定位可滚动列表：scrollHeight > clientHeight
+    const 列表 = picker滚动列表(弹层);
+    const 尺寸 = await 列表.evaluate((节点) => ({ 滚: 节点.scrollHeight, 可见: 节点.clientHeight }));
+    expect(尺寸.滚).toBeGreaterThan(尺寸.可见);
+
+    // 真实滚动到底：最后一项可见且可点击；向上滚回首项可达
+    await 列表.evaluate((节点) => { 节点.scrollTop = 节点.scrollHeight; });
+    await expect(弹层.getByRole('button', { name: '社交与通讯', exact: true })).toBeVisible();
+    await 弹层.getByRole('button', { name: '社交与通讯', exact: true }).click();
+
+    // 单选选定即关闭层，所属行业行回填；重开已选仍在（✓ 由选中行渲染）
+    await expect(弹层).toHaveCount(0);
+    const 行业行 = page.getByRole('button', { name: /所属行业/ });
+    await expect(行业行).toContainText('社交与通讯');
+    await 行业行.click();
+    const 弹层2 = page.getByRole('dialog', { name: '选择所属行业' });
+    await expect(弹层2.getByRole('button', { name: /金融科技/ })).toBeVisible({ timeout: 10_000 });
+    await 弹层2.getByRole('button', { name: /互联网平台/ }).click();
+    await expect(弹层2.getByRole('button', { name: /社交与通讯 ✓/ })).toBeVisible({ timeout: 10_000 });
+
+    // 向上滚回首项（重入时已选组自动展开，首项是其首个细分）可达；Escape 关闭恢复
+    const 列表2 = picker滚动列表(弹层2);
+    await 列表2.evaluate((节点) => { 节点.scrollTop = 0; });
+    await expect(弹层2.getByRole('button', { name: '电商与交易', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(弹层2).toHaveCount(0);
+
+    // Mock 全程零 API 请求
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+test.describe('picker 统一 经历行业弹层 @backend', () => {
+  // 短屏 844×390：面板限高 72%≈280.8px，列表更早内滚；关闭（选叶子/Escape）可达
+  test.use({ baseURL: 'http://127.0.0.1:4182', viewport: { width: 844, height: 390 } });
+
+  test('目录展开→短屏列表滚到底选中→重开已选在，Escape 可关 @picker @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    await pickerBackend存量候选(page, 'att-picker-industry');
+
+    // 行业目录桩（本用例专用后装 route）：单页两根 + 每根 8 个可选叶子，撑出内滚
+    await page.route('**/api/v1/catalog/industries*', async (route) => {
+      const url = new URL(route.request().url());
+      const parentId = url.searchParams.get('parent_id');
+      if (parentId === 'ind_fin' || parentId === 'ind_net') {
+        const 前缀 = parentId === 'ind_fin' ? '支付细分' : '平台细分';
+        await route.fulfill({
+          status: 200,
+          json: 信封({
+            items: Array.from({ length: 8 }, (_, 序) => ({
+              id: `${parentId}_leaf_${序 + 1}`,
+              display_name: `${前缀}${序 + 1}`,
+              parent_id: parentId,
+              selectable: true,
+              has_children: false,
+            })),
+            next_cursor: null,
+            catalog_version: 'ind-v1',
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        json: 信封({
+          items: [
+            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true },
+            { id: 'ind_net', display_name: '互联网', parent_id: null, selectable: true, has_children: true },
+          ],
+          next_cursor: null,
+          catalog_version: 'ind-v1',
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto('/#/experience');
+    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '＋ 添加工作经历' }).click();
+    await expect(page.getByPlaceholder('必填')).toHaveCount(1);
+    await page.getByRole('button', { name: /所属行业/ }).click();
+    const 弹层 = page.getByRole('dialog', { name: '选择所属行业' });
+    await expect(弹层.getByRole('button', { name: /金融科技/ })).toBeVisible({ timeout: 10_000 });
+
+    // 短屏面板限高 72%（390×0.72≈280.8），动画落定后取值
+    await expect.poll(async () => (await 弹层.boundingBox())?.height ?? -1, { timeout: 5_000 })
+      .toBeLessThanOrEqual(390 * 0.72 + 4);
+    await picker在视口内(弹层, 844, 390);
+
+    // 展开两根（第二根是可选根，名称点=选择、独立展开钮展开 —— 点展开钮不选定）
+    await 弹层.getByRole('button', { name: /金融科技/ }).click();
+    await expect(弹层.getByRole('button', { name: '支付细分1', exact: true })).toBeVisible({ timeout: 10_000 });
+    await 弹层.getByRole('button', { name: '展开互联网' }).click();
+    await expect(弹层.getByRole('button', { name: '平台细分1', exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(弹层.getByRole('button', { name: '展开互联网' })).toBeFocused();
+
+    // 列表内滚 + 滚到底最后项可点
+    const 列表 = picker滚动列表(弹层);
+    const 尺寸 = await 列表.evaluate((节点) => ({ 滚: 节点.scrollHeight, 可见: 节点.clientHeight }));
+    expect(尺寸.滚).toBeGreaterThan(尺寸.可见);
+    await 列表.evaluate((节点) => { 节点.scrollTop = 节点.scrollHeight; });
+    await expect(弹层.getByRole('button', { name: '平台细分8', exact: true })).toBeVisible();
+    await 弹层.getByRole('button', { name: '平台细分8', exact: true }).click();
+    await expect(弹层).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /所属行业/ })).toContainText('平台细分8');
+
+    // 重开已选仍在（重新展开后 ✓）；短屏 Escape 关闭可达
+    await page.getByRole('button', { name: /所属行业/ }).click();
+    const 弹层2 = page.getByRole('dialog', { name: '选择所属行业' });
+    await expect(弹层2.getByRole('button', { name: /金融科技/ })).toBeVisible({ timeout: 10_000 });
+    await 弹层2.getByRole('button', { name: '展开互联网' }).click();
+    await expect(弹层2.getByRole('button', { name: /平台细分8 ✓/ })).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press('Escape');
+    await expect(弹层2).toHaveCount(0);
+    // 关闭后行业行仍回填所点行（稳定键 → 显示名；提交断言由核心编辑 简历行业 @backend 覆盖）
+    await expect(page.getByRole('button', { name: /所属行业/ })).toContainText('平台细分8');
+  });
+});
+
+test.describe('picker 统一 期望行业折叠 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('选叶子→折叠不丢选中→无推荐区，保存回显 @picker @mock', async ({ page }) => {
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await pickerMock登录(page);
+
+    // 「添加求职期望」→ 期望行业行 → 行业子页（共用正文，本地 行业字典 作模拟目录）
+    await page.goto('/#/intentions/new');
+    await expect(page.getByRole('button', { name: /期望行业/ })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: /期望行业/ }).click();
+    await expect(page.getByRole('heading', { name: '已选行业' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('0/3')).toBeVisible();
+
+    // 推荐区已按 Plan 删除：两模式页面都不再出现「推荐」
+    await expect(page.getByText('推荐')).toHaveCount(0);
+
+    // 展开金融科技 → 选叶子 1/3
+    await page.getByRole('button', { name: /金融科技/ }).click();
+    await expect(page.getByRole('button', { name: '支付与清结算', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '支付与清结算', exact: true }).click();
+    await expect(page.getByText('1/3')).toBeVisible();
+
+    // 折叠组行：选中不丢（计数仍在、✓ 不依赖可见项），再展开 ✓ 还在
+    await page.getByRole('button', { name: /金融科技/ }).click();
+    await expect(page.getByRole('button', { name: '支付与清结算', exact: true })).toHaveCount(0);
+    await expect(page.getByText('1/3')).toBeVisible();
+    await page.getByRole('button', { name: /金融科技/ }).click();
+    await expect(page.getByRole('button', { name: /支付与清结算 ✓/ })).toBeVisible({ timeout: 10_000 });
+
+    // 折叠另一个组同样不丢：再选一叶 → 折叠 → 计数 2/3
+    await page.getByRole('button', { name: /互联网平台/ }).click();
+    await expect(page.getByRole('button', { name: '电商与交易', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '电商与交易', exact: true }).click();
+    await expect(page.getByText('2/3')).toBeVisible();
+    await page.getByRole('button', { name: /互联网平台/ }).click();
+    await expect(page.getByText('2/3')).toBeVisible();
+
+    // 保存（沿原业务：保存只负责返回）→ 行文本回显
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/intentions\/new$/, { timeout: 10_000 });
+    await expect(page.getByText('支付与清结算、电商与交易')).toBeVisible({ timeout: 15_000 });
+
+    // Mock 全程零 API 请求
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+test.describe('picker 统一 期望行业折叠 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('目录选叶子→折叠不丢选中→无推荐区，保存回主壳 @picker @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const fixture = await pickerBackend存量候选(page, 'att-picker-intent-industry');
+    expect(fixture.intentions).toHaveLength(1);
+
+    // industries 目录桩（本用例专用后装 route）：一根（不可选）+ 两个可选叶子
+    const 目录请求: string[] = [];
+    await page.route('**/api/v1/catalog/industries*', async (route) => {
+      const url = new URL(route.request().url());
+      目录请求.push('/api/v1/catalog/industries');
+      if (url.searchParams.get('parent_id') === 'ind_fin') {
+        await route.fulfill({
+          status: 200,
+          json: 信封({
+            items: [
+              { id: 'ind_pay', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true, has_children: false },
+              { id: 'ind_eco', display_name: '电商与交易', parent_id: 'ind_fin', selectable: true, has_children: false },
+            ],
+            next_cursor: null,
+            catalog_version: 'ind-v1',
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        json: 信封({
+          items: [{ id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true }],
+          next_cursor: null,
+          catalog_version: 'ind-v1',
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.goto('/#/intentions/industries');
+    await expect(page.getByRole('heading', { name: '已选行业' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('0/3')).toBeVisible();
+
+    // 无推荐区
+    await expect(page.getByText('推荐')).toHaveCount(0);
+
+    // 展开 → 选叶子 1/3 → 折叠不丢 → 再展开 ✓ 还在
+    await page.getByRole('button', { name: /金融科技/ }).last().click();
+    await expect(page.getByRole('button', { name: '支付与清结算', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '支付与清结算', exact: true }).click();
+    await expect(page.getByText('1/3')).toBeVisible();
+    await page.getByRole('button', { name: /金融科技/ }).last().click();
+    await expect(page.getByRole('button', { name: '支付与清结算', exact: true })).toHaveCount(0);
+    await expect(page.getByText('1/3')).toBeVisible();
+    await page.getByRole('button', { name: /金融科技/ }).last().click();
+    await expect(page.getByRole('button', { name: /支付与清结算 ✓/ })).toBeVisible({ timeout: 10_000 });
+
+    // 保存（返回）→ 主壳；重入草稿不丢
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await page.goto('/#/intentions/industries');
+    await expect(page.getByText('1/3')).toBeVisible({ timeout: 15_000 });
+
+    // 本会话目录请求只打 industries
+    expect(目录请求.length).toBeGreaterThan(0);
+    expect(目录请求.every((p) => p === '/api/v1/catalog/industries')).toBe(true);
+  });
+});
+
+test.describe('picker 统一 弹层骨架 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('薪资底部弹层与居中确认框：首开/Tab/Escape/关闭恢复不截断 @picker @mock', async ({ page }) => {
+    test.setTimeout(120_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await pickerMock登录(page);
+
+    // ── 底部弹层（薪资双滚轮）：添加求职期望 的薪资行 ──
+    await page.goto('/#/intentions/new');
+    const 薪资行 = page.getByRole('button', { name: /薪资要求/ });
+    await expect(薪资行).toBeVisible({ timeout: 15_000 });
+    await 薪资行.click();
+    const 薪资层 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+    await expect(薪资层).toBeVisible({ timeout: 10_000 });
+
+    // 首开聚焦第一个控件；面板在视口内、确定键完整可见（底层改动不截断）
+    await expect(薪资层.getByRole('button', { name: '取消' })).toBeFocused();
+    await expect(薪资层.getByRole('button', { name: '确定' })).toBeVisible();
+    await picker在视口内(薪资层, 390, 844);
+
+    // Tab 焦点圈在弹层里转；Escape 关闭并恢复焦点到打开它的行
+    await page.keyboard.press('Tab');
+    const 焦点在薪资层 = await page.evaluate(() =>
+      (document.activeElement?.closest('dialog') ?? null) !== null,
+    );
+    expect(焦点在薪资层).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(薪资层).toHaveCount(0);
+    await expect(薪资行).toBeFocused();
+    await expect(薪资行).toBeVisible();
+
+    // ── 居中确认框（屏蔽名单 解除屏蔽，Mock 演示种子 B-01 锐思数据）：首开在视口中部、Tab/Escape、取消零请求 ──
+    //（JD consent 确认层只在 Backend 招聘方会话出现；Mock 选同一骨架的居中解除确认框）
+    await page.goto('/#/blocklist');
+    const 解除键 = page.getByRole('button', { name: '解除', exact: true }).first();
+    await expect(解除键).toBeVisible({ timeout: 15_000 });
+    await 解除键.click();
+    const 确认框 = page.getByRole('dialog', { name: '解除屏蔽锐思数据' });
+    await expect(确认框).toBeVisible({ timeout: 10_000 });
+    // 居中面板：上下都不贴边（底部抽屉会贴底，居中框不会）
+    const 确认面板 = await 确认框.boundingBox();
+    expect(确认面板).not.toBeNull();
+    expect(确认面板!.y).toBeGreaterThan(0);
+    expect(确认面板!.y + 确认面板!.height).toBeLessThan(844);
+    await expect(确认框.getByRole('button', { name: '不解除' })).toBeFocused();
+    await page.keyboard.press('Tab');
+    const 焦点在确认框 = await page.evaluate(() =>
+      (document.activeElement?.closest('dialog') ?? null) !== null,
+    );
+    expect(焦点在确认框).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(确认框).toHaveCount(0);
+    // 名单条目保留（取消不解除）
+    await expect(page.getByRole('button', { name: '解除', exact: true }).first()).toBeVisible();
+
+    // Mock 全程零 API 请求（确认框取消零 mutation）
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+test.describe('picker 统一 弹层骨架 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('薪资底部弹层与居中确认框：首开/Tab/Escape/关闭恢复不截断 @picker @backend', async ({ page }) => {
+    test.setTimeout(180_000);
+    // 隐身开关从关起步：employer_privacy_enabled=false（默认 true 会让首次点击直接进确认框）
+    await pickerBackend存量候选(page, 'att-picker-sheets', { employer_privacy_enabled: false });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+
+    // ── 底部弹层（薪资双滚轮）：添加求职期望 的薪资行；取消零回填 ──
+    await page.goto('/#/intentions/new');
+    const 薪资行 = page.getByRole('button', { name: /薪资要求/ });
+    await expect(薪资行).toBeVisible({ timeout: 15_000 });
+    await 薪资行.click();
+    const 薪资层 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+    await expect(薪资层).toBeVisible({ timeout: 10_000 });
+    await expect(薪资层.getByRole('button', { name: '取消' })).toBeFocused();
+    await expect(薪资层.getByRole('button', { name: '确定' })).toBeVisible();
+    await picker在视口内(薪资层, 390, 844);
+    // 点档直选后取消：零回填（行保持原值），焦点恢复
+    await 薪资层.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '40', exact: true }).click();
+    await expect(薪资层.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '40', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
+    await page.keyboard.press('Escape');
+    await expect(薪资层).toHaveCount(0);
+    await expect(薪资行).toBeFocused();
+    // 取消零回填：行值仍是「请选择薪资要求」
+    await expect(薪资行).toContainText('请选择薪资要求');
+
+    // ── 居中确认框：设置页 对现雇主隐身 关闭确认（开关是 role=switch）──
+    await page.goto('/#/settings');
+    const 隐身开关 = page.getByRole('switch', { name: '对现雇主隐身' });
+    await expect(隐身开关).toBeEnabled({ timeout: 15_000 });
+    await 隐身开关.click(); // 开（无需确认）
+    await expect(隐身开关).toHaveAttribute('aria-checked', 'true', { timeout: 10_000 });
+    // 开启写入后隐私水合会让开关短暂失稳，第二次触发用焦点上的 Enter（真实键盘激活）
+    await page.keyboard.press('Enter'); // 关（居中确认框）
+    const 确认框 = page.getByRole('dialog', { name: '关闭对现雇主隐身' });
+    await expect(确认框).toBeVisible({ timeout: 10_000 });
+    const 确认面板 = await 确认框.boundingBox();
+    expect(确认面板).not.toBeNull();
+    expect(确认面板!.y).toBeGreaterThan(0);
+    expect(确认面板!.y + 确认面板!.height).toBeLessThan(844);
+    await expect(确认框.getByRole('button', { name: '保持开启' })).toBeFocused();
+    await page.keyboard.press('Tab');
+    const 焦点在确认框 = await page.evaluate(() =>
+      (document.activeElement?.closest('dialog') ?? null) !== null,
+    );
+    expect(焦点在确认框).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(确认框).toHaveCount(0);
+    // 关闭恢复：开关仍是开（确认框只是被取消）
+    await expect(隐身开关).toHaveAttribute('aria-checked', 'true');
+  });
+});
+
+test.describe('picker 统一 岗位城市与月薪 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('城市全页子视图与月薪滚轮：确定/取消/精确/倒置，发布零 API @picker @mock', async ({ page }) => {
+    test.setTimeout(180_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await pickerMock登录(page);
+    await page.goto('/#/hr/post-job');
+    await expect(page.getByPlaceholder(/资深后端工程师/)).toBeVisible({ timeout: 15_000 });
+
+    // ── 校招月薪：取消零回填 → 双滚轮点档 → 确定 ──
+    await page.getByRole('button', { name: '校园招聘' }).click();
+    await page.getByRole('button').filter({ hasText: '职位类别' }).click();
+    const 类别弹层 = page.getByRole('dialog', { name: '选择职位类别' });
+    await expect(类别弹层).toBeVisible({ timeout: 10_000 });
+    await 类别弹层.getByRole('button', { name: '产品', exact: true }).click();
+    await 类别弹层.getByRole('button', { name: '产品经理', exact: true }).click();
+    await expect(page.getByRole('button').filter({ hasText: '职位类别' })).toContainText('产品 · 产品经理');
+    await page.getByPlaceholder(/资深后端工程师/).fill('选择器统一岗');
+    await page.getByRole('button', { name: '现场', exact: true }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await page.getByLabel('职位描述').fill('验证岗位城市子视图与月薪滚轮。');
+    await page.getByRole('button', { name: '下一步' }).click();
+    const 下限键 = page.getByRole('button', { name: '薪资下限' });
+    await 下限键.click();
+    let 月薪层 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+    await expect(月薪层).toBeVisible({ timeout: 10_000 });
+    await expect(月薪层.getByRole('button', { name: '取消' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(月薪层).toHaveCount(0);
+    await expect(下限键).toBeFocused();
+    await expect(下限键).toContainText('—');
+    await 下限键.click();
+    await expect(月薪层).toBeVisible({ timeout: 10_000 });
+    await 月薪层.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '20', exact: true }).click();
+    await 月薪层.getByRole('listbox', { name: '薪资上限' }).getByRole('option', { name: '30', exact: true }).click();
+    await 月薪层.getByRole('button', { name: '确定' }).click();
+    await expect(月薪层).toHaveCount(0);
+    await expect(下限键).toContainText('20');
+    await expect(page.getByRole('button', { name: '薪资上限' })).toContainText('30');
+
+    // 返回第一步切回社招（类型切换既有清理会清薪资），描述保留
+    await page.getByRole('button', { name: '返回' }).click();
+    await page.getByRole('button', { name: '返回' }).click();
+    await expect(page.getByRole('button', { name: '校园招聘' })).toBeVisible();
+    await page.getByRole('button', { name: '社招全职' }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page.getByLabel('职位描述')).toHaveValue('验证岗位城市子视图与月薪滚轮。');
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    // ── 社招月薪：精确输入 18/28 → 确定；滚轮倒置被拦不关闭；取消零回填 ──
+    await 下限键.click();
+    月薪层 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+    await expect(月薪层).toBeVisible({ timeout: 10_000 });
+    await 月薪层.getByRole('button', { name: '输入金额' }).click();
+    await 月薪层.getByLabel('薪资下限').fill('18');
+    await 月薪层.getByLabel('薪资上限').fill('28');
+    await 月薪层.getByRole('button', { name: '确定' }).click();
+    await expect(月薪层).toHaveCount(0);
+    await expect(下限键).toContainText('18');
+    await expect(page.getByRole('button', { name: '薪资上限' })).toContainText('28');
+    await page.getByRole('button', { name: /年薪月数/ }).click();
+    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByLabel('岗位要求').fill('三年以上产品经验，带过完整上线周期');
+    // 倒置：上限 < 下限，确定被拦、弹层不关
+    await 下限键.click();
+    月薪层 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+    await expect(月薪层).toBeVisible({ timeout: 10_000 });
+    await 月薪层.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '40', exact: true }).click();
+    await 月薪层.getByRole('listbox', { name: '薪资上限' }).getByRole('option', { name: '20', exact: true }).click();
+    await 月薪层.getByRole('button', { name: '确定' }).click();
+    await expect(月薪层.getByText('薪资下限不能高于上限')).toBeVisible();
+    await 月薪层.getByRole('button', { name: '取消' }).click();
+    await expect(月薪层).toHaveCount(0);
+    await expect(下限键).toContainText('18');
+    await expect(page.getByRole('button', { name: '薪资上限' })).toContainText('28');
+
+    // ── 工作城市：全页本地子视图（不换路由、原表单 hidden、取消保留、保存回填）──
+    const 城市行 = page.getByRole('button').filter({ hasText: '工作城市' });
+    const 键集前 = await page.evaluate(() => Object.keys(localStorage).sort());
+    await 城市行.click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/);
+    await expect(page.getByRole('heading', { name: '选择工作城市' })).toBeVisible({ timeout: 10_000 });
+    // 原表单整体 hidden（display:none）：键盘无法进入
+    await expect(下限键).toBeHidden();
+    // Tab 只在子视图正文里转
+    await page.getByPlaceholder('搜索城市 / 省份').focus();
+    await page.keyboard.press('Tab');
+    const 焦点在子视图 = await page.evaluate(() =>
+      (document.activeElement?.closest('[class*="选择正文"]') ?? null) !== null,
+    );
+    expect(焦点在子视图).toBe(true);
+    // 取消保留：Escape 关闭、行仍是「请选择」、焦点回城市行
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('heading', { name: '选择工作城市' })).toHaveCount(0);
+    await expect(城市行).toContainText('请选择');
+    await expect(城市行).toBeFocused();
+    // 重开 → 选上海 → 保存回填；不导航候选 route、不写候选草稿
+    await 城市行.click();
+    await expect(page.getByRole('heading', { name: '选择工作城市' })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '上海', exact: true }).first().click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(城市行).toContainText('上海');
+    await expect(page).toHaveURL(/#\/hr\/post-job$/);
+    const 键集后 = await page.evaluate(() => Object.keys(localStorage).sort());
+    expect(键集后).toEqual(键集前);
+
+    // 保存后重开子视图：已选 chip 回显、保存可用（Spec §4.3/§6 两模式同已选状态）；
+    // 取消关闭不改岗位行
+    await 城市行.click();
+    await expect(page.getByRole('heading', { name: '选择工作城市' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '上海 ✕' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('heading', { name: '选择工作城市' })).toHaveCount(0);
+    await expect(城市行).toContainText('上海');
+
+    // 发布：办公地点（现场必填）+ 确认门勾选（Spec §5.4 两模式共用）→ 岗位带城市上屏
+    await page.getByPlaceholder(/浦东新区世纪大道/).fill('浦东新区张江路 1 号');
+    await page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ }).check();
+    await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
+    await expect(page.getByText('选择器统一岗')).toBeVisible({ timeout: 15_000 });
+    // 发布结果带滚轮设置的原金额：编辑回读该岗第三步，薪资选择行为 18/28（Mock 零 API
+    // 无 POST body 可断言，岗位列表卡不渲染薪资带 —— 以编辑回读作存证）
+    await page.goto('/#/hr/post-job/P-05');
+    await expect(page.getByPlaceholder(/资深后端工程师/)).toHaveValue('选择器统一岗', { timeout: 15_000 });
+    await page.getByRole('button', { name: '职位要求' }).click();
+    await expect(下限键).toContainText('18', { timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '薪资上限' })).toContainText('28');
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+test.describe('picker 统一 岗位城市与月薪 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('城市子视图保存发布捕获 location_id，滚轮 50/65 @picker @backend', async ({ page }) => {
+    test.setTimeout(240_000);
+    const 请求们: { path: string; method: string; body: unknown }[] = [];
+    // 全新招聘方 onboarding fixture（与 招聘方 onboarding Backend fixture 同口径；
+    // P1C 存量组织会话在当前候选上名片水合会弹回身份页，本用例只发新岗）。
+    // 隐私域给默认组织搜索池：合同 C 的公司选择抽屉要从池里按 ID 选企业。
+    const 隐私池 = P3隐私fixture();
+    隐私池.组织库 = P3默认组织库();
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-picker-job-city',
+      记录目录请求: () => undefined,
+      主体初始角色: null,
+      请求拦截: ({ path, method, body }) => 请求们.push({ path, method, body }),
+      招聘方OnboardingFixture: 创建招聘方OnboardingFixture(),
+      隐私fixture: 隐私池,
+    });
+
+    // 新招聘方 onboarding 同链：名片首写（公司走合同 C 公司选择抽屉）→ 发岗向导
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: '我要招人' })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '我要招人' }).click();
+    await expect(page).toHaveURL(/#\/hr\/card$/, { timeout: 20_000 });
+    await page.getByLabel('姓名').fill('林澈');
+    await page.getByLabel('职务').fill('招聘负责人');
+    await page.getByRole('button', { name: '未选择公司' }).click();
+    const 企业抽屉 = page.getByRole('dialog', { name: '选择企业' });
+    await expect(企业抽屉).toBeVisible({ timeout: 10_000 });
+    await 企业抽屉.getByPlaceholder('输入公司名称').fill('Fixture 磐石');
+    const 磐石行 = 企业抽屉.getByRole('button', { name: P3标记.手动组织甲 });
+    await expect(磐石行).toBeVisible({ timeout: 10_000 });
+    await 磐石行.click();
+    await expect(企业抽屉).toHaveCount(0);
+    await page.getByRole('button', { name: '保存并继续' }).click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/, { timeout: 20_000 });
+
+    // ── 第一步：类别（fixture 目录单根，左根右叶同名）+ 名称 + 办公方式 ──
+    await page.getByPlaceholder(/资深后端工程师/).waitFor({ state: 'attached' });
+    const 职位类别行 = page.getByRole('button').filter({ hasText: '职位类别' });
+    await 职位类别行.click();
+    const 类键 = page.getByRole('button', { name: 标记.职位display, exact: true });
+    await expect(类键.first()).toBeVisible({ timeout: 10_000 });
+    await 类键.first().click();
+    await expect(类键).toHaveCount(2, { timeout: 10_000 });
+    await 类键.last().click();
+    await expect(职位类别行).toContainText(标记.职位display.trim());
+    await page.getByPlaceholder(/资深后端工程师/).fill('选择器统一岗');
+    await page.getByRole('button', { name: '混合', exact: true }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    await page.getByLabel('职位描述').fill('验证岗位城市子视图与月薪滚轮。');
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    // ── 第三步：月薪双滚轮 50/65 → 年薪月数 ──
+    const 下限键 = page.getByRole('button', { name: '薪资下限' });
+    await 下限键.click();
+    const 月薪层 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+    await expect(月薪层).toBeVisible({ timeout: 10_000 });
+    await 月薪层.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '50', exact: true }).click();
+    await 月薪层.getByRole('listbox', { name: '薪资上限' }).getByRole('option', { name: '65', exact: true }).click();
+    await 月薪层.getByRole('button', { name: '确定' }).click();
+    await expect(月薪层).toHaveCount(0);
+    await expect(下限键).toContainText('50');
+    await expect(page.getByRole('button', { name: '薪资上限' })).toContainText('65');
+    await page.getByRole('button', { name: /年薪月数/ }).click();
+    await page.getByRole('button', { name: '完成' }).click();
+
+    // ── 工作城市：全页子视图（不换路由、原表单 hidden、取消保留、搜索候选保存）──
+    const 城市行 = page.getByRole('button').filter({ hasText: '工作城市' });
+    await 城市行.click();
+    await expect(page).toHaveURL(/#\/hr\/post-job$/);
+    await expect(page.getByRole('heading', { name: '选择工作城市' })).toBeVisible({ timeout: 10_000 });
+    await expect(下限键).toBeHidden();
+    await page.keyboard.press('Escape');
+    await expect(城市行).toContainText('请选择');
+    await expect(城市行).toBeFocused();
+    await 城市行.click();
+    const 城市搜索 = page.getByPlaceholder('搜索城市 / 省份');
+    await expect(城市搜索).toBeVisible({ timeout: 10_000 });
+    await 城市搜索.fill('fixture');
+    const 城市片 = page.getByRole('button', { name: 标记.城市display, exact: true });
+    await expect(城市片.first()).toBeVisible({ timeout: 10_000 });
+    await 城市片.first().click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(城市行).toContainText(标记.城市display.trim());
+    await expect(page).toHaveURL(/#\/hr\/post-job$/);
+
+    // ── 发布：合同 C 企业坐标（direct 用人企业行）→ 确认门 → POST 带 地点引用 ──
+    const 用人企业行 = page.getByRole('button', { name: /用人企业/ });
+    await 用人企业行.click();
+    const 用人抽屉 = page.getByRole('dialog', { name: '选择企业' });
+    await expect(用人抽屉).toBeVisible({ timeout: 10_000 });
+    await 用人抽屉.getByPlaceholder('输入公司名称').fill('Fixture 磐石');
+    await 用人抽屉.getByRole('button', { name: P3标记.手动组织甲 }).click();
+    await expect(用人抽屉).toHaveCount(0);
+    await page.getByPlaceholder(/浦东新区世纪大道/).fill('Fixture 市 Fixture 路 1 号');
+    await page.getByLabel('岗位要求').fill('三年以上后端经验，熟悉交易系统');
+    await page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ }).check();
+    await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    const 岗位写入 = 请求们.filter((项) => 项.method === 'POST' && 项.path === '/api/v1/recruiter/jobs');
+    expect(岗位写入).toHaveLength(1);
+    expect(岗位写入[0]!.body).toMatchObject({
+      location_id: 'loc-fixture-001',
+      title: '选择器统一岗',
+      // 本用例刚用滚轮设置的原金额（转岗位创建 body 键 salary: {lower, upper}）
+      salary: { lower: 50, upper: 65 },
+    });
+    // 城市子视图全程停在发岗 route，没有导航到候选 onboarding
+    expect(请求们.every((项) => !项.path.includes('/onboard/'))).toBe(true);
+  });
+});
+
+test.describe('picker 统一 就读年份 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('默认2014/2017原样直接继续；显式2021/2025种子；空值点档与刷新 @picker @mock', async ({ page }) => {
+    test.setTimeout(240_000);
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+    const 简历键 = 'AGXP简历v3:mock:stg:demo';
+    const 写缓存 = (教育: Record<string, string>) =>
+      page.evaluate(([键, 段]) => {
+        localStorage.setItem(键, JSON.stringify({
+          经历: [],
+          教育: [段],
+          技能: [],
+          证书: [],
+          基本信息: { 真名: '演示', 开始工作年: '2021', 身份: '在校' },
+        }));
+        location.hash = '#/onboard/eduyears';
+      }, [简历键, 教育]);
+
+    // 1) 默认 Mock 会话（不注入教育 fixture）：既有样例 2014/2017 原样优先，直接继续
+    await pickerMock登录(page);
+    await page.goto('/#/onboard/eduyears');
+    await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2014', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2017', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
+
+    // 2) 显式 Mock 2021/2025 演示数据（种子形态缓存）：滚轮停在种子档，直接继续
+    await 写缓存({ 编号: 'edu1', 学校: '演示大学', 学历: '本科', 专业: '演示专业', 开始: '2021-09', 结束: '2025-06' });
+    await page.reload();
+    await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2025', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
+
+    // 3) 空值「请选择」：程序定位不选年；不碰滚轮硬刷新仍不补默认；点档直选成功并保存
+    await 写缓存({ 编号: 'edu1', 学校: '演示大学', 学历: '本科', 专业: '演示专业', 开始: '', 结束: '' });
+    await page.reload();
+    await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 15_000 });
+    const 入学年轮 = page.getByRole('listbox', { name: '入学年' });
+    const 毕业年轮 = page.getByRole('listbox', { name: '毕业年' });
+    await expect(入学年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(毕业年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.reload();
+    await expect(入学年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(毕业年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    // 程序定位（focus）不选年
+    await 入学年轮.focus();
+    await expect(入学年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    // 点下一步被拦（两侧都空）
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page.getByText('请选择入学时间和毕业时间')).toBeVisible();
+    // 点档直选 2021 / 2025 成功
+    await 入学年轮.getByRole('option', { name: '2021', exact: true }).click();
+    await 毕业年轮.getByRole('option', { name: '2025', exact: true }).click();
+    await expect(入学年轮.getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(毕业年轮.getByRole('option', { name: '2025', exact: true })).toHaveAttribute('aria-selected', 'true');
+    // 真实滚动把入学年改到 2022 → 下一步保存（Mock 模式 简历教育 变更经 资料持久化
+    // 自动落盘 AGXP简历v3，无测试侧 reseed）→ 硬刷新沿应用自己存盘的值恢复
+    await 滚薪资轮(page, '入学年', 2022);
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
+    // 消费应用自己落盘的值：存盘后缓存里应有 2022-09（不是测试注入的）
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('AGXP简历v3:mock:stg:demo') ?? ''), { timeout: 10_000 })
+      .toContain('2022-09');
+    // 硬刷新回就读时间段（只改 hash，不再 reseed 缓存）
+    await page.evaluate(() => { location.hash = '#/onboard/eduyears'; });
+    await page.reload();
+    await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 15_000 });
+    await expect(入学年轮.getByRole('option', { name: '2022', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(毕业年轮.getByRole('option', { name: '2025', exact: true })).toHaveAttribute('aria-selected', 'true');
+
+    // Mock 全程零 API 请求
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+test.describe('picker 统一 就读年份 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('空值请选择→点档/真实滚动→硬刷新沿草稿恢复→选空不补默认 @picker @backend', async ({ page }) => {
+    test.setTimeout(240_000);
+    const fixture = 创建候选OnboardingFixture();
+    await 安装BFF路由(page, {
+      记录目录请求: () => {},
+      登录尝试id: 'att-picker-eduyears',
+      候选OnboardingFixture: fixture,
+      隐私fixture: P3隐私fixture(),
+    });
+
+    // ── 新候选旅程走到就读时间段（建档草稿在途）──
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/identity$/, { timeout: 15_000 });
+    await page.getByRole('button', { name: '我要找工作' }).click();
+    await expect(page).toHaveURL(/#\/student$/, { timeout: 30_000 });
+    await page.getByRole('button', { name: '已毕业' }).click();
+    // Backend（Task 5B）身份选择不虚构偏好：主要求职类型要显式点一枚
+    await page.getByRole('button', { name: '社招全职' }).click();
+    await expect(page.getByRole('button', { name: '社招全职' })).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
+    await page.getByRole('button', { name: '选择工作城市' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/city$/);
+    await page.getByPlaceholder('搜索城市 / 省份').fill('fixture');
+    await expect(page.getByRole('button', { name: 标记.城市display, exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 标记.城市display, exact: true }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/student$/);
+    await page.getByRole('button', { name: '选择期望职位' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/job$/);
+    const 职位键 = page.getByRole('button', { name: 标记.职位display, exact: true });
+    await expect(职位键.first()).toBeVisible({ timeout: 10_000 });
+    await expect(职位键).toHaveCount(2, { timeout: 10_000 });
+    await 职位键.last().click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/student$/);
+    await page.getByRole('button', { name: '混合' }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/wizard\?stage=salary$/, { timeout: 15_000 });
+    await 滚薪资轮(page, '最低月薪', 30);
+    await 滚薪资轮(page, '最高月薪', 40);
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/basic$/, { timeout: 15_000 });
+    await page.getByPlaceholder('身份证上的名字').fill('Fixture 候选人');
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/status$/, { timeout: 15_000 });
+    await page.getByRole('button', { name: '在职 · 考虑机会' }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/degree$/, { timeout: 15_000 });
+    await page.getByRole('button', { name: '本科' }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/school$/, { timeout: 15_000 });
+    await page.getByPlaceholder('学校名称').fill('fixture');
+    await expect(page.getByText(标记.学校display)).toBeVisible({ timeout: 10_000 });
+    await page.getByText(标记.学校display).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/major$/, { timeout: 15_000 });
+    await page.getByPlaceholder('专业名称').fill('fixture');
+    await expect(page.getByRole('button', { name: 标记.专业display, exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 标记.专业display, exact: true }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    // ── 就读时间段：Backend 空教育 → 双轮停在「请选择」空档 ──
+    await expect(page).toHaveURL(/#\/onboard\/eduyears$/, { timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible();
+    const 入学年轮 = page.getByRole('listbox', { name: '入学年' });
+    const 毕业年轮 = page.getByRole('listbox', { name: '毕业年' });
+    await expect(入学年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 10_000 });
+    await expect(毕业年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+
+    // 空值真相检查在前：下一步被拦
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page.getByText('请选择入学时间和毕业时间')).toBeVisible();
+
+    // 程序定位（focus）不选年
+    await 入学年轮.focus();
+    await expect(入学年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+
+    // 点档直选 2021（写建档草稿）；真实滚动把毕业年滚到 2025
+    await 入学年轮.getByRole('option', { name: '2021', exact: true }).click();
+    await expect(入学年轮.getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await 滚薪资轮(page, '毕业年', 2025);
+
+    // 硬刷新：沿建档草稿恢复两轮（草稿随滚轮交互落盘）
+    await page.reload();
+    await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 30_000 });
+    await expect(入学年轮.getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+    await expect(毕业年轮.getByRole('option', { name: '2025', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+
+    // 选空档清空毕业年（草稿写空）→ 硬刷新仍为空，不补 2021/2025 默认
+    await 毕业年轮.getByRole('option', { name: '请选择', exact: true }).click();
+    await expect(毕业年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.reload();
+    await expect(page.getByRole('heading', { name: '就读时间段' })).toBeVisible({ timeout: 30_000 });
+    await expect(入学年轮.getByRole('option', { name: '2021', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+    await expect(毕业年轮.getByRole('option', { name: '请选择', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+
+    // 补上毕业年 → 直接继续；education POST 带真实滚动保存的起止
+    await 毕业年轮.getByRole('option', { name: '2025', exact: true }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/experience$/, { timeout: 20_000 });
+    const 教育写入 = fixture.mutations.filter(
+      (条) => 条.method === 'POST' && 条.path === '/api/v1/me/resume/educations',
+    );
+    expect(教育写入.length).toBeGreaterThan(0);
+    expect(教育写入[0]!.body).toMatchObject({ start_month: '2021-09', end_month: '2025-06' });
   });
 });

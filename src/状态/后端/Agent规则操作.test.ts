@@ -4,6 +4,7 @@
 // 约束：失败恢复一律重读权威资源，绝不自动重放 mutation。
 
 import { describe, expect, it, vi } from 'vitest';
+import { 创建空Onboarding状态 } from './Onboarding操作';
 import { 创建空P7会话状态 } from './真人会话操作';
 import { 创建空P8控制面状态 } from './P8控制面操作';
 import { 创建空接触记录状态 } from './接触记录操作';
@@ -130,6 +131,8 @@ function 创建测试依赖(input: {
 function 种子后端状态(role: BFF角色 | null): 后端状态 {
   return {
     初始化: '完成',
+    // Onboarding 运行态显式播种（本域用例不触达）
+    Onboarding: 创建空Onboarding状态(),
     已登录: role !== null,
     主体: role === null ? null : ({ ...BFF主体样本, last_used_role: role }),
     简历快照: null,

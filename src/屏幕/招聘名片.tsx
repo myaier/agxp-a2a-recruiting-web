@@ -31,6 +31,7 @@ import { 路径 } from '../路由/路径表';
 import { 压成头像 } from '../组件/头像处理';
 import { 从BFF招聘身份 } from '../数据/组织映射';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
+import { Onboarding422提示 } from '../状态/后端/Onboarding操作';
 import type { BFF组织搜索项 } from '../数据/BFF契约';
 
 export default function 招聘名片() {
@@ -53,13 +54,14 @@ function 后端名片() {
   const 身份 = 从BFF招聘身份(
     状态.招聘方档案, 状态.企业关系列表, 状态.当前企业关系编号, 状态.企业管理员申请列表,
   );
-  // 显式判定，不从公司名推断：姓名槽 = verified_name ?? public_name；只有无实名才可编辑公开名
-  const 显示姓名 = 身份.verifiedName ?? 身份.publicName;
+  // 显式判定，不从公司名推断：只有无实名才可编辑公开名
   const 可编辑公开名 = 身份.verifiedName === null;
   const 可选关系 = 身份.affiliations.filter((项) => 项.selectable);
 
   const [公开名, 设公开名] = useState(身份.publicName);
   const [职务, 设职务] = useState(身份.title);
+  // 预览姓名：无实名（可编辑）时跟随公开名草稿即时预览（含清空成空串）；有实名仍是权威只读实名
+  const 显示姓名 = 身份.verifiedName === null ? 公开名 : 身份.verifiedName;
   // 水合晚于进屏时同步服务端权威值；保存成功后 re-hydrate 回写的是同一份内容
   useEffect(() => {
     设公开名(身份.publicName);
@@ -193,12 +195,18 @@ function 后端名片() {
         await 操作.替换招聘方头像(头像文件, 档案.revision, 发起主体);
         收口预览();
       }
-      // 注册流：档案已经在服务端了，接着去发岗；应用内普通编辑留在本屏
-      if (从注册流) 跳转(路径.发布岗位, { 从注册流: true });
-      else 轻提示('保存成功'); // 成功响应之后才提示
+      // 注册流：本次 profile 与选定头像都写成功后、去发岗前调用 recruiter complete
+      // （stg 契约对齐 2026-09-14，Spec §5）。完成失败留在本屏可重试：名片已建、头像
+      // 已传的事实不回滚（不重复创建名片 / 不重传已成功头像），重试以同一保存链为主。
+      // 应用内普通编辑不强制 complete，也不跳发岗。
+      if (从注册流) {
+        await 操作.完成角色Onboarding('recruiter');
+        跳转(路径.发布岗位, { 从注册流: true });
+      } else 轻提示('保存成功'); // 成功响应之后才提示
     } catch (错误) {
-      // 409/503 等失败保留 file 与预览，用户检查后按同一个保存键重试
-      轻提示(取后端错误文案(错误));
+      // 409/503 等失败保留 file 与预览，用户检查后按同一个保存键重试；
+      // complete 的 422 按冻结 path 给可行动提示，其余交一般文案
+      轻提示(Onboarding422提示(错误) ?? 取后端错误文案(错误));
     } finally {
       保存锁.current = false;
       设保存中(false);
@@ -227,7 +235,7 @@ function 后端名片() {
     <>
       <招聘名片展示
         预览={{
-          // 预览姓名用权威值（verified 优先），职务受控，公司用待保存选择名
+          // 预览姓名：无实名时跟随草稿（即时预览），实名时权威只读；职务受控，公司用待保存选择名
           姓名: 显示姓名,
           职务,
           公司: 自报?.名称 ?? '',

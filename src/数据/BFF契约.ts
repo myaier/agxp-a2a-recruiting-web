@@ -345,6 +345,9 @@ export type BFF福利码 =
   | 'snacks_afternoon_tea' | 'overtime_allowance' | 'year_end_bonus' | 'shuttle_bus' | 'regular_training';
 
 export interface BFF企业档案 {
+  /** Spec §2（2026-09-14）：企业常用名，与目录/公开企业 display_name 同源；
+   *  管理员经完整 replacement 改写，遵循 trim/无控制字符/80 码点与 normalized 唯一性。 */
+  display_name: string;
   brand_name: string;
   industry: BFF目录引用 | null;
   company_size: BFF企业规模;
@@ -392,6 +395,9 @@ export interface BFF企业管理员申请元数据 {
 export type BFF企业媒体用途 = 'organization_logo' | 'office_photo' | 'company_photo';
 
 export interface BFF企业档案替换 {
+  /** Spec §2：常用名改名随同一完整 replacement 走全局唯一规则；
+   *  与他企业的 normalized 名冲突由后端以 409 organization_name_conflict 拒绝。 */
+  display_name: string;
   brand_name: string;
   industry_id: string;
   company_size: BFF企业规模;
@@ -1388,3 +1394,17 @@ export type BFFJD导入 =
   | (BFFJD导入基础 & { status: 'pending' | 'processing' })
   | (BFFJD导入基础 & { status: 'succeeded'; suggestion: BFFJD建议 })
   | (BFFJD导入基础 & { status: 'failed'; failure_code: BFFJD导入失败码 });
+
+// ── Onboarding 产品 API（stg 契约对齐 2026-09-14，Spec §4 冻结）──
+// GET /api/v1/me/onboarding 与 POST /api/v1/me/onboarding/{role}/complete 的 result。
+// role/status 闭集、completed_at 必在且为 null 或合法 RFC3339、GET 列表 candidate→recruiter
+// 最多两项无重复、POST 额外保证 active/非空时间/role 与请求一致，
+// 由 招聘数据源/Onboarding.ts 的 strict decoder 校验。
+
+export type BFFOnboarding角色状态 = {
+  role: BFF角色;
+  status: 'active' | 'suspended';
+  completed_at: string | null;
+};
+
+export type BFFOnboarding状态 = { roles: BFFOnboarding角色状态[] };

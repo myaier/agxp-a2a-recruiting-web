@@ -1,7 +1,8 @@
-// 选择城市 页面测试（Task 3）：两模式入口都消费同一份 备选城市选择正文。
+// 选择城市 页面测试（Task 3 / Task 4）：两模式入口都消费同一份 备选城市选择正文。
 // 页面外层负责真实目录引用 / ID 映射 / 业务派发，这里验证两模式的映射与业务边界：
-// Mock 行政分组 + 拼音搜索 + 9 上限 + 取消不派发；Backend 排除主城市、同名不同 ID 独立
-// 选中、搜索/翻页已选不丢、保存才提交备选引用、无行政区城市不编造分组且仍可搜索。
+// Mock 行政分组（Mock默认城市字典切片）+ 拼音搜索 + 9 上限 + 取消不派发；Backend 四支默认
+// 目录、两精选区（无港澳台精选）、三个中文组标题与英文条目、排除主城市、同名不同 ID 独立
+// 选中、搜索/翻页已选不丢、保存才提交备选引用。
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -28,19 +29,35 @@ function deferredPromise<T>() {
 function 城(项: {
   id: string;
   display_name: string;
+  countryCode?: string;
   admin1_name?: string | null;
   country_name?: string | null;
 }) {
   return {
     id: 项.id,
     display_name: 项.display_name,
-    country_code: 'CN',
-    country_name: 项.country_name === undefined ? '中国' : 项.country_name,
-    admin1_code: '31',
+    country_code: 项.countryCode ?? 'CN',
+    country_name: 项.country_name === undefined ? (项.countryCode ?? '中国') : 项.country_name,
+    // admin1_code 缺省时跟省名走：不同省不同码（聚合按 code，码相同会被并进一组）
+    admin1_code: 项.admin1_name === undefined ? '31' : 项.admin1_name,
     admin1_name: 项.admin1_name === undefined ? '上海市' : 项.admin1_name,
     timezone: 'Asia/Shanghai',
     population: 0,
   };
+}
+
+type 页形 = { items: ReturnType<typeof 城>[]; nextCursor: string | null };
+type 国家名 = 'CN' | 'TW' | 'HK' | 'MO';
+
+/** 四支分发桩：按 countryCode 返回各自页；搜索词命中时返回搜索结果 */
+function 四国桩(配置: Partial<Record<国家名, 页形>> & { 搜索?: 页形 }) {
+  return vi.fn(async (query: { q?: string; countryCode?: string; cursor?: string; limit?: number }) => {
+    if (query.q !== undefined) {
+      return { ...(配置.搜索 ?? { items: [], nextCursor: null }), catalogVersion: 'v2' };
+    }
+    const 页 = 配置[(query.countryCode ?? 'CN') as 国家名] ?? { items: [], nextCursor: null };
+    return { ...页, catalogVersion: 'v2' };
+  });
 }
 
 /** 空意向草稿（含可选引用字段）*/
@@ -104,11 +121,11 @@ beforeEach(() => {
 });
 
 describe('选择城市 Mock（行政分组共用正文）', () => {
-  it('行政分组来自城市字典，A–Z 分节与右侧字母索引条消失；杭/hangzhou/hang 都命中杭州', async () => {
+  it('行政分组来自 Mock默认城市字典，A–Z 分节与右侧字母索引条消失；杭/hangzhou/hang 都命中杭州', async () => {
     render城市页({ 数据源: 'mock' });
     const 用户 = userEvent.setup();
 
-    // 分组标题用省份（城市字典种子），不再按拼音首字母分节
+    // 分组标题用省份（默认字典种子），不再按拼音首字母分节
     expect(screen.getByText('广东')).toBeTruthy();
     expect(screen.getByText('浙江')).toBeTruthy();
     // 右侧索引条整体消失
@@ -125,11 +142,26 @@ describe('选择城市 Mock（行政分组共用正文）', () => {
     await 用户.clear(输入);
   });
 
+  it('两个精选区上屏且无港澳台精选；海外仅精选或搜索，不入分组长列表', async () => {
+    render城市页({ 数据源: 'mock' });
+    // 两个精选区：12 大陆 + 10 海外（此处抽点断言），无港澳台条目
+    expect(screen.getByText('国内热门城市')).toBeTruthy();
+    expect(screen.getByText('海外热门城市')).toBeTruthy();
+    // 新加坡不在 Mock 默认分组里，按钮唯一来自海外精选区
+    expect(screen.getByRole('button', { name: '新加坡' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Taipei' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Hong Kong' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Macau' })).toBeNull();
+    // 海外长组不再作为分组渲染（组标题「海外」消失，迪拜不可见）
+    expect(screen.queryByText('海外', { selector: 'div' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '迪拜' })).toBeNull();
+  });
+
   it('最多 9 个：选满后其余城片禁用；取消（✕）不派发改草稿', async () => {
     const { 派发 } = render城市页({ 数据源: 'mock' });
     const 用户 = userEvent.setup();
 
-    // 热门城市正好 12 枚，取前 9 枚点满
+    // 国内精选正好 12 枚，取前 9 枚点满
     const 热门枚 = ['北京', '上海', '深圳', '广州', '杭州', '成都', '南京', '武汉', '苏州'];
     for (const 城名 of 热门枚) {
       await 用户.click((await screen.findAllByText(城名))[0]);
@@ -162,46 +194,63 @@ describe('选择城市 Mock（行政分组共用正文）', () => {
     );
   });
 
-  it('Mock 局部分页：加载更多把更多行政分组切进来', async () => {
+  it('已有中文港澳台历史值不迁移：仍展示、可删，且不影响新分组', async () => {
+    const { 派发 } = render城市页({ 数据源: 'mock', 已选城市们: ['香港', '杭州'] });
+    const 用户 = userEvent.setup();
+    expect(screen.getByText('2/9')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '移除 香港' })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '移除 香港' }));
+    expect(screen.queryByRole('button', { name: '移除 香港' })).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({ 型: '改意向草稿', 补丁: { 感兴趣城市们: ['杭州'] } }),
+    );
+  });
+
+  it('Mock 局部分页：加载更多把更多行政分组切进来，翻完见港澳台三组', async () => {
     render城市页({ 数据源: 'mock' });
     const 用户 = userEvent.setup();
     // 初始只显示一部分省份组
     expect(screen.getByText('广东')).toBeTruthy();
-    const 初始组数 = screen.getAllByText(/^(直辖市|广东|浙江|江苏|山东|四川|湖北|湖南|陕西|福建|河南|安徽|河北|辽宁|江西|广西|云南|贵州|山西|黑龙江|吉林|内蒙古|甘肃|新疆|宁夏|青海|西藏|海南|港澳台|海外)$/).length;
+    const 组标题正则 = /^(北京|上海|天津|重庆|广东|浙江|江苏|山东|四川|湖北|湖南|陕西|福建|河南|安徽|河北|辽宁|江西|广西|云南|贵州|山西|黑龙江|吉林|内蒙古|甘肃|新疆|宁夏|青海|西藏|海南|台湾省|香港特别行政区|澳门特别行政区)$/;
+    const 初始组数 = screen.getAllByText(组标题正则).length;
     await 用户.click(screen.getByRole('button', { name: '加载更多' }));
     await waitFor(() => {
-      expect(
-        screen.getAllByText(/^(直辖市|广东|浙江|江苏|山东|四川|湖北|湖南|陕西|福建|河南|安徽|河北|辽宁|江西|广西|云南|贵州|山西|黑龙江|吉林|内蒙古|甘肃|新疆|宁夏|青海|西藏|海南|港澳台|海外)$/).length,
-      ).toBeGreaterThan(初始组数);
+      expect(screen.getAllByText(组标题正则).length).toBeGreaterThan(初始组数);
     });
-    // 翻完还有下一页按钮，直到全部省份组上屏
+    // 翻完还有下一页按钮，直到全部分组上屏
     while (screen.queryByRole('button', { name: '加载更多' })) {
       await 用户.click(screen.getByRole('button', { name: '加载更多' }));
     }
-    expect(screen.getByText('海外')).toBeTruthy();
-    expect(screen.getByText('港澳台')).toBeTruthy();
+    // 港澳台拆三组：中文标题 + 组内 API 英文条目
+    expect(screen.getByText('台湾省')).toBeTruthy();
+    expect(screen.getByText('香港特别行政区')).toBeTruthy();
+    expect(screen.getByText('澳门特别行政区')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Taipei' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hong Kong' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Macau' })).toBeTruthy();
+    // 海外长组移除
+    expect(screen.queryByText('海外', { selector: 'div' })).toBeNull();
+    expect(screen.queryByText('港澳台')).toBeNull();
+    expect(screen.queryByText('直辖市')).toBeNull();
   });
 });
 
 describe('选择城市 Backend（引用身份与分页边界）', () => {
-  it('默认页按 admin1_name 分组、排除主城市；无行政区城市只进热门且仍可搜索', async () => {
-    const 查询Location = vi.fn(async (query: { q?: string; cursor?: string }) => {
-      if (query.q !== undefined) {
-        return {
-          items: [城({ id: 'loc_qs', display_name: '泉州', admin1_name: null, country_name: null })],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      return {
+  it('四支默认目录按 admin1 分组、两精选区上屏、排除主城市；无行政区城市只进热门且仍可搜索', async () => {
+    const 查询Location = 四国桩({
+      CN: {
         items: [
           城({ id: 'loc_main', display_name: '上海市' }),
           城({ id: 'loc_gz', display_name: '广州市', admin1_name: '广东省' }),
           城({ id: 'loc_qs', display_name: '泉州', admin1_name: null, country_name: null }),
         ],
         nextCursor: null,
-        catalogVersion: 'v2',
-      };
+      },
+      搜索: {
+        items: [城({ id: 'loc_qs', display_name: '泉州', admin1_name: null, country_name: null })],
+        nextCursor: null,
+      },
     });
     render城市页({
       数据源: 'backend',
@@ -210,6 +259,10 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
     });
     const 用户 = userEvent.setup();
 
+    // 两个精选区上屏（静态配置），无港澳台精选
+    expect(screen.getByText('国内热门城市')).toBeTruthy();
+    expect(screen.getByText('海外热门城市')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Taipei' })).toBeNull();
     // 分组标题只用返回的 admin1_name；两字段都缺的泉州不编造分组、不落「其他地区」
     await screen.findAllByText('广州市');
     expect(screen.getByText('广东省')).toBeTruthy();
@@ -220,18 +273,50 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
       (节点) => 节点.tagName === 'BUTTON',
     ) as HTMLButtonElement;
     expect(主城片.disabled).toBe(true);
-    // 泉州在热门区可见可选
+    // 无行政区的城市不编造分组、默认列表不可见，但仍可被搜索命中且可点
+    expect(screen.queryByText('泉州')).toBeNull();
+    await 用户.type(screen.getByPlaceholderText('搜索城市名/拼音'), '泉州');
     const 泉州片 = (await screen.findAllByText('泉州')).find(
       (节点) => 节点.tagName === 'BUTTON',
     ) as HTMLButtonElement;
     expect(泉州片.disabled).toBe(false);
-    // 无行政区的城市仍可被搜索命中（不因没分组而不可搜索）
-    await 用户.type(screen.getByPlaceholderText('搜索城市名/拼音'), '泉州');
-    expect(await screen.findByText('泉州')).toBeTruthy();
+  });
+
+  it('三个中文组标题与英文条目：TW/HK/MO 返回无视细分，组内保留 API 原名', async () => {
+    const 查询Location = 四国桩({
+      TW: { items: [城({ id: 'loc_tpe', display_name: 'Taipei', countryCode: 'TW', admin1_name: 'Taipei' })], nextCursor: null },
+      HK: { items: [城({ id: 'loc_hk', display_name: 'Hong Kong', countryCode: 'HK', admin1_name: 'Hong Kong' })], nextCursor: null },
+      MO: { items: [城({ id: 'loc_mo', display_name: 'Macau', countryCode: 'MO', admin1_name: null })], nextCursor: null },
+    });
+    render城市页({ 数据源: 'backend', 查询Location });
+    await screen.findByText('台湾省');
+    expect(screen.getByText('香港特别行政区')).toBeTruthy();
+    expect(screen.getByText('澳门特别行政区')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Taipei' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hong Kong' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Macau' })).toBeTruthy();
+  });
+
+  it('海外精选按 canonical ID 保存（选择列表/精选区同一 ID 共享选中）', async () => {
+    const 查询Location = 四国桩({});
+    const { 派发 } = render城市页({ 数据源: 'backend', 查询Location });
+    const 用户 = userEvent.setup();
+    await 用户.click(await screen.findByRole('button', { name: '新加坡' }));
+    expect(screen.getByText('1/9')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(派发).toHaveBeenCalledWith(
+      expect.objectContaining({
+        型: '改意向草稿',
+        补丁: {
+          感兴趣城市们: ['新加坡'],
+          感兴趣城市引用们: [{ id: 'loc_qdyx7r6fcyjrcokobaxsorhhrm', display_name: '新加坡' }],
+        },
+      }),
+    );
   });
 
   it('同名不同 ID 两城独立选中；搜索/翻页已选不丢；重复 ID 不重复计数', async () => {
-    const 查询Location = vi.fn(async (query: { q?: string; cursor?: string }) => {
+    const 查询Location = vi.fn(async (query: { q?: string; countryCode?: string; cursor?: string }) => {
       if (query.q !== undefined) {
         return {
           items: [城({ id: 'loc_c2', display_name: '朝阳', admin1_name: '辽宁省' })],
@@ -239,32 +324,35 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
           catalogVersion: 'v2',
         };
       }
-      if (query.cursor === 'cur_1') {
+      if (query.countryCode === 'CN' && query.cursor === 'cur_1') {
         return {
           items: [城({ id: 'loc_c2', display_name: '朝阳', admin1_name: '辽宁省' })],
           nextCursor: null,
           catalogVersion: 'v2',
         };
       }
-      return {
-        items: [城({ id: 'loc_c1', display_name: '朝阳', admin1_name: '北京市' })],
-        nextCursor: 'cur_1',
-        catalogVersion: 'v2',
-      };
+      if (query.countryCode === 'CN') {
+        return {
+          items: [城({ id: 'loc_c1', display_name: '朝阳', admin1_name: '北京市' })],
+          nextCursor: 'cur_1',
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
     });
     const { 派发 } = render城市页({ 数据源: 'backend', 查询Location });
     const 用户 = userEvent.setup();
 
     // 第一页选朝阳区（北京市）
     await screen.findAllByText('朝阳');
-    await 用户.click((await screen.findAllByText('朝阳'))[0]);
+    await 用户.click((await screen.findAllByRole('button', { name: '朝阳' }))[0]);
     expect(screen.getByText('1/9')).toBeTruthy();
-    // 翻页：第二页同名的辽宁省朝阳出现，独立选中（前两枚是已选中的北京市朝阳，不能误点）
+    // 翻页：第二页同名的辽宁省朝阳出现，独立选中（第一枚是已选中的北京市朝阳，不能误点）
     await 用户.click(screen.getByRole('button', { name: '加载更多' }));
     await screen.findByText('辽宁省');
-    const 三枚朝阳 = screen.getAllByText('朝阳');
-    expect(三枚朝阳).toHaveLength(3);
-    await 用户.click(三枚朝阳[2]);
+    const 两枚朝阳 = screen.getAllByRole('button', { name: '朝阳' });
+    expect(两枚朝阳).toHaveLength(2);
+    await 用户.click(两枚朝阳[1]);
     expect(screen.getByText('2/9')).toBeTruthy();
     // 搜索离开默认页再清空：两枚已选不丢
     await 用户.type(screen.getByPlaceholderText('搜索城市名/拼音'), '朝阳');
@@ -290,7 +378,7 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
 
   it('旧搜索晚到不覆盖新搜索（页面级代际守卫，翻页在飞行中换词）', async () => {
     const A第二页 = deferredPromise<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>();
-    const 查询Location = vi.fn(async (query: { q?: string; cursor?: string }) => {
+    const 查询Location = vi.fn(async (query: { q?: string; countryCode?: string; cursor?: string }) => {
       if (query.cursor === 'a_cur_1') return A第二页.promise;
       if (query.q === 'A') {
         return { items: [城({ id: 'loc_a1', display_name: 'A城' })], nextCursor: 'a_cur_1', catalogVersion: 'v2' };
@@ -320,11 +408,9 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
   });
 
   it('保存才提交备选引用；进页回读草稿引用', async () => {
-    const 查询Location = vi.fn(async () => ({
-      items: [城({ id: 'loc_hz', display_name: '杭州市', admin1_name: '浙江省' })],
-      nextCursor: null,
-      catalogVersion: 'v2',
-    }));
+    const 查询Location = 四国桩({
+      CN: { items: [城({ id: 'loc_hz', display_name: '杭州市', admin1_name: '浙江省' })], nextCursor: null },
+    });
     const { 派发 } = render城市页({
       数据源: 'backend',
       查询Location,
@@ -338,7 +424,7 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
     expect(screen.getByRole('button', { name: '移除 苏州市' })).toBeTruthy();
 
     // 追加一枚后保存：引用按 ID 提交（含回读那条），名称列表同步
-    await 用户.click((await screen.findAllByText('杭州市'))[0]);
+    await 用户.click((await screen.findAllByRole('button', { name: '杭州市' }))[0]);
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(派发).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -355,11 +441,9 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
   });
 
   it('取消（✕）不派发：只返回，草稿保持 untouched', async () => {
-    const 查询Location = vi.fn(async () => ({
-      items: [城({ id: 'loc_hz', display_name: '杭州市', admin1_name: '浙江省' })],
-      nextCursor: null,
-      catalogVersion: 'v2',
-    }));
+    const 查询Location = 四国桩({
+      CN: { items: [城({ id: 'loc_hz', display_name: '杭州市', admin1_name: '浙江省' })], nextCursor: null },
+    });
     const { 派发 } = render城市页({ 数据源: 'backend', 查询Location });
     const 用户 = userEvent.setup();
     await screen.findAllByText('杭州市');
@@ -374,11 +458,9 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
 // 否则计数虚高、主城市被自己重复占用一个名额。
 describe('选择城市 进页初始选择清洗（review-r1 F7）', () => {
   it('Backend：初始引用按 ID 去重并排除主城市', async () => {
-    const 查询Location = vi.fn(async () => ({
-      items: [城({ id: 'loc_hz', display_name: '杭州市', admin1_name: '浙江省' })],
-      nextCursor: null,
-      catalogVersion: 'v2',
-    }));
+    const 查询Location = 四国桩({
+      CN: { items: [城({ id: 'loc_hz', display_name: '杭州市', admin1_name: '浙江省' })], nextCursor: null },
+    });
     render城市页({
       数据源: 'backend',
       查询Location,

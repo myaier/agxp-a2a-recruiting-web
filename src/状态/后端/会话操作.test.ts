@@ -3,6 +3,7 @@
 // P3 Task 2：候选隐私成为第三个并行水合域 —— 水合 / 清理 / 过时响应丢弃的用例也在本文件。
 
 import { describe, expect, it, vi } from 'vitest';
+import { 创建空Onboarding状态 } from './Onboarding操作';
 import { 创建空P7会话状态 } from './真人会话操作';
 import { 创建空P5MatchCase状态 } from './MatchCase操作';
 import type { BFF主体, BFF角色, BFF附件简历库, BFF登录尝试 } from '../../数据/BFF契约';
@@ -50,6 +51,8 @@ import type { 候选实名摘要 } from '../../数据/招聘数据源/候选实�
 function 创建测试后端状态(覆盖: Partial<后端状态> = {}): 后端状态 {
   return {
     初始化: '完成', 已登录: true, 主体: null, 简历快照: null, 意向快照: {}, 岗位快照: {},
+    // Onboarding 运行态显式播种（本域用例不触达）
+    Onboarding: 创建空Onboarding状态(),
     隐私快照: null,
     // P6：Task 3 起 后端状态 携带 Agent 规则原始快照与水合阶段（这里的用例不触达它们）
     候选规则快照: {}, 招聘规则快照: {}, 候选规则提案: {}, 招聘规则提案: {},
@@ -534,6 +537,8 @@ function 创建P6会话依赖(后端: HTTP招聘数据源) {
   });
   let 后端值: 后端状态 = {
     初始化: '完成',
+    // Onboarding 运行态显式播种（本域用例不触达）
+    Onboarding: 创建空Onboarding状态(),
     已登录: true,
     主体: null,
     简历快照: null,

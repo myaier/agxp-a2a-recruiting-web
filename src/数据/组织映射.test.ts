@@ -136,6 +136,7 @@ describe('从BFF企业档案 / 转BFF企业档案替换', () => {
   it('identity round trip：从BFF企业档案 再 转BFF企业档案替换 还原同一 replacement', () => {
     const 草稿 = 从BFF企业档案(BFF企业档案样本);
     expect(转BFF企业档案替换(草稿, BFF企业档案样本)).toEqual({
+      display_name: '云衢科技',
       brand_name: '云衢科技',
       industry_id: 'tax_fintech',
       company_size: '500_1000',
@@ -183,6 +184,70 @@ describe('从BFF企业档案 / 转BFF企业档案替换', () => {
       产品介绍: '', 团队介绍: [],
     };
     expect(转BFF企业档案替换(Mock资料, BFF企业档案样本).industry_id).toBe('');
+  });
+});
+
+// ── Spec §2（2026-09-14）：企业常用名 / 品牌名 / 工商全称 三名独立接线 ──
+// 常用名 = profile.display_name（目录/公开企业 display_name 同源）；品牌名 = brand_name；
+// 工商全称 = legal_name 只读认证事实。三个名字各走各的槽，任何串写都是缺陷。
+
+/** 三个名字刻意互不相同，串写一眼可见 */
+const 三名档案 = () => ({ ...BFF企业档案样本, display_name: '云衢常用名', brand_name: '云衢品牌' });
+
+describe('三名独立：常用名 display_name / 品牌名 brand_name / 工商名 legal_name', () => {
+  it('从BFF企业档案：常用名进 企业常用名，品牌名仍进 公司全称，不串写', () => {
+    const 资料 = 从BFF企业档案(三名档案());
+    expect(资料.企业常用名).toBe('云衢常用名');
+    expect(资料.公司全称).toBe('云衢品牌');
+  });
+
+  it('公开企业视图：displayName 来自目录 display_name，brandName 来自 profile，legalName 只读保留', () => {
+    const 视图 = 从BFF公开企业({
+      ...BFF公开企业样本,
+      display_name: '云衢常用名',
+      legal_name: '上海云衢科技有限公司',
+      profile: 三名档案(),
+    });
+    expect(视图.displayName).toBe('云衢常用名');
+    expect(视图.brandName).toBe('云衢品牌');
+    expect(视图.legalName).toBe('上海云衢科技有限公司');
+  });
+
+  it('转BFF企业档案替换：draft.企业常用名 进 display_name，品牌名仍在 brand_name', () => {
+    const body = 转BFF企业档案替换(
+      { ...从BFF企业档案(三名档案()), 企业常用名: '新常用名' },
+      三名档案(),
+    );
+    expect(body.display_name).toBe('新常用名');
+    expect(body.brand_name).toBe('云衢品牌');
+  });
+
+  it('未提供 企业常用名（Mock 构造）保留 server.display_name', () => {
+    const Mock资料 = {
+      公司全称: '云衢品牌', 行业: '', 规模: '', 融资阶段: '', 办公地址: '',
+      福利标签: [], 作息档: '', 公司介绍: '', 主营业务: '', 实景照片: [], 公司照片: [],
+      产品介绍: '', 团队介绍: [],
+    };
+    expect(转BFF企业档案替换(Mock资料, 三名档案()).display_name).toBe('云衢常用名');
+  });
+
+  it('显式空字符串按常用名校验拒绝，不 truthy 回退 server.display_name', () => {
+    expect(() => 转BFF企业档案替换(
+      { ...从BFF企业档案(三名档案()), 企业常用名: '' }, 三名档案(),
+    )).toThrow('请填写企业常用名');
+    // 纯空白 trim 后同样拒绝
+    expect(() => 转BFF企业档案替换(
+      { ...从BFF企业档案(三名档案()), 企业常用名: '   ' }, 三名档案(),
+    )).toThrow('请填写企业常用名');
+  });
+
+  it('常用名超 80 个码点或含控制字符按冻结规则拒绝', () => {
+    expect(() => 转BFF企业档案替换(
+      { ...从BFF企业档案(三名档案()), 企业常用名: '名'.repeat(81) }, 三名档案(),
+    )).toThrow('企业常用名不超过 80 字');
+    expect(() => 转BFF企业档案替换(
+      { ...从BFF企业档案(三名档案()), 企业常用名: '坏\u0007名' }, 三名档案(),
+    )).toThrow('企业常用名不能包含控制字符');
   });
 });
 

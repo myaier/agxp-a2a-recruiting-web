@@ -1,5 +1,16 @@
-/* 选工作城市（/onboard/city）—— 全屏多选页。
-   描边 var(--描边深) / 白底；选中态 1.5px var(--亮绿) 描边 + ✓（C1 定稿）。 */
+/* 选工作城市（/onboard/city）与 岗位全页城市子视图 共用的全页选择正文版式。
+   描边 var(--描边深) / 白底；选中态 1.5px var(--亮绿) 描边 + ✓（C1 定稿）。
+   Task 2 起正文组件（src/组件/工作城市选择正文.tsx）从本文件取样式：
+   页壳（次级页外壳）由调用方提供，正文根只负责占满调用方给的容器。 */
+
+/* ── 正文根：页壳内唯一可见子节点，纵向排满（标题/搜索/列表/已选/保存）── */
+.选择正文 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
 /* ── 大标题 + 右上 N/10 ── */
 .标题行 {
@@ -111,6 +122,29 @@
   font-size: 12.5px;
   color: var(--次要浅);
   text-align: center;
+}
+
+/* ── 目录/搜索失败：错误行 + 重试（与 .无结果 同区；成功空页才用 .无结果）── */
+.错误行 {
+  padding: 18px 0;
+  font-size: 12.5px;
+  color: var(--次要);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.重试键 {
+  flex: none;
+  padding: 4px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--次要);
 }
 
 /* ── 底部已选 chips（同 引导问答 的已选条版式）── */

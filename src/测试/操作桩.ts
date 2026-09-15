@@ -9,7 +9,7 @@
 // 全部宿主随之补齐，不会出现「桩比生产少一格」的静默缺口。
 
 import { vi } from 'vitest';
-import type { 发现推荐操作 } from '../状态/后端/类型';
+import type { 发现推荐操作, Onboarding操作 } from '../状态/后端/类型';
 import type { 待核对命令 } from '../状态/后端/委托待核对';
 import { BFF候选委托回执样本, BFF招聘委托回执样本 } from './BFF样本';
 
@@ -36,4 +36,22 @@ export function 发现推荐操作桩(覆盖: Record<string, unknown> = {}): 发
     核对候选委托: vi.fn(async () => undefined),
   };
   return { ...全表, ...覆盖 } as 发现推荐操作;
+}
+
+// ── stg 契约对齐 2026-09-14：Onboarding 域的屏幕测试桩（与 发现推荐操作桩 同一纪律）──
+// 生产 Provider 恒注入完整 应用操作（Onboarding操作 是非可选成员），产品代码按非可选
+// 表直呼；缺一个就该在测试里立刻 TypeError。默认桩：刷新回未完成快照、complete 回
+// 服务端完成回执；用例经 覆盖 换成自己的 spy。
+
+/** 完整 Onboarding操作 桩；覆盖项按名替换（用例自己的 spy 优先）。 */
+export function Onboarding操作桩(覆盖: Record<string, unknown> = {}): Onboarding操作 {
+  const 全表: Onboarding操作 = {
+    刷新Onboarding: vi.fn(async () => ({ roles: [] })),
+    完成角色Onboarding: vi.fn(async () => ({
+      role: 'candidate' as const,
+      status: 'active' as const,
+      completed_at: '2026-09-14T08:00:00Z',
+    })),
+  };
+  return { ...全表, ...覆盖 } as Onboarding操作;
 }

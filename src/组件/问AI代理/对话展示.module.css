@@ -1,0 +1,148 @@
+/* 问AI代理 两端共用的对话展示样式。
+   原声明来自 求职端 A27 问AI代理.module.css（像素取自 RN 实现）与招聘端 D14 的同构镜像；
+   两端真实差异用 .求职 / .招聘（挂在各组件根元素上）按原值保留，不为统一改像素：
+   求职气泡收缩 / 招聘伸展、求 13.5px·1.45 / 招 14px·1.7、求职快捷行横滑 / 招聘换行。 */
+
+/* ── 代理侧（左）：小盾牌头像 + 白气泡 ── */
+.代理行 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.小盾牌 {
+  /* 标注 23:53：与主页横幅同款裸代理标，不要圆底 */
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+/* 左上角圆角切到 4px，形成「指向头像」的气泡尖角。
+   两端共用的壳；flex 与宽度上限按端区分（见下方 .求职/.招聘） */
+.代理气泡 {
+  min-width: 0;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: 4px 14px 14px 14px;
+  padding: 10px 13px;
+}
+
+/* 求职（标注 19:27/21:50）：flex 用 0 1 auto 而不是 1 —— iMessage 的气泡是抱住内容的，
+   短句就是短气泡；flex:1 会把每一条都撑满整行，是这屏看起来「块头大」的主因。
+   镜像净空：右缘距行尾 ≥ 头像列宽，与我方气泡对称 */
+.求职 .代理气泡 {
+  flex: 0 1 auto;
+  max-width: calc(100% - 78px);
+}
+
+/* 招聘：气泡伸展到 86%，长句 early 换行不顶头像列 */
+.招聘 .代理气泡 {
+  flex: 1;
+  max-width: 86%;
+}
+
+/* 简报是「卡片附件」不是「一句话」，普通气泡宽度会把统计横条和脚注挤到换行，
+   所以求职端这一条单独放宽到整行。外观类挂在 代理行 根元素上、简报类挂在气泡元素上，
+   故必须用后代选择器（0,2,0），并放在 .求职 .代理气泡 之后 —— 同特异性后者胜，
+   才能盖过收缩宽度。只由 代理气泡框 在 外观=求职 且 简报 时挂上；招聘端保持基础气泡宽度。 */
+.求职 .简报气泡 {
+  flex: 1;
+  max-width: 100%;
+}
+
+/* ── 我方（右）：荧光绿浅底气泡，右下角切角 ── */
+.我行 {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  /* 标注 23:52 我方头像：尺寸对齐左侧代理头像 */
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.我气泡 {
+  /* 左缘与代理气泡起点线对齐（行宽 - 头像列 39 - 左净空 39）*/
+  max-width: calc(100% - 78px);
+  background: var(--气泡绿);
+  border-radius: 14px 14px 3px 14px;
+  padding: 10px 13px;
+}
+
+/* 我方头像：尺寸对齐左侧代理头像（标注 17:29：太小 —— 定为 30） */
+.我头像 {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
+  margin-top: 2px;
+  background: var(--墨);
+  color: var(--荧光绿);
+  font-size: 12.5px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* ── 两侧气泡共用的正文排版；overflow-wrap 防止用户输入超长无空格串撑破气泡 ── */
+.气泡文字 {
+  color: var(--墨);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+/* 求职（标注 10:56 再收一档）：15 → 13.5，行高回到 1.45。
+   与全站正文主力档（12.5–13.5）对齐，聊天屏不再是最大的那一屏 */
+.求职 .气泡文字 {
+  font-size: 13.5px;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+}
+
+/* 招聘保持原档：14px / 1.7 */
+.招聘 .气泡文字 {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* ── 快捷胶囊行：两端共用横排与间距，换行/横滑与落位按端区分 ── */
+.快捷行 {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  gap: 7px;
+}
+
+/* 求职：单行横滑、紧贴下方输入框（标注意见 #4）：不换行堆叠 */
+.求职.快捷行 {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 6px 16px 0;
+}
+
+.求职.快捷行::-webkit-scrollbar {
+  display: none;
+}
+
+/* 招聘：放不下就换行堆叠 */
+.招聘.快捷行 {
+  flex-wrap: wrap;
+  padding: 10px 16px 0;
+}
+
+.快捷键 {
+  flex: none;
+  padding: 6px 11px;
+  border-radius: 14px;
+  background: var(--白);
+  border: 1px solid var(--淡绿描边2);
+  font-size: 11.5px;
+  color: var(--正文);
+}

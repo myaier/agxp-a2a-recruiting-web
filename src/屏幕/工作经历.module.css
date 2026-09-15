@@ -426,52 +426,6 @@
   margin-bottom: 6px;
 }
 
-.选择层列表 {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.选择项 {
-  width: 100%;
-  padding: 14px 2px;
-  border-bottom: 1px solid var(--分隔线);
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 15px;
-  color: var(--墨);
-  text-align: left;
-}
-
-.选择项选中 {
-  color: var(--深绿);
-  font-weight: 700;
-}
-
-.选择勾 {
-  color: var(--深绿);
-  font-weight: 800;
-}
-
-.选择层输入 {
-  flex: none;
-  margin-top: 12px;
-  /* 2026-08-24 全站选择风格统一（C1 定稿）：输入框描边统一 描边深 */
-  border: 1px solid var(--描边深);
-  border-radius: 12px;
-  padding: 11px 13px;
-  font-size: 14px;
-  color: var(--墨);
-  outline: none;
-  background: var(--白);
-}
-
-.选择层输入::placeholder {
-  color: var(--最弱);
-}
-
 /* 本地 keyframes：CSS Modules 会重命名 animation-name */
 @keyframes 遮罩淡入 {
   from { opacity: 0; }

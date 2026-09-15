@@ -22,6 +22,7 @@ import type { BFF候选账号档案 } from '../../数据/招聘数据源/候选�
 import type { 后端操作依赖, 候选操作 } from './类型';
 import { 创建空候选预填状态 } from './类型';
 import { 清账号状态 } from './会话操作';
+import { 完成Onboarding角色, 查证Onboarding角色, Onboarding422提示 } from './Onboarding操作';
 import { 清候选预填引用 } from './简历预填操作';
 import { 轻提示 } from '../../组件/轻提示';
 
@@ -428,6 +429,18 @@ function 本轮首次意向草稿(
     办公方式: input.筛选偏好.办公方式,
     私有偏好: 本轮.private_preferences,
   };
+}
+
+/**
+ * stg 契约对齐 2026-09-14（Spec §5）：完成 POST 的结果是否「未知」—— 503
+ * recruitment_service_unavailable / operation_outcome_unknown 与网络异常保持未知
+ * （保留草稿并 GET 查证）；其余（400/401/403/422 等确定 4xx）是终局拒绝。
+ */
+function 是完成结果未知(错误: unknown): boolean {
+  if (错误 instanceof BFF错误) {
+    return 错误.status === 503 || (错误.status === 0 && 错误.code === 'network_error');
+  }
+  return true; // 意外异常一律按未知处理：查证后才允许收口
 }
 
 export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
@@ -1244,6 +1257,30 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
         if (!栅栏仍立()) throw 拦下('会话已变化，本次完成未生效');
         if (!意向与本次确认一致(意向, 期望写入)) {
           throw 拦下('首次求职意向与本次确认的选择不一致，请回引导问答重新保存');
+        }
+        // ③.5 stg 契约对齐 2026-09-14（Spec §5）：既有核对全部通过后才 POST complete
+        // （body 由数据源冻结为 {}，绝不携带本轮确认的前端草稿字段）；成功回执即完成
+        // 事实。POST 结果未知（503/网络异常）保留草稿并 GET 查证：明确已完成才收口，
+        // 仍未完成原样抛原错误（可安全重试），读取失败留错误。422 按冻结 path 给可行动
+        // 中文提示（导航到相应现有页面，不后台补写）。
+        try {
+          if (本次主体 === null) throw 拦下('会话已变化，本次完成未生效');
+          await 完成Onboarding角色(deps, 'candidate');
+        } catch (完成错误) {
+          if (是完成结果未知(完成错误) && 栅栏仍立() && 本次主体 !== null) {
+            const 查证 = await 查证Onboarding角色(deps, 本次主体, 本次代际, 'candidate');
+            if (查证 === '已完成' && 栅栏仍立()) {
+              // 后端已完成事实到手：继续收口（覆盖「完成已提交但响应丢失」的恢复）
+            } else {
+              throw 完成错误;
+            }
+          } else if (完成错误 instanceof BFF错误) {
+            const 提示 = Onboarding422提示(完成错误);
+            if (提示 !== null) throw 拦下(提示);
+            throw 完成错误;
+          } else {
+            throw 完成错误;
+          }
         }
         // ④ 全部通过：同步清理（栅栏已在 读取指定意向 后核过，此处到清理之间只有
         // 同步语句，栅栏结论不可能翻转）—— 建档草稿（清后端草稿；session 键随

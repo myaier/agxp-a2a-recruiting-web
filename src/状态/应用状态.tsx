@@ -77,6 +77,7 @@ import { 创建简历预填操作 } from './后端/简历预填操作';
 import { 创建JD导入操作 } from './后端/JD导入操作';
 import { 创建接触记录操作, 创建空接触记录状态, 清接触记录引用 } from './后端/接触记录操作';
 import { 创建候选实名操作, 创建空候选实名快照 } from './后端/候选实名操作';
+import { 创建Onboarding操作, 创建空Onboarding状态, 取Onboarding状态 } from './后端/Onboarding操作';
 import { use真人会话事件 } from './后端/use真人会话事件';
 import { 创建招聘事件源 } from '../数据/招聘事件源';
 import { 创建候选操作 } from './后端/候选操作';
@@ -531,6 +532,8 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
     候选预填状态: 创建空候选预填状态(),
     // 候选实名 summary 快照空底座起步（Backend-only；Mock 不触达；绝不进 资料持久化）
     候选实名: 创建空候选实名快照(),
+    // Onboarding 运行态从 未读取 起跑（Backend-only；Mock 恒不触达、不消费）
+    Onboarding: 创建空Onboarding状态(),
   }));
 
   // 让异步操作读到最新的 后端状态 / 状态（useMemo 闭包只捕获首次值）
@@ -603,6 +606,9 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
   // candidate 由 会话操作 的清理口统一清空内存并删除 outgoing owner 的恢复记录。
   const 委托待核对内存 = useRef(new Map<string, 待核对命令>());
   const 委托待核对存储 = useRef<委托待核对会话 | null>(null);
+  // stg 契约对齐 2026-09-14：Onboarding 域最小请求序号（会话边界递增作废在飞读）。
+  // 一次性初始化；清账号 / 换主体 / 切身份 由 会话操作 的清理口统一复位。
+  const Onboarding请求序号 = useRef(0);
   // Task 2：候选意向持久化写屏障 —— Provider 最近一次接纳的权威快照的
   // { 主体, 会话代际, 服务端对象引用 }。只是「成功水合已进入 React commit」的标记，
   // 不持久化、不是业务模型；use资料持久化 靠它区分权威空列表与尚未水合的初始空字典。
@@ -770,6 +776,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         候选实名读取锁, 候选实名变更锁, 候选实名提交意图,
         建档草稿引用,
         委托待核对内存, 委托待核对存储,
+        Onboarding请求序号,
       }, 主体, false, 本次代际);
       if (已取消) return;
       if (会话失效) {
@@ -930,6 +937,7 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         候选建档草稿,
         委托待核对内存,
         委托待核对存储,
+        Onboarding请求序号,
       };
       return {
         ...创建会话操作(deps),
@@ -963,12 +971,41 @@ export function 应用状态提供者({ children, 数据源 }: { children?: Reac
         // 候选实名操作（owner summary 单飞读取 + 意图键化提交/取消 + 冲突权威重读对账），
         // 同一把 deps；姓名草稿与 File 归页面所有，全局只保存 owner-safe summary
         ...创建候选实名操作(deps),
+        // Onboarding 操作（me/onboarding 权威重读 + 角色 complete 登记），同一把 deps
+        ...创建Onboarding操作(deps),
       };
     },
     // 是后端 / 后端 在同一 Provider 实例下不变；派发 / 设后端状态 由 React 保证稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [是后端, 后端],
   );
+
+  // ── stg 契约对齐 2026-09-14（Spec §5）：后端已完成事实优先于旧草稿 ──────────────
+  // 候选已完成（Onboarding 成功快照的 completed_at 非空）时，旧建档草稿与预填恢复
+  // 信息作废：不触发回访拦截、不自动业务重放（覆盖「完成已提交但响应丢失/页面关闭」
+  // 的恢复），只清首次引导所属草稿，不动普通编辑输入。在途旅程（未完成）零触碰。
+  // 完成核对（完成候选Onboarding）成功侧已自清理，这里幂等兜底跨刷新/换角色的残留。
+  useEffect(() => {
+    if (!是后端) return;
+    const 主体 = 后端状态.主体;
+    if (主体 === null || 主体.last_used_role !== 'candidate') return;
+    if (状态.引导预填 === null && (后端状态.候选预填状态?.phase ?? 'inactive') === 'inactive') return;
+    const 快照 = 取Onboarding状态(后端状态);
+    if (快照.阶段 !== '成功') return;
+    const 条 = 快照.数据.roles.find((行) => 行.role === 'candidate');
+    if (条 === undefined || 条.status !== 'active' || 条.completed_at === null) return;
+    操作.清候选Onboarding预填();
+    派发({ 型: '清后端草稿' });
+    // 操作 由 Provider 的 useMemo 保持稳定；后端状态刻意以窄输入进依赖（清理写状态防回环）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    是后端,
+    后端状态.主体,
+    后端状态.Onboarding,
+    后端状态.候选预填状态,
+    状态.引导预填,
+    操作,
+  ]);
 
   // ── P6 页面数组派生：raw 快照（或权威意向字典）任一变化都重算分组 ──
   // Rule 请求与 Intention 请求谁先完成都不影响最终归属：这里只吃 raw 输入，

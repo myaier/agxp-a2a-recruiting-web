@@ -124,7 +124,9 @@ async function 重读企业档案(
 
 /** 写成功后以**最新 state**派发快照：current 已被 401 清理或切到别的企业时静默跳过 ——
  *  写已落库（组织号固定），但不能用 pre-await 身份派发，否则清空的组织切片被复活、
- *  public cache 拼出错误键（镜像 选择企业关系 的 `当前企业关系编号 !== id` 守卫）。 */
+ *  public cache 拼出错误键（镜像 选择企业关系 的 `当前企业关系编号 !== id` 守卫）。
+ *  Spec §2：profile.display_name 与目录 display_name 同源，改名后以响应的权威常用名
+ *  刷新当前企业身份、公开缓存与当前关系显示；只改本 ID，其他企业的关系不做全局替换。 */
 function 发布档案收口(
   deps: 后端操作依赖, organizationId: string, next: BFF企业档案,
 ): boolean {
@@ -133,9 +135,21 @@ function 发布档案收口(
   if (relation?.organization_id !== organizationId || now.当前企业身份?.organization_id !== organizationId) {
     return false;
   }
-  deps.派发({ 型: '水合当前企业', 身份: now.当前企业身份, 档案: next });
-  // 复用 缓存公开企业 覆盖同 ID 旧 public cache，避免公共页首帧显示旧 profile
-  deps.派发({ 型: '缓存公开企业', 企业: { ...now.当前企业身份!, profile: next } });
+  const 身份 = { ...now.当前企业身份!, display_name: next.display_name };
+  if (relation.organization_display_name !== next.display_name) {
+    // 复用 水合企业关系 只改显示名：当前编号不变，reducer 保留身份与快照，再由下方覆盖
+    deps.派发({
+      型: '水合企业关系',
+      关系: now.企业关系列表.map((item) =>
+        item.organization_id === organizationId
+          ? { ...item, organization_display_name: next.display_name }
+          : item),
+      当前编号: now.当前企业关系编号,
+    });
+  }
+  deps.派发({ 型: '水合当前企业', 身份, 档案: next });
+  // 复用 缓存公开企业 覆盖同 ID 旧 public cache，避免公共页首帧显示旧 profile/旧常用名
+  deps.派发({ 型: '缓存公开企业', 企业: { ...身份, profile: next } });
   return true;
 }
 

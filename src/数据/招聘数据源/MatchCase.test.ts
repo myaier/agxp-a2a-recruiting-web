@@ -288,7 +288,6 @@ describe('MatchCase数据源', () => {
       { ...P5候选工作区项Wire, resume_submission: null },
       { ...P5候选工作区项Wire, intention_id: 'int_1' },
       { ...P5候选工作区项Wire, job: { ...P5工作区职位Wire, job_id: 'job_1' } },
-      { ...P5候选工作区项Wire, job: { ...P5工作区职位Wire, job: { ...P5工作区职位Wire.job, required_skills: [] } } },
       { ...P5候选工作区项Wire, needs_action: null },
     ]) {
       请求Mock.mockResolvedValueOnce(响应({ items: [破损行], next_cursor: null }));
@@ -298,7 +297,59 @@ describe('MatchCase数据源', () => {
     请求Mock.mockResolvedValueOnce(响应({ items: [{ ...招聘展开工作区项, intention_id: 意向ID }], next_cursor: null }));
     await expect(source.读取P5Open列表('recruiter', null, null))
       .rejects.toMatchObject({ code: 'invalid_response' });
-    expect(请求Mock).toHaveBeenCalledTimes(7);
+    expect(请求Mock).toHaveBeenCalledTimes(6);
+  });
+
+  // ── required_skills 合同：OpenAPI 声明 maxItems 64 且无 minItems，显式空数组是合法快照 ──
+
+  it('双端 open list、history 与 detail 接受显式空技能数组并精确保留 requiredSkills:[]', async () => {
+    const 空技能Job = { ...P5工作区职位Wire, job: { ...P5工作区职位Wire.job, required_skills: [] } };
+    请求Mock
+      .mockResolvedValueOnce(响应({ items: [{ ...P5候选工作区项Wire, job: 空技能Job }], next_cursor: null }))
+      .mockResolvedValueOnce(响应({ items: [{ ...招聘展开工作区项, job: 空技能Job }], next_cursor: null }))
+      .mockResolvedValueOnce(响应({
+        items: [{ ...P5候选工作区项Wire, state: P5已终止状态Wire, needs_action: false, job: 空技能Job }],
+        next_cursor: null,
+      }))
+      .mockResolvedValueOnce(响应({
+        items: [{ ...P5招聘工作区项Wire, state: P5已完成状态Wire, job: 空技能Job }],
+        next_cursor: null,
+      }))
+      .mockResolvedValueOnce(响应({ ...P5候选详情Wire, job: 空技能Job }))
+      .mockResolvedValueOnce(响应({ ...P5招聘详情Wire, job: 空技能Job }));
+    const 候选Open页 = await source.读取P5Open列表('candidate', 意向ID, null);
+    const 招聘Open页 = await source.读取P5Open列表('recruiter', 职位ID, null);
+    const 候选Ended页 = await source.读取P5历史('candidate', 'ended', null, null);
+    const 招聘Completed页 = await source.读取P5历史('recruiter', 'completed', 职位ID, null);
+    const 候选详情 = await source.读取P5详情('candidate', 'mc_1');
+    const 招聘详情 = await source.读取P5详情('recruiter', 'mc_1');
+    expect(候选Open页.items[0].job.job.requiredSkills).toEqual([]);
+    expect(招聘Open页.items[0].job.job.requiredSkills).toEqual([]);
+    expect(候选Ended页.items[0].job.job.requiredSkills).toEqual([]);
+    expect(招聘Completed页.items[0].job.job.requiredSkills).toEqual([]);
+    expect(候选详情.context.job.job.requiredSkills).toEqual([]);
+    expect(招聘详情.context.job.job.requiredSkills).toEqual([]);
+  });
+
+  it('required_skills 恰 64 项成功且原样保留，65 项拒绝', () => {
+    const 六十四项 = Array.from({ length: 64 }, (_, 序号) => `技能${序号}`);
+    expect(解P5详情({ ...P5候选详情Wire, job: { ...P5工作区职位Wire, job: { ...P5工作区职位Wire.job, required_skills: 六十四项 } } }, 'candidate'))
+      .toMatchObject({ context: { job: { job: { requiredSkills: 六十四项 } } } });
+    expect(() => 解P5详情(
+      { ...P5候选详情Wire, job: { ...P5工作区职位Wire, job: { ...P5工作区职位Wire.job, required_skills: [...六十四项, '多一项'] } } },
+      'candidate',
+    )).toThrow(契约漂移);
+  });
+
+  it.each([
+    ['缺键', { title: 'AI 产品实习生', location: '上海', public_salary_range: '300-500 元/天' }],
+    ['显式 null', null],
+    ['字符串冒充数组', 'Python'],
+    ['对象冒充数组', { 0: 'Python' }],
+    ['非字符串成员', ['Python', 7]],
+  ])('required_skills %s仍按契约漂移拒绝', (_说明, 技能) => {
+    const 职位 = { ...P5工作区职位Wire, job: { ...P5工作区职位Wire.job, required_skills: 技能 } };
+    expect(() => 解P5详情({ ...P5候选详情Wire, job: 职位 }, 'candidate')).toThrow(契约漂移);
   });
 
   // ── candidate_summary 展开合同：仅 recruiter open 携带 include 且 item 必带摘要键 ──

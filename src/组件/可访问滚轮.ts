@@ -8,10 +8,10 @@ import {
   type RefObject,
 } from 'react';
 
-interface 可访问滚轮参数 {
-  选项: readonly number[];
-  值: number;
-  设值: (值: number) => void;
+interface 可访问滚轮参数<T extends number | null> {
+  选项: readonly T[];
+  值: T;
+  设值: (值: T) => void;
   行高: number;
 }
 
@@ -31,7 +31,10 @@ interface 可访问滚轮结果 {
 const 夹序号 = (序号: number, 长度: number) =>
   Math.min(Math.max(序号, 0), Math.max(长度 - 1, 0));
 
-export function use可访问滚轮({ 选项, 值, 设值, 行高 }: 可访问滚轮参数): 可访问滚轮结果 {
+// Task 4：档位元素从 number 放宽到 number | null（受限泛型）—— 空档「请选择」
+// 也是普通一档，依序号滚动/按键/点选，不用数字哨兵。数值消费者（数字滚轮层 /
+// 年月滚轮层 / 薪资轮）不写类型注解时仍推断 T=number，setter 不被迫收 null。
+export function use可访问滚轮<T extends number | null>({ 选项, 值, 设值, 行高 }: 可访问滚轮参数<T>): 可访问滚轮结果 {
   const 滚轮引用 = useRef<HTMLDivElement>(null);
   const 防抖计时 = useRef(0);
   const 自报值 = useRef(值);

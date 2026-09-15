@@ -12,8 +12,12 @@
 //              不派发 存公司自述/存公司LOGO。可编辑 = admin+verified+active 的局部
 //              布尔表达式，member 只读；pending/revoked/suspended 连门都进不来
 //              （招聘方组织门 在挂载草稿之前就收口成申请空态）。
-//              基本信息槽位「公司全称」改叫「品牌名称」（写 brand_name），同区新增只读
-//              「工商全称（已核验）」（取 当前企业身份.legal_name，第三方核验事实不给编辑）。
+//              Spec §2（2026-09-14）起基本信息三名独立：可编辑「企业常用名」
+//              （写 profile.display_name，目录/公开企业同源，80 码点/trim/控制字符
+//              即时校验，唯一冲突由后端 409 organization_name_conflict 裁决并给字段
+//              错误）；「公司全称」槽位继续承载「品牌名称」（写 brand_name）；只读
+//              「工商全称（已核验）」（取 当前企业身份.legal_name，第三方核验事实
+//              不给编辑，为空显示未提供）。
 //              行业走 industries taxonomy（roots / parentId 展开 / q 搜索，selectable
 //              叶子原子写 显示名+行业引用）；媒体走两步协议 operation
 //              （上传并发布企业媒体 / 移除企业媒体），页面只做校验、object URL 内存预览
@@ -53,8 +57,8 @@ import type {
 } from '../数据/BFF契约';
 import type { 目录页, Taxonomy查询 } from '../数据/招聘数据源类型';
 import { 合并目录页 } from '../数据/目录选择';
-import { 从BFF企业档案 } from '../数据/组织映射';
-import { 取后端错误文案 } from '../数据/HTTP客户端';
+import { 从BFF企业档案, 校验企业常用名 } from '../数据/组织映射';
+import { BFF错误, 取后端错误文案 } from '../数据/HTTP客户端';
 import type { 企业媒体脱离错误 } from '../状态/后端/组织操作';
 import { use应用状态 } from '../状态/应用状态';
 import 招聘方组织门 from './招聘方组织门';
@@ -230,9 +234,15 @@ function 后端分区表单(
     }
   }
 
-  // ── 保存：完整 replacement（14 字段由 operation 的 转BFF企业档案替换 生成）──
+  // ── 保存：完整 replacement（15 字段由 operation 的 转BFF企业档案替换 生成）──
   const 业务行们 = 资料.主营业务.split('\n').map((行) => 行.trim()).filter(Boolean);
   const 缺行业引用 = 资料.行业.trim() !== '' && 资料.行业引用 === undefined;
+  // Spec §2：常用名即时输入校验（80 码点/trim/控制字符）；normalized 唯一冲突只由后端裁决
+  const [常用名错误, 设常用名错误] = useState<string | null>(null);
+  function 改常用名(值: string) {
+    设常用名错误(null);
+    改({ 企业常用名: 值 });
+  }
   async function 保存() {
     if (!可编辑) return;
     if (业务行们.length > 20) {
@@ -243,12 +253,20 @@ function 后端分区表单(
       轻提示('每条主营业务不超过 200 字');
       return;
     }
+    const 常用名错 = 校验企业常用名(资料.企业常用名 ?? '');
+    设常用名错误(常用名错);
+    if (常用名错 !== null) return;
     try {
       await 操作.保存企业档案(资料);
       轻提示('已保存');
       返回();
     } catch (错误) {
-      // 409/503：operation 已重读权威 snapshot；草稿保留在本页，用户检查后按原键重试
+      // Spec §2：409 organization_name_conflict 是常用名冲突 —— 字段错误 + 保留输入，
+      // 不离开页面；409 version_conflict / 503 仍走轻提示（operation 已重读权威 snapshot）
+      if (错误 instanceof BFF错误 && 错误.code === 'organization_name_conflict') {
+        设常用名错误('这个常用名已被其他企业使用');
+        return;
+      }
       轻提示(取后端错误文案(错误));
     }
   }
@@ -328,6 +346,8 @@ function 后端分区表单(
           改={改}
           可编辑={可编辑}
           身份={身份}
+          常用名错误={常用名错误}
+          改常用名={改常用名}
           LOGO预览={LOGO预览}
           选了LOGO={选了LOGO}
           目录查询={目录查询}
@@ -375,13 +395,17 @@ function 后端分区表单(
   );
 }
 
-/** Backend 基本信息：品牌名称 · 公司 LOGO · 行业（taxonomy）· 规模 · 融资阶段 · 办公地址，
- *  外加只读的「工商全称（已核验）」—— 第三方核验事实，企业侧不可编辑 */
+/** Backend 基本信息：企业常用名 · 品牌名称 · 公司 LOGO · 行业（taxonomy）· 规模 · 融资阶段 · 办公地址，
+ *  外加只读的「工商全称（已核验）」—— 第三方核验事实，企业侧不可编辑。
+ *  Spec §2 三名独立：常用名（display_name，目录/公开企业同源）与品牌名（brand_name）
+ *  各是各的输入槽，工商全称只读、为空诚实显示未提供，不回填常用名。 */
 function 后端基本信息区({
   资料,
   改,
   可编辑,
   身份,
+  常用名错误,
+  改常用名,
   LOGO预览,
   选了LOGO,
   目录查询,
@@ -390,6 +414,9 @@ function 后端基本信息区({
   改: (补丁: Partial<资料形>) => void;
   可编辑: boolean;
   身份: 企业身份形;
+  /** 常用名即时校验 / 后端唯一冲突的字段错误（null = 无错） */
+  常用名错误: string | null;
+  改常用名: (值: string) => void;
   LOGO预览: string | null;
   选了LOGO: (事件: React.ChangeEvent<HTMLInputElement>) => void;
   目录查询: 目录查询形;
@@ -399,6 +426,30 @@ function 后端基本信息区({
 
   return (
     <字段区>
+      <div className={样式.字段}>
+        <div className={样式.字段标签}>企业常用名</div>
+        <input
+          className={样式.单行输入}
+          value={资料.企业常用名 ?? ''}
+          maxLength={80}
+          aria-label="企业常用名"
+          disabled={!可编辑}
+          onChange={(事件) => 改常用名(事件.target.value)}
+        />
+        {/* 字段错误贴在槽位下方（同 企业组织申请 的 错误行 设计语言，不改样式文件） */}
+        {常用名错误 ? (
+          <div
+            className={样式.字段标签}
+            style={{
+              color: 'var(--警示, #c0392b)', fontSize: 11.5, fontWeight: 400,
+              lineHeight: 1.6, marginTop: 6, marginBottom: 0,
+            }}
+          >
+            {常用名错误}
+          </div>
+        ) : null}
+      </div>
+
       <div className={样式.字段}>
         <div className={样式.字段标签}>品牌名称</div>
         <input
@@ -411,11 +462,12 @@ function 后端基本信息区({
         />
       </div>
 
-      {/* 工商全称是第三方核验的结果，企业自己改了就没有可信度可言 —— 只读展示，不给输入框 */}
+      {/* 工商全称是第三方核验的结果，企业自己改了就没有可信度可言 —— 只读展示，不给输入框；
+          未认证时为空，诚实显示「未提供」，绝不回填常用名 */}
       <div className={样式.字段}>
         <div className={样式.字段标签}>工商全称（已核验）</div>
         <div className={样式.单行输入} style={{ color: 'var(--次要浅)' }}>
-          {身份?.legal_name ?? '—'}
+          {身份?.legal_name ?? '未提供'}
         </div>
       </div>
 

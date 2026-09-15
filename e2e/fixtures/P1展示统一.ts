@@ -166,6 +166,19 @@ const 附件空库 = {
 
 const 账号档案 = { avatar_url: null, revision: 0, updated_at: null };
 
+// stg 契约对齐 2026-09-14：me/onboarding 的 fixture 状态。P1 展示统一的主页用例都是
+// 已建立账号 —— 对应角色返回已完成（完成事实来自服务端，不由本地资料推导）；POST
+// complete 模拟对应状态变化（首次与重试返回同一时间），供注册流浏览器接线验证。
+const Onboarding完成时间 = '2026-08-30T10:46:00Z';
+
+function Onboarding快照(role: P1角色, completed_at: string | null) {
+  return { roles: [{ role, status: 'active', completed_at }] };
+}
+
+function Onboarding完成回执(role: P1角色) {
+  return { role, status: 'active', completed_at: Onboarding完成时间 };
+}
+
 const MatchCase摘要零 = {
   open_total: 0,
   open_anonymous_screening_total: 0,
@@ -566,6 +579,16 @@ export async function 安装P1路由(
       return;
     }
 
+    // ── Onboarding 域（stg 契约对齐）：主页用例返回对应角色已完成；未知路径仍 503 ──
+    if (path === '/api/v1/me/onboarding' && method === 'GET') {
+      await 答(200, 信封(Onboarding快照(role, Onboarding完成时间)));
+      return;
+    }
+    if (path === `/api/v1/me/onboarding/${role}/complete` && method === 'POST') {
+      await 答(200, 信封(Onboarding完成回执(role)));
+      return;
+    }
+
     // ── Agent 规则域空水合（双端；空清单不产生任何规则/提案 UI）──
     if ((path === `${前缀}/agent-rules` || path === `${前缀}/agent-rule-proposals`) && method === 'GET') {
       await 答(200, 信封(path.endsWith('agent-rules') ? { rules: [] } : { proposals: [] }));
@@ -611,6 +634,7 @@ export async function 安装P1路由(
           display_name: 标记.同文公司,
           verified_at: 时间戳,
           profile: {
+            display_name: 标记.同文公司,
             brand_name: 标记.同文公司,
             industry: { id: 'ind-fixture-p1', display_name: '本地生活' },
             company_size: '10000_plus',
@@ -637,7 +661,10 @@ export async function 安装P1路由(
     // ── 招聘端启动水合（组织链 + owner Jobs 空页 + MatchCase 空页）──
     if (role === 'recruiter') {
       if (path === '/api/v1/recruiter/profile' && method === 'GET') {
-        await 答(200, 信封({ public_name: 'P1FIX 招聘方', title: '招聘负责人', personal_verification_status: 'unverified', verified_name: null, avatar_url: null, revision: 1 }));
+        // 合同 A/C：organization_ref 是档案必需键（可空不可缺）—— 缺它 解招聘方档案
+        // 会按契约漂移拒绝整份档案（与 数据源模式.spec.ts 同一口径），组织链在此中断，
+        // 招聘端主壳落恢复面。null = 未选择公司，合法档。
+        await 答(200, 信封({ public_name: 'P1FIX 招聘方', title: '招聘负责人', personal_verification_status: 'unverified', organization_ref: null, verified_name: null, avatar_url: null, revision: 1 }));
         return;
       }
       if (path === '/api/v1/recruiter/affiliations' && method === 'GET') { await 答(200, 信封({ affiliations: [] })); return; }

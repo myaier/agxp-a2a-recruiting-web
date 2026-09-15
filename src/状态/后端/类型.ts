@@ -35,6 +35,8 @@ import type {
   BFFJD导入,
   BFFAgent设置,
   BFFAgent设置补丁,
+  BFFOnboarding角色状态,
+  BFFOnboarding状态,
 } from '../../数据/BFF契约';
 import type { 页面简历写入, 页面意向快照, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
@@ -69,6 +71,7 @@ import type { 在招岗位, 披露档, 屏蔽来源, 屏蔽项 } from '../../数
 import type { 候选引导建档草稿, 候选引导草稿快照, 候选建档草稿存储 } from '../../数据/资料缓存';
 import type { 资料形 } from '../../数据/公司主页资料';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
+import type { BFF错误 } from '../../数据/HTTP客户端';
 import type { 动作, 状态 } from '../应用状态';
 
 export interface 后端状态 extends P4发现状态, P5MatchCase状态, P7会话状态, P8控制面状态,
@@ -110,7 +113,20 @@ export interface 后端状态 extends P4发现状态, P5MatchCase状态, P7会�
   候选预填状态?: 候选预填状态;
   /** 候选实名 summary 快照（Backend-only）；可选只为兼容聚焦其它域的测试桩，Provider 恒播种。 */
   候选实名?: 候选实名快照;
+  /**
+   * stg 契约对齐 2026-09-14（Spec §5）：me/onboarding 的运行态判别 union（required）。
+   * 成功内区分角色不存在/未完成/已完成/停用由 判定Onboarding分流 消费；失败承载原 BFF错误，
+   * 绝不用默认 null 合成「未完成」。Mock 不发网络、恒 未读取（Mock 分流不消费本域）。
+   */
+  Onboarding: Onboarding运行态;
 }
+
+/** me/onboarding 读取的运行态：未读取 / 加载中 / 成功{数据} / 失败{错误：原 BFF错误}。 */
+export type Onboarding运行态 =
+  | { 阶段: '未读取' }
+  | { 阶段: '加载中' }
+  | { 阶段: '成功'; 数据: BFFOnboarding状态 }
+  | { 阶段: '失败'; 错误: BFF错误 };
 
 /**
  * P0 修复 Task 1：招聘方 profile 资源的闭合阶段。
@@ -637,6 +653,12 @@ export interface 后端操作依赖 {
    */
   委托待核对内存?: 可变引用<Map<string, 待核对命令>>;
   委托待核对存储?: 可变引用<委托待核对会话 | null>;
+  /**
+   * stg 契约对齐 2026-09-14：Onboarding 域最小请求序号 —— 防同 scope 旧 GET 覆盖
+   * 较新的 complete/刷新（会话边界递增作废在飞读）。与 P4–P8 同一纪律：Provider 恒
+   * 一次性注入；可选成员只为既有测试依赖桩的编译兼容，Onboarding操作 在入口收窄。
+   */
+  Onboarding请求序号?: 可变引用<number>;
 }
 
 /** 候选实名的三个运行时引用（Provider 一次性初始化；域内按必选语义收窄）。 */
@@ -1157,7 +1179,25 @@ export interface 候选实名操作 {
 export type 应用操作 = 会话操作 & 候选操作 & 岗位操作 & 组织操作 & 隐私操作 & Agent规则操作 &
   发现推荐操作 & 附件简历操作 & MatchCase操作 & 真人会话操作 &
   P8账号控制面操作 & P8合规操作 & 简历预填操作 & JD导入操作 & 接触记录操作 &
-  候选实名操作 & 建档草稿操作;
+  候选实名操作 & 建档草稿操作 & Onboarding操作;
+
+/**
+ * stg 契约对齐 2026-09-14（Spec §4/§5）：页面会调用的 onboarding 操作方法表
+ * （页面不得直接调用数据源）。Mock 不发网络；完成调用不修改角色偏好 / last_used_role。
+ */
+export interface Onboarding操作 {
+  /**
+   * 权威重读 me/onboarding：起步置 加载中，成功/失败原子提交；失败把原 BFF错误落进
+   * Onboarding.失败 后原样抛出（调用方决定呈现）；当前栅栏 401 统一 清账号状态。
+   */
+  刷新Onboarding(): Promise<BFFOnboarding状态>;
+  /**
+   * POST /me/onboarding/{role}/complete：body 恒 {}（不携带前端草稿字段）；成功把
+   * 匹配角色对象登记进 Onboarding.成功（本域请求序号推进，旧 GET 不覆盖本次结果）
+   * 并返回服务端回执；失败原样抛出（422 的可行动提示由 Onboarding422提示 消费）。
+   */
+  完成角色Onboarding(role: BFF角色): Promise<BFFOnboarding角色状态>;
+}
 
 /**
  * J-PILOT-02 Task 2（Global 8）：建档草稿的同步更新口。先同步固定内存 ref 与命令

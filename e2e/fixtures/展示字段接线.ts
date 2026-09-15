@@ -173,6 +173,18 @@ const 附件空库 = {
 
 const 账号档案 = { avatar_url: null, revision: 0, updated_at: null };
 
+// stg 契约对齐 2026-09-14：me/onboarding 的 fixture 状态（与 P1展示统一 同款纪律）。
+// 主页用例都是已建立账号 —— 对应角色返回已完成；POST complete 模拟对应状态变化。
+const Onboarding完成时间 = '2026-09-10T09:00:00Z';
+
+function Onboarding快照(role: 展接线角色, completed_at: string | null) {
+  return { roles: [{ role, status: 'active', completed_at }] };
+}
+
+function Onboarding完成回执(role: 展接线角色) {
+  return { role, status: 'active', completed_at: Onboarding完成时间 };
+}
+
 const MatchCase摘要零 = {
   open_total: 0,
   open_anonymous_screening_total: 0,
@@ -813,6 +825,16 @@ export async function 安装展接线路由(
       return;
     }
 
+    // ── Onboarding 域（stg 契约对齐）：主页用例返回对应角色已完成；未知路径仍 503 ──
+    if (path === '/api/v1/me/onboarding' && method === 'GET') {
+      await 答(200, 信封(Onboarding快照(role, Onboarding完成时间)));
+      return;
+    }
+    if (path === `/api/v1/me/onboarding/${role}/complete` && method === 'POST') {
+      await 答(200, 信封(Onboarding完成回执(role)));
+      return;
+    }
+
     // ── Agent 规则域空水合（双端）──
     if ((path === `${前缀}/agent-rules` || path === `${前缀}/agent-rule-proposals`) && method === 'GET') {
       await 答(200, 信封(path.endsWith('agent-rules') ? { rules: [] } : { proposals: [] }));
@@ -872,6 +894,7 @@ export async function 安装展接线路由(
           display_name: 标记.企业A,
           verified_at: 时间戳,
           profile: {
+            display_name: 标记.企业A,
             brand_name: 标记.企业A,
             industry: { id: 'tax_fintech', display_name: '金融科技' },
             company_size: '500_1000',

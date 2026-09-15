@@ -156,3 +156,72 @@ describe('内嵌双滚轮 可访问合同', () => {
     expect(within(左列).getByRole('option', { name: '3' }).getAttribute('aria-selected')).toBe('true');
   });
 });
+
+// ── Task 4：允许空值分支（判别联合 允许空值:true）──
+// 未选择就是「请选择」空档：null 选中时所有数字档都未选中，选择空档即清空，
+// setter 收到的是 null 本身，不用数字哨兵污染保存值。
+describe('内嵌双滚轮 允许空值', () => {
+  function 空值宿主({ 左初值 = null, 右初值 = 2025 }: { 左初值?: number | null; 右初值?: number | null }) {
+    const [左, 设左] = useState<number | null>(左初值);
+    const [右, 设右] = useState<number | null>(右初值);
+    return (
+      <>
+        <output aria-label="左值">{左 === null ? '未选择' : 左}</output>
+        <output aria-label="右值">{右 === null ? '未选择' : 右}</output>
+        <内嵌双滚轮
+          允许空值
+          左档={[2020, 2021, 2022]}
+          右档={[2024, 2025, 2026]}
+          左值={左}
+          右值={右}
+          设左值={设左}
+          设右值={设右}
+          左名="入学年"
+          右名="毕业年"
+          左单位="年"
+          右单位="年"
+        />
+      </>
+    );
+  }
+
+  it('null 时只有「请选择」空档选中，所有数字档 aria-selected=false', () => {
+    render(<空值宿主 />);
+    const 左列 = screen.getByRole('listbox', { name: '入学年' });
+    const 空档 = within(左列).getByRole('option', { name: '请选择' });
+    expect(空档.getAttribute('aria-selected')).toBe('true');
+    expect(左列.getAttribute('aria-activedescendant')).toBe(空档.id);
+    for (const 档 of within(左列).getAllByRole('option')) {
+      if (档 === 空档) continue;
+      expect(档.getAttribute('aria-selected')).toBe('false');
+    }
+    // 另一侧有数字值：2025 照常选中，空档不选中
+    const 右列 = screen.getByRole('listbox', { name: '毕业年' });
+    expect(within(右列).getByRole('option', { name: '2025' }).getAttribute('aria-selected')).toBe('true');
+    expect(within(右列).getByRole('option', { name: '请选择' }).getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('点空档即清空：设值收到 null，点数字档再选回数字', async () => {
+    const 用户 = userEvent.setup();
+    render(<空值宿主 左初值={2021} />);
+    const 左列 = screen.getByRole('listbox', { name: '入学年' });
+    await 用户.click(within(左列).getByRole('option', { name: '请选择' }));
+    expect(screen.getByLabelText('左值').textContent).toBe('未选择');
+    await 用户.click(within(左列).getByRole('option', { name: '2022' }));
+    expect(screen.getByLabelText('左值').textContent).toBe('2022');
+    await 用户.click(within(左列).getByRole('option', { name: '请选择' }));
+    expect(screen.getByLabelText('左值').textContent).toBe('未选择');
+  });
+
+  it('空档上键盘 ArrowDown 落到首个数字档，ArrowUp 夹回空档', async () => {
+    const 用户 = userEvent.setup();
+    render(<空值宿主 />);
+    const 左列 = screen.getByRole('listbox', { name: '入学年' });
+    左列.focus();
+    await 用户.keyboard('{ArrowDown}');
+    expect(within(左列).getByRole('option', { name: '2020' }).getAttribute('aria-selected')).toBe('true');
+    await 用户.keyboard('{ArrowUp}{ArrowUp}');
+    expect(within(左列).getByRole('option', { name: '请选择' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByLabelText('左值').textContent).toBe('未选择');
+  });
+});

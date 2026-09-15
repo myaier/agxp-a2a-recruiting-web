@@ -6,11 +6,13 @@
 // 拖进路由用例（各屏行为由各自的测试覆盖）。
 
 import { useEffect } from 'react';
+import { 创建空Onboarding状态 } from './状态/后端/Onboarding操作';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BFF主体样本, BFF简历样本 } from './测试/BFF样本';
+import { BFF错误 } from './数据/HTTP客户端';
 import type { BFF主体 } from './数据/BFF契约';
 import { 初始状态 } from './状态/初始状态';
 import { 路径 } from './路由/路径表';
@@ -49,7 +51,9 @@ vi.mock('./屏幕/选身份', () => 屏幕桩('选身份'));
 // J-PILOT-02 Task 9：回访落点测试会真的落到 学生分流（旅程入口），同样换桩 ——
 // 本文件只钉 应用.tsx 自己的守卫与导航决策。
 vi.mock('./屏幕/学生分流', () => 屏幕桩('学生分流'));
-vi.mock('./屏幕/主壳', () => 屏幕桩('主壳'));
+// review-r2：主壳桩可计数 —— 未完成候选的 /app 拦截断言主壳（含其挂载效应
+// 加载会话列表）一次都不挂载，与角色路由防闪断言同一手法。
+vi.mock('./屏幕/主壳', () => 可计数屏幕桩('主壳'));
 vi.mock('./屏幕/企业主壳', () => 屏幕桩('企业主壳'));
 vi.mock('./屏幕/招聘名片', () => 屏幕桩('招聘名片'));
 vi.mock('./屏幕/企业实名认证', () => 屏幕桩('企业实名认证'));
@@ -133,6 +137,7 @@ function 建后端状态(覆盖: Partial<后端状态> = {}): 后端状态 {
     附件简历库: null,
     招聘方档案水合阶段: '未开始',
     招聘方组织水合: { 阶段: '未开始', 错误: null },
+    Onboarding: 创建空Onboarding状态(),
     ...覆盖,
   };
 }
@@ -193,11 +198,28 @@ const 附件limits = {
 function 候选后端应用值(覆盖: Partial<后端状态> = {}) {
   return 后端应用值({
     初始化: '完成',
+    // 已完成老账号：Task 7/9 的候选用例默认不受分流门拦截（覆盖项按用例显式换档）
+    Onboarding: Onboarding已完成('candidate'),
     已登录: true,
     主体: 候选主体,
     附件简历库: { items: [], limits: 附件limits },
     ...覆盖,
   });
+}
+
+/** stg 契约对齐：Onboarding 成功快照的两档构造（完成 / 未完成）。 */
+function Onboarding已完成(角色: 'candidate' | 'recruiter'): 后端状态['Onboarding'] {
+  return {
+    阶段: '成功',
+    数据: { roles: [{ role: 角色, status: 'active', completed_at: '2026-09-14T08:00:00Z' }] },
+  };
+}
+
+function Onboarding未完成(角色: 'candidate' | 'recruiter'): 后端状态['Onboarding'] {
+  return {
+    阶段: '成功',
+    数据: { roles: [{ role: 角色, status: 'active', completed_at: null }] },
+  };
 }
 
 /** Task 7 用：已绑定 source 的 ready 内存轮（非 pristine，边界零恢复调用）。 */
@@ -256,6 +278,8 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
   ] as const)('恢复 recruiter 且 profile %s 时进入 %s', async (阶段, 期望) => {
     mock应用状态.mockReturnValue(后端应用值({
       初始化: '完成',
+      // stg 契约对齐：档案缺失 = 注册流引导（未完成）；档案在 = 主页（已完成）
+      Onboarding: 阶段 === '缺失' ? Onboarding未完成('recruiter') : Onboarding已完成('recruiter'),
       已登录: true,
       主体: 招聘主体,
       招聘方档案水合阶段: 阶段,
@@ -267,12 +291,28 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
     await waitFor(() => expect(当前路径()).toBe(期望));
   });
 
+  // stg 契约对齐 2026-09-14（Spec §5）：已完成用户不因档案缺失/资料减少退回引导 ——
+  // 档案缺失只是资料事实，完成事实才决定主页落点。
+  it('已完成 recruiter 即便 profile 缺失也进企业主壳，不退回注册流名片', async () => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成',
+      Onboarding: Onboarding已完成('recruiter'),
+      已登录: true,
+      主体: 招聘主体,
+      招聘方档案水合阶段: '缺失',
+      招聘方组织水合: { 阶段: '成功', 错误: null },
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.企业主壳));
+  });
+
   it('组织水合失败在登录路径显示真实错误和重试入口', async () => {
     const 重试 = vi.fn(async () => undefined);
     const 用户 = userEvent.setup();
     const 值 = 后端应用值({
-      初始化: '完成', 已登录: true, 主体: 招聘主体,
-      招聘方档案水合阶段: '失败',
+      初始化: '完成', 已登录: true, 主体: 招聘主体,      招聘方档案水合阶段: '失败',
       招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
     });
     mock应用状态.mockReturnValue({
@@ -303,8 +343,7 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
   // 免得以后又被改回裸 <div>。
   it('恢复面渲染成带页底与安全区的整屏，重试走主按钮', () => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成', 已登录: true, 主体: 招聘主体,
-      招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
+      初始化: '完成', 已登录: true, 主体: 招聘主体,      招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
     }));
     render(
       <MemoryRouter initialEntries={[路径.岗位管理]}><应用 /><位置探针 /></MemoryRouter>,
@@ -323,8 +362,7 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
     let 放行: () => void = () => {};
     const 重试 = vi.fn(() => new Promise<void>((resolve) => { 放行 = () => resolve(); }));
     const 值 = 后端应用值({
-      初始化: '完成', 已登录: true, 主体: 招聘主体,
-      招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
+      初始化: '完成', 已登录: true, 主体: 招聘主体,      招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
     });
     mock应用状态.mockReturnValue({ ...值, 操作: { ...值.操作, 重新水合招聘方数据: 重试 } });
     render(
@@ -340,8 +378,7 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
 
   it('组织水合失败时直接岗位路径显示恢复面而不是假空列表', () => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成', 已登录: true, 主体: 招聘主体,
-      招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
+      初始化: '完成', 已登录: true, 主体: 招聘主体,      招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
     }));
     render(
       <MemoryRouter initialEntries={[路径.岗位管理]}><应用 /><位置探针 /></MemoryRouter>,
@@ -355,8 +392,7 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
   // 这一句，用户会被 replace 到 /hr/card（恢复面在那条路径上不设防），真实错误就此消失。
   it('profile 缺失但组织链失败时留在恢复面，不被伪装成注册流', () => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成', 已登录: true, 主体: 招聘主体,
-      招聘方档案水合阶段: '缺失',
+      初始化: '完成', 已登录: true, 主体: 招聘主体,      招聘方档案水合阶段: '缺失',
       招聘方组织水合: { 阶段: '失败', 错误: '企业资料读取失败' },
     }));
     render(
@@ -370,6 +406,7 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
   it('直接打开招聘端且 profile 缺失时 replace 到注册流名片', async () => {
     mock应用状态.mockReturnValue(后端应用值({
       初始化: '完成', 已登录: true, 主体: 招聘主体,
+      Onboarding: Onboarding未完成('recruiter'),
       招聘方档案水合阶段: '缺失',
       招聘方组织水合: { 阶段: '成功', 错误: null },
     }));
@@ -382,8 +419,7 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
 
   it('已有 profile 直接编辑招聘名片时不被改送企业主壳', () => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成', 已登录: true, 主体: 招聘主体,
-      招聘方档案水合阶段: '成功',
+      初始化: '完成', 已登录: true, 主体: 招聘主体,      招聘方档案水合阶段: '成功',
       招聘方组织水合: { 阶段: '成功', 错误: null },
     }));
     render(
@@ -402,6 +438,7 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
   ])('缺失 profile 时放行恢复与退出路径 %s', (路径值) => {
     mock应用状态.mockReturnValue(后端应用值({
       初始化: '完成', 已登录: true, 主体: 招聘主体,
+      Onboarding: Onboarding未完成('recruiter'),
       招聘方档案水合阶段: '缺失',
       招聘方组织水合: { 阶段: '成功', 错误: null },
     }));
@@ -413,8 +450,7 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
 
   it('未知或缺失 last_used_role 保持现有身份选择兜底', async () => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成', 已登录: true,
-      主体: { ...招聘主体, last_used_role: null },
+      初始化: '完成', 已登录: true,      主体: { ...招聘主体, last_used_role: null },
     }));
     render(
       <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
@@ -425,6 +461,7 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
   it('candidate 仍从登录路径落到求职主壳', async () => {
     mock应用状态.mockReturnValue(后端应用值({
       初始化: '完成', 已登录: true,
+      Onboarding: Onboarding已完成('candidate'),
       主体: { ...BFF主体样本, last_used_role: 'candidate' as const },
     }));
     render(
@@ -443,8 +480,7 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
       return <span data-testid="pathname">{位置.pathname}</span>;
     }
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成', 已登录: false, 主体: null,
-    }));
+      初始化: '完成', 已登录: false, 主体: null,    }));
     const 树 = () => (
       <MemoryRouter initialEntries={[路径.登录]}>
         <应用 />
@@ -456,6 +492,7 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
 
     mock应用状态.mockReturnValue(后端应用值({
       初始化: '完成', 已登录: true,
+      Onboarding: Onboarding已完成('candidate'),
       主体: { ...BFF主体样本, last_used_role: 'candidate' },
     }));
     rerender(树());
@@ -601,7 +638,10 @@ describe('应用路由：候选 onboarding 预填恢复与退出清理（Task 7�
   it('未登录或非候选会话不触发位置清理（等水合，不烧恢复元数据）', async () => {
     // 非候选会话用 recruiter 的允许路径（企业主壳）表达：角色路由边界落地后，
     // recruiter 深链候选主壳会被守卫同步拒绝，主壳屏对 recruiter 不再可达
-    const 值 = 后端应用值({ 初始化: '完成', 已登录: true, 主体: 招聘主体 });
+    const 值 = 后端应用值({
+      初始化: '完成', 已登录: true, 主体: 招聘主体,
+      Onboarding: Onboarding已完成('recruiter'),
+    });
     mock应用状态.mockReturnValue(值);
     render(
       <MemoryRouter initialEntries={[路径.企业主壳]}><应用 /></MemoryRouter>,
@@ -629,8 +669,7 @@ describe('应用路由：Backend 角色路由边界', () => {
     ['last_used_role 缺失', 主体(null, 'active', 'active'), '/resume', '/identity', ''],
   ] as const)('%s', async (_名, 当前主体, 初始路径, 期望路径, 期望搜索) => {
     const 当前值 = 后端应用值({
-      初始化: '完成',
-      已登录: true,
+      初始化: '完成',      已登录: true,
       主体: 当前主体,
       招聘方组织水合: { 阶段: '成功', 错误: null },
       招聘方档案水合阶段: '成功',
@@ -654,8 +693,7 @@ describe('应用路由：Backend 角色路由边界', () => {
     ['角色未知', 主体(null, null, null)],
   ] as const)('%s 访问 shared 路由不被角色守卫改写', async (_名, 当前主体) => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成',
-      已登录: true,
+      初始化: '完成',      已登录: true,
       主体: 当前主体,
     }));
     const 探针 = () => {
@@ -695,8 +733,7 @@ describe('应用路由：Backend 角色路由边界', () => {
     ['recruiter 深链候选页', 主体('recruiter', null, 'active'), '/resume'],
   ] as const)('%s被拒：对侧屏幕 mount 次数为 0', async (_名, 当前主体, 初始路径) => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成',
-      已登录: true,
+      初始化: '完成',      已登录: true,
       主体: 当前主体,
     }));
     render(
@@ -714,8 +751,7 @@ describe('应用路由：Backend 角色路由边界', () => {
     ['candidate 误入招聘页', 主体('candidate', 'active', null), '/resume', '/hr/jobs', '屏幕:我的简历', '岗位管理'],
   ] as const)('%s：replace 后退只回允许页', async (_名, 当前主体, 允许路径, 错误路径, testid, 错误屏) => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成',
-      已登录: true,
+      初始化: '完成',      已登录: true,
       主体: 当前主体,
     }));
     const 探针 = () => {
@@ -744,8 +780,7 @@ describe('应用路由：Backend 角色路由边界', () => {
   //（含 effect 的屏幕一次都不能挂载、零实名读取）；未登录按现有保护逻辑去登录。
   it('candidate 直达实名认证页挂载', async () => {
     const 当前值 = 后端应用值({
-      初始化: '完成',
-      已登录: true,
+      初始化: '完成',      已登录: true,
       主体: 主体('candidate', 'active', null),
     });
     mock应用状态.mockReturnValue(当前值);
@@ -758,8 +793,7 @@ describe('应用路由：Backend 角色路由边界', () => {
 
   it('recruiter 深链实名认证页被角色守卫拦截：页面零挂载、实名读取零调用', async () => {
     const 当前值 = 后端应用值({
-      初始化: '完成',
-      已登录: true,
+      初始化: '完成',      已登录: true,
       主体: 主体('recruiter', null, 'active'),
     });
     mock应用状态.mockReturnValue(当前值);
@@ -773,8 +807,7 @@ describe('应用路由：Backend 角色路由边界', () => {
 
   it('未登录直达实名认证页按现有保护逻辑去登录', async () => {
     const 当前值 = 后端应用值({
-      初始化: '完成',
-      已登录: false,
+      初始化: '完成',      已登录: false,
       主体: null,
     });
     mock应用状态.mockReturnValue(当前值);
@@ -799,8 +832,8 @@ describe('应用路由：角色边界下的组织恢复、未知路由与 Mock �
     '未知路径 %s 交给 * fallback，不被角色守卫拦截',
     async (路径值) => {
       mock应用状态.mockReturnValue(后端应用值({
-        初始化: '完成',
-        已登录: true,
+        初始化: '完成', 已登录: true,
+        Onboarding: Onboarding已完成('candidate'),
         主体: 主体('candidate', 'active', null),
       }));
       render(
@@ -813,8 +846,7 @@ describe('应用路由：角色边界下的组织恢复、未知路由与 Mock �
   // 主体快照缺失（已登录但主体未落地）fail closed：角色业务屏不挂载，回身份选择
   it('Backend 已登录但主体快照缺失时不挂载角色业务屏', async () => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成',
-      已登录: true,
+      初始化: '完成',      已登录: true,
       主体: null,
     }));
     render(
@@ -833,8 +865,7 @@ describe('应用路由：角色边界下的组织恢复、未知路由与 Mock �
     [路径.企业邀请加入, '屏幕:企业邀请加入'],
   ] as const)('恢复/退出招聘路径 %s 仍 recruiter-only', async (路径值, testid) => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成',
-      已登录: true,
+      初始化: '完成',      已登录: true,
       主体: 主体('candidate', 'active', null),
     }));
     render(
@@ -877,8 +908,7 @@ describe('应用路由：Backend 原型消息/往来/初筛深链（工作包 B�
       ? 主体('candidate', 'active', null)
       : 主体('recruiter', null, 'active');
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成', 已登录: true, 主体: 当前主体,
-      招聘方组织水合: { 阶段: '成功', 错误: null },
+      初始化: '完成', 已登录: true, 主体: 当前主体,      招聘方组织水合: { 阶段: '成功', 错误: null },
       招聘方档案水合阶段: '成功',
     }));
     render(
@@ -903,8 +933,7 @@ describe('应用路由 · 后端匿名在线简历模板（J）', () => {
 
   it('canonical URL 注册到 匿名在线简历 页（旧模板仍注册）', async () => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成',
-      已登录: true,
+      初始化: '完成',      已登录: true,
       主体: 招聘主体,
     }));
     render(
@@ -929,7 +958,7 @@ describe('应用路由：候选 onboarding 回访落点（Task 9）', () => {
 
   /** 位置与编辑中坐标都在的未完成建档草稿（缺省指向向导薪资段）。 */
   function 未完成草稿值(位置?: { pathname: string; search: string; 题序?: number }) {
-    const 值 = 候选后端应用值();
+    const 值 = 候选后端应用值({ Onboarding: Onboarding未完成('candidate') });
     return {
       ...值,
       状态: {
@@ -1025,7 +1054,12 @@ describe('应用路由：候选 onboarding 回访落点（Task 9）', () => {
 // 意向快照 判完备（与 完成候选Onboarding 同判据：必填 profile + 至少一条完整教育 +
 // 至少一条 active 意向），不完备 replace 回旅程入口 学生分流 复用已保存资源；
 // 简历快照未水合（水合失败/未结束）不新增路由，保持原主壳落点。
-describe('应用路由：无草稿候选登录落点按事实分流（review-cx F1）', () => {
+// ── stg 契约对齐 2026-09-14（Spec §5 分流表）：完成事实取代「资料齐备即完成」──
+// 旧 review-cx F1 的「已水合简历 + active 意向判完备」回访判定已被明确替代：落点只看
+// me/onboarding 成功快照。已完成 → 主壳（不因资料减少退回引导）；未完成且无草稿 →
+// 旅程入口（完整资料但 completed=null 仍引导）；查询未完成 → 加载（不闪进主壳）；
+// 读取失败 → 恢复面（重试 + 切换身份）；已完成 + 旧草稿 → 完成事实优先，不回访拦截。
+describe('应用路由：候选登录落点按 Onboarding 分流（Spec §5）', () => {
   beforeEach(() => {
     mock应用状态.mockReset();
   });
@@ -1034,10 +1068,10 @@ describe('应用路由：无草稿候选登录落点按事实分流（review-cx 
   const 意向快照 = (状态: 'active' | 'archived') =>
     ({ itn_1: { status: 状态 } }) as never as 后端状态['意向快照'];
 
-  it('资料完备且有 active 意向：登录落点仍是主壳（不重做 onboarding）', async () => {
+  it('已完成：登录落点主壳，即使教育被改得不完整（不因资料减少退回引导）', async () => {
     mock应用状态.mockReturnValue(候选后端应用值({
-      简历快照: BFF简历样本,
-      意向快照: 意向快照('active'),
+      简历快照: { ...BFF简历样本, educations: [{ ...BFF简历样本.educations[0]!, end_month: null }] },
+      意向快照: 意向快照('archived'),
     }));
     render(
       <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
@@ -1046,10 +1080,10 @@ describe('应用路由：无草稿候选登录落点按事实分流（review-cx 
     expect(screen.getByTestId('屏幕:主壳')).toBeTruthy();
   });
 
-  it('无草稿且教育不完整：登录落点 replace 回旅程入口 学生分流，不进主壳', async () => {
+  it('无草稿且资料完备但 completed=null：仍引导，replace 回旅程入口 学生分流', async () => {
     mock应用状态.mockReturnValue(候选后端应用值({
-      // 毕业时间缺失 = 不完整教育（完成核对同判据），即便意向已在也过不了完备线
-      简历快照: { ...BFF简历样本, educations: [{ ...BFF简历样本.educations[0]!, end_month: null }] },
+      Onboarding: Onboarding未完成('candidate'),
+      简历快照: BFF简历样本,
       意向快照: 意向快照('active'),
     }));
     render(
@@ -1060,27 +1094,262 @@ describe('应用路由：无草稿候选登录落点按事实分流（review-cx 
     expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
   });
 
-  it('无草稿且没有 active 意向：登录落点同样回旅程入口（复用已保存资源）', async () => {
+  it('未完成且简历快照未水合：同样回旅程入口（完成事实不靠本地资料推导）', async () => {
     mock应用状态.mockReturnValue(候选后端应用值({
-      简历快照: BFF简历样本,
-      意向快照: 意向快照('archived'),
-    }));
-    render(
-      <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
-    );
-    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
-    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
-  });
-
-  it('简历快照未水合（失败/未结束）：不新增路由，保持原主壳落点', async () => {
-    mock应用状态.mockReturnValue(候选后端应用值({
+      Onboarding: Onboarding未完成('candidate'),
       简历快照: null,
       意向快照: {},
     }));
     render(
       <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
     );
+    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
+  });
+
+  it('查询未完成（未读取）：登录路径只出既有加载屏，不闪进主壳也不挂载引导页', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值({
+      Onboarding: 创建空Onboarding状态(),
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    expect(screen.getByText('正在加载…')).toBeTruthy();
+    expect(当前路径()).toBe(路径.登录);
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+    expect(screen.queryByTestId('屏幕:学生分流')).toBeNull();
+  });
+
+  it('读取失败：登录路径显示恢复面（真实错误 + 重试 + 切换身份），不闪进主壳', async () => {
+    const 重试 = vi.fn(async () => undefined);
+    const 值 = 候选后端应用值({
+      Onboarding: { 阶段: '失败', 错误: new BFF错误(503, 'recruitment_service_unavailable', '不可用') },
+    });
+    mock应用状态.mockReturnValue({ ...值, 操作: { ...值.操作, 刷新Onboarding: 重试 } });
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    expect(当前路径()).toBe(路径.登录);
+    expect(screen.getByRole('alert').textContent).toContain('后端服务暂时不可用');
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    expect(重试).toHaveBeenCalledTimes(1);
+    await 用户.click(screen.getByRole('button', { name: '切换身份' }));
+    await waitFor(() => expect(当前路径()).toBe(路径.选身份));
+  });
+
+  it('已完成 + 旧草稿在场：完成事实优先，主壳照常挂载、不回访拦截', async () => {
+    const 值 = 候选后端应用值();
+    mock应用状态.mockReturnValue({
+      ...值,
+      状态: {
+        ...初始状态,
+        引导预填: {
+          城市们: ['上海市'],
+          职位: ['产品经理'],
+          建档: { 资料: { 个人优势: '一半' }, 位置: { pathname: 路径.引导问答, search: '?stage=salary' } },
+        },
+      } as never,
+    });
+    render(
+      <MemoryRouter initialEntries={[路径.登录]}><应用 /><位置探针 /></MemoryRouter>,
+    );
     await waitFor(() => expect(当前路径()).toBe(路径.主壳));
+    expect(screen.getByTestId('屏幕:主壳')).toBeTruthy();
+  });
+
+  // closeout：Spec §5 表只定义登录/恢复/切端/受保护入口的落点，不要求把显式深链
+  // /student 的已完成用户弹出 —— 旧反弹会挡掉「已完成用户经学生分流传简历」的真实
+  // 路径（P2 附件 e2e），按裁决移除；完成事实仍在登录/初始化落点生效。
+  it('已完成用户显式进入 学生分流：留在旅程入口，不被弹回主壳', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值());
+    render(
+      <MemoryRouter initialEntries={[路径.学生分流]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:学生分流')).toBeTruthy());
+    expect(当前路径()).toBe(路径.学生分流);
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+  });
+
+  it('未完成用户照常进入 学生分流：不被分流门拦下', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值({
+      Onboarding: Onboarding未完成('candidate'),
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.学生分流]}><应用 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:学生分流')).toBeTruthy());
+  });
+});
+
+// ── codex review-r1 F2：candidate 未完成且无草稿不能从 /app 绕过 onboarding ──
+// Spec §5 受保护入口与登录/切端同一语义：candidate 的主落点 主壳 也是受保护入口 ——
+// active 未完成且无建档草稿时 replace 回旅程入口；有草稿由既有草稿回访路径接手
+//（不在此重复拦截）；已完成不因任何资料事实退回引导；查询中由分流门出加载屏。
+describe('应用路由：candidate 主壳受保护入口按 Onboarding 分流（review-r1）', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+    屏幕挂载次数.clear();
+  });
+
+  it('未完成且无草稿：直达 /app replace 回学生分流，主壳一次都不挂载', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值({
+      Onboarding: Onboarding未完成('candidate'),
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
+    expect(screen.getByTestId('屏幕:学生分流')).toBeTruthy();
+    // review-r2：拦截必须发生在 <Routes> 之前（同步渲染守卫）—— 主壳连同其
+    // 挂载效应（加载会话列表 业务请求）一次都不能挂载，不只是一个帧后弹走。
+    expect(屏幕挂载次数.get('主壳') ?? 0).toBe(0);
+  });
+
+  it('切端落点同样拦截：选身份后导航到 /app（模拟 recruiter→candidate 切换后的落点）被送回学生分流', async () => {
+    const 值 = 候选后端应用值({ Onboarding: Onboarding未完成('candidate') });
+    mock应用状态.mockReturnValue(值);
+    const 探针 = () => {
+      const 导航 = useNavigate();
+      return <button type="button" onClick={() => 导航(路径.主壳)}>探针-去主壳</button>;
+    };
+    render(
+      <MemoryRouter initialEntries={[路径.选身份]}><应用 /><位置探针 /><探针 /></MemoryRouter>,
+    );
+    // 切身份成功的主体状态已就位（candidate、未完成、无草稿）；选身份 的 替换跳转(主壳) 由探针表达
+    await userEvent.click(screen.getByRole('button', { name: '探针-去主壳' }));
+    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
+    expect(screen.getByTestId('屏幕:学生分流')).toBeTruthy();
+    expect(屏幕挂载次数.get('主壳') ?? 0).toBe(0);
+  });
+
+  it('已完成 candidate 直达 /app：主壳照常挂载，不被送回引导', async () => {
+    mock应用状态.mockReturnValue(候选后端应用值());
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:主壳')).toBeTruthy());
+    expect(当前路径()).toBe(路径.主壳);
+  });
+
+  // review-r3：/student 上传简历只激活预填轮（source/suggestion + 恢复元数据），
+  // 不建 建档草稿 —— 被拦截的 /app 落点仍算注册会话内，重定向跳变不得把在飞
+  // 预填轮烧掉（否则回 /student 后解析流程降级为手动）。
+  it('预填轮在场但无建档草稿：/app 拦截重定向不清预填轮（解析建议与恢复元数据存活）', async () => {
+    const 值 = 候选后端应用值({
+      Onboarding: Onboarding未完成('candidate'),
+      候选预填状态: ready预填轮(),
+    });
+    mock应用状态.mockReturnValue(值);
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.学生分流));
+    expect(屏幕挂载次数.get('主壳') ?? 0).toBe(0);
+    expect(值.操作.清候选Onboarding预填).not.toHaveBeenCalled();
+  });
+
+  it('未完成但草稿在场：/app 由草稿回访路径接手（回草稿位置），不走无草稿分流', async () => {
+    const 值 = 候选后端应用值({ Onboarding: Onboarding未完成('candidate') });
+    mock应用状态.mockReturnValue({
+      ...值,
+      状态: {
+        ...初始状态,
+        引导预填: {
+          城市们: ['上海市'],
+          职位: ['产品经理'],
+          建档: {
+            资料: { 个人优势: '一半' },
+            位置: { pathname: 路径.引导问答, search: '?stage=salary', 题序: 1 },
+          },
+        },
+      } as never,
+    });
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.引导问答));
+    expect(screen.getByTestId('search').textContent).toBe('?stage=salary');
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+  });
+
+  it('查询未完成（未读取）：/app 只出既有加载屏，不挂主壳也不闪引导', () => {
+    mock应用状态.mockReturnValue(候选后端应用值({
+      Onboarding: 创建空Onboarding状态(),
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    expect(screen.getByText('正在加载…')).toBeTruthy();
+    expect(当前路径()).toBe(路径.主壳);
+    expect(screen.queryByTestId('屏幕:主壳')).toBeNull();
+    expect(screen.queryByTestId('屏幕:学生分流')).toBeNull();
+  });
+});
+
+// ── stg 契约对齐：recruiter 引导入口的完成反弹（普通选身份 / 注册流名片）──
+describe('应用路由：recruiter 完成反弹（Spec §5）', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+  });
+
+  it('已完成 recruiter 进入注册流名片：replace 回企业主壳（消除完成后反复引导）', async () => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成', 已登录: true, 主体: 招聘主体,
+      Onboarding: Onboarding已完成('recruiter'),
+      招聘方档案水合阶段: '成功',
+      招聘方组织水合: { 阶段: '成功', 错误: null },
+    }));
+    render(
+      <MemoryRouter initialEntries={[{ pathname: 路径.招聘名片, state: { 从注册流: true } }]}>
+        <应用 /><位置探针 />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.企业主壳));
+  });
+
+  it('已完成 recruiter 普通编辑名片（无注册流标记）：照常挂载名片编辑，不被抢导航', async () => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成', 已登录: true, 主体: 招聘主体,
+      Onboarding: Onboarding已完成('recruiter'),
+      招聘方档案水合阶段: '成功',
+      招聘方组织水合: { 阶段: '成功', 错误: null },
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.招聘名片]}><应用 /><位置探针 /></MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:招聘名片')).toBeTruthy());
+    expect(当前路径()).toBe(路径.招聘名片);
+  });
+
+  it('本次注册名片上原地完成（pathname 未变）：完成状态不抢首岗导航', async () => {
+    // 进入时未完成 → 名片正常挂载；保存链完成 onboarding 后状态翻已完成，
+    // 但 pathname 没变 —— 反弹只认「进入」那次导航，首岗跳转不被截断。
+    const 基础值 = () => 后端应用值({
+      初始化: '完成', 已登录: true, 主体: 招聘主体,
+      Onboarding: Onboarding未完成('recruiter'),
+      招聘方档案水合阶段: '成功',
+      招聘方组织水合: { 阶段: '成功', 错误: null },
+    });
+    mock应用状态.mockReturnValue(基础值());
+    const 视图 = render(
+      <MemoryRouter initialEntries={[{ pathname: 路径.招聘名片, state: { 从注册流: true } }]}>
+        <应用 /><位置探针 />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId('屏幕:招聘名片')).toBeTruthy());
+    // 已完成事实随后到达（同一屏上的 complete 成功；pathname 未变）
+    mock应用状态.mockReturnValue({
+      ...基础值(),
+      后端状态: { ...基础值().后端状态, Onboarding: Onboarding已完成('recruiter') },
+    });
+    视图.rerender(
+      <MemoryRouter initialEntries={[{ pathname: 路径.招聘名片, state: { 从注册流: true } }]}>
+        <应用 /><位置探针 />
+      </MemoryRouter>,
+    );
+    // 不被弹去企业主壳：显式首岗导航不被已完成状态抢走
+    await waitFor(() => expect(screen.getByTestId('屏幕:招聘名片')).toBeTruthy());
+    expect(当前路径()).toBe(路径.招聘名片);
   });
 });
 
@@ -1092,8 +1361,7 @@ describe('应用路由 · canonical 招聘详情角色边界（review-r1）', ()
 
   it('candidate 打开 canonical 招聘详情 URL 被挡回身份选择（同旧 /hr/resume/:id）', async () => {
     mock应用状态.mockReturnValue(后端应用值({
-      初始化: '完成',
-      已登录: true,
+      初始化: '完成',      已登录: true,
       主体: 主体('candidate', 'active', null),
     }));
     render(

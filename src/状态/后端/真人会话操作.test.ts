@@ -6,6 +6,7 @@
 // 派发 只是 spy，全部断言读 最新状态()。快照只进内存（后端状态），绝不进持久化。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { 创建空Onboarding状态 } from './Onboarding操作';
 import type { BFF主体 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import type { P7会话项, P7会话页, P7消息, P7消息页 } from '../../数据/招聘数据源/真人会话';
@@ -108,6 +109,8 @@ function 创建P7操作测试环境(是后端 = true, 源 = 创建P7数据源())
   const 派发 = vi.fn<(动作: 动作) => void>();
   let 后端值: 后端状态 = {
     初始化: '完成',
+    // Onboarding 运行态显式播种（本域用例不触达）
+    Onboarding: 创建空Onboarding状态(),
     已登录: true,
     主体: 候选主体,
     简历快照: null,

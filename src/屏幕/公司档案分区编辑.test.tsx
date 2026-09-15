@@ -138,7 +138,14 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+/** 轻提示 挂在 document.body 的模块级容器上，不随 RTL cleanup 清空：
+ *  用例开头清掉上一条，避免跨用例误命中同一句文案（同 招聘名片.test.tsx） */
+function 清空轻提示() {
+  Array.from(document.body.children).forEach((节点) => 节点.replaceChildren());
+}
+
 beforeEach(() => {
+  清空轻提示();
   mock派发.mockClear();
   mock跳转.mockClear();
   mock返回.mockClear();
@@ -174,6 +181,77 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     // 只读信息行不是输入框，核验时间/在招岗位数这类平台事实不出现
     expect(screen.queryByLabelText('工商全称（已核验）')).toBeNull();
     expect(screen.queryByText('2026-08-24T00:00:00Z')).toBeNull();
+  });
+
+  // ── Spec §2（2026-09-14）：企业常用名 / 品牌名 / 工商全称 三名独立 ──
+  // 三个名字刻意互不相同，串写一眼可见。
+
+  const 三名快照 = () => ({
+    ...BFF企业档案样本,
+    display_name: '云衢常用名',
+    brand_name: '云衢品牌',
+  });
+
+  it('基本信息新增「企业常用名」独立槽：三名各显示各的，不串写', () => {
+    置Backend应用状态({ 企业档案快照: 三名快照() });
+    渲染分区('basic');
+    const 常用名输入 = screen.getByLabelText('企业常用名') as HTMLInputElement;
+    expect(常用名输入.value).toBe('云衢常用名');
+    expect(常用名输入.maxLength).toBe(80);
+    expect((screen.getByLabelText('品牌名称') as HTMLInputElement).value).toBe('云衢品牌');
+    // 工商全称仍是只读认证事实（身份 legal_name），不能被常用名改写
+    expect(screen.getByText('上海云衢科技有限公司')).toBeTruthy();
+  });
+
+  it('改常用名后保存：草稿带新 企业常用名，品牌名保持原值', async () => {
+    置Backend应用状态({ 企业档案快照: 三名快照() });
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.clear(screen.getByLabelText('企业常用名'));
+    await 用户.type(screen.getByLabelText('企业常用名'), '新常用名');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock保存企业档案).toHaveBeenCalledTimes(1);
+    expect(mock保存企业档案).toHaveBeenCalledWith(expect.objectContaining({
+      企业常用名: '新常用名',
+      公司全称: '云衢品牌',
+    }));
+  });
+
+  it('常用名显式清空按常用名校验拒绝且不发请求，输入保留', async () => {
+    置Backend应用状态({ 企业档案快照: 三名快照() });
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.clear(screen.getByLabelText('企业常用名'));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(await screen.findByText('请填写企业常用名')).toBeTruthy();
+    expect(mock保存企业档案).not.toHaveBeenCalled();
+    expect(mock返回).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('企业常用名') as HTMLInputElement).value).toBe('');
+  });
+
+  it('常用名超 80 个码点按冻结上限拒绝', async () => {
+    置Backend应用状态({ 企业档案快照: 三名快照() });
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    // fireEvent 绕过 maxLength，钉住保存前校验本身（码点口径与 BFF 一致）
+    fireEvent.change(screen.getByLabelText('企业常用名'), { target: { value: '名'.repeat(81) } });
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(await screen.findByText('企业常用名不超过 80 字')).toBeTruthy();
+    expect(mock保存企业档案).not.toHaveBeenCalled();
+  });
+
+  it('409 organization_name_conflict 给常用名冲突提示并保留输入，不离开页面', async () => {
+    置Backend应用状态({ 企业档案快照: 三名快照() });
+    mock保存企业档案.mockRejectedValue(new BFF错误(409, 'organization_name_conflict', '冲突'));
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.clear(screen.getByLabelText('企业常用名'));
+    await 用户.type(screen.getByLabelText('企业常用名'), '已被占用的名字');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(await screen.findByText('这个常用名已被其他企业使用')).toBeTruthy();
+    // 后端是唯一冲突权威：输入保留在用户手里，页面不离开
+    expect((screen.getByLabelText('企业常用名') as HTMLInputElement).value).toBe('已被占用的名字');
+    expect(mock返回).not.toHaveBeenCalled();
   });
 
   it('保存提交完整 资料形 草稿，不派发 存公司自述/存公司LOGO，不读静态档', async () => {
@@ -253,6 +331,7 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     置Backend应用状态({ 企业关系列表: [{ ...BFF企业关系样本, ...关系覆盖 }] });
     渲染分区('basic');
     expect(screen.queryByRole('button', { name: '保存' })).toBeNull();
+    expect((screen.getByLabelText('企业常用名') as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByLabelText('品牌名称') as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByLabelText('更换行业')).toBeNull();
     expect(screen.queryByLabelText('上传公司 LOGO')).toBeNull();

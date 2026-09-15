@@ -218,14 +218,16 @@ function 解团队成员(input: unknown): BFF团队成员 {
 }
 
 const 企业档案必需键 = [
-  'brand_name', 'industry', 'company_size', 'funding_stage', 'office_address', 'benefit_codes',
-  'work_schedule', 'company_intro', 'business_items', 'product_intro', 'team_members',
-  'logo', 'office_media', 'company_media', 'revision', 'updated_at',
+  'display_name', 'brand_name', 'industry', 'company_size', 'funding_stage', 'office_address',
+  'benefit_codes', 'work_schedule', 'company_intro', 'business_items', 'product_intro',
+  'team_members', 'logo', 'office_media', 'company_media', 'revision', 'updated_at',
 ] as const;
 
 function 解企业档案(input: unknown): BFF企业档案 {
   const raw = 要求闭合对象(input, 企业档案必需键);
   return {
+    // Spec §2：企业常用名（与目录/公开企业 display_name 同源），读侧必在、缺键即漂移
+    display_name: 要求字符串(raw.display_name),
     brand_name: 要求字符串(raw.brand_name),
     industry: raw.industry === null ? null : 解目录引用(raw.industry),
     company_size: 要求枚举(raw.company_size, 企业规模全表),

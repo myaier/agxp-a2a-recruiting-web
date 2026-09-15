@@ -1,8 +1,10 @@
 // 问AI代理 的 Backend/Mock 隔离（真话批次交付 G）：
-//   · Backend 只渲染代理气泡里的真实导航说明 + 三个既有快捷槽动作（去市场 / 看在谈 /
-//     规则库），不挂载 fixture 简报、模拟对话、快捷问句、真输入条，也不排定时回复；
+//   · Backend 渲染代理气泡里的真实导航说明 + 三个既有快捷槽动作（去市场 / 看在谈 /
+//     规则库），底部再挂一条禁用输入外壳（占位=「AI代理聊天暂未开放」，textarea 与
+//     发送键真 disabled）；不挂载 fixture 简报、模拟对话、快捷问句，也不排定时回复；
 //   · Mock 原型（今日简报、快捷问句、输入、关键词回复）原样保留；
-//   · Mock 排队的 550ms 模拟回复定时器在切到 Backend / 卸载时必须取消，不允许泄漏。
+//   · Mock 排队的 550ms 模拟回复定时器在切到 Backend / 卸载时必须取消，不允许泄漏
+//     （证据用 clearTimeout spy，不以 DOM 消失替代清理）。
 // 宿主：mock 应用状态 / 导航钩子（同 看市场.test.tsx 惯例）；可变模式变量供 rerender
 // 前改写，模拟同页数据源切换（mock 前缀满足 vi.mock 工厂的提升引用规则）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
@@ -13,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 问AI代理 from './问AI代理';
 import { 路径 } from '../路由/路径表';
 import { 快捷问句 } from '../数据/模拟数据';
+import { 轻提示 } from '../组件/轻提示';
 
 const mock派发 = vi.fn();
 const mock返回 = vi.fn();
@@ -51,16 +54,36 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('问AI代理 · Backend 只读真实导航', () => {
-  it('Backend only renders truthful read-only guidance', () => {
+  it('Backend keeps the truthful guidance in a complete but muted shell', () => {
     render(<问AI代理 />);
     expect(screen.getByText(/真实匹配与委托请从「市场」进入/)).toBeTruthy();
+    // 仍然零 Mock 内容：无 fixture 简报 / 快捷问句 / 模拟回复
     expect(screen.queryByText('今日简报')).toBeNull();
+    expect(screen.queryByText(快捷问句[0])).toBeNull();
     expect(screen.queryByText(/已接触前 3 家/)).toBeNull();
-    expect(screen.queryByRole('textbox')).toBeNull();
-    expect(screen.queryByRole('button', { name: '发送' })).toBeNull();
+    // 外壳完整但不可发送：真输入条在场，值恒为空、占位=暂未开放，textarea 与发送键真 disabled
+    const 输入 = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(输入.disabled).toBe(true);
+    expect(输入.value).toBe('');
+    expect(输入.getAttribute('placeholder')).toBe('AI代理聊天暂未开放');
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('Backend input cannot send: click, Enter, and typing leave no message or rule side effect', () => {
+    render(<问AI代理 />);
+    // 点发送 / 按 Enter / 试图输入，三条路径都不产生消息，也不派发任何规则 mutation
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    const 输入 = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.keyDown(输入, { key: 'Enter' });
+    fireEvent.change(输入, { target: { value: 快捷问句[0] } });
+    expect(输入.value).toBe('');
+    expect(screen.queryByText(快捷问句[0])).toBeNull();
+    expect(screen.queryByText(/搜到 7 个全远程/)).toBeNull();
+    expect(mock派发).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -81,6 +104,9 @@ describe('问AI代理 · Backend 只读真实导航', () => {
 });
 
 describe('问AI代理 · Mock 原型保持与定时器隔离', () => {
+  // 550ms 生成的回复与初始 fixture 那条前缀相同，但少一句「我按方向对口度排了序」；
+  // 用整句精确匹配，才不会把 fixture 气泡误认成泄漏的模拟回复
+  const 远程回复 = '搜到 7 个全远程、薪资带覆盖你底线的。要我直接去谈前 3 个吗？';
   it('Mock keeps the briefing, quick questions, and send input', () => {
     mock当前模式 = 'mock';
     render(<问AI代理 />);
@@ -89,17 +115,96 @@ describe('问AI代理 · Mock 原型保持与定时器隔离', () => {
     expect(screen.getByRole('button', { name: 快捷问句[0] })).toBeTruthy();
   });
 
-  it('switching Mock to Backend cancels a queued fake reply', async () => {
+  it('Mock replies within 550ms on the happy path', async () => {
     // fake timers 下不用 userEvent（指针事件等待会被假时钟卡死，仓库惯例是 fireEvent）
     vi.useFakeTimers();
     mock当前模式 = 'mock';
-    const page = render(<问AI代理 />);
+    render(<问AI代理 />);
     fireEvent.click(screen.getByRole('button', { name: 快捷问句[0] }));
+    // 发出后先只有 fixture 旧句（整句不同），回复要等 550ms
+    expect(screen.queryByText(远程回复)).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(550));
+    expect(screen.getByText(远程回复)).toBeTruthy();
+  });
+
+  it('switching Mock to Backend clears every queued fake reply timer', async () => {
+    // fake timers 下不用 userEvent（指针事件等待会被假时钟卡死，仓库惯例是 fireEvent）
+    vi.useFakeTimers();
+    const 定时Spy = vi.spyOn(window, 'setTimeout');
+    const 清除Spy = vi.spyOn(window, 'clearTimeout');
+    mock当前模式 = 'mock';
+    const page = render(<问AI代理 />);
+    // 点快捷问句：我方消息上屏（按钮 + 气泡两处同文），550ms 回复还在排队
+    fireEvent.click(screen.getByRole('button', { name: 快捷问句[0] }));
+    expect(screen.getAllByText(快捷问句[0]).length).toBe(2);
+    expect(screen.queryByText(远程回复)).toBeNull();
+
     mock当前模式 = 'backend';
     page.rerender(<问AI代理 />);
+    // 清理证据必须是显式 clearTimeout 且覆盖每一个排上的句柄，不是 DOM 消失
+    const 排上的 = 定时Spy.mock.results.map((结果) => 结果.value);
+    const 已清的 = 清除Spy.mock.calls.map(([句柄]) => 句柄);
+    expect(排上的.length).toBeGreaterThan(0);
+    for (const 句柄 of 排上的) expect(已清的).toContain(句柄);
+
+    await act(() => vi.advanceTimersByTimeAsync(550));
+    expect(screen.queryByText(远程回复)).toBeNull();
+    expect(screen.queryByText('今日简报')).toBeNull();
+    // 切到 Backend 后落在禁用输入外壳上
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).disabled).toBe(true);
+  });
+
+  it('unmount also clears the queued fake reply timer', async () => {
+    vi.useFakeTimers();
+    const 定时Spy = vi.spyOn(window, 'setTimeout');
+    const 清除Spy = vi.spyOn(window, 'clearTimeout');
+    mock当前模式 = 'mock';
+    const page = render(<问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: 快捷问句[0] }));
+    page.unmount();
+    const 排上的 = 定时Spy.mock.results.map((结果) => 结果.value);
+    const 已清的 = 清除Spy.mock.calls.map(([句柄]) => 句柄);
+    expect(排上的.length).toBeGreaterThan(0);
+    for (const 句柄 of 排上的) expect(已清的).toContain(句柄);
+    // 卸载后假时钟走完也不再有宿主可渲染；证据就是上面的逐句柄 clearTimeout 调用
     await act(() => vi.advanceTimersByTimeAsync(550));
     expect(screen.queryByText(/搜到 7 个全远程/)).toBeNull();
-    expect(screen.queryByText('今日简报')).toBeNull();
-    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('Mock 维持红线是零规则 mutation：不派发、不跳转、不轻提示，容器送文案后才换确认行', () => {
+    mock当前模式 = 'mock';
+    render(<问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: '维持红线' }));
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(vi.mocked(轻提示)).not.toHaveBeenCalled();
+    // 容器把 处理文案 送进卡片 → 双按钮换成对应的「已维持红线…」确认行
+    expect(screen.getByText('已维持红线 · 规则不变，我会继续替你挡掉这类岗位。')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '维持红线' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '改成可谈' })).toBeNull();
+  });
+
+  it('Mock 退出重入后简报建议回到初始双按钮（处理状态随容器重挂初始化）', () => {
+    mock当前模式 = 'mock';
+    const 页 = render(<问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: '维持红线' }));
+    expect(screen.queryByRole('button', { name: '维持红线' })).toBeNull();
+    页.unmount();
+    render(<问AI代理 />);
+    expect(screen.getByRole('button', { name: '维持红线' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '改成可谈' })).toBeTruthy();
+    expect(screen.queryByText(/已维持红线 ·/)).toBeNull();
+  });
+
+  it('Mock 改成可谈派发规则但不把建议标成已维持（放宽 ≠ 已处理）', () => {
+    mock当前模式 = 'mock';
+    render(<问AI代理 />);
+    fireEvent.click(screen.getByRole('button', { name: '改成可谈' }));
+    // 规则载荷与轻提示的逐字断言在 看市场.test.tsx 的跨页用例（原文件继续沿用）
+    expect(mock派发).toHaveBeenCalledTimes(1);
+    // 放宽不替换按钮：容器没把 改成可谈 当作「已维持红线」处理
+    expect(screen.getByRole('button', { name: '维持红线' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '改成可谈' })).toBeTruthy();
+    expect(screen.queryByText(/已维持红线 ·/)).toBeNull();
   });
 });

@@ -712,6 +712,16 @@ function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null = 'candi
     读取候选实名: vi.fn(async (): Promise<候选实名摘要> => 待审实名摘要),
     创建候选实名申请: vi.fn(async (): Promise<候选实名摘要> => 待审实名摘要),
     取消候选实名申请: vi.fn(async (): Promise<候选实名摘要> => 取消后实名摘要),
+    // stg 契约对齐 2026-09-14：Onboarding 域 facade（默认候选未完成 —— 草稿旅程是本文件
+    // 候选用例的常态；已完成用例显式覆盖）
+    读取Onboarding: vi.fn(async (): Promise<{ roles: { role: 'candidate' | 'recruiter'; status: 'active' | 'suspended'; completed_at: string | null }[] }> => ({
+      roles: [{ role: 'candidate', status: 'active', completed_at: null }],
+    })),
+    完成Onboarding: vi.fn(async () => ({
+      role: 'candidate' as const,
+      status: 'active' as const,
+      completed_at: '2026-09-14T08:00:00Z',
+    })),
   };
 }
 
@@ -981,6 +991,8 @@ describe('应用状态提供者 后端会话', () => {
       '加载候选实名', '提交候选实名', '取消候选实名', '重置候选实名提交意图',
       // J-PILOT-02 Task 2（建档草稿操作）：建档草稿的同步更新口
       '更新候选建档草稿',
+      // stg 契约对齐 2026-09-14（Onboarding操作）：me/onboarding 权威重读与角色完成
+      '刷新Onboarding', '完成角色Onboarding',
     ].sort().join('|'))).toBeTruthy();
   });
 
@@ -1058,6 +1070,94 @@ describe('应用状态提供者 后端会话', () => {
     });
     expect(取数).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+
+  // ── stg 契约对齐 2026-09-14（Spec §5）：Onboarding 水合顺序与完成事实清理 ──────────
+  it('mount 恢复读取 Onboarding：主体提交前已落成功快照', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    vi.mocked(后端.读取Onboarding).mockResolvedValue({
+      roles: [{ role: 'candidate', status: 'active', completed_at: '2026-09-14T08:00:00Z' }],
+    });
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(true));
+    expect(后端.读取Onboarding).toHaveBeenCalledTimes(1);
+    expect(当前.后端状态.Onboarding).toEqual({
+      阶段: '成功',
+      数据: { roles: [{ role: 'candidate', status: 'active', completed_at: '2026-09-14T08:00:00Z' }] },
+    });
+  });
+
+  it('Onboarding GET 失败不阻断登录：已登录仍为 true、运行态落失败', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取Onboarding).mockRejectedValue(new BFF错误(503, 'recruitment_service_unavailable', '不可用'));
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端 as unknown as HTTP招聘数据源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(true));
+    expect(当前.后端状态.Onboarding.阶段).toBe('失败');
+  });
+
+  it('last_used_role=null 的 mount 恢复不读 Onboarding（选择身份后由切身份刷新）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩(null);
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端 as unknown as HTTP招聘数据源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(后端.读取Onboarding).not.toHaveBeenCalled();
+  });
+
+  it('切身份成功后按新角色刷新 Onboarding（不用旧空 roles 判新角色不存在）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.确保角色).mockResolvedValue({
+      ...BFF主体样本,
+      roles: [
+        { role: 'candidate' as const, status: 'active' as const },
+        { role: 'recruiter' as const, status: 'active' as const },
+      ],
+      last_used_role: 'recruiter',
+    });
+    vi.mocked(后端.记录当前角色).mockResolvedValue({
+      ...BFF主体样本,
+      roles: [
+        { role: 'candidate' as const, status: 'active' as const },
+        { role: 'recruiter' as const, status: 'active' as const },
+      ],
+      last_used_role: 'recruiter',
+    });
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端 as unknown as HTTP招聘数据源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(true));
+    const 登录后读数 = vi.mocked(后端.读取Onboarding).mock.calls.length;
+    await 当前.操作.切身份('招聘方');
+    expect(vi.mocked(后端.读取Onboarding).mock.calls.length).toBeGreaterThan(登录后读数);
+    // 刷新起步把上个角色的快照摊平，再按新主体提交
+    expect(当前.后端状态.Onboarding.阶段).toBe('成功');
+  });
+
+  it('候选已完成事实作废旧草稿与预填恢复：不触发回访拦截或自动重放', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    // 完成事实 + 刷新前留下的旧建档草稿（session 存储）
+    vi.mocked(后端.读取Onboarding).mockResolvedValue({
+      roles: [{ role: 'candidate', status: 'active', completed_at: '2026-09-14T08:00:00Z' }],
+    });
+    const 范围 = { 模式: 'backend' as const, 环境: 'stg' as const, 账号: BFF主体样本.subject_id };
+    写候选引导草稿(sessionStorage, 范围, {
+      城市们: ['上海市'],
+      职位: ['产品经理'],
+      建档: { 资料: { 个人优势: '一半' }, 位置: { pathname: '/onboard/wizard', search: '?stage=salary' } },
+    } as never);
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端 as unknown as HTTP招聘数据源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(true));
+    await waitFor(() => expect(当前.状态.引导预填).toBeNull());
+    expect(sessionStorage.getItem(候选引导草稿键(范围))).toBeNull();
+    // 普通编辑输入（资料缓存等账号仓）不被这一清理触碰
+    expect(当前.状态.资料缓存范围键).not.toBe('');
   });
 
   it('Backend 恢复会话与主体，角色完成后才派发切身份', async () => {
