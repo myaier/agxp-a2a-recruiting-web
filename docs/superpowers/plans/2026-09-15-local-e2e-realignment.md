@@ -294,3 +294,12 @@ target 事实（只读 fetch 后）：origin/main=eeaead9a（自开工未推进�
 处置（`37abf436`，2 文件 +8 行，src/ 零改动）：`e2e/数据源模式.spec.ts` `P5详情wire` 与 `e2e/fixtures/展示字段接线.ts` `候选Case详情`/`招聘Case详情` 补 `continuity_version: 1`（历史 Case 合法档：v1 纯 `{action}` 命令 body 断言、「旧版状态待核实」v1 行为分支、fail-closed 探针语义全部原样保留）。无断言改动、无 skip/sleep/retry。
 
 r3 结果：定向 29/29（merge-fix-1.log）；全量 243/243、3.1m、flaky=0（receipt final-data-r3.json + final-data-r3-artifacts/；完整 stdout 留痕 final-data-r3.log）。逐条归因表见 .superpowers/sdd/2026-09-15-local-e2e-realignment/merge-fix-report.md。上节「最终选集」各行坐标与 receipt 路径为合并前候选事实，保留不改写；本段为合并后新基线（`37abf436`）。
+
+## Final integration 记录（2026-09-15，追加）
+
+- 第一次 gate 展示（target=eeaead9a，FF 方案）获用户批准后，fetch 发现 target 已被推进至 47a7ea24（他人 feat: 连续 S1–S3 初筛 + 两个 review 修复，25 文件 src 改动，与本候选零文件交集）——按 target-movement 规则停止、重新展示方案并获二次批准。
+- 执行：merge --no-edit origin/main → 34282b98（零冲突，merge-tree 预验一致）；本候选测试/配置文件未被合并触碰。合并后重跑最终选集：data-source 223/243——20 条失败全部集中于 MatchCase/在谈/Case/J-PILOT-01 域（对方已合入产品改动所致），其余域全绿。
+- 归因与修复（自主恢复边界内，无二次异构 review）：根因为合并使 `continuity_version` 成为 P5 详情 wire 必需键，e2e 两处 Case 详情 fixture 构造器被 fail-closed decoder 拒绝 → 详情页统一落「这一单暂时打不开」错误态。修复 37abf436 仅 +8 行补 `continuity_version: 1`（两测试 fixture，src/ 零改动，断言零改动，零 PRODUCT_BLOCKED）。定向 29/29 + 全量 243/243（final-data-r3）。
+- 证据对账（合并后候选，INCREMENTAL_EVIDENCE）：data-source 243/243（r3）；默认 52 采集 52/52（r3，修复触碰展接线 fixture 后重跑）；默认独有 14/14（r2，依赖未变复用）；视觉 18/18（r2，依赖未变复用）；比较器/场景单测 8/8；oxlint（含修复文件）0 finding；diff --check CLEAN。docs-only 提交（65de5117、7776633b）不映射测试证据。正式 L3：none（intercepted E2E）。final_target_base=47a7ea24=final_affected_base。
+- 二次 fetch 确认 target 未推进后普通 push：origin/main 47a7ea24 → 7776633b 成功（无 force）。已 review 范围=8e333ce3..c7be3b8b（Codex loop round-2 NO FINDINGS）；其后修复差异（merge 34282b98 + 37abf436）未再过异构 review，如实标注。
+- 遗留（非阻塞）：并行会话曾占用 4181 端口致一次定向启动失败，释放后通过；合并后 S0 记录键（stage/asking_role/answer_source）成必需，未来种 v2 问答样本需按新不变式构造。
