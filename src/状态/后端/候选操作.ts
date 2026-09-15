@@ -19,7 +19,7 @@ import type {
 import type { 候选引导建档草稿, 建档已存条目 } from '../../数据/资料缓存';
 import type { 简历经历段, 简历教育段, 简历证书 } from '../../数据/类型';
 import type { BFF候选账号档案 } from '../../数据/招聘数据源/候选账号';
-import type { 后端操作依赖, 候选操作 } from './类型';
+import type { 后端操作依赖, 候选操作, 简历保存来源 } from './类型';
 import { 创建空候选预填状态 } from './类型';
 import { 清账号状态 } from './会话操作';
 import { 完成Onboarding角色, 查证Onboarding角色, Onboarding422提示 } from './Onboarding操作';
@@ -825,12 +825,16 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
    * 简历域保存的共享实现（保存简历 / 保存个人优势 共用）：
    * 无建档草稿走原路径；有草稿先结算单槽、按已存身份映射 + 缺项保护，经数据源跟踪写入。
    * 确定拒绝清本次未结算槽并保留表单；409/503 未知/网络断开保留待核对。
+   * fix-r1（Spec §4.2）：来源 '日常编辑'（from=resume 编辑页）时无视现存草稿，无条件走
+   * 无草稿的原路径 —— 不结算槽、不做缺项补回、零建档草稿写入；草稿与待确认槽原样保留。
+   * 缺省 / '引导' 与无参数完全同行为（onboarding 跟踪语义）。
    */
   async function 简历域保存(
     next: 页面简历写入,
     本次主体: string | null,
     本次代际: number,
     水合基本 = next.基本信息,
+    来源: 简历保存来源 = '引导',
   ): Promise<void> {
     const 栅栏仍立 = () => 主体标识引用.current === 本次主体 && 会话代际.current === 本次代际;
     let previous = 后端状态引用.current.简历快照;
@@ -838,7 +842,7 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
       const 读出 = await 后端!.读取简历();
       previous = 读出.服务端快照;
     }
-    const 建档 = deps.建档草稿引用?.current ?? null;
+    const 建档 = 来源 === '日常编辑' ? null : (deps.建档草稿引用?.current ?? null);
     if (建档 === null) {
       // 非 onboarding：原路径（行为逐字保持）
       const 快照 = await 后端!.保存简历(next, previous);
@@ -1004,7 +1008,7 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
         锁.current.delete('候选头像写入');
       }
     },
-    async 保存简历(next) {
+    async 保存简历(next, 来源) {
       if (!是后端 || !后端) {
         派发({
           型: '存简历',
@@ -1023,14 +1027,14 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
       const 本次主体 = 主体标识引用.current;
       const 本次代际 = 会话代际.current;
       try {
-        await 简历域保存(next, 本次主体, 本次代际);
+        await 简历域保存(next, 本次主体, 本次代际, undefined, 来源);
       } catch (错误) {
         处理写入错误(错误, 本次主体, 本次代际);
       } finally {
         锁.current.delete('简历保存');
       }
     },
-    async 保存个人优势(text) {
+    async 保存个人优势(text, 来源) {
       if (!是后端 || !后端) {
         派发({ 型: '存个人优势', 文本: text });
         return;
@@ -1050,7 +1054,7 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
         const { 作品集链接: _省略, ...当前页面 } = 从BFF简历(previous);
         // 水合保留的空身份草稿取本地 state（M 语义原样）：next 是按 previous 合成的，
         // 其 基本信息 是服务端值，不能拿它顶掉 /basic 未提交的本地草稿
-        await 简历域保存({ ...当前页面, 个人优势: text }, 本次主体, 本次代际, 状态引用.current.基本信息);
+        await 简历域保存({ ...当前页面, 个人优势: text }, 本次主体, 本次代际, 状态引用.current.基本信息, 来源);
       } catch (错误) {
         处理写入错误(错误, 本次主体, 本次代际);
       } finally {

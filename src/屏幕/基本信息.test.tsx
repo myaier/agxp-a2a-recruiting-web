@@ -277,6 +277,8 @@ describe('基本信息 分区确认时序', () => {
         身份: '在职',
       }),
     }));
+    // 引导旅程不传保存来源（缺省 = onboarding 跟踪语义）
+    expect(mock操作.保存简历.mock.calls.at(-1)).toHaveLength(1);
   });
 });
 
@@ -586,6 +588,9 @@ describe('基本信息 · 简历编辑来源（from=resume）', () => {
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 真名: '沈' }),
+    }), '日常编辑'); // fix-r1：日常编辑保存显式绕过 onboarding 跟踪
     expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
     expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
     expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);

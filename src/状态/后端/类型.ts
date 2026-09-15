@@ -741,6 +741,13 @@ export interface 会话操作 {
   重新水合招聘方数据(): Promise<void>;
 }
 
+/**
+ * 简历域保存的显式来源（fix-r1，Spec §4.2）：编辑模式由 URL 参数唯一标记，不写
+ * onboarding 建档草稿 —— from=resume 的保存必须以 '日常编辑' 进操作层，无条件走
+ * 无草稿的普通保存路径；'引导' / 缺省 = 现行 onboarding 跟踪行为（逐字不变）。
+ */
+export type 简历保存来源 = '日常编辑' | '引导';
+
 export interface 候选操作 {
   加载候选账号档案(): Promise<void>;
   /**
@@ -755,18 +762,21 @@ export interface 候选操作 {
   保存候选头像(file: File): Promise<void>;
   删除候选头像(): Promise<void>;
   /**
-   * J-PILOT-02 Task 3：签名不变。同一保存已在途（锁冲突）时抛明确 busy 错误，
+   * J-PILOT-02 Task 3：同一保存已在途（锁冲突）时抛明确 busy 错误，
    * 页面不得推进（不再 return 假成功）。当前 active 建档草稿在场时操作层内部接
    * 建档写入跟踪：先按闭合种类结算未结算单槽，再按已存身份映射后经数据源跟踪写入；
    * 确定拒绝清槽保留表单，409/503 未知/网络断开保留待核对。无草稿时行为不变。
+   * fix-r1（Spec §4.2）：来源 '日常编辑'（from=resume 的编辑页）时无条件走无草稿的
+   * 普通保存路径 —— 不结算槽、不做缺项补回、不写建档草稿，现存草稿原样保留；
+   * 缺省 / '引导' 与无参数完全同行为。
    */
-  保存简历(next: 页面简历写入): Promise<void>;
+  保存简历(next: 页面简历写入, 来源?: 简历保存来源): Promise<void>;
   /**
-   * J-PILOT-02 Task 3：签名不变；锁冲突同样抛 busy 错误。Summary 单独保存不带
+   * J-PILOT-02 Task 3：锁冲突同样抛 busy 错误。Summary 单独保存不带
    * 作品集链接 属性（缺省 = 未改），不覆盖草稿 URL 或其他未提交字段；有建档草稿时
-   * summary 分区回执写 已存分区。
+   * summary 分区回执写 已存分区。来源语义与 保存简历 同（fix-r1）。
    */
-  保存个人优势(text: string): Promise<void>;
+  保存个人优势(text: string, 来源?: 简历保存来源): Promise<void>;
   保存意向(draft: 意向草稿型): Promise<void>;
   /**
    * J-PILOT-02 Task 7：签名不变。当前 active 建档草稿在场时按本轮身份走（Spec §5.3）——

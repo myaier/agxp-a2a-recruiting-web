@@ -663,6 +663,8 @@ describe('引导问答 个人优势预填（Spec §8 偏好段）', () => {
     expect(优势框().value).toBe('Builds reliable synthetic systems.');
     await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
     await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('Builds reliable synthetic systems.'));
+    // 引导旅程不传保存来源（缺省 = onboarding 跟踪语义）
+    expect(mock操作.保存个人优势.mock.calls[0]).toHaveLength(1);
   });
 
   it('薪资段不问个人优势题（summary 不在社招首次薪资段应用）', () => {
@@ -849,7 +851,7 @@ describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume�
     await 用户.clear(优势框());
     await 用户.type(优势框(), '改后的优势');
     await 用户.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('改后的优势'));
+    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('改后的优势', '日常编辑')); // fix-r1：显式绕过 onboarding 跟踪
     expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
     expect(mock操作.保存首次意向).not.toHaveBeenCalled();
     expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
@@ -861,7 +863,7 @@ describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume�
     const 用户 = userEvent.setup();
     await 用户.type(优势框(), '第一行{Enter}第二行');
     await 用户.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('第一行\n第二行'));
+    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('第一行\n第二行', '日常编辑'));
   });
 
   it('保存失败留在编辑页：输入保留、不跳转', async () => {

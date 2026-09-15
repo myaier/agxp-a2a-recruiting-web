@@ -783,6 +783,19 @@ describe('我的简历 · 空身份展示与姓名门（M）', () => {
     expect(mock操作.保存简历).not.toHaveBeenCalled();
     expect(mock跳转).toHaveBeenCalledWith(`${路径.求职状态}?from=resume`);
   });
+
+  it('行内改名保存：保存简历 带 日常编辑 来源（本页是日常简历域，fix-r1）', async () => {
+    render我的简历({ mode: 'backend', 基本信息: { 真名: '张三', 身份: '在职' } });
+    await userEvent.click(screen.getByRole('button', { name: /姓名（递交简历后披露）/ }));
+    const 输入 = screen.getByLabelText('姓名（递交简历后披露）');
+    await userEvent.clear(输入);
+    await userEvent.type(输入, '新名字');
+    await userEvent.tab(); // blur → 保存姓名
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 真名: '新名字' }),
+    }), '日常编辑');
+  });
 });
 
 // ── 简历编辑显式来源（Task 1）：本页是三个资料编辑屏的唯一日常入口，全部带 from=resume

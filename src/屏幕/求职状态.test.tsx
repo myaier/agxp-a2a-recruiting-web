@@ -99,6 +99,8 @@ describe('求职状态 · 显式选择（M）', () => {
     expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
       基本信息: expect.objectContaining({ 身份: '离职' }),
     }));
+    // 引导旅程不传保存来源（缺省 = onboarding 跟踪语义）
+    expect(mock操作.保存简历.mock.calls[0]).toHaveLength(1);
     expect(mock跳转).toHaveBeenCalledWith(路径.最高学历);
   });
 
@@ -195,7 +197,7 @@ describe('求职状态 · 简历编辑来源（from=resume）', () => {
     await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
     expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
       基本信息: expect.objectContaining({ 身份: '在职' }),
-    }));
+    }), '日常编辑'); // fix-r1：日常编辑保存显式绕过 onboarding 跟踪
     expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
     // 日常分支先于 到岗预填 派发收口：零到岗预填、零分区确认、零建档草稿
     expect(mock应用状态.派发).not.toHaveBeenCalled();
@@ -210,6 +212,9 @@ describe('求职状态 · 简历编辑来源（from=resume）', () => {
     await 用户.click(screen.getByRole('button', { name: /在校 · 月内到岗/ }));
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 身份: '在校' }),
+    }), '日常编辑');
     expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
     expect(mock跳转).not.toHaveBeenCalledWith(路径.引导问答);
     expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();

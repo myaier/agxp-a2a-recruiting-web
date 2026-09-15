@@ -231,7 +231,8 @@ export default function 引导问答() {
         if (优势保存中) return;
         设优势保存中(true);
         try {
-          await 操作.保存个人优势(自我介绍);
+          // fix-r1（Spec §4.2）：个人优势编辑是日常简历域，显式绕过 onboarding 建档跟踪
+          await 操作.保存个人优势(自我介绍, '日常编辑');
           跳转(路径.我的简历);
         } catch (错误) {
           轻提示(取后端错误文案(错误));

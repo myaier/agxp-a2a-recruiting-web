@@ -253,7 +253,9 @@ export default function 基本信息() {
             return;
           }
           try {
-            await 操作.保存简历(待存简历);
+            // fix-r1（Spec §4.2）：日常编辑保存显式绕过 onboarding 建档跟踪；
+            // 无标记的引导旅程不传来源（缺省 = 现行跟踪行为）
+            await 操作.保存简历(待存简历, ...(来自简历 ? ['日常编辑' as const] : []));
             // 分区确认仅注册旅程执行（编辑模式零确认），且先于跳转
             if (!来自简历) 操作.确认候选Onboarding预填分区('basic');
             if (来自简历) {

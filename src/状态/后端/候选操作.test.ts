@@ -842,6 +842,112 @@ describe('创建候选操作 · 建档跟踪保存（J-PILOT-02 Task 3）', () =
   });
 });
 
+// ── fix-r1（Spec §4.2）：日常简历编辑必须显式绕过 onboarding 建档跟踪 ──
+// Backend 残留非空建档草稿（中途放弃 onboarding / session 恢复）时，from=resume 的日常
+// 编辑仍可深链直达编辑页。保存带 '日常编辑' 来源：无条件走无草稿的普通 diff 路径 ——
+// 不结算槽、不做缺项补回、零 更新候选建档草稿 派发，现存槽原样保留；缺省 / 显式 '引导'
+// 保持现行跟踪行为（上方 建档跟踪保存 describe 已成规模覆盖，此处再钉一条缺省语义）。
+describe('创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.2）', () => {
+  const 意向槽 = () => ({
+    种类: 'first-intention-create' as const,
+    请求体: { position_id: 'pos_1' },
+    幂等键: 'idem-intent-daily-1',
+    阶段: 'prepared' as const,
+  });
+
+  /** 真实数据源链路 + summary PATCH 通路：resume GET 恒回 previous，PATCH /summary 放行。 */
+  function summary通路(previous: BFF简历) {
+    let summaryPATCH数 = 0;
+    const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+      if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+        return { result: previous, etag: null, requestId: 'r' };
+      }
+      if (选项.method === 'PATCH' && 选项.path === '/api/v1/me/resume/summary') {
+        summaryPATCH数 += 1;
+        return { result: previous, etag: null, requestId: 'r' };
+      }
+      throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+    });
+    return { 请求Mock, 数: () => summaryPATCH数 };
+  }
+
+  it('日常编辑来源：未确认槽不阻塞保存，走普通 diff，零草稿派发，槽原样保留', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    const 槽 = 意向槽();
+    const { 请求Mock, 数 } = summary通路(previous);
+    const 场景 = 创建场景({
+      建档: { 资料: {}, 待写入: 槽 },
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    const next = { ...从BFF简历(previous), 个人优势: '日常新优势' };
+    await expect(场景.操作.保存简历(next as never, '日常编辑')).resolves.toBeUndefined();
+    expect(数()).toBe(1); // 普通 diff 直发，不被「上一条写入结果未确认」拦下
+    const 动作们 = (场景.派发.mock.calls as { 型: string }[][]).map(([a]) => a.型);
+    expect(动作们).not.toContain('更新候选建档草稿'); // 日常编辑零建档草稿写入
+    expect(场景.deps.建档草稿引用!.current!.待写入).toEqual(槽); // 现存槽原样保留
+  });
+
+  it('日常编辑来源删除经历：写入真实包含该删除（无缺项补回）', async () => {
+    const previous = BFF简历样本; // 含 exp_1（revision 4）
+    let 删除数 = 0;
+    const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+      if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+        return { result: 删除数 === 0 ? previous : { ...previous, experiences: [] }, etag: null, requestId: 'r' };
+      }
+      if (选项.method === 'DELETE' && 选项.path === '/api/v1/me/resume/experiences/exp_1') {
+        删除数 += 1;
+        return { result: { ...previous, experiences: [] }, etag: null, requestId: 'r' };
+      }
+      throw new Error(`未预期的请求 ${选项.method} ${选项.path}`);
+    });
+    const 场景 = 创建场景({
+      // 草稿没有这条 明确删除条目 登记：准备写入 的缺项保护不得把删除补回
+      建档: {
+        资料: {},
+        已存条目: [{ 本地编号: 'exp_1', 种类: 'experience', 资源编号: 'exp_1', revision: 4 }],
+      },
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    const next = { ...从BFF简历(previous), 经历: [] as 简历经历段[] };
+    await expect(场景.操作.保存简历(next as never, '日常编辑')).resolves.toBeUndefined();
+    expect(删除数).toBe(1); // 日常删除就是删除
+    const 动作们 = (场景.派发.mock.calls as { 型: string }[][]).map(([a]) => a.型);
+    expect(动作们).not.toContain('更新候选建档草稿');
+  });
+
+  it('日常编辑来源的 保存个人优势：同样绕过跟踪，草稿与槽零触碰', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    const 槽 = 意向槽();
+    const { 请求Mock, 数 } = summary通路(previous);
+    const 场景 = 创建场景({
+      建档: { 资料: { 个人优势: '草稿优势' }, 待写入: 槽 },
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    await expect(场景.操作.保存个人优势('日常新优势', '日常编辑')).resolves.toBeUndefined();
+    expect(数()).toBe(1);
+    const 动作们 = (场景.派发.mock.calls as { 型: string }[][]).map(([a]) => a.型);
+    expect(动作们).not.toContain('更新候选建档草稿');
+    expect(场景.deps.建档草稿引用!.current!.待写入).toEqual(槽);
+    expect(场景.deps.建档草稿引用!.current!.资料).toEqual({ 个人优势: '草稿优势' });
+  });
+
+  it('显式 引导 来源（缺省语义）：未确认槽仍拦下简历命令，槽原样保留', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    const 槽 = { ...意向槽(), 阶段: 'received' as const, 回执: { id: 'intent_srv_1', revision: 3 } };
+    const 请求Mock = 只读请求桩([previous]);
+    const 场景 = 创建场景({
+      建档: { 资料: {}, 待写入: 槽 },
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    const next = { ...从BFF简历(previous), 个人优势: '日常新优势' };
+    await expect(场景.操作.保存简历(next as never, '引导')).rejects.toThrow('上一条写入结果未确认');
+    expect(场景.deps.建档草稿引用!.current!.待写入).toEqual(槽);
+  });
+});
+
 // ── J-PILOT-02 Task 7：首次意向身份与恢复（Spec §5.3）──
 // 已 receipt 的意向只 GET exact ID；列表另有 active 意向不冒充本次成功；
 // 未知创建按原 key 重放；返回修改走同一资源的 CAS 且保留权威 exclusions。

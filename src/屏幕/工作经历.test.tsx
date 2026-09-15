@@ -580,6 +580,8 @@ describe('工作经历 保存 single-flight', () => {
     const 保存键 = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
     await 用户.click(保存键);
     expect(保存简历).toHaveBeenCalledTimes(1);
+    // 引导旅程不传保存来源（缺省 = onboarding 跟踪语义）
+    expect(保存简历.mock.calls[0]).toHaveLength(1);
     expect(保存键.disabled).toBe(true);
     expect(保存键.textContent).toBe('保存中…');
     // 再点一次：disabled + single-flight 守卫，不再发保存
@@ -622,11 +624,14 @@ describe('工作经历 · 简历编辑来源（from=resume）', () => {
     mock更新草稿.mockClear();
   });
 
-  it('社招编辑：保存成功只回我的简历，零分区确认零建档草稿', async () => {
+  it('社招编辑：保存带 日常编辑 来源，成功只回我的简历，零分区确认零建档草稿', async () => {
     // 建档在场：证明编辑标记赢过 引导预填 非空 —— 旅程判定必须为 false
-    render工作经历({ 建档: { 资料: { 个人优势: '旧' } }, 入口: '/experience?from=resume' });
+    const 保存简历 = vi.fn(async (_next?: unknown, _来源?: string) => {});
+    render工作经历({ 保存简历, 建档: { 资料: { 个人优势: '旧' } }, 入口: '/experience?from=resume' });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历.mock.calls[0][1]).toBe('日常编辑'); // fix-r1：显式绕过 onboarding 跟踪
     await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('简历已保存'));
     expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
     expect(mock跳转).not.toHaveBeenCalledWith(路径.引导问答);
