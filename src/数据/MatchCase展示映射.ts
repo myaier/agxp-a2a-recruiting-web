@@ -683,8 +683,20 @@ function 映射终局摘要(摘要: P5终局摘要 | null): P5终局摘要视图
       定格于: 格式化终局时间(摘要.finalizedAt),
     };
   }
+  // 连续代谈（Spec §4.2 / §8）：S1 技术失败标为自动筛选未完成，72 小时人工待办超时单列原因、
+  // 不伪装主动拒绝；两者同样成对映射冻结文案，原始 outcome / reason 码不进展示槽。
+  const 连续代谈文案 = 连续代谈终局文案表[摘要.outcome as keyof typeof 连续代谈终局文案表];
+  if (连续代谈文案 !== undefined) {
+    return { 结束语: 连续代谈文案, 原因: 连续代谈文案, 定格于: 格式化终局时间(摘要.finalizedAt) };
+  }
   return { 结束语: 摘要.outcome, 原因: 摘要.reasonSummary, 定格于: 格式化终局时间(摘要.finalizedAt) };
 }
+
+/** 连续代谈新增终局的冻结文案（结束语与原因同句；原始码不露）。 */
+const 连续代谈终局文案表 = {
+  agent_failed: '自动筛选未完成',
+  response_timeout: '逾期未回应，已自动结束',
+} as const;
 
 // ── J-PILOT-01（Spec §7）：双端 S0 保留原输入框与发送键、禁用，占位随真实阶段/结果 ──
 // 委托前的初评占位（尚未开案）由 连续代谈展示映射 产出；此处只管已开 Case 的 S0 行。

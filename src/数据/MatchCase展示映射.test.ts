@@ -861,6 +861,23 @@ describe('映射P5详情：新终局成对映射（semantic_uncertain_stop 不�
     expect(JSON.stringify(视图)).not.toContain('semantic_uncertain_stop');
   });
 
+  it.each([
+    ['agent_failed', 'screening_incomplete', 'resume_submission', '自动筛选未完成'],
+    ['response_timeout', 'human_response_timeout', 'needs_coordination', '逾期未回应，已自动结束'],
+  ] as const)('连续代谈终局 %s 成对映射冻结文案，原始 outcome/reason 码不露', (outcome, code, stage, 文案) => {
+    const 视图 = 断言正常(映射P5详情(造详情({
+      state: 造状态({
+        lifecycle: 'ended', stage, status: 'ended', step: 'complete',
+        needsUser: false, outcome, outcomeCode: code, finalizedAt: '2026-08-29T03:00:00Z',
+      }),
+      terminalSummary: { stage, outcome, reasonSummary: code, finalizedAt: '2026-08-29T03:00:00Z' },
+    })));
+    expect(视图.终局摘要?.结束语).toBe(文案);
+    expect(视图.终局摘要?.原因).toBe(文案);
+    expect(JSON.stringify(视图)).not.toContain(outcome);
+    expect(JSON.stringify(视图)).not.toContain(code);
+  });
+
   it('其它终局沿用 wire 原词（user_ended 等既有口径不变）', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
       state: 造行状态('ended', 'intent_confirmation', 'ended', 'complete'),
