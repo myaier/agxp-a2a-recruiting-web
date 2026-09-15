@@ -1522,7 +1522,7 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
       </MemoryRouter>,
     );
     await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
-    expect(screen.getByRole('dialog', { name: '选择职位类别' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: '职位类别' })).toBeTruthy();
     // 左栏点大类换右栏（本地职业分类表照旧）
     await 用户.click(screen.getByRole('button', { name: '产品' }));
     await 用户.click(await screen.findByRole('button', { name: '产品经理' }));
@@ -1532,7 +1532,7 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
     // 关闭重开：选中勾保留（✓ 由选中项内的 勾 span 渲染，可访问名带 ✓ 尾缀；
     // 在弹层对话框内查，避开第一步那行「产品 · 产品经理」回显）
     await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
-    const 弹层 = await screen.findByRole('dialog', { name: '选择职位类别' });
+    const 弹层 = await screen.findByRole('dialog', { name: '职位类别' });
     const 重开项 = within(弹层).getByRole('button', { name: /产品经理✓/ });
     expect(重开项.textContent).toContain('✓');
   });
@@ -1617,6 +1617,133 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
       职位类别: '同名类',
       类别引用: { id: 'leaf_same', display_name: '同名类' },
     });
+  });
+});
+
+// ── Task 1：职位类别从底部抽屉改为全屏子视图（A 契约）──
+// 全屏正文是 次级页外壳 的内容兄弟：打开时父表单 wrapper hidden + 显式 display:none
+// 保持挂载，正文不在 hidden 祖先里；关闭（返回/Escape）只关闭，父页按 A 的时序
+// 先回触发行焦点（preventScroll）再还原打开前记录的父滚动位置；首次挂载不抢焦点。
+// 草稿语义沿用原抽屉：取消零回填；选定合法叶子原子写 职位类别；
+// 名称预填只跟「为空 / 等于旧类别」的名称，手改过的名称绝不覆盖。
+describe('发布岗位页 职位类别全屏子视图（Task 1）', () => {
+  beforeEach(() => {
+    mock返回.mockClear();
+    mock进企业主壳.mockClear();
+    mock替换跳转.mockClear();
+    mock跳转.mockClear();
+    mock更新岗位.mockClear();
+    mock发布岗位.mockClear();
+    mock删除岗位.mockClear();
+    清空轻提示();
+    置Mock应用状态();
+  });
+
+  function render新建页() {
+    return render(
+      <MemoryRouter initialEntries={['/hr/post-job']}>
+        <Routes>
+          <Route path="/hr/post-job" element={<发布岗位 />} />
+          <Route path="/hr/post-job/:id" element={<发布岗位 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it('改过岗位名称后进入类别：返回/Escape 只关闭，草稿、步骤、字段原值不变', async () => {
+    const 用户 = userEvent.setup();
+    render新建页();
+    const 名称框 = screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关') as HTMLInputElement;
+    await 用户.type(名称框, '手改的岗位名');
+    await 用户.click(screen.getByRole('button', { name: '现场' }));
+
+    // 返回键关闭
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    await screen.findByRole('dialog', { name: '职位类别' });
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(screen.queryByRole('dialog', { name: '职位类别' })).toBeNull();
+    // Escape 关闭
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    await screen.findByRole('dialog', { name: '职位类别' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: '职位类别' })).toBeNull();
+
+    // 草稿与字段原值不变，仍在第一步（没有跨步、没有丢字）
+    expect(名称框.value).toBe('手改的岗位名');
+    expect(screen.getByRole('button', { name: '现场' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /职位类别/ }).textContent).toContain('请选择');
+    expect(screen.getByRole('button', { name: '下一步' })).toBeTruthy();
+  });
+
+  it('选择合法项只更新类别：手改名称不覆盖；名称为空或等于旧类别才跟随', async () => {
+    const 用户 = userEvent.setup();
+    render新建页();
+    const 名称框 = screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关') as HTMLInputElement;
+
+    // 手改名称后选择：类别回填，名称不覆盖
+    await 用户.type(名称框, '手改岗');
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    await 用户.click(await screen.findByRole('button', { name: '产品' }));
+    await 用户.click(await screen.findByRole('button', { name: '产品经理' }));
+    await screen.findByText('产品 · 产品经理');
+    expect(名称框.value).toBe('手改岗');
+
+    // 名称既非空也不等于旧类别：再选不跟随
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    await 用户.click(await screen.findByRole('button', { name: '客服/运营' }));
+    await 用户.click(await screen.findByRole('button', { name: '用户运营' }));
+    await screen.findByText('客服/运营 · 用户运营');
+    expect(名称框.value).toBe('手改岗');
+
+    // 名称清空（为空）：跟随新叶子
+    await 用户.clear(名称框);
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    await 用户.click(await screen.findByRole('button', { name: '产品' }));
+    await 用户.click(await screen.findByRole('button', { name: 'AI产品经理' }));
+    await screen.findByText('产品 · AI产品经理');
+    expect(名称框.value).toBe('AI产品经理');
+
+    // 名称等于旧类别：跟随
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    await 用户.click(await screen.findByRole('button', { name: '产品经理' }));
+    await screen.findByText('产品 · 产品经理');
+    expect(名称框.value).toBe('产品经理');
+  });
+
+  it('打开时父表单 hidden 且正文在 wrapper 外；关闭后先回触发行焦点再还原滚动；首次挂载不抢焦点', async () => {
+    const 用户 = userEvent.setup();
+    render新建页();
+    // 首次挂载不恢复焦点
+    expect(document.activeElement).toBe(document.body);
+    const 触发行 = screen.getByRole('button', { name: /职位类别/ });
+    const 滚动节点 = 触发行.closest('.滚动区') as HTMLElement;
+    expect(滚动节点).toBeTruthy();
+    滚动节点.scrollTop = 120;
+    await 用户.click(触发行);
+    const 对话框 = await screen.findByRole('dialog', { name: '职位类别' });
+    // 父表单 wrapper hidden + 显式 display:none；全屏正文不在 hidden 祖先里
+    const 隐藏区 = document.querySelector('div[hidden]') as HTMLElement;
+    expect(隐藏区).toBeTruthy();
+    expect(隐藏区.style.display).toBe('none');
+    expect(隐藏区.contains(对话框)).toBe(false);
+    expect(screen.queryByRole('button', { name: /职位类别/ })).toBeNull();
+    // Escape 关闭：wrapper 恢复显示后，焦点回触发行、滚动还原
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '职位类别' })).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /职位类别/ }));
+    expect(滚动节点.scrollTop).toBe(120);
+  });
+
+  it('已发布岗位的类别行保持锁定：点击只提示，不开全屏子视图', async () => {
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/hr/post-job/job_1']}>
+        <Routes><Route path="/hr/post-job/:id" element={<发布岗位 />} /></Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    expect(await screen.findByText('发布后不可修改，如需变更请新发一个岗位')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: '职位类别' })).toBeNull();
   });
 });
 

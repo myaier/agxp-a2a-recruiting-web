@@ -8,7 +8,7 @@
 //   · 同名条目按稳定键区分；两栏各自的列表尾分页按钮忙时禁用。
 // 两模式消费同一正文由 src/屏幕/发布岗位.test.tsx 与 e2e 证明。
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { 岗位职业分类正文, type 职业栏, type 职业栏项, type 岗位职业分类正文Props } from './岗位职业分类正文';
@@ -176,10 +176,18 @@ describe('岗位职业分类正文 展示契约', () => {
     expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
   });
 
-  it('关闭沿弹层骨架：遮罩交给 关闭', async () => {
+  it('正文在全屏外壳里上屏：Escape 与返回键都交给 关闭', async () => {
     const 关闭 = vi.fn();
-    render(<岗位职业分类正文 {...基础Props({ 关闭 })} />);
-    await userEvent.setup().click(screen.getByRole('button', { name: '关闭选择职位类别' }));
+    const 用户 = userEvent.setup();
+    const 视图 = render(<岗位职业分类正文 {...基础Props({ 关闭 })} />);
+    // Task 1：旧抓手/遮罩抽屉换成全屏外壳，对话框可访问名跟着外壳标题走
+    const 对话框 = screen.getByRole('dialog', { name: '职位类别' });
+    expect(对话框.getAttribute('aria-modal')).toBe('true');
+    fireEvent.keyDown(window, { key: 'Escape' });
     expect(关闭).toHaveBeenCalledTimes(1);
+    视图.unmount();
+    render(<岗位职业分类正文 {...基础Props({ 关闭 })} />);
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(关闭).toHaveBeenCalledTimes(2);
   });
 });

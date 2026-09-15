@@ -12,7 +12,7 @@
 // 双盲语义：薪资只有岗位自己的带（区间），没有任何报价 / 出价 UI；
 // 硬性条件交给 AI 代理在匿名初筛执行，数值互不披露。
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import 样式 from './发布岗位.module.css';
 import 数字滚轮层 from '../组件/数字滚轮层';
@@ -445,6 +445,34 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
     }
     设城市子视图(false);
   };
+
+  // ── Task 1（A 契约）：类别全屏子视图的父页焦点/滚动恢复 ──
+  // 打开处理器在设置打开状态前记录触发行与各祖先滚动节点（.滚动区，屏幕内唯一
+  // 允许滚动的容器，多个则分别记录）的 scrollTop；关闭后由 layout effect 在
+  // wrapper 已恢复显示时先 focus({ preventScroll: true }) 回仍连接的触发行，
+  // 再原样恢复 scrollTop。首次挂载不恢复。城市子视图只作结构参考，不在本页重复记账。
+  const 类别行引用 = useRef<HTMLButtonElement>(null);
+  const 类别曾打开 = useRef(false);
+  const 类别打开滚动 = useRef<{ 节点: HTMLElement; 顶: number }[]>([]);
+  const 开类别层 = () => {
+    类别打开滚动.current = [];
+    for (let 节点 = 类别行引用.current?.parentElement; 节点; 节点 = 节点.parentElement) {
+      if (节点.classList.contains('滚动区')) 类别打开滚动.current.push({ 节点, 顶: 节点.scrollTop });
+    }
+    设类别层开(true);
+  };
+  useLayoutEffect(() => {
+    if (类别层开) {
+      类别曾打开.current = true;
+      return;
+    }
+    if (!类别曾打开.current) return;
+    类别曾打开.current = false;
+    const 触发行 = 类别行引用.current;
+    if (触发行?.isConnected) 触发行.focus({ preventScroll: true });
+    for (const { 节点, 顶 } of 类别打开滚动.current) 节点.scrollTop = 顶;
+    类别打开滚动.current = [];
+  }, [类别层开]);
   // ── 合同 C：岗位双企业坐标草稿（2026-09-13）──
   // 新建恒 direct；编辑从岗位自身的 发布模式 与两个 ID 恢复，绝不按当前名片猜。
   // 名称经 读取目录企业 按 ID 恢复（读取失败/缺 ref 的行显示 未选 —— 允许更换，
@@ -1160,16 +1188,17 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
     // 2026-08-24 全站选择风格统一（C1 定稿）：页底改白底
     <次级页外壳 白底>
 
-      {/* Task 2：城市全页子视图打开时，原步骤/操作区（含文件框与各弹层）保持挂载但
-          hidden —— 退出键盘与无障碍树；兄弟正文填满页面容器。不换路由、无新 history
-          条目，浏览器返回沿旧 route 离开；本次选择查询/临时状态随子视图销毁。
+      {/* Task 2：城市/类别全页子视图打开时，原步骤/操作区（含文件框与各弹层）保持
+          挂载但 hidden —— 退出键盘与无障碍树；全屏正文是下面的兄弟节点，填满页面
+          容器（正文绝不能藏进自己的 hidden 祖先）。不换路由、无新 history 条目，
+          浏览器返回沿旧 route 离开；本次选择查询/临时状态随子视图销毁。
           review Important：wrapper 必须接管外壳的满高语义（flex:1/min-height:0/纵向
           flex），否则 .发布壳 的 flex:1 只能相对内容高的中间 div 解析，高度链断裂；
           display 随子视图开合显式切换 —— 仓库没有全局 [hidden] 规则，任何固定的
           author display 都会压过 UA 的 [hidden]{display:none} 使折叠失效。 */}
       <div
-        hidden={城市子视图}
-        style={{ flex: 1, minHeight: 0, display: 城市子视图 ? 'none' : 'flex', flexDirection: 'column' }}
+        hidden={城市子视图 || 类别层开}
+        style={{ flex: 1, minHeight: 0, display: 城市子视图 || 类别层开 ? 'none' : 'flex', flexDirection: 'column' }}
       >
       {/* 一键上传 JD 的隐藏文件框：只收 PDF；选中即清 value 允许重选同一文件；
           consent 前零请求（2026-09-03 接线，位置与 inline style 不变） */}
@@ -1212,7 +1241,8 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
             届别={届别}
             设届别={设届别}
             职位类别={职位类别}
-            开类别层={() => 设类别层开(true)}
+            开类别层={开类别层}
+            类别行引用={类别行引用}
             实习月数={实习月数}
             设实习月数={设实习月数}
             每周天数={每周天数}
@@ -1343,41 +1373,6 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
           />
         ) : null}
 
-        {类别层开 ? (
-          是后端 ? (
-            /* Task 7：Backend 按 查询Taxonomy('job-categories') 展开两级，selectable 叶子原子保存 */
-            <职业分类层后端
-              查询Taxonomy={目录查询?.查询Taxonomy}
-              当前引用={类别引用}
-              选定={(项) => {
-                // 预填（2026-08-24）：名称为空或还等于上一次预填值（用户没改过）
-                // 时，跟着新选的类别叶子走；用户手改过的名称绝不覆盖
-                if (岗位名称.trim() === '' || 岗位名称 === 职位类别) {
-                  设岗位名称(项.display_name);
-                }
-                设职位类别(项.display_name);
-                设类别引用({ id: 项.id, display_name: 项.display_name });
-                设类别层开(false);
-              }}
-              关闭={() => 设类别层开(false)}
-            />
-          ) : (
-            <职业分类层
-              当前={职位类别}
-              选定={(项) => {
-                // 预填同 Backend 路径：名称没被用户改过时跟着类别叶子走
-                if (岗位名称.trim() === '' || 岗位名称 === 职位类别) {
-                  设岗位名称(项);
-                }
-                设职位类别(项);
-                设类别引用(undefined);
-                设类别层开(false);
-              }}
-              关闭={() => 设类别层开(false)}
-            />
-          )
-        ) : null}
-
         {/* 合同 C：企业选择抽屉 —— 薄包装 公司选择抽屉接线 消费本页 use组织查询；
             选定回填只改本岗草稿，取消/遮罩/Escape 保持原值 */}
         {企业抽屉 ? (
@@ -1394,6 +1389,44 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
         ) : null}
       </div>
       </div>
+
+      {/* Task 1：职位类别全屏子视图（两模式共用 正文）。开着才挂载，两栏的展开/
+          选定状态随子视图销毁；选定/关闭回调照旧写页面草稿，外壳按 A 契约管焦点。
+          与城市子视图一样是 wrapper 的兄弟：正文不能藏进自己的 hidden 祖先。 */}
+      {类别层开 ? (
+        是后端 ? (
+          /* Task 7：Backend 按 查询Taxonomy('job-categories') 展开两级，selectable 叶子原子保存 */
+          <职业分类层后端
+            查询Taxonomy={目录查询?.查询Taxonomy}
+            当前引用={类别引用}
+            选定={(项) => {
+              // 预填（2026-08-24）：名称为空或还等于上一次预填值（用户没改过）
+              // 时，跟着新选的类别叶子走；用户手改过的名称绝不覆盖
+              if (岗位名称.trim() === '' || 岗位名称 === 职位类别) {
+                设岗位名称(项.display_name);
+              }
+              设职位类别(项.display_name);
+              设类别引用({ id: 项.id, display_name: 项.display_name });
+              设类别层开(false);
+            }}
+            关闭={() => 设类别层开(false)}
+          />
+        ) : (
+          <职业分类层
+            当前={职位类别}
+            选定={(项) => {
+              // 预填同 Backend 路径：名称没被用户改过时跟着类别叶子走
+              if (岗位名称.trim() === '' || 岗位名称 === 职位类别) {
+                设岗位名称(项);
+              }
+              设职位类别(项);
+              设类别引用(undefined);
+              设类别层开(false);
+            }}
+            关闭={() => 设类别层开(false)}
+          />
+        )
+      ) : null}
 
       {/* Task 2：岗位工作城市的全页本地子视图（只新建可打开）。
           key 带主体身份：切主体即重挂，旧在飞查询与临时选择随之作废；正文不读模式。
@@ -1767,6 +1800,7 @@ function 基础信息步({
   设届别,
   职位类别: 当前职位类别,
   开类别层,
+  类别行引用,
   实习月数,
   设实习月数,
   每周天数,
@@ -1789,6 +1823,8 @@ function 基础信息步({
   设届别: (值: string) => void;
   职位类别: string;
   开类别层: () => void;
+  /** Task 1（A 契约）：类别全屏子视图的触发元素 —— 父页关闭后按 A 的时序把焦点恢复到它 */
+  类别行引用: { current: HTMLButtonElement | null };
   实习月数: number;
   设实习月数: (值: number) => void;
   每周天数: number;
@@ -1904,6 +1940,7 @@ function 基础信息步({
             这句就贴在「职位类别」标签右边，同样四个字读着更像重复 ——
             改用本页 年薪月数 已经在用的「请选择」，不新造措辞。 */}
         <button
+          ref={类别行引用}
           className={`${样式.选择条目} 可点`}
           onClick={() => (编辑态 ? 提示不可改() : 开类别层())}
         >

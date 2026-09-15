@@ -1,0 +1,24 @@
+/* 全屏选择外壳（Task 1 / A 契约）的局部版式：
+   壳是 次级页外壳 的内容兄弟 —— 顶部安全区来自父层外壳，这里只提供
+   满高（flex:1 + min-height:0 接管外壳的高度链）、溢出隔离和底部安全区。
+   标题固定在 返回栏（通用.module.css 已 flex:none），正文纵向 flex，
+   目录列表自己滚动（正文只 overflow:hidden，不制造双滚动）。
+   不用 height:100vh —— 高度链沿现有应用容器解析。 */
+
+.壳 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--白);
+}
+
+.正文 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: calc(var(--安全区下) + 8px);
+}
