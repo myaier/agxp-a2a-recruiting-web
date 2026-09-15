@@ -127,6 +127,10 @@ export function use期望职位目录({ 查询, 搜索词, 已选键们 }: 期�
   const 浏览代际 = useRef(0);
   const 搜索代际 = useRef(0);
   const 请求序 = useRef(0);
+  // 在飞根页请求所属的代际：StrictMode（dev）挂载→清理→再挂载时，卸载已把代际 +1
+  // 作废了第一次的在飞响应，重入的第二次载入若被「根加载中」挡住，第一次响应又被
+  // 代际作废 —— 根列将永久停在加载中。只拦「属于当前代际」的在飞重入。
+  const 根页在飞代际 = useRef(0);
 
   /** 提交一次目录数据变更（真相先落 ref，state 镜像供渲染） */
   const 提交 = (下一: 目录数据) => {
@@ -151,8 +155,10 @@ export function use期望职位目录({ 查询, 搜索词, 已选键们 }: 期�
 
   const 载入根页 = async () => {
     const 方法 = 查询引用.current;
-    if (!方法 || 数据引用.current.根加载中) return;
+    if (!方法) return;
+    if (数据引用.current.根加载中 && 根页在飞代际.current === 浏览代际.current) return;
     const 本次 = ++浏览代际.current;
+    根页在飞代际.current = 本次;
     提交({ ...数据引用.current, 根加载中: true, 根错误: null });
     try {
       const 页 = await 方法('job-categories', { limit: 每页限量 });
