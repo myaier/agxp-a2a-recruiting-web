@@ -24,6 +24,11 @@
   color: var(--深绿文字);
   font-size: 12.5px;
   font-weight: 600;
+  /* 布局检查（390 宽复现）：无空格长名称曾贴边硬截断——压缩最小宽并允许任意断行，
+     长词在标签内折行而非撑破行宽 */
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .标签删 {
