@@ -10873,20 +10873,18 @@ test.describe('P8 Mock 数据源隔离 @mock', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 滚薪资轮到指定档：按 listbox 的可访问名定位，滚到目标档那一格（行高按相邻两档
- * 的 offsetTop 差现算），停下后等防抖（90ms）落值 —— aria-selected 翻true 才继续。
- * 这是真滚轮滚动（scroll-snap 吸附交给浏览器），不是绕过 UI 的值注入。
+ * 向导薪资段（bottom-drawer 统一 Task 5）：点薪资入口行开共用 薪资区间层，
+ * 点 薪资下限 30 档 —— 引导联动自动把上限抬到 40（不单独碰上限轮）——
+ * 点 确定回填，入口行显示 30-40K。
  */
-async function 滚薪资轮(page: Page, 名称: string, 档: number): Promise<void> {
-  const 轮 = page.getByRole('listbox', { name: 名称 });
-  await 轮.waitFor();
-  await 轮.evaluate((节点, 目标) => {
-    const 档们 = [...节点.querySelectorAll<HTMLElement>('[role="option"]')];
-    const 序 = Math.max(0, 档们.findIndex((项) => (项.textContent ?? '').trim() === String(目标)));
-    const 行高 = 档们.length > 1 ? 档们[1]!.offsetTop - 档们[0]!.offsetTop : 46;
-    节点.scrollTop = 序 * 行高;
-  }, 档);
-  await expect(轮.getByRole('option', { name: String(档), exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
+async function 走向导薪资(page: Page): Promise<void> {
+  const 入口行 = page.getByRole('button', { name: /薪资要求（月薪/ });
+  await 入口行.click();
+  const 抽屉 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+  await 抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '30', exact: true }).click();
+  await 抽屉.getByRole('button', { name: '确定' }).click();
+  await expect(抽屉).toHaveCount(0);
+  await expect(入口行).toContainText('30-40K');
 }
 
 test.describe('候选 onboarding Backend fixture @backend', () => {
@@ -10947,26 +10945,20 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     await expect(page.getByRole('button', { name: '现场' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
 
-    // ── 3. 下一步 → 向导薪资段：两轮滚到 30 / 40（最低月薪 / 最高月薪 可访问名）──
+    // ── 3. 下一步 → 向导薪资段：入口行开共用抽屉选 30（联动上限 40）→ 确定 ──
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/wizard\?stage=salary$/);
     await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toBeVisible();
-    await 滚薪资轮(page, '最低月薪', 30);
-    await 滚薪资轮(page, '最高月薪', 40);
+    await 走向导薪资(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
     await expect(page.getByRole('heading', { name: '创建在线简历' })).toBeVisible();
 
-    // ── 历史点（完成清栈前仍保留）：后退回薪资段，两轮仍是 30/40，再前进回来。
+    // ── 历史点（完成清栈前仍保留）：后退回薪资段，入口行仍回显 30-40K，再前进回来。
     //    完成注册会清掉整条注册流历史，所以这条断言放在最后的披露/头像步骤之前做 ──
     await page.goBack();
     await expect(page).toHaveURL(/#\/wizard\?stage=salary$/);
-    await expect(
-      page.getByRole('listbox', { name: '最低月薪' }).getByRole('option', { name: '30', exact: true }),
-    ).toHaveAttribute('aria-selected', 'true');
-    await expect(
-      page.getByRole('listbox', { name: '最高月薪' }).getByRole('option', { name: '40', exact: true }),
-    ).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('button', { name: /薪资要求（月薪/ })).toContainText('30-40K');
     await page.goForward();
     await expect(page).toHaveURL(/#\/basic$/);
 
@@ -14867,8 +14859,7 @@ test.describe('picker 统一 就读年份 @backend', () => {
     await page.getByRole('button', { name: '混合' }).click();
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/wizard\?stage=salary$/, { timeout: 15_000 });
-    await 滚薪资轮(page, '最低月薪', 30);
-    await 滚薪资轮(page, '最高月薪', 40);
+    await 走向导薪资(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/, { timeout: 15_000 });
     await page.getByPlaceholder('身份证上的名字').fill('Fixture 候选人');
