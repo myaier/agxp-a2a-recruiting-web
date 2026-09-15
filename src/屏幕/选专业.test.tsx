@@ -432,6 +432,23 @@ describe('选专业 Mock', () => {
     await 用户.type(screen.getByRole('textbox'), '经济学');
     expect(await screen.findByText('经济学')).toBeTruthy();
   });
+
+  // review-r1 F5：点选只改显示值，候选列表按实际查询词过滤 —— 点选后兄弟候选
+  // 仍保留且可重复点选（§5.5 点选保留当前成功结果列表）
+  it('Mock 点选后兄弟候选仍在且重复点选稳定（按查询词过滤）', async () => {
+    render选专业({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByRole('textbox'), '经济');
+    await screen.findByText('经济学');
+    await 用户.click(screen.getByText('应用经济学'));
+    // 显示值已是完整名称，但列表仍按查询词「经济」过滤：兄弟候选不被挤掉
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('应用经济学');
+    expect(screen.getByText('经济学')).toBeTruthy();
+    expect(screen.getByText('国际经济与贸易')).toBeTruthy();
+    // 重复点选稳定：列表不消失
+    await 用户.click(screen.getByText('数字经济'));
+    expect(screen.getByText('经济学')).toBeTruthy();
+  });
 });
 
 describe('选专业 候选 onboarding 预填（Spec §8）', () => {

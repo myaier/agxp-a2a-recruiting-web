@@ -440,6 +440,23 @@ describe('毕业院校 Mock', () => {
     const 调用 = 保存简历.mock.calls[0][0] as { 教育: { 学校引用?: unknown }[] };
     expect(调用.教育[0].学校引用).toBeUndefined();
   });
+
+  // review-r1 F5：点选只改显示值，候选列表按实际查询词过滤 —— 点选后兄弟候选
+  // 仍保留且可重复点选（§5.5 点选保留当前成功结果列表）
+  it('Mock 点选后兄弟候选仍在且重复点选稳定（按查询词过滤）', async () => {
+    render毕业院校({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByRole('textbox'), '大学');
+    await screen.findByText('清华大学');
+    await 用户.click(screen.getByText('复旦大学'));
+    // 显示值已是完整名称，但列表仍按查询词「大学」过滤：兄弟候选不被挤掉
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('复旦大学');
+    expect(screen.getByText('清华大学')).toBeTruthy();
+    expect(screen.getByText('浙江大学')).toBeTruthy();
+    // 重复点选稳定：列表不消失
+    await 用户.click(screen.getByText('清华大学'));
+    expect(screen.getByText('浙江大学')).toBeTruthy();
+  });
 });
 
 describe('毕业院校 候选 onboarding 预填（Spec §8）', () => {
