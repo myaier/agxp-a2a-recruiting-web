@@ -74,3 +74,38 @@
   color: var(--最弱);
   line-height: 1.5;
 }
+
+/* 卡内输入位（S0/S1 私有说明、S2 公开回答）与勾选位（暂时无法回答）：
+   沿用卡自身的排布与字号，不引入第二套表单样式。 */
+.输入位 {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.输入标签 {
+  font-size: 11.5px;
+  color: var(--正文);
+}
+
+.输入框 {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--描边深);
+  background: var(--白);
+  color: var(--正文);
+  font-size: 12.5px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.勾选行 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--正文);
+}

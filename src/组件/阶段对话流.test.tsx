@@ -170,3 +170,53 @@ describe('阶段对话流 · S0 Agent 问答与系统状态行（J-PILOT-01）',
     expect(screen.getByText('工作日联系').closest('div')!.textContent).not.toContain('候选 Agent');
   });
 });
+
+// ── S0–S3 连续筛选（continuity_version 2）新增的两个展示槽 ──
+// 待办说明 = 正在等对端的人工待办（零按钮）；确认总结 = S3 固定总结的四节。
+
+describe('阶段对话流 · 连续筛选展示槽', () => {
+  it('对端待办只显示在等谁与服务端绝对截止时刻，段内不出现任何按钮', () => {
+    const 分段: 分段项 = {
+      阶段: '需要协调',
+      态: '当前',
+      待办说明: [{
+        编号: 'todo:cpa_1',
+        内容: '等待招聘方回答对方的问题',
+        截止说明: '截止 2026-09-18 10:00 · 逾期未回应，这一单会自动结束',
+      }],
+    };
+    const { container } = render(<阶段对话流 分段们={[分段]} />);
+    expect(screen.getByText('等待招聘方回答对方的问题')).toBeTruthy();
+    expect(screen.getByText('截止 2026-09-18 10:00 · 逾期未回应，这一单会自动结束')).toBeTruthy();
+    // 段内零控件：对端待办不是本人的卡，绝不给按钮（分节条本身是唯一可点元素）
+    expect(container.querySelectorAll('button').length).toBe(1);
+  });
+
+  it('S3 固定总结四节逐节呈现：空节给自己的空态说明，不合并、不省略', () => {
+    const 分段: 分段项 = {
+      阶段: '意向确认',
+      态: '当前',
+      确认总结: {
+        版本说明: '本次确认的总结版本：第 1 版',
+        含义说明: '确认表示你愿意继续讨论，不代表接受全部条件',
+        分节们: [
+          { 键: 'confirmed', 标题: '已知事实', 空说明: '暂无已确认的公开事实', 条目们: [{ 编号: 'c0', 文本: '岗位在浦东园区' }] },
+          { 键: 'agreed', 标题: '已达成的安排', 空说明: '没有双方公开接受的安排（继续或确认都不是接受证据）', 条目们: [] },
+          { 键: 'unresolved', 标题: '仍未解决', 空说明: '暂无未决事项', 条目们: [{ 编号: 'u0', 文本: '远程比例仍未定' }] },
+          { 键: 'incomplete', 标题: '未完成', 空说明: '没有因技术原因未完成的事项', 条目们: [{ 编号: 'i0', 文本: '出差频率未完成确认' }] },
+        ],
+      },
+    };
+    render(<阶段对话流 分段们={[分段]} />);
+    expect(screen.getByText('本次确认的总结版本：第 1 版')).toBeTruthy();
+    expect(screen.getByText('确认表示你愿意继续讨论，不代表接受全部条件')).toBeTruthy();
+    for (const 标题 of ['已知事实', '已达成的安排', '仍未解决', '未完成']) {
+      expect(screen.getByText(标题)).toBeTruthy();
+    }
+    expect(screen.getByText('岗位在浦东园区')).toBeTruthy();
+    // 空的「已达成的安排」按自己的空态说明呈现，绝不读成已达成
+    expect(screen.getByText('没有双方公开接受的安排（继续或确认都不是接受证据）')).toBeTruthy();
+    expect(screen.getByText('远程比例仍未定')).toBeTruthy();
+    expect(screen.getByText('出差频率未完成确认')).toBeTruthy();
+  });
+});

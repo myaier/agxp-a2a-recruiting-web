@@ -45,6 +45,7 @@ import type {
   P5列表项,
   P5列表页,
   P5详情,
+  P5决定目标,
   P5历史生命周期,
   P5角色,
 } from '../../数据/招聘数据源/MatchCase';
@@ -100,6 +101,21 @@ export const P5范围键 = {
   negotiations: (shelf: 连续架子): string => `p5:negotiations:candidate:${shelf}`,
   negotiation: (recordId: string): string => `p5:negotiation:candidate:${段(recordId)}`,
 } as const;
+
+/**
+ * v2 决定的意图坐标：动作 + 本人待办 + 私有说明。说明改了就是另一个意图（新键），
+ * 同一 body 的网络重试才复用同一把键；v1（无 目标）保持原来的纯动作坐标不变。
+ */
+function 决定意图(action: string, 目标: P5决定目标 | undefined): string {
+  if (目标 === undefined) return action;
+  const 说明 = 目标.privateNote === null ? '' : 目标.privateNote.trim();
+  return [action, 目标.pendingActionId, action === 'continue' ? 说明 : ''].join('|');
+}
+
+/** v2 待办类命令的对账谓词：那条待办已不在权威详情的开放待办里 = 已生效。 */
+function 待办已关闭(详情: P5详情, pendingActionId: string): boolean {
+  return !详情.pendingActions.some((待办) => 待办.id === pendingActionId);
+}
 
 /** 复合意图键（幂等坐标）：前缀 + 角色 + case + 动作 + 目标，逐段转义后用 `:` 连接。 */
 function 意图键(role: P5角色, caseId: string, 动作: string, 目标: string): string {
@@ -1710,20 +1726,45 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       });
     },
 
-    决定S0(caseId, action) {
+    决定S0(caseId, action, 目标) {
       return 命令({
-        role: 'candidate', caseId, 动作: 'decide_s0', 目标: action,
-        写: (源, 键) => 源.决定P5S0(caseId, action, 键),
-        已生效: (详情) => !详情.availableActions.includes('end_screening') ||
-          详情.state.lifecycle !== 'open',
+        role: 'candidate', caseId, 动作: 'decide_s0', 目标: 决定意图(action, 目标),
+        写: (源, 键) => 源.决定P5S0(caseId, action, 键, 目标),
+        已生效: (详情) => 目标 === undefined
+          ? !详情.availableActions.includes('end_screening') || 详情.state.lifecycle !== 'open'
+          : 待办已关闭(详情, 目标.pendingActionId),
       });
     },
 
-    决定S1(caseId, action) {
+    决定S1(caseId, action, 目标) {
       return 命令({
-        role: 'recruiter', caseId, 动作: 'decide_s1', 目标: action,
-        写: (源, 键) => 源.决定P5S1(caseId, action, 键),
-        已生效: (详情) => !详情.availableActions.includes('decide_resume_screening'),
+        role: 'recruiter', caseId, 动作: 'decide_s1', 目标: 决定意图(action, 目标),
+        写: (源, 键) => 源.决定P5S1(caseId, action, 键, 目标),
+        已生效: (详情) => 目标 === undefined
+          ? !详情.availableActions.includes('decide_resume_screening')
+          : 待办已关闭(详情, 目标.pendingActionId),
+      });
+    },
+
+    回答对话(role, caseId, 载荷) {
+      const 状态 = 载荷.action === 'answer' ? 载荷.status : '';
+      const 回答 = 载荷.action === 'answer' && 载荷.status === 'answered' ? 载荷.answer : '';
+      return 命令({
+        role, caseId, 动作: 'respond_dialogue',
+        // 回答正文进意图坐标：改过回答就是新意图（绝不沿用旧 body 的键），同 body 重试同键。
+        目标: [载荷.action, 状态, 载荷.pendingActionId, 回答].join('|'),
+        写: (源, 键) => 源.回答P5对话(role, caseId, 载荷, 键),
+        已生效: (详情) => 待办已关闭(详情, 载荷.pendingActionId),
+      });
+    },
+
+    重新考虑(caseId, privateNote) {
+      const 说明 = privateNote === null ? '' : privateNote.trim();
+      return 命令({
+        role: 'recruiter', caseId, 动作: 'reconsider', 目标: `continue|${说明}`,
+        写: (源, 键) => 源.重新考虑P5(caseId, 说明 === '' ? null : 说明, 键),
+        // 对账：恢复复用同一个 Case —— 权威视图重新 open 即已生效。
+        已生效: (详情) => 详情.state.lifecycle === 'open',
       });
     },
 
@@ -1741,10 +1782,12 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
       });
     },
 
-    决定S3(role, caseId, action) {
+    决定S3(role, caseId, action, 目标) {
       return 命令({
-        role, caseId, 动作: 'decide_intent', 目标: action,
-        写: (源, 键) => 源.决定P5S3(role, caseId, action, 键),
+        role, caseId, 动作: 'decide_intent',
+        // v2 的意图坐标带上待办与所读版本：换了版本就是新意图（旧版本由服务端 409 拦下）
+        目标: 目标 === undefined ? action : `${action}|${目标.pendingActionId}|${目标.summaryVersion}`,
+        写: (源, 键) => 源.决定P5S3(role, caseId, action, 键, 目标),
         // 对账：本端意向词已记录（confirm/decline）或 Case 已终局。
         已生效: (详情) => 详情.intentConfirmations[role] !== '' || 详情.state.lifecycle !== 'open',
       });

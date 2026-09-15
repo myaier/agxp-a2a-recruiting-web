@@ -897,7 +897,10 @@ export type P5动作 =
   | 'decide_resume_screening'
   | 'decide_coordination'
   | 'confirm_intent'
-  | 'decline_intent';
+  | 'decline_intent'
+  // S0–S3 连续筛选（continuity_version 2）新增的两个词：S2 人工补答与 S1 七天重新考虑。
+  | 'answer_dialogue'
+  | 'reconsider';
 
 /** Hosted Agent 失败合同（P5）：owner-safe attention 块，只在 status=attention_required 出现。 */
 export type BFFMatchCaseAgent注意码 = 'agent_unavailable' | 'agent_result_invalid';
@@ -992,11 +995,29 @@ export interface BFFS0筛选记录 {
   summaries: BFFS0筛选小结[];
 }
 
-/** 问答消息三分支：kind↔role 与 text↔answer_status 的联合不变式由 MatchCase decoder 闭合。 */
+/** 记录块所属发问块（S3 不产生公开问答记录）。 */
+export type BFF筛选记录阶段 = 'anonymous_screening' | 'resume_submission' | 'needs_coordination';
+
+/**
+ * 问答消息三分支：kind↔role 与 text↔answer_status 的联合不变式由 MatchCase decoder 闭合。
+ * continuity_version 2 起每条记录自带 stage/asking_role/answer_source —— 记录块仍挂在
+ * S0 阶段区，但装着 S0/S1/S2 三段（冻结合同 §6.5）；历史（version 1）记录缺这三个键。
+ */
 export type BFFS0筛选消息 =
-  | { id: string; kind: 'question'; role: 'candidate'; round: number; text: string; occurred_at: string }
-  | { id: string; kind: 'answer'; role: 'recruiter'; round: number; text: string; answer_status: 'answered'; occurred_at: string }
-  | { id: string; kind: 'answer'; role: 'recruiter'; round: number; answer_status: 'declined' | 'unknown' | 'not_available'; occurred_at: string };
+  | {
+      id: string; kind: 'question'; role: P5角色; round: number; text: string; occurred_at: string;
+      stage?: BFF筛选记录阶段; asking_role?: P5角色;
+    }
+  | {
+      id: string; kind: 'answer'; role: P5角色; round: number; text: string;
+      answer_status: 'answered'; occurred_at: string;
+      stage?: BFF筛选记录阶段; asking_role?: P5角色; answer_source?: 'agent' | 'human';
+    }
+  | {
+      id: string; kind: 'answer'; role: P5角色; round: number;
+      answer_status: 'declined' | 'unknown' | 'not_available' | 'incomplete'; occurred_at: string;
+      stage?: BFF筛选记录阶段; asking_role?: P5角色; answer_source?: 'agent' | 'human' | 'none';
+    };
 
 /** 初评（无轮次）与复评（绑定真实轮次）小结；轮次在 state.round_budget 内由 decoder 校验。 */
 export type BFFS0筛选小结 =
@@ -1034,8 +1055,66 @@ export interface BFFMatchCase终局摘要 {
   finalized_at: string;
 }
 
+// ── S0–S3 连续筛选（continuity_version 2）新增的四个详情块（冻结合同 §6.2）──
+// 双方都读得到 pending_actions（在等谁、到几时），但只有待办本人的 available_actions
+// 里有对应的卡；deadline 是服务端绝对时刻，前端直接渲染，绝不本地推进 Case。
+
+export type BFF待办用途 = 's0_continue' | 's1_continue' | 's2_answer' | 's3_confirm';
+
+export interface BFFMatchCase待办 {
+  id: string;
+  role: P5角色;
+  purpose: BFF待办用途;
+  created_at: string;
+  deadline: string;
+  /** 仅 s2_answer：该待办要回答的公开问题引用。 */
+  exchange_ref?: string;
+  /** 仅 s3_confirm：该待办要确认的固定总结版本。 */
+  summary_version?: number;
+}
+
+export interface BFFMatchCase对话进度 {
+  stage: 'resume_submission' | 'needs_coordination';
+  asking_role: P5角色;
+  recruiter_round: number;
+  candidate_round: number;
+  round_budget: number;
+}
+
+/** GET 实际只给 null / expired / case_unavailable（另两个词只作命令 409 码出现）。 */
+export type BFF重新考虑不可用原因 =
+  | 'expired' | 'candidate_ended' | 'case_unavailable' | 'active_case_conflict';
+
+export interface BFFMatchCase重新考虑 {
+  eligible: boolean;
+  deadline: string;
+  unavailable_reason: BFF重新考虑不可用原因 | null;
+}
+
+export interface BFFMatchCase确认事实 { text: string; source_refs: string[] }
+export interface BFFMatchCase确认条目 { ref: string; text: string; source_refs: string[] }
+
+export interface BFFMatchCase确认总结 {
+  version: number;
+  created_at: string;
+  confirmed_facts: BFFMatchCase确认事实[];
+  agreed_arrangements: BFFMatchCase确认事实[];
+  unresolved_items: BFFMatchCase确认条目[];
+  incomplete_items: BFFMatchCase确认条目[];
+  confirmation_meaning: 'continue_discussion_without_accepting_all_terms';
+}
+
+/** 两端详情共用的连续筛选块：version 1 的历史 Case 允许整组缺席（decoder 归一化）。 */
+export interface BFFMatchCase连续块 {
+  continuity_version?: number;
+  pending_actions?: BFFMatchCase待办[];
+  dialogue_progress?: BFFMatchCase对话进度 | null;
+  reconsideration?: BFFMatchCase重新考虑 | null;
+  confirmation_summary?: BFFMatchCase确认总结 | null;
+}
+
 /** 双端 role detail：current_coordination / terminal_summary 缺席而非 null；对端上下文键即漂移。 */
-export interface BFF候选MatchCase详情 {
+export interface BFF候选MatchCase详情 extends BFFMatchCase连续块 {
   state: BFFMatchCase视图;
   needs_action: boolean;
   available_actions: P5动作[];
@@ -1056,7 +1135,7 @@ export interface BFF候选MatchCase详情 {
    */
   conversation_ref?: string;
 }
-export interface BFF招聘MatchCase详情 {
+export interface BFF招聘MatchCase详情 extends BFFMatchCase连续块 {
   state: BFFMatchCase视图;
   needs_action: boolean;
   available_actions: P5动作[];

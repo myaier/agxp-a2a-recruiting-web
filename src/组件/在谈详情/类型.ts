@@ -48,8 +48,28 @@ export interface 详情按钮 {
   执行: (() => void) | null;
 }
 
+/**
+ * 卡内文本输入位（S0/S1 的「给我的 AI 一句说明（选填）」、S2 的公开回答）：控制层持草稿，
+ * 展示层只摆放。说明 是这条输入的可见口径（例如「只发给你自己的 AI，对方看不到」）。
+ */
+export interface 详情输入位 {
+  键: string; 标签: string; 占位: string; 值: string; 多行: boolean;
+  说明: string | null; 禁用说明: string | null;
+  改变: (值: string) => void;
+}
+
+/** 卡内勾选位（S2 的「暂时无法回答」）：勾上即改成 status=unknown，不是同意。 */
+export interface 详情勾选位 {
+  键: string; 标签: string; 选中: boolean; 说明: string | null;
+  切换: (选中: boolean) => void;
+}
+
 export interface 详情动作卡信息 {
   键: string; 标题: string; 说明: string | null;
+  /** 卡上的只读补充行（如待办截止时刻、状态变化提示）：纯文本，控制层给定。 */
+  提示们?: readonly string[];
+  输入们?: readonly 详情输入位[];
+  勾选们?: readonly 详情勾选位[];
   正文?: ReactNode; 按钮们: readonly 详情按钮[];
 }
 
