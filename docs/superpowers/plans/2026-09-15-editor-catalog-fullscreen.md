@@ -190,7 +190,7 @@ type 期望职位选择正文Props = {
 - 修改：`src/屏幕/公司档案分区编辑.tsx`、`src/屏幕/公司档案分区编辑.test.tsx`。
 - 删除：无。
 
-在该文件提取私有 `公司行业选择正文`，签名为 `(props: { 搜索词: string; 改搜索词: (词: string) => void; 行们: 公司行业行[]; 分页们: { 父键: string | null; 还有: boolean; 加载中: boolean; 错误: string | null }[]; 加载更多: (父键: string | null) => void; 重试: (父键: string | null) => void; 关闭: () => void; 选定: (键: string) => void; 展开: (键: string) => void }) => React.JSX.Element`；`公司行业行 = { 键: string; 名称: string; 层级: number; 可选: boolean; 有子项: boolean; 展开: boolean; 选中: boolean }`。保留已有公司目录父子导航，分页状态按父键映射现有父 ID，根为 null。无 BFF/Context；Mock 行业池映射成可选行、原值不变，Backend DTO 在现有后端行业区映射。A 提供外壳；不新建跨页行业查询层。
+在该文件提取私有 `公司行业选择正文`，签名为 `(props: { 搜索词: string; 改搜索词: (词: string) => void; 行们: 公司行业行[]; 分页们: { 父键: string | null; 还有: boolean; 加载中: boolean; 错误: string | null }[]; 加载更多: (父键: string | null) => void; 重试: (父键: string | null) => void; 关闭: () => void; 选定: (键: string) => void; 展开: (键: string) => void }) => React.JSX.Element`；`公司行业行 = { 键: string; 名称: string; 层级: number; 可选: boolean; 有子项: boolean; 展开: boolean; 选中: boolean }`。保留已有公司目录父子导航，分页状态按父键映射现有父 ID，根为 null。无 BFF/Context；Mock 行业池映射成可选行、原值不变，Backend DTO 在公司分区编辑根层映射为 `公司行业行`。A 提供外壳；不新建跨页行业查询层。
 
 - [ ] 测试可编辑状态才可打开；只读/非管理员不出现可提交入口；取消不改名称/ref，选择仅写基本信息草稿。
 - [ ] 将 Mock 内嵌 chips 与 Backend 内嵌目录的入口改为同一字段行，把两者展示接入私有正文；Backend 行业查询状态和打开状态统一由公司分区编辑根层拥有，将字段行需要的当前值、打开回调传给后端基本信息区；查询方法仍用现有目录适配。
@@ -315,3 +315,12 @@ type 期望职位选择正文Props = {
 - R2-2：Minor / 真实缺陷 / required / 复杂度不变。接受并修复 Task 4：行业查询状态/打开状态/生命周期上移至公司分区编辑根层，基本信息后代仅消费字段值与打开回调，兄弟子页直接收展示 props。不使用 portal 或新增查询层。
 
 两项均未改变批准 Spec。第 2 轮未获得 NO FINDINGS；v1.2 修正后继续交同一 Claude 会话进行第 3 轮复审。
+
+
+### 第 3 轮复审与最终状态
+
+同一 Claude reviewer 会话（Opus/high/plan mode）审查候选 `d95f819d`，Plan blob `0e24f708`（完整指纹保留在本轮原始记录），冻结范围与批准 Spec 不变。轮前/轮后 HEAD、porcelain-z、两文档指纹一致。Claude 确认 R2 两项修复成立，R1 三项没有回退，未发现新的必改问题。
+
+R3-1：Minor / 可选增强 / optional / 复杂度不变。概述仍称 DTO 在旧后端行业区映射，与根层拥有状态的详细步骤不一致。核实后接受，统一改成“Backend DTO 在公司分区编辑根层映射为 公司行业行”。仅此一句为第 3 轮之后的内容修正，未改变批准合同，未再次送审。
+
+**最终结论：Claude 共审查 3 轮；首轮 3 项、第二轮 2 项、第三轮 1 项，共 6 项均接受修正，无拒绝/延后，无未解决有效 required。Claude 第三轮仍报告 1 条 optional，没有给出 NO FINDINGS；不可将本状态称为 Claude NO FINDINGS。已达 skill 三轮上限，不启动第四轮。** 最后一条文字修正由规划者核验；后续仅更新 review 元数据和执行提示词版本指纹，不代表产品实现或产品测试完成。
