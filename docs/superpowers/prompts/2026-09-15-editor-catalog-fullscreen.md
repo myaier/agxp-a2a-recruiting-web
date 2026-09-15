@@ -14,7 +14,7 @@ Model aliases: Claude Code only
 
 按顺序读取当前仓库实际存在的规则、批准 Spec：docs/superpowers/specs/2026-09-15-editor-catalog-fullscreen-design.md（revision 711ebfbddf34c5c646aeef2dda79a782addf45d2，blob 5bae22b7414f0df573bfffa2e25860c3bcec2326）、执行 Plan：docs/superpowers/plans/2026-09-15-editor-catalog-fullscreen.md（版本 v1.2，revision aa9ed430e691d49b03419aed17658451b6ba4e35，blob cf3b20d73e6706d837d28338d1cc4a44e772c59a）的 Global Constraints、Task index、角色表与当前 Task 完整正文（含预期新增/修改/删除文件清单），及 development-workflow skill 的 assets/execution-contract.md；不一次读取其它 Task 正文，批准版本用 Git 对象核对。
 
-实施方式：本宿主按 `Task count: N` 路由——N > 3 实际调用 `superpowers:subagent-driven-development`，N <= 3 实际调用 `superpowers:executing-plans`，不悄悄改为主 Agent 执行；每 Task 三角色档位取 Plan 角色表，只校验并使用 Claude Code 条件 alias（fable/opus 是备选 alias），无法满足时报告，不静默降档。异构 reviewer：以 Codex 为 reviewer 的多轮只读 review-loop，绑定批准版本与共用守约规则，reviewer 默认不跑测试。外部 skill 用逻辑 skill 名发现，资源按该 skill 根目录相对路径解析且不写回交付，共用守约规则为 `../_shared/review-contract.md`；开工前用 解析 development-workflow 的 scripts/task_intents.py 后，以 python3 调用其 start 子命令登记（先读 --help 与现有 intent）。
+实施方式：本宿主按 `Task count: N` 路由——N > 3 实际调用 `superpowers:subagent-driven-development`，N <= 3 实际调用 `superpowers:executing-plans`，不悄悄改为主 Agent 执行；每 Task 三角色档位取 Plan 角色表，只校验并使用 Claude Code 条件 alias（fable/opus 是备选 alias），无法满足时报告，不静默降档。异构 reviewer：以 Codex 为 reviewer 的多轮只读 review-loop，绑定批准版本与共用守约规则，reviewer 默认不跑测试。外部 skill 用逻辑 skill 名发现，资源按该 skill 根目录相对路径解析且不写回交付，共用守约规则为 `../_shared/review-contract.md`；开工前解析 development-workflow 的 scripts/task_intents.py 后，以 python3 调用其 start 子命令登记（先读 --help 与现有 intent）。
 
 测试与收尾责任：确认前全部实施 Task 与执行 skill 要求的宿主内全局 review 完成 → 退出 Task 循环，进入 `实施后收尾（不计入 Task count）`：异构 review skill（轮间只跑轻量测试，轮次及停止条件归该 skill）→ affected（适用 L0–L2）→ final gate 确认；覆盖默认 finishing 流程，不再进入 Task/global review 或自动整套测试、合入菜单、清理；实施过程中及确认后不调用异构 review，Task review 使用宿主内 reviewer；测试按变更风险取最小覆盖，不自动跑整层，入口限制如实报告；未完成不宣称 ready；final gate 前只读 fetch，不合 target、不跑正式 L3、不 push，展示方案等用户明确确认。确认后按 development-workflow skill 的 references/final-integration.md 及 assets/final-integration-contract.md：同步 target 记录 final_target_base → 重算完整责任 → 复用有效 PASS、只补缺口 → 必要 development L3 → cleanup 后再次对账 → 核对 target 未推进 → 普通 fast-forward push，不得 force push。输出位置：产品与测试文件按 Plan 精确路径修改；review 裁决就地记录于现有 Plan，原始测试产物沿 runner 既有位置保留，task intent 沿 skill 默认存储，不新增 handoff、review report 或 validation summary 文档。当前 Plan 已经 3 轮 Claude 文档审查，6 项意见均已接受修正。第三轮 Claude 确认无必改项，但仍有 1 条 optional 文案意见，修正后未再审；已达三轮上限，未获得 Claude NO FINDINGS，不得声称已获得。无未解决有效 required；它不代替实施后的产品代码 review。读取冻结 Plan 后允许追加执行记录，不能悄悄替换其批准实现合同。
 
@@ -23,6 +23,8 @@ Model aliases: Claude Code only
 先完整读取 CLAUDE.md、AGENTS.md。校验固定 Git 对象与路径存在；当前 Spec 只允许批准记录与冻结正文有差异。外部 skill 名允许本机前缀差异，以能力与提供者匹配；缺必需 skill/合同则明确阻塞，不猜安装路径。实施 Task 按依赖连续推进，常规可逆修改无需另问许可；只有实施后的具体 final gate 才等待用户明确确认。
 
 正式 L3 与真实服务验证按 Plan 的 conditional/none 责任判定，不运行整套后端测试、不猜账号、不把 fixture 冒称真实服务验收。移动软键盘未实测须如实记录。
+
+实施后的异构 review 必须遵守用户明确要求：修正 findings 后，恢复同一 reviewer 会话复审，不以实施者自行核验代替 reviewer 结论；只有 reviewer 实际输出 NO FINDINGS 才能如此报告。遵守 review skill 三轮上限，达到上限仍有意见时如实报告剩余意见、裁决和未经再审的修正，不伪称 NO FINDINGS。
 
 严格执行 execution contract 与 Plan 当前 Task brief，不从本提示词补充产品设计。
 ```
@@ -39,7 +41,7 @@ Model aliases: host-native
 
 按顺序读取当前仓库实际存在的规则、批准 Spec：docs/superpowers/specs/2026-09-15-editor-catalog-fullscreen-design.md（revision 711ebfbddf34c5c646aeef2dda79a782addf45d2，blob 5bae22b7414f0df573bfffa2e25860c3bcec2326）、执行 Plan：docs/superpowers/plans/2026-09-15-editor-catalog-fullscreen.md（版本 v1.2，revision aa9ed430e691d49b03419aed17658451b6ba4e35，blob cf3b20d73e6706d837d28338d1cc4a44e772c59a）的 Global Constraints、Task index、角色表与当前 Task 完整正文（含预期新增/修改/删除文件清单），及 development-workflow skill 的 assets/execution-contract.md；不一次读取其它 Task 正文，批准版本用 Git 对象核对。
 
-实施方式：本宿主固定实际调用 `superpowers:executing-plans`，全部 Task 连续按依赖执行，只计实施 Task，收尾不计数，不因 Task 数改用 subagent 模式；每 Task 三角色档位取 Plan 角色表，按通用档位与当前宿主模型配置执行；Claude Code 条件 alias 只是另一宿主的说明，本宿主不解析、查找或校验，也不因缺少它们报错。异构 reviewer：以 Claude 为 reviewer 的多轮只读 review-loop，绑定批准版本与共用守约规则，reviewer 默认不跑测试。外部 skill 用逻辑 skill 名发现，资源按该 skill 根目录相对路径解析且不写回交付，共用守约规则为 `../_shared/review-contract.md`；开工前用 解析 development-workflow 的 scripts/task_intents.py 后，以 python3 调用其 start 子命令登记（先读 --help 与现有 intent）。
+实施方式：本宿主固定实际调用 `superpowers:executing-plans`，全部 Task 连续按依赖执行，只计实施 Task，收尾不计数，不因 Task 数改用 subagent 模式；每 Task 三角色档位取 Plan 角色表，按通用档位与当前宿主模型配置执行；Claude Code 条件 alias 只是另一宿主的说明，本宿主不解析、查找或校验，也不因缺少它们报错。异构 reviewer：以 Claude 为 reviewer 的多轮只读 review-loop，绑定批准版本与共用守约规则，reviewer 默认不跑测试。外部 skill 用逻辑 skill 名发现，资源按该 skill 根目录相对路径解析且不写回交付，共用守约规则为 `../_shared/review-contract.md`；开工前解析 development-workflow 的 scripts/task_intents.py 后，以 python3 调用其 start 子命令登记（先读 --help 与现有 intent）。
 
 测试与收尾责任：确认前全部实施 Task 与执行 skill 要求的宿主内全局 review 完成 → 退出 Task 循环，进入 `实施后收尾（不计入 Task count）`：异构 review skill（轮间只跑轻量测试，轮次及停止条件归该 skill）→ affected（适用 L0–L2）→ final gate 确认；覆盖默认 finishing 流程，不再进入 Task/global review 或自动整套测试、合入菜单、清理；实施过程中及确认后不调用异构 review，Task review 使用宿主内 reviewer；测试按变更风险取最小覆盖，不自动跑整层，入口限制如实报告；未完成不宣称 ready；final gate 前只读 fetch，不合 target、不跑正式 L3、不 push，展示方案等用户明确确认。确认后按 development-workflow skill 的 references/final-integration.md 及 assets/final-integration-contract.md：同步 target 记录 final_target_base → 重算完整责任 → 复用有效 PASS、只补缺口 → 必要 development L3 → cleanup 后再次对账 → 核对 target 未推进 → 普通 fast-forward push，不得 force push。输出位置：产品与测试文件按 Plan 精确路径修改；review 裁决就地记录于现有 Plan，原始测试产物沿 runner 既有位置保留，task intent 沿 skill 默认存储，不新增 handoff、review report 或 validation summary 文档。当前 Plan 已经 3 轮 Claude 文档审查，6 项意见均已接受修正。第三轮 Claude 确认无必改项，但仍有 1 条 optional 文案意见，修正后未再审；已达三轮上限，未获得 Claude NO FINDINGS，不得声称已获得。无未解决有效 required；它不代替实施后的产品代码 review。读取冻结 Plan 后允许追加执行记录，不能悄悄替换其批准实现合同。
 
@@ -48,6 +50,8 @@ Model aliases: host-native
 先完整读取 CLAUDE.md、AGENTS.md。校验固定 Git 对象与路径存在；当前 Spec 只允许批准记录与冻结正文有差异。外部 skill 名允许本机前缀差异，以能力与提供者匹配；缺必需 skill/合同则明确阻塞，不猜安装路径。实施 Task 按依赖连续推进，常规可逆修改无需另问许可；只有实施后的具体 final gate 才等待用户明确确认。
 
 正式 L3 与真实服务验证按 Plan 的 conditional/none 责任判定，不运行整套后端测试、不猜账号、不把 fixture 冒称真实服务验收。移动软键盘未实测须如实记录。
+
+实施后的异构 review 必须遵守用户明确要求：修正 findings 后，恢复同一 reviewer 会话复审，不以实施者自行核验代替 reviewer 结论；只有 reviewer 实际输出 NO FINDINGS 才能如此报告。遵守 review skill 三轮上限，达到上限仍有意见时如实报告剩余意见、裁决和未经再审的修正，不伪称 NO FINDINGS。
 
 严格执行 execution contract 与 Plan 当前 Task brief，不从本提示词补充产品设计。
 ```
