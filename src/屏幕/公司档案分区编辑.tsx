@@ -322,25 +322,47 @@ function 后端分区表单(
 
   // ── 行业全屏子视图（Task 4 / R2-2）：查询 state、生命周期与回调自 后端行业区 上移到
   //  本根层，基本信息后代只保留字段行。表/游标与原实现同形；打开时读根项，搜索 250ms
-  //  debounce 按 q 查询；在飞响应一律用 开着引用 作废 —— 关闭后不得再写选择状态，
-  //  更不能改父草稿。 ──────────────────────────────────────────────
-  const { 开: 行业层开, 行引用: 行业行引用, 开层: 开行业层, 关层: 关闭行业层 } = use行业子视图();
+  //  debounce 按 q 查询。review-r1 F1：开着布尔守不了「关闭后又重开」的迟到响应
+  //  （重开后开着引用又为真，旧会话响应照样回写），改用页面局部会话代际 —— 开/关层
+  //  都递增（尤其关闭），所有数据写入前核对捕获的代际；搜索另记请求序（词变化即递增），
+  //  先发后到的旧词响应不覆盖新词结果。 ─────────────────────────────
+  const { 开: 行业层开, 行引用: 行业行引用, 开层: 原开行业层, 关层: 原关行业层 } = use行业子视图();
   const [行业搜索词, 设行业搜索词] = useState('');
   const [行业根项, 设行业根项] = useState<BFFTaxonomyItem[]>([]);
   const [行业根游标, 设行业根游标] = useState<string | null>(null);
-  // 已展开父项的子项与游标（键 = 父项 id；任意层级都用这一个表）
+  // 已展开父项的子项与游标（键 = 父项 id；任意层级、浏览/搜索两模式共用这一个表）
   const [行业子项表, 设行业子项表] = useState<Record<string, BFFTaxonomyItem[]>>({});
   const [行业子游标表, 设行业子游标表] = useState<Record<string, string | null>>({});
-  // null = 浏览目录模式；有值 = 显示搜索结果。搜索不补目录没有的能力：不参与展开/分页
+  // null = 浏览目录模式；有值 = 显示搜索结果。搜索与浏览共用展开/分页：
+  // API 实际返回 nextCursor（搜索尾态单独记账），命中父节点保留 has_children 可展开
   const [行业搜索结果, 设行业搜索结果] = useState<BFFTaxonomyItem[] | null>(null);
+  // 搜索专属尾态：加载中/错误/游标独立记账 —— 失败给错误+重试，不伪装成空结果
+  const [行业搜索尾态, 设行业搜索尾态] = useState<{
+    游标: string | null; 忙: boolean; 错误: string | null;
+  }>({ 游标: null, 忙: false, 错误: null });
   // 已请求展开的父项（键 = 父项 id）：展开意图与已到的子项分开记，首载/失败也亮得出分页尾
   const [行业展开表, 设行业展开表] = useState<Record<string, true>>({});
   // 各父块（'' = 根）的请求尾态。分页「加载更多」失败不动（原行为），游标还在可再点
   const [行业取态, 设行业取态] = useState<Record<string, { 忙: boolean; 错误: string | null }>>({});
-  const 行业开着引用 = useRef(false);
-  行业开着引用.current = 行业层开;
+  const 行业会话代际 = useRef(0);
+  const 行业搜索序 = useRef(0);
   const 行业查询方法引用 = useRef<行业查询方法 | null>(目录查询?.查询Taxonomy);
   行业查询方法引用.current = 目录查询?.查询Taxonomy;
+
+  // 开/关层都递增会话代际（F1）：关闭后在飞响应即便在重开之后才返回，也因代际不符被拒；
+  // 关闭顺带清搜索 —— 与 选定行业 同一「下一次打开回到浏览模式」口径，也避免半途的
+  // 「搜索已开始、结果还是空」的中间态带进新会话
+  const 开行业层 = () => {
+    行业会话代际.current += 1;
+    原开行业层();
+  };
+  const 关闭行业层 = () => {
+    行业会话代际.current += 1;
+    设行业搜索词('');
+    设行业搜索结果(null);
+    设行业搜索尾态({ 游标: null, 忙: false, 错误: null });
+    原关行业层();
+  };
 
   function 设取态(键: string, 补丁: { 忙?: boolean; 错误?: string | null }) {
     // 本次补丁盖已有态（review 终审 Issue 3）：未显式给的键回落已有态，
@@ -353,23 +375,25 @@ function 后端分区表单(
   }
 
   // 弹开时按需读根项（与 工作经历 已验证的 industries 模式一致）；重试(null) 复用同一读取。
-  // 忙 态在 finally 无条件收口（丢弃的响应也不能留下永久「加载中」）；数据写入才受开着守卫
+  // 忙 态在 finally 无条件收口（丢弃的响应也不能留下永久「加载中」）；数据写入才受会话代际守卫
   function 读行业根项() {
     const 方法 = 行业查询方法引用.current;
     if (!方法) return;
+    const 会话 = 行业会话代际.current;
     void (async () => {
       设取态('', { 忙: true, 错误: null });
       try {
         const 页 = await 方法('industries', { limit: 50 });
-        if (!行业开着引用.current) return;
+        if (行业会话代际.current !== 会话) return;
         设行业根项(页.items);
         设行业根游标(页.nextCursor);
       } catch {
-        if (行业开着引用.current) {
-          设行业根项([]);
-          设行业根游标(null);
-          设取态('', { 错误: '加载失败，请重试' });
+        if (行业会话代际.current !== 会话) {
+          return;
         }
+        设行业根项([]);
+        设行业根游标(null);
+        设取态('', { 错误: '加载失败，请重试' });
       } finally {
         设取态('', { 忙: false });
       }
@@ -381,39 +405,95 @@ function 后端分区表单(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [行业层开]);
 
-  // 搜索：250ms debounce 后按 q 查询（空串回浏览模式）；关闭后返回的结果丢弃
+  // 搜索：250ms debounce 后按 q 查询（空串回浏览模式）。F1：词变化即递增搜索请求序，
+  // 先发后到的旧词响应不回写；F2：搜索开始即清浏览结果挂专属加载态（浏览结果不残留
+  // 冒充搜索结果），失败落错误+重试（不伪装成空结果），成功记 nextCursor 供加载更多
   useEffect(() => {
     const 词 = 行业搜索词.trim();
+    const 会话 = 行业会话代际.current;
+    const 序 = ++行业搜索序.current;
     if (词 === '') {
       设行业搜索结果(null);
+      设行业搜索尾态({ 游标: null, 忙: false, 错误: null });
       return;
     }
     const 方法 = 行业查询方法引用.current;
     if (!方法) return;
+    // 搜索开始即离开浏览模式：老浏览行不残留，加载中由搜索尾项呈现
+    设行业搜索结果([]);
+    设行业搜索尾态({ 游标: null, 忙: true, 错误: null });
     const 计时器 = setTimeout(() => {
-      void 方法('industries', { q: 词, limit: 50 })
-        .then((页) => {
-          if (行业开着引用.current) 设行业搜索结果(页.items);
-        })
-        .catch(() => {
-          if (行业开着引用.current) 设行业搜索结果([]);
-        });
+      void (async () => {
+        try {
+          const 页 = await 方法('industries', { q: 词, limit: 50 });
+          if (行业会话代际.current !== 会话 || 行业搜索序.current !== 序) return;
+          设行业搜索结果(页.items);
+          设行业搜索尾态({ 游标: 页.nextCursor, 忙: false, 错误: null });
+        } catch {
+          if (行业会话代际.current !== 会话 || 行业搜索序.current !== 序) return;
+          设行业搜索结果([]);
+          设行业搜索尾态({ 游标: null, 忙: false, 错误: '加载失败，请重试' });
+        }
+      })();
     }, 250);
     return () => clearTimeout(计时器);
   }, [行业搜索词]);
 
+  // 搜索分页（F2）：沿搜索尾态的游标请求下一页，合并进搜索结果；失败不动（可再点）。
+  // 守卫同首查：会话代际 + 搜索请求序
+  async function 搜索加载更多() {
+    const 游标 = 行业搜索尾态.游标;
+    if (游标 === null || 行业搜索尾态.忙) return;
+    const 方法 = 行业查询方法引用.current;
+    if (!方法) return;
+    const 会话 = 行业会话代际.current;
+    const 序 = 行业搜索序.current;
+    设行业搜索尾态((旧) => ({ ...旧, 忙: true, 错误: null }));
+    try {
+      const 页 = await 方法('industries', { q: 行业搜索词.trim(), cursor: 游标, limit: 50 });
+      if (行业会话代际.current !== 会话 || 行业搜索序.current !== 序) return;
+      设行业搜索结果((旧) => 合并目录页(旧 ?? [], 页.items));
+      设行业搜索尾态({ 游标: 页.nextCursor, 忙: false, 错误: null });
+    } catch {
+      // 失败不动：游标还在，可再点（同浏览分页口径）
+    } finally {
+      设行业搜索尾态((旧) => ({ ...旧, 忙: false }));
+    }
+  }
+
+  // 搜索失败重试（F2）：沿当前词重发首查，恢复后错误消失
+  async function 搜索重试() {
+    const 词 = 行业搜索词.trim();
+    const 方法 = 行业查询方法引用.current;
+    if (词 === '' || !方法) return;
+    const 会话 = 行业会话代际.current;
+    const 序 = ++行业搜索序.current;
+    设行业搜索结果([]);
+    设行业搜索尾态({ 游标: null, 忙: true, 错误: null });
+    try {
+      const 页 = await 方法('industries', { q: 词, limit: 50 });
+      if (行业会话代际.current !== 会话 || 行业搜索序.current !== 序) return;
+      设行业搜索结果(页.items);
+      设行业搜索尾态({ 游标: 页.nextCursor, 忙: false, 错误: null });
+    } catch {
+      if (行业会话代际.current !== 会话 || 行业搜索序.current !== 序) return;
+      设行业搜索尾态((旧) => ({ ...旧, 忙: false, 错误: '加载失败，请重试' }));
+    }
+  }
+
   async function 读行业子项(父键: string) {
     const 方法 = 行业查询方法引用.current;
     if (!方法) return;
+    const 会话 = 行业会话代际.current;
     设行业展开表((旧) => ({ ...旧, [父键]: true }));
     设取态(父键, { 忙: true, 错误: null });
     try {
       const 页 = await 方法('industries', { parentId: 父键, limit: 50 });
-      if (!行业开着引用.current) return;
+      if (行业会话代际.current !== 会话) return;
       设行业子项表((旧) => ({ ...旧, [父键]: 页.items }));
       设行业子游标表((旧) => ({ ...旧, [父键]: 页.nextCursor }));
     } catch {
-      if (行业开着引用.current) 设取态(父键, { 错误: '加载失败，请重试' });
+      if (行业会话代际.current === 会话) 设取态(父键, { 错误: '加载失败，请重试' });
     } finally {
       设取态(父键, { 忙: false });
     }
@@ -426,14 +506,17 @@ function 后端分区表单(
   }
 
   async function 加载更多行业(父键: string | null) {
+    // F2：搜索态的根尾（父键 null）接搜索分页，浏览态接目录根分页
+    if (父键 === null && 行业搜索结果 !== null) return 搜索加载更多();
     const 游标 = 父键 === null ? 行业根游标 : 行业子游标表[父键];
     if (游标 === null || 游标 === undefined) return;
     const 方法 = 行业查询方法引用.current;
     if (!方法) return;
+    const 会话 = 行业会话代际.current;
     设取态(父键 ?? '', { 忙: true });
     try {
       const 页 = await 方法('industries', { parentId: 父键 ?? undefined, cursor: 游标, limit: 50 });
-      if (!行业开着引用.current) return;
+      if (行业会话代际.current !== 会话) return;
       if (父键 === null) {
         设行业根项((旧) => 合并目录页(旧, 页.items));
         设行业根游标(页.nextCursor);
@@ -449,8 +532,13 @@ function 后端分区表单(
   }
 
   function 重试行业(父键: string | null) {
-    if (父键 === null) 读行业根项();
-    else void 读行业子项(父键);
+    if (父键 === null) {
+      // F2：搜索态根尾错误的重试接搜索首查；浏览态接根项重读
+      if (行业搜索结果 !== null) void 搜索重试();
+      else 读行业根项();
+      return;
+    }
+    void 读行业子项(父键);
   }
 
   function 选定行业(键: string) {
@@ -467,43 +555,54 @@ function 后端分区表单(
   }
 
   // DTO → 展示行（Backend 映射只在根层做一次；选中回显按稳定键，不吃显示名）。
-  // 搜索结果行不参与展开/分页，所以 有子项 只在浏览模式给真值。
+  // F3：搜索命中父节点保留真实 has_children —— 搜索行与浏览模式共用
+  // 读行业子项/行业展开表/行业子项表，命中父节点可展开（选定行业 的子项表查找不受影响）
   const 行业转行 = (项: BFFTaxonomyItem, 层级: number): 公司行业行 => ({
     键: 项.id,
     名称: 项.display_name,
     层级,
     可选: 项.selectable,
-    有子项: 行业搜索结果 === null && 项.has_children,
+    有子项: 项.has_children,
     展开: 行业展开表[项.id] === true,
     选中: 资料.行业引用?.id === 项.id,
   });
   const 行业行们: 公司行业行[] = [];
-  if (行业搜索结果 !== null) {
-    for (const 项 of 行业搜索结果) 行业行们.push(行业转行(项, 0));
-  } else {
-    const 摊平 = (项们: BFFTaxonomyItem[], 层级: number) => {
-      for (const 项 of 项们) {
-        行业行们.push(行业转行(项, 层级));
-        const 子们 = 行业子项表[项.id];
-        if (子们 !== undefined) 摊平(子们, 层级 + 1);
-      }
-    };
-    摊平(行业根项, 0);
-  }
-  const 行业分页们: 公司行业分页[] = 行业搜索结果 !== null ? [] : [
-    {
-      父键: null,
-      还有: 行业根游标 !== null,
-      加载中: 行业取态['']?.忙 === true,
-      错误: 行业取态['']?.错误 ?? null,
-    },
-    ...Object.keys(行业展开表).map((父键) => ({
-      父键,
-      还有: (行业子游标表[父键] ?? null) !== null,
-      加载中: 行业取态[父键]?.忙 === true,
-      错误: 行业取态[父键]?.错误 ?? null,
-    })),
-  ];
+  const 摊平 = (项们: BFFTaxonomyItem[], 层级: number) => {
+    for (const 项 of 项们) {
+      行业行们.push(行业转行(项, 层级));
+      const 子们 = 行业子项表[项.id];
+      if (子们 !== undefined) 摊平(子们, 层级 + 1);
+    }
+  };
+  // 搜索态摊平搜索结果（已展开的命中父项跟着已加载子项），浏览态摊平目录根
+  摊平(行业搜索结果 ?? 行业根项, 0);
+  // 分页尾（F2）：搜索态的根尾（父键 null）用搜索专属尾态并接搜索查询，浏览态用根项
+  // 尾态；子块尾态两种模式共用同一表（展开表/子游标表/取态）
+  const 子块分页们: 公司行业分页[] = Object.keys(行业展开表).map((父键) => ({
+    父键,
+    还有: (行业子游标表[父键] ?? null) !== null,
+    加载中: 行业取态[父键]?.忙 === true,
+    错误: 行业取态[父键]?.错误 ?? null,
+  }));
+  const 行业分页们: 公司行业分页[] = 行业搜索结果 !== null
+    ? [
+        {
+          父键: null,
+          还有: 行业搜索尾态.游标 !== null,
+          加载中: 行业搜索尾态.忙,
+          错误: 行业搜索尾态.错误,
+        },
+        ...子块分页们,
+      ]
+    : [
+        {
+          父键: null,
+          还有: 行业根游标 !== null,
+          加载中: 行业取态['']?.忙 === true,
+          错误: 行业取态['']?.错误 ?? null,
+        },
+        ...子块分页们,
+      ];
 
   return (
     // 2026-08-24 全站选择风格统一（C1 定稿）：页底改白

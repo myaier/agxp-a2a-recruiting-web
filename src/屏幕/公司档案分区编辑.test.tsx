@@ -337,6 +337,223 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     }));
   });
 
+  // ── review-r1 F1：搜索请求序 + 会话代际，迟到/旧会话响应不回写 ──
+
+  it('搜索迟到响应不覆盖新词结果：先发的旧词响应后到被作废', async () => {
+    置Backend应用状态();
+    let 解开!: (页: unknown) => void;
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string }) => {
+        if (query.q === '银') return new Promise((解决) => { 解开 = 解决; });
+        if (query.q) {
+          return 目录页Of([
+            { id: 'ind_bank', display_name: '银行业', parent_id: null, selectable: true, has_children: false },
+          ]);
+        }
+        if (query.parentId) return 目录页Of([]);
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    await 用户.type(screen.getByLabelText('搜索行业'), '银');
+    await waitFor(() =>
+      expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { q: '银', limit: 50 }),
+    );
+    await 用户.type(screen.getByLabelText('搜索行业'), '行');
+    // 新词「银行」先回：结果区显示新词结果
+    expect(await screen.findByRole('button', { name: '银行业' })).toBeTruthy();
+    // 旧词「银」此刻才到：不得覆盖新词结果（先冲刷微任务再断言，防假绿）
+    解开(目录页Of([
+      { id: 'ind_stale', display_name: '过期命中', parent_id: null, selectable: true, has_children: false },
+    ]));
+    await new Promise((就绪) => setTimeout(就绪, 0));
+    expect(screen.queryByText('过期命中')).toBeNull();
+    expect(screen.getByRole('button', { name: '银行业' })).toBeTruthy();
+  });
+
+  it('关闭后在飞搜索响应返回前重开：旧会话响应不得写入新会话', async () => {
+    置Backend应用状态();
+    let 解开!: (页: unknown) => void;
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string }) => {
+        if (query.q) return new Promise((解决) => { 解开 = 解决; });
+        if (query.parentId) return 目录页Of([]);
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    await 用户.type(screen.getByLabelText('搜索行业'), '银');
+    await waitFor(() =>
+      expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { q: '银', limit: 50 }),
+    );
+    await 用户.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择行业' })).toBeNull());
+    // 重开（关闭已换代，回到浏览模式）；旧会话的搜索响应此刻才到
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    解开(目录页Of([
+      { id: 'ind_stale', display_name: '过期搜索命中', parent_id: null, selectable: true, has_children: false },
+    ]));
+    await new Promise((就绪) => setTimeout(就绪, 0));
+    expect(screen.queryByText('过期搜索命中')).toBeNull();
+    expect(screen.getByText('人工智能')).toBeTruthy();
+  });
+
+  // ── review-r1 F2：搜索专属加载/空/错误/分页尾态 ──
+
+  it('行业搜索中：浏览结果被清掉显示加载中，成功后结果替换加载态', async () => {
+    置Backend应用状态();
+    let 解开!: (页: unknown) => void;
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string }) => {
+        if (query.q) return new Promise((解决) => { 解开 = 解决; });
+        if (query.parentId) return 目录页Of([]);
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    await 用户.type(screen.getByLabelText('搜索行业'), '金融');
+    // 搜索开始（含 debounce 在途）：浏览行不残留冒充搜索结果，列表尾显示加载中
+    expect(await screen.findByText('加载中…')).toBeTruthy();
+    expect(screen.queryByText('互联网')).toBeNull();
+    await waitFor(() =>
+      expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { q: '金融', limit: 50 }),
+    );
+    解开(目录页Of(行业搜索结果));
+    expect(await screen.findByRole('button', { name: '金融科技' })).toBeTruthy();
+    expect(screen.queryByText('加载中…')).toBeNull();
+  });
+
+  it('行业搜索失败给错误+重试（与空结果可区分），重试成功恢复', async () => {
+    置Backend应用状态();
+    let 已失败 = false;
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string }) => {
+        if (query.parentId) return 目录页Of([]);
+        if (query.q) {
+          if (!已失败) {
+            已失败 = true;
+            throw new Error('网络错误');
+          }
+          return 目录页Of(行业搜索结果);
+        }
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    await 用户.type(screen.getByLabelText('搜索行业'), '金融');
+    // 失败：错误 + 重试，而不是伪装成空结果
+    expect(await screen.findByText('加载失败，请重试')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    expect(await screen.findByRole('button', { name: '金融科技' })).toBeTruthy();
+    expect(screen.queryByText('加载失败，请重试')).toBeNull();
+  });
+
+  it('行业搜索空结果：无错误无重试，与失败可区分', async () => {
+    置Backend应用状态();
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string }) => {
+        if (query.parentId) return 目录页Of([]);
+        if (query.q) return 目录页Of([]);
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    await 用户.type(screen.getByLabelText('搜索行业'), '不存在');
+    await waitFor(() =>
+      expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { q: '不存在', limit: 50 }),
+    );
+    // 成功空结果：无行、无错误、无重试入口
+    await waitFor(() => expect(screen.queryByText('加载中…')).toBeNull());
+    expect(screen.queryByText('加载失败，请重试')).toBeNull();
+    expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
+  });
+
+  it('行业搜索分页：nextCursor 不再被丢弃，加载更多沿游标追加合并不丢首屏行', async () => {
+    置Backend应用状态();
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string; cursor?: string }) => {
+        if (query.q) {
+          if (query.cursor === 'sc2') {
+            return 目录页Of([
+              { id: 'ind_s2', display_name: '搜索第二页', parent_id: null, selectable: true, has_children: false },
+            ]);
+          }
+          return { items: 行业搜索结果, nextCursor: 'sc2', catalogVersion: 'v1' };
+        }
+        if (query.parentId) return 目录页Of([]);
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    await 用户.type(screen.getByLabelText('搜索行业'), '金融');
+    expect(await screen.findByRole('button', { name: '金融科技' })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
+    expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { q: '金融', cursor: 'sc2', limit: 50 });
+    expect(await screen.findByRole('button', { name: '搜索第二页' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '金融科技' })).toBeTruthy();
+    // 追加后游标已尽，不再有下一页
+    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
+  });
+
+  // ── review-r1 F3：搜索命中父节点保留 has_children，可展开读子项 ──
+
+  it('行业搜索命中父节点可展开：展开读子项，选中回填原子写显示名+引用', async () => {
+    置Backend应用状态();
+    mock查询Taxonomy.mockImplementation(
+      async (_kind: 'industries', query: { parentId?: string; q?: string }) => {
+        if (query.q) {
+          return 目录页Of([
+            { id: 'ind_bankroot', display_name: '银行业', parent_id: null, selectable: false, has_children: true },
+          ]);
+        }
+        if (query.parentId === 'ind_bankroot') {
+          return 目录页Of([
+            { id: 'ind_bankleaf', display_name: '银行柜员', parent_id: 'ind_bankroot', selectable: true, has_children: false },
+          ]);
+        }
+        if (query.parentId) return 目录页Of([]);
+        return 目录页Of(行业根);
+      },
+    );
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.click(screen.getByLabelText('更换行业'));
+    await screen.findByText('互联网');
+    await 用户.type(screen.getByLabelText('搜索行业'), '银');
+    // 命中父节点是可点的展开行（修复前被 有子项=false 变成死行 div）
+    const 展开钮 = await screen.findByRole('button', { name: '银行业' });
+    expect(展开钮.getAttribute('aria-expanded')).toBe('false');
+    await 用户.click(展开钮);
+    expect(mock查询Taxonomy).toHaveBeenCalledWith('industries', { parentId: 'ind_bankroot', limit: 50 });
+    await 用户.click(await screen.findByRole('button', { name: '银行柜员' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(mock保存企业档案).toHaveBeenCalledWith(expect.objectContaining({
+        行业: '银行柜员',
+        行业引用: { id: 'ind_bankleaf', display_name: '银行柜员' },
+      })),
+    );
+  });
+
   it('行业取消（Escape）不改名称/ref，重开重新读根项', async () => {
     置Backend应用状态();
     const 用户 = userEvent.setup();
