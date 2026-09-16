@@ -45,9 +45,11 @@ Codex execution: superpowers:executing-plans
 
 ## 冻结接口与错误语义
 
-1. `GET /api/v1/{me|recruiter}/conversations` 与 `.../{conversation_id}`：available context 增加 required `counterpart`，值为 null 或 `{name,avatar_url,company_name,title}`，四字段均 string|null；unavailable 仍无 context。招聘侧 company_name=Case 冻结用人企业，title=投递岗位；求职侧 company_name=可信发布企业，title=招聘者职务。内部四键 `{candidate_identity,publisher_profile,company_name,title}` 按 Spec §3.2；BFF 转换媒体 URL，不泄露内部 media_id。单个资料补读失败不让消息不可用，授权失败维持原拒绝。
-2. 经历写入/读取/冻结在线简历移除 hidden 字段；前端闭合解码同步删除。组织屏蔽复用 `POST /api/v1/me/privacy/organization-blocks`（organization_id/source=manual、既有 If-Match/幂等键）和 `POST .../{organization_id}/unblock`（risk_acknowledged、If-Match）。不存在时无重复删除；已有非 manual 来源不能改写；409 重读不盲重试；失败保留实际服务端状态及重试入口。同企业只对应一份有效屏蔽状态。
-3. 推荐详情增加 required `match_analysis={ranking_version:'discovery-ranking.v2',dimensions:[...]}`。六个维度固定次序 `category,skills,experience,location,workplace_mode,compensation`；每行四键 `{dimension,status,score,max_score}`，status 闭合 matched/partial/unmatched/unknown，score 整数合法范围，总和=match_score。列表不新增 match_analysis；两方向新批次存储同源结果，只有招聘详情对外开放。读到缺失/畸形不能伪装成空，沿既有服务错误路径；FE invalid_response，保留重试，禁止由原因码反推。
+以下 bff.invalid 仅为路由示例，实际请求使用当前 BFF 同源地址。
+
+1. `GET https://bff.invalid/api/v1/{me|recruiter}/conversations` 与 `.../{conversation_id}`：available context 增加 required `counterpart`，值为 null 或 `{name,avatar_url,company_name,title}`，四字段均 string|null；unavailable 仍无 context。招聘侧 company_name=Case 冻结用人企业，title=投递岗位；求职侧 company_name=可信发布企业，title=招聘者职务。内部四键 `{candidate_identity,publisher_profile,company_name,title}` 按 Spec §3.2；BFF 转换媒体 URL，不泄露内部 media_id。单个资料补读失败不让消息不可用，授权失败维持原拒绝。
+2. 经历写入/读取/冻结在线简历移除 hidden 字段；前端闭合解码同步删除。组织屏蔽复用 `POST https://bff.invalid/api/v1/me/privacy/organization-blocks`（organization_id/source=manual、既有 If-Match/幂等键）和 `POST .../{organization_id}/unblock`（risk_acknowledged、If-Match）。不存在时无重复删除；已有非 manual 来源不能改写；409 重读不盲重试；失败保留待提交意图及实际服务端状态的区别，标为未生效并提供重试；不得把待提交值当成功。同企业只对应一份有效屏蔽状态。
+3. 推荐详情增加 required `match_analysis={ranking_version:'discovery-ranking.v2',dimensions:[...]}`。六个维度固定次序 `category,skills,experience,location,workplace_mode,compensation`；每行四键 `{dimension,status,score,max_score}`，status 闭合 matched/partial/unmatched/unknown，score 整数合法范围，总和=match_score。列表不新增 match_analysis；两方向新批次存储同源结果，只有招聘详情对外开放。仅 skills/compensation 允许 partial；unknown/unmatched 分数为0，matched 各维取满分，compensation partial=5；技能 partial 允许取整后0分。读到缺失/畸形不能伪装成空，沿既有服务错误路径；FE invalid_response，保留重试，禁止由原因码反推。
 4. Case 在线简历复用已有 `candidate_resume` 与独立 `candidate_identity`；手机/邮箱固定占位。没有 PDF 坐标不等于不能读在线简历；真正失权必须拒绝。
 
 示例（两项资料不足，分项不是前端推算）：
@@ -85,6 +87,16 @@ L3 selection：BE `required`，impact_class=`case-semantic`，suite=`recruitment
 **预期编辑文件：**
 
 - 修改：`apps/recruitment/internal/resume/types.go`
+- 修改：`apps/recruitment/internal/resume/account_export.go`
+- 修改：`apps/recruitment/internal/mobileapi/handler.go`
+- 修改：`apps/recruitment/internal/mobileapi/response.go`
+- 修改：`apps/recruitment/internal/privacy/service.go`
+- 修改：`apps/recruitment/internal/store/case_candidate_identity.go`
+- 修改：`apps/recruitment/internal/store/conversation_authorization.go`
+- 修改：`apps/recruitment/internal/discovery/service.go`
+- 修改：`apps/recruitment/internal/store/discovery_store_postgres_test.go`
+- 修改：`apps/recruitment/internal/store/case_candidate_identity_postgres_test.go`
+- 修改：`apps/recruitment/internal/store/conversation_authorization_postgres_test.go`
 - 修改：`apps/recruitment/internal/privacy/projection.go`
 - 修改：`apps/recruitment/internal/privacy/recruiter_summary.go`
 - 修改：`apps/recruitment/internal/privacy/candidate_resume.go`
@@ -101,14 +113,14 @@ L3 selection：BE `required`，impact_class=`case-semantic`，suite=`recruitment
 
 **非目标：** 不超出批准 Spec；不添加未列出的产品能力或迁移兼容。
 
-- [ ] Step 1: 先为 anonymous + ongoing company allowed/denied、A 被屏蔽/B 可见、教育与工作标签分开过滤写真实入口用例；确认旧实现的 hidden 反例失败。
-- [ ] Step 2: 删除 Experience.Hidden、冻结经历 Hidden、BFF 请求/响应字段和所有生产引用；用 rg 核对 resume/privacy/Case 全链消费者，同步既有 fixture 字段和断言，不加兼容默认值。
-- [ ] Step 3: 复用企业屏蔽的有效集合及代招双侧检查，核验匿名摘要、Case 在线资料、头像和附件读取路径；如发现绕过，仅在该既有授权入口补检查，不把历史消息删除或重写。
+- [ ] Step 1: 先为 anonymous + ongoing company allowed/denied、A 被屏蔽/B 可见、教育与工作标签分开过滤写真实入口用例；确认旧实现的 hidden 反例失败。建立屏蔽前可读→屏蔽后拒绝矩阵：旧推荐详情、Case identity/在线简历/头像/附件各行，分别覆盖 hiring=A/publisher=B 和 hiring=B/publisher=A；在实施记录写已有测试文件/用例与缺口，只为缺口补测。
+- [ ] Step 2: 删除 Experience.Hidden、冻结经历 Hidden、BFF 请求/响应字段和所有生产引用；用 rg 核对 resume/privacy/Case 全链消费者，同步既有 fixture 字段和断言，不加兼容默认值。Case 当前经历不存在时既有删除保护仍保留；只移除 hidden=true 这一门，不把删除保护顺便取消。
+- [ ] Step 3: 复用企业屏蔽的有效集合及代招双侧检查，按上一步矩阵逐条核验匿名摘要、旧推荐详情、Case identity/在线资料/头像/附件读取路径；确需补检查限上述 discovery/service、privacy/service、store/case_candidate_identity 和 conversation_authorization 已有入口，先记录因果链与受影响测试，不把历史消息删除或重写。
 - [ ] Step 4: 定向用例与编译通过后记录合同删除字段及 BE commit；前端完成前不发布。
 - [ ] Step 5: 执行定向验证；先记录新增反例失败，再记录实现后的通过。既有失败先确认与本改动关系，不改测试期待来掩盖缺陷。
 
 ```bash
-tools/test service recruitment --suite recruitment-privacy-policy --suite recruitment-privacy-component --suite recruitment-privacy-postgres --suite recruitment-resume-component
+tools/test service recruitment --suite recruitment-privacy-policy --suite recruitment-privacy-component --suite recruitment-privacy-postgres --suite recruitment-resume-component --suite recruitment-store-discovery-postgres --suite recruitment-store-case-core-postgres
 tools/test service recruitment-bff --suite recruitment-bff-unit
 ```
 
@@ -166,6 +178,7 @@ tools/test service recruitment-bff --suite recruitment-bff-unit
 **预期编辑文件：**
 
 - 修改：`apps/recruitment/internal/discovery/ranking.go`
+- 修改：`apps/recruitment/internal/discovery/ranking_policy_test.go`
 - 修改：`apps/recruitment/internal/discovery/projection.go`
 - 修改：`apps/recruitment/internal/discovery/service.go`
 - 修改：`apps/recruitment/internal/discovery/types.go`
@@ -188,7 +201,7 @@ tools/test service recruitment-bff --suite recruitment-bff-unit
 
 - [ ] Step 1: 在 ranking 对真实入口增加无技能/零命中/部分命中/全命中、未确认经验、薪资 unknown/overlap/near_miss；断言分数与原算法一致且状态可区分。
 - [ ] Step 2: 将同源结果沿 PreparedRecommendation/插入/读取链保存。新增 migration 文件 apps/recruitment/internal/store/migrations/000045_recommendation_match_analysis.up.sql 及 down.sql；若现场编号已占用，只顺延编号并更新此记录，不改历史 migration。新推荐写完整 JSON；不回填旧行，旧数据不满足新合同走错误而非伪造。
-- [ ] Step 3: 招聘详情序列化 required match_analysis；列表和求职详情不增字段。BFF 验证六维唯一/次序/分值范围/总和，损坏数据走既有 upstream 错误；不输出原始意向或薪资。
+- [ ] Step 3: 招聘详情序列化 required match_analysis；列表和求职详情不增字段。BFF 验证六维唯一/次序/分值范围/总和，以及 Spec §5.1 允许状态及其对应分值，损坏数据走既有 upstream 错误；不输出原始意向或薪资。
 - [ ] Step 4: 用 PG 保存后修改当前简历/岗位再读取，解释和总分仍是批次值；新 migration 与 downgrade 结构验证纳入既有 schema/store suite。
 - [ ] Step 5: 执行定向验证；先记录新增反例失败，再记录实现后的通过。既有失败先确认与本改动关系，不改测试期待来掩盖缺陷。
 
@@ -211,6 +224,9 @@ tools/test service recruitment-bff --suite recruitment-bff-unit
 
 - 修改：`src/数据/BFF契约.ts`
 - 修改：`src/数据/类型.ts`
+- 修改：`src/数据/资料缓存.ts`
+- 修改：`src/状态/初始状态.ts`
+- 修改：`src/状态/后端/候选操作.ts`
 - 修改：`src/数据/后端映射.ts`
 - 修改：`src/数据/招聘数据源/简历.ts`
 - 修改：`src/流程/候选Onboarding简历预填.ts`
@@ -228,8 +244,8 @@ tools/test service recruitment-bff --suite recruitment-bff-unit
 
 - [ ] Step 1: 增加同组织两经历同步、manual/derived 来源、409、网络失败、尚未选公司、换公司/删除不解封的可观察交互用例。
 - [ ] Step 2: 删除本地 隐藏 到 wire hidden 的映射和 PDF 预填默认 true；Mock 与 Backend 从各自隐私状态派生开关，不把所有历史公司默认加入屏蔽。
-- [ ] Step 3: 对有效已选公司切换使用现有 privacy 操作即时保存，显示进行中，成功后权威回读；这是独立隐私设置，经历表单完成/取消不撤销已成功设置，并用辅助文案“修改立即生效”说明。无有效公司禁用并提示先选择公司。解除 derived 来源复用原有确认流程。
-- [ ] Step 4: existing effective block 视为已开；重复新增不覆盖来源，失败/冲突重读保持实际状态；修改/删除经历不发送旧公司 unblock。同步求职状态/个人简历 fixture，禁止猜公司 ID。
+- [ ] Step 3: 保持现有经历编辑“完成”写草稿、上层“保存”提交的交互。按 organization_id 收集明确的屏蔽/解除待提交意图（仅未提交表单状态，不是第二份持久屏蔽事实），同公司重复意图归一；保存前校验有效公司、表单必填及 derived 解除确认，未通过时不发写请求。随后先顺序提交显式隐私意图，再调用现有简历保存；每条成功后权威回读并移出待提交集合，失败停止并保留未成功意图/简历草稿供重试，不自动回滚已成功隐私变更，不宣称整份保存成功。取消未提交编辑不产生屏蔽写请求。
+- [ ] Step 4: existing effective block 视为已开；重复新增不覆盖来源；失败/409 重读服务端实际状态但保留未提交意图并标记“未保存”，需用户重试，禁止盲自动覆写。修改/删除经历不推导旧公司 unblock；只有用户明确关闭该企业开关才产生解除意图。同步求职状态/个人简历 fixture，禁止猜公司 ID。
 - [ ] Step 5: 执行定向验证；先记录新增反例失败，再记录实现后的通过。既有失败先确认与本改动关系，不改测试期待来掩盖缺陷。
 
 ```bash
@@ -337,7 +353,7 @@ npm run typecheck
 - 新增：`src/组件/真人在线简历正文.tsx`、`src/组件/真人在线简历正文.test.tsx`。
 - 删除：无整文件删除；旧字段、错误断言和入口代码在上述文件内移除。
 
-**接口与职责：** 新增纯展示 真人在线简历正文（src/组件/真人在线简历正文.tsx），输入 name/title/experienceYears/experiences/educations/selfDescription 和关闭回调；仅数据，不读应用状态。两个消费者分别映射 Case 与 Mock。
+**接口与职责：** 新增纯展示 真人在线简历正文（src/组件/真人在线简历正文.tsx），输入 name/title/experienceYears/experiences/educations/selfDescription 和关闭回调；仅数据，不读应用状态。experiences/educations 用 null 表示区域缺失、[] 表示合法空；加载/错误及定向重试由消费者在纸身外层管理，不把请求状态塞进纯正文。两个消费者分别映射 Case 与 Mock。
 
 **非目标：** 不超出批准 Spec；不添加未列出的产品能力或迁移兼容。
 
@@ -348,7 +364,7 @@ npm run typecheck
 - [ ] Step 5: 执行定向验证；先记录新增反例失败，再记录实现后的通过。既有失败先确认与本改动关系，不改测试期待来掩盖缺陷。
 
 ```bash
-npm test -- src/屏幕/P7/Backend真人会话.test.tsx src/组件/简历预览层.test.tsx src/屏幕/企业真人会话.test.tsx
+npm test -- src/屏幕/P7/Backend真人会话.test.tsx src/组件/简历预览层.test.tsx src/组件/真人在线简历正文.test.tsx src/屏幕/企业真人会话.test.tsx
 ```
 
 **验证断言/失败反例：** 手机邮箱仅—；继续沟通关闭层；无旧会话内容闪现；Mock/Backend 同版式。
@@ -371,6 +387,7 @@ npm test -- src/屏幕/P7/Backend真人会话.test.tsx src/组件/简历预览�
 - 修改：`src/数据/招聘候选摘要映射.ts`
 - 修改：`src/数据/招聘候选摘要映射.test.ts`
 - 修改：`src/屏幕/匿名在线简历.tsx`
+- 修改：`src/数据/企业端模拟数据.ts`
 - 修改：`src/屏幕/匿名在线简历.test.tsx`
 - 修改：`src/组件/在谈详情/在线简历正文.tsx`
 - 修改：`src/组件/在谈详情/在线简历正文.test.tsx`
@@ -382,14 +399,14 @@ npm test -- src/屏幕/P7/Backend真人会话.test.tsx src/组件/简历预览�
 
 **非目标：** 不超出批准 Spec；不添加未列出的产品能力或迁移兼容。
 
-- [ ] Step 1: 新增缺分析/畸形/重复/总和不符的解码反例；构造全中/部分/未匹配/未知真实合同 fixture。
+- [ ] Step 1: 新增缺分析/畸形/重复/总和不符、维度不允许的状态、unknown/unmatched 非0分的解码反例；构造全中/部分/未匹配/未知真实合同 fixture。
 - [ ] Step 2: 将唯一“匹配度分析”渲染六行状态和得分/满分，去除该推荐页面独立“推荐依据”重复块；共享正文仅在推荐入口启用，其他 Case 消费者保留原合同。
 - [ ] Step 3: Mock 招聘推荐使用同模型组件，样例分数由同六行相加；不拿旧 Mock JD 行冒充后端评分。
 - [ ] Step 4: 亮点空改“暂无可展示亮点”，有值原样；公司按已授权 latest_experience 拼 company · title，缺公司只职位，不借旧公司；生成器、源附件规则不变。
 - [ ] Step 5: 执行定向验证；先记录新增反例失败，再记录实现后的通过。既有失败先确认与本改动关系，不改测试期待来掩盖缺陷。
 
 ```bash
-npm test -- src/数据/招聘数据源/发现推荐.test.ts src/数据/发现推荐映射.test.ts src/数据/招聘候选摘要映射.test.ts src/屏幕/匿名在线简历.test.tsx src/组件/在谈详情/在线简历正文.test.tsx
+npm test -- src/数据/招聘数据源/发现推荐.test.ts src/数据/发现推荐映射.test.ts src/数据/招聘候选摘要映射.test.ts src/屏幕/匿名在线简历.test.tsx src/组件/在谈详情/在线简历正文.test.tsx src/组件/招聘匹配分析.test.tsx
 npm run typecheck
 ```
 
@@ -451,7 +468,19 @@ npm run build
 
 ## 文档 Review 记录
 
-当前候选尚未进行异构文档 review。范围固定为本 Plan 与批准 Spec；review 结果、裁决和版本将在此就地记录，不另建报告。没有产品测试执行证据。
+模式 WORKFLOW_DOCUMENT_REVIEW；scope 仅本 Plan 与 Spec；批准 Spec revision/blob 见 header。
+
+Round 1：Claude Opus / high / plan mode，session `685b696b-de05-4b00-ab2f-e663ac63f4aa`；候选 `9cd21482`，Spec blob `2f39a9bb333b8f995f5cb43cd4d9c399d2bd671a`。未跑测试；HEAD/status/文件指纹 guard 通过。
+
+|Finding|必要性 / 复杂度|裁决|
+|---|---|---|
+|R1-1 清单遗漏 Mock 数据、ranking test、权限入口|required / 不变|接受；补精确文件；同时静态检索补齐 hidden 的 mobileapi/export/cache 消费者|
+|R1-2 旧推荐/Case 资料及代招双侧屏蔽验证无明确归属|required / 不变|接受；Task 1 增加读取矩阵、已有覆盖记录和缺口补测，加入 store discovery/Case PG suite|
+|R1-3 Plan 擅自引入即时保存并丢失失败意图|required / 不变|接受；恢复现有完成→保存流程，保留失败待提交意图；不增加即时保存新文案|
+|R1-4 纸身缺失/空/加载边界不清|optional / 不变|采纳；null/[] 区分，重试在消费者外层|
+|R1-5 状态/分值组合校验不全|optional / 不变|采纳；按批准 Spec §5.1 校验允许状态与分值|
+
+全部修订维持批准 Spec，不修改产品范围。另将 API 示例标为 bff.invalid URL，以避免路径校验器误认文件绝对路径；接口未变。复审检查修订及新引入问题；无产品测试 PASS 声明。
 
 ## 实施记录（执行时追加）
 
