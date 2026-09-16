@@ -450,9 +450,27 @@ L3 未承接项。本轮 L3 selection 为 `none`：无产品/后端/真实 STG �
 
 ## 已知事项
 
-- `J-PILOT-02接线.spec.ts` 四条手填旅程在基线 HEAD 6b8a71fa（旧入口）即失败
-  （期望职位 Backend 双栏 fixture 单 selectable 根与现行产品双栏行为不符），Task 1
-  仅保留证据不修产品、不删断言；详见 Task 1 报告「产品缺陷 / 既有失败证据」。
+- `J-PILOT-02接线.spec.ts` 四条手填旅程的历史失败（曾记录于基线 HEAD 6b8a71fa，
+  旧入口）已于 2026-09-17 定位修复，产品零修改。实际根因：该 spec 自带的
+  job-categories fixture 对任何 query 都应答同一个 selectable 根，而现行
+  期望职位选择正文（B 契约双栏）把二级节点渲染为右栏 heading、只有三级
+  selectable 叶子才是职位按钮 —— 单根 fixture 因此没有可点叶子，
+  `进完善资料` 的 count=2 选择助手必然失败（`getByRole('button', …) 收到 1`）。
+  修复只改测试定义：fixture 按 `parent_id` 应答真三级（根 → 组 → 统一
+  selectable 叶 `job-fixture-001`，口径对齐 `e2e/fixtures/数据源交互.ts` 的
+  装三级职位目录桩），选择动作点真实叶按钮，并断言左根是 button、右组标题是
+  heading 绝不是 button；另按离线边界「缺应答只修测试定义」补声明旅程修好后
+  才触达的 `GET /me/negotiations`（新账号权威空页 `items:[]`/`next_cursor:null`）
+  与 `GET /me/avatar/content`（1×1 PNG）。目录选择真实 ID 等风险断言不减；
+  五条用例 workers=4 / retries=0 两轮全绿。raw 证据（初始 306 passed/5 failed、
+  修复后 310 passed/1 failed 的 JSON 回执与逐命令日志）：
+  `test-results/baseline-stg-matching/`（git-ignored，Playwright 复跑会清空
+  `test-results/`，落盘件以此为准）。
+- `e2e/suites/助手会话.spec.ts` 的「卡片点原生详情并返回 @backend」随 2026-09-16
+  30a0d3b2 合入进入仓库即红（该合并收尾口径 306 passed / 5 failed 之一，与上面
+  四条同批），在 2026-09-17 基线修复前后复跑均为同一失败：`getByText('结论：fit')`
+  在在谈详情页 15s 不可见。属该合并自带、非 J-PILOT-02 四条范围，本 Task 仅归因
+  记录不修，待定夺；证据同上目录。
 - **抽取前基线（4825e759）即红的 6 例**（Task 2 全量冒烟发现、经基线 worktree
   复跑证实，非 Task 2 回归）：`P4 详情直取` / `不感兴趣：PUT` / `P8 职位举报
   （详情直取）` / `J-PILOT-01 场景一` / `场景二`（离线边界报
