@@ -4,7 +4,6 @@
 import { expect, test } from '../fixtures/test';
 import { 装P4候选, 装P4招聘, 左滑候选卡, hash直达 } from '../fixtures/数据源交互';
 import { 信封 } from '../fixtures/bff/协议';
-import { 标记 } from '../fixtures/bff/账号与目录';
 import { P4编号, P4标记, P4补充编号, P4CandidateJob, P4候选卡, P4意向, P4招聘岗位, P4发现fixture } from '../fixtures/bff/发现推荐';
 import { P2新附件, 创建P2附件fixture } from '../fixtures/bff/附件';
 import { 创建P5MatchCasefixture } from '../fixtures/bff/MatchCase';

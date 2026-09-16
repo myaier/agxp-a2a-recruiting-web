@@ -9,7 +9,7 @@ import { fixture简历, fixture意向列表 } from '../fixtures/bff/账号与目
 import { P4深克隆 } from '../fixtures/bff/发现推荐';
 import { P3标记, P3隐私fixture, P3默认组织库 } from '../fixtures/bff/隐私与实名';
 import { 创建P2附件fixture } from '../fixtures/bff/附件';
-import { 创建候选OnboardingFixture, type 候选OnboardingFixture } from '../fixtures/bff/候选建档';
+import { 创建候选OnboardingFixture } from '../fixtures/bff/候选建档';
 import { 安装BFF路由 } from '../fixtures/bff/安装BFF路由';
 
 // ─────────────────────────────────────────────────────────────────────────────

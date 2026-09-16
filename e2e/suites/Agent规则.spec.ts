@@ -5,7 +5,6 @@
 
 import { expect, test } from '../fixtures/test';
 import { 断言意向规则零写入口, hash直达 } from '../fixtures/数据源交互';
-import { 标记 } from '../fixtures/bff/账号与目录';
 import { P6标记, P6编号, P6分支编号, P6规则 } from '../fixtures/bff/Agent规则';
 import { P1C招聘组织Fixture } from '../fixtures/bff/招聘组织';
 import { P3隐私fixture } from '../fixtures/bff/隐私与实名';

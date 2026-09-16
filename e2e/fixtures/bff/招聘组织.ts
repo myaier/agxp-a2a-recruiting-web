@@ -394,7 +394,7 @@ export async function 处理招聘组织域(
   P3域: P3隐私fixture形 | null,
   上下文: 路由上下文形,
 ): Promise<boolean> {
-  const { route, 请求, url, path, method, body, 部件们 } = 上下文;
+  const { route, 请求, path, method, body, 部件们 } = 上下文;
   // 原 jobs 块在组织 fixture 缺席时仍应答空岗位清单（recruiter 主壳首屏权威空态），
   // 其余组织路由按原 if (组织fixture) 包络缺席即不应答 —— 这里保持同一语义
   if (组织fixture === null) {

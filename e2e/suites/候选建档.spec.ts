@@ -6,7 +6,7 @@ import { expect, test } from '../fixtures/test';
 import { 装三级职位目录桩, 抽屉搜企业并选中, 走向导薪资 } from '../fixtures/数据源交互';
 import { 标记 } from '../fixtures/bff/账号与目录';
 import { P3标记, P3隐私fixture, P3默认组织库 } from '../fixtures/bff/隐私与实名';
-import { 创建候选OnboardingFixture, type 候选OnboardingFixture } from '../fixtures/bff/候选建档';
+import { 创建候选OnboardingFixture } from '../fixtures/bff/候选建档';
 import { 安装BFF路由 } from '../fixtures/bff/安装BFF路由';
 
 // ─────────────────────────────────────────────────────────────────────────────

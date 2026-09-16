@@ -8,7 +8,7 @@ import { 信封 } from '../fixtures/bff/协议';
 import { fixture简历, fixture意向列表 } from '../fixtures/bff/账号与目录';
 import { P4深克隆 } from '../fixtures/bff/发现推荐';
 import { P3隐私fixture } from '../fixtures/bff/隐私与实名';
-import { Onboarding标记, 创建候选OnboardingFixture, 断言意向写入, type 候选OnboardingFixture } from '../fixtures/bff/候选建档';
+import { Onboarding标记, 创建候选OnboardingFixture, 断言意向写入 } from '../fixtures/bff/候选建档';
 import { 安装BFF路由 } from '../fixtures/bff/安装BFF路由';
 import { type BFFOwnerIntention } from '../../src/数据/BFF契约';
 

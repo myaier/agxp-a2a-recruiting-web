@@ -5,7 +5,6 @@
 import { expect, test } from '../fixtures/test';
 import { 抽屉搜企业并选中, 走完后端发岗向导, hash直达 } from '../fixtures/数据源交互';
 import { 信封 } from '../fixtures/bff/协议';
-import { 标记 } from '../fixtures/bff/账号与目录';
 import { P1C标记, 创建招聘方OnboardingFixture, P1C企业档案, P1C岗位, P1C招聘组织Fixture, P1C管理员关系, P1C成员关系, P1C组织甲, P1C组织乙, 带企业关系, 一像素PNG, type P1C企业档案形 } from '../fixtures/bff/招聘组织';
 import { P3隐私fixture, P1C搜索池 } from '../fixtures/bff/隐私与实名';
 import { 安装BFF路由 } from '../fixtures/bff/安装BFF路由';

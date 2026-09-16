@@ -4,7 +4,6 @@
 import { expect, test } from '../fixtures/test';
 import { P7带消息fixture, hash直达 } from '../fixtures/数据源交互';
 import { 信封, type 拦截请求形 } from '../fixtures/bff/协议';
-import { 标记 } from '../fixtures/bff/账号与目录';
 import { P4编号, P4标记, P4发现fixture, type P4发现fixture形 } from '../fixtures/bff/发现推荐';
 import { P1C招聘组织Fixture } from '../fixtures/bff/招聘组织';
 import { P3隐私fixture } from '../fixtures/bff/隐私与实名';
