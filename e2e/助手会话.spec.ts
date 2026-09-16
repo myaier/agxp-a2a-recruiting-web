@@ -547,6 +547,8 @@ for (const 宽度 of [320, 390]) {
       await expect(page.getByText('同名在谈项目')).toHaveCount(3);
       await expect(page.getByText('需要你')).toHaveCount(1);
       await expect(page.getByText('15 薪')).toHaveCount(1);
+      // 在谈列表卡 next_cursor='3' 非空：既有「下一批」提示照常上屏（静态提示，非分页入口）
+      await expect(page.getByText(/下一批/)).toBeVisible();
       // 各卡各自查询时间
       await expect(page.getByText('查询于 2026-09-10')).toBeVisible();
       await expect(page.getByText('查询于 2026-09-11')).toBeVisible();
