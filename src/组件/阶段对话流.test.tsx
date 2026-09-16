@@ -47,47 +47,40 @@ describe('阶段对话流 · S0 记录渲染缝（Task 3）', () => {
     expect(screen.getAllByText('代 理 小 结').length).toBe(1);
   });
 
-  it('Backend 形状：string 编号对话 + Agent 总结只进托盘且不计入条数（小结→清单→总结）', () => {
+  it('Backend 形状：string 编号对话 + 小结行们进托盘且不计入条数（小结→小结行们→清单）', () => {
     const 分段: 分段项 = {
       阶段: '匿名初筛',
       态: '当前',
-      小结: '系统正在复评候选信息',
-      核对清单: [{ 项: '匿名初筛已通过', 结果: '通过' }],
+      小结: '匿名初筛已通过',
+      小结行们: ['公开资料匹配检查：公开初评匹配'],
+      核对清单: [{ 项: '招聘类型：匹配', 结果: '通过' }],
       对话: [
         { 编号: 's0:q1', 方: '对方', 时间: '10:01', 内容: '这周需要值几个晚班？' },
         { 编号: 's0:a1', 方: '我方', 时间: '10:05', 内容: '没有固定晚班，只有周末白天偶尔需要支援。' },
-      ],
-      Agent总结: [
-        { 编号: 'sum1', 标签: '初评', 内容: '需要确认岗位的值班安排。' },
-        { 编号: 'sum2', 标签: '第 1 轮复评', 内容: '已确认没有固定晚班，仍需了解其它工作安排。' },
       ],
     };
     render(<阶段对话流 分段们={[分段]} />);
     expect(screen.getByText('这周需要值几个晚班？')).toBeTruthy();
     expect(screen.getByText('没有固定晚班，只有周末白天偶尔需要支援。')).toBeTruthy();
-    // 两条总结以「标签：内容」进托盘，复用小结正文行
-    expect(screen.getByText('初评：需要确认岗位的值班安排。')).toBeTruthy();
-    expect(screen.getByText('第 1 轮复评：已确认没有固定晚班，仍需了解其它工作安排。')).toBeTruthy();
-    // 条数只算对话（2 条），总结与清单不进去
+    // 小结行们借 小结正文 行呈现（决定行在清单之前）
+    expect(screen.getByText('公开资料匹配检查：公开初评匹配')).toBeTruthy();
+    // 条数只算对话（2 条），小结行们与清单不进去
     expect(screen.getByText('2 条')).toBeTruthy();
     expect(screen.queryByText('4 条')).toBeNull();
-    // 托盘内部顺序固定：旧小结 → 旧清单 → Agent 总结
-    const 初评 = screen.getByText('初评：需要确认岗位的值班安排。');
-    const 复评 = screen.getByText('第 1 轮复评：已确认没有固定晚班，仍需了解其它工作安排。');
-    const 头行 = screen.getByText('系统正在复评候选信息');
-    const 清单 = screen.getByText('匿名初筛已通过');
-    expect(头行.compareDocumentPosition(清单) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(清单.compareDocumentPosition(初评) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(初评.compareDocumentPosition(复评) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 托盘内部顺序固定：旧小结 → 小结行们 → 清单
+    const 头行 = screen.getByText('匿名初筛已通过');
+    const 决定行 = screen.getByText('公开资料匹配检查：公开初评匹配');
+    const 清单 = screen.getByText('招聘类型：匹配');
+    expect(头行.compareDocumentPosition(决定行) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(决定行.compareDocumentPosition(清单) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('轮询式更新：同 ID question 保持一份、answer 追加一份，总结不进气泡区', () => {
-    const 总结 = [{ 编号: 'sum1', 标签: '初评', 内容: '值班安排已确认，团队规模待确认。' }];
+  it('轮询式更新：同 ID question 保持一份、answer 追加一份；只有清单没有小结也照样有托盘', () => {
     const 仅问: 分段项 = {
       阶段: '匿名初筛',
       态: '当前',
+      核对清单: [{ 项: '匿名初筛已通过', 结果: '通过' }],
       对话: [{ 编号: 's0:q1', 方: '对方', 时间: '10:01', 内容: '团队规模是多少？' }],
-      Agent总结: 总结,
     };
     const 问后答: 分段项 = {
       ...仅问,
@@ -97,20 +90,38 @@ describe('阶段对话流 · S0 记录渲染缝（Task 3）', () => {
       ],
     };
     const 页 = render(<阶段对话流 分段们={[仅问]} />);
-    // 无旧小结：Agent 总结自己撑开托盘
     const 托盘 = () => screen.getByText('代 理 小 结').parentElement as HTMLElement;
-    expect(within(托盘()).getByText('初评：值班安排已确认，团队规模待确认。')).toBeTruthy();
+    expect(within(托盘()).getByText('匿名初筛已通过')).toBeTruthy();
     expect(screen.getByText('1 条')).toBeTruthy();
 
     页.rerender(<阶段对话流 分段们={[问后答]} />);
     expect(screen.getAllByText('团队规模是多少？').length).toBe(1); // 同 ID question 不重复
     expect(screen.getAllByText('团队一共 6 个人。').length).toBe(1); // answer 只一份
-    expect(screen.getByText('2 条')).toBeTruthy(); // 总结不计入条数
-    // 总结仍只在托盘里，没有混进气泡列
-    const 气泡列 = screen.getByText('团队规模是多少？').closest('div')!.parentElement!
-      .parentElement as HTMLElement;
-    expect(气泡列.textContent).not.toContain('值班安排已确认');
-    expect(within(托盘()).getByText('初评：值班安排已确认，团队规模待确认。')).toBeTruthy();
+    expect(screen.getByText('2 条')).toBeTruthy();
+  });
+
+  it('段首说明：附件之下、往来记录之前的上下文行（步骤/轮次提示），不计入条数', () => {
+    render(
+      <阶段对话流
+        分段们={[
+          {
+            阶段: '递交简历',
+            态: '当前',
+            段首说明: ['正在解析简历', '当前由招聘方发问，已问 1/3 轮'],
+            附件: { 文件名: '简历_样本_v1.pdf' },
+            附件常驻: true,
+            记录: [{ kind: '气泡', 编号: 'q', 方: '对方', 角色: '', 时间: '10:00', 内容: '请说明职责。' }],
+          },
+        ]}
+      />,
+    );
+    const 说明 = screen.getByText('当前由招聘方发问，已问 1/3 轮');
+    const 附件 = screen.getByText('简历_样本_v1.pdf');
+    const 气泡 = screen.getByText('请说明职责。');
+    expect(screen.getByText('正在解析简历')).toBeTruthy();
+    expect(附件.compareDocumentPosition(说明) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(说明.compareDocumentPosition(气泡) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('1 条')).toBeTruthy();
   });
 });
 
@@ -141,38 +152,9 @@ describe('阶段对话流 · 展示标题（详情统一 Task 2）', () => {
   });
 });
 
-describe('阶段对话流 · S0 Agent 问答与系统状态行（J-PILOT-01）', () => {
-  it('Agent对话 带角色标签（己方右/对方左）；系统消息以状态文本落段；对话气泡不带角色标签', () => {
-    render(
-      <阶段对话流
-        分段们={[
-          {
-            阶段: '匿名初筛',
-            态: '当前',
-            Agent对话: [
-              { 编号: 's0:q1', 角色: '候选 Agent', 方: '我方', 时间: '10:01', 内容: '需要确认岗位的值班安排。' },
-              { 编号: 's0:a1', 角色: '招聘 Agent', 方: '对方', 时间: '10:05', 内容: '没有固定晚班。' },
-            ],
-            系统消息: [{ 编号: 'evt:e1', 内容: '系统正在核对投递政策' }],
-            对话: [{ 编号: 'aci:1', 方: '我方', 时间: '01:05', 内容: '工作日联系' }],
-          },
-        ]}
-      />,
-    );
-    // 角色标签在气泡槽内可见（不显示内部 ID/task/operation 字样）
-    expect(screen.getByText('候选 Agent')).toBeTruthy();
-    expect(screen.getByText('招聘 Agent')).toBeTruthy();
-    expect(screen.getByText('需要确认岗位的值班安排。')).toBeTruthy();
-    // 系统事件以系统状态文本显示，不投成对方气泡（无气泡容器包着系统行）
-    const 系统行 = screen.getByText('系统正在核对投递政策');
-    expect(系统行.closest('div')!.className).not.toContain('气泡');
-    // 叮嘱回执不带角色标签（历史叮嘱不伪装 Agent Q/A）
-    expect(screen.getByText('工作日联系').closest('div')!.textContent).not.toContain('候选 Agent');
-  });
-});
-
 // ── S0–S3 连续筛选（continuity_version 2）新增的两个展示槽 ──
 // 待办说明 = 正在等对端的人工待办（零按钮）；确认总结 = S3 固定总结的四节。
+// （旧 Agent对话/系统消息 展示槽已被 记录 有序联合取代并移除 —— S0–S3 展示统一 Task 4）
 
 describe('阶段对话流 · 连续筛选展示槽', () => {
   it('对端待办只显示在等谁与服务端绝对截止时刻，段内不出现任何按钮', () => {

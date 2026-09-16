@@ -37,8 +37,8 @@ import { 取后端错误文案 } from '../../数据/HTTP客户端';
 import {
   从P5到详情分段,
   从P5到详情顶栏,
-  从P5到详情状态,
   从P5到职位资料,
+  P5阶段共用名,
 } from '../../数据/详情展示映射';
 import {
   从连续到详情分段,
@@ -89,10 +89,12 @@ export interface 后端正常资源 {
   kind: '正常';
   /** canonical record_id（candidate 聚合返回）；recruiter 恒 null（Case ID 不归一替换）。 */
   canonical记录ID: string | null;
-  /** 公开信息初评托盘（candidate 聚合 agent_summary.public_evaluation；来源与 S0 独立）。 */
-  公开初评: 公开初评托盘视图 | null;
   顶栏: 顶栏信息;
-  状态: 状态区信息;
+  /**
+   * 承载动作卡的当前段（共用阶段折叠键）：S0–S3 展示统一 Task 4 起动作卡/移交都装进
+   * 段尾（顶部不再有独立状态条/终局卡），由 后端正常详情 按段名装配。
+   */
+  动作段: ReturnType<typeof P5阶段共用名>;
   分段们: 分段项[];
   职位资料: 职位资料信息;
   /** Task 6：招聘角色把 Case 冻结 candidate_resume 映射成共享正文资料；候选角色恒 null
@@ -100,6 +102,7 @@ export interface 后端正常资源 {
    *  S1 披露状态影响。 */
   在线简历资料: 在线简历展示资料 | null;
   底栏: 详情底栏信息;
+  /** completed 两步移交（S0–S3 展示统一 Task 4 起只装 S3 段尾；摘要不在此渲染）。 */
   终局: 终局区信息;
   刷新错误: string | null;
   重试: () => void;
@@ -115,12 +118,15 @@ export interface 后端连续资源 {
   canonical记录ID: string;
   顶栏: 顶栏信息;
   状态: 状态区信息;
-  /** 公开信息初评托盘（与 Case 分支同槽；retention 只显示公开残留状态）。 */
+  /**
+   * 公开信息初评托盘：S0–S3 展示统一 Task 4 起 pre-Case 的决定/证据装进 S0 信息区
+   * （分段内），只有 retention（不擅自造阶段）仍用页顶托盘显示公开残留状态。
+   */
   公开初评: 公开初评托盘视图 | null;
-  /** 四阶段均未到达的展示分段（不提交为业务 state，Spec §6）。 */
+  /** 四阶段均未到达的展示分段（pre-Case 的 S0 可展开显示初评过程，Spec §5.2）。 */
   分段们: 分段项[];
   职位资料: 职位资料信息;
-  /** 失败初评的恢复动作卡（重试/归档仅权威允许时在场；Spec §8）。 */
+  /** 失败初评的恢复动作卡（重试/归档仅权威允许时在场；Spec §8；装 S0 段尾）。 */
   失败动作卡: 详情动作卡信息 | null;
   /** 归档二次确认（现有确认层；「移入历史，不是取消」）。 */
   归档确认: 确认属性 | null;
@@ -308,8 +314,10 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
         canonical记录ID: 聚合.record_id,
         顶栏: 从连续到详情顶栏(聚合),
         状态: 从连续到详情状态(聚合),
-        公开初评: 映射公开初评(聚合),
-        分段们: 从连续到详情分段(),
+        // pre-Case 的公开初评装进 S0 信息区（从连续到详情分段）；只有 retention
+        // （case_started 且无 case_detail，不擅自造阶段）保留页顶托盘显示残留状态
+        公开初评: 聚合.phase === 'case_started' ? 映射公开初评(聚合) : null,
+        分段们: 从连续到详情分段(聚合),
         职位资料: 从连续到职位资料(聚合),
         失败动作卡: 失败动作 === null ? null : {
           键: 失败动作.卡.键,
@@ -363,11 +371,12 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
     return { kind: '不可用', 状态: '加载', 说明: 读入中文案, 重试: null };
   }
 
-  // 终局摘要与移交（completed 两步）：wire 原词原样，导航坐标只来自权威
-  // conversation_ref —— 不生成、不缓存、不推断。
+  // completed 两步移交：S0–S3 展示统一 Task 4 起只装 S3 段尾（终局摘要卡退场，结束
+  // 原因/时间由 分段 的终局段承载）—— 导航坐标只来自权威 conversation_ref，不生成、
+  // 不缓存、不推断。
   const 移交 = 正常.handoff;
   const 终局: 终局区信息 = {
-    摘要: 正常.终局摘要 !== null ? { ...正常.终局摘要 } : null,
+    摘要: null,
     移交: 移交 === null ? null : {
       说明: 移交.copy,
       开始私聊: 移交.state === 'ready'
@@ -392,13 +401,18 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
       ? { kind: '只读', 说明: 终局只读说明 }
       : { kind: '输入', 占位: 叮嘱占位, 值: 叮嘱草稿, 改变: 设叮嘱草稿, 发送: 发叮嘱, 禁用说明: null };
 
+  // S0–S3 展示统一 Task 4：顶部状态条/公开初评托盘/终局卡退场 —— 状态胶囊与小结归各
+  // 阶段段（从P5到详情分段），初评决定/证据作为 S0 的「公开资料匹配检查」行（候选聚合
+  // 独有；招聘端恒 null），移交装 S3 段尾（后端正常详情 装配）。
+  const 初评 = role === 'candidate' && 聚合 !== null ? 映射公开初评(聚合) : null;
+
   return {
     kind: '正常',
     canonical记录ID: role === 'candidate' ? 聚合?.record_id ?? null : null,
-    公开初评: role === 'candidate' && 聚合 !== null ? 映射公开初评(聚合) : null,
     顶栏: 从P5到详情顶栏(正常),
-    状态: 从P5到详情状态(正常),
-    分段们: 从P5到详情分段(正常, 原文.state.stage),
+    // 动作卡挂当前段（raw stage，不从展示文案反推）；无动作时装配端按空卡表跳过
+    动作段: P5阶段共用名(原文.state.stage),
+    分段们: 从P5到详情分段(正常, 原文, 初评),
     职位资料: 从P5到职位资料(正常),
     // 招聘角色吃 Case 冻结 candidate_resume（缺源档给 null）；候选不构造，正文走 职位资料
     在线简历资料: 原文.role === 'recruiter' ? 从BFF到在线简历展示(原文.candidateResume) : null,

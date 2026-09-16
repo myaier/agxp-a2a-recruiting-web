@@ -12,9 +12,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { 终局区 } from './终局区';
 import type { 终局区信息 } from './类型';
 
+// S0–S3 展示统一 Task 4：正常页顶部终局卡退场 —— 本组件在正常页只复用移交行
+// （摘要传 null）；摘要分支保留为组件能力，样本词随之走 Task 1 中文字典（wire 原词
+// 不再出现在展示数据里）。
 const 摘要: 终局区信息['摘要'] = {
-  结束语: 'user_ended',
-  原因: 'user_ended',
+  结束语: '已结束',
+  原因: '本次代谈已结束',
   定格于: '2026-08-29 11:00',
 };
 
@@ -22,7 +25,8 @@ describe('终局区 · 终局摘要', () => {
   it('结束语/原因/定格于 原样在场，标题「终局」', () => {
     render(<终局区 信息={{ 摘要, 移交: null }} />);
     expect(screen.getByText('终局')).toBeTruthy();
-    expect(screen.getAllByText('user_ended').length).toBe(2); // 结束语 + 原因码（wire 原词）
+    expect(screen.getByText('已结束')).toBeTruthy(); // 结束语（A.2.1 字典词）
+    expect(screen.getByText('本次代谈已结束')).toBeTruthy(); // 原因（中文字典句）
     expect(screen.getByText('2026-08-29 11:00')).toBeTruthy(); // 定格于（已本地化，非 RFC3339）
   });
 

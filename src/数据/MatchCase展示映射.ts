@@ -624,11 +624,13 @@ const 重新考虑不可用文案表 = {
 } as const;
 
 /**
- * 七天窗口的展示投影。它只描述服务端给的窗口，不判定资格 —— 是否出卡由
- * available_actions ∩ 行白名单决定，而那一行的集合与后端 ReconsiderableEnding
- * （matchcase/continuity_deadlines.go）必须同进同退（见 矩阵元组表 的同名注释）。
+ * 七天窗口的展示投影（S0–S3 展示统一 Task 4 加 viewer 口径）：候选端没有该按钮，
+ * 中性说明点名动作归属（招聘方），不把窗口读成候选人可做的事。它只描述服务端给的
+ * 窗口，不判定资格 —— 是否出卡由 available_actions ∩ 行白名单决定，而那一行的集合
+ * 与后端 ReconsiderableEnding（matchcase/continuity_deadlines.go）必须同进同退
+ * （见 矩阵元组表 的同名注释）。
  */
-function 映射重新考虑(块: P5重新考虑 | null): P5重新考虑视图 | null {
+function 映射重新考虑(块: P5重新考虑 | null, viewer: P5角色): P5重新考虑视图 | null {
   if (块 === null) return null;
   const 截止于 = 格式化终局时间(块.deadline);
   const 原因 = 块.unavailableReason;
@@ -637,7 +639,9 @@ function 映射重新考虑(块: P5重新考虑 | null): P5重新考虑视图 | 
     deadline: 块.deadline,
     截止于,
     说明: 块.eligible
-      ? `可在 ${截止于} 前重新考虑这一单`
+      ? viewer === 'candidate'
+        ? `招聘方可在 ${截止于} 前重新考虑这一单`
+        : `可在 ${截止于} 前重新考虑这一单`
       : 原因 !== null && 已有键(重新考虑不可用文案表, 原因)
         ? 重新考虑不可用文案表[原因]
         : '这一单目前不能恢复',
@@ -755,13 +759,18 @@ function 映射阶段摘要(summary: string, state: P5阶段区['state']): strin
   return 已有键(步骤说明表, summary) ? 步骤说明表[summary] : '阶段信息待更新';
 }
 
-/** checklist label 的纯展示 allowlist：未知 label 整项省略（避免多条不可区分的伪清单）。 */
-function 映射清单(checklist: P5阶段区['checklist']) {
-  return checklist.flatMap((项) =>
-    已有键(清单文案表, 项.label)
-      ? [{ 文本: 清单文案表[项.label], 完成: 项.done }]
-      : [],
-  );
+/**
+ * checklist label 的纯展示 allowlist：未知 label 整项省略（避免多条不可区分的伪清单）。
+ * 唯一语境差异（Spec §A.7）：终局段 + semantic_not_fit + resume_screened 未完成 →
+ * 「简历初筛未通过」（由 ended+semantic_not_fit 与 checklist 联合决定，不把所有 false
+ * 通用翻译为未通过）；其余照旧。是否终局未通过由调用方按权威 state 判定传入。
+ */
+function 映射清单(checklist: P5阶段区['checklist'], 初筛未通过: boolean) {
+  return checklist.flatMap((项) => {
+    if (!已有键(清单文案表, 项.label)) return [];
+    const 初筛行 = 项.label === 'resume_screened' && !项.done && 初筛未通过;
+    return [{ 文本: 初筛行 ? '简历初筛未通过' : 清单文案表[项.label], 完成: 项.done }];
+  });
 }
 
 /** S0 单条问答的投影：question／answered answer 取原 text，未回答查文案表，不编造正文。 */
@@ -796,15 +805,14 @@ function 映射S0总结(总结: P5S0筛选总结): P5S0总结视图 {
 }
 
 /**
- * 阶段区状态文案：默认走 阶段区状态文案表；唯一例外是 S0 终局 —— Case 在 S0 ended 且
- * top-level outcome 是两个适配性否定词之一时显示 不匹配，user_ended／party_account_deleted
- * 等其它终局保持中性 已结束。只读权威 outcome，不读阶段区 summary，也不是通用 outcome 翻译器。
+ * 阶段区状态文案：默认走 阶段区状态文案表；唯一例外是终局段 —— Case 结束所在段（区
+ * state=ended）按 Spec 附录 A.2.1 的 outcome 七闭表给阶段胶囊（不匹配/未通过/信息不足/
+ * 筛选未完成/逾期结束/已结束），未知词安全兜底 已结束。只读权威 outcome，不读阶段区
+ * summary，也不是通用 outcome 翻译器；结束原因一句归段内小结（详情展示映射）。
  */
 function 映射阶段区状态(区: P5阶段区, state: P5状态视图): string {
-  if (区.stage === 'anonymous_screening' && 区.state === 'ended'
-    && state.lifecycle === 'ended' && state.stage === 'anonymous_screening'
-    && (state.outcome === 'policy_rejected' || state.outcome === 'semantic_not_fit')) {
-    return '不匹配';
+  if (区.state === 'ended' && state.lifecycle === 'ended') {
+    return 代谈终局文案(state.outcome, null).状态文;
   }
   return 阶段区状态文案表[区.state];
 }
@@ -834,7 +842,8 @@ function 映射阶段区(
     状态文案: 映射阶段区状态(区, state),
     发生于: 区.occurredAt,
     摘要: 映射阶段摘要(区.summary, 区.state),
-    清单: 映射清单(区.checklist),
+    // 终局段 + semantic_not_fit：简历初筛行给「简历初筛未通过」（Spec §A.7 联合判定）
+    清单: 映射清单(区.checklist, 区.state === 'ended' && state.outcome === 'semantic_not_fit'),
     时间线: 区.transcript,
     叮嘱: 区.instructionReceipts,
     附件: 区.attachment,
@@ -994,7 +1003,7 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
       ? detail.pendingActions.map((待办) => 映射待办(待办, detail.role))
       : [],
     对话进度: 映射对话进度(detail.dialogueProgress),
-    重新考虑: 映射重新考虑(detail.reconsideration),
+    重新考虑: 映射重新考虑(detail.reconsideration, detail.role),
     确认总结: 映射确认总结(detail.confirmationSummary),
   };
 }

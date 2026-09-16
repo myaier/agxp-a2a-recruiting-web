@@ -17,7 +17,7 @@ import { useMemo, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 后端详情渲染, 后端正常详情 } from './后端正常详情';
 import type { 后端正常资源, 后端连续资源 } from './use后端详情控制';
-import { 从P5到详情分段, 从P5到详情顶栏, 从P5到详情状态, 从P5到职位资料 } from '../../数据/详情展示映射';
+import { 从P5到详情分段, 从P5到详情顶栏, 从P5到职位资料, P5阶段共用名 } from '../../数据/详情展示映射';
 import {
   从连续到详情分段,
   从连续到详情顶栏,
@@ -32,6 +32,7 @@ import { 从BFF到在线简历展示 } from '../../数据/在线简历展示映�
 import type { P5详情正常视图 } from '../../数据/MatchCase展示映射';
 import type { P5列表项, P5详情, P5阶段区, P5简历附件 } from '../../数据/招聘数据源/MatchCase';
 import type { NegotiationDetail } from '../../数据/招聘数据源/连续代谈';
+import type { 公开初评托盘视图 } from '../../数据/连续代谈展示映射';
 import {
   BFF安全职位资料样本,
   BFF候选在线简历样本,
@@ -105,13 +106,20 @@ function S0阶段区组(): P5阶段区[] {
     {
       stage: 'anonymous_screening', state: 'active', occurredAt: '2026-08-29T01:10:00Z',
       summary: 'candidate_reevaluation', checklist: [],
-      transcript: [{
-        eventId: 'evt_q1', stage: 'anonymous_screening', kind: 'supplementary_question',
-        role: 'candidate', ref: 'prompt_1', text: '每周可以到岗几天？',
-        occurredAt: '2026-08-29T01:10:00Z',
-      }],
-      instructionReceipts: [], attachment: null,
-      screeningRecords: { messages: [], summaries: [] },
+      // 问答以 screening records 为权威来源（S0–S3 展示统一 Task 4）；transcript 只留流程事件
+      transcript: [
+        { eventId: 'evt_c1', stage: 'anonymous_screening', kind: 'case_created', role: '', occurredAt: '2026-08-29T01:00:00Z' },
+      ],
+      instructionReceipts: [],
+      attachment: null,
+      screeningRecords: {
+        messages: [{
+          id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening',
+          askingRole: 'candidate', round: 1, text: '每周可以到岗几天？',
+          exchangeRef: null, occurredAt: '2026-08-29T01:10:00Z',
+        }],
+        summaries: [],
+      },
     },
     待段('resume_submission'), 待段('needs_coordination'), 待段('intent_confirmation'),
   ];
@@ -253,15 +261,16 @@ function 取视图(详情: P5详情): P5详情正常视图 {
   return 视图;
 }
 
-/** 底栏走父控制同款接线（S0 禁用分支同 映射S0底栏说明；草稿在父、发送直发桩）。 */
+/** 底栏走父控制同款接线（S0 禁用分支同 映射S0底栏说明；草稿在父、发送直发桩）；
+ *  公开初评（候选聚合独有）经 从P5到详情分段 装进 S0 段，不再有页顶托盘。 */
 function 宿主({
   详情,
   caseId,
-  公开初评 = null,
+  初评 = null,
 }: {
   详情: P5详情;
   caseId: string;
-  公开初评?: 后端正常资源['公开初评'];
+  初评?: 公开初评托盘视图 | null;
 }) {
   const [草稿, 设草稿] = useState('');
   const 资源 = useMemo<后端正常资源>(() => {
@@ -286,16 +295,15 @@ function 宿主({
     return {
       kind: '正常',
       canonical记录ID: null,
-      公开初评,
       顶栏: 从P5到详情顶栏(视图),
-      状态: 从P5到详情状态(视图),
-      分段们: 从P5到详情分段(视图, 详情.state.stage),
+      动作段: P5阶段共用名(详情.state.stage),
+      分段们: 从P5到详情分段(视图, 详情, 初评),
       职位资料: 从P5到职位资料(视图),
       // Task 6：招聘角色映射 candidate_resume（候选恒 null），与父控制 hook 同口径
       在线简历资料: 详情.role === 'recruiter' ? 从BFF到在线简历展示(详情.candidateResume) : null,
       底栏,
       终局: {
-        摘要: 视图.终局摘要 !== null ? { ...视图.终局摘要 } : null,
+        摘要: null,
         移交: 移交 !== null
           ? {
               说明: 移交.copy,
@@ -317,7 +325,7 @@ function 宿主({
       动作输入: { role: 详情.role, caseId, 视图, 详情, 操作: mock操作 },
       PDF输入: { role: 详情.role, caseId, 读取: mock读取简历PDF },
     };
-  }, [详情, caseId, 草稿, 公开初评]);
+  }, [详情, caseId, 草稿, 初评]);
   return <后端正常详情 资源={资源} />;
 }
 
@@ -404,9 +412,11 @@ describe('后端正常详情 · 同一 Case 刷新可空字段有值→null', ()
     expect(mock读取简历PDF).not.toHaveBeenCalled(); // 旧执行回调不再可达
   });
 
-  it('ready 移交退回 pending：私聊键禁用，旧 conversation_ref 的导航不可达', async () => {
+  it('ready 移交退回 pending：私聊键禁用，旧 conversation_ref 的导航不可达（装 S3 段尾）', async () => {
     const user = userEvent.setup();
     const 页 = render(<宿主 详情={移交详情DTO('ready')} caseId="mc_direct" />);
+    // 移交装在意向确认段尾（顶部终局卡退场）：completed 的 S3 默认折叠，手动展开到达
+    await user.click(screen.getByRole('button', { name: /意向确认/ }));
     await user.click(screen.getByRole('button', { name: '开始私聊' }));
     expect(mock跳转).toHaveBeenCalledTimes(1);
     expect(mock跳转).toHaveBeenCalledWith(路径.真人会话路径('3003'));
@@ -491,15 +501,20 @@ describe('后端正常详情 · 写中禁用解释（review-r1 F6）', () => {
   });
 });
 
-describe('后端正常详情 · 终局（J-PILOT-01 S0 分行）', () => {
-  it('S0 其它终局：底栏原控件禁用（占位「本次代谈已结束」）、终局摘要卡在场、零动作控件', () => {
+describe('后端正常详情 · 终局（S0–S3 展示统一 Task 4：结束信息只入终局段）', () => {
+  it('S0 其它终局：底栏原控件禁用（占位「本次代谈已结束」）、无顶部终局卡、终局段给胶囊+原因+时间', () => {
     render(<宿主 详情={已终止详情DTO()} caseId="mc_direct" />);
     const 框 = screen.getByPlaceholderText('本次代谈已结束') as HTMLTextAreaElement;
     expect(框.disabled).toBe(true);
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByText('当前在谈已结束，仅可查看')).toBeNull(); // S0 用终局分行占位，不是通用只读条
-    expect(screen.getByText('终局')).toBeTruthy(); // 终局摘要卡（终局区）
-    expect(screen.getAllByText('user_ended').length).toBeGreaterThan(0);
+    // 顶部终局卡退场：无「终局」标题，wire 原词一律不上屏（中文字典口径）
+    expect(screen.queryByText('终局')).toBeNull();
+    expect(document.body.textContent).not.toContain('user_ended');
+    // 结束所在段（S0，默认展开）承载状态胶囊、原因句与本地结束时间
+    expect(screen.getByText('已结束')).toBeTruthy();
+    expect(screen.getByText('本次代谈已结束')).toBeTruthy();
+    expect(screen.getByText(/^结束时间：\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: '结束初筛' })).toBeNull(); // 零动作控件
   });
 });
@@ -630,35 +645,39 @@ function 连续详情DTO(选项: {
   };
 }
 
-describe('后端正常详情 · 公开信息初评托盘（J-PILOT-01 Task 5）', () => {
-  it('来源标签「公开信息初评」在场：结论/内容/证据以源数据呈现，与 S0 总结独立', async () => {
+describe('后端正常详情 · 公开资料匹配检查（S0–S3 展示统一 Task 4：装进 S0 段）', () => {
+  it('决定与中文核对项落 S0 段小结区，恰一次；英文 summary 与 wire 码不再上屏', () => {
     const 聚合 = 连续详情DTO({ phase: 'case_started' });
     render(
-      <宿主 详情={候选S0详情DTO()} caseId="mc_direct" 公开初评={映射公开初评(聚合)} />,
+      <宿主 详情={候选S0详情DTO()} caseId="mc_direct" 初评={映射公开初评(聚合)} />,
     );
-    expect(screen.getByText('公开信息初评')).toBeTruthy(); // 现有托盘的来源标签
-    expect(screen.getByText('结论：fit')).toBeTruthy(); // wire 原词，不生成前端裁决
-    expect(screen.getByText('公开信息看，经验方向与岗位大体相符。')).toBeTruthy();
-    expect(screen.getByText('匹配｜city｜city_match｜structured_precheck')).toBeTruthy();
-    expect(screen.getAllByText('匹配｜city｜city_match｜structured_precheck')).toHaveLength(1);
+    expect(screen.getByText('公开资料匹配检查：公开初评匹配')).toBeTruthy();
+    expect(screen.getAllByText('公开资料匹配检查：公开初评匹配')).toHaveLength(1);
+    expect(screen.getByText('其他条件：匹配')).toBeTruthy(); // 未知维度不透出原词
+    // 英文原文与 wire 码不出现在任何展示面
+    expect(document.body.textContent).not.toContain('公开信息看，经验方向与岗位大体相符。');
+    expect(document.body.textContent).not.toContain('city_match');
+    expect(document.body.textContent).not.toContain('structured_precheck');
+    // 页顶托盘已退场
+    expect(screen.queryByText('公开信息初评')).toBeNull();
   });
 
-  it('公开初评缺席：零托盘标签（不造空总结）', () => {
+  it('公开初评缺席：无匹配检查行（不造空结论）', () => {
     render(<宿主 详情={候选S0详情DTO()} caseId="mc_direct" />);
-    expect(screen.queryByText('公开信息初评')).toBeNull();
+    expect(screen.queryByText(/公开资料匹配检查/)).toBeNull();
   });
 });
 
 describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5）', () => {
-  /** 与控制层连续分支同形的资源（真实 mapper + 恒空动作卡）。 */
+  /** 与控制层连续分支同形的资源（真实 mapper + 恒空动作卡；初评托盘只归 retention）。 */
   function 连续资源(聚合: NegotiationDetail): 后端连续资源 {
     return {
       kind: '连续',
       canonical记录ID: 聚合.record_id,
       顶栏: 从连续到详情顶栏(聚合),
       状态: 从连续到详情状态(聚合),
-      公开初评: 映射公开初评(聚合),
-      分段们: 从连续到详情分段(),
+      公开初评: 聚合.phase === 'case_started' ? 映射公开初评(聚合) : null,
+      分段们: 从连续到详情分段(聚合),
       职位资料: 从连续到职位资料(聚合),
       失败动作卡: null,
       归档确认: null,
@@ -675,10 +694,11 @@ describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5�
     expect(screen.getByRole('button', { name: '职位详情' })).toBeTruthy();
     expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // 状态区（Spec §6）
     expect(screen.getByText('轮次 —')).toBeTruthy(); // 无轮次不造 0/3
+    // pre-Case 的公开初评装 S0 信息区（灰条不可展开时无托盘，Task 4 起 retention 才有页顶托盘）
+    expect(screen.queryByText('公开信息初评')).toBeNull();
     // 底栏：原控件保留但真实禁用，文案在 placeholder 原样可见（不是只读 div）
     expect((screen.getByPlaceholderText('AI 代理正在进行公开信息初评') as HTMLTextAreaElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText('公开信息初评')).toBeTruthy(); // 公开初评托盘同槽
     // 四阶段灰条在场（未到达不可展开）
     ['匿名初筛', '递交简历', '需要协调', '意向确认'].forEach((名) => {
       expect(screen.getAllByText(名).length).toBeGreaterThan(0);
@@ -724,10 +744,9 @@ function 构造正常资源(视图: P5详情正常视图, caseId: string): 后�
   return {
     kind: '正常',
     canonical记录ID: null,
-    公开初评: null,
     顶栏: 从P5到详情顶栏(视图),
-    状态: 从P5到详情状态(视图),
-    分段们: 从P5到详情分段(视图, 详情.state.stage),
+    动作段: P5阶段共用名(详情.state.stage),
+    分段们: 从P5到详情分段(视图, 详情, null),
     职位资料: 从P5到职位资料(视图),
     在线简历资料: null,
     底栏: { kind: '输入', 占位: '有想法就告诉你的AI代理', 值: '', 改变: () => undefined, 发送: null, 禁用说明: null },

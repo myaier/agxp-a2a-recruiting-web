@@ -1,7 +1,9 @@
 // 详情展示映射：两条在谈详情路由共用的纯数据投影。无 I/O、无 React、不读 fixture/Context，
 // 缺失一律 null（占位文案归展示层），绝不传 0/NaN 充当缺失。现有 MatchCase展示映射.ts
 // 的协议语义不动；Mock 的顶栏由连接层用已有状态构造，不在 mapper 内读全局数据。
-// 顶栏投影在 Task 1 落地，Task 2 补状态区与阶段分段，Task 3 补资料区投影（契约 B）。
+// 顶栏投影在 Task 1 落地，Task 2 补阶段分段，Task 3 补资料区投影（契约 B）；
+// S0–S3 展示统一 Task 4 把状态/初评证据/时序记录/结束原因归位到各阶段段（顶部不再有
+// 状态条、公开初评托盘与终局卡）。
 
 import type {
   P5待办用途,
@@ -10,11 +12,13 @@ import type {
   P5详情正常视图,
   P5角色,
 } from './MatchCase展示映射';
+import type { P5详情 } from './招聘数据源/MatchCase';
 import type { BFF安全职位资料 } from './BFF契约';
+import type { 公开初评托盘视图 } from './连续代谈展示映射';
 import { 公司规模文案, 融资阶段文案, 福利文案 } from './组织映射';
-import type { 状态区信息, 顶栏信息, 职位资料信息 } from '../组件/在谈详情/类型';
-import type { 分段项 } from '../组件/阶段对话流';
-import type { 对话条, 阶段 } from './类型';
+import type { 顶栏信息, 职位资料信息 } from '../组件/在谈详情/类型';
+import type { 分段项, 段内记录 } from '../组件/阶段对话流';
+import type { 阶段 } from './类型';
 
 /** trim 后无有效字符按缺失处理（同 列表卡片映射 的缺失规则） */
 function 非空文本(值: string | null | undefined): string | null {
@@ -194,7 +198,7 @@ export function 从P5到职位资料(view: P5详情正常视图): 职位资料�
   });
 }
 
-// ── 状态区与阶段分段（详情统一 Task 2 契约 B）────────────────────────────────
+// ── 阶段分段（详情统一 Task 2 契约 B；S0–S3 展示统一 Task 4 按阶段重排）──────────
 
 /** P5阶段 → 共用四阶段中文名：分段的颜色/排序/折叠键闭集（与 数据/类型 的 阶段顺序 同表）。 */
 const 阶段名表: Record<P5阶段, 阶段> = {
@@ -204,51 +208,110 @@ const 阶段名表: Record<P5阶段, 阶段> = {
   intent_confirmation: '意向确认',
 };
 
-/**
- * P5 详情正常视图 → 「代谈进度」的状态区信息。
- *
- * 徽标只由权威布尔投影：待办优先「需要你」，attention 行退「需注意」（owner-safe 说明
- * 原样带出），其余「代理处理中」；终局是只读语义，徽标退场而不是「处理中」。
- * 闭词状态文案、步骤说明与轮次原样保留（轮次 0 是合法值），Mock 等没有轮次字段的来源
- * 由调用方给 null（展示层显示缺失），mapper 绝不补 0。
- */
-export function 从P5到详情状态(view: P5详情正常视图): 状态区信息 {
-  return {
-    阶段: view.阶段标题,
-    状态: view.状态文案,
-    步骤: view.步骤说明,
-    轮次: { 当前: view.轮次.当前, 预算: view.轮次.预算 },
-    徽标: view.终局 ? null : view.待办 ? '需要你' : view.注意说明 !== null ? '需注意' : '代理处理中',
-    注意说明: view.注意说明,
-  };
+/** 分段折叠键的共用名（S0–S3 展示统一 Task 4）：控制层据此把动作卡/移交挂到当前段。 */
+export function P5阶段共用名(stage: P5阶段): 阶段 {
+  return 阶段名表[stage];
 }
 
 /**
- * S0 Agent 问答 → 带角色标签的展示气泡（J-PILOT-01，Spec §7 D08）：角色标签按 wire
- * role 投影成「候选 Agent／招聘 Agent」（不显示内部 ID/task/operation 字样），左右按
- * viewer（己方 Agent 在右、对方在左）；正文按 answer_status 已由映射层投影（拒答/未知/
- * 无法回答沿用固定文案）。顺序权威在服务端（真实 round 与 question→answer），不混排。
- * key 用带前缀的稳定业务 ID，轮询整包替换时 React 不会误配对。
- */
-function 段内Agent对话(区: P5阶段区块视图, role: P5角色): 分段项['Agent对话'] {
-  if (区.Agent消息.length === 0) return undefined;
-  return 区.Agent消息.map((条) => ({
-    编号: `rec:${条.id}`,
-    角色: `${记录角色标签(条)} · 第 ${条.round} 轮`,
-    方: 条.role === role ? ('我方' as const) : ('对方' as const),
-    时间: 取本地时分(条.occurredAt),
-    内容: 条.内容,
-  }));
-}
-
-/**
- * 记录的角色标签：answer_source='human' 是那一方本人写的公开回答（双方可见），必须与
- * Agent 的问答区分开；其余（含历史未标来源的记录）按 wire role 投影成「候选 Agent／
- * 招聘 Agent」。不显示内部 ID/task/operation 字样。
+ * S0 Agent 问答气泡的角色标签：answer_source='human' 是那一方本人写的公开回答（双方可见），
+ * 必须与 Agent 的问答区分开；其余（含历史未标来源的记录）按 wire role 投影成
+ * 「候选 Agent／招聘 Agent」。不显示内部 ID/task/operation 字样。
  */
 function 记录角色标签(条: P5阶段区块视图['Agent消息'][number]): string {
   const 侧 = 条.role === 'candidate' ? '候选' : '招聘';
   return 条.answerSource === 'human' ? `${侧}方本人` : `${侧} Agent`;
+}
+
+/** transcript 事件 kind 的开放 string：只认确有用户价值的流程闭词（Spec §A.5），其余
+ *  （推进/结束/与正式问答重复的旧事件）不落段 —— 结束由阶段胶囊+结束时间表达，问答应
+ *  以 screening records 为准，不造第二份。 */
+const 时间线注释文案表 = {
+  case_created: '开始代谈',
+  decision_continue: '双方选择继续这一单',
+  resume_submitted: '已递交简历',
+} as const;
+
+function 时间线注释文案(kind: string): string | null {
+  return 已有键(时间线注释文案表, kind) ? 时间线注释文案表[kind] : null;
+}
+
+/** RFC3339 → epoch 毫秒（排序专用展示事实）；缺失/非法给 null，绝不造当前时刻。 */
+function 时刻毫秒(原文: string): number | null {
+  const 时刻 = Date.parse(原文);
+  return Number.isNaN(时刻) ? null : 时刻;
+}
+
+/**
+ * 一个阶段段的 段内记录 有序联合（S0–S3 展示统一 Task 4，Spec §A.5）：
+ *   · 来源遍历序：候选私有总结（灰注释）→ 正式问答（气泡）→ 有效 transcript 事件
+ *     （中文注释）→ 正式叮嘱回执（气泡）；
+ *   · 展示顺序 = occurred_at 的 epoch 毫秒升序；同毫秒保留上面的稳定源序；缺失/非法
+ *     时间不造当前时刻，保持遍历序排在有效时间之后；
+ *   · 同一来源只按稳定 ID 去重（轮询整包替换不产生双份），不按文本删掉不同事件；
+ *   · 时间统一浏览器本地时分（不把 UTC 切片与本地时间混用）；气泡左右按 viewer，
+ *     回执仍以本人/代理身份落回时序，绝不投成对端发言。
+ */
+function 段内时序记录(区: P5阶段区块视图, role: P5角色): 段内记录[] {
+  type 带序行 = { 条: 段内记录; 毫秒: number | null; 源序: number; 输入序: number };
+  const 行们: 带序行[] = [];
+  const 已见 = new Set<string>();
+  区.Agent总结.forEach((总, 序) => {
+    if (已见.has(总.id)) return;
+    已见.add(总.id);
+    行们.push({
+      条: { kind: '注释', 编号: `sum:${总.id}`, 标签: 总.标签, 时间: 取本地时分(总.occurredAt), 内容: 总.内容 },
+      毫秒: 时刻毫秒(总.occurredAt), 源序: 0, 输入序: 序,
+    });
+  });
+  区.Agent消息.forEach((条, 序) => {
+    if (已见.has(条.id)) return;
+    已见.add(条.id);
+    行们.push({
+      条: {
+        kind: '气泡',
+        编号: `rec:${条.id}`,
+        方: 条.role === role ? ('我方' as const) : ('对方' as const),
+        角色: `${记录角色标签(条)} · 第 ${条.round} 轮`,
+        时间: 取本地时分(条.occurredAt),
+        内容: 条.内容,
+      },
+      毫秒: 时刻毫秒(条.occurredAt), 源序: 1, 输入序: 序,
+    });
+  });
+  区.时间线.forEach((项, 序) => {
+    const 内容 = 时间线注释文案(项.kind);
+    if (内容 === null || 已见.has(项.eventId)) return;
+    已见.add(项.eventId);
+    行们.push({
+      条: { kind: '注释', 编号: `evt:${项.eventId}`, 标签: null, 时间: 取本地时分(项.occurredAt), 内容 },
+      毫秒: 时刻毫秒(项.occurredAt), 源序: 2, 输入序: 序,
+    });
+  });
+  区.叮嘱.forEach((条, 序) => {
+    const 内容 = 条.expression?.trim() ?? '';
+    if (内容 === '' || 已见.has(条.instructionId)) return;
+    已见.add(条.instructionId);
+    行们.push({
+      条: {
+        kind: '气泡',
+        编号: `aci:${条.instructionId}`,
+        方: 条.owner === role ? ('我方' as const) : ('对方' as const),
+        角色: '',
+        时间: 取本地时分(条.occurredAt),
+        内容,
+      },
+      毫秒: 时刻毫秒(条.occurredAt), 源序: 3, 输入序: 序,
+    });
+  });
+  return 行们
+    .sort((左, 右) => {
+      if (左.毫秒 !== null && 右.毫秒 !== null && 左.毫秒 !== 右.毫秒) return 左.毫秒 - 右.毫秒;
+      if (左.毫秒 !== null && 右.毫秒 === null) return -1;
+      if (左.毫秒 === null && 右.毫秒 !== null) return 1;
+      return 左.源序 - 右.源序 || 左.输入序 - 右.输入序;
+    })
+    .map((行) => 行.条);
 }
 
 /**
@@ -275,42 +338,8 @@ const 待办用途阶段表: Record<P5待办用途, P5阶段> = {
 };
 
 /**
- * 旧 transcript 事件 → 系统状态行（J-PILOT-01，Spec §7）：canonical case 事件以系统
- * 状态显示，不投成对方气泡；无文本的事件（纯 reason_code）无可展示，跳过。
- */
-function 段内系统消息(区: P5阶段区块视图): 分段项['系统消息'] {
-  const 行们 = 区.时间线
-    .filter((项) => 项.text !== undefined && 项.text.trim() !== '')
-    .map((项) => ({ 编号: `evt:${项.eventId}`, 内容: 项.text as string }));
-  return 行们.length > 0 ? 行们 : undefined;
-}
-
-/**
- * 叮嘱回执 → 既有展示气泡（不伪装 Agent Q/A：不带角色标签，按归属分列）。
- */
-function 段内叮嘱对话(区: P5阶段区块视图, role: P5角色): 对话条[] {
-  return 区.叮嘱.flatMap((条) =>
-    条.expression === undefined || 条.expression.trim() === ''
-      ? []
-      : [{
-          编号: `aci:${条.instructionId}`,
-          方: 条.owner === role ? ('我方' as const) : ('对方' as const),
-          时间: 取短时间(条.occurredAt),
-          内容: 条.expression,
-        }],
-  );
-}
-
-/** RFC3339 → 「HH:mm」（UTC 定长截取，纯展示格式化，绝不参与状态判定）。 */
-function 取短时间(iso: string): string {
-  return iso.slice(11, 16);
-}
-
-/**
- * S0 Agent 消息的本地时分（用户运行环境时区，两位 24 小时制 HH:mm）。只服务新 screening
- * records 的展示，绝不参与状态或动作判定；不固定产品时区、不硬编码加八小时。旧
- * transcript／instruction receipt 仍走 取短时间 的字符串切片 —— 同一 S0 阶段内两种时间
- * 口径并存是刻意兼容边界（观察后再决定是否另立统一任务）。
+ * S0 本地时分（用户运行环境时区，两位 24 小时制 HH:mm）。段内时序的统一时间口径
+ * （气泡/注释同源），绝不参与状态或动作判定；不固定产品时区、不硬编码加八小时。
  */
 const S0时刻格式 = new Intl.DateTimeFormat('zh-CN', {
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -326,35 +355,101 @@ function 取本地时分(原文: string): string {
   return 时 === '' || 分 === '' ? '时间待确认' : `${时}:${分}`;
 }
 
+/** S0 通过段的阶段结论（Spec §A.2 第 2 层事实：passed 才显示，不单凭公开初评 fit）。 */
+const S0通过结论 = '匿名初筛已通过';
+
 /**
- * P5 详情正常视图 → 阶段对话流的分段（纯投影，不含任何命令）。
+ * P5 详情正常视图 → 阶段对话流的分段（纯投影，不含任何命令；S0–S3 展示统一 Task 4）。
  *
  *   · 段态来自阶段区自身 state（pending/active/passed/ended），不从文本推，S0→S3 顺序
  *     按 mapper 交付的原样，客户端不重排；四阶段一段不缺。
- *   · 展示标题用 P5 自己的阶段标题（区.标题，服务端闭词投影）；颜色/排序/折叠键仍用
- *     共用阶段名（阶段名表），不改其它消费者的阶段命名。
- *   · 「默认展开」只标有动作的合法当前段 —— currentStage 必须来自 raw detail.state.stage
- *     （不从展示文案反推）；控制层据此把动作卡挂到这一段，passed 段也能展开看到等你的决定。
+ *   · 状态胶囊（Spec §A.2.1）：未开始 / 需要你·等待对方·进行中 / 已通过（S3 双方完成
+ *     事实为已确认）/ 结束段 outcome 闭表。不以 summary 自然语言决定状态。
+ *   · 段内往来 = 记录 有序联合（时序交错、按稳定 ID 去重），气泡与灰注释一次遍历；
+ *     候选 S0 私有总结只走这条时序，托盘不再有第二份副本（招聘端恒无）。
+ *   · 段底小结：终局段给结束原因 + 结束时间 + 恢复窗口；S0 通过段给阶段结论并注明
+ *     「公开资料匹配检查」的决定（初评入参来自候选聚合，招聘端为 null）；其余沿用
+ *     服务端阶段摘要。核对项只反映自身段状态（done=false 在终局为未完成）。
+ *   · 当前步骤/轮次提示只挂当前段（v2 读服务端发问块记账，v1 读权威 round/预算，
+ *     不写死 3）；未到达段保留折叠段与待推进说明；动作卡/移交由控制层装尾部。
  *   · 附件只带文件名（招聘端 typed 附件是该段唯一 PDF 入口，附件常驻不随对话内容消失），
  *     点击回调归控制层，投影绝不绑定动作或 PDF。
  */
-export function 从P5到详情分段(view: P5详情正常视图, currentStage: P5阶段): 分段项[] {
-  const 有动作 = view.actions.length > 0;
+export function 从P5到详情分段(
+  view: P5详情正常视图,
+  详情: P5详情,
+  初评: 公开初评托盘视图 | null,
+): 分段项[] {
+  const currentStage = 详情.state.stage;
   return view.阶段区块.map((区) => {
     const 态: 分段项['态'] =
-      区.状态 === 'pending' ? '未到达' : 区.状态 === 'active' ? '当前' : '已完成';
-    const 是动作段 = 有动作 && 区.stage === currentStage;
+      区.状态 === 'pending' ? '未到达'
+      : 区.状态 === 'active' ? '当前'
+      : 区.状态 === 'ended' ? '已结束'
+      : '已完成';
+    const 是终局段 = 区.状态 === 'ended';
+    // 状态胶囊：active 段按权威待办分化（本人待办=需要你、对端待办=等待对方，不能把
+    // 所有 needs_user 当本人）；passed/ended 走区块自身文案，S3 双方确认完成才「已确认」
+    let 状态文: string | null = 区.状态文案;
+    if (态 === '未到达') {
+      状态文 = null;
+    } else if (区.状态 === 'active') {
+      const 段待办 = view.待办们.filter((待办) => 待办用途阶段表[待办.purpose] === 区.stage);
+      状态文 = 段待办.some((待办) => 待办.role === view.role)
+        ? '需要你'
+        : 段待办.some((待办) => 待办.role !== view.role) ? '等待对方' : 区.状态文案;
+    } else if (区.stage === 'intent_confirmation' && 区.状态 === 'passed'
+      && 详情.state.lifecycle === 'completed') {
+      状态文 = '已确认';
+    }
+    const 小结 =
+      态 === '未到达' ? null
+      : 是终局段 ? (view.终局摘要?.原因 ?? null)
+      : 区.stage === 'anonymous_screening' && 区.状态 === 'passed' ? S0通过结论
+      : 区.摘要 === '' ? null : 区.摘要;
+    const 小结行们 = [
+      ...(初评 !== null && 区.stage === 'anonymous_screening' && 态 !== '未到达'
+        ? [`公开资料匹配检查：${初评.决定文}`]
+        : []),
+      ...(是终局段 && view.终局摘要 !== null ? [`结束时间：${view.终局摘要.定格于}`] : []),
+      ...(是终局段 && view.重新考虑 !== null ? [view.重新考虑.说明] : []),
+      ...(态 === '当前' && view.注意说明 !== null ? [view.注意说明] : []),
+    ];
+    // S0 段核对项 = 公开资料匹配检查的中文证据打头，其后是本段自身 checklist（A.7）
+    const 段核对项 = [
+      ...(初评 !== null && 区.stage === 'anonymous_screening' && 态 !== '未到达'
+        ? 初评.核对清单
+        : []),
+      ...区.清单.map((项) => ({
+        项: 项.文本,
+        // done=false 在终局段为未完成（不是还在核对）；其余段维持「核对中」
+        结果: 项.完成 ? ('通过' as const) : 是终局段 ? ('未完成' as const) : ('核对中' as const),
+      })),
+    ];
+    // 段首说明（当前段上下文，A.6：step 中文用于当前段一句说明；轮次读服务端记账，
+    // 不写死 3）：当前段给步骤说明 + 轮次（v2 读发问块记账，v1 读 round/预算）；
+    // 非当前的 S1/S2 段只带它自己的发问块轮次说明
+    const 段首说明行们: string[] = [];
+    if (区.stage === currentStage && 态 !== '未到达') {
+      段首说明行们.push(view.步骤说明);
+      if (view.对话进度 !== null && view.对话进度.stage === 区.stage) {
+        段首说明行们.push(view.对话进度.轮次说明);
+      } else {
+        段首说明行们.push(`轮次 ${view.轮次.当前}/${view.轮次.预算}`);
+      }
+    } else if (view.对话进度 !== null && view.对话进度.stage === 区.stage) {
+      段首说明行们.push(view.对话进度.轮次说明);
+    }
     return {
       阶段: 阶段名表[区.stage],
       展示标题: 区.标题,
       态,
-      状态文: 态 === '未到达' ? null : 区.状态文案,
-      小结: 态 === '未到达' || 区.摘要 === '' ? null : 区.摘要,
-      核对清单: 区.清单.length > 0
-        ? 区.清单.map((项) => ({ 项: 项.文本, 结果: 项.完成 ? ('通过' as const) : ('核对中' as const) }))
-        : undefined,
-      Agent对话: 段内Agent对话(区, view.role),
-      系统消息: 段内系统消息(区),
+      状态文,
+      小结,
+      小结行们: 小结行们.length > 0 ? 小结行们 : undefined,
+      核对清单: 段核对项.length > 0 ? 段核对项 : undefined,
+      // 段内时序（Spec §A.5）：总结/问答/有效流程事件/回执一次遍历；未到达段为空
+      记录: 态 === '未到达' ? [] : 段内时序记录(区, view.role),
       待办说明: 段内待办说明(view, 区.stage),
       // S3 固定总结只挂意向确认段（双方内容相同；版本号随权威重读换代）
       确认总结: 区.stage === 'intent_confirmation' && view.确认总结 !== null
@@ -364,19 +459,14 @@ export function 从P5到详情分段(view: P5详情正常视图, currentStage: P
             分节们: view.确认总结.分节们,
           }
         : null,
-      对话: 段内叮嘱对话(区, view.role),
-      // S0 候选总结原样适配进小结托盘（标签/内容由 mapper 给定）；招聘方自然得到空数组
-      Agent总结: 区.Agent总结.length > 0
-        ? 区.Agent总结.map((总) => ({ 编号: 总.id, 标签: 总.标签, 内容: 总.内容 }))
-        : undefined,
       // 未到达段的一行说明用服务端自己的阶段摘要（typed 块，不是时间线文本）——
       // 将来阶段说「还没到」，绝不写成接口缺失
       待推进说明: 态 === '未到达' && 区.摘要 !== '' ? 区.摘要 : undefined,
-      // 当前阶段没有对话时的中性兜底一行（权威步骤说明），不生成一段模拟代理对话
-      空说明: 态 === '当前' ? view.步骤说明 : undefined,
+      段首说明: 段首说明行们.length > 0 ? 段首说明行们 : undefined,
       附件: 区.附件 !== null ? { 文件名: 区.附件.displayName } : null,
       附件常驻: 区.附件 !== null ? true : undefined,
-      默认展开: 是动作段 ? true : undefined,
+      // 展开默认值归组件（当前/已结束开、已通过/未到达关）；手动覆盖由 后端详情渲染
+      // 以受控 props 下发，轮询不反复强制开合（Spec §5.1）
     };
   });
 }

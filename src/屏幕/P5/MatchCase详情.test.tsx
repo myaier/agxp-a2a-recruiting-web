@@ -139,11 +139,7 @@ function 阶段区组(覆盖: Partial<Record<P5阶段区['stage'], Partial<P5阶
       summary: 'candidate_reevaluation',
       checklist: [{ label: 'anonymous_screening_passed', done: true }, { label: 'resume_bound', done: false }],
       transcript: [
-        {
-          eventId: 'evt_q1', stage: 'anonymous_screening', kind: 'supplementary_question',
-          role: 'candidate', ref: 'prompt_1', text: '每周可以到岗几天？',
-          occurredAt: '2026-08-29T01:10:00Z',
-        },
+        // 问答以 screening records 为权威（S0–S3 展示统一 Task 4）；transcript 只留流程事件
         {
           eventId: 'evt_n1', stage: 'anonymous_screening', kind: 'stage_note',
           role: '', reasonCode: 'policy_checked', occurredAt: '2026-08-29T01:20:00Z',
@@ -161,7 +157,14 @@ function 阶段区组(覆盖: Partial<Record<P5阶段区['stage'], Partial<P5阶
       ],
       attachment: null,
       // S0 展开块归一化形状：仅 S0 可为对象，其余段一律 null
-      screeningRecords: { messages: [], summaries: [] },
+      screeningRecords: {
+        messages: [{
+          id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening',
+          askingRole: 'candidate', round: 1, text: '每周可以到岗几天？',
+          exchangeRef: null, occurredAt: '2026-08-29T01:10:00Z',
+        }],
+        summaries: [],
+      },
     },
     { stage: 'resume_submission', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
     { stage: 'needs_coordination', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
@@ -636,17 +639,18 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(s2.compareDocumentPosition(s3) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('checklist / 时间线 / 叮嘱回执按类型渲染为展示文本', async () => {
+  it('checklist / 段内时序 / 叮嘱回执按类型渲染为展示文本（S0–S3 展示统一 Task 4）', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 候选详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    // S0 是当前段（默认展开）：核对清单（闭词→固定中文）、待答问题文本、双方叮嘱回执全部在场
+    // S0 是当前段（默认展开）：核对清单（闭词→固定中文）、问答气泡、双方叮嘱回执全部在场
     expect(await screen.findByText('匿名初筛已通过')).toBeTruthy();
     expect(screen.getByText('简历已绑定')).toBeTruthy(); // 未完成项标「核对中」
-    expect(screen.getByText('每周可以到岗几天？')).toBeTruthy(); // 时间线文本原样展示
+    expect(screen.getByText('每周可以到岗几天？')).toBeTruthy(); // 正式问答气泡（screening records）
     expect(screen.getByText('工作日 10:00-19:00 联系')).toBeTruthy(); // 本端叮嘱回执
     expect(screen.getByText('流程预计两周内走完')).toBeTruthy(); // 对端叮嘱回执
-    expect(screen.getByText('待处理')).toBeTruthy(); // 状态文案胶囊（六闭词表）
-    expect(screen.getByText('等待人工决定是否继续')).toBeTruthy(); // 步骤说明（17 词闭表）
+    // 顶部状态条退场：状态胶囊（active 无权威待办→进行中）与步骤/轮次都在当前段段首
+    expect(screen.getByText('进行中')).toBeTruthy();
+    expect(screen.getByText('等待人工决定是否继续')).toBeTruthy();
     expect(screen.getByText('轮次 1/3')).toBeTruthy();
   });
 
@@ -772,12 +776,12 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
   it('终局详情不显示「代理处理中」徽标（只读终局，不是在处理）', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已终止详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    await screen.findByText('终局'); // 终局卡在场（缺失则 findBy 抛错）
+    await screen.findByText('已结束'); // 终局段胶囊在场（缺失则 findBy 抛错）
     expect(screen.queryByText('代理处理中')).toBeNull();
     expect(screen.queryByText('需要你')).toBeNull();
   });
 
-  it('终局详情停 3 秒轮询、隐藏输入，终局摘要给本地时间而非原始 RFC3339', async () => {
+  it('终局详情停 3 秒轮询、隐藏输入，终局原因/结束时间以中文字典落入终局段（wire 原词不上屏）', async () => {
     vi.useFakeTimers();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已终止详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
@@ -785,12 +789,15 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     await act(() => vi.advanceTimersByTimeAsync(7000));
     expect(mock读取连续详情).toHaveBeenCalledTimes(1); // terminal detail 停止 polling（§10.3）
     expect(screen.queryByPlaceholderText(叮嘱占位)).toBeNull(); // 终局隐藏叮嘱输入
-    // 结束语/原因仍是 wire 原样（不翻译不改写）
-    expect(screen.getAllByText('user_ended').length).toBeGreaterThan(0);
-    // 定格于换成本地展示值：原始 RFC3339 与任何 ISO 形状都不得出现在屏上
+    // 顶部终局卡退场：无「终局」标题、无 wire 原词；终局段（默认展开）给胶囊+原因+本地时间
+    expect(screen.queryByText('终局')).toBeNull();
+    expect(screen.getAllByText('已结束').length).toBeGreaterThan(0);
+    expect(screen.getByText('本次代谈已结束')).toBeTruthy();
+    // 结束时间换成本地展示值：原始 RFC3339 与任何 ISO 形状都不得出现在屏上
     expect(document.body.textContent).not.toContain('2026-08-29T03:00:00Z');
     expect(document.body.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/);
-    expect(screen.getByText(本地终局期望('2026-08-29T03:00:00Z'))).toBeTruthy();
+    expect(screen.getByText(`结束时间：${本地终局期望('2026-08-29T03:00:00Z')}`)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('user_ended');
     // 内部 ID 同样不在可见内容里
     expect(document.body.textContent).not.toContain(意向ID);
   });
@@ -1064,8 +1071,9 @@ describe('MatchCase详情 · Case 叮嘱输入', () => {
   it('终局详情隐藏输入（无任何 mutation 控件；J-PILOT-01 S0 终局占位成对产出）', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已终止详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    // 结束语与原因码都是 wire 原词（user_ended 出现两处属正常）
-    expect(await screen.findAllByText('user_ended')).toBeTruthy();
+    // 终局段胶囊与原因都是中文字典词（wire 原词不再出现在屏上）
+    expect(await screen.findAllByText('已结束')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('user_ended');
     // S0 终局：原输入框保留但禁用，占位为 Spec §7 其它终局文案（发送键真实禁用）
     const 框 = screen.getByPlaceholderText('本次代谈已结束') as HTMLTextAreaElement;
     expect(框.disabled).toBe(true);
@@ -1178,8 +1186,8 @@ function S1初筛详情(带附件: boolean, 带段内对话 = false): P5详情 {
       resume_submission: {
         state: 'active', summary: '简历已披露，等待初筛结论',
         transcript: 带段内对话 ? [{
-          eventId: 'evt_s1_note', stage: 'resume_submission', kind: 'stage_note',
-          role: '', text: '候选人已确认可以到岗', occurredAt: '2026-08-29T02:30:00Z',
+          eventId: 'evt_s1_submitted', stage: 'resume_submission', kind: 'resume_submitted',
+          role: '', occurredAt: '2026-08-29T02:30:00Z',
         }] : [],
         instructionReceipts: 带段内对话 ? [{
           instructionId: 'aci_s1', owner: 'recruiter', stage: 'resume_submission',
@@ -1440,6 +1448,8 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     mock准备候选委托简历.mockResolvedValue(附件库样本(2));
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
+    // Task 4 起 passed 段默认折叠：权威动作须展开该段到达（可展开访问，不以已通过隐藏）
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ }));
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     // 单选层：多份附件必须当场单选一份（S1 递交口径的文案）
     const 选择框 = await screen.findByRole('dialog');
@@ -1471,6 +1481,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     mock准备候选委托简历.mockResolvedValue(附件库样本(1));
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ })); // passed 段默认折叠
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     const 披露框 = await screen.findByRole('dialog');
     expect(within(披露框).getByText(/「平台工程师」这一 Case 递交「简历_v1\.pdf」/)).toBeTruthy();
@@ -1483,6 +1494,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     const user = userEvent.setup();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ })); // passed 段默认折叠
     await user.click(screen.getByRole('button', { name: '婉拒邀请' }));
     const 确认框 = screen.getByRole('dialog');
     expect(within(确认框).getByText(/不会向该招聘方披露你的简历/)).toBeTruthy();
@@ -1497,6 +1509,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     mock准备候选委托简历.mockResolvedValue(附件库样本(0));
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ })); // passed 段默认折叠
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.我的简历));
     expect(screen.getByText('请先上传一份 PDF 简历')).toBeTruthy();
@@ -1508,6 +1521,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     mock跳转.mockClear();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ })); // passed 段默认折叠
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     await waitFor(() => expect(mock准备候选委托简历).toHaveBeenCalledTimes(1));
     expect(mock跳转).not.toHaveBeenCalled();
@@ -1581,7 +1595,8 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
       }),
     });
     渲染详情('candidate', 'mc_direct');
-    expect(await screen.findByText('待处理')).toBeTruthy();
+    // 顶部状态条退场：当前段胶囊走 A.2.1 口径（v1 无待办 → 进行中），邀请二卡仍被行白名单挡下
+    expect(await screen.findByText('进行中')).toBeTruthy();
     expect(screen.queryByText('接受简历邀请')).toBeNull(); // S0 needs_user 行白名单不含邀请二卡
     expect(screen.queryByRole('button', { name: '接受邀请' })).toBeNull();
     expect(screen.queryByRole('button', { name: '婉拒邀请' })).toBeNull();
@@ -1759,6 +1774,8 @@ describe('MatchCase详情 · S2/S3 动作（Task 6）', () => {
     mock决定S3.mockClear(); // 两条腿分开计数
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已完成移交详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
+    // Task 4 起 completed 的 S3（passed）默认折叠：展开意向确认段到达移交行
+    await user.click(screen.getByRole('button', { name: /意向确认/ }));
     // 移交文案在场（移交行 + handoff_pending 步骤说明同词，出现即算）
     expect(screen.getAllByText('双方已确认，正在创建会话').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: '确认意向' })).toBeNull();
@@ -1785,6 +1802,7 @@ describe('MatchCase详情 · P7 移交两步接线', () => {
     vi.useFakeTimers();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已完成移交详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
+    fireEvent.click(screen.getByRole('button', { name: /意向确认/ })); // 展开折叠的 S3 到达移交
     expect(screen.getAllByText('双方已确认，正在创建会话').length).toBeGreaterThan(0);
     const 私聊键 = screen.getByRole('button', { name: '开始私聊' }) as HTMLButtonElement;
     expect(私聊键.disabled).toBe(true);
@@ -1804,6 +1822,7 @@ describe('MatchCase详情 · P7 移交两步接线', () => {
     const user = userEvent.setup();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已发布移交详情DTO('candidate') }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /意向确认/ })); // 展开折叠的 S3 到达移交
     expect(screen.getByText('真人会话已建立')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '开始私聊' }));
     expect(mock跳转).toHaveBeenCalledWith(路径.真人会话路径('3003'));
@@ -1813,6 +1832,7 @@ describe('MatchCase详情 · P7 移交两步接线', () => {
     mock跳转.mockClear();
     置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 已发布移交详情DTO('recruiter') }) });
     渲染详情('recruiter', 'mc_hr');
+    await user.click(screen.getByRole('button', { name: /意向确认/ })); // 展开折叠的 S3 到达移交
     await user.click(screen.getByRole('button', { name: '开始私聊' }));
     expect(mock跳转).toHaveBeenCalledWith(路径.企业真人会话路径('3003'));
   });
@@ -1888,9 +1908,9 @@ describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
     mock读取简历PDF.mockResolvedValue(租约);
     置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1初筛详情(true, true) }) });
     渲染详情('recruiter', 'mc_hr');
-    // 段内对话非空：本端叮嘱回执与文本时间线都照常展示
+    // 段内对话非空：本端叮嘱回执与流程事件注释（已递交简历）都照常展示
     expect(await screen.findByText('只在工作日 10:00-19:00 联系')).toBeTruthy();
-    expect(screen.getByText('候选人已确认可以到岗')).toBeTruthy();
+    expect(screen.getByText('已递交简历')).toBeTruthy();
     // 入口不被段内对话压掉：仍在、可开、恰好一次租约
     await user.click(screen.getByRole('button', { name: /后端工程师_简历_v2\.pdf/ }));
     expect(mock读取简历PDF).toHaveBeenCalledTimes(1);
@@ -2142,6 +2162,8 @@ describe('MatchCase详情 · completed 移交只读（Task 7）', () => {
       快照: 详情快照({ detail: 招聘已完成移交DTO() }),
     });
     渲染详情('recruiter', 'mc_done');
+    // 展开折叠的 S3（completed 的 passed 段默认折叠）到达移交行
+    await user.click(screen.getByRole('button', { name: /意向确认/ }));
     // 移交文案与 handoff_pending 步骤说明同词：findAllByText（在场即算，出现两处属正常）
     expect((await screen.findAllByText('双方已确认，正在创建会话')).length).toBeGreaterThan(0);
     const 按钮 = screen.getByRole('button', { name: '开始私聊' }) as HTMLButtonElement;
@@ -2155,6 +2177,7 @@ describe('MatchCase详情 · completed 移交只读（Task 7）', () => {
     cleanup();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已完成移交详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /意向确认/ })); // 展开折叠的 S3
     expect((await screen.findAllByText('双方已确认，正在创建会话')).length).toBeGreaterThan(0);
     const 候选键 = screen.getByRole('button', { name: '开始私聊' }) as HTMLButtonElement;
     expect(候选键.disabled).toBe(true);
@@ -2171,6 +2194,7 @@ describe('MatchCase详情 · completed 移交只读（Task 7）', () => {
         快照: 详情快照({ detail: 招聘已完成移交DTO() }),
       });
       渲染详情('recruiter', 'mc_done');
+      await user.click(screen.getByRole('button', { name: /意向确认/ })); // 展开折叠的 S3
       expect((await screen.findAllByText('双方已确认，正在创建会话')).length).toBeGreaterThan(0);
       await user.click(screen.getByRole('button', { name: '开始私聊' }));
 
@@ -2238,15 +2262,13 @@ describe('MatchCase详情 · owner-safe agent_attention', () => {
   });
 
   it.each(['candidate', 'recruiter'] as const)(
-    'attention 详情给安全说明，徽标按待办优先，零 Agent 重试（%s）',
+    'attention 详情给安全说明（当前段小结行），胶囊不分待办一律闭词，零 Agent 重试（%s）',
     async (role) => {
       const caseId = role === 'candidate' ? 'mc_direct' : 'mc_hr';
-      // needsAction=false：说明在场（状态行后）、徽标「需注意」、「代理处理中」缺席
+      // needsAction=false：owner-safe 说明落在当前段的段内小结行，顶部徽标已随状态条退场
       置详情状态({ role, caseId, 快照: 详情快照({ detail: 注意详情DTO(role, false) }) });
       渲染详情(role, caseId);
       expect(await screen.findByText('AI 服务暂时不可用，本 Case 尚未继续')).toBeTruthy();
-      // 「需注意」徽标与 attention 状态文案同词（闭词表）：出现即算
-      expect(screen.getAllByText('需注意').length).toBeGreaterThan(0);
       expect(screen.queryByText('代理处理中')).toBeNull();
       expect(screen.queryByText('需要你')).toBeNull();
       // attention 行不出现 retry_resume_readiness 卡/控件，也没有任何新增 Agent retry 键
@@ -2256,11 +2278,11 @@ describe('MatchCase详情 · owner-safe agent_attention', () => {
       expect(mock提交简历).not.toHaveBeenCalled();
       cleanup();
 
-      // needsAction=true：徽标仍是「需要你」且说明仍在
+      // needsAction=true：说明仍在（v1 行无 pendingActions，胶囊维持「进行中」，不出「需要你」）
       置详情状态({ role, caseId, 快照: 详情快照({ detail: 注意详情DTO(role, true) }) });
       渲染详情(role, caseId);
-      expect(screen.getByText('需要你')).toBeTruthy();
       expect(screen.getByText('AI 服务暂时不可用，本 Case 尚未继续')).toBeTruthy();
+      expect(screen.getAllByText('进行中').length).toBeGreaterThan(0);
       expect(screen.queryByText('代理处理中')).toBeNull();
       expect(screen.queryByRole('button', { name: '重试校验' })).toBeNull();
       cleanup();
@@ -2409,14 +2431,16 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     },
   );
 
-  it('candidate：初评与全部复评都进托盘且无总结时间；recruiter：无总结正文也无空托盘', () => {
+  it('candidate：初评与全部复评按时序进段内灰注释（带本地时间）；recruiter：无任何总结', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
     渲染详情('candidate', 'mc_direct');
-    expect(screen.getByText('初评：初评已确认岗位在浦东园区，值班安排仍待确认。')).toBeTruthy();
-    // 逐轮复评全部出现，标签只由 phase/round 给定
-    expect(screen.getByText('第 1 轮复评：已确认没有固定晚班，团队规模仍待确认。')).toBeTruthy();
-    expect(screen.getByText('第 2 轮复评：团队规模初步确认为 6 人。')).toBeTruthy();
-    // 总结不显示时间：屏上没有任何 RFC3339 原文
+    // 初评/复评原文在段内时序的灰色注释里（A.5/A.8：不再出现在阶段小结托盘）
+    expect(screen.getByText('初评已确认岗位在浦东园区，值班安排仍待确认。')).toBeTruthy();
+    expect(screen.getByText('已确认没有固定晚班，团队规模仍待确认。')).toBeTruthy();
+    expect(screen.getByText('团队规模初步确认为 6 人。')).toBeTruthy();
+    // 注释头行给「标签 · 本地时间」，屏上没有任何 RFC3339 原文
+    expect(screen.getByText(`初评 · ${本地时分期望('2026-08-23T10:06:00Z')}`)).toBeTruthy();
+    expect(screen.getByText(`第 1 轮复评 · ${本地时分期望('2026-08-30T09:30:00Z')}`)).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
 
     cleanup();
@@ -2425,9 +2449,10 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
       快照: 详情快照({ detail: S0完整记录详情('recruiter') }),
     });
     渲染详情('recruiter', 'mc_hr');
-    // 招聘方没有总结区域，也没有空托盘或失败占位：托盘只有阶段区自己的旧小结
-    expect(screen.queryByText(/初评：/)).toBeNull();
+    // 招聘方没有总结注释，也没有空托盘或失败占位
+    expect(screen.queryByText(/初评 ·/)).toBeNull();
     expect(screen.queryByText(/第 \d+ 轮复评/)).toBeNull();
+    expect(screen.queryByText('初评已确认岗位在浦东园区，值班安排仍待确认。')).toBeNull();
     expect(screen.getAllByText('代 理 小 结').length).toBe(1);
     const 托盘 = screen.getByText('代 理 小 结').parentElement as HTMLElement;
     expect(托盘.textContent).not.toContain('值班安排仍待确认');
@@ -2456,24 +2481,27 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     // 冻结合同 §6.1：unknown 对外固定「暂时无法回答」（是一条被记录的回答，不等于同意）
     expect(screen.getByText('暂时无法回答')).toBeTruthy();
     expect(screen.getByText('暂无可用信息')).toBeTruthy();
-    // 段内气泡 9 个不多不少：轮 2–4 的 6 条 S0 问答 + 旧 transcript 1 条 + 旧叮嘱回执 2 条
+    // 段内气泡 8 个不多不少：轮 2–4 的 6 条 S0 问答 + 旧叮嘱回执 2 条
+    //（旧 transcript 文本事件不落段 —— 问答以 screening records 为权威，A.5）
     const 列 = 气泡行('还需要了解团队规模。').parentElement as HTMLElement;
-    expect(列.childElementCount).toBe(9);
+    expect(列.childElementCount).toBe(8);
     // 没有新增输入框：只剩底部 Case 叮嘱一条
     expect(screen.getAllByRole('textbox').length).toBe(1);
   });
 
-  it('S0 记录固定在旧 transcript 与叮嘱回执之前：不按时间混排', () => {
+  it('S0 段内时序按 occurred_at 升序交错（A.5）：总结/问答/回执一次遍历', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
     渲染详情('candidate', 'mc_direct');
     const 序 = [
-      '需要确认岗位的值班安排。', // s0q_1（2026-08-23，早于旧时间线）
-      '没有固定晚班，周末偶尔需要支援。',
-      '带团队的人数规模？', // s0q_4（2026-08-30，晚于旧时间线）
+      '需要确认岗位的值班安排。', // s0q_1（08-23 10:01）
+      '没有固定晚班，周末偶尔需要支援。', // s0a_1（08-23 10:05）
+      '初评已确认岗位在浦东园区，值班安排仍待确认。', // 初评注释（08-23 10:06）
+      '工作日 10:00-19:00 联系', // 旧叮嘱回执（08-29 01:05）
+      '流程预计两周内走完', // 旧叮嘱回执（08-29 01:06）
+      '还需要了解团队规模。', // s0q_2（08-30 09:00）
+      '带团队的人数规模？', // s0q_4（08-30 09:20）
       '暂无可用信息', // s0a_4
-      '每周可以到岗几天？', // 旧 transcript
-      '工作日 10:00-19:00 联系', // 旧叮嘱回执
-      '流程预计两周内走完',
+      '团队规模初步确认为 6 人。', // 第 2 轮复评注释（08-30 09:40）
     ].map((文本) => screen.getByText(文本));
     for (let 下标 = 0; 下标 < 序.length - 1; 下标 += 1) {
       const 前 = 序[下标] as Element;
@@ -2497,9 +2525,9 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     });
     渲染详情('candidate', 'mc_direct');
     expect(screen.getAllByText('需要确认岗位的值班安排。').length).toBe(1);
-    expect(screen.queryByText(/初评：/)).toBeNull();
+    expect(screen.queryByText(/初评 ·/)).toBeNull();
 
-    // 空 messages + 仅 initial 总结：零问答气泡，托盘只有总结
+    // 空 messages + 仅 initial 总结：零问答气泡，段内只有一条初评灰注释
     cleanup();
     置详情状态({
       role: 'candidate',
@@ -2518,7 +2546,8 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     });
     渲染详情('candidate', 'mc_direct');
     expect(screen.queryByText('需要确认岗位的值班安排。')).toBeNull();
-    expect(screen.getByText('初评：初评确认岗位在浦东园区。')).toBeTruthy();
+    expect(screen.getByText('初评确认岗位在浦东园区。')).toBeTruthy();
+    expect(screen.getByText(`初评 · ${本地时分期望('2026-08-23T10:06:00Z')}`)).toBeTruthy();
 
     // 轮次空档（round 1 → 3）：原样渲染，不补位不重排
     cleanup();
@@ -2547,7 +2576,7 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
     页.rerender(树);
     expect(screen.getAllByText('需要确认岗位的值班安排。').length).toBe(1);
-    expect(screen.getAllByText('初评：初评已确认岗位在浦东园区，值班安排仍待确认。').length).toBe(1);
+    expect(screen.getAllByText('初评已确认岗位在浦东园区，值班安排仍待确认。').length).toBe(1);
   });
 
   it('旧摘要/清单/附件/叮嘱仍在；S0 respond_fact 零输入零请求（review-r1：end 卡也停）', async () => {
@@ -2566,21 +2595,22 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     expect(mock回答事实).not.toHaveBeenCalled();
   });
 
-  it('S0 新消息走本地 HH:mm 且不读 Date.now()；旧时间线仍是既有 UTC 字符串切片', () => {
+  it('S0 段内时序统一本地 HH:mm 且不读 Date.now()（A.5：不把 UTC 切片与本地时间混用）', () => {
     vi.useFakeTimers();
     // 期望值独立用本地 getter 推出：UTC 进程 = 10:01，Asia/Shanghai 进程 = 18:01
     const 期望 = 本地时分期望('2026-08-23T10:01:00Z');
     const 错位 = 期望 === '10:01' ? '18:01' : '10:01';
+    const 回执期望 = 本地时分期望('2026-08-29T01:05:00Z');
+    const 回执错位 = 回执期望 === '01:05' ? '09:05' : '01:05';
 
     vi.setSystemTime(new Date('2020-01-01T00:00:00Z'));
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
     渲染详情('candidate', 'mc_direct');
     expect(screen.getByText(期望)).toBeTruthy();
     expect(screen.queryByText(错位)).toBeNull(); // 显示跟进程时区走，不写死
-    // 叮嘱回执保持既有字符串切片结果（本任务不统一时间线）；旧 transcript 落系统状态行
-    expect(screen.getByText('每周可以到岗几天？')).toBeTruthy(); // 时间线文本原样展示
-    expect(screen.getByText('01:05')).toBeTruthy();
-    expect(screen.getByText('01:06')).toBeTruthy();
+    // 叮嘱回执落回时序后与问答同一时间口径（本地时分）
+    expect(screen.getByText(回执期望)).toBeTruthy();
+    expect(screen.queryByText(回执错位)).toBeNull();
 
     // 换一个 fake 当前时间：显示不变（不读 Date.now()）
     cleanup();
@@ -2588,7 +2618,7 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
     渲染详情('candidate', 'mc_direct');
     expect(screen.getByText(期望)).toBeTruthy();
-    expect(screen.getByText('01:05')).toBeTruthy(); // 叮嘱回执时间不随当前时间变
+    expect(screen.getByText(回执期望)).toBeTruthy(); // 叮嘱回执时间不随当前时间变
   });
 });
 
@@ -2999,8 +3029,8 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
       连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 记录, caseDetail: 底 }) }),
     });
     const 页 = 渲染候选(`/deal/${记录}`);
-    expect(await screen.findByText('每周可以到岗几天？')).toBeTruthy();
-    expect(screen.getAllByText('每周可以到岗几天？').length).toBe(1);
+    expect(await screen.findByText('需要确认岗位的值班安排。')).toBeTruthy();
+    expect(screen.getAllByText('需要确认岗位的值班安排。').length).toBe(1);
 
     // 轮询整包替换：同一条记录的 S0 screening records 多了一对新问答 —— 旧的还在、新的出现一次
     const 底详情 = S0完整记录详情('candidate');
@@ -3040,7 +3070,7 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText('到岗时间能接受节假日轮班吗？')).toBeTruthy(); // 新消息在场
-    expect(screen.getAllByText('每周可以到岗几天？').length).toBe(1); // 旧消息不重复
+    expect(screen.getAllByText('需要确认岗位的值班安排。').length).toBe(1); // 旧消息不重复
     页.unmount();
   });
 

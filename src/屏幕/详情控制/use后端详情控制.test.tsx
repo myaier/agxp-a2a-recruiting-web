@@ -410,7 +410,7 @@ function 取正常(结果: 后端详情控制结果): 后端正常资源 {
 
 /** 取连续资源（pre-Case/retention 分支；非连续联合直接抛错）。 */
 function 取连续(结果: 后端详情控制结果): 后端连续资源 {
-  if (结果.kind !== '连续') throw new Error(`期望连续联合，得到 ${结果.kind}/${结果.状态}`);
+  if (结果.kind !== '连续') throw new Error(`期望连续联合，得到 ${结果.kind}`);
   return 结果;
 }
 
@@ -508,7 +508,8 @@ describe('use后端详情控制 · 正常资源与映射', () => {
     const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
     const 资源 = 取正常(result.current);
     expect(资源.顶栏.标题).toBe('平台工程师 · 公司信息缺失'); // 公司槽原位保留（review-r1 F3）
-    expect(资源.状态.徽标).toBe('需要你');
+    // S0–S3 展示统一 Task 4：动作段 = raw 当前段的共用折叠键（顶部状态条已退场）
+    expect(资源.动作段).toBe('匿名初筛');
     expect(资源.分段们.length).toBe(4); // S0–S3 一段不缺
     expect(资源.职位资料.摘要?.职位).toBe('平台工程师');
     expect(资源.职位资料.接口缺口说明).toBe('当前在谈详情数据未提供');
@@ -522,9 +523,8 @@ describe('use后端详情控制 · 正常资源与映射', () => {
     expect(资源.PDF输入).toEqual({
       role: 'candidate', caseId: 'mc_direct', 读取: mock读取简历PDF,
     });
-    // J-PILOT-01 Task 5：候选 Case 分支的聚合坐标与公开初评槽
+    // J-PILOT-01 Task 5：候选 Case 分支的聚合坐标
     expect(资源.canonical记录ID).toBe('mc_direct');
-    expect(资源.公开初评).toBeNull(); // agent_summary.public_evaluation 缺席
     // 底栏是可输入（进行中单）
     expect(资源.底栏.kind).toBe('输入');
   });
@@ -605,7 +605,7 @@ describe('use后端详情控制 · Case 冻结正文与在线简历资料（Task
     // 去名边界：披露姓名/头像 URL 不进任何展示资源（顶栏/资料区/在线简历资料；
     // 动作输入里的 raw DTO 是动作控制域，不是展示面）
     const 展示面 = JSON.stringify({
-      顶栏: 资源.顶栏, 状态: 资源.状态, 分段们: 资源.分段们,
+      顶栏: 资源.顶栏, 分段们: 资源.分段们,
       职位资料: 资源.职位资料, 在线简历资料: 资源.在线简历资料, 终局: 资源.终局,
     });
     const 文本 = 展示面;
@@ -818,11 +818,19 @@ describe('use后端详情控制 · 终局与移交', () => {
       kind: '输入', 占位: '本次代谈已结束', 值: '', 改变: expect.any(Function),
       发送: null, 禁用说明: '本次代谈已结束',
     });
-    // 摘要三字段：定格于是 mapper 的本地展示值（非 RFC3339）；user_ended 沿用 wire 原词
-    expect(资源.终局.摘要?.结束语).toBe('user_ended');
-    expect(资源.终局.摘要?.原因).toBe('user_ended');
-    expect(资源.终局.摘要?.定格于).toBeTruthy();
-    expect(资源.终局.摘要?.定格于).not.toContain('T');
+    // S0–S3 展示统一 Task 4：结束状态/原因只入终局段（S0 胶囊「已结束」+ 小结原因句），
+    // wire 原词不再出现在任何展示资源；结束时间在段内小结行（本地格式，非 RFC3339）
+    const S0段 = 资源.分段们[0]!;
+    expect(S0段.态).toBe('已结束');
+    expect(S0段.状态文).toBe('已结束');
+    expect(S0段.小结).toBe('本次代谈已结束');
+    expect(S0段.小结行们?.[0]).toMatch(/^结束时间：\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    // wire 原词不进展示面（动作输入里的 raw DTO 是动作控制域，不算展示）
+    const 展示面 = JSON.stringify({
+      顶栏: 资源.顶栏, 分段们: 资源.分段们, 职位资料: 资源.职位资料,
+      在线简历资料: 资源.在线简历资料, 终局: 资源.终局, 底栏: 资源.底栏,
+    });
+    expect(展示面).not.toContain('user_ended');
     expect(资源.终局.移交).toBeNull();
     expect(mock读取连续详情).toHaveBeenCalledTimes(1);
     await act(() => vi.advanceTimersByTimeAsync(7000));
@@ -1163,7 +1171,7 @@ describe('use后端详情控制 · 公开初评与 S0 单次渲染', () => {
     completed_at: '2026-09-01T09:00:00Z',
   };
 
-  it('有 Case：公开初评独立成槽（编号/决定/内容/证据），S0 总结仍只来自 case_detail 一份', () => {
+  it('有 Case：公开初评装进 S0 段（公开资料匹配检查行 + 中文核对项），英文 summary/wire 词不上屏', () => {
     置详情状态({
       连续快照: 连续详情快照({
         聚合: 连续详情DTO({ caseDetail: 候选详情DTO(), publicEvaluation: 公开初评 }),
@@ -1171,19 +1179,22 @@ describe('use后端详情控制 · 公开初评与 S0 单次渲染', () => {
     });
     const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
     const 资源 = 取正常(result.current);
-    expect(资源.公开初评).not.toBeNull();
-    expect(资源.公开初评!.编号).toBe('ev_pub_9');
-    expect(资源.公开初评!.决定).toBe('fit');
-    expect(资源.公开初评!.证据行们).toEqual(['匹配｜city｜city_match｜structured_precheck']);
-    // 分段里的 S0 Agent 总结只由 case_detail 投影一份（agent_summary.condition_confirmation 不进分段）
-    expect(资源.分段们[0]!.Agent总结 ?? []).toHaveLength(0); // 本夹具 case_detail 无 S0 总结
+    // 决定行只出现一次（S0 段小结行们，行首），证据按附录 A 中文投影
+    const S0段 = 资源.分段们[0]!;
+    expect(S0段.小结行们?.[0]).toBe('公开资料匹配检查：公开初评匹配');
+    expect(JSON.stringify(资源.分段们).split('公开资料匹配检查').length - 1).toBe(1);
+    expect(JSON.stringify(资源.分段们)).not.toContain('city_match');
+    expect(JSON.stringify(资源.分段们)).not.toContain('structured_precheck');
+    expect(JSON.stringify(资源.分段们)).not.toContain('公开信息看，经验方向与岗位大体相符。');
+    // wire 决定词不进展示资源
+    expect(JSON.stringify(资源.分段们)).not.toContain('fit');
   });
 
-  it('招聘端无公开初评槽：资源恒 null，不读 negotiation', () => {
+  it('招聘端无公开初评：S0 段不出现公开资料匹配检查行，也不读 negotiation', () => {
     置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 候选详情DTO() }) });
     const { result } = renderHook(() => use后端详情控制({ role: 'recruiter', caseId: 'mc_hr' }));
     const 资源 = 取正常(result.current);
-    expect(资源.公开初评).toBeNull();
+    expect(JSON.stringify(资源.分段们)).not.toContain('公开资料匹配检查');
     expect(资源.canonical记录ID).toBeNull(); // 招聘 Case ID 不归一替换
     expect(mock读取连续详情).not.toHaveBeenCalled();
   });

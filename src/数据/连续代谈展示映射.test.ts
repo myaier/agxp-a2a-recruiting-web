@@ -104,6 +104,10 @@ function 连续详情(选项: {
   refusalCode?: NegotiationCard['refusal_code'];
   actions?: Partial<NegotiationCard['actions']>;
   caseDetail?: NegotiationDetail['case_detail'];
+  /** S0–S3 展示统一 Task 4：初评过程状态块（pre-Case S0 信息区读它给过程词）。 */
+  evaluation?: NegotiationDetail['evaluation'];
+  /** S0–S3 展示统一 Task 4：失败/重试历史（S0 信息区注释，A.6）。 */
+  failureHistory?: NegotiationDetail['failure_history'];
   publicEvaluation?: NegotiationPublicEvaluation | null;
   职位名?: string | null;
   城市?: string | null;
@@ -132,9 +136,9 @@ function 连续详情(选项: {
       技能: 选项.技能,
       匹配分: 选项.匹配分,
     }),
-    evaluation: null,
+    evaluation: 选项.evaluation ?? null,
+    failure_history: 选项.failureHistory ?? [],
     case_detail: 选项.caseDetail ?? null,
-    failure_history: [],
     agent_summary: {
       public_evaluation: 选项.publicEvaluation === undefined ? null : 选项.publicEvaluation,
       condition_confirmation: null,
@@ -432,14 +436,104 @@ describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => 
   });
 });
 
-describe('Task 5 · 从连续到详情分段（四阶段均未到达）', () => {
-  it('四段一段不缺、全未到达、共用阶段名；不造轮次/对话/清单（不给 pre-Case 伪造阶段数据）', () => {
-    const 分段 = 从连续到详情分段();
+/** 最小 JobEvaluationView 形状（从连续到详情分段 只读它的 state；不经过 decoder）。 */
+function 评估块(state: 'pending' | 'completed' | 'failed' | 'expired'): NegotiationDetail['evaluation'] {
+  return {
+    evaluation_id: 'ev_1', state,
+    source: 'structured_precheck',
+    inputs: {
+      resume_revision: 1, intention_id: 'int_0123456789abcdef0123456789abcdef',
+      intention_revision: 1, job_id: 'job_0123456789abcdef0123456789abcdef',
+      job_revision: 1,
+      contract_version: 'candidate_job_evaluation.v1',
+    },
+    input_warnings: [], result: null, failure: null, promotion: null,
+    created_at: '2026-09-01T08:00:00Z', updated_at: '2026-09-01T09:00:00Z', terminal_at: null,
+  };
+}
+
+describe('Task 4 · 从连续到详情分段（pre-Case S0 信息区 / retention 不造阶段）', () => {
+  it('四段一段不缺、全未到达、共用阶段名；不造轮次/对话（不给 pre-Case 伪造阶段数据）', () => {
+    const 分段 = 从连续到详情分段(连续详情({ phase: 'evaluating', evaluation: null }));
     expect(分段).toHaveLength(4);
     expect(分段.map((段) => 段.阶段)).toEqual(['匿名初筛', '递交简历', '需要协调', '意向确认']);
     expect(分段.every((段) => 段.态 === '未到达')).toBe(true);
-    expect(分段.every((段) => 段.默认展开 === undefined)).toBe(true);
-    expect(分段.every((段) => 段.对话 === undefined && 段.核对清单 === undefined)).toBe(true);
+    expect(分段.every((段) => 段.对话 === undefined && 段.记录 !== undefined && 段.记录.length === 0)).toBe(false);
+    expect(分段.every((段) => 段.记录 === undefined)).toBe(true);
+  });
+
+  it('pre-Case 初评在场：S0「未开始」且 可展开+默认展开，小结给决定文/过程词，核对项为中文证据；绝不标 active/passed', () => {
+    const 分段 = 从连续到详情分段(连续详情({
+      phase: 'evaluating',
+      evaluation: null,
+      publicEvaluation: {
+        evaluation_id: 'ev_pub_2', decision: 'fit', summary: '英文原文不再上屏',
+        coverage: 'public_job_and_candidate_data',
+        evidence: { matches: [{ dimension: 'skills', code: 'skills_match', source: 'structured_precheck' }], conflicts: [], unknowns: [] },
+        next_action: 'review', completed_at: '2026-09-01T09:00:00Z',
+      },
+    }));
+    const S0 = 分段[0]!;
+    expect(S0.态).toBe('未到达'); // 打开的信息区不是阶段通过（Spec §5.2）
+    expect(S0.可展开).toBe(true);
+    expect(S0.默认展开).toBe(true);
+    expect(S0.待推进说明).toBe('未开始');
+    expect(S0.小结).toBe('公开初评匹配');
+    expect(S0.核对清单).toEqual([{ 项: '专业技能：匹配', 结果: '通过' }]);
+    expect(JSON.stringify(分段)).not.toContain('英文原文不再上屏');
+    // 其余三段照旧灰条不可展开
+    expect(分段.slice(1).every((段) => 段.可展开 === undefined && 段.默认展开 === undefined)).toBe(true);
+  });
+
+  it('pre-Case 无公开决定但有评估过程：小结给 过程词（初评中/初评未完成），不造决定', () => {
+    const 评估中 = 从连续到详情分段(连续详情({
+      phase: 'evaluating',
+      evaluation: 评估块('pending'),
+    }));
+    expect(评估中[0]!.可展开).toBe(true);
+    expect(评估中[0]!.小结).toBe('初评中');
+    expect(评估中[0]!.核对清单).toBeUndefined();
+    const 失败 = 从连续到详情分段(连续详情({
+      phase: 'evaluation_failed',
+      failure: { code: 'delegation_failed', retryable: true },
+    }));
+    expect(失败[0]!.小结).toBe('初评未完成');
+    // failed 的 evaluation 块在场时读它自身状态，结论一致
+    const 失败带块 = 从连续到详情分段(连续详情({
+      phase: 'evaluation_failed',
+      evaluation: 评估块('failed'),
+    }));
+    expect(失败带块[0]!.小结).toBe('初评未完成');
+  });
+
+  it('retention（case_started 封闭）与无初评信息的 pre-Case：S0 照旧灰条，不擅自造阶段', () => {
+    const retention = 从连续到详情分段(连续详情({ phase: 'case_started', caseState: null }));
+    expect(retention[0]!.可展开).toBeUndefined();
+    expect(retention[0]!.默认展开).toBeUndefined();
+    expect(retention[0]!.小结).toBeUndefined();
+    expect(retention.every((段) => 段.态 === '未到达')).toBe(true);
+    const 无初评 = 从连续到详情分段(连续详情({ phase: 'refused', refusalCode: 'delegation_not_allowed' }));
+    expect(无初评[0]!.可展开).toBeUndefined();
+  });
+
+  it('failure_history 非空：S0 段给按实际时间排序的安全中文注释（同时间同来源去重）；空不占块', () => {
+    const 历史 = [
+      { retry_generation: 1, evaluation_id: 'ev_1', code: 'delegation_agent_unavailable' as const, occurred_at: '2026-09-01T08:10:00Z' },
+      { retry_generation: 1, evaluation_id: 'ev_1', code: 'delegation_agent_unavailable' as const, occurred_at: '2026-09-01T08:10:00Z' }, // 同时间同来源：去重
+      { retry_generation: 2, evaluation_id: 'ev_2', code: 'delegation_failed' as const, occurred_at: '2026-09-01T09:00:00Z' },
+    ];
+    const 分段 = 从连续到详情分段(连续详情({
+      phase: 'evaluating',
+      failureHistory: 历史,
+    }));
+    expect(分段[0]!.可展开).toBe(true);
+    expect(分段[0]!.记录).toEqual([
+      { kind: '注释', 编号: 'fh:1:0', 标签: null, 时间: null, 内容: 'AI 服务暂时不可用，本次没有创建 Case' },
+      { kind: '注释', 编号: 'fh:2:2', 标签: null, 时间: null, 内容: '本次委托未完成' },
+    ]);
+    // 空历史不占块
+    const 无历史 = 从连续到详情分段(连续详情({ phase: 'evaluating', evaluation: 评估块('pending') }));
+    expect(无历史[0]!.记录).toBeUndefined();
   });
 });
 
@@ -498,18 +592,23 @@ describe('Task 5 · 映射公开初评（现有总结托盘数据）', () => {
     completed_at: '2026-09-01T09:00:00Z',
   };
 
-  it('缺席给 null；在场给标签数据：决定/证据行按 Spec 附录 A 中文投影，英文 summary 原样保留不造翻译', () => {
+  it('缺席给 null；在场给 决定文+中文核对项（S0–S3 展示统一 Task 4：英文 summary 不再产出）', () => {
     expect(映射公开初评(连续详情({ phase: 'evaluating' }))).toBeNull();
     const 视图 = 映射公开初评(连续详情({ phase: 'case_started', publicEvaluation: 公开初评 }));
     expect(视图).toEqual({
       编号: 'ev_pub_1',
-      决定: '公开初评匹配',
-      内容: '公开信息看，经验方向与岗位大体相符。',
-      证据行们: ['招聘类型：匹配', '薪资条件：不匹配', '学历要求：待确认'],
+      决定文: '公开初评匹配',
+      核对清单: [
+        { 项: '招聘类型：匹配', 结果: '通过' },
+        { 项: '薪资条件：不匹配', 结果: '不匹配' },
+        { 项: '学历要求：待确认', 结果: '待确认' },
+      ],
     });
+    // 英文原文不再进入任何展示数据（不整段照搬、不在线翻译）
+    expect(JSON.stringify(视图)).not.toContain('公开信息看，经验方向与岗位大体相符。');
   });
 
-  it('决定/证据行是完整中文句：wire 原词与 code/source 不进托盘；未知维度按「其他条件」组态显示', () => {
+  it('决定/核对项是完整中文句：wire 原词与 code/source 不进托盘；未知维度按「其他条件」组态显示', () => {
     const 序列化 = JSON.stringify(映射公开初评(连续详情({
       phase: 'case_started', publicEvaluation: 公开初评,
     })));
@@ -525,14 +624,14 @@ describe('Task 5 · 映射公开初评（现有总结托盘数据）', () => {
       },
     };
     const 视图 = 映射公开初评(连续详情({ phase: 'case_started', publicEvaluation: 未知维度 }));
-    expect(视图?.决定).toBe('公开初评待确认');
-    expect(视图?.证据行们).toEqual(['其他条件：待确认']);
+    expect(视图?.决定文).toBe('公开初评待确认');
+    expect(视图?.核对清单).toEqual([{ 项: '其他条件：待确认', 结果: '待确认' }]);
   });
 
-  it('公开初评 fit 只是建议文案：不把公开初评映射成 S0 通过（pre-Case 分段恒未到达）', () => {
+  it('公开初评 fit 只是建议文案：不把公开初评映射成 S0 通过（分段恒未到达）', () => {
     const 详情 = 连续详情({ phase: 'case_started', publicEvaluation: 公开初评 });
-    expect(映射公开初评(详情)?.决定).toBe('公开初评匹配');
-    expect(从连续到详情分段().every((段) => 段.态 === '未到达')).toBe(true);
+    expect(映射公开初评(详情)?.决定文).toBe('公开初评匹配');
+    expect(从连续到详情分段(详情).every((段) => 段.态 === '未到达')).toBe(true);
   });
 });
 
