@@ -22,6 +22,7 @@ import { 复位助手来路, 有会话内助手来路 } from '../路由/导航�
 import { 快捷问句 } from '../数据/模拟数据';
 import { 轻提示 } from '../组件/轻提示';
 import { BFF错误 } from '../数据/HTTP客户端';
+import { 格式化聊天时间 } from '../组件/聊天气泡';
 import type { 助手会话访问 } from '../状态/后端/助手会话访问';
 import type { AssistantMessage, AssistantMessagePage } from '../数据/招聘数据源/助手会话';
 
@@ -318,6 +319,33 @@ describe('问AI代理 · Backend 真实聊天接线（use助手会话）', () =>
     expect(有会话内助手来路()).toBe(true);
   });
 
+  it('消息时间与正文 Markdown：两侧同轮共用同条 created_at，不取 queried_at；成功回复正文按 Markdown 渲染', async () => {
+    const 创建 = '2026-09-16T09:07:33.348845Z';
+    桩.api.读取助手历史.mockResolvedValue({
+      items: [消息DTO({
+        created_at: 创建,
+        text: '看看这轮的时间',
+        status: 'succeeded',
+        reply: {
+          text: '正文带 **加粗结论**。',
+          visibility: 'available',
+          // 卡片查询时间与创建时间跨分钟：取错字段必然露馅
+          cards: [{ ...岗位卡, queried_at: '2026-09-16T09:52:00Z' }],
+        },
+      })],
+      next_cursor: null,
+    });
+    const 页 = render(<问AI代理 />);
+    await 冲();
+    // 用户 + Agent 两侧各一次，且都是同条 created_at
+    expect(screen.getAllByText(格式化聊天时间(创建))).toHaveLength(2);
+    expect(页.container.querySelectorAll('time')).toHaveLength(2);
+    // 不取 queried_at（跨分钟样本）、不虚构轮询时刻
+    expect(screen.queryByText(格式化聊天时间('2026-09-16T09:52:00Z'))).toBeNull();
+    // 成功回复正文走 Markdown：**…** 解析为 strong
+    expect(页.container.querySelector('strong')?.textContent).toBe('加粗结论');
+  });
+
   it('解读次级动作：发送 Spec §5 可见模板文本（精确 record_id），不导航；写操作在飞期间服从输入禁用', async () => {
     桩.api.读取助手历史.mockResolvedValue({
       items: [消息DTO({ status: 'succeeded', reply: { text: '查到了', visibility: 'available', cards: [在谈卡] } })],
@@ -529,6 +557,8 @@ describe('问AI代理 · Backend 真实聊天接线（use助手会话）', () =>
     // 阅读位置保持：scrollTop 回补了加载前后的高度差
     expect(滚动位置).toBe(200 + 600);
     expect(screen.queryByRole('button', { name: '查看更早消息' })).toBeNull();
+    // 历史重载不生成新时间：3 条消息 = 用户+Agent 各 3 个时间节点
+    expect(页.container.querySelectorAll('time')).toHaveLength(6);
   });
 
   it('新回复接近底部（80px 阈值）才跟随；阅读旧消息时不抢滚动', async () => {

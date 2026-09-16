@@ -1,13 +1,16 @@
-// e2e/助手会话.spec.ts
-// 求职端助手聊天聚焦旅程 · Task 6：完整页面 HTTP 接线、三类卡片与原生导航。
+// e2e/suites/助手会话.spec.ts
+// 求职端助手聊天聚焦旅程：完整页面 HTTP 接线、三类卡片与原生导航（展示增量后含
+// Markdown 正文、中文类型标题与数量、卡内中文匹配理由、消息时间源对照）。
 //
-// 在真实组装（主壳 → 消息列表 → 固定 AI 入口 → /agent 聊天页）上证明 Task 5 页面：
-//   · 空历史发送 → 202 受理（幂等键）→ processing 锁输入 → 轮询换终态 → 三类卡片与
-//     各自查询时间；
+// 在真实组装（主壳 → 消息列表 → 固定 AI 入口 → /agent 聊天页）上证明页面：
+//   · 空历史发送 → 202 受理（幂等键）→ processing 锁输入 → 轮询换终态 → 三类卡片按
+//     原序各带中文类型标题与实际数量；查询时间不上屏（Spec §10.2）；
 //   · 卡片点原生职位/在谈详情并返回（candidate-assistant 窄来源），不可用目标吃真实
 //     404 页（不补假数据）；
 //   · 加载更早（游标页 + 阅读位置保持）；切页重进恢复 processing 轮询；失败重试同
-//     message_id 原位替换，用户消息不重复。
+//     message_id 原位替换，用户消息不重复；
+//   · 消息时间：两个显式 timezoneId describe 各一条聚焦用例，同条 created_at 本地时区
+//     呈现、不取 queried_at（Spec §10.4）。
 // fixture：e2e/fixtures/P1展示统一.ts 白名单之上叠 e2e/fixtures/助手会话.ts 覆盖层；
 // 白名单外一律受控错误，绝不放行真实网络。
 // 边界：模拟回复只证明前端承载与请求（202/轮询/渲染/导航），不证明真实模型理解 ——
@@ -176,7 +179,7 @@ test.describe('助手会话 Backend 390 @backend', () => {
     expect(发送们, '快速单击只一个 POST').toHaveLength(1);
     expect(发送们[0]!.幂等键).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 
-    // 推进剧本：下一次 2 秒轮询换终态 —— 三类卡片与各自查询时间
+    // 推进剧本：下一次 2 秒轮询换终态 —— 三类卡片与中文类型标题
     状态.轮询队列[编号.轮次一]!.push(助手消息(
       { 编号: 编号.消息一, 轮次: 编号.轮次一, 文本: '推荐几个岗位，顺便看看在谈' },
       {
@@ -184,11 +187,16 @@ test.describe('助手会话 Backend 390 @backend', () => {
           text: 'P1FIX 助手正文：这是岗位推荐与在谈进展。',
           visibility: 'available',
           cards: [
-            岗位推荐卡('2026-09-10T08:00:00Z', 岗位推荐页([
-              岗位项({ 岗位编号: 编号.岗位一, 职位: '交易中台架构师' }, { organization_name: '美团' }),
-              岗位项({ 岗位编号: 编号.岗位下架, 职位: '数据平台工程师' }),
+            岗位推荐卡('2026-09-16T09:52:00Z', 岗位推荐页([
+              岗位项({ 岗位编号: 编号.岗位一, 职位: '交易中台架构师' }, {
+                organization_name: '美团',
+                safe_reasons: ['category_matched', 'experience_met', 'location_matched'],
+              }),
+              岗位项({ 岗位编号: 编号.岗位下架, 职位: '数据平台工程师' }, {
+                safe_reasons: ['category_matched', 'experience_met', 'location_matched', 'workplace_mode_matched'],
+              }),
             ], null)),
-            在谈列表卡('2026-09-11T09:30:00Z', 在谈页([
+            在谈列表卡('2026-09-16T10:38:00Z', 在谈页([
               在谈项({ 记录编号: 编号.记录甲, 职位: '同名在谈项目' }, { phase: 'accepted' }),
               在谈项({ 记录编号: 编号.记录乙, 职位: '同名在谈项目' }, {
                 phase: 'evaluating',
@@ -196,7 +204,7 @@ test.describe('助手会话 Backend 390 @backend', () => {
                 job: { public_salary_range: null },
               }),
             ], null)),
-            在谈详情卡('2026-09-12T14:00:00Z', 在谈详情卡数据(
+            在谈详情卡('2026-09-16T11:24:00Z', 在谈详情卡数据(
               在谈项({ 记录编号: 编号.记录甲, 职位: '同名在谈项目' }),
               { 公开初评: 初评 },
             )),
@@ -208,18 +216,27 @@ test.describe('助手会话 Backend 390 @backend', () => {
     await expect(page.getByText('正在处理…')).toHaveCount(0);
     await expect(输入框(page)).toBeEnabled();
 
-    // 三类卡片按原序，各自查询时间取快照 queried_at（不替换为渲染时间）
-    await expect(page.getByText('查询于 2026-09-10')).toBeVisible();
-    await expect(page.getByText('查询于 2026-09-11')).toBeVisible();
-    await expect(page.getByText('查询于 2026-09-12')).toBeVisible();
-    // 岗位推荐：原市场卡组件；委托槽禁用并交代需进详情操作；推荐理由在附属区
+    // 三类卡片按原序，各带中文类型标题与实际数量；查询时间不上屏（§10.2）
+    await expect(page.getByText('推荐岗位', { exact: true })).toBeVisible();
+    await expect(page.getByText('2 个岗位')).toBeVisible();
+    await expect(page.getByText('在谈列表', { exact: true })).toBeVisible();
+    await expect(page.getByText('2 条在谈')).toBeVisible();
+    await expect(page.getByText('在谈详情', { exact: true })).toBeVisible();
+    await expect(page.getByText(/查询于/)).toHaveCount(0);
+    // 岗位推荐：原市场卡组件 + 卡内中文匹配理由（真实样本组合）；委托槽禁用
     await expect(page.getByTestId('求职推荐卡')).toHaveCount(2);
     await expect(page.getByRole('button', { name: '让AI代理去谈' })).toHaveCount(2);
     for (const 键 of await page.getByRole('button', { name: '让AI代理去谈' }).all()) {
       await expect(键).toBeDisabled();
     }
-    await expect(page.getByText('请进入岗位详情操作')).toHaveCount(2);
-    await expect(page.getByText('direction_match')).toHaveCount(2);
+    // 用户明确取消的按钮下脚注不再出现
+    await expect(page.getByText('请进入岗位详情操作')).toHaveCount(0);
+    // 卡内理由：已知码译中文（两卡各有职位方向/经验/地点，第二张多办公方式），原码不透出
+    await expect(page.getByText('职位方向匹配')).toHaveCount(2);
+    await expect(page.getByText('经验要求匹配')).toHaveCount(2);
+    await expect(page.getByText('工作地点匹配')).toHaveCount(2);
+    await expect(page.getByText('办公方式匹配')).toHaveCount(1);
+    await expect(page.getByText(/category_matched|experience_met|location_matched|workplace_mode_matched/)).toHaveCount(0);
     // 在谈列表：两个同名项目各自成卡（稳定内序号由卡序号承担）；needs_action 才出「需要你」；
     // 薪资 nullable 出既有「薪资未知」占位；详情卡同一张在谈卡 + 公开初评/条件确认段
     await expect(page.getByTestId('求职在谈卡')).toHaveCount(3);
@@ -294,7 +311,8 @@ test.describe('助手会话 Backend 390 @backend', () => {
     await page.getByTestId('求职在谈卡').first().locator('button').first().click();
     await expect(page).toHaveURL(new RegExp(`#/deal/${编号.记录甲}$`), { timeout: 10_000 });
     await expect(page.getByText('同名在谈项目', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('结论：fit')).toBeVisible({ timeout: 15_000 });
+    // 初评已本地化（94be6952：S0 小结 = 决定中文文案，不再渲染「结论：fit」原词）
+    await expect(page.getByText('公开初评匹配')).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: '返回' }).click();
     await expect(page).toHaveURL(/#\/agent$/, { timeout: 10_000 });
     await expect(page.getByText(会话正文)).toBeVisible({ timeout: 15_000 });
@@ -439,13 +457,13 @@ test.describe('助手会话 Backend 390 @backend', () => {
 
     await 进入助手聊天(page);
     await expect(page.getByText('这条消息处理失败')).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('[class*="我行"]')).toHaveCount(1);
+    await expect(page.locator('[class*="我方"]')).toHaveCount(1);
 
     // 重试：POST 新幂等键 → 202 同 message_id 新轮次；原位替换，不多出用户气泡
     await page.getByRole('button', { name: '重试', exact: true }).click();
     await expect(page.getByText('正在处理…')).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText('P1FIX 失败的追问')).toHaveCount(1);
-    await expect(page.locator('[class*="我行"]')).toHaveCount(1);
+    await expect(page.locator('[class*="我方"]')).toHaveCount(1);
     const 重试们 = 覆盖请求.filter(
       (条) => 条.method === 'POST' && 条.path === `/api/v1/me/assistant/turns/${编号.轮次三}/retry`,
     );
@@ -461,7 +479,7 @@ test.describe('助手会话 Backend 390 @backend', () => {
     await expect(page.getByText('这条消息处理失败')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '重试', exact: true })).toHaveCount(0);
     await expect(page.getByText('P1FIX 失败的追问')).toHaveCount(1);
-    await expect(page.locator('[class*="我行"]')).toHaveCount(1);
+    await expect(page.locator('[class*="我方"]')).toHaveCount(1);
 
     expect(诊断.pageErrors).toEqual([]);
     expect(诊断.failedRequests).toEqual([]);
@@ -486,33 +504,61 @@ for (const 宽度 of [320, 390]) {
       test.setTimeout(120_000);
       const 状态 = 创建助手会话状态();
       const 长职位名 = '测'.repeat(80);
+      // 更早一条：无卡 Markdown 回复（Spec §10.5 用户提供的完整样本正文节选），
+      // 覆盖「无卡也是 Markdown + 长内容不撑破气泡」
+      const 无卡Markdown = [
+        '为你找到 **产品经理（北京市）** 的 2 个推荐岗位：',
+        '',
+        '### 📌 产品经理 · 北京市',
+        '',
+        '**1. Project Star — 产品经理**',
+        '- 📍 **地点：** 远程办公；每月北京线下协作 2 天（具体地点另行通知）',
+        '- 💰 **薪资：** 20–30K/月（12 薪）',
+        '',
+        '两个岗位薪资一致（20–30K/月），区别主要在工作模式：',
+        '- **Project Star** 是**远程为主**，灵活度高',
+        '- **快手**是**三里屯办公**，现场协作',
+      ].join('\n');
       状态.首页 = {
-        items: [助手消息(
-          { 编号: 编号.消息一, 轮次: 编号.轮次一, 文本: 'P1FIX 再看一遍这些项目' },
-          {
-            reply: {
-              text: 'P1FIX 助手正文：同名、长名与缺失字段都按既有卡面呈现。',
-              visibility: 'available',
-              cards: [
-                岗位推荐卡('2026-09-10T08:00:00Z', 岗位推荐页([
-                  岗位项({ 岗位编号: 编号.岗位一, 职位: 长职位名 }, { annual_salary_months: 15 }),
-                  岗位项({ 岗位编号: 编号.岗位下架, 职位: '数据平台工程师' }, { organization_name: null }),
-                ], null)),
-                在谈列表卡('2026-09-11T09:30:00Z', 在谈页([
-                  在谈项({ 记录编号: 编号.记录甲, 职位: '同名在谈项目' }),
-                  在谈项({ 记录编号: 编号.记录乙, 职位: '同名在谈项目' }, {
-                    needs_action: true,
-                    job: { public_salary_range: null },
-                  }),
-                ], '3')),
-                在谈详情卡('2026-09-12T14:00:00Z', 在谈详情卡数据(
-                  在谈项({ 记录编号: 编号.记录甲, 职位: '同名在谈项目' }),
-                  { 公开初评: 初评 },
-                )),
-              ],
+        items: [
+          助手消息(
+            { 编号: 编号.消息一, 轮次: 编号.轮次一, 文本: 'P1FIX 再看一遍这些项目' },
+            {
+              created_at: '2026-09-16T09:07:33Z',
+              reply: {
+                text: 'P1FIX 助手正文：同名、长名与缺失字段都按既有卡面呈现。',
+                visibility: 'available',
+                cards: [
+                  岗位推荐卡('2026-09-16T10:52:00Z', 岗位推荐页([
+                    岗位项({ 岗位编号: 编号.岗位一, 职位: 长职位名 }, {
+                      annual_salary_months: 15,
+                      safe_reasons: ['category_matched', 'experience_met', 'location_matched'],
+                    }),
+                    岗位项({ 岗位编号: 编号.岗位下架, 职位: '数据平台工程师' }, {
+                      organization_name: null,
+                      safe_reasons: ['category_matched', 'experience_met', 'location_matched', 'workplace_mode_matched'],
+                    }),
+                  ], null)),
+                  在谈列表卡('2026-09-16T11:38:00Z', 在谈页([
+                    在谈项({ 记录编号: 编号.记录甲, 职位: '同名在谈项目' }),
+                    在谈项({ 记录编号: 编号.记录乙, 职位: '同名在谈项目' }, {
+                      needs_action: true,
+                      job: { public_salary_range: null },
+                    }),
+                  ], '3')),
+                  在谈详情卡('2026-09-16T12:24:00Z', 在谈详情卡数据(
+                    在谈项({ 记录编号: 编号.记录甲, 职位: '同名在谈项目' }),
+                    { 公开初评: 初评 },
+                  )),
+                ],
+              },
             },
-          },
-        )],
+          ),
+          助手消息(
+            { 编号: 编号.消息二, 轮次: 编号.轮次二, 文本: 'P1FIX 更早的一条纯文字追问' },
+            { created_at: '2026-09-16T08:07:33Z', reply: { text: 无卡Markdown, visibility: 'available', cards: [] } },
+          ),
+        ],
         next_cursor: null,
       };
       await 安装助手会话路由(page, { 状态 });
@@ -521,8 +567,13 @@ for (const 宽度 of [320, 390]) {
       await 进入助手聊天(page);
       await expect(page.getByText('P1FIX 助手正文：同名、长名与缺失字段都按既有卡面呈现。')).toBeVisible({ timeout: 15_000 });
 
-      // 布局不变式：无横向溢出、输入可见、单一消息滚动容器、无按钮嵌套
+      // 布局不变式：无横向溢出（无卡长 Markdown 与多卡两条路径都覆盖）、输入可见、
+      // 单一消息滚动容器、无按钮嵌套
       await 期望聊天布局(page);
+
+      // 无卡 Markdown：标题/加粗/列表渲染成真实元素（不是纯文本）
+      await expect(page.locator('h3').filter({ hasText: '产品经理 · 北京市' })).toHaveCount(1);
+      await expect(page.locator('strong').filter({ hasText: '产品经理（北京市）' })).toHaveCount(1);
 
       // 嵌入的是原卡区域：市场卡结构类 + 在谈卡阶段区都在自己的 testid 根内，无重设计
       const 卡结构 = await page.evaluate(() => {
@@ -531,11 +582,13 @@ for (const 宽度 of [320, 390]) {
         return {
           市场卡主体: 市场卡?.querySelector('[class*="卡主体"]') !== null,
           市场卡头行: 市场卡?.querySelector('[class*="公司头行"]') !== null,
+          理由区: 市场卡?.querySelector('[class*="理由区"]') !== null,
           在谈阶段区: 在谈卡?.querySelector('[data-card-region="stage"]') !== null,
         };
       });
       expect(卡结构.市场卡主体, '复用原市场卡卡主体').toBe(true);
       expect(卡结构.市场卡头行, '复用原市场卡公司头行').toBe(true);
+      expect(卡结构.理由区, '卡内匹配理由区在场').toBe(true);
       expect(卡结构.在谈阶段区, '复用原在谈卡阶段区').toBe(true);
 
       // 长职位名如实上屏（单行截断不横向溢出）；缺图片走中性空位占位，无外部图请求
@@ -550,12 +603,81 @@ for (const 宽度 of [320, 390]) {
       await expect(page.getByText('15 薪')).toHaveCount(1);
       // 在谈列表卡 next_cursor='3' 非空：既有「下一批」提示照常上屏（静态提示，非分页入口）
       await expect(page.getByText(/下一批/)).toBeVisible();
-      // 各卡各自查询时间
-      await expect(page.getByText('查询于 2026-09-10')).toBeVisible();
-      await expect(page.getByText('查询于 2026-09-11')).toBeVisible();
-      await expect(page.getByText('查询于 2026-09-12')).toBeVisible();
+      // 类型标题与数量；查询时间不上屏
+      await expect(page.getByText('推荐岗位', { exact: true })).toBeVisible();
+      await expect(page.getByText('2 个岗位')).toBeVisible();
+      await expect(page.getByText('在谈列表', { exact: true })).toBeVisible();
+      await expect(page.getByText('2 条在谈')).toBeVisible();
+      await expect(page.getByText('在谈详情', { exact: true })).toBeVisible();
+      await expect(page.getByText(/查询于/)).toHaveCount(0);
+      // 卡内中文理由（真实样本组合）；机器码不透出
+      await expect(page.getByText('职位方向匹配')).toHaveCount(2);
+      await expect(page.getByText('办公方式匹配')).toHaveCount(1);
+      await expect(page.getByText(/category_matched|workplace_mode_matched/)).toHaveCount(0);
+      // 消息时间：每条消息用户+Agent 各一次（多卡 Agent 也只有一次），dateTime 保留原串
+      await expect(page.locator('time')).toHaveCount(4);
+      await expect(page.locator('time[datetime="2026-09-16T09:07:33Z"]')).toHaveCount(2);
+      await expect(page.locator('time[datetime="2026-09-16T08:07:33Z"]')).toHaveCount(2);
 
       await 存截图(testInfo, page, `assistant-layout-${宽度}.png`);
+
+      expect(诊断.pageErrors).toEqual([]);
+      expect(诊断.failedRequests).toEqual([]);
+      expect(诊断.consoleErrors).toEqual([]);
+      诊断.detach();
+    });
+  });
+}
+
+// ── 消息时间源对照（Spec §10.4 / Plan Task 2）：两个原生 describe 各一条聚焦用例，
+//    不为时区复制整个导航旅程。clock 冻结当前年为 2026；created_at 与 queried_at 跨分钟。 ──
+
+for (const 时区 of ['Asia/Shanghai', 'UTC'] as const) {
+  test.describe(`助手会话 消息时间源 ${时区} @backend`, () => {
+    test.use({
+      viewport: { width: 390, height: 844 },
+      locale: 'zh-CN',
+      timezoneId: 时区,
+      reducedMotion: 'reduce',
+    });
+
+    test(`消息时间取 created_at 而非 queried_at（${时区}） @backend`, async ({ page }) => {
+      test.setTimeout(120_000);
+      const 创建时间 = '2026-09-16T09:07:33.348845Z';
+      const 状态 = 创建助手会话状态();
+      状态.首页 = {
+        items: [助手消息(
+          { 编号: 编号.消息一, 轮次: 编号.轮次一, 文本: 'P1FIX 时间源对照' },
+          {
+            created_at: 创建时间,
+            reply: {
+              text: 'P1FIX 助手正文：时间源对照。',
+              visibility: 'available',
+              cards: [岗位推荐卡('2026-09-16T09:52:38Z', 岗位推荐页([
+                岗位项({ 岗位编号: 编号.岗位一, 职位: '时间源对照岗' }),
+              ], null))],
+            },
+          },
+        )],
+        next_cursor: null,
+      };
+      await 安装助手会话路由(page, { 状态 });
+      const 诊断 = 安装诊断(page);
+      // 冻结「当前年」为 2026：跨年显示口径不依赖运行机器的真实日期
+      await page.clock.install({ time: new Date('2026-09-16T12:00:00Z') });
+
+      await 进入助手聊天(page);
+      await expect(page.getByText('时间源对照岗')).toBeVisible({ timeout: 15_000 });
+
+      const 期望文 = 时区 === 'Asia/Shanghai' ? '09-16 17:07' : '09-16 09:07';
+      // 用户 + Agent 两侧各一次，同条 created_at、设备本地时区
+      await expect(page.getByText(期望文, { exact: true })).toHaveCount(2);
+      await expect(page.locator('time')).toHaveCount(2);
+      await expect(page.locator(`time[datetime="${创建时间}"]`)).toHaveCount(2);
+      // queried_at（09:52，与创建跨分钟）不冒充消息时间
+      const 错误文 = 时区 === 'Asia/Shanghai' ? '09-16 17:52' : '09-16 09:52';
+      await expect(page.getByText(错误文, { exact: true })).toHaveCount(0);
+      await expect(page.getByText(/查询于/)).toHaveCount(0);
 
       expect(诊断.pageErrors).toEqual([]);
       expect(诊断.failedRequests).toEqual([]);

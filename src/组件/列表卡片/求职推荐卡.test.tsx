@@ -192,3 +192,48 @@ describe('求职推荐卡 · 发布人头像（展示本地状态）', () => {
     expect(screen.getByText('企')).toBeTruthy();
   });
 });
+
+describe('求职推荐卡 · 匹配理由区（Spec §10.3：仅助手结果显式传入，市场页不传零变化）', () => {
+  it('不传时完全没有新区域：无理由节点、无「暂无推荐理由」，按钮数不变', () => {
+    const { 宿主 } = 渲染卡();
+    expect(宿主.container.querySelector('[class*="理由区"]')).toBeNull();
+    expect(screen.queryByText('暂无推荐理由')).toBeNull();
+    // 市场卡既有三个按钮位：卡主体 + › + 去谈键
+    expect(宿主.container.querySelectorAll('button')).toHaveLength(3);
+  });
+
+  it('空数组显示卡内「暂无推荐理由」中性提示，不编造匹配结论', () => {
+    渲染卡({ 匹配理由: [] });
+    expect(screen.getByText('暂无推荐理由')).toBeTruthy();
+    expect(宿主理由区内().querySelector('svg')).toBeNull();
+  });
+
+  it('已匹配项为绿色对勾加文字，自然语言项为普通说明无勾；区域插在标签行之后', () => {
+    const { 宿主 } = 渲染卡({
+      匹配理由: [
+        { 文案: '职位方向匹配', 已匹配: true },
+        { 文案: '经验要求匹配', 已匹配: true },
+        { 文案: '薪资带覆盖你的底线', 已匹配: false },
+      ],
+    });
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    expect(screen.getByText('经验要求匹配')).toBeTruthy();
+    expect(screen.getByText('薪资带覆盖你的底线')).toBeTruthy();
+    // 只有已匹配两项带对勾图标，自然语言说明不加勾
+    const 区 = 宿主理由区内();
+    expect(区.querySelectorAll('svg')).toHaveLength(2);
+    // 位置：标签行的下一个兄弟就是理由区（都在卡主体内、底行分割线之上）
+    const 标签行 = 宿主.container.querySelector('[class*="标签行"]');
+    expect(标签行?.nextElementSibling).toBe(区);
+    const 底行 = 宿主.container.querySelector('[class*="底行"]');
+    expect(
+      区.compareDocumentPosition(底行 as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  function 宿主理由区内(): HTMLElement {
+    const 区 = document.querySelector('[class*="理由区"]');
+    if (!(区 instanceof HTMLElement)) throw new Error('理由区未渲染');
+    return 区;
+  }
+});
