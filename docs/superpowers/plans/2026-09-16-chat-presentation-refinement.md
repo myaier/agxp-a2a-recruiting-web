@@ -211,6 +211,18 @@ PDF 层复用：从 `原始PDF层.tsx` 导出同文件 `原始PDF正文({文件�
   1. 公司链相位未绑定实际读取轮次（契约违反/Important/required/复杂度增加——请求令牌为防旧发布方公司误展示所必需）→ 修复（**上限轮后修复，无下一轮 reviewer 复核，如实记录**）：企业读取只在本轮岗位 promise 成功落地后按当时 publisher_organization_ref 发起；相位携带企业编号，回调同时核对轮键与编号（旧编号迟到成功不得改写新编号的 pending/失败）；岗位轮按轮键复用在飞请求，StrictMode 重放不把读锁让路当成功。新增反例：岗位在飞零企业请求 + 重放零重复请求 + 坐标换 B 后按编号落地。
 - R3 修复提交：见 git log `fix(review-r3)`；验证 = hook+页面单测 42 passed + typecheck/lint 0 + 真人消息 fixture e2e 11/11。Review loop 于第 3 轮上限停止：R1 4 项、R2 2 项、R3 1 项共 7 项 required 全部接受修复，0 拒绝；R3 修复未再经 reviewer 复核（cap）。
 
+## 实施后收尾记录（2026-09-16）
+
+- 异构 review：codex-review-loop 3 轮（上限）完结，7 项 required 全部接受修复、0 拒绝（R1×4 → 3aeb72ba、R2×2 → 1edcfc04、R3×1 → 253cda03 上限轮后修复无再复核）；详见上文「异构 Codex review 记录」。
+- affected / L0–L2（最小覆盖，复用 Task 回执只补缺口；正式 L3 responsibility: none，按用户免除不执行、不记 PASS）：
+  · 静态：typecheck 0 错、lint 0 警告（最终 HEAD）。
+  · 第一层定向：Task 1 回执复用（28+66）、Task 2 回执复用（143+71）；Task 3 + review 修复在最终 HEAD 96967ac9 重出六文件回执 71 passed（hook+页面+操作栏+PDF 层+双 Mock 屏）。
+  · 第二层定向：助手会话 fixture 9/9 与 问AI代理展示 mock 4/4（Task 2 回执复用，其后相关文件未变）；真人消息 fixture 11/11 与 mock 1/1（最终 HEAD 重跑）。
+  · 生产构建：npm run build 通过（react-markdown 10.1.0 ESM 打包，首次且唯一一次）。
+  · 清单：test:list --write 后 --check 通过（第一层 5775 / 第二层 335），diff 仅生成区。
+- target：origin/main = 30a0d3b2（规划基线，未推进；final gate 前只读 fetch 核对）。
+- 证据位置：output/chat-presentation-evidence/{task1,task2,task3}/（命令日志、截图、依赖与候选版本；output/ 不提交）。
+
 ## 文档审查记录
 
 - 模式：`WORKFLOW_DOCUMENT_REVIEW`，父 workflow 已授权。固定范围仅本 Spec 和本 Plan；批准 Spec revision `81e12c337596e063e089a6074c6bb2779e5dde60` / blob `8eebfc2ec223dab7deaa1d8bbe5afc02675aeb98`。
