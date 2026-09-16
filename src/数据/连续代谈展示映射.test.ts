@@ -537,6 +537,8 @@ describe('Task 4 · 从连续到详情分段（pre-Case S0 信息区 / retention
       failure: { code: 'delegation_failed', retryable: true },
     }));
     expect(失败[0]!.小结).toBe('初评未完成');
+    // 失败原因是权威事实：即使 actions 未允许出恢复卡，也在 S0 信息区有落点（review-r1 F1）
+    expect(失败[0]!.小结行们).toEqual(['本次委托未完成']);
     // failed 的 evaluation 块在场时读它自身状态，结论一致
     const 失败带块 = 从连续到详情分段(连续详情({
       phase: 'evaluation_failed',

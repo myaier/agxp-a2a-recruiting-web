@@ -312,18 +312,13 @@ function 记录角色标签(条: P5阶段区块视图['Agent消息'][number]): s
   return 条.answerSource === 'human' ? `${侧}方本人` : `${侧} Agent`;
 }
 
-/** transcript 事件 kind 的开放 string：只认确有用户价值的流程闭词（Spec §A.5），其余
- *  （推进/结束/与正式问答重复的旧事件）不落段 —— 结束由阶段胶囊+结束时间表达，问答应
- *  以 screening records 为准，不造第二份。 */
-const 时间线注释文案表 = {
+/** transcript 事件 kind 的开放 string：无正文时只给确有用户价值的流程闭词的固定中文
+ *  说明（Spec §A.5）；有非空正文的事件一律保留原文语义，协议 kind/reason_code 不进展示。 */
+const 流程事件文案表 = {
   case_created: '开始代谈',
   decision_continue: '双方选择继续这一单',
   resume_submitted: '已递交简历',
 } as const;
-
-function 时间线注释文案(kind: string): string | null {
-  return 已有键(时间线注释文案表, kind) ? 时间线注释文案表[kind] : null;
-}
 
 /** RFC3339 → epoch 毫秒（排序专用展示事实）；缺失/非法给 null，绝不造当前时刻。 */
 function 时刻毫秒(原文: string): number | null {
@@ -368,28 +363,49 @@ function 段内时序记录(区: P5阶段区块视图, role: P5角色): 段内�
       毫秒: 时刻毫秒(条.occurredAt), 源序: 1, 输入序: 序,
     });
   });
+  // transcript（A.5）：case_ended 已由阶段胶囊+结束时间表达，一概不重复；case_advanced
+  // 无正文不显示、重复推进只列第一条有正文的；其余事件优先保留非空正文原文（trim），
+  // 无正文时才给已知流程事件的固定中文说明；无正文且未知 kind 不显示。
+  let 已列推进事件 = false;
   区.时间线.forEach((项, 序) => {
-    const 内容 = 时间线注释文案(项.kind);
-    if (内容 === null || 已见.has(项.eventId)) return;
+    if (项.kind === 'case_ended' || 已见.has(项.eventId)) return;
+    const 正文 = 项.text?.trim() ?? '';
+    let 内容: string | null;
+    if (项.kind === 'case_advanced') {
+      if (正文 === '' || 已列推进事件) return;
+      已列推进事件 = true;
+      内容 = 正文;
+    } else if (正文 !== '') {
+      内容 = 正文;
+    } else {
+      内容 = 已有键(流程事件文案表, 项.kind) ? 流程事件文案表[项.kind] : null;
+    }
+    if (内容 === null) return;
     已见.add(项.eventId);
     行们.push({
       条: { kind: '注释', 编号: `evt:${项.eventId}`, 标签: null, 时间: 取本地时分(项.occurredAt), 内容 },
       毫秒: 时刻毫秒(项.occurredAt), 源序: 2, 输入序: 序,
     });
   });
+  // 正式叮嘱回执（A.5「仍标本人/代理回执」）：本人的叮嘱是用户自己的话，走荧光绿用户
+  // 版式（Mock 连接器同款视觉即本人身份）；对端的叮嘱是对方本人的话，带既有本人标签，
+  // 不伪装成对端代理问答。方向/时间戳照常保留，空正文继续省略。
   区.叮嘱.forEach((条, 序) => {
     const 内容 = 条.expression?.trim() ?? '';
     if (内容 === '' || 已见.has(条.instructionId)) return;
     已见.add(条.instructionId);
+    const 本人 = 条.owner === role;
+    const 条目: 段内记录 = {
+      kind: '气泡',
+      编号: `aci:${条.instructionId}`,
+      方: 本人 ? ('我方' as const) : ('对方' as const),
+      角色: 本人 ? '' : `${条.owner === 'candidate' ? '候选' : '招聘'}方本人`,
+      时间: 取本地时分(条.occurredAt),
+      内容,
+    };
+    if (本人) 条目.来自 = '用户';
     行们.push({
-      条: {
-        kind: '气泡',
-        编号: `aci:${条.instructionId}`,
-        方: 条.owner === role ? ('我方' as const) : ('对方' as const),
-        角色: '',
-        时间: 取本地时分(条.occurredAt),
-        内容,
-      },
+      条: 条目,
       毫秒: 时刻毫秒(条.occurredAt), 源序: 3, 输入序: 序,
     });
   });

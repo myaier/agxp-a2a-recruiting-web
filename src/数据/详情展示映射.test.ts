@@ -856,29 +856,89 @@ describe('从P5到详情分段', () => {
     expect(注意[0]!.小结行们).toEqual(['AI 服务暂时不可用，本 Case 尚未继续']);
   });
 
-  it('段内往来：气泡左右按 viewer、角色标签按 answer_source；正式回执仍以本人/代理身份落回时序', () => {
+  it('正式回执带本人/代理身份（A.5）：本人叮嘱走用户版式、对端叮嘱带本人标签，方向/时间保留；空正文省略', () => {
+    const 叮嘱 = [
+      { instructionId: 'aci_1', owner: 'candidate' as const, stage: 'anonymous_screening' as const, expression: '工作日联系', occurredAt: '2026-08-29T01:05:00Z' },
+      { instructionId: 'aci_2', owner: 'recruiter' as const, stage: 'anonymous_screening' as const, expression: '两周内走完', occurredAt: '2026-08-29T01:06:00Z' },
+      { instructionId: 'aci_3', owner: 'candidate' as const, stage: 'anonymous_screening' as const, occurredAt: '2026-08-29T01:07:00Z' },
+    ];
+    const 候选段 = 从P5到详情分段(分段视图({
+      role: 'candidate',
+      阶段区块: 四段({ anonymous_screening: { 状态: 'active', 叮嘱 } }),
+    }), 详情DTO({ stage: 'anonymous_screening' }), null);
+    const 气泡们 = (候选段[0]!.记录 ?? []).filter(
+      (条): 条 is Extract<typeof 条, { kind: '气泡' }> => 条.kind === '气泡',
+    );
+    // 本人叮嘱：荧光绿用户版式（Mock 同款视觉即本人身份），方向我方、时间保留
+    expect(气泡们.find((条) => 条.内容 === '工作日联系')).toMatchObject({
+      方: '我方', 来自: '用户', 时间: 本地时分('2026-08-29T01:05:00Z'),
+    });
+    // 对端叮嘱：对方方向 + 对方本人标签（不伪装成对端代理问答），时间保留
+    expect(气泡们.find((条) => 条.内容 === '两周内走完')).toMatchObject({
+      方: '对方', 角色: '招聘方本人', 时间: 本地时分('2026-08-29T01:06:00Z'),
+    });
+    // 空正文回执不占位
+    expect(气泡们.some((条) => 条.内容 === '')).toBe(false);
+
+    // 招聘视角镜像：身份与方向随 viewer 翻转
+    const 招聘段 = 从P5到详情分段(分段视图({
+      role: 'recruiter', candidateAlias: 'candidate-0123456789ab',
+      阶段区块: 四段({ anonymous_screening: { 状态: 'active', 叮嘱 } }),
+    }), 详情DTO({ stage: 'anonymous_screening' }), null);
+    const 招聘气泡们 = (招聘段[0]!.记录 ?? []).filter(
+      (条): 条 is Extract<typeof 条, { kind: '气泡' }> => 条.kind === '气泡',
+    );
+    expect(招聘气泡们.find((条) => 条.内容 === '工作日联系')).toMatchObject({ 方: '对方', 角色: '候选方本人' });
+    expect(招聘气泡们.find((条) => 条.内容 === '两周内走完')).toMatchObject({ 方: '我方', 来自: '用户' });
+  });
+
+  it('transcript 注释（review-r1 F3）：有正文保留原文语义，无正文已知流程事件给固定说明，明确去重规则照旧', () => {
     const 分段 = 从P5到详情分段(分段视图({
       阶段区块: 四段({
         anonymous_screening: {
           状态: 'active',
-          叮嘱: [
-            { instructionId: 'aci_1', owner: 'candidate', stage: 'anonymous_screening', expression: '工作日联系', occurredAt: '2026-08-29T01:05:00Z' },
-            { instructionId: 'aci_2', owner: 'recruiter', stage: 'anonymous_screening', expression: '', occurredAt: '2026-08-29T01:06:00Z' },
+          时间线: [
+            { eventId: 'e1', stage: 'anonymous_screening', kind: 'case_created', role: '', text: '  代谈已创建，双方代理就位。 ', occurredAt: '2026-08-23T10:00:00Z' },
+            { eventId: 'e2', stage: 'anonymous_screening', kind: 'decision_continue', role: '', occurredAt: '2026-08-23T10:01:00Z' },
+            { eventId: 'e3', stage: 'anonymous_screening', kind: 'stage_note', role: '', text: '候选人已确认可以到岗', occurredAt: '2026-08-23T10:02:00Z' },
+            { eventId: 'e4', stage: 'anonymous_screening', kind: 'case_advanced', role: '', occurredAt: '2026-08-23T10:03:00Z' },
+            { eventId: 'e5', stage: 'anonymous_screening', kind: 'case_advanced', role: '', text: '推进到复评', occurredAt: '2026-08-23T10:04:00Z' },
+            { eventId: 'e6', stage: 'anonymous_screening', kind: 'case_advanced', role: '', text: '又一次推进', occurredAt: '2026-08-23T10:05:00Z' },
+            { eventId: 'e7', stage: 'anonymous_screening', kind: 'case_ended', role: '', text: '已结束', occurredAt: '2026-08-23T10:06:00Z' },
+            { eventId: 'e8', stage: 'anonymous_screening', kind: 'case_ended', role: '', occurredAt: '2026-08-23T10:07:00Z' },
+            { eventId: 'e9', stage: 'anonymous_screening', kind: 'mystery_kind', role: '', occurredAt: '2026-08-23T10:08:00Z' },
           ],
+        },
+      }),
+    }), 详情DTO(), null);
+    const 注释们 = (分段[0]!.记录 ?? []).filter(
+      (条): 条 is Extract<typeof 条, { kind: '注释' }> => 条.kind === '注释',
+    );
+    expect(注释们.map((条) => 条.内容)).toEqual([
+      '代谈已创建，双方代理就位。', // 已知 kind 且有正文 → 原文（trim），不套固定短句
+      '双方选择继续这一单', // 已知 kind 无正文 → 固定中文说明
+      '候选人已确认可以到岗', // 其他 kind 有正文 → 原文保留语义
+      '推进到复评', // case_advanced 只列第一条有正文的（重复推进不刷屏）
+      // 无正文 case_advanced / 有无正文的 case_ended / 无正文未知 kind：一概不落段
+    ]);
+    expect(注释们.every((条) => 条.标签 === null)).toBe(true); // 协议 kind 不进展示
+  });
+
+  it('问答气泡角色标签按 answer_source：human 回答带「X方本人」标签，与 Agent 问答区分', () => {
+    const 分段 = 从P5到详情分段(分段视图({
+      阶段区块: 四段({
+        anonymous_screening: {
+          状态: 'active',
           Agent消息: [
             { id: 'a_h', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, answerStatus: 'answered', answerSource: 'human', exchangeRef: null, occurredAt: '2026-08-23T10:05:00Z', 内容: '由本人补答：可以。' },
           ],
         },
       }),
-    }), 详情DTO({ stage: 'anonymous_screening' }), null);
-    const 气泡们 = (分段[0]!.记录 ?? []).filter(
-      (条): 条 is Extract<typeof 条, { kind: '气泡' }> => 条.kind === '气泡',
+    }), 详情DTO(), null);
+    const 本人答 = (分段[0]!.记录 ?? []).find(
+      (条): 条 is Extract<typeof 条, { kind: '气泡' }> => 条.kind === '气泡' && 条.内容 === '由本人补答：可以。',
     );
-    const 回执 = 气泡们.find((条) => 条.内容 === '工作日联系');
-    expect(回执).toMatchObject({ 方: '我方', 角色: '', 时间: 本地时分('2026-08-29T01:05:00Z') });
-    // 空正文回执不占位；human 回答带「招聘方本人」标签
-    expect(气泡们.some((条) => 条.内容 === '')).toBe(false);
-    const 本人答 = 气泡们.find((条) => 条.内容 === '由本人补答：可以。');
     expect(本人答?.角色).toBe('招聘方本人 · 第 1 轮');
+    expect(本人答?.方).toBe('对方');
   });
 });

@@ -749,6 +749,7 @@ function 连续资源(聚合: NegotiationDetail): 后端连续资源 {
     canonical记录ID: 聚合.record_id,
     顶栏: 从连续到详情顶栏(聚合),
     状态: 从连续到详情状态(聚合),
+    保留顶部状态区: 聚合.phase !== 'evaluating' && 聚合.phase !== 'evaluation_failed',
     公开初评: 聚合.phase === 'case_started' ? 映射公开初评(聚合) : null,
     分段们: 从连续到详情分段(聚合),
     职位资料: 从连续到职位资料(聚合),
@@ -770,8 +771,10 @@ describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5�
     expect(screen.getByText('平台工程师 · 公司信息缺失')).toBeTruthy(); // 顶栏同款槽
     expect(screen.getByRole('button', { name: '代谈进度' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '职位详情' })).toBeTruthy();
-    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // 状态区（Spec §6）
-    expect(screen.getByText('轮次 —')).toBeTruthy(); // 无轮次不造 0/3
+    // review-r1 F1（Spec §5.1/§5.2）：初评中不再有顶部状态区 —— 过程/原因归 S0 信息区
+    expect(screen.queryByText('正在进行公开信息初评')).toBeNull();
+    expect(screen.getByText('公开初评匹配')).toBeTruthy(); // S0（默认展开）的小结
+    expect(screen.getByText('未开始')).toBeTruthy(); // 标题旁状态胶囊
     // pre-Case 的公开初评装 S0 信息区（灰条不可展开时无托盘，Task 4 起 retention 才有页顶托盘）
     expect(screen.queryByText('公开信息初评')).toBeNull();
     // 底栏：原控件保留但真实禁用，文案在 placeholder 原样可见（不是只读 div）
@@ -793,7 +796,7 @@ describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5�
       </MemoryRouter>
     );
     const 页 = render(<壳 资源={连续资源(连续详情DTO())} />);
-    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy();
+    expect(screen.getByText('公开初评匹配')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '职位详情' })); // 切到资料 Tab
     expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy();
     // 轮询推进：同一张卡开案（连续 → 正常联合），Tab 仍是 资料
@@ -855,13 +858,13 @@ describe('后端详情渲染 · Tab 深链初始化（S0–S3 展示统一 Task 
     expect(screen.queryByText('正在进行公开信息初评')).toBeNull(); // 进度槽互斥卸载
     cleanup();
     渲染深链(资源, '/deal/dlg_x?tab=resume');
-    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // candidate 不认 resume
+    expect(screen.getByText('公开初评匹配')).toBeTruthy(); // candidate 不认 resume
     cleanup();
     渲染深链(资源, '/deal/dlg_x?tab=whatever');
-    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // 未知值回进度
+    expect(screen.getByText('公开初评匹配')).toBeTruthy(); // 未知值回进度
     cleanup();
     渲染深链(资源, '/deal/dlg_x');
-    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // 缺 query 回进度
+    expect(screen.getByText('公开初评匹配')).toBeTruthy(); // 缺 query 回进度
     cleanup();
   });
 
@@ -885,9 +888,9 @@ describe('后端详情渲染 · Tab 深链初始化（S0–S3 展示统一 Task 
     });
     expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy(); // 深链先开资料
     await user.click(screen.getByRole('button', { name: '代谈进度' })); // 手选回进度
-    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy();
+    expect(screen.getByText('公开初评匹配')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '同记录再来一次 job 深链' }));
-    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // 懒初始化只读一次
+    expect(screen.getByText('公开初评匹配')).toBeTruthy(); // 懒初始化只读一次
     expect(screen.queryByText('当前在谈详情数据未提供')).toBeNull();
     页.unmount();
   });

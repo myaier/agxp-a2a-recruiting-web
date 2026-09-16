@@ -1369,8 +1369,11 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
       快照: 详情快照({ detail: 候选详情DTO({ stages: 双问阶段 }) }),
     });
     渲染详情('candidate', 'mc_direct');
-    // 补充问题接入已随 respond_fact 移除：多问不再是整页契约错误
-    expect(await screen.findByText('每周可以到岗几天？')).toBeTruthy();
+    // 补充问题接入已随 respond_fact 移除：多问不再是整页契约错误。
+    // review-r1 F3：遗留 transcript 事件带正文保留原文语义 —— 与 screening message 同文
+    // 并存（各一次），第二条问题也照常显示
+    expect((await screen.findAllByText('每周可以到岗几天？')).length).toBe(2);
+    expect(screen.getByText('期望薪资是多少？')).toBeTruthy();
     expect(screen.queryByText(P5契约错误提示)).toBeNull();
     expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
@@ -2605,17 +2608,15 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     // 期望值独立用本地 getter 推出：UTC 进程 = 10:01，Asia/Shanghai 进程 = 18:01
     const 期望 = 本地时分期望('2026-08-23T10:01:00Z');
     const 错位 = 期望 === '10:01' ? '18:01' : '10:01';
-    const 回执期望 = 本地时分期望('2026-08-29T01:05:00Z');
-    const 回执错位 = 回执期望 === '01:05' ? '09:05' : '01:05';
 
     vi.setSystemTime(new Date('2020-01-01T00:00:00Z'));
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
     渲染详情('candidate', 'mc_direct');
     expect(screen.getByText(期望)).toBeTruthy();
     expect(screen.queryByText(错位)).toBeNull(); // 显示跟进程时区走，不写死
-    // 叮嘱回执落回时序后与问答同一时间口径（本地时分）
-    expect(screen.getByText(回执期望)).toBeTruthy();
-    expect(screen.queryByText(回执错位)).toBeNull();
+    // 对端叮嘱回执落回时序后与问答同一时间口径（本地时分）；本人叮嘱走荧光绿用户版式
+    //（Mock 同款，该版式不带时间戳，时间在记录数据层保留 —— 见 详情展示映射.test）
+    expect(screen.getByText(本地时分期望('2026-08-29T01:06:00Z'))).toBeTruthy();
 
     // 换一个 fake 当前时间：显示不变（不读 Date.now()）
     cleanup();
@@ -2623,7 +2624,7 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
     渲染详情('candidate', 'mc_direct');
     expect(screen.getByText(期望)).toBeTruthy();
-    expect(screen.getByText(回执期望)).toBeTruthy(); // 叮嘱回执时间不随当前时间变
+    expect(screen.getByText(本地时分期望('2026-08-29T01:06:00Z'))).toBeTruthy(); // 不随当前时间变
   });
 });
 
@@ -2896,7 +2897,7 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
     });
     渲染候选(`/deal/${记录}`);
     expect(mock读取连续详情).toHaveBeenCalledWith(记录, true);
-    expect(await screen.findByText('正在进行公开信息初评')).toBeTruthy();
+    expect(await screen.findByText('初评中')).toBeTruthy();
     expect(mock替换跳转).not.toHaveBeenCalled(); // canonical 即 URL：不推新历史格
     expect(mock跳转).not.toHaveBeenCalled();
   });
@@ -2934,9 +2935,9 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
         </Routes>
       </MemoryRouter>,
     );
-    // 首次挂载识别 ?tab=job：直开资料 Tab，进度槽（状态区/四灰条）不挂载
+    // 首次挂载识别 ?tab=job：直开资料 Tab，进度槽（S0 信息区/四灰条）不挂载
     expect(await screen.findByText('当前在谈详情数据未提供')).toBeTruthy();
-    expect(screen.queryByText('正在进行公开信息初评')).toBeNull();
+    expect(screen.queryByText('初评中')).toBeNull();
     expect(screen.queryByText('未开始')).toBeNull();
 
     // 换 record：key 重挂载按新 query 初始化 —— 新地址没有 tab query，回进度
@@ -2945,7 +2946,7 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
       连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 'dlg_b', phase: 'evaluating', caseDetail: null }) }),
     });
     await user.click(screen.getByRole('button', { name: '切到新单' }));
-    expect(await screen.findByText('正在进行公开信息初评')).toBeTruthy(); // 进度槽回来了
+    expect(await screen.findByText('初评中')).toBeTruthy(); // 进度槽回来了
     页.unmount();
   });
 
@@ -2957,7 +2958,7 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
       连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 记录, phase: 'evaluating', caseDetail: null }) }),
     });
     const 页 = 渲染候选(`/deal/${记录}`);
-    expect(await screen.findByText('正在进行公开信息初评')).toBeTruthy();
+    expect(await screen.findByText('初评中')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '职位详情' }));
     expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy(); // 切到资料 Tab
 

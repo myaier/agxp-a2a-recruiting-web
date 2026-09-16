@@ -127,6 +127,50 @@ describe('候选详情 · Mock 分支原行为且零 P5 请求', () => {
   });
 });
 
+// ── review-r1 F2（Spec §5.3）：Mock 招聘侧顶栏按已有岗位事实提供岗位上下文行 ──
+describe('候选详情 · Mock 顶栏岗位上下文（review-r1 F2）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock派发.mockClear();
+    mock应用状态 = {
+      数据源模式: 'mock',
+      状态: {
+        企业候选列表: 在谈候选列表,
+        候选决策: {},
+        候选决策快照: {},
+        决策: {},
+        决策快照: {},
+        叮嘱表: {},
+        岗位列表: [{
+          编号: 'P-01', 名称: '资深后端工程师 · 交易网关', 城市: '上海', 薪资带: '50-65K',
+          状态: '在招', 硬性条件: ['Go 主栈'],
+        }],
+      },
+      派发: mock派发,
+    };
+  });
+
+  it('岗位编号可匹配：顶栏给独立岗位上下文行（只拼岗位事实，不带候选姓名/别名）', async () => {
+    // A-01 的岗位编号是 P-01
+    渲染候选详情页('A-01');
+    expect(await screen.findByText('资深后端工程师 · 交易网关 · 上海 · 50-65K')).toBeTruthy();
+    // 行内只有岗位事实：候选真名/代号不因岗位上下文回流
+    expect(screen.queryByText('沈亦舟')).toBeNull();
+    expect(screen.queryByText('陈屿')).toBeNull();
+  });
+
+  it('岗位编号无匹配：安全省略（null，不渲染岗位上下文行也不出占位）', async () => {
+    mock应用状态 = {
+      ...mock应用状态,
+      状态: { ...mock应用状态.状态, 岗位列表: [] },
+    };
+    渲染候选详情页('A-01');
+    expect(await screen.findByRole('button', { name: '在线简历' })).toBeTruthy();
+    expect(screen.queryByText(/资深后端工程师 · 交易网关/)).toBeNull();
+  });
+});
+
 // ── 详情统一 Task 4：资料 Tab 走共用 在线简历正文（完整布局），旧独立屏正文包装保留 ──
 describe('候选详情 · Mock 资料 Tab 共用在线简历正文（Task 4）', () => {
   beforeEach(() => {

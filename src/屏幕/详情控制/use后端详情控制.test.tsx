@@ -918,6 +918,8 @@ describe('use后端详情控制 · 候选连续资源（pre-Case）', () => {
     expect(资源.分段们.every((段) => 段.态 === '未到达')).toBe(true);
     expect(资源.失败动作卡).toBeNull(); // 未失败不出恢复动作
     expect(资源.归档确认).toBeNull();
+    // review-r1 F1：初评中的状态事实归 S0 信息区，顶部不再有独立状态区
+    expect(资源.保留顶部状态区).toBe(false);
     const 底栏 = 资源.底栏;
     expect(底栏.kind).toBe('输入');
     if (底栏.kind !== '输入') throw new Error('unreachable');
@@ -943,6 +945,8 @@ describe('use后端详情控制 · 候选连续资源（pre-Case）', () => {
     const 资源 = 取连续(result.current);
     expect(资源.状态.状态).toBe('暂时无法确认进度，请稍后刷新'); // 合同允许的记录状态
     expect(资源.分段们.every((段) => 段.态 === '未到达')).toBe(true); // 旧 Case 内容清露出
+    // retention 的封闭状态在 S0 没有落点：顶部状态区只对这类分支保留（review-r1 F1）
+    expect(资源.保留顶部状态区).toBe(true);
     expect(资源.失败动作卡).toBeNull();
     expect(资源.底栏).toEqual({ kind: '只读', 说明: '当前在谈已结束，仅可查看' });
   });

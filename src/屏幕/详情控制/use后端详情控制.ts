@@ -122,6 +122,13 @@ export interface 后端连续资源 {
   顶栏: 顶栏信息;
   状态: 状态区信息;
   /**
+   * 是否保留页顶状态区（S0–S3 展示统一 review-r1，Spec §5.1/§5.2）：初评中/初评失败
+   * 的状态事实已由 S0 信息区承载，pre-Case 的这两个 phase 不再有独立状态条；
+   * accepted（接手等待）/refused（拒绝原因）/retention（封闭只读）的权威状态在 S0
+   * 没有落点，只对这些分支保留顶部区。
+   */
+  保留顶部状态区: boolean;
+  /**
    * 公开信息初评托盘：S0–S3 展示统一 Task 4 起 pre-Case 的决定/证据装进 S0 信息区
    * （分段内），只有 retention（不擅自造阶段）仍用页顶托盘显示公开残留状态。
    */
@@ -317,6 +324,7 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
         canonical记录ID: 聚合.record_id,
         顶栏: 从连续到详情顶栏(聚合),
         状态: 从连续到详情状态(聚合),
+        保留顶部状态区: 聚合.phase !== 'evaluating' && 聚合.phase !== 'evaluation_failed',
         // pre-Case 的公开初评装进 S0 信息区（从连续到详情分段）；只有 retention
         // （case_started 且无 case_detail，不擅自造阶段）保留页顶托盘显示残留状态
         公开初评: 聚合.phase === 'case_started' ? 映射公开初评(聚合) : null,

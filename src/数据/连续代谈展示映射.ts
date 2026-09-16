@@ -344,8 +344,17 @@ export function 从连续到详情分段(detail: NegotiationDetail): 分段项[]
   const 过程态 = detail.evaluation?.state
     ?? (detail.phase === 'evaluating' ? 'pending' : detail.phase === 'evaluation_failed' ? 'failed' : null);
   const 有失败历史 = detail.failure_history.length > 0;
+  // 初评中/初评失败本身就是 §5.2 的 S0 信息内容（「公开初评中/匹配/不匹配/待确认」），
+  // 这两个 phase 恒可展开；其余 pre-Case 有评估事实才展开
   const 可展开 = 是preCase
-    && (评 !== null || detail.evaluation !== null || detail.phase === 'evaluation_failed' || 有失败历史);
+    && (评 !== null || detail.evaluation !== null || detail.phase === 'evaluating'
+      || detail.phase === 'evaluation_failed' || 有失败历史);
+  // 初评失败的原因是权威事实：即使 actions 未允许出恢复卡，也要在 S0 信息区有落点
+  //（有卡时与卡.说明同词各一处，与改前 状态区+卡 的两处口径一致）
+  const 失败原因行 =
+    detail.phase === 'evaluation_failed' && detail.failure !== null
+      ? [P4失败原因文案(detail.failure.code)]
+      : [];
   return (['匿名初筛', '递交简历', '需要协调', '意向确认'] as const).map((阶段, 序) => {
     if (序 !== 0 || !可展开) {
       return {
@@ -365,6 +374,7 @@ export function 从连续到详情分段(detail: NegotiationDetail): 分段项[]
       可展开: true,
       默认展开: true,
       小结: 评?.决定文 ?? 公开初评过程文案(过程态),
+      小结行们: 失败原因行.length > 0 ? 失败原因行 : undefined,
       ...(评 !== null ? { 核对清单: 评.核对清单 } : {}),
       ...(有失败历史 ? { 记录: 失败历史注释(detail.failure_history) } : {}),
     };
