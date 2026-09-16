@@ -14,7 +14,13 @@ import type { 助手会话访问 } from './助手会话访问';
 
 /** 提交结果不明时保存的原请求：重试提交原样重放；确认权威轮次前不允许发起不同内容。 */
 type 待确认请求 =
-  | { kind: '发送'; text: string; key: string }
+  | {
+    kind: '发送';
+    text: string;
+    key: string;
+    /** 进待确认时已知的全部 message_id：已受理的服务端必产生新 id；未受理时首页最新仍是基线内旧消息。 */
+    已知编号基线: ReadonlySet<string>;
+  }
   | { kind: '重试'; turnId: string; key: string };
 
 /** Spec §3：202 后每 2 秒定向轮询，无 SSE、无逐字模拟输出。 */
@@ -121,8 +127,12 @@ export function use助手会话(访问: 助手会话访问 | null) {
 
   const 拍 = async (turnId: string, 代际: number) => {
     if (本地代际.current !== 代际 || 活动轮次.current !== turnId) return;
+    // fix 2：与其余入口同款判空 —— 轮询 timer 在「渲染提交 → passive effect 清理」的
+    // 间隙到期时，访问 已翻 null 而本地代际尚未递增，`!` 解引用会在 setTimeout 回调里抛 TypeError
+    const 当前访问 = 访问引用.current;
+    if (当前访问 === null) return;
     try {
-      const 最新 = await 访问引用.current!.api.读取助手轮次(turnId);
+      const 最新 = await 当前访问.api.读取助手轮次(turnId);
       if (本地代际.current !== 代际 || 活动轮次.current !== turnId) return; // 乱序/换代：丢弃
       合并权威消息(最新);
       if (最新.status === 'processing') {
@@ -168,8 +178,9 @@ export function use助手会话(访问: 助手会话访问 | null) {
 
   /**
    * 待确认结算（重读路径）：服务端不回传幂等键，按可对账的最近事实识别 ——
-   * · 发送：首页最新一条与待确认原文相同即视为该操作已受理（待确认期间输入锁定，
-   *   不会跟出更新的用户消息）；
+   * · 发送：首页最新一条与待确认原文相同、且 message_id 不在进待确认时的已知基线内，
+   *   才视为本次操作已受理（fix 1：同文旧消息 —— 用户反复问「下一批」—— 不得误判，
+   *   否则会静默丢弃未落地的消息并清掉草稿）；
    * · 重试：从本地消息里找到原 turn 对应的 message_id，首页中该消息已换新 turn 即已受理。
    * 对不上就保持待确认，由 重试提交 同 key 重放取得权威轮次。
    */
@@ -178,7 +189,11 @@ export function use助手会话(访问: 助手会话访问 | null) {
     if (请求 === null) return;
     if (请求.kind === '发送') {
       const 最新 = 页.items.length === 0 ? null : 页.items[0];
-      if (最新 !== null && 最新.text === 请求.text) {
+      if (
+        最新 !== null &&
+        最新.text === 请求.text &&
+        !请求.已知编号基线.has(最新.message_id)
+      ) {
         待确认请求引用.current = null;
         设待确认(false);
         设草稿(''); // 权威轮次已出现：受理事实成立，清草稿
@@ -249,7 +264,14 @@ export function use助手会话(访问: 助手会话访问 | null) {
         return;
       }
       if (是不明结果(错误)) {
-        待确认请求引用.current = { kind: '发送', text: 正文, key };
+        待确认请求引用.current = {
+          kind: '发送',
+          text: 正文,
+          key,
+          // 同文反例防线（fix 1）：记下当时已知 message_id 基线 —— 重读结算时最新一条
+          // 必须是基线外的新 id 才算本次操作落地；「下一批」式同文旧消息不得误判为权威轮次
+          已知编号基线: new Set(消息引用.current.map((条) => 条.message_id)),
+        };
         设待确认(true);
         return;
       }

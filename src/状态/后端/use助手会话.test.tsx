@@ -493,6 +493,35 @@ describe('use助手会话', () => {
     expect(api.读取助手轮次).toHaveBeenCalledWith(权威.turn_id);
   });
 
+  it('同文旧消息不解除待确认：重读后最新一条仍是基线内旧消息时不误清草稿（fix 1）', async () => {
+    vi.useFakeTimers();
+    const { 访问, api } = 创建访问桩();
+    // 历史最新一条就是同文旧消息 —— 用户反复问「下一批」是 Spec §4 鼓励的交互
+    const 旧同文 = 消息DTO({ text: '下一批' });
+    api.读取助手历史.mockResolvedValueOnce({ items: [旧同文], next_cursor: null });
+    const { result } = renderHook((访问参数: 助手会话访问 | null) => use助手会话(访问参数), {
+      initialProps: 访问,
+    });
+    await 冲();
+    act(() => { result.current.设草稿('下一批'); });
+    // 新 POST 结果不明进待确认（原 POST 实际未落地）
+    api.发送助手消息.mockRejectedValueOnce(new BFF错误(503, 'operation_outcome_unknown', 'unknown'));
+    await act(async () => { await result.current.发送(); });
+    expect(result.current.提交待确认).toBe(true);
+    // 重读：首页最新一条仍是那条同文旧消息（message_id 在基线内）—— 不得误判为权威轮次
+    api.读取助手历史.mockResolvedValueOnce({ items: [{ ...旧同文 }], next_cursor: null });
+    await act(async () => { await result.current.重读(); });
+    expect(result.current.提交待确认).toBe(true); // 不误解除
+    expect(result.current.草稿).toBe('下一批'); // 草稿保留，消息不被无声丢弃
+    // 真正落地后（同文但新 message_id）才解除并清草稿
+    const 权威 = 处理中({ text: '下一批' });
+    api.读取助手历史.mockResolvedValueOnce({ items: [权威, 旧同文], next_cursor: null });
+    await act(async () => { await result.current.重读(); });
+    expect(result.current.提交待确认).toBe(false);
+    expect(result.current.草稿).toBe('');
+    expect(result.current.消息.at(-1)!.message_id).toBe(权威.message_id);
+  });
+
   it('轮询读取失败暂停并显示错误、不释放输入锁；重读恢复后终态解锁', async () => {
     vi.useFakeTimers();
     const { 访问, api } = 创建访问桩();
