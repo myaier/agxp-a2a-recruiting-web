@@ -6,11 +6,13 @@
 
 开放求职端 Backend「问 AI 代理」聊天：真实发送、持久化历史、轮询、失败恢复，以及回复内部的岗位推荐列表、在谈列表和在谈详情摘要。用户可以点击业务项目进入现有详情页，也可以根据列表中的真实文字继续追问，由 LLM 定位在谈记录并查询详情。
 
-调查基线：
+调查基线（原功能设计历史基线；本轮增量实施基线见下方）：
 
 - 前端：`e01291de47e4ade2b66ab681e69145e6e32bade8`；当前已有两端独立 Mock/Backend 容器、禁用聊天外壳、固定 AI 消息入口、纯展示气泡、今日简报、求职在谈卡。
 - 后端仓库 `agxp-monorepo`：`release/0.2.5`，`719ead0a0a4368b4dc2ff7e85d57ab74f47e9095`。实施时由调用者提供 checkout，以该精确版本的 `apps/recruitment-bff/openapi/mobile-v1.yaml` assistant 标签及 schema 为契约依据，不依赖规划机器路径。
 - 核对过后端 `apps/recruitment/internal/assistant/queries.go`、`apps/recruitment/internal/mcpgateway/assistant.go`、`apps/hub/internal/worker/assistant_process.go`。源码调查不代表运行环境已部署或真实模型链路已验收。
+
+本轮增量已 rebase 到 `origin/main` revision `30a0d3b24c2257da70c8b54fff4ee0ebb5ad71d0`。与原增量调查基线 `b2b09b5442befc6548b913828fa73e02dcea369a` 相比，聊天产品实现、DTO 与身份来源未变，本次主线变化集中在测试组织与验收政策，详见 §12。§10–§11 的产品需求保持；后续增量 Plan 必须使用本轮主线基线和新测试入口，不能照搬原功能 Plan 的旧配置/路径。
 
 本设计仅替代 `docs/superpowers/specs/2026-09-14-agent-session-and-display-components-design.md` 中求职端助手禁止真实聊天和暂不接业务结果的局部约束。招聘端 AI 助手仍保持未开放；Mock 现有剧情、日报与交互保留。§11 另行纳入已开放的双端真人聊天展示优化，不改变真人消息协议及读写状态机。
 
@@ -126,7 +128,7 @@
 5. 浏览器 HTTP fixture：320px/390px 的长标题、缺图片、长回复、多卡片、输入固定与单一消息滚动，历史加载不跳动；不能以 fixture 证明真实模型理解。
 6. 真实后端验收：普通聊天 → 岗位推荐 → 在谈列表 → 依据真实列表关键词/序号追问 → 获得对应 record_id 的详情卡 → 点击原生页并返回；另验证同名歧义与重新进入后的连续追问。证据须区分 UI/HTTP 与真实模型工具链。
 
-真实环境验收使用仓库 `docs/dogfood/真实后端行为验收.md` 的环境与证据原则；现有 B/H 用例不自动覆盖新助手旅程，也不扩大为全量 dogfood。目标 URL、后端 checkout、测试账号安全来源、部署版本与实际助手能力在实施 final gate 中核实；缺失时如实记录阻塞，不能把本地合同测试当端到端通过。
+真实环境验收以 `docs/testing/README.md` 与 `docs/dogfood/真实后端行为验收.md` 的当前活动范围为准。旧 local B01–B05/H01–H04 已归档，不再作为执行入口；当前活动 STG 基础试点与 Onboarding 不覆盖本任务的助手、真人 IM、Case PDF 旅程。本任务的真实边界验收保留责任，活动场景缺口按 §12.3 登记，不自动跑其他 STG Suite 冒充覆盖。目标 URL、后端 checkout、测试账号安全来源、部署版本与实际助手能力须在授权的定向验收前核实；缺失时如实记录阻塞，不能把本地合同测试当端到端通过。
 
 ## 9. 工作流批准与交付
 
@@ -314,3 +316,30 @@
 6. 浏览器 HTTP fixture 可以证明布局与接线；真实后端身份披露、Case 资料和 PDF 权限需在可用环境做对应验证，缺环境记录责任与阻塞，不将截图当成后端验收完成。
 
 本节不改后端身份披露规则、不扩展 P7 消息/联系人协议、不实现真实电话微信交换、不新增消息附件或结构化业务卡片、不调整匹配和招聘流程。缺失联系方式已有证据，本次按用户明确许可占位；只有需要真实联系方式操作或现有 Case/公开资料不足以稳定提供会话身份时，才另行设计后端契约。§10 与 §11 合并进入同一份后续增量 Plan，不生成第二份 Spec；待用户审阅本次落盘内容后再规划和文档 review。
+
+
+## 12. Rebase 后的基线与验收校准
+
+### 12.1 主线核对结论
+
+本轮已执行 fetch 与 rebase，目标为 `origin/main` revision `30a0d3b24c2257da70c8b54fff4ee0ebb5ad71d0`，三份既有增量文档提交无冲突重放，`git range-diff` 确认重放内容相同。原调查 revision 保留作为历史证据，不再作为新 Plan 的起点。
+
+主线变更未触及 `Backend真人会话`、`真人会话操作栏`、`问AI代理/对话展示`、`查询结果展示`、推荐卡及其 DTO 的产品逻辑；因此 §10–§11 的气泡宽度归因、三类结果标题、身份来源、联系方式占位和时间口径继续成立。后端仍按本文指定 revision 核对，不因前端 rebase 暗示后端或 STG 部署同步更新。本轮只校准文档，不执行产品实现或声称产品测试通过。
+
+### 12.2 测试入口、fixture 与 Case 清单
+
+- 测试总入口改为 `docs/testing/README.md`，逐叶 Case 以 `docs/testing/cases.md` 的 runner 生成结果为准。后续 Plan 依据变更消费者选择定向测试，不照搬旧大文件或运行全量套件。
+- 唯一功能浏览器配置为 `playwright.config.ts`，包含 `mock/fixture/annotation` 三个项目。旧 `playwright.数据源模式.config.ts` 已删除；`test:e2e:data-source` 仅为 deprecated 别名，新 Plan 使用 `npm run test:e2e` 的原生文件、project、grep 选择。
+- 助手浏览器用例现位于 `e2e/suites/助手会话.spec.ts`，其 fixture 仍为 `e2e/fixtures/助手会话.ts`；真人页面回归位于 `e2e/suites/真人消息.spec.ts`，P7 BFF fixture 位于 `e2e/fixtures/bff/真人消息.ts`，统一路由组装位于 `e2e/fixtures/bff/安装BFF路由.ts`。原 `e2e/数据源模式.spec.ts` 已拆分，不能再引用它作为任务文件。
+- `e2e/suites/` 下功能测试从 `../fixtures/test` 导入 `test/expect`，沿用 context 级离线边界。本次真人页新增 Case、岗位与公开企业补读，必须逐项在 fixture 明确声明 method/path 和预期响应；禁止用全局 `200 + null`、静默网络透传或伪成功兜底掩盖漏网请求。
+- 组件层继续使用现有 `src/组件/问AI代理/查询结果展示.test.tsx`、`src/屏幕/问AI代理.test.tsx`、`src/屏幕/P7/Backend真人会话.test.tsx`、`src/屏幕/真人会话操作栏.test.tsx` 等对应消费者。涉及 Case 披露/PDF 的追加断言落在已拆分的 `src/屏幕/P5/MatchCase详情.展示与隐私.test.tsx`、`src/屏幕/P5/MatchCase详情.附件与移交.test.tsx` 的必要子集，不引用已删除的单一 `MatchCase详情.test.tsx`。共享状态回归只选 `src/状态/应用状态.会话.test.ts` 等实际受影响 Suite，不重建已拆掉的大文件。
+- 新增/修改测试 Case 后运行 `npm run test:list -- --write` 更新自动清单，再以 `npm run test:list -- --check` 验证；新增测试文件时核对 `脚本/测试清单.mjs` 的归属表，不手抄生成区。只改本文不需要重生成 Case 清单或运行产品测试。
+- 浏览器功能项目缺省时区是 UTC；本任务验证本地时间时，按用例显式指定 Asia/Shanghai 或 Asia/Singapore，并另测 UTC，不依赖运行机器时区。保留 320px/390px 视口对照、左右短气泡几何与弹层关闭后位置检查。
+
+### 12.3 真实验收活动范围缺口
+
+`docs/dogfood/真实后端行为验收.md` 当前只开放 STG 基础试点和 `stg-onboarding`；旧 local 指南位于 `docs/dogfood/archive/`，不是本任务可直接重启的验收入口。基础试点明确排除 MatchCase、IM 和附件/PDF，不能以该试点成功替代本次验收。
+
+本任务真实边界责任为 conditional，存在 `selection_gap`：助手真实查询/连续追问，以及真人对方身份、Case 职位资料与授权 PDF 的定向 STG 场景尚无活动执行合同。后续 Plan 必须将该缺口、前置与 owner（本任务 planning owner 负责明确范围，实施主控负责收尾核验与报告）写入集成责任：在得到适用的 STG 场景、账号与明确授权前，不运行已归档 local 套件、不擅自扩展当前 STG 基础试点、不把整个 L3 标成 PASS。若到收尾仍缺少前置，对具体真实验收项报告 BLOCKED/NOT_RUN，并交代尚未验证的能力；fixture 与单元证据独立报告，不能抵销该责任。
+
+本次 rebase 不构成 final gate、部署、push 或实际 STG 验收授权。已确认的产品方案不因测试入口迁移扩大；本节保证后续 Plan 使用新的可执行路径，并诚实保留尚未被活动场景覆盖的真实验收责任。
