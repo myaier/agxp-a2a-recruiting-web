@@ -17,7 +17,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 生成失败不覆盖原文档。标记外侧的手写 L3 索引不受生成影响，勿改标记行本身。
 
 <!-- BEGIN GENERATED CASES -->
-## 第一层 · 单元/组件（Vitest） · 5715 例 · 254 文件
+## 第一层 · 单元/组件（Vitest） · 5719 例 · 254 文件
 
 ### 数据契约/映射 · 1561 例 · 53 文件
 
@@ -1774,7 +1774,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 状态 · 1262 例 · 32 文件
+### 状态 · 1263 例 · 32 文件
 
 <details>
 <summary>展开明细</summary>
@@ -3027,6 +3027,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 归约Agent规则：P6 Backend 水合与清空 > backend hydration replaces Mock arrays and clear empties only P6 rows |  | [src/状态/领域/Agent规则.test.ts](../../src/状态/领域/Agent规则.test.ts) | npm test -- src/状态/领域/Agent规则.test.ts -t '归约Agent规则：P6 Backend 水合与清空 (> )?backend hydration replaces Mock arrays and clear empties only P6 rows' | 未知 |
 | 归约Agent规则：P6 Backend 水合与清空 > 水合是整体替换且不动其他域，清空只清三组规则数组 |  | [src/状态/领域/Agent规则.test.ts](../../src/状态/领域/Agent规则.test.ts) | npm test -- src/状态/领域/Agent规则.test.ts -t '归约Agent规则：P6 Backend 水合与清空 (> )?水合是整体替换且不动其他域，清空只清三组规则数组' | 未知 |
 | 归约Agent规则：P6 Backend 水合与清空 > 清空后再走 Mock 新增，编号按剩余数组重新起算 |  | [src/状态/领域/Agent规则.test.ts](../../src/状态/领域/Agent规则.test.ts) | npm test -- src/状态/领域/Agent规则.test.ts -t '归约Agent规则：P6 Backend 水合与清空 (> )?清空后再走 Mock 新增，编号按剩余数组重新起算' | 未知 |
+| 取消的选城会话不落草稿（疑点②受控时序） > 取消后保存原草稿：请求体城市 ID 不变；对照臂可检出泄漏 |  | [src/状态/领域/候选意向编辑.test.ts](../../src/状态/领域/候选意向编辑.test.ts) | npm test -- src/状态/领域/候选意向编辑.test.ts -t '取消的选城会话不落草稿（疑点②受控时序） (> )?取消后保存原草稿：请求体城市 ID 不变；对照臂可检出泄漏' | 未知 |
 | 已有意向隐藏条件无损保存 > campus 未改类型保留全部历史条件，修改城市也不清空 |  | [src/状态/领域/候选意向编辑.test.ts](../../src/状态/领域/候选意向编辑.test.ts) | npm test -- src/状态/领域/候选意向编辑.test.ts -t '已有意向隐藏条件无损保存 (> )?campus 未改类型保留全部历史条件，修改城市也不清空' | 未知 |
 | 已有意向隐藏条件无损保存 > internship 未改类型保留全部历史条件，修改城市也不清空 |  | [src/状态/领域/候选意向编辑.test.ts](../../src/状态/领域/候选意向编辑.test.ts) | npm test -- src/状态/领域/候选意向编辑.test.ts -t '已有意向隐藏条件无损保存 (> )?internship 未改类型保留全部历史条件，修改城市也不清空' | 未知 |
 | 已有意向隐藏条件无损保存 > part_time 未改类型保留全部历史条件，修改城市也不清空 |  | [src/状态/领域/候选意向编辑.test.ts](../../src/状态/领域/候选意向编辑.test.ts) | npm test -- src/状态/领域/候选意向编辑.test.ts -t '已有意向隐藏条件无损保存 (> )?part_time 未改类型保留全部历史条件，修改城市也不清空' | 未知 |
@@ -3584,7 +3585,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 页面/接线 · 2200 例 · 100 文件
+### 页面/接线 · 2203 例 · 100 文件
 
 <details>
 <summary>展开明细</summary>
@@ -5589,6 +5590,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 选择城市 Backend（引用身份与分页边界） > 取消（✕）不派发：只返回，草稿保持 untouched |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?取消（✕）不派发：只返回，草稿保持 untouched' | 未知 |
 | 选择城市 Backend（引用身份与分页边界） > 同名不同 ID 两城独立选中；搜索/翻页已选不丢；重复 ID 不重复计数 |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?同名不同 ID 两城独立选中；搜索/翻页已选不丢；重复 ID 不重复计数' | 未知 |
 | 选择城市 Backend（引用身份与分页边界） > 四支默认目录按 admin1 分组、两精选区上屏、排除主城市；无行政区城市只进热门且仍可搜索 |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?四支默认目录按 admin1 分组、两精选区上屏、排除主城市；无行政区城市只进热门且仍可搜索' | 未知 |
+| 选择城市 Backend（引用身份与分页边界） > 局部选城市→取消→迟到目录返回：零草稿写（派发从未发生） |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?局部选城市→取消→迟到目录返回：零草稿写（派发从未发生）' | 未知 |
 | 选择城市 Backend（引用身份与分页边界） > 旧搜索晚到不覆盖新搜索（页面级代际守卫，翻页在飞行中换词） |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?旧搜索晚到不覆盖新搜索（页面级代际守卫，翻页在飞行中换词）' | 未知 |
 | 选择城市 Backend（引用身份与分页边界） > 海外精选按 canonical ID 保存（选择列表/精选区同一 ID 共享选中） |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?海外精选按 canonical ID 保存（选择列表/精选区同一 ID 共享选中）' | 未知 |
 | 选择城市 Mock（行政分组共用正文） > Mock 局部分页：加载更多把更多行政分组切进来，翻完见港澳台三组 |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Mock（行政分组共用正文） (> )?Mock 局部分页：加载更多把更多行政分组切进来，翻完见港澳台三组' | 未知 |
@@ -5773,6 +5775,8 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 应用路由：招聘方水合阶段决定落点 > 缺失 profile 时放行恢复与退出路径 /hr/verify |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：招聘方水合阶段决定落点 (> )?缺失 profile 时放行恢复与退出路径 /hr/verify' | 未知 |
 | 应用路由：招聘方水合阶段决定落点 > 缺失 profile 时放行恢复与退出路径 /identity |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：招聘方水合阶段决定落点 (> )?缺失 profile 时放行恢复与退出路径 /identity' | 未知 |
 | 应用路由：招聘方水合阶段决定落点 > 重试后不出现不可达的「重试中…」文案 |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：招聘方水合阶段决定落点 (> )?重试后不出现不可达的「重试中…」文案' | 未知 |
+| 应用路由：水合在飞期的用户导航保留（疑点①受控时序） > 对照（先 resolve 再导航）：落点 replace 落定后再导航，目的地同样保留 |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：水合在飞期的用户导航保留（疑点①受控时序） (> )?对照（先 resolve 再导航）：落点 replace 落定后再导航，目的地同样保留' | 未知 |
+| 应用路由：水合在飞期的用户导航保留（疑点①受控时序） > 开始水合→用户导航→水合返回：最终路由保留用户目的地，登录落点不吞深链 |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：水合在飞期的用户导航保留（疑点①受控时序） (> )?开始水合→用户导航→水合返回：最终路由保留用户目的地，登录落点不吞深链' | 未知 |
 | 应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 > Backend 已登录但主体快照缺失时不挂载角色业务屏 |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 (> )?Backend 已登录但主体快照缺失时不挂载角色业务屏' | 未知 |
 | 应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 > Mock 不应用主体角色守卫：/hr/jobs |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 (> )?Mock 不应用主体角色守卫：/hr/jobs' | 未知 |
 | 应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 > Mock 不应用主体角色守卫：/resume |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 (> )?Mock 不应用主体角色守卫：/resume' | 未知 |
