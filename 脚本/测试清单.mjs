@@ -13,9 +13,10 @@
 //
 // 内部数据形状（冻结）：{ layer, suite, file, titlePath, project, location }
 // 身份键 = layer + file + titlePath + project；行号只是导航，不充当去重键。
-// review r1（C5 修复 a）增补：第一层项另带 全名 = runner 扁平名（vitest list JSON 的
-// name 字段逐字）。titlePath 只供展示列（标题含字面 ' > ' 时按段 best-effort 拆分，
-// 展示是 cosmetic）；可执行 -t 坐标一律以 全名 为源，不经 titlePath 重组。
+// review r1/r2（C5 修复 a）：第一层 titlePath 由 runner 扁平名（vitest list JSON 的
+// name）按 ' > ' split 而来，按同一分隔符 join(' > ') 即逐字还原原始名称（含标题内
+// 字面 ' > '）—— 可执行 -t 坐标以该还原名为源，不经 join(' ') 重组；展示列继续用
+// ' > ' 连接（标题含字面 ' > ' 时拆分是 best-effort，展示是 cosmetic）。
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -112,7 +113,6 @@ export function 解析vitest清单(文本, 根目录 = 默认根目录) {
     return {
       file: 归一路径(项.file, 根目录),
       titlePath: 项.name.split(' > '),
-      全名: 项.name,
       project: typeof 项.projectName === 'string' ? 项.projectName : '',
       location: 项.location ? { line: 项.location.line, column: 项.location.column } : null,
     };
@@ -244,8 +244,7 @@ export function 组装清单(集合, 根目录 = 默认根目录) {
       }
       const 文件 = 归一路径(项.file, 根目录);
       const 叶子标题 = 项.titlePath[项.titlePath.length - 1];
-      // 全名 仅第一层解析器给出（runner 扁平名）；缺省时按段重建，供 选择坐标 使用
-      const 完整 = { layer: 层, suite: 定suite(层, 文件, 叶子标题), file: 文件, titlePath: 项.titlePath, 全名: 项.全名 ?? 项.titlePath.join(' > '), project: 项.project, location: 项.location ?? null };
+      const 完整 = { layer: 层, suite: 定suite(层, 文件, 叶子标题), file: 文件, titlePath: 项.titlePath, project: 项.project, location: 项.location ?? null };
       const 键 = `${层}\u0000${项.file}\u0000${项.titlePath.join('\u0000')}\u0000${项.project}`;
       if (已见.has(键)) {
         const 旧 = 已见.get(键);
@@ -294,14 +293,15 @@ function 单引号(文本) {
 
 function 选择坐标(项) {
   if (项.layer === '第一层') {
-    // C5 修复 a（review r1）：-t 按 runner 的匹配全名（各段名以单空格连接，见
-    // @vitest/runner getTaskFullName）做正则匹配，而 list JSON 的 name 是 ' > ' 连接 ——
-    // 段间分隔与标题内字面 ' > ' 在 name 里无法区分：逐字用 name 一段都选不中（实测
-    // -t '甲 > 乙' 收 0 例），按段 join(' ') 又会丢标题里的 '>'。坐标以正则转义后的
-    // 全名 为源，把每个 ' > ' 放宽为 ' (> )?'：段分隔位匹配全名的单空格、字面位匹配
-    // ' > '，无需消歧即可选中目标叶（实测恰好选中 1 例）。刻意不用含 '|' 的写法：
-    // 表格单元格会转义 '|'，复制即断。
-    const 名称 = 单引号(转义正则(项.全名).replace(/ > /g, ' (> )?'));
+    // C5 修复 a（review r1；r2 收敛数据形状）：-t 按 runner 的匹配全名（各段名以单空格
+    // 连接，见 @vitest/runner getTaskFullName）做正则匹配，而 list JSON 的 name 是
+    // ' > ' 连接 —— 段间分隔与标题内字面 ' > ' 在 name 里无法区分：逐字用 name 一段
+    // 都选不中（实测 -t '甲 > 乙' 收 0 例），按段 join(' ') 又会丢标题里的 '>'。坐标以
+    // titlePath.join(' > ')（逐字还原 runner 扁平名，无需额外字段）经正则转义后为源，
+    // 把每个 ' > ' 放宽为 ' (> )?'：段分隔位匹配全名的单空格、字面位匹配 ' > '，
+    // 无需消歧即可选中目标叶（实测恰好选中 1 例）。刻意不用含 '|' 的写法：表格单元格
+    // 会转义 '|'，复制即断。
+    const 名称 = 单引号(转义正则(项.titlePath.join(' > ')).replace(/ > /g, ' (> )?'));
     return `npm test -- ${项.file} -t ${名称}`;
   }
   const 名称 = 单引号(转义正则(项.titlePath.join(' ')));

@@ -3376,7 +3376,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 渲染与排序 > Markdown 特殊字符（管道/反引号/换行）在单元格内转义 |  | [脚本/测试清单.test.mjs](../../脚本/测试清单.test.mjs) | npm test -- 脚本/测试清单.test.mjs -t '渲染与排序 (> )?Markdown 特殊字符（管道/反引号/换行）在单元格内转义' | 未知 |
 | 渲染与排序 > 坐标列给出可执行文件+名称选择坐标，计时未知 |  | [脚本/测试清单.test.mjs](../../脚本/测试清单.test.mjs) | npm test -- 脚本/测试清单.test.mjs -t '渲染与排序 (> )?坐标列给出可执行文件\+名称选择坐标，计时未知' | 未知 |
 | 渲染与排序 > 排序稳定：相同输入的不同顺序得到字节相同的输出，排序不依赖输入顺序 |  | [脚本/测试清单.test.mjs](../../脚本/测试清单.test.mjs) | npm test -- 脚本/测试清单.test.mjs -t '渲染与排序 (> )?排序稳定：相同输入的不同顺序得到字节相同的输出，排序不依赖输入顺序' | 未知 |
-| 渲染与排序 > 标题含字面「 > 」时 -t 坐标以 全名 为源保留字面符，不再按段拼接丢「>」（C5 修复 a） |  | [脚本/测试清单.test.mjs](../../脚本/测试清单.test.mjs) | npm test -- 脚本/测试清单.test.mjs -t '渲染与排序 (> )?标题含字面「 (> )?」时 -t 坐标以 全名 为源保留字面符，不再按段拼接丢「>」（C5 修复 a）' | 未知 |
+| 渲染与排序 > 标题含字面「 > 」时 -t 坐标以 titlePath 还原的扁平名为源保留字面符，不再按段拼接丢「>」（C5 修复 a） |  | [脚本/测试清单.test.mjs](../../脚本/测试清单.test.mjs) | npm test -- 脚本/测试清单.test.mjs -t '渲染与排序 (> )?标题含字面「 (> )?」时 -t 坐标以 titlePath 还原的扁平名为源保留字面符，不再按段拼接丢「>」（C5 修复 a）' | 未知 |
 | 渲染与排序 > 视觉采集行渲染整条可执行命令：UI_CAPTURE_DIR 前缀显式给出，不再拼「（需 UI_CAPTURE_DIR）」（C5 修复 b） |  | [脚本/测试清单.test.mjs](../../脚本/测试清单.test.mjs) | npm test -- 脚本/测试清单.test.mjs -t '渲染与排序 (> )?视觉采集行渲染整条可执行命令：UI_CAPTURE_DIR 前缀显式给出，不再拼「（需 UI_CAPTURE_DIR）」（C5 修复 b）' | 未知 |
 | 解析：Playwright list JSON > describe 链进入 titlePath，文件套件标题不算一层；收集错误与空集合失败 |  | [脚本/测试清单.test.mjs](../../脚本/测试清单.test.mjs) | npm test -- 脚本/测试清单.test.mjs -t '解析：Playwright list JSON (> )?describe 链进入 titlePath，文件套件标题不算一层；收集错误与空集合失败' | 未知 |
 | 解析：Playwright list JSON > 一逻辑标题的两视口/角色变体展开为两行，身份按 project 区分 |  | [脚本/测试清单.test.mjs](../../脚本/测试清单.test.mjs) | npm test -- 脚本/测试清单.test.mjs -t '解析：Playwright list JSON (> )?一逻辑标题的两视口/角色变体展开为两行，身份按 project 区分' | 未知 |
