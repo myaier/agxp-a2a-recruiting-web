@@ -688,3 +688,56 @@ test.describe('P8 Mock 数据源隔离 @mock', () => {
     expect(apiRequests).toEqual([]);
   });
 });
+
+// ── DF-014：Backend 缓存不覆盖账户头像（仓库已有离线 fixture，不连真实账号/后端）──
+test.describe('DF-014 Backend 缓存不覆盖账户头像 @backend', () => {
+  test('旧缓存头像 null 不覆盖权威头像：图片请求带权威 revision、img src 正确，reload 后保持 @backend @dogfood-frontend', async ({ page }) => {
+    // 旧版前端写入的会话缓存：求职头像为 null —— 不得覆盖服务端权威头像
+    await page.addInitScript(() => {
+      sessionStorage.setItem('AGXP账号资料v2:backend:stg:subj-fixture-001', JSON.stringify({ 求职头像: null }));
+    });
+    await 装P8候选(page, {
+      覆盖: {
+        'GET /api/v1/me/account-profile': () => ({
+          status: 200,
+          响应: 信封({ avatar_url: '/api/v1/me/avatar/content', revision: 7, updated_at: '2026-09-01T00:00:00Z' }),
+        }),
+      },
+    });
+    // 合成可解码 1×1 PNG：精确声明媒体路径（后装 route 先匹配），不访问外部 URL
+    const 图片请求: string[] = [];
+    await page.route('**/api/v1/me/avatar/content*', async (route) => {
+      图片请求.push(route.request().url());
+      await route.fulfill({
+        status: 200,
+        body: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+          'base64',
+        ),
+        contentType: 'image/png',
+      });
+    });
+    await hash直达(page, '/#/app');
+    await page.getByRole('button', { name: '我', exact: true }).click();
+    // img src 精确等于权威 URL + 服务端 revision（缓存 null 不出现在任何 img 上）
+    const 权威图 = page.locator('img[src="/api/v1/me/avatar/content?v=7"]');
+    await expect(权威图).toBeVisible({ timeout: 15_000 });
+    // 权威头像图片请求真实发生，URL 带服务端 revision
+    await expect.poll(
+      () => 图片请求.filter((url) => url.endsWith('/api/v1/me/avatar/content?v=7')).length,
+      { timeout: 10_000 },
+    ).toBeGreaterThanOrEqual(1);
+    // 合成图片真实解码（不是坏图占位）
+    await expect
+      .poll(() => 权威图.evaluate((节点) => (节点 as HTMLImageElement).naturalWidth), { timeout: 10_000 })
+      .toBeGreaterThan(0);
+    // 完整 reload 后保持：缓存水合再次后到，旧 null 仍不得覆盖
+    await page.reload();
+    await page.getByRole('button', { name: '我', exact: true }).click();
+    await expect(page.locator('img[src="/api/v1/me/avatar/content?v=7"]')).toBeVisible({ timeout: 15_000 });
+    await expect.poll(
+      () => 图片请求.filter((url) => url.endsWith('/api/v1/me/avatar/content?v=7')).length,
+      { timeout: 10_000 },
+    ).toBeGreaterThanOrEqual(2);
+  });
+});

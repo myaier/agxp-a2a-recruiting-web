@@ -647,10 +647,10 @@ describe('应用状态提供者 后端会话', () => {
       .filter(([键]) => 键 === 'AGXP账号资料v2:backend:stg:sub_1')
       .map(([, 值]) => String(值));
     const 最后快照 = JSON.parse(范围内写入.at(-1)!);
+    // DF-014：求职头像由服务端权威接管，Backend 写回不再携带该字段
     expect(最后快照).toEqual({
       当前企业关系编号: 'aff_1',
       未认证公司声明: '云衢科技',
-      求职头像: null,
       飞书已接入: false,
       企业飞书已接入: true,
     });
@@ -919,7 +919,8 @@ describe('应用状态提供者 目录水合与原型缓存隔离', () => {
     vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_A' });
     render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端 as unknown as HTTP招聘数据源 } }, createElement(上下文探针)));
     await waitFor(() => expect(当前.状态.企业认证.姓名).toBe('A 用户'));
-    expect(当前.状态.求职头像).toBe('章:1');
+    // DF-014：头像不再随 Backend 缓存恢复（'章:1' 只留在旧缓存字节里，由服务端权威水合）
+    expect(当前.状态.求职头像).toBeNull();
     expect(本地.setItem.mock.calls.some(([key]) => String(key).startsWith('AGXP账号资料v2:backend:'))).toBe(false);
   });
 
