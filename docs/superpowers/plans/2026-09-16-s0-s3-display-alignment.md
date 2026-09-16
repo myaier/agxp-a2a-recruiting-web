@@ -331,3 +331,25 @@ export interface 在线简历正文属性 {
 | R1-4 默认展开不在接口 | Minor / optional / 不变 | 拒绝不存在的判断：基线 `分段项.默认展开?: boolean` 已存在，Task3接口是增量。为零上下文在接口注释明确保留现有字段；不采用每次pre-Case强制受控true，否则会覆盖手动折叠。 |
 
 另据自检补充Task3两个Mock连接器实际持有折叠覆盖及结束段定位；这是Spec §3.2/§5.3既有责任，不扩产品范围。所有改动仅Plan合同澄清/文案修正。按review skill“核实后无未解决有效required finding”结束，1轮，无未解决必修项；这不是修订后又收到NO FINDINGS，也不声称产品测试通过。最终Plan revision/blob由执行提示词冻结，不在正文自引用造成循环。
+
+## 执行记录（2026-09-16，Claude Code 宿主）
+
+执行方式：`superpowers:subagent-driven-development`，7 个实施 Task 串行，每 Task 独立 implementer + 任务级 review（spec+quality）；模型按角色表（T1–T3/T5/T7 sonnet，T4/T6 spec 档 opus）。基线 origin/main = e01291de。
+
+| Task | 提交 | review 结果 |
+| --- | --- | --- |
+| 1 公共初评与终局中文字典 | ff3e918a | clean（5 minor 递延） |
+| 2 两端历史列表共用 Mock 展示 | a90a92f2 | clean（6 minor 递延） |
+| 3 共用灰注释与有序阶段记录 | a7d54438 | clean（2 minor 递延；冻结接口唯一扩展 `来自?:'代理'|'用户'` 经核实必要且最小） |
+| 4 Backend 进度按阶段重排 | 94be6952 + ccf5d8a3 | fix round 1（pre-Case 可展开 S0「未开始」标签）后 clean |
+| 5 冻结职位投影与 Tab 深链 | 7915d9f1 | clean（3 minor 递延；`职位资料.tsx` 未改豁免核实成立） |
+| 6 简历统一正文与匿名顶栏 | 4f1b8b82 | clean（1 minor 递 Task 7；两处自报越界裁决成立且最小：`use后端详情控制.ts` 接线、`页尾说明?` 可选槽） |
+| 7 双源浏览器回归 | 75ca0018 + e4ae87d4 | fix round 1（X3 独立匿名简历默认行为证据）后 clean |
+
+整分支最终 review（e01291de..e4ae87d4，8 域分遍）：With fixes → 唯一 fix wave `68ef3b4c`（v1 needs_action 恢复当前段「需要你」胶囊 + 死代码删除），scoped re-review 全 ADDRESSED 无新增破坏。24 条递延 minor 经 triage 全部「可留/已消解」，明细见任务级 review 记录；其中值得后续留意：completed S3 默认折叠（产品可定夺显式例外）、`阶段展示名表` 三份闭表合并、时序去重键加来源前缀、v2 当前段对端待办+本人动作并存时「等待对方」优先的既有排序。
+
+验证证据（候选 68ef3b4c）：全量 Vitest 235 文件 / 5588 tests 全绿（含 Task 1→4 过渡期 6 红全部迁移修复）；tsc、oxlint 干净；`@s0-s3-display` Playwright 双 project（mock-stg/backend-stg）24/24 通过（全 HTTP 拦截，--retries=0）。本记录不为最终 fix wave 后的全量 lint/build 重复旧证据——按收尾第 2 步在 affected 阶段统一执行一次 `npm run lint`、`npm run build`。
+
+用户覆盖生效：development L3 = none（未执行，非 PASS）；未启动真实后端/真实账户/实际代理结果验收；fixture 证据只覆盖前端布局与接线。
+
+候选 commit 冻结：`68ef3b4c`。后续收尾按「实施后收尾」1–6 执行：异构 Codex 只读 review-loop → affected L0–L2 最小重算 → final gate 方案等用户确认。
