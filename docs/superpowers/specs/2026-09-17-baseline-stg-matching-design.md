@@ -39,7 +39,9 @@
 
 同版本 `complete.yaml` 在线 validate 也返回 rc0/OK，学校、专业、职位和城市均唯一解析，contract fingerprint 为 `10763fe5e816c9a3443677ff6015e9e06c14b2c0c635a339b33e331e28a1e282`。首次直接调用缺少本机 jsonschema，改用后端既有 `tools/dev-env.sh exec --` 后成功，未安装临时依赖、未启动本地后端。此结果只证明配置入口可用，不证明专用匹配配置或浏览器业务通过。
 
-用户最初指定的后端主 checkout 仍处于旧 revision `719ead0a0`；其 preflight 会报 `fixture_contract_drift`。实施前须在用户提供的后端 checkout 使用与部署匹配的新 operator，不以修改 fingerprint 绕过，不将旧工具的失败误判成新版服务缺陷。规划只在同仓库已更新的工作区执行只读核验，未更新后端分支、创建账号或接管任何 run。
+首次核验时，用户指定的后端主 checkout 处于旧 revision `719ead0a0`，其 preflight 报 `fixture_contract_drift`；规划先在同仓库已更新的工作区完成只读核验。2026-09-17 用户明确授权拉取后，主 checkout 已通过 `git pull --ff-only` 更新到 `aed30bfa984190c47730e39c905d8a1cc23d6429`，与远端 `release/0.2.5` 一致且工作树干净。后续可直接使用用户指定的 `AGXP_MONOREPO_DIR`，每轮仍核对工具与部署合同，不修改 fingerprint 绕过；本次未创建账号或接管任何 run。
+
+更新后在主 checkout 再次执行 preflight，rc0、`result: OK`、双服务匹配清理能力均为 1，环境仍空闲；原字段合同漂移已消除。status 摘要中的四个历史 baseline 残留 run 均已退休且不占用环境，不是本任务的清理对象。
 
 以后端当前两份环境 Skills、`apps/recruitment/README.md` 的“双向匹配 dogfood”节及实际 CLI 输出为环境权威。本次不复制 operator 或改后端：
 
