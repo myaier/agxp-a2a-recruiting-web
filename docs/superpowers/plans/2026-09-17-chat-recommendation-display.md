@@ -376,7 +376,7 @@ Round 1：Claude Opus/high/plan，session `b978bd42-d87a-4e7d-86d3-1a5c8a9f7714`
 |R1-1 经历折叠卡隐身徽标仍消费hidden|required/不变|核实工作经历.tsx现有条件，接受；契约B/Task1明确按真实有效屏蔽显示，未提交意图单列待保存，旧hidden不得冒充已隐身|
 |R1-2 新增视觉场景遗漏场景清单单测|required/不变|核实场景.test.ts精确18个ID断言，接受；Task6补文件/断言更新/定向命令，最终集合包含该单测|
 
-修订不改变批准Spec；待复审核验，无产品测试PASS声明。
+修订提交 `e4c9cd4e` 不改变批准Spec。Round 2：同一 Claude Opus/high/plan session 复审候选 `e4c9cd4e`，确认两条修复成立，结论 `NO FINDINGS`；工作树/HEAD/指纹guard通过。两轮合计2条required Important，全部接受并修订，无遗留required、无拒绝或延期项。reviewer未运行测试、未修改文件；本规划不声明产品测试PASS。
 
 ## 实施记录
 
