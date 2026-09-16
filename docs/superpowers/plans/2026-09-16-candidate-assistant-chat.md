@@ -85,7 +85,7 @@ export function 查询结果展示(props: 查询结果展示属性): React.React
 
 组件负责整个成功助手回复：无 cards 用现有代理气泡；有 cards 用 `代理气泡框 外观="求职" 简报`，正文在前，三类结果按原序内嵌。使用现有 `简报展示.module.css` 的简报头/时间/正文等样式，不调用必须带规则建议的 `简报展示`，不新造消息框样式。新增配套 CSS 仅用于内嵌间距、列表排列和摘要段落。
 
-列表逐项用共享原生卡；项目序号在卡片外显示，查询时间对应每个 card.queried_at。不把整个回复作为点击区。详情摘要用现有 `白卡`、`在谈阶段区` 与既有文字/色彩样式组合，不新增皮肤。未知/空白字段显示明确未知，数组真实为空显示空态。条件确认 latest_summary 与 summaries 使用已有 DTO，历次总结以原生 details/summary 展开，避免新 accordion 基础设施。
+列表逐项用共享原生卡；项目序号在卡片外显示，查询时间对应每个 card.queried_at。每个列表 data.next_cursor 非 null 时，在该结果区域尾部显示“可继续问‘下一批’”；null 不显示。这是静态提示，不增加分页按钮/API。不把整个回复作为点击区。详情摘要用现有 `白卡`、`在谈阶段区` 与既有文字/色彩样式组合，不新增皮肤。未知/空白字段显示明确未知，数组真实为空显示空态。条件确认 latest_summary 与 summaries 使用已有 DTO，历次总结以原生 details/summary 展开，避免新 accordion 基础设施。
 
 ### C. 会话访问与页面 hook
 
@@ -182,17 +182,18 @@ Consumes：现有市场卡 JSX/CSS、卡片分数、公司字标；Produces：�
 
 预期编辑文件：
 - 新增：`src/组件/问AI代理/查询结果展示.tsx`、`src/组件/问AI代理/查询结果展示.module.css`、`src/组件/问AI代理/查询结果展示.test.tsx`。
-- 修改：`src/组件/列表卡片/求职在谈卡.tsx`、`src/组件/列表卡片/类型.ts`、`src/组件/列表卡片/求职在谈卡.test.tsx`（只新增可选 `禁用?: boolean` 并保持默认可点，以支持不可查看项目）。
+- 修改：`src/组件/列表卡片/求职在谈卡.tsx`、`src/组件/列表卡片/类型.ts`、`src/组件/列表卡片/求职在谈卡.test.tsx`（只新增可选 `禁用?: boolean` 并保持默认可点，以支持不可查看项目）；`src/数据/发现推荐映射.ts`（仅导出既有 `薪资文案`）、`src/数据/发现推荐映射.test.ts`（验证现有薪资格式保持）。
 - 删除：无。
 
 Consumes：AssistantReply、求职推荐卡、求职在谈卡、代理气泡框、简报样式、白卡/在谈阶段区；Produces：查询结果展示属性 固定签名。展示组件通过 props 回调导航，不读 Provider。
 
 - [ ] 编写三类结果与 unavailable/空列表/缺失事实测试，先运行确认失败；用自造 DTO，不引用演示业务 fixture。
-- [ ] 组合同一回复内正文+结果。岗位真实字段映射到原卡，safe_reasons 在每项附属区显示；发布人/Logo/简介/分数未知占位，委托槽 disabled。nullable 不等于非法 required 键缺失（Task 1 已负责拒绝）。
+- [ ] 组合同一回复内正文+结果。岗位真实字段映射到原卡：薪资复用导出的 `薪资文案(salary_lower, salary_upper, salary_period)`，不另写格式化；标签按 `[office_location, annual_salary_months !== null 时的“n 薪”]` 顺序组成，空地点显示“地点未知”，未提供的招聘类型/办公方式不制造事实。safe_reasons 在每项附属区显示；发布人/Logo/简介/分数未知占位，委托固定 `已委托=false`、`委托禁用=true`，附属区使用现有次要文字样式显示“请进入岗位详情操作”，不得借已委托回执分支改文案。nullable 不等于非法 required 键缺失（Task 1 已负责拒绝）。
 - [ ] 在谈卡公司/分数占位，城市/薪资/职位真实；phase 映射 accepted=已受理、evaluating=评估中、evaluation_failed=评估失败、refused=未进入在谈、case_started=已进入在谈。只映射现有阶段色系，不编 S0–S3；needs_action 真才显示需要你。每个项目外加序号与“让 AI 解读”，不嵌套 button。
+- [ ] 列表 next_cursor 非 null 时显示“可继续问‘下一批’”，null 时不显示；并入组件测试验证该文案以及月/日/时薪、年薪月数与地点映射，不增加另一分页入口。
 - [ ] 详情摘要用白卡+现有阶段/文字样式，展示完整初评证据组及 next_action 的中文文案、最新条件确认；历次摘要可展开。null 区块显式暂无，内部标识 ID 不作正文结论。字段真实值优先，不用前端生成评语。
 - [ ] `availability=unavailable` 禁用该项目导航及解读；reply unavailable 只显示 text；解读禁用控制所有次级动作；列表和详情都把 record_id 交给打开在谈。
-- [ ] 运行 `npm test -- src/组件/问AI代理/查询结果展示.test.tsx src/组件/问AI代理/对话展示.test.tsx src/组件/问AI代理/简报展示.test.tsx src/组件/列表卡片/求职在谈卡.test.tsx`。验证 cards 顺序、各自时间、无请求/状态副作用、回调精确 ID、没有假统计或假图。
+- [ ] 运行 `npm test -- src/组件/问AI代理/查询结果展示.test.tsx src/组件/问AI代理/对话展示.test.tsx src/组件/问AI代理/简报展示.test.tsx src/组件/列表卡片/求职在谈卡.test.tsx src/数据/发现推荐映射.test.ts`。验证 cards 顺序、各自时间、无请求/状态副作用、回调精确 ID、没有假统计或假图。
 - [ ] 提交 `feat: render assistant results with existing cards`；公共签名与 Task 5 一致，否则停下校准接口而非让消费者猜测。
 
 ### Task 4: 身份隔离访问 seam 与页面轮次状态
@@ -266,4 +267,16 @@ Spec §1–2/7：Global Constraints、Tasks 2/3/5；§3：Tasks 1/4/5；§4：Ta
 
 ## 文档 Review 与交付记录
 
-本节只记录 WORKFLOW_DOCUMENT_REVIEW 的冻结候选、reviewer结论、逐条裁决与校验结果；实现留待新session。首次候选待提交后送 Claude opus/high 只读审查，reviewer不跑测试。
+模式：`WORKFLOW_DOCUMENT_REVIEW`，parent scope 已授权。冻结清单只有本 Plan 与对应 Spec；首轮候选 revision `84b56ba8a2645f573d3f331d41984d2658c37d2e`，批准 Spec revision/blob 见头部。Reviewer：独立 Claude CLI，`opus` / `high` / `permission-mode plan`。一轮完成，报告 2 Important + 3 Minor；未运行产品测试，驱动方的 status/HEAD/受审文件指纹 post-round guard 全部通过。
+
+按 receiving-code-review 核实后的逐条裁决：
+
+|Finding|裁决与依据|必要性/复杂度结果|
+|---|---|---|
+|R1-1：非法已知卡片应降级为逐卡 sentinel，避免首读失败阻止输入|不采纳为 required。批准 Spec §3 要求非法已知数据“显示数据读取失败”，没有规定逐卡降级或允许带病历史发送；Spec §3 同时明确首读失败可重试、首读完成后发送。Plan 的整响应拒绝显示错误满足此约定。后端冻结 BFF 本身严格解码已知卡片，报告给出的新增枚举/坏字段是合同漂移假设，不是当前合法响应反例。引入 sentinel 和新的部分成功语义属于可选增强，本期延后。|optional；避免增加联合状态和部分成功机制|
+|R1-2：岗位不可查看时仍允许打开在谈记录/解读|不采纳为 required。核实后端 record 读取确实可能独立于岗位可用性，但用户已批准 Spec §5 对 availability=unavailable 项目的显式禁用例外；同节一般 record 导航规则服从该例外，不存在无法实现的矛盾。提议放开该入口会改变明确批准的交互，且本轮无用户要求覆盖例外；维持原约定。卡面使用“岗位信息不可查看”，不把 unavailable 翻译成未证实的“已下架”。后续产品决定可另行放开，不能借 review 改写 Spec 自证。|optional 产品增强；本轮不变|
+|R1-3：next_cursor 提示未落到Task|接受并修复：合同B与Task3补静态“下一批”提示和非空/null断言，不增加分页API。|required 已解决；不变|
+|R1-4：地点/薪资映射未冻结|接受并修复：Task3明确地点与年薪月数进标签，导出复用既有薪资文案与测试，避免两套格式化。|required 已解决；降低|
+|R1-5：禁用委托槽缺解释|接受并修复：保持未委托+禁用，在项目附属区显示“请进入岗位详情操作”，不扩充组件状态。|required 已解决；不变|
+
+停止依据：驱动方核实后无未解决的有效 required finding，按 shared review contract §5 及 claude-review-loop Step3 一轮结束；不是 reviewer 输出 NO FINDINGS。修复仅为 Plan 细化，未更改批准 Spec 正文；不为 optional 增强循环加复杂度。最终双宿主提示词绑定修订提交与blob，生成后运行 workflow 的 `validate_prompt_grading.py --plan ... --prompt ...`；实际校验结果在交付摘要报告。
