@@ -79,12 +79,12 @@ export function 格式化聊天时间(iso: string, 当前年?: number): string;
 
 **输入 / 输出：** 输入是已有内容/头像/角色样式与可选 ISO 时间；输出是公共展示合同。普通短气泡 `fit-content`/不 grow，父时间列不能 stretch 气泡；长文 max-width 与头像留白保留，`min-width:0`、`overflow-wrap:anywhere`；宽内容显式伸展。纯文本保留换行，Markdown 段落/标题/列表/引用/代码使用局部样式，代码块折行或块内滚动，绝不把整页撑宽。不写全局元素 CSS。
 
-- [ ] 核对 Task 1 预期路径和现有对话展示测试；写公共组件测试：text 模式的 `**` 不变，markdown 模式生成 strong/heading/list/hr；原始 `<script>`/HTML 不执行，危险链接不产生可执行 href；普通换行、多段不被折成一段；无时间不产生空节点，合法时间 dateTime 保留原串，跨年格式正确。时间测试归于 `describe('聊天时间')`：用 `new Date(2026, 8, 16, 17, 7).toISOString()` 构造本地 17:07 的输入，显式传当前年 2026，期望 `09-16 17:07`；不同年份则期望带年份，避免硬编码 UTC 字符串却依赖机器时区。
-- [ ] 用 `npm test -- src/组件/聊天气泡.test.tsx` 确认新行为先失败。若依赖未安装，先 `npm ci`；不能把依赖/导入基础设施错误当行为反例。
-- [ ] 实现纯组件及时间格式化。Markdown 使用同步 `Markdown`、`skipHtml` 和默认安全 URL 处理，不用 `dangerouslySetInnerHTML`；不为消息加载外部 Markdown 图片，图片标记仅呈现 alt 文本（本任务不支持消息附件），链接保留正常安全链接语义。默认 CommonMark 的段落/硬换行语义，纯文本 `white-space:pre-wrap`；不修改存储原文。
-- [ ] 修改助手适配层复用新组件，保持现有头像、快捷行、Mock 及招聘端字体/宽度端差。新增时间字段不使整条短气泡 grow；调整旧 class 的挂点并验证 DOM 行列关系，不只把原 JSX 包一层。
-- [ ] 执行 `TZ=Asia/Shanghai npm test -- src/组件/聊天气泡.test.tsx src/组件/问AI代理/对话展示.test.tsx`、`TZ=UTC npm test -- src/组件/聊天气泡.test.tsx -t 聊天时间` 和 `npm run typecheck`。两个 TZ 只影响命令进程，不修改全库 vitest 配置，不为同一候选重复其他测试。预期相关测试通过，既有默认 props 不改变 Mock 内容；测试不要镜像内部 helper，检验可见输出与安全 DOM。
-- [ ] 记录命令/代码版本/结果，更新 runner Case 清单（统一可在 Task 3 汇总 write，最终 check 必须通过），提交本任务精确路径，排除 `output/`。
+- [x] 核对 Task 1 预期路径和现有对话展示测试；写公共组件测试：text 模式的 `**` 不变，markdown 模式生成 strong/heading/list/hr；原始 `<script>`/HTML 不执行，危险链接不产生可执行 href；普通换行、多段不被折成一段；无时间不产生空节点，合法时间 dateTime 保留原串，跨年格式正确。时间测试归于 `describe('聊天时间')`：用 `new Date(2026, 8, 16, 17, 7).toISOString()` 构造本地 17:07 的输入，显式传当前年 2026，期望 `09-16 17:07`；不同年份则期望带年份，避免硬编码 UTC 字符串却依赖机器时区。
+- [x] 用 `npm test -- src/组件/聊天气泡.test.tsx` 确认新行为先失败。若依赖未安装，先 `npm ci`；不能把依赖/导入基础设施错误当行为反例。（npm ci 完成；红跑：模块缺失 1 failed/no tests；react-markdown 安装后行为红转为断言红再转绿）
+- [x] 实现纯组件及时间格式化。Markdown 使用同步 `Markdown`、`skipHtml` 和默认安全 URL 处理，不用 `dangerouslySetInnerHTML`；不为消息加载外部 Markdown 图片，图片标记仅呈现 alt 文本（本任务不支持消息附件），链接保留正常安全链接语义。默认 CommonMark 的段落/硬换行语义，纯文本 `white-space:pre-wrap`；不修改存储原文。（react-markdown@10.1.0 锁定；运行时入口仅以 default 导出同步 Markdown，具名导入为 undefined，已按默认导入）
+- [x] 修改助手适配层复用新组件，保持现有头像、快捷行、Mock 及招聘端字体/宽度端差。新增时间字段不使整条短气泡 grow；调整旧 class 的挂点并验证 DOM 行列关系，不只把原 JSX 包一层。（行向/头像槽/气泡列交基础组件；.代理行 移除，镜像净空改列内 39px，.求职 .简报气泡 保留后代选择器；原消费者 4 文件 66 例全绿）
+- [x] 执行 `TZ=Asia/Shanghai npm test -- src/组件/聊天气泡.test.tsx src/组件/问AI代理/对话展示.test.tsx`、`TZ=UTC npm test -- src/组件/聊天气泡.test.tsx -t 聊天时间` 和 `npm run typecheck`。两个 TZ 只影响命令进程，不修改全库 vitest 配置，不为同一候选重复其他测试。预期相关测试通过，既有默认 props 不改变 Mock 内容；测试不要镜像内部 helper，检验可见输出与安全 DOM。（28 passed 双文件 / UTC 5 passed / typecheck 0 错；消费者回归 66 passed；回执在 output/chat-presentation-evidence/task1/）
+- [x] 记录命令/代码版本/结果，更新 runner Case 清单（统一可在 Task 3 汇总 write，最终 check 必须通过），提交本任务精确路径，排除 `output/`。
 
 **完成/停止：** 共享出口可供两个业务页面消费，原消费者测试通过。若必须改消息协议或招聘端产品样式，停止该扩展，不能作为本任务便利重构。
 
