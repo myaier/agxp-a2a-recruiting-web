@@ -70,12 +70,12 @@ Codex execution: superpowers:executing-plans
 
 输入/输出：`解职位资料(input: unknown)` 及 `解P5详情`、连续详情 decoder 签名不变；内部 `BFF公开发布人档案.avatar_url` 仍为 string | null。只对 record 且头像键缺席的输入补 null；显式 undefined 不视作缺席。JSON 来自现有 HTTP decoder，不扩大支持非 JSON 对象。
 
-- [ ] 在现有完整安全职位样本复制 publisher_profile、删除头像键后，断言解码结果头像为 null；增加显式 undefined、数字、对象、未知键、其他必需键缺席仍拒绝的表驱动反例。不得改变共享样本默认值。
-- [ ] 用既有合法候选/招聘 Case fixture 和候选 negotiation 嵌套 Case，各只删该键，断言完整解码成功、Case ID/终态保持。运行下面 Vitest 命令加 `-t 'DF-005'`，记录原实现失败。
-- [ ] 在 `解发布人档案` 内部局部归一化，继续调用原闭合 guard 和各字段解码函数；不改 `BFF契约.ts` 的内部类型、不改共享 guard。
-- [ ] 在现有浏览器 fixture suite 增加 `DF-005 DF-016 @dogfood-frontend` 场景：候选、招聘分别从正常列表导航打开缺键详情；招聘顶栏与在线简历显示相同合成摘要，随后摘要变 null 并经既有刷新清旧值；身份数据不触发姓名/头像渲染。只在该测试的响应覆盖中删除键，不改整个 fixture 默认。
-- [ ] 增加 `DF-008 @dogfood-frontend` 双角色场景：当前页可见且 open 卡出现后，改变对应 fixture 权威 active/open 集合和 history 集合；等待下一次真实生产节拍请求及页面移除断言，再导航历史确认 ended 记录可见且无处理中。两种历史状态分别覆盖首次进入、预先访问历史后返回当前再发生终态；不清缓存、不手动刷新代替轮询。历史页无定时请求。通过网络响应/DOM 条件等待，不用固定 sleep。
-- [ ] 执行定向命令，确认预期；提交 `fix: accept omitted publisher avatar in case details`。
+- [x] 在现有完整安全职位样本复制 publisher_profile、删除头像键后，断言解码结果头像为 null；增加显式 undefined、数字、对象、未知键、其他必需键缺席仍拒绝的表驱动反例。不得改变共享样本默认值。
+- [x] 用既有合法候选/招聘 Case fixture 和候选 negotiation 嵌套 Case，各只删该键，断言完整解码成功、Case ID/终态保持。运行下面 Vitest 命令加 `-t 'DF-005'`，记录原实现失败。
+- [x] 在 `解发布人档案` 内部局部归一化，继续调用原闭合 guard 和各字段解码函数；不改 `BFF契约.ts` 的内部类型、不改共享 guard。
+- [x] 在现有浏览器 fixture suite 增加 `DF-005 DF-016 @dogfood-frontend` 场景：候选、招聘分别从正常列表导航打开缺键详情；招聘顶栏与在线简历显示相同合成摘要，随后摘要变 null 并经既有刷新清旧值；身份数据不触发姓名/头像渲染。只在该测试的响应覆盖中删除键，不改整个 fixture 默认。
+- [x] 增加 `DF-008 @dogfood-frontend` 双角色场景：当前页可见且 open 卡出现后，改变对应 fixture 权威 active/open 集合和 history 集合；等待下一次真实生产节拍请求及页面移除断言，再导航历史确认 ended 记录可见且无处理中。两种历史状态分别覆盖首次进入、预先访问历史后返回当前再发生终态；不清缓存、不手动刷新代替轮询。历史页无定时请求。通过网络响应/DOM 条件等待，不用固定 sleep。
+- [x] 执行定向命令，确认预期；提交 `fix: accept omitted publisher avatar in case details`。
 
 ```bash
 npm test -- src/数据/招聘数据源/展示资料.test.ts src/数据/招聘数据源/MatchCase.test.ts src/数据/招聘数据源/连续代谈.test.ts --maxWorkers=4 --retry=0
@@ -97,13 +97,13 @@ npm run test:e2e -- e2e/suites/MatchCase.spec.ts e2e/suites/连续委托.spec.ts
 
 新增同域接口冻结：`export function 取经历缺项(段: 简历经历段): Array<'公司' | '行业' | '职位' | '入职时间'>`。按原判定比较值，不把空串改成 trim 后空导致扩大校验；公司名称空或组织编号 undefined 合为公司一项、行业引用 undefined 算行业。返回顺序公司→行业→职位→入职时间。原 `经历未完成` 复用返回长度；计数仍是未完成条数而非字段数；页面仅对原预填拦截适用的条目使用自动定位。
 
-- [ ] 添加 `DF-002` 纯函数反例：公司名在但 ID 缺、行业原文在但引用缺、多缺项顺序、完整项空数组；`数未完成项` 仍只算 prefill 条目、教育证书计数不变。
-- [ ] 添加组件失败用例：两张折叠卡显示具体缺项；已有公司原文但缺组织 ID 时显示“请从目录选择公司”；点保存打开第一条且第一字段控件获焦；修正或删除后重算；只有教育/证书缺项时不打开完整经历；已有草稿内容保留。运行下列 Vitest 选集加 `-t 'DF-002'` 确认红因。
-- [ ] 提取上述局部 helper；列表卡按缺项数组显示“待补充：公司、行业”等已有样式可容纳的行。已有公司原文但缺组织 ID 时，卡片及字段提示明确“请从目录选择公司”（helper 仍返回单个公司项，页面从当前段判断文字）；不得用公司为空推断权限或造企业值。
-- [ ] 保存遇到预填经历错误时通过现有 `设编辑目标` 打开首条，传入可空首错字段作为编辑页本地展示输入。挂载后用 ref 滚动并 focus 对应输入或选择按钮；不要自动弹出目录选择器、不要 setTimeout 猜挂载时机。
-- [ ] 错误字段附近说明保持可见；补齐后重新按当前草稿判断，删除/返回保持原有草稿和持久化流程。用户自建条目仍由原必填守卫处理，不扩大 canonical 强制条件。
-- [ ] 在候选建档 suite 增加 `DF-002 @dogfood-frontend`：合成 PDF 预填两条缺公司/行业的工作经历，点顶部保存观察首错可见与 focus，通过现有目录交互补齐并完成建档相关保存。断言无效总保存未发、最终保存 ID 正确；不上传真实简历。复用现有安装与覆盖能力，不建新解析器。
-- [ ] 跑命令确认并提交 `fix: expose incomplete imported work experience`。
+- [x] 添加 `DF-002` 纯函数反例：公司名在但 ID 缺、行业原文在但引用缺、多缺项顺序、完整项空数组；`数未完成项` 仍只算 prefill 条目、教育证书计数不变。
+- [x] 添加组件失败用例：两张折叠卡显示具体缺项；已有公司原文但缺组织 ID 时显示“请从目录选择公司”；点保存打开第一条且第一字段控件获焦；修正或删除后重算；只有教育/证书缺项时不打开完整经历；已有草稿内容保留。运行下列 Vitest 选集加 `-t 'DF-002'` 确认红因。
+- [x] 提取上述局部 helper；列表卡按缺项数组显示“待补充：公司、行业”等已有样式可容纳的行。已有公司原文但缺组织 ID 时，卡片及字段提示明确“请从目录选择公司”（helper 仍返回单个公司项，页面从当前段判断文字）；不得用公司为空推断权限或造企业值。
+- [x] 保存遇到预填经历错误时通过现有 `设编辑目标` 打开首条，传入可空首错字段作为编辑页本地展示输入。挂载后用 ref 滚动并 focus 对应输入或选择按钮；不要自动弹出目录选择器、不要 setTimeout 猜挂载时机。
+- [x] 错误字段附近说明保持可见；补齐后重新按当前草稿判断，删除/返回保持原有草稿和持久化流程。用户自建条目仍由原必填守卫处理，不扩大 canonical 强制条件。
+- [x] 在候选建档 suite 增加 `DF-002 @dogfood-frontend`：合成 PDF 预填两条缺公司/行业的工作经历，点顶部保存观察首错可见与 focus，通过现有目录交互补齐并完成建档相关保存。断言无效总保存未发、最终保存 ID 正确；不上传真实简历。复用现有安装与覆盖能力，不建新解析器。
+- [x] 跑命令确认并提交 `fix: expose incomplete imported work experience`。
 
 ```bash
 npm test -- src/流程/候选Onboarding简历预填.test.ts src/屏幕/工作经历.资料与预填.test.tsx --maxWorkers=4 --retry=0
@@ -124,12 +124,12 @@ npm run test:e2e -- e2e/suites/候选建档.spec.ts --project=fixture --grep '@d
 
 依赖：Task 2 后，无接口依赖。保留 `资料缓存快照` 和 action 形状；无需新 mode 参数：现有 Backend 专用 `水合账号资料` 路径可在合并前排除头像。基线已核对该 action 唯一生产调用在 `资料持久化.ts` 的缓存 effect；服务端 account-profile 水合和上传走独立 `存求职头像` action。实施先复核它仍只承担缓存水合，而非所有 Backend 水合；若新基线让权威服务端也使用它，则只在缓存调用边界剔除头像，不拦截权威路径。Mock 自身缓存路径不排除。
 
-- [ ] 在缓存测试加 `DF-014`：Backend 的旧 null、URL、data URL 读后不含头像键，Mock 仍保留；写后 Backend JSON 不含头像键、其他允许字段保持。
-- [ ] 在 reducer 测试从已存权威头像的 state 派发含旧 null 的 `水合账号资料`，断言头像不变；其他缓存允许项照常水合。
-- [ ] 在 Provider 测试复用 `deferred`、`创建后端桩` 控制 account-profile 回应：缓存先/服务端先两种完成顺序；服务端明确 null 清图；切账号不沿用旧图；账户请求失败不恢复旧缓存头像。此处验证 effect/action 真实接线，不只测试自制 reducer。运行 Vitest 选集加 `-t 'DF-014'` 确认红因。
-- [ ] Backend 读缓存忽略求职头像、Backend 写快照移除求职头像；`水合账号资料` 解构时排除求职头像，阻止默认 `空账号资料` null 覆盖。保留退出/切账号 `清账号资料` 清空行为，不把“忽略缓存”做成“永不清头像”。
-- [ ] 在账号与支持 suite 增加 `DF-014 @dogfood-frontend`：旧缓存头像 null、fixture account-profile 为非空 URL/revision，打开候选“我”，验证图片请求 URL 带权威 revision、img src 正确；完整 reload 后保持。媒体响应用合成可解码图片，精确声明路径，不访问外部 URL。
-- [ ] 跑命令和额外只读消费者已有测试确认，提交 `fix: keep backend account avatar service-owned`。
+- [x] 在缓存测试加 `DF-014`：Backend 的旧 null、URL、data URL 读后不含头像键，Mock 仍保留；写后 Backend JSON 不含头像键、其他允许字段保持。
+- [x] 在 reducer 测试从已存权威头像的 state 派发含旧 null 的 `水合账号资料`，断言头像不变；其他缓存允许项照常水合。
+- [x] 在 Provider 测试复用 `deferred`、`创建后端桩` 控制 account-profile 回应：缓存先/服务端先两种完成顺序；服务端明确 null 清图；切账号不沿用旧图；账户请求失败不恢复旧缓存头像。此处验证 effect/action 真实接线，不只测试自制 reducer。运行 Vitest 选集加 `-t 'DF-014'` 确认红因。
+- [x] Backend 读缓存忽略求职头像、Backend 写快照移除求职头像；`水合账号资料` 解构时排除求职头像，阻止默认 `空账号资料` null 覆盖。保留退出/切账号 `清账号资料` 清空行为，不把“忽略缓存”做成“永不清头像”。
+- [x] 在账号与支持 suite 增加 `DF-014 @dogfood-frontend`：旧缓存头像 null、fixture account-profile 为非空 URL/revision，打开候选“我”，验证图片请求 URL 带权威 revision、img src 正确；完整 reload 后保持。媒体响应用合成可解码图片，精确声明路径，不访问外部 URL。
+- [x] 跑命令和额外只读消费者已有测试确认，提交 `fix: keep backend account avatar service-owned`。
 
 ```bash
 npm test -- src/数据/资料缓存.test.ts src/状态/应用状态.归约.test.ts src/状态/应用状态.资料与建档.test.ts src/状态/应用状态.会话.test.ts src/屏幕/我的.test.tsx --maxWorkers=4 --retry=0
@@ -148,10 +148,10 @@ npm run test:e2e -- e2e/suites/账号与支持.spec.ts --project=fixture --grep 
 
 依赖：Task 3 后，无接口依赖。消费者横幅 `强调` 从 `后端卡们.length` 改为 `待选卡们.length`；源集合和已有 `delegation_id` 过滤保持。
 
-- [ ] 在现有组件 fixture 增加 `DF-015`：两推荐一条已委托→横幅 1 且卡 1；全部已委托→0/空态；无推荐→0；后续快照新增 delegation→计数随集合减少。
-- [ ] 跑 `npm test -- src/屏幕/候选推荐.test.tsx -t 'DF-015' --maxWorkers=4 --retry=0`，确认混合样本旧值为 2 失败。
-- [ ] 仅改横幅读取集合，不提取新 helper，不增加状态，不改 Mock 分支。
-- [ ] 跑 `npm test -- src/屏幕/候选推荐.test.tsx --maxWorkers=4 --retry=0`；预期全通过，提交 `fix: count visible recruiter recommendations`。
+- [x] 在现有组件 fixture 增加 `DF-015`：两推荐一条已委托→横幅 1 且卡 1；全部已委托→0/空态；无推荐→0；后续快照新增 delegation→计数随集合减少。
+- [x] 跑 `npm test -- src/屏幕/候选推荐.test.tsx -t 'DF-015' --maxWorkers=4 --retry=0`，确认混合样本旧值为 2 失败。
+- [x] 仅改横幅读取集合，不提取新 helper，不增加状态，不改 Mock 分支。
+- [x] 跑 `npm test -- src/屏幕/候选推荐.test.tsx --maxWorkers=4 --retry=0`；预期全通过，提交 `fix: count visible recruiter recommendations`。
 
 完成：数字始终与现有过滤后集合一致；无需额外浏览器专用用例，现有页面组件测试直接覆盖该单值接线。
 
@@ -166,12 +166,12 @@ npm run test:e2e -- e2e/suites/账号与支持.spec.ts --project=fixture --grep 
 
 依赖：Task 4 后，无接口依赖。仅保存页面局部“初值是否来自有效建议”来源，不加全局 store 或持久化字段。保持现有 summary 初值函数签名及写入行为。
 
-- [ ] 增加 `DF-004` 组件用例：无上传/无建议、空白/不可用建议、有效建议实际初始化、已有个人优势优先、独立编辑、用户清空、用户文本初始化后恢复有效建议仍为中性说明。后到建议不能覆盖用户已有文本或让说明误称已应用。
-- [ ] 跑 `npm test -- src/屏幕/引导问答.test.tsx -t 'DF-004' --maxWorkers=4 --retry=0` 确认旧无条件说明失败。
-- [ ] 初始化时记录现有 `取个人优势预填` 是否真正采用了当前有效建议；不靠文本相等推断来源（已有用户文本恰与建议相同仍属用户文本）。建议是否可用、已有文本是否为空沿用既有函数判断。
-- [ ] 非独立编辑且实际采用过有效建议且当前文本 trim 非空时显示原提取说明；其他注册流显示“可以介绍你的经验、技能和擅长的事情。”。独立编辑仍不传说明。来源标记只在初始化计算；恢复按钮沿用原动作，不更新该标记。以用户文本初始化后再恢复仍显示中性说明。清空当前文本立即回中性文案，不新增自动恢复行为。
-- [ ] Mock 同样依据实际初始化来源，不因为存在 Mock 种子建议就声称已应用；恢复动作不改变初始化来源。保存个人优势、确认 summary、保存首次意向的原顺序不变。
-- [ ] 跑 `npm test -- src/屏幕/引导问答.test.tsx src/流程/候选Onboarding简历预填.test.ts --maxWorkers=4 --retry=0`，确认保存与恢复既有测试通过，提交 `fix: describe only applied resume highlights`。
+- [x] 增加 `DF-004` 组件用例：无上传/无建议、空白/不可用建议、有效建议实际初始化、已有个人优势优先、独立编辑、用户清空、用户文本初始化后恢复有效建议仍为中性说明。后到建议不能覆盖用户已有文本或让说明误称已应用。
+- [x] 跑 `npm test -- src/屏幕/引导问答.test.tsx -t 'DF-004' --maxWorkers=4 --retry=0` 确认旧无条件说明失败。
+- [x] 初始化时记录现有 `取个人优势预填` 是否真正采用了当前有效建议；不靠文本相等推断来源（已有用户文本恰与建议相同仍属用户文本）。建议是否可用、已有文本是否为空沿用既有函数判断。
+- [x] 非独立编辑且实际采用过有效建议且当前文本 trim 非空时显示原提取说明；其他注册流显示“可以介绍你的经验、技能和擅长的事情。”。独立编辑仍不传说明。来源标记只在初始化计算；恢复按钮沿用原动作，不更新该标记。以用户文本初始化后再恢复仍显示中性说明。清空当前文本立即回中性文案，不新增自动恢复行为。
+- [x] Mock 同样依据实际初始化来源，不因为存在 Mock 种子建议就声称已应用；恢复动作不改变初始化来源。保存个人优势、确认 summary、保存首次意向的原顺序不变。
+- [x] 跑 `npm test -- src/屏幕/引导问答.test.tsx src/流程/候选Onboarding简历预填.test.ts --maxWorkers=4 --retry=0`，确认保存与恢复既有测试通过，提交 `fix: describe only applied resume highlights`。
 
 完成：说明准确、未触碰保存资源；不为两条文案新增状态机或通用 provenance 模型。
 
@@ -201,14 +201,14 @@ export function 映射推荐依据(码们: readonly string[]): string[];
 
 生产者/消费者：候选 `准备Backend职位正文` 对当前 `视图.卡.对得上` 原原因数组应用映射；直取无推荐时给 [] 并保留原 null 分数。招聘 `从P4招聘候选` 的既有 `亮点` 字段及其保留重复项的测试完全不改；只在匿名简历 Backend 正常详情入口对当前同 scope `卡.highlights` 调用 `映射推荐依据` 后传可选 prop。已有列表消费者输出不变，不改候选卡主体去消费这些原因，也不把它们写入 personal_highlights。招聘正常详情的 `亮点` 在现类型是必有 string[]，不是 undefined；原始 highlights 空或全未知时传 []。没有合法推荐坐标或详情卡时继续现有不可用/加载/错误分支，不为了显示空原因创建一个新的“无推荐简历”页面。只有 Mock/Case 不传 prop（undefined）。
 
-- [ ] 添加 `DF-011` mapper 用例：新 helper 四码中文、重复稳定去重、未知/原型键不展示；现有 `从P4招聘候选` 的亮点重复项保持原状；分数 0 保留；推荐缺席与当前 scope 切换不从其他卡取值。
-- [ ] 添加两正文组件用例：候选有核对行时保留原内容并同区展示原因；basis 已确认但行空时保留一个匹配标题、一个分数环或缺分位；basis 未确认的“经验与学历尚未核对”仍在。招聘只有顶栏分数、正文无额外环；原因与“暂无逐条匹配证据”区分。undefined prop 的 Mock/Case 旧行为完全保持。
-- [ ] 跑下列 Vitest 文件选集加 `-t 'DF-011'`，确认未消费原因的旧实现失败。
-- [ ] 实现 mapper 及可选字段接线。候选“核对且行空”的 fallback 放职位正文展示/准备层，不修改全站 `匹配分析块` 的空行行为；用原有说明分支承载可读缺失状态，不重复标题。
-- [ ] 招聘匹配段在当前 `在线简历正文` 原位置处理可选原因；传了 prop 才使用“推荐依据”和“暂无逐条匹配证据”，不把 Case 全局“匹配分析缺失”文案一并更换。个人优势区及以下结构保持。
-- [ ] 用现有页面测试补换意向/岗位/候选与响应变空，确认原因立即清旧；若需要测试数据只在本例创建，不修改共享默认。
-- [ ] 在发现推荐 suite 增加 `DF-011 @dogfood-frontend` 双端场景：从推荐列表进入独立详情，断言匹配区位于标题/画像之后、JD/个人优势之前；显示已有中文原因、无原始码、无第二分数环；导航另一记录不残留。直接详情无推荐仍给真实缺失状态；网络中不增加推荐或 Case 补读请求。
-- [ ] 跑命令并提交 `fix: show recommendation reasons in detail sections`。
+- [x] 添加 `DF-011` mapper 用例：新 helper 四码中文、重复稳定去重、未知/原型键不展示；现有 `从P4招聘候选` 的亮点重复项保持原状；分数 0 保留；推荐缺席与当前 scope 切换不从其他卡取值。
+- [x] 添加两正文组件用例：候选有核对行时保留原内容并同区展示原因；basis 已确认但行空时保留一个匹配标题、一个分数环或缺分位；basis 未确认的“经验与学历尚未核对”仍在。招聘只有顶栏分数、正文无额外环；原因与“暂无逐条匹配证据”区分。undefined prop 的 Mock/Case 旧行为完全保持。
+- [x] 跑下列 Vitest 文件选集加 `-t 'DF-011'`，确认未消费原因的旧实现失败。
+- [x] 实现 mapper 及可选字段接线。候选“核对且行空”的 fallback 放职位正文展示/准备层，不修改全站 `匹配分析块` 的空行行为；用原有说明分支承载可读缺失状态，不重复标题。
+- [x] 招聘匹配段在当前 `在线简历正文` 原位置处理可选原因；传了 prop 才使用“推荐依据”和“暂无逐条匹配证据”，不把 Case 全局“匹配分析缺失”文案一并更换。个人优势区及以下结构保持。
+- [x] 用现有页面测试补换意向/岗位/候选与响应变空，确认原因立即清旧；若需要测试数据只在本例创建，不修改共享默认。
+- [x] 在发现推荐 suite 增加 `DF-011 @dogfood-frontend` 双端场景：从推荐列表进入独立详情，断言匹配区位于标题/画像之后、JD/个人优势之前；显示已有中文原因、无原始码、无第二分数环；导航另一记录不残留。直接详情无推荐仍给真实缺失状态；网络中不增加推荐或 Case 补读请求。
+- [x] 跑命令并提交 `fix: show recommendation reasons in detail sections`。
 
 ```bash
 npm test -- src/数据/发现推荐映射.test.ts src/屏幕/职位详情展示/准备职位正文.test.ts src/屏幕/职位详情展示/职位正文展示.test.tsx src/组件/在谈详情/在线简历正文.test.tsx src/屏幕/匿名在线简历.test.tsx src/屏幕/职位详情.test.tsx --maxWorkers=4 --retry=0
@@ -268,3 +268,14 @@ npm run test:e2e -- e2e/suites/发现推荐.spec.ts --project=mock --grep '独�
 |R1-5 Minor：恢复建议更新初值来源超出 Spec|Spec §8 仅允许实际初值来源；恢复时新增状态更新无必要|接受并删去：来源只初始化，恢复按钮不改来源标记；保留恢复行为测试|
 
 上述修订不改变批准 Spec。第二轮恢复同一 Claude Opus/high reviewer session，审查 revision `2996c9c37f634958b4989dd9f4bf7f1aaa041202`、Plan blob `0203cb666126656a000c2832a341270d7c1c6713`，返回精确 `NO FINDINGS`；只读 guard 通过，未运行测试，无未解决 required。文档 review 共 2 轮，第一轮 2 Important / 3 Minor，三项接受修订、两项核实前提后澄清边界；第二轮无新问题。本次追加审查结束记录，不改变已审查的 Task 或行为契约。执行交付仅一个 `docs/superpowers/prompts/2026-09-16-dogfood-frontend-fixes.md`，含 Claude Code/Codex 两节，各自完整 text 代码框；绑定最终文档 revision/blob，用 development-workflow 的 `scripts/validate_prompt_grading.py --plan ... --prompt ...` 校验。规划 session 不执行上述产品 Task。
+
+### 执行交付记录（2026-09-16，Claude Code 实施会话）
+
+批准对象版本不变：Spec revision `4e3d42de`/blob `44748c76`；Plan 受审 blob `0203cb66`、批准版 blob `523686e1`（本节为运行记录追加，行为合同未变）。
+
+- 六 Task 全部完成并逐一通过宿主内 spec+quality review：`9779492e`(T1)、`db0d83ce`(T1 fix r1：招聘端 e2e route 假阳性)、`cd11d317`(T2)、`accf109e`(T3)、`deef01f5`(T3 fix r2：avatar 桩 mock 类型——`npx tsc --noEmit` 误代权威入口 `npm run typecheck` 的漏检)、`0efe19e8`(T4)、`c641674a`(T5)、`664126e3`(T6)。
+- 宿主内全局 whole-branch review：Ready to merge Yes、零 Critical；deferred minors 经逐条裁定全部 DEFER（Task 1 观察窗注释确认已在场；Task 3 写侧双 guard 经核实有旧键迁移回写这一真实当前消费者）。
+- 异构 codex-review-loop（Claude 宿主 → Codex reviewer）：Round 1 精确 `NO FINDINGS` 一轮收口（thread `01a0aae6`；冻结范围 `30a0d3b2...deef01f5`；post-round guard 通过；事件流 1 turn/68 项/~1.88M 输入 token 证实审查真实发生）。reviewer 未运行任何测试。
+- 收尾最小 affected：`lint` 0 警告、`typecheck` exit 0、`git diff --check` 干净；`test:list --write` 后 `--check` 通过（cases.md +78/−27：第一层 5785、第二层 336，吸收 T3–T6 新叶）；合并 `@dogfood-frontend` e2e 五 Suite 7 passed（45.9s）；消费者补选 MatchCase 详情直达刷新族 5 passed、候选建档完整保存 1 passed、账号与支持 401/切换身份 2 passed；共享正文旧消费者单测（后端正常详情/use后端详情控制/在线简历正文映射/职位资料/MatchCase详情.展示与隐私 126 passed）与发现推荐 fixture 全 suite 16 passed、Mock 独立简历叶复用 Task 6 回执（其后仅 deef01f5 触碰无关文件，输入未变）。原始回执存 `test-results/test-layering/dogfood-frontend-fixes/`（git-ignored）。
+- L3 responsibility: none（用户覆盖）：确认前后均未连接真实账号/后端/Agent，fixture PASS 未冒充真实后端通过。
+- final gate 输入事实：origin/main 已于会话期间推进 `30a0d3b2` → `45bd7915`（助手聊天增量，17 commits），本分支不再 ff 可推；文件重叠面为 `src/数据/发现推荐映射.ts`（对方导出 `亮点文案` 并新增 `助手匹配理由`，与本人 `映射推荐依据` 不同区域、同一闭表语义）与 `docs/testing/cases.md`（双方各自再生成，合并后由生成器收敛）。同步合入动作与合并后增量责任见 final gate 方案。
