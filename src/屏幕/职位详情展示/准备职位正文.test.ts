@@ -251,6 +251,78 @@ describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
   });
 });
 
+// DF-011：候选独立详情在原匹配区展示当前推荐批次返回的已知安全原因。
+// 只对当前视图的 卡.对得上 应用 映射推荐依据；直取无推荐给 [] 且保留 null 分；
+// basis 已确认但核对行为空时回退到既有说明分支（一个匹配标题 + 真实推荐分），不重复标题。
+describe('准备Backend职位正文 · 推荐依据与行空回退（DF-011）', () => {
+  it('当前卡的原原因数组映射成中文推荐依据：未知码丢弃、重复稳定去重、保持首次出现顺序', () => {
+    const 数据 = 准备Backend职位正文(从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      match_reasons: ['category_matched', 'location_matched', 'category_matched', 'direction_match'],
+    }), 真实简历);
+    expect(数据.推荐依据).toEqual(['职位方向匹配', '工作地点匹配']);
+  });
+
+  it('有核对行时原内容保留：推荐依据只是同区新增说明，不改分、不改行、不改分析', () => {
+    const 数据 = 准备Backend职位正文(从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      match_reasons: ['experience_met'],
+    }), 真实简历);
+    expect(数据.匹配).toEqual({
+      种类: '核对',
+      分: BFF候选岗位推荐样本.match_score,
+      行们: [{ 要求: '学历 本科', 证据: '同济大学 · 硕士', 态: '有证据', 类: '硬性' }],
+      分析: { 墨句: '按岗位设置的结构化要求核对。学历满足岗位要求。', 灰句: '' },
+    });
+    expect(数据.推荐依据).toEqual(['经验要求匹配']);
+  });
+
+  it('basis 已确认但行空（none/none）：回退说明分支保留一个匹配标题与真实推荐分，不重复标题', () => {
+    const 数据 = 准备Backend职位正文(从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      match_reasons: ['category_matched'],
+      job: { ...BFFCandidateJob样本, experience_requirement: 'none', education_requirement: 'none' },
+    }), 真实简历);
+    expect(数据.匹配).toEqual({
+      种类: '说明',
+      分: BFF候选岗位推荐样本.match_score,
+      说明: [`结构化设置：${BFFCandidateJob样本.structured_requirements_confirmed ? '已确认' : '尚未确认'}`],
+    });
+    expect(数据.推荐依据).toEqual(['职位方向匹配']);
+  });
+
+  it('分数为 0 必须显示 0（行空回退也保留）；直取无推荐分保持 null 不造 0，且给 [] 不借原因', () => {
+    const 零分行空 = 准备Backend职位正文(从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      match_score: 0,
+      job: { ...BFFCandidateJob样本, experience_requirement: 'none', education_requirement: 'none' },
+    }), 真实简历);
+    expect(零分行空.匹配).toMatchObject({ 种类: '说明', 分: 0 });
+    const 直取 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), 真实简历);
+    expect(直取.匹配).toMatchObject({ 种类: '说明', 分: null });
+    expect(直取.推荐依据).toEqual([]);
+  });
+
+  it('basis 未确认的「经验与学历尚未核对」仍在，推荐依据不能覆盖它', () => {
+    const 数据 = 准备Backend职位正文(从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      structured_requirements_confirmed: false,
+      match_reasons: ['category_matched'],
+    }), 真实简历);
+    expect(数据.匹配).toMatchObject({
+      种类: '说明',
+      说明: ['经验与学历尚未核对', '结构化设置：已确认'],
+    });
+    expect(数据.推荐依据).toEqual(['职位方向匹配']);
+  });
+
+  it('Mock 路径不启用推荐依据（undefined）：Mock 现有对齐证据不受影响', () => {
+    const 岗 = 市场列表.find((条) => 条.编号 === 'M-13');
+    expect(岗).toBeTruthy();
+    expect(准备Mock职位正文(岗!, 空简历).推荐依据).toBeUndefined();
+  });
+});
+
 describe('准备Backend职位正文 · 公开企业补读（Spec §6.1）', () => {
   /** organization 摘要 + 真实组织坐标的推荐卡（公开读取合法前提） */
   const 带摘要卡 = {

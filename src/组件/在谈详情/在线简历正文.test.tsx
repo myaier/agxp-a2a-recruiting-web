@@ -352,3 +352,64 @@ describe('在线简历正文 · Backend 安全链路（从安全资料到简历�
     expect(screen.getByText('<i>Go</i>')).toBeTruthy();
   });
 });
+
+// DF-011：招聘匿名简历正文（独立详情）的匹配区可选展示「推荐依据」。
+// 传 prop 才启用：无逐条证据用「暂无逐条匹配证据」（不全局更换 Case 的「匹配分析缺失」）、
+// 原因与证据区分（不生成 Mock 级对齐行、正文无第二分数环）；undefined 完全保持旧行为。
+describe('在线简历正文 · 推荐依据（DF-011 招聘匿名简历正文）', () => {
+  it('传 prop 才显示「推荐依据」：原因在画像之后、个人优势之前，正文无分数环', () => {
+    const { container } = render(
+      <在线简历正文
+        内容={从安全资料到简历正文(资料齐备)}
+        完整布局
+        推荐依据={['职位方向匹配', '工作地点匹配']}
+      />,
+    );
+    expect(screen.getByText('推荐依据')).toBeTruthy();
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    expect(screen.getByText('工作地点匹配')).toBeTruthy();
+    // 顶栏唯一分数位：正文不重复分数环
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+    const 正文 = container.firstElementChild;
+    if (!(正文 instanceof HTMLElement)) throw new Error('正文根节点缺失');
+    断言顺序(正文, ['示例公司 · 软件工程师', '匹配度分析', '暂无逐条匹配证据', '推荐依据', '职位方向匹配', '个人优势']);
+  });
+
+  it('无逐条匹配证据：用批准文案替换缺失说明，但不以已有原因生成 Mock 级对齐行', () => {
+    render(
+      <在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 推荐依据={['职位方向匹配']} />,
+    );
+    expect(screen.getByText('暂无逐条匹配证据')).toBeTruthy();
+    expect(screen.queryByText('匹配分析缺失')).toBeNull();
+    // 原因只是说明文字：不是逐条对齐证据
+    expect(screen.queryByText('Go 主栈')).toBeNull();
+  });
+
+  it('启用但无已知原因（[]）：显示「暂无推荐依据」，缺失证据文案照常区分', () => {
+    render(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 推荐依据={[]} />);
+    expect(screen.getByText('推荐依据')).toBeTruthy();
+    expect(screen.getByText('暂无推荐依据')).toBeTruthy();
+    expect(screen.getByText('暂无逐条匹配证据')).toBeTruthy();
+  });
+
+  it('undefined prop（Mock/Case 旧行为）完全保持：「匹配分析缺失」在位、无推荐依据区', () => {
+    render(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 />);
+    expect(screen.getByText('匹配分析缺失')).toBeTruthy();
+    expect(screen.queryByText('推荐依据')).toBeNull();
+    expect(screen.queryByText('暂无推荐依据')).toBeNull();
+    expect(screen.queryByText('暂无逐条匹配证据')).toBeNull();
+  });
+
+  it('换记录原因变空：rerender 清旧原因并恢复空态文案，不残留上一条的依据', () => {
+    const { rerender } = render(
+      <在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 推荐依据={['职位方向匹配']} />,
+    );
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    rerender(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 推荐依据={[]} />);
+    expect(screen.queryByText('职位方向匹配')).toBeNull();
+    expect(screen.getByText('暂无推荐依据')).toBeTruthy();
+    rerender(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 />);
+    expect(screen.queryByText('推荐依据')).toBeNull();
+    expect(screen.getByText('匹配分析缺失')).toBeTruthy();
+  });
+});

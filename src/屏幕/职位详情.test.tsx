@@ -547,6 +547,67 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     },
   );
 
+  it('DF-011：推荐卡已知原因映射进匹配区（去重、原 token 不透出、核对内容保留、位于 JD 之前）', () => {
+    渲染Backend状态({
+      候选岗位推荐: 快照With({
+        ...推荐卡样本,
+        match_reasons: ['category_matched', 'location_matched', 'category_matched', 'direction_match'],
+      }),
+      简历: { 简历教育: [真实教育段] },
+    });
+    渲染('job_1');
+    expect(screen.getByText('推荐依据')).toBeTruthy();
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    expect(screen.getByText('工作地点匹配')).toBeTruthy();
+    // 原始重复只展示一次；未知开放码不透出也不猜词义
+    expect(screen.getAllByText('职位方向匹配')).toHaveLength(1);
+    expect(document.body.textContent).not.toContain('category_matched');
+    expect(document.body.textContent).not.toContain('direction_match');
+    // 已有合法核对行照常展示，分数环保留
+    expect(screen.getByText('学历 本科')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '适配 92 分' })).toBeTruthy();
+    // 匹配区在职位名/薪资之后、JD 卡之前
+    const 全文 = document.body.textContent ?? '';
+    expect(全文.indexOf('职位方向匹配')).toBeGreaterThan(全文.indexOf('300-500 元/天'));
+    expect(全文.indexOf('岗位信息与职位详情')).toBeGreaterThan(全文.indexOf('工作地点匹配'));
+  });
+
+  it('DF-011：详情直取无推荐批次不借其他记录的原因，给「暂无推荐依据」并保留 null 分', () => {
+    渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
+    渲染('job_1');
+    expect(screen.getByText('暂无推荐依据')).toBeTruthy();
+    expect(screen.queryByText('职位方向匹配')).toBeNull();
+    expect(screen.getByLabelText('匹配分未知')).toBeTruthy();
+  });
+
+  it('DF-011：同岗位响应原因变空后旧原因立即清除，改显「暂无推荐依据」', () => {
+    const 卡 = { ...推荐卡样本, match_reasons: ['category_matched'] };
+    渲染Backend状态({ 候选岗位推荐: 快照With(卡) });
+    const 页 = 渲染('job_1');
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    渲染Backend状态({ 候选岗位推荐: 快照With({ ...卡, match_reasons: [] }) });
+    页.rerender(路由元素('job_1'));
+    expect(screen.queryByText('职位方向匹配')).toBeNull();
+    expect(screen.getByText('暂无推荐依据')).toBeTruthy();
+  });
+
+  it('DF-011：岗位只在别的意向快照里（已走详情直取）时，不借那个意向卡的原因', () => {
+    渲染Backend状态({
+      当前意向编号: 'int_2',
+      候选岗位推荐: {
+        int_1: 快照With({ ...推荐卡样本, match_reasons: ['category_matched', 'location_matched'] }).int_1,
+        int_2: { 阶段: '成功', 刷新中: false, items: [], error: null, generation: 1 },
+      },
+      候选岗位详情: { job_1: BFFCandidateJob样本 },
+    });
+    渲染('job_1');
+    // 详情直取路径：当前坐标没有推荐上下文，int_1 卡的原因与分数都不借用
+    expect(screen.getByText('暂无推荐依据')).toBeTruthy();
+    expect(screen.queryByText('职位方向匹配')).toBeNull();
+    expect(screen.queryByText('工作地点匹配')).toBeNull();
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+  });
+
   it('Backend detail displays CandidateJob facts in existing text slots', async () => {
     渲染Backend状态({
       候选岗位详情: {

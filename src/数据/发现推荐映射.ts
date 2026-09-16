@@ -309,6 +309,23 @@ export function 从P4招聘候选(card: BFF招聘候选推荐 | BFF招聘推荐�
   };
 }
 
+/**
+ * DF-011 推荐依据：把当前推荐批次的原始原因码（候选 match_reasons / 招聘 highlights）
+ * 映射成双端独立详情匹配区的展示文案。只认上面 亮点文案 四码的自有键：未知开放码丢弃、
+ * 不猜词义、不透出原 token；已知原因稳定去重、保持首次出现顺序。列表卡 亮点 的既有
+ * 投影（保留重复项）不走这里 —— 两种口径并存，本函数只服务详情入口。
+ */
+export function 映射推荐依据(码们: readonly string[]): string[] {
+  const 依据们: string[] = [];
+  const 已见码 = new Set<string>();
+  for (const 码 of 码们) {
+    if (!已有键(亮点文案, 码) || 已见码.has(码)) continue;
+    已见码.add(码);
+    依据们.push(亮点文案[码]);
+  }
+  return 依据们;
+}
+
 /** BFF淘汰原因 → 展示文案（闭合四员，无表外键）。 */
 export function P4淘汰原因文案(reason: BFF淘汰原因): '年限不足' | '方向不符' | '主栈不符' | '其他' {
   return 淘汰文案[reason];

@@ -225,15 +225,18 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     expect(screen.queryByText('TypeScript')).toBeNull();
   });
 
-  it('basis 不再产生亮点区：推荐亮点区随共享正文退役，屏上无亮点也不出中性句', async () => {
+  it('DF-011：推荐亮点不再有独立亮点区，原因只内联进匹配区「推荐依据」；原 token 与未核对文案不上屏', async () => {
     置P4详情状态({
       详情: { ...BFF招聘推荐详情样本, structured_requirements_confirmed: false, highlights: ['category_matched', 'location_matched'] },
     });
     渲染详情();
     // 后端历史分保留（返回栏 匹配 N）
     expect(await screen.findByText('87')).toBeTruthy();
-    expect(screen.queryByText('职位方向匹配')).toBeNull();
-    expect(screen.queryByText('工作地点匹配')).toBeNull();
+    // DF-011：原因映射进匹配区的「推荐依据」，不是列表卡亮点区的复活
+    expect(screen.getByText('推荐依据')).toBeTruthy();
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    expect(screen.getByText('工作地点匹配')).toBeTruthy();
+    // basis 未核对的说明属于求职端概念，招聘端简历正文不出；原 token 不透出
     expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
     expect(document.body.textContent).not.toContain('category_matched');
   });
@@ -501,6 +504,85 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     渲染详情();
     await act(async () => {});
     expect(mock刷新委托).not.toHaveBeenCalled();
+  });
+});
+
+// ── DF-011：Backend 独立匿名简历正文内联「推荐依据」——只映射当前同 scope 权威卡的
+//    highlights（四码闭合表、去重保序），无第二分数环、无原 token；换记录/响应变空立即清旧。 ──
+describe('匿名在线简历 · 推荐依据（DF-011）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+    mock设置发现推荐范围.mockClear();
+    mock读取招聘候选详情.mockClear();
+    mock设置候选收藏.mockClear();
+    mock委托招聘候选.mockClear();
+    mock刷新委托.mockClear();
+  });
+
+  function 推荐详情元素(推荐编号: string) {
+    return (
+      <MemoryRouter initialEntries={[`/hr/jobs/${岗位编号}/recommendations/${推荐编号}`]}>
+        <Routes>
+          <Route path="/hr/jobs/:jobId/recommendations/:recommendationId" element={<匿名在线简历 />} />
+        </Routes>
+      </MemoryRouter>
+    );
+  }
+  const 渲染推荐详情 = (推荐编号: string) => render(推荐详情元素(推荐编号));
+
+  it('当前同 scope 权威卡的高亮映射进匹配区：中文原因、去重、无原 token、正文无第二分数环', async () => {
+    置P4详情状态({
+      详情: {
+        ...BFF招聘推荐详情样本,
+        highlights: ['category_matched', 'location_matched', 'category_matched', 'direction_match'],
+      },
+    });
+    渲染推荐详情('rec_r1');
+    expect(await screen.findByText('推荐依据')).toBeTruthy();
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    expect(screen.getByText('工作地点匹配')).toBeTruthy();
+    // 原始重复只展示一次；未知码丢弃且原 token 不透出
+    expect(screen.getAllByText('职位方向匹配')).toHaveLength(1);
+    expect(document.body.textContent).not.toContain('category_matched');
+    expect(document.body.textContent).not.toContain('direction_match');
+    // 分数只有顶栏一个位置：正文无匹配环；无逐条证据给批准缺失文案，不用原因合成对齐行
+    expect(screen.getByText('87')).toBeTruthy();
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+    expect(screen.getByText('暂无逐条匹配证据')).toBeTruthy();
+    // 位置：匹配区在画像之后、个人优势之前
+    const 正文 = document.body.textContent ?? '';
+    expect(正文.indexOf('推荐依据')).toBeGreaterThan(正文.indexOf('5 年'));
+    expect(正文.indexOf('个人优势')).toBeGreaterThan(正文.indexOf('推荐依据'));
+  });
+
+  it('原始 highlights 空或全未知：显示「暂无推荐依据」，不猜词义', async () => {
+    置P4详情状态({ 详情: BFF招聘推荐详情样本 }); // highlights ['full_stack'] 全未知
+    const 页 = 渲染推荐详情('rec_r1');
+    expect(await screen.findByText('暂无推荐依据')).toBeTruthy();
+    // 空数组同样给空态，不残留上一条记录的原因
+    置P4详情状态({ 详情: { ...BFF招聘推荐详情样本, highlights: [] } });
+    页.rerender(推荐详情元素('rec_r1'));
+    expect(await screen.findByText('暂无推荐依据')).toBeTruthy();
+    expect(screen.getByText('暂无逐条匹配证据')).toBeTruthy();
+  });
+
+  it('导航另一记录原因变空：旧原因立即清除，不残留上一条的依据', async () => {
+    置P4详情状态({
+      详情: { ...BFF招聘推荐详情样本, highlights: ['experience_met', 'workplace_mode_matched'] },
+    });
+    const 页 = 渲染推荐详情('rec_r1');
+    expect(await screen.findByText('经验要求匹配')).toBeTruthy();
+    expect(screen.getByText('办公方式匹配')).toBeTruthy();
+    // 另一条推荐（同岗位 scope）没有任何已知原因
+    置P4详情状态({
+      详情: { ...BFF招聘推荐详情样本, recommendation_id: 'rec_r2', highlights: ['full_stack'] },
+    });
+    页.rerender(推荐详情元素('rec_r2'));
+    expect(await screen.findByText('暂无推荐依据')).toBeTruthy();
+    expect(screen.queryByText('经验要求匹配')).toBeNull();
+    expect(screen.queryByText('办公方式匹配')).toBeNull();
   });
 });
 // ── J（Task 8）：canonical 双坐标 —— 所有读写与 scope 只取 URL ──
