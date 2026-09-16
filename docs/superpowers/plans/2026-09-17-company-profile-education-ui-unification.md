@@ -49,6 +49,59 @@ Task 2/3 虽不改业务，但媒体回调和行业子页挂载／焦点边界�
 
 视觉采集：Task 1 开始、任何产品编辑之前，在当前工作区用既有 Mock 登录／导航 helper 和 Playwright 临时诊断脚本采集批准产品基线；脚本与 PNG 留任务证据目录，不新增框架或 tracked helper。采集用既有离线边界，禁止访问真实 STG。结束以完全相同脚本／数据／视口重采，用原生图片检查或既有比较工具逐图核对，记录实际截图路径与差异原因；只采集不算视觉通过。Mock 基线含清单、基本信息、公司介绍、主营业务、产品介绍、福利、团队、两组相册空／满及学校／专业选中状态。主视口 390×844，再检查 320×568 下基本信息、相册和学校／专业无溢出。Backend 新增态通过 fixture 采集名称错误、只读、相册上传预览、学校副标题／分页。若已有采集场景不覆盖这些页，用任务本地脚本补采，不扩大全站18场景或更新全站像素基线。
 
+### 视觉采集可执行入口（R1 补充）
+
+临时配置和采集用例均放 `ui-regression-output/company-profile-education-ui/`（已忽略），不放 `test-results`，避免 runner 清空脚本。脚本是本任务固定场景诊断材料，不是新 tracked 测试框架。改前／改后使用同一份文件；将文件 hash、数据、浏览器版本、source commit 与截图目录记入本 Plan 执行记录。
+
+先从仓库根运行以下配置生成命令；不修改正式配置：
+
+```bash
+node --input-type=module <<'JS'
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+const dir = 'ui-regression-output/company-profile-education-ui';
+mkdirSync(dir, { recursive: true });
+const source = readFileSync('playwright.config.ts', 'utf8');
+if (!source.includes("testDir: './e2e',") || !source.includes('command:')) throw new Error('配置形状改变，需重新核对');
+const config = source
+  .replace("testDir: './e2e',", "testDir: '.', testMatch: 'capture.spec.ts', outputDir: 'runs',")
+  .replace('command:', 'cwd: process.cwd(), command:');
+writeFileSync(`${dir}/capture.config.ts`, config);
+const modules = [
+  ['{ test, expect }', 'e2e/fixtures/test.ts'],
+  ['{ pickerMock登录, pickerBackend存量候选, hash直达 }', 'e2e/fixtures/数据源交互.ts'],
+  ['{ 安装BFF路由 }', 'e2e/fixtures/bff/安装BFF路由.ts'],
+  ['{ 信封 }', 'e2e/fixtures/bff/协议.ts'],
+  ['{ 带企业关系, P1C招聘组织Fixture, P1C管理员关系, P1C成员关系, P1C组织甲, P1C组织乙, P1C标记, 一像素PNG }', 'e2e/fixtures/bff/招聘组织.ts'],
+];
+// 本机绝对 import 只生成到忽略的临时脚本，不能复制回 tracked Plan/prompt。
+const imports = modules.map(([names,path]) => `import ${names} from ${JSON.stringify(resolve(path))};`).join('\n');
+writeFileSync(`${dir}/capture.spec.ts`, imports + '\n');
+JS
+```
+
+在生成的 import 后追加本节固定场景，使用既有 `test/expect`（context 自动安装离线边界），每个场景独立 test；Mock 标 `@mock`、Backend 标 `@backend`。配置继承原三服务：4181 Mock、4182 Backend fixture、4183 annotation，`cwd` 固定当前仓库根；本轮只选择 mock/fixture 项目，仍保留原三服务启动方式。端口占用即报告，不能杀他人服务、换端口或复用不明服务。截图路径用 `process.env.UI_CAPTURE_PHASE`，只允许 before/after，缺值抛错；`page.screenshot({ path: ... , fullPage: true, animations: 'disabled' })` 之前等待可见状态及 `document.fonts.ready`，不固定 sleep。
+
+| 场景 | 固定准备步骤与截图前断言 |
+| --- | --- |
+| Mock 公司清单及七分区 | `pickerMock登录(page)` → 点击“我要招人” → 等待 `/#/hr/card`。用 `hash直达` 访问 `/#/hr/company-profile` 及 `/basic`、`/intro`、`/business`、`/product`、`/welfare`、`/team`、`/album`。分别等待标题／字段可见再截图，不保存；清单标题“编辑品牌信息”，基本信息用 `getByLabel('公司全称')`，其它以对应分区标题确认。每个 test 新 context，使用默认演示档，不种全局存储 |
+| Mock 相册满组 | 同上到 album，先截空态；通过 `page.locator('input[type=file]').nth(0/1).setInputFiles({ name:'sample.png', mimeType:'image/png', buffer:一像素PNG })`，每组各三次，每次等待新增对应“删除实景照片第 N 张”／“删除公司照片第 N 张”按钮；两组添加键都不存在后截图，不点保存。该操作只是 Mock 草稿，不走后端 |
+| Mock 学校／专业 | 新 test `pickerMock登录` 后 `hash直达('/#/onboard/school')`，输入“大学”，按 `/^清华大学( ✓)?$/` 点选；输入值为清华大学、候选仍可见后截图。专业新 test 去 `/#/onboard/major`，输入“工程”，按 `/^软件工程( ✓)?$/` 点选后截图。沿现有连点用例准备法 |
+| Backend 管理员／只读 | `安装BFF路由` 输入 `登录尝试id:'att-ui-company'`、`记录目录请求:()=>undefined`、`主体初始角色:'recruiter'`；管理员用 `带企业关系(P1C招聘组织Fixture,[P1C管理员关系],{[P1C标记.组织甲编号]:P1C组织甲()})`；只读新 test 换成员关系／组织乙。`page.goto('/')` 等待 `/#/hr/` 后 hash直达 basic。管理员三名称在场；只读无保存且可编辑输入 disabled，再截图 |
+| Backend 名称错误 | 管理员初始化时，通过既有 `覆盖` 精确键 `PATCH /api/v1/organizations/${P1C标记.组织甲编号}/profile` 返回 `{status:409,响应:{error:{type:'organization_name_conflict',message:'名称冲突'}}}`。basic 改常用名为“视觉冲突公司”后保存；等待“这个常用名已被其他企业使用”、保留输入、仍在 basic 后截图 |
+| Backend 相册上传预览 | 管理员 fixture 安装后，注册精确 `page.route` 匹配组织甲 `/media`（无后缀）的 POST，在 handler 中 await 一个由 test 控制的 promise，其他 method `route.fallback()`。到 album 后以一像素PNG 上传；等待 `getByAltText('上传预览')` 和添加实景照片按钮隐藏后截图；finally resolve promise，handler `route.fallback()` 交原 fixture 完成，不走网络；等待删除第1张出现后结束。不可永久悬挂 route 或提前关闭 context |
+| Backend 学校副标题／分页 | 新 test `pickerBackend存量候选(page,'att-ui-school')`，之后注册精确 `/api/v1/catalog/education-institutions` GET 的本地覆盖，所有 query 均用 `route.fulfill({status:200,json:信封({items:[{id:'ins-ui-1',display_name:'视觉大学',location:{id:'loc-ui-1',display_name:'上海市',country_code:'CN',country_name:'中国',admin1_code:null,admin1_name:null,timezone:'Asia/Shanghai',population:0}}],next_cursor:'ui-page-2',catalog_version:'ui-v1'})})` 应答（wire 使用 snake_case，不能用页面模型的 nextCursor）；到 school 输入“视觉”，等待“视觉大学”、“上海市 · 中国”和加载更多按钮后截图。本场景不点分页，分页行为由既有单元用例负责；不能覆盖其它业务路径 |
+
+所有 Mock 公司分区及两页候选用 390×844；basic、album（空和满）、学校、专业另以 320×568 复跑，用 `page.setViewportSize` 在准备前固定。Backend 额外态390×844。不额外新增全站视觉场景。截图命名固定为“模式-场景-宽x高.png”，分别落 before/after 子目录；输出前创建目录，截图缺失不能当作无差异。
+
+```bash
+npx playwright test --config ui-regression-output/company-profile-education-ui/capture.config.ts --project mock --project fixture --list
+UI_CAPTURE_PHASE=before npx playwright test --config ui-regression-output/company-profile-education-ui/capture.config.ts --project mock --project fixture --workers=1 --retries=0
+UI_CAPTURE_PHASE=after npx playwright test --config ui-regression-output/company-profile-education-ui/capture.config.ts --project mock --project fixture --workers=1 --retries=0
+```
+
+第一条应收集上述场景，第二条必须在产品修改前成功并逐图确认；before 未完整则不得开始产品编辑。第三条在全部变更完成后执行，可在 Task 3 先仅复查公司部分，最终只补未验教育部分。前后必须使用同一脚本与数据版本；脚本修正后尚未改产品则重采受影响基线。已改产品后不得用 after 冒充 before，也不 checkout/reset 改回源码；只允许从本任务先前保存的同版本原始截图备份恢复。若无合法基线证据，记录视觉责任未完成并报告，不宣称 ready，不新建用户工作区或自行重构采集基础设施。
+
 ### Task 1: 公司档案清单共用 Mock 展示
 
 **目标／非目标：** 删除两份清单 JSX，保持七分区导航、既有完成度算法和组织门。不要调整基本信息总数或相册分区定义。
@@ -192,6 +245,9 @@ git diff --check
 
 ## 文档审查与执行记录
 
-规划阶段：用户已批准 Spec 精确版本并授权 Claude 文档 review。候选范围仅本 Plan 与 Spec；不审分支业务 diff。review 结论在收到后填入本节，未收到前不宣称通过；不生成执行提示词。
+规划阶段：用户已批准 Spec 精确版本并授权 Claude 文档 review。候选范围仅本 Plan 与 Spec；不审分支业务 diff。
+
+- R1：Claude opus/high，候选 `4884d834`，只读 guard 通过，无测试执行。Important/required 1 项：视觉基线未冻结运行入口及特殊状态准备。核实成立，已补临时 config、准确命令、原三服务端口／离线模式、场景输入与失败停止边界；不增加 tracked 基础设施。Minor/optional 1 项：教育浏览器选集理由不明确，接受文档澄清。均不改变批准 Spec。
+- 教育浏览器取舍：`e2e/suites/候选建档.spec.ts` 的完整建档保存链不在本轮变更内；四页 Vitest 覆盖保存／引用映射，所选展示与交互用例直接覆盖本次候选行的点击、重复点选和请求不变。学校 getByText、专业 exact 名称仍受所选用例覆盖，不为纯展示接入重跑整个建档旅程。final gate 若实际修改到保存或初始化合同，必须重算该消费者责任。
 
 实施记录由新实施 session 在本节追加 Task 完成、验证、review 裁决与 final gate 事实，保持规划与执行证据分开。
