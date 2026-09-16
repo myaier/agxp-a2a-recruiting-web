@@ -471,3 +471,34 @@ L3 未承接项。本轮 L3 selection 为 `none`：无产品/后端/真实 STG �
 - e2e 目录不在仓库 tsconfig 覆盖内（Playwright 用 esbuild 不做类型检查）。本任务用
   临时 tsc 配置全量核对过：拆分相关文件仅余与基线同源的既有类型噪声（未类型化过的
   用例代码），无缺名/错路径/undefined-return 类装载缺陷。
+
+## 最终验证记录（2026-09-16 收尾）
+
+六个实施 Task、宿主内 final review（一轮修复波）、Codex 异构 review（3 轮：
+R1 四条 required 修复于 4b33b08b、R2 一条 required 修复于 e1cacaa6、R3 NO
+FINDINGS）后的最终责任运行，全部在候选 HEAD d746327a（含其前的 4b33b08b/e1cacaa6）
+与本机固定环境（macOS、Node 24、Playwright 1.62、workers=4、retries=0）执行：
+
+| 责任 | 命令 | 结果 |
+|---|---|---|
+| 静态检查 | `npm run lint` / `npm run typecheck` / `git diff --check` | 0 警告 / 零错 / 通过 |
+| 第一层受影响选集 | `npm test -- src/状态/应用状态. src/屏幕/发布岗位. src/屏幕/工作经历. src/屏幕/P5/MatchCase详情. 脚本/测试清单.test.mjs --maxWorkers=4 --retry=0` | 17 文件 / 530 passed（24.43s） |
+| 第二层全部唯一功能选集 | `npm run test:e2e -- --workers=4 --retries=0` | 290 passed / 4 failed（3.6m）——4 例即「已知事项」首条的 J-PILOT-02 期望职位双栏基线红，无任何新回归 |
+| 清单对账 | `npm run test:list -- --write` 后 `--check` | 一致（第一层 5480 项 + 第二层 312 项） |
+| 城市/实名受控时钟 | Task 4 证据 + 实名 afterEach 修复后 `npm test -- src/屏幕/企业实名认证.test.tsx` | 18/18（城市 45/45 见 Task 4 对账，文件此后未变） |
+| 视觉 18 场景与 P1/接线采集 | Task 5 对账（采集 spec 不消费 `hash直达`，边界与协议未失效） | 18/18 captured、零未声明业务请求；复用 |
+
+- 收尾两处新增修复的事实记录：`hash直达` 从「重导航×5＋固定 400ms」改为
+  「可观察预等待（根节点有子节点且 hash 离开登录路由）→ 单次 goto → 5s 有界段形
+  poll」；城市 Backend 取消路径删除固定 400ms（选中写无网络草稿请求，以既有
+  「2/9 与保存可见」断言为收尾可观察条件）。两处产品竞态维持「已知事项」记录，
+  测试不再掩盖；全量运行无竞态显形。
+- `换壳无闪屏.spec.ts` 删除文件级 `channel: 'chrome'`（继承统一配置，CI 不再
+  强制本机 Chrome）。
+- `脚本/测试清单.mjs` Vitest 坐标改为 `titlePath.join(' > ')` 转义后放宽
+  `' (> )?'`（vitest `-t` 按 getTaskFullName 单空格连接匹配，逐字含 ' > ' 的
+  模式收 0 例；含字面 `' > '` 的标题行复制执行恰好选中目标叶）。
+- 原始回执与计时在 `test-results/test-layering/`（git-ignored；Playwright 每次运
+  行会清空 `test-results/`，先落 `/tmp/tl/` 再复制归档）。
+- 正式 L3 selection：`none`——本轮仅整理测试代码/目录/文档，无产品、后端或真实
+  STG 操作语义变化；不执行真实登录/上传，不记 L3 PASS。
