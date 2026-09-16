@@ -277,6 +277,9 @@ function 宿主({
   const 资源 = useMemo<后端正常资源>(() => {
     const 视图 = 取视图(详情);
     const 移交 = 视图.handoff;
+    // Task 6：招聘角色映射 candidate_resume（候选恒 null），与父控制 hook 同口径；
+    // 顶栏画像与第二 Tab 正文同吃这一份安全投影。
+    const 在线简历资料 = 详情.role === 'recruiter' ? 从BFF到在线简历展示(详情.candidateResume) : null;
     // 父控制同款底栏判定：S0（双端）保留原控件但禁用（发送 null 零叮嘱请求），非 S0
     // 终局只读，S1 起进行中可输入。
     const S0禁用说明 = 映射S0底栏说明(详情.state);
@@ -296,12 +299,13 @@ function 宿主({
     return {
       kind: '正常',
       canonical记录ID: null,
-      顶栏: 从P5到详情顶栏(视图),
+      顶栏: 从P5到详情顶栏(视图, 在线简历资料),
       动作段: P5阶段共用名(详情.state.stage),
       分段们: 从P5到详情分段(视图, 详情, 初评),
       职位资料: 从P5到职位资料(视图),
-      // Task 6：招聘角色映射 candidate_resume（候选恒 null），与父控制 hook 同口径
-      在线简历资料: 详情.role === 'recruiter' ? 从BFF到在线简历展示(详情.candidateResume) : null,
+      在线简历资料,
+      // 页尾「已确认」只来自双方确认完成事实（lifecycle completed，与父控制 hook 同口径）
+      在线简历已确认: 详情.role === 'recruiter' && 详情.state.lifecycle === 'completed',
       底栏,
       终局: {
         摘要: null,
@@ -583,6 +587,75 @@ describe('后端正常详情 · 资料 Tab 冻结正文与公司导航（Task 6�
   });
 });
 
+// ── S0–S3 展示统一 Task 6（Spec §5.3/§7.3）：招聘端顶栏画像与正文同源（candidate_resume
+//    安全摘要）、完整布局保留匹配分析缺失区、页尾「已确认」只来自双方确认完成事实 ──
+
+describe('后端正常详情 · 招聘端顶栏同源与页尾确认事实（Task 6）', () => {
+  beforeEach(() => {
+    mock新增叮嘱.mockClear();
+    mock读取简历PDF.mockClear();
+    mock跳转.mockClear();
+  });
+
+  /** 有安全摘要的招聘端 DTO：顶栏画像与正文同吃 candidate_resume 投影 */
+  function 招聘带简历DTO(): P5详情 {
+    return 招聘S1附件详情DTO(false, { candidateResume: BFF候选在线简历样本 });
+  }
+
+  it('顶栏画像与在线简历正文同源：性别/年限/学历/状态来自同一安全摘要，最近工作行作副标题', () => {
+    render(<宿主 详情={招聘带简历DTO()} caseId="mc_hr" />);
+    const 栏 = screen.getByRole('button', { name: '返回' }).parentElement!;
+    const 栏文 = 栏.textContent ?? '';
+    expect(栏文).toContain('5 年'); // resume.summary.experience_years（「不满 1 年」同口径出自映射）
+    expect(栏文).toContain('本科');
+    expect(栏文).toContain('在职看机会'); // 闭表求职状态
+    expect(栏文).toContain('示例公司 · 软件工程师'); // 最近工作行 → 副标题
+    expect(screen.queryByText('candidate-0123456789ab')).toBeNull(); // alias 仍不进顶栏
+    // 岗位上下文单独保留行
+    expect(screen.getByText('平台工程师 · 上海 · 25-40K·16薪')).toBeTruthy();
+  });
+
+  it('candidate_resume 缺源：顶栏画像位置保留、缺失占位归展示层，副标题不残留', () => {
+    render(<宿主 详情={招聘S1附件详情DTO(false)} caseId="mc_hr" />);
+    const 栏 = screen.getByRole('button', { name: '返回' }).parentElement!;
+    const 栏文 = 栏.textContent ?? '';
+    expect(栏文).toContain('经验缺失');
+    expect(栏文).toContain('学历缺失');
+    expect(栏文).toContain('求职状态缺失');
+    expect(栏文).not.toContain('示例公司');
+  });
+
+  it('R1：完整布局下安全资料有值也保留匹配分析标题与缺失提示（不整区消失）', async () => {
+    const user = userEvent.setup();
+    render(<宿主 详情={招聘带简历DTO()} caseId="mc_hr" />);
+    await user.click(screen.getByRole('button', { name: '在线简历' }));
+    expect(screen.getByText('匹配度分析')).toBeTruthy();
+    expect(screen.getByText('匹配分析缺失')).toBeTruthy(); // 无对齐证据：明确缺失，不从公开 matches 重建
+  });
+
+  it('页尾「已确认」只来自双方确认完成事实（lifecycle completed）：进行中给生成声明', async () => {
+    const user = userEvent.setup();
+    const 页 = render(<宿主 详情={招聘带简历DTO()} caseId="mc_hr" />);
+    await user.click(screen.getByRole('button', { name: '在线简历' }));
+    expect(screen.getByText('这份简历由候选人的AI代理生成 · 内容不可转发')).toBeTruthy();
+    expect(screen.queryByText(/双方已确认意向，可进入真人沟通/)).toBeNull();
+    // 双方确认完成（completed，非仅进入 S3）：页尾才宣称可进入真人沟通
+    // （completed + handoff_pending 是移交准备中的合法完成行，页尾只认 lifecycle；
+    //   终态零动作的契约一并满足）
+    const 完成详情: P5详情 = {
+      ...招聘带简历DTO(),
+      needsAction: false,
+      availableActions: [],
+    };
+    完成详情.state = 状态({
+      caseId: 'mc_hr', lifecycle: 'completed', stage: 'intent_confirmation', status: 'passed',
+      step: 'handoff_pending', needsUser: false, finalizedAt: '2026-08-29T04:00:00Z',
+    });
+    页.rerender(<宿主 详情={完成详情} caseId="mc_hr" />);
+    expect(screen.getByText('双方已确认意向，可进入真人沟通 · 内容不可转发')).toBeTruthy();
+  });
+});
+
 // ── J-PILOT-01 Task 5：公开初评托盘 + 后端详情渲染 的联合切换 ──
 
 /** pre-Case 聚合样本：控制层连续资源的同形产出（映射全走真实 mapper）。 */
@@ -822,14 +895,17 @@ describe('后端详情渲染 · Tab 深链初始化（S0–S3 展示统一 Task 
 
 /** 与父控制正常分支同形的正常资源（真实 mapper；公开初评恒 null）。 */
 function 构造正常资源(视图: P5详情正常视图, caseId: string, 详情: P5详情 = 候选S0详情DTO()): 后端正常资源 {
+  const 在线简历资料 = 详情.role === 'recruiter' ? 从BFF到在线简历展示(详情.candidateResume) : null;
   return {
     kind: '正常',
     canonical记录ID: null,
-    顶栏: 从P5到详情顶栏(视图),
+    顶栏: 从P5到详情顶栏(视图, 在线简历资料),
     动作段: P5阶段共用名(详情.state.stage),
     分段们: 从P5到详情分段(视图, 详情, null),
     职位资料: 从P5到职位资料(视图),
-    在线简历资料: 详情.role === 'recruiter' ? 从BFF到在线简历展示(详情.candidateResume) : null,
+    在线简历资料,
+    // 页尾「已确认」只来自双方确认完成事实（lifecycle completed，与父控制同口径）
+    在线简历已确认: 详情.role === 'recruiter' && 详情.state.lifecycle === 'completed',
     底栏: { kind: '输入', 占位: '有想法就告诉你的AI代理', 值: '', 改变: () => undefined, 发送: null, 禁用说明: null },
     终局: { 摘要: null, 移交: null },
     刷新错误: null,

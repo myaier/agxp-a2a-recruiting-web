@@ -23,14 +23,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './匿名在线简历.module.css';
 import { 在线简历正文 } from '../组件/在谈详情/在线简历正文';
-import type { 在线简历正文属性 } from '../组件/在谈详情/类型';
+import { 从Mock到简历正文, 从安全资料到简历正文, Mock默认薪资结论 } from '../数据/在线简历正文映射';
 import { 招聘侧对齐行 } from '../数据/匹配对齐';
+import type { 对齐行 } from '../数据/匹配对齐';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { 求职状态文案 } from './候选推荐';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { use应用状态 } from '../状态/应用状态';
 import { 匿名简历表, 推荐列表 } from '../数据/企业端模拟数据';
+import type { 匿名简历档 } from '../数据/企业端模拟数据';
 import { 薪资初筛, 薪资初筛文案 } from '../数据/薪资初筛';
 import { 从P4招聘候选, P4已开案, 映射P4委托展示 } from '../数据/发现推荐映射';
 import { 从BFF到在线简历展示 } from '../数据/在线简历展示映射';
@@ -40,14 +42,45 @@ import { P4委托进度未知文案, use发现推荐委托轮询 } from '../状�
 
 // (原 带粗体 助手随「AI代理读完简历后的判断」散文卡一起退役,2026-08-26)
 
+/** 独立屏旧调用者的 props 形状（S0–S3 展示统一 Task 6 兼容包装专用）：与旧正文 props
+ *  同形（少 `资料` —— Backend 安全资料有自己的适配边界，不经本包装）。旧 props 调用
+ *  只允许存在于这一处兼容边界。 */
+interface 简历正文兼容属性 {
+  档: 匿名简历档 | null;
+  真名?: string | null;
+  求职状态?: string | null;
+  薪资结论?: string;
+  已确认?: boolean;
+  对齐行们?: 对齐行[] | null;
+  完整布局?: boolean;
+  缺失说明?: string | null;
+}
+
 /**
- * D11·A 简历正文（头区 → 技能 → 页尾注）—— 兼容包装（详情统一 Task 4）。
- * 正文 JSX 已收进 组件/在谈详情/在线简历正文（唯一出处，招聘端详情第二 Tab 与独立屏
- * 共用同一份）；这里只保留旧导出名，独立屏与既有测试不必改调用方式，本包装不放
- * 第二份正文。默认（不传 完整布局）走旧版式 —— 空项目整区不出、无缺失占位。
+ * D11·A 简历正文（头区 → 技能 → 页尾注）—— 兼容包装（详情统一 Task 4 提取共用正文；
+ * Task 6 改为「Mock 适配 + 新正文」：旧 props 在这里经 从Mock到简历正文 归一成唯一
+ * 正文内容，本包装不放第二份正文）。只保留旧导出名，独立屏与既有测试不必改调用方式。
+ * 默认（不传 完整布局）走旧版式 —— 空项目整区不出、无缺失占位（独立页默认不变）。
  */
-export function 简历正文(props: 在线简历正文属性) {
-  return <在线简历正文 {...props} />;
+export function 简历正文({
+  档,
+  真名 = null,
+  求职状态 = null,
+  薪资结论 = Mock默认薪资结论,
+  已确认 = false,
+  对齐行们 = null,
+  完整布局 = false,
+  缺失说明 = null,
+}: 简历正文兼容属性) {
+  return (
+    <在线简历正文
+      内容={从Mock到简历正文({ 档, 真名, 求职状态, 薪资结论 })}
+      对齐行们={对齐行们}
+      已确认={已确认}
+      完整布局={完整布局}
+      缺失说明={缺失说明}
+    />
+  );
 }
 
 export default function 匿名在线简历() {
@@ -374,16 +407,15 @@ function Backend匿名简历({ 岗位编号, 推荐编号 }: { 岗位编号: str
       />
 
       <滚动区 样式覆盖={{ paddingBottom: 8 }}>
-        {/* ── 正文唯一出处（Task 5）：共享 在线简历正文 吃 candidate_resume 投影的展示资料
-            （candidate_resume = null 是合法缺源档 → 各区原位缺失）。沿 Mock Up 原信息顺序，
-            真名不传；旧 Backend 分支的头区/概览条/小结/教育/技能/推荐亮点/页尾注重复
-            JSX 随之退役。推荐亮点区不恢复：personal_highlights 保留为候选摘要事实，
-            在线简历 Mock Up 无独立亮点标签区。 ── */}
+        {/* ── 正文唯一出处（Task 5 接入；Task 6 走唯一正文内容）：candidate_resume 投影的
+            安全展示资料经 从安全资料到简历正文 归一（candidate_resume = null 是合法缺源档
+            → 各区原位缺失）。沿 Mock Up 原信息顺序，真名不进这条链路；求职状态只取
+            summary 的闭表事实（无回退文案——占位归头行缺段）。显式 完整布局 保持本分支
+            自 Task 5 起的缺失布局（任一区块缺源不整区消失）。推荐亮点区不恢复：
+            personal_highlights 保留为候选摘要事实，在线简历 Mock Up 无独立亮点标签区。 ── */}
         <在线简历正文
-          档={null}
-          资料={从BFF到在线简历展示(视图.candidateResume)}
-          // 头行求职状态按约束取 candidate_resume.summary 的事实；此 prop 只是摘要缺失时的回退文案
-          求职状态={视图.求职状态}
+          完整布局
+          内容={从安全资料到简历正文(从BFF到在线简历展示(视图.candidateResume))}
         />
       </滚动区>
 

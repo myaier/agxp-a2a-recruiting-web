@@ -99,8 +99,11 @@ export interface 后端正常资源 {
   职位资料: 职位资料信息;
   /** Task 6：招聘角色把 Case 冻结 candidate_resume 映射成共享正文资料；候选角色恒 null
    *  （不构造该资料，第二 Tab 走 职位资料）。身份（identity）不进这条映射 —— 去名不受
-   *  S1 披露状态影响。 */
+   *  S1 披露状态影响。顶栏画像与第二 Tab 正文同吃这一份安全投影。 */
   在线简历资料: 在线简历展示资料 | null;
+  /** Task 6（Spec §7.3）：页尾「已确认」只来自双方意向确认完成事实（lifecycle completed，
+   *  不是 stage===S3）；候选角色不消费（第二 Tab 是职位资料），恒 false。 */
+  在线简历已确认: boolean;
   底栏: 详情底栏信息;
   /** completed 两步移交（S0–S3 展示统一 Task 4 起只装 S3 段尾；摘要不在此渲染）。 */
   终局: 终局区信息;
@@ -406,16 +409,22 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
   // 独有；招聘端恒 null），移交装 S3 段尾（后端正常详情 装配）。
   const 初评 = role === 'candidate' && 聚合 !== null ? 映射公开初评(聚合) : null;
 
+  // 招聘角色吃 Case 冻结 candidate_resume（缺源档给 null）；候选不构造，正文走 职位资料。
+  // Task 6：这份安全投影同时进顶栏（画像/最近工作行与正文同源，禁止另拉 open/current
+  // resume 补齐）与第二 Tab 正文。
+  const 在线简历资料 = 原文.role === 'recruiter' ? 从BFF到在线简历展示(原文.candidateResume) : null;
+
   return {
     kind: '正常',
     canonical记录ID: role === 'candidate' ? 聚合?.record_id ?? null : null,
-    顶栏: 从P5到详情顶栏(正常),
+    顶栏: 从P5到详情顶栏(正常, 在线简历资料),
     // 动作卡挂当前段（raw stage，不从展示文案反推）；无动作时装配端按空卡表跳过
     动作段: P5阶段共用名(原文.state.stage),
     分段们: 从P5到详情分段(正常, 原文, 初评),
     职位资料: 从P5到职位资料(正常),
-    // 招聘角色吃 Case 冻结 candidate_resume（缺源档给 null）；候选不构造，正文走 职位资料
-    在线简历资料: 原文.role === 'recruiter' ? 从BFF到在线简历展示(原文.candidateResume) : null,
+    在线简历资料,
+    // 页尾「已确认」只来自双方确认完成事实（lifecycle completed，不能 stage===S3）
+    在线简历已确认: 原文.role === 'recruiter' && 原文.state.lifecycle === 'completed',
     底栏,
     终局,
     // 刷新/轮询失败：旧详情原样保留只读，错误单独一行交代 + 重试（§10.3）

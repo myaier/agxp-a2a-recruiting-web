@@ -14,6 +14,7 @@ import type { P5阶段, P5阶段区块视图, P5详情正常视图 } from './Mat
 import type { P5详情 } from './招聘数据源/MatchCase';
 import type { 公开初评托盘视图 } from './连续代谈展示映射';
 import type { BFF安全职位资料 } from './BFF契约';
+import type { 在线简历展示资料 } from '../组件/在谈详情/类型';
 import { BFF安全职位资料样本, BFF公司摘要样本 } from '../测试/展示资料样本';
 
 const 别名 = 'candidate-0123456789ab';
@@ -179,6 +180,62 @@ describe('从P5到详情顶栏', () => {
       职位: { jobId: 'job_x', 职位名: '平台工程师', 城市: '上海', 薪资带: '', 技能: [] },
     }));
     expect(招聘端.岗位上下文).toBe('平台工程师 · 上海');
+  });
+});
+
+// ── S0–S3 展示统一 Task 6（Spec §5.3/§7.2）：招聘端顶栏画像与在线简历正文同源 ——
+//    同一响应 candidate_resume 的安全摘要/最近工作行，禁止 alias/真名进顶栏 ──
+
+/** 与 从BFF到在线简历展示 的产出同形的安全摘要画像（合成数据）。 */
+const 摘要画像资料: 在线简历展示资料 = {
+  画像: { 性别: '女', 年限: '5 年', 学历: '本科', 求职状态: '在职看机会', 职位行: '示例公司 · 软件工程师' },
+  个人优势: null,
+  期望: null,
+  工作: null,
+  项目: null,
+  教育: null,
+  技能: null,
+};
+
+describe('从P5到详情顶栏 · 招聘端画像同源（Task 6）', () => {
+  it('安全摘要在场：性别/年限/学历/求职状态进画像槽，最近工作行作副标题，岗位上下文不变', () => {
+    const 顶栏 = 从P5到详情顶栏(
+      正常视图({ role: 'recruiter', candidateAlias: 别名 }),
+      摘要画像资料,
+    );
+    expect(顶栏.端).toBe('招聘');
+    expect(顶栏.标题).toBeNull(); // 标题位不填真名/alias
+    expect(顶栏.画像).toEqual({ 性别: '女', 年限: '5 年', 学历: '本科', 求职状态: '在职看机会' });
+    expect(顶栏.副标题).toBe('示例公司 · 软件工程师');
+    expect(顶栏.岗位上下文).toBe('平台工程师 · 上海 · 25-40K·16薪');
+    // 摘要里的性别/状态是安全投影事实，alias 依旧一个字不带出
+    expect(JSON.stringify(顶栏)).not.toContain(别名);
+  });
+
+  it('摘要缺失/画像 null：画像位置保留全 null、副标题 null（占位归展示层），与既有口径一致', () => {
+    const 无资料 = 从P5到详情顶栏(正常视图({ role: 'recruiter', candidateAlias: 别名 }));
+    expect(无资料.画像).toEqual({ 性别: null, 年限: null, 学历: null, 求职状态: null });
+    expect(无资料.副标题).toBeNull();
+    const 画像缺 = 从P5到详情顶栏(
+      正常视图({ role: 'recruiter' }),
+      { ...摘要画像资料, 画像: null },
+    );
+    expect(画像缺.画像).toEqual({ 性别: null, 年限: null, 学历: null, 求职状态: null });
+    expect(画像缺.副标题).toBeNull();
+  });
+
+  it('合法有值变 null：同一投影对新响应重算，旧画像立即清空，不残留上一次摘要', () => {
+    const 有值 = 从P5到详情顶栏(正常视图({ role: 'recruiter' }), 摘要画像资料);
+    expect(有值.画像).toEqual({ 性别: '女', 年限: '5 年', 学历: '本科', 求职状态: '在职看机会' });
+    const 变null = 从P5到详情顶栏(正常视图({ role: 'recruiter' }), null);
+    expect(变null.画像).toEqual({ 性别: null, 年限: null, 学历: null, 求职状态: null });
+    expect(变null.副标题).toBeNull();
+  });
+
+  it('求职端不受安全摘要影响：画像恒 null（顶栏走标题位），传不传摘要都一样', () => {
+    const 求职端 = 从P5到详情顶栏(正常视图(), 摘要画像资料);
+    expect(求职端.画像).toBeNull();
+    expect(求职端.标题).toBe('平台工程师 · 公司信息缺失');
   });
 });
 
