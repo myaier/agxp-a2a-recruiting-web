@@ -514,7 +514,8 @@ function 解NegotiationPublicEvaluation(input: unknown): NegotiationPublicEvalua
   };
 }
 
-function 解NegotiationAgentSummary(input: unknown): NegotiationAgentSummary {
+/** 导出给助手会话域复用（在谈详情卡的 agent_summary 同一 schema）；形状与行为冻结不变。 */
+export function 解NegotiationAgentSummary(input: unknown): NegotiationAgentSummary {
   const raw = 要求闭合对象(input, ['public_evaluation', 'condition_confirmation']);
   return {
     public_evaluation: raw.public_evaluation === null
