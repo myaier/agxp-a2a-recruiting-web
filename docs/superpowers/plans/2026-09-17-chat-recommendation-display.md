@@ -480,7 +480,9 @@ Round 1：Claude Opus / high / plan mode，session `685b696b-de05-4b00-ab2f-e663
 |R1-4 纸身缺失/空/加载边界不清|optional / 不变|采纳；null/[] 区分，重试在消费者外层|
 |R1-5 状态/分值组合校验不全|optional / 不变|采纳；按批准 Spec §5.1 校验允许状态与分值|
 
-全部修订维持批准 Spec，不修改产品范围。另将 API 示例标为 bff.invalid URL，以避免路径校验器误认文件绝对路径；接口未变。复审检查修订及新引入问题；无产品测试 PASS 声明。
+全部修订维持批准 Spec，不修改产品范围。另将 API 示例标为 bff.invalid URL，以避免路径校验器误认文件绝对路径；接口未变。无产品测试 PASS 声明。
+
+Round 2：同一 Claude reviewer session，以 `55a8970d`（Plan blob `572a2b5b`）复审，返回 `## Findings / NO FINDINGS`；三项 required 全部修复、两项 optional 已采纳，无未解决项。两轮 HEAD/status/指纹 guard 均通过，reviewer 未执行测试、未修改文件。本次结论追加不改变受审实施合同。
 
 ## 实施记录（执行时追加）
 
