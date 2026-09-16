@@ -249,7 +249,7 @@ onboarding 旅程：两个 Case（`stg-onboarding-candidate` / `stg-onboarding-r
 
 - 证据落 `dogfood-output/<run-id>/`（复用既有目录与脱敏约定）；每个业务节点保留
   操作后 + 刷新两份证据；登录输入期间无截图/录像。
-- 报告用 [真实后端报告模板](真实后端报告模板.md)第 8 节；初始全部 `NOT_RUN`，
+- 报告用 [真实后端报告模板](真实后端报告模板.md)第 5 节；初始全部 `NOT_RUN`，
   做一项填一项。
 - 四个选择项当前均为 `NOT_RUN` / 待 final gate；不预填通过数，不把两个手填变体
   通过写成四项 Suite 全通过。

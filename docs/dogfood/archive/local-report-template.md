@@ -12,12 +12,17 @@
 
 - 合成附件：`docs/dogfood/resources/简历-v1.pdf`、`简历-v2.pdf`（B/H）。
 
-## 3. 等待预算（启动前记录；local 行）
+## 3. 等待预算（启动前记录；仅 Hosted 行属 local）
 
 | 节点类型 | 预算 | 超时处理 |
 | --- | --- | --- |
 | PDF 解析 | `<填写>` | 同上（到期记录最后状态与「原因待定位」） |
 | Hosted 解释/推进 | `<填写>` | 同上 |
+
+> 勘误（2026-09-16）：原模板的「PDF 解析」等待预算行并非 local 专属——stg-onboarding
+> parsed 变体也要求「解析任务终态」预算（[stg-onboarding](../stg-onboarding.md) 第 6.1
+> 节等待预算）。该字段已恢复为活动模板 §3 的「解析任务终态
+> （candidate/parsed、recruiter/parsed 另加）」行；本节仅 Hosted 解释/推进一行属 local。
 
 ## 4. local fixture 生命周期与资源归属（持续更新）
 
