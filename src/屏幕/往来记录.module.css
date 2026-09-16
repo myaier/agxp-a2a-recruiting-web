@@ -36,8 +36,8 @@
   letter-spacing: 0.08em;
 }
 
-/* 三种胶囊只有配色不同，尺寸完全一致 */
-.系统胶囊,
+/* 两种胶囊只有配色不同，尺寸完全一致。
+   （系统胶囊已提取为共用 组件/对话系统注释.module.css，Task 3；本屏改用共享件） */
 .叮嘱胶囊,
 .意向胶囊 {
   display: inline-block;
@@ -47,11 +47,6 @@
   border-radius: 9px;
   padding: 4px 11px;
   text-align: center;
-}
-
-.系统胶囊 {
-  color: var(--灰白);
-  background: var(--浅灰底);
 }
 
 .叮嘱胶囊 {

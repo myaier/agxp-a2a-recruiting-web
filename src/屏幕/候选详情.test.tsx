@@ -6,7 +6,7 @@
 
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 候选详情 from './候选详情';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
@@ -416,3 +416,76 @@ describe('候选详情 · Mock 终局只读（Task 9）', () => {
     expect(mock派发).not.toHaveBeenCalled();
   });
 });
+
+// ── S0–S3 展示统一 Task 3：Mock 进度迁移 段内记录 有序遍历 + 连接器持有受控展开 ──
+// 与求职端 在谈详情 同构：附件留在气泡里、切 Tab 保留手动展开、换候选重置。
+describe('候选详情 · Mock 段内记录迁移（Task 3）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock派发.mockClear();
+    mock应用状态 = {
+      数据源模式: 'mock',
+      状态: {
+        企业候选列表: 在谈候选列表,
+        候选决策: {},
+        候选决策快照: {},
+        决策: {},
+        决策快照: {},
+        叮嘱表: {},
+        // 切到资料 Tab 时 在线简历Tab 的匹配对齐要读 岗位列表（A-01 的岗位编号 = P-01）
+        岗位列表: [{ 编号: 'P-01', 名称: '资深后端工程师', 状态: '在招', 硬性条件: ['Go 主栈'] }],
+      },
+      派发: mock派发,
+    };
+  });
+
+  it('A-01 附件不丢：展开递交简历段，原件行挂在气泡里恰好一份', async () => {
+    const user = userEvent.setup();
+    渲染候选详情页('A-01');
+    await screen.findByText('卡点决策');
+    await user.click(screen.getByRole('button', { name: /递交简历/ }));
+    expect(screen.getAllByText('陈屿_简历.pdf').length).toBe(1);
+    // 剧本对话仍在：附件所在那条「正式简历已递。」照常可见
+    expect(screen.getByText('正式简历已递。')).toBeTruthy();
+  });
+
+  it('切 Tab 保留手动展开：连接器持有受控展开，进度组件被卸载不丢手动状态', async () => {
+    const user = userEvent.setup();
+    渲染候选详情页('A-01');
+    await screen.findByText('卡点决策');
+    // A-01 停在需要协调：匿名初筛已折叠；手动展开它
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ }));
+    expect(screen.getByText('交易网关这个岗的实情：双休，大促月有值班；正式编制；办公目前全现场；希望 45 天内到岗。他有接受不了的吗？')).toBeTruthy();
+    // 切到在线简历 Tab（进度流被卸载）再切回来：手动展开被保留
+    await user.click(screen.getByRole('button', { name: '在线简历' }));
+    await user.click(screen.getByRole('button', { name: '代谈进度' }));
+    expect(screen.getByText('交易网关这个岗的实情：双休，大促月有值班；正式编制；办公目前全现场；希望 45 天内到岗。他有接受不了的吗？')).toBeTruthy();
+  });
+
+  it('换候选重置手动展开：切到另一位候选后，上一位的手动展开不跨记录残留', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/hr/candidate/A-01']}>
+        <MemoryRouter内跳转 目标="/hr/candidate/A-02" />
+        <Routes>
+          <Route path="/hr/candidate/:id" element={<候选详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByText('卡点决策');
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ }));
+    expect(screen.getByText(/交易网关这个岗的实情/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '去 A-02' }));
+    // A-02 的 匿名初筛 回到默认折叠：剧本对话不可见
+    expect(screen.queryByText(/双休是固定的，放心。/)).toBeNull();
+  });
+});
+
+/** 测试辅助：在同一个 MemoryRouter 内部发起路由跳转（换候选不重挂外壳） */
+function MemoryRouter内跳转({ 目标 }: { 目标: string }) {
+  const 跳 = useNavigate();
+  return (
+    <button onClick={() => 跳(目标)}>去 {目标.split('/').pop()}</button>
+  );
+}

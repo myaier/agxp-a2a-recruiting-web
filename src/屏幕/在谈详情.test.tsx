@@ -5,7 +5,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 在谈详情 from './在谈详情';
 import { 在谈列表 } from '../数据/模拟数据';
@@ -391,3 +391,125 @@ describe('在谈详情 · Mock 终局只读（Task 9）', () => {
     页.unmount();
   });
 });
+
+// ── S0–S3 展示统一 Task 3：Mock 进度迁移 段内记录 有序遍历 + 连接器持有受控展开 ──
+// 对话/叮嘱/回执进入同一次有序遍历（内容与剧本顺序不变、附件留在气泡里）；手动展开
+// 由连接层持有（切 Tab 保留、换记录重置），不再依赖被 Tab 卸载的阶段组件本地集合。
+describe('在谈详情 · Mock 段内记录迁移（Task 3）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock派发.mockClear();
+    mock应用状态 = {
+      数据源模式: 'mock',
+      状态: {
+        在谈列表,
+        决策: {},
+        决策快照: {},
+        叮嘱表: {},
+        简历文件名: '',
+        简历经历: [],
+        简历教育: [],
+        简历技能: [],
+      },
+      派发: mock派发,
+    };
+  });
+
+  /** 渲染在指定单的详情路由（Mock 分支） */
+  function 渲染Mock详情(编号: string) {
+    return render(
+      <MemoryRouter initialEntries={[`/deal/${编号}`]}>
+        <Routes>
+          <Route path="/deal/:id" element={<在谈详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it('剧本顺序与附件保持：J-01 展开匿名初筛见 4 条对话；递交简历附件只在气泡里一份', async () => {
+    const user = userEvent.setup();
+    渲染Mock详情('J-01');
+    // 匿名初筛（已完成 → 默认折叠）点开后：剧本原序 4 条对话，条数徽标只数气泡
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ }));
+    expect(
+      screen.getByText('交易网关这个岗：双休，大促月有值班表；混合办公一周来三天；希望 45 天内到岗。有接受不了的吗？'),
+    ).toBeTruthy();
+    expect(screen.getByText('底线不冲突，那就继续。')).toBeTruthy();
+    // 匿名初筛与递交简历两个已完成段各 4 条对话（徽标只数气泡、注释不计）
+    expect(screen.getAllByText('4 条').length).toBeGreaterThanOrEqual(1);
+    // 递交简历段的附件挂在第一条气泡里：全文恰好一份，顶部不再另挂独立附件行
+    await user.click(screen.getByRole('button', { name: /递交简历/ }));
+    expect(screen.getAllByText('沈亦舟_简历_2026.pdf').length).toBe(1);
+  });
+
+  it('底部叮嘱进同一次遍历：当前段同时出现叮嘱与代理回执，条数按发言单位计', async () => {
+    const user = userEvent.setup();
+    // use应用状态 是整 hook mock（无真 reducer）：直接按 加叮嘱 的归约产物预置 叮嘱表，
+    // 验证连接器把 用户气泡 + 回执 投进同一次 记录 遍历（发送派发已有 Task 8/9 覆盖）
+    mock应用状态 = {
+      ...mock应用状态,
+      状态: {
+        ...mock应用状态.状态,
+        叮嘱表: {
+          'J-01': [
+            {
+              编号: 1,
+              我: '周末面试可以',
+              回执: '收到，我按你的口径回复对方，谈拢就推进到下一阶段。',
+              写于阶段: '意向确认',
+            },
+          ],
+        },
+      },
+    };
+    渲染Mock详情('J-01');
+    expect(await screen.findByText('周末面试可以')).toBeTruthy();
+    expect(screen.getByText('收到，我按你的口径回复对方，谈拢就推进到下一阶段。')).toBeTruthy();
+    // 意向确认段原无对话：叮嘱 + 回执 = 「2 条」（灰注释/小结不计）
+    expect(screen.getByText('2 条')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ }));
+    // 匿名初筛 4 条气泡照旧（两个已完成段各挂一枚「4 条」徽标）
+    expect(screen.getAllByText('4 条').length).toBe(2);
+  });
+
+  it('切 Tab 保留手动展开：连接器持有受控展开，进度组件被卸载不丢手动状态', async () => {
+    const user = userEvent.setup();
+    渲染Mock详情('J-02');
+    // J-02 停在需要协调：匿名初筛已折叠；手动展开它，核对清单（只住展开态）出现
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ }));
+    expect(screen.getByText('全员远程')).toBeTruthy();
+    // 切到资料 Tab（进度流被卸载）再切回来：手动展开被保留
+    await user.click(screen.getByRole('button', { name: '职位详情' }));
+    await user.click(screen.getByRole('button', { name: '代谈进度' }));
+    expect(screen.getByText('全员远程')).toBeTruthy();
+    // 再手动收起同样生效（受控值双向）
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ }));
+    expect(screen.queryByText('全员远程')).toBeNull();
+  });
+
+  it('换记录重置手动展开：切到另一单后，上一单的手动展开不跨记录残留', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/deal/J-02']}>
+        <MemoryRouter内跳转 目标="/deal/J-01" />
+        <Routes>
+          <Route path="/deal/:id" element={<在谈详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ }));
+    expect(screen.getByText('全员远程')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '去 J-01' }));
+    // J-01 的 匿名初筛 回到默认折叠：核对清单不可见
+    expect(screen.queryByText('双休 · 大促值班每季约 2 次')).toBeNull();
+  });
+});
+
+/** 测试辅助：在同一个 MemoryRouter 内部发起路由跳转（换记录不重挂外壳） */
+function MemoryRouter内跳转({ 目标 }: { 目标: string }) {
+  const 跳 = useNavigate();
+  return (
+    <button onClick={() => 跳(目标)}>去 {目标.split('/').pop()}</button>
+  );
+}
