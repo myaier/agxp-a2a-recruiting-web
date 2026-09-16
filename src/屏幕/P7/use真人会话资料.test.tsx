@@ -399,3 +399,54 @@ describe('use真人会话资料 · review-r2 修复', () => {
     await waitFor(() => expect(企业失败.result.current.副标题).toBe('公司暂未提供 · 招聘负责人'));
   });
 });
+
+describe('use真人会话资料 · review-r3 修复', () => {
+  it('F1(r3)：公司链绑定实际读取轮次 —— 岗位在飞不读企业、重放不当成功、企业按编号落地', async () => {
+    // StrictMode 双挂：岗位真实读取挂起，重放复用同一轮（无第二笔请求，也不当成功）
+    let 岗位结算!: () => void;
+    mock应用状态.操作.读取候选岗位详情 = vi.fn(
+      () => new Promise<void>((完成) => { 岗位结算 = 完成; }),
+    );
+    const 企业spy = vi.fn().mockResolvedValue(undefined);
+    mock应用状态.操作.读取公开企业 = 企业spy;
+    // 预置旧缓存：旧岗位坐标 org-A + 旧企业名 —— 本轮岗位落地前都不得消费
+    mock应用状态.后端状态.P5详情[P5范围键.detail('candidate', 'mc_3003')] = 快照({
+      ...候选详情DTO(),
+      state: 状态({ caseId: 'mc_3003' }),
+      jobDetail: {
+        ...BFF安全职位资料样本,
+        publisher_profile: { public_name: '林澈', title: '招聘负责人', personal_verification_status: 'verified', avatar_url: null },
+      },
+    });
+    mock应用状态.后端状态.候选岗位详情.job_3003 = { organization: null, publisher_organization_ref: 'org-A' };
+    mock应用状态.状态.公开企业表['org-A'] = {
+      organization_id: 'org-A', legal_name: null, display_name: '旧缓存公司',
+      verified_at: null, profile: null, active_verified_job_count: 0,
+    };
+    const { result, rerender } = renderHook(() => use真人会话资料('candidate', 会话()), {
+      wrapper: StrictMode,
+    });
+    await waitFor(() => expect(result.current.标题).toBe('林澈'));
+    expect(mock应用状态.操作.读取候选岗位详情).toHaveBeenCalledTimes(1); // 重放复用，零重复请求
+    expect(企业spy).not.toHaveBeenCalled(); // 岗位未落地：不按旧坐标读企业
+    expect(result.current.副标题).toBe('公司暂未提供 · 招聘负责人');
+
+    // 本轮岗位落地、坐标换到 org-B：企业按 B 发起，B 落地后才显示
+    let 企业B结算!: () => void;
+    mock应用状态.操作.读取公开企业 = vi.fn(
+      () => new Promise<void>((完成) => { 企业B结算 = 完成; }),
+    );
+    岗位结算();
+    mock应用状态.后端状态.候选岗位详情.job_3003 = { organization: null, publisher_organization_ref: 'org-B' };
+    rerender();
+    await waitFor(() => expect(mock应用状态.操作.读取公开企业).toHaveBeenCalledWith('org-B'));
+    expect(result.current.副标题).toBe('公司暂未提供 · 招聘负责人'); // B 在飞：旧 A 名不出场
+    mock应用状态.状态.公开企业表['org-B'] = {
+      organization_id: 'org-B', legal_name: null, display_name: 'B 公司',
+      verified_at: null, profile: null, active_verified_job_count: 0,
+    };
+    企业B结算();
+    rerender();
+    await waitFor(() => expect(result.current.副标题).toBe('B 公司 · 招聘负责人'));
+  });
+});

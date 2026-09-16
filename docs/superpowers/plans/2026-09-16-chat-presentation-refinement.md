@@ -207,6 +207,9 @@ PDF 层复用：从 `原始PDF层.tsx` 导出同文件 `原始PDF正文({文件�
   1. 读锁让路使「本轮就绪」提前放行刷新中的旧快照（StrictMode 双挂/同 scope 在飞；契约违反/Important/required/复杂度不变）→ 修复：消费条件追加 `快照.刷新中 === false`；新增 StrictMode 双挂反例（真实读取在飞期间只显示回落标签，落地后才消费新身份）。
   2. 候选侧发布方公司仍直接消费岗位/企业旧缓存（R1-F2 残余范围；契约违反/Important/required/复杂度增加——公司轮次局部状态防旧发布方公司误披露，收益足以抵偿）→ 修复：hook 内公司链按 `角色:jobRef` 分相跟踪（岗位 pending/ok/失败 → 企业 pending/ok/失败），任一 pending/失败一律「公司暂未提供」，手动重读同步复位；新增双落地序列与两条失败路径反例。
 - R2 修复提交：见 git log `fix(review-r2)`；轮间轻量检查 = hook+页面单测 41 passed + typecheck/lint 0 + 真人消息 fixture e2e 11/11（未跑全层）。
+- R3（同 thread resume，第 3 轮 = 上限）：1 项 finding，裁决接受（required 1 / optional 0，拒绝 0）：
+  1. 公司链相位未绑定实际读取轮次（契约违反/Important/required/复杂度增加——请求令牌为防旧发布方公司误展示所必需）→ 修复（**上限轮后修复，无下一轮 reviewer 复核，如实记录**）：企业读取只在本轮岗位 promise 成功落地后按当时 publisher_organization_ref 发起；相位携带企业编号，回调同时核对轮键与编号（旧编号迟到成功不得改写新编号的 pending/失败）；岗位轮按轮键复用在飞请求，StrictMode 重放不把读锁让路当成功。新增反例：岗位在飞零企业请求 + 重放零重复请求 + 坐标换 B 后按编号落地。
+- R3 修复提交：见 git log `fix(review-r3)`；验证 = hook+页面单测 42 passed + typecheck/lint 0 + 真人消息 fixture e2e 11/11。Review loop 于第 3 轮上限停止：R1 4 项、R2 2 项、R3 1 项共 7 项 required 全部接受修复，0 拒绝；R3 修复未再经 reviewer 复核（cap）。
 
 ## 文档审查记录
 
