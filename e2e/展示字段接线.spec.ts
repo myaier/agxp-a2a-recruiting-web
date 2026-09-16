@@ -18,15 +18,16 @@
 //     （P1 展示统一 spec 同款口径）。
 //
 // 采集命令（基准，任何产品改动前）：
-//   WIRING_CAPTURE_DIR=ui-regression-output/展示接线/reference npm run test:e2e:data-source -- \
-//     e2e/展示字段接线.spec.ts --project=mock-stg --grep '展接线 Mock视觉' --workers=1
+//   WIRING_CAPTURE_DIR=ui-regression-output/展示接线/reference npm run test:e2e -- \
+//     e2e/展示字段接线.spec.ts --project=mock --grep '展接线 Mock视觉' --workers=1
 // 候选采集同一命令换 WIRING_CAPTURE_DIR 目录即可；sceneId 含视口宽度，两个宽度互不覆盖。
 // 不带 WIRING_CAPTURE_DIR 的普通入口也能跑：根目录落在本用例独立的
 // testInfo.outputPath('capture')，不要求 shell 变量（见下方 取采集目录 注释）。
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test } from './fixtures/test';
+import type { Locator, Page } from '@playwright/test';
 import { 安装诊断, 打开稳定页面 } from './视觉回归/稳定页面';
 import type { 场景采集结果, 场景状态种子, 元素几何 } from './视觉回归/类型';
 import { 路径 } from '../src/路由/路径表';

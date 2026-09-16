@@ -19,8 +19,8 @@
 //     安装诊断 的 /api/v1 范围（不含 HMR），旅程零业务 API 请求。
 //   · 不 import 任意 .spec.ts（会注册无关测试）。
 
-import type { Locator } from '@playwright/test';
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import type { Locator, Page, TestInfo } from '@playwright/test';
+import { expect, test } from './fixtures/test';
 import { 安装诊断, 打开稳定页面 } from './视觉回归/稳定页面';
 import { 安装P1路由 } from './fixtures/P1展示统一';
 import type { P1角色 } from './fixtures/P1展示统一';

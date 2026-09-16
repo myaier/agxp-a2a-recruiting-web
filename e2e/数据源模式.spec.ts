@@ -61,7 +61,8 @@
 // 幂等按「同键同原文重放同一张回执、同键异原文 409」收口；Mock describe 以任务书
 // 原文的 isP8 正则断言控制面全程零请求。
 
-import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
+import { expect, test } from './fixtures/test';
+import type { Locator, Page, Route } from '@playwright/test';
 import type { BFF简历, BFFOwnerIntention } from '../src/数据/BFF契约';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5683,8 +5684,37 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       }
     }
 
-    // 兜底：未匹配的 /api/v1/* 返回 200 空信封，避免测试因未处理路由挂死
-    await route.fulfill({ status: 200, json: 信封(null) });
+    // ── 缺席域的精确空应答（旧全局 200-null 兜底在这些坐标上的显式化：逐
+    //    path+method 声明，不是通配）。隐私 / 连续代谈 / 收件箱 fixture 缺席的
+    //    用例按原语义拿 200 空信封 → strict decode 拒绝 → 页面如实给空态/失败态
+    //   （「Mock 内容不顶替 HTTP」的既有边界）。其余未匹配请求不再有任何兜底。──
+    if (P3域 === null && path === '/api/v1/me/privacy' && method === 'GET') {
+      await route.fulfill({ status: 200, json: 信封(null) });
+      return;
+    }
+    if (P5连续域 === null && path === '/api/v1/me/negotiations' && method === 'GET') {
+      await route.fulfill({ status: 200, json: 信封(null) });
+      return;
+    }
+    if (P7域 === null && method === 'GET'
+      && (path === '/api/v1/me/conversations' || path === '/api/v1/recruiter/conversations')) {
+      await route.fulfill({ status: 200, json: 信封(null) });
+      return;
+    }
+    // 简历教育条目更新（候选 onboarding fixture 缺席的既有用例「写入 body 使用选择 ID」
+    // 只断言请求形状、不消费应答）—— 同为旧全局兜底在此坐标的显式化：200 空信封 →
+    // strict decode 拒绝 → 页面按写入失败收口，与移除前的可观察行为一致。
+    const 教育条目改 = /^\/api\/v1\/me\/resume\/educations\/[^/]+$/.exec(path);
+    if (Onboarding域 === null && 教育条目改 && method === 'PATCH') {
+      await route.fulfill({ status: 200, json: 信封(null) });
+      return;
+    }
+
+    // 未匹配的 /api/v1/* 不再回 200 空信封兜底：显式 fallback 交给 context 级
+    // 离线边界（e2e/fixtures/离线边界.ts）兜底中止并记录，Case teardown 核对()
+    // 抛错定位。有意测试缺资源/解码错误的场景须对准确 path/method 声明对应空/
+    // 错误响应（见上方缺席域显式路由），不得用全局兜底吞缺口。
+    await route.fallback();
   });
   return { p6, p4: P4域, p7: P7域 };
 }
@@ -6106,6 +6136,11 @@ test.describe('Backend 数据源 fixture @backend', () => {
 
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    // 主壳真正挂载后才做后续直达导航：Task 1 起离线边界让 /api/v1/events/live 以空闲
+    // 本地连接打开（旧世界它必然失败），事件源 onOpen 会多一轮启动收件箱拉取 ——
+    // 落点 replace 导航的结算窗口变宽，URL 就位 ≠ 主壳已挂载；等底部导航可见再走，
+    // 直达的懒加载屏才不会被在飞的 replace 吞掉（只修测试定义，不改产品）。
+    await expect(page.getByRole('button', { name: '市场', exact: true })).toBeVisible({ timeout: 15_000 });
 
     // 导航到毕业院校屏
     await page.goto('/#/onboard/school');
@@ -6231,6 +6266,9 @@ test.describe('Backend 数据源 fixture @backend', () => {
 
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    // 主壳真正挂载后才直达（同 学校搜索 用例：events/live 空闲本地连接加宽了启动
+    // replace 导航的结算窗口，等底部导航可见再导航，避免在飞的 replace 吞掉直达）。
+    await expect(page.getByRole('button', { name: '市场', exact: true })).toBeVisible({ timeout: 15_000 });
 
     // 导航到我的简历 → 编辑姓名 → blur 触发 PATCH profile → 401 → 清会话 → 落登录页
     await page.goto('/#/resume');
@@ -9597,8 +9635,12 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await expect(page.getByText('invalid_actor_identity')).toHaveCount(0);
     await expect(page.getByText('真人会话已建立')).toHaveCount(0);
 
-    // 会话坐标在发布前绝不被请求（P5 阶段零会话路由）
-    const 发布前会话请求 = 请求序.filter((项) => /\/conversations|\/chat\//i.test(项)).length;
+    // 会话坐标在发布前绝不被请求（P5 阶段零会话内容路由）。Task 1 起离线边界为
+    // fixture 模式提供 /api/v1/events/live 空闲本地连接（旧世界它必然连接失败），
+    // 事件源 onOpen 会无条件重拉当前角色收件箱清单（use真人会话事件 的既有产品
+    // 行为），该清单 GET 不在本断言范围；这里守的是 会话详情/消息/移交 路由在
+    // 发布前为零 —— P5 屏绝不提前读会话内容，发布后的进入是用户主动导航。
+    const 发布前会话请求 = 请求序.filter((项) => /\/conversations\/|\/chat\//i.test(项)).length;
 
     // ── 服务端发布：completed + complete + conversation_ref ──
     const 己 = fixture.cases[P5编号.己]!;
@@ -10098,9 +10140,20 @@ test.describe('P5 Mock 数据源隔离 @mock', () => {
 // 产品 bundle 不含该 seam）；帧不携带真相：内容一律经 no-store HTTP 重拉上屏。
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** app 加载前 stub 原生 WebSocket；测试 seam：__emitP7(帧) / __P7断开() / __P7套接字数()。 */
+/** app 加载前 stub 原生 WebSocket；测试 seam：__emitP7(帧) / __P7断开() / __P7套接字数()。
+ *  只替换业务 WebSocket（pathname 前两段 api/v1）：非业务连接透传原生实现，不屏蔽 Vite HMR。 */
 async function 安装P7事件桩(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    const 原生 = window.WebSocket;
+    // 业务路径判定与 e2e/fixtures/离线边界.ts 同口径：URL 前两个非空路径段为 api、v1
+    const 是业务地址 = (地址: string): boolean => {
+      try {
+        const 段们 = new URL(地址, location.href).pathname.split('/').filter((段) => 段 !== '');
+        return 段们[0] === 'api' && 段们[1] === 'v1';
+      } catch {
+        return false;
+      }
+    };
     const 套接字们: Array<{
       url: string;
       onopen: (() => void) | null;
@@ -10116,8 +10169,13 @@ async function 安装P7事件桩(page: Page): Promise<void> {
       onclose: (() => void) | null = null;
       onerror: (() => void) | null = null;
       已关 = false;
-      constructor(url: string) {
-        this.url = url;
+      constructor(url: string | URL) {
+        const 地址 = String(url);
+        if (!是业务地址(地址)) {
+          // 非业务连接（如 Vite HMR）透传原生浏览器实现
+          return new 原生(url) as unknown as 假WebSocket;
+        }
+        this.url = 地址;
         套接字们.push(this);
         // 模拟真实连接成功：构造后的下一轮事件循环触发 onopen（handlers 已由 adapter 挂好）
         setTimeout(() => {
@@ -14615,7 +14673,7 @@ test.describe('核心编辑 附件 @backend', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // picker 统一 @picker（Plan 2026-09-14 Task 5）：把 Task 1–4 的真实布局与用户操作
-// 固化到两数据模式的实际页面（mock-stg 4181 / backend-stg 4182，viewport 沿项目
+// 固化到两数据模式的实际页面（mock 4181 / fixture 4182，viewport 沿项目
 // iPhone 13 390×844，短屏用例显式 844×390）。非目标：不新建测试框架、不拍全站
 // 视觉基线、不启动真实后端 —— Backend 全部 API 请求走既有 安装BFF路由 + 用例专用
 // 后装目录桩，意外未匹配请求使测试失败；Mock 断言全程零 /api/v1 请求。

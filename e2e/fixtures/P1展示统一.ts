@@ -8,7 +8,8 @@
 // 白名单纪律（brief 第 1 条）：
 //   · 只应答本任务需要的 path+method：应用启动必要的会话/主体/简历/意向/隐私/附件库/
 //     账号档案/Agent 规则与 MatchCase 空页水合 + 本任务的岗位/推荐/会话读取；
-//   · 未知 API 一律记录并返回受控 503 错误，绝不放行真实网络，也绝不泛化所有 GET 成功；
+//   · 未知 API 一律记录且不应答：落到 context 级离线边界兜底中止，Case teardown
+//     核对() 抛错定位，绝不放行真实网络，也绝不泛化所有 GET 成功；
 //   · 标记值（P1FIX 前缀）只存在于 fixture，断言页面展示它们即证明渲染来自 HTTP 而非 Mock；
 //   · 双栈同文对照场景（交易中台架构师 / 美团 / 梁思远）刻意与 Mock 基准同文，
 //     证据靠请求序列（渲染前必先有对应 GET），不靠文本本身。
@@ -717,8 +718,10 @@ export async function 安装P1路由(
       }
     }
 
-    // ── 白名单外：记录 + 受控错误，绝不放行真实网络 ──
-    await 答(503, { error: { type: 'p1_fixture_unknown_api', message: `P1 fixture 白名单外请求：${method} ${path}` } });
+    // ── 白名单外：记录后显式 fallback，交给 context 级离线边界
+    //   （e2e/fixtures/离线边界.ts）兜底中止并由 Case teardown 核对() 抛错 ——
+    //   不用「未知 API 一律 503」的全局白名单吞缺口，缺口由失败直接定位。──
+    await route.fallback();
   });
 
   return { 请求: 记录们 };

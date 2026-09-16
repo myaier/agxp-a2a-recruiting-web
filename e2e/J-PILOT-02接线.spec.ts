@@ -6,10 +6,9 @@
 //
 // 装载方式沿 e2e/onboarding.spec.ts 与 e2e/数据源模式.spec.ts 的既有口径：
 //   · @backend 用例 test.use({ baseURL: 4182 }) 钉到显式 backend/stg dev server，
-//     由 playwright.数据源模式.config.ts 的 webServer 数组启动（npm run
-//     test:e2e:data-source）。默认 config 只起 Mock 4173，连不上 4182 —— 用例开头
-//     探测端口，不可达即 test.skip 并注明入口，绝不在 Mock 冒充 Backend 结果，
-//     也不新建第二套 runner。
+//     由唯一功能配置 playwright.config.ts 的 fixture 项目 webServer 启动（npm run
+//     test:e2e）。服务起不来由 runner 直接报基础设施失败 —— 不再在用例内探测
+//     本地根页面可达性做 test.skip，也不新建第二套 runner。
 //   · 全部 /api/v1 请求被本文件自带的 route fixture 拦截应答（wire 形与闭合键集
 //     校验对齐 数据源模式.spec.ts 的既有 fixture）。route mock 只证明前端在拦截
 //     边界上的行为，绝不作为真实 provider / 真实 BFF 联调证据；真实链路结论保持
@@ -26,7 +25,9 @@
 // 已知 PM_BLOCKED（不统计为 PASS）：排除题「再加一家」无真实组织结果选择，一键与
 // 手输均被阻止 —— 本文件不断言屏蔽新增闭环。
 
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test } from './fixtures/test';
+import type { Page, Route } from '@playwright/test';
+import { 安装离线边界 } from './fixtures/离线边界';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // fixture：标记值 / 简历快照 / 可变状态（测试自持，handler 直读直写）
@@ -463,23 +464,23 @@ async function 安装BFF路由(page: Page, fixture: 建档fixture形): Promise<v
       return;
     }
 
-    // 兜底：未匹配 /api/v1/* 答空信封（strict decode 拒收 → 漏端点当场红）
-    await route.fulfill({ status: 200, json: 信封(null) });
+    // ── 收件箱（真人会话域缺席）：精确空应答 —— 旧全局 200-null 兜底在此坐标的
+    //    显式化，strict decode 拒绝 → 页面如实给空收件箱（Mock 内容不顶替 HTTP）。──
+    if (path === '/api/v1/me/conversations' && method === 'GET') {
+      await route.fulfill({ status: 200, json: 信封(null) });
+      return;
+    }
+
+    // 兜底已删除：未匹配的 /api/v1/* 显式 fallback 交给 context 级离线边界
+    //（e2e/fixtures/离线边界.ts）中止并记录，Case teardown 核对() 抛错定位。
+    // 有意测试缺资源/解码错误的场景须对准确 path/method 声明对应空/错误响应。
+    await route.fallback();
   });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 旅程 helper（沿用 onboarding.spec.ts / 数据源模式.spec.ts 的可见导航口径）
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Backend dev server 探测：默认 config 只起 Mock 4173，连不上 4182 就跳过并注明入口 */
-async function 要求后端Server(page: Page): Promise<void> {
-  const 可达 = await page.request
-    .get('/', { timeout: 3_000 })
-    .then((响应) => 响应.status() < 500)
-    .catch(() => false);
-  test.skip(!可达, 'backend/stg dev server (4182) 未启动：默认 playwright config 只起 Mock 4173。本组用 npm run test:e2e:data-source -- e2e/J-PILOT-02接线.spec.ts --project=backend-stg 运行');
-}
 
 /** 选身份 → 完善资料（Backend 偏好从空起步：身份/求职类型/办公方式都要用户明确选） */
 async function 进完善资料(page: Page, 在校: boolean): Promise<void> {
@@ -645,7 +646,6 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
 
   test('社招手填全旅程：零工作经历、URL 设置后清空、恰一首次意向 @backend', async ({ page }) => {
     test.setTimeout(240_000);
-    await 要求后端Server(page);
     const fixture = 创建建档fixture();
     await 安装BFF路由(page, fixture);
 
@@ -719,7 +719,6 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
 
   test('学生手填全旅程：实习生档、零工作经历、URL 未改不携带、恰一首次意向 @backend', async ({ page }) => {
     test.setTimeout(240_000);
-    await 要求后端Server(page);
     const fixture = 创建建档fixture();
     await 安装BFF路由(page, fixture);
 
@@ -772,7 +771,6 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
 
   test('education POST 后读取失败：刷新回原题、重走不重复 POST @backend', async ({ page }) => {
     test.setTimeout(240_000);
-    await 要求后端Server(page);
     const fixture = 创建建档fixture();
     await 安装BFF路由(page, fixture);
 
@@ -811,7 +809,6 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
 
   test('头像 unknown 不能完成：不伪成功、同 key/ifMatch 重放、成功后才完成 @backend', async ({ page }) => {
     test.setTimeout(240_000);
-    await 要求后端Server(page);
     const fixture = 创建建档fixture();
     // 前两次 POST 答 503 operation_outcome_unknown：第一次会被 HTTP 客户端受控重试一次
     //（同 key），重试仍未知才抛给页面 —— 槽保留、头像状态 待核对
@@ -868,11 +865,6 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
   // ───────────────────────────────────────────────────────────────────────────
   test('同数据 Mock/Backend 共用布局：共享屏布局骨架一致 @backend', async ({ browser, page }) => {
     test.setTimeout(240_000);
-    const 服务器可达 = async (根: string) =>
-      page.request.get(根, { timeout: 3_000 }).then((响应) => 响应.status() < 500).catch(() => false);
-    const 后端可达 = await 服务器可达('http://127.0.0.1:4182');
-    const Mock可达 = await 服务器可达('http://127.0.0.1:4181');
-    test.skip(!(后端可达 && Mock可达), '需要 mock(4181) 与 backend(4182) 两个 dev server：npm run test:e2e:data-source 后本用例才运行');
 
     /** 布局骨架：可见 button/input/heading/listbox 的 [tag, 首类名] 去重保序列表 */
     const 取骨架 = async (目标: Page) =>
@@ -903,37 +895,44 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     const 后端城市页390 = await 取骨架(page);
 
     // ── Mock 侧（4181 独立 context，本地数据；默认城市上海已带「已选」状态）──
+    // 自建 context 不在默认 page 的离线边界保护内：显式安装同一边界（Mock 模式：
+    // 业务 HTTP/WS 均不允许），finally 核对并关闭，不假定默认 page 的保护覆盖第二 context。
     const mock上下文 = await browser.newContext({ viewport: { width: 390, height: 844 } });
-    const mock页 = await mock上下文.newPage();
-    await mock页.goto('http://127.0.0.1:4181/');
-    await mock页.getByText(/已阅读并同意/).click();
-    await mock页.getByRole('button', { name: '微信登录' }).click();
-    await expect(mock页).toHaveURL(/#\/identity$/);
-    await mock页.getByRole('button', { name: '我要找工作' }).click();
-    await expect(mock页).toHaveURL(/#\/student$/);
-    await expect(mock页.getByRole('heading', { name: '完善资料' })).toBeVisible();
-    const mock学生分流390 = await 取骨架(mock页);
-    // Mock 默认城市是上海：行内值就是「上海」（无「选择工作城市」占位）
-    await mock页.getByRole('button', { name: /上海/ }).first().click();
-    await expect(mock页).toHaveURL(/#\/onboard\/city$/);
-    await expect(mock页.getByPlaceholder('搜索城市 / 省份')).toBeVisible();
-    const mock城市页390 = await 取骨架(mock页);
+    const mock边界 = await 安装离线边界(mock上下文, 'mock');
+    try {
+      const mock页 = await mock上下文.newPage();
+      await mock页.goto('http://127.0.0.1:4181/');
+      await mock页.getByText(/已阅读并同意/).click();
+      await mock页.getByRole('button', { name: '微信登录' }).click();
+      await expect(mock页).toHaveURL(/#\/identity$/);
+      await mock页.getByRole('button', { name: '我要找工作' }).click();
+      await expect(mock页).toHaveURL(/#\/student$/);
+      await expect(mock页.getByRole('heading', { name: '完善资料' })).toBeVisible();
+      const mock学生分流390 = await 取骨架(mock页);
+      // Mock 默认城市是上海：行内值就是「上海」（无「选择工作城市」占位）
+      await mock页.getByRole('button', { name: /上海/ }).first().click();
+      await expect(mock页).toHaveURL(/#\/onboard\/city$/);
+      await expect(mock页.getByPlaceholder('搜索城市 / 省份')).toBeVisible();
+      const mock城市页390 = await 取骨架(mock页);
 
-    // ── 390 主视口：同一布局组件与 CSS module 类名，两模式骨架逐项一致 ──
-    expect(后端学生分流390, '完善资料屏 390 布局骨架').toEqual(mock学生分流390);
-    expect(后端城市页390, '选工作城市屏 390 布局骨架').toEqual(mock城市页390);
+      // ── 390 主视口：同一布局组件与 CSS module 类名，两模式骨架逐项一致 ──
+      expect(后端学生分流390, '完善资料屏 390 布局骨架').toEqual(mock学生分流390);
+      expect(后端城市页390, '选工作城市屏 390 布局骨架').toEqual(mock城市页390);
 
-    // ── 320 窄屏：两页都收窄重取骨架，Mode 间一致（底栏/长名称/滚动承载属视觉
-    //    巡检与真实 dogfood 责任，这里只钉「收窄不产生另一套布局结构」）──
-    await page.setViewportSize({ width: 320, height: 844 });
-    await mock页.setViewportSize({ width: 320, height: 844 });
-    expect(await 取骨架(page), '选工作城市屏 320 布局骨架（Backend）').toEqual(await 取骨架(mock页));
-    await page.goBack();
-    await mock页.goBack();
-    await expect(page).toHaveURL(/#\/student$/);
-    await expect(mock页).toHaveURL(/#\/student$/);
-    expect(await 取骨架(page), '完善资料屏 320 布局骨架（Backend）').toEqual(await 取骨架(mock页));
-    await mock上下文.close();
+      // ── 320 窄屏：两页都收窄重取骨架，Mode 间一致（底栏/长名称/滚动承载属视觉
+      //    巡检与真实 dogfood 责任，这里只钉「收窄不产生另一套布局结构」）──
+      await page.setViewportSize({ width: 320, height: 844 });
+      await mock页.setViewportSize({ width: 320, height: 844 });
+      expect(await 取骨架(page), '选工作城市屏 320 布局骨架（Backend）').toEqual(await 取骨架(mock页));
+      await page.goBack();
+      await mock页.goBack();
+      await expect(page).toHaveURL(/#\/student$/);
+      await expect(mock页).toHaveURL(/#\/student$/);
+      expect(await 取骨架(page), '完善资料屏 320 布局骨架（Backend）').toEqual(await 取骨架(mock页));
+    } finally {
+      mock边界.核对();
+      await mock上下文.close();
+    }
   });
 });
 

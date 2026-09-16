@@ -4,7 +4,8 @@
 // 与 e2e/fixtures/P1展示统一.ts 同一白名单纪律（复用其 事件桩 导出）：
 //   · 只应答本任务触达的 path+method：双端启动水合 + 四列表 + 独立职位/匿名简历两详情
 //     + 两端 Case 资料 Tab + pre-Case 聚合 + 公开企业补读；
-//   · 未知 API 一律记录并返回受控 503 错误，绝不放行真实网络；
+//   · 未知 API 一律记录且不应答：落到 context 级离线边界兜底中止，Case teardown
+//     核对() 抛错定位，绝不放行真实网络；
 //   · 标记值（展接FIX / wiring- 前缀）只存在于 fixture，断言页面展示它们即证明渲染来自
 //     HTTP 而非 Mock；
 //   · fixtures 明确模拟新协议：release/0.2.5 的 required 键（CandidateJob.organization、
@@ -984,8 +985,10 @@ export async function 安装展接线路由(
       }
     }
 
-    // ── 白名单外：记录 + 受控错误，绝不放行真实网络 ──
-    await 答(503, { error: { type: 'wiring_fixture_unknown_api', message: `展接线 fixture 白名单外请求：${method} ${path}` } });
+    // ── 白名单外：记录后显式 fallback，交给 context 级离线边界
+    //   （e2e/fixtures/离线边界.ts）兜底中止并由 Case teardown 核对() 抛错 ——
+    //   不用「未知 API 一律 503」的全局白名单吞缺口，缺口由失败直接定位。──
+    await route.fallback();
   });
 
   return { 请求: 记录们 };

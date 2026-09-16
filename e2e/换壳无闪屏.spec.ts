@@ -8,7 +8,8 @@
 // 采样用 requestAnimationFrame（回调跑在本帧绘制之前，此刻 DOM 里是什么这一帧就画什么）
 // 加 MutationObserver（补上两次 rAF 之间一闪而过的中间态）。
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from './fixtures/test';
+import type { Page } from '@playwright/test';
 
 interface 帧快照 {
   hash: string;

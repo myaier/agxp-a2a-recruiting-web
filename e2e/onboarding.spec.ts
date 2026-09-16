@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from './fixtures/test';
+import type { Page } from '@playwright/test';
 
 async function 从登录进入身份(page: Page, 身份: '我要找工作' | '我要招人') {
   await page.goto('/');

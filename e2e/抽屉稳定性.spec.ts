@@ -17,7 +17,8 @@
 // 视口 390×844 = 真手机全屏；1280×900 = 桌面机身模式（设备外框整机等比缩放）。
 
 import { writeFile } from 'node:fs/promises';
-import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { expect, test } from './fixtures/test';
+import type { Locator, Page, TestInfo } from '@playwright/test';
 
 interface 帧样本 {
   /** 距点击捕获的毫秒数 */
