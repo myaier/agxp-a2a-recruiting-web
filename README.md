@@ -118,15 +118,44 @@ Backend 模式不预取全量目录。选择器（城市 / 学校 / 职位 / 行
 
 ### 本地 E2E 入口与采集
 
-Playwright 用例分三个互不混跑的入口，各自独立起 server，模式不互相污染：
+浏览器功能用例只有一个功能配置 `playwright.config.ts`，三个互不混跑的项目共用同一
+runner；三个不可复用的 Vite dev server 在同一 invocation 内共享启动（不为按 project
+少起服务设计动态管理器）：
 
 ```bash
-npm run test:e2e                 # 默认入口：显式 mock/stg dev server（4173，--strictPort、
-                                 # 不可复用），grepInvert 挡掉 @backend/@annotation 标签用例
-npm run test:e2e:data-source     # 数据源入口：mock(4181) / backend(4182) / 标注(4183) 三个
-                                 # 不可复用 server，按 @mock/@backend/@annotation 分项目
-npm run ui:capture               # 视觉回归入口：e2e/视觉回归/ 固定 18 个场景（需 UI_CAPTURE_DIR）
+npm run test:e2e                                  # 第一层全量：mock + fixture + annotation 三项目
+npm run test:e2e -- --list                        # 完整去重选集（只收集不执行）
+npm run test:e2e -- <file> --grep '<regex>'       # 原生文件/完整名称选择
+npm run test:e2e -- --project=fixture <file> --grep '<regex>'   # HTTP fixture 子集
+npm run test:e2e -- --project=mock <file>         # Mock 浏览器子集
+npm run test:e2e -- --project=annotation          # 标注构建子集
+npm run ui:capture                                 # 视觉回归入口：e2e/视觉回归/（Task 5 同步接入边界）
 ```
+
+项目与端口：
+
+- `mock` → 4181（`VITE_DATA_SOURCE=mock`）：`@mock` 标签 + 原无标签功能 Case
+  （onboarding/抽屉/换壳 等）；Mock 的业务 HTTP/WS 均不允许。
+- `fixture` → 4182（`VITE_DATA_SOURCE=backend`）：只选 `@backend`；全部 `/api/v1`
+  由测试的页面级 route fixture 应答，context 级离线边界兜底中止漏网业务请求。
+- `annotation` → 4183（backend 构建 + `VITE_ANNOTATION_ENABLED=true`）：只选
+  `@annotation`。构建环境不表示使用真实后端。
+
+`npm run test:e2e:data-source` 是 `npm run test:e2e` 的 **deprecated 完全别名**
+（直接执行同一 `playwright test`，不是第二份配置，也不与全量入口连跑）。历史文档
+里的旧项目名 `mock-stg` / `backend-stg` 与 4173 端口已退役；历史文档保留历史命令，
+不批量改写。
+
+**离线请求边界（C3）**：功能 spec 从 `e2e/fixtures/test.ts` 导入 `test/expect` ——
+浏览器 context 在导航前安装最末级业务 HTTP/WS 防漏边界（业务路径 = URL 前两个非空
+段依次为 `api`、`v1`，含 query/下载/事件流，不限 hostname），Case teardown `核对()`
+发现未声明业务请求即失败（仅含 method/path）。页面级已声明的 route 优先应答；
+Vite HMR 与静态资源不受影响；fixture/annotation 已声明的 `/api/v1/events/live` 用
+空闲本地连接，业务 WebSocket 永不连真实服务。测试程序不得用 `page.request` /
+`context.request` 访问业务接口（不经过浏览器 route，边界不可见）；自建
+`browser.newContext` 须显式安装同一边界、finally 核对并关闭（见 J-PILOT-02 共用
+布局用例）。有意测试缺资源/解码错误的场景须对准确 path/method 声明对应空/错误
+响应，不得用全局兜底吞缺口。
 
 - 默认入口跑 Mock 页面功能断言与采集冒烟，**不需要** shell 采集变量：采集 spec
   （`e2e/P1展示统一.spec.ts`、`e2e/展示字段接线.spec.ts`）不带 `P1_CAPTURE_DIR` /
@@ -136,8 +165,8 @@ npm run ui:capture               # 视觉回归入口：e2e/视觉回归/ 固定
   另一次运行共用）：
 
 ```bash
-P1_CAPTURE_DIR=ui-regression-output/p1/reference npm run test:e2e:data-source -- \
-  e2e/P1展示统一.spec.ts --project=mock-stg --grep 'P1 Mock视觉' --workers=1
+P1_CAPTURE_DIR=ui-regression-output/p1/reference npm run test:e2e -- \
+  e2e/P1展示统一.spec.ts --project=mock --grep 'P1 Mock视觉' --workers=1
 ```
 
 - 功能项目的时区缺省 UTC；P1／展接线／视觉采集 suite 自带 `Asia/Shanghai`，
@@ -146,13 +175,14 @@ P1_CAPTURE_DIR=ui-regression-output/p1/reference npm run test:e2e:data-source --
 ### 数据源边界 E2E
 
 ```bash
-npm run test:e2e:data-source                       # 全量（mock + backend + 标注 三组）
-npm run test:e2e:data-source -- --grep '@mock'       # 只跑 Mock 回归
-npm run test:e2e:data-source -- --grep '@backend'    # 只跑 Backend fixture
-npm run test:e2e:data-source -- --grep '@annotation' # 只跑标注评审构建（4183 独有构建）
+npm run test:e2e                                   # 全量（mock + fixture + annotation 三组）
+npm run test:e2e -- --grep '@mock'                  # 只跑 Mock 回归
+npm run test:e2e -- --grep '@backend'               # 只跑 Backend fixture
+npm run test:e2e -- --grep '@annotation'            # 只跑标注评审构建（4183 独有构建）
+npm run test:e2e -- e2e/数据源模式.spec.ts --project=fixture   # 单文件子集
 ```
 
-由 `playwright.数据源模式.config.ts` 同时启动三个不可复用的 Vite dev server
+由 `playwright.config.ts` 同时启动三个不可复用的 Vite dev server
 （`mock/stg` 端口 4181、`backend/stg` 端口 4182、`backend/stg` 标注构建端口 4183），
 按测试标题里的 `@mock` / `@backend` / `@annotation`
 标签分项目各跑一组用例（iPhone 13 视口、本机 Chrome）。
