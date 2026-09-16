@@ -223,6 +223,29 @@ PDF 层复用：从 `原始PDF层.tsx` 导出同文件 `原始PDF正文({文件�
 - target：origin/main = 30a0d3b2（规划基线，未推进；final gate 前只读 fetch 核对）。
 - 证据位置：output/chat-presentation-evidence/{task1,task2,task3}/（命令日志、截图、依赖与候选版本；output/ 不提交）。
 
+## Final gate 执行记录（2026-09-16，用户已批准）
+
+```yaml
+final_target_base: 30a0d3b24c2257da70c8b54fff4ee0ebb5ad71d0   # 第二次 fetch 核对前与 gate 方案一致，merge --no-edit origin/main 为 no-op
+final_affected_base: 30a0d3b24c2257da70c8b54fff4ee0ebb5ad71d0  # 与 final_target_base 相等（同基线 receipts）
+candidate_commit: f056a262（产品代码末次变更 253cda03；其后 96967ac9/f056a262 仅文档，src/e2e 树 diff 为空）
+required_selection_receipt: >
+  typecheck/lint（最终 HEAD 复验 0/0）；第一层定向 六文件 71 passed（96967ac9，src/e2e 与 f056a262 逐字相同）+
+  Task1/Task2 回执复用（28+66 / 143+71，相关文件自回执后未变）；第二层 助手会话 fixture 9/9、
+  真人消息 fixture 11/11、mock 问AI代理展示 4/4、mock 真人隔离 1/1；npm run build 通过；
+  test:list --check 通过（第一层 5775 / 第二层 335）。
+required_items: 上述各权威入口最小选集
+reused_items: 全部（source_candidate 与当前候选的产品/测试输入六维未变，docs-only 增量不影响任一项）
+executed_items: typecheck/lint 于 f056a262 复验（0 错 0 警）；其余按上表复用
+invalidated_items: []   # 无失败、无环境变化、无清理副作用
+fallback_reason: ~
+l3_responsability: none（用户免除真栈 L3；不记 PASS、无 STG 资源清理）
+final_evidence_mode: PASS_INCREMENTAL
+```
+
+- 推送动作：普通 fast-forward `git push origin HEAD:main`（第二次 fetch 核对 target 未推进后执行；不 force）。
+- 本节先于推送提交；推送结果与合入 commit 以会话报告与 task intent 记录为准（「代码写完/review 完成/final gate 获批」不写作已合入，推送成功后才报告合入）。
+
 ## 文档审查记录
 
 - 模式：`WORKFLOW_DOCUMENT_REVIEW`，父 workflow 已授权。固定范围仅本 Spec 和本 Plan；批准 Spec revision `81e12c337596e063e089a6074c6bb2779e5dde60` / blob `8eebfc2ec223dab7deaa1d8bbe5afc02675aeb98`。
