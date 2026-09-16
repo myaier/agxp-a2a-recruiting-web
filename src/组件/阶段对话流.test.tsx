@@ -100,6 +100,32 @@ describe('阶段对话流 · S0 记录渲染缝（Task 3）', () => {
     expect(screen.getByText('2 条')).toBeTruthy();
   });
 
+  it('用户版式回执的时间戳（review-r2 F4）：非空时间照常显示，null 不产生空时间节点', () => {
+    render(
+      <阶段对话流
+        分段们={[
+          {
+            阶段: '匿名初筛',
+            态: '当前',
+            记录: [
+              { kind: '气泡', 编号: 'a1', 方: '我方', 角色: '', 时间: '09:05', 内容: '本人的叮嘱', 来自: '用户' },
+              { kind: '气泡', 编号: 'a2', 方: '对方', 角色: '招聘方本人', 时间: '09:06', 内容: '对端的叮嘱' },
+              { kind: '气泡', 编号: 'a3', 方: '我方', 角色: '', 时间: null, 内容: '无时间的用户话', 来自: '用户' },
+            ],
+          },
+        ]}
+      />,
+    );
+    // 本人回执仍是荧光绿用户版式（我方右、无代理头像），但带时间；对端回执同样有时间
+    const 本人 = screen.getByText('本人的叮嘱').parentElement as HTMLElement;
+    expect(within(本人.parentElement as HTMLElement).getByText('09:05')).toBeTruthy();
+    expect(screen.getByText('09:06')).toBeTruthy();
+    // 时间 null：不渲染空时间节点（用户气泡行内只有正文）
+    const 无时间 = screen.getByText('无时间的用户话').parentElement as HTMLElement;
+    expect(无时间.textContent).toBe('无时间的用户话');
+    expect(within(无时间.parentElement as HTMLElement).queryByText(/:/)).toBeNull();
+  });
+
   it('段首说明：附件之下、往来记录之前的上下文行（步骤/轮次提示），不计入条数', () => {
     render(
       <阶段对话流

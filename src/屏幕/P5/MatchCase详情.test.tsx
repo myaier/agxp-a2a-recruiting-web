@@ -1370,10 +1370,10 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     });
     渲染详情('candidate', 'mc_direct');
     // 补充问题接入已随 respond_fact 移除：多问不再是整页契约错误。
-    // review-r1 F3：遗留 transcript 事件带正文保留原文语义 —— 与 screening message 同文
-    // 并存（各一次），第二条问题也照常显示
-    expect((await screen.findAllByText('每周可以到岗几天？')).length).toBe(2);
-    expect(screen.getByText('期望薪资是多少？')).toBeTruthy();
+    // review-r2 F1：supplementary_question 属结构化问答种类 —— 正文只以 screening
+    // records 正式问答显示一次，不再重复为系统注释（第二条遗留问题不显示）
+    expect((await screen.findAllByText('每周可以到岗几天？')).length).toBe(1);
+    expect(screen.queryByText('期望薪资是多少？')).toBeNull();
     expect(screen.queryByText(P5契约错误提示)).toBeNull();
     expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
@@ -2614,8 +2614,9 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     渲染详情('candidate', 'mc_direct');
     expect(screen.getByText(期望)).toBeTruthy();
     expect(screen.queryByText(错位)).toBeNull(); // 显示跟进程时区走，不写死
-    // 对端叮嘱回执落回时序后与问答同一时间口径（本地时分）；本人叮嘱走荧光绿用户版式
-    //（Mock 同款，该版式不带时间戳，时间在记录数据层保留 —— 见 详情展示映射.test）
+    // review-r2 F4：两类叮嘱回执与问答同一时间口径（本地时分）—— 本人走荧光绿用户
+    // 版式但带右对齐时间戳，对端走对方气泡时间戳
+    expect(screen.getByText(本地时分期望('2026-08-29T01:05:00Z'))).toBeTruthy();
     expect(screen.getByText(本地时分期望('2026-08-29T01:06:00Z'))).toBeTruthy();
 
     // 换一个 fake 当前时间：显示不变（不读 Date.now()）
@@ -2624,7 +2625,7 @@ describe('MatchCase详情 · S0 screening records 呈现（Task 3）', () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0完整记录详情('candidate') }) });
     渲染详情('candidate', 'mc_direct');
     expect(screen.getByText(期望)).toBeTruthy();
-    expect(screen.getByText(本地时分期望('2026-08-29T01:06:00Z'))).toBeTruthy(); // 不随当前时间变
+    expect(screen.getByText(本地时分期望('2026-08-29T01:05:00Z'))).toBeTruthy(); // 不随当前时间变
   });
 });
 

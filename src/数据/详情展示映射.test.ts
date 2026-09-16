@@ -907,6 +907,7 @@ describe('从P5到详情分段', () => {
             { eventId: 'e7', stage: 'anonymous_screening', kind: 'case_ended', role: '', text: '已结束', occurredAt: '2026-08-23T10:06:00Z' },
             { eventId: 'e8', stage: 'anonymous_screening', kind: 'case_ended', role: '', occurredAt: '2026-08-23T10:07:00Z' },
             { eventId: 'e9', stage: 'anonymous_screening', kind: 'mystery_kind', role: '', occurredAt: '2026-08-23T10:08:00Z' },
+            { eventId: 'e10', stage: 'anonymous_screening', kind: 'supplementary_question', role: 'candidate', ref: 'prompt_1', text: '结构化问答已有同文，不得重复为注释', occurredAt: '2026-08-23T10:09:00Z' },
           ],
         },
       }),
@@ -919,7 +920,8 @@ describe('从P5到详情分段', () => {
       '双方选择继续这一单', // 已知 kind 无正文 → 固定中文说明
       '候选人已确认可以到岗', // 其他 kind 有正文 → 原文保留语义
       '推进到复评', // case_advanced 只列第一条有正文的（重复推进不刷屏）
-      // 无正文 case_advanced / 有无正文的 case_ended / 无正文未知 kind：一概不落段
+      // 无正文 case_advanced / 有无正文的 case_ended / 无正文未知 kind：一概不落段；
+      // supplementary_question（role 非空）由 screening records 正式投影，正文不再重复为注释
     ]);
     expect(注释们.every((条) => 条.标签 === null)).toBe(true); // 协议 kind 不进展示
   });

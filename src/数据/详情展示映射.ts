@@ -364,8 +364,9 @@ function 段内时序记录(区: P5阶段区块视图, role: P5角色): 段内�
     });
   });
   // transcript（A.5）：case_ended 已由阶段胶囊+结束时间表达，一概不重复；case_advanced
-  // 无正文不显示、重复推进只列第一条有正文的；其余事件优先保留非空正文原文（trim），
-  // 无正文时才给已知流程事件的固定中文说明；无正文且未知 kind 不显示。
+  // 无正文不显示、重复推进只列第一条有正文的；通用正文保留只限纯系统事件（role 为空
+  // —— supplementary_question 等带 role 的结构化问答种类由 screening records 正式投影，
+  // 不得以注释重复）；无正文时才给已知流程事件的固定中文说明；无正文且未知 kind 不显示。
   let 已列推进事件 = false;
   区.时间线.forEach((项, 序) => {
     if (项.kind === 'case_ended' || 已见.has(项.eventId)) return;
@@ -375,7 +376,7 @@ function 段内时序记录(区: P5阶段区块视图, role: P5角色): 段内�
       if (正文 === '' || 已列推进事件) return;
       已列推进事件 = true;
       内容 = 正文;
-    } else if (正文 !== '') {
+    } else if (正文 !== '' && 项.role === '') {
       内容 = 正文;
     } else {
       内容 = 已有键(流程事件文案表, 项.kind) ? 流程事件文案表[项.kind] : null;
