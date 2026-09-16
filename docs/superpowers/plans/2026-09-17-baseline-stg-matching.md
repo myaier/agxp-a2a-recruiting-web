@@ -164,7 +164,7 @@ PDF 用中文真实文本层，和 YAML 完全一致；经历雇主栏省略，�
 - [ ] 无论结果如何执行同 run `cleanup --run-id "$MATCHING_RUN_ID"` 和 status。验收 rc0+CLEANED+当前residuals=[]+固定kind/count/reason retained三方对账+占用释放+无未收敛任务。retained非空允许；CLEANED_WITH_RESIDUAL不允许。Hub running仅沿operator60秒/10秒重试；预算后可同run有界重试一次，仍阻塞则保留占用/证据报告，不开新run。
 - [ ] 退出浏览器前保留受限 Cookie，cleanup后原样认证只读重放得到401，按后端受限流程验证旧login不能建会话；不把秘密贴入命令行或报告，核验后销毁受限材料。只关闭本轮会话与自建服务。
 - [ ] 后续新run分别查 owner列表、推荐/评估、Case历史/投影、任务、通知、会话不含旧资源；以新身份正常角色只读入口访问旧Case/附件版本/评估/投影/会话ID被拒，旧组织公开读不可见。不存在资源记不涉及，不能把未知读取当空。迟到任务安全引用后端L2，浏览器仅记异常观察。
-- [ ] 第一轮 recruiter→candidate，两条顺序独立；第二轮同顺序、全新run重验。两个方向在同最终 YAML/PDF/流程 hash下各两个独立业务+cleanup+隔离PASS；发生事实/流程改动旧受影响证据失效，补受影响方向，最多六个探索run（含失败和中断）。首run隔离初记待验证，在后续run验证后补齐；最后run以自身cleanup/身份失效及已有同版本跨run证明收尾，不为了没有后继无限新建run。
+- [ ] 第一轮 recruiter→candidate，两条顺序独立；第二轮同顺序、全新run重验。两个方向在同最终 YAML/PDF/流程 hash下各两个独立业务+cleanup+隔离PASS；发生事实/流程改动旧受影响证据失效，补受影响方向，最多六个探索run（含失败和中断）。每个计入稳定性的匹配run，其对后继身份的隔离必须由下一个新run实际核验，核验前只记待验证，不能引用其他run证明代替。四个匹配run后安排第五个新run作为隔离核验尾轮：仍使用本Suite专用配置、prepare/verify和双角色浏览器，只检查第四个及此前匹配run的旧资源不可见/不可读，不发起新的匹配、不上传新附件、不创建真人会话。该尾轮业务记NOT_RUN、不得计入双向匹配PASS；完成隔离核验后照常finally cleanup、verify/status对账及旧身份失效。尾轮仅有结构化准备资源，由operator清理/核验其消失，不留下待后继验证的新匹配历史，避免无限追加。尾轮也计入六run上限；若材料调整或失败耗尽预算而无额度完成尾轮，稳定性仍未完成，报告给用户，不降低标准。
 - [ ] 固化真实入口文字/可观察定位依据、自动/人工分界、预算、证据字段和失败恢复。不能固定模型整段输出、问答轮数、分数或秒数。每轮失败保留，模型拒绝是Happy未通过，归因不明如实记原因未定；超过六run未收敛报告未完成。提交 `test(dogfood): stabilize bidirectional matching journeys`。
 
 **完成/停止：** 两方向各两次有效PASS且每个已创建run已收尾。收到后端阻塞、合同外新问题、未知事实不能回答或环境占用未释放，先确保finally记录再停止依赖工作；不能把下轮成功抹掉前轮残留。
@@ -195,7 +195,7 @@ PDF 用中文真实文本层，和 YAML 完全一致；经历雇主栏省略，�
 3. 完成“测试选择与权威责任”的全部本地入口；用户要求全量是本任务适用完整责任，不能降成只测变更文件。初始有效覆盖按六维证据复用，失败项及失效依赖补齐。对账实际runner收集项、静态/build及视觉18场景；历史数目不硬编码。仓库无affected wrapper时直接用原生命令/原报告，不新增gate或跨任务缓存。缺少权威子集/依赖证明则调查并报告覆盖缺口，不自动重跑整层掩盖未知。
 4. 全部责任通过且review处置允许后，读取development-workflow根相对 `references/final-integration.md` 与 `assets/final-integration-contract.md`，向用户展示 candidate_commit、只读fetch所得pre_gate_target_base、测试selection/receipt、可复用与待补项、正式L3恰两Case、cleanup计划和普通推送方案。此时才请求final gate确认；此前不合target、不跑正式L3、不push。
 5. 获明确确认后，fetch并记录final_target_base，按获批方案合origin/main（不rebase）。以实际target→candidate重算完整责任，final_affected_base必须等于final_target_base；依source/transitive inputs、selection/config、runtime、fixture、外部前置、cleanup/repair六维复用，有缺口才补。基准/候选/环境未变且merge无变化可零次本地runner复用。
-6. 冻结正式selection：required=`stg-matching-recruiter`与`stg-matching-candidate`，按最终指南各新run串行agent-browser。旧Suite NOT_SELECTED；探索不能替代正式。全部finally后再次对账本地与L3证据，记录PASS_EXECUTED/INCREMENTAL/REUSED的真实来源与失效项。范围内修复自主继续定向验证，不再调用异构review；合同变化/环境不可用诚实阻塞。
+6. 冻结正式selection：required=`stg-matching-recruiter`与`stg-matching-candidate`，按最终指南各新run串行agent-browser；最后一个正式匹配run清理后，同样准备一个不发起匹配的隔离核验尾轮，核验该run实际留下的历史不可被新身份访问，再清理尾轮自身结构化资源/身份。尾轮是两Case的隔离验收辅助，不增加第三个业务Case、不算匹配PASS；其环境操作与预算纳入final gate方案。旧Suite NOT_SELECTED；探索不能替代正式。全部finally后再次对账本地与L3证据，记录PASS_EXECUTED/INCREMENTAL/REUSED的真实来源与失效项。范围内修复自主继续定向验证，不再调用异构review；合同变化/环境不可用诚实阻塞。
 7. 第二次fetch核对target未推进；若推进或fast-forward拒绝，保留证据展示新gate，不自动追赶。未推进且全部责任有效才普通fast-forward push到获批target，禁止force。推送成功才报告合入；更新intent完成状态与结果位置。不在本规划会话启动上述实施。
 
 ## 文档 review 与交付记录
@@ -203,3 +203,5 @@ PDF 用中文真实文本层，和 YAML 完全一致；经历雇主栏省略，�
 批准正文引用：Spec revision `40a9c6f35124813902f317ed2c0e6a30944c271d` / blob `0ebb68e87c110dc62b388b3f21a06c8e44bb25aa`。
 
 文档 review 范围仅本 Plan 与对应 Spec，采用 WORKFLOW_DOCUMENT_REVIEW。结果在此追加；本阶段不运行产品测试、不实施 Task、不创建真实 STG run。
+
+R1（Claude Opus/high，WORKFLOW_DOCUMENT_REVIEW）：候选 `63cdb535`；Spec/Plan 指纹与 HEAD/status 后置保护均通过。1 条 Important / required / 契约违反：最后匹配 run 缺少后继新身份隔离核验。按 receiving-code-review 核对批准 Spec §§7–8/10 后接受并修复：每个计数 run 必须实测后继隔离；安排不产生新匹配历史的核验尾轮，仍计入六 run 探索上限，业务 NOT_RUN，不冒充匹配 PASS。正式验收也明确同一责任。未改批准 Spec，无产品测试执行。
