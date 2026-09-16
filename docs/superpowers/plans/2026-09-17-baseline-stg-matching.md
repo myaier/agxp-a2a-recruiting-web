@@ -164,7 +164,7 @@ PDF 用中文真实文本层，和 YAML 完全一致；经历雇主栏省略，�
 - [ ] 无论结果如何执行同 run `cleanup --run-id "$MATCHING_RUN_ID"` 和 status。验收 rc0+CLEANED+当前residuals=[]+固定kind/count/reason retained三方对账+占用释放+无未收敛任务。retained非空允许；CLEANED_WITH_RESIDUAL不允许。Hub running仅沿operator60秒/10秒重试；预算后可同run有界重试一次，仍阻塞则保留占用/证据报告，不开新run。
 - [ ] 退出浏览器前保留受限 Cookie，cleanup后原样认证只读重放得到401，按后端受限流程验证旧login不能建会话；不把秘密贴入命令行或报告，核验后销毁受限材料。只关闭本轮会话与自建服务。
 - [ ] 后续新run分别查 owner列表、推荐/评估、Case历史/投影、任务、通知、会话不含旧资源；以新身份正常角色只读入口访问旧Case/附件版本/评估/投影/会话ID被拒，旧组织公开读不可见。不存在资源记不涉及，不能把未知读取当空。迟到任务安全引用后端L2，浏览器仅记异常观察。
-- [ ] 第一轮 recruiter→candidate，两条顺序独立；第二轮同顺序、全新run重验。两个方向在同最终 YAML/PDF/流程 hash下各两个独立业务+cleanup+隔离PASS；发生事实/流程改动旧受影响证据失效，补受影响方向，最多六个探索run（含失败和中断）。每个计入稳定性的匹配run，其对后继身份的隔离必须由下一个新run实际核验，核验前只记待验证，不能引用其他run证明代替。四个匹配run后安排第五个新run作为隔离核验尾轮：仍使用本Suite专用配置、prepare/verify和双角色浏览器，只检查第四个及此前匹配run的旧资源不可见/不可读，不发起新的匹配、不上传新附件、不创建真人会话。该尾轮业务记NOT_RUN、不得计入双向匹配PASS；完成隔离核验后照常finally cleanup、verify/status对账及旧身份失效。尾轮仅有结构化准备资源，由operator清理/核验其消失，不留下待后继验证的新匹配历史，避免无限追加。尾轮也计入六run上限；若材料调整或失败耗尽预算而无额度完成尾轮，稳定性仍未完成，报告给用户，不降低标准。
+- [ ] 第一轮 recruiter→candidate，两条顺序独立；第二轮同顺序、全新run重验。两个方向在同最终 YAML/PDF/流程 hash下各两个独立业务+cleanup+隔离PASS；发生事实/流程改动旧受影响证据失效，补受影响方向，最多六个探索run（含失败和中断）。每个计入稳定性的匹配run，其对后继身份的隔离必须由下一个新run实际核验，核验前只记待验证，不能引用其他run证明代替。四个匹配run后安排第五个新run作为隔离核验尾轮：仍使用本Suite专用配置、prepare/verify和双角色浏览器，只检查第四个及此前匹配run的旧资源不可见/不可读，不发起新的匹配、不上传新附件、不创建真人会话。该尾轮业务记NOT_RUN、不得计入双向匹配PASS；完成隔离核验后照常finally cleanup、verify/status对账及旧身份失效。尾轮仅有结构化准备资源，执行同一cleanup验收（rc0+CLEANED+当前residuals=[]+合法retained三方对账+占用释放+旧Cookie401/旧登录材料失效+无未收敛工作）；允许冻结主体锚点合法保留，不要求物理消失。尾轮不留下待后继验证的新匹配历史，避免无限追加。尾轮也计入六run上限；若材料调整或失败耗尽预算而无额度完成尾轮，稳定性仍未完成，报告给用户，不降低标准。
 - [ ] 固化真实入口文字/可观察定位依据、自动/人工分界、预算、证据字段和失败恢复。不能固定模型整段输出、问答轮数、分数或秒数。每轮失败保留，模型拒绝是Happy未通过，归因不明如实记原因未定；超过六run未收敛报告未完成。提交 `test(dogfood): stabilize bidirectional matching journeys`。
 
 **完成/停止：** 两方向各两次有效PASS且每个已创建run已收尾。收到后端阻塞、合同外新问题、未知事实不能回答或环境占用未释放，先确保finally记录再停止依赖工作；不能把下轮成功抹掉前轮残留。
@@ -205,3 +205,7 @@ PDF 用中文真实文本层，和 YAML 完全一致；经历雇主栏省略，�
 文档 review 范围仅本 Plan 与对应 Spec，采用 WORKFLOW_DOCUMENT_REVIEW。结果在此追加；本阶段不运行产品测试、不实施 Task、不创建真实 STG run。
 
 R1（Claude Opus/high，WORKFLOW_DOCUMENT_REVIEW）：候选 `63cdb535`；Spec/Plan 指纹与 HEAD/status 后置保护均通过。1 条 Important / required / 契约违反：最后匹配 run 缺少后继新身份隔离核验。按 receiving-code-review 核对批准 Spec §§7–8/10 后接受并修复：每个计数 run 必须实测后继隔离；安排不产生新匹配历史的核验尾轮，仍计入六 run 探索上限，业务 NOT_RUN，不冒充匹配 PASS。正式验收也明确同一责任。未改批准 Spec，无产品测试执行。
+
+R2（同一 Claude Opus/high 会话）：候选 `3422179946ad`；后置 status/HEAD/文件指纹保护通过，R1 缺口确认已修复。新增 1 条 Minor / required / 契约违反：尾轮“核验其消失”可能误拒合法冻结锚点。对照批准 Spec §8 与本 Task 通用 cleanup 条件核实后接受，替换为同一 rc0/CLEANED/空 residuals/合法 retained 三方对账/占用释放/身份失效/无未收敛工作的验收，明确不要求物理消失。修复为文字口径统一，无新机制、无批准契约变化。
+
+终止裁决：两轮共 2 条 required 均已核实并修复；0 条拒绝、0 条 optional 延后、0 条未解决有效 required，按 review-loop 的“核实后无未解决 required”条件结束，并非声称 R2 原报告为 NO FINDINGS。执行提示词在此结论后生成。文档校验：源码/测试引用文件存在、5 个 Task/单一不计数收尾、无占位、git diff --check 通过；本阶段无产品测试或 STG 业务运行。
