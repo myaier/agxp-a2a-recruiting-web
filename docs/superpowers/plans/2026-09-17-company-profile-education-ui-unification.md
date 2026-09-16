@@ -248,6 +248,7 @@ git diff --check
 规划阶段：用户已批准 Spec 精确版本并授权 Claude 文档 review。候选范围仅本 Plan 与 Spec；不审分支业务 diff。
 
 - R1：Claude opus/high，候选 `4884d834`，只读 guard 通过，无测试执行。Important/required 1 项：视觉基线未冻结运行入口及特殊状态准备。核实成立，已补临时 config、准确命令、原三服务端口／离线模式、场景输入与失败停止边界；不增加 tracked 基础设施。Minor/optional 1 项：教育浏览器选集理由不明确，接受文档澄清。均不改变批准 Spec。
+- R2：沿同一 Claude reviewer 会话复审，候选 `b8c8dc29715dded0208e8c854234a8a8939ef7c5`，Plan blob `9999414d`（短标识；完整版本以该候选 Git 对象读取）。返回精确 `NO FINDINGS`；两轮均通过 HEAD/status/受审文件指纹 guard，无测试执行，无未解决 required。R1 修复提交 `b8c8dc29`；本条及 Spec 状态更新仅记审查事实，不改变已审实施契约。
 - 教育浏览器取舍：`e2e/suites/候选建档.spec.ts` 的完整建档保存链不在本轮变更内；四页 Vitest 覆盖保存／引用映射，所选展示与交互用例直接覆盖本次候选行的点击、重复点选和请求不变。学校 getByText、专业 exact 名称仍受所选用例覆盖，不为纯展示接入重跑整个建档旅程。final gate 若实际修改到保存或初始化合同，必须重算该消费者责任。
 
 实施记录由新实施 session 在本节追加 Task 完成、验证、review 裁决与 final gate 事实，保持规划与执行证据分开。

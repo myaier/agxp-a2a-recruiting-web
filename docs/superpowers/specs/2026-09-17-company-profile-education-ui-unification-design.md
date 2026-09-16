@@ -1,6 +1,6 @@
 # 公司档案与教育候选展示统一
 
-日期：2026-09-17。Spec revision：2。规划流程：development-workflow。状态：正式 Spec 已获用户批准，进入 Plan 和文档 review。尚未编写实施 Plan、实施产品或运行产品测试。
+日期：2026-09-17。Spec revision：2。规划流程：development-workflow。状态：正式 Spec 已获用户批准；单份 Plan 已完成，Claude 文档 review 两轮结束，R2 为 NO FINDINGS。尚未实施产品或运行产品测试。
 
 本文是本任务唯一 Spec，仓库文件均以仓库根目录为相对路径。批准后由同一 planning owner 编写单份零上下文 Plan，再按工作流完成异构文档 review 和新实施会话提示词交付；本规划会话不实施产品。
 
@@ -114,4 +114,4 @@ Mock Up 是设计源头。共有功能以当前 Mock 的布局、样式、文案
 
 本 revision 补全了共享展示与连接层的数据责任、教育组件复用裁定、关键失败反例、成功标准和验证来源，未改变已认可的产品范围。
 
-批准记录：用户要求“可以，接着写0上下文提示词，执行 /claude-review-loop 和写执行提示词吧”，批准正文 revision `7ec411fb3b0438d6c96e915108e7c97710f5003b`、blob `fcf2bb90a461f3c4f6917e5952a843b128826efb`。本记录仅更新状态，不改变批准正文。依据 development-workflow，接下来调用 writing-plans 编写单份零上下文 Plan。Plan 完成后由 Codex planner 调用 Claude 异构文档 review，结论记录在 Plan，不另建 review／handoff 文档。本轮尚未进行该 review，不生成执行提示词、不启动实施。
+批准记录：用户要求“可以，接着写0上下文提示词，执行 /claude-review-loop 和写执行提示词吧”，批准正文 revision `7ec411fb3b0438d6c96e915108e7c97710f5003b`、blob `fcf2bb90a461f3c4f6917e5952a843b128826efb`。本记录仅更新状态，不改变批准正文。依据 development-workflow，接下来调用 writing-plans 编写单份零上下文 Plan。Plan 完成后由 Codex planner 调用 Claude 异构文档 review，结论记录在 Plan，不另建 review／handoff 文档。文档 review 已完成，审查记录位于 `docs/superpowers/plans/2026-09-17-company-profile-education-ui-unification.md`；执行提示词在审查后生成，本规划会话不启动实施。
