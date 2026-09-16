@@ -1,6 +1,6 @@
 # 求职端 AI 聊天与内嵌查询卡片 Spec
 
-状态：产品方向已在对话中确认；本文待用户审阅批准。用户已启动 development-workflow；本 session 只交付设计、批准后的零上下文 Plan、异构文档 review 与执行提示词，不实施产品代码。
+状态：已批准。用户审阅后确认“可以，继续写0上下文提示词，进行 /claude-review-loop，然后写执行提示词”，并再次要求最小实现、复用当前组件/样式。批准内容基线为 revision `22f3d7df7ff60f68e972468b3e36cd3389414d5d`、blob `6cfdacd580bb3a64343c009c50e979b90bed113c`；本次只更新批准记录，设计正文不变。当前 session 只交付 Plan、文档 review 与执行提示词，不实施产品代码。
 
 ## 1. 目标、基线与范围
 
