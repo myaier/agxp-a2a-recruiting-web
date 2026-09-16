@@ -28,6 +28,7 @@ import { BFF主体样本 } from '../../测试/BFF样本';
 
 const mock派发 = vi.fn();
 const mock跳转 = vi.fn();
+const mock返回 = vi.fn();
 const mock设置P5范围 = vi.fn();
 // 桩签名与 MatchCase操作 的历史面同形（断言要按下标读调用参数）
 const mock加载历史 = vi.fn(
@@ -54,7 +55,7 @@ const mock操作 = {
 let mock应用状态: any;
 
 vi.mock('../../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
-vi.mock('../../路由/导航钩子', () => ({ use导航: () => ({ 返回: vi.fn(), 跳转: mock跳转 }) }));
+vi.mock('../../路由/导航钩子', () => ({ use导航: () => ({ 返回: mock返回, 跳转: mock跳转 }) }));
 
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
 const 职位ID = 'job_0123456789abcdef0123456789abcdef';
@@ -230,7 +231,8 @@ function 快照(选项: {
 // 元素统一在这里造，只需一处关闭。
 // eslint-disable-next-line jsx-a11y/aria-role
 function 历史元素(role: 'candidate' | 'recruiter') {
-  return <MatchCase历史 role={role} />;
+  // S0–S3 Task 2：P5 连接层直接拥有共享壳，返回回调由路由屏传入
+  return <MatchCase历史 role={role} 返回={mock返回} />;
 }
 
 /** 候选连续历史状态底座：预置连续 history 快照（缺省空窗口读尽）。 */
@@ -277,6 +279,7 @@ describe('MatchCase历史 · 候选连续历史（J-PILOT-01 Task 4）', () => {
   beforeEach(() => {
     mock派发.mockClear();
     mock跳转.mockClear();
+    mock返回.mockClear();
     mock设置P5范围.mockClear();
     mock加载历史.mockClear();
     mock追加历史.mockClear();
@@ -307,8 +310,19 @@ describe('MatchCase历史 · 候选连续历史（J-PILOT-01 Task 4）', () => {
     expect(mock加载历史).not.toHaveBeenCalled(); // 候选不再拼两个 Case 分页
     expect(mock设置P5范围.mock.invocationCallOrder[0]).toBeLessThan(
       mock加载连续列表.mock.invocationCallOrder[0]);
+    // S0–S3 Task 2：连接层直接拥有共享壳；无 total 只报已加载数（Spec §4.2）
+    expect(screen.getByText('已加载 1 单')).toBeTruthy();
+    expect(screen.getByText('历史代谈保留往来记录，可回看进度与结果；能否继续以详情页当前可用操作为准。')).toBeTruthy();
     页.unmount();
     expect(mock设置P5范围).toHaveBeenCalledWith('candidate', null);
+  });
+
+  it('加载未开始不给假零总数（数量说明缺席，Spec §4.2）', () => {
+    置候选历史状态({
+      连续快照: 连续快照({ 阶段: '未开始', items: [] }),
+    });
+    render(历史元素('candidate'));
+    expect(screen.queryByText(/已加载/)).toBeNull();
   });
 
   it('单一集合承接已结束 Case 与已归档初评失败：原序渲染、显示结果/失败原因', () => {
@@ -382,6 +396,7 @@ describe('MatchCase历史 · 候选连续历史（J-PILOT-01 Task 4）', () => {
     };
     render(历史元素('candidate'));
     expect(screen.queryByText('旧结束行')).toBeNull();
+    expect(screen.queryByText(/已加载/)).toBeNull(); // 过渡帧不给旧主体的计数
     expect(mock加载连续列表).toHaveBeenCalledWith('history');
   });
 
@@ -448,10 +463,11 @@ describe('MatchCase历史 · 候选连续历史（J-PILOT-01 Task 4）', () => {
     expect(mock加载连续列表).toHaveBeenCalledTimes(1); // 仍只有进屏那一发
   });
 
-  it('空窗口读尽给通用空态', () => {
+  it('空窗口读尽给通用空态（0 是已加载的真实零，不是假总数）', () => {
     置候选历史状态();
     render(历史元素('candidate'));
     expect(screen.getByText('还没有历史代谈。')).toBeTruthy();
+    expect(screen.getByText('已加载 0 单')).toBeTruthy();
   });
 });
 
@@ -459,6 +475,7 @@ describe('MatchCase历史 · 招聘双架子（Backend）', () => {
   beforeEach(() => {
     mock派发.mockClear();
     mock跳转.mockClear();
+    mock返回.mockClear();
     mock设置P5范围.mockClear();
     mock加载历史.mockClear();
     mock追加历史.mockClear();
@@ -489,6 +506,8 @@ describe('MatchCase历史 · 招聘双架子（Backend）', () => {
     expect(mock设置P5范围.mock.invocationCallOrder[1]).toBeLessThan(
       mock加载历史.mock.invocationCallOrder[0]);
     expect(mock加载连续列表).not.toHaveBeenCalled(); // 招聘分支零连续读取
+    // 数量说明=两架已成功加载的正常记录数（1+1），同次渲染于共享壳（Spec §4.2）
+    expect(screen.getByText('已加载 2 单')).toBeTruthy();
     页.unmount();
     expect(mock设置P5范围).toHaveBeenCalledWith('recruiter', null);
   });
@@ -607,6 +626,7 @@ describe('MatchCase历史 · 招聘双架子（Backend）', () => {
     render(历史元素('recruiter'));
     expect(screen.getByText('还没有谈成的候选。')).toBeTruthy();
     expect(screen.getByText('没有已结束的候选。')).toBeTruthy();
+    expect(screen.getByText('已加载 0 单')).toBeTruthy(); // 两架都已读完：真实零
   });
 });
 
@@ -616,6 +636,7 @@ describe('归档谈判 / 企业归档 · P5 Backend 分支', () => {
   beforeEach(() => {
     mock派发.mockClear();
     mock跳转.mockClear();
+    mock返回.mockClear();
     mock设置P5范围.mockClear();
     mock加载历史.mockClear();
     mock追加历史.mockClear();
@@ -645,7 +666,9 @@ describe('归档谈判 / 企业归档 · P5 Backend 分支', () => {
     expect(页.container.textContent).toContain('初评失败');
     expect(mock加载连续列表).toHaveBeenCalledWith('history');
     expect(mock加载历史).not.toHaveBeenCalled();
-    expect(screen.queryByText('回看往来 ›')).toBeNull(); // Mock 归档卡的文案一概不渲染
+    // Backend 分支走共享壳：旧 Mock 说明条文案一概不渲染（共享卡本身含「回看往来 ›」，
+    // 不再用它当 Mock 判别词 —— 判别词换成已删除的旧 Mock 说明条原文）
+    expect(screen.queryByText('已结束的单不会再恢复成在谈')).toBeNull();
 
     页.unmount();
     cleanup();
@@ -660,7 +683,7 @@ describe('归档谈判 / 企业归档 · P5 Backend 分支', () => {
     expect(mock加载历史).toHaveBeenCalledWith('recruiter', 'ended', null);
   });
 
-  it('Mock 分支行为原样且零 P5 请求（两端）', () => {
+  it('Mock 分支用共享壳与共享卡、精确总数，且零 P5 请求（两端）', () => {
     mock应用状态 = {
       数据源模式: 'mock',
       派发: mock派发,
@@ -671,10 +694,14 @@ describe('归档谈判 / 企业归档 · P5 Backend 分支', () => {
     const 页 = render(<归档谈判 />);
     expect(screen.getByText('历史代谈')).toBeTruthy();
     expect(screen.getByText('SHEIN')).toBeTruthy(); // Mock 卡原样（归档列表初始第一条）
+    // S0–S3 Task 2：共享壳固定说明条 + Mock 精确总数「N 单已结束」（归档列表初始 3 条）
+    expect(screen.getByText('历史代谈保留往来记录，可回看进度与结果；能否继续以详情页当前可用操作为准。')).toBeTruthy();
+    expect(screen.getByText('3 单已结束')).toBeTruthy();
     页.unmount();
 
     render(<企业归档 />);
     expect(screen.getByText('还没有历史代谈')).toBeTruthy(); // Mock 空态原样
+    expect(screen.getByText('0 单已结束')).toBeTruthy();
     expect(mock设置P5范围).not.toHaveBeenCalled();
     expect(mock加载历史).not.toHaveBeenCalled();
     expect(mock追加历史).not.toHaveBeenCalled();

@@ -1,0 +1,160 @@
+/* 历史代谈列表（S0–S3 展示统一 Task 2）：四入口（求职/招聘 × Mock/Backend）共用一套
+   说明条 + 历史卡版式。视觉基准 = 原 Mock 我的功能页.module.css 的归档卡（Spec §4.1）：
+   内容 padding 14px 18px 24px；卡 padding 13px 14px，横向 gap 11px，卡下 margin 10px，
+   字号/圆角沿用现有令牌。原两份屏内归档样式随抽取删除，这里成为唯一版式来源。 */
+
+/* 说明条：解释这一页在业务上意味着什么（Spec §4.1 固定中文，两种来源同文案） */
+.说明条 {
+  background: var(--淡绿底2, #f4f8e8);
+  border: 1px solid var(--描边);
+  border-radius: 13px;
+  padding: 11px 13px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--正文);
+  margin-bottom: 16px;
+}
+
+/* ── 历史卡 ── */
+.归档卡 {
+  width: 100%;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: var(--圆角-中卡);
+  padding: 13px 14px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: row;
+  gap: 11px;
+  text-align: left;
+}
+
+.归档主体 {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.归档头行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.归档公司 {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--墨);
+}
+
+.结果标 {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+/* 结果三档按明确事实着色（Spec §4.1）：成功对齐全站「通过」绿；
+   不匹配/未通过沿用 Mock 对方未通过 的提醒对；主动结束等中性走 Mock 我方退出 的灰。 */
+.结果成功 {
+  background: var(--淡绿底);
+  color: var(--深绿文字);
+}
+
+.结果提醒 {
+  background: var(--意向底);
+  color: var(--紧急文字);
+}
+
+.结果中性 {
+  background: var(--浅灰底);
+  color: var(--次要);
+}
+
+.归档职位 {
+  font-size: 12.5px;
+  color: var(--正文);
+}
+
+/* 招聘侧画像行（双盲下代号之外唯一的识别信息；Backend 缺摘要给「画像信息暂未提供」） */
+.画像 {
+  font-size: 11.5px;
+  color: var(--次要浅);
+}
+
+.归档原因 {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--次要浅);
+  background: var(--浅灰底2);
+  border-radius: 9px;
+  padding: 8px 10px;
+  margin-top: 3px;
+}
+
+.归档底行 {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.归档止步 {
+  font-size: 10.5px;
+  color: var(--次要浅);
+  background: var(--浅灰底);
+  padding: 2px 8px;
+  border-radius: 5px;
+}
+
+.归档时间 {
+  flex: 1;
+  font-size: 10.5px;
+  color: var(--最弱);
+}
+
+.归档回看 {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--深绿);
+}
+
+/* ── 媒体位 ── */
+/* 38px 圆角媒体槽：真实图片填满；无图给演示字标；都缺时由组件给中性人像图位。 */
+.字标 {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--浅灰底);
+  color: var(--正文);
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.媒体图 {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.中性图位 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
