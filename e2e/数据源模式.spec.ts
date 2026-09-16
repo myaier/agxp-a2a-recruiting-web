@@ -4030,6 +4030,16 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       return 新规则;
     };
 
+    // 候选规则页的 Agent 设置整读（Agent设置 数据源双端不对称：候选端独有 material_submission）。
+    // 招聘端设置页暂未接线该读取，fixture 只应答实际会发生的候选端 GET。
+    if (path === '/api/v1/me/agent-settings' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        json: 信封({ material_submission: 'ask_first', out_of_authority_concession: 'ask_first', revision: 1, updated_at: null }),
+      });
+      return;
+    }
+
     // 规则清单：一律两页翻页（首条 + cursor / 余下）；candidate 专用 503-首次与挂起分支
     const 规则清单匹配 = /^\/api\/v1\/(me|recruiter)\/agent-rules$/.exec(path);
     if (规则清单匹配 && method === 'GET') {
@@ -5696,8 +5706,31 @@ async function 安装BFF路由(page: Page, 选项: BFF路由选项): Promise<{ p
       await route.fulfill({ status: 200, json: 信封(null) });
       return;
     }
+    // 主壳在谈摘要读（match-cases/summary 闭合五键合同）：MatchCase fixture 缺席的既有
+    // 用例按旧全局兜底口径拿 200 空信封 → strict decode 拒绝 → 摘要出错误/占位态。
+    if (P5连续域 === null && path === '/api/v1/me/match-cases/summary' && method === 'GET') {
+      await route.fulfill({ status: 200, json: 信封(null) });
+      return;
+    }
+    // 发岗后招聘主壳按 job scope 拉在谈工作区清单：同为 MatchCase fixture 缺席坐标的
+    // 显式化（strict decode 拒绝 → 工作区错误态，与移除前一致）。
+    if (P5连续域 === null && path === '/api/v1/recruiter/match-cases' && method === 'GET') {
+      await route.fulfill({ status: 200, json: 信封(null) });
+      return;
+    }
     if (P7域 === null && method === 'GET'
       && (path === '/api/v1/me/conversations' || path === '/api/v1/recruiter/conversations')) {
+      await route.fulfill({ status: 200, json: 信封(null) });
+      return;
+    }
+    // 设置页 / 我 页的账号手机号与实名行（P8 凭证 / 候选实名域缺席的既有用例）：
+    // 同为旧全局兜底在这些坐标的显式化 —— 200 空信封 → strict decode 拒绝 → 行出
+    // 错误/未知态，与移除前的可观察行为一致（域在场时由各自 handler 先应答）。
+    if (P8域 === null && path === '/api/v1/me/credentials' && method === 'GET') {
+      await route.fulfill({ status: 200, json: 信封(null) });
+      return;
+    }
+    if (IV域 === null && path === '/api/v1/me/identity-verification' && method === 'GET') {
       await route.fulfill({ status: 200, json: 信封(null) });
       return;
     }
@@ -7189,6 +7222,11 @@ test.describe('P3 Backend 隐私主链路 @backend', () => {
     // ── candidate 会话恢复：隐私是第三条并行水合域 ──
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 15_000 });
+    // 主壳真正挂载后才直达设置页：Task 1 起离线边界让 /api/v1/events/live 以空闲本地
+    // 连接打开，事件源 onOpen 的启动收件箱拉取加宽了落点 replace 导航的结算窗口，
+    // URL 就位 ≠ 主壳已挂载，直达会被在飞的 replace 吞掉（与 学校搜索/401 清理 同款，
+    // 只修测试定义，不改产品）。
+    await expect(page.getByRole('button', { name: '市场', exact: true })).toBeVisible({ timeout: 15_000 });
     const 链 = 请求们.map((项) => `${项.method} ${项.path}`);
     const 会话位 = 链.indexOf('GET /api/v1/session');
     expect(会话位).toBeGreaterThanOrEqual(0);
@@ -7304,10 +7342,12 @@ test.describe('P3 Backend 隐私主链路 @backend', () => {
     await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
     const 切换后链 = 请求们.map((项) => `${项.method} ${项.path}`);
-    // P6 并行水合的 recruiter 规则/提案读与 J-PILOT-02 的 /me/onboarding 预填读都与组织链
-    // 并发起跑；先滤掉再断言固定组织链
+    // P6 并行水合的 recruiter 规则/提案读、J-PILOT-02 的 /me/onboarding 预填读与 Task 1 起
+    // 离线边界 events/live 空闲本地连接触发的事件源 onOpen 收件箱拉取（use真人会话事件
+    // 的文档化行为）都与组织链并发起跑；先滤掉再断言固定组织链
     const 组织链 = 切换后链.filter((项) => !项.startsWith('GET /api/v1/recruiter/agent-rule')
-      && 项 !== 'GET /api/v1/me/onboarding');
+      && 项 !== 'GET /api/v1/me/onboarding'
+      && 项 !== 'GET /api/v1/recruiter/conversations');
     const 偏好位 = 组织链.indexOf('PUT /api/v1/me/preferences/last-used-role');
     expect(偏好位).toBeGreaterThanOrEqual(0);
     // 唯一 verified 关系自动选中 ⇒ 固定链含一次公开企业直读；owner Jobs 收尾
@@ -7915,6 +7955,9 @@ test.describe('P6 规则域 fixture @backend', () => {
     // ── candidate restore：session 200 + last_used_role=candidate → 直接落求职主壳 ──
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    // 主壳真正挂载后才直达规则页：直达会被在飞的落点 replace 导航吞掉（同 学校搜索
+    // 口径，只修测试定义，不改产品；配对并发下 4 worker 满载可复现）。
+    await expect(page.getByRole('button', { name: '市场', exact: true })).toBeVisible({ timeout: 15_000 });
 
     // ── candidate Rule/Proposal 水合：标记值只存在于 fixture ──
     await page.goto('/#/rules');
@@ -8540,10 +8583,18 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     const fixture = P4发现fixture({ 候选委托先503: true });
     const 附件fixture = 创建P2附件fixture();
     附件fixture.items = [P2新附件(1, 'P4 Fixture 候选简历.pdf', Buffer.from('%PDF-1.7\nfixture\n'))];
+    // J-PILOT-01：委托受理后客户端会直读 me/negotiations/dlg_…（协议 B canonical 坐标）。
+    // 该读取要求 P5 连续臂在场并已登记委托记录 —— 装一份连续记录清空的 MatchCase
+    // fixture：委托 POST 受理时登记 dlg 记录，后续详情 GET 由同一 fixture 权威应答。
+    // 缺席时该详情坐标会落到离线边界兜底中止、teardown 核对() 报未声明请求
+    //（只修测试定义，不改产品）。
+    const P5 = 创建P5MatchCasefixture();
+    P5.连续记录 = {};
     const 请求序: { method: string; path: string; body: unknown; headers: Record<string, string> }[] = [];
     await 装P4候选(page, {
       fixture,
       附件fixture,
+      P5fixture: P5,
       请求拦截: (项) => 请求序.push({ method: 项.method, path: 项.path, body: 项.body, headers: 项.headers }),
     });
 
@@ -10866,6 +10917,12 @@ test.describe('P8 控制面 fixture @backend', () => {
     const 请求序: string[] = [];
     const fixture = await 装P8候选(page, {
       发现fixture: P4发现fixture(),
+      // 岗位详情按 hiring_organization_ref 补读公开企业（org-fixture-p4 只有 P4 侧声明，
+      // 本用例无组织域 fixture）：按坐标显式声明空应答 → strict decode 拒绝 → 企业块
+      // 出错误/占位态，与移除通用兜底前的可观察行为一致（只修测试定义，不改产品）。
+      覆盖: {
+        'GET /api/v1/organizations/org-fixture-p4': () => ({ status: 200, 响应: 信封(null) }),
+      },
       请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`),
     });
     await page.goto(`/#/job/${P4编号.job}`);
@@ -11310,7 +11367,9 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     const 证书输入 = page.getByPlaceholder('证书或语言，如 CPA、雅思 7.0');
     await 证书输入.fill('CET-4');
     await 证书输入.locator('..').getByRole('button', { name: '添加' }).click();
-    await expect(page.getByText('CET-4', { exact: true })).toBeVisible();
+    // 证书行现渲染为单个可删除钮（可及名「删除证书 CET-4」，正文 CET-4 ✕），与技能行
+    // 的 删除技能 Go 同构 —— 断言意图不变（证书已入列且可移除），只修定位器。
+    await expect(page.getByRole('button', { name: '删除证书 CET-4' })).toBeVisible();
 
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible({ timeout: 20_000 });
