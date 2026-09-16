@@ -374,3 +374,15 @@ export interface 在线简历正文属性 {
 - Playwright `@s0-s3-display`（mock-stg + backend-stg，--retries=0）：24/24 passed（候选 9ad9c030）。首次重跑 4 failed 均为 r1 行为变更后的断言过期（顶部状态区删除/未知系统事件正文保留），按 PRE_GATE_L0_L2 自主修复为等价断言（9ad9c030），零产品代码改动，未重开异构 review。
 - development L3：N/A（用户覆盖本轮排除；未执行，非 PASS）。真实后端/账户/代理结果端到端未验证。
 - pre-gate target 核对（只读 fetch）：origin/main 已由规划基线 e01291de 推进至 **d1989e4b**（另一会话「候选助手会话」特性，16 commits，40 文件 +6336/−241）；与本分支改动文件**交集为空**。本分支 merge-base 仍为 e01291de。
+
+### Final gate 执行记录（2026-09-16，用户已确认）
+
+- 用户确认本方案后执行；确认后未调用异构 review。
+- `final_target_base = d1989e4b`；`git merge --no-edit origin/main` 零冲突，合并提交 **3800ed24**。
+- 按 `final_target_base..3800ed24` 重算责任（INCREMENTAL_EVIDENCE）：target 合入改动（连续代谈.ts、HTTP招聘数据源.ts、应用状态.tsx、导航钩子.ts 等）进入本分支测试依赖闭包 → 失效集按 Plan 收尾清单精确重跑：
+  - Vitest 23 文件 / 652 tests 全绿（映射×6、共享组件×6、两个详情屏、控制 hooks×4、历史页、独立匿名简历、两往来记录、终局区、MatchCase 详情）；
+  - `npm run lint`（oxlint）干净；`npm run build`（含 tsc -b）通过；
+  - Playwright `@s0-s3-display`（mock-stg + backend-stg，--retries=0）24/24 passed（合并树）；
+  - 可复用项：`代谈结果文案.test.ts` 等纯函数测试（依赖闭包不含合入改动，PASS_REUSED）。
+- development L3：**N/A**（用户覆盖，未执行≠PASS）。真实后端/账户/代理结果端到端、真机视觉本轮未验证——残余未验证风险。
+- 二次 fetch：origin/main 仍为 d1989e4b（未推进）→ 普通 push 执行：**origin/main d1989e4b → 3800ed24（fast-forward，无 force）**。push 成功后本记录提交。
