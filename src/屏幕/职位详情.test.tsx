@@ -16,7 +16,7 @@ import { StrictMode } from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 职位详情 from './职位详情';
-import { 标记看市场来路, 复位看市场来路 } from '../路由/导航钩子';
+import { 标记看市场来路, 复位看市场来路, 标记助手来路, 复位助手来路 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库, BFF公开企业, BFF委托回执 } from '../数据/BFF契约';
@@ -1285,6 +1285,105 @@ describe('职位详情 · 深链恢复当前意向坐标与安全返回（Backen
     expect(mock派发).toHaveBeenCalledWith({ 型: '切子视图', 子视图: '看市场' });
     expect(mock替换跳转).toHaveBeenCalledWith(路径.主壳);
     expect(mock返回).not.toHaveBeenCalled();
+  });
+});
+
+// ── 助手来源的安全返回（求职端助手聊天接入 Task 5 / Spec §5）──────────────────
+//   从问AI代理点岗位卡进详情：history.state 带 { 来源: 'candidate-assistant' }，
+//   导航钩子里还有同会话的窄内存证据 —— 两者同时成立且 idx > 0 才 返回() 回聊天；
+//   刷新后内存证据丢失（或 idx 0 无格可退）绝不盲退栈 —— 问AI代理 页自身可直达
+//  （历史持久化），原地替换回聊天页恢复消息。普通无来源深链保持原主壳兜底，
+//   助手证据与市场证据互不借用。
+describe('职位详情 · 助手来源安全返回（Backend）', () => {
+  function 渲染助手来源() {
+    渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
+    return render(
+      <MemoryRouter
+        initialEntries={[{ pathname: '/job/job_1', state: { 来源: 'candidate-assistant' } }]}
+      >
+        <Routes>
+          <Route path="/job/:id" element={<职位详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  beforeEach(() => {
+    复位看市场来路();
+    复位助手来路();
+    mock派发.mockClear();
+    mock替换跳转.mockClear();
+    mock返回.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+    mock读取候选岗位详情.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('带助手来源且本会话真的从助手跳过来：正常返回回聊天，不落主壳兜底', async () => {
+    const 用户 = userEvent.setup();
+    window.history.replaceState({ idx: 2 }, '');
+    标记助手来路();
+    渲染助手来源();
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(mock返回).toHaveBeenCalled();
+    expect(mock替换跳转).not.toHaveBeenCalled();
+    // 回聊天不经过主壳：不摆主壳的 Tab/子视图状态
+    expect(mock派发).not.toHaveBeenCalledWith({ 型: '切子视图', 子视图: '看市场' });
+  });
+
+  it('刷新证据丢失（无内存标记）：替换跳回问AI代理，不盲退栈', async () => {
+    const 用户 = userEvent.setup();
+    window.history.replaceState({ idx: 2 }, '');
+    渲染助手来源();
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(mock替换跳转).toHaveBeenCalledWith(路径.问AI代理);
+    expect(mock派发).not.toHaveBeenCalledWith({ 型: '切子视图', 子视图: '看市场' });
+  });
+
+  it('idx 0 时即使有会话证据也不退栈：替换跳问AI代理', async () => {
+    const 用户 = userEvent.setup();
+    window.history.replaceState({ idx: 0 }, '');
+    标记助手来路();
+    渲染助手来源();
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(mock替换跳转).toHaveBeenCalledWith(路径.问AI代理);
+  });
+
+  it('不借用市场标记：只有看市场证据在场而助手证据缺失，仍替换回问AI代理', async () => {
+    const 用户 = userEvent.setup();
+    window.history.replaceState({ idx: 2 }, '');
+    标记看市场来路();
+    渲染助手来源();
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(mock替换跳转).toHaveBeenCalledWith(路径.问AI代理);
+  });
+
+  it('市场来源行为不受助手标记影响：带市场来源和市场证据仍正常返回看市场', async () => {
+    const 用户 = userEvent.setup();
+    window.history.replaceState({ idx: 2 }, '');
+    标记助手来路(); // 助手证据在场也不改变市场分支的判定
+    标记看市场来路();
+    渲染Backend状态({ 候选岗位详情: { job_1: BFFCandidateJob样本 } });
+    render(
+      <MemoryRouter
+        initialEntries={[{ pathname: '/job/job_1', state: { 来源: 'candidate-market' } }]}
+      >
+        <Routes>
+          <Route path="/job/:id" element={<职位详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(mock返回).toHaveBeenCalled();
+    expect(mock派发).toHaveBeenCalledWith({ 型: '切子视图', 子视图: '看市场' });
+    expect(mock替换跳转).not.toHaveBeenCalled();
   });
 });
 

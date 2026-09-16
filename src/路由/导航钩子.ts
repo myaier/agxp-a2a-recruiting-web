@@ -26,6 +26,27 @@ export function 复位看市场来路() {
   会话内看市场来路 = false;
 }
 
+/** 「问AI代理 → 职位详情」的会话内来路证据（求职端助手聊天接入，与市场证据同一纪律的
+ *  窄标记）：history.state 里的 candidate-assistant 来源能活过刷新，这个内存标记不能；
+ *  两者同时成立才说明本会话真的从助手聊天跳过来。只服务助手来源的详情安全返回，
+ *  不与看市场证据互通。 */
+let 会话内助手来路 = false;
+
+/** 助手聊天跳职位详情时随跳转一起标记（幂等） */
+export function 标记助手来路() {
+  会话内助手来路 = true;
+}
+
+/** 会话证据查询。不取走：一次助手跳转之后可能多次进出同一张详情（返回后再前进） */
+export function 有会话内助手来路(): boolean {
+  return 会话内助手来路;
+}
+
+/** 测试用：清掉上个用例留下的助手会话标记 */
+export function 复位助手来路() {
+  会话内助手来路 = false;
+}
+
 export function use导航() {
   const 前往 = useNavigate();
 

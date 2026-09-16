@@ -1,16 +1,18 @@
-// A27 与AI代理对话 · 从在谈首页的「问AI代理」横幅进入。
+// A27 与AI代理对话 · 从消息页固定 AI 入口 / 在谈首页横幅进入。
 //
 // 屏幕结构（自上而下）：
-//   返回栏（标题 + 右侧 ⋯）→ 对话流（Mock 第一条是今日简报卡）→ 快捷问句胶囊行 → 真输入条
-//   （Backend 的输入条是禁用外壳：值恒为空、占位交代暂未开放，不可发送）
+//   返回栏（标题 + 右侧 ⋯）→ 对话流（顶部加载更早按钮 + 消息流；Mock 第一条是今日简报卡）
+//   → 快捷问句胶囊行 → 真输入条
 //
-// 模式分支（真话批次交付 G）：默认导出在任何 Mock state/effect 挂载前同步分流 ——
-//   · Backend：不初始化 fixture 会话、不渲染简报/统计/对话/快捷问句、不排定时回复、
-//     不派发 Mock 规则 mutation。代理气泡只交代真实去处（市场 / 在谈 / 规则库），
-//     快捷行的三个既有槽位换成真实导航按钮；右侧 ⋯ 仍是既有的代理详情入口。
+// 模式分支：默认导出在任何 Mock state/effect 挂载前同步分流 ——
+//   · Backend：真实聊天（Spec §3/§5）。轮次状态机在 use助手会话（历史/发送/轮询/重试），
+//     访问 seam 来自 Provider 的 助手会话（未登录 / 非 candidate 为 null，此时输出空底座、
+//     锁输入、零请求）。成功回复整条交 查询结果展示 渲染卡片；错误/处理中/重试以现有
+//     文本按钮语义呈现；卡片导航：在谈项用 record_id 进在谈详情，岗位项带
+//     candidate-assistant 来源进职位详情（窄内存会话证据交导航钩子）。
 //   · Mock：原型原样保留 —— 今日简报、快捷问句、真输入、关键词回复一个不少；
 //     回复定时器由 Mock 体自己持有，卸载 / 切数据源时全部取消，
-//     排队中的假回复不可能活到 Backend 分支。
+//     排队中的假回复不可能活到 Backend 分支。Mock 容器不挂助手 hook。
 // 网络失败、登出、首次水合、数据源切换都不会把 Backend 落回 Mock 分支。
 
 import { useEffect, useRef, useState } from 'react';
@@ -18,16 +20,27 @@ import 样式 from './问AI代理.module.css';
 import { 次级页外壳, 返回栏, 真输入条 } from '../组件/通用';
 import { 代理气泡, 我方气泡, 快捷操作行 } from '../组件/问AI代理/对话展示';
 import { 简报展示 } from '../组件/问AI代理/简报展示';
-import { use导航 } from '../路由/导航钩子';
+import { 查询结果展示 } from '../组件/问AI代理/查询结果展示';
+import { use助手会话 } from '../状态/后端/use助手会话';
+import { use导航, 标记助手来路 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
 import { 路径 } from '../路由/路径表';
 import { 轻提示 } from '../组件/轻提示';
 import { 今日简报, 代理对话初始, 快捷问句 } from '../数据/模拟数据';
 import type { 代理对话条 } from '../数据/类型';
+import type { AssistantNegotiationItem } from '../数据/招聘数据源/助手会话';
 
 // 用户还没答过期望薪资时，「底线」那句话里的兜底数字（单位 K，与原文案的 52K 一致）。
 // 有兜底才不会渲染出 undefined，也不用给这句话另写一套「你还没设底线」的说法。
 const 默认薪资底线K = 52;
+
+// 空历史时给的能力说明：只承诺真实可查的（岗位推荐 / 在谈进展 / 卡片进原生详情），
+// 不声称自由筛选、规则修改或日报（Spec §7 非目标）。
+const 空会话说明 =
+  '你可以直接问我岗位推荐和在谈进展，结果里的项目可以点开原生详情。自由筛选、修改规则和日报暂不支持，请用下方的市场、在谈与规则库入口。';
+
+// 新回复只在接近底部时跟随滚动的阈值（Spec §3：不打断阅读旧消息）。
+const 接近底部阈值像素 = 80;
 
 // 关键词 → mock 回复。原型不接后端，用规则表模拟代理应答；
 // 顺序即优先级：先命中的先返回，最后一条是兜底。
@@ -47,10 +60,18 @@ export default function 问AI代理() {
   return 数据源模式 === 'backend' ? <Backend问AI代理 /> : <Mock问AI代理 />;
 }
 
-// ── Backend：只读的真实导航壳。复用既有外壳 / 返回栏 / 代理气泡 / 快捷槽，不建新结构 ──
+// ── Backend：真实聊天页。复用既有外壳 / 返回栏 / 气泡 / 快捷槽 / 滚动容器，状态机在
+//    use助手会话，本组件只做展示接线与滚动编排，不新造会话存储 ──
 function Backend问AI代理() {
   const { 返回, 跳转, 替换跳转 } = use导航();
-  const { 派发 } = use应用状态();
+  const { 派发, 状态, 助手会话 } = use应用状态();
+  // 仅 Backend 分支挂助手 hook；访问为 null（Mock / 未登录 / 非 candidate）时钩子输出
+  // 空底座并锁输入，零请求。Mock 容器不挂这个 hook。
+  const {
+    消息, 草稿, 设草稿, 首读中, 加载更早中, 有更早, 输入禁用,
+    错误, 提交待确认, 发送, 加载更早, 重读, 重试提交, 重试轮次,
+  } = use助手会话(助手会话);
+  const 我首字 = 状态.基本信息.真名.charAt(0);
 
   // 两个主壳快捷键共用：先摆好目标 Tab + 子视图状态，再原地替换进主壳 ——
   // 与 职位详情 安全返回 同一套动作，用户落进主壳看到的就是选好的那个视图。
@@ -58,6 +79,62 @@ function Backend问AI代理() {
     派发({ 型: '切Tab', Tab: '职位' });
     派发({ 型: '切子视图', 子视图 });
     替换跳转(路径.主壳);
+  };
+
+  // 当前访问的镜像 ref：解读恢复草稿前核对身份范围没有变过
+  const 访问引用 = useRef(助手会话);
+  访问引用.current = 助手会话;
+
+  // ── 滚动编排：对话流是屏幕内唯一滚动区 ──
+  // · 首读落地定位到底部；· 加载更早按前后 scrollHeight 差值回补 scrollTop 保阅读位置；
+  // · 其余新内容只在距底 ≤80px 时跟随，用户在读旧消息时不抢滚动。
+  const 滚动引用 = useRef<HTMLDivElement>(null);
+  const 首屏未定位 = useRef(true);
+  const 更早前高度 = useRef<number | null>(null);
+
+  useEffect(() => {
+    const 容器 = 滚动引用.current;
+    if (!容器 || 消息.length === 0) return;
+    if (首屏未定位.current) {
+      首屏未定位.current = false;
+      容器.scrollTo({ top: 容器.scrollHeight });
+      return;
+    }
+    if (更早前高度.current !== null) {
+      容器.scrollTop += 容器.scrollHeight - 更早前高度.current;
+      更早前高度.current = null;
+      return;
+    }
+    const 距底 = 容器.scrollHeight - 容器.scrollTop - 容器.clientHeight;
+    if (距底 <= 接近底部阈值像素) 容器.scrollTo({ top: 容器.scrollHeight });
+  }, [消息]);
+
+  // 卡片导航（Spec §5）：岗位项带 candidate-assistant 来源 + 导航钩子的窄内存证据；
+  // 在谈项直接用可信 record_id 进现有在谈详情，不要求 case_id（pre-Case 可达）。
+  const 打开岗位 = (岗位编号: string) => {
+    标记助手来路();
+    跳转(路径.职位详情(岗位编号), { 来源: 'candidate-assistant' });
+  };
+  const 打开在谈 = (记录编号: string) => {
+    跳转(路径.在谈详情(记录编号));
+  };
+
+  // 「让 AI 解读」次级动作（Spec §5）：按普通发送锁发送可见模板文本，ID 取自已解码结果，
+  // 不混入占位事实、不注入隐藏 prompt，也不触发页面导航。use助手会话 的 发送(显式文本)
+  // 受理后会无条件清草稿 —— 解读不该吞掉用户正在输入的内容：发送前暂存、受理后原样
+  // 恢复（身份范围已换则丢弃，不把旧草稿带进新会话）。
+  const 解读在谈 = (项: AssistantNegotiationItem) => {
+    const 暂存草稿 = 草稿;
+    const 捕获范围键 = 助手会话?.范围键 ?? null;
+    const 职位名 = 项.job.title !== null && 项.job.title.trim() !== '' ? 项.job.title : '职位未知';
+    void 发送(`请查看在谈记录 ${项.record_id}（${职位名}）的详细进展。`).then(() => {
+      if (暂存草稿 !== '' && 访问引用.current?.范围键 === 捕获范围键) 设草稿(暂存草稿);
+    });
+  };
+
+  const 加载更早并保持位置 = () => {
+    更早前高度.current = 滚动引用.current?.scrollHeight ?? 0;
+    void 加载更早();
   };
 
   return (
@@ -68,9 +145,67 @@ function Backend问AI代理() {
         右侧={<button className={`${样式.更多} 可点`} onClick={() => 跳转(路径.代理详情)}>⋯</button>}
       />
 
-      <div className={`${样式.对话流} 滚动区`}>
+      <div ref={滚动引用} className={`${样式.对话流} 滚动区`}>
         <div className={样式.对话内容}>
-          <代理气泡 外观="求职" 内容="真实匹配与委托请从「市场」进入，真实阶段请到「在谈」查看，长期规则请到「规则库」设置。当前 Backend 模式暂不提供自由对话、日报和漏斗。" />
+          {首读中 ? <div className={样式.状态行}>正在读取历史消息…</div> : null}
+          {/* 加载更早按钮随内容滚动、置顶在流内：不遮底部输入条 */}
+          {有更早 ? (
+            <button
+              className={`${样式.加载更早} 可点`}
+              disabled={加载更早中}
+              onClick={加载更早并保持位置}
+            >
+              {加载更早中 ? '正在加载更早消息…' : '查看更早消息'}
+            </button>
+          ) : null}
+          {消息.map((条) => (
+            <div key={条.message_id} className={样式.一轮}>
+              <我方气泡 外观="求职" 内容={条.text} 头像URL={null} 首字={我首字} />
+              {条.status === 'processing' ? (
+                <div className={样式.状态行}>正在处理…</div>
+              ) : 条.status === 'succeeded' && 条.reply !== null ? (
+                <查询结果展示
+                  回复={条.reply}
+                  打开岗位={打开岗位}
+                  打开在谈={打开在谈}
+                  解读在谈={解读在谈}
+                  解读禁用={输入禁用}
+                />
+              ) : 条.status === 'failed' ? (
+                <div className={样式.状态行}>
+                  这条消息处理失败
+                  {/* 只有 failed && retryable 给显式重试（Spec §3）：新幂等键、原位替换 */}
+                  {条.retryable ? (
+                    <button
+                      className={`${样式.文本键} 可点`}
+                      onClick={() => void 重试轮次(条.message_id)}
+                    >
+                      重试
+                    </button>
+                  ) : null}
+                </div>
+              ) : 条.status === 'uncertain' ? (
+                <div className={样式.状态行}>结果暂无法确认</div>
+              ) : null}
+            </div>
+          ))}
+          {!首读中 && 消息.length === 0 ? <代理气泡 外观="求职" 内容={空会话说明} /> : null}
+          {/* 错误 / 提交待确认：现有文本按钮语义。待确认给重试确认入口（同 key 重放）；
+              其余错误给重读入口（首读失败重试、轮询失败恢复都走它）。 */}
+          {提交待确认 || 错误 !== null ? (
+            <div className={样式.状态行}>
+              {错误 ?? '上一条消息的提交结果待确认'}
+              {提交待确认 ? (
+                <button className={`${样式.文本键} 可点`} onClick={() => void 重试提交()}>
+                  重试提交
+                </button>
+              ) : (
+                <button className={`${样式.文本键} 可点`} onClick={() => void 重读()}>
+                  重试
+                </button>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -83,10 +218,13 @@ function Backend问AI代理() {
         ]}
       />
 
-      {/* Backend 外壳：完整但不可发送 —— 值恒为空、占位交代暂未开放，
-          textarea 与发送键走 真输入条 既有的真 disabled（键盘路径一并挡掉）；
-          改变/发送是无副作用回调，不依赖也不触碰 Mock 发送。 */}
-      <真输入条 占位="AI代理聊天暂未开放" 值="" 改变={() => {}} 发送={() => {}} 禁用 />
+      <真输入条
+        占位="问问岗位推荐或在谈进展…"
+        值={草稿}
+        改变={设草稿}
+        发送={() => void 发送()}
+        禁用={输入禁用}
+      />
     </次级页外壳>
   );
 }

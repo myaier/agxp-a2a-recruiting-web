@@ -159,7 +159,9 @@ describe('Backend会话列表', () => {
     const 候选视图 = render(<Backend会话列表 角色="candidate" />);
     const AI行 = screen.getByRole('button', { name: /AI代理动态/ });
     expect(AI行.textContent).toContain('你的求职AI代理');
-    expect(AI行.textContent).toContain('聊天暂未开放，可查看代理功能');
+    // 求职端已开放真实聊天：摘要改为能力说明，不伪造时间/未读/最近消息来源
+    expect(AI行.textContent).toContain('查看岗位推荐和在谈进展');
+    expect(AI行.textContent).not.toContain('聊天暂未开放');
     expect(AI行.querySelector(`.${样式.代理头像}`)).toBeTruthy();
     expect(AI行.querySelector(`.${样式.头像}`)).toBeNull();
     expect(AI行.querySelector(`.${样式.会话时间}`)!.textContent).toBe('');
@@ -170,6 +172,8 @@ describe('Backend会话列表', () => {
     render(<Backend会话列表 角色="recruiter" />);
     expect(screen.getByText('你的招聘AI代理')).toBeTruthy();
     expect(screen.queryByText('你的求职AI代理')).toBeNull();
+    // 招聘端聊天仍未开放：原文案保持
+    expect(screen.getByText('聊天暂未开放，可查看代理功能')).toBeTruthy();
   });
 
   it('AI 行点击只导航代理参数路由（候选 /agent、招聘 /hr/agent），零派发', async () => {
@@ -289,7 +293,7 @@ describe('Backend会话列表', () => {
     有空态含('没有匹配的会话。');
     expect(screen.queryByText('AI代理动态')).toBeNull();
     await userEvent.clear(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'));
-    await userEvent.type(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'), '聊天暂未开放');
+    await userEvent.type(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'), '在谈进展');
     expect(screen.getByText('AI代理动态')).toBeTruthy();
     expect(screen.queryByText('后端工程师')).toBeNull();
     无空态含('没有匹配的会话。');
