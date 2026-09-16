@@ -84,13 +84,13 @@ JS
 
 | 场景 | 固定准备步骤与截图前断言 |
 | --- | --- |
-| Mock 公司清单及七分区 | `pickerMock登录(page)` → 点击“我要招人” → 等待 `/#/hr/card`。用 `hash直达` 访问 `/#/hr/company-profile` 及 `/basic`、`/intro`、`/business`、`/product`、`/welfare`、`/team`、`/album`。分别等待标题／字段可见再截图，不保存；清单标题“编辑品牌信息”，基本信息用 `getByLabel('公司全称')`，其它以对应分区标题确认。每个 test 新 context，使用默认演示档，不种全局存储 |
+| Mock 公司清单及七分区 | `pickerMock登录(page)` → 点击“我要招人” → 等待 `http://127.0.0.1:4181/#/hr/card`。用 `hash直达` 访问 `http://127.0.0.1:4181/#/hr/company-profile` 及 `/basic`、`/intro`、`/business`、`/product`、`/welfare`、`/team`、`/album`。分别等待标题／字段可见再截图，不保存；清单标题“编辑品牌信息”，基本信息用 `getByLabel('公司全称')`，其它以对应分区标题确认。每个 test 新 context，使用默认演示档，不种全局存储 |
 | Mock 相册满组 | 同上到 album，先截空态；通过 `page.locator('input[type=file]').nth(0/1).setInputFiles({ name:'sample.png', mimeType:'image/png', buffer:一像素PNG })`，每组各三次，每次等待新增对应“删除实景照片第 N 张”／“删除公司照片第 N 张”按钮；两组添加键都不存在后截图，不点保存。该操作只是 Mock 草稿，不走后端 |
-| Mock 学校／专业 | 新 test `pickerMock登录` 后 `hash直达('/#/onboard/school')`，输入“大学”，按 `/^清华大学( ✓)?$/` 点选；输入值为清华大学、候选仍可见后截图。专业新 test 去 `/#/onboard/major`，输入“工程”，按 `/^软件工程( ✓)?$/` 点选后截图。沿现有连点用例准备法 |
-| Backend 管理员／只读 | `安装BFF路由` 输入 `登录尝试id:'att-ui-company'`、`记录目录请求:()=>undefined`、`主体初始角色:'recruiter'`；管理员用 `带企业关系(P1C招聘组织Fixture,[P1C管理员关系],{[P1C标记.组织甲编号]:P1C组织甲()})`；只读新 test 换成员关系／组织乙。`page.goto('/')` 等待 `/#/hr/` 后 hash直达 basic。管理员三名称在场；只读无保存且可编辑输入 disabled，再截图 |
-| Backend 名称错误 | 管理员初始化时，通过既有 `覆盖` 精确键 `PATCH /api/v1/organizations/${P1C标记.组织甲编号}/profile` 返回 `{status:409,响应:{error:{type:'organization_name_conflict',message:'名称冲突'}}}`。basic 改常用名为“视觉冲突公司”后保存；等待“这个常用名已被其他企业使用”、保留输入、仍在 basic 后截图 |
+| Mock 学校／专业 | 新 test `pickerMock登录` 后 `hash直达(page,'http://127.0.0.1:4181/#/onboard/school')`，输入“大学”，按 `/^清华大学( ✓)?$/` 点选；输入值为清华大学、候选仍可见后截图。专业新 test 去 `http://127.0.0.1:4181/#/onboard/major`，输入“工程”，按 `/^软件工程( ✓)?$/` 点选后截图。沿现有连点用例准备法 |
+| Backend 管理员／只读 | `安装BFF路由` 输入 `登录尝试id:'att-ui-company'`、`记录目录请求:()=>undefined`、`主体初始角色:'recruiter'`；管理员用 `带企业关系(P1C招聘组织Fixture,[P1C管理员关系],{[P1C标记.组织甲编号]:P1C组织甲()})`；只读新 test 换成员关系／组织乙。`page.goto('/')` 等待 `http://127.0.0.1:4182/#/hr/` 后 hash直达 basic。管理员三名称在场；只读无保存且可编辑输入 disabled，再截图 |
+| Backend 名称错误 | 管理员初始化时，通过既有 `覆盖` 精确键 `['PATCH ', 'api', 'v1', 'organizations', P1C标记.组织甲编号, 'profile'].join('/')` 返回 `{status:409,响应:{error:{type:'organization_name_conflict',message:'名称冲突'}}}`。basic 改常用名为“视觉冲突公司”后保存；等待“这个常用名已被其他企业使用”、保留输入、仍在 basic 后截图 |
 | Backend 相册上传预览 | 管理员 fixture 安装后，注册精确 `page.route` 匹配组织甲 `/media`（无后缀）的 POST，在 handler 中 await 一个由 test 控制的 promise，其他 method `route.fallback()`。到 album 后以一像素PNG 上传；等待 `getByAltText('上传预览')` 和添加实景照片按钮隐藏后截图；finally resolve promise，handler `route.fallback()` 交原 fixture 完成，不走网络；等待删除第1张出现后结束。不可永久悬挂 route 或提前关闭 context |
-| Backend 学校副标题／分页 | 新 test `pickerBackend存量候选(page,'att-ui-school')`，之后注册精确 `/api/v1/catalog/education-institutions` GET 的本地覆盖，所有 query 均用 `route.fulfill({status:200,json:信封({items:[{id:'ins-ui-1',display_name:'视觉大学',location:{id:'loc-ui-1',display_name:'上海市',country_code:'CN',country_name:'中国',admin1_code:null,admin1_name:null,timezone:'Asia/Shanghai',population:0}}],next_cursor:'ui-page-2',catalog_version:'ui-v1'})})` 应答（wire 使用 snake_case，不能用页面模型的 nextCursor）；到 school 输入“视觉”，等待“视觉大学”、“上海市 · 中国”和加载更多按钮后截图。本场景不点分页，分页行为由既有单元用例负责；不能覆盖其它业务路径 |
+| Backend 学校副标题／分页 | 新 test `pickerBackend存量候选(page,'att-ui-school')`，之后注册精确 `new URL('http://127.0.0.1:4182/api/v1/catalog/education-institutions').pathname` GET 的本地覆盖，所有 query 均用 `route.fulfill({status:200,json:信封({items:[{id:'ins-ui-1',display_name:'视觉大学',location:{id:'loc-ui-1',display_name:'上海市',country_code:'CN',country_name:'中国',admin1_code:null,admin1_name:null,timezone:'Asia/Shanghai',population:0}}],next_cursor:'ui-page-2',catalog_version:'ui-v1'})})` 应答（wire 使用 snake_case，不能用页面模型的 nextCursor）；到 school 输入“视觉”，等待“视觉大学”、“上海市 · 中国”和加载更多按钮后截图。本场景不点分页，分页行为由既有单元用例负责；不能覆盖其它业务路径 |
 
 所有 Mock 公司分区及两页候选用 390×844；basic、album（空和满）、学校、专业另以 320×568 复跑，用 `page.setViewportSize` 在准备前固定。Backend 额外态390×844。不额外新增全站视觉场景。截图命名固定为“模式-场景-宽x高.png”，分别落 before/after 子目录；输出前创建目录，截图缺失不能当作无差异。
 
@@ -248,7 +248,7 @@ git diff --check
 规划阶段：用户已批准 Spec 精确版本并授权 Claude 文档 review。候选范围仅本 Plan 与 Spec；不审分支业务 diff。
 
 - R1：Claude opus/high，候选 `4884d834`，只读 guard 通过，无测试执行。Important/required 1 项：视觉基线未冻结运行入口及特殊状态准备。核实成立，已补临时 config、准确命令、原三服务端口／离线模式、场景输入与失败停止边界；不增加 tracked 基础设施。Minor/optional 1 项：教育浏览器选集理由不明确，接受文档澄清。均不改变批准 Spec。
-- R2：沿同一 Claude reviewer 会话复审，候选 `b8c8dc29715dded0208e8c854234a8a8939ef7c5`，Plan blob `9999414d`（短标识；完整版本以该候选 Git 对象读取）。返回精确 `NO FINDINGS`；两轮均通过 HEAD/status/受审文件指纹 guard，无测试执行，无未解决 required。R1 修复提交 `b8c8dc29`；本条及 Spec 状态更新仅记审查事实，不改变已审实施契约。
+- R2：沿同一 Claude reviewer 会话复审，候选 `b8c8dc29715dded0208e8c854234a8a8939ef7c5`，Plan blob `9999414d`（短标识；完整版本以该候选 Git 对象读取）。返回精确 `NO FINDINGS`；两轮均通过 HEAD/status/受审文件指纹 guard，无测试执行，无未解决 required。提示词校验阶段仅把视觉方案中的浏览器路由改写成同端口完整 URL／等值路径表达式，避免路径校验器误判为规划机器绝对文件路径；无行为或选集变更。R1 修复提交 `b8c8dc29`；本条及 Spec 状态更新仅记审查事实，不改变已审实施契约。
 - 教育浏览器取舍：`e2e/suites/候选建档.spec.ts` 的完整建档保存链不在本轮变更内；四页 Vitest 覆盖保存／引用映射，所选展示与交互用例直接覆盖本次候选行的点击、重复点选和请求不变。学校 getByText、专业 exact 名称仍受所选用例覆盖，不为纯展示接入重跑整个建档旅程。final gate 若实际修改到保存或初始化合同，必须重算该消费者责任。
 
 实施记录由新实施 session 在本节追加 Task 完成、验证、review 裁决与 final gate 事实，保持规划与执行证据分开。
