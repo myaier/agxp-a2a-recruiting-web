@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import 样式 from './企业往来记录.module.css';
 import { 次级页外壳, 返回栏, 真输入条, 主按钮 } from '../组件/通用';
+import 对话系统注释 from '../组件/对话系统注释';
 import 拿不准弹层 from './拿不准弹层';
 import { 企业往来记录 as 初始记录, 在谈候选列表 } from '../数据/企业端模拟数据';
 import type { 往来条目 } from '../数据/类型';
@@ -195,11 +196,9 @@ function 记录条({ 条 }: { 条: 往来条目 }) {
     );
   }
   if (条.类型 === '系统') {
-    return (
-      <div className={样式.居中}>
-        <span className={样式.系统胶囊}>{条.内容}</span>
-      </div>
-    );
+    // 系统胶囊已提取为共用 对话系统注释（S0–S3 展示统一 Task 3）：与求职端 往来记录、
+    // 阶段流共用同一版式；只传内容，无标签/时间头行，视觉与原屏内胶囊一致
+    return <对话系统注释 内容={条.内容} />;
   }
   if (条.类型 === '叮嘱') {
     return (

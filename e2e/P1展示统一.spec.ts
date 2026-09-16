@@ -751,13 +751,15 @@ async function 期望无溢出(page: Page): Promise<void> {
  * 固定 AI 入口行（Task c02ab777 起 Backend 收件箱展示层组装）：唯一入口、无模拟
  * 摘要/时间/未读 —— 取代旧「Backend 无 AI代理动态」缺席断言（那断言只因 Mock 行同名
  * 就判污染，与新的固定入口行为相反）。返回入口行定位供调用方继续断言。
+ * 摘要分端（Task 5/6）：求职端 = 真实能力说明「查看岗位推荐和在谈进展」；
+ * 招聘端聊天未开放，保持「聊天暂未开放，可查看代理功能」原文案。
  */
-async function 期望固定AI入口行(page: Page): Promise<Locator> {
+async function 期望固定AI入口行(page: Page, role: P1角色): Promise<Locator> {
   const 行 = page.getByRole('button', { name: /AI代理动态/ });
   await expect(行).toHaveCount(1);
   const 条 = 行.first();
   // 固定摘要与副标题；Mock 的「替你初筛 23 人 / 替你拒绝…」与「刚刚」不入 Backend 行
-  await expect(条).toContainText('聊天暂未开放，可查看代理功能');
+  await expect(条).toContainText(role === 'candidate' ? '查看岗位推荐和在谈进展' : '聊天暂未开放，可查看代理功能');
   await expect(条).not.toContainText('刚刚');
   await expect(条).not.toContainText('替你初筛');
   await expect(条).not.toContainText('替你拒绝');
@@ -977,7 +979,7 @@ for (const 宽度 of 后端宽度们) {
       await expect(page.getByText('新建岗，产品这边你是第一个，配 6 个工程师')).toBeVisible();
       // 固定 AI 入口行：唯一入口、无模拟摘要/时间/未读（取代旧缺席断言）；
       // Backend 未读 0 不误套 Mock 红点语义（无红点无数字）
-      await 期望固定AI入口行(page);
+      await 期望固定AI入口行(page, 角色);
       await expect(page.getByText('替你拒绝了薪资带无交集')).toHaveCount(0);
       await expect(page.getByTestId('unread-3001')).toHaveCount(0);
       await expect(page.getByTestId('unread-3002')).toHaveCount(0);
@@ -1059,7 +1061,7 @@ for (const 宽度 of 后端宽度们) {
       const 行甲 = page.getByRole('button', { name: /MiniMax · 直聊中 · 未走AI代理/ }).first();
       await expect(行甲).toBeVisible({ timeout: 15_000 });
       // 固定 AI 入口行：唯一入口、无模拟摘要/时间/未读；Mock 的「本周替你初筛 23 人」零残留
-      await 期望固定AI入口行(page);
+      await 期望固定AI入口行(page, 角色);
       await expect(page.getByText('本周替你初筛 23 人')).toHaveCount(0);
       await expect(page.getByTestId('unread-3001')).toHaveCount(0);
 
@@ -1104,7 +1106,7 @@ for (const 宽度 of 后端宽度们) {
       await expect(无lastMessage行).toContainText('已建立真人会话');
       // 未读正数行：数字胶囊；固定 AI 入口行在缺失场景同样是唯一入口（无模拟摘要/时间/未读）
       await expect(page.getByTestId('unread-3003')).toHaveText('3');
-      await 期望固定AI入口行(page);
+      await 期望固定AI入口行(page, 'candidate');
 
       // 降级行仍可点进会话：消息事实仍在，读写不受影响
       await 降级行.click();

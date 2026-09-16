@@ -117,7 +117,7 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     expect(fixture.变更请求).toEqual([]);
   });
 
-  test('候选详情直达刷新：空列表记忆下整页可渲染 @backend', async ({ page }) => {
+  test('候选详情直达刷新：空列表记忆下整页可渲染 @backend @s0-s3-display', async ({ page }) => {
     const 请求序: string[] = [];
     const fixture = await 装P5候选(page, { 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
 
@@ -127,10 +127,10 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     // 意向 ID 是内部坐标（P5 Task 4 起不进可见内容），深链渲染绝不依赖它
     await expect(page.getByText(new RegExp(P6标记.意向编号))).toHaveCount(0);
     await expect(page.getByText('轮次 1/3')).toBeVisible();
-    // S0（J-PILOT-01）：人工补事实提交退场 —— 只剩时间线里的代理问题文本，
-    // 无补事实提交入口；底栏保留原输入框与发送键但真禁用（Spec §7），
-    // placeholder 按真实阶段变化。
-    await expect(page.getByText(P5标记.问题).first()).toBeVisible();
+    // S0（J-PILOT-01）：人工补事实提交退场；S0–S3 展示统一 Task 4：时间线裸问题文本
+    // 不再上屏（问答应以 screening records 为准）—— 无补事实提交入口；底栏保留原
+    // 输入框与发送键但真禁用（Spec §7），placeholder 按真实阶段变化。
+    await expect(page.getByText(P5标记.问题)).toHaveCount(0);
     await expect(page.getByRole('button', { name: '提交回答' })).toHaveCount(0);
     const S0输入 = page.getByPlaceholder('双方 AI 代理正在确认条件');
     await expect(S0输入).toBeVisible();
@@ -149,7 +149,7 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     expect(fixture.变更请求).toHaveLength(前变更数);
   });
 
-  test('招聘详情直达刷新：空列表记忆下整页可渲染 @backend', async ({ page }) => {
+  test('招聘详情直达刷新：空列表记忆下整页可渲染 @backend @s0-s3-display', async ({ page }) => {
     const 请求序: string[] = [];
     await 装P5招聘(page, { 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
 
@@ -162,7 +162,9 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await expect(page.getByText('学历缺失')).toBeVisible();
     await expect(page.getByText('求职状态缺失')).toBeVisible();
     await expect(page.getByRole('img', { name: '性别未知' })).toBeVisible();
-    await expect(page.getByText('需要你', { exact: true })).toBeVisible();
+    // S0–S3 展示统一 Task 4：顶部状态条退场 —— 状态胶囊在 S1 分节条上
+    //（v1 needs_action → 需要你，A.2.1 权威待办输入）
+    await expect(page.getByText('需要你', { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: '通过初筛' })).toBeVisible();
     await expect(page.getByRole('button', { name: '不合适' })).toBeVisible();
     expect(请求序).toContain(`GET /api/v1/recruiter/match-cases/${P5编号.甲}`);
@@ -171,15 +173,17 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await expect(page.getByText(标记.主体真名)).toHaveCount(0);
   });
 
-  test('S0 观察期零输入零写：respond_fact 退场、底栏真禁用、3 秒重读零写请求 @backend', async ({ page }) => {
+  test('S0 观察期零输入零写：respond_fact 退场、底栏真禁用、3 秒重读零写请求 @backend @s0-s3-display', async ({ page }) => {
     const 请求序: string[] = [];
     const fixture = 创建P5MatchCasefixture();
     await 装P5候选(page, { fixture, 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
 
     await hash直达(page, `/#/deal/${P5编号.乙}`);
-    // J-PILOT-01（Spec §7）：双端 S0 零人工输入 —— 代理问题只剩时间线文本，
-    // 补事实/提交回答入口退场；底栏保留原控件但禁用，placeholder 按阶段变化。
-    await expect(page.getByText(P5标记.问题).first()).toBeVisible({ timeout: 20_000 });
+    // J-PILOT-01（Spec §7）：双端 S0 零人工输入；S0–S3 展示统一 Task 4：时间线裸问题
+    // 文本不再上屏（问答应以 screening records 为准）—— 补事实/提交回答入口退场；
+    // 底栏保留原控件但禁用，placeholder 按阶段变化。
+    await expect(page.getByText(P5标记.乙职位名).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(P5标记.问题)).toHaveCount(0);
     await expect(page.getByText('补充事实')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '提交回答' })).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: '回答问题' })).toHaveCount(0);
@@ -288,7 +292,7 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 
-  test('S2/S3 每步权威重读，本端动作卡随权威视图消失 @backend', async ({ page }) => {
+  test('S2/S3 每步权威重读，本端动作卡随权威视图消失 @backend @s0-s3-display', async ({ page }) => {
     test.setTimeout(150_000);
     const 请求序: string[] = [];
     const fixture = await 装P5双角色(page, {
@@ -322,6 +326,9 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     断言重读发生(请求序, `POST /api/v1/recruiter/match-cases/${P5编号.丁}/intent-decisions`);
 
     // ── 切回候选端：最后一笔确认完成 Case —— 移交文案上屏、双方动作表清空 ──
+    // S0–S3 展示统一 Task 4：顶部移交卡退场，文案落 S3 分节条摘要（closed word
+    // 'handoff_pending' → 步骤说明文案）；completed 全段已过折叠，分节条是唯一可见位。
+    fixture.cases[P5编号.丁]!.阶段区们[3]!.summary = 'handoff_pending';
     await hash直达(page, '/#/identity?switch=1&from=hr');
     await page.getByRole('button', { name: '翻到「求职者」那一面' }).click();
     await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
@@ -343,15 +350,40 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     expect(请求序.filter((项) => /\/conversations\/|\/chat\/|handoff/i.test(项))).toEqual([]);
   });
 
-  test('completed 移交两步：pending 继续低频重读恒禁用，发布后进入 P7 会话路由 @backend', async ({ page }) => {
+  test('completed 移交两步：pending 继续低频重读恒禁用，发布后进入 P7 会话路由 @backend @s0-s3-display', async ({ page }) => {
     const 请求序: string[] = [];
     const fixture = await 装P5候选(page, { 请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`) });
+    // S3 固定总结（v2 confirmation_summary）浏览器证据：v2 四员齐备 wire（不能只改
+    // version）；completed 全段折叠，固定总结随意向确认段展开可见
+    fixture.cases[P5编号.己]!.连续块 = {
+      pending_actions: [],
+      dialogue_progress: null,
+      reconsideration: null,
+      confirmation_summary: {
+        version: 2,
+        created_at: '2026-08-27T04:00:00Z',
+        confirmed_facts: [{ text: 'P5 Fixture 已确认事实·到岗时间', source_refs: ['ref-fixture-001'] }],
+        agreed_arrangements: [],
+        unresolved_items: [],
+        incomplete_items: [],
+        confirmation_meaning: 'continue_discussion_without_accepting_all_terms',
+      },
+    };
 
     await hash直达(page, '/#/archived');
     // J-PILOT-01：候选历史 = 单一连续集合（shelf=history），不再拼双架
     await expect(page.getByText(P5标记.己职位名)).toBeVisible({ timeout: 15_000 });
     await page.getByText(P5标记.己职位名).click();
     await expect(page.getByText('双方已确认，正在创建会话').first()).toBeVisible({ timeout: 10_000 });
+    // S0–S3 展示统一 Task 4：completed 全段已过折叠，移交装在意向确认段尾 —— 点开可达，
+    // 且手动展开要经受住后续 3 秒权威重读（受控展开覆盖，轮询不反复强制开合）
+    await page.getByRole('button', { name: /意向确认/ }).click();
+
+    // S3 固定总结四节逐节呈现（C6）：版本/含义说明 + 有值节与合法空节，不合并不省略
+    await expect(page.getByText('本次确认的总结版本：第 2 版')).toBeVisible();
+    await expect(page.getByText('确认表示你愿意继续讨论，不代表接受全部条件')).toBeVisible();
+    await expect(page.getByText('P5 Fixture 已确认事实·到岗时间')).toBeVisible();
+    await expect(page.getByText('没有双方公开接受的安排（继续或确认都不是接受证据）')).toBeVisible();
 
     // 「开始私聊」在场但恒禁用：准备中，会话坐标只能来自服务端发布
     const 私聊键 = page.getByRole('button', { name: '开始私聊' });
@@ -396,7 +428,7 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     expect(发布前会话请求).toBe(0);
   });
 
-  test('ended/completed 单一历史集合原序渲染，终局详情只读 @backend', async ({ page }) => {
+  test('ended/completed 单一历史集合原序渲染，终局详情只读 @backend @s0-s3-display', async ({ page }) => {
     const 请求序: string[] = [];
     const fixture = await 装P5候选(page, { 请求拦截: ({ path, method, query }) => 请求序.push(`${method} ${path}${query ?? ''}`) });
 
@@ -408,20 +440,24 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     expect(请求序).toContain('GET /api/v1/me/negotiations?shelf=history&limit=50');
     await expect(page.getByRole('button', { name: '加载更多' })).toHaveCount(0);
 
-    // ended 详情（J-PILOT-01 Spec §7）：终局摘要原样（wire outcome/reason 不翻译）；
-    // S0 终局底栏保留原控件但真禁用，占位按顶格 outcome 投影
+    // ended 详情：S0–S3 展示统一 Task 4：顶部终局卡与 wire 原词退场 —— 终局按附录 A.2.1
+    // 字典落结束段（胶囊「已结束」+ 一句原因 + 结束时间行）；S0 终局底栏保留原控件但真禁用
     await page.getByText(P5标记.戊职位名).click();
-    await expect(page.getByText('终局', { exact: true })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('user_ended').first()).toBeVisible();
+    await expect(page.getByText('本次代谈已结束').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('结束时间：', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('user_ended')).toHaveCount(0); // 协议词不透出（Spec §A.8）
+    await expect(page.getByRole('button', { name: /匿名初筛/ })).toContainText('已结束');
     await expect(page.getByPlaceholder('本次代谈已结束')).toBeDisabled();
     await expect(page.getByRole('button', { name: '发送', exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: '提交回答' })).toHaveCount(0);
     await expect(page.getByPlaceholder('有想法就告诉你的AI代理')).toHaveCount(0);
 
-    // completed 详情同样只读（移交文案 + 恒禁用的开始私聊 + 只读底栏零发送）
+    // completed 详情同样只读（移交文案 + 恒禁用的开始私聊 + 只读底栏零发送）；
+    // 移交在意向确认段尾（completed 全段已过折叠，点开该段可达）
     await hash直达(page, '/#/archived');
     await page.getByText(P5标记.己职位名).click();
     await expect(page.getByText('双方已确认，正在创建会话').first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: /意向确认/ }).click();
     await expect(page.getByRole('button', { name: '开始私聊' })).toBeDisabled();
     await expect(page.getByText('当前在谈已结束，仅可查看')).toBeVisible();
     await expect(page.getByRole('button', { name: '发送', exact: true })).toHaveCount(0);

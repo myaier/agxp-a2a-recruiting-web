@@ -33,7 +33,7 @@ import { 市场列表 } from '../数据/模拟数据';
 import type { 市场职位 } from '../数据/类型';
 import { use应用状态 } from '../状态/应用状态';
 import type { 状态 as 应用状态表 } from '../状态/应用状态';
-import { use导航, 有会话内看市场来路 } from '../路由/导航钩子';
+import { use导航, 有会话内看市场来路, 有会话内助手来路 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 公司路由键 } from '../数据/公司档案';
 import { 职位页面展示 } from './职位详情展示/职位页面展示';
@@ -126,8 +126,8 @@ function Mock职位详情() {
   );
 }
 
-/** 深链/导航写入 history.state 的有限来源标记（只认看市场这一种来路）。 */
-type 候选职位来源状态 = { 来源?: 'candidate-market' };
+/** 深链/导航写入 history.state 的有限来源标记（只认看市场 / 问AI助手两种来路）。 */
+type 候选职位来源状态 = { 来源?: 'candidate-market' | 'candidate-assistant' };
 
 /** Backend 分支（P4）：只吃候选岗位快照 / 详情缓存 / 单个 CandidateJob GET 的权威数据。 */
 function Backend职位详情() {
@@ -135,13 +135,16 @@ function Backend职位详情() {
   const { 状态, 派发, 后端状态, 操作 } = use应用状态();
   const { 返回, 跳转, 替换跳转 } = use导航();
   const 位置 = useLocation();
-  // 来路只认显式标记的看市场：没有标记（直链/刷新）就绝不盲退栈
+  // 来路只认显式标记的看市场 / 助手聊天：没有标记（直链/刷新）就绝不盲退栈
   const 来源 = (位置.state as 候选职位来源状态 | null)?.来源;
 
-  // 安全返回：来路可信（来源标记 + 本会话内真的从看市场跳过来，内存证据随刷新归零，
-  // 刷新残留的标记不能算数）且 history 确实有上一格才退栈；否则把主壳的「职位 → 看市场」
-  // 状态摆好再原地替换进主壳 —— 直链/刷新链用户按返回永远落回市场列表，而不是退出一格
-  // 空白（或被浏览器弹出站外）。不做 document.referrer、不做 navigate(-1) 猜测。
+  // 安全返回：来路可信（来源标记 + 本会话内真的从对应入口跳过来，内存证据随刷新归零，
+  // 刷新残留的标记不能算数，两种证据互不借用）且 history 确实有上一格才退栈。
+  // · 市场来源：先把主壳的「职位 → 看市场」状态摆好再退栈 —— 直链/刷新链用户按返回
+  //   永远落回市场列表，而不是退出一格空白（或被浏览器弹出站外）。
+  // · 助手来源：返回即回聊天（消息从持久化历史恢复，不依赖主壳状态）；刷新后内存证据
+  //   丢失（或 idx 0 无格可退）时绝不盲退 —— 问AI代理 页自身可直达，原地替换回聊天页。
+  // 不做 document.referrer、不做 navigate(-1) 猜测。
   const 安全返回 = () => {
     const 当前格 = (window.history.state as { idx?: number } | null)?.idx;
     if (
@@ -154,6 +157,14 @@ function Backend职位详情() {
       派发({ 型: '切Tab', Tab: '职位' });
       派发({ 型: '切子视图', 子视图: '看市场' });
       返回();
+      return;
+    }
+    if (来源 === 'candidate-assistant') {
+      if (有会话内助手来路() && typeof 当前格 === 'number' && 当前格 > 0) {
+        返回();
+        return;
+      }
+      替换跳转(路径.问AI代理);
       return;
     }
     派发({ 型: '切Tab', Tab: '职位' });

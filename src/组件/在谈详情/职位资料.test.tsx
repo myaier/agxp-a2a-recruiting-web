@@ -234,6 +234,26 @@ describe('职位资料 · 有值与部分缺失', () => {
     expect(screen.getByText('暂无公司标签')).toBeTruthy();
   });
 
+  // S0–S3 展示统一 Task 5（Spec §6.2）：company_intro "" 是已知空，与缺失语义分开
+  it('公司简介空串是已知空（暂无公司介绍），null 才是缺失；rerender 在两态间正确切换', () => {
+    const 页 = render(
+      <职位资料
+        信息={{ ...有值信息, 公司: { ...有值信息.公司, 简介: '' } }}
+        公司详情={可用导航()}
+      />,
+    );
+    expect(screen.getByText('暂无公司介绍')).toBeTruthy();
+    expect(screen.queryByText('公司介绍缺失')).toBeNull();
+    页.rerender(
+      <职位资料
+        信息={{ ...有值信息, 公司: { ...有值信息.公司, 简介: null } }}
+        公司详情={可用导航()}
+      />,
+    );
+    expect(screen.getByText('公司介绍缺失')).toBeTruthy();
+    expect(screen.queryByText('暂无公司介绍')).toBeNull();
+  });
+
   it('公司导航可用：整块入口可点，点击只执行调用方给的回调', () => {
     const 执行 = vi.fn();
     render(<职位资料 信息={有值信息} 公司详情={可用导航(执行)} />);

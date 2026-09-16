@@ -17,8 +17,10 @@ import type { P5阶段, P5状态 } from './BFF契约';
 import type { P5Agent注意码, P5状态视图 } from './招聘数据源/MatchCase';
 import type { NegotiationCard, NegotiationDetail } from './招聘数据源/连续代谈';
 import { P4委托状态文案, P4失败原因文案, P4拒绝原因文案, 公司短行 } from './发现推荐映射';
-import { 从冻结职位到资料 } from './详情展示映射';
-import type { 分段项 } from '../组件/阶段对话流';
+import { 初评证据文案, 公开初评决定文案, 公开初评过程文案 } from './代谈结果文案';
+import type { 核对结果 } from './代谈结果文案';
+import { 从冻结职位到资料, 投影冻结职位摘要 } from './详情展示映射';
+import type { 分段项, 段内记录 } from '../组件/阶段对话流';
 import type {
   详情底栏信息,
   顶栏信息,
@@ -230,8 +232,24 @@ export function 从连续到详情状态(detail: NegotiationDetail): 状态区�
   };
 }
 
+/** pre-Case 职位四事实的投影输入：原值可空段以空串进 投影冻结职位摘要（不先占位，
+ *  冻结 title/location/结构化薪资才有机会补空；占位在投影之后补）。 */
+function 连续摘要输入(detail: NegotiationDetail): {
+  职位: string; 城市: string; 薪资: string; 技能: readonly string[] | null;
+} {
+  return {
+    职位: detail.job.title ?? '',
+    城市: detail.job.location ?? '',
+    薪资: detail.job.public_salary_range ?? '',
+    // review-r1：NegotiationJob 自 release/0.2.5 起携带 required_skills（null=未知，
+    // []=已知为空，二者不互换）；同一响应权威事实，不跨 API 拼资料。
+    技能: detail.job.required_skills,
+  };
+}
+
 /**
- * pre-Case 详情顶栏：求职端同款槽位；negotiation.job 可空段缺失给占位，不猜公司。
+ * pre-Case 详情顶栏：求职端同款槽位，职位/城市/薪资走 投影冻结职位摘要（Task 5：
+ * 与资料 Tab 同吃一份冻结投影，同记录同次响应），投影仍缺的成员给既有占位，不猜公司。
  * Task 6：公司名取同一响应 job_detail 的组织名（缺失保持『公司信息缺失』），右侧取
  * 同一响应的权威 match_score（0 合法；无溯源 null 不造 0，不外查/拼其它记录）。
  */
@@ -242,10 +260,11 @@ export function 从连续到详情顶栏(detail: NegotiationDetail): 顶栏信�
     非空段(detail.job_detail?.organization?.display_name ?? null) ??
     非空段(detail.job.organization?.display_name ?? null) ??
     '公司信息缺失';
+  const 摘要 = 投影冻结职位摘要(连续摘要输入(detail), detail.job_detail);
   return {
     端: '求职',
-    标题: `${非空段(detail.job.title) ?? '职位信息未知'} · ${公司名}`,
-    副标题: `${非空段(detail.job.location) ?? '城市未知'} · ${非空段(detail.job.public_salary_range) ?? '薪资未知'}`,
+    标题: `${非空段(摘要.职位) ?? '职位信息未知'} · ${公司名}`,
+    副标题: `${非空段(摘要.城市) ?? '城市未知'} · ${非空段(摘要.薪资) ?? '薪资未知'}`,
     画像: null,
     右侧: { kind: '分数', 值: detail.match_score },
     岗位上下文: null,
@@ -253,30 +272,113 @@ export function 从连续到详情顶栏(detail: NegotiationDetail): 顶栏信�
 }
 
 /**
- * pre-Case 第二 Tab 职位资料：negotiation.job 只给实际字段；Task 6 起消费同一响应的
- * job_detail（pre-case 也用它自身冻结职位，不因没有 case_id 隐藏）与 match_score；
- * legacy（job_detail=null）沿用全缺失底座，旧四事实不被抹去。
+ * pre-Case 第二 Tab 职位资料：negotiation.job 只给实际字段；消费同一响应的 job_detail
+ * （pre-case 也用它自身冻结职位，不因没有 case_id 隐藏）与 match_score —— 摘要的冻结
+ * 补位在 从冻结职位到资料 内部的 投影冻结职位摘要 完成（与顶栏同一份投影）；投影仍缺
+ * 的成员补既有占位（在投影之后，不占住冻结值的位置）；legacy（job_detail=null）沿用
+ * 全缺失底座，旧四事实不被抹去。
  */
 export function 从连续到职位资料(detail: NegotiationDetail): 职位资料信息 {
-  return 从冻结职位到资料({
-    摘要: {
-      职位: 非空段(detail.job.title) ?? '职位信息未知',
-      城市: 非空段(detail.job.location) ?? '城市未知',
-      薪资: 非空段(detail.job.public_salary_range) ?? '薪资未知',
-      // review-r1：NegotiationJob 自 release/0.2.5 起携带 required_skills（null=未知，
-      // []=已知为空，二者不互换）；同一响应权威事实，不跨 API 拼资料。
-      技能: detail.job.required_skills,
-    },
+  const 资料 = 从冻结职位到资料({
+    摘要: 连续摘要输入(detail),
     冻结: detail.job_detail,
     分: detail.match_score,
   });
+  if (资料.摘要 === null) return 资料;
+  return {
+    ...资料,
+    摘要: {
+      职位: 非空段(资料.摘要.职位) ?? '职位信息未知',
+      城市: 非空段(资料.摘要.城市) ?? '城市未知',
+      薪资: 非空段(资料.摘要.薪资) ?? '薪资未知',
+      技能: 资料.摘要.技能,
+    },
+  };
 }
 
-/** 四阶段均未到达（Spec §6）：共用阶段名一段不缺，不造轮次/Q/A/清单/默认展开。 */
-export function 从连续到详情分段(): 分段项[] {
-  return (['匿名初筛', '递交简历', '需要协调', '意向确认'] as const).map(
-    (阶段) => ({ 阶段, 展示标题: 阶段, 态: '未到达' as const }),
-  );
+/**
+ * 失败/重试历史 → 段内灰色注释（A.6）：安全中文失败原因（P4 同一闭表），按实际时间
+ * 升序；同一时间同一来源只留一条（不按文本删不同事件）；空数组不占块。
+ */
+function 失败历史注释(历史: NegotiationDetail['failure_history']): 段内记录[] {
+  const 已见 = new Set<string>();
+  return 历史
+    .map((事件, 输入序) => {
+      const 毫秒 = Date.parse(事件.occurred_at);
+      return { 事件, 输入序, 毫秒: Number.isNaN(毫秒) ? null : 毫秒 };
+    })
+    .sort((左, 右) => {
+      if (左.毫秒 !== null && 右.毫秒 !== null && 左.毫秒 !== 右.毫秒) return 左.毫秒 - 右.毫秒;
+      if (左.毫秒 !== null && 右.毫秒 === null) return -1;
+      if (左.毫秒 === null && 右.毫秒 !== null) return 1;
+      return 左.输入序 - 右.输入序;
+    })
+    .flatMap(({ 事件, 输入序 }) => {
+      const 去重键 = `${事件.occurred_at}|${事件.evaluation_id ?? ''}|${事件.code}`;
+      if (已见.has(去重键)) return [];
+      已见.add(去重键);
+      return [{
+        kind: '注释' as const,
+        编号: `fh:${事件.retry_generation}:${输入序}`,
+        标签: null,
+        时间: null,
+        内容: P4失败原因文案(事件.code),
+      }];
+    });
+}
+
+/**
+ * 四阶段均未到达（Spec §6）：共用阶段名一段不缺，不造轮次/Q/A。
+ * S0–S3 展示统一 Task 4（Spec §5.2）：pre-Case（非 case_started）的匿名初筛标题旁
+ * 「未开始」，用 可展开+默认展开 打开同款小结/中文核对项区域，显示公开初评的过程
+ * （evaluation.state → 初评中/完成/未完成/超时）或决定与证据；失败初评的重试/归档
+ * 动作卡由控制层装进该段尾部。绝不把打开的信息区标成 active/passed，也不为开案前的
+ * 记录造阶段消息。retention（case_started 且 case_detail=null）不擅自造阶段：四段
+ * 照旧灰条不可展开，公开初评残留仍在页顶托盘。
+ */
+export function 从连续到详情分段(detail: NegotiationDetail): 分段项[] {
+  const 是preCase = detail.phase !== 'case_started';
+  const 评 = 映射公开初评(detail);
+  // 初评过程的权威状态：evaluation 在场读它；缺席时按 phase 给安全过程词（只落在
+  // evaluating / evaluation_failed 两个 phase，accepted/refused 不猜）
+  const 过程态 = detail.evaluation?.state
+    ?? (detail.phase === 'evaluating' ? 'pending' : detail.phase === 'evaluation_failed' ? 'failed' : null);
+  const 有失败历史 = detail.failure_history.length > 0;
+  // 初评中/初评失败本身就是 §5.2 的 S0 信息内容（「公开初评中/匹配/不匹配/待确认」），
+  // 这两个 phase 恒可展开；其余 pre-Case 有评估事实才展开
+  const 可展开 = 是preCase
+    && (评 !== null || detail.evaluation !== null || detail.phase === 'evaluating'
+      || detail.phase === 'evaluation_failed' || 有失败历史);
+  // 初评失败的原因是权威事实：即使 actions 未允许出恢复卡，也要在 S0 信息区有落点
+  //（有卡时与卡.说明同词各一处，与改前 状态区+卡 的两处口径一致）
+  const 失败原因行 =
+    detail.phase === 'evaluation_failed' && detail.failure !== null
+      ? [P4失败原因文案(detail.failure.code)]
+      : [];
+  return (['匿名初筛', '递交简历', '需要协调', '意向确认'] as const).map((阶段, 序) => {
+    if (序 !== 0 || !可展开) {
+      return {
+        阶段,
+        展示标题: 阶段,
+        态: '未到达' as const,
+        ...(序 === 0 && 是preCase ? { 待推进说明: '未开始' as const } : {}),
+      };
+    }
+    return {
+      阶段,
+      展示标题: 阶段,
+      态: '未到达' as const,
+      // 可展开段走分节条 button 分支：标题旁的「未开始」由状态胶囊承载（A.2.1 pending 闭词），
+      // 不可展开的灰条分支才经 待推进说明 显示
+      状态文: '未开始' as const,
+      可展开: true,
+      默认展开: true,
+      小结: 评?.决定文 ?? 公开初评过程文案(过程态),
+      小结行们: 失败原因行.length > 0 ? 失败原因行 : undefined,
+      ...(评 !== null ? { 核对清单: 评.核对清单 } : {}),
+      ...(有失败历史 ? { 记录: 失败历史注释(detail.failure_history) } : {}),
+    };
+  });
 }
 
 /** pre-Case 底栏（Spec §7 输入框表）：占位与禁用说明成对产出，发送恒 null（无 Case 叮嘱请求）；
@@ -292,31 +394,31 @@ export function 映射连续底栏(detail: NegotiationDetail): 详情底栏信�
   return { kind: '输入', 占位: 禁用说明, 值: '', 改变: () => undefined, 发送: null, 禁用说明 };
 }
 
-/** 公开信息初评的总结托盘数据（Spec §6）：决定/内容/证据以源数据呈现，不生成评分或条件裁决。 */
+/**
+ * 公开信息初评的展示数据（S0–S3 展示统一 Task 4）：只来源 agent_summary.public_evaluation，
+ * 决定与证据按附录 A 字典走 Task 1 中文闭表 —— 英文 summary 与 wire code/source 一律
+ * 不再产出上屏（A.4：不让前端在线翻译或整段照搬）。决定/核对清单由消费者装进 S0
+ * 「公开资料匹配检查」区域（pre-Case）或页顶残留托盘（retention）。
+ */
 export interface 公开初评托盘视图 {
   /** 稳定 key：evaluation_id（轮询整包替换时 React 不误配对）。 */
   编号: string;
-  /** wire 原词（fit/not_fit/uncertain）：只是建议，不翻译成前端裁决。 */
-  决定: string;
-  /** 代理写的公开初评原文。 */
-  内容: string;
-  /** evidence 源数据行：`匹配/冲突/待确认｜dimension｜code｜source`。 */
-  证据行们: readonly string[];
+  /** 决定的中文文案（A.2.1：公开初评匹配/不匹配/待确认；未知词安全兜底，不译英文 summary）。 */
+  决定文: string;
+  /** 证据核对项（A.4 完整中文句 + 核对结果；code/source 不透出，未知维度按「其他条件」）。 */
+  核对清单: { 项: string; 结果: 核对结果 }[];
 }
 
 export function 映射公开初评(detail: NegotiationDetail): 公开初评托盘视图 | null {
   const 评 = detail.agent_summary.public_evaluation;
   if (评 === null) return null;
-  const 行 = (组: string, 项: { dimension: string; code: string; source: string }) =>
-    `${组}｜${项.dimension}｜${项.code}｜${项.source}`;
   return {
     编号: 评.evaluation_id,
-    决定: 评.decision,
-    内容: 评.summary,
-    证据行们: [
-      ...评.evidence.matches.map((项) => 行('匹配', 项)),
-      ...评.evidence.conflicts.map((项) => 行('冲突', 项)),
-      ...评.evidence.unknowns.map((项) => 行('待确认', 项)),
+    决定文: 公开初评决定文案(评.decision),
+    核对清单: [
+      ...评.evidence.matches.map((项) => 初评证据文案('matches', 项)),
+      ...评.evidence.conflicts.map((项) => 初评证据文案('conflicts', 项)),
+      ...评.evidence.unknowns.map((项) => 初评证据文案('unknowns', 项)),
     ],
   };
 }

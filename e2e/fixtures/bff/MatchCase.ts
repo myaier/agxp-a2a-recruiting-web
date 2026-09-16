@@ -31,6 +31,10 @@ export const P5编号 = {
   丁: 'mccase_p5_0000000000000000000000a5',
   戊: 'mccase_p5_0000000000000000000000a6',
   己: 'mccase_p5_0000000000000000000000a7',
+  // S0–S3 展示统一 Task 7：v2 连续筛选样本（只在需要的用例里种进 fixture，
+  // 不进默认集合 —— 列表/历史顺序断言不因新样本漂移）
+  庚: 'mccase_p5_0000000000000000000000a8',
+  辛: 'mccase_p5_0000000000000000000000a9',
   坏生命周期: 'mccase_p5_bad_lifecycle',
   坏阶段: 'mccase_p5_bad_stage',
   坏状态: 'mccase_p5_bad_status',
@@ -68,6 +72,22 @@ export const P5标记 = {
   问题: 'P5 Fixture 每周可以到岗几天？',
   回答: 'P5 Fixture 回答：每周可以到岗 3 天',
   叮嘱: 'P5 Fixture 只在工作日 10:00-19:00 联系',
+  // S0–S3 展示统一 Task 7：v2 连续筛选样本标记（庚=终局架、辛=进行架）
+  庚职位名: 'P5 Fixture 终局岗位·庚',
+  辛职位名: 'P5 Fixture 在谈岗位·辛',
+  庚别名: 'candidate-00000000a5a8',
+  辛别名: 'candidate-00000000a5a9',
+  庚公开评: 'P5 Fixture 公开初评·庚样本',
+  庚S0问: 'P5 Fixture 庚：方便到岗的时间？',
+  庚S0答: 'P5 Fixture 庚：每周可以到岗 4 天',
+  庚复评长文: `P5 Fixture 庚复评·${'复评结论逐条核对岗位条件与公开资料，这一段刻意写得很长，用来验证灰色注释换行可读、不撑破布局。'.repeat(5)}`,
+  庚S1问: 'P5 Fixture 庚：可以接受偶尔出差吗？',
+  庚私有总结: 'P5 Fixture 候选私有小结（招聘端不可见）',
+  辛自述长文: `P5 Fixture 辛自述·${'候选人个人优势的长句样本，验证在线简历正文长文本换行可读、不横向溢出。'.repeat(6)}`,
+  冻结公司: 'P5 Fixture 冻结公司',
+  冻结岗位描述: 'P5 Fixture 冻结岗位描述',
+  冻结岗位要求: 'P5 Fixture 冻结岗位要求',
+  冻结发布人: 'P5 Fixture 发布人',
   // open 工作区 recruiter 展开行的摘要标记（卡上工作行的现职段，逐单不同，可当行锚点）
   现职: {
     甲: 'P5 Fixture 现职·甲',
@@ -140,6 +160,19 @@ export interface P5Case记录形 {
   state覆盖?: Record<string, unknown>;
   /** open 工作区 recruiter 展开行的 candidate_summary（七键闭合对象或显式 null）；缺省 = 显式 null */
   摘要?: P4摘要形 | null;
+  /** S0–S3 展示统一 Task 7：摘要四事实的定点覆盖（如空薪资带验证冻结三元组回退） */
+  职位覆盖?: { 薪资带?: string };
+  /** 连续筛选块在场 = continuity_version 2（四成员按 v2 合同必在；缺省 = v1 整组缺席） */
+  连续块?: {
+    pending_actions?: unknown[];
+    dialogue_progress?: Record<string, unknown> | null;
+    reconsideration?: Record<string, unknown> | null;
+    confirmation_summary?: Record<string, unknown> | null;
+  };
+  /** Case 创建时冻结的 SafeJobDetail wire（缺省 = legacy 显式 null，绝不补读） */
+  jobDetail?: Record<string, unknown>;
+  /** 招聘端候选在线简历 wire（缺省 = 显式 null：无冻结区/授权拒绝） */
+  candidateResume?: Record<string, unknown>;
   /** release/0.2.5：招聘行/详情恒在场的可溯源推荐分；缺省 = 显式 null（无溯源） */
   matchScore?: number | null;
   /** release/0.2.5：Case 作用域候选身份；缺省 = anonymous 三 null，'disclosed' 才给真名/头像 */
@@ -245,7 +278,7 @@ export function P5职位wire(c: P5Case记录形): Record<string, unknown> {
     job: {
       title: c.职位名,
       location: P5标记.城市,
-      public_salary_range: P5标记.薪资带,
+      public_salary_range: c.职位覆盖?.薪资带 ?? P5标记.薪资带,
       required_skills: [P5标记.技能],
     },
   };
@@ -311,8 +344,15 @@ export function P5详情wire(c: P5Case记录形, 角色: P5角色词): Record<st
       ...区,
       ...P5区态(c, 序), // 段态随当前 stage 动态求值（推进后已过段转 passed、新当前段转 active）
       ...(区.stage === 'anonymous_screening'
-        // S0 展开块：默认空包；场景用例可给 段.screening_records 种问答/小结（J-PILOT-01）
-        ? { screening_records: 区.screening_records ?? { messages: [], summaries: [] } }
+        // S0 展开块：默认空包；场景用例可给 段.screening_records 种问答/小结（J-PILOT-01）。
+        // 隐私栅栏（decoder 同款合同）：候选私有总结只下发候选端，招聘端恒同批 messages
+        // 且 summaries=[] —— wire 在此收口，绝不让测试样本把私有词漏给招聘端 decode。
+        ? {
+            screening_records: {
+              messages: 区.screening_records?.messages ?? [],
+              summaries: 角色 === 'recruiter' ? [] : 区.screening_records?.summaries ?? [],
+            },
+          }
         : {}),
       ...(区.stage === 'resume_submission' && 附件可见
         ? { attachment: { file_id: P5编号.文件, file_version_id: P5编号.文件版本, display_name: P5标记.简历名 } }
@@ -320,18 +360,26 @@ export function P5详情wire(c: P5Case记录形, 角色: P5角色词): Record<st
     })),
     intent_confirmations: { ...c.意向词 },
     job: P5职位wire(c),
-    // release/0.2.5：详情 required match_score/job_detail。fixture 全走 legacy 快照
-    // （显式 null = 冻结正文缺席合法档），不补读当前 Job/Resume。
+    // release/0.2.5：详情 required match_score/job_detail。缺省 legacy 快照（显式 null =
+    // 冻结正文缺席合法档），不补读当前 Job/Resume；样本用例可自带冻结职位 wire。
     match_score: c.matchScore ?? null,
-    job_detail: null,
+    job_detail: c.jobDetail ?? null,
     // S0–S3 连续筛选合并（2026-09-15）：continuity_version 是详情 required 键。
-    // 本 fixture 全部 Case 走 version 1（历史 Case）：连续块四成员整组缺席即合法档，
-    // 命令层也因此保持 v1 纯 {action} body（不冒充 v2 待办语义）。
-    continuity_version: 1,
+    // 缺省 v1（历史 Case）：连续块四成员整组缺席即合法档，命令层也因此保持 v1 纯
+    // {action} body（不冒充 v2 待办语义）；Task 7 样本显式给 v2 四员齐备 wire。
+    ...(c.连续块 === undefined
+      ? { continuity_version: 1 as const }
+      : {
+          continuity_version: 2 as const,
+          pending_actions: c.连续块.pending_actions ?? [],
+          dialogue_progress: c.连续块.dialogue_progress ?? null,
+          reconsideration: c.连续块.reconsideration ?? null,
+          confirmation_summary: c.连续块.confirmation_summary ?? null,
+        }),
   };
   // 招聘端详情 required 私有展示二键：恒在场的共享在线简历正文与候选身份
   if (角色 === 'recruiter') {
-    详情.candidate_resume = null;
+    详情.candidate_resume = c.candidateResume ?? null;
     详情.candidate_identity = P5身份wire(c);
   }
   if (c.协同 && c.lifecycle === 'open' && c.stage === 'needs_coordination') {
@@ -367,6 +415,8 @@ export const P5连续编号 = {
   丁: P5连续ID('a5a5'),
   戊: P5连续ID('a6a6'),
   己: P5连续ID('a7a7'),
+  庚: P5连续ID('a8a8'),
+  辛: P5连续ID('a9a9'),
   坏生命周期: P5连续ID('b1b1'),
   坏阶段: P5连续ID('b2b2'),
   坏状态: P5连续ID('b3b3'),

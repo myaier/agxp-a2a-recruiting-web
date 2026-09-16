@@ -1623,3 +1623,46 @@ describe('看市场 · terminal summary 单次权威补读（Backend）', () => 
     expect(mock刷新委托).not.toHaveBeenCalled();
   });
 });
+
+// ── Task 2 提取前证据：市场卡已知值卡面在提取（JSX 移入 组件/列表卡片/求职推荐卡）
+//    前后必须逐字原样 —— 公司/简介/职位/分数/薪资/标签/发布人头像与去谈键状态在这里
+//    一次钉住；委托六态文案与详情带来源导航由上方 P4 组既有用例继续回归。
+//    本组先于提取运行并通过（提取前证据），提取后必须保持通过：只许移动 JSX，不许改卡面。
+describe('看市场 · 市场卡提取前证据（Task 2）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+  });
+
+  it('已知卡：公司/简介/职位/分数/薪资/标签/发布人与头像原位，去谈键可点', () => {
+    置P4候选状态([{
+      ...BFF候选岗位推荐样本,
+      match_score: 87,
+      job: {
+        ...BFF候选岗位推荐样本.job,
+        organization: BFF公司摘要样本,
+        publisher_profile: {
+          public_name: '林澈', title: '招聘负责人',
+          personal_verification_status: 'verified', avatar_url: 'https://cdn.example.com/p.png',
+        },
+      },
+    }]);
+    const 页 = render(<看市场 />);
+    expect(screen.getByText('云衢科技')).toBeTruthy();
+    expect(screen.getByText('C 轮 · 500-1000 人 · 金融科技')).toBeTruthy();
+    expect(screen.getByText('AI 产品实习生')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '适配 87 分' })).toBeTruthy();
+    // 薪资展示破折号行为（- → –）与价格标地位保持
+    expect(screen.getByText('300–500 元/天')).toBeTruthy();
+    for (const 标签 of ['实习生', '上海', '混合']) {
+      expect(screen.getByText(标签)).toBeTruthy();
+    }
+    // 发布人不以公司名开头 → 全文照旧；公司 Logo 与发布人头像各自原位出图
+    expect(screen.getByText('林澈 · 招聘负责人')).toBeTruthy();
+    expect(页.container.querySelector('img[src="https://cdn.example.com/org_1/media_1.png"]'))
+      .toBeTruthy();
+    expect(页.container.querySelector('img[src="https://cdn.example.com/p.png"]')).toBeTruthy();
+    const 去谈键 = screen.getByRole('button', { name: '让AI代理去谈' }) as HTMLButtonElement;
+    expect(去谈键.disabled).toBe(false);
+  });
+});

@@ -4,10 +4,10 @@
 
 import { expect, test } from '../fixtures/test';
 import { 信封 } from '../fixtures/bff/协议';
-import { 装P4候选, 装P5双角色, hash直达 } from '../fixtures/数据源交互';
+import { 装P4候选, 装P5候选, 装P5双角色, 断言核心页无横向溢出, hash直达 } from '../fixtures/数据源交互';
 import { P4编号, P4标记, P4发现fixture, type P4发现fixture形 } from '../fixtures/bff/发现推荐';
 import { P2新附件, 创建P2附件fixture, type P2附件fixture形 } from '../fixtures/bff/附件';
-import { P5编号, P5标记, P5连续编号, 创建P5MatchCasefixture, type P5MatchCasefixture形 } from '../fixtures/bff/MatchCase';
+import { P5连续ID, P5编号, P5标记, P5连续编号, 创建P5MatchCasefixture, type P5MatchCasefixture形 } from '../fixtures/bff/MatchCase';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // J-PILOT-01 连续委托接线 @backend（Task 7）：既有本地浏览器 fixture 的跨页面消费与
@@ -39,7 +39,7 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
   const 委托POST们 = (p4: P4发现fixture形) =>
     p4.变更请求.filter((项) => 项.path === '/api/v1/me/job-delegations' && 项.method === 'POST');
 
-  test('场景一：UI 选择 PDF/确认→POST accepted→查看进展→在谈同卡→公开初评→S0→S1 @backend', async ({ page }) => {
+  test('场景一：UI 选择 PDF/确认→POST accepted→查看进展→在谈同卡→公开初评→S0→S1 @backend @s0-s3-display', async ({ page }) => {
     const 请求序: string[] = [];
     const { p4, p2, p5 } = 建连续委托场景();
     await 装P4候选(page, {
@@ -90,25 +90,40 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
 
     const 记录 = p5.连续记录[P4编号.candidateDelegation]!;
     const 乙 = p5.cases[P5编号.乙]!;
-    /** S0 小结样本：initial 托盘与公开初评托盘同屏，来源标签区分（初评 vs 公开信息初评）。 */
+    /** S0 小结样本：S0–S3 展示统一 Task 4 起问答应以 screening records 为准（transcript
+     *  裸文本不再上屏）—— 记录块种一问一答与 initial 小结（BFF 对历史记录回填同款 wire）。 */
     const 乙小结托盘 = () => {
       乙.阶段区们[0]!.screening_records = {
-        messages: [],
+        messages: [
+          {
+            id: 'msg_p5_s0_q1', kind: 'question', role: 'recruiter', stage: 'anonymous_screening',
+            asking_role: 'recruiter', round: 1, text: P5标记.问题, occurred_at: '2026-08-29T01:20:00Z',
+          },
+          {
+            id: 'msg_p5_s0_a1', kind: 'answer', role: 'candidate', stage: 'anonymous_screening',
+            asking_role: 'recruiter', round: 1, answer_status: 'answered', answer_source: 'agent',
+            text: P5标记.回答, occurred_at: '2026-08-29T01:22:00Z',
+          },
+        ],
         summaries: [{
           id: 'sum_p5_s0_1', phase: 'initial' as const,
-          summary: 'P5 Fixture S0 条件确认小结', occurred_at: '2026-08-29T01:30:00Z',
+          summary: 'P5 Fixture S0 条件确认小结', occurred_at: '2026-08-29T01:15:00Z',
         }],
       };
     };
 
-    // ── 公开初评（fixture 最小推进）：3 秒节拍内托盘上屏，来源标签明确 ──
+    // ── 公开初评（fixture 最小推进）：3 秒节拍内 S0 信息区上屏 ──
+    // S0–S3 展示统一 Task 4：页顶「公开信息初评」托盘与英文 summary 退场 —— 决定与
+    // 中文证据装进 S0 信息区（pre-Case 默认展开，A.4/A.8）
     记录.phase = 'evaluating';
     记录.evaluationId = 'evp_p5_fixture0000000000000000000002';
     记录.公开评 = { decision: 'fit', summary: 'P5 Fixture 公开初评·基础信息匹配' };
     记录.updatedAt = '2026-08-29T04:10:00Z';
-    await expect(page.getByText('公开信息初评').first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('P5 Fixture 公开初评·基础信息匹配')).toBeVisible();
-    await expect(page.getByText('正在进行公开信息初评')).toBeVisible();
+    await expect(page.getByText('公开初评匹配').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('其他条件：匹配')).toBeVisible(); // 中文证据（未知维度安全兜底）
+    await expect(page.getByText('P5 Fixture 公开初评·基础信息匹配')).toHaveCount(0); // 英文大段不上屏
+    // review-r1 F1：pre-Case 评估中无顶部独立状态区，过程信息归 S0 信息区
+    await expect(page.getByText('正在进行公开信息初评')).toHaveCount(0);
 
     // ── 开案（同一条记录指到 Case，无第二张卡）：S0 消费 case_detail ──
     //    （fixture 里开案的 Case 冻结职位 = 本次受托岗位：职位名随 Case 同步）
@@ -118,11 +133,15 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     记录.caseId = P5编号.乙;
     记录.updatedAt = '2026-08-29T04:20:00Z';
     await expect(page.getByText('匿名初筛', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(P5标记.问题).first()).toBeVisible();
-    // 来源区分：公开信息初评与 S0 初评小结各自独立托盘（S0 总结行 = 标签：正文 成对呈现）
-    await expect(page.getByText('公开信息初评').first()).toBeVisible();
-    await expect(page.getByText('P5 Fixture 公开初评·基础信息匹配')).toBeVisible();
-    await expect(page.getByText(`初评：${P5标记.S0小结}`)).toBeVisible();
+    // S0 消费 case_detail（乙 仍是 v1 needs_user 当前段 → 默认展开）：初评灰注释与问答
+    // 气泡在段内时序里，公开初评只留中文决定行，不再有英文 summary 托盘
+    await expect(page.getByText(P5标记.问题).first()).toBeVisible({ timeout: 15_000 });
+    // 灰注释 = 共享系统胶囊（标签 · 时间 头行 + 原文），不再拼「初评：」单行托盘
+    const S0初评注 = page.locator('[class*="注释胶囊"]').filter({ hasText: P5标记.S0小结 });
+    await expect(S0初评注).toBeVisible();
+    await expect(S0初评注).toContainText('初评 · ');
+    await expect(page.getByText('公开资料匹配检查：公开初评匹配')).toBeVisible();
+    await expect(page.getByText('P5 Fixture 公开初评·基础信息匹配')).toHaveCount(0);
     await expect(page.getByPlaceholder('双方 AI 代理正在确认条件')).toBeDisabled();
     await expect(page.getByRole('button', { name: '发送', exact: true })).toBeDisabled();
 
@@ -154,7 +173,7 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     expect(请求序.filter((项) => 项.startsWith('GET /api/v1/me/negotiations/')).length).toBeGreaterThanOrEqual(1);
   });
 
-  test('场景二：写响应丢失→同标签页 reload→原命令核对→失败→retry 原代际→归档回读 @backend', async ({ page }) => {
+  test('场景二：写响应丢失→同标签页 reload→原命令核对→失败→retry 原代际→归档回读 @backend @s0-s3-display', async ({ page }) => {
     const 请求序: string[] = [];
     const { p4, p2, p5 } = 建连续委托场景();
     // 写响应丢失：每把键恒 503 operation_outcome_unknown（受理已落登记，响应不送达）
@@ -208,7 +227,10 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     };
     置失败初评();
     await 查看进展.click();
-    await expect(page.getByText('本次评估未完成', { exact: true })).toBeVisible({ timeout: 15_000 });
+    // review-r1 F1：初评失败的状态/原因/动作都在 S0 信息区（默认展开）—— 过程词
+    // 「初评未完成」+ 失败原因一行；重试/归档动作卡在同段尾部（控制能力未动）
+    await expect(page.getByText('初评未完成', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('AI 服务暂时不可用，本次没有创建 Case').first()).toBeVisible(); // S0 小结行 + 动作卡说明同词各一处
     await expect(page.getByRole('button', { name: '重试初评' })).toBeVisible();
     await expect(page.getByRole('button', { name: '归档', exact: true })).toBeVisible();
 
@@ -220,14 +242,14 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     const 重试POST = p5.变更请求.filter((项) => 项.path === 重试POST路径);
     expect(重试POST[0]!.body).toEqual({ expected_retry_generation: 0 });
     expect(重试POST[0]!.idempotencyKey).not.toBe('');
-    await expect(page.getByText('正在进行公开信息初评')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('初评中', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: '重试初评' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '归档', exact: true })).toHaveCount(0);
 
     // ── 再次失败（代际已被 retry 消费为 1）→ 归档：body 严格 {} 且无 Idempotency-Key，
     //    权威 shelf 回读：active 无卡、历史有卡，绝不复活第二条记录 ──
     置失败初评();
-    await expect(page.getByText('本次评估未完成', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('初评未完成', { exact: true })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: '归档', exact: true }).click();
     await expect(page.getByText('移入历史，不是取消')).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: '归档', exact: true }).click();
@@ -237,12 +259,15 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     expect(归档POST[0]!.body).toEqual({});
     expect(归档POST[0]!.idempotencyKey).toBeNull();
 
-    // 权威回读（动作后的已载刷新/重读）：在谈空、历史有卡
+    // 权威回读（动作后的已载刷新/重读）：在谈空、历史有卡。
+    // S0–S3 展示统一 Task 2：历史白卡走共享历史卡 —— 结果文案按终局字典（初评失败），
+    // 不是列表短词「本次评估未完成」（详情侧过程词也是字典词「初评未完成」，非列表短词）
     await hash直达(page, '/#/app');
     await expect(page.getByTestId('求职在谈卡')).toHaveCount(0, { timeout: 15_000 });
     await hash直达(page, '/#/archived');
     await expect(page.getByText(P4标记.jobTitle)).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('本次评估未完成', { exact: true })).toBeVisible();
+    await expect(page.getByText('初评失败', { exact: true })).toBeVisible();
+    await expect(page.getByText('初评阶段', { exact: true })).toBeVisible();
 
     // retry/archive 竞争不造重复记录：全程零 Case GET；连续详情读取至少发生一次
     // （单飞/栅栏下同一坐标可多次回读，重复不判漂移 —— 在谈/历史恰一张卡已单独断言）
@@ -251,7 +276,7 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     expect(连续坐标.length).toBeGreaterThanOrEqual(1);
   });
 
-  test('场景三：双端 S0 禁用输入与布局保持（390/320 对照改前基准） @backend', async ({ page }) => {
+  test('场景三：双端 S0 禁用输入与布局保持（390/320 对照改前基准） @backend @s0-s3-display', async ({ page }) => {
     await 装P5双角色(page, { 主体初始角色: 'candidate' });
 
     /** 与改前基准同口径的几何探针（getBoundingClientRect 视口相对；滚动区内元素
@@ -309,8 +334,9 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     expect(
       候选390.四阶段首标题_匿名初筛.y + (候选390.滚动区?.scrollTop ?? 0),
       '候选390 匿名初筛内容坐标（Plan 改前基准·候选端：视口 y=95 + 捕获时 scrollTop 47'
-        + ' = 内容坐标 142；Task 6 新增「旧版状态待核实」行 26px → 168，Δ 见 Plan 验证表）',
-    ).toBe(168);
+        + ' = 内容坐标 142；Task 6 新增「旧版状态待核实」行 26px → 168；S0–S3 展示统一'
+        + ' Task 4 删除顶部状态区 65px → 103，Δ 见 Plan 验证表）',
+    ).toBe(103);
     expect(候选390.根溢出, '候选390 根横向溢出 0').toBe(0);
     await page.screenshot({ path: 'test-results/J-PILOT-01/s3-候选-S0-390.png', fullPage: true });
 
@@ -328,7 +354,7 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     expect(候选320.容器.y).toBe(498);
     expect(候选320.容器.height).toBe(70);
     expect(候选320.Tab行_代谈进度.y).toBe(60);
-    expect(候选320.四阶段首标题_匿名初筛.y + (候选320.滚动区?.scrollTop ?? 0), '候选320 内容坐标：基准 y=95+scrollTop 58=153，+26 同上').toBe(179);
+    expect(候选320.四阶段首标题_匿名初筛.y + (候选320.滚动区?.scrollTop ?? 0), '候选320 内容坐标：基准 153，+26（Task 6 待核实行）-65（Task 4 删状态区）与 390 同为 103').toBe(103);
     expect(候选320.根溢出).toBe(0);
     await page.screenshot({ path: 'test-results/J-PILOT-01/s3-候选-S0-320.png', fullPage: true });
 
@@ -358,7 +384,8 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     expect(招聘390.容器.y).toBe(594);
     expect(招聘390.容器.height).toBe(70);
     expect(招聘390.Tab行_代谈进度.y).toBe(70);
-    expect(招聘390.四阶段首标题_匿名初筛.y + (招聘390.滚动区?.scrollTop ?? 0)).toBe(178);
+    // S0–S3 展示统一 Task 4：招聘端顶部状态区同批删除（-65，与候选端同 Δ）
+    expect(招聘390.四阶段首标题_匿名初筛.y + (招聘390.滚动区?.scrollTop ?? 0)).toBe(113);
     expect(招聘390.根溢出).toBe(0);
     await page.screenshot({ path: 'test-results/J-PILOT-01/s3-招聘-S0-390.png', fullPage: true });
 
@@ -376,8 +403,62 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     expect(招聘320.容器.y).toBe(498);
     expect(招聘320.容器.height).toBe(70);
     expect(招聘320.Tab行_代谈进度.y).toBe(70);
-    expect(招聘320.四阶段首标题_匿名初筛.y + (招聘320.滚动区?.scrollTop ?? 0)).toBe(189);
+    expect(招聘320.四阶段首标题_匿名初筛.y + (招聘320.滚动区?.scrollTop ?? 0)).toBe(113);
     expect(招聘320.根溢出).toBe(0);
     await page.screenshot({ path: 'test-results/J-PILOT-01/s3-招聘-S0-320.png', fullPage: true });
+  });
+
+  // ── S0–S3 展示统一 Task 7：pre-Case 详情（原 S0-S3 展示统一 Backend 端用例迁入）──
+  test('pre-Case：四段未开始但 S0 可展开初评过程、失败后合法 retry 可达，Mock 零请求同版式 @backend @s0-s3-display', async ({ page }) => {
+    const fixture = 创建P5MatchCasefixture();
+    const pre编号 = P5连续ID('c1c1');
+    fixture.连续记录[pre编号] = {
+      recordId: pre编号, recordKind: 'delegation', caseId: null,
+      delegationId: null, evaluationId: null, phase: 'evaluating',
+      needsAction: false, actions: { retry: false, archive: false, open_case: true },
+      failure: null, refusalCode: null, retryGeneration: 0,
+      职位名: P5标记.庚职位名, createdAt: '2026-08-30T01:00:00Z',
+      updatedAt: '2026-08-30T02:00:00Z', archivedAt: null,
+      公开评: { decision: 'fit', summary: P5标记.庚公开评 },
+    };
+    await 装P5候选(page, { fixture });
+    await page.goto(`/#/deal/${pre编号}`);
+    await expect(page.getByText(P5标记.庚职位名).first()).toBeVisible({ timeout: 20_000 });
+
+    // review-r1 F1（Spec §5.1/§5.2）：pre-Case 评估中不再有顶部独立状态区；过程/决定
+    // 归 S0 可展开区（有公开决定显示决定文，无决定才显示过程词）
+    await expect(page.getByText('正在进行公开信息初评')).toHaveCount(0);
+    await expect(page.getByText('轮次 —')).toHaveCount(0);
+    // 四段都未开始；S0 可展开（默认展开）承载公开初评的决定与中文证据
+    await expect(page.getByText('公开初评匹配').first()).toBeVisible();
+    await expect(page.getByText('其他条件：匹配')).toBeVisible();
+    await expect(page.getByText('未开始', { exact: true }).first()).toBeVisible();
+    for (const 段名 of ['递交简历', '需要协调', '意向确认']) {
+      const 灰条标题 = page.getByText(段名, { exact: true });
+      await expect(灰条标题).toBeVisible();
+      const 标签 = await 灰条标题.evaluate((元) => 元.tagName);
+      expect(标签, `${段名} 未到达灰条不可点`).not.toBe('BUTTON');
+    }
+    await 断言核心页无横向溢出(page);
+    await page.screenshot({ path: 'test-results/S0S3展示统一/bk-preCase-初评中-390.png', fullPage: true });
+
+    // 合法 retry：初评失败后重试/归档动作卡装 S0 段尾（权威 actions 允许才在场）
+    const 记录 = fixture.连续记录[pre编号]!;
+    记录.phase = 'evaluation_failed';
+    记录.failure = { code: 'delegation_agent_unavailable', retryable: true };
+    记录.needsAction = true;
+    记录.actions = { retry: true, archive: true, open_case: false };
+    await expect(page.getByRole('button', { name: '重试初评' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '归档', exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder('公开信息初评未完成')).toBeDisabled();
+    await 断言核心页无横向溢出(page);
+    await page.screenshot({ path: 'test-results/S0S3展示统一/bk-preCase-失败retry-390.png', fullPage: true });
+
+    // 320×568（缺失代表场景）：四段灰条与失败动作可达、无横向溢出
+    await page.setViewportSize({ width: 320, height: 568 });
+    await expect(page.getByRole('button', { name: '重试初评' })).toBeVisible();
+    await 断言核心页无横向溢出(page);
+    await page.screenshot({ path: 'test-results/S0S3展示统一/bk-preCase-失败retry-320.png', fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
   });
 });

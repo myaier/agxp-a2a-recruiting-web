@@ -149,11 +149,7 @@ export function 阶段区组(覆盖: Partial<Record<P5阶段区['stage'], Partia
       summary: 'candidate_reevaluation',
       checklist: [{ label: 'anonymous_screening_passed', done: true }, { label: 'resume_bound', done: false }],
       transcript: [
-        {
-          eventId: 'evt_q1', stage: 'anonymous_screening', kind: 'supplementary_question',
-          role: 'candidate', ref: 'prompt_1', text: '每周可以到岗几天？',
-          occurredAt: '2026-08-29T01:10:00Z',
-        },
+        // 问答以 screening records 为权威（S0–S3 展示统一 Task 4）；transcript 只留流程事件
         {
           eventId: 'evt_n1', stage: 'anonymous_screening', kind: 'stage_note',
           role: '', reasonCode: 'policy_checked', occurredAt: '2026-08-29T01:20:00Z',
@@ -171,7 +167,14 @@ export function 阶段区组(覆盖: Partial<Record<P5阶段区['stage'], Partia
       ],
       attachment: null,
       // S0 展开块归一化形状：仅 S0 可为对象，其余段一律 null
-      screeningRecords: { messages: [], summaries: [] },
+      screeningRecords: {
+        messages: [{
+          id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening',
+          askingRole: 'candidate', round: 1, text: '每周可以到岗几天？',
+          exchangeRef: null, occurredAt: '2026-08-29T01:10:00Z',
+        }],
+        summaries: [],
+      },
     },
     { stage: 'resume_submission', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
     { stage: 'needs_coordination', state: 'pending', occurredAt: null, summary: '', checklist: [], transcript: [], instructionReceipts: [], attachment: null, screeningRecords: null },
@@ -576,8 +579,8 @@ export function S1初筛详情(带附件: boolean, 带段内对话 = false): P5�
       resume_submission: {
         state: 'active', summary: '简历已披露，等待初筛结论',
         transcript: 带段内对话 ? [{
-          eventId: 'evt_s1_note', stage: 'resume_submission', kind: 'stage_note',
-          role: '', text: '候选人已确认可以到岗', occurredAt: '2026-08-29T02:30:00Z',
+          eventId: 'evt_s1_submitted', stage: 'resume_submission', kind: 'resume_submitted',
+          role: '', occurredAt: '2026-08-29T02:30:00Z',
         }] : [],
         instructionReceipts: 带段内对话 ? [{
           instructionId: 'aci_s1', owner: 'recruiter', stage: 'resume_submission',
@@ -744,9 +747,14 @@ export function 注意详情DTO(role: P5角色, needsAction: boolean): P5详情 
     needsUser: false,
     agentAttention: { code: 'agent_unavailable', retryable: false },
   });
+  // 段与 state 同相：S1 是当前段（active），S0 已过 —— 胶囊/说明都落当前段
+  const stages = 阶段区组({
+    anonymous_screening: { state: 'passed', summary: 'complete' },
+    resume_submission: { state: 'active', summary: 'screening_resume' },
+  });
   return role === 'candidate'
-    ? 候选详情DTO({ state, needsAction, availableActions: [] })
-    : 招聘详情DTO({ state, needsAction, availableActions: [] });
+    ? 候选详情DTO({ state, needsAction, availableActions: [], stages })
+    : 招聘详情DTO({ state, needsAction, availableActions: [], stages });
 }
 
 // ══ Task 3 夹具：S0 screening records 完整记录（问答 + 初评/复评总结）══

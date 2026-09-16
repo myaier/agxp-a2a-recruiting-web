@@ -213,7 +213,7 @@ test.describe('P7 真人会话 fixture @backend', () => {
     await expect(page.getByText(P7标记.职位名)).toHaveCount(0); // 详情 context 残留也不泄漏
   });
 
-  test('P5 发布后招聘端「开始私聊」进入企业参数路由 @backend', async ({ page }) => {
+  test('P5 发布后招聘端「开始私聊」进入企业参数路由 @backend @s0-s3-display', async ({ page }) => {
     const P5fixture = 创建P5MatchCasefixture();
     const 己 = P5fixture.cases[P5编号.己]!;
     己.step = 'complete';
@@ -224,6 +224,8 @@ test.describe('P7 真人会话 fixture @backend', () => {
     });
 
     await hash直达(page, `/#/hr/candidate/${P5编号.己}`);
+    // S0–S3 展示统一 Task 4：移交行装在意向确认段尾（completed 全段已过折叠，点开可达）
+    await page.getByRole('button', { name: /意向确认/ }).click();
     await expect(page.getByText('真人会话已建立').first()).toBeVisible({ timeout: 15_000 });
     const 私聊键 = page.getByRole('button', { name: '开始私聊' });
     await expect(私聊键).toBeEnabled();

@@ -1,0 +1,31 @@
+/* 共用灰色系统注释（S0–S3 展示统一 Task 3）：从 Mock 往来记录 的系统胶囊原样提取
+   （font 11.5 / line 17 / padding 4 11 / radius 9 + --灰白/--浅灰底 灰色令牌），
+   两个往来记录与 阶段对话流 的 注释 记录共用；长文换行不撑破布局。 */
+
+.注释行 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.注释胶囊 {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 11.5px;
+  line-height: 17px;
+  border-radius: 9px;
+  padding: 4px 11px;
+  text-align: center;
+  color: var(--灰白);
+  background: var(--浅灰底);
+  overflow-wrap: anywhere;
+}
+
+.注释头 {
+  display: block;
+  font-weight: 600;
+}
+
+.注释文 {
+  display: block;
+}

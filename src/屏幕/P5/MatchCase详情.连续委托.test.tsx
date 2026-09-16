@@ -22,6 +22,7 @@ import {
   置详情状态,
   渲染详情,
   测试地址行,
+  测试换Case钮,
   S0完整记录详情,
   登记详情组件,
 } from './MatchCase详情.测试辅助';
@@ -82,7 +83,7 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
     });
     渲染候选(`/deal/${记录}`);
     expect(mock读取连续详情).toHaveBeenCalledWith(记录, true);
-    expect(await screen.findByText('正在进行公开信息初评')).toBeTruthy();
+    expect(await screen.findByText('初评中')).toBeTruthy();
     expect(mock替换跳转).not.toHaveBeenCalled(); // canonical 即 URL：不推新历史格
     expect(mock跳转).not.toHaveBeenCalled();
   });
@@ -103,6 +104,38 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
     expect(mock跳转).not.toHaveBeenCalled(); // 绝不 push：不追加一次导航历史
   });
 
+  // S0–S3 展示统一 Task 5（Spec §5.3）：首次挂载识别求职 ?tab=job；换 record 按新 query
+  // 初始化（key 重挂载），不加导航历史。
+  it('深链 ?tab=job 首开即资料 Tab；换 record（新地址无 query）回进度', async () => {
+    const user = userEvent.setup();
+    置详情状态({
+      role: 'candidate', caseId: 'dlg_a',
+      连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 'dlg_a', phase: 'evaluating', caseDetail: null }) }),
+    });
+    const 页 = render(
+      <MemoryRouter initialEntries={['/deal/dlg_a?tab=job']}>
+        <测试换Case钮 目标="/deal/dlg_b" 文案="切到新单" />
+        <Routes>
+          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    // 首次挂载识别 ?tab=job：直开资料 Tab，进度槽（S0 信息区/四灰条）不挂载
+    expect(await screen.findByText('当前在谈详情数据未提供')).toBeTruthy();
+    expect(screen.queryByText('初评中')).toBeNull();
+    expect(screen.queryByText('未开始')).toBeNull();
+
+    // 换 record：key 重挂载按新 query 初始化 —— 新地址没有 tab query，回进度
+    置详情状态({
+      role: 'candidate', caseId: 'dlg_b',
+      连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 'dlg_b', phase: 'evaluating', caseDetail: null }) }),
+    });
+    await user.click(screen.getByRole('button', { name: '切到新单' }));
+    expect(await screen.findByText('初评中')).toBeTruthy(); // 进度槽回来了
+    页.unmount();
+  });
+
   it('同卡 pre-Case→Case：轮询开案只是联合切换 —— Tab 不跳、零导航、零历史条目', async () => {
     const user = userEvent.setup();
     const 记录 = 'dlg_0123456789abcdef0123456789abcdef';
@@ -111,7 +144,7 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
       连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 记录, phase: 'evaluating', caseDetail: null }) }),
     });
     const 页 = 渲染候选(`/deal/${记录}`);
-    expect(await screen.findByText('正在进行公开信息初评')).toBeTruthy();
+    expect(await screen.findByText('初评中')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '职位详情' }));
     expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy(); // 切到资料 Tab
 
@@ -220,8 +253,8 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
       连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 记录, caseDetail: 底 }) }),
     });
     const 页 = 渲染候选(`/deal/${记录}`);
-    expect(await screen.findByText('每周可以到岗几天？')).toBeTruthy();
-    expect(screen.getAllByText('每周可以到岗几天？').length).toBe(1);
+    expect(await screen.findByText('需要确认岗位的值班安排。')).toBeTruthy();
+    expect(screen.getAllByText('需要确认岗位的值班安排。').length).toBe(1);
 
     // 轮询整包替换：同一条记录的 S0 screening records 多了一对新问答 —— 旧的还在、新的出现一次
     const 底详情 = S0完整记录详情('candidate');
@@ -261,7 +294,7 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText('到岗时间能接受节假日轮班吗？')).toBeTruthy(); // 新消息在场
-    expect(screen.getAllByText('每周可以到岗几天？').length).toBe(1); // 旧消息不重复
+    expect(screen.getAllByText('需要确认岗位的值班安排。').length).toBe(1); // 旧消息不重复
     页.unmount();
   });
 

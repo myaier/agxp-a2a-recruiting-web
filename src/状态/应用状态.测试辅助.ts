@@ -10,6 +10,7 @@ import { type P7会话项, type P7会话页, type P7消息, type P7消息页 } f
 import { type P8AccountDeletion, type P8Credential, type P8DataExport, type P8Session } from '../数据/招聘数据源/P8控制面';
 import { type 接触事件页 } from '../数据/招聘数据源/接触记录';
 import { type 候选实名摘要 } from '../数据/招聘数据源/候选实名';
+import { type AssistantMessagePage } from '../数据/招聘数据源/助手会话';
 import { P5候选详情Wire } from '../测试/BFF样本';
 import { type 页面意向快照, type 页面岗位快照 } from '../数据/招聘数据源类型';
 import { 从BFF简历 } from '../数据/后端映射';
@@ -257,6 +258,11 @@ export function 创建后端桩(lastUsedRole: 'candidate' | 'recruiter' | null =
       status: 'active' as const,
       completed_at: '2026-09-14T08:00:00Z',
     })),
+    // 助手会话域 facade（Task 4：默认空历史页；发送/轮询/重试逐用例覆盖）
+    读取助手历史: vi.fn(async (): Promise<AssistantMessagePage> => ({ items: [], next_cursor: null })),
+    发送助手消息: vi.fn(),
+    读取助手轮次: vi.fn(),
+    重试助手轮次: vi.fn(),
   };
 }
 

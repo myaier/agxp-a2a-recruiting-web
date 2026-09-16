@@ -657,6 +657,60 @@ export async function 安装P1路由(
         }));
         return;
       }
+
+      // ── 求职端助手聊天四路（Task 6 起白名单；招聘端 seam 为 null，零助手请求）──
+      // 本文件只给静态应答，保证进入 /agent 页的首读不落白名单外 503（空历史 → 能力
+      // 说明气泡 + 真输入可用）。发送 / 轮询 / 重试的旅程剧本由 e2e/fixtures/助手会话.ts
+      // 的覆盖层按需应答（Playwright 后注册的路由优先），下面的静态分支只为兜底。
+      const 助手静态 = {
+        消息: `asm_${'2'.repeat(32)}`,
+        轮次: `ast_${'3'.repeat(32)}`,
+      };
+      if (path === '/api/v1/me/assistant/messages' && method === 'GET') {
+        await 答(200, 信封({ items: [], next_cursor: null }));
+        return;
+      }
+      if (path === '/api/v1/me/assistant/messages' && method === 'POST') {
+        await 答(202, 信封({
+          message_id: 助手静态.消息,
+          turn_id: 助手静态.轮次,
+          text: String((body as { text?: unknown }).text ?? ''),
+          created_at: 时间戳,
+          status: 'processing',
+          retryable: false,
+          error_code: null,
+          reply: null,
+        }));
+        return;
+      }
+      const 助手轮次匹配 = /^\/api\/v1\/me\/assistant\/turns\/([^/]+)$/.exec(path);
+      if (助手轮次匹配 && method === 'GET') {
+        await 答(200, 信封({
+          message_id: 助手静态.消息,
+          turn_id: decodeURIComponent(助手轮次匹配[1]!),
+          text: 'P1 fixture 固定处理中',
+          created_at: 时间戳,
+          status: 'processing',
+          retryable: false,
+          error_code: null,
+          reply: null,
+        }));
+        return;
+      }
+      const 助手重试匹配 = /^\/api\/v1\/me\/assistant\/turns\/([^/]+)\/retry$/.exec(path);
+      if (助手重试匹配 && method === 'POST') {
+        await 答(202, 信封({
+          message_id: 助手静态.消息,
+          turn_id: decodeURIComponent(助手重试匹配[1]!),
+          text: 'P1 fixture 固定重试',
+          created_at: 时间戳,
+          status: 'processing',
+          retryable: false,
+          error_code: null,
+          reply: null,
+        }));
+        return;
+      }
     }
 
     // ── 招聘端启动水合（组织链 + owner Jobs 空页 + MatchCase 空页）──

@@ -814,6 +814,7 @@ describe('HTTP 招聘数据源', () => {
   // Task 1（接触记录）：第十六个域 facade（候选 me/contact-events）一并组合进根 facade。
   // Agent 设置与候选账号头像域随后接入，同样锁定公开方法不丢失。
   // Task 1（J-PILOT-01）：第十七个域 facade（候选 me/negotiations 连续代谈）一并组合进根 facade。
+  // Task 1（求职端助手聊天）：第十九个域 facade（me/assistant 助手会话）一并组合进根 facade。
   it('根 facade 组合全部域且不丢公开方法', () => {
     const source = 创建HTTP招聘数据源(依赖());
     expect(Object.keys(source).sort()).toEqual([
@@ -867,6 +868,8 @@ describe('HTTP 招聘数据源', () => {
       '读取候选连续列表', '读取候选连续详情', '重试候选连续记录', '归档候选连续记录',
       // stg onboarding 契约对齐域（me/onboarding 读取与角色完成）
       '读取Onboarding', '完成Onboarding',
+      // 求职端助手会话域（me/assistant 聊天）
+      '读取助手历史', '发送助手消息', '读取助手轮次', '重试助手轮次',
     ].sort());
     // P1C Task 5 / P4 边界：不为尚不可达的 candidate Job route 增加浏览器 consumer。
     expect(Object.keys(source)).not.toContain('读取公开岗位');

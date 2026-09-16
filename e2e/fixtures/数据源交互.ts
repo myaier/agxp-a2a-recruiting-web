@@ -385,6 +385,19 @@ export async function 断言纵序(page: Page, 项们: readonly (string | Locato
   }
 }
 
+/** X1 溢出门（S0–S3 展示统一）：document 与全部主要滚动容器（.滚动区）scrollWidth
+ *  不得大于 clientWidth（允许 1px 取整误差）。不是全站视觉平台 —— 只检查本轮核心四页。 */
+export async function 断言核心页无横向溢出(page: Page) {
+  const 差们 = await page.evaluate(() => {
+    const 容器们: Element[] = [document.documentElement, ...document.querySelectorAll('.滚动区')];
+    return 容器们
+      .filter((元) => (元 as HTMLElement).clientWidth > 0)
+      .map((元) => (元 as HTMLElement).scrollWidth - (元 as HTMLElement).clientWidth);
+  });
+  expect(差们.length).toBeGreaterThanOrEqual(1);
+  for (const 差 of 差们) expect(差, '横向溢出（document 或 .滚动区）').toBeLessThanOrEqual(1);
+}
+
 /** app 加载前 stub 原生 WebSocket；测试 seam：__emitP7(帧) / __P7断开() / __P7套接字数()。
  *  只替换业务 WebSocket（pathname 前两段 api/v1）：非业务连接透传原生实现，不屏蔽 Vite HMR。 */
 export async function 安装P7事件桩(page: Page): Promise<void> {

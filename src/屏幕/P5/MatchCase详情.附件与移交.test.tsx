@@ -31,7 +31,7 @@ import {
   清空轻提示,
   登记详情组件,
 } from './MatchCase详情.测试辅助';
-import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatchCase详情 } from './MatchCase详情';
 import { 路径 } from '../../路由/路径表';
@@ -59,6 +59,7 @@ describe('MatchCase详情 · P7 移交两步接线', () => {
     vi.useFakeTimers();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已完成移交详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
+    fireEvent.click(screen.getByRole('button', { name: /意向确认/ })); // 展开折叠的 S3 到达移交
     expect(screen.getAllByText('双方已确认，正在创建会话').length).toBeGreaterThan(0);
     const 私聊键 = screen.getByRole('button', { name: '开始私聊' }) as HTMLButtonElement;
     expect(私聊键.disabled).toBe(true);
@@ -78,6 +79,7 @@ describe('MatchCase详情 · P7 移交两步接线', () => {
     const user = userEvent.setup();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已发布移交详情DTO('candidate') }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /意向确认/ })); // 展开折叠的 S3 到达移交
     expect(screen.getByText('真人会话已建立')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '开始私聊' }));
     expect(mock跳转).toHaveBeenCalledWith(路径.真人会话路径('3003'));
@@ -87,6 +89,7 @@ describe('MatchCase详情 · P7 移交两步接线', () => {
     mock跳转.mockClear();
     置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 已发布移交详情DTO('recruiter') }) });
     渲染详情('recruiter', 'mc_hr');
+    await user.click(screen.getByRole('button', { name: /意向确认/ })); // 展开折叠的 S3 到达移交
     await user.click(screen.getByRole('button', { name: '开始私聊' }));
     expect(mock跳转).toHaveBeenCalledWith(路径.企业真人会话路径('3003'));
   });
@@ -162,9 +165,9 @@ describe('MatchCase详情 · 授权原始 PDF（Task 6）', () => {
     mock读取简历PDF.mockResolvedValue(租约);
     置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: S1初筛详情(true, true) }) });
     渲染详情('recruiter', 'mc_hr');
-    // 段内对话非空：本端叮嘱回执与文本时间线都照常展示
+    // 段内对话非空：本端叮嘱回执与流程事件注释（已递交简历）都照常展示
     expect(await screen.findByText('只在工作日 10:00-19:00 联系')).toBeTruthy();
-    expect(screen.getByText('候选人已确认可以到岗')).toBeTruthy();
+    expect(screen.getByText('已递交简历')).toBeTruthy();
     // 入口不被段内对话压掉：仍在、可开、恰好一次租约
     await user.click(screen.getByRole('button', { name: /后端工程师_简历_v2\.pdf/ }));
     expect(mock读取简历PDF).toHaveBeenCalledTimes(1);
@@ -352,6 +355,8 @@ describe('MatchCase详情 · completed 移交只读（Task 7）', () => {
       快照: 详情快照({ detail: 招聘已完成移交DTO() }),
     });
     渲染详情('recruiter', 'mc_done');
+    // 展开折叠的 S3（completed 的 passed 段默认折叠）到达移交行
+    await user.click(screen.getByRole('button', { name: /意向确认/ }));
     // 移交文案与 handoff_pending 步骤说明同词：findAllByText（在场即算，出现两处属正常）
     expect((await screen.findAllByText('双方已确认，正在创建会话')).length).toBeGreaterThan(0);
     const 按钮 = screen.getByRole('button', { name: '开始私聊' }) as HTMLButtonElement;
@@ -365,6 +370,7 @@ describe('MatchCase详情 · completed 移交只读（Task 7）', () => {
     cleanup();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已完成移交详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /意向确认/ })); // 展开折叠的 S3
     expect((await screen.findAllByText('双方已确认，正在创建会话')).length).toBeGreaterThan(0);
     const 候选键 = screen.getByRole('button', { name: '开始私聊' }) as HTMLButtonElement;
     expect(候选键.disabled).toBe(true);
@@ -381,6 +387,7 @@ describe('MatchCase详情 · completed 移交只读（Task 7）', () => {
         快照: 详情快照({ detail: 招聘已完成移交DTO() }),
       });
       渲染详情('recruiter', 'mc_done');
+      await user.click(screen.getByRole('button', { name: /意向确认/ })); // 展开折叠的 S3
       expect((await screen.findAllByText('双方已确认，正在创建会话')).length).toBeGreaterThan(0);
       await user.click(screen.getByRole('button', { name: '开始私聊' }));
 

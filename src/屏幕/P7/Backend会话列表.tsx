@@ -39,12 +39,13 @@ export default function Backend会话列表({ 角色: role }: { 角色: P7角色
 
   // 固定 AI 动态入口行：不构造 P7 会话项（无假 human_handoff、不写快照），只在展示层
   // 组装；时间留空不伪造，未读无标记。点击直接去代理页参数路由，不经过真人会话。
+  // 求职端助手聊天已开放（Spec §7）：摘要改为真实能力说明；招聘端仍未开放，原文案保持。
   const AI入口行: 会话行数据 = {
     键: role === 'candidate' ? 'agent-entry:candidate' : 'agent-entry:recruiter',
     标题: 'AI代理动态',
     副标题: role === 'candidate' ? '你的求职AI代理' : '你的招聘AI代理',
     时间: '',
-    摘要: '聊天暂未开放，可查看代理功能',
+    摘要: role === 'candidate' ? '查看岗位推荐和在谈进展' : '聊天暂未开放，可查看代理功能',
     头像: { 种类: '代理' },
     未读: { 种类: '无' },
     按下: () => 跳转(role === 'candidate' ? 路径.问AI代理 : 路径.企业问AI代理),

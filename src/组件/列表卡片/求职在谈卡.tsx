@@ -36,6 +36,7 @@ export default function 求职在谈卡({
   职位,
   标签,
   阶段,
+  禁用 = false,
   打开,
 }: 求职在谈卡属性) {
   const 标签们 = 有效标签们(标签);
@@ -43,7 +44,9 @@ export default function 求职在谈卡({
   const 公司简介文 = 已知文(公司简介);
   return (
     <div className={样式.根} data-testid="求职在谈卡">
-      <白卡 按下={打开} 类名={样式.卡}>
+      {/* 禁用（助手查询快照的不可查看项目）：白卡不挂 按下 → 退化为不可点容器；
+          默认 false，既有调用方的整卡 button 逐字不变 */}
+      <白卡 按下={禁用 ? undefined : 打开} 类名={样式.卡}>
         {/* 公司头行：字标 + 公司名/简介；右列绝对定位挂卡右上（Mock 同一落点），横排
             分数 + 薪资 —— 未知分说明放在分数容器内部，薪资不被往下推（Spec §4.3） */}
         <div className={样式.公司头行} data-card-region="company">

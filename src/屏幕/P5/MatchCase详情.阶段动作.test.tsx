@@ -157,8 +157,9 @@ describe('MatchCase详情 · Case 叮嘱输入', () => {
   it('终局详情隐藏输入（无任何 mutation 控件；J-PILOT-01 S0 终局占位成对产出）', async () => {
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已终止详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
-    // 结束语与原因码都是 wire 原词（user_ended 出现两处属正常）
-    expect(await screen.findAllByText('user_ended')).toBeTruthy();
+    // 终局段胶囊与原因都是中文字典词（wire 原词不再出现在屏上）
+    expect(await screen.findAllByText('已结束')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('user_ended');
     // S0 终局：原输入框保留但禁用，占位为 Spec §7 其它终局文案（发送键真实禁用）
     const 框 = screen.getByPlaceholderText('本次代谈已结束') as HTMLTextAreaElement;
     expect(框.disabled).toBe(true);
@@ -215,8 +216,11 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
       快照: 详情快照({ detail: 候选详情DTO({ stages: 双问阶段 }) }),
     });
     渲染详情('candidate', 'mc_direct');
-    // 补充问题接入已随 respond_fact 移除：多问不再是整页契约错误
-    expect(await screen.findByText('每周可以到岗几天？')).toBeTruthy();
+    // 补充问题接入已随 respond_fact 移除：多问不再是整页契约错误。
+    // review-r2 F1：supplementary_question 属结构化问答种类 —— 正文只以 screening
+    // records 正式问答显示一次，不再重复为系统注释（第二条遗留问题不显示）
+    expect((await screen.findAllByText('每周可以到岗几天？')).length).toBe(1);
+    expect(screen.queryByText('期望薪资是多少？')).toBeNull();
     expect(screen.queryByText(P5契约错误提示)).toBeNull();
     expect(screen.queryByRole('textbox', { name: '回答问题' })).toBeNull();
     expect(screen.queryByRole('button', { name: '提交回答' })).toBeNull();
@@ -294,6 +298,8 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     mock准备候选委托简历.mockResolvedValue(附件库样本(2));
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
+    // Task 4 起 passed 段默认折叠：权威动作须展开该段到达（可展开访问，不以已通过隐藏）
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ }));
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     // 单选层：多份附件必须当场单选一份（S1 递交口径的文案）
     const 选择框 = await screen.findByRole('dialog');
@@ -325,6 +331,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     mock准备候选委托简历.mockResolvedValue(附件库样本(1));
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ })); // passed 段默认折叠
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     const 披露框 = await screen.findByRole('dialog');
     expect(within(披露框).getByText(/「平台工程师」这一 Case 递交「简历_v1\.pdf」/)).toBeTruthy();
@@ -337,6 +344,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     const user = userEvent.setup();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ })); // passed 段默认折叠
     await user.click(screen.getByRole('button', { name: '婉拒邀请' }));
     const 确认框 = screen.getByRole('dialog');
     expect(within(确认框).getByText(/不会向该招聘方披露你的简历/)).toBeTruthy();
@@ -351,6 +359,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     mock准备候选委托简历.mockResolvedValue(附件库样本(0));
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ })); // passed 段默认折叠
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.我的简历));
     expect(screen.getByText('请先上传一份 PDF 简历')).toBeTruthy();
@@ -362,6 +371,7 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
     mock跳转.mockClear();
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: S0邀请详情() }) });
     渲染详情('candidate', 'mc_direct');
+    await user.click(screen.getByRole('button', { name: /匿名初筛/ })); // passed 段默认折叠
     await user.click(screen.getByRole('button', { name: '接受邀请' }));
     await waitFor(() => expect(mock准备候选委托简历).toHaveBeenCalledTimes(1));
     expect(mock跳转).not.toHaveBeenCalled();
@@ -435,7 +445,8 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
       }),
     });
     渲染详情('candidate', 'mc_direct');
-    expect(await screen.findByText('待处理')).toBeTruthy();
+    // 顶部状态条退场：当前段胶囊走 A.2.1 口径（v1 needs_action → 需要你），邀请二卡仍被行白名单挡下
+    expect(await screen.findByText('需要你')).toBeTruthy();
     expect(screen.queryByText('接受简历邀请')).toBeNull(); // S0 needs_user 行白名单不含邀请二卡
     expect(screen.queryByRole('button', { name: '接受邀请' })).toBeNull();
     expect(screen.queryByRole('button', { name: '婉拒邀请' })).toBeNull();
@@ -613,6 +624,8 @@ describe('MatchCase详情 · S2/S3 动作（Task 6）', () => {
     mock决定S3.mockClear(); // 两条腿分开计数
     置详情状态({ role: 'candidate', 快照: 详情快照({ detail: 已完成移交详情DTO() }) });
     渲染详情('candidate', 'mc_direct');
+    // Task 4 起 completed 的 S3（passed）默认折叠：展开意向确认段到达移交行
+    await user.click(screen.getByRole('button', { name: /意向确认/ }));
     // 移交文案在场（移交行 + handoff_pending 步骤说明同词，出现即算）
     expect(screen.getAllByText('双方已确认，正在创建会话').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: '确认意向' })).toBeNull();

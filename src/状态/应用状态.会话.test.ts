@@ -1314,3 +1314,110 @@ describe('应用状态提供者 review-r3 会话边界收口', () => {
     expect(当前.状态.当前Tab).toBe('职位');
   });
 });
+
+// ── 求职端助手会话访问 seam（Task 4 / 合同 C）：身份门控 + 统一 401 清理 + 代际失效 ──
+//（原 src/状态/应用状态.test.ts 的同名 describe 按 Task 4 冻结归属迁入会话边界。）
+
+describe('应用状态提供者 助手会话访问', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+    假WebSocket.构造记录 = [];
+    vi.stubGlobal('WebSocket', 假WebSocket);
+  });
+
+  it('candidate 登录后提供助手会话访问：范围键含环境/主体/角色/真实代际，方法透传', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    const seam = 当前.助手会话;
+    expect(seam).not.toBe(null);
+    // mount 恢复把会话代际从 0 递增到 1：范围键快照的是真实代际，不是固定串
+    expect(seam!.范围键).toBe(`stg|${BFF主体样本.subject_id}|candidate|1`);
+    await seam!.api.读取助手历史();
+    expect(后端.读取助手历史).toHaveBeenCalledTimes(1);
+  });
+
+  it('Mock / 未登录 / recruiter 一律不提供助手会话访问', async () => {
+    // Mock（默认数据源）
+    let Mock当前!: ReturnType<typeof use应用状态>;
+    function Mock探针() { Mock当前 = use应用状态(); return null; }
+    render(createElement(应用状态提供者, null, createElement(Mock探针)));
+    expect(Mock当前.助手会话).toBe(null);
+
+    // 未登录：恢复会话 401
+    let 未登录当前!: ReturnType<typeof use应用状态>;
+    function 未登录探针() { 未登录当前 = use应用状态(); return null; }
+    const 未登录后端 = 创建后端桩('candidate');
+    vi.mocked(未登录后端.恢复会话).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 未登录后端 as unknown as HTTP招聘数据源 } }, createElement(未登录探针)));
+    await waitFor(() => expect(未登录当前.后端状态.初始化).toBe('完成'));
+    expect(未登录当前.助手会话).toBe(null);
+
+    // recruiter 角色
+    let 招聘当前!: ReturnType<typeof use应用状态>;
+    function 招聘探针() { 招聘当前 = use应用状态(); return null; }
+    const 招聘后端 = 创建后端桩('recruiter');
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 招聘后端 as unknown as HTTP招聘数据源 } }, createElement(招聘探针)));
+    await waitFor(() => expect(招聘当前.后端状态.初始化).toBe('完成'));
+    expect(招聘当前.助手会话).toBe(null);
+  });
+
+  it('助手请求当前 401 走统一清账号状态，seam 随会话清理失效为 null', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    vi.mocked(后端.读取助手历史).mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.后端状态.已登录).toBe(true);
+    await expect(当前.助手会话!.api.读取助手历史()).rejects.toMatchObject({ status: 401 });
+    // 清账号状态全套：登出 + 主体清空 + 目录缓存清空 + 支持域快照清空（不只清助手域）
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    expect(当前.后端状态.主体).toBe(null);
+    expect(后端.清空目录缓存).toHaveBeenCalled();
+    expect(当前.状态.求职意向表).toEqual([]);
+    expect(当前.状态.岗位列表).toEqual([]);
+    await waitFor(() => expect(当前.助手会话).toBe(null));
+  });
+
+  it('退出登录后助手会话访问失效为 null', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    expect(当前.助手会话).not.toBe(null);
+    await 当前.操作.退出登录();
+    await waitFor(() => expect(当前.后端状态.已登录).toBe(false));
+    await waitFor(() => expect(当前.助手会话).toBe(null));
+  });
+
+  it('同 subject 重新登录换代际：旧 seam 被 fence 拒绝，新 seam 提供新范围键', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    render(createElement(应用状态提供者, { 数据源: { 模式: 'backend', 后端环境: 'stg', 后端: 后端源 } }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    const 旧seam = 当前.助手会话!;
+    expect(旧seam.范围键).toBe(`stg|${BFF主体样本.subject_id}|candidate|1`);
+    // 同 subject 再次完成短信登录：会话代际递增（仅比较字符串 subject 不足以失效）
+    await act(async () => { await 通过测试手机登录(当前); });
+    expect(当前.后端状态.已登录).toBe(true);
+    await waitFor(() => expect(当前.助手会话?.范围键).toBe(`stg|${BFF主体样本.subject_id}|candidate|2`));
+    // 旧 seam 已过时：请求前 fence 直接 AbortError，不再触网
+    const 旧历史调用数 = vi.mocked(后端.读取助手历史).mock.calls.length;
+    await expect(旧seam.api.读取助手历史()).rejects.toMatchObject({ name: 'AbortError' });
+    expect(vi.mocked(后端.读取助手历史).mock.calls.length).toBe(旧历史调用数);
+  });
+});
