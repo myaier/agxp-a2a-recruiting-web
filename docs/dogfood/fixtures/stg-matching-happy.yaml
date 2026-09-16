@@ -1,0 +1,133 @@
+# Dedicated happy-path fixture for Suite `stg-matching`
+# (plan 2026-09-17-baseline-stg-matching Task 3). Structure and field enums
+# follow the backend checkout's
+# apps/recruitment/testdata/stg-ephemeral/case.schema.json (scene
+# `ephemeral-baseline`, schema_version 1); the schema is NOT copied into this
+# repo — always `validate` through the backend CLI from the backend checkout
+# root (direct calls lack the host jsonschema; wrap with
+# `tools/dev-env.sh exec --`).
+#
+# Catalog display names (清华大学 / 计算机科学与技术 / 测试工程师 / 北京市 /
+# 软件与信息技术服务业) resolve against the LIVE catalogs at run time: run
+# the online `validate` first — a missing or ambiguous dictionary entry is an
+# honest BLOCKED, never substituted.
+#
+# Both roles complete onboarding and set their role preference. The two
+# organization refs are shape-only placeholders: the run substitutes its own
+# directory organization id on both sides before the create. The experience
+# carries no employer name for the same reason, and the resume PDF
+# (docs/dogfood/fixtures/stg-matching-resume.pdf) omits the employer column
+# instead of inventing one that could contradict the run organization.
+#
+# All amounts / year-months / skills are identical across summary,
+# experience, job description, job requirements and the resume PDF.
+# Synthetic data only: no phone, email, or real identification. This fixture
+# states facts; it never instructs any model that it "must match".
+#
+# Two 2026-09-17 controller rulings, applied after live-validate evidence:
+# - industry: the plan's frozen "软件与信息技术服务业" came from the schema
+#   example and is absent from the LIVE catalog (a custom six-root tree); the
+#   controller re-froze the experience industry to the live selectable leaf
+#   "开发者工具" (企业服务 / SaaS > 开发者工具, tax_sclwtqpzwuv2qmiyz2dcjjr74q).
+# - projects: the deployed validator rejects experience-embedded projects
+#   (must_be_omitted) even though case.schema.json defines the key, so the
+#   project's facts travel as description text below; see docs/dogfood/
+#   stg-matching.md §2/§11 for the recorded backend inconsistency.
+schema_version: 1
+scene: ephemeral-baseline
+candidate:
+  complete_onboarding: true
+  set_role_preference: true
+  profile:
+    real_name: "林知行"
+    status: employed
+    work_start_year: 2020
+    current_education: null
+    graduation_year: null
+    gender: null
+    birth_year: null
+    birth_month: null
+    portfolio_url: null
+  summary: "测试工程师，2020 年参加工作，持续负责 Python/pytest 自动化、HTTP API 测试与 SQL 数据校验；期望北京市混合办公的测试工程师岗位，可在两周内到岗。"
+  skills:
+    - "软件测试"
+    - "Python"
+    - "pytest"
+    - "HTTP API 测试"
+    - "SQL"
+  experiences:
+    - industry_display_name: "开发者工具"
+      title: "测试工程师"
+      start_month: "2020-07"
+      end_month: null
+      description: "持续负责 Python/pytest 自动化、HTTP API 测试与 SQL 数据校验；项目「接口自动化回归」担任测试工程师，成果为建立接口回归并验证数据库一致性。"
+      internship: false
+  educations:
+    - institution_display_name: "清华大学"
+      degree: 本科
+      major_display_name: "计算机科学与技术"
+      start_month: "2016-09"
+      end_month: "2020-06"
+  certificates: []
+  intention:
+    recruitment_type: social_full_time
+    job_category_display_name: "测试工程师"
+    primary_location_display_name: "北京市"
+    alternate_location_display_names: []
+    industry_display_names: []
+    workplace_modes:
+      - hybrid
+    compensation:
+      mode: range
+      lower: 20
+      upper: 25
+      annual_salary_months: 13
+    graduation_month: null
+    internship_months: null
+    onsite_days_per_week: null
+    exclusions:
+      alternate_weekend_work: excluded
+      outsourcing_only: excluded
+      onsite_only: excluded
+      frequent_travel: excluded
+    private_preferences: ""
+recruiter:
+  complete_onboarding: true
+  set_role_preference: true
+  profile:
+    public_name: "周明远"
+    title: "招聘负责人"
+  organization:
+    legal_name: "AGXP STG Matching Fixture Organization Co., Ltd."
+    display_name: "AGXP STG Matching Fixture Organization"
+    brand_name: "云极测试"
+    domains: []
+  job:
+    publisher_mode: direct
+    publisher_organization_ref: "organization-placeholder"
+    hiring_organization_ref: "organization-placeholder"
+    title: "测试工程师（接口自动化）"
+    recruitment_type: social_full_time
+    category_display_name: "测试工程师"
+    location_display_name: "北京市"
+    office_location: "北京市海淀区中关村软件园（合成测试地址）"
+    workplace_mode: hybrid
+    salary:
+      lower: 20
+      upper: 25
+    annual_salary_months: 13
+    experience_requirement: five_plus_years
+    education_requirement: bachelor
+    hard_requirements:
+      alternate_weekend_work: not_required
+      outsourcing_only: not_required
+      onsite_only: not_required
+      frequent_travel: not_required
+    description: "负责服务端 HTTP API 的功能与自动化测试：基于 Python 与 pytest 编写并维护接口自动化回归，通过 SQL 完成数据库数据校验。社招全职直招，混合办公（非纯现场），双休，非外包属性岗位，无需频繁出差；月薪 20-25K、13 薪；期望候选人可在两周内到岗。"
+    requirements: "本科及以上学历；五年以上软件测试经验；熟练使用 Python 与 pytest 编写自动化测试；熟悉 HTTP API 测试与 SQL 数据校验。"
+    structured_requirements_confirmed: true
+    keywords:
+      - "Python"
+      - "pytest"
+      - "HTTP API"
+      - "SQL"
