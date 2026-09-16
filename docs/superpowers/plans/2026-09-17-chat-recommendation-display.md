@@ -67,7 +67,7 @@ export function 取姓名首字(name: string | null): string; // Array.from(trim
 
 ### B. 企业屏蔽表单
 
-待提交意图只保存在页面草稿 Map<organization_id, boolean>，不是持久的第二份屏蔽状态。同企业各入口共用权威状态加本地待保存意图。开关“完成”只修改草稿，外层“保存”才写现有 API；没有有效企业或必填不完整，先阻止整份保存，零写请求。
+待提交意图只保存在页面草稿 Map<organization_id, boolean>，不是持久的第二份屏蔽状态。同企业各入口共用权威状态加本地待保存意图。现有经历折叠卡“已对该公司隐身”徽标也按有效企业屏蔽派生，不再读hidden；尚未提交的开关意图单独标“待保存”，不能用“已”字样冒充服务端生效。开关“完成”只修改草稿，外层“保存”才写现有 API；没有有效企业或必填不完整，先阻止整份保存，零写请求。
 
 保存先校验并确认所有 derived 来源解除，再按用户明确意图顺序调用现有 `添加组织屏蔽(id,'手动添加')` / `解除组织屏蔽(屏蔽项)`，每个成功后从待提交集合移除并权威回读，然后现有 `保存简历`。失败保留未成功意图和简历草稿，提示未保存，不自动回滚已成功变更、不宣称全部成功；重试核对当前权威状态再跳过已达成项。409不盲重放。修改/删除经历不推导 unblock；取消未提交草稿零写。
 
@@ -96,7 +96,7 @@ positive 用勾；some_skills 明确“有技能命中”；partial 标部分匹
 1. 防止失败：资料越权/过期缓存、重复补读/并发无限、隐私意图丢失/部分成功假报、hidden旧值误覆盖、缺原因误判不匹配、坏图/纸身误走PDF。
 2. 最小开发反馈：各 Task 精确命令；不默认全仓 npm test。
 3. 真实边界：无需 PG/后端执行。浏览器用显式离线 BFF routes，不为方便放宽兜底；状态组合放在低层，浏览器不重复全部矩阵。
-4. 最终权威验收：聚合 Task 1–5 的受影响 Vitest 文件（去重）+typecheck/build+Task6浏览器与视觉；按完整实际 diff检查关联消费者，新增变化才补缺口。清单用 test:list 更新并check。未做真实E2E不能声称全栈通过。
+4. 最终权威验收：聚合 Task 1–6 的受影响 Vitest 文件（去重）+typecheck/build+Task6浏览器与视觉；按完整实际 diff检查关联消费者，新增变化才补缺口。清单用 test:list 更新并check。未做真实E2E不能声称全栈通过。
 5. 证据/成本：规划阶段无产品测试；实际耗时未知，沿既有fixture和受控Promise验证，不加sleep/外部服务。L3 selection=`conditional`：仅当用户另行指定已部署环境并授权真实浏览器验收，按 `docs/dogfood/真实后端行为验收.md` 已有活动范围选择；本Plan不运行STG、不启动用户另一环境、不部署后端。本轮默认无正式L3执行，明确保留真实接口授权验证缺口。
 
 替换旧断言的责任：固定“会”/alias→已授权姓名及缺值/失权；26px→32px；原件lease→在线纸身零PDF请求；新增hidden=true→新false/旧值保留；空匹配区+推荐依据→唯一有限六维展示。分页、未读、历史消息、现有Case附件路径的独立责任保留。
@@ -126,10 +126,10 @@ positive 用勾；some_skills 明确“有技能命中”；partial 标部分匹
 
 **非目标：** 不改变批准Spec，不添加后端工作、迁移兼容或新wire字段。
 
-- [ ] Step 1: 为新手填/PDF经历false、旧true无关保存仍true、同组织同步、取消零写、保存部分成功后重试写用例。通过已有操作入口测试，而不是复制屏蔽规则。
+- [ ] Step 1: 为新手填/PDF经历false、旧true无关保存仍true、同组织同步、取消零写、保存部分成功后重试写用例；包含旧hidden=true但无有效屏蔽不显示已隐身徽标、新屏蔽成功后显示、未提交只显示待保存。通过已有操作入口测试，而不是复制屏蔽规则。
 - [ ] Step 2: 将经历编辑底部开关绑定有效企业屏蔽与待提交意图；先读取权威隐私，读取未成功不能把空快照视为无屏蔽。Map按组织去重，编辑完成回上层保留意图，取消仅丢弃尚未提交意图。
 - [ ] Step 3: 外层保存按契约B校验→确认→顺序隐私操作→简历保存；每项成功才移除意图。复用既有revision/幂等/网络结果核对，不因void锁让路假报成功；保存按钮锁覆盖整个保存链。derived关闭保留现有确认，inactive derived按契约B提示而非覆盖来源。
-- [ ] Step 4: 新建和新PDF预填默认隐藏false，旧条目保持源字段；换公司/删经历不推导解除。Mock走同一可观察规则和已有隐私reducer。
+- [ ] Step 4: 新建和新PDF预填默认隐藏false，旧条目保持源字段；将既有折叠卡隐身徽标从隐藏字段改为有效企业屏蔽/待保存状态，换公司/删经历不推导解除。Mock走同一可观察规则和已有隐私reducer。
 - [ ] Step 5: 按下列定向命令先验证新增反例失败、实现后通过；与本改动无关的失败如实记录并定位，不删除独立断言掩盖问题。
 
 ```bash
@@ -328,6 +328,7 @@ npm run typecheck
 - 修改：`e2e/suites/隐私与实名.spec.ts`
 - 修改：`e2e/suites/简历与附件.spec.ts`
 - 修改：`e2e/视觉回归/场景.ts`
+- 修改：`e2e/视觉回归/场景.test.ts`
 - 修改：`docs/testing/cases.md`
 - 删除：无整文件删除。
 
@@ -337,12 +338,13 @@ npm run typecheck
 
 - [ ] Step 1: 在既有域fixture添加Case identity/frozen job/现有岗位与公开企业响应和头像成功/失败样本；新建经历接收hidden=false，已有true保持，拒绝API形状被悄悄改变。
 - [ ] Step 2: 以“聊天推荐前端修复”为用例前缀添加双端列表/页头/搜索、补读失败、两侧32px/坏图首字、纸身零PDF、屏蔽跨页及部分保存失败、唯一六维有限展示。场景按独立失败拆分，不造全功能超级用例。
-- [ ] Step 3: 在视觉场景表追加前缀chat-recommend-frontend的两端列表/聊天/招聘纸身场景，复用原采集runner；截图检查长公司岗位截断、窄屏、气泡对齐、图与首字同尺寸。
+- [ ] Step 3: 在视觉场景表追加前缀chat-recommend-frontend的两端列表/聊天/招聘纸身场景，复用原采集runner；同步场景.test.ts的精确ID清单及数量断言，保留唯一性校验；截图检查长公司岗位截断、窄屏、气泡对齐、图与首字同尺寸。
 - [ ] Step 4: 更新测试清单并校验；本Task是实际浏览器接线交付，不包含异构review/final gate。
 - [ ] Step 5: 按下列定向命令先验证新增反例失败、实现后通过；与本改动无关的失败如实记录并定位，不删除独立断言掩盖问题。
 
 ```bash
 npm run test:e2e -- e2e/suites/真人消息.spec.ts e2e/suites/发现推荐.spec.ts e2e/suites/隐私与实名.spec.ts e2e/suites/简历与附件.spec.ts --project=fixture --grep 聊天推荐前端修复
+npm test -- e2e/视觉回归/场景.test.ts
 npm run ui:capture -- --grep chat-recommend-frontend
 npm run test:list -- --write
 npm run test:list -- --check
@@ -358,14 +360,23 @@ npm run build
 ## 实施后收尾（不计入 Task count）
 
 1. 全部Task及执行skill要求的宿主内全局review完成后退出Task循环。同一实施者调用异构review-loop：Codex→Claude，Claude Code→Codex，冻结批准Spec及前端候选diff；reviewer不跑测试，轮间仅修复相关轻量验证。不得回到Task/global review或追加finishing默认流程。
-2. 完整diff核对受影响前端测试：本Plan定向Vitest去重集合＋新增实际消费者、typecheck/build、Task6浏览器/视觉、清单。没有tools/test affected；不能执行后端命令。复用仍有效结果，仅补缺口，关联失败修好后再展示final gate。
+2. 完整diff核对受影响前端测试：本Plan全部Task定向Vitest去重集合（含Task6场景.test.ts）＋新增实际消费者、typecheck/build、Task6浏览器/视觉、清单。没有tools/test affected；不能执行后端命令。复用仍有效结果，仅补缺口，关联失败修好后再展示final gate。
 3. 读取development-workflow的 references/final-integration.md 与 assets/final-integration-contract.md。确认前只读fetch，不合target、不正式L3、不push；展示前端candidate commit、target观察SHA、测试选择/证据、缺口、拟执行动作，等用户明确批准。
 4. 确认后在原工作区同步前端target，记录final_target_base、重算完整责任，复用有效PASS仅补缺口；仅执行明确获批且前置成立的前端真实验收，cleanup后再对账；核对target未推进后普通fast-forward push，不force push。后端repo始终不操作。
 5. 报告真实证据和未验证边界。部署/清库/后端联调不因Plan批准而自动授权。不生成独立handoff/review报告。
 
 ## 文档审查记录
 
-当前仅为纯前端候选，尚未完成本修订的Claude文档review。审查只包含本Plan和Spec Revision2；原跨仓库两轮结果无效。规划未运行产品测试。
+模式 WORKFLOW_DOCUMENT_REVIEW；scope仅本Plan与Spec Revision2，批准revision/blob见header；原跨仓库review不适用。
+
+Round 1：Claude Opus/high/plan，session `b978bd42-d87a-4e7d-86d3-1a5c8a9f7714`，候选 `3ae9899c`；工作树/HEAD/指纹guard通过，未跑测试、未改文件。
+
+|Finding|必要性/复杂度|裁决|
+|---|---|---|
+|R1-1 经历折叠卡隐身徽标仍消费hidden|required/不变|核实工作经历.tsx现有条件，接受；契约B/Task1明确按真实有效屏蔽显示，未提交意图单列待保存，旧hidden不得冒充已隐身|
+|R1-2 新增视觉场景遗漏场景清单单测|required/不变|核实场景.test.ts精确18个ID断言，接受；Task6补文件/断言更新/定向命令，最终集合包含该单测|
+
+修订不改变批准Spec；待复审核验，无产品测试PASS声明。
 
 ## 实施记录
 
