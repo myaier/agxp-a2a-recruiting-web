@@ -10381,6 +10381,38 @@ test.describe('S0-S3 展示统一 @s0-s3-display', () => {
       // Mock 全程零 /api 请求（X2）：登录、历史、往来记录、详情与切身份整段旅程
       expect(api请求).toEqual([]);
     });
+
+    test('独立匿名简历 Mock 默认行为保持：空项目整区不出、无缺失占位、非空照旧 @mock @s0-s3-display', async ({ page }) => {
+      // Mock 招聘端登录（与既有 @mock 双端旅程同口径）
+      await page.goto('/');
+      await page.getByText(/已阅读并同意/).click();
+      await page.getByRole('button', { name: '微信登录' }).click();
+      await expect(page).toHaveURL(/#\/identity$/);
+      await page.getByRole('button', { name: '我要找工作' }).click();
+      await expect(page).toHaveURL(/#\/student$/);
+      await page.goto('/#/identity?switch=1&from=app');
+      await page.getByRole('button', { name: '翻到「招聘方」那一面' }).click();
+      await expect(page).toHaveURL(/#\/hr$/, { timeout: 15_000 });
+
+      // A-02 档项目为空：独立页默认（不传 完整布局）→ 空项目整区不出，也不出缺失占位
+      await page.goto('/#/hr/resume/A-02');
+      await expect(page.getByText('工作经历').first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('恒生电子').first()).toBeVisible(); // 非空经历照旧上屏
+      await expect(page.getByText('项目经历')).toHaveCount(0);
+      await expect(page.getByText('暂无项目经历')).toHaveCount(0);
+      await expect(page.getByText('项目经历缺失')).toHaveCount(0);
+      await expect(page.getByText('匹配分析缺失')).toHaveCount(0); // 缺区保留标题 = false：匹配区不摆缺失说明
+      await expect(page.getByRole('button', { name: '让AI代理去谈' })).toBeVisible(); // 页面默认控件原样
+      await 断言核心页无横向溢出(page);
+
+      // A-01 档项目非空：同一默认版式下整区照旧渲染（默认行为未被详情统一改动）
+      await page.goto('/#/hr/resume/A-01');
+      await expect(page.getByText('项目经历').first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('交易中台 0→1 重建 · 主导')).toBeVisible();
+      await expect(page.getByText('项目经历缺失')).toHaveCount(0);
+      await 断言核心页无横向溢出(page);
+      await page.screenshot({ path: 'test-results/S0S3展示统一/mock-独立匿名简历-390.png', fullPage: true });
+    });
   });
 
   // ── Backend 端（backend/stg 4182）：P5 HTTP fixture 双角色 ────────────────────
@@ -10845,6 +10877,28 @@ test.describe('S0-S3 展示统一 @s0-s3-display', () => {
       await 断言核心页无横向溢出(page);
       await page.screenshot({ path: 'test-results/S0S3展示统一/bk-preCase-失败retry-320.png', fullPage: true });
       await page.setViewportSize({ width: 390, height: 844 });
+    });
+
+    test('独立匿名简历 Backend canonical 深链：安全简历缺区保留标题、匹配分析缺失在位、遮蔽公司不披露 @backend @s0-s3-display', async ({ page }) => {
+      await 装P4招聘(page);
+      // P4 独立匿名简历只吃 canonical 双坐标深链（旧 /hr/resume/:id 在 Backend 已是失效页）
+      await page.goto(`/#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4编号.recruiterRecommendation}`);
+      await expect(page.getByText('个人优势').first()).toBeVisible({ timeout: 20_000 });
+
+      // Task 6 已裁决的合规变化（S0–S3 展示统一）：该分支显式 完整布局 → 匹配区
+      // 标题与「匹配分析缺失」保留，不整区消失（R1）；安全来源无匹配证据不伪造分数
+      await expect(page.getByText('匹配度分析')).toBeVisible();
+      await expect(page.getByText('匹配分析缺失')).toBeVisible();
+      // 非空安全简历照旧：项目整区在（后端有项目即出）、遮蔽公司给「未披露」
+      await expect(page.getByText('项目经历')).toBeVisible();
+      await expect(page.getByText('P4 Fixture 项目')).toBeVisible();
+      await expect(page.getByText('未披露')).toBeVisible();
+      await expect(page.getByText('P4 fixture 自我描述')).toBeVisible();
+      // 页面默认控件：P4 底栏委托键与匿名尾注（无直聊）原样
+      await expect(page.getByRole('button', { name: '让AI代理去谈' })).toBeVisible();
+      await expect(page.getByText('由AI代理匿名接触 · 意向确认前双方保持匿名 · 不可转发')).toBeVisible();
+      await 断言核心页无横向溢出(page);
+      await page.screenshot({ path: 'test-results/S0S3展示统一/bk-独立匿名简历-390.png', fullPage: true });
     });
   });
 });
