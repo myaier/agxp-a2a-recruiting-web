@@ -5,6 +5,7 @@
 
 import { P6标记 } from './Agent规则';
 import { P4编号, type P4摘要形 } from './发现推荐';
+import { 信封, type 路由上下文形 } from './协议';
 
 // ── P5 MatchCase 域样本与工厂 ──
 
@@ -708,4 +709,588 @@ export function 创建P5MatchCasefixture(): P5MatchCasefixture形 {
     连续记录,
     连续读取: [],
   };
+}
+
+
+// ── 路由 handler（C2 阶段二迁入）──
+
+export async function 处理MatchCase域(
+  P5域: P5MatchCasefixture形 | null,
+  上下文: 路由上下文形,
+): Promise<boolean> {
+  if (P5域 === null) return false;
+  const { route, 请求, url, path, method, body } = 上下文;
+
+  // ── P5 MatchCase 域（Task 8：可变 fixture 在场才应答；缺席走兜底空信封 → strict
+  //    decode 拒绝，正是「Mock 内容不顶替 HTTP」的既有边界）。路由匹配顺序：列表 →
+  //    历史 → PDF 内容 → 各命令 → 详情（详情的 [^/]+ 不吞子路径，history 先挡）。
+  //    每个 Case JSON 应答带 no-store、PDF 带 private, no-store，应答头逐笔存证；
+  //    变更回执原样存 变更请求；同键重放回 200、决过再发新键答 409。──
+  const P5答复 = async (路径: string, 状态: number, json: unknown, 头: Record<string, string> = {}) => {
+    const 合并 = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...头 };
+    P5域.应答头存证.push({ path: 路径, cacheControl: 合并['Cache-Control']! });
+    await route.fulfill({ status: 状态, json, headers: 合并 });
+  };
+  const P5记变更 = (路径: string) => {
+    P5域.变更请求.push({
+      method, path: 路径, body,
+      idempotencyKey: 请求.headers()['idempotency-key'] ?? null,
+    });
+  };
+  const P5取Case = (编号: string): P5Case记录形 | undefined => P5域.cases[编号];
+  const P5键 = () => 请求.headers()['idempotency-key'] ?? '';
+  // 已生效键登记：路由键 → 首把生效的 Idempotency-Key（同键 200 重放 / 新键 409）
+  const P5生效键 = new Map<string, string>();
+  // J-PILOT-01 连续臂：retry 的同键重放登记（路由键 → 键 + 已受理回执，202 同回执重放）
+  const P5连续重放 = new Map<string, { 键: string; 回执: { record_id: string; retry_generation: number } }>();
+  const P5重放检查 = async (路由键: string, 路径: string, c: P5Case记录形): Promise<boolean> => {
+    const 键 = P5键();
+    const 生效键 = P5生效键.get(路由键);
+    if (生效键 === 键 && 键 !== '') {
+      await P5答复(路径, 200, 信封(P5状态wire(c)));
+      return true;
+    }
+    return false;
+  };
+  const P5冲突 = async (路径: string, 类型: string, 文案: string) =>
+    P5答复(路径, 409, { error: { type: 类型, message: 文案 } });
+  const P5终局化 = (c: P5Case记录形, 结果词: string) => {
+    c.lifecycle = 'ended';
+    c.status = 'ended';
+    c.step = 'complete';
+    c.outcome = 结果词;
+    c.outcomeCode = 结果词;
+    c.finalizedAt = '2026-08-29T04:00:00Z';
+    c.updatedAt = c.finalizedAt;
+    c.终局 = { stage: c.stage, outcome: 结果词, reason_summary: 结果词, finalized_at: c.finalizedAt };
+    c.候选 = { needsAction: false, actions: [] };
+    c.招聘 = { needsAction: false, actions: [] };
+    c.协同 = undefined;
+  };
+
+  // open 工作区列表：两页翻页（首页 1 条 + cursor）；查询 at-most-once 违例答公开 400
+  const P5列表路径 = path === '/api/v1/me/match-cases' || path === '/api/v1/recruiter/match-cases';
+  if (P5列表路径 && method === 'GET') {
+    for (const 参数键 of new Set(url.searchParams.keys())) {
+      if (url.searchParams.getAll(参数键).length > 1) {
+        await P5答复(path, 400, { error: { type: 'invalid_request', message: '重复查询参数' } });
+        return true;
+      }
+    }
+    const 限 = Number(url.searchParams.get('limit') ?? '50');
+    if (!Number.isInteger(限) || 限 < 1 || 限 > 50) {
+      await P5答复(path, 400, { error: { type: 'invalid_request', message: 'limit 越界' } });
+      return true;
+    }
+    const 游标 = url.searchParams.get('cursor');
+    if (游标 !== null && !/^[A-Za-z0-9_-]+$/.test(游标)) {
+      await P5答复(path, 400, { error: { type: 'invalid_request', message: 'cursor 非法' } });
+      return true;
+    }
+    const 角色: P5角色词 = path.startsWith('/api/v1/me/') ? 'candidate' : 'recruiter';
+    let 序列 = (角色 === 'candidate' ? P5域.候选open顺序 : P5域.招聘open顺序)
+      .map((编号) => P5域.cases[编号]!)
+      .filter((c) => c.lifecycle === 'open');
+    if (角色 === 'candidate' && P5域.分支.坏行进列表) {
+      序列 = [P5域.cases[P5编号.坏行]!, ...序列]; // 毒行进首页：整页 decode 拒绝
+    }
+    const 页 = 游标 === null
+      ? { items: 序列.slice(0, 1), next_cursor: 序列.length > 1 ? 'p5pg2' : null }
+      : { items: 序列.slice(1), next_cursor: null };
+    await P5答复(path, 200, 信封({
+      items: 页.items.map((c) => P5列表项wire(c, 角色)),
+      next_cursor: 页.next_cursor,
+    }));
+    return true;
+  }
+
+  // 历史架子：lifecycle 查询词只认两个终态词，行只装对应终态
+  const P5历史路径 = path === '/api/v1/me/match-cases/history' || path === '/api/v1/recruiter/match-cases/history';
+  if (P5历史路径 && method === 'GET') {
+    const 架子词 = url.searchParams.get('lifecycle');
+    if (架子词 !== 'ended' && 架子词 !== 'completed') {
+      await P5答复(path, 400, { error: { type: 'invalid_request', message: 'lifecycle 只认 ended/completed' } });
+      return true;
+    }
+    const 角色: P5角色词 = path.startsWith('/api/v1/me/') ? 'candidate' : 'recruiter';
+    const items = P5域.历史顺序[架子词]
+      .map((编号) => P5域.cases[编号]!)
+      .filter((c) => c.lifecycle === 架子词);
+    await P5答复(path, 200, 信封({ items: items.map((c) => P5列表项wire(c, 角色)), next_cursor: null }));
+    return true;
+  }
+
+  // 披露后的原始简历 PDF：只认 Case 专属 role 路径；未披露答 409 resume_submission_not_allowed
+  const P5内容 = /^\/api\/v1\/(me|recruiter)\/match-cases\/([^/]+)\/resume-submission\/content$/.exec(path);
+  if (P5内容 && method === 'GET') {
+    const 角色: P5角色词 = P5内容[1] === 'me' ? 'candidate' : 'recruiter';
+    const c = P5取Case(decodeURIComponent(P5内容[2]!));
+    if (!c || !c.已披露) {
+      await P5答复(path, 409, { error: { type: 'resume_submission_not_allowed', message: '简历尚未披露' } });
+      return true;
+    }
+    P5域.PDF读取.push(`${角色}:${c.caseId}`);
+    P5域.应答头存证.push({ path, cacheControl: 'private, no-store' });
+    await route.fulfill({
+      status: 200,
+      body: Buffer.from('%PDF-1.7\nP5 fixture raw resume\n'),
+      contentType: 'application/pdf',
+      headers: {
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': `attachment; filename="${P5标记.简历名}"`,
+      },
+    });
+    return true;
+  }
+
+  // S0 补充事实：body 只认 {prompt_id, response}，prompt_id 必须是 transcript 的 ref
+  const P5事实 = /^\/api\/v1\/(me|recruiter)\/match-cases\/([^/]+)\/fact-responses$/.exec(path);
+  if (P5事实 && method === 'POST') {
+    P5记变更(path);
+    const c = P5取Case(decodeURIComponent(P5事实[2]!));
+    if (!c) {
+      await P5答复(path, 404, { error: { type: 'case_not_found', message: 'Case 不存在' } });
+      return true;
+    }
+    if (JSON.stringify(body) !== JSON.stringify({ prompt_id: P5编号.问题, response: P5标记.回答 })) {
+      await P5答复(path, 400, { error: { type: 'invalid_request_body', message: 'fact-responses body 不合契约' } });
+      return true;
+    }
+    const 路由键 = `${method} ${path}`;
+    if (await P5重放检查(路由键, path, c)) return true;
+    if (P5生效键.has(路由键)) {
+      await P5冲突(path, 'fact_response_not_allowed', '该问题已回答');
+      return true;
+    }
+    if (P5域.分支.事实首答503 && (P5域.已503.get(c.caseId) ?? 0) < 2) {
+      P5域.已503.set(c.caseId, (P5域.已503.get(c.caseId) ?? 0) + 1);
+      P5域.应答头存证.push({ path, cacheControl: 'no-store' });
+      await route.fulfill({
+        status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '0' },
+        json: { error: { type: 'operation_outcome_unknown', message: '结果未知' } },
+      });
+      return true;
+    }
+    P5生效键.set(路由键, P5键());
+    // 事实已答 → 复评等待行；候选端待办与 respond_fact/end_screening 卡一并撤下
+    c.status = 'waiting';
+    c.step = 'candidate_reevaluation';
+    c.updatedAt = '2026-08-29T03:00:00Z';
+    c.候选 = { needsAction: false, actions: [] };
+    await P5答复(path, 201, 信封(P5状态wire(c)));
+    return true;
+  }
+
+  // S1 简历递交：字面披露 true + 精确 file/version 对；pending/failed 挡披露（409），
+  // failed 首答后解析转 succeeded —— 同键重放同一对即披露（backend J4 语义）
+  const P5递交 = /^\/api\/v1\/me\/match-cases\/([^/]+)\/resume-submission$/.exec(path);
+  if (P5递交 && method === 'POST') {
+    P5记变更(path);
+    const c = P5取Case(decodeURIComponent(P5递交[1]!));
+    if (!c) {
+      await P5答复(path, 404, { error: { type: 'case_not_found', message: 'Case 不存在' } });
+      return true;
+    }
+    const 递交 = body as { file_id?: string; file_version_id?: string; disclosure_confirmed?: boolean };
+    if (递交.file_id !== P5编号.文件 || 递交.file_version_id !== P5编号.文件版本 || 递交.disclosure_confirmed !== true) {
+      await P5答复(path, 400, { error: { type: 'invalid_request_body', message: 'resume-submission body 不合契约' } });
+      return true;
+    }
+    const 路由键 = `${method} ${path}`;
+    if (await P5重放检查(路由键, path, c)) return true;
+    if (P5生效键.has(路由键)) {
+      await P5冲突(path, 'resume_submission_conflict', '本 Case 已递交');
+      return true;
+    }
+    if (c.解析 === 'pending') {
+      await P5冲突(path, 'resume_readiness_not_started', '简历解析尚未完成');
+      return true;
+    }
+    if (c.解析 === 'failed') {
+      c.解析 = 'succeeded'; // 解析随后恢复：同键重放同一对即可披露
+      await P5冲突(path, 'resume_readiness_failed', '简历解析未通过，请重试');
+      return true;
+    }
+    P5生效键.set(路由键, P5键());
+    c.已披露 = true;
+    c.stage = 'resume_submission';
+    c.status = 'needs_user';
+    c.step = 'awaiting_recruiter_decision';
+    c.updatedAt = '2026-08-29T03:10:00Z';
+    c.候选 = { needsAction: false, actions: [] };
+    c.招聘 = { needsAction: true, actions: ['decide_resume_screening'] };
+    await P5答复(path, 201, 信封(P5递交结果wire(c)), { ETag: '"2"' });
+    return true;
+  }
+
+  // S0 决定（invitation decline = decisions action:end，backend J2 语义）
+  const P5决定 = /^\/api\/v1\/me\/match-cases\/([^/]+)\/decisions$/.exec(path);
+  if (P5决定 && method === 'POST') {
+    P5记变更(path);
+    const c = P5取Case(decodeURIComponent(P5决定[1]!));
+    if (!c) {
+      await P5答复(path, 404, { error: { type: 'case_not_found', message: 'Case 不存在' } });
+      return true;
+    }
+    const 动作 = (body as { action?: string }).action;
+    if (动作 !== 'continue' && 动作 !== 'end') {
+      await P5答复(path, 400, { error: { type: 'invalid_request_body', message: 'decisions body 不合契约' } });
+      return true;
+    }
+    const 路由键 = `${method} ${path}`;
+    if (await P5重放检查(路由键, path, c)) return true;
+    if (P5生效键.has(路由键)) {
+      await P5冲突(path, 'lifecycle_conflict', '本 Case 已决定');
+      return true;
+    }
+    P5生效键.set(路由键, P5键());
+    if (动作 === 'end') {
+      P5终局化(c, 'user_ended');
+    } else {
+      c.status = 'running';
+      c.step = 'candidate_evaluation';
+      c.updatedAt = '2026-08-29T03:20:00Z';
+      c.候选 = { needsAction: false, actions: [] };
+    }
+    await P5答复(path, 201, 信封(P5状态wire(c)));
+    return true;
+  }
+
+  // S1 简历初筛结论：continue 无遗留分歧直进 S3（backend J5b），not_fit 终结
+  const P5初筛 = /^\/api\/v1\/recruiter\/match-cases\/([^/]+)\/resume-screening-decisions$/.exec(path);
+  if (P5初筛 && method === 'POST') {
+    P5记变更(path);
+    const c = P5取Case(decodeURIComponent(P5初筛[1]!));
+    if (!c) {
+      await P5答复(path, 404, { error: { type: 'case_not_found', message: 'Case 不存在' } });
+      return true;
+    }
+    const 动作 = (body as { action?: string }).action;
+    if (动作 !== 'continue' && 动作 !== 'not_fit') {
+      await P5答复(path, 400, { error: { type: 'invalid_request_body', message: 'screening body 不合契约' } });
+      return true;
+    }
+    const 路由键 = `${method} ${path}`;
+    if (await P5重放检查(路由键, path, c)) return true;
+    if (P5生效键.has(路由键)) {
+      await P5冲突(path, 'resume_screening_decision_not_allowed', '本 Case 已出结论');
+      return true;
+    }
+    P5生效键.set(路由键, P5键());
+    if (动作 === 'not_fit') {
+      P5终局化(c, 'semantic_not_fit');
+    } else {
+      c.stage = 'intent_confirmation';
+      c.status = 'needs_user';
+      c.step = 'awaiting_confirmations';
+      c.updatedAt = '2026-08-29T03:30:00Z';
+      c.意向词 = { candidate: '', recruiter: '' };
+      c.候选 = { needsAction: true, actions: ['confirm_intent', 'decline_intent'] };
+      c.招聘 = { needsAction: true, actions: ['confirm_intent', 'decline_intent'] };
+    }
+    await P5答复(path, 201, 信封(P5状态wire(c)));
+    return true;
+  }
+
+  // S2 协同决定：单角色 accept 留对方卡，双 accept 进 S3；任一 reject 终结（backend J6）
+  const P5协同决定 = /^\/api\/v1\/(me|recruiter)\/match-cases\/([^/]+)\/coordination\/([^/]+)\/decisions$/.exec(path);
+  if (P5协同决定 && method === 'POST') {
+    P5记变更(path);
+    const 角色: P5角色词 = P5协同决定[1] === 'me' ? 'candidate' : 'recruiter';
+    const c = P5取Case(decodeURIComponent(P5协同决定[2]!));
+    if (!c) {
+      await P5答复(path, 404, { error: { type: 'case_not_found', message: 'Case 不存在' } });
+      return true;
+    }
+    const 动作 = (body as { action?: string }).action;
+    if (动作 !== 'accept' && 动作 !== 'reject') {
+      await P5答复(path, 400, { error: { type: 'invalid_request_body', message: 'coordination body 不合契约' } });
+      return true;
+    }
+    if (!c.协同 || c.协同.issue_id !== decodeURIComponent(P5协同决定[3]!) || c.stage !== 'needs_coordination') {
+      await P5冲突(path, 'coordination_decision_not_allowed', '该协同事项不再待决');
+      return true;
+    }
+    const 路由键 = `${method} ${path}`;
+    if (await P5重放检查(路由键, path, c)) return true;
+    if (P5生效键.has(路由键)) {
+      await P5冲突(path, 'coordination_decision_not_allowed', '该协同事项已决定');
+      return true;
+    }
+    P5生效键.set(路由键, P5键());
+    if (动作 === 'reject') {
+      P5终局化(c, 'user_ended');
+    } else {
+      if (角色 === 'candidate') c.协同.candidate_decided = true;
+      else c.协同.recruiter_decided = true;
+      if (c.协同.candidate_decided && c.协同.recruiter_decided) {
+        // 双 accept 才收口进 S3（backend J1：单角色 accept 留下对方卡）
+        c.协同 = undefined;
+        c.stage = 'intent_confirmation';
+        c.status = 'needs_user';
+        c.step = 'awaiting_confirmations';
+        c.updatedAt = '2026-08-29T03:40:00Z';
+        c.意向词 = { candidate: '', recruiter: '' };
+        c.候选 = { needsAction: true, actions: ['confirm_intent', 'decline_intent'] };
+        c.招聘 = { needsAction: true, actions: ['confirm_intent', 'decline_intent'] };
+      } else {
+        c.updatedAt = '2026-08-29T03:35:00Z';
+        c.候选 = 角色 === 'candidate'
+          ? { needsAction: false, actions: [] }
+          : { needsAction: true, actions: ['decide_coordination'] };
+        c.招聘 = 角色 === 'recruiter'
+          ? { needsAction: false, actions: [] }
+          : { needsAction: true, actions: ['decide_coordination'] };
+      }
+    }
+    await P5答复(path, 201, 信封(P5状态wire(c)));
+    return true;
+  }
+
+  // S3 意向决定：第一笔 confirm 留对方卡，第二笔 confirm 才 completed；decline 终结
+  const P5意向决定 = /^\/api\/v1\/(me|recruiter)\/match-cases\/([^/]+)\/intent-decisions$/.exec(path);
+  if (P5意向决定 && method === 'POST') {
+    P5记变更(path);
+    const 角色: P5角色词 = P5意向决定[1] === 'me' ? 'candidate' : 'recruiter';
+    const c = P5取Case(decodeURIComponent(P5意向决定[2]!));
+    if (!c) {
+      await P5答复(path, 404, { error: { type: 'case_not_found', message: 'Case 不存在' } });
+      return true;
+    }
+    const 动作 = (body as { action?: string }).action;
+    if (动作 !== 'confirm' && 动作 !== 'decline') {
+      await P5答复(path, 400, { error: { type: 'invalid_request_body', message: 'intent body 不合契约' } });
+      return true;
+    }
+    const 路由键 = `${method} ${path}`;
+    if (await P5重放检查(路由键, path, c)) return true;
+    if (P5生效键.has(路由键) || c.意向词[角色] !== '') {
+      await P5冲突(path, 'idempotency_conflict', '本端意向已决定');
+      return true;
+    }
+    P5生效键.set(路由键, P5键());
+    if (动作 === 'decline') {
+      c.意向词[角色] = 'decline';
+      P5终局化(c, 'user_ended');
+    } else {
+      c.意向词[角色] = 'confirm';
+      if (c.意向词.candidate === 'confirm' && c.意向词.recruiter === 'confirm') {
+        // 第二笔确认完成 Case：completed + handoff_pending，双方零动作（backend J1）
+        c.lifecycle = 'completed';
+        c.stage = 'intent_confirmation';
+        c.status = 'passed';
+        c.step = 'handoff_pending';
+        c.outcome = null;
+        c.outcomeCode = null;
+        c.finalizedAt = '2026-08-29T05:00:00Z';
+        c.updatedAt = c.finalizedAt;
+        c.终局 = { stage: 'intent_confirmation', outcome: '', reason_summary: '', finalized_at: c.finalizedAt };
+        c.候选 = { needsAction: false, actions: [] };
+        c.招聘 = { needsAction: false, actions: [] };
+        c.协同 = undefined;
+      } else {
+        c.status = 'needs_user';
+        c.step = 角色 === 'candidate' ? 'awaiting_recruiter_confirmation' : 'awaiting_candidate_confirmation';
+        c.updatedAt = '2026-08-29T03:50:00Z';
+        c.候选 = 角色 === 'candidate'
+          ? { needsAction: false, actions: [] }
+          : { needsAction: true, actions: ['confirm_intent', 'decline_intent'] };
+        c.招聘 = 角色 === 'recruiter'
+          ? { needsAction: false, actions: [] }
+          : { needsAction: true, actions: ['confirm_intent', 'decline_intent'] };
+      }
+    }
+    await P5答复(path, 201, 信封(P5状态wire(c)));
+    return true;
+  }
+
+  // Case 叮嘱：回执即刻落当前段（权威重读对账用），202 受理
+  const P5叮嘱 = /^\/api\/v1\/(me|recruiter)\/match-cases\/([^/]+)\/agent-instructions$/.exec(path);
+  if (P5叮嘱 && method === 'POST') {
+    P5记变更(path);
+    const 角色: P5角色词 = P5叮嘱[1] === 'me' ? 'candidate' : 'recruiter';
+    const c = P5取Case(decodeURIComponent(P5叮嘱[2]!));
+    if (!c) {
+      await P5答复(path, 404, { error: { type: 'case_not_found', message: 'Case 不存在' } });
+      return true;
+    }
+    const 文本 = (body as { text?: string }).text;
+    if (typeof 文本 !== 'string' || 文本.length < 1 || 文本.length > 2000) {
+      await P5答复(path, 400, { error: { type: 'invalid_request_body', message: '叮嘱 body 不合契约' } });
+      return true;
+    }
+    P5域.叮嘱序 += 1;
+    const 回执号 = `aci_p5_${P5域.叮嘱序}`;
+    c.阶段区们.find((区) => 区.stage === c.stage)?.instruction_receipts.push({
+      instruction_id: 回执号, owner: 角色, stage: c.stage, expression: 文本, occurred_at: '2026-08-29T03:55:00Z',
+    });
+    await P5答复(path, 202, 信封({ instruction_id: 回执号, text: 文本, state: 'executable', created_at: '2026-08-29T03:55:00Z' }));
+    return true;
+  }
+  if (P5叮嘱 && method === 'GET') {
+    await P5答复(path, 200, 信封({ instructions: [] }));
+    return true;
+  }
+
+  // ── J-PILOT-01（Task 7）：候选连续代谈臂（me/negotiations，候选专属）──
+  //    wire 由同一份 P5 Case 动态投影（见 P5连续卡wire/详情wire）；列表查询参数只认
+  //    shelf/limit/cursor（intention_id 等不支持参数按公开 400 拒绝）；详情 GET 另收
+  //    Case 坐标与 delegation_id 坐标（后端 alias 归一），应答一律返回 canonical
+  //    record_id —— 深链坐标对照正是 Spec §4 的既有行为。未声明坐标固定 404
+  //    negotiation_not_found（合同：foreign/missing 同一固定 404）。retry/archive 的
+  //    请求契约（body / 幂等键）按冻结 mobile-v1 逐项校验。──
+  const P5找连续 = (坐标: string): P5连续记录形 | undefined =>
+    P5域.连续记录[坐标] ??
+    Object.values(P5域.连续记录).find((r) => r.delegationId === 坐标 || r.caseId === 坐标);
+
+  if (path === '/api/v1/me/negotiations' && method === 'GET') {
+    const shelf词 = url.searchParams.get('shelf');
+    if (shelf词 !== 'active' && shelf词 !== 'history') {
+      await P5答复(path, 400, { error: { type: 'invalid_request', message: 'shelf 只认 active/history' } });
+      return true;
+    }
+    const 限 = Number(url.searchParams.get('limit') ?? '50');
+    if (!Number.isInteger(限) || 限 < 1 || 限 > 50) {
+      await P5答复(path, 400, { error: { type: 'invalid_request', message: 'limit 越界' } });
+      return true;
+    }
+    const 游标 = url.searchParams.get('cursor');
+    if (游标 !== null && !/^[A-Za-z0-9_-]+$/.test(游标)) {
+      await P5答复(path, 400, { error: { type: 'invalid_request', message: 'cursor 非法' } });
+      return true;
+    }
+    // intention_id 不是本接口的公开参数：客户端不得自行发送（Spec §5/§10）
+    if (url.searchParams.has('intention_id')) {
+      await P5答复(path, 400, { error: { type: 'invalid_request', message: '不支持的查询参数 intention_id' } });
+      return true;
+    }
+    P5域.连续读取.push(`GET ${path}${url.search}`);
+    const 全部 = Object.values(P5域.连续记录)
+      .map((r) => ({ r, 动态: P5连续动态(P5域.cases, r) }))
+      .filter(({ 动态 }) => 动态.shelf === shelf词);
+    // 服务端排序权威：active (needs_action DESC, created_at DESC, record_id DESC)；
+    // history (created_at DESC, record_id DESC)。同 created_at 由 record_id DESC 收口。
+    全部.sort((甲行, 乙行) => {
+      if (shelf词 === 'active') {
+        const 待办差 = (乙行.动态.needsAction ? 1 : 0) - (甲行.动态.needsAction ? 1 : 0);
+        if (待办差 !== 0) return 待办差;
+      }
+      const 时间差 = 乙行.r.createdAt.localeCompare(甲行.r.createdAt);
+      if (时间差 !== 0) return 时间差;
+      return 乙行.r.recordId.localeCompare(甲行.r.recordId);
+    });
+    let 行们 = 全部.map(({ r }) => r);
+    if (P5域.分支.坏行进列表 && shelf词 === 'active' && P5域.连续记录[P5连续编号.坏行]) {
+      行们 = [P5域.连续记录[P5连续编号.坏行]!, ...行们]; // 毒行进首页：整页 decode 拒绝
+    }
+    // active 两页翻页与 Case 列表臂同构（首页 1 条 + cursor，游标原样透传）；
+    // history 单页读尽（既有用例口径：终局架无加载更多）
+    const 页 = 游标 === null
+      ? { 行们: shelf词 === 'active' ? 行们.slice(0, 1) : 行们, 下一页: shelf词 === 'active' && 行们.length > 1 ? 'p5pg2' : null }
+      : { 行们: 行们.slice(1), 下一页: null };
+    await P5答复(path, 200, 信封({
+      items: 页.行们.map((r) => P5连续卡wire(P5域.cases, r)),
+      next_cursor: 页.下一页,
+    }));
+    return true;
+  }
+
+  const P5连续详情 = /^\/api\/v1\/me\/negotiations\/([^/]+)$/.exec(path);
+  if (P5连续详情 && method === 'GET') {
+    const 坐标 = decodeURIComponent(P5连续详情[1]!);
+    P5域.连续读取.push(`GET ${path}`);
+    const r = P5找连续(坐标);
+    if (!r) {
+      await P5答复(path, 404, { error: { type: 'negotiation_not_found', message: '记录不存在' } });
+      return true;
+    }
+    await P5答复(path, 200, 信封(P5连续详情wire(P5域.cases, r)));
+    return true;
+  }
+
+  // 失败初评重试：body 严格 {expected_retry_generation}（缺键≠0）＋ Idempotency-Key；
+  // 202 受理（同键重放同一张回执），成功即相位回 evaluating、代际推进
+  const P5连续重试 = /^\/api\/v1\/me\/negotiations\/([^/]+)\/retry$/.exec(path);
+  if (P5连续重试 && method === 'POST') {
+    P5记变更(path);
+    const r = P5找连续(decodeURIComponent(P5连续重试[1]!));
+    if (!r) {
+      await P5答复(path, 404, { error: { type: 'negotiation_not_found', message: '记录不存在' } });
+      return true;
+    }
+    const 体 = body as { expected_retry_generation?: unknown } | null;
+    const 键组 = 体 !== null && typeof 体 === 'object' ? Object.keys(体) : [];
+    const 代际 = 体 !== null && typeof 体 === 'object' ? (体 as { expected_retry_generation?: unknown }).expected_retry_generation : undefined;
+    if (键组.length !== 1 || 键组[0] !== 'expected_retry_generation' ||
+      typeof 代际 !== 'number' || !Number.isSafeInteger(代际) || 代际 < 0) {
+      await P5答复(path, 400, { error: { type: 'invalid_request_body', message: 'retry body 不合契约' } });
+      return true;
+    }
+    if (代际 !== r.retryGeneration) {
+      await P5答复(path, 409, { error: { type: 'negotiation_retry_conflict', message: 'expected_retry_generation 不匹配' } });
+      return true;
+    }
+    const 路由键 = `${method} ${path}`;
+    const 既有回执 = P5连续重放.get(路由键);
+    if (既有回执 !== undefined && P5键() === 既有回执.键) {
+      await P5答复(path, 202, 信封({ ...既有回执.回执 }));
+      return true;
+    }
+    if (P5生效键.has(路由键)) {
+      await P5冲突(path, 'negotiation_retry_not_allowed', '该记录的恢复已受理过');
+      return true;
+    }
+    const 回执 = { record_id: r.recordId, retry_generation: 代际 };
+    P5连续重放.set(路由键, { 键: P5键(), 回执 });
+    P5生效键.set(路由键, P5键());
+    r.phase = 'evaluating';
+    r.failure = null;
+    r.needsAction = false;
+    r.actions = { retry: false, archive: false, open_case: false };
+    r.retryGeneration = 代际 + 1;
+    r.updatedAt = '2026-08-29T05:00:00Z';
+    await P5答复(path, 202, 信封({ ...回执 }));
+    return true;
+  }
+
+  // 失败初评归档：body 严格 {} 且无 Idempotency-Key；成功后回读权威 shelf（历史架）
+  const P5连续归档 = /^\/api\/v1\/me\/negotiations\/([^/]+)\/archive$/.exec(path);
+  if (P5连续归档 && method === 'POST') {
+    P5记变更(path);
+    const r = P5找连续(decodeURIComponent(P5连续归档[1]!));
+    if (!r) {
+      await P5答复(path, 404, { error: { type: 'negotiation_not_found', message: '记录不存在' } });
+      return true;
+    }
+    if (JSON.stringify(body) !== '{}' || P5键() !== '') {
+      await P5答复(path, 400, { error: { type: 'invalid_request_body', message: 'archive body 不合契约' } });
+      return true;
+    }
+    if (r.archivedAt !== null) {
+      // 天然幂等：重复归档答原 archived_at
+      await P5答复(path, 200, 信封({ record_id: r.recordId, archived_at: r.archivedAt }));
+      return true;
+    }
+    r.archivedAt = '2026-08-29T06:00:00Z';
+    r.needsAction = false;
+    r.actions = { retry: false, archive: false, open_case: false };
+    r.updatedAt = r.archivedAt;
+    await P5答复(path, 200, 信封({ record_id: r.recordId, archived_at: r.archivedAt }));
+    return true;
+  }
+
+  // 详情（最后匹配）：unknown case 一律固定 404 case_not_found
+  const P5详情 = /^\/api\/v1\/(me|recruiter)\/match-cases\/([^/]+)$/.exec(path);
+  if (P5详情 && method === 'GET') {
+    const 角色: P5角色词 = P5详情[1] === 'me' ? 'candidate' : 'recruiter';
+    const c = P5取Case(decodeURIComponent(P5详情[2]!));
+    if (!c) {
+      await P5答复(path, 404, { error: { type: 'case_not_found', message: 'Case 不存在' } });
+      return true;
+    }
+    await P5答复(path, 200, 信封(P5详情wire(c, 角色)));
+    return true;
+  }
+  return false;
 }

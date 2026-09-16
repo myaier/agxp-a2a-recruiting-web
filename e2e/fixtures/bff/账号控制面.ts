@@ -2,6 +2,9 @@
 // P8 控制面域 fixture（C2）：凭证/会话/换绑、数据导出、注销与合规反馈/举报的
 // wire 形与可变 fixture 工厂，从 e2e/数据源模式.spec.ts 原样迁出。
 // 可变状态归每次 安装BFF路由 所有。
+import { P4深克隆 } from './发现推荐';
+import { 信封, type 路由上下文形 } from './协议';
+import type { P3隐私fixture形 } from './隐私与实名';
 
 // ── P8 控制面域 fixture 与工厂 ──
 
@@ -154,4 +157,316 @@ export function 创建P8fixture(分支: P8分支形 = {}): P8FixtureState {
     举报屏蔽组织: {},
     分支,
   };
+}
+
+
+// ── 路由 handler（C2 阶段二迁入）──
+
+export async function 处理账号控制面域(
+  P8域: P8FixtureState | null,
+  P3域: P3隐私fixture形 | null,
+  上下文: 路由上下文形,
+): Promise<boolean> {
+  if (P8域 === null) return false;
+  const { route, 请求, path, method, body } = 上下文;
+
+  // ── P8 控制面域（Task 8）：可变 fixture 在场才应答；JSON 应答带 no-store。
+  //    每个变更先存证（method/path/body/原文/键/Origin），幂等按「同键同原文重放、
+  //    同键异原文冲突」收口；专用分支按 fixture 标记选择固定应答且绝不写状态。──
+  const P8答复 = async (结果: unknown, 状态 = 200) => {
+    await route.fulfill({ status: 状态, json: 信封(结果), headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+  };
+  const P8失败 = async (状态: number, 码: string) => {
+    // 合规 429 刻意不带 Retry-After：没有可等的窗口，倒计时/自动重试都该不存在
+    await route.fulfill({ status: 状态, json: { error: { type: 码, message: 'P8 fixture 固定分支' } } });
+  };
+  const P8原文 = (): string | null => (method === 'GET' ? null : 请求.postData());
+  const P8键 = (): string => 请求.headers()['idempotency-key'] ?? '';
+  const P8记录变更 = () => {
+    P8域.变更请求.push({
+      method,
+      path,
+      body,
+      原文: P8原文(),
+      idempotencyKey: 请求.headers()['idempotency-key'] ?? null,
+      origin: 请求.headers()['origin'] ?? null,
+    });
+  };
+  type P8幂等判 = { 型: '坏键' } | { 型: '冲突' } | { 型: '重放'; 回执: unknown } | { 型: '新' };
+  const P8幂等查 = (): P8幂等判 => {
+    if (!P8键模式.test(P8键())) return { 型: '坏键' };
+    const 登记项 = P8域.幂等表.get(P8键());
+    if (登记项 === undefined) return { 型: '新' };
+    if (登记项.原文 !== P8原文()) return { 型: '冲突' };
+    return { 型: '重放', 回执: 登记项.receipt };
+  };
+  const P8登记幂等 = (回执: unknown) => {
+    P8域.幂等表.set(P8键(), { 原文: P8原文(), receipt: P4深克隆(回执) });
+  };
+  const P8已注销 = () => P8域.分支.已注销 === true;
+
+  // 凭证列表：挂起分支只挂第一次，应答体在请求抵达时快照（迟到应答携带旧数据）
+  if (path === '/api/v1/me/credentials' && method === 'GET') {
+    if (P8已注销()) {
+      await P8失败(401, 'invalid_session');
+      return true;
+    }
+    const 快照 = P8域.凭证们.map((条) => ({ ...条 }));
+    if (P8域.分支.挂起凭证读取 && P8域.凭证读取数 === 0) await P8域.分支.挂起凭证读取;
+    P8域.凭证读取数 += 1;
+    await P8答复({ credentials: 快照 });
+    return true;
+  }
+
+  // 会话列表：恰好一条 current（换绑/退出其他设备只清洗非 current 行）
+  if (path === '/api/v1/security/sessions' && method === 'GET') {
+    if (P8已注销()) {
+      await P8失败(401, 'invalid_session');
+      return true;
+    }
+    await P8答复({ sessions: P8域.会话们.map((条) => ({ ...条 })) });
+    return true;
+  }
+
+  // 换绑开始：body 恒 {phone:'+86…'}（操作层只放行 11 位裸号，E.164 由 facade 构造）
+  if (path === '/api/v1/me/credential-replacement-attempts' && method === 'POST') {
+    P8记录变更();
+    const 查 = P8幂等查();
+    if (查.型 === '坏键') { await P8失败(400, 'invalid_request_body'); return true; }
+    if (查.型 === '冲突') { await P8失败(409, 'idempotency_conflict'); return true; }
+    if (查.型 === '重放') { await P8答复(P4深克隆(查.回执)); return true; }
+    const 回执 = {
+      attempt_id: P8编号.换绑尝试,
+      next_action: { type: 'enter_code', expires_at: '2026-09-01T09:00:00Z' },
+    };
+    P8登记幂等(回执);
+    await P8答复(P4深克隆(回执));
+    return true;
+  }
+
+  // 换绑完成：清洗其他会话、保留 current，唯一 phone_otp 行换上回执掩码；
+  // 冲突分支终局；首答未知分支已受理已落库（重放同键回同一张回执）
+  const P8换绑完成匹配 = /^\/api\/v1\/me\/credential-replacement-attempts\/([^/]+)\/complete$/.exec(path);
+  if (P8换绑完成匹配 && method === 'POST') {
+    P8记录变更();
+    const 查 = P8幂等查();
+    if (查.型 === '坏键') { await P8失败(400, 'invalid_request_body'); return true; }
+    if (查.型 === '冲突') { await P8失败(409, 'idempotency_conflict'); return true; }
+    if (查.型 === '重放') { await P8答复(P4深克隆(查.回执)); return true; }
+    if (P8域.分支.换绑冲突) {
+      await P8失败(409, 'credential_replacement_conflict');
+      return true;
+    }
+    const 清洗前其他数 = P8域.会话们.filter((条) => !条.current).length;
+    P8域.会话们 = P8域.会话们.filter((条) => 条.current);
+    const 新凭证: P8凭证wire形 = {
+      credential_id: P8编号.手机凭证,
+      provider: 'phone_otp',
+      display: P8标记.换绑后掩码,
+      verified_at: '2026-09-01T08:30:00Z',
+    };
+    P8域.凭证们 = [新凭证, ...P8域.凭证们.filter((条) => 条.provider !== 'phone_otp')];
+    const 回执 = { credential: { ...新凭证 }, revoked_sessions: 清洗前其他数, unchanged: false };
+    P8登记幂等(回执);
+    if (P8域.分支.换绑完成首答未知) {
+      P8域.分支.换绑完成首答未知 = false; // 已受理已落库：首答 503，同键受控重放回回执
+      await route.fulfill({
+        status: 503,
+        headers: { 'Retry-After': '0' },
+        json: { error: { type: 'operation_outcome_unknown', message: 'P8 fixture 换绑完成首答未知' } },
+      });
+      return true;
+    }
+    await P8答复(P4深克隆(回执));
+    return true;
+  }
+
+  // 退出其他设备：DELETE 无请求体；清洗非 current 会话，回执计数原样
+  if (path === '/api/v1/security/sessions/others' && method === 'DELETE') {
+    P8记录变更();
+    const 查 = P8幂等查();
+    if (查.型 === '坏键') { await P8失败(400, 'invalid_request_body'); return true; }
+    if (查.型 === '冲突') { await P8失败(409, 'idempotency_conflict'); return true; }
+    if (查.型 === '重放') { await P8答复(P4深克隆(查.回执)); return true; }
+    const 清洗数 = P8域.会话们.filter((条) => !条.current).length;
+    P8域.会话们 = P8域.会话们.filter((条) => 条.current);
+    const 回执 = { revoked_sessions: 清洗数 };
+    P8登记幂等(回执);
+    await P8答复(P4深克隆(回执));
+    return true;
+  }
+
+  // 创建数据导出：该路由不携带请求体 —— 任何 body 都按 400 拒绝；
+  // 已有 queued/running/ready 导出时 409 export_in_progress；expired/failed 可重建
+  if (path === '/api/v1/me/data-exports' && method === 'POST') {
+    P8记录变更();
+    if (请求.postData() !== null) {
+      await P8失败(400, 'invalid_request_body');
+      return true;
+    }
+    const 查 = P8幂等查();
+    if (查.型 === '坏键') { await P8失败(400, 'invalid_request_body'); return true; }
+    if (查.型 === '冲突') { await P8失败(409, 'idempotency_conflict'); return true; }
+    if (查.型 === '重放') { await P8答复(P4深克隆(查.回执)); return true; }
+    const 旧 = P8域.导出.数据;
+    if (旧 !== null && (旧.status === 'queued' || 旧.status === 'running' || 旧.status === 'ready')) {
+      await P8失败(409, 'export_in_progress');
+      return true;
+    }
+    const 序号 = P8域.导出.下一个序号;
+    P8域.导出.下一个序号 += 1;
+    const 状态 = P8域.导出.状态脚本[0] ?? 'queued';
+    P8域.导出.数据 = {
+      export_id: `exp_${序号.toString(16).padStart(32, '0')}`,
+      status: 状态,
+      created_at: '2026-09-01T08:00:00Z',
+      expires_at: '2026-09-08T00:00:00Z',
+      download_ready: 状态 === 'ready',
+    };
+    P8域.导出.读数 = 0;
+    const 回执 = { ...P8域.导出.数据 };
+    P8登记幂等(回执);
+    await P8答复(P4深克隆(回执));
+    return true;
+  }
+
+  // 读取数据导出：当前导出才 200，其余一律 404 data_export_not_found（过期回收/他端清理）；
+  // 注销后的保护读取先于存在性判定按 invalid_session 收口
+  const P8导出匹配 = /^\/api\/v1\/me\/data-exports\/([^/]+)$/.exec(path);
+  if (P8导出匹配 && method === 'GET') {
+    if (P8已注销()) {
+      await P8失败(401, 'invalid_session');
+      return true;
+    }
+    const 编号 = decodeURIComponent(P8导出匹配[1]);
+    if (P8域.导出.数据 === null || P8域.导出.数据.export_id !== 编号) {
+      await P8失败(404, 'data_export_not_found');
+      return true;
+    }
+    P8域.导出.读数 += 1;
+    const 推进 = P8域.导出.状态脚本[P8域.导出.读数] ?? P8域.导出.状态脚本.at(-1) ?? 'ready';
+    P8域.导出.数据.status = 推进;
+    P8域.导出.数据.download_ready = 推进 === 'ready';
+    P8域.导出读取.push({ exportId: 编号, origin: 请求.headers()['origin'] ?? null });
+    await P8答复({ ...P8域.导出.数据 });
+    return true;
+  }
+
+  // 下载：只在 ready+download_ready 应答固定头的 application/zip 字节流；
+  // 注销后的保护读取先于存在性判定按 invalid_session 收口
+  const P8下载匹配 = /^\/api\/v1\/me\/data-exports\/([^/]+)\/download$/.exec(path);
+  if (P8下载匹配 && method === 'GET') {
+    if (P8已注销()) {
+      await P8失败(401, 'invalid_session');
+      return true;
+    }
+    const 编号 = decodeURIComponent(P8下载匹配[1]);
+    P8域.导出下载.push({ exportId: 编号, origin: 请求.headers()['origin'] ?? null, contentType: 'application/zip' });
+    const 当前 = P8域.导出.数据;
+    if (当前 === null || 当前.export_id !== 编号 || 当前.status !== 'ready' || !当前.download_ready) {
+      await P8失败(404, 'data_export_not_found');
+      return true;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename="${P8标记.ZIP文件名}"`,
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      },
+      body: P8ZIP字节,
+    });
+    return true;
+  }
+
+  // 账号注销：body 精确 {}（EmptyRequest）；queued/running 导出挡注销（409）；
+  // 202 后置位 已注销 —— 后续保护读取一律 401 invalid_session
+  if (path === '/api/v1/me/account-deletion' && method === 'POST') {
+    P8记录变更();
+    if (请求.postData() !== '{}') {
+      await P8失败(400, 'invalid_request_body');
+      return true;
+    }
+    const 查 = P8幂等查();
+    if (查.型 === '坏键') { await P8失败(400, 'invalid_request_body'); return true; }
+    if (查.型 === '冲突') { await P8失败(409, 'idempotency_conflict'); return true; }
+    if (查.型 === '重放') { await P8答复(P4深克隆(查.回执), 202); return true; }
+    const 当前 = P8域.导出.数据;
+    if (当前 !== null && (当前.status === 'queued' || 当前.status === 'running')) {
+      await P8失败(409, 'export_in_progress');
+      return true;
+    }
+    const 回执 = {
+      deletion_id: P8编号.注销,
+      status: 'deletion_pending',
+      retention_until: '2026-10-01T00:00:00Z',
+    };
+    P8登记幂等(回执);
+    P8域.分支.已注销 = true;
+    await P8答复(P4深克隆(回执), 202);
+    return true;
+  }
+
+  // 合规反馈：body 恰 {category,details}；429 分支终局且无 Retry-After
+  if (path === '/api/v1/compliance/feedback' && method === 'POST') {
+    P8记录变更();
+    const 查 = P8幂等查();
+    if (查.型 === '坏键') { await P8失败(400, 'invalid_request_body'); return true; }
+    if (查.型 === '冲突') { await P8失败(409, 'idempotency_conflict'); return true; }
+    if (查.型 === '重放') { await P8答复(P4深克隆(查.回执)); return true; }
+    if (P8域.分支.反馈限流) {
+      await P8失败(429, 'rate_limited');
+      return true;
+    }
+    P8域.反馈受理 += 1;
+    const 回执 = { ticket_id: P8标记.反馈工单, status: 'received' };
+    P8登记幂等(回执);
+    await P8答复(P4深克隆(回执));
+    return true;
+  }
+
+  // 合规举报：block_unavailable 零写入、404 目标不存在统一收口、
+  // applied 把组织写进 P3 隐私 fixture 的权威视图（屏蔽名单只认权威视图）
+  if (path === '/api/v1/compliance/reports' && method === 'POST') {
+    P8记录变更();
+    const 查 = P8幂等查();
+    if (查.型 === '坏键') { await P8失败(400, 'invalid_request_body'); return true; }
+    if (查.型 === '冲突') { await P8失败(409, 'idempotency_conflict'); return true; }
+    if (查.型 === '重放') { await P8答复(P4深克隆(查.回执)); return true; }
+    const 换 = body as { target?: { type?: string; ref?: string }; reason?: string; also_block?: boolean };
+    if (P8域.分支.举报目标不存在) {
+      await P8失败(404, 'report_target_not_found');
+      return true;
+    }
+    if (P8域.分支.举报屏蔽不可用 && 换.also_block === true) {
+      await P8失败(409, 'block_unavailable');
+      return true;
+    }
+    P8域.举报受理 += 1;
+    const 屏蔽生效 = 换.also_block === true;
+    if (屏蔽生效 && 换.target) {
+      const 组织 = P8域.举报屏蔽组织[`${换.target.type}:${换.target.ref}`];
+      if (组织 && P3域) {
+        P3域.视图.organization_blocks.push({
+          organization_id: 组织.organization_id,
+          organization_display_name: 组织.organization_display_name,
+          organization_status: 'active',
+          source: 'manual',
+          created_at: '2026-09-01T09:00:00Z',
+        });
+        P3域.视图.revision += 1;
+        P3域.视图.updated_at = '2026-09-01T09:00:00Z';
+      }
+    }
+    const 回执 = {
+      ticket_id: P8标记.举报工单,
+      status: 'received',
+      block_status: 屏蔽生效 ? 'applied' : 'not_requested',
+    };
+    P8登记幂等(回执);
+    await P8答复(P4深克隆(回执));
+    return true;
+  }
+  return false;
 }

@@ -1,6 +1,7 @@
 // e2e/fixtures/bff/真人消息.ts
 // P7 真人会话域 fixture（C2）：收件箱/详情/消息分页的 wire 投影与可变 fixture 工厂，
 // 从 e2e/数据源模式.spec.ts 原样迁出。可变状态归每次 安装BFF路由 所有。
+import { 信封, type 路由上下文形 } from './协议';
 
 // ── P7 真人会话域 fixture 与工厂 ──
 
@@ -87,4 +88,85 @@ export function P7会话项wire(P7域: P7FixtureState, id: string, role: P7角�
   };
   if (上下文 !== 'unavailable') 条.context = { ...上下文 };
   return 条;
+}
+
+
+// ── 路由 handler（C2 阶段二迁入）──
+
+export async function 处理真人消息域(
+  P7域: P7FixtureState | null,
+  上下文: 路由上下文形,
+): Promise<boolean> {
+  if (P7域 === null) return false;
+  const { route, 请求, path, method, body } = 上下文;
+
+  // ── P7 真人会话域（Task 7）：可变 fixture 在场才应答；每个 JSON 应答带 no-store。
+  //    路由匹配：收件箱（无坐标）→ 详情 / 消息 / 已读（带坐标）。发送登记
+  //    Idempotency-Key：同键重放回已落库的那一条（不重复追加）；首答未知分支
+  //    消息已落库但响应 503，客户端受控重试同键收敛。已读 PUT 后该角色未读归零。──
+  const P7答复 = async (状态: number, json: unknown) => {
+    await route.fulfill({ status: 状态, json, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+  };
+  const P7匹配 = /^\/api\/v1\/(me|recruiter)\/conversations(?:\/([^/]+))?(?:\/(messages|read))?$/.exec(path);
+  if (P7匹配) {
+    const 角色: P7角色词 = P7匹配[1] === 'me' ? 'candidate' : 'recruiter';
+    const 坐标 = P7匹配[2] ?? null;
+    const 子路径 = P7匹配[3] ?? null;
+    if (坐标 === null && method === 'GET') {
+      await P7答复(200, 信封({ items: [P7会话项wire(P7域, P7会话编号.会话, 角色)], next_cursor: null }));
+      return true;
+    }
+    if (坐标 !== null && !P7域.不存在.includes(坐标)) {
+      if (子路径 === null && method === 'GET') {
+        await P7答复(200, 信封(P7会话项wire(P7域, 坐标, 角色)));
+        return true;
+      }
+      if (子路径 === 'messages' && method === 'GET') {
+        await P7答复(200, 信封({ messages: P7域.messages[坐标] ?? [], next_cursor: null }));
+        return true;
+      }
+      if (子路径 === 'messages' && method === 'POST') {
+        const 键 = 请求.headers()['idempotency-key'] ?? '';
+        const 正文 = (body as { content?: string }).content ?? '';
+        P7域.sends.push({ role: 角色, key: 键, content: 正文 });
+        const 已落库 = (P7域.messages[坐标] ?? []).find((条) => 条.sender_role === 角色 && 条.content === 正文);
+        if (已落库) {
+          // 同键重放 / 同文重复：幂等服务端只回已落库的那一条，绝不二次追加
+          await P7答复(200, 信封(已落库));
+          return true;
+        }
+        const 新消息: P7消息wire形 = {
+          message_id: `${4005 + P7域.sends.length}`,
+          kind: 'user_text', sender_role: 角色, content: 正文, created_at: '2026-08-30T02:00:00Z',
+        };
+        (P7域.messages[坐标] ??= []).push(新消息);
+        if (P7域.首答未知) {
+          P7域.首答未知 = false; // 消息已落库，但把首答替换成 503 结果未知
+          await route.fulfill({
+            status: 503,
+            json: { error: { type: 'operation_outcome_unknown', message: 'The outcome is unknown.' } },
+          });
+          return true;
+        }
+        await P7答复(200, 信封(新消息));
+        return true;
+      }
+      if (子路径 === 'read' && method === 'PUT') {
+        const through = (body as { read_through_message_id?: string }).read_through_message_id ?? '';
+        P7域.reads.push({ role: 角色, through });
+        P7域.unread[角色] = 0;
+        await P7答复(200, 信封({ read_through_message_id: through }));
+        return true;
+      }
+    }
+    if (坐标 !== null && P7域.不存在.includes(坐标)) {
+      // foreign / wrong-role / unpublished 统一 404
+      await route.fulfill({
+        status: 404,
+        json: { error: { type: 'conversation_not_found', message: 'The conversation does not exist.', request_id: 'p7-fixture' } },
+      });
+      return true;
+    }
+  }
+  return false;
 }

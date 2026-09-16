@@ -3,6 +3,8 @@
 // 从 e2e/数据源模式.spec.ts 原样迁出。可变状态归每次 安装BFF路由 所有。
 
 import { P1C岗位, type P1C岗位形 } from './招聘组织';
+import { 信封, type 路由上下文形 } from './协议';
+import type { P5MatchCasefixture形 } from './MatchCase';
 
 // ── P4 发现推荐域样本与工厂 ──
 
@@ -556,4 +558,304 @@ export function P4发现fixture(分支: P4发现分支形 = {}): P4发现fixture
     变更请求: [],
     分支,
   };
+}
+
+
+// ── 安装态与路由 handler（C2 阶段二迁入）──
+
+/** P4 域的每次安装独立状态：委托登记表与受控重试/失败键（跨请求存活，不跨安装共享）。 */
+export interface P4安装状态形 {
+  p4委托表: Map<string, { 回执: P4委托回执形; role: 'candidate' | 'recruiter'; 读数: number }>;
+  p4刷新503键: Set<string>;
+  p4委托503键: Set<string>;
+  p4不感兴趣失败键: Set<string>;
+}
+
+export function 创建P4安装状态(): P4安装状态形 {
+  return {
+    p4委托表: new Map(),
+    p4刷新503键: new Set(),
+    p4委托503键: new Set(),
+    p4不感兴趣失败键: new Set(),
+  };
+}
+
+export async function 处理发现推荐域(
+  P4域: P4发现fixture形 | null,
+  P5连续域: P5MatchCasefixture形 | null,
+  状态: P4安装状态形,
+  上下文: 路由上下文形,
+): Promise<boolean> {
+  if (P4域 === null) return false;
+  const { p4委托表, p4刷新503键, p4委托503键, p4不感兴趣失败键 } = 状态;
+  const { route, 请求, url, path, method, body } = 上下文;
+
+  // ── P4 发现推荐域（发现 fixture 存在时才应答；缺席走兜底空信封 → strict decode 拒绝，
+  //    正是「Mock 内容不顶替 HTTP」的既有边界）。变更回执（method/path/body + If-Match /
+  //    Idempotency-Key）原样存进 fixture 的 变更请求；委托登记表按 Idempotency-Key 记录，
+  //    同键重放 / 受控重试都回同一张回执。──
+  const 记录P4变更 = (变更路径: string) => {
+    P4域.变更请求.push({
+      method,
+      path: 变更路径,
+      body,
+      ifMatch: 请求.headers()['if-match'] ?? null,
+      idempotencyKey: 请求.headers()['idempotency-key'] ?? null,
+    });
+  };
+  const 游标 = url.searchParams.get('cursor');
+
+  // 候选端列表：按 intention scope 两页翻页；迟到应答分支挂起首页；非法分支注毒第二页
+  if (path === '/api/v1/me/job-recommendations' && method === 'GET') {
+    const 意向 = url.searchParams.get('intention_id') ?? '';
+    const 挂起 = P4域.分支?.挂起候选读取;
+    if (挂起?.意向 === 意向 && 游标 === null) await 挂起.门;
+    const 注毒 = Boolean(P4域.分支?.候选非法第二页) && 游标 !== null;
+    await route.fulfill({ status: 200, json: 信封(P4分页(P4域.候选推荐[意向] ?? [], 注毒, 游标)) });
+    return true;
+  }
+
+  // canonical job GET（详情直取）：fixture 没有的编号按 404 job_not_found 收口
+  const P4岗位匹配 = /^\/api\/v1\/jobs\/([^/]+)$/.exec(path);
+  if (P4岗位匹配 && method === 'GET') {
+    const 岗 = P4域.候选岗位[decodeURIComponent(P4岗位匹配[1])];
+    if (!岗) {
+      await route.fulfill({ status: 404, json: { error: { type: 'job_not_found', message: '岗位不存在' } } });
+      return true;
+    }
+    await route.fulfill({ status: 200, json: 信封(P4深克隆(岗)) });
+    return true;
+  }
+
+  // 候选端刷新：POST 建新批次；受控重试分支首把键 503，同键重试成功
+  if (path === '/api/v1/me/job-recommendation-refreshes' && method === 'POST') {
+    记录P4变更(path);
+    const 键 = 请求.headers()['idempotency-key'] ?? '';
+    if (P4域.分支?.候选刷新首次503 && 键 !== '' && !p4刷新503键.has(键)) {
+      p4刷新503键.add(键);
+      await route.fulfill({ status: 503, headers: { 'Retry-After': '0' }, json: { error: { type: 'operation_outcome_unknown', message: '结果未知' } } });
+      return true;
+    }
+    P4域.刷新次数.candidate += 1;
+    const 意向 = (body as { intention_id?: string }).intention_id ?? '';
+    // 服务端建新批次：空 scope 首刷给权威卡（旧卡保留语义由客户端快照负责）
+    if ((P4域.候选推荐[意向] ?? []).length === 0) {
+      P4域.候选推荐[意向] = [P4候选卡({ batch_id: `bat_p4fixture_c${P4域.刷新次数.candidate + 1}` })];
+    }
+    await route.fulfill({ status: 200, json: 信封(P4发现批次('candidate_jobs', 意向)) });
+    return true;
+  }
+
+  // 候选端不感兴趣：PUT 200 才从 available 数组移除（无 If-Match / 无 Idempotency-Key）
+  const P4不感兴趣匹配 = /^\/api\/v1\/me\/job-recommendations\/([^/]+)\/not-interested$/.exec(path);
+  if (P4不感兴趣匹配 && method === 'PUT') {
+    记录P4变更(path);
+    const 推荐编号 = decodeURIComponent(P4不感兴趣匹配[1]);
+    // 失败分支也在存证之后：两次传输都留变更回执，只有应答不同
+    if (P4域.分支?.候选不感兴趣先失败 && !p4不感兴趣失败键.has(推荐编号)) {
+      p4不感兴趣失败键.add(推荐编号);
+      await route.fulfill({ status: 500, json: { error: { type: 'internal_error', message: 'fixture 首次不感兴趣失败' } } });
+      return true;
+    }
+    for (const 意向 of Object.keys(P4域.候选推荐)) {
+      P4域.候选推荐[意向] = P4域.候选推荐[意向]!.filter((卡) => 卡.recommendation_id !== 推荐编号);
+    }
+    await route.fulfill({ status: 200, json: 信封(P4发现偏好({ rejected: true, rejection_reason: 'not_interested' })) });
+    return true;
+  }
+
+  // 候选端委托：一次意图一把键；同键重放 / 受控重试回同一张回执；选择坐标是 job_id
+  if (path === '/api/v1/me/job-delegations' && method === 'POST') {
+    记录P4变更(path);
+    const 键 = 请求.headers()['idempotency-key'] ?? '';
+    let 表项 = p4委托表.get(键);
+    if (!表项) {
+      const 换 = body as { intention_id?: string; selection?: { items?: string[] } };
+      const 岗位编号 = 换.selection?.items?.[0] ?? '';
+      // 服务端语义：无论响应是否送达，委托都已受理 —— 503 分支也先落登记再丢应答
+      表项 = {
+        role: 'candidate',
+        读数: 0,
+        回执: { delegation_id: P4编号.candidateDelegation, recommendation_id: null, state: 'accepted', evaluation_id: null, case_id: null, refusal_code: null, failure_code: null },
+      };
+      p4委托表.set(键, 表项);
+      // J-PILOT-01（Task 7）：受理即登记 dlg 连续记录 —— 与回执登记同笔（响应未送达
+      // 也已受理，503 分支同样落登记）；相位由场景测试按最小转换显式推进。
+      if (P5连续域) {
+        const 岗位名 = P4域.候选岗位[岗位编号]?.title ?? P4标记.jobTitle;
+        P5连续域.连续记录[表项.回执.delegation_id] = {
+          recordId: 表项.回执.delegation_id,
+          recordKind: 'delegation',
+          caseId: null,
+          delegationId: 表项.回执.delegation_id,
+          evaluationId: null,
+          phase: 'accepted',
+          needsAction: false,
+          actions: { retry: false, archive: false, open_case: false },
+          failure: null,
+          refusalCode: null,
+          retryGeneration: 0,
+          职位名: 岗位名,
+          createdAt: '2026-08-29T04:00:00Z',
+          updatedAt: '2026-08-29T04:00:00Z',
+          archivedAt: null,
+          公开评: null,
+        };
+      }
+    }
+    if (P4域.分支?.候选委托先503 && 键 !== '' && !p4委托503键.has(键)) {
+      p4委托503键.add(键);
+      await route.fulfill({ status: 503, headers: { 'Retry-After': '0' }, json: { error: { type: 'operation_outcome_unknown', message: '结果未知' } } });
+      return true;
+    }
+    if (P4域.分支?.候选委托未知) {
+      // 恒 503：受理已落登记（服务端先行），客户端只见结果未知 → 未决命令保留；
+      // 推荐卡面也不动（客户端对委托不知情，reload 后仍走原命令核对，不提前见到回执）
+      await route.fulfill({ status: 503, headers: { 'Retry-After': '0' }, json: { error: { type: 'operation_outcome_unknown', message: '结果未知' } } });
+      return true;
+    }
+    // 卡面摘要只在客户端实际收到回执的 200 路径推进（写响应丢失时客户端保持不知情）
+    const 换 = body as { intention_id?: string; selection?: { items?: string[] } };
+    const 岗位编号 = 换.selection?.items?.[0] ?? '';
+    for (const 卡 of P4域.候选推荐[换.intention_id ?? ''] ?? []) {
+      if (卡.job.job_id === 岗位编号) {
+        卡.state = 'delegating';
+        卡.delegation = { delegation_id: P4编号.candidateDelegation, state: 'accepted', case_id: null };
+      }
+    }
+    await route.fulfill({ status: 200, json: 信封({ receipts: [P4深克隆(表项.回执)] }) });
+    return true;
+  }
+
+  // 候选端委托单项 GET：第一次读 evaluating，之后推进 case_started（真实 Case 引用只在这里出现）
+  const P4候选委托读匹配 = /^\/api\/v1\/me\/job-delegations\/([^/]+)$/.exec(path);
+  if (P4候选委托读匹配 && method === 'GET') {
+    const 编号 = decodeURIComponent(P4候选委托读匹配[1]);
+    const 表项 = [...p4委托表.values()].find((项) => 项.回执.delegation_id === 编号);
+    if (!表项) {
+      await route.fulfill({ status: 404, json: { error: { type: 'delegation_not_found', message: '委托不存在' } } });
+      return true;
+    }
+    表项.读数 += 1;
+    表项.回执 = 表项.读数 >= 2
+      ? { ...表项.回执, state: 'case_started', case_id: P4编号.case }
+      : { ...表项.回执, state: 'evaluating' };
+    P4域.委托读取.push({ delegationId: 编号, state: 表项.回执.state });
+    await route.fulfill({ status: 200, json: 信封(P4深克隆(表项.回执)) });
+    return true;
+  }
+
+  // 招聘端列表：available / rejected 两条腿都按当前岗位 scope 两页翻页
+  const P4招聘列表匹配 = /^\/api\/v1\/recruiter\/jobs\/([^/]+)\/candidate-recommendations$/.exec(path);
+  if (P4招聘列表匹配 && method === 'GET') {
+    const 岗位编号 = decodeURIComponent(P4招聘列表匹配[1]);
+    const items = (url.searchParams.get('state') === 'rejected'
+      ? P4域.招聘已筛[岗位编号]
+      : P4域.招聘可用[岗位编号]) ?? [];
+    await route.fulfill({ status: 200, json: 信封(P4招聘分页(items, 游标)) });
+    return true;
+  }
+
+  // 招聘端单项详情 / 收藏 / 淘汰（fixture 拥有两条腿，PUT/DELETE 直接改写并在两腿间搬运）
+  const P4收藏匹配 = /^\/api\/v1\/recruiter\/jobs\/([^/]+)\/candidate-recommendations\/([^/]+)\/favorite$/.exec(path);
+  const P4淘汰匹配 = /^\/api\/v1\/recruiter\/jobs\/([^/]+)\/candidate-recommendations\/([^/]+)\/rejection$/.exec(path);
+  const P4招聘详情匹配 = /^\/api\/v1\/recruiter\/jobs\/([^/]+)\/candidate-recommendations\/([^/]+)$/.exec(path);
+  const P4找招聘卡 = (岗位编号: string, 推荐编号: string): P4招聘推荐形 | undefined =>
+    (P4域.招聘可用[岗位编号] ?? []).find((卡) => 卡.recommendation_id === 推荐编号) ??
+    (P4域.招聘已筛[岗位编号] ?? []).find((卡) => 卡.recommendation_id === 推荐编号);
+
+  if (P4收藏匹配 && (method === 'PUT' || method === 'DELETE')) {
+    记录P4变更(path);
+    const 卡 = P4找招聘卡(decodeURIComponent(P4收藏匹配[1]), decodeURIComponent(P4收藏匹配[2]));
+    if (!卡) {
+      await route.fulfill({ status: 404, json: { error: { type: 'recommendation_not_found', message: '推荐不存在' } } });
+      return true;
+    }
+    卡.favorite = method === 'PUT';
+    await route.fulfill({ status: 200, json: 信封(P4发现偏好({ favorite: 卡.favorite, rejected: 卡.rejected, rejection_reason: 卡.rejection_reason })) });
+    return true;
+  }
+  if (P4淘汰匹配 && (method === 'PUT' || method === 'DELETE')) {
+    记录P4变更(path);
+    const 岗位编号 = decodeURIComponent(P4淘汰匹配[1]);
+    const 卡 = P4找招聘卡(岗位编号, decodeURIComponent(P4淘汰匹配[2]));
+    if (!卡) {
+      await route.fulfill({ status: 404, json: { error: { type: 'recommendation_not_found', message: '推荐不存在' } } });
+      return true;
+    }
+    if (method === 'PUT') {
+      卡.rejected = true;
+      卡.rejection_reason = (body as { reason?: P4淘汰原因形 }).reason ?? 'other';
+      卡.state = 'rejected';
+      P4域.招聘可用[岗位编号] = (P4域.招聘可用[岗位编号] ?? []).filter((条) => 条.recommendation_id !== 卡.recommendation_id);
+      P4域.招聘已筛[岗位编号] = [...(P4域.招聘已筛[岗位编号] ?? []).filter((条) => 条.recommendation_id !== 卡.recommendation_id), 卡];
+    } else {
+      卡.rejected = false;
+      卡.rejection_reason = null;
+      卡.state = 'available';
+      P4域.招聘已筛[岗位编号] = (P4域.招聘已筛[岗位编号] ?? []).filter((条) => 条.recommendation_id !== 卡.recommendation_id);
+      P4域.招聘可用[岗位编号] = [...(P4域.招聘可用[岗位编号] ?? []).filter((条) => 条.recommendation_id !== 卡.recommendation_id), 卡];
+    }
+    await route.fulfill({ status: 200, json: 信封(P4发现偏好({ favorite: 卡.favorite, rejected: 卡.rejected, rejection_reason: 卡.rejection_reason })) });
+    return true;
+  }
+  if (P4招聘详情匹配 && method === 'GET') {
+    const 卡 = P4找招聘卡(decodeURIComponent(P4招聘详情匹配[1]), decodeURIComponent(P4招聘详情匹配[2]));
+    if (!卡) {
+      await route.fulfill({ status: 404, json: { error: { type: 'recommendation_not_found', message: '推荐不存在' } } });
+      return true;
+    }
+    // release/0.2.5：DiscoveryRecruiterDetail 恒带 candidate_resume（键集闭合，缺键即漂移）
+    await route.fulfill({ status: 200, json: 信封({ ...P4非展开卡(卡), candidate_resume: P4在线简历() }) });
+    return true;
+  }
+
+  // 招聘端刷新：POST 建新批次（body 带 job_id，幂等键必带）
+  if (path === '/api/v1/recruiter/candidate-recommendation-refreshes' && method === 'POST') {
+    记录P4变更(path);
+    P4域.刷新次数.recruiter += 1;
+    const 岗位编号 = (body as { job_id?: string }).job_id ?? '';
+    await route.fulfill({ status: 200, json: 信封(P4发现批次('recruiter_candidates', 岗位编号)) });
+    return true;
+  }
+
+  // 招聘端委托：无披露字段，选择坐标是 recommendation_id；同键回同一张回执
+  if (path === '/api/v1/recruiter/candidate-delegations' && method === 'POST') {
+    记录P4变更(path);
+    const 键 = 请求.headers()['idempotency-key'] ?? '';
+    let 表项 = p4委托表.get(键);
+    if (!表项) {
+      const 换 = body as { job_id?: string; selection?: { items?: string[] } };
+      const 推荐编号 = 换.selection?.items?.[0] ?? '';
+      表项 = {
+        role: 'recruiter',
+        读数: 0,
+        回执: { delegation_id: P4编号.recruiterDelegation, recommendation_id: 推荐编号, state: 'accepted', evaluation_id: null, case_id: null, refusal_code: null, failure_code: null },
+      };
+      p4委托表.set(键, 表项);
+      for (const 卡 of P4域.招聘可用[换.job_id ?? ''] ?? []) {
+        if (卡.recommendation_id === 推荐编号) {
+          卡.delegation = { delegation_id: P4编号.recruiterDelegation, state: 'accepted', case_id: null };
+        }
+      }
+    }
+    await route.fulfill({ status: 200, json: 信封({ receipts: [P4深克隆(表项.回执)] }) });
+    return true;
+  }
+
+  // 招聘端委托单项 GET：accepted 保持（P4 不制造 Case，case_id 恒空）
+  const P4招聘委托读匹配 = /^\/api\/v1\/recruiter\/candidate-delegations\/([^/]+)$/.exec(path);
+  if (P4招聘委托读匹配 && method === 'GET') {
+    const 编号 = decodeURIComponent(P4招聘委托读匹配[1]);
+    const 表项 = [...p4委托表.values()].find((项) => 项.回执.delegation_id === 编号);
+    if (!表项) {
+      await route.fulfill({ status: 404, json: { error: { type: 'delegation_not_found', message: '委托不存在' } } });
+      return true;
+    }
+    表项.读数 += 1;
+    P4域.委托读取.push({ delegationId: 编号, state: 表项.回执.state });
+    await route.fulfill({ status: 200, json: 信封(P4深克隆(表项.回执)) });
+    return true;
+  }
+  return false;
 }

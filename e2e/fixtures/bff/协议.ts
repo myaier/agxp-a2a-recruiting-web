@@ -3,7 +3,7 @@
 // 请求拦截投影与写入 body 的键集断言。从 e2e/数据源模式.spec.ts 原样迁出，
 // 不含任何域状态；域间共享的只有这些纯函数与纯类型。
 
-import { expect, type Route } from '@playwright/test';
+import { expect, type Request, type Route } from '@playwright/test';
 
 // ── BFF 信封与目录页 ──
 
@@ -58,7 +58,7 @@ export interface 拦截请求形 {
  * 不用 JSON parser 解析整体：boundary 字节是 ASCII，latin1 索引与原 Buffer 一一对应，
  * part 内容回切原 Buffer 后再按需 utf8 解码。
  */
-export function 取multipart部件(请求: Route['request']): { name: string; contentType: string; bytes: Buffer }[] | null {
+export function 取multipart部件(请求: Request): { name: string; contentType: string; bytes: Buffer }[] | null {
   const 类型 = 请求.headers()['content-type'] ?? '';
   const 匹配 = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(类型);
   if (!匹配) return null;
@@ -94,4 +94,18 @@ export function 解metadata部件(字节: Buffer): unknown {
   } catch {
     return undefined;
   }
+}
+
+// ── 域 handler 的每请求上下文（由薄装配入口构造并按固定顺序传递）──
+
+/** 一次 /api/v1 请求在域 handler 间的共享投影：route 与已解析的 path/method/body/部件们。 */
+export interface 路由上下文形 {
+  route: Route;
+  /** route.request() 的调用结果（Route['request'] 是方法签名 () => Request，不是实例类型） */
+  请求: Request;
+  url: URL;
+  path: string;
+  method: string;
+  body: unknown;
+  部件们: { name: string; contentType: string; bytes: Buffer }[] | null;
 }

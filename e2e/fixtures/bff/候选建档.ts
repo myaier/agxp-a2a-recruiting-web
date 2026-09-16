@@ -4,10 +4,13 @@
 // 可变状态归每次 安装BFF路由 所有。
 
 import { expect } from '@playwright/test';
-import type { BFF简历, BFFOwnerIntention } from '../../src/数据/BFF契约';
+import type { BFF简历, BFFOwnerIntention } from '../../../src/数据/BFF契约';
 import { fixture简历, 标记 } from './账号与目录';
 import { P4深克隆 } from './发现推荐';
 import { 断言闭合键集, 断言精确键集 } from './协议';
+import { 信封, type 路由上下文形 } from './协议';
+import type { 招聘方OnboardingFixture形, P1C招聘组织Fixture形 } from './招聘组织';
+import type { P3隐私fixture形 } from './隐私与实名';
 
 // ── 候选 onboarding 可变 fixture ──
 
@@ -238,4 +241,312 @@ export function 断言意向写入(body: unknown): asserts body is {
   expect(写.internship_months === null || Number.isInteger(写.internship_months)).toBe(true);
   expect(写.onsite_days_per_week === null || Number.isInteger(写.onsite_days_per_week)).toBe(true);
   expect(typeof 写.private_preferences).toBe('string');
+}
+
+
+// ── 路由 handler（C2 阶段二迁入；返回是否已应答，由 安装BFF路由 按固定顺序调用）──
+
+export async function 处理候选建档域(
+  Onboarding域: 候选OnboardingFixture | null,
+  组织fixture: P1C招聘组织Fixture形 | 招聘方OnboardingFixture形 | null,
+  P3域: P3隐私fixture形 | null,
+  上下文: 路由上下文形,
+): Promise<boolean> {
+  if (Onboarding域 === null) return false;
+  const { route, path, method, body } = 上下文;
+
+  // ── 候选 onboarding 可变 fixture（Task 8）：只在选项在场时接管；每个写入都过
+  //    闭合键集校验（未知字段拒收），受理后记录 { method, path, body }、只写本
+  //    fixture、推进 revision，之后所有 GET 回更新后的快照 ──
+  const 记变更 = (路径: string) => {
+    Onboarding域.mutations.push({ method, path: 路径, body });
+  };
+  const 答简历 = async () => {
+    await route.fulfill({ status: 200, json: 信封(P4深克隆(Onboarding域.resume)) });
+  };
+  // company 是服务端冻结的展示快照（合同 C）：按 organization_id 从既有组织目录
+  //（招聘组织 fixture + 隐私搜索池）反查 display_name 冻结进快照（真实 BFF 同语义，
+  // src/数据/后端映射.ts 转经历 注释）；无 organization_id 维持空串
+  const 经历企业展示名 = (编号: string | undefined): string =>
+    编号 !== undefined && 编号 !== ''
+      ? 组织fixture?.organizations[编号]?.display_name
+        ?? P3域?.组织库[编号]?.display_name
+        ?? ''
+      : '';
+
+  // 主体：last_used_role 从 null 起步（会话恢复落身份选择页），角色写入推进它
+  if (path === '/api/v1/me' && method === 'GET') {
+    await route.fulfill({ status: 200, json: 信封(P4深克隆(Onboarding域.主体)) });
+    return true;
+  }
+  // stg 契约对齐 2026-09-14：onboarding 状态只列本 fixture 实际角色，完成由 POST 推进
+  if (path === '/api/v1/me/onboarding' && method === 'GET') {
+    await route.fulfill({
+      status: 200,
+      json: 信封({
+        roles: Onboarding域.主体.roles.map((行) => ({
+          role: 行.role,
+          status: 'active' as const,
+          completed_at: Onboarding域.完成[行.role],
+        })),
+      }),
+    });
+    return true;
+  }
+  const Onboarding完成写 = /^\/api\/v1\/me\/onboarding\/(candidate|recruiter)\/complete$/.exec(path);
+  if (Onboarding完成写 && method === 'POST') {
+    断言精确键集(body, []); // complete：body 精确 {}
+    记变更(path);
+    const role = Onboarding完成写[1] as 'candidate' | 'recruiter';
+    Onboarding域.完成[role] ??= '2026-09-14T08:00:00Z'; // 首次与重试同一时间
+    await route.fulfill({
+      status: 200,
+      json: 信封({ role, status: 'active', completed_at: Onboarding域.完成[role] }),
+    });
+    return true;
+  }
+  const Onboarding角色写 = /^\/api\/v1\/me\/roles\/(candidate|recruiter)$/.exec(path);
+  if (Onboarding角色写 && method === 'PUT') {
+    断言精确键集(body, []); // 确保角色：body 精确 {}
+    记变更(path);
+    if (!Onboarding域.主体.roles.some((行) => 行.role === Onboarding角色写[1])) {
+      Onboarding域.主体.roles.push({ role: Onboarding角色写[1] as 'candidate' | 'recruiter', status: 'active' });
+    }
+    await route.fulfill({ status: 200, json: 信封(P4深克隆(Onboarding域.主体)) });
+    return true;
+  }
+  if (path === '/api/v1/me/preferences/last-used-role' && method === 'PUT') {
+    断言精确键集(body, ['role']);
+    expect(['candidate', 'recruiter']).toContain((body as { role: string }).role);
+    记变更(path);
+    Onboarding域.主体.last_used_role = (body as { role: 'candidate' | 'recruiter' }).role;
+    await route.fulfill({ status: 200, json: 信封(P4深克隆(Onboarding域.主体)) });
+    return true;
+  }
+
+  // 简历域读取：权威快照永远来自本 fixture 的当前状态（含 year: null 原样保留）
+  if (path === '/api/v1/me/resume' && method === 'GET') {
+    Onboarding域.读取.简历 += 1;
+    Onboarding域.简历请求.push({ method, path });
+    await 答简历();
+    return true;
+  }
+  if (path.startsWith('/api/v1/me/resume/') && method !== 'GET') {
+    Onboarding域.简历请求.push({ method, path });
+  }
+  if (path === '/api/v1/me/resume/profile' && method === 'PATCH') {
+    断言资料写入(body);
+    记变更(path);
+    Onboarding域.resume.profile = { ...P4深克隆(Onboarding域.resume.profile), ...P4深克隆(body) } as BFF简历['profile'];
+    Onboarding域.resume.profile_revision += 1;
+    Onboarding域.resume.aggregate_revision += 1;
+    await 答简历();
+    return true;
+  }
+  if (path === '/api/v1/me/resume/summary' && method === 'PATCH') {
+    断言摘要写入(body);
+    记变更(path);
+    Onboarding域.resume.summary = (body as { value: string }).value;
+    Onboarding域.resume.summary_revision += 1;
+    Onboarding域.resume.aggregate_revision += 1;
+    await 答简历();
+    return true;
+  }
+  if (path === '/api/v1/me/resume/skills' && method === 'PATCH') {
+    断言技能写入(body);
+    记变更(path);
+    Onboarding域.resume.skills = [...(body as { skills: string[] }).skills];
+    Onboarding域.resume.skills_revision += 1;
+    Onboarding域.resume.aggregate_revision += 1;
+    await 答简历();
+    return true;
+  }
+  if (path === '/api/v1/me/resume/experiences' && method === 'POST') {
+    断言经历写入(body);
+    记变更(path);
+    const 写 = body as {
+      organization_id: string; industry_id: string; title: string; start_month: string;
+      end_month?: string | null; description?: string; hidden?: boolean; internship?: boolean;
+    };
+    const 新经历: BFF简历['experiences'][number] = {
+      id: `exp-fixture-onboard-${Onboarding域.resume.experiences.length + 1}`,
+      organization_id: 写.organization_id,
+      company: 经历企业展示名(写.organization_id),
+      industry: { id: 写.industry_id, display_name: Onboarding目录展示[写.industry_id] ?? '' },
+      title: 写.title,
+      start_month: 写.start_month,
+      end_month: 写.end_month ?? null,
+      description: 写.description ?? '',
+      hidden: 写.hidden ?? false,
+      internship: 写.internship ?? false,
+      revision: 1,
+      projects: null,
+    };
+    Onboarding域.resume.experiences.push(新经历);
+    Onboarding域.resume.aggregate_revision += 1;
+    await route.fulfill({
+      status: 200,
+      json: 信封({ entry: { kind: 'experience', experience: P4深克隆(新经历) }, aggregate_revision: Onboarding域.resume.aggregate_revision }),
+    });
+    return true;
+  }
+  // 经历更新（同 id CAS）：body 同创建；company 快照按最新 organization_id 重新冻结
+  //（与 保存简历 的 PATCH /me/resume/experiences/{id} 消费合同一致，教育 PATCH 同款）
+  const Onboarding经历改 = /^\/api\/v1\/me\/resume\/experiences\/([^/]+)$/.exec(path);
+  if (Onboarding经历改 && method === 'PATCH') {
+    断言经历写入(body);
+    记变更(path);
+    const 目标 = Onboarding域.resume.experiences.find((条) => 条.id === Onboarding经历改[1]);
+    if (目标 === undefined) {
+      await route.fulfill({ status: 404, json: { error: { type: 'experience_not_found', message: 'fixture：未知经历条目' } } });
+      return true;
+    }
+    const 写 = body as {
+      organization_id: string; industry_id: string; title: string; start_month: string;
+      end_month?: string | null; description?: string; hidden?: boolean; internship?: boolean;
+    };
+    目标.organization_id = 写.organization_id;
+    目标.company = 经历企业展示名(写.organization_id);
+    目标.industry = { id: 写.industry_id, display_name: Onboarding目录展示[写.industry_id] ?? '' };
+    目标.title = 写.title;
+    目标.start_month = 写.start_month;
+    目标.end_month = 写.end_month ?? null;
+    目标.description = 写.description ?? '';
+    目标.hidden = 写.hidden ?? false;
+    目标.internship = 写.internship ?? false;
+    目标.revision += 1;
+    Onboarding域.resume.aggregate_revision += 1;
+    await 答简历();
+    return true;
+  }
+  if (path === '/api/v1/me/resume/educations' && method === 'POST') {
+    断言教育写入(body);
+    记变更(path);
+    const 写 = body as { institution_id: string; degree: string; major_id: string; start_month: string; end_month?: string | null };
+    const 新教育: BFF简历['educations'][number] = {
+      id: `edu-fixture-onboard-${Onboarding域.resume.educations.length + 1}`,
+      institution: { id: 写.institution_id, display_name: Onboarding目录展示[写.institution_id] ?? '' },
+      degree: 写.degree,
+      major: { id: 写.major_id, display_name: Onboarding目录展示[写.major_id] ?? '' },
+      start_month: 写.start_month,
+      end_month: 写.end_month ?? null,
+      revision: 1,
+    };
+    Onboarding域.resume.educations.push(新教育);
+    Onboarding域.resume.aggregate_revision += 1;
+    await route.fulfill({
+      status: 200,
+      json: 信封({ entry: { kind: 'education', education: P4深克隆(新教育) }, aggregate_revision: Onboarding域.resume.aggregate_revision }),
+    });
+    return true;
+  }
+  // 教育更新（同 id CAS）：body 同创建（end_month 可选）；成功以整册权威快照回读
+  //（与 保存简历 的 PATCH /me/resume/educations/{id} 消费合同一致，J-PILOT-02 同款）
+  const Onboarding教育改 = /^\/api\/v1\/me\/resume\/educations\/([^/]+)$/.exec(path);
+  if (Onboarding教育改 && method === 'PATCH') {
+    断言教育写入(body);
+    记变更(path);
+    const 目标 = Onboarding域.resume.educations.find((条) => 条.id === Onboarding教育改[1]);
+    if (目标 === undefined) {
+      await route.fulfill({ status: 404, json: { error: { type: 'education_not_found', message: 'fixture：未知教育条目' } } });
+      return true;
+    }
+    const 写 = body as { institution_id: string; degree: string; major_id: string; start_month: string; end_month?: string | null };
+    目标.institution = { id: 写.institution_id, display_name: Onboarding目录展示[写.institution_id] ?? '' };
+    目标.degree = 写.degree;
+    目标.major = { id: 写.major_id, display_name: Onboarding目录展示[写.major_id] ?? '' };
+    目标.start_month = 写.start_month;
+    目标.end_month = 写.end_month ?? null;
+    目标.revision += 1;
+    Onboarding域.resume.aggregate_revision += 1;
+    await 答简历();
+    return true;
+  }
+  if (path === '/api/v1/me/resume/certificates' && method === 'POST') {
+    断言证书写入(body);
+    记变更(path);
+    const 写 = body as { name: string; year: number | null };
+    const 新证书: BFF简历['certificates'][number] = {
+      id: `cert-fixture-onboard-${Onboarding域.resume.certificates.length + 1}`,
+      name: 写.name,
+      // name-only 写入的 year: null 原样保留，绝不编造年份
+      year: 写.year,
+      revision: 1,
+    };
+    Onboarding域.resume.certificates.push(新证书);
+    Onboarding域.resume.aggregate_revision += 1;
+    await route.fulfill({
+      status: 200,
+      json: 信封({ entry: { kind: 'certificate', certificate: P4深克隆(新证书) }, aggregate_revision: Onboarding域.resume.aggregate_revision }),
+    });
+    return true;
+  }
+
+  // 意向域：GET 回本 fixture 当前列表；POST 严格校验后物化唯一一条 active 意向
+  if (path === '/api/v1/me/intentions' && method === 'GET') {
+    Onboarding域.读取.意向 += 1;
+    await route.fulfill({ status: 200, json: 信封({ intentions: P4深克隆(Onboarding域.intentions) }) });
+    return true;
+  }
+  if (path === '/api/v1/me/intentions' && method === 'POST') {
+    断言意向写入(body);
+    记变更(path);
+    const 写 = body as {
+      recruitment_type: 'social_full_time' | 'campus' | 'internship' | 'part_time';
+      job_category_id: string; primary_location_id: string; alternate_location_ids: string[]; industry_ids: string[];
+      workplace_modes: ('onsite' | 'hybrid' | 'remote')[];
+      compensation: { mode: 'range' | 'negotiable'; lower?: number | null; upper?: number | null; annual_salary_months?: number | null };
+      graduation_month: string | null; internship_months: number | null; onsite_days_per_week: number | null;
+      exclusions: BFFOwnerIntention['exclusions']; private_preferences: string;
+    };
+    const 新意向: BFFOwnerIntention = {
+      intention_id: Onboarding标记.意向编号,
+      recruitment_type: 写.recruitment_type,
+      job_category: { id: 写.job_category_id, display_name: Onboarding目录展示[写.job_category_id] ?? '' },
+      primary_location: { id: 写.primary_location_id, display_name: Onboarding目录展示[写.primary_location_id] ?? '' },
+      alternate_locations: 写.alternate_location_ids.map((id) => ({ id, display_name: Onboarding目录展示[id] ?? '' })),
+      industries: 写.industry_ids.map((id) => ({ id, display_name: Onboarding目录展示[id] ?? '' })),
+      workplace_modes: [...写.workplace_modes],
+      compensation: P4深克隆(写.compensation),
+      // salary_period 是服务端按 recruitment_type 派生的只读字段
+      salary_period: 写.recruitment_type === 'internship' || 写.recruitment_type === 'part_time' ? 'day' : 'month',
+      graduation_month: 写.graduation_month,
+      internship_months: 写.internship_months,
+      onsite_days_per_week: 写.onsite_days_per_week,
+      exclusions: P4深克隆(写.exclusions),
+      private_preferences: 写.private_preferences,
+      status: 'active',
+      revision: 1,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+    };
+    Onboarding域.intentions.push(新意向);
+    await route.fulfill({ status: 200, json: 信封(P4深克隆(新意向)) });
+    return true;
+  }
+  // 完成核对的 exact ID 权威回读（J-PILOT-02 同款）：只认本轮创建的那一条
+  const Onboarding意向详情 = /^\/api\/v1\/me\/intentions\/([^/]+)$/.exec(path);
+  if (Onboarding意向详情 && method === 'GET') {
+    const 目标 = Onboarding域.intentions.find((条) => 条.intention_id === Onboarding意向详情[1]);
+    if (目标 === undefined) {
+      await route.fulfill({ status: 404, json: { error: { type: 'intention_not_found', message: 'fixture：未知意向' } } });
+      return true;
+    }
+    await route.fulfill({ status: 200, json: 信封(P4深克隆(目标)) });
+    return true;
+  }
+
+  // 凭证投影：只存在于本 fixture 的唯一打码手机号（个人信息页的账号手机号来源）
+  if (path === '/api/v1/me/credentials' && method === 'GET') {
+    await route.fulfill({
+      status: 200,
+      json: 信封({
+        credentials: [
+          { credential_id: 'crd-fixture-onboarding-phone-0001', provider: 'phone_otp', display: Onboarding标记.手机掩码, verified_at: '2026-09-01T00:00:00Z' },
+        ],
+      }),
+    });
+    return true;
+  }
+  return false;
 }
