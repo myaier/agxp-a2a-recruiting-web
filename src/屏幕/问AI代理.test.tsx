@@ -358,6 +358,56 @@ describe('问AI代理 · Backend 真实聊天接线（use助手会话）', () =>
     expect(输入.value).toBe('我自己想问的话');
   });
 
+  it('解读落入待确认：重试提交成功解除后草稿仍恢复，不随 hook 清稿丢失（fix 反例）', async () => {
+    桩.api.读取助手历史.mockResolvedValue({
+      items: [消息DTO({ status: 'succeeded', reply: { text: '查到了', visibility: 'available', cards: [在谈卡] } })],
+      next_cursor: null,
+    });
+    render(<问AI代理 />);
+    await 冲();
+    const 输入 = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(输入, { target: { value: '待确认期间的草稿' } });
+    // 解读发送 503 进待确认：promise 正常 resolve、草稿仍可见 —— 原实现在此之后的
+    // 解除路径会无条件清稿且无恢复
+    桩.api.发送助手消息.mockRejectedValueOnce(new BFF错误(503, 'service_unavailable', 'x'));
+    fireEvent.click(screen.getAllByRole('button', { name: '让 AI 解读' })[0]);
+    await 冲();
+    expect(screen.getByText('上一条消息的提交结果待确认')).toBeTruthy();
+    expect(输入.value).toBe('待确认期间的草稿');
+    // 重试提交成功（同 key 重放取得权威轮次）→ hook 无条件清稿 → 页面恢复暂存
+    桩.api.发送助手消息.mockResolvedValueOnce(消息DTO({ status: 'succeeded' }));
+    fireEvent.click(screen.getByRole('button', { name: '重试提交' }));
+    await 冲();
+    expect(screen.queryByText('上一条消息的提交结果待确认')).toBeNull();
+    expect(输入.value).toBe('待确认期间的草稿');
+  });
+
+  it('普通发送的待确认解除不复活解读暂存：发出去的是草稿本身，清稿是正常契约', async () => {
+    桩.api.读取助手历史.mockResolvedValue({
+      items: [消息DTO({ status: 'succeeded', reply: { text: '查到了', visibility: 'available', cards: [在谈卡] } })],
+      next_cursor: null,
+    });
+    render(<问AI代理 />);
+    await 冲();
+    const 输入 = screen.getByRole('textbox') as HTMLTextAreaElement;
+    // 一次直接受理的解读：草稿恢复后暂存 ref 残留
+    fireEvent.change(输入, { target: { value: '旧草稿' } });
+    桩.api.发送助手消息.mockResolvedValueOnce(消息DTO({ status: 'succeeded' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '让 AI 解读' })[0]);
+    await 冲();
+    expect(输入.value).toBe('旧草稿');
+    // 用户改写草稿并从输入框发送 → 503 待确认 → 重试提交成功 → 只应保持清稿
+    fireEvent.change(输入, { target: { value: '用户自己的消息' } });
+    桩.api.发送助手消息.mockRejectedValueOnce(new BFF错误(503, 'service_unavailable', 'x'));
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    await 冲();
+    桩.api.发送助手消息.mockResolvedValueOnce(消息DTO({ text: '用户自己的消息', status: 'succeeded' }));
+    fireEvent.click(screen.getByRole('button', { name: '重试提交' }));
+    await 冲();
+    expect(screen.queryByText('上一条消息的提交结果待确认')).toBeNull();
+    expect(输入.value).toBe('');
+  });
+
   it('失败/重试条件：只有 failed && retryable 出重试；uncertain 不自动重跑；重试原位替换', async () => {
     const 可重试 = 消息DTO({ status: 'failed', retryable: true, error_code: 'assistant_downstream_error', reply: null });
     桩.api.读取助手历史.mockResolvedValue({
