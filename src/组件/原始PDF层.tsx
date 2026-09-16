@@ -11,10 +11,13 @@ import 弹层框架 from './弹层框架';
 import 预览样式 from './简历预览层.module.css';
 
 /** 原始 PDF 正文（纸底 + iframe 呈现租约字节）：不复制 iframe 与租约渲染的第二份实现。
- *  全屏层调用方不传 关闭 —— 退出由该层自己的「继续沟通」承担。 */
-export function 原始PDF正文({ 地址 }: { 地址: string }) {
+ *  纸底的 flex:1 只在弹性父容器里生效 —— 抽屉弹层（原 原始PDF层）自带；全屏层
+ *（详情正文区是普通滚动块）的调用方须传 类名 给出确定高度（如 height:100% 的
+ *  纵向 flex 容器类），否则纸底塌成内容高度。关闭键全屏层不传 —— 退出由该层自己的
+ *「继续沟通」承担。 */
+export function 原始PDF正文({ 地址, 类名 }: { 地址: string; 类名?: string }) {
   return (
-    <div className={`${预览样式.纸底} 滚动区`}>
+    <div className={[预览样式.纸底, '滚动区', 类名].filter(Boolean).join(' ')}>
       <iframe
         title="简历 PDF"
         src={地址}

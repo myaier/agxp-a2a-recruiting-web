@@ -1,19 +1,20 @@
 // use真人会话资料（Spec §11.2）：真人会话页头身份与资料弹层的局部读取 hook。
 // 只组织本页资料读取、映射与局部失败状态：读现有 provider 状态（P5详情 /
-// 候选岗位详情 / 公开企业表），进会话做一次定向读取（不加轮询），不建 store、
-// 不镜像 P5 DTO。身份来源铁律：
+// 候选岗位详情 / 公开企业表），不建 store、不镜像 P5 DTO。身份来源铁律：
 //   · 招聘页头 = Case candidateIdentity：disclosed 且有名才显真名；anonymous 保留
 //     Case 代号（candidateAlias），不显被遮蔽姓名；缺名给「候选人姓名暂未提供」。
 //   · 候选页头 = Case jobDetail.publisher_profile（姓名/职务/头像）+ 发布方公司：
 //     公司只认当前岗位 publisher_organization_ref → 公开企业 display_name，
 //     绝不拿用人企业 organization/claim 替代发布方（猎头发布 ≠ 用人企业）。
-//   · 授权 context 不在场 → 资料不可用（页头回落，不透出旧身份）；补读失败
-//     （快照带错误）同样不消费缓存里的旧身份；资料降级不阻断消息读写。
+//   · 授权 context 不在场 → 资料不可用（页头回落，不透出旧身份）。
+// 本轮读取门槛（Plan Task 3）：每个授权范围进会话强制一次定向读取（操作层对已有
+// 成功快照的去重短路不替代本轮读取）；本轮落地前不消费旧缓存身份，手动重读期间
+// 同样退回占位；读取失败（快照带错误）不展示缓存旧身份。资料降级不阻断消息读写。
 // 消费按当前 范围键 直查状态：换会话/换角色/换账号当帧即换键，迟到写入落在旧键上，
 // 天然污染不到新页。职位资料只来自 Case 冻结 jobDetail（缺席 = null，弹层显示
 // 不可用与局部重读，绝不拿当前岗位替代历史资料）。
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { use应用状态 } from '../../状态/应用状态';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { 映射P5详情 } from '../../数据/MatchCase展示映射';
@@ -41,17 +42,40 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
   const 授权在场 = 详情 !== null && 详情.contextStatus === 'available' && 详情.context !== null;
   const caseId = 授权在场 && 详情 !== null ? 详情.caseId : '';
   const jobRef = 授权在场 && 详情?.context?.jobRef != null ? 详情.context.jobRef : null;
+  const 范围 = caseId === '' ? '' : `${角色}:${caseId}`;
 
-  // 进会话一次定向读取（读取详情 对已成功快照自带去重；不加轮询）。
-  // 候选端再补读当前岗位（发布方公司坐标），企业坐标出现后读公开企业。
+  // 本轮读取状态：范围键 + pending/ok。pending = 本轮定向读取尚未落地 —— 期间
+  // 不消费任何缓存身份（含上一轮成功快照），页头回落 P7 授权标签。落地跟的是
+  // 本轮强制读取的 promise 结算，不是快照形状：预置/旧的成功快照不替代本轮读取。
+  const [本轮, 设本轮] = useState<{ 键: string; 态: 'pending' | 'ok' } | null>(null);
+  const 快照 = caseId !== '' ? 后端状态.P5详情[P5范围键.detail(角色, caseId)] : undefined;
+
+  // 进会话（换会话/换角色）强制一次定向 P5 读取 + 候选端当前岗位读取（发布方公司
+  // 坐标），不加轮询；读取失败由快照错误表达，消费端按 unavailable 降级。
   useEffect(() => {
-    if (caseId === '') return;
-    void 操作.读取详情(角色, caseId).catch(() => undefined);
-  }, [角色, caseId, 操作]);
+    if (范围 === '') {
+      设本轮(null);
+      return;
+    }
+    设本轮({ 键: 范围, 态: 'pending' });
+    let 有效 = true;
+    void 操作.读取详情(角色, caseId, true)
+      .catch(() => undefined)
+      .then(() => {
+        if (!有效) return; // 范围已换：迟到结算不碰新范围的本轮状态
+        设本轮((旧) => (旧?.键 === 范围 && 旧.态 === 'pending' ? { 键: 范围, 态: 'ok' } : 旧));
+      });
+    return () => {
+      有效 = false;
+    };
+  }, [范围, 角色, caseId, 操作]);
   useEffect(() => {
     if (!(角色 === 'candidate' && jobRef !== null)) return;
-    void 操作.读取候选岗位详情(jobRef).catch(() => undefined);
+    void 操作.读取候选岗位详情(jobRef, true).catch(() => undefined);
   }, [角色, jobRef, 操作]);
+
+  // 候选端公司链：岗位读取落地后按 publisher_organization_ref 读公开企业
+  //（不可用编号不落旧缓存；失败局部显示缺失，不自动重试风暴）。
   const 发布方编号 = (() => {
     if (!(角色 === 'candidate' && jobRef !== null)) return null;
     const 岗位 = 后端状态.候选岗位详情[jobRef];
@@ -63,20 +87,21 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
     void 操作.读取公开企业(发布方编号).catch(() => undefined);
   }, [发布方编号, 操作]);
 
-  // 消费：只有本轮成功且无错误的快照才出身份（失败不展示缓存旧身份，Spec §11.2）
-  const 快照 = caseId !== '' ? 后端状态.P5详情[P5范围键.detail(角色, caseId)] : undefined;
-  const 明细 = 快照 !== undefined && 快照.阶段 === '成功' && 快照.error === null && 快照.detail !== null
+  // 消费：本轮就绪 + 快照成功无错 + detail 在场才出身份（失败/未落地都不出）
+  const 本轮就绪 = 本轮 !== null && 本轮.键 === 范围 && 本轮.态 === 'ok';
+  const 明细 = 本轮就绪 && 快照 !== undefined && 快照.阶段 === '成功' && 快照.error === null
+    && 快照.detail !== null
     ? 快照.detail
     : null;
   const 资料状态 = !授权在场
     ? 'unavailable'
     : 明细 !== null
       ? 'available'
-      : 快照 !== undefined && 快照.阶段 === '失败'
+      : 本轮就绪 && 快照 !== undefined && 快照.阶段 === '失败'
         ? 'unavailable'
         : 'loading';
 
-  // 页头回落值（资料 loading/失败时沿用 P7 自己的授权标签，不是 Case 身份）
+  // 页头回落值（本轮未落地/失败时沿用 P7 自己的授权标签，不是 Case 身份）
   const 回落标题 = 授权在场 && 详情?.context !== null
     ? (角色 === 'candidate' ? 详情!.context!.primaryLabel : 详情!.context!.secondaryLabel)
     : '真人会话';
@@ -124,12 +149,18 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
 
   const 重读资料 = useCallback(() => {
     if (caseId === '') return;
-    void 操作.读取详情(角色, caseId, true).catch(() => undefined);
+    // 手动重读同样按本轮结果判定：重读期间退回占位，本次落地后才恢复身份
+    设本轮({ 键: 范围, 态: 'pending' });
+    void 操作.读取详情(角色, caseId, true)
+      .catch(() => undefined)
+      .then(() => {
+        设本轮((旧) => (旧?.键 === 范围 && 旧.态 === 'pending' ? { 键: 范围, 态: 'ok' } : 旧));
+      });
     if (角色 === 'candidate' && jobRef !== null) {
       void 操作.读取候选岗位详情(jobRef, true).catch(() => undefined);
       if (发布方编号 !== null) void 操作.读取公开企业(发布方编号).catch(() => undefined);
     }
-  }, [角色, caseId, jobRef, 发布方编号, 操作]);
+  }, [角色, caseId, 范围, jobRef, 发布方编号, 操作]);
 
   return { 标题, 副标题, 对方头像URL, 对方首字, 职位资料, 资料状态, 重读资料 };
 }

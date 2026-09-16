@@ -194,6 +194,16 @@ PDF 层复用：从 `原始PDF层.tsx` 导出同文件 `原始PDF正文({文件�
 4. 展示具体 final gate 方案（候选 commit、target SHA、已完成测试、可复用证据与缺口、同步/普通 fast-forward 合入动作），等待用户明确确认；当前 workflow 启动不是合入授权。确认前仅只读 fetch，不同步合入 target、不 push。
 5. 获批后按 development-workflow 根相对 `references/final-integration.md` / `assets/final-integration-contract.md` 同步实际 target、重算责任并只补失效项；本轮跳过 L3，无真栈 cleanup。确认后不再做异构 review；target race 按合同重新呈现范围，不强推。普通 fast-forward push 成功后才报告合入，更新 task intent。
 
+## 异构 Codex review 记录（实施后收尾）
+
+- 模式：`codex-review-loop` FEATURE_BRANCH_REVIEW（开发合同授权的实施后收尾步骤）。冻结范围 `30a0d3b2...6364483f`（fork point = origin/main，分支独有 8 提交：5 文档 + 3 实施）。Reviewer 为 Codex CLI（`gpt-5.6-sol` / reasoning high / read-only 沙箱 / stdin 提示词文件），绑定批准 Spec blob `8eebfc2e`、最终 Plan 与共用 `../_shared/review-contract.md`；reviewer 全程未跑测试、未改文件（每轮前后 HEAD/porcelain 指纹一致）。
+- R1（thread 01a0aa05-edf5-7550-9b43-d190a351b566）：4 项 finding，全部裁决接受（required 4 / optional 0，拒绝 0）：
+  1. PDF 关闭/失权不作废在途取件（契约违反/Important/required/复杂度不变）→ 修复：新增 失效PDF会话 局部入口（关层/换会话/换角色/卸载/授权失权统一递增代际、回收租约、复位预览），操作栏 key 并入授权态实现失权即关层；补两条单测（关层后迟到租约即时回收且重开重新取件、同会话 context 失权关层回收）。
+  2. 资料 hook 消费旧成功缓存，未满足「本轮读取成功」门槛（契约违反/Important/required/复杂度增加——防旧身份与旧发布方公司继续展示的现实隐私风险，收益足以抵偿）→ 修复：每个授权范围强制一次定向读取（读取详情/读取候选岗位详情 force），本轮 promise 结算前一律 pending 降级（含手动重读期间），落地后仍按快照成功无错消费；hook 测试改异步等待并新增两条门槛反例。
+  3. 全屏层 PDF 正文塌陷（契约违反/Important/required/复杂度不变）→ 修复：原始PDF正文 增加可选 类名，页面传 `.PDF全高`（height:100%）让纸底在非 flex 正文区获得确定高度；e2e 断言 iframe 高度 >400px。
+  4. 真人长气泡丢失对侧留白（契约违反/Minor/required/复杂度不变）→ 修复：消息行传 `我方消息行/对方消息行` 行类 + `对侧留白` 气泡类（后代选择器抬高特异性，不依赖模块加载顺序、不收窄基础样式），我方让 41px/对方让 35px（与直聊镜像净空同口径）；e2e 双侧长消息对侧边距 ≥40px。
+- R1 修复提交：见 git log `fix(review-r1)`；轮间轻量检查 = 受影响单测 40 passed + typecheck/lint 0 + 真人消息 fixture e2e 11/11（未跑全层）。
+
 ## 文档审查记录
 
 - 模式：`WORKFLOW_DOCUMENT_REVIEW`，父 workflow 已授权。固定范围仅本 Spec 和本 Plan；批准 Spec revision `81e12c337596e063e089a6074c6bb2779e5dde60` / blob `8eebfc2ec223dab7deaa1d8bbe5afc02675aeb98`。

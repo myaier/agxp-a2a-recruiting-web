@@ -247,6 +247,9 @@ test.describe('P7 真人会话 fixture @backend', () => {
     const 框 = page.getByTitle('简历 PDF');
     await expect(框).toBeVisible({ timeout: 10_000 });
     expect((await 框.getAttribute('src')) ?? '').toMatch(/^blob:/);
+    // review-r1 F3：纸底在非 flex 正文区里显式全高 —— iframe 填满「继续沟通」以上区域
+    const 框盒 = await 框.boundingBox();
+    expect(框盒?.height ?? 0).toBeGreaterThan(400);
     await page.screenshot({ path: testInfo.outputPath('p7-pdf-layer-390.png') });
     await page.getByRole('button', { name: '继续沟通' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -310,6 +313,7 @@ for (const 时区 of ['Asia/Shanghai', 'UTC'] as const) {
         { message_id: '4001', kind: 'user_text', sender_role: 'recruiter', content: 'HiHi', created_at: '2026-09-16T09:07:00Z' },
         { message_id: '4002', kind: 'user_text', sender_role: 'candidate', content: 'HHHH', created_at: '2026-09-16T09:09:00Z' },
         { message_id: '4003', kind: 'user_text', sender_role: 'recruiter', content: `**加粗**的${长文}`, created_at: '2026-09-16T09:11:00Z' },
+        { message_id: '4004', kind: 'user_text', sender_role: 'candidate', content: `我方的${长文}`, created_at: '2026-09-16T09:13:00Z' },
       ];
       await 装P7候选(page, { fixture });
       // 冻结「当前年」为 2026：跨年显示口径不依赖运行机器的真实日期
@@ -328,14 +332,17 @@ for (const 时区 of ['Asia/Shanghai', 'UTC'] as const) {
       const 尺寸 = await page.evaluate(() => {
         const 行们 = Array.from(document.querySelectorAll('[data-侧]'));
         const 找 = (文: string) => 行们.find((行) => 行.textContent?.includes(文));
-        const 气泡宽 = (行: Element | undefined) => {
+        const 气泡盒 = (行: Element | undefined) => {
           const 时间 = 行?.querySelector('time');
-          return 时间?.previousElementSibling?.getBoundingClientRect().width ?? Number.NaN;
+          return 时间?.previousElementSibling?.getBoundingClientRect();
         };
         return {
-          短宽: 气泡宽(找('HiHi')),
-          我短宽: 气泡宽(找('HHHH')),
-          长宽: 气泡宽(找('加粗')),
+          短宽: 气泡盒(找('HiHi'))?.width ?? Number.NaN,
+          我短宽: 气泡盒(找('HHHH'))?.width ?? Number.NaN,
+          长宽: 气泡盒(找('加粗'))?.width ?? Number.NaN,
+          // review-r1 F4：长气泡两端保留对侧头像槽 + 间距（Spec §11.5）
+          对方长右距: window.innerWidth - (气泡盒(找('加粗'))?.right ?? Number.NaN),
+          我方长左距: 气泡盒(找('我方的'))?.left ?? Number.NaN,
           溢出: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         };
       });
@@ -343,6 +350,8 @@ for (const 时区 of ['Asia/Shanghai', 'UTC'] as const) {
       expect(尺寸.短宽, '短气泡贴合内容').toBeLessThan(120);
       expect(尺寸.我短宽, '我方短气泡贴合内容').toBeLessThan(120);
       expect(尺寸.长宽, '长气泡显著宽于短气泡').toBeGreaterThan(尺寸.短宽 + 120);
+      expect(尺寸.对方长右距, '对方长气泡保留对侧留白').toBeGreaterThanOrEqual(40);
+      expect(尺寸.我方长左距, '我方长气泡保留对侧留白').toBeGreaterThanOrEqual(40);
       // markdown 正文：**加粗** 解析为 strong
       await expect(page.locator('strong').filter({ hasText: '加粗' })).toHaveCount(1);
 

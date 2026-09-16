@@ -359,7 +359,7 @@ describe('Backend真人会话', () => {
     expect(禁用主项.disabled).toBe(true);
   });
 
-  it('招聘页头读 Case 身份：disclosed 有名显真名、副标题为 Case 职位名', () => {
+  it('招聘页头读 Case 身份：disclosed 有名显真名、副标题为 Case 职位名', async () => {
     环境({
       role: 'recruiter',
       P5详情: {
@@ -374,8 +374,47 @@ describe('Backend真人会话', () => {
       },
     });
     render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
-    expect(screen.getByText('陈屿')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('陈屿')).toBeTruthy());
     expect(screen.getByText('平台工程师')).toBeTruthy();
+  });
+
+  it('review-r1 F1：开层后关层，迟到的租约立即回收、不落预览；重开层重新取件', async () => {
+    let 交租约!: (租约: typeof PDF租约) => void;
+    const 读取简历PDF = vi.fn(() => new Promise<typeof PDF租约>((完成) => { 交租约 = 完成; }));
+    环境({ role: 'recruiter', 读取简历PDF });
+    const 用户 = userEvent.setup();
+    render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    expect(screen.getByRole('dialog', { name: '看简历' })).toBeTruthy();
+    await waitFor(() => expect(读取简历PDF).toHaveBeenCalledTimes(1));
+    // 请求在飞时关层：迟到租约不得进预览
+    await 用户.click(screen.getByRole('button', { name: '继续沟通' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const 迟到租约 = { url: 'blob:late-lease', revoke: vi.fn() };
+    await act(async () => { 交租约(迟到租约); });
+    expect(迟到租约.revoke).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTitle('简历 PDF')).toBeNull();
+    // 重开层：重新取件（不被旧回执或旧在飞锁挡住）
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    await waitFor(() => expect(读取简历PDF).toHaveBeenCalledTimes(2));
+  });
+
+  it('review-r1 F1：同会话 context 失权 —— 弹层关闭、租约回收，消息仍可读', async () => {
+    const 读取简历PDF = vi.fn().mockResolvedValue(PDF租约);
+    环境({ role: 'recruiter', 读取简历PDF });
+    const 用户 = userEvent.setup();
+    const 页 = render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    await waitFor(() => expect(screen.getByTitle('简历 PDF')).toBeTruthy());
+    // context 变 unavailable：层关闭（授权 key 重挂）+ 租约回收
+    mock应用状态.后端状态.P7会话详情['p7:detail:recruiter:3003'] = 详情快照({
+      detail: 会话详情({ contextStatus: 'unavailable', context: null }),
+    });
+    页.rerender(<Backend真人会话 角色="recruiter" conversationId="3003" />);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(PDF租约.revoke).toHaveBeenCalled();
+    // 主项占位禁用、消息区仍渲染
+    expect((screen.getByRole('button', { name: '看简历' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('消息行共用气泡与 markdown：时间取每条 createdAt 本地格式化，不再 UTC 截取', () => {

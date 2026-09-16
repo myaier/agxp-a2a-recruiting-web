@@ -202,17 +202,24 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
     PDF租约引用.current?.revoke();
     PDF租约引用.current = null;
   };
-  // review-r3：卸载/换会话敏感的代际推进与租约回收用 useLayoutEffect ——
-  // 与提交同步（先于绘制），迟到的取件结算在该窗口内即被作废。
-  useLayoutEffect(() => {
-    设PDF预览(null); // 换会话：旧会话的取件层立即关闭（同步重渲染，先于绘制）
+  // review-r1（异构 F1）：失效 PDF 会话 —— 递增代际作废在飞取件、回收已挂租约并复位
+  // 预览/失败态。关层、换会话/换角色、卸载、授权失权都走这一个入口：层关闭后才到达
+  // 的租约在代际检查处即刻回收，绝不落进预览或遗留到下一次开层（Spec §11.3）。
+  const 失效PDF会话 = () => {
+    PDF代际.current += 1;
+    PDF在飞.current = -1; // 旧代际的锁随代际一起作废，新取件不被旧在飞挡住
+    回收租约();
+    设PDF预览(null);
     设PDF失败(false);
+  };
+  // review-r3：卸载/换会话/换角色敏感的失效用 useLayoutEffect —— 与提交同步
+  //（先于绘制），迟到的取件结算在该窗口内即被作废。
+  useLayoutEffect(() => {
     设举报层开(false); // 旧会话的举报层同样不跨会话存活
     return () => {
-      PDF代际.current += 1;
-      回收租约();
+      失效PDF会话();
     };
-  }, [conversationId]);
+  }, [conversationId, role]);
   const 开PDF = async (caseId: string) => {
     if (caseId === '' || PDF预览 !== null || PDF在飞.current === PDF代际.current) return;
     PDF在飞.current = PDF代际.current;
@@ -220,7 +227,7 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
     try {
       const 租约 = await 操作.读取简历PDF('recruiter', caseId);
       if (PDF代际.current !== 起始代际) {
-        // 迟到：会话已换/组件已卸载 —— 租约即刻回收，不挂不渲染
+        // 迟到：会话已换/已卸载/层已关/授权已失效 —— 租约即刻回收，不挂不渲染
         租约.revoke();
         return;
       }
@@ -229,7 +236,7 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
       设PDF失败(false);
       设PDF预览({ 文件名: '简历原件.pdf', 地址: 租约.url });
     } catch {
-      // review-r2 R2-4：迟到的失败对新会话是无关错误 —— 不提示、不落失败态
+      // review-r2 R2-4：迟到的失败对新状态是无关错误 —— 不提示、不落失败态
       if (PDF代际.current !== 起始代际) return;
       设PDF失败(true);
     } finally {
@@ -237,14 +244,12 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
     }
   };
   // 全屏层的开/关时机（Spec §11.3）：开层才取件；继续沟通 / Escape / 遮罩关层
-  // 一律回收租约并复位失败态 —— 下次开层重新取件，迟到回执不得重开层。
+  // 一律作废整个 PDF 会话 —— 下次开层重新取件，迟到回执不得重开层。
   const 层打开 = () => {
     if (role === 'recruiter' && 详情 !== null) void 开PDF(详情.caseId);
   };
   const 层关闭 = () => {
-    回收租约();
-    设PDF预览(null);
-    设PDF失败(false);
+    失效PDF会话();
   };
 
   // 页头与资料（Spec §11.2）：按已授权 caseId 读同一 Case —— 招聘看 candidateIdentity，
@@ -257,6 +262,15 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
   const 上下文在场 = 详情 !== null && 详情.contextStatus === 'available' && 详情.context !== null;
   const 招聘可看简历 = role === 'recruiter' && 上下文在场 && 详情!.context!.resumeRef !== null
     && 详情!.caseId !== '';
+  // 主项可用（双端统一口径）：授权失权（同会话内 context 变 unavailable / resume_ref
+  // 消失）时关闭资料弹层并作废 PDF（Spec §11.3「context 失效时关闭资料弹层、清理 PDF」）。
+  const 主项可用 = role === 'candidate' ? 上下文在场 : 招聘可看简历;
+  const 主项可用引用 = useRef(主项可用);
+  useEffect(() => {
+    const 失权 = 主项可用引用.current && !主项可用;
+    主项可用引用.current = 主项可用;
+    if (失权) 失效PDF会话();
+  }, [主项可用]);
 
   // 主项全屏层正文（Spec §11.3）：候选 = Case 冻结职位资料（复用在谈详情同一组件，
   // 公司导航沿用可信组织坐标门控）；招聘 = 授权 PDF 正文（加载/失败/重试都留在层内）。
@@ -282,7 +296,7 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
       </资料提示行>
     )
   ) : PDF预览 !== null ? (
-    <原始PDF正文 地址={PDF预览.地址} />
+    <原始PDF正文 地址={PDF预览.地址} 类名={真人会话样式.PDF全高} />
   ) : PDF失败 ? (
     <资料提示行>
       简历原件暂时打不开
@@ -330,11 +344,11 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
 
       {/* 操作栏（Spec §11.3）：恢复 Mock 同款三项排列 —— 主项盖全屏层（候选 = Case
           冻结职位资料、招聘 = 授权 PDF），电话/微信诚实缺失占位（§11.4）。
-          缺授权坐标时主项占位禁用；key 随会话重挂：换会话/换角色即关闭层并复位展开，
-          不把旧会话的层与取件带进新会话。 */}
+          缺授权坐标时主项占位禁用；key 随会话/角色/授权态重挂：换会话、换角色或
+          授权失权都会关闭层并复位展开，不把旧会话的层与取件带进新状态。 */}
       {详情 !== null ? (
         <真人会话操作栏
-          key={`${role}:${conversationId}`}
+          key={`${role}:${conversationId}:${主项可用 ? 'on' : 'off'}`}
           主项名={role === 'candidate' ? '看职位' : '看简历'}
           主项图标={
             role === 'candidate'
@@ -342,7 +356,7 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
               : <简历图标 尺寸={18} 色="#3f7a1f" />
           }
           主项内容={主项层正文}
-          主项禁用={!(role === 'candidate' ? 上下文在场 : 招聘可看简历)}
+          主项禁用={!主项可用}
           主项打开={层打开}
           主项关闭={层关闭}
           联系方式占位
@@ -516,6 +530,8 @@ function 消息行({
       <聊天气泡
         方={我方 ? '我方' : '对方'}
         时间={行.createdAt}
+        类名={我方 ? 真人会话样式.我方消息行 : 真人会话样式.对方消息行}
+        气泡类名={真人会话样式.对侧留白}
         头像={
           我方 ? (
             <span className={共用样式.我头像}>{我首字}</span>
