@@ -34,6 +34,7 @@ import {
   从P4招聘候选,
   映射P4委托展示,
   P4已开案,
+  薪资文案,
 } from './发现推荐映射';
 
 describe('从P4候选岗位 / 从P4CandidateJob', () => {
@@ -750,5 +751,13 @@ describe('P4委托状态文案', () => {
     expect(P4委托状态文案('accepted')).toBe('已提交给 AI，等待处理');
     expect(P4委托状态文案('failed')).toBe('本次处理未完成');
     expect(P4拒绝原因文案('active_case_quota_reached')).toBe('当前在谈已达到上限，请先处理已有在谈');
+  });
+});
+
+describe('薪资文案（既有格式；助手查询结果卡共用同一导出，不另写格式化）', () => {
+  it('月/日/时薪三档格式保持：K 无空格，元/天、元/时 前留一个空格', () => {
+    expect(薪资文案(20, 35, 'month')).toBe('20-35K');
+    expect(薪资文案(300, 500, 'day')).toBe('300-500 元/天');
+    expect(薪资文案(80, 120, 'hour')).toBe('80-120 元/时');
   });
 });

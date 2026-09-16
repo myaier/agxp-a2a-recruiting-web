@@ -170,6 +170,39 @@ describe('求职在谈卡 · 行为', () => {
   });
 });
 
+describe('求职在谈卡 · 禁用（助手查询快照的不可查看项目）', () => {
+  const 基础属性: 求职在谈卡属性 = {
+    公司: '云衢科技',
+    公司简介: 'C 轮 · 500-1000 人',
+    公司字标: { 首字: '云', 公司名: '云衢科技' },
+    匹配分: 61,
+    薪资: '20-35K',
+    职位: '资深后端工程师',
+    标签: ['上海'],
+    阶段: 阶段(),
+    打开: vi.fn(),
+  };
+
+  it('不传 禁用 的既有调用方行为逐字不变：整卡 button、点击调 打开', () => {
+    const 打开 = vi.fn();
+    render(<求职在谈卡 {...基础属性} 打开={打开} />);
+    const 键们 = screen.getByTestId('求职在谈卡').querySelectorAll('button');
+    expect(键们).toHaveLength(1);
+    fireEvent.click(键们[0] as Element);
+    expect(打开).toHaveBeenCalledTimes(1);
+  });
+
+  it('禁用=true：整卡退化为不可点容器，点击不调 打开，卡面照常渲染', () => {
+    const 打开 = vi.fn();
+    render(<求职在谈卡 {...基础属性} 禁用={true} 打开={打开} />);
+    expect(screen.getByTestId('求职在谈卡').querySelectorAll('button')).toHaveLength(0);
+    fireEvent.click(screen.getByTestId('求职在谈卡'));
+    expect(打开).not.toHaveBeenCalled();
+    expect(screen.getByText('资深后端工程师')).toBeTruthy();
+    expect(screen.getByText('20–35K')).toBeTruthy();
+  });
+});
+
 describe('求职在谈卡 · 真实公司图位（release/0.2.5）', () => {
   const 阶段信息 = 阶段();
   const 基础属性: 求职在谈卡属性 = {

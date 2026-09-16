@@ -68,6 +68,9 @@ export interface 求职在谈卡属性 {
   职位: string;
   标签: readonly string[];
   阶段: 在谈阶段信息;
+  /** true = 整卡不可点进详情（助手查询快照里 job.availability=unavailable 的不可查看项目）。
+   *  可选 prop：既有调用方不传 → 默认可点，原行为逐字不变。 */
+  禁用?: boolean;
   打开: () => void;
 }
 
