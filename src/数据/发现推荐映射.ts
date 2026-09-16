@@ -73,8 +73,9 @@ function 拆行(文本: string): string[] {
   return 文本.split(/\r?\n/).map((行) => 行.trim()).filter((行) => 行 !== '');
 }
 
-/** 薪资带文案：K 无空格（'20-35K'），元/天、元/时 前留一个空格（'300-500 元/天'），与 后端映射 同口径 */
-function 薪资文案(下: number, 上: number, 周期: 'month' | 'day' | 'hour'): string {
+/** 薪资带文案：K 无空格（'20-35K'），元/天、元/时 前留一个空格（'300-500 元/天'），与 后端映射 同口径。
+ *  导出给 助手查询结果卡 复用（Plan Task 3：同一份格式化，不另写第二套）。 */
+export function 薪资文案(下: number, 上: number, 周期: 'month' | 'day' | 'hour'): string {
   const 单位 = 薪资单位[周期];
   return `${下}-${上}${单位 === 'K' ? 单位 : ` ${单位}`}`;
 }
