@@ -141,7 +141,8 @@ export function 从P5到详情顶栏(
     }
     return {
       端: '求职',
-      标题: 非空拼接([摘要.职位, 公司名]) ?? 公司名,
+      // 公司名恒非空（已有「公司信息缺失」回退），拼接结果不会为 null
+      标题: 非空拼接([摘要.职位, 公司名]),
       副标题: 非空拼接([摘要.城市, 摘要.薪资]),
       画像: null,
       右侧: { kind: '分数', 值: view.匹配分 },
@@ -485,7 +486,12 @@ export function 从P5到详情分段(
       const 段待办 = view.待办们.filter((待办) => 待办用途阶段表[待办.purpose] === 区.stage);
       状态文 = 段待办.some((待办) => 待办.role === view.role)
         ? '需要你'
-        : 段待办.some((待办) => 待办.role !== view.role) ? '等待对方' : 区.状态文案;
+        : 段待办.some((待办) => 待办.role !== view.role)
+          ? '等待对方'
+          // v1（历史 Case）没有 pending_actions：viewer 级权威信号是 needs_action
+          // （decoder 不变式 needsAction ⇔ available_actions 非空，动作卡只出当前段），
+          // 恢复其「需要你」提示 —— A.2.1「本人待办存在时按权威输入显示」
+          : view.待办 && 区.stage === currentStage ? '需要你' : 区.状态文案;
     } else if (区.stage === 'intent_confirmation' && 区.状态 === 'passed'
       && 详情.state.lifecycle === 'completed') {
       状态文 = '已确认';

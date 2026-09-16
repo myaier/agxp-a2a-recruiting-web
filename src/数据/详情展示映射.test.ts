@@ -760,7 +760,7 @@ describe('从P5到详情分段', () => {
     ]);
   });
 
-  it('active 段状态胶囊按权威待办分化：本人待办=需要你、对端待办=等待对方、无待办=进行中', () => {
+  it('active 段状态胶囊按权威待办分化：本人待办=需要你、对端待办=等待对方；v1 needs_action 恢复需要你', () => {
     const 待办 = (role: 'candidate' | 'recruiter', purpose: 's0_continue' | 's1_continue') => ({
       id: `cpa_${role}_${purpose}`, role, purpose,
       deadline: '2026-09-01T12:00:00Z', 截止于: '2026-09-01 20:00',
@@ -771,18 +771,31 @@ describe('从P5到详情分段', () => {
       role: 'candidate', 阶段区块: 基础区块, 待办们: [待办('candidate', 's0_continue')],
     }), 详情DTO({ stage: 'anonymous_screening' }), null);
     expect(本人[0]!.状态文).toBe('需要你');
-    const 对端 = 从P5到详情分段(分段视图({
-      role: 'candidate', 阶段区块: 基础区块, 待办们: [待办('recruiter', 's1_continue')],
-    }), 详情DTO(), null);
-    expect(对端[0]!.状态文).toBe('进行中'); // S1 的待办不冒充 S0 的状态（不串段）
+    // v2 的对端待办优先于 viewer 级 needs_action：等的是对方，不冒充本人
     const S1对端 = 从P5到详情分段(分段视图({
       role: 'candidate',
       阶段区块: 四段({ resume_submission: { 状态: 'active', 状态文案: '进行中' } }),
       待办们: [待办('recruiter', 's1_continue')],
     }), 详情DTO({ stage: 'resume_submission' }), null);
     expect(S1对端[1]!.状态文).toBe('等待对方');
-    const 无待办 = 从P5到详情分段(分段视图({ 阶段区块: 基础区块 }), 详情DTO(), null);
+    // 对端待办不在本段：不串段；本段权威 needs_action 仍给需要你
+    const 对端不串段 = 从P5到详情分段(分段视图({
+      role: 'candidate', 阶段区块: 基础区块, 待办们: [待办('recruiter', 's1_continue')],
+    }), 详情DTO(), null);
+    expect(对端不串段[0]!.状态文).toBe('需要你');
+    // v1（历史 Case，decoder 钉 pendingActions=[]）：viewer 权威信号 needs_action
+    //（= 行侧动作卡在当前段）恢复「需要你」；needs_action 为假才维持「进行中」
+    const v1需要你 = 从P5到详情分段(分段视图({ 阶段区块: 基础区块, 待办: true }), 详情DTO(), null);
+    expect(v1需要你[0]!.状态文).toBe('需要你');
+    const 无待办 = 从P5到详情分段(分段视图({ 阶段区块: 基础区块, 待办: false }), 详情DTO(), null);
     expect(无待办[0]!.状态文).toBe('进行中');
+    // needs_action 只属于当前段：非当前段不借光（该段仍按自身状态显示）
+    const 非当前 = 从P5到详情分段(
+      分段视图({ 阶段区块: 基础区块, 待办: true }),
+      详情DTO({ stage: 'resume_submission' }),
+      null,
+    );
+    expect(非当前[0]!.状态文).toBe('进行中');
   });
 
   it('S3 胶囊：completed（双方确认完成事实）为已确认；仅到 S3 尚未双确认不得称已确认', () => {

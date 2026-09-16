@@ -9434,8 +9434,9 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await expect(page.getByText('学历缺失')).toBeVisible();
     await expect(page.getByText('求职状态缺失')).toBeVisible();
     await expect(page.getByRole('img', { name: '性别未知' })).toBeVisible();
-    // S0–S3 展示统一 Task 4：顶部状态条退场 —— 状态胶囊在 S1 分节条上（v1 无待办 → 进行中）
-    await expect(page.getByText('进行中', { exact: true }).first()).toBeVisible();
+    // S0–S3 展示统一 Task 4：顶部状态条退场 —— 状态胶囊在 S1 分节条上
+    //（v1 needs_action → 需要你，A.2.1 权威待办输入）
+    await expect(page.getByText('需要你', { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: '通过初筛' })).toBeVisible();
     await expect(page.getByRole('button', { name: '不合适' })).toBeVisible();
     expect(请求序).toContain(`GET /api/v1/recruiter/match-cases/${P5编号.甲}`);
@@ -9911,9 +9912,9 @@ test.describe('在谈详情完整布局', () => {
       await expect(page.getByRole('button', { name: '职位详情', exact: true })).toBeVisible();
 
       // 进度 Tab：四阶段（P5 阶段标题）；S0–S3 展示统一 Task 4：顶部状态条删除 ——
-      // 状态胶囊在 S0 分节条上（v1 无待办 → 进行中），「旧版待核实」说明与轮次提示
+      // 状态胶囊在 S0 分节条上（v1 needs_action → 需要你），「旧版待核实」说明与轮次提示
       // 都落当前段；J-PILOT-01：S0 补事实卡退场，底栏保留原控件但真禁用（Spec §7）
-      await expect(page.getByText('进行中', { exact: true }).first()).toBeVisible();
+      await expect(page.getByText('需要你', { exact: true }).first()).toBeVisible();
       await expect(page.getByText('旧版状态待核实，请交负责人处理').first()).toBeVisible();
       await expect(page.getByText('轮次 1/3')).toBeVisible();
       await 断言纵序(page, ['匿名初筛', '递交简历', '差异协同', '意向确认']);

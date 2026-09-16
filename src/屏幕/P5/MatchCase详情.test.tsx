@@ -648,8 +648,8 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(screen.getByText('每周可以到岗几天？')).toBeTruthy(); // 正式问答气泡（screening records）
     expect(screen.getByText('工作日 10:00-19:00 联系')).toBeTruthy(); // 本端叮嘱回执
     expect(screen.getByText('流程预计两周内走完')).toBeTruthy(); // 对端叮嘱回执
-    // 顶部状态条退场：状态胶囊（active 无权威待办→进行中）与步骤/轮次都在当前段段首
-    expect(screen.getByText('进行中')).toBeTruthy();
+    // 顶部状态条退场：状态胶囊（v1 needs_action → 需要你，A.2.1）与步骤/轮次都在当前段段首
+    expect(screen.getByText('需要你')).toBeTruthy();
     expect(screen.getByText('等待人工决定是否继续')).toBeTruthy();
     expect(screen.getByText('轮次 1/3')).toBeTruthy();
   });
@@ -1595,8 +1595,8 @@ describe('MatchCase详情 · S0/S1 动作（Task 6）', () => {
       }),
     });
     渲染详情('candidate', 'mc_direct');
-    // 顶部状态条退场：当前段胶囊走 A.2.1 口径（v1 无待办 → 进行中），邀请二卡仍被行白名单挡下
-    expect(await screen.findByText('进行中')).toBeTruthy();
+    // 顶部状态条退场：当前段胶囊走 A.2.1 口径（v1 needs_action → 需要你），邀请二卡仍被行白名单挡下
+    expect(await screen.findByText('需要你')).toBeTruthy();
     expect(screen.queryByText('接受简历邀请')).toBeNull(); // S0 needs_user 行白名单不含邀请二卡
     expect(screen.queryByRole('button', { name: '接受邀请' })).toBeNull();
     expect(screen.queryByRole('button', { name: '婉拒邀请' })).toBeNull();
@@ -2241,9 +2241,14 @@ function 注意详情DTO(role: P5角色, needsAction: boolean): P5详情 {
     needsUser: false,
     agentAttention: { code: 'agent_unavailable', retryable: false },
   });
+  // 段与 state 同相：S1 是当前段（active），S0 已过 —— 胶囊/说明都落当前段
+  const stages = 阶段区组({
+    anonymous_screening: { state: 'passed', summary: 'complete' },
+    resume_submission: { state: 'active', summary: 'screening_resume' },
+  });
   return role === 'candidate'
-    ? 候选详情DTO({ state, needsAction, availableActions: [] })
-    : 招聘详情DTO({ state, needsAction, availableActions: [] });
+    ? 候选详情DTO({ state, needsAction, availableActions: [], stages })
+    : 招聘详情DTO({ state, needsAction, availableActions: [], stages });
 }
 
 describe('MatchCase详情 · owner-safe agent_attention', () => {
@@ -2278,11 +2283,11 @@ describe('MatchCase详情 · owner-safe agent_attention', () => {
       expect(mock提交简历).not.toHaveBeenCalled();
       cleanup();
 
-      // needsAction=true：说明仍在（v1 行无 pendingActions，胶囊维持「进行中」，不出「需要你」）
+      // needsAction=true：说明仍在（v1 行无 pendingActions，needs_action 恢复「需要你」）
       置详情状态({ role, caseId, 快照: 详情快照({ detail: 注意详情DTO(role, true) }) });
       渲染详情(role, caseId);
       expect(screen.getByText('AI 服务暂时不可用，本 Case 尚未继续')).toBeTruthy();
-      expect(screen.getAllByText('进行中').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('需要你').length).toBeGreaterThan(0);
       expect(screen.queryByText('代理处理中')).toBeNull();
       expect(screen.queryByRole('button', { name: '重试校验' })).toBeNull();
       cleanup();
