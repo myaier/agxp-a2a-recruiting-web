@@ -123,9 +123,14 @@ fullTitle 原样保留；用例正文（断言）除下述代码搬迁外一字�
 | --- | --- | --- |
 | P3 隐私读写、组织屏蔽与岗位硬性条件走 HTTP fixture 主链路（10.1s） | ①披露读改回读：水合并行链 + 隐身开关 + 披露偏好稀疏补丁（If-Match "1"/"2" 原样）；②组织屏蔽与解除：目录搜索 q/limit/cursor、选回填零写、屏蔽幂等键、解除风险确认（If-Match 按独立 fixture 从 "1" 起算，原 "3"/"4"/"6" 是链内累计）；③岗位硬性条件：切换后组织链 + 发布四员完整 + 编辑空稀疏补丁（+2） | 取消零写（选回填零 POST）、revision（quoted If-Match 全链）、真实目录 ID（q/cursor/organization_id/四员）逐条保留；三条 Case 各自初始化账号与 fixture |
 | P6 全链路：双端规则生命周期与请求契约（21.5s） | ①候选创建提案→确认（水合/轮询/物化 + 创建与 accept 回执幂等）；②候选替换提案（草稿预填/确认前旧规则在场/accept 后旧规则归档 + accept 幂等）；③候选归档（键盘揭开/确认前零 DELETE/If-Match 当前版本恰一次）；④招聘端创建→确认→pause/resume 版本链 1→2→3（+3） | 跨操作版本链与物化断言保留在 accept 所在 Case；原尾部「候选创建们=1/候选接受们=2」按拆分后各自 Case 收敛为等价计数 |
-| JD 建议稿导入大链路（14.3s） | ①授权与轮询：consent 取消零 POST、202、串行轮询、快照合并（未改字段才被替换）；②导入建议发布：GET 首拍即 succeeded（合法已完成导入快照）起步，经同一合并入口 + 城市门禁 + 真实 Catalog 选择 + 确认门后发布（+1） | ①保 consent 前零 POST/轮询两拍/类别轻提示/描述保留；②保发布 body（title/requirements/workplace/office_location/category_id/location_id/双 ref）与轮询收口（GET=1） |
+| JD 建议稿导入大链路（14.3s） | ①授权与轮询：consent 取消零 POST、202、串行轮询、快照合并（未改字段才被替换）；②导入建议发布：GET 首拍即 succeeded（合法已完成导入快照）起步，经同一合并入口 + 城市门禁 + 真实 Catalog 选择 + 确认门后发布（+1） | ①保 consent 前零 POST/轮询两拍/解析零 Job POST/类别建议轻提示/等待期改过描述保留（合并不得覆盖用户已改字段）；②保未改描述由建议填充→用户第二步改写存活到发布 body（canary 建议稿描述按精确匹配缺席）、title/requirements/workplace/office_location/category_id/location_id/双 ref 与轮询收口（GET=1） |
 | 核心编辑 岗位 @backend | 新建两栏下钻分类→确认门→发布（目录分页/下钻/死端零请求/同名叶子稳定 ID）；编辑 hydrated confirmed 岗（fixture 预置社招 confirmed 岗，改公开要求撤销确认/稀疏补丁只带变化字段，新增 If-Match "1" 断言）（+1） | body/ID/If-Match/确认门双向撤销逐条保留 |
-| 核心编辑 岗位 @mock | 新建分类→确认门→发布进本地列表；编辑 legacy 岗 P-01（私有筛选不撤确认/改公开要求撤销/重新确认后保存 + 重进回读）（+1） | Mock 零 API 断言两条 Case 各自保留 |
+| 核心编辑 岗位 @mock | 新建分类→确认门→发布进本地列表；编辑 legacy 岗 P-01（私有筛选不撤确认/改公开要求撤销/重新确认后保存 + 重进回读；编辑屏 iPhone 视口块：无横向溢出/输入可聚焦/保存可见）（+1） | Mock 零 API 断言两条 Case 各自保留 |
+
+Fix round 1（spec review 后）：恢复 JD 拆分初版丢失的三条断言（①类别建议轻提示、
+①解析零 Job POST、①等待期改过描述保留；②发布 body 的用户改写描述存活 + canary
+缺席），恢复 岗位 @mock 编辑 Case 的编辑屏 iPhone 视口块（原 :6262-6267）——
+均为旧长 Case 既有断言的回归复位，无新增放宽。
 
 未拆分的裁定：候选 onboarding 完整保存是「社招产品路径的必要完整接线冒烟」（教育恢复/
 头像 unknown/首次意向唯一性已作为独立异常 Case 存在于 `J-PILOT-02接线.spec.ts`，学生/

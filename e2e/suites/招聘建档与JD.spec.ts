@@ -231,6 +231,12 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
     // ── 轮询到 succeeded（pending → processing → succeeded 两拍，约 6 秒）──
     await expect.poll(() => GET数, { timeout: 20_000 }).toBe(2);
     expect(POST状态).toEqual([202]);
+    // 类别建议只走现有轻提示（无常驻节点）
+    await expect(page.getByText('AI 识别的职位类别是「后端开发」，请手动选择')).toBeVisible();
+    // 解析本身不产生 Job POST
+    expect(fixture.mutations.find((项) => 项.path === '/api/v1/recruiter/jobs')).toBeUndefined();
+    // 等待期间改过的描述保留（建议合并不得覆盖用户已改字段）
+    await expect(page.getByLabel('职位描述')).toHaveValue('用户等待时写的描述');
 
     // ── 未改的标题被建议替换；横幅进入终局；全远程清空并禁用办公地点（原位不隐藏）──
     await page.getByRole('button', { name: '返回' }).click();
@@ -363,6 +369,10 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
     await expect(page.getByPlaceholder(/资深后端工程师/)).toHaveValue(建议稿.title);
     await expect(page.getByRole('button', { name: /全远程/ })).toBeVisible();
     await page.getByRole('button', { name: '下一步' }).click();
+    // 第二步：合并已把未改的描述填成建议稿原文（未改→建议填充方向）；用户此时改写，
+    // 发布 body 的「用户改过字段存活」与 canary（建议稿描述）缺席由最后一段断言承载
+    await expect(page.getByLabel('职位描述')).toHaveValue(建议稿.description);
+    await page.getByLabel('职位描述').fill('用户改写的发布描述');
     await page.getByRole('button', { name: '下一步' }).click();
     const 办公地框 = page.getByPlaceholder(/浦东新区世纪大道/);
     await expect(办公地框).toBeEnabled();
@@ -392,7 +402,7 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
     await page.getByRole('button', { name: 标记.城市display, exact: true }).click();
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(城市搜索框).toHaveCount(0);
-    // 职位要求由建议填入（本 Case 未改描述：description 也来自建议稿快照）
+    // 职位要求由建议填入（未改字段）；描述是用户在第二步改写的原文
     await expect(page.getByLabel('岗位要求')).toHaveValue(建议稿.requirements);
     await page.getByRole('button', { name: '发布岗位并开始寻访' }).click();
     await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
@@ -401,7 +411,9 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
     expect(岗位写入).toBeDefined();
     expect(岗位写入!.body).toMatchObject({
       title: 建议稿.title,
-      description: 建议稿.description,
+      // 用户改写的描述存活到发布；canary（建议稿.description = 'Fixture JD 描述（用户改过
+      // 就不该出现）'）按精确匹配被证缺席
+      description: '用户改写的发布描述',
       requirements: 建议稿.requirements,
       workplace_mode: 'remote',
       office_location: '',

@@ -120,6 +120,14 @@ test.describe('核心编辑 岗位 @mock', () => {
     await hash直达(page, '/#/hr/post-job/P-01');
     await expect(page.getByPlaceholder(/资深后端工程师/)).toHaveValue('资深后端工程师 · 交易网关', { timeout: 15_000 });
     await page.getByRole('button', { name: '职位要求' }).click();
+    // iPhone 13 viewport 检查（编辑屏）：无横向溢出、输入可聚焦、保存不被遮挡
+    //（原长 Case :6262-6267 的既有断言，随 C4 拆分在本 Case 恢复）
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBeLessThanOrEqual(2);
+    const 要求框 = page.getByLabel('岗位要求');
+    await 要求框.focus();
+    await expect(要求框).toBeFocused();
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
     const 编辑确认框 = page.getByRole('checkbox', { name: /我已确认经验和学历设置将作为自动匹配依据/ });
     await expect(编辑确认框).not.toBeChecked({ timeout: 15_000 });
     await page.getByRole('textbox', { name: '给 AI 代理的筛选要求' }).fill('偏好有 AI 产品背景，重项目管理');
