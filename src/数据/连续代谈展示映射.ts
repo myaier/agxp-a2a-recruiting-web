@@ -337,7 +337,9 @@ export function 从连续到详情分段(detail: NegotiationDetail): 分段项[]
       阶段,
       展示标题: 阶段,
       态: '未到达' as const,
-      待推进说明: '未开始' as const,
+      // 可展开段走分节条 button 分支：标题旁的「未开始」由状态胶囊承载（A.2.1 pending 闭词），
+      // 不可展开的灰条分支才经 待推进说明 显示
+      状态文: '未开始' as const,
       可展开: true,
       默认展开: true,
       小结: 评?.决定文 ?? 公开初评过程文案(过程态),

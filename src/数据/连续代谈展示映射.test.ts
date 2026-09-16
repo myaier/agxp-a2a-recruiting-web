@@ -477,7 +477,8 @@ describe('Task 4 · 从连续到详情分段（pre-Case S0 信息区 / retention
     expect(S0.态).toBe('未到达'); // 打开的信息区不是阶段通过（Spec §5.2）
     expect(S0.可展开).toBe(true);
     expect(S0.默认展开).toBe(true);
-    expect(S0.待推进说明).toBe('未开始');
+    // 「未开始」由状态胶囊承载（可展开段走分节条 button 分支，胶囊是标题旁的标签位）
+    expect(S0.状态文).toBe('未开始');
     expect(S0.小结).toBe('公开初评匹配');
     expect(S0.核对清单).toEqual([{ 项: '专业技能：匹配', 结果: '通过' }]);
     expect(JSON.stringify(分段)).not.toContain('英文原文不再上屏');

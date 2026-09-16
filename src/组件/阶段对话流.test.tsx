@@ -401,6 +401,29 @@ describe('阶段对话流 · 折叠与定位规则（Task 3）', () => {
     expect(screen.getByText('开案前的公开初评信息')).toBeTruthy();
   });
 
+  it('未到达但可展开的段（pre-Case S0）标题旁仍给「未开始」状态胶囊（review 修复钉）', () => {
+    // 可展开段走分节条 button 分支：状态文胶囊必须照常渲染，不能因灰条分支只渲染
+    // 待推进说明 而「未开始」消失（Spec §5.2「匿名初筛标题旁为『未开始』」）
+    render(
+      <阶段对话流
+        分段们={[
+          {
+            阶段: '匿名初筛',
+            态: '未到达',
+            状态文: '未开始',
+            可展开: true,
+            默认展开: true,
+            小结: '公开初评匹配',
+          },
+        ]}
+      />,
+    );
+    const 条 = screen.getByRole('button', { name: /匿名初筛/ });
+    expect(within(条).getByText('未开始')).toBeTruthy();
+    // 默认展开：段内小结直达，胶囊不受展开态影响
+    expect(screen.getByText('公开初评匹配')).toBeTruthy();
+  });
+
   it('受控展开对：受控值不被 默认展开 覆盖；点击把新值回调给 切展开', () => {
     const 切展开 = vi.fn();
     const 页 = render(
