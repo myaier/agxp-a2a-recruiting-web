@@ -240,12 +240,16 @@ describe('问AI代理 · Backend 真实聊天接线（use助手会话）', () =>
     render(<问AI代理 />);
     await 冲();
     expect(screen.getByText('消息读取失败，请重试')).toBeTruthy();
+    // 失败不当空历史：错误行在场时，空会话能力说明不得同屏（fix）
+    expect(screen.queryByText(/你可以直接问我岗位推荐和在谈进展/)).toBeNull();
     const 输入 = screen.getByRole('textbox') as HTMLTextAreaElement;
     expect(输入.disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
     await 冲();
     expect(桩.api.读取助手历史).toHaveBeenCalledTimes(2);
     expect(screen.queryByText('消息读取失败，请重试')).toBeNull();
+    // 重读成功返回空页后才出空会话说明
+    expect(screen.getByText(/你可以直接问我岗位推荐和在谈进展/)).toBeTruthy();
     expect(输入.disabled).toBe(false);
   });
 

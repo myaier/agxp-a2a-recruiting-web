@@ -495,6 +495,33 @@ describe('use助手会话', () => {
       .toBe(新轮);
   });
 
+  it('重试提交 retry_not_allowed 后权威读取失败：解除待确认并显示确认失败文案，不吞二错', async () => {
+    vi.useFakeTimers();
+    const { 访问, api } = 创建访问桩();
+    const 失败消息 = 失败可重试();
+    api.读取助手历史.mockResolvedValueOnce({ items: [失败消息], next_cursor: null });
+    const { result } = renderHook((访问参数: 助手会话访问 | null) => use助手会话(访问参数), {
+      initialProps: 访问,
+    });
+    await 冲();
+    // 重试结果不明 → 进待确认（同 key 保存）
+    api.重试助手轮次.mockRejectedValueOnce(new BFF错误(0, 'network_error', '超时'));
+    await act(async () => { await result.current.重试轮次(失败消息.message_id); });
+    expect(result.current.提交待确认).toBe(true);
+    // 同键重放返回 retry_not_allowed，随后的权威读取轮次 GET 也失败
+    api.重试助手轮次.mockRejectedValueOnce(new BFF错误(409, 'assistant_retry_not_allowed', 'no'));
+    api.读取助手轮次.mockRejectedValueOnce(new BFF错误(0, 'network_error', '掉线'));
+    await act(async () => { await result.current.重试提交(); });
+    expect(api.重试助手轮次).toHaveBeenCalledTimes(2); // 同键重放确实发生
+    expect(result.current.提交待确认).toBe(false); // 操作确定未受理：解除待确认
+    expect(result.current.错误).toBe('重试状态确认失败，请重读消息'); // 二错不被吞
+    // 权威读取失败：旧 failed&&retryable 状态保持原样，不被伪装成已确认
+    expect(result.current.消息.find((条) => 条.message_id === 失败消息.message_id)!.status)
+      .toBe('failed');
+    expect(result.current.消息.find((条) => 条.message_id === 失败消息.message_id)!.retryable)
+      .toBe(true);
+  });
+
   it('409 assistant_turn_in_progress：重读历史跟踪活动轮次，未受理草稿不显示为已发送', async () => {
     vi.useFakeTimers();
     const { 访问, api } = 创建访问桩();
@@ -513,6 +540,34 @@ describe('use助手会话', () => {
     expect(result.current.输入禁用).toBe(true);
     await 走(2_000);
     expect(api.读取助手轮次).toHaveBeenCalledWith(活动轮次.turn_id);
+  });
+
+  it('重试轮次遇 409 in_progress：重读历史恢复活动轮次，不落通用冲突错误', async () => {
+    vi.useFakeTimers();
+    const { 访问, api } = 创建访问桩();
+    const 失败消息 = 失败可重试();
+    api.读取助手历史.mockResolvedValueOnce({ items: [失败消息], next_cursor: null });
+    const { result } = renderHook((访问参数: 助手会话访问 | null) => use助手会话(访问参数), {
+      initialProps: 访问,
+    });
+    await 冲();
+    // 另一处已抢先重试同一轮（新轮 processing）：本端 retry 被拒为 409 in_progress
+    const 新轮 = 种子ID('ast_', 'other');
+    api.重试助手轮次.mockRejectedValueOnce(new BFF错误(409, 'assistant_turn_in_progress', 'busy'));
+    api.读取助手历史.mockResolvedValueOnce({
+      items: [{ ...失败消息, turn_id: 新轮, status: 'processing', retryable: false, error_code: null, reply: null }],
+      next_cursor: null,
+    });
+    await act(async () => { await result.current.重试轮次(失败消息.message_id); });
+    // 自动重读历史；不显示通用冲突错误；不新增用户气泡（同 message_id 原位换新 turn）
+    expect(api.读取助手历史).toHaveBeenCalledTimes(2);
+    expect(result.current.错误).toBe(null);
+    expect(result.current.消息.length).toBe(1);
+    expect(result.current.消息[0].turn_id).toBe(新轮);
+    // 重读发现 processing 轮次：恢复轮询、输入保持禁用
+    expect(result.current.输入禁用).toBe(true);
+    await 走(2_000);
+    expect(api.读取助手轮次).toHaveBeenCalledWith(新轮);
   });
 
   it('提交待确认时重读发现该操作的权威轮次即解除并恢复轮询', async () => {

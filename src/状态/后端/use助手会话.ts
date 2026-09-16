@@ -307,6 +307,11 @@ export function use助手会话(访问: 助手会话访问 | null) {
     } catch (错误) {
       if (本地代际.current !== 代际) return;
       if (是会话中断(错误)) return;
+      if (错误 instanceof BFF错误 && 错误.status === 409 && 错误.code === 'assistant_turn_in_progress') {
+        // 未受理：别处已抢先启动新轮次 —— 同 发送 路径，重读历史找到活动轮次并恢复轮询
+        await 重读内部();
+        return;
+      }
       if (错误 instanceof BFF错误 && 错误.status === 409 && 错误.code === 'assistant_retry_not_allowed') {
         // 重读该轮：以服务端权威状态原位更新，不生成新 key
         try {
@@ -386,8 +391,11 @@ export function use助手会话(访问: 助手会话访问 | null) {
           const 权威 = await 当前访问.api.读取助手轮次(请求.turnId);
           if (本地代际.current !== 代际) return;
           合并权威消息(权威);
-        } catch {
-          // 权威重读失败：页面可通过 重读 再试
+        } catch (二错) {
+          // 权威重读失败（同 重试轮次 的 retry_not_allowed 分支）：不能静默吞掉 ——
+          // 旧 failed&&retryable 状态仍挂页面，必须给「重试状态确认失败，请重读消息」
+          if (本地代际.current !== 代际 || 是会话中断(二错)) return;
+          设错误(重试确认失败文案);
         }
         return;
       }
