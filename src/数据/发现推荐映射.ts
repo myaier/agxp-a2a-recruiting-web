@@ -48,7 +48,9 @@ const 学历要求文案 = { none: '不限', associate: '大专', bachelor: '本
 // 只有本表内的码有中文展示，表外码一律不出现在页面上 —— 未知/空状态给中性文案，
 // 未知亮点直接丢弃，绝不透出原 token、拆下划线或猜含义。
 const 求职状态文案 = { employed: '在职' } as const;
-const 亮点文案 = {
+// 四项匹配亮点闭表（Spec §10.3）：助手岗位卡内中文理由与招聘卡亮点共用这一份翻译，
+// 不复制第二个表（导出给 助手匹配理由 与测试核对）。
+export const 亮点文案 = {
   category_matched: '职位方向匹配',
   experience_met: '经验要求匹配',
   location_matched: '工作地点匹配',
@@ -78,6 +80,24 @@ function 拆行(文本: string): string[] {
 export function 薪资文案(下: number, 上: number, 周期: 'month' | 'day' | 'hour'): string {
   const 单位 = 薪资单位[周期];
   return `${下}-${上}${单位 === 'K' ? 单位 : ` ${单位}`}`;
+}
+
+/** 助手岗位卡 safe_reasons → 卡内匹配理由（Spec §10.3，复用 亮点文案 闭表）：
+ *  已知码译中文并带肯定勾；未命中的机器码（完整匹配 ^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$）
+ *  不透出、不拆词猜译；空白项过滤；其他自然语言理由保留原文、作为普通说明（不加勾）。
+ *  保留传入顺序，不推导数值匹配分。 */
+export function 助手匹配理由(理由们: readonly string[]): { 文案: string; 已匹配: boolean }[] {
+  const 出: { 文案: string; 已匹配: boolean }[] = [];
+  for (const 原文 of 理由们) {
+    if (原文.trim() === '') continue;
+    if (已有键(亮点文案, 原文)) {
+      出.push({ 文案: 亮点文案[原文], 已匹配: true });
+      continue;
+    }
+    if (/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(原文)) continue;
+    出.push({ 文案: 原文, 已匹配: false });
+  }
+  return 出;
 }
 
 /** 开放 string 码只认闭合文案表内键（Spec §5.1：表外码不展示、不强转枚举）；空档给 null */

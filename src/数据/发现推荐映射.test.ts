@@ -35,6 +35,7 @@ import {
   映射P4委托展示,
   映射推荐依据,
   P4已开案,
+  助手匹配理由,
   薪资文案,
 } from './发现推荐映射';
 
@@ -798,5 +799,41 @@ describe('映射推荐依据（DF-011）', () => {
     expect(直取.卡.对得上).toEqual([]);
     expect(映射推荐依据(直取.卡.对得上 ?? [])).toEqual([]);
     expect(从P4候选岗位({ ...BFF候选岗位推荐样本, match_score: 0 }).卡.适配分).toBe(0);
+  });
+});
+
+describe('助手匹配理由（Spec §10.3 卡内中文理由；与招聘卡亮点同一份闭表）', () => {
+  it('四项已知码译为中文并带肯定勾，保留传入原序', () => {
+    expect(
+      助手匹配理由([
+        'category_matched',
+        'experience_met',
+        'location_matched',
+        'workplace_mode_matched',
+      ]),
+    ).toEqual([
+      { 文案: '职位方向匹配', 已匹配: true },
+      { 文案: '经验要求匹配', 已匹配: true },
+      { 文案: '工作地点匹配', 已匹配: true },
+      { 文案: '办公方式匹配', 已匹配: true },
+    ]);
+  });
+
+  it('未知机器码不透出不猜译；空白项过滤；既有自然语言保留原文且不加肯定勾', () => {
+    expect(助手匹配理由(['strategy_fit', '', '  ', '城市一致', 'category_matched'])).toEqual([
+      { 文案: '城市一致', 已匹配: false },
+      { 文案: '职位方向匹配', 已匹配: true },
+    ]);
+  });
+
+  it('constructor 等原型名不能命中闭表：按自然语言保留、不加勾', () => {
+    expect(助手匹配理由(['constructor', 'toString'])).toEqual([
+      { 文案: 'constructor', 已匹配: false },
+      { 文案: 'toString', 已匹配: false },
+    ]);
+  });
+
+  it('全被过滤后是空数组（卡面据此出「暂无推荐理由」）', () => {
+    expect(助手匹配理由(['strategy_fit', ''])).toEqual([]);
   });
 });

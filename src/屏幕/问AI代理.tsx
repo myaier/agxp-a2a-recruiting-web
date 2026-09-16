@@ -194,12 +194,14 @@ function Backend问AI代理() {
           ) : null}
           {消息.map((条) => (
             <div key={条.message_id} className={样式.一轮}>
-              <我方气泡 外观="求职" 内容={条.text} 头像URL={null} 首字={我首字} />
+              {/* 用户时间位于气泡外下方；与 Agent 侧共用同条 created_at（Spec §10.4） */}
+              <我方气泡 外观="求职" 内容={条.text} 头像URL={null} 首字={我首字} 时间={条.created_at} />
               {条.status === 'processing' ? (
                 <div className={样式.状态行}>正在处理…</div>
               ) : 条.status === 'succeeded' && 条.reply !== null ? (
                 <查询结果展示
                   回复={条.reply}
+                  时间={条.created_at}
                   打开岗位={打开岗位}
                   打开在谈={打开在谈}
                   解读在谈={解读在谈}

@@ -323,7 +323,7 @@ for (const 宽度 of 宽度们) {
 
         // 快捷句立即上屏（草稿被清掉），550ms 后等真实 DOM 回复
         await page.getByRole('button', { name: 文案.快捷句 }).click();
-        const 我方气泡们 = page.locator('[class*="我行"]');
+        const 我方气泡们 = page.locator('[class*="我方"]');
         await expect(我方气泡们.last()).toContainText(文案.快捷句);
         await expect(输入框).toHaveValue('');
         await expect(page.getByText(文案.代理回复)).toBeVisible({ timeout: 5_000 });

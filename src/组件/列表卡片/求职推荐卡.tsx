@@ -10,7 +10,7 @@
 // 市场页既有空段渲染逐字不变。头像加载失败回中性色块是展示本地状态，换 URL 清除。
 import { useEffect, useState } from 'react';
 import { 白卡, 公司字标 } from '../通用';
-import { 谈判图标 } from '../图标';
+import { 谈判图标, 细对勾图标 } from '../图标';
 import 样式 from '../../屏幕/看市场.module.css';
 import 卡片分数 from './卡片分数';
 import type { 求职推荐卡属性 } from './类型';
@@ -34,6 +34,7 @@ export default function 求职推荐卡({
   委托禁用,
   委托,
   打开,
+  匹配理由,
 }: 求职推荐卡属性) {
   // release/0.2.5 真实媒体：发布人头像接 avatar_url（Mock 档不设 → 原首字位不变）；
   // 加载失败回既有首字位，换 URL 清除失败状态。公司 Logo 经 公司字标 的显式图片分支。
@@ -94,6 +95,32 @@ export default function 求职推荐卡({
               </span>
             ))}
           </div>
+
+          {/* 匹配理由区（Spec §10.3）：仅助手结果显式传入才渲染，市场页不传零变化。
+              勾选标记是已返回理由的展示，不是可选复选框；区域插在标签下方、
+              底部发布人/操作区分割线上方，只增本区高度不动原内容。 */}
+          {匹配理由 !== undefined ? (
+            匹配理由.length === 0 ? (
+              <div className={样式.理由区}>
+                <span className={样式.理由说明}>暂无推荐理由</span>
+              </div>
+            ) : (
+              <div className={样式.理由区}>
+                {匹配理由.map((理由, 序) =>
+                  理由.已匹配 ? (
+                    <span key={`${序}-${理由.文案}`} className={样式.理由项}>
+                      <细对勾图标 />
+                      {理由.文案}
+                    </span>
+                  ) : (
+                    <span key={`${序}-${理由.文案}`} className={样式.理由说明}>
+                      {理由.文案}
+                    </span>
+                  ),
+                )}
+              </div>
+            )
+          ) : null}
         </button>
 
         {/* 底行 —— 在谈卡在这个位置是「阶段 + 下一步」，市场卡是「发布人 + 去谈」。
