@@ -1049,6 +1049,96 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
   });
 });
 
+// ── DF-015：推荐横幅计数与实际可见候选卡一致 —— 横幅读 待选卡们（已过滤已开案的集合），
+//    与列表共用同一集合；混合 / 全部已开案 / 零结果 / 后续新增 delegation 四种情形数量一致。
+describe('候选推荐 · DF-015 推荐横幅使用可见集合', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('DF-015 两推荐一条已开案：横幅 1 且可见卡 1', () => {
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [
+          换卡({
+            推荐ID: 'rec_r1', 别名: '候选人甲',
+            委托: { delegation_id: 'del_1', state: 'case_started', case_id: 'case_1' },
+          }),
+          换卡({ 推荐ID: 'rec_r2', 别名: '候选人乙', 经验年: 9 }),
+        ],
+      }),
+    });
+    render(<候选推荐 />);
+    expect(screen.getByText('1 个推荐候选')).toBeTruthy();
+    expect(screen.queryByText('2 个推荐候选')).toBeNull();
+    // 已开案那张（4 年）被待选流过滤：可见卡也只有 9 年一张
+    expect(读头行文本()).toEqual([expect.stringContaining('9 年')]);
+  });
+
+  it('DF-015 全部已开案：横幅 0 且给空态', () => {
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [
+          换卡({
+            推荐ID: 'rec_r1', 别名: '候选人甲',
+            委托: { delegation_id: 'del_1', state: 'case_started', case_id: 'case_1' },
+          }),
+          换卡({
+            推荐ID: 'rec_r2', 别名: '候选人乙', 经验年: 9,
+            委托: { delegation_id: 'del_2', state: 'case_started', case_id: 'case_2' },
+          }),
+        ],
+      }),
+    });
+    render(<候选推荐 />);
+    expect(screen.getByText('0 个推荐候选')).toBeTruthy();
+    expect(screen.getByText('这个岗位还没有推荐候选，让代理再找一批试试。')).toBeTruthy();
+    expect(读头行文本()).toEqual([]);
+  });
+
+  it('DF-015 无推荐：横幅 0', () => {
+    置P4状态({ 快照: P4快照({ 阶段: '成功', items: [] }) });
+    render(<候选推荐 />);
+    expect(screen.getByText('0 个推荐候选')).toBeTruthy();
+    expect(读头行文本()).toEqual([]);
+  });
+
+  it('DF-015 后续快照新增 delegation：计数随集合减少', () => {
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [
+          换卡({ 推荐ID: 'rec_r1', 别名: '候选人甲' }),
+          换卡({ 推荐ID: 'rec_r2', 别名: '候选人乙', 经验年: 9 }),
+        ],
+      }),
+    });
+    const 页 = render(<候选推荐 />);
+    expect(screen.getByText('2 个推荐候选')).toBeTruthy();
+
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [
+          换卡({
+            推荐ID: 'rec_r1', 别名: '候选人甲',
+            委托: { delegation_id: 'del_1', state: 'case_started', case_id: 'case_1' },
+          }),
+          换卡({ 推荐ID: 'rec_r2', 别名: '候选人乙', 经验年: 9 }),
+        ],
+      }),
+    });
+    页.rerender(<候选推荐 />);
+    expect(screen.getByText('1 个推荐候选')).toBeTruthy();
+    expect(screen.queryByText('2 个推荐候选')).toBeNull();
+    expect(读头行文本()).toEqual([expect.stringContaining('9 年')]);
+  });
+});
+
 // ── J（Task 8）：Backend 卡片导航走 canonical 双坐标，Mock 保留旧路由 ──
 describe('候选推荐 · 详情导航坐标（J）', () => {
   beforeEach(() => {
