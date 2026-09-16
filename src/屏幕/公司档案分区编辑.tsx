@@ -53,9 +53,7 @@ import {
   type 资料形,
 } from '../数据/公司主页资料';
 import type {
-  BFF公开企业,
   BFFTaxonomyItem,
-  BFF企业媒体,
   BFF企业媒体用途,
   BFF企业档案,
 } from '../数据/BFF契约';
@@ -78,7 +76,6 @@ const 成员数上限 = 20;
 
 /** Backend 行业选择只用得到 industries 一个 kind（目录查询 seam 的窄化形态） */
 type 行业查询方法 = (kind: 'industries', query: Taxonomy查询) => Promise<目录页<BFFTaxonomyItem>>;
-type 企业身份形 = Omit<BFF公开企业, 'profile'> | null;
 
 /** 公司行业选择正文的一行（Task 4）：键是稳定键（HTTP = 目录 ID，Mock = 池内名称）。
  *  行们按「父行后紧跟其可见后代」的树摊平序给出，层级只作缩进。 */
@@ -94,6 +91,34 @@ type 公司行业行 = {
 
 /** 一个父块（父键 null = 根列表）的分页尾态：错误=文案+重试；还有=加载更多 */
 type 公司行业分页 = { 父键: string | null; 还有: boolean; 加载中: boolean; 错误: string | null };
+
+/** 共有展示的私有契约（Task 2，同文件、无公共导出）：三个函数的入参一律是展示值、
+ *  能力位与回调 —— 不出现数据源模式、Context、BFF DTO、路由或存储类型。
+ *  `名称区` 是各连接层自己组好的名称行（Mock 一行公司全称，Backend 三名）；
+ *  `图片们` 的 键/地址 由连接层映射（Mock = data URL 与既有键算法，Backend = media_id/url）。 */
+type 基本信息正文属性 = {
+  资料: 资料形;
+  改: (补丁: Partial<资料形>) => void;
+  名称区: ReactNode;
+  可编辑: boolean;
+  LOGO地址: string | null;
+  选了LOGO: (事件: React.ChangeEvent<HTMLInputElement>) => void;
+  开行业层: () => void;
+  行业行引用: { current: HTMLButtonElement | null };
+};
+type 名称输入行属性 = {
+  标签: string; 值: string; 上限: number; 禁用: boolean;
+  改变: (值: string) => void; 错误?: string | null;
+};
+type 公司图片组属性 = {
+  标签: string;
+  图片们: Array<{ 键: string; 地址: string }>;
+  预览?: string;
+  可编辑: boolean;
+  选了图: (文件: File) => void;
+  移除一张: (序: number) => void;
+  末条?: boolean;
+};
 
 /** A 契约的父页记账（Task 4，两模式的分区根层共用）：打开前先记录触发行与各
  *  .滚动区 祖先的 scrollTop，关闭后由 layout effect 在 wrapper 已恢复显示时
@@ -720,14 +745,42 @@ function 后端分区表单(
       ) : null}
 
       {分区.键 === '基本信息' ? (
-        <后端基本信息区
+        // Task 2：共有的基本信息正文 + 本模式组好的名称区。名称区只有「不同的名称行」，
+        // 共有字段（LOGO/行业/规模/融资阶段/办公地址）不再各自成一套表单槽位。
+        <基本信息正文
           资料={资料}
           改={改}
           可编辑={可编辑}
-          身份={身份}
-          常用名错误={常用名错误}
-          改常用名={改常用名}
-          LOGO预览={LOGO预览}
+          名称区={
+            <>
+              {/* Spec §2 三名独立：常用名（display_name，目录/公开企业同源）与品牌名各自
+                  一个输入槽（品牌名沿用 公司全称 槽位写 brand_name），即时校验错误只贴常用名 */}
+              <名称输入行
+                标签="企业常用名"
+                值={资料.企业常用名 ?? ''}
+                上限={80}
+                禁用={!可编辑}
+                改变={改常用名}
+                错误={常用名错误}
+              />
+              <名称输入行
+                标签="品牌名称"
+                值={资料.公司全称}
+                上限={40}
+                禁用={!可编辑}
+                改变={(值) => 改({ 公司全称: 值 })}
+              />
+              {/* 工商全称是第三方核验的结果，企业自己改了就没有可信度可言 —— 只读展示，
+                  不给输入框；未认证时为空，诚实显示「未提供」，绝不回填常用名 */}
+              <div className={样式.字段}>
+                <div className={样式.字段标签}>工商全称（已核验）</div>
+                <div className={样式.单行输入} style={{ color: 'var(--次要浅)' }}>
+                  {身份?.legal_name ?? '未提供'}
+                </div>
+              </div>
+            </>
+          }
+          LOGO地址={LOGO预览 ?? 资料.LOGO媒体?.url ?? null}
           选了LOGO={选了LOGO}
           开行业层={开行业层}
           行业行引用={行业行引用}
@@ -738,9 +791,11 @@ function 后端分区表单(
 
       {分区.键 === '公司相册' ? (
         <字段区>
-          <后端媒体组
+          {/* Task 2：展示交给共有的 公司图片组；DTO → 行（media_id/url → 键/地址）与
+              purpose 绑定留在本连接层，删除下标原样回 移除一张(purpose, 序) */}
+          <公司图片组
             标签="实景照片"
-            媒体们={资料.实景媒体 ?? []}
+            图片们={(资料.实景媒体 ?? []).map((媒) => ({ 键: 媒.media_id, 地址: 媒.url }))}
             预览={组预览表.office_photo}
             可编辑={可编辑}
             选了图={(文件) => {
@@ -751,9 +806,9 @@ function 后端分区表单(
             }}
             移除一张={(序) => void 移除一张('office_photo', 序)}
           />
-          <后端媒体组
+          <公司图片组
             标签="公司照片"
-            媒体们={资料.公司媒体 ?? []}
+            图片们={(资料.公司媒体 ?? []).map((媒) => ({ 键: 媒.media_id, 地址: 媒.url }))}
             预览={组预览表.company_photo}
             可编辑={可编辑}
             选了图={(文件) => {
@@ -790,143 +845,6 @@ function 后端分区表单(
         />
       ) : null}
     </次级页外壳>
-  );
-}
-
-/** Backend 基本信息：企业常用名 · 品牌名称 · 公司 LOGO · 行业（taxonomy）· 规模 · 融资阶段 · 办公地址，
- *  外加只读的「工商全称（已核验）」—— 第三方核验事实，企业侧不可编辑。
- *  Spec §2 三名独立：常用名（display_name，目录/公开企业同源）与品牌名（brand_name）
- *  各是各的输入槽，工商全称只读、为空诚实显示未提供，不回填常用名。
- *  Task 4（R2-2）：行业查询状态上移分区根层，这里只收字段行需要的打开回调与触发行引用。 */
-function 后端基本信息区({
-  资料,
-  改,
-  可编辑,
-  身份,
-  常用名错误,
-  改常用名,
-  LOGO预览,
-  选了LOGO,
-  开行业层,
-  行业行引用,
-}: {
-  资料: 资料形;
-  改: (补丁: Partial<资料形>) => void;
-  可编辑: boolean;
-  身份: 企业身份形;
-  /** 常用名即时校验 / 后端唯一冲突的字段错误（null = 无错） */
-  常用名错误: string | null;
-  改常用名: (值: string) => void;
-  LOGO预览: string | null;
-  选了LOGO: (事件: React.ChangeEvent<HTMLInputElement>) => void;
-  开行业层: () => void;
-  行业行引用: { current: HTMLButtonElement | null };
-}) {
-  const LOGO框 = useRef<HTMLInputElement>(null);
-  const LOGO地址 = LOGO预览 ?? 资料.LOGO媒体?.url ?? null;
-
-  return (
-    <字段区>
-      <div className={样式.字段}>
-        <div className={样式.字段标签}>企业常用名</div>
-        <input
-          className={样式.单行输入}
-          value={资料.企业常用名 ?? ''}
-          maxLength={80}
-          aria-label="企业常用名"
-          disabled={!可编辑}
-          onChange={(事件) => 改常用名(事件.target.value)}
-        />
-        {/* 字段错误贴在槽位下方（同 企业组织申请 的 错误行 设计语言，不改样式文件） */}
-        {常用名错误 ? (
-          <div
-            className={样式.字段标签}
-            style={{
-              color: 'var(--警示, #c0392b)', fontSize: 11.5, fontWeight: 400,
-              lineHeight: 1.6, marginTop: 6, marginBottom: 0,
-            }}
-          >
-            {常用名错误}
-          </div>
-        ) : null}
-      </div>
-
-      <div className={样式.字段}>
-        <div className={样式.字段标签}>品牌名称</div>
-        <input
-          className={样式.单行输入}
-          value={资料.公司全称}
-          maxLength={40}
-          aria-label="品牌名称"
-          disabled={!可编辑}
-          onChange={(事件) => 改({ 公司全称: 事件.target.value })}
-        />
-      </div>
-
-      {/* 工商全称是第三方核验的结果，企业自己改了就没有可信度可言 —— 只读展示，不给输入框；
-          未认证时为空，诚实显示「未提供」，绝不回填常用名 */}
-      <div className={样式.字段}>
-        <div className={样式.字段标签}>工商全称（已核验）</div>
-        <div className={样式.单行输入} style={{ color: 'var(--次要浅)' }}>
-          {身份?.legal_name ?? '未提供'}
-        </div>
-      </div>
-
-      <div className={样式.字段}>
-        <div className={样式.字段标签}>公司 LOGO</div>
-        {可编辑 ? (
-          <button
-            className={`${样式.LOGO键} 可点`}
-            onClick={() => LOGO框.current?.click()}
-            aria-label="上传公司 LOGO"
-          >
-            {LOGO地址 ? (
-              <img className={样式.LOGO图} src={LOGO地址} alt="" />
-            ) : (
-              <span className={样式.LOGO空} />
-            )}
-            <span className={样式.相机角标}>
-              <相机图标 尺寸={11} 色="var(--正文)" />
-            </span>
-          </button>
-        ) : LOGO地址 ? (
-          <img className={样式.LOGO图} src={LOGO地址} alt="" />
-        ) : (
-          <span className={样式.LOGO空} />
-        )}
-        <input
-          ref={LOGO框}
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          aria-label="更换公司 LOGO"
-          onChange={选了LOGO}
-        />
-      </div>
-
-      <行业字段行 值={资料.行业} 可点={可编辑} 开选择={开行业层} 行引用={行业行引用} />
-      <单选片组 标签="规模" 选项={规模池} 当前={资料.规模} 禁用={!可编辑} 选中={(值) => 改({ 规模: 值 })} />
-      <单选片组
-        标签="融资阶段"
-        选项={融资阶段池}
-        当前={资料.融资阶段}
-        禁用={!可编辑}
-        选中={(值) => 改({ 融资阶段: 值 })}
-      />
-
-      <div className={`${样式.字段} ${样式.末条}`}>
-        <div className={样式.字段标签}>办公地址</div>
-        <textarea
-          className={样式.多行输入}
-          style={{ height: 66 }}
-          value={资料.办公地址}
-          maxLength={80}
-          aria-label="办公地址"
-          disabled={!可编辑}
-          onChange={(事件) => 改({ 办公地址: 事件.target.value })}
-        />
-      </div>
-    </字段区>
   );
 }
 
@@ -1188,82 +1106,6 @@ function 公司行业选择正文({
   );
 }
 
-/** Backend 相册组：一组权威媒体对象（URL 一律来自 DTO），上传即走两步协议，
- *  删除先去引用再 DELETE（顺序由 operation 保证），每组最多 相册每组上限 张 */
-function 后端媒体组({
-  标签,
-  媒体们,
-  预览,
-  可编辑,
-  选了图,
-  移除一张,
-  末条 = false,
-}: {
-  标签: string;
-  媒体们: BFF企业媒体[];
-  /** 上传进行中的 object URL 预览（无则未在上传） */
-  预览?: string;
-  可编辑: boolean;
-  选了图: (文件: File) => void;
-  移除一张: (序: number) => void;
-  末条?: boolean;
-}) {
-  const 选框 = useRef<HTMLInputElement>(null);
-
-  function 收图(事件: React.ChangeEvent<HTMLInputElement>) {
-    const 文件 = 事件.target.files?.[0];
-    事件.target.value = '';
-    if (!文件) return;
-    选了图(文件);
-  }
-
-  return (
-    <div className={`${样式.字段} ${末条 ? 样式.末条 : ''}`}>
-      <div className={样式.字段标签}>
-        {标签} {媒体们.length}/{相册每组上限}
-      </div>
-      <div className={样式.图格行}>
-        {媒体们.map((媒, 序) => (
-          <span key={媒.media_id} className={样式.图格}>
-            <img className={样式.图格图} src={媒.url} alt="" />
-            {可编辑 ? (
-              <button
-                className={`${样式.图格删} 可点`}
-                aria-label={`删除${标签}第 ${序 + 1} 张`}
-                onClick={() => 移除一张(序)}
-              >
-                ✕
-              </button>
-            ) : null}
-          </span>
-        ))}
-        {预览 ? (
-          <span className={样式.图格}>
-            <img className={样式.图格图} src={预览} alt="上传预览" />
-          </span>
-        ) : null}
-        {可编辑 && 媒体们.length < 相册每组上限 && !预览 ? (
-          <button
-            className={`${样式.图格加} 可点`}
-            aria-label={`添加${标签}`}
-            onClick={() => 选框.current?.click()}
-          >
-            ＋
-          </button>
-        ) : null}
-      </div>
-      <input
-        ref={选框}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        aria-label={`上传${标签}`}
-        onChange={收图}
-      />
-    </div>
-  );
-}
-
 // ── Mock：静态档原型（原实现逐字保留）───────────────────────────────
 
 /** 把用户选的图片压成 128×128 居中裁切的 JPEG dataURL —— 实现镜像 招聘名片 的
@@ -1331,6 +1173,20 @@ function Mock分区编辑({ 分区, 返回 }: { 分区: 分区定义; 返回: ()
     返回();
   }
 
+  // LOGO 仍是「就地压成 128 方图 → 派发 存公司LOGO」的即时本地更新（不经保存按钮）；
+  // Task 2 起展示归 基本信息正文，压缩与派发留在本连接层
+  async function 选了LOGO(事件: React.ChangeEvent<HTMLInputElement>) {
+    const 文件 = 事件.target.files?.[0];
+    事件.target.value = ''; // 允许再次选同一张
+    if (!文件) return;
+    try {
+      派发({ 型: '存公司LOGO', 图: await 压成LOGO(文件) });
+      轻提示('LOGO 已更新');
+    } catch {
+      轻提示('这张图片读不出来，换一张试试');
+    }
+  }
+
   // Task 4：行业改为同一字段行 + 全屏选择正文（与 Backend 共用 公司行业选择正文）。
   // Mock 行业池就地表成单层可选行（池子与原值都不动）；静态池没有目录 API，搜索只在
   // 池内过滤，也没有分页/展开 —— 不为此虚构查询能力。
@@ -1390,11 +1246,23 @@ function Mock分区编辑({ 分区, 返回 }: { 分区: 分区定义; 返回: ()
       ) : null}
 
       {分区键 === '基本信息' ? (
-        <Mock基本信息区
+        // Task 2：共有正文 + 本模式组好的名称区。Mock 只有一个名称行（公司全称 40 字）；
+        // 原型没有权限层，进屏即可编辑，于是相机角标与可点 LOGO 原样保留
+        <基本信息正文
           资料={资料}
           改={改}
-          LOGO={状态.公司LOGO}
-          存LOGO={(图) => 派发({ 型: '存公司LOGO', 图 })}
+          可编辑
+          名称区={
+            <名称输入行
+              标签="公司全称"
+              值={资料.公司全称}
+              上限={40}
+              禁用={false}
+              改变={(值) => 改({ 公司全称: 值 })}
+            />
+          }
+          LOGO地址={状态.公司LOGO}
+          选了LOGO={选了LOGO}
           开行业层={开行业层}
           行业行引用={行业行引用}
         />
@@ -1459,81 +1327,104 @@ function 整屏文本({
   );
 }
 
-/** Mock 基本信息：公司全称 · 公司 LOGO · 行业 · 规模 · 融资阶段 · 办公地址（原样保留；
- *  Task 4 起行业是字段行 + 全屏正文，查询状态在 Mock分区编辑 根层，这里只收打开回调） */
-function Mock基本信息区({
+// ── 共有展示（Mock 是设计源头，两连接层喂同一份 JSX）──────────────────
+//
+// Task 2：基本信息正文与图片组只有一份。两模式各自组好「名称区」和媒体行（Mock 的
+// data URL、Backend 的 media_id/url → 键/地址）后调用这里；共有展示不读 Context、
+// 数据源模式、BFF DTO、路由或存储，也不调 API —— 只消费展示值、能力位与回调。
+// 压图、两步媒体协议、权限与保存时机都留在各连接层。
+
+/** 名称类输入槽（Task 2，两模式共用）：标签 + 输入 + 可选字段错误。
+ *  值／上限／只读态／改变／错误都是展示输入，名称语义（哪一行叫什么）在连接层。
+ *  字段错误贴在槽位下方（同 企业组织申请 的 错误行 设计语言，不改样式文件）。 */
+function 名称输入行({ 标签, 值, 上限, 禁用, 改变, 错误 }: 名称输入行属性) {
+  return (
+    <div className={样式.字段}>
+      <div className={样式.字段标签}>{标签}</div>
+      <input
+        className={样式.单行输入}
+        value={值}
+        maxLength={上限}
+        aria-label={标签}
+        disabled={禁用}
+        onChange={(事件) => 改变(事件.target.value)}
+      />
+      {错误 ? (
+        <div
+          className={样式.字段标签}
+          style={{
+            color: 'var(--警示, #c0392b)', fontSize: 11.5, fontWeight: 400,
+            lineHeight: 1.6, marginTop: 6, marginBottom: 0,
+          }}
+        >
+          {错误}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** 基本信息正文（Task 2，两模式共用）：先放连接层组好的名称区（只有名称行不同：
+ *  Mock 是「公司全称」一行，Backend 是常用名 / 品牌名 / 只读工商全称三名），再是共同的
+ *  公司 LOGO · 行业 · 规模 · 融资阶段 · 办公地址。
+ *  可编辑=false（Backend 非 admin+verified+active）时 LOGO 不给可点入口、行业行不是按钮、
+ *  各输入禁用；行业查询状态与全屏正文仍归两模式各自的分区根层（R2-2），这里只收打开回调
+ *  与触发行引用。 */
+function 基本信息正文({
   资料,
   改,
-  LOGO,
-  存LOGO,
+  名称区,
+  可编辑,
+  LOGO地址,
+  选了LOGO,
   开行业层,
   行业行引用,
-}: {
-  资料: 资料形;
-  改: (补丁: Partial<资料形>) => void;
-  LOGO: string | null;
-  存LOGO: (图: string) => void;
-  开行业层: () => void;
-  行业行引用: { current: HTMLButtonElement | null };
-}) {
+}: 基本信息正文属性) {
   const LOGO框 = useRef<HTMLInputElement>(null);
-
-  async function 选了LOGO(事件: React.ChangeEvent<HTMLInputElement>) {
-    const 文件 = 事件.target.files?.[0];
-    事件.target.value = ''; // 允许再次选同一张
-    if (!文件) return;
-    try {
-      存LOGO(await 压成LOGO(文件));
-      轻提示('LOGO 已更新');
-    } catch {
-      轻提示('这张图片读不出来，换一张试试');
-    }
-  }
 
   return (
     <字段区>
-      <div className={样式.字段}>
-        <div className={样式.字段标签}>公司全称</div>
-        <input
-          className={样式.单行输入}
-          value={资料.公司全称}
-          maxLength={40}
-          aria-label="公司全称"
-          onChange={(事件) => 改({ 公司全称: 事件.target.value })}
-        />
-      </div>
+      {名称区}
 
       <div className={样式.字段}>
         <div className={样式.字段标签}>公司 LOGO</div>
-        <button
-          className={`${样式.LOGO键} 可点`}
-          onClick={() => LOGO框.current?.click()}
-          aria-label="上传公司 LOGO"
-        >
-          {LOGO ? (
-            <img className={样式.LOGO图} src={LOGO} alt="" />
-          ) : (
-            <span className={样式.LOGO空} />
-          )}
-          <span className={样式.相机角标}>
-            <相机图标 尺寸={11} 色="var(--正文)" />
-          </span>
-        </button>
+        {可编辑 ? (
+          <button
+            className={`${样式.LOGO键} 可点`}
+            onClick={() => LOGO框.current?.click()}
+            aria-label="上传公司 LOGO"
+          >
+            {LOGO地址 ? (
+              <img className={样式.LOGO图} src={LOGO地址} alt="" />
+            ) : (
+              <span className={样式.LOGO空} />
+            )}
+            <span className={样式.相机角标}>
+              <相机图标 尺寸={11} 色="var(--正文)" />
+            </span>
+          </button>
+        ) : LOGO地址 ? (
+          <img className={样式.LOGO图} src={LOGO地址} alt="" />
+        ) : (
+          <span className={样式.LOGO空} />
+        )}
         <input
           ref={LOGO框}
           type="file"
           accept="image/*"
           style={{ display: 'none' }}
+          aria-label="更换公司 LOGO"
           onChange={选了LOGO}
         />
       </div>
 
-      <行业字段行 值={资料.行业} 可点 开选择={开行业层} 行引用={行业行引用} />
-      <单选片组 标签="规模" 选项={规模池} 当前={资料.规模} 选中={(值) => 改({ 规模: 值 })} />
+      <行业字段行 值={资料.行业} 可点={可编辑} 开选择={开行业层} 行引用={行业行引用} />
+      <单选片组 标签="规模" 选项={规模池} 当前={资料.规模} 禁用={!可编辑} 选中={(值) => 改({ 规模: 值 })} />
       <单选片组
         标签="融资阶段"
         选项={融资阶段池}
         当前={资料.融资阶段}
+        禁用={!可编辑}
         选中={(值) => 改({ 融资阶段: 值 })}
       />
 
@@ -1545,6 +1436,7 @@ function Mock基本信息区({
           value={资料.办公地址}
           maxLength={80}
           aria-label="办公地址"
+          disabled={!可编辑}
           onChange={(事件) => 改({ 办公地址: 事件.target.value })}
         />
       </div>
@@ -1602,7 +1494,9 @@ function 公司福利区({
   );
 }
 
-/** Mock 公司相册：data URL 压缩原型（原样保留） */
+/** Mock 公司相册（Task 2）：data URL 压缩原型原样保留，只把「压图 + 写草稿」留在本连接层，
+ *  展示交给共有的 公司图片组。选文件只改本页草稿（点保存才派发 存公司自述），
+ *  绝不即时写全局相册；键沿用原实现的「下标 + data URL 尾段」（同组内唯一）。 */
 function Mock公司相册区({
   资料,
   改,
@@ -1610,70 +1504,90 @@ function Mock公司相册区({
   资料: 资料形;
   改: (补丁: Partial<资料形>) => void;
 }) {
-  return (
-    <字段区>
-      <图片组
-        标签="实景照片"
-        图们={资料.实景照片}
-        设图们={(新图们) => 改({ 实景照片: 新图们 })}
-      />
-      <图片组
-        标签="公司照片"
-        图们={资料.公司照片}
-        设图们={(新图们) => 改({ 公司照片: 新图们 })}
-        末条
-      />
+  const 图们 = { 实景照片: 资料.实景照片, 公司照片: 资料.公司照片 };
 
-    </字段区>
-  );
-}
+  /** 两组各有自己的字段名，键 → 单字段补丁的映射只在这一个地方做 */
+  function 改一组(键: '实景照片' | '公司照片', 变: (旧: string[]) => string[]) {
+    const 新图们 = 变(图们[键]);
+    改(键 === '实景照片' ? { 实景照片: 新图们 } : { 公司照片: 新图们 });
+  }
 
-/** 一组图片：已选的缩略图（右上角 ✕ 删）+ 未满时的「＋」格 */
-function 图片组({
-  标签,
-  图们,
-  设图们,
-  末条 = false,
-}: {
-  标签: string;
-  图们: string[];
-  设图们: (新图们: string[]) => void;
-  /** 分区最后一行：不画底部分隔线 */
-  末条?: boolean;
-}) {
-  const 选框 = useRef<HTMLInputElement>(null);
-
-  async function 选了图(事件: React.ChangeEvent<HTMLInputElement>) {
-    const 文件 = 事件.target.files?.[0];
-    事件.target.value = '';
-    if (!文件) return;
+  async function 选一组图(键: '实景照片' | '公司照片', 文件: File) {
     try {
       const 图 = await 压成相册图(文件);
-      设图们([...图们, 图].slice(0, 相册每组上限));
+      改一组(键, (旧) => [...旧, 图].slice(0, 相册每组上限));
     } catch {
       轻提示('这张图片读不出来，换一张试试');
     }
   }
 
+  /** 一组相册的展示属性：Mock 没有权限层，两组都可编辑 */
+  const 一组 = (键: '实景照片' | '公司照片') => ({
+    标签: 键,
+    图片们: 图们[键].map((图, 序) => ({ 键: `${序}-${图.slice(-24)}`, 地址: 图 })),
+    可编辑: true,
+    选了图: (文件: File) => void 选一组图(键, 文件),
+    移除一张: (序: number) => 改一组(键, (旧) => 旧.filter((_, i) => i !== 序)),
+  });
+
+  return (
+    <字段区>
+      <公司图片组 {...一组('实景照片')} />
+      <公司图片组 {...一组('公司照片')} 末条 />
+    </字段区>
+  );
+}
+
+/** 一组图片（Task 2，两模式共用）：已选缩略图（可编辑时右上角 ✕ 删，下标原样回回调）
+ *  + 上传中的预览格 + 未满且无预览时的「＋」格，每组最多 相册每组上限 张。
+ *  纯展示：Backend 的权威媒体与 Mock 的 data URL 都由连接层映射成 键/地址；
+ *  可编辑=false 隐藏添加/删除入口（只读用户没有上传入口），预览存在时抑制添加 ——
+ *  Backend 两步协议（先 PATCH 去引用再 DELETE）与 Mock 压图都留在各自的连接层。
+ *  文件 input 清 value 后把首个文件回报给 选了图（允许再次选同一张）。 */
+function 公司图片组({
+  标签,
+  图片们,
+  预览,
+  可编辑,
+  选了图,
+  移除一张,
+  末条 = false,
+}: 公司图片组属性) {
+  const 选框 = useRef<HTMLInputElement>(null);
+
+  function 收图(事件: React.ChangeEvent<HTMLInputElement>) {
+    const 文件 = 事件.target.files?.[0];
+    事件.target.value = '';
+    if (!文件) return;
+    选了图(文件);
+  }
+
   return (
     <div className={`${样式.字段} ${末条 ? 样式.末条 : ''}`}>
       <div className={样式.字段标签}>
-        {标签} {图们.length}/{相册每组上限}
+        {标签} {图片们.length}/{相册每组上限}
       </div>
       <div className={样式.图格行}>
-        {图们.map((图, 序) => (
-          <span key={`${序}-${图.slice(-24)}`} className={样式.图格}>
-            <img className={样式.图格图} src={图} alt="" />
-            <button
-              className={`${样式.图格删} 可点`}
-              aria-label={`删除${标签}第 ${序 + 1} 张`}
-              onClick={() => 设图们(图们.filter((_, i) => i !== 序))}
-            >
-              ✕
-            </button>
+        {图片们.map((图, 序) => (
+          <span key={图.键} className={样式.图格}>
+            <img className={样式.图格图} src={图.地址} alt="" />
+            {可编辑 ? (
+              <button
+                className={`${样式.图格删} 可点`}
+                aria-label={`删除${标签}第 ${序 + 1} 张`}
+                onClick={() => 移除一张(序)}
+              >
+                ✕
+              </button>
+            ) : null}
           </span>
         ))}
-        {图们.length < 相册每组上限 ? (
+        {预览 ? (
+          <span className={样式.图格}>
+            <img className={样式.图格图} src={预览} alt="上传预览" />
+          </span>
+        ) : null}
+        {可编辑 && 图片们.length < 相册每组上限 && !预览 ? (
           <button
             className={`${样式.图格加} 可点`}
             aria-label={`添加${标签}`}
@@ -1688,7 +1602,8 @@ function 图片组({
         type="file"
         accept="image/*"
         style={{ display: 'none' }}
-        onChange={选了图}
+        aria-label={`上传${标签}`}
+        onChange={收图}
       />
     </div>
   );
