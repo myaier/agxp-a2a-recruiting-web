@@ -3,8 +3,10 @@
 //
 // 在真实组装（主壳 → 消息列表 → 代理页）上证明 Task 1–3 的三块交付：
 //   · Backend：全部/通知/仅会话与搜索下的唯一固定入口行（agent-entry:*），点击进
-//     /agent、/hr/agent；代理页是 真实说明 + 三个真实导航 + 完整但禁用的 真输入条，
-//     按键/点发送零新消息、零规则 mutation，入口键绝不进 P7 会话请求。
+//     /agent、/hr/agent；代理页是 真实说明 + 三个真实导航 + 真输入条 —— 求职端
+//     （Task 5/6 起）聊天开放：空历史给能力说明气泡、真输入可用（发送/轮询旅程归
+//     助手会话.spec.ts）；招聘端保持完整但禁用的外壳，按键/点发送零新消息、零规则
+//     mutation，入口键绝不进 P7 会话请求。
 //   · Mock：双端列表行与代理初始页保持原 fixture 文案/未读语义；长文本输入无新横向
 //     溢出；快捷句立即上屏并等 550ms 真实 DOM 回复；维持/放宽两端各按原行为。
 // 截图按 testInfo.outputPath 落盘并 attach，供与 Task 1 前基线
@@ -87,7 +89,8 @@ const Backend文案: Record<P1角色, { 主壳正则: RegExp; 代理路径: RegE
     主壳正则: /#\/app$/,
     代理路径: /#\/agent$/,
     搜索框: '搜索会话 / 公司 / 职位',
-    真实说明: '真实匹配与委托请从「市场」进入，真实阶段请到「在谈」查看，长期规则请到「规则库」设置。当前 Backend 模式暂不提供自由对话、日报和漏斗。',
+    // Task 5/6 起求职端聊天开放：空历史能力说明气泡取代旧「暂不提供自由对话」禁用文案
+    真实说明: '你可以直接问我岗位推荐和在谈进展，结果里的项目可以点开原生详情。自由筛选、修改规则和日报暂不支持，请用下方的市场、在谈与规则库入口。',
     导航: ['去市场', '看在谈', '规则库'],
   },
   recruiter: {
@@ -127,7 +130,8 @@ for (const 宽度 of 宽度们) {
         const 行 = AI入口行(page);
         await expect(行).toHaveCount(1);
         await expect(会话行们(page).first()).toContainText('AI代理动态');
-        await expect(行).toContainText('聊天暂未开放，可查看代理功能');
+        // Task 5 起求职端入口摘要改为真实能力说明；招聘端保持「聊天暂未开放」原文案
+        await expect(行).toContainText(角色 === 'candidate' ? '查看岗位推荐和在谈进展' : '聊天暂未开放，可查看代理功能');
         await expect(行).toContainText(角色 === 'candidate' ? '你的求职AI代理' : '你的招聘AI代理');
         await expect(行).not.toContainText('刚刚');
         await expect(行).not.toContainText('替你初筛');
@@ -166,15 +170,24 @@ for (const 宽度 of 宽度们) {
         await 行.click();
         await expect(page).toHaveURL(文案.代理路径, { timeout: 10_000 });
 
-        // 真实说明 + 三个真实导航 + 禁用输入可见；零 Mock 会话/简报/快捷句/模拟摘要
-        await expect(page.getByText(文案.真实说明)).toBeVisible();
+        // 真实说明（求职端=空历史能力说明气泡，需首读完成；招聘端=禁用外壳说明）
+        // + 三个真实导航；零 Mock 会话/简报/快捷句/模拟摘要
+        await expect(page.getByText(文案.真实说明)).toBeVisible({ timeout: 15_000 });
         for (const 名称 of 文案.导航) {
           await expect(page.getByRole('button', { name: 名称, exact: true })).toBeVisible();
         }
-        const 输入框 = page.getByPlaceholder('AI代理聊天暂未开放');
+        // 输入占位分端：求职端聊天已开放（Spec §3/§7）真输入可用；招聘端保持禁用外壳
+        const 输入框 = page.getByPlaceholder(角色 === 'candidate' ? '问问岗位推荐或在谈进展…' : 'AI代理聊天暂未开放');
         await expect(输入框).toBeVisible();
-        await expect(输入框).toBeDisabled();
-        await expect(page.getByRole('button', { name: '发送' })).toBeDisabled();
+        if (角色 === 'candidate') {
+          await expect(输入框).toBeEnabled();
+          await expect(page.getByRole('button', { name: '发送' })).toBeEnabled();
+          // 助手首读确实发生了（页面接线证据；发送旅程归 助手会话.spec.ts）
+          expect(请求.some((条) => 条.method === 'GET' && 条.path === '/api/v1/me/assistant/messages')).toBe(true);
+        } else {
+          await expect(输入框).toBeDisabled();
+          await expect(page.getByRole('button', { name: '发送' })).toBeDisabled();
+        }
         await expect(page.getByText('今日简报')).toHaveCount(0);
         await expect(page.getByText('替你初筛')).toHaveCount(0);
         await expect(page.getByText(角色 === 'candidate' ? '帮我搜远程岗' : '这周漏斗怎么样？')).toHaveCount(0);
@@ -190,18 +203,21 @@ for (const 宽度 of 宽度们) {
           expect(框!.y + 框!.height).toBeLessThanOrEqual(输入框框!.y);
         }
 
-        // disabled 的真实行为：点击不得聚焦（disabled 控件不吃点击；默认 actionability
-        // 的 enabled 检查对禁用元素永不满足，真实鼠标点击须 force），键盘输入与 Enter
-        // 都不生效，点发送（DOM 事件）也无消息
+        // disabled 的真实行为（招聘端禁用外壳）：点击不得聚焦（disabled 控件不吃点击；
+        // 默认 actionability 的 enabled 检查对禁用元素永不满足，真实鼠标点击须 force），
+        // 键盘输入与 Enter 都不生效，点发送（DOM 事件）也无消息。求职端输入可用，本用例
+        // 不发送，发送/轮询旅程归 e2e/助手会话.spec.ts。
         const 变异前 = 请求.filter((条) => 条.method !== 'GET').length;
-        await 输入框.click({ force: true });
-        expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe('TEXTAREA');
-        await page.keyboard.type('测');
-        await page.keyboard.press('Enter');
-        await expect(输入框).toHaveValue('');
-        await page.getByRole('button', { name: '发送' }).dispatchEvent('click');
-        await expect(气泡们).toHaveCount(1);
-        await expect(page.getByText(文案.真实说明)).toBeVisible();
+        if (角色 === 'recruiter') {
+          await 输入框.click({ force: true });
+          expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe('TEXTAREA');
+          await page.keyboard.type('测');
+          await page.keyboard.press('Enter');
+          await expect(输入框).toHaveValue('');
+          await page.getByRole('button', { name: '发送' }).dispatchEvent('click');
+          await expect(气泡们).toHaveCount(1);
+          await expect(page.getByText(文案.真实说明)).toBeVisible();
+        }
 
         // 按键/点发送前后零新增 POST/PUT/DELETE；入口键与规则 mutation 仍为零
         expect(请求.filter((条) => 条.method !== 'GET').length).toBe(变异前);
