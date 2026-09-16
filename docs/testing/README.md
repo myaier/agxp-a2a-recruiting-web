@@ -85,6 +85,90 @@ fullTitle 原样保留；用例正文（断言）除下述代码搬迁外一字�
 - `test-results/test-layering/拆分前-定向链路.json`：C4 拆分前定向链路计时样本
   （本任务拆分后代码、workers=4、retries=0、7 链全绿，总 27.5s 墙钟）。
 
+## Task 3 对账（C6 Suite 拆分 + C4 长 Case 裁剪，2026-09-16）
+
+原 `e2e/数据源模式.spec.ts`（162 收集项、62 个顶层 describe + 1 个裸 test）已整体
+迁入 `e2e/suites/` 16 个 Suite 文件并删除；等价迁移先按「projectId + describe 链 +
+用例名」逐项对账（162 = 162，标题集合相等），再实施 C4 拆分。最终全量收集 294 项
+= 286 − 162（旧 spec）+ 170（新 suites）= 286 + 8（C4 拆分净增），每一条增项见下表。
+
+### C6 迁移地图（原 describe → 新文件；titlePath 原样保留）
+
+| 新文件（e2e/suites/） | 原顶层 describe（旧 spec 行号） |
+| --- | --- |
+| `登录与数据源.spec.ts` | Mock 数据源回归（89）/ 登录区号 fixture 证据（478）/ Backend 数据源 fixture（569）；`e2e/离线边界.spec.ts` 同属该 Suite 家族（边界反例，保留在 e2e/ 根） |
+| `招聘组织.spec.ts` | P1C 招聘组织 fixture（882，含企业名片/公开页统一用例） |
+| `隐私与实名.spec.ts` | P3 隐私主链路（1659，C4 拆 3）/ P3 恢复分派（1866）/ P3 Mock 隔离（2304）/ 候选实名（7183）/ 裸 test Mock 候选实名（7241） |
+| `Agent规则.spec.ts` | P6 规则域 fixture（2387，全链路 C4 拆 4） |
+| `发现推荐.spec.ts` | P4 发现推荐域（2852）/ P4 Mock 隔离（3341） |
+| `简历与附件.spec.ts` | P2 附件简历（3418）/ 核心编辑 作品集（5631）/ 教育 @mock·@backend（6475/6560）/ 简历行业 @mock·@backend（6708/6779）/ 候选资料编辑边界（6958）/ 候选个人优势编辑（7021）/ 核心编辑 附件 @mock·@backend（8655/8764） |
+| `求职意向.spec.ts` | 核心编辑 意向薪资（5727）/ 候选私有筛选要求（5825）/ 城市 @mock·@backend（5957/6036）/ 期望行业 @mock·@backend（8420/8496） |
+| `岗位编辑.spec.ts` | 核心编辑 岗位 @mock（6175，C4 拆 2）/ @backend（6300，C4 拆 2） |
+| `候选建档.spec.ts` | 候选 onboarding Backend fixture（5374）；`e2e/onboarding.spec.ts` 是本 Suite 与「招聘建档与JD」的文件级并集（见该文件头注释） |
+| `招聘建档与JD.spec.ts` | 招聘方 onboarding（7098）/ JD 建议稿导入（7270，C4 拆 2） |
+| `MatchCase.spec.ts` | P5 MatchCase 生命周期（3578）/ P5 Mock 隔离（4378） |
+| `连续委托.spec.ts` | J-PILOT-01 连续委托接线（8062）；`e2e/J-PILOT-02接线.spec.ts` 同属该 Suite 家族（保留在 e2e/ 根） |
+| `真人消息.spec.ts` | P7 真人会话（4537）/ P7 Mock 隔离（4703） |
+| `账号与支持.spec.ts` | P8 控制面（4743）/ P8 Mock 隔离（5280） |
+| `展示与交互.spec.ts` | 在谈详情完整布局（4048）/ 卡片统一 Mock 三屏（7678）/ 卡片统一 Backend（7759）/ picker 统一 ×7 组（8905–9650）/ catalog-fullscreen ×9 组（9813–10577）；`P1展示统一/展示字段接线/抽屉稳定性/换壳无闪屏/问AI代理展示` 五个保留文件同属该 Suite 家族 |
+| `标注.spec.ts` | 标注评审构建 @annotation（7473） |
+
+单一 describe 专用的局部 helper 随块迁移（填意向表单并提交/以招聘方进入名片/登录区号
+路由族/就绪卡动作键/下拉刷新手势/断言重读发生/装P7×2/装候选实名/装P8候选族/卡片几何
+族/picker 与 catalog-fullscreen 几何族），无一跨 Suite 共享，未新增共享抽象。
+
+### C4 长 Case 拆分表（原 → 新；断言去向）
+
+| 原长 Case | 新 Case（净增数） | 断言去向 |
+| --- | --- | --- |
+| P3 隐私读写、组织屏蔽与岗位硬性条件走 HTTP fixture 主链路（10.1s） | ①披露读改回读：水合并行链 + 隐身开关 + 披露偏好稀疏补丁（If-Match "1"/"2" 原样）；②组织屏蔽与解除：目录搜索 q/limit/cursor、选回填零写、屏蔽幂等键、解除风险确认（If-Match 按独立 fixture 从 "1" 起算，原 "3"/"4"/"6" 是链内累计）；③岗位硬性条件：切换后组织链 + 发布四员完整 + 编辑空稀疏补丁（+2） | 取消零写（选回填零 POST）、revision（quoted If-Match 全链）、真实目录 ID（q/cursor/organization_id/四员）逐条保留；三条 Case 各自初始化账号与 fixture |
+| P6 全链路：双端规则生命周期与请求契约（21.5s） | ①候选创建提案→确认（水合/轮询/物化 + 创建与 accept 回执幂等）；②候选替换提案（草稿预填/确认前旧规则在场/accept 后旧规则归档 + accept 幂等）；③候选归档（键盘揭开/确认前零 DELETE/If-Match 当前版本恰一次）；④招聘端创建→确认→pause/resume 版本链 1→2→3（+3） | 跨操作版本链与物化断言保留在 accept 所在 Case；原尾部「候选创建们=1/候选接受们=2」按拆分后各自 Case 收敛为等价计数 |
+| JD 建议稿导入大链路（14.3s） | ①授权与轮询：consent 取消零 POST、202、串行轮询、快照合并（未改字段才被替换）；②导入建议发布：GET 首拍即 succeeded（合法已完成导入快照）起步，经同一合并入口 + 城市门禁 + 真实 Catalog 选择 + 确认门后发布（+1） | ①保 consent 前零 POST/轮询两拍/类别轻提示/描述保留；②保发布 body（title/requirements/workplace/office_location/category_id/location_id/双 ref）与轮询收口（GET=1） |
+| 核心编辑 岗位 @backend | 新建两栏下钻分类→确认门→发布（目录分页/下钻/死端零请求/同名叶子稳定 ID）；编辑 hydrated confirmed 岗（fixture 预置社招 confirmed 岗，改公开要求撤销确认/稀疏补丁只带变化字段，新增 If-Match "1" 断言）（+1） | body/ID/If-Match/确认门双向撤销逐条保留 |
+| 核心编辑 岗位 @mock | 新建分类→确认门→发布进本地列表；编辑 legacy 岗 P-01（私有筛选不撤确认/改公开要求撤销/重新确认后保存 + 重进回读）（+1） | Mock 零 API 断言两条 Case 各自保留 |
+
+未拆分的裁定：候选 onboarding 完整保存是「社招产品路径的必要完整接线冒烟」（教育恢复/
+头像 unknown/首次意向唯一性已作为独立异常 Case 存在于 `J-PILOT-02接线.spec.ts`，学生/
+招聘冒烟在 `onboarding.spec.ts`）；P2 附件两条 Case 本就满足「上传→替换→归属→删除 +
+解析失败重新授权独立」；J-PILOT-01 三场景与 P3/P4/P6 竞态 Case 按 C4「保留完整竞态/
+不拆成无关联快照」原样保留；教育/简历行业的超长 Case 其重入回读段与创建段同一编辑目标
+（重入回读是 C4 明令保留的不变量），拆开需伪造新 fixture 状态，收益不抵。
+
+### Task 3 修掉的已知失败（全部只改测试定义）
+
+- 5× `GET /api/v1/organizations/org-fixture-p4` 未声明（P4 详情直取 / 不感兴趣：PUT /
+  P8 职位举报详情直取 / J-PILOT-01 场景一·二）：按「P8 举报屏蔽暂不可用」既有写法补
+  `覆盖` 声明（按坐标显式空应答 → strict decode 拒绝 → 企业块错误/占位态）。
+- `P6 accept 409 not_actionable`：在当前 HEAD 复跑为绿（单选 3×、套件多次），Task 2
+  基线的红与本类时序相关（见下条），未做投机性修改。
+- ~13 例「hash 直达被在飞水合导航吞掉」时序 flaky（旧 spec 在本机同样随机翻红，
+  P3 城市 Case 旧稿单选 3/4 红）：新增共享 helper `hash直达`（重试直达直到路由段形
+  落定；P5 深链的 canonical ID 改写按段形判定不误伤），对 suites 内 137 处 post-landing
+  hash 导航统一加固；预期重定向的航段（P8 注销后重进 / P8 401 首航 / Mock 实名直达）
+  保留普通 goto。全量三项目复验转绿（见下）。另：核心编辑 城市 @backend 的「取消不写
+  草稿」段存在取消清理与在途草稿写的竞态（旧稿即红），测试侧在取消前等 400ms 收尾，
+  疑似产品侧竞态已在此记录（不改产品）。
+
+### Task 3 验证（workers=4 / retries=0 固定口径）
+
+- brief 命令一（隐私与实名 + Agent规则 + 招聘建档与JD + 候选建档，fixture）：26 passed；
+- brief 命令二（连续委托 + 简历与附件，fixture）：11 passed；
+- 其余受影响 Suite：发现推荐 14 / 账号与支持 15 / 岗位编辑 4（mock+fixture）/
+  登录与数据源+招聘组织+MatchCase+真人消息+求职意向 48 / 展示与交互 19（fixture）；
+- 全 suites 三项目：fixture 135 passed（118.9s）、mock 33 passed（30.5s）、
+  annotation 2 passed（4.0s）。
+
+### Task 3 证据件（git-ignored；复跑后需重新落盘）
+
+- `test-results/test-layering/task3-迁移前-list.json`（286 基线）与
+  `task3-迁移后-未拆-list.json`（等价对账 162=162 用）；
+- `test-results/test-layering/拆分前-JD链路.json`（C4 补项：JD 链拆前 14.3s 绿，
+  workers=4/retries=0；P3/P6/候选 onboarding 复用 Task 2 `拆分前-定向链路-r3.json`）；
+  ——命名口径统一为「拆分前 = 拆分前代码」，Task 2 的 `拆分前-定向链路.json` 实为
+  list 文本输出，以 `-r3.json` 为权威计时样本；
+- `test-results/test-layering/task3-验证1/2.json`、`task3-全fixture.json`、
+  `task3-全mock.json`、`task3-标注.json`：上述验证的 JSON 回执。
+
 ## 已知事项
 
 - `J-PILOT-02接线.spec.ts` 四条手填旅程在基线 HEAD 6b8a71fa（旧入口）即失败

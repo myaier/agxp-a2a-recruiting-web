@@ -1,3 +1,6 @@
+// C6（2026-09-16 Task 3）：本文件是「候选建档」与「招聘建档与JD」两个 Suite 的文件级
+// 并集 —— 以 walks the recruiter journey / publishes an internship / Mock 招聘剧情 开头
+// 的三项归招聘建档与JD，其余五项归候选建档；titlePath 原样保留，不建第三个 Suite。
 import { expect, test } from './fixtures/test';
 import type { Page } from '@playwright/test';
 
