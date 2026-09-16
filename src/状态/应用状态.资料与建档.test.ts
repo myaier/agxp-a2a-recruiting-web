@@ -450,8 +450,9 @@ describe('应用状态提供者 DF-014 Backend 缓存不覆盖账户头像', () 
     globalThis.sessionStorage.setItem(范围键('sub_B'), JSON.stringify({ 求职头像: 旧本地图 }));
     const 后端 = {
       ...创建后端桩('candidate'),
-      // A 本轮权威回读有头像；B 本轮权威回读明确无头像
-      读取候选账号档案: vi.fn(async () => ({ avatar_url: null, revision: 1, updated_at: null })),
+      // A 本轮权威回读有头像；B 本轮权威回读明确无头像（返回类型显式标注：avatar_url 可为串或 null）
+      读取候选账号档案: vi.fn(async (): Promise<{ avatar_url: string | null; revision: number; updated_at: string | null }> =>
+        ({ avatar_url: null, revision: 1, updated_at: null })),
     };
     vi.mocked(后端.读取候选账号档案)
       .mockResolvedValueOnce({ avatar_url: '/api/v1/me/avatar/content', revision: 3, updated_at: '2026-09-01T00:00:00Z' });
