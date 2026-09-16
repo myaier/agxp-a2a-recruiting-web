@@ -17,9 +17,9 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 生成失败不覆盖原文档。标记外侧的手写 L3 索引不受生成影响，勿改标记行本身。
 
 <!-- BEGIN GENERATED CASES -->
-## 第一层 · 单元/组件（Vitest） · 5715 例 · 254 文件
+## 第一层 · 单元/组件（Vitest） · 5736 例 · 254 文件
 
-### 数据契约/映射 · 1561 例 · 53 文件
+### 数据契约/映射 · 1572 例 · 53 文件
 
 <details>
 <summary>展开明细</summary>
@@ -754,6 +754,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | MatchCase 连续筛选块（continuity_version 2）解码 > 记录块 fail closed：未知阶段词、块序回跳、问答方向错、无正文回答带 text 都拒绝 |  | [src/数据/招聘数据源/MatchCase.test.ts](../../src/数据/招聘数据源/MatchCase.test.ts) | npm test -- src/数据/招聘数据源/MatchCase.test.ts -t 'MatchCase 连续筛选块（continuity_version 2）解码 (> )?记录块 fail closed：未知阶段词、块序回跳、问答方向错、无正文回答带 text 都拒绝' | 未知 |
 | MatchCase 连续筛选块（continuity_version 2）解码 > 记录块装 S0/S1/S2 三段：每条自述 stage/asking_role/answer_source，按块各自记轮次 |  | [src/数据/招聘数据源/MatchCase.test.ts](../../src/数据/招聘数据源/MatchCase.test.ts) | npm test -- src/数据/招聘数据源/MatchCase.test.ts -t 'MatchCase 连续筛选块（continuity_version 2）解码 (> )?记录块装 S0/S1/S2 三段：每条自述 stage/asking_role/answer_source，按块各自记轮次' | 未知 |
 | MatchCase数据源 > Case 叮嘱走双端 agent-instructions，body 只有 text |  | [src/数据/招聘数据源/MatchCase.test.ts](../../src/数据/招聘数据源/MatchCase.test.ts) | npm test -- src/数据/招聘数据源/MatchCase.test.ts -t 'MatchCase数据源 (> )?Case 叮嘱走双端 agent-instructions，body 只有 text' | 未知 |
+| MatchCase数据源 > DF-005：两端 Case 冻结 job_detail 省略发布人头像键仍整包解码，Case 坐标与状态保持 |  | [src/数据/招聘数据源/MatchCase.test.ts](../../src/数据/招聘数据源/MatchCase.test.ts) | npm test -- src/数据/招聘数据源/MatchCase.test.ts -t 'MatchCase数据源 (> )?DF-005：两端 Case 冻结 job_detail 省略发布人头像键仍整包解码，Case 坐标与状态保持' | 未知 |
 | MatchCase数据源 > PDF 走角色前缀的 resume-submission/content 二进制 GET，显式不缓存且只认 PDF |  | [src/数据/招聘数据源/MatchCase.test.ts](../../src/数据/招聘数据源/MatchCase.test.ts) | npm test -- src/数据/招聘数据源/MatchCase.test.ts -t 'MatchCase数据源 (> )?PDF 走角色前缀的 resume-submission/content 二进制 GET，显式不缓存且只认 PDF' | 未知 |
 | MatchCase数据源 > S0 信息不足终局合法可读，且终态详情动作空、零待办 |  | [src/数据/招聘数据源/MatchCase.test.ts](../../src/数据/招聘数据源/MatchCase.test.ts) | npm test -- src/数据/招聘数据源/MatchCase.test.ts -t 'MatchCase数据源 (> )?S0 信息不足终局合法可读，且终态详情动作空、零待办' | 未知 |
 | MatchCase数据源 > S0 块缺失／null、messages 或 summaries 为 null、S1–S3 错带块都漂移 |  | [src/数据/招聘数据源/MatchCase.test.ts](../../src/数据/招聘数据源/MatchCase.test.ts) | npm test -- src/数据/招聘数据源/MatchCase.test.ts -t 'MatchCase数据源 (> )?S0 块缺失／null、messages 或 summaries 为 null、S1–S3 错带块都漂移' | 未知 |
@@ -1061,6 +1062,15 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 发现推荐数据源 > 非法 rank/score/state/枚举抛 invalid_response |  | [src/数据/招聘数据源/发现推荐.test.ts](../../src/数据/招聘数据源/发现推荐.test.ts) | npm test -- src/数据/招聘数据源/发现推荐.test.ts -t '发现推荐数据源 (> )?非法 rank/score/state/枚举抛 invalid_response' | 未知 |
 | 发现推荐数据源 > 页 wrapper 缺 next_cursor、缺 recommendations、多出未知页键或条目不是数组都抛 invalid_response |  | [src/数据/招聘数据源/发现推荐.test.ts](../../src/数据/招聘数据源/发现推荐.test.ts) | npm test -- src/数据/招聘数据源/发现推荐.test.ts -t '发现推荐数据源 (> )?页 wrapper 缺 next_cursor、缺 recommendations、多出未知页键或条目不是数组都抛 invalid_response' | 未知 |
 | 发现推荐数据源 > 默认单条详情未请求 include：响应携带 candidate_summary 键仍拒绝 |  | [src/数据/招聘数据源/发现推荐.test.ts](../../src/数据/招聘数据源/发现推荐.test.ts) | npm test -- src/数据/招聘数据源/发现推荐.test.ts -t '发现推荐数据源 (> )?默认单条详情未请求 include：响应携带 candidate_summary 键仍拒绝' | 未知 |
+| DF-005 发布人头像缺席归一化 > 头像缺席之外缺 personal_verification_status仍按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t 'DF-005 发布人头像缺席归一化 (> )?头像缺席之外缺 personal_verification_status仍按契约漂移拒绝' | 未知 |
+| DF-005 发布人头像缺席归一化 > 头像缺席之外缺 public_name仍按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t 'DF-005 发布人头像缺席归一化 (> )?头像缺席之外缺 public_name仍按契约漂移拒绝' | 未知 |
+| DF-005 发布人头像缺席归一化 > 头像缺席之外缺 title仍按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t 'DF-005 发布人头像缺席归一化 (> )?头像缺席之外缺 title仍按契约漂移拒绝' | 未知 |
+| DF-005 发布人头像缺席归一化 > 对象头像仍按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t 'DF-005 发布人头像缺席归一化 (> )?对象头像仍按契约漂移拒绝' | 未知 |
+| DF-005 发布人头像缺席归一化 > 数字头像仍按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t 'DF-005 发布人头像缺席归一化 (> )?数字头像仍按契约漂移拒绝' | 未知 |
+| DF-005 发布人头像缺席归一化 > 显式 null 与合法字符串仍原样保留 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t 'DF-005 发布人头像缺席归一化 (> )?显式 null 与合法字符串仍原样保留' | 未知 |
+| DF-005 发布人头像缺席归一化 > 显式 undefined 不视作缺席仍按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t 'DF-005 发布人头像缺席归一化 (> )?显式 undefined 不视作缺席仍按契约漂移拒绝' | 未知 |
+| DF-005 发布人头像缺席归一化 > 未知键仍按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t 'DF-005 发布人头像缺席归一化 (> )?未知键仍按契约漂移拒绝' | 未知 |
+| DF-005 发布人头像缺席归一化 > 省略 avatar_url 键：解职位资料整包解码成功且头像归一为 null |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t 'DF-005 发布人头像缺席归一化 (> )?省略 avatar_url 键：解职位资料整包解码成功且头像归一为 null' | 未知 |
 | 解候选在线简历 > compensation_relationship 是非空闭集：null 与表外码都拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解候选在线简历 (> )?compensation_relationship 是非空闭集：null 与表外码都拒绝' | 未知 |
 | 解候选在线简历 > expectation 嵌套闭合：locations 引用不合法或 workplace_modes 表外码都拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解候选在线简历 (> )?expectation 嵌套闭合：locations 引用不合法或 workplace_modes 表外码都拒绝' | 未知 |
 | 解候选在线简历 > internship false 与 0/[] 原样保留，不折算成 null |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解候选在线简历 (> )?internship false 与 0/\[\] 原样保留，不折算成 null' | 未知 |
@@ -1275,6 +1285,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 组织数据源 > 读取公开企业 GET /organizations/:id |  | [src/数据/招聘数据源/组织.test.ts](../../src/数据/招聘数据源/组织.test.ts) | npm test -- src/数据/招聘数据源/组织.test.ts -t '组织数据源 (> )?读取公开企业 GET /organizations/:id' | 未知 |
 | 组织数据源 > 读取我的企业关系 解包 {affiliations:[...]} 返回数组 |  | [src/数据/招聘数据源/组织.test.ts](../../src/数据/招聘数据源/组织.test.ts) | npm test -- src/数据/招聘数据源/组织.test.ts -t '组织数据源 (> )?读取我的企业关系 解包 \{affiliations:\[\.\.\.\]\} 返回数组' | 未知 |
 | 组织数据源 > 读取招聘方档案 GET /recruiter/profile 并 strict decode |  | [src/数据/招聘数据源/组织.test.ts](../../src/数据/招聘数据源/组织.test.ts) | npm test -- src/数据/招聘数据源/组织.test.ts -t '组织数据源 (> )?读取招聘方档案 GET /recruiter/profile 并 strict decode' | 未知 |
+| 连续代谈数据源 > DF-005：候选 negotiation 嵌套 Case 冻结 job_detail 省略发布人头像键仍解码，开案坐标与状态保持 |  | [src/数据/招聘数据源/连续代谈.test.ts](../../src/数据/招聘数据源/连续代谈.test.ts) | npm test -- src/数据/招聘数据源/连续代谈.test.ts -t '连续代谈数据源 (> )?DF-005：候选 negotiation 嵌套 Case 冻结 job_detail 省略发布人头像键仍解码，开案坐标与状态保持' | 未知 |
 | 连续代谈数据源 > active 页解出 pre-Case 卡片原字段名与失败块 |  | [src/数据/招聘数据源/连续代谈.test.ts](../../src/数据/招聘数据源/连续代谈.test.ts) | npm test -- src/数据/招聘数据源/连续代谈.test.ts -t '连续代谈数据源 (> )?active 页解出 pre-Case 卡片原字段名与失败块' | 未知 |
 | 连续代谈数据源 > active 首页请求恰为 shelf+limit=50，恒无 intention_id 且 cursor 为 null 时省略 |  | [src/数据/招聘数据源/连续代谈.test.ts](../../src/数据/招聘数据源/连续代谈.test.ts) | npm test -- src/数据/招聘数据源/连续代谈.test.ts -t '连续代谈数据源 (> )?active 首页请求恰为 shelf\+limit=50，恒无 intention_id 且 cursor 为 null 时省略' | 未知 |
 | 连续代谈数据源 > agent_summary / 失败史反例：缺键、坏枚举与非法事件 |  | [src/数据/招聘数据源/连续代谈.test.ts](../../src/数据/招聘数据源/连续代谈.test.ts) | npm test -- src/数据/招聘数据源/连续代谈.test.ts -t '连续代谈数据源 (> )?agent_summary / 失败史反例：缺键、坏枚举与非法事件' | 未知 |
@@ -1590,7 +1601,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 流程 · 174 例 · 6 文件
+### 流程 · 180 例 · 6 文件
 
 <details>
 <summary>展开明细</summary>
@@ -1625,6 +1636,12 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 教育段缺项（完成前的最后门槛） > 学生的预计毕业时间在未来仍算完整（毕业时间不是「必须是过去」） |  | [src/流程/onboarding配置.test.ts](../../src/流程/onboarding配置.test.ts) | npm test -- src/流程/onboarding配置.test.ts -t '教育段缺项（完成前的最后门槛） (> )?学生的预计毕业时间在未来仍算完整（毕业时间不是「必须是过去」）' | 未知 |
 | 教育段缺项（完成前的最后门槛） > 缺毕业时间 / 缺专业 / 缺学校都算缺项 |  | [src/流程/onboarding配置.test.ts](../../src/流程/onboarding配置.test.ts) | npm test -- src/流程/onboarding配置.test.ts -t '教育段缺项（完成前的最后门槛） (> )?缺毕业时间 / 缺专业 / 缺学校都算缺项' | 未知 |
 | 空求职初筛偏好 > 空偏好只有两个空数组，不带默认类型/办公方式/实习参数 |  | [src/流程/onboarding配置.test.ts](../../src/流程/onboarding配置.test.ts) | npm test -- src/流程/onboarding配置.test.ts -t '空求职初筛偏好 (> )?空偏好只有两个空数组，不带默认类型/办公方式/实习参数' | 未知 |
+| DF-002 取经历缺项 > 公司名在但组织编号缺 → 只报公司一项 |  | [src/流程/候选Onboarding简历预填.test.ts](../../src/流程/候选Onboarding简历预填.test.ts) | npm test -- src/流程/候选Onboarding简历预填.test.ts -t 'DF-002 取经历缺项 (> )?公司名在但组织编号缺 → 只报公司一项' | 未知 |
+| DF-002 取经历缺项 > 公司名称空与组织编号缺合并为一个公司项；多缺项按 公司→行业→职位→入职时间 排序 |  | [src/流程/候选Onboarding简历预填.test.ts](../../src/流程/候选Onboarding简历预填.test.ts) | npm test -- src/流程/候选Onboarding简历预填.test.ts -t 'DF-002 取经历缺项 (> )?公司名称空与组织编号缺合并为一个公司项；多缺项按 公司→行业→职位→入职时间 排序' | 未知 |
+| DF-002 取经历缺项 > 完整项返回空数组 |  | [src/流程/候选Onboarding简历预填.test.ts](../../src/流程/候选Onboarding简历预填.test.ts) | npm test -- src/流程/候选Onboarding简历预填.test.ts -t 'DF-002 取经历缺项 (> )?完整项返回空数组' | 未知 |
+| DF-002 取经历缺项 > 按原判定比较值：非空串（含纯空白）不算缺，不扩大成 trim 校验 |  | [src/流程/候选Onboarding简历预填.test.ts](../../src/流程/候选Onboarding简历预填.test.ts) | npm test -- src/流程/候选Onboarding简历预填.test.ts -t 'DF-002 取经历缺项 (> )?按原判定比较值：非空串（含纯空白）不算缺，不扩大成 trim 校验' | 未知 |
+| DF-002 取经历缺项 > 数未完成项 仍只算未完成条数而非字段数，教育/证书计数不变 |  | [src/流程/候选Onboarding简历预填.test.ts](../../src/流程/候选Onboarding简历预填.test.ts) | npm test -- src/流程/候选Onboarding简历预填.test.ts -t 'DF-002 取经历缺项 (> )?数未完成项 仍只算未完成条数而非字段数，教育/证书计数不变' | 未知 |
+| DF-002 取经历缺项 > 行业原文在但引用缺 → 只报行业一项 |  | [src/流程/候选Onboarding简历预填.test.ts](../../src/流程/候选Onboarding简历预填.test.ts) | npm test -- src/流程/候选Onboarding简历预填.test.ts -t 'DF-002 取经历缺项 (> )?行业原文在但引用缺 → 只报行业一项' | 未知 |
 | 候选预填状态种子 > 创建空候选预填状态(5) 保留传入 generation |  | [src/流程/候选Onboarding简历预填.test.ts](../../src/流程/候选Onboarding简历预填.test.ts) | npm test -- src/流程/候选Onboarding简历预填.test.ts -t '候选预填状态种子 (> )?创建空候选预填状态\(5\) 保留传入 generation' | 未知 |
 | 候选预填状态种子 > 初始状态 inactive、无来源/建议/错误、confirmed 全 false、generation 0 |  | [src/流程/候选Onboarding简历预填.test.ts](../../src/流程/候选Onboarding简历预填.test.ts) | npm test -- src/流程/候选Onboarding简历预填.test.ts -t '候选预填状态种子 (> )?初始状态 inactive、无来源/建议/错误、confirmed 全 false、generation 0' | 未知 |
 | 取个人优势预填 > summary 缺席、eligibility 关闭或已确认时保留当前值 |  | [src/流程/候选Onboarding简历预填.test.ts](../../src/流程/候选Onboarding简历预填.test.ts) | npm test -- src/流程/候选Onboarding简历预填.test.ts -t '取个人优势预填 (> )?summary 缺席、eligibility 关闭或已确认时保留当前值' | 未知 |
@@ -3584,7 +3601,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 页面/接线 · 2200 例 · 100 文件
+### 页面/接线 · 2204 例 · 100 文件
 
 <details>
 <summary>展开明细</summary>
@@ -4628,6 +4645,10 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 工作经历 行业弹层 Backend > 行业弹层根分页加载更多追加第二页（R3-I-5） |  | [src/屏幕/工作经历.行业与企业.test.tsx](../../src/屏幕/工作经历.行业与企业.test.tsx) | npm test -- src/屏幕/工作经历.行业与企业.test.tsx -t '工作经历 行业弹层 Backend (> )?行业弹层根分页加载更多追加第二页（R3-I-5）' | 未知 |
 | 工作经历 行业弹层 Backend > 行业弹层根追加页换版本：旧根下的子/孙展开失效，重新展开取新版本 |  | [src/屏幕/工作经历.行业与企业.test.tsx](../../src/屏幕/工作经历.行业与企业.test.tsx) | npm test -- src/屏幕/工作经历.行业与企业.test.tsx -t '工作经历 行业弹层 Backend (> )?行业弹层根追加页换版本：旧根下的子/孙展开失效，重新展开取新版本' | 未知 |
 | 工作经历 行业弹层 Backend > 非 selectable 子项点击展开孙项而不提交 |  | [src/屏幕/工作经历.行业与企业.test.tsx](../../src/屏幕/工作经历.行业与企业.test.tsx) | npm test -- src/屏幕/工作经历.行业与企业.test.tsx -t '工作经历 行业弹层 Backend (> )?非 selectable 子项点击展开孙项而不提交' | 未知 |
+| 工作经历 DF-002 缺项提示与保存首错定位 > 两张折叠卡按缺项数组显示具体提示；公司原文在而缺组织 ID 显示「请从目录选择公司」 |  | [src/屏幕/工作经历.资料与预填.test.tsx](../../src/屏幕/工作经历.资料与预填.test.tsx) | npm test -- src/屏幕/工作经历.资料与预填.test.tsx -t '工作经历 DF-002 缺项提示与保存首错定位 (> )?两张折叠卡按缺项数组显示具体提示；公司原文在而缺组织 ID 显示「请从目录选择公司」' | 未知 |
+| 工作经历 DF-002 缺项提示与保存首错定位 > 修正第一条后提示实时消失、下一次保存定位第二条；删除后保存放行且草稿不丢 |  | [src/屏幕/工作经历.资料与预填.test.tsx](../../src/屏幕/工作经历.资料与预填.test.tsx) | npm test -- src/屏幕/工作经历.资料与预填.test.tsx -t '工作经历 DF-002 缺项提示与保存首错定位 (> )?修正第一条后提示实时消失、下一次保存定位第二条；删除后保存放行且草稿不丢' | 未知 |
+| 工作经历 DF-002 缺项提示与保存首错定位 > 只剩教育/证书缺项时保留现有拦截：不打开完整工作经历 |  | [src/屏幕/工作经历.资料与预填.test.tsx](../../src/屏幕/工作经历.资料与预填.test.tsx) | npm test -- src/屏幕/工作经历.资料与预填.test.tsx -t '工作经历 DF-002 缺项提示与保存首错定位 (> )?只剩教育/证书缺项时保留现有拦截：不打开完整工作经历' | 未知 |
+| 工作经历 DF-002 缺项提示与保存首错定位 > 点保存打开第一条不完整经历、首错「公司」控件获焦、字段旁提示可见，不发无效保存 |  | [src/屏幕/工作经历.资料与预填.test.tsx](../../src/屏幕/工作经历.资料与预填.test.tsx) | npm test -- src/屏幕/工作经历.资料与预填.test.tsx -t '工作经历 DF-002 缺项提示与保存首错定位 (> )?点保存打开第一条不完整经历、首错「公司」控件获焦、字段旁提示可见，不发无效保存' | 未知 |
 | 工作经历 · Task 4 资料接线 > 作品集链接单独改动：写进草稿并随保存带上规范化后的字符串 |  | [src/屏幕/工作经历.资料与预填.test.tsx](../../src/屏幕/工作经历.资料与预填.test.tsx) | npm test -- src/屏幕/工作经历.资料与预填.test.tsx -t '工作经历 · Task 4 资料接线 (> )?作品集链接单独改动：写进草稿并随保存带上规范化后的字符串' | 未知 |
 | 工作经历 · Task 4 资料接线 > 作品集链接未改：保存不带该属性（不拿旧 GET 顺带覆盖） |  | [src/屏幕/工作经历.资料与预填.test.tsx](../../src/屏幕/工作经历.资料与预填.test.tsx) | npm test -- src/屏幕/工作经历.资料与预填.test.tsx -t '工作经历 · Task 4 资料接线 (> )?作品集链接未改：保存不带该属性（不拿旧 GET 顺带覆盖）' | 未知 |
 | 工作经历 · Task 4 资料接线 > 删除已存条目：登记 明确删除条目，保存时不会被缺项保护带回 |  | [src/屏幕/工作经历.资料与预填.test.tsx](../../src/屏幕/工作经历.资料与预填.test.tsx) | npm test -- src/屏幕/工作经历.资料与预填.test.tsx -t '工作经历 · Task 4 资料接线 (> )?删除已存条目：登记 明确删除条目，保存时不会被缺项保护带回' | 未知 |
@@ -5794,7 +5815,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-## 第二层 · 浏览器（Playwright） · 329 例 · 26 文件
+## 第二层 · 浏览器（Playwright） · 334 例 · 26 文件
 
 ### Agent规则 · 11 例 · 1 文件
 
@@ -5817,29 +5838,31 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### MatchCase · 12 例 · 1 文件
+### MatchCase · 14 例 · 1 文件
 
 <details>
 <summary>展开明细</summary>
 
 | 逻辑标题 | 执行变体（project） | 源码 | 选择坐标 | 计时 |
 | --- | --- | --- | --- | --- |
-| P5 MatchCase 生命周期 fixture @backend > S0 观察期零输入零写：respond_fact 退场、底栏真禁用、3 秒重读零写请求 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:176](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend S0 观察期零输入零写：respond_fact 退场、底栏真禁用、3 秒重读零写请求 @backend @s0-s3-display' | 未知 |
-| P5 MatchCase 生命周期 fixture @backend > S2/S3 每步权威重读，本端动作卡随权威视图消失 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:295](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend S2/S3 每步权威重读，本端动作卡随权威视图消失 @backend @s0-s3-display' | 未知 |
-| P5 MatchCase 生命周期 fixture @backend > completed 移交两步：pending 继续低频重读恒禁用，发布后进入 P7 会话路由 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:353](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend completed 移交两步：pending 继续低频重读恒禁用，发布后进入 P7 会话路由 @backend @s0-s3-display' | 未知 |
-| P5 MatchCase 生命周期 fixture @backend > ended/completed 单一历史集合原序渲染，终局详情只读 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:431](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend ended/completed 单一历史集合原序渲染，终局详情只读 @backend @s0-s3-display' | 未知 |
-| P5 MatchCase 生命周期 fixture @backend > 候选详情直达刷新：空列表记忆下整页可渲染 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:120](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 候选详情直达刷新：空列表记忆下整页可渲染 @backend @s0-s3-display' | 未知 |
-| P5 MatchCase 生命周期 fixture @backend > 同一 Case 双端 needs_action 分歧，列表保留服务端顺序与游标 @backend | fixture | [e2e/suites/MatchCase.spec.ts:29](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 同一 Case 双端 needs_action 分歧，列表保留服务端顺序与游标 @backend' | 未知 |
-| P5 MatchCase 生命周期 fixture @backend > 已披露招聘端只开 Case 专属原始 PDF（叮嘱落段后入口仍在） @backend | fixture | [e2e/suites/MatchCase.spec.ts:256](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 已披露招聘端只开 Case 专属原始 PDF（叮嘱落段后入口仍在） @backend' | 未知 |
-| P5 MatchCase 生命周期 fixture @backend > 披露前与解析中/失败：无姓名无联系方式无 PDF；失败重试重发同一对 @backend | fixture | [e2e/suites/MatchCase.spec.ts:203](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 披露前与解析中/失败：无姓名无联系方式无 PDF；失败重试重发同一对 @backend' | 未知 |
-| P5 MatchCase 生命周期 fixture @backend > 招聘详情直达刷新：空列表记忆下整页可渲染 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:152](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 招聘详情直达刷新：空列表记忆下整页可渲染 @backend @s0-s3-display' | 未知 |
-| P5 MatchCase 生命周期 fixture @backend > 未知 lifecycle/stage/status/step 与矩阵外四元组 fail closed @backend | fixture | [e2e/suites/MatchCase.spec.ts:84](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 未知 lifecycle/stage/status/step 与矩阵外四元组 fail closed @backend' | 未知 |
-| P5 MatchCase 生命周期 fixture @backend > 登出与角色切换清空可见 P5 状态 @backend | fixture | [e2e/suites/MatchCase.spec.ts:470](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 登出与角色切换清空可见 P5 状态 @backend' | 未知 |
-| P5 Mock 数据源隔离 @mock > Mock 在谈/归档/详情全流程零 match-cases 请求（空清单） @mock | mock | [e2e/suites/MatchCase.spec.ts:525](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=mock --grep 'P5 Mock 数据源隔离 @mock Mock 在谈/归档/详情全流程零 match-cases 请求（空清单） @mock' | 未知 |
+| DF-005 DF-016 dogfood 回归 @backend > DF-005 DF-016 候选从列表打开缺头像键详情：整页可读、发布人档案原位显示 @backend @dogfood-frontend | fixture | [e2e/suites/MatchCase.spec.ts:566](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'DF-005 DF-016 dogfood 回归 @backend DF-005 DF-016 候选从列表打开缺头像键详情：整页可读、发布人档案原位显示 @backend @dogfood-frontend' | 未知 |
+| DF-005 DF-016 dogfood 回归 @backend > DF-005 DF-016 招聘从列表打开缺头像键详情：画像与在线简历同源、摘要清旧、身份零渲染 @backend @dogfood-frontend | fixture | [e2e/suites/MatchCase.spec.ts:614](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'DF-005 DF-016 dogfood 回归 @backend DF-005 DF-016 招聘从列表打开缺头像键详情：画像与在线简历同源、摘要清旧、身份零渲染 @backend @dogfood-frontend' | 未知 |
+| P5 MatchCase 生命周期 fixture @backend > S0 观察期零输入零写：respond_fact 退场、底栏真禁用、3 秒重读零写请求 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:180](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend S0 观察期零输入零写：respond_fact 退场、底栏真禁用、3 秒重读零写请求 @backend @s0-s3-display' | 未知 |
+| P5 MatchCase 生命周期 fixture @backend > S2/S3 每步权威重读，本端动作卡随权威视图消失 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:299](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend S2/S3 每步权威重读，本端动作卡随权威视图消失 @backend @s0-s3-display' | 未知 |
+| P5 MatchCase 生命周期 fixture @backend > completed 移交两步：pending 继续低频重读恒禁用，发布后进入 P7 会话路由 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:357](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend completed 移交两步：pending 继续低频重读恒禁用，发布后进入 P7 会话路由 @backend @s0-s3-display' | 未知 |
+| P5 MatchCase 生命周期 fixture @backend > ended/completed 单一历史集合原序渲染，终局详情只读 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:435](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend ended/completed 单一历史集合原序渲染，终局详情只读 @backend @s0-s3-display' | 未知 |
+| P5 MatchCase 生命周期 fixture @backend > 候选详情直达刷新：空列表记忆下整页可渲染 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:124](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 候选详情直达刷新：空列表记忆下整页可渲染 @backend @s0-s3-display' | 未知 |
+| P5 MatchCase 生命周期 fixture @backend > 同一 Case 双端 needs_action 分歧，列表保留服务端顺序与游标 @backend | fixture | [e2e/suites/MatchCase.spec.ts:33](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 同一 Case 双端 needs_action 分歧，列表保留服务端顺序与游标 @backend' | 未知 |
+| P5 MatchCase 生命周期 fixture @backend > 已披露招聘端只开 Case 专属原始 PDF（叮嘱落段后入口仍在） @backend | fixture | [e2e/suites/MatchCase.spec.ts:260](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 已披露招聘端只开 Case 专属原始 PDF（叮嘱落段后入口仍在） @backend' | 未知 |
+| P5 MatchCase 生命周期 fixture @backend > 披露前与解析中/失败：无姓名无联系方式无 PDF；失败重试重发同一对 @backend | fixture | [e2e/suites/MatchCase.spec.ts:207](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 披露前与解析中/失败：无姓名无联系方式无 PDF；失败重试重发同一对 @backend' | 未知 |
+| P5 MatchCase 生命周期 fixture @backend > 招聘详情直达刷新：空列表记忆下整页可渲染 @backend @s0-s3-display | fixture | [e2e/suites/MatchCase.spec.ts:156](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 招聘详情直达刷新：空列表记忆下整页可渲染 @backend @s0-s3-display' | 未知 |
+| P5 MatchCase 生命周期 fixture @backend > 未知 lifecycle/stage/status/step 与矩阵外四元组 fail closed @backend | fixture | [e2e/suites/MatchCase.spec.ts:88](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 未知 lifecycle/stage/status/step 与矩阵外四元组 fail closed @backend' | 未知 |
+| P5 MatchCase 生命周期 fixture @backend > 登出与角色切换清空可见 P5 状态 @backend | fixture | [e2e/suites/MatchCase.spec.ts:474](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 MatchCase 生命周期 fixture @backend 登出与角色切换清空可见 P5 状态 @backend' | 未知 |
+| P5 Mock 数据源隔离 @mock > Mock 在谈/归档/详情全流程零 match-cases 请求（空清单） @mock | mock | [e2e/suites/MatchCase.spec.ts:705](../../e2e/suites/MatchCase.spec.ts) | npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=mock --grep 'P5 Mock 数据源隔离 @mock Mock 在谈/归档/详情全流程零 match-cases 请求（空清单） @mock' | 未知 |
 
 </details>
 
-### 候选建档 · 6 例 · 2 文件
+### 候选建档 · 7 例 · 2 文件
 
 <details>
 <summary>展开明细</summary>
@@ -5851,7 +5874,8 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | multi-role onboarding > reuses the persisted portfolio link on the personal-strength page | mock | [e2e/onboarding.spec.ts:319](../../e2e/onboarding.spec.ts) | npm run test:e2e -- e2e/onboarding.spec.ts --project=mock --grep 'multi-role onboarding reuses the persisted portfolio link on the personal-strength page' | 未知 |
 | multi-role onboarding > walks the social-hire journey from role entry through both wizard stages | mock | [e2e/onboarding.spec.ts:46](../../e2e/onboarding.spec.ts) | npm run test:e2e -- e2e/onboarding.spec.ts --project=mock --grep 'multi-role onboarding walks the social-hire journey from role entry through both wizard stages' | 未知 |
 | multi-role onboarding > walks the student journey from role entry to internship daily pay | mock | [e2e/onboarding.spec.ts:105](../../e2e/onboarding.spec.ts) | npm run test:e2e -- e2e/onboarding.spec.ts --project=mock --grep 'multi-role onboarding walks the student journey from role entry to internship daily pay' | 未知 |
-| 候选 onboarding Backend fixture @backend > 候选 onboarding 完整保存并创建首次意向 @catalog-fullscreen @backend | fixture | [e2e/suites/候选建档.spec.ts:23](../../e2e/suites/候选建档.spec.ts) | npm run test:e2e -- e2e/suites/候选建档.spec.ts --project=fixture --grep '候选 onboarding Backend fixture @backend 候选 onboarding 完整保存并创建首次意向 @catalog-fullscreen @backend' | 未知 |
+| DF-002 dogfood 回归 @backend > DF-002 预填缺项卡可发现、保存定位首错并聚焦，补齐后完成建档保存 @backend @dogfood-frontend | fixture | [e2e/suites/候选建档.spec.ts:339](../../e2e/suites/候选建档.spec.ts) | npm run test:e2e -- e2e/suites/候选建档.spec.ts --project=fixture --grep 'DF-002 dogfood 回归 @backend DF-002 预填缺项卡可发现、保存定位首错并聚焦，补齐后完成建档保存 @backend @dogfood-frontend' | 未知 |
+| 候选 onboarding Backend fixture @backend > 候选 onboarding 完整保存并创建首次意向 @catalog-fullscreen @backend | fixture | [e2e/suites/候选建档.spec.ts:26](../../e2e/suites/候选建档.spec.ts) | npm run test:e2e -- e2e/suites/候选建档.spec.ts --project=fixture --grep '候选 onboarding Backend fixture @backend 候选 onboarding 完整保存并创建首次意向 @catalog-fullscreen @backend' | 未知 |
 
 </details>
 
@@ -6273,7 +6297,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 连续委托 · 9 例 · 2 文件
+### 连续委托 · 11 例 · 2 文件
 
 <details>
 <summary>展开明细</summary>
@@ -6285,10 +6309,12 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | J-PILOT-02 候选 onboarding Backend fixture @backend > 头像 unknown 不能完成：不伪成功、同 key/ifMatch 重放、成功后才完成 @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:810](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend 头像 unknown 不能完成：不伪成功、同 key/ifMatch 重放、成功后才完成 @backend' | 未知 |
 | J-PILOT-02 候选 onboarding Backend fixture @backend > 学生手填全旅程：实习生档、零工作经历、URL 未改不携带、恰一首次意向 @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:720](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend 学生手填全旅程：实习生档、零工作经历、URL 未改不携带、恰一首次意向 @backend' | 未知 |
 | J-PILOT-02 候选 onboarding Backend fixture @backend > 社招手填全旅程：零工作经历、URL 设置后清空、恰一首次意向 @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:647](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend 社招手填全旅程：零工作经历、URL 设置后清空、恰一首次意向 @backend' | 未知 |
-| J-PILOT-01 连续委托接线 @backend > pre-Case：四段未开始但 S0 可展开初评过程、失败后合法 retry 可达，Mock 零请求同版式 @backend @s0-s3-display | fixture | [e2e/suites/连续委托.spec.ts:412](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'J-PILOT-01 连续委托接线 @backend pre-Case：四段未开始但 S0 可展开初评过程、失败后合法 retry 可达，Mock 零请求同版式 @backend @s0-s3-display' | 未知 |
-| J-PILOT-01 连续委托接线 @backend > 场景一：UI 选择 PDF/确认→POST accepted→查看进展→在谈同卡→公开初评→S0→S1 @backend @s0-s3-display | fixture | [e2e/suites/连续委托.spec.ts:42](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'J-PILOT-01 连续委托接线 @backend 场景一：UI 选择 PDF/确认→POST accepted→查看进展→在谈同卡→公开初评→S0→S1 @backend @s0-s3-display' | 未知 |
-| J-PILOT-01 连续委托接线 @backend > 场景三：双端 S0 禁用输入与布局保持（390/320 对照改前基准） @backend @s0-s3-display | fixture | [e2e/suites/连续委托.spec.ts:279](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'J-PILOT-01 连续委托接线 @backend 场景三：双端 S0 禁用输入与布局保持（390/320 对照改前基准） @backend @s0-s3-display' | 未知 |
-| J-PILOT-01 连续委托接线 @backend > 场景二：写响应丢失→同标签页 reload→原命令核对→失败→retry 原代际→归档回读 @backend @s0-s3-display | fixture | [e2e/suites/连续委托.spec.ts:176](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'J-PILOT-01 连续委托接线 @backend 场景二：写响应丢失→同标签页 reload→原命令核对→失败→retry 原代际→归档回读 @backend @s0-s3-display' | 未知 |
+| DF-008 dogfood 回归 @backend > DF-008 候选：跨生产 5 秒节拍移除终局卡，首次进入历史回看 ended 记录 @backend @dogfood-frontend | fixture | [e2e/suites/连续委托.spec.ts:495](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'DF-008 dogfood 回归 @backend DF-008 候选：跨生产 5 秒节拍移除终局卡，首次进入历史回看 ended 记录 @backend @dogfood-frontend' | 未知 |
+| DF-008 dogfood 回归 @backend > DF-008 招聘：预先访问历史后跨生产节拍移除终局卡，历史快照遵循现有合同零轮询 @backend @dogfood-frontend | fixture | [e2e/suites/连续委托.spec.ts:527](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'DF-008 dogfood 回归 @backend DF-008 招聘：预先访问历史后跨生产节拍移除终局卡，历史快照遵循现有合同零轮询 @backend @dogfood-frontend' | 未知 |
+| J-PILOT-01 连续委托接线 @backend > pre-Case：四段未开始但 S0 可展开初评过程、失败后合法 retry 可达，Mock 零请求同版式 @backend @s0-s3-display | fixture | [e2e/suites/连续委托.spec.ts:415](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'J-PILOT-01 连续委托接线 @backend pre-Case：四段未开始但 S0 可展开初评过程、失败后合法 retry 可达，Mock 零请求同版式 @backend @s0-s3-display' | 未知 |
+| J-PILOT-01 连续委托接线 @backend > 场景一：UI 选择 PDF/确认→POST accepted→查看进展→在谈同卡→公开初评→S0→S1 @backend @s0-s3-display | fixture | [e2e/suites/连续委托.spec.ts:45](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'J-PILOT-01 连续委托接线 @backend 场景一：UI 选择 PDF/确认→POST accepted→查看进展→在谈同卡→公开初评→S0→S1 @backend @s0-s3-display' | 未知 |
+| J-PILOT-01 连续委托接线 @backend > 场景三：双端 S0 禁用输入与布局保持（390/320 对照改前基准） @backend @s0-s3-display | fixture | [e2e/suites/连续委托.spec.ts:282](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'J-PILOT-01 连续委托接线 @backend 场景三：双端 S0 禁用输入与布局保持（390/320 对照改前基准） @backend @s0-s3-display' | 未知 |
+| J-PILOT-01 连续委托接线 @backend > 场景二：写响应丢失→同标签页 reload→原命令核对→失败→retry 原代际→归档回读 @backend @s0-s3-display | fixture | [e2e/suites/连续委托.spec.ts:179](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'J-PILOT-01 连续委托接线 @backend 场景二：写响应丢失→同标签页 reload→原命令核对→失败→retry 原代际→归档回读 @backend @s0-s3-display' | 未知 |
 
 </details>
 

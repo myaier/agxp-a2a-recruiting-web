@@ -46,7 +46,7 @@ import type { 简历经历段, 简历教育段, 简历项目, 简历证书 } fro
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 并入建档草稿, 教育段缺项, 规范化作品集链接, 校验作品集链接, 校验起止年月 } from '../流程/onboarding配置';
-import { 取工作页预填, 数未完成项 } from '../流程/候选Onboarding简历预填';
+import { 取工作页预填, 取经历缺项, 数未完成项 } from '../流程/候选Onboarding简历预填';
 import { 带简历编辑标记 } from '../流程/候选Onboarding预填边界';
 import { 创建空候选预填状态 } from '../状态/后端/类型';
 import type { 建档编辑中草稿, 建档条目种类, 建档明确删除条目, 候选引导建档草稿 } from '../数据/资料缓存';
@@ -90,6 +90,22 @@ const 本月 = () => new Date().toISOString().slice(0, 7);
 function 开始上界(结束: string | null): string {
   const 今 = 本月();
   return 结束 && 结束 < 今 ? 结束 : 今;
+}
+
+// ── DF-002：预填经历的缺项提示与保存首错定位 ──
+// 适用范围与 数未完成项 一致：只认预填物化条目（临时编号 prefill: 前缀）——
+// 用户自建条目仍由编辑页完成守卫负责（Mock 的行业无引用是合法完成态，不得提示）。
+/** 经历缺项字段（取经历缺项 的返回元素）。 */
+type 经历缺项字段 = ReturnType<typeof 取经历缺项>[number];
+
+const 是预填条目 = (段: 简历经历段) => 段.编号.startsWith('prefill:');
+
+/** 缺项数组 → 用户提示行；公司原文在而缺 canonical ID 时明确「请从目录选择公司」
+ *  （取经历缺项 仍返回单个公司项，从当前段判断文字），不按公司为空推断权限或造企业值。 */
+function 缺项提示行(段: 简历经历段): string {
+  return `待补充：${取经历缺项(段)
+    .map((项) => (项 === '公司' && 段.公司 !== '' ? '请从目录选择公司' : 项))
+    .join('、')}`;
 }
 
 export default function 工作经历() {
@@ -174,6 +190,9 @@ export default function 工作经历() {
   const [编辑目标, 设编辑目标] = useState<string | '新增' | null>(
     恢复编辑?.种类 === 'experience' ? 恢复编辑.本地编号 : null,
   );
+  // DF-002：保存拦截时对首条不完整预填经历自动定位的首错字段（可空，仅作编辑页
+  // 本地展示输入：挂载后滚动聚焦；手动点卡打开不聚焦）
+  const [首错, 设首错] = useState<经历缺项字段 | null>(null);
   // null = 不在编辑教育；'新增' = 空白；其它 = 正在编辑的教育段编号
   const [教育目标, 设教育目标] = useState<string | '新增' | null>(
     恢复编辑?.种类 === 'education' ? 恢复编辑.本地编号 : null,
@@ -298,6 +317,14 @@ export default function 工作经历() {
     const 未完成数 = 数未完成项(经历列表, 教育列表, 证书列表);
     if (未完成数 > 0) {
       轻提示(`还有 ${未完成数} 处需要选择目录或补充必填项`);
+      // DF-002：有缺项的预填经历时按列表顺序取第一条，用现有编辑目标打开编辑页并传入
+      // 可空首错字段（挂载后滚动聚焦其第一个缺失字段）；只剩教育/证书缺项时保留既有
+      // 拦截，不误打开完整工作经历
+      const 首条缺项经历 = 经历列表.find((段) => 是预填条目(段) && 取经历缺项(段).length > 0);
+      if (首条缺项经历) {
+        设首错(取经历缺项(首条缺项经历)[0] ?? null);
+        设编辑目标(首条缺项经历.编号);
+      }
       return;
     }
     // 工作经历可以为空（学生没实习、社招在职空窗都是常态，Global：工作经历可空）——
@@ -413,8 +440,10 @@ export default function 工作经历() {
         恢复={恢复}
         变更={写编辑中}
         区块名={经历区块名}
+        首错={首错}
         取消={() => {
           丢弃编辑层();
+          设首错(null);
           设编辑目标(null);
         }}
         完成={(段) => {
@@ -427,6 +456,7 @@ export default function 工作经历() {
             { 编辑中: undefined },
           );
           设恢复编辑(undefined);
+          设首错(null);
           设编辑目标(null);
         }}
         删除={
@@ -454,7 +484,10 @@ export default function 工作经历() {
         <button
           key={段.编号}
           className={`${样式.经历卡} 可点`}
-          onClick={() => 设编辑目标(段.编号)}
+          onClick={() => {
+            设首错(null);
+            设编辑目标(段.编号);
+          }}
         >
           <span className={样式.经历卡主体}>
             <span className={样式.经历卡头行}>
@@ -470,12 +503,22 @@ export default function 工作经历() {
                 <span className={样式.隐身徽标}>已对该公司隐身</span>
               ) : null}
             </span>
+            {/* DF-002：缺项的预填经历在折叠卡上可发现（提示行复用与保存拦截同一判定） */}
+            {是预填条目(段) && 取经历缺项(段).length > 0 ? (
+              <span className={样式.经历缺项}>{缺项提示行(段)}</span>
+            ) : null}
           </span>
           <span className={样式.尖括号}>›</span>
         </button>
       ))}
 
-      <button className={`${样式.添加行} 可点`} onClick={() => 设编辑目标('新增')}>
+      <button
+        className={`${样式.添加行} 可点`}
+        onClick={() => {
+          设首错(null);
+          设编辑目标('新增');
+        }}
+      >
         <span className={样式.添加加号}>＋</span>
         <span className={样式.添加文字}>添加{经历区块名}</span>
       </button>
@@ -1100,6 +1143,7 @@ function 经历编辑页({
   恢复,
   变更,
   区块名,
+  首错,
   取消,
   完成,
   删除,
@@ -1110,6 +1154,8 @@ function 经历编辑页({
   变更?: (编辑中: 建档编辑中草稿) => void;
   /** 学生分支叫「实习经历」，非学生叫「工作经历」，只是标题措辞，字段一致 */
   区块名: string;
+  /** DF-002：保存拦截自动定位的可空首错字段 —— 挂载后滚动聚焦其控件；仅本地展示输入 */
+  首错?: 经历缺项字段 | null;
   取消: () => void;
   完成: (段: 简历经历段) => void;
   删除?: () => void;
@@ -1170,6 +1216,26 @@ function 经历编辑页({
     for (const { 节点, 顶 } of 行业打开滚动.current) 节点.scrollTop = 顶;
     行业打开滚动.current = [];
   }, [行业层]);
+
+  // ── DF-002：首错定位 —— 挂载后用 ref 滚动并聚焦首错字段的输入/选择触发按钮；
+  //  layout effect 时 ref 已就位，不自动弹出目录选择器、不用 setTimeout 猜挂载时机。
+  //  每次挂载只定位一次（修正或删除后的重开由列表侧重新传入首错）。
+  const 公司行引用 = useRef<HTMLButtonElement>(null);
+  const 职位输入引用 = useRef<HTMLInputElement>(null);
+  const 入职键引用 = useRef<HTMLButtonElement>(null);
+  const 已定位首错 = useRef(false);
+  useLayoutEffect(() => {
+    if (已定位首错.current || !首错) return;
+    已定位首错.current = true;
+    const 节点 = 首错 === '公司' ? 公司行引用.current
+      : 首错 === '行业' ? 行业行引用.current
+      : 首错 === '职位' ? 职位输入引用.current
+      : 入职键引用.current;
+    if (节点) {
+      节点.scrollIntoView({ block: 'center' });
+      节点.focus({ preventScroll: true });
+    }
+  }, [首错]);
   // 年月滚轮打开在哪一侧：null = 没开
   const [滚轮, 设滚轮] = useState<'开始' | '结束' | null>(null);
   const 至今 = 草稿.结束 === null;
@@ -1177,6 +1243,8 @@ function 经历编辑页({
   const 时间错误 = 校验起止年月(草稿.开始, 草稿.结束, '入职时间', '离职时间');
   const 必填齐 = 草稿.公司.trim() !== '' && 草稿.职位.trim() !== '' && 草稿.开始 !== '';
   const 可完成 = 必填齐 && !时间错误;
+  // DF-002：预填条目的实时缺项（补齐后即时消失）；用户自建条目不显示缺项提示
+  const 缺项 = 是预填条目(草稿) ? 取经历缺项(草稿) : [];
 
   const 改 = <键 extends keyof 简历经历段>(键名: 键, 值: 简历经历段[键]) =>
     设草稿((旧) => ({ ...旧, [键名]: 值 }));
@@ -1278,7 +1346,7 @@ function 经历编辑页({
       <滚动区 样式覆盖={{ padding: '6px 22px 40px' }}>
         {/* 公司名称（合同 C）：真实企业 ID 只能从 公司选择抽屉 里选 —— 旧公司文本
             是展示／搜索词，不是可提交坐标，因此这一行不再是自由输入框。 */}
-        <button className={`${样式.选择条目} 可点`} onClick={打开公司抽屉}>
+        <button ref={公司行引用} className={`${样式.选择条目} 可点`} onClick={打开公司抽屉}>
           <span className={样式.条目标签}>公司名称</span>
           <span className={样式.选择条目值行}>
             <span className={`${草稿.公司 ? 样式.条目值 : 样式.条目占位} 单行`}>
@@ -1287,6 +1355,13 @@ function 经历编辑页({
             <span className={样式.尖括号}>›</span>
           </span>
         </button>
+        {/* DF-002：错误字段附近的可见提示（不能只靠短 toast）；公司原文在而缺
+            canonical ID 时明确「请从目录选择公司」，名称与引用缺失合并为一个提示 */}
+        {缺项.includes('公司') ? (
+          <div className={样式.字段错误}>
+            {草稿.公司 !== '' ? '请从目录选择公司' : '待补充：公司'}
+          </div>
+        ) : null}
 
         {/* 所属行业：标注意见 21:43 —— 不摊一排快捷片，改成和「公司名称」同款的
             点击行；editor-catalog-fullscreen Task 3 起点开全屏行业目录挑选
@@ -1300,15 +1375,22 @@ function 经历编辑页({
             <span className={样式.尖括号}>›</span>
           </span>
         </button>
+        {缺项.includes('行业') ? (
+          <div className={样式.字段错误}>待补充：行业</div>
+        ) : null}
 
         <div className={样式.编辑条目}>
           <div className={样式.条目标签}>职位名称</div>
           <input
+            ref={职位输入引用}
             className={样式.条目输入}
             value={草稿.职位}
             placeholder="必填"
             onChange={(事件) => 改('职位', 事件.target.value)}
           />
+          {缺项.includes('职位') ? (
+            <div className={样式.字段错误}>待补充：职位</div>
+          ) : null}
         </div>
 
         {/* 在职时间：点开弹自绘年月滚轮（标注意见 2026-08-18），结束侧被「至今」接管 */}
@@ -1316,6 +1398,7 @@ function 经历编辑页({
           <div className={样式.条目标签}>在职时间</div>
           <div className={样式.时间行}>
             <button
+              ref={入职键引用}
               className={`${样式.月份键} ${草稿.开始 ? '' : 样式.月份键空} ${时间错误 ? 样式.月份键错 : ''} 等宽数字 可点`}
               onClick={() => 设滚轮('开始')}
               aria-label="入职年月"
@@ -1348,6 +1431,9 @@ function 经历编辑页({
             <div className={样式.字段错误} role="alert">
               {时间错误}
             </div>
+          ) : null}
+          {缺项.includes('入职时间') ? (
+            <div className={样式.字段错误}>待补充：入职时间</div>
           ) : null}
         </div>
 

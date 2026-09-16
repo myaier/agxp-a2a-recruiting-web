@@ -24,6 +24,11 @@ import { type 简历经历段, type 简历教育段, type 简历证书 } from '.
 import userEvent from '@testing-library/user-event';
 import 工作经历 from './工作经历';
 
+// jsdom 不实现 scrollIntoView / scrollTo（DF-002 首错定位的挂载滚动会调用）
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = () => {};
+}
+
 登记工作经历(工作经历);
 
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回 }) }));
@@ -90,6 +95,27 @@ async function 抽屉选公司(
   // 250ms debounce 后搜索结果才上屏：等行出现再点（同时覆盖搜索词预填触发搜索）
   await 用户.click(await within(抽屉).findByText(行名称));
   await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull());
+}
+
+/** DF-002：两条缺公司/行业的物化建议 —— 第一条公司原文缺失，第二条公司原文在而缺组织 ID。 */
+function 双缺项建议(): BFF简历预填建议 {
+  return 映射变体((建议) => {
+    建议.draft.experiences[0].company = { value: null, confidence: null };
+    建议.draft.experiences[0].industry = {
+      source_name: { value: 'Software', confidence: 'medium' },
+      resolution: 'unresolved',
+      match: null,
+    };
+    建议.draft.experiences.push(structuredClone(建议.draft.experiences[0]));
+    建议.draft.experiences[1].company = { value: 'Second Corp', confidence: 'high' };
+    建议.draft.experiences[1].industry = {
+      source_name: { value: 'Finance', confidence: 'medium' },
+      resolution: 'unresolved',
+      match: null,
+    };
+    建议.draft.experiences[1].title = { value: 'Second Engineer', confidence: 'high' };
+    建议.draft.experiences[1].start_month = { value: '2020-03', confidence: 'high' };
+  });
 }
 
 
@@ -426,14 +452,16 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     // 两条物化经历都还没有真实企业 ID：还有 2 处，先被拦
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(mock轻提示).toHaveBeenCalledWith('还有 2 处需要选择目录或补充必填项');
+    // DF-002：拦截同时自动打开了第一条编辑页 —— 返回列表再按原意图删第二条
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
     // 删除未完成的第二条：第一条仍缺 ID，重数实时降到 1 处
     await 用户.click(screen.getByText('Second Corp'));
     await 用户.click(screen.getByText('删除这段经历'));
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(mock轻提示).toHaveBeenCalledWith('还有 1 处需要选择目录或补充必填项');
     expect(保存简历).not.toHaveBeenCalled();
-    // 缺 ID 的条目不能直接跳过再报告完成：删完才放行
-    await 用户.click(screen.getByText('Example Systems'));
+    // 缺 ID 的条目不能直接跳过再报告完成：删完才放行（这次拦截自动打开的就是
+    // 唯一剩下的第一条，就地删除）
     await 用户.click(screen.getByText('删除这段经历'));
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
@@ -536,6 +564,142 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     expect(screen.queryByText('Example Systems')).toBeNull();
     expect(screen.queryByText('Go')).toBeNull();
     expect(派发).not.toHaveBeenCalled();
+  });
+});
+
+// ── DF-002：卡片缺项提示与保存首错定位 ──
+// 折叠卡可发现（待补充行）、保存不发无效总保存而直接进入第一条不完整经历并聚焦首错
+// 控件、字段旁可见提示、修正/删除后实时重算、只有教育/证书缺项时保留既有拦截。
+describe('工作经历 DF-002 缺项提示与保存首错定位', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+    mock确认分区.mockClear();
+    mock更新草稿.mockClear();
+  });
+
+  it('两张折叠卡按缺项数组显示具体提示；公司原文在而缺组织 ID 显示「请从目录选择公司」', () => {
+    render工作经历({ 预填: readyWork({}, 双缺项建议()), ...空列表页() });
+    const 提示们 = screen.getAllByText(/^待补充：/);
+    expect(提示们).toHaveLength(2);
+    expect(提示们[0].textContent).toBe('待补充：公司、行业');
+    expect(提示们[1].textContent).toBe('待补充：请从目录选择公司、行业');
+  });
+
+  it('点保存打开第一条不完整经历、首错「公司」控件获焦、字段旁提示可见，不发无效保存', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({ 预填: readyWork({}, 双缺项建议()), ...空列表页(), 保存简历 });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenCalledWith('还有 2 处需要选择目录或补充必填项');
+    expect(保存简历).not.toHaveBeenCalled();
+    // 打开的是第一条（解析职位 Backend Engineer），不是第二条
+    expect((screen.getByPlaceholderText('必填') as HTMLInputElement).value).toBe('Backend Engineer');
+    // 首错 = 公司：挂载后聚焦其选择触发按钮（不自动弹目录）
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /公司名称/ }));
+    expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull();
+    // 字段附近可见提示，不能只靠短 toast
+    expect(screen.getByText('待补充：公司')).toBeTruthy();
+    expect(screen.getByText('待补充：行业')).toBeTruthy();
+  });
+
+  it('修正第一条后提示实时消失、下一次保存定位第二条；删除后保存放行且草稿不丢', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    const 搜索组织 = vi.fn(async () => ({
+      items: [{
+        organization_id: 'org_example', display_name: 'Example Systems',
+        legal_name: null, verification_status: 'unverified' as const,
+      }],
+      next_cursor: null,
+    }));
+    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
+      if (!query.parentId && !query.q) {
+        return {
+          items: [
+            { id: 'ind_fin', display_name: '金融科技', parent_id: null, selectable: false, has_children: true },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      if (query.parentId === 'ind_fin') {
+        return {
+          items: [
+            { id: 'ind_pay', display_name: '支付与清结算', parent_id: 'ind_fin', selectable: true },
+          ],
+          nextCursor: null,
+          catalogVersion: 'v2',
+        };
+      }
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    render工作经历({
+      预填: readyWork({}, 双缺项建议()),
+      ...空列表页(),
+      保存简历,
+      查询Taxonomy,
+      搜索组织,
+    });
+    const 用户 = userEvent.setup();
+    // 首存：自动打开第一条；先手改解析职位（草稿随完成一并落列表，不丢已填内容）
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await 用户.type(screen.getByPlaceholderText('必填'), '2');
+    // 第一条解析公司为空：抽屉里手动输入搜索词再选（不自动匹配解析文本）
+    await 用户.click(screen.getByText('公司名称'));
+    const 抽屉 = await screen.findByRole('dialog', { name: '选择企业' });
+    await 用户.type(within(抽屉).getByPlaceholderText('输入公司名称'), 'Example');
+    await 用户.click(await within(抽屉).findByText('Example Systems'));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull());
+    await 用户.click(screen.getByText('所属行业'));
+    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
+    await 用户.click(await screen.findByText('金融科技'));
+    await 用户.click(await screen.findByText('支付与清结算'));
+    // 编辑页缺项提示随补齐实时消失
+    expect(screen.queryByText('待补充：公司')).toBeNull();
+    expect(screen.queryByText('待补充：行业')).toBeNull();
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    // 列表重算：第一条不再提示，第二条仍可发现
+    expect(screen.getByText('待补充：请从目录选择公司、行业')).toBeTruthy();
+    expect(screen.queryByText('待补充：公司、行业')).toBeNull();
+    // 下一次保存定位下一条：第二条（解析字段原样保留），公司原文在 → 提示选择目录
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenLastCalledWith('还有 1 处需要选择目录或补充必填项');
+    expect((screen.getByPlaceholderText('必填') as HTMLInputElement).value).toBe('Second Engineer');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /公司名称/ }));
+    expect(screen.getByText('请从目录选择公司')).toBeTruthy();
+    // 删除第二条后重算归零：保存放行，第一条连同手改职位一起提交
+    await 用户.click(screen.getByText('删除这段经历'));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      经历: [expect.objectContaining({ 组织编号: 'org_example', 职位: 'Backend Engineer2' })],
+    }));
+  });
+
+  it('只剩教育/证书缺项时保留现有拦截：不打开完整工作经历', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    // 完整的预填经历（带 canonical 行业引用与真实企业 ID）
+    const 完整经历段: 简历经历段 = {
+      编号: 'prefill:exp:0', 公司: 'Example Systems', 行业: 'Software',
+      行业引用: { id: 'tax_aaaaaaaaaaaaaaaaaaaaaaaaaa', display_name: 'Software' },
+      组织编号: 'org_example', 职位: 'Backend Engineer', 开始: '2021-07', 结束: null, 内容: '', 隐藏: true,
+    };
+    const 主段: 简历教育段 = { 编号: 'edu_local_0', 学校: '清华大学', 学历: '本科', 专业: '计算机', 开始: '2017-09', 结束: '2021-06' };
+    render工作经历({
+      预填: readyWork({}, 多条教育变体()),
+      经历: [完整经历段], 教育: [主段], 技能: [], 证书: [],
+      保存简历,
+    });
+    // 完整经历无缺项提示
+    expect(screen.queryByText(/^待补充：/)).toBeNull();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    // 仍由既有拦截拦下（计数含附加教育），但不误打开完整工作经历
+    expect(mock轻提示).toHaveBeenCalledWith('还有 1 处需要选择目录或补充必填项');
+    expect(保存简历).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /添加工作经历/ })).toBeTruthy();
+    expect(screen.queryByPlaceholderText('必填')).toBeNull();
   });
 });
 
