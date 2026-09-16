@@ -2,8 +2,10 @@
 
 这是前端测试的总入口：三层责任、Suite 目录、按影响选择测试的精确命令、Case 扩展步骤、
 各 Task 的迁移对账与计时证据。完整逐叶 Case 清单在 [`cases.md`](cases.md)（自动生成 +
-手写 L3 索引）。分层目标与验收口径见
-`.superpowers/sdd/2026-09-16-frontend-test-layering/` 下的 spec 与各 task 报告。
+手写 L3 索引）。分层目标与验收口径见 tracked 的
+[`../superpowers/specs/2026-09-16-frontend-test-layering-design.md`](../superpowers/specs/2026-09-16-frontend-test-layering-design.md)
+与 [`../superpowers/plans/2026-09-16-frontend-test-layering.md`](../superpowers/plans/2026-09-16-frontend-test-layering.md)；
+各 task 报告是会话本地证据，在 git-ignored 的 `test-results/test-layering/`（原始回执/计时件）。
 
 ## 三层与总命令
 

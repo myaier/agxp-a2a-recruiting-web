@@ -7,8 +7,7 @@ import { expect } from '@playwright/test';
 import type { BFF简历, BFFOwnerIntention } from '../../../src/数据/BFF契约';
 import { fixture简历, 标记 } from './账号与目录';
 import { P4深克隆 } from './发现推荐';
-import { 断言闭合键集, 断言精确键集 } from './协议';
-import { 信封, type 路由上下文形 } from './协议';
+import { 信封, type 路由上下文形, 断言闭合键集, 断言精确键集 } from './协议';
 import type { 招聘方OnboardingFixture形, P1C招聘组织Fixture形 } from './招聘组织';
 import type { P3隐私fixture形 } from './隐私与实名';
 

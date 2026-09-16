@@ -126,7 +126,7 @@ runner；三个不可复用的 Vite dev server 在同一 invocation 内共享启
 少起服务设计动态管理器）：
 
 ```bash
-npm run test:e2e                                  # 第一层全量：mock + fixture + annotation 三项目
+npm run test:e2e                                  # 第二层全量：mock + fixture + annotation 三项目
 npm run test:e2e -- --list                        # 完整去重选集（只收集不执行）
 npm run test:e2e -- <file> --grep '<regex>'       # 原生文件/完整名称选择
 npm run test:e2e -- --project=fixture <file> --grep '<regex>'   # HTTP fixture 子集

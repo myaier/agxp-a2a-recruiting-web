@@ -219,6 +219,11 @@ describe('企业实名认证 · Backend 本页待申请企业选择', () => {
     });
   });
 
+  // 受控时钟窗口中途失败会向后续用例泄漏 fake timers，兜底恢复（同 Mock describe 的 afterEach）
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('本页改选后申请入口携带新 ID；不 PATCH 档案、不改关系', async () => {
     const 用户 = userEvent.setup();
     const 搜索组织 = vi.fn(async () => BFF组织搜索页样本);
